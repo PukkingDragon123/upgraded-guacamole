@@ -70,7 +70,7 @@ const STUB = () => {
 };
 
 const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
 const errors = [];
 page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(m.type() + ': ' + m.text()); });
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message + ' ' + (e.stack || '').split('\n')[1]));
@@ -89,7 +89,7 @@ const host = await page.evaluate(() => { const h = document.querySelector('fisht
 check('overlay is click-through by default', host.pe === 'none' && host.pos === 'fixed' && host.parent === 'html', JSON.stringify(host));
 check('page clicks reach the page', await page.evaluate(() => { const a = document.elementFromPoint(400, 300); return !!a && a.localName !== 'fishtop-overlay'; }));
 check('hello sent to background', await page.evaluate(() => window.__ft.sent.some((m) => m.type === 'ft:hello')));
-await page.mouse.move(640, 500);
+await page.mouse.move(960, 700);
 await wait(7000);
 const census = await O('({ n: o.fishes.length, W: o.W, H: o.H, icons: o.world.icons.length, windows: o.world.windows.length, scanMs: o.scanner.ms, species: o.fishes.map((f) => f.sp.id + "@" + f.z.toFixed(2) + ":" + f.state) })');
 check('fish arrived (1..6)', census.n >= 1 && census.n <= 6, JSON.stringify(census.species));
@@ -116,7 +116,7 @@ await O(`(() => {
   f.x = w.x + w.w * 0.3; f.y = w.y + w.h / 2; f.z = 0.2; f.goHide(); f.hideRect = w; f.hideT = 6;
   const hero = o.world.icons.slice().sort((a, b) => b.w * b.h - a.w * a.h)[0];
   if (o.fishes.length >= 6) o.fishes.find((q) => q !== f).dead = true;
-  const g = o.spawnSpecies('honk', { x: hero.x + hero.w - 4, y: hero.y + hero.h * 0.55, z: 0.9 });
+  const g = o.spawnSpecies('honk', { x: hero.x + hero.w + 2, y: hero.y + hero.h * 0.55, z: 0.9 });
   g.z = 0.9; g.facing = 1; g.setState('idle'); g.idleT = 8;
   o.testHide = f; o.testDeep = g;
 })()`);
@@ -198,9 +198,11 @@ async function catchOne(species) {
   const spot = await O(`(() => { const ic = o.world.icons; let x = o.W * 0.5, y = o.H * 0.55;
     for (let i = 0; i < 40; i++) { const tx = 120 + Math.random() * (o.W - 240), ty = 120 + Math.random() * (o.H - 220);
       if (!ic.some((r) => tx > r.x - 50 && tx < r.x + r.w + 50 && ty > r.y - 40 && ty < r.y + r.h + 40)) { x = tx; y = ty; break; } }
-    const f = o.spawnSpecies('${species}', { x: x - 70, y, z: 0 }); f.z = 0; f.setState('wander'); f.cooldown = 0; return [x, y]; })()`);
+    return [x, y]; })()`);
   const [hx, hy] = await toPage(spot[0], spot[1]);
-  await page.mouse.move(hx, hy, { steps: 25 });
+  await page.mouse.move(hx, hy, { steps: 40 });
+  await wait(400); // let the cursor settle so nothing gets spooked
+  await O(`(() => { const f = o.spawnSpecies('${species}', { x: ${spot[0]} - 70, y: ${spot[1]}, z: 0 }); f.z = 0; f.setState('wander'); f.cooldown = 0; o.testFish = f; })()`);
   // wait for nibbles, then click right on the bite
   const t0 = Date.now();
   let st = 'idle';
@@ -209,7 +211,7 @@ async function catchOne(species) {
     if (st === 'bite') break;
     await page.waitForTimeout(25);
   }
-  check(`${species}: nibble -> bite`, st === 'bite', st);
+  check(`${species}: nibble -> bite`, st === 'bite', st + ' fish:' + await O('o.testFish.state + " cd " + o.testFish.cooldown.toFixed(1)'));
   if (st !== 'bite') return false;
   await page.mouse.down(); await page.mouse.up();
   await wait(60);
@@ -221,7 +223,12 @@ async function catchOne(species) {
   return !!card;
 }
 
-if (await catchOne('pixel')) { await wait(700); await page.screenshot({ path: join(out, '05_card.png') }); }
+if (await catchOne('pixel')) {
+  await wait(700);
+  await page.screenshot({ path: join(out, '05_card.png') });
+  const cr = await O('(() => { const k = o.k; return { x: (o.W - 230) / k, y: (o.H - 160) / k, width: 230 / k, height: 160 / k }; })()');
+  await page.screenshot({ path: join(out, '05b_card_crop.png'), clip: cr });
+}
 await catchOne('guppy');
 const rec = await page.evaluate(() => window.__ft.store.catches);
 const r0 = rec[0] || {};

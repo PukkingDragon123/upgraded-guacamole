@@ -23,7 +23,7 @@ import { SPECIES_BY_ID } from '../fish/species.js';
 import { rollIndividual, valueMultiplier } from '../fish/traits.js';
 import { COIN_RATE } from '../game/shopdata.js';
 import { TASKBAR_H } from '../desktop/desktop.js';
-import { CoinPile, coinSheet, pumpCoinSheets, frameOf, glintSprite, DENOMS } from './coins.js';
+import { CoinPile, coinSheet, pumpCoinSheets, frameOf, glintSprite, DENOMS, COIN_R } from './coins.js';
 import { TankSpace, renderBackdrop, renderGlass, renderFrame, brassButton, shaftSprite, causticFrames, FOG_SLABS, WATER } from './tank3d.js';
 import { plantFrames, SWAY_FRAMES } from './plants.js';
 import { Snail, CoinCrab, drawEggs, eggColor } from './critters.js';
@@ -69,6 +69,30 @@ export class Aquarium {
     this.prevCursor = null;
     this.world = this.makeWorld();
     this.load();
+    this.warm = ['window', 'full'];
+  }
+
+  // Background warm-up: one heavy job per frame (backdrop art, then plant frames) so the first
+  // switch between views does not hitch.
+  prewarm() {
+    if (!this.warmJobs) this.warmJobs = [];
+    if (!this.warmJobs.length && this.warm.length) {
+      const key = this.warm.shift();
+      if (this.game.mini && key === 'full') return;
+      const v = this.buildView(key);
+      this.warmJobs.push(() => this.artFor(v));
+      for (const p of v.plants) this.warmJobs.push(() => { if (!p.frames) p.frames = plantFrames(p.kind, p.h * v.T.s(p.z), p.seed); });
+      for (let d = 0; d < 3; d++) this.warmJobs.push(() => coinSheet(d, COIN_R[d] * v.coinScale, true));
+      for (const d of this.decor) {
+        this.warmJobs.push(() => {
+          const sc = this.decorScale(d, clamp(d.rec.z ?? 0.5, 0.04, 0.95), v);
+          if (d.props.has(sc)) return;
+          try { const p = getProp(d.rec.id, { scale: sc, variant: d.rec.v || 0 }); p.scale = sc; d.props.set(sc, p); } catch { /* unknown prop */ }
+        });
+      }
+    }
+    const job = this.warmJobs.shift();
+    if (job) job();
   }
 
   // ------------------------------------------------------------------ state
@@ -171,6 +195,7 @@ export class Aquarium {
       v.shafts.push({ X: (0.1 + (i + rng.float(0.2, 0.8)) / c.shafts * 0.82) * iw, z: rng.float(0.25, 0.92), w: rng.float(0.05, 0.11) * iw, a: rng.float(0.22, 0.38), ph: rng.float(0, TAU) });
     }
     v.stone = { X: iw * 0.1, z: 0.84 };
+    for (const [k, old] of this.views) if (old.key === key && old !== this.view) this.views.delete(k);
     this.views.set(vk, v);
     return v;
   }
@@ -257,10 +282,10 @@ export class Aquarium {
   }
 
   // ------------------------------------------------------------------ decor
-  decorScale(d, z) {
+  decorScale(d, z, v = this.view) {
     const size = PROPS[d.rec.id]?.decor?.size || 1;
-    const base = this.view.decorScale * [1.0, 0.92, 0.84][size - 1];
-    return Math.max(0.1, Math.round(base * this.T.s(z) * 25) / 25);
+    const base = v.decorScale * [1.0, 0.92, 0.84][size - 1];
+    return Math.max(0.1, Math.round(base * v.T.s(z) * 25) / 25);
   }
 
   layoutDecor() {
@@ -495,7 +520,7 @@ export class Aquarium {
     if (f) this.dropCoin(f, 0, true);
     else {
       const T = this.T;
-      this.coins.spawn(T.W / 2, T.surf + 6, T.DEPTH * 0.15, 0, { vy: 10 });
+      this.coins.spawn(T.W / 2, T.surf + 6, T.DEPTH * 0.15, 0, { vy: 10 }).hint = true;
       this.coinsDirty = true;
     }
   }
@@ -503,7 +528,8 @@ export class Aquarium {
   dropCoin(f, d, forced = false) {
     const T = this.T;
     const X = clamp(T.X(f.x, f.z), 4, T.W - 4), Y = Math.max(T.surf + 4, T.Y(f.y, f.z) + 2), D = f.z * T.DEPTH;
-    this.coins.spawn(X, Y, D, d, { vx: rng.float(-14, 14), vy: -rng.float(18, 36), vd: rng.float(-6, 6) });
+    const c = this.coins.spawn(X, Y, D, d, { vx: rng.float(-14, 14), vy: -rng.float(18, 36), vd: rng.float(-6, 6) });
+    if (forced) { c.hint = true; c.D = Math.min(c.D, T.DEPTH * 0.2); }
     this.sfx('coin_spawn', { vol: forced ? 0.7 : 0.4 * (1 - f.z * 0.5), pitch: [1.15, 1, 0.86][d] });
     this.particles.ring(f.x, f.y + 2, 0.15 + 0.25 * this.view.fishScale * T.s(f.z), 'rgba(255,236,170,0.9)');
     f.squashV += 4;
@@ -683,6 +709,7 @@ export class Aquarium {
     this.t += dt;
     pumpCoinSheets(3);
     this.pumpProps();
+    if (this.t > 1.2 && (this.warm.length || this.warmJobs?.length)) this.prewarm();
     const key = this.simKey();
     const sz = this.innerSize(key);
     if (!this.view || this.view.key !== key || this.view.iw !== sz.iw || this.view.ih !== sz.ih) this.applyView(key);
@@ -1192,6 +1219,14 @@ export class Aquarium {
     this.particles.draw(ctx, 'fg', t);
     this.drawEmotes(ctx);
     this.drawGlints(ctx);
+    // a bobbing arrow points at the tutorial coin
+    for (const c of this.coins.list) {
+      if (!c.hint) continue;
+      const p = this.toLocal(c.X, c.Y, c.D);
+      const a = getUiIcon('arrow_d');
+      ctx.drawImage(a, Math.round(p.x - a.width / 2), Math.round(p.y - c.vr - 6 - a.height + Math.sin(t * 7) * 2));
+      if (rng.chance(0.08)) this.particles.sparkle(p.x + rng.float(-3, 3), p.y + rng.float(-3, 3), '#fff2b0');
+    }
 
     // ---- lighting: night (moonlight blue), dusk (warm), lamp + glowing decor
     if (night > 0.02 || dusk > 0.05) {

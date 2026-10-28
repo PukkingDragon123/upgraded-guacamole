@@ -12489,11 +12489,13 @@ kwwwwwwk.
 ...kk....
 `, { k: "#2a2436", w: "#fbf7ee", c: "#3a7ae0", d: "#9aa2b4" });
   var CARD_W = 206;
-  var CARD_H = 132;
+  var CARD_H = 140;
   var CARD_LIFE = 6.5;
-  function fitScale(sp, box) {
-    const len = (sp.look.body?.len || (sp.look.kind === "chain" ? 60 : 30)) * (sp.look.kind === "seahorse" ? 0.6 : 1);
-    return Math.min(1.8, Math.max(0.35, box / Math.max(20, len * 1.35)));
+  function fitScale(sp, boxW, boxH) {
+    const b = sp.look.body || {};
+    const len = (b.len || (sp.look.kind === "chain" ? 60 : 30)) * (sp.look.kind === "seahorse" ? 0.6 : 1);
+    const h = (b.h || 20) * (sp.look.kind === "seahorse" ? 1.8 : 1) + (sp.look.dorsal?.h || 4) + (sp.look.anal?.h || 3) + 6;
+    return Math.min(1.8, Math.max(0.3, Math.min(boxW / Math.max(20, len * 1.35), boxH / Math.max(10, h))));
   }
   function fakeChain(x, y, t, sc) {
     const pts = [];
@@ -12543,7 +12545,7 @@ kwwwwwwk.
       const ic = getUiIcon(i < rar.stars ? "star" : "star_empty");
       ctx2.drawImage(ic, Math.round(cx - 27 + i * 11), r.y + 29);
     }
-    const fr = drawFrame(ctx2, r.x + 14, r.y + 41, r.w - 28, 46, { style: sp.rarity === "legendary" ? "gold" : "wood" });
+    const fr = drawFrame(ctx2, r.x + 14, r.y + 41, r.w - 28, 54, { style: sp.rarity === "legendary" ? "gold" : "wood" });
     ctx2.save();
     ctx2.beginPath();
     ctx2.rect(fr.x, fr.y, fr.w, fr.h);
@@ -12554,10 +12556,10 @@ kwwwwwwk.
     ctx2.fillStyle = bg;
     ctx2.fillRect(fr.x, fr.y, fr.w, fr.h);
     const c = compiled(sp.look, rec.variant, sp.id);
-    const sc = fitScale(sp, 92) * ease.outBack(clamp01(card.t * 2.5));
+    const sc = fitScale(sp, fr.w * 0.62, fr.h - 4) * ease.outBack(clamp01(card.t * 2.5));
     drawFishRig(ctx2, c, rigPose(sp, cx, fr.y + fr.h / 2 + Math.sin(card.t * 2) * 1.5, Math.max(0.2, sc), card.t, card.emotion, cursor ? [cursor.x, cursor.y] : null));
     ctx2.restore();
-    const sy = r.y + 92;
+    const sy = r.y + 100;
     drawText(ctx2, `{fish} ${rec.sizeCm} cm  ${rec.weightKg} kg`, r.x + 14, sy, { color: "#3a2a1a" });
     drawText(ctx2, `"${rec.name}"`, r.x + r.w - 14, sy, { align: "right", color: "#3a2a1a" });
     let tx = r.x + 14;
@@ -12574,7 +12576,7 @@ kwwwwwwk.
       const st = clamp01((card.t - 0.5) * 5);
       ctx2.save();
       ctx2.globalAlpha = st;
-      drawStamp(ctx2, r.x + r.w - 34, r.y + 50, "NEW!", { color: "#d8283a", angle: -0.25, scale: 1 + (1 - ease.outCubic(st)) * 1.2 });
+      drawStamp(ctx2, r.x + r.w - 34, r.y + 52, "NEW!", { color: "#d8283a", angle: -0.25, scale: 1 + (1 - ease.outCubic(st)) * 1.2 });
       ctx2.restore();
     }
     return r;
@@ -12584,7 +12586,7 @@ kwwwwwwk.
       const cv = makeCanvas(w, h);
       const g = ctxOf(cv);
       const c = compiled(sp.look, rec.variant, sp.id);
-      drawFishRig(g, c, rigPose(sp, w / 2, h / 2, fitScale(sp, w * 0.78), 0.4, "happy", null));
+      drawFishRig(g, c, rigPose(sp, w / 2, h / 2, fitScale(sp, w * 0.78, h - 4), 0.4, "happy", null));
       return cv.toDataURL("image/png");
     } catch {
       return null;

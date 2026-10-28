@@ -57,9 +57,9 @@ export function run(params) {
   const nFish = Number(params.get('fish') ?? 12);
   const pool = SPECIES.filter((s) => s.look?.kind !== 'chain' && !s.quirks?.includes('intro'));
   for (let i = 0; i < nFish; i++) {
-    const sp = pool[(i * 7 + 3) % pool.length];
+    const sp = params.get('same') ? pool.find((q) => q.id === params.get('same')) || pool[0] : pool[(i * 7 + 3) % pool.length];
     const rec = rollIndividual(sp, { mutationChance: 0.1, shinyChance: 0.05 });
-    state.fish.push({ ...rec, inTank: true, happiness: rng.float(0.5, 1), hunger: rng.float(0.1, 0.8), coinT: rng.float(0, 1) });
+    state.fish.push({ ...rec, inTank: true, happiness: params.has('same') ? 0.95 : rng.float(0.5, 1), hunger: params.has('same') ? 0.1 : rng.float(0.1, 0.8), coinT: rng.float(0, 1) });
   }
   if (params.get('decor')) state.tank = { decor: [], starter: false };
 
@@ -108,6 +108,12 @@ export function run(params) {
     const d = rng.chance(0.12) ? 2 : rng.chance(0.25) ? 1 : 0;
     aq.coins.spawn(rng.float(0.1, 0.9) * T.W, T.surf + rng.float(0, 120), rng.float(0.02, 0.7) * T.DEPTH, d);
   }
+  // eggs=k: a clutch k% of the way to hatching (hatches after a few seconds when k is high)
+  if (params.has('eggs')) {
+    const sp = aq.fish[0]?.sp;
+    if (sp) state.tank.eggs.push({ species: sp.id, x: 0.45, z: 0.15, t: 180 * Number(params.get('eggs') || 50) / 100, dur: 180, n: 5, color: sp.look?.col?.body || '#ffd0a0' });
+  }
+  if (params.has('glass')) { aq.snail = null; aq.updateHelpers(0); if (aq.snail) { aq.snail.mode = 'glass'; aq.snail.side = 'L'; aq.snail.X = 4; aq.snail.cdir = 1; aq.snail.climb = 40; aq.snail.climbMax = 60; aq.snail.z = 0; } }
   const ff = Number(params.get('ff') || 0);
   for (let i = 0; i < ff * 30; i++) aq.update(1 / 30, null);
 

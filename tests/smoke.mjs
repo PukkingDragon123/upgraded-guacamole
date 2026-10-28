@@ -72,7 +72,7 @@ const fishPos = await G('(() => { const f = g.school.fishes[0]; return f ? [f.x,
 check('intro fish exists', !!fishPos);
 await moveL(Math.max(fishPos[0] + 160, 360), fishPos[1] + 10, 30);
 let bit = false;
-for (let i = 0; i < 120 && !bit; i++) {
+for (let i = 0; i < 300 && !bit; i++) {
   await wait(100);
   bit = (await G('g.fishing.state')) === 'bite';
   if (!bit && i % 20 === 19) { const h = await G('[g.fishing.hook.x, g.fishing.hook.y]'); await moveL(h[0] + 3, h[1] + 2, 3); }

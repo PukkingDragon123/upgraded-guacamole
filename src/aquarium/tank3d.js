@@ -318,9 +318,7 @@ export function renderBackdrop(T, opts = {}) {
   const stepX = Math.max(8, Math.round(W / 60));
   for (let x = 0; x <= W + stepX - 1; x += stepX) {
     const xx = Math.min(W, x);
-    let m = H;
-    for (let k = Math.max(0, xx - stepX); k < Math.min(W, xx + stepX); k++) m = Math.min(m, floorTop[k]);
-    floorPoly.push([xx, m]);
+    floorPoly.push([xx, floorTop[Math.min(W - 1, xx)] + 1]);
   }
   for (let x = W; x >= 0; x -= stepX) floorPoly.push([x, Math.ceil(T.groundZ(x, 0))]);
   const ceilPoly = [[0, surf], [W, surf], [br, bt], [bl, bt]];

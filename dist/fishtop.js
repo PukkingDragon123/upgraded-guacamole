@@ -18822,9 +18822,7 @@ are just virtual copies - Restore All Icons anytime.`;
     const stepX = Math.max(8, Math.round(W5 / 60));
     for (let x = 0; x <= W5 + stepX - 1; x += stepX) {
       const xx = Math.min(W5, x);
-      let m = H5;
-      for (let k = Math.max(0, xx - stepX); k < Math.min(W5, xx + stepX); k++) m = Math.min(m, floorTop[k]);
-      floorPoly.push([xx, m]);
+      floorPoly.push([xx, floorTop[Math.min(W5 - 1, xx)] + 1]);
     }
     for (let x = W5; x >= 0; x -= stepX) floorPoly.push([x, Math.ceil(T.groundZ(x, 0))]);
     const ceilPoly = [[0, surf], [W5, surf], [br, bt], [bl, bt]];
@@ -19338,16 +19336,18 @@ are just virtual copies - Restore All Icons anytime.`;
     }
     return f;
   }
-  function rotated(cv, q) {
+  function rotated(cv, q, mirror = false) {
     let m = rotCache.get(cv);
     if (!m) rotCache.set(cv, m = {});
-    if (m[q]) return m[q];
+    const key = q + (mirror ? "m" : "");
+    if (m[key]) return m[key];
     const c = makeCanvas(cv.height, cv.width);
     const g = ctxOf(c);
     g.translate(c.width / 2, c.height / 2);
     g.rotate(q * Math.PI / 2);
+    if (mirror) g.scale(-1, 1);
     g.drawImage(cv, -cv.width / 2, -cv.height / 2);
-    m[q] = c;
+    m[key] = c;
     return c;
   }
   function eggSprite(r, color) {
@@ -19440,7 +19440,24 @@ are just virtual copies - Restore All Icons anytime.`;
                 this.idleT = 0;
               }
             }
-            if (this.cdir < 0 && this.climb <= 0) this.mode = "floor";
+            if (this.cdir < 0 && this.climb <= 0) {
+              this.mode = "floor";
+              this.dir = this.side === "L" ? 1 : -1;
+            }
+            return;
+          }
+          if (this.mode === "towall") {
+            const tx = this.side === "L" ? 4 : T.W - 4;
+            this.dir = Math.sign(tx - this.X) || 1;
+            this.X += this.dir * Math.min(Math.abs(tx - this.X), speed * dt);
+            this.z = damp(this.z, 0.02, 1, dt);
+            if (Math.abs(tx - this.X) < 0.5) {
+              this.mode = "glass";
+              this.cdir = 1;
+              this.climb = 0;
+              this.climbMax = (T.floorFront - T.surf) * rng.float(0.25, 0.6);
+              this.z = 0;
+            }
             return;
           }
           let best = null, bd = Infinity;
@@ -19462,11 +19479,8 @@ are just virtual copies - Restore All Icons anytime.`;
             this.X += this.dir * speed * 0.6 * dt;
             if (this.X < 8 || this.X > T.W - 8) this.dir *= -1;
             if (rng.chance(dt * 0.04)) {
-              this.mode = "glass";
-              this.cdir = 1;
-              this.climb = 0;
-              this.climbMax = (T.floorFront - T.surf) * rng.float(0.25, 0.6);
-              this.z = 0;
+              this.mode = "towall";
+              this.side = this.X < T.W / 2 ? "L" : "R";
             }
           }
           this.X = clamp(this.X, 6, T.W - 6);
@@ -19489,14 +19503,14 @@ are just virtual copies - Restore All Icons anytime.`;
           const T = aq.T, vs = aq.view.fishScale;
           const z = this.depth();
           const s = T.s(z);
-          const fr = snailFrames(4.2 * vs * s + 0.6);
+          const fr = snailFrames(5.2 * vs * s + 0.6);
           const f = fr[Math.floor(this.t * (this.mode === "glass" || this.eatT > 0 ? 3 : 5)) % 4];
           const x = Math.round(T.sx(this.X, z)), gy = T.sy(T.groundZ(this.X, z), z);
           if (this.mode === "glass") {
-            const q = this.cdir > 0 ? 3 : 1;
-            const cv = rotated(f.canvas, q);
-            const y2 = Math.round(gy - this.climb);
-            ctx2.drawImage(cv, x - Math.round(cv.width / 2), y2 - (q === 3 ? cv.height : 0));
+            const L2 = this.side === "L", up = this.cdir > 0;
+            const cv = L2 ? up ? rotated(f.canvas, 1, true) : rotated(f.canvas, 1) : up ? rotated(f.canvas, 3) : rotated(f.canvas, 3, true);
+            const y2 = Math.round(gy - this.climb - cv.height * 0.6);
+            ctx2.drawImage(cv, L2 ? Math.round(T.sx(0, 0)) + 1 : Math.round(T.sx(T.W, 0)) - cv.width - 1, y2);
             return;
           }
           const y = Math.round(gy + 1);
@@ -20205,14 +20219,18 @@ are just virtual copies - Restore All Icons anytime.`;
           if (f) this.dropCoin(f, 0, true);
           else {
             const T = this.T;
-            this.coins.spawn(T.W / 2, T.surf + 6, T.DEPTH * 0.15, 0, { vy: 10 });
+            this.coins.spawn(T.W / 2, T.surf + 6, T.DEPTH * 0.15, 0, { vy: 10 }).hint = true;
             this.coinsDirty = true;
           }
         }
         dropCoin(f, d, forced = false) {
           const T = this.T;
           const X = clamp(T.X(f.x, f.z), 4, T.W - 4), Y = Math.max(T.surf + 4, T.Y(f.y, f.z) + 2), D = f.z * T.DEPTH;
-          this.coins.spawn(X, Y, D, d, { vx: rng.float(-14, 14), vy: -rng.float(18, 36), vd: rng.float(-6, 6) });
+          const c = this.coins.spawn(X, Y, D, d, { vx: rng.float(-14, 14), vy: -rng.float(18, 36), vd: rng.float(-6, 6) });
+          if (forced) {
+            c.hint = true;
+            c.D = Math.min(c.D, T.DEPTH * 0.2);
+          }
           this.sfx("coin_spawn", { vol: forced ? 0.7 : 0.4 * (1 - f.z * 0.5), pitch: [1.15, 1, 0.86][d] });
           this.particles.ring(f.x, f.y + 2, 0.15 + 0.25 * this.view.fishScale * T.s(f.z), "rgba(255,236,170,0.9)");
           f.squashV += 4;
@@ -20936,6 +20954,13 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           this.particles.draw(ctx2, "fg", t);
           this.drawEmotes(ctx2);
           this.drawGlints(ctx2);
+          for (const c of this.coins.list) {
+            if (!c.hint) continue;
+            const p = this.toLocal(c.X, c.Y, c.D);
+            const a = getUiIcon("arrow_d");
+            ctx2.drawImage(a, Math.round(p.x - a.width / 2), Math.round(p.y - c.vr - 6 - a.height + Math.sin(t * 7) * 2));
+            if (rng.chance(0.08)) this.particles.sparkle(p.x + rng.float(-3, 3), p.y + rng.float(-3, 3), "#fff2b0");
+          }
           if (night > 0.02 || dusk > 0.05) {
             ctx2.globalCompositeOperation = "multiply";
             const c = mix(mix("#ffffff", "#ffd2a8", dusk * 0.35), "#3a4c90", night * 0.62);
@@ -21599,6 +21624,23 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
     for (let i = 0; i < nCoins; i++) {
       const d = rng.chance(0.12) ? 2 : rng.chance(0.25) ? 1 : 0;
       aq.coins.spawn(rng.float(0.1, 0.9) * T.W, T.surf + rng.float(0, 120), rng.float(0.02, 0.7) * T.DEPTH, d);
+    }
+    if (params2.has("eggs")) {
+      const sp = aq.fish[0]?.sp;
+      if (sp) state.tank.eggs.push({ species: sp.id, x: 0.45, z: 0.15, t: 180 * Number(params2.get("eggs") || 50) / 100, dur: 180, n: 5, color: sp.look?.col?.body || "#ffd0a0" });
+    }
+    if (params2.has("glass")) {
+      aq.snail = null;
+      aq.updateHelpers(0);
+      if (aq.snail) {
+        aq.snail.mode = "glass";
+        aq.snail.side = "L";
+        aq.snail.X = 4;
+        aq.snail.cdir = 1;
+        aq.snail.climb = 40;
+        aq.snail.climbMax = 60;
+        aq.snail.z = 0;
+      }
     }
     const ff = Number(params2.get("ff") || 0);
     for (let i = 0; i < ff * 30; i++) aq.update(1 / 30, null);

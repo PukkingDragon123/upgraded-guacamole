@@ -57,18 +57,20 @@ function snailFrames(r) {
   return f;
 }
 
-// Rotated copy (quarter turns) for climbing the glass.
+// Rotated copy (quarter turns clockwise, optionally mirrored first) for climbing the glass.
 const rotCache = new WeakMap();
-function rotated(cv, q) {
+function rotated(cv, q, mirror = false) {
   let m = rotCache.get(cv);
   if (!m) rotCache.set(cv, (m = {}));
-  if (m[q]) return m[q];
+  const key = q + (mirror ? 'm' : '');
+  if (m[key]) return m[key];
   const c = makeCanvas(cv.height, cv.width);
   const g = ctxOf(c);
   g.translate(c.width / 2, c.height / 2);
   g.rotate(q * Math.PI / 2);
+  if (mirror) g.scale(-1, 1);
   g.drawImage(cv, -cv.width / 2, -cv.height / 2);
-  m[q] = c;
+  m[key] = c;
   return c;
 }
 
@@ -93,9 +95,18 @@ export class Snail {
     this.eatT = Math.max(0, this.eatT - dt);
     const speed = 11 * vs;
     if (this.mode === 'glass') {
+      // up the front corner of a side pane, a little rest, then back down
       this.climb = clamp(this.climb + this.cdir * speed * 0.8 * dt, 0, this.climbMax);
       if (this.cdir > 0 && this.climb >= this.climbMax) { this.idleT += dt; if (this.idleT > 2.5) { this.cdir = -1; this.idleT = 0; } }
-      if (this.cdir < 0 && this.climb <= 0) this.mode = 'floor';
+      if (this.cdir < 0 && this.climb <= 0) { this.mode = 'floor'; this.dir = this.side === 'L' ? 1 : -1; }
+      return;
+    }
+    if (this.mode === 'towall') {
+      const tx = this.side === 'L' ? 4 : T.W - 4;
+      this.dir = Math.sign(tx - this.X) || 1;
+      this.X += this.dir * Math.min(Math.abs(tx - this.X), speed * dt);
+      this.z = damp(this.z, 0.02, 1, dt);
+      if (Math.abs(tx - this.X) < 0.5) { this.mode = 'glass'; this.cdir = 1; this.climb = 0; this.climbMax = (T.floorFront - T.surf) * rng.float(0.25, 0.6); this.z = 0; }
       return;
     }
     // nearest resting coin near the front of the floor
@@ -114,7 +125,7 @@ export class Snail {
     } else {
       this.X += this.dir * speed * 0.6 * dt;
       if (this.X < 8 || this.X > T.W - 8) this.dir *= -1;
-      if (rng.chance(dt * 0.04)) { this.mode = 'glass'; this.cdir = 1; this.climb = 0; this.climbMax = (T.floorFront - T.surf) * rng.float(0.25, 0.6); this.z = 0; }
+      if (rng.chance(dt * 0.04)) { this.mode = 'towall'; this.side = this.X < T.W / 2 ? 'L' : 'R'; }
     }
     this.X = clamp(this.X, 6, T.W - 6);
     if (this.eatT <= 0) {
@@ -136,14 +147,15 @@ export class Snail {
     const T = aq.T, vs = aq.view.fishScale;
     const z = this.depth();
     const s = T.s(z);
-    const fr = snailFrames(4.2 * vs * s + 0.6);
+    const fr = snailFrames(5.2 * vs * s + 0.6);
     const f = fr[Math.floor(this.t * (this.mode === 'glass' || this.eatT > 0 ? 3 : 5)) % 4];
     const x = Math.round(T.sx(this.X, z)), gy = T.sy(T.groundZ(this.X, z), z);
     if (this.mode === 'glass') {
-      const q = this.cdir > 0 ? 3 : 1; // climbing up / creeping down
-      const cv = rotated(f.canvas, q);
-      const y = Math.round(gy - this.climb);
-      ctx.drawImage(cv, x - Math.round(cv.width / 2), y - (q === 3 ? cv.height : 0));
+      // foot against the side glass: head up while climbing, down while creeping back
+      const L = this.side === 'L', up = this.cdir > 0;
+      const cv = L ? (up ? rotated(f.canvas, 1, true) : rotated(f.canvas, 1)) : (up ? rotated(f.canvas, 3) : rotated(f.canvas, 3, true));
+      const y = Math.round(gy - this.climb - cv.height * 0.6);
+      ctx.drawImage(cv, L ? Math.round(T.sx(0, 0)) + 1 : Math.round(T.sx(T.W, 0)) - cv.width - 1, y);
       return;
     }
     const y = Math.round(gy + 1);
