@@ -2,51 +2,51 @@
 // Helpers live in tank space (X, z) and talk to the aquarium through a small interface:
 //   aq.T (TankSpace), aq.view.fishScale, aq.coins (CoinPile), aq.collectCoin(c, by), aq.t
 
-import { PixelBuffer, selOut } from '../gfx/pixel.js';
+import { PixelBuffer } from '../gfx/pixel.js';
 import { pack } from '../core/color.js';
 import { ramp7 } from '../gfx/voxel.js';
 import { clamp, clamp01, TAU, hash2, damp } from '../core/math.js';
 import { rng } from '../core/rng.js';
 import { compiled } from '../gfx/spritecache.js';
-import { drawFishRig } from '../gfx/fishrig.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
+import { VoxelModel, renderVoxels } from '../gfx/voxel.js';
+import { drawVoxelFish } from '../gfx/voxelfish.js';
 
 const SHELL_A = ramp7('#b0643a', 1), SHELL_B = ramp7('#f0d2a0', 0.9), FOOT = ramp7('#c8b8a4', 0.9);
 
-// Side-view snail facing right; r = shell radius; frame 0..3 (crawl wave).
+// Voxel snail facing right (r = shell radius in px); frame 0..3 stretches the foot (crawl wave).
 function snailSprite(r, frame) {
-  const w = Math.ceil(r * 4.2) + 4, h = Math.ceil(r * 2.8) + 4;
-  const b = new PixelBuffer(w, h);
-  const P = (R, t) => pack(R[clamp(Math.round(t), 0, 6)]);
-  const footY = h - 3, sx = Math.round(r * 1.5) + 2, sy = footY - r - 1;
-  const stretch = [0, 0.5, 1, 0.5][frame];
-  // foot
-  const fx0 = 2, fx1 = Math.round(sx + r * 1.9 + stretch);
-  for (let x = fx0; x <= fx1; x++) {
-    const t = (x - fx0) / (fx1 - fx0);
-    const top = footY - 1 - Math.round((t > 0.75 ? (t - 0.75) * 6 : 0) + (t < 0.15 ? 0 : 1));
-    for (let y = top; y <= footY; y++) b.set(x, y, P(FOOT, y === footY ? 1 : y === top ? 4.5 : 3));
+  const R = Math.max(2, Math.round(r / 2 * 2) / 2 + 1);
+  const nx = Math.ceil(R * 4.6) + 4, ny = Math.ceil(R * 2.8) + 3, nz = Math.ceil(R * 2) + 3;
+  const m = new VoxelModel(nx, ny, nz);
+  const shA = m.color('#b0643a', { smooth: 0.5, spec: 0.8 }), shB = m.color('#f0d2a0', { smooth: 0.5, spec: 0.8 });
+  const foot = m.color('#c8b8a4', { smooth: 0.4 }), footD = m.color('#9a8a7a', {}), eye = m.color('#20141a', { spec: 1.2 });
+  const stretch = [0, 1, 2, 1][frame];
+  const zc = nz / 2, sx = R + 1.5, sy = R + 1.2;
+  // foot: a soft slab along the ground, head end raised
+  for (let x = 1; x < nx - 2 + Math.min(0, stretch - 2); x++) {
+    const t = x / (nx - 3);
+    const hgt = t > 0.72 ? 2 + Math.round((t - 0.72) * 6) : 1;
+    for (let y = 0; y < hgt; y++) for (let z = -1; z <= 1; z++) m.set(x + (t > 0.5 ? stretch * 0.5 : 0), y, Math.floor(zc + z), y === 0 ? footD : foot);
   }
-  // head + eye stalks
-  const hx = fx1 - 1, hy = footY - 3;
-  b.fillCircle(hx, hy, Math.max(1.5, r * 0.45), P(FOOT, 3.5));
-  const bob = frame % 2;
-  for (const [ox, len] of [[0, r * 1.1], [-1.5, r * 0.9]]) {
-    for (let i = 0; i < len; i++) b.set(Math.round(hx + ox + i * 0.45), Math.round(hy - 1 - i + (i > len - 2 ? bob * 0 : 0)), P(FOOT, 3));
-    b.set(Math.round(hx + ox + len * 0.45), Math.round(hy - 1 - len - bob * 0.5), P(FOOT, 0.5));
+  const hx = nx - 3 + stretch * 0.5;
+  // eye stalks
+  for (const dz of [-1, 1]) {
+    for (let y = 2; y < 2 + Math.max(2, R); y++) m.set(Math.floor(hx + (y - 2) * 0.3), y, Math.floor(zc + dz), foot);
+    m.set(Math.floor(hx + (Math.max(2, R) - 1) * 0.3), 2 + Math.max(2, R), Math.floor(zc + dz), eye);
   }
-  // spiral shell
-  for (let y = Math.floor(sy - r - 1); y <= sy + r + 1; y++) for (let x = Math.floor(sx - r - 1); x <= sx + r + 1; x++) {
-    const dx = x + 0.5 - sx, dy = y + 0.5 - sy, d = Math.hypot(dx, dy);
-    if (d > r) continue;
+  // spiral shell: banded sphere
+  for (let y = 0; y < ny; y++) for (let z = 0; z < nz; z++) for (let x = 0; x < nx; x++) {
+    const dx = x + 0.5 - sx, dy = y + 0.5 - sy, dz = (z + 0.5 - zc) * 1.25;
+    const d = Math.hypot(dx, dy, dz);
+    if (d > R) continue;
     const a = Math.atan2(dy, dx);
-    const band = Math.floor((d / r) * 3.2 + (a / TAU) * 1.0 + 4) % 2;
-    const lit = -(dx + dy) / (r * 1.4);
-    b.set(x, y, P(band ? SHELL_A : SHELL_B, 3 + lit * 2 + (d > r - 1 ? -1 : 0)));
+    const band = Math.floor((Math.hypot(dx, dy) / R) * 3 + (a / TAU) + 4) % 2;
+    m.set(x, y, z, band ? shA : shB);
   }
-  b.set(Math.round(sx - r * 0.3), Math.round(sy - r * 0.45), pack('#fff8e8'));
-  b.outline(selOut(0.75));
-  return { canvas: b.toCanvas(), ox: Math.round(sx + r * 0.6), oy: footY };
+  const rr = renderVoxels(m, { scale: 2, yaw: 0, pitch: 12, ao: 1, edges: 0.7, groundAO: true });
+  const [ox, oy] = rr.project(sx, 0, zc);
+  return { canvas: rr.canvas, ox: Math.round(ox), oy: Math.round(oy) };
 }
 
 const snailCache = new Map();
@@ -228,12 +228,11 @@ export class CoinCrab {
   draw(ctx, aq) {
     const T = aq.T, vs = aq.view.fishScale;
     const s = T.s(this.z);
-    const x = T.sx(this.X, this.z), y = T.sy(T.groundZ(this.X, this.z), this.z) - 3 * s * vs;
-    drawFishRig(ctx, this.c, {
-      x, y, facing: this.facing, turn: this.facing, angle: 0, scale: 0.75 * vs * s, squash: Math.sin(this.t * 10) * 0.04 * this.walk,
-      swimPhase: (this.t * (0.4 + this.walk * 2.2)) % 1, tailPhase: 0, finPhase: (this.t * (1 + this.pinchT * 6)) % 1, speed01: this.walk, inflate: 0,
-      lookX: null, lookY: null, blink: (this.t % 3.3) < 0.12 ? 1 : 0, emotion: this.pinchT > 0 ? 'happy' : 'neutral', mouth: this.pinchT > 0 ? 0.6 : 0.05, time: this.t,
-    });
+    const x = T.sx(this.X, this.z), y = T.sy(T.groundZ(this.X, this.z), this.z) - 4 * s * vs - Math.abs(Math.sin(this.t * 14)) * this.walk;
+    this.turn = (this.turn ?? this.facing) + (this.facing - (this.turn ?? this.facing)) * 0.2;
+    const pseudo = (this.pseudo ||= { c: this.c, quirks: new Set() });
+    Object.assign(pseudo, { x, y, facing: this.facing, turn: this.turn, vx: this.walk * 20, vz: 0, angle: 0, tailPhase: 0, bob: 0, squash: Math.sin(this.t * 10) * 0.05 * this.walk, blink: (this.t % 3.3) < 0.12 ? 1 : 0, mouth: 0, emotion: 'neutral' });
+    drawVoxelFish(ctx, pseudo, { scale: 0.75 * vs * s });
   }
 }
 

@@ -10,7 +10,7 @@
 // surface and the ray-marched voxel floor, with depth fog baked in per pixel.
 
 import { makeCanvas, ctxOf } from '../core/canvas.js';
-import { PixelBuffer, selOut } from '../gfx/pixel.js';
+import { PixelBuffer } from '../gfx/pixel.js';
 import { pack, mix, rgba, shade } from '../core/color.js';
 import { bayer, hash2, fbm1, fbm2, clamp, clamp01, smoothstep, lerp, TAU } from '../core/math.js';
 import { ramp7 } from '../gfx/voxel.js';
@@ -87,7 +87,8 @@ export class TankSpace {
         const m = fbm2(i * 0.11 + 3, k * 0.22, 2, seed + 5);
         const r = hash2(i, k, seed + 9);
         let mat = MAT_SAND;
-        if (m > 0.69 && z > 0.12) { mat = r > 0.5 ? MAT_MOSS : MAT_MOSS2; q += r > 0.8 ? 2 : 1; }
+        if (m > 0.69 && z > 0.12) { mat = r > 0.5 ? MAT_MOSS : MAT_MOSS2; q += r > 0.7 ? 2 : 1; }
+        else if (r > 0.94 && r < 0.958) { mat = MAT_MOSS2; q += 2; }
         else if (r > 0.968) { mat = MAT_PEBBLE; q += r > 0.99 ? 2 : 1; this.var[idx] = Math.floor(hash2(i, k, seed + 11) * PEBBLES.length); }
         else if (r < 0.006) { mat = MAT_SHELL; q += 1; }
         else this.var[idx] = Math.floor(hash2(i >> 1, k, seed + 13) * 4);
@@ -222,6 +223,12 @@ export function renderBackdrop(T, opts = {}) {
         if (mat === MAT_MOSS) R = MOSS; else if (mat === MAT_MOSS2) R = MOSS2;
         else if (mat === MAT_PEBBLE) R = PEBBLES[v]; else if (mat === MAT_SHELL) R = SHELL; else R = SAND;
         const f = fogAmt(z) * 0.9;
+        const ci_i = ci % T.NX, ci_k = (ci / T.NX) | 0;
+        const hq0 = T.hq[ci];
+        const back = ci_k + 1 < T.NZ ? T.hq[ci + T.NX] - hq0 : 0;
+        const lft = ci_i > 0 ? T.hq[ci - 1] - hq0 : 0, rgt = ci_i + 1 < T.NX ? T.hq[ci + 1] - hq0 : 0;
+        const fz = z * T.NZ - ci_k, fx = X / T.cs - ci_i;
+        const vao = (back > 0 ? smoothstep(0.45, 1, fz) * Math.min(1.2, back * 0.6) : 0) + (lft > 0 ? smoothstep(0.4, 0, fx) * 0.7 : 0) + (rgt > 0 ? smoothstep(0.6, 1, fx) * 0.7 : 0);
         const nearWall = Math.min(X / W, 1 - X / W);
         const ao = smoothstep(0.06, 0, nearWall) * 0.8 + smoothstep(0.9, 1, z) * 0.6;
         for (let y = yi; y < ybuf; y++) {
@@ -229,8 +236,8 @@ export function renderBackdrop(T, opts = {}) {
           if (face === 'front') tone = 3.3 - (y - yi) * 0.12;
           else if (face === 'side') tone = X > vpx ? 3.4 : 2.6;
           else {
-            tone = 4.1 + (mat === MAT_SAND ? (v - 1.5) * 0.18 : 0);
-            if (edge && y === ybuf - 1) tone += 0.5; // lit voxel edge above a riser
+            tone = 4.1 + (mat === MAT_SAND ? (v - 1.5) * 0.18 : 0) - vao;
+            if (edge && y === ybuf - 1) tone += 0.6; // lit voxel edge above a riser
           }
           tone -= ao;
           const ti = clamp(Math.round(tone + (bayer(x, y) - 0.5) * 0.7), 0, 6);
@@ -272,7 +279,7 @@ export function renderBackdrop(T, opts = {}) {
       const s = 1 - K * z;
       const Yw = vpy + (y - vpy) / s;
       const Xw = vpx + (x - vpx) / s;
-      let t = 0.8 - 0.44 * clamp01((Yw - surf) / (T.floorFront - surf));
+      let t = 0.72 - 0.44 * clamp01((Yw - surf) / (T.floorFront - surf)) + 0.05 * (1 - clamp01(x / W)) * (1 - clamp01((Yw - surf) / (T.floorFront - surf)));
       if (face === 'back') {
         const ra = rockA(Xw), rb = rockB(Xw);
         if (Yw > rb) t -= Yw < rb + 2.5 * sc ? 0.02 : 0.15 + hash2(Math.floor(Xw / 9), Math.floor(Yw / 9), sd) * 0.03;
@@ -285,9 +292,9 @@ export function renderBackdrop(T, opts = {}) {
         t += 0.035 * Math.max(0, Math.sin(z * 11 + (face === 'left' ? 0 : 2))) * (1 - clamp01((Yw - surf) / (T.floorFront - surf)));
       } else if (face === 'ceil') {
         // the underside of the surface: a little brighter, with sparse broken glints
-        t += 0.03 + 0.05 * (1 - z);
+        t += 0.02 * (1 - z);
         const ph = Xw * 0.045 + Math.sin(z * 14 + Xw * 0.01) * 1.6;
-        if (Math.sin(ph) > 0.94 && hash2(Math.floor(Xw / 6), Math.floor(z * 40), sd) > 0.45) t += 0.05;
+        if (Math.sin(ph) > 0.95 && hash2(Math.floor(Xw / 6), Math.floor(z * 40), sd) > 0.5) t += 0.04;
       } else if (face === 'air') {
         t = 0.95;
       }
@@ -421,69 +428,7 @@ export function renderGlass(T, opts = {}) {
 
 // ------------------------------------------------------------------ frames (window + mini)
 
-const WOOD = UI_COLORS.woodDark, BR = UI_COLORS.brass;
-
-// Wooden lid with a brass trim, posts with brass corner caps, and a cabinet base.
-// Returns {canvas, ix, iy, w, h, lid, base} where (ix, iy) is the glass rect offset.
-export function renderFrame(iw, ih, opts = {}) {
-  const lid = opts.lid ?? 16, side = opts.side ?? 5, base = opts.base ?? 15;
-  const w = iw + side * 2, h = ih + lid + base;
-  const b = new PixelBuffer(w, h);
-  const P = (c) => pack(c);
-  const woodAt = (x, y, tone) => {
-    const g = Math.sin(x * 0.09 + Math.sin(y * 0.7) * 1.4 + hash2(Math.floor(x / 37), y, 5) * 3);
-    let t = tone + (g > 0.55 ? -1 : g < -0.7 ? 0.5 : 0) + (hash2(x, y, 9) > 0.93 ? -0.6 : 0);
-    return P(WOOD[clamp(Math.round(t), 0, 5)]);
-  };
-  const brass = (t) => P(BR[clamp(Math.round(t), 0, 5)]);
-  // lid
-  for (let y = 0; y < lid; y++) for (let x = 0; x < w; x++) {
-    const r = 3;
-    if (y < r) { const dx = Math.min(x, w - 1 - x); if (dx < r && Math.hypot(r - dx - 0.5, r - y - 0.5) > r) continue; }
-    let c;
-    if (y === 0) c = P(WOOD[1]);
-    else if (y === 1) c = P(WOOD[5]);
-    else if (y >= lid - 4) {
-      const k = y - (lid - 4);
-      c = brass([1, 4, 3, 1][k]);
-      if (k === 1 && x % 24 === 6) c = P(BR[5]);
-    } else c = woodAt(x, y, 3.4 - (y / lid) * 1.2);
-    if (x === 0 || x === w - 1) c = P(WOOD[0]);
-    b.set(x, y, c);
-  }
-  // posts
-  for (let y = lid; y < lid + ih; y++) for (let s2 = 0; s2 < 2; s2++) for (let i = 0; i < side; i++) {
-    const x = s2 ? w - side + i : i;
-    const edge = s2 ? i === side - 1 : i === 0;
-    const inner = s2 ? i === 0 : i === side - 1;
-    let c = woodAt(x, y, 2.6 + (i === 1 ? 0.8 : 0));
-    if (edge) c = P(WOOD[0]);
-    if (inner) c = P(WOOD[1]);
-    b.set(x, y, c);
-  }
-  // base cabinet
-  for (let y = lid + ih; y < h; y++) for (let x = 0; x < w; x++) {
-    const k = y - (lid + ih);
-    let c;
-    if (k < 3) c = brass([4, 2, 1][k]);
-    else if (k === base - 1) c = P(WOOD[0]);
-    else if (k === base - 2) c = P(WOOD[1]);
-    else c = woodAt(x, y, 3 - (k / base) * 1.5);
-    if (x === 0 || x === w - 1) c = P(WOOD[0]);
-    if (k >= 3 && (x === 1 || x === w - 2)) c = P(WOOD[3]);
-    b.set(x, y, c);
-  }
-  // brass corner caps
-  const cap = (cx, cy) => {
-    for (let y = 0; y < 5; y++) for (let x = 0; x < 5; x++) {
-      const e = x === 0 || y === 0 || x === 4 || y === 4;
-      b.set(cx + x, cy + y, e ? brass(1) : brass(x + y < 4 ? 5 : x + y > 5 ? 2 : 3));
-    }
-  };
-  cap(0, lid - 2); cap(w - 5, lid - 2); cap(0, lid + ih - 2); cap(w - 5, lid + ih - 2);
-  b.outline(selOut(0.7));
-  return { canvas: b.toCanvas(), ix: side, iy: lid, w, h, lid, base, side };
-}
+const BR = UI_COLORS.brass;
 
 // Round brass button with an icon slot.
 const btnCache = new Map();

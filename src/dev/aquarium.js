@@ -14,6 +14,40 @@ import { computeStats, SKILLS } from '../game/skills.js';
 import { SPECIES } from '../fish/species.js';
 import { rollIndividual } from '../fish/traits.js';
 import { coinSheet, SPIN_N } from '../aquarium/coins.js';
+import { drawVoxelFish, setVoxelFishBudget, voxelFishStats } from '../gfx/voxelfish.js';
+import { Fish } from '../fish/fish.js';
+
+// Voxel fish gallery: ?voxfish=biome|all&yaw=0&spin (rotating) &scale=1
+function voxFishGallery(g, W, H, params) {
+  const which = params.get('voxfish') || 'shallows';
+  const list = SPECIES.filter((s) => which === 'all' || s.biome === which || s.id === which);
+  const spin = params.has('spin');
+  const yaw0 = Number(params.get('yaw') || 0);
+  const scale = Number(params.get('scale') || 1);
+  setVoxelFishBudget(1e9);
+  const items = list.map((sp, i) => {
+    const f = new Fish(rollIndividual(sp, { mutationChance: 0, shinyChance: 0 }), sp, { W, H, floorAt: () => H, cursor: {}, fishes: [] }, { z: 0 });
+    f.scale = sp.scale ?? 1;
+    return { sp, f };
+  });
+  const cols = 6, cw = W / cols, ch = H / Math.ceil(items.length / cols);
+  let t = 0;
+  const t0 = performance.now();
+  function frame() {
+    t += 1 / 60;
+    g.fillStyle = '#1f6a84'; g.fillRect(0, 0, W, H);
+    items.forEach(({ sp, f }, i) => {
+      const cx = (i % cols) * cw + cw / 2, cy = Math.floor(i / cols) * ch + ch / 2;
+      const turn = spin ? Math.cos(t * 0.8 + i) : Math.cos(yaw0 * Math.PI / 180);
+      Object.assign(f, { x: cx, y: cy, facing: turn >= 0 ? 1 : -1, turn, vz: 0, vx: 20, angle: 0, tailPhase: (t * 1.2 + i * 0.13) % 1, bob: 0, squash: 0, _vyaw: undefined });
+      drawVoxelFish(g, f, { scale: f.scale * scale });
+      drawText(g, sp.name, cx, cy + ch / 2 - 10, { font: 'small', align: 'center', color: '#fff', outline: '#0a1a28' });
+    });
+    if (!window.__vfReady) { window.__vfReady = Math.round(performance.now() - t0); console.log('voxfish build ms', window.__vfReady, JSON.stringify(voxelFishStats())); }
+    if (spin) requestAnimationFrame(frame);
+  }
+  frame();
+}
 
 // Coin sprite sheets: every spin x flip frame for each denomination at a few on-screen sizes.
 function coinDebug(g, W, H, zoomRow) {
@@ -44,6 +78,7 @@ export function run(params) {
   const g = ctxOf(cv);
   registerUiIcons();
   if (params.has('coinsheet')) return coinDebug(g, W, H, Number(params.get('coinsheet') || 0));
+  if (params.has('voxfish')) return voxFishGallery(g, W, H, params);
   const mode = params.get('mode') || 'full';
   const night = params.has('night');
 

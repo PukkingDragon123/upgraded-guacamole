@@ -24,9 +24,12 @@ import { rollIndividual, valueMultiplier } from '../fish/traits.js';
 import { COIN_RATE } from '../game/shopdata.js';
 import { TASKBAR_H } from '../desktop/desktop.js';
 import { CoinPile, coinSheet, pumpCoinSheets, frameOf, glintSprite, DENOMS, COIN_R } from './coins.js';
-import { TankSpace, renderBackdrop, renderGlass, renderFrame, brassButton, shaftSprite, causticFrames, FOG_SLABS, WATER } from './tank3d.js';
-import { plantFrames, SWAY_FRAMES } from './plants.js';
+import { TankSpace, renderBackdrop, renderGlass, brassButton, shaftSprite, causticFrames, FOG_SLABS, WATER } from './tank3d.js';
+import { voxCabinet, voxRim } from './voxframe.js';
+import { VoxelModel, renderVoxels } from '../gfx/voxel.js';
+import { voxPlant, plantFrame, pumpVoxPlants, PLANT_FRAMES } from './voxplants.js';
 import { Snail, CoinCrab, drawEggs, eggColor } from './critters.js';
+import { drawVoxelFish, beginVoxelFishFrame, warmVoxelFish, voxelFishStats, setVoxelFishBudget } from '../gfx/voxelfish.js';
 
 const COIN_CAP = 150;
 const HUNGER_RATE = 1 / 2000; // 0 -> 0.6 ("hungry") in 20 minutes
@@ -36,11 +39,11 @@ const STARTER_DECOR = [{ id: 'rock_arch', x: 0.3, z: 0.62 }, { id: 'coral_fan', 
 
 // Per-view tank geometry and detail level.
 const CFG = {
-  full: { vpy: 0.46, surf: 10, floorPad: 44, slope: 24, cell: 5, step: 2, shafts: 7, caustics: true, slabs: 4, bubbles: 16, plants: [8, 4, 3, 6] },
-  window: { vpy: 0.44, surf: 6, floorPad: 18, slope: 12, cell: 3, step: 1, shafts: 4, caustics: true, slabs: 4, bubbles: 7, plants: [5, 2, 2, 3] },
+  full: { vpy: 0.46, surf: 17, floorPad: 44, slope: 26, cell: 7, step: 3, shafts: 7, caustics: true, slabs: 4, bubbles: 16, plants: [8, 4, 3, 6] },
+  window: { vpy: 0.44, surf: 6, floorPad: 18, slope: 12, cell: 4, step: 2, shafts: 4, caustics: true, slabs: 4, bubbles: 7, plants: [5, 2, 2, 3] },
   mini: { vpy: 0.44, surf: 4, floorPad: 11, slope: 7, cell: 2, step: 1, shafts: 2, caustics: false, slabs: 2, bubbles: 3, plants: [3, 0, 1, 1] },
 };
-const FRAME = { window: { lid: 16, side: 5, base: 15 }, mini: { lid: 9, side: 3, base: 8 } };
+const FRAME = { window: { lid: 16, side: 6, base: 16 }, mini: { lid: 10, side: 4, base: 8 } };
 
 export class Aquarium {
   constructor(game) {
@@ -81,8 +84,9 @@ export class Aquarium {
       if (this.game.mini && key === 'full') return;
       const v = this.buildView(key);
       this.warmJobs.push(() => this.artFor(v));
-      for (const p of v.plants) this.warmJobs.push(() => { if (!p.frames) p.frames = plantFrames(p.kind, p.h * v.T.s(p.z), p.seed); });
+      for (const p of v.plants) this.warmJobs.push(() => { if (!p.vp) p.vp = voxPlant(p.kind, p.h * v.T.s(p.z), p.seed); });
       for (let d = 0; d < 3; d++) this.warmJobs.push(() => coinSheet(d, COIN_R[d] * v.coinScale, true));
+      for (const f of this.fish) for (const z of [0.1, 0.45, 0.8]) this.warmJobs.push(() => warmVoxelFish(f.c, f.baseScale * v.fishScale * v.T.s(z)));
       for (const d of this.decor) {
         this.warmJobs.push(() => {
           const sc = this.decorScale(d, clamp(d.rec.z ?? 0.5, 0.04, 0.95), v);
@@ -186,13 +190,13 @@ export class Aquarium {
       key, vk, iw, ih, T, cfg: c, fishScale,
       coinScale: key === 'full' ? 1 : key === 'mini' ? 0.5 : clamp(fishScale * 1.2, 0.55, 0.75),
       decorScale: key === 'full' ? 1 : clamp((iw / 960) * 1.35, 0.28, 0.6),
-      frame: FRAME[key] ? renderFrame(iw, ih, FRAME[key]) : null,
+      frame: null,
       art: null,
     };
     v.plants = this.layoutPlants(v);
     v.shafts = [];
     for (let i = 0; i < c.shafts; i++) {
-      v.shafts.push({ X: (0.1 + (i + rng.float(0.2, 0.8)) / c.shafts * 0.82) * iw, z: rng.float(0.25, 0.92), w: rng.float(0.05, 0.11) * iw, a: rng.float(0.22, 0.38), ph: rng.float(0, TAU) });
+      v.shafts.push({ X: (0.1 + (i + rng.float(0.2, 0.8)) / c.shafts * 0.82) * iw, z: rng.float(0.25, 0.92), w: rng.float(0.06, 0.13) * iw, a: rng.float(0.3, 0.48), ph: rng.float(0, TAU) });
     }
     v.stone = { X: iw * 0.1, z: 0.84 };
     for (const [k, old] of this.views) if (old.key === key && old !== this.view) this.views.delete(k);
@@ -208,10 +212,14 @@ export class Aquarium {
     const fog = makeCanvas(1, T.H);
     const fg = ctxOf(fog);
     for (let y = 0; y < T.H; y++) {
-      const t = 0.8 - 0.44 * clamp01((y - T.surf) / (T.floorFront - T.surf));
+      const t = 0.72 - 0.44 * clamp01((y - T.surf) / (T.floorFront - T.surf));
       fg.fillStyle = WATER[clamp(Math.round(lerp(t, 0.5, 0.35) * 12), 0, 12)];
       fg.fillRect(0, y, 1, 1);
     }
+    if (FRAME[v.key]) {
+      const f = FRAME[v.key];
+      v.frame = { ix: f.side, iy: f.lid, ...voxCabinet(v.iw + f.side * 2, v.ih + f.lid + f.base, f.lid, f.side, f.base) };
+    } else v.rim = voxRim(v.iw, v.ih + 30);
     v.art = {
       backdrop: bd.canvas, glass: renderGlass(T, { edges: v.key === 'full' }), fog,
       floorPoly: bd.floorPoly, ceilPoly: bd.ceilPoly, floorTopY: Math.min(...bd.floorTop),
@@ -226,8 +234,8 @@ export class Aquarium {
     const [nBack, nSide, nFront, nTuft] = v.cfg.plants;
     const sc = v.fishScale;
     const out = [];
-    const add = (kind, X, z, h) => out.push({ kind, X, z, h, seed: r.int(1, 9999), ph: r.float(0, 1), frames: null });
-    for (let i = 0; i < nBack; i++) add(r.pick(['vallis', 'vallis', 'cabomba', 'rotala']), (0.06 + (i + r.float(0.1, 0.9)) / nBack * 0.88) * v.iw, r.float(0.86, 0.97), r.float(170, 250) * sc);
+    const add = (kind, X, z, h) => out.push({ kind, X, z, h, seed: r.int(1, 9999), ph: r.float(0, 1), vp: null });
+    for (let i = 0; i < nBack; i++) add(r.pick(['vallis', 'kelp', 'cabomba', 'rotala', 'vallis']), (0.06 + (i + r.float(0.1, 0.9)) / nBack * 0.88) * v.iw, r.float(0.86, 0.97), r.float(170, 250) * sc);
     for (let i = 0; i < nSide; i++) add(r.pick(['rotala', 'sword', 'fern', 'cabomba']), (i % 2 ? r.float(0.88, 0.96) : r.float(0.04, 0.12)) * v.iw, r.float(0.35, 0.72), r.float(100, 150) * sc);
     for (let i = 0; i < nFront; i++) add(r.pick(['fern', 'sword', 'hairgrass']), (i % 2 ? r.float(0.9, 0.97) : r.float(0.03, 0.1)) * v.iw, r.float(0.04, 0.12), r.float(40, 70) * sc);
     for (let i = 0; i < nTuft; i++) add('hairgrass', r.float(0.15, 0.85) * v.iw, r.float(0.15, 0.75), r.float(16, 28) * sc);
@@ -703,6 +711,10 @@ export class Aquarium {
     for (let i = 0; i < 90; i++) this.coins.step(1 / 40);
   }
 
+  // Debug/profiling: voxel fish cache stats and render budget (ms per frame).
+  voxStats() { return voxelFishStats(); }
+  setVoxBudget(ms) { setVoxelFishBudget(ms); }
+
   tankSummary() {
     const n = this.fish.length;
     const happy = n ? this.fish.reduce((a, f) => a + (f.rec.happiness ?? 0.7), 0) / n : 0;
@@ -716,6 +728,7 @@ export class Aquarium {
     if (this.stateRef !== g.state) this.load();
     this.t += dt;
     pumpCoinSheets(3);
+    pumpVoxPlants(this.visibleKey ? 4 : 2);
     this.pumpProps();
     if (this.t > 1.2 && (this.warm.length || this.warmJobs?.length)) this.prewarm();
     const key = this.simKey();
@@ -1109,6 +1122,7 @@ export class Aquarium {
   drawFull(ctx, dt) {
     if (this.view?.key !== 'full') return;
     this.drawTank(ctx, 0, 0);
+    this.drawRim(ctx, this.view);
     // top plaque: tank stats + back to the ocean
     const sm = this.tankSummary();
     const label = `My Aquarium  {fish}${sm.fish}/${sm.cap}  {heart}${sm.fish ? Math.round(sm.happiness * 100) + '%' : '--'}  {coin}${sm.coinsPerMin.toFixed(1)}/min`;
@@ -1131,8 +1145,9 @@ export class Aquarium {
     ctx.fillStyle = 'rgba(4,14,24,0.28)';
     ctx.fillRect(r.x + 4, r.y + off + r.h, r.w - 2, 4);
     ctx.fillRect(r.x + r.w, r.y + off + 5, 4, r.h - 1);
-    this.drawTank(ctx, r.x + v.frame.ix, r.y + v.frame.iy + off);
-    ctx.drawImage(v.frame.canvas, r.x, r.y + off);
+    const f = FRAME.window;
+    this.drawTank(ctx, r.x + f.side, r.y + f.lid + off);
+    this.drawFrame(ctx, v, r.x, r.y + off);
     this.drawChrome(ctx, 'window', r, off);
     ctx.globalAlpha = 1;
   }
@@ -1143,9 +1158,44 @@ export class Aquarium {
     const v = this.view;
     ctx.fillStyle = 'rgba(4,14,24,0.28)';
     ctx.fillRect(r.x + 3, r.y + r.h, r.w - 2, 3);
-    this.drawTank(ctx, r.x + v.frame.ix, r.y + v.frame.iy);
-    ctx.drawImage(v.frame.canvas, r.x, r.y);
+    const f = FRAME.mini;
+    this.drawTank(ctx, r.x + f.side, r.y + f.lid);
+    this.drawFrame(ctx, v, r.x, r.y);
     this.drawChrome(ctx, 'mini', r, 0);
+  }
+
+  drawFrame(ctx, v, x, y) {
+    const fr = v.frame;
+    if (!fr) return;
+    ctx.drawImage(fr.canvas, x + fr.dx, y + fr.dy);
+    if (fr.glow) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.6;
+      ctx.drawImage(fr.glow, x + fr.dx, y + fr.dy);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+    }
+  }
+
+  // Full view woodwork: lamp hood across the top, slim posts at the screen edges.
+  drawRim(ctx, v) {
+    const rim = v.rim;
+    if (!rim) return;
+    const W = v.iw;
+    ctx.drawImage(rim.post.canvas, rim.post.dx, rim.post.dy);
+    ctx.save();
+    ctx.translate(W, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(rim.post.canvas, rim.post.dx, rim.post.dy);
+    ctx.restore();
+    ctx.drawImage(rim.top.canvas, rim.top.dx, rim.top.dy);
+    if (rim.top.glow) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.7;
+      ctx.drawImage(rim.top.glow, rim.top.dx, rim.top.dy);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+    }
   }
 
   drawChrome(ctx, vk, r, off) {
@@ -1165,14 +1215,14 @@ export class Aquarium {
       const lx = Math.round(r.x + r.w / 2 - lw / 2), ly = r.y + off + 3;
       plate(ctx, lx, ly, lw, 9);
       drawText(ctx, label, lx + lw / 2, ly + 2, { font: 'small', align: 'center', color: '#5a3410' });
-      const by = r.y + off + v.frame.iy + v.ih + 4;
+      const by = r.y + off + FRAME.window.lid + v.ih + 5;
       const txt = `{fish}${sm.fish}/${sm.cap}  {heart}${sm.fish ? Math.round(sm.happiness * 100) + '%' : '--'}`;
       drawText(ctx, txt, r.x + 8, by, { color: '#ffe8b8', shadow: '#1a0c06' });
       const rt = `{coin}${sm.coinsPerMin.toFixed(1)}/min`;
       drawText(ctx, rt, r.x + r.w - 8, by, { align: 'right', color: '#ffe8b8', shadow: '#1a0c06' });
       // feeder hopper on the lid when the auto-feeder is owned
       if (this.stats.feeder) {
-        const fx = Math.round(r.x + v.frame.ix + v.iw * 0.78), fy = r.y + off - 5;
+        const fx = Math.round(r.x + FRAME.window.side + v.iw * 0.78), fy = r.y + off - 5;
         ctx.fillStyle = '#5a3a1c'; ctx.fillRect(fx - 1, fy - 1, 14, 9);
         ctx.fillStyle = '#c89a3a'; ctx.fillRect(fx, fy, 12, 7);
         ctx.fillStyle = '#f0d070'; ctx.fillRect(fx, fy, 12, 1);
@@ -1191,6 +1241,7 @@ export class Aquarium {
     const night = clock ? clamp01(1 - clock.daylight()) : 0;
     const dusk = clock ? clock.dusk() : 0;
     ox = Math.round(ox); oy = Math.round(oy);
+    beginVoxelFishFrame();
     ctx.save();
     ctx.beginPath();
     ctx.rect(ox, oy, v.iw, v.ih);
@@ -1265,10 +1316,10 @@ export class Aquarium {
       ctx.fillStyle = this.feederFlash > 0 ? '#ffe27a' : '#e86a3a'; ctx.fillRect(fx + Math.round(4 * k), Math.round(3 * k), Math.round(6 * k), Math.round(3 * k));
       ctx.fillStyle = '#7a5418'; ctx.fillRect(fx + Math.round(5 * k), Math.round(9 * k), Math.round(4 * k), T.surf - Math.round(9 * k) + 1);
     }
-    // lamp strip just under the lid / top glass
+    // warm lamp light pooling just under the lid
     ctx.globalCompositeOperation = 'lighter';
-    ctx.fillStyle = rgba(night > 0.5 ? '#6a8aff' : '#fff0c0', 0.22);
-    ctx.fillRect(0, 0, v.iw, Math.max(2, T.surf - 1));
+    ctx.fillStyle = rgba(night > 0.5 ? '#6a8aff' : '#fff0c0', 0.12);
+    ctx.fillRect(0, 0, v.iw, Math.max(2, T.surf + 2));
     ctx.globalCompositeOperation = 'source-over';
     ctx.drawImage(art.glass, 0, 0);
     // glitter running along the waterline
@@ -1302,6 +1353,17 @@ export class Aquarium {
       const rx = Math.max(2, Math.round((14 + 8 * k) * f.scale * s)), ry = Math.max(1, Math.round(rx * 0.28));
       ctx.globalAlpha = 0.22 * k * (1 - f.z * 0.4);
       ctx.drawImage(shadowSprite(rx, ry), Math.round(f.x - rx), Math.round(fl - ry));
+    }
+    // coins: tiny contact shadows on the sand
+    for (const c of this.coins.list) {
+      const z = c.D / T.DEPTH;
+      const gy = T.ground(c.X, c.D);
+      const hgt = gy - c.Y - c.r;
+      if (hgt > 30) continue;
+      const s = T.s(z);
+      const rx = Math.max(1, Math.round(c.vr * s * 0.95)), ry = Math.max(1, Math.round(rx * 0.35));
+      ctx.globalAlpha = 0.3 * (1 - hgt / 30) * (1 - z * 0.4);
+      ctx.drawImage(shadowSprite(rx, ry), Math.round(T.sx(c.X, z) - rx), Math.round(T.sy(gy, z) - ry));
     }
     ctx.globalAlpha = 1;
   }
@@ -1382,18 +1444,24 @@ export class Aquarium {
         break;
       }
       case 'plant': {
-        if (!o.frames) o.frames = plantFrames(o.kind, o.h * T.s(o.z), o.seed);
-        const fr = o.frames;
-        const i = Math.floor((this.t / 5 + o.ph) * SWAY_FRAMES) % SWAY_FRAMES;
-        const cv = fr.frames[i], px = Math.round(T.sx(o.X, o.z) - fr.ox), py = Math.round(T.sy(T.groundZ(o.X, o.z), o.z) - fr.oy + 1);
-        g.drawImage(cv, px, py);
-        this.grow(px, py, px + cv.width, py + cv.height);
+        if (!o.vp) o.vp = voxPlant(o.kind, o.h * T.s(o.z), o.seed);
+        // ping-pong through the sway frames for a smooth back-and-forth
+        const k = ((this.t / 4.5 + o.ph) % 1) * (PLANT_FRAMES * 2 - 2);
+        const i = Math.floor(k < PLANT_FRAMES ? k : PLANT_FRAMES * 2 - 2 - k);
+        const fr = plantFrame(o.vp, Math.min(PLANT_FRAMES - 1, i));
+        if (!fr) break;
+        const px = Math.round(T.sx(o.X, o.z) - fr.ax), py = Math.round(T.sy(T.groundZ(o.X, o.z), o.z) - fr.ay + 1);
+        g.drawImage(fr.canvas, px, py);
+        this.grow(px, py, px + fr.canvas.width, py + fr.canvas.height);
         break;
       }
       case 'fish': {
-        o.draw(g, null, this.t);
-        const r = 48 * o.scale * T.s(o.z) + 8;
-        this.grow(o.x - r, o.y - r, o.x + r, o.y + r);
+        let alpha = o.alpha ?? 1;
+        if (o.rec.variant?.mutation === 'ghost') alpha *= 0.65;
+        const a = drawVoxelFish(g, o, { scale: o.scale * T.s(o.z), glow: this.world.glowLevel + (o.c.glow ? 0.35 : 0), alpha });
+        o.anchors = a;
+        this.grow(o.x - a.w * 0.6 - 4, o.y - a.h * 0.6 - 4, o.x + a.w * 0.6 + 4, o.y + a.h * 0.6 + 4);
+        if (o.rec.variant?.shiny && rng.chance(0.05)) this.particles.sparkle(o.x + rng.float(-8, 8) * o.scale, o.y + rng.float(-5, 5) * o.scale, '#fff6b0');
         break;
       }
       case 'coin': {
@@ -1430,17 +1498,15 @@ export class Aquarium {
         break;
       }
       case 'stone': {
-        // bubbler: airline tube down the back corner into a little air stone
+        // bubbler: airline tube down the back corner into a voxel air stone
         const s = T.s(o.z), x = Math.round(T.sx(o.X, o.z)), y = Math.round(T.sy(T.groundZ(o.X, o.z), o.z));
         g.fillStyle = 'rgba(200,240,236,0.35)';
         g.fillRect(x - 1, Math.round(T.top(o.z)) - 2, 1, y - Math.round(T.top(o.z)));
         g.fillStyle = 'rgba(255,255,255,0.3)';
         g.fillRect(x, Math.round(T.top(o.z)) - 2, 1, y - Math.round(T.top(o.z)));
-        const w = Math.max(3, Math.round(7 * s * this.view.fishScale)), h = Math.max(2, Math.round(w * 0.55));
-        g.fillStyle = '#3a3a48'; g.fillRect(x - w / 2 - 1, y - h - 1, w + 2, h + 1);
-        g.fillStyle = '#8a8ea0'; g.fillRect(x - w / 2, y - h, w, h);
-        g.fillStyle = '#c4c8d4'; g.fillRect(x - w / 2, y - h, w, 1);
-        this.grow(x - w, T.top(o.z) - 3, x + w, y + 2);
+        const st = airStone(Math.max(2, Math.round(5 * s * this.view.fishScale)));
+        g.drawImage(st.canvas, x - st.ax, y - st.ay + 1);
+        this.grow(x - st.canvas.width, T.top(o.z) - 3, x + st.canvas.width, y + 4);
         break;
       }
       case 'bubble': {
@@ -1469,10 +1535,10 @@ export class Aquarium {
     }
     ctx.clip();
     ctx.globalCompositeOperation = 'lighter';
-    const a = 0.3 * (1 - night * 0.7);
+    const a = 0.26 * (1 - night * 0.7);
     const fy0 = art.floorTopY, fy1 = T.floorFront;
     // bands: far floor (small, faint), near floor (large), ceiling
-    const bands = [[fy0, lerp(fy0, fy1, 0.4), 1, 0.45, a * 0.6], [lerp(fy0, fy1, 0.4), fy1 + 2, 1.5, 0.7, a], [T.surf, T.top(1) + 1, 2, 0.7, a * 0.3]];
+    const bands = [[fy0, lerp(fy0, fy1, 0.4), 1, 0.45, a * 0.6], [lerp(fy0, fy1, 0.4), fy1 + 2, 1.5, 0.7, a], [T.surf, T.top(1) + 1, 2, 0.7, a * 0.16]];
     const fi = (Math.floor(this.t * 8) % frames.length + frames.length) % frames.length;
     for (const [y0, y1, sx, sy, al] of bands) {
       const tw = Math.max(16, Math.round(64 * sx * Math.max(0.5, sc))), th = Math.max(6, Math.round(32 * sy * Math.max(0.5, sc)));
@@ -1579,6 +1645,31 @@ function causticStrip(frames, fi, tw, th) {
     for (let i = 0; i < 4; i++) g.drawImage(frames[fi], i * tw, 0, tw, th);
     arr[fi] = c;
   }
+  return c;
+}
+
+// Voxel air stone (porous grey cylinder with a brass valve), cached per size.
+const stoneCache = new Map();
+function airStone(r) {
+  let c = stoneCache.get(r);
+  if (c) return c;
+  const n = r * 2 + 4, h = Math.max(3, Math.round(r * 1.2)) + 3;
+  const m = new VoxelModel(n, h, n);
+  const grey = m.color('#8a8e9a', { jitter: 0.15, smooth: 0.4 }), pore = m.color('#5a5e6a', { jitter: 0.1 });
+  const brass = m.color('#d8a83a', { spec: 1.2 }), tube = m.color('#c8f0e8', { jitter: 0 });
+  const cx = n / 2;
+  for (let y = 0; y < h - 3; y++) for (let z = 0; z < n; z++) for (let x = 0; x < n; x++) {
+    const d = Math.hypot(x + 0.5 - cx, z + 0.5 - cx);
+    if (d > r + (y === 0 ? -0.3 : 0)) continue;
+    m.set(x, y, z, ((x * 7 + y * 3 + z * 5) % 5 === 0) ? pore : grey);
+  }
+  m.set(Math.floor(cx), h - 3, Math.floor(cx), brass);
+  m.set(Math.floor(cx), h - 2, Math.floor(cx), brass);
+  m.set(Math.floor(cx), h - 1, Math.floor(cx), tube);
+  const rr = renderVoxels(m, { scale: 2, yaw: 30, pitch: 22, groundAO: true, edges: 0.6 });
+  const [ax, ay] = rr.project(cx, 0, cx);
+  c = { canvas: rr.canvas, ax: Math.round(ax), ay: Math.round(ay) };
+  stoneCache.set(r, c);
   return c;
 }
 
