@@ -317,11 +317,14 @@ export class Caustics {
     if (!L) { L = makeLayer(mask.width, mask.height); L.pats = this.frames.map((c) => L.ctx.createPattern(c, 'repeat')); this.layers.set(mask, L); }
     const g = L.ctx;
     const fi = (Math.floor(t * fps) + offset) % this.frames.length;
+    const sx = Math.round((t * drift) % this.tw);
+    const ck = fi * 1000 + sx;
+    if (L.ck !== ck) {
+    L.ck = ck;
     g.globalCompositeOperation = 'source-over';
     g.globalAlpha = 1;
     g.clearRect(0, 0, L.w, L.h);
     g.save();
-    const sx = Math.round((t * drift) % this.tw);
     g.translate(sx, 0);
     g.fillStyle = L.pats[fi];
     g.fillRect(-sx, 0, L.w, L.h);
@@ -329,6 +332,7 @@ export class Caustics {
     g.globalCompositeOperation = 'destination-in';
     g.drawImage(mask, 0, 0);
     g.globalCompositeOperation = 'source-over';
+    }
     const po = ctx.globalCompositeOperation, pa = ctx.globalAlpha;
     ctx.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = clamp01(alpha);
@@ -1257,4 +1261,14 @@ export class DepthDecor {
       } else if (it.sprite) ctx.drawImage(this.fog.get(it.sprite, it.fc, it.fa), Math.round(it.x + dx), Math.round(it.y + dy));
     }
   }
+}
+
+// White alpha mask with a soft dithered vertical profile (peak at `peak` 0..1) for horizon haze bands.
+export function hazeMask(w, h, { peak = 0.6, alpha = 0.7, levels = 6 } = {}) {
+  return paint(w, h, (x, y) => {
+    const t = y / (h - 1);
+    const v = (t < peak ? smoothstep(0, peak, t) : 1 - smoothstep(peak, 1, t)) * alpha;
+    const q = Math.floor(v * levels + bayer(x, y)) / levels;
+    return q <= 0 ? 0 : packRGB(255, 255, 255, Math.round(Math.min(1, q) * 255));
+  });
 }

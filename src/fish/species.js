@@ -23,7 +23,7 @@ add({
     tail: { type: 'truncate', len: 6, spread: 6 },
     dorsal: { type: 'round', from: 0.45, to: 0.75, h: 4 }, anal: null,
     pectoral: { len: 5 },
-    eye: { u: 0.3, v: -0.12, r: 5.2, iris: '#3a7aff', pupilSize: 0.5 },
+    eye: { u: 0.3, v: -0.12, r: 4.4, iris: '#3a7aff', pupilSize: 0.5 },
     mouth: { type: 'small', v: 0.55, w: 3 },
     scales: false, gills: false, nostril: false,
   },

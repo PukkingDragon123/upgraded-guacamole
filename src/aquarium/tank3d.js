@@ -85,7 +85,7 @@ export class TankSpace {
         const m = fbm2(i * 0.11 + 3, k * 0.22, 2, seed + 5);
         const r = hash2(i, k, seed + 9);
         let mat = MAT_SAND;
-        if (m > 0.66 && z > 0.12) { mat = r > 0.5 ? MAT_MOSS : MAT_MOSS2; q += r > 0.8 ? 2 : 1; }
+        if (m > 0.69 && z > 0.12) { mat = r > 0.5 ? MAT_MOSS : MAT_MOSS2; q += r > 0.8 ? 2 : 1; }
         else if (r > 0.968) { mat = MAT_PEBBLE; q += r > 0.99 ? 2 : 1; this.var[idx] = Math.floor(hash2(i, k, seed + 11) * PEBBLES.length); }
         else if (r < 0.006) { mat = MAT_SHELL; q += 1; }
         else this.var[idx] = Math.floor(hash2(i >> 1, k, seed + 13) * 4);
@@ -177,11 +177,19 @@ export function renderBackdrop(T, opts = {}) {
       else if (d < 9 * sc + 3) c = SAND[j > 0.75 ? 4 : j > 0.3 ? 3 : 2];
       else if (d < 22 * sc + 6) {
         // gravel band: rounded pebbles
-        const px = Math.floor(x / (4 * sc + 2)), py = Math.floor(y / (3 * sc + 2));
-        const pr = PEBBLES[Math.floor(hash2(px, py, sd + 3) * PEBBLES.length)];
-        const lx = (x % (4 * sc + 2)) / (4 * sc + 2), ly = (y % (3 * sc + 2)) / (3 * sc + 2);
-        const rr = Math.hypot(lx - 0.5, ly - 0.5);
-        c = rr > 0.46 ? SOIL[1] : pr[lx + ly < 0.7 ? 4 : lx + ly > 1.25 ? 2 : 3];
+        // irregular rounded pebbles: nearest jittered seed in a small cell grid
+        const cw = 4 * sc + 2, ch = 3 * sc + 2;
+        const cx0 = Math.floor(x / cw), cy0 = Math.floor(y / ch);
+        let best = 9, bx = 0, by = 0, bi = 0;
+        for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+          const qx = cx0 + ox, qy = cy0 + oy;
+          const px = (qx + 0.2 + hash2(qx, qy, sd + 3) * 0.6) * cw, py = (qy + 0.2 + hash2(qx, qy, sd + 4) * 0.6) * ch;
+          const rr = (0.75 + hash2(qx, qy, sd + 5) * 0.6) * cw * 0.55;
+          const dd = Math.hypot(x + 0.5 - px, (y + 0.5 - py) * 1.25) / rr;
+          if (dd < best) { best = dd; bx = (x + 0.5 - px) / rr; by = (y + 0.5 - py) / rr; bi = qx * 7 + qy * 13; }
+        }
+        const pr = PEBBLES[Math.floor(hash2(bi, 1, sd + 6) * PEBBLES.length)];
+        c = best > 1 ? SOIL[best > 1.25 ? 0 : 1] : pr[bx + by < -0.5 ? 5 : bx + by > 0.6 ? 2 : 3];
       } else c = SOIL[j > 0.8 ? 2 : j > 0.4 ? 1 : 0];
       // looking through glass: a faint teal cast and darkening toward the bottom
       buf.set(x, y, mixP(c, '#1f6a80', 0.1 + clamp01((d - 6) / 60) * 0.25));
@@ -212,11 +220,11 @@ export function renderBackdrop(T, opts = {}) {
         const ao = smoothstep(0.06, 0, nearWall) * 0.8 + smoothstep(0.9, 1, z) * 0.6;
         for (let y = yi; y < ybuf; y++) {
           let tone;
-          if (face === 'front') tone = 2.6 - (y - yi) * 0.15;
-          else if (face === 'side') tone = X > vpx ? 3.2 : 2.1;
+          if (face === 'front') tone = 3.3 - (y - yi) * 0.12;
+          else if (face === 'side') tone = X > vpx ? 3.4 : 2.6;
           else {
             tone = 4.1 + (mat === MAT_SAND ? (v - 1.5) * 0.18 : 0);
-            if (edge && y === ybuf - 1) tone += 0.7; // lit voxel edge above a riser
+            if (edge && y === ybuf - 1) tone += 0.5; // lit voxel edge above a riser
           }
           tone -= ao;
           const ti = clamp(Math.round(tone + (bayer(x, y) - 0.5) * 0.7), 0, 6);
@@ -260,17 +268,20 @@ export function renderBackdrop(T, opts = {}) {
       const Xw = vpx + (x - vpx) / s;
       let t = 0.8 - 0.44 * clamp01((Yw - surf) / (T.floorFront - surf));
       if (face === 'back') {
-        if (Yw > rockA(Xw)) t -= 0.07 - (Yw < rockA(Xw) + 2 * sc ? -0.06 : 0);
-        if (Yw > rockB(Xw)) t -= 0.11 - (Yw < rockB(Xw) + 2 * sc ? -0.07 : 0);
-        else if (kelp(Xw, Yw)) t -= 0.06;
-        t += 0.05 * Math.max(0, Math.sin(Xw * 0.02 + 1.3)) * (1 - clamp01((Yw - surf) / (floorBack - surf)));
+        const ra = rockA(Xw), rb = rockB(Xw);
+        if (Yw > rb) t -= Yw < rb + 2.5 * sc ? 0.02 : 0.15 + hash2(Math.floor(Xw / 9), Math.floor(Yw / 9), sd) * 0.03;
+        else if (Yw > ra) t -= Yw < ra + 2.5 * sc ? -0.02 : 0.09;
+        else if (kelp(Xw, Yw)) t -= 0.07;
+        t += 0.07 * Math.pow(Math.max(0, Math.sin(Xw * 0.017 + 1.3)), 3) * (1 - clamp01((Yw - surf) / (floorBack - surf)));
       } else if (face === 'left' || face === 'right') {
         t -= 0.05 + 0.05 * (1 - z);
-        // faint reflections of the light bands on the side glass
-        if (Math.sin(Yw * 0.09 + z * 9) > 0.93) t += 0.04;
+        // soft vertical light bands seen through the side glass
+        t += 0.035 * Math.max(0, Math.sin(z * 11 + (face === 'left' ? 0 : 2))) * (1 - clamp01((Yw - surf) / (T.floorFront - surf)));
       } else if (face === 'ceil') {
-        t += 0.12 + 0.08 * (1 - z);
-        if (Math.sin(Xw * 0.08 + Math.sin(z * 18) * 2) > 0.86) t += 0.06;
+        // the underside of the surface: a little brighter, with sparse broken glints
+        t += 0.03 + 0.05 * (1 - z);
+        const ph = Xw * 0.045 + Math.sin(z * 14 + Xw * 0.01) * 1.6;
+        if (Math.sin(ph) > 0.94 && hash2(Math.floor(Xw / 6), Math.floor(z * 40), sd) > 0.45) t += 0.05;
       } else if (face === 'air') {
         t = 0.95;
       }

@@ -219,7 +219,7 @@ export function compileLook(look, variant = null) {
   if (c.pectoral) {
     if (look.pectoral?.u == null) c.pectoral.u = c.opU + 0.035;
     if (look.pectoral?.v == null) c.pectoral.v = 0.42;
-    if (look.pectoral?.len == null) c.pectoral.len = Math.max(2.5, H * 0.32);
+    if (look.pectoral?.len == null) c.pectoral.len = Math.max(2.5, H * 0.3);
   }
   for (const e of look.moreEyes || []) c.eyes.push(mkEye({ color: look.eye?.color, ...e }, { brow: false }));
   for (const p of c.patterns) if (p.glow) c.glow = true;
@@ -575,10 +575,10 @@ function pecPix(c, G, lx, ly, px, py, s, fp, baseY, still) {
   if (pec.spines && !onRay && st > 1 - 0.45 * Math.abs(rf) * 2) return 0;
   const R = pec.R7;
   const edge = !pec.spines && (Math.abs(b) > wdt - 1 / s || st > 0.97 - 0.04 * Math.abs(b) / Math.max(1, wdt));
-  let idx = onRay ? 2.2 : 4.4;
-  if (edge) idx = 1.8;
-  if (st < 0.12) idx = 2.2;
-  return withA(tone(R, idx, px, py), onRay || edge || st < 0.12 ? 230 : Math.round(255 * Math.min(1, c.finAlpha - 0.32)));
+  let idx = onRay ? 2.2 : 4.6;
+  if (edge) idx = 1.1;
+  if (st < 0.12) idx = 2;
+  return withA(tone(R, idx, px, py), edge ? 245 : onRay || st < 0.12 ? 215 : Math.round(255 * Math.min(1, c.finAlpha - 0.45)));
 }
 
 // Returns 1 hit, 2 hit+darker, 3 hit+lighter, 0 none. May set patLight.
@@ -2149,9 +2149,9 @@ KINDS.crab = {
     const LEG = shell === 'mech' ? rp(c, c.look.legColor || '#8a909c') : (c.look.legColor ? rp(c, c.look.legColor) : c.finR);
     if (part === 'back' || part === 'all') {
       const walk = ph * TAU;
-      const lr = Math.max(1.2, H * 0.085);
+      const lr = Math.max(1.4, H * 0.1);
       for (let i = 0; i < 3; i++) for (const side of [-1, 1]) {
-        const far = (i & 1) === 0;
+        const far = i === 1;
         const bx = cx + side * rx * (0.35 + i * 0.16), by = oy + ry * 0.25 - (far ? H * 0.05 : 0);
         const p2 = walk + i * 2.1 + (side > 0 ? Math.PI : 0);
         const lift = Math.max(0, Math.sin(p2)) * H * 0.12;

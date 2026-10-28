@@ -13,7 +13,7 @@ import { getProp } from '../../gfx/props.js';
 import {
   paint, dpack, lerpStops, gradientStrip, stopPalette, ditherPick, Blend, FogLayer, fillWith, drawWobble, makeRays,
   drawGlow, twinkle, Caustics, lumaMask, waveLine, waveRuns, Strands, Motes, Bubbles, Mask, ridge, todWeights,
-  voxelGround, quality, inRect, bladeSprites, SwayAnim, streakTile, DepthScene, BandSet, DepthDecor, qscale, waterColorAt,
+  voxelGround, quality, inRect, bladeSprites, SwayAnim, streakTile, DepthScene, BandSet, DepthDecor, qscale, waterColorAt, hazeMask,
 } from '../scenery.js';
 
 const SKY = {
@@ -352,19 +352,19 @@ export class ShallowsBiome extends Biome {
   // Perspective voxel seabed + props at many depths, baked into near / mid / far bands.
   buildDepth() {
     const W = this.W, H = this.H;
-    const D = new DepthScene(W, H, { yFront: H - 72, yFar: H - 166, pad: 24, zFar: 1.85, fogStart: -0.3 });
+    const D = new DepthScene(W, H, { yFront: H - 72, yFar: H - 166, pad: 24, zFar: 1.85, fogStart: -0.3, fog: 0.9 });
     this.D = D;
     const dockX = W - 260;
     D.terrain({
-      cell: 2, dz: 0.02, hstep: 2, ambient: 0.66, diffuse: 0.42, ao: 0.07, jitter: 0.05,
+      cell: 2, dz: 0.02, hstep: 2, ambient: 0.66, diffuse: 0.42, ao: 0.07, jitter: 0.05, wall: 0.86, side: 0.92, crest: 1.06,
       height: (X, z) => {
         let h = (fbm2(X * 0.004, z * 1.3, 3, 11) - 0.45) * 16;
         h += smoothstep(0.75, 1.35, z) * Math.max(0, fbm2(X * 0.0035 + 7, z * 0.8, 2, 12) * 70 - 22);
         const front = 1 - smoothstep(0.05, 0.5, z);
         h *= 1 - front * 0.65;
         if (X > dockX) h *= 1 - front * 0.3;
-        const rp = Math.sin(z * 58 + fbm2(X * 0.012, z * 2.2, 2, 7) * 6 + X * 0.012);
-        if (rp > 0.55 && fbm2(X * 0.006 + 3, z * 1.5, 2, 8) > 0.42) h += 2;
+        const rp = Math.sin(z * 58 + fbm2(X * 0.02, z * 2.2, 2, 7) * 9 + Math.sin(X * 0.045) * 1.6);
+        if (rp > 0.6 && fbm2(X * 0.011 + 3, z * 2.5, 2, 8) > 0.47) h += 2;
         return Math.max(-2, h);
       },
       color: (X, z, h) => {
@@ -376,7 +376,8 @@ export class ShallowsBiome extends Biome {
         if (hs < 0.006) return [138, 136, 152];
         if (hs < 0.009) return [255, 244, 232];
         if (hs < 0.0105) return [255, 178, 184];
-        if (fbm2(X * 0.008 + 9, z * 1.8, 2, 5) > 0.7) return [172, 188, 132];
+        const al = fbm2(X * 0.008 + 9, z * 1.8, 2, 5);
+        if (al > 0.66 && hash2(Math.floor(X / 2), Math.floor(z * 50), 9) < (al - 0.66) * 4) return [168, 186, 128];
         const n = fbm2(X * 0.02, z * 3.5, 2, 3);
         if (n < 0.34) return [216, 184, 130];
         if (n > 0.66) return [238, 216, 170];
@@ -394,7 +395,7 @@ export class ShallowsBiome extends Biome {
       ['coral_brain', 0.468, 0.06, 0.62, 2], ['message_bottle', 0.6, -0.1, 0.8], ['starfish_rock', 0.71, 0.05, 0.62], ['coral_fan', 0.268, 0.06, 0.5, 2],
       // mid
       ['sunken_boat', 0.655, 0.44, 1.08], ['coral_branch', 0.462, 0.44, 0.95, 3], ['coral_fan', 0.185, 0.5, 1.1, 1], ['coral_brain', 0.535, 0.6, 0.9, 1],
-      ['rock_big', 0.865, 0.54, 1.1], ['coral_tube', 0.935, 0.62, 0.95, 0], ['anchor', 0.785, 0.62, 0.9], ['coral_staghorn', 0.065, 0.46, 1.0, 2], ['barrel', 0.375, 0.56, 0.8],
+      ['rock_big', 0.865, 0.72, 1.2], ['coral_tube', 0.945, 0.9, 1.0, 0], ['anchor', 0.785, 0.62, 0.9], ['coral_staghorn', 0.065, 0.46, 1.0, 2], ['barrel', 0.375, 0.56, 0.8],
       // far
       ['rock_arch', 0.13, 0.92, 1.3], ['coral_branch', 0.29, 0.96, 1.2, 0], ['rock_big', 0.455, 1.18, 1.5], ['coral_staghorn', 0.585, 0.82, 1.15, 0],
       ['coral_fan', 0.745, 0.96, 1.25, 1], ['coral_tube', 0.885, 1.06, 1.25, 1], ['rock_small', 0.635, 1.32, 1.6], ['coral_brain', 0.04, 1.22, 1.3, 2],
@@ -424,6 +425,8 @@ export class ShallowsBiome extends Biome {
     this.heap = this.makeHeap();
     D.render([{ key: 'day', strip: this.water.day }, { key: 'dusk', strip: this.water.dusk }, { key: 'night', strip: this.water.night }]);
     this.bands = new BandSet(D);
+    this.hazeY = Math.round(D.hz - 26);
+    this.haze = new FogLayer(hazeMask(W, 70, { peak: 0.55, alpha: 0.75 }), 0, this.hazeY);
     this.masks = [0, 1].map((b) => lumaMask(D.bands[b].canvases.day, { gamma: 2.2, gain: 1.1 }));
     this.floor = new Float32Array(W + 1);
     for (let x = 0; x <= W; x++) this.floor[x] = D.floorAt(x, 0);
@@ -500,7 +503,9 @@ export class ShallowsBiome extends Biome {
       else { let x = px, y = by; for (let j = 0; j < 26; j++) { const nx = x + Math.sin(j * 0.4 + i) * 1.4, ny = y - 4; mB.line(x, y, nx, ny, 1.3); x = nx; y = ny; } }
     }
     const palB = stopPalette([[0, '#0a3246'], [1, '#2a6e88']], 6);
+    const palS = stopPalette([[0, '#6a8a8a'], [1, '#b8b49a']], 5);
     this.farB = new FogLayer(mB.toCanvas((x, y, v, up) => {
+      if (y > rB[x] + 6) return ditherPick(palS, 0.4 + (y - rB[x]) / 60 + (fbm2(x * 0.05, y * 0.2, 2, 6) - 0.5) * 0.3, x, y);
       if (up <= 1) return pack('#7ed4dc');
       if (up === 2) return pack('#3e8ea4');
       return ditherPick(palB, 0.72 - Math.min(1, up / 40) * 0.55 + (fbm2(x * 0.08, y * 0.08, 2, 6) - 0.5) * 0.4, x, y);
@@ -809,9 +814,10 @@ export class ShallowsBiome extends Biome {
     const wob = quality(env) >= 1 ? 1 : 0;
     drawWobble(ctx, this.farA.tint(water, 0.8, key), -this.pad + px * 0.8, this.farAY + py * 0.4, t, wob, 4, 0.9, 0.07);
     this.drawGiant(ctx);
-    drawWobble(ctx, this.farB.tint(water, 0.66, key), -this.pad + px * 1.4, this.farBY + py * 0.5, t + 2, wob, 4, 1.1, 0.09);
+    drawWobble(ctx, this.farB.tint(water, 0.74, key), -this.pad + px * 1.4, this.farBY + py * 0.5, t + 2, wob, 4, 1.1, 0.09);
     // far band of the perspective seabed (behind the far fish)
     this.bands.draw(ctx, 2, tod, px * 2, py * 0.6);
+    ctx.drawImage(this.haze.tint(water, 1, key), 0, this.hazeY);
     this.decor.draw(ctx, 2, t, px * 2, py * 0.6, 1 + wx.storm * 0.8);
     // weather murk
     const murk = wx.cloud * 0.08 + wx.rain * 0.14 + wx.storm * 0.1;
