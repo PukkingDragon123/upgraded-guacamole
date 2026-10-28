@@ -6,7 +6,7 @@
 // Extra st fields understood here: pose (iconfish mimic pose), chain ([{x,y}] head-first for chain kinds).
 // The game may call beginRigFrame() once per frame; otherwise the raster budget window resets itself.
 
-import { rigLayers, rigGeom, rasterLayer, paintEye, paintMouth, eyeBox, mouthBox, isKind, chainSegment, chainHeadSprite, chainRadius, defaultChainPoints } from './fishart.js';
+import { rigLayers, rigGeom, rasterLayer, paintEye, paintMouth, eyeBox, mouthBox, isKind, chainSegment, chainHeadSprite, chainRadius, defaultChainPoints, realCues } from './fishart.js';
 import { PixelBuffer } from './pixel.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 
@@ -21,6 +21,7 @@ let statRaster = 0, statFallback = 0;
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 const fract = (v) => v - Math.floor(v);
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const TAU = Math.PI * 2;
 
 export function setRigBudget(ms) { budgetMs = ms; }
 export function beginRigFrame() { spent = 0; windowStart = now(); }
@@ -114,7 +115,8 @@ function eyeSprite(c, ev, fs, ang) {
   const gxq = Math.round((fs.gx || 0) * n), gyq = Math.round((fs.gy || 0) * n);
   const bq = Math.round(clamp(fs.blink, 0, 1) * 4);
   const tq = ANIM_EMO[fs.emotion] || ev.e.type === 'googly' ? Math.floor(fs.time * 8) % 24 : 0;
-  const key = `${idOf(c)}|e|${ev.idx}|${Math.round(ang * 100)}|${Math.round(R * 4)}|${fs.emotion}|${bq}|${lxq},${lyq}|${gxq},${gyq}|${tq}|${ev.mirror ? 1 : 0}${ev.cheek ? 1 : 0}${ev.main ? 1 : 0}`;
+  const pq = Math.round((fs.pupil || 1) * 10), dq = Math.round((fs.dim || 0) * 10);
+  const key = `${idOf(c)}|e|${ev.idx}|${Math.round(ang * 100)}|${Math.round(R * 4)}|${fs.emotion}|${bq}|${lxq},${lyq}|${gxq},${gyq}|${tq}|${ev.mirror ? 1 : 0}${ev.cheek ? 1 : 0}${ev.main ? 1 : 0}|${pq}|${dq}`;
   let r = cacheGet(key);
   if (r) return r;
   r = timed(() => {
@@ -123,7 +125,7 @@ function eyeSprite(c, ev, fs, ang) {
     const glow = ev.e.type === 'glow' ? new PixelBuffer(hb * 2, hb * 2) : null;
     paintEye(buf, glow, hb, hb, c, ev.e, {
       emotion: fs.emotion, blink: bq / 4, lx: lxq / n, ly: lyq / n, gx: gxq / n, gy: gyq / n, time: tq / 8,
-      mirror: ev.mirror, cheek: ev.cheek, main: ev.main,
+      mirror: ev.mirror, cheek: ev.cheek, main: ev.main, pupil: pq / 10, dim: dq / 10,
     }, ang, R);
     return { canvas: buf.toCanvas(), glowCanvas: glow ? glow.toCanvas() : null, o: hb };
   });
@@ -158,10 +160,44 @@ function faceState(st, ang, sx, X, Y, geo) {
     if (m > 0.01) { const k = Math.min(1, m / 24) / m; lx = rx * k; ly = ry * k; }
   }
   const t = st.time || 0;
+  const cue = realCues(st.emotion || 'neutral');
+  const toon = geo?.toon;
+  if (!toon) {
+    if (cue.spin) { lx = Math.cos(t * 7) * 0.75; ly = Math.sin(t * 7) * 0.75; }
+    if (cue.lx) lx = clamp(lx + cue.lx, -1, 1);
+    if (cue.ly) ly = clamp(ly + cue.ly, -1, 1);
+  }
   // googly pupils: gravity + jiggle + a bit of look
   const gx = lx * 0.6 + Math.sin(t * 9.1) * 0.25 * (st.speed01 ?? 0.4);
   const gy = 0.55 + ly * 0.3 + Math.cos(t * 7.3) * 0.2 * (st.speed01 ?? 0.4);
-  return { emotion: st.emotion || 'neutral', blink: st.blink || 0, lx, ly, gx: clamp(gx, -1, 1), gy: clamp(gy, -1, 1), time: t, open: st.mouth || 0 };
+  return {
+    emotion: st.emotion || 'neutral', blink: st.blink || 0, lx, ly, gx: clamp(gx, -1, 1), gy: clamp(gy, -1, 1), time: t,
+    open: clamp((st.mouth || 0) + (toon ? 0 : cue.gape || 0), 0, 1), pupil: toon ? 1 : cue.pupil || 1, dim: toon ? 0 : cue.dim || 0, cue,
+  };
+}
+
+const GILL = [P_('#3a0610'), P_('#8a1a2c'), P_('#c03a4a')];
+function P_(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return (0xff000000 | ((n & 255) << 16) | (n & 0xff00) | (n >> 16)) >>> 0;
+}
+
+function gillSprite(c, geo, gkey, w) {
+  const key = gkey + '|gill|' + w;
+  let r = cacheGet(key);
+  if (r !== undefined) return r;
+  const { pts, nx, ny } = geo.gill;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [x, y] of pts) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  x0 = Math.floor(x0 - 4); y0 = Math.floor(y0 - 4); x1 = Math.ceil(x1 + 4); y1 = Math.ceil(y1 + 4);
+  const buf = new PixelBuffer(x1 - x0, y1 - y0);
+  pts.forEach(([x, y], i) => {
+    const edge = i < 2 || i > pts.length - 3;
+    for (let k = 0; k < (edge ? Math.min(1, w) : w); k++) buf.set(Math.round(x + nx * k) - x0, Math.round(y + ny * k) - y0, GILL[Math.min(2, k + (k === w - 1 && w > 1 ? 1 : 0))]);
+  });
+  r = { canvas: buf.toCanvas(), x: x0, y: y0 };
+  cachePut(key, r);
+  return r;
 }
 
 // ---- main entry
@@ -192,14 +228,17 @@ export function drawFishRig(ctx, c, st) {
   const fsw = Math.floor(fract(sw) * 8);
   const gkey = `${id}|g|${a}|${s}|${inf}|${fsw}|${pose ? 1 : 0}`;
   let geo = cacheGet(gkey);
-  if (!geo) { geo = rigGeom(c, { sw: fsw / 8, angle: ang, scale: s, inflate: inf, pose }); cachePut(gkey, geo); }
+  if (!geo) { geo = rigGeom(c, { sw: fsw / 8, angle: ang, scale: s, inflate: inf, pose }); geo.toon = !!c.toon; cachePut(gkey, geo); }
 
   const facing = st.facing ?? 1;
   const sx = facing * (st.turn ?? 1);
   const sq = clamp(st.squash || 0, -1, 1);
   const kx = 1 + 0.22 * sq, ky = 1 - 0.2 * sq;
-  const X = Math.round(st.x), Y = Math.round(st.y + (st.bob || 0));
-  const fs = faceState(st, ang, sx, X, Y, geo);
+  const fs = faceState(st, ang, sx, st.x, st.y, geo);
+  const cue = fs.cue;
+  const twitch = cue.twitch && !st.silhouette ? ((Math.floor(t * 23) % 3) - 1) * (Math.floor(t * 7) & 1) : 0;
+  const X = Math.round(st.x) + twitch, Y = Math.round(st.y + (st.bob || 0));
+  const raise = kind ? 0 : (st.raise ?? cue.raise ?? 0) > 0.5 ? 1 : 0;
 
   // collect draw items in bucket coords (relative to geo origin)
   const items = [];
@@ -208,11 +247,22 @@ export function drawFishRig(ctx, c, st) {
   for (const L of layers) {
     const ph = L.phase === 'tail' ? tp : L.phase === 'fin' ? fp : sw;
     const frame = Math.floor(fract(ph) * L.frames) % L.frames;
-    const r = getLayer(c, L.id, L.frames, frame, q, fam(L.id, a));
+    const lr = L.id === 'back' && raise;
+    const r = getLayer(c, L.id, L.frames, frame, lr ? { ...q, raise: 1 } : q, fam(L.id, a) + (lr ? '|R' : ''));
     if (!r.canvas) continue;
     const off = geo.offsets?.[L.id] || [0, 0];
     items.push([r.canvas, r.x + off[0] - geo.ox, r.y + off[1] - geo.oy]);
     if (r.glowCanvas) glows.push([r.glowCanvas, r.x + off[0] - geo.ox, r.y + off[1] - geo.oy]);
+  }
+  if (!st.silhouette && geo.gill) {
+    // breathing: the gill slit flares open, faster and wider when stressed
+    const rate = 0.7 * (cue.breath || 1);
+    const fl = 0.5 + 0.5 * Math.sin(t * TAU * rate);
+    const w = fl > 0.86 ? 2 : fl > 0.5 ? 1 : 0;
+    if (w) {
+      const gs = gillSprite(c, geo, gkey, w + ((cue.breath || 1) >= 2 && w ? 1 : 0));
+      if (gs) items.push([gs.canvas, gs.x - geo.ox, gs.y - geo.oy]);
+    }
   }
   if (!st.silhouette) {
     for (const ev of geo.eyes) {
@@ -226,7 +276,8 @@ export function drawFishRig(ctx, c, st) {
       items.push([sp.canvas, Math.round(geo.mouth.x - sp.o) - geo.ox, Math.round(geo.mouth.y - sp.o) - geo.oy]);
     }
   }
-  compose(ctx, items, glows, X, Y, sx * kx, ky, st, c, geo.w + 40, geo.h + 40);
+  const flush = !c.toon && cue.flush && !st.silhouette ? cue.flush : null;
+  compose(ctx, items, glows, X, Y, sx * kx, ky, flush ? { ...st, flush } : st, c, geo.w + 40, geo.h + 40);
 
   // anchors -> world
   const toW = (p) => [X + (p[0] - geo.ox) * sx * kx, Y + (p[1] - geo.oy) * ky];
@@ -239,7 +290,8 @@ export function drawFishRig(ctx, c, st) {
 function compose(ctx, items, glows, X, Y, scx, scy, st, c, bw, bh) {
   const wash = st.wash && st.wash.alpha > 0.01 ? st.wash : null;
   const sil = st.silhouette;
-  if (wash || sil) {
+  const flush = st.flush;
+  if (wash || sil || flush) {
     // composite into a scratch canvas centred on the origin, tint it, then place it
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const [cv, dx, dy] of items) { x0 = Math.min(x0, dx); y0 = Math.min(y0, dy); x1 = Math.max(x1, dx + cv.width); y1 = Math.max(y1, dy + cv.height); }
@@ -249,9 +301,16 @@ function compose(ctx, items, glows, X, Y, scx, scy, st, c, bw, bh) {
     const g = sc._g;
     for (const [cv, dx, dy] of items) g.drawImage(cv, dx - x0, dy - y0);
     g.globalCompositeOperation = 'source-atop';
-    g.globalAlpha = sil ? 1 : Math.min(1, wash.alpha);
-    g.fillStyle = sil ? (typeof sil === 'string' ? sil : '#102033') : wash.color;
-    g.fillRect(0, 0, w, h);
+    if (flush && !sil) {
+      g.globalAlpha = flush[1];
+      g.fillStyle = flush[0];
+      g.fillRect(0, 0, w, h);
+    }
+    if (sil || wash) {
+      g.globalAlpha = sil ? 1 : Math.min(1, wash.alpha);
+      g.fillStyle = sil ? (typeof sil === 'string' ? sil : '#102033') : wash.color;
+      g.fillRect(0, 0, w, h);
+    }
     g.globalCompositeOperation = 'source-over';
     g.globalAlpha = 1;
     ctx.save();
@@ -317,7 +376,7 @@ function drawChainRig(ctx, c, st) {
   let head = cacheGet(hkey);
   if (!head) { head = timed(() => chainHeadSprite(c, ang, s, 0)); cachePut(hkey, head); }
   items.push([head.canvas, -head.o, -head.o]);
-  const fs = faceState({ ...st, x: X, y: Y }, 0, 1, X, Y, null);
+  const fs = faceState({ ...st, x: X, y: Y }, 0, 1, X, Y, { toon: !!c.toon });
   if (st.lookX == null) { fs.lx = Math.cos(ang) * 0.5; fs.ly = Math.sin(ang) * 0.5; }
   else {
     // face-local look: rotate world look by -ang

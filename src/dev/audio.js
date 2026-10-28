@@ -8,7 +8,10 @@ const W = 640, H = 360, S = 3;
 const AMBIENCES = [
   ['desktop', null, {}], ['shallows', 'shallows', {}], ['shallows rain', 'shallows', { weather: 'rain' }],
   ['shallows storm', 'shallows', { weather: 'storm' }], ['shallows night', 'shallows', { night: true }],
-  ['junkyard', 'junkyard', {}], ['abyss', 'abyss', {}],
+  ['junkyard', 'junkyard', {}], ['junkyard static', 'junkyard', { weather: 'static' }],
+  ['junkyard datarain', 'junkyard', { weather: 'datarain' }], ['abyss', 'abyss', {}],
+  ['abyss current', 'abyss', { weather: 'current' }], ['abyss glowtide', 'abyss', { weather: 'glowtide' }],
+  ['abyss snow', 'abyss', { weather: 'snow' }],
 ];
 const LINE = 'Hello there, little fisher! Caught anything good today?';
 

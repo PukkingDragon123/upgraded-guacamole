@@ -911,5 +911,5 @@ export function voxelGround(W, H, o) {
     const q = toScreen(vx + 0.5, H2(vx, vz), vz + 0.5);
     return q[1];
   };
-  return { canvas: r.canvas, x: dx, y: dy, floor, toScreen, surfaceY, nx, nz, ny, s, model: m, heightAt: H2 };
+  return { canvas: r.canvas, glow: r.glow, x: dx, y: dy, floor, toScreen, surfaceY, nx, nz, ny, s, model: m, heightAt: H2 };
 }

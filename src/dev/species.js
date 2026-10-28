@@ -18,9 +18,112 @@ const BG = { shallows: ['#3a9cc4', '#1f6a94'], junkyard: ['#3a5a52', '#1c2e30'],
 const EMOTIONS = ['neutral', 'happy', 'sad', 'angry', 'scared', 'surprised', 'love', 'sleepy', 'dizzy', 'smug', 'determined', 'tired', 'disgust'];
 const MUTS = ['albino', 'melanistic', 'neon', 'pastel', 'golden', 'inverted', 'ghost', 'crimson', 'ocean', 'galaxy'];
 const TITLES = ['Sunny Shallows', 'Junkyard Reef', 'The Midnight Abyss', 'Shallows: angle -0.4 + blink + flip', 'Junkyard: angle -0.4 + blink + flip',
-  'Abyss: angle -0.4 + blink + flip', 'Emotions', 'Rig features', 'Mutations + shiny', 'Baked frame() API'];
+  'Abyss: angle -0.4 + blink + flip', 'Emotions', 'Rig features', 'Mutations + shiny', 'Baked frame() API', 'Reference calibration'];
 
 const comp = (sp, variant = null) => compiled(sp.look, variant, sp.id);
+
+// Calibration: procedural recreations of a reference freshwater pixel pack (page 10).
+export const REF_LOOKS = [
+  { id: 'bream', look: {
+    body: { len: 48, h: 27, shape: 'oval', hump: 0.24, belly: 0.06, peak: 0.46, nose: 1.9, tip: 0.16, tailW: 0.3 },
+    col: { body: '#a39b84', back: '#4a443a', belly: '#e6ddca', fin: '#5a4e42' },
+    shade: { back: -0.45, belly: 0.05 },
+    tail: { type: 'fork', len: 12, spread: 12 },
+    dorsal: { type: 'tri', from: 0.44, to: 0.6, h: 10, lean: 0.75 },
+    anal: { type: 'long', from: 0.5, to: 0.9, h: 6, lean: 0.4 },
+    pelvic: { from: 0.38, to: 0.46, h: 6 },
+    pectoral: { len: 7, u: 0.3, v: 0.45 },
+    eye: { r: 2.6, u: 0.13, v: -0.18, iris: '#8a7a9a' },
+    mouth: { type: 'small', v: 0.25 }, } },
+  { id: 'roach', look: {
+    body: { len: 46, h: 19, shape: 'oval', hump: 0.12, nose: 1.6, tip: 0.18 },
+    col: { body: '#d6dade', back: '#48586a', belly: '#f6f4ee', fin: '#7a8a9c' },
+    shade: { back: -0.5, belly: 0.4 }, scaleSize: 3.6,
+    tail: { type: 'fork', len: 11, spread: 10, color: '#8a9aac' },
+    dorsal: { type: 'tri', from: 0.4, to: 0.58, h: 8, color: '#4a5060' },
+    anal: { type: 'tri', from: 0.62, to: 0.8, h: 5 },
+    pelvic: { from: 0.4, to: 0.48, h: 5, color: '#9aaabc' },
+    pectoral: { len: 5 },
+    eye: { r: 2.8, u: 0.12, iris: '#e8902a' },
+    mouth: { type: 'small', v: 0.4, line: '#c86a6a' }, } },
+  { id: 'goldfish', look: {
+    body: { len: 42, h: 26, shape: 'oval', hump: 0.2, nose: 1.8, tip: 0.2, peak: 0.42 },
+    col: { body: '#f2902e', back: '#d8441c', belly: '#ffe2a8', fin: '#f6a04e' },
+    shade: { back: -0.35, belly: 0.35 }, spec: 1.3,
+    tail: { type: 'fork', len: 18, spread: 16, color: '#f8b060' },
+    dorsal: { type: 'sail', from: 0.3, to: 0.66, h: 13 },
+    anal: { type: 'tri', from: 0.6, to: 0.8, h: 7 },
+    pelvic: { from: 0.38, to: 0.48, h: 7 },
+    pectoral: { len: 7 },
+    eye: { r: 3.6, u: 0.14, v: 0.0, iris: '#3a2418', pupilSize: 0.62 },
+    mouth: { type: 'small', v: 0.45 }, } },
+  { id: 'catfish', look: {
+    body: { len: 60, h: 17, shape: 'blunt', nose: 3, peak: 0.3, tailW: 0.4, taper: 0.8, tip: 0.5, hump: -0.05 },
+    col: { body: '#4e4650', back: '#2a262c', belly: '#e2d6ba', fin: '#4a4650' },
+    shade: { back: -0.15, belly: 0.25 }, scales: false,
+    pattern: [{ type: 'patches', color: '#2a242a', threshold: 0.6, freq: 0.3, vmax: 0.3 }],
+    tail: { type: 'truncate', len: 11, spread: 10, color: '#5a5a62' },
+    dorsal: { type: 'tri', from: 0.28, to: 0.4, h: 12, color: '#3a363c' },
+    dorsal2: { type: 'round', from: 0.8, to: 0.88, h: 3, rays: false },
+    anal: { type: 'long', from: 0.58, to: 0.88, h: 6, color: '#c8a0aa' },
+    pelvic: { from: 0.42, to: 0.5, h: 5, color: '#c8a0aa' },
+    pectoral: { len: 6 },
+    eye: { r: 2.3, u: 0.1, v: -0.25, iris: '#f0b020' },
+    mouth: { type: 'big', v: 0.3 },
+    extras: [{ type: 'whiskers', len: 15, count: 3, color: '#3a3238', color2: '#7a6a72' }], } },
+  { id: 'salmon', look: {
+    body: { len: 60, h: 21, shape: 'torpedo', hump: 0.4, peak: 0.42, nose: 1.2, tip: 0.14 },
+    col: { body: '#c4382a', back: '#a8281e', belly: '#7a3a34', fin: '#b0302a', head: '#6c7a2c' },
+    shade: { back: -0.4, belly: 0.5 },
+    pattern: [{ type: 'patches', color: '#4a1a18', threshold: 0.55, freq: 0.35, vmin: 0.2 }],
+    tail: { type: 'fork', len: 14, spread: 12, color: '#c8c03a' },
+    dorsal: { type: 'tri', from: 0.42, to: 0.58, h: 8 },
+    dorsal2: { type: 'round', from: 0.82, to: 0.88, h: 3, rays: false },
+    anal: { type: 'tri', from: 0.66, to: 0.82, h: 6 },
+    pelvic: { from: 0.45, to: 0.53, h: 5 },
+    pectoral: { len: 6 },
+    eye: { r: 2.4, u: 0.11, iris: '#7a6a8a' },
+    mouth: { type: 'big', v: 0.45, teeth: true, sag: 0.25 }, } },
+  { id: 'pike', look: {
+    body: { len: 74, h: 14, shape: 'pointy', nose: 1.05, peak: 0.5, tailW: 0.42, taper: 0.6, tip: 0.12 },
+    col: { body: '#8a963a', back: '#45521a', belly: '#e8e2b4', fin: '#c87a42' },
+    shade: { back: -0.3, belly: 0.45 },
+    pattern: [{ type: 'spots', size: 1.3, density: 0.42, tone: 2.4, seed: 5, umin: 0.22, vmax: 0.5 }],
+    tail: { type: 'fork', len: 15, spread: 11, spots: '#5a3218' },
+    dorsal: { type: 'round', from: 0.74, to: 0.88, h: 8, spots: '#5a3218' },
+    anal: { type: 'round', from: 0.74, to: 0.88, h: 7, spots: '#5a3218' },
+    pelvic: { from: 0.5, to: 0.58, h: 5, color: '#e8c070' },
+    pectoral: { len: 6, color: '#e8c070' },
+    eye: { r: 2.3, u: 0.2, v: -0.4, iris: '#e07a2a' },
+    mouth: { type: 'big', v: 0.15, sag: 0.04 }, } },
+  { id: 'perch', look: {
+    body: { len: 50, h: 21, shape: 'oval', hump: 0.22, nose: 1.5, tip: 0.2 },
+    col: { body: '#b4b032', back: '#3c4220', belly: '#f2e8b2', fin: '#e07420' },
+    shade: { back: -0.3, belly: 0.3 },
+    pattern: [{ type: 'bars', at: [0.36, 0.48, 0.6, 0.72, 0.83], width: 0.04, tone: -2.6 }],
+    tail: { type: 'truncate', len: 10, spread: 10, color: '#6c6c2a' },
+    dorsal: { type: 'spiky', from: 0.24, to: 0.5, h: 10, count: 6, color: '#3a3a36' },
+    dorsal2: { type: 'tri', from: 0.56, to: 0.76, h: 7, color: '#50503a' },
+    anal: { type: 'tri', from: 0.62, to: 0.78, h: 6 },
+    pelvic: { from: 0.3, to: 0.4, h: 7 },
+    pectoral: { len: 6, color: '#c8a050' },
+    eye: { r: 2.6, u: 0.12, iris: '#c89a3a' },
+    mouth: { type: 'big', v: 0.3 }, } },
+  { id: 'trout', look: {
+    body: { len: 58, h: 17, shape: 'torpedo', nose: 1.4, tailW: 0.38 },
+    col: { body: '#c8d4b4', back: '#5a6a36', belly: '#f6f2e6', fin: '#c88a4a' },
+    shade: { back: -0.35, belly: 0.4 },
+    pattern: [{ type: 'stripes', color: '#e888b8', at: [0.12], width: 0.13, from: 0.08, to: 0.96 }, { type: 'stripes', color: '#9ad8d0', at: [-0.12], width: 0.1, from: 0.2, to: 0.9 },
+      { type: 'spots', color: '#1a1620', size: 0.7, density: 0.35, vmax: 0.3, seed: 9 }],
+    tail: { type: 'truncate', len: 11, spread: 10, spots: '#2a1a14' },
+    dorsal: { type: 'tri', from: 0.4, to: 0.56, h: 9, spots: '#2a1a14' },
+    dorsal2: { type: 'round', from: 0.8, to: 0.86, h: 3, rays: false },
+    anal: { type: 'tri', from: 0.64, to: 0.8, h: 6 },
+    pelvic: { from: 0.46, to: 0.54, h: 5 },
+    pectoral: { len: 6 },
+    eye: { r: 2.5, u: 0.1, iris: '#6a5a7a' },
+    mouth: { type: 'big', v: 0.35 }, } },
+];
 
 function bg(g, top, bot) {
   for (let y = 0; y < H; y += 4) {
@@ -78,13 +181,14 @@ export function run(params) {
       else if (page === 6) drawEmotions(g, t, frozen);
       else if (page === 7) drawFeatures(g, t, frozen);
       else if (page === 8) drawMutations(g, t, frozen);
-      else drawBaked(g, t, frozen);
+      else if (page === 9) drawBaked(g, t, frozen);
+      else drawRef(g, t, frozen, params);
     } catch (e) {
       errors.push(e);
       console.error(e);
       return;
     }
-    drawText(g, `PAGE ${page}/9  ${TITLES[page] || ''}`, 8, 6, { font: 'small', color: '#ffffff', shadow: '#000000' });
+    drawText(g, `PAGE ${page}/10  ${TITLES[page] || ''}`, 8, 6, { font: 'small', color: '#ffffff', shadow: '#000000' });
     const st = rigStats();
     drawText(g, `${st.items} cached  ${st.rasterized} rasterised  ${st.fallbacks} fallbacks`, W - 8, 6, { font: 'small', color: '#9fb4c8', shadow: '#000000', align: 'right' });
     if (!frozen) requestAnimationFrame(draw);
@@ -218,5 +322,23 @@ function drawBaked(g, t, frozen) {
     g.drawImage(f.canvas, Math.round(x - f.ox), Math.round(y - f.oy));
     if (f.glowCanvas) { g.globalCompositeOperation = 'lighter'; g.globalAlpha = 0.5; g.drawImage(f.glowCanvas, Math.round(x - f.ox), Math.round(y - f.oy)); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; }
     drawText(g, sp.name, x, y + 34, { font: 'small', align: 'center', color: RARITY[sp.rarity].color, shadow: '#000' });
+  });
+}
+
+function drawRef(g, t, frozen, params) {
+  g.fillStyle = '#5c6e80'; g.fillRect(0, 0, W, H);
+  const sc = Number(params.get('rs') || 1);
+  REF_LOOKS.forEach((r, i) => {
+    const c = compiled(r.look, null, 'ref-' + r.id);
+    const x = 120 + (i % 2) * 220, y = 70 + Math.floor(i / 2) * 110;
+    drawFishRig(g, c, { x, y, scale: sc, time: frozen ? 0 : t, swimPhase: frozen ? 0.2 : t, tailPhase: frozen ? 0.1 : t * 1.4, finPhase: frozen ? 0.3 : t, emotion: 'neutral' });
+    drawText(g, r.id, x, y + 40, { font: 'small', align: 'center', color: '#ffffff', shadow: '#000' });
+  });
+  // emotion cues on two realistic fish
+  const per = compiled(REF_LOOKS[6].look, null, 'ref-perch'), gold = compiled(REF_LOOKS[2].look, null, 'ref-goldfish');
+  EMOTIONS.forEach((e, j) => {
+    const x = 560 + (j % 4) * 100, y = 60 + Math.floor(j / 4) * 120;
+    drawFishRig(g, j & 1 ? gold : per, { x, y, time: frozen ? j * 0.37 : t, swimPhase: frozen ? 0.2 : t, emotion: e, mouth: 0 });
+    drawText(g, e, x, y + 38, { font: 'small', align: 'center', color: '#ffe9a8', shadow: '#000' });
   });
 }

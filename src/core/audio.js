@@ -1,6 +1,17 @@
 // Procedural WebAudio engine: SFX, loops, biome ambience, generative music and babble.
 // Everything is synthesized at runtime (no samples, no network). Every public call is a
-// silent no-op until unlock() has created/resumed the AudioContext on a user gesture.
+// silent no-op until unlock() has created/resumed the AudioContext on a user gesture;
+// music/ambience/volume/loop requests made earlier are remembered and start on unlock.
+//
+// API (singleton `audio`):
+//   unlock() -> bool, isUnlocked()
+//   play(name, {vol=1, pitch=1, pan=0})          one-shot SFX (see SFX_NAMES)
+//   loop(name) -> {set(v 0..1), stop()}          tension|reel|rain|storm|static|blackhole|flood
+//   setMusic(track|null)                         desktop|shallows|junkyard|abyss|aquarium (2.5 s crossfade)
+//   setAmbience(biome|null|'off', {weather, night})  null = desktop fan hum; weather layers:
+//     rain storm (any biome), static datarain oil (junkyard), current snow glowtide (abyss)
+//   setNight(bool), setVolumes({master, music, sfx, ambience}), getVolumes(), setMuffle(0..1)
+//   babble(text, voice='crab'|'fish'|'tiny'|'deep')  1-2 char calls = rate-limited typewriter blips
 //
 // Graph: voices -> category bus (sfx | music | amb) -> master -> compressor -> limiter -> out
 //        voices -> per-category reverb send -> convolver (generated impulse) -> master
@@ -402,7 +413,6 @@ function mkOut(dry, wet, vol = 1, pan = 0, lp = 0) {
   n.connect(dry);
   const w = gainNode(vol, wet);
   nodes.push(w);
-  if (lp) { /* wet stays unfiltered-ish; reverb is already dark */ }
   return { out, wet: w, nodes };
 }
 
@@ -516,7 +526,7 @@ const arp = (o, fn, notes, step, at = 0, vol = 0.1, dur) =>
 // Each entry gets o = { t, p (pitch mult), out, wet, verb, pool, end }.
 const SFX = {
   // UI
-  ui_click: (o) => { tone(o, { f: 1250, f2: 820, glide: 0.035, dur: 0.06, type: 'triangle', vol: 0.16, a: 0.001 }); tick(o, 0, 4500, 0.05); },
+  ui_click: (o) => { tone(o, { f: 1250, f2: 820, glide: 0.035, dur: 0.06, type: 'triangle', vol: 0.11, a: 0.001 }); tick(o, 0, 4500, 0.04); },
   ui_hover: (o) => { tone(o, { f: 2100, f2: 2350, glide: 0.02, dur: 0.035, vol: 0.045, a: 0.002 }); },
   ui_open: (o) => { tone(o, { f: 480, f2: 760, glide: 0.07, dur: 0.13, vol: 0.14 }); chime(o, 1046, 0.05, 0.06, 0.35); bub(o, 0.02, 900, 0.04); },
   ui_close: (o) => { tone(o, { f: 760, f2: 430, glide: 0.08, dur: 0.12, vol: 0.13 }); tick(o, 0.06, 3500, 0.03); },
@@ -597,6 +607,10 @@ const SFX = {
     noise(o, { dur: 0.11, type: 'bandpass', f: 1400, f2: 5200, q: 1.2, vol: 0.3 });
     tone(o, { f: 280, f2: 900, glide: 0.06, dur: 0.1, vol: 0.12, type: 'triangle' });
     thump(o, 0.01, 150, 0.22);
+  },
+  reel: (o) => {
+    for (let i = 0; i < 9; i++) { const at = i * 0.045 * (1 - i * 0.04); tick(o, at, 3000 + (i % 2) * 600, 0.16); tone(o, { at, f: i % 2 ? 2700 : 2300, dur: 0.01, type: 'triangle', vol: 0.04, a: 0.0008 }); }
+    noise(o, { dur: 0.4, type: 'bandpass', f: 900, f2: 1600, q: 1.5, color: 'pink', vol: 0.12, a: 0.05, shape: 'lin' });
   },
   reel_tick: (o) => { tick(o, 0, 3200, 0.2); tone(o, { f: 2600, dur: 0.012, vol: 0.05, type: 'triangle', a: 0.0008 }); },
   line_snap: (o) => {
@@ -721,7 +735,7 @@ const SFX = {
     tone(o, { at: 0.1, f: 3000, f2: 2200, glide: 0.07, dur: 0.08, vol: 0.075 });
   },
   bell: (o) => { bell(o, 1046, 0, 0.09, 1.3, 0.45); fm(o, { f: 2093, ratio: 1.41, index: 0.6, idur: 0.1, dur: 0.5, vol: 0.02 }); },
-  gulp: (o) => { tone(o, { f: 420, f2: 140, glide: 0.08, dur: 0.12, vol: 0.18 }); noise(o, { dur: 0.05, type: 'lowpass', f: 600, vol: 0.2, color: 'pink' }); },
+  gulp: (o) => { tone(o, { f: 420, f2: 140, glide: 0.08, dur: 0.12, vol: 0.13 }); noise(o, { dur: 0.05, type: 'lowpass', f: 600, vol: 0.2, color: 'pink' }); },
   snore: (o) => {
     noise(o, { dur: 0.9, type: 'bandpass', f: 320, f2: 600, q: 3, a: 0.45, vol: 0.4, shape: 'lin', color: 'pink' });
     tone(o, { dur: 0.9, f: 85, f2: 95, type: 'sawtooth', vol: 0.035, a: 0.4, shape: 'lin', filt: { type: 'lowpass', f: 300 }, vib: [22, 4] });
@@ -849,7 +863,7 @@ const SFX = {
 const COMBO = [0, 2, 4, 7, 9, 12, 14, 16, 19];
 const combo = { n: 0, t: -1 };
 // per-name minimum retrigger interval (seconds)
-const MIN_GAP = { ui_type: 0.02, reel_tick: 0.012, coin_bounce: 0.02, coin_collect: 0.02, mash_pop: 0.02, ui_hover: 0.04 };
+const MIN_GAP = { reel: 0.25, ui_type: 0.02, reel_tick: 0.012, coin_bounce: 0.02, coin_collect: 0.02, mash_pop: 0.02, ui_hover: 0.04 };
 // default reverb send per SFX (others use 0.12)
 const VERB = { sonar: 0.35, whale_call: 0.4, bell: 0.3, thunder: 0.3, ui_hover: 0, ui_click: 0.04, ui_type: 0, reel_tick: 0, ui_tab: 0.04, click: 0.15 };
 
@@ -1072,7 +1086,7 @@ const evOut = (g, vol, pan, lp, verb, p = 1) => ({ dry: g.fade, wet: g.wet, pool
 
 const AMB = {
   desktop(g, night) {
-    gNoise(g, 'brown', null, night ? 0.035 : 0.045, { type: 'lowpass', f: 220 });
+    gNoise(g, 'brown', null, night ? 0.022 : 0.03, { type: 'lowpass', f: 220 });
     gNoise(g, 'pink', null, 0.006, { type: 'bandpass', f: 900, q: 0.6 });
     const blade = gOsc(g, 'sine', 118, null, 0.0035);
     gLfo(g, 0.07, 0.6, blade.osc.frequency);
@@ -1137,22 +1151,44 @@ const AMB = {
 };
 AMB.aquarium = AMB.desktop;
 
+// weather layers on top of a biome bed (ids come from the biome definitions)
+function subGroup(g, level) {
+  const sg = { fade: gainNode(level, g.fade), wet: g.wet ? gainNode(level, g.wet) : null, srcs: g.srcs, nodes: g.nodes };
+  g.nodes.push(sg.fade, sg.wet);
+  return sg;
+}
+const withV = (l, v) => { l.set(v); return l; };
+const evLayer = (evs, inner) => ({ tick(t0, h) { if (inner && inner.tick) inner.tick(t0, h); runEvents(evs, t0, h); } });
+const dataBlip = (o) => {
+  const base = pick([79, 81, 84, 86, 88]);
+  for (let i = 0, n = 2 + ((Math.random() * 3) | 0); i < n; i++) {
+    tone(o, { at: i * 0.06, f: m2f(base + pick([0, 3, 5, 7, 12])), dur: 0.05, wave: 'pulse12', vol: 0.04, a: 0.002 });
+  }
+};
+const WEATHER = {
+  rain: (g) => withV(LOOPS.rain(g), 0.5),
+  storm: (g) => withV(LOOPS.storm(g), 0.75),
+  static: (g) => withV(LOOPS.static(subGroup(g, 0.4)), 0.35),
+  datarain: (g) => evLayer([{ min: 0.5, max: 1.8, fn: (t) => fire(dataBlip, t, evOut(g, 0.35, rand(-0.8, 0.8), 0, 0.35)) }],
+    withV(LOOPS.rain(subGroup(g, 0.5)), 0.3)),
+  oil: (g) => { gNoise(g, 'brown', null, 0.05, { type: 'lowpass', f: 150 }); return null; },
+  current: (g) => withV(LOOPS.flood(subGroup(g, 0.45)), 0.1),
+  snow: (g) => evLayer([{ min: 0.8, max: 2.6, fn: (t) => fire((o) => tone(o, { f: rand(2400, 4200), dur: 0.5, vol: 0.05, a: 0.003 }), t, evOut(g, 0.3, rand(-0.9, 0.9), 0, 0.8)) }]),
+  glowtide: (g) => evLayer([{ min: 5, max: 11, fn: (t) => fire((o) => {
+    for (const m of pick([[62, 69, 76], [58, 65, 74], [60, 67, 74]])) tone(o, { f: m2f(m + 12), dur: 4, vol: 0.03, a: 1.6, shape: 'sus', r: 2, vib: [0.3, 1.5] });
+  }, t, evOut(g, 0.4, rand(-0.5, 0.5), 0, 0.9)) }]),
+};
+
 let scene = null;
 function buildScene(key, biome, weather, night) {
   const g = group(B.amb.in, B.amb.verb, 1, 2.5);
   const evs = (AMB[biome] || AMB.desktop)(g, night) || [];
-  const layers = [];
-  if (weather === 'rain' || weather === 'storm') {
-    const l = LOOPS[weather](g);
-    l.set(weather === 'storm' ? 0.75 : 0.5);
-    layers.push(l);
-  }
-  return { key, g, tick(t0, h) { runEvents(evs, t0, h); for (const l of layers) if (l.tick) l.tick(t0, h); } };
+  const layer = WEATHER[weather] ? WEATHER[weather](g) : null;
+  return { key, g, tick(t0, h) { runEvents(evs, t0, h); if (layer && layer.tick) layer.tick(t0, h); } };
 }
 
 function applyAmbience() {
-  if (!ready() && !ctx) return;
-  if (S.amb === undefined) return;
+  if (!B || S.amb === undefined) return;
   const biome = S.amb, weather = S.ambOpts.weather || null, night = S.ambOpts.night ?? S.night;
   const off = biome === false || biome === 'off' || biome === 'none';
   const key = off ? 'off' : `${biome || 'desktop'}|${weather}|${night ? 1 : 0}`;
@@ -1701,6 +1737,5 @@ export const audio = {
   get music() { return S.music; },
   get night() { return S.night; },
   _meter: meter,
-  _nb: () => NB,
   _voices: () => ({ sfx: pools.sfx.length, music: pools.music.length, amb: pools.amb.length }),
 };

@@ -31,15 +31,17 @@ import { PixelBuffer } from './pixel.js';
 
 export const EMOTIONS = ['neutral', 'happy', 'sad', 'angry', 'scared', 'surprised', 'love', 'sleepy', 'dizzy', 'smug', 'determined', 'tired', 'disgust'];
 
+// nose: front curve exponent (low = tapered snout), tip: snout half-height fraction at the mouth,
+// peak: deepest point, tailW: caudal peduncle half-height fraction, taper: rear falloff.
 const SHAPES = {
-  oval: { nose: 2.2, peak: 0.4, tailW: 0.3, taper: 1 },
-  torpedo: { nose: 1.6, peak: 0.35, tailW: 0.22, taper: 0.9 },
-  round: { nose: 3.2, peak: 0.48, tailW: 0.35, taper: 1.3 },
-  disc: { nose: 2.6, peak: 0.45, tailW: 0.25, taper: 1.1 },
-  long: { nose: 1.8, peak: 0.25, tailW: 0.45, taper: 0.6 },
-  box: { nose: 6, peak: 0.3, tailW: 0.4, taper: 1.6 },
-  blunt: { nose: 4.5, peak: 0.3, tailW: 0.3, taper: 1 },
-  pointy: { nose: 1.2, peak: 0.45, tailW: 0.25, taper: 1 },
+  oval: { nose: 2.1, peak: 0.4, tailW: 0.36, taper: 1, tip: 0.2 },
+  torpedo: { nose: 1.8, peak: 0.36, tailW: 0.3, taper: 0.9, tip: 0.18 },
+  round: { nose: 2.8, peak: 0.46, tailW: 0.38, taper: 1.3, tip: 0.24 },
+  disc: { nose: 2.3, peak: 0.45, tailW: 0.3, taper: 1.1, tip: 0.18 },
+  long: { nose: 1.9, peak: 0.25, tailW: 0.45, taper: 0.6, tip: 0.25 },
+  box: { nose: 6, peak: 0.3, tailW: 0.45, taper: 1.6, tip: 0.5 },
+  blunt: { nose: 4, peak: 0.3, tailW: 0.36, taper: 1, tip: 0.42 },
+  pointy: { nose: 1.25, peak: 0.45, tailW: 0.28, taper: 1, tip: 0.1 },
 };
 
 const withA = (c, a) => ((c & 0x00ffffff) | ((a & 255) << 24)) >>> 0;
@@ -178,7 +180,7 @@ export function compileLook(look, variant = null) {
   if (look.dorsal2) fin(look.dorsal2, 'top');
   if (look.pelvic) fin({ type: 'tri', from: 0.3, to: 0.42, h: H * 0.28, lean: 1.1, ...look.pelvic }, 'bottom');
   c.pectoral = look.pectoral === null ? null : {
-    u: 0.34, v: 0.25, len: Math.max(2.5, H * 0.38), w: 0.42, angle: 0.5, ...(look.pectoral || {}),
+    u: 0.34, v: 0.42, len: Math.max(2.5, H * 0.32), w: 0.36, angle: 0.55, ...(look.pectoral || {}),
   };
   if (c.pectoral) {
     c.pectoral.R = toRamp(vc(look.pectoral?.color || finHex));
@@ -202,6 +204,11 @@ export function compileLook(look, variant = null) {
   c.opU = look.head?.u ?? clamp(e0.u + (e0.r * 2.1) / L + 0.04, 0.14, 0.38);
   c.nostril = look.head?.nostril ?? true;
   c.preop = look.head?.preop ?? true;
+  if (c.pectoral) {
+    if (look.pectoral?.u == null) c.pectoral.u = c.opU + 0.035;
+    if (look.pectoral?.v == null) c.pectoral.v = 0.42;
+    if (look.pectoral?.len == null) c.pectoral.len = Math.max(2.5, H * 0.32);
+  }
   for (const e of look.moreEyes || []) c.eyes.push(mkEye({ color: look.eye?.color, ...e }, { brow: false }));
   for (const p of c.patterns) if (p.glow) c.glow = true;
   for (const e of c.extras) {
@@ -234,17 +241,19 @@ export function compileLook(look, variant = null) {
 // Geometry (cached per inflate step).
 
 function profile(s, u, inflate) {
-  let peak = s.peak, nose = s.nose, tailW = s.tailW, taper = s.taper;
+  let peak = s.peak, nose = s.nose, tailW = s.tailW, taper = s.taper, tip = s.tip ?? 0.15;
   if (inflate > 0) {
     peak = lerp(peak, 0.5, inflate);
     nose = lerp(nose, 2.4, inflate);
     tailW = lerp(tailW, 0.2, inflate);
     taper = lerp(taper, 1.6, inflate);
+    tip = lerp(tip, 0.25, inflate);
   }
   if (u < 0 || u > 1) return 0;
   if (u <= peak) {
     const t = u / peak;
-    return Math.pow(1 - Math.pow(1 - t, nose), 1 / nose);
+    const round = Math.sqrt(Math.min(1, u / 0.03));
+    return round * (tip + (1 - tip) * (1 - Math.pow(1 - t, nose)));
   }
   const t = (u - peak) / (1 - peak);
   return tailW + (1 - tailW) * Math.pow(0.5 + 0.5 * Math.cos(Math.PI * t), taper);
@@ -262,7 +271,7 @@ function geomOf(c, inflate = 0) {
   for (let i = 0; i <= N + 1; i++) {
     const u = Math.min(1, i / N);
     const pr = profile(c.shape, u, inflate);
-    top[i] = (H / 2) * pr * (1 + c.hump * Math.sin(Math.PI * clamp01(u * 1.4)));
+    top[i] = (H / 2) * pr * (1 + c.hump * Math.sin(Math.PI * clamp01((u - 0.04) / 0.78)));
     bot[i] = (H / 2) * pr * (1 + c.belly * Math.sin(Math.PI * clamp01(u * 1.2)));
   }
   const interp = (arr, u) => {
@@ -552,7 +561,7 @@ function pecPix(c, G, lx, ly, px, py, s, fp, baseY, still) {
   let idx = onRay ? 2.4 : 4.6;
   if (edge) idx = 2.6;
   if (st < 0.12) idx = 2.4;
-  return withA(tone(R, idx, px, py), onRay || edge || st < 0.12 ? 245 : Math.round(255 * Math.min(1, c.finAlpha - 0.12)));
+  return withA(tone(R, idx, px, py), onRay || edge || st < 0.12 ? 235 : Math.round(255 * Math.min(1, c.finAlpha - 0.3)));
 }
 
 // Returns 1 hit, 2 hit+darker, 3 hit+lighter, 0 none. May set patLight.
@@ -816,10 +825,11 @@ function prepExtras(c, G, sw, still, s) {
       }
       case 'whiskers': {
         const len = e.len ?? H * 0.6;
-        q.lines = [0, 1].map((side) => curvePts((t) => [
-          halfL - 0.8 - side * k * 0.8 + Math.sin(t * 2.2) * len * 0.22 - t * t * len * (0.55 + side * 0.15),
-          G.mouthY + H * 0.03 + t * len * (0.5 + side * 0.25) + Math.sin(sw * TAU + t * 3 + side) * t * 0.8 * k * sway,
-        ], 14));
+        const nb = e.count ?? 2;
+        q.lines = Array.from({ length: nb }, (_, side) => curvePts((t) => [
+          halfL + 0.5 - side * k * 0.9 + Math.sin(t * 2.4) * len * 0.42 - t * t * len * (0.62 + side * 0.12),
+          G.mouthY - (side & 1 ? H * 0.12 : -H * 0.02) + t * len * (side & 1 ? -0.15 : 0.55) * (1 + side * 0.2) + Math.sin(sw * TAU + t * 3 + side) * t * 0.8 * k * sway,
+        ], 16));
         q.w = px1 * 0.55;
         q.box = bboxOf(q.lines.flat(), 1.5);
         break;
@@ -1083,8 +1093,8 @@ function bodyPix(c, G, xp, lx, ly, px, py, s, sw, still) {
     const fyPx = (ly - (row - 1000) * rh) * s;
     const fade = hash2(Math.floor((lx + off) / sc), row, 23) < 0.12 + Math.max(0, u - 0.8) * 3 + Math.max(0, v - 0.35) * 2;
     if (!fade) {
-      if (fyPx < 1 && fx > 0.2 && fx < 0.72) idx -= 0.7;
-      else if (fyPx < 2 && (fx > 0.12 && fx <= 0.2 || fx >= 0.72 && fx < 0.8)) idx -= 0.45;
+      if (fyPx < 1 && fx > 0.2 && fx < 0.72) idx -= 0.95;
+      else if (fyPx < 2 && (fx > 0.12 && fx <= 0.2 || fx >= 0.72 && fx < 0.8)) idx -= 0.55;
     }
   }
   // lateral line: light dashes from the operculum to the tail
@@ -1095,7 +1105,7 @@ function bodyPix(c, G, xp, lx, ly, px, py, s, sw, still) {
   // operculum + pre-operculum curves, nostril
   if (c.gills && L * s >= 14 && v > -0.62 && v < 0.85) {
     const du = (u - opU) * L * s;
-    if (du > -0.55 && du < 0.55) idx = Math.min(idx, 1.3);
+    if (du > -0.55 && du < 0.55) { if (R === T.belly) { R = T.body; idx = Math.min(idx, 2); } else idx = Math.min(idx, 1.3); }
     else if (du >= 0.55 && du < 1.6 && v > -0.5 && v < 0.75) idx += 0.55;
     const e0 = c.eyes[0];
     if (c.preop && v > 0.05 && v < 0.8) {
@@ -1556,7 +1566,21 @@ function genericFace(c, G, sw, angle, s, ox, oy, still) {
     const d = sp(u);
     return [Math.round(-d * sa * s), Math.round(d * ca * s)];
   };
+  // gill slit just behind the operculum edge (the rig flares it for breathing)
+  let gill = null;
+  if (c.gills && G.L * s >= 14 && !c.look.noGill) {
+    const pts = [];
+    const n = Math.max(6, Math.ceil(G.H * s * 0.9));
+    for (let i = 0; i <= n; i++) {
+      const v = -0.48 + (i / n) * 1.22;
+      const u = c.opU - 0.05 * v * v + 0.9 / (G.L * s);
+      const yy = sp(u) + v * (v < 0 ? G.halfTop(u) : G.halfBot(u)) * 0.96;
+      pts.push(toC(G.halfL - u * G.L, yy));
+    }
+    gill = { pts, nx: -ca, ny: -sa };
+  }
   return {
+    gill,
     eyes,
     mouth: { x: mx, y: myc, w: c.mouth.w * s, m: c.mouth, front: false, angle },
     anchors,
@@ -1586,6 +1610,27 @@ const EMO = {
   disgust: { lid: -0.42, slant: 0.22, low: 0.48, lowCurve: 0.15, pupil: 0.85, lookX: -0.5, brow: [-1.35, 0.3, 'wavy'], green: true, mouth: { wave: 0.1, tongue: true } },
 };
 export function emotionParams(name) { return EMO[name] || EMO.neutral; }
+
+// Realistic emotion cues for non-cartoon fish: pupil size, look bias, mouth gape, fin raise,
+// breathing (gill flare) rate, twitching and a colour flush [hex, alpha].
+const REAL = {
+  neutral: {},
+  happy: { pupil: 1.05, breath: 0.9 },
+  sad: { pupil: 0.95, ly: 0.45, gape: 0.05, breath: 0.8, flush: ['#5a6a80', 0.12] },
+  angry: { pupil: 0.66, gape: 0.18, raise: 1, breath: 2, flush: ['#3a0810', 0.2] },
+  scared: { pupil: 1.4, gape: 0.2, raise: 1, breath: 3, twitch: 1, flush: ['#e8f4ff', 0.16] },
+  surprised: { pupil: 1.45, gape: 0.42, raise: 1, breath: 1.5 },
+  love: { pupil: 1.3, breath: 1.2, flush: ['#ff6a8a', 0.1] },
+  sleepy: { pupil: 0.8, dim: 0.3, ly: 0.3, breath: 0.45, flush: ['#101828', 0.12] },
+  dizzy: { spin: 1, gape: 0.12, breath: 1.4 },
+  smug: { pupil: 0.9, lx: -0.55 },
+  determined: { pupil: 0.72, gape: 0.08, raise: 1, breath: 1.6, flush: ['#14101c', 0.12] },
+  tired: { pupil: 0.9, ly: 0.35, gape: 0.25, breath: 1.4, flush: ['#7a8aa0', 0.12] },
+  disgust: { pupil: 0.82, lx: -0.6, gape: 0.35, breath: 2.4, flush: ['#6a8a3a', 0.12] },
+};
+export function realCues(name) { return REAL[name] || REAL.neutral; }
+const MOUTH_IN = [P('#12040a'), P('#280a14'), P('#481424'), P('#7a2a3a'), P('#a04a58')];
+const EYE_RING = P('#120c14'), PUPIL_EDGE = P('#2a2234');
 const EXPR_MAP = { sleep: 'sleepy', shock: 'surprised', happy: 'happy', dizzy: 'dizzy', angry: 'angry' };
 
 const SCLERA = [P('#a8b4cc'), P('#c8d2e2'), P('#e6ecf6'), P('#ffffff'), P('#ffffff')];
@@ -1602,8 +1647,21 @@ export const eyeBox = (R) => Math.ceil(R * 2.7 + 5);
  * Paint one eye centred at (cx, cy) in buf. f: {emotion, blink 0..1, lx, ly (look dir, |v|<=1),
  * gx, gy (googly pupil offset), time, mirror, cheek, main}. ang: fish rotation, R: canvas radius.
  */
+function eyeCore(ex, ey, d, R, e, pxo, pyo, pupR, f, x, y) {
+  if (d > 1 - 1 / R) return EYE_RING;
+  const dp = Math.hypot(ex - pxo, ey - pyo);
+  const hr = Math.max(0.5 / R, R >= 3.4 ? 0.28 : 0.3);
+  const hx = -0.34 + pxo * 0.3, hy = -0.36 + pyo * 0.3;
+  if (!f.noGlint && Math.hypot(ex - hx, ey - hy) < hr) return WHITE;
+  if (R >= 4 && !f.noGlint && Math.hypot(ex - 0.3 - pxo * 0.3, ey - 0.32 - pyo * 0.3) < 0.55 / R) return P('#e8eef8');
+  if (dp < pupR) return dp > pupR - 0.9 / R && R >= 3.2 ? PUPIL_EDGE : e.pupil;
+  const b = 0.62 + ey * 0.32 - (dp < pupR + 0.95 / R ? 0.28 : 0) - (f.dim || 0) - (ey < -0.42 ? 0.22 : 0);
+  return rampPick(e.realIris, clamp01(b), x, y);
+}
+
 export function paintEye(buf, glow, cx, cy, c, e, f, ang, R) {
-  const em = EMO[f.emotion] || EMO.neutral;
+  const toon = c.toon || e.type === 'googly' || e.type === 'pixel';
+  const em = toon ? (EMO[f.emotion] || EMO.neutral) : EMO.neutral;
   const hb = eyeBox(R);
   const ca = Math.cos(ang), sa = Math.sin(ang);
   const blink = clamp01(f.blink || 0);
@@ -1618,12 +1676,14 @@ export function paintEye(buf, glow, cx, cy, c, e, f, ang, R) {
   const lm = Math.hypot(lx, ly);
   if (lm > 1) { lx /= lm; ly /= lm; }
   const irisR = e.irisR ? (e.irisSize ?? 0.68) : 0;
-  const pupR = (e.pupilSize ?? (e.irisR ? 0.36 : 0.58)) * (em.pupil || 1);
-  const maxOff = Math.max(0, 1 - Math.max(irisR, pupR) * 0.92 - 0.06);
-  let pxo = lx * maxOff + shake, pyo = ly * maxOff;
+  const pupR = Math.min(0.8, (e.pupilSize ?? 0.52) * (f.pupil || 1) * (toon ? em.pupil || 1 : 1));
+  const maxOff = Math.max(0, 1 - pupR - 0.16);
+  let pxo = lx * maxOff + shake, pyo = ly * maxOff + (toon ? 0 : blink * 0.18);
+  if (!toon && blink > 0.5) f = { ...f, noGlint: true };
+  void irisR;
   if (e.type === 'googly') { pxo = (f.gx ?? 0) * 0.42; pyo = (f.gy ?? 0.42) * 0.42; }
   const closedArc = em.closed === 'arc';
-  const closedBlink = blink >= 0.86;
+  const closedBlink = toon && blink >= 0.86;
   const time = f.time || 0;
   for (let y = y0; y <= y1; y++) {
     for (let x = x0; x <= x1; x++) {
@@ -1647,8 +1707,8 @@ export function paintEye(buf, glow, cx, cy, c, e, f, ang, R) {
           else if (closedBlink) { if (Math.abs(ey - 0.1) < 0.45) col = lidR[0]; }
           else if (em.heart) col = d < 0.95 ? HEART[2] : 0;
           else {
-            col = d < 0.95 ? e.pupil : 0;
-            if (R >= 1.6 && ex < -0.1 && ey < -0.1 && d < 0.75) col = WHITE;
+            col = d < 0.95 ? (d > 0.6 && ey > 0.1 ? rampPick(e.realIris, 0.5, x, y) : e.pupil) : 0;
+            if (R >= 1.6 && ex < -0.1 && ey < -0.1 && d < 0.75 && !f.noGlint) col = WHITE;
             if (e.type === 'glow') { col = d < 0.5 ? WHITE : P(e.glowHex); gl = P(e.glowHex); }
           }
         } else if ((closedArc && e.type !== 'googly') || closedBlink) {
@@ -1660,8 +1720,8 @@ export function paintEye(buf, glow, cx, cy, c, e, f, ang, R) {
           if (col && d > 1 - 1 / R && !(Math.abs(ey - yl) < th * 0.75)) col = closedArc && ey > yl ? 0 : lidR[1];
         } else {
           let yU = (em.lid ?? -0.95) + (em.slant || 0) * mx - 0.12 * (1 - mx * mx);
-          yU = Math.max(yU, -1.05 + 2.1 * blink);
-          let yL = (em.low ?? 1.2) - (em.lowCurve || 0) * mx * mx;
+          yU = toon ? Math.max(yU, -1.05 + 2.1 * blink) : -2;
+          let yL = toon ? (em.low ?? 1.2) - (em.lowCurve || 0) * mx * mx : 2;
           if (e.type === 'googly') { yU = blink ? -1.05 + 2.1 * blink : -2; yL = 2; }
           if (ey < yU) {
             col = Math.abs(ey - yU) < th ? c.mouth.lineP : rampPick(lidR, clamp01(0.62 - ey * 0.3), x, y);
@@ -1690,22 +1750,7 @@ export function paintEye(buf, glow, cx, cy, c, e, f, ang, R) {
             if (e.iris) { const pd = Math.hypot(ex - pxo, ey - pyo); if (pd < 0.22 * (em.pupil || 1)) col = e.pupil; }
             gl = g;
           } else {
-            // open eye: sclera, iris, pupil, highlights
-            col = SCLERA[3];
-            if (ex * 0.5 + ey > 0.55) col = SCLERA[2];
-            if (ey < yU + 0.32 && yU > -1.0) col = SCLERA[2];
-            const pd = Math.hypot(ex - pxo, ey - pyo);
-            if (irisR && pd < irisR) {
-              const IR = e.irisR;
-              col = pd > irisR - 1.1 / R ? IR[0] : rampPick(IR, clamp01(0.35 + (ey - pyo) / irisR * 0.38 - (ey < yU + 0.4 ? 0.2 : 0)), x, y);
-              if (pd < irisR * 0.62 && pd > irisR * 0.45 && hash2(Math.floor(Math.atan2(ey - pyo, ex - pxo) * 4), 1, 3) > 0.6) col = IR[3];
-            }
-            if (pd < pupR) col = pd > pupR - 1 / R && !irisR ? P('#2a2238') : e.pupil;
-            const hr = Math.max(0.75 / R, (irisR || pupR) * 0.26);
-            const hx = pxo - (irisR || pupR) * 0.38, hy = pyo - (irisR || pupR) * 0.42;
-            if (Math.hypot(ex - hx, ey - hy) < hr) col = WHITE;
-            if (R >= 3.5 && Math.hypot(ex - pxo - (irisR || pupR) * 0.42, ey - pyo - (irisR || pupR) * 0.4) < hr * 0.55) col = WHITE;
-            if (d > 1 - 1 / R) col = ey > 0.3 ? SCLERA[0] : P('#3a3048');
+            col = eyeCore(ex, ey, d, R, e, pxo, pyo, pupR, f, x, y);
           }
         }
       } else {
@@ -1715,7 +1760,7 @@ export function paintEye(buf, glow, cx, cy, c, e, f, ang, R) {
           const mr = 1.28 + 0.35 * c.k / R, mt = Math.max(1.2, R * 0.16) / R;
           if (d > mr - mt && d < mr + mt) col = (ex < -0.3 && ey < -0.3) ? P('#fff6c0') : ey > 0.3 ? P('#a87818') : P('#e8c040');
         }
-        const brow = em.brow;
+        const brow = toon ? em.brow : null;
         if (brow && e.brow !== false && R >= 2.4 && (f.main || e.brow) && Math.abs(mx) < 0.95) {
           let by = brow[0] * Math.max(1, wide) + brow[1] * mx;
           if (brow[2] === 'arch') by -= 0.28 * (1 - mx * mx);
@@ -1723,7 +1768,7 @@ export function paintEye(buf, glow, cx, cy, c, e, f, ang, R) {
           const bt = Math.max(1.2, R * 0.24) / R * (1 - 0.35 * Math.abs(mx));
           if (Math.abs(ey - by) < bt) col = lidR[0];
         }
-        if (f.cheek && (em.blush || e.blush) && Math.hypot((mx + 0.35) / 0.9, (ey - 1.5) / 0.4) < 1 && bayer(x, y) < 0.62) col = col || BLUSH;
+        if (f.cheek && (em.blush || (toon && e.blush)) && Math.hypot((mx + 0.35) / 0.9, (ey - 1.5) / 0.4) < 1 && bayer(x, y) < 0.62) col = col || BLUSH;
         if (f.cheek && em.green) for (const gx of [-0.6, -0.15, 0.3]) if (Math.abs(mx - gx) < 0.5 / R + 0.05 && ey > 1.25 && ey < 1.8) col = col || GREEN;
         if (em.bags && ey > 0.95 && ey < 1.4 && Math.abs(Math.hypot(ex, (ey - 0.1) / 1.1) - 1.12) < th * 0.8) col = col || lidR[0];
         if (em.tears && f.cheek) {
@@ -1772,9 +1817,40 @@ export const mouthBox = (W) => Math.ceil(W * 1.25 + 5);
  * Paint a mouth. Side view: tip at (mx, my), extends backwards (-x local). Front view: centred.
  * m: compiled mouth {type, w, lineP, R}, f: {emotion, open 0..1, time}, ang: rotation, W: canvas length.
  */
+// Realistic side-view jaw: closed = jaw line + lip highlight; open = dropped lower jaw, dark gape.
+function realJaw(c, m, t, ux, uy, W, open, sm, x, y) {
+  if (t < -0.02 || t > 1.04) return 0;
+  const tc = clamp01(t);
+  const jaw = W * (m.sag ?? 0.1) * Math.pow(tc, 1.4) - sm * W * 0.3 * tc * tc;
+  const line = m.lineP;
+  const lips = m.type === 'lips';
+  const lipT = lips ? Math.max(1.5, W * 0.22) : 0;
+  if (open > 0.06) {
+    const low = jaw + open * W * 0.55 * Math.pow(1 - tc, 1.1) + 0.5;
+    if (uy > jaw + 0.5 && uy < low) {
+      if ((m.type === 'fangs' || m.teeth) && (uy - jaw < 1.6 || low - uy < 1.4) && (Math.floor(-ux / Math.max(1.5, W * 0.12)) & 1) === 0) return WHITE;
+      return rampPick(MOUTH_IN, clamp01(0.12 + (uy - jaw) / Math.max(1, low - jaw) * 0.3 + (1 - tc) * 0.25), x, y);
+    }
+    if (uy >= low && uy < low + 1.2 + lipT * 0.6 && tc < 0.96) return lips ? rampPick(m.R, 0.5, x, y) : c.bellyR[2];
+    if (Math.abs(uy - jaw) < 0.6) return line;
+    if (lips && uy < jaw && uy > jaw - lipT && tc < 0.55) return rampPick(m.R, 0.7, x, y);
+    return 0;
+  }
+  if (Math.abs(uy - jaw) < 0.6 && t > 0.03) return line;
+  if (lips && tc < 0.5 && Math.abs(uy - jaw) < lipT) return rampPick(m.R, uy < jaw ? 0.75 : 0.45, x, y);
+  if (m.type === 'fangs') {
+    for (const ft of [0.2, 0.55]) {
+      const fl = Math.max(1.5, W * 0.2) * (ft < 0.3 ? 1 : 0.8);
+      if (Math.abs(t - ft) * W < Math.max(0.6, W * 0.05) * (1 - (uy - jaw) / fl) && uy > jaw && uy < jaw + fl) return WHITE;
+    }
+  }
+  if (uy < jaw - 0.6 && uy > jaw - 1.6 && t > 0.08 && t < 0.7) return c.bodyR[4];
+  return 0;
+}
+
 export function paintMouth(buf, mx, my, c, m, f, ang, W, front = false) {
   if (!m || m.type === 'none' || W < 1) return;
-  const em = (EMO[f.emotion] || EMO.neutral).mouth || {};
+  const em = (c.toon ? EMO[f.emotion] || EMO.neutral : EMO.neutral).mouth || {};
   const hb = mouthBox(W);
   const ca = Math.cos(ang), sa = Math.sin(ang);
   let open = clamp01(f.open || 0);
@@ -1806,7 +1882,9 @@ export function paintMouth(buf, mx, my, c, m, f, ang, W, front = false) {
         return yy;
       };
       const type = m.type;
-      if (type === 'lips') {
+      if (!front && (type === 'small' || type === 'big' || type === 'fangs' || type === 'lips')) {
+        col = realJaw(c, m, t, ux, uy, W, open, c.toon ? sm * 0.6 : (m.smile || 0) * 0.6, x, y);
+      } else if (type === 'lips') {
         // pucker / ring lips
         const lx0 = front ? ux : ux + W * 0.05;
         if (open > 0.12 || O) {
