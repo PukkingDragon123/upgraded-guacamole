@@ -138,3 +138,40 @@ st = { x, y, facing: 1|-1, turn: -1..1 (scaleX during turn-around), angle (rad, 
        mouth: 0..1 (open amount; caller animates talking/chomping), time,
        wash: {color, alpha} | null (fog/darkness tint), glow: 0..1 (emissive strength), silhouette: bool }
 ```
+
+## Phase 2 contracts (voxel world, boat, character, fishing remake, building)
+
+Ownership is strict: edit only files your brief lists. Integration hooks below are called defensively
+(`obj?.method?.()`), so modules can land in any order. `src/ui/registry.js` and `src/ui/dock.js` are owned
+by the orchestrator: report panels/buttons you need registered.
+
+### World space & camera (`src/game/camera.js`)
+World y = 0 is the top of the default underwater view; negative y goes up to the surface/sky/boat.
+`camera.scrollY` = world y at the screen top (0 default, negative = scrolled up toward the boat);
+`setScrollRange(min,max)`, `scrollBy(dy)`, `scrollTo(y)`. Cinematics: `focus(x, y, zoom, speed)`,
+`release()`, `setLetterbox(on)`, `drawBars(ctx)`, `slowmo(scale, secs)`, `punch`, `shake`, `flash`.
+`worldToScreen(x,y)`, `screenToWorld(x,y)`, `apply(ctx)` (world transform), `reset(ctx)`.
+`game.world.cursor` is in WORLD coordinates; `game.input` stays in screen coordinates.
+
+### Boat (`src/world/boat.js`, class `Boat`, instance `game.boat`)
+`update(dt, inp)`, `draw(ctx, env)` (world space), `hit(wx, wy)`, `rodTip() -> [wx, wy]`, fields `x`, `y`
+(waterline), `dragging`, `bob`. Drawn on the surface; draggable along the surface with the mouse. The fishing
+line always starts at `boat.rodTip()`. The player character stands on it.
+
+### Character (`src/gfx/character.js`)
+`drawCharacter(ctx, x, y, {pose, t, facing, scale, look, fish})` draws the voxel fisherman with feet at (x,y)
+and returns anchors `{rodTip:[x,y], hands:[x,y], head:[x,y]}`. Poses: `idle, cast, reel, pull, yank, hold,
+cheer, sad, sit, wave`. `look` = `game.state.character` (see `DEFAULT_CHARACTER`, `WARDROBE`). `fish` (for
+`hold`) = `{compiled, variant}` of the caught fish.
+
+### Fish drawing
+`drawFishRig(ctx, compiled, st)` (src/gfx/fishrig.js) stays the single entry point; it renders voxel fish when
+`fishStyle` is 'voxel' (default), pixel rig otherwise (`setFishStyle(style)`).
+
+### Items, packages, building (`src/build/`)
+`items.js`: `ITEMS {id: {name, kind: material|blueprint|decor|bait|cosmetic|package, rarity, desc}}`,
+`addItem(state, id, qty)`, `removeItem`, `countItem`, `rollPackage(species, biome) -> null | {tier}`,
+`openPackage(pkg) -> [{id, qty}]`, `drawPackage(ctx, x, y, tier, t)` (crate a fish carries).
+Save: `state.inventory = {items: {id: qty}, packages: [{uid, tier, from}]}`, `state.buildings = [...]`.
+`build.js`: `class Build` (`game.build`): `update(dt, inp, layer)`, `drawWorld(ctx, env)` (buildings on the
+seabed, world space), `drawUi(ctx)`, `hit(wx, wy)`, `active` (build mode), `toggle()`.

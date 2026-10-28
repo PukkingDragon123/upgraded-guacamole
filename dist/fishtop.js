@@ -33586,6 +33586,20 @@ kTtaatTk
           this.slowScale = 1;
           this.ox = 0;
           this.oy = 0;
+          this.scrollY = 0;
+          this.scrollTarget = 0;
+          this.minScroll = 0;
+          this.maxScroll = 0;
+          this.focusOn = false;
+          this.focusX = 0;
+          this.focusY = 0;
+          this.focusZoom = 1;
+          this.fz = 1;
+          this.fx = 0;
+          this.fy = 0;
+          this.focusSpeed = 4;
+          this.bars = 0;
+          this.barsTarget = 0;
         }
         shake(n) {
           if (this.game.state.settings.reducedMotion) n *= 0.3;
@@ -33609,6 +33623,34 @@ kTtaatTk
         timeScale() {
           return this.slowT > 0 ? this.slowScale : 1;
         }
+        // ---- scroll
+        setScrollRange(min, max) {
+          this.minScroll = min;
+          this.maxScroll = max;
+          this.scrollTarget = clamp(this.scrollTarget, min, max);
+        }
+        scrollBy(dy) {
+          this.scrollTarget = clamp(this.scrollTarget + dy, this.minScroll, this.maxScroll);
+        }
+        scrollTo(y, instant = false) {
+          this.scrollTarget = clamp(y, this.minScroll, this.maxScroll);
+          if (instant) this.scrollY = this.scrollTarget;
+        }
+        // ---- cinematic focus (world point, zoom factor)
+        focus(x, y, zoom = 2, speed = 4) {
+          this.focusOn = true;
+          this.focusX = x;
+          this.focusY = y;
+          this.focusZoom = zoom;
+          this.focusSpeed = speed;
+        }
+        release(speed = 3) {
+          this.focusOn = false;
+          this.focusSpeed = speed;
+        }
+        setLetterbox(on) {
+          this.barsTarget = on ? 1 : 0;
+        }
         update(dt) {
           this.trauma = Math.max(0, this.trauma - dt * 18);
           const s = this.trauma;
@@ -33619,21 +33661,53 @@ kTtaatTk
           this.zoom = damp(this.zoom, this.zoomTarget, this.zoomTarget > this.zoom ? 14 : 5, dt);
           this.flashA = Math.max(0, this.flashA - dt * 4);
           this.slowT = Math.max(0, this.slowT - dt);
+          this.scrollY = damp(this.scrollY, this.scrollTarget, 8, dt);
+          if (Math.abs(this.scrollY - this.scrollTarget) < 0.3) this.scrollY = this.scrollTarget;
+          const W5 = this.game.screen.W, H5 = this.game.screen.H;
+          const tz = this.focusOn ? this.focusZoom : 1;
+          this.fz = damp(this.fz, tz, this.focusSpeed, dt);
+          const tx = this.focusOn ? this.focusX : W5 / 2, ty = this.focusOn ? this.focusY : this.scrollY + H5 / 2;
+          this.fx = damp(this.fx || tx, tx, this.focusSpeed * 1.3, dt);
+          this.fy = damp(this.fy || ty, ty, this.focusSpeed * 1.3, dt);
+          this.bars = damp(this.bars, this.barsTarget, 6, dt);
+        }
+        // Total transform world -> screen: [scale, offsetX, offsetY]
+        xform() {
+          const W5 = this.game.screen.W, H5 = this.game.screen.H;
+          let z = this.fz;
+          let cx = W5 / 2, cy = this.scrollY + H5 / 2;
+          if (z > 1.001) {
+            const k = Math.min(1, (z - 1) / Math.max(1e-3, (this.focusZoom || z) - 1));
+            cx = lerp(cx, this.fx, k);
+            cy = lerp(cy, this.fy, k);
+            cx = clamp(cx, W5 / (2 * z), W5 - W5 / (2 * z));
+          }
+          if (this.zoom > 1.001) z *= this.zoom;
+          return [z, Math.round(W5 / 2 - cx * z + this.ox), Math.round(H5 / 2 - cy * z + this.oy)];
+        }
+        worldToScreen(x, y) {
+          const [z, ox, oy] = this.xform();
+          return [x * z + ox, y * z + oy];
+        }
+        screenToWorld(x, y) {
+          const [z, ox, oy] = this.xform();
+          return [(x - ox) / z, (y - oy) / z];
         }
         // Apply camera transform for world drawing.
         apply(ctx2) {
-          const z = this.zoom;
-          if (z > 1.001) {
-            const W5 = this.game.screen.W, H5 = this.game.screen.H;
-            const fx = clamp(this.zx, W5 / (2 * z), W5 - W5 / (2 * z));
-            const fy = clamp(this.zy, H5 / (2 * z), H5 - H5 / (2 * z));
-            ctx2.setTransform(z, 0, 0, z, Math.round(W5 / 2 - fx * z + this.ox), Math.round(H5 / 2 - fy * z + this.oy));
-          } else if (this.ox || this.oy) {
-            ctx2.setTransform(1, 0, 0, 1, this.ox, this.oy);
-          }
+          const [z, ox, oy] = this.xform();
+          ctx2.setTransform(z, 0, 0, z, ox, oy);
         }
         reset(ctx2) {
           ctx2.setTransform(1, 0, 0, 1, 0, 0);
+        }
+        drawBars(ctx2) {
+          if (this.bars < 0.01) return;
+          const W5 = this.game.screen.W, H5 = this.game.screen.H;
+          const h = Math.round(H5 * 0.11 * this.bars);
+          ctx2.fillStyle = "#05080c";
+          ctx2.fillRect(0, 0, W5, h);
+          ctx2.fillRect(0, H5 - h, W5, h);
         }
         drawFlash(ctx2) {
           if (this.flashA > 0.01) {
