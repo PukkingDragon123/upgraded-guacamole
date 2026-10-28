@@ -42,8 +42,8 @@ shared across modes).
 | Ctrl+Alt+M | Mini mode on/off (returns to the previous mode). |
 | Ctrl+Alt+O | Toggle overlay/window. |
 
-Each key is also delivered to the page through `host.onShortcut` as
-`{id: 'toggle-fishing'|'pause'|'mini'|'cycle-overlay', accelerator, mode, fishing, paused, interactive, nextMode?}`.
+Each key is also delivered to the page through `host.onShortcut((id, detail) => ...)`, where `id` is
+`'toggle-fishing'|'pause'|'mini'|'cycle-overlay'` and `detail` is `{accelerator, mode, fishing, paused, interactive, nextMode?}`.
 The mode keys are sent just before the switch. If another app already holds a key, a warning is logged.
 In a browser the same keys work only while the page has focus.
 
@@ -56,9 +56,9 @@ The tray icon (a generated pixel fish) offers: mode switch, Fishing, Pause, Desk
 ```js
 import { host } from '../platform/host.js';
 host.kind; host.mode; host.transparent; host.clickThrough; host.lowPower; host.canUseRealDesktop;
-host.onCursor(({ x, y, inside, clickThrough }) => { /* CSS px relative to the window, ~30 Hz */ });
+host.onCursor((x, y, { inside, clickThrough }) => { /* CSS px relative to the window, ~30 Hz */ });
 host.setInteractive(overUi || fishing);  // deduped, safe to call every frame
-host.onShortcut((ev) => { /* see table above; also {id:'desktop-access', access} */ });
+host.onShortcut((id, detail) => { /* see table above; also id 'desktop-access' with detail.access */ });
 const items = await host.requestDesktopFiles(); // [{name,title,ext,isDir,isShortcut,path,icon}]
 await host.openPath(item.path);            // only on a deliberate double-click
 host.setMode('mini'); host.setFishing(false); host.quit();

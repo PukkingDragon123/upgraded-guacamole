@@ -32,10 +32,10 @@ export function run() {
     host.setInteractive(st.fishing || inPanel(st.cursor));
   }
 
-  host.onCursor((ev) => moveTo(ev.x, ev.y));
+  host.onCursor((x, y) => moveTo(x, y));
   addEventListener('mousemove', (e) => moveTo(e.clientX, e.clientY));
-  host.onShortcut((ev) => {
-    st.shortcut = `${ev.id} fishing=${ev.fishing} paused=${ev.paused}${ev.nextMode ? ' -> ' + ev.nextMode : ''}`;
+  host.onShortcut((id, ev) => {
+    st.shortcut = `${id} fishing=${ev.fishing} paused=${ev.paused}${ev.nextMode ? ' -> ' + ev.nextMode : ''}`;
     if (typeof ev.fishing === 'boolean') st.fishing = ev.fishing;
   });
 

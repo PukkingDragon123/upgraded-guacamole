@@ -12,9 +12,10 @@
 //   host.setInteractive(on) overlay: take mouse input while the cursor is over game UI or while fishing
 //   host.setFishing(on)     optional: tell the shell fishing started/ended (keeps tray + Ctrl+Alt+F in sync)
 //   host.setMode(mode)      -> Promise<{ok, mode, error?}> (the page reloads in the new mode)
-//   host.onShortcut(cb)     cb({id, accelerator, mode, fishing, paused, interactive, nextMode?}) -> unsubscribe
+//   host.onShortcut(cb)     cb(id, {id, accelerator, mode, fishing, paused, interactive, nextMode?}) -> unsubscribe
 //                           ids: 'toggle-fishing' | 'pause' | 'mini' | 'cycle-overlay' | 'desktop-access'
-//   host.onCursor(cb)       cb({x, y, screenX, screenY, inside, clickThrough}) ~30 Hz -> unsubscribe
+//   host.onCursor(cb)       cb(x, y, {x, y, screenX, screenY, inside, clickThrough}) ~30 Hz, CSS px relative
+//                           to the window; overlay/wallpaper only (Electron) -> unsubscribe
 //   host.requestDesktopFiles() -> Promise<[{name, title, ext, isDir, isShortcut, path, icon}]> ([] on web/denied)
 //   host.openPath(path)     -> Promise<{ok, error?}> (only listed Desktop items, only with permission)
 //   host.quit()
@@ -46,10 +47,10 @@ let webPaused = false;
 let keysHooked = false;
 let cursorOff = null;
 
-function emit(set, payload) {
+function emit(set, ...args) {
   for (const cb of [...set]) {
     try {
-      cb(payload);
+      cb(...args);
     } catch (err) {
       console.error(err);
     }
@@ -58,8 +59,9 @@ function emit(set, payload) {
 
 if (bridge) {
   bridge.onShortcut((ev) => {
-    if (ev && typeof ev.interactive === 'boolean') interactive = ev.interactive;
-    emit(shortcutCbs, ev);
+    if (!ev || typeof ev.id !== 'string') return;
+    if (typeof ev.interactive === 'boolean') interactive = ev.interactive;
+    emit(shortcutCbs, ev.id, ev);
   });
 }
 
@@ -87,7 +89,7 @@ function onWebKey(e) {
   const ev = { id, accelerator, mode, fishing: webFishing, paused: webPaused, interactive: true };
   if (id === 'mini') ev.nextMode = mode === 'mini' ? 'window' : 'mini';
   if (id === 'cycle-overlay') ev.nextMode = mode === 'overlay' ? 'window' : 'overlay';
-  emit(shortcutCbs, ev);
+  emit(shortcutCbs, id, ev);
 }
 
 function hookWebKeys() {
@@ -134,7 +136,7 @@ export const host = {
   onCursor(cb) {
     if (typeof cb !== 'function') return () => {};
     cursorCbs.add(cb);
-    if (bridge && cursorCbs.size === 1) cursorOff = bridge.onCursor((ev) => emit(cursorCbs, ev));
+    if (bridge && cursorCbs.size === 1) cursorOff = bridge.onCursor((ev) => ev && emit(cursorCbs, ev.x, ev.y, ev));
     return () => {
       cursorCbs.delete(cb);
       if (!cursorCbs.size && cursorOff) {

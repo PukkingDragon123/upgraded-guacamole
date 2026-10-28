@@ -48,6 +48,8 @@ export class Game {
     this.time = 0;
     this.timeScale = 1; this.timeScaleTarget = 1;
     this.paused = false;
+    this.overlayFishing = false;
+    this.interactive = null;
     this.muted = false;
     this.mini = this.mode === 'mini';
     this.lowPower = this.mini || !!this.state.settings.lowPower;
@@ -111,10 +113,14 @@ export class Game {
   }
 
   bindHost() {
-    host.onShortcut?.((s) => {
-      if (s === 'toggle-fishing') this.command('pause');
-      if (s === 'pause') this.command('pause');
-      if (s === 'mini') this.command('mini');
+    host.onShortcut?.((id, ev) => {
+      if (id === 'toggle-fishing') {
+        this.overlayFishing = !this.overlayFishing;
+        this.toast(this.overlayFishing ? 'Fishing ON - your mouse is a hook.' : 'Fishing OFF - clicks go to your desktop.', 'hook');
+      }
+      if (id === 'pause') this.command('pause');
+      if (id === 'mini') this.command('mini');
+      if (id === 'cycle-overlay' && ev?.nextMode) host.setMode(ev.nextMode);
     });
     host.onCursor?.((x, y) => {
       const [lx, ly] = this.screen.toLogical(x, y);
@@ -318,7 +324,6 @@ export class Game {
         break;
       case 'pause':
         this.paused = !this.paused;
-        host.setInteractive?.(!this.paused);
         this.toast(this.paused ? 'Fishing paused. Your desktop is all yours.' : 'Fishing resumed!', this.paused ? 'pause' : 'play');
         if (this.paused && this.fishing.busy) this.fishing.releaseFish(true);
         break;
@@ -447,6 +452,11 @@ export class Game {
     if (this.desktop.drag && !fighting) layer = 'drag';
     if (this.mini) layer = this.aquarium.hit?.(inp.x, inp.y) ? 'tank' : 'mini';
     this.layer = layer;
+    // Desktop overlay (Electron): stay click-through unless fishing or the pointer is on game UI.
+    if (host.clickThrough) {
+      const want = this.mode === 'overlay' && ((this.overlayFishing && !this.paused) || this.fishing.busy || layer === 'ui' || this.ui.blocking || !!this.desktop.drag);
+      if (want !== this.interactive) { this.interactive = want; host.setInteractive(want); }
+    }
     cur.inWorld = (layer === null || fighting) && this.state.view === 'ocean' && inp.inside;
 
     if (!this.mini && layer !== 'tutorial') {
@@ -460,7 +470,7 @@ export class Game {
       for (const f of inp.files.slice(0, 3)) this.addFileBait(f.name, f.isDir);
     }
 
-    const worldInput = (layer === null || fighting) && this.state.view === 'ocean' && !this.mini && (this.ocean.reveal >= 1 || this.tutorial.allowFishing) && !this.ocean.travelState;
+    const worldInput = (layer === null || fighting) && this.state.view === 'ocean' && !this.mini && (!host.clickThrough || this.overlayFishing || fighting) && (this.ocean.reveal >= 1 || this.tutorial.allowFishing) && !this.ocean.travelState;
     // double-clicking a posing Shortcut Fish unmasks it
     if (worldInput && inp.dblclick && !fighting) {
       for (const f of this.school.fishes) if (f.posing && dist(f.x, f.y, inp.x, inp.y) < 18) { f.unmask(); inp.consume(); }
