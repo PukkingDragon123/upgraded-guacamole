@@ -110,7 +110,7 @@ add({
   id: 'guppy', name: 'Fancy Guppy', biome: 'shallows', rarity: 'common',
   size: [3, 6], weight: [0.01, 0.04],
   look: {
-    body: { len: 22, h: 10, shape: 'torpedo', tip: 0.2 },
+    body: { len: 26, h: 12, shape: 'torpedo', tip: 0.2 },
     col: { body: '#9ac8e0', belly: '#eef8ff', back: '#4a7aa0', fin: '#ff5aa8' },
     shade: { back: -0.3, belly: 0.35 },
     pattern: [{ type: 'spots', color: '#2a3a7a', size: 1.2, density: 0.4, umin: 0.45 }],
@@ -206,17 +206,17 @@ add({
   size: [6, 10], weight: [0.06, 0.2],
   look: {
     toon: true,
-    body: { len: 34, h: 16, shape: 'torpedo' },
-    col: { body: '#4a5468', belly: '#7a849a', back: '#2e3446', fin: '#3e4658' },
+    body: { len: 36, h: 18, shape: 'torpedo', tip: 0.22 },
+    col: { body: '#6a7890', belly: '#9aa6bc', back: '#465268', fin: '#56637a' },
     shade: { back: -0.35, belly: 0.3 },
-    pattern: [{ type: 'suit', color: '#f4f4f0' }],
-    tail: { type: 'truncate', len: 9, spread: 7 },
-    dorsal: { type: 'tri', from: 0.42, to: 0.64, h: 5 },
-    pelvic: { from: 0.42, to: 0.5, h: 3 },
-    pectoral: { len: 5 },
-    eye: { r: 2.8, u: 0.14, v: -0.28, iris: '#9aa8c0' },
+    pattern: [{ type: 'suit', color: '#f6f6f2' }],
+    tail: { type: 'truncate', len: 10, spread: 8 },
+    dorsal: { type: 'tri', from: 0.42, to: 0.64, h: 6 },
+    pelvic: { from: 0.42, to: 0.5, h: 4 },
+    pectoral: { len: 6 },
+    eye: { r: 2.8, u: 0.14, v: -0.28, iris: '#c8d0e0' },
     mouth: { type: 'small', v: 0.2 },
-    extras: [{ type: 'tie', color: '#d8283a', color2: '#a01426', u: 0.25 }, { type: 'briefcase' }],
+    extras: [{ type: 'tie', color: '#e8283a', color2: '#9a1022', u: 0.25 }, { type: 'briefcase', draw: true, u: 0.42 }],
     scales: false,
   },
   scale: 1,
@@ -343,19 +343,19 @@ add({
   id: 'angel', name: 'Halo Angelfish', biome: 'shallows', rarity: 'rare',
   size: [10, 20], weight: [0.1, 0.4],
   look: {
-    body: { len: 30, h: 30, shape: 'disc', nose: 1.6, tip: 0.16 },
-    col: { body: '#e8eaf2', belly: '#ffffff', back: '#b8bcd8', fin: '#dfe2f0' },
-    shade: { back: -0.45, belly: 0.4 },
-    pattern: [{ type: 'bars', at: [0.24, 0.52, 0.8], width: 0.05, tone: -3.4, bottom: 1 }],
-    dorsal: { type: 'sail', from: 0.18, to: 0.6, h: 26, lean: 1.5 },
-    anal: { type: 'sail', from: 0.25, to: 0.66, h: 24, lean: 1.4 },
-    pelvic: { from: 0.22, to: 0.28, h: 22, lean: 0.9 },
-    tail: { type: 'lyre', len: 15, spread: 13 },
+    body: { len: 32, h: 34, shape: 'disc', nose: 1.5, tip: 0.14, peak: 0.42, tailW: 0.24 },
+    col: { body: '#e6e8f2', belly: '#fbfbff', back: '#a8aed0', fin: '#cfd4ea' },
+    shade: { back: -0.5, belly: 0.35 },
+    pattern: [{ type: 'bars', at: [0.2, 0.5, 0.8], width: 0.045, tone: -3.4, bottom: 1, slant: 0 }, { type: 'stripes', color: '#e8c050', at: [-0.82], width: 0.12, from: 0.05, to: 0.4 }],
+    dorsal: { type: 'trail', from: 0.16, to: 0.66, h: 30, lean: 1.35, color: '#c8cce4' },
+    anal: { type: 'trail', from: 0.24, to: 0.7, h: 28, lean: 1.3, color: '#c8cce4' },
+    pelvic: { type: 'trail', from: 0.2, to: 0.27, h: 26, lean: 0.75, rays: false, color: '#e8e8f4' },
+    tail: { type: 'lyre', len: 16, spread: 14, color: '#d8dcf0' },
     pectoral: { len: 7 },
-    eye: { r: 3.2, u: 0.16, iris: '#d84a3a' },
+    eye: { r: 3.2, u: 0.15, iris: '#d84a3a' },
     mouth: { type: 'small', v: 0.05 },
-    extras: [{ type: 'halo', color: '#ffe066', glow: true, u: 0.34, h: 16 }],
-    scales: false, finAlpha: 0.82,
+    extras: [{ type: 'halo', color: '#ffe066', glow: true, u: 0.34, h: 14 }],
+    scales: true, scaleSize: 3, finAlpha: 0.88,
   },
   scale: 1,
   move: { style: 'swim', speed: 10, burst: 40, agility: 3, depth: [0.15, 0.55], school: 0 },
@@ -1527,6 +1527,33 @@ add({
   shinyHue: 240,
 });
 
+// Native size pass: looks above are authored compact; grow them (more pixels, not upscaled pixels).
+// Typical fish ~1.3x (60-90 px), tiny ones more, big fish/bosses less, desktop-icon mimics unchanged.
+const GROW = {
+  pixel: 1.75, loafer: 1.4, guppy: 1.3, briefcase: 1.2, spam: 1.2, lanternfish: 1.2, hatchet: 1.25, glitchminnow: 1.25, bitfish: 1.3,
+  koi: 1.12, grouper: 1.12, usbfish: 1.08, gulper: 1.08, dragonfish: 1.1, ghostshark: 1.15, parrot: 1.15, betta: 1.2,
+  sunfish: 1, bsod: 1, manyeyes: 1, shortcut: 1,
+  clickcrab: 1.2, mechacrab: 1.2, purin: 1.25, seahorse: 1.12, floppyray: 1.2, binblob: 1.2, blobfish: 1.2,
+  isopod: 1.2, glowjelly: 1.25, vampsquid: 1.15, dumbo: 1.2, cableeel: 1.2, noodle: 1.15,
+};
+const GROW_KEYS = ['len', 'h', 'spread', 'r', 'w', 'reach', 'size', 'spacing', 'rx', 'ry', 'scaleSize', 'spikes', 'tentacles', 'curl', 'thick'];
+function grow(o, f, eyeF, key = '') {
+  if (Array.isArray(o)) return o.map((v) => grow(v, f, eyeF, key));
+  if (!o || typeof o !== 'object') return o;
+  const out = {};
+  for (const [k, v] of Object.entries(o)) {
+    if (typeof v === 'number' && GROW_KEYS.includes(k)) out[k] = +(v * (k === 'r' && (key === 'eye' || key === 'moreEyes') ? f * eyeF : f)).toFixed(2);
+    else if (typeof v === 'object') out[k] = grow(v, f, eyeF, k);
+    else out[k] = v;
+  }
+  return out;
+}
+for (const sp of S) {
+  const f = GROW[sp.id] ?? 1.3;
+  if (f !== 1) sp.look = grow(sp.look, f, sp.look.kind ? 1 : 1.08);
+}
+
+export { grow as growLook };
 export const SPECIES = S;
 export const SPECIES_BY_ID = Object.fromEntries(S.map((s) => [s.id, s]));
 export const SPECIES_BY_BIOME = {

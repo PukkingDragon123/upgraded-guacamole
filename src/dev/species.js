@@ -10,7 +10,7 @@ import { rasterLayer, rigGeom, rigLayers } from '../gfx/fishart.js';
 import { ctxOf } from '../core/canvas.js';
 import { drawText } from '../gfx/font.js';
 import { RARITY } from '../core/color.js';
-import { SPECIES, SPECIES_BY_ID } from '../fish/species.js';
+import { SPECIES, SPECIES_BY_ID, growLook } from '../fish/species.js';
 
 const W = 960, H = 540;
 const BIOMES = ['shallows', 'junkyard', 'abyss'];
@@ -41,8 +41,8 @@ export const REF_LOOKS = [
     shade: { back: -0.5, belly: 0.4 }, scaleSize: 3.6,
     tail: { type: 'fork', len: 11, spread: 10, color: '#8a9aac' },
     dorsal: { type: 'tri', from: 0.4, to: 0.58, h: 8, color: '#4a5060' },
-    anal: { type: 'tri', from: 0.62, to: 0.8, h: 5 },
-    pelvic: { from: 0.4, to: 0.48, h: 5, color: '#9aaabc' },
+    anal: { type: 'tri', from: 0.62, to: 0.8, h: 5, color: '#d8705a' },
+    pelvic: { from: 0.4, to: 0.48, h: 5, color: '#e0785a' },
     pectoral: { len: 5 },
     eye: { r: 2.8, u: 0.12, iris: '#e8902a' },
     mouth: { type: 'small', v: 0.4, line: '#c86a6a' }, } },
@@ -58,10 +58,10 @@ export const REF_LOOKS = [
     eye: { r: 3.6, u: 0.14, v: 0.0, iris: '#3a2418', pupilSize: 0.62 },
     mouth: { type: 'small', v: 0.45 }, } },
   { id: 'catfish', look: {
-    body: { len: 60, h: 17, shape: 'blunt', nose: 3, peak: 0.3, tailW: 0.4, taper: 0.8, tip: 0.5, hump: -0.05 },
-    col: { body: '#4e4650', back: '#2a262c', belly: '#e2d6ba', fin: '#4a4650' },
-    shade: { back: -0.15, belly: 0.25 }, scales: false,
-    pattern: [{ type: 'patches', color: '#2a242a', threshold: 0.6, freq: 0.3, vmax: 0.3 }],
+    body: { len: 60, h: 21, shape: 'blunt', nose: 2.6, peak: 0.34, tailW: 0.42, taper: 0.8, tip: 0.5, hump: 0.04, belly: 0.06 },
+    col: { body: '#5a525c', back: '#2a262c', belly: '#e2d6ba', fin: '#4a4650' },
+    shade: { back: -0.1, belly: 0.3 }, scales: false,
+    pattern: [{ type: 'patches', threshold: 0.55, freq: 0.45, vmax: 0.4, tone: -1.6, body: true }, { type: 'speckle', density: 0.06, tone: 1.4, vmax: 0.25 }],
     tail: { type: 'truncate', len: 11, spread: 10, color: '#5a5a62' },
     dorsal: { type: 'tri', from: 0.28, to: 0.4, h: 12, color: '#3a363c' },
     dorsal2: { type: 'round', from: 0.8, to: 0.88, h: 3, rays: false },
@@ -70,11 +70,11 @@ export const REF_LOOKS = [
     pectoral: { len: 6 },
     eye: { r: 2.3, u: 0.1, v: -0.25, iris: '#f0b020' },
     mouth: { type: 'big', v: 0.3 },
-    extras: [{ type: 'whiskers', len: 15, count: 3, color: '#3a3238', color2: '#7a6a72' }], } },
+    extras: [{ type: 'whiskers', len: 24, count: 4, color: '#2e282e', color2: '#6a5a62' }], } },
   { id: 'salmon', look: {
-    body: { len: 60, h: 21, shape: 'torpedo', hump: 0.4, peak: 0.42, nose: 1.2, tip: 0.14 },
-    col: { body: '#c4382a', back: '#a8281e', belly: '#7a3a34', fin: '#b0302a', head: '#6c7a2c' },
-    shade: { back: -0.4, belly: 0.5 },
+    body: { len: 62, h: 21, shape: 'torpedo', hump: 0.62, peak: 0.44, nose: 1.15, tip: 0.14 },
+    col: { body: '#c83a2a', back: '#a8261c', belly: '#7a3430', fin: '#b8322a', head: '#6c7c2c' },
+    shade: { back: -0.4, belly: 0.5 }, head: { u: 0.24 },
     pattern: [{ type: 'patches', color: '#4a1a18', threshold: 0.55, freq: 0.35, vmin: 0.2 }],
     tail: { type: 'fork', len: 14, spread: 12, color: '#c8c03a' },
     dorsal: { type: 'tri', from: 0.42, to: 0.58, h: 8 },
@@ -83,7 +83,8 @@ export const REF_LOOKS = [
     pelvic: { from: 0.45, to: 0.53, h: 5 },
     pectoral: { len: 6 },
     eye: { r: 2.4, u: 0.11, iris: '#7a6a8a' },
-    mouth: { type: 'big', v: 0.45, teeth: true, sag: 0.25 }, } },
+    mouth: { type: 'big', v: 0.45, teeth: true, sag: 0.25 },
+    extras: [{ type: 'kype', len: 5 }], } },
   { id: 'pike', look: {
     body: { len: 74, h: 14, shape: 'pointy', nose: 1.05, peak: 0.5, tailW: 0.42, taper: 0.6, tip: 0.12 },
     col: { body: '#8a963a', back: '#45521a', belly: '#e8e2b4', fin: '#c87a42' },
@@ -325,19 +326,20 @@ function drawBaked(g, t, frozen) {
   });
 }
 
+const REF_GROWN = REF_LOOKS.map((r) => ({ ...r, look: growLook(r.look, 1.3, 1.1) }));
 function drawRef(g, t, frozen, params) {
   g.fillStyle = '#5c6e80'; g.fillRect(0, 0, W, H);
   const sc = Number(params.get('rs') || 1);
-  REF_LOOKS.forEach((r, i) => {
+  REF_GROWN.forEach((r, i) => {
     const c = compiled(r.look, null, 'ref-' + r.id);
-    const x = 120 + (i % 2) * 220, y = 70 + Math.floor(i / 2) * 110;
+    const x = 130 + (i % 2) * 240, y = 76 + Math.floor(i / 2) * 124;
     drawFishRig(g, c, { x, y, scale: sc, time: frozen ? 0 : t, swimPhase: frozen ? 0.2 : t, tailPhase: frozen ? 0.1 : t * 1.4, finPhase: frozen ? 0.3 : t, emotion: 'neutral' });
-    drawText(g, r.id, x, y + 40, { font: 'small', align: 'center', color: '#ffffff', shadow: '#000' });
+    drawText(g, r.id, x, y + 48, { font: 'small', align: 'center', color: '#ffffff', shadow: '#000' });
   });
   // emotion cues on two realistic fish
-  const per = compiled(REF_LOOKS[6].look, null, 'ref-perch'), gold = compiled(REF_LOOKS[2].look, null, 'ref-goldfish');
+  const per = compiled(REF_GROWN[6].look, null, 'ref-perch'), gold = compiled(REF_GROWN[2].look, null, 'ref-goldfish');
   EMOTIONS.forEach((e, j) => {
-    const x = 560 + (j % 4) * 100, y = 60 + Math.floor(j / 4) * 120;
+    const x = 580 + (j % 4) * 100, y = 60 + Math.floor(j / 4) * 120;
     drawFishRig(g, j & 1 ? gold : per, { x, y, time: frozen ? j * 0.37 : t, swimPhase: frozen ? 0.2 : t, emotion: e, mouth: 0 });
     drawText(g, e, x, y + 38, { font: 'small', align: 'center', color: '#ffe9a8', shadow: '#000' });
   });

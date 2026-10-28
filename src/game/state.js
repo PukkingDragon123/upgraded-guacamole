@@ -26,7 +26,7 @@ export function defaultState() {
     stats: { caught: 0, escaped: 0, snapped: 0, released: 0, coinsCollected: 0, playTime: 0, casts: 0 },
     settings: {
       master: 0.8, music: 0.55, sfx: 0.8, ambience: 0.6,
-      oceanOpacity: 1, dayCycle: 'real', reducedMotion: false, lowPower: false,
+      oceanOpacity: 1, overlayOpacity: 0.25, dayCycle: 'real', reducedMotion: false, lowPower: false,
       showFps: false, wallpaper: 'ocean', browserFish: true, hints: true,
     },
     view: 'ocean', // 'ocean' | 'aquarium'

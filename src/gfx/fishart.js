@@ -397,6 +397,7 @@ function finShape(type, t, phase, count) {
     case 'long': return Math.min(1, t * 6, (1 - t) * 5);
     case 'round': return Math.sqrt(Math.max(0, 1 - (2 * t - 1) ** 2));
     case 'wave': return Math.min(1, t * 5, (1 - t) * 4) * (0.72 + 0.28 * Math.sin(t * 9 - phase * TAU * 2));
+    case 'trail': return t < 0.84 ? Math.pow(t / 0.84, 0.75) : Math.pow((1 - t) / 0.16, 0.55);
     case 'tri':
     default:
       return t < 0.28 ? t / 0.28 : Math.pow((1 - t) / 0.72, 0.85);
@@ -957,6 +958,26 @@ function prepExtras(c, G, sw, still, s) {
         q.box = bboxOf(q.pts, 1.5);
         break;
       }
+      case 'kype': {
+        const rad = e.len ?? H * 0.22;
+        const x0 = halfL - L * 0.02, y0 = G.mouthY - H * 0.14;
+        q.pts = curvePts((t) => { const a = -Math.PI / 2 + t * 2.3; return [x0 + Math.cos(a) * rad, y0 + rad + Math.sin(a) * rad]; }, 16);
+        q.wid = (t) => Math.max(px1 * 0.7, H * (0.12 - 0.08 * t));
+        q.jaw = curvePts((t) => [halfL - L * 0.14 + t * (L * 0.14 + rad * 0.5), G.mouthY + H * 0.16 - t * H * 0.08], 10);
+        q.jw = Math.max(px1 * 0.7, H * 0.055);
+        q.box = bboxOf([...q.pts, ...q.jaw], H * 0.14 + 1);
+        break;
+      }
+      case 'briefcase': {
+        if (!e.draw) break;
+        const u0 = e.u ?? 0.3;
+        q.bw = e.w ?? H * 0.95; q.bh = q.bw * 0.62;
+        q.cx = halfL - L * u0;
+        q.top = G.halfBot(u0) + Math.max(1.5, H * 0.16) + Math.sin(sw * TAU) * 0.4 * sway;
+        q.hy = G.halfBot(u0) - 0.5;
+        q.box = [q.cx - q.bw / 2 - 1, q.hy - 1, q.cx + q.bw / 2 + 1, q.top + q.bh + 1];
+        break;
+      }
       case 'mustache': {
         const len = e.len ?? L * 0.26, rc = e.curl ?? H * 0.075;
         const x0 = halfL - L * 0.02, y0 = G.mouthY - H * 0.05;
@@ -984,6 +1005,18 @@ function overlayPix(c, xp, lx, ly, px, py, s, G) {
   for (const q of xp) {
     const e = q.e;
     switch (e.type) {
+      case 'kype': {
+        if (!inBox(q.box, lx, ly)) break;
+        let d2 = polyDist2(q.pts, lx, ly);
+        const w = q.wid(pdT);
+        if (d2 < w * w) {
+          const R = c.T.head || c.T.body;
+          return tone(R, 3.4 - pdT * 1.4 - (ly > q.pts[Math.round(pdT * 16)][1] ? 0.8 : 0), px, py);
+        }
+        d2 = polyDist2(q.jaw, lx, ly);
+        if (d2 < q.jw * q.jw) return tone(c._jawR || (c._jawR = c.R7(c.vc(e.color || '#e8e0c8', 'extra'))), 4 - pdT * 0.8, px, py);
+        break;
+      }
       case 'clownnose': {
         const dx = lx - q.cx, dy = ly - q.cy;
         const d = Math.hypot(dx, dy);
@@ -1369,6 +1402,23 @@ function freePix(c, G, xp, lx, ly, px, py, s, sw, still) {
         if (polyDist2(q.pts, lx, ly) < q.w * q.w + 0.1 && (Math.floor(pdT * 22) & 1) === 0) return e.P || P('#e8c040');
         break;
       }
+      case 'briefcase': {
+        if (!e.draw) break;
+        const x = lx - q.cx, y = ly - q.top;
+        const hw = q.bw / 2;
+        const B = c._caseR || (c._caseR = c.R7(c.vc(e.color || '#7a4422', 'extra')));
+        // handle
+        if (y < 0 && ly > q.hy && Math.abs(Math.abs(x) - hw * 0.28) < 0.6 / s) return B[2];
+        if (y < -Math.max(1, q.bh * 0.12) && y > -Math.max(1, q.bh * 0.12) - 1 / s && Math.abs(x) < hw * 0.28) return B[2];
+        if (y >= 0 && y <= q.bh && Math.abs(x) <= hw) {
+          const ex = hw - Math.abs(x), ey = Math.min(y, q.bh - y);
+          if (ex < 0.7 && ey < 0.7) return 0;
+          if (Math.abs(x) < Math.max(0.6, q.bw * 0.06) && y < q.bh * 0.3 && y > q.bh * 0.08) return P(c.vc('#ffd23a', 'extra'));
+          if (Math.abs(y - q.bh * 0.3) < 0.5 / s) return B[3];
+          return tone(B, 3.8 - y / q.bh * 1.5 - (x > hw * 0.7 ? 0.6 : 0) + (y < 1 / s ? 1 : 0), px, py);
+        }
+        break;
+      }
       default:
         break;
     }
@@ -1467,6 +1517,8 @@ function genericExtent(c, G) {
       case 'usb': exFront = Math.max(exFront, (e.len ?? L * 0.42) * 1.1); break;
       case 'clownnose': exFront = Math.max(exFront, (e.r ?? H * 0.11) * 1.2); break;
       case 'monocle': exBot = Math.max(exBot, c.eyes[0].r * 3); break;
+      case 'briefcase': if (e.draw) exBot = Math.max(exBot, (e.w ?? H * 0.95) * 0.62 + H * 0.2 + 2); break;
+      case 'kype': exFront = Math.max(exFront, (e.len ?? H * 0.22) + 2); exBot = Math.max(exBot, H * 0.2); break;
       default: break;
     }
   }

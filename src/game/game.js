@@ -86,10 +86,11 @@ export class Game {
     this.bindGlobal();
     this.saveT = 10;
     this.offline();
-    if (!this.state.tutorialDone && !params.has('skipintro')) this.tutorial.start();
+    // the opening plays on the simulated desktop; the real-desktop overlay starts straight in the ocean
+    if (!this.state.tutorialDone && !params.has('skipintro') && !this.overlay) this.tutorial.start();
     else {
       this.ocean.reveal = 1;
-      if (params.has('skipintro') && !this.state.tutorialDone) this.tutorial.skip();
+      if (!this.state.tutorialDone) this.tutorial.skip();
     }
     window.FISHTOP = this;
   }
@@ -448,7 +449,7 @@ export class Game {
     let layer = null;
     if (this.tutorial.capturesInput?.()) layer = 'tutorial';
     else if (this.ui.hit(inp.x, inp.y) && !fighting) layer = 'ui';
-    else if (!fighting) layer = this.aquarium.hit?.(inp.x, inp.y) ? 'tank' : this.desktop.hit(inp.x, inp.y);
+    else if (!fighting) layer = this.aquarium.hit?.(inp.x, inp.y) ? 'tank' : this.overlay ? (this.desktop.overBox(inp.x, inp.y) ? 'box' : null) : this.desktop.hit(inp.x, inp.y);
     if (this.desktop.drag && !fighting) layer = 'drag';
     if (this.mini) layer = this.aquarium.hit?.(inp.x, inp.y) ? 'tank' : 'mini';
     this.layer = layer;
@@ -514,9 +515,14 @@ export class Game {
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
     if (this.mini) { this.drawMini(ctx, dt); return; }
+    const realDesktop = this.overlay; // Electron overlay / wallpaper: the real desktop replaces the simulated one
+    if (realDesktop) ctx.clearRect(0, 0, W, H);
 
     const ocean = this.ocean;
     const view = this.state.view;
+    // adjustable transparency: overlay shows the real desktop through the water; on web the classic wallpaper
+    const opacity = this.mode === 'overlay' ? this.state.settings.overlayOpacity ?? 0.25 : this.state.settings.oceanOpacity ?? 1;
+    if (!realDesktop && opacity < 1 && view === 'ocean') this.wallpaper.draw(ctx, dt);
     this.camera.apply(ctx);
     let L = { dark: 0, tint: '#000000', lights: [] };
     if (view === 'aquarium') {
@@ -530,13 +536,17 @@ export class Game {
       if (ocean.reveal < 1) this.wallpaper.draw(ctx, dt);
       if (ocean.reveal > 0) {
         if (ocean.reveal < 1) { ctx.save(); this.wallpaper.clipOcean(ctx); }
+        ctx.globalAlpha = opacity;
         ocean.biome.drawBack(ctx, env);
         L = ocean.lighting();
+        ctx.globalAlpha = 1;
         this.drawFishRange(ctx, sorted, 0.66, 2, L);
+        ctx.globalAlpha = opacity;
         ocean.biome.drawSeabed(ctx, env);
+        ctx.globalAlpha = 1;
         this.drawFishRange(ctx, sorted, 0.33, 0.66, L);
         this.particles.draw(ctx, 'bg', this.time);
-        ocean.applyLighting(ctx, L);
+        if (!realDesktop) ocean.applyLighting(ctx, L);
         if (ocean.reveal < 1) { ctx.restore(); this.wallpaper.drawWaterline(ctx); }
       } else {
         this.drawFishRange(ctx, sorted, 0.33, 2, L);
@@ -545,7 +555,7 @@ export class Game {
     this.camera.reset(ctx);
 
     // desktop icons sit above the ocean (kept readable)
-    if (view === 'ocean' || view === 'aquarium') {
+    if ((view === 'ocean' || view === 'aquarium') && !realDesktop) {
       this.baitFx.drawUnderIcons(ctx);
       this.desktop.drawIcons(ctx);
       if (this.tutorial.boxVisible()) this.desktop.drawBox(ctx, this.tutorial.boxOffset());
@@ -564,11 +574,15 @@ export class Game {
     this.camera.reset(ctx);
 
     this.tutorial.drawWorld?.(ctx);
+    if (this.mode === 'wallpaper') return;
+    if (realDesktop) this.desktop.drawBox(ctx);
     this.dock.draw(ctx, dt);
     this.aquarium.drawWindow?.(ctx, dt);
-    this.desktop.drawWindows(ctx);
-    this.desktop.drawDragged(ctx);
-    this.desktop.drawTaskbar(ctx);
+    if (!realDesktop) {
+      this.desktop.drawWindows(ctx);
+      this.desktop.drawDragged(ctx);
+      this.desktop.drawTaskbar(ctx);
+    }
     this.fishing.drawHud(ctx);
     this.ui.drawHud(ctx, dt);
     ocean.drawTitleCard(ctx, dt);
