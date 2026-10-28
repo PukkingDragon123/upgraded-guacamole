@@ -19746,6 +19746,36 @@ are just virtual copies - Restore All Icons anytime.`;
           this.prevCursor = null;
           this.world = this.makeWorld();
           this.load();
+          this.warm = ["window", "full"];
+        }
+        // Background warm-up: one heavy job per frame (backdrop art, then plant frames) so the first
+        // switch between views does not hitch.
+        prewarm() {
+          if (!this.warmJobs) this.warmJobs = [];
+          if (!this.warmJobs.length && this.warm.length) {
+            const key = this.warm.shift();
+            if (this.game.mini && key === "full") return;
+            const v = this.buildView(key);
+            this.warmJobs.push(() => this.artFor(v));
+            for (const p of v.plants) this.warmJobs.push(() => {
+              if (!p.frames) p.frames = plantFrames(p.kind, p.h * v.T.s(p.z), p.seed);
+            });
+            for (let d = 0; d < 3; d++) this.warmJobs.push(() => coinSheet(d, COIN_R[d] * v.coinScale, true));
+            for (const d of this.decor) {
+              this.warmJobs.push(() => {
+                const sc = this.decorScale(d, clamp(d.rec.z ?? 0.5, 0.04, 0.95), v);
+                if (d.props.has(sc)) return;
+                try {
+                  const p = getProp(d.rec.id, { scale: sc, variant: d.rec.v || 0 });
+                  p.scale = sc;
+                  d.props.set(sc, p);
+                } catch {
+                }
+              });
+            }
+          }
+          const job = this.warmJobs.shift();
+          if (job) job();
         }
         // ------------------------------------------------------------------ state
         get st() {
@@ -19871,6 +19901,7 @@ are just virtual copies - Restore All Icons anytime.`;
             v.shafts.push({ X: (0.1 + (i + rng.float(0.2, 0.8)) / c.shafts * 0.82) * iw, z: rng.float(0.25, 0.92), w: rng.float(0.05, 0.11) * iw, a: rng.float(0.22, 0.38), ph: rng.float(0, TAU) });
           }
           v.stone = { X: iw * 0.1, z: 0.84 };
+          for (const [k, old] of this.views) if (old.key === key && old !== this.view) this.views.delete(k);
           this.views.set(vk, v);
           return v;
         }
@@ -19967,10 +19998,10 @@ are just virtual copies - Restore All Icons anytime.`;
           f.burst = f.burst0 * (0.35 + 0.65 * vs);
         }
         // ------------------------------------------------------------------ decor
-        decorScale(d, z) {
+        decorScale(d, z, v = this.view) {
           const size = PROPS[d.rec.id]?.decor?.size || 1;
-          const base = this.view.decorScale * [1, 0.92, 0.84][size - 1];
-          return Math.max(0.1, Math.round(base * this.T.s(z) * 25) / 25);
+          const base = v.decorScale * [1, 0.92, 0.84][size - 1];
+          return Math.max(0.1, Math.round(base * v.T.s(z) * 25) / 25);
         }
         layoutDecor() {
           const T = this.T;
@@ -20041,8 +20072,6 @@ are just virtual copies - Restore All Icons anytime.`;
           const rec = { id, x: opts.x ?? best.x, z: opts.z ?? best.z };
           if (opts.v) rec.v = opts.v;
           tk.decor.push(rec);
-          const si = tk.stored.indexOf(id);
-          if (si >= 0) tk.stored.splice(si, 1);
           this.decor.push({ rec, props: /* @__PURE__ */ new Map() });
           this.layoutDecor();
           this.coins.wakeAll();
@@ -20052,8 +20081,18 @@ are just virtual copies - Restore All Icons anytime.`;
         storedDecor() {
           return this.st.tank.stored.slice();
         }
+        // Put a packed-away decoration back into the tank (the first one when no id is given).
         placeStored(id) {
-          return this.st.tank.stored.includes(id) && this.addDecor(id);
+          const st = this.st.tank.stored;
+          const i = id ? st.indexOf(id) : st.length - 1;
+          if (i < 0) return false;
+          const [pid] = st.splice(i, 1);
+          if (this.addDecor(pid)) {
+            this.sfx("box_close", { vol: 0.5 });
+            return true;
+          }
+          st.push(pid);
+          return false;
         }
         storeDecor(d) {
           const tk = this.st.tank;
@@ -20062,7 +20101,7 @@ are just virtual copies - Restore All Icons anytime.`;
           this.decor = this.decor.filter((x) => x !== d);
           this.layoutDecor();
           this.coins.wakeAll();
-          this.game.toast?.(`${PROPS[d.rec.id]?.name || "Decoration"} packed away. Place it again from the shop.`, "tank");
+          this.game.toast?.(`${PROPS[d.rec.id]?.name || "Decoration"} packed away. Use "Unpack" at the top to place it again.`, "tank");
           this.sfx("ui_close");
           this.game.save?.();
         }
@@ -20409,6 +20448,7 @@ are just virtual copies - Restore All Icons anytime.`;
           this.t += dt;
           pumpCoinSheets(3);
           this.pumpProps();
+          if (this.t > 1.2 && (this.warm.length || this.warmJobs?.length)) this.prewarm();
           const key = this.simKey();
           const sz = this.innerSize(key);
           if (!this.view || this.view.key !== key || this.view.iw !== sz.iw || this.view.ih !== sz.ih) this.applyView(key);
@@ -20496,12 +20536,22 @@ are just virtual copies - Restore All Icons anytime.`;
             }
           }
           if (vk === "full") {
-            const b = this.fullButton();
-            if (rectContains(b, inp.x, inp.y)) {
+            const lay = this.fullLayout();
+            if (rectContains(lay.btn, inp.x, inp.y)) {
               this.hoverBtn = "back";
               if (inp.pressed) {
                 inp.consume();
                 g.setView?.("ocean");
+              }
+              cur.inWorld = false;
+              return;
+            }
+            if (this.st.tank.stored.length && rectContains(lay.unpack, inp.x, inp.y)) {
+              this.hoverBtn = "unpack";
+              if (g.desktop) g.desktop.tooltip = `Place a stored decoration (${PROPS[this.st.tank.stored.at(-1)]?.name || "decor"})`;
+              if (inp.pressed) {
+                inp.consume();
+                this.placeStored();
               }
               cur.inWorld = false;
               return;
@@ -20587,7 +20637,7 @@ are just virtual copies - Restore All Icons anytime.`;
           const W5 = this.game.screen.W;
           const pw = Math.min(W5 - 140, 246);
           const px = Math.round(W5 / 2 - (pw + 64) / 2);
-          return { plank: { x: px, y: 8, w: pw, h: 18 }, btn: { x: px + pw + 6, y: 9, w: 58, h: 16 } };
+          return { plank: { x: px, y: 8, w: pw, h: 18 }, btn: { x: px + pw + 6, y: 9, w: 58, h: 16 }, unpack: { x: px - 84, y: 9, w: 78, h: 16 } };
         }
         fullButton() {
           return this.fullLayout().btn;
@@ -20836,7 +20886,9 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           const g = this.game, W5 = g.screen.W;
           const sm2 = this.tankSummary();
           const label3 = `My Aquarium  {fish}${sm2.fish}/${sm2.cap}  {heart}${sm2.fish ? Math.round(sm2.happiness * 100) + "%" : "--"}  {coin}${sm2.coinsPerMin.toFixed(1)}/min`;
-          const { plank: p, btn: b } = this.fullLayout();
+          const { plank: p, btn: b, unpack: u } = this.fullLayout();
+          const nStored = this.st.tank.stored.length;
+          if (nStored) drawButton(ctx2, u.x, u.y, u.w, u.h, { label: `Unpack ${nStored}`, icon: getUiIcon("tank"), state: this.hoverBtn === "unpack" ? "hover" : "normal", style: "glass" });
           drawPlank(ctx2, p.x, p.y, p.w, p.h, { rope: 8 });
           drawText(ctx2, label3, p.x + p.w / 2, p.y + 6, { align: "center", color: "#fff3dc", shadow: "#2a160a" });
           drawButton(ctx2, b.x, b.y, b.w, b.h, { label: "Ocean", icon: getUiIcon("arrow_l"), state: this.hoverBtn === "back" ? "hover" : "normal", style: "glass" });
@@ -21542,9 +21594,9 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
     const nFish = Number(params2.get("fish") ?? 12);
     const pool = SPECIES.filter((s) => s.look?.kind !== "chain" && !s.quirks?.includes("intro"));
     for (let i = 0; i < nFish; i++) {
-      const sp = pool[(i * 7 + 3) % pool.length];
+      const sp = params2.get("same") ? pool.find((q) => q.id === params2.get("same")) || pool[0] : pool[(i * 7 + 3) % pool.length];
       const rec = rollIndividual(sp, { mutationChance: 0.1, shinyChance: 0.05 });
-      state.fish.push({ ...rec, inTank: true, happiness: rng.float(0.5, 1), hunger: rng.float(0.1, 0.8), coinT: rng.float(0, 1) });
+      state.fish.push({ ...rec, inTank: true, happiness: params2.has("same") ? 0.95 : rng.float(0.5, 1), hunger: params2.has("same") ? 0.1 : rng.float(0.1, 0.8), coinT: rng.float(0, 1) });
     }
     if (params2.get("decor")) state.tank = { decor: [], starter: false };
     const events = {};
@@ -34637,7 +34689,7 @@ kTtaatTk
           }
           if (["crab", "bait", "fight", "tank", "coin", "skill", "done"].includes(this.step) || this.step === "reveal" && false) this.drawCrab(ctx2);
           if (this.step === "crab") this.drawDragDemo(ctx2);
-          if (this.step !== "done" && this.step !== "reveal") {
+          if (!["done", "reveal", "flood", "tank", "coin", "skill"].includes(this.step)) {
             const r = { x: W5 - 82, y: 32, w: 72, h: 16 };
             const hov = g.ui.hover(r);
             drawButton(ctx2, r.x, r.y, r.w, r.h, { label: "Skip intro", state: hov ? "hover" : "normal", style: "glass" });

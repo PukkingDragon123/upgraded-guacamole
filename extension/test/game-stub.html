@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>FISHTOP</title></head>
+<body style="background:#0b1622;color:#7fd6c8;font:14px monospace">
+<p>FISHTOP game stub: implements the game side of the browser-catch protocol for tests.</p>
+<pre id="log"></pre>
+<script>
+  // Mirrors what the real game should do (see extension/README.md "Game side").
+  window.received = [];
+  const log = (t) => { document.getElementById('log').textContent += t + '\n'; };
+  window.addEventListener('message', (e) => {
+    if (e.source !== window || !e.data || typeof e.data.type !== 'string') return;
+    const d = e.data;
+    if (d.type === 'fishtop:bridge-hello') {
+      window.postMessage({ type: 'fishtop:game-hello', version: 1 }, location.origin === 'null' ? '*' : location.origin);
+    } else if (d.type === 'fishtop:catches' && Array.isArray(d.fish)) {
+      const uids = [];
+      for (const r of d.fish.slice(0, 200)) {
+        if (!r || typeof r.uid !== 'string' || typeof r.species !== 'string') continue;
+        if (!window.received.some((x) => x.uid === r.uid)) window.received.push(r);
+        uids.push(r.uid);
+      }
+      log(`received ${uids.length} fish`);
+      window.postMessage({ type: 'fishtop:catches-ack', uids }, location.origin === 'null' ? '*' : location.origin);
+    }
+  });
+</script>
+</body>
+</html>

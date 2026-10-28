@@ -302,7 +302,7 @@ export class Tutorial {
     if (['crab', 'bait', 'fight', 'tank', 'coin', 'skill', 'done'].includes(this.step) || (this.step === 'reveal' && false)) this.drawCrab(ctx);
     if (this.step === 'crab') this.drawDragDemo(ctx);
     // skip button
-    if (this.step !== 'done' && this.step !== 'reveal') {
+    if (!['done', 'reveal', 'flood', 'tank', 'coin', 'skill'].includes(this.step)) {
       const r = { x: W - 82, y: 32, w: 72, h: 16 };
       const hov = g.ui.hover(r);
       drawButton(ctx, r.x, r.y, r.w, r.h, { label: 'Skip intro', state: hov ? 'hover' : 'normal', style: 'glass' });

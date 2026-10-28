@@ -354,8 +354,6 @@ export class Aquarium {
     const rec = { id, x: opts.x ?? best.x, z: opts.z ?? best.z };
     if (opts.v) rec.v = opts.v;
     tk.decor.push(rec);
-    const si = tk.stored.indexOf(id);
-    if (si >= 0) tk.stored.splice(si, 1);
     this.decor.push({ rec, props: new Map() });
     this.layoutDecor();
     this.coins.wakeAll();
@@ -364,7 +362,17 @@ export class Aquarium {
   }
 
   storedDecor() { return this.st.tank.stored.slice(); }
-  placeStored(id) { return this.st.tank.stored.includes(id) && this.addDecor(id); }
+
+  // Put a packed-away decoration back into the tank (the first one when no id is given).
+  placeStored(id) {
+    const st = this.st.tank.stored;
+    const i = id ? st.indexOf(id) : st.length - 1;
+    if (i < 0) return false;
+    const [pid] = st.splice(i, 1);
+    if (this.addDecor(pid)) { this.sfx('box_close', { vol: 0.5 }); return true; }
+    st.push(pid);
+    return false;
+  }
 
   storeDecor(d) {
     const tk = this.st.tank;
@@ -373,7 +381,7 @@ export class Aquarium {
     this.decor = this.decor.filter((x) => x !== d);
     this.layoutDecor();
     this.coins.wakeAll();
-    this.game.toast?.(`${PROPS[d.rec.id]?.name || 'Decoration'} packed away. Place it again from the shop.`, 'tank');
+    this.game.toast?.(`${PROPS[d.rec.id]?.name || 'Decoration'} packed away. Use "Unpack" at the top to place it again.`, 'tank');
     this.sfx('ui_close');
     this.game.save?.();
   }
@@ -792,10 +800,17 @@ export class Aquarium {
       if (lx < 0 || lx >= v.iw || ly >= v.ih) { cur.inWorld = false; if (inp.pressed) inp.consume(); return; }
     }
     if (vk === 'full') {
-      const b = this.fullButton();
-      if (rectContains(b, inp.x, inp.y)) {
+      const lay = this.fullLayout();
+      if (rectContains(lay.btn, inp.x, inp.y)) {
         this.hoverBtn = 'back';
         if (inp.pressed) { inp.consume(); g.setView?.('ocean'); }
+        cur.inWorld = false;
+        return;
+      }
+      if (this.st.tank.stored.length && rectContains(lay.unpack, inp.x, inp.y)) {
+        this.hoverBtn = 'unpack';
+        if (g.desktop) g.desktop.tooltip = `Place a stored decoration (${PROPS[this.st.tank.stored.at(-1)]?.name || 'decor'})`;
+        if (inp.pressed) { inp.consume(); this.placeStored(); }
         cur.inWorld = false;
         return;
       }
@@ -877,7 +892,7 @@ export class Aquarium {
     const W = this.game.screen.W;
     const pw = Math.min(W - 140, 246);
     const px = Math.round(W / 2 - (pw + 64) / 2);
-    return { plank: { x: px, y: 8, w: pw, h: 18 }, btn: { x: px + pw + 6, y: 9, w: 58, h: 16 } };
+    return { plank: { x: px, y: 8, w: pw, h: 18 }, btn: { x: px + pw + 6, y: 9, w: 58, h: 16 }, unpack: { x: px - 84, y: 9, w: 78, h: 16 } };
   }
 
   fullButton() { return this.fullLayout().btn; }
@@ -1104,7 +1119,9 @@ export class Aquarium {
     const g = this.game, W = g.screen.W;
     const sm = this.tankSummary();
     const label = `My Aquarium  {fish}${sm.fish}/${sm.cap}  {heart}${sm.fish ? Math.round(sm.happiness * 100) + '%' : '--'}  {coin}${sm.coinsPerMin.toFixed(1)}/min`;
-    const { plank: p, btn: b } = this.fullLayout();
+    const { plank: p, btn: b, unpack: u } = this.fullLayout();
+    const nStored = this.st.tank.stored.length;
+    if (nStored) drawButton(ctx, u.x, u.y, u.w, u.h, { label: `Unpack ${nStored}`, icon: getUiIcon('tank'), state: this.hoverBtn === 'unpack' ? 'hover' : 'normal', style: 'glass' });
     drawPlank(ctx, p.x, p.y, p.w, p.h, { rope: 8 });
     drawText(ctx, label, p.x + p.w / 2, p.y + 6, { align: 'center', color: '#fff3dc', shadow: '#2a160a' });
     drawButton(ctx, b.x, b.y, b.w, b.h, { label: 'Ocean', icon: getUiIcon('arrow_l'), state: this.hoverBtn === 'back' ? 'hover' : 'normal', style: 'glass' });
