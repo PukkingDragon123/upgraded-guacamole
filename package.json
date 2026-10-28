@@ -1,0 +1,19 @@
+{
+  "name": "fishtop",
+  "version": "1.0.0",
+  "description": "FISHTOP - a cozy desktop fishing & aquarium game where your desktop becomes a living pixel ocean.",
+  "private": true,
+  "type": "module",
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "watch": "node tools/build.mjs --watch",
+    "serve": "node tools/serve.mjs",
+    "test": "node tools/build.mjs && node tests/smoke.mjs",
+    "desktop": "node tools/build.mjs && electron ."
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  },
+  "license": "MIT"
+}
