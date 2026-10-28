@@ -621,6 +621,8 @@ export class ShallowsBiome extends Biome {
     this.cols.sub = tri('#8eece8', '#d0a8a8', '#4a80b0', tod);
     this.fogColor = tri('#33b2cc', '#2e6e98', '#1c5284', tod);
     if (wx.rain > 0.05) this.fogColor = qmix(this.fogColor, '#5a7484', wx.rain * 0.35);
+    const fkey = Math.round(tod.day * 40) + ',' + Math.round(tod.dusk * 40);
+    this.decor.refog((y) => waterColorAt(WATER, tod, y, this.base - 2, H), fkey);
     // weather motion
     const q = quality(env);
     const sy = this.surfaceAt(env);
@@ -686,7 +688,7 @@ export class ShallowsBiome extends Biome {
       if (this.giantT <= 0) {
         const whale = Math.random() < 0.4;
         const dir = Math.random() < 0.5 ? 1 : -1;
-        this.giant = { kind: whale ? 'whale' : 'turtle', dir, x: dir > 0 ? -260 : W + 260, y: H * (whale ? 0.28 + Math.random() * 0.12 : 0.32 + Math.random() * 0.2), v: whale ? 8 : 12, ph: 0 };
+        this.giant = { kind: whale ? 'whale' : 'turtle', dir, x: dir > 0 ? -260 : W + 260, y: H * (whale ? 0.26 + Math.random() * 0.1 : 0.3 + Math.random() * 0.14), v: whale ? 7 : 10, ph: 0, s: whale ? 0.75 + Math.random() * 0.2 : 0.65 + Math.random() * 0.25 };
       }
     }
     // sandcastle collapse animation
@@ -805,10 +807,12 @@ export class ShallowsBiome extends Biome {
     const key = this.waterBlend.key;
     const px = this.par.x, py = this.par.y;
     const wob = quality(env) >= 1 ? 1 : 0;
-    drawWobble(ctx, this.farA.tint(water, 0.72, key), -this.pad + px * 1.5, this.farAY + py, t, wob, 4, 0.9, 0.07);
+    drawWobble(ctx, this.farA.tint(water, 0.8, key), -this.pad + px * 0.8, this.farAY + py * 0.4, t, wob, 4, 0.9, 0.07);
     this.drawGiant(ctx);
-    drawWobble(ctx, this.farB.tint(water, 0.5, key), -this.pad + px * 3, this.farBY + py * 1.5, t + 2, wob, 4, 1.1, 0.09);
-    ctx.drawImage(this.mid.tint(water, 0.42, key), Math.round(-this.pad + px * 6), Math.round(this.midY + py * 2.5));
+    drawWobble(ctx, this.farB.tint(water, 0.66, key), -this.pad + px * 1.4, this.farBY + py * 0.5, t + 2, wob, 4, 1.1, 0.09);
+    // far band of the perspective seabed (behind the far fish)
+    this.bands.draw(ctx, 2, tod, px * 2, py * 0.6);
+    this.decor.draw(ctx, 2, t, px * 2, py * 0.6, 1 + wx.storm * 0.8);
     // weather murk
     const murk = wx.cloud * 0.08 + wx.rain * 0.14 + wx.storm * 0.1;
     if (murk > 0.01) { ctx.fillStyle = rgba(tod.night > 0.5 ? '#0a1424' : '#5a6c7c', murk); ctx.fillRect(0, Math.max(0, top), W, H - Math.max(0, top)); }
@@ -821,8 +825,9 @@ export class ShallowsBiome extends Biome {
     const fr = gi.kind === 'whale' ? (gi.dir > 0 ? this.whale : this.whaleL) : gi.dir > 0 ? this.turtle : this.turtleL;
     const spr = fr[Math.floor(((gi.ph / TAU) * fr.length) % fr.length + fr.length) % fr.length];
     const c = tinted(spr, '#08304a');
-    ctx.globalAlpha = gi.kind === 'whale' ? 0.32 : 0.36;
-    ctx.drawImage(c, Math.round(gi.x - spr.width / 2 + this.par.x * 2), Math.round(gi.y - spr.height / 2 + this.par.y));
+    ctx.globalAlpha = gi.kind === 'whale' ? 0.26 : 0.3;
+    const s = gi.s || 1, w = Math.round(spr.width * s), h = Math.round(spr.height * s);
+    ctx.drawImage(c, Math.round(gi.x - w / 2 + this.par.x * 1.1), Math.round(gi.y - h / 2 + this.par.y * 0.5), w, h);
     ctx.globalAlpha = 1;
   }
 
@@ -893,9 +898,10 @@ export class ShallowsBiome extends Biome {
   }
 
   drawSeabed(ctx, env) {
-    const W = this.W, H = this.H, t = this.t, tod = this.tod, wx = this.wx;
+    const t = this.t, tod = this.tod, wx = this.wx;
     const sy = this.surfaceAt(env);
     const q = quality(env);
+    const px = this.par.x, py = this.par.y;
     // god rays
     const rayA = (tod.day * 0.95 + tod.dusk * 0.8 + tod.night * 0.35) * (0.15 + wx.clear * 0.85) * (1 - wx.storm * 0.6);
     if (rayA > 0.02) {
@@ -908,40 +914,56 @@ export class ShallowsBiome extends Biome {
       ctx.globalCompositeOperation = 'source-over';
       ctx.globalAlpha = 1;
     }
-    // plankton motes catching the light
     this.plankton.draw(ctx, t, 0.6 + tod.day * 0.4, q, 0.6);
-    // tall kelp behind the sand
-    this.kelp.draw(ctx, t, Math.sin(t * 0.25) * 0.05 + wx.storm * 0.18);
-    ctx.drawImage(this.bed, 0, this.bedY);
-    // caustics
-    const ca = (tod.day * 0.5 + tod.dusk * 0.32 + tod.night * 0.16) * (0.2 + wx.clear * 0.8);
-    if (q >= 0.75 || ca > 0.3) this.caustics.draw(ctx, this.bedMask, 0, this.bedY, t, ca, { fps: 8, drift: 4 });
+    // mid band
+    const dx = px * 3, dy = py * 0.8;
+    this.bands.draw(ctx, 1, tod, dx, dy);
+    const ca = this.causticA(q);
+    if (ca > 0.01) this.caustics.draw(ctx, this.masks[1], -this.D.pad + dx, this.D.bands[1].y + dy, t, ca * 0.75, { fps: 8, drift: 3, offset: 5 });
+    this.decor.draw(ctx, 1, t, dx, dy, 1 + wx.storm * 0.8);
+    if (tod.night > 0.4) drawGlow(ctx, this.lantern.x + dx, this.lantern.y + dy, 5, '#ffd27a', tod.night * (0.7 + 0.2 * Math.sin(t * 5)));
+    if (performance.now() - (this.nearT || -1e9) > 250) this.paintNear(ctx, env);
+  }
+
+  causticA(q) {
+    const tod = this.tod, wx = this.wx;
+    if (q < 0.75) return 0;
+    return (tod.day * 0.5 + tod.dusk * 0.32 + tod.night * 0.16) * (0.2 + wx.clear * 0.8);
+  }
+
+  // Near band: called by the game after the mid fish (falls back to drawSeabed when not hooked).
+  drawNear(ctx, env) {
+    this.nearT = performance.now();
+    this.paintNear(ctx, env);
+  }
+
+  paintNear(ctx, env) {
+    const t = this.t, tod = this.tod, wx = this.wx, q = quality(env);
+    const dx = this.par.x * 4, dy = this.par.y;
+    this.bands.draw(ctx, 0, tod, dx, dy);
+    const ca = this.causticA(q);
+    if (ca > 0.01) this.caustics.draw(ctx, this.masks[0], -this.D.pad + dx, this.D.bands[0].y + dy, t, ca, { fps: 8, drift: 4 });
+    ctx.save();
+    ctx.translate(Math.round(dx), Math.round(dy));
     this.drawCastle(ctx);
-    // anemones, seaweed, crabs
-    for (const a of this.anemones) a.anim.draw(ctx, t * (1 + wx.storm * 0.6), a.off);
-    for (const tf of this.tufts) tf.anim.draw(ctx, t * (1 + wx.storm * 0.8), tf.off);
+    this.decor.draw(ctx, 0, t, 0, 0, 1 + wx.storm * 0.8);
     for (const cr of this.crabs) {
-      const y = Math.round(this.ground.surfaceY(cr.x, cr.zf));
+      const y = Math.round(this.D.floorAt(cr.x, cr.z));
       const spr = this.crabSpr[cr.kind][cr.state === 'walk' ? 1 + (Math.floor(cr.ft) % 2) : 0];
       ctx.drawImage(spr, Math.round(cr.x) - 8, y - 10);
     }
-    this.bubbles.draw(ctx, t);
     // secret hints
     const s = this.secrets();
     const hk = (period, off) => { const p = ((this.hint.t + off) % period) / period; return p < 0.12 ? Math.sin((p / 0.12) * Math.PI) : 0; };
     twinkle(ctx, this.bottle.cx + 6, this.bottle.cy - 2, hk(5.5, 0), '#ffffff');
-    if (this.castle.state === 'intact') twinkle(ctx, this.castle.x + 2, this.castle.rect.y + 4, hk(7, 2.5), '#fff6c0');
+    if (this.castle.state === 'intact' && !s.sandcastle) twinkle(ctx, this.castle.x + 2, this.castle.rect.y + 4, hk(7, 2.5), '#fff6c0');
     if (!s.cave) twinkle(ctx, this.cave.cx + 5, this.cave.cy - 6, hk(9, 4.5) * 0.7, '#c8fff0');
     else if (tod.night > 0.3 || Math.sin(t * 0.7) > 0.6) {
-      // something blinks inside the cave
-      const blink = Math.sin(t * 1.3) > -0.9;
-      if (blink) { ctx.fillStyle = '#ffe27a'; ctx.fillRect(this.cave.cx - 3, this.cave.cy - 1, 1, 1); ctx.fillRect(this.cave.cx + 1, this.cave.cy - 1, 1, 1); }
+      if (Math.sin(t * 1.3) > -0.9) { ctx.fillStyle = '#ffe27a'; ctx.fillRect(this.cave.cx - 3, this.cave.cy - 1, 1, 1); ctx.fillRect(this.cave.cx + 1, this.cave.cy - 1, 1, 1); }
     }
-    if (tod.night > 0.4) {
-      // sandcastle windows & boat lantern glow at night
-      if (this.castle.state === 'intact') drawGlow(ctx, this.castle.x, this.castle.y - 26, 5, '#ffcc66', tod.night * 0.6);
-      drawGlow(ctx, this.lantern.x, this.lantern.y, 6, '#ffd27a', tod.night * (0.7 + 0.2 * Math.sin(t * 5)));
-    }
+    if (tod.night > 0.4 && this.castle.state === 'intact' && !s.sandcastle) drawGlow(ctx, this.castle.x, this.castle.y - 24, 5, '#ffcc66', tod.night * 0.6);
+    ctx.restore();
+    this.bubbles.draw(ctx, t);
   }
 
   drawCastle(ctx) {
@@ -1024,7 +1046,7 @@ export class ShallowsBiome extends Biome {
   secretAt(x, y) {
     if (this.castle.state === 'intact' && !this.secrets().sandcastle && inRect(x, y, this.castle.rect)) return 'sandcastle';
     if (inRect(x, y, this.bottle, 2)) return 'bottle';
-    if (inRect(x, y, this.cave, 3)) return 'cave';
+    if (inRect(x, y, this.cave.rect, 3)) return 'cave';
     return null;
   }
 

@@ -312,11 +312,10 @@ export class Caustics {
   // mask: canvas whose alpha limits where caustics land (drawn at mx, my).
   draw(ctx, mask, mx, my, t, alpha, { fps = 9, drift = 5, offset = 0 } = {}) {
     if (alpha <= 0.01) return;
-    if (!this.layer) this.layer = makeLayer(mask.width, mask.height);
-    const L = this.layer;
-    if (L.w !== mask.width || L.h !== mask.height) { resizeLayer(L, mask.width, mask.height); this.pats = null; }
+    if (!this.layers) this.layers = new Map();
+    let L = this.layers.get(mask);
+    if (!L) { L = makeLayer(mask.width, mask.height); L.pats = this.frames.map((c) => L.ctx.createPattern(c, 'repeat')); this.layers.set(mask, L); }
     const g = L.ctx;
-    if (!this.pats) this.pats = this.frames.map((c) => g.createPattern(c, 'repeat'));
     const fi = (Math.floor(t * fps) + offset) % this.frames.length;
     g.globalCompositeOperation = 'source-over';
     g.globalAlpha = 1;
@@ -324,7 +323,7 @@ export class Caustics {
     g.save();
     const sx = Math.round((t * drift) % this.tw);
     g.translate(sx, 0);
-    g.fillStyle = this.pats[fi];
+    g.fillStyle = L.pats[fi];
     g.fillRect(-sx, 0, L.w, L.h);
     g.restore();
     g.globalCompositeOperation = 'destination-in';

@@ -962,7 +962,7 @@ function prepExtras(c, G, sw, still, s) {
         const rad = e.len ?? H * 0.22;
         const x0 = halfL - L * 0.02, y0 = G.mouthY - H * 0.14;
         q.pts = curvePts((t) => { const a = -Math.PI / 2 + t * 2.3; return [x0 + Math.cos(a) * rad, y0 + rad + Math.sin(a) * rad]; }, 16);
-        q.wid = (t) => Math.max(px1 * 0.7, H * (0.12 - 0.08 * t));
+        q.wid = (t) => Math.max(px1 * 0.7, H * (0.085 - 0.055 * t));
         q.jaw = curvePts((t) => [halfL - L * 0.14 + t * (L * 0.14 + rad * 0.5), G.mouthY + H * 0.16 - t * H * 0.08], 10);
         q.jw = Math.max(px1 * 0.7, H * 0.055);
         q.box = bboxOf([...q.pts, ...q.jaw], H * 0.14 + 1);

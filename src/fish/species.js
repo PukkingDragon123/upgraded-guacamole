@@ -1542,7 +1542,7 @@ function grow(o, f, eyeF, key = '') {
   if (!o || typeof o !== 'object') return o;
   const out = {};
   for (const [k, v] of Object.entries(o)) {
-    if (typeof v === 'number' && GROW_KEYS.includes(k)) out[k] = +(v * (k === 'r' && (key === 'eye' || key === 'moreEyes') ? f * eyeF : f)).toFixed(2);
+    if (typeof v === 'number' && GROW_KEYS.includes(k)) out[k] = +(v * (k === 'r' && (key === 'eye' || key === 'moreEyes') ? f * eyeF : key === 'tail' && (k === 'len' || k === 'spread') ? f * 1.12 : f)).toFixed(2);
     else if (typeof v === 'object') out[k] = grow(v, f, eyeF, k);
     else out[k] = v;
   }
