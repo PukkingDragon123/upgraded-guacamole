@@ -13,7 +13,8 @@
     "desktop": "node tools/build.mjs && electron ."
   },
   "devDependencies": {
-    "esbuild": "^0.28.2"
+    "esbuild": "^0.28.2",
+    "electron": "^44.9.3"
   },
   "license": "MIT"
 }

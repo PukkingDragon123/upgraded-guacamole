@@ -7,8 +7,10 @@ No external assets, no network: all art and audio are procedural or hand-authore
 
 ## Rendering conventions (all art modules)
 
-- The game draws into a **low-resolution canvas** (logical width ~640 px, height ~330-400
-  depending on aspect) that is upscaled with nearest-neighbour. All coordinates are logical
+- The game draws into a **pixel canvas of logical width ~960 px** (height ~480-600 depending on aspect;
+  1920x1080 -> 960x540 at 2x, 1280x720 -> 1280x720 at 1x) upscaled with nearest-neighbour.
+  This is HIGH-RESOLUTION, ULTRA-DETAILED pixel art: fish are typically 30-90 px long (bosses 150-260),
+  desktop icons 32x32, props 40-200 px tall. Dev previews: logical 960x540 at CSS 2x. All coordinates are logical
   pixels. Never enable smoothing; draw sprites at integer positions.
 - Sprites are `HTMLCanvasElement`s built once and cached. Helpers:
   - `src/core/canvas.js`: `makeCanvas(w,h)`, `ctxOf(canvas)` (smoothing off), `makeLayer`, `tinted(src,color)`.
@@ -26,10 +28,12 @@ No external assets, no network: all art and audio are procedural or hand-authore
 - Text: `drawText(ctx, text, x, y, {font:'normal'|'small', color, align, shadow, outline, scale, wave, time})`
   from `src/gfx/font.js`. `normal` = 7 px cap height, mixed case; `small` = 5 px uppercase.
   `registerInlineIcon(name, canvas)` lets text embed `{name}` sprites. `measureText`, `wrapText`, `drawWrapped`.
+- Fish are drawn with a **layered rig** (`src/gfx/fishrig.js`, see "Fish rig" below): cached raster layers
+  (tail, back fins, body, front fins) animated on independent phases + a fully dynamic expressive face layer.
 - Fish/creature sprites: `src/gfx/fishart.js` (procedural rasteriser, see "look" schema below) and
   `src/gfx/spritecache.js` (`compiled(look, variant, key)`, `frame(compiled, {phase, angle, scale, blink, mouth, inflate, expr, silhouette})`
   -> `{canvas, glowCanvas, ox, oy, anchors}`; draw at `(x - ox, y - oy)`; sprites face right, flip for left).
-- Performance budget: 60 fps at 640x360 with ~25 fish. Pre-render static art; per frame only
+- Performance budget: 60 fps at 960x540 with ~25 fish. Pre-render static art; per frame only
   `drawImage` of cached canvases and cheap fills.
 
 ## Code style
@@ -121,3 +125,16 @@ See those files' headers once written.
 ### Host bridge (`src/platform/host.js`)
 `host.kind ('web'|'electron')`, `host.mode`, `host.setInteractive(bool)`, `host.setMode(mode)`,
 `host.onShortcut(cb)`, `host.onCursor(cb)`, `host.requestDesktopFiles()`, `host.quit()`.
+
+### Fish rig (`src/gfx/fishrig.js`) - draw-time API used by the game
+```js
+drawFishRig(ctx, compiledLook, st) -> anchors (world coords: {mouth:[x,y], top, tail, bottom, eyes:[{x,y,r}]})
+st = { x, y, facing: 1|-1, turn: -1..1 (scaleX during turn-around), angle (rad, pitch), scale,
+       squash: -1..1 (neg squash, pos stretch), bob,
+       swimPhase, tailPhase, finPhase (0..1 cycles, advanced by the caller at speed-dependent rates),
+       speed01, inflate 0..1,
+       lookX, lookY (world point the eyes look at, or null = forward), blink 0..1,
+       emotion: 'neutral'|'happy'|'sad'|'angry'|'scared'|'surprised'|'love'|'sleepy'|'dizzy'|'smug'|'determined'|'tired'|'disgust',
+       mouth: 0..1 (open amount; caller animates talking/chomping), time,
+       wash: {color, alpha} | null (fog/darkness tint), glow: 0..1 (emissive strength), silhouette: bool }
+```

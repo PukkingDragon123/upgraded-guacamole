@@ -1,0 +1,100 @@
+// Dev preview of every voxel prop: dist/dev/props.html?page=N&bg=dark&only=id,id&zoom=2
+import { ctxOf } from '../core/canvas.js';
+import { drawText } from '../gfx/font.js';
+import { getProp, PROPS, PROP_VARIANTS } from '../gfx/props.js';
+
+const PAGES = [
+  { title: 'SUNNY SHALLOWS', filter: (id, p) => p.biome === 'shallows' && !p.decorOnly },
+  { title: 'JUNKYARD REEF', filter: (id, p) => p.biome === 'junkyard' && !p.decorOnly },
+  { title: 'MIDNIGHT ABYSS', filter: (id, p) => p.biome === 'abyss' && !p.decorOnly },
+  { title: 'AQUARIUM DECOR + SHOP', filter: (id, p) => p.decorOnly || id === 'shop_stall' },
+];
+
+export function run(params) {
+  const W = 960;
+  const zoom = Number(params.get('zoom') || 2);
+  const dark = params.get('bg') === 'dark';
+  const page = Number(params.get('page') || 0);
+  const only = params.get('only');
+  const scale = Number(params.get('scale') || 1);
+  const cv = document.getElementById('screen');
+  const g0 = cv.getContext('2d');
+  void g0;
+
+  // Collect entries: [{id, variant, frame, label}]
+  let entries = [];
+  const ids = only ? only.split(',') : Object.keys(PROPS).filter((id) => PAGES[page % PAGES.length].filter(id, PROPS[id]));
+  for (const id of ids) {
+    const vars = only ? PROP_VARIANTS[id] || [{}] : PROP_VARIANTS[id] || [{}];
+    for (const v of vars) entries.push({ id, variant: v.variant || 0, frame: v.frame || 0, label: v.label || PROPS[id]?.name || id });
+  }
+
+  const t0 = performance.now();
+  const times = [];
+  const sprites = entries.map((e) => {
+    const s = performance.now();
+    const p = getProp(e.id, { variant: e.variant, frame: e.frame, scale });
+    times.push([e.id + ':' + e.variant + ':' + e.frame, Math.round(performance.now() - s), p.ms]);
+    return { ...e, p };
+  });
+  const total = performance.now() - t0;
+
+  // Shelf layout: rows share a ground line; labels go under the lowest pixel of the row.
+  const margin = 10, gap = 14, labelH = 10, top = 24;
+  const rows = [];
+  let row = null, x = margin;
+  for (const s of sprites) {
+    const w = Math.max(s.p.w, 56);
+    if (!row || (x + w > W - margin && x > margin)) { row = { items: [], up: 0, down: 0 }; rows.push(row); x = margin; }
+    row.items.push({ s, x, w });
+    row.up = Math.max(row.up, s.p.oy);
+    row.down = Math.max(row.down, s.p.h - s.p.oy);
+    x += w + gap;
+  }
+  let y = top;
+  for (const r of rows) { r.base = y + r.up; y = r.base + r.down + labelH + gap; }
+  const H = Math.max(540, y + 4);
+  cv.width = W; cv.height = H;
+  cv.style.width = W * zoom + 'px'; cv.style.height = H * zoom + 'px';
+  document.body.style.overflow = 'auto';
+  const g = ctxOf(cv);
+  const bgTop = dark ? '#0b0f24' : '#2f8a9c', bgBot = dark ? '#05060f' : '#1d5f78';
+  const grd = g.createLinearGradient(0, 0, 0, H);
+  grd.addColorStop(0, bgTop); grd.addColorStop(1, bgBot);
+  g.fillStyle = grd;
+  g.fillRect(0, 0, W, H);
+  drawText(g, only ? 'PROPS' : PAGES[page % PAGES.length].title + `  (page ${page % PAGES.length + 1}/${PAGES.length})`, 10, 7, { font: 'normal', color: '#ffffff', shadow: '#0b1622' });
+  drawText(g, `${sprites.length} sprites, ${Math.round(total)} ms`, W - 10, 7, { font: 'small', align: 'right', color: '#cfe', shadow: '#0b1622' });
+
+  for (const r of rows) {
+    for (const pl of r.items) {
+      const { p } = pl.s;
+      const cx = pl.x + Math.floor(pl.w / 2);
+      const base = r.base;
+      g.fillStyle = 'rgba(0,0,0,0.2)';
+      g.beginPath();
+      g.ellipse(cx, base, Math.max(8, p.w * 0.36), 3, 0, 0, Math.PI * 2);
+      g.fill();
+      const dx = cx - p.ox, dy = base - p.oy;
+      g.drawImage(p.canvas, dx, dy);
+      if (p.glow) {
+        g.globalCompositeOperation = 'lighter';
+        g.globalAlpha = dark ? 0.6 : 0.35;
+        g.drawImage(p.glow, dx, dy);
+        g.globalAlpha = 1;
+        g.globalCompositeOperation = 'source-over';
+      }
+      if (params.has('debug')) {
+        g.strokeStyle = 'rgba(255,255,255,0.35)';
+        g.strokeRect(dx + 0.5, dy + 0.5, p.w - 1, p.h - 1);
+        g.fillStyle = '#ff0';
+        g.fillRect(cx - 2, base, 5, 1);
+        for (const sc of p.screens) { g.strokeStyle = '#f0f'; g.strokeRect(dx + sc.x + 0.5, dy + sc.y + 0.5, sc.w - 1, sc.h - 1); }
+        for (const l of p.lights) { g.strokeStyle = l.color; g.beginPath(); g.arc(dx + l.x, dy + l.y, l.r, 0, Math.PI * 2); g.stroke(); }
+      }
+      drawText(g, pl.s.label, cx, base + r.down + 3, { font: 'small', align: 'center', color: '#ffffff', shadow: '#0b1622' });
+    }
+  }
+  window.__propTimes = times;
+  window.__propsReady = true;
+}
