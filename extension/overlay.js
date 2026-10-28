@@ -7020,6 +7020,13 @@
   function setRigBudget(ms) {
     budgetMs = ms;
   }
+  function rigStats() {
+    return { items: cache2.size, spent, rasterized: statRaster, fallbacks: statFallback };
+  }
+  function clearRigCache() {
+    cache2.clear();
+    families.clear();
+  }
   function idOf(c) {
     if (c.id == null && c._rid == null) c._rid = "r" + nextId++;
     return c.id ?? c._rid;
@@ -13008,7 +13015,6 @@ kwwwwwwk.
       this.fishingMode = on;
       this.applyHostStyle();
       if (on) {
-        if (this.settings.sound) audio.unlock();
         this.bannerT = 0;
         this.fishing.message("Fishing mode! Your mouse is a hook.", "#ffe8a8", 2.4);
         this.scanSoon(0);
@@ -13088,16 +13094,62 @@ kwwwwwwk.
       const sp = SPECIES_BY_ID[id];
       return sp && this.fishes.length < MAX_FISH ? this.spawn(sp, opts) : null;
     }
+    // Rasterize a fish's sprite layers in idle time before it swims in, so a never-seen species does not
+    // cost a long animation frame (first rasterization is ~25-55 ms).
+    prewarm(item) {
+      const run = () => {
+        if (this.destroyed) return;
+        try {
+          const sp = item.sp, rec = item.rec;
+          if (sp.look?.kind !== "chain") {
+            const g = this.warmG || (this.warmG = ctxOf(makeCanvas(8, 8)));
+            drawFishRig(g, compiled(sp.look, rec.variant, sp.id), {
+              x: -300,
+              y: -300,
+              facing: 1,
+              turn: 1,
+              angle: 0,
+              scale: sizeScaleOf(rec, sp) * (1 - (item.z || 0) * 0.5),
+              squash: 0,
+              swimPhase: 0,
+              tailPhase: 0,
+              finPhase: 0,
+              speed01: 0.3,
+              inflate: 0,
+              lookX: null,
+              lookY: null,
+              blink: 0,
+              emotion: "neutral",
+              mouth: 0.1,
+              time: 0
+            });
+          }
+        } catch {
+        }
+        item.ready = true;
+      };
+      if (window.requestIdleCallback) window.requestIdleCallback(run, { timeout: 1500 });
+      else setTimeout(run, 30);
+    }
     updateSpawning(dt) {
       this.spawnT -= dt;
       const target = this.settings.fishCount;
       const active = this.activeCount();
       if (this.spawnT <= 0 && active < target && this.fishes.length < MAX_FISH) {
-        const sp = this.pickSpecies();
-        if (sp) {
+        if (!this.pending) {
+          const sp = this.pickSpecies();
+          if (sp) {
+            const style = sp.look?.kind === "chain" ? "chain" : sp.move?.style;
+            const z = style === "crawl" ? rng.float(0, 0.3) : rng.float(0, 0.75);
+            this.pending = { sp, rec: rollIndividual(sp, this.world.rollMods), z, ready: false };
+            this.prewarm(this.pending);
+          } else this.spawnT = 3;
+        } else if (this.pending.ready) {
+          const { sp, rec, z } = this.pending;
+          this.pending = null;
           const room = Math.min(target - active, MAX_FISH - this.fishes.length);
           const n = sp.move?.school > 0.4 ? Math.min(room, rng.int(2, 3)) : 1;
-          const lead = this.spawn(sp);
+          const lead = this.spawn(sp, { rec, z });
           for (let i = 1; i < n; i++) {
             const f = this.spawn(sp, { side: lead.x < 0 ? "left" : "right", z: lead.z, yFrac: (lead.y + rng.float(-20, 20)) / this.H });
             f.x = lead.x + (lead.x < 0 ? -1 : 1) * rng.float(10, 40);
@@ -13105,17 +13157,16 @@ kwwwwwwk.
             if (goal && f.state === "enter") f.enterTarget = { x: goal.x + rng.float(-30, 30), y: f.y };
             else if (goal) f.target = { x: goal.x + rng.float(-30, 30), y: f.y, z: f.z };
           }
+          this.spawnT = active < target * 0.5 ? rng.float(1.2, 2.5) : rng.float(4, 9);
         }
-        this.spawnT = active < target * 0.5 ? rng.float(1.2, 2.5) : rng.float(4, 9);
       }
-      if (this.arrivals.length) {
+      if (this.arrivals.length && this.arrivals[0].ready) {
         this.arriveT = (this.arriveT ?? rng.float(0.4, 1.2)) - dt;
         if (this.arriveT <= 0) {
           this.arriveT = void 0;
           const a = this.arrivals.shift();
-          const sp = SPECIES_BY_ID[a.rec.species];
-          if (sp && this.fishes.length < MAX_FISH) {
-            const f = this.spawn(sp, { rec: a.rec, side: a.side === "right" ? "left" : "right", yFrac: a.yFrac, z: a.z });
+          if (this.fishes.length < MAX_FISH) {
+            const f = this.spawn(a.sp, { rec: a.rec, side: a.side === "right" ? "left" : "right", yFrac: a.yFrac, z: a.z });
             f.hops = (a.hops || 0) + 1;
             f.say(rng.pick(["!", "heart", "music", "?"]), 1.6);
             const ex = f.x < 0 ? 2 : this.W - 2;
@@ -13129,7 +13180,9 @@ kwwwwwwk.
       if (!SPECIES_BY_ID[fish.rec.species]) return false;
       if (this.fishes.length + this.arrivals.length >= MAX_FISH) return false;
       if (this.fishes.some((f) => f.rec.uid === fish.rec.uid)) return true;
-      this.arrivals.push({ rec: fish.rec, side: fish.side === "left" ? "left" : "right", yFrac: clamp01(Number(fish.yFrac) || 0.5), z: clamp(Number(fish.z) || 0.2, 0, 0.75), hops: fish.hops | 0 });
+      const a = { sp: SPECIES_BY_ID[fish.rec.species], rec: fish.rec, side: fish.side === "left" ? "left" : "right", yFrac: clamp01(Number(fish.yFrac) || 0.5), z: clamp(Number(fish.z) || 0.2, 0, 0.75), hops: fish.hops | 0, ready: false };
+      this.arrivals.push(a);
+      this.prewarm(a);
       return true;
     }
     leaveTab(f) {
@@ -13209,6 +13262,7 @@ kwwwwwwk.
             f.vy = Math.max(f.vy, 0);
           }
           if (f.state !== "leave" && f.age > f.life && f.state !== "sniff" && f.state !== "interest" && f.state !== "hide") f.setState("leave");
+          if (f.state === "leave" && f.style === "crawl" && (f.x <= -25 || f.x >= this.W + 25)) f.dead = true;
           if (f.state === "wander" && w.windows.length && f.stateT > 3 && rng.chance(dt * 0.05 * (0.25 + f.shyness))) f.goHide();
         }
       }
@@ -13275,6 +13329,7 @@ kwwwwwwk.
           this.destroy();
           return;
         }
+        if (rigStats().items > 2400) clearRigCache();
       }
       let overCard = false;
       if (this.card) {
@@ -13451,6 +13506,10 @@ kwwwwwwk.
       const spr = getUiIcon(name);
       const hs = CURSOR_HOTSPOT[name] || [0, 0];
       ctx2.drawImage(spr, Math.round(this.input.x) - hs[0], Math.round(this.input.y) - hs[1]);
+    }
+    // Diagnostics for the test page (no page data involved).
+    diagnostics() {
+      return { fish: this.fishes.length, rig: rigStats().items, scanMs: this.scanner.ms, icons: this.world.icons.length, windows: this.world.windows.length };
     }
     // ------------------------------------------------------------------ teardown
     wake() {

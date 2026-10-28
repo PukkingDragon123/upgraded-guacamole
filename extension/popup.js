@@ -6,6 +6,7 @@ const RARITY = { common: '#c9d4dc', uncommon: '#7ee07a', rare: '#5fb8ff', epic: 
 const $ = (id) => document.getElementById(id);
 let tab = null;
 let catches = [];
+let awaiting = 0; // fish queued by the last Send, waiting for FISHTOP to confirm
 
 async function bg(msg) {
   try { return await chrome.runtime.sendMessage(msg); } catch { return null; }
@@ -141,8 +142,8 @@ async function init() {
     const r = await bg({ type: 'ft:send-catches' });
     if (!r?.ok) status('Something went wrong. Try again.', true);
     else if (!r.unsent) status('Nothing new to send.');
-    else if (r.delivered) status(`${r.delivered} fish are swimming over to FISHTOP!`);
-    else status(`Open FISHTOP (localhost:5173) and your ${r.unsent} fish will swim over when it loads.`);
+    else if (r.delivered) { awaiting = r.unsent; status(`${r.delivered} fish are swimming over to FISHTOP!`); }
+    else { awaiting = r.unsent; status(`Open FISHTOP (localhost:5173) and your ${r.unsent} fish will swim over when it loads.`); }
     renderCatches();
   });
 
@@ -153,7 +154,11 @@ async function init() {
 
   chrome.storage.onChanged.addListener((ch, area) => {
     if (area !== 'local') return;
-    if (ch.catches) { catches = Array.isArray(ch.catches.newValue) ? ch.catches.newValue : []; renderCatches(); }
+    if (ch.catches) {
+      catches = Array.isArray(ch.catches.newValue) ? ch.catches.newValue : [];
+      renderCatches();
+      if (awaiting && !catches.some((c) => !c.sent)) { status(`${awaiting} fish arrived in FISHTOP. Check your aquarium!`); awaiting = 0; }
+    }
     if (ch.settings) refreshSettings();
   });
 }

@@ -97,9 +97,21 @@ check('logical canvas ~960 wide', census.W >= 900 && census.W <= 1400, `${census
 check('images found as obstacles', census.icons >= 2, `${census.icons} media rects`);
 check('text blocks found as hiding spots', census.windows >= 5, `${census.windows} text rects, scan ${census.scanMs.toFixed(2)} ms`);
 
-// ---- fish swim around images: near fish should (almost) never sit on an image
+// ---- fish swim around images: send two near fish on a course straight through the hero image
+await O(`(() => {
+  const hero = o.world.icons.slice().sort((a, b) => b.w * b.h - a.w * a.h)[0];
+  o.testRuns = [];
+  for (const [k, id] of [[0, 'loafer'], [1, 'pixel']]) {
+    while (o.fishes.length >= 6) o.fishes.splice(o.fishes.findIndex((q) => !q.controlled && !o.testRuns.includes(q)), 1);
+    const y = hero.y + hero.h * (0.35 + k * 0.3);
+    const f = o.spawnSpecies(id, { x: hero.x - 40, y, z: 0 });
+    f.z = 0; f.setState('wander'); f.target = { x: hero.x + hero.w + 60, y, z: 0 }; f.wanderT = 30; f.life = 999;
+    o.testRuns.push(f);
+  }
+})()`);
 let samples = 0, inside = 0;
 for (let i = 0; i < 40; i++) {
+  await O('o.testRuns.forEach((f) => { f.z = Math.min(f.z, 0.3); })');
   const r = await O(`(() => { let s = 0, n = 0; for (const f of o.fishes) { if (f.z >= 0.55 || f.controlled || f.style === 'crawl' || f.style === 'hop' || ['interest', 'sniff', 'enter'].includes(f.state)) continue; s++;
     for (const r of o.world.icons) if (f.x > r.x + 3 && f.x < r.x + r.w - 3 && f.y > r.y + 3 && f.y < r.y + r.h - 3) { n++; break; } } return [s, n]; })()`);
   samples += r[0]; inside += r[1];
@@ -115,7 +127,7 @@ await O(`(() => {
   const w = ws[0] || o.world.windows[0];
   f.x = w.x + w.w * 0.3; f.y = w.y + w.h / 2; f.z = 0.2; f.goHide(); f.hideRect = w; f.hideT = 6;
   const hero = o.world.icons.slice().sort((a, b) => b.w * b.h - a.w * a.h)[0];
-  if (o.fishes.length >= 6) o.fishes.find((q) => q !== f).dead = true;
+  while (o.fishes.length >= 6) o.fishes.splice(o.fishes.findIndex((q) => q !== f && !q.controlled), 1);
   const g = o.spawnSpecies('honk', { x: hero.x + hero.w + 2, y: hero.y + hero.h * 0.55, z: 0.9 });
   g.z = 0.9; g.facing = 1; g.setState('idle'); g.idleT = 8;
   o.testHide = f; o.testDeep = g;
@@ -143,6 +155,8 @@ await wait(800);
 
 // ---- fishing with the mouse
 const toPage = async (x, y) => { const k = await O('o.k'); return [x / k, y / k]; };
+// sound on (exercises the audio path; it unlocks on the first real click)
+await page.evaluate(() => { const ft = window.__ft; ft.store.settings = { ...ft.store.settings, sound: true }; for (const l of ft.storeL) l({ settings: { newValue: ft.store.settings } }, 'local'); });
 await page.evaluate(() => window.__ftDispatch({ type: 'ft:set-fishing', on: true }));
 const pe = await page.evaluate(() => getComputedStyle(document.querySelector('fishtop-overlay')).pointerEvents);
 check('fishing mode captures the mouse', pe === 'auto' && await O('o.fishingMode'), pe);
@@ -206,12 +220,16 @@ async function catchOne(species) {
   // wait for nibbles, then click right on the bite
   const t0 = Date.now();
   let st = 'idle';
+  const trail = [];
   while (Date.now() - t0 < 25000) {
-    st = await O('o.fishing.state');
+    const q = await O('[o.fishing.state, o.testFish.state, o.fishing.msg?.text || "", Math.round(o.input.speed), o.world.hook.active, Math.round(o.testFish.x), Math.round(o.testFish.y)]');
+    st = q[0];
+    const key = q.slice(0, 3).join('/');
+    if (!trail.length || trail[trail.length - 1].k !== key) trail.push({ k: key, t: Date.now() - t0, v: q.slice(3).join(',') });
     if (st === 'bite') break;
     await page.waitForTimeout(25);
   }
-  check(`${species}: nibble -> bite`, st === 'bite', st + ' fish:' + await O('o.testFish.state + " cd " + o.testFish.cooldown.toFixed(1)'));
+  check(`${species}: nibble -> bite`, st === 'bite', st === 'bite' ? `after ${Date.now() - t0} ms` : JSON.stringify(trail.slice(-12)));
   if (st !== 'bite') return false;
   await page.mouse.down(); await page.mouse.up();
   await wait(60);

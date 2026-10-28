@@ -199,6 +199,7 @@ check('game ack marks catches as sent', sentNow.length === 2 && sentNow.every(Bo
 await P.bringToFront();
 await wait(300);
 check('popup shows SENT', (await P.$$eval('.tag.sent', (l) => l.length)) === 2);
+check('popup confirms the delivery', /arrived in FISHTOP/.test(await P.textContent('#status')), await P.textContent('#status'));
 await P.screenshot({ path: join(out, 'ext_04_popup_sent.png'), fullPage: true });
 
 // "Fish in this tab" off stops the overlay
