@@ -1,8 +1,9 @@
 // Dev preview of the UI art kit: dist/dev/uiart.html?page=N
 //   page 0: desktop icons (normal, 2x, chewed, full, shortcut, minis, file types)
 //   page 1: inline UI icons, emotes, cursors, inline text
-//   page 2: panels & widgets in every state
-//   page 3: a composed desktop scene (windows, taskbar, tooltip, signs)
+//   page 2: surfaces (wood, paper, glass, bottle, sign) & buttons in every style/state
+//   page 3: widgets (sliders, toggles, bars, tabs, bubbles, stamps, frames, windows, tooltip, taskbar)
+//   page 4: a composed desktop scene
 import { ctxOf, makeCanvas } from '../core/canvas.js';
 import { drawText } from '../gfx/font.js';
 import { bayer } from '../core/math.js';
@@ -263,6 +264,88 @@ function pageWidgets(g) {
   drawText(g, '12:34', W - 40, 525, { color: '#fff4dc', shadow: '#2a140e' });
 }
 
+function pageScene(g) {
+  registerUiIcons();
+  const desk = ['computer', 'trash', 'browser', 'documents', 'image', 'music', 'notes', 'fishtop'];
+  const names = { computer: 'My Computer', trash: 'Recycle Bin', browser: 'FishNet', documents: 'Documents', image: 'Photos', music: 'Music', notes: 'Notes.txt', fishtop: 'FISHTOP' };
+  desk.forEach((id, i) => {
+    const x = 14 + (i >= 6 ? 70 : 0), y = 10 + (i % 6) * 70;
+    const st = id === 'trash' ? 'full' : id === 'browser' ? 'chewed' : '';
+    g.drawImage(getAppIcon(id, { state: st }), x + 16, y);
+    drawText(g, names[id], x + 32, y + 36, { align: 'center', color: '#ffffff', shadow: '#0b1a26' });
+  });
+  // shop window
+  const w1 = drawWindowChrome(g, { x: 170, y: 50, w: 400, h: 300 }, { title: 'Tackle Shop', iconCanvas: getUiIcon('shop'), active: true, hover: 'close', fill: false });
+  drawWood(g, w1.content.x, w1.content.y, w1.content.w, w1.content.h, { tone: 'dark', nails: false });
+  drawTab(g, w1.content.x + 8, w1.content.y + 6, 70, 21, { label: 'Bait', icon: 'worm', active: true, color: '#d8584a' });
+  drawTab(g, w1.content.x + 80, w1.content.y + 6, 70, 21, { label: 'Rods', icon: 'hook', color: '#4a9ad8' });
+  drawTab(g, w1.content.x + 152, w1.content.y + 6, 76, 21, { label: 'Decor', icon: 'coral', color: '#5aae5a' });
+  const pane = { x: w1.content.x + 6, y: w1.content.y + 26, w: w1.content.w - 12, h: w1.content.h - 32 };
+  drawWood(g, pane.x, pane.y, pane.w, pane.h, { inset: true });
+  const items = [['Bread crumbs', 5, 'food', 'normal'], ['Glowing worm', 25, 'worm', 'hover'], ['Golden lure', 120, 'bait', 'normal'], ['Black hole', 999, 'skull', 'disabled']];
+  items.forEach(([n, price, ic, st], i) => {
+    const y = pane.y + 8 + i * 52;
+    drawPaper(g, pane.x + 8, y, pane.w - 16, 44, { fold: i === 1 });
+    const ico = getUiIcon(ic);
+    drawFrame(g, pane.x + 14, y + 5, 34, 34, { style: i === 2 ? 'gold' : 'wood' });
+    g.fillStyle = '#bfe8f0';
+    g.fillRect(pane.x + 19, y + 10, 24, 24);
+    g.drawImage(ico, pane.x + 31 - ico.width, y + 22 - ico.height, ico.width * 2, ico.height * 2);
+    drawText(g, n, pane.x + 56, y + 9, { color: UI_COLORS.ink });
+    drawText(g, price + '{coin}', pane.x + 56, y + 25, { color: UI_COLORS.inkSoft });
+    drawButton(g, pane.x + pane.w - 86, y + 12, 66, 21, { label: st === 'disabled' ? 'Locked' : 'Buy', icon: st === 'disabled' ? 'lock' : null, style: 'wood', state: st });
+    if (i === 0) drawStamp(g, pane.x + 200, y + 22, 'NEW!', { color: '#d8383a', angle: -0.2 });
+  });
+  // journal window (inactive)
+  const w2 = drawWindowChrome(g, { x: 590, y: 30, w: 340, h: 230 }, { title: 'Fish Journal', iconCanvas: getUiIcon('book'), active: false, fill: false });
+  drawWood(g, w2.content.x, w2.content.y, w2.content.w, w2.content.h, { tone: 'light', nails: false });
+  drawPaper(g, w2.content.x + 8, w2.content.y + 8, w2.content.w - 16, w2.content.h - 18, { lined: true, aged: true, torn: 'bottom' });
+  const fr = drawFrame(g, w2.content.x + 20, w2.content.y + 20, 90, 70, { style: 'coral' });
+  g.fillStyle = '#2a6a8a';
+  g.fillRect(fr.x, fr.y, fr.w, fr.h);
+  g.drawImage(getAppIcon('fishtop'), fr.x + fr.w / 2 - 16, fr.y + fr.h / 2 - 16);
+  drawText(g, 'Sir Puffington', w2.content.x + 122, w2.content.y + 24, { color: UI_COLORS.ink });
+  drawText(g, '{star}{star}{star}{star_empty}{star_empty}', w2.content.x + 122, w2.content.y + 40, { color: UI_COLORS.ink });
+  drawText(g, 'Likes: {music} {worm}', w2.content.x + 122, w2.content.y + 56, { color: UI_COLORS.inkSoft });
+  drawText(g, 'Best: 2.1kg', w2.content.x + 122, w2.content.y + 72, { color: UI_COLORS.inkSoft });
+  drawStamp(g, w2.content.x + 250, w2.content.y + 150, 'CAUGHT', { color: '#2e8a4a', angle: -0.12 });
+  // HUD sign
+  drawPlank(g, 780, 290, 150, 28, { rope: 20, label: '1,250{coin}  {heart}{heart}{heart}' });
+  // fishing line with bait icon
+  g.fillStyle = '#e8f4f4';
+  g.fillRect(660, 270, 1, 104);
+  g.drawImage(getUiIcon('hook'), 656, 372);
+  g.drawImage(getMiniIcon('music', { state: 'chewed' }), 655, 384);
+  drawBubble(g, 680, 404, 64, 26, { tailX: 668, tailY: 396 });
+  drawText(g, '{question}{music}', 690, 411, { color: UI_COLORS.ink });
+  drawBottle(g, 600, 470, 110, 32);
+  for (const [x, y, r] of [[750, 470, 3], [760, 452, 2], [742, 440, 4], [770, 420, 2.5], [600, 380, 3.5], [612, 360, 2]]) drawWaterBubble(g, x, y, r);
+  // settings glass panel
+  const gp = drawGlass(g, 790, 360, 150, 130, { frame: 'brass' });
+  drawText(g, 'Settings', gp.x + 6, gp.y + 5, { color: '#ffffff', shadow: '#123e54' });
+  drawText(g, '{music}', gp.x + 6, gp.y + 26, {});
+  drawSlider(g, gp.x + 20, gp.y + 21, 112, 0.6);
+  drawText(g, '{sound}', gp.x + 6, gp.y + 46, {});
+  drawSlider(g, gp.x + 20, gp.y + 41, 112, 0.3, { hover: true });
+  drawText(g, 'Bubbles', gp.x + 6, gp.y + 70, { color: '#ffffff', shadow: '#123e54' });
+  drawToggle(g, gp.x + 104, gp.y + 62, true);
+  drawText(g, 'Fullscreen', gp.x + 6, gp.y + 96, { color: '#ffffff', shadow: '#123e54' });
+  drawToggle(g, gp.x + 104, gp.y + 88, false);
+  // taskbar
+  drawTaskbar(g, 0, 514, W, 26);
+  drawButton(g, 4, 517, 78, 19, { label: 'FISHTOP', icon: 'fish', style: 'shell' });
+  ['computer', 'browser', 'music', 'notes'].forEach((id, i) => {
+    drawButton(g, 90 + i * 26, 517, 22, 19, { style: 'paper', state: i === 0 ? 'down' : 'normal' });
+    g.drawImage(getMiniIcon(id), 94 + i * 26, 518 + (i === 0 ? 2 : 0));
+  });
+  drawBar(g, 230, 522, 120, 9, 0.64, { color: '#5ab4ff', segments: 4 });
+  drawText(g, '{sound} {sun} 12:34', W - 8, 522, { align: 'right', color: '#fff4dc', shadow: '#2a140e' });
+  // tooltip + cursor over the hovered buy button
+  const bx = 170 + 400 - 4 - 6 - 86 + 30, by = 50 + 3 + 14 + 2 + 26 + 8 + 52 + 22;
+  drawTooltip(g, bx, by, 'Glowing worm: crawls over your icons. Rare fish love it!', { maxW: 150 });
+  g.drawImage(getUiIcon('cursor_hand'), bx - 3, by);
+}
+
 export function run(params) {
   const S = Number(params.get('s') || 2);
   const cv = document.getElementById('screen');
@@ -271,7 +354,7 @@ export function run(params) {
   const g = ctxOf(cv);
   ocean(g);
   const page = Number(params.get('page') || 0);
-  const PAGES = [pageIcons, pageUiIcons, pageSurfaces, pageWidgets];
+  const PAGES = [pageIcons, pageUiIcons, pageSurfaces, pageWidgets, pageScene];
   PAGES[page % PAGES.length](g);
   window.__ready = true;
 }

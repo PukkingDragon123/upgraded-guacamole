@@ -14,7 +14,7 @@
 // drawBar(ctx,x,y,w,h,value,{color, back, segments})
 // drawTooltip(ctx,x,y,text,{maxW, font}) auto-placed near (x,y) inside the canvas          -> rect
 // drawTab(ctx,x,y,w,h,{label, icon, active, color})
-// drawWindowChrome(ctx,{x,y,w,h},{title, iconCanvas, active=true, hover:'close'|'min'|null, down, fill})
+// drawWindowChrome(ctx,{x,y,w,h},{title, iconCanvas, active=true, hover:'close'|'min'|null, down, fill, shadow=true})
 //   -> {content, close, min, titleBar}
 // drawTaskbar(ctx,x,y,w,h)
 // drawPlank(ctx,x,y,w,h,{rope=14, tone, label})                                        -> inner rect
@@ -117,7 +117,8 @@ function outlineFn(n) {
   let c = outCache.get(n);
   if (c === undefined) {
     const [r, g, b] = unpack(n);
-    c = pk(mix(shade(rgbToHex(r, g, b), -0.82), '#1a1226', 0.45));
+    const lum = (r * 0.3 + g * 0.59 + b * 0.11) / 255;
+    c = pk(mix(shade(rgbToHex(r, g, b), -0.82), '#1a1226', 0.45 + Math.max(0, lum - 0.6) * 0.9));
     outCache.set(n, c);
   }
   return c;
@@ -1033,6 +1034,11 @@ function chromeButton(ctx, x, y, kind, state) {
 export function drawWindowChrome(ctx, r, opts = {}) {
   const x = Math.round(r.x), y = Math.round(r.y), w = Math.round(r.w), h = Math.round(r.h);
   const active = opts.active !== false;
+  if (opts.shadow !== false) {
+    ctx.fillStyle = rgba(UI_COLORS.shadow, active ? 0.28 : 0.18);
+    ctx.fillRect(x + 4, y + h, w - 2, 3);
+    ctx.fillRect(x + w, y + 4, 3, h - 1);
+  }
   ctx.drawImage(cached(`win|${w}|${h}|${active}`, () => windowTex(w, h, active)), x, y);
   const titleBar = { x: x + FRAME, y: y + FRAME, w: w - FRAME * 2, h: TITLE_H };
   const close = { x: x + w - FRAME - 13, y: y + FRAME + 1, w: 11, h: 11 };

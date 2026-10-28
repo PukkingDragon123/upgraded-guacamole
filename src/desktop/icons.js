@@ -143,7 +143,8 @@ function outlineColor(n) {
   let c = outCache.get(n);
   if (c === undefined) {
     const [r, g, b] = unpack(n);
-    c = pk(mix(shade(rgbToHex(r, g, b), -0.82), OUT_INK, 0.45));
+    const lum = (r * 0.3 + g * 0.59 + b * 0.11) / 255;
+    c = pk(mix(shade(rgbToHex(r, g, b), -0.82), OUT_INK, 0.45 + Math.max(0, lum - 0.6) * 0.9));
     outCache.set(n, c);
   }
   return c;
@@ -561,14 +562,14 @@ function drawGame(p) {
   p.circ(8, 21, 5.6, G[2]);
   p.circ(24, 21, 5.6, G[2]);
   p.paint(0, 9, 32, 20, (x, y) => {
-    let v = 0.6 - (y - 10) * 0.02;
-    if (!p.on(x, y - 1)) v = 0.98;
-    else if (!p.on(x, y - 2)) v = 0.78;
-    if (!p.on(x, y + 1)) v = 0.12;
-    else if (!p.on(x, y + 2)) v = 0.32;
-    if (!p.on(x + 1, y)) v -= 0.2;
-    if (!p.on(x - 1, y)) v += 0.15;
-    return dith(v, G, x, y);
+    let i = y >= 21 ? 1 : 2;
+    if (!p.on(x, y - 1)) i = 4;
+    else if (!p.on(x, y - 2)) i = 3;
+    if (!p.on(x, y + 1)) i = 0;
+    else if (!p.on(x, y + 2)) i = 1;
+    if (!p.on(x + 1, y) && i > 0) i -= 1;
+    if (!p.on(x - 1, y) && i < 4 && y < 21) i += 1;
+    return G[i];
   });
   p.rrect(4, 8, 7, 2, '#8a82a8', 1);
   p.rrect(21, 8, 7, 2, '#8a82a8', 1);
@@ -756,7 +757,7 @@ function drawCalendar(p, day) {
   let x = 16 - Math.ceil(w / 2);
   for (const ch of s) {
     BIG[ch].forEach((row, j) => {
-      for (let i = 0; i < 6; i++) if (row[i] === '#') { p.px(x + i, 14 + j, '#3a3048'); p.px(x + i + 1, 15 + j, p.on(x + i + 1, 15 + j) ? null : null); }
+      for (let i = 0; i < 6; i++) if (row[i] === '#') p.px(x + i, 14 + j, '#3a3048');
     });
     x += 7;
   }
@@ -801,15 +802,16 @@ function drawPaint(p) {
     return dith(v, W, x, y);
   });
   const dab = (cx, cy, c) => {
-    p.circ(cx, cy, 2.4, shade(c, -0.35));
-    p.circ(cx - 0.3, cy - 0.4, 2, c);
-    p.px(Math.floor(cx) - 1, Math.floor(cy) - 1, shade(c, 0.55));
+    p.circ(cx + 0.5, cy + 0.5, 2.5, shade(c, -0.35));
+    p.circ(cx + 0.5, cy + 0.2, 2.1, c);
+    p.px(cx - 1, cy - 1, shade(c, 0.55));
+    p.px(cx, cy - 1, shade(c, 0.3));
   };
   dab(7, 15, '#e84a4a');
-  dab(11.5, 11.5, '#ffcf3a');
-  dab(17.5, 11, '#5ad06a');
-  dab(22.5, 14, '#4a9ef0');
-  dab(20.5, 21, '#b46ae8');
+  dab(11, 11, '#ffcf3a');
+  dab(17, 11, '#5ad06a');
+  dab(22, 14, '#4a9ef0');
+  dab(20, 21, '#b46ae8');
   layer(p, (q) => q.stroke(29.5, 1.5, 14, 19.5, (t) => (t < 0.66 ? 3.2 - t * 0.6 : t < 0.9 ? 3.6 : 3.6 - (t - 0.9) * 22), (t, s) => {
     if (t < 0.56) return s > 0.3 ? '#5ab4c4' : s < -0.35 ? '#1e4e5e' : '#2e7a8a';
     if (t < 0.67) return s > 0.3 ? '#ffffff' : s < -0.35 ? '#8a90a8' : '#d0d4e0';
@@ -975,7 +977,6 @@ function drawPage(p, kind, label) {
     p.ell(12.5, 14, 5, 3.5, '#4cb256');
     p.ell(19.5, 14.5, 5, 2.8, '#2a8044');
     p.rect(9, 14, 15, 2, '#2a8044');
-    p.paint(9, 4, 15, 13, (x, y) => (y > 15 ? null : null));
     for (let y = 16; y < 19; y++) p.hl(9, y, 15, P[3]);
   } else if (g === 'cfg') {
     gear(p, 15.5, 10, 5.4, 4, 7, 1.4, ['#363a54', '#5c6a86', '#92a4bc', '#c4d2e0', '#eef6fa']);
@@ -1204,11 +1205,11 @@ function applyBite(p, scale) {
     }
   }
   if (bx < 0) return [];
-  const cx = bx + 0.6, cy = by + 0.4, R = 4.6 * scale;
-  const circles = [[cx, cy, R * 0.82]];
+  const cx = bx + 0.8, cy = by + 0.2, R = 6.2 * scale;
+  const circles = [[cx, cy, R * 0.74]];
   for (let k = 0; k < 4; k++) {
-    const a = Math.PI * (0.42 + k * 0.24);
-    circles.push([cx + Math.cos(a) * R * 0.78, cy + Math.sin(a) * R * 0.78, R * 0.36]);
+    const a = Math.PI * (0.47 + k * 0.2);
+    circles.push([cx + Math.cos(a) * R * 0.74, cy + Math.sin(a) * R * 0.74, R * 0.3]);
   }
   const inBite = (x, y) => circles.some(([ox, oy, r]) => Math.hypot(x + 0.5 - ox, y + 0.5 - oy) <= r);
   const edge = [];
