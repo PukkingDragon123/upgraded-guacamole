@@ -19229,10 +19229,18 @@ are just virtual copies - Restore All Icons anytime.`;
               leaf(b, x, y, -0.35, ll, Math.max(0.8, ll * 0.32), R);
               leaf(b, x, y, Math.PI + 0.35, ll, Math.max(0.8, ll * 0.32), R, 2);
             } else {
-              const rr2 = Math.max(2, H5 * 0.09 * (1 - t * 0.35));
-              for (let a = 0; a < 7; a++) {
-                const ang = Math.PI + a / 6 * Math.PI;
-                for (let q = 1; q <= rr2; q++) b.set(Math.round(x + Math.cos(ang) * q), Math.round(y + Math.sin(ang) * q * 0.5), P2((q > rr2 * 0.6 ? LIME : GREEN2)[3 + a % 2]));
+              const rr2 = Math.max(2, H5 * 0.085 * (1 - t * 0.3));
+              const n2 = 9;
+              for (let a = 0; a < n2; a++) {
+                const ang = a / (n2 - 1) * Math.PI;
+                const dx = Math.cos(ang), up = Math.sin(ang);
+                const len = rr2 * (0.7 + 0.3 * Math.sin(a * 2.1 + s));
+                for (let q = 1; q <= len; q++) {
+                  const k2 = q / len;
+                  const px = x + dx * q, py = y - up * q * 0.35 - k2 * k2 * rr2 * 0.35 + (a % 2 ? 0.5 : 0);
+                  b.set(Math.round(px), Math.round(py), P2((k2 > 0.55 ? LIME : GREEN2)[k2 > 0.8 ? 5 : 3 + a % 2]));
+                  if (k2 > 0.6 && q % 2 === 0) b.set(Math.round(px + dx * 0.8), Math.round(py - 1), P2(LIME[4]));
+                }
               }
             }
           }
@@ -19651,6 +19659,21 @@ are just virtual copies - Restore All Icons anytime.`;
     }
     return c;
   }
+  function shadowSprite(rx, ry) {
+    const key = rx * 100 + ry;
+    let c = shadowCache.get(key);
+    if (c) return c;
+    c = makeCanvas(rx * 2 + 1, ry * 2 + 1);
+    const g = ctxOf(c);
+    for (let y = 0; y <= ry * 2; y++) for (let x = 0; x <= rx * 2; x++) {
+      const d = ((x - rx) / rx) ** 2 + ((y - ry) / ry) ** 2;
+      if (d > 1) continue;
+      g.fillStyle = d < 0.45 ? "rgba(40,20,30,1)" : (x + y) % 2 ? "rgba(40,20,30,0.6)" : "rgba(0,0,0,0)";
+      g.fillRect(x, y, 1, 1);
+    }
+    shadowCache.set(key, c);
+    return c;
+  }
   function bubbleSprite2(r) {
     let c = bubbleCache2.get(r);
     if (c) return c;
@@ -19681,7 +19704,7 @@ are just virtual copies - Restore All Icons anytime.`;
     ctx2.fillRect(x + 1, y + 1, 1, 1);
     ctx2.fillRect(x + w - 2, y + 1, 1, 1);
   }
-  var COIN_CAP, HUNGER_RATE, ICONS2, EMOTE_ICON, STARTER_DECOR, CFG, FRAME2, Aquarium, alphaCache, stripCache, bubbleCache2;
+  var COIN_CAP, HUNGER_RATE, ICONS2, EMOTE_ICON, STARTER_DECOR, CFG, FRAME2, Aquarium, alphaCache, stripCache, shadowCache, bubbleCache2;
   var init_aquarium = __esm({
     "src/aquarium/aquarium.js"() {
       init_math();
@@ -20455,7 +20478,6 @@ are just virtual copies - Restore All Icons anytime.`;
           const shown = this.shownKey();
           this.visibleKey = shown === key ? shown : null;
           if (this.visibleKey === "window") this.winAnim = Math.min(1, this.winAnim + dt * 5);
-          const T = this.T;
           const w = this.world;
           const clock = g.clock;
           w.night = clock ? clock.isNight() : false;
@@ -20478,14 +20500,11 @@ are just virtual copies - Restore All Icons anytime.`;
           this.updateHelpers(dt);
           this.updateBubbles(dt);
           this.particles.update(dt);
-          const tu = g.tutorial;
-          if (tu?.active && tu.step === "tank" && this.visibleKey && (tu.t || 0) > 3.2) tu.go?.("coin");
           this.saveT -= dt;
           if (this.saveT <= 0 && this.coinsDirty) {
             this.saveT = 1;
             this.saveCoins();
           }
-          void T;
         }
         handleInput(dt, inp) {
           const g = this.game;
@@ -20883,7 +20902,6 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
         drawFull(ctx2, dt) {
           if (this.view?.key !== "full") return;
           this.drawTank(ctx2, 0, 0);
-          const g = this.game, W5 = g.screen.W;
           const sm2 = this.tankSummary();
           const label3 = `My Aquarium  {fish}${sm2.fish}/${sm2.cap}  {heart}${sm2.fish ? Math.round(sm2.happiness * 100) + "%" : "--"}  {coin}${sm2.coinsPerMin.toFixed(1)}/min`;
           const { plank: p, btn: b, unpack: u } = this.fullLayout();
@@ -20892,7 +20910,6 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           drawPlank(ctx2, p.x, p.y, p.w, p.h, { rope: 8 });
           drawText(ctx2, label3, p.x + p.w / 2, p.y + 6, { align: "center", color: "#fff3dc", shadow: "#2a160a" });
           drawButton(ctx2, b.x, b.y, b.w, b.h, { label: "Ocean", icon: getUiIcon("arrow_l"), state: this.hoverBtn === "back" ? "hover" : "normal", style: "glass" });
-          void W5;
         }
         drawWindow(ctx2, dt) {
           if (this.visibleKey !== "window" || this.view?.key !== "window") return;
@@ -20971,6 +20988,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           ctx2.translate(ox, oy);
           ctx2.drawImage(art.backdrop, 0, 0);
           if (art.caustics) this.drawCaustics(ctx2, v, art, night);
+          this.drawShadows(ctx2, v);
           this.drawShafts(ctx2, v, night, 0.3, 2);
           const lg = art.lg;
           lg.setTransform(1, 0, 0, 1, 0, 0);
@@ -21063,6 +21081,21 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
             }
           }
           ctx2.restore();
+        }
+        // Soft contact shadows on the sand under fish (fainter the higher they swim).
+        drawShadows(ctx2, v) {
+          const T = this.T;
+          for (const f of this.fish) {
+            const s = T.s(f.z);
+            const fl = T.floorAt(f.x, f.z);
+            const hgt = fl - f.y;
+            const k = clamp01(1 - hgt / (T.floorFront * 0.55));
+            if (k <= 0.05) continue;
+            const rx = Math.max(2, Math.round((14 + 8 * k) * f.scale * s)), ry = Math.max(1, Math.round(rx * 0.28));
+            ctx2.globalAlpha = 0.22 * k * (1 - f.z * 0.4);
+            ctx2.drawImage(shadowSprite(rx, ry), Math.round(f.x - rx), Math.round(fl - ry));
+          }
+          ctx2.globalAlpha = 1;
         }
         fogFill(lg, art, v, a) {
           const b = this.box;
@@ -21239,7 +21272,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           ctx2.globalCompositeOperation = "lighter";
           const a = 0.3 * (1 - night * 0.7);
           const fy0 = art.floorTopY, fy1 = T.floorFront;
-          const bands = [[fy0, lerp(fy0, fy1, 0.4), 1, 0.45, a * 0.6], [lerp(fy0, fy1, 0.4), fy1 + 2, 1.5, 0.7, a], [T.surf, T.top(1) + 1, 2, 0.7, a * 0.45]];
+          const bands = [[fy0, lerp(fy0, fy1, 0.4), 1, 0.45, a * 0.6], [lerp(fy0, fy1, 0.4), fy1 + 2, 1.5, 0.7, a], [T.surf, T.top(1) + 1, 2, 0.7, a * 0.3]];
           const fi = (Math.floor(this.t * 8) % frames.length + frames.length) % frames.length;
           for (const [y0, y1, sx, sy, al] of bands) {
             const tw = Math.max(16, Math.round(64 * sx * Math.max(0.5, sc))), th = Math.max(6, Math.round(32 * sy * Math.max(0.5, sc)));
@@ -21310,6 +21343,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
       };
       alphaCache = /* @__PURE__ */ new WeakMap();
       stripCache = /* @__PURE__ */ new Map();
+      shadowCache = /* @__PURE__ */ new Map();
       bubbleCache2 = /* @__PURE__ */ new Map();
     }
   });

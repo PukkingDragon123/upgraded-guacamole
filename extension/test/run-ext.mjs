@@ -4,7 +4,7 @@
 //   node tools/build.mjs && node extension/test/run-ext.mjs
 import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
-import { readFile, mkdir, mkdtemp, rm, access } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, mkdtemp, rm, access, cp } from 'node:fs/promises';
 import { join, extname, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -38,45 +38,90 @@ check('all referenced files exist', !missing.length, missing.join(','));
 check('no remote code / network APIs in extension sources', !(await Promise.all(['background.js', 'popup.js', 'bridge.js', 'overlay.js'].map((f) => readFile(join(extDir, f), 'utf8'))))
   .some((src) => /\bfetch\(|XMLHttpRequest|WebSocket\(|sendBeacon|EventSource\(|importScripts\(/.test(src)));
 
-// ---- local "FISHTOP" server on 5173 (the bridge's match pattern)
+// ---- local servers: 5173 = the FISHTOP game origin (bridge match), 5174 = an ordinary website
 const types = { '.html': 'text/html', '.js': 'text/javascript' };
-const server = createServer(async (rq, res) => {
+const handler = async (rq, res) => {
   const p = new URL(rq.url, 'http://x').pathname.replace(/^\/+/, '');
+  if (p === 'favicon.ico') { res.writeHead(204).end(); return; }
   try {
     const body = await readFile(join(here, p));
     res.writeHead(200, { 'content-type': types[extname(p)] || 'text/plain' });
     res.end(body);
   } catch { res.writeHead(404).end(); }
-});
-await new Promise((ok, bad) => { server.once('error', bad); server.listen(5173, '127.0.0.1', ok); });
-
-const profile = await mkdtemp(join(tmpdir(), 'fishtop-ext-'));
-const ctx = await chromium.launchPersistentContext(profile, {
-  channel: 'chromium', headless: true, viewport: { width: 1600, height: 900 },
-  args: [`--disable-extensions-except=${extDir}`, `--load-extension=${extDir}`],
-});
+};
+const servers = [];
+for (const port of [5173, 5174]) {
+  const sv = createServer(handler);
+  await new Promise((ok, bad) => { sv.once('error', bad); sv.listen(port, '127.0.0.1', ok); });
+  servers.push(sv);
+}
 const errors = [];
 const watch = (page, tag) => {
   page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`${tag} ${m.type()}: ${m.text()}`); });
   page.on('pageerror', (e) => errors.push(`${tag} pageerror: ${e.message}`));
 };
-let sw = ctx.serviceWorkers()[0];
-if (!sw) sw = await ctx.waitForEvent('serviceworker', { timeout: 15000 }).catch(() => null);
-check('extension loaded (service worker running)', !!sw, sw?.url());
-if (!sw) { await ctx.close(); server.close(); process.exit(1); }
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+async function launch(dir) {
+  const profile = await mkdtemp(join(tmpdir(), 'fishtop-ext-'));
+  const ctx = await chromium.launchPersistentContext(profile, {
+    channel: 'chromium', headless: true, viewport: { width: 1600, height: 900 },
+    args: [`--disable-extensions-except=${dir}`, `--load-extension=${dir}`],
+  });
+  let sw = ctx.serviceWorkers()[0];
+  if (!sw) sw = await ctx.waitForEvent('serviceworker', { timeout: 15000 }).catch(() => null);
+  return { ctx, sw, profile };
+}
+
+// ---- phase 1: the extension exactly as shipped
+{
+  const { ctx, sw, profile } = await launch(extDir);
+  check('extension loaded (service worker running)', !!sw, sw?.url());
+  if (sw) {
+    const cmds = await sw.evaluate(() => chrome.commands.getAll());
+    check('command registered', cmds.some((c) => c.name === 'toggle-fishing'), JSON.stringify(cmds.map((c) => [c.name, c.shortcut])));
+    check('roaming refused without granted host access', (await sw.evaluate(() => setRoaming(true)))?.error === 'permission');
+    const W = await ctx.newPage(); watch(W, 'site');
+    await W.goto('http://localhost:5174/ext-test.html');
+    const denied = await sw.evaluate(async () => {
+      const out = [];
+      for (const t of await chrome.tabs.query({})) out.push(await chrome.scripting.executeScript({ target: { tabId: t.id }, func: () => 1 }).then(() => 'ok', () => 'denied'));
+      return out;
+    });
+    check('no access to ordinary sites until the user grants it', denied.every((d) => d === 'denied'), denied.join(','));
+    check('no overlay on a site the user did not enable', !(await W.evaluate(() => !!document.querySelector('fishtop-overlay'))));
+    const G0 = await ctx.newPage(); watch(G0, 'game0');
+    await G0.goto('http://localhost:5173/ext-test.html?bridge');
+    // the bridge keeps saying hello until a game answers; a page that never answers gets nothing else
+    const seen = await G0.evaluate(() => new Promise((res) => { const got = []; window.addEventListener('message', (e) => { if (e.source === window && e.data?.type) got.push(e.data.type); }); setTimeout(() => res(got), 3500); }));
+    check('bridge content script runs on the FISHTOP page', seen.includes('fishtop:bridge-hello') && seen.every((t) => t === 'fishtop:bridge-hello'), seen.join(','));
+  }
+  await ctx.close();
+  await rm(profile, { recursive: true, force: true });
+}
+
+// ---- phase 2: a temp copy whose manifest grants the optional host access up front
+// (stands in for the activeTab grant from clicking the toolbar button and for the roaming permission
+// prompt, neither of which a headless test can click)
+const grantedDir = await mkdtemp(join(tmpdir(), 'fishtop-ext-granted-'));
+await cp(extDir, grantedDir, { recursive: true, filter: (src) => !src.includes(join('test', 'out')) });
+await writeFile(join(grantedDir, 'manifest.json'), JSON.stringify({ ...man, host_permissions: man.optional_host_permissions }, null, 2));
+const { ctx, sw, profile } = await launch(grantedDir);
+if (!sw) { console.log('FAIL  granted copy did not load'); process.exit(1); }
 const extId = sw.url().split('/')[2];
 const SW = (fn, arg) => sw.evaluate(fn, arg);
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-
-const cmds = await SW(() => chrome.commands.getAll());
-check('command registered', cmds.some((c) => c.name === 'toggle-fishing'), JSON.stringify(cmds.map((c) => [c.name, c.shortcut])));
-check('roaming refused without granted host access', (await SW(() => setRoaming(true)))?.error === 'permission');
 
 const A = await ctx.newPage(); watch(A, 'A');
 await A.goto('http://localhost:5173/ext-test.html?tab=a');
 const B = await ctx.newPage(); watch(B, 'B');
 await B.goto('http://localhost:5173/ext-test.html?tab=b');
-const ids = await SW(async () => (await chrome.tabs.query({ url: 'http://localhost:5173/ext-test.html*' })).map((t) => [t.id, t.url]));
+// headless Chromium reports tabs without URLs, so ask each tab where it is (allowed by the bridge's host match)
+const ids = await SW(async () => {
+  const out = [];
+  for (const t of await chrome.tabs.query({})) {
+    try { const [r] = await chrome.scripting.executeScript({ target: { tabId: t.id }, func: () => location.href }); out.push([t.id, r.result]); } catch { /* no access */ }
+  }
+  return out;
+});
 const idA = ids.find((t) => t[1].includes('tab=a'))?.[0], idB = ids.find((t) => t[1].includes('tab=b'))?.[0];
 check('found both test tabs', idA && idB, JSON.stringify(ids));
 
@@ -99,16 +144,18 @@ await SW(() => patchSettings({ fishCount: 1 }));
 let hands = [];
 for (let i = 0; i < 40 && !hands.some((h) => h.ok); i++) { await wait(1000); hands = await SW(() => self.__hand); }
 check('a fish swam off one tab and was handed to the other', hands.some((h) => h.ok), JSON.stringify(hands.slice(0, 4)));
-await B.bringToFront();
-await wait(2500);
-const pB2 = await SW((id) => ping(id), idB);
-check('handed-over fish arrives in tab B', pB2?.count >= 1, JSON.stringify(pB2));
+const hop = hands.find((h) => h.ok);
+const dest = hop?.to === idA ? A : B;
+await dest.bringToFront();
+let landed = null;
+for (let i = 0; i < 30; i++) { await wait(250); landed = await SW((id) => ping(id), hop?.to); if (landed && !landed.queued) break; }
+check('handed-over fish swims into the other tab', landed && landed.queued === 0 && landed.count >= 1, JSON.stringify({ visible: await dest.evaluate(() => document.visibilityState), ...landed }));
 await SW(() => patchSettings({ fishCount: 3 }));
 await A.bringToFront();
 
 // fishing mode toggled through the worker (the popup switch and Alt+Shift+F take this path)
 const f1 = await SW((id) => setFishing(id, true), idA);
-const peOn = await A.evaluate(() => document.querySelector('fishtop-overlay').getAttribute('style').includes('pointer-events:auto'));
+const peOn = await A.evaluate(() => getComputedStyle(document.querySelector('fishtop-overlay')).pointerEvents === 'auto');
 check('fishing mode on: overlay captures the mouse', f1?.fishing && peOn, JSON.stringify(f1));
 await A.mouse.move(800, 600, { steps: 10 });
 await wait(600);
@@ -116,7 +163,7 @@ await A.screenshot({ path: join(out, 'ext_02_fishing_mode.png') });
 await A.keyboard.press('Escape');
 await wait(200);
 const afterEsc = await SW((id) => ping(id), idA);
-const peOff = await A.evaluate(() => document.querySelector('fishtop-overlay').getAttribute('style').includes('pointer-events:none'));
+const peOff = await A.evaluate(() => getComputedStyle(document.querySelector('fishtop-overlay')).pointerEvents === 'none');
 check('Esc leaves fishing mode, page clickable again', !afterEsc.fishing && peOff);
 
 // catch bucket: the overlay reports catches with ft:caught (simulated here; run.mjs covers real catches)
@@ -159,9 +206,23 @@ await SW((id) => disableTab(id), idA);
 await wait(200);
 check('disabling the tab removes the overlay', !(await A.evaluate(() => !!document.querySelector('fishtop-overlay'))));
 
+// roaming: with host access granted the content script is registered and new pages get fish by themselves
+const ro = await SW(() => setRoaming(true));
+const C = await ctx.newPage(); watch(C, 'C');
+await C.goto('http://localhost:5174/ext-test.html?tab=c');
+await C.waitForSelector('fishtop-overlay', { state: 'attached', timeout: 8000 }).catch(() => {});
+check('roaming on: fish appear on newly opened sites', ro?.ok && await C.evaluate(() => !!document.querySelector('fishtop-overlay')), JSON.stringify(ro));
+const reg2 = await SW(async () => [await chrome.scripting.getRegisteredContentScripts(), (await readSettings()).roaming]);
+check('roaming content script registered (excluding the game page)', reg2[0].length === 1 && reg2[0][0].excludeMatches.includes('http://localhost:5173/*') && reg2[1] === true);
+await SW(() => setRoaming(false));
+await wait(300);
+const reg3 = await SW(async () => (await chrome.scripting.getRegisteredContentScripts()).length);
+check('roaming off: script unregistered and roaming fish swim away', reg3 === 0 && !(await C.evaluate(() => !!document.querySelector('fishtop-overlay'))));
+
 check('no console errors or warnings (pages, popup)', errors.length === 0, errors.slice(0, 6).join(' | '));
 await ctx.close();
-server.close();
+for (const sv of servers) sv.close();
 await rm(profile, { recursive: true, force: true });
+await rm(grantedDir, { recursive: true, force: true });
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
 process.exit(failures ? 1 : 0);

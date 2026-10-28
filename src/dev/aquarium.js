@@ -13,7 +13,7 @@ import { defaultState } from '../game/state.js';
 import { computeStats, SKILLS } from '../game/skills.js';
 import { SPECIES } from '../fish/species.js';
 import { rollIndividual } from '../fish/traits.js';
-import { coinSheet, SPIN_N, FLIP_N } from '../aquarium/coins.js';
+import { coinSheet, SPIN_N } from '../aquarium/coins.js';
 
 // Coin sprite sheets: every spin x flip frame for each denomination at a few on-screen sizes.
 function coinDebug(g, W, H, zoomRow) {

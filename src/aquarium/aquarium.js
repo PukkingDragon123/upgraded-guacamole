@@ -8,7 +8,7 @@
 // windowRect(), toggleWindow(), openWindow(force), closeWindow(), forceCoin(), offlineCoins(sec), onResize().
 // Extra: addDecor(id) (shop), storedDecor(), placeStored(id), tankSummary().
 
-import { clamp, clamp01, lerp, dist, damp, ease, rectContains, smoothstep, TAU } from '../core/math.js';
+import { clamp, clamp01, lerp, dist, ease, rectContains, smoothstep, TAU } from '../core/math.js';
 import { rng, RNG } from '../core/rng.js';
 import { mix, rgba } from '../core/color.js';
 import { makeCanvas, ctxOf, tinted } from '../core/canvas.js';
@@ -724,7 +724,6 @@ export class Aquarium {
     const shown = this.shownKey();
     this.visibleKey = shown === key ? shown : null;
     if (this.visibleKey === 'window') this.winAnim = Math.min(1, this.winAnim + dt * 5);
-    const T = this.T;
     const w = this.world;
     const clock = g.clock;
     w.night = clock ? clock.isNight() : false;
@@ -747,13 +746,8 @@ export class Aquarium {
     this.updateBubbles(dt);
     this.particles.update(dt);
 
-    // tutorial: the tank step has no exit of its own; move on to the coin once the window has been admired
-    const tu = g.tutorial;
-    if (tu?.active && tu.step === 'tank' && this.visibleKey && (tu.t || 0) > 3.2) tu.go?.('coin');
-
     this.saveT -= dt;
     if (this.saveT <= 0 && this.coinsDirty) { this.saveT = 1; this.saveCoins(); }
-    void T;
   }
 
   handleInput(dt, inp) {
@@ -1116,7 +1110,6 @@ export class Aquarium {
     if (this.view?.key !== 'full') return;
     this.drawTank(ctx, 0, 0);
     // top plaque: tank stats + back to the ocean
-    const g = this.game, W = g.screen.W;
     const sm = this.tankSummary();
     const label = `My Aquarium  {fish}${sm.fish}/${sm.cap}  {heart}${sm.fish ? Math.round(sm.happiness * 100) + '%' : '--'}  {coin}${sm.coinsPerMin.toFixed(1)}/min`;
     const { plank: p, btn: b, unpack: u } = this.fullLayout();
@@ -1125,7 +1118,6 @@ export class Aquarium {
     drawPlank(ctx, p.x, p.y, p.w, p.h, { rope: 8 });
     drawText(ctx, label, p.x + p.w / 2, p.y + 6, { align: 'center', color: '#fff3dc', shadow: '#2a160a' });
     drawButton(ctx, b.x, b.y, b.w, b.h, { label: 'Ocean', icon: getUiIcon('arrow_l'), state: this.hoverBtn === 'back' ? 'hover' : 'normal', style: 'glass' });
-    void W;
   }
 
   drawWindow(ctx, dt) {
@@ -1206,6 +1198,7 @@ export class Aquarium {
     ctx.translate(ox, oy);
     ctx.drawImage(art.backdrop, 0, 0);
     if (art.caustics) this.drawCaustics(ctx, v, art, night);
+    this.drawShadows(ctx, v);
     this.drawShafts(ctx, v, night, 0.3, 2);
 
     // ---- objects, back to front, with depth fog between slabs (only over the dirty box)
@@ -1295,6 +1288,22 @@ export class Aquarium {
       }
     }
     ctx.restore();
+  }
+
+  // Soft contact shadows on the sand under fish (fainter the higher they swim).
+  drawShadows(ctx, v) {
+    const T = this.T;
+    for (const f of this.fish) {
+      const s = T.s(f.z);
+      const fl = T.floorAt(f.x, f.z);
+      const hgt = fl - f.y;
+      const k = clamp01(1 - hgt / (T.floorFront * 0.55));
+      if (k <= 0.05) continue;
+      const rx = Math.max(2, Math.round((14 + 8 * k) * f.scale * s)), ry = Math.max(1, Math.round(rx * 0.28));
+      ctx.globalAlpha = 0.22 * k * (1 - f.z * 0.4);
+      ctx.drawImage(shadowSprite(rx, ry), Math.round(f.x - rx), Math.round(fl - ry));
+    }
+    ctx.globalAlpha = 1;
   }
 
   fogFill(lg, art, v, a) {
@@ -1463,7 +1472,7 @@ export class Aquarium {
     const a = 0.3 * (1 - night * 0.7);
     const fy0 = art.floorTopY, fy1 = T.floorFront;
     // bands: far floor (small, faint), near floor (large), ceiling
-    const bands = [[fy0, lerp(fy0, fy1, 0.4), 1, 0.45, a * 0.6], [lerp(fy0, fy1, 0.4), fy1 + 2, 1.5, 0.7, a], [T.surf, T.top(1) + 1, 2, 0.7, a * 0.45]];
+    const bands = [[fy0, lerp(fy0, fy1, 0.4), 1, 0.45, a * 0.6], [lerp(fy0, fy1, 0.4), fy1 + 2, 1.5, 0.7, a], [T.surf, T.top(1) + 1, 2, 0.7, a * 0.3]];
     const fi = (Math.floor(this.t * 8) % frames.length + frames.length) % frames.length;
     for (const [y0, y1, sx, sy, al] of bands) {
       const tw = Math.max(16, Math.round(64 * sx * Math.max(0.5, sc))), th = Math.max(6, Math.round(32 * sy * Math.max(0.5, sc)));
@@ -1570,6 +1579,23 @@ function causticStrip(frames, fi, tw, th) {
     for (let i = 0; i < 4; i++) g.drawImage(frames[fi], i * tw, 0, tw, th);
     arr[fi] = c;
   }
+  return c;
+}
+
+const shadowCache = new Map();
+function shadowSprite(rx, ry) {
+  const key = rx * 100 + ry;
+  let c = shadowCache.get(key);
+  if (c) return c;
+  c = makeCanvas(rx * 2 + 1, ry * 2 + 1);
+  const g = ctxOf(c);
+  for (let y = 0; y <= ry * 2; y++) for (let x = 0; x <= rx * 2; x++) {
+    const d = ((x - rx) / rx) ** 2 + ((y - ry) / ry) ** 2;
+    if (d > 1) continue;
+    g.fillStyle = d < 0.45 ? 'rgba(40,20,30,1)' : (x + y) % 2 ? 'rgba(40,20,30,0.6)' : 'rgba(0,0,0,0)';
+    g.fillRect(x, y, 1, 1);
+  }
+  shadowCache.set(key, c);
   return c;
 }
 

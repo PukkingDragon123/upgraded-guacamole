@@ -13101,7 +13101,9 @@ kwwwwwwk.
           for (let i = 1; i < n; i++) {
             const f = this.spawn(sp, { side: lead.x < 0 ? "left" : "right", z: lead.z, yFrac: (lead.y + rng.float(-20, 20)) / this.H });
             f.x = lead.x + (lead.x < 0 ? -1 : 1) * rng.float(10, 40);
-            f.enterTarget = { x: lead.enterTarget.x + rng.float(-30, 30), y: f.y };
+            const goal = lead.enterTarget || lead.target;
+            if (goal && f.state === "enter") f.enterTarget = { x: goal.x + rng.float(-30, 30), y: f.y };
+            else if (goal) f.target = { x: goal.x + rng.float(-30, 30), y: f.y, z: f.z };
           }
         }
         this.spawnT = active < target * 0.5 ? rng.float(1.2, 2.5) : rng.float(4, 9);
@@ -13252,7 +13254,7 @@ kwwwwwwk.
         this.draw();
       } catch (e) {
         this.errors++;
-        console.warn("[FISHTOP overlay]", e);
+        console.warn("[FISHTOP overlay]", e?.stack || e);
         if (this.errors > 3) this.destroy();
       }
       this.input.endFrame();

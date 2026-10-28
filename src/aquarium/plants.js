@@ -95,11 +95,19 @@ function build(kind, H, seed, ph) {
             leaf(b, x, y, -0.35, ll, Math.max(0.8, ll * 0.32), R);
             leaf(b, x, y, Math.PI + 0.35, ll, Math.max(0.8, ll * 0.32), R, 2);
           } else {
-            // feathery whorl: radiating fine lines
-            const rr = Math.max(2, H * 0.09 * (1 - t * 0.35));
-            for (let a = 0; a < 7; a++) {
-              const ang = Math.PI + (a / 6) * Math.PI;
-              for (let q = 1; q <= rr; q++) b.set(Math.round(x + Math.cos(ang) * q), Math.round(y + Math.sin(ang) * q * 0.5), P((q > rr * 0.6 ? LIME : GREEN)[3 + (a % 2)]));
+            // feathery whorl seen from the side: forked filaments fanning out and curling upward
+            const rr = Math.max(2, H * 0.085 * (1 - t * 0.3));
+            const n = 9;
+            for (let a = 0; a < n; a++) {
+              const ang = (a / (n - 1)) * Math.PI;
+              const dx = Math.cos(ang), up = Math.sin(ang);
+              const len = rr * (0.7 + 0.3 * Math.sin(a * 2.1 + s));
+              for (let q = 1; q <= len; q++) {
+                const k = q / len;
+                const px = x + dx * q, py = y - up * q * 0.35 - k * k * rr * 0.35 + (a % 2 ? 0.5 : 0);
+                b.set(Math.round(px), Math.round(py), P((k > 0.55 ? LIME : GREEN)[k > 0.8 ? 5 : 3 + (a % 2)]));
+                if (k > 0.6 && q % 2 === 0) b.set(Math.round(px + dx * 0.8), Math.round(py - 1), P(LIME[4]));
+              }
             }
           }
         }
