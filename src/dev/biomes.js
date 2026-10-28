@@ -1,6 +1,8 @@
 // Dev preview of the ocean biomes: dist/dev/biomes.html?b=shallows|junkyard|abyss&hour=12&weather=rain
 // Extra params: ui=0 (hide fake desktop), fish=0, stats=1 (frame timings), cycle=1 (fast day cycle),
 // warm=SECONDS (pre-simulate), flood=0..1, q=quality, cx/cy (fixed cursor), click=x,y (trigger secretAt).
+// Draw order mirrors the game: drawBack, far fish (z>=0.66), drawSeabed, mid fish, drawNear, lighting, icons,
+// near fish (z<0.33), drawFront. Placeholder fish scale by 1 - z/2; crawlers ride floorAt(x, z).
 import { ctxOf } from '../core/canvas.js';
 import { clamp01, lerp } from '../core/math.js';
 import { mix } from '../core/color.js';
@@ -67,6 +69,8 @@ export function run(params) {
     [0.62, 0.44, 0.5, 46, 18, '#ff6a8a', -11], [0.33, 0.66, 0.45, 34, 13, '#b48aff', 8], [0.86, 0.6, 0.4, 28, 11, '#8aff9a', -10],
     [0.52, 0.3, 0.2, 64, 24, '#ff7a3a', 6], [0.28, 0.47, 0.12, 40, 16, '#3ae0d0', -9],
   ].map(([x, y, z, len, h, c, v]) => ({ x: x * W, y: y * H, z, len, h, c, v }));
+  // bottom dwellers riding the perspective floor (floorAt(x, z))
+  fish.push({ x: W * 0.47, y: 0, z: 0.15, len: 30, h: 10, c: '#ffb04a', v: 5, crawl: true }, { x: W * 0.62, y: 0, z: 0.8, len: 30, h: 10, c: '#ff7aa0', v: -4, crawl: true });
 
   const perf = { back: 0, seabed: 0, front: 0, light: 0, n: 0, total: 0 };
   window.__perf = perf;
@@ -99,9 +103,10 @@ export function run(params) {
       else { a = Math.min(0.85, f.z * (b.fogAmount ?? 0.75)); col = mix(f.c, fogC, a); }
       const dark = mix(col, '#101830', 0.45), light = mix(col, '#ffffff', 0.35);
       const dir = Math.sign(f.v) || 1;
-      const s = 1 - f.z * 0.35;
+      const s = 1 - f.z * 0.5;
       const len = f.len * s, hh = f.h * s;
-      const cx = Math.round(f.x), cy = Math.round(f.y + Math.sin(time * 1.3 + f.x) * 3);
+      const fy = f.crawl ? b.floorAt(f.x, f.z) - hh / 2 - 1 : f.y + Math.sin(time * 1.3 + f.x) * 3;
+      const cx = Math.round(f.x), cy = Math.round(fy);
       ctx.fillStyle = dark;
       for (let y = -hh / 2 - 1; y <= hh / 2 + 1; y++) {
         const w = Math.round((len / 2 + 1) * Math.sqrt(Math.max(0, 1 - (y / (hh / 2 + 1)) ** 2)));
@@ -176,6 +181,9 @@ export function run(params) {
     b.drawSeabed(ctx, env);
     const T3 = performance.now();
     if (showFish) drawFish(fish, 0.33, 0.66, L);
+    const Tn = performance.now();
+    b.drawNear?.(ctx, env);
+    const Tn2 = performance.now();
     L = ocean.lighting();
     ocean.applyLighting(ctx, L);
     const T4 = performance.now();
@@ -192,11 +200,12 @@ export function run(params) {
     perf.n++;
     const k = perf.n < 10 ? 1 : 0.05;
     perf.back = lerp(perf.back, T1 - T, k); perf.seabed = lerp(perf.seabed, T3 - T2, k);
-    perf.light = lerp(perf.light, T4 - T3, k); perf.front = lerp(perf.front, T6 - T5, k);
-    perf.total = perf.back + perf.seabed + perf.front + perf.light;
+    perf.light = lerp(perf.light, T4 - Tn2, k); perf.front = lerp(perf.front, T6 - T5, k);
+    perf.near = lerp(perf.near || 0, Tn2 - Tn, k);
+    perf.total = perf.back + perf.seabed + perf.front + perf.light + perf.near;
     perf.build = buildMs;
     if (stats) {
-      drawText(ctx, `build ${buildMs.toFixed(0)}ms  back ${perf.back.toFixed(2)}  seabed ${perf.seabed.toFixed(2)}  light ${perf.light.toFixed(2)}  front ${perf.front.toFixed(2)}  = ${perf.total.toFixed(2)} ms  lights ${L.lights.length} dark ${L.dark.toFixed(2)}`, 250, 4, { font: 'small', color: '#ffffff', outline: '#000000' });
+      drawText(ctx, `build ${buildMs.toFixed(0)}ms  back ${perf.back.toFixed(2)}  seabed ${perf.seabed.toFixed(2)}  near ${(perf.near || 0).toFixed(2)}  light ${perf.light.toFixed(2)}  front ${perf.front.toFixed(2)}  = ${perf.total.toFixed(2)} ms  lights ${L.lights.length} dark ${L.dark.toFixed(2)}`, 250, 4, { font: 'small', color: '#ffffff', outline: '#000000' });
     }
     game.toasts = game.toasts.filter((t) => (t.t += dt) < 4);
     game.toasts.forEach((t, i) => drawText(ctx, t.text, W / 2, 60 + i * 12, { align: 'center', color: '#ffffff', outline: '#000' }));

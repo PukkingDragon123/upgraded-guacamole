@@ -4,7 +4,7 @@
 // Biome changes turn the whole spread (bendy page flip); picking another species peels the right page.
 // open({species}) jumps to a species.
 
-import { clamp, clamp01, lerp, ease, hash1, hash2, TAU } from '../core/math.js';
+import { clamp, clamp01, ease, hash1, hash2, TAU } from '../core/math.js';
 import { RARITY, RARITY_ORDER, rgba, shade, mix, pack, ramp } from '../core/color.js';
 import { PixelBuffer } from '../gfx/pixel.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
@@ -542,7 +542,10 @@ export class JournalPanel {
       const v = this.entry(sp.id)?.variants || {};
       if (v.shiny) drawText(ctx, '{sparkle}', x + cl.w - 12, y + 2, {});
     }
-    if (sel) pencilCircle(ctx, x, y, cl.w, cl.h, sp.id.length, ease.outCubic(clamp01(this.selT * 3)));
+    if (sel) {
+      const pw = Math.min(cl.w, 96);
+      pencilCircle(ctx, x + (cl.w - pw) / 2, y, pw, cl.h, sp.id.length, ease.outCubic(clamp01(this.selT * 3)));
+    }
   }
 
   poke(sp) {

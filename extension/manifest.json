@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "FISHTOP Browser Fish",
+  "short_name": "FISHTOP",
+  "version": "1.0.0",
+  "description": "Optional FISHTOP companion: pixel fish swim over web pages and can be caught. Sees page layout only, never page text. No network.",
+  "minimum_chrome_version": "105",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "FISHTOP Browser Fish",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": ["storage", "activeTab", "scripting"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "commands": {
+    "toggle-fishing": {
+      "suggested_key": { "default": "Alt+Shift+F" },
+      "description": "Toggle fishing mode in the current tab"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://localhost:5173/*",
+        "http://127.0.0.1:5173/*",
+        "file:///*fishtop*/dist/index.html",
+        "file:///*FISHTOP*/dist/index.html"
+      ],
+      "js": ["bridge.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ]
+}

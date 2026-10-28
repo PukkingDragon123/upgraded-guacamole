@@ -86,6 +86,7 @@ export class Game {
     this.bindGlobal();
     this.saveT = 10;
     this.offline();
+    if (this.pendingWelcome) setTimeout(() => this.ui.open('welcome'), 1500);
     // the opening plays on the simulated desktop; the real-desktop overlay starts straight in the ocean
     if (!this.state.tutorialDone && !params.has('skipintro') && !this.overlay) this.tutorial.start();
     else {
@@ -545,6 +546,9 @@ export class Game {
         ocean.biome.drawSeabed(ctx, env);
         ctx.globalAlpha = 1;
         this.drawFishRange(ctx, sorted, 0.33, 0.66, L);
+        ctx.globalAlpha = opacity;
+        ocean.biome.drawNear?.(ctx, env);
+        ctx.globalAlpha = 1;
         this.particles.draw(ctx, 'bg', this.time);
         if (!realDesktop) ocean.applyLighting(ctx, L);
         if (ocean.reveal < 1) { ctx.restore(); this.wallpaper.drawWaterline(ctx); }
@@ -669,7 +673,7 @@ export class Game {
       const target = this.lowPower ? 1 / 24 : 0;
       if (target && dt < target - 0.002) return;
       last = now;
-      dt = Math.min(dt, 1 / 20);
+      dt = Math.max(0, Math.min(dt, 1 / 20));
       this.fpsAcc += dt; this.fpsN++;
       if (this.fpsAcc > 0.5) { this.fps = this.fpsN / this.fpsAcc; this.fpsAcc = 0; this.fpsN = 0; }
       try {

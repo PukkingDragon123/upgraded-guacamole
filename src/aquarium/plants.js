@@ -30,24 +30,30 @@ function blade(b, x0, y0, h, w, bend, ph, amp, k, R, cx) {
     const ww = Math.max(1, w * (1 - t * 0.55));
     for (let j = 0; j < ww; j++) {
       const u = ww <= 1 ? 0.5 : j / (ww - 1);
-      let tone = 3 + (u < 0.3 ? 1 : u > 0.75 ? -1 : 0) + (t > 0.85 ? 1 : 0) - (t < 0.12 ? 1 : 0);
-      if (Math.abs(u - 0.5) < 0.2 && ww >= 3 && i % 3 === 0) tone += 1;
-      b.set(Math.round(x - ww / 2 + j), Math.round(y), P(R[clamp(tone, 0, 6)]));
+      let tone = 2.6 + t * 1.1 + (u < 0.3 ? 0.9 : u > 0.72 ? -0.9 : 0) - (t < 0.1 ? 0.8 : 0);
+      tone += (bayer(Math.round(x), Math.round(y)) - 0.5) * 0.6;
+      b.set(Math.round(x - ww / 2 + j), Math.round(y), P(R[clamp(Math.round(tone), 0, 6)]));
     }
   }
 }
 
 function leaf(b, cx, cy, ang, len, wid, R, tone = 3) {
-  // lanceolate leaf with a midrib
+  // lanceolate leaf: darker at the base, lit upper half, pale midrib, slanted side veins, bright rim
   const ca = Math.cos(ang), sa = Math.sin(ang);
+  const up = sa < 0 ? 1 : -1;
   for (let i = 0; i <= len * 2; i++) {
     const t = i / (len * 2);
-    const half = Math.sin(t * Math.PI) * wid;
+    const half = Math.sin(Math.pow(t, 0.8) * Math.PI) * wid;
     for (let j = -half; j <= half; j += 0.5) {
       const x = cx + ca * t * len - sa * j, y = cy + sa * t * len + ca * j;
-      const lit = j < 0 ? 1 : -1;
-      let tn = tone + (Math.abs(j) < 0.6 ? 1 : lit * (Math.abs(j) > half - 0.8 ? 1 : 0)) + (t > 0.8 ? 1 : 0);
-      b.set(Math.round(x), Math.round(y), P(R[clamp(tn, 0, 6)]));
+      const side = j * up < 0 ? 1 : -1;
+      let tn = tone - 0.9 + t * 1.3 + side * 0.55;
+      const aj = Math.abs(j);
+      if (aj < 0.55 && t < 0.92) tn += 1.2;
+      else if (wid > 2.5 && Math.abs(((t * len - aj * 0.9) / 3.2) % 1) < 0.16) tn -= 0.8;
+      else if (aj > half - 0.7) tn += side > 0 ? 0.9 : -0.4;
+      tn += (bayer(Math.round(x), Math.round(y)) - 0.5) * 0.5;
+      b.set(Math.round(x), Math.round(y), P(R[clamp(Math.round(tn), 0, 6)]));
     }
   }
 }
@@ -131,4 +137,4 @@ export function plantFrames(kind, H, seed) {
   return p;
 }
 
-void mix; void bayer;
+void mix;

@@ -194,11 +194,11 @@ export class Ocean {
     // old biome scrolls away, new one scrolls in
     ctx.save();
     ctx.translate(0, Math.round(-off));
-    s.from.drawBack(ctx, env); s.from.drawSeabed(ctx, env);
+    s.from.drawBack(ctx, env); s.from.drawSeabed(ctx, env); s.from.drawNear?.(ctx, env);
     ctx.restore();
     ctx.save();
     ctx.translate(0, Math.round(H * 1.15 * s.dir - off));
-    s.to.drawBack(ctx, env); s.to.drawSeabed(ctx, env);
+    s.to.drawBack(ctx, env); s.to.drawSeabed(ctx, env); s.to.drawNear?.(ctx, env);
     ctx.restore();
     // depth fog in the middle of the trip
     const mid = 1 - Math.abs(k - 0.5) * 2;

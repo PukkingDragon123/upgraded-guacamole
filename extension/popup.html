@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FISHTOP Browser Fish</title>
+<style>
+  :root {
+    --bg: #0b1622; --panel: #11263a; --panel2: #163049; --line: #24476a; --ink: #e8f4ff; --dim: #8fb0c8;
+    --teal: #7fd6c8; --sun: #ffe8a8; --hot: #ff9a7a; --ok: #9affb8;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); }
+  body { width: 340px; font: 12px/1.4 ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace; }
+  header { display: flex; align-items: center; gap: 10px; padding: 12px 14px 10px; background: linear-gradient(#123a52, var(--bg)); }
+  header img { width: 32px; height: 32px; image-rendering: pixelated; }
+  header h1 { margin: 0; font-size: 15px; letter-spacing: 2px; color: var(--sun); text-shadow: 1px 1px 0 #3a1a0a; }
+  header p { margin: 1px 0 0; color: var(--teal); font-size: 11px; }
+  section { margin: 0 10px 10px; padding: 8px 10px; background: var(--panel); border: 2px solid var(--line); box-shadow: 0 2px 0 #050c14; }
+  section h2 { margin: 0 0 6px; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--dim); }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0; }
+  .row label { cursor: pointer; }
+  .hint { color: var(--dim); font-size: 10.5px; margin: 0 0 2px; }
+  kbd { display: inline-block; padding: 0 4px; border: 1px solid var(--line); border-bottom-width: 2px; background: var(--panel2); color: var(--sun); font: inherit; font-size: 10.5px; }
+  /* pixel toggle */
+  .sw { position: relative; flex: none; width: 36px; height: 18px; }
+  .sw input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; z-index: 1; }
+  .sw span { position: absolute; inset: 0; background: #0a1a28; border: 2px solid var(--line); }
+  .sw span::after { content: ""; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; background: var(--dim); transition: left .12s steps(3), background .12s; }
+  .sw input:checked + span { background: #1d5a52; border-color: var(--teal); }
+  .sw input:checked + span::after { left: 20px; background: var(--sun); }
+  .sw input:focus-visible + span { outline: 2px solid var(--sun); outline-offset: 1px; }
+  .sw input:disabled + span { opacity: .4; }
+  input[type=range] { width: 130px; accent-color: var(--teal); }
+  .count { color: var(--sun); min-width: 1.5em; text-align: right; }
+  button { font: inherit; cursor: pointer; border: 2px solid #3a1a0a; background: #e8b25a; color: #2a1408; padding: 6px 8px; box-shadow: inset 0 -2px 0 #b8782a, 0 2px 0 #050c14; }
+  button:hover { background: #f4c470; }
+  button:active { transform: translateY(1px); box-shadow: inset 0 -1px 0 #b8782a; }
+  button:disabled { opacity: .45; cursor: default; transform: none; }
+  button.link { background: none; border: 0; box-shadow: none; color: var(--dim); padding: 0; text-decoration: underline; }
+  #send { width: 100%; margin-top: 6px; font-weight: bold; }
+  #status { min-height: 1.4em; margin-top: 6px; color: var(--teal); font-size: 11px; }
+  #status.warn { color: var(--hot); }
+  #list { list-style: none; margin: 6px 0 0; padding: 0; max-height: 196px; overflow-y: auto; }
+  #list li { display: grid; grid-template-columns: 72px 1fr auto; align-items: center; gap: 8px; padding: 4px 2px; border-top: 1px solid #1a3550; }
+  #list li:first-child { border-top: 0; }
+  #list img { width: 72px; height: 40px; image-rendering: pixelated; background: radial-gradient(#1d4a66, #10283c 70%); }
+  #list .nm { font-weight: bold; }
+  #list .sub { color: var(--dim); font-size: 10.5px; }
+  .tag { font-size: 9.5px; padding: 1px 4px; border: 1px solid currentColor; }
+  .tag.sent { color: var(--dim); }
+  .tag.wait { color: var(--sun); }
+  .empty { color: var(--dim); text-align: center; padding: 10px 0 4px; }
+  .summary { display: flex; justify-content: space-between; color: var(--dim); }
+  footer { margin: 0 10px 12px; color: var(--dim); font-size: 10.5px; }
+  .off { opacity: .55; }
+</style>
+</head>
+<body>
+<header>
+  <img src="icons/icon32.png" alt="">
+  <div>
+    <h1>FISHTOP</h1>
+    <p>Browser fish, optional and harmless</p>
+  </div>
+</header>
+
+<section id="tabSection">
+  <h2>This tab</h2>
+  <div class="row">
+    <label for="tabFish">Fish in this tab</label>
+    <span class="sw"><input type="checkbox" id="tabFish"><span></span></span>
+  </div>
+  <div class="row">
+    <label for="fishing">Fishing mode</label>
+    <span class="sw"><input type="checkbox" id="fishing"><span></span></span>
+  </div>
+  <p class="hint">Shortcut <kbd id="shortcut">Alt+Shift+F</kbd> &middot; <kbd>Esc</kbd> stops fishing. Clicks reach the page again when fishing is off.</p>
+  <p class="hint" id="blocked" hidden>Fish can't swim on this page (browser and store pages are off-limits).</p>
+</section>
+
+<section>
+  <h2>Everywhere</h2>
+  <div class="row">
+    <label for="roam">Roaming fish (all tabs)</label>
+    <span class="sw"><input type="checkbox" id="roam"><span></span></span>
+  </div>
+  <p class="hint">Asks for access to all sites so fish can visit every tab and hop between them.</p>
+  <div class="row">
+    <label for="count">Fish per tab</label>
+    <span><input type="range" id="count" min="1" max="6" step="1" value="3"> <span class="count" id="countVal">3</span></span>
+  </div>
+  <div class="row">
+    <label for="sound">Sound</label>
+    <span class="sw"><input type="checkbox" id="sound"><span></span></span>
+  </div>
+</section>
+
+<section>
+  <h2>Browser bucket</h2>
+  <div class="summary"><span id="summary">No fish yet</span><button class="link" id="clear" hidden>Clear sent</button></div>
+  <ul id="list"></ul>
+  <button id="send" disabled>Send catches to FISHTOP</button>
+  <div id="status"></div>
+</section>
+
+<footer>Fish only see the outlines of images and text blocks, never what is in them. Nothing leaves your computer.</footer>
+<script src="popup.js"></script>
+</body>
+</html>

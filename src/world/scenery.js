@@ -1052,14 +1052,16 @@ export class DepthScene {
       col[i] = ((clamp(Math.round(r), 0, 255)) | (clamp(Math.round(g), 0, 255) << 8) | (clamp(Math.round(b), 0, 255) << 16) | (glow[i] ? 1 << 24 : 0) | (1 << 25)) >>> 0;
     }
     this.grid = { nx, nz, X0, z0, cw, dz, hgt, col };
-    // ray-march every screen column front to back
-    const top = Math.floor(hz) - 2;
+    // ray-march every screen column front to back (tall terrain may rise above the horizon)
+    const top = o.fullHeight ? 0 : Math.floor(hz) - 2;
     const TH = H - top;
     const LW = this.LW;
     const pc = new Uint32Array(LW * TH);      // shaded colour (0 = empty)
     const pz = new Float32Array(LW * TH);     // depth of the sample that drew the pixel
     const step = 0.5 / (K * 0.5);
     const wallF = o.wall ?? 0.72, sideF = o.side ?? 0.84, crestF = o.crest ?? 1.12;
+    const wallFn = o.wallColor || null, wallMin = o.wallMin ?? 24;
+    this.floorHeight = o.floorHeight || null;
     const shadeP = (c, f) => ((clamp(Math.round((c & 255) * f), 0, 255)) | (clamp(Math.round(((c >> 8) & 255) * f), 0, 255) << 8) | (clamp(Math.round(((c >> 16) & 255) * f), 0, 255) << 16) | (c & (3 << 24))) >>> 0;
     for (let px = 0; px < LW; px++) {
       const sx = px - pad + 0.5;
@@ -1078,6 +1080,20 @@ export class DepthScene {
         if (yi < ybuf) {
           let c = col[cell];
           const isWall = cell !== prevCell && h > prevH + 0.01;
+          if (isWall && wallFn && h >= wallMin) {
+            const f = iz !== prevIz ? wallF : sideF;
+            for (let y = yi; y < ybuf; y++) {
+              const hp = K - (y + top - hz) / s;
+              const wc = wallFn(X, z, hp, h);
+              pc[y * LW + px] = ((clamp(Math.round(wc[0] * f), 0, 255)) | (clamp(Math.round(wc[1] * f), 0, 255) << 8) | (clamp(Math.round(wc[2] * f), 0, 255) << 16) | (1 << 25)) >>> 0;
+              pz[y * LW + px] = z;
+            }
+            if (h < K && ybuf - yi >= 2) pc[yi * LW + px] = shadeP(col[cell], crestF);
+            ybuf = yi;
+            if (ybuf <= 0) break;
+            prevCell = cell; prevH = h; prevIz = iz;
+            continue;
+          }
           if (isWall) c = shadeP(c, iz !== prevIz ? wallF : sideF);
           for (let y = yi; y < ybuf; y++) { pc[y * LW + px] = c; pz[y * LW + px] = z; }
           if (isWall && ybuf - yi >= 2) pc[yi * LW + px] = shadeP(col[cell], crestF);
@@ -1107,7 +1123,10 @@ export class DepthScene {
     for (let j = 0; j < zs.length; j++) for (let i = 0; i < xs; i++) {
       const sx = i * 4, z = zs[j];
       let h = 0;
-      for (let k = -1; k <= 1; k++) h = Math.max(h, this.heightAt(this.X(sx + k * 2, z), z));
+      for (let k = -1; k <= 1; k++) {
+        const X = this.X(sx + k * 2, z);
+        h = Math.max(h, this.floorHeight ? Math.round(this.floorHeight(X, z) / 2) * 2 : this.heightAt(X, z));
+      }
       t[j * xs + i] = this.y(z, h);
     }
     this.ft = { z0, dz, nzs: zs.length, xs, t };
@@ -1125,7 +1144,7 @@ export class DepthScene {
   // item: {sprite: {canvas, ox, oy}, x, z, dy?, noFog?, fogMul?} -> placed {x, y, z, band, sprite}
   add(item) {
     const it = { dy: 0, fogMul: 1, ...item };
-    it.y = Math.round(this.floorAt(it.x, it.z)) + 1 + it.dy;
+    it.y = (item.y != null ? Math.round(item.y) : Math.round(this.floorAt(it.x, it.z)) + 1) + it.dy;
     it.band = this.band(it.z);
     this.items.push(it);
     return it;
@@ -1137,7 +1156,7 @@ export class DepthScene {
     this.items.sort((a, b) => b.z - a.z);
     const bands = [0, 1, 2].map((b) => {
       let bt = top;
-      for (const it of this.items) if (it.band === b) bt = Math.min(bt, it.y - it.sprite.oy - 2);
+      for (const it of this.items) if (it.band === b) bt = Math.min(bt, it.abs ? it.absTop : it.y - it.sprite.oy - 2);
       return { y: Math.floor(bt), canvases: {}, h: this.H - Math.floor(bt) };
     });
     const tmp = makeLayer(8, 8);
@@ -1172,7 +1191,8 @@ export class DepthScene {
         for (const it of this.items) {
           if (it.band !== b) continue;
           const sp = it.sprite;
-          const dx = Math.round(it.x - sp.ox + pad), dy = Math.round(it.y - sp.oy - B.y);
+          const dx = it.abs ? pad : Math.round(it.x - sp.ox + pad), dy = it.abs ? -B.y : Math.round(it.y - sp.oy - B.y);
+          if (it.abs) { g.drawImage(sp.canvas, dx, dy); continue; }
           const f = it.noFog ? 0 : this.fog(it.z) * it.fogMul;
           if (f < 0.01) { g.drawImage(sp.canvas, dx, dy); continue; }
           if (tmp.w < sp.canvas.width || tmp.h < sp.canvas.height) resizeLayer(tmp, Math.max(tmp.w, sp.canvas.width), Math.max(tmp.h, sp.canvas.height));

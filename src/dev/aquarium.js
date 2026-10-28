@@ -1,17 +1,150 @@
-// temporary backdrop preview (replaced by the full aquarium dev page)
+// Dev preview of the aquarium with a stub game.
+//   dist/dev/aquarium.html?mode=full|window|mini&fish=12&coins=80&rain&night&skills=all&decor=castle,pirate_ship&t=0
+//   mode: full (default) = full-screen view; window = floating window over a plain desktop; mini = mini tank.
+//   rain: fish drop coins rapidly; coins=N pre-fills a pile; night: moonlight; skills=all unlocks every skill
+//   (snail + crab, feeder, breeding); decor: extra decorations; ff=N fast-forwards N seconds before drawing.
+
 import { ctxOf } from '../core/canvas.js';
-import { TankSpace, renderBackdrop, renderGlass } from '../aquarium/tank3d.js';
+import { drawText } from '../gfx/font.js';
+import { registerUiIcons } from '../gfx/uiicons.js';
+import { rng } from '../core/rng.js';
+import { Aquarium } from '../aquarium/aquarium.js';
+import { defaultState } from '../game/state.js';
+import { computeStats, SKILLS } from '../game/skills.js';
+import { SPECIES } from '../fish/species.js';
+import { rollIndividual } from '../fish/traits.js';
+import { coinSheet, SPIN_N, FLIP_N } from '../aquarium/coins.js';
+
+// Coin sprite sheets: every spin x flip frame for each denomination at a few on-screen sizes.
+function coinDebug(g, W, H, zoomRow) {
+  g.fillStyle = '#1f6a84';
+  g.fillRect(0, 0, W, H);
+  let y = 4;
+  for (const r of [7, 5.5, 4]) {
+    let x = 4;
+    for (let d = 0; d < 3; d++) {
+      const sh = coinSheet(d, r * (d === 0 ? 0.8 : d === 1 ? 0.9 : 1.1), true);
+      g.drawImage(sh.canvas, 0, 0, sh.cell * SPIN_N, sh.cell * 4, x, y, sh.cell * SPIN_N, sh.cell * 4);
+      x += sh.cell * SPIN_N + 8;
+    }
+    y += Math.ceil(r * 1.1) * 2 * 4 + 24;
+  }
+  // zoomed first rows
+  const sh = coinSheet(zoomRow, 8, true);
+  g.save(); g.scale(3, 3);
+  g.drawImage(sh.canvas, 0, 0, sh.cell * 8, sh.cell * 2, 4, (y + 4) / 3, sh.cell * 8, sh.cell * 2);
+  g.restore();
+}
 
 export function run(params) {
-  const cv = document.getElementById('screen');
   const W = 960, H = 540;
-  cv.width = W; cv.height = H; cv.style.width = W * 2 + 'px'; cv.style.height = H * 2 + 'px';
+  const cv = document.getElementById('screen');
+  cv.width = W; cv.height = H;
+  cv.style.width = W * 2 + 'px'; cv.style.height = H * 2 + 'px';
   const g = ctxOf(cv);
-  const t0 = performance.now();
-  const T = new TankSpace(W, 524, { vpy: 0.46, surf: 10, floorFront: 480, slope: 24, cell: 5, step: 2 });
-  const bd = renderBackdrop(T);
-  const gl = renderGlass(T, { edges: true });
-  console.log('backdrop ms', Math.round(performance.now() - t0));
-  g.drawImage(bd.canvas, 0, 0);
-  g.drawImage(gl, 0, 0);
+  registerUiIcons();
+  if (params.has('coinsheet')) return coinDebug(g, W, H, Number(params.get('coinsheet') || 0));
+  const mode = params.get('mode') || 'full';
+  const night = params.has('night');
+
+  const state = defaultState();
+  state.tutorialDone = true;
+  state.view = mode === 'full' ? 'aquarium' : 'ocean';
+  state.tankWindow = { open: mode === 'window', x: 0, y: 0 };
+  const all = params.get('skills') === 'all';
+  if (all) for (const s of SKILLS) state.skills[s.id] = true;
+  else if (params.get('skills')) for (const id of params.get('skills').split(',')) state.skills[id] = true;
+  const nFish = Number(params.get('fish') ?? 12);
+  const pool = SPECIES.filter((s) => s.look?.kind !== 'chain' && !s.quirks?.includes('intro'));
+  for (let i = 0; i < nFish; i++) {
+    const sp = pool[(i * 7 + 3) % pool.length];
+    const rec = rollIndividual(sp, { mutationChance: 0.1, shinyChance: 0.05 });
+    state.fish.push({ ...rec, inTank: true, happiness: rng.float(0.5, 1), hunger: rng.float(0.1, 0.8), coinT: rng.float(0, 1) });
+  }
+  if (params.get('decor')) state.tank = { decor: [], starter: false };
+
+  const events = {};
+  const toasts = [];
+  const game = {
+    screen: { W, H },
+    state,
+    stats: computeStats(state.skills),
+    mini: mode === 'mini',
+    clock: { isNight: () => night, isDusk: () => false, hour: () => (night ? 23 : 12), daylight: () => (night ? 0 : 1), dusk: () => 0 },
+    desktop: { hit: () => null, tooltip: null },
+    tutorial: null,
+    on(ev, f) { (events[ev] ||= []).push(f); },
+    emit(ev, d) { for (const f of events[ev] || []) f(d); },
+    addCoins(n) { state.coins += n; },
+    toast(t) { toasts.push({ t, age: 0 }); console.log('toast:', t); },
+    save() {},
+    command(id) { if (id === 'tank') state.view = state.view === 'aquarium' ? 'ocean' : 'aquarium'; },
+    setView(v) { state.view = v; },
+    setMini(m) { game.mini = m; },
+  };
+  const aq = new Aquarium(game);
+  game.aquarium = aq;
+  window.AQ = aq;
+  window.GAME = game;
+  if (mode === 'window') aq.openWindow(true);
+  if (params.get('decor')) for (const id of params.get('decor').split(',')) aq.addDecor(id);
+  if (!state.tank.decor.length) for (const id of ['rock_arch', 'coral_fan']) aq.addDecor(id);
+  const offline = Number(params.get('offline') || 0);
+  if (offline) console.log('offline coins', aq.offlineCoins(offline));
+
+  // input: a small stand-in for core/input.js
+  const inp = { x: -100, y: -100, vx: 0, vy: 0, speed: 0, down: false, pressed: false, released: false, rpressed: false, inside: false, consume() { this.pressed = false; this.released = false; } };
+  let px = 0, py = 0;
+  const pos = (e) => { const r = cv.getBoundingClientRect(); inp.x = ((e.clientX - r.left) / r.width) * W; inp.y = ((e.clientY - r.top) / r.height) * H; inp.inside = true; };
+  window.addEventListener('pointermove', pos);
+  cv.addEventListener('pointerdown', (e) => { pos(e); if (e.button === 2) inp.rpressed = true; else { inp.down = true; inp.pressed = true; } });
+  window.addEventListener('pointerup', (e) => { pos(e); if (e.button !== 2) { inp.down = false; inp.released = true; } });
+  cv.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  // pre-fill a coin pile
+  const nCoins = Number(params.get('coins') || 0);
+  const T = aq.T;
+  for (let i = 0; i < nCoins; i++) {
+    const d = rng.chance(0.12) ? 2 : rng.chance(0.25) ? 1 : 0;
+    aq.coins.spawn(rng.float(0.1, 0.9) * T.W, T.surf + rng.float(0, 120), rng.float(0.02, 0.7) * T.DEPTH, d);
+  }
+  const ff = Number(params.get('ff') || 0);
+  for (let i = 0; i < ff * 30; i++) aq.update(1 / 30, null);
+
+  const rain = params.has('rain');
+  let last = performance.now(), ms = 0, acc = 0, frames = 0, fps = 60;
+  function frame(now) {
+    requestAnimationFrame(frame);
+    const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));
+    last = now;
+    const t0 = performance.now();
+    inp.vx = (inp.x - px) / Math.max(dt, 1e-3); inp.vy = (inp.y - py) / Math.max(dt, 1e-3);
+    inp.speed = Math.hypot(inp.vx, inp.vy);
+    px = inp.x; py = inp.y;
+    if (rain && aq.fish.length && Math.random() < dt * 6) {
+      const f = aq.fish[Math.floor(Math.random() * aq.fish.length)];
+      aq.dropCoin(f, Math.random() < 0.1 ? 2 : Math.random() < 0.25 ? 1 : 0);
+    }
+    game.desktop.tooltip = null;
+    const over = aq.hit(inp.x, inp.y);
+    aq.update(dt, over ? inp : null);
+    inp.pressed = false; inp.released = false; inp.rpressed = false;
+    // a plain desktop behind the window / mini tank
+    const grd = g.createLinearGradient(0, 0, 0, H);
+    grd.addColorStop(0, '#3a9cc4'); grd.addColorStop(1, '#1d5f86');
+    g.fillStyle = grd;
+    g.fillRect(0, 0, W, H);
+    if (game.mini) aq.drawMini(g, dt);
+    else if (state.view === 'aquarium') aq.drawFull(g, dt);
+    else aq.drawWindow(g, dt);
+    g.fillStyle = '#6a3e26';
+    g.fillRect(0, H - 24, W, 24);
+    if (game.desktop.tooltip) drawText(g, game.desktop.tooltip.replace(/\{[a-z_]+\}/g, '*'), inp.x + 12, inp.y + 12, { color: '#fff', outline: '#000' });
+    ms = ms * 0.9 + (performance.now() - t0) * 0.1;
+    acc += dt; frames++;
+    if (acc > 0.5) { fps = frames / acc; acc = 0; frames = 0; }
+    drawText(g, `${Math.round(fps)} fps  ${ms.toFixed(1)} ms  fish ${aq.fish.length}  coins ${aq.coins.list.length}  purse ${state.coins}`, 6, H - 16, { font: 'small', color: '#fff', outline: '#000' });
+    toasts.forEach((t, i) => drawText(g, t.t, W - 8, 30 + i * 10, { align: 'right', font: 'small', color: '#fff', outline: '#000' }));
+  }
+  requestAnimationFrame(frame);
 }

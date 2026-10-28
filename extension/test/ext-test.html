@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tide Pool Weekly - overlay test page</title>
+<style>
+  body { margin: 0; font: 17px/1.6 Georgia, "Times New Roman", serif; color: #1d2430; background: #f7f4ee; }
+  header { position: sticky; top: 0; background: #1d3b53; color: #fff; padding: 10px 24px; font: bold 18px system-ui, sans-serif; z-index: 5; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px; }
+  h1 { font-size: 36px; line-height: 1.15; margin: 10px 0 6px; }
+  .lede { color: #5a6270; font-style: italic; }
+  .hero { display: block; width: 100%; height: 260px; margin: 18px 0; border-radius: 6px; }
+  .float { float: right; width: 260px; height: 190px; margin: 6px 0 12px 22px; border-radius: 4px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 20px 0; clear: both; }
+  .grid img, .grid canvas, .grid svg { width: 100%; height: 150px; display: block; border-radius: 4px; }
+  blockquote { border-left: 4px solid #2a8aa0; margin: 18px 0; padding: 4px 16px; color: #3a4a5a; }
+  ul { padding-left: 22px; }
+  table { border-collapse: collapse; margin: 14px 0; }
+  td, th { border: 1px solid #c8c0b0; padding: 6px 12px; }
+  a { color: #2a62b8; }
+</style>
+</head>
+<body>
+<header>Tide Pool Weekly</header>
+<main>
+  <h1>Why fish love the open web</h1>
+  <p class="lede">A completely made-up report on the swimming habits of pixel fish found between paragraphs.</p>
+  <img class="hero" id="hero" alt="sunset over the sea" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 260' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='s' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23ff9a5a'/%3E%3Cstop offset='.55' stop-color='%23ffd27a'/%3E%3Cstop offset='.56' stop-color='%232a8aa0'/%3E%3Cstop offset='1' stop-color='%23123a52'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='800' height='260' fill='url(%23s)'/%3E%3Ccircle cx='560' cy='140' r='46' fill='%23fff3c8'/%3E%3Cpath d='M0 175 Q200 160 400 178 T800 172 V260 H0Z' fill='%231f6a84' opacity='.6'/%3E%3C/svg%3E">
+  <img class="float" id="float" alt="kelp forest" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 260 190'%3E%3Crect width='260' height='190' fill='%233a9cc4'/%3E%3Cpath d='M30 190 C10 120 60 90 40 0' stroke='%232f8a4a' stroke-width='14' fill='none'/%3E%3Cpath d='M120 190 C150 110 90 80 130 10' stroke='%233aa85a' stroke-width='12' fill='none'/%3E%3Cpath d='M210 190 C190 130 240 70 220 20' stroke='%232f8a4a' stroke-width='16' fill='none'/%3E%3Crect y='170' width='260' height='20' fill='%23e8d2a0'/%3E%3C/svg%3E">
+  <p>Every morning, long before the first browser tab is opened, a small school of loafer minnows gathers along the left edge of the screen. They wait patiently for a page to load, then dart in to explore its headings, its images and the quiet white space between them. Nobody knows why they prefer serif fonts, but they do.</p>
+  <p>Researchers have noticed that shy fish rarely stay in plain sight. When the cursor moves too fast they bolt for the nearest paragraph and slip behind the lines of text, peeking out only when things calm down again. A long article is, to a fish, a coral reef made of words.</p>
+  <h2>Swimming around pictures</h2>
+  <p>Images are a different matter. A photo is solid and bright, and a fish in a hurry will swim around it rather than through it. Deeper fish, the ones far from the glass, drift behind pictures entirely and reappear on the other side, which is why some readers report fish "teleporting" across a gallery.</p>
+  <div class="grid">
+    <img alt="coral" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 150'%3E%3Crect width='200' height='150' fill='%23ffb3a0'/%3E%3Ccircle cx='60' cy='90' r='40' fill='%23ff6a7a'/%3E%3Ccircle cx='130' cy='70' r='30' fill='%23ff8a5a'/%3E%3C/svg%3E">
+    <canvas id="cv" width="200" height="150"></canvas>
+    <svg viewBox="0 0 200 150" xmlns="http://www.w3.org/2000/svg"><rect width="200" height="150" fill="#2a3a5a"/><circle cx="100" cy="75" r="44" fill="#ffd04a"/><circle cx="85" cy="65" r="8" fill="#14202c"/></svg>
+  </div>
+  <blockquote>"I opened a recipe for soup and a pufferfish inflated right over the ingredients list. Ten out of ten." - a satisfied reader</blockquote>
+  <h2>Field notes</h2>
+  <ul>
+    <li>Fish never read the page. They only see the outlines of boxes.</li>
+    <li>Scrolling creates a current; a hard flick makes everyone dizzy.</li>
+    <li>A fish that swims off the edge may turn up in another tab.</li>
+    <li>Fishing mode turns the mouse into a hook. Press Esc to stop.</li>
+  </ul>
+  <table>
+    <tr><th>Species</th><th>Habitat</th><th>Favourite element</th></tr>
+    <tr><td>Loafer Minnow</td><td>Sunny Shallows</td><td>&lt;p&gt;</td></tr>
+    <tr><td>Tracking Cookie</td><td>Junkyard Reef</td><td>&lt;footer&gt;</td></tr>
+    <tr><td>Spam Sardine</td><td>Junkyard Reef</td><td>&lt;aside&gt;</td></tr>
+  </table>
+  <p>Some species are attracted to crumbs. Tear a tiny scrap off a page, tie it to the hook, and wait for the nibbles. Click too early and the fish swims away offended; click right on the bite and the real fight begins: keep the line tight but not too tight, pull against the fish, and finally draw a net around it.</p>
+  <p>Caught fish are kept in a small bucket inside the browser. When you open FISHTOP, you can send the whole bucket over and the fish will swim into your aquarium. Fish caught on the web are just as real as fish caught on the desktop, if a little more distracted.</p>
+  <p>This page is long on purpose so the overlay can be tested with scrolling. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer vitae arcu in nunc dapibus pulvinar. Sed porta, augue at gravida tincidunt, lectus enim ultrices risus, a tempus urna nisi non magna. Curabitur commodo, sapien vel feugiat rhoncus, sem sapien tempus erat, at elementum leo lorem a augue.</p>
+  <p>Vivamus suscipit tortor eget felis porttitor volutpat. Nulla quis lorem ut libero malesuada feugiat. Pellentesque in ipsum id orci porta dapibus. Donec rutrum congue leo eget malesuada. Proin eget tortor risus. Mauris blandit aliquet elit, eget tincidunt nibh pulvinar a.</p>
+  <p>Quisque velit nisi, pretium ut lacinia in, elementum id enim. Vestibulum ac diam sit amet quam vehicula elementum sed sit amet dui. Cras ultricies ligula sed magna dictum porta. Nulla porttitor accumsan tincidunt. Sed porttitor lectus nibh, curabitur arcu erat.</p>
+</main>
+<script>
+  const g = document.getElementById('cv').getContext('2d');
+  const gr = g.createLinearGradient(0, 0, 200, 150);
+  gr.addColorStop(0, '#5ee8d0'); gr.addColorStop(1, '#2a62b8');
+  g.fillStyle = gr; g.fillRect(0, 0, 200, 150);
+  g.fillStyle = '#fff8'; for (let i = 0; i < 12; i++) { g.beginPath(); g.arc(20 + i * 15, 120 - (i % 4) * 22, 4 + (i % 3), 0, 7); g.fill(); }
+</script>
+</body>
+</html>

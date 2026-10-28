@@ -7,14 +7,15 @@ import { Biome } from './base.js';
 import { clamp, clamp01, lerp, smoothstep, ease, hash2, fbm2, TAU } from '../../core/math.js';
 import { RNG } from '../../core/rng.js';
 import { mix, rgba, pack, hslToHex } from '../../core/color.js';
-import { makeCanvas, ctxOf, makeLayer, tinted } from '../../core/canvas.js';
+import { makeCanvas, ctxOf, makeLayer } from '../../core/canvas.js';
 import { getProp } from '../../gfx/props.js';
 import { drawText } from '../../gfx/font.js';
 import { BAITS } from '../../game/shopdata.js';
 import {
   paint, dpack, lerpStops, gradientStrip, stopPalette, ditherPick, Blend, FogLayer, fillWith, drawWobble, makeRays,
-  drawGlow, twinkle, waveLine, waveRuns, Strands, Motes, Bubbles, Mask, ridge, todWeights, voxelGround, quality, inRect,
-  catenary, drawCable, SwayAnim, Caustics, lumaMask, streakTile, cloudTile,
+  drawGlow, twinkle, waveLine, waveRuns, Strands, Motes, Bubbles, Mask, ridge, todWeights, quality, inRect, catenary,
+  drawCable, SwayAnim, Caustics, lumaMask, cloudTile, DepthScene, BandSet, DepthDecor, qscale, waterColorAt,
+  hazeMask,
 } from '../scenery.js';
 
 const SKY = {
@@ -158,7 +159,7 @@ export class JunkyardBiome extends Biome {
     this.weathers = [{ id: 'murky', name: 'Murky', weight: 4 }, { id: 'static', name: 'Static Storm', weight: 1.5 }, { id: 'oil', name: 'Oil Slick', weight: 1.5 }, { id: 'datarain', name: 'Data Rain', weight: 1 }];
     this.ambient = 'junkyard';
     this.fogColor = '#2e6a62';
-    this.fogAmount = 0.78;
+    this.fogAmount = 0.62;
     this.t = 0;
     this.tod = { day: 1, dusk: 0, night: 0 };
     this.wx = { static: 0, oil: 0, data: 0, murk: 1 };
@@ -184,7 +185,7 @@ export class JunkyardBiome extends Biome {
     const wo = { y0: this.base - 2, y1: H, levels: 24 };
     this.water = { day: gradientStrip(H, WATER.day, wo), dusk: gradientStrip(H, WATER.dusk, wo), night: gradientStrip(H, WATER.night, wo) };
     this.fx = new ScreenFX();
-    this.buildGround();
+    this.buildDepth();
     this.buildLayers();
     const rh = H - this.base;
     this.rays = new FogLayer(makeRays(W, rh, { seed: 14, count: 7, sunX: W * 0.35, sunY: -H * 0.9, minW: 8, maxW: 26, len: 0.7, color: '#ffffff', alpha: 0.45, levels: 4 }));
@@ -240,164 +241,148 @@ export class JunkyardBiome extends Biome {
     });
   }
 
-  buildGround() {
+  // Perspective voxel silt / circuit-board floor rising into voxel junk hills, junk props at many depths.
+  buildDepth() {
     const W = this.W, H = this.H;
-    const backY = H - 70;
-    const dockX = W - 270;
-    const g = voxelGround(W, H, {
-      vs: 2, backY, baseH: 5, ny: 22, pitch: 27, render: { depthLines: false, edges: 0.7, sideEdges: 0.3 },
-      height: (x, z) => {
-        const sx = x * 2;
-        let h = 5 + (fbm2(sx * 0.008, z * 0.03, 3, 21) - 0.5) * 6;
-        h += Math.max(0, fbm2(sx * 0.03, z * 0.07, 2, 22) - 0.62) * 14;
-        h += (1 - smoothstep(0, W * 0.12, sx)) * 3;
-        h = lerp(h, 5 + (fbm2(sx * 0.01, z * 0.03, 2, 4) - 0.5) * 2, smoothstep(dockX - 40, dockX + 20, sx));
-        return h;
+    const D = new DepthScene(W, H, { yFront: H - 70, yFar: H - 164, pad: 24, zFar: 1.85, fogStart: -0.3, fog: 0.84 });
+    this.D = D;
+    const dockX = W - 260;
+    const JUNK = [[138, 86, 52], [112, 116, 124], [60, 62, 70], [196, 186, 156], [70, 96, 150], [150, 60, 54], [96, 120, 90], [168, 150, 96]];
+    D.terrain({
+      cell: 2, dz: 0.02, hstep: 2, ambient: 0.74, diffuse: 0.48, ao: 0.08, jitter: 0.08, wall: 0.78, side: 0.88, crest: 1.1,
+      height: (X, z) => {
+        let h = (fbm2(X * 0.005, z * 1.4, 3, 21) - 0.5) * 12;
+        h += Math.max(0, fbm2(X * 0.02, z * 4, 2, 22) - 0.6) * 28;
+        h += smoothstep(0.78, 1.4, z) * Math.max(0, fbm2(X * 0.0045 + 3, z * 0.9, 3, 23) * 100 - 30);
+        const front = 1 - smoothstep(0.05, 0.45, z);
+        h *= 1 - front * (X > dockX ? 0.75 : 0.55);
+        return Math.max(-2, h);
       },
-      palette: (m) => ({
-        mud: m.color('#5e5c46', { jitter: 0.22 }), mud2: m.color('#4c4c3c', { jitter: 0.22 }), silt: m.color('#72705a', { jitter: 0.18 }),
-        rust: m.color('#8a5634', { jitter: 0.2 }), pcb: m.color('#2a5038', { jitter: 0.1 }), trace: m.color('#a88c3c', { jitter: 0.08, spec: 0.6 }),
-        chip: m.color('#202028', { jitter: 0.05 }), pin: m.color('#b8bcc8', { jitter: 0.05 }), bolt: m.color('#8c929c', { jitter: 0.15 }),
-        algae: m.color('#8aff5a', { emissive: 0.85, jitter: 0.1 }), red: m.color('#c83a3a', { jitter: 0.08 }), blue: m.color('#3a6ac8', { jitter: 0.08 }), yel: m.color('#e0c040', { jitter: 0.08 }),
-      }),
-      color: (x, y, z, h, p) => {
-        if (y < h - 1) return p.mud2;
-        const pc = fbm2(x * 0.03 + 5, z * 0.05, 2, 31);
-        if (pc > 0.7) {
-          if (((x % 7 === 0) || (z % 6 === 0)) && hash2(x >> 2, z >> 2, 2) < 0.7) return p.trace;
-          return p.pcb;
+      color: (X, z, h) => {
+        const bx = Math.floor(X / 6), bz = Math.floor(z * 22);
+        if (h >= 14) {
+          const k = hash2(bx, bz, 7);
+          const c = JUNK[Math.floor(k * JUNK.length)];
+          const v = 0.85 + hash2(Math.floor(X / 2), Math.floor(z * 50), 8) * 0.3;
+          return [c[0] * v, c[1] * v, c[2] * v];
         }
-        const n = fbm2(x * 0.06, z * 0.09, 2, 33);
-        if (n > 0.74) return p.rust;
-        if (n < 0.3) return p.mud2;
-        return n > 0.55 ? p.silt : p.mud;
+        if (fbm2(X * 0.01 + 5, z * 2.2, 2, 31) > 0.7) {
+          if ((Math.floor(X / 2) % 7 === 0 || Math.floor(z * 50) % 6 === 0) && hash2(bx, bz, 2) < 0.7) return [176, 146, 66];
+          return [44, 86, 60];
+        }
+        const hs = hash2(Math.floor(X / 2), Math.floor(z * 50), 5);
+        if (hs < 0.01) return [140, 146, 158];
+        if (hs < 0.016) return [34, 34, 42];
+        if (hs < 0.019) return [200, 60, 60];
+        if (hs < 0.022) return [60, 106, 200];
+        const n = fbm2(X * 0.025, z * 4, 2, 33);
+        if (n > 0.72) return [138, 88, 54];
+        if (n < 0.32) return [78, 78, 62];
+        return n > 0.55 ? [116, 112, 90] : [96, 94, 72];
       },
-      decorate: (m, p, H2) => {
-        const r = new RNG(55);
-        const nz = Math.round(m.nz * 0.62);
-        for (let i = 0; i < 26; i++) {
-          // microchips with pins
-          const x = r.int(4, m.nx - 8), z = r.int(2, nz - 4), h = H2(x, z), w = r.int(2, 4), d = r.int(2, 3);
-          for (let a = 0; a < w; a++) for (let b = 0; b < d; b++) m.set(x + a, h, z + b, p.chip);
-          for (let a = 0; a < w; a++) { m.set(x + a, h, z - 1, p.pin); m.set(x + a, h, z + d, p.pin); }
-        }
-        for (let i = 0; i < 80; i++) { const x = r.int(2, m.nx - 3), z = r.int(1, nz), h = H2(x, z); m.set(x, h, z, r.pick([p.bolt, p.bolt, p.rust, p.pin])); if (r.chance(0.4)) m.set(x + 1, h, z, p.bolt); }
-        for (let i = 0; i < 14; i++) {
-          // stray wires
-          let x = r.int(4, m.nx - 20), z = r.int(2, nz - 3);
-          const c = r.pick([p.red, p.blue, p.yel]);
-          for (let k = 0; k < r.int(8, 20); k++) { m.set(x, H2(x, z), z, c); x++; if (r.chance(0.3)) z += r.pick([-1, 1]); }
-        }
-        for (let i = 0; i < 22; i++) {
-          const x = r.int(4, m.nx - 4), z = r.int(1, nz - 2), h = H2(x, z);
-          for (let k = 0; k < r.int(2, 5); k++) m.set(x + r.int(-2, 2), h, z + r.int(-1, 1), p.algae);
-        }
-      },
+      glow: (X, z, h) => (h < 14 && hash2(Math.floor(X / 2), Math.floor(z * 50), 13) < 0.003 ? [140, 255, 90] : null),
     });
-    this.ground = g;
-    this.floor = g.floor;
-    const P = [
-      ['tire', 0.045, 0.24, 0.75, 0], ['floppy_pile', 0.13, 0.4, 0.7, 0], ['pipe_bend', 0.22, 0.12, 0.8, 0], ['crt_pile', 0.315, 0.0, 0.85, 0],
-      ['server_rack', 0.425, 0.0, 0.85, 0], ['crt_monitor', 0.375, 0.34, 0.75, 0], ['broken_robot', 0.525, 0.08, 0.85, 0], ['circuit_coral', 0.465, 0.38, 0.7, 0],
-      ['vending_machine', 0.638, 0.0, 0.85, 0], ['circuit_coral', 0.588, 0.4, 0.6, 1], ['rusty_barrel', 0.7, 0.24, 0.75, 0], ['keyboard_slab', 0.255, 0.42, 0.6, 0],
-      ['circuit_coral', 0.705, 0.0, 0.55, 2], ['tire', 0.955, 0.12, 0.55, 0], ['floppy_pile', 0.86, 0.36, 0.55, 0],
-    ];
-    const placed = P.map(([id, xf, zf, scale, variant]) => {
-      const p = getProp(id, { scale, variant });
-      const x = Math.round(xf * W), y = Math.round(g.surfaceY(x, zf)) + 1;
-      return { id, p, x, y, zf, top: y - p.oy, left: x - p.ox };
-    }).sort((a, b) => a.zf - b.zf);
-    this.placed = placed;
-    let top = Math.min(...placed.map((q) => q.top));
-    for (let x = 0; x <= W; x++) top = Math.min(top, g.floor[x] - 2);
-    top = Math.floor(top) - 4;
-    this.bedY = top;
-    const bed = makeCanvas(W, H - top);
-    const bg = ctxOf(bed);
-    bg.drawImage(g.canvas, g.x, g.y - top);
-    const fy = Math.round(backY - top - 8);
-    const hz = bg.createLinearGradient(0, fy, 0, fy + 24);
-    hz.addColorStop(0, 'rgba(50,110,100,0.6)');
-    hz.addColorStop(1, 'rgba(50,110,100,0)');
-    bg.globalCompositeOperation = 'source-atop';
-    bg.fillStyle = hz;
-    bg.fillRect(0, fy, W, 24);
-    bg.globalCompositeOperation = 'source-over';
-    const find = (id) => placed.find((q) => q.id === id);
-    const pile = find('crt_pile'), rack = find('server_rack'), robot = find('broken_robot'), vend = find('vending_machine'), barrel = find('rusty_barrel'), mon = find('crt_monitor');
-    // sagging cables between the junk (behind the front props)
-    const cables = [
-      [[-10, H * 0.5], [pile.left + 30, pile.top + 40], 40, '#24242c', 2],
-      [[rack.x - 10, rack.top + 6], [pile.x + 30, pile.top + 34], 22, '#c8a040', 1],
-      [[rack.x + 18, rack.top + 10], [robot.x - 20, robot.top + 40], 30, '#2a2a34', 2],
-      [[robot.x + 24, robot.top + 36], [vend.x - 14, vend.top + 10], 34, '#3a5ac0', 1],
-      [[vend.x + 16, vend.top + 8], [barrel.x + 10, barrel.top + 14], 26, '#b83a3a', 1],
-      [[vend.x + 20, vend.top + 14], [W * 0.82, backY - 6], 34, '#24242c', 2],
-    ];
-    const drawCables = (gg) => {
-      for (const [a, b, sag, col, w] of cables) {
-        const pts = catenary(a[0], a[1] - top, b[0], b[1] - top, sag, 30);
-        drawCable(gg, pts, col, w, '#0a0c10', w >= 2 ? mix(col, '#ffffff', 0.35) : null);
-      }
+    const place = (id, xf, z, base, variant = 0) => {
+      const p = getProp(id, { scale: qscale(base * D.s(z)), variant });
+      return D.add({ sprite: p, x: Math.round(xf * W), z, id });
     };
-    let cablesDone = false;
-    for (const q of placed) {
-      if (!cablesDone && q.zf > 0.05) { drawCables(bg); cablesDone = true; }
-      bg.drawImage(q.p.canvas, q.left, q.top - top);
+    const P = [
+      // near
+      ['crt_monitor', 0.375, 0.12, 0.85], ['circuit_coral', 0.47, 0.2, 0.75, 0], ['circuit_coral', 0.585, 0.27, 0.65, 1], ['keyboard_slab', 0.255, 0.04, 0.6],
+      ['floppy_pile', 0.13, 0.08, 0.7], ['tire', 0.045, 0.16, 0.8], ['pipe_bend', 0.2, 0.3, 0.85], ['floppy_pile', 0.86, 0.04, 0.55], ['tire', 0.955, 0.22, 0.6],
+      // mid
+      ['crt_pile', 0.31, 0.4, 1.0], ['server_rack', 0.432, 0.45, 1.0], ['broken_robot', 0.532, 0.37, 1.0], ['vending_machine', 0.645, 0.42, 1.0], ['rusty_barrel', 0.715, 0.52, 0.9],
+      ['circuit_coral', 0.74, 0.36, 0.6, 2], ['shopping_cart', 0.15, 0.56, 1.0], ['gear_big', 0.835, 0.62, 1.0],
+      // far
+      ['satellite_dish', 0.06, 0.9, 1.2], ['crt_pile', 0.215, 1.1, 1.35], ['gear_big', 0.4, 0.95, 1.3], ['server_rack', 0.585, 1.05, 1.3], ['shopping_cart', 0.72, 0.86, 1.1],
+      ['satellite_dish', 0.905, 1.0, 1.35], ['pipe_bend', 0.48, 1.3, 1.5], ['tire', 0.335, 0.76, 1.0], ['rusty_barrel', 0.275, 0.82, 1.0], ['crt_monitor', 0.665, 0.78, 1.0],
+      ['broken_robot', 0.985, 1.25, 1.4], ['vending_machine', 0.03, 1.3, 1.4], ['circuit_coral', 0.79, 0.74, 0.9, 0], ['keyboard_slab', 0.54, 0.7, 0.8],
+    ];
+    const placed = P.map(([id, xf, z, base, v]) => place(id, xf, z, base, v || 0));
+    for (const q of placed) { q.left = q.x - q.sprite.ox; q.top = q.y - q.sprite.oy; q.p = q.sprite; q.s = D.s(q.z); }
+    this.placed = placed;
+    const find = (id, band) => placed.find((q) => q.id === id && (band === undefined || q.band === band));
+    const pile = find('crt_pile', 1), rack = find('server_rack', 1), robot = find('broken_robot', 1), vend = find('vending_machine', 1), barrel = find('rusty_barrel', 1), mon = find('crt_monitor', 0);
+    // sagging cables between the mid-depth junk, baked as one overlay
+    const cab = makeCanvas(W, H), cg = ctxOf(cab);
+    const cables = [
+      [[-10, H * 0.55], [pile.left + 30, pile.top + 36], 40, '#24242c', 2],
+      [[rack.x - 10, rack.top + 6], [pile.x + 26, pile.top + 30], 22, '#c8a040', 1],
+      [[rack.x + 16, rack.top + 10], [robot.x - 18, robot.top + 36], 28, '#2a2a34', 2],
+      [[robot.x + 22, robot.top + 32], [vend.x - 12, vend.top + 10], 30, '#3a5ac0', 1],
+      [[vend.x + 14, vend.top + 8], [barrel.x + 8, barrel.top + 12], 24, '#b83a3a', 1],
+    ];
+    let cTop = H;
+    for (const [a, b, sag, col, w] of cables) {
+      const pts = catenary(a[0], a[1], b[0], b[1], sag, 30);
+      for (const p of pts) cTop = Math.min(cTop, p[1]);
+      drawCable(cg, pts, col, w, '#0a0c10', w >= 2 ? mix(col, '#ffffff', 0.35) : null);
     }
-    if (!cablesDone) drawCables(bg);
-    this.bed = bed;
-    this.bedMask = lumaMask(bed, { gamma: 2, gain: 1.1 });
-    this.groundGlow = g.glow;
-    // glowing bits: prop glow layers, screens, LEDs, lights
-    this.glows = placed.filter((q) => q.p.glow).map((q) => ({ c: q.p.glow, x: q.left, y: q.top, id: q.id, ph: hash2(q.x, 1, 9) * TAU }));
+    D.items.push({ abs: true, absTop: Math.floor(cTop) - 4, z: 0.47, band: 1, sprite: { canvas: cab, ox: 0, oy: 0 }, x: 0, y: 0 });
+    D.render([{ key: 'day', strip: this.water.day }, { key: 'dusk', strip: this.water.dusk }, { key: 'night', strip: this.water.night }]);
+    this.bands = new BandSet(D);
+    this.hazeY = Math.round(D.hz - 26);
+    this.haze = new FogLayer(hazeMask(W, 70, { peak: 0.55, alpha: 0.8 }), 0, this.hazeY);
+    this.masks = [0, 1].map((b) => lumaMask(D.bands[b].canvases.day, { gamma: 2, gain: 1.05 }));
+    this.floor = new Float32Array(W + 1);
+    for (let x = 0; x <= W; x++) this.floor[x] = D.floorAt(x, 0);
+    // glowing bits: prop glow layers (bloom), screens, LEDs, lights
+    this.glows = placed.filter((q) => q.p.glow).map((q) => ({ c: q.p.glow, x: q.left, y: q.top, id: q.id, band: q.band, a: 1 - D.fog(q.z) * 0.8, ph: hash2(q.x, 1, 9) * TAU }));
     this.screens = [];
     const modes = ['text', 'fish', 'static'];
     let si = 0;
     for (const q of placed) {
-      if (q.id === 'crt_pile' || q.id === 'crt_monitor') {
-        for (const s of q.p.screens) {
-          const scr = { x: q.left + s.x, y: q.top + s.y, w: s.w, h: s.h, mode: q.id === 'crt_monitor' ? 'off' : modes[si++ % 3], secret: q.id === 'crt_monitor' };
-          this.screens.push(scr);
-        }
+      if (q.id !== 'crt_pile' && q.id !== 'crt_monitor') continue;
+      for (const sc of q.p.screens) {
+        const secret = q === mon;
+        this.screens.push({ x: q.left + sc.x, y: q.top + sc.y, w: sc.w, h: sc.h, band: q.band, mode: secret ? 'off' : modes[si++ % 3], secret, a: 1 - D.fog(q.z) * 0.85, z: q.z });
       }
     }
-    this.crt = this.screens.find((s) => s.secret);
+    this.crt = this.screens.find((sc) => sc.secret);
     this.leds = [];
-    if (rack.p.glow) {
-      const gd = ctxOf(rack.p.glow).getImageData(0, 0, rack.p.w, rack.p.h).data;
-      for (let y = 0; y < rack.p.h; y++) for (let x = 0; x < rack.p.w; x++) if (gd[(y * rack.p.w + x) * 4 + 3] === 255 && this.leds.length < 140) this.leds.push({ x: rack.left + x, y: rack.top + y, k: hash2(x, y, 3) });
+    for (const q of placed) {
+      if (q.id !== 'server_rack' || !q.p.glow) continue;
+      const gd = ctxOf(q.p.glow).getImageData(0, 0, q.p.w, q.p.h).data;
+      for (let y = 0; y < q.p.h; y++) for (let x = 0; x < q.p.w; x++) if (gd[(y * q.p.w + x) * 4 + 3] === 255 && this.leds.length < 200) this.leds.push({ x: q.left + x, y: q.top + y, k: hash2(x, y, 3), band: q.band });
     }
     this.propLights = [];
     for (const q of placed) {
       if (q.id === 'crt_pile' || q.id === 'crt_monitor') continue;
       const l = q.p.lights.slice().sort((a, b) => b.r - a.r)[0];
-      if (l) this.propLights.push({ x: q.left + l.x, y: q.top + l.y, r: Math.min(64, l.r + 6), color: l.color, id: q.id });
+      if (l && q.z < 1.2) this.propLights.push({ x: q.left + l.x, y: q.top + l.y, r: Math.min(64, l.r * 0.9 + 8 * q.s), color: l.color, a: 1 - D.fog(q.z) * 0.7, id: q.id });
     }
-    this.vend = { x: vend.x, y: vend.y, rect: { x: vend.left + 8, y: vend.top + 8, w: vend.p.w - 16, h: vend.p.h - 12 }, tray: { x: vend.x - 6, y: vend.y - 18 }, t: 9, item: null, cool: 0 };
+    this.vend = { x: vend.x, y: vend.y, rect: { x: vend.left + 6, y: vend.top + 6, w: vend.p.w - 12, h: vend.p.oy - 8 }, tray: { x: vend.x - 5, y: vend.y - 16 }, t: 9, item: null, cool: 0 };
     this.monRect = { x: this.crt.x - 4, y: this.crt.y - 4, w: this.crt.w + 8, h: this.crt.h + 10 };
     this.rack = rack; this.robot = robot; this.barrel = barrel; this.pile = pile; this.mon = mon;
-    // algae spots along junk top edges
+    // glowing algae along junk top edges (near & mid bands)
     this.algae = [];
-    const bd = bg.getImageData(0, 0, W, H - top).data;
     const r = new RNG(12);
-    for (let i = 0; i < 500 && this.algae.length < 34; i++) {
-      const x = r.int(20, W - 20);
-      if (x > W - 260 && r.chance(0.7)) continue;
-      for (let y = 2; y < H - top - 30; y++) {
-        if (bd[(y * W + x) * 4 + 3] > 0) {
-          if (top + y < g.floor[x] - 6) this.algae.push({ x, y: top + y, ph: r.float(0, TAU), c: r.pick(['#7aff5a', '#5affb0', '#c8ff5a']) });
-          break;
+    for (const b of [0, 1]) {
+      const B = D.bands[b], cv = B.canvases.day, bw = cv.width, bh = cv.height;
+      const bd = ctxOf(cv).getImageData(0, 0, bw, bh).data;
+      let n = 0;
+      for (let i = 0; i < 400 && n < 18; i++) {
+        const x = r.int(30, bw - 30);
+        if (x - D.pad > W - 260 && r.chance(0.75)) continue;
+        for (let y = 2; y < bh - 30; y++) {
+          if (bd[(y * bw + x) * 4 + 3] > 0) {
+            const sx = x - D.pad, sy = B.y + y;
+            if (sy < D.floorAt(sx, b === 0 ? 0.1 : 0.45) - 8) { this.algae.push({ x: sx, y: sy, band: b, ph: r.float(0, TAU), c: r.pick(['#7aff5a', '#5affb0', '#c8ff5a']) }); n++; }
+            break;
+          }
         }
       }
     }
   }
 
+  floorAt(x, z = 0) { return this.D ? this.D.floorAt(x, z) : super.floorAt(x); }
+
   buildLayers() {
-    const W = this.W, H = this.H, pad = 28;
+    const W = this.W, H = this.H, pad = 28, D = this.D;
     this.pad = pad;
     const LW = W + pad * 2;
     const r = new RNG(8);
+    const hz = D.hz;
     const junk = (m, x, y, s, v = 1) => {
       const k = r.next();
       if (k < 0.25) { const w = r.float(10, 26) * s, h = r.float(8, 18) * s, a = r.float(-0.4, 0.4); const c = Math.cos(a), sn = Math.sin(a); m.poly([[-w, -h], [w, -h], [w, h], [-w, h]].map(([px, py]) => [x + px * c - py * sn, y + px * sn + py * c])); }
@@ -406,107 +391,92 @@ export class JunkyardBiome extends Biome {
       else if (k < 0.75) { m.line(x, y, x + r.float(-14, 14) * s, y - r.float(16, 34) * s, r.float(1, 2)); }
       else { const w = r.float(14, 22) * s; m.ellipse(x, y, w, w * 0.45); m.ellipse(x - w * 0.55, y + w * 0.3, w * 0.22, w * 0.22); m.ellipse(x + w * 0.55, y + w * 0.3, w * 0.22, w * 0.22); }
     };
-    // --- far A: junk mountains, a sunken freighter and a crane
-    const yA = Math.round(H * 0.28), hA = H - yA;
+    // --- far A: junk mountains, a sunken freighter and a crane beyond the horizon
+    const yA = Math.round(hz - H * 0.36), hA = H - yA;
     const mA = new Mask(LW, hA);
-    const rA = ridge(LW, hA * 0.58, hA * 0.2, 0.0075, 1.4, 4, 0.2);
+    const baseA = hz - yA + 14;
+    const rA = ridge(LW, baseA - 40, 26, 0.0075, 1.4, 4, 0.2);
     mA.below((x) => rA[x]);
     for (let i = 0; i < 70; i++) { const x = r.float(0, LW); junk(mA, x, rA[Math.round(x)] + r.float(-2, 8), 1.1); }
-    // freighter
-    const sx = LW * 0.64, sy = rA[Math.round(sx)] + 10;
-    const tilt = -0.12;
-    const hull = [[-170, 0], [-160, -46], [150, -60], [190, -78], [196, -60], [178, 10]].map(([px, py]) => [sx + px, sy + py + px * tilt * 0.3]);
+    const sx = LW * 0.64, sy = baseA - 8;
+    const hull = [[-170, 0], [-160, -46], [150, -60], [190, -78], [196, -60], [178, 10]].map(([px, py]) => [sx + px, sy + py + px * -0.036]);
     mA.poly(hull);
-    mA.rect(sx - 140, sy - 100 + 14, 52, 50); mA.rect(sx - 130, sy - 118 + 14, 30, 20); mA.rect(sx - 118, sy - 140 + 14, 8, 24);
+    mA.rect(sx - 140, sy - 86, 52, 50); mA.rect(sx - 130, sy - 104, 30, 20); mA.rect(sx - 118, sy - 126, 8, 24);
     for (let k = 0; k < 4; k++) mA.rect(sx - 70 + k * 50, sy - 70 - k * 4, 34, 18);
     mA.line(sx + 120, sy - 70, sx + 132, sy - 150, 2); mA.line(sx + 104, sy - 128, sx + 160, sy - 136, 1);
     for (let k = 0; k < 9; k++) mA.ellipse(sx - 140 + k * 34, sy - 30 + k * -1.5, 2.5, 2.5, 0);
-    mA.rect(sx - 136, sy - 96 + 14, 44, 4, 0); mA.rect(sx - 136, sy - 84 + 14, 44, 4, 0);
-    // crane
-    const cx = LW * 0.2, cy = rA[Math.round(cx)] + 4, ct = hA * 0.06;
+    mA.rect(sx - 136, sy - 82, 44, 4, 0); mA.rect(sx - 136, sy - 70, 44, 4, 0);
+    const cx = LW * 0.2, cy = rA[Math.round(cx)] + 4, ct = Math.max(4, cy - 200);
     for (const dx of [-8, 8]) mA.line(cx + dx, cy, cx + dx * 0.5, ct, 1.2);
-    for (let y = cy; y > ct + 10; y -= 14) { mA.line(cx - 8 + (cy - y) * 0.02, y, cx + 8 - (cy - y) * 0.02, y - 14, 0.7); mA.line(cx + 8 - (cy - y) * 0.02, y, cx - 8 + (cy - y) * 0.02, y - 14, 0.7); }
+    for (let y = cy; y > ct + 10; y -= 14) { mA.line(cx - 8, y, cx + 8, y - 14, 0.7); mA.line(cx + 8, y, cx - 8, y - 14, 0.7); }
     const bx1 = cx + 170, by1 = ct + 40;
     mA.line(cx, ct, bx1, by1, 1.2); mA.line(cx, ct + 10, bx1, by1 + 4, 1);
     for (let k = 0; k < 10; k++) { const u = k / 10; mA.line(lerp(cx, bx1, u), lerp(ct, by1, u), lerp(cx, bx1, u + 0.1), lerp(ct + 10, by1 + 4, u + 0.1), 0.5); }
     mA.line(cx - 40, ct + 6, cx, ct, 1.2); mA.rect(cx - 50, ct + 4, 14, 10);
-    mA.line(bx1 - 10, by1 + 2, bx1 - 10, by1 + 120, 0.5); mA.ellipse(bx1 - 10, by1 + 124, 4, 3); mA.ellipse(bx1 - 10, by1 + 124, 2, 1.5, 0);
-    this.craneHook = { x: bx1 - 10 - pad, y: yA + by1 + 124 };
+    mA.line(bx1 - 10, by1 + 2, bx1 - 10, by1 + 110, 0.5); mA.ellipse(bx1 - 10, by1 + 114, 4, 3); mA.ellipse(bx1 - 10, by1 + 114, 2, 1.5, 0);
     const palA = stopPalette([[0, '#0e2420'], [1, '#2a4a40']], 6);
     this.farA = new FogLayer(mA.toCanvas((x, y, v, up) => (up <= 1 ? pack('#6aa48a') : ditherPick(palA, 0.7 - Math.min(1, up / 60) * 0.5 + (fbm2(x * 0.06, y * 0.06, 2, 3) - 0.5) * 0.4, x, y))), -pad, yA);
     this.farAY = yA;
-    // --- far B: container stacks, utility poles with sagging wires, junk piles
-    const yB = H - 250, hB = 250;
+    // --- far B: container stacks, utility poles with sagging wires, junk piles on the horizon
+    const yB = Math.round(hz - 130), hB = H - yB;
     const mB = new Mask(LW, hB);
-    const rB = ridge(LW, hB * 0.66, 14, 0.012, 9.3, 3);
+    const baseB = hz - yB + 22;
+    const rB = ridge(LW, baseB - 10, 10, 0.012, 9.3, 3);
     mB.below((x) => rB[x]);
-    for (let i = 0; i < 60; i++) { const x = r.float(0, LW); junk(mB, x, rB[Math.round(x)] + r.float(0, 6), 0.85); }
+    for (let i = 0; i < 60; i++) { const x = r.float(0, LW); junk(mB, x, rB[Math.round(x)] + r.float(0, 6), 0.75); }
     for (const xf of [0.12, 0.47, 0.83]) {
       const x0 = LW * xf, y0 = rB[Math.round(x0)] + 4;
       for (let k = 0; k < 3; k++) {
-        const w = 46, h = 18, yy = y0 - h * (k + 1) + 2, xx = x0 + (k % 2) * 8 - (k === 2 ? 14 : 0);
+        const w = 40, h = 16, yy = y0 - h * (k + 1) + 2, xx = x0 + (k % 2) * 8 - (k === 2 ? 14 : 0);
         mB.rect(xx, yy, w, h - 2);
         for (let q = 4; q < w - 2; q += 4) mB.rect(xx + q, yy + 2, 1, h - 7, 0);
       }
     }
     const poles = [];
     for (let i = 0; i < 6; i++) {
-      const x = LW * (0.06 + i * 0.18) + r.float(-10, 10), y0 = rB[Math.round(clamp(x, 0, LW))] + 4, hgt = r.float(80, 100), lean = r.float(-0.12, 0.12);
+      const x = LW * (0.06 + i * 0.18) + r.float(-10, 10), y0 = rB[Math.round(clamp(x, 0, LW))] + 4, hgt = r.float(70, 90), lean = r.float(-0.12, 0.12);
       const tx = x + lean * hgt, ty = y0 - hgt;
-      mB.line(x, y0, tx, ty, 1.6); mB.line(tx - 9, ty + 6, tx + 9, ty + 4, 1); mB.line(tx - 7, ty + 12, tx + 7, ty + 11, 0.8);
+      mB.line(x, y0, tx, ty, 1.4); mB.line(tx - 8, ty + 6, tx + 8, ty + 4, 1); mB.line(tx - 6, ty + 11, tx + 6, ty + 10, 0.8);
       poles.push([tx, ty + 5]);
     }
     for (let i = 0; i + 1 < poles.length; i++) {
       for (const dy of [0, 6]) {
-        const pts = catenary(poles[i][0] - 8, poles[i][1] + dy, poles[i + 1][0] - 8, poles[i + 1][1] + dy, 22 + dy * 1.5, 40);
+        const pts = catenary(poles[i][0] - 8, poles[i][1] + dy, poles[i + 1][0] - 8, poles[i + 1][1] + dy, 20 + dy * 1.5, 40);
         for (let k = 0; k + 1 < pts.length; k++) mB.line(pts[k][0], pts[k][1], pts[k + 1][0], pts[k + 1][1], 0.5);
       }
     }
     const palB = stopPalette([[0, '#0c201c'], [1, '#26443c']], 6);
-    this.farB = new FogLayer(mB.toCanvas((x, y, v, up) => (up <= 1 ? pack('#7ab496') : up === 2 ? pack('#3e6a5a') : ditherPick(palB, 0.7 - Math.min(1, up / 40) * 0.5 + (fbm2(x * 0.08, y * 0.08, 2, 5) - 0.5) * 0.4, x, y))), -pad, yB);
+    const palS = stopPalette([[0, '#3a4a40'], [1, '#6a6a56']], 5);
+    this.farB = new FogLayer(mB.toCanvas((x, y, v, up) => {
+      if (y > rB[x] + 8) return ditherPick(palS, 0.4 + (y - rB[x]) / 60 + (fbm2(x * 0.05, y * 0.2, 2, 6) - 0.5) * 0.3, x, y);
+      return up <= 1 ? pack('#7ab496') : up === 2 ? pack('#3e6a5a') : ditherPick(palB, 0.7 - Math.min(1, up / 40) * 0.5 + (fbm2(x * 0.08, y * 0.08, 2, 5) - 0.5) * 0.4, x, y);
+    }), -pad, yB);
     this.farBY = yB;
-    // --- mid: junk bank with real props, fogged
-    const yC = H - 160, hC = 160;
-    const mC = new Mask(LW, hC);
-    const rC = ridge(LW, 62, 12, 0.012, 3.3, 3);
-    mC.below((x) => rC[x]);
-    for (let i = 0; i < 40; i++) { const x = r.float(0, LW); junk(mC, x, rC[Math.round(x)] + r.float(2, 8), 0.6); }
-    const palC = stopPalette([[0, '#2a3a34'], [0.6, '#4a5a4c'], [1, '#6a786a']], 6);
-    const cC = mC.toCanvas((x, y, v, up) => (up <= 1 ? pack('#9ab8a0') : ditherPick(palC, 0.85 - Math.min(1, up / 26) * 0.7 + (fbm2(x * 0.1, y * 0.1, 2, 11) - 0.5) * 0.4, x, y)));
-    const gC = ctxOf(cC);
-    const mids = [['server_rack', 0.06, 0.5], ['satellite_dish', 0.17, 0.55], ['shopping_cart', 0.36, 0.45], ['gear_big', 0.56, 0.55], ['crt_pile', 0.78, 0.45], ['pipe_bend', 0.92, 0.5], ['satellite_dish', 0.99, 0.45]];
-    for (const [id, xf, sc] of mids) {
-      const p = getProp(id, { scale: sc });
-      const x = Math.round(xf * W + pad), y = Math.round(rC[clamp(x, 0, LW)] + 8);
-      gC.drawImage(p.canvas, x - p.ox, y - p.oy);
-    }
-    this.mid = new FogLayer(cC, -pad, yC);
-    this.midY = yC;
   }
 
   buildLife() {
-    const W = this.W, H = this.H, g = this.ground;
+    const W = this.W, H = this.H, D = this.D;
     const r = new RNG(19);
-    // limp seaweed growing out of the junk
-    this.tufts = [];
+    this.decor = new DepthDecor(D);
     const sets = [['#2a4a2a', '#3e5e2e', '#5a7a34', '#7a9a44'], ['#3a4a22', '#566a2a', '#748a34', '#98ac48']];
-    for (const [xf, zf] of [[0.08, 0.36], [0.17, 0.3], [0.27, 0.36], [0.42, 0.42], [0.49, 0.2], [0.56, 0.44], [0.61, 0.3], [0.75, 0.38], [0.8, 0.2], [0.92, 0.4], [0.995, 0.3]]) {
-      const x0 = Math.round(xf * W), y0 = Math.round(g.surfaceY(x0, zf)) + 1;
+    for (const [xf, z] of [[0.08, -0.12], [0.17, 0.0], [0.27, -0.15], [0.42, 0.25], [0.49, 0.02], [0.56, -0.18], [0.61, 0.1], [0.75, -0.08], [0.8, 0.2], [0.92, -0.1], [0.995, 0.1],
+      [0.05, 0.5], [0.22, 0.62], [0.38, 0.55], [0.6, 0.6], [0.77, 0.66], [0.9, 0.5], [0.12, 0.85], [0.46, 0.8], [0.7, 0.95]]) {
+      const s = D.s(z), x0 = Math.round(xf * W), y0 = Math.round(D.floorAt(x0, z)) + 1;
       const st = new Strands();
       const k = r.int(3, 5), tall = r.chance(0.5), set = r.pick(sets);
       for (let i = 0; i < k; i++) {
         const lean = (i / Math.max(1, k - 1) - 0.5) * 0.8;
-        st.add({ x: x0 + Math.round(lean * 7), y: y0, n: tall ? r.int(9, 14) : r.int(5, 8), seg: 2, w: tall ? 2 : 1, amp: 0.22, speed: 1.1, sec: 1, phase: r.float(0, TAU), wave: 0.4, lean, curl: lean * 0.5, cols: set, out: tall ? '#0c1a14' : null, hl: false, taper: 0.3 });
+        st.add({ x: x0 + Math.round(lean * 7 * s), y: y0, n: Math.max(3, Math.round((tall ? r.int(9, 14) : r.int(5, 8)) * Math.min(1.1, s))), seg: 2, w: tall && s > 0.7 ? 2 : 1, amp: 0.22, speed: 1.1, sec: 1, phase: r.float(0, TAU), wave: 0.4, lean, curl: lean * 0.5, cols: set, out: tall && s > 0.7 ? '#0c1a14' : null, hl: false, taper: 0.3 });
       }
-      this.tufts.push({ anim: new SwayAnim(st, { frames: 16 }), off: r.int(0, 15) });
+      this.decor.add({ anim: new SwayAnim(st, { frames: 16 }), z, off: r.int(0, 15) });
     }
-    // a long dangling cable with a plug
-    const s = this.base;
-    this.dangles = [];
-    for (const [xf, n, col] of [[0.18, 30, '#2a2a34'], [0.585, 20, '#3a3a48'], [0.79, 12, '#b83a3a']]) {
+    // long cables dangling from the surface with plugs
+    const s0 = this.base;
+    for (const [xf, n, col, z] of [[0.18, 30, '#2a2a34', 0.5], [0.585, 22, '#3a3a48', 0.85], [0.79, 13, '#b83a3a', 0.6], [0.36, 26, '#2a2a34', 1.1]]) {
       const st = new Strands();
-      st.add({ x: Math.round(xf * W), y: s + 1, n, seg: 4, down: true, w: 2, amp: 0.12, speed: 0.6, sec: 1, phase: xf * 9, wave: 0.15, cols: [col, mix(col, '#ffffff', 0.15)], out: '#0a0c10', hl: false, tip: '#c8c8d0', tipR: 2 });
-      this.dangles.push({ anim: new SwayAnim(st, { frames: 24 }), off: Math.round(xf * 30) });
+      const sc = D.s(z);
+      st.add({ x: Math.round(xf * W), y: s0 + 1, n, seg: Math.max(2, Math.round(4 * sc + 1)), down: true, w: sc > 0.7 ? 2 : 1, amp: 0.12, speed: 0.6, sec: 1, phase: xf * 9, wave: 0.15, cols: [col, mix(col, '#ffffff', 0.15)], out: '#0a0c10', hl: false, tip: '#c8c8d0', tipR: sc > 0.7 ? 2 : 1 });
+      this.decor.add({ anim: new SwayAnim(st, { frames: 24 }), z, off: Math.round(xf * 30), fy: s0 + 60 });
     }
     this.murk = cloudTile(480, 240, '#a8c8b0', { seed: 3, alpha: 0.13, scale: 0.016, bias: 0.5, levels: 3 });
     this.murk2 = cloudTile(400, 200, '#0e2420', { seed: 9, alpha: 0.16, scale: 0.02, bias: 0.5, levels: 3 });
@@ -516,6 +486,7 @@ export class JunkyardBiome extends Biome {
     this.can = canSprite();
     this.floaters = [[0.3, 'duck'], [0.52, 'bottle'], [0.68, 'can'], [0.9, 'bottle']].map(([xf, k], i) => ({ x: xf * W, k, v: 2 + i, ph: i * 1.7 }));
     // particles
+    const s = this.base;
     this.silt = new Motes(120, { x0: 0, y0: s + 4, x1: W, y1: H - 50 }, { seed: 4, vx: [-2, 2], vy: [-1.5, 1.5], sizes: [1, 1, 2], colors: ['#a8c8a0', '#c8d8b0', '#8aa890'], alpha: [0.2, 0.55], wob: 4 });
     this.nearSilt = new Motes(22, { x0: 0, y0: s + 10, x1: W, y1: H - 30 }, { seed: 9, vx: [-3, 3], vy: [-2, 2], sizes: [2, 3], colors: ['#b8d8b0'], alpha: [0.08, 0.2], wob: 7 });
     this.bits = [];
@@ -557,6 +528,7 @@ export class JunkyardBiome extends Biome {
     this.cols.crest = tri('#d0f4dc', '#ffd8b0', '#7aa8a0', tod);
     this.cols.sub = tri('#86c4a8', '#c0a080', '#3a6a66', tod);
     this.fogColor = qmix(tri('#2f6e64', '#4a5a50', '#1c4448', tod), '#141a14', wx.oil * 0.35);
+    this.decor.refog((y) => waterColorAt(WATER, tod, y, this.base - 2, H), Math.round(tod.day * 40) + ',' + Math.round(tod.dusk * 40));
     // static storm flicker & screen tears
     this.flicker = wx.static > 0.2 && Math.random() < 0.06 * wx.static ? Math.random() * 0.5 : this.flicker * Math.exp(-dt * 12);
     if (wx.static > 0.3 && !this.tear && Math.random() < dt * 0.8 * wx.static) this.tear = { y: Math.random() * H, h: 4 + Math.random() * 16, dx: Math.round((Math.random() - 0.5) * 12), t: 0.12 };
@@ -607,6 +579,8 @@ export class JunkyardBiome extends Biome {
   }
 
   drawBack(ctx, env) {
+    this.nearHooked = !!this.nearSeen;
+    this.nearSeen = false;
     const W = this.W, H = this.H, t = this.t, tod = this.tod, wx = this.wx;
     const sy = this.surfaceAt(env);
     const ys = this.ys;
@@ -629,12 +603,15 @@ export class JunkyardBiome extends Biome {
     const key = this.waterBlend.key;
     const px = this.par.x, py = this.par.y;
     const wob = quality(env) >= 1 ? 1 : 0;
-    drawWobble(ctx, this.farA.tint(water, 0.74, key), -this.pad + px * 1.5, this.farAY + py, t, wob, 4, 0.8, 0.07);
-    // crane hook swings in the far fog
-    drawWobble(ctx, this.farB.tint(water, 0.52, key), -this.pad + px * 3, this.farBY + py * 1.5, t + 2, wob, 4, 1, 0.09);
-    // drifting turbidity between the far junk and the mid bank
+    drawWobble(ctx, this.farA.tint(water, 0.76, key), -this.pad + px * 0.8, this.farAY + py * 0.4, t, wob, 4, 0.8, 0.07);
+    drawWobble(ctx, this.farB.tint(water, 0.66, key), -this.pad + px * 1.4, this.farBY + py * 0.5, t + 2, wob, 4, 1, 0.09);
+    // far band of the perspective junk field
+    this.bands.draw(ctx, 2, tod, px * 2, py * 0.6);
+    ctx.drawImage(this.haze.tint(water, 1, key), 0, this.hazeY);
+    this.decor.draw(ctx, 2, t, px * 2, py * 0.6);
+    // drifting turbidity over the distance
     const tv = Math.max(0, top);
-    for (const [tile, sp, a] of [[this.murk2, 3, 0.7 + wx.oil * 0.3], [this.murk, 5, 0.55 + wx.murk * 0.45 - tod.night * 0.3]]) {
+    for (const [tile, sp, a] of [[this.murk2, 3, 0.5 + wx.oil * 0.4], [this.murk, 5, 0.4 + wx.murk * 0.4 - tod.night * 0.3]]) {
       const pat = ctx.createPattern(tile, 'repeat');
       pat.setTransform(new DOMMatrix([1, 0, 0, 1, Math.round(t * sp + px * 4), Math.round(Math.sin(t * 0.07) * 6)]));
       ctx.globalAlpha = clamp01(a);
@@ -642,9 +619,8 @@ export class JunkyardBiome extends Biome {
       ctx.fillRect(0, tv, W, H - tv);
     }
     ctx.globalAlpha = 1;
-    ctx.drawImage(this.mid.tint(water, 0.4, key), Math.round(-this.pad + px * 6), Math.round(this.midY + py * 2.5));
     // murk & oil darkening
-    const murk = 0.08 + wx.murk * 0.06 + wx.oil * 0.16;
+    const murk = 0.04 + wx.murk * 0.05 + wx.oil * 0.16;
     ctx.fillStyle = rgba(wx.oil > 0.3 ? '#0e1410' : '#2a4a40', murk);
     ctx.fillRect(0, Math.max(0, top), W, H - Math.max(0, top));
     // data rain behind the junk
@@ -703,7 +679,7 @@ export class JunkyardBiome extends Biome {
   }
 
   drawSeabed(ctx, env) {
-    const W = this.W, H = this.H, t = this.t, tod = this.tod, wx = this.wx;
+    const t = this.t, tod = this.tod, wx = this.wx;
     const sy = this.surfaceAt(env);
     const q = quality(env);
     const rayA = (tod.day * 0.5 + tod.dusk * 0.4 + tod.night * 0.12) * (1 - wx.oil * 0.7) * (1 - wx.murk * 0.25);
@@ -725,60 +701,24 @@ export class JunkyardBiome extends Biome {
       else ctx.drawImage(this.glyphs[b.ch][b.c], Math.round(b.x), Math.round(b.y));
     }
     ctx.globalAlpha = 1;
-    for (const d of this.dangles) d.anim.draw(ctx, t, d.off);
-    ctx.drawImage(this.bed, 0, this.bedY);
-    const ca = (tod.day * 0.28 + tod.dusk * 0.2 + tod.night * 0.06) * (1 - wx.oil * 0.6);
-    if (q >= 0.75) this.caustics.draw(ctx, this.bedMask, 0, this.bedY, t, ca, { fps: 7, drift: 3 });
-    // screen tear (static storm)
-    if (this.tear) {
-      const tr = this.tear, yy = Math.round(tr.y - this.bedY);
-      if (yy > 0 && yy < this.bed.height) ctx.drawImage(this.bed, 0, yy, W, Math.min(tr.h, this.bed.height - yy), tr.dx, this.bedY + yy, W, Math.min(tr.h, this.bed.height - yy));
-    }
-    // emissive glows (bloom)
-    const flick = 1 - this.flicker;
-    ctx.globalCompositeOperation = 'lighter';
-    for (const gl of this.glows) {
-      ctx.globalAlpha = ((gl.id === 'circuit_coral' ? 0.12 : 0.32) + 0.12 * Math.sin(t * 1.3 + gl.ph) + tod.night * 0.22) * flick;
-      ctx.drawImage(gl.c, gl.x, gl.y);
-    }
-    if (this.groundGlow) { ctx.globalAlpha = (0.4 + 0.3 * Math.sin(t * 0.9)) * flick; ctx.drawImage(this.groundGlow, this.ground.x, this.ground.y); }
-    ctx.globalAlpha = 1;
-    ctx.globalCompositeOperation = 'source-over';
-    // CRT screens
-    const glitch = wx.static;
-    for (const s of this.screens) {
-      let mode = s.mode;
-      if (s.secret) mode = this.secrets().crt ? 'hello' : 'off';
-      this.fx.draw(ctx, s, mode, t + s.x * 0.01, mode === 'off' ? 0 : glitch);
-      if (mode !== 'off') drawGlow(ctx, s.x + s.w / 2, s.y + s.h / 2, Math.max(s.w, s.h) * 0.75, mode === 'fish' ? '#4a8aff' : mode === 'static' ? '#a8b8c8' : '#4aff8a', 0.18 * flick);
-    }
-    // server LEDs blink
-    const lt = Math.floor(t * 6);
-    for (const l of this.leds) {
-      const v = hash2(l.x * 7 + l.y, lt + Math.floor(l.k * 5), 11);
-      if (v < 0.22) { ctx.fillStyle = '#0a1a10'; ctx.fillRect(l.x, l.y, 1, 1); } else if (v > 0.9) { ctx.fillStyle = '#eaffea'; ctx.fillRect(l.x, l.y, 1, 1); }
-    }
-    // glowing algae
-    for (const a of this.algae) {
-      const k = 0.5 + 0.5 * Math.sin(t * 1.1 + a.ph);
-      drawGlow(ctx, a.x, a.y, 3, a.c, (0.35 + k * 0.4 + tod.night * 0.3) * flick);
-      ctx.fillStyle = a.c;
-      ctx.fillRect(a.x, a.y, 1, 1);
-    }
-    for (const tf of this.tufts) tf.anim.draw(ctx, t, tf.off);
-    // vending machine: delivered item in the tray
-    const v = this.vend;
-    if (v.item && v.t < 3.5) {
-      const k = clamp01(v.t / 0.35);
-      const yy = Math.round(lerp(v.tray.y - 26, v.tray.y, ease.outBounce(k)));
-      ctx.drawImage(v.item, v.tray.x - 2, yy - 6);
-      if (v.t < 0.6) drawGlow(ctx, v.tray.x, v.tray.y - 10, 22, '#fff0f8', (0.6 - v.t) * 1.5);
-    }
-    this.bubbles.draw(ctx, t);
-    // secret hints
+    this.paintBand(ctx, 1, this.par.x * 3, this.par.y * 0.8, q);
+    if (!this.nearHooked) this.paintNear(ctx, env);
+  }
+
+  drawNear(ctx, env) {
+    this.nearSeen = true;
+    if (this.nearHooked) this.paintNear(ctx, env);
+  }
+
+  paintNear(ctx, env) {
+    const t = this.t, wx = this.wx;
+    this.paintBand(ctx, 0, this.par.x * 4, this.par.y, quality(env));
+    ctx.save();
+    ctx.translate(Math.round(this.par.x * 4), Math.round(this.par.y));
     const hk = (period, off) => { const p = ((this.hint + off) % period) / period; return p < 0.12 ? Math.sin((p / 0.12) * Math.PI) : 0; };
     if (!this.secrets().crt) twinkle(ctx, this.crt.x + this.crt.w - 3, this.crt.y + 2, hk(6, 1), '#c8fff0');
-    twinkle(ctx, v.rect.x + v.rect.w - 6, v.rect.y + 30, hk(8, 4), '#ffe0f0');
+    ctx.restore();
+    this.bubbles.draw(ctx, t);
     // oil blobs rising
     if (wx.oil > 0.05) {
       for (const o of this.oilBlobs) {
@@ -791,6 +731,64 @@ export class JunkyardBiome extends Biome {
       }
       ctx.globalAlpha = 1;
     }
+  }
+
+  // One depth band: baked floor + props, caustics, bloom, screens, LEDs, algae, decor.
+  paintBand(ctx, b, dx, dy, q) {
+    const t = this.t, tod = this.tod, wx = this.wx, D = this.D, W = this.W;
+    this.bands.draw(ctx, b, tod, dx, dy);
+    const B = D.bands[b];
+    const ca = (tod.day * 0.28 + tod.dusk * 0.2 + tod.night * 0.06) * (1 - wx.oil * 0.6) * (b === 1 ? 0.7 : 1);
+    if (q >= 0.75 && ca > 0.01) this.caustics.draw(ctx, this.masks[b], -D.pad + dx, B.y + dy, t, ca, { fps: 7, drift: 3, offset: b * 5 });
+    if (this.tear && b === 0) {
+      const tr = this.tear, cv = this.bands.canvas(0, tod), yy = Math.round(tr.y - B.y);
+      if (yy > 0 && yy < cv.height) ctx.drawImage(cv, 0, yy, cv.width, Math.min(tr.h, cv.height - yy), -D.pad + dx + tr.dx, B.y + yy + dy, cv.width, Math.min(tr.h, cv.height - yy));
+    }
+    ctx.save();
+    ctx.translate(Math.round(dx), Math.round(dy));
+    const flick = 1 - this.flicker;
+    ctx.globalCompositeOperation = 'lighter';
+    for (const gl of this.glows) {
+      if (gl.band !== b) continue;
+      ctx.globalAlpha = clamp01(((gl.id === 'circuit_coral' ? 0.12 : 0.32) + 0.12 * Math.sin(t * 1.3 + gl.ph) + tod.night * 0.22) * flick * gl.a);
+      ctx.drawImage(gl.c, gl.x, gl.y);
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+    const glitch = wx.static;
+    for (const s of this.screens) {
+      if (s.band !== b) continue;
+      const mode = s.secret ? (this.secrets().crt ? 'hello' : 'off') : s.mode;
+      this.fx.draw(ctx, s, mode, t + s.x * 0.01, mode === 'off' ? 0 : glitch);
+      if (mode !== 'off') drawGlow(ctx, s.x + s.w / 2, s.y + s.h / 2, Math.max(s.w, s.h) * 0.75, mode === 'fish' ? '#4a8aff' : mode === 'static' ? '#a8b8c8' : '#4aff8a', 0.18 * flick * s.a);
+    }
+    const lt = Math.floor(t * 6);
+    for (const l of this.leds) {
+      if (l.band !== b) continue;
+      const v = hash2(l.x * 7 + l.y, lt + Math.floor(l.k * 5), 11);
+      if (v < 0.22) { ctx.fillStyle = '#0a1a10'; ctx.fillRect(l.x, l.y, 1, 1); } else if (v > 0.9) { ctx.fillStyle = '#eaffea'; ctx.fillRect(l.x, l.y, 1, 1); }
+    }
+    for (const a of this.algae) {
+      if (a.band !== b) continue;
+      const k = 0.5 + 0.5 * Math.sin(t * 1.1 + a.ph);
+      drawGlow(ctx, a.x, a.y, 3, a.c, (0.35 + k * 0.4 + tod.night * 0.3) * flick);
+      ctx.fillStyle = a.c;
+      ctx.fillRect(a.x, a.y, 1, 1);
+    }
+    if (b === 1) {
+      const v = this.vend;
+      if (v.item && v.t < 3.5) {
+        const k = clamp01(v.t / 0.35);
+        const yy = Math.round(lerp(v.tray.y - 24, v.tray.y, ease.outBounce(k)));
+        ctx.drawImage(v.item, v.tray.x - 2, yy - 6);
+        if (v.t < 0.6) drawGlow(ctx, v.tray.x, v.tray.y - 10, 22, '#fff0f8', (0.6 - v.t) * 1.5);
+      }
+      const hk = ((this.hint + 4) % 8) / 8;
+      if (hk < 0.12) twinkle(ctx, v.rect.x + v.rect.w - 6, v.rect.y + 26, Math.sin((hk / 0.12) * Math.PI), '#ffe0f0');
+    }
+    ctx.restore();
+    this.decor.draw(ctx, b, t, dx, dy);
+    void W;
   }
 
   drawFront(ctx, env) {
@@ -818,10 +816,11 @@ export class JunkyardBiome extends Biome {
     const lights = [];
     const flick = 1 - this.flicker;
     const n = 0.45 + tod.night * 0.55;
-    for (const l of this.propLights) lights.push({ x: l.x, y: l.y, r: l.r, color: l.color, a: 0.55 * n * flick });
+    const few = tod.night < 0.3;
+    for (const l of this.propLights) if (!few || l.id === 'vending_machine' || l.id === 'server_rack' || l.id === 'broken_robot') lights.push({ x: l.x, y: l.y, r: l.r, color: l.color, a: 0.55 * n * flick * l.a });
     for (const s of this.screens) {
       const on = !s.secret || this.secrets().crt;
-      if (on) lights.push({ x: s.x + s.w / 2, y: s.y + s.h / 2, r: 40, color: s.secret ? '#8ab8ff' : s.mode === 'fish' ? '#6aa8ff' : '#7affc0', a: 0.6 * n * flick });
+      if (on) lights.push({ x: s.x + s.w / 2, y: s.y + s.h / 2, r: 40 * (1 - s.z * 0.4), color: s.secret ? '#8ab8ff' : s.mode === 'fish' ? '#6aa8ff' : '#7affc0', a: 0.6 * n * flick * s.a });
     }
     if (tod.night > 0.3) for (let i = 0; i < this.algae.length; i += 5) { const a = this.algae[i]; lights.push({ x: a.x, y: a.y, r: 20, color: a.c, a: 0.4 * n }); }
     const v = this.vend;

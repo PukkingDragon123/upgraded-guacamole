@@ -3,7 +3,11 @@ import { RevealPanel } from './reveal.js';
 import { BaitPanel } from './baitpanel.js';
 import { SkillTreePanel } from './skilltree.js';
 import { JournalPanel } from './journal.js';
+import { ShopPanel } from './shop.js';
+import { MapPanel } from './mappanel.js';
+import { SettingsPanel } from './settings.js';
+import { WelcomePanel } from './welcome.js';
 
 export function registerPanels(ui) {
-  for (const P of [RevealPanel, BaitPanel, SkillTreePanel, JournalPanel]) ui.register(new P());
+  for (const P of [RevealPanel, BaitPanel, SkillTreePanel, JournalPanel, ShopPanel, MapPanel, SettingsPanel, WelcomePanel]) ui.register(new P());
 }

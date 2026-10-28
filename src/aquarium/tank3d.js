@@ -61,7 +61,9 @@ export class TankSpace {
   hSmooth(X, z) {
     const W = this.W, sd = this.seed;
     let h = this.slope * Math.pow(z, 0.85);
-    h += (fbm2(X * 0.011, z * 2.4, 3, sd) - 0.5) * this.slope * 0.55;
+    h += (fbm2(X * 0.011, z * 2.4, 3, sd) - 0.5) * this.slope * 0.55 * (0.25 + 0.75 * smoothstep(0.12, 0.6, z));
+    // a shallow bowl toward the front centre: loose coins roll together there and heap up
+    h += this.slope * 0.4 * Math.pow(Math.abs(X / W - 0.5) * 2, 1.6) * (1 - smoothstep(0.2, 0.75, z));
     const edge = smoothstep(0.28, 0, X / W) + smoothstep(0.72, 1, X / W);
     h += edge * smoothstep(0.35, 1, z) * this.slope * 0.75;
     return Math.max(0, h * (0.35 + 0.65 * smoothstep(0, 0.12, z)));
@@ -95,6 +97,10 @@ export class TankSpace {
         const e = cs;
         this.gx[idx] = -(this.hSmooth(X + e, z) - this.hSmooth(X - e, z)) / (2 * e);
         this.gz[idx] = -(this.hSmooth(X, z + e / this.DEPTH) - this.hSmooth(X, Math.max(0, z - e / this.DEPTH))) / (2 * e);
+        // physics-only nudge toward the front centre so loose coins gather into a heap there
+        const near = 1 - smoothstep(0.08, 0.45, z);
+        this.gx[idx] += -(X / this.W - 0.5) * 0.06 * near;
+        this.gz[idx] -= 0.012 * near;
       }
     }
   }
@@ -307,7 +313,18 @@ export function renderBackdrop(T, opts = {}) {
   seam(br, bt, br, T.sy(floorBack, 1), 0.2);
   seam(0, surf, bl, bt, 0.3);
   seam(W - 1, surf, br, bt, 0.3);
-  return { canvas: buf.toCanvas(), mask: mask.toCanvas(), floorTop, back: { x: bl, y: bt, w: br - bl } };
+  // outline polygons of the lit floor (top faces) and of the surface underside, for clipped caustics
+  const floorPoly = [];
+  const stepX = Math.max(8, Math.round(W / 60));
+  for (let x = 0; x <= W + stepX - 1; x += stepX) {
+    const xx = Math.min(W, x);
+    let m = H;
+    for (let k = Math.max(0, xx - stepX); k < Math.min(W, xx + stepX); k++) m = Math.min(m, floorTop[k]);
+    floorPoly.push([xx, m]);
+  }
+  for (let x = W; x >= 0; x -= stepX) floorPoly.push([x, Math.ceil(T.groundZ(x, 0))]);
+  const ceilPoly = [[0, surf], [W, surf], [br, bt], [bl, bt]];
+  return { canvas: buf.toCanvas(), mask: mask.toCanvas(), floorTop, floorPoly, ceilPoly, back: { x: bl, y: bt, w: br - bl } };
 }
 
 // ------------------------------------------------------------------ light

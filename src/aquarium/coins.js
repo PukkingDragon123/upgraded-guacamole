@@ -18,10 +18,10 @@ export const SPIN_N = 16, FLIP_N = 16;
 
 // 6-step ramps, deep shadow -> glint.
 const RAMPS = {
-  copper: ['#2a1210', '#5a261c', '#94462e', '#c86e44', '#eca46a', '#ffe4bc'],
-  patina: ['#0d2826', '#1a4e46', '#2b7c6a', '#4fae8e', '#86d8b6', '#d2fff0'],
-  brass: ['#2e1e0c', '#664412', '#a27420', '#d8a83a', '#f6d672', '#fffbe2'],
-  bronze: ['#20140e', '#46301e', '#76542f', '#a47a48', '#d0aa72', '#fbecc4'],
+  copper: ['#2a1210', '#66291a', '#a8482a', '#e07640', '#fcac66', '#ffe8c4'],
+  patina: ['#123a34', '#1f6a58', '#38a07e', '#62cc9e', '#9cecc0', '#e0fff2'],
+  brass: ['#2e1e0c', '#6a4814', '#ac7c22', '#e2b23e', '#fadc78', '#fffbe2'],
+  bronze: ['#24160e', '#553620', '#8c6036', '#bc8c52', '#e2bc80', '#fff2cc'],
   dark: ['#120a0c', '#2a1814', '#4a2a1e', '#6e4028', '#8e5a36', '#b07a4a'],
 };
 const PACKED = Object.fromEntries(Object.entries(RAMPS).map(([k, v]) => [k, v.map((h) => pack(h))]));
@@ -53,43 +53,45 @@ function fishAt(x, y, s) {
 }
 
 // Face texture sample: {h (relief 0..1), m (material index), t (tone offset)}.
+// Oxidation sits in the recesses (verdigris), raised rims and emblems are worn back to bright metal.
 function faceSample(d, back, x, y, R) {
   const r = Math.hypot(x, y);
   const seed = d * 17 + (back ? 5 : 0);
-  const n = fbm2(x * 2.3 + seed, y * 2.3 - seed, 3, 11 + d);
+  const n = fbm2(x * 2.6 + seed, y * 2.6 - seed, 3, 11 + d);
   const speck = hash2(Math.floor((x + 1) * R * 1.1), Math.floor((y + 1) * R * 1.1), 40 + d + (back ? 9 : 0));
+  const field = (metal) => ({ h: 0.1, m: n > 0.6 ? metal : 1, t: speck > 0.9 ? 0.25 : n > 0.5 ? -0.05 : 0.05 });
   if (d === 0) {
-    // copper penny: worn bright rim, patchy verdigris in the field, raised fish
-    if (r > 0.8) return { h: 0.9, m: speck > 0.9 ? 1 : 0, t: 0.15 };
-    if (r > 0.72) return { h: 0.05, m: 1, t: -0.25 };
-    const relief = back ? (digitAt('1', x, y, 0.2) ? 0.75 : 0) : fishAt(x, y, 0.95);
-    if (relief) return { h: relief, m: 0, t: 0.1 };
-    return { h: 0.12, m: n + (1 - r) * 0.05 > 0.5 || speck > 0.94 ? 1 : 0, t: 0 };
+    // copper penny with a leaping fish
+    if (r > 0.8) return { h: 0.9, m: 0, t: 0.2 };
+    if (r > 0.71) return { h: 0.02, m: 1, t: -0.3 };
+    const relief = back ? (digitAt('1', x, y, 0.22) ? 0.8 : 0) : fishAt(x, y, 0.98);
+    if (relief) return { h: relief, m: 0, t: relief > 0.5 ? 0.3 : -0.2 };
+    return field(0);
   }
   if (d === 1) {
-    // bronze ring coin: heavy patina, raised inner lip, ring of studs
-    if (r > 0.82) return { h: 0.85, m: speck > 0.8 || n > 0.62 ? 1 : 3, t: 0.1 };
-    if (r > 0.75) return { h: 0.05, m: 1, t: -0.3 };
-    if (r < 0.42) return { h: 0.7, m: n > 0.6 ? 1 : 3, t: 0.05 };
-    if (r < 0.48) return { h: 0.05, m: 1, t: -0.3 };
+    // bronze ring coin: inner lip, ring of studs, thick verdigris
+    if (r > 0.82) return { h: 0.85, m: 3, t: 0.2 };
+    if (r > 0.75) return { h: 0.02, m: 1, t: -0.3 };
+    if (r < 0.42) return { h: 0.75, m: 3, t: 0.2 };
+    if (r < 0.48) return { h: 0.02, m: 1, t: -0.3 };
     const a = Math.atan2(y, x);
     const studs = back ? 5 : 8;
     const sa = Math.round(a / TAU * studs) * TAU / studs;
-    if (Math.hypot(x - Math.cos(sa) * 0.615, y - Math.sin(sa) * 0.615) < 0.1) return { h: 0.8, m: 3, t: 0.2 };
-    return { h: 0.15, m: n > 0.36 || speck > 0.9 ? 1 : 3, t: 0 };
+    if (Math.hypot(x - Math.cos(sa) * 0.615, y - Math.sin(sa) * 0.615) < 0.1) return { h: 0.8, m: 3, t: 0.3 };
+    return { h: 0.1, m: n > 0.7 ? 3 : 1, t: speck > 0.88 ? 0.25 : 0 };
   }
-  // 25: bimetal - brass core, copper ring with patina, reeded rim
-  if (r > 0.87) return { h: 0.9, m: speck > 0.92 ? 1 : 0, t: 0.1 };
-  if (r > 0.8) return { h: 0.05, m: 1, t: -0.3 };
+  // 25: bimetal - polished brass core with a fish, copper ring with verdigris, reeded rim
+  if (r > 0.87) return { h: 0.9, m: 0, t: 0.2 };
+  if (r > 0.8) return { h: 0.02, m: 1, t: -0.3 };
   if (r > 0.62) {
     const a = Math.atan2(y, x);
-    const dot = Math.abs(((a / TAU) * 12 + 12.5) % 1 - 0.5) < 0.12 && Math.abs(r - 0.71) < 0.04;
-    return { h: dot ? 0.6 : 0.2, m: dot ? 0 : n > 0.45 || speck > 0.9 ? 1 : 0, t: 0 };
+    const dot = Math.abs(((a / TAU) * 12 + 12.5) % 1 - 0.5) < 0.13 && Math.abs(r - 0.71) < 0.045;
+    return dot ? { h: 0.7, m: 0, t: 0.3 } : field(0);
   }
-  if (r > 0.57) return { h: 0.0, m: 4, t: 0 };
+  if (r > 0.56) return { h: 0.0, m: 4, t: 0.1 };
   const relief = back ? (digitAt('25', x, y, 0.13) ? 0.75 : 0) : fishAt(x, y, 0.56);
-  if (relief) return { h: 0.35 + relief * 0.6, m: 2, t: 0.15 };
-  return { h: 0.35, m: speck > 0.96 ? 1 : 2, t: 0 };
+  if (relief) return { h: 0.35 + relief * 0.6, m: 2, t: relief > 0.5 ? 0.35 : -0.1 };
+  return { h: 0.35, m: 2, t: -0.12 };
 }
 
 const TEX = 48;
@@ -109,7 +111,7 @@ function texIdx(x, y) {
   return j * TEX + i;
 }
 
-const L = (() => { const v = [-0.5, -0.72, -0.48]; const n = Math.hypot(...v); return v.map((c) => c / n); })();
+const L = (() => { const v = [-0.45, -0.62, -0.64]; const n = Math.hypot(...v); return v.map((c) => c / n); })();
 const HV = (() => { const v = [L[0], L[1], L[2] - 1]; const n = Math.hypot(...v); return v.map((c) => c / n); })();
 
 // Basis of the coin for spin a (about view y) then flip b (about view x).
@@ -131,14 +133,15 @@ function shadePx(nv, mat, tone, x, y, metal) {
   const N = [nv[0] / nl, nv[1] / nl, nv[2] / nl];
   const diff = Math.max(0, dot3(N, L));
   const spec = Math.pow(Math.max(0, dot3(N, HV)), metal ? 22 : 7) * (metal ? 1.25 : 0.35);
-  const v = 0.2 + diff * 0.82 + spec + tone * 0.6;
-  const idx = clamp(Math.floor(v * 4.1 + (bayer(x, y) - 0.5) * 0.6), 0, 5);
+  const v = 0.3 + diff * 0.78 + spec + tone * 0.7;
+  const idx = clamp(Math.floor(v * 4.1 + (bayer(x, y) - 0.5) * 0.5), 0, 5);
   return PACKED[MATS[mat]][idx];
 }
 
 function renderFrame(d, R, T, a, b, tex, cell) {
   const buf = new PixelBuffer(cell, cell);
   const { u, v, n } = basis(a, b);
+  const Rt = R - 0.3;
   const half = cell / 2;
   const hole = d === 1 ? 0.27 * R : 0;
   const reeded = d === 2;
@@ -152,7 +155,7 @@ function renderFrame(d, R, T, a, b, tex, cell) {
     if (Math.abs(dl[2]) < 1e-6) { if (Math.abs(ol[2]) > T) continue; s0 = -1e9; s1 = 1e9; }
     else { const ta = (-T - ol[2]) / dl[2], tb = (T - ol[2]) / dl[2]; s0 = Math.min(ta, tb); s1 = Math.max(ta, tb); }
     // cylinder radius R
-    const A = dl[0] * dl[0] + dl[1] * dl[1], B = 2 * (ol[0] * dl[0] + ol[1] * dl[1]), C = ol[0] * ol[0] + ol[1] * ol[1] - R * R;
+    const A = dl[0] * dl[0] + dl[1] * dl[1], B = 2 * (ol[0] * dl[0] + ol[1] * dl[1]), C = ol[0] * ol[0] + ol[1] * ol[1] - Rt * Rt;
     let c0, c1;
     if (A < 1e-9) { if (C > 0) continue; c0 = -1e9; c1 = 1e9; }
     else { const disc = B * B - 4 * A * C; if (disc < 0) continue; const sq = Math.sqrt(disc); c0 = (-B - sq) / (2 * A); c1 = (-B + sq) / (2 * A); }
@@ -192,9 +195,9 @@ function renderFrame(d, R, T, a, b, tex, cell) {
       col = shadePx(nv, m, T_.t[k] + (T_.h[k] - 0.4) * 0.25, px, py, m !== 1);
     } else {
       // rim
-      const nn = [hx / R, hy / R];
+      const nn = [hx / Rt, hy / Rt];
       const nv = [nn[0] * u[0] + nn[1] * v[0], nn[0] * u[1] + nn[1] * v[1], nn[0] * u[2] + nn[1] * v[2]];
-      let tone = 0;
+      let tone = 0.1;
       if (reeded) tone = Math.cos(Math.atan2(hy, hx) * 30) > 0.2 ? 0.12 : -0.18;
       const mat = d === 1 ? 3 : 0;
       const pat = hash2(Math.floor(Math.atan2(hy, hx) * 6), Math.floor(hz * 3), 77 + d) > 0.78;
@@ -254,7 +257,7 @@ export function pumpCoinSheets(budgetMs = 4) {
   }
 }
 
-export const COIN_R = [4.5, 5.5, 7];
+export const COIN_R = [5.5, 6.5, 8];
 
 // Tiny 4-point glint sprite (additive).
 let glintCv = null;
@@ -332,6 +335,7 @@ export class CoinPile {
     if (!this.tank) return;
     const steps = Math.max(1, Math.min(6, Math.ceil(dt / (1 / 110))));
     const h = dt / steps;
+    this.h = h;
     for (let s = 0; s < steps; s++) this.substep(h);
     for (const c of this.list) {
       c.age += dt;
@@ -360,9 +364,11 @@ export class CoinPile {
       if (!c.contact) {
         c.vx += Math.sin(c.age * 6.5 + c.ph) * FLUTTER * h;
         c.vd += Math.sin(c.age * 5.1 + c.ph2) * FLUTTER * 0.6 * h;
-      } else { const k = Math.exp(-4 * h); c.vx *= k; c.vd *= k; }
+      } else if (c.coinContact) { const k = Math.exp(-4 * h); c.vx *= k; c.vd *= k; }
       c.X += c.vx * h; c.Y += c.vy * h; c.D += c.vd * h;
       c.contact = false;
+      c.coinContact = false;
+      c.slope = 0;
     }
     this.buildGrid();
     for (let it = 0; it < 2; it++) {
@@ -374,7 +380,8 @@ export class CoinPile {
     }
     for (const c of list) {
       if (c.sleep) continue;
-      if (c.contact && c.vx * c.vx + c.vy * c.vy + c.vd * c.vd < 40) {
+      const v2 = c.vx * c.vx + c.vy * c.vy + c.vd * c.vd;
+      if (c.contact && v2 < (c.coinContact ? 30 : c.slope > 0.012 ? 3 : 20)) {
         c.restT += h;
         if (c.restT > 0.35) { c.sleep = true; c.vx = 0; c.vy = 0; c.vd = 0; }
       } else c.restT = 0;
@@ -392,13 +399,16 @@ export class CoinPile {
     }
   }
 
-  bounce(c, nx, ny, nd, e, sound, mul = 1) {
+  // Restitution + friction; resting contacts (tiny normal speed) barely brake so coins roll downhill.
+  bounce(c, nx, ny, nd, e, sound, mul = 1, roll = 0.03) {
     const vn = c.vx * nx + c.vy * ny + c.vd * nd;
     if (vn >= 0) return;
-    c.vx -= (1 + e) * vn * nx; c.vy -= (1 + e) * vn * ny; c.vd -= (1 + e) * vn * nd;
+    const resting = -vn < 12;
+    c.vx -= (1 + (resting ? 0 : e)) * vn * nx; c.vy -= (1 + (resting ? 0 : e)) * vn * ny; c.vd -= (1 + (resting ? 0 : e)) * vn * nd;
+    const f = resting ? roll : FRICTION;
     const tx = c.vx, ty = c.vy, td = c.vd; // tangential friction (normal part is now >= 0)
     const vn2 = tx * nx + ty * ny + td * nd;
-    c.vx -= (tx - vn2 * nx) * FRICTION; c.vy -= (ty - vn2 * ny) * FRICTION; c.vd -= (td - vn2 * nd) * FRICTION;
+    c.vx -= (tx - vn2 * nx) * f; c.vy -= (ty - vn2 * ny) * f; c.vd -= (td - vn2 * nd) * f;
     if (sound && -vn > 22) { this.onBounce?.(-vn * mul, c); c.ws += rng.float(-6, 6); c.wf += rng.float(-6, 6); }
   }
 
@@ -432,9 +442,10 @@ export class CoinPile {
       const [gx, gd] = t.slope(c.X, c.D);
       const nl = Math.hypot(gx, 1, gd);
       this.bounce(c, gx / nl, -1 / nl, gd / nl, E_GROUND, sound);
-      // slide downhill (gravity along the slope); friction lets gentle slopes hold coins
-      c.vx += -gx * G * 0.3 * (1 / 110); c.vd += -gd * G * 0.3 * (1 / 110);
+      // roll downhill (exaggerated: the sand slopes are subtle on screen)
+      c.vx += gx * G * 2.5 * this.h; c.vd += gd * G * 2.5 * this.h; // (gx, gd) = dY/dX, dY/dD: downhill
       c.contact = true;
+      c.slope = Math.abs(gx) + Math.abs(gd);
     }
   }
 
@@ -457,8 +468,8 @@ export class CoinPile {
         }
         if (o.sleep) {
           c.X += nx * pen; c.Y += ny * pen; c.D += nd * pen;
-          this.bounce(c, nx, ny, nd, E_COIN, sound && true, 0.8);
-          if (ny < -0.2) c.contact = true;
+          this.bounce(c, nx, ny, nd, E_COIN, sound && true, 0.8, 0.22);
+          if (ny < -0.2) { c.contact = true; c.coinContact = true; }
         } else {
           const mi = c.r * c.r, mj = o.r * o.r, wi = mj / (mi + mj), wj = mi / (mi + mj);
           c.X += nx * pen * wi; c.Y += ny * pen * wi; c.D += nd * pen * wi;
@@ -470,8 +481,8 @@ export class CoinPile {
             o.vx -= (J / mj) * nx; o.vy -= (J / mj) * ny; o.vd -= (J / mj) * nd;
             if (sound && -vn > 34) this.onBounce?.(-vn * 0.7, c);
           }
-          if (ny < -0.2) c.contact = true;
-          if (ny > 0.2) o.contact = true;
+          if (ny < -0.2) { c.contact = true; c.coinContact = true; }
+          if (ny > 0.2) { o.contact = true; o.coinContact = true; }
         }
       }
     }

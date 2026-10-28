@@ -7,13 +7,14 @@ import { Biome } from './base.js';
 import { clamp, clamp01, lerp, smoothstep, ease, hash2, fbm2, TAU } from '../../core/math.js';
 import { RNG } from '../../core/rng.js';
 import { mix, rgba, pack } from '../../core/color.js';
-import { makeCanvas, ctxOf, makeLayer, tinted } from '../../core/canvas.js';
+import { ctxOf, makeLayer, tinted } from '../../core/canvas.js';
 import { PixelBuffer, selOut, flipCanvas } from '../../gfx/pixel.js';
 import { getProp } from '../../gfx/props.js';
 import {
   paint, dpack, lerpStops, gradientStrip, stopPalette, ditherPick, Blend, FogLayer, fillWith, drawWobble, makeRays,
   drawGlow, twinkle, Caustics, lumaMask, waveLine, waveRuns, Strands, Motes, Bubbles, Mask, ridge, todWeights,
-  voxelGround, quality, inRect, bladeSprites, SwayAnim, streakTile, DepthScene, BandSet, DepthDecor, qscale, waterColorAt, hazeMask,
+  quality, inRect, bladeSprites, SwayAnim, streakTile, DepthScene, BandSet, DepthDecor, qscale, waterColorAt,
+  hazeMask,
 } from '../scenery.js';
 
 const SKY = {
@@ -785,6 +786,8 @@ export class ShallowsBiome extends Biome {
   }
 
   drawBack(ctx, env) {
+    this.nearHooked = !!this.nearSeen;
+    this.nearSeen = false;
     const W = this.W, H = this.H, t = this.t, tod = this.tod, wx = this.wx;
     const sy = this.surfaceAt(env);
     const ys = this.ys;
@@ -928,7 +931,7 @@ export class ShallowsBiome extends Biome {
     if (ca > 0.01) this.caustics.draw(ctx, this.masks[1], -this.D.pad + dx, this.D.bands[1].y + dy, t, ca * 0.75, { fps: 8, drift: 3, offset: 5 });
     this.decor.draw(ctx, 1, t, dx, dy, 1 + wx.storm * 0.8);
     if (tod.night > 0.4) drawGlow(ctx, this.lantern.x + dx, this.lantern.y + dy, 5, '#ffd27a', tod.night * (0.7 + 0.2 * Math.sin(t * 5)));
-    if (performance.now() - (this.nearT || -1e9) > 250) this.paintNear(ctx, env);
+    if (!this.nearHooked) this.paintNear(ctx, env);
   }
 
   causticA(q) {
@@ -939,8 +942,8 @@ export class ShallowsBiome extends Biome {
 
   // Near band: called by the game after the mid fish (falls back to drawSeabed when not hooked).
   drawNear(ctx, env) {
-    this.nearT = performance.now();
-    this.paintNear(ctx, env);
+    this.nearSeen = true;
+    if (this.nearHooked) this.paintNear(ctx, env);
   }
 
   paintNear(ctx, env) {

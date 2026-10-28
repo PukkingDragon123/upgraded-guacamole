@@ -1,6 +1,6 @@
 // Dev preview of the menu panels with a stub game: dist/dev/panels.html?p=shop|skills|journal|map|settings|welcome
 //   &coins=N  &fresh (empty save)  &rich (lots of progress)  &hl=hook1 (skills highlight)  &sp=<species id>
-//   &biome=junkyard (journal tab / current location)  &tab=decor (shop)  &forecast  &away=seconds
+//   &biome=junkyard (journal tab / current location)  &tab=decor (shop)  &forecast  &away=seconds  &w=800&h=450 (logical size)
 import { ctxOf } from '../core/canvas.js';
 import { Input } from '../core/input.js';
 import { audio } from '../core/audio.js';
@@ -15,11 +15,11 @@ import { SPECIES } from '../fish/species.js';
 import { UI } from '../ui/ui.js';
 import { registerPanels } from '../ui/registry.js';
 
-const W = 960, H = 540;
+let W = 960, H = 540;
 
 function sampleState(params) {
   const st = defaultState();
-  if (params.has('fresh')) { st.skills.hook1 = true; return st; }
+  if (params.has('fresh')) return st;
   st.coins = Number(params.get('coins') ?? 1850);
   const rich = params.has('rich');
   const own = rich
@@ -29,7 +29,7 @@ function sampleState(params) {
   st.unlockedBiomes = ['shallows', 'junkyard'];
   st.biome = params.get('biome') || 'shallows';
   st.baits = { bread: 3, worm: 2 };
-  st.tank.decor = ['rock_small', 'coral_brain'];
+  st.tank.decor = [{ id: 'rock_small', x: 0.3, z: 0.5 }, { id: 'coral_brain', x: 0.6, z: 0.4 }];
   const day = 86400000;
   SPECIES.forEach((sp, i) => {
     const caught = sp.biome === 'shallows' ? i % 5 !== 3 && sp.rarity !== 'legendary' : sp.biome === 'junkyard' ? i % 3 === 0 : rich && i % 4 === 0;
@@ -59,7 +59,7 @@ function makeGame(canvas, params) {
     fishing: { fighting: false, busy: false },
     camera: { shake() {}, flash() {} },
     desktop: { restoreAll() { g.toast('All icons are back on the desktop.', 'home'); }, iconById: () => null },
-    aquarium: { addDecor(id) { st.tank.decor.push(id); } },
+    aquarium: { addDecor(id) { st.tank.decor.push({ id, x: 0.5, z: 0.5 }); return true; } },
     clock: { hour: () => 14, isNight: () => false },
     ocean: {
       biome: { id: st.biome, name: { shallows: 'Sunny Shallows', junkyard: 'Junkyard Reef', abyss: 'The Midnight Abyss' }[st.biome] },
@@ -137,9 +137,11 @@ function backdrop(ctx, t) {
 }
 
 export function run(params) {
+  W = Number(params.get('w')) || 960; H = Number(params.get('h')) || 540;
   const cv = document.getElementById('screen');
   cv.width = W; cv.height = H;
   cv.style.width = W * 2 + 'px'; cv.style.height = H * 2 + 'px';
+  window.__size = [W, H];
   const ctx = ctxOf(cv);
   registerUiIcons();
   const toLogical = (cx, cy) => {

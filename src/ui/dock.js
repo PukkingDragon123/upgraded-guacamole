@@ -144,8 +144,9 @@ export class Dock {
         const sx = Math.round(cx - (p ? p.ox : 0)), sy = Math.round(base - (p ? p.oy : 0));
         if (p) ctx.drawImage(p.canvas, sx, sy);
         const talking = hover || g.ui.isOpen('shop');
-        const kx = p?.anchors?.keeper ? sx + p.anchors.keeper[0] : cx - 4;
-        const ky = p?.anchors?.keeper ? sy + p.anchors.keeper[1] - 6 : base - 14;
+        const kp = p?.anchors?.keeper;
+        const kx = kp ? sx + kp.x : cx - 4;
+        const ky = kp ? sy + kp.y - 16 : base - 20;
         drawFishRig(ctx, this.pinch, { x: kx, y: ky, facing: -1, turn: -1, angle: 0, scale: 0.75, squash: Math.sin(t * 3) * 0.04, swimPhase: (t * 0.6) % 1, tailPhase: 0, finPhase: (t * 0.8) % 1, speed01: 0, inflate: 0, lookX: g.input.x, lookY: g.input.y, blink: (t % 4) < 0.12 ? 1 : 0, emotion: hover ? 'happy' : 'neutral', mouth: talking ? Math.abs(Math.sin(t * 12)) * 0.7 : 0.05, time: t });
         if (p?.front) ctx.drawImage(p.front, sx, sy);
         if (hover && Math.floor(t * 2) % 6 === 0 && !this.babbled) { this.babbled = true; g.audio.babble('click click', 'crab'); }
