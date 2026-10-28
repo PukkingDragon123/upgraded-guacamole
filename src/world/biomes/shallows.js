@@ -787,7 +787,7 @@ export class ShallowsBiome extends Biome {
       for (const cl of this.rainClouds) g.drawImage(cl.spr, Math.round(cl.x), cl.y);
       g.globalAlpha = 1;
     }
-    if (wx.storm > 0.05) { g.fillStyle = rgba('#141c26', wx.storm * 0.35); g.fillRect(0, 0, W, h); }
+    if (wx.storm > 0.05) { g.fillStyle = rgba('#10161e', wx.storm * 0.5); g.fillRect(0, 0, W, h); }
     // rain streaks (two scrolling sheets)
     if (wx.rain > 0.05) {
       const sp = 1 + wx.storm * 0.6;
@@ -834,21 +834,23 @@ export class ShallowsBiome extends Biome {
       this.drawAir(env);
       ctx.drawImage(this.air.canvas, 0, 0);
     }
-    fillWith(ctx, water, 0, Math.max(top, -10), W, H - Math.max(top, -10));
     if (hasAir) {
-      const air = this.air.canvas;
-      waveRuns(ys, W, (x0, len, y) => {
-        const h = Math.min(y, this.skyH) - top;
-        if (h > 0) ctx.drawImage(air, x0, top, len, h, x0, top, len, h);
-      });
-    }
+      // water body below the wave: a pixel-aligned staircase path (no anti-aliasing)
+      const wp = new Path2D();
+      wp.moveTo(0, H);
+      waveRuns(ys, W, (x0, len, y) => { wp.lineTo(x0, y); wp.lineTo(x0 + len, y); });
+      wp.lineTo(W, H);
+      wp.closePath();
+      ctx.fillStyle = ctx.createPattern(water, 'repeat');
+      ctx.fill(wp);
+    } else fillWith(ctx, water, 0, -10, W, H + 10);
     // parallax layers (fogged toward the live water gradient)
     const key = this.waterBlend.key;
     const px = this.par.x, py = this.par.y;
     const wob = quality(env) >= 1 ? 1 : 0;
-    drawWobble(ctx, this.farA.tint(water, 0.72, key), -this.pad + px * 1.5, this.farAY + py, t, wob, 3, 0.9, 0.07);
+    drawWobble(ctx, this.farA.tint(water, 0.72, key), -this.pad + px * 1.5, this.farAY + py, t, wob, 4, 0.9, 0.07);
     this.drawGiant(ctx);
-    drawWobble(ctx, this.farB.tint(water, 0.5, key), -this.pad + px * 3, this.farBY + py * 1.5, t + 2, wob, 3, 1.1, 0.09);
+    drawWobble(ctx, this.farB.tint(water, 0.5, key), -this.pad + px * 3, this.farBY + py * 1.5, t + 2, wob, 4, 1.1, 0.09);
     ctx.drawImage(this.mid.tint(water, 0.42, key), Math.round(-this.pad + px * 6), Math.round(this.midY + py * 2.5));
     // weather murk
     const murk = wx.cloud * 0.08 + wx.rain * 0.14 + wx.storm * 0.1;
@@ -870,19 +872,27 @@ export class ShallowsBiome extends Biome {
   drawSurface(ctx, env, sy) {
     if (sy < -8) return;
     const W = this.W, ys = this.ys, t = this.t, tod = this.tod, wx = this.wx;
+    const crest = new Path2D(), sub = new Path2D(), band = new Path2D();
+    const sh = this.shimmer, shH = sh.height;
+    waveRuns(ys, W, (x0, len, y) => { crest.rect(x0, y, len, 1); sub.rect(x0, y + 1, len, 2); band.rect(x0, y + 2, len, shH + 2); });
     ctx.fillStyle = this.cols.sub;
     ctx.globalAlpha = 0.55;
-    waveRuns(ys, W, (x0, len, y) => ctx.fillRect(x0, y + 1, len, 2));
+    ctx.fill(sub);
     ctx.globalAlpha = 1;
-    // underside shimmer (two scrolling copies)
+    // underside shimmer (two scrolling copies, clipped to just below the wave)
     ctx.globalCompositeOperation = 'lighter';
-    const sh = this.shimmer, shH = sh.height;
     const a1 = (0.55 - tod.night * 0.3) * (1 - wx.storm * 0.4);
     const o1 = Math.floor((t * 9) % 256), o2 = Math.floor((256 - ((t * 5) % 256)) % 256);
+    const p1 = ctx.createPattern(sh, 'repeat-x');
+    p1.setTransform(new DOMMatrix([1, 0, 0, 1, -o1, sy + 2]));
     ctx.globalAlpha = a1;
-    waveRuns(ys, W, (x0, len, y) => ctx.drawImage(sh, x0 + o1, 0, len, shH, x0, y + 2, len, shH));
+    ctx.fillStyle = p1;
+    ctx.fill(band);
+    const p2 = ctx.createPattern(sh, 'repeat-x');
+    p2.setTransform(new DOMMatrix([1, 0, 0, 1, -o2, sy + 1]));
     ctx.globalAlpha = a1 * 0.6;
-    waveRuns(ys, W, (x0, len, y) => ctx.drawImage(sh, x0 + o2, 3, len, shH - 3, x0, y + 4, len, shH - 3));
+    ctx.fillStyle = p2;
+    ctx.fill(band);
     // sun / moon glitter column on the surface
     const s = tod.night > 0.5 ? this.sun.night : tod.dusk > 0.4 ? this.sun.dusk : this.sun.day;
     const gc = tod.night > 0.5 ? '#c8dcff' : tod.dusk > 0.4 ? '#ffd090' : '#ffffff';
@@ -900,7 +910,7 @@ export class ShallowsBiome extends Biome {
     ctx.globalAlpha = 1;
     // crest line
     ctx.fillStyle = this.cols.crest;
-    waveRuns(ys, W, (x0, len, y) => ctx.fillRect(x0, y, len, 1));
+    ctx.fill(crest);
     // whitecaps in storms
     if (wx.storm > 0.2) {
       ctx.fillStyle = '#ffffff';
