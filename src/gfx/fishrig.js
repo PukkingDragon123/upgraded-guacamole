@@ -172,7 +172,7 @@ function faceState(st, ang, sx, X, Y, geo) {
   const gy = 0.55 + ly * 0.3 + Math.cos(t * 7.3) * 0.2 * (st.speed01 ?? 0.4);
   return {
     emotion: st.emotion || 'neutral', blink: st.blink || 0, lx, ly, gx: clamp(gx, -1, 1), gy: clamp(gy, -1, 1), time: t,
-    open: clamp((st.mouth || 0) + (toon ? 0 : cue.gape || 0), 0, 1), pupil: toon ? 1 : cue.pupil || 1, dim: toon ? 0 : cue.dim || 0, cue,
+    open: clamp(Math.max(st.mouth || 0, geo?.rest || 0) + (toon ? 0 : cue.gape || 0), 0, 1), pupil: toon ? 1 : cue.pupil || 1, dim: toon ? 0 : cue.dim || 0, cue,
   };
 }
 
@@ -228,7 +228,7 @@ export function drawFishRig(ctx, c, st) {
   const fsw = Math.floor(fract(sw) * 8);
   const gkey = `${id}|g|${a}|${s}|${inf}|${fsw}|${pose ? 1 : 0}`;
   let geo = cacheGet(gkey);
-  if (!geo) { geo = rigGeom(c, { sw: fsw / 8, angle: ang, scale: s, inflate: inf, pose }); geo.toon = !!c.toon; cachePut(gkey, geo); }
+  if (!geo) { geo = rigGeom(c, { sw: fsw / 8, angle: ang, scale: s, inflate: inf, pose }); geo.toon = !!c.toon; geo.rest = c.mouth?.rest || 0; cachePut(gkey, geo); }
 
   const facing = st.facing ?? 1;
   const sx = facing * (st.turn ?? 1);

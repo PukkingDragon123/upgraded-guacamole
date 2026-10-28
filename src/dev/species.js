@@ -220,7 +220,7 @@ function drawBiome(g, biome, second, t, frozen, mouse) {
 
 function drawEmotions(g, t, frozen) {
   bg(g, '#2f6f8f', '#173a52');
-  const ids = ['honk', 'googly', 'purin', 'clickcrab', 'dumbo', 'vampsquid', 'noodle'];
+  const ids = ['honk', 'grouper', 'googly', 'purin', 'dumbo', 'vampsquid', 'noodle'];
   const cw = (W - 40) / EMOTIONS.length;
   EMOTIONS.forEach((e, j) => drawText(g, e, 40 + cw * j + cw / 2 - 10, 20, { font: 'small', align: 'center', color: '#ffe9a8', shadow: '#000' }));
   ids.forEach((id, r) => {
@@ -231,7 +231,7 @@ function drawEmotions(g, t, frozen) {
     EMOTIONS.forEach((e, j) => {
       const x = 40 + cw * j + cw / 2 - 10;
       const talk = frozen ? (e === 'happy' ? 0.5 : 0) : Math.max(0, Math.sin(t * 9 + j)) * (j % 3 === 0 ? 0.8 : 0);
-      drawFishRig(g, c, stateFor(sp, t, frozen, j, { x, y: y + (id === 'noodle' ? 0 : 6), emotion: e, mouth: talk, blink: 0, scale: id === 'noodle' ? 0.6 : 0.85 }));
+      drawFishRig(g, c, stateFor(sp, t, frozen, j, { x, y: y + (id === 'noodle' ? 0 : 6), emotion: e, mouth: talk, blink: 0, scale: id === 'noodle' ? 0.6 : id === 'grouper' ? 0.6 : 0.85 }));
     });
   });
 }

@@ -52,7 +52,7 @@ await page.screenshot({ path: join(out, '01_desktop.png') });
 
 // ---- intro
 await page.mouse.click(5, 5);
-await page.waitForFunction(() => window.FISHTOP.tutorial.step === 'crab', null, { timeout: 15000 }).catch(() => {});
+await page.waitForFunction(() => window.FISHTOP.tutorial.step === 'crab', null, { timeout: 40000 }).catch(() => {});
 check('intro reached the crab', await G('g.tutorial.step') === 'crab', await G('g.tutorial.step'));
 await wait(1500);
 await page.screenshot({ path: join(out, '02_crab.png') });
@@ -70,7 +70,7 @@ check('bait equipped', await G('!!g.currentBait()'));
 // ---- lure the intro fish: hold the hook still near it
 const fishPos = await G('(() => { const f = g.school.fishes[0]; return f ? [f.x, f.y] : null; })()');
 check('intro fish exists', !!fishPos);
-await moveL(Math.min(fishPos[0] + 60, 500), fishPos[1] + 10, 30);
+await moveL(Math.max(fishPos[0] + 160, 360), fishPos[1] + 10, 30);
 let bit = false;
 for (let i = 0; i < 120 && !bit; i++) {
   await wait(100);

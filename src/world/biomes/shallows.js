@@ -640,6 +640,7 @@ export class ShallowsBiome extends Biome {
 
   // ------------------------------------------------------------------ update
   update(dt, env) {
+    dt = Math.max(0, Math.min(dt, 0.1));
     this.t += dt;
     const t = this.t, W = this.W, H = this.H;
     const tod = todWeights(env);

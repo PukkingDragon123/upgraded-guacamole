@@ -11,17 +11,29 @@
 //    bucket plus face/anchor positions; rasterLayer(c, layer, q) paints 'tail' | 'back' | 'body' | 'front'
 //    on their own phases; eyeSprite / mouthSprite paint the dynamic face (look, blink, emotions, talking).
 //
+// Style: realistic anatomy, 7-tone hue-shifted ramps quantised with a 2x2 checker only between tones,
+// countershading (dark back -> pale belly), specular strip along the upper flank, operculum and
+// pre-operculum curves, nostril, staggered scale arcs, lateral line, rayed translucent fins with darker
+// edges, near-black selective outline, realistic eyes (iris ring, pupil, glint).
+//
 // Look schema additions (all optional, backwards compatible):
-//  pattern: every pattern accepts umin/umax/vmin/vmax limits. New types: facets (gem cuts), plates (armour
-//    seams), speckle (fine dots), ocellus (eye-spots: at [[u,v]], r), scribble (captcha-ish squiggles), dots.
-//  fins: pelvic {u,len|from,to,h}; fin.spines (lionfish style spines past the membrane).
-//  eye: lid (lid colour), brow (false hides brows), sclera, mirror (front-facing left/right eye).
-//  mouth.type: + 'gulper' (huge hinged jaw), w (length in local px).
+//  toon: true -> cartoon face overlays (lids, brows, blush, sweat, hearts...) for comedic species only;
+//    other creatures express emotions realistically (pupil size, look bias, gape, gill flare, dorsal
+//    raise, colour flush, twitch) via fishrig.js / realCues().
+//  body.tip (snout half-height fraction; profile nose = front roundness exponent, 1 = wedge).
+//  shade {back, belly}: countershading band boundaries in v (-1 top .. 1 bottom). spec: specular strength.
+//  col.head: separate head colour (e.g. sockeye). head {u (operculum), nostril, preop}. eyeIris default.
+//  pattern: every pattern accepts umin/umax/vmin/vmax, tone (shift tones instead of recolouring),
+//    keepTone, body (skip head). New types: bars (perch), facets, plates, speckle, ocellus, scribble, dots.
+//  fins: pelvic {from,to,h}; fin.spots (colour), fin.alpha, fin.spines; tail.spots; pectoral.spines.
+//  eye: lid, brow (false hides brows), mirror, pupilSize, behind (drawn before the others).
+//  mouth: type + 'gulper' | 'emoticon' (screen face); w, sag (jaw droop), teeth, rest (resting gape),
+//    smile (base curve), line (jaw-line colour).
 //  extras: clownnose, monocle (on eye 0), halo, badge (notification), bite (chunk missing), usb (plug snout),
 //    feelers (gourami threads), barbel (chin lure), dome (barreleye head), barnacles, bandage, briefcase
 //    (anchor only, game draws it), cap {style: cap|beanie|tophat|crown}, antennae {style: bug|rabbit},
-//    lure {spinner: true (loading spinner tip), r}, whiskers {len}.
-//  look.glitch 0..1 (row slicing + RGB split), look.gills / look.lateral (bools), look.scaleSize.
+//    lure {spinner: true (loading spinner tip), r}, whiskers {len, count}. Fine lines have no outline.
+//  look.glitch 0..1 (row slicing + RGB split), look.gills / look.lateral / look.noGill, look.scaleSize.
 //  kinds: + 'octopus' (dumbo), 'chain' (head painter + preview); ray {square, bsod, manta};
 //    blob {blobfish}; crab {shell: round|mouse|mech}; jelly {glow, tentacleCount, gonad, noFace}.
 
@@ -126,13 +138,13 @@ export function compileLook(look, variant = null) {
     bodyHex, backHex, bellyHex, finHex,
     outlineHex: col.outline ? vc(col.outline) : shade(backHex, -0.78),
     alpha: look.translucent ? Math.round(255 * (look.translucent === true ? 0.5 : look.translucent)) : 255,
-    finAlpha: look.finAlpha ?? 0.9,
+    finAlpha: look.finAlpha ?? 0.93,
     scales: look.scales ?? L >= 26,
     scaleSize: look.scaleSize ?? clamp(2.4 + k * 0.6, 3, 6),
     shine: look.shine ?? true,
     gills: look.gills ?? L >= 12,
     lateral: look.lateral ?? L >= 30,
-    raySp: clamp(1.6 + k * 0.3, 2, 3.2),
+    raySp: clamp(1.7 + k * 0.25, 2, 3),
     patterns: (look.pattern || []).map((p) => ({ ...p, R: toRamp(vc(p.color || '#ffffff', 'pattern')), R7: TONES7.map((a) => P(shade(vc(p.color || '#ffffff', 'pattern'), a))) })),
     tail: { type: 'fork', len: L * 0.38, spread: H * 0.55, flap: 0.32, ...(look.tail || {}) },
     fins: [],
@@ -143,7 +155,7 @@ export function compileLook(look, variant = null) {
     toRamp,
   };
   c.outlineP = P(col.outline ? c.outlineHex : mix(shade(backHex, -0.9), '#0b0910', 0.55));
-  const R7 = (hex) => TONES7.map((a) => P(shade(hex, a * contrast)));
+  const R7 = (hex) => TONES7.map((a) => P(shade(satd(hex), a * contrast)));
   c.R7 = R7;
   c.T = { back: R7(backHex), body: R7(bodyHex), belly: R7(bellyHex), head: col.head ? R7(vc(col.head)) : null };
   c.vb = look.shade?.back ?? -0.3;
@@ -151,7 +163,7 @@ export function compileLook(look, variant = null) {
   c.toon = !!look.toon;
   c.spec = look.spec ?? 1;
   c.tail.R = toRamp(vc(look.tail?.color || finHex));
-  c.tail.R7 = TONES7.map((a) => P(shade(vc(look.tail?.color || finHex), a * contrast)));
+  c.tail.R7 = TONES7.map((a) => P(shade(satd(vc(look.tail?.color || finHex)), a * contrast)));
   if (c.tail.spots) c.tail.spotP = P(vc(c.tail.spots));
   c.mouth.R = toRamp(vc(look.mouth?.color || '#e86a7a'));
   c.mouth.w = look.mouth?.w ?? (c.mouth.type === 'gulper' ? L * 0.42 : Math.max(1.5, H * (MOUTH_W[c.mouth.type] ?? 0.17)));
@@ -167,7 +179,7 @@ export function compileLook(look, variant = null) {
       h: spec.h ?? H * 0.4,
       lean: spec.lean ?? 0.6,
       R: toRamp(vc(spec.color || finHex)),
-      R7: TONES7.map((a) => P(shade(vc(spec.color || finHex), a * contrast))),
+      R7: TONES7.map((a) => P(shade(satd(vc(spec.color || finHex)), a * contrast))),
       spotP: spec.spots ? P(vc(spec.spots)) : 0,
       alpha: spec.alpha,
       rays: spec.rays ?? true,
@@ -184,7 +196,7 @@ export function compileLook(look, variant = null) {
   };
   if (c.pectoral) {
     c.pectoral.R = toRamp(vc(look.pectoral?.color || finHex));
-    c.pectoral.R7 = TONES7.map((a) => P(shade(vc(look.pectoral?.color || finHex), a * contrast)));
+    c.pectoral.R7 = TONES7.map((a) => P(shade(satd(vc(look.pectoral?.color || finHex)), a * contrast)));
   }
 
   const lidHex = (e) => vc(e.lid || bodyHex);
@@ -192,14 +204,14 @@ export function compileLook(look, variant = null) {
     const o = { type: 'normal', ...def, ...e };
     o.pupil = P(vc(o.color || '#0c0a12', 'eye'));
     o.irisR = o.iris ? toRamp(vc(o.iris, 'eye')) : null;
-    o.realIris = ramp(vc(o.iris || look.eyeIris || '#d8a83a', 'eye')).map((h) => P(h));
+    o.realIris = ramp(adjust(vc(o.iris || look.eyeIris || '#e8bc4a', 'eye'), { l: 0.06, sMul: 1.1 })).map((h) => P(h));
     o.sclera = P(o.sclera || '#ffffff');
     o.glowHex = o.type === 'glow' ? vc(o.glow || '#9ffcff', 'eye') : null;
     o.lidR = ramp(lidHex(o)).map((h) => P(h));
     if (o.type === 'glow') c.glow = true;
     return o;
   };
-  c.eyes.push(mkEye(look.eye || {}, { u: 0.17, v: -0.2, r: Math.max(1, H * 0.13) }));
+  c.eyes.push(mkEye(look.eye || {}, { u: 0.17, v: -0.2, r: Math.max(1, H * 0.15) }));
   const e0 = c.eyes[0];
   c.opU = look.head?.u ?? clamp(e0.u + (e0.r * 2.1) / L + 0.04, 0.14, 0.38);
   c.nostril = look.head?.nostril ?? true;
@@ -300,15 +312,17 @@ const spineAt = (c, u, phase) => c.bend * Math.sin(TAU * phase - u * 3.2) * u * 
 function rampPick(R, b, x, y, dither = 0.85) {
   const n = R.length - 1;
   const chk = ((x + y) & 1) ? 0.5 : -0.5;
-  const idx = clamp(Math.round(b * n + chk * Math.min(0.42, dither * 0.42)), 0, n);
+  const idx = clamp(Math.round(b * n + chk * Math.min(0.3, dither * 0.3)), 0, n);
   return R[idx];
 }
 // 7-tone index pick with checker transitions; idx in tone units (0 darkest .. 6 lightest).
 function tone(R, idx, x, y) {
-  const chk = ((x + y) & 1) ? 0.18 : -0.18;
-  return R[clamp(Math.round(idx + chk), 0, R.length - 1)];
+  const chk = ((x + y) & 1) ? 0.2 : -0.2;
+  return R[clamp(Math.round(5 + (idx - 3) * 1.5 + chk), 0, R.length - 1)];
 }
-const TONES7 = [-0.8, -0.56, -0.3, 0, 0.24, 0.46, 0.68];
+// 10 hue-shifted tones per colour (index 5 = base); tone() maps the 0..6 authoring scale onto them.
+const TONES7 = [-0.9, -0.75, -0.58, -0.4, -0.21, 0, 0.17, 0.35, 0.54, 0.74];
+const satd = (hex, k = 1.12) => adjust(hex, { sMul: k });
 
 function blendPacked(a, b, t) {
   const ar = a & 255, ag = (a >>> 8) & 255, ab = (a >>> 16) & 255;
@@ -328,6 +342,7 @@ function outlineFnFor(c) {
     let o = cache.get(n);
     if (o === undefined) {
       const [r, g, b, a] = unpack(n);
+      if (a === 253) { cache.set(n, 0); return 0; }
       const hex = '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('');
       const [dr, dg, db] = unpack(P(shade(hex, -0.86)));
       const t = 0.6;
@@ -478,11 +493,11 @@ function tailPix(c, G, lx, ly, px, py, s, tp, baseY) {
   const onRay = c.tail.rays !== false && Math.abs(fract(ang / da + 0.5) - 0.5) * da * rr * s < 0.55;
   const e1 = 1 / s;
   const edge = !tailHit(type, a + 0.6 + e1, bb, G.TL, G.TS, G.tailBase, tp) || !tailHit(type, a + 0.6, bb + e1, G.TL, G.TS, G.tailBase, tp) || !tailHit(type, a + 0.6, bb - e1, G.TL, G.TS, G.tailBase, tp);
-  let idx = onRay ? 2.2 : 4.2;
-  if (st < 0.14) idx = 2.4 + st * 6;
-  if (edge && st > 0.1) idx = 2;
-  if (bb > 0) idx -= 0.45;
-  if (!onRay && !edge && st > 0.3 && bb < 0 && Math.abs(bb) < G.TS * 0.55) idx += 0.5;
+  let idx = onRay ? 1.7 : 4;
+  if (st < 0.14) idx = st < 0.07 ? 1.8 : 2.8;
+  if (edge && st > 0.1) idx = 1.4;
+  if (!edge && !onRay && st > 0.55 && Math.abs(bb) < G.TS * 0.7 && bb < 0) idx = 4.6;
+  if (bb > 0 && !edge && !onRay) idx = 3.6;
   if (c.tail.spotP && !edge && hash2(Math.floor(lx * s / 2), Math.floor(ly * s / 2), 13) < 0.13) return c.tail.spotP;
   const al = onRay || edge || st < 0.14 ? 255 : Math.round(255 * Math.min(1, c.finAlpha));
   return withA(tone(R, idx, px, py), al);
@@ -517,18 +532,19 @@ function finPix(c, G, lx, ly, px, py, s, fp, sw, still, raise = 0) {
       if (dist > memb && !(onRay && dist <= fh * 1.1)) continue;
       if (dist > memb) return withA(R[1], 255);
       const edge = dist > memb - e1;
-      let idx = onRay ? 1.4 : 4;
-      if (edge) idx = 2;
+      let idx = onRay ? 1.2 : 4;
+      if (edge) idx = 1.8;
       if (dist < e1 * 1.2) idx = 2;
       if (f.spotP && !onRay && hash2(Math.floor(lx * s / 2), Math.floor(ly * s / 2), 17) < 0.14) return f.spotP;
       return withA(tone(R, idx, px, py), onRay || edge ? 255 : Math.round(255 * (f.alpha ?? c.finAlpha)));
     }
     if (dist > fh) continue;
     const edge = dist > fh - e1 || t < e1 / Math.max(1, (f.to - f.from) * G.L) || t > 1 - e1 / Math.max(1, (f.to - f.from) * G.L);
-    let idx = onRay ? 2.3 : 4.2;
-    if (edge) idx = 2;
-    else if (dist < e1 * 1.2) idx = 2.3;
-    if (!top) idx -= 0.35;
+    let idx = onRay ? 1.7 : 4;
+    if (edge) idx = 1.4;
+    else if (dist < e1 * 1.2) idx = 1.9;
+    else if (!onRay && dist > fh * 0.6) idx = 4.5;
+    if (!top && !edge && !onRay) idx -= 0.4;
     if (f.spotP && !edge && hash2(Math.floor(lx * s / 2), Math.floor(ly * s / 2), 17) < 0.14) return f.spotP;
     const al = onRay || edge ? 255 : Math.round(255 * (f.alpha ?? c.finAlpha));
     return withA(tone(R, idx, px, py), al);
@@ -558,10 +574,10 @@ function pecPix(c, G, lx, ly, px, py, s, fp, baseY, still) {
   if (pec.spines && !onRay && st > 1 - 0.45 * Math.abs(rf) * 2) return 0;
   const R = pec.R7;
   const edge = !pec.spines && (Math.abs(b) > wdt - 1 / s || st > 0.97 - 0.04 * Math.abs(b) / Math.max(1, wdt));
-  let idx = onRay ? 2.4 : 4.6;
-  if (edge) idx = 2.6;
-  if (st < 0.12) idx = 2.4;
-  return withA(tone(R, idx, px, py), onRay || edge || st < 0.12 ? 235 : Math.round(255 * Math.min(1, c.finAlpha - 0.3)));
+  let idx = onRay ? 2.2 : 4.4;
+  if (edge) idx = 1.8;
+  if (st < 0.12) idx = 2.2;
+  return withA(tone(R, idx, px, py), onRay || edge || st < 0.12 ? 230 : Math.round(255 * Math.min(1, c.finAlpha - 0.32)));
 }
 
 // Returns 1 hit, 2 hit+darker, 3 hit+lighter, 0 none. May set patLight.
@@ -826,9 +842,10 @@ function prepExtras(c, G, sw, still, s) {
       case 'whiskers': {
         const len = e.len ?? H * 0.6;
         const nb = e.count ?? 2;
+        const dirs = [0.75, -0.55, 0.35, -0.2];
         q.lines = Array.from({ length: nb }, (_, side) => curvePts((t) => [
-          halfL + 0.5 - side * k * 0.9 + Math.sin(t * 2.4) * len * 0.42 - t * t * len * (0.62 + side * 0.12),
-          G.mouthY - (side & 1 ? H * 0.12 : -H * 0.02) + t * len * (side & 1 ? -0.15 : 0.55) * (1 + side * 0.2) + Math.sin(sw * TAU + t * 3 + side) * t * 0.8 * k * sway,
+          halfL + 0.3 - side * k * 0.7 + Math.sin(t * 2.2) * len * 0.36 - t * t * len * (0.5 + side * 0.1),
+          G.mouthY - (side & 1 ? H * 0.1 : -H * 0.02) + t * len * dirs[side % 4] + Math.sin(sw * TAU + t * 3 + side) * t * 0.8 * k * sway,
         ], 16));
         q.w = px1 * 0.55;
         q.box = bboxOf(q.lines.flat(), 1.5);
@@ -1048,11 +1065,11 @@ function bodyPix(c, G, xp, lx, ly, px, py, s, sw, still) {
   // countershading: dark back -> body -> pale belly
   const vb = c.vb, vbel = c.vbel;
   let R, idx;
-  if (v < vb + chk * 0.035) { R = T.back; idx = 2 + 1.5 * clamp01((v + 1) / (vb + 1)); }
-  else if (v < vbel + chk * 0.035) { R = T.body; idx = 2.9 + 0.7 * clamp01((v - vb) / (vbel - vb)); }
-  else { R = T.belly; idx = 3.3 + 1.3 * clamp01((v - vbel) / (1 - vbel)); }
+  if (v < vb + chk * 0.035) { R = T.back; idx = 1.5 + 1.8 * clamp01((v + 1) / (vb + 1)); }
+  else if (v < vbel + chk * 0.035) { R = T.body; idx = 2.9 + 0.75 * clamp01((v - vb) / (vbel - vb)); }
+  else { R = T.belly; idx = 3.7 + 1.05 * clamp01((v - vbel) / (1 - vbel)); }
   // head: operculum edge curves forward at top and bottom
-  const opU = c.opU - 0.05 * v * v;
+  const opU = c.opU - 0.11 * v * v + 0.02;
   const inHead = u < opU;
   if (inHead) {
     if (T.head && R !== T.belly) R = T.head;
@@ -1061,9 +1078,9 @@ function bodyPix(c, G, xp, lx, ly, px, py, s, sw, still) {
     idx += (opU - u) * 0.8;
   }
   // form shading: dark dorsal ridge, belly core shadow, darker peduncle
-  if (dT < 1.05) idx -= 0.9;
-  if (dB < 1.2) idx -= 1.7;
-  else if (dB < 2.3) idx -= 0.6;
+  if (dT < 1.05) idx -= 1;
+  if (dB < 1.2) idx -= 1.9;
+  else if (dB < 2.3) idx -= 0.8;
   if (u > 0.82) idx -= (u - 0.82) * 3.5;
   patLight = 0;
   let patHit = false;
@@ -1093,8 +1110,9 @@ function bodyPix(c, G, xp, lx, ly, px, py, s, sw, still) {
     const fyPx = (ly - (row - 1000) * rh) * s;
     const fade = hash2(Math.floor((lx + off) / sc), row, 23) < 0.12 + Math.max(0, u - 0.8) * 3 + Math.max(0, v - 0.35) * 2;
     if (!fade) {
-      if (fyPx < 1 && fx > 0.2 && fx < 0.72) idx -= 0.95;
+      if (fyPx < 1 && fx > 0.2 && fx < 0.72) idx -= 0.9;
       else if (fyPx < 2 && (fx > 0.12 && fx <= 0.2 || fx >= 0.72 && fx < 0.8)) idx -= 0.55;
+      else if (fyPx >= 1.4 && fyPx < 2.4 && fx > 0.36 && fx < 0.56 && v < 0.35) idx += 0.75;
     }
   }
   // lateral line: light dashes from the operculum to the tail
@@ -1103,12 +1121,12 @@ function bodyPix(c, G, xp, lx, ly, px, py, s, sw, still) {
     if (Math.abs(v - lv) * (lv < 0 ? top : bot) * s < 0.55 && (Math.floor(lx * s / 2) & 1) === 0) idx += 1.1;
   }
   // operculum + pre-operculum curves, nostril
-  if (c.gills && L * s >= 14 && v > -0.62 && v < 0.85) {
+  if (c.gills && L * s >= 14 && v > -0.5 && v < 0.72) {
     const du = (u - opU) * L * s;
-    if (du > -0.55 && du < 0.55) { if (R === T.belly) { R = T.body; idx = Math.min(idx, 2); } else idx = Math.min(idx, 1.3); }
-    else if (du >= 0.55 && du < 1.6 && v > -0.5 && v < 0.75) idx += 0.55;
+    if (du > -0.55 && du < 0.55) { if (R === T.belly) { R = T.body; idx = Math.min(idx - 1, 2.2); } else idx = Math.min(idx - 1.2, 1.8); }
+    else if (du >= 0.55 && du < 1.6 && v > -0.4 && v < 0.6) idx += 0.5;
     const e0 = c.eyes[0];
-    if (c.preop && v > 0.05 && v < 0.8) {
+    if (c.preop && L * s >= 40 && v > 0.1 && v < 0.6) {
       const pu = e0.u + (opU - e0.u) * 0.48 - 0.04 * v;
       if (Math.abs((u - pu) * L * s) < 0.5) idx -= 0.65;
     }
@@ -1123,8 +1141,9 @@ function bodyPix(c, G, xp, lx, ly, px, py, s, sw, still) {
     const sv0 = vb - 0.24, sv1 = vb - 0.02;
     if (v > sv0 && v < sv1 && u > 0.05 && u < 0.7) {
       const dash = u < opU + 0.04 || (Math.floor(lx * s / 2) & 1) === 0;
-      if (dash) idx += 2.1 * c.spec * (1 - smoothstep(0.45, 0.7, u));
+      if (dash) idx += 2.5 * c.spec * (1 - smoothstep(0.45, 0.7, u));
     }
+    if (inHead && v > -0.82 && v < -0.5 && u > 0.04 && u < opU - 0.02) idx += 1.2 * c.spec;
   }
   let col = tone(R, idx, px, py);
   if (biteEdge < 1.6 / s) col = (hash2(px, py, 3) > 0.4) ? R[1] : R[2];
@@ -1198,7 +1217,7 @@ function extraOnBody(c, q, u, v, ry, lx, ly, G, top, bot, px, py, sw, s) {
       return 0;
     }
     case 'barnacles': {
-      const cs = e.size ?? 3.2 * k;
+      const cs = e.size ?? clamp(3.2 * k, 3, 6.5);
       const gx = Math.floor(lx / cs), gy = Math.floor(ly / cs);
       for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
         const hx = gx + i, hy = gy + j;
@@ -1273,12 +1292,12 @@ function freePix(c, G, xp, lx, ly, px, py, s, sw, still) {
             return col;
           }
         }
-        if (polyDist2(q.pts, lx, ly) < q.w * q.w + 0.12) return pdT > 0.9 ? (e.P2 || e.P || P('#6a7080')) : (e.P || P('#5a5f70'));
+        if (polyDist2(q.pts, lx, ly) < q.w * q.w + 0.12) return withA(pdT > 0.9 ? (e.P2 || e.P || P('#6a7080')) : (e.P || P('#5a5f70')), 253);
         break;
       }
       case 'whiskers':
       case 'feelers': {
-        for (const pts of q.lines) if (polyDist2(pts, lx, ly) < q.w * q.w * (e.type === 'whiskers' ? 1 : 1.6)) return pdT > 0.8 ? (e.P2 || e.P || (e.type === 'feelers' ? c.finR[4] : P('#5a4030'))) : (e.P || (e.type === 'feelers' ? c.finR[2] : P('#3b2a22')));
+        for (const pts of q.lines) if (polyDist2(pts, lx, ly) < q.w * q.w * (e.type === 'whiskers' ? 1.25 : 1.6)) return withA(pdT > 0.7 ? (e.P2 || e.P || (e.type === 'feelers' ? c.finR[4] : P('#5a4030'))) : (e.P || (e.type === 'feelers' ? c.finR[2] : P('#3b2a22'))), 253);
         break;
       }
       case 'barbel': {
@@ -1288,7 +1307,7 @@ function freePix(c, G, xp, lx, ly, px, py, s, sw, still) {
           if (e.glow) gOut = col;
           return Math.hypot(lx - tx + q.rb * 0.3, ly - ty + q.rb * 0.3) < q.rb * 0.4 ? P('#ffffff') : col;
         }
-        if (polyDist2(q.pts, lx, ly) < q.w * q.w + 0.1) return e.P || c.bodyR[1];
+        if (polyDist2(q.pts, lx, ly) < q.w * q.w + 0.1) return withA(e.P || c.bodyR[1], 253);
         break;
       }
       case 'antennae': {
@@ -1299,7 +1318,7 @@ function freePix(c, G, xp, lx, ly, px, py, s, sw, still) {
             return Math.hypot(lx - tx + q.rb * 0.35, ly - ty + q.rb * 0.35) < q.rb * 0.45 ? P('#ffffff') : col;
           }
         }
-        for (const pts of q.lines) if (polyDist2(pts, lx, ly) < q.w * q.w + 0.1) return e.P || P(e.style === 'rabbit' ? '#9aa2b4' : '#333344');
+        for (const pts of q.lines) if (polyDist2(pts, lx, ly) < q.w * q.w + 0.1) return withA(e.P || P(e.style === 'rabbit' ? '#9aa2b4' : '#333344'), 253);
         if (e.style === 'rabbit') {
           const [bx, by] = q.base;
           const rr = Math.max(1.2, c.k * 0.8);
@@ -1572,8 +1591,8 @@ function genericFace(c, G, sw, angle, s, ox, oy, still) {
     const pts = [];
     const n = Math.max(6, Math.ceil(G.H * s * 0.9));
     for (let i = 0; i <= n; i++) {
-      const v = -0.48 + (i / n) * 1.22;
-      const u = c.opU - 0.05 * v * v + 0.9 / (G.L * s);
+      const v = -0.42 + (i / n) * 1.06;
+      const u = c.opU - 0.11 * v * v + 0.02 + 0.9 / (G.L * s);
       const yy = sp(u) + v * (v < 0 ? G.halfTop(u) : G.halfBot(u)) * 0.96;
       pts.push(toC(G.halfL - u * G.L, yy));
     }
@@ -1648,14 +1667,14 @@ export const eyeBox = (R) => Math.ceil(R * 2.7 + 5);
  * gx, gy (googly pupil offset), time, mirror, cheek, main}. ang: fish rotation, R: canvas radius.
  */
 function eyeCore(ex, ey, d, R, e, pxo, pyo, pupR, f, x, y) {
-  if (d > 1 - 1 / R) return EYE_RING;
+  if (d > 1 - (R < 3.2 ? 0.75 : 1) / R) return EYE_RING;
   const dp = Math.hypot(ex - pxo, ey - pyo);
-  const hr = Math.max(0.5 / R, R >= 3.4 ? 0.28 : 0.3);
-  const hx = -0.34 + pxo * 0.3, hy = -0.36 + pyo * 0.3;
+  const hr = Math.max(0.55 / R, R >= 3.4 ? 0.3 : 0.32);
+  const hx = -0.3 + pxo * 0.3, hy = -0.34 + pyo * 0.3;
   if (!f.noGlint && Math.hypot(ex - hx, ey - hy) < hr) return WHITE;
   if (R >= 4 && !f.noGlint && Math.hypot(ex - 0.3 - pxo * 0.3, ey - 0.32 - pyo * 0.3) < 0.55 / R) return P('#e8eef8');
   if (dp < pupR) return dp > pupR - 0.9 / R && R >= 3.2 ? PUPIL_EDGE : e.pupil;
-  const b = 0.62 + ey * 0.32 - (dp < pupR + 0.95 / R ? 0.28 : 0) - (f.dim || 0) - (ey < -0.42 ? 0.22 : 0);
+  const b = 0.72 + ey * 0.28 - (dp < pupR + 0.95 / R ? 0.22 : 0) - (f.dim || 0) - (ey < -0.48 ? 0.25 : 0);
   return rampPick(e.realIris, clamp01(b), x, y);
 }
 
@@ -1676,7 +1695,7 @@ export function paintEye(buf, glow, cx, cy, c, e, f, ang, R) {
   const lm = Math.hypot(lx, ly);
   if (lm > 1) { lx /= lm; ly /= lm; }
   const irisR = e.irisR ? (e.irisSize ?? 0.68) : 0;
-  const pupR = Math.min(0.8, (e.pupilSize ?? 0.52) * (f.pupil || 1) * (toon ? em.pupil || 1 : 1));
+  const pupR = Math.min(0.8, R < 3.2 && e.type === 'normal' ? 1 - 1.45 / R : 1, (e.pupilSize ?? 0.48) * (f.pupil || 1) * (toon ? em.pupil || 1 : 1));
   const maxOff = Math.max(0, 1 - pupR - 0.16);
   let pxo = lx * maxOff + shake, pyo = ly * maxOff + (toon ? 0 : blink * 0.18);
   if (!toon && blink > 0.5) f = { ...f, noGlint: true };
@@ -1933,7 +1952,7 @@ export function paintMouth(buf, mx, my, c, m, f, ang, W, front = false) {
           } else {
             if (e2 === 'happy' || e2 === 'love' || e2 === 'smug') xc = bul * (1 - tt * tt) - bul / 2;
             else if (e2 === 'dizzy' || e2 === 'disgust') xc = Math.sin(tt * Math.PI * 1.5) * bul * 0.5;
-            else if (e2 === 'neutral' || e2 === 'determined') xc = 0;
+            else if (e2 === 'determined') xc = 0;
             else xc = -bul * (1 - tt * tt) + bul / 2;
             if (Math.abs(ux - xc) < th) col = line;
           }
@@ -1983,7 +2002,7 @@ export function paintMouth(buf, mx, my, c, m, f, ang, W, front = false) {
 // Face state for baked sprites (old frame() API).
 function bakedFace(p) {
   const emotion = EXPR_MAP[p.expr] || (EMO[p.expr] ? p.expr : 'neutral');
-  return { emotion, blink: p.blink ? 1 : 0, open: p.mouth ? 0.8 : 0, lx: 0, ly: 0, gx: 0, gy: 0.5, time: 0 };
+  return { emotion, blink: p.blink ? 1 : 0, open: p.mouth ? 0.8 : p.rest || 0, lx: 0, ly: 0, gx: 0, gy: 0.5, time: 0 };
 }
 
 function paintFaceInto(buf, glow, face, f, offX = 0, offY = 0) {
@@ -2577,7 +2596,8 @@ KINDS.ray = {
         }
         if (c.look.bsod) {
           // screen text rows
-          if (u < 0.45 && u > -0.7 && Math.abs(v) < 0.62 && (Math.floor(dy / Math.max(2, span * 0.1)) & 1) === 0 && hash2(Math.floor(dx / Math.max(2, c.k * 1.2)), Math.floor(dy / Math.max(2, span * 0.1)), 4) > 0.42 && u < 0.05) col = pk(c, '#c8d8ff');
+          const rowH = Math.max(3, span * 0.1);
+          if (u < -0.14 && u > -0.55 && Math.abs(v) < 0.5 && (Math.floor((dy + span) / rowH) & 1) === 0 && Math.floor((dy + span) / 1) % Math.round(rowH) < 2 && hash2(Math.floor(dx / Math.max(3, c.k * 2)), Math.floor((dy + span) / rowH), 4) > 0.3) col = pk(c, '#a8c0ff');
           if (glow) glow.set(x, y, R[2]);
         }
         buf.set(x, y, col);
@@ -2598,8 +2618,8 @@ KINDS.ray = {
         c._bsodEye = { ...c.eyes[0], type: 'pixel', sclera: P('#ffffff'), brow: false };
         c._bsodMouth = { ...c.mouth, type: 'emoticon', lineP: P('#ffffff'), thick: Math.max(2, Math.round(c.k * 0.6)) };
       }
-      const R = Math.max(1.5, span * 0.055);
-      const fx = ox + len * 0.12, fy = oy - span * 0.05;
+      const R = Math.max(1.5, span * 0.06);
+      const fx = ox + len * 0.2, fy = oy;
       return {
         eyes: [-1, 1].map((sd, i) => ({ x: fx - span * 0.12, y: fy + sd * span * 0.13, r: R, e: c._bsodEye, idx: i, mirror: false, cheek: false, main: i === 0, angle: 0 })),
         mouth: { x: fx + span * 0.1, y: fy, w: span * 0.5, m: c._bsodMouth, front: true, angle: 0 },
@@ -2623,50 +2643,41 @@ KINDS.squid = {
     const R = c.bodyR, F = c.finR;
     const cape = c.look.cape !== false;
     if (part === 'back' || part === 'all') {
-      // webbed cloak: a cone flaring backwards; its open end shows the dark lining and white cirri
+      // webbed cloak flaring backwards like a cape: scalloped trailing edge, dark lining band, white cirri
       const open = 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(ph * TAU));
-      const b0 = ox - L * 0.04, Lc = L * 0.44, b1 = b0 - Lc;
-      const r0 = H * 0.24, r1 = H * (0.36 + 0.3 * open);
-      const rAt = (d) => r0 + (r1 - r0) * Math.pow(clamp01(d / Lc), 1.15);
-      const ry = r1, rx = Math.max(2, r1 * (0.22 + 0.12 * open));
+      const b0 = ox - L * 0.04, Lc = L * 0.46;
+      const r0 = H * 0.24, r1 = H * (0.34 + 0.32 * open);
+      const rAt = (d) => r0 + (r1 - r0) * Math.pow(clamp01(d / Lc), 1.2);
+      const arms = 7;
+      const armV = (k2) => (k2 / (arms - 1)) * 1.9 - 0.95;
+      const dEnd = (vy) => {
+        let near = 1;
+        for (let k2 = 0; k2 < arms; k2++) near = Math.min(near, Math.abs(vy - armV(k2)) * (arms - 1) / 1.9);
+        return Lc * (0.8 + 0.2 * Math.pow(Math.abs(vy), 1.5)) - Lc * 0.09 * Math.min(1, near * 2);
+      };
       const lining = rp(c, c.look.lining || '#2a0c18');
-      const arms = 8;
-      for (let y = Math.floor(oy - r1 - 2); y <= Math.ceil(oy + r1 + 2); y++) for (let x = Math.floor(b1 - rx - 2); x <= Math.ceil(b0 + 1); x++) {
-        const dx = x + 0.5, dy = y + 0.5 - oy;
-        const ex = (dx - b1) / rx, ey = dy / ry;
-        const inEnd = ex * ex + ey * ey <= 1;
-        const d = b0 - dx;
-        const side = d >= 0 && d <= Lc && Math.abs(dy) <= rAt(d);
-        if (!inEnd && !side) continue;
-        let col;
-        if (inEnd && (ex < 0.15 || !side || ex * ex + ey * ey < 0.75)) {
-          // inside of the cloak
-          const phi = Math.atan2(ey, ex);
-          const rr = Math.hypot(ex, ey);
-          col = rampPick(lining, clamp01(0.3 + (1 - rr) * 0.35 - ey * 0.15), x, y);
-          const ak = fract((phi / TAU) * arms + 0.5);
-          if (Math.abs(ak - 0.5) * arms * 0.6 < 0.16 && rr > 0.3 && rr < 0.92 && ((Math.round(rr * 9)) & 1) === 0) col = pk(c, '#f6eef2');
-          if (rr > 0.9) col = R[1];
-        } else {
-          const t = clamp01(d / Lc);
-          const vy = dy / Math.max(1, rAt(d));
-          col = rampPick(cape ? R : F, clamp01(0.5 - vy * 0.3 + (1 - t) * 0.08), x, y);
-          for (let k2 = 0; k2 < arms; k2++) {
-            const th = (k2 / arms) * TAU + 0.2;
-            if (Math.cos(th) < 0.1) continue;
-            if (Math.abs(vy - Math.sin(th)) < 0.06 + (1 - t) * 0.04) col = R[1];
-          }
-          if (Math.abs(dy) > rAt(d) - 1.2 && vy < 0) col = R[3];
+      for (let y = Math.floor(oy - r1 - 2); y <= Math.ceil(oy + r1 + 2); y++) for (let x = Math.floor(b0 - Lc - 2); x <= Math.ceil(b0 + 1); x++) {
+        const d = b0 - (x + 0.5), dy = y + 0.5 - oy;
+        if (d < 0) continue;
+        const rr = rAt(d);
+        if (Math.abs(dy) > rr) continue;
+        const vy = dy / rr;
+        const de = dEnd(vy);
+        if (d > de) continue;
+        let col = rampPick(R, clamp01(0.5 - vy * 0.3 + (1 - d / Lc) * 0.1), x, y);
+        for (let k2 = 0; k2 < arms; k2++) if (Math.abs(vy - armV(k2)) * rr < 0.6) col = R[1];
+        if (d > de - Lc * (0.06 + 0.1 * open)) {
+          col = rampPick(lining, clamp01(0.35 - vy * 0.2), x, y);
+          for (let k2 = 0; k2 < arms; k2++) if (Math.abs(vy - armV(k2)) * rr < 0.7 && ((x + y) & 1) === 0) col = pk(c, '#f4ecf0');
         }
+        if (Math.abs(dy) > rr - 1.1 && vy < 0) col = R[3];
         buf.set(x, y, col);
       }
-      // arm tips around the rim: black, curling
       for (let k2 = 0; k2 < arms; k2++) {
-        const phi = (k2 / arms) * TAU + 0.35;
-        const tx = b1 + Math.cos(phi) * rx, ty = oy + Math.sin(phi) * ry;
-        const dirx = -0.7 + Math.cos(phi) * 0.3, diry = Math.sin(phi) * 0.8;
-        const ln = H * (0.16 + 0.05 * Math.sin(ph * TAU + k2));
-        capsule(buf, tx, ty, tx + dirx * ln, ty + diry * ln + Math.sin(ph * TAU * 2 + k2) * H * 0.03, Math.max(0.9, H * 0.04), Math.max(0.5, H * 0.012), rp(c, '#1e0c14'), { light: 0.6 });
+        const vy = armV(k2), de = dEnd(vy), rr = rAt(de);
+        const tx = b0 - de, ty = oy + vy * rr;
+        const ln = H * (0.14 + 0.05 * Math.sin(ph * TAU + k2));
+        capsule(buf, tx + 1, ty, tx - ln * 0.8, ty + vy * ln * 0.6 + Math.sin(ph * TAU * 2 + k2) * H * 0.03, Math.max(0.9, H * 0.035), Math.max(0.5, H * 0.012), rp(c, '#1e0c14'), { light: 0.6 });
       }
     }
     if (part === 'body' || part === 'all') {
@@ -3276,7 +3287,7 @@ export function rasterLayer(c, layer, q) {
 export function rasterFish(c, p = {}) {
   const s = p.scale || 1, angle = p.angle || 0, phase = p.phase || 0;
   const K = KINDS[c.kind];
-  const f = bakedFace(p);
+  const f = bakedFace({ ...p, rest: c.mouth?.rest || 0 });
   const sil = !!p.silhouette;
   let B, buf, glow, face;
   if (K) {

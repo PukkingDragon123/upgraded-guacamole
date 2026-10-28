@@ -67,14 +67,14 @@ export class School {
       fish.x = opts.x; fish.y = opts.y; fish.z = opts.z ?? 0.3;
     } else if (fromFog || sp.move?.style === 'crawl') {
       fish.x = rng.float(60, w.W - 60);
-      fish.y = lerp(top, w.floorAt(fish.x) - 10, rng.float(d0, d1));
       fish.z = sp.move?.style === 'crawl' ? rng.float(0, 0.3) : rng.float(0.75, 1);
+      fish.y = lerp(top, w.floorAt(fish.x, fish.z) - 10, rng.float(d0, d1));
       if (sp.move?.style === 'crawl') fish.x = rng.chance(0.5) ? -20 : w.W + 20;
     } else {
       const left = rng.chance(0.5);
       fish.x = left ? -40 : w.W + 40;
-      fish.y = lerp(top, w.floorAt(fish.x) - 10, rng.float(d0, d1));
       fish.z = rng.float(0, 0.7);
+      fish.y = lerp(top, w.floorAt(fish.x, fish.z) - 10, rng.float(d0, d1));
       fish.facing = left ? 1 : -1;
       fish.setState('enter');
       fish.enterTarget = { x: left ? rng.float(80, w.W * 0.6) : rng.float(w.W * 0.4, w.W - 80), y: fish.y };

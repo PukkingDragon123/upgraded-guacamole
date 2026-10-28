@@ -14,7 +14,7 @@ import { BAITS } from '../../game/shopdata.js';
 import {
   paint, dpack, lerpStops, gradientStrip, stopPalette, ditherPick, Blend, FogLayer, fillWith, drawWobble, makeRays,
   drawGlow, twinkle, waveLine, waveRuns, Strands, Motes, Bubbles, Mask, ridge, todWeights, voxelGround, quality, inRect,
-  catenary, drawCable, SwayAnim, Caustics, lumaMask, streakTile,
+  catenary, drawCable, SwayAnim, Caustics, lumaMask, streakTile, cloudTile,
 } from '../scenery.js';
 
 const SKY = {
@@ -256,19 +256,19 @@ export class JunkyardBiome extends Biome {
       },
       palette: (m) => ({
         mud: m.color('#5e5c46', { jitter: 0.22 }), mud2: m.color('#4c4c3c', { jitter: 0.22 }), silt: m.color('#72705a', { jitter: 0.18 }),
-        rust: m.color('#8a5634', { jitter: 0.2 }), pcb: m.color('#2c6a40', { jitter: 0.08 }), trace: m.color('#d6b040', { jitter: 0.05, spec: 0.8 }),
+        rust: m.color('#8a5634', { jitter: 0.2 }), pcb: m.color('#2a5038', { jitter: 0.1 }), trace: m.color('#a88c3c', { jitter: 0.08, spec: 0.6 }),
         chip: m.color('#202028', { jitter: 0.05 }), pin: m.color('#b8bcc8', { jitter: 0.05 }), bolt: m.color('#8c929c', { jitter: 0.15 }),
         algae: m.color('#8aff5a', { emissive: 0.85, jitter: 0.1 }), red: m.color('#c83a3a', { jitter: 0.08 }), blue: m.color('#3a6ac8', { jitter: 0.08 }), yel: m.color('#e0c040', { jitter: 0.08 }),
       }),
       color: (x, y, z, h, p) => {
         if (y < h - 1) return p.mud2;
         const pc = fbm2(x * 0.03 + 5, z * 0.05, 2, 31);
-        if (pc > 0.66) {
+        if (pc > 0.7) {
           if (((x % 7 === 0) || (z % 6 === 0)) && hash2(x >> 2, z >> 2, 2) < 0.7) return p.trace;
           return p.pcb;
         }
         const n = fbm2(x * 0.06, z * 0.09, 2, 33);
-        if (n > 0.68) return p.rust;
+        if (n > 0.74) return p.rust;
         if (n < 0.3) return p.mud2;
         return n > 0.55 ? p.silt : p.mud;
       },
@@ -370,8 +370,9 @@ export class JunkyardBiome extends Biome {
     }
     this.propLights = [];
     for (const q of placed) {
-      const ls = q.p.lights.slice().sort((a, b) => b.r - a.r).slice(0, 2);
-      for (const l of ls) this.propLights.push({ x: q.left + l.x, y: q.top + l.y, r: Math.min(80, l.r + 10), color: l.color, id: q.id });
+      if (q.id === 'crt_pile' || q.id === 'crt_monitor') continue;
+      const l = q.p.lights.slice().sort((a, b) => b.r - a.r)[0];
+      if (l) this.propLights.push({ x: q.left + l.x, y: q.top + l.y, r: Math.min(64, l.r + 6), color: l.color, id: q.id });
     }
     this.vend = { x: vend.x, y: vend.y, rect: { x: vend.left + 8, y: vend.top + 8, w: vend.p.w - 16, h: vend.p.h - 12 }, tray: { x: vend.x - 6, y: vend.y - 18 }, t: 9, item: null, cool: 0 };
     this.monRect = { x: this.crt.x - 4, y: this.crt.y - 4, w: this.crt.w + 8, h: this.crt.h + 10 };
@@ -501,8 +502,14 @@ export class JunkyardBiome extends Biome {
     }
     // a long dangling cable with a plug
     const s = this.base;
-    this.dangle = new Strands();
-    for (const [xf, n] of [[0.18, 26], [0.585, 18]]) this.dangle.add({ x: Math.round(xf * W), y: s + 2, n, seg: -5, w: 2, amp: 0.1, speed: 0.5, phase: xf * 9, wave: 0.12, cols: ['#2a2a32', '#34343e'], out: '#0a0c10', hl: false });
+    this.dangles = [];
+    for (const [xf, n, col] of [[0.18, 30, '#2a2a34'], [0.585, 20, '#3a3a48'], [0.79, 12, '#b83a3a']]) {
+      const st = new Strands();
+      st.add({ x: Math.round(xf * W), y: s + 1, n, seg: 4, down: true, w: 2, amp: 0.12, speed: 0.6, sec: 1, phase: xf * 9, wave: 0.15, cols: [col, mix(col, '#ffffff', 0.15)], out: '#0a0c10', hl: false, tip: '#c8c8d0', tipR: 2 });
+      this.dangles.push({ anim: new SwayAnim(st, { frames: 24 }), off: Math.round(xf * 30) });
+    }
+    this.murk = cloudTile(480, 240, '#a8c8b0', { seed: 3, alpha: 0.13, scale: 0.016, bias: 0.5, levels: 3 });
+    this.murk2 = cloudTile(400, 200, '#0e2420', { seed: 9, alpha: 0.16, scale: 0.02, bias: 0.5, levels: 3 });
     // floating trash at the surface
     this.duck = getProp('rubber_duck', { scale: 0.45 });
     this.bottle = bottleSprite();
@@ -518,7 +525,7 @@ export class JunkyardBiome extends Biome {
     this.streams = [];
     for (let i = 0; i < 6; i++) this.streams.push(streamTex(100 + i, 14 + i * 3));
     this.rain = [];
-    for (let i = 0; i < 34; i++) this.rain.push({ x: Math.round(r.float(0, W) / 4) * 4, y: r.float(-200, H), v: r.float(50, 110), tex: r.int(0, 5) });
+    for (let i = 0; i < 56; i++) this.rain.push({ x: Math.round(r.float(0, W) / 4) * 4, y: r.float(-200, H), v: r.float(50, 110), tex: r.int(0, 5) });
     this.oilBlobs = [];
     for (let i = 0; i < 14; i++) this.oilBlobs.push({ x: r.float(0, W), y: r.float(s + 30, H - 80), v: -r.float(3, 8), ph: r.float(0, TAU), s: r.int(2, 4) });
     this.bubbles = new Bubbles(60, '#d8f0e0');
@@ -529,6 +536,7 @@ export class JunkyardBiome extends Biome {
 
   // ------------------------------------------------------------------ update
   update(dt, env) {
+    dt = Math.max(0, Math.min(dt, 0.1));
     this.t += dt;
     const t = this.t, W = this.W, H = this.H;
     const tod = todWeights(env);
@@ -624,13 +632,27 @@ export class JunkyardBiome extends Biome {
     drawWobble(ctx, this.farA.tint(water, 0.74, key), -this.pad + px * 1.5, this.farAY + py, t, wob, 4, 0.8, 0.07);
     // crane hook swings in the far fog
     drawWobble(ctx, this.farB.tint(water, 0.52, key), -this.pad + px * 3, this.farBY + py * 1.5, t + 2, wob, 4, 1, 0.09);
+    // drifting turbidity between the far junk and the mid bank
+    const tv = Math.max(0, top);
+    for (const [tile, sp, a] of [[this.murk2, 3, 0.7 + wx.oil * 0.3], [this.murk, 5, 0.55 + wx.murk * 0.45 - tod.night * 0.3]]) {
+      const pat = ctx.createPattern(tile, 'repeat');
+      pat.setTransform(new DOMMatrix([1, 0, 0, 1, Math.round(t * sp + px * 4), Math.round(Math.sin(t * 0.07) * 6)]));
+      ctx.globalAlpha = clamp01(a);
+      ctx.fillStyle = pat;
+      ctx.fillRect(0, tv, W, H - tv);
+    }
+    ctx.globalAlpha = 1;
     ctx.drawImage(this.mid.tint(water, 0.4, key), Math.round(-this.pad + px * 6), Math.round(this.midY + py * 2.5));
     // murk & oil darkening
     const murk = 0.08 + wx.murk * 0.06 + wx.oil * 0.16;
     ctx.fillStyle = rgba(wx.oil > 0.3 ? '#0e1410' : '#2a4a40', murk);
     ctx.fillRect(0, Math.max(0, top), W, H - Math.max(0, top));
     // data rain behind the junk
-    if (wx.data > 0.05) this.drawDataRain(ctx, wx.data * 0.7, 0, 0.5);
+    if (wx.data > 0.05) {
+      ctx.fillStyle = rgba('#103a20', wx.data * 0.12);
+      ctx.fillRect(0, Math.max(0, top), W, H - Math.max(0, top));
+      this.drawDataRain(ctx, wx.data * 0.85, 0, 0.6);
+    }
     this.drawSurface(ctx, env, sy);
   }
 
@@ -669,10 +691,13 @@ export class JunkyardBiome extends Biome {
 
   drawDataRain(ctx, a, x0, density) {
     const n = Math.round(this.rain.length * density);
-    ctx.globalAlpha = a;
     for (let i = 0; i < n; i++) {
       const d = this.rain[(i * 7 + (x0 ? 3 : 0)) % this.rain.length];
-      ctx.drawImage(this.streams[d.tex], d.x + x0, Math.round(d.y));
+      const tex = this.streams[d.tex];
+      const y = Math.round(d.y);
+      ctx.globalAlpha = a;
+      ctx.drawImage(tex, d.x + x0, y);
+      drawGlow(ctx, d.x + x0 + 1, y + tex.height - 3, 4, '#5aff8a', a * 0.7);
     }
     ctx.globalAlpha = 1;
   }
@@ -700,7 +725,7 @@ export class JunkyardBiome extends Biome {
       else ctx.drawImage(this.glyphs[b.ch][b.c], Math.round(b.x), Math.round(b.y));
     }
     ctx.globalAlpha = 1;
-    this.dangle.draw(ctx, t, Math.sin(t * 0.3) * 0.05);
+    for (const d of this.dangles) d.anim.draw(ctx, t, d.off);
     ctx.drawImage(this.bed, 0, this.bedY);
     const ca = (tod.day * 0.28 + tod.dusk * 0.2 + tod.night * 0.06) * (1 - wx.oil * 0.6);
     if (q >= 0.75) this.caustics.draw(ctx, this.bedMask, 0, this.bedY, t, ca, { fps: 7, drift: 3 });
@@ -713,7 +738,7 @@ export class JunkyardBiome extends Biome {
     const flick = 1 - this.flicker;
     ctx.globalCompositeOperation = 'lighter';
     for (const gl of this.glows) {
-      ctx.globalAlpha = (0.35 + 0.15 * Math.sin(t * 1.3 + gl.ph) + tod.night * 0.25) * flick;
+      ctx.globalAlpha = ((gl.id === 'circuit_coral' ? 0.12 : 0.32) + 0.12 * Math.sin(t * 1.3 + gl.ph) + tod.night * 0.22) * flick;
       ctx.drawImage(gl.c, gl.x, gl.y);
     }
     if (this.groundGlow) { ctx.globalAlpha = (0.4 + 0.3 * Math.sin(t * 0.9)) * flick; ctx.drawImage(this.groundGlow, this.ground.x, this.ground.y); }
@@ -757,10 +782,12 @@ export class JunkyardBiome extends Biome {
     // oil blobs rising
     if (wx.oil > 0.05) {
       for (const o of this.oilBlobs) {
-        const x = Math.round(o.x + Math.sin(t + o.ph) * 3), y = Math.round(o.y);
-        ctx.globalAlpha = wx.oil * 0.8;
-        ctx.fillStyle = '#14100a'; ctx.fillRect(x - o.s, y - o.s + 1, o.s * 2, o.s * 2 - 1);
-        ctx.fillStyle = hslToHex((t * 60 + o.ph * 50) % 360, 0.7, 0.6); ctx.fillRect(x - o.s + 1, y - o.s + 1, 2, 1);
+        const x = Math.round(o.x + Math.sin(t + o.ph) * 3), y = Math.round(o.y), r = o.s;
+        ctx.globalAlpha = wx.oil * 0.85;
+        ctx.fillStyle = '#16120c';
+        ctx.fillRect(x - r + 1, y - r, r * 2 - 2, r * 2); ctx.fillRect(x - r, y - r + 1, r * 2, r * 2 - 2);
+        ctx.fillStyle = hslToHex((t * 60 + o.ph * 50) % 360, 0.75, 0.62); ctx.fillRect(x - r + 1, y - r + 1, 2, 1);
+        ctx.fillStyle = hslToHex((t * 60 + o.ph * 50 + 120) % 360, 0.75, 0.55); ctx.fillRect(x + r - 2, y + r - 2, 1, 1);
       }
       ctx.globalAlpha = 1;
     }
@@ -769,7 +796,7 @@ export class JunkyardBiome extends Biome {
   drawFront(ctx, env) {
     const t = this.t, wx = this.wx, q = quality(env);
     this.nearSilt.draw(ctx, t, 0.7 + wx.murk * 0.4, q);
-    if (wx.data > 0.05) this.drawDataRain(ctx, wx.data * 0.55, 2, 0.3 * q);
+    if (wx.data > 0.05) this.drawDataRain(ctx, wx.data * 0.75, 2, 0.35 * q);
     if (wx.static > 0.05) {
       // rolling scan band + flicker
       const y = Math.round(((t * 70) % (this.H + 40)) - 20);
@@ -794,9 +821,9 @@ export class JunkyardBiome extends Biome {
     for (const l of this.propLights) lights.push({ x: l.x, y: l.y, r: l.r, color: l.color, a: 0.55 * n * flick });
     for (const s of this.screens) {
       const on = !s.secret || this.secrets().crt;
-      if (on) lights.push({ x: s.x + s.w / 2, y: s.y + s.h / 2, r: 46, color: s.secret ? '#8ab8ff' : s.mode === 'fish' ? '#6aa8ff' : '#7affc0', a: 0.6 * n * flick });
+      if (on) lights.push({ x: s.x + s.w / 2, y: s.y + s.h / 2, r: 40, color: s.secret ? '#8ab8ff' : s.mode === 'fish' ? '#6aa8ff' : '#7affc0', a: 0.6 * n * flick });
     }
-    for (let i = 0; i < this.algae.length; i += 3) { const a = this.algae[i]; lights.push({ x: a.x, y: a.y, r: 22, color: a.c, a: 0.4 * n }); }
+    if (tod.night > 0.3) for (let i = 0; i < this.algae.length; i += 5) { const a = this.algae[i]; lights.push({ x: a.x, y: a.y, r: 20, color: a.c, a: 0.4 * n }); }
     const v = this.vend;
     if (v.item && v.t < 1) lights.push({ x: v.tray.x, y: v.tray.y - 10, r: 60, color: '#fff0f8', a: 1 - v.t });
     return { dark, tint, lights };

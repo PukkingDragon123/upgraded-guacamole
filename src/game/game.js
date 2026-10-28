@@ -57,7 +57,7 @@ export class Game {
     const self = this;
     this.world = {
       W: this.screen.W, H: this.screen.H, surfaceY: 0,
-      floorAt: (x) => self.ocean.floorAt(x),
+      floorAt: (x, z = 0) => self.ocean.floorAt(x, z),
       cursor: { x: -100, y: -100, vx: 0, vy: 0, speed: 0, inWorld: false },
       hook: { x: 0, y: 0, active: false, inWater: false, bait: null, radiusMul: 1 },
       fishes: [], icons: [], windows: [], particles: this.particles, audio,

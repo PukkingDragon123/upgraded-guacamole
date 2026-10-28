@@ -58,7 +58,7 @@ export class Ocean {
     return Math.round(lerp(base, -6, ease.inOutCubic(clamp01(this.flood))));
   }
 
-  floorAt(x) { return this.biome.floorAt(x); }
+  floorAt(x, z = 0) { return this.biome.floorAt(x, z); }
 
   pickWeather(initial = false) {
     const ws = this.biome.weathers;
@@ -219,7 +219,7 @@ export class Ocean {
 
   drawTitleCard(ctx, dt) {
     const c = this.titleCard;
-    if (!c) return;
+    if (!c || this.game.ui.blocking) return;
     c.t += dt;
     const a = Math.min(1, c.t * 2, (4 - c.t) * 1.5);
     if (a <= 0) { this.titleCard = null; return; }

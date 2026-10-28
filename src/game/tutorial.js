@@ -131,7 +131,7 @@ export class Tutorial {
         break;
       case 'bait':
         this.crab.emo = 'happy';
-        this.say('Ooh! Bait!');
+        this.say('Ooh! Bait! Now hold your hook in open water... slowly...');
         g.audio.play('magic');
         if (this.fish) { this.fish.setState('wander'); this.fish.script = null; this.fish.cooldown = 0; this.fish.noticeT = 0.2; }
         break;
@@ -258,6 +258,10 @@ export class Tutorial {
         this.boxDrop = Math.min(1, this.boxDrop + dt * 1.6);
         if (this.boxDrop >= 1 && !this.thudded) { this.thudded = true; g.audio.play('box_close'); g.camera.shake(2); g.particles.burst(g.desktop.box.x + 26, g.desktop.box.y + 34, 14, { colors: ['#e8d8b8', '#c8b898'], speed: 40, g: 30, life: 0.6, up: 10 }); }
         if (this.t > 2 && !this.bubble?.drag) this.say('{mouse_l} Drag an icon into the box!', { drag: true, silent: true });
+        if (g.state.baitBox.length && this.t > 0.8) this.go('bait');
+        break;
+      case 'tank':
+        if (this.t > 3.2) this.go('coin');
         break;
       case 'flood': {
         this.floodT += dt;

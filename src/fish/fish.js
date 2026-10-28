@@ -106,7 +106,7 @@ export class Fish {
   }
 
   floor(x = this.x) {
-    return this.world.floorAt(x) - 6 * this.scale;
+    return this.world.floorAt(x, this.z) - 6 * this.scale * (1 - this.z * 0.5);
   }
 
   bandY(t) {
@@ -193,7 +193,7 @@ export class Fish {
 
   updateCrawl(dt, desired) {
     // crawlers walk along the seabed (or perch on icons)
-    const groundY = this.perch ? this.perch.y - 4 * this.scale : this.world.floorAt(this.x) - 5 * this.scale;
+    const groundY = this.perch ? this.perch.y - 4 * this.scale : this.world.floorAt(this.x, this.z) - 5 * this.scale * (1 - this.z * 0.5);
     this.vx = damp(this.vx, desired[0], 4, dt);
     this.x += this.vx * dt;
     if (this.perch && (this.x < this.perch.x || this.x > this.perch.x + this.perch.w)) this.perch = null;
@@ -203,7 +203,7 @@ export class Fish {
   }
 
   updateHop(dt, desired) {
-    const ground = this.world.floorAt(this.x) - 5 * this.scale;
+    const ground = this.world.floorAt(this.x, this.z) - 5 * this.scale * (1 - this.z * 0.5);
     this.hopT -= dt;
     const onGround = this.y >= ground - 0.5;
     if (onGround) {
@@ -527,7 +527,7 @@ export class Fish {
     this.noticeT = rng.float(0.4, 1.1);
     const interest = baitInterest(this.sp, h.bait);
     if (interest <= 0.05) return false;
-    const radius = (90 + interest * 70) * (h.radiusMul || 1) * (1 + (w.jig || 0) * 0.6);
+    const radius = (90 + interest * 70) * (h.radiusMul || 1) * (1 + (w.jig || 0) * 0.6) * (this.quirks.has('intro') ? 4 : 1);
     const d = dist(h.x, h.y, this.x, this.y);
     if (d > radius) return false;
     const p = interest * (0.35 + this.curiosity * 0.5 + this.greed * 0.4) * (1 - this.shyness * 0.4 * clamp01(w.cursor.speed / 150));
@@ -554,8 +554,11 @@ export class Fish {
       this.facing = -side;
       return [0, 0];
     }
-    if (this.stateT > 10) { this.setState('wander'); this.cooldown = 5; }
-    return this.steer(tx, ty, this.cruise * (0.6 + this.greed * 0.6), 25);
+    if (this.stateT > 14) { this.setState('wander'); this.cooldown = 5; }
+    // hurry over from afar, then approach the bait carefully
+    const near = this.cruise * (0.6 + this.greed * 0.6);
+    const far = Math.max(near, this.burst * (0.45 + this.greed * 0.25), 80) * (this.quirks.has('intro') ? 1.8 : 1);
+    return this.steer(tx, ty, lerp(near, far, clamp01((d - 50) / 220)), 25);
   }
 
   thinkSniff(dt) {
@@ -793,5 +796,6 @@ export function baitInterest(sp, bait) {
   if (bait.type === 'bread') v = Math.max(v, sp.rarity === 'common' ? 1.6 : sp.rarity === 'uncommon' ? 0.7 : 0.2);
   if (bait.type === 'worm') v = Math.max(v, 1.1);
   if (sp.spawn?.requires && sp.spawn.requires !== bait.type) v *= 0.15;
+  if (sp.quirks?.includes('intro')) v = Math.max(v, 3);
   return v;
 }

@@ -59,7 +59,7 @@ export class UI {
     this.game.emit('panelClose', p.id);
   }
 
-  toggle(id) { if (this.isOpen(id)) this.close(id); else this.open(id); }
+  togglePanel(id) { if (this.isOpen(id)) this.close(id); else this.open(id); }
 
   // Does the UI want the pointer at (x,y)? (checked before world input)
   hit(x, y) {
@@ -126,7 +126,9 @@ export class UI {
     return value;
   }
 
+  // toggle(panelId) opens/closes a panel; toggle(ctx, x, y, on, tip) is the clam toggle widget.
   toggle(ctx, x, y, on, tip) {
+    if (typeof ctx === 'string') return this.togglePanel(ctx);
     const r = { x, y, w: 22, h: 14 };
     const hov = this.hover(r);
     drawToggle(ctx, x, y, on, { hover: hov });
