@@ -386,7 +386,7 @@ export class Strands {
 
   add(o) {
     const s = {
-      x: 0, y: 0, n: 12, seg: 3, w: 2, lean: 0, amp: 0.22, speed: 1.2, phase: 0, wave: 0.45,
+      x: 0, y: 0, n: 12, seg: 3, w: 2, lean: 0, amp: 0.22, speed: 1.2, phase: 0, wave: 0.45, sec: 0.37, curl: 0,
       cols: ['#1d5a3c', '#2b7c48', '#45a65a', '#7ed37a'], out: '#0c2a26', alpha: 1,
       leaf: null, leafEvery: 3, leafLen: 4, leafCol: null, bulb: null, bulbEvery: 4, tip: null, tipR: 1, taper: 0, hl: true, glow: null,
       ...o,
@@ -402,7 +402,7 @@ export class Strands {
     p[0] = x; p[1] = y;
     for (let i = 1; i <= s.n; i++) {
       const k = i / s.n;
-      const ang = s.lean + Math.sin(t * s.speed + s.phase - i * s.wave) * s.amp * k + Math.sin(t * s.speed * 0.37 + s.phase * 1.7) * s.amp * 0.4 * k + current * k * k;
+      const ang = s.lean + s.curl * k * k + Math.sin(t * s.speed + s.phase - i * s.wave) * s.amp * k + Math.sin(t * s.speed * s.sec + s.phase * 1.7) * s.amp * 0.4 * k + current * k * k;
       x += Math.sin(ang) * s.seg;
       y -= Math.cos(ang) * s.seg;
       p[i * 2] = x; p[i * 2 + 1] = y;
@@ -446,6 +446,19 @@ export class Strands {
             const x = Math.round(p[i * 2] - w / 2), y = Math.round(p[i * 2 + 1]), y0 = Math.round(p[i * 2 - 1]);
             ctx.fillRect(x, y, 1, Math.max(1, y0 - y));
           }
+        }
+      }
+      // pre-rendered blade sprites (kelp)
+      if (s.blades) {
+        let side = 1;
+        const bs = s.blades, nb = bs.length;
+        for (let i = 2; i < n; i += s.leafEvery) {
+          side = -side;
+          const ang = Math.atan2(p[i * 2] - p[i * 2 - 2], p[i * 2 - 1] - p[i * 2 + 1]);
+          const la = ang + side * 0.95 + Math.sin(t * s.speed * 1.3 + i * 0.7 + s.phase) * 0.22 + current * 0.6;
+          const bi = ((Math.round(((la + Math.PI) / TAU) * nb) % nb) + nb) % nb;
+          const b = bs[bi];
+          ctx.drawImage(b.c, Math.round(p[i * 2]) - b.ox, Math.round(p[i * 2 + 1]) - b.oy);
         }
       }
       // leaves / blades
@@ -498,6 +511,92 @@ export class Strands {
   tipOf(s, t, current = 0) {
     const n = this.shape(s, t, current);
     return [this.pts[n * 2], this.pts[n * 2 + 1]];
+  }
+}
+
+// Leaf/blade sprites at `bins` angles (0 = up), anchored at the blade base. Blades curl back toward
+// vertical (floating kelp) by `curl`. cols: dark -> light ramp along the blade.
+export function bladeSprites({ len = 12, w = 3, cols, bins = 24, curl = 0.45, outline = 0.6 }) {
+  const out = [];
+  const pc = cols.map((c) => P(c));
+  for (let b = 0; b < bins; b++) {
+    const a0 = (b / bins) * TAU - Math.PI;
+    const R = Math.ceil(len + w + 3);
+    const S = R * 2 + 1;
+    const buf = new Uint32Array(S * S);
+    let x = R + 0.5, y = R + 0.5;
+    for (let j = 0; j <= len; j++) {
+      const k = j / len;
+      const a = a0 + (0 - a0) * curl * k;
+      const ww = Math.max(0.5, w * Math.sin(Math.min(1, k * 1.25 + 0.12) * Math.PI) * (k < 0.9 ? 1 : 0.6));
+      const nx = Math.cos(a), ny = Math.sin(a);
+      for (let q = -ww; q <= ww; q += 0.5) {
+        const px = Math.floor(x + nx * q), py = Math.floor(y + ny * q);
+        if (px < 0 || py < 0 || px >= S || py >= S) continue;
+        const edge = Math.abs(q) > ww - 0.75;
+        const ci = clamp(Math.round(k * (pc.length - 1) + (edge ? -1 : 0) + (q < 0 && !edge ? 0.5 : 0)), 0, pc.length - 1);
+        buf[py * S + px] = pc[ci];
+      }
+      x += Math.sin(a) * 1; y -= Math.cos(a) * 1;
+    }
+    const c = paintBuf(S, S, (d) => {
+      d.set(buf);
+      if (outline) {
+        for (let py = 0; py < S; py++) for (let px = 0; px < S; px++) {
+          const i = py * S + px;
+          if (buf[i]) continue;
+          const n = (px > 0 && buf[i - 1]) || (px < S - 1 && buf[i + 1]) || (py > 0 && buf[i - S]) || (py < S - 1 && buf[i + S]);
+          if (n) d[i] = (n & 0xffffff) === 0 ? 0 : darkPacked(n, outline);
+        }
+      }
+    });
+    out.push({ c, ox: R, oy: R });
+  }
+  return out;
+}
+
+function darkPacked(c, k) {
+  const r = c & 255, g = (c >>> 8) & 255, b = (c >>> 16) & 255;
+  return packRGB(r * (1 - k) + 20 * k, g * (1 - k) + 16 * k, b * (1 - k) + 40 * k, 255);
+}
+
+// Pre-rendered looping sway animation of a Strands group (all strands share `speed`; use sec 1 or 2).
+export class SwayAnim {
+  constructor(strands, { frames = 16, pad = 3, under = null, over = null, bounds = null } = {}) {
+    const sp = strands.list[0]?.speed || 1;
+    const Pd = TAU / sp;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let f = 0; f < frames; f++) {
+      const t = (f / frames) * Pd;
+      for (const s of strands.list) {
+        const n = strands.shape(s, t, 0);
+        for (let i = 0; i <= n; i++) {
+          const x = strands.pts[i * 2], y = strands.pts[i * 2 + 1];
+          const r = s.w + (s.tip ? s.tipR + 2 : 1) + (s.blades ? 16 : 0);
+          x0 = Math.min(x0, x - r); x1 = Math.max(x1, x + r); y0 = Math.min(y0, y - r); y1 = Math.max(y1, y + r);
+        }
+      }
+    }
+    if (bounds) { x0 = Math.min(x0, bounds.x0); y0 = Math.min(y0, bounds.y0); x1 = Math.max(x1, bounds.x1); y1 = Math.max(y1, bounds.y1); }
+    x0 = Math.floor(x0 - pad); y0 = Math.floor(y0 - pad); x1 = Math.ceil(x1 + pad); y1 = Math.ceil(y1 + pad);
+    this.x = x0; this.y = y0; this.P = Pd; this.n = frames;
+    this.frames = [];
+    for (let f = 0; f < frames; f++) {
+      const c = makeCanvas(x1 - x0, y1 - y0);
+      const g = ctxOf(c);
+      g.translate(-x0, -y0);
+      under?.(g);
+      strands.draw(g, (f / frames) * Pd, 0);
+      over?.(g);
+      this.frames.push(c);
+    }
+  }
+  frame(t, off = 0) {
+    const i = Math.floor((t / this.P) * this.n + off);
+    return this.frames[((i % this.n) + this.n) % this.n];
+  }
+  draw(ctx, t, off = 0, dx = 0, dy = 0) {
+    ctx.drawImage(this.frame(t, off), this.x + dx, this.y + dy);
   }
 }
 
@@ -693,6 +792,21 @@ export function ridge(w, base, amp, freq, seed, oct = 4, sharp = 0) {
   return out;
 }
 
+// Tileable diagonal rain/streak texture (fill as a pattern and scroll).
+export function streakTile(w, h, n, color, { len = [3, 6], slant = 3, seed = 1, alpha = 1 } = {}) {
+  const r = new RNG(seed);
+  const [cr, cg, cb] = hexToRgb(color);
+  const buf = new Uint32Array(w * h);
+  for (let i = 0; i < n; i++) {
+    const x0 = r.int(0, w - 1), y0 = r.int(0, h - 1), L = r.int(len[0], len[1]);
+    for (let j = 0; j < L; j++) {
+      const x = (((x0 - Math.floor(j / slant)) % w) + w) % w, y = (y0 + j) % h;
+      buf[y * w + x] = packRGB(cr, cg, cb, Math.round(255 * alpha * (0.5 + 0.5 * (j / L))));
+    }
+  }
+  return paintBuf(w, h, (d) => d.set(buf));
+}
+
 // ------------------------------------------------------------------ geometry helpers
 
 export function catenary(x0, y0, x1, y1, sag, n = 24, out = []) {
@@ -741,7 +855,7 @@ export function follow(obj, key, target, rate, dt) {
 export function todWeights(env) {
   const dl = clamp01(env.daylight ?? 1);
   const dusk = clamp01(env.dusk ?? 0) * (0.35 + 0.65 * smoothstep(0.05, 0.6, dl));
-  const night = clamp01(1 - dl);
+  const night = clamp01(1 - dl) * (1 - dusk * 0.7);
   const day = Math.max(0, 1 - night - dusk);
   const s = day + dusk + night || 1;
   return { day: day / s, dusk: dusk / s, night: night / s };

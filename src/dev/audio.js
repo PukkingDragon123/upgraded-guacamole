@@ -67,8 +67,8 @@ export function run(params) {
     const step = async (i, fn, ms, settle = opts.measure) => {
       current = i; status = items[i].label;
       if (m) m.read();
-      const t0 = performance.now();
       await fn();
+      const t0 = performance.now();
       let peak = 0, st = 0, el = 0;
       while (true) {
         await wait(50);

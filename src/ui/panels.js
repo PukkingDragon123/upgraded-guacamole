@@ -7,18 +7,19 @@
 // drawBottle(ctx,x,y,w,h,{tint, note=true})                                             -> inner rect
 // drawBubble(ctx,x,y,w,h,{tailX,tailY, style:'speech'|'thought'})                       -> content rect
 // drawWaterBubble(ctx,cx,cy,r)
-// drawButton(ctx,x,y,w,h,{label, icon, state:'normal'|'hover'|'down'|'disabled', style:'wood'|'shell'|'paper'|'glass'|'coral', font})
+// drawButton(ctx,x,y,w,h,{label, icon (name|canvas), state:'normal'|'hover'|'down'|'disabled', style:'wood'|'shell'|'paper'|'glass'|'coral', font, align:'center'|'left'})
+//   (labels that do not fit are truncated with '..')
 // buttonSize(label,{icon,font}) -> {w,h}
 // drawSlider(ctx,x,y,w,value,{hover, down}) (height SLIDER_H)                            -> {knob}
 // drawToggle(ctx,x,y,on,{hover}) (TOGGLE_W x TOGGLE_H)
 // drawBar(ctx,x,y,w,h,value,{color, back, segments})
 // drawTooltip(ctx,x,y,text,{maxW, font}) auto-placed near (x,y) inside the canvas          -> rect
-// drawTab(ctx,x,y,w,h,{label, icon, active, color})
+// drawTab(ctx,x,y,w,h,{label, icon, active, hover, color})
 // drawWindowChrome(ctx,{x,y,w,h},{title, iconCanvas, active=true, hover:'close'|'min'|null, down, fill, shadow=true})
 //   -> {content, close, min, titleBar}
 // drawTaskbar(ctx,x,y,w,h)
 // drawPlank(ctx,x,y,w,h,{rope=14, tone, label})                                        -> inner rect
-// drawStamp(ctx,x,y,text,{color, angle (radians; |a|>π is read as degrees), font})     centred on x,y
+// drawStamp(ctx,x,y,text,{color, angle (radians; |a|>π is read as degrees), font, scale})   centred on x,y
 // drawFrame(ctx,x,y,w,h,{style:'wood'|'gold'|'coral'})                                 -> inner rect
 
 import { makeCanvas, ctxOf } from '../core/canvas.js';
@@ -69,11 +70,16 @@ export const UI_COLORS = {
 
 // ---------------------------------------------------------------- helpers
 
-const pkc = new Map();
+const pkc = new Map(), pkcA = new Map();
 function pk(c, a = 255) {
+  if (a === 255) {
+    let v = pkc.get(c);
+    if (v === undefined) pkc.set(c, (v = pack(c)));
+    return v;
+  }
   const k = c + '|' + a;
-  let v = pkc.get(k);
-  if (v === undefined) pkc.set(k, (v = pack(c, a)));
+  let v = pkcA.get(k);
+  if (v === undefined) pkcA.set(k, (v = pack(c, a)));
   return v;
 }
 
@@ -98,17 +104,18 @@ function rr(w, h, r) {
 }
 const edgeOf = (m, x, y) => !m(x - 1, y) || !m(x + 1, y) || !m(x, y - 1) || !m(x, y + 1);
 
-const tex = new Map();
-function cached(key, build) {
-  let c = tex.get(key);
+// LRU texture caches; volatile textures (bubble tails, stamps) live in their own small store.
+const tex = new Map(), volatileTex = new Map();
+function cached(key, build, store = tex, limit = 500) {
+  let c = store.get(key);
   if (c) {
-    tex.delete(key);
-    tex.set(key, c);
+    store.delete(key);
+    store.set(key, c);
     return c;
   }
   c = build();
-  tex.set(key, c);
-  if (tex.size > 500) tex.delete(tex.keys().next().value);
+  store.set(key, c);
+  if (store.size > limit) store.delete(store.keys().next().value);
   return c;
 }
 
@@ -166,6 +173,9 @@ function woodTex(w, h, tone, nails, inset, round, planks, noSeams) {
     }
     const knot = w > 48 && ph >= 8 && hash1(i, 9) > 0.35 ? [12 + Math.floor(hash1(i, 11) * (w - 24)), y0 + ph / 2 + 0.5] : null;
     const top = i > 0 ? 1 : 0;
+    const wave = new Float32Array(w);
+    for (let x = 0; x < w; x++) wave[x] = Math.sin(x * 0.045 + seed) * 1.6 + Math.sin(x * 0.013 + seed * 2) * 2.4;
+    const s0 = seams.length > 0 ? seams[0] : -9, s1 = seams.length > 1 ? seams[1] : -9;
     for (let y = y0; y < y1; y++) {
       const ly = y - y0;
       for (let x = 0; x < w; x++) {
@@ -175,7 +185,7 @@ function woodTex(w, h, tone, nails, inset, round, planks, noSeams) {
         if (ly === top) c = P[4];
         else if (ly === ph - 1) c = P[2];
         else {
-          let gy = y + Math.sin(x * 0.045 + seed) * 1.6 + Math.sin(x * 0.013 + seed * 2) * 2.4;
+          let gy = y + wave[x];
           let kd = 9;
           if (knot) {
             const dx = (x + 0.5 - knot[0]) / 3.2, dy = (y + 0.5 - knot[1]) / 1.7;
@@ -189,8 +199,8 @@ function woodTex(w, h, tone, nails, inset, round, planks, noSeams) {
           if (knot && kd < 1) c = kd < 0.5 ? P[1] : P[2];
           else if (knot && kd < 1.5) c = P[4];
         }
-        for (const sx of seams) {
-          if (ly < top) continue;
+        if (ly >= top && (Math.abs(x - s0) <= 1 || Math.abs(x - s1) <= 1)) {
+          const sx = Math.abs(x - s0) <= 1 ? s0 : s1;
           if (x === sx) c = R[0];
           else if (x === sx + 1 && ly > top) c = P[4];
           else if (x === sx - 1 && ly > top && ly < ph - 1) c = P[2];
@@ -348,13 +358,13 @@ function glassTex(w, h, tint, frame) {
   const deep = shade(tint, -0.55), lite = shade(tint, 0.55);
   const S = Math.floor(Math.min(gw, gh) * 0.18) + 3;
   for (let y = 0; y < gh; y++) {
+    const t = y / Math.max(1, gh - 1), rowC = mix(tint, deep, Math.round(t * 0.55 * 12) / 12);
     for (let x = 0; x < gw; x++) {
       if (!m(x, y)) continue;
       let c, a;
       if (!frame && edgeOf(m, x, y)) { c = '#0e2a3a'; a = 225; }
       else {
-        const t = y / Math.max(1, gh - 1);
-        c = mix(tint, deep, t * 0.55);
+        c = rowC;
         a = 52 + t * 46;
         if (y >= gh - 3) { c = deep; a = 120; }
         const d = x + y;
@@ -368,6 +378,12 @@ function glassTex(w, h, tint, frame) {
       }
       b.set(x + fw, y + fw, pk(c, Math.round(a)));
     }
+  }
+  const nb = Math.min(4, Math.floor((gw * gh) / 1800));
+  for (let k = 0; k < nb; k++) {
+    const bx = fw + 6 + Math.floor(hash1(k, w + 3) * (gw - 12)), by = fw + Math.floor(gh * 0.45) + Math.floor(hash1(k, h + 7) * (gh * 0.45 - 4));
+    for (const [dx, dy, a] of [[0, -1, 150], [-1, 0, 150], [1, 0, 90], [0, 1, 90]]) b.set(bx + dx, by + dy, pk('#e8fcff', a));
+    if (k % 2 === 0) b.set(bx - 1, by - 2, pk('#ffffff', 110));
   }
   const sx = fw + 4, sy = fw + 3;
   b.set(sx, sy, pk('#ffffff'));
@@ -547,7 +563,7 @@ export function drawBubble(ctx, x, y, w, h, opts = {}) {
   const tx = opts.tailX === undefined ? null : Math.round(opts.tailX - x);
   const ty = opts.tailY === undefined ? null : Math.round(opts.tailY - y);
   const style = opts.style === 'thought' ? 'thought' : 'speech';
-  const c = cached(`bubble|${w}|${h}|${tx}|${ty}|${style}`, () => bubbleTex(w, h, tx ?? w / 2, ty ?? h / 2, style));
+  const c = cached(`bubble|${w}|${h}|${tx}|${ty}|${style}`, () => bubbleTex(w, h, tx ?? w / 2, ty ?? h / 2, style), volatileTex, 96);
   ctx.drawImage(c, x - c.ox, y - c.oy);
   return { x: x + 5, y: y + 4, w: w - 10, h: h - 8 };
 }
@@ -670,14 +686,19 @@ export function drawButton(ctx, x, y, w, h, opts = {}) {
   ctx.drawImage(cached(`btn|${w}|${h}|${style}|${state}`, () => buttonTex(w, h, style, state)), x, y);
   const font = opts.font || 'normal';
   const ic = iconOf(opts.icon);
-  const label = opts.label || '';
-  const tw = label ? measureText(label, font) : 0;
-  const iw = ic ? ic.width + (label ? 4 : 0) : 0;
+  const iw = ic ? ic.width + (opts.label ? 4 : 0) : 0;
+  let label = opts.label || '';
+  let tw = label ? measureText(label, font) : 0;
+  if (label && tw + iw > w - 10) {
+    while (label.length > 1 && measureText(label + '..', font) + iw > w - 10) label = label.slice(0, -1);
+    label = label.replace(/\s+$/, '') + '..';
+    tw = measureText(label, font);
+  }
   const down = state === 'down';
   const faceTop = down ? 3 : 1, faceBot = down ? h - 2 : h - 4;
   const capH = font === 'small' ? 5 : 7;
   const cy = Math.round((faceTop + faceBot) / 2);
-  let cx = x + Math.round((w - tw - iw) / 2);
+  let cx = opts.align === 'left' ? x + 5 : x + Math.round((w - tw - iw) / 2);
   const dis = state === 'disabled';
   if (ic) {
     ctx.globalAlpha = dis ? 0.55 : 1;
@@ -959,9 +980,11 @@ export function drawTab(ctx, x, y, w, h, opts = {}) {
   x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
   const active = !!opts.active;
   const color = opts.color || '#d8584a';
-  const dy = active ? 0 : 3;
+  const hov = !active && !!opts.hover;
+  const dy = active ? 0 : hov ? 2 : 3;
   const th = h - dy;
-  ctx.drawImage(cached(`tab|${w}|${th}|${color}|${active}`, () => tabTex(w, th, color, active)), x, y + dy);
+  const col = hov ? mix(color, '#fff4e0', 0.18) : color;
+  ctx.drawImage(cached(`tab|${w}|${th}|${col}|${active}`, () => tabTex(w, th, col, active)), x, y + dy);
   const ic = iconOf(opts.icon);
   const label = opts.label || '';
   const tw = label ? measureText(label) : 0;
@@ -1073,6 +1096,11 @@ export function drawWindowChrome(ctx, r, opts = {}) {
 function taskbarTex(w, h) {
   const b = new PixelBuffer(w, h);
   const R = WOOD_L, beam = 4, bw = 16;
+  const boards = [];
+  for (let bi = 0; bi <= Math.ceil(w / bw); bi++) {
+    const tint = (hash1(bi, 3) - 0.5) * 0.25;
+    boards.push(tint > 0 ? R.map((q) => mix(q, shade(q, 0.4), tint * 2)) : R.map((q) => mix(q, shade(q, -0.4), -tint * 2)));
+  }
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       let c;
@@ -1083,8 +1111,7 @@ function taskbarTex(w, h) {
       } else if (y === beam) c = R[1];
       else {
         const bi = Math.floor(x / bw), lx = x % bw, seed = bi * 13;
-        const tint = (hash1(bi, 3) - 0.5) * 0.25;
-        const P = tint > 0 ? R.map((q) => mix(q, shade(q, 0.4), tint * 2)) : R.map((q) => mix(q, shade(q, -0.4), -tint * 2));
+        const P = boards[bi];
         if (lx === 0) c = R[0];
         else {
           c = P[3];
@@ -1195,8 +1222,13 @@ export function drawStamp(ctx, x, y, text, opts = {}) {
   if (Math.abs(angle) > Math.PI) angle = (angle * Math.PI) / 180;
   angle = Math.round(angle * 100) / 100;
   const font = opts.font || 'normal';
-  const c = cached(`stamp|${text}|${color}|${angle}|${font}`, () => stampTex(String(text), color, angle, font));
-  ctx.drawImage(c, Math.round(x - c.width / 2), Math.round(y - c.height / 2));
+  const c = cached(`stamp|${text}|${color}|${angle}|${font}`, () => stampTex(String(text), color, angle, font), volatileTex, 96);
+  const k = opts.scale || 1;
+  if (k === 1) ctx.drawImage(c, Math.round(x - c.width / 2), Math.round(y - c.height / 2));
+  else {
+    const dw = Math.round(c.width * k), dh = Math.round(c.height * k);
+    ctx.drawImage(c, Math.round(x - dw / 2), Math.round(y - dh / 2), dw, dh);
+  }
 }
 
 // ---------------------------------------------------------------- picture frames

@@ -189,7 +189,7 @@ function initBuses() {
 }
 
 const curve = (v) => Math.pow(clamp01(v), 1.5);
-const TRIM = { master: 1, sfx: 1, music: 0.7, amb: 0.8 };
+const TRIM = { master: 1.6, sfx: 1.25, music: 0.7, amb: 0.8 };
 function applyVolumes(now = false) {
   if (!B) return;
   const set = (param, v) => { if (now) param.value = v; else ramp(param, v); };
@@ -353,7 +353,8 @@ function fm(o, { f = 440, f2 = 0, glide, ratio = 2, index = 2, index2 = 0, idur 
   car.type = type;
   const fr = setFreq(car.frequency, t, f, f2, glide ?? dur, o.p);
   setFreq(mod.frequency, t, f, f2, glide ?? dur, o.p * ratio);
-  const dev = Math.min(fr * ratio, NYQ);
+  // keep the swing below Nyquist so bright FM stays clean instead of aliasing
+  const dev = fr * ratio * Math.min(1, Math.max(0, NYQ * 0.75 - fr) / Math.max(1, index * fr * ratio));
   const mg = gainNode(0);
   mg.gain.setValueAtTime(index * dev, t);
   mg.gain.setTargetAtTime(index2 * dev, t + 0.002, Math.max(0.005, idur / 3));
@@ -492,7 +493,7 @@ const chime = (o, f, at = 0, vol = 0.1, dur = 0.8, verb) =>
   fm(o, { f, at, ratio: 2, index: 1.3, index2: 0.1, idur: dur * 0.3, dur, a: 0.002, vol, verb });
 const mallet = (o, f, at = 0, vol = 0.1, dur = 0.6, verb) =>
   fm(o, { f, at, ratio: 4, index: 1.8, idur: 0.05, dur, a: 0.002, vol, verb });
-const tink = (o, f, at = 0, vol = 0.06, pan = 0) => {
+const tink = (o, f, at = 0, vol = 0.08, pan = 0) => {
   fm(o, { f, at, ratio: 2.76, index: 1.6, index2: 0.2, idur: 0.05, dur: 0.22, a: 0.001, vol, pan });
   tone(o, { f: f * 1.5, at, dur: 0.08, vol: vol * 0.35, pan });
 };
@@ -524,7 +525,7 @@ const SFX = {
     noise(o, { at: 0.06, dur: 0.3, type: 'highpass', f: 6500, vol: 0.04, a: 0.02 });
   },
   ui_error: (o) => {
-    for (const at of [0, 0.11]) tone(o, { at, f: 230, f2: 190, glide: 0.08, dur: 0.1, type: 'square', vol: 0.06, filt: { type: 'lowpass', f: 900 } });
+    for (const at of [0, 0.11]) tone(o, { at, f: 230, f2: 190, glide: 0.08, dur: 0.1, type: 'square', vol: 0.09, filt: { type: 'lowpass', f: 900 } });
   },
   ui_unlock: (o) => { arp(o, bell, [84, 88, 91, 96], 0.065, 0, 0.07, 1.0); noise(o, { at: 0.18, dur: 0.6, type: 'highpass', f: 7000, vol: 0.035, a: 0.1 }); },
   ui_page: (o) => {
@@ -538,7 +539,7 @@ const SFX = {
   ui_tab: (o) => { tone(o, { f: 1560, f2: 1480, dur: 0.045, vol: 0.09, a: 0.001 }); tick(o, 0, 5000, 0.035); },
   ui_type: (o) => {
     const k = rand(0.9, 1.12);
-    noise(o, { dur: 0.025, type: 'bandpass', f: 3200 * k, q: 2.5, vol: 0.2, a: 0.001 });
+    noise(o, { dur: 0.025, type: 'bandpass', f: 3200 * k, q: 2.5, vol: 0.28, a: 0.001 });
     tone(o, { f: 1900 * k, dur: 0.018, type: 'triangle', vol: 0.025, a: 0.001 });
   },
   notify: (o) => { chime(o, 784, 0, 0.09, 0.6, 0.3); chime(o, 1046, 0.11, 0.09, 0.9, 0.3); },
@@ -568,8 +569,8 @@ const SFX = {
 
   // fishing
   cast: (o) => {
-    whoosh(o, 0, 0.32, 450, 2600, 0.24, 1.4);
-    for (let i = 0; i < 12; i++) tick(o, 0.05 + i * 0.022 * (1 + i * 0.12), 3800, 0.07 * (1 - i / 14));
+    whoosh(o, 0, 0.32, 450, 2600, 0.45, 1.4);
+    for (let i = 0; i < 12; i++) tick(o, 0.05 + i * 0.022 * (1 + i * 0.12), 3800, 0.09 * (1 - i / 14));
     tone(o, { at: 0.04, f: 1500, f2: 900, glide: 0.4, dur: 0.42, type: 'triangle', vol: 0.012, vib: [30, 40] });
   },
   splash_small: (o) => {
@@ -597,7 +598,7 @@ const SFX = {
     tone(o, { f: 280, f2: 900, glide: 0.06, dur: 0.1, vol: 0.12, type: 'triangle' });
     thump(o, 0.01, 150, 0.22);
   },
-  reel_tick: (o) => { tick(o, 0, 3200, 0.14); tone(o, { f: 2600, dur: 0.012, vol: 0.035, type: 'triangle', a: 0.0008 }); },
+  reel_tick: (o) => { tick(o, 0, 3200, 0.2); tone(o, { f: 2600, dur: 0.012, vol: 0.05, type: 'triangle', a: 0.0008 }); },
   line_snap: (o) => {
     noise(o, { dur: 0.06, type: 'highpass', f: 2200, vol: 0.3, a: 0.001 });
     tone(o, { f: 230, f2: 105, glide: 0.45, dur: 0.55, type: 'sawtooth', vol: 0.07, vib: [9, 6], filt: { type: 'lowpass', f: 1800, f2: 400 } });
@@ -636,8 +637,8 @@ const SFX = {
     whoosh(o, 0.6, 0.45, 400, 3500, 0.2);
   },
   new_species: (o) => {
-    arp(o, chime, [79, 84, 88, 91], 0.09, 0, 0.09, 0.9);
-    bell(o, m2f(96), 0.38, 0.06, 1.6, 0.45);
+    arp(o, chime, [79, 84, 88, 91], 0.09, 0, 0.12, 0.9);
+    bell(o, m2f(96), 0.38, 0.08, 1.6, 0.45);
     [67, 72, 76].forEach((m) => tone(o, { at: 0.3, f: m2f(m), dur: 1.4, type: 'triangle', vol: 0.03, a: 0.2, shape: 'sus', r: 0.8 }));
     noise(o, { at: 0.35, dur: 0.9, type: 'highpass', f: 7000, vol: 0.04, a: 0.2 });
   },
@@ -646,7 +647,7 @@ const SFX = {
     chime(o, m2f(96), 0.22, 0.09, 0.8, 0.3); chime(o, m2f(96), 0.36, 0.06, 0.9, 0.35); tink(o, m2f(103), 0.24, 0.025);
   },
   net_swish: (o) => {
-    whoosh(o, 0, 0.32, 380, 1900, 0.3, 1.2);
+    whoosh(o, 0, 0.32, 380, 1900, 0.5, 1.2);
     noise(o, { at: 0.2, dur: 0.2, type: 'bandpass', f: 900, q: 0.8, vol: 0.2 });
     droplets(o, 3, 0.22, 0.2, 0.03);
   },
@@ -689,10 +690,10 @@ const SFX = {
     bub(o, 0.38, 700, 0.08);
   },
   deflate: (o) => {
-    tone(o, { f: 680, f2: 140, glide: 0.5, dur: 0.55, type: 'sawtooth', vol: 0.07, vib: [26, 40], filt: { type: 'lowpass', f: 1100, f2: 500 }, a: 0.01, shape: 'sus', r: 0.15 });
+    tone(o, { f: 680, f2: 140, glide: 0.5, dur: 0.55, type: 'sawtooth', vol: 0.1, vib: [26, 40], filt: { type: 'lowpass', f: 1100, f2: 500 }, a: 0.01, shape: 'sus', r: 0.15 });
     noise(o, { dur: 0.5, type: 'bandpass', f: 900, f2: 400, q: 1.2, vol: 0.2, a: 0.02, shape: 'lin' });
   },
-  squeak: (o) => { tone(o, { f: [[0, 1400], [0.05, 2100], [0.13, 1700]], dur: 0.14, vol: 0.08, a: 0.006, vib: [22, 60] }); },
+  squeak: (o) => { tone(o, { f: [[0, 1400], [0.05, 2100], [0.13, 1700]], dur: 0.14, vol: 0.11, a: 0.006, vib: [22, 60] }); },
   grunt: (o) => {
     tone(o, { f: 115, f2: 88, glide: 0.18, dur: 0.2, type: 'sawtooth', vol: 0.14, a: 0.012, vib: [17, 8], filt: { type: 'lowpass', f: 520, q: 2 }, shape: 'sus', r: 0.07 });
   },
@@ -701,7 +702,7 @@ const SFX = {
     tone(o, { f: 380, f2: 660, glide: 0.07, dur: 0.2, vol: 0.03 });
   },
   glitch: (o) => {
-    for (let i = 0; i < 7; i++) tone(o, { at: i * 0.028, f: pick([220, 330, 440, 880, 1320, 1760, 2640]) * rand(0.98, 1.02), dur: 0.026, wave: 'pulse25', vol: 0.05, a: 0.001, shape: 'sus', r: 0.004 });
+    for (let i = 0; i < 7; i++) tone(o, { at: i * 0.028, f: pick([220, 330, 440, 880, 1320, 1760, 2640]) * rand(0.98, 1.02), dur: 0.026, wave: 'pulse25', vol: 0.07, a: 0.001, shape: 'sus', r: 0.004 });
     noise(o, { at: 0.08, dur: 0.06, type: 'highpass', f: 3000, vol: 0.07, a: 0.001, shape: 'sus', r: 0.01 });
   },
   click: (o) => {
@@ -716,8 +717,8 @@ const SFX = {
     tone(o, { f: 52, f2: 40, dur: 0.8, vol: 0.12, a: 0.08, shape: 'sus', r: 0.3 });
   },
   chirp: (o) => {
-    tone(o, { f: 1800, f2: 3200, glide: 0.07, dur: 0.09, vol: 0.07, a: 0.005 });
-    tone(o, { at: 0.1, f: 3000, f2: 2200, glide: 0.07, dur: 0.08, vol: 0.05 });
+    tone(o, { f: 1800, f2: 3200, glide: 0.07, dur: 0.09, vol: 0.1, a: 0.005 });
+    tone(o, { at: 0.1, f: 3000, f2: 2200, glide: 0.07, dur: 0.08, vol: 0.075 });
   },
   bell: (o) => { bell(o, 1046, 0, 0.09, 1.3, 0.45); fm(o, { f: 2093, ratio: 1.41, index: 0.6, idur: 0.1, dur: 0.5, vol: 0.02 }); },
   gulp: (o) => { tone(o, { f: 420, f2: 140, glide: 0.08, dur: 0.12, vol: 0.18 }); noise(o, { dur: 0.05, type: 'lowpass', f: 600, vol: 0.2, color: 'pink' }); },
@@ -732,22 +733,22 @@ const SFX = {
     fm(o, { f: 1568, ratio: 2, index: 1, idur: 0.05, dur: 0.16, vol: 0.06 });
     tone(o, { f: 800, f2: 1600, glide: 0.05, dur: 0.06, vol: 0.04 });
   },
-  coin_bounce: (o) => { tink(o, 2093 * rand(0.96, 1.04), 0, 0.06); },
+  coin_bounce: (o) => { tink(o, 2093 * rand(0.96, 1.04), 0, 0.08); },
   coin_collect: (o) => {
     const t = ctx.currentTime;
     combo.n = t - combo.t < 0.6 ? Math.min(combo.n + 1, COMBO.length - 1) : 0;
     combo.t = t;
     const k = Math.pow(2, COMBO[combo.n] / 12);
-    chime(o, 988 * k, 0, 0.07, 0.1);
-    chime(o, 1318 * k, 0.065, 0.08, 0.45);
+    chime(o, 988 * k, 0, 0.1, 0.1);
+    chime(o, 1318 * k, 0.065, 0.12, 0.45);
     tone(o, { at: 0.065, f: 1318 * k, dur: 0.22, type: 'square', vol: 0.012, filt: { type: 'lowpass', f: 3500, track: false } });
   },
   coin_pile: (o) => {
-    for (let i = 0; i < 9; i++) tink(o, rand(1800, 3200), Math.random() * 0.4, rand(0.025, 0.05), rand(-0.4, 0.4));
+    for (let i = 0; i < 9; i++) tink(o, rand(1800, 3200), Math.random() * 0.4, rand(0.04, 0.07), rand(-0.4, 0.4));
     noise(o, { dur: 0.12, type: 'lowpass', f: 900, vol: 0.18, color: 'pink' });
   },
   coins_many: (o) => {
-    for (let i = 0; i < 16; i++) tink(o, rand(1700, 3400), i * 0.045 + Math.random() * 0.03, rand(0.02, 0.045), rand(-0.6, 0.6));
+    for (let i = 0; i < 16; i++) tink(o, rand(1700, 3400), i * 0.045 + Math.random() * 0.03, rand(0.035, 0.06), rand(-0.6, 0.6));
     chime(o, 1318, 0.75, 0.07, 0.5); chime(o, 1760, 0.82, 0.07, 0.8, 0.3);
   },
 
@@ -755,7 +756,7 @@ const SFX = {
   bubble: (o) => { bub(o, 0, rand(380, 650), 0.12, 0, rand(0.05, 0.08)); },
   bubbles: (o) => {
     const n = 6 + ((Math.random() * 5) | 0);
-    for (let i = 0; i < n; i++) bub(o, Math.random() * 0.6, rand(300, 900), rand(0.04, 0.08), rand(-0.5, 0.5), rand(0.04, 0.08));
+    for (let i = 0; i < n; i++) bub(o, Math.random() * 0.6, rand(300, 900), rand(0.06, 0.11), rand(-0.5, 0.5), rand(0.04, 0.08));
   },
   whale_call: (o) => {
     const b = rand(0.92, 1.08);
@@ -767,7 +768,11 @@ const SFX = {
     for (let i = 0; i < 4; i++) noise(o, { at: 0.05 + i * rand(0.25, 0.5), dur: rand(1.2, 2.2), type: 'lowpass', f: rand(160, 320), q: 0.8, color: 'brown', vol: rand(0.3, 0.45), a: rand(0.04, 0.2) });
   },
   crab_scuttle: (o) => {
-    for (let i = 0; i < 9; i++) noise(o, { at: i * 0.034 + Math.random() * 0.008, dur: 0.014, type: 'bandpass', f: i % 2 ? 3200 : 2500, q: 3, vol: 0.35, a: 0.0006, pan: i % 2 ? 0.15 : -0.15 });
+    for (let i = 0; i < 9; i++) {
+      const at = i * 0.034 + Math.random() * 0.008, pan = i % 2 ? 0.15 : -0.15;
+      noise(o, { at, dur: 0.014, type: 'bandpass', f: i % 2 ? 3200 : 2500, q: 3, vol: 0.9, a: 0.0006, pan });
+      tone(o, { at, f: i % 2 ? 2900 : 2300, dur: 0.012, type: 'triangle', vol: 0.05, a: 0.0006, pan });
+    }
   },
   vending: (o) => {
     tone(o, { f: 110, dur: 0.6, type: 'sawtooth', vol: 0.06, a: 0.05, shape: 'sus', r: 0.1, vib: [9, 3], filt: { type: 'lowpass', f: 380 } });
@@ -800,7 +805,7 @@ const SFX = {
     noise(o, { at: 0.45, dur: 1.0, type: 'highpass', f: 7000, vol: 0.045, a: 0.2 });
   },
   sparkle: (o) => {
-    for (let i = 0; i < 6; i++) fm(o, { at: i * 0.06 + Math.random() * 0.04, f: rand(2200, 4800), ratio: 3.01, index: 1, idur: 0.05, dur: 0.25, vol: rand(0.02, 0.04), verb: 0.4, pan: rand(-0.5, 0.5) });
+    for (let i = 0; i < 6; i++) fm(o, { at: i * 0.06 + Math.random() * 0.04, f: rand(2200, 4800), ratio: 3.01, index: 1, idur: 0.05, dur: 0.25, vol: rand(0.05, 0.08), verb: 0.4, pan: rand(-0.5, 0.5) });
   },
   magic: (o) => {
     tone(o, { f: 380, f2: 1600, glide: 0.6, dur: 0.65, vol: 0.05, a: 0.1, vib: [6, 10], shape: 'sus', r: 0.25, verb: 0.4 });
@@ -808,14 +813,14 @@ const SFX = {
     whoosh(o, 0, 0.6, 600, 4000, 0.15);
   },
   flood_rush: (o) => {
-    noise(o, { dur: 1.6, type: 'lowpass', f: 400, f2: 2600, glide: 0.8, vol: 0.4, a: 0.45, shape: 'sus', r: 0.7, color: 'pink' });
-    noise(o, { dur: 1.6, type: 'lowpass', f: 260, vol: 0.4, color: 'brown', a: 0.3, shape: 'sus', r: 0.8 });
+    noise(o, { dur: 1.6, type: 'lowpass', f: 400, f2: 2600, glide: 0.8, vol: 0.32, a: 0.45, shape: 'sus', r: 0.7, color: 'pink' });
+    noise(o, { dur: 1.6, type: 'lowpass', f: 260, vol: 0.32, color: 'brown', a: 0.3, shape: 'sus', r: 0.8 });
     for (let i = 0; i < 10; i++) bub(o, 0.3 + Math.random() * 1.1, rand(250, 700), rand(0.04, 0.07), rand(-0.6, 0.6), rand(0.05, 0.09));
   },
   worm_squish: (o) => {
     for (const at of [0, 0.13]) {
-      noise(o, { at, dur: 0.12, type: 'bandpass', f: 900, f2: 380, q: 4, vol: 0.45, a: 0.01 });
-      tone(o, { at, f: 320, f2: 190, glide: 0.1, dur: 0.11, vol: 0.06, vib: [32, 25] });
+      noise(o, { at, dur: 0.12, type: 'bandpass', f: 900, f2: 380, q: 4, vol: 0.8, a: 0.01 });
+      tone(o, { at, f: 320, f2: 190, glide: 0.1, dur: 0.11, vol: 0.1, vib: [32, 25] });
     }
   },
   golden_shimmer: (o) => {
@@ -887,10 +892,10 @@ const LOOPS = {
         const f = 220 * Math.pow(2, x * 1.7);
         ramp(whine.osc.frequency, f, 0.08); ramp(shim.osc.frequency, f * 2.01, 0.08);
         ramp(whine.fl.frequency, f * 3, 0.08);
-        ramp(whine.amp.gain, 0.045 * Math.pow(x, 0.8), 0.08);
+        ramp(whine.amp.gain, 0.07 * Math.pow(x, 0.8), 0.08);
         ramp(shim.amp.gain, 0.02 * x, 0.08);
         ramp(vib.depth.gain, f * (0.004 + 0.02 * x), 0.1);
-        ramp(gritAmp.gain, 0.14 * x * x, 0.08);
+        ramp(gritAmp.gain, 0.2 * x * x, 0.08);
         ramp(gr.fl.frequency, 1800 + 2200 * x, 0.1);
         ramp(chopL.osc.frequency, 9 + 30 * x, 0.1);
       },
@@ -1023,7 +1028,7 @@ const LOOPS = {
     return {
       set(x) {
         v = x;
-        ramp(rush.amp.gain, 0.12 + 0.3 * x, 0.15); ramp(rush.fl.frequency, 300 + 1500 * x, 0.15);
+        ramp(rush.amp.gain, 0.1 + 0.22 * x, 0.15); ramp(rush.fl.frequency, 300 + 1500 * x, 0.15);
         ramp(foam.amp.gain, 0.04 + 0.2 * x, 0.15);
       },
       tick(t0, h) {
@@ -1260,12 +1265,12 @@ const TRACKS = {
     stepDur: 0.55, verb: 0.4, fadeIn: 3,
     step(tr, i, t) {
       const o = tr.o(t), notes = [84, 86, 88, 91, 93, 96];
-      if (chance(S.night ? 0.07 : 0.13)) {
+      if (chance(S.night ? 0.08 : 0.16)) {
         const j = (Math.random() * notes.length) | 0;
-        INS.musicbox(o, notes[j], 0.03, 0, 1.8, 0.4);
-        if (j >= 2 && chance(0.3)) INS.musicbox(o, notes[j - 2], 0.018, 0.01, 1.6, 0.4);
+        INS.musicbox(o, notes[j], 0.05, 0, 1.8, 0.4);
+        if (j >= 2 && chance(0.3)) INS.musicbox(o, notes[j - 2], 0.03, 0.01, 1.6, 0.4);
       }
-      if (i % 16 === 0 && chance(0.35)) INS.musicbox(o, pick([60, 67, 72]), 0.022, 0, 2.4, 0.5);
+      if (i % 16 === 0 && chance(0.35)) INS.musicbox(o, pick([60, 67, 72]), 0.035, 0, 2.4, 0.5);
     },
   },
 
@@ -1380,8 +1385,8 @@ const TRACKS = {
       }
       if (chance(night ? 0.07 : 0.14)) {
         const m = 74 + MINPENTA[(Math.random() * 5) | 0] + (chance(0.35) ? 12 : 0);
-        INS.glass(o, m, 0.045, 0, 4, 0.8);
-        if (chance(0.3)) INS.glass(o, m, 0.018, 0.9, 3, 0.9);
+        INS.glass(o, m, 0.055, 0, 4, 0.8);
+        if (chance(0.3)) INS.glass(o, m, 0.022, 0.9, 3, 0.9);
       }
       if (s === 4 && bar % 8 === 6 && chance(0.6)) {
         tone(o, { f: m2f(pick([26, 33])), dur: 7, type: 'triangle', vol: 0.08, a: 3, shape: 'sus', r: 3, verb: 0.3 });
@@ -1399,17 +1404,17 @@ const TRACKS = {
         if (bar % 4 === 0 || !st.prog) st.prog = pick(AQ_PROGS);
         st.ch = AQ_CH[st.prog[bar % 4]];
         const po = tr.o(t, null, 0.4);
-        for (const m of st.ch) INS.pad(po, m, sd * 6 + 0.8, night ? 0.012 : 0.016, night ? 500 : 850, 0, 0.8, 1.2, 'triangle');
+        for (const m of st.ch) INS.pad(po, m, sd * 6 + 0.8, night ? 0.016 : 0.02, night ? 500 : 850, 0, 0.8, 1.2, 'triangle');
         tone(tr.o(t), { f: m2f(st.ch[0] - 12), dur: 1.4, vol: 0.09, a: 0.02 });
       }
       const ch = st.ch;
       if (!ch) return;
       const o = tr.o(t);
-      if (!night || s % 2 === 0) INS.celesta(o, ch[[0, 2, 1, 2, 1, 2][s]] + 12, night ? 0.03 : 0.04);
+      if (!night || s % 2 === 0) INS.celesta(o, ch[[0, 2, 1, 2, 1, 2][s]] + 12, night ? 0.04 : 0.055);
       if ((s === 0 || s === 3) && chance(night ? 0.35 : 0.65)) {
         st.mi = Math.max(0, Math.min(AQ_MEL.length - 1, (st.mi ?? 3) + pick([-2, -1, 1, 2])));
         if (s === 0) st.mi = snapIdx(AQ_MEL, st.mi, ch.map((m) => m % 12));
-        INS.musicbox(o, AQ_MEL[st.mi], 0.045, 0, 2.0, 0.45);
+        INS.musicbox(o, AQ_MEL[st.mi], 0.06, 0, 2.0, 0.45);
       }
     },
   },

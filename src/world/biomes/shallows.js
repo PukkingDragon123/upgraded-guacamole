@@ -13,7 +13,7 @@ import { getProp } from '../../gfx/props.js';
 import {
   paint, dpack, lerpStops, gradientStrip, stopPalette, ditherPick, Blend, FogLayer, fillWith, drawWobble, makeRays,
   drawGlow, twinkle, Caustics, lumaMask, waveLine, waveRuns, Strands, Motes, Bubbles, Mask, ridge, todWeights,
-  voxelGround, quality, inRect,
+  voxelGround, quality, inRect, bladeSprites, SwayAnim, streakTile,
 } from '../scenery.js';
 
 const SKY = {
@@ -28,7 +28,7 @@ const OVERCAST = {
 };
 const WATER = {
   day: [[0, '#86f2e6'], [0.06, '#56dcdc'], [0.3, '#2db6d0'], [0.62, '#1b8ec0'], [1, '#146ea6']],
-  dusk: [[0, '#6ac0c8'], [0.08, '#3c9ab8'], [0.4, '#2a6c9e'], [1, '#1c3e78']],
+  dusk: [[0, '#f2b48a'], [0.03, '#b0a8a8'], [0.1, '#4a92b4'], [0.42, '#2c649c'], [1, '#1e3a74']],
   night: [[0, '#3a86a8'], [0.1, '#2a6e98'], [0.5, '#1c5088'], [1, '#12346c']],
 };
 const RIDDLES = [
@@ -127,26 +127,33 @@ function whaleFrames(L = 230) {
   return frames;
 }
 
-function turtleFrames(L = 64) {
+function turtleFrames(L = 70) {
   const frames = [];
-  for (let f = 0; f < 8; f++) {
-    const ph = (f / 8) * TAU;
-    const m = new Mask(L + 30, L);
-    const cx = L * 0.5 + 6, cy = L * 0.5;
-    // shell dome + plastron
-    m.ellipse(cx, cy, L * 0.36, L * 0.2);
-    m.rect(cx - L * 0.33, cy, L * 0.66, L * 0.06);
-    // head & neck
-    m.line(cx + L * 0.3, cy + 1, cx + L * 0.43, cy - 1, L * 0.07);
-    m.ellipse(cx + L * 0.47, cy - 2, L * 0.085, L * 0.07);
-    // front flipper: long sweeping blade
-    const a = Math.sin(ph) * 0.9 - 0.3;
-    const bx = cx + L * 0.12, by = cy + L * 0.08;
-    const tx = bx - Math.cos(a) * L * 0.42, ty = by + Math.sin(a) * L * 0.42 + L * 0.06;
-    m.line(bx, by, tx, ty, L * 0.06, 1, L * 0.02);
+  for (let f = 0; f < 12; f++) {
+    const ph = (f / 12) * TAU;
+    const m = new Mask(L * 1.5, L * 1.1);
+    const cx = L * 0.62, cy = L * 0.45;
+    // domed shell (flat plastron)
+    for (let x = -L * 0.38; x <= L * 0.38; x++) {
+      const u = x / (L * 0.38);
+      const top = cy - Math.sqrt(Math.max(0, 1 - u * u)) * L * 0.2 - (1 - u * u) * L * 0.02;
+      const bot = cy + L * 0.05 - Math.abs(u) * L * 0.03;
+      for (let y = Math.round(top); y < Math.round(bot); y++) m.set(cx + x, y, 1);
+    }
+    // head on a short neck
+    m.line(cx + L * 0.34, cy + L * 0.01, cx + L * 0.46, cy - L * 0.02, L * 0.06);
+    m.ellipse(cx + L * 0.5, cy - L * 0.03, L * 0.08, L * 0.065);
+    // front flipper: a long wing that sweeps down and back
+    const a = 0.25 + (Math.sin(ph) * 0.5 + 0.5) * 1.05;
+    const bx = cx + L * 0.2, by = cy + L * 0.04;
+    const len = L * 0.5;
+    const tx = bx - Math.cos(a) * len, ty = by + Math.sin(a) * len;
+    m.line(bx, by, (bx + tx) / 2 + 2, (by + ty) / 2, L * 0.075, 1, L * 0.05);
+    m.line((bx + tx) / 2 + 2, (by + ty) / 2, tx, ty, L * 0.05, 1, L * 0.012);
     // rear flipper
-    const b2 = Math.sin(ph + 1.4) * 0.5;
-    m.line(cx - L * 0.3, cy + L * 0.06, cx - L * 0.44, cy + L * 0.1 + b2 * 6, L * 0.045, 1, L * 0.02);
+    const b2 = Math.sin(ph + 2) * 0.35;
+    m.line(cx - L * 0.3, cy + L * 0.04, cx - L * 0.46, cy + L * 0.1 + b2 * L * 0.12, L * 0.045, 1, L * 0.015);
+    m.poly([[cx - L * 0.36, cy - L * 0.02], [cx - L * 0.45, cy + L * 0.01], [cx - L * 0.36, cy + L * 0.04]]);
     frames.push(m.toCanvas(() => pack('#ffffff')));
   }
   return frames;
@@ -194,7 +201,7 @@ export class ShallowsBiome extends Biome {
     const rh = H - this.base;
     this.raysA = new FogLayer(makeRays(W, rh, { seed: 4, count: 8, sunX: W * 0.78, sunY: -H * 0.8, minW: 10, maxW: 34, len: 0.95, color: '#ffffff', alpha: 0.5, levels: 5 }));
     this.raysB = new FogLayer(makeRays(W, rh, { seed: 9, count: 14, sunX: W * 0.74, sunY: -H * 0.7, minW: 3, maxW: 9, len: 0.75, color: '#ffffff', alpha: 0.6, levels: 4 }));
-    this.caustics = new Caustics({ tw: 192, th: 60, cx: 9, cy: 4, seed: 11, color: '#fffbe2', thick: 1.0 });
+    this.caustics = new Caustics({ tw: 150, th: 44, cx: 11, cy: 5, seed: 11, color: '#fffbe2', thick: 0.65, core: 0.75, rim: 0.22 });
     this.shimmer = this.makeShimmer();
     this.buildLife();
     this.fresh = true;
@@ -254,8 +261,8 @@ export class ShallowsBiome extends Biome {
       this.rainClouds.push({ x: cr.float(0, W), y: cr.int(-6, Math.max(0, base * 0.25)), v: cr.float(4, 9), spr: cloudSprite(300 + i, w, ch, pals.rain), w });
     }
     this.gulls = [0, 1, 2].map((i) => ({ x: cr.float(0, W), y: cr.float(8, base * 0.55), v: cr.float(10, 18) * (i % 2 ? -1 : 1), ph: cr.float(0, TAU) }));
-    this.rainLines = [];
-    for (let i = 0; i < 90; i++) this.rainLines.push({ x: cr.float(0, W), y: cr.float(0, h), l: cr.int(3, 6), v: cr.float(140, 200) });
+    this.rainTile = { day: streakTile(96, 48, 22, '#dce6f0', { seed: 3, alpha: 0.8 }), night: streakTile(96, 48, 22, '#7a8aa0', { seed: 3, alpha: 0.8 }) };
+    this.rainTile2 = streakTile(128, 64, 14, '#ffffff', { seed: 8, len: [4, 8], alpha: 0.6 });
   }
 
   drawSunMoon(g, kind, s) {
@@ -348,20 +355,21 @@ export class ShallowsBiome extends Biome {
     const backY = H - 72;
     const dockX = W - 270;
     const g = voxelGround(W, H, {
-      vs: 2, backY, baseH: 5, ny: 20, pitch: 27,
+      vs: 2, backY, baseH: 5, ny: 20, pitch: 27, render: { depthLines: false, edges: 0.6, sideEdges: 0 },
       height: (x, z) => {
         const sx = x * 2;
         let h = 5 + (fbm2(sx * 0.0065, z * 0.025, 3, 11) - 0.5) * 7;
         h += (1 - smoothstep(0, W * 0.14, sx)) * 3.5;
         h += smoothstep(W * 0.24, W * 0.3, sx) * (1 - smoothstep(W * 0.42, W * 0.5, sx)) * 2.5 * (1 - smoothstep(10, 50, z));
         h = lerp(h, 5.5 + (fbm2(sx * 0.01, z * 0.03, 2, 4) - 0.5) * 2.2, smoothstep(dockX - 40, dockX + 20, sx));
-        const rp = Math.sin(z * 1.2 + fbm2(sx * 0.018, z * 0.05, 2, 7) * 5.5 + sx * 0.025);
-        if (rp > 0.45) h += 1;
+        const rp = Math.sin(z * 0.62 + fbm2(sx * 0.016, z * 0.04, 2, 7) * 6 + Math.sin(sx * 0.031) * 1.3);
+        const patchy = fbm2(sx * 0.008 + 3, z * 0.03, 2, 8);
+        if (rp > 0.62 && patchy > 0.42) h += 1;
         return h;
       },
       palette: (m) => ({
-        sand: m.color('#e4c992', { jitter: 0.16 }), light: m.color('#efdaa8', { jitter: 0.14 }), warm: m.color('#d8b882', { jitter: 0.18 }),
-        dark: m.color('#c2a274', { jitter: 0.2 }), algae: m.color('#aebc84', { jitter: 0.22 }), pink: m.color('#ecc2a8', { jitter: 0.15 }),
+        sand: m.color('#e2c690', { jitter: 0.1 }), light: m.color('#ecd6a4', { jitter: 0.1 }), warm: m.color('#d8b882', { jitter: 0.12 }),
+        dark: m.color('#c2a274', { jitter: 0.12 }), algae: m.color('#aebc84', { jitter: 0.22 }), pink: m.color('#ecc2a8', { jitter: 0.15 }),
         stone: m.color('#8e8c9e', { jitter: 0.3 }), stone2: m.color('#6e6a84', { jitter: 0.3 }), shell: m.color('#fff4e6', { jitter: 0.05 }),
         shellP: m.color('#ffb2b8', { jitter: 0.08 }), star: m.color('#ff7448', { jitter: 0.1 }), star2: m.color('#b06aff', { jitter: 0.1 }), grass: m.color('#5aa05a', { jitter: 0.2 }),
       }),
@@ -408,7 +416,6 @@ export class ShallowsBiome extends Biome {
       ['coral_branch', 0.458, 0.02, 0.8, 3], ['coral_staghorn', 0.425, 0.14, 0.85, 1], ['coral_brain', 0.36, 0.3, 0.85, 0],
       ['coral_brain', 0.468, 0.3, 0.62, 2], ['sunken_boat', 0.655, 0.0, 0.88, 0], ['message_bottle', 0.6, 0.42, 0.8, 0],
       ['starfish_rock', 0.71, 0.34, 0.62, 0], ['coral_fan', 0.265, 0.34, 0.5, 2], ['rock_small', 0.94, 0.04, 0.7, 0],
-      ['coral_tube', 0.985, 0.0, 0.45, 0],
     ];
     const placed = P.map(([id, xf, zf, scale, variant]) => {
       const p = getProp(id, { scale, variant });
@@ -426,14 +433,25 @@ export class ShallowsBiome extends Biome {
     const bed = makeCanvas(W, H - top);
     const bg = ctxOf(bed);
     bg.drawImage(g.canvas, g.x, g.y - top);
-    for (const q of placed) bg.drawImage(q.p.canvas, q.x - q.p.ox, q.y - q.p.oy - top);
-    // the hidden cave: a dark crevice at the foot of the big boulder
+    // distance haze over the back rows of sand
+    const fy = Math.round(backY - top - 8);
+    const hz = bg.createLinearGradient(0, fy, 0, fy + 26);
+    hz.addColorStop(0, 'rgba(70,170,200,0.55)');
+    hz.addColorStop(1, 'rgba(70,170,200,0)');
+    bg.globalCompositeOperation = 'source-atop';
+    bg.fillStyle = hz;
+    bg.fillRect(0, fy, W, 26);
+    bg.globalCompositeOperation = 'source-over';
     const rock = placed.find((q) => q.id === 'rock_big');
-    const cave = { x: rock.x - 16, y: rock.y - 14 };
-    this.paintCave(bg, cave.x, cave.y - top);
-    this.cave = { x: cave.x - 7, y: cave.y - 6, w: 15, h: 12, cx: cave.x, cy: cave.y };
+    const cave = { x: rock.x + 4, y: rock.y - 8 };
+    for (const q of placed) {
+      bg.drawImage(q.p.canvas, q.x - q.p.ox, q.y - q.p.oy - top);
+      // the hidden cave: a dark crevice at the foot of the big boulder
+      if (q === rock) this.paintCave(bg, cave.x, cave.y - top);
+    }
+    this.cave = { x: cave.x - 6, y: cave.y - 5, w: 12, h: 10, cx: cave.x, cy: cave.y };
     this.bed = bed;
-    this.bedMask = lumaMask(bed, { gamma: 1.8, gain: 1.5 });
+    this.bedMask = lumaMask(bed, { gamma: 2.2, gain: 1.15 });
     // secrets & interactive props
     const bottle = placed.find((q) => q.id === 'message_bottle');
     this.bottle = { x: bottle.x - 14, y: bottle.y - 14, w: 28, h: 16, cx: bottle.x, cy: bottle.y - 8 };
@@ -447,21 +465,21 @@ export class ShallowsBiome extends Biome {
   }
 
   paintCave(g, cx, cy) {
-    const m = new Mask(22, 16);
-    m.ellipse(11, 9, 8, 6.5);
-    m.ellipse(7, 11, 5, 4);
-    m.ellipse(15, 10, 4, 5);
-    const c = m.toCanvas((x, y, v, up, left, right) => {
-      if (up <= 1) return pack('#3a3048');
-      const d = Math.hypot(x - 11, (y - 10) * 1.3);
-      return pack(d < 3.5 ? '#04040a' : d < 6 ? '#0e0c18' : '#1e1a2a');
+    const m = new Mask(16, 12);
+    m.ellipse(8, 7, 5.5, 4.2);
+    m.ellipse(5.5, 8.5, 3.5, 2.8);
+    m.ellipse(10.5, 8, 3, 3.4);
+    const c = m.toCanvas((x, y, v, up) => {
+      if (up <= 1) return pack('#4a4460');
+      const d = Math.hypot(x - 8, (y - 8) * 1.3);
+      return pack(d < 2.5 ? '#0c1018' : d < 4.5 ? '#18202c' : '#2a2c40');
     });
-    g.drawImage(c, Math.round(cx - 11), Math.round(cy - 9));
-    // moss lip
-    g.fillStyle = '#4a8a5a';
-    for (const [dx, dy] of [[-8, -6], [-6, -7], [-3, -8], [0, -8], [2, -7], [5, -7], [7, -6]]) g.fillRect(Math.round(cx + dx), Math.round(cy + dy), 2, 1);
-    g.fillStyle = '#7ac07a';
-    for (const [dx, dy] of [[-5, -8], [1, -9], [6, -8]]) g.fillRect(Math.round(cx + dx), Math.round(cy + dy), 1, 1);
+    g.drawImage(c, Math.round(cx - 8), Math.round(cy - 7));
+    // mossy lip that half hides it
+    g.fillStyle = '#3e7a56';
+    for (const [dx, dy] of [[-6, -5], [-4, -6], [-1, -6], [2, -6], [4, -5]]) g.fillRect(Math.round(cx + dx), Math.round(cy + dy), 2, 1);
+    g.fillStyle = '#6ab474';
+    for (const [dx, dy] of [[-3, -7], [1, -7], [5, -6]]) g.fillRect(Math.round(cx + dx), Math.round(cy + dy), 1, 1);
   }
 
   makeHeap() {
@@ -522,10 +540,13 @@ export class ShallowsBiome extends Biome {
     // --- mid: sandy bank with real props shrunk & fogged
     const yC = H - 150, hC = 150;
     const mC = new Mask(LW, hC);
-    const rC = ridge(LW, 46, 9, 0.009, 2.2, 3);
+    const rC = ridge(LW, 56, 16, 0.012, 2.2, 4, 0.2);
     mC.below((x) => rC[x]);
-    const palC = stopPalette([[0, '#8a7a68'], [0.6, '#c8b088'], [1, '#e8d4a6']], 5);
-    const cC = mC.toCanvas((x, y, v, up) => (up <= 1 ? pack('#f4e4bc') : ditherPick(palC, 0.85 - Math.min(1, up / 30) * 0.6 + (fbm2(x * 0.1, y * 0.2, 2, 9) - 0.5) * 0.3, x, y)));
+    for (let i = 0; i < 26; i++) { const bx = r.float(0, LW); mC.ellipse(bx, rC[Math.round(bx)] + 4, r.float(8, 24), r.float(5, 12)); }
+    for (let i = 0; i < 12; i++) { const bx = r.float(0, LW); mC.branch(bx, rC[Math.round(bx)] + 3, r.float(-0.2, 0.2), r.float(8, 14), r.float(1.4, 2.2), 2, r, 1, 0.7); }
+    for (let i = 0; i < 9; i++) { let x = r.float(0, LW), y = rC[Math.round(x)] + 2; for (let j = 0; j < 14; j++) { const nx = x + Math.sin(j * 0.5 + i) * 1.2; mC.line(x, y, nx, y - 3, 1); x = nx; y -= 3; } }
+    const palC = stopPalette([[0, '#3e5a6a'], [0.5, '#6a8a88'], [1, '#a8b49a']], 6);
+    const cC = mC.toCanvas((x, y, v, up) => (up <= 1 ? pack('#cfe0c8') : ditherPick(palC, 0.85 - Math.min(1, up / 26) * 0.7 + (fbm2(x * 0.09, y * 0.12, 2, 9) - 0.5) * 0.45, x, y)));
     const gC = ctxOf(cC);
     const mids = [['rock_arch', 0.13, 0.6, 0], ['coral_fan', 0.29, 0.55, 1], ['coral_branch', 0.51, 0.6, 2], ['coral_staghorn', 0.6, 0.6, 0], ['rock_big', 0.79, 0.55, 0], ['coral_branch', 0.885, 0.55, 0], ['coral_fan', 0.97, 0.5, 2], ['coral_tube', 0.04, 0.55, 1]];
     for (const [id, xf, sc, v] of mids) {
@@ -538,7 +559,7 @@ export class ShallowsBiome extends Biome {
     // giants
     this.whale = whaleFrames(230);
     this.whaleL = this.whale.map(flipCanvas);
-    this.turtle = turtleFrames(60);
+    this.turtle = turtleFrames(70);
     this.turtleL = this.turtle.map(flipCanvas);
     this.giant = { kind: 'turtle', x: W * 0.62, y: H * 0.42, dir: -1, v: 11, ph: 0 };
     this.giantT = 0;
@@ -547,36 +568,61 @@ export class ShallowsBiome extends Biome {
   buildLife() {
     const W = this.W, H = this.H, g = this.ground;
     const r = new RNG(9);
-    // tall kelp (behind the seabed), seaweed & sea grass (in front), anemone tentacles
+    // tall kelp (behind the seabed; dynamic so storms can bend it), pre-rendered swaying tufts & anemones
     this.kelp = new Strands();
-    const kelpCols = ['#3e5a24', '#5a7a2a', '#7e9a36', '#a8b84a'];
-    for (const [xf, n, a] of [[0.035, 34, 0.9], [0.075, 40, 0.92], [0.12, 28, 0.85], [0.82, 30, 0.8], [0.875, 38, 0.82], [0.935, 26, 0.78], [0.56, 18, 0.7]]) {
+    const blades = bladeSprites({ len: 13, w: 2.6, cols: ['#36561f', '#52742a', '#749634', '#9cb446', '#c4d064'], curl: 0.5, outline: 0.5 });
+    const bladesFar = bladeSprites({ len: 11, w: 2.2, cols: ['#2e5a3a', '#3e6e42', '#52844a', '#6a9a56'], curl: 0.5, outline: 0.35 });
+    for (const [xf, n, far] of [[0.03, 30, 1], [0.072, 38, 0], [0.118, 26, 1], [0.835, 28, 1], [0.878, 36, 0], [0.932, 24, 1], [0.565, 16, 1]]) {
       const x = Math.round(xf * W);
-      this.kelp.add({ x, y: g.floor[x] + 3, n, seg: 4, w: 3, amp: 0.16, speed: 0.7 + r.float(0, 0.3), phase: r.float(0, TAU), wave: 0.22, lean: r.float(-0.08, 0.08), cols: kelpCols, out: '#1a2e1c', leaf: 'kelp', leafEvery: 3, leafLen: 6, leafCol: ['#4a6a26', '#6e8e30', '#94ac40', '#bcc858'], bulb: '#c8b84a', bulbEvery: 5, alpha: a, taper: 0.3 });
+      this.kelp.add({ x, y: g.floor[x] + 4, n, seg: 4, w: 2, amp: 0.15, speed: 0.6 + r.float(0, 0.3), phase: r.float(0, TAU), wave: 0.2, lean: r.float(-0.06, 0.06),
+        cols: far ? ['#2a4a32', '#3a5e3a'] : ['#2c461c', '#44662a', '#5a7e30'], out: far ? '#1a3428' : '#162a16', blades: far ? bladesFar : blades, leafEvery: 2,
+        bulb: far ? null : '#d0b850', bulbEvery: 6, alpha: far ? 0.8 : 1, hl: false });
     }
-    this.weed = new Strands();
+    // sea grass & seaweed tufts
+    this.tufts = [];
     const weedSets = [
-      ['#1e6a46', '#2e8a52', '#4aaa5e', '#86d27a'], ['#6a2a5a', '#943a6e', '#c4588a', '#f08ab0'], ['#7a4a1e', '#a8682a', '#d0903a', '#f0c060'],
+      ['#1e6a46', '#2e8a52', '#4aaa5e', '#86d27a'], ['#2a7a3a', '#3e9a46', '#62bc5a', '#a2e07e'], ['#6a2a5a', '#943a6e', '#c4588a', '#f08ab0'], ['#7a4a1e', '#a8682a', '#d0903a', '#f0c060'],
     ];
-    const spots = [[0.07, 0.36], [0.15, 0.4], [0.2, 0.3], [0.285, 0.12], [0.322, 0.3], [0.4, 0.2], [0.447, 0.36], [0.505, 0.4], [0.585, 0.1], [0.62, 0.32], [0.735, 0.14], [0.77, 0.38], [0.83, 0.32], [0.9, 0.4], [0.96, 0.28]];
+    const spots = [[0.06, 0.38], [0.15, 0.4], [0.2, 0.3], [0.248, 0.16], [0.285, 0.12], [0.322, 0.3], [0.4, 0.2], [0.447, 0.36], [0.505, 0.42], [0.585, 0.1], [0.62, 0.32], [0.735, 0.14], [0.77, 0.38], [0.83, 0.32], [0.9, 0.4], [0.96, 0.28], [0.69, 0.44]];
     for (const [xf, zf] of spots) {
       const x0 = Math.round(xf * W), y0 = Math.round(g.surfaceY(x0, zf)) + 1;
-      const set = r.pick(weedSets.slice(0, r.chance(0.7) ? 1 : 3));
-      const tall = r.chance(0.35);
-      const k = r.int(3, 6);
+      const set = weedSets[r.chance(0.75) ? r.int(0, 1) : r.int(2, 3)];
+      const tall = r.chance(0.4);
+      const st = new Strands();
+      const k = r.int(4, 7);
       for (let i = 0; i < k; i++) {
-        this.weed.add({ x: x0 + r.int(-5, 5), y: y0 + r.int(-1, 1), n: tall ? r.int(8, 14) : r.int(4, 8), seg: 2, w: tall ? 2 : 1, amp: 0.3, speed: 1.4 + r.float(0, 0.6), phase: r.float(0, TAU), wave: 0.5, lean: r.float(-0.35, 0.35), cols: set, out: tall ? '#0e2a24' : null, hl: false, taper: 0.2, zf });
+        const lean = (i / (k - 1) - 0.5) * 0.9 + r.float(-0.15, 0.15);
+        st.add({ x: x0 + Math.round(lean * 8) + r.int(-1, 1), y: y0 + r.int(-1, 1), n: tall ? r.int(8, 13) : r.int(4, 8), seg: 2, w: tall ? 2 : 1, amp: 0.28, speed: 1.6, sec: 2, phase: r.float(0, TAU), wave: 0.5, lean, curl: lean * 0.4,
+          cols: set, out: tall ? '#0e2a24' : null, hl: false, taper: 0.3 });
       }
+      this.tufts.push({ anim: new SwayAnim(st, { frames: 16 }), off: r.int(0, 15), zf });
     }
     this.anemones = [];
-    for (const [xf, zf, cols, tip, glow] of [[0.385, 0.38, ['#a8306a', '#d84a8a', '#ff7ab0', '#ffc0dc'], '#fff0f6', '#ff7ab0'], [0.18, 0.44, ['#1e7a8a', '#2aa8b4', '#5ae0e0', '#c0fff8'], '#ffffff', '#5affea'], [0.79, 0.44, ['#a8582a', '#e07a3a', '#ffa860', '#ffe0b0'], '#fff4e0', '#ffb070']]) {
+    for (const [xf, zf, cols, tip, glow, baseC] of [
+      [0.385, 0.4, ['#b03272', '#de4e92', '#ff7cb4', '#ffb4d6'], '#fff0f6', '#ff7ab0', ['#5a1e46', '#8a3462', '#b4507e']],
+      [0.18, 0.44, ['#1e8090', '#2aaab6', '#5ae2e2', '#b0fff6'], '#ffffff', '#5affea', ['#3e2a5a', '#5a3e7a', '#7a5a9a']],
+      [0.79, 0.44, ['#b0602a', '#e2803a', '#ffaa5e', '#ffdcac'], '#fff4e0', '#ffb070', ['#5a2e1e', '#7a4a2a', '#9a6a3a']]]) {
       const x = Math.round(xf * W), y = Math.round(g.surfaceY(x, zf)) + 1;
-      const s = new Strands();
-      for (let i = 0; i < 15; i++) {
-        const a = -1.15 + (i / 14) * 2.3;
-        s.add({ x: x + Math.round(a * 4.5), y: y - 6, n: 5 + (i % 3), seg: 2, w: 2, amp: 0.4, speed: 1.6, phase: i * 0.5, wave: 0.6, lean: a * 0.85, cols, out: '#3a1030', hl: false, tip, tipR: 1 });
+      const st = new Strands();
+      const N = 17;
+      for (let i = 0; i < N; i++) {
+        const u = i / (N - 1) - 0.5;
+        const lean = u * 2.3 + r.float(-0.08, 0.08);
+        st.add({ x: x + Math.round(u * 10), y: y - 7 + Math.round(Math.abs(u) * 3), n: 5 + ((i * 7) % 3), seg: 2, w: 2, amp: 0.32, speed: 1.5, sec: 2, phase: i * 0.45, wave: 0.6, lean, curl: lean * 0.45,
+          cols, out: null, hl: false, tip, tipR: 1 });
       }
-      this.anemones.push({ x, y, s, glow, base: cols });
+      const under = (gg) => {
+        for (let yy = -8; yy <= 0; yy++) {
+          const hw = Math.round(6 - (yy + 8) * 0.12 + (yy > -2 ? 1 : 0));
+          gg.fillStyle = baseC[yy < -6 ? 2 : yy < -2 ? 1 : 0];
+          gg.fillRect(x - hw, y + yy, hw * 2 + 1, 1);
+          gg.fillStyle = baseC[2];
+          gg.fillRect(x - hw + 1, y + yy, 2, 1);
+        }
+        gg.fillStyle = '#2a1424';
+        gg.fillRect(x - 7, y + 1, 15, 1);
+      };
+      this.anemones.push({ x, y, glow, anim: new SwayAnim(st, { frames: 16, under, bounds: { x0: x - 9, y0: y - 9, x1: x + 9, y1: y + 2 } }), off: r.int(0, 15) });
     }
     // critters
     this.crabSpr = [crabFrames('#e8603a'), crabFrames('#f0a040')];
@@ -628,7 +674,6 @@ export class ShallowsBiome extends Biome {
     }
     for (const d of this.drops) d.t += dt;
     this.drops = this.drops.filter((d) => d.t < 0.6);
-    for (const l of this.rainLines) { l.y += l.v * dt; l.x -= l.v * dt * 0.25 * (1 + wx.storm); if (l.y > this.skyH) { l.y -= this.skyH + 6; l.x = Math.random() * W; } if (l.x < 0) l.x += W; }
     for (const cl of this.clouds) { cl.x += cl.v * dt * (1 + wx.storm * 2); if (cl.x > W + 10) cl.x = -cl.w - 10; }
     for (const cl of this.rainClouds) { cl.x += cl.v * dt * (1 + wx.storm); if (cl.x > W + 10) cl.x = -cl.w - 10; }
     for (const gl of this.gulls) { gl.x += gl.v * dt; gl.ph += dt * 6; if (gl.x > W + 20) gl.x = -20; if (gl.x < -20) gl.x = W + 20; }
@@ -743,17 +788,18 @@ export class ShallowsBiome extends Biome {
       g.globalAlpha = 1;
     }
     if (wx.storm > 0.05) { g.fillStyle = rgba('#141c26', wx.storm * 0.35); g.fillRect(0, 0, W, h); }
-    // rain streaks
+    // rain streaks (two scrolling sheets)
     if (wx.rain > 0.05) {
-      g.fillStyle = tod.night > 0.5 ? '#6a7a90' : '#d4e0ec';
-      g.globalAlpha = wx.rain * 0.55;
-      const n = Math.round(this.rainLines.length * wx.rain * quality(env));
-      for (let i = 0; i < n; i++) {
-        const l = this.rainLines[i];
-        const x = Math.round(l.x), y = Math.round(l.y);
-        for (let j = 0; j < l.l; j++) g.fillRect(x - Math.floor(j / 3), y + j, 1, 1);
+      const sp = 1 + wx.storm * 0.6;
+      for (const [tile, a, v] of [[tod.night > 0.5 ? this.rainTile.night : this.rainTile.day, 0.6, 170], [this.rainTile2, 0.3 * (1 - tod.night * 0.6), 230]]) {
+        const oy = Math.floor((t * v * sp) % tile.height), ox = Math.floor((oy / 3) % tile.width);
+        g.save();
+        g.globalAlpha = wx.rain * a;
+        g.translate(-ox, oy);
+        g.fillStyle = g.createPattern(tile, 'repeat');
+        g.fillRect(ox, -oy, W, h);
+        g.restore();
       }
-      g.globalAlpha = 1;
     }
     // lightning
     if (this.flash > 0.01) {
@@ -803,7 +849,7 @@ export class ShallowsBiome extends Biome {
     drawWobble(ctx, this.farA.tint(water, 0.72, key), -this.pad + px * 1.5, this.farAY + py, t, wob, 3, 0.9, 0.07);
     this.drawGiant(ctx);
     drawWobble(ctx, this.farB.tint(water, 0.5, key), -this.pad + px * 3, this.farBY + py * 1.5, t + 2, wob, 3, 1.1, 0.09);
-    ctx.drawImage(this.mid.tint(water, 0.3, key), Math.round(-this.pad + px * 6), Math.round(this.midY + py * 2.5));
+    ctx.drawImage(this.mid.tint(water, 0.42, key), Math.round(-this.pad + px * 6), Math.round(this.midY + py * 2.5));
     // weather murk
     const murk = wx.cloud * 0.08 + wx.rain * 0.14 + wx.storm * 0.1;
     if (murk > 0.01) { ctx.fillStyle = rgba(tod.night > 0.5 ? '#0a1424' : '#5a6c7c', murk); ctx.fillRect(0, Math.max(0, top), W, H - Math.max(0, top)); }
@@ -901,20 +947,12 @@ export class ShallowsBiome extends Biome {
     this.kelp.draw(ctx, t, Math.sin(t * 0.25) * 0.05 + wx.storm * 0.18);
     ctx.drawImage(this.bed, 0, this.bedY);
     // caustics
-    const ca = (tod.day * 0.75 + tod.dusk * 0.45 + tod.night * 0.22) * (0.2 + wx.clear * 0.8);
+    const ca = (tod.day * 0.5 + tod.dusk * 0.32 + tod.night * 0.16) * (0.2 + wx.clear * 0.8);
     if (q >= 0.75 || ca > 0.3) this.caustics.draw(ctx, this.bedMask, 0, this.bedY, t, ca, { fps: 8, drift: 4 });
     this.drawCastle(ctx);
     // anemones, seaweed, crabs
-    for (const a of this.anemones) {
-      ctx.fillStyle = '#3a1030';
-      ctx.fillRect(a.x - 7, a.y - 7, 15, 8);
-      ctx.fillStyle = a.base[0];
-      ctx.fillRect(a.x - 6, a.y - 6, 13, 6);
-      ctx.fillStyle = a.base[1];
-      ctx.fillRect(a.x - 5, a.y - 6, 9, 2);
-      a.s.draw(ctx, t, Math.sin(t * 0.4 + a.x) * 0.1);
-    }
-    this.weed.draw(ctx, t, Math.sin(t * 0.3) * 0.08 + wx.storm * 0.25);
+    for (const a of this.anemones) a.anim.draw(ctx, t * (1 + wx.storm * 0.6), a.off);
+    for (const tf of this.tufts) tf.anim.draw(ctx, t * (1 + wx.storm * 0.8), tf.off);
     for (const cr of this.crabs) {
       const y = Math.round(this.ground.surfaceY(cr.x, cr.zf));
       const spr = this.crabSpr[cr.kind][cr.state === 'walk' ? 1 + (Math.floor(cr.ft) % 2) : 0];
@@ -998,7 +1036,7 @@ export class ShallowsBiome extends Biome {
     const wx = this.wx;
     let dark = tod.night * 0.52 + tod.dusk * 0.14 + wx.cloud * 0.06 + wx.rain * 0.1 + wx.storm * 0.16;
     dark *= 1 - this.flash * 0.6;
-    let tint = qmix('#8a5a80', '#1e2c6a', tod.night / Math.max(0.001, tod.night + tod.dusk));
+    let tint = qmix('#b06a64', '#1e2c6a', tod.night / Math.max(0.001, tod.night + tod.dusk));
     tint = qmix(tint, '#3c4a5c', clamp01((wx.rain * 0.5 + wx.storm * 0.4) * (1 - tod.night * 0.5)));
     const lights = [];
     if (dark > 0.04) {
@@ -1011,9 +1049,8 @@ export class ShallowsBiome extends Biome {
       else lights.push({ x: this.castle.x + 4, y: this.castle.y - 16, r: 30, color: '#ffe27a', a: 0.5 * n + 0.15 });
       lights.push({ x: this.lantern.x, y: this.lantern.y, r: 44, color: '#ffc870', a: 0.7 * n });
       if (this.secrets().cave) lights.push({ x: this.cave.cx, y: this.cave.cy, r: 22, color: '#7affd8', a: 0.5 * n + 0.1 });
-      if (n > 0.3) for (let i = 0; i < 6; i++) { const p = this.glowPlankton.list[i]; lights.push({ x: p.x, y: p.y, r: 20, color: '#5affe0', a: 0.35 * n }); }
     }
-    return { dark: clamp(dark, 0, 0.75), tint, lights };
+    return { dark: clamp(dark, 0, 0.64), tint, lights };
   }
 
   // ------------------------------------------------------------------ secrets

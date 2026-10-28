@@ -12,7 +12,7 @@ import { computeStats, SKILL_BY_ID, skillStatus } from './skills.js';
 import { BAITS, RELEASE_VALUE, CATCH_BONUS } from './shopdata.js';
 import { Particles } from '../gfx/particles.js';
 import { drawText } from '../gfx/font.js';
-import { registerUiIcons, getUiIcon } from '../gfx/uiicons.js';
+import { registerUiIcons, getUiIcon, CURSOR_HOTSPOT } from '../gfx/uiicons.js';
 import { getMiniIcon } from '../desktop/icons.js';
 import { Clock } from '../world/clock.js';
 import { Ocean } from '../world/ocean.js';
@@ -641,8 +641,8 @@ export class Game {
     else if (this.layer === 'icon' || this.layer === 'box' || this.ui.dockHover >= 0) name = 'cursor_hand';
     if (this.fishing.fighting) name = 'cursor_reel';
     const spr = getUiIcon(name) || getUiIcon('arrow_u');
-    if (name === 'cursor_reel') ctx.drawImage(spr, x - Math.floor(spr.width / 2), y - Math.floor(spr.height / 2));
-    else ctx.drawImage(spr, x - (name === 'cursor' ? 0 : 3), y);
+    const hs = CURSOR_HOTSPOT[name] || [0, 0];
+    ctx.drawImage(spr, x - hs[0], y - hs[1]);
   }
 
   // ------------------------------------------------------------------ loop

@@ -4,9 +4,8 @@
 //   page 2: surfaces (wood, paper, glass, bottle, sign) & buttons in every style/state
 //   page 3: widgets (sliders, toggles, bars, tabs, bubbles, stamps, frames, windows, tooltip, taskbar)
 //   page 4: a composed desktop scene
-import { ctxOf, makeCanvas } from '../core/canvas.js';
+import { ctxOf } from '../core/canvas.js';
 import { drawText } from '../gfx/font.js';
-import { bayer } from '../core/math.js';
 import { getUiIcon, registerUiIcons, UI_ICON_NAMES, CURSOR_NAMES } from '../gfx/uiicons.js';
 import { APPS, getAppIcon, getMiniIcon, fileTypeInfo, FILE_ICON_IDS, ICON_IDS } from '../desktop/icons.js';
 import {
@@ -73,26 +72,26 @@ function pageIcons(g) {
     g.drawImage(getAppIcon(id, { state: st }), x, 344, 64, 64);
   });
   // minis
-  label(g, 'MINI 14X14 (1X / 2X / CHEWED)', 620, 334, { align: 'left' });
+  label(g, 'MINI 14X14: 1X + CHEWED, THEN 2X', 620, 334, { align: 'left' });
   ICON_IDS.forEach((id, i) => {
-    const x = 620 + (i % 9) * 36, y = 346 + Math.floor(i / 9) * 46;
+    const x = 620 + (i % 9) * 36, y = 344 + Math.floor(i / 9) * 18;
     g.drawImage(getMiniIcon(id), x, y);
     g.drawImage(getMiniIcon(id, { state: id === 'trash' ? 'full chewed' : 'chewed' }), x + 16, y);
-    g.drawImage(getMiniIcon(id), x, y + 16, 28, 28);
   });
+  ICON_IDS.forEach((id, i) => g.drawImage(getMiniIcon(id), 620 + (i % 9) * 36, 382 + Math.floor(i / 9) * 30, 28, 28));
   // file types
-  label(g, 'FILE TYPES', 20, 418, { align: 'left' });
+  label(g, 'FILE TYPES (fileTypeInfo -> icon / bait type)', 20, 446, { align: 'left' });
   const files = ['photo.jpg', 'song.mp3', 'clip.mp4', 'notes.txt', 'essay.docx', 'manual.pdf', 'budget.xlsx', 'app.js', 'index.html', 'backup.zip', 'setup.exe', 'image.iso', 'config.ini', 'unknown.xyz', 'Chrome.lnk', 'Steam.exe'];
   files.forEach((f, i) => {
     const info = fileTypeInfo(f);
-    const x = 20 + i * 58, y = 428;
-    g.drawImage(getAppIcon(info.icon, { label: info.label, state: info.state }), x + 8, y);
-    label(g, f.length > 10 ? f.slice(0, 9) + '.' : f, x + 24, y + 36);
-    label(g, info.type, x + 24, y + 44, { color: '#9ff0e0' });
+    const x = 14 + i * 58, y = 456;
+    g.drawImage(getAppIcon(info.icon, { label: info.label, state: info.state }), x + 10, y);
+    label(g, f.length > 10 ? f.slice(0, 9) + '.' : f, x + 26, y + 36);
+    label(g, info.type, x + 26, y + 44, { color: '#9ff0e0' });
   });
-  FILE_ICON_IDS.forEach((id, i) => g.drawImage(getMiniIcon(id), 20 + i * 18, 500));
-  g.drawImage(getAppIcon('folder'), 300, 492);
-  g.drawImage(getAppIcon('calendar', { day: 7 }), 340, 492);
+  FILE_ICON_IDS.forEach((id, i) => g.drawImage(getMiniIcon(id), 20 + i * 18, 516));
+  g.drawImage(getAppIcon('calendar', { day: 7, size: 16 }), 290, 515);
+  g.drawImage(getAppIcon('fishtop', { size: 24 }), 312, 511);
 }
 
 function pageUiIcons(g) {
@@ -179,6 +178,8 @@ function pageSurfaces(g) {
   ['wood', 'shell', 'paper', 'glass', 'coral'].forEach((sty, i) => drawButton(g, 40 + i * 112, 482, 100, 21, { label: 'Pressed', style: sty, state: 'down' }));
   drawButton(g, 860, 300, 80, 21, { label: 'OK', style: 'wood' });
   drawButton(g, 860, 330, 80, 21, { label: 'Cancel', style: 'paper', icon: 'cross' });
+  drawButton(g, 860, 360, 80, 19, { label: 'FishNet Explorer', icon: getMiniIcon('browser'), style: 'glass', align: 'left' });
+  drawStamp(g, 900, 420, 'NEW!', { color: '#d8283a', angle: -0.25, scale: 2 });
 }
 
 function pageWidgets(g) {
@@ -210,7 +211,7 @@ function pageWidgets(g) {
   drawTab(g, 456, 50, 70, 21, { label: 'Fish', active: true, icon: 'fish' });
   drawTab(g, 528, 50, 66, 21, { label: 'Bait', color: '#4a9ad8', icon: 'worm' });
   drawTab(g, 596, 50, 66, 21, { label: 'Decor', color: '#5aae5a', icon: 'coral' });
-  drawTab(g, 664, 50, 60, 21, { label: 'Map', color: '#c88a3a' });
+  drawTab(g, 664, 50, 60, 21, { label: 'Map', color: '#c88a3a', hover: true });
   drawPaper(g, 460, 80, 280, 60, { lined: true });
   drawText(g, 'Sir Puffington   {star}{star}{star_empty}', 474, 92, { color: UI_COLORS.ink });
   // bubbles
@@ -354,9 +355,31 @@ export function run(params) {
   const g = ctxOf(cv);
   ocean(g);
   const page = Number(params.get('page') || 0);
+  if (params.has('perf')) {
+    const res = {};
+    const time = (name, fn) => { const t = performance.now(); fn(); res[name] = Math.round((performance.now() - t) * 10) / 10; };
+    time('wood400x300', () => drawWood(g, 0, 0, 400, 300));
+    time('woodInset400x300', () => drawWood(g, 0, 0, 401, 300, { inset: true }));
+    time('paper400x300', () => drawPaper(g, 0, 0, 400, 300, { aged: true, lined: true }));
+    time('glass400x300', () => drawGlass(g, 0, 0, 400, 300, { frame: 'brass' }));
+    time('window400x300', () => drawWindowChrome(g, { x: 0, y: 0, w: 400, h: 300 }, { title: 'x' }));
+    time('frameWood200', () => drawFrame(g, 0, 0, 200, 150, { style: 'wood' }));
+    time('frameCoral200', () => drawFrame(g, 0, 0, 200, 150, { style: 'coral' }));
+    time('taskbar960', () => drawTaskbar(g, 0, 0, 960, 26));
+    time('button96', () => drawButton(g, 0, 0, 96, 21, { label: 'x' }));
+    time('bubble120', () => drawBubble(g, 0, 0, 120, 40, { tailX: 30, tailY: 60 }));
+    time('stamp', () => drawStamp(g, 50, 50, 'RARE CATCH', { angle: -0.1 }));
+    time('allAppIcons', () => APPS.forEach((a) => getAppIcon(a.icon)));
+    time('allUiIcons', () => { registerUiIcons(); UI_ICON_NAMES.forEach(getUiIcon); });
+    window.__uiartPerf = res;
+  }
   const PAGES = [pageIcons, pageUiIcons, pageSurfaces, pageWidgets, pageScene];
+  const t0 = performance.now();
   PAGES[page % PAGES.length](g);
+  const t1 = performance.now();
+  ocean(g);
+  PAGES[page % PAGES.length](g);
+  window.__uiartTiming = { coldMs: Math.round(t1 - t0), warmMs: Math.round((performance.now() - t1) * 10) / 10 };
   window.__ready = true;
 }
 
-void makeCanvas; void bayer;

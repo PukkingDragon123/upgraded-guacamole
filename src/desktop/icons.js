@@ -940,9 +940,11 @@ function drawPage(p, kind, label) {
     for (let y = 4; y <= 16; y += 3) p.hl(9, Math.min(y, 15), 15, '#7ac08a');
     p.b.set(23, 4, pk(P[3]));
   } else if (g === 'code') {
-    const c = { a: '#8a5ae0', b: '#c8a8ff' };
-    p.ascii(9, 6, ['...a.......a...', '..a.....b...a..', '.a.....b.....a.', 'a.....b.......a', '.a...b.......a.', '..a.b.......a..', '...ab.......a..'], c);
-    p.ascii(9, 6, ['...b...........', '..b............', '.b.............', 'b..............'], c);
+    const lt = ['...a', '..a.', '.a..', 'a...', '.a..', '..a.', '...a'];
+    const sl = ['...a', '...a', '..a.', '..a.', '.a..', '.a..', 'a...'];
+    const gt = lt.map((r) => r.split('').reverse().join(''));
+    for (const [rows, x0] of [[lt, 8], [sl, 14], [gt, 20]]) p.ascii(x0, 9, rows, { a: '#7a4ad8' });
+    p.hl(9, 5, 7, '#a8acc0');
   } else if (g === 'web') {
     p.circ(15.5, 10, 5.2, '#3a84d0');
     p.ell(13.5, 8.5, 2.6, 1.8, '#4cb256');

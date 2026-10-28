@@ -124,14 +124,14 @@ export function compileLook(look, variant = null) {
     bodyHex, backHex, bellyHex, finHex,
     outlineHex: col.outline ? vc(col.outline) : shade(backHex, -0.78),
     alpha: look.translucent ? Math.round(255 * (look.translucent === true ? 0.5 : look.translucent)) : 255,
-    finAlpha: look.finAlpha ?? 0.78,
-    scales: look.scales ?? L >= 40,
-    scaleSize: look.scaleSize ?? clamp(2 + k * 0.9, 3, 8),
+    finAlpha: look.finAlpha ?? 0.9,
+    scales: look.scales ?? L >= 26,
+    scaleSize: look.scaleSize ?? clamp(2.4 + k * 0.6, 3, 6),
     shine: look.shine ?? true,
-    gills: look.gills ?? L >= 13,
-    lateral: look.lateral ?? L >= 34,
-    raySp: clamp(1.7 + k * 0.45, 2, 4),
-    patterns: (look.pattern || []).map((p) => ({ ...p, R: toRamp(vc(p.color || '#ffffff', 'pattern')) })),
+    gills: look.gills ?? L >= 12,
+    lateral: look.lateral ?? L >= 30,
+    raySp: clamp(1.6 + k * 0.3, 2, 3.2),
+    patterns: (look.pattern || []).map((p) => ({ ...p, R: toRamp(vc(p.color || '#ffffff', 'pattern')), R7: TONES7.map((a) => P(shade(vc(p.color || '#ffffff', 'pattern'), a))) })),
     tail: { type: 'fork', len: L * 0.38, spread: H * 0.55, flap: 0.32, ...(look.tail || {}) },
     fins: [],
     eyes: [],
@@ -140,8 +140,17 @@ export function compileLook(look, variant = null) {
     glow: false,
     toRamp,
   };
-  c.outlineP = P(c.outlineHex);
+  c.outlineP = P(col.outline ? c.outlineHex : mix(shade(backHex, -0.9), '#0b0910', 0.55));
+  const R7 = (hex) => TONES7.map((a) => P(shade(hex, a * contrast)));
+  c.R7 = R7;
+  c.T = { back: R7(backHex), body: R7(bodyHex), belly: R7(bellyHex), head: col.head ? R7(vc(col.head)) : null };
+  c.vb = look.shade?.back ?? -0.3;
+  c.vbel = look.shade?.belly ?? 0.3;
+  c.toon = !!look.toon;
+  c.spec = look.spec ?? 1;
   c.tail.R = toRamp(vc(look.tail?.color || finHex));
+  c.tail.R7 = TONES7.map((a) => P(shade(vc(look.tail?.color || finHex), a * contrast)));
+  if (c.tail.spots) c.tail.spotP = P(vc(c.tail.spots));
   c.mouth.R = toRamp(vc(look.mouth?.color || '#e86a7a'));
   c.mouth.w = look.mouth?.w ?? (c.mouth.type === 'gulper' ? L * 0.42 : Math.max(1.5, H * (MOUTH_W[c.mouth.type] ?? 0.17)));
   c.mouth.lineP = P(vc(look.mouth?.line || shade(bodyHex, -0.72)));
@@ -156,6 +165,9 @@ export function compileLook(look, variant = null) {
       h: spec.h ?? H * 0.4,
       lean: spec.lean ?? 0.6,
       R: toRamp(vc(spec.color || finHex)),
+      R7: TONES7.map((a) => P(shade(vc(spec.color || finHex), a * contrast))),
+      spotP: spec.spots ? P(vc(spec.spots)) : 0,
+      alpha: spec.alpha,
       rays: spec.rays ?? true,
       count: spec.count ?? 4,
       spines: spec.spines ?? spec.type === 'spiky',
@@ -168,20 +180,28 @@ export function compileLook(look, variant = null) {
   c.pectoral = look.pectoral === null ? null : {
     u: 0.34, v: 0.25, len: Math.max(2.5, H * 0.38), w: 0.42, angle: 0.5, ...(look.pectoral || {}),
   };
-  if (c.pectoral) c.pectoral.R = toRamp(vc(look.pectoral?.color || finHex));
+  if (c.pectoral) {
+    c.pectoral.R = toRamp(vc(look.pectoral?.color || finHex));
+    c.pectoral.R7 = TONES7.map((a) => P(shade(vc(look.pectoral?.color || finHex), a * contrast)));
+  }
 
   const lidHex = (e) => vc(e.lid || bodyHex);
   const mkEye = (e, def) => {
     const o = { type: 'normal', ...def, ...e };
-    o.pupil = P(vc(o.color || '#1a1424', 'eye'));
+    o.pupil = P(vc(o.color || '#0c0a12', 'eye'));
     o.irisR = o.iris ? toRamp(vc(o.iris, 'eye')) : null;
+    o.realIris = ramp(vc(o.iris || look.eyeIris || '#d8a83a', 'eye')).map((h) => P(h));
     o.sclera = P(o.sclera || '#ffffff');
     o.glowHex = o.type === 'glow' ? vc(o.glow || '#9ffcff', 'eye') : null;
     o.lidR = ramp(lidHex(o)).map((h) => P(h));
     if (o.type === 'glow') c.glow = true;
     return o;
   };
-  c.eyes.push(mkEye(look.eye || {}, { u: 0.17, v: -0.2, r: Math.max(1, H * 0.16) }));
+  c.eyes.push(mkEye(look.eye || {}, { u: 0.17, v: -0.2, r: Math.max(1, H * 0.13) }));
+  const e0 = c.eyes[0];
+  c.opU = look.head?.u ?? clamp(e0.u + (e0.r * 2.1) / L + 0.04, 0.14, 0.38);
+  c.nostril = look.head?.nostril ?? true;
+  c.preop = look.head?.preop ?? true;
   for (const e of look.moreEyes || []) c.eyes.push(mkEye({ color: look.eye?.color, ...e }, { brow: false }));
   for (const p of c.patterns) if (p.glow) c.glow = true;
   for (const e of c.extras) {
@@ -192,10 +212,10 @@ export function compileLook(look, variant = null) {
     if (e.type === 'bite') c.hasBite = true;
   }
   if (variant?.mutation === 'neon') c.glow = true;
-  if (variant?.mutation === 'galaxy') c.patterns.push({ type: 'galaxy', R: toRamp('#2a1b55') });
+  if (variant?.mutation === 'galaxy') c.patterns.push({ type: 'galaxy', R: toRamp('#2a1b55'), R7: TONES7.map((a) => P(shade('#2a1b55', a))) });
   if (variant?.pattern) {
     const pc = variant.patternColor || shade(bodyHex, variant.pattern === 'spots' ? 0.5 : -0.45);
-    const vp = { type: variant.pattern, color: pc, R: toRamp(pc), count: 3, size: 1.2 * k, seed: variant.seed || 3 };
+    const vp = { type: variant.pattern, color: pc, R: toRamp(pc), R7: TONES7.map((a) => P(shade(pc, a))), count: 3, size: 1.2 * k, seed: variant.seed || 3 };
     if (variant.pattern === 'stripes') { vp.at = [-0.35, 0.05, 0.42]; vp.width = 0.09; }
     if (variant.pattern === 'bands') { vp.at = [0.3, 0.55, 0.78]; vp.width = 0.045; }
     if (variant.pattern === 'spots') vp.density = 0.5;
@@ -267,10 +287,19 @@ function geomOf(c, inflate = 0) {
 
 const spineAt = (c, u, phase) => c.bend * Math.sin(TAU * phase - u * 3.2) * u * u;
 
+// Clean pixel-art quantisation: a 2x2 checker only where a value sits between two tones.
 function rampPick(R, b, x, y, dither = 0.85) {
-  const idx = clamp(Math.floor(b * 4.999 + (bayer(x, y) - 0.5) * dither), 0, 4);
+  const n = R.length - 1;
+  const chk = ((x + y) & 1) ? 0.5 : -0.5;
+  const idx = clamp(Math.round(b * n + chk * Math.min(0.42, dither * 0.42)), 0, n);
   return R[idx];
 }
+// 7-tone index pick with checker transitions; idx in tone units (0 darkest .. 6 lightest).
+function tone(R, idx, x, y) {
+  const chk = ((x + y) & 1) ? 0.18 : -0.18;
+  return R[clamp(Math.round(idx + chk), 0, R.length - 1)];
+}
+const TONES7 = [-0.8, -0.56, -0.3, 0, 0.24, 0.46, 0.68];
 
 function blendPacked(a, b, t) {
   const ar = a & 255, ag = (a >>> 8) & 255, ab = (a >>> 16) & 255;
@@ -281,6 +310,7 @@ function blendPacked(a, b, t) {
 }
 
 // Selective outline: neighbour colour darkened and pulled toward the creature's outline colour.
+// Near-black selective outline: the neighbour colour pushed almost to black, keeping a hint of hue.
 function outlineFnFor(c) {
   if (c._olFn) return c._olFn;
   const cache = new Map();
@@ -290,9 +320,9 @@ function outlineFnFor(c) {
     if (o === undefined) {
       const [r, g, b, a] = unpack(n);
       const hex = '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('');
-      const [dr, dg, db] = unpack(P(shade(hex, -0.72)));
-      const t = 0.55;
-      const oa = Math.min(255, Math.max(a + 110, a >= 250 ? 255 : 0));
+      const [dr, dg, db] = unpack(P(shade(hex, -0.86)));
+      const t = 0.6;
+      const oa = a >= 200 ? 255 : Math.min(255, a + 120);
       o = ((oa << 24) | (Math.round(db + (ob - db) * t) << 16) | (Math.round(dg + (og - dg) * t) << 8) | Math.round(dr + (or - dr) * t)) >>> 0;
       cache.set(n, o);
     }
@@ -428,53 +458,71 @@ function tailPix(c, G, lx, ly, px, py, s, tp, baseY) {
   const ca = Math.cos(flapA), sa = Math.sin(flapA);
   const a = (-dx * ca + dy * sa) / fore;
   const b = dx * sa + dy * ca;
-  // slight curl: tail tip lags behind the flap
   const bb = b - Math.sin(TAU * tp + 0.7 - 1.2) * c.tail.flap * Math.max(0, a) * 0.25;
-  if (!tailHit(c.tail.type, a + 0.6, bb, G.TL, G.TS, G.tailBase, tp)) return 0;
-  const R = c.tail.R;
+  const type = c.tail.type;
+  if (!tailHit(type, a + 0.6, bb, G.TL, G.TS, G.tailBase, tp)) return 0;
+  const R = c.tail.R7;
   const st = a / G.TL;
   const rr = Math.hypot(bb, a + G.TL * 0.4);
   const ang = Math.atan2(bb, a + G.TL * 0.4);
-  const da = (c.raySp * 1.2) / (G.TL * 1.4);
+  const da = (c.raySp * 1.15) / (G.TL * 1.4);
   const onRay = c.tail.rays !== false && Math.abs(fract(ang / da + 0.5) - 0.5) * da * rr * s < 0.55;
-  let idx = onRay ? 2 : 3;
-  if (st < 0.1) idx = 1;
-  else if (st > 0.86) idx = onRay ? 3 : 4;
-  if (bb > 0 && idx > 1 && bayer(px, py) < 0.4) idx--;
-  const al = onRay || st < 0.1 ? 255 : Math.round(255 * Math.min(1, c.finAlpha + 0.12));
-  return withA(R[idx], al);
+  const e1 = 1 / s;
+  const edge = !tailHit(type, a + 0.6 + e1, bb, G.TL, G.TS, G.tailBase, tp) || !tailHit(type, a + 0.6, bb + e1, G.TL, G.TS, G.tailBase, tp) || !tailHit(type, a + 0.6, bb - e1, G.TL, G.TS, G.tailBase, tp);
+  let idx = onRay ? 2.2 : 4.2;
+  if (st < 0.14) idx = 2.4 + st * 6;
+  if (edge && st > 0.1) idx = 2;
+  if (bb > 0) idx -= 0.45;
+  if (!onRay && !edge && st > 0.3 && bb < 0 && Math.abs(bb) < G.TS * 0.55) idx += 0.5;
+  if (c.tail.spotP && !edge && hash2(Math.floor(lx * s / 2), Math.floor(ly * s / 2), 13) < 0.13) return c.tail.spotP;
+  const al = onRay || edge || st < 0.14 ? 255 : Math.round(255 * Math.min(1, c.finAlpha));
+  return withA(tone(R, idx, px, py), al);
 }
 
-function finPix(c, G, lx, ly, px, py, s, fp, sw, still) {
+function finPix(c, G, lx, ly, px, py, s, fp, sw, still, raise = 0) {
   const uu = (G.halfL - lx) / G.L;
   const uc = clamp01(uu);
+  const e1 = 1 / s;
   for (const f of c.fins) {
     const top = f.slot === 'top';
+    const hMul = 1 + 0.4 * raise * (top ? 1 : 0.6);
+    const lean = f.lean * (1 - 0.45 * raise);
     const sy = sw === null ? 0 : spineAt(c, uc, sw);
     const edgeY0 = top ? sy - G.halfTop(uc) : sy + G.halfBot(uc);
     const dist = top ? edgeY0 - ly : ly - edgeY0;
-    if (dist < -2.5 || dist > f.h * 1.15 + 1) continue;
-    const ue = uu - (f.lean * Math.max(0, dist)) / G.L;
+    const fhMax = f.h * hMul;
+    if (dist < -2.5 || dist > fhMax * 1.15 + 1) continue;
+    const ue = uu - (lean * Math.max(0, dist)) / G.L;
     const t = (ue - f.from) / (f.to - f.from);
     if (t < 0 || t > 1) continue;
-    const wob = still ? 1 : 1 + 0.09 * Math.sin(TAU * fp - t * 7);
-    let fh = f.h * finShape(f.type, t, fp, f.count) * wob;
+    const wob = still ? 1 : 1 + 0.08 * Math.sin(TAU * fp - t * 7);
+    const fh = fhMax * finShape(f.type, t, fp, f.count) * wob;
     const along = (ue - f.from) * G.L;
     let sp = c.raySp;
-    if (f.spines) sp = Math.max(c.raySp * 1.6, ((f.to - f.from) * G.L) / Math.max(3, f.count * 1.6));
+    if (f.spines) sp = Math.max(c.raySp * 1.5, ((f.to - f.from) * G.L) / Math.max(3, f.count * 1.6));
     const rf = fract(along / sp + 0.5) - 0.5;
     const onRay = f.rays && Math.abs(rf) * sp * s < 0.6;
+    const R = f.R7;
     if (f.spines) {
-      const memb = fh * (1 - 0.5 * Math.pow(Math.abs(rf) * 2, 0.8));
-      if (dist > memb && !(onRay && dist <= fh * 1.12)) continue;
-      if (dist > memb) return withA(f.R[1], 255);
-    } else if (dist > fh) continue;
-    let idx = onRay ? 2 : 3;
-    if (dist < 1.4 / s * Math.max(1, c.k * 0.5)) idx = 1;
-    else if (dist > fh - 1.3 / s) idx = onRay ? 3 : 4;
-    if (!top && idx > 1 && bayer(px, py) < 0.35) idx--;
-    const al = onRay || idx === 1 ? 255 : Math.round(255 * Math.min(1, c.finAlpha + 0.15));
-    return withA(f.R[idx], al);
+      const memb = fh * (1 - 0.42 * Math.pow(Math.abs(rf) * 2, 0.9));
+      if (dist > memb && !(onRay && dist <= fh * 1.1)) continue;
+      if (dist > memb) return withA(R[1], 255);
+      const edge = dist > memb - e1;
+      let idx = onRay ? 1.4 : 4;
+      if (edge) idx = 2;
+      if (dist < e1 * 1.2) idx = 2;
+      if (f.spotP && !onRay && hash2(Math.floor(lx * s / 2), Math.floor(ly * s / 2), 17) < 0.14) return f.spotP;
+      return withA(tone(R, idx, px, py), onRay || edge ? 255 : Math.round(255 * (f.alpha ?? c.finAlpha)));
+    }
+    if (dist > fh) continue;
+    const edge = dist > fh - e1 || t < e1 / Math.max(1, (f.to - f.from) * G.L) || t > 1 - e1 / Math.max(1, (f.to - f.from) * G.L);
+    let idx = onRay ? 2.3 : 4.2;
+    if (edge) idx = 2;
+    else if (dist < e1 * 1.2) idx = 2.3;
+    if (!top) idx -= 0.35;
+    if (f.spotP && !edge && hash2(Math.floor(lx * s / 2), Math.floor(ly * s / 2), 17) < 0.14) return f.spotP;
+    const al = onRay || edge ? 255 : Math.round(255 * (f.alpha ?? c.finAlpha));
+    return withA(tone(R, idx, px, py), al);
   }
   return 0;
 }
@@ -484,27 +532,27 @@ function pecPix(c, G, lx, ly, px, py, s, fp, baseY, still) {
   if (!pec) return 0;
   const pecX = G.halfL - pec.u * G.L;
   const pecY = baseY + pec.v * G.halfBot(pec.u);
-  const pecA = pec.angle + (still ? 0 : Math.sin(TAU * fp) * 0.45);
+  const pecA = pec.angle + (still ? 0 : Math.sin(TAU * fp) * 0.4);
   const dx = lx - pecX, dy = ly - pecY;
   const ca = Math.cos(pecA), sa = Math.sin(pecA);
   const a = -(dx * ca - dy * sa);
   const b = dx * sa + dy * ca;
   if (a < -0.4 || a > pec.len) return 0;
   const st = a / pec.len;
-  const wdt = pec.len * pec.w * Math.pow(Math.max(0, st), 0.6) * Math.sqrt(Math.max(0, 1 - Math.pow(st, 3))) * 1.15 + 0.5 * (1 - st);
+  const wdt = pec.len * pec.w * Math.pow(Math.max(0, st), 0.6) * Math.sqrt(Math.max(0, 1 - Math.pow(st, 3))) * 1.1 + 0.5 * (1 - st);
   if (Math.abs(b) > wdt + 0.3) return 0;
-  if (!pec.spines && st > 0.97 - 0.05 * Math.abs(b) / Math.max(1, wdt)) return withA(pec.R[1], 255);
   const ang = Math.atan2(b, a + pec.len * 0.35);
   const rr = Math.hypot(b, a + pec.len * 0.35);
-  const da = ((pec.spines ? 2.2 : 1.25) * c.raySp) / (pec.len * 1.35);
+  const da = ((pec.spines ? 2.2 : 1.15) * c.raySp) / (pec.len * 1.35);
   const rf = fract(ang / da + 0.5) - 0.5;
   const onRay = Math.abs(rf) * da * rr * s < 0.6;
   if (pec.spines && !onRay && st > 1 - 0.45 * Math.abs(rf) * 2) return 0;
-  let idx = onRay ? 1 : 3;
-  if (st > 0.8 && !onRay) idx = 4;
-  if (Math.abs(b) > wdt - 1 / s && !pec.spines) idx = 1;
-  if (st < 0.1) idx = 1;
-  return withA(pec.R[idx], Math.round(255 * Math.min(1, onRay || idx === 1 ? 1 : c.finAlpha - 0.05)));
+  const R = pec.R7;
+  const edge = !pec.spines && (Math.abs(b) > wdt - 1 / s || st > 0.97 - 0.04 * Math.abs(b) / Math.max(1, wdt));
+  let idx = onRay ? 2.4 : 4.6;
+  if (edge) idx = 2.6;
+  if (st < 0.12) idx = 2.4;
+  return withA(tone(R, idx, px, py), onRay || edge || st < 0.12 ? 245 : Math.round(255 * Math.min(1, c.finAlpha - 0.12)));
 }
 
 // Returns 1 hit, 2 hit+darker, 3 hit+lighter, 0 none. May set patLight.
@@ -610,6 +658,13 @@ function patternHit(c, pat, u, v, lx, ly, L, H, phase, px, py) {
         const fi = Math.round(xx);
         const dd = Math.hypot((xx - fi) * sp, (v - row) * H * 0.5);
         if (dd < (pat.size ?? Math.max(0.7, k * 0.4)) && u > (pat.from ?? 0.15) && u < (pat.to ?? 0.9)) return 1;
+      }
+      return 0;
+    }
+    case 'bars': {
+      for (const at of pat.at || [0.4]) {
+        const w = (pat.width ?? 0.05) * (1 - clamp01((v + 0.2) / 1.1) * 0.85) + Math.sin(v * 5 + at * 20) * 0.006;
+        if (Math.abs(u - at - v * (pat.slant ?? 0.03)) < w && v < (pat.bottom ?? 0.55)) return 1;
       }
       return 0;
     }
@@ -975,19 +1030,31 @@ function bodyPix(c, G, xp, lx, ly, px, py, s, sw, still) {
     biteEdge = biteCut(xp, lx, ly);
     if (biteEdge < 0) return 0;
   }
-  const L = G.L, H = G.H, k = c.k;
+  const L = G.L, H = G.H;
   const v = ry < 0 ? ry / Math.max(0.5, top) : ry / Math.max(0.5, bot);
   const dT = (ry + top) * s, dB = (bot - ry) * s;
-  const d = bayer(px, py) - 0.5;
-  let R = c.bodyR;
-  if (v < -0.42 + d * 0.25) R = c.backR;
-  else if (v > 0.3 + d * 0.25) R = c.bellyR;
-  const nz = Math.sqrt(Math.max(0, 1 - v * v));
-  let light = 0.48 - v * 0.3 + nz * 0.1 + (0.5 - u) * 0.1;
-  if (dB < 1.6) light -= 0.28;
-  else if (v > 0.62) light -= 0.07;
-  if (dT < 1.1 && u > 0.03 && u < 0.92) light += 0.3;
-  else if (dT < 2.2 && u > 0.08 && u < 0.7) light += 0.1;
+  const chk = ((px + py) & 1) ? 1 : -1;
+  const T = c.T;
+  // countershading: dark back -> body -> pale belly
+  const vb = c.vb, vbel = c.vbel;
+  let R, idx;
+  if (v < vb + chk * 0.035) { R = T.back; idx = 2 + 1.5 * clamp01((v + 1) / (vb + 1)); }
+  else if (v < vbel + chk * 0.035) { R = T.body; idx = 2.9 + 0.7 * clamp01((v - vb) / (vbel - vb)); }
+  else { R = T.belly; idx = 3.3 + 1.3 * clamp01((v - vbel) / (1 - vbel)); }
+  // head: operculum edge curves forward at top and bottom
+  const opU = c.opU - 0.05 * v * v;
+  const inHead = u < opU;
+  if (inHead) {
+    if (T.head && R !== T.belly) R = T.head;
+    if (v > -0.1 && v < 0.75) idx += 0.45;
+    if (v < -0.5) idx -= 0.25;
+    idx += (opU - u) * 0.8;
+  }
+  // form shading: dark dorsal ridge, belly core shadow, darker peduncle
+  if (dT < 1.05) idx -= 0.9;
+  if (dB < 1.2) idx -= 1.7;
+  else if (dB < 2.3) idx -= 0.6;
+  if (u > 0.82) idx -= (u - 0.82) * 3.5;
   patLight = 0;
   let patHit = false;
   for (const pat of c.patterns) {
@@ -995,51 +1062,62 @@ function bodyPix(c, G, xp, lx, ly, px, py, s, sw, still) {
     if (pat.umax !== undefined && u > pat.umax) continue;
     if (pat.vmin !== undefined && v < pat.vmin) continue;
     if (pat.vmax !== undefined && v > pat.vmax) continue;
+    if (pat.body && inHead) continue;
     const pr = patternHit(c, pat, u, v, lx, ly, L, H, sw, px, py);
     if (pr) {
-      R = pat.R;
       patHit = true;
+      if (pat.tone != null) idx += pat.tone * (pat.fade ? 1 - clamp01((v - pat.fade) / (1 - pat.fade)) : 1);
+      else { R = pat.R7; if (pat.keepTone == null) idx = 3 + (idx - 3) * 0.6; }
       if (pat.glow) gOut = pat.R[3];
-      if (pr === 2) light -= 0.28;
-      else if (pr === 3) light += 0.25;
+      if (pr === 2) idx -= 1.2;
+      else if (pr === 3) idx += 1.2;
     }
   }
-  light += patLight;
-  // scales: staggered rows of arcs whose free edge faces the tail
-  if (c.scales && u > 0.2 && u < 0.97 && v > -0.88 && v < 0.72) {
-    const fade = smoothstep(0.2, 0.36, u) * (1 - smoothstep(0.42, 0.72, v)) * (1 - smoothstep(0.86, 0.97, u));
-    if (fade > bayer(px, py) * 0.85 + 0.08) {
-      const sc = c.scaleSize, rowH = sc * 0.62;
-      const row = Math.floor(ly / rowH + 1000);
-      const off = (row & 1) * sc * 0.5;
-      const col0 = Math.floor((lx - off) / sc + 1000);
-      const cx = (col0 - 1000) * sc + off + sc * 0.5, cy = (row - 1000) * rowH + rowH * 0.5;
-      const dx = lx - cx, dy = (ly - cy) * 1.15;
-      const dd = Math.hypot(dx - sc * 0.22, dy);
-      const rr = sc * 0.55;
-      if (Math.abs(dd - rr) * s < 0.6 && dx < sc * 0.1) light -= 0.16;
-      else if (dd < rr - 1 / s && dx > -sc * 0.15 && dy < 0) light += 0.05;
+  idx += patLight * 4;
+  // scales: staggered rows of small arcs on the flank
+  if (c.scales && !inHead && u < 0.93 && v > -0.78 && v < 0.62) {
+    const sc = c.scaleSize, rh = sc * 0.62;
+    const row = Math.floor(ly / rh + 1000);
+    const off = (row & 1) * sc * 0.5;
+    const fx = fract((lx + off) / sc);
+    const fyPx = (ly - (row - 1000) * rh) * s;
+    const fade = hash2(Math.floor((lx + off) / sc), row, 23) < 0.12 + Math.max(0, u - 0.8) * 3 + Math.max(0, v - 0.35) * 2;
+    if (!fade) {
+      if (fyPx < 1 && fx > 0.2 && fx < 0.72) idx -= 0.7;
+      else if (fyPx < 2 && (fx > 0.12 && fx <= 0.2 || fx >= 0.72 && fx < 0.8)) idx -= 0.45;
     }
   }
-  // gill plate
-  if (c.gills && L * s >= 16 && v > -0.62 && v < 0.82) {
+  // lateral line: light dashes from the operculum to the tail
+  if (c.lateral && !inHead && u < 0.95) {
+    const lv = (c.look.lateralV ?? vb * 0.45 + 0.02) + (u - opU) * 0.12;
+    if (Math.abs(v - lv) * (lv < 0 ? top : bot) * s < 0.55 && (Math.floor(lx * s / 2) & 1) === 0) idx += 1.1;
+  }
+  // operculum + pre-operculum curves, nostril
+  if (c.gills && L * s >= 14 && v > -0.62 && v < 0.85) {
+    const du = (u - opU) * L * s;
+    if (du > -0.55 && du < 0.55) idx = Math.min(idx, 1.3);
+    else if (du >= 0.55 && du < 1.6 && v > -0.5 && v < 0.75) idx += 0.55;
     const e0 = c.eyes[0];
-    const gu = Math.min(0.42, e0.u + (e0.r * 1.35) / L + 0.025);
-    const edgeU = gu + 0.06 * v * v - 0.015 * v;
-    const du = (u - edgeU) * L * s;
-    if (du > -0.55 && du < 0.55 && v > -0.5) light -= 0.26;
-    else if (du >= 0.55 && du < 1.6 && v < 0.5 && v > -0.45) light -= 0.06;
+    if (c.preop && v > 0.05 && v < 0.8) {
+      const pu = e0.u + (opU - e0.u) * 0.48 - 0.04 * v;
+      if (Math.abs((u - pu) * L * s) < 0.5) idx -= 0.65;
+    }
   }
-  // lateral line
-  if (c.lateral && u > 0.28 && u < 0.94) {
-    const lv = -0.18 + 0.12 * (u - 0.28);
-    if (Math.abs(v - lv) * top * s < 0.55 && ((px + py) & 1) === 0) light += 0.16;
+  if (c.nostril && L * s >= 22) {
+    const e0 = c.eyes[0];
+    const nu = e0.u * 0.42, nv = e0.v * 0.55;
+    if (Math.abs((u - nu) * L * s) < 0.55 && Math.abs((v - nv) * top * s) < 0.55) idx = 0.6;
   }
-  let col = rampPick(R, clamp01(light), px, py);
-  if (c.shine && !patHit && v > -0.78 && v < -0.5 && u > 0.14 && u < 0.5 && bayer(px, py) < 0.4) col = R[4];
-  if (c.shine && v > -0.6 && v < -0.35 && u > 0.08 && u < 0.14 && bayer(px, py) < 0.25) col = R[4];
-  // bitten edge: crumbly darker rim
-  if (biteEdge < 1.6 / s) col = (hash2(px, py, 3) > 0.4) ? R[0] : R[1];
+  // specular strip along the upper flank and head
+  if (c.shine && c.spec) {
+    const sv0 = vb - 0.24, sv1 = vb - 0.02;
+    if (v > sv0 && v < sv1 && u > 0.05 && u < 0.7) {
+      const dash = u < opU + 0.04 || (Math.floor(lx * s / 2) & 1) === 0;
+      if (dash) idx += 2.1 * c.spec * (1 - smoothstep(0.45, 0.7, u));
+    }
+  }
+  let col = tone(R, idx, px, py);
+  if (biteEdge < 1.6 / s) col = (hash2(px, py, 3) > 0.4) ? R[1] : R[2];
   if (c.alpha < 255) col = withA(col, c.alpha);
   if (c.look.organs) {
     const oc = organHit(c, u, v, sw, L, H);
@@ -1048,8 +1126,9 @@ function bodyPix(c, G, xp, lx, ly, px, py, s, sw, still) {
   if (c.mouth.type === 'beak' && u < 0.13 && v > -0.38) {
     const R2 = c.mouth.R;
     col = rampPick(R2, clamp01(0.68 - v * 0.25 - u * 1.5), px, py);
-    if (Math.abs(fract(u * L / Math.max(1.5, k)) - 0.5) < 0.12 && v > 0.1) col = R2[1];
+    if (Math.abs(fract(u * L / Math.max(1.5, c.k)) - 0.5) < 0.12 && v > 0.1) col = R2[1];
   }
+  void patHit;
   for (const q of xp) {
     const r = extraOnBody(c, q, u, v, ry, lx, ly, G, top, bot, px, py, sw, s);
     if (r) { col = r; if (q.e.glow) gOut = r; }
@@ -1335,8 +1414,8 @@ function genericExtent(c, G) {
   const { L, H, halfL, TL, TS } = G;
   let finTop = 0, finBot = 0, leanBack = 0;
   for (const f of c.fins) {
-    if (f.slot === 'top') finTop = Math.max(finTop, f.h * 1.15);
-    else finBot = Math.max(finBot, f.h * 1.15);
+    if (f.slot === 'top') finTop = Math.max(finTop, f.h * 1.6);
+    else finBot = Math.max(finBot, f.h * 1.35);
     leanBack = Math.max(leanBack, f.lean * f.h - (1 - f.to) * L);
   }
   let exTop = 0, exFront = 0, exBot = 0, exBack = 0;
@@ -1391,7 +1470,7 @@ function layerBox(c, G, mode, ext) {
   }
   if (mode === 'back') {
     let top = 0, bot = 0, lean = 0;
-    for (const f of c.fins) { if (f.slot === 'top') top = Math.max(top, f.h * 1.15); else bot = Math.max(bot, f.h * 1.15); lean = Math.max(lean, f.lean * f.h); }
+    for (const f of c.fins) { if (f.slot === 'top') top = Math.max(top, f.h * 1.6); else bot = Math.max(bot, f.h * 1.35); lean = Math.max(lean, f.lean * f.h); }
     return [-halfL - lean - 2, -H / 2 * (1 + Math.max(0, c.hump)) - top - 2, halfL + 2, H / 2 * (1 + Math.max(0, c.belly)) + bot + 2];
   }
   return [Math.max(ext[0], -halfL - c.bend - 3 - (c.extras.some((e) => e.type === 'feelers') ? G.L : 0)), ext[1], ext[2], ext[3]];
@@ -1430,10 +1509,10 @@ function paintGeneric(c, buf, glow, bx, by, ox, oy, angle, s, mode, prm, G, rect
         col = body;
         const pc = pecPix(c, G, lx, ly, px, py, s, fp, pecBaseY, still);
         if (pc) col = body ? blendPacked(body, pc, c.finAlpha) : pc;
-        if (!col) col = finPix(c, G, lx, ly, px, py, s, fp, finSw, still) || tailPix(c, G, lx, ly, px, py, s, tp, tailBaseY) || freePix(c, G, xp, lx, ly, px, py, s, sw, still);
+        if (!col) col = finPix(c, G, lx, ly, px, py, s, fp, finSw, still, prm.raise || 0) || tailPix(c, G, lx, ly, px, py, s, tp, tailBaseY) || freePix(c, G, xp, lx, ly, px, py, s, sw, still);
       } else if (mode === 'body') {
         col = overlayPix(c, xp, lx, ly, px, py, s, G) || bodyPix(c, G, xp, lx, ly, px, py, s, sw, still) || freePix(c, G, xp, lx, ly, px, py, s, sw, still);
-      } else if (mode === 'back') col = finPix(c, G, lx, ly, px, py, s, fp, null, still);
+      } else if (mode === 'back') col = finPix(c, G, lx, ly, px, py, s, fp, null, still, prm.raise || 0);
       else if (mode === 'tail') col = tailPix(c, G, lx, ly, px, py, s, tp, 0);
       else if (mode === 'front') col = pecPix(c, G, lx, ly, px, py, s, fp, 0, still);
       if (col) {
@@ -3106,7 +3185,7 @@ export function rasterLayer(c, layer, q) {
   const buf = new PixelBuffer(w, h);
   const glow = c.glow && layer === 'body' ? new PixelBuffer(w, h) : null;
   const ph = q.ph || 0;
-  const prm = { still: q.still, inflate: q.inflate, sw: layer === 'body' ? ph : 0, tp: ph, fp: ph };
+  const prm = { still: q.still, inflate: q.inflate, sw: layer === 'body' ? ph : 0, tp: ph, fp: ph, raise: q.raise || 0 };
   paintGeneric(c, buf, glow, rect.x0, rect.y0, B.ox, B.oy, angle, s, layer, prm, G, rect);
   finishBuf(c, buf, glow, false, layer === 'front');
   const out = cropOut(buf, glow);
@@ -3134,7 +3213,7 @@ export function rasterFish(c, p = {}) {
     B = boundsFor(genericExtent(c, G), angle, s);
     buf = new PixelBuffer(B.w, B.h);
     glow = c.glow ? new PixelBuffer(B.w, B.h) : null;
-    paintGeneric(c, buf, glow, 0, 0, B.ox, B.oy, angle, s, 'all', { sw: phase, tp: phase, fp: phase, still: p.still, inflate: p.inflate }, G, { x0: 0, y0: 0, x1: B.w, y1: B.h });
+    paintGeneric(c, buf, glow, 0, 0, B.ox, B.oy, angle, s, 'all', { sw: phase, tp: phase, fp: phase, still: p.still, inflate: p.inflate, raise: p.raise || 0 }, G, { x0: 0, y0: 0, x1: B.w, y1: B.h });
     face = genericFace(c, G, phase, angle, s, B.ox, B.oy, !!p.still);
   }
   if (!sil) paintFaceInto(buf, glow, { ...face, c }, f);
