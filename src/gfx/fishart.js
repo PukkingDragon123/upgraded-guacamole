@@ -94,7 +94,7 @@ export function variantColor(hex, variant, role = 'body') {
 // ---------------------------------------------------------------------------
 // Compile a look description into a fast raster spec.
 
-const MOUTH_W = { small: 0.17, big: 0.34, fangs: 0.3, lips: 0.17, beak: 0.2, none: 0, gulper: 0 };
+const MOUTH_W = { small: 0.22, big: 0.38, fangs: 0.32, lips: 0.2, beak: 0.22, none: 0, gulper: 0 };
 
 export function compileLook(look, variant = null) {
   const kind = look.kind || 'fish';
@@ -125,8 +125,8 @@ export function compileLook(look, variant = null) {
     outlineHex: col.outline ? vc(col.outline) : shade(backHex, -0.78),
     alpha: look.translucent ? Math.round(255 * (look.translucent === true ? 0.5 : look.translucent)) : 255,
     finAlpha: look.finAlpha ?? 0.78,
-    scales: look.scales ?? L >= 18,
-    scaleSize: look.scaleSize ?? clamp(1.5 + k * 0.85, 2.2, 7),
+    scales: look.scales ?? L >= 40,
+    scaleSize: look.scaleSize ?? clamp(2 + k * 0.9, 3, 8),
     shine: look.shine ?? true,
     gills: look.gills ?? L >= 13,
     lateral: look.lateral ?? L >= 34,
@@ -491,16 +491,18 @@ function pecPix(c, G, lx, ly, px, py, s, fp, baseY, still) {
   const b = dx * sa + dy * ca;
   if (a < -0.4 || a > pec.len) return 0;
   const st = a / pec.len;
-  const wdt = pec.len * pec.w * Math.sqrt(Math.max(0, 1 - (2 * st - 1) ** 2));
+  const wdt = pec.len * pec.w * Math.pow(Math.max(0, st), 0.6) * Math.sqrt(Math.max(0, 1 - Math.pow(st, 3))) * 1.15 + 0.5 * (1 - st);
   if (Math.abs(b) > wdt + 0.3) return 0;
+  if (st > 0.97 - 0.05 * Math.abs(b) / Math.max(1, wdt)) return withA(pec.R[1], 255);
   const ang = Math.atan2(b, a + pec.len * 0.35);
   const rr = Math.hypot(b, a + pec.len * 0.35);
   const da = (c.raySp * 1.1) / (pec.len * 1.35);
   const onRay = Math.abs(fract(ang / da + 0.5) - 0.5) * da * rr * s < 0.55;
   let idx = onRay ? 2 : 3;
-  if (st > 0.82) idx = 4;
-  if (b > wdt - 1 / s) idx = Math.max(1, idx - 1);
-  return withA(pec.R[idx], Math.round(255 * Math.min(1, c.finAlpha + (onRay ? 0.2 : 0))));
+  if (st > 0.8) idx = onRay ? 3 : 4;
+  if (Math.abs(b) > wdt - 1 / s) idx = 1;
+  if (st < 0.12) idx = 1;
+  return withA(pec.R[idx], Math.round(255 * Math.min(1, c.finAlpha + (onRay || idx === 1 ? 0.22 : 0))));
 }
 
 // Returns 1 hit, 2 hit+darker, 3 hit+lighter, 0 none. May set patLight.
@@ -748,12 +750,12 @@ function prepExtras(c, G, sw, still, s) {
         break;
       }
       case 'whiskers': {
-        const len = e.len ?? H * 0.5;
+        const len = e.len ?? H * 0.6;
         q.lines = [0, 1].map((side) => curvePts((t) => [
-          halfL - 0.5 - t * len * 0.55,
-          G.mouthY + H * 0.05 + t * len * (0.45 + side * 0.28) + Math.sin(sw * TAU + t * 3) * t * 0.8 * k * sway,
-        ], 12));
-        q.w = Math.max(px1 * 0.55, k * 0.18);
+          halfL - 0.8 - side * k * 0.8 + Math.sin(t * 2.2) * len * 0.22 - t * t * len * (0.55 + side * 0.15),
+          G.mouthY + H * 0.03 + t * len * (0.5 + side * 0.25) + Math.sin(sw * TAU + t * 3 + side) * t * 0.8 * k * sway,
+        ], 14));
+        q.w = px1 * 0.55;
         q.box = bboxOf(q.lines.flat(), 1.5);
         break;
       }
@@ -764,7 +766,7 @@ function prepExtras(c, G, sw, still, s) {
           x0 - side * k - t * len * 0.8,
           y0 + t * len * (0.5 + side * 0.12) + Math.sin(sw * TAU - t * 4 + side) * t * H * 0.1 * sway,
         ], 16));
-        q.w = Math.max(px1 * 0.55, k * 0.2);
+        q.w = px1 * 0.6;
         q.box = bboxOf(q.lines.flat(), 2);
         break;
       }
@@ -991,26 +993,20 @@ function bodyPix(c, G, xp, lx, ly, px, py, s, sw, still) {
     }
   }
   light += patLight;
-  // scales: overlapping roof-tile rows, free edge toward the tail
+  // scales: staggered rows of arcs whose free edge faces the tail
   if (c.scales && u > 0.2 && u < 0.97 && v > -0.88 && v < 0.72) {
-    const fade = smoothstep(0.2, 0.34, u) * (1 - smoothstep(0.45, 0.72, v));
-    if (fade > bayer(px, py) * 0.9 + 0.05) {
-      const sc = c.scaleSize, rowH = sc * 0.72, rr = sc * 0.6;
-      const row0 = Math.floor(ly / rowH);
-      let bestX = -Infinity, bestD = 0, bdx = 0, bdy = 0;
-      for (let rI = row0 - 1; rI <= row0 + 2; rI++) {
-        const off = (rI & 1) * sc * 0.5;
-        const c0 = Math.floor((lx - off) / sc);
-        for (let cI = c0 - 1; cI <= c0 + 1; cI++) {
-          const cx = cI * sc + off, cy = rI * rowH;
-          const dd = Math.hypot(lx - cx, (ly - cy) * 1.1);
-          if (dd < rr && cx > bestX) { bestX = cx; bestD = dd; bdx = lx - cx; bdy = ly - cy; }
-        }
-      }
-      if (bestX > -Infinity) {
-        if (bestD > rr - 1 / s && bdx < rr * 0.35) light -= 0.17;
-        else if (bdx < 0 && bdy < 0 && bestD < rr * 0.55 && bestD > rr * 0.3) light += 0.06;
-      }
+    const fade = smoothstep(0.2, 0.36, u) * (1 - smoothstep(0.42, 0.72, v)) * (1 - smoothstep(0.86, 0.97, u));
+    if (fade > bayer(px, py) * 0.85 + 0.08) {
+      const sc = c.scaleSize, rowH = sc * 0.62;
+      const row = Math.floor(ly / rowH + 1000);
+      const off = (row & 1) * sc * 0.5;
+      const col0 = Math.floor((lx - off) / sc + 1000);
+      const cx = (col0 - 1000) * sc + off + sc * 0.5, cy = (row - 1000) * rowH + rowH * 0.5;
+      const dx = lx - cx, dy = (ly - cy) * 1.15;
+      const dd = Math.hypot(dx - sc * 0.22, dy);
+      const rr = sc * 0.55;
+      if (Math.abs(dd - rr) * s < 0.6 && dx < sc * 0.1) light -= 0.16;
+      else if (dd < rr - 1 / s && dx > -sc * 0.15 && dy < 0) light += 0.05;
     }
   }
   // gill plate
@@ -1182,7 +1178,7 @@ function freePix(c, G, xp, lx, ly, px, py, s, sw, still) {
       }
       case 'whiskers':
       case 'feelers': {
-        for (const pts of q.lines) if (polyDist2(pts, lx, ly) < q.w * q.w + 0.1) return pdT > 0.8 ? (e.P2 || e.P || P('#3b2a22')) : (e.P || (e.type === 'feelers' ? c.finR[2] : P('#3b2a22')));
+        for (const pts of q.lines) if (polyDist2(pts, lx, ly) < q.w * q.w * (e.type === 'whiskers' ? 1 : 1.6)) return pdT > 0.8 ? (e.P2 || e.P || (e.type === 'feelers' ? c.finR[4] : P('#5a4030'))) : (e.P || (e.type === 'feelers' ? c.finR[2] : P('#3b2a22')));
         break;
       }
       case 'barbel': {
@@ -1447,10 +1443,10 @@ function genericFace(c, G, sw, angle, s, ox, oy, still) {
   const eyes = c.eyes.map((e, i) => {
     const [ex, ey, er] = eyeLocal(c, G, e, sw, still);
     const [x, y] = toC(ex, ey);
-    return { x, y, r: er * s, e, idx: i, mirror: false, cheek: i === 0, main: i === 0 };
-  });
+    return { x, y, r: er * s, e, idx: i, mirror: false, cheek: i === 0, main: i === 0, angle };
+  }).sort((a, b) => (b.e.behind ? 1 : 0) - (a.e.behind ? 1 : 0));
   const my = sp(0) + G.mouthY;
-  const [mx, myc] = toC(G.halfL - 0.4, my);
+  const [mx, myc] = toC(G.halfL - Math.max(0.4, G.H * 0.03), my);
   let finTop = 0;
   for (const f of c.fins) if (f.slot === 'top') finTop = Math.max(finTop, f.h);
   const anchors = {
@@ -1546,6 +1542,14 @@ export function paintEye(buf, glow, cx, cy, c, e, f, ang, R) {
       const mx = f.mirror ? -ex : ex;
       const d = Math.hypot(ex, ey) / wide;
       let col = 0, gl = 0;
+      if (e.type === 'pixel') {
+        const sq = Math.max(Math.abs(ex), Math.abs(ey));
+        if (em.spiral) { if (sq < 0.95 && (Math.abs(ex - ey) < 0.4 || Math.abs(ex + ey) < 0.4)) col = e.sclera; }
+        else if (closedArc || blink > 0.5 || em.lid > -0.2) { if (sq < 0.95 && Math.abs(ey - 0.2) < 0.38) col = e.sclera; }
+        else if (sq < 0.9) col = em.heart ? HEART[3] : e.sclera;
+        if (col) buf.set(x, y, col);
+        continue;
+      }
       if (d <= 1) {
         if (tiny) {
           // tiny dot eye
@@ -1690,6 +1694,7 @@ export function paintMouth(buf, mx, my, c, m, f, ang, W, front = false) {
   const inside = P('#2a0b18'), tongue = P('#ff6f8f'), tongueH = P('#ffb0c4');
   const lipsR = m.R;
   const W2 = front ? W / 2 : W;
+  const sm = (em.smile || 0) + (m.smile || 0);
   for (let y = Math.floor(my - hb); y <= Math.ceil(my + hb); y++) {
     for (let x = Math.floor(mx - hb); x <= Math.ceil(mx + hb); x++) {
       const dx = x + 0.5 - mx, dy = y + 0.5 - my;
@@ -1700,11 +1705,11 @@ export function paintMouth(buf, mx, my, c, m, f, ang, W, front = false) {
       const curveY = (tt) => {
         let yy = 0;
         if (front) {
-          if (em.smile) yy += em.smile * W * 0.32 * (1 - tt * tt);
+          if (sm) yy += sm * W * 0.32 * (1 - tt * tt);
           if (em.smirk) yy += (ux > 0 ? em.smirk * W * 0.35 * (1 - tt * tt) : 0);
           if (em.wave) yy += em.wave * W * Math.sin((ux / W) * TAU * 1.6);
         } else {
-          if (em.smile) yy -= em.smile * W * 0.42 * tt * tt;
+          if (sm) yy -= sm * W * 0.42 * tt * tt;
           if (em.smirk) yy -= em.smirk * W * 0.7 * Math.max(0, tt - 0.45) ** 2 / 0.3;
           if (em.wave) yy += em.wave * W * Math.sin(tt * TAU * 1.3);
         }
@@ -1743,7 +1748,7 @@ export function paintMouth(buf, mx, my, c, m, f, ang, W, front = false) {
         }
       } else {
         // generic: small / big / fangs
-        const tk = 0.6;
+        const tk = 0.6 * (m.thick || 1);
         if (O && !front ? true : O && front) {
           const rr = W * 0.3 * (front ? 0.8 : 1) * (0.6 + O * 0.7);
           const cxo = front ? 0 : -W * 0.3;
@@ -1768,7 +1773,7 @@ export function paintMouth(buf, mx, my, c, m, f, ang, W, front = false) {
           const yy = curveY(t);
           if (Math.abs(uy - yy) < tk) col = line;
           // corner dimple
-          if (!front && t > 0.92 && Math.abs(uy - yy + 0.8) < 0.5 && W > 6 && (em.smile || 0) > 0.3) col = line;
+          if (!front && t > 0.92 && Math.abs(uy - yy + 0.8) < 0.5 && W > 6 && sm > 0.3) col = line;
           if (type === 'fangs') {
             for (const ft of [0.22, 0.6]) {
               const fl = Math.max(1.5, W * 0.22) * (ft < 0.3 ? 1 : 0.8);
@@ -2178,113 +2183,124 @@ KINDS.pudding = {
 
 KINDS.seahorse = {
   layers: [['back', 'fin', 8], ['body', 'swim', 8], ['front', 'fin', 8]],
-  ext(c) { const H = c.H; return [-H * 0.4, -H * 0.62, H * 0.48, H * 0.62]; },
-  spine(c, s, ph) {
-    const H = c.H * s;
-    const sway = Math.sin(ph * TAU) * 0.02;
-    const pts = [[0.02, -0.33], [-0.05, -0.2], [0.0, -0.06], [0.03, 0.08], [-0.02, 0.22], [-0.09, 0.32]];
-    const out = [];
+  ext(c) { const H = c.H; return [-H * 0.3, -H * 0.56, H * 0.36, H * 0.56]; },
+  spine(c, H, ph) {
+    const key = Math.round(H * 8) + '|' + Math.floor(fract(ph) * 8);
+    if (!c._shSp) c._shSp = new Map();
+    let out = c._shSp.get(key);
+    if (out) return out;
+    const sway = Math.sin(ph * TAU) * 0.012;
+    const pts = [[-0.035, -0.29], [-0.065, -0.18], [-0.03, -0.05], [-0.01, 0.07], [-0.04, 0.18], [-0.08 + sway, 0.28], [-0.085 + sway, 0.37]];
+    const raw = [];
     const cr = (p0, p1, p2, p3, t) => 0.5 * (2 * p1 + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t + (-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t);
     for (let i = 0; i < pts.length - 1; i++) {
       const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
-      for (let k = 0; k < 8; k++) {
-        const t = k / 8;
-        out.push([cr(p0[0], p1[0], p2[0], p3[0], t), cr(p0[1], p1[1], p2[1], p3[1], t)]);
-      }
+      for (let k = 0; k < 10; k++) { const t = k / 10; raw.push([cr(p0[0], p1[0], p2[0], p3[0], t), cr(p0[1], p1[1], p2[1], p3[1], t)]); }
     }
-    // curl
+    // tail curls forward and up
     const [lx, ly] = pts[pts.length - 1];
-    const curlR = 0.11 + sway;
-    const ccx = lx + curlR, ccy = ly;
-    for (let k = 0; k <= 22; k++) {
-      const t = k / 22;
-      const ang = Math.PI + t * Math.PI * 1.55;
-      const r = curlR * (1 - t * 0.55);
-      out.push([ccx + Math.cos(ang) * r, ccy - Math.sin(ang) * r]);
+    const cR = 0.055 + sway * 0.5;
+    const ccx = lx + cR, ccy = ly;
+    for (let k = 1; k <= 26; k++) {
+      const t = k / 26;
+      const ang = Math.PI + t * Math.PI * 1.65;
+      const r = cR * (1 - t * 0.6);
+      raw.push([ccx + Math.cos(ang) * r, ccy - Math.sin(ang) * r]);
     }
-    return out.map(([x, y], i, arr) => [x * H, y * H, i / (arr.length - 1)]);
+    out = raw.map(([x, y], i) => [x * H, y * H, i / (raw.length - 1)]);
+    c._shSp.set(key, out);
+    return out;
   },
   thick(t, H) {
-    if (t < 0.1) return 0.075 * H;
-    if (t < 0.42) return (0.075 + (t - 0.1) * 0.32) * H;
-    return Math.max(0.022, 0.177 - (t - 0.42) * 0.29) * H;
+    if (t < 0.08) return (0.062 + t * 0.25) * H;
+    if (t < 0.38) return (0.082 + (t - 0.08) * 0.13) * H;
+    if (t < 0.52) return (0.121 - (t - 0.38) * 0.35) * H;
+    return Math.max(0.016, 0.072 - (t - 0.52) * 0.115) * H;
   },
   paint(c, part, buf, glow, ox, oy, s, ph, q) {
     const H = c.H * s;
     const R = c.bodyR, B = c.bellyR, F = c.finR;
-    const bob = Math.sin(ph * TAU) * Math.max(0.5, c.k * 0.3);
-    const oyb = oy + (part === 'body' || part === 'all' ? bob : 0);
+    const bob = part === 'body' || part === 'all' ? Math.sin(ph * TAU) * Math.max(0.5, c.k * 0.25) : 0;
+    const oyb = oy + bob;
     if (part === 'back' || part === 'all') {
-      // dorsal fin fan on the back
-      const fx = ox - H * 0.1, fy = oy + H * 0.02;
-      for (let k = 0; k < 7; k++) {
-        const a = Math.PI * (0.78 + k * 0.08);
-        const len = H * (0.15 + 0.03 * Math.sin(ph * TAU * 2 + k * 0.9));
-        capsule(buf, fx, fy + (k - 3) * H * 0.02, fx + Math.cos(a) * len, fy + (k - 3) * H * 0.035 + Math.sin(a) * len * 0.3, Math.max(0.6, H * 0.018), Math.max(0.6, H * 0.03), F, { alpha: 220 });
+      // dorsal fin fan on the back, rippling
+      const fx = ox - H * 0.075, fy = oy + H * 0.02;
+      const n = 8;
+      for (let k = 0; k < n; k++) {
+        const yy = fy + (k - n / 2) * H * 0.016;
+        const len = H * (0.085 + 0.03 * Math.sin(ph * TAU * 2 + k * 0.8)) * Math.sin(Math.PI * (k + 0.5) / n) ** 0.5;
+        capsule(buf, fx, yy, fx - len, yy - len * 0.25, Math.max(0.6, H * 0.012), Math.max(0.6, H * 0.016), F, { alpha: 225, light: 0.62 });
       }
     }
     if (part === 'body' || part === 'all') {
-      const pts = this.spine(c, s, ph);
-      const x0 = Math.floor(ox - H * 0.4), x1 = Math.ceil(ox + H * 0.45), y0 = Math.floor(oyb - H * 0.55), y1 = Math.ceil(oyb + H * 0.6);
-      const headX = ox + H * 0.04, headY = oyb - H * 0.37;
+      const pts = this.spine(c, H, ph);
+      const headX = ox + H * 0.025, headY = oyb - H * 0.36;
+      const x0 = Math.floor(ox - H * 0.26), x1 = Math.ceil(ox + H * 0.34), y0 = Math.floor(oyb - H * 0.5), y1 = Math.ceil(oyb + H * 0.52);
+      const sxA = headX + H * 0.06, syA = headY + H * 0.012, sxB = headX + H * 0.21, syB = headY + H * 0.06;
+      const sdx = sxB - sxA, sdy = syB - syA, sl2 = sdx * sdx + sdy * sdy;
+      const ringN = 30;
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
         const px = x + 0.5 - ox, py = y + 0.5 - oyb;
-        let best = Infinity, bt = 0, bnx = 0;
+        let best = Infinity, bt = 0, bnx = 0, bny = 0;
         for (const [sx, sy, t] of pts) {
-          const d = Math.hypot(px - sx, py - sy) - this.thick(t, H);
-          if (d < best) { best = d; bt = t; bnx = (px - sx) / Math.max(0.5, this.thick(t, H)); }
+          if (Math.abs(py - sy) > H * 0.14) continue;
+          const th = this.thick(t, H);
+          const d = Math.hypot(px - sx, py - sy) - th;
+          if (d < best) { best = d; bt = t; bnx = (px - sx) / Math.max(0.5, th); bny = (py - sy) / Math.max(0.5, th); }
         }
-        // belly bulge
-        const bd = Math.hypot((px - H * 0.06) / (H * 0.14), (py - H * 0.02) / (H * 0.2)) - 1;
-        // head + snout
-        const hd = Math.hypot((x + 0.5 - headX) / (H * 0.115), (y + 0.5 - headY) / (H * 0.085)) - 1;
-        const sxA = headX + H * 0.06, syA = headY + H * 0.01, sxB = headX + H * 0.27, syB = headY + H * 0.07;
-        const sdx = sxB - sxA, sdy = syB - syA, sl2 = sdx * sdx + sdy * sdy;
-        let st = ((x + 0.5 - sxA) * sdx + (y + 0.5 - syA) * sdy) / sl2; st = clamp01(st);
-        const snD = Math.hypot(x + 0.5 - (sxA + sdx * st), y + 0.5 - (syA + sdy * st)) - H * (0.034 + (st > 0.88 ? 0.012 : 0));
-        const crownD = Math.hypot((x + 0.5 - (headX - H * 0.02)) / (H * 0.05), (y + 0.5 - (headY - H * 0.09)) / (H * 0.06)) - 1;
-        if (best > 0 && bd > 0 && hd > 0 && snD > 0 && crownD > 0) {
-          // spiny bumps along the back edge
-          if (best < Math.max(1, H * 0.022) && bnx < -0.3 && bt > 0.1 && bt < 0.7 && Math.abs(fract(bt * 26) - 0.5) < 0.16) buf.set(x, y, R[1]);
+        const bd = Math.hypot((px - H * 0.035) / (H * 0.085), (py - H * 0.03) / (H * 0.14)) - 1;
+        const hd = Math.hypot((x + 0.5 - headX) / (H * 0.095), (y + 0.5 - headY) / (H * 0.07)) - 1;
+        let st = ((x + 0.5 - sxA) * sdx + (y + 0.5 - syA) * sdy) / sl2;
+        st = clamp01(st);
+        const snD = Math.hypot(x + 0.5 - (sxA + sdx * st), y + 0.5 - (syA + sdy * st)) - H * (0.026 + (st > 0.86 ? 0.011 : 0));
+        const crX = headX - H * 0.035, crY = headY - H * 0.072;
+        const crownD = Math.hypot((x + 0.5 - crX) / (H * 0.04), (y + 0.5 - crY) / (H * 0.045)) - 1;
+        const spike = (Math.abs(x + 0.5 - (crX - H * 0.02)) < Math.max(0.6, H * 0.008) && y + 0.5 > crY - H * 0.07 && y + 0.5 < crY) ||
+          (Math.abs(x + 0.5 - (crX + H * 0.02)) < Math.max(0.6, H * 0.008) && y + 0.5 > crY - H * 0.055 && y + 0.5 < crY);
+        if (best > 0 && bd > 0 && hd > 0 && snD > 0 && crownD > 0 && !spike) {
+          // little spines along the back ridge
+          if (best < Math.max(1.1, H * 0.022) && bnx < -0.4 && bt > 0.05 && bt < 0.8 && Math.abs(fract(bt * ringN) - 0.5) < 0.14) buf.set(x, y, R[1]);
           continue;
         }
-        let nx = bnx;
-        let light = 0.55 - nx * 0.3 - (py / H) * 0.15;
         let col;
-        if (hd <= 0 || snD <= 0 || crownD <= 0) {
-          light = 0.62 - ((x + 0.5 - headX) / (H * 0.12)) * 0.15 - ((y + 0.5 - headY) / (H * 0.09)) * 0.3;
-          col = rampPick(R, clamp01(light), x, y);
-          if (crownD <= 0 && crownD > -0.35) col = R[3];
-          if (snD <= 0 && st > 0.9) col = R[1];
+        if (hd <= 0 || snD <= 0 || crownD <= 0 || spike) {
+          const hx = (x + 0.5 - headX) / (H * 0.1), hy = (y + 0.5 - headY) / (H * 0.075);
+          col = rampPick(R, clamp01(0.62 - hx * 0.12 - hy * 0.3), x, y);
+          if (crownD <= 0 || spike) col = R[crownD < -0.5 ? 3 : 2];
+          if (snD <= 0 && st > 0.86) col = R[1];
+          if (snD <= 0 && snD > -0.8 && (y + 0.5) > syA + sdy * st) col = R[1];
+          if (hd <= 0 && hx < -0.2 && hy < -0.3 && bayer(x, y) < 0.5) col = R[4];
         } else {
-          const belly = bd <= 0 && nx > -0.2;
-          col = rampPick(belly ? B : R, clamp01(light + (belly ? 0.05 : 0)), x, y);
-          // segment rings
-          if (bt > 0.12 && bt < 0.95 && Math.abs(fract(bt * 26) - 0.5) < 0.12) col = (belly ? B : R)[1];
-          if (belly && Math.abs(fract(py / Math.max(2, H * 0.045)) - 0.5) < 0.12) col = B[1];
-          if (nx < -0.5 && nx > -0.8 && bt > 0.12 && bt < 0.5 && bayer(x, y) < 0.4) col = R[4];
+          const belly = bd <= 0 && bnx > -0.25;
+          let light = 0.56 - bnx * 0.3 - bny * 0.12;
+          if (belly) light = 0.62 - (px - H * 0.035) / (H * 0.085) * 0.25;
+          col = rampPick(belly ? B : R, clamp01(light), x, y);
+          const ring = Math.abs(fract(bt * ringN) - 0.5) < 0.11;
+          if (!belly && bt > 0.04 && bt < 0.97 && ring) col = R[1];
+          if (belly && Math.abs(fract(py / Math.max(2, H * 0.04)) - 0.5) < 0.12) col = B[1];
+          if (!belly && bnx < -0.45 && bnx > -0.8 && bt > 0.05 && bt < 0.55 && bayer(x, y) < 0.4) col = R[4];
         }
         buf.set(x, y, col);
       }
     }
     if (part === 'front' || part === 'all') {
-      const fx = ox + H * 0.0, fy = oy - H * 0.27;
-      const fl = Math.sin(ph * TAU * 3) * 0.25;
-      for (let k = 0; k < 4; k++) {
-        const a = -0.2 + k * 0.28 + fl;
-        capsule(buf, fx, fy, fx - Math.cos(a) * H * 0.08, fy + Math.sin(a) * H * 0.08, Math.max(0.5, H * 0.012), Math.max(0.6, H * 0.022), F, { alpha: 200, light: 0.7 });
+      const fx = ox - H * 0.02, fy = oy - H * 0.27;
+      const fl = Math.sin(ph * TAU * 3) * 0.3;
+      for (let k = 0; k < 5; k++) {
+        const a = 0.2 + k * 0.32 + fl;
+        capsule(buf, fx, fy, fx - Math.cos(a) * H * 0.07, fy + Math.sin(a) * H * 0.06, Math.max(0.5, H * 0.01), Math.max(0.6, H * 0.02), F, { alpha: 210, light: 0.72 });
       }
     }
   },
   face(c, ph, s, ox, oy, q) {
     const H = c.H * s;
-    const bob = Math.sin(ph * TAU) * Math.max(0.5, c.k * 0.3);
-    const headX = ox + H * 0.04, headY = oy + bob - H * 0.37;
-    const R = c.look.eye?.r ? c.look.eye.r * s : Math.max(1.8, H * 0.05);
+    const bob = Math.sin(ph * TAU) * Math.max(0.5, c.k * 0.25);
+    const headX = ox + H * 0.025, headY = oy + bob - H * 0.36;
+    const R = c.look.eye?.r ? c.look.eye.r * s : Math.max(1.8, H * 0.045);
     return {
-      eyes: [{ x: headX + H * 0.02, y: headY - H * 0.005, r: R, e: c.eyes[0], idx: 0, mirror: false, cheek: true, main: true, angle: 0 }],
-      mouth: { x: headX + H * 0.3, y: headY + H * 0.085, w: Math.max(2, H * 0.05), m: c.mouth, front: false, angle: 0.3 },
-      anchors: { mouth: [headX + H * 0.31, headY + H * 0.08], top: [headX, headY - H * 0.15], tail: [ox, oy + H * 0.45], bottom: [ox, oy + H * 0.5] },
+      eyes: [{ x: headX + H * 0.012, y: headY - H * 0.008, r: R, e: c.eyes[0], idx: 0, mirror: false, cheek: true, main: true, angle: 0 }],
+      mouth: { x: headX + H * 0.235, y: headY + H * 0.07, w: Math.max(2, H * 0.045), m: c.mouth, front: false, angle: 0.35 },
+      anchors: { mouth: [headX + H * 0.24, headY + H * 0.065], top: [headX, headY - H * 0.15], tail: [ox, oy + H * 0.42], bottom: [ox, oy + H * 0.48] },
     };
   },
 };
@@ -2403,75 +2419,93 @@ KINDS.ray = {
 
 KINDS.squid = {
   layers: [['back', 'tail', 12], ['body', 'swim', 8]],
-  ext(c) { const L = c.L, H = c.H; return [-L * 0.72, -H * 1.0, L * 0.6, H * 1.0]; },
+  ext(c) { const L = c.L, H = c.H; return [-L * 0.68, -H * 0.95, L * 0.62, H * 0.95]; },
   paint(c, part, buf, glow, ox, oy, s, ph, q) {
     const L = c.L * s, H = c.H * s;
     const R = c.bodyR, F = c.finR;
+    const cape = c.look.cape !== false;
     if (part === 'back' || part === 'all') {
-      const open = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(ph * TAU));
-      const n = 7;
-      const base = ox - L * 0.02;
-      const endX = (t) => ox - L * (0.42 + 0.06 * Math.cos(t * Math.PI * (n - 1)));
-      const hc = (t) => H * (0.26 + 0.38 * open * t);
-      const lining = pk(c, c.look.lining || '#1c0a14');
-      for (let y = Math.floor(oy - H); y <= Math.ceil(oy + H); y++) for (let x = Math.floor(ox - L * 0.62); x <= Math.ceil(base); x++) {
-        const t = (base - x) / (L * 0.5);
-        if (t < 0) continue;
-        const h = hc(clamp01(t));
-        const dy = y + 0.5 - oy;
-        if (Math.abs(dy) > h) continue;
-        const vy = dy / h; // -1..1
-        const ex = endX((vy + 1) / 2);
-        if (x < ex) continue;
-        const edgeD = (x - ex) / L;
-        let col = rampPick(R, clamp01(0.42 - vy * 0.25 - t * 0.15), x, y);
-        const armK = (vy + 1) / 2 * (n - 1);
-        if (Math.abs(armK - Math.round(armK)) < 0.12) col = R[1];
-        if (edgeD < 0.07 + 0.02 * open) {
-          col = lining;
-          if (Math.abs(armK - Math.round(armK)) < 0.18 && ((x + y) & 1) === 0) col = P('#f4ecf0');
+      // webbed cloak: a cone flaring backwards; its open end shows the dark lining and white cirri
+      const open = 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(ph * TAU));
+      const b0 = ox - L * 0.04, Lc = L * 0.44, b1 = b0 - Lc;
+      const r0 = H * 0.24, r1 = H * (0.36 + 0.3 * open);
+      const rAt = (d) => r0 + (r1 - r0) * Math.pow(clamp01(d / Lc), 1.15);
+      const ry = r1, rx = Math.max(2, r1 * (0.22 + 0.12 * open));
+      const lining = rp(c, c.look.lining || '#2a0c18');
+      const arms = 8;
+      for (let y = Math.floor(oy - r1 - 2); y <= Math.ceil(oy + r1 + 2); y++) for (let x = Math.floor(b1 - rx - 2); x <= Math.ceil(b0 + 1); x++) {
+        const dx = x + 0.5, dy = y + 0.5 - oy;
+        const ex = (dx - b1) / rx, ey = dy / ry;
+        const inEnd = ex * ex + ey * ey <= 1;
+        const d = b0 - dx;
+        const side = d >= 0 && d <= Lc && Math.abs(dy) <= rAt(d);
+        if (!inEnd && !side) continue;
+        let col;
+        if (inEnd && (ex < 0.15 || !side || ex * ex + ey * ey < 0.75)) {
+          // inside of the cloak
+          const phi = Math.atan2(ey, ex);
+          const rr = Math.hypot(ex, ey);
+          col = rampPick(lining, clamp01(0.3 + (1 - rr) * 0.35 - ey * 0.15), x, y);
+          const ak = fract((phi / TAU) * arms + 0.5);
+          if (Math.abs(ak - 0.5) * arms * 0.6 < 0.16 && rr > 0.3 && rr < 0.92 && ((Math.round(rr * 9)) & 1) === 0) col = pk(c, '#f6eef2');
+          if (rr > 0.9) col = R[1];
+        } else {
+          const t = clamp01(d / Lc);
+          const vy = dy / Math.max(1, rAt(d));
+          col = rampPick(cape ? R : F, clamp01(0.5 - vy * 0.3 + (1 - t) * 0.08), x, y);
+          for (let k2 = 0; k2 < arms; k2++) {
+            const th = (k2 / arms) * TAU + 0.2;
+            if (Math.cos(th) < 0.1) continue;
+            if (Math.abs(vy - Math.sin(th)) < 0.06 + (1 - t) * 0.04) col = R[1];
+          }
+          if (Math.abs(dy) > rAt(d) - 1.2 && vy < 0) col = R[3];
         }
         buf.set(x, y, col);
       }
-      // black arm tips
-      for (let i = 0; i < n; i++) {
-        const vy = (i / (n - 1)) * 2 - 1;
-        const tx = endX(i / (n - 1)), ty = oy + vy * hc(1);
-        capsule(buf, tx + 1, ty, tx - L * 0.07, ty + vy * H * 0.08 + Math.sin(ph * TAU + i) * H * 0.04, Math.max(0.8, H * 0.035), Math.max(0.5, H * 0.012), rp(c, '#2a1420'));
+      // arm tips around the rim: black, curling
+      for (let k2 = 0; k2 < arms; k2++) {
+        const phi = (k2 / arms) * TAU + 0.35;
+        const tx = b1 + Math.cos(phi) * rx, ty = oy + Math.sin(phi) * ry;
+        const dirx = -0.7 + Math.cos(phi) * 0.3, diry = Math.sin(phi) * 0.8;
+        const ln = H * (0.16 + 0.05 * Math.sin(ph * TAU + k2));
+        capsule(buf, tx, ty, tx + dirx * ln, ty + diry * ln + Math.sin(ph * TAU * 2 + k2) * H * 0.03, Math.max(0.9, H * 0.04), Math.max(0.5, H * 0.012), rp(c, '#1e0c14'), { light: 0.6 });
       }
     }
     if (part === 'body' || part === 'all') {
       const flap = Math.sin(ph * TAU);
-      const m0 = ox - L * 0.08, ml = L * 0.55, mh = H * 0.33;
-      // ear fins
+      const m0 = ox - L * 0.02, ml = L * 0.56, mh = H * 0.34;
+      // ear fins near the mantle tip
       for (const sd of [-1, 1]) {
-        const fx = m0 + ml * 0.72, fy = oy + sd * mh * 0.8;
-        const ang = sd * (0.9 + flap * 0.45 * sd);
-        for (let y = Math.floor(fy - H * 0.4); y <= fy + H * 0.4; y++) for (let x = Math.floor(fx - H * 0.4); x <= fx + H * 0.4; x++) {
+        const fx = m0 + ml * 0.66, fy = oy + sd * mh * 0.72;
+        const ang = sd * (1.9 - flap * 0.5 * sd);
+        const fa = H * 0.3, fb = H * 0.15;
+        for (let y = Math.floor(fy - fa - 1); y <= fy + fa + 1; y++) for (let x = Math.floor(fx - fa - 1); x <= fx + fa + 1; x++) {
           const dx = x + 0.5 - fx, dy = y + 0.5 - fy;
           const a = dx * Math.cos(ang) + dy * Math.sin(ang), b = -dx * Math.sin(ang) + dy * Math.cos(ang);
-          if (a < 0 || (a / (H * 0.3)) ** 2 + (b / (H * 0.13)) ** 2 > 1) continue;
-          buf.set(x, y, rampPick(F, clamp01(0.6 - b / (H * 0.13) * 0.25 + a / (H * 0.3) * 0.15), x, y));
+          if (a < 0 || (a / fa) ** 2 + (b / fb) ** 2 > 1) continue;
+          let col = rampPick(F, clamp01(0.62 - (b / fb) * 0.3 * sd + (a / fa) * 0.1), x, y);
+          if ((a / fa) ** 2 + (b / fb) ** 2 > 0.75) col = F[sd < 0 ? 3 : 1];
+          buf.set(x, y, col);
         }
       }
-      for (let y = Math.floor(oy - mh - 1); y <= Math.ceil(oy + mh + 1); y++) for (let x = Math.floor(m0 - L * 0.08); x <= Math.ceil(m0 + ml + 1); x++) {
+      for (let y = Math.floor(oy - mh - 1); y <= Math.ceil(oy + mh + 1); y++) for (let x = Math.floor(m0 - L * 0.12); x <= Math.ceil(m0 + ml + 1); x++) {
         const u = (x + 0.5 - m0) / ml;
         let half;
-        if (u < 0) half = mh * Math.sqrt(Math.max(0, 1 - (u / 0.16) ** 2)) * 0.95;
-        else half = mh * Math.pow(Math.max(0, 1 - Math.pow(u, 2.4)), 0.5) * (0.95 + 0.05 * Math.sin(u * 3));
+        if (u < 0) half = mh * Math.sqrt(Math.max(0, 1 - (u / 0.22) ** 2));
+        else half = mh * Math.pow(Math.max(0, 1 - Math.pow(u, 3)), 0.5);
         const dy = y + 0.5 - oy;
         if (Math.abs(dy) > half) continue;
         const v = dy / Math.max(1, half);
-        let light = 0.58 - v * 0.33 + (1 - Math.abs(v)) * 0.08;
+        let light = 0.6 - v * 0.34 + (1 - Math.abs(v)) * 0.06 - (u < 0.02 ? 0.06 : 0);
         if (Math.abs(dy) > half - 1.2 && v < 0) light += 0.2;
         let col = rampPick(R, clamp01(light), x, y);
-        if (hash2(Math.floor(x / Math.max(1.5, c.k * 0.8)), Math.floor(y / Math.max(1.5, c.k * 0.8)), 2) > 0.9 && u > 0.15) col = R[1];
-        if (v < -0.4 && v > -0.75 && u > 0.2 && u < 0.6 && bayer(x, y) < 0.4) col = R[4];
+        if (hash2(Math.floor(x / Math.max(1.5, c.k * 0.8)), Math.floor(y / Math.max(1.5, c.k * 0.8)), 2) > 0.92 && u > 0.12) col = R[1];
+        if (v < -0.45 && v > -0.8 && u > 0.18 && u < 0.62 && bayer(x, y) < 0.4) col = R[4];
         buf.set(x, y, col);
       }
       if (c.look.photophores && glow) {
-        for (const [fx, fy] of [[m0 + ml * 0.97, oy], [m0 + ml * 0.72, oy - mh * 0.75], [m0 + ml * 0.72, oy + mh * 0.75]]) {
-          const pr = Math.max(1, H * 0.04);
+        for (const [fx, fy] of [[m0 + ml * 0.95, oy], [m0 + ml * 0.6, oy - mh * 0.55], [m0 + ml * 0.6, oy + mh * 0.55]]) {
+          const pr = Math.max(1, H * 0.035);
           shadedEllipse(buf, fx - pr * 0.5, fy, pr, pr, rp(c, '#8ff3ff'), { light: 0.8 });
           glow.fillCircle(fx - pr * 0.5, fy, pr + 0.5, pk(c, '#8ff3ff'));
         }
@@ -2480,10 +2514,10 @@ KINDS.squid = {
   },
   face(c, ph, s, ox, oy, q) {
     const L = c.L * s, H = c.H * s;
-    const R = c.look.eye?.r ? c.look.eye.r * s : Math.max(2, H * 0.16);
+    const R = c.look.eye?.r ? c.look.eye.r * s : Math.max(2, H * 0.15);
     return {
-      eyes: [{ x: ox + L * 0.04, y: oy - H * 0.04, r: R, e: c.eyes[0], idx: 0, mirror: false, cheek: true, main: true, angle: 0 }],
-      mouth: { x: ox + L * 0.02, y: oy + H * 0.2, w: Math.max(3, H * 0.18), m: c.mouth, front: false, angle: 0 },
+      eyes: [{ x: ox + L * 0.05, y: oy - H * 0.05, r: R, e: c.eyes[0], idx: 0, mirror: false, cheek: true, main: true, angle: 0 }],
+      mouth: { x: ox - L * 0.045, y: oy + H * 0.16, w: Math.max(3, H * 0.16), m: c.mouth, front: false, angle: Math.PI },
       anchors: { mouth: [ox - L * 0.1, oy], top: [ox + L * 0.2, oy - H * 0.5], tail: [ox - L * 0.5, oy], bottom: [ox, oy + H * 0.5] },
     };
   },
@@ -2914,3 +2948,142 @@ KINDS.chain = {
     return { eyes: f.eyes, mouth: f.mouth, anchors: { mouth: f.nose, top: [pts[0].x, pts[0].y - c.chain.r * s * 2], tail: [last.x, last.y], bottom: [pts[0].x, pts[0].y + c.chain.r * s] } };
   },
 };
+
+// ---------------------------------------------------------------------------
+// Public raster API.
+
+function finishBuf(c, buf, glow, sil, noOutline = false) {
+  if (noOutline && !sil) return;
+  if (sil) {
+    for (let i = 0; i < buf.data.length; i++) if (buf.data[i] >>> 24) buf.data[i] = 0xff332010 >>> 0;
+    buf.outline(() => 0xff221508 >>> 0);
+    return;
+  }
+  const neon = c.variant?.mutation === 'neon' && glow;
+  const before = neon ? buf.data.slice() : null;
+  buf.outline(outlineFnFor(c));
+  if (neon) {
+    const rim = P(shade(c.bodyHex, 0.5));
+    for (let i = 0; i < buf.data.length; i++) if (!before[i] && buf.data[i]) glow.data[i] = rim;
+  }
+}
+
+// Crop transparent margins; returns canvases plus the crop offset inside the source buffer.
+function cropOut(buf, glow) {
+  const { w, h, data } = buf;
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (data[y * w + x] >>> 24 || (glow && glow.data[y * w + x])) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  }
+  if (x1 < 0) return { canvas: null, glowCanvas: null, x: 0, y: 0 };
+  const cw = x1 - x0 + 1, ch = y1 - y0 + 1;
+  if (cw === w && ch === h) return { canvas: buf.toCanvas(), glowCanvas: glow ? glow.toCanvas() : null, x: 0, y: 0 };
+  const nb = new PixelBuffer(cw, ch);
+  const ng = glow ? new PixelBuffer(cw, ch) : null;
+  let anyGlow = false;
+  for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
+    nb.data[y * cw + x] = data[(y + y0) * w + x + x0];
+    if (ng) { const g = glow.data[(y + y0) * w + x + x0]; ng.data[y * cw + x] = g; if (g) anyGlow = true; }
+  }
+  return { canvas: nb.toCanvas(), glowCanvas: ng && anyGlow ? ng.toCanvas() : null, x: x0, y: y0 };
+}
+
+export const isKind = (c) => !!KINDS[c.kind];
+
+// Layer list for the rig: [{id, phase: 'tail'|'fin'|'swim', frames}] in back-to-front order.
+export function rigLayers(c) {
+  if (c._layers) return c._layers;
+  const K = KINDS[c.kind];
+  let out;
+  if (K) out = K.layers.map(([id, phase, frames]) => ({ id, phase, frames }));
+  else {
+    out = [];
+    if (c.tail.type !== 'none') out.push({ id: 'tail', phase: 'tail', frames: 12 });
+    if (c.fins.length) out.push({ id: 'back', phase: 'fin', frames: 8 });
+    out.push({ id: 'body', phase: 'swim', frames: 8 });
+    if (c.pectoral) out.push({ id: 'front', phase: 'fin', frames: 8 });
+  }
+  c._layers = out;
+  return out;
+}
+
+/**
+ * Shared bucket geometry for the rig. q: {sw (swim phase), angle, scale, inflate, still, pose}.
+ * Returns {w, h, ox, oy, eyes, mouth, anchors, offsets} in canvas coords of the bucket.
+ */
+export function rigGeom(c, q) {
+  const s = q.scale || 1;
+  const K = KINDS[c.kind];
+  if (K) {
+    const B = boundsFor(K.ext(c), 0, s);
+    const f = K.face(c, q.sw || 0, s, B.ox, B.oy, q);
+    return { w: B.w, h: B.h, ox: B.ox, oy: B.oy, eyes: f.eyes, mouth: f.mouth, anchors: f.anchors, offsets: null };
+  }
+  const G = geomOf(c, q.inflate || 0);
+  const B = boundsFor(genericExtent(c, G), q.angle || 0, s);
+  const f = genericFace(c, G, q.sw || 0, q.angle || 0, s, B.ox, B.oy, !!q.still);
+  return { w: B.w, h: B.h, ox: B.ox, oy: B.oy, eyes: f.eyes, mouth: f.mouth, anchors: f.anchors, offsets: f.offsets };
+}
+
+/**
+ * Rasterise one rig layer. q: {ph (this layer's phase), angle, scale, inflate, still, pose}.
+ * Returns {canvas, glowCanvas, x, y}: draw at (bucketX - ox + x, bucketY - oy + y). canvas may be null.
+ */
+export function rasterLayer(c, layer, q) {
+  const s = q.scale || 1;
+  const K = KINDS[c.kind];
+  if (K) {
+    const B = boundsFor(K.ext(c), 0, s);
+    const buf = new PixelBuffer(B.w, B.h);
+    const glow = c.glow ? new PixelBuffer(B.w, B.h) : null;
+    K.paint(c, layer, buf, glow, B.ox, B.oy, s, q.ph || 0, q);
+    finishBuf(c, buf, glow, false);
+    return cropOut(buf, glow);
+  }
+  const angle = q.angle || 0;
+  const G = geomOf(c, q.inflate || 0);
+  const ext = genericExtent(c, G);
+  const B = boundsFor(ext, angle, s);
+  const rect = rectFor(layerBox(c, G, layer, ext), angle, s, B.ox, B.oy, B.w, B.h);
+  const w = rect.x1 - rect.x0, h = rect.y1 - rect.y0;
+  if (w <= 0 || h <= 0) return { canvas: null, glowCanvas: null, x: 0, y: 0 };
+  const buf = new PixelBuffer(w, h);
+  const glow = c.glow && layer === 'body' ? new PixelBuffer(w, h) : null;
+  const ph = q.ph || 0;
+  const prm = { still: q.still, inflate: q.inflate, sw: layer === 'body' ? ph : 0, tp: ph, fp: ph };
+  paintGeneric(c, buf, glow, rect.x0, rect.y0, B.ox, B.oy, angle, s, layer, prm, G, rect);
+  finishBuf(c, buf, glow, false, layer === 'front');
+  const out = cropOut(buf, glow);
+  out.x += rect.x0;
+  out.y += rect.y0;
+  return out;
+}
+
+// Baked whole-creature sprite (old frame() API).
+export function rasterFish(c, p = {}) {
+  const s = p.scale || 1, angle = p.angle || 0, phase = p.phase || 0;
+  const K = KINDS[c.kind];
+  const f = bakedFace(p);
+  const sil = !!p.silhouette;
+  let B, buf, glow, face;
+  if (K) {
+    B = boundsFor(K.ext(c), 0, s);
+    buf = new PixelBuffer(B.w, B.h);
+    glow = c.glow ? new PixelBuffer(B.w, B.h) : null;
+    const q = { mouth: p.mouth ? 1 : 0, pose: p.expr === 'pose', squash: p.squash || 0, sw: phase };
+    K.paint(c, 'all', buf, glow, B.ox, B.oy, s, phase, q);
+    face = K.face(c, phase, s, B.ox, B.oy, q);
+  } else {
+    const G = geomOf(c, p.inflate || 0);
+    B = boundsFor(genericExtent(c, G), angle, s);
+    buf = new PixelBuffer(B.w, B.h);
+    glow = c.glow ? new PixelBuffer(B.w, B.h) : null;
+    paintGeneric(c, buf, glow, 0, 0, B.ox, B.oy, angle, s, 'all', { sw: phase, tp: phase, fp: phase, still: p.still, inflate: p.inflate }, G, { x0: 0, y0: 0, x1: B.w, y1: B.h });
+    face = genericFace(c, G, phase, angle, s, B.ox, B.oy, !!p.still);
+  }
+  if (!sil) paintFaceInto(buf, glow, { ...face, c }, f);
+  finishBuf(c, buf, glow, sil);
+  const anchors = { ...face.anchors, eyes: face.eyes.map((e) => ({ x: e.x, y: e.y, r: e.r, type: e.e.type })) };
+  if (c.variant?.shiny) anchors.shiny = true;
+  return { canvas: buf.toCanvas(), glowCanvas: glow ? glow.toCanvas() : null, ox: B.ox, oy: B.oy, anchors, w: B.w, h: B.h };
+}

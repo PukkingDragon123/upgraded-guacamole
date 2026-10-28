@@ -1,4 +1,6 @@
-// Dev preview of every voxel prop: dist/dev/props.html?page=N&bg=dark&only=id,id&zoom=2
+// Dev preview of every voxel prop:
+//   dist/dev/props.html?page=0..3|all&bg=dark&only=id,id&zoom=2&scale=1&debug
+//   (debug draws sprite bounds, ground anchor, screen rects, light radii and anchors).
 import { ctxOf } from '../core/canvas.js';
 import { drawText } from '../gfx/font.js';
 import { getProp, PROPS, PROP_VARIANTS } from '../gfx/props.js';
@@ -14,18 +16,17 @@ export function run(params) {
   const W = 960;
   const zoom = Number(params.get('zoom') || 2);
   const dark = params.get('bg') === 'dark';
-  const page = Number(params.get('page') || 0);
+  const all = params.get('page') === 'all';
+  const page = all ? 0 : Number(params.get('page') || 0);
   const only = params.get('only');
   const scale = Number(params.get('scale') || 1);
   const cv = document.getElementById('screen');
-  const g0 = cv.getContext('2d');
-  void g0;
 
   // Collect entries: [{id, variant, frame, label}]
-  let entries = [];
-  const ids = only ? only.split(',') : Object.keys(PROPS).filter((id) => PAGES[page % PAGES.length].filter(id, PROPS[id]));
+  const entries = [];
+  const ids = only ? only.split(',') : Object.keys(PROPS).filter((id) => all || PAGES[page % PAGES.length].filter(id, PROPS[id]));
   for (const id of ids) {
-    const vars = only ? PROP_VARIANTS[id] || [{}] : PROP_VARIANTS[id] || [{}];
+    const vars = PROP_VARIANTS[id] || [{}];
     for (const v of vars) entries.push({ id, variant: v.variant || 0, frame: v.frame || 0, label: v.label || PROPS[id]?.name || id });
   }
 
@@ -63,7 +64,7 @@ export function run(params) {
   grd.addColorStop(0, bgTop); grd.addColorStop(1, bgBot);
   g.fillStyle = grd;
   g.fillRect(0, 0, W, H);
-  drawText(g, only ? 'PROPS' : PAGES[page % PAGES.length].title + `  (page ${page % PAGES.length + 1}/${PAGES.length})`, 10, 7, { font: 'normal', color: '#ffffff', shadow: '#0b1622' });
+  drawText(g, only ? 'PROPS' : all ? 'ALL PROPS' : PAGES[page % PAGES.length].title + `  (page ${page % PAGES.length + 1}/${PAGES.length})`, 10, 7, { font: 'normal', color: '#ffffff', shadow: '#0b1622' });
   drawText(g, `${sprites.length} sprites, ${Math.round(total)} ms`, W - 10, 7, { font: 'small', align: 'right', color: '#cfe', shadow: '#0b1622' });
 
   for (const r of rows) {
@@ -77,6 +78,14 @@ export function run(params) {
       g.fill();
       const dx = cx - p.ox, dy = base - p.oy;
       g.drawImage(p.canvas, dx, dy);
+      if (p.front && p.anchors && p.anchors.keeper) {
+        // Stand-in shopkeeper between the stall and its counter layer.
+        const k = p.anchors.keeper;
+        g.fillStyle = '#e8503a';
+        g.beginPath(); g.ellipse(dx + k.x, dy + k.y - 14, 14, 11, 0, 0, Math.PI * 2); g.fill();
+        g.fillStyle = '#fff'; g.fillRect(dx + k.x - 6, dy + k.y - 30, 4, 5); g.fillRect(dx + k.x + 3, dy + k.y - 30, 4, 5);
+        g.drawImage(p.front, dx, dy);
+      }
       if (p.glow) {
         g.globalCompositeOperation = 'lighter';
         g.globalAlpha = dark ? 0.6 : 0.35;
@@ -90,6 +99,7 @@ export function run(params) {
         g.fillStyle = '#ff0';
         g.fillRect(cx - 2, base, 5, 1);
         for (const sc of p.screens) { g.strokeStyle = '#f0f'; g.strokeRect(dx + sc.x + 0.5, dy + sc.y + 0.5, sc.w - 1, sc.h - 1); }
+        for (const a of Object.values(p.anchors || {})) { g.fillStyle = '#0f0'; g.fillRect(dx + a.x - 1, dy + a.y - 1, 3, 3); }
         for (const l of p.lights) { g.strokeStyle = l.color; g.beginPath(); g.arc(dx + l.x, dy + l.y, l.r, 0, Math.PI * 2); g.stroke(); }
       }
       drawText(g, pl.s.label, cx, base + r.down + 3, { font: 'small', align: 'center', color: '#ffffff', shadow: '#0b1622' });

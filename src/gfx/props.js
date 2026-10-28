@@ -7,8 +7,13 @@
 //   lights:  [{x, y, r, color}] suggested light sources, canvas-relative.
 //   shop_stall also returns `front` (counter-only overlay to draw after the shopkeeper) and
 //   `anchors.keeper` (where the shopkeeper's feet go), both canvas-relative.
-// PROPS[id] = {name, biome, tags, decor: {price, size: 1 small | 2 medium | 3 large} | null}
+// PROPS[id] = {name, biome, tags, decor: {price, size: 1 small | 2 medium | 3 large} | null, decorOnly}
+//   biome is 'shallows' | 'junkyard' | 'abyss', or 'aquarium' (decor-only items) / 'shop' (shop_stall).
 // PROP_VARIANTS[id] = [{variant, frame, label}] notable variants/frames (for galleries and shops).
+//   Animated: treasure_chest frame 0 closed / 1 open, server_rack frame 0/1 LED blink.
+//   Coloured variants: crystal_cluster 0-4 (amethyst, emerald, topaz, sapphire, ruby), corals,
+//   anemone, glow_mushroom, circuit_coral, glyph_stone, lava_lamp; other ids reseed per variant.
+// Sprites are built lazily and cached per (id, scale, variant, frame); `ms` = [build, render] timing.
 
 import { VoxelModel, renderVoxels } from './voxel.js';
 import { RNG } from '../core/rng.js';
@@ -87,14 +92,20 @@ function stampRot(dst, src, sp, dp, rx = 0, ry = 0, rz = 0) {
       lo[k] = Math.min(lo[k], v); hi[k] = Math.max(hi[k], v);
     }
   }
-  for (let y = Math.floor(lo[1]); y <= Math.ceil(hi[1]); y++) for (let z = Math.floor(lo[2]); z <= Math.ceil(hi[2]); z++) for (let x = Math.floor(lo[0]); x <= Math.ceil(hi[0]); x++) {
-    const px = x + 0.5 - dp[0], py = y + 0.5 - dp[1], pz = z + 0.5 - dp[2];
-    // R^T * p
-    const qx = R[0][0] * px + R[1][0] * py + R[2][0] * pz + sp[0];
-    const qy = R[0][1] * px + R[1][1] * py + R[2][1] * pz + sp[1];
-    const qz = R[0][2] * px + R[1][2] * py + R[2][2] * pz + sp[2];
-    const v = src.get(Math.floor(qx), Math.floor(qy), Math.floor(qz));
-    if (v) dst.put(x, y, z, v);
+  const { nx: snx, ny: sny, nz: snz, data: sd } = src;
+  const xa = Math.floor(lo[0]), xb = Math.ceil(hi[0]);
+  // Inverse mapping, stepping linearly along x: q(x + 1) = q(x) + R^T e_x.
+  const ix = R[0][0], iy = R[0][1], iz = R[0][2];
+  for (let y = Math.floor(lo[1]); y <= Math.ceil(hi[1]); y++) for (let z = Math.floor(lo[2]); z <= Math.ceil(hi[2]); z++) {
+    const px = xa + 0.5 - dp[0], py = y + 0.5 - dp[1], pz = z + 0.5 - dp[2];
+    let qx = R[0][0] * px + R[1][0] * py + R[2][0] * pz + sp[0];
+    let qy = R[0][1] * px + R[1][1] * py + R[2][1] * pz + sp[1];
+    let qz = R[0][2] * px + R[1][2] * py + R[2][2] * pz + sp[2];
+    for (let x = xa; x <= xb; x++, qx += ix, qy += iy, qz += iz) {
+      if (qx < 0 || qy < 0 || qz < 0 || qx >= snx || qy >= sny || qz >= snz) continue;
+      const v = sd[(qx | 0) + snx * ((qy | 0) + sny * (qz | 0))];
+      if (v) dst.put(x, y, z, v);
+    }
   }
   // Forward-splat source voxel centres too, so thin shells stay watertight after rotation.
   for (let z = b.z0; z <= b.z1; z++) for (let y = b.y0; y <= b.y1; y++) for (let x = b.x0; x <= b.x1; x++) {
@@ -106,6 +117,15 @@ function stampRot(dst, src, sp, dp, rx = 0, ry = 0, rz = 0) {
     const tz = Math.floor(R[2][0] * px + R[2][1] * py + R[2][2] * pz + dp[2]);
     if (!dst.get(tx, ty, tz)) dst.put(tx, ty, tz, v);
   }
+}
+
+// Implicit shape tested in a rotated local frame: test(lx, ly, lz) with local coords relative to `c`.
+function shapeRot(m, c, rad, rot, test, col) {
+  const R = rotMat(...rot);
+  shape(m, c[0] - rad, c[1] - rad, c[2] - rad, c[0] + rad, c[1] + rad, c[2] + rad, (x, y, z) => {
+    const px = x - c[0], py = y - c[1], pz = z - c[2];
+    return test(R[0][0] * px + R[1][0] * py + R[2][0] * pz, R[0][1] * px + R[1][1] * py + R[2][1] * pz, R[0][2] * px + R[1][2] * py + R[2][2] * pz);
+  }, col);
 }
 
 // Prism/crystal shaft from p0 along dir, polygonal cross-section, pointed tip.
@@ -201,27 +221,35 @@ const topOpen = (m, x, y, z) => !m.get(x, y + 1, z);
 function candidates(m, on, facing) {
   const set = on == null ? null : new Set(Array.isArray(on) ? on : [on]);
   const out = [];
-  const { nx, ny, nz } = m;
-  for (let z = 0; z < nz; z++) for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) {
-    const v = m.get(x, y, z);
-    if (!v || (set && !set.has(v)) || m.palette[v].emissive || m.palette[v].noDecal) continue;
-    const top = !m.get(x, y + 1, z);
-    const front = !m.get(x, y, z + 1) || !m.get(x + 1, y, z);
-    const side = front || !m.get(x - 1, y, z) || !m.get(x, y, z - 1);
-    if (facing === 'top' && !top) continue;
-    if (facing === 'side' && (!side || top)) continue;
-    if (facing === 'front' && (!front || top)) continue;
-    if (facing === 'any' && !top && !side) continue;
-    out.push([x, y, z]);
+  const { nx, ny, nz, data, palette } = m;
+  const SY = nx, SZ = nx * ny;
+  for (let z = 0; z < nz; z++) for (let y = 0; y < ny; y++) {
+    const row = SY * y + SZ * z;
+    for (let x = 0; x < nx; x++) {
+      const i = row + x;
+      const v = data[i];
+      if (!v || (set && !set.has(v)) || palette[v].emissive || palette[v].noDecal) continue;
+      const top = y + 1 >= ny || !data[i + SY];
+      const front = z + 1 >= nz || !data[i + SZ] || x + 1 >= nx || !data[i + 1];
+      const side = front || x === 0 || !data[i - 1] || z === 0 || !data[i - SZ];
+      if (facing === 'top' && !top) continue;
+      if (facing === 'side' && (!side || top)) continue;
+      if (facing === 'front' && (!front || top)) continue;
+      if (facing === 'any' && !top && !side) continue;
+      out.push(i);
+    }
   }
   return out;
 }
+
+// Unpack a voxel index from candidates().
+const unpackIdx = (m, i) => [i % m.nx, Math.floor(i / m.nx) % m.ny, Math.floor(i / (m.nx * m.ny))];
 
 function scatter(m, rng, count, on, facing, place) {
   const cand = candidates(m, on, facing);
   for (let i = 0; i < count && cand.length; i++) {
     const k = Math.floor(rng.next() * cand.length);
-    const [x, y, z] = cand[k];
+    const [x, y, z] = unpackIdx(m, cand[k]);
     cand[k] = cand[cand.length - 1];
     cand.pop();
     let nx = 0, nz = 0;
@@ -273,7 +301,7 @@ function barnacles(m, rng, count, on = null) {
 
 // Sand drift (irregular, noisy low mound), returns sand indices.
 function sandMound(m, cx, cz, rx, rz, hgt, seed, cols = SAND) {
-  const idx = cols.map((c, i) => m.color(c, { jitter: 0.12, smooth: 0.6, light: i === 2 ? 0.2 : 0 }));
+  const idx = cols.map((c, i) => m.color(c, { jitter: 0.1, smooth: 0.8, light: i === 2 ? 0.2 : 0 }));
   shape(m, cx - rx - 2, 0, cz - rz - 2, cx + rx + 2, hgt + 2, cz + rz + 2, (x, y, z) => {
     const a = Math.atan2(z - cz, x - cx);
     const edge = 0.72 + 0.28 * noise3(Math.cos(a) * 1.6 + seed, Math.sin(a) * 1.6, 0.5, seed);
@@ -335,6 +363,22 @@ function branchCoral(m, rng, p, dir, len, r, depth, colFn, tipFn, opts = {}) {
     const nd = [d[0] + Math.cos(ang) * spread, d[1], d[2] + Math.sin(ang) * spread * (opts.flat ? 0.25 : 1)];
     branchCoral(m, rng, q, nd, len * lenK * rng.float(0.85, 1.1), r * shrink, depth - 1, colFn, tipFn, opts);
   }
+}
+
+// Tabulate a hull half-width function f(x, y, shrink) on the voxel grid (per distinct shrink).
+function tabulate(nx, ny, f) {
+  const tables = new Map();
+  return (x, y, shrink = 0) => {
+    let t = tables.get(shrink);
+    if (!t) {
+      t = new Float32Array(nx * ny);
+      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) t[i + j * nx] = f(i + 0.5, j + 0.5, shrink);
+      tables.set(shrink, t);
+    }
+    const i = Math.floor(x), j = Math.floor(y);
+    if (i < 0 || j < 0 || i >= nx || j >= ny) return -1;
+    return t[i + j * nx];
+  };
 }
 
 function hashStr(s) {
@@ -967,14 +1011,14 @@ def('sunken_boat', { name: 'Sunken Sloop', biome: 'shallows', tags: ['wreck', 'h
     if (t < 0.5) return 15;
     return 15 * Math.pow(Math.max(0, 1 - ((t - 0.5) / 0.5) ** 1.8), 0.62);
   };
-  const halfAt = (x, y, shrink = 0) => {
+  const halfAt = tabulate(108, 48, (x, y, shrink) => {
     const t = T(x);
     const B = beam(t) - shrink;
     if (B <= 0) return -1;
     const yk = keel(t) + shrink, ys = sheer(t);
     if (y < yk || y > ys) return -1;
     return B * Math.min(1, Math.pow((y - yk) / Math.max(1, 20 - yk * 0.5), 0.42));
-  };
+  });
   const inHull = (x, y, z, shrink = 0) => {
     const hw = halfAt(x, y, shrink);
     return hw > 0 && Math.abs(z - zc) <= hw;
@@ -1159,30 +1203,32 @@ def('crt_pile', { name: 'CRT Pile', biome: 'junkyard', tags: ['computer', 'scree
 });
 
 def('keyboard_slab', { name: 'Keyboard Slab', biome: 'junkyard', tags: ['computer'] }, ({ rng }) => {
-  const m = new VoxelModel(70, 22, 40);
-  const kb = part(m, 62, 8, 24);
-  const body = [m.color('#3c3d48', { jitter: 0.06 }), m.color('#2c2d36', { jitter: 0.06 })];
-  const key = [m.color('#e6dec6', { jitter: 0.05 }), m.color('#cfc6ab', { jitter: 0.05 })];
-  const keyD = m.color('#9a9284', { jitter: 0.05 });
-  const keyR = m.color('#e0604a', { jitter: 0.04 });
-  const hole = m.color('#3a332c', { jitter: 0 });
-  kb.box(0, 0, 0, 61, 2, 23, body[0]);
-  kb.box(0, 3, 0, 61, 3, 23, body[1]);
+  const m = new VoxelModel(70, 16, 44);
+  const body = [m.color('#3c3d48', { jitter: 0.05 }), m.color('#2c2d36', { jitter: 0.05 }), m.color('#555665', { jitter: 0.04 })];
+  const key = [m.color('#e8e0c8', { jitter: 0.04 }), m.color('#d4cbb0', { jitter: 0.04 })];
+  const keyD = m.color('#a09888', { jitter: 0.04 });
+  const keyR = m.color('#e0604a', { jitter: 0.03 });
+  const keyB = m.color('#5aa0d8', { jitter: 0.03 });
+  const x0 = 4, z0 = 8;
+  m.box(x0, 1, z0, x0 + 61, 3, z0 + 29, body[0]);
+  m.box(x0, 1, z0, x0 + 61, 1, z0 + 29, body[1]);
+  m.box(x0 + 1, 4, z0 + 1, x0 + 60, 4, z0 + 28, body[1]);
+  m.box(x0, 4, z0 + 28, x0 + 61, 4, z0 + 29, body[2]);
+  // Five rows of chunky keys (3 deep with 2-voxel gutters so rows read from above).
   for (let r = 0; r < 5; r++) for (let c = 0; c < 15; c++) {
-    const x = 2 + c * 4, z = 2 + r * 4;
-    if (r === 4 && c > 3 && c < 11) { if (c === 4) kb.box(x, 4, z, x + 26, 5, z + 2, key[0]); continue; }
-    if (h3(r, c, 0, 4) < 0.08) { kb.box(x, 3, z, x + 2, 3, z + 2, hole); continue; }
-    const col = r === 0 && c === 0 ? keyR : c > 12 ? keyD : key[(r + c) % 5 === 0 ? 1 : 0];
-    kb.box(x, 4, z, x + 2, 5, z + 2, col);
+    const x = x0 + 2 + c * 4, z = z0 + 2 + r * 5;
+    if (r === 4 && c > 3 && c < 11) { if (c === 4) m.box(x, 5, z, x + 26, 6, z + 2, key[0]); continue; }
+    if (h3(r, c, 0, 4) < 0.05) continue;
+    const col = r === 0 && c === 0 ? keyR : r === 3 && c === 13 ? keyB : c > 12 ? keyD : key[(r + c) % 5 === 0 ? 1 : 0];
+    m.box(x, 5, z, x + 2, 6, z + 2, col);
   }
-  const rust = RUST.map((c) => m.color(c, { jitter: 0.12 }));
-  rustify(kb, [body[0]], rust, 2, 0.3);
-  stampRot(m, kb, [31, 0, 12], [35, 4, 20], 14, -10, 6);
+  // Coiled cable.
   const cable = m.color('#2a2a30', { smooth: 0.4 });
-  m.tube([[18, 8, 12, 0.8], [10, 4, 6, 0.8], [3, 2, 14, 0.8]], cable);
-  junkMound(m, 35, 21, 27, 13, 4, 2);
-  moss(m, rng, 3, MOSS, 0.2, 0.2, [body[0], body[1]]);
-  return { m, yaw: 26 };
+  m.tube([[x0 + 30, 3, z0 - 1, 0.8], [x0 + 26, 2, z0 - 5, 0.8], [x0 + 16, 2, z0 - 6, 0.8], [x0 + 8, 2, z0 - 3, 0.8], [2, 2, z0 - 6, 0.8]], cable);
+  junkMound(m, 36, 24, 34, 19, 2, 2);
+  moss(m, rng, 3, MOSS, 0.2, 0.2, body);
+  barnacles(m, rng, 2, body);
+  return { m, yaw: 18, pitch: 30 };
 });
 
 def('vending_machine', { name: 'Vending Machine', biome: 'junkyard', tags: ['machine', 'glow'] }, ({ rng }) => {
@@ -1377,38 +1423,41 @@ def('shopping_cart', { name: 'Shopping Cart', biome: 'junkyard', tags: ['junk'] 
 });
 
 def('satellite_dish', { name: 'Satellite Dish', biome: 'junkyard', tags: ['machine'] }, ({ rng }) => {
-  const m = new VoxelModel(64, 70, 54);
-  const dish = part(m, 50, 50, 20);
-  const white = [m.color('#d2d7de', { jitter: 0.04, smooth: 0.75 }), m.color('#c3c9d2', { jitter: 0.04, smooth: 0.75 }), m.color('#e9ecef', { jitter: 0.03, smooth: 0.5 })];
+  const m = new VoxelModel(64, 72, 56);
+  const white = [m.color('#d2d7de', { jitter: 0.04, smooth: 0.8 }), m.color('#bfc5ce', { jitter: 0.04, smooth: 0.8 }), m.color('#eceef2', { jitter: 0.03, smooth: 0.6 })];
   const metal = [m.color(GUN[0], { jitter: 0.06 }), m.color(GUN[2], { jitter: 0.05, spec: 1 })];
-  const rust = RUST.map((c) => m.color(c, { jitter: 0.12, smooth: 0.5 }));
+  const rust = RUST.map((c) => m.color(c, { jitter: 0.12, smooth: 0.6 }));
   const ledC = m.color('#ff5a4a', { emissive: 1, jitter: 0 });
-  const R = 22, cx = 25, cy = 25;
-  // Paraboloid shell (axis +z), 2 voxels thick.
-  shape(dish, 0, 0, 0, 49, 49, 19, (x, y, z) => {
-    const r2 = (x - cx) ** 2 + (y - cy) ** 2;
-    if (r2 > R * R) return false;
-    const zs = 2 + r2 / (R * R) * 9;
-    return z >= zs && z <= zs + 1.8;
-  }, (x, y, z) => {
-    const r = Math.hypot(x - cx, y - cy);
-    return r > R - 1.5 ? white[2] : Math.abs(r - 11) < 0.6 ? white[1] : white[0];
-  });
-  // Feed arm + horn at focus.
-  dish.line(cx, cy - R + 2, 11, cx, cy, 30, metal[0], 0.7);
-  dish.line(cx - R + 3, cy + 6, 11, cx, cy, 30, metal[0], 0.7);
-  dish.box(cx - 2, cy - 2, 29, cx + 2, cy + 2, 33, metal[1]);
-  dish.set(cx, cy + 3, 33, ledC);
-  dish.cylinder(cx, cy, 0, 3, 4, metal[0], 'z');
-  rustify(dish, white, rust, 5, 0.22);
-  // Mount: base box + pole + yoke.
   const base = [m.color('#7d838f', { jitter: 0.06 }), m.color('#5c616d', { jitter: 0.06 })];
-  m.box(20, 0, 18, 40, 5, 36, base[1]);
-  m.box(21, 6, 19, 39, 6, 35, base[0]);
-  m.cylinder(30, 27, 6, 30, 2.4, metal[0]);
-  stampRot(m, dish, [cx, cy, 0], [30, 36, 28], -38, -28, 12);
+  const R = 22, c = [30, 40, 30], rot = [-40, -30, 0];
+  // Paraboloid shell (local axis +z = facing direction), 2.4 voxels thick, tested analytically.
+  shapeRot(m, c, R + 3, rot, (x, y, z) => {
+    const r2 = x * x + y * y;
+    if (r2 > R * R) return false;
+    const zs = -6 + r2 / (R * R) * 9;
+    return z >= zs && z <= zs + 2.4;
+  }, (x, y, z) => white[h3(x >> 2, y >> 2, z >> 2, 3) < 0.3 ? 1 : 0]);
+  // Rim highlight.
+  shapeRot(m, c, R + 3, rot, (x, y, z) => {
+    const r = Math.hypot(x, y);
+    return r > R - 1.2 && r <= R + 0.3 && z >= 2.2 && z <= 4.2;
+  }, white[2]);
+  // Feed arm + horn at the focus.
+  const P = (lx, ly, lz) => xformPt([lx, ly, lz], [0, 0, 0], c, ...rot);
+  const a0 = P(0, -R + 2, 3), a1 = P(-R + 3, 6, 3), f = P(0, 0, 18);
+  m.line(...a0, ...f, metal[0], 0.7);
+  m.line(...a1, ...f, metal[0], 0.7);
+  m.sphere(...f, 2.6, metal[1]);
+  m.set(Math.floor(f[0]), Math.floor(f[1]) + 3, Math.floor(f[2]), ledC);
+  const back = P(0, 0, -7);
+  m.sphere(...back, 4, metal[0]);
+  rustify(m, white, rust, 5, 0.25);
+  // Mount: base box + pole into the back of the dish.
+  m.box(20, 0, 20, 40, 5, 38, base[1]);
+  m.box(21, 6, 21, 39, 6, 37, base[0]);
+  m.line(30, 6, 29, back[0], back[1], back[2], metal[0], 2.3);
   rustify(m, base, rust, 8, 0.45);
-  junkMound(m, 30, 28, 22, 17, 4, 6);
+  junkMound(m, 30, 29, 22, 17, 4, 6);
   moss(m, rng, 7, MOSS, 0.3, 0.2, base);
   barnacles(m, rng, 4, base);
   return { m, yaw: 30 };
@@ -1453,56 +1502,49 @@ def('gear_big', { name: 'Giant Gear', biome: 'junkyard', tags: ['machine', 'meta
 });
 
 def('circuit_coral', { name: 'Circuit Coral', biome: 'junkyard', tags: ['coral', 'glow'], decor: { price: 220, size: 1 } }, ({ rng, variant }) => {
-  const m = new VoxelModel(60, 72, 50);
-  const pcb = [m.color('#2f8a4e', { jitter: 0.05 }), m.color('#257040', { jitter: 0.05 }), m.color('#47b86c', { jitter: 0.04 })];
+  const m = new VoxelModel(64, 70, 54);
+  const pcb = [m.color('#2f8a4e', { jitter: 0.05 }), m.color('#236e3e', { jitter: 0.05 }), m.color('#4cbd70', { jitter: 0.04 })];
   const trace = m.color('#e8c050', { jitter: 0.03, spec: 1.2 });
-  const chip = m.color('#25232c', { jitter: 0.04 });
+  const chipC = m.color('#25232c', { jitter: 0.04 });
   const chipT = m.color('#3a3844', { jitter: 0.03 });
   const pin = m.color('#c9ccd4', { jitter: 0.03, spec: 1 });
-  const comp = [m.color('#d8b080', { jitter: 0.03 }), m.color('#3a6ad8', { jitter: 0.03 }), m.color('#222', { jitter: 0.02 })];
+  const capC = [m.color('#3a6ad8', { jitter: 0.03 }), m.color('#d8b080', { jitter: 0.03 })];
   const ledSets = [['#ff4a6b', '#4affc8', '#ffd84a'], ['#59c8ff', '#b46bff', '#4affc8'], ['#9dff4a', '#ffd84a', '#ff8a4a']];
   const leds = ledSets[variant % ledSets.length].map((c) => m.color(c, { emissive: 1, jitter: 0 }));
-  // Base: a big socketed chip with pins.
-  m.box(16, 0, 14, 43, 4, 35, chip);
-  m.box(16, 5, 14, 43, 5, 35, chipT);
-  for (let x = 17; x <= 42; x += 2) { m.box(x, 0, 13, x, 2, 13, pin); m.box(x, 0, 36, x, 2, 36, pin); }
-  m.box(18, 6, 16, 19, 6, 17, pin);
-  const tips = [];
-  // Manhattan branches: rise, step sideways, rise again; tips carry LEDs.
-  const grow = (x, y, z, len, w, depth) => {
-    const up = Math.round(len * rng.float(0.7, 1));
-    m.box(x - w, y, z - w, x + w - 1, y + up, z + w - 1, pcb[depth % 2]);
-    const top = y + up;
-    if (depth <= 0) { tips.push([x, top, z, w]); return; }
-    const n = depth >= 2 ? 3 : 2;
-    const dirs = rng.shuffle([[1, 0], [-1, 0], [0, 1], [0, -1]]);
-    for (let i = 0; i < n; i++) {
-      const [dx, dz] = dirs[i];
-      const side = rng.int(4, 8) - (3 - depth);
-      const nx = x + dx * side, nz = z + dz * side;
-      const ww = Math.max(1, w - 1);
-      m.box(Math.min(x, nx) - ww, top - ww * 2 + 1, Math.min(z, nz) - ww, Math.max(x, nx) + ww - 1, top, Math.max(z, nz) + ww - 1, pcb[(depth + 1) % 2]);
-      grow(nx, top, nz, Math.round(len * 0.72), ww, depth - 1);
-    }
-  };
-  grow(30, 6, 25, 18, 3, 3);
-  for (const [x, y, z, w] of tips) {
-    const led = leds[(h3(x, y, z, 1) * 3) | 0];
-    m.box(x - w, y + 1, z - w, x + w - 1, y + 2, z + w - 1, led);
-    m.set(x, y + 3, z, led);
+  const cx = 32, cz = 27;
+  // Socketed chip as the holdfast.
+  m.box(cx - 13, 0, cz - 10, cx + 12, 4, cz + 9, chipC);
+  m.box(cx - 13, 5, cz - 10, cx + 12, 5, cz + 9, chipT);
+  for (let x = cx - 12; x <= cx + 11; x += 2) { m.box(x, 0, cz - 11, x, 2, cz - 11, pin); m.box(x, 0, cz + 10, x, 2, cz + 10, pin); }
+  // Trunk of stacked boards.
+  m.box(cx - 3, 6, cz - 3, cx + 2, 46, cz + 2, (x, y) => (y % 6 === 0 ? trace : pcb[1]));
+  // Plates (table-coral tiers), each a rounded square board with an LED-studded rim.
+  const tiers = [[16, 15, 1.5, 0], [27, 12.5, -2, 0.6], [37, 10, 1, 1.3], [46, 7, -1, 2]];
+  for (const [y, r, off, ang] of tiers) {
+    const ox = cx + off * 2, oz = cz + off;
+    shape(m, ox - r - 1, y, oz - r - 1, ox + r + 1, y + 1, oz + r + 1, (x, yy, z) => {
+      const dx = x - ox, dz = z - oz;
+      const ux = dx * Math.cos(ang) - dz * Math.sin(ang), uz = dx * Math.sin(ang) + dz * Math.cos(ang);
+      return Math.abs(ux) ** 3 + Math.abs(uz) ** 3 <= r ** 3;
+    }, (x, yy, z) => (yy === y + 1 ? pcb[0] : pcb[1]));
+    m.box(ox - 1, y - 6, oz - 1, ox, y, oz, pcb[1]);
   }
-  // Gold traces, bright top edges and little components.
-  m.recolor((x, y, z, p) => {
-    if (p !== pcb[0] && p !== pcb[1]) return null;
-    if (!m.get(x, y + 1, z)) return pcb[2];
-    return (y % 5 === 0 || (x + z) % 6 === 0) && m.exposed(x, y, z) && h3(x, y, z, 2) < 0.7 ? trace : null;
+  // Top-side detail: gold traces, chips, capacitors; rim LEDs.
+  const tops = candidates(m, [pcb[0]], 'top');
+  for (const i of tops) {
+    const [x, y, z] = unpackIdx(m, i);
+    const edge = !m.get(x + 1, y, z) || !m.get(x - 1, y, z) || !m.get(x, y, z + 1) || !m.get(x, y, z - 1);
+    if (edge) {
+      m.set(x, y, z, pcb[2]);
+      if ((x + z) % 3 === 0) { const l = leds[(h3(z, x, y, 2) * 3) | 0]; m.set(x, y + 1, z, l); m.set(x, y + 2, z, l); }
+    }
+    else if ((x + z) % 5 === 0 || (x - z + 100) % 7 === 0) m.set(x, y, z, trace);
+  }
+  scatter(m, rng, 9, [pcb[0], trace], 'top', (x, y, z, nx, nz, i) => {
+    if (i % 3 === 0) { m.box(x - 1, y + 1, z - 1, x + 1, y + 1, z + 1, chipC); m.set(x, y + 2, z, chipT); }
+    else m.box(x, y + 1, z, x, y + 2, z, capC[i % 2]);
   });
-  scatter(m, rng, 10, [pcb[0], pcb[1]], 'front', (x, y, z, nx, nz) => {
-    const c = comp[(h3(x, y, z, 4) * 3) | 0];
-    m.set(x + nx, y, z + nz, c);
-    m.set(x + nx, y + 1, z + nz, c);
-  });
-  junkMound(m, 30, 25, 20, 16, 2, 5);
+  junkMound(m, cx, cz, 18, 15, 2, 5);
   return { m, yaw: 30, light: m.palette[leds[0]].color };
 });
 
@@ -1602,7 +1644,7 @@ def('pipe_bend', { name: 'Pipe Bend', biome: 'junkyard', tags: ['junk', 'metal']
   const inside = m.color('#1e2a22', { jitter: 0 });
   const ooze = m.color('#9dff4a', { emissive: 0.8, jitter: 0.04 });
   const rust = RUST.map((c) => m.color(c, { jitter: 0.12, smooth: 0.6 }));
-  const R = 16, r = 7, cx = 22, cy = 23, zc = 20;
+  const R = 16, r = 7, cx = 22, cy = 7, zc = 20;
   // Quarter torus from horizontal (pointing -x) to vertical (pointing up).
   torus(m, cx + R, cy, zc, R, r, (x, y) => (Math.floor((x + y) / 4) % 2 ? pipe[0] : pipe[1]), 'z', (a) => a >= Math.PI / 2 - 0.02 && a <= Math.PI + 0.02);
   m.sub(() => torus(m, cx + R, cy, zc, R, r - 1.8, 0, 'z', (a) => a >= Math.PI / 2 - 0.2 && a <= Math.PI + 0.2));
@@ -1623,43 +1665,1076 @@ def('pipe_bend', { name: 'Pipe Bend', biome: 'junkyard', tags: ['junk', 'metal']
   m.cylinder(cx + R, zc, cy + R - 2, cy + R - 2, r - 2.5, ooze);
   m.line(cx + R + r, cy + R + 9, zc + 2, cx + R + r + 0.5, cy + R - 6, zc + 3, ooze, 0.6);
   rustify(m, [...pipe, ...flange], rust, 4, 0.5);
-  junkMound(m, 26, 21, 22, 15, 8, 4);
+  junkMound(m, 20, 21, 22, 15, 5, 4);
   moss(m, rng, 8, MOSS, 0.35, 0.2);
   barnacles(m, rng, 6, pipe);
   return { m, yaw: 30, light: '#9dff4a' };
 });
 
-// @@MORE_DEFS@@
+// ===================== MIDNIGHT ABYSS =====================
+
+const ABYSS_STONE = ['#4a4880', '#3a386a', '#5c5a98'];
+const ABYSS_SILT = ['#3c3a5e', '#302e4e', '#4c4a72'];
+const BONE = ['#d8d0c0', '#bfb4a2', '#ece6d8'];
+const RUNES = [
+  '####|#...|###.|#...|#...', '#..#|#.##|##.#|#..#|#..#', '.##.|#..#|.##.|..#.|.##.', '#...|##..|#.#.|#..#|####',
+  '####|...#|.##.|#...|####', '.#..|###.|.#..|.#.#|.###', '#..#|.##.|.##.|#..#|#..#', '###.|..#.|.###|..#.|###.',
+  '#.##|#..#|####|#...|##.#', '..#.|.###|#.#.|..#.|.#.#',
+].map((r) => r.split('|'));
+
+// Glyph texture lookup on a 2D lattice (cells 5 wide x 6 tall incl. 1-voxel gutters).
+function rune(u, v, seed) {
+  const cu = Math.floor(u / 5), cv = Math.floor(v / 6);
+  const lu = ((u % 5) + 5) % 5, lv = ((v % 6) + 6) % 6;
+  if (lu > 3 || lv > 4) return false;
+  const g = RUNES[Math.floor(h3(cu, cv, 0, seed) * RUNES.length)];
+  return g[4 - lv][lu] === '#';
+}
+
+function abyssStone(m, cols = ABYSS_STONE) {
+  return cols.map((c, i) => m.color(c, { jitter: 0.14, smooth: 0.5, light: i === 2 ? 0.1 : 0 }));
+}
+
+// Bioluminescent speckles (small emissive dots) on exposed surfaces.
+function biolum(m, rng, count, on, color = '#5ff4ff') {
+  const g = m.color(color, { emissive: 1, jitter: 0 });
+  scatter(m, rng, count, on, 'any', (x, y, z, nx, nz) => {
+    m.set(x, y, z, g);
+    if (rng.chance(0.3)) m.set(x + (nz ? 1 : 0), y, z + (nx ? 1 : 0), g);
+  });
+  return g;
+}
+
+// Chip damage: carve small random bites out of exposed edges.
+function chip(m, rng, count, on, size = 1.6) {
+  const cand = candidates(m, on, 'any');
+  for (let i = 0; i < count && cand.length; i++) {
+    const [x, y, z] = unpackIdx(m, cand[Math.floor(rng.next() * cand.length)]);
+    m.sub(() => m.sphere(x + 0.5, y + 0.5, z + 0.5, size * rng.float(0.7, 1.3)));
+  }
+}
+
+// Classical column with flutes, base, capital; glyph band; returns palette.
+function column(m, rng, cx, cz, y0, height, r, st, glow, opts = {}) {
+  const dark = opts.dark;
+  m.box(cx - r - 3, y0, cz - r - 3, cx + r + 2, y0 + 2, cz + r + 2, st[1]);
+  m.box(cx - r - 2, y0 + 3, cz - r - 2, cx + r + 1, y0 + 4, cz + r + 1, st[0]);
+  const top = y0 + 5 + height;
+  for (let y = y0 + 5; y < top; y++) {
+    const rr = r * (1 - (y - y0) / (height * 9));
+    m.cylinder(cx, cz, y, y, rr, (x, yy, z) => {
+      const a = Math.atan2(z + 0.5 - cz, x + 0.5 - cx);
+      const fl = ((a / (Math.PI * 2)) * 14 % 1 + 1) % 1;
+      return fl < 0.22 ? null : st[0];
+    });
+    m.cylinder(cx, cz, y, y, rr - 0.9, st[1]);
+  }
+  if (!opts.broken) {
+    m.cylinder(cx, cz, top, top + 1, r + 1.2, st[2]);
+    m.box(cx - r - 3, top + 2, cz - r - 3, cx + r + 2, top + 4, cz + r + 2, st[0]);
+    m.box(cx - r - 2, top + 5, cz - r - 2, cx + r + 1, top + 5, cz + r + 1, st[2]);
+  }
+  // Glowing glyph band around the shaft.
+  if (glow) {
+    const by = y0 + 5 + Math.round(height * (opts.bandAt ?? 0.55));
+    m.paint(() => m.cylinder(cx, cz, by, by + 6, r + 1, (x, y, z) => {
+      if (!m.exposed(x, y, z)) return null;
+      const a = Math.atan2(z + 0.5 - cz, x + 0.5 - cx);
+      const u = Math.round((a + Math.PI) * r);
+      return rune(u, y - by, 3) ? glow : dark;
+    }));
+  }
+  return top;
+}
+
+def('pillar_ruin', { name: 'Ancient Pillar', biome: 'abyss', tags: ['ruin', 'glow'], decor: { price: 260, size: 1 } }, ({ rng }) => {
+  const m = new VoxelModel(40, 96, 40);
+  const st = abyssStone(m);
+  const dark = m.color('#262447', { jitter: 0.05 });
+  const glow = m.color('#5ff4ff', { emissive: 1, jitter: 0 });
+  column(m, rng, 20, 20, 0, 74, 7.5, st, glow, { dark, bandAt: 0.42 });
+  chip(m, rng, 26, st, 1.5);
+  // Cracks.
+  for (let k = 0; k < 3; k++) {
+    const y = rng.int(12, 70), a = rng.float(-0.6, 1.2);
+    m.paint(() => m.line(20 + Math.cos(a) * 7.5, y, 20 + Math.sin(a) * 7.5, 20 + Math.cos(a + 0.4) * 7.5, y - rng.int(6, 12), 20 + Math.sin(a + 0.4) * 7.5, dark, 0.6));
+  }
+  moss(m, rng, 4, ['#4a7aa8', '#3a5a8a', '#2a3f6a'], 0.45, 0.2);
+  biolum(m, rng, 14, st);
+  sandMound(m, 20, 20, 16, 16, 2, 3, ABYSS_SILT);
+  return { m, yaw: 30, light: '#5ff4ff' };
+});
+
+def('pillar_broken', { name: 'Broken Pillar', biome: 'abyss', tags: ['ruin'], decor: { price: 160, size: 2 } }, ({ rng }) => {
+  const m = new VoxelModel(80, 54, 50);
+  const st = abyssStone(m);
+  const dark = m.color('#262447', { jitter: 0.05 });
+  const glow = m.color('#b46bff', { emissive: 1, jitter: 0 });
+  column(m, rng, 22, 22, 0, 40, 7.5, st, glow, { dark, broken: true, bandAt: 0.3 });
+  // Jagged break.
+  m.sub(() => shape(m, 10, 20, 10, 34, 50, 34, (x, y, z) => y > 34 + (x - 22) * 0.45 + noise3(x * 0.4, 0, z * 0.4, 2) * 7, 0));
+  // Fallen drum lying on its side.
+  const drum = part(m, 20, 26, 20);
+  column(drum, rng, 10, 10, 0, 18, 7, st, null, { broken: true });
+  drum.sub(() => drum.box(0, 0, 0, 19, 4, 19));
+  stampRot(m, drum, [10, 5, 10], [52, 8, 30], 0, 25, 90);
+  // Rubble.
+  for (let i = 0; i < 6; i++) facetRock(m, rng, 30 + rng.float(-20, 40), 1, 38 + rng.float(-6, 8), rng.float(2, 4), rng.float(2, 3.5), rng.float(2, 4), st[1], 8);
+  chip(m, rng, 20, st, 1.5);
+  moss(m, rng, 4, ['#4a7aa8', '#3a5a8a', '#2a3f6a'], 0.4, 0.2);
+  biolum(m, rng, 10, st, '#b46bff');
+  sandMound(m, 38, 26, 36, 20, 2, 5, ABYSS_SILT);
+  return { m, yaw: 30, light: '#b46bff' };
+});
+
+def('arch_ruin', { name: 'Sunken Archway', biome: 'abyss', tags: ['ruin', 'swimthrough', 'glow'], decor: { price: 700, size: 3 } }, ({ rng }) => {
+  const m = new VoxelModel(92, 92, 34);
+  const st = abyssStone(m);
+  const seam = m.color('#2a2850', { jitter: 0.04 });
+  const glow = m.color('#5ff4ff', { emissive: 1, jitter: 0 });
+  const glowV = m.color('#b46bff', { emissive: 1, jitter: 0 });
+  const zc = 17;
+  // Block-built piers with seams.
+  const blockCol = (x, y, z) => ((y % 8 === 0) || ((x + (Math.floor(y / 8) % 2) * 5) % 10 === 0) ? seam : st[(h3(x >> 3, y >> 3, z >> 3, 2) * 3) | 0]);
+  m.box(6, 0, zc - 9, 23, 58, zc + 8, blockCol);
+  m.box(68, 0, zc - 9, 85, 58, zc + 8, blockCol);
+  m.box(4, 0, zc - 11, 25, 3, zc + 10, st[1]);
+  m.box(66, 0, zc - 11, 87, 3, zc + 10, st[1]);
+  // Arch of voussoirs.
+  const ax = 45.5, ay = 58, R0 = 22.5, R1 = 34;
+  shape(m, 6, ay - 2, zc - 9, 85, ay + R1 + 2, zc + 8, (x, y) => {
+    const d = Math.hypot(x - ax, y - ay);
+    return y >= ay && d >= R0 && d <= R1;
+  }, (x, y, z) => {
+    const a = Math.atan2(y - ay, x - ax);
+    const d = Math.hypot(x - ax, y - ay);
+    const seg = (a / Math.PI) * 11;
+    if (Math.abs(seg - Math.round(seg)) < 0.08 || Math.abs(d - (R0 + R1) / 2) < 0.4 && false) return seam;
+    if (Math.abs(seg - 5.5) < 0.5 && d > R0 + 2 && d < R1 - 2 && z >= zc + 7) {
+      return rune(Math.round(x - ax + 3), Math.round(y - ay - R0), 5) ? glowV : st[2];
+    }
+    return st[(Math.floor(seg) + (d > 28 ? 1 : 0)) % 3];
+  });
+  // Lintel ledge across the piers.
+  m.box(4, 56, zc - 10, 25, 58, zc + 9, st[2]);
+  m.box(66, 56, zc - 10, 87, 58, zc + 9, st[2]);
+  // Glyph column panels on the pier fronts.
+  for (const px of [10, 72]) for (let y = 14; y < 48; y++) for (let x = px; x < px + 10; x++) if (rune(x - px, y - 14, px)) m.set(x, y, zc + 8, glow);
+  // Damage: a missing chunk, cracks, chips.
+  m.sub(() => blob(m, 84, 40, zc + 6, 6, 9, 6, 0.3, 0.3, 3, 0));
+  chip(m, rng, 40, st, 1.6);
+  moss(m, rng, 6, ['#4a7aa8', '#3a5a8a', '#2a3f6a'], 0.45, 0.18);
+  // Hanging glow strands from the arch.
+  const strand = m.color('#7fe8ff', { emissive: 0.7, jitter: 0 });
+  for (let k = 0; k < 7; k++) {
+    const x = Math.round(ax + rng.float(-18, 18));
+    let y = 0;
+    for (let yy = 40; yy < 92; yy++) if (m.get(x, yy, zc)) { y = yy; break; }
+    if (!y) continue;
+    const len = rng.int(6, 16);
+    const sz = zc + rng.int(-6, 6);
+    for (let j = 1; j <= len; j++) m.set(x + (j > len * 0.6 ? 1 : 0), y - j, sz, j === len ? glow : strand);
+  }
+  for (let i = 0; i < 5; i++) facetRock(m, rng, rng.float(20, 75), 1, zc + 10 + rng.float(0, 5), rng.float(2.5, 5), rng.float(2, 4), rng.float(2.5, 4.5), st[1], 8);
+  biolum(m, rng, 18, st);
+  return { m, yaw: 26, vs: 1.7, light: '#5ff4ff' };
+});
+
+def('statue_head', { name: 'Elder Head', biome: 'abyss', tags: ['ruin', 'glow', 'hero'] }, ({ rng }) => {
+  const m = new VoxelModel(96, 100, 80);
+  const st = [m.color('#56548e', { jitter: 0.12, smooth: 0.65 }), m.color('#454378', { jitter: 0.12, smooth: 0.65 }), m.color('#6a68a6', { jitter: 0.1, smooth: 0.65 })];
+  const deep = m.color('#2a2850', { jitter: 0.05, smooth: 0.4 });
+  const glow = m.color('#5ff4ff', { emissive: 1, jitter: 0 });
+  const glowV = m.color('#c07bff', { emissive: 1, jitter: 0 });
+  const eyeC = m.color('#aef9ff', { emissive: 1, jitter: 0 });
+  const h = part(m, 70, 92, 64);
+  const cx = 35, cz = 30;
+  // Skull/face volume.
+  h.ellipsoid(cx, 46, cz, 25, 34, 24, st[0]);
+  h.box(cx - 22, 10, cz - 14, cx + 21, 46, cz + 20, st[0]);
+  h.sub(() => h.box(0, 0, cz + 22, 69, 91, 63));
+  // Flatten the face plane a little and carve features.
+  h.sub(() => shape(h, 0, 0, cz + 18, 69, 91, 63, (x, y, z) => z > cz + 20 - Math.abs(x - cx) * 0.18, 0));
+  // Brow ridge, nose, lips, chin.
+  h.box(cx - 19, 52, cz + 15, cx + 18, 56, cz + 21, st[2]);
+  shape(h, cx - 6, 28, cz + 14, cx + 5, 54, cz + 28, (x, y, z) => {
+    const t = (54 - y) / 26;
+    return Math.abs(x - cx + 0.5) <= 2.2 + t * 4 && z <= cz + 19 + t * 7;
+  }, st[0]);
+  h.box(cx - 7, 28, cz + 22, cx + 6, 30, cz + 26, st[1]);
+  h.box(cx - 11, 18, cz + 17, cx + 10, 22, cz + 22, st[2]);
+  h.box(cx - 10, 21, cz + 17, cx + 9, 21, cz + 22, deep);
+  h.box(cx - 8, 9, cz + 14, cx + 7, 14, cz + 19, st[0]);
+  // Eye sockets with glowing slits.
+  for (const s of [-1, 1]) {
+    const ex = cx + s * 10 - (s > 0 ? 1 : 0);
+    h.sub(() => h.ellipsoid(ex + 0.5, 46, cz + 21, 6.5, 4, 4));
+    h.box(ex - 5, 45, cz + 17, ex + 5, 46, cz + 18, eyeC);
+    h.box(ex - 6, 43, cz + 17, ex + 6, 44, cz + 17, deep);
+  }
+  // Ears.
+  for (const s of [-1, 1]) h.ellipsoid(cx + s * 25, 42, cz + 2, 3.5, 11, 6, st[1]);
+  // Crown / headdress band with runes.
+  h.cylinder(cx, cz, 66, 76, 23, st[1]);
+  h.cone(cx, cz, 77, 86, 22, 12, st[0]);
+  h.paint(() => h.cylinder(cx, cz, 67, 75, 24, (x, y, z) => {
+    if (!h.exposed(x, y, z)) return null;
+    const a = Math.atan2(z + 0.5 - cz, x + 0.5 - cx);
+    return rune(Math.round((a + Math.PI) * 23), y - 67, 7) ? glow : null;
+  }));
+  // Cheek glyph lines.
+  for (const s of [-1, 1]) for (let y = 24; y < 40; y++) {
+    const x = cx + s * (14 - (40 - y) * 0.15);
+    if (y % 6 !== 0) h.paint(() => h.box(x, y, cz + 15, x + s, y, cz + 22, (xx, yy, zz) => (h.exposed(xx, yy, zz) ? glowV : null)));
+  }
+  // Cracks and chips.
+  h.paint(() => h.line(cx + 8, 80, cz + 10, cx + 14, 58, cz + 20, deep, 0.7));
+  h.paint(() => h.line(cx + 14, 58, cz + 20, cx + 10, 48, cz + 22, deep, 0.6));
+  chip(h, rng, 40, st, 1.8);
+  // Tilt and sink into the silt.
+  stampRot(m, h, [cx, 0, cz], [48, -8, 38], -6, 14, 9);
+  sandMound(m, 48, 40, 42, 32, 9, 4, ABYSS_SILT);
+  moss(m, rng, 9, ['#4a7aa8', '#3a5a8a', '#2a3f6a'], 0.4, 0.15, st);
+  // Tube worms and anemones colonising the crown.
+  const worm = m.color('#e9e2d6', { smooth: 0.4 }), plume = m.color('#ff4a6b', { emissive: 0.4 });
+  for (let i = 0; i < 6; i++) {
+    const x = 34 + rng.int(-10, 14), z = 34 + rng.int(-8, 8);
+    let y = 99;
+    while (y > 0 && !m.get(x, y, z)) y--;
+    if (y < 40) continue;
+    const hh = rng.int(4, 8);
+    m.box(x, y + 1, z, x, y + hh, z, worm);
+    m.set(x, y + hh + 1, z, plume); m.set(x + 1, y + hh + 1, z, plume); m.set(x, y + hh + 2, z, plume);
+  }
+  biolum(m, rng, 20, st);
+  return { m, yaw: 24, vs: 1.6, light: '#5ff4ff' };
+});
 
 const GEMS = [
-  ['Amethyst', '#b46bff', '#7a3ad1', '#ecc8ff'],
-  ['Emerald', '#3fe08f', '#1d9a63', '#c8ffd9'],
-  ['Topaz', '#ffbe3d', '#d9781c', '#fff0b0'],
-  ['Sapphire', '#4a8dff', '#2a4fd1', '#c4dcff'],
-  ['Ruby', '#ff4a6b', '#c21f4a', '#ffc4cf'],
+  ['Amethyst', '#b46bff', '#7a3ad1', '#f0d4ff'],
+  ['Emerald', '#3fe08f', '#1d9a63', '#d0ffe2'],
+  ['Topaz', '#ffbe3d', '#d9781c', '#fff2b8'],
+  ['Sapphire', '#4a8dff', '#2a4fd1', '#cfe2ff'],
+  ['Ruby', '#ff4a6b', '#c21f4a', '#ffd0d8'],
 ];
 
 def('crystal_cluster', { name: 'Crystal Cluster', biome: 'abyss', tags: ['crystal', 'glow'], decor: { price: 400, size: 1 } }, ({ rng, variant }) => {
   const g = GEMS[variant % GEMS.length];
-  const W = 40, H = 52, D = 34;
-  const m = new VoxelModel(W, H, D);
-  const rock = [m.color('#3a3560', { jitter: 0.3 }), m.color('#2c2a4c', { jitter: 0.3 }), m.color('#4a4472', { jitter: 0.25 })];
-  const cA = m.color(g[1], { emissive: 0.35, jitter: 0.12 });
-  const cB = m.color(g[2], { emissive: 0.45, jitter: 0.1 });
-  const cC = m.color(g[1], { emissive: 0.25, jitter: 0.12, light: -0.4 });
+  const m = new VoxelModel(54, 72, 46);
+  const st = abyssStone(m);
+  const cA = m.color(g[1], { emissive: 0.4, jitter: 0.06, smooth: 0.3 });
+  const cB = m.color(g[3], { emissive: 0.75, jitter: 0.04, smooth: 0.3 });
+  const cC = m.color(g[2], { emissive: 0.3, jitter: 0.06, smooth: 0.3 });
   const seed = rng.int(0, 999);
-  blob(m, W / 2, 1, D / 2, 16, 7, 13, 0.3, 0.2, seed, patch(rock, 0.18, seed), 0);
+  facetRock(m, rng, 27, 3, 23, 19, 8, 15, st[0], 14);
+  facetRock(m, rng, 40, 2, 28, 8, 5, 7, st[1], 9);
+  stoneTex(m, st, seed);
   const shafts = [
-    [0, 1, 0, 40, 5.2], [-0.55, 1, 0.2, 28, 4], [0.6, 1, -0.15, 30, 4.2], [0.25, 1, 0.65, 20, 3.3], [-0.4, 1, -0.5, 22, 3.4], [-0.9, 0.7, 0.5, 13, 2.6], [0.9, 0.6, 0.45, 12, 2.4],
+    [0.05, 1, 0.05, 50, 6.2], [-0.5, 1, 0.15, 36, 4.6], [0.55, 1, -0.1, 38, 4.8], [0.25, 1, 0.6, 26, 3.8], [-0.4, 1, -0.5, 28, 3.8],
+    [-0.95, 0.65, 0.45, 16, 2.8], [0.95, 0.6, 0.4, 15, 2.6], [0.1, 0.8, 0.9, 12, 2.4],
   ];
   shafts.forEach(([dx, dy, dz, len, r], i) => {
-    const jx = rng.float(-1.5, 1.5), jz = rng.float(-1.5, 1.5);
-    const p0 = [W / 2 + dx * 5 + jx, 3, D / 2 + dz * 5 + jz];
-    shaft(m, p0, [dx, dy, dz], len * rng.float(0.88, 1.08), r, r * 1.6, i === 0 ? cB : i % 2 ? cA : cC, 6, rng.float(0, 1));
+    const p0 = [27 + dx * 6 + rng.float(-1, 1), 4, 23 + dz * 5 + rng.float(-1, 1)];
+    shaft(m, p0, [dx, dy, dz], len * rng.float(0.9, 1.06), r, r * 1.7, i % 3 === 2 ? cC : cA, 6, rng.float(0, 1));
   });
-  m.recolor((x, y, z, p) => (p === cA && !m.get(x - 1, y, z) && h3(x, y, z, 1) < 0.7 ? cB : null));
+  // Facets toward the light glow brighter; a bright core streak on the big one.
+  m.recolor((x, y, z, p) => ((p === cA || p === cC) && !m.get(x - 1, y, z) && !m.get(x - 1, y, z + 1) ? cB : null));
+  shaft(m, [27.5, 6, 23.5], [0.05, 1, 0.05], 44, 1.2, 4, (x, y, z, p) => (p ? cB : null), 6);
+  // Small shards scattered around the base.
+  for (let i = 0; i < 5; i++) {
+    const a = rng.float(0, Math.PI * 2);
+    shaft(m, [27 + Math.cos(a) * 15, 1, 23 + Math.sin(a) * 12], [Math.cos(a) * 0.6, 1, Math.sin(a) * 0.6], rng.float(5, 9), 1.5, 2.5, cA, 6);
+  }
+  sandMound(m, 27, 24, 22, 18, 2, seed, ABYSS_SILT);
   return { m, yaw: 32, light: g[1] };
 });
+
+def('glow_mushroom', { name: 'Glow Shrooms', biome: 'abyss', tags: ['plant', 'glow'], decor: { price: 180, size: 1 } }, ({ rng, variant }) => {
+  const schemes = [['#4ae0ff', '#c8faff', '#2a7fb8'], ['#c07bff', '#f2dcff', '#6a3ab0'], ['#7dff9a', '#e2ffe8', '#2f9a5a']];
+  const sc = schemes[variant % schemes.length];
+  const m = new VoxelModel(58, 60, 50);
+  const stem = [m.color('#d8d4e8', { smooth: 0.6, jitter: 0.06 }), m.color('#b8b2d0', { smooth: 0.6, jitter: 0.06 })];
+  const cap = m.color(sc[2], { smooth: 0.7, jitter: 0.06, emissive: 0.25 });
+  const capL = m.color(sc[0], { smooth: 0.7, jitter: 0.05, emissive: 0.6 });
+  const spot = m.color(sc[1], { emissive: 1, jitter: 0 });
+  const gill = m.color('#3a2f5a', { jitter: 0.04, emissive: 0.15 });
+  const st = abyssStone(m);
+  facetRock(m, rng, 29, 2, 25, 16, 6, 14, st[0], 12);
+  stoneTex(m, st, 3);
+  const shrooms = [[29, 25, 34, 9.5, 0], [17, 22, 22, 7, -0.25], [40, 28, 24, 7.5, 0.3], [24, 34, 14, 5, -0.15], [38, 15, 15, 5.5, 0.2], [12, 32, 9, 3.5, -0.4], [46, 35, 9, 3.6, 0.45]];
+  for (const [x, z, hgt, r, lean] of shrooms) {
+    const tx = x + lean * hgt * 0.5, ty = hgt;
+    m.tube([[x, 3, z, r * 0.32 + 0.6], [x + lean * hgt * 0.2, hgt * 0.5, z, r * 0.26 + 0.5], [tx, ty, z, r * 0.24 + 0.5]], stem[0]);
+    // Cap: flattened dome with an underside of gills.
+    shape(m, tx - r - 1, ty - 2, z - r - 1, tx + r + 1, ty + r, z + r + 1, (xx, yy, zz) => {
+      const d = ((xx - tx) / r) ** 2 + ((yy - ty + 0.5) / (r * 0.62)) ** 2 + ((zz - z) / r) ** 2;
+      return d <= 1 && yy >= ty - 0.5 - r * 0.12 * (1 - Math.hypot(xx - tx, zz - z) / r);
+    }, (xx, yy, zz) => (yy < ty + 0.6 ? gill : yy > ty + r * 0.35 ? capL : cap));
+  }
+  // Glowing spots on the caps.
+  m.recolor((x, y, z, p) => ((p === cap || p === capL) && !m.get(x, y + 1, z) && h3(x >> 1, y, z >> 1, 3) < 0.16 ? spot : null));
+  // Tiny sprouts on the rock.
+  scatter(m, rng, 8, st, 'top', (x, y, z) => { m.set(x, y + 1, z, stem[1]); m.set(x, y + 2, z, capL); });
+  sandMound(m, 29, 25, 22, 19, 2, 6, ABYSS_SILT);
+  return { m, yaw: 30, light: sc[0] };
+});
+
+def('tube_worms', { name: 'Tube Worms', biome: 'abyss', tags: ['plant', 'vent'], decor: { price: 150, size: 1 } }, ({ rng }) => {
+  const m = new VoxelModel(54, 66, 48);
+  const tube = [m.color('#ece6da', { smooth: 0.55, jitter: 0.06 }), m.color('#cfc6b6', { smooth: 0.55, jitter: 0.06 }), m.color('#a89e8e', { smooth: 0.55, jitter: 0.05 })];
+  const plume = [m.color('#ff3d5a', { smooth: 0.4, jitter: 0.08, emissive: 0.35 }), m.color('#ff8a9a', { smooth: 0.4, jitter: 0.06, emissive: 0.5 }), m.color('#b8203e', { smooth: 0.4, jitter: 0.06, emissive: 0.2 })];
+  const st = [m.color('#2e2b40', { smooth: 0.5, jitter: 0.1 }), m.color('#3c3852', { smooth: 0.5, jitter: 0.1 }), m.color('#5a4a52', { smooth: 0.5, jitter: 0.1 })];
+  facetRock(m, rng, 27, 3, 24, 17, 8, 15, st[0], 12);
+  stoneTex(m, st, 2);
+  const N = 16;
+  for (let i = 0; i < N; i++) {
+    const a = i * 2.4 + rng.float(-0.3, 0.3), rr = Math.sqrt(i / N) * 11;
+    const x = 27 + Math.cos(a) * rr, z = 24 + Math.sin(a) * rr * 0.8;
+    const hgt = 22 + (1 - rr / 11) * 26 + rng.float(-5, 5);
+    const lean = [Math.cos(a) * rr * 0.04, Math.sin(a) * rr * 0.04];
+    const r = rng.float(1.3, 2);
+    const top = [x + lean[0] * hgt, hgt, z + lean[1] * hgt];
+    m.tube([[x, 3, z, r + 0.3], [x + lean[0] * hgt * 0.5, hgt * 0.5, z + lean[1] * hgt * 0.5, r], top.concat(r)], (xx, yy) => (yy % 5 === 0 ? tube[2] : yy % 5 === 1 ? tube[1] : tube[0]), 3);
+    // Feathery plume.
+    for (let k = 0; k < 10; k++) {
+      const pa = k / 10 * Math.PI * 2, len = rng.float(2.5, 4.5);
+      m.line(top[0], top[1] + 1, top[2], top[0] + Math.cos(pa) * len * 0.6, top[1] + len, top[2] + Math.sin(pa) * len * 0.6, k % 3 ? plume[0] : plume[2], 0.6);
+      m.set(top[0] + Math.cos(pa) * len * 0.6, top[1] + len, top[2] + Math.sin(pa) * len * 0.6, plume[1]);
+    }
+  }
+  // Little white vent crabs.
+  const crab = m.color('#f2ece0', { smooth: 0.3 });
+  scatter(m, rng, 3, st, 'top', (x, y, z) => { m.box(x, y + 1, z, x + 2, y + 1, z + 1, crab); m.set(x - 1, y + 1, z, crab); m.set(x + 3, y + 1, z, crab); });
+  sandMound(m, 27, 25, 22, 19, 2, 9, ABYSS_SILT);
+  return { m, yaw: 30, light: '#ff4a6b' };
+});
+
+def('ribcage', { name: 'Leviathan Ribs', biome: 'abyss', tags: ['bone', 'hero', 'swimthrough'], decor: { price: 900, size: 3 } }, ({ rng }) => {
+  const m = new VoxelModel(122, 82, 96);
+  const rc = part(m, 124, 70, 64);
+  const bone = BONE.map((c, i) => m.color(c, { smooth: 0.55, jitter: 0.08, light: i === 2 ? 0.1 : 0 }));
+  const boneD = m.color('#8f8478', { smooth: 0.5, jitter: 0.06 });
+  const crack = m.color('#5a5060', { jitter: 0.03 });
+  const zc = 30;
+  // Spine of vertebrae along x, dipping into the silt at both ends.
+  const spineY = (x) => 6 + Math.sin(x / 124 * Math.PI) * 9;
+  for (let x = 4; x < 120; x += 7) {
+    const y = spineY(x);
+    const s = 1 - Math.abs(x - 60) / 140;
+    rc.ellipsoid(x + 3, y, zc, 3.4 * s, 4.6 * s, 4.6 * s, bone[0]);
+    rc.box(x + 2, y + 3, zc - 1, x + 3, y + 9 * s, zc, bone[1]);
+    rc.line(x + 3, y, zc - 3, x + 3, y - 2, zc - 9 * s, bone[1], 1.2);
+    rc.line(x + 3, y, zc + 3, x + 3, y - 2, zc + 9 * s, bone[1], 1.2);
+    rc.ellipsoid(x + 6.5, y, zc, 1.2, 3 * s, 3 * s, boneD);
+  }
+  // Ribs arching up and over to the near side; a couple snapped.
+  for (let i = 0; i < 8; i++) {
+    const x = 12 + i * 13.5 + rng.float(-1, 1);
+    const y0 = spineY(x) + 2;
+    const H = 56 - Math.abs(i - 3.5) * 6 + rng.float(-3, 3);
+    const W = 26 - Math.abs(i - 3.5) * 1.5;
+    const broken = i === 2 || i === 6;
+    const pts = [];
+    for (let k = 0; k <= 12; k++) {
+      const t = k / 12;
+      if (broken && t > 0.58) break;
+      const ang = t * Math.PI * 0.92;
+      pts.push([x + t * 5, y0 + Math.sin(ang) * H * 0.86, zc + 2 + (1 - Math.cos(ang)) * W * 0.62, 2.7 - t * 1.5]);
+    }
+    rc.tube(pts, (xx, yy, zz) => (h3(xx, yy, zz, 1) < 0.07 ? bone[2] : bone[0]), 3);
+    const back = pts.slice(0, 7).map(([px, py, pz, pr]) => [px, py, zc - (pz - zc) * 0.85 - 2, pr]);
+    rc.tube(back, bone[1], 3);
+    if (broken) rc.tube([[x + 10, 2, zc + 32, 1.6], [x + 16, 2, zc + 28, 1.4], [x + 22, 2, zc + 30, 1.2]], bone[1]);
+  }
+  rc.recolor((x, y, z, p) => (bone.includes(p) && rc.exposed(x, y, z) && Math.abs(noise3(x * 0.3, y * 0.3, z * 0.3, 2) - 0.5) < 0.02 ? crack : null));
+  stampRot(m, rc, [62, 0, zc], [60, 0, 46], 0, -28, 0);
+  biolum(m, rng, 14, bone, '#5ff4ff');
+  biolum(m, rng, 6, bone, '#c07bff');
+  sandMound(m, 60, 50, 46, 36, 6, 8, ABYSS_SILT);
+  return { m, yaw: 30, vs: 1.6, light: '#5ff4ff' };
+});
+
+def('giant_skull', { name: 'Giant Skull', biome: 'abyss', tags: ['bone', 'glow'], decor: { price: 550, size: 2 } }, ({ rng }) => {
+  const m = new VoxelModel(90, 60, 58);
+  const bone = BONE.map((c, i) => m.color(c, { smooth: 0.6, jitter: 0.08, light: i === 2 ? 0.1 : 0 }));
+  const deep = m.color('#1c1830', { jitter: 0.02, light: -0.5 });
+  const crack = m.color('#5a5060', { jitter: 0.03 });
+  const tooth = m.color('#f2ead8', { smooth: 0.4, jitter: 0.04 });
+  const eye = m.color('#ffd84a', { emissive: 1, jitter: 0 });
+  const sk = part(m, 86, 52, 48);
+  const zc = 24;
+  // Long fishy cranium: cranial dome + tapering snout.
+  sk.ellipsoid(22, 26, zc, 20, 20, 19, bone[0]);
+  shape(sk, 20, 6, 4, 84, 40, 44, (x, y, z) => {
+    const t = (x - 20) / 64;
+    const hw = 16 * (1 - t * 0.65), top = 34 - t * 16, bot = 12 + t * 2;
+    return Math.abs(z - zc) <= hw && y <= top && y >= bot;
+  }, bone[0]);
+  sk.recolor((x, y, z, p) => (!sk.get(x, y + 1, z) ? bone[2] : null));
+  // Big eye socket with two lurking eyes.
+  sk.sub(() => sk.ellipsoid(30, 30, zc + 14, 9, 8, 9));
+  sk.ellipsoid(30, 30, zc + 9, 8, 7, 3, deep);
+  sk.set(28, 31, zc + 12, eye); sk.set(33, 31, zc + 12, eye);
+  // Nostril, cheek window, brow ridge.
+  sk.sub(() => sk.ellipsoid(72, 26, zc + 10, 4, 3, 4));
+  sk.sub(() => sk.ellipsoid(50, 22, zc + 15, 8, 5, 5));
+  sk.ellipsoid(50, 22, zc + 10, 7, 4, 2, deep);
+  sk.box(18, 38, zc + 6, 44, 41, zc + 17, bone[1]);
+  // Lower jaw dropped open, lying on the silt, with teeth.
+  sk.box(30, 2, zc - 13, 82, 7, zc + 13, bone[1]);
+  sk.sub(() => sk.box(32, 5, zc - 10, 84, 8, zc + 10));
+  for (let x = 34; x < 82; x += 4) for (const s of [-1, 1]) {
+    sk.line(x, 7, zc + s * 11, x + 1, 12, zc + s * 11, tooth, 0.7);
+    sk.line(x + 2, 13, zc + s * 12, x + 2, 9, zc + s * 12, tooth, 0.6);
+  }
+  sk.recolor((x, y, z, p) => (p === bone[0] && sk.exposed(x, y, z) && Math.abs(noise3(x * 0.25, y * 0.25, z * 0.25, 4) - 0.5) < 0.02 ? crack : null));
+  chip(sk, rng, 20, bone, 1.4);
+  stampRot(m, sk, [43, 0, zc], [44, 2, 28], 0, -14, -6);
+  sandMound(m, 44, 30, 36, 20, 5, 3, ABYSS_SILT);
+  biolum(m, rng, 8, bone, '#5ff4ff');
+  return { m, yaw: 28, light: '#ffd84a' };
+});
+
+def('vent_chimney', { name: 'Black Smoker', biome: 'abyss', tags: ['vent', 'glow'] }, ({ rng }) => {
+  const m = new VoxelModel(56, 92, 50);
+  const rock = [m.color('#2a2634', { smooth: 0.55, jitter: 0.12 }), m.color('#3a3442', { smooth: 0.55, jitter: 0.12 }), m.color('#4c4250', { smooth: 0.55, jitter: 0.1 })];
+  const crust = [m.color('#c8963a', { smooth: 0.5, jitter: 0.1 }), m.color('#e2c25a', { smooth: 0.5, jitter: 0.08 }), m.color('#8a5a3a', { smooth: 0.5, jitter: 0.1 })];
+  const lava = [m.color('#ff7a2a', { emissive: 1, jitter: 0.04 }), m.color('#ffd06a', { emissive: 1, jitter: 0.03 })];
+  const seed = rng.int(0, 999);
+  // Stacked lumpy segments narrowing upwards.
+  let y = 0, r = 15, x = 28, z = 24;
+  const segs = [];
+  while (y < 76) {
+    const h = rng.float(7, 11);
+    blob(m, x, y + h * 0.5, z, r, h * 0.75, r * 0.92, 0.25, 0.2, seed + y, rock[0], 0);
+    segs.push([x, y, z, r]);
+    y += h * 0.85; r = Math.max(5, r * 0.86); x += rng.float(-1.2, 1.2); z += rng.float(-0.8, 0.8);
+  }
+  // Side spire.
+  let sy = 0, sr = 7, sx = 12, sz = 30;
+  while (sy < 34) { blob(m, sx, sy + 3, sz, sr, 4, sr, 0.25, 0.25, seed + 100 + sy, rock[1], 0); sy += 5; sr *= 0.86; sx -= 0.4; }
+  // Mineral crusts and glowing fissures.
+  m.recolor((x2, y2, z2, p) => {
+    if (!m.exposed(x2, y2, z2)) return null;
+    const n = fbm3(x2 * 0.14, y2 * 0.1, z2 * 0.14, 2, seed + 3);
+    if (Math.abs(noise3(x2 * 0.16, y2 * 0.07, z2 * 0.16, seed + 9) - 0.5) < 0.018) return lava[0];
+    return n > 0.7 ? crust[0] : n > 0.665 ? crust[2] : n < 0.34 ? rock[2] : null;
+  });
+  m.recolor((x2, y2, z2, p) => (p === crust[0] && !m.get(x2, y2 + 1, z2) ? crust[1] : null));
+  // Glowing throat at the top.
+  const [tx, ty, tz, tr] = segs[segs.length - 1];
+  m.sub(() => m.cylinder(tx, tz, ty + 2, ty + 14, Math.max(2.2, tr * 0.45)));
+  m.cylinder(tx, tz, ty + 2, ty + 3, Math.max(2.2, tr * 0.45), lava[1]);
+  m.cylinder(tx, tz, ty + 4, ty + 4, Math.max(1.5, tr * 0.3), lava[0]);
+  // Tube worms at the base.
+  const worm = m.color('#ece6da', { smooth: 0.4 }), plume = m.color('#ff3d5a', { emissive: 0.4 });
+  for (let i = 0; i < 9; i++) {
+    const a = rng.float(-0.5, 2.6), rr = rng.float(14, 19);
+    const wx = 28 + Math.cos(a) * rr, wz = 24 + Math.sin(a) * rr;
+    const hh = rng.int(6, 14);
+    m.line(wx, 0, wz, wx + rng.float(-1, 1), hh, wz, worm, 0.8);
+    m.sphere(wx, hh + 1, wz, 1.3, plume);
+  }
+  sandMound(m, 28, 25, 24, 21, 3, 5, ABYSS_SILT);
+  return { m, yaw: 30, light: '#ff9a3a' };
+});
+
+def('glyph_stone', { name: 'Glyph Stone', biome: 'abyss', tags: ['ruin', 'glow'], decor: { price: 320, size: 1 } }, ({ rng, variant }) => {
+  const glows = ['#5ff4ff', '#c07bff', '#7dff9a'];
+  const m = new VoxelModel(44, 70, 34);
+  const st = abyssStone(m);
+  const deep = m.color('#24223f', { jitter: 0.04 });
+  const glow = m.color(glows[variant % glows.length], { emissive: 1, jitter: 0 });
+  const slab = part(m, 30, 64, 14);
+  // Monolith with a rounded top and bevelled edges.
+  shape(slab, 0, 0, 0, 29, 63, 13, (x, y, z) => {
+    const dx = Math.abs(x - 15), dz = Math.abs(z - 7);
+    if (dx > 13 || dz > 5.5) return false;
+    if (y > 48 && ((x - 15) / 13) ** 2 + ((y - 48) / 14) ** 2 > 1) return false;
+    return dx + dz < 17.5;
+  }, (x, y, z) => st[(h3(x >> 2, y >> 2, 0, 3) * 2) | 0]);
+  // Carved border and rune grid on the face.
+  for (let y = 6; y < 56; y++) for (let x = 4; x < 27; x++) {
+    if (!slab.get(x, y, 12)) continue;
+    const border = x === 4 || x === 26 || y === 6;
+    if (border) slab.set(x, y, 12, deep);
+    else if (x > 6 && x < 25 && y > 9 && y < 40 && Math.floor((y - 10) / 6) % 2 === 0 && rune(x - 7, y - 10, 11 + variant)) slab.set(x, y, 12, glow);
+  }
+  // Central eye sigil.
+  slab.paint(() => slab.ellipsoid(15, 46, 12.5, 5, 2.6, 1.2, deep));
+  slab.paint(() => slab.ellipsoid(15, 46, 12.5, 2, 1.8, 1.2, glow));
+  chip(slab, rng, 18, st, 1.4);
+  stampRot(m, slab, [15, 0, 7], [22, 0, 17], -4, 16, 5);
+  for (let i = 0; i < 4; i++) facetRock(m, rng, 22 + rng.float(-16, 16), 1, 26 + rng.float(-2, 6), rng.float(2, 4), rng.float(2, 3), rng.float(2, 4), st[1], 8);
+  moss(m, rng, 4, ['#4a7aa8', '#3a5a8a', '#2a3f6a'], 0.45, 0.2, st);
+  sandMound(m, 22, 18, 18, 14, 3, 7, ABYSS_SILT);
+  return { m, yaw: 22, light: glows[variant % glows.length] };
+});
+
+// ===================== AQUARIUM DECOR =====================
+
+const CASTLE_STONE = ['#b9b2c9', '#a39bb6', '#cdc7da'];
+
+// Masonry texture: staggered blocks with dark mortar lines.
+function masonry(m, cols, mortar, bw = 6, bh = 4) {
+  return (x, y, z) => {
+    const row = Math.floor(y / bh);
+    if (y % bh === 0) return mortar;
+    const off = row % 2 ? bw >> 1 : 0;
+    if ((x + z + off) % bw === 0) return mortar;
+    return cols[(h3(Math.floor((x + z + off) / bw), row, 0, 3) * cols.length) | 0];
+  };
+}
+
+def('castle', { name: 'Fairy Castle', biome: 'aquarium', tags: ['build', 'glow'], decor: { price: 600, size: 3 }, decorOnly: true }, ({ rng }) => {
+  const m = new VoxelModel(84, 104, 60);
+  const st = CASTLE_STONE.map((c) => m.color(c, { jitter: 0.08 }));
+  const mortar = m.color('#7c7492', { jitter: 0.04 });
+  const roof = [m.color('#4a78d8', { jitter: 0.06, smooth: 0.3 }), m.color('#6a98f0', { jitter: 0.05, smooth: 0.3 })];
+  const roofR = [m.color('#d8504a', { jitter: 0.06, smooth: 0.3 }), m.color('#f07a6a', { jitter: 0.05, smooth: 0.3 })];
+  const gold = m.color('#f2c84a', { jitter: 0.04, spec: 1.2 });
+  const dark = m.color('#2a2238', { jitter: 0.02 });
+  const win = m.color('#ffd86a', { emissive: 1, jitter: 0.02 });
+  const wood = m.color('#8a5634', { jitter: 0.08 });
+  const flagC = [m.color('#ff5a7a', { jitter: 0.04 }), m.color('#ffd84a', { jitter: 0.04 })];
+  const tex = masonry(m, st, mortar);
+  // Rocky base.
+  const rk = reefRock(m, rng);
+  facetRock(m, rng, 42, 3, 30, 38, 8, 26, rk[0], 16);
+  stoneTex(m, rk, 4);
+  // Curtain walls with crenellations.
+  m.box(16, 6, 14, 67, 34, 45, tex);
+  for (let x = 16; x <= 67; x++) for (const z of [14, 45]) if (x % 4 < 2) m.box(x, 35, z, x, 37, z, st[2]);
+  for (let z = 14; z <= 45; z++) for (const x of [16, 67]) if (z % 4 < 2) m.box(x, 35, z, x, 37, z, st[2]);
+  // Keep.
+  m.box(28, 34, 20, 55, 62, 40, tex);
+  for (let x = 28; x <= 55; x++) for (const z of [20, 40]) if (x % 4 < 2) m.box(x, 63, z, x, 65, z, st[2]);
+  for (let z = 20; z <= 40; z++) for (const x of [28, 55]) if (z % 4 < 2) m.box(x, 63, z, x, 65, z, st[2]);
+  // Towers with cone roofs.
+  const tower = (cx, cz, r, h, rc) => {
+    m.cylinder(cx, cz, 6, h, r, tex);
+    m.cylinder(cx, cz, h - 2, h, r + 1.2, st[2]);
+    m.cone(cx, cz, h + 1, h + 1 + r * 2.4, r + 2, 0.5, (x, y) => ((y - h) % 4 === 0 ? rc[1] : rc[0]));
+    m.box(cx, h + 2 + r * 2.4, cz, cx, h + 8 + r * 2.4, cz, gold);
+    // Arched glowing window.
+    const wz = Math.round(cz + r);
+    m.box(cx - 1, h - 12, wz, cx, h - 8, wz, win);
+    m.box(cx - 1, h - 13, wz, cx, h - 13, wz, mortar);
+    return h + 8 + r * 2.4;
+  };
+  tower(17, 44, 7, 46, roof);
+  tower(66, 44, 7, 48, roof);
+  tower(18, 15, 6, 42, roofR);
+  tower(65, 15, 6, 44, roofR);
+  const top = tower(42, 30, 8, 76, roof);
+  // Flags.
+  for (const [fx, fy, fz, c] of [[42, top, 30, flagC[0]], [17, 77, 44, flagC[1]], [66, 79, 44, flagC[0]]]) {
+    for (let y = 0; y < 5; y++) for (let x = 1; x <= 7; x++) m.set(fx + x, fy - 1 - y + Math.round(Math.sin(x * 0.9) * 0.6), fz, c);
+  }
+  // Gate with portcullis + wooden door, windows on the keep.
+  m.sub(() => { m.box(37, 6, 44, 46, 18, 46); m.cylinder(41.5, 45, 18, 22, 4.5, 0, 'y'); });
+  m.sub(() => m.cylinder(18, 41.5, 44, 46, 5, 0, 'z'));
+  shape(m, 36, 6, 44, 47, 24, 44, () => true, (x, y, z, p) => (p ? null : y < 22 && (x - 37) % 3 === 0 ? gold : wood));
+  m.box(36, 6, 45, 47, 24, 46, (x, y, z, p) => null);
+  for (const wx of [33, 47]) { m.box(wx, 46, 40, wx + 2, 52, 40, win); m.box(wx, 53, 40, wx + 2, 53, 40, gold); }
+  for (const wx of [24, 58]) { m.box(wx, 20, 45, wx + 1, 25, 45, win); }
+  // Drawbridge chains + little moat stones.
+  m.line(36, 22, 46, 34, 8, 52, gold, 0.4);
+  m.line(47, 22, 46, 49, 8, 52, gold, 0.4);
+  m.box(36, 5, 46, 47, 6, 55, wood);
+  moss(m, rng, 3, MOSS, 0.4, 0.2, [...rk, ...st]);
+  return { m, yaw: 30, vs: 1.6, light: '#ffd86a' };
+});
+
+def('moai_head', { name: 'Moai Head', biome: 'aquarium', tags: ['statue'], decor: { price: 350, size: 2 }, decorOnly: true }, ({ rng }) => {
+  const m = new VoxelModel(54, 92, 54);
+  const st = [m.color('#9a8e80', { jitter: 0.1, smooth: 0.55 }), m.color('#837768', { jitter: 0.1, smooth: 0.55 }), m.color('#b2a696', { jitter: 0.08, smooth: 0.55 })];
+  const deep = m.color('#3e3436', { jitter: 0.04, smooth: 0.3 });
+  const hat = [m.color('#b85a48', { jitter: 0.1, smooth: 0.65 }), m.color('#9a4a3c', { jitter: 0.1, smooth: 0.65 })];
+  const cx = 27, cz = 24;
+  // Rounded-rectangle cross sections stacked up: shoulders, then the long head.
+  shape(m, 0, 0, 0, 53, 74, 53, (x, y, z) => {
+    let a, c;
+    if (y < 16) { a = 15; c = 12; } else if (y < 72) { a = 12.5 - (y - 16) * 0.02; c = 10.5 - Math.max(0, y - 60) * 0.1; } else return false;
+    const dx = Math.abs(x - cx) / a, dz = Math.abs(z - cz) / c;
+    return dx ** 4 + dz ** 4 <= 1;
+  }, (x, y, z) => (y < 16 ? st[1] : st[0]));
+  const fz = cz + 10.5;
+  // Heavy brow ridge.
+  shape(m, cx - 13, 52, fz - 3, cx + 13, 58, fz + 4, (x, y, z) => Math.abs(x - cx) < 12 && z < fz + 3 - Math.abs(y - 55) * 0.6 - (Math.abs(x - cx) / 12) ** 2 * 2, st[2]);
+  // Deep eye hollows.
+  for (const sx of [-1, 1]) {
+    m.sub(() => m.ellipsoid(cx + sx * 6, 48, fz + 1, 4.2, 3, 3));
+    m.paint(() => m.ellipsoid(cx + sx * 6, 48, fz - 1, 4.4, 3.2, 1.6, deep));
+  }
+  // Long nose: ridge widening and protruding toward the tip.
+  shape(m, cx - 7, 28, fz - 2, cx + 7, 54, fz + 10, (x, y, z) => {
+    const t = (54 - y) / 26;
+    const w = 1.6 + t * 3.6, p = 1 + t * 7;
+    return Math.abs(x - cx) <= w && z <= fz + p - (Math.abs(x - cx) / w) * 1.5;
+  }, st[2]);
+  for (const sx of [-1, 1]) m.paint(() => m.ellipsoid(cx + sx * 2.6, 29.5, fz + 6, 1.4, 0.8, 1.6, deep));
+  // Pouting lips and jutting chin.
+  shape(m, cx - 8, 21, fz - 2, cx + 8, 28, fz + 5, (x, y, z) => ((x - cx) / 7.5) ** 2 + ((y - 24.5) / 3.6) ** 2 <= 1 && z < fz + 4, st[0]);
+  m.box(cx - 6, 24, fz, cx + 5, 24, fz + 4, deep);
+  shape(m, cx - 10, 13, fz - 2, cx + 10, 21, fz + 4, (x, y, z) => ((x - cx) / 9.5) ** 2 + ((y - 17) / 4.5) ** 2 <= 1 && z < fz + 3, st[0]);
+  // Long ears.
+  for (const sx of [-1, 1]) shape(m, cx + sx * 13 - 3, 30, cz - 6, cx + sx * 13 + 3, 60, cz + 4, (x, y, z) => Math.abs(x - cx - sx * 12.5) < 1.6 && ((y - 45) / 15) ** 2 + ((z - cz + 1) / 4.5) ** 2 <= 1, st[1]);
+  // Pukao topknot.
+  m.cylinder(cx, cz, 72, 82, 11, (x, y) => (y % 3 === 0 ? hat[1] : hat[0]));
+  m.cylinder(cx, cz, 82, 83, 8, hat[0]);
+  chip(m, rng, 14, st, 1.2);
+  moss(m, rng, 5, MOSS, 0.35, 0.2, st);
+  sandMound(m, cx, cz + 2, 21, 19, 3, 3);
+  return { m, yaw: 24 };
+});
+
+def('diver_helmet', { name: 'Diver Helmet', biome: 'aquarium', tags: ['wreck', 'metal'], decor: { price: 280, size: 1 }, decorOnly: true }, ({ rng }) => {
+  const m = new VoxelModel(50, 50, 46);
+  const brass = [m.color('#d6a046', { jitter: 0.06, smooth: 0.8, spec: 1.8, specPow: 12 }), m.color('#b8822f', { jitter: 0.06, smooth: 0.8, spec: 1 })];
+  const copper = [m.color('#c0704a', { jitter: 0.06, smooth: 0.7, spec: 1.2 }), m.color('#9a5638', { jitter: 0.05, smooth: 0.7 })];
+  const glassC = m.color('#2a5a6a', { jitter: 0.02, smooth: 0.8, spec: 2.5, specPow: 10, light: -0.3 });
+  const bolt = m.color('#f2e2a0', { jitter: 0, spec: 1 });
+  const verd = m.color('#5fb89a', { jitter: 0.08, smooth: 0.7 });
+  const cx = 25, cz = 22;
+  // Corselet (shoulder plate).
+  m.ellipsoid(cx, 6, cz, 19, 9, 16, copper[0]);
+  m.sub(() => m.box(0, 0, 0, 49, 2, 45));
+  for (let k = 0; k < 12; k++) { const a = k / 12 * Math.PI * 2; m.set(cx + Math.cos(a) * 17.5, 6, cz + Math.sin(a) * 14.5, bolt); }
+  // Bonnet sphere.
+  m.sphere(cx, 24, cz, 15.5, brass[0]);
+  m.cylinder(cx, cz, 11, 14, 13, brass[1]);
+  // Front viewport.
+  m.cylinder(cx, 24, cz + 13, cz + 17, 7.5, brass[1], 'z');
+  m.cylinder(cx, 24, cz + 16, cz + 17, 6, glassC, 'z');
+  m.sub(() => m.cylinder(cx, 24, cz + 17, cz + 17, 5.5, 0, 'z'));
+  for (const gx of [-2, 2]) m.box(cx + gx, 19, cz + 17, cx + gx, 29, cz + 17, brass[1]);
+  m.box(cx - 6, 24, cz + 17, cx + 5, 24, cz + 17, brass[1]);
+  // Side ports.
+  for (const s of [-1, 1]) {
+    m.cylinder(24, cz + 2, cx + s * 14, cx + s * 17, 4.8, brass[1], 'x');
+    m.cylinder(24, cz + 2, s > 0 ? cx + 17 : cx - 17, s > 0 ? cx + 17 : cx - 17, 3.6, glassC, 'x');
+  }
+  // Top valve.
+  m.cylinder(cx, cz - 3, 38, 41, 2.4, copper[0]);
+  m.cylinder(cx, cz - 3, 41, 42, 3.5, copper[1]);
+  // Verdigris patina in the crevices.
+  m.recolor((x, y, z, p) => ((p === brass[0] || p === brass[1]) && fbm3(x * 0.18, y * 0.18, z * 0.18, 2, 6) > 0.66 ? verd : null));
+  sandMound(m, cx, cz, 22, 19, 3, 5);
+  barnacles(m, rng, 3, [...brass, ...copper]);
+  return { m, yaw: 30 };
+});
+
+def('pirate_ship', { name: 'Pirate Ship', biome: 'aquarium', tags: ['ship', 'glow'], decor: { price: 1500, size: 3 }, decorOnly: true }, ({ rng }) => {
+  const m = new VoxelModel(124, 126, 56);
+  const wood = [m.color('#5a3a2a', { jitter: 0.08 }), m.color('#6b4530', { jitter: 0.08 }), m.color('#4a2e22', { jitter: 0.08 })];
+  const seam = m.color('#2e1c18', { jitter: 0.03 });
+  const stripe = m.color('#c8423a', { jitter: 0.05 });
+  const gold = m.color('#f0c050', { jitter: 0.04, spec: 1.2 });
+  const deck = [m.color('#a87848', { jitter: 0.06 }), m.color('#94683e', { jitter: 0.06 })];
+  const dark = m.color('#1e1418', { jitter: 0.02 });
+  const cannon = m.color('#2a2a32', { jitter: 0.04, spec: 1 });
+  const win = m.color('#ffd06a', { emissive: 1, jitter: 0.02 });
+  const sail = [m.color('#2f2a36', { jitter: 0.05, smooth: 0.45 }), m.color('#3c3644', { jitter: 0.05, smooth: 0.45 })];
+  const skull = m.color('#efe8da', { jitter: 0.02 });
+  const mastC = m.color('#6a4a32', { jitter: 0.05, smooth: 0.4 });
+  const rope = m.color('#c8b07a', { jitter: 0.03 });
+  const lamp = m.color('#ffb84a', { emissive: 1, jitter: 0 });
+  const zc = 26, X0 = 8, L = 104;
+  const T = (x) => (x - X0) / L;
+  const sheer = (t) => 26 + 12 * Math.max(0, (0.2 - t) / 0.2) ** 1.5 + 8 * Math.max(0, (t - 0.75) / 0.25) ** 2;
+  const keel = (t) => 3 + 14 * Math.max(0, (t - 0.76) / 0.24) ** 2;
+  const beam = (t) => (t < 0 || t > 1 ? 0 : t < 0.08 ? 12 + 4 * t / 0.08 : t < 0.55 ? 16 : 16 * Math.pow(Math.max(0, 1 - ((t - 0.55) / 0.45) ** 1.8), 0.62));
+  const halfAt = tabulate(124, 56, (x, y, shrink) => {
+    const t = T(x), B = beam(t) - shrink;
+    if (B <= 0) return -1;
+    const yk = keel(t) + shrink, ys = sheer(t);
+    if (y < yk || y > ys) return -1;
+    return B * Math.min(1, Math.pow((y - yk) / Math.max(1, 18 - yk * 0.4), 0.45));
+  });
+  const inHull = (x, y, z, sh = 0) => { const hw = halfAt(x, y, sh); return hw > 0 && Math.abs(z - zc) <= hw; };
+  shape(m, 0, 0, 0, 123, 50, 55, (x, y, z) => inHull(x, y, z), (x, y, z) => {
+    const v = y + Math.abs(z - zc) * 0.2;
+    if (Math.abs(v - 18) < 1.2) return stripe;
+    if (Math.abs(v - 20) < 0.6) return gold;
+    if ((v % 3.2) < 0.6) return seam;
+    return wood[Math.floor(v / 3.2) % 3];
+  });
+  m.sub(() => shape(m, 0, 0, 0, 123, 50, 55, (x, y, z) => inHull(x, y, z, 1.6) && y > keel(T(x)) + 2, 0));
+  // Deck + raised stern castle with glowing windows.
+  shape(m, 0, 0, 0, 123, 50, 55, (x, y, z) => y === Math.floor(Math.min(sheer(T(x)), 30)) - 2 && inHull(x, y, z), (x, y, z) => deck[z % 3 === 0 ? 1 : 0]);
+  m.box(10, 24, zc - 13, 30, 38, zc + 12, (x, y, z) => (y % 4 === 0 ? seam : wood[1]));
+  m.box(9, 39, zc - 14, 31, 40, zc + 13, gold);
+  for (const wx of [13, 19, 25]) { m.box(wx, 29, zc + 13, wx + 2, 33, zc + 13, win); m.box(wx - 1, 34, zc + 13, wx + 3, 34, zc + 13, gold); }
+  for (const wz of [zc - 8, zc - 2, zc + 4]) m.box(9, 29, wz, 9, 33, wz + 2, win);
+  // Gun ports with cannons.
+  for (const gx of [40, 52, 64, 76]) {
+    const hw = halfAt(gx, 14);
+    const zz = Math.floor(zc + hw);
+    m.box(gx - 1, 12, zz - 1, gx + 2, 15, zz + 1, dark);
+    m.cylinder(13.5, zz, gx, gx + 1, 0, cannon, 'x');
+    m.cylinder(gx + 0.5, 13.5, zz, zz + 4, 1.3, cannon, 'z');
+  }
+  // Masts, yards and black sails with a skull.
+  const masts = [[46, 96], [76, 84]];
+  for (const [mx, mh] of masts) {
+    m.cylinder(mx, zc, 10, mh, 1.8, mastC);
+    for (const [yy, w] of [[mh - 12, 18], [mh - 34, 22]]) m.line(mx, yy, zc + 2, mx, yy, zc + 2, mastC, 0.6) && m.box(mx - w, yy, zc + 2, mx + w, yy + 1, zc + 3, mastC);
+    // Sail panels billowing towards the camera.
+    for (const [ya, yb, w] of [[mh - 32, mh - 13, 17], [mh - 54, mh - 35, 20]]) {
+      for (let y = ya; y <= yb; y++) for (let x = mx - w; x <= mx + w; x++) {
+        const t = (x - mx) / w, s = (y - ya) / (yb - ya);
+        const bil = Math.round((1 - t * t) * 4 * Math.sin(s * Math.PI) + 3);
+        m.set(x, y, zc + bil, (x + y) % 9 === 0 ? sail[1] : sail[0]);
+      }
+    }
+    m.box(mx - 1, mh, zc - 1, mx + 1, mh + 2, zc + 1, gold);
+  }
+  // Skull & crossbones on the main sail.
+  const [sx, sy] = [46, 96 - 22];
+  const skullRows = ['..####..', '.######.', '##.##.##', '########', '.##..##.', '..####..', '#..##..#', '.#....#.', '#......#'];
+  skullRows.forEach((row, j) => { for (let i = 0; i < row.length; i++) if (row[i] === '#') m.set(sx - 4 + i, sy + 5 - j, zc + 8, skull); });
+  // Jolly roger flag.
+  for (let y = 0; y < 6; y++) for (let x = 1; x <= 9; x++) m.set(46 + x, 96 + 1 - y + Math.round(Math.sin(x * 0.8) * 0.6), zc, y === 2 && x > 3 && x < 7 ? skull : sail[0]);
+  // Bowsprit, rigging, stern lantern.
+  m.line(X0 + L - 2, 34, zc, X0 + L + 12, 44, zc, mastC, 1.1);
+  m.line(46, 94, zc, X0 + L + 10, 43, zc, rope, 0.4);
+  m.line(46, 94, zc, 12, 41, zc, rope, 0.4);
+  m.line(76, 82, zc, X0 + L + 4, 40, zc, rope, 0.4);
+  m.box(6, 40, zc - 1, 8, 43, zc + 1, lamp);
+  m.box(5, 44, zc - 1, 9, 44, zc + 1, gold);
+  // Wave-shaped sand base so it sits in the tank.
+  sandMound(m, 60, 28, 56, 22, 6, 5);
+  return { m, yaw: 30, vs: 1.55, light: '#ffd06a' };
+});
+
+def('sunken_pc', { name: 'Sunken PC', biome: 'aquarium', tags: ['computer', 'screen'], decor: { price: 420, size: 2 }, decorOnly: true }, ({ rng }) => {
+  const m = new VoxelModel(84, 58, 60);
+  const screen = m.color('#2d6b5e', { emissive: 0.6, jitter: 0.03 });
+  const crt = crtPart(m, screen);
+  stampRot(m, crt, [19, 0, 18], [34, 4, 26], 0, 8, 0);
+  // Desk-less: tower case beside the monitor.
+  const tower = part(m, 18, 40, 30);
+  const beige = BEIGE.map((c) => m.color(c, { jitter: 0.07 }));
+  const dark = m.color('#2a2730', { jitter: 0.03 });
+  const led = m.color('#ff6a4a', { emissive: 1, jitter: 0 });
+  const led2 = m.color('#7dff6a', { emissive: 1, jitter: 0 });
+  tower.box(0, 0, 0, 15, 37, 27, beige[0]);
+  tower.box(1, 30, 28, 14, 32, 28, beige[1]);
+  tower.box(2, 31, 28, 13, 31, 28, dark);
+  tower.box(1, 24, 28, 14, 27, 28, beige[1]);
+  tower.box(4, 25, 28, 11, 25, 28, dark);
+  tower.set(3, 18, 28, led); tower.set(5, 18, 28, led2);
+  tower.box(10, 16, 28, 12, 19, 28, beige[2]);
+  for (let y = 4; y < 14; y += 2) tower.box(3, y, 28, 12, y, 28, dark);
+  tower.recolor((x, y, z, p) => (p === beige[0] && !tower.get(x, y + 1, z) ? beige[2] : null));
+  stampRot(m, tower, [8, 0, 14], [66, 3, 26], 0, -12, 0);
+  // Keyboard in front.
+  const kb = part(m, 40, 6, 14);
+  const key = m.color('#ece4cc', { jitter: 0.05 });
+  kb.box(0, 0, 0, 37, 1, 12, beige[1]);
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 9; c++) kb.box(2 + c * 4, 2, 2 + r * 4, 4 + c * 4, 2, 4 + r * 4, key);
+  stampRot(m, kb, [19, 0, 6], [36, 3, 50], 6, -6, 0);
+  // Mouse with cable.
+  m.ellipsoid(62, 4, 50, 2.5, 1.6, 3.5, beige[0]);
+  m.tube([[62, 4, 46, 0.5], [60, 3, 40, 0.5], [66, 4, 34, 0.5]], dark);
+  sandMound(m, 44, 32, 40, 26, 4, 6);
+  // Seaweed growing behind.
+  const kelp = [m.color('#4fa25e', { smooth: 0.3 }), m.color('#86cf74', { smooth: 0.3 })];
+  for (let k = 0; k < 3; k++) {
+    const x = 14 + k * 4, z = 20 + k * 3;
+    for (let y = 2; y < 30 + k * 6; y++) m.set(x + Math.round(Math.sin(y * 0.35 + k) * 1.3), y, z, kelp[y % 6 === 0 ? 1 : 0]);
+  }
+  moss(m, rng, 4, MOSS, 0.3, 0.2, beige);
+  return { m, yaw: 22, screens: [screen], light: '#7fffd0' };
+});
+
+const LAVA = [['#ff4a8a', '#ffd84a'], ['#2ac8d8', '#e0ff6a'], ['#8a4aff', '#ffa0e0']];
+def('lava_lamp', { name: 'Lava Lamp', biome: 'aquarium', tags: ['glow', 'retro'], decor: { price: 240, size: 1 }, decorOnly: true }, ({ variant }) => {
+  const sc = LAVA[variant % LAVA.length];
+  const m = new VoxelModel(26, 70, 26);
+  const metal = [m.color('#b8c0cc', { jitter: 0.04, smooth: 0.7, spec: 2, specPow: 10 }), m.color('#8e96a4', { jitter: 0.04, smooth: 0.7 })];
+  const liquid = m.color(sc[0], { emissive: 0.75, jitter: 0.02, smooth: 0.6 });
+  const blobC = m.color(sc[1], { emissive: 1, jitter: 0.02, smooth: 0.6 });
+  const cx = 13, cz = 13;
+  m.cone(cx, cz, 0, 18, 9, 5, metal[1]);
+  m.cylinder(cx, cz, 0, 1, 9.5, metal[0]);
+  m.cylinder(cx, cz, 17, 18, 5.6, metal[0]);
+  for (let y = 19; y < 56; y++) {
+    const t = (y - 19) / 37;
+    const r = 5.2 + Math.sin(t * Math.PI * 0.9 + 0.2) * 2.2 - t * 1.6;
+    m.cylinder(cx, cz, y, y, r, liquid);
+  }
+  // Blobs of lava floating inside, poking out of the glass surface for visibility.
+  for (const [by, br, bx, bz] of [[22, 4.6, 0, 3], [32, 3.2, 2, 4.5], [40, 3.4, -1.5, 3.5], [49, 2.6, 1, 3], [28, 2.2, -3.5, 3.5], [45, 2, 3, 2]]) {
+    m.sphere(cx + bx, by, cz + bz, br, (x, y, z, p) => (p || Math.hypot(x + 0.5 - cx, z + 0.5 - cz) < 7.6 ? blobC : null));
+  }
+  m.cone(cx, cz, 56, 62, 4, 2.6, metal[0]);
+  m.cylinder(cx, cz, 62, 63, 2.2, metal[1]);
+  return { m, yaw: 30, light: sc[0] };
+});
+
+def('rubber_duck', { name: 'Rubber Duck', biome: 'aquarium', tags: ['toy'], decor: { price: 30, size: 1 }, decorOnly: true }, () => {
+  const m = new VoxelModel(40, 36, 30);
+  const yel = [m.color('#ffd23a', { smooth: 0.85, jitter: 0.03, spec: 1.6, specPow: 14 }), m.color('#f2b42a', { smooth: 0.85, jitter: 0.03 })];
+  const beak = m.color('#ff8a2a', { smooth: 0.7, jitter: 0.02 });
+  const eye = m.color('#1a1a22', { jitter: 0 });
+  const glint = m.color('#ffffff', { jitter: 0 });
+  m.ellipsoid(18, 8, 15, 13, 8.5, 10.5, yel[0]);
+  m.sub(() => m.box(0, 0, 0, 39, 1, 29));
+  m.ellipsoid(6, 13, 15, 4, 4, 5, yel[0]); // tail
+  m.sphere(25, 21, 15, 7.5, yel[0]);
+  m.ellipsoid(32, 19.5, 15, 4.5, 1.6, 3.4, beak);
+  m.ellipsoid(31.5, 17.8, 15, 3.6, 1, 2.6, beak);
+  for (const s of [-1, 1]) { m.box(27, 23, 15 + s * 5.5, 28, 24, 15 + s * 5.5, eye); m.set(28, 24, 15 + s * 5.5 + (s > 0 ? 1 : -1) * 0, glint); }
+  m.ellipsoid(15, 11, 23.5, 6, 3.5, 2, yel[1]); // wing
+  m.ellipsoid(15, 11, 6.5, 6, 3.5, 2, yel[1]);
+  return { m, yaw: 30 };
+});
+
+def('pagoda_lantern', { name: 'Stone Lantern', biome: 'aquarium', tags: ['glow', 'statue'], decor: { price: 320, size: 1 }, decorOnly: true }, ({ rng }) => {
+  const m = new VoxelModel(44, 84, 44);
+  const st = [m.color('#9a9a8c', { jitter: 0.1, smooth: 0.3 }), m.color('#85857a', { jitter: 0.1, smooth: 0.3 }), m.color('#b0b0a2', { jitter: 0.08, smooth: 0.3 })];
+  const lightC = m.color('#ffcf6a', { emissive: 1, jitter: 0.02 });
+  const deep = m.color('#3a3530', { jitter: 0.02 });
+  const cx = 22, cz = 22;
+  m.box(cx - 12, 0, cz - 12, cx + 11, 3, cz + 11, st[1]);
+  m.box(cx - 9, 4, cz - 9, cx + 8, 6, cz + 8, st[0]);
+  m.cylinder(cx - 0.5, cz - 0.5, 7, 30, 4.2, st[0]);
+  for (const y of [12, 22]) m.cylinder(cx - 0.5, cz - 0.5, y, y, 5, st[2]);
+  m.box(cx - 10, 31, cz - 10, cx + 9, 34, cz + 9, st[1]);
+  // Light chamber with open windows.
+  m.box(cx - 8, 35, cz - 8, cx + 7, 50, cz + 7, st[0]);
+  m.sub(() => { m.box(cx - 4, 38, cz - 9, cx + 3, 47, cz + 8); m.box(cx - 9, 38, cz - 4, cx + 8, 47, cz + 3); });
+  m.box(cx - 6, 37, cz - 6, cx + 5, 48, cz + 5, lightC);
+  for (let x = cx - 4; x <= cx + 3; x += 3) m.box(x, 38, cz + 7, x, 47, cz + 7, deep);
+  // Wide curved roof.
+  for (let y = 51; y <= 60; y++) {
+    const t = (y - 51) / 9;
+    const r = 17 - t * 13 + (y === 51 ? 1 : 0);
+    m.box(cx - r, y, cz - r, cx + r - 1, y, cz + r - 1, y === 51 ? st[2] : st[(y % 2)]);
+  }
+  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) m.box(cx + sx * 17 - (sx > 0 ? 1 : 0), 52, cz + sz * 17 - (sz > 0 ? 1 : 0), cx + sx * 17 - (sx > 0 ? 1 : 0), 53, cz + sz * 17 - (sz > 0 ? 1 : 0), st[2]);
+  m.sphere(cx - 0.5, 63, cz - 0.5, 3.4, st[2]);
+  m.cone(cx - 0.5, cz - 0.5, 66, 69, 2, 0.4, st[2]);
+  chip(m, rng, 14, st, 1.2);
+  moss(m, rng, 6, MOSS, 0.5, 0.2, st);
+  sandMound(m, cx, cz, 17, 17, 2, 3);
+  return { m, yaw: 30, light: '#ffcf6a' };
+});
+
+def('mushroom_house', { name: 'Mushroom House', biome: 'aquarium', tags: ['build', 'glow'], decor: { price: 480, size: 2 }, decorOnly: true }, ({ rng }) => {
+  const m = new VoxelModel(70, 90, 64);
+  const stem = [m.color('#f2e6cc', { jitter: 0.06, smooth: 0.65 }), m.color('#e0d0b0', { jitter: 0.06, smooth: 0.65 })];
+  const cap = [m.color('#e0443a', { jitter: 0.06, smooth: 0.8, spec: 0.8 }), m.color('#c2343a', { jitter: 0.06, smooth: 0.8 })];
+  const spot = m.color('#fff6e8', { jitter: 0.03, smooth: 0.8 });
+  const gill = m.color('#d8b890', { jitter: 0.05 });
+  const door = [m.color('#8a5634', { jitter: 0.06 }), m.color('#6a4028', { jitter: 0.06 })];
+  const knob = m.color('#f2c84a', { jitter: 0, spec: 1 });
+  const win = m.color('#ffd86a', { emissive: 1, jitter: 0.02 });
+  const frameC = m.color('#7a4a2a', { jitter: 0.04 });
+  const brick = m.color('#a8584a', { jitter: 0.06 });
+  const cx = 35, cz = 30;
+  // Bulbous stem/house.
+  for (let y = 0; y < 44; y++) {
+    const t = y / 44;
+    const r = 15 + Math.sin(t * Math.PI) * 4 - t * 3;
+    m.cylinder(cx, cz, y, y, r, (x, yy, z) => (h3(x, yy, z, 3) < 0.08 ? stem[1] : stem[0]));
+  }
+  // Cap.
+  shape(m, cx - 32, 38, cz - 30, cx + 32, 80, cz + 30, (x, y, z) => {
+    const d = ((x - cx) / 31) ** 2 + ((y - 42) / 30) ** 2 + ((z - cz) / 28) ** 2;
+    return d <= 1 && y >= 42 - Math.hypot(x - cx, z - cz) * 0.12;
+  }, (x, y, z) => (y < 44 ? gill : cap[0]));
+  m.recolor((x, y, z, p) => (p === cap[0] && !m.get(x, y + 1, z) === false && h3(x, y, z, 1) < 0.05 ? cap[1] : null));
+  // White spots.
+  const spots = [[cx - 14, 64, cz + 12, 4], [cx + 10, 68, cz + 14, 5], [cx + 2, 74, cz - 2, 4], [cx - 22, 56, cz - 4, 3.5], [cx + 22, 58, cz + 2, 3.5], [cx - 6, 60, cz + 22, 3.5], [cx + 18, 52, cz + 18, 3]];
+  for (const [x, y, z, r] of spots) m.paint(() => m.sphere(x, y, z, r, (xx, yy, zz) => (m.exposed(xx, yy, zz) ? spot : null)));
+  // Round door, windows, chimney.
+  const dz = cz + 18;
+  m.sub(() => { m.box(cx - 5, 0, dz - 3, cx + 4, 12, dz + 4); m.cylinder(cx - 0.5, dz, 12, 16, 5, 0, 'y'); });
+  m.cylinder(cx - 0.5, 10, dz - 2, dz - 1, 7, frameC, 'z');
+  m.sub(() => m.cylinder(cx - 0.5, 10, dz - 2, dz + 2, 5.6, 0, 'z'));
+  shape(m, cx - 6, 0, dz - 2, cx + 6, 17, dz - 2, (x, y) => y < 10 ? Math.abs(x - cx + 0.5) < 5.6 : Math.hypot(x - cx + 0.5, y - 10) < 5.6, (x) => ((x >> 1) % 2 ? door[0] : door[1]));
+  m.set(cx + 2, 8, dz - 1, knob);
+  for (const [wx, wy, wz] of [[cx - 14, 24, cz + 13], [cx + 12, 28, cz + 14]]) {
+    m.cylinder(wx, wy, wz, wz + 3, 3.4, frameC, 'z');
+    m.cylinder(wx, wy, wz + 3, wz + 3, 2.4, win, 'z');
+    m.box(wx - 0.5, wy - 2.4, wz + 4, wx, wy + 2.4, wz + 4, frameC);
+  }
+  m.box(cx + 14, 70, cz - 8, cx + 18, 82, cz - 4, brick);
+  m.box(cx + 13, 82, cz - 9, cx + 19, 83, cz - 3, brick);
+  // Steps and a little lantern post.
+  m.box(cx - 6, 0, dz + 2, cx + 5, 1, dz + 7, stem[1]);
+  m.cylinder(cx + 16, dz + 6, 0, 14, 0.8, frameC);
+  m.box(cx + 15, 14, dz + 5, cx + 17, 17, dz + 7, win);
+  m.box(cx + 15, 18, dz + 5, cx + 17, 18, dz + 7, frameC);
+  moss(m, rng, 6, MOSS, 0.25, 0.25, [...stem]);
+  sandMound(m, cx, cz + 2, 26, 24, 3, 5);
+  return { m, yaw: 28, vs: 1.6, light: '#ffd86a' };
+});
+
+def('tiki_head', { name: 'Tiki Totem', biome: 'aquarium', tags: ['statue'], decor: { price: 260, size: 1 }, decorOnly: true }, ({ rng }) => {
+  const m = new VoxelModel(36, 82, 32);
+  const wood = [m.color('#9a6038', { jitter: 0.1, smooth: 0.35 }), m.color('#83502e', { jitter: 0.1, smooth: 0.35 }), m.color('#b27848', { jitter: 0.08, smooth: 0.35 })];
+  const deep = m.color('#3a2018', { jitter: 0.03 });
+  const teal = m.color('#3ab8a8', { jitter: 0.05 });
+  const red = m.color('#d84a3a', { jitter: 0.05 });
+  const white = m.color('#f2ead8', { jitter: 0.03 });
+  const cx = 18, cz = 15, fz = 26;
+  // Two stacked faces on a pole.
+  m.cylinder(cx, cz, 0, 72, 11, (x, y, z) => wood[Math.floor((y + (x >> 2)) / 3) % 2]);
+  m.box(cx - 13, 70, cz - 13, cx + 12, 74, cz + 12, wood[2]);
+  for (let k = 0; k < 9; k++) { const a = k / 9 * Math.PI; m.line(cx, 74, cz, cx + Math.cos(a) * 14, 80, cz + Math.sin(a) * 4 + 4, k % 2 ? teal : red, 1); }
+  const face = (y0) => {
+    // Brow band.
+    m.box(cx - 10, y0 + 22, cz + 7, cx + 9, y0 + 25, fz, wood[2]);
+    // Big eyes.
+    for (const s of [-1, 1]) {
+      const ex = cx + s * 5 - (s > 0 ? 1 : 0);
+      m.box(ex - 3, y0 + 15, fz - 1, ex + 3, y0 + 20, fz, deep);
+      m.box(ex - 2, y0 + 16, fz, ex + 2, y0 + 19, fz, white);
+      m.box(ex - 0.5, y0 + 16, fz, ex + 0.5, y0 + 18, fz, deep);
+    }
+    // Nose.
+    m.box(cx - 3, y0 + 9, fz - 1, cx + 2, y0 + 15, fz + 1, wood[2]);
+    m.box(cx - 4, y0 + 9, fz, cx + 3, y0 + 10, fz + 2, wood[2]);
+    // Wide grinning mouth with teeth.
+    m.box(cx - 8, y0 + 2, fz - 2, cx + 7, y0 + 7, fz, deep);
+    for (let x = cx - 7; x <= cx + 6; x += 2) m.box(x, y0 + 5, fz, x, y0 + 6, fz, white);
+    m.box(cx - 9, y0 + 1, fz - 1, cx + 8, y0 + 1, fz, red);
+  };
+  face(36);
+  face(2);
+  m.box(cx - 11, 33, cz - 11, cx + 10, 34, cz + 11, (x, y, z) => ((x + z) % 4 < 2 ? teal : red));
+  chip(m, rng, 10, wood, 1.1);
+  moss(m, rng, 5, MOSS, 0.3, 0.22, wood);
+  sandMound(m, cx, cz, 14, 14, 2, 8);
+  return { m, yaw: 24 };
+});
+
+def('bridge', { name: 'Moon Bridge', biome: 'aquarium', tags: ['build', 'swimthrough'], decor: { price: 380, size: 3 }, decorOnly: true }, ({ rng }) => {
+  const m = new VoxelModel(110, 50, 34);
+  const red = [m.color('#d8463a', { jitter: 0.05 }), m.color('#b8343a', { jitter: 0.05 }), m.color('#ee6a52', { jitter: 0.04 })];
+  const plank = [m.color('#a87848', { jitter: 0.06 }), m.color('#94683e', { jitter: 0.06 })];
+  const gold = m.color('#f2c84a', { jitter: 0.03, spec: 1.2 });
+  const stone = [m.color('#8e8e86', { jitter: 0.1 }), m.color('#7a7a72', { jitter: 0.1 })];
+  const zc = 17, ax = 55, R = 46;
+  const arcY = (x) => { const d = (x - ax) / R; return Math.abs(d) >= 1 ? 0 : Math.sqrt(1 - d * d) * 24; };
+  // Arched deck with plank seams.
+  for (let x = ax - R; x <= ax + R; x++) {
+    const y = arcY(x + 0.5);
+    m.box(x, Math.max(0, y - 3), zc - 8, x, y, zc + 7, (xx, yy, z) => (yy >= Math.floor(y) - 0 ? plank[(xx >> 1) % 2] : red[1]));
+  }
+  // Side beams.
+  for (let x = ax - R; x <= ax + R; x++) {
+    const y = arcY(x + 0.5);
+    for (const z of [zc - 9, zc + 8]) m.box(x, Math.max(0, y - 4), z, x, y - 1, z, red[0]);
+  }
+  // Railings: posts with gold caps + top rail.
+  for (let x = ax - R + 4; x <= ax + R - 4; x += 9) {
+    const y = arcY(x + 0.5);
+    for (const z of [zc - 9, zc + 8]) { m.box(x, y, z, x + 1, y + 9, z, red[0]); m.box(x, y + 10, z, x + 1, y + 11, z, gold); }
+  }
+  for (let x = ax - R + 4; x <= ax + R - 4; x++) {
+    const y = arcY(x + 0.5);
+    for (const z of [zc - 9, zc + 8]) { m.set(x, y + 8, z, red[2]); m.set(x, y + 4, z, red[1]); }
+  }
+  // Stone footings.
+  for (const fx of [ax - R, ax + R]) facetRock(m, rng, fx, 2, zc, 7, 4, 10, stone[0], 10);
+  moss(m, rng, 3, MOSS, 0.2, 0.2, stone);
+  return { m, yaw: 24, pitch: 26 };
+});
+
+// ===================== SHOP =====================
+
+def('shop_stall', { name: 'Bait Stall', biome: 'shop', tags: ['shop', 'glow'] }, ({ rng }) => {
+  const m = new VoxelModel(96, 96, 60);
+  const wood = [m.color('#a06a3c', { jitter: 0.08 }), m.color('#8a5a32', { jitter: 0.08 }), m.color('#b88050', { jitter: 0.06 })];
+  const seam = m.color('#5a3420', { jitter: 0.03 });
+  const awnA = m.color('#e84a5a', { jitter: 0.04, smooth: 0.4 }), awnB = m.color('#fff0d8', { jitter: 0.04, smooth: 0.4 });
+  const trim = m.color('#f2c84a', { jitter: 0.03, spec: 1 });
+  const glassC = m.color('#bfe8e0', { jitter: 0.03, smooth: 0.6, spec: 1.8, specPow: 10, light: 0.2 });
+  const lid = [m.color('#d84a3a', { jitter: 0.03 }), m.color('#3a8ad8', { jitter: 0.03 }), m.color('#5ac85a', { jitter: 0.03 }), m.color('#f2c84a', { jitter: 0.03 })];
+  const contents = [m.color('#ff8aa8', { jitter: 0.1 }), m.color('#e2b878', { jitter: 0.1 }), m.color('#7dff9a', { emissive: 0.8, jitter: 0.05 }), m.color('#ffd84a', { emissive: 0.6, jitter: 0.05 }), m.color('#8a6a4a', { jitter: 0.1 }), m.color('#b46bff', { emissive: 0.7, jitter: 0.05 })];
+  const lamp = m.color('#ffcf6a', { emissive: 1, jitter: 0 });
+  const signC = m.color('#2a4a5a', { jitter: 0.03 });
+  const letter = m.color('#fff6d8', { jitter: 0, emissive: 0.4 });
+  const rope = m.color('#d8c08a', { jitter: 0.03 });
+  const x0 = 10, x1 = 85, zb = 12, zf = 44;
+  // Floor planks.
+  m.box(x0 - 2, 0, zb - 2, x1 + 2, 2, zf + 4, (x, y, z) => (z % 4 === 0 ? seam : wood[(x >> 3) % 2]));
+  // Back wall + shelves of bait jars.
+  m.box(x0, 3, zb, x1, 62, zb + 2, (x, y, z) => ((x - x0) % 8 === 0 ? seam : wood[1]));
+  for (const sy of [14, 28, 42]) {
+    m.box(x0 + 2, sy, zb + 3, x1 - 2, sy + 1, zb + 9, wood[2]);
+    for (let jx = x0 + 4, k = 0; jx < x1 - 6; jx += 7, k++) {
+      const h = 6 + ((h3(jx, sy, 0, 3) * 3) | 0);
+      m.box(jx, sy + 2, zb + 4, jx + 4, sy + 1 + h, zb + 8, glassC);
+      m.box(jx + 1, sy + 2, zb + 5, jx + 3, sy + h - 1, zb + 8, contents[(k + sy) % contents.length]);
+      m.box(jx, sy + 2 + h, zb + 4, jx + 4, sy + 3 + h, zb + 8, lid[(k + (sy >> 2)) % lid.length]);
+    }
+  }
+  // Posts.
+  for (const [px, pz] of [[x0, zf], [x1 - 1, zf], [x0, zb + 3], [x1 - 1, zb + 3]]) m.box(px, 3, pz, px + 1, 66, pz + 1, wood[0]);
+  // Striped awning sloping toward the front with a scalloped edge.
+  for (let z = zb - 1; z <= zf + 8; z++) {
+    const y = 68 - (z - zb) * 0.28;
+    for (let x = x0 - 4; x <= x1 + 4; x++) m.box(x, y, z, x, y + 1, z, Math.floor((x - x0 + 4) / 6) % 2 ? awnB : awnA);
+  }
+  for (let x = x0 - 4; x <= x1 + 4; x++) {
+    const sc = Math.floor((x - x0 + 4) / 6) % 2 ? awnB : awnA;
+    const k = (x - x0 + 4) % 6;
+    const drop = k === 0 || k === 5 ? 1 : k === 1 || k === 4 ? 3 : 4;
+    const y = 68 - (zf + 8 - zb) * 0.28;
+    m.box(x, y - drop, zf + 8, x, y, zf + 8, sc);
+  }
+  m.box(x0 - 4, 68 - (zf + 8 - zb) * 0.28 + 2, zf + 8, x1 + 4, 68 - (zf + 8 - zb) * 0.28 + 2, zf + 8, trim);
+  // Sign board on top: "BAIT".
+  const signY = 72;
+  m.box(30, signY, zb + 4, 65, signY + 12, zb + 6, signC);
+  m.box(29, signY - 1, zb + 4, 66, signY - 1, zb + 6, trim);
+  m.box(29, signY + 13, zb + 4, 66, signY + 13, zb + 6, trim);
+  const font = { B: ['###.', '#..#', '###.', '#..#', '###.'], A: ['.##.', '#..#', '####', '#..#', '#..#'], I: ['###', '.#.', '.#.', '.#.', '###'], T: ['###', '.#.', '.#.', '.#.', '.#.'] };
+  let lx = 35;
+  for (const ch of 'BAIT') {
+    const g = font[ch];
+    for (let r = 0; r < 5; r++) for (let c = 0; c < g[r].length; c++) if (g[r][c] === '#') m.box(lx + c * 2, signY + 10 - r * 2, zb + 7, lx + c * 2 + 1, signY + 11 - r * 2, zb + 7, letter);
+    lx += g[0].length * 2 + 2;
+  }
+  // Hanging lantern + a little fish sign.
+  m.line(x1 - 6, 64, zf + 4, x1 - 6, 56, zf + 4, rope, 0.4);
+  m.box(x1 - 8, 50, zf + 2, x1 - 4, 55, zf + 6, lamp);
+  m.box(x1 - 8, 56, zf + 2, x1 - 4, 56, zf + 6, trim);
+  m.box(x1 - 8, 49, zf + 2, x1 - 4, 49, zf + 6, trim);
+  // Counter at the front (the shopkeeper stands between it and the shelves).
+  const cz0 = zf - 6, cz1 = zf + 1, ct = 17;
+  const counter = (x, y, z) => x >= x0 - 1 && x <= x1 + 1 && y >= 3 && y <= ct + 12 && z >= cz0 && z <= cz1 + 1;
+  m.box(x0, 3, cz0, x1 - 1, ct, cz1, (x, y, z) => ((x - x0) % 6 === 0 ? seam : y > ct - 3 ? wood[2] : wood[(Math.floor((x - x0) / 6)) % 2]));
+  m.box(x0 - 1, ct + 1, cz0 - 1, x1, ct + 3, cz1 + 1, wood[2]);
+  m.box(x0 - 1, ct + 1, cz1 + 1, x1, ct + 1, cz1 + 1, trim);
+  // Goodies on the counter: a jar of worms, a bell, a coin dish.
+  m.box(x0 + 6, ct + 4, cz0 + 1, x0 + 11, ct + 10, cz0 + 5, glassC);
+  m.box(x0 + 7, ct + 4, cz0 + 2, x0 + 10, ct + 8, cz0 + 5, contents[0]);
+  m.box(x0 + 6, ct + 11, cz0 + 1, x0 + 11, ct + 11, cz0 + 5, lid[1]);
+  m.cylinder(x1 - 12, cz0 + 3, ct + 4, ct + 5, 3, trim);
+  m.sphere(x1 - 12, ct + 7, cz0 + 3, 2, trim);
+  m.cylinder(x1 - 22, cz0 + 3, ct + 4, ct + 4, 3.5, wood[1]);
+  m.box(x1 - 23, ct + 5, cz0 + 2, x1 - 22, ct + 5, cz0 + 3, lid[3]);
+  // A crate behind the counter for the shopkeeper to stand on.
+  const kx = (x0 + x1) / 2, kz = (zb + 10 + cz0) / 2;
+  m.box(kx - 9, 3, kz - 5, kx + 8, 9, kz + 4, (x, y, z) => (y === 6 || x === kx - 9 || x === kx + 8 ? seam : wood[0]));
+  // Kelp at the corner.
+  const kelp = [m.color('#4fa25e', { smooth: 0.3 }), m.color('#86cf74', { smooth: 0.3 })];
+  for (let y = 2; y < 40; y++) m.set(4 + Math.round(Math.sin(y * 0.35) * 1.3), y, zf + 2, kelp[y % 6 === 0 ? 1 : 0]);
+  void rng;
+  return {
+    m, yaw: 22, pitch: 24, vs: 1.6, light: '#ffcf6a',
+    front: counter,
+    anchors: { keeper: [kx, 10, kz] },
+  };
+});
+
 
 // ---------- public API ----------
 export const PROPS = {};
@@ -1674,6 +2749,11 @@ export const PROP_VARIANTS = {
   coral_tube: [0, 1, 2].map((i) => ({ variant: i, label: 'tube sponge ' + (i + 1) })),
   coral_staghorn: [0, 1, 2].map((i) => ({ variant: i, label: 'staghorn ' + (i + 1) })),
   anemone_base: [0, 1, 2].map((i) => ({ variant: i, label: 'anemone ' + (i + 1) })),
+  server_rack: [{ frame: 0, label: 'server rack' }, { frame: 1, label: 'server rack f1' }],
+  circuit_coral: [0, 1, 2].map((i) => ({ variant: i, label: 'circuit coral ' + (i + 1) })),
+  glow_mushroom: [0, 1, 2].map((i) => ({ variant: i, label: 'glow shrooms ' + (i + 1) })),
+  glyph_stone: [0, 1, 2].map((i) => ({ variant: i, label: 'glyph stone ' + (i + 1) })),
+  lava_lamp: LAVA.map((c, i) => ({ variant: i, label: 'lava lamp ' + (i + 1) })),
 };
 
 const cache = new Map();
@@ -1687,13 +2767,14 @@ export function getProp(id, { scale = 1, variant = 0, frame = 0 } = {}) {
   const t0 = performance.now();
   const res = d.build({ rng, variant, frame });
   const t1 = performance.now();
-  const r = renderVoxels(res.m, {
+  const opts = {
     scale: (res.vs ?? 1.75) * scale,
     yaw: res.yaw ?? 32,
     pitch: res.pitch ?? 27,
     track: res.screens || [],
     ...(res.render || {}),
-  });
+  };
+  const r = renderVoxels(res.m, opts);
   const screens = (res.screens || []).map((k) => r.regions[k]?.inner).filter((q) => q && q.w > 0);
   let lights = [];
   if (res.lights) {
@@ -1709,6 +2790,17 @@ export function getProp(id, { scale = 1, variant = 0, frame = 0 } = {}) {
     }
   }
   p = { canvas: r.canvas, glow: r.glow, ox: r.ox, oy: r.oy, w: r.w, h: r.h, screens, lights, ms: [Math.round(t1 - t0), Math.round(performance.now() - t1)] };
+  if (res.anchors) {
+    p.anchors = {};
+    for (const [k, a] of Object.entries(res.anchors)) {
+      const [x, y] = r.project(a[0], a[1], a[2]);
+      p.anchors[k] = { x: Math.round(x), y: Math.round(y) };
+    }
+  }
+  if (res.front) {
+    // Foreground layer: same framing/lighting, only the voxels the prop marks as front.
+    p.front = renderVoxels(res.m, { ...opts, keepVoxel: res.front }).canvas;
+  }
   cache.set(key, p);
   return p;
 }
