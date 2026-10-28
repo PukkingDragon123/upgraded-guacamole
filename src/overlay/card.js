@@ -82,8 +82,10 @@ export function drawCatchCard(ctx, card, W, H, cursor) {
   bg.addColorStop(0, '#8ae0f0'); bg.addColorStop(1, '#2a8ab8');
   ctx.fillStyle = bg; ctx.fillRect(fr.x, fr.y, fr.w, fr.h);
   const c = compiled(sp.look, rec.variant, sp.id);
-  const sc = fitScale(sp, fr.w * 0.62, fr.h - 4) * ease.outBack(clamp01(card.t * 2.5));
-  drawFishRig(ctx, c, rigPose(sp, cx, fr.y + fr.h / 2 + Math.sin(card.t * 2) * 1.5, Math.max(0.2, sc), card.t, card.emotion, cursor ? [cursor.x, cursor.y] : null));
+  // constant scale (every new scale would rasterize the rig again); the fish pops in by jumping up instead
+  const sc = fitScale(sp, fr.w * 0.62, fr.h - 4);
+  const hop = (1 - ease.outBack(clamp01(card.t * 2.5))) * 14;
+  drawFishRig(ctx, c, rigPose(sp, cx, fr.y + fr.h / 2 + Math.sin(card.t * 2) * 1.5 + hop, sc, card.t, card.emotion, cursor ? [cursor.x, cursor.y] : null));
   ctx.restore();
   const sy = r.y + 100;
   drawText(ctx, `{fish} ${rec.sizeCm} cm  ${rec.weightKg} kg`, r.x + 14, sy, { color: '#3a2a1a' });

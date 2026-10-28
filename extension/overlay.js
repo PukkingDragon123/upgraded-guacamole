@@ -7760,7 +7760,8 @@
       if (this.perch && (this.x < this.perch.x || this.x > this.perch.x + this.perch.w)) this.perch = null;
       this.vy = 0;
       this.y = damp(this.y, groundY, 10, dt);
-      this.x = clamp(this.x, -30, this.world.W + 30);
+      const edge = this.state === "leave" ? 90 : 30;
+      this.x = clamp(this.x, -edge, this.world.W + edge);
     }
     updateHop(dt, desired) {
       const ground = this.world.floorAt(this.x, this.z) - 5 * this.scale * (1 - this.z * 0.5);
@@ -12563,8 +12564,9 @@ kwwwwwwk.
     ctx2.fillStyle = bg;
     ctx2.fillRect(fr.x, fr.y, fr.w, fr.h);
     const c = compiled(sp.look, rec.variant, sp.id);
-    const sc = fitScale(sp, fr.w * 0.62, fr.h - 4) * ease.outBack(clamp01(card.t * 2.5));
-    drawFishRig(ctx2, c, rigPose(sp, cx, fr.y + fr.h / 2 + Math.sin(card.t * 2) * 1.5, Math.max(0.2, sc), card.t, card.emotion, cursor ? [cursor.x, cursor.y] : null));
+    const sc = fitScale(sp, fr.w * 0.62, fr.h - 4);
+    const hop = (1 - ease.outBack(clamp01(card.t * 2.5))) * 14;
+    drawFishRig(ctx2, c, rigPose(sp, cx, fr.y + fr.h / 2 + Math.sin(card.t * 2) * 1.5 + hop, sc, card.t, card.emotion, cursor ? [cursor.x, cursor.y] : null));
     ctx2.restore();
     const sy = r.y + 100;
     drawText(ctx2, `{fish} ${rec.sizeCm} cm  ${rec.weightKg} kg`, r.x + 14, sy, { color: "#3a2a1a" });

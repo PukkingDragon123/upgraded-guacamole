@@ -29,6 +29,7 @@ import { Tutorial } from './tutorial.js';
 import { Wallpaper } from '../desktop/wallpaper.js';
 import { Dock } from '../ui/dock.js';
 import { host } from '../platform/host.js';
+import { installBrowserBridge } from './browserbridge.js';
 
 export class Game {
   constructor(canvas, params) {
@@ -84,6 +85,7 @@ export class Game {
     this.onResize();
     this.bindHost();
     this.bindGlobal();
+    installBrowserBridge(this);
     this.saveT = 10;
     this.offline();
     if (this.pendingWelcome) setTimeout(() => this.ui.open('welcome'), 1500);

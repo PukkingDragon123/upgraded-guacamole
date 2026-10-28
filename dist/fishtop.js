@@ -12831,7 +12831,8 @@
           if (this.perch && (this.x < this.perch.x || this.x > this.perch.x + this.perch.w)) this.perch = null;
           this.vy = 0;
           this.y = damp(this.y, groundY, 10, dt);
-          this.x = clamp(this.x, -30, this.world.W + 30);
+          const edge = this.state === "leave" ? 90 : 30;
+          this.x = clamp(this.x, -edge, this.world.W + edge);
         }
         updateHop(dt, desired) {
           const ground = this.world.floorAt(this.x, this.z) - 5 * this.scale * (1 - this.z * 0.5);
@@ -31527,11 +31528,11 @@ kTtaatTk
             }
           }
           drawText(ctx2, "Your fish made", r.x + W5 / 2, r.y + 150, { align: "center", color: "#7a5a40" });
-          const num = formatCommas(this.shown);
-          const nw = measureText(num, "normal", 2) + 22;
+          const num2 = formatCommas(this.shown);
+          const nw = measureText(num2, "normal", 2) + 22;
           const nx = Math.round(r.x + W5 / 2 - nw / 2);
           const bump = coinK >= 1 && t < 2.1 ? Math.round(Math.sin((t - 1.7) * 20) * 1) : 0;
-          drawText(ctx2, num, nx, r.y + 161 - bump, { scale: 2, color: "#2a6a3a", shadow: "#c8e8b8" });
+          drawText(ctx2, num2, nx, r.y + 161 - bump, { scale: 2, color: "#2a6a3a", shadow: "#c8e8b8" });
           const cb2 = getUiIcon("coin_big");
           ctx2.drawImage(cb2, nx + nw - cb2.width, r.y + 163 - bump);
           drawText(ctx2, this.quip, r.x + W5 / 2, r.y + 180, { align: "center", font: "small", color: "#9a7a5a" });
@@ -34925,6 +34926,87 @@ kTtaatTk
     }
   });
 
+  // src/game/browserbridge.js
+  function sanitize(r) {
+    const v = r.variant && typeof r.variant === "object" ? r.variant : null;
+    let variant = null;
+    if (v) {
+      variant = {};
+      if (typeof v.mutation === "string" && MUTATIONS[v.mutation]) variant.mutation = v.mutation;
+      if (typeof v.pattern === "string" && PATTERNS[v.pattern]) variant.pattern = v.pattern;
+      if (Number.isInteger(v.seed)) variant.seed = v.seed;
+      if (v.shiny === true) variant.shiny = true;
+      if (Number.isFinite(v.shinyHue)) variant.shinyHue = v.shinyHue;
+      if (!Object.keys(variant).length) variant = null;
+    }
+    return {
+      uid: r.uid,
+      species: r.species,
+      sizeCm: num(r.sizeCm, 10),
+      weightKg: num(r.weightKg, 0.2),
+      sizeT: clamp(num(r.sizeT, 0.5), 0, 1),
+      giant: r.giant === true,
+      tiny: r.tiny === true,
+      variant,
+      personality: PERSONALITIES.some((p) => p.id === r.personality) ? r.personality : "chill",
+      name: typeof r.name === "string" ? r.name.slice(0, 24) : "Browser Fish",
+      caughtAt: num(r.caughtAt, Date.now())
+    };
+  }
+  function installBrowserBridge(game) {
+    const target = () => location.protocol === "file:" ? "*" : location.origin;
+    window.addEventListener("message", (e) => {
+      var _a, _b;
+      if (e.source !== window || !e.data || typeof e.data.type !== "string") return;
+      if (e.data.type === "fishtop:bridge-hello") {
+        window.postMessage({ type: "fishtop:game-hello", version: 1 }, target());
+        return;
+      }
+      if (e.data.type !== "fishtop:catches" || !Array.isArray(e.data.fish)) return;
+      const st = game.state;
+      st.browserImports || (st.browserImports = []);
+      const known = /* @__PURE__ */ new Set([...st.fish.map((f) => f.uid), ...st.browserImports]);
+      const uids = [];
+      let added = 0;
+      for (const r of e.data.fish.slice(0, 100)) {
+        if (!r || typeof r.uid !== "string" || !SPECIES_BY_ID[r.species]) continue;
+        uids.push(r.uid);
+        if (known.has(r.uid)) continue;
+        const sp = SPECIES_BY_ID[r.species];
+        const rec = { ...sanitize(r), biome: sp.biome, rarity: sp.rarity, fromBrowser: true };
+        const j = (_a = st.journal)[_b = sp.id] || (_a[_b] = { seen: true, caught: 0, maxSize: 0, minSize: 9999, first: rec.caughtAt, variants: {} });
+        j.caught++;
+        j.maxSize = Math.max(j.maxSize, rec.sizeCm);
+        j.minSize = Math.min(j.minSize, rec.sizeCm);
+        if (rec.variant?.mutation) j.variants[rec.variant.mutation] = true;
+        if (rec.variant?.shiny) j.variants.shiny = true;
+        st.stats.caught++;
+        const owned = { ...rec, inTank: game.tankCount() < game.stats.tankCap, happiness: 0.75, hunger: 0.3, coinT: 0 };
+        st.fish.push(owned);
+        if (owned.inTank) game.aquarium.addFish(owned);
+        st.browserImports.push(rec.uid);
+        known.add(rec.uid);
+        added++;
+      }
+      if (st.browserImports.length > 500) st.browserImports = st.browserImports.slice(-500);
+      if (added) {
+        game.save();
+        game.toast(`${added} fish swam in from your browser!`, "fish");
+        game.audio.play("splash_small");
+      }
+      window.postMessage({ type: "fishtop:catches-ack", uids }, target());
+    });
+  }
+  var num;
+  var init_browserbridge = __esm({
+    "src/game/browserbridge.js"() {
+      init_species();
+      init_traits();
+      init_math();
+      num = (v, d = 0) => Number.isFinite(v) ? v : d;
+    }
+  });
+
   // src/game/game.js
   var Game;
   var init_game = __esm({
@@ -34958,6 +35040,7 @@ kTtaatTk
       init_wallpaper();
       init_dock();
       init_host();
+      init_browserbridge();
       Game = class {
         constructor(canvas, params2) {
           this.params = params2;
@@ -35030,6 +35113,7 @@ kTtaatTk
           this.onResize();
           this.bindHost();
           this.bindGlobal();
+          installBrowserBridge(this);
           this.saveT = 10;
           this.offline();
           if (this.pendingWelcome) setTimeout(() => this.ui.open("welcome"), 1500);

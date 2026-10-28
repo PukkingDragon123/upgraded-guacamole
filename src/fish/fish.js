@@ -199,7 +199,8 @@ export class Fish {
     if (this.perch && (this.x < this.perch.x || this.x > this.perch.x + this.perch.w)) this.perch = null;
     this.vy = 0;
     this.y = damp(this.y, groundY, 10, dt);
-    this.x = clamp(this.x, -30, this.world.W + 30);
+    const edge = this.state === 'leave' ? 90 : 30; // leaving crawlers may walk off-screen
+    this.x = clamp(this.x, -edge, this.world.W + edge);
   }
 
   updateHop(dt, desired) {
