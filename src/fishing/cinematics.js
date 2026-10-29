@@ -318,6 +318,8 @@ export class Finale {
     this.t = 0; this.rt = 0; this.st = 0;
     this.surface = w.surfaceY !== null && w.surfaceY !== undefined ? w.surfaceY : null;
     this.hasBoat = !!(g.boat && this.surface !== null && g.boat.rodTip);
+    // hosts without a cinematic camera (browser overlay) get a snappy version
+    this.compact = !F.cam?.focus;
     this.stage = 'surface';
     this.from = { x: fish.x, y: fish.y };
     this.rays = 0;
@@ -349,7 +351,7 @@ export class Finale {
     switch (stage) {
       case 'erupt': {
         F.setPose('yank');
-        F.cam?.slowmo?.(0.28, 1.5);
+        if (!this.compact) F.cam?.slowmo?.(0.28, 1.5);
         F.shake(7);
         F.cam?.flash?.('#ffffff', 0.25);
         const sy = this.surface ?? f.y;
@@ -366,7 +368,7 @@ export class Finale {
         f.feel('surprised', 4);
         f.say('!!', 1.2);
         this.p0 = [f.x, this.surface !== null ? sy + 2 : f.y];
-        this.flight = 1.05;
+        this.flight = this.compact ? 0.6 : 1.05;
         break;
       }
       case 'catch': {
@@ -424,7 +426,7 @@ export class Finale {
         if (rng.chance(rdt * 20)) F.particles.bubbleTrail(f.x, f.y, 0, -80);
         if (this.surface !== null && rng.chance(rdt * 10)) F.particles.foam(f.x, this.surface, 1, { spread: 8 });
         if (this.hasBoat) F.focusCam(f.x, f.y - 20, 1.6, 3);
-        if (this.st > 0.55) this.go('erupt');
+        if (this.st > (this.compact ? 0.2 : 0.55)) this.go('erupt');
         break;
       }
       case 'erupt': {
@@ -453,12 +455,12 @@ export class Finale {
       }
       case 'catch':
         this.rays = Math.min(1, this.rays + rdt * 2);
-        if (this.st > 0.45) this.go('igotit');
+        if (this.st > (this.compact ? 0.15 : 0.45)) this.go('igotit');
         break;
       case 'igotit':
         this.rays = Math.max(0, this.rays - rdt * 1.2);
         if (this.hasBoat) { const [hx, hy] = this.hands(); F.focusCam(hx, hy - 26, 1.85, 3); }
-        if (this.st > 2.4) return 'caught';
+        if (this.st > (this.compact ? 0.05 : 2.4)) return 'caught';
         break;
       default: break;
     }
