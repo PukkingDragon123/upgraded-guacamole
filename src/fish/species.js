@@ -78,7 +78,7 @@ add({
 });
 
 add({
-  id: 'honk', name: 'Bozo the Clownfish', biome: 'shallows', rarity: 'common',
+  id: 'honk', name: 'Honk-Honk Clownfish', biome: 'shallows', rarity: 'common',
   size: [7, 12], weight: [0.08, 0.25],
   look: {
     body: { len: 40, h: 22, shape: 'oval', nose: 2.2, tip: 0.22 },
@@ -1868,7 +1868,7 @@ add({
 });
 
 add({
-  id: 'bruce', name: 'Bruce the Big Shark', biome: 'shallows', rarity: 'legendary',
+  id: 'bruce', name: 'Fish-Are-Friends Shark', biome: 'shallows', rarity: 'legendary',
   size: [400, 600], weight: [600, 1100],
   look: {
     toon: true,

@@ -21482,7 +21482,7 @@
   });
   add4({
     id: "honk",
-    name: "Bozo the Clownfish",
+    name: "Honk-Honk Clownfish",
     biome: "shallows",
     rarity: "common",
     size: [7, 12],
@@ -23532,7 +23532,7 @@
   });
   add4({
     id: "bruce",
-    name: "Bruce the Big Shark",
+    name: "Fish-Are-Friends Shark",
     biome: "shallows",
     rarity: "legendary",
     size: [400, 600],

@@ -189,8 +189,8 @@ export class ShallowsBiome extends Biome {
     // living reef: voxel coral bommies and single corals at many depths (all front-facing, world camera)
     this.coralGlow = [];
     const glowOf = (it) => { if (it.sprite.night) this.coralGlow.push({ night: it.sprite.night, x: it.x - it.sprite.ox, y: it.y - it.sprite.oy, band: it.band, z: it.z }); return it; };
-    const reef = (seed, xf, z, opts = {}) => glowOf(D.add({ sprite: reefSprite(seed, 'shallows', opts, qscale(1.5 * D.s(z), 0.05, 0.2)), x: Math.round(xf * W), z, id: 'reef' }));
-    const coral = (kind, seed, xf, z, size) => glowOf(D.add({ sprite: coralSprite(kind, seed, 'shallows', size, qscale(1.5 * D.s(z), 0.05, 0.2)), x: Math.round(xf * W), z, id: 'coral_' + kind }));
+    const reef = (seed, xf, z, opts = {}) => glowOf(D.add({ sprite: reefSprite(seed, 'shallows', opts, qscale(1.5 * D.s(z), 0.1, 0.3)), x: Math.round(xf * W), z, id: 'reef' }));
+    const coral = (kind, seed, xf, z, size) => glowOf(D.add({ sprite: coralSprite(kind, seed, 'shallows', size, qscale(1.5 * D.s(z), 0.1, 0.3)), x: Math.round(xf * W), z, id: 'coral_' + kind }));
     // near
     reef(101, 0.335, 0.26, { w: 116, h: 74, d: 46 });
     reef(102, 0.085, 0.18, { w: 84, h: 60, d: 38 });
@@ -347,7 +347,7 @@ export class ShallowsBiome extends Biome {
     }
     for (const [xf, z, pal] of [[0.125, 0.1, 'red'], [0.548, 0.28, 'orange'], [0.745, 0.32, 'pink'], [0.43, 0.58, 'cream'], [0.99, 0.08, 'purple'], [0.3, 0.86, 'yellow']]) life('soft', 7 + Math.round(xf * 30), 12, z, Math.round(xf * W), pal);
     // critters
-    this.crabSpr = [voxCrab('#e0502e', 1.5), voxCrab('#f09a3a', 1.5)];
+    this.crabSpr = [voxCrab('#e0502e', 1), voxCrab('#f09a3a', 1)];
     this.crabs = [[0.52, -0.05], [0.86, 0.06], [0.25, -0.2]].map(([xf, z], i) => ({ x: xf * W, z, dir: i % 2 ? -1 : 1, state: 'walk', t: r.float(1, 4), f: 0, kind: i % 2, ft: 0 }));
     // particles
     const sy = this.base;

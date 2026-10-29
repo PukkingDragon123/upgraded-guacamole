@@ -456,39 +456,50 @@ function softCoral(m, o, size, P, r, ph) {
   for (const a of [-0.45, 0.1, 0.55]) rec(cx, y0 + 3, cz, a, r.float(-0.4, 0.4), size * 0.28, 3);
 }
 
+// Giant kelp: holdfast, a swaying stipe and slender blades angled up from gas floats on alternating sides.
 function kelp(m, o, size, P, r, ph) {
   const [cx, y0, cz] = o;
   const H = Math.round(size * 5);
-  const stipe = P.c[0];
-  let x = cx;
+  const flt = m.color(mix(P.hex[3], '#ffe8a0', 0.3), { jitter: 0.04, spec: 0.6 });
+  for (let k = 0; k < 7; k++) m.set(cx + r.int(-2, 2), y0, cz + r.int(-1, 1), P.c[0]);
+  const xs = [];
   for (let y = 0; y < H; y++) {
     const t = y / H;
-    x = cx + Math.sin(ph + y * 0.07) * t * t * size * 0.6 + Math.sin(y * 0.15 + size) * 0.6;
-    m.set(Math.round(x), y0 + y, cz, stipe);
-    if (y > 3 && y % 3 === 0) {
-      const side = (y / 3) % 2 ? 1 : -1;
-      const L = Math.round(size * 0.55 * (0.6 + 0.4 * Math.sin(t * Math.PI)));
-      m.set(Math.round(x) + side, y0 + y, cz, P.c[3]);
-      for (let k = 1; k <= L; k++) {
-        const kk = k / L;
-        const bx = Math.round(x + side * (k + 1)), by = y0 + y + Math.round(kk * kk * 2.5 + Math.sin(ph + y * 0.1 + k * 0.4) * kk);
-        m.set(bx, by, cz, kk > 0.7 ? P.c[2] : P.c[1]);
-        m.set(bx, by + 1, cz + (k % 2 ? 1 : 0), kk > 0.5 ? P.c[2] : P.c[1]);
-      }
+    xs[y] = cx + Math.sin(ph + y * 0.06) * t * t * size * 0.55 + Math.sin(y * 0.13 + size) * 0.7;
+    m.set(Math.round(xs[y]), y0 + y, cz, P.c[0]);
+  }
+  let side = r.chance(0.5) ? 1 : -1;
+  for (let y = 4; y < H - 1; y += r.int(3, 4)) {
+    side = -side;
+    const t = y / H;
+    const x0 = Math.round(xs[y]);
+    m.set(x0 + side, y0 + y, cz, flt);
+    const L = Math.round(size * r.float(0.55, 0.8) * (1 - t * 0.3));
+    const up = r.float(0.55, 0.9), sw = Math.sin(ph * 1.3 + y * 0.21);
+    let bx = x0 + side * 1.5, by = y0 + y + 0.5;
+    for (let k = 0; k < L; k++) {
+      const kk = k / L;
+      bx += side * (1 - up * 0.6) + sw * kk * 0.35;
+      by += up * (1 - kk * 0.5);
+      const c = kk > 0.75 ? P.c[3] : kk > 0.35 ? P.c[2] : P.c[1];
+      m.set(Math.round(bx), Math.round(by), cz, c);
+      if (kk > 0.15 && kk < 0.8) m.set(Math.round(bx), Math.round(by) + 1, cz + 1, P.c[1]);
     }
   }
 }
 
+// Seagrass clump: thin ribbon blades fanning out of the sand, each with its own sway phase.
 function seagrass(m, o, size, P, r, ph) {
   const [cx, y0, cz] = o;
-  const n = r.int(6, 10);
+  const n = r.int(9, 14);
   for (let i = 0; i < n; i++) {
-    let x = cx + r.float(-size * 0.4, size * 0.4), z = cz + r.float(-2, 2);
-    const L = size * r.float(0.8, 1.5), lean = r.float(-0.3, 0.3), off = r.float(0, TAU);
+    let x = cx + r.float(-size * 0.35, size * 0.35);
+    const z = cz + r.int(-2, 2);
+    const L = size * r.float(1, 2), lean = (x - cx) / (size * 0.35) * 0.35 + r.float(-0.15, 0.15), off = r.float(0, TAU);
     for (let k = 0; k < L; k++) {
       const t = k / L;
-      x += Math.sin(lean + Math.sin(ph + off + t * 1.6) * 0.45 * t);
-      m.set(Math.round(x), y0 + k, Math.round(z), t > 0.85 ? P.c[3] : t > 0.5 ? P.c[2] : P.c[1]);
+      x += Math.sin(lean * (0.4 + t) + Math.sin(ph + off + t * 1.8) * 0.5 * t);
+      m.set(Math.round(x), y0 + k, z, t > 0.88 ? P.c[3] : t > 0.55 ? P.c[2] : t > 0.2 ? P.c[1] : P.c[0]);
     }
   }
 }
@@ -497,23 +508,25 @@ const ANIMATED = { anemone, soft: softCoral, kelp, seagrass };
 
 const animCache = new Map();
 // Animated coral sprite set (frames over one sway cycle), cached per (kind, seed, theme, size, scale).
-export function voxAnim(kind, seed, themeId, size, scale, frames = 8, palKey = null) {
-  const key = [kind, seed, themeId, size, scale, frames, palKey].join('|');
+// `k` scales the voxel count (perspective size); frames render at 1 px per voxel.
+export function voxAnim(kind, seed, themeId, size0, k, frames = 8, palKey = null) {
+  const key = [kind, seed, themeId, size0, k, frames, palKey].join('|');
+  const size = size0 * k;
   let A = animCache.get(key);
   if (A) return A;
   const theme = THEMES[themeId] || THEMES.shallows;
   const r0 = new RNG(seed);
-  const FIXED = { kelp: { shallows: ['#2a3612', '#4e6226', '#869a36', '#d0d064'], junkyard: ['#2a2a1a', '#4a4a2a', '#7a7a3a', '#b8b060'], abyss: ['#1a2a3a', '#2a4a5a', '#4a8a9a', '#a8f0ff'] },
+  const FIXED = { kelp: { shallows: ['#2e3010', '#5e5e1c', '#9a922c', '#dcca5a'], junkyard: ['#2a2a1a', '#4a4a2a', '#7a7a3a', '#b8b060'], abyss: ['#1a2a3a', '#2a4a5a', '#4a8a9a', '#a8f0ff'] },
     seagrass: { shallows: ['#1e4a24', '#2e7a36', '#5ab04e', '#b8e88a'], junkyard: ['#2a3a1e', '#3e5a2a', '#6a8a3a', '#b0c870'], abyss: ['#1a2e44', '#2a4e6a', '#4a8aaa', '#bfffff'] } };
   const cols = palKey && theme.pals[palKey] ? theme.pals[palKey] : FIXED[kind]?.[themeId] || pickPal(theme, r0);
-  const h = Math.ceil(kind === 'kelp' ? size * 5 + 10 : size * 2.2 + 8), wd = Math.ceil(size * 2.4 + 12);
+  const h = Math.ceil(kind === 'kelp' ? size * 6 + 10 : size * 2.2 + 8), wd = Math.ceil(size * 2.4 + 12);
   const out = [], nights = [];
   let ox = 0, oy = 0;
   for (let f = 0; f < frames; f++) {
     const m = new VoxelModel(wd + (kind === 'kelp' ? size * 3 : 0), h, Math.ceil(size * 1.6) + 6);
     const P = palIdx(m, cols, theme.glow > 0.5);
     ANIMATED[kind](m, [m.nx / 2, 0, m.nz / 2], size, P, new RNG(seed), (f / frames) * TAU);
-    const r = renderModel(m, { scale, outline: true, jitter: 0.1, ao: 1.2, edges: 0.6, light: { top: 4.8, lit: 3.4, dark: 2.1, bottom: 1 } });
+    const r = renderModel(m, { scale: 1, outline: kind !== 'seagrass', jitter: 0.06, ao: 1.2, edges: 0.6, light: { top: 4.8, lit: 3.4, dark: 2.1, bottom: 1 } });
     // anchor every frame on the model's base centre so frames line up
     const p = r.project(m.nx / 2, 0, m.nz / 2);
     ox = Math.round(p[0]); oy = Math.round(p[1]);

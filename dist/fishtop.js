@@ -23851,7 +23851,7 @@
       });
       add4({
         id: "honk",
-        name: "Bozo the Clownfish",
+        name: "Honk-Honk Clownfish",
         biome: "shallows",
         rarity: "common",
         size: [7, 12],
@@ -25901,7 +25901,7 @@
       });
       add4({
         id: "bruce",
-        name: "Bruce the Big Shark",
+        name: "Fish-Are-Friends Shark",
         biome: "shallows",
         rarity: "legendary",
         size: [400, 600],
@@ -39554,7 +39554,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
     }
   }
   function rockMound(m, theme, r, cx, cz, w, h, d) {
-    const R = theme.rock.map((c) => m.color(c, { jitter: 0.16 }));
+    const R = theme.rock.map((c) => m.color(c, { jitter: 0.12, rock: true }));
     const CL = theme.coralline.map((c) => m.color(c, { jitter: 0.12 }));
     const AL = theme.algae.map((c) => m.color(c, { jitter: 0.15 }));
     const seed = r.int(0, 999);
@@ -39585,11 +39585,45 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
     for (let y = m.ny - 1; y >= 0; y--) if (m.get(x, y, z)) return y + 1;
     return 0;
   }
+  function encrust(m, theme, r, scheme, seed) {
+    const pals2 = (scheme || Object.keys(theme.pals)).map((k) => palIdx(m, theme.pals[k], theme.glow > 0.5));
+    const { nx, ny, nz } = m;
+    const shelves = [];
+    for (let z = 1; z < nz - 1; z++) for (let y = 1; y < ny - 1; y++) for (let x = 1; x < nx - 1; x++) {
+      const v = m.get(x, y, z);
+      if (!v || !m.palette[v].rock) continue;
+      const front = !m.get(x, y, z + 1), up = !m.get(x, y + 1, z);
+      if (!front && !up) continue;
+      const n = noise3(x * 0.08, y * 0.08, z * 0.08, seed + 21);
+      const P5 = pals2[Math.floor(noise3(x * 0.03, y * 0.03, z * 0.03, seed + 7) * 0.999 * pals2.length * 1.6) % pals2.length];
+      const h = hash3(x, y, z, seed + 3);
+      if (n > 0.56) {
+        const tx = x, ty = up ? y + 1 : y, tz = up ? z : z + 1;
+        m.set(tx, ty, tz, h < 0.12 ? P5.c[3] : h < 0.4 ? P5.c[2] : P5.c[1]);
+        if (n > 0.68 && h < 0.3) m.set(tx, ty + 1, tz, P5.c[2]);
+      } else if (h < 6e-3) {
+        for (let k = 0; k < 5; k++) m.set(x + r.int(-1, 1), y + (up ? 1 : r.int(-1, 1)), z + (front ? 1 : 0), k ? P5.c[3] : P5.c[2]);
+      } else if (h < 9e-3) {
+        ball(m, x, y + (up ? 1 : 0), z + (front ? 1 : 0), r.float(1, 1.8), P5.c[r.int(1, 2)]);
+      } else if (front && !up && y > 4 && h > 0.9985) shelves.push([x, y, z, P5]);
+    }
+    for (const [x, y, z, P5] of shelves) {
+      const R = r.float(3, 6.5);
+      for (let dz = 0; dz <= R; dz++) for (let dx = -Math.ceil(R); dx <= R; dx++) {
+        const d = Math.hypot(dx, dz * 1.3);
+        if (d > R) continue;
+        m.set(x + dx, y, z + 1 + dz, d > R - 1.2 ? P5.c[3] : (dx + dz) % 3 === 0 ? P5.c[2] : P5.c[1]);
+        if (d < R * 0.5) m.set(x + dx, y - 1, z + 1 + dz, P5.c[0]);
+      }
+    }
+  }
   function reefFormation(seed, theme, { w = 140, h = 84, d = 54, density = 1, rock = 0.42, sizes = [10, 24] } = {}) {
     const r = new RNG(seed);
     const m = new VoxelModel(w, h, d);
     const cx = w / 2, cz = d / 2;
+    const scheme = theme.schemes ? theme.schemes[r.int(0, theme.schemes.length - 1)] : null;
     rockMound(m, theme, r, cx, cz, w * 0.82, h * rock, d * 0.7);
+    encrust(m, theme, r, scheme, seed);
     const kinds = Object.entries(theme.weights);
     const total = kinds.reduce((a, [, wt]) => a + wt, 0);
     const pick6 = () => {
@@ -39600,18 +39634,18 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
       }
       return kinds[0][0];
     };
-    const n = Math.round(w * d / 260 * density);
+    const n = Math.round(w * d / 260 * density * (10 / sizes[0]) ** 2 * 1.1);
     const used = [];
-    for (let i = 0; i < n * 4 && used.length < n; i++) {
-      const x = Math.round(r.float(w * 0.1, w * 0.9)), z = Math.round(r.float(d * 0.2, d * 0.8));
+    for (let i = 0; i < n * 5 && used.length < n; i++) {
+      const x = Math.round(r.float(w * 0.08, w * 0.92)), z = Math.round(r.float(d * 0.18, d * 0.85));
       if (!m.get(x, 1, z) && surfaceY(m, x, z) < 3 && r.chance(0.6)) continue;
       const kind2 = pick6();
       const size = r.float(sizes[0], kind2 === "fan" || kind2 === "staghorn" || kind2 === "table" ? sizes[1] : sizes[1] * 0.8) * (0.7 + 0.3 * (1 - Math.abs(x - cx) / cx));
-      if (used.some((u) => Math.hypot(u[0] - x, (u[1] - z) * 1.4) < (u[2] + size) * 0.4)) continue;
+      if (used.some((u) => Math.hypot(u[0] - x, (u[1] - z) * 1.4) < (u[2] + size) * 0.38)) continue;
       const y = surfaceY(m, x, z);
       if (y + size * 1.4 >= h - 2) continue;
       used.push([x, z, size]);
-      const P5 = palIdx(m, pickPal(theme, r), theme.glow > 0.5);
+      const P5 = palIdx(m, pickPal(theme, r, scheme), theme.glow > 0.5);
       SPECIES2[kind2](m, [x, y, kind2 === "fan" ? Math.max(3, Math.round(z * 0.6)) : z], size, P5, r);
     }
     polyps(m, seed);
@@ -39622,9 +39656,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
     const s = Math.ceil(size * 2.6) + 6;
     const m = new VoxelModel(s, Math.ceil(size * 2.2) + 8, Math.ceil(size * 1.8) + 6);
     const P5 = palIdx(m, pickPal(theme, r), theme.glow > 0.5);
-    SPECIES2[kind2](m, [m.nx / 2, 1, m.nz / 2], size, P5, r);
-    const S7 = theme.sand.map((c) => m.color(c, { jitter: 0.12 }));
-    for (let z = Math.floor(m.nz / 2 - 3); z <= m.nz / 2 + 3; z++) for (let x = Math.floor(m.nx / 2 - size * 0.4); x <= m.nx / 2 + size * 0.4; x++) if (!m.get(x, 0, z)) m.set(x, 0, z, S7[0]);
+    SPECIES2[kind2](m, [m.nx / 2, 0, m.nz / 2], size, P5, r);
     polyps(m, seed);
     return m;
   }
@@ -39644,7 +39676,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
     }
   }
   function renderCoral(m, scale, theme) {
-    const r = renderModel(m, { scale, outline: true, jitter: 0.12, ao: 1.3, edges: 0.7, sideEdges: 0.4, light: { top: 4.8, lit: 3.4, dark: 2.1, bottom: 1 } });
+    const r = renderModel(m, { scale, outline: true, jitter: 0.06, ao: 1.3, edges: 0.7, sideEdges: 0.4, light: { top: 4.8, lit: 3.4, dark: 2.1, bottom: 1 } });
     let night = null;
     if (theme?.glow) {
       const map2 = /* @__PURE__ */ new Map();
@@ -39708,57 +39740,67 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
   function kelp(m, o, size, P5, r, ph) {
     const [cx, y0, cz] = o;
     const H9 = Math.round(size * 5);
-    const stipe = P5.c[0];
-    let x = cx;
+    const flt = m.color(mix(P5.hex[3], "#ffe8a0", 0.3), { jitter: 0.04, spec: 0.6 });
+    for (let k = 0; k < 7; k++) m.set(cx + r.int(-2, 2), y0, cz + r.int(-1, 1), P5.c[0]);
+    const xs = [];
     for (let y = 0; y < H9; y++) {
       const t = y / H9;
-      x = cx + Math.sin(ph + y * 0.07) * t * t * size * 0.6 + Math.sin(y * 0.15 + size) * 0.6;
-      m.set(Math.round(x), y0 + y, cz, stipe);
-      if (y > 3 && y % 3 === 0) {
-        const side = y / 3 % 2 ? 1 : -1;
-        const L2 = Math.round(size * 0.55 * (0.6 + 0.4 * Math.sin(t * Math.PI)));
-        m.set(Math.round(x) + side, y0 + y, cz, P5.c[3]);
-        for (let k = 1; k <= L2; k++) {
-          const kk = k / L2;
-          const bx = Math.round(x + side * (k + 1)), by = y0 + y + Math.round(kk * kk * 2.5 + Math.sin(ph + y * 0.1 + k * 0.4) * kk);
-          m.set(bx, by, cz, kk > 0.7 ? P5.c[2] : P5.c[1]);
-          m.set(bx, by + 1, cz + (k % 2 ? 1 : 0), kk > 0.5 ? P5.c[2] : P5.c[1]);
-        }
+      xs[y] = cx + Math.sin(ph + y * 0.06) * t * t * size * 0.55 + Math.sin(y * 0.13 + size) * 0.7;
+      m.set(Math.round(xs[y]), y0 + y, cz, P5.c[0]);
+    }
+    let side = r.chance(0.5) ? 1 : -1;
+    for (let y = 4; y < H9 - 1; y += r.int(3, 4)) {
+      side = -side;
+      const t = y / H9;
+      const x0 = Math.round(xs[y]);
+      m.set(x0 + side, y0 + y, cz, flt);
+      const L2 = Math.round(size * r.float(0.55, 0.8) * (1 - t * 0.3));
+      const up = r.float(0.55, 0.9), sw = Math.sin(ph * 1.3 + y * 0.21);
+      let bx = x0 + side * 1.5, by = y0 + y + 0.5;
+      for (let k = 0; k < L2; k++) {
+        const kk = k / L2;
+        bx += side * (1 - up * 0.6) + sw * kk * 0.35;
+        by += up * (1 - kk * 0.5);
+        const c = kk > 0.75 ? P5.c[3] : kk > 0.35 ? P5.c[2] : P5.c[1];
+        m.set(Math.round(bx), Math.round(by), cz, c);
+        if (kk > 0.15 && kk < 0.8) m.set(Math.round(bx), Math.round(by) + 1, cz + 1, P5.c[1]);
       }
     }
   }
   function seagrass(m, o, size, P5, r, ph) {
     const [cx, y0, cz] = o;
-    const n = r.int(6, 10);
+    const n = r.int(9, 14);
     for (let i = 0; i < n; i++) {
-      let x = cx + r.float(-size * 0.4, size * 0.4), z = cz + r.float(-2, 2);
-      const L2 = size * r.float(0.8, 1.5), lean = r.float(-0.3, 0.3), off = r.float(0, TAU);
+      let x = cx + r.float(-size * 0.35, size * 0.35);
+      const z = cz + r.int(-2, 2);
+      const L2 = size * r.float(1, 2), lean = (x - cx) / (size * 0.35) * 0.35 + r.float(-0.15, 0.15), off = r.float(0, TAU);
       for (let k = 0; k < L2; k++) {
         const t = k / L2;
-        x += Math.sin(lean + Math.sin(ph + off + t * 1.6) * 0.45 * t);
-        m.set(Math.round(x), y0 + k, Math.round(z), t > 0.85 ? P5.c[3] : t > 0.5 ? P5.c[2] : P5.c[1]);
+        x += Math.sin(lean * (0.4 + t) + Math.sin(ph + off + t * 1.8) * 0.5 * t);
+        m.set(Math.round(x), y0 + k, z, t > 0.88 ? P5.c[3] : t > 0.55 ? P5.c[2] : t > 0.2 ? P5.c[1] : P5.c[0]);
       }
     }
   }
-  function voxAnim(kind2, seed, themeId, size, scale, frames2 = 8, palKey = null) {
-    const key = [kind2, seed, themeId, size, scale, frames2, palKey].join("|");
+  function voxAnim(kind2, seed, themeId, size0, k, frames2 = 8, palKey = null) {
+    const key = [kind2, seed, themeId, size0, k, frames2, palKey].join("|");
+    const size = size0 * k;
     let A = animCache.get(key);
     if (A) return A;
     const theme = THEMES[themeId] || THEMES.shallows;
     const r0 = new RNG(seed);
     const FIXED = {
-      kelp: { shallows: ["#2a3612", "#4e6226", "#869a36", "#d0d064"], junkyard: ["#2a2a1a", "#4a4a2a", "#7a7a3a", "#b8b060"], abyss: ["#1a2a3a", "#2a4a5a", "#4a8a9a", "#a8f0ff"] },
+      kelp: { shallows: ["#2e3010", "#5e5e1c", "#9a922c", "#dcca5a"], junkyard: ["#2a2a1a", "#4a4a2a", "#7a7a3a", "#b8b060"], abyss: ["#1a2a3a", "#2a4a5a", "#4a8a9a", "#a8f0ff"] },
       seagrass: { shallows: ["#1e4a24", "#2e7a36", "#5ab04e", "#b8e88a"], junkyard: ["#2a3a1e", "#3e5a2a", "#6a8a3a", "#b0c870"], abyss: ["#1a2e44", "#2a4e6a", "#4a8aaa", "#bfffff"] }
     };
     const cols = palKey && theme.pals[palKey] ? theme.pals[palKey] : FIXED[kind2]?.[themeId] || pickPal(theme, r0);
-    const h = Math.ceil(kind2 === "kelp" ? size * 5 + 10 : size * 2.2 + 8), wd = Math.ceil(size * 2.4 + 12);
+    const h = Math.ceil(kind2 === "kelp" ? size * 6 + 10 : size * 2.2 + 8), wd = Math.ceil(size * 2.4 + 12);
     const out2 = [], nights = [];
     let ox = 0, oy = 0;
     for (let f = 0; f < frames2; f++) {
       const m = new VoxelModel(wd + (kind2 === "kelp" ? size * 3 : 0), h, Math.ceil(size * 1.6) + 6);
       const P5 = palIdx(m, cols, theme.glow > 0.5);
       ANIMATED[kind2](m, [m.nx / 2, 0, m.nz / 2], size, P5, new RNG(seed), f / frames2 * TAU);
-      const r = renderModel(m, { scale, outline: true, jitter: 0.1, ao: 1.2, edges: 0.6, light: { top: 4.8, lit: 3.4, dark: 2.1, bottom: 1 } });
+      const r = renderModel(m, { scale: 1, outline: kind2 !== "seagrass", jitter: 0.06, ao: 1.2, edges: 0.6, light: { top: 4.8, lit: 3.4, dark: 2.1, bottom: 1 } });
       const p = r.project(m.nx / 2, 0, m.nz / 2);
       ox = Math.round(p[0]);
       oy = Math.round(p[1]);
@@ -39799,25 +39841,41 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
       }
     };
   }
-  function reefSprite(seed, themeId, opts, scale) {
-    const key = "reef|" + seed + "|" + themeId + "|" + JSON.stringify(opts) + "|" + scale;
+  function reefSprite(seed, themeId, opts, k = 1) {
+    const key = "reef|" + seed + "|" + themeId + "|" + JSON.stringify(opts) + "|" + k;
     let s = spriteCache.get(key);
     if (!s) {
       const theme = THEMES[themeId];
-      s = renderCoral(reefFormation(seed, theme, opts), scale, theme);
+      const o = { ...opts, w: Math.round((opts.w ?? 140) * k), h: Math.round((opts.h ?? 84) * k), d: Math.round((opts.d ?? 54) * k), sizes: (opts.sizes ?? [10, 24]).map((v) => v * k) };
+      s = renderCoral(reefFormation(seed, theme, o), 1, theme);
       spriteCache.set(key, s);
     }
     return s;
   }
-  function coralSprite(kind2, seed, themeId, size, scale) {
-    const key = kind2 + "|" + seed + "|" + themeId + "|" + size + "|" + scale;
+  function coralSprite(kind2, seed, themeId, size, k = 1) {
+    const key = kind2 + "|" + seed + "|" + themeId + "|" + size + "|" + k;
     let s = spriteCache.get(key);
     if (!s) {
       const theme = THEMES[themeId];
-      s = renderCoral(coralModel(kind2, seed, theme, size), scale, theme);
+      s = renderCoral(coralModel(kind2, seed, theme, size * k), 1, theme);
       spriteCache.set(key, s);
     }
     return s;
+  }
+  function drawCoralGlow(ctx3, list, band, dx, dy, alpha, fogOf, t = 0) {
+    if (alpha <= 0.02) return;
+    const po = ctx3.globalCompositeOperation, pa = ctx3.globalAlpha;
+    ctx3.globalCompositeOperation = "lighter";
+    for (const g of list) {
+      if (g.band !== band) continue;
+      const img = g.anim ? g.anim.night(t, g.off) : g.night;
+      if (!img) continue;
+      ctx3.globalAlpha = alpha * (1 - fogOf(g.z) * 0.8);
+      if (g.anim) ctx3.drawImage(img, Math.round(g.anim.x + dx), Math.round(g.anim.y + dy));
+      else ctx3.drawImage(img, Math.round(g.x + dx), Math.round(g.y + dy));
+    }
+    ctx3.globalCompositeOperation = po;
+    ctx3.globalAlpha = pa;
   }
   function voxCrab(body = "#e0502e", scale = 1.5) {
     const key = body + scale;
@@ -39882,6 +39940,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           algae: ["#4a8a4a", "#76b45a"],
           sand: ["#d8c08a", "#e8d4a4"],
           weights: { staghorn: 4, table: 2, fan: 3, brain: 3, tube: 3, bubble: 1.5, pillar: 1, whip: 1.5 },
+          schemes: [["pink", "orange", "yellow", "cream"], ["purple", "blue", "teal", "cream"], ["lime", "yellow", "teal", "orange"], ["red", "pink", "magenta", "cream"], ["blue", "teal", "purple", "lime"], ["orange", "yellow", "purple", "teal"]],
           glow: 0.35
         },
         junkyard: {
@@ -39898,6 +39957,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           algae: ["#3e6a3a", "#5e8a44"],
           sand: ["#6e6a56", "#827c64"],
           weights: { staghorn: 4, table: 3, fan: 2, brain: 2, tube: 4, bubble: 1, pillar: 1.5, whip: 2 },
+          schemes: [["rust", "copper", "circuit"], ["oxide", "steel", "wire"], ["circuit", "oxide", "rust"], ["copper", "wire", "steel"]],
           glow: 0.8,
           ledTips: true
         },
@@ -39915,12 +39975,13 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           algae: ["#24485a", "#346a78"],
           sand: ["#2e3450", "#3a4262"],
           weights: { staghorn: 3, table: 1, fan: 3, brain: 1, tube: 3, bubble: 2, pillar: 2, whip: 4 },
+          schemes: [["ghost", "cyan", "bamboo"], ["violet", "rose", "ghost"], ["black", "cyan", "violet"], ["bamboo", "ghost", "rose"]],
           glow: 1,
           alwaysGlow: true
         }
       };
-      pickPal = (theme, r) => {
-        const keys = Object.keys(theme.pals);
+      pickPal = (theme, r, scheme = null) => {
+        const keys = scheme && r.chance(0.85) ? scheme : Object.keys(theme.pals);
         return theme.pals[keys[r.int(0, keys.length - 1)]];
       };
       SPECIES2 = { staghorn, table: tableCoral, fan: seaFan, brain: brainCoral, tube: tubeSponge, bubble: bubbleCoral, pillar: pillarCoral, whip: seaWhip };
@@ -40122,8 +40183,8 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
             if (it2.sprite.night) this.coralGlow.push({ night: it2.sprite.night, x: it2.x - it2.sprite.ox, y: it2.y - it2.sprite.oy, band: it2.band, z: it2.z });
             return it2;
           };
-          const reef = (seed, xf, z, opts = {}) => glowOf(D.add({ sprite: reefSprite(seed, "shallows", opts, qscale(1.5 * D.s(z), 0.05, 0.2)), x: Math.round(xf * W9), z, id: "reef" }));
-          const coral = (kind2, seed, xf, z, size) => glowOf(D.add({ sprite: coralSprite(kind2, seed, "shallows", size, qscale(1.5 * D.s(z), 0.05, 0.2)), x: Math.round(xf * W9), z, id: "coral_" + kind2 }));
+          const reef = (seed, xf, z, opts = {}) => glowOf(D.add({ sprite: reefSprite(seed, "shallows", opts, qscale(1.5 * D.s(z), 0.1, 0.3)), x: Math.round(xf * W9), z, id: "reef" }));
+          const coral = (kind2, seed, xf, z, size) => glowOf(D.add({ sprite: coralSprite(kind2, seed, "shallows", size, qscale(1.5 * D.s(z), 0.1, 0.3)), x: Math.round(xf * W9), z, id: "coral_" + kind2 }));
           reef(101, 0.335, 0.26, { w: 116, h: 74, d: 46 });
           reef(102, 0.085, 0.18, { w: 84, h: 60, d: 38 });
           coral("brain", 111, 0.452, 0.05, 15);
@@ -40314,7 +40375,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
             this.anemones.push({ x, y: it2.anim.y + it2.anim.frames[0].height - 4, z, glow });
           }
           for (const [xf, z, pal2] of [[0.125, 0.1, "red"], [0.548, 0.28, "orange"], [0.745, 0.32, "pink"], [0.43, 0.58, "cream"], [0.99, 0.08, "purple"], [0.3, 0.86, "yellow"]]) life("soft", 7 + Math.round(xf * 30), 12, z, Math.round(xf * W9), pal2);
-          this.crabSpr = [voxCrab("#e0502e", 1.5), voxCrab("#f09a3a", 1.5)];
+          this.crabSpr = [voxCrab("#e0502e", 1), voxCrab("#f09a3a", 1)];
           this.crabs = [[0.52, -0.05], [0.86, 0.06], [0.25, -0.2]].map(([xf, z], i) => ({ x: xf * W9, z, dir: i % 2 ? -1 : 1, state: "walk", t: r.float(1, 4), f: 0, kind: i % 2, ft: 0 }));
           const sy = this.base;
           this.plankton = new Motes(110, { x0: 0, y0: sy + 4, x1: W9, y1: H9 - 60 }, { seed: 3, vx: [-3, 3], vy: [-2.5, 1.5], sizes: [1, 1, 1, 2], colors: ["#d8fff4", "#ffffff", "#b8f0ff", "#fff6c8"], alpha: [0.25, 0.75], wob: 5 });
@@ -40845,6 +40906,13 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           const t = this.t, tod = this.tod, q = quality(env2);
           if (this.buoy?.lamp && tod.night + tod.dusk * 0.6 > 0.15 && Math.sin(t * 3.1) > -0.2) drawGlow(ctx3, this.buoy.lamp[0], this.buoy.lamp[1], 6, "#ffe27a", clamp01(tod.night + tod.dusk * 0.6) * 0.9);
           this.nearMotes.draw(ctx3, t, 0.8 + tod.day * 0.3, q);
+          const ga = tod.night * 0.75 * (0.8 + 0.2 * Math.sin(t * 0.8));
+          if (ga > 0.03) {
+            const fog = (z) => this.D.fog(z), px3 = this.par.x, py = this.par.y;
+            drawCoralGlow(ctx3, this.coralGlow, 2, px3 * 2, py * 0.6, ga * 0.7, fog, t);
+            drawCoralGlow(ctx3, this.coralGlow, 1, px3 * 3, py * 0.8, ga * 0.85, fog, t);
+            drawCoralGlow(ctx3, this.coralGlow, 0, px3 * 4, py, ga, fog, t);
+          }
           if (tod.night > 0.3) {
             ctx3.globalCompositeOperation = "lighter";
             const n = Math.round(this.glowPlankton.list.length * q);
