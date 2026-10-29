@@ -525,7 +525,7 @@ export class JunkyardBiome extends Biome {
     wx.data += ((w === 'datarain' ? 1 : 0) - wx.data) * k;
     wx.murk += ((w === 'murky' ? 1 : 0.4) - wx.murk) * k;
     const c = env.cursor;
-    const tx = c && c.x > -50 ? (c.x / W - 0.5) * -2 : 0, ty = c && c.y > -50 ? (c.y / H - 0.5) * -2 : 0;
+    const tx = c && c.x > -50 ? clamp((c.x / W - 0.5) * -2, -1, 1) : 0, ty = c && c.y > -50 ? clamp((c.y / H - 0.5) * -2, -1, 1) : 0;
     const kp = snap ? 1 : 1 - Math.exp(-dt * 2.5);
     this.par.x += (tx - this.par.x) * kp;
     this.par.y += (ty - this.par.y) * kp;

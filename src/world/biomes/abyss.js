@@ -1,4 +1,4 @@
-// The Midnight Abyss: no surface, near-black deep blue. The seabed is a perspective voxel canyon: terraced
+// The Deep Ocean (id 'abyss'): no surface, near-black deep blue. The seabed is a perspective voxel canyon: terraced
 // strata cliffs close in on both sides and recede to a foggy vanishing point, with ancient ruins (pillars,
 // archway, the elder statue head), a giant whale skeleton, crystals, glow shrooms and tube worms placed at
 // many depths. A black smoker shimmers, marine snow falls and leviathans glide through the far fog.
@@ -40,7 +40,7 @@ function discSprite(r) {
 export class AbyssBiome extends Biome {
   constructor(ocean) {
     super(ocean);
-    this.id = 'abyss'; this.name = 'The Midnight Abyss'; this.subtitle = 'Something down here is watching'; this.music = 'abyss';
+    this.id = 'abyss'; this.name = 'The Deep Ocean'; this.subtitle = 'Something down here is watching'; this.music = 'abyss';
     this.weathers = [{ id: 'still', name: 'Still Water', weight: 4 }, { id: 'snow', name: 'Marine Snow', weight: 2 }, { id: 'current', name: 'Deep Current', weight: 1.5 }, { id: 'glowtide', name: 'Glow Tide', weight: 0.8 }];
     this.ambient = 'abyss';
     this.fogColor = '#1a2a5a';
@@ -274,7 +274,7 @@ export class AbyssBiome extends Biome {
     wx.current += ((w === 'current' ? 1 : 0) - wx.current) * k;
     wx.glow += ((w === 'glowtide' ? 1 : 0) - wx.glow) * k;
     const c = env.cursor;
-    const tx = c && c.x > -50 ? (c.x / W - 0.5) * -2 : 0, ty = c && c.y > -50 ? (c.y / H - 0.5) * -2 : 0;
+    const tx = c && c.x > -50 ? clamp((c.x / W - 0.5) * -2, -1, 1) : 0, ty = c && c.y > -50 ? clamp((c.y / H - 0.5) * -2, -1, 1) : 0;
     const kp = snap ? 1 : 1 - Math.exp(-dt * 2.5);
     this.par.x += (tx - this.par.x) * kp;
     this.par.y += (ty - this.par.y) * kp;
