@@ -1,6 +1,8 @@
 // Dev preview for the world agent: dist/dev/world.html
 //   ?view=boats            every boat tier on a calm sea (params: dir=-1, roll=index 0..6, night=1, paint=#hex)
 //   ?view=horizon          the voxel horizon / sky features of each biome
+//   ?view=coral            coral species, reef formations and animated life (theme=shallows|junkyard|abyss, scale, size)
+//   ?view=coralprof        coral build-cost profile (console warning)
 // The full scene (sky, surface view, water shader) is best checked in the real game:
 //   node tools/shot.mjs "?skipintro&watergl=force" out.png 4000 1920 1080 "FISHTOP.camera.scrollTo(FISHTOP.surfaceScroll)"
 import { ctxOf } from '../core/canvas.js';
@@ -40,14 +42,14 @@ export function run(params) {
       const t1 = performance.now();
       renderCoral(m, 1, THEMES.shallows);
       const t2 = performance.now();
-      out.push(`k${k} model ${Math.round(t1 - t0)}ms [${globalThis.RFT}] render ${Math.round(t2 - t1)}ms`);
+      out.push(`k${k} model ${Math.round(t1 - t0)}ms render ${Math.round(t2 - t1)}ms`);
     }
     for (const kind of ['kelp', 'anemone', 'seagrass', 'soft']) {
       const t0 = performance.now();
       voxAnim(kind, 3, 'shallows', kind === 'kelp' ? 14 : 10, 1.2);
       out.push(`${kind} x8 ${Math.round(performance.now() - t0)}ms`);
     }
-    console.warn('PROF ' + out.join(' | ') + ' SPT ' + JSON.stringify(Object.fromEntries(Object.entries(globalThis.SPT || {}).map(([a, b]) => [a, Math.round(b)]))));
+    console.warn('PROF ' + out.join(' | '));
     return;
   }
   if (view === 'coral') {
@@ -58,16 +60,19 @@ export function run(params) {
     ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = { shallows: '#d8c08a', junkyard: '#6e6a56', abyss: '#2e3450' }[themeId];
     ctx.fillRect(0, H * 0.42, W, 6); ctx.fillRect(0, H * 0.97, W, 6);
-    const kinds = ['staghorn', 'table', 'fan', 'brain', 'tube', 'bubble', 'pillar', 'whip'];
+    const kinds = Object.keys(theme.weights);
+    const step = Math.floor((W - 60) / kinds.length);
     kinds.forEach((k, i) => {
-      const spr = renderCoral(coralModel(k, 10 + i, theme, Number(params.get('size') || 22)), scale, theme);
-      ctx.drawImage(spr.canvas, Math.round(60 + i * 112 - spr.ox), Math.round(H * 0.42 - spr.oy));
-      drawText(ctx, k, 60 + i * 112, H * 0.42 + 10, { align: 'center', color: '#fff', outline: '#000' });
+      const spr = renderCoral(coralModel(k, 10 + i, theme, Number(params.get('size') || 22) * scale), 1, theme);
+      ctx.drawImage(spr.canvas, Math.round(50 + i * step - spr.ox), Math.round(H * 0.42 - spr.oy));
+      if (night && spr.night) { ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(spr.night, Math.round(50 + i * step - spr.ox), Math.round(H * 0.42 - spr.oy)); ctx.globalCompositeOperation = 'source-over'; }
+      drawText(ctx, k, 50 + i * step, H * 0.42 + 10, { align: 'center', color: '#fff', outline: '#000' });
     });
     const t0 = performance.now();
     [[170, 0], [480, 1], [790, 2]].forEach(([x, i]) => {
-      const spr = renderCoral(reefFormation(40 + i, theme, {}), scale, theme);
+      const spr = renderCoral(reefFormation(40 + i, theme, { w: Math.round(140 * scale), h: Math.round(84 * scale), d: Math.round(54 * scale), sizes: [10 * scale, 24 * scale] }), 1, theme);
       ctx.drawImage(spr.canvas, Math.round(x - spr.ox), Math.round(H * 0.97 - spr.oy));
+      if (night && spr.night) { ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(spr.night, Math.round(x - spr.ox), Math.round(H * 0.97 - spr.oy)); ctx.globalCompositeOperation = 'source-over'; }
     });
     console.log('formations ms', Math.round(performance.now() - t0));
     const anims = ['anemone', 'soft', 'kelp', 'seagrass'].map((k, i) => ({ a: placeAnim(voxAnim(k, 5 + i, themeId, k === 'kelp' ? 14 : 18, scale), 60 + i * 80, H * 0.62), k }));

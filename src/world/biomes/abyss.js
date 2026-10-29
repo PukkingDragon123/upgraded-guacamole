@@ -15,6 +15,7 @@ import { pack } from '../../core/color.js';
 import { tinted, makeLayer } from '../../core/canvas.js';
 import { PROPS } from '../../gfx/props.js';
 import { worldProp } from '../voxkit.js';
+import { reefSprite, coralSprite, drawCoralGlow } from '../coral.js';
 import {
   waveLine, waveRuns, paint, gradientStrip, stopPalette, ditherPick, FogLayer, fillWith, drawWobble, makeRays, drawGlow, twinkle, Motes,
   Bubbles, Mask, ridge, quality, inRect, Strands, SwayAnim, cloudTile, DepthScene, BandSet, DepthDecor, qscale, hazeMask,
@@ -252,6 +253,19 @@ export class AbyssBiome extends Biome {
     ];
     for (const e of [['moai_head', 0.415, 0.66, 0.85], ['fish_statue', 0.535, 1.16, 1.2], ['diver_helmet', 0.665, 0.18, 0.5]]) if (PROPS[e[0]]) P.push(e);
     const placed = P.map(([id, xf, z, base, v]) => place(id, xf, z, base, v || 0));
+    // ghostly deep-water corals: bamboo corals, glass sponges, sea whips and pale fans that glow in the dark
+    this.coralGlow = [];
+    const glowOf = (it) => { if (it.sprite.night) this.coralGlow.push({ night: it.sprite.night, x: it.x - it.sprite.ox, y: it.y - it.sprite.oy, band: it.band, z: it.z }); return it; };
+    const kz = (z) => qscale(1.5 * D.s(z), 0.1, 0.3);
+    const reef = (seed, xf, z, o, flip = false) => glowOf(D.add({ sprite: reefSprite(seed, 'abyss', o, kz(z), flip), x: Math.round(xf * W), z, id: 'reef' }));
+    const coral = (kind, seed, xf, z, size) => glowOf(D.add({ sprite: coralSprite(kind, seed, 'abyss', size, kz(z)), x: Math.round(xf * W), z, id: 'coral_' + kind }));
+    reef(401, 0.1, 0.3, { w: 96, h: 70, d: 40 });
+    reef(402, 0.885, 0.36, { w: 100, h: 72, d: 42 });
+    reef(403, 0.21, 0.6, { w: 116, h: 80, d: 46 });
+    reef(404, 0.79, 0.66, { w: 116, h: 80, d: 46 }, true);
+    for (const [kind, seed, xf, z, size] of [['glass', 411, 0.045, 0.04, 15], ['bamboo', 412, 0.335, 0.2, 17], ['whip', 413, 0.585, 0.17, 13], ['glass', 414, 0.715, 0.3, 14], ['bamboo', 415, 0.955, 0.12, 16],
+      ['fan', 416, 0.44, 0.34, 15], ['bamboo', 417, 0.33, 0.62, 20], ['glass', 418, 0.66, 0.5, 17], ['whip', 419, 0.47, 0.72, 16], ['bamboo', 420, 0.56, 0.9, 22], ['glass', 421, 0.4, 1.0, 20],
+      ['fan', 422, 0.62, 1.1, 22], ['bamboo', 423, 0.36, 1.3, 24]]) coral(kind, seed, xf, z, size);
     // glowing growths on the canyon terraces
     this.ledges = [];
     const lr = new RNG(77);
@@ -602,6 +616,11 @@ export class AbyssBiome extends Biome {
     if (this.buoy?.lamp && Math.sin(t * 2.2) > 0) drawGlow(ctx, this.buoy.lamp[0], this.buoy.lamp[1], 6, '#ff5a4a', 0.9);
     if (!env.view || env.view.y0 < 0) for (const j of this.jellies) drawGlow(ctx, j.x + Math.sin(t * 0.2 + j.ph) * 8, j.y, 6 + j.r, j.c, 0.35 + 0.2 * Math.sin(t * 1.6 + j.ph));
     this.nearSnow.draw(ctx, t, 0.8 + wx.snow * 0.5, q * (0.4 + wx.snow * 0.6));
+    // ghost corals breathe light (after the darkness pass, with each band's parallax)
+    const ga = (0.6 + 0.25 * Math.sin(t * 0.9)) * (1 + wx.glow * 0.8), fog = (z) => this.D.fog(z), px = this.par.x, py = this.par.y;
+    drawCoralGlow(ctx, this.coralGlow, 2, px * 2, py * 0.6, ga * 0.6, fog, t);
+    drawCoralGlow(ctx, this.coralGlow, 1, px * 3, py * 0.8, ga * 0.8, fog, t);
+    drawCoralGlow(ctx, this.coralGlow, 0, px * 4, py, ga, fog, t);
     const n = Math.round(this.sparks.list.length * q * (0.35 + wx.glow * 0.65));
     ctx.globalCompositeOperation = 'lighter';
     for (let i = 0; i < n; i++) {
@@ -645,6 +664,8 @@ export class AbyssBiome extends Biome {
     const v = this.vent;
     lights.push({ x: v.x + 2, y: v.top + 10, r: 70 * v.s, color: '#ff8a3a', a: (0.75 + 0.15 * Math.sin(t * 6.3)) * (1 - D.fog(v.z) * 0.6) });
     for (const lp of this.ledges) if (lp.z < 0.5) lights.push({ x: lp.x, y: lp.y, r: 40 * D.s(lp.z), color: lp.c, a: (0.6 + 0.2 * Math.sin(t + lp.ph) + g * 0.2) * (1 - D.fog(lp.z) * 0.7) });
+    // the ghost-coral bommies cast a soft cold light on the canyon floor
+    for (const c of this.coralGlow) if (c.z < 0.7 && c.night && c.night.width > 24) lights.push({ x: c.x + c.night.width / 2, y: c.y + c.night.height * 0.5, r: Math.max(26, c.night.width * 0.6), color: '#7ad8ff', a: (0.5 + 0.1 * Math.sin(t * 0.9) + g * 0.2) * (1 - D.fog(c.z) * 0.6) });
     const solved = !!this.secrets().glyphs;
     for (const s of this.stones) if (solved || s.lit > 0.05) lights.push({ x: s.cx, y: s.cy, r: 24 + s.lit * 20, color: '#5affff', a: solved ? 0.7 : s.lit * 0.85 });
     const pg = this.pillarGlyphs[1];

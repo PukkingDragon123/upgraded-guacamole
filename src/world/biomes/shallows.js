@@ -104,7 +104,7 @@ export class ShallowsBiome extends Biome {
     this.caustics = new Caustics({ tw: 150, th: 44, cx: 11, cy: 5, seed: 11, color: '#fffbe2', thick: 0.65, core: 0.75, rim: 0.22 });
     this.shimmer = this.makeShimmer();
     this.buildLife();
-    (this.buildMs ||= []).push({ sky: Math.round(t1 - t0), depth: Math.round(t2 - t1), layers: Math.round(t3 - t2), life: Math.round(performance.now() - t3) });
+    this.buildMs = { sky: Math.round(t1 - t0), depth: Math.round(t2 - t1), layers: Math.round(t3 - t2), life: Math.round(performance.now() - t3) }; // build profile (debug)
     this.fresh = true;
   }
 
@@ -196,6 +196,9 @@ export class ShallowsBiome extends Biome {
     reef(102, 0.085, 0.18, { w: 84, h: 60, d: 38 });
     coral('brain', 111, 0.452, 0.05, 15); coral('staghorn', 112, 0.47, 0.22, 20); coral('fan', 113, 0.268, 0.07, 18); coral('tube', 114, 0.41, 0.31, 16);
     coral('staghorn', 115, 0.635, 0.3, 17); coral('bubble', 116, 0.505, -0.06, 12); coral('pillar', 117, 0.705, 0.24, 14); coral('whip', 118, 0.2, -0.04, 12);
+    // small colonies scattered over the near sand (fish-scale variety)
+    for (const [kind, seed, xf, z, size] of [['brain', 151, 0.565, -0.2, 7], ['bubble', 152, 0.665, 0.12, 7], ['staghorn', 153, 0.775, -0.06, 9], ['tube', 154, 0.84, 0.16, 8], ['brain', 155, 0.73, 0.24, 8],
+      ['pillar', 156, 0.515, 0.2, 7], ['fan', 157, 0.86, -0.14, 9], ['staghorn', 158, 0.02, 0.0, 9], ['bubble', 159, 0.29, -0.18, 6], ['brain', 160, 0.425, -0.16, 6], ['whip', 161, 0.62, 0.2, 9]]) coral(kind, seed, xf, z, size);
     // mid
     reef(121, 0.17, 0.5, { w: 140, h: 84, d: 54 });
     reef(122, 0.48, 0.47, { w: 124, h: 80, d: 50 });
@@ -203,7 +206,7 @@ export class ShallowsBiome extends Biome {
     coral('fan', 124, 0.065, 0.45, 24); coral('staghorn', 125, 0.57, 0.6, 24); coral('table', 126, 0.31, 0.64, 22); coral('tube', 127, 0.8, 0.52, 18); coral('fan', 128, 0.72, 0.63, 22);
     // far
     // (far bommies share three models at two sizes, mirrored for variety)
-    for (const [seed, xf, z, fl] of [[131, 0.13, 0.9, 0], [132, 0.42, 1.0, 0], [133, 0.75, 0.94, 0], [131, 0.6, 1.36, 1], [132, 0.25, 1.42, 1], [133, 0.9, 1.3, 1], [132, 0.03, 1.12, 1], [131, 0.52, 0.78, 1]]) reef(seed, xf, z, { w: 150, h: 90, d: 56 }, !!fl);
+    for (const [seed, xf, z, fl] of [[131, 0.13, 0.92, 0], [132, 0.42, 1.0, 0], [133, 0.75, 0.94, 1], [131, 0.6, 1.38, 1], [132, 0.25, 1.42, 1], [133, 0.92, 1.34, 0]]) reef(seed, xf, z, { w: 150, h: 90, d: 56 }, !!fl);
     for (const [kind, seed, xf, z, size] of [['staghorn', 141, 0.33, 0.76, 26], ['fan', 142, 0.68, 0.8, 26], ['table', 143, 0.86, 0.84, 24], ['fan', 144, 0.985, 0.76, 26], ['staghorn', 145, 0.2, 1.06, 28], ['tube', 146, 0.55, 1.12, 22]]) coral(kind, seed, xf, z, size);
     const P = [
       // near (in front of the mid fish)
@@ -303,7 +306,7 @@ export class ShallowsBiome extends Biome {
     const B = [];
     const kinds = ['staghorn', 'fan', 'brain', 'tube', 'table', 'pillar', 'staghorn', 'fan'];
     for (let i = 0; i < 46; i++) { const j = r.int(0, kinds.length - 1); B.push({ spr: coralSprite(kinds[j], 200 + j, 'shallows', r.pick([12, 18]), 0.7), x: r.float(0, LW), y: baseB + r.int(-3, 3), z: r.next() }); }
-    for (let i = 0; i < 6; i++) B.push({ spr: reefSprite(220 + (i % 2), 'shallows', { w: 110, h: 64, d: 40 }, 0.6, i >= 2 && i % 2 === 0), x: r.float(0, LW), y: baseB + r.int(0, 3), z: r.next() });
+    for (let i = 0; i < 5; i++) B.push({ spr: reefSprite(220, 'shallows', { w: 110, h: 64, d: 40 }, 0.6, i % 2 === 1), x: r.float(0, LW), y: baseB + r.int(0, 3), z: r.next() });
     for (const [id, nv] of [['rock_big', 1], ['rock_small', 1], ['starfish_rock', 1], ['rock_big', 1]]) { const sp = propSprite(id, r.pick([0.4, 0.5]), r.int(0, nv - 1)); if (sp) B.push({ spr: sp, x: r.float(0, LW), y: baseB + r.int(-3, 3), z: r.next() }); }
     for (let i = 0; i < 10; i++) B.push({ spr: kelpColumn(60 + i, r.int(30, 60), ['#3e6a2a', '#5a8a34', '#86b048'], 1), x: r.float(0, LW), y: baseB + r.int(-2, 2), z: r.float(0.6, 1) });
     const ridgeB = ridgeStrip(55, LW, { amp: 6, base: 5, d: 12, cols: ['#e2cc98', '#d0b884', '#bca674'], rocks: { cols: ['#8a8a9a', '#a09aa8'] } });
@@ -332,13 +335,13 @@ export class ShallowsBiome extends Biome {
     for (const [xf, z, n] of [[0.03, 0.78, 3], [0.07, 0.92, 3], [0.115, 0.72, 2], [0.83, 0.82, 3], [0.875, 0.7, 3], [0.93, 0.95, 2], [0.56, 1.02, 3], [0.5, 0.86, 2], [0.62, 0.68, 2], [0.075, 0.4, 2], [0.905, 0.42, 2], [0.25, 1.1, 3], [0.4, 1.25, 3]]) {
       for (let i = 0; i < n; i++) {
         const zz = z + (i - (n - 1) / 2) * 0.03, x = Math.round(xf * W + (i - (n - 1) / 2) * 9 * D.s(z) + r.int(-2, 2));
-        life('kelp', 1 + ((i + Math.round(xf * 10)) % 3), i === 1 ? 16 : 13, zz, x);
+        life('kelp', 1 + ((i + Math.round(xf * 10)) % 2), 14, zz, x);
       }
     }
     // sea grass meadows at many depths
     const spots = [[0.06, -0.12], [0.15, -0.15], [0.2, 0.05], [0.248, 0.16], [0.285, 0.1], [0.4, 0.12], [0.447, -0.05], [0.505, -0.18], [0.585, 0.15], [0.62, 0.0], [0.735, 0.14], [0.77, -0.1], [0.83, 0.02], [0.9, -0.12], [0.96, 0.2], [0.69, -0.2],
       [0.12, 0.42], [0.27, 0.5], [0.41, 0.4], [0.58, 0.55], [0.72, 0.48], [0.97, 0.5], [0.2, 0.8], [0.35, 0.9], [0.48, 0.75], [0.66, 0.9], [0.8, 0.75], [0.9, 0.85]];
-    for (const [xf, z] of spots) life('seagrass', 1 + r.int(0, 3), r.pick([7, 9]), z, Math.round(xf * W));
+    for (const [xf, z] of spots) life('seagrass', 1 + r.int(0, 1), 8, z, Math.round(xf * W));
     // anemones and soft tree corals sway in the current
     this.anemones = [];
     for (const [xf, z, pal, glow] of [[0.385, 0.02, 'pink', '#ff7ab0'], [0.18, -0.08, 'teal', '#5affea'], [0.79, 0.1, 'orange', '#ffb070'], [0.56, 0.5, 'purple', '#c08aff'], [0.66, -0.16, 'magenta', '#ff8af0'], [0.28, 0.36, 'yellow', '#ffe27a']]) {
@@ -834,7 +837,7 @@ export class ShallowsBiome extends Biome {
     if (this.buoy?.lamp && (tod.night + tod.dusk * 0.6) > 0.15 && Math.sin(t * 3.1) > -0.2) drawGlow(ctx, this.buoy.lamp[0], this.buoy.lamp[1], 6, '#ffe27a', clamp01(tod.night + tod.dusk * 0.6) * 0.9);
     this.nearMotes.draw(ctx, t, 0.8 + tod.day * 0.3, q);
     // gentle coral bioluminescence: growth tips glow after dark (same parallax as their seabed band)
-    const ga = tod.night * 0.75 * (0.8 + 0.2 * Math.sin(t * 0.8));
+    const ga = tod.night * 0.62 * (0.8 + 0.2 * Math.sin(t * 0.8));
     if (ga > 0.03) {
       const fog = (z) => this.D.fog(z), px = this.par.x, py = this.par.y;
       drawCoralGlow(ctx, this.coralGlow, 2, px * 2, py * 0.6, ga * 0.7, fog, t);

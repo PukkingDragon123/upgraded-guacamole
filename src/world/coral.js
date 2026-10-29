@@ -44,7 +44,7 @@ export const THEMES = {
       oxide: ['#143c3c', '#246e66', '#4cb0a2', '#d0fff4'], steel: ['#24282e', '#454b58', '#77818f', '#e4ecf4'], wire: ['#3a1a1a', '#8a2a2a', '#e04a3a', '#ffd0a0'],
     },
     rock: ['#4a4840', '#5e5a4e', '#767060'], coralline: ['#8a5a3a', '#b07a4a'], algae: ['#3e6a3a', '#5e8a44'], sand: ['#6e6a56', '#827c64'],
-    weights: { staghorn: 4, table: 3, fan: 2, brain: 2, tube: 4, bubble: 1, pillar: 1.5, whip: 2 },
+    weights: { circuit: 6, staghorn: 2, table: 2, fan: 2, brain: 1.5, tube: 3, bubble: 1, pillar: 1.5, whip: 2 },
     schemes: [['rust', 'copper', 'circuit'], ['oxide', 'steel', 'wire'], ['circuit', 'oxide', 'rust'], ['copper', 'wire', 'steel']],
     glow: 0.8, ledTips: true,
   },
@@ -54,7 +54,7 @@ export const THEMES = {
       cyan: ['#0e2e44', '#1e6488', '#4ac8e8', '#d8ffff'], black: ['#12121a', '#24242e', '#3a3a48', '#9affe8'], rose: ['#341a34', '#6a3a6a', '#c07ac0', '#ffe0ff'],
     },
     rock: ['#262a40', '#323852', '#444c6a'], coralline: ['#3a4a7a', '#5a6aa0'], algae: ['#24485a', '#346a78'], sand: ['#2e3450', '#3a4262'],
-    weights: { staghorn: 3, table: 1, fan: 3, brain: 1, tube: 3, bubble: 2, pillar: 2, whip: 4 },
+    weights: { bamboo: 4, glass: 3, fan: 3, whip: 4, staghorn: 1.5, tube: 2, bubble: 1.5, pillar: 1 },
     schemes: [['ghost', 'cyan', 'bamboo'], ['violet', 'rose', 'ghost'], ['black', 'cyan', 'violet'], ['bamboo', 'ghost', 'rose']],
     glow: 1, alwaysGlow: true,
   },
@@ -74,7 +74,7 @@ function palIdx(m, cols, glowTips) {
   const c = [
     m.color(cols[0], { jitter: 0.1, aoMul: 1.2, coral: true }),
     m.color(cols[1], { jitter: 0.12, coral: true }),
-    m.color(cols[2], { jitter: 0.1, spec: 0.25, coral: true }),
+    m.color(cols[2], { jitter: 0.1, spec: 0.25, coral: true, hi: true }),
     m.color(cols[3], { jitter: 0.06, spec: 0.4, emissive: glowTips ? 0.25 : 0, tip: true }),
   ];
   const dot = m.color(mix(cols[2], cols[3], 0.6), { jitter: 0.05 });
@@ -274,7 +274,75 @@ function seaWhip(m, o, size, P, r) {
   }
 }
 
-const SPECIES = { staghorn, table: tableCoral, fan: seaFan, brain: brainCoral, tube: tubeSponge, bubble: bubbleCoral, pillar: pillarCoral, whip: seaWhip };
+// LED tip colours for the junkyard's circuit coral (emissive, part of the night overlay).
+function leds(m) {
+  m._leds ||= ['#7aff5a', '#ff4a3a', '#5ac8ff', '#ffc040'].map((c) => m.color(c, { jitter: 0.02, emissive: 0.9, tip: true, spec: 0.6 }));
+  return m._leds;
+}
+
+// Rusty circuit coral: stems climb in right-angled traces like a printed circuit, solder pads at the joints,
+// copper-green corrosion, and every growth tip ends in a tiny LED.
+function circuitCoral(m, o, size, P, r) {
+  const L = leds(m);
+  const pad = (x, y, z) => { for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) m.set(x + dx, y, z + dz, (dx || dz) ? P.c[2] : P.dark); };
+  const rec = (x, y, z, len, depth, thick) => {
+    for (let i = 0; i < len; i++) {
+      y++;
+      const k = (3 - depth + i / len) / 3.4;
+      const c = hash3(x, y, z, 8) < 0.12 ? P.dot : grad(P, k, x, y, z);
+      m.set(x, y, z, c);
+      if (thick) { m.set(x + 1, y, z, c); m.set(x, y, z + 1, P.c[0]); }
+    }
+    if (depth <= 0) { m.set(x, y + 1, z, L[r.int(0, L.length - 1)]); return; }
+    pad(x, y, z);
+    const kids = r.int(2, 3);
+    for (let k = 0; k < kids; k++) {
+      const ax = r.chance(0.7), dir = k % 2 ? 1 : -1, steps = r.int(2, Math.max(3, Math.round(size * 0.3)));
+      let nx = x, nz = z;
+      for (let s2 = 1; s2 <= steps; s2++) { if (ax) nx += dir; else nz += dir; m.set(nx, y, nz, P.c[1]); }
+      rec(nx, y, nz, Math.max(2, Math.round(len * r.float(0.55, 0.85))), depth - 1, false);
+    }
+  };
+  const trunks = size > 8 ? 2 : 1;
+  for (let t = 0; t < trunks; t++) rec(o[0] + (t ? r.int(2, 4) : 0), o[1], o[2], Math.round(size * 0.45), size > 9 ? 3 : 2, true);
+}
+
+// Bamboo coral (deep water): pale segmented stems with dark nodes, candelabra branching, glowing tips.
+function bambooCoral(m, o, size, P, r) {
+  const rec = (x, y, z, a, len, depth, seg) => {
+    for (let i = 0; i < len; i++) {
+      x += Math.sin(a); y += Math.cos(a) * 0.95; z += (r.next() - 0.5) * 0.2;
+      seg++;
+      m.set(x, y, z, seg % 5 === 0 ? P.dark : seg % 5 === 1 ? P.c[1] : P.c[2]);
+      if (depth >= 2) m.set(x + 1, y, z, seg % 5 === 0 ? P.dark : P.c[1]);
+    }
+    if (depth <= 0) { m.set(x, y + 1, z, P.c[3]); m.set(x, y + 2, z, P.c[3]); return; }
+    for (const s2 of [-1, 1]) rec(x, y, z, a + s2 * r.float(0.35, 0.6), len * r.float(0.6, 0.8), depth - 1, seg);
+    if (r.chance(0.4)) rec(x, y, z, a * 0.5, len * 0.7, depth - 1, seg);
+  };
+  rec(o[0], o[1], o[2], r.float(-0.1, 0.1), size * 0.45, 3, 0);
+}
+
+// Glass sponge (Venus' flower basket): a tall woven lattice vase with a solid glowing rim.
+function glassSponge(m, o, size, P, r) {
+  const [cx, y0, cz] = o;
+  const H = size * r.float(1.3, 1.8), lean = r.float(-0.12, 0.12);
+  for (let y = 0; y <= H; y++) {
+    const t = y / H;
+    const R = Math.max(1.2, size * (0.18 + 0.22 * Math.sin(Math.min(1, t * 1.15) * Math.PI * 0.62)));
+    const px = cx + lean * y, n = Math.max(8, Math.round(R * 6.3));
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * TAU;
+      const x = px + Math.cos(a) * R, z = cz + Math.sin(a) * R * 0.85;
+      const top = y >= H - 1;
+      const lattice = (i + y) % 3 === 0 || (i - y + 300) % 3 === 0 || y % 4 === 0;
+      if (!top && !lattice) continue;
+      m.set(x, y0 + y, z, top ? P.c[3] : t > 0.7 ? P.c[2] : P.c[1]);
+    }
+  }
+}
+
+const SPECIES = { staghorn, table: tableCoral, fan: seaFan, brain: brainCoral, tube: tubeSponge, bubble: bubbleCoral, pillar: pillarCoral, whip: seaWhip, circuit: circuitCoral, bamboo: bambooCoral, glass: glassSponge };
 
 // Lumpy encrusted rock mound (bommie base).
 function rockMound(m, theme, r, cx, cz, w, h, d) {
@@ -375,7 +443,7 @@ export function reefFormation(seed, theme, { w = 140, h = 84, d = 54, density = 
     const x = Math.round(r.float(w * 0.08, w * 0.92)), z = Math.round(r.float(d * 0.18, d * 0.85));
     if (!m.get(x, 1, z) && surfaceY(m, x, z) < 3 && r.chance(0.6)) continue;
     const kind = pick();
-    const size = r.float(sizes[0], kind === 'fan' || kind === 'staghorn' || kind === 'table' ? sizes[1] : sizes[1] * 0.8) * (0.7 + 0.3 * (1 - Math.abs(x - cx) / cx));
+    const size = r.float(sizes[0], kind === 'fan' || kind === 'staghorn' || kind === 'table' || kind === 'circuit' || kind === 'bamboo' ? sizes[1] : sizes[1] * 0.8) * (0.7 + 0.3 * (1 - Math.abs(x - cx) / cx));
     if (used.some((u) => Math.hypot(u[0] - x, (u[1] - z) * 1.4) < (u[2] + size) * 0.38)) continue;
     const y = surfaceY(m, x, z);
     if (y + size * 1.4 >= h - 2) continue;
@@ -425,7 +493,10 @@ export function renderCoral(m, scale, theme) {
   let night = null;
   if (theme?.glow) {
     const map = new Map();
-    m.palette.forEach((pe, i) => { if (pe && pe.tip) map.set(i, shade(pe.color, 0.25)); });
+    m.palette.forEach((pe, i) => {
+      if (pe && pe.tip) map.set(i, shade(pe.color, 0.25));
+      else if (pe && pe.hi && theme.alwaysGlow) map.set(i, shade(pe.color, -0.45));
+    });
     night = map.size ? idPaint(r, map) : null;
   }
   return { canvas: r.canvas, ox: r.ox, oy: r.oy, w: r.w, h: r.h, night, glow: r.glow };

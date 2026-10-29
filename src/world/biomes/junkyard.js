@@ -13,6 +13,7 @@ import { mix, rgba, pack, hslToHex } from '../../core/color.js';
 import { makeCanvas, ctxOf, makeLayer } from '../../core/canvas.js';
 import { PROPS } from '../../gfx/props.js';
 import { worldProp } from '../voxkit.js';
+import { reefSprite, coralSprite, voxAnim, placeAnim, drawCoralGlow } from '../coral.js';
 import { drawText } from '../../gfx/font.js';
 import { BAITS } from '../../game/shopdata.js';
 import {
@@ -280,17 +281,30 @@ export class JunkyardBiome extends Biome {
       const p = worldProp(id, { scale: qscale(base * D.s(z)), variant });
       return D.add({ sprite: p, x: Math.round(xf * W), z, id });
     };
+    // rusty circuit-coral reefs grown over the scrap (front-facing voxel bommies with LED growth tips)
+    this.coralGlow = [];
+    const glowOf = (it) => { if (it.sprite.night) this.coralGlow.push({ night: it.sprite.night, x: it.x - it.sprite.ox, y: it.y - it.sprite.oy, band: it.band, z: it.z }); return it; };
+    const kz = (z) => qscale(1.5 * D.s(z), 0.1, 0.3);
+    const reef = (seed, xf, z, o, flip = false) => glowOf(D.add({ sprite: reefSprite(seed, 'junkyard', o, kz(z), flip), x: Math.round(xf * W), z, id: 'reef' }));
+    const coral = (kind, seed, xf, z, size) => glowOf(D.add({ sprite: coralSprite(kind, seed, 'junkyard', size, kz(z)), x: Math.round(xf * W), z, id: 'coral_' + kind }));
+    reef(301, 0.515, 0.22, { w: 104, h: 70, d: 42 });
+    reef(302, 0.745, 0.38, { w: 120, h: 78, d: 48 });
+    reef(303, 0.8, 0.76, { w: 140, h: 86, d: 52 });
+    reef(301, 0.33, 1.2, { w: 104, h: 70, d: 42 }, true);
+    reef(302, 0.66, 1.42, { w: 120, h: 78, d: 48 }, true);
+    for (const [kind, seed, xf, z, size] of [['circuit', 311, 0.618, 0.1, 15], ['circuit', 312, 0.31, 0.24, 13], ['whip', 313, 0.7, 0.02, 12], ['tube', 314, 0.9, 0.3, 13], ['circuit', 315, 0.07, 0.36, 14],
+      ['circuit', 316, 0.25, 0.62, 18], ['staghorn', 317, 0.555, 0.66, 18], ['table', 318, 0.06, 0.48, 16], ['circuit', 319, 0.93, 0.6, 18], ['fan', 320, 0.37, 0.92, 20], ['circuit', 321, 0.15, 1.05, 22]]) coral(kind, seed, xf, z, size);
     const P = [
       // near
-      ['crt_monitor', 0.375, 0.12, 0.85], ['circuit_coral', 0.47, 0.2, 0.75, 0], ['circuit_coral', 0.585, 0.27, 0.65, 1], ['keyboard_slab', 0.255, 0.04, 0.6],
+      ['crt_monitor', 0.375, 0.12, 0.85], ['keyboard_slab', 0.255, 0.04, 0.6],
       ['floppy_pile', 0.13, 0.08, 0.7], ['tire', 0.045, 0.16, 0.8], ['pipe_bend', 0.2, 0.3, 0.85], ['floppy_pile', 0.86, 0.04, 0.55], ['tire', 0.955, 0.22, 0.6],
       // mid
       ['crt_pile', 0.31, 0.4, 1.0], ['server_rack', 0.432, 0.45, 1.0], ['broken_robot', 0.532, 0.37, 1.0], ['vending_machine', 0.645, 0.42, 1.0], ['rusty_barrel', 0.715, 0.52, 0.9],
-      ['circuit_coral', 0.74, 0.36, 0.6, 2], ['shopping_cart', 0.15, 0.56, 1.0], ['gear_big', 0.835, 0.62, 1.0],
+      ['shopping_cart', 0.15, 0.56, 1.0], ['gear_big', 0.835, 0.62, 1.0],
       // far
       ['satellite_dish', 0.06, 0.9, 1.2], ['crt_pile', 0.215, 1.1, 1.35], ['gear_big', 0.4, 0.95, 1.3], ['server_rack', 0.585, 1.05, 1.3], ['shopping_cart', 0.72, 0.86, 1.1],
       ['satellite_dish', 0.905, 1.0, 1.35], ['pipe_bend', 0.48, 1.3, 1.5], ['tire', 0.335, 0.76, 1.0], ['rusty_barrel', 0.275, 0.82, 1.0], ['crt_monitor', 0.665, 0.78, 1.0],
-      ['broken_robot', 0.985, 1.25, 1.4], ['vending_machine', 0.03, 1.3, 1.4], ['circuit_coral', 0.79, 0.74, 0.9, 0], ['keyboard_slab', 0.54, 0.7, 0.8],
+      ['broken_robot', 0.985, 1.25, 1.4], ['vending_machine', 0.03, 1.3, 1.4], ['keyboard_slab', 0.54, 0.7, 0.8],
     ];
     for (const e of [['phone_booth', 0.255, 0.5, 0.8], ['retro_tv', 0.585, 0.58, 0.7], ['toilet', 0.47, 0.64, 0.7], ['arcade_cabinet', 0.12, 0.96, 0.95], ['bathtub', 0.8, 1.14, 1.0],
       ['traffic_cone', 0.37, 0.72, 0.65], ['giant_sneaker', 0.69, 0.08, 0.55], ['toaster', 0.315, 0.16, 0.5], ['jukebox', 0.94, 0.8, 0.9], ['sunken_pc', 0.06, 0.62, 0.8]]) if (PROPS[e[0]]) P.push(e);
@@ -437,18 +451,14 @@ export class JunkyardBiome extends Biome {
     const W = this.W, H = this.H, D = this.D;
     const r = new RNG(19);
     this.decor = new DepthDecor(D);
-    const sets = [['#2a4a2a', '#3e5e2e', '#5a7a34', '#7a9a44'], ['#3a4a22', '#566a2a', '#748a34', '#98ac48']];
+    // voxel weed clumps and soft corals swaying among the scrap
+    const life = (kind, seed, size, z, x, palKey = null) => {
+      const A = voxAnim(kind, seed, 'junkyard', size, qscale(1.5 * D.s(z), 0.2, 0.3), 8, palKey);
+      return this.decor.add({ anim: placeAnim(A, x, Math.round(D.floorAt(x, z)) + 1), z, off: r.int(0, A.n - 1) });
+    };
     for (const [xf, z] of [[0.08, -0.12], [0.17, 0.0], [0.27, -0.15], [0.42, 0.25], [0.49, 0.02], [0.56, -0.18], [0.61, 0.1], [0.75, -0.08], [0.8, 0.2], [0.92, -0.1], [0.995, 0.1],
-      [0.05, 0.5], [0.22, 0.62], [0.38, 0.55], [0.6, 0.6], [0.77, 0.66], [0.9, 0.5], [0.12, 0.85], [0.46, 0.8], [0.7, 0.95]]) {
-      const s = D.s(z), x0 = Math.round(xf * W), y0 = Math.round(D.floorAt(x0, z)) + 1;
-      const st = new Strands();
-      const k = r.int(3, 5), tall = r.chance(0.5), set = r.pick(sets);
-      for (let i = 0; i < k; i++) {
-        const lean = (i / Math.max(1, k - 1) - 0.5) * 0.8;
-        st.add({ x: x0 + Math.round(lean * 7 * s), y: y0, n: Math.max(3, Math.round((tall ? r.int(9, 14) : r.int(5, 8)) * Math.min(1.1, s))), seg: 2, w: tall && s > 0.7 ? 2 : 1, amp: 0.22, speed: 1.1, sec: 1, phase: r.float(0, TAU), wave: 0.4, lean, curl: lean * 0.5, cols: set, out: tall && s > 0.7 ? '#0c1a14' : null, hl: false, taper: 0.3 });
-      }
-      this.decor.add({ anim: new SwayAnim(st, { frames: 16 }), z, off: r.int(0, 15) });
-    }
+      [0.05, 0.5], [0.22, 0.62], [0.38, 0.55], [0.6, 0.6], [0.77, 0.66], [0.9, 0.5], [0.12, 0.85], [0.46, 0.8], [0.7, 0.95]]) life('seagrass', 11 + r.int(0, 1), 8, z, Math.round(xf * W));
+    for (const [xf, z, pal] of [[0.335, 0.06, 'rust'], [0.68, 0.22, 'oxide'], [0.2, 0.46, 'copper'], [0.88, 0.7, 'wire']]) life('soft', 31 + Math.round(xf * 20), 11, z, Math.round(xf * W), pal);
     // long cables dangling from the surface with plugs
     const s0 = this.base;
     for (const [xf, n, col, z] of [[0.18, 30, '#2a2a34', 0.5], [0.585, 22, '#3a3a48', 0.85], [0.79, 13, '#b83a3a', 0.6], [0.36, 26, '#2a2a34', 1.1]]) {
@@ -757,6 +767,7 @@ export class JunkyardBiome extends Biome {
     }
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
+
     const glitch = wx.static;
     for (const s of this.screens) {
       if (s.band !== b) continue;
@@ -796,6 +807,11 @@ export class JunkyardBiome extends Biome {
   drawFront(ctx, env) {
     const t = this.t, wx = this.wx, q = quality(env);
     this.nearSilt.draw(ctx, t, 0.7 + wx.murk * 0.4, q);
+    // circuit coral LEDs: blinking growth tips, brighter after dark (after the darkness pass, band parallax)
+    const tod = this.tod, ga = (0.28 + tod.night * 0.55 + 0.12 * Math.sin(t * 2.3)) * (1 - this.flicker), fog = (z) => this.D.fog(z), px = this.par.x, py = this.par.y;
+    drawCoralGlow(ctx, this.coralGlow, 2, px * 2, py * 0.6, ga * 0.6, fog, t);
+    drawCoralGlow(ctx, this.coralGlow, 1, px * 3, py * 0.8, ga * 0.8, fog, t);
+    drawCoralGlow(ctx, this.coralGlow, 0, px * 4, py, ga, fog, t);
     if (wx.data > 0.05) this.drawDataRain(ctx, wx.data * 0.75, 2, 0.35 * q);
     if (wx.static > 0.05) {
       // rolling scan band + flicker

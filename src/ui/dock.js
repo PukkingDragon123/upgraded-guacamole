@@ -124,7 +124,14 @@ export class Dock {
     for (const it of this.items.slice().reverse()) {
       if (!this.isVisible(it.id)) { it.rect = null; continue; }
       x -= it.w;
-      const fy = g.state.view === 'ocean' ? Math.min(g.ocean.floorAt(x + it.w / 2) + 6, H - TASKBAR_H - 2) : H - TASKBAR_H - 4;
+      let fy = H - TASKBAR_H - 4;
+      if (g.state.view === 'ocean') {
+        // the seabed is in world space: when the camera scrolls up to the boat (or zooms in), the stall goes with it
+        const wy = g.ocean.floorAt(x + it.w / 2) + 6;
+        const sy = g.camera?.worldToScreen ? g.camera.worldToScreen(x + it.w / 2, wy)[1] : wy;
+        if (sy > H - TASKBAR_H + 30) { it.rect = null; x -= 10; continue; }
+        fy = Math.min(sy, H - TASKBAR_H - 2);
+      }
       const h = it.id === 'shop' ? 64 : 34;
       it.rect = { x, y: fy - h, w: it.w, h };
       it.ground = fy;

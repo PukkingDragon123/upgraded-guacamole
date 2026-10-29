@@ -8394,7 +8394,7 @@
         const pin = m.color("#c9ccd4", { jitter: 0.03, spec: 1 });
         const capC = [m.color("#3a6ad8", { jitter: 0.03 }), m.color("#d8b080", { jitter: 0.03 })];
         const ledSets = [["#ff4a6b", "#4affc8", "#ffd84a"], ["#59c8ff", "#b46bff", "#4affc8"], ["#9dff4a", "#ffd84a", "#ff8a4a"]];
-        const leds = ledSets[variant2 % ledSets.length].map((c) => m.color(c, { emissive: 1, jitter: 0 }));
+        const leds2 = ledSets[variant2 % ledSets.length].map((c) => m.color(c, { emissive: 1, jitter: 0 }));
         const cx = 32, cz = 27;
         m.box(cx - 13, 0, cz - 10, cx + 12, 4, cz + 9, chipC);
         m.box(cx - 13, 5, cz - 10, cx + 12, 5, cz + 9, chipT);
@@ -8420,7 +8420,7 @@
           if (edge) {
             m.set(x, y, z, pcb[2]);
             if ((x + z) % 3 === 0) {
-              const l = leds[h3(z, x, y, 2) * 3 | 0];
+              const l = leds2[h3(z, x, y, 2) * 3 | 0];
               m.set(x, y + 1, z, l);
               m.set(x, y + 2, z, l);
             }
@@ -8433,7 +8433,7 @@
           } else m.box(x, y + 1, z, x, y + 2, z, capC[i % 2]);
         });
         junkMound(m, cx, cz, 18, 15, 2, 5);
-        return { m, yaw: 30, light: m.palette[leds[0]].color };
+        return { m, yaw: 30, light: m.palette[leds2[0]].color };
       });
       def("floppy_pile", { name: "Floppy Pile", biome: "junkyard", tags: ["computer"] }, ({ rng: rng2 }) => {
         const m = new VoxelModel(60, 26, 50);
@@ -27186,8 +27186,8 @@
       return dith(0.24 - (y - 11) * 0.01, B2, x, y);
     });
     for (let i = 0; i < 5; i++) p.line(8 + i * 2.2, 15, 10 + i * 2.2, 12, B2[1]);
-    const leds = [["#8cff86", "#2e7a3a"], ["#8cff86", "#2e7a3a"], ["#ffd23a", "#9a6a1a"], ["#ff6a5a", "#8a2a2a"]];
-    leds.forEach(([on, off], i) => {
+    const leds2 = [["#8cff86", "#2e7a3a"], ["#8cff86", "#2e7a3a"], ["#ffd23a", "#9a6a1a"], ["#ff6a5a", "#8a2a2a"]];
+    leds2.forEach(([on, off], i) => {
       const x = 5 + i * 3;
       p.px(x, 19, on);
       p.px(x + 1, 19, off);
@@ -39348,7 +39348,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
     const c = [
       m.color(cols[0], { jitter: 0.1, aoMul: 1.2, coral: true }),
       m.color(cols[1], { jitter: 0.12, coral: true }),
-      m.color(cols[2], { jitter: 0.1, spec: 0.25, coral: true }),
+      m.color(cols[2], { jitter: 0.1, spec: 0.25, coral: true, hi: true }),
       m.color(cols[3], { jitter: 0.06, spec: 0.4, emissive: glowTips ? 0.25 : 0, tip: true })
     ];
     const dot2 = m.color(mix(cols[2], cols[3], 0.6), { jitter: 0.05 });
@@ -39560,6 +39560,83 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
       }
     }
   }
+  function leds(m) {
+    m._leds || (m._leds = ["#7aff5a", "#ff4a3a", "#5ac8ff", "#ffc040"].map((c) => m.color(c, { jitter: 0.02, emissive: 0.9, tip: true, spec: 0.6 })));
+    return m._leds;
+  }
+  function circuitCoral(m, o, size, P5, r) {
+    const L2 = leds(m);
+    const pad = (x, y, z) => {
+      for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) m.set(x + dx, y, z + dz, dx || dz ? P5.c[2] : P5.dark);
+    };
+    const rec = (x, y, z, len, depth, thick) => {
+      for (let i = 0; i < len; i++) {
+        y++;
+        const k = (3 - depth + i / len) / 3.4;
+        const c = hash3(x, y, z, 8) < 0.12 ? P5.dot : grad(P5, k, x, y, z);
+        m.set(x, y, z, c);
+        if (thick) {
+          m.set(x + 1, y, z, c);
+          m.set(x, y, z + 1, P5.c[0]);
+        }
+      }
+      if (depth <= 0) {
+        m.set(x, y + 1, z, L2[r.int(0, L2.length - 1)]);
+        return;
+      }
+      pad(x, y, z);
+      const kids = r.int(2, 3);
+      for (let k = 0; k < kids; k++) {
+        const ax = r.chance(0.7), dir = k % 2 ? 1 : -1, steps = r.int(2, Math.max(3, Math.round(size * 0.3)));
+        let nx = x, nz = z;
+        for (let s2 = 1; s2 <= steps; s2++) {
+          if (ax) nx += dir;
+          else nz += dir;
+          m.set(nx, y, nz, P5.c[1]);
+        }
+        rec(nx, y, nz, Math.max(2, Math.round(len * r.float(0.55, 0.85))), depth - 1, false);
+      }
+    };
+    const trunks = size > 8 ? 2 : 1;
+    for (let t = 0; t < trunks; t++) rec(o[0] + (t ? r.int(2, 4) : 0), o[1], o[2], Math.round(size * 0.45), size > 9 ? 3 : 2, true);
+  }
+  function bambooCoral(m, o, size, P5, r) {
+    const rec = (x, y, z, a, len, depth, seg) => {
+      for (let i = 0; i < len; i++) {
+        x += Math.sin(a);
+        y += Math.cos(a) * 0.95;
+        z += (r.next() - 0.5) * 0.2;
+        seg++;
+        m.set(x, y, z, seg % 5 === 0 ? P5.dark : seg % 5 === 1 ? P5.c[1] : P5.c[2]);
+        if (depth >= 2) m.set(x + 1, y, z, seg % 5 === 0 ? P5.dark : P5.c[1]);
+      }
+      if (depth <= 0) {
+        m.set(x, y + 1, z, P5.c[3]);
+        m.set(x, y + 2, z, P5.c[3]);
+        return;
+      }
+      for (const s2 of [-1, 1]) rec(x, y, z, a + s2 * r.float(0.35, 0.6), len * r.float(0.6, 0.8), depth - 1, seg);
+      if (r.chance(0.4)) rec(x, y, z, a * 0.5, len * 0.7, depth - 1, seg);
+    };
+    rec(o[0], o[1], o[2], r.float(-0.1, 0.1), size * 0.45, 3, 0);
+  }
+  function glassSponge(m, o, size, P5, r) {
+    const [cx, y0, cz] = o;
+    const H9 = size * r.float(1.3, 1.8), lean = r.float(-0.12, 0.12);
+    for (let y = 0; y <= H9; y++) {
+      const t = y / H9;
+      const R = Math.max(1.2, size * (0.18 + 0.22 * Math.sin(Math.min(1, t * 1.15) * Math.PI * 0.62)));
+      const px3 = cx + lean * y, n = Math.max(8, Math.round(R * 6.3));
+      for (let i = 0; i < n; i++) {
+        const a = i / n * TAU;
+        const x = px3 + Math.cos(a) * R, z = cz + Math.sin(a) * R * 0.85;
+        const top = y >= H9 - 1;
+        const lattice = (i + y) % 3 === 0 || (i - y + 300) % 3 === 0 || y % 4 === 0;
+        if (!top && !lattice) continue;
+        m.set(x, y0 + y, z, top ? P5.c[3] : t > 0.7 ? P5.c[2] : P5.c[1]);
+      }
+    }
+  }
   function rockMound(m, theme, r, cx, cz, w, h, d) {
     const R = theme.rock.map((c) => m.color(c, { jitter: 0.12, rock: true }));
     const CL = theme.coralline.map((c) => m.color(c, { jitter: 0.12 }));
@@ -39658,7 +39735,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
       const x = Math.round(r.float(w * 0.08, w * 0.92)), z = Math.round(r.float(d * 0.18, d * 0.85));
       if (!m.get(x, 1, z) && surfaceY(m, x, z) < 3 && r.chance(0.6)) continue;
       const kind2 = pick6();
-      const size = r.float(sizes[0], kind2 === "fan" || kind2 === "staghorn" || kind2 === "table" ? sizes[1] : sizes[1] * 0.8) * (0.7 + 0.3 * (1 - Math.abs(x - cx) / cx));
+      const size = r.float(sizes[0], kind2 === "fan" || kind2 === "staghorn" || kind2 === "table" || kind2 === "circuit" || kind2 === "bamboo" ? sizes[1] : sizes[1] * 0.8) * (0.7 + 0.3 * (1 - Math.abs(x - cx) / cx));
       if (used.some((u) => Math.hypot(u[0] - x, (u[1] - z) * 1.4) < (u[2] + size) * 0.38)) continue;
       const y = surfaceY(m, x, z);
       if (y + size * 1.4 >= h - 2) continue;
@@ -39709,6 +39786,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
       const map2 = /* @__PURE__ */ new Map();
       m.palette.forEach((pe, i) => {
         if (pe && pe.tip) map2.set(i, shade(pe.color, 0.25));
+        else if (pe && pe.hi && theme.alwaysGlow) map2.set(i, shade(pe.color, -0.45));
       });
       night = map2.size ? idPaint(r, map2) : null;
     }
@@ -39993,7 +40071,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           coralline: ["#8a5a3a", "#b07a4a"],
           algae: ["#3e6a3a", "#5e8a44"],
           sand: ["#6e6a56", "#827c64"],
-          weights: { staghorn: 4, table: 3, fan: 2, brain: 2, tube: 4, bubble: 1, pillar: 1.5, whip: 2 },
+          weights: { circuit: 6, staghorn: 2, table: 2, fan: 2, brain: 1.5, tube: 3, bubble: 1, pillar: 1.5, whip: 2 },
           schemes: [["rust", "copper", "circuit"], ["oxide", "steel", "wire"], ["circuit", "oxide", "rust"], ["copper", "wire", "steel"]],
           glow: 0.8,
           ledTips: true
@@ -40011,7 +40089,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           coralline: ["#3a4a7a", "#5a6aa0"],
           algae: ["#24485a", "#346a78"],
           sand: ["#2e3450", "#3a4262"],
-          weights: { staghorn: 3, table: 1, fan: 3, brain: 1, tube: 3, bubble: 2, pillar: 2, whip: 4 },
+          weights: { bamboo: 4, glass: 3, fan: 3, whip: 4, staghorn: 1.5, tube: 2, bubble: 1.5, pillar: 1 },
           schemes: [["ghost", "cyan", "bamboo"], ["violet", "rose", "ghost"], ["black", "cyan", "violet"], ["bamboo", "ghost", "rose"]],
           glow: 1,
           alwaysGlow: true
@@ -40021,7 +40099,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
         const keys = scheme && r.chance(0.85) ? scheme : Object.keys(theme.pals);
         return theme.pals[keys[r.int(0, keys.length - 1)]];
       };
-      SPECIES2 = { staghorn, table: tableCoral, fan: seaFan, brain: brainCoral, tube: tubeSponge, bubble: bubbleCoral, pillar: pillarCoral, whip: seaWhip };
+      SPECIES2 = { staghorn, table: tableCoral, fan: seaFan, brain: brainCoral, tube: tubeSponge, bubble: bubbleCoral, pillar: pillarCoral, whip: seaWhip, circuit: circuitCoral, bamboo: bambooCoral, glass: glassSponge };
       ANIMATED = { anemone, soft: softCoral, kelp, seagrass };
       animCache = /* @__PURE__ */ new Map();
       spriteCache = /* @__PURE__ */ new Map();
@@ -40129,7 +40207,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           this.caustics = new Caustics({ tw: 150, th: 44, cx: 11, cy: 5, seed: 11, color: "#fffbe2", thick: 0.65, core: 0.75, rim: 0.22 });
           this.shimmer = this.makeShimmer();
           this.buildLife();
-          (this.buildMs || (this.buildMs = [])).push({ sky: Math.round(t1 - t0), depth: Math.round(t2 - t1), layers: Math.round(t3 - t2), life: Math.round(performance.now() - t3) });
+          this.buildMs = { sky: Math.round(t1 - t0), depth: Math.round(t2 - t1), layers: Math.round(t3 - t2), life: Math.round(performance.now() - t3) };
           this.fresh = true;
         }
         buildSky() {
@@ -40233,6 +40311,19 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           coral("bubble", 116, 0.505, -0.06, 12);
           coral("pillar", 117, 0.705, 0.24, 14);
           coral("whip", 118, 0.2, -0.04, 12);
+          for (const [kind2, seed, xf, z, size] of [
+            ["brain", 151, 0.565, -0.2, 7],
+            ["bubble", 152, 0.665, 0.12, 7],
+            ["staghorn", 153, 0.775, -0.06, 9],
+            ["tube", 154, 0.84, 0.16, 8],
+            ["brain", 155, 0.73, 0.24, 8],
+            ["pillar", 156, 0.515, 0.2, 7],
+            ["fan", 157, 0.86, -0.14, 9],
+            ["staghorn", 158, 0.02, 0, 9],
+            ["bubble", 159, 0.29, -0.18, 6],
+            ["brain", 160, 0.425, -0.16, 6],
+            ["whip", 161, 0.62, 0.2, 9]
+          ]) coral(kind2, seed, xf, z, size);
           reef(121, 0.17, 0.5, { w: 140, h: 84, d: 54 });
           reef(122, 0.48, 0.47, { w: 124, h: 80, d: 50 });
           reef(123, 0.92, 0.6, { w: 132, h: 86, d: 52 });
@@ -40241,7 +40332,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           coral("table", 126, 0.31, 0.64, 22);
           coral("tube", 127, 0.8, 0.52, 18);
           coral("fan", 128, 0.72, 0.63, 22);
-          for (const [seed, xf, z, fl] of [[131, 0.13, 0.9, 0], [132, 0.42, 1, 0], [133, 0.75, 0.94, 0], [131, 0.6, 1.36, 1], [132, 0.25, 1.42, 1], [133, 0.9, 1.3, 1], [132, 0.03, 1.12, 1], [131, 0.52, 0.78, 1]]) reef(seed, xf, z, { w: 150, h: 90, d: 56 }, !!fl);
+          for (const [seed, xf, z, fl] of [[131, 0.13, 0.92, 0], [132, 0.42, 1, 0], [133, 0.75, 0.94, 1], [131, 0.6, 1.38, 1], [132, 0.25, 1.42, 1], [133, 0.92, 1.34, 0]]) reef(seed, xf, z, { w: 150, h: 90, d: 56 }, !!fl);
           for (const [kind2, seed, xf, z, size] of [["staghorn", 141, 0.33, 0.76, 26], ["fan", 142, 0.68, 0.8, 26], ["table", 143, 0.86, 0.84, 24], ["fan", 144, 0.985, 0.76, 26], ["staghorn", 145, 0.2, 1.06, 28], ["tube", 146, 0.55, 1.12, 22]]) coral(kind2, seed, xf, z, size);
           const P5 = [
             // near (in front of the mid fish)
@@ -40346,7 +40437,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
             const j = r.int(0, kinds.length - 1);
             B2.push({ spr: coralSprite(kinds[j], 200 + j, "shallows", r.pick([12, 18]), 0.7), x: r.float(0, LW), y: baseB + r.int(-3, 3), z: r.next() });
           }
-          for (let i = 0; i < 6; i++) B2.push({ spr: reefSprite(220 + i % 2, "shallows", { w: 110, h: 64, d: 40 }, 0.6, i >= 2 && i % 2 === 0), x: r.float(0, LW), y: baseB + r.int(0, 3), z: r.next() });
+          for (let i = 0; i < 5; i++) B2.push({ spr: reefSprite(220, "shallows", { w: 110, h: 64, d: 40 }, 0.6, i % 2 === 1), x: r.float(0, LW), y: baseB + r.int(0, 3), z: r.next() });
           for (const [id, nv] of [["rock_big", 1], ["rock_small", 1], ["starfish_rock", 1], ["rock_big", 1]]) {
             const sp = propSprite(id, r.pick([0.4, 0.5]), r.int(0, nv - 1));
             if (sp) B2.push({ spr: sp, x: r.float(0, LW), y: baseB + r.int(-3, 3), z: r.next() });
@@ -40375,7 +40466,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           for (const [xf, z, n] of [[0.03, 0.78, 3], [0.07, 0.92, 3], [0.115, 0.72, 2], [0.83, 0.82, 3], [0.875, 0.7, 3], [0.93, 0.95, 2], [0.56, 1.02, 3], [0.5, 0.86, 2], [0.62, 0.68, 2], [0.075, 0.4, 2], [0.905, 0.42, 2], [0.25, 1.1, 3], [0.4, 1.25, 3]]) {
             for (let i = 0; i < n; i++) {
               const zz = z + (i - (n - 1) / 2) * 0.03, x = Math.round(xf * W9 + (i - (n - 1) / 2) * 9 * D.s(z) + r.int(-2, 2));
-              life("kelp", 1 + (i + Math.round(xf * 10)) % 3, i === 1 ? 16 : 13, zz, x);
+              life("kelp", 1 + (i + Math.round(xf * 10)) % 2, 14, zz, x);
             }
           }
           const spots = [
@@ -40408,7 +40499,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
             [0.8, 0.75],
             [0.9, 0.85]
           ];
-          for (const [xf, z] of spots) life("seagrass", 1 + r.int(0, 3), r.pick([7, 9]), z, Math.round(xf * W9));
+          for (const [xf, z] of spots) life("seagrass", 1 + r.int(0, 1), 8, z, Math.round(xf * W9));
           this.anemones = [];
           for (const [xf, z, pal2, glow] of [[0.385, 0.02, "pink", "#ff7ab0"], [0.18, -0.08, "teal", "#5affea"], [0.79, 0.1, "orange", "#ffb070"], [0.56, 0.5, "purple", "#c08aff"], [0.66, -0.16, "magenta", "#ff8af0"], [0.28, 0.36, "yellow", "#ffe27a"]]) {
             const x = Math.round(xf * W9);
@@ -40947,7 +41038,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           const t = this.t, tod = this.tod, q = quality(env2);
           if (this.buoy?.lamp && tod.night + tod.dusk * 0.6 > 0.15 && Math.sin(t * 3.1) > -0.2) drawGlow(ctx3, this.buoy.lamp[0], this.buoy.lamp[1], 6, "#ffe27a", clamp01(tod.night + tod.dusk * 0.6) * 0.9);
           this.nearMotes.draw(ctx3, t, 0.8 + tod.day * 0.3, q);
-          const ga = tod.night * 0.75 * (0.8 + 0.2 * Math.sin(t * 0.8));
+          const ga = tod.night * 0.62 * (0.8 + 0.2 * Math.sin(t * 0.8));
           if (ga > 0.03) {
             const fog = (z) => this.D.fog(z), px3 = this.par.x, py = this.par.y;
             drawCoralGlow(ctx3, this.coralGlow, 2, px3 * 2, py * 0.6, ga * 0.7, fog, t);
@@ -41105,6 +41196,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
       init_canvas();
       init_props();
       init_voxkit();
+      init_coral();
       init_font();
       init_shopdata();
       init_scenery();
@@ -41375,11 +41467,35 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
             const p = worldProp(id, { scale: qscale(base * D.s(z)), variant: variant2 });
             return D.add({ sprite: p, x: Math.round(xf * W9), z, id });
           };
+          this.coralGlow = [];
+          const glowOf = (it2) => {
+            if (it2.sprite.night) this.coralGlow.push({ night: it2.sprite.night, x: it2.x - it2.sprite.ox, y: it2.y - it2.sprite.oy, band: it2.band, z: it2.z });
+            return it2;
+          };
+          const kz = (z) => qscale(1.5 * D.s(z), 0.1, 0.3);
+          const reef = (seed, xf, z, o, flip = false) => glowOf(D.add({ sprite: reefSprite(seed, "junkyard", o, kz(z), flip), x: Math.round(xf * W9), z, id: "reef" }));
+          const coral = (kind2, seed, xf, z, size) => glowOf(D.add({ sprite: coralSprite(kind2, seed, "junkyard", size, kz(z)), x: Math.round(xf * W9), z, id: "coral_" + kind2 }));
+          reef(301, 0.515, 0.22, { w: 104, h: 70, d: 42 });
+          reef(302, 0.745, 0.38, { w: 120, h: 78, d: 48 });
+          reef(303, 0.8, 0.76, { w: 140, h: 86, d: 52 });
+          reef(301, 0.33, 1.2, { w: 104, h: 70, d: 42 }, true);
+          reef(302, 0.66, 1.42, { w: 120, h: 78, d: 48 }, true);
+          for (const [kind2, seed, xf, z, size] of [
+            ["circuit", 311, 0.618, 0.1, 15],
+            ["circuit", 312, 0.31, 0.24, 13],
+            ["whip", 313, 0.7, 0.02, 12],
+            ["tube", 314, 0.9, 0.3, 13],
+            ["circuit", 315, 0.07, 0.36, 14],
+            ["circuit", 316, 0.25, 0.62, 18],
+            ["staghorn", 317, 0.555, 0.66, 18],
+            ["table", 318, 0.06, 0.48, 16],
+            ["circuit", 319, 0.93, 0.6, 18],
+            ["fan", 320, 0.37, 0.92, 20],
+            ["circuit", 321, 0.15, 1.05, 22]
+          ]) coral(kind2, seed, xf, z, size);
           const P5 = [
             // near
             ["crt_monitor", 0.375, 0.12, 0.85],
-            ["circuit_coral", 0.47, 0.2, 0.75, 0],
-            ["circuit_coral", 0.585, 0.27, 0.65, 1],
             ["keyboard_slab", 0.255, 0.04, 0.6],
             ["floppy_pile", 0.13, 0.08, 0.7],
             ["tire", 0.045, 0.16, 0.8],
@@ -41392,7 +41508,6 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
             ["broken_robot", 0.532, 0.37, 1],
             ["vending_machine", 0.645, 0.42, 1],
             ["rusty_barrel", 0.715, 0.52, 0.9],
-            ["circuit_coral", 0.74, 0.36, 0.6, 2],
             ["shopping_cart", 0.15, 0.56, 1],
             ["gear_big", 0.835, 0.62, 1],
             // far
@@ -41408,7 +41523,6 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
             ["crt_monitor", 0.665, 0.78, 1],
             ["broken_robot", 0.985, 1.25, 1.4],
             ["vending_machine", 0.03, 1.3, 1.4],
-            ["circuit_coral", 0.79, 0.74, 0.9, 0],
             ["keyboard_slab", 0.54, 0.7, 0.8]
           ];
           for (const e of [
@@ -41575,7 +41689,10 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           const W9 = this.W, H9 = this.H, D = this.D;
           const r = new RNG(19);
           this.decor = new DepthDecor(D);
-          const sets = [["#2a4a2a", "#3e5e2e", "#5a7a34", "#7a9a44"], ["#3a4a22", "#566a2a", "#748a34", "#98ac48"]];
+          const life = (kind2, seed, size, z, x, palKey = null) => {
+            const A = voxAnim(kind2, seed, "junkyard", size, qscale(1.5 * D.s(z), 0.2, 0.3), 8, palKey);
+            return this.decor.add({ anim: placeAnim(A, x, Math.round(D.floorAt(x, z)) + 1), z, off: r.int(0, A.n - 1) });
+          };
           for (const [xf, z] of [
             [0.08, -0.12],
             [0.17, 0],
@@ -41597,16 +41714,8 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
             [0.12, 0.85],
             [0.46, 0.8],
             [0.7, 0.95]
-          ]) {
-            const s2 = D.s(z), x0 = Math.round(xf * W9), y0 = Math.round(D.floorAt(x0, z)) + 1;
-            const st = new Strands();
-            const k = r.int(3, 5), tall = r.chance(0.5), set = r.pick(sets);
-            for (let i = 0; i < k; i++) {
-              const lean = (i / Math.max(1, k - 1) - 0.5) * 0.8;
-              st.add({ x: x0 + Math.round(lean * 7 * s2), y: y0, n: Math.max(3, Math.round((tall ? r.int(9, 14) : r.int(5, 8)) * Math.min(1.1, s2))), seg: 2, w: tall && s2 > 0.7 ? 2 : 1, amp: 0.22, speed: 1.1, sec: 1, phase: r.float(0, TAU), wave: 0.4, lean, curl: lean * 0.5, cols: set, out: tall && s2 > 0.7 ? "#0c1a14" : null, hl: false, taper: 0.3 });
-            }
-            this.decor.add({ anim: new SwayAnim(st, { frames: 16 }), z, off: r.int(0, 15) });
-          }
+          ]) life("seagrass", 11 + r.int(0, 1), 8, z, Math.round(xf * W9));
+          for (const [xf, z, pal2] of [[0.335, 0.06, "rust"], [0.68, 0.22, "oxide"], [0.2, 0.46, "copper"], [0.88, 0.7, "wire"]]) life("soft", 31 + Math.round(xf * 20), 11, z, Math.round(xf * W9), pal2);
           const s0 = this.base;
           for (const [xf, n, col, z] of [[0.18, 30, "#2a2a34", 0.5], [0.585, 22, "#3a3a48", 0.85], [0.79, 13, "#b83a3a", 0.6], [0.36, 26, "#2a2a34", 1.1]]) {
             const st = new Strands();
@@ -41984,6 +42093,10 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
         drawFront(ctx3, env2) {
           const t = this.t, wx = this.wx, q = quality(env2);
           this.nearSilt.draw(ctx3, t, 0.7 + wx.murk * 0.4, q);
+          const tod = this.tod, ga = (0.28 + tod.night * 0.55 + 0.12 * Math.sin(t * 2.3)) * (1 - this.flicker), fog = (z) => this.D.fog(z), px3 = this.par.x, py = this.par.y;
+          drawCoralGlow(ctx3, this.coralGlow, 2, px3 * 2, py * 0.6, ga * 0.6, fog, t);
+          drawCoralGlow(ctx3, this.coralGlow, 1, px3 * 3, py * 0.8, ga * 0.8, fog, t);
+          drawCoralGlow(ctx3, this.coralGlow, 0, px3 * 4, py, ga, fog, t);
           if (wx.data > 0.05) this.drawDataRain(ctx3, wx.data * 0.75, 2, 0.35 * q);
           if (wx.static > 0.05) {
             const y = Math.round(t * 70 % (this.H + 40) - 20);
@@ -42101,6 +42214,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
       init_canvas();
       init_props();
       init_voxkit();
+      init_coral();
       init_scenery();
       SKY_NIGHT = { night: [[0, "#010208"], [0.6, "#050a1e"], [0.9, "#0c1838"], [1, "#18305a"]] };
       UPPER = [[0, "#3a6a9a"], [0.05, "#2c5688"], [0.35, "#22447a"], [1, "#1c2e60"]];
@@ -42372,6 +42486,33 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           ];
           for (const e of [["moai_head", 0.415, 0.66, 0.85], ["fish_statue", 0.535, 1.16, 1.2], ["diver_helmet", 0.665, 0.18, 0.5]]) if (PROPS[e[0]]) P5.push(e);
           const placed = P5.map(([id, xf, z, base, v]) => place2(id, xf, z, base, v || 0));
+          this.coralGlow = [];
+          const glowOf = (it2) => {
+            if (it2.sprite.night) this.coralGlow.push({ night: it2.sprite.night, x: it2.x - it2.sprite.ox, y: it2.y - it2.sprite.oy, band: it2.band, z: it2.z });
+            return it2;
+          };
+          const kz = (z) => qscale(1.5 * D.s(z), 0.1, 0.3);
+          const reef = (seed, xf, z, o, flip = false) => glowOf(D.add({ sprite: reefSprite(seed, "abyss", o, kz(z), flip), x: Math.round(xf * W9), z, id: "reef" }));
+          const coral = (kind2, seed, xf, z, size) => glowOf(D.add({ sprite: coralSprite(kind2, seed, "abyss", size, kz(z)), x: Math.round(xf * W9), z, id: "coral_" + kind2 }));
+          reef(401, 0.1, 0.3, { w: 96, h: 70, d: 40 });
+          reef(402, 0.885, 0.36, { w: 100, h: 72, d: 42 });
+          reef(403, 0.21, 0.6, { w: 116, h: 80, d: 46 });
+          reef(404, 0.79, 0.66, { w: 116, h: 80, d: 46 }, true);
+          for (const [kind2, seed, xf, z, size] of [
+            ["glass", 411, 0.045, 0.04, 15],
+            ["bamboo", 412, 0.335, 0.2, 17],
+            ["whip", 413, 0.585, 0.17, 13],
+            ["glass", 414, 0.715, 0.3, 14],
+            ["bamboo", 415, 0.955, 0.12, 16],
+            ["fan", 416, 0.44, 0.34, 15],
+            ["bamboo", 417, 0.33, 0.62, 20],
+            ["glass", 418, 0.66, 0.5, 17],
+            ["whip", 419, 0.47, 0.72, 16],
+            ["bamboo", 420, 0.56, 0.9, 22],
+            ["glass", 421, 0.4, 1, 20],
+            ["fan", 422, 0.62, 1.1, 22],
+            ["bamboo", 423, 0.36, 1.3, 24]
+          ]) coral(kind2, seed, xf, z, size);
           this.ledges = [];
           const lr = new RNG(77);
           for (const z of [0.08, 0.36, 0.62, 0.9, 1.15]) {
@@ -42713,6 +42854,10 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           if (this.buoy?.lamp && Math.sin(t * 2.2) > 0) drawGlow(ctx3, this.buoy.lamp[0], this.buoy.lamp[1], 6, "#ff5a4a", 0.9);
           if (!env2.view || env2.view.y0 < 0) for (const j of this.jellies) drawGlow(ctx3, j.x + Math.sin(t * 0.2 + j.ph) * 8, j.y, 6 + j.r, j.c, 0.35 + 0.2 * Math.sin(t * 1.6 + j.ph));
           this.nearSnow.draw(ctx3, t, 0.8 + wx.snow * 0.5, q * (0.4 + wx.snow * 0.6));
+          const ga = (0.6 + 0.25 * Math.sin(t * 0.9)) * (1 + wx.glow * 0.8), fog = (z) => this.D.fog(z), px3 = this.par.x, py = this.par.y;
+          drawCoralGlow(ctx3, this.coralGlow, 2, px3 * 2, py * 0.6, ga * 0.6, fog, t);
+          drawCoralGlow(ctx3, this.coralGlow, 1, px3 * 3, py * 0.8, ga * 0.8, fog, t);
+          drawCoralGlow(ctx3, this.coralGlow, 0, px3 * 4, py, ga, fog, t);
           const n = Math.round(this.sparks.list.length * q * (0.35 + wx.glow * 0.65));
           ctx3.globalCompositeOperation = "lighter";
           for (let i = 0; i < n; i++) {
@@ -42755,6 +42900,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           const v = this.vent;
           lights.push({ x: v.x + 2, y: v.top + 10, r: 70 * v.s, color: "#ff8a3a", a: (0.75 + 0.15 * Math.sin(t * 6.3)) * (1 - D.fog(v.z) * 0.6) });
           for (const lp of this.ledges) if (lp.z < 0.5) lights.push({ x: lp.x, y: lp.y, r: 40 * D.s(lp.z), color: lp.c, a: (0.6 + 0.2 * Math.sin(t + lp.ph) + g * 0.2) * (1 - D.fog(lp.z) * 0.7) });
+          for (const c of this.coralGlow) if (c.z < 0.7 && c.night && c.night.width > 24) lights.push({ x: c.x + c.night.width / 2, y: c.y + c.night.height * 0.5, r: Math.max(26, c.night.width * 0.6), color: "#7ad8ff", a: (0.5 + 0.1 * Math.sin(t * 0.9) + g * 0.2) * (1 - D.fog(c.z) * 0.6) });
           const solved = !!this.secrets().glyphs;
           for (const s of this.stones) if (solved || s.lit > 0.05) lights.push({ x: s.cx, y: s.cy, r: 24 + s.lit * 20, color: "#5affff", a: solved ? 0.7 : s.lit * 0.85 });
           const pg = this.pillarGlyphs[1];
@@ -68834,14 +68980,14 @@ kTtaatTk
         const t1 = performance.now();
         renderCoral(m, 1, THEMES.shallows);
         const t2 = performance.now();
-        out2.push(`k${k} model ${Math.round(t1 - t0)}ms [${globalThis.RFT}] render ${Math.round(t2 - t1)}ms`);
+        out2.push(`k${k} model ${Math.round(t1 - t0)}ms render ${Math.round(t2 - t1)}ms`);
       }
       for (const kind2 of ["kelp", "anemone", "seagrass", "soft"]) {
         const t0 = performance.now();
         voxAnim(kind2, 3, "shallows", kind2 === "kelp" ? 14 : 10, 1.2);
         out2.push(`${kind2} x8 ${Math.round(performance.now() - t0)}ms`);
       }
-      console.warn("PROF " + out2.join(" | ") + " SPT " + JSON.stringify(Object.fromEntries(Object.entries(globalThis.SPT || {}).map(([a, b]) => [a, Math.round(b)]))));
+      console.warn("PROF " + out2.join(" | "));
       return;
     }
     if (view === "coral") {
@@ -68853,16 +68999,27 @@ kTtaatTk
       ctx3.fillStyle = { shallows: "#d8c08a", junkyard: "#6e6a56", abyss: "#2e3450" }[themeId];
       ctx3.fillRect(0, H9 * 0.42, W9, 6);
       ctx3.fillRect(0, H9 * 0.97, W9, 6);
-      const kinds = ["staghorn", "table", "fan", "brain", "tube", "bubble", "pillar", "whip"];
+      const kinds = Object.keys(theme.weights);
+      const step2 = Math.floor((W9 - 60) / kinds.length);
       kinds.forEach((k, i) => {
-        const spr2 = renderCoral(coralModel(k, 10 + i, theme, Number(params2.get("size") || 22)), scale, theme);
-        ctx3.drawImage(spr2.canvas, Math.round(60 + i * 112 - spr2.ox), Math.round(H9 * 0.42 - spr2.oy));
-        drawText(ctx3, k, 60 + i * 112, H9 * 0.42 + 10, { align: "center", color: "#fff", outline: "#000" });
+        const spr2 = renderCoral(coralModel(k, 10 + i, theme, Number(params2.get("size") || 22) * scale), 1, theme);
+        ctx3.drawImage(spr2.canvas, Math.round(50 + i * step2 - spr2.ox), Math.round(H9 * 0.42 - spr2.oy));
+        if (night && spr2.night) {
+          ctx3.globalCompositeOperation = "lighter";
+          ctx3.drawImage(spr2.night, Math.round(50 + i * step2 - spr2.ox), Math.round(H9 * 0.42 - spr2.oy));
+          ctx3.globalCompositeOperation = "source-over";
+        }
+        drawText(ctx3, k, 50 + i * step2, H9 * 0.42 + 10, { align: "center", color: "#fff", outline: "#000" });
       });
       const t0 = performance.now();
       [[170, 0], [480, 1], [790, 2]].forEach(([x, i]) => {
-        const spr2 = renderCoral(reefFormation(40 + i, theme, {}), scale, theme);
+        const spr2 = renderCoral(reefFormation(40 + i, theme, { w: Math.round(140 * scale), h: Math.round(84 * scale), d: Math.round(54 * scale), sizes: [10 * scale, 24 * scale] }), 1, theme);
         ctx3.drawImage(spr2.canvas, Math.round(x - spr2.ox), Math.round(H9 * 0.97 - spr2.oy));
+        if (night && spr2.night) {
+          ctx3.globalCompositeOperation = "lighter";
+          ctx3.drawImage(spr2.night, Math.round(x - spr2.ox), Math.round(H9 * 0.97 - spr2.oy));
+          ctx3.globalCompositeOperation = "source-over";
+        }
       });
       console.log("formations ms", Math.round(performance.now() - t0));
       const anims = ["anemone", "soft", "kelp", "seagrass"].map((k, i) => ({ a: placeAnim(voxAnim(k, 5 + i, themeId, k === "kelp" ? 14 : 18, scale), 60 + i * 80, H9 * 0.62), k }));
@@ -72634,7 +72791,17 @@ kTtaatTk
               continue;
             }
             x -= it2.w;
-            const fy = g.state.view === "ocean" ? Math.min(g.ocean.floorAt(x + it2.w / 2) + 6, H9 - TASKBAR_H - 2) : H9 - TASKBAR_H - 4;
+            let fy = H9 - TASKBAR_H - 4;
+            if (g.state.view === "ocean") {
+              const wy = g.ocean.floorAt(x + it2.w / 2) + 6;
+              const sy = g.camera?.worldToScreen ? g.camera.worldToScreen(x + it2.w / 2, wy)[1] : wy;
+              if (sy > H9 - TASKBAR_H + 30) {
+                it2.rect = null;
+                x -= 10;
+                continue;
+              }
+              fy = Math.min(sy, H9 - TASKBAR_H - 2);
+            }
             const h = it2.id === "shop" ? 64 : 34;
             it2.rect = { x, y: fy - h, w: it2.w, h };
             it2.ground = fy;
