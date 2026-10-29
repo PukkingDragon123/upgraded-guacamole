@@ -28,11 +28,11 @@ import { drawFishRig } from './fishrig.js';
 export const VP = 2;               // target on-screen pixels per voxel
 const SCALE_STEP = 1.09;           // on-screen scale buckets (drawn scaled to the exact size)
 export const YAW_STEP = 15;        // degrees per canonical yaw bucket (-90..90)
-const PITCH_STEP = 8;              // degrees per pitch bucket
-const PITCH_MAX = 4;
+const PITCH_STEP = 10;             // degrees per pitch bucket
+const PITCH_MAX = 3;
 const CHAIN_PITCH_STEP = 15;
 const CHAIN_PITCH_MAX = 6;
-const CAM_TILT = 12;               // we look slightly down onto the fish
+const CAM_TILT = 16;               // we look slightly down onto the fish
 export const SWIM_N = 6;           // tail-beat frames
 const KIND_N = 6;                  // animation frames for kinds (legs, tentacles...)
 const INFL_N = 3;                  // inflate steps: 0, 1/3, 2/3, 1
@@ -50,28 +50,29 @@ const fract = (v) => v - Math.floor(v);
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
 const SHAPE_K = { oval: 0.52, torpedo: 0.6, round: 0.8, disc: 0.3, long: 0.62, box: 0.72, blunt: 0.62, pointy: 0.48 };
-const KIND_K = { crab: 0.72, seahorse: 0.55, ray: 0.16, squid: 0.62, isopod: 0.78, iconfish: 0.42, octopus: 1, jelly: 1, pudding: 1, blob: 1, chain: 0.85 };
-const REVOLVE = new Set(['jelly', 'pudding', 'octopus', 'blob']);
+const KIND_K = { crab: 0.72, seahorse: 0.55, ray: 0.16, squid: 0.62, isopod: 0.78, iconfish: 0.42, octopus: 1, jelly: 1, pudding: 1, blob: 0.9, chain: 0.85 };
+const REVOLVE = new Set(['jelly', 'pudding', 'octopus']);
 
 // ------------------------------------------------------------------ budget
 
-let budgetMs = 4.5, spent = 0, forceSpent = 0, rafOn = false, lastReset = 0;
-let statBuilt = 0, statFallback = 0, statJobs = 0, statPx = 0;
+let budgetMs = 3.2, spent = 0, forceSpent = 0, rafOn = false, lastReset = 0;
+let statBuilt = 0, statFallback = 0, statJobs = 0, statPx = 0, workTotal = 0;
 const FORCE_MS = 14;               // extra per-frame allowance to get a creature's very first frame
-const WARM_MS = 1.6;               // idle warm-up per animation frame
+const WARM_MS = 1;                 // idle warm-up per animation frame
 
 export function setVoxelFishBudget(ms) { budgetMs = ms; }
 export function beginVoxelFishFrame() { if (!rafOn) { spent = 0; forceSpent = 0; } }
+if (typeof window !== 'undefined') window.__voxStats = () => voxelFishStats();
 export function voxelFishStats() {
-  return { frames: frames.size, framePx: statPx, grids: grids.size, layouts: layouts.size, jobs: jobs.size, built: statBuilt, fallbacks: statFallback, jobsStarted: statJobs, spent: +spent.toFixed(2), warm: warmQ.length };
+  return { workMs: +workTotal.toFixed(1), frames: frames.size, framePx: statPx, grids: grids.size, layouts: layouts.size, jobs: jobs.size, built: statBuilt, fallbacks: statFallback, jobsStarted: statJobs, spent: +spent.toFixed(2), warm: warmQ.length };
 }
 function ensureTick() {
   if (rafOn || typeof requestAnimationFrame === 'undefined') return;
   rafOn = true;
   const tick = () => {
-    spent = 0; forceSpent = 0; lastReset = now();
-    runWarm();
     requestAnimationFrame(tick);
+    spent = 0; forceSpent = 0; lastReset = now();
+    try { runWants(); runWarm(); } catch (e) { console.warn('voxelfish', e); wants.clear(); warmQ.length = 0; }
   };
   requestAnimationFrame(tick);
 }
@@ -117,7 +118,7 @@ class Pal {
     if (this.rgb.length >= 65000) return 1;
     i = this.rgb.length;
     this.rgb.push(col & 0xffffff);
-    this.alpha.push(aq === 4 ? 1 : aq === 3 ? 0.82 : aq === 2 ? 0.66 : 0.5);
+    this.alpha.push(aq === 4 ? 1 : aq === 3 ? 0.86 : aq === 2 ? 0.7 : 0.55);
     this.role.push(role);
     this.em.push(glow ? 1 : 0);
     this.ramps.push(null);
@@ -141,9 +142,9 @@ function rampOf(pal, v) {
       r2 = R + (R * 0.26 + 12 - R) * k; g2 = G + (G * 0.3 + 10 - G) * k; b2 = B + (B * 0.46 + 40 - B) * k;
     } else {
       const k = Math.pow(t, 1.12);
-      r2 = R + (Math.min(255, R + (255 - R) * 0.74 + 10) - R) * k;
-      g2 = G + (Math.min(255, G + (255 - G) * 0.66 + 4) - G) * k;
-      b2 = B + (Math.max(0, B + (255 - B) * 0.5 - 8) - B) * k;
+      r2 = R + (Math.min(255, R + (255 - R) * 0.66 + 8) - R) * k;
+      g2 = G + (Math.min(255, G + (255 - G) * 0.64 + 6) - G) * k;
+      b2 = B + (Math.min(255, B + (255 - B) * 0.58) - B) * k;
       // mid-light tones get a touch more saturation
       const sat = 0.12 * Math.sin(Math.PI * Math.min(1, t * 1.6));
       const m = (r2 + g2 + b2) / 3;
@@ -235,7 +236,8 @@ function buildLayout(c, r, infl, pose, kf) {
   const N = GW * GH;
   const body = L.body?.col || new Uint32Array(N);
   const mask = new Uint8Array(N);
-  for (let i = 0; i < N; i++) if ((body[i] >>> 24) >= (kind ? 60 : 110)) mask[i] = 1;
+  const thr = kind ? 60 : Math.min(110, Math.round((c.alpha ?? 255) * 0.75));
+  for (let i = 0; i < N; i++) if ((body[i] >>> 24) >= thr) mask[i] = 1;
   // thickness
   let k = kind ? KIND_K[kind] ?? 0.6 : SHAPE_K[c.look.body?.shape || 'oval'] ?? 0.5;
   if (c.look.body?.thick) k = c.look.body.thick;
@@ -291,6 +293,7 @@ function buildLayout(c, r, infl, pose, kf) {
   }
   let maxT = 0;
   for (let i = 0; i < N; i++) if (T[i] > maxT) maxT = T[i];
+  const [Tx, Ty] = thicknessGradient(T, mask, GW, GH);
   // face: eyes + closed mouth painted at model resolution
   const eyeCol = new Uint32Array(N), eyeGlow = new Uint8Array(N);
   const eyes = [];
@@ -335,13 +338,34 @@ function buildLayout(c, r, infl, pose, kf) {
   if (L.tail) for (let i = 0; i < N; i++) if (L.tail.col[i]) { const gx = i % GW; if (gx < tailEnd) tailEnd = gx; }
   tailEnd = Math.min(tailEnd, bodyTail);
   // pectoral hinge (front layer, generic fish): its front-most column
-  let pecRoot = -1;
-  if (!kind && L.front) for (let i = 0; i < N; i++) if (L.front.col[i]) pecRoot = Math.max(pecRoot, i % GW);
+  let pecRoot = -1, pecMin = GW;
+  if (!kind && L.front) for (let i = 0; i < N; i++) if (L.front.col[i]) { pecRoot = Math.max(pecRoot, i % GW); pecMin = Math.min(pecMin, i % GW); }
   return {
-    c, kind, revolve, r, GW, GH, PAD, L, mask, T, maxT, eyeCol, eyeGlow, mouthCol, eyes, mouth, anchors,
-    origin: [geo.ox + PAD, geo.oy + PAD], nose, bodyTail, tailEnd, pecRoot,
+    c, kind, revolve, r, GW, GH, PAD, L, mask, T, Tx, Ty, maxT, eyeCol, eyeGlow, mouthCol, eyes, mouth, anchors,
+    origin: [geo.ox + PAD, geo.oy + PAD], nose, bodyTail, tailEnd, pecRoot, pecLen: Math.max(0, pecRoot - pecMin),
     wave: c.wave ?? 0.5, pal: new Pal(), bytes: N * 40,
   };
+}
+
+// Gradient of the (lightly blurred) thickness field: analytic flank normals n ~ (-Tx, Ty, +-1).
+function thicknessGradient(T, mask, W, H) {
+  const N = W * H;
+  const at = (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? 0 : Math.max(0, T[y * W + x]));
+  const B = new Float32Array(N);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x;
+    if (!mask[i]) continue;
+    B[i] = (at(x, y) * 4 + at(x - 1, y) + at(x + 1, y) + at(x, y - 1) + at(x, y + 1)) / 8;
+  }
+  const b = (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? 0 : B[y * W + x]);
+  const Tx = new Float32Array(N), Ty = new Float32Array(N);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x;
+    if (!mask[i]) continue;
+    Tx[i] = (b(x + 1, y) - b(x - 1, y)) / 2;
+    Ty[i] = (b(x, y + 1) - b(x, y - 1)) / 2;
+  }
+  return [Tx, Ty];
 }
 
 // Chain head: painted head extruded with per-column elliptical thickness.
@@ -373,10 +397,11 @@ function buildChainLayout(c, r) {
     }
   }
   const o = hv.o + PAD;
+  const [Tx, Ty] = thicknessGradient(T, mask, GW, GH);
   const eyes = hv.face.eyes.map((ev) => ({ x: ev.x + PAD, y: ev.y + PAD, rv: ev.r, rLook: ev.r / r, e: ev.e, idx: ev.idx, mirror: ev.mirror, cheek: ev.cheek, main: ev.main }));
   const mo = hv.face.mouth;
   return {
-    c, kind: 'chain', revolve: false, r, GW, GH, PAD, L: { body: { col, glow: null } }, mask, T, maxT,
+    c, kind: 'chain', revolve: false, r, GW, GH, PAD, L: { body: { col, glow: null } }, mask, T, Tx, Ty, maxT,
     eyeCol: new Uint32Array(N), eyeGlow: new Uint8Array(N), mouthCol: new Uint32Array(N), eyes,
     mouth: mo ? { x: mo.x + PAD, y: mo.y + PAD, wLook: mo.w / r, m: mo.m, front: mo.front } : null,
     anchors: { mouth: [hv.face.nose[0] + PAD, hv.face.nose[1] + PAD], top: [o, o - c.chain.r * r * 1.2], bottom: [o, o + c.chain.r * r * 1.2], tail: [o - c.chain.r * r, o] },
@@ -426,8 +451,8 @@ function buildGrid(Lo, sw) {
   for (let gx = 0; gx < GW; gx++) bendMax = Math.max(bendMax, Math.abs(zOf[gx]));
   // pectoral hinge flap (generic fish)
   const pecA = 0.42 + 0.32 * Math.sin(TAU * ph + 1.1);
-  const pecReach = Lo.pecRoot >= 0 && L.front ? 18 : 0;
-  const NZ = 2 * (Math.ceil(maxT) + bendMax + 4 + Math.ceil(pecReach * Math.sin(0.8))) + 3;
+  const pecReach = Lo.pecRoot >= 0 && L.front ? Lo.pecLen || 0 : 0;
+  const NZ = 2 * (Math.ceil(maxT) + bendMax + 4 + Math.ceil(pecReach * 0.6)) + 3;
   const zc = NZ >> 1;
   const NX = GW, NY = GH, NXY = NX * NY;
   const data = new Uint16Array(NXY * NZ);
@@ -527,7 +552,7 @@ function buildGrid(Lo, sw) {
           continue;
         }
         // kinds: back layer behind, front layer in front (on the body surface where they overlap it)
-        const pv = pal.idx(p | ((p >>> 24) >= 200 ? 0xff000000 : 0), (p >>> 24) >= 200 ? 0 : 1, glowOf(ly, i));
+        const pv = pal.idx(p | ((p >>> 24) >= 200 ? 0xff000000 : 0), (p >>> 24) >= 200 ? 5 : 1, glowOf(ly, i));
         const t = mask[i] ? Math.round(T[i]) + 1 : 0;
         if (id === 'tail' || ((kind === 'ray' || kind === 'squid') && id === 'back')) { set(tx, gy, zc, pv); continue; }
         const sgn = id === 'back' ? -1 : 1;
@@ -565,7 +590,7 @@ function buildGrid(Lo, sw) {
   const anchors = {};
   for (const [k2, v] of Object.entries(Lo.anchors)) anchors[k2] = P3(v);
   return {
-    Lo, data, NX, NY, NZ, NXY, zmin, zmax, pal, x0, x1, y0, y1, z0, z1,
+    Lo, data, NX, NY, NZ, NXY, zmin, zmax, pal, x0, x1, y0, y1, z0, z1, srcOf, zOf, zc,
     center: [Lo.origin[0], NY - Lo.origin[1], zc + 0.5],
     eyes, mouth, anchors, bytes: data.byteLength + NXY * 4,
   };
@@ -592,6 +617,7 @@ for (let z = -1; z <= 1; z++) for (let y = -1; y <= 1; y++) for (let x = -1; x <
 }
 for (const [x, y, z] of [[2, 0, 0], [-2, 0, 0], [0, 2, 0], [0, -2, 0], [0, 0, 2], [0, 0, -2]]) { KX.push(x); KY.push(y); KZ.push(z); KW.push(0.25); }
 const KN = KX.length;
+const FACET = 0.16;                // share of the per-face normal (visible voxel facets) on the body
 const FN = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 // light (camera space, from the upper left front) and the Blinn half vector
 const LIGHT = (() => { const v = [-0.5, 0.74, 0.46]; const l = Math.hypot(...v); return v.map((a) => a / l); })();
@@ -603,7 +629,7 @@ function hash3(x, y, z) {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
-function camera(G, yawDeg, pitchDeg, s) {
+function camera(G, yawDeg, pitchDeg, s, extraPad = 0) {
   // M = Tilt * Ry(yaw) * Rz(-pitch): rows are the camera axes expressed in model space
   const xf = (v) => {
     const cp = Math.cos(-pitchDeg * DEG), sp = Math.sin(-pitchDeg * DEG);
@@ -624,7 +650,7 @@ function camera(G, yawDeg, pitchDeg, s) {
     const X = px * R0[0] + py * R0[1] + pz * R0[2], Y = px * R1[0] + py * R1[1] + pz * R1[2];
     if (X < minX) minX = X; if (X > maxX) maxX = X; if (Y < minY) minY = Y; if (Y > maxY) maxY = Y;
   }
-  const pad = 2;
+  const pad = 2 + extraPad;
   const W = Math.max(1, Math.ceil((maxX - minX) * s) + pad * 2), H = Math.max(1, Math.ceil((maxY - minY) * s) + pad * 2);
   const project = (p) => {
     const px = p[0] - C[0], py = p[1] - C[1], pz = p[2] - C[2];
@@ -638,7 +664,8 @@ function camera(G, yawDeg, pitchDeg, s) {
 class Job {
   constructor(G, yaw, pitch, s, opts) {
     this.G = G; this.yaw = yaw; this.pitch = pitch; this.s = s; this.opts = opts;
-    const cam = camera(G, yaw, pitch, s);
+    this.glowR = G.pal.em.some((e) => e) ? Math.max(2, Math.round(s * 1.4)) : 0;
+    const cam = camera(G, yaw, pitch, s, this.glowR);
     this.cam = cam;
     const N = cam.W * cam.H;
     this.out = new Uint32Array(N);
@@ -781,7 +808,25 @@ class Job {
     let nx = fn[0], ny = fn[1], nz = fn[2];
     // smoothed normal from the occupancy gradient (opaque voxels)
     let gx = 0, gy = 0, gz = 0;
-    if (role !== 1) {
+    const Lo = G.Lo;
+    if ((role === 0 || role === 3) && Lo.Tx && G.srcOf) {
+      // analytic flank normal of the extruded body: F = |z - zc| - T(x, y)
+      const sxi = G.srcOf[ix];
+      const li = (NY - 1 - iy) * Lo.GW + sxi;
+      if (sxi >= 0 && Lo.mask[li]) {
+        const side = iz + 0.5 - (G.zc + 0.5 + G.zOf[ix]) >= 0 ? 1 : -1;
+        let ax = -Lo.Tx[li], ay = Lo.Ty[li], az = side;
+        const al = Math.hypot(ax, ay, az);
+        ax /= al; ay /= al; az /= al;
+        gx = ax; gy = ay; gz = az;
+        const wf = role === 3 ? 0.3 : FACET;
+        nx = nx * wf + ax * (1 - wf); ny = ny * wf + ay * (1 - wf); nz = nz * wf + az * (1 - wf);
+        const l = Math.hypot(nx, ny, nz) || 1;
+        nx /= l; ny /= l; nz /= l;
+      } else gx = NaN;
+    } else gx = NaN;
+    if (gx !== gx && role !== 1) {
+      gx = 0;
       for (let k = 0; k < KN; k++) {
         const x = ix + KX[k], y = iy + KY[k], z = iz + KZ[k];
         if (x < 0 || y < 0 || z < 0 || x >= NX || y >= NY || z >= NZ) continue;
@@ -796,7 +841,7 @@ class Job {
         nx /= l; ny /= l; nz /= l;
         gx /= gl; gy /= gl; gz /= gl;
       } else { gx = nx; gy = ny; gz = nz; }
-    } else { gx = nx; gy = ny; gz = nz; }
+    } else if (gx !== gx || role === 1) { gx = nx; gy = ny; gz = nz; }
     const { R0, R1, R2 } = cam;
     const cx = R0[0] * nx + R0[1] * ny + R0[2] * nz;
     const cy = R1[0] * nx + R1[1] * ny + R1[2] * nz;
@@ -824,18 +869,19 @@ class Job {
     } else {
       const diff = clamp01((lam + 0.22) / 1.22);
       const sky = 0.5 + 0.5 * cy;
-      let lit = 0.16 + 0.58 * diff + 0.26 * sky;
-      lit *= 0.5 + 0.5 * ao;
-      tone = (lit - 0.6) * 2.35;
+      let lit = 0.2 + 0.52 * diff + 0.2 * sky;
+      lit *= 0.52 + 0.48 * ao;
+      tone = (lit - 0.6) * 2.1;
+      if (tone > 0) tone *= 0.72;
       // glints on the smooth surface, rim light from the water above
       const scx = R0[0] * gx + R0[1] * gy + R0[2] * gz, scy = R1[0] * gx + R1[1] * gy + R1[2] * gz, scz = R2[0] * gx + R2[1] * gy + R2[2] * gz;
       const hd = scx * HALF[0] + scy * HALF[1] + scz * HALF[2];
       const specK = role === 2 ? 1.6 : role === 0 ? 0.75 : 0.4;
       if (hd > 0.8) tone += Math.pow((hd - 0.8) / 0.2, 3) * specK;
       const rim = Math.pow(1 - clamp01(scz), 2.6) * clamp01(scy * 1.4 + 0.25);
-      tone += rim * 0.42;
+      tone += rim * 0.3;
     }
-    tone += (hash3(ix, iy, iz) - 0.5) * 0.07;
+    tone += (hash3(ix, iy, iz) - 0.5) * 0.045;
     const em = pal.em[v];
     if (em) tone = Math.max(tone, 0.3) * 0.5 + 0.32;
     const ti = clamp(Math.round(tone * 10), -10, 10) + 10;
@@ -877,7 +923,7 @@ class Job {
       }
     }
     this.canvas = toCanvas(out, W, H);
-    if (this.glow) this.glowCanvas = toCanvas(glowHalo(this.glow, W, H, Math.max(2, Math.round(this.s * 1.4))), W, H);
+    if (this.glow) this.glowCanvas = toCanvas(glowHalo(this.glow, W, H, this.glowR || 2), W, H);
     statPx += N;
     // free scratch
     this.hk = this.hv = this.hg = null;
@@ -970,7 +1016,7 @@ function layoutFor(c, rk, infl, pose, kf) {
   if (L) { touch(layouts, key, L); return L; }
   const t0 = now();
   L = buildLayout(c, Math.pow(2, rk / 2), infl / INFL_N, pose, kf);
-  spent += now() - t0;
+  spent += now() - t0; workTotal += now() - t0;
   L.key = key;
   layouts.set(key, L);
   if (layouts.size > LAYOUT_MAX) { const k = layouts.keys().next().value; layouts.delete(k); }
@@ -987,7 +1033,7 @@ function gridFor(c, rk, infl, pose, sw) {
   const Lo = layoutFor(c, rk, infl, pose, kf);
   const t0 = now();
   G = buildGrid(Lo, kind ? 0 : sw);
-  spent += now() - t0;
+  spent += now() - t0; workTotal += now() - t0;
   grids.set(gkey, G);
   gridBytes += G.bytes;
   while (gridBytes > GRID_BYTES_MAX && grids.size > 4) {
@@ -1023,7 +1069,7 @@ function makeFrame(job, meta) {
   for (const [k, p] of Object.entries(G.anchors)) anchors[k] = rel(p);
   return {
     canvas: job.canvas, glow: job.glowCanvas || null, W: cam.W, H: cam.H, ax, ay, s: job.s, Sb: meta.Sb, vid: meta.vid,
-    yaw: meta.yaw, pitch: meta.pitch, r: G.Lo.r,
+    yaw: meta.yawI * YAW_STEP, pitch: meta.pitchI * (G.Lo.kind === 'chain' ? CHAIN_PITCH_STEP : PITCH_STEP), r: G.Lo.r,
     eyes: G.eyes.map((e) => { const q = rel(e.p); return { x: q[0], y: q[1], z: q[2], r: e.rLook * meta.Sb, e: e.e, idx: e.idx, mirror: e.mirror, cheek: e.cheek, main: e.main }; }),
     mouth: G.mouth ? (() => { const q = rel(G.mouth.p); return { x: q[0], y: q[1], w: G.mouth.wLook * meta.Sb, m: G.mouth.m, front: G.mouth.front }; })() : null,
     anchors,
@@ -1045,7 +1091,8 @@ function work(c, m, fkey, deadline) {
   J.last = now();
   const t0 = now();
   const done = J.job.step(deadline);
-  spent += now() - t0;
+  const dt = now() - t0;
+  spent += dt; workTotal += dt;
   if (!done) return null;
   jobs.delete(fkey);
   const fr = makeFrame(J.job, m);
@@ -1073,8 +1120,9 @@ function fallback(m) {
 const warmQ = [];
 const warmed = new Set();
 function queueWarm(c, m) {
-  const key = m.vid + '|' + m.rk + '|' + m.infl + '|' + m.pose + '|' + m.sb + '|' + m.pitchI;
+  const key = m.vid + '|' + m.rk + '|' + m.infl + '|' + m.pose;
   if (warmed.has(key)) return;
+  m = { ...m, pitchI: 0 };
   warmed.add(key);
   if (warmed.size > 4000) warmed.clear();
   const isK = isKind(c) || c.kind === 'chain';
@@ -1084,12 +1132,24 @@ function queueWarm(c, m) {
   else for (let s = 1; s < KIND_N; s++) warmQ.push({ c, m: { ...m, yawI: 0, sw: s } });
   if (warmQ.length > 600) warmQ.splice(0, warmQ.length - 600);
 }
-function runWarm() {
-  // drop stale jobs
+// Frames requested last frame, biggest on-screen creatures first, within the per-frame budget.
+const wants = new Map();
+function runWants() {
   const t = now();
   for (const [k, J] of jobs) if (t - J.last > 4000) jobs.delete(k);
-  if (!warmQ.length) return;
-  const deadline = t + WARM_MS;
+  if (!wants.size) return;
+  const list = [...wants.values()].sort((a, b) => b.pri - a.pri);
+  wants.clear();
+  const deadline = t + budgetMs;
+  for (const w of list) {
+    if (now() >= deadline) break;
+    const fkey = fkeyOf(w.m);
+    if (!frames.has(fkey)) work(w.c, w.m, fkey, deadline);
+  }
+}
+function runWarm() {
+  if (!warmQ.length || spent > budgetMs + WARM_MS) return;
+  const deadline = now() + WARM_MS;
   let n = 0;
   while (warmQ.length && now() < deadline && n < 40) {
     const { c, m } = warmQ[0];
@@ -1123,17 +1183,28 @@ export function voxelFrame(c, req) {
   const fkey = fkeyOf(m);
   let f = frames.get(fkey);
   if (f) { touch(frames, fkey, f); return { f, k: req.S / f.Sb }; }
-  if (!overBudget() || jobs.has(fkey)) {
+  // a neighbouring scale bucket of the same pose is close enough (drawn <= ~9% scaled): no rebuild
+  for (const d of [1, -1]) {
+    const sb2 = sb + d, Sb2 = bucketScale(sb2);
+    const k2 = fkeyOf({ ...m, sb: sb2, rk: resLevel(c, Sb2) });
+    const f2 = frames.get(k2);
+    if (f2) { touch(frames, k2, f2); return { f: f2, k: req.S / f2.Sb }; }
+  }
+  if (rafOn) {
+    const pri = req.S * lookLen(c) * (req.lod ? 0.35 : 1) * (req.pri ?? 1);
+    const w = wants.get(fkey);
+    if (!w || w.pri < pri) wants.set(fkey, { c, m, pri });
+  } else if (!overBudget()) {
     f = work(c, m, fkey, now() + Math.max(0.5, budgetMs - spent));
     if (f) return { f, k: req.S / f.Sb };
   }
   queueWarm(c, m);
   const fb = fallback(m);
   if (fb) { statFallback++; return { f: fb, k: req.S / fb.Sb }; }
-  // nothing at all for this creature yet: finish one frame now within a separate allowance
+  // nothing at all for this creature yet: build one frame now within a separate allowance
   if (forceSpent < FORCE_MS || req.force) {
     const t0 = now();
-    f = work(c, m, fkey, t0 + 1e6);
+    f = work(c, m, fkey, req.force ? t0 + 1e6 : t0 + Math.max(2, FORCE_MS - forceSpent));
     forceSpent += now() - t0;
     if (f) return { f, k: req.S / f.Sb };
   }
@@ -1148,6 +1219,22 @@ export function warmVoxelFish(c, scale) {
   const fkey = fkeyOf(m);
   if (!frames.has(fkey)) work(c, m, fkey, now() + 1e6);
   queueWarm(c, m);
+}
+
+// Dev benchmark: time layout / grid / trace+shade / finish for one creature at scale S.
+export function benchVoxel(c, S, yaw = 15, pitch = 0) {
+  const Sb = bucketScale(scaleBucket(S)), rk = resLevel(c, Sb);
+  const t0 = now();
+  const Lo = buildLayout(c, Math.pow(2, rk / 2), 0, false, 0);
+  const t1 = now();
+  const G = buildGrid(Lo, 1);
+  const t2 = now();
+  const job = new Job(G, yaw, pitch, Sb / Lo.r, { outline: true });
+  for (let y = 0; y < job.cam.H; y++) job.traceRow(y);
+  const t3 = now();
+  job.finish();
+  const t4 = now();
+  return { layout: +(t1 - t0).toFixed(2), grid: +(t2 - t1).toFixed(2), trace: +(t3 - t2).toFixed(2), finish: +(t4 - t3).toFixed(2), px: job.cam.W * job.cam.H, W: job.cam.W, H: job.cam.H, vox: G.NX + 'x' + G.NY + 'x' + G.NZ, r: +Lo.r.toFixed(2) };
 }
 
 export function clearVoxelFishCache() {
@@ -1171,7 +1258,7 @@ export function chainBall(c, rScreen) {
   const pal = new Pal();
   const m = n / 2;
   for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
-    const dx = (x + 0.5 - m) / Rv, dy = -(y + 0.5 - m) / Rv; // dy: down positive in the 2D painter
+    const dx = (x + 0.5 - m) / Rv, dy = (y + 0.5 - m) / Rv; // 2D painter coords: y down
     const d2 = dx * dx + dy * dy;
     if (d2 > 1) continue;
     const col = chainSegColor(c, dx, dy, x, y) | 0xff000000;

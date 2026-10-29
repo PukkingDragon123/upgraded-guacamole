@@ -46,6 +46,9 @@
   function hash2(x, y, seed = 0) {
     return hashInt(Math.floor(x) * 374761393 + Math.floor(y) * 668265263 + seed * 2246822519) / 4294967296;
   }
+  function hash3(x, y, z, seed = 0) {
+    return hashInt(Math.floor(x) * 374761393 + Math.floor(y) * 668265263 + Math.floor(z) * 1274126177 + seed * 2246822519) / 4294967296;
+  }
   var smooth = (t) => t * t * (3 - 2 * t);
   function noise2(x, y, seed = 0) {
     const ix = Math.floor(x), iy = Math.floor(y);
@@ -55,14 +58,14 @@
     return lerp(lerp(a, b, fx), lerp(c, d, fx), fy);
   }
   function fbm2(x, y, octaves = 4, seed = 0) {
-    let v = 0, amp = 0.5, f = 1, norm = 0;
+    let v = 0, amp = 0.5, f = 1, norm2 = 0;
     for (let i = 0; i < octaves; i++) {
       v += noise2(x * f, y * f, seed + i * 31) * amp;
-      norm += amp;
+      norm2 += amp;
       amp *= 0.5;
       f *= 2;
     }
-    return v / norm;
+    return v / norm2;
   }
   var BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
   var bayer = (x, y) => BAYER4[(y & 3) * 4 + (x & 3)] / 16;
@@ -73,27 +76,6 @@
       if (yi > py !== yj > py && px < (xj - xi) * (py - yi) / (yj - yi) + xi) inside = !inside;
     }
     return inside;
-  }
-  function segmentHitsRect(x1, y1, x2, y2, r) {
-    let t0 = 0, t1 = 1;
-    const dx = x2 - x1, dy = y2 - y1;
-    const p = [-dx, dx, -dy, dy];
-    const q = [x1 - r.x, r.x + r.w - x1, y1 - r.y, r.y + r.h - y1];
-    for (let i = 0; i < 4; i++) {
-      if (p[i] === 0) {
-        if (q[i] < 0) return false;
-      } else {
-        const t = q[i] / p[i];
-        if (p[i] < 0) {
-          if (t > t1) return false;
-          if (t > t0) t0 = t;
-        } else {
-          if (t < t0) return false;
-          if (t < t1) t1 = t;
-        }
-      }
-    }
-    return true;
   }
 
   // src/core/rng.js
@@ -123,14 +105,14 @@
       return arr[Math.floor(this.next() * arr.length)];
     }
     // items: [{w: weight, ...}] or [[item, weight], ...]
-    weighted(items, weightOf = (it) => it.w) {
+    weighted(items, weightOf = (it2) => it2.w) {
       let total = 0;
-      for (const it of items) total += Math.max(0, weightOf(it));
+      for (const it2 of items) total += Math.max(0, weightOf(it2));
       if (total <= 0) return items[0];
       let r = this.next() * total;
-      for (const it of items) {
-        r -= Math.max(0, weightOf(it));
-        if (r <= 0) return it;
+      for (const it2 of items) {
+        r -= Math.max(0, weightOf(it2));
+        if (r <= 0) return it2;
       }
       return items[items.length - 1];
     }
@@ -220,8 +202,8 @@
     return [shade(hex, -0.62 * contrast), shade(hex, -0.3 * contrast), hex, shade(hex, 0.32 * contrast), shade(hex, 0.62 * contrast)];
   }
   function adjust(hex, { h = 0, s = 0, l = 0, sMul = 1, lMul = 1 } = {}) {
-    const [H, S4, L] = hexToHsl(hex);
-    return hslToHex(H + h, clamp01(S4 * sMul + s), clamp01(L * lMul + l));
+    const [H, S5, L] = hexToHsl(hex);
+    return hslToHex(H + h, clamp01(S5 * sMul + s), clamp01(L * lMul + l));
   }
   function invert(hex) {
     const [r, g, b] = hexToRgb(hex);
@@ -253,6 +235,7 @@
     epic: { name: "Epic", color: "#d27bff", dark: "#6a2fa0", stars: 4, weight: 3.2 },
     legendary: { name: "Legendary", color: "#ffd04a", dark: "#a86a12", stars: 5, weight: 0.8 }
   };
+  var RARITY_ORDER = ["common", "uncommon", "rare", "epic", "legendary"];
 
   // src/core/canvas.js
   function makeCanvas(w, h) {
@@ -265,6 +248,22 @@
     const g = canvas.getContext("2d", { willReadFrequently: false });
     g.imageSmoothingEnabled = false;
     return g;
+  }
+  var tintCache = /* @__PURE__ */ new WeakMap();
+  function tinted(src, color) {
+    let m = tintCache.get(src);
+    if (!m) tintCache.set(src, m = /* @__PURE__ */ new Map());
+    let c = m.get(color);
+    if (!c) {
+      c = makeCanvas(src.width, src.height);
+      const g = ctxOf(c);
+      g.drawImage(src, 0, 0);
+      g.globalCompositeOperation = "source-in";
+      g.fillStyle = color;
+      g.fillRect(0, 0, c.width, c.height);
+      m.set(color, c);
+    }
+    return c;
   }
 
   // src/core/audio.js
@@ -473,10 +472,10 @@
   }
   var curve = (v) => Math.pow(clamp012(v), 1.5);
   var TRIM = { master: 1.6, sfx: 1.25, music: 0.7, amb: 0.8 };
-  function applyVolumes(now2 = false) {
+  function applyVolumes(now4 = false) {
     if (!B) return;
     const set = (param, v) => {
-      if (now2) param.value = v;
+      if (now4) param.value = v;
       else ramp2(param, v);
     };
     set(B.master.gain, curve(vols.master) * TRIM.master);
@@ -499,8 +498,8 @@
     if (B) ramp2(B.musicTone.frequency, S.night ? 3600 : 16e3, 0.8);
   }
   function register(pool, srcs, nodes, env, start, end) {
-    const list = pools[pool] || pools.sfx, limit = LIMITS[pool] || 32, now2 = ctx.currentTime;
-    for (let i = list.length - 1; i >= 0; i--) if (list[i].end <= now2) list.splice(i, 1);
+    const list = pools[pool] || pools.sfx, limit = LIMITS[pool] || 32, now4 = ctx.currentTime;
+    for (let i = list.length - 1; i >= 0; i--) if (list[i].end <= now4) list.splice(i, 1);
     let n = 0, oldest = null;
     for (const v2 of list) {
       if (v2.killed || v2.start > start || v2.end <= start) continue;
@@ -530,9 +529,9 @@
   function kill(v, at) {
     if (v.done || v.killed) return;
     v.killed = true;
-    const now2 = ctx.currentTime, t = Math.max(now2, at ?? now2), g = v.env.gain;
+    const now4 = ctx.currentTime, t = Math.max(now4, at ?? now4), g = v.env.gain;
     if (g.cancelAndHoldAtTime) g.cancelAndHoldAtTime(t);
-    else if (t - now2 < 0.01) {
+    else if (t - now4 < 0.01) {
       g.cancelScheduledValues(t);
       g.setValueAtTime(g.value, t);
     }
@@ -545,14 +544,14 @@
       }
     }
   }
-  function envAt(g, t, dur, peak, a = 4e-3, shape = "exp", r = 0.08) {
+  function envAt(g, t, dur, peak, a = 4e-3, shape4 = "exp", r = 0.08) {
     const p = g.gain, end = t + Math.max(dur, a + 4e-3);
     p.setValueAtTime(0, t);
     p.linearRampToValueAtTime(peak, t + a);
-    if (shape === "sus") {
+    if (shape4 === "sus") {
       p.setValueAtTime(peak, Math.max(t + a, end - r));
       p.linearRampToValueAtTime(0, end);
-    } else if (shape === "lin") {
+    } else if (shape4 === "lin") {
       p.linearRampToValueAtTime(0, end);
     } else {
       p.exponentialRampToValueAtTime(peak * 1e-3 + 1e-6, end);
@@ -560,21 +559,21 @@
     }
     return end + 0.012;
   }
-  function setFreq(param, t, f, f2, glide, mul = 1) {
+  function setFreq(param, t, f, f2, glide, mul2 = 1) {
     if (Array.isArray(f)) {
-      param.setValueAtTime(cf(f[0][1] * mul), t + f[0][0]);
-      for (let i = 1; i < f.length; i++) param.exponentialRampToValueAtTime(cf(f[i][1] * mul), t + f[i][0]);
-      return f[0][1] * mul;
+      param.setValueAtTime(cf(f[0][1] * mul2), t + f[0][0]);
+      for (let i = 1; i < f.length; i++) param.exponentialRampToValueAtTime(cf(f[i][1] * mul2), t + f[i][0]);
+      return f[0][1] * mul2;
     }
-    param.setValueAtTime(cf(f * mul), t);
-    if (f2) param.exponentialRampToValueAtTime(cf(f2 * mul), t + Math.max(5e-3, glide));
-    return f * mul;
+    param.setValueAtTime(cf(f * mul2), t);
+    if (f2) param.exponentialRampToValueAtTime(cf(f2 * mul2), t + Math.max(5e-3, glide));
+    return f * mul2;
   }
-  function addFilter(t, spec, dur, mul, nodes) {
+  function addFilter(t, spec, dur, mul2, nodes) {
     const fl = ctx.createBiquadFilter();
     fl.type = spec.type || "lowpass";
     fl.Q.value = spec.q ?? 0.7;
-    setFreq(fl.frequency, t, spec.f, spec.f2, spec.glide ?? dur, spec.track === false ? 1 : mul);
+    setFreq(fl.frequency, t, spec.f, spec.f2, spec.glide ?? dur, spec.track === false ? 1 : mul2);
     nodes.push(fl);
     return fl;
   }
@@ -609,7 +608,7 @@
     wave,
     a = 4e-3,
     vol = 0.2,
-    shape,
+    shape: shape4,
     r,
     vib,
     filt,
@@ -627,8 +626,8 @@
       head = fl;
     }
     const dets = unison || [0];
-    const sub = gainNode(1 / Math.sqrt(dets.length), head);
-    nodes.push(sub);
+    const sub2 = gainNode(1 / Math.sqrt(dets.length), head);
+    nodes.push(sub2);
     let lfo = null;
     if (vib) {
       const l = ctx.createOscillator();
@@ -646,12 +645,12 @@
       setFreq(osc.frequency, t, f, f2, glide ?? dur, o.p);
       if (d) osc.detune.value = d;
       if (lfo) lfo.connect(osc.frequency);
-      osc.connect(sub);
+      osc.connect(sub2);
       osc.start(t);
       srcs.push(osc);
       nodes.push(osc);
     }
-    const end = envAt(env, t, dur, vol, a, shape, r);
+    const end = envAt(env, t, dur, vol, a, shape4, r);
     route(o, env, nodes, verb, pan);
     finishVoice(o, srcs, nodes, env, t, end);
   }
@@ -668,7 +667,7 @@
     a = 3e-3,
     vol = 0.2,
     type = "sine",
-    shape,
+    shape: shape4,
     r,
     filt,
     verb,
@@ -694,7 +693,7 @@
     } else car.connect(env);
     car.start(t);
     mod.start(t);
-    const end = envAt(env, t, dur, vol, a, shape, r);
+    const end = envAt(env, t, dur, vol, a, shape4, r);
     route(o, env, nodes, verb, pan);
     finishVoice(o, [car, mod], nodes, env, t, end);
   }
@@ -710,7 +709,7 @@
     a = 4e-3,
     vol = 0.2,
     rate = 1,
-    shape,
+    shape: shape4,
     r,
     verb,
     pan
@@ -728,7 +727,7 @@
       fl.connect(env);
     } else src.connect(env);
     src.start(t, Math.random() * 1.8);
-    const end = envAt(env, t, dur, vol, a, shape, r);
+    const end = envAt(env, t, dur, vol, a, shape4, r);
     route(o, env, nodes, verb, pan);
     finishVoice(o, [src], nodes, env, t, end);
   }
@@ -1927,7 +1926,7 @@
   var tracks = [];
   var curTrack = null;
   function makeTrack(name) {
-    const def = TRACKS[name], t = ctx.currentTime, fadeIn = def.fadeIn ?? 2.5;
+    const def2 = TRACKS[name], t = ctx.currentTime, fadeIn = def2.fadeIn ?? 2.5;
     const fade = gainNode(0, B.music.in), wet = gainNode(0, B.music.verb);
     for (const g of [fade, wet]) {
       g.gain.setValueAtTime(0, t);
@@ -1935,7 +1934,7 @@
     }
     const tr = {
       name,
-      def,
+      def: def2,
       fade,
       wet,
       i: 0,
@@ -1944,11 +1943,11 @@
       dead: false,
       stopAt: 0,
       nodes: [fade, wet],
-      stepDur: def.stepDur ?? 60 / def.bpm / 4
+      stepDur: def2.stepDur ?? 60 / def2.bpm / 4
     };
     tr.g = group(fade, wet, 1, 3);
-    tr.o = (tt, dest, verb) => ({ t: tt, p: 1, out: dest || fade, wet, verb: verb ?? def.verb ?? 0.18, pool: "music", end: 0 });
-    if (def.init) def.init(tr);
+    tr.o = (tt, dest, verb) => ({ t: tt, p: 1, out: dest || fade, wet, verb: verb ?? def2.verb ?? 0.18, pool: "music", end: 0 });
+    if (def2.init) def2.init(tr);
     return tr;
   }
   function stopTrack(tr, fade = 2.5) {
@@ -2022,21 +2021,21 @@
     const str = String(text ?? "").toLowerCase();
     const letters = str.replace(/[^a-z0-9]/g, "");
     if (!letters.length) return;
-    const now2 = ctx.currentTime;
+    const now4 = ctx.currentTime;
     const dest = { dry: B.sfx.in, wet: B.sfx.verb, pool: "sfx", vol: 1, verb: 0.05 };
     const pitchOf = (c) => v.scale[c.charCodeAt(0) * 7 % v.scale.length];
     if (str.length <= 2) {
-      if (now2 - (bab.last[voice] ?? -1) < v.gap * 0.9) return;
-      bab.last[voice] = now2;
+      if (now4 - (bab.last[voice] ?? -1) < v.gap * 0.9) return;
+      bab.last[voice] = now4;
       const c = letters[0];
-      fire((o2) => blip(o2, 0, m2f(v.base + pitchOf(c)) * rand(0.98, 1.02), v, FORMANT[c] || 1200, false, "stkpcfxz".includes(c)), now2 + 5e-3, dest);
+      fire((o2) => blip(o2, 0, m2f(v.base + pitchOf(c)) * rand(0.98, 1.02), v, FORMANT[c] || 1200, false, "stkpcfxz".includes(c)), now4 + 5e-3, dest);
       return;
     }
     if (bab.line) {
       const g = bab.line.gain;
-      g.cancelScheduledValues(now2);
-      g.setValueAtTime(g.value, now2);
-      g.linearRampToValueAtTime(0, now2 + 0.03);
+      g.cancelScheduledValues(now4);
+      g.setValueAtTime(g.value, now4);
+      g.linearRampToValueAtTime(0, now4 + 0.03);
     }
     const q = /\?\s*$/.test(str), ex = /!\s*$/.test(str);
     const o = fire((oo) => {
@@ -2073,7 +2072,7 @@
         at += v.gap * rand(0.9, 1.1);
         count++;
       }
-    }, now2 + 0.01, dest);
+    }, now4 + 0.01, dest);
     bab.line = o.out;
   }
   var timer = null;
@@ -2154,11 +2153,11 @@
     if (!ready()) return;
     const { vol = 1, pitch = 1, pan = 0 } = opts || {};
     if (!(vol > 0)) return;
-    const now2 = ctx.currentTime;
-    if (now2 - (lastPlay.get(name) ?? -1) < (MIN_GAP[name] ?? 0.03)) return;
-    lastPlay.set(name, now2);
+    const now4 = ctx.currentTime;
+    if (now4 - (lastPlay.get(name) ?? -1) < (MIN_GAP[name] ?? 0.03)) return;
+    lastPlay.set(name, now4);
     try {
-      fire(fn, now2 + 5e-3, {
+      fire(fn, now4 + 5e-3, {
         dry: B.sfx.in,
         wet: B.sfx.verb,
         pool: "sfx",
@@ -2452,27 +2451,27 @@
       "]": "##|.#|.#|.#|##"
     }
   };
-  function buildFont(def) {
+  function buildFont(def2) {
     const entries = [];
     let atlasW = 0;
-    for (const [ch, src] of Object.entries(def.glyphs)) {
+    for (const [ch, src] of Object.entries(def2.glyphs)) {
       const rows = src.split("|");
       const w = rows[0].length;
       entries.push({ ch, rows, w, x: atlasW });
       atlasW += w + 1;
     }
-    const atlasH = def.height + def.descent;
+    const atlasH = def2.height + def2.descent;
     const canvas = makeCanvas(atlasW, atlasH);
     const g = ctxOf(canvas);
     g.fillStyle = "#fff";
-    const glyphs = /* @__PURE__ */ new Map();
+    const glyphs2 = /* @__PURE__ */ new Map();
     for (const e of entries) {
       e.rows.forEach((row, y) => {
         for (let x = 0; x < row.length; x++) if (row[x] === "#") g.fillRect(e.x + x, y, 1, 1);
       });
-      glyphs.set(e.ch, { x: e.x, w: e.w, h: e.rows.length });
+      glyphs2.set(e.ch, { x: e.x, w: e.w, h: e.rows.length });
     }
-    return { ...def, atlas: canvas, glyphs, tints: /* @__PURE__ */ new Map(), atlasH };
+    return { ...def2, atlas: canvas, glyphs: glyphs2, tints: /* @__PURE__ */ new Map(), atlasH };
   }
   var FONTS = {
     normal: buildFont(NORMAL_DEF),
@@ -2599,18 +2598,19 @@
 
   // src/gfx/particles.js
   var ringCache = /* @__PURE__ */ new Map();
-  function ringSprite(r, color) {
-    const key = r + color;
+  function ringSprite(r, color, flat = 0.4) {
+    const key = r + color + flat;
     let c = ringCache.get(key);
     if (!c) {
       const s = r * 2 + 3;
-      c = makeCanvas(s, Math.max(3, Math.ceil(r * 0.8) * 2 + 3));
+      c = makeCanvas(s, Math.max(3, Math.ceil(r * flat) * 2 + 3));
       const g = ctxOf(c);
       g.fillStyle = color;
       const cy = c.height / 2;
       for (let a = 0; a < TAU; a += 0.5 / Math.max(1, r)) {
-        g.fillRect(Math.round(s / 2 + Math.cos(a) * r - 0.5), Math.round(cy + Math.sin(a) * r * 0.4 - 0.5), 1, 1);
+        g.fillRect(Math.round(s / 2 + Math.cos(a) * r - 0.5), Math.round(cy + Math.sin(a) * r * flat - 0.5), 1, 1);
       }
+      if (ringCache.size > 600) ringCache.clear();
       ringCache.set(key, c);
     }
     return c;
@@ -2635,15 +2635,94 @@
     }
     return c;
   }
+  var discCache = /* @__PURE__ */ new Map();
+  function discSprite(r, color, edge = 0.45, rim = null) {
+    r = Math.max(1, Math.round(r));
+    const key = r + color + edge + rim;
+    let c = discCache.get(key);
+    if (!c) {
+      const s = r * 2 + 1;
+      c = makeCanvas(s, s);
+      const g = ctxOf(c);
+      for (let y = 0; y < s; y++) for (let x = 0; x < s; x++) {
+        const d = Math.hypot(x - r, y - r) / (r + 0.35);
+        if (d > 1) continue;
+        const solid = 1 - edge;
+        if (d > solid && bayer(x, y) > 1 - (d - solid) / Math.max(0.01, edge)) continue;
+        g.fillStyle = rim && d > 0.55 && y > r ? rim : color;
+        g.fillRect(x, y, 1, 1);
+      }
+      if (discCache.size > 500) discCache.clear();
+      discCache.set(key, c);
+    }
+    return c;
+  }
+  var glowCache = /* @__PURE__ */ new Map();
+  function glowSprite(r, color) {
+    r = Math.max(2, Math.round(r));
+    const key = r + color;
+    let c = glowCache.get(key);
+    if (!c) {
+      const s = r * 2 + 1;
+      c = makeCanvas(s, s);
+      const g = ctxOf(c);
+      for (let y = 0; y < s; y++) for (let x = 0; x < s; x++) {
+        const d = Math.hypot(x - r, y - r) / r;
+        if (d > 1) continue;
+        const k = (1 - d) * (1 - d);
+        if (bayer(x, y) > k * 1.6) continue;
+        g.fillStyle = rgba(color, 0.25 + k * 0.6);
+        g.fillRect(x, y, 1, 1);
+      }
+      if (glowCache.size > 200) glowCache.clear();
+      glowCache.set(key, c);
+    }
+    return c;
+  }
+  var coinFrames = null;
+  function coinFrame(i) {
+    if (!coinFrames) {
+      coinFrames = [5, 4, 3, 1, 3, 4].map((w, fi) => {
+        const c = makeCanvas(7, 7);
+        const g = ctxOf(c);
+        const x0 = Math.round((7 - w) / 2);
+        g.fillStyle = "#5a3208";
+        g.fillRect(x0 - (w > 1 ? 1 : 0), 1, w + (w > 1 ? 2 : 0), 5);
+        g.fillRect(x0, 0, w, 7);
+        g.fillStyle = fi === 3 ? "#c8901a" : "#ffc832";
+        g.fillRect(x0, 1, w, 5);
+        if (w > 2) {
+          g.fillStyle = "#c8901a";
+          g.fillRect(x0 + w - 1, 2, 1, 4);
+          g.fillRect(x0, 5, w, 1);
+          g.fillStyle = "#fff3a0";
+          g.fillRect(x0, 1, 1, 3);
+          g.fillRect(x0 + 1, 1, w - 2, 1);
+          if (w >= 4) {
+            g.fillStyle = "#e8a828";
+            g.fillRect(x0 + 2, 2, 1, 3);
+          }
+        }
+        return c;
+      });
+    }
+    return coinFrames[(i % 6 + 6) % 6];
+  }
+  function pixelLine(ctx2, x0, y0, x1, y1, w = 1) {
+    const dx = x1 - x0, dy = y1 - y0;
+    const n = Math.max(1, Math.round(Math.max(Math.abs(dx), Math.abs(dy))));
+    for (let i = 0; i <= n; i++) ctx2.fillRect(Math.round(x0 + dx * i / n), Math.round(y0 + dy * i / n), w, w);
+  }
+  var CONFETTI = ["#ff5a6a", "#ffd23a", "#5ad8ff", "#8aff7a", "#d27bff", "#ffffff", "#ff9a3a"];
   var Particles = class {
     constructor(max = 900) {
       this.max = max;
       this.list = [];
       this.limitScale = 1;
       this.surfaceY = null;
+      this.rr = 0;
     }
     add(p) {
-      if (this.list.length >= this.max * this.limitScale) return null;
       const q = {
         kind: "dot",
         x: 0,
@@ -2662,9 +2741,17 @@
         ...p
       };
       q.max = q.life;
+      if (q.delay) q.t = -q.delay;
+      const cap = Math.max(16, Math.floor(this.max * this.limitScale));
+      if (this.list.length >= cap) {
+        this.rr = (this.rr + 1) % Math.max(1, Math.min(this.list.length, cap >> 1));
+        this.list[this.rr] = q;
+        return q;
+      }
       this.list.push(q);
       return q;
     }
+    // ---------------------------------------------------------------- classic helpers
     bubble(x, y, opts = {}) {
       return this.add({ kind: "bubble", x, y, vx: rng.float(-4, 4), vy: -rng.float(14, 26), life: rng.float(1.5, 4), size: opts.size ?? rng.pick([1, 1, 1, 2, 2, 3]), wob: rng.float(0, TAU), layer: opts.layer || "fg", ...opts });
     }
@@ -2686,7 +2773,9 @@
           g: opts.g ?? 60,
           drag: opts.drag ?? 2,
           add: !!opts.add,
-          layer: opts.layer || "fg"
+          layer: opts.layer || "fg",
+          len: opts.len,
+          delay: opts.delay
         });
       }
     }
@@ -2695,13 +2784,14 @@
       for (let i = 0; i < n; i++) {
         const a = -Math.PI / 2 + rng.float(-0.9, 0.9);
         const sp = rng.float(30, 110) * (0.6 + power * 0.6);
-        this.add({ kind: "drop", x: x + rng.float(-4, 4), y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rng.float(0.5, 1.2), size: rng.pick([1, 1, 2]), color: rng.pick(["#e8fbff", "#a8e8ff", "#ffffff"]), g: 260, drag: 0.4 });
+        this.add({ kind: i % 3 ? "drop" : "droplet", x: x + rng.float(-4, 4), y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rng.float(0.5, 1.2), size: rng.pick([1, 1, 2]), color: rng.pick(["#e8fbff", "#a8e8ff", "#ffffff"]), g: 260, drag: 0.4 });
       }
       this.ring(x, y, power);
+      if (power > 0.5) this.foam(x, y, Math.round(3 + power * 4), { spread: 6 + power * 8 });
       this.bubbles(x, y + 4, Math.round(4 + 6 * power));
     }
-    ring(x, y, power = 1, color = "rgba(230,250,255,0.9)") {
-      return this.add({ kind: "ring", x, y, life: 0.6 + 0.3 * power, r0: 2, r1: 8 + 10 * power, color, layer: "fg" });
+    ring(x, y, power = 1, color = "rgba(230,250,255,0.9)", opts = {}) {
+      return this.add({ kind: "ring", x, y, life: 0.6 + 0.3 * power, r0: 2, r1: 8 + 10 * power, color, layer: "fg", ...opts });
     }
     sparkle(x, y, color = "#fff6b0", opts = {}) {
       return this.add({ kind: "sparkle", x, y, vx: rng.float(-6, 6), vy: rng.float(-10, -2), life: rng.float(0.4, 0.9), color, add: true, ...opts });
@@ -2712,41 +2802,252 @@
     sprite(x, y, canvas, opts = {}) {
       return this.add({ kind: "sprite", x, y, sprite: canvas, life: 1, vy: -10, layer: "fg", ...opts });
     }
+    // ---------------------------------------------------------------- water
+    // Droplets with motion trails. opts: dir (rad), spread, speed [min,max], colors, g, layer, size
+    droplets(x, y, n, opts = {}) {
+      const dir = opts.dir ?? -Math.PI / 2, spread = opts.spread ?? 1;
+      const [s0, s1] = opts.speed || [40, 140];
+      for (let i = 0; i < n; i++) {
+        const a = dir + rng.float(-spread, spread), sp = rng.float(s0, s1);
+        this.add({
+          kind: "droplet",
+          x: x + rng.float(-(opts.w ?? 3), opts.w ?? 3),
+          y: y + rng.float(-1, 1),
+          vx: Math.cos(a) * sp + (opts.vx ?? 0),
+          vy: Math.sin(a) * sp + (opts.vy ?? 0),
+          life: rng.float(opts.lifeMin ?? 0.5, opts.life ?? 1.3),
+          size: opts.size ?? rng.pick([1, 1, 1, 2]),
+          color: rng.pick(opts.colors || ["#ffffff", "#e8fbff", "#b8ecff", "#8ad8ff"]),
+          g: opts.g ?? 300,
+          drag: opts.drag ?? 0.3,
+          layer: opts.layer || "fg",
+          delay: opts.delay ? rng.float(0, opts.delay) : 0,
+          trail: opts.trail ?? 3
+        });
+      }
+    }
+    // Surface foam puffs that swell, drift and fade.
+    foam(x, y, n = 6, opts = {}) {
+      const spread = opts.spread ?? 10;
+      for (let i = 0; i < n; i++) {
+        this.add({
+          kind: "foam",
+          x: x + rng.float(-spread, spread),
+          y: y + rng.float(-1.5, 1.5),
+          vx: rng.float(-14, 14) * (opts.push ?? 1),
+          vy: rng.float(-3, 1),
+          life: rng.float(0.7, 1.6) * (opts.lifeMul ?? 1),
+          r0: rng.pick([1, 1, 2]),
+          r1: rng.pick([2, 3, 3, 4, 5]) * (opts.scale ?? 1),
+          drag: 3,
+          color: opts.color || "#ffffff",
+          rim: opts.rim || "#b8e8f8",
+          layer: opts.layer || "fg",
+          delay: opts.delay ? rng.float(0, opts.delay) : 0
+        });
+      }
+    }
+    // Fine mist / spray that hangs in the air.
+    spray(x, y, power = 1, opts = {}) {
+      const n = Math.round(12 * power);
+      for (let i = 0; i < n; i++) {
+        const a = (opts.dir ?? -Math.PI / 2) + rng.float(-1.2, 1.2);
+        const sp = rng.float(20, 90) * power;
+        this.add({ kind: "mist", x: x + rng.float(-6, 6), y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rng.float(0.6, 1.4), g: 30, drag: 2.5, color: rng.pick(["#ffffff", "#d8f6ff", "#b0e4ff"]), layer: opts.layer || "fg" });
+      }
+    }
+    // Concentric ripple rings spreading out over time.
+    ripples(x, y, n = 3, power = 1, opts = {}) {
+      for (let i = 0; i < n; i++) {
+        this.add({ kind: "ring", x, y, life: 0.7 + power * 0.4, r0: 2 + i * 2, r1: 10 + 14 * power + i * 6, color: opts.color || "rgba(230,250,255,0.85)", delay: i * (opts.gap ?? 0.16), layer: opts.layer || "fg", flat: opts.flat });
+      }
+    }
+    // Big fish-out-of-water eruption: water column, crown droplets, foam skirt, mist, rings, bubbles.
+    eruption(x, y, power = 1, opts = {}) {
+      const layer = opts.layer || "fg";
+      this.droplets(x, y, Math.round(26 * power), { dir: -Math.PI / 2, spread: 0.35, speed: [120 * power, 260 * power], g: 340, w: 5, layer, life: 1.6 });
+      this.droplets(x, y, Math.round(22 * power), { dir: -Math.PI / 2, spread: 1.15, speed: [60, 170 * power], g: 300, w: 8, layer });
+      this.spray(x, y - 4, power * 1.4, { layer });
+      this.foam(x, y, Math.round(10 * power), { spread: 14 * power, scale: 1.1, layer });
+      this.ripples(x, y, 3, power, { layer });
+      for (let i = 0; i < 4; i++) this.add({ kind: "column", x: x + rng.float(-4, 4), y, h: rng.float(30, 60) * power, w: rng.pick([2, 3, 4]), life: rng.float(0.35, 0.6), layer, color: "#e8fbff", delay: i * 0.04 });
+      this.bubbles(x, y + 6, Math.round(10 * power));
+    }
+    // ---------------------------------------------------------------- speed & light
+    // Single streak along its velocity. opts.len = pixel length, opts.add = additive.
+    streak(x, y, vx, vy, opts = {}) {
+      return this.add({ kind: "streak", x, y, vx, vy, life: opts.life ?? 0.35, len: opts.len ?? 10, color: opts.color || "#ffffff", add: opts.add ?? true, drag: opts.drag ?? 0, g: 0, layer: opts.layer || "fg", delay: opts.delay, w: opts.w ?? 1 });
+    }
+    // Radial speed lines around a point. inward = lines rush toward the centre (impact frames).
+    speedLines(x, y, n = 16, opts = {}) {
+      const r0 = opts.r0 ?? 20, r1 = opts.r1 ?? 60;
+      for (let i = 0; i < n; i++) {
+        const a = i / n * TAU + rng.float(-0.12, 0.12);
+        const r = rng.float(r0, r1);
+        const sp = rng.float(opts.speed?.[0] ?? 120, opts.speed?.[1] ?? 260) * (opts.inward ? -1 : 1);
+        this.streak(x + Math.cos(a) * r, y + Math.sin(a) * r, Math.cos(a) * sp, Math.sin(a) * sp, {
+          len: rng.float(opts.len?.[0] ?? 8, opts.len?.[1] ?? 20),
+          life: rng.float(0.18, opts.life ?? 0.38),
+          color: Array.isArray(opts.colors) ? rng.pick(opts.colors) : opts.color || "#ffffff",
+          layer: opts.layer,
+          add: opts.add ?? true,
+          w: opts.w
+        });
+      }
+    }
+    // Directional water streaks (behind a dashing fish).
+    wake(x, y, dir, n = 3, opts = {}) {
+      for (let i = 0; i < n; i++) {
+        const a = dir + rng.float(-0.25, 0.25), sp = rng.float(60, 140);
+        this.streak(x + rng.float(-6, 6), y + rng.float(-6, 6), -Math.cos(a) * sp, -Math.sin(a) * sp, { len: rng.float(6, 16), life: rng.float(0.2, 0.4), color: opts.color || "#d8f6ff", add: false, layer: opts.layer });
+      }
+    }
+    // Long glowing light streaks shooting out of a point (catch moments).
+    lightStreaks(x, y, n = 10, opts = {}) {
+      for (let i = 0; i < n; i++) {
+        const a = (opts.dir ?? 0) + (opts.spread !== void 0 ? rng.float(-opts.spread, opts.spread) : rng.float(0, TAU));
+        const sp = rng.float(160, 340);
+        this.streak(x, y, Math.cos(a) * sp, Math.sin(a) * sp, { len: rng.float(14, 34), life: rng.float(0.25, 0.55), color: rng.pick(opts.colors || ["#fff6c0", "#ffffff", "#ffe27a"]), drag: 3, layer: opts.layer, add: true });
+      }
+    }
+    // Crank sparks: bright, gravity, velocity-aligned.
+    sparks(x, y, n = 6, opts = {}) {
+      for (let i = 0; i < n; i++) {
+        const a = (opts.dir ?? -Math.PI / 2) + rng.float(-(opts.spread ?? Math.PI), opts.spread ?? Math.PI);
+        const sp = rng.float(opts.speed?.[0] ?? 40, opts.speed?.[1] ?? 130);
+        this.add({ kind: "spark", x, y, vx: Math.cos(a) * sp + (opts.vx ?? 0), vy: Math.sin(a) * sp + (opts.vy ?? 0), life: rng.float(0.2, opts.life ?? 0.55), g: opts.g ?? 220, drag: 1.5, color: rng.pick(opts.colors || ["#fff6a0", "#ffd23a", "#ffffff", "#ff9a3a"]), layer: opts.layer || "fg", add: true });
+      }
+    }
+    stars(x, y, n = 6, opts = {}) {
+      for (let i = 0; i < n; i++) {
+        const a = rng.float(0, TAU), sp = rng.float(opts.speed?.[0] ?? 20, opts.speed?.[1] ?? 90);
+        this.add({ kind: "star", x: x + rng.float(-(opts.w ?? 0), opts.w ?? 0), y: y + rng.float(-(opts.h ?? 0), opts.h ?? 0), vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - (opts.up ?? 0), life: rng.float(0.5, opts.life ?? 1.1), g: opts.g ?? 20, drag: 2.2, size: rng.pick(opts.sizes || [1, 2, 2, 3]), color: rng.pick(opts.colors || ["#fff6b0", "#ffffff", "#ffe27a"]), layer: opts.layer || "fg", add: true, spin: rng.float(0, 4), delay: opts.delay ? rng.float(0, opts.delay) : 0 });
+      }
+    }
+    glow(x, y, r = 12, color = "#fff6c0", opts = {}) {
+      return this.add({ kind: "glow", x, y, r, color, life: opts.life ?? 0.5, layer: opts.layer || "fg", grow: opts.grow ?? 0.4, vx: opts.vx ?? 0, vy: opts.vy ?? 0 });
+    }
+    // Full circular shockwave (underwater hits, hook-set).
+    shockwave(x, y, r = 30, color = "#ffffff", opts = {}) {
+      return this.add({ kind: "ring", x, y, life: opts.life ?? 0.45, r0: opts.r0 ?? 3, r1: r, color: rgba(color, opts.alpha ?? 0.9), flat: 1, layer: opts.layer || "fg", delay: opts.delay });
+    }
+    // ---------------------------------------------------------------- creature bits
+    scales(x, y, n = 5, colors = ["#c8e8ff"], opts = {}) {
+      for (let i = 0; i < n; i++) {
+        const a = rng.float(0, TAU), sp = rng.float(20, 70);
+        this.add({ kind: "scale", x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 20, life: rng.float(0.9, 1.8), g: opts.g ?? 40, drag: 2.4, color: rng.pick(colors), ph: rng.float(0, TAU), layer: opts.layer || "fg" });
+      }
+    }
+    ink(x, y, n = 5, opts = {}) {
+      for (let i = 0; i < n; i++) {
+        const a = rng.float(0, TAU), sp = rng.float(8, 40) * (opts.power ?? 1);
+        this.add({ kind: "ink", x: x + rng.float(-4, 4), y: y + rng.float(-4, 4), vx: Math.cos(a) * sp + (opts.vx ?? 0), vy: Math.sin(a) * sp + (opts.vy ?? 0), life: rng.float(1.2, 2.6) * (opts.lifeMul ?? 1), r0: rng.float(2, 4), r1: rng.float(7, 15) * (opts.scale ?? 1), drag: 1.6, color: opts.color || "#140a22", rim: opts.rim || "#2a1a44", layer: opts.layer || "fg", delay: opts.delay ? rng.float(0, opts.delay) : 0 });
+      }
+    }
+    bubbleTrail(x, y, vx = 0, vy = 0, opts = {}) {
+      const n = opts.n ?? 1;
+      for (let i = 0; i < n; i++) {
+        this.bubble(x + rng.float(-2, 2), y + rng.float(-2, 2), { vx: -vx * 0.15 + rng.float(-6, 6), vy: -vy * 0.15 - rng.float(8, 24), size: rng.pick(opts.sizes || [1, 1, 2]), life: rng.float(0.6, 1.6), layer: opts.layer || "fg" });
+      }
+    }
+    // ---------------------------------------------------------------- celebration
+    confetti(x, y, n = 30, opts = {}) {
+      for (let i = 0; i < n; i++) {
+        const a = (opts.dir ?? -Math.PI / 2) + rng.float(-(opts.spread ?? 1.2), opts.spread ?? 1.2);
+        const sp = rng.float(opts.speed?.[0] ?? 80, opts.speed?.[1] ?? 240);
+        this.add({
+          kind: "confetti",
+          x: x + rng.float(-(opts.w ?? 4), opts.w ?? 4),
+          y,
+          vx: Math.cos(a) * sp,
+          vy: Math.sin(a) * sp,
+          life: rng.float(1.6, opts.life ?? 3.2),
+          g: opts.g ?? 90,
+          drag: 1.8,
+          color: rng.pick(opts.colors || CONFETTI),
+          spin: rng.float(0, TAU),
+          spinV: rng.float(6, 16) * rng.sign(),
+          sway: rng.float(0, TAU),
+          w: rng.pick([2, 3, 3]),
+          h: rng.pick([2, 3, 4]),
+          layer: opts.layer || "fg",
+          delay: opts.delay ? rng.float(0, opts.delay) : 0
+        });
+      }
+    }
+    coins(x, y, n = 6, opts = {}) {
+      for (let i = 0; i < n; i++) {
+        const a = -Math.PI / 2 + rng.float(-(opts.spread ?? 1), opts.spread ?? 1);
+        const sp = rng.float(opts.speed?.[0] ?? 80, opts.speed?.[1] ?? 180);
+        this.add({ kind: "coin", x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rng.float(1.1, opts.life ?? 1.8), g: opts.g ?? 380, drag: 0.6, spin: rng.float(0, 6), spinV: rng.float(14, 24), floor: opts.floor ?? null, layer: opts.layer || "fg", delay: opts.delay ? rng.float(0, opts.delay) : 0 });
+      }
+    }
+    // ---------------------------------------------------------------- simulation
     update(dt) {
       const list = this.list;
       let w = 0;
+      const surf = this.surfaceY;
       for (let i = 0; i < list.length; i++) {
         const p = list[i];
         p.t += dt;
         if (p.t >= p.max) continue;
-        if (p.kind === "bubble") {
-          p.wob += dt * 5;
-          p.vy = Math.max(p.vy - 8 * dt, -45);
-          p.x += (p.vx + Math.sin(p.wob) * 6) * dt;
-          p.y += p.vy * dt;
-          if (this.surfaceY !== null && p.y < this.surfaceY + 2 && p.layer !== "ui") {
-            p.t = p.max;
-            if (p.size > 1 && list.length < this.max) this.add({ kind: "dot", x: p.x, y: this.surfaceY + 1, vy: -10, life: 0.25, color: "#ffffff", layer: p.layer });
-            continue;
-          }
-        } else {
-          p.vx *= Math.exp(-p.drag * dt);
-          p.vy *= Math.exp(-p.drag * dt);
-          p.vy += p.g * dt;
-          p.x += p.vx * dt;
-          p.y += p.vy * dt;
-          if (p.kind === "drop" && this.surfaceY !== null && p.vy > 0 && p.y > this.surfaceY + 1 && p.t > 0.1) {
-            p.t = p.max;
-            continue;
-          }
+        if (p.t < 0) {
+          list[w++] = p;
+          continue;
+        }
+        switch (p.kind) {
+          case "bubble":
+            p.wob += dt * 5;
+            p.vy = Math.max(p.vy - 8 * dt, -45);
+            p.x += (p.vx + Math.sin(p.wob) * 6) * dt;
+            p.y += p.vy * dt;
+            if (surf !== null && p.y < surf + 2 && p.layer !== "ui") {
+              p.t = p.max;
+              if (p.size > 1 && list.length < this.max) this.add({ kind: "dot", x: p.x, y: surf + 1, vy: -10, life: 0.25, color: "#ffffff", layer: p.layer });
+              continue;
+            }
+            break;
+          case "confetti":
+            p.spin += p.spinV * dt;
+            p.sway += dt * 4;
+            p.vx *= Math.exp(-p.drag * dt);
+            p.vy *= Math.exp(-p.drag * dt);
+            p.vy += p.g * dt;
+            p.x += (p.vx + Math.sin(p.sway) * 18) * dt;
+            p.y += p.vy * dt;
+            break;
+          default:
+            if (p.trail) {
+              p.px = p.x;
+              p.py = p.y;
+            }
+            p.vx *= Math.exp(-p.drag * dt);
+            p.vy *= Math.exp(-p.drag * dt);
+            p.vy += p.g * dt;
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+            if (p.kind === "coin") {
+              p.spin += p.spinV * dt;
+              if (p.floor !== null && p.y > p.floor && p.vy > 0) {
+                p.y = p.floor;
+                p.vy *= -0.45;
+                p.vx *= 0.7;
+              }
+            }
+            if ((p.kind === "drop" || p.kind === "droplet") && surf !== null && p.layer !== "ui" && p.vy > 0 && p.y > surf + 1 && p.t > 0.1) {
+              p.t = p.max;
+              if (p.size > 1 && list.length < this.max * 0.8) this.add({ kind: "ring", x: p.x, y: surf + 1, life: 0.35, r0: 1, r1: 4, color: "rgba(230,250,255,0.8)", layer: p.layer });
+              continue;
+            }
         }
         list[w++] = p;
       }
       list.length = w;
     }
+    // ---------------------------------------------------------------- drawing
     draw(ctx2, layer = "fg", time = 0) {
       for (const p of this.list) {
-        if (p.layer !== layer) continue;
+        if (p.layer !== layer || p.t < 0) continue;
         const k = p.t / p.max;
         const a = p.fade ? Math.min(1, (1 - k) * 2.2) : 1;
         if (a <= 0.02) continue;
@@ -2761,7 +3062,7 @@
           }
           case "ring": {
             const r = Math.round(p.r0 + (p.r1 - p.r0) * Math.sqrt(k));
-            const s = ringSprite(r, p.color);
+            const s = ringSprite(r, p.color, p.flat ?? 0.4);
             ctx2.globalAlpha = 1 - k;
             ctx2.drawImage(s, x - Math.floor(s.width / 2), y - Math.floor(s.height / 2));
             ctx2.globalAlpha = 1;
@@ -2788,9 +3089,29 @@
             ctx2.globalCompositeOperation = "source-over";
             break;
           }
+          case "star": {
+            const s = p.size;
+            const tw = 0.6 + 0.4 * Math.sin(p.t * 18 + p.spin);
+            ctx2.globalCompositeOperation = "lighter";
+            ctx2.fillStyle = rgba(p.color, a * tw);
+            const diag = Math.floor(p.t * 6 + p.spin) % 2 === 1 && s > 1;
+            if (diag) {
+              for (let i = -s; i <= s; i++) {
+                ctx2.fillRect(x + i, y + i, 1, 1);
+                ctx2.fillRect(x + i, y - i, 1, 1);
+              }
+            } else {
+              ctx2.fillRect(x - s, y, s * 2 + 1, 1);
+              ctx2.fillRect(x, y - s, 1, s * 2 + 1);
+            }
+            ctx2.fillStyle = rgba("#ffffff", a);
+            ctx2.fillRect(x, y, 1, 1);
+            ctx2.globalCompositeOperation = "source-over";
+            break;
+          }
           case "text":
             ctx2.globalAlpha = a;
-            drawText(ctx2, p.text, x, y, { font: p.font, color: p.color, align: "center", outline: p.outline ?? "#14202c", time, wave: p.wave });
+            drawText(ctx2, p.text, x, y, { font: p.font, color: p.color, align: "center", outline: p.outline ?? "#14202c", time, wave: p.wave, scale: p.scale });
             ctx2.globalAlpha = 1;
             break;
           case "sprite": {
@@ -2798,6 +3119,106 @@
             ctx2.globalAlpha = a;
             ctx2.drawImage(s, x - Math.floor(s.width / 2), y - Math.floor(s.height / 2));
             ctx2.globalAlpha = 1;
+            break;
+          }
+          case "droplet": {
+            ctx2.fillStyle = rgba(p.color, a);
+            ctx2.fillRect(x, y, p.size, p.size);
+            const sp = Math.hypot(p.vx, p.vy);
+            if (sp > 30) {
+              const n = Math.min(p.trail, Math.round(sp / 45) + 1);
+              const ux = p.vx / sp, uy = p.vy / sp;
+              for (let i = 1; i <= n; i++) {
+                ctx2.fillStyle = rgba(p.color, a * (1 - i / (n + 1)) * 0.7);
+                ctx2.fillRect(Math.round(p.x - ux * i * 1.6), Math.round(p.y - uy * i * 1.6), 1, 1);
+              }
+            }
+            break;
+          }
+          case "foam": {
+            const r = Math.round(p.r0 + (p.r1 - p.r0) * Math.sqrt(k));
+            const s = discSprite(r, p.color, 0.5, p.rim);
+            ctx2.globalAlpha = a * 0.95;
+            ctx2.drawImage(s, x - r, y - r);
+            ctx2.globalAlpha = 1;
+            break;
+          }
+          case "ink": {
+            const r = Math.round(p.r0 + (p.r1 - p.r0) * Math.sqrt(k));
+            const s = discSprite(r, p.color, 0.55, p.rim);
+            ctx2.globalAlpha = a * 0.85;
+            ctx2.drawImage(s, x - r, y - r);
+            ctx2.globalAlpha = 1;
+            break;
+          }
+          case "glow": {
+            const r = Math.round(p.r * (1 + p.grow * k));
+            const s = glowSprite(r, p.color);
+            ctx2.globalCompositeOperation = "lighter";
+            ctx2.globalAlpha = a;
+            ctx2.drawImage(s, x - r, y - r);
+            ctx2.globalAlpha = 1;
+            ctx2.globalCompositeOperation = "source-over";
+            break;
+          }
+          case "mist":
+            ctx2.fillStyle = rgba(p.color, a * 0.55);
+            ctx2.fillRect(x, y, 1, 1);
+            break;
+          case "column": {
+            const h = Math.round(p.h * Math.sin(Math.min(1, k * 1.2) * Math.PI));
+            ctx2.fillStyle = rgba(p.color, a * 0.8);
+            ctx2.fillRect(x - (p.w >> 1), y - h, p.w, h);
+            ctx2.fillStyle = rgba("#ffffff", a);
+            ctx2.fillRect(x - (p.w >> 1), y - h, p.w, 1);
+            break;
+          }
+          case "streak":
+          case "spark": {
+            const sp = Math.hypot(p.vx, p.vy) || 1;
+            const len = p.kind === "spark" ? Math.min(4, 1 + sp / 50) : p.len * (1 - k * 0.5);
+            const ux = p.vx / sp, uy = p.vy / sp;
+            if (p.add) ctx2.globalCompositeOperation = "lighter";
+            ctx2.fillStyle = rgba(p.color, a);
+            pixelLine(ctx2, p.x, p.y, p.x - ux * len, p.y - uy * len, p.w || 1);
+            if (p.kind === "spark") {
+              ctx2.fillStyle = rgba("#ffffff", a);
+              ctx2.fillRect(x, y, 1, 1);
+            }
+            if (p.add) ctx2.globalCompositeOperation = "source-over";
+            break;
+          }
+          case "scale": {
+            const flick = Math.sin(p.t * 14 + p.ph);
+            ctx2.fillStyle = rgba(flick > 0.3 ? "#ffffff" : p.color, a);
+            if (flick > -0.4) {
+              ctx2.fillRect(x, y - 1, 1, 1);
+              ctx2.fillRect(x - 1, y, 3, 1);
+              ctx2.fillRect(x, y + 1, 1, 1);
+            } else ctx2.fillRect(x - 1, y, 2, 1);
+            break;
+          }
+          case "confetti": {
+            const cw = Math.max(1, Math.round(Math.abs(Math.cos(p.spin)) * p.w));
+            ctx2.fillStyle = rgba(p.color, a);
+            ctx2.fillRect(x - (cw >> 1), y, cw, p.h);
+            if (cw > 1) {
+              ctx2.fillStyle = rgba("#ffffff", a * 0.5);
+              ctx2.fillRect(x - (cw >> 1), y, cw, 1);
+            }
+            break;
+          }
+          case "coin": {
+            ctx2.globalAlpha = a;
+            ctx2.drawImage(coinFrame(Math.floor(p.spin)), x - 3, y - 3);
+            ctx2.globalAlpha = 1;
+            if (Math.floor(p.spin) % 6 === 0 && Math.sin(p.t * 30) > 0.6) {
+              ctx2.globalCompositeOperation = "lighter";
+              ctx2.fillStyle = rgba("#fff6c0", a);
+              ctx2.fillRect(x - 1, y - 4, 1, 3);
+              ctx2.fillRect(x - 2, y - 3, 3, 1);
+              ctx2.globalCompositeOperation = "source-over";
+            }
             break;
           }
           default: {
@@ -3678,10 +4099,10 @@
     return buf.toCanvas();
   }
   function buildReelCursor() {
-    const S4 = 13, c = 6.5;
-    const buf = new PixelBuffer(S4, S4);
-    for (let y = 1; y < S4 - 1; y++) {
-      for (let x = 1; x < S4 - 1; x++) {
+    const S5 = 13, c = 6.5;
+    const buf = new PixelBuffer(S5, S5);
+    for (let y = 1; y < S5 - 1; y++) {
+      for (let x = 1; x < S5 - 1; x++) {
         const dx = x + 0.5 - c, dy = y + 0.5 - c, d = Math.hypot(dx, dy);
         if (d > 5.4) continue;
         const lit = d > 0 ? (-dx - dy) / (d * 1.414) : 0;
@@ -3779,7 +4200,7 @@
   function compileLook(look, variant = null) {
     const kind = look.kind || "fish";
     const b = look.body || {};
-    const shape = { ...SHAPES[b.shape || "oval"], ...b };
+    const shape4 = { ...SHAPES[b.shape || "oval"], ...b };
     const col = look.col || look.chain?.col || {};
     const vc = (h, role) => variantColor(h, variant, role);
     const base = col.body || "#ff9944";
@@ -3799,7 +4220,7 @@
       L,
       H,
       k,
-      shape,
+      shape: shape4,
       hump: b.hump ?? 0,
       belly: b.belly ?? 0.05,
       wave: b.wave ?? 0.5,
@@ -3879,8 +4300,8 @@
       c.pectoral.R7 = TONES7.map((a) => P(shade(satd(vc(look.pectoral?.color || finHex)), a * contrast)));
     }
     const lidHex = (e) => vc(e.lid || bodyHex);
-    const mkEye = (e, def) => {
-      const o = { type: "normal", ...def, ...e };
+    const mkEye = (e, def2) => {
+      const o = { type: "normal", ...def2, ...e };
       o.pupil = P(vc(o.color || "#0c0a12", "eye"));
       o.irisR = o.iris ? toRamp(vc(o.iris, "eye")) : null;
       o.realIris = ramp(adjust(vc(o.iris || look.eyeIris || "#e8bc4a", "eye"), { l: 0.06, sMul: 1.1 })).map((h) => P(h));
@@ -3991,12 +4412,12 @@
   var spineAt = (c, u, phase) => c.bend * Math.sin(TAU * phase - u * 3.2) * u * u;
   function rampPick(R, b, x, y, dither = 0.85) {
     const n = R.length - 1;
-    const chk = x + y & 1 ? 0.5 : -0.5;
+    const chk = VOXM ? 0 : x + y & 1 ? 0.5 : -0.5;
     const idx = clamp(Math.round(b * n + chk * Math.min(0.3, dither * 0.3)), 0, n);
     return R[idx];
   }
   function tone2(R, idx, x, y) {
-    const chk = x + y & 1 ? 0.2 : -0.2;
+    const chk = VOXM ? 0 : x + y & 1 ? 0.2 : -0.2;
     return R[clamp(Math.round(5 + (idx - 3) * 1.5 + chk), 0, R.length - 1)];
   }
   var TONES7 = [-0.9, -0.75, -0.58, -0.4, -0.21, 0, 0.17, 0.35, 0.54, 0.74];
@@ -4047,8 +4468,8 @@
     const h = Math.ceil(mxy - mny) + pad * 2 + 1;
     return { w, h, ox: Math.floor(-mnx) + pad, oy: Math.floor(-mny) + pad };
   }
-  function rectFor(box, angle, scale, ox, oy, w, h) {
-    const [x0, y0, x1, y1] = box;
+  function rectFor(box2, angle, scale, ox, oy, w, h) {
+    const [x0, y0, x1, y1] = box2;
     const ca = Math.cos(angle), sa = Math.sin(angle);
     let mnx = Infinity, mny = Infinity, mxx = -Infinity, mxy = -Infinity;
     for (const [x, y] of [[x0, y0], [x1, y0], [x0, y1], [x1, y1]]) {
@@ -4067,6 +4488,31 @@
   }
   var gOut = 0;
   var patLight = 0;
+  var VOXM = false;
+  function voxAlbedo(fn) {
+    const prev = VOXM;
+    VOXM = true;
+    try {
+      return fn();
+    } finally {
+      VOXM = prev;
+    }
+  }
+  function rasterLayerVox(c, layer, q) {
+    return voxAlbedo(() => rasterLayer(c, layer, q));
+  }
+  function chainHeadVox(c, s) {
+    return voxAlbedo(() => {
+      const r = c.chain.r * s;
+      const hb = Math.ceil(r * 4.5 + 6);
+      const buf = new PixelBuffer(hb * 2, hb * 2);
+      const face = paintChainHead(c, buf, null, hb, hb, 0, s, 0);
+      return { data: buf.data, w: buf.w, h: buf.h, o: hb, face };
+    });
+  }
+  function chainSegColor(c, dx, dy, x, y) {
+    return voxAlbedo(() => segColor(c, dx, dy, x, y));
+  }
   function finShape(type, t, phase, count) {
     switch (type) {
       case "sail":
@@ -4171,7 +4617,7 @@
     const st = a / G.TL;
     const rr2 = Math.hypot(bb, a + G.TL * 0.4);
     const ang = Math.atan2(bb, a + G.TL * 0.4);
-    const da = c.raySp * 1.15 / (G.TL * 1.4);
+    const da = (VOXM ? Math.max(c.raySp, 2.6 / s) : c.raySp) * 1.15 / (G.TL * 1.4);
     const onRay = c.tail.rays !== false && Math.abs(fract(ang / da + 0.5) - 0.5) * da * rr2 * s < 0.55;
     const e1 = 1 / s;
     const edge = !tailHit(type, a + 0.6 + e1, bb, G.TL, G.TS, G.tailBase, tp) || !tailHit(type, a + 0.6, bb + e1, G.TL, G.TS, G.tailBase, tp) || !tailHit(type, a + 0.6, bb - e1, G.TL, G.TS, G.tailBase, tp);
@@ -4182,6 +4628,7 @@
     if (bb > 0 && !edge && !onRay) idx = 3.6;
     if (c.tail.spotP && !edge && hash2(Math.floor(lx * s / 2), Math.floor(ly * s / 2), 13) < 0.13) return c.tail.spotP;
     const al = onRay || edge || st < 0.14 ? 255 : Math.round(255 * Math.min(1, c.finAlpha));
+    if (VOXM) idx = 3.3 + (idx - 3.3) * 0.5;
     return withA(tone2(R, idx, px, py), al);
   }
   function finPix(c, G, lx, ly, px, py, s, fp, sw, still, raise = 0) {
@@ -4203,8 +4650,8 @@
       const wob = still ? 1 : 1 + 0.08 * Math.sin(TAU * fp - t * 7);
       const fh = fhMax * finShape(f.type, t, fp, f.count) * wob;
       const along = (ue - f.from) * G.L;
-      let sp = c.raySp;
-      if (f.spines) sp = Math.max(c.raySp * 1.5, (f.to - f.from) * G.L / Math.max(3, f.count * 1.6));
+      let sp = VOXM ? Math.max(c.raySp, 2.6 / s) : c.raySp;
+      if (f.spines) sp = Math.max(sp * 1.5, (f.to - f.from) * G.L / Math.max(3, f.count * 1.6));
       const rf = fract(along / sp + 0.5) - 0.5;
       const onRay = f.rays && Math.abs(rf) * sp * s < 0.6;
       const R = f.R7;
@@ -4228,6 +4675,7 @@
       if (!top && !edge && !onRay) idx -= 0.4;
       if (f.spotP && !edge && hash2(Math.floor(lx * s / 2), Math.floor(ly * s / 2), 17) < 0.14) return f.spotP;
       const al = onRay || edge ? 255 : Math.round(255 * (f.alpha ?? c.finAlpha));
+      if (VOXM) idx = 3.3 + (idx - 3.3) * 0.5;
       return withA(tone2(R, idx, px, py), al);
     }
     return 0;
@@ -4248,7 +4696,7 @@
     if (Math.abs(b) > wdt + 0.3) return 0;
     const ang = Math.atan2(b, a + pec.len * 0.35);
     const rr2 = Math.hypot(b, a + pec.len * 0.35);
-    const da = (pec.spines ? 2.2 : 1.15) * c.raySp / (pec.len * 1.35);
+    const da = (pec.spines ? 2.2 : 1.15) * (VOXM ? Math.max(c.raySp, 2.6 / s) : c.raySp) / (pec.len * 1.35);
     const rf = fract(ang / da + 0.5) - 0.5;
     const onRay = Math.abs(rf) * da * rr2 * s < 0.6;
     if (pec.spines && !onRay && st > 1 - 0.45 * Math.abs(rf) * 2) return 0;
@@ -4257,6 +4705,7 @@
     let idx = onRay ? 2.2 : 4.6;
     if (edge) idx = 1.1;
     if (st < 0.12) idx = 2;
+    if (VOXM) idx = 3.3 + (idx - 3.3) * 0.5;
     return withA(tone2(R, idx, px, py), edge ? 245 : onRay || st < 0.12 ? 215 : Math.round(255 * Math.min(1, c.finAlpha - 0.45)));
   }
   function patternHit(c, pat, u, v, lx, ly, L, H, phase, px, py) {
@@ -4399,11 +4848,11 @@
         const ix = Math.floor(ax), iy = Math.floor(ay);
         const fx = ax - ix, fy = ay - iy;
         const tri = fx + fy > 1 ? 1 : 0;
-        const hsh = hash2(ix * 2 + tri, iy, 31);
-        patLight += (hsh - 0.5) * 0.55;
+        const hsh2 = hash2(ix * 2 + tri, iy, 31);
+        patLight += (hsh2 - 0.5) * 0.55;
         const edge = Math.min(fx, fy, 1 - fx, 1 - fy, Math.abs(fx + fy - 1) * 0.7);
         if (edge * sz < 0.55) return 3;
-        return hsh > 0.94 ? 3 : 0;
+        return hsh2 > 0.94 ? 3 : 0;
       }
       case "plates": {
         const sz = pat.size ?? 5 * k;
@@ -4727,14 +5176,14 @@
             const R = c._usbC || (c._usbC = ramp(c.vc(e.color || "#30343e", "extra")).map((h) => P(h)));
             return rampPick(R, clamp01(0.62 - (ly - q.y0) / hh * 0.3 - (x > q.len * 0.22 ? 0.25 : 0)), px, py);
           }
-          const M = c._usbM || (c._usbM = ramp(c.vc(e.color2 || "#c4ccd8", "extra")).map((h) => P(h)));
+          const M2 = c._usbM || (c._usbM = ramp(c.vc(e.color2 || "#c4ccd8", "extra")).map((h) => P(h)));
           const tx = (x - q.len * 0.26) / (q.len * 0.86);
           const vy = (ly - q.y0) / hh;
           for (const hx of [0.35, 0.68]) if (Math.abs(tx - hx) < 0.09 && vy < -0.1 && vy > -0.62) return P("#1a1c24");
-          if (vy < -0.8) return M[4];
-          if (vy > 0.75) return M[1];
-          if (tx > 0.97) return M[2];
-          return rampPick(M, clamp01(0.62 - vy * 0.25), px, py);
+          if (vy < -0.8) return M2[4];
+          if (vy > 0.75) return M2[1];
+          if (tx > 0.97) return M2[2];
+          return rampPick(M2, clamp01(0.62 - vy * 0.25), px, py);
         }
         default:
           break;
@@ -4791,10 +5240,12 @@
       if (v < -0.5) idx -= 0.25;
       idx += (opU - u) * 0.8;
     }
-    if (dT < 1.05) idx -= 1;
-    if (dB < 1.2) idx -= 1.9;
-    else if (dB < 2.3) idx -= 0.8;
-    if (u > 0.82) idx -= (u - 0.82) * 3.5;
+    if (!VOXM) {
+      if (dT < 1.05) idx -= 1;
+      if (dB < 1.2) idx -= 1.9;
+      else if (dB < 2.3) idx -= 0.8;
+      if (u > 0.82) idx -= (u - 0.82) * 3.5;
+    }
     patLight = 0;
     let patHit = false;
     for (const pat of c.patterns) {
@@ -4817,7 +5268,7 @@
       }
     }
     idx += patLight * 4;
-    if (c.scales && !inHead && u < 0.93 && v > -0.78 && v < 0.62) {
+    if (c.scales && !inHead && u < 0.93 && v > -0.78 && v < 0.62 && (!VOXM || s >= 1.1)) {
       const sc = c.scaleSize, rh = sc * 0.62;
       const row = Math.floor(ly / rh + 1e3);
       const off = (row & 1) * sc * 0.5;
@@ -4830,7 +5281,7 @@
         else if (fyPx >= 1.4 && fyPx < 2.4 && fx > 0.36 && fx < 0.56 && v < 0.35) idx += 0.75;
       }
     }
-    if (c.lateral && !inHead && u < 0.95) {
+    if (c.lateral && !inHead && u < 0.95 && (!VOXM || s >= 0.9)) {
       const lv = (c.look.lateralV ?? vb * 0.45 + 0.02) + (u - opU) * 0.12;
       if (Math.abs(v - lv) * (lv < 0 ? top : bot) * s < 0.55 && (Math.floor(lx * s / 2) & 1) === 0) idx += 1.1;
     }
@@ -4853,7 +5304,7 @@
       const nu = e0.u * 0.42, nv = e0.v * 0.55;
       if (Math.abs((u - nu) * L * s) < 0.55 && Math.abs((v - nv) * top * s) < 0.55) idx = 0.6;
     }
-    if (c.shine && c.spec) {
+    if (c.shine && c.spec && !VOXM) {
       const sv0 = vb - 0.24, sv1 = vb - 0.02;
       if (v > sv0 && v < sv1 && u > 0.05 && u < 0.7) {
         const dash = u < opU + 0.04 || (Math.floor(lx * s / 2) & 1) === 0;
@@ -5317,7 +5768,7 @@
     const ca = Math.cos(angle), sa = Math.sin(angle);
     const toC = (x, y) => [ox + (x * ca - y * sa) * s, oy + (x * sa + y * ca) * s];
     const sp = (u) => still ? 0 : spineAt(c, u, sw);
-    const eyes = c.eyes.map((e, i) => {
+    const eyes2 = c.eyes.map((e, i) => {
       const [ex, ey, er] = eyeLocal(c, G, e, sw, still);
       const [x, y] = toC(ex, ey);
       return { x, y, r: er * s, e, idx: i, mirror: false, cheek: i === 0, main: i === 0, angle };
@@ -5357,7 +5808,7 @@
     }
     return {
       gill,
-      eyes,
+      eyes: eyes2,
       mouth: { x: mx, y: myc, w: c.mouth.w * s, m: c.mouth, front: false, angle },
       anchors,
       offsets: { tail: off(1), back: off(0.5), front: c.pectoral ? off(c.pectoral.u) : [0, 0], body: [0, 0] }
@@ -5513,8 +5964,8 @@
               if (hv < 0) col = hx < -0.15 && hy > 0.2 && hv < -4e-3 && hx > -0.55 ? HEART[4] : rampPick(HEART, clamp01(0.62 + hy * 0.3), x, y);
               else col = d > 1 - 1 / R ? SCLERA[0] : SCLERA[3];
             } else if (em.spiral) {
-              const rot = Math.floor(time * 8) * 0.8;
-              const t = fract(d * 2.3 - (Math.atan2(ey, ex) + rot) / TAU);
+              const rot2 = Math.floor(time * 8) * 0.8;
+              const t = fract(d * 2.3 - (Math.atan2(ey, ex) + rot2) / TAU);
               col = t < 0.32 ? P("#2a1a34") : SCLERA[3];
               if (d > 1 - 1 / R) col = SCLERA[0];
             } else if (e.type === "glow") {
@@ -5589,10 +6040,10 @@
     }
   }
   var mouthBox = (W) => Math.ceil(W * 1.25 + 5);
-  function realJaw(c, m, t, ux, uy, W, open, sm, x, y) {
+  function realJaw(c, m, t, ux, uy, W, open, sm2, x, y) {
     if (t < -0.02 || t > 1.04) return 0;
     const tc = clamp01(t);
-    const jaw = W * (m.sag ?? 0.1) * Math.pow(tc, 1.4) - sm * W * 0.3 * tc * tc;
+    const jaw = W * (m.sag ?? 0.1) * Math.pow(tc, 1.4) - sm2 * W * 0.3 * tc * tc;
     const line = m.lineP;
     const lips = m.type === "lips";
     const lipT = lips ? Math.max(1.5, W * 0.22) : 0;
@@ -5630,7 +6081,7 @@
     const inside = P("#2a0b18"), tongue = P("#ff6f8f"), tongueH = P("#ffb0c4");
     const lipsR = m.R;
     const W2 = front ? W / 2 : W;
-    const sm = (em.smile || 0) + (m.smile || 0);
+    const sm2 = (em.smile || 0) + (m.smile || 0);
     for (let y = Math.floor(my - hb); y <= Math.ceil(my + hb); y++) {
       for (let x = Math.floor(mx - hb); x <= Math.ceil(mx + hb); x++) {
         const dx = x + 0.5 - mx, dy = y + 0.5 - my;
@@ -5640,11 +6091,11 @@
         const curveY = (tt) => {
           let yy = 0;
           if (front) {
-            if (sm) yy += sm * W * 0.32 * (1 - tt * tt);
+            if (sm2) yy += sm2 * W * 0.32 * (1 - tt * tt);
             if (em.smirk) yy += ux > 0 ? em.smirk * W * 0.35 * (1 - tt * tt) : 0;
             if (em.wave) yy += em.wave * W * Math.sin(ux / W * TAU * 1.6);
           } else {
-            if (sm) yy -= sm * W * 0.42 * tt * tt;
+            if (sm2) yy -= sm2 * W * 0.42 * tt * tt;
             if (em.smirk) yy -= em.smirk * W * 0.7 * Math.max(0, tt - 0.45) ** 2 / 0.3;
             if (em.wave) yy += em.wave * W * Math.sin(tt * TAU * 1.3);
           }
@@ -5652,7 +6103,7 @@
         };
         const type = m.type;
         if (!front && (type === "small" || type === "big" || type === "fangs" || type === "lips")) {
-          col = realJaw(c, m, t, ux, uy, W, open, c.toon ? sm * 0.6 : (m.smile || 0) * 0.6, x, y);
+          col = realJaw(c, m, t, ux, uy, W, open, c.toon ? sm2 * 0.6 : (m.smile || 0) * 0.6, x, y);
         } else if (type === "lips") {
           const lx0 = front ? ux : ux + W * 0.05;
           if (open > 0.12 || O) {
@@ -5732,7 +6183,7 @@
           } else if (t >= (front ? 0 : 0.04) && t <= 1) {
             const yy = curveY(t);
             if (Math.abs(uy - yy) < tk) col = line;
-            if (!front && t > 0.9 && Math.abs(uy - yy + 0.9) < 0.5 && W > 5 && sm > 0.2) col = line;
+            if (!front && t > 0.9 && Math.abs(uy - yy + 0.9) < 0.5 && W > 5 && sm2 > 0.2) col = line;
             if (type === "fangs") {
               for (const ft of [0.22, 0.6]) {
                 const fl = Math.max(1.5, W * 0.22) * (ft < 0.3 ? 1 : 0.8);
@@ -5817,13 +6268,13 @@
       const bob = Math.round(Math.sin(ph * TAU * 2) * 0.5 * Math.max(1, c.k * 0.4));
       return { L, H, rx: L / 2, ry: H / 2, cy: -H * 0.12 + bob, bob };
     },
-    paint(c, part, buf, glow, ox, oy, s, ph, q) {
-      const g = this.geo(c, s, part === "body" || part === "all" ? ph : 0);
+    paint(c, part2, buf, glow, ox, oy, s, ph, q) {
+      const g = this.geo(c, s, part2 === "body" || part2 === "all" ? ph : 0);
       const { L, H, rx, ry } = g;
       const shell = c.look.shell || "round";
       const cx = ox, cy = oy + g.cy;
-      const LEG = shell === "mech" ? rp(c, c.look.legColor || "#8a909c") : c.look.legColor ? rp(c, c.look.legColor) : c.finR;
-      if (part === "back" || part === "all") {
+      const LEG2 = shell === "mech" ? rp(c, c.look.legColor || "#8a909c") : c.look.legColor ? rp(c, c.look.legColor) : c.finR;
+      if (part2 === "back" || part2 === "all") {
         const walk = ph * TAU;
         const lr = Math.max(1.4, H * 0.1);
         for (let i = 0; i < 3; i++) for (const side of [-1, 1]) {
@@ -5833,12 +6284,12 @@
           const lift = Math.max(0, Math.sin(p2)) * H * 0.12;
           const kx = bx + side * L * 0.16, ky = by - H * 0.18 - lift;
           const fx = bx + side * (L * 0.27 + Math.cos(p2) * L * 0.04), fy = oy + ry * 0.95 - lift * 0.4;
-          const RL = far ? LEG.map((v, j) => LEG[Math.max(0, j - 1)]) : LEG;
+          const RL = far ? LEG2.map((v, j) => LEG2[Math.max(0, j - 1)]) : LEG2;
           capsule(buf, bx, by, kx, ky, lr * 1.15, lr, RL);
           capsule(buf, kx, ky, fx, fy, lr, Math.max(0.6, lr * 0.4), RL, { light: 0.45 });
         }
       }
-      if (part === "body" || part === "all") {
+      if (part2 === "body" || part2 === "all") {
         for (const [sx, sh] of [[0.18, 1], [0.5, 0.92]]) {
           const ex = cx + rx * sx, top = cy - ry - H * 0.32 * sh;
           capsule(buf, ex, cy - ry * 0.6, ex + H * 0.02, top, Math.max(0.8, H * 0.06), Math.max(0.7, H * 0.05), shell === "mech" ? rp(c, "#6a707c") : c.bodyR);
@@ -5882,18 +6333,18 @@
           }
           if (glow) for (let x = -2; x <= 2; x++) glow.set(Math.round(cx + rx * 0.2 + x), Math.round(cy + ry * 0.62), pk2(c, "#ff3a3a"));
         } else if (shell === "mech") {
-          const M = R;
+          const M2 = R;
           for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry * 0.6); y++) for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
             const nx = (x + 0.5 - cx) / rx, ny = (y + 0.5 - cy) / ry;
             const corner = Math.max(0, Math.abs(nx) - 0.72) / 0.28 + Math.max(0, -ny - 0.62) / 0.38;
             if (corner > 1 || ny > 0.6 || Math.abs(nx) > 1 || ny < -1) continue;
             let light = 0.62 - ny * 0.3 - nx * 0.1;
             if (ny > 0.22) light -= 0.25;
-            let col = rampPick(M, clamp01(light), x, y);
-            if (Math.abs(ny - 0.22) * ry < 0.6) col = M[0];
-            if (Math.abs(nx) * rx < 0.6 && ny < 0.22) col = M[1];
-            if (Math.abs(ny + 0.35) * ry < 0.6 && Math.abs(nx) < 0.75) col = M[1];
-            if (corner > 0.8) col = M[3];
+            let col = rampPick(M2, clamp01(light), x, y);
+            if (Math.abs(ny - 0.22) * ry < 0.6) col = M2[0];
+            if (Math.abs(nx) * rx < 0.6 && ny < 0.22) col = M2[1];
+            if (Math.abs(ny + 0.35) * ry < 0.6 && Math.abs(nx) < 0.75) col = M2[1];
+            if (corner > 0.8) col = M2[3];
             for (const [bx2, by2] of [[-0.78, -0.55], [0.78, -0.55], [-0.85, 0.4], [0.85, 0.4], [-0.3, 0.4], [0.3, 0.4]]) {
               const dd = Math.hypot((nx - bx2) * rx, (ny - by2) * ry);
               if (dd < Math.max(0.8, H * 0.05)) col = dd < 0.7 && nx < bx2 ? P("#ffffff") : pk2(c, "#d8dde6");
@@ -5925,7 +6376,7 @@
           }
         }
       }
-      if (part === "front" || part === "all") {
+      if (part2 === "front" || part2 === "all") {
         const open = clamp01((q.mouth || 0) + 0.25 + 0.25 * Math.sin(ph * TAU));
         const CL = shell === "mech" ? rp(c, "#9aa0ac") : c.finR;
         const sz = H * 0.42;
@@ -5943,10 +6394,10 @@
       const cx = ox, cy = oy + g.cy;
       const er = Math.max(1.6, (c.eyes[0].r ?? H * 0.12) * (c.look.eye?.r ? s : 1));
       const R = c.look.eye?.r ? c.look.eye.r * s : Math.max(2, H * 0.13);
-      const eyes = [[0.18, 1], [0.5, 0.92]].map(([sx, sh], i) => ({ x: cx + rx * sx + H * 0.02, y: cy - ry - H * 0.32 * sh - R * 0.4, r: i ? R * 0.92 : R, e: c.eyes[0], idx: i, mirror: false, cheek: false, main: i === 1, angle: 0 }));
+      const eyes2 = [[0.18, 1], [0.5, 0.92]].map(([sx, sh], i) => ({ x: cx + rx * sx + H * 0.02, y: cy - ry - H * 0.32 * sh - R * 0.4, r: i ? R * 0.92 : R, e: c.eyes[0], idx: i, mirror: false, cheek: false, main: i === 1, angle: 0 }));
       void er;
       return {
-        eyes,
+        eyes: eyes2,
         mouth: { x: cx + rx * 0.52, y: cy - ry * 0.05, w: Math.max(3, H * 0.28), m: c.mouth, front: true, angle: 0 },
         anchors: { mouth: [cx + rx + H * 0.3, cy - ry * 0.4], top: [cx, cy - ry - H * 0.6], tail: [cx - rx, cy], bottom: [cx, oy + ry * 0.95] }
       };
@@ -5962,13 +6413,13 @@
       const pulse = Math.sin(ph * TAU);
       return { bw: c.L / 2 * (1 + 0.1 * pulse) * s, bh: c.H * 0.62 * (1 - 0.1 * pulse) * s, pulse };
     },
-    paint(c, part, buf, glow, ox, oy, s, ph, q) {
+    paint(c, part2, buf, glow, ox, oy, s, ph, q) {
       const L = c.L * s, H = c.H * s;
       const a = c.alpha;
       const R = c.bodyR, F = c.finR;
       const glowOn = !!c.look.glow;
       const gonad = rp(c, c.look.gonad || "#ff9fd6");
-      if (part === "back" || part === "all") {
+      if (part2 === "back" || part2 === "all") {
         const n = c.look.tentacleCount ?? Math.max(5, Math.round(c.L / 5));
         const tl = (c.look.tentacles ?? c.H * 1.7) * s;
         for (let i = 0; i < n; i++) {
@@ -5980,16 +6431,16 @@
             const x = x0 + Math.sin(ph * TAU + i * 1.9 + t * 5) * (1.5 + c.k) * t + (x0 - ox) * t * 0.15;
             const y = oy + H * 0.05 + k;
             const al = Math.round(clamp(a + 40 - t * 150, 40, 255));
-            const dot = (k + i * 3) % Math.max(4, Math.round(5 * c.k * 0.5)) === 0;
-            const col = withA(dot ? F[4] : F[t > 0.6 ? 3 : 2], dot ? Math.min(255, al + 60) : al);
+            const dot2 = (k + i * 3) % Math.max(4, Math.round(5 * c.k * 0.5)) === 0;
+            const col = withA(dot2 ? F[4] : F[t > 0.6 ? 3 : 2], dot2 ? Math.min(255, al + 60) : al);
             buf.line(lx, ly, x, y, col);
-            if (glowOn && dot) glow.set(Math.round(x), Math.round(y), F[4]);
+            if (glowOn && dot2) glow.set(Math.round(x), Math.round(y), F[4]);
             lx = x;
             ly = y;
           }
         }
       }
-      if (part === "body" || part === "all") {
+      if (part2 === "body" || part2 === "all") {
         const { bw, bh } = this.geo(c, s, ph);
         const lobes = Math.max(8, Math.round(c.L / 3));
         for (let y = Math.floor(oy - bh - 1); y <= Math.ceil(oy + H * 0.12); y++) for (let x = Math.floor(ox - bw - 2); x <= Math.ceil(ox + bw + 2); x++) {
@@ -6032,7 +6483,7 @@
           buf.set(x, y, withA(col, al));
         }
       }
-      if (part === "front" || part === "all") {
+      if (part2 === "front" || part2 === "all") {
         const arms = 4, len = H * 1;
         for (let i = 0; i < arms; i++) {
           const x0 = ox + (i - (arms - 1) / 2) * L * 0.07;
@@ -6052,9 +6503,9 @@
       const { bw, bh } = this.geo(c, s, ph);
       const R = c.look.eye?.r ? c.look.eye.r * s : Math.max(1.6, c.L * s * 0.06);
       const ey = oy - bh * 0.42;
-      const eyes = c.look.noFace ? [] : [-1, 1].map((sd, i) => ({ x: ox + sd * bw * 0.32, y: ey, r: R, e: c.eyes[0], idx: i, mirror: sd < 0, cheek: true, main: i === 1, angle: 0 }));
+      const eyes2 = c.look.noFace ? [] : [-1, 1].map((sd, i) => ({ x: ox + sd * bw * 0.32, y: ey, r: R, e: c.eyes[0], idx: i, mirror: sd < 0, cheek: true, main: i === 1, angle: 0 }));
       return {
-        eyes,
+        eyes: eyes2,
         mouth: c.look.noFace ? null : { x: ox, y: ey + R * 1.9, w: Math.max(3, bw * 0.3), m: c.mouth, front: true, angle: 0 },
         anchors: { mouth: [ox, oy + 2], top: [ox, oy - bh - 2], tail: [ox, oy + (c.look.tentacles ?? c.H * 1.7) * s], bottom: [ox, oy + c.H * s * 0.8] }
       };
@@ -6073,7 +6524,7 @@
       const botW = c.L / 2 * s * (1 + 0.045 * wob + sq * 0.2);
       return { wob, hh, botW, topW: botW * 0.7, skew: wob * Math.max(1, c.k * 0.6) * s };
     },
-    paint(c, part, buf, glow, ox, oy, s, ph, q) {
+    paint(c, part2, buf, glow, ox, oy, s, ph, q) {
       const { hh, botW, topW, skew } = this.geo(c, s, ph, q);
       const base = oy;
       const R = c.bodyR, CR = c.finR;
@@ -6161,12 +6612,12 @@
       if (t < 0.52) return (0.121 - (t - 0.38) * 0.35) * H;
       return Math.max(0.016, 0.072 - (t - 0.52) * 0.115) * H;
     },
-    paint(c, part, buf, glow, ox, oy, s, ph, q) {
+    paint(c, part2, buf, glow, ox, oy, s, ph, q) {
       const H = c.H * s;
       const R = c.bodyR, B2 = c.bellyR, F = c.finR;
-      const bob = part === "body" || part === "all" ? Math.sin(ph * TAU) * Math.max(0.5, c.k * 0.25) : 0;
+      const bob = part2 === "body" || part2 === "all" ? Math.sin(ph * TAU) * Math.max(0.5, c.k * 0.25) : 0;
       const oyb = oy + bob;
-      if (part === "back" || part === "all") {
+      if (part2 === "back" || part2 === "all") {
         const fx = ox - H * 0.075, fy = oy + H * 0.02;
         const n = 8;
         for (let k = 0; k < n; k++) {
@@ -6175,7 +6626,7 @@
           capsule(buf, fx, yy, fx - len, yy - len * 0.25, Math.max(0.6, H * 0.012), Math.max(0.6, H * 0.016), F, { alpha: 225, light: 0.62 });
         }
       }
-      if (part === "body" || part === "all") {
+      if (part2 === "body" || part2 === "all") {
         const pts = this.spine(c, H, ph);
         const headX = ox + H * 0.025, headY = oyb - H * 0.36;
         const x0 = Math.floor(ox - H * 0.26), x1 = Math.ceil(ox + H * 0.34), y0 = Math.floor(oyb - H * 0.5), y1 = Math.ceil(oyb + H * 0.52);
@@ -6229,7 +6680,7 @@
           buf.set(x, y, col);
         }
       }
-      if (part === "front" || part === "all") {
+      if (part2 === "front" || part2 === "all") {
         const fx = ox - H * 0.02, fy = oy - H * 0.27;
         const fl = Math.sin(ph * TAU * 3) * 0.3;
         for (let k = 0; k < 5; k++) {
@@ -6268,10 +6719,10 @@
       if (u > 0.12) return span * Math.pow(Math.max(0, 1 - Math.pow((u - 0.12) / 0.88, 1.7)), 0.7);
       return span * (1 - Math.pow((0.12 - u) / 1.12, 1.25));
     },
-    paint(c, part, buf, glow, ox, oy, s, ph, q) {
+    paint(c, part2, buf, glow, ox, oy, s, ph, q) {
       const L = c.L * s, span = c.H * s, len = L * 0.5;
       const R = c.bodyR, B2 = c.bellyR;
-      if (part === "back" || part === "all") {
+      if (part2 === "back" || part2 === "all") {
         const tl = c.look.manta ? L * 0.45 : L * 0.85;
         let tx = ox - len * (c.look.manta ? 0.7 : c.look.square ? 1 : 0.95), ty = oy;
         const n = Math.ceil(tl);
@@ -6285,7 +6736,7 @@
         }
         if (c.look.square) shadedEllipse(buf, tx, ty, Math.max(1.5, span * 0.08), Math.max(1.5, span * 0.08), rp(c, "#c8ccd4"));
       }
-      if (part === "body" || part === "all") {
+      if (part2 === "body" || part2 === "all") {
         const flap = Math.sin(ph * TAU);
         const sq = c.look.square;
         if (sq) {
@@ -6375,11 +6826,11 @@
       const L = c.L, H = c.H;
       return [-L * 0.68, -H * 0.95, L * 0.62, H * 0.95];
     },
-    paint(c, part, buf, glow, ox, oy, s, ph, q) {
+    paint(c, part2, buf, glow, ox, oy, s, ph, q) {
       const L = c.L * s, H = c.H * s;
       const R = c.bodyR, F = c.finR;
       const cape = c.look.cape !== false;
-      if (part === "back" || part === "all") {
+      if (part2 === "back" || part2 === "all") {
         const open = 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(ph * TAU));
         const b0 = ox - L * 0.04, Lc = L * 0.46;
         const r0 = H * 0.24, r1 = H * (0.34 + 0.32 * open);
@@ -6416,7 +6867,7 @@
           capsule(buf, tx + 1, ty, tx - ln * 0.8, ty + vy * ln * 0.6 + Math.sin(ph * TAU * 2 + k2) * H * 0.03, Math.max(0.9, H * 0.035), Math.max(0.5, H * 0.012), rp(c, "#1e0c14"), { light: 0.6 });
         }
       }
-      if (part === "body" || part === "all") {
+      if (part2 === "body" || part2 === "all") {
         const flap = Math.sin(ph * TAU);
         const m0 = ox - L * 0.02, ml = L * 0.56, mh = H * 0.34;
         for (const sd of [-1, 1]) {
@@ -6472,11 +6923,11 @@
       const L = c.L, H = c.H;
       return [-L * 0.95, -H * 0.75, L * 0.95, H * 0.65];
     },
-    paint(c, part, buf, glow, ox, oy, s, ph, q) {
+    paint(c, part2, buf, glow, ox, oy, s, ph, q) {
       const L = c.L * s, H = c.H * s;
       const R = c.bodyR, F = c.finR;
       const a = c.alpha;
-      if (part === "back" || part === "all") {
+      if (part2 === "back" || part2 === "all") {
         const n = 6;
         const top = oy - H * 0.1;
         for (let y = Math.floor(top); y <= Math.ceil(oy + H * 0.55); y++) for (let x = Math.floor(ox - L * 0.75); x <= Math.ceil(ox + L * 0.75); x++) {
@@ -6497,7 +6948,7 @@
           buf.set(x, y, withA(col, armHit ? Math.min(255, a + 30) : Math.max(120, a - 50)));
         }
       }
-      if (part === "body" || part === "all") {
+      if (part2 === "body" || part2 === "all") {
         const sq = Math.sin(ph * TAU) * 0.05;
         shadedEllipse(buf, ox, oy - H * 0.16, L * 0.42 * (1 + sq), H * 0.36 * (1 - sq), R, {
           rim: true,
@@ -6509,7 +6960,7 @@
           }
         });
       }
-      if (part === "front" || part === "all") {
+      if (part2 === "front" || part2 === "all") {
         const flap = Math.sin(ph * TAU);
         for (const sd of [-1, 1]) {
           const fx = ox + sd * L * 0.34, fy = oy - H * 0.36;
@@ -6540,11 +6991,11 @@
       const L = c.L, H = c.H;
       return [-L * 0.68, -H * 1.5, L * 0.95, H * 0.5];
     },
-    paint(c, part, buf, glow, ox, oy, s, ph, q) {
+    paint(c, part2, buf, glow, ox, oy, s, ph, q) {
       const L = c.L * s, H = c.H * s;
       const R = c.bodyR;
       const half = L / 2;
-      if (part === "back" || part === "all") {
+      if (part2 === "back" || part2 === "all") {
         const legs = 7, lr = Math.max(0.7, H * 0.05);
         for (const far of [1, 0]) for (let i = 0; i < legs; i++) {
           const bx = ox - half * 0.75 + i / (legs - 1) * half * 1.5 + (far ? H * 0.12 : 0);
@@ -6556,7 +7007,7 @@
           capsule(buf, kx, ky, kx + H * 0.06, oy + H * 0.32 - lift * 0.3, lr * 0.8, lr * 0.4, RL, { light: 0.35 });
         }
       }
-      if (part === "body" || part === "all") {
+      if (part2 === "body" || part2 === "all") {
         const segs = 8;
         for (let y = Math.floor(oy - H - 1); y <= Math.ceil(oy + 1); y++) for (let x = Math.floor(ox - half - 2); x <= Math.ceil(ox + half + H * 0.3); x++) {
           const dx = x + 0.5 - ox;
@@ -6582,7 +7033,7 @@
         }
         for (const sd of [0, 1]) capsule(buf, ox - half * 0.92, oy - H * 0.15, ox - half * 1.12 - sd * H * 0.1, oy - H * (0.05 + sd * 0.15), Math.max(1, H * 0.1), Math.max(0.8, H * 0.06), R, { light: 0.45 + sd * 0.1 });
       }
-      if (part === "front" || part === "all") {
+      if (part2 === "front" || part2 === "all") {
         const hx = ox + half * 1.02, hy = oy - H * 0.35;
         for (const [k, lenM] of [[0, 1], [1, 0.6]]) {
           let px0 = hx, py0 = hy;
@@ -6614,7 +7065,7 @@
       const L = c.L, H = c.H;
       return [-L * 0.75, -H * 0.8, L * 0.75, H * 0.95];
     },
-    paint(c, part, buf, glow, ox, oy, s, ph, q) {
+    paint(c, part2, buf, glow, ox, oy, s, ph, q) {
       const L = c.L * s, H = c.H * s;
       const R = c.bodyR;
       if (c.look.blobfish) {
@@ -6658,13 +7109,13 @@
         pts.push(1);
         buf.set(x, y, col);
       }
-      const J = (u, v) => [ox + u * L / 2, oy + v * H / 2];
-      const [cx1, cy1] = J(-0.55, 0.15);
+      const J2 = (u, v) => [ox + u * L / 2, oy + v * H / 2];
+      const [cx1, cy1] = J2(-0.55, 0.15);
       const cr = Math.max(2, L * 0.06);
       for (let a2 = 0; a2 < TAU; a2 += 0.15) buf.set(Math.round(cx1 + Math.cos(a2) * cr), Math.round(cy1 + Math.sin(a2) * cr * 0.7), pk2(c, "#c8d0d8"));
-      const [cx2, cy2] = J(0.5, 0.45);
+      const [cx2, cy2] = J2(0.5, 0.45);
       shadedEllipse(buf, cx2, cy2, Math.max(2, L * 0.07), Math.max(1.5, L * 0.05), rp(c, "#d83a3a"), { fn: (nx, ny) => Math.hypot(nx, ny) > 0.78 && Math.floor(Math.atan2(ny, nx) * 6) & 1 ? rp(c, "#d83a3a")[1] : 0 });
-      const [cx3, cy3] = J(-0.1, -0.62);
+      const [cx3, cy3] = J2(-0.1, -0.62);
       for (let i = 0; i < Math.max(4, L * 0.16); i++) buf.set(Math.round(cx3 + i - L * 0.08), Math.round(cy3 + (i & 1)), pk2(c, "#eef0e8"));
       for (let i = 0; i < 3; i++) buf.line(cx3 - L * 0.03 + i * L * 0.04, cy3 - 2, cx3 - L * 0.03 + i * L * 0.04, cy3 + 3, pk2(c, "#eef0e8"));
       void pts;
@@ -6694,11 +7145,11 @@
       const z = c.L;
       return [-z * 1, -z * 0.68, z * 0.62, z * 0.68];
     },
-    paint(c, part, buf, glow, ox, oy, s, ph, q) {
+    paint(c, part2, buf, glow, ox, oy, s, ph, q) {
       const size = c.L * s, half = size / 2;
       const R = c.bodyR, F = c.finR;
       const posing = q.pose;
-      if ((part === "back" || part === "all") && !posing) {
+      if ((part2 === "back" || part2 === "all") && !posing) {
         const fl = Math.sin(ph * TAU) * half * 0.18;
         const bx = ox - half + 1;
         for (let y = Math.floor(oy - half); y <= oy + half; y++) for (let x = Math.floor(bx - half * 0.8); x <= bx; x++) {
@@ -6712,7 +7163,7 @@
           buf.set(x, y, F[t > 0.8 ? 4 : ray ? 2 : 3]);
         }
       }
-      if (part === "body" || part === "all") {
+      if (part2 === "body" || part2 === "all") {
         const r = Math.max(2.5, half * 0.32);
         const GL = rp(c, c.look.glyphColor || "#ffffff");
         for (let y = Math.floor(oy - half); y < oy + half; y++) for (let x = Math.floor(ox - half); x < ox + half; x++) {
@@ -6737,7 +7188,7 @@
         buf.line(bx0 + Math.round(bs * 0.45), by0 + 1, bx0 + bs - 2, by0 + 1, A);
         buf.line(bx0, by0 + bs, bx0 + bs - 1, by0 + bs, P("#9aa8c0"));
       }
-      if ((part === "front" || part === "all") && !posing) {
+      if ((part2 === "front" || part2 === "all") && !posing) {
         const fl = Math.sin(ph * TAU) * 0.5;
         for (const sd of [1]) {
           const fx = ox + half * 0.1, fy = oy + half * 0.95;
@@ -6811,9 +7262,9 @@
           if (hx < -0.55 && Math.abs(fract(hx * 3.2) - 0.5) < 0.18) col = H2[1];
           if (hx > 1.2) col = H2[1];
         } else if (lx > 1.5 && lx < 2.6 && (Math.abs(ly - 0.42) < 0.16 || Math.abs(ly + 0.42) < 0.16)) {
-          const M = rp(c, "#d8c060");
-          col = M[ly < 0 ? 3 : 2];
-          if (lx > 2 && lx < 2.2) col = M[0];
+          const M2 = rp(c, "#d8c060");
+          col = M2[ly < 0 ? 3 : 2];
+          if (lx > 2 && lx < 2.2) col = M2[0];
         }
       } else if (head === "noodle") {
         const d = Math.hypot(lx / 1.35, ly);
@@ -6836,12 +7287,12 @@
     }
     const toC = (lx, ly) => [cx + (lx * ca - ly * sa) * r, cy + (lx * sa + ly * ca) * r];
     const er = Math.max(1.6, r * (head === "noodle" ? 0.32 : head === "plug" ? 0.34 : 0.3));
-    const eyes = head === "noodle" ? [[0.35, -0.2, 0], [0.85, -0.2, 1]] : head === "plug" ? [[0.3, -0.35, 0], [0.95, -0.35, 1]] : [[0.75, -0.3, 0]];
+    const eyes2 = head === "noodle" ? [[0.35, -0.2, 0], [0.85, -0.2, 1]] : head === "plug" ? [[0.3, -0.35, 0], [0.95, -0.35, 1]] : [[0.75, -0.3, 0]];
     const mouthAt = head === "noodle" ? [1.05, 0.38] : head === "plug" ? [1.25, 0.4] : [1.85, 0.3];
     return {
-      eyes: eyes.map(([lx, ly, i]) => {
+      eyes: eyes2.map(([lx, ly, i]) => {
         const [x, y] = toC(lx, ly);
-        return { x, y, r: er, e: c.eyes[0], idx: i, mirror: false, cheek: i === 0, main: i === eyes.length - 1, angle: ang };
+        return { x, y, r: er, e: c.eyes[0], idx: i, mirror: false, cheek: i === 0, main: i === eyes2.length - 1, angle: ang };
       }),
       mouth: { x: toC(...mouthAt)[0], y: toC(...mouthAt)[1], w: Math.max(2.5, r * 0.7), m: c.mouth, front: false, angle: ang },
       nose: toC(head === "plug" ? 2.6 : 1.9, 0)
@@ -6877,7 +7328,7 @@
       const n = c.chain.segs, r = c.chain.r;
       return [-n * r * 1.2 - r * 2, -r * 4.5, r * 4.5, r * 4.5];
     },
-    paint(c, part, buf, glow, ox, oy, s, ph, q) {
+    paint(c, part2, buf, glow, ox, oy, s, ph, q) {
       const pts = defaultChainPoints(c, s, ph, ox, oy, 1);
       const n = pts.length;
       for (let i = n - 1; i >= 1; i--) {
@@ -6895,8 +7346,8 @@
     face(c, ph, s, ox, oy, q) {
       const pts = defaultChainPoints(c, s, ph, ox, oy, 1);
       const ang = Math.atan2(pts[0].y - pts[1].y, pts[0].x - pts[1].x);
-      const scratch2 = new PixelBuffer(1, 1);
-      const f = paintChainHead(c, scratch2, null, pts[0].x, pts[0].y, ang, s, ph);
+      const scratch3 = new PixelBuffer(1, 1);
+      const f = paintChainHead(c, scratch3, null, pts[0].x, pts[0].y, ang, s, ph);
       const last = pts[pts.length - 1];
       return { eyes: f.eyes, mouth: f.mouth, anchors: { mouth: f.nose, top: [pts[0].x, pts[0].y - c.chain.r * s * 2], tail: [last.x, last.y], bottom: [pts[0].x, pts[0].y + c.chain.r * s] } };
     }
@@ -6915,6 +7366,28 @@
       const rim = P(shade(c.bodyHex, 0.5));
       for (let i = 0; i < buf.data.length; i++) if (!before[i] && buf.data[i]) glow.data[i] = rim;
     }
+  }
+  function rawOut(buf, glow) {
+    const { w, h, data } = buf;
+    let x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      if (data[y * w + x] >>> 24 || glow && glow.data[y * w + x]) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+    }
+    if (x1 < 0) return { data: null, glow: null, w: 0, h: 0, x: 0, y: 0 };
+    const cw = x1 - x0 + 1, ch = y1 - y0 + 1;
+    const d = new Uint32Array(cw * ch);
+    const g = glow ? new Uint32Array(cw * ch) : null;
+    for (let y = 0; y < ch; y++) {
+      const so = (y + y0) * w + x0;
+      d.set(data.subarray(so, so + cw), y * cw);
+      if (g) g.set(glow.data.subarray(so, so + cw), y * cw);
+    }
+    return { data: d, glow: g, w: cw, h: ch, x: x0, y: y0 };
   }
   function cropOut(buf, glow) {
     const { w, h, data } = buf;
@@ -6948,7 +7421,7 @@
     if (c._layers) return c._layers;
     const K = KINDS[c.kind];
     let out;
-    if (K) out = K.layers.map(([id, phase, frames]) => ({ id, phase, frames }));
+    if (K) out = K.layers.map(([id, phase, frames2]) => ({ id, phase, frames: frames2 }));
     else {
       out = [];
       if (c.tail.type !== "none") out.push({ id: "tail", phase: "tail", frames: 12 });
@@ -6980,6 +7453,7 @@
       const buf2 = new PixelBuffer(B3.w, B3.h);
       const glow2 = c.glow ? new PixelBuffer(B3.w, B3.h) : null;
       K.paint(c, layer, buf2, glow2, B3.ox, B3.oy, s, q.ph || 0, q);
+      if (VOXM) return rawOut(buf2, glow2);
       finishBuf(c, buf2, glow2, false);
       return cropOut(buf2, glow2);
     }
@@ -6995,6 +7469,12 @@
     const ph = q.ph || 0;
     const prm = { still: q.still, inflate: q.inflate, sw: layer === "body" ? ph : 0, tp: ph, fp: ph, raise: q.raise || 0 };
     paintGeneric(c, buf, glow, rect.x0, rect.y0, B2.ox, B2.oy, angle, s, layer, prm, G, rect);
+    if (VOXM) {
+      const raw = rawOut(buf, glow);
+      raw.x += rect.x0;
+      raw.y += rect.y0;
+      return raw;
+    }
     finishBuf(c, buf, glow, false, layer === "front");
     const out = cropOut(buf, glow);
     out.x += rect.x0;
@@ -7002,26 +7482,1513 @@
     return out;
   }
 
+  // src/gfx/voxelfish.js
+  var VP = 2;
+  var SCALE_STEP = 1.09;
+  var YAW_STEP = 15;
+  var PITCH_STEP = 10;
+  var PITCH_MAX = 3;
+  var CHAIN_PITCH_STEP = 15;
+  var CHAIN_PITCH_MAX = 6;
+  var CAM_TILT = 16;
+  var SWIM_N = 6;
+  var KIND_N = 6;
+  var INFL_N = 3;
+  var MAX_VOX_LEN = 300;
+  var FRAME_PX_MAX = 16e6;
+  var GRID_BYTES_MAX = 64e6;
+  var LAYOUT_MAX = 260;
+  var TAIL_NEUTRAL = 1 - 0.7 / (Math.PI * 2);
+  var TAU2 = Math.PI * 2;
+  var DEG = Math.PI / 180;
+  var clamp2 = (v, a, b) => v < a ? a : v > b ? b : v;
+  var clamp013 = (v) => v < 0 ? 0 : v > 1 ? 1 : v;
+  var now = () => typeof performance !== "undefined" ? performance.now() : Date.now();
+  var SHAPE_K = { oval: 0.52, torpedo: 0.6, round: 0.8, disc: 0.3, long: 0.62, box: 0.72, blunt: 0.62, pointy: 0.48 };
+  var KIND_K = { crab: 0.72, seahorse: 0.55, ray: 0.16, squid: 0.62, isopod: 0.78, iconfish: 0.42, octopus: 1, jelly: 1, pudding: 1, blob: 0.9, chain: 0.85 };
+  var REVOLVE = /* @__PURE__ */ new Set(["jelly", "pudding", "octopus"]);
+  var budgetMs = 3.2;
+  var spent = 0;
+  var forceSpent = 0;
+  var rafOn = false;
+  var lastReset = 0;
+  var statBuilt = 0;
+  var statFallback = 0;
+  var statJobs = 0;
+  var statPx = 0;
+  var workTotal = 0;
+  var FORCE_MS = 14;
+  var WARM_MS = 1;
+  function setVoxelFishBudget(ms) {
+    budgetMs = ms;
+  }
+  if (typeof window !== "undefined") window.__voxStats = () => voxelFishStats();
+  function voxelFishStats() {
+    return { workMs: +workTotal.toFixed(1), frames: frames.size, framePx: statPx, grids: grids.size, layouts: layouts.size, jobs: jobs.size, built: statBuilt, fallbacks: statFallback, jobsStarted: statJobs, spent: +spent.toFixed(2), warm: warmQ.length };
+  }
+  function ensureTick() {
+    if (rafOn || typeof requestAnimationFrame === "undefined") return;
+    rafOn = true;
+    const tick2 = () => {
+      requestAnimationFrame(tick2);
+      spent = 0;
+      forceSpent = 0;
+      lastReset = now();
+      try {
+        runWants();
+        runWarm();
+      } catch (e) {
+        console.warn("voxelfish", e);
+        wants.clear();
+        warmQ.length = 0;
+      }
+    };
+    requestAnimationFrame(tick2);
+  }
+  function overBudget() {
+    if (!rafOn) {
+      const t = now();
+      if (t - lastReset > 15) {
+        lastReset = t;
+        spent = 0;
+        forceSpent = 0;
+      }
+    }
+    return spent >= budgetMs;
+  }
+  var nextVid = 1;
+  var vidOf = (c) => c._vid || (c._vid = nextVid++);
+  function lookLen(c) {
+    if (c.kind === "chain") return (c.chain?.r || 4) * 5;
+    return Math.max(c.L || 30, c.H || 20) * 1.5;
+  }
+  function resLevel(c, Sb) {
+    let rk = Math.round(2 * Math.log2(Sb / VP));
+    const cap = Math.floor(2 * Math.log2(MAX_VOX_LEN / lookLen(c)));
+    return clamp2(Math.min(rk, cap), -6, 4);
+  }
+  var scaleBucket = (S5) => Math.round(Math.log(Math.max(0.05, S5)) / Math.log(SCALE_STEP));
+  var bucketScale = (sb) => Math.pow(SCALE_STEP, sb);
+  var Pal = class {
+    constructor() {
+      this.map = /* @__PURE__ */ new Map();
+      this.rgb = [0];
+      this.alpha = [1];
+      this.role = [0];
+      this.em = [0];
+      this.ramps = [null];
+    }
+    // role: 0 body, 1 fin, 2 eye, 3 mouth, 4 thin extra
+    idx(col, role, glow) {
+      const a = col >>> 24;
+      const aq = a >= 235 ? 4 : a >= 170 ? 3 : a >= 110 ? 2 : 1;
+      const key = (col & 16777215) + 16777216 * (role + 8 * aq + (glow ? 64 : 0));
+      let i = this.map.get(key);
+      if (i !== void 0) return i;
+      if (this.rgb.length >= 65e3) return 1;
+      i = this.rgb.length;
+      this.rgb.push(col & 16777215);
+      this.alpha.push(aq === 4 ? 1 : aq === 3 ? 0.86 : aq === 2 ? 0.7 : 0.55);
+      this.role.push(role);
+      this.em.push(glow ? 1 : 0);
+      this.ramps.push(null);
+      this.map.set(key, i);
+      return i;
+    }
+  };
+  function rampOf(pal, v) {
+    let r = pal.ramps[v];
+    if (r) return r;
+    r = new Uint32Array(21);
+    const c = pal.rgb[v];
+    const R = c & 255, G = c >>> 8 & 255, B2 = c >>> 16 & 255;
+    for (let i = 0; i < 21; i++) {
+      const t = (i - 10) / 10;
+      let r2, g2, b2;
+      if (t < 0) {
+        const k = Math.pow(-t, 0.92);
+        r2 = R + (R * 0.26 + 12 - R) * k;
+        g2 = G + (G * 0.3 + 10 - G) * k;
+        b2 = B2 + (B2 * 0.46 + 40 - B2) * k;
+      } else {
+        const k = Math.pow(t, 1.12);
+        r2 = R + (Math.min(255, R + (255 - R) * 0.66 + 8) - R) * k;
+        g2 = G + (Math.min(255, G + (255 - G) * 0.64 + 6) - G) * k;
+        b2 = B2 + (Math.min(255, B2 + (255 - B2) * 0.58) - B2) * k;
+        const sat = 0.12 * Math.sin(Math.PI * Math.min(1, t * 1.6));
+        const m = (r2 + g2 + b2) / 3;
+        r2 += (r2 - m) * sat;
+        g2 += (g2 - m) * sat;
+        b2 += (b2 - m) * sat;
+      }
+      r[i] = (4278190080 | clamp2(Math.round(b2), 0, 255) << 16 | clamp2(Math.round(g2), 0, 255) << 8 | clamp2(Math.round(r2), 0, 255)) >>> 0;
+    }
+    pal.ramps[v] = r;
+    return r;
+  }
+  function place(ras, ox, oy, GW, GH) {
+    const col = new Uint32Array(GW * GH);
+    const glow = ras.glow ? new Uint8Array(GW * GH) : null;
+    for (let y = 0; y < ras.h; y++) {
+      const gy = y + oy;
+      if (gy < 0 || gy >= GH) continue;
+      for (let x = 0; x < ras.w; x++) {
+        const gx = x + ox;
+        if (gx < 0 || gx >= GW) continue;
+        const p = ras.data[y * ras.w + x];
+        if (p >>> 24 < 40) continue;
+        col[gy * GW + gx] = p;
+        if (glow && ras.glow[y * ras.w + x]) glow[gy * GW + gx] = 1;
+      }
+    }
+    return { col, glow };
+  }
+  function edt1d(f, n, d, v, z) {
+    let k = 0;
+    v[0] = 0;
+    z[0] = -1e20;
+    z[1] = 1e20;
+    for (let q = 1; q < n; q++) {
+      let s;
+      for (; ; ) {
+        const p = v[k];
+        s = (f[q] + q * q - (f[p] + p * p)) / (2 * q - 2 * p);
+        if (s <= z[k] && k > 0) k--;
+        else break;
+      }
+      if (s <= z[k]) {
+        k = 0;
+        v[0] = q;
+        z[0] = -1e20;
+        z[1] = 1e20;
+        continue;
+      }
+      k++;
+      v[k] = q;
+      z[k] = s;
+      z[k + 1] = 1e20;
+    }
+    k = 0;
+    for (let q = 0; q < n; q++) {
+      while (z[k + 1] < q) k++;
+      const p = v[k];
+      d[q] = (q - p) * (q - p) + f[p];
+    }
+  }
+  function distanceField(mask, W, H) {
+    const INF = 1e12;
+    const g = new Float64Array(W * H);
+    for (let i = 0; i < W * H; i++) g[i] = mask[i] ? INF : 0;
+    const n = Math.max(W, H) + 2;
+    const f = new Float64Array(n), d = new Float64Array(n), v = new Int32Array(n), z = new Float64Array(n + 1);
+    for (let x = 0; x < W; x++) {
+      for (let y = 0; y < H; y++) f[y] = g[y * W + x];
+      edt1d(f, H, d, v, z);
+      for (let y = 0; y < H; y++) g[y * W + x] = d[y];
+    }
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) f[x] = g[y * W + x];
+      edt1d(f, W, d, v, z);
+      for (let x = 0; x < W; x++) g[y * W + x] = d[x];
+    }
+    const D = new Float32Array(W * H);
+    for (let i = 0; i < W * H; i++) D[i] = mask[i] ? Math.sqrt(g[i]) - 0.5 : -1;
+    return D;
+  }
+  function buildLayout(c, r, infl, pose, kf) {
+    const kind = isKind(c) ? c.kind : null;
+    if (c.kind === "chain") return buildChainLayout(c, r);
+    const ph = kind ? kf / KIND_N : 0;
+    const q = { sw: ph, angle: 0, scale: r, inflate: kind ? 0 : infl, still: true, pose };
+    const geo = rigGeom(c, q);
+    const PAD = 2;
+    const GW = geo.w + PAD * 2, GH = geo.h + PAD * 2;
+    const L = {};
+    for (const ly of rigLayers(c)) {
+      const lp = kind ? ph : ly.id === "tail" ? TAIL_NEUTRAL : 0;
+      const ras = rasterLayerVox(c, ly.id, { ph: lp, angle: 0, scale: r, inflate: kind ? 0 : infl, still: true, pose });
+      if (!ras.data) continue;
+      L[ly.id] = place(ras, ras.x + PAD, ras.y + PAD, GW, GH);
+    }
+    const N = GW * GH;
+    const body = L.body?.col || new Uint32Array(N);
+    const mask = new Uint8Array(N);
+    const thr = kind ? 60 : Math.min(110, Math.round((c.alpha ?? 255) * 0.75));
+    for (let i = 0; i < N; i++) if (body[i] >>> 24 >= thr) mask[i] = 1;
+    let k = kind ? KIND_K[kind] ?? 0.6 : SHAPE_K[c.look.body?.shape || "oval"] ?? 0.5;
+    if (c.look.body?.thick) k = c.look.body.thick;
+    if (c.look.vox?.thick) k = c.look.vox.thick;
+    if (infl > 0) k = k + (0.96 - k) * infl;
+    const T = new Float32Array(N).fill(-1);
+    const revolve = REVOLVE.has(kind);
+    if (revolve) {
+      let sx = 0, n = 0;
+      for (let i = 0; i < N; i++) if (mask[i]) {
+        sx += i % GW;
+        n++;
+      }
+      const axis = n ? sx / n + 0.5 : GW / 2;
+      for (let gy = 0; gy < GH; gy++) {
+        let a = -1, b = -1;
+        for (let gx = Math.floor(axis); gx >= 0 && mask[gy * GW + gx]; gx--) a = gx;
+        for (let gx = Math.floor(axis); gx < GW && mask[gy * GW + gx]; gx++) b = gx;
+        if (a < 0 || b < 0) {
+          for (let gx = 0; gx < GW; gx++) if (mask[gy * GW + gx]) T[gy * GW + gx] = 0.6;
+          continue;
+        }
+        const mid = (a + b + 1) / 2, rr2 = (b - a + 1) / 2;
+        for (let gx = 0; gx < GW; gx++) {
+          if (!mask[gy * GW + gx]) continue;
+          const d = gx + 0.5 - mid;
+          T[gy * GW + gx] = gx >= a && gx <= b ? Math.sqrt(Math.max(0, rr2 * rr2 - d * d)) * 0.94 : 0.6;
+        }
+      }
+    } else {
+      const D = distanceField(mask, GW, GH);
+      const colMax = new Float32Array(N), rowMax = new Float32Array(N);
+      for (let gx = 0; gx < GW; gx++) {
+        let a = -1;
+        for (let gy = 0; gy <= GH; gy++) {
+          const on = gy < GH && mask[gy * GW + gx];
+          if (on && a < 0) a = gy;
+          if (!on && a >= 0) {
+            let mx = 0;
+            for (let y = a; y < gy; y++) mx = Math.max(mx, D[y * GW + gx]);
+            for (let y = a; y < gy; y++) colMax[y * GW + gx] = mx;
+            a = -1;
+          }
+        }
+      }
+      for (let gy = 0; gy < GH; gy++) {
+        let a = -1;
+        for (let gx = 0; gx <= GW; gx++) {
+          const on = gx < GW && mask[gy * GW + gx];
+          if (on && a < 0) a = gx;
+          if (!on && a >= 0) {
+            let mx = 0;
+            for (let x = a; x < gx; x++) mx = Math.max(mx, D[gy * GW + x]);
+            for (let x = a; x < gx; x++) rowMax[gy * GW + x] = mx;
+            a = -1;
+          }
+        }
+      }
+      for (let i = 0; i < N; i++) {
+        if (!mask[i]) continue;
+        const d = Math.max(0, D[i]), dm = Math.max(0.5, Math.min(colMax[i], rowMax[i]));
+        T[i] = k * Math.sqrt(Math.max(0, d * (2 * dm - d))) * 1.06;
+      }
+    }
+    let maxT = 0;
+    for (let i = 0; i < N; i++) if (T[i] > maxT) maxT = T[i];
+    const [Tx, Ty] = thicknessGradient(T, mask, GW, GH);
+    const eyeCol = new Uint32Array(N), eyeGlow = new Uint8Array(N);
+    const eyes2 = [];
+    for (const ev of geo.eyes || []) {
+      const R = Math.max(0.8, ev.r);
+      const hb = eyeBox(R);
+      const buf = new PixelBuffer(hb * 2, hb * 2);
+      const gb = ev.e.type === "glow" ? new PixelBuffer(hb * 2, hb * 2) : null;
+      voxAlbedo(() => paintEye(buf, gb, hb, hb, c, ev.e, { emotion: "neutral", blink: 0, lx: 0.2, ly: 0, gx: 0.15, gy: 0.5, time: 0, mirror: ev.mirror, cheek: false, main: ev.main, pupil: 1, dim: 0 }, 0, R));
+      const ox = Math.round(ev.x) - hb + PAD, oy = Math.round(ev.y) - hb + PAD;
+      for (let y = 0; y < buf.h; y++) for (let x = 0; x < buf.w; x++) {
+        const p = buf.data[y * buf.w + x];
+        if (p >>> 24 < 100) continue;
+        const gx = x + ox, gy = y + oy;
+        if (gx < 0 || gy < 0 || gx >= GW || gy >= GH) continue;
+        eyeCol[gy * GW + gx] = p | 4278190080;
+        if (gb && gb.data[y * buf.w + x]) eyeGlow[gy * GW + gx] = 1;
+      }
+      eyes2.push({ x: ev.x + PAD, y: ev.y + PAD, rv: R, rLook: R / r, e: ev.e, idx: ev.idx, mirror: ev.mirror, cheek: ev.cheek, main: ev.main });
+    }
+    const mouthCol = new Uint32Array(N);
+    let mouth = null;
+    if (geo.mouth && geo.mouth.m && geo.mouth.m.type !== "none" && geo.mouth.w >= 1) {
+      const mo = geo.mouth;
+      const hb = mouthBox(mo.w);
+      const buf = new PixelBuffer(hb * 2, hb * 2);
+      voxAlbedo(() => paintMouth(buf, hb, hb, c, mo.m, { emotion: "neutral", open: 0, time: 0 }, 0, mo.w, mo.front));
+      const ox = Math.round(mo.x) - hb + PAD, oy = Math.round(mo.y) - hb + PAD;
+      for (let y = 0; y < buf.h; y++) for (let x = 0; x < buf.w; x++) {
+        const p = buf.data[y * buf.w + x];
+        if (p >>> 24 < 100) continue;
+        const gx = x + ox, gy = y + oy;
+        if (gx >= 0 && gy >= 0 && gx < GW && gy < GH) mouthCol[gy * GW + gx] = p | 4278190080;
+      }
+      mouth = { x: mo.x + PAD, y: mo.y + PAD, wLook: mo.w / r, m: mo.m, front: mo.front };
+    }
+    const anchors = {};
+    for (const [k2, v] of Object.entries(geo.anchors || {})) if (Array.isArray(v)) anchors[k2] = [v[0] + PAD, v[1] + PAD];
+    let nose = -1, bodyTail = GW, tailEnd = GW;
+    for (let i = 0; i < N; i++) if (mask[i]) {
+      const gx = i % GW;
+      if (gx > nose) nose = gx;
+      if (gx < bodyTail) bodyTail = gx;
+    }
+    if (L.tail) {
+      for (let i = 0; i < N; i++) if (L.tail.col[i]) {
+        const gx = i % GW;
+        if (gx < tailEnd) tailEnd = gx;
+      }
+    }
+    tailEnd = Math.min(tailEnd, bodyTail);
+    let pecRoot = -1, pecMin = GW;
+    if (!kind && L.front) {
+      for (let i = 0; i < N; i++) if (L.front.col[i]) {
+        pecRoot = Math.max(pecRoot, i % GW);
+        pecMin = Math.min(pecMin, i % GW);
+      }
+    }
+    return {
+      c,
+      kind,
+      revolve,
+      r,
+      GW,
+      GH,
+      PAD,
+      L,
+      mask,
+      T,
+      Tx,
+      Ty,
+      maxT,
+      eyeCol,
+      eyeGlow,
+      mouthCol,
+      eyes: eyes2,
+      mouth,
+      anchors,
+      origin: [geo.ox + PAD, geo.oy + PAD],
+      nose,
+      bodyTail,
+      tailEnd,
+      pecRoot,
+      pecLen: Math.max(0, pecRoot - pecMin),
+      wave: c.wave ?? 0.5,
+      pal: new Pal(),
+      bytes: N * 40
+    };
+  }
+  function thicknessGradient(T, mask, W, H) {
+    const N = W * H;
+    const at = (x, y) => x < 0 || y < 0 || x >= W || y >= H ? 0 : Math.max(0, T[y * W + x]);
+    const B2 = new Float32Array(N);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      if (!mask[i]) continue;
+      B2[i] = (at(x, y) * 4 + at(x - 1, y) + at(x + 1, y) + at(x, y - 1) + at(x, y + 1)) / 8;
+    }
+    const b = (x, y) => x < 0 || y < 0 || x >= W || y >= H ? 0 : B2[y * W + x];
+    const Tx = new Float32Array(N), Ty = new Float32Array(N);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      if (!mask[i]) continue;
+      Tx[i] = (b(x + 1, y) - b(x - 1, y)) / 2;
+      Ty[i] = (b(x, y + 1) - b(x, y - 1)) / 2;
+    }
+    return [Tx, Ty];
+  }
+  function buildChainLayout(c, r) {
+    const hv = chainHeadVox(c, r);
+    const PAD = 2;
+    const GW = hv.w + PAD * 2, GH = hv.h + PAD * 2, N = GW * GH;
+    const col = new Uint32Array(N);
+    const mask = new Uint8Array(N);
+    for (let y = 0; y < hv.h; y++) for (let x = 0; x < hv.w; x++) {
+      const p = hv.data[y * hv.w + x];
+      if (p >>> 24 < 60) continue;
+      col[(y + PAD) * GW + x + PAD] = p;
+      mask[(y + PAD) * GW + x + PAD] = 1;
+    }
+    const T = new Float32Array(N).fill(-1);
+    let maxT = 0;
+    for (let gx = 0; gx < GW; gx++) {
+      let a = -1, b = -1;
+      for (let gy = 0; gy < GH; gy++) if (mask[gy * GW + gx]) {
+        if (a < 0) a = gy;
+        b = gy;
+      }
+      if (a < 0) continue;
+      const hh = (b - a + 1) / 2, mid = (a + b + 1) / 2;
+      for (let gy = a; gy <= b; gy++) {
+        if (!mask[gy * GW + gx]) continue;
+        const e = (gy + 0.5 - mid) / hh;
+        const t = hh * 0.85 * Math.sqrt(Math.max(0, 1 - e * e));
+        T[gy * GW + gx] = t;
+        if (t > maxT) maxT = t;
+      }
+    }
+    const o = hv.o + PAD;
+    const [Tx, Ty] = thicknessGradient(T, mask, GW, GH);
+    const eyes2 = hv.face.eyes.map((ev) => ({ x: ev.x + PAD, y: ev.y + PAD, rv: ev.r, rLook: ev.r / r, e: ev.e, idx: ev.idx, mirror: ev.mirror, cheek: ev.cheek, main: ev.main }));
+    const mo = hv.face.mouth;
+    return {
+      c,
+      kind: "chain",
+      revolve: false,
+      r,
+      GW,
+      GH,
+      PAD,
+      L: { body: { col, glow: null } },
+      mask,
+      T,
+      Tx,
+      Ty,
+      maxT,
+      eyeCol: new Uint32Array(N),
+      eyeGlow: new Uint8Array(N),
+      mouthCol: new Uint32Array(N),
+      eyes: eyes2,
+      mouth: mo ? { x: mo.x + PAD, y: mo.y + PAD, wLook: mo.w / r, m: mo.m, front: mo.front } : null,
+      anchors: { mouth: [hv.face.nose[0] + PAD, hv.face.nose[1] + PAD], top: [o, o - c.chain.r * r * 1.2], bottom: [o, o + c.chain.r * r * 1.2], tail: [o - c.chain.r * r, o] },
+      origin: [o, o],
+      nose: GW - 1,
+      bodyTail: 0,
+      tailEnd: 0,
+      pecRoot: -1,
+      wave: 0,
+      pal: new Pal(),
+      bytes: N * 30
+    };
+  }
+  function buildGrid(Lo, sw) {
+    const { c, kind, GW, GH, L, mask, T, maxT, eyeCol, eyeGlow, mouthCol, pal } = Lo;
+    const fish = !kind;
+    const ph = sw / SWIM_N;
+    const bodyLen = Math.max(4, Lo.nose - Lo.bodyTail);
+    const amp = fish ? (0.05 + 0.1 * clamp013(Lo.wave)) * bodyLen : 0;
+    const total = Math.max(1, Lo.nose - Lo.tailEnd + 2);
+    const off = (u) => {
+      if (u <= 1) return amp * u * u * Math.sin(TAU2 * ph - u * 3.2);
+      const o1 = amp * Math.sin(TAU2 * ph - 3.2);
+      const d1 = amp * (2 * Math.sin(TAU2 * ph - 3.2) - 3.2 * Math.cos(TAU2 * ph - 3.2));
+      return o1 + d1 * (u - 1);
+    };
+    const srcOf = new Int32Array(GW), zOf = new Int16Array(GW);
+    for (let gx = 0; gx < GW; gx++) {
+      srcOf[gx] = gx;
+      zOf[gx] = 0;
+    }
+    if (fish && amp > 0.3) {
+      const X = new Float32Array(total + 1), Z = new Float32Array(total + 1);
+      X[0] = Lo.nose + 0.5;
+      Z[0] = 0;
+      for (let s2 = 0; s2 < total; s2++) {
+        const u0 = s2 / bodyLen, u1 = (s2 + 1) / bodyLen;
+        const dz = off(u1) - off(u0);
+        const th = Math.atan(dz);
+        X[s2 + 1] = X[s2] - Math.cos(th);
+        Z[s2 + 1] = Z[s2] + Math.sin(th);
+      }
+      let s = 0;
+      for (let tx = Lo.nose; tx >= 0; tx--) {
+        const cx = tx + 0.5;
+        while (s < total && Math.abs(X[s + 1] - cx) <= Math.abs(X[s] - cx)) s++;
+        if (s >= total && X[total] - cx > 0.75) {
+          srcOf[tx] = -1;
+          continue;
+        }
+        srcOf[tx] = Lo.nose - s;
+        zOf[tx] = Math.round(Z[s]);
+      }
+    }
+    let bendMax = 0;
+    for (let gx = 0; gx < GW; gx++) bendMax = Math.max(bendMax, Math.abs(zOf[gx]));
+    const pecA = 0.42 + 0.32 * Math.sin(TAU2 * ph + 1.1);
+    const pecReach = Lo.pecRoot >= 0 && L.front ? Lo.pecLen || 0 : 0;
+    const NZ = 2 * (Math.ceil(maxT) + bendMax + 4 + Math.ceil(pecReach * 0.6)) + 3;
+    const zc = NZ >> 1;
+    const NX = GW, NY = GH, NXY = NX * NY;
+    const data = new Uint16Array(NXY * NZ);
+    const zmin = new Int16Array(NXY).fill(32767), zmax = new Int16Array(NXY).fill(-1);
+    const set = (x, gy, z, v) => {
+      if (x < 0 || x >= NX || z < 0 || z >= NZ) return;
+      const y = NY - 1 - gy;
+      const col = x + y * NX;
+      data[col + z * NXY] = v;
+      if (z < zmin[col]) zmin[col] = z;
+      if (z > zmax[col]) zmax[col] = z;
+    };
+    const tAt = (gx, gy) => gx < 0 || gy < 0 || gx >= GW || gy >= GH ? -1 : T[gy * GW + gx];
+    const glowOf = (ly, i) => !!(ly.glow && ly.glow[i]);
+    const bcol = L.body?.col;
+    for (let tx = 0; tx < GW; tx++) {
+      const gx = srcOf[tx];
+      if (gx < 0) continue;
+      const zo = zOf[tx];
+      for (let gy = 0; gy < GH; gy++) {
+        const i = gy * GW + gx;
+        if (!mask[i]) continue;
+        const t = T[i];
+        const zr = Math.max(0, Math.round(t));
+        const thin = t < 0.9;
+        const pv = pal.idx(bcol[i] | 4278190080, thin && !kind ? 4 : 0, glowOf(L.body, i));
+        for (let z = -zr; z <= zr; z++) set(tx, gy, zc + z + zo, pv);
+        const ec = eyeCol[i];
+        if (ec) {
+          const pe = pal.idx(ec, 2, !!eyeGlow[i]);
+          const ev = nearestEye(Lo, gx, gy);
+          let dome = 1;
+          if (ev && ev.rv >= 2.6) {
+            const d2 = ((gx + 0.5 - ev.x) ** 2 + (gy + 0.5 - ev.y) ** 2) / (ev.rv * ev.rv);
+            dome = 1 + Math.round(Math.max(0, 1 - d2) * Math.min(2, ev.rv * 0.28));
+          }
+          for (let z = zr + 1; z <= zr + dome; z++) {
+            set(tx, gy, zc + z + zo, pe);
+            set(tx, gy, zc - z + zo, pe);
+          }
+          if (dome > 1) {
+            set(tx, gy, zc + zr + zo, pe);
+            set(tx, gy, zc - zr + zo, pe);
+          }
+        }
+        const mc = mouthCol[i];
+        if (mc) {
+          const pm = pal.idx(mc, 3, false);
+          set(tx, gy, zc + zr + zo, pm);
+          set(tx, gy, zc - zr + zo, pm);
+        }
+      }
+    }
+    for (let gy = 0; gy < GH; gy++) for (let gx = 0; gx < GW; gx++) {
+      const i = gy * GW + gx;
+      if (mask[i]) continue;
+      const ec = eyeCol[i], mc = mouthCol[i];
+      if (!ec && !mc) continue;
+      const pv = ec ? pal.idx(ec, 2, !!eyeGlow[i]) : pal.idx(mc, 3, false);
+      for (let z = -1; z <= 1; z++) set(gx, gy, zc + z + zOfSrc(srcOf, zOf, gx), pv);
+    }
+    const kindZ = Math.max(1, Math.round(maxT * 0.6));
+    for (const id of ["tail", "back", "front"]) {
+      const ly = L[id];
+      if (!ly) continue;
+      const colA = ly.col;
+      if (fish && id === "front") {
+        const root = Lo.pecRoot;
+        const ca = Math.cos(pecA), sa = Math.sin(pecA);
+        for (let gy = 0; gy < GH; gy++) for (let gx = 0; gx < GW; gx++) {
+          const i = gy * GW + gx;
+          const p = colA[i];
+          if (!p) continue;
+          const d = root - gx;
+          const tx = Math.round(root - d * ca);
+          let tb = tAt(root, gy);
+          if (tb < 0) {
+            for (let k2 = 1; k2 < 8 && tb < 0; k2++) tb = Math.max(tAt(root - k2, gy), tAt(root, gy - k2), tAt(root, gy + k2));
+          }
+          if (tb < 0) tb = maxT * 0.5;
+          const zo = zOfSrc(srcOf, zOf, tx);
+          const zz = Math.round(tb) + 1 + Math.round(d * sa * 0.85);
+          const pv = pal.idx(p, 1, glowOf(ly, i));
+          set(tx, gy, zc + zz + zo, pv);
+          set(tx, gy, zc - zz + zo, pv);
+        }
+        continue;
+      }
+      for (let tx = 0; tx < GW; tx++) {
+        const gx = fish ? srcOf[tx] : tx;
+        if (gx < 0) continue;
+        const zo = fish ? zOf[tx] : 0;
+        for (let gy = 0; gy < GH; gy++) {
+          const i = gy * GW + gx;
+          const p = colA[i];
+          if (!p) continue;
+          if (fish) {
+            if (mask[i] && T[i] >= 0.9) continue;
+            set(tx, gy, zc + zo, pal.idx(p, 1, glowOf(ly, i)));
+            continue;
+          }
+          const pv = pal.idx(p | (p >>> 24 >= 200 ? 4278190080 : 0), p >>> 24 >= 200 ? 5 : 1, glowOf(ly, i));
+          const t = mask[i] ? Math.round(T[i]) + 1 : 0;
+          if (id === "tail" || (kind === "ray" || kind === "squid") && id === "back") {
+            set(tx, gy, zc, pv);
+            continue;
+          }
+          const sgn = id === "back" ? -1 : 1;
+          const z02 = mask[i] ? t : kindZ;
+          set(tx, gy, zc + sgn * z02, pv);
+          set(tx, gy, zc + sgn * (z02 + 1), pv);
+        }
+      }
+    }
+    let x0 = NX, x1 = -1, y0 = NY, y1 = -1, z0 = NZ, z1 = -1;
+    for (let y = 0; y < NY; y++) for (let x = 0; x < NX; x++) {
+      const col = x + y * NX;
+      if (zmax[col] < 0) continue;
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+      if (zmin[col] < z0) z0 = zmin[col];
+      if (zmax[col] > z1) z1 = zmax[col];
+    }
+    if (x1 < 0) {
+      x0 = y0 = z0 = 0;
+      x1 = y1 = z1 = 0;
+    }
+    const P32 = (p, zExtra = 0) => {
+      const tx = clamp2(Math.floor(p[0]), 0, NX - 1);
+      return [p[0], NY - p[1], zc + 0.5 + zExtra + zOf[tx]];
+    };
+    const eyes2 = Lo.eyes.map((e) => {
+      const gx = clamp2(Math.floor(e.x), 0, GW - 1), gy = clamp2(Math.floor(e.y), 0, GH - 1);
+      const t = Math.max(0, Math.round(tAt(gx, gy)));
+      return { ...e, p: P32([e.x, e.y], t + 1.2) };
+    });
+    const mouth = Lo.mouth ? (() => {
+      const gx = clamp2(Math.floor(Lo.mouth.x), 0, GW - 1), gy = clamp2(Math.floor(Lo.mouth.y), 0, GH - 1);
+      return { ...Lo.mouth, p: P32([Lo.mouth.x, Lo.mouth.y], Math.max(0, Math.round(tAt(gx, gy))) + 0.8) };
+    })() : null;
+    const anchors = {};
+    for (const [k2, v] of Object.entries(Lo.anchors)) anchors[k2] = P32(v);
+    return {
+      Lo,
+      data,
+      NX,
+      NY,
+      NZ,
+      NXY,
+      zmin,
+      zmax,
+      pal,
+      x0,
+      x1,
+      y0,
+      y1,
+      z0,
+      z1,
+      srcOf,
+      zOf,
+      zc,
+      center: [Lo.origin[0], NY - Lo.origin[1], zc + 0.5],
+      eyes: eyes2,
+      mouth,
+      anchors,
+      bytes: data.byteLength + NXY * 4
+    };
+  }
+  function zOfSrc(srcOf, zOf, tx) {
+    return tx >= 0 && tx < zOf.length ? zOf[tx] : 0;
+  }
+  function nearestEye(Lo, gx, gy) {
+    let best = null, bd = Infinity;
+    for (const e of Lo.eyes) {
+      const d = (gx + 0.5 - e.x) ** 2 + (gy + 0.5 - e.y) ** 2;
+      if (d < bd) {
+        bd = d;
+        best = e;
+      }
+    }
+    return best;
+  }
+  var KX = [];
+  var KY = [];
+  var KZ = [];
+  var KW = [];
+  for (let z = -1; z <= 1; z++) for (let y = -1; y <= 1; y++) for (let x = -1; x <= 1; x++) {
+    if (!x && !y && !z) continue;
+    KX.push(x);
+    KY.push(y);
+    KZ.push(z);
+    KW.push(1 / (x * x + y * y + z * z));
+  }
+  for (const [x, y, z] of [[2, 0, 0], [-2, 0, 0], [0, 2, 0], [0, -2, 0], [0, 0, 2], [0, 0, -2]]) {
+    KX.push(x);
+    KY.push(y);
+    KZ.push(z);
+    KW.push(0.25);
+  }
+  var KN = KX.length;
+  var FACET = 0.16;
+  var FN = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+  var LIGHT = (() => {
+    const v = [-0.5, 0.74, 0.46];
+    const l = Math.hypot(...v);
+    return v.map((a) => a / l);
+  })();
+  var HALF = (() => {
+    const v = [LIGHT[0], LIGHT[1], LIGHT[2] + 1];
+    const l = Math.hypot(...v);
+    return v.map((a) => a / l);
+  })();
+  function hash32(x, y, z) {
+    let h = x * 374761393 + y * 668265263 + z * 2147483647 | 0;
+    h = Math.imul(h ^ h >>> 13, 1274126177);
+    return ((h ^ h >>> 16) >>> 0) / 4294967296;
+  }
+  function camera(G, yawDeg, pitchDeg, s, extraPad = 0) {
+    const xf = (v) => {
+      const cp = Math.cos(-pitchDeg * DEG), sp = Math.sin(-pitchDeg * DEG);
+      let x = v[0] * cp - v[1] * sp, y = v[0] * sp + v[1] * cp, z = v[2];
+      const cy = Math.cos(yawDeg * DEG), sy = Math.sin(yawDeg * DEG);
+      const x2 = x * cy - z * sy, z2 = x * sy + z * cy;
+      x = x2;
+      z = z2;
+      const ct = Math.cos(CAM_TILT * DEG), st = Math.sin(CAM_TILT * DEG);
+      const y2 = y * ct - z * st, z3 = y * st + z * ct;
+      return [x, y2, z3];
+    };
+    const ex = xf([1, 0, 0]), ey = xf([0, 1, 0]), ez = xf([0, 0, 1]);
+    const R0 = [ex[0], ey[0], ez[0]], R1 = [ex[1], ey[1], ez[1]], R2 = [ex[2], ey[2], ez[2]];
+    const C = G.center;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (let i = 0; i < 8; i++) {
+      const px = (i & 1 ? G.x1 + 1 : G.x0) - C[0], py = (i & 2 ? G.y1 + 1 : G.y0) - C[1], pz = (i & 4 ? G.z1 + 1 : G.z0) - C[2];
+      const X = px * R0[0] + py * R0[1] + pz * R0[2], Y = px * R1[0] + py * R1[1] + pz * R1[2];
+      if (X < minX) minX = X;
+      if (X > maxX) maxX = X;
+      if (Y < minY) minY = Y;
+      if (Y > maxY) maxY = Y;
+    }
+    const pad = 2 + extraPad;
+    const W = Math.max(1, Math.ceil((maxX - minX) * s) + pad * 2), H = Math.max(1, Math.ceil((maxY - minY) * s) + pad * 2);
+    const project = (p) => {
+      const px = p[0] - C[0], py = p[1] - C[1], pz = p[2] - C[2];
+      const X = px * R0[0] + py * R0[1] + pz * R0[2], Y = px * R1[0] + py * R1[1] + pz * R1[2], Z = px * R2[0] + py * R2[1] + pz * R2[2];
+      return [(X - minX) * s + pad, (maxY - Y) * s + pad, Z];
+    };
+    return { R0, R1, R2, minX, maxY, s, pad, W, H, project };
+  }
+  var Job = class {
+    constructor(G, yaw, pitch, s, opts) {
+      this.G = G;
+      this.yaw = yaw;
+      this.pitch = pitch;
+      this.s = s;
+      this.opts = opts;
+      this.glowR = G.pal.em.some((e) => e) ? Math.max(2, Math.round(s * 1.4)) : 0;
+      const cam = camera(G, yaw, pitch, s, this.glowR);
+      this.cam = cam;
+      const N = cam.W * cam.H;
+      this.out = new Uint32Array(N);
+      this.depth = new Float32Array(N).fill(1e9);
+      this.glow = null;
+      this.row = 0;
+      this.done = false;
+      let hs = 1024;
+      while (hs < N * 0.7) hs <<= 1;
+      this.hk = new Int32Array(hs).fill(-1);
+      this.hv = new Uint32Array(hs);
+      this.hg = new Uint8Array(hs);
+      this.hmask = hs - 1;
+      this.cost = N;
+    }
+    step(deadline) {
+      const { cam } = this;
+      while (this.row < cam.H) {
+        this.traceRow(this.row++);
+        if ((this.row & 3) === 0 && now() > deadline) return false;
+      }
+      this.finish();
+      this.done = true;
+      return true;
+    }
+    traceRow(py) {
+      const { G, cam, out, depth } = this;
+      const { R0, R1, R2, s, pad, minX, maxY, W } = cam;
+      const { data, NX, NXY, zmin, zmax, pal } = G;
+      const C = G.center;
+      const dx = -R2[0], dy = -R2[1], dz = -R2[2];
+      const bx0 = G.x0, by0 = G.y0, bz0 = G.z0, bx1 = G.x1 + 1, by1 = G.y1 + 1, bz1 = G.z1 + 1;
+      const BIG = 1e30;
+      const zx = Math.abs(dx) < 1e-9, zy = Math.abs(dy) < 1e-9, zz = Math.abs(dz) < 1e-9;
+      const idx = zx ? BIG : 1 / dx, idy = zy ? BIG : 1 / dy, idz = zz ? BIG : 1 / dz;
+      const sx = dx > 0 ? 1 : -1, sy = dy > 0 ? 1 : -1, sz = dz > 0 ? 1 : -1;
+      const tdx = Math.abs(idx), tdy = Math.abs(idy), tdz = Math.abs(idz);
+      const fX = sx > 0 ? 1 : 0, fY = sy > 0 ? 3 : 2, fZ = sz > 0 ? 5 : 4;
+      const Y = maxY - (py - pad + 0.5) / s;
+      const alphaArr = pal.alpha;
+      for (let px = 0; px < W; px++) {
+        const X = minX + (px - pad + 0.5) / s;
+        const ox = C[0] + X * R0[0] + Y * R1[0], oy = C[1] + X * R0[1] + Y * R1[1], oz = C[2] + X * R0[2] + Y * R1[2];
+        let t0x, t1x, t0y, t1y, t0z, t1z;
+        if (zx) {
+          if (ox < bx0 || ox >= bx1) continue;
+          t0x = -BIG;
+          t1x = BIG;
+        } else {
+          t0x = (bx0 - ox) * idx;
+          t1x = (bx1 - ox) * idx;
+          if (t0x > t1x) {
+            const q = t0x;
+            t0x = t1x;
+            t1x = q;
+          }
+        }
+        if (zy) {
+          if (oy < by0 || oy >= by1) continue;
+          t0y = -BIG;
+          t1y = BIG;
+        } else {
+          t0y = (by0 - oy) * idy;
+          t1y = (by1 - oy) * idy;
+          if (t0y > t1y) {
+            const q = t0y;
+            t0y = t1y;
+            t1y = q;
+          }
+        }
+        if (zz) {
+          if (oz < bz0 || oz >= bz1) continue;
+          t0z = -BIG;
+          t1z = BIG;
+        } else {
+          t0z = (bz0 - oz) * idz;
+          t1z = (bz1 - oz) * idz;
+          if (t0z > t1z) {
+            const q = t0z;
+            t0z = t1z;
+            t1z = q;
+          }
+        }
+        const tEnter = Math.max(t0x, t0y, t0z), tExit = Math.min(t1x, t1y, t1z);
+        if (tEnter >= tExit) continue;
+        let face = tEnter === t0x ? fX : tEnter === t0y ? fY : fZ;
+        let t = tEnter;
+        let te = t + 1e-5;
+        let ix = clamp2(Math.floor(ox + dx * te), bx0, bx1 - 1);
+        let iy = clamp2(Math.floor(oy + dy * te), by0, by1 - 1);
+        let iz = clamp2(Math.floor(oz + dz * te), bz0, bz1 - 1);
+        let tmx = zx ? BIG : (ix + (sx > 0 ? 1 : 0) - ox) * idx;
+        let tmy = zy ? BIG : (iy + (sy > 0 ? 1 : 0) - oy) * idy;
+        let tmz = zz ? BIG : (iz + (sz > 0 ? 1 : 0) - oz) * idz;
+        let transC = 0, transA = 0, transT = 0, hitC = 0, hitT = 0, hitG = 0, transG = 0;
+        for (let guard = 0; guard < 4096; guard++) {
+          const col = ix + iy * NX;
+          const zmn = zmin[col];
+          const tCol = tmx < tmy ? tmx : tmy;
+          let inspect = zmn !== 32767;
+          if (inspect) {
+            const tEnd = tCol < tExit ? tCol : tExit;
+            const za = oz + dz * t, zb = oz + dz * tEnd;
+            const lo = za < zb ? za : zb, hi = za < zb ? zb : za;
+            if (hi < zmn || lo >= zmax[col] + 1) inspect = false;
+          }
+          if (inspect) {
+            let found = false;
+            for (; ; ) {
+              const vi = col + iz * NXY;
+              const v = data[vi];
+              if (v) {
+                const a = alphaArr[v];
+                if (a >= 1) {
+                  hitC = this.shade(vi, face, ix, iy, iz);
+                  hitG = this.lastGlow;
+                  hitT = t;
+                  found = true;
+                  break;
+                }
+                if (!transA) {
+                  transC = this.shade(vi, face, ix, iy, iz);
+                  transG = this.lastGlow;
+                  transA = a;
+                  transT = t;
+                }
+              }
+              if (tmz < tCol) {
+                iz += sz;
+                t = tmz;
+                tmz += tdz;
+                face = fZ;
+                if (iz < bz0 || iz >= bz1 || t >= tExit) break;
+              } else break;
+            }
+            if (found) break;
+          }
+          if (tmx < tmy) {
+            ix += sx;
+            t = tmx;
+            tmx += tdx;
+            face = fX;
+            if (ix < bx0 || ix >= bx1) break;
+          } else {
+            iy += sy;
+            t = tmy;
+            tmy += tdy;
+            face = fY;
+            if (iy < by0 || iy >= by1) break;
+          }
+          if (t >= tExit) break;
+          te = t + 1e-5;
+          iz = clamp2(Math.floor(oz + dz * te), bz0, bz1 - 1);
+          tmz = zz ? BIG : (iz + (sz > 0 ? 1 : 0) - oz) * idz;
+        }
+        const p = py * W + px;
+        if (hitC) {
+          let cOut = hitC;
+          if (transA) cOut = mixPacked(hitC, transC, transA);
+          out[p] = cOut;
+          depth[p] = transA ? transT : hitT;
+          const g = transA && transG ? transC : hitG ? hitC : 0;
+          if (g) (this.glow || (this.glow = new Uint32Array(W * cam.H)))[p] = g;
+        } else if (transA) {
+          out[p] = (transC & 16777215 | Math.round(transA * 255) << 24) >>> 0;
+          depth[p] = transT;
+          if (transG) (this.glow || (this.glow = new Uint32Array(W * cam.H)))[p] = transC;
+        }
+      }
+    }
+    // Shade one voxel face (cached): returns a packed colour; sets this.lastGlow.
+    shade(vi, face, ix, iy, iz) {
+      const key = vi * 6 + face;
+      const hk = this.hk, m = this.hmask;
+      let h = Math.imul(key, 2654435761) >>> 0 & m;
+      for (; ; ) {
+        const k = hk[h];
+        if (k === key) {
+          this.lastGlow = this.hg[h];
+          return this.hv[h];
+        }
+        if (k === -1) break;
+        h = h + 1 & m;
+      }
+      const G = this.G, pal = G.pal, cam = this.cam;
+      const { data, NX, NY, NZ, NXY } = G;
+      const v = data[vi];
+      const role = pal.role[v];
+      const fn = FN[face];
+      let nx = fn[0], ny = fn[1], nz = fn[2];
+      let gx = 0, gy = 0, gz = 0;
+      const Lo = G.Lo;
+      if ((role === 0 || role === 3) && Lo.Tx && G.srcOf) {
+        const sxi = G.srcOf[ix];
+        const li = (NY - 1 - iy) * Lo.GW + sxi;
+        if (sxi >= 0 && Lo.mask[li]) {
+          const side = iz + 0.5 - (G.zc + 0.5 + G.zOf[ix]) >= 0 ? 1 : -1;
+          let ax2 = -Lo.Tx[li], ay = Lo.Ty[li], az = side;
+          const al = Math.hypot(ax2, ay, az);
+          ax2 /= al;
+          ay /= al;
+          az /= al;
+          gx = ax2;
+          gy = ay;
+          gz = az;
+          const wf = role === 3 ? 0.3 : FACET;
+          nx = nx * wf + ax2 * (1 - wf);
+          ny = ny * wf + ay * (1 - wf);
+          nz = nz * wf + az * (1 - wf);
+          const l = Math.hypot(nx, ny, nz) || 1;
+          nx /= l;
+          ny /= l;
+          nz /= l;
+        } else gx = NaN;
+      } else gx = NaN;
+      if (gx !== gx && role !== 1) {
+        gx = 0;
+        for (let k = 0; k < KN; k++) {
+          const x = ix + KX[k], y = iy + KY[k], z = iz + KZ[k];
+          if (x < 0 || y < 0 || z < 0 || x >= NX || y >= NY || z >= NZ) continue;
+          const w = data[x + y * NX + z * NXY];
+          if (w && pal.alpha[w] >= 1) {
+            gx -= KX[k] * KW[k];
+            gy -= KY[k] * KW[k];
+            gz -= KZ[k] * KW[k];
+          }
+        }
+        const gl = Math.hypot(gx, gy, gz);
+        if (gl > 0.4) {
+          const wf = role === 2 ? 0.25 : role === 4 ? 0.6 : 0.42;
+          nx = nx * wf + gx / gl * (1 - wf);
+          ny = ny * wf + gy / gl * (1 - wf);
+          nz = nz * wf + gz / gl * (1 - wf);
+          const l = Math.hypot(nx, ny, nz) || 1;
+          nx /= l;
+          ny /= l;
+          nz /= l;
+          gx /= gl;
+          gy /= gl;
+          gz /= gl;
+        } else {
+          gx = nx;
+          gy = ny;
+          gz = nz;
+        }
+      } else if (gx !== gx || role === 1) {
+        gx = nx;
+        gy = ny;
+        gz = nz;
+      }
+      const { R0, R1, R2 } = cam;
+      const cx = R0[0] * nx + R0[1] * ny + R0[2] * nz;
+      const cy = R1[0] * nx + R1[1] * ny + R1[2] * nz;
+      const cz = R2[0] * nx + R2[1] * ny + R2[2] * nz;
+      const lam = cx * LIGHT[0] + cy * LIGHT[1] + cz * LIGHT[2];
+      const ax = face >> 1;
+      const fx = ix + fn[0], fy = iy + fn[1], fz = iz + fn[2];
+      let occ = 0;
+      for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+        if (!a && !b) continue;
+        let x = fx, y = fy, z = fz;
+        if (ax === 0) {
+          y += a;
+          z += b;
+        } else if (ax === 1) {
+          x += a;
+          z += b;
+        } else {
+          x += a;
+          y += b;
+        }
+        if (x < 0 || y < 0 || z < 0 || x >= NX || y >= NY || z >= NZ) continue;
+        const w = data[x + y * NX + z * NXY];
+        if (w && pal.alpha[w] >= 1) occ += a && b ? 0.55 : 1;
+      }
+      const ao = 1 - Math.min(1, occ / 5.2);
+      let tone3;
+      if (role === 1) {
+        const d = Math.abs(lam);
+        tone3 = (0.34 + 0.4 * d + 0.18 * (0.5 + 0.5 * cy)) * (0.75 + 0.25 * ao);
+        tone3 = (tone3 - 0.6) * 2.1;
+      } else {
+        const diff = clamp013((lam + 0.22) / 1.22);
+        const sky = 0.5 + 0.5 * cy;
+        let lit = 0.2 + 0.52 * diff + 0.2 * sky;
+        lit *= 0.52 + 0.48 * ao;
+        tone3 = (lit - 0.6) * 2.1;
+        if (tone3 > 0) tone3 *= 0.72;
+        const scx = R0[0] * gx + R0[1] * gy + R0[2] * gz, scy = R1[0] * gx + R1[1] * gy + R1[2] * gz, scz = R2[0] * gx + R2[1] * gy + R2[2] * gz;
+        const hd = scx * HALF[0] + scy * HALF[1] + scz * HALF[2];
+        const specK = role === 2 ? 1.6 : role === 0 ? 0.75 : 0.4;
+        if (hd > 0.8) tone3 += Math.pow((hd - 0.8) / 0.2, 3) * specK;
+        const rim = Math.pow(1 - clamp013(scz), 2.6) * clamp013(scy * 1.4 + 0.25);
+        tone3 += rim * 0.3;
+      }
+      tone3 += (hash32(ix, iy, iz) - 0.5) * 0.045;
+      const em = pal.em[v];
+      if (em) tone3 = Math.max(tone3, 0.3) * 0.5 + 0.32;
+      const ti = clamp2(Math.round(tone3 * 10), -10, 10) + 10;
+      const col = rampOf(pal, v)[ti];
+      hk[h] = key;
+      this.hv[h] = col;
+      this.hg[h] = em;
+      this.lastGlow = em;
+      return col;
+    }
+    finish() {
+      const { cam, out, depth } = this;
+      const { W, H } = cam;
+      const N = W * H;
+      const thr = 2.4;
+      const src = out.slice();
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const p = y * W + x;
+        const c = src[p];
+        if (!c) continue;
+        const d = depth[p] - thr;
+        if (x > 0 && src[p - 1] && depth[p - 1] < d || x + 1 < W && src[p + 1] && depth[p + 1] < d || y > 0 && src[p - W] && depth[p - W] < d || y + 1 < H && src[p + W] && depth[p + W] < d) {
+          out[p] = darkPacked(c, 0.62);
+        }
+      }
+      if (this.opts.outline !== false) {
+        const src2 = out.slice();
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+          const p = y * W + x;
+          if (src2[p] >>> 24) continue;
+          let n = 0;
+          if (y > 0 && src2[p - W] >>> 24 >= 200) n = src2[p - W];
+          else if (x > 0 && src2[p - 1] >>> 24 >= 200) n = src2[p - 1];
+          else if (x + 1 < W && src2[p + 1] >>> 24 >= 200) n = src2[p + 1];
+          else if (y + 1 < H && src2[p + W] >>> 24 >= 200) n = src2[p + W];
+          if (n) out[p] = outlinePacked(n);
+        }
+      }
+      this.canvas = toCanvas(out, W, H);
+      if (this.glow) this.glowCanvas = toCanvas(glowHalo(this.glow, W, H, this.glowR || 2), W, H);
+      statPx += N;
+      this.hk = this.hv = this.hg = null;
+      this.depth = null;
+    }
+  };
+  function mixPacked(a, b, t) {
+    const ar = a & 255, ag = a >>> 8 & 255, ab = a >>> 16 & 255;
+    const br = b & 255, bg = b >>> 8 & 255, bb = b >>> 16 & 255;
+    return (4278190080 | Math.round(ab + (bb - ab) * t) << 16 | Math.round(ag + (bg - ag) * t) << 8 | Math.round(ar + (br - ar) * t)) >>> 0;
+  }
+  function darkPacked(c, k) {
+    const r = c & 255, g = c >>> 8 & 255, b = c >>> 16 & 255;
+    return (c & 4278190080 | Math.round(b * k + 10 * (1 - k)) << 16 | Math.round(g * k * 0.96) << 8 | Math.round(r * k * 0.92)) >>> 0;
+  }
+  function outlinePacked(n) {
+    const r = n & 255, g = n >>> 8 & 255, b = n >>> 16 & 255;
+    return (4278190080 | Math.round(b * 0.26 + 22) << 16 | Math.round(g * 0.2 + 8) << 8 | Math.round(r * 0.22 + 10)) >>> 0;
+  }
+  function glowHalo(g, W, H, R) {
+    const N = W * H;
+    const r = new Float32Array(N), gg = new Float32Array(N), b = new Float32Array(N), a = new Float32Array(N);
+    for (let p = 0; p < N; p++) {
+      const c = g[p];
+      if (!c) continue;
+      r[p] = c & 255;
+      gg[p] = c >>> 8 & 255;
+      b[p] = c >>> 16 & 255;
+      a[p] = 1;
+    }
+    const tmp = new Float32Array(N);
+    const blur = (ch) => {
+      for (let pass = 0; pass < 2; pass++) {
+        for (let y = 0; y < H; y++) {
+          let acc = 0;
+          const row = y * W;
+          for (let x = -R; x < W + R; x++) {
+            if (x + R < W) acc += ch[row + x + R];
+            if (x - R - 1 >= 0) acc -= ch[row + x - R - 1];
+            if (x >= 0 && x < W) tmp[row + x] = acc / (2 * R + 1);
+          }
+        }
+        for (let x = 0; x < W; x++) {
+          let acc = 0;
+          for (let y = -R; y < H + R; y++) {
+            if (y + R < H) acc += tmp[(y + R) * W + x];
+            if (y - R - 1 >= 0) acc -= tmp[(y - R - 1) * W + x];
+            if (y >= 0 && y < H) ch[y * W + x] = acc / (2 * R + 1);
+          }
+        }
+      }
+    };
+    const core = g.slice();
+    blur(r);
+    blur(gg);
+    blur(b);
+    blur(a);
+    const outB = new Uint32Array(N);
+    for (let p = 0; p < N; p++) {
+      if (core[p]) {
+        outB[p] = core[p] | 4278190080;
+        continue;
+      }
+      const al = a[p];
+      if (al < 0.01) continue;
+      const k = 1 / al;
+      const A = Math.min(255, Math.round(Math.pow(al, 0.8) * 230));
+      outB[p] = (A << 24 | clamp2(Math.round(b[p] * k), 0, 255) << 16 | clamp2(Math.round(gg[p] * k), 0, 255) << 8 | clamp2(Math.round(r[p] * k), 0, 255)) >>> 0;
+    }
+    return outB;
+  }
+  function toCanvas(buf, W, H) {
+    const c = makeCanvas(W, H);
+    const g = ctxOf(c);
+    const img = g.createImageData(W, H);
+    new Uint32Array(img.data.buffer).set(buf);
+    g.putImageData(img, 0, 0);
+    return c;
+  }
+  var layouts = /* @__PURE__ */ new Map();
+  var grids = /* @__PURE__ */ new Map();
+  var frames = /* @__PURE__ */ new Map();
+  var jobs = /* @__PURE__ */ new Map();
+  var byCreature = /* @__PURE__ */ new Map();
+  var gridBytes = 0;
+  function touch(map, k, v) {
+    map.delete(k);
+    map.set(k, v);
+  }
+  function layoutFor(c, rk, infl, pose, kf) {
+    const key = vidOf(c) + "|" + rk + "|" + infl + "|" + (pose ? 1 : 0) + "|" + kf;
+    let L = layouts.get(key);
+    if (L) {
+      touch(layouts, key, L);
+      return L;
+    }
+    const t0 = now();
+    L = buildLayout(c, Math.pow(2, rk / 2), infl / INFL_N, pose, kf);
+    spent += now() - t0;
+    workTotal += now() - t0;
+    L.key = key;
+    layouts.set(key, L);
+    if (layouts.size > LAYOUT_MAX) {
+      const k = layouts.keys().next().value;
+      layouts.delete(k);
+    }
+    return L;
+  }
+  function gridFor(c, rk, infl, pose, sw) {
+    const kind = isKind(c) || c.kind === "chain";
+    const kf = kind && c.kind !== "chain" ? sw : 0;
+    const lkey = vidOf(c) + "|" + rk + "|" + infl + "|" + (pose ? 1 : 0) + "|" + kf;
+    const gkey = lkey + "#" + (kind ? 0 : sw);
+    let G = grids.get(gkey);
+    if (G) {
+      touch(grids, gkey, G);
+      return G;
+    }
+    const Lo = layoutFor(c, rk, infl, pose, kf);
+    const t0 = now();
+    G = buildGrid(Lo, kind ? 0 : sw);
+    spent += now() - t0;
+    workTotal += now() - t0;
+    grids.set(gkey, G);
+    gridBytes += G.bytes;
+    while (gridBytes > GRID_BYTES_MAX && grids.size > 4) {
+      const k = grids.keys().next().value;
+      gridBytes -= grids.get(k).bytes;
+      grids.delete(k);
+    }
+    return G;
+  }
+  var framePx = 0;
+  function storeFrame(fkey, meta, fr) {
+    frames.set(fkey, fr);
+    framePx += fr.W * fr.H;
+    let m = byCreature.get(meta.vid);
+    if (!m) byCreature.set(meta.vid, m = /* @__PURE__ */ new Map());
+    m.set(fkey, meta);
+    while (framePx > FRAME_PX_MAX && frames.size > 8) {
+      const k = frames.keys().next().value;
+      const f = frames.get(k);
+      framePx -= f.W * f.H;
+      frames.delete(k);
+      byCreature.get(f.vid)?.delete(k);
+    }
+  }
+  function makeFrame(job, meta) {
+    const { cam, G } = job;
+    const C = cam.project(G.center);
+    const ax = C[0], ay = C[1];
+    const rel = (p) => {
+      const q = cam.project(p);
+      return [q[0] - ax, q[1] - ay, q[2]];
+    };
+    const anchors = {};
+    for (const [k, p] of Object.entries(G.anchors)) anchors[k] = rel(p);
+    return {
+      canvas: job.canvas,
+      glow: job.glowCanvas || null,
+      W: cam.W,
+      H: cam.H,
+      ax,
+      ay,
+      s: job.s,
+      Sb: meta.Sb,
+      vid: meta.vid,
+      yaw: meta.yawI * YAW_STEP,
+      pitch: meta.pitchI * (G.Lo.kind === "chain" ? CHAIN_PITCH_STEP : PITCH_STEP),
+      r: G.Lo.r,
+      eyes: G.eyes.map((e) => {
+        const q = rel(e.p);
+        return { x: q[0], y: q[1], z: q[2], r: e.rLook * meta.Sb, e: e.e, idx: e.idx, mirror: e.mirror, cheek: e.cheek, main: e.main };
+      }),
+      mouth: G.mouth ? (() => {
+        const q = rel(G.mouth.p);
+        return { x: q[0], y: q[1], w: G.mouth.wLook * meta.Sb, m: G.mouth.m, front: G.mouth.front };
+      })() : null,
+      anchors
+    };
+  }
+  function fkeyOf(m) {
+    return m.vid + "|" + m.rk + "|" + m.infl + "|" + m.pose + "|" + m.sw + "|" + m.yawI + "|" + m.pitchI + "|" + m.sb;
+  }
+  function work(c, m, fkey, deadline) {
+    let J2 = jobs.get(fkey);
+    if (!J2) {
+      const G = gridFor(c, m.rk, m.infl, m.pose, m.sw);
+      const yaw = m.yawI * YAW_STEP, pitch = m.pitchI * (c.kind === "chain" ? CHAIN_PITCH_STEP : PITCH_STEP);
+      J2 = { job: new Job(G, yaw, pitch, m.Sb / G.Lo.r, { outline: true }), meta: m };
+      jobs.set(fkey, J2);
+      statJobs++;
+    }
+    J2.last = now();
+    const t0 = now();
+    const done = J2.job.step(deadline);
+    const dt = now() - t0;
+    spent += dt;
+    workTotal += dt;
+    if (!done) return null;
+    jobs.delete(fkey);
+    const fr = makeFrame(J2.job, m);
+    storeFrame(fkey, m, fr);
+    statBuilt++;
+    return fr;
+  }
+  function fallback(m) {
+    const list = byCreature.get(m.vid);
+    if (!list || !list.size) return null;
+    let best = null, bd = Infinity;
+    for (const [k, q] of list) {
+      let d = Math.abs(q.yawI - m.yawI) * 4 + Math.abs(q.pitchI - m.pitchI) * 1.5 + Math.abs(q.sb - m.sb) * 0.9 + Math.abs(q.infl - m.infl) * 3 + (q.pose !== m.pose ? 20 : 0);
+      const ds = Math.abs(q.sw - m.sw);
+      d += Math.min(ds, SWIM_N - ds) * 0.5;
+      if (d < bd) {
+        const f = frames.get(k);
+        if (f) {
+          bd = d;
+          best = f;
+        }
+      }
+    }
+    return best;
+  }
+  var warmQ = [];
+  var warmed = /* @__PURE__ */ new Set();
+  function queueWarm(c, m) {
+    const key = m.vid + "|" + m.rk + "|" + m.infl + "|" + m.pose;
+    if (warmed.has(key)) return;
+    m = { ...m, pitchI: 0 };
+    warmed.add(key);
+    if (warmed.size > 4e3) warmed.clear();
+    const isK = isKind(c) || c.kind === "chain";
+    for (const y of [3, 6, 1, 2, 4, 5, -1, -2]) warmQ.push({ c, m: { ...m, yawI: y, sw: 0 } });
+    if (!isK) for (let s = 1; s < SWIM_N; s++) warmQ.push({ c, m: { ...m, yawI: 0, sw: s } });
+    else for (let s = 1; s < KIND_N; s++) warmQ.push({ c, m: { ...m, yawI: 0, sw: s } });
+    if (warmQ.length > 600) warmQ.splice(0, warmQ.length - 600);
+  }
+  var wants = /* @__PURE__ */ new Map();
+  function runWants() {
+    const t = now();
+    for (const [k, J2] of jobs) if (t - J2.last > 4e3) jobs.delete(k);
+    if (!wants.size) return;
+    const list = [...wants.values()].sort((a, b) => b.pri - a.pri);
+    wants.clear();
+    const deadline = t + budgetMs;
+    for (const w of list) {
+      if (now() >= deadline) break;
+      const fkey = fkeyOf(w.m);
+      if (!frames.has(fkey)) work(w.c, w.m, fkey, deadline);
+    }
+  }
+  function runWarm() {
+    if (!warmQ.length || spent > budgetMs + WARM_MS) return;
+    const deadline = now() + WARM_MS;
+    let n = 0;
+    while (warmQ.length && now() < deadline && n < 40) {
+      const { c, m } = warmQ[0];
+      const fkey = fkeyOf(m);
+      if (frames.has(fkey)) {
+        warmQ.shift();
+        n++;
+        continue;
+      }
+      const fr = work(c, m, fkey, deadline);
+      if (fr) warmQ.shift();
+      n++;
+    }
+  }
+  function voxelFrame(c, req) {
+    ensureTick();
+    const sb = scaleBucket(req.S);
+    const Sb = bucketScale(sb);
+    const rk = resLevel(c, Sb);
+    const chain2 = c.kind === "chain";
+    const pStep = chain2 ? CHAIN_PITCH_STEP : PITCH_STEP, pMax = chain2 ? CHAIN_PITCH_MAX : PITCH_MAX;
+    const m = {
+      vid: vidOf(c),
+      rk,
+      Sb,
+      sb,
+      infl: req.infl || 0,
+      pose: req.pose ? 1 : 0,
+      sw: req.sw || 0,
+      yawI: clamp2(Math.round(req.yaw / YAW_STEP), -6, 6),
+      pitchI: clamp2(Math.round((req.pitch || 0) / pStep), -pMax, pMax)
+    };
+    const fkey = fkeyOf(m);
+    let f = frames.get(fkey);
+    if (f) {
+      touch(frames, fkey, f);
+      return { f, k: req.S / f.Sb };
+    }
+    for (const d of [1, -1]) {
+      const sb2 = sb + d, Sb2 = bucketScale(sb2);
+      const k2 = fkeyOf({ ...m, sb: sb2, rk: resLevel(c, Sb2) });
+      const f2 = frames.get(k2);
+      if (f2) {
+        touch(frames, k2, f2);
+        return { f: f2, k: req.S / f2.Sb };
+      }
+    }
+    if (rafOn) {
+      const pri = req.S * lookLen(c) * (req.lod ? 0.35 : 1) * (req.pri ?? 1);
+      const w = wants.get(fkey);
+      if (!w || w.pri < pri) wants.set(fkey, { c, m, pri });
+    } else if (!overBudget()) {
+      f = work(c, m, fkey, now() + Math.max(0.5, budgetMs - spent));
+      if (f) return { f, k: req.S / f.Sb };
+    }
+    queueWarm(c, m);
+    const fb = fallback(m);
+    if (fb) {
+      statFallback++;
+      return { f: fb, k: req.S / fb.Sb };
+    }
+    if (forceSpent < FORCE_MS || req.force) {
+      const t0 = now();
+      f = work(c, m, fkey, req.force ? t0 + 1e6 : t0 + Math.max(2, FORCE_MS - forceSpent));
+      forceSpent += now() - t0;
+      if (f) return { f, k: req.S / f.Sb };
+    }
+    return null;
+  }
+  var balls = /* @__PURE__ */ new Map();
+  function chainBall(c, rScreen) {
+    const rq = Math.max(1, Math.round(rScreen * 2) / 2);
+    const key = vidOf(c) + "|" + rq;
+    let b = balls.get(key);
+    if (b) return b;
+    const Rv = Math.max(1.5, rq / VP);
+    const n = Math.ceil(Rv * 2) + 2;
+    const NXY = n * n;
+    const data = new Uint16Array(NXY * n);
+    const zmin = new Int16Array(NXY).fill(32767), zmax = new Int16Array(NXY).fill(-1);
+    const pal = new Pal();
+    const m = n / 2;
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      const dx = (x + 0.5 - m) / Rv, dy = (y + 0.5 - m) / Rv;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > 1) continue;
+      const col = chainSegColor(c, dx, dy, x, y) | 4278190080;
+      const pv = pal.idx(col, 0, false);
+      const t = Math.round(Rv * Math.sqrt(1 - d2));
+      const gy = n - 1 - y;
+      for (let z = -t; z <= t; z++) {
+        const zz = Math.floor(m) + z;
+        if (zz < 0 || zz >= n) continue;
+        const cc = x + gy * n;
+        data[cc + zz * NXY] = pv;
+        if (zz < zmin[cc]) zmin[cc] = zz;
+        if (zz > zmax[cc]) zmax[cc] = zz;
+      }
+    }
+    const G = { Lo: { r: 1 }, data, NX: n, NY: n, NZ: n, NXY, zmin, zmax, pal, x0: 0, y0: 0, z0: 0, x1: n - 1, y1: n - 1, z1: n - 1, center: [m, m, m], eyes: [], mouth: null, anchors: {} };
+    const job = new Job(G, 0, 0, rq / Rv, { outline: true });
+    job.step(Infinity);
+    const C = job.cam.project(G.center);
+    b = { canvas: job.canvas, ax: C[0], ay: C[1] };
+    balls.set(key, b);
+    if (balls.size > 400) balls.delete(balls.keys().next().value);
+    return b;
+  }
+
   // src/gfx/fishrig.js
+  var fishStyle = "voxel";
+  function setFishStyle(style) {
+    fishStyle = style === "pixel" ? "pixel" : "voxel";
+  }
+  if (typeof window !== "undefined") {
+    window.__fishStyle = setFishStyle;
+    window.__rigStats = () => rigStats();
+  }
   var ANGLE_STEP = Math.PI / 12;
   var MAX_ITEMS = 7e3;
   var cache2 = /* @__PURE__ */ new Map();
   var families = /* @__PURE__ */ new Map();
   var nextId = 1;
-  var budgetMs = 6;
-  var spent = 0;
+  var budgetMs2 = 6;
+  var spent2 = 0;
   var windowStart = 0;
   var statRaster = 0;
-  var statFallback = 0;
-  var now = () => typeof performance !== "undefined" ? performance.now() : Date.now();
+  var statFallback2 = 0;
+  var now2 = () => typeof performance !== "undefined" ? performance.now() : Date.now();
   var fract2 = (v) => v - Math.floor(v);
-  var clamp2 = (v, a, b) => v < a ? a : v > b ? b : v;
-  var TAU2 = Math.PI * 2;
+  var clamp3 = (v, a, b) => v < a ? a : v > b ? b : v;
+  var TAU3 = Math.PI * 2;
   function setRigBudget(ms) {
-    budgetMs = ms;
+    budgetMs2 = ms;
+    setVoxelFishBudget(Math.max(1.5, ms * 0.75));
   }
+  var drawMs = 0;
+  var drawCalls = 0;
   function rigStats() {
-    return { items: cache2.size, spent, rasterized: statRaster, fallbacks: statFallback };
+    return { items: cache2.size, spent: spent2, rasterized: statRaster, fallbacks: statFallback2, drawMs, drawCalls };
   }
   function clearRigCache() {
     cache2.clear();
@@ -7031,18 +8998,18 @@
     if (c.id == null && c._rid == null) c._rid = "r" + nextId++;
     return c.id ?? c._rid;
   }
-  function overBudget() {
-    const t = now();
+  function overBudget2() {
+    const t = now2();
     if (t - windowStart > 14) {
       windowStart = t;
-      spent = 0;
+      spent2 = 0;
     }
-    return spent >= budgetMs;
+    return spent2 >= budgetMs2;
   }
   function timed(fn) {
-    const t0 = now();
+    const t0 = now2();
     const r = fn();
-    spent += now() - t0;
+    spent2 += now2() - t0;
     statRaster++;
     return r;
   }
@@ -7062,24 +9029,24 @@
       s.add(frame);
     }
     if (cache2.size > MAX_ITEMS) {
-      const it = cache2.keys();
+      const it2 = cache2.keys();
       for (let i = 0; i < 400; i++) {
-        const k = it.next().value;
+        const k = it2.next().value;
         cache2.delete(k);
         const bar = k.lastIndexOf("#");
         if (bar > 0) families.get(k.slice(0, bar))?.delete(Number(k.slice(bar + 1)));
       }
     }
   }
-  function getLayer(c, layer, frames, frame, q, famKey) {
+  function getLayer(c, layer, frames2, frame, q, famKey) {
     const key = famKey + "#" + frame;
     let r = cacheGet(key);
     if (r) return r;
     const fam = families.get(famKey);
-    if (fam && fam.size && overBudget()) {
+    if (fam && fam.size && overBudget2()) {
       let best = -1, bd = 99;
       for (const f of fam) {
-        const d = Math.min(Math.abs(f - frame), frames - Math.abs(f - frame));
+        const d = Math.min(Math.abs(f - frame), frames2 - Math.abs(f - frame));
         if (d < bd) {
           bd = d;
           best = f;
@@ -7087,11 +9054,11 @@
       }
       r = cache2.get(famKey + "#" + best);
       if (r) {
-        statFallback++;
+        statFallback2++;
         return r;
       }
     }
-    r = timed(() => rasterLayer(c, layer, { ...q, ph: frame / frames }));
+    r = timed(() => rasterLayer(c, layer, { ...q, ph: frame / frames2 }));
     cachePut(key, r, famKey, frame);
     return r;
   }
@@ -7111,9 +9078,10 @@
   function eyeSprite(c, ev, fs, ang) {
     const R = ev.r;
     const n = Math.max(2, Math.round(R * 0.7));
-    const lxq = Math.round(clamp2(fs.lx, -1, 1) * n), lyq = Math.round(clamp2(fs.ly, -1, 1) * n);
-    const gxq = Math.round((fs.gx || 0) * n), gyq = Math.round((fs.gy || 0) * n);
-    const bq = Math.round(clamp2(fs.blink, 0, 1) * 4);
+    const lxq = Math.round(clamp3(fs.lx, -1, 1) * n), lyq = Math.round(clamp3(fs.ly, -1, 1) * n);
+    const googly = ev.e.type === "googly";
+    const gxq = googly ? Math.round((fs.gx || 0) * n) : 0, gyq = googly ? Math.round((fs.gy || 0) * n) : 0;
+    const bq = Math.round(clamp3(fs.blink, 0, 1) * 4);
     const tq = ANIM_EMO[fs.emotion] || ev.e.type === "googly" ? Math.floor(fs.time * 8) % 24 : 0;
     const pq = Math.round((fs.pupil || 1) * 10), dq = Math.round((fs.dim || 0) * 10);
     const key = `${idOf(c)}|e|${ev.idx}|${Math.round(ang * 100)}|${Math.round(R * 4)}|${fs.emotion}|${bq}|${lxq},${lyq}|${gxq},${gyq}|${tq}|${ev.mirror ? 1 : 0}${ev.cheek ? 1 : 0}${ev.main ? 1 : 0}|${pq}|${dq}`;
@@ -7144,7 +9112,7 @@
   }
   function mouthSprite(c, mo, fs) {
     const W = mo.w;
-    const oq = Math.round(clamp2(fs.open, 0, 1) * 6);
+    const oq = Math.round(clamp3(fs.open, 0, 1) * 6);
     const key = `${idOf(c)}|m|${Math.round((mo.angle || 0) * 100)}|${Math.round(W * 4)}|${fs.emotion}|${oq}|${mo.front ? 1 : 0}|${mo.m.type}|${mo.m.lineP}`;
     let r = cacheGet(key);
     if (r) return r;
@@ -7178,8 +9146,8 @@
         lx = Math.cos(t * 7) * 0.75;
         ly = Math.sin(t * 7) * 0.75;
       }
-      if (cue.lx) lx = clamp2(lx + cue.lx, -1, 1);
-      if (cue.ly) ly = clamp2(ly + cue.ly, -1, 1);
+      if (cue.lx) lx = clamp3(lx + cue.lx, -1, 1);
+      if (cue.ly) ly = clamp3(ly + cue.ly, -1, 1);
     }
     const gx = lx * 0.6 + Math.sin(t * 9.1) * 0.25 * (st.speed01 ?? 0.4);
     const gy = 0.55 + ly * 0.3 + Math.cos(t * 7.3) * 0.2 * (st.speed01 ?? 0.4);
@@ -7188,10 +9156,10 @@
       blink: st.blink || 0,
       lx,
       ly,
-      gx: clamp2(gx, -1, 1),
-      gy: clamp2(gy, -1, 1),
+      gx: clamp3(gx, -1, 1),
+      gy: clamp3(gy, -1, 1),
       time: t,
-      open: clamp2(Math.max(st.mouth || 0, geo?.rest || 0) + (toon ? 0 : cue.gape || 0), 0, 1),
+      open: clamp3(Math.max(st.mouth || 0, geo?.rest || 0) + (toon ? 0 : cue.gape || 0), 0, 1),
       pupil: toon ? 1 : cue.pupil || 1,
       dim: toon ? 0 : cue.dim || 0,
       cue
@@ -7227,13 +9195,31 @@
     cachePut(key, r);
     return r;
   }
+  function worldTurn(st) {
+    const facing = st.facing ?? 1;
+    const turn = st.turn;
+    if (turn == null) return facing;
+    if (turn === 1 && facing === -1) return -1;
+    return clamp3(turn, -1, 1);
+  }
   function drawFishRig(ctx2, c, st) {
+    const t0 = now2();
+    const a = drawFishRigInner(ctx2, c, st);
+    drawMs += now2() - t0;
+    drawCalls++;
+    return a;
+  }
+  function drawFishRigInner(ctx2, c, st) {
+    if ((st.style || fishStyle) === "voxel") {
+      const a2 = c.kind === "chain" ? drawVoxelChain(ctx2, c, st) : drawVoxelRig(ctx2, c, st);
+      if (a2) return a2;
+    }
     if (c.kind === "chain") return drawChainRig(ctx2, c, st);
     const kind = isKind(c);
     const s = Math.max(1, Math.round((st.scale ?? 1) * 8)) / 8;
     const angle = kind ? 0 : st.angle || 0;
-    let a = clamp2(Math.round(angle / ANGLE_STEP), -6, 6);
-    const inf = kind ? 0 : Math.round(clamp2(st.inflate || 0, 0, 1) * 4) / 4;
+    let a = clamp3(Math.round(angle / ANGLE_STEP), -6, 6);
+    const inf = kind ? 0 : Math.round(clamp3(st.inflate || 0, 0, 1) * 4) / 4;
     const pose = !!(st.pose || st.emotion === "pose");
     const t = st.time || 0;
     const sw = st.swimPhase ?? t * 1.2;
@@ -7242,12 +9228,12 @@
     const id = idOf(c);
     const layers = rigLayers(c);
     const fam = (L, aa) => `${id}|${L}|${aa}|${s}|${inf}|${pose ? 1 : 0}`;
-    if (!kind && !families.get(fam("body", a))?.size && overBudget()) {
+    if (!kind && !families.get(fam("body", a))?.size && overBudget2()) {
       for (let d = 1; d <= 12; d++) {
         const cand = [a - d, a + d].find((v) => v >= -6 && v <= 6 && families.get(fam("body", v))?.size);
         if (cand !== void 0) {
           a = cand;
-          statFallback++;
+          statFallback2++;
           break;
         }
       }
@@ -7262,9 +9248,8 @@
       geo.rest = c.mouth?.rest || 0;
       cachePut(gkey, geo);
     }
-    const facing = st.facing ?? 1;
-    const sx = facing * (st.turn ?? 1);
-    const sq = clamp2(st.squash || 0, -1, 1);
+    const sx = worldTurn(st);
+    const sq = clamp3(st.squash || 0, -1, 1);
     const kx = 1 + 0.22 * sq, ky = 1 - 0.2 * sq;
     const fs = faceState(st, ang, sx, st.x, st.y, geo);
     const cue = fs.cue;
@@ -7286,7 +9271,7 @@
     }
     if (!st.silhouette && geo.gill) {
       const rate = 0.7 * (cue.breath || 1);
-      const fl = 0.5 + 0.5 * Math.sin(t * TAU2 * rate);
+      const fl = 0.5 + 0.5 * Math.sin(t * TAU3 * rate);
       const w = fl > 0.86 ? 2 : fl > 0.5 ? 1 : 0;
       if (w) {
         const gs = gillSprite(c, geo, gkey, w + ((cue.breath || 1) >= 2 && w ? 1 : 0));
@@ -7322,17 +9307,22 @@
     const flush = st.flush;
     if (wash || sil || flush) {
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-      for (const [cv, dx, dy] of items) {
+      for (const [cv, dx, dy, dw, dh] of items) {
         x0 = Math.min(x0, dx);
         y0 = Math.min(y0, dy);
-        x1 = Math.max(x1, dx + cv.width);
-        y1 = Math.max(y1, dy + cv.height);
+        x1 = Math.max(x1, dx + (dw ?? cv.width));
+        y1 = Math.max(y1, dy + (dh ?? cv.height));
       }
       if (!isFinite(x0)) return;
-      const w = x1 - x0, h = y1 - y0;
+      x0 = Math.floor(x0);
+      y0 = Math.floor(y0);
+      const w = Math.ceil(x1 - x0), h = Math.ceil(y1 - y0);
       const sc = scratchFor(w, h);
       const g = sc._g;
-      for (const [cv, dx, dy] of items) g.drawImage(cv, dx - x0, dy - y0);
+      for (const [cv, dx, dy, dw, dh] of items) {
+        if (dw === void 0) g.drawImage(cv, dx - x0, dy - y0);
+        else g.drawImage(cv, dx - x0, dy - y0, dw, dh);
+      }
       g.globalCompositeOperation = "source-atop";
       if (flush && !sil) {
         g.globalAlpha = flush[1];
@@ -7355,7 +9345,10 @@
       ctx2.save();
       ctx2.translate(X, Y);
       if (scx !== 1 || scy !== 1) ctx2.scale(scx, scy);
-      for (const [cv, dx, dy] of items) ctx2.drawImage(cv, dx, dy);
+      for (const [cv, dx, dy, dw, dh] of items) {
+        if (dw === void 0) ctx2.drawImage(cv, dx, dy);
+        else ctx2.drawImage(cv, dx, dy, dw, dh);
+      }
       ctx2.restore();
     }
     const gs = sil ? 0 : st.glow ?? (c.glow ? 1 : 0);
@@ -7365,13 +9358,19 @@
       if (scx !== 1 || scy !== 1) ctx2.scale(scx, scy);
       const prevOp = ctx2.globalCompositeOperation, prevA = ctx2.globalAlpha;
       ctx2.globalCompositeOperation = "lighter";
-      for (const [cv, dx, dy] of glows) {
-        ctx2.globalAlpha = Math.min(1, gs) * 0.12;
+      for (const [cv, dx, dy, dw, dh, soft] of glows) {
+        if (soft) {
+          ctx2.globalAlpha = prevA * Math.min(1, gs) * 0.55;
+          if (dw === void 0) ctx2.drawImage(cv, dx, dy);
+          else ctx2.drawImage(cv, dx, dy, dw, dh);
+          continue;
+        }
+        ctx2.globalAlpha = prevA * Math.min(1, gs) * 0.12;
         ctx2.drawImage(cv, dx - 1, dy);
         ctx2.drawImage(cv, dx + 1, dy);
         ctx2.drawImage(cv, dx, dy - 1);
         ctx2.drawImage(cv, dx, dy + 1);
-        ctx2.globalAlpha = Math.min(1, gs) * 0.45;
+        ctx2.globalAlpha = prevA * Math.min(1, gs) * 0.45;
         ctx2.drawImage(cv, dx, dy);
       }
       ctx2.globalCompositeOperation = prevOp;
@@ -7444,6 +9443,178 @@
       eyes: head.face.eyes.map((e) => ({ x: X + e.x - head.o, y: Y + e.y - head.o, r: e.r, type: e.e.type }))
     };
   }
+  var DEG2 = Math.PI / 180;
+  function pendingAnchors(c, st, S5, dir) {
+    const L = (c.L || 30) * S5, H = (c.H || 20) * S5;
+    const x = st.x, y = st.y + (st.bob || 0);
+    return { mouth: [x + dir * L * 0.5, y], top: [x, y - H * 0.6], tail: [x - dir * L * 0.6, y], bottom: [x, y + H * 0.5], eyes: [], pending: true };
+  }
+  function drawVoxelRig(ctx2, c, st) {
+    const kind = isKind(c);
+    const tau = worldTurn(st);
+    const Yw = Math.acos(clamp3(tau, -1, 1)) / DEG2;
+    const mirror = Yw > 90;
+    let yaw = mirror ? 180 - Yw : Yw;
+    const base = st.yawBase ?? BASE_YAW;
+    yaw = base + (90 - base) * (yaw / 90) - (st.heading || 0);
+    if (yaw < -90) yaw = -90;
+    const S5 = st.scale ?? 1;
+    const ang = kind ? 0 : st.angle || 0;
+    const t = st.time || 0;
+    const lod = st.lod || 0;
+    const ph = kind ? st.swimPhase ?? t * 1.2 : st.tailPhase ?? st.swimPhase ?? t * 1.2;
+    let sw = Math.floor(fract2(ph) * SWIM_N) % SWIM_N;
+    if (lod) sw -= sw % 2;
+    const infl = kind ? 0 : Math.round(clamp3(st.inflate || 0, 0, 1) * 3);
+    const pose = !!(st.pose || st.emotion === "pose");
+    const res = voxelFrame(c, { S: S5, yaw, pitch: ang / DEG2, sw, infl, pose, lod, pri: st.pri ?? 1 });
+    if (!res) return pendingAnchors(c, st, S5, mirror ? -1 : 1);
+    const { f, k } = res;
+    const sq = clamp3(st.squash || 0, -1, 1);
+    const kx = k * (1 + 0.22 * sq), ky = k * (1 - 0.2 * sq);
+    const fang = f.pitch * DEG2;
+    const fs = faceState(st, fang, mirror ? -1 : 1, st.x, st.y, { toon: !!c.toon, rest: c.mouth?.rest || 0 });
+    const cue = fs.cue;
+    const twitch = cue.twitch && !st.silhouette ? (Math.floor(t * 23) % 3 - 1) * (Math.floor(t * 7) & 1) : 0;
+    const X = Math.round(st.x) + twitch, Y = Math.round(st.y + (st.bob || 0));
+    const items = [[f.canvas, -f.ax, -f.ay]];
+    const glows = f.glow ? [[f.glow, -f.ax, -f.ay, void 0, void 0, true]] : [];
+    const cy = Math.cos(f.yaw * YAW_DEG);
+    if (!st.silhouette && lod < 2 && cy > 0.42) {
+      for (const ev of f.eyes) {
+        if (ev.r < 0.9) continue;
+        const sp = eyeSprite(c, ev, fs, fang);
+        const w = sp.canvas.width * cy;
+        const dx = ev.x - sp.o * cy, dy = Math.round(ev.y - sp.o);
+        items.push([sp.canvas, dx, dy, w, sp.canvas.height]);
+        if (sp.glowCanvas) glows.push([sp.glowCanvas, dx, dy, w, sp.canvas.height]);
+      }
+      if (f.mouth && f.mouth.m && f.mouth.m.type !== "none" && cy > 0.6 && f.mouth.w >= 1.5) {
+        const sp = mouthSprite(c, { w: f.mouth.w, m: f.mouth.m, front: f.mouth.front, angle: fang }, fs);
+        items.push([sp.canvas, f.mouth.x - sp.o * cy, Math.round(f.mouth.y - sp.o), sp.canvas.width * cy, sp.canvas.height]);
+      }
+    }
+    const scx = (mirror ? -1 : 1) * kx;
+    const flush = !c.toon && cue.flush && !st.silhouette ? cue.flush : null;
+    const st2 = flush ? { ...st, flush } : st;
+    const translucent = (c.alpha ?? 255) < 255 && !st.silhouette;
+    const prevA = ctx2.globalAlpha;
+    if (translucent) ctx2.globalAlpha = prevA * Math.max(0.35, c.alpha / 255);
+    composeVoxel(ctx2, f, items, glows, X, Y, scx, ky, st2, c);
+    ctx2.globalAlpha = prevA;
+    const toW = (p) => [X + p[0] * scx, Y + p[1] * ky];
+    const out = {};
+    for (const [key, v] of Object.entries(f.anchors)) out[key] = toW(v);
+    out.eyes = f.eyes.map((e) => {
+      const [x, y] = toW([e.x, e.y]);
+      return { x, y, r: e.r * Math.abs(kx), type: e.e.type };
+    });
+    out.w = f.W * Math.abs(kx);
+    out.h = f.H * ky;
+    if (c.variant?.shiny) out.shiny = true;
+    return out;
+  }
+  var YAW_DEG = DEG2;
+  function composeVoxel(ctx2, f, items, glows, X, Y, scx, scy, st, c) {
+    const wash = st.wash && st.wash.alpha > 0.01 ? st.wash : null;
+    const sil = st.silhouette;
+    const prevA = ctx2.globalAlpha;
+    ctx2.save();
+    ctx2.translate(X, Y);
+    if (scx !== 1 || scy !== 1) ctx2.scale(scx, scy);
+    if (sil) {
+      ctx2.drawImage(tinted(f.canvas, typeof sil === "string" ? sil : "#102033"), items[0][1], items[0][2]);
+      ctx2.restore();
+      return;
+    }
+    for (const [cv, dx, dy, dw, dh] of items) {
+      if (dw === void 0) ctx2.drawImage(cv, dx, dy);
+      else ctx2.drawImage(cv, dx, dy, dw, dh);
+    }
+    const [cv0, dx0, dy0, dw0, dh0] = items[0];
+    const over = (color, a) => {
+      ctx2.globalAlpha = prevA * Math.min(1, a);
+      const tc = tinted(cv0, color);
+      if (dw0 === void 0) ctx2.drawImage(tc, dx0, dy0);
+      else ctx2.drawImage(tc, dx0, dy0, dw0, dh0);
+    };
+    if (st.flush) over(st.flush[0], st.flush[1]);
+    if (wash) over(wash.color, wash.alpha);
+    ctx2.globalAlpha = prevA;
+    const gs = st.glow ?? (c.glow ? 1 : 0);
+    if (gs > 0.01 && glows.length) {
+      ctx2.globalCompositeOperation = "lighter";
+      for (const [cv, dx, dy, dw, dh, soft] of glows) {
+        ctx2.globalAlpha = prevA * Math.min(1, gs) * (soft ? 0.55 : 0.45) * (wash ? 1 - wash.alpha * 0.5 : 1);
+        if (dw === void 0) ctx2.drawImage(cv, dx, dy);
+        else ctx2.drawImage(cv, dx, dy, dw, dh);
+      }
+      ctx2.globalCompositeOperation = "source-over";
+      ctx2.globalAlpha = prevA;
+    }
+    ctx2.restore();
+  }
+  var BASE_YAW = 15;
+  function drawVoxelChain(ctx2, c, st) {
+    const s = st.scale ?? 1;
+    const t = st.time || 0;
+    const sw = st.swimPhase ?? t * 1.2;
+    const tau = worldTurn(st);
+    const pts = st.chain && st.chain.length >= 2 ? st.chain : defaultChainPoints(c, s, sw, st.x, st.y, tau >= 0 ? 1 : -1);
+    const n = pts.length;
+    const X = Math.round(pts[0].x), Y = Math.round(pts[0].y);
+    const dir = Math.atan2(pts[0].y - pts[1].y, pts[0].x - pts[1].x);
+    const mirror = Math.cos(dir) < 0;
+    let pitch = mirror ? Math.PI - dir : dir;
+    pitch = Math.atan2(Math.sin(pitch), Math.cos(pitch));
+    const res = voxelFrame(c, { S: s, yaw: 0, pitch: clamp3(pitch / DEG2, -90, 90), sw: 0, infl: 0, pose: false, lod: st.lod || 0, pri: st.pri ?? 1 });
+    if (!res) return pendingAnchors(c, st, s, mirror ? -1 : 1);
+    const { f, k } = res;
+    const items = [];
+    const sx = mirror ? -1 : 1;
+    for (let i = n - 1; i >= 1; i--) {
+      const a = pts[i], b = pts[i - 1];
+      const ra = chainRadius(c, i, n, s), rb = chainRadius(c, i - 1, n, s);
+      const d = Math.hypot(b.x - a.x, b.y - a.y);
+      const steps = Math.max(1, Math.ceil(d / Math.max(1, Math.min(ra, rb) * 0.7)));
+      for (let q = 0; q < steps; q++) {
+        const u = q / steps;
+        const ball = chainBall(c, ra + (rb - ra) * u);
+        const wx = a.x + (b.x - a.x) * u - X, wy = a.y + (b.y - a.y) * u - Y;
+        items.push([ball.canvas, Math.round(wx * sx - ball.ax), Math.round(wy - ball.ay)]);
+      }
+    }
+    items.push([f.canvas, -f.ax * k, -f.ay * k, f.W * k, f.H * k]);
+    const fs = faceState({ ...st, x: X, y: Y }, 0, sx, X, Y, { toon: !!c.toon });
+    if (st.lookX == null) {
+      fs.lx = 0.5;
+      fs.ly = 0;
+    }
+    if (!st.silhouette) {
+      for (const ev of f.eyes) {
+        const sp = eyeSprite(c, { ...ev, r: ev.r * k }, fs, f.pitch * DEG2);
+        items.push([sp.canvas, Math.round(ev.x * k - sp.o), Math.round(ev.y * k - sp.o)]);
+      }
+      if (f.mouth && f.mouth.m && f.mouth.m.type !== "none") {
+        const sp = mouthSprite(c, { w: f.mouth.w * k, m: f.mouth.m, front: f.mouth.front, angle: f.pitch * DEG2 }, fs);
+        items.push([sp.canvas, Math.round(f.mouth.x * k - sp.o), Math.round(f.mouth.y * k - sp.o)]);
+      }
+    }
+    const glows = f.glow ? [[f.glow, -f.ax * k, -f.ay * k, f.W * k, f.H * k, true]] : [];
+    compose(ctx2, items, glows, X, Y, sx, 1, st, c, 0, 0);
+    const toW = (p) => [X + p[0] * k * sx, Y + p[1] * k];
+    const last = pts[n - 1];
+    return {
+      mouth: f.anchors.mouth ? toW(f.anchors.mouth) : [X, Y],
+      top: [X, Y - c.chain.r * s * 2],
+      bottom: [X, Y + c.chain.r * s * 2],
+      tail: [last.x, last.y],
+      eyes: f.eyes.map((e) => {
+        const [x, y] = toW([e.x, e.y]);
+        return { x, y, r: e.r * k, type: e.e.type };
+      })
+    };
+  }
 
   // src/gfx/spritecache.js
   var nextId2 = 1;
@@ -7460,6 +9631,8399 @@
   function variantKey(v) {
     if (!v) return "-";
     return [v.mutation || "", v.shiny ? "s" + (v.shinyHue ?? "") : "", v.pattern || "", v.patternColor || "", v.seed || ""].join(":");
+  }
+
+  // src/game/shopdata.js
+  var BAITS = {
+    bread: { name: "Breadcrumbs", price: 6, qty: 5, desc: "Cheap and cheerful. Common fish love it.", effect: null },
+    worm: { name: "Glowing Worm", price: 24, qty: 3, desc: "Wiggles over your icons. Most fish find it irresistible.", effect: "worm" },
+    sugar: { name: "Sugar Cube", price: 35, qty: 2, desc: "Sweet-toothed fish (and puddings) adore it.", effect: null },
+    golden: { name: "Golden Bait", price: 140, qty: 1, desc: "Everything glitters. Rare fish come running.", effect: "golden" },
+    flood: { name: "Flood Bait", price: 90, qty: 1, desc: "Raises the water over your whole desktop for a while.", effect: "flood" },
+    blackhole: { name: "Black Hole Bait", price: 320, qty: 1, desc: "Pulls icons and deep fish toward your hook. Icons spring back after.", effect: "blackhole" },
+    chip: { name: "Overclocked Chip", price: 70, qty: 2, desc: "Sparks attract mechanical and digital fish.", effect: null },
+    popup: { name: "Pop-up Ad", price: 45, qty: 3, desc: `"YOU WON A FREE FISH!" Spam fish can't resist.`, effect: null },
+    lantern: { name: "Lantern Pearl", price: 160, qty: 2, desc: "A glowing pearl for the deep. Deep Ocean fish follow the light.", effect: "lantern" },
+    relic: { name: "Ancient Relic", price: 1250, qty: 1, desc: "Something ancient answers. Use only in the Deep Ocean.", effect: "relic" }
+  };
+  var BAIT_ORDER = ["bread", "worm", "sugar", "golden", "flood", "blackhole", "chip", "popup", "lantern", "relic"];
+
+  // src/gfx/voxel.js
+  var DEG3 = Math.PI / 180;
+  var VoxelModel = class {
+    constructor(nx, ny, nz) {
+      this.nx = nx | 0;
+      this.ny = ny | 0;
+      this.nz = nz | 0;
+      this.data = new Uint8Array(this.nx * this.ny * this.nz);
+      this.palette = [null];
+      this.mode = "add";
+    }
+    // Register a palette entry: {color, emissive (bool|0..1), jitter, light, ramp: custom 7-step array}.
+    color(hex, opts = {}) {
+      if (this.palette.length >= 255) throw new Error("voxel palette full");
+      this.palette.push({ color: hex, ...opts });
+      return this.palette.length - 1;
+    }
+    inside(x, y, z) {
+      return x >= 0 && y >= 0 && z >= 0 && x < this.nx && y < this.ny && z < this.nz;
+    }
+    get(x, y, z) {
+      if (x < 0 || y < 0 || z < 0 || x >= this.nx || y >= this.ny || z >= this.nz) return 0;
+      return this.data[x + this.nx * (y + this.ny * z)];
+    }
+    // Raw write (ignores mode).
+    set(x, y, z, c) {
+      x = Math.floor(x);
+      y = Math.floor(y);
+      z = Math.floor(z);
+      if (x < 0 || y < 0 || z < 0 || x >= this.nx || y >= this.ny || z >= this.nz) return;
+      this.data[x + this.nx * (y + this.ny * z)] = c;
+    }
+    // Mode-aware write used by every shape.
+    put(x, y, z, c) {
+      if (x < 0 || y < 0 || z < 0 || x >= this.nx || y >= this.ny || z >= this.nz) return;
+      const i = x + this.nx * (y + this.ny * z);
+      const prev = this.data[i];
+      const mode = this.mode;
+      if (mode === "sub") {
+        this.data[i] = 0;
+        return;
+      }
+      if (mode === "paint" && !prev) return;
+      if (mode === "under" && prev) return;
+      const v = typeof c === "function" ? c(x, y, z, prev) : c;
+      if (v === null || v === void 0 || v === false) return;
+      this.data[i] = v;
+    }
+    withMode(mode, fn) {
+      const old = this.mode;
+      this.mode = mode;
+      try {
+        fn(this);
+      } finally {
+        this.mode = old;
+      }
+      return this;
+    }
+    sub(fn) {
+      return this.withMode("sub", fn);
+    }
+    // carve
+    paint(fn) {
+      return this.withMode("paint", fn);
+    }
+    // recolour existing voxels only
+    under(fn) {
+      return this.withMode("under", fn);
+    }
+    // fill empty voxels only
+    // CSG subtract: remove voxels that are solid in `other` (offset by ox, oy, oz), or run fn in carve mode.
+    subtract(other, ox = 0, oy = 0, oz = 0) {
+      if (typeof other === "function") return this.sub(other);
+      for (let z = 0; z < other.nz; z++) for (let y = 0; y < other.ny; y++) for (let x = 0; x < other.nx; x++) {
+        if (other.get(x, y, z)) this.set(x + ox, y + oy, z + oz, 0);
+      }
+      return this;
+    }
+    // Copy another model's voxels in (palette entries are re-registered).
+    stamp(other, ox = 0, oy = 0, oz = 0) {
+      const map = other.palette.map((p, i) => i === 0 ? 0 : this.color(p.color, p));
+      for (let z = 0; z < other.nz; z++) for (let y = 0; y < other.ny; y++) for (let x = 0; x < other.nx; x++) {
+        const v = other.get(x, y, z);
+        if (v) this.put(x + ox, y + oy, z + oz, map[v]);
+      }
+      return this;
+    }
+    box(x0, y0, z0, x1, y1, z1, c) {
+      if (x0 > x1) [x0, x1] = [x1, x0];
+      if (y0 > y1) [y0, y1] = [y1, y0];
+      if (z0 > z1) [z0, z1] = [z1, z0];
+      x0 = Math.round(x0);
+      y0 = Math.round(y0);
+      z0 = Math.round(z0);
+      x1 = Math.round(x1);
+      y1 = Math.round(y1);
+      z1 = Math.round(z1);
+      for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) this.put(x, y, z, c);
+      return this;
+    }
+    // Ellipsoid centred at (cx, cy, cz) in voxel-space units (voxel i spans [i, i+1)).
+    ellipsoid(cx, cy, cz, rx, ry, rz, c) {
+      const x0 = Math.floor(cx - rx), x1 = Math.ceil(cx + rx);
+      const y0 = Math.floor(cy - ry), y1 = Math.ceil(cy + ry);
+      const z0 = Math.floor(cz - rz), z1 = Math.ceil(cz + rz);
+      for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
+        const dx = (x + 0.5 - cx) / rx, dy = (y + 0.5 - cy) / ry, dz = (z + 0.5 - cz) / rz;
+        if (dx * dx + dy * dy + dz * dz <= 1) this.put(x, y, z, c);
+      }
+      return this;
+    }
+    sphere(cx, cy, cz, r, c) {
+      return this.ellipsoid(cx, cy, cz, r, r, r, c);
+    }
+    // Frustum along `axis` from `from` to `to` (inclusive voxel layers), radius r0 -> r1.
+    // (a, b) is the centre in the two remaining axes: y-axis -> (x, z), x-axis -> (y, z), z-axis -> (x, y).
+    cone(a, b, from, to, r0, r1, c, axis = "y") {
+      if (from > to) {
+        [from, to] = [to, from];
+        [r0, r1] = [r1, r0];
+      }
+      const rm = Math.max(r0, r1);
+      for (let k = Math.round(from); k <= Math.round(to); k++) {
+        const t = to === from ? 0 : (k - from) / (to - from);
+        const r = r0 + (r1 - r0) * t;
+        const r2 = r * r;
+        for (let j = Math.floor(b - rm); j <= Math.ceil(b + rm); j++) {
+          for (let i = Math.floor(a - rm); i <= Math.ceil(a + rm); i++) {
+            const di = i + 0.5 - a, dj = j + 0.5 - b;
+            if (di * di + dj * dj > r2) continue;
+            if (axis === "y") this.put(i, k, j, c);
+            else if (axis === "x") this.put(k, i, j, c);
+            else this.put(i, j, k, c);
+          }
+        }
+      }
+      return this;
+    }
+    cylinder(a, b, from, to, r, c, axis = "y") {
+      return this.cone(a, b, from, to, r, r, c, axis);
+    }
+    // Thick line (capsule) between two points in voxel-space units.
+    line(x0, y0, z0, x1, y1, z1, c, r = 0) {
+      if (r <= 0.6) {
+        const n = Math.ceil(Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), Math.abs(z1 - z0)) * 2) + 1;
+        let last = -1;
+        for (let i = 0; i <= n; i++) {
+          const t = i / n;
+          const x = Math.floor(x0 + (x1 - x0) * t), y = Math.floor(y0 + (y1 - y0) * t), z = Math.floor(z0 + (z1 - z0) * t);
+          const k = x + 4096 * (y + 4096 * z);
+          if (k !== last) this.put(x, y, z, c);
+          last = k;
+        }
+        return this;
+      }
+      const dx = x1 - x0, dy = y1 - y0, dz = z1 - z0;
+      const L2 = dx * dx + dy * dy + dz * dz || 1;
+      const r2 = r * r;
+      for (let y = Math.floor(Math.min(y0, y1) - r); y <= Math.ceil(Math.max(y0, y1) + r); y++) {
+        for (let z = Math.floor(Math.min(z0, z1) - r); z <= Math.ceil(Math.max(z0, z1) + r); z++) {
+          for (let x = Math.floor(Math.min(x0, x1) - r); x <= Math.ceil(Math.max(x0, x1) + r); x++) {
+            const px = x + 0.5 - x0, py = y + 0.5 - y0, pz = z + 0.5 - z0;
+            const t = clamp((px * dx + py * dy + pz * dz) / L2, 0, 1);
+            const ex = px - dx * t, ey = py - dy * t, ez = pz - dz * t;
+            if (ex * ex + ey * ey + ez * ez <= r2) this.put(x, y, z, c);
+          }
+        }
+      }
+      return this;
+    }
+    // Smooth tube through a list of [x, y, z, r] points (Catmull-Rom sampled capsules).
+    tube(points, c, steps = 4) {
+      const P4 = points;
+      const at = (i) => P4[clamp(i, 0, P4.length - 1)];
+      let prev = null;
+      for (let i = 0; i < P4.length - 1; i++) {
+        const p0 = at(i - 1), p1 = at(i), p2 = at(i + 1), p3 = at(i + 2);
+        for (let s = 0; s <= steps; s++) {
+          const t = s / steps, t2 = t * t, t3 = t2 * t;
+          const q = [0, 1, 2, 3].map((k) => 0.5 * (2 * p1[k] + (-p0[k] + p2[k]) * t + (2 * p0[k] - 5 * p1[k] + 4 * p2[k] - p3[k]) * t2 + (-p0[k] + 3 * p1[k] - 3 * p2[k] + p3[k]) * t3));
+          if (prev) this.line(prev[0], prev[1], prev[2], q[0], q[1], q[2], c, Math.max(prev[3], q[3]));
+          prev = q;
+        }
+      }
+      return this;
+    }
+    // Call fn(x, y, z, prev) for every voxel; non-null results are written (respecting mode).
+    fill(fn) {
+      for (let y = 0; y < this.ny; y++) for (let z = 0; z < this.nz; z++) for (let x = 0; x < this.nx; x++) this.put(x, y, z, (xx, yy, zz, prev) => fn(xx, yy, zz, prev));
+      return this;
+    }
+    // Recolour solid voxels: fn(x, y, z, prev) -> new index | null (keep).
+    recolor(fn) {
+      const { nx, ny, nz, data } = this;
+      for (let z = 0; z < nz; z++) for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) {
+        const i = x + nx * (y + ny * z);
+        if (!data[i]) continue;
+        const v = fn(x, y, z, data[i]);
+        if (v !== null && v !== void 0) data[i] = v;
+      }
+      return this;
+    }
+    // Mirror one half onto the other along x (keep 'low' or 'high' half).
+    mirrorX(keep = "low") {
+      const { nx } = this;
+      for (let z = 0; z < this.nz; z++) for (let y = 0; y < this.ny; y++) for (let x = 0; x < nx >> 1; x++) {
+        const a = x, b = nx - 1 - x;
+        if (keep === "low") this.set(b, y, z, this.get(a, y, z));
+        else this.set(a, y, z, this.get(b, y, z));
+      }
+      return this;
+    }
+    // True when a voxel at (x, y, z) has an empty neighbour (useful for surface-only paint).
+    exposed(x, y, z) {
+      const { nx, ny, nz, data } = this;
+      if (x <= 0 || y <= 0 || z <= 0 || x >= nx - 1 || y >= ny - 1 || z >= nz - 1) {
+        return !this.get(x + 1, y, z) || !this.get(x - 1, y, z) || !this.get(x, y + 1, z) || !this.get(x, y - 1, z) || !this.get(x, y, z + 1) || !this.get(x, y, z - 1);
+      }
+      const i = x + nx * (y + ny * z), SZ = nx * ny;
+      return !data[i + 1] || !data[i - 1] || !data[i + nx] || !data[i - nx] || !data[i + SZ] || !data[i - SZ];
+    }
+    bounds() {
+      const { nx, ny, nz, data } = this;
+      let x0 = nx, y0 = ny, z0 = nz, x1 = -1, y1 = -1, z1 = -1;
+      for (let z = 0; z < nz; z++) for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) {
+        if (!data[x + nx * (y + ny * z)]) continue;
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+        if (z < z0) z0 = z;
+        if (z > z1) z1 = z;
+      }
+      if (x1 < 0) return null;
+      return { x0, y0, z0, x1, y1, z1 };
+    }
+  };
+  var RAMP_STEPS = [-0.8, -0.56, -0.3, 0, 0.24, 0.45, 0.66];
+  var rampCache = /* @__PURE__ */ new Map();
+  function ramp7(hex, contrast = 1) {
+    const key = hex + "|" + contrast;
+    let r = rampCache.get(key);
+    if (!r) {
+      r = RAMP_STEPS.map((a) => a === 0 ? hex : shade(hex, a * contrast));
+      rampCache.set(key, r);
+    }
+    return r;
+  }
+  var POOL = /* @__PURE__ */ new Map();
+  function pooled(name, Type, size) {
+    let a = POOL.get(name);
+    if (!a || a.length < size) {
+      a = new Type(Math.max(size, a ? Math.floor(a.length * 1.5) : 0));
+      POOL.set(name, a);
+    }
+    return a.subarray(0, size);
+  }
+  var NRM = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+  var AO_CURVE = new Float32Array([0, 0.42, 0.75, 1]);
+  var PD = 2;
+  function renderVoxels(model, opts = {}) {
+    const b = model.bounds();
+    if (!b) return { canvas: makeCanvas(1, 1), glow: null, ox: 0, oy: 0, w: 1, h: 1, regions: {}, ids: new Uint8Array(1), project: () => [0, 0] };
+    const { palette } = model;
+    const cam = setupCamera(model, b, opts);
+    const { W, H, N } = cam;
+    const vol = buildVolumes(model, opts.groundAO ?? true);
+    const hitVox = pooled("hitVox", Int32Array, N).fill(-1);
+    const hitN = pooled("hitN", Int8Array, N).fill(-1);
+    const depth = pooled("depth", Float32Array, N);
+    const hitU = pooled("hitU", Float32Array, N), hitV = pooled("hitV", Float32Array, N);
+    traceRays(model, b, cam, vol, hitVox, hitN, depth, hitU, hitV);
+    const tone3 = pooled("tone", Float32Array, N), edgeMul = pooled("edgeMul", Float32Array, N);
+    const faceTone = faceTones(cam, opts.light);
+    shadeHits(model, cam, vol, opts, faceTone, hitVox, hitN, hitU, hitV, tone3, edgeMul);
+    const edgeBoost = pooled("edgeBoost", Float32Array, N).fill(0);
+    const sideMark = pooled("sideMark", Uint8Array, N).fill(0);
+    edgeHighlights(cam, opts, hitN, depth, edgeMul, edgeBoost, sideMark);
+    const ramps = palette.map((pe) => pe ? Uint32Array.from((pe.ramp || ramp7(pe.color, pe.contrast ?? 1)).map((h) => pack(h) >>> 0)) : null);
+    const out = new Uint32Array(N);
+    const glowBuf = cam.hasEmissive ? new Uint32Array(N) : null;
+    const ids = new Uint8Array(N);
+    const level = pooled("level", Int8Array, N).fill(-1);
+    quantize(model, N, hitVox, hitN, tone3, edgeBoost, ramps, out, glowBuf, ids, level);
+    if (opts.keepVoxel) {
+      const { nx, ny } = model;
+      for (let p = 0; p < N; p++) {
+        const vi = hitVox[p];
+        if (vi >= 0 && !opts.keepVoxel(vi % nx, (vi / nx | 0) % ny, vi / (nx * ny) | 0)) {
+          hitVox[p] = -1;
+          out[p] = 0;
+          ids[p] = 0;
+          if (glowBuf) glowBuf[p] = 0;
+        }
+      }
+    }
+    if (opts.depthLines ?? true) depthLinePass(palette, W, H, opts.depthThreshold ?? 2.2, hitVox, depth, ids, level, ramps, out);
+    if (opts.outline ?? true) outlinePass(W, H, out);
+    const canvas = toCanvas2(out, W, H);
+    const glow = glowBuf ? toCanvas2(glowHalo2(glowBuf, W, H, cam.glowR), W, H) : null;
+    const track = new Set(opts.track || []);
+    for (let i = 1; i < palette.length; i++) if (palette[i].emissive) track.add(i);
+    const regions = {};
+    for (const k of track) {
+      let x0 = W, y0 = H, x1 = -1, y1 = -1, n = 0, sx = 0, syy = 0;
+      for (let p = 0; p < N; p++) {
+        if (ids[p] !== k) continue;
+        const x = p % W, y = p / W | 0;
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+        n++;
+        sx += x;
+        syy += y;
+      }
+      if (!n) continue;
+      regions[k] = { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1, n, cx: sx / n, cy: syy / n, inner: largestRect(ids, W, H, k, x0, y0, x1, y1) };
+    }
+    const fx = (b.x0 + b.x1 + 1) / 2, fy = b.y0, fz = (b.z0 + b.z1 + 1) / 2;
+    const [ax, ay] = cam.project(fx, fy, fz);
+    return { canvas, glow, ox: Math.round(ax), oy: Math.round(ay), w: W, h: H, regions, ids, project: cam.project };
+  }
+  function setupCamera(model, b, opts) {
+    const s = opts.scale ?? 2;
+    const yaw = (opts.yaw ?? 32) * DEG3, pitch = (opts.pitch ?? 27) * DEG3;
+    const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+    const R = [cy, 0, -sy];
+    const C = [sy * cp, sp, cy * cp];
+    const D = [-C[0], -C[1], -C[2]];
+    const U = [-sp * sy, cp, -sp * cy];
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (let i = 0; i < 8; i++) {
+      const px = i & 1 ? b.x1 + 1 : b.x0, py = i & 2 ? b.y1 + 1 : b.y0, pz = i & 4 ? b.z1 + 1 : b.z0;
+      const X = px * R[0] + py * R[1] + pz * R[2];
+      const Y = -(px * U[0] + py * U[1] + pz * U[2]);
+      minX = Math.min(minX, X);
+      maxX = Math.max(maxX, X);
+      minY = Math.min(minY, Y);
+      maxY = Math.max(maxY, Y);
+    }
+    let hasEmissive = false;
+    for (let i = 1; i < model.palette.length; i++) if (model.palette[i].emissive) hasEmissive = true;
+    const glowR = hasEmissive ? opts.glowRadius ?? 3 : 0;
+    const pad = 1 + glowR;
+    const W = Math.ceil((maxX - minX) * s) + pad * 2;
+    const H = Math.ceil((maxY - minY) * s) + pad * 2;
+    const project = (x, y, z) => [(x * R[0] + y * R[1] + z * R[2] - minX) * s + pad, (-(x * U[0] + y * U[1] + z * U[2]) - minY) * s + pad];
+    return { s, R, C, D, U, minX, minY, W, H, N: W * H, pad, glowR, hasEmissive, project };
+  }
+  function buildVolumes(model, groundAO) {
+    const { nx, ny, nz, data } = model;
+    const ox2 = nx + 2 * PD, oy2 = ny + 2 * PD, oz2 = nz + 2 * PD;
+    const SY = ox2, SZ = ox2 * oy2;
+    const occ = pooled("occ", Uint8Array, ox2 * oy2 * oz2).fill(0);
+    const bnx = (nx >> 2) + 1, bny = (ny >> 2) + 1, bnz = (nz >> 2) + 1, nb = bnx * bny * bnz;
+    const bdist = pooled("bdist", Uint8Array, nb).fill(255);
+    for (let z = 0; z < nz; z++) for (let y = 0; y < ny; y++) {
+      const row = nx * (y + ny * z), orow = PD + (y + PD) * SY + (z + PD) * SZ, brow = bnx * ((y >> 2) + bny * (z >> 2));
+      for (let x = 0; x < nx; x++) if (data[row + x]) {
+        occ[orow + x] = 1;
+        bdist[brow + (x >> 2)] = 0;
+      }
+    }
+    if (groundAO) for (let z = 0; z < oz2; z++) for (let y = 0; y < PD; y++) for (let x = 0; x < ox2; x++) occ[x + y * SY + z * SZ] = 1;
+    let cur = pooled("bcur", Uint8Array, nb), tmp = pooled("btmp", Uint8Array, nb);
+    for (let i = 0; i < nb; i++) cur[i] = bdist[i] === 0 ? 1 : 0;
+    const SYB = bnx, SZB = bnx * bny;
+    for (let pass = 1; pass < 8; pass++) {
+      for (let i = 0; i < nb; i++) {
+        const x = i % bnx;
+        tmp[i] = cur[i] | (x > 0 ? cur[i - 1] : 0) | (x < bnx - 1 ? cur[i + 1] : 0);
+      }
+      for (let i = 0; i < nb; i++) {
+        const y = (i / SYB | 0) % bny;
+        cur[i] = tmp[i] | (y > 0 ? tmp[i - SYB] : 0) | (y < bny - 1 ? tmp[i + SYB] : 0);
+      }
+      let changed = false;
+      for (let i = 0; i < nb; i++) {
+        const z = i / SZB | 0;
+        const v = cur[i] | (z > 0 ? cur[i - SZB] : 0) | (z < bnz - 1 ? cur[i + SZB] : 0);
+        tmp[i] = v;
+        if (v && bdist[i] === 255) {
+          bdist[i] = pass;
+          changed = true;
+        }
+      }
+      const q = cur;
+      cur = tmp;
+      tmp = q;
+      if (!changed) break;
+    }
+    return { occ, SY, SZ, bdist, bnx, bny };
+  }
+  function traceRays(model, b, cam, vol, hitVox, hitN, depth, hitU, hitV) {
+    const { nx, ny, data } = model;
+    const { s, R, U, D, minX, minY, W, H, pad } = cam;
+    const { bdist, bnx, bny } = vol;
+    const R0 = R[0], R1 = R[1], R2 = R[2], U0 = U[0], U1 = U[1], U2 = U[2];
+    const bx0 = b.x0, by0 = b.y0, bz0 = b.z0, bx1 = b.x1 + 1, by1 = b.y1 + 1, bz1 = b.z1 + 1;
+    const dx = D[0], dy = D[1], dz = D[2];
+    const zx = Math.abs(dx) < 1e-9, zy = Math.abs(dy) < 1e-9, zz = Math.abs(dz) < 1e-9;
+    const idx = zx ? 1e12 : 1 / dx, idy = zy ? 1e12 : 1 / dy, idz = zz ? 1e12 : 1 / dz;
+    const stepX = dx > 0 ? 1 : -1, stepY = dy > 0 ? 1 : -1, stepZ = dz > 0 ? 1 : -1;
+    const offX = stepX > 0 ? 1 : 0, offY = stepY > 0 ? 1 : 0, offZ = stepZ > 0 ? 1 : 0;
+    const tdx = Math.abs(idx), tdy = Math.abs(idy), tdz = Math.abs(idz);
+    const BIG = 1e30;
+    const nX = stepX > 0 ? 1 : 0, nY = stepY > 0 ? 3 : 2, nZ = stepZ > 0 ? 5 : 4;
+    for (let py = 0; py < H; py++) {
+      const Y = minY + (py - pad + 0.5) / s;
+      for (let px = 0; px < W; px++) {
+        const X = minX + (px - pad + 0.5) / s;
+        const ox = X * R0 - Y * U0, oy = X * R1 - Y * U1, oz = X * R2 - Y * U2;
+        let t0x, t1x, t0y, t1y, t0z, t1z;
+        if (zx) {
+          if (ox < bx0 || ox >= bx1) continue;
+          t0x = -BIG;
+          t1x = BIG;
+        } else {
+          t0x = (bx0 - ox) * idx;
+          t1x = (bx1 - ox) * idx;
+          if (t0x > t1x) {
+            const q = t0x;
+            t0x = t1x;
+            t1x = q;
+          }
+        }
+        if (zy) {
+          if (oy < by0 || oy >= by1) continue;
+          t0y = -BIG;
+          t1y = BIG;
+        } else {
+          t0y = (by0 - oy) * idy;
+          t1y = (by1 - oy) * idy;
+          if (t0y > t1y) {
+            const q = t0y;
+            t0y = t1y;
+            t1y = q;
+          }
+        }
+        if (zz) {
+          if (oz < bz0 || oz >= bz1) continue;
+          t0z = -BIG;
+          t1z = BIG;
+        } else {
+          t0z = (bz0 - oz) * idz;
+          t1z = (bz1 - oz) * idz;
+          if (t0z > t1z) {
+            const q = t0z;
+            t0z = t1z;
+            t1z = q;
+          }
+        }
+        const tEnter = Math.max(t0x, t0y, t0z), tExit = Math.min(t1x, t1y, t1z);
+        if (tEnter >= tExit) continue;
+        let axis = tEnter === t0x ? 0 : tEnter === t0y ? 1 : 2;
+        let t = tEnter, te = t + 1e-5;
+        let ix = clamp(Math.floor(ox + dx * te), bx0, bx1 - 1);
+        let iy = clamp(Math.floor(oy + dy * te), by0, by1 - 1);
+        let iz = clamp(Math.floor(oz + dz * te), bz0, bz1 - 1);
+        let tmx = zx ? BIG : (ix + offX - ox) * idx, tmy = zy ? BIG : (iy + offY - oy) * idy, tmz = zz ? BIG : (iz + offZ - oz) * idz;
+        for (let guard = 0; guard < 4096; guard++) {
+          const vi = ix + nx * (iy + ny * iz);
+          if (data[vi]) {
+            const p = py * W + px;
+            hitVox[p] = vi;
+            hitN[p] = axis === 0 ? nX : axis === 1 ? nY : nZ;
+            depth[p] = t;
+            const hx = ox + dx * t - ix, hy = oy + dy * t - iy, hz = oz + dz * t - iz;
+            hitU[p] = axis === 0 ? hy : hx;
+            hitV[p] = axis === 2 ? hy : hz;
+            break;
+          }
+          const bd = bdist[(ix >> 2) + bnx * ((iy >> 2) + bny * (iz >> 2))];
+          if (bd >= 2) {
+            t += (bd - 1) * 4;
+            if (t >= tExit) break;
+            te = t + 1e-5;
+            ix = clamp(Math.floor(ox + dx * te), bx0, bx1 - 1);
+            iy = clamp(Math.floor(oy + dy * te), by0, by1 - 1);
+            iz = clamp(Math.floor(oz + dz * te), bz0, bz1 - 1);
+            tmx = zx ? BIG : (ix + offX - ox) * idx;
+            tmy = zy ? BIG : (iy + offY - oy) * idy;
+            tmz = zz ? BIG : (iz + offZ - oz) * idz;
+            axis = -1;
+            continue;
+          }
+          if (tmx < tmy) {
+            if (tmx < tmz) {
+              ix += stepX;
+              t = tmx;
+              tmx += tdx;
+              axis = 0;
+              if (ix < bx0 || ix >= bx1) break;
+            } else {
+              iz += stepZ;
+              t = tmz;
+              tmz += tdz;
+              axis = 2;
+              if (iz < bz0 || iz >= bz1) break;
+            }
+          } else if (tmy < tmz) {
+            iy += stepY;
+            t = tmy;
+            tmy += tdy;
+            axis = 1;
+            if (iy < by0 || iy >= by1) break;
+          } else {
+            iz += stepZ;
+            t = tmz;
+            tmz += tdz;
+            axis = 2;
+            if (iz < bz0 || iz >= bz1) break;
+          }
+        }
+      }
+    }
+  }
+  function faceTones(cam, lightOpt) {
+    const light = { top: 4.3, lit: 3.1, dark: 1.75, bottom: 1, ...lightOpt || {} };
+    const { R, C } = cam;
+    let hlx = -0.62 * R[0] + 0.78 * C[0], hlz = -0.62 * R[2] + 0.78 * C[2];
+    const hl = Math.hypot(hlx, hlz) || 1;
+    hlx /= hl;
+    hlz /= hl;
+    return Float32Array.from(NRM.map((n) => {
+      if (n[1] > 0) return light.top;
+      if (n[1] < 0) return light.bottom;
+      return light.dark + (light.lit - light.dark) * ((n[0] * hlx + n[2] * hlz + 1) / 2);
+    }));
+  }
+  function shadeHits(model, cam, vol, opts, faceTone, hitVox, hitN, hitU, hitV, tone3, edgeMul) {
+    const { nx, ny, nz, data, palette } = model;
+    const { occ, SY, SZ } = vol;
+    const N = cam.N;
+    const aoAmt = opts.ao ?? 1.15, jitterDef = opts.jitter ?? 0.22, smoothDef = opts.smooth ?? 0;
+    const { R, U, C } = cam;
+    const LV = [-0.45 * R[0] + 0.85 * U[0] + 0.55 * C[0], -0.45 * R[1] + 0.85 * U[1] + 0.55 * C[1], -0.45 * R[2] + 0.85 * U[2] + 0.55 * C[2]];
+    let hvx = LV[0] + C[0], hvy = LV[1] + C[1], hvz = LV[2] + C[2];
+    {
+      const l = Math.hypot(hvx, hvy, hvz);
+      hvx /= l;
+      hvy /= l;
+      hvz /= l;
+    }
+    const P4 = palette.length;
+    const pJit = new Float32Array(P4), pSmooth = new Float32Array(P4), pSpec = new Float32Array(P4), pPow = new Float32Array(P4), pLight = new Float32Array(P4), pAo = new Float32Array(P4), pEdge = new Float32Array(P4);
+    for (let i = 1; i < P4; i++) {
+      const pe = palette[i];
+      pJit[i] = pe.jitter ?? jitterDef;
+      pSmooth[i] = pe.smooth ?? smoothDef;
+      pSpec[i] = pe.spec || 0;
+      pPow[i] = pe.specPow ?? 24;
+      pLight[i] = pe.light || 0;
+      pAo[i] = (pe.aoMul ?? 1) * aoAmt;
+      pEdge[i] = pe.edge ?? (pSmooth[i] >= 0.35 ? 0 : 1);
+    }
+    const faceOff = new Int32Array(48);
+    NRM.forEach((n, nid) => {
+      const ax = nid >> 1;
+      const u = ax === 0 ? [0, 1, 0] : [1, 0, 0];
+      const v = ax === 2 ? [0, 1, 0] : [0, 0, 1];
+      const o = (a) => a[0] + a[1] * SY + a[2] * SZ;
+      const nO = o(n), uO = o(u), vO = o(v);
+      faceOff.set([nO - uO, nO + uO, nO - vO, nO + vO, nO - uO - vO, nO + uO - vO, nO - uO + vO, nO + uO + vO], nid * 8);
+    });
+    const kOff = [], kxs = [], kys = [], kzs = [];
+    for (let k = -2; k <= 2; k++) for (let j = -2; j <= 2; j++) for (let i = -2; i <= 2; i++) {
+      if (!i && !j && !k) continue;
+      const w = 1 / (i * i + j * j + k * k);
+      kOff.push(i + j * SY + k * SZ);
+      kxs.push(-i * w);
+      kys.push(-j * w);
+      kzs.push(-k * w);
+    }
+    const KN2 = kOff.length;
+    const KO = Int32Array.from(kOff), KX2 = Float32Array.from(kxs), KY2 = Float32Array.from(kys), KZ2 = Float32Array.from(kzs);
+    const snCache = pooled("snCache", Int32Array, nx * ny * nz);
+    let snStore = pooled("snStore", Float32Array, 3 * 16384), snKeys = pooled("snKeys", Int32Array, 16384), snCount = 0;
+    const NX = Float32Array.from(NRM.map((n) => n[0])), NY = Float32Array.from(NRM.map((n) => n[1])), NZ = Float32Array.from(NRM.map((n) => n[2]));
+    const nxy = nx * ny;
+    for (let p = 0; p < N; p++) {
+      const vi = hitVox[p];
+      if (vi < 0) continue;
+      const nid = hitN[p];
+      const ix = vi % nx, iy = (vi / nx | 0) % ny, iz = vi / nxy | 0;
+      const base = ix + PD + (iy + PD) * SY + (iz + PD) * SZ;
+      const f = nid * 8;
+      const sU0 = occ[base + faceOff[f]], sU1 = occ[base + faceOff[f + 1]], sV0 = occ[base + faceOff[f + 2]], sV1 = occ[base + faceOff[f + 3]];
+      const c00 = occ[base + faceOff[f + 4]], c10 = occ[base + faceOff[f + 5]], c01 = occ[base + faceOff[f + 6]], c11 = occ[base + faceOff[f + 7]];
+      const a00 = AO_CURVE[sU0 && sV0 ? 0 : 3 - sU0 - sV0 - c00], a10 = AO_CURVE[sU1 && sV0 ? 0 : 3 - sU1 - sV0 - c10];
+      const a01 = AO_CURVE[sU0 && sV1 ? 0 : 3 - sU0 - sV1 - c01], a11 = AO_CURVE[sU1 && sV1 ? 0 : 3 - sU1 - sV1 - c11];
+      const fu = clamp(hitU[p], 0, 1), fv = clamp(hitV[p], 0, 1);
+      const ao = (a00 * (1 - fu) + a10 * fu) * (1 - fv) + (a01 * (1 - fu) + a11 * fu) * fv;
+      const v = data[vi];
+      const hj = (hash3(ix, iy, iz, 7) - 0.5) * 2 * pJit[v];
+      let ft = faceTone[nid];
+      const smooth2 = pSmooth[v];
+      if (smooth2 > 0 || pSpec[v] > 0) {
+        let k3 = snCache[vi] - 1;
+        if (k3 < 0) {
+          let gx = 0, gy = 0, gz = 0;
+          for (let k = 0; k < KN2; k++) if (occ[base + KO[k]]) {
+            gx += KX2[k];
+            gy += KY2[k];
+            gz += KZ2[k];
+          }
+          const l = Math.hypot(gx, gy, gz) || 1;
+          if (snCount * 3 + 3 > snStore.length) {
+            const n2 = new Float32Array(snStore.length * 2);
+            n2.set(snStore);
+            snStore = n2;
+            POOL.set("snStore", n2);
+          }
+          if (snCount >= snKeys.length) {
+            const k2 = new Int32Array(snKeys.length * 2);
+            k2.set(snKeys);
+            snKeys = k2;
+            POOL.set("snKeys", k2);
+          }
+          snKeys[snCount] = vi;
+          k3 = snCount++ * 3;
+          snStore[k3] = gx / l;
+          snStore[k3 + 1] = gy / l;
+          snStore[k3 + 2] = gz / l;
+          snCache[vi] = k3 + 1;
+        }
+        const sx = snStore[k3], sy = snStore[k3 + 1], sz = snStore[k3 + 2];
+        if (smooth2 > 0) {
+          const st = sx * sx * (sx > 0 ? faceTone[0] : faceTone[1]) + sy * sy * (sy > 0 ? faceTone[2] : faceTone[3]) + sz * sz * (sz > 0 ? faceTone[4] : faceTone[5]);
+          ft += (st - ft) * smooth2;
+        }
+        if (pSpec[v] > 0) {
+          const hd = smooth2 > 0 ? sx * hvx + sy * hvy + sz * hvz : NX[nid] * hvx + NY[nid] * hvy + NZ[nid] * hvz;
+          if (hd > 0) ft += Math.pow(hd, pPow[v]) * pSpec[v];
+        }
+      }
+      tone3[p] = ft + pLight[v] + hj - (1 - ao) * pAo[v];
+      edgeMul[p] = pEdge[v];
+    }
+    for (let i = 0; i < snCount; i++) snCache[snKeys[i]] = 0;
+  }
+  function edgeHighlights(cam, opts, hitN, depth, edgeMul, edgeBoost, sideMark) {
+    const edgeAmt = opts.edges ?? 0.9, sideEdges = opts.sideEdges ?? 0.7;
+    if (!edgeAmt && !sideEdges) return;
+    const { W, H, N, R, U } = cam;
+    const nDotR = Float32Array.from(NRM.map((n) => n[0] * R[0] + n[1] * R[1] + n[2] * R[2]));
+    const nDotU = Float32Array.from(NRM.map((n) => n[0] * U[0] + n[1] * U[1] + n[2] * U[2]));
+    const edgeThr = 1.6;
+    for (let py = 0; py < H; py++) for (let px = 0; px < W; px++) {
+      const p = py * W + px;
+      const na = hitN[p];
+      if (na < 0) continue;
+      if (py + 1 < H) {
+        const q = p + W, nb = hitN[q];
+        if (nb >= 0 && nb !== na && Math.abs(depth[p] - depth[q]) < edgeThr && nDotU[na] > nDotU[nb] + 0.2) edgeBoost[p] = Math.max(edgeBoost[p], edgeAmt * edgeMul[p]);
+      }
+      if (sideEdges && px + 1 < W) {
+        const q = p + 1, nb = hitN[q];
+        if (nb >= 0 && nb !== na && Math.abs(depth[p] - depth[q]) < edgeThr && nDotR[na] < nDotR[nb] - 0.2) sideMark[p] = 1;
+      }
+    }
+    for (let p = 2 * W; p < N - W; p++) {
+      if (sideMark[p] && (sideMark[p - W] || sideMark[p + W]) && sideMark[p - W] + sideMark[p + W] + sideMark[p - 2 * W] >= 2) {
+        edgeBoost[p] = Math.max(edgeBoost[p], sideEdges * edgeMul[p]);
+      }
+    }
+  }
+  function quantize(model, N, hitVox, hitN, tone3, edgeBoost, ramps, out, glowBuf, ids, level) {
+    const { data, palette } = model;
+    const P4 = palette.length;
+    const pEm = new Float32Array(P4), pLight = new Float32Array(P4);
+    for (let i = 1; i < P4; i++) {
+      const e = palette[i].emissive;
+      pEm[i] = e === true ? 1 : e || 0;
+      pLight[i] = palette[i].light || 0;
+    }
+    for (let p = 0; p < N; p++) {
+      const hv = hitVox[p];
+      if (hv < 0) continue;
+      const v = data[hv];
+      ids[p] = v;
+      let tn = tone3[p] + edgeBoost[p];
+      const em = pEm[v];
+      if (em > 0) {
+        const nid = hitN[p];
+        const et = (nid === 2 ? 5 : nid === 4 || nid === 1 ? 4.4 : 3.8) + pLight[v] + edgeBoost[p] * 0.5;
+        tn += (et - tn) * em;
+      }
+      const li = tn < 0 ? 0 : tn > 6 ? 6 : Math.round(tn);
+      level[p] = li;
+      out[p] = ramps[v][li];
+      if (em > 0 && glowBuf) glowBuf[p] = out[p];
+    }
+  }
+  function depthLinePass(palette, W, H, thr, hitVox, depth, ids, level, ramps, out) {
+    for (let py = 0; py < H; py++) for (let px = 0; px < W; px++) {
+      const p = py * W + px;
+      if (hitVox[p] < 0) continue;
+      const d = depth[p] - thr;
+      const jump = px > 0 && hitVox[p - 1] >= 0 && d > depth[p - 1] || px + 1 < W && hitVox[p + 1] >= 0 && d > depth[p + 1] || py > 0 && hitVox[p - W] >= 0 && d > depth[p - W] || py + 1 < H && hitVox[p + W] >= 0 && d > depth[p + W];
+      if (!jump) continue;
+      const v = ids[p];
+      if (palette[v].emissive) continue;
+      out[p] = ramps[v][Math.max(0, Math.min(level[p], 3) - 2)];
+    }
+  }
+  var outlineCache = /* @__PURE__ */ new Map();
+  function outlineColor(c) {
+    let o = outlineCache.get(c);
+    if (o === void 0) {
+      const [r, g, bb] = unpack(c);
+      const hex = "#" + [r, g, bb].map((q) => q.toString(16).padStart(2, "0")).join("");
+      o = pack(mix(shade(hex, -0.78), "#140c22", 0.35)) >>> 0;
+      if (outlineCache.size > 4096) outlineCache.clear();
+      outlineCache.set(c, o);
+    }
+    return o;
+  }
+  function outlinePass(W, H, out) {
+    const src = out.slice();
+    for (let py = 0; py < H; py++) for (let px = 0; px < W; px++) {
+      const p = py * W + px;
+      if (src[p]) continue;
+      let n = 0;
+      if (py > 0 && src[p - W]) n = src[p - W];
+      else if (px > 0 && src[p - 1]) n = src[p - 1];
+      else if (px + 1 < W && src[p + 1]) n = src[p + 1];
+      else if (py + 1 < H && src[p + W]) n = src[p + W];
+      if (n) out[p] = outlineColor(n);
+    }
+  }
+  function glowHalo2(glowBuf, W, H, glowR) {
+    const N = W * H;
+    const gb = new Uint32Array(N);
+    const dist2 = pooled("gdist", Uint8Array, N).fill(99);
+    const col = pooled("gcol", Uint32Array, N).fill(0);
+    for (let p = 0; p < N; p++) if (glowBuf[p]) {
+      dist2[p] = 0;
+      col[p] = glowBuf[p];
+    }
+    for (let pass = 0; pass < glowR; pass++) {
+      for (let py = 0; py < H; py++) for (let px = 0; px < W; px++) {
+        const p = py * W + px;
+        if (dist2[p] <= pass) continue;
+        let best = 99, bc = 0;
+        if (px > 0 && dist2[p - 1] + 1 < best) {
+          best = dist2[p - 1] + 1;
+          bc = col[p - 1];
+        }
+        if (px + 1 < W && dist2[p + 1] + 1 < best) {
+          best = dist2[p + 1] + 1;
+          bc = col[p + 1];
+        }
+        if (py > 0 && dist2[p - W] + 1 < best) {
+          best = dist2[p - W] + 1;
+          bc = col[p - W];
+        }
+        if (py + 1 < H && dist2[p + W] + 1 < best) {
+          best = dist2[p + W] + 1;
+          bc = col[p + W];
+        }
+        if (best < dist2[p]) {
+          dist2[p] = best;
+          col[p] = bc;
+        }
+      }
+    }
+    for (let p = 0; p < N; p++) {
+      if (dist2[p] > glowR) continue;
+      const a = dist2[p] === 0 ? 255 : Math.round(150 * Math.pow(1 - dist2[p] / (glowR + 1), 1.6));
+      gb[p] = ((a & 255) << 24 | col[p] & 16777215) >>> 0;
+    }
+    return gb;
+  }
+  function toCanvas2(buf, W, H) {
+    const c = makeCanvas(W, H);
+    const g = ctxOf(c);
+    const img = g.createImageData(W, H);
+    new Uint32Array(img.data.buffer).set(buf);
+    g.putImageData(img, 0, 0);
+    return c;
+  }
+  function largestRect(ids, W, H, k, x0, y0, x1, y1) {
+    const w = x1 - x0 + 1;
+    const hist = new Int32Array(w);
+    let best = { x: x0, y: y0, w: 0, h: 0 }, bestA = 0;
+    for (let y = y0; y <= y1; y++) {
+      for (let i = 0; i < w; i++) hist[i] = ids[y * W + x0 + i] === k ? hist[i] + 1 : 0;
+      const stack = [];
+      for (let i = 0; i <= w; i++) {
+        const hgt = i < w ? hist[i] : 0;
+        let start = i;
+        while (stack.length && stack[stack.length - 1][1] >= hgt) {
+          const [si, sh] = stack.pop();
+          const area = sh * (i - si);
+          if (area > bestA) {
+            bestA = area;
+            best = { x: x0 + si, y: y - sh + 1, w: i - si, h: sh };
+          }
+          start = si;
+        }
+        stack.push([start, hgt]);
+      }
+    }
+    return best;
+  }
+
+  // src/gfx/props.js
+  var PERM = new Uint8Array(512);
+  var NVAL = new Float32Array(256);
+  {
+    const r = new RNG(1337);
+    const p = [...Array(256).keys()];
+    r.shuffle(p);
+    for (let i = 0; i < 512; i++) PERM[i] = p[i & 255];
+    for (let i = 0; i < 256; i++) NVAL[i] = r.next();
+  }
+  var sm = (t) => t * t * (3 - 2 * t);
+  function noise3(x, y, z, seed = 0) {
+    x += seed * 17.13;
+    y += seed * 7.71;
+    z += seed * 3.37;
+    const fx0 = Math.floor(x), fy0 = Math.floor(y), fz0 = Math.floor(z);
+    const ix = fx0 & 255, iy = fy0 & 255, iz = fz0 & 255;
+    const ix1 = ix + 1 & 255, iy1 = iy + 1 & 255, iz1 = iz + 1 & 255;
+    const fx = sm(x - fx0), fy = sm(y - fy0), fz = sm(z - fz0);
+    const a0 = PERM[ix], a1 = PERM[ix1];
+    const b00 = PERM[a0 + iy], b01 = PERM[a0 + iy1], b10 = PERM[a1 + iy], b11 = PERM[a1 + iy1];
+    const v = (b, k) => NVAL[PERM[b + k]];
+    const x00 = v(b00, iz) + (v(b10, iz) - v(b00, iz)) * fx;
+    const x10 = v(b01, iz) + (v(b11, iz) - v(b01, iz)) * fx;
+    const x01 = v(b00, iz1) + (v(b10, iz1) - v(b00, iz1)) * fx;
+    const x11 = v(b01, iz1) + (v(b11, iz1) - v(b01, iz1)) * fx;
+    const y0 = x00 + (x10 - x00) * fy, y1 = x01 + (x11 - x01) * fy;
+    return y0 + (y1 - y0) * fz;
+  }
+  function fbm3(x, y, z, oct = 3, seed = 0) {
+    let v = 0, a = 0.5, f = 1, n = 0;
+    for (let i = 0; i < oct; i++) {
+      v += noise3(x * f, y * f, z * f, seed + i * 13) * a;
+      n += a;
+      a *= 0.5;
+      f *= 2;
+    }
+    return v / n;
+  }
+  var h3 = (x, y, z, s = 0) => hash3(x, y, z, s);
+  function shape(m, x0, y0, z0, x1, y1, z1, test, c) {
+    for (let y = Math.floor(y0); y <= Math.ceil(y1); y++) for (let z = Math.floor(z0); z <= Math.ceil(z1); z++) for (let x = Math.floor(x0); x <= Math.ceil(x1); x++) {
+      if (test(x + 0.5, y + 0.5, z + 0.5)) m.put(x, y, z, c);
+    }
+  }
+  function part(m, nx, ny, nz) {
+    const p = new VoxelModel(nx, ny, nz);
+    p.palette = m.palette;
+    return p;
+  }
+  function rotMat(rx, ry, rz) {
+    const a = rx * Math.PI / 180, b = ry * Math.PI / 180, c = rz * Math.PI / 180;
+    const ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(b), sb = Math.sin(b), cc = Math.cos(c), sc = Math.sin(c);
+    const Rz = [[cc, -sc, 0], [sc, cc, 0], [0, 0, 1]];
+    const Rx = [[1, 0, 0], [0, ca, -sa], [0, sa, ca]];
+    const Ry = [[cb, 0, sb], [0, 1, 0], [-sb, 0, cb]];
+    const mul2 = (A, B2) => A.map((row, i) => [0, 1, 2].map((j) => row[0] * B2[0][j] + row[1] * B2[1][j] + row[2] * B2[2][j]));
+    return mul2(Ry, mul2(Rx, Rz));
+  }
+  function stampRot(dst, src, sp, dp, rx = 0, ry = 0, rz = 0) {
+    const R = rotMat(rx, ry, rz);
+    const b = src.bounds();
+    if (!b) return;
+    let lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < 8; i++) {
+      const q = [(i & 1 ? b.x1 + 1 : b.x0) - sp[0], (i & 2 ? b.y1 + 1 : b.y0) - sp[1], (i & 4 ? b.z1 + 1 : b.z0) - sp[2]];
+      for (let k = 0; k < 3; k++) {
+        const v = R[k][0] * q[0] + R[k][1] * q[1] + R[k][2] * q[2] + dp[k];
+        lo[k] = Math.min(lo[k], v);
+        hi[k] = Math.max(hi[k], v);
+      }
+    }
+    const { nx: snx, ny: sny, nz: snz, data: sd } = src;
+    const xa = Math.floor(lo[0]), xb = Math.ceil(hi[0]);
+    const ix = R[0][0], iy = R[0][1], iz = R[0][2];
+    for (let y = Math.floor(lo[1]); y <= Math.ceil(hi[1]); y++) for (let z = Math.floor(lo[2]); z <= Math.ceil(hi[2]); z++) {
+      const px = xa + 0.5 - dp[0], py = y + 0.5 - dp[1], pz = z + 0.5 - dp[2];
+      let qx = R[0][0] * px + R[1][0] * py + R[2][0] * pz + sp[0];
+      let qy = R[0][1] * px + R[1][1] * py + R[2][1] * pz + sp[1];
+      let qz = R[0][2] * px + R[1][2] * py + R[2][2] * pz + sp[2];
+      for (let x = xa; x <= xb; x++, qx += ix, qy += iy, qz += iz) {
+        if (qx < 0 || qy < 0 || qz < 0 || qx >= snx || qy >= sny || qz >= snz) continue;
+        const v = sd[(qx | 0) + snx * ((qy | 0) + sny * (qz | 0))];
+        if (v) dst.put(x, y, z, v);
+      }
+    }
+    for (let z = b.z0; z <= b.z1; z++) for (let y = b.y0; y <= b.y1; y++) for (let x = b.x0; x <= b.x1; x++) {
+      const v = src.get(x, y, z);
+      if (!v) continue;
+      const px = x + 0.5 - sp[0], py = y + 0.5 - sp[1], pz = z + 0.5 - sp[2];
+      const tx = Math.floor(R[0][0] * px + R[0][1] * py + R[0][2] * pz + dp[0]);
+      const ty = Math.floor(R[1][0] * px + R[1][1] * py + R[1][2] * pz + dp[1]);
+      const tz = Math.floor(R[2][0] * px + R[2][1] * py + R[2][2] * pz + dp[2]);
+      if (!dst.get(tx, ty, tz)) dst.put(tx, ty, tz, v);
+    }
+  }
+  function shapeRot(m, c, rad, rot2, test, col) {
+    const R = rotMat(...rot2);
+    shape(m, c[0] - rad, c[1] - rad, c[2] - rad, c[0] + rad, c[1] + rad, c[2] + rad, (x, y, z) => {
+      const px = x - c[0], py = y - c[1], pz = z - c[2];
+      return test(R[0][0] * px + R[1][0] * py + R[2][0] * pz, R[0][1] * px + R[1][1] * py + R[2][1] * pz, R[0][2] * px + R[1][2] * py + R[2][2] * pz);
+    }, col);
+  }
+  function shaft(m, p0, dir, len, r, tip, c, sides = 6, rot2 = 0) {
+    const dl = Math.hypot(...dir);
+    const d = dir.map((v) => v / dl);
+    const up = Math.abs(d[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+    let a = [d[1] * up[2] - d[2] * up[1], d[2] * up[0] - d[0] * up[2], d[0] * up[1] - d[1] * up[0]];
+    const al = Math.hypot(...a);
+    a = a.map((v) => v / al);
+    const bv = [d[1] * a[2] - d[2] * a[1], d[2] * a[0] - d[0] * a[2], d[0] * a[1] - d[1] * a[0]];
+    const end = [p0[0] + d[0] * len, p0[1] + d[1] * len, p0[2] + d[2] * len];
+    const R = r + 1;
+    const apo = Math.cos(Math.PI / sides);
+    const sector = Math.PI * 2 / sides;
+    shape(
+      m,
+      Math.min(p0[0], end[0]) - R,
+      Math.min(p0[1], end[1]) - R,
+      Math.min(p0[2], end[2]) - R,
+      Math.max(p0[0], end[0]) + R,
+      Math.max(p0[1], end[1]) + R,
+      Math.max(p0[2], end[2]) + R,
+      (x, y, z) => {
+        const px = x - p0[0], py = y - p0[1], pz = z - p0[2];
+        const t = px * d[0] + py * d[1] + pz * d[2];
+        if (t < -0.5 || t > len) return false;
+        const u = px * a[0] + py * a[1] + pz * a[2], v = px * bv[0] + py * bv[1] + pz * bv[2];
+        const ang = Math.atan2(v, u) - rot2;
+        const k = (ang % sector + sector) % sector - sector / 2;
+        const dist2 = Math.hypot(u, v) * Math.cos(k) / apo;
+        const rr2 = t > len - tip ? r * (len - t) / tip : r;
+        return dist2 <= rr2;
+      },
+      c
+    );
+  }
+  function facetRock(m, rng2, cx, cy, cz, rx, ry, rz, c, planes = 16, floor = 0, cut = 0.82) {
+    const P4 = [];
+    const off = rng2.float(0, Math.PI * 2);
+    for (let i = 0; i < planes; i++) {
+      const t = (i + 0.5) / planes;
+      const yy = 1 - 2 * t * 0.92 - 0.04;
+      const rr2 = Math.sqrt(Math.max(0, 1 - yy * yy));
+      const th = off + i * 2.39996 + rng2.float(-0.3, 0.3);
+      let nx = Math.cos(th) * rr2, ny = yy + rng2.float(-0.12, 0.12), nz = Math.sin(th) * rr2;
+      const l = Math.hypot(nx, ny, nz);
+      nx /= l;
+      ny /= l;
+      nz /= l;
+      const h = Math.sqrt((rx * nx) ** 2 + (ry * ny) ** 2 + (rz * nz) ** 2) * rng2.float(cut, 1);
+      P4.push(nx, ny, nz, h);
+    }
+    shape(m, cx - rx, Math.max(floor, cy - ry), cz - rz, cx + rx, cy + ry, cz + rz, (x, y, z) => {
+      if (y < floor) return false;
+      const dx = x - cx, dy = y - cy, dz = z - cz;
+      if ((dx / rx) ** 2 + (dy / ry) ** 2 + (dz / rz) ** 2 > 1.05) return false;
+      for (let i = 0; i < P4.length; i += 4) if (dx * P4[i] + dy * P4[i + 1] + dz * P4[i + 2] > P4[i + 3]) return false;
+      return true;
+    }, c);
+  }
+  function blob(m, cx, cy, cz, rx, ry, rz, amp, freq, seed, c, flatBottom = -Infinity) {
+    shape(m, cx - rx * (1 + amp), Math.max(flatBottom, cy - ry * (1 + amp)), cz - rz * (1 + amp), cx + rx * (1 + amp), cy + ry * (1 + amp), cz + rz * (1 + amp), (x, y, z) => {
+      if (y < flatBottom) return false;
+      const dx = (x - cx) / rx, dy = (y - cy) / ry, dz = (z - cz) / rz;
+      const d = dx * dx + dy * dy + dz * dz;
+      if (d > (1 + amp) * (1 + amp)) return false;
+      const n = fbm3(x * freq, y * freq, z * freq, 2, seed) - 0.5;
+      return Math.sqrt(d) <= 1 + n * amp * 2;
+    }, c);
+  }
+  function torus(m, cx, cy, cz, R, r, c, axis = "y", arc = null) {
+    const e = R + r + 1;
+    shape(m, cx - e, cy - e, cz - e, cx + e, cy + e, cz + e, (x, y, z) => {
+      let a, b, h;
+      const dx = x - cx, dy = y - cy, dz = z - cz;
+      if (axis === "y") {
+        a = dx;
+        b = dz;
+        h = dy;
+      } else if (axis === "x") {
+        a = dy;
+        b = dz;
+        h = dx;
+      } else {
+        a = dx;
+        b = dy;
+        h = dz;
+      }
+      if (arc && !arc(Math.atan2(b, a))) return false;
+      const q = Math.hypot(a, b) - R;
+      return q * q + h * h <= r * r;
+    }, c);
+  }
+  function patch(list, freq, seed, bias = 0) {
+    return (x, y, z) => {
+      const n = clamp(fbm3(x * freq, y * freq, z * freq, 2, seed) * 1.6 - 0.3 + bias, 0, 0.999);
+      return list[Math.floor(n * list.length)];
+    };
+  }
+  function surface(m, fn) {
+    m.recolor((x, y, z, prev) => m.exposed(x, y, z) ? fn(x, y, z, prev) : null);
+  }
+  var topOpen = (m, x, y, z) => !m.get(x, y + 1, z);
+  function candidates(m, on, facing) {
+    const set = on == null ? null : new Set(Array.isArray(on) ? on : [on]);
+    const out = [];
+    const { nx, ny, nz, data, palette } = m;
+    const SY = nx, SZ = nx * ny;
+    for (let z = 0; z < nz; z++) for (let y = 0; y < ny; y++) {
+      const row = SY * y + SZ * z;
+      for (let x = 0; x < nx; x++) {
+        const i = row + x;
+        const v = data[i];
+        if (!v || set && !set.has(v) || palette[v].emissive || palette[v].noDecal) continue;
+        const top = y + 1 >= ny || !data[i + SY];
+        const front = z + 1 >= nz || !data[i + SZ] || x + 1 >= nx || !data[i + 1];
+        const side = front || x === 0 || !data[i - 1] || z === 0 || !data[i - SZ];
+        if (facing === "top" && !top) continue;
+        if (facing === "side" && (!side || top)) continue;
+        if (facing === "front" && (!front || top)) continue;
+        if (facing === "any" && !top && !side) continue;
+        out.push(i);
+      }
+    }
+    return out;
+  }
+  var unpackIdx = (m, i) => [i % m.nx, Math.floor(i / m.nx) % m.ny, Math.floor(i / (m.nx * m.ny))];
+  function scatter(m, rng2, count, on, facing, place2) {
+    const cand = candidates(m, on, facing);
+    for (let i = 0; i < count && cand.length; i++) {
+      const k = Math.floor(rng2.next() * cand.length);
+      const [x, y, z] = unpackIdx(m, cand[k]);
+      cand[k] = cand[cand.length - 1];
+      cand.pop();
+      let nx = 0, nz = 0;
+      if (!m.get(x, y, z + 1)) nz = 1;
+      else if (!m.get(x + 1, y, z)) nx = 1;
+      else if (!m.get(x - 1, y, z)) nx = -1;
+      else if (!m.get(x, y, z - 1)) nz = -1;
+      place2(x, y, z, nx, nz, i);
+    }
+  }
+  function moss(m, rng2, seed, colors, amount = 0.5, freq = 0.14, on = null) {
+    const idx = colors.map((c) => m.color(c, { jitter: 0.12, smooth: 0.3 }));
+    const set = on ? new Set(on) : null;
+    m.recolor((x, y, z, p) => {
+      if (set && !set.has(p)) return null;
+      if (m.palette[p].emissive || m.palette[p].noDecal) return null;
+      if (!topOpen(m, x, y, z)) return null;
+      const n = fbm3(x * freq, y * freq * 0.7, z * freq, 2, seed + 31);
+      if (n < 1 - amount) return null;
+      return n > 1 - amount * 0.45 ? idx[0] : idx[1];
+    });
+    m.recolor((x, y, z, p) => {
+      if (set && !set.has(p)) return null;
+      if (p === idx[0] || p === idx[1] || p === idx[2]) return null;
+      const up = m.get(x, y + 1, z);
+      return (up === idx[0] || up === idx[1]) && h3(x, y, z, seed) < 0.55 ? idx[2] : null;
+    });
+    scatter(m, rng2, Math.round(m.nx * amount * 0.25), [idx[0], idx[1]], "top", (x, y, z) => {
+      m.set(x, y + 1, z, idx[1]);
+      if (rng2.chance(0.4)) m.set(x, y + 2, z, idx[0]);
+    });
+    return idx;
+  }
+  function barnacles(m, rng2, count, on = null) {
+    const b0 = m.color("#efe4d2", { jitter: 0.12 });
+    const b1 = m.color("#c9b9a8", { jitter: 0.12 });
+    const hole = m.color("#4a3a52", { jitter: 0 });
+    scatter(m, rng2, count, on, "front", (x, y, z, nx, nz) => {
+      const ox = x + nx, oz = z + nz;
+      const tx = nz ? 1 : 0, tz = nx ? 1 : 0;
+      m.set(ox, y, oz, hole);
+      m.set(ox - tx, y, oz - tz, b0);
+      m.set(ox + tx, y, oz + tz, b1);
+      m.set(ox, y + 1, oz, b0);
+      m.set(ox, y - 1, oz, b1);
+      if (rng2.chance(0.5)) {
+        m.set(ox + 2 * tx, y + 1, oz + 2 * tz, b0);
+        m.set(ox + 2 * tx, y, oz + 2 * tz, b1);
+      }
+    });
+  }
+  function sandMound(m, cx, cz, rx, rz, hgt, seed, cols = SAND) {
+    const idx = cols.map((c, i) => m.color(c, { jitter: 0.1, smooth: 0.8, light: i === 2 ? 0.2 : 0 }));
+    shape(m, cx - rx - 2, 0, cz - rz - 2, cx + rx + 2, hgt + 2, cz + rz + 2, (x, y, z) => {
+      const a = Math.atan2(z - cz, x - cx);
+      const edge = 0.72 + 0.28 * noise3(Math.cos(a) * 1.6 + seed, Math.sin(a) * 1.6, 0.5, seed);
+      const d = Math.sqrt(((x - cx) / rx) ** 2 + ((z - cz) / rz) ** 2) / edge;
+      if (d > 1) return false;
+      const hh = hgt * (1 - d * d) * (0.7 + 0.6 * noise3(x * 0.12, 3, z * 0.12, seed)) + 0.5;
+      return y <= hh;
+    }, (x, y, z) => {
+      const r = h3(x, y, z, seed + 4);
+      return r < 0.1 ? idx[2] : r < 0.35 ? idx[1] : idx[0];
+    });
+    return idx;
+  }
+  function xformPt(p, sp, dp, rx = 0, ry = 0, rz = 0) {
+    const R = rotMat(rx, ry, rz);
+    const q = [p[0] - sp[0], p[1] - sp[1], p[2] - sp[2]];
+    return [0, 1, 2].map((k) => R[k][0] * q[0] + R[k][1] * q[1] + R[k][2] * q[2] + dp[k]);
+  }
+  function chain(m, pts, c, c2) {
+    let k = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [x0, y0, z0] = pts[i], [x1, y1, z1] = pts[i + 1];
+      const L = Math.hypot(x1 - x0, y1 - y0, z1 - z0);
+      const n = Math.max(1, Math.round(L / 2.2));
+      for (let j = 0; j < n; j++, k++) {
+        const t = (j + 0.5) / n;
+        const x = x0 + (x1 - x0) * t, y = y0 + (y1 - y0) * t, z = z0 + (z1 - z0) * t;
+        if (k % 2) m.box(x - 1, y - 0.5, z - 0.5, x + 1, y + 0.5, z + 0.5, c);
+        else {
+          m.set(x - 1, y, z, c2);
+          m.set(x + 1, y, z, c2);
+          m.set(x, y + 1, z, c2);
+          m.set(x, y - 1, z, c2);
+        }
+      }
+    }
+  }
+  function branchCoral(m, rng2, p, dir, len, r, depth, colFn, tipFn, opts = {}) {
+    const spread = opts.spread ?? 0.55, shrink = opts.shrink ?? 0.74, lenK = opts.lenK ?? 0.78;
+    const steps = 3;
+    let q = p.slice();
+    let d = dir.slice();
+    for (let i = 0; i < steps; i++) {
+      d = [d[0] + rng2.float(-0.18, 0.18), d[1] + (opts.up ?? 0.12), d[2] + rng2.float(-0.18, 0.18)];
+      const l = Math.hypot(...d);
+      d = d.map((v) => v / l);
+      const n = [q[0] + d[0] * len / steps, q[1] + d[1] * len / steps, q[2] + d[2] * len / steps];
+      m.line(q[0], q[1], q[2], n[0], n[1], n[2], colFn, r * (1 - i * 0.06));
+      q = n;
+    }
+    if (depth <= 0 || r * shrink < (opts.minR ?? 0.7)) {
+      m.sphere(q[0], q[1] + 0.3, q[2], r * (opts.tipK ?? 1.15) + 0.2, tipFn);
+      return;
+    }
+    const kids = depth > 1 && rng2.chance(opts.three ?? 0.35) ? 3 : 2;
+    for (let k = 0; k < kids; k++) {
+      const ang = k / kids * Math.PI * 2 + rng2.float(-0.6, 0.6);
+      const nd = [d[0] + Math.cos(ang) * spread, d[1], d[2] + Math.sin(ang) * spread * (opts.flat ? 0.25 : 1)];
+      branchCoral(m, rng2, q, nd, len * lenK * rng2.float(0.85, 1.1), r * shrink, depth - 1, colFn, tipFn, opts);
+    }
+  }
+  function tabulate(nx, ny, f) {
+    const tables = /* @__PURE__ */ new Map();
+    return (x, y, shrink = 0) => {
+      let t = tables.get(shrink);
+      if (!t) {
+        t = new Float32Array(nx * ny);
+        for (let j2 = 0; j2 < ny; j2++) for (let i2 = 0; i2 < nx; i2++) t[i2 + j2 * nx] = f(i2 + 0.5, j2 + 0.5, shrink);
+        tables.set(shrink, t);
+      }
+      const i = Math.floor(x), j = Math.floor(y);
+      if (i < 0 || j < 0 || i >= nx || j >= ny) return -1;
+      return t[i + j * nx];
+    };
+  }
+  var SAND = ["#e8cf96", "#d8ba80", "#f6e4b4"];
+  var REEF_ROCK = ["#9a8a92", "#857789", "#ad9c96"];
+  var MOSS = ["#7fcf8c", "#4fa58a", "#3b8a82"];
+  var WOOD = ["#9c6136", "#8a532f", "#ae7140"];
+  var RUST = ["#a4552f", "#c27840", "#7d3f2c"];
+  var DEFS = {};
+  var INTERACT = {};
+  function def(id, meta, build2) {
+    DEFS[id] = { meta: { name: meta.name, biome: meta.biome, tags: meta.tags || [], decor: meta.decor || null, decorOnly: !!meta.decorOnly }, build: build2 };
+    if (meta.desc) DEFS[id].meta.desc = meta.desc;
+    if (meta.interact) INTERACT[id] = meta.interact;
+  }
+  function reefRock(m, rng2, cols = REEF_ROCK) {
+    return cols.map((c, i) => m.color(c, { jitter: 0.16, smooth: 0.8, light: i === 2 ? 0.15 : 0 }));
+  }
+  function stoneTex(m, idx, seed, freq = 0.12) {
+    const set = new Set(idx);
+    const pick2 = patch(idx, freq, seed);
+    m.recolor((x, y, z, p) => set.has(p) ? pick2(x, y, z) : null);
+    m.recolor((x, y, z, p) => set.has(p) && m.exposed(x, y, z) && h3(x, y, z, seed + 1) < 0.03 ? idx[2] : null);
+  }
+  def("rock_small", { name: "Pebble Rock", biome: "shallows", tags: ["rock"], decor: { price: 20, size: 1 } }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(34, 18, 26);
+    const st = reefRock(m, rng2);
+    const seed = rng2.int(0, 999);
+    facetRock(m, rng2, 15, 4, 13, 12, 13, 10, st[0], 14);
+    facetRock(m, rng2, 26, 2, 15, 6.5, 7, 6, st[0], 10);
+    facetRock(m, rng2, 6, 1, 18, 3.5, 3, 3, st[1], 8);
+    stoneTex(m, st, seed);
+    moss(m, rng2, seed, MOSS, 0.42);
+    barnacles(m, rng2, 2, st);
+    return { m, yaw: 30 };
+  });
+  def("rock_big", { name: "Reef Boulder", biome: "shallows", tags: ["rock"], decor: { price: 60, size: 2 } }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(60, 40, 44);
+    const st = reefRock(m, rng2);
+    const seed = rng2.int(0, 999);
+    facetRock(m, rng2, 26, 10, 22, 20, 26, 17, st[0], 18);
+    facetRock(m, rng2, 42, 6, 24, 14, 17, 14, st[0], 16);
+    facetRock(m, rng2, 13, 4, 27, 10, 10, 10, st[0], 14);
+    facetRock(m, rng2, 50, 2, 32, 6, 5, 6, st[1], 10);
+    stoneTex(m, st, seed);
+    m.sub(() => m.line(30, 4, 40, 36, 16, 40, 0, 1.2));
+    moss(m, rng2, seed, MOSS, 0.5);
+    barnacles(m, rng2, 7, st);
+    const nub = m.color("#b46bd6", { smooth: 0.5 }), nubT = m.color("#f0c4ff", { smooth: 0.5 });
+    scatter(m, rng2, 3, null, "top", (x, y, z) => {
+      m.line(x, y + 1, z, x + rng2.float(-1, 1), y + 4, z, nub, 0.7);
+      m.set(x, y + 4, z, nubT);
+    });
+    return { m, yaw: 30 };
+  });
+  def("rock_arch", { name: "Rock Arch", biome: "shallows", tags: ["rock", "swimthrough"], decor: { price: 180, size: 3 } }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(96, 66, 36);
+    const st = reefRock(m, rng2);
+    const seed = rng2.int(0, 999);
+    const cx = 48, R = 31;
+    for (let i = 0; i <= 10; i++) {
+      const a = Math.PI * (i / 10);
+      const x = cx + Math.cos(a) * R, y = Math.sin(a) * R * 1.02 + 6;
+      const s = 12 - Math.sin(a) * 3 + rng2.float(-1, 1);
+      facetRock(m, rng2, x, y, 18 + rng2.float(-2, 2), s * 1.1, s, s * 0.95, st[0], 13, 0);
+    }
+    facetRock(m, rng2, cx - R - 2, 7, 18, 15, 12, 15, st[0], 14);
+    facetRock(m, rng2, cx + R + 2, 6, 18, 14, 11, 14, st[0], 14);
+    facetRock(m, rng2, cx + R + 13, 3, 24, 6, 5, 6, st[1], 9);
+    facetRock(m, rng2, cx - R - 12, 2, 26, 4, 3.5, 4, st[1], 8);
+    facetRock(m, rng2, cx + 6, R + 12, 16, 8, 6, 8, st[0], 10);
+    stoneTex(m, st, seed);
+    const mi = moss(m, rng2, seed, MOSS, 0.55);
+    const kelp = [m.color("#5fae6a", { smooth: 0.4 }), m.color("#8fd27a", { smooth: 0.4 })];
+    for (let k = 0; k < 6; k++) {
+      const x = cx + rng2.float(-16, 16);
+      const z = 18 + rng2.int(-4, 4);
+      let y = 0;
+      for (let yy = 20; yy < 65; yy++) if (m.get(Math.round(x), yy, z)) {
+        y = yy;
+        break;
+      }
+      if (!y) continue;
+      const len = rng2.int(6, 14);
+      for (let j = 1; j <= len; j++) m.set(Math.round(x + Math.sin(j * 0.9 + k) * 0.8), y - j, z, kelp[j % 3 === 0 ? 1 : 0]);
+    }
+    barnacles(m, rng2, 8, st);
+    void mi;
+    return { m, yaw: 28 };
+  });
+  var CORAL_SCHEMES = [
+    ["#ff7d55", "#ffd3a1", "#d9503f"],
+    // coral orange
+    ["#ff6fa6", "#ffd2e6", "#c94080"],
+    // pink
+    ["#9d7bf0", "#e6d8ff", "#6a4bc2"],
+    // purple
+    ["#ffc14d", "#fff0b5", "#d98a2b"]
+    // yellow
+  ];
+  def("coral_branch", { name: "Tree Coral", biome: "shallows", tags: ["coral"], decor: { price: 50, size: 1 } }, ({ rng: rng2, variant }) => {
+    const sc = CORAL_SCHEMES[variant % CORAL_SCHEMES.length];
+    const m = new VoxelModel(56, 50, 40);
+    const body = m.color(sc[0], { smooth: 0.55, jitter: 0.12 });
+    const dk = m.color(sc[2], { smooth: 0.55, jitter: 0.1 });
+    const tip = m.color(sc[1], { smooth: 0.5, jitter: 0.08 });
+    const st = reefRock(m, rng2);
+    facetRock(m, rng2, 28, 2, 20, 9, 5, 8, st[0], 10);
+    stoneTex(m, st, 3);
+    const col = (x, y, z) => h3(x, y, z, 2) < 0.12 ? tip : y < 10 ? dk : body;
+    branchCoral(m, rng2, [28, 4, 20], [0, 1, 0], 13, 3.1, 4, col, tip, { spread: 0.75, shrink: 0.72, lenK: 0.8 });
+    surface(m, (x, y, z, p) => p === body && h3(x, y, z, 9) < 0.07 ? tip : null);
+    return { m, yaw: 32 };
+  });
+  def("coral_fan", { name: "Sea Fan", biome: "shallows", tags: ["coral"], decor: { price: 70, size: 1 } }, ({ rng: rng2, variant }) => {
+    const schemes = [["#c24fd0", "#f2a6ff", "#7e2f9a"], ["#e8475d", "#ffb0b0", "#9c2440"], ["#f2b53c", "#fff1a6", "#b0702a"]];
+    const sc = schemes[variant % schemes.length];
+    const W = 60, H = 56, D = 14;
+    const m = new VoxelModel(W, H, D);
+    const vein = m.color(sc[0], { jitter: 0.1 });
+    const rim = m.color(sc[1], { jitter: 0.1 });
+    const trunk = m.color(sc[2], { jitter: 0.1, smooth: 0.4 });
+    const seed = rng2.int(0, 999);
+    const cx = W / 2;
+    const zOf = (x, y) => 6 + ((x - cx) / 30) ** 2 * 4 - y * 0.02;
+    const inFan = (x, y) => {
+      const dx = (x - cx) / 28, dy = (y - 8) / 46;
+      return dy > 0 && dx * dx + dy * dy < 1 && y > 6 + Math.abs(x - cx) * 0.35;
+    };
+    for (let y = 4; y < H; y++) for (let x = 0; x < W; x++) {
+      if (!inFan(x + 0.5, y + 0.5)) continue;
+      const a = Math.atan2(x + 0.5 - cx, y + 0.5 - 4);
+      const r = Math.hypot(x + 0.5 - cx, y + 0.5 - 4);
+      const n = noise3(x * 0.16, y * 0.16, 0, seed);
+      const rib = Math.abs(((a * 7 + n * 2.2) % 1 + 1) % 1 - 0.5) < 0.14;
+      const cross2 = Math.abs(((r * 0.22 + n * 1.6) % 1 + 1) % 1 - 0.5) < 0.12;
+      const edge = !inFan(x + 2, y + 0.5) || !inFan(x - 1, y + 0.5) || !inFan(x + 0.5, y + 2.5);
+      if (rib || cross2 || edge) {
+        const z = Math.round(zOf(x, y));
+        m.set(x, y, z, edge ? rim : vein);
+        if (!edge && r < 18) m.set(x, y, z + 1, vein);
+      }
+    }
+    for (let k = -2; k <= 2; k++) {
+      const a = k * 0.42;
+      const x1 = cx + Math.sin(a) * 34, y1 = 4 + Math.cos(a) * 44;
+      m.line(cx, 3, zOf(cx, 3), cx + (x1 - cx) * 0.55, 4 + (y1 - 4) * 0.55, zOf(x1, y1 * 0.55), trunk, 1.1);
+    }
+    m.line(cx, 0, 6, cx, 8, 6.5, trunk, 2.2);
+    const st = reefRock(m, rng2);
+    facetRock(m, rng2, cx, 1.5, 7, 7, 4, 6, st[0], 9);
+    m.recolor((x, y, z, p) => p === vein && h3(x, y, z, 5) < 0.08 ? rim : null);
+    return { m, yaw: 22, pitch: 22 };
+  });
+  def("coral_brain", { name: "Brain Coral", biome: "shallows", tags: ["coral"], decor: { price: 45, size: 1 } }, ({ rng: rng2, variant }) => {
+    const W = 46, H = 26, D = 40;
+    const m = new VoxelModel(W, H, D);
+    const schemes = [["#ee8f62", "#a8463c", "#ffd08a"], ["#b9d65e", "#557f36", "#eef59a"], ["#e07fb4", "#86397a", "#ffc4de"]];
+    const sc = schemes[variant % schemes.length];
+    const body = m.color(sc[0], { jitter: 0.1, smooth: 0.75 });
+    const groove = m.color(sc[1], { jitter: 0.08, smooth: 0.6 });
+    const ridge = m.color(sc[2], { jitter: 0.1, smooth: 0.75 });
+    const seed = rng2.int(0, 999);
+    blob(m, W / 2, 1, D / 2, 20, 22, 17.5, 0.05, 0.08, seed, body, 0);
+    const g = (x, y, z) => {
+      const f = fbm3(x * 0.07, y * 0.09, z * 0.07, 2, seed + 5) * 6;
+      return Math.abs(f - Math.floor(f) - 0.5);
+    };
+    const shell = [];
+    m.recolor((x, y, z) => {
+      if (m.exposed(x, y, z)) shell.push([x, y, z]);
+      return null;
+    });
+    for (const [x, y, z] of shell) {
+      const d = g(x + 0.5, y + 0.5, z + 0.5);
+      if (d < 0.1) m.set(x, y, z, 0);
+      else if (d < 0.17) m.set(x, y, z, groove);
+      else if (d > 0.4) m.set(x, y, z, ridge);
+    }
+    m.recolor((x, y, z, p) => p === body && m.exposed(x, y, z) && g(x + 0.5, y + 0.5, z + 0.5) < 0.2 ? groove : null);
+    return { m, yaw: 30 };
+  });
+  def("coral_tube", { name: "Tube Sponge", biome: "shallows", tags: ["coral"], decor: { price: 55, size: 1 } }, ({ rng: rng2, variant }) => {
+    const schemes = [["#f2b84b", "#ffe49a", "#9a4f2c", "#c97f2e"], ["#8f6ad8", "#d7c2ff", "#3c2668", "#6c4bb0"], ["#3fbfaa", "#a8f0d8", "#1d4f5a", "#2a8f88"]];
+    const sc = schemes[variant % schemes.length];
+    const m = new VoxelModel(48, 50, 40);
+    const body = m.color(sc[0], { smooth: 0.6, jitter: 0.12 });
+    const lip = m.color(sc[1], { smooth: 0.3, jitter: 0.08 });
+    const inner = m.color(sc[2], { jitter: 0.05, light: -0.6 });
+    const pore = m.color(sc[3], { smooth: 0.6, jitter: 0.05 });
+    const tubes = [[22, 20, 5.5, 44, 0, 0], [13, 22, 4.2, 30, -0.35, 0.1], [31, 17, 4.6, 34, 0.3, -0.15], [28, 28, 3.6, 22, 0.25, 0.35], [15, 12, 3.4, 20, -0.3, -0.35], [36, 27, 3, 14, 0.5, 0.2]];
+    const st = reefRock(m, rng2);
+    facetRock(m, rng2, 23, 2, 20, 15, 5, 12, st[0], 12);
+    stoneTex(m, st, 5);
+    for (const [x, z, r, hgt, tx, tz] of tubes) {
+      const h = hgt * rng2.float(0.9, 1.05);
+      const top = [x + tx * h * 0.5, h, z + tz * h * 0.5];
+      for (let i = 0; i <= 8; i++) {
+        const t = i / 8;
+        const rr2 = r * (0.88 + 0.18 * Math.sin(t * Math.PI)) * (t > 0.92 ? 1.08 : 1);
+        m.sphere(x + (top[0] - x) * t, 2 + (top[1] - 2) * t, z + (top[2] - z) * t, rr2, body);
+      }
+      m.sub(() => m.line(top[0], top[1] - 7, top[2], top[0], top[1] + 3, top[2], 0, r - 1.4));
+      m.paint(() => shape(m, top[0] - r - 2, top[1] - 3, top[2] - r - 2, top[0] + r + 2, top[1] + 3, top[2] + r + 2, (xx, yy, zz) => yy > top[1] - 2.2, lip));
+      m.box(top[0] - 0.5, top[1] - 7, top[2] - 0.5, top[0] + 0.5, top[1] - 7, top[2] + 0.5, inner);
+      m.paint(() => m.cylinder(top[0], top[2], top[1] - 6, top[1] - 2.5, r - 1, inner));
+    }
+    m.recolor((x, y, z, p) => p === body && m.exposed(x, y, z) && h3(x, y, z, 3) < 0.09 ? pore : null);
+    return { m, yaw: 30 };
+  });
+  def("coral_staghorn", { name: "Staghorn Coral", biome: "shallows", tags: ["coral"], decor: { price: 65, size: 2 } }, ({ rng: rng2, variant }) => {
+    const schemes = [["#d9a36f", "#fbead0", "#a8714c"], ["#a98ad8", "#f0e2ff", "#7559a8"], ["#7ec8c0", "#e0fff6", "#4f8f96"]];
+    const sc = schemes[variant % schemes.length];
+    const m = new VoxelModel(62, 44, 46);
+    const body = m.color(sc[0], { smooth: 0.5, jitter: 0.12 });
+    const tip = m.color(sc[1], { smooth: 0.45, jitter: 0.06 });
+    const dk = m.color(sc[2], { smooth: 0.5, jitter: 0.1 });
+    const col = (x, y, z) => y < 6 ? dk : body;
+    const n = 7;
+    for (let i = 0; i < n; i++) {
+      const a = i / n * Math.PI * 2 + rng2.float(-0.3, 0.3);
+      const out = rng2.float(0.55, 0.95);
+      branchCoral(m, rng2, [31 + Math.cos(a) * 3, 1, 23 + Math.sin(a) * 3], [Math.cos(a) * out, 0.75, Math.sin(a) * out], rng2.float(11, 14), 1.9, 2, col, tip, { spread: 0.55, shrink: 0.8, lenK: 0.82, up: 0.16, three: 0.1, tipK: 0.75 });
+    }
+    m.sphere(31, 1, 23, 5, dk);
+    surface(m, (x, y, z, p) => p === body && h3(x, y, z, 6) < 0.1 ? dk : null);
+    return { m, yaw: 30 };
+  });
+  def("anemone_base", { name: "Anemone", biome: "shallows", tags: ["coral", "home"], decor: { price: 90, size: 1 } }, ({ rng: rng2, variant }) => {
+    const schemes = [["#e66aa0", "#ffb2d4", "#fff0f7", "#8f3f8a"], ["#5bc7b4", "#a8f5e0", "#f0fff8", "#2f7a84"], ["#f08a4b", "#ffc78f", "#fff2d8", "#a24a3a"]];
+    const sc = schemes[variant % schemes.length];
+    const m = new VoxelModel(46, 34, 42);
+    const st = reefRock(m, rng2);
+    facetRock(m, rng2, 23, 3, 21, 14, 7, 12, st[0], 12);
+    stoneTex(m, st, 2);
+    moss(m, rng2, 4, MOSS, 0.3);
+    const column2 = m.color(sc[3], { smooth: 0.7, jitter: 0.08 });
+    const tent = m.color(sc[0], { smooth: 0.6, jitter: 0.1 });
+    const tentL = m.color(sc[1], { smooth: 0.6, jitter: 0.08 });
+    const bulb = m.color(sc[2], { smooth: 0.6, jitter: 0.05, emissive: 0.15 });
+    const mouth = m.color("#5a2350", { jitter: 0 });
+    m.cone(23, 21, 6, 13, 6, 7.5, column2);
+    m.ellipsoid(23, 13.5, 21, 9, 2.5, 8, tentL);
+    const N = 30;
+    for (let i = 0; i < N; i++) {
+      const a = i / N * Math.PI * 2 * 2.618 + rng2.float(-0.2, 0.2);
+      const rr2 = 2.5 + i / N * 5.5;
+      const sx = 23 + Math.cos(a) * rr2, sz = 21 + Math.sin(a) * rr2 * 0.9;
+      const out = 0.35 + rr2 / 8 * 0.7;
+      const len = rng2.float(8, 13) * (1.1 - rr2 / 20);
+      const ex = sx + Math.cos(a) * out * len, ez = sz + Math.sin(a) * out * len, ey = 14 + len * (1 - out * 0.45);
+      const mx = (sx + ex) / 2 + rng2.float(-1, 1), my = (14 + ey) / 2 + 1.5, mz = (sz + ez) / 2 + rng2.float(-1, 1);
+      m.tube([[sx, 14, sz, 1.4], [mx, my, mz, 1.25], [ex, ey, ez, 1.1]], (x, y) => y > ey - 3 ? tentL : tent, 3);
+      m.sphere(ex, ey + 0.4, ez, 1.7, bulb);
+    }
+    m.ellipsoid(23, 15, 21, 2, 1, 2, mouth);
+    return { m, yaw: 30 };
+  });
+  def("sandcastle", { name: "Sandcastle", biome: "shallows", tags: ["build"], decor: { price: 120, size: 2 } }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(64, 64, 48);
+    const sand = [m.color("#e9cf92", { jitter: 0.16 }), m.color("#dcbd7c", { jitter: 0.16 }), m.color("#f4e0aa", { jitter: 0.14 })];
+    const wet = m.color("#c69e66", { jitter: 0.12 });
+    const dark = m.color("#5a3b33", { jitter: 0, light: -0.5 });
+    const flag = m.color("#ff5a5f", { jitter: 0.05 });
+    const flag2 = m.color("#fff4e0", { jitter: 0.05 });
+    const pole = m.color("#8a5a3a", { jitter: 0 });
+    const shellP = m.color("#ffb0c8", { jitter: 0.05, smooth: 0.4 });
+    const shellW = m.color("#fff3e6", { jitter: 0.05, smooth: 0.4 });
+    const tex2 = (x, y, z) => y % 6 === 0 ? sand[1] : h3(x, y, z, 1) < 0.18 ? sand[2] : h3(x, y, z, 2) < 0.18 ? sand[1] : sand[0];
+    shape(m, 2, 0, 2, 61, 6, 45, (x, y, z) => {
+      const d = ((x - 32) / 30) ** 2 + ((z - 24) / 22) ** 2;
+      return d < 1 && y < 6 * (1 - d) ** 0.6 + 1;
+    }, (x, y, z) => y < 2 ? wet : tex2(x, y, z));
+    m.box(19, 4, 14, 44, 24, 33, tex2);
+    for (let x = 19; x <= 44; x++) for (const z of [14, 33]) if (x % 4 < 2) m.box(x, 25, z, x, 27, z, tex2);
+    for (let z = 14; z <= 33; z++) for (const x of [19, 44]) if (z % 4 < 2) m.box(x, 25, z, x, 27, z, tex2);
+    const tower = (cx, cz, r, h, roof) => {
+      m.cylinder(cx, cz, 3, h, r, tex2);
+      m.cylinder(cx, cz, h - 1, h, r + 1, tex2);
+      if (roof) {
+        m.cone(cx, cz, h + 1, h + 1 + r * 2.2, r + 0.8, 0.4, (x, y, z) => y % 3 === 0 ? sand[1] : sand[2]);
+      } else {
+        m.sub(() => m.cylinder(cx, cz, h, h, r - 0.6));
+        for (let a = 0; a < 8; a++) {
+          const ang = a / 8 * Math.PI * 2;
+          if (a % 2) m.box(cx + Math.cos(ang) * r, h + 1, cz + Math.sin(ang) * r, cx + Math.cos(ang) * r, h + 2, cz + Math.sin(ang) * r, tex2);
+        }
+      }
+      m.box(cx, h - 7, cz + r - 0.5, cx, h - 4, cz + r + 0.5, dark);
+    };
+    tower(17, 31, 6, 30, false);
+    tower(46, 31, 6, 33, false);
+    tower(18, 15, 5, 26, false);
+    tower(45, 15, 5, 28, false);
+    tower(32, 22, 6.5, 38, true);
+    m.sub(() => {
+      m.box(28, 4, 30, 35, 11, 35);
+      m.cylinder(31.5, 33, 11, 14, 3.6, 0, "y");
+    });
+    m.sub(() => m.cylinder(4, 31.5, 30, 35, 3.6, 0, "z"));
+    m.box(28, 4, 31, 35, 14, 31, (x, y, z) => m.get(x, y, z + 1) === 0 && m.get(x, y, z) ? null : null);
+    shape(m, 27, 4, 30, 36, 15, 30, (x, y) => true, (x, y, z, p) => p ? null : dark);
+    m.sub(() => m.box(28, 4, 31, 35, 15, 35));
+    m.recolor((x, y, z, p) => p === dark && (x < 28 || x > 35 || y > 13 && Math.hypot(x + 0.5 - 31.5, y + 0.5 - 11) > 4) ? tex2(x, y, z) : null);
+    for (const wx of [22, 40]) m.box(wx, 15, 33, wx + 1, 18, 34, dark);
+    m.box(32, 52, 22, 32, 60, 22, pole);
+    for (let y = 0; y < 5; y++) for (let x = 0; x < 8; x++) m.set(33 + x, 55 + y + Math.round(Math.sin(x * 0.8) * 0.6), 22, (x + y) % 4 < 2 ? flag : flag2);
+    const seeds = [[22, 9, 34], [41, 12, 34], [12, 3, 38], [50, 3, 40], [26, 20, 34]];
+    seeds.forEach(([x, y, z], i) => {
+      const c = i % 2 ? shellW : shellP;
+      m.set(x, y, z, c);
+      m.set(x + 1, y, z, c);
+      m.set(x, y + 1, z, c);
+      m.set(x + 1, y + 1, z, i % 2 ? shellP : shellW);
+    });
+    const star2 = m.color("#ff8a3d", { jitter: 0.05 });
+    for (let k = 0; k < 5; k++) {
+      const a = k / 5 * Math.PI * 2 - Math.PI / 2;
+      m.line(10, 3.6, 40, 10 + Math.cos(a) * 3.5, 3.6, 40 + Math.sin(a) * 3.5, star2, 0.6);
+    }
+    m.set(10, 4, 40, star2);
+    return { m, yaw: 30 };
+  });
+  def("treasure_chest", { name: "Treasure Chest", biome: "shallows", tags: ["wreck", "treasure"], decor: { price: 250, size: 1 } }, ({ frame, rng: rng2 }) => {
+    const W = 46, H = 44, D = 52;
+    const m = new VoxelModel(W, H, D);
+    const plank = [m.color("#8e512c", { jitter: 0.14 }), m.color("#a0602f", { jitter: 0.14 }), m.color("#7c4428", { jitter: 0.14 })];
+    const grain = m.color("#6a3622", { jitter: 0.06 });
+    const gold = m.color("#eab23c", { jitter: 0.08, spec: 1.2 });
+    const goldDk = m.color("#b97a22", { jitter: 0.08 });
+    const rivet = m.color("#fff0a8", { jitter: 0 });
+    const lockC = m.color("#f2d16b", { jitter: 0.04, spec: 1.5 });
+    const hole = m.color("#2a1a22", { jitter: 0 });
+    const coin = m.color("#ffd45e", { jitter: 0.1, emissive: 0.2 });
+    const coinL = m.color("#fff2a8", { jitter: 0.05, emissive: 0.4 });
+    const coinD = m.color("#d99a2b", { jitter: 0.08, emissive: 0.1 });
+    const gems = [m.color("#ff5b7a", { emissive: 0.7, jitter: 0 }), m.color("#5be0ff", { emissive: 0.7, jitter: 0 }), m.color("#a8ff6b", { emissive: 0.7, jitter: 0 })];
+    const inner = m.color("#3e1e18", { jitter: 0.05 });
+    const x0 = 3, x1 = 42, z0 = 22, z1 = 47, yTop = 17;
+    const pl = (x, y, z) => h3(x, Math.floor(y / 4), 0, 3) < 0.25 && (x * 7 + y) % 5 === 0 ? grain : plank[Math.floor(y / 4) % 3];
+    m.box(x0, 0, z0, x1, yTop, z1, pl);
+    m.sub(() => m.box(x0 + 2, 3, z0 + 2, x1 - 2, yTop, z1 - 2));
+    m.box(x0 + 2, 3, z0 + 2, x1 - 2, 3, z1 - 2, inner);
+    const bandX = [x0, x0 + 1, x0 + 9, x0 + 10, x1 - 10, x1 - 9, x1 - 1, x1];
+    const isEdge = (x) => x === x0 || x === x1 || x === x0 + 1 || x === x1 - 1;
+    const bands2 = (ya, yb) => {
+      for (const bx of bandX) m.paint(() => m.box(bx, ya, 0, bx, yb, D - 1, isEdge(bx) ? goldDk : gold));
+    };
+    bands2(0, yTop);
+    m.paint(() => m.box(0, 0, 0, W - 1, 1, D - 1, goldDk));
+    for (const bx of [x0 + 9, x1 - 9]) for (let y = 3; y < yTop; y += 4) m.set(bx, y, z1 + 1, rivet);
+    if (frame === 0) {
+      const zc = (z0 + z1 + 1) / 2, rz = (z1 - z0 + 1) / 2;
+      shape(m, x0, yTop + 1, z0, x1, yTop + 14, z1, (x, y, z) => ((z - zc) / rz) ** 2 + ((y - yTop - 1) / 12) ** 2 <= 1, (x, y) => plank[Math.floor((y + 1) / 3) % 3]);
+      bands2(yTop + 1, yTop + 14);
+      m.paint(() => m.box(x0, yTop + 1, z0, x1, yTop + 1, z1, goldDk));
+      const lx = Math.floor((x0 + x1) / 2);
+      m.box(lx - 3, yTop - 5, z1 + 1, lx + 4, yTop + 4, z1 + 1, lockC);
+      m.box(lx, yTop - 3, z1 + 2, lx + 1, yTop - 1, z1 + 2, hole);
+      m.box(lx - 3, yTop - 5, z1 + 2, lx + 4, yTop - 5, z1 + 2, goldDk);
+      m.box(lx, yTop + 5, z1 - 1, lx + 1, yTop + 7, z1, lockC);
+    } else {
+      const cx = (x0 + x1 + 1) / 2, cz = (z0 + z1 + 1) / 2;
+      shape(m, x0 + 2, 3, z0 + 2, x1 - 2, yTop + 8, z1 - 2, (x, y, z) => {
+        const d = ((x - cx) / 19) ** 2 + ((z - cz) / 12) ** 2;
+        return y < yTop + 6 * (1 - d) + noise3(x * 0.4, 0, z * 0.4, 3) * 2;
+      }, (x, y, z) => {
+        const r = h3(x, y, z, 2);
+        return r < 0.04 ? gems[h3(x, z, y, 5) * 3 | 0] : r < 0.25 ? coinL : r < 0.45 ? coinD : coin;
+      });
+      const lid = part(m, W, 16, 28);
+      const zc = 13, rz = 13;
+      shape(lid, x0, 0, 0, x1, 15, 27, (x, y, z) => ((z - zc) / rz) ** 2 + (y / 12) ** 2 <= 1, (x, y) => plank[Math.floor((y + 1) / 3) % 3]);
+      for (const bx of bandX) lid.paint(() => lid.box(bx, 0, 0, bx, 15, 27, isEdge(bx) ? goldDk : gold));
+      lid.sub(() => shape(lid, x0 + 2, 0, 0, x1 - 2, 10, 27, (x, y, z) => ((z - zc) / (rz - 2)) ** 2 + (y / 10) ** 2 <= 1, 0));
+      lid.paint(() => lid.box(x0 + 2, 0, 0, x1 - 2, 12, 27, (x, y, z) => lid.exposed(x, y, z) && y < 10 ? inner : null));
+      stampRot(m, lid, [0, 0, 0], [0, yTop + 1, z0], -104, 0, 0);
+      for (let i = 0; i < 12; i++) {
+        const x = 4 + (h3(i, 1, 1, 9) * 36 | 0), z = Math.min(D - 1, z1 + 2 + (h3(i, 2, 1, 9) * 3 | 0));
+        m.set(x, 0, z, i % 3 ? coin : coinL);
+        if (i % 4 === 0) m.set(x + 1, 0, z, coinD);
+      }
+      m.set(x0 + 5, yTop + 4, cz, gems[0]);
+    }
+    barnacles(m, rng2, 3, plank);
+    return { m, yaw: 28, light: "#ffd45e" };
+  });
+  def("clam_pearl", { name: "Pearl Clam", biome: "shallows", tags: ["treasure"], decor: { price: 300, size: 1 } }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(54, 44, 46);
+    const shell = [m.color("#c7a3d8", { smooth: 0.45, jitter: 0.1 }), m.color("#e2c4ec", { smooth: 0.45, jitter: 0.1 }), m.color("#9d78b8", { smooth: 0.45, jitter: 0.1 })];
+    const mantle = [m.color("#2fa7c9", { smooth: 0.6, jitter: 0.1 }), m.color("#7fe0f0", { smooth: 0.6, jitter: 0.05 }), m.color("#1f6f9f", { smooth: 0.6, jitter: 0.08 })];
+    const pearl = m.color("#fff1f6", { smooth: 1, spec: 2.4, specPow: 14, emissive: 0.35, jitter: 0 });
+    const cx = 27, cz = 22, RX = 22, RZ = 18, RY = 12;
+    const ribs = (x, z) => 1 + 0.07 * Math.cos(Math.atan2(z - cz, x - cx) * 14);
+    const shellCol = (x, y, z) => {
+      const a = Math.atan2(z - cz, x - cx) * 14;
+      return Math.cos(a) > 0.6 ? shell[1] : Math.cos(a) < -0.5 ? shell[2] : shell[0];
+    };
+    shape(m, cx - RX - 2, 0, cz - RZ - 2, cx + RX + 2, RY, cz + RZ + 2, (x, y, z) => {
+      const k = ribs(x, z);
+      const d = ((x - cx) / (RX * k)) ** 2 + ((y - RY) / RY) ** 2 + ((z - cz) / (RZ * k)) ** 2;
+      return d <= 1 && y <= RY;
+    }, shellCol);
+    m.sub(() => shape(m, cx - RX, 4, cz - RZ, cx + RX, RY + 1, cz + RZ, (x, y, z) => ((x - cx) / (RX - 2.5)) ** 2 + ((y - RY) / (RY - 2.5)) ** 2 + ((z - cz) / (RZ - 2.5)) ** 2 <= 1, 0));
+    shape(m, cx - RX, 3, cz - RZ, cx + RX, RY - 2, cz + RZ, (x, y, z) => ((x - cx) / (RX - 2)) ** 2 + ((y - RY) / (RY - 2)) ** 2 + ((z - cz) / (RZ - 2)) ** 2 <= 1 && y <= RY - 3 + Math.sin(x * 0.6) * 0.8, (x, y, z) => {
+      const n = h3(x, y, z, 4);
+      return n < 0.12 ? mantle[1] : noise3(x * 0.3, y * 0.3, z * 0.3, 2) < 0.4 ? mantle[2] : mantle[0];
+    });
+    const top = part(m, 54, 20, 46);
+    shape(top, cx - RX - 2, 0, cz - RZ - 2, cx + RX + 2, RY, cz + RZ + 2, (x, y, z) => {
+      const k = ribs(x, z);
+      const d = ((x - cx) / (RX * k)) ** 2 + (y / RY) ** 2 + ((z - cz) / (RZ * k)) ** 2;
+      return d <= 1 && y >= 0;
+    }, shellCol);
+    top.sub(() => shape(top, cx - RX, 0, cz - RZ, cx + RX, RY - 2.5, cz + RZ, (x, y, z) => ((x - cx) / (RX - 2.5)) ** 2 + (y / (RY - 2.5)) ** 2 + ((z - cz) / (RZ - 2.5)) ** 2 <= 1, 0));
+    stampRot(m, top, [cx, 0, cz - RZ], [cx, RY + 0.5, cz - RZ + 1], -62, 0, 0);
+    m.sphere(cx, RY - 1, cz + 3, 5.2, pearl);
+    sandMound(m, cx, cz + 3, 24, 20, 2.5, 7);
+    barnacles(m, rng2, 3, shell);
+    return { m, yaw: 30, light: "#ffe8f4" };
+  });
+  def("message_bottle", { name: "Message in a Bottle", biome: "shallows", tags: ["treasure"], decor: { price: 80, size: 1 } }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(52, 22, 30);
+    const glass = m.color("#79d6b2", { smooth: 0.85, spec: 2.2, specPow: 16, light: 0.3, jitter: 0.04 });
+    const glassD = m.color("#3f9e8c", { smooth: 0.85, jitter: 0.04 });
+    const paper = m.color("#e9e2bf", { smooth: 0.7, jitter: 0.04, light: 0.1 });
+    const ribbon = m.color("#e0505a", { jitter: 0 });
+    const cork = m.color("#b58358", { jitter: 0.12, smooth: 0.4 });
+    const p0 = [8, 6.5, 19], dir = [1, 0.12, -0.42];
+    const L = Math.hypot(...dir);
+    const d = dir.map((v) => v / L);
+    const prof = (u) => u < 0 ? -1 : u < 22 ? 6 : u < 27 ? 6 - (u - 22) * 0.75 : u < 33 ? 2.3 : u < 34.5 ? 2.9 : u < 38 ? 2.2 : -1;
+    shape(m, 0, 0, 0, 51, 21, 29, (x, y, z) => {
+      const px = x - p0[0], py = y - p0[1], pz = z - p0[2];
+      const u = px * d[0] + py * d[1] + pz * d[2];
+      const r = prof(u);
+      if (r < 0) return false;
+      const qx = px - d[0] * u, qy = py - d[1] * u, qz = pz - d[2] * u;
+      return qx * qx + qy * qy + qz * qz <= r * r;
+    }, (x, y, z) => {
+      const px = x - p0[0], py = y - p0[1], pz = z - p0[2];
+      const u = px * d[0] + py * d[1] + pz * d[2];
+      if (u > 34.5) return cork;
+      const qy = py - d[1] * u;
+      if (u > 4 && u < 19 && qy > 1) return u > 10 && u < 12 ? ribbon : paper;
+      return qy < -2 ? glassD : glass;
+    });
+    const sand = sandMound(m, 24, 16, 24, 12, 4.5, 3);
+    void sand;
+    const sh = m.color("#ffc0cf", { smooth: 0.4 });
+    m.box(40, 3, 20, 41, 3, 21, sh);
+    void rng2;
+    return { m, yaw: 26 };
+  });
+  def("anchor", { name: "Old Anchor", biome: "shallows", tags: ["wreck", "metal"], decor: { price: 140, size: 2 } }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(70, 76, 44);
+    const iron = [m.color("#5a6074", { jitter: 0.1, smooth: 0.35 }), m.color("#4a4e62", { jitter: 0.1, smooth: 0.35 }), m.color("#737a8e", { jitter: 0.08, smooth: 0.35 })];
+    const rust = [m.color("#a4552f", { jitter: 0.12, smooth: 0.35 }), m.color("#c47c42", { jitter: 0.1, smooth: 0.35 }), m.color("#7a3f2e", { jitter: 0.1, smooth: 0.35 })];
+    const a = part(m, 54, 68, 32);
+    const cx = 26.5, zc = 16;
+    a.box(cx - 2, 9, zc - 2, cx + 1, 54, zc + 1, iron[0]);
+    a.box(cx - 2.5, 50, zc - 2.5, cx + 1.5, 53, zc + 1.5, iron[1]);
+    torus(a, cx - 0.5, 60, zc - 0.5, 5.2, 1.7, iron[0], "z");
+    a.box(cx - 1.5, 46, zc - 13, cx + 0.5, 48, zc + 12, iron[1]);
+    a.sphere(cx - 0.5, 47, zc - 13.5, 2.2, iron[0]);
+    a.sphere(cx - 0.5, 47, zc + 12.5, 2.2, iron[0]);
+    a.sphere(cx - 0.5, 9, zc - 0.5, 4.2, iron[0]);
+    torus(a, cx - 0.5, 25, zc - 0.5, 16, 2.4, iron[0], "z", (ang) => ang < -0.25 && ang > -Math.PI + 0.25);
+    for (const sx of [-1, 1]) {
+      const ex = cx - 0.5 + sx * 16 * Math.cos(0.25), ey = 25 - 16 * Math.sin(0.25);
+      const tri = [[ex - sx * 1.5, ey + 12], [ex - sx * 5.5, ey - 2], [ex + sx * 4.5, ey + 1]];
+      shape(a, ex - 8, ey - 4, zc - 3, ex + 8, ey + 13, zc + 2, (x, y, z) => {
+        if (Math.abs(z - zc + 0.5) > 1.6 - (y - ey) * 0.04) return false;
+        let inside = true;
+        for (let i = 0; i < 3; i++) {
+          const [x1, y1] = tri[i], [x2, y2] = tri[(i + 1) % 3];
+          const cr = (x2 - x1) * (y - y1) - (y2 - y1) * (x - x1);
+          if (cr < 0 !== sx < 0) inside = false;
+        }
+        return inside;
+      }, iron[1]);
+    }
+    a.recolor((x, y, z, p) => !a.get(x, y + 1, z) && p === iron[0] ? iron[2] : null);
+    a.recolor((x, y, z) => {
+      const n = fbm3(x * 0.12, y * 0.12, z * 0.12, 2, 4);
+      return n > 0.68 ? rust[0] : n > 0.645 ? rust[2] : null;
+    });
+    const sp = [cx, 9, zc], dp = [34, 4, 20], rot2 = [0, 24, -16];
+    stampRot(m, a, sp, dp, ...rot2);
+    const ring = xformPt([cx - 0.5, 55, zc], sp, dp, ...rot2);
+    chain(m, [ring, [ring[0] - 6, ring[1] - 16, ring[2] + 6], [ring[0] - 14, 4, 34], [6, 2, 38]], iron[1], rust[0]);
+    sandMound(m, 34, 22, 22, 15, 6, 5);
+    barnacles(m, rng2, 3, [...iron, ...rust]);
+    moss(m, rng2, 8, MOSS, 0.2, 0.2, [...iron, ...rust]);
+    return { m, yaw: 30 };
+  });
+  def("barrel", { name: "Old Barrel", biome: "shallows", tags: ["wreck"], decor: { price: 70, size: 1 } }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(34, 44, 34);
+    const wood = WOOD.map((c) => m.color(c, { jitter: 0.12, smooth: 0.5 }));
+    const seam = m.color("#5a3120", { jitter: 0.05, smooth: 0.5 });
+    const band = m.color("#6d6a7c", { jitter: 0.08, smooth: 0.5, spec: 0.8 });
+    const rust = m.color("#a5532d", { jitter: 0.15, smooth: 0.5 });
+    const lid = m.color("#7c4a2a", { jitter: 0.1 });
+    const lidD = m.color("#5e3524", { jitter: 0.05 });
+    const cx = 17, cz = 17;
+    for (let y = 0; y < 38; y++) {
+      const t = (y - 18.5) / 19;
+      const r = 11.5 + 2.5 * (1 - t * t);
+      m.cylinder(cx, cz, y, y, r, (x, yy, z) => {
+        const a = Math.atan2(z + 0.5 - cz, x + 0.5 - cx);
+        const f = (a + Math.PI) / (Math.PI * 2) * 18;
+        const st = Math.floor(f);
+        if (f - st < 0.12) return seam;
+        return wood[st * 7 % 3];
+      });
+    }
+    for (const by of [4, 5, 32, 33, 13, 24]) m.paint(() => m.cylinder(cx, cz, by, by, 16, (x, y, z) => h3(x, y, z, 3) < 0.25 ? rust : band));
+    m.paint(() => m.box(0, 37, 0, 33, 37, 33, lid));
+    m.sub(() => m.cylinder(cx, cz, 37, 37, 10));
+    m.paint(() => m.box(0, 36, 0, 33, 36, 33, (x, y, z) => Math.hypot(x + 0.5 - cx, z + 0.5 - cz) < 10.5 ? (x >> 2) % 2 ? lid : lidD : null));
+    barnacles(m, rng2, 5, wood);
+    moss(m, rng2, 3, MOSS, 0.35, 0.25, [lid, lidD, ...wood]);
+    sandMound(m, cx, cz, 17, 17, 3, 2);
+    return { m, yaw: 30 };
+  });
+  function starfish(m, cx, cy, cz, R, col, dot2, rot2 = 0) {
+    for (let k = 0; k < 5; k++) {
+      const a = rot2 + k / 5 * Math.PI * 2;
+      for (let t = 0; t <= R; t += 0.5) {
+        const r = 1.9 * (1 - t / R) + 0.6;
+        const x = cx + Math.cos(a) * t, z = cz + Math.sin(a) * t;
+        m.cylinder(x, z, cy, cy + (t < R * 0.5 ? 1 : 0), r, (xx, yy, zz) => h3(xx, yy, zz, 1) < 0.18 ? dot2 : col);
+      }
+    }
+    m.cylinder(cx, cz, cy, cy + 1, 2.6, col);
+    m.set(Math.floor(cx), cy + 2, Math.floor(cz), dot2);
+  }
+  def("starfish_rock", { name: "Starfish Rock", biome: "shallows", tags: ["rock"], decor: { price: 75, size: 1 } }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(46, 34, 38);
+    const st = reefRock(m, rng2);
+    const seed = rng2.int(0, 999);
+    facetRock(m, rng2, 22, 9, 18, 16, 15, 13, st[0], 16);
+    facetRock(m, rng2, 34, 3, 24, 8, 7, 8, st[0], 10);
+    stoneTex(m, st, seed);
+    moss(m, rng2, seed, MOSS, 0.3);
+    const orange = m.color("#ff7f3a", { smooth: 0.4, jitter: 0.06 });
+    const orangeD = m.color("#ffd08a", { smooth: 0.4, jitter: 0.04 });
+    const purple = m.color("#a05fe0", { smooth: 0.4, jitter: 0.06 });
+    const purpleD = m.color("#efd0ff", { smooth: 0.4, jitter: 0.04 });
+    let ty = 0;
+    for (let y = 33; y > 0; y--) if (m.get(21, y, 17)) {
+      ty = y + 1;
+      break;
+    }
+    starfish(m, 21, ty, 17, 7.5, orange, orangeD, 0.3);
+    const sf = part(m, 20, 4, 20);
+    starfish(sf, 10, 0, 10, 6.5, purple, purpleD, -0.2);
+    let fz = 0;
+    for (let z = 37; z > 0; z--) if (m.get(24, 9, z)) {
+      fz = z + 1;
+      break;
+    }
+    stampRot(m, sf, [10, 0, 10], [26, 9, fz], 80, 0, 0);
+    sandMound(m, 24, 20, 23, 18, 2, 9);
+    barnacles(m, rng2, 3, st);
+    return { m, yaw: 30 };
+  });
+  def("sunken_boat", { name: "Sunken Sloop", biome: "shallows", tags: ["wreck", "hero"] }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(132, 116, 76);
+    const hull = part(m, 108, 96, 40);
+    const wood = [m.color("#8e5a36", { jitter: 0.1, smooth: 0.3 }), m.color("#a0683c", { jitter: 0.1, smooth: 0.3 }), m.color("#7c4c2e", { jitter: 0.1, smooth: 0.3 })];
+    const seamC = m.color("#4e2e22", { jitter: 0.05, smooth: 0.3 });
+    const woodWet = m.color("#5f4a3c", { jitter: 0.1, smooth: 0.3 });
+    const keelC = m.color("#4a3328", { jitter: 0.08 });
+    const rail = m.color("#c9925a", { jitter: 0.06 });
+    const deck = [m.color("#b07d4c", { jitter: 0.08 }), m.color("#9c6c40", { jitter: 0.08 })];
+    const dark = m.color("#26161f", { jitter: 0.02, light: -0.6 });
+    const rib = m.color("#6b4129", { jitter: 0.06 });
+    const mast = m.color("#80583a", { jitter: 0.06, smooth: 0.5 });
+    const sail = [m.color("#ecdfc2", { jitter: 0.05, smooth: 0.5 }), m.color("#d6c4a0", { jitter: 0.05, smooth: 0.5 })];
+    const sailStripe = m.color("#c8574a", { jitter: 0.05, smooth: 0.5 });
+    const rope = m.color("#cdb27a", { jitter: 0.04 });
+    const brass = m.color("#e0ad4c", { jitter: 0.04, spec: 1.2 });
+    const glassC = m.color("#2b6f86", { jitter: 0.02, spec: 1.5 });
+    const L = 92, X0 = 6, zc = 20;
+    const T = (x) => (x - X0) / L;
+    const sheer = (t) => 24 + 10 * Math.max(0, (t - 0.62) / 0.38) ** 2 + 3 * Math.max(0, (0.18 - t) / 0.18) ** 2;
+    const keel = (t) => 2 + 16 * Math.max(0, (t - 0.72) / 0.28) ** 2.2 + 4 * Math.max(0, (0.08 - t) / 0.08) ** 2;
+    const beam = (t) => {
+      if (t < 0 || t > 1) return 0;
+      if (t < 0.1) return 13 + 2 * (t / 0.1);
+      if (t < 0.5) return 15;
+      return 15 * Math.pow(Math.max(0, 1 - ((t - 0.5) / 0.5) ** 1.8), 0.62);
+    };
+    const halfAt = tabulate(108, 48, (x, y, shrink) => {
+      const t = T(x);
+      const B2 = beam(t) - shrink;
+      if (B2 <= 0) return -1;
+      const yk = keel(t) + shrink, ys = sheer(t);
+      if (y < yk || y > ys) return -1;
+      return B2 * Math.min(1, Math.pow((y - yk) / Math.max(1, 20 - yk * 0.5), 0.42));
+    });
+    const inHull = (x, y, z, shrink = 0) => {
+      const hw = halfAt(x, y, shrink);
+      return hw > 0 && Math.abs(z - zc) <= hw;
+    };
+    shape(hull, 0, 0, 0, 107, 40, 39, (x, y, z) => inHull(x, y, z), (x, y, z) => {
+      const strake = Math.floor((y + Math.abs(z - zc) * 0.25) / 3.2);
+      const f = (y + Math.abs(z - zc) * 0.25) / 3.2 - strake;
+      if (f < 0.22) return seamC;
+      if (y < 9 + noise3(x * 0.2, 0, z * 0.2, 3) * 3) return woodWet;
+      return wood[(strake + (x + strake * 13 >> 4)) % 3];
+    });
+    hull.sub(() => shape(hull, 0, 0, 0, 107, 40, 39, (x, y, z) => inHull(x, y, z, 1.6) && y > keel(T(x)) + 2, 0));
+    shape(hull, X0, 0, zc - 1.5, X0 + L + 2, 36, zc + 1.5, (x, y, z) => {
+      const t = T(x);
+      return t >= 0 && t <= 1.02 && y >= keel(Math.min(1, t)) - 1.5 && y <= keel(Math.min(1, t)) + 0.5;
+    }, keelC);
+    hull.line(X0 + L - 1, keel(0.99), zc, X0 + L + 3, sheer(1) + 4, zc, keelC, 1.3);
+    for (let x = 14; x < 92; x += 6) shape(hull, x, 0, 0, x + 1, 40, 39, (xx, y, z) => inHull(xx, y, z) && !inHull(xx, y, z, 2.8), rib);
+    shape(hull, 0, 0, 0, 107, 42, 39, (x, y, z) => {
+      const t = T(x);
+      const ys = sheer(t);
+      return y >= ys && y < ys + 2 && inHull(x, ys - 0.5, z) && !inHull(x, ys - 0.5, z, 2);
+    }, rail);
+    shape(hull, 0, 0, 0, 107, 40, 39, (x, y, z) => {
+      const t = T(x);
+      const yd = Math.floor(sheer(t)) - 3;
+      if (y !== yd || !inHull(x, y, z)) return false;
+      const hole = ((x - 54) / 11) ** 2 + ((z - zc + 3) / 7) ** 2 + noise3(x * 0.3, 0, z * 0.3, 5) * 0.8 < 1;
+      return !hole;
+    }, (x, y, z) => z % 3 === 0 ? deck[1] : deck[0]);
+    hull.box(10, 22, zc - 9, 27, 31, zc + 8, (x, y, z) => z === zc + 8 && (x - 10) % 6 === 0 ? seamC : wood[(y >> 1) % 2 ? 1 : 0]);
+    hull.box(9, 32, zc - 10, 28, 32, zc + 9, rail);
+    hull.box(10, 33, zc - 9, 27, 33, zc + 8, deck[1]);
+    for (const wx of [13, 21]) {
+      hull.box(wx, 25, zc + 9, wx + 3, 28, zc + 9, glassC);
+      hull.box(wx - 1, 24, zc + 9, wx + 4, 24, zc + 9, rail);
+    }
+    for (const px of [40, 52, 72]) {
+      const hw = halfAt(px, 16);
+      if (hw <= 0) continue;
+      const zz = zc + hw + 0.3;
+      torus(hull, px + 0.5, 16, zz, 1.9, 0.75, brass, "z");
+      hull.box(px, 16, Math.floor(zz) - 1, px, 16, Math.floor(zz), glassC);
+    }
+    hull.sub(() => shape(hull, 52, 4, 26, 72, 20, 39, (x, y, z) => ((x - 62) / 8) ** 2 + ((y - 11) / 5.5) ** 2 + noise3(x * 0.4, y * 0.4, 2, 6) * 0.7 < 1 && z > zc + 6, 0));
+    shape(hull, 52, 4, 0, 72, 20, 39, (x, y, z) => ((x - 62) / 7) ** 2 + ((y - 11) / 4.5) ** 2 < 1 && inHull(x, y, z, 1.6) && !inHull(x, y, z, 3) && z < zc, dark);
+    hull.cylinder(50, zc, 6, 72, 1.9, mast);
+    hull.sub(() => shape(hull, 46, 64, zc - 3, 54, 74, zc + 3, (x, y) => y > 68 + (x - 50) * 0.9, 0));
+    hull.cylinder(50, zc, 60, 61, 2.6, rope);
+    const yard = (x) => 50 + (x - 34) * 0.32;
+    hull.line(34, yard(34), zc + 2, 72, yard(72), zc + 2, mast, 1.1);
+    for (let x = 36; x <= 70; x++) {
+      const top = Math.floor(yard(x)) - 1;
+      const bottom = 30 + noise3(x * 0.3, 0, 0, 9) * 8 + (x > 60 ? (x - 60) * 0.8 : 0);
+      for (let y = top; y >= bottom; y--) {
+        if (noise3(x * 0.25, y * 0.25, 1, 7) > 0.7) continue;
+        const bil = Math.round(Math.sin((x - 36) / 34 * Math.PI) * 2.5 + (top - y) * 0.06);
+        hull.set(x, y, zc + 3 + bil, (y >> 2) % 3 === 0 ? sailStripe : sail[h3(x, y, 2, 1) < 0.3 ? 1 : 0]);
+      }
+    }
+    hull.line(50, 66, zc, 98, 34, zc, rope, 0.45);
+    hull.line(50, 66, zc, 16, 34, zc - 6, rope, 0.45);
+    hull.line(X0 + L, sheer(1) + 1, zc, X0 + L + 12, sheer(1) + 8, zc, mast, 1.2);
+    barnacles(hull, rng2, 22, [...wood, woodWet]);
+    moss(hull, rng2, 7, MOSS, 0.4, 0.16, [...deck, rail, ...wood]);
+    stampRot(m, hull, [54, 0, zc], [64, 6, 34], 8, -16, 4);
+    sandMound(m, 62, 36, 50, 22, 9, 12);
+    const kelp = [m.color("#4fa25e", { smooth: 0.3 }), m.color("#86cf74", { smooth: 0.3 }), m.color("#2f7a58", { smooth: 0.3 })];
+    for (let k = 0; k < 4; k++) {
+      const x = 20 + k * 26 + rng2.int(-4, 4), z = 50 + rng2.int(-2, 4);
+      const h = rng2.int(22, 40);
+      let y0 = 0;
+      while (m.get(x, y0, z) && y0 < 20) y0++;
+      for (let y = y0 - 1; y < y0 + h; y++) {
+        const xx = x + Math.round(Math.sin(y * 0.3 + k) * 1.5);
+        m.set(xx, y, z, kelp[0]);
+        if (y % 5 === 2 && y > y0 + 2) {
+          const sd = (y >> 1) % 2 ? 1 : -1;
+          m.set(xx + sd, y, z, kelp[1]);
+          m.set(xx + sd * 2, y + 1, z, kelp[1]);
+          m.set(xx + sd, y - 1, z, kelp[2]);
+        }
+      }
+    }
+    return { m, yaw: 30, vs: 1.6 };
+  });
+  var JUNK_SAND = ["#9a8f7c", "#857a6a", "#b0a58e"];
+  var GUN = ["#555c6e", "#434859", "#6c7488"];
+  var BEIGE = ["#d9cfb2", "#c2b796", "#ece3c8"];
+  function rustify(m, on, rust, seed, amount = 0.5, freq = 0.13) {
+    const set = new Set(on);
+    m.recolor((x, y, z, p) => {
+      if (!set.has(p)) return null;
+      const n = fbm3(x * freq, y * freq * 0.8, z * freq, 2, seed);
+      if (n > 1 - amount * 0.42) return rust[0];
+      if (n > 1 - amount * 0.5) return rust[2];
+      if (h3(x, 0, z, seed) < amount * 0.1 && fbm3(x * freq, (y + 4) * freq * 0.8, z * freq, 2, seed) > 0.5) return rust[1];
+      return null;
+    });
+  }
+  function junkMound(m, cx, cz, rx, rz, hgt, seed) {
+    const sand = sandMound(m, cx, cz, rx, rz, hgt, seed, JUNK_SAND);
+    const scrap = [m.color("#6a7184", { jitter: 0.1 }), m.color("#a4552f", { jitter: 0.1 }), m.color("#3c8f6a", { jitter: 0.1 })];
+    m.recolor((x, y, z, p) => sand.includes(p) && !m.get(x, y + 1, z) && h3(x, y, z, seed + 8) < 0.06 ? scrap[h3(z, x, y, 3) * 3 | 0] : null);
+    return sand;
+  }
+  function crtPart(m, screenIdx, opts = {}) {
+    const p = part(m, 38, 36, 36);
+    const shell = opts.shell || [m.color(BEIGE[0], { jitter: 0.08 }), m.color(BEIGE[1], { jitter: 0.08 }), m.color(BEIGE[2], { jitter: 0.06 })];
+    const dark = m.color("#2a2730", { jitter: 0.04 });
+    const vent = m.color("#7d735e", { jitter: 0.04 });
+    const led = m.color("#7dff6a", { emissive: 1, jitter: 0 });
+    p.box(2, 6, 20, 35, 33, 27, shell[0]);
+    shape(p, 4, 8, 4, 33, 31, 20, (x, y, z) => {
+      const t = (20 - z) / 16;
+      return Math.abs(x - 18.5) <= 14 - t * 5 && Math.abs(y - 19.5) <= 11.5 - t * 4;
+    }, shell[1]);
+    p.box(10, 2, 10, 27, 5, 24, shell[1]);
+    p.box(7, 0, 8, 30, 1, 26, shell[0]);
+    p.box(5, 10, 27, 32, 30, 27, dark);
+    p.box(6, 11, 27, 31, 29, 27, screenIdx);
+    p.sub(() => p.box(6, 11, 28, 31, 29, 35));
+    p.box(8, 7, 28, 13, 8, 28, shell[2]);
+    p.box(29, 7, 28, 30, 8, 28, dark);
+    p.set(27, 7, 28, led);
+    for (let x = 8; x < 30; x += 3) p.box(x, 31, 10, x + 1, 31, 18, vent);
+    p.recolor((x, y, z, v) => v === shell[0] && !p.get(x, y + 1, z) ? shell[2] : null);
+    return p;
+  }
+  def("crt_monitor", { name: "Old CRT", biome: "junkyard", tags: ["computer", "screen"], decor: null }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(52, 46, 48);
+    const screen = m.color("#2d6b5e", { emissive: 0.6, jitter: 0.03 });
+    const crt = crtPart(m, screen);
+    const rust = RUST.map((c) => m.color(c, { jitter: 0.12 }));
+    stampRot(m, crt, [19, 0, 18], [26, 3, 22], 0, 0, -4);
+    rustify(m, m.palette.map((p, i) => i).filter((i) => i && m.palette[i].color === BEIGE[1]), rust, 3, 0.35);
+    junkMound(m, 26, 24, 20, 16, 3, 4);
+    moss(m, rng2, 5, MOSS, 0.3, 0.18);
+    barnacles(m, rng2, 3);
+    return { m, yaw: 18, screens: [screen], light: "#7fffd0" };
+  });
+  def("crt_pile", { name: "CRT Pile", biome: "junkyard", tags: ["computer", "screen", "hero"] }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(96, 84, 64);
+    const scr2 = [m.color("#2d6b5e", { emissive: 0.6, jitter: 0.03 }), m.color("#3a4f7a", { emissive: 0.55, jitter: 0.03 }), m.color("#5a3a6a", { emissive: 0.5, jitter: 0.03 })];
+    const grey = [m.color("#9a9a9e", { jitter: 0.08 }), m.color("#7c7c84", { jitter: 0.08 }), m.color("#b8b8bc", { jitter: 0.06 })];
+    const black = [m.color("#3a3a44", { jitter: 0.08 }), m.color("#2c2c34", { jitter: 0.08 }), m.color("#55555f", { jitter: 0.06 })];
+    const rust = RUST.map((c) => m.color(c, { jitter: 0.12 }));
+    const cable = [m.color("#2a2a30", { jitter: 0.04, smooth: 0.4 }), m.color("#d0c040", { jitter: 0.04 })];
+    stampRot(m, crtPart(m, scr2[0]), [19, 0, 18], [26, 2, 30], 0, 14, 0);
+    stampRot(m, crtPart(m, scr2[1], { shell: grey }), [19, 0, 18], [66, 2, 28], 0, -18, 0);
+    stampRot(m, crtPart(m, scr2[2], { shell: black }), [19, 0, 18], [46, 36, 26], 0, 6, -9);
+    m.tube([[30, 34, 44, 0.9], [20, 26, 52, 0.9], [12, 10, 50, 0.9], [6, 2, 56, 0.9]], cable[0]);
+    m.tube([[70, 36, 40, 0.8], [84, 24, 46, 0.8], [90, 8, 40, 0.8], [92, 2, 52, 0.8]], cable[0]);
+    m.box(4, 1, 55, 7, 3, 58, cable[1]);
+    rustify(m, [...grey, ...black], rust, 6, 0.3);
+    junkMound(m, 46, 32, 38, 24, 5, 9);
+    moss(m, rng2, 6, MOSS, 0.3, 0.16);
+    barnacles(m, rng2, 6);
+    return { m, yaw: 22, screens: scr2, vs: 1.7, light: "#8fd8ff" };
+  });
+  def("keyboard_slab", { name: "Keyboard Slab", biome: "junkyard", tags: ["computer"] }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(70, 16, 44);
+    const body = [m.color("#3c3d48", { jitter: 0.05 }), m.color("#2c2d36", { jitter: 0.05 }), m.color("#555665", { jitter: 0.04 })];
+    const key = [m.color("#e8e0c8", { jitter: 0.04 }), m.color("#d4cbb0", { jitter: 0.04 })];
+    const keyD = m.color("#a09888", { jitter: 0.04 });
+    const keyR = m.color("#e0604a", { jitter: 0.03 });
+    const keyB = m.color("#5aa0d8", { jitter: 0.03 });
+    const x0 = 4, z0 = 8;
+    m.box(x0, 1, z0, x0 + 61, 3, z0 + 29, body[0]);
+    m.box(x0, 1, z0, x0 + 61, 1, z0 + 29, body[1]);
+    m.box(x0 + 1, 4, z0 + 1, x0 + 60, 4, z0 + 28, body[1]);
+    m.box(x0, 4, z0 + 28, x0 + 61, 4, z0 + 29, body[2]);
+    for (let r = 0; r < 5; r++) for (let c = 0; c < 15; c++) {
+      const x = x0 + 2 + c * 4, z = z0 + 2 + r * 5;
+      if (r === 4 && c > 3 && c < 11) {
+        if (c === 4) m.box(x, 5, z, x + 26, 6, z + 2, key[0]);
+        continue;
+      }
+      if (h3(r, c, 0, 4) < 0.05) continue;
+      const col = r === 0 && c === 0 ? keyR : r === 3 && c === 13 ? keyB : c > 12 ? keyD : key[(r + c) % 5 === 0 ? 1 : 0];
+      m.box(x, 5, z, x + 2, 6, z + 2, col);
+    }
+    const cable = m.color("#2a2a30", { smooth: 0.4 });
+    m.tube([[x0 + 30, 3, z0 - 1, 0.8], [x0 + 26, 2, z0 - 5, 0.8], [x0 + 16, 2, z0 - 6, 0.8], [x0 + 8, 2, z0 - 3, 0.8], [2, 2, z0 - 6, 0.8]], cable);
+    junkMound(m, 36, 24, 34, 19, 2, 2);
+    moss(m, rng2, 3, MOSS, 0.2, 0.2, body);
+    barnacles(m, rng2, 2, body);
+    return { m, yaw: 18, pitch: 30 };
+  });
+  def("vending_machine", { name: "Vending Machine", biome: "junkyard", tags: ["machine", "glow"] }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(50, 74, 46);
+    const vm = part(m, 34, 64, 26);
+    const red = [m.color("#c8423f", { jitter: 0.08 }), m.color("#a3343a", { jitter: 0.08 }), m.color("#e2645a", { jitter: 0.06 })];
+    const white = m.color("#e8e2d6", { jitter: 0.06 });
+    const dark = m.color("#25202a", { jitter: 0.03 });
+    const panel = m.color("#bff6ff", { emissive: 0.9, jitter: 0.02 });
+    const glassC = m.color("#7fd8e8", { emissive: 0.65, jitter: 0.03 });
+    const shelf = m.color("#9aa6b0", { jitter: 0.04, emissive: 0.3 });
+    const cans = ["#ff5a5a", "#5ad1ff", "#ffd84a", "#7dff7a", "#ff8ad8", "#ffffff"].map((c) => m.color(c, { jitter: 0.04, emissive: 0.45 }));
+    const btn = [m.color("#ffe066", { emissive: 1, jitter: 0 }), m.color("#66ffcc", { emissive: 1, jitter: 0 })];
+    const metal = m.color("#9aa0ac", { jitter: 0.05, spec: 1 });
+    vm.box(0, 0, 0, 33, 63, 23, red[0]);
+    vm.box(0, 0, 0, 33, 3, 23, red[1]);
+    vm.box(0, 60, 0, 33, 63, 23, red[1]);
+    vm.box(0, 61, 24, 33, 62, 24, white);
+    vm.sub(() => vm.box(2, 16, 21, 23, 58, 23));
+    vm.box(2, 16, 20, 23, 58, 20, glassC);
+    for (let r = 0; r < 5; r++) {
+      const y = 18 + r * 8;
+      vm.box(2, y, 18, 23, y, 22, shelf);
+      for (let c = 0; c < 6; c++) {
+        const col = cans[(r * 2 + c + (r > 2 ? 1 : 0)) % cans.length];
+        vm.box(3 + c * 3.5, y + 1, 20, 4 + c * 3.5, y + 5, 21, col);
+        vm.set(3 + c * 3.5, y + 5, 21, white);
+      }
+    }
+    vm.box(1, 15, 23, 24, 15, 23, metal);
+    vm.box(1, 59, 23, 24, 59, 23, metal);
+    vm.box(26, 30, 24, 31, 56, 24, dark);
+    vm.box(27, 50, 25, 30, 55, 25, panel);
+    for (let i = 0; i < 6; i++) vm.box(27 + i % 2 * 2, 34 + Math.floor(i / 2) * 4, 25, 27 + i % 2 * 2, 35 + Math.floor(i / 2) * 4, 25, btn[i % 2]);
+    vm.box(28, 26, 24, 29, 28, 24, metal);
+    vm.box(4, 5, 24, 22, 11, 24, dark);
+    vm.box(4, 11, 24, 22, 12, 24, metal);
+    vm.box(34, 40, 3, 34, 46, 20, white);
+    vm.recolor((x, y, z, p) => p === red[0] && !vm.get(x, y + 1, z) ? red[2] : null);
+    const rust = RUST.map((c) => m.color(c, { jitter: 0.12 }));
+    rustify(vm, red, rust, 7, 0.45);
+    stampRot(m, vm, [17, 0, 12], [24, 2, 22], 0, 0, 5);
+    junkMound(m, 25, 24, 20, 17, 4, 5);
+    moss(m, rng2, 9, MOSS, 0.3, 0.2);
+    barnacles(m, rng2, 4, red);
+    return { m, yaw: 24, light: "#bff6ff", screens: [glassC] };
+  });
+  def("server_rack", { name: "Server Rack", biome: "junkyard", tags: ["computer", "glow"] }, ({ rng: rng2, frame }) => {
+    const m = new VoxelModel(44, 80, 40);
+    const frameC = [m.color(GUN[1], { jitter: 0.06 }), m.color(GUN[0], { jitter: 0.06 }), m.color(GUN[2], { jitter: 0.05 })];
+    const unit = [m.color("#2e3240", { jitter: 0.05 }), m.color("#3a3f50", { jitter: 0.05 }), m.color("#252834", { jitter: 0.04 })];
+    const bezel = m.color("#8d97aa", { jitter: 0.04, spec: 1 });
+    const vent = m.color("#191b24", { jitter: 0 });
+    const ledOn = [m.color("#5dff7a", { emissive: 1, jitter: 0 }), m.color("#ffb84a", { emissive: 1, jitter: 0 }), m.color("#59c8ff", { emissive: 1, jitter: 0 })];
+    const ledOff = m.color("#2b3a2f", { jitter: 0 });
+    const cable = [m.color("#e0c040", { smooth: 0.4 }), m.color("#3a9ad9", { smooth: 0.4 }), m.color("#d04a4a", { smooth: 0.4 })];
+    const x0 = 8, x1 = 33, z0 = 8, z1 = 29;
+    m.box(x0, 0, z0, x1, 70, z1, unit[2]);
+    for (const [x, z] of [[x0, z1], [x1, z1], [x0, z0], [x1, z0]]) m.box(x, 0, z, x, 70, z, frameC[1]);
+    m.box(x0, 68, z0, x1, 71, z1, frameC[0]);
+    m.box(x0, 0, z0, x1, 2, z1, frameC[0]);
+    m.box(x0 - 1, 0, z0 - 1, x1 + 1, 0, z1 + 1, frameC[1]);
+    let y = 4, u = 0;
+    while (y < 66) {
+      const h = [3, 3, 5, 3, 7, 3][u % 6];
+      if (y + h > 67) break;
+      m.box(x0 + 1, y, z1, x1 - 1, y + h - 1, z1, unit[u % 2]);
+      m.box(x0 + 1, y, z1 + 1, x0 + 2, y + h - 1, z1 + 1, bezel);
+      m.box(x1 - 2, y, z1 + 1, x1 - 1, y + h - 1, z1 + 1, bezel);
+      if (h >= 5) for (let x = x0 + 5; x < x1 - 8; x += 2) m.box(x, y + 1, z1, x, y + h - 2, z1, vent);
+      else for (let x = x0 + 5; x < x1 - 8; x += 3) m.set(x, y + 1, z1, vent);
+      for (let k = 0; k < 3; k++) {
+        const on = h3(u, k, frame, 11) < 0.62;
+        m.set(x1 - 4 - k * 2, y + Math.floor(h / 2), z1 + 1, on ? ledOn[(u + k) % 3] : ledOff);
+      }
+      y += h + 1;
+      u++;
+    }
+    const door = part(m, 30, 70, 4);
+    for (let yy = 0; yy < 68; yy++) for (let xx = 0; xx < 26; xx++) {
+      const edge = xx < 2 || xx > 23 || yy < 2 || yy > 65;
+      if (edge || (xx + yy) % 4 === 0 || (xx - yy + 400) % 4 === 0) door.set(xx, yy, 1, edge ? frameC[2] : frameC[1]);
+    }
+    stampRot(m, door, [0, 0, 1], [x0 - 1, 1, z1 + 2], 0, 115, 0);
+    m.tube([[14, 71, 20, 0.8], [10, 74, 26, 0.8], [4, 60, 34, 0.8], [3, 30, 36, 0.8], [2, 2, 38, 0.8]], cable[0]);
+    m.tube([[28, 71, 18, 0.8], [36, 72, 22, 0.8], [40, 50, 30, 0.8], [41, 20, 36, 0.8], [42, 1, 38, 0.8]], cable[1]);
+    m.tube([[22, 71, 14, 0.7], [24, 75, 10, 0.7], [30, 66, 6, 0.7]], cable[2]);
+    const rust = RUST.map((c) => m.color(c, { jitter: 0.12 }));
+    rustify(m, frameC, rust, 4, 0.4);
+    junkMound(m, 21, 21, 20, 18, 3, 6);
+    moss(m, rng2, 2, MOSS, 0.3, 0.2);
+    return { m, yaw: 30, light: "#5dff7a" };
+  });
+  def("tire", { name: "Old Tire", biome: "junkyard", tags: ["junk"] }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(48, 34, 40);
+    const t = part(m, 34, 34, 16);
+    const rub = [m.color("#33313a", { jitter: 0.08, smooth: 0.6 }), m.color("#26252c", { jitter: 0.06, smooth: 0.6 }), m.color("#4a4752", { jitter: 0.06, smooth: 0.6 })];
+    const rim = [m.color("#9aa0ac", { jitter: 0.06, smooth: 0.5, spec: 1.2 }), m.color("#6c7280", { jitter: 0.06, smooth: 0.5 })];
+    torus(t, 17, 17, 8, 11, 5.4, (x, y, z) => {
+      const a = Math.atan2(y - 17, x - 17);
+      const rr2 = Math.hypot(x - 17, y - 17);
+      if (rr2 > 14.5) return Math.floor(a * 9 + (z > 8 ? 0.5 : 0)) % 2 ? rub[1] : rub[0];
+      return rr2 > 12.5 ? rub[2] : rub[0];
+    }, "z");
+    t.cylinder(17, 17, 5, 11, 7, (x, y, z) => z === 5 || z === 11 ? rim[0] : rim[1], "z");
+    t.sub(() => t.cylinder(17, 17, 4, 12, 2.5, 0, "z"));
+    for (let k = 0; k < 5; k++) {
+      const a = k / 5 * Math.PI * 2;
+      t.sub(() => t.cylinder(17 + Math.cos(a) * 4.6, 17 + Math.sin(a) * 4.6, 10, 12, 1.1, 0, "z"));
+    }
+    const rust = RUST.map((c) => m.color(c, { jitter: 0.12 }));
+    rustify(t, rim, rust, 5, 0.6);
+    stampRot(m, t, [17, 0, 8], [24, 0, 20], 0, -30, 0);
+    junkMound(m, 24, 21, 17, 13, 5, 1);
+    moss(m, rng2, 4, MOSS, 0.4, 0.2);
+    return { m, yaw: 30 };
+  });
+  def("rusty_barrel", { name: "Toxic Drum", biome: "junkyard", tags: ["junk", "glow"] }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(52, 42, 44);
+    const d = part(m, 26, 34, 26);
+    const paint = [m.color("#3f7a8c", { jitter: 0.08, smooth: 0.55 }), m.color("#35687a", { jitter: 0.08, smooth: 0.55 })];
+    const rust = RUST.map((c) => m.color(c, { jitter: 0.12, smooth: 0.55 }));
+    const hazard = m.color("#f2c230", { jitter: 0.05, smooth: 0.55 });
+    const blk = m.color("#2a2620", { jitter: 0.03, smooth: 0.55 });
+    const goo = [m.color("#9dff4a", { emissive: 0.85, jitter: 0.05, smooth: 0.6 }), m.color("#5fd43a", { emissive: 0.6, jitter: 0.05, smooth: 0.6 })];
+    d.cylinder(13, 13, 0, 31, 11, (x, y, z) => y === 10 || y === 21 ? paint[1] : paint[0]);
+    for (const y of [10, 21]) d.cylinder(13, 13, y, y, 11.8, paint[1]);
+    d.cylinder(13, 13, 31, 31, 10, paint[1]);
+    d.sub(() => d.cylinder(13, 13, 31, 31, 9));
+    d.cylinder(17, 13, 31, 32, 1.6, blk);
+    d.paint(() => shape(d, 0, 12, 0, 25, 19, 25, (x, y, z) => z > 18 && Math.abs(x - 13) < 6, (x, y, z) => Math.abs(x - 13) < 1.5 && y > 14 && y < 18 ? blk : hazard));
+    d.sub(() => {
+      d.sphere(4, 25, 21, 2.6);
+      d.sphere(22, 6, 21, 2.2);
+    });
+    rustify(d, paint, rust, 9, 0.6);
+    stampRot(m, d, [13, 0, 13], [20, 0, 22], 0, 15, -78);
+    shape(m, 30, 0, 12, 51, 3, 40, (x, y, z) => {
+      const r = ((x - 41) / 10) ** 2 + ((z - 26) / 12) ** 2 + noise3(x * 0.25, 0, z * 0.25, 3) * 0.6;
+      return r < 1 && y <= 1.5 - r;
+    }, (x, y, z) => h3(x, y, z, 2) < 0.3 ? goo[0] : goo[1]);
+    junkMound(m, 24, 22, 23, 19, 4, 7);
+    moss(m, rng2, 2, MOSS, 0.25, 0.2);
+    return { m, yaw: 30, light: "#9dff4a" };
+  });
+  def("shopping_cart", { name: "Shopping Cart", biome: "junkyard", tags: ["junk"] }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(64, 56, 50);
+    const c = part(m, 48, 40, 28);
+    const wire = [m.color("#b4bac6", { jitter: 0.05, spec: 1 }), m.color("#8c93a0", { jitter: 0.05 })];
+    const red = m.color("#d8453f", { jitter: 0.05 });
+    const redD = m.color("#a8323a", { jitter: 0.05 });
+    const wheel = m.color("#2b2a30", { jitter: 0.04 });
+    const bx0 = (y) => Math.round(6 + (30 - y) * 0.22), bx1 = 40;
+    const z0 = 4, z1 = 23;
+    for (let y = 12; y <= 30; y++) {
+      const xa = bx0(y);
+      const rimY = y === 30 || y === 12;
+      for (let x = xa; x <= bx1; x++) for (const z of [z0, z1]) if ((x - xa) % 4 === 0 || y % 6 === 0 || rimY) c.set(x, y, z, rimY ? wire[0] : wire[1]);
+      for (let z = z0; z <= z1; z++) for (const x of [xa, bx1]) if ((z - z0) % 4 === 0 || y % 6 === 0 || rimY) c.set(x, y, z, rimY ? wire[0] : wire[1]);
+    }
+    for (let x = bx0(12); x <= bx1; x++) for (let z = z0; z <= z1; z++) if ((x - bx0(12)) % 4 === 0 || (z - z0) % 4 === 0) c.set(x, 12, z, wire[1]);
+    c.line(bx1, 30, z0, 44, 35, z0, wire[0], 0.5);
+    c.line(bx1, 30, z1, 44, 35, z1, wire[0], 0.5);
+    c.box(44, 35, z0 - 1, 45, 36, z1 + 1, red);
+    c.box(44, 35, z0 - 1, 45, 35, z1 + 1, redD);
+    c.line(8, 5, z0 + 1, 40, 5, z0 + 1, wire[0], 0.6);
+    c.line(8, 5, z1 - 1, 40, 5, z1 - 1, wire[0], 0.6);
+    for (const [x, z] of [[9, z0 + 1], [9, z1 - 1], [38, z0 + 1], [38, z1 - 1]]) {
+      c.line(x, 5, z, x, 12, z, wire[0], 0.5);
+      c.box(x - 1, 1, z - 1, x + 1, 4, z + 1, wheel);
+    }
+    stampRot(m, c, [24, 0, 14], [32, 2, 24], 8, 22, -10);
+    const rust = RUST.map((cc) => m.color(cc, { jitter: 0.12 }));
+    rustify(m, wire, rust, 3, 0.3);
+    junkMound(m, 32, 25, 24, 16, 4, 3);
+    const kelp = [m.color("#4fa25e", { smooth: 0.3 }), m.color("#86cf74", { smooth: 0.3 })];
+    m.tube([[20, 30, 22, 0.6], [24, 34, 26, 0.6], [22, 42, 24, 0.6], [26, 48, 26, 0.6]], kelp[0]);
+    m.tube([[30, 30, 18, 0.6], [34, 37, 20, 0.6], [32, 44, 22, 0.6]], kelp[1]);
+    return { m, yaw: 30 };
+  });
+  def("satellite_dish", { name: "Satellite Dish", biome: "junkyard", tags: ["machine"] }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(64, 72, 56);
+    const white = [m.color("#d2d7de", { jitter: 0.04, smooth: 0.8 }), m.color("#bfc5ce", { jitter: 0.04, smooth: 0.8 }), m.color("#eceef2", { jitter: 0.03, smooth: 0.6 })];
+    const metal = [m.color(GUN[0], { jitter: 0.06 }), m.color(GUN[2], { jitter: 0.05, spec: 1 })];
+    const rust = RUST.map((c2) => m.color(c2, { jitter: 0.12, smooth: 0.6 }));
+    const ledC = m.color("#ff5a4a", { emissive: 1, jitter: 0 });
+    const base = [m.color("#7d838f", { jitter: 0.06 }), m.color("#5c616d", { jitter: 0.06 })];
+    const R = 22, c = [30, 40, 30], rot2 = [-40, -30, 0];
+    shapeRot(m, c, R + 3, rot2, (x, y, z) => {
+      const r2 = x * x + y * y;
+      if (r2 > R * R) return false;
+      const zs = -6 + r2 / (R * R) * 9;
+      return z >= zs && z <= zs + 2.4;
+    }, (x, y, z) => white[h3(x >> 2, y >> 2, z >> 2, 3) < 0.3 ? 1 : 0]);
+    shapeRot(m, c, R + 3, rot2, (x, y, z) => {
+      const r = Math.hypot(x, y);
+      return r > R - 1.2 && r <= R + 0.3 && z >= 2.2 && z <= 4.2;
+    }, white[2]);
+    const P4 = (lx, ly, lz) => xformPt([lx, ly, lz], [0, 0, 0], c, ...rot2);
+    const a0 = P4(0, -R + 2, 3), a1 = P4(-R + 3, 6, 3), f = P4(0, 0, 18);
+    m.line(...a0, ...f, metal[0], 0.7);
+    m.line(...a1, ...f, metal[0], 0.7);
+    m.sphere(...f, 2.6, metal[1]);
+    m.set(Math.floor(f[0]), Math.floor(f[1]) + 3, Math.floor(f[2]), ledC);
+    const back = P4(0, 0, -7);
+    m.sphere(...back, 4, metal[0]);
+    rustify(m, white, rust, 5, 0.25);
+    m.box(20, 0, 20, 40, 5, 38, base[1]);
+    m.box(21, 6, 21, 39, 6, 37, base[0]);
+    m.line(30, 6, 29, back[0], back[1], back[2], metal[0], 2.3);
+    rustify(m, base, rust, 8, 0.45);
+    junkMound(m, 30, 29, 22, 17, 4, 6);
+    moss(m, rng2, 7, MOSS, 0.3, 0.2, base);
+    barnacles(m, rng2, 4, base);
+    return { m, yaw: 30 };
+  });
+  def("gear_big", { name: "Giant Gear", biome: "junkyard", tags: ["machine", "metal"] }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(70, 60, 44);
+    const g = part(m, 56, 56, 10);
+    const steel = [m.color("#7a8292", { jitter: 0.06, smooth: 0.3 }), m.color("#626a7a", { jitter: 0.06, smooth: 0.3 }), m.color("#98a0ae", { jitter: 0.05, smooth: 0.3, spec: 0.8 })];
+    const rust = RUST.map((c) => m.color(c, { jitter: 0.12, smooth: 0.3 }));
+    const cx = 28, cy = 28, teeth = 16;
+    shape(g, 0, 0, 0, 55, 55, 9, (x, y, z) => {
+      const dx = x - cx, dy = y - cy;
+      const r = Math.hypot(dx, dy), a = Math.atan2(dy, dx);
+      const tooth = (a / (Math.PI * 2) * teeth % 1 + 1) % 1;
+      const outer = 22 + (tooth > 0.25 && tooth < 0.75 ? 4.5 : 0);
+      if (r > outer) return false;
+      if (r < 4) return false;
+      const web = r > 8 && r < 18;
+      if (web && (z < 3 || z > 6)) return false;
+      if (web) {
+        for (let k = 0; k < 6; k++) {
+          const ka = k / 6 * Math.PI * 2;
+          if (Math.hypot(dx - Math.cos(ka) * 13, dy - Math.sin(ka) * 13) < 3.6) return false;
+        }
+      }
+      return true;
+    }, (x, y, z) => {
+      const r = Math.hypot(x - cx, y - cy);
+      return r > 22.5 ? steel[2] : r < 8 ? steel[1] : steel[0];
+    });
+    g.cylinder(cx, cy, 0, 9, 4.2, steel[1], "z");
+    g.sub(() => g.cylinder(cx, cy, 0, 9, 2.2, 0, "z"));
+    g.box(cx - 0.5, cy + 1.5, 0, cx + 0.5, cy + 3, 9, 0);
+    rustify(g, steel, rust, 3, 0.55);
+    stampRot(m, g, [cx, 0, 5], [35, -6, 20], 0, -24, 10);
+    junkMound(m, 35, 22, 26, 15, 7, 4);
+    moss(m, rng2, 3, MOSS, 0.3, 0.2);
+    barnacles(m, rng2, 5, steel);
+    return { m, yaw: 30 };
+  });
+  def("circuit_coral", { name: "Circuit Coral", biome: "junkyard", tags: ["coral", "glow"], decor: { price: 220, size: 1 } }, ({ rng: rng2, variant }) => {
+    const m = new VoxelModel(64, 70, 54);
+    const pcb = [m.color("#2f8a4e", { jitter: 0.05 }), m.color("#236e3e", { jitter: 0.05 }), m.color("#4cbd70", { jitter: 0.04 })];
+    const trace = m.color("#e8c050", { jitter: 0.03, spec: 1.2 });
+    const chipC = m.color("#25232c", { jitter: 0.04 });
+    const chipT = m.color("#3a3844", { jitter: 0.03 });
+    const pin = m.color("#c9ccd4", { jitter: 0.03, spec: 1 });
+    const capC = [m.color("#3a6ad8", { jitter: 0.03 }), m.color("#d8b080", { jitter: 0.03 })];
+    const ledSets = [["#ff4a6b", "#4affc8", "#ffd84a"], ["#59c8ff", "#b46bff", "#4affc8"], ["#9dff4a", "#ffd84a", "#ff8a4a"]];
+    const leds = ledSets[variant % ledSets.length].map((c) => m.color(c, { emissive: 1, jitter: 0 }));
+    const cx = 32, cz = 27;
+    m.box(cx - 13, 0, cz - 10, cx + 12, 4, cz + 9, chipC);
+    m.box(cx - 13, 5, cz - 10, cx + 12, 5, cz + 9, chipT);
+    for (let x = cx - 12; x <= cx + 11; x += 2) {
+      m.box(x, 0, cz - 11, x, 2, cz - 11, pin);
+      m.box(x, 0, cz + 10, x, 2, cz + 10, pin);
+    }
+    m.box(cx - 3, 6, cz - 3, cx + 2, 46, cz + 2, (x, y) => y % 6 === 0 ? trace : pcb[1]);
+    const tiers = [[16, 15, 1.5, 0], [27, 12.5, -2, 0.6], [37, 10, 1, 1.3], [46, 7, -1, 2]];
+    for (const [y, r, off, ang] of tiers) {
+      const ox = cx + off * 2, oz = cz + off;
+      shape(m, ox - r - 1, y, oz - r - 1, ox + r + 1, y + 1, oz + r + 1, (x, yy, z) => {
+        const dx = x - ox, dz = z - oz;
+        const ux = dx * Math.cos(ang) - dz * Math.sin(ang), uz = dx * Math.sin(ang) + dz * Math.cos(ang);
+        return Math.abs(ux) ** 3 + Math.abs(uz) ** 3 <= r ** 3;
+      }, (x, yy, z) => yy === y + 1 ? pcb[0] : pcb[1]);
+      m.box(ox - 1, y - 6, oz - 1, ox, y, oz, pcb[1]);
+    }
+    const tops = candidates(m, [pcb[0]], "top");
+    for (const i of tops) {
+      const [x, y, z] = unpackIdx(m, i);
+      const edge = !m.get(x + 1, y, z) || !m.get(x - 1, y, z) || !m.get(x, y, z + 1) || !m.get(x, y, z - 1);
+      if (edge) {
+        m.set(x, y, z, pcb[2]);
+        if ((x + z) % 3 === 0) {
+          const l = leds[h3(z, x, y, 2) * 3 | 0];
+          m.set(x, y + 1, z, l);
+          m.set(x, y + 2, z, l);
+        }
+      } else if ((x + z) % 5 === 0 || (x - z + 100) % 7 === 0) m.set(x, y, z, trace);
+    }
+    scatter(m, rng2, 9, [pcb[0], trace], "top", (x, y, z, nx, nz, i) => {
+      if (i % 3 === 0) {
+        m.box(x - 1, y + 1, z - 1, x + 1, y + 1, z + 1, chipC);
+        m.set(x, y + 2, z, chipT);
+      } else m.box(x, y + 1, z, x, y + 2, z, capC[i % 2]);
+    });
+    junkMound(m, cx, cz, 18, 15, 2, 5);
+    return { m, yaw: 30, light: m.palette[leds[0]].color };
+  });
+  def("floppy_pile", { name: "Floppy Pile", biome: "junkyard", tags: ["computer"] }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(60, 26, 50);
+    const bodies = ["#2d2f3a", "#3a5bd1", "#d84a4a", "#d9cfb2", "#3aa86a", "#e2b84a"].map((c) => m.color(c, { jitter: 0.05 }));
+    const shutter = m.color("#b8bec8", { jitter: 0.04, spec: 1.2 });
+    const label = m.color("#f2efe6", { jitter: 0.03 });
+    const stripe = m.color("#e05a5a", { jitter: 0.03 });
+    const hole = m.color("#1a1a22", { jitter: 0 });
+    const disk = (col) => {
+      const p = part(m, 20, 3, 20);
+      p.box(0, 0, 0, 17, 1, 17, col);
+      p.box(5, 2, 0, 12, 2, 6, shutter);
+      p.box(7, 2, 1, 9, 2, 4, hole);
+      p.box(3, 2, 9, 14, 2, 17, label);
+      p.box(3, 2, 15, 14, 2, 15, stripe);
+      p.set(16, 2, 1, hole);
+      return p;
+    };
+    for (let i = 0; i < 7; i++) {
+      stampRot(m, disk(bodies[i % bodies.length]), [9, 0, 9], [28 + rng2.float(-2.5, 2.5), 2 + i * 2.6, 24 + rng2.float(-2, 2)], 0, rng2.float(-25, 25), 0);
+    }
+    stampRot(m, disk(bodies[1]), [9, 0, 9], [48, 2, 34], 0, 40, 8);
+    stampRot(m, disk(bodies[5]), [9, 0, 9], [10, 3, 34], 18, -20, 0);
+    junkMound(m, 30, 27, 27, 20, 3, 8);
+    return { m, yaw: 28 };
+  });
+  def("broken_robot", { name: "Broken Robot", biome: "junkyard", tags: ["machine", "glow", "hero"] }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(76, 80, 58);
+    const body = [m.color("#d2a24a", { jitter: 0.07, smooth: 0.25 }), m.color("#b8862f", { jitter: 0.07, smooth: 0.25 }), m.color("#e8c46e", { jitter: 0.05, smooth: 0.25 })];
+    const joint = [m.color(GUN[1], { jitter: 0.06, smooth: 0.5 }), m.color(GUN[0], { jitter: 0.06, smooth: 0.5 })];
+    const dark = m.color("#1f1d26", { jitter: 0.02 });
+    const eye = m.color("#5ff4ff", { emissive: 1, jitter: 0 });
+    const eyeDead = m.color("#3a3440", { jitter: 0 });
+    const screen = m.color("#ff6a5a", { emissive: 0.7, jitter: 0.02 });
+    const bolt = m.color("#f0e0b0", { jitter: 0 });
+    const rust = RUST.map((c) => m.color(c, { jitter: 0.12, smooth: 0.25 }));
+    const cx = 38, cz = 26;
+    m.box(cx - 10, 4, cz - 8, cx + 10, 13, cz + 6, body[1]);
+    for (const s of [-1, 1]) {
+      const lx = cx + s * 6;
+      m.cylinder(lx, 8, cz + 4, cz + 20, 3.2, joint[0], "z");
+      m.sphere(lx, 8, cz + 21, 3.8, joint[1]);
+      m.cylinder(lx, 6, cz + 22, cz + 34, 3.6, body[0], "z");
+      m.box(lx - 4, 0, cz + 33, lx + 4, 8, cz + 38, body[1]);
+    }
+    m.box(cx - 12, 14, cz - 9, cx + 12, 38, cz + 7, body[0]);
+    m.box(cx - 13, 36, cz - 10, cx + 13, 39, cz + 8, body[1]);
+    m.box(cx - 7, 20, cz + 8, cx + 7, 32, cz + 8, dark);
+    m.box(cx - 6, 21, cz + 8, cx + 6, 31, cz + 8, screen);
+    for (const [bx, by] of [[cx - 11, 16], [cx + 11, 16], [cx - 11, 35], [cx + 11, 35]]) m.set(bx, by, cz + 8, bolt);
+    const head = part(m, 30, 26, 26);
+    head.box(3, 0, 3, 26, 18, 22, body[0]);
+    head.box(2, 18, 2, 27, 20, 23, body[1]);
+    head.box(6, 6, 23, 12, 12, 23, dark);
+    head.box(7, 7, 23, 11, 11, 23, eye);
+    head.box(17, 6, 23, 23, 12, 23, dark);
+    head.box(18, 7, 23, 22, 11, 23, eyeDead);
+    head.line(19, 8, 24, 22, 11, 24, rust[0], 0.4);
+    head.box(10, 2, 23, 19, 3, 23, dark);
+    for (let x = 11; x < 19; x += 2) head.set(x, 2, 23, bolt);
+    head.line(20, 21, 12, 23, 25, 12, joint[0], 0.6);
+    head.line(23, 25, 12, 27, 25, 14, joint[0], 0.6);
+    head.sphere(27, 25, 14, 1.4, screen);
+    m.cylinder(cx, cz - 1, 39, 42, 3, joint[0]);
+    stampRot(m, head, [14.5, 0, 12.5], [cx, 42, cz - 1], 6, 10, -14);
+    m.sphere(cx - 14, 34, cz - 1, 4.2, joint[1]);
+    m.line(cx - 15, 33, cz - 1, cx - 19, 18, cz + 3, joint[0], 2.6);
+    m.line(cx - 19, 18, cz + 3, cx - 21, 4, cz + 9, body[0], 3.2);
+    m.box(cx - 24, 0, cz + 7, cx - 17, 4, cz + 14, joint[1]);
+    m.sphere(cx + 14, 34, cz - 1, 4.2, joint[1]);
+    m.line(cx + 22, 3, cz + 16, cx + 34, 3, cz + 26, body[0], 3.2);
+    m.box(cx + 33, 0, cz + 24, cx + 38, 6, cz + 30, joint[1]);
+    m.tube([[cx + 15, 33, cz - 1, 0.6], [cx + 18, 26, cz + 4, 0.6], [cx + 21, 6, cz + 12, 0.6]], m.color("#d04a4a", { smooth: 0.4 }));
+    m.recolor((x, y, z, p) => p === body[0] && !m.get(x, y + 1, z) ? body[2] : null);
+    rustify(m, body, rust, 6, 0.55);
+    junkMound(m, cx, cz + 6, 28, 22, 4, 3);
+    moss(m, rng2, 5, MOSS, 0.35, 0.18);
+    const sprout = m.color("#ff7aa8", { smooth: 0.4 });
+    m.line(cx + 12, 40, cz - 4, cx + 13, 46, cz - 4, sprout, 0.8);
+    m.line(cx + 13, 44, cz - 4, cx + 16, 47, cz - 3, sprout, 0.7);
+    barnacles(m, rng2, 5, body);
+    return { m, yaw: 28, vs: 1.7, light: "#5ff4ff" };
+  });
+  def("pipe_bend", { name: "Pipe Bend", biome: "junkyard", tags: ["junk", "metal"] }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(64, 56, 40);
+    const pipe = [m.color("#6f7a6c", { jitter: 0.07, smooth: 0.6 }), m.color("#5c6659", { jitter: 0.07, smooth: 0.6 })];
+    const flange = [m.color("#8a8f98", { jitter: 0.05, smooth: 0.4 }), m.color("#5a5f6a", { jitter: 0.05 })];
+    const bolt = m.color("#c9ccd4", { jitter: 0, spec: 1 });
+    const inside = m.color("#1e2a22", { jitter: 0 });
+    const ooze = m.color("#9dff4a", { emissive: 0.8, jitter: 0.04 });
+    const rust = RUST.map((c) => m.color(c, { jitter: 0.12, smooth: 0.6 }));
+    const R = 16, r = 7, cx = 22, cy = 7, zc = 20;
+    torus(m, cx + R, cy, zc, R, r, (x, y) => Math.floor((x + y) / 4) % 2 ? pipe[0] : pipe[1], "z", (a) => a >= Math.PI / 2 - 0.02 && a <= Math.PI + 0.02);
+    m.sub(() => torus(m, cx + R, cy, zc, R, r - 1.8, 0, "z", (a) => a >= Math.PI / 2 - 0.2 && a <= Math.PI + 0.2));
+    m.cylinder(cy, zc, 0, cx, r, pipe[0], "x");
+    m.sub(() => m.cylinder(cy, zc, 0, cx, r - 1.8, 0, "x"));
+    m.cylinder(cx + R, zc, cy + R, cy + R + 8, r, pipe[1], "y");
+    m.sub(() => m.cylinder(cx + R, zc, cy + R - 2, cy + R + 9, r - 1.8, 0, "y"));
+    m.cylinder(cx + R, zc, cy + R + 8, cy + R + 10, r + 2.5, flange[0]);
+    m.sub(() => m.cylinder(cx + R, zc, cy + R + 8, cy + R + 10, r - 1.8));
+    for (let k = 0; k < 8; k++) {
+      const a = k / 8 * Math.PI * 2;
+      m.set(cx + R + Math.cos(a) * (r + 1.3), cy + R + 11, zc + Math.sin(a) * (r + 1.3), bolt);
+    }
+    m.cylinder(cy, zc, cx - 2, cx, r + 2.5, flange[0], "x");
+    m.sub(() => m.cylinder(cy, zc, cx - 2, cx, r - 1.8, 0, "x"));
+    for (let k = 0; k < 8; k++) {
+      const a = k / 8 * Math.PI * 2;
+      m.set(cx + 1, cy + Math.cos(a) * (r + 1.3), zc + Math.sin(a) * (r + 1.3), bolt);
+    }
+    m.cylinder(cx + R, zc, cy + R - 3, cy + R - 3, r - 1.8, inside);
+    m.cylinder(cx + R, zc, cy + R - 2, cy + R - 2, r - 2.5, ooze);
+    m.line(cx + R + r, cy + R + 9, zc + 2, cx + R + r + 0.5, cy + R - 6, zc + 3, ooze, 0.6);
+    rustify(m, [...pipe, ...flange], rust, 4, 0.5);
+    junkMound(m, 20, 21, 22, 15, 5, 4);
+    moss(m, rng2, 8, MOSS, 0.35, 0.2);
+    barnacles(m, rng2, 6, pipe);
+    return { m, yaw: 30, light: "#9dff4a" };
+  });
+  var ABYSS_STONE = ["#4a4880", "#3a386a", "#5c5a98"];
+  var ABYSS_SILT = ["#3c3a5e", "#302e4e", "#4c4a72"];
+  var BONE = ["#d8d0c0", "#bfb4a2", "#ece6d8"];
+  var RUNES = [
+    "####|#...|###.|#...|#...",
+    "#..#|#.##|##.#|#..#|#..#",
+    ".##.|#..#|.##.|..#.|.##.",
+    "#...|##..|#.#.|#..#|####",
+    "####|...#|.##.|#...|####",
+    ".#..|###.|.#..|.#.#|.###",
+    "#..#|.##.|.##.|#..#|#..#",
+    "###.|..#.|.###|..#.|###.",
+    "#.##|#..#|####|#...|##.#",
+    "..#.|.###|#.#.|..#.|.#.#"
+  ].map((r) => r.split("|"));
+  function rune(u, v, seed) {
+    const cu = Math.floor(u / 5), cv = Math.floor(v / 6);
+    const lu = (u % 5 + 5) % 5, lv = (v % 6 + 6) % 6;
+    if (lu > 3 || lv > 4) return false;
+    const g = RUNES[Math.floor(h3(cu, cv, 0, seed) * RUNES.length)];
+    return g[4 - lv][lu] === "#";
+  }
+  function abyssStone(m, cols = ABYSS_STONE) {
+    return cols.map((c, i) => m.color(c, { jitter: 0.14, smooth: 0.5, light: i === 2 ? 0.1 : 0 }));
+  }
+  function biolum(m, rng2, count, on, color = "#5ff4ff") {
+    const g = m.color(color, { emissive: 1, jitter: 0 });
+    scatter(m, rng2, count, on, "any", (x, y, z, nx, nz) => {
+      m.set(x, y, z, g);
+      if (rng2.chance(0.3)) m.set(x + (nz ? 1 : 0), y, z + (nx ? 1 : 0), g);
+    });
+    return g;
+  }
+  function chip(m, rng2, count, on, size = 1.6) {
+    const cand = candidates(m, on, "any");
+    for (let i = 0; i < count && cand.length; i++) {
+      const [x, y, z] = unpackIdx(m, cand[Math.floor(rng2.next() * cand.length)]);
+      m.sub(() => m.sphere(x + 0.5, y + 0.5, z + 0.5, size * rng2.float(0.7, 1.3)));
+    }
+  }
+  function column(m, rng2, cx, cz, y0, height, r, st, glow, opts = {}) {
+    const dark = opts.dark;
+    m.box(cx - r - 3, y0, cz - r - 3, cx + r + 2, y0 + 2, cz + r + 2, st[1]);
+    m.box(cx - r - 2, y0 + 3, cz - r - 2, cx + r + 1, y0 + 4, cz + r + 1, st[0]);
+    const top = y0 + 5 + height;
+    for (let y = y0 + 5; y < top; y++) {
+      const rr2 = r * (1 - (y - y0) / (height * 9));
+      m.cylinder(cx, cz, y, y, rr2, (x, yy, z) => {
+        const a = Math.atan2(z + 0.5 - cz, x + 0.5 - cx);
+        const fl = (a / (Math.PI * 2) * 14 % 1 + 1) % 1;
+        return fl < 0.22 ? null : st[0];
+      });
+      m.cylinder(cx, cz, y, y, rr2 - 0.9, st[1]);
+    }
+    if (!opts.broken) {
+      m.cylinder(cx, cz, top, top + 1, r + 1.2, st[2]);
+      m.box(cx - r - 3, top + 2, cz - r - 3, cx + r + 2, top + 4, cz + r + 2, st[0]);
+      m.box(cx - r - 2, top + 5, cz - r - 2, cx + r + 1, top + 5, cz + r + 1, st[2]);
+    }
+    if (glow) {
+      const by = y0 + 5 + Math.round(height * (opts.bandAt ?? 0.55));
+      m.paint(() => m.cylinder(cx, cz, by, by + 6, r + 1, (x, y, z) => {
+        if (!m.exposed(x, y, z)) return null;
+        const a = Math.atan2(z + 0.5 - cz, x + 0.5 - cx);
+        const u = Math.round((a + Math.PI) * r);
+        return rune(u, y - by, 3) ? glow : dark;
+      }));
+    }
+    return top;
+  }
+  def("pillar_ruin", { name: "Ancient Pillar", biome: "abyss", tags: ["ruin", "glow"], decor: { price: 260, size: 1 } }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(40, 96, 40);
+    const st = abyssStone(m);
+    const dark = m.color("#262447", { jitter: 0.05 });
+    const glow = m.color("#5ff4ff", { emissive: 1, jitter: 0 });
+    column(m, rng2, 20, 20, 0, 74, 7.5, st, glow, { dark, bandAt: 0.42 });
+    chip(m, rng2, 26, st, 1.5);
+    for (let k = 0; k < 3; k++) {
+      const y = rng2.int(12, 70), a = rng2.float(-0.6, 1.2);
+      m.paint(() => m.line(20 + Math.cos(a) * 7.5, y, 20 + Math.sin(a) * 7.5, 20 + Math.cos(a + 0.4) * 7.5, y - rng2.int(6, 12), 20 + Math.sin(a + 0.4) * 7.5, dark, 0.6));
+    }
+    moss(m, rng2, 4, ["#4a7aa8", "#3a5a8a", "#2a3f6a"], 0.45, 0.2);
+    biolum(m, rng2, 14, st);
+    sandMound(m, 20, 20, 16, 16, 2, 3, ABYSS_SILT);
+    return { m, yaw: 30, light: "#5ff4ff" };
+  });
+  def("pillar_broken", { name: "Broken Pillar", biome: "abyss", tags: ["ruin"], decor: { price: 160, size: 2 } }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(80, 54, 50);
+    const st = abyssStone(m);
+    const dark = m.color("#262447", { jitter: 0.05 });
+    const glow = m.color("#b46bff", { emissive: 1, jitter: 0 });
+    column(m, rng2, 22, 22, 0, 40, 7.5, st, glow, { dark, broken: true, bandAt: 0.3 });
+    m.sub(() => shape(m, 10, 20, 10, 34, 50, 34, (x, y, z) => y > 34 + (x - 22) * 0.45 + noise3(x * 0.4, 0, z * 0.4, 2) * 7, 0));
+    const drum = part(m, 20, 26, 20);
+    column(drum, rng2, 10, 10, 0, 18, 7, st, null, { broken: true });
+    drum.sub(() => drum.box(0, 0, 0, 19, 4, 19));
+    stampRot(m, drum, [10, 5, 10], [52, 8, 30], 0, 25, 90);
+    for (let i = 0; i < 6; i++) facetRock(m, rng2, 30 + rng2.float(-20, 40), 1, 38 + rng2.float(-6, 8), rng2.float(2, 4), rng2.float(2, 3.5), rng2.float(2, 4), st[1], 8);
+    chip(m, rng2, 20, st, 1.5);
+    moss(m, rng2, 4, ["#4a7aa8", "#3a5a8a", "#2a3f6a"], 0.4, 0.2);
+    biolum(m, rng2, 10, st, "#b46bff");
+    sandMound(m, 38, 26, 36, 20, 2, 5, ABYSS_SILT);
+    return { m, yaw: 30, light: "#b46bff" };
+  });
+  def("arch_ruin", { name: "Sunken Archway", biome: "abyss", tags: ["ruin", "swimthrough", "glow"], decor: { price: 700, size: 3 } }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(92, 92, 34);
+    const st = abyssStone(m);
+    const seam = m.color("#2a2850", { jitter: 0.04 });
+    const glow = m.color("#5ff4ff", { emissive: 1, jitter: 0 });
+    const glowV = m.color("#b46bff", { emissive: 1, jitter: 0 });
+    const zc = 17;
+    const blockCol = (x, y, z) => y % 8 === 0 || (x + Math.floor(y / 8) % 2 * 5) % 10 === 0 ? seam : st[h3(x >> 3, y >> 3, z >> 3, 2) * 3 | 0];
+    m.box(6, 0, zc - 9, 23, 58, zc + 8, blockCol);
+    m.box(68, 0, zc - 9, 85, 58, zc + 8, blockCol);
+    m.box(4, 0, zc - 11, 25, 3, zc + 10, st[1]);
+    m.box(66, 0, zc - 11, 87, 3, zc + 10, st[1]);
+    const ax = 45.5, ay = 58, R0 = 22.5, R1 = 34;
+    shape(m, 6, ay - 2, zc - 9, 85, ay + R1 + 2, zc + 8, (x, y) => {
+      const d = Math.hypot(x - ax, y - ay);
+      return y >= ay && d >= R0 && d <= R1;
+    }, (x, y, z) => {
+      const a = Math.atan2(y - ay, x - ax);
+      const d = Math.hypot(x - ax, y - ay);
+      const seg = a / Math.PI * 11;
+      if (Math.abs(seg - Math.round(seg)) < 0.08 || Math.abs(d - (R0 + R1) / 2) < 0.4 && false) return seam;
+      if (Math.abs(seg - 5.5) < 0.5 && d > R0 + 2 && d < R1 - 2 && z >= zc + 7) {
+        return rune(Math.round(x - ax + 3), Math.round(y - ay - R0), 5) ? glowV : st[2];
+      }
+      return st[(Math.floor(seg) + (d > 28 ? 1 : 0)) % 3];
+    });
+    m.box(4, 56, zc - 10, 25, 58, zc + 9, st[2]);
+    m.box(66, 56, zc - 10, 87, 58, zc + 9, st[2]);
+    for (const px of [10, 72]) for (let y = 14; y < 48; y++) for (let x = px; x < px + 10; x++) if (rune(x - px, y - 14, px)) m.set(x, y, zc + 8, glow);
+    m.sub(() => blob(m, 84, 40, zc + 6, 6, 9, 6, 0.3, 0.3, 3, 0));
+    chip(m, rng2, 40, st, 1.6);
+    moss(m, rng2, 6, ["#4a7aa8", "#3a5a8a", "#2a3f6a"], 0.45, 0.18);
+    const strand = m.color("#7fe8ff", { emissive: 0.7, jitter: 0 });
+    for (let k = 0; k < 7; k++) {
+      const x = Math.round(ax + rng2.float(-18, 18));
+      let y = 0;
+      for (let yy = 40; yy < 92; yy++) if (m.get(x, yy, zc)) {
+        y = yy;
+        break;
+      }
+      if (!y) continue;
+      const len = rng2.int(6, 16);
+      const sz = zc + rng2.int(-6, 6);
+      for (let j = 1; j <= len; j++) m.set(x + (j > len * 0.6 ? 1 : 0), y - j, sz, j === len ? glow : strand);
+    }
+    for (let i = 0; i < 5; i++) facetRock(m, rng2, rng2.float(20, 75), 1, zc + 10 + rng2.float(0, 5), rng2.float(2.5, 5), rng2.float(2, 4), rng2.float(2.5, 4.5), st[1], 8);
+    biolum(m, rng2, 18, st);
+    return { m, yaw: 26, vs: 1.7, light: "#5ff4ff" };
+  });
+  def("statue_head", { name: "Elder Head", biome: "abyss", tags: ["ruin", "glow", "hero"] }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(96, 100, 80);
+    const st = [m.color("#56548e", { jitter: 0.12, smooth: 0.65 }), m.color("#454378", { jitter: 0.12, smooth: 0.65 }), m.color("#6a68a6", { jitter: 0.1, smooth: 0.65 })];
+    const deep = m.color("#2a2850", { jitter: 0.05, smooth: 0.4 });
+    const glow = m.color("#5ff4ff", { emissive: 1, jitter: 0 });
+    const glowV = m.color("#c07bff", { emissive: 1, jitter: 0 });
+    const eyeC = m.color("#aef9ff", { emissive: 1, jitter: 0 });
+    const h = part(m, 70, 92, 64);
+    const cx = 35, cz = 30;
+    h.ellipsoid(cx, 46, cz, 25, 34, 24, st[0]);
+    h.box(cx - 22, 10, cz - 14, cx + 21, 46, cz + 20, st[0]);
+    h.sub(() => h.box(0, 0, cz + 22, 69, 91, 63));
+    h.sub(() => shape(h, 0, 0, cz + 18, 69, 91, 63, (x, y, z) => z > cz + 20 - Math.abs(x - cx) * 0.18, 0));
+    h.box(cx - 19, 52, cz + 15, cx + 18, 56, cz + 21, st[2]);
+    shape(h, cx - 6, 28, cz + 14, cx + 5, 54, cz + 28, (x, y, z) => {
+      const t = (54 - y) / 26;
+      return Math.abs(x - cx + 0.5) <= 2.2 + t * 4 && z <= cz + 19 + t * 7;
+    }, st[0]);
+    h.box(cx - 7, 28, cz + 22, cx + 6, 30, cz + 26, st[1]);
+    h.box(cx - 11, 18, cz + 17, cx + 10, 22, cz + 22, st[2]);
+    h.box(cx - 10, 21, cz + 17, cx + 9, 21, cz + 22, deep);
+    h.box(cx - 8, 9, cz + 14, cx + 7, 14, cz + 19, st[0]);
+    for (const s of [-1, 1]) {
+      const ex = cx + s * 10 - (s > 0 ? 1 : 0);
+      h.sub(() => h.ellipsoid(ex + 0.5, 46, cz + 21, 6.5, 4, 4));
+      h.box(ex - 5, 45, cz + 17, ex + 5, 46, cz + 18, eyeC);
+      h.box(ex - 6, 43, cz + 17, ex + 6, 44, cz + 17, deep);
+    }
+    for (const s of [-1, 1]) h.ellipsoid(cx + s * 25, 42, cz + 2, 3.5, 11, 6, st[1]);
+    h.cylinder(cx, cz, 66, 76, 23, st[1]);
+    h.cone(cx, cz, 77, 86, 22, 12, st[0]);
+    h.paint(() => h.cylinder(cx, cz, 67, 75, 24, (x, y, z) => {
+      if (!h.exposed(x, y, z)) return null;
+      const a = Math.atan2(z + 0.5 - cz, x + 0.5 - cx);
+      return rune(Math.round((a + Math.PI) * 23), y - 67, 7) ? glow : null;
+    }));
+    for (const s of [-1, 1]) for (let y = 24; y < 40; y++) {
+      const x = cx + s * (14 - (40 - y) * 0.15);
+      if (y % 6 !== 0) h.paint(() => h.box(x, y, cz + 15, x + s, y, cz + 22, (xx, yy, zz) => h.exposed(xx, yy, zz) ? glowV : null));
+    }
+    h.paint(() => h.line(cx + 8, 80, cz + 10, cx + 14, 58, cz + 20, deep, 0.7));
+    h.paint(() => h.line(cx + 14, 58, cz + 20, cx + 10, 48, cz + 22, deep, 0.6));
+    chip(h, rng2, 40, st, 1.8);
+    stampRot(m, h, [cx, 0, cz], [48, -8, 38], -6, 14, 9);
+    sandMound(m, 48, 40, 42, 32, 9, 4, ABYSS_SILT);
+    moss(m, rng2, 9, ["#4a7aa8", "#3a5a8a", "#2a3f6a"], 0.4, 0.15, st);
+    const worm = m.color("#e9e2d6", { smooth: 0.4 }), plume = m.color("#ff4a6b", { emissive: 0.4 });
+    for (let i = 0; i < 6; i++) {
+      const x = 34 + rng2.int(-10, 14), z = 34 + rng2.int(-8, 8);
+      let y = 99;
+      while (y > 0 && !m.get(x, y, z)) y--;
+      if (y < 40) continue;
+      const hh = rng2.int(4, 8);
+      m.box(x, y + 1, z, x, y + hh, z, worm);
+      m.set(x, y + hh + 1, z, plume);
+      m.set(x + 1, y + hh + 1, z, plume);
+      m.set(x, y + hh + 2, z, plume);
+    }
+    biolum(m, rng2, 20, st);
+    return { m, yaw: 24, vs: 1.6, light: "#5ff4ff" };
+  });
+  var GEMS = [
+    ["Amethyst", "#b46bff", "#7a3ad1", "#f0d4ff"],
+    ["Emerald", "#3fe08f", "#1d9a63", "#d0ffe2"],
+    ["Topaz", "#ffbe3d", "#d9781c", "#fff2b8"],
+    ["Sapphire", "#4a8dff", "#2a4fd1", "#cfe2ff"],
+    ["Ruby", "#ff4a6b", "#c21f4a", "#ffd0d8"]
+  ];
+  def("crystal_cluster", { name: "Crystal Cluster", biome: "abyss", tags: ["crystal", "glow"], decor: { price: 400, size: 1 } }, ({ rng: rng2, variant }) => {
+    const g = GEMS[variant % GEMS.length];
+    const m = new VoxelModel(54, 72, 46);
+    const st = abyssStone(m);
+    const cA = m.color(g[1], { emissive: 0.4, jitter: 0.06, smooth: 0.3 });
+    const cB = m.color(g[3], { emissive: 0.75, jitter: 0.04, smooth: 0.3 });
+    const cC = m.color(g[2], { emissive: 0.3, jitter: 0.06, smooth: 0.3 });
+    const seed = rng2.int(0, 999);
+    facetRock(m, rng2, 27, 3, 23, 19, 8, 15, st[0], 14);
+    facetRock(m, rng2, 40, 2, 28, 8, 5, 7, st[1], 9);
+    stoneTex(m, st, seed);
+    const shafts = [
+      [0.05, 1, 0.05, 50, 6.2],
+      [-0.5, 1, 0.15, 36, 4.6],
+      [0.55, 1, -0.1, 38, 4.8],
+      [0.25, 1, 0.6, 26, 3.8],
+      [-0.4, 1, -0.5, 28, 3.8],
+      [-0.95, 0.65, 0.45, 16, 2.8],
+      [0.95, 0.6, 0.4, 15, 2.6],
+      [0.1, 0.8, 0.9, 12, 2.4]
+    ];
+    shafts.forEach(([dx, dy, dz, len, r], i) => {
+      const p0 = [27 + dx * 6 + rng2.float(-1, 1), 4, 23 + dz * 5 + rng2.float(-1, 1)];
+      shaft(m, p0, [dx, dy, dz], len * rng2.float(0.9, 1.06), r, r * 1.7, i % 3 === 2 ? cC : cA, 6, rng2.float(0, 1));
+    });
+    m.recolor((x, y, z, p) => (p === cA || p === cC) && !m.get(x - 1, y, z) && !m.get(x - 1, y, z + 1) ? cB : null);
+    shaft(m, [27.5, 6, 23.5], [0.05, 1, 0.05], 44, 1.2, 4, (x, y, z, p) => p ? cB : null, 6);
+    for (let i = 0; i < 5; i++) {
+      const a = rng2.float(0, Math.PI * 2);
+      shaft(m, [27 + Math.cos(a) * 15, 1, 23 + Math.sin(a) * 12], [Math.cos(a) * 0.6, 1, Math.sin(a) * 0.6], rng2.float(5, 9), 1.5, 2.5, cA, 6);
+    }
+    sandMound(m, 27, 24, 22, 18, 2, seed, ABYSS_SILT);
+    return { m, yaw: 32, light: g[1] };
+  });
+  def("glow_mushroom", { name: "Glow Shrooms", biome: "abyss", tags: ["plant", "glow"], decor: { price: 180, size: 1 } }, ({ rng: rng2, variant }) => {
+    const schemes = [["#4ae0ff", "#c8faff", "#2a7fb8"], ["#c07bff", "#f2dcff", "#6a3ab0"], ["#7dff9a", "#e2ffe8", "#2f9a5a"]];
+    const sc = schemes[variant % schemes.length];
+    const m = new VoxelModel(58, 60, 50);
+    const stem = [m.color("#d8d4e8", { smooth: 0.6, jitter: 0.06 }), m.color("#b8b2d0", { smooth: 0.6, jitter: 0.06 })];
+    const cap = m.color(sc[2], { smooth: 0.7, jitter: 0.06, emissive: 0.25 });
+    const capL = m.color(sc[0], { smooth: 0.7, jitter: 0.05, emissive: 0.6 });
+    const spot = m.color(sc[1], { emissive: 1, jitter: 0 });
+    const gill = m.color("#3a2f5a", { jitter: 0.04, emissive: 0.15 });
+    const st = abyssStone(m);
+    facetRock(m, rng2, 29, 2, 25, 16, 6, 14, st[0], 12);
+    stoneTex(m, st, 3);
+    const shrooms = [[29, 25, 34, 9.5, 0], [17, 22, 22, 7, -0.25], [40, 28, 24, 7.5, 0.3], [24, 34, 14, 5, -0.15], [38, 15, 15, 5.5, 0.2], [12, 32, 9, 3.5, -0.4], [46, 35, 9, 3.6, 0.45]];
+    for (const [x, z, hgt, r, lean] of shrooms) {
+      const tx = x + lean * hgt * 0.5, ty = hgt;
+      m.tube([[x, 3, z, r * 0.32 + 0.6], [x + lean * hgt * 0.2, hgt * 0.5, z, r * 0.26 + 0.5], [tx, ty, z, r * 0.24 + 0.5]], stem[0]);
+      shape(m, tx - r - 1, ty - 2, z - r - 1, tx + r + 1, ty + r, z + r + 1, (xx, yy, zz) => {
+        const d = ((xx - tx) / r) ** 2 + ((yy - ty + 0.5) / (r * 0.62)) ** 2 + ((zz - z) / r) ** 2;
+        return d <= 1 && yy >= ty - 0.5 - r * 0.12 * (1 - Math.hypot(xx - tx, zz - z) / r);
+      }, (xx, yy, zz) => yy < ty + 0.6 ? gill : yy > ty + r * 0.35 ? capL : cap);
+    }
+    m.recolor((x, y, z, p) => (p === cap || p === capL) && !m.get(x, y + 1, z) && h3(x >> 1, y, z >> 1, 3) < 0.16 ? spot : null);
+    scatter(m, rng2, 8, st, "top", (x, y, z) => {
+      m.set(x, y + 1, z, stem[1]);
+      m.set(x, y + 2, z, capL);
+    });
+    sandMound(m, 29, 25, 22, 19, 2, 6, ABYSS_SILT);
+    return { m, yaw: 30, light: sc[0] };
+  });
+  def("tube_worms", { name: "Tube Worms", biome: "abyss", tags: ["plant", "vent"], decor: { price: 150, size: 1 } }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(54, 66, 48);
+    const tube = [m.color("#ece6da", { smooth: 0.55, jitter: 0.06 }), m.color("#cfc6b6", { smooth: 0.55, jitter: 0.06 }), m.color("#a89e8e", { smooth: 0.55, jitter: 0.05 })];
+    const plume = [m.color("#ff3d5a", { smooth: 0.4, jitter: 0.08, emissive: 0.35 }), m.color("#ff8a9a", { smooth: 0.4, jitter: 0.06, emissive: 0.5 }), m.color("#b8203e", { smooth: 0.4, jitter: 0.06, emissive: 0.2 })];
+    const st = [m.color("#2e2b40", { smooth: 0.5, jitter: 0.1 }), m.color("#3c3852", { smooth: 0.5, jitter: 0.1 }), m.color("#5a4a52", { smooth: 0.5, jitter: 0.1 })];
+    facetRock(m, rng2, 27, 3, 24, 17, 8, 15, st[0], 12);
+    stoneTex(m, st, 2);
+    const N = 16;
+    for (let i = 0; i < N; i++) {
+      const a = i * 2.4 + rng2.float(-0.3, 0.3), rr2 = Math.sqrt(i / N) * 11;
+      const x = 27 + Math.cos(a) * rr2, z = 24 + Math.sin(a) * rr2 * 0.8;
+      const hgt = 22 + (1 - rr2 / 11) * 26 + rng2.float(-5, 5);
+      const lean = [Math.cos(a) * rr2 * 0.04, Math.sin(a) * rr2 * 0.04];
+      const r = rng2.float(1.3, 2);
+      const top = [x + lean[0] * hgt, hgt, z + lean[1] * hgt];
+      m.tube([[x, 3, z, r + 0.3], [x + lean[0] * hgt * 0.5, hgt * 0.5, z + lean[1] * hgt * 0.5, r], top.concat(r)], (xx, yy) => yy % 5 === 0 ? tube[2] : yy % 5 === 1 ? tube[1] : tube[0], 3);
+      for (let k = 0; k < 10; k++) {
+        const pa = k / 10 * Math.PI * 2, len = rng2.float(2.5, 4.5);
+        m.line(top[0], top[1] + 1, top[2], top[0] + Math.cos(pa) * len * 0.6, top[1] + len, top[2] + Math.sin(pa) * len * 0.6, k % 3 ? plume[0] : plume[2], 0.6);
+        m.set(top[0] + Math.cos(pa) * len * 0.6, top[1] + len, top[2] + Math.sin(pa) * len * 0.6, plume[1]);
+      }
+    }
+    const crab = m.color("#f2ece0", { smooth: 0.3 });
+    scatter(m, rng2, 3, st, "top", (x, y, z) => {
+      m.box(x, y + 1, z, x + 2, y + 1, z + 1, crab);
+      m.set(x - 1, y + 1, z, crab);
+      m.set(x + 3, y + 1, z, crab);
+    });
+    sandMound(m, 27, 25, 22, 19, 2, 9, ABYSS_SILT);
+    return { m, yaw: 30, light: "#ff4a6b" };
+  });
+  def("ribcage", { name: "Leviathan Ribs", biome: "abyss", tags: ["bone", "hero", "swimthrough"], decor: { price: 900, size: 3 } }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(122, 82, 96);
+    const rc = part(m, 124, 70, 64);
+    const bone = BONE.map((c, i) => m.color(c, { smooth: 0.55, jitter: 0.08, light: i === 2 ? 0.1 : 0 }));
+    const boneD = m.color("#8f8478", { smooth: 0.5, jitter: 0.06 });
+    const crack = m.color("#5a5060", { jitter: 0.03 });
+    const zc = 30;
+    const spineY = (x) => 6 + Math.sin(x / 124 * Math.PI) * 9;
+    for (let x = 4; x < 120; x += 7) {
+      const y = spineY(x);
+      const s = 1 - Math.abs(x - 60) / 140;
+      rc.ellipsoid(x + 3, y, zc, 3.4 * s, 4.6 * s, 4.6 * s, bone[0]);
+      rc.box(x + 2, y + 3, zc - 1, x + 3, y + 9 * s, zc, bone[1]);
+      rc.line(x + 3, y, zc - 3, x + 3, y - 2, zc - 9 * s, bone[1], 1.2);
+      rc.line(x + 3, y, zc + 3, x + 3, y - 2, zc + 9 * s, bone[1], 1.2);
+      rc.ellipsoid(x + 6.5, y, zc, 1.2, 3 * s, 3 * s, boneD);
+    }
+    for (let i = 0; i < 8; i++) {
+      const x = 12 + i * 13.5 + rng2.float(-1, 1);
+      const y0 = spineY(x) + 2;
+      const H = 56 - Math.abs(i - 3.5) * 6 + rng2.float(-3, 3);
+      const W = 26 - Math.abs(i - 3.5) * 1.5;
+      const broken = i === 2 || i === 6;
+      const pts = [];
+      for (let k = 0; k <= 12; k++) {
+        const t = k / 12;
+        if (broken && t > 0.58) break;
+        const ang = t * Math.PI * 0.92;
+        pts.push([x + t * 5, y0 + Math.sin(ang) * H * 0.86, zc + 2 + (1 - Math.cos(ang)) * W * 0.62, 2.7 - t * 1.5]);
+      }
+      rc.tube(pts, (xx, yy, zz) => h3(xx, yy, zz, 1) < 0.07 ? bone[2] : bone[0], 3);
+      const back = pts.slice(0, 7).map(([px, py, pz, pr]) => [px, py, zc - (pz - zc) * 0.85 - 2, pr]);
+      rc.tube(back, bone[1], 3);
+      if (broken) rc.tube([[x + 10, 2, zc + 32, 1.6], [x + 16, 2, zc + 28, 1.4], [x + 22, 2, zc + 30, 1.2]], bone[1]);
+    }
+    rc.recolor((x, y, z, p) => bone.includes(p) && rc.exposed(x, y, z) && Math.abs(noise3(x * 0.3, y * 0.3, z * 0.3, 2) - 0.5) < 0.02 ? crack : null);
+    stampRot(m, rc, [62, 0, zc], [60, 0, 46], 0, -28, 0);
+    biolum(m, rng2, 14, bone, "#5ff4ff");
+    biolum(m, rng2, 6, bone, "#c07bff");
+    sandMound(m, 60, 50, 46, 36, 6, 8, ABYSS_SILT);
+    return { m, yaw: 30, vs: 1.6, light: "#5ff4ff" };
+  });
+  def("giant_skull", { name: "Giant Skull", biome: "abyss", tags: ["bone", "glow"], decor: { price: 550, size: 2 } }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(90, 60, 58);
+    const bone = BONE.map((c, i) => m.color(c, { smooth: 0.6, jitter: 0.08, light: i === 2 ? 0.1 : 0 }));
+    const deep = m.color("#1c1830", { jitter: 0.02, light: -0.5 });
+    const crack = m.color("#5a5060", { jitter: 0.03 });
+    const tooth = m.color("#f2ead8", { smooth: 0.4, jitter: 0.04 });
+    const eye = m.color("#ffd84a", { emissive: 1, jitter: 0 });
+    const sk = part(m, 86, 52, 48);
+    const zc = 24;
+    sk.ellipsoid(22, 26, zc, 20, 20, 19, bone[0]);
+    shape(sk, 20, 6, 4, 84, 40, 44, (x, y, z) => {
+      const t = (x - 20) / 64;
+      const hw = 16 * (1 - t * 0.65), top = 34 - t * 16, bot = 12 + t * 2;
+      return Math.abs(z - zc) <= hw && y <= top && y >= bot;
+    }, bone[0]);
+    sk.recolor((x, y, z, p) => !sk.get(x, y + 1, z) ? bone[2] : null);
+    sk.sub(() => sk.ellipsoid(30, 30, zc + 14, 9, 8, 9));
+    sk.ellipsoid(30, 30, zc + 9, 8, 7, 3, deep);
+    sk.set(28, 31, zc + 12, eye);
+    sk.set(33, 31, zc + 12, eye);
+    sk.sub(() => sk.ellipsoid(72, 26, zc + 10, 4, 3, 4));
+    sk.sub(() => sk.ellipsoid(50, 22, zc + 15, 8, 5, 5));
+    sk.ellipsoid(50, 22, zc + 10, 7, 4, 2, deep);
+    sk.box(18, 38, zc + 6, 44, 41, zc + 17, bone[1]);
+    sk.box(30, 2, zc - 13, 82, 7, zc + 13, bone[1]);
+    sk.sub(() => sk.box(32, 5, zc - 10, 84, 8, zc + 10));
+    for (let x = 34; x < 82; x += 4) for (const s of [-1, 1]) {
+      sk.line(x, 7, zc + s * 11, x + 1, 12, zc + s * 11, tooth, 0.7);
+      sk.line(x + 2, 13, zc + s * 12, x + 2, 9, zc + s * 12, tooth, 0.6);
+    }
+    sk.recolor((x, y, z, p) => p === bone[0] && sk.exposed(x, y, z) && Math.abs(noise3(x * 0.25, y * 0.25, z * 0.25, 4) - 0.5) < 0.02 ? crack : null);
+    chip(sk, rng2, 20, bone, 1.4);
+    stampRot(m, sk, [43, 0, zc], [44, 2, 28], 0, -14, -6);
+    sandMound(m, 44, 30, 36, 20, 5, 3, ABYSS_SILT);
+    biolum(m, rng2, 8, bone, "#5ff4ff");
+    return { m, yaw: 28, light: "#ffd84a" };
+  });
+  def("vent_chimney", { name: "Black Smoker", biome: "abyss", tags: ["vent", "glow"] }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(56, 92, 50);
+    const rock = [m.color("#2a2634", { smooth: 0.55, jitter: 0.12 }), m.color("#3a3442", { smooth: 0.55, jitter: 0.12 }), m.color("#4c4250", { smooth: 0.55, jitter: 0.1 })];
+    const crust = [m.color("#c8963a", { smooth: 0.5, jitter: 0.1 }), m.color("#e2c25a", { smooth: 0.5, jitter: 0.08 }), m.color("#8a5a3a", { smooth: 0.5, jitter: 0.1 })];
+    const lava = [m.color("#ff7a2a", { emissive: 1, jitter: 0.04 }), m.color("#ffd06a", { emissive: 1, jitter: 0.03 })];
+    const seed = rng2.int(0, 999);
+    let y = 0, r = 15, x = 28, z = 24;
+    const segs = [];
+    while (y < 76) {
+      const h = rng2.float(7, 11);
+      blob(m, x, y + h * 0.5, z, r, h * 0.75, r * 0.92, 0.25, 0.2, seed + y, rock[0], 0);
+      segs.push([x, y, z, r]);
+      y += h * 0.85;
+      r = Math.max(5, r * 0.86);
+      x += rng2.float(-1.2, 1.2);
+      z += rng2.float(-0.8, 0.8);
+    }
+    let sy = 0, sr = 7, sx = 12, sz = 30;
+    while (sy < 34) {
+      blob(m, sx, sy + 3, sz, sr, 4, sr, 0.25, 0.25, seed + 100 + sy, rock[1], 0);
+      sy += 5;
+      sr *= 0.86;
+      sx -= 0.4;
+    }
+    m.recolor((x2, y2, z2, p) => {
+      if (!m.exposed(x2, y2, z2)) return null;
+      const n = fbm3(x2 * 0.14, y2 * 0.1, z2 * 0.14, 2, seed + 3);
+      if (Math.abs(noise3(x2 * 0.16, y2 * 0.07, z2 * 0.16, seed + 9) - 0.5) < 0.018) return lava[0];
+      return n > 0.7 ? crust[0] : n > 0.665 ? crust[2] : n < 0.34 ? rock[2] : null;
+    });
+    m.recolor((x2, y2, z2, p) => p === crust[0] && !m.get(x2, y2 + 1, z2) ? crust[1] : null);
+    const [tx, ty, tz, tr] = segs[segs.length - 1];
+    m.sub(() => m.cylinder(tx, tz, ty + 2, ty + 14, Math.max(2.2, tr * 0.45)));
+    m.cylinder(tx, tz, ty + 2, ty + 3, Math.max(2.2, tr * 0.45), lava[1]);
+    m.cylinder(tx, tz, ty + 4, ty + 4, Math.max(1.5, tr * 0.3), lava[0]);
+    const worm = m.color("#ece6da", { smooth: 0.4 }), plume = m.color("#ff3d5a", { emissive: 0.4 });
+    for (let i = 0; i < 9; i++) {
+      const a = rng2.float(-0.5, 2.6), rr2 = rng2.float(14, 19);
+      const wx = 28 + Math.cos(a) * rr2, wz = 24 + Math.sin(a) * rr2;
+      const hh = rng2.int(6, 14);
+      m.line(wx, 0, wz, wx + rng2.float(-1, 1), hh, wz, worm, 0.8);
+      m.sphere(wx, hh + 1, wz, 1.3, plume);
+    }
+    sandMound(m, 28, 25, 24, 21, 3, 5, ABYSS_SILT);
+    return { m, yaw: 30, light: "#ff9a3a" };
+  });
+  def("glyph_stone", { name: "Glyph Stone", biome: "abyss", tags: ["ruin", "glow"], decor: { price: 320, size: 1 } }, ({ rng: rng2, variant }) => {
+    const glows = ["#5ff4ff", "#c07bff", "#7dff9a"];
+    const m = new VoxelModel(44, 70, 34);
+    const st = abyssStone(m);
+    const deep = m.color("#24223f", { jitter: 0.04 });
+    const glow = m.color(glows[variant % glows.length], { emissive: 1, jitter: 0 });
+    const slab = part(m, 30, 64, 14);
+    shape(slab, 0, 0, 0, 29, 63, 13, (x, y, z) => {
+      const dx = Math.abs(x - 15), dz = Math.abs(z - 7);
+      if (dx > 13 || dz > 5.5) return false;
+      if (y > 48 && ((x - 15) / 13) ** 2 + ((y - 48) / 14) ** 2 > 1) return false;
+      return dx + dz < 17.5;
+    }, (x, y, z) => st[h3(x >> 2, y >> 2, 0, 3) * 2 | 0]);
+    for (let y = 6; y < 56; y++) for (let x = 4; x < 27; x++) {
+      if (!slab.get(x, y, 12)) continue;
+      const border = x === 4 || x === 26 || y === 6;
+      if (border) slab.set(x, y, 12, deep);
+      else if (x > 6 && x < 25 && y > 9 && y < 40 && Math.floor((y - 10) / 6) % 2 === 0 && rune(x - 7, y - 10, 11 + variant)) slab.set(x, y, 12, glow);
+    }
+    slab.paint(() => slab.ellipsoid(15, 46, 12.5, 5, 2.6, 1.2, deep));
+    slab.paint(() => slab.ellipsoid(15, 46, 12.5, 2, 1.8, 1.2, glow));
+    chip(slab, rng2, 18, st, 1.4);
+    stampRot(m, slab, [15, 0, 7], [22, 0, 17], -4, 16, 5);
+    for (let i = 0; i < 4; i++) facetRock(m, rng2, 22 + rng2.float(-16, 16), 1, 26 + rng2.float(-2, 6), rng2.float(2, 4), rng2.float(2, 3), rng2.float(2, 4), st[1], 8);
+    moss(m, rng2, 4, ["#4a7aa8", "#3a5a8a", "#2a3f6a"], 0.45, 0.2, st);
+    sandMound(m, 22, 18, 18, 14, 3, 7, ABYSS_SILT);
+    return { m, yaw: 22, light: glows[variant % glows.length] };
+  });
+  var CASTLE_STONE = ["#b9b2c9", "#a39bb6", "#cdc7da"];
+  function masonry(m, cols, mortar, bw = 6, bh = 4) {
+    return (x, y, z) => {
+      const row = Math.floor(y / bh);
+      if (y % bh === 0) return mortar;
+      const off = row % 2 ? bw >> 1 : 0;
+      if ((x + z + off) % bw === 0) return mortar;
+      return cols[h3(Math.floor((x + z + off) / bw), row, 0, 3) * cols.length | 0];
+    };
+  }
+  def("castle", { name: "Fairy Castle", biome: "aquarium", tags: ["build", "glow"], decor: { price: 600, size: 3 }, decorOnly: true }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(84, 104, 60);
+    const st = CASTLE_STONE.map((c) => m.color(c, { jitter: 0.08 }));
+    const mortar = m.color("#7c7492", { jitter: 0.04 });
+    const roof = [m.color("#4a78d8", { jitter: 0.06, smooth: 0.3 }), m.color("#6a98f0", { jitter: 0.05, smooth: 0.3 })];
+    const roofR = [m.color("#d8504a", { jitter: 0.06, smooth: 0.3 }), m.color("#f07a6a", { jitter: 0.05, smooth: 0.3 })];
+    const gold = m.color("#f2c84a", { jitter: 0.04, spec: 1.2 });
+    const dark = m.color("#2a2238", { jitter: 0.02 });
+    const win = m.color("#ffd86a", { emissive: 1, jitter: 0.02 });
+    const wood = m.color("#8a5634", { jitter: 0.08 });
+    const flagC = [m.color("#ff5a7a", { jitter: 0.04 }), m.color("#ffd84a", { jitter: 0.04 })];
+    const tex2 = masonry(m, st, mortar);
+    const rk = reefRock(m, rng2);
+    facetRock(m, rng2, 42, 3, 30, 38, 8, 26, rk[0], 16);
+    stoneTex(m, rk, 4);
+    m.box(16, 6, 14, 67, 34, 45, tex2);
+    for (let x = 16; x <= 67; x++) for (const z of [14, 45]) if (x % 4 < 2) m.box(x, 35, z, x, 37, z, st[2]);
+    for (let z = 14; z <= 45; z++) for (const x of [16, 67]) if (z % 4 < 2) m.box(x, 35, z, x, 37, z, st[2]);
+    m.box(28, 34, 20, 55, 62, 40, tex2);
+    for (let x = 28; x <= 55; x++) for (const z of [20, 40]) if (x % 4 < 2) m.box(x, 63, z, x, 65, z, st[2]);
+    for (let z = 20; z <= 40; z++) for (const x of [28, 55]) if (z % 4 < 2) m.box(x, 63, z, x, 65, z, st[2]);
+    const tower = (cx, cz, r, h, rc) => {
+      m.cylinder(cx, cz, 6, h, r, tex2);
+      m.cylinder(cx, cz, h - 2, h, r + 1.2, st[2]);
+      m.cone(cx, cz, h + 1, h + 1 + r * 2.4, r + 2, 0.5, (x, y) => (y - h) % 4 === 0 ? rc[1] : rc[0]);
+      m.box(cx, h + 2 + r * 2.4, cz, cx, h + 8 + r * 2.4, cz, gold);
+      const wz = Math.round(cz + r);
+      m.box(cx - 1, h - 12, wz, cx, h - 8, wz, win);
+      m.box(cx - 1, h - 13, wz, cx, h - 13, wz, mortar);
+      return h + 8 + r * 2.4;
+    };
+    tower(17, 44, 7, 46, roof);
+    tower(66, 44, 7, 48, roof);
+    tower(18, 15, 6, 42, roofR);
+    tower(65, 15, 6, 44, roofR);
+    const top = tower(42, 30, 8, 76, roof);
+    for (const [fx, fy, fz, c] of [[42, top, 30, flagC[0]], [17, 77, 44, flagC[1]], [66, 79, 44, flagC[0]]]) {
+      for (let y = 0; y < 5; y++) for (let x = 1; x <= 7; x++) m.set(fx + x, fy - 1 - y + Math.round(Math.sin(x * 0.9) * 0.6), fz, c);
+    }
+    m.sub(() => {
+      m.box(37, 6, 44, 46, 18, 46);
+      m.cylinder(41.5, 45, 18, 22, 4.5, 0, "y");
+    });
+    m.sub(() => m.cylinder(18, 41.5, 44, 46, 5, 0, "z"));
+    shape(m, 36, 6, 44, 47, 24, 44, () => true, (x, y, z, p) => p ? null : y < 22 && (x - 37) % 3 === 0 ? gold : wood);
+    m.box(36, 6, 45, 47, 24, 46, (x, y, z, p) => null);
+    for (const wx of [33, 47]) {
+      m.box(wx, 46, 40, wx + 2, 52, 40, win);
+      m.box(wx, 53, 40, wx + 2, 53, 40, gold);
+    }
+    for (const wx of [24, 58]) {
+      m.box(wx, 20, 45, wx + 1, 25, 45, win);
+    }
+    m.line(36, 22, 46, 34, 8, 52, gold, 0.4);
+    m.line(47, 22, 46, 49, 8, 52, gold, 0.4);
+    m.box(36, 5, 46, 47, 6, 55, wood);
+    moss(m, rng2, 3, MOSS, 0.4, 0.2, [...rk, ...st]);
+    return { m, yaw: 30, vs: 1.6, light: "#ffd86a" };
+  });
+  def("moai_head", { name: "Moai Head", biome: "aquarium", tags: ["statue"], decor: { price: 350, size: 2 }, decorOnly: true }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(54, 92, 54);
+    const st = [m.color("#9a8e80", { jitter: 0.1, smooth: 0.55 }), m.color("#837768", { jitter: 0.1, smooth: 0.55 }), m.color("#b2a696", { jitter: 0.08, smooth: 0.55 })];
+    const deep = m.color("#3e3436", { jitter: 0.04, smooth: 0.3 });
+    const hat = [m.color("#b85a48", { jitter: 0.1, smooth: 0.65 }), m.color("#9a4a3c", { jitter: 0.1, smooth: 0.65 })];
+    const cx = 27, cz = 24;
+    shape(m, 0, 0, 0, 53, 74, 53, (x, y, z) => {
+      let a, c;
+      if (y < 16) {
+        a = 15;
+        c = 12;
+      } else if (y < 72) {
+        a = 12.5 - (y - 16) * 0.02;
+        c = 10.5 - Math.max(0, y - 60) * 0.1;
+      } else return false;
+      const dx = Math.abs(x - cx) / a, dz = Math.abs(z - cz) / c;
+      return dx ** 4 + dz ** 4 <= 1;
+    }, (x, y, z) => y < 16 ? st[1] : st[0]);
+    const fz = cz + 10.5;
+    shape(m, cx - 13, 52, fz - 3, cx + 13, 58, fz + 4, (x, y, z) => Math.abs(x - cx) < 12 && z < fz + 3 - Math.abs(y - 55) * 0.6 - (Math.abs(x - cx) / 12) ** 2 * 2, st[2]);
+    for (const sx of [-1, 1]) {
+      m.sub(() => m.ellipsoid(cx + sx * 6, 48, fz + 1, 4.2, 3, 3));
+      m.paint(() => m.ellipsoid(cx + sx * 6, 48, fz - 1, 4.4, 3.2, 1.6, deep));
+    }
+    shape(m, cx - 7, 28, fz - 2, cx + 7, 54, fz + 10, (x, y, z) => {
+      const t = (54 - y) / 26;
+      const w = 1.6 + t * 3.6, p = 1 + t * 7;
+      return Math.abs(x - cx) <= w && z <= fz + p - Math.abs(x - cx) / w * 1.5;
+    }, st[2]);
+    for (const sx of [-1, 1]) m.paint(() => m.ellipsoid(cx + sx * 2.6, 29.5, fz + 6, 1.4, 0.8, 1.6, deep));
+    shape(m, cx - 8, 21, fz - 2, cx + 8, 28, fz + 5, (x, y, z) => ((x - cx) / 7.5) ** 2 + ((y - 24.5) / 3.6) ** 2 <= 1 && z < fz + 4, st[0]);
+    m.box(cx - 6, 24, fz, cx + 5, 24, fz + 4, deep);
+    shape(m, cx - 10, 13, fz - 2, cx + 10, 21, fz + 4, (x, y, z) => ((x - cx) / 9.5) ** 2 + ((y - 17) / 4.5) ** 2 <= 1 && z < fz + 3, st[0]);
+    for (const sx of [-1, 1]) shape(m, cx + sx * 13 - 3, 30, cz - 6, cx + sx * 13 + 3, 60, cz + 4, (x, y, z) => Math.abs(x - cx - sx * 12.5) < 1.6 && ((y - 45) / 15) ** 2 + ((z - cz + 1) / 4.5) ** 2 <= 1, st[1]);
+    m.cylinder(cx, cz, 72, 82, 11, (x, y) => y % 3 === 0 ? hat[1] : hat[0]);
+    m.cylinder(cx, cz, 82, 83, 8, hat[0]);
+    chip(m, rng2, 14, st, 1.2);
+    moss(m, rng2, 5, MOSS, 0.35, 0.2, st);
+    sandMound(m, cx, cz + 2, 21, 19, 3, 3);
+    return { m, yaw: 24 };
+  });
+  def("diver_helmet", { name: "Diver Helmet", biome: "aquarium", tags: ["wreck", "metal"], decor: { price: 280, size: 1 }, decorOnly: true }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(50, 50, 46);
+    const brass = [m.color("#d6a046", { jitter: 0.06, smooth: 0.8, spec: 1.8, specPow: 12 }), m.color("#b8822f", { jitter: 0.06, smooth: 0.8, spec: 1 })];
+    const copper = [m.color("#c0704a", { jitter: 0.06, smooth: 0.7, spec: 1.2 }), m.color("#9a5638", { jitter: 0.05, smooth: 0.7 })];
+    const glassC = m.color("#2a5a6a", { jitter: 0.02, smooth: 0.8, spec: 2.5, specPow: 10, light: -0.3 });
+    const bolt = m.color("#f2e2a0", { jitter: 0, spec: 1 });
+    const verd = m.color("#5fb89a", { jitter: 0.08, smooth: 0.7 });
+    const cx = 25, cz = 22;
+    m.ellipsoid(cx, 6, cz, 19, 9, 16, copper[0]);
+    m.sub(() => m.box(0, 0, 0, 49, 2, 45));
+    for (let k = 0; k < 12; k++) {
+      const a = k / 12 * Math.PI * 2;
+      m.set(cx + Math.cos(a) * 17.5, 6, cz + Math.sin(a) * 14.5, bolt);
+    }
+    m.sphere(cx, 24, cz, 15.5, brass[0]);
+    m.cylinder(cx, cz, 11, 14, 13, brass[1]);
+    m.cylinder(cx, 24, cz + 13, cz + 17, 7.5, brass[1], "z");
+    m.cylinder(cx, 24, cz + 16, cz + 17, 6, glassC, "z");
+    m.sub(() => m.cylinder(cx, 24, cz + 17, cz + 17, 5.5, 0, "z"));
+    for (const gx of [-2, 2]) m.box(cx + gx, 19, cz + 17, cx + gx, 29, cz + 17, brass[1]);
+    m.box(cx - 6, 24, cz + 17, cx + 5, 24, cz + 17, brass[1]);
+    for (const s of [-1, 1]) {
+      m.cylinder(24, cz + 2, cx + s * 14, cx + s * 17, 4.8, brass[1], "x");
+      m.cylinder(24, cz + 2, s > 0 ? cx + 17 : cx - 17, s > 0 ? cx + 17 : cx - 17, 3.6, glassC, "x");
+    }
+    m.cylinder(cx, cz - 3, 38, 41, 2.4, copper[0]);
+    m.cylinder(cx, cz - 3, 41, 42, 3.5, copper[1]);
+    m.recolor((x, y, z, p) => (p === brass[0] || p === brass[1]) && fbm3(x * 0.18, y * 0.18, z * 0.18, 2, 6) > 0.66 ? verd : null);
+    sandMound(m, cx, cz, 22, 19, 3, 5);
+    barnacles(m, rng2, 3, [...brass, ...copper]);
+    return { m, yaw: 30 };
+  });
+  def("pirate_ship", { name: "Pirate Ship", biome: "aquarium", tags: ["ship", "glow"], decor: { price: 1500, size: 3 }, decorOnly: true }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(124, 126, 56);
+    const wood = [m.color("#5a3a2a", { jitter: 0.08 }), m.color("#6b4530", { jitter: 0.08 }), m.color("#4a2e22", { jitter: 0.08 })];
+    const seam = m.color("#2e1c18", { jitter: 0.03 });
+    const stripe = m.color("#c8423a", { jitter: 0.05 });
+    const gold = m.color("#f0c050", { jitter: 0.04, spec: 1.2 });
+    const deck = [m.color("#a87848", { jitter: 0.06 }), m.color("#94683e", { jitter: 0.06 })];
+    const dark = m.color("#1e1418", { jitter: 0.02 });
+    const cannon = m.color("#2a2a32", { jitter: 0.04, spec: 1 });
+    const win = m.color("#ffd06a", { emissive: 1, jitter: 0.02 });
+    const sail = [m.color("#2f2a36", { jitter: 0.05, smooth: 0.45 }), m.color("#3c3644", { jitter: 0.05, smooth: 0.45 })];
+    const skull = m.color("#efe8da", { jitter: 0.02 });
+    const mastC = m.color("#6a4a32", { jitter: 0.05, smooth: 0.4 });
+    const rope = m.color("#c8b07a", { jitter: 0.03 });
+    const lamp = m.color("#ffb84a", { emissive: 1, jitter: 0 });
+    const zc = 26, X0 = 8, L = 104;
+    const T = (x) => (x - X0) / L;
+    const sheer = (t) => 26 + 12 * Math.max(0, (0.2 - t) / 0.2) ** 1.5 + 8 * Math.max(0, (t - 0.75) / 0.25) ** 2;
+    const keel = (t) => 3 + 14 * Math.max(0, (t - 0.76) / 0.24) ** 2;
+    const beam = (t) => t < 0 || t > 1 ? 0 : t < 0.08 ? 12 + 4 * t / 0.08 : t < 0.55 ? 16 : 16 * Math.pow(Math.max(0, 1 - ((t - 0.55) / 0.45) ** 1.8), 0.62);
+    const halfAt = tabulate(124, 56, (x, y, shrink) => {
+      const t = T(x), B2 = beam(t) - shrink;
+      if (B2 <= 0) return -1;
+      const yk = keel(t) + shrink, ys = sheer(t);
+      if (y < yk || y > ys) return -1;
+      return B2 * Math.min(1, Math.pow((y - yk) / Math.max(1, 18 - yk * 0.4), 0.45));
+    });
+    const inHull = (x, y, z, sh = 0) => {
+      const hw = halfAt(x, y, sh);
+      return hw > 0 && Math.abs(z - zc) <= hw;
+    };
+    shape(m, 0, 0, 0, 123, 50, 55, (x, y, z) => inHull(x, y, z), (x, y, z) => {
+      const v = y + Math.abs(z - zc) * 0.2;
+      if (Math.abs(v - 18) < 1.2) return stripe;
+      if (Math.abs(v - 20) < 0.6) return gold;
+      if (v % 3.2 < 0.6) return seam;
+      return wood[Math.floor(v / 3.2) % 3];
+    });
+    m.sub(() => shape(m, 0, 0, 0, 123, 50, 55, (x, y, z) => inHull(x, y, z, 1.6) && y > keel(T(x)) + 2, 0));
+    shape(m, 0, 0, 0, 123, 50, 55, (x, y, z) => y === Math.floor(Math.min(sheer(T(x)), 30)) - 2 && inHull(x, y, z), (x, y, z) => deck[z % 3 === 0 ? 1 : 0]);
+    m.box(10, 24, zc - 13, 30, 38, zc + 12, (x, y, z) => y % 4 === 0 ? seam : wood[1]);
+    m.box(9, 39, zc - 14, 31, 40, zc + 13, gold);
+    for (const wx of [13, 19, 25]) {
+      m.box(wx, 29, zc + 13, wx + 2, 33, zc + 13, win);
+      m.box(wx - 1, 34, zc + 13, wx + 3, 34, zc + 13, gold);
+    }
+    for (const wz of [zc - 8, zc - 2, zc + 4]) m.box(9, 29, wz, 9, 33, wz + 2, win);
+    for (const gx of [40, 52, 64, 76]) {
+      const hw = halfAt(gx, 14);
+      const zz = Math.floor(zc + hw);
+      m.box(gx - 1, 12, zz - 1, gx + 2, 15, zz + 1, dark);
+      m.cylinder(13.5, zz, gx, gx + 1, 0, cannon, "x");
+      m.cylinder(gx + 0.5, 13.5, zz, zz + 4, 1.3, cannon, "z");
+    }
+    const masts = [[46, 96], [76, 84]];
+    for (const [mx, mh] of masts) {
+      m.cylinder(mx, zc, 10, mh, 1.8, mastC);
+      for (const [yy, w] of [[mh - 12, 18], [mh - 34, 22]]) m.line(mx, yy, zc + 2, mx, yy, zc + 2, mastC, 0.6) && m.box(mx - w, yy, zc + 2, mx + w, yy + 1, zc + 3, mastC);
+      for (const [ya, yb, w] of [[mh - 32, mh - 13, 17], [mh - 54, mh - 35, 20]]) {
+        for (let y = ya; y <= yb; y++) for (let x = mx - w; x <= mx + w; x++) {
+          const t = (x - mx) / w, s = (y - ya) / (yb - ya);
+          const bil = Math.round((1 - t * t) * 4 * Math.sin(s * Math.PI) + 3);
+          m.set(x, y, zc + bil, (x + y) % 9 === 0 ? sail[1] : sail[0]);
+        }
+      }
+      m.box(mx - 1, mh, zc - 1, mx + 1, mh + 2, zc + 1, gold);
+    }
+    const [sx, sy] = [46, 96 - 22];
+    const skullRows = ["..####..", ".######.", "##.##.##", "########", ".##..##.", "..####..", "#..##..#", ".#....#.", "#......#"];
+    skullRows.forEach((row, j) => {
+      for (let i = 0; i < row.length; i++) if (row[i] === "#") m.set(sx - 4 + i, sy + 5 - j, zc + 8, skull);
+    });
+    for (let y = 0; y < 6; y++) for (let x = 1; x <= 9; x++) m.set(46 + x, 96 + 1 - y + Math.round(Math.sin(x * 0.8) * 0.6), zc, y === 2 && x > 3 && x < 7 ? skull : sail[0]);
+    m.line(X0 + L - 2, 34, zc, X0 + L + 12, 44, zc, mastC, 1.1);
+    m.line(46, 94, zc, X0 + L + 10, 43, zc, rope, 0.4);
+    m.line(46, 94, zc, 12, 41, zc, rope, 0.4);
+    m.line(76, 82, zc, X0 + L + 4, 40, zc, rope, 0.4);
+    m.box(6, 40, zc - 1, 8, 43, zc + 1, lamp);
+    m.box(5, 44, zc - 1, 9, 44, zc + 1, gold);
+    sandMound(m, 60, 28, 56, 22, 6, 5);
+    return { m, yaw: 30, vs: 1.55, light: "#ffd06a" };
+  });
+  def("sunken_pc", { name: "Sunken PC", biome: "aquarium", tags: ["computer", "screen"], decor: { price: 420, size: 2 }, decorOnly: true }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(84, 58, 60);
+    const screen = m.color("#2d6b5e", { emissive: 0.6, jitter: 0.03 });
+    const crt = crtPart(m, screen);
+    stampRot(m, crt, [19, 0, 18], [34, 4, 26], 0, 8, 0);
+    const tower = part(m, 18, 40, 30);
+    const beige = BEIGE.map((c) => m.color(c, { jitter: 0.07 }));
+    const dark = m.color("#2a2730", { jitter: 0.03 });
+    const led = m.color("#ff6a4a", { emissive: 1, jitter: 0 });
+    const led2 = m.color("#7dff6a", { emissive: 1, jitter: 0 });
+    tower.box(0, 0, 0, 15, 37, 27, beige[0]);
+    tower.box(1, 30, 28, 14, 32, 28, beige[1]);
+    tower.box(2, 31, 28, 13, 31, 28, dark);
+    tower.box(1, 24, 28, 14, 27, 28, beige[1]);
+    tower.box(4, 25, 28, 11, 25, 28, dark);
+    tower.set(3, 18, 28, led);
+    tower.set(5, 18, 28, led2);
+    tower.box(10, 16, 28, 12, 19, 28, beige[2]);
+    for (let y = 4; y < 14; y += 2) tower.box(3, y, 28, 12, y, 28, dark);
+    tower.recolor((x, y, z, p) => p === beige[0] && !tower.get(x, y + 1, z) ? beige[2] : null);
+    stampRot(m, tower, [8, 0, 14], [66, 3, 26], 0, -12, 0);
+    const kb = part(m, 40, 6, 14);
+    const key = m.color("#ece4cc", { jitter: 0.05 });
+    kb.box(0, 0, 0, 37, 1, 12, beige[1]);
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 9; c++) kb.box(2 + c * 4, 2, 2 + r * 4, 4 + c * 4, 2, 4 + r * 4, key);
+    stampRot(m, kb, [19, 0, 6], [36, 3, 50], 6, -6, 0);
+    m.ellipsoid(62, 4, 50, 2.5, 1.6, 3.5, beige[0]);
+    m.tube([[62, 4, 46, 0.5], [60, 3, 40, 0.5], [66, 4, 34, 0.5]], dark);
+    sandMound(m, 44, 32, 40, 26, 4, 6);
+    const kelp = [m.color("#4fa25e", { smooth: 0.3 }), m.color("#86cf74", { smooth: 0.3 })];
+    for (let k = 0; k < 3; k++) {
+      const x = 14 + k * 4, z = 20 + k * 3;
+      for (let y = 2; y < 30 + k * 6; y++) m.set(x + Math.round(Math.sin(y * 0.35 + k) * 1.3), y, z, kelp[y % 6 === 0 ? 1 : 0]);
+    }
+    moss(m, rng2, 4, MOSS, 0.3, 0.2, beige);
+    return { m, yaw: 22, screens: [screen], light: "#7fffd0" };
+  });
+  var LAVA = [["#ff4a8a", "#ffd84a"], ["#2ac8d8", "#e0ff6a"], ["#8a4aff", "#ffa0e0"], ["#3ac83a", "#e8ff5a"], ["#ff6a2a", "#ffd0e0"], ["#1a2a6a", "#a8c0ff"]];
+  def("lava_lamp", { name: "Lava Lamp", biome: "aquarium", tags: ["glow", "retro"], decor: { price: 240, size: 1 }, decorOnly: true }, ({ variant, frame }) => lavaLamp(LAVA[variant % LAVA.length], frame));
+  def("rubber_duck", { name: "Rubber Duck", biome: "aquarium", tags: ["toy"], decor: { price: 30, size: 1 }, decorOnly: true }, () => {
+    const m = new VoxelModel(40, 36, 30);
+    const yel = [m.color("#ffd23a", { smooth: 0.85, jitter: 0.03, spec: 1.6, specPow: 14 }), m.color("#f2b42a", { smooth: 0.85, jitter: 0.03 })];
+    const beak = m.color("#ff8a2a", { smooth: 0.7, jitter: 0.02 });
+    const eye = m.color("#1a1a22", { jitter: 0 });
+    const glint = m.color("#ffffff", { jitter: 0 });
+    m.ellipsoid(18, 8, 15, 13, 8.5, 10.5, yel[0]);
+    m.sub(() => m.box(0, 0, 0, 39, 1, 29));
+    m.ellipsoid(6, 13, 15, 4, 4, 5, yel[0]);
+    m.sphere(25, 21, 15, 7.5, yel[0]);
+    m.ellipsoid(32, 19.5, 15, 4.5, 1.6, 3.4, beak);
+    m.ellipsoid(31.5, 17.8, 15, 3.6, 1, 2.6, beak);
+    for (const s of [-1, 1]) {
+      m.box(27, 23, 15 + s * 5.5, 28, 24, 15 + s * 5.5, eye);
+      m.set(28, 24, 15 + s * 5.5 + (s > 0 ? 1 : -1) * 0, glint);
+    }
+    m.ellipsoid(15, 11, 23.5, 6, 3.5, 2, yel[1]);
+    m.ellipsoid(15, 11, 6.5, 6, 3.5, 2, yel[1]);
+    return { m, yaw: 30 };
+  });
+  def("pagoda_lantern", { name: "Stone Lantern", biome: "aquarium", tags: ["glow", "statue"], decor: { price: 320, size: 1 }, decorOnly: true }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(44, 84, 44);
+    const st = [m.color("#9a9a8c", { jitter: 0.1, smooth: 0.3 }), m.color("#85857a", { jitter: 0.1, smooth: 0.3 }), m.color("#b0b0a2", { jitter: 0.08, smooth: 0.3 })];
+    const lightC = m.color("#ffcf6a", { emissive: 1, jitter: 0.02 });
+    const deep = m.color("#3a3530", { jitter: 0.02 });
+    const cx = 22, cz = 22;
+    m.box(cx - 12, 0, cz - 12, cx + 11, 3, cz + 11, st[1]);
+    m.box(cx - 9, 4, cz - 9, cx + 8, 6, cz + 8, st[0]);
+    m.cylinder(cx - 0.5, cz - 0.5, 7, 30, 4.2, st[0]);
+    for (const y of [12, 22]) m.cylinder(cx - 0.5, cz - 0.5, y, y, 5, st[2]);
+    m.box(cx - 10, 31, cz - 10, cx + 9, 34, cz + 9, st[1]);
+    m.box(cx - 8, 35, cz - 8, cx + 7, 50, cz + 7, st[0]);
+    m.sub(() => {
+      m.box(cx - 4, 38, cz - 9, cx + 3, 47, cz + 8);
+      m.box(cx - 9, 38, cz - 4, cx + 8, 47, cz + 3);
+    });
+    m.box(cx - 6, 37, cz - 6, cx + 5, 48, cz + 5, lightC);
+    for (let x = cx - 4; x <= cx + 3; x += 3) m.box(x, 38, cz + 7, x, 47, cz + 7, deep);
+    for (let y = 51; y <= 60; y++) {
+      const t = (y - 51) / 9;
+      const r = 17 - t * 13 + (y === 51 ? 1 : 0);
+      m.box(cx - r, y, cz - r, cx + r - 1, y, cz + r - 1, y === 51 ? st[2] : st[y % 2]);
+    }
+    for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) m.box(cx + sx * 17 - (sx > 0 ? 1 : 0), 52, cz + sz * 17 - (sz > 0 ? 1 : 0), cx + sx * 17 - (sx > 0 ? 1 : 0), 53, cz + sz * 17 - (sz > 0 ? 1 : 0), st[2]);
+    m.sphere(cx - 0.5, 63, cz - 0.5, 3.4, st[2]);
+    m.cone(cx - 0.5, cz - 0.5, 66, 69, 2, 0.4, st[2]);
+    chip(m, rng2, 14, st, 1.2);
+    moss(m, rng2, 6, MOSS, 0.5, 0.2, st);
+    sandMound(m, cx, cz, 17, 17, 2, 3);
+    return { m, yaw: 30, light: "#ffcf6a" };
+  });
+  def("mushroom_house", { name: "Mushroom House", biome: "aquarium", tags: ["build", "glow"], decor: { price: 480, size: 2 }, decorOnly: true }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(70, 90, 64);
+    const stem = [m.color("#f2e6cc", { jitter: 0.06, smooth: 0.65 }), m.color("#e0d0b0", { jitter: 0.06, smooth: 0.65 })];
+    const cap = [m.color("#e0443a", { jitter: 0.06, smooth: 0.8, spec: 0.8 }), m.color("#c2343a", { jitter: 0.06, smooth: 0.8 })];
+    const spot = m.color("#fff6e8", { jitter: 0.03, smooth: 0.8 });
+    const gill = m.color("#d8b890", { jitter: 0.05 });
+    const door = [m.color("#8a5634", { jitter: 0.06 }), m.color("#6a4028", { jitter: 0.06 })];
+    const knob = m.color("#f2c84a", { jitter: 0, spec: 1 });
+    const win = m.color("#ffd86a", { emissive: 1, jitter: 0.02 });
+    const frameC = m.color("#7a4a2a", { jitter: 0.04 });
+    const brick = m.color("#a8584a", { jitter: 0.06 });
+    const cx = 35, cz = 30;
+    for (let y = 0; y < 44; y++) {
+      const t = y / 44;
+      const r = 15 + Math.sin(t * Math.PI) * 4 - t * 3;
+      m.cylinder(cx, cz, y, y, r, (x, yy, z) => h3(x, yy, z, 3) < 0.08 ? stem[1] : stem[0]);
+    }
+    shape(m, cx - 32, 38, cz - 30, cx + 32, 80, cz + 30, (x, y, z) => {
+      const d = ((x - cx) / 31) ** 2 + ((y - 42) / 30) ** 2 + ((z - cz) / 28) ** 2;
+      return d <= 1 && y >= 42 - Math.hypot(x - cx, z - cz) * 0.12;
+    }, (x, y, z) => y < 44 ? gill : cap[0]);
+    m.recolor((x, y, z, p) => p === cap[0] && !m.get(x, y + 1, z) === false && h3(x, y, z, 1) < 0.05 ? cap[1] : null);
+    const spots = [[cx - 14, 64, cz + 12, 4], [cx + 10, 68, cz + 14, 5], [cx + 2, 74, cz - 2, 4], [cx - 22, 56, cz - 4, 3.5], [cx + 22, 58, cz + 2, 3.5], [cx - 6, 60, cz + 22, 3.5], [cx + 18, 52, cz + 18, 3]];
+    for (const [x, y, z, r] of spots) m.paint(() => m.sphere(x, y, z, r, (xx, yy, zz) => m.exposed(xx, yy, zz) ? spot : null));
+    const dz = cz + 18;
+    m.sub(() => {
+      m.box(cx - 5, 0, dz - 3, cx + 4, 12, dz + 4);
+      m.cylinder(cx - 0.5, dz, 12, 16, 5, 0, "y");
+    });
+    m.cylinder(cx - 0.5, 10, dz - 2, dz - 1, 7, frameC, "z");
+    m.sub(() => m.cylinder(cx - 0.5, 10, dz - 2, dz + 2, 5.6, 0, "z"));
+    shape(m, cx - 6, 0, dz - 2, cx + 6, 17, dz - 2, (x, y) => y < 10 ? Math.abs(x - cx + 0.5) < 5.6 : Math.hypot(x - cx + 0.5, y - 10) < 5.6, (x) => (x >> 1) % 2 ? door[0] : door[1]);
+    m.set(cx + 2, 8, dz - 1, knob);
+    for (const [wx, wy, wz] of [[cx - 14, 24, cz + 13], [cx + 12, 28, cz + 14]]) {
+      m.cylinder(wx, wy, wz, wz + 3, 3.4, frameC, "z");
+      m.cylinder(wx, wy, wz + 3, wz + 3, 2.4, win, "z");
+      m.box(wx - 0.5, wy - 2.4, wz + 4, wx, wy + 2.4, wz + 4, frameC);
+    }
+    m.box(cx + 14, 70, cz - 8, cx + 18, 82, cz - 4, brick);
+    m.box(cx + 13, 82, cz - 9, cx + 19, 83, cz - 3, brick);
+    m.box(cx - 6, 0, dz + 2, cx + 5, 1, dz + 7, stem[1]);
+    m.cylinder(cx + 16, dz + 6, 0, 14, 0.8, frameC);
+    m.box(cx + 15, 14, dz + 5, cx + 17, 17, dz + 7, win);
+    m.box(cx + 15, 18, dz + 5, cx + 17, 18, dz + 7, frameC);
+    moss(m, rng2, 6, MOSS, 0.25, 0.25, [...stem]);
+    sandMound(m, cx, cz + 2, 26, 24, 3, 5);
+    return { m, yaw: 28, vs: 1.6, light: "#ffd86a" };
+  });
+  def("tiki_head", { name: "Tiki Totem", biome: "aquarium", tags: ["statue"], decor: { price: 260, size: 1 }, decorOnly: true }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(36, 82, 32);
+    const wood = [m.color("#9a6038", { jitter: 0.1, smooth: 0.35 }), m.color("#83502e", { jitter: 0.1, smooth: 0.35 }), m.color("#b27848", { jitter: 0.08, smooth: 0.35 })];
+    const deep = m.color("#3a2018", { jitter: 0.03 });
+    const teal = m.color("#3ab8a8", { jitter: 0.05 });
+    const red = m.color("#d84a3a", { jitter: 0.05 });
+    const white = m.color("#f2ead8", { jitter: 0.03 });
+    const cx = 18, cz = 15, fz = 26;
+    m.cylinder(cx, cz, 0, 72, 11, (x, y, z) => wood[Math.floor((y + (x >> 2)) / 3) % 2]);
+    m.box(cx - 13, 70, cz - 13, cx + 12, 74, cz + 12, wood[2]);
+    for (let k = 0; k < 9; k++) {
+      const a = k / 9 * Math.PI;
+      m.line(cx, 74, cz, cx + Math.cos(a) * 14, 80, cz + Math.sin(a) * 4 + 4, k % 2 ? teal : red, 1);
+    }
+    const face = (y0) => {
+      m.box(cx - 10, y0 + 22, cz + 7, cx + 9, y0 + 25, fz, wood[2]);
+      for (const s of [-1, 1]) {
+        const ex = cx + s * 5 - (s > 0 ? 1 : 0);
+        m.box(ex - 3, y0 + 15, fz - 1, ex + 3, y0 + 20, fz, deep);
+        m.box(ex - 2, y0 + 16, fz, ex + 2, y0 + 19, fz, white);
+        m.box(ex - 0.5, y0 + 16, fz, ex + 0.5, y0 + 18, fz, deep);
+      }
+      m.box(cx - 3, y0 + 9, fz - 1, cx + 2, y0 + 15, fz + 1, wood[2]);
+      m.box(cx - 4, y0 + 9, fz, cx + 3, y0 + 10, fz + 2, wood[2]);
+      m.box(cx - 8, y0 + 2, fz - 2, cx + 7, y0 + 7, fz, deep);
+      for (let x = cx - 7; x <= cx + 6; x += 2) m.box(x, y0 + 5, fz, x, y0 + 6, fz, white);
+      m.box(cx - 9, y0 + 1, fz - 1, cx + 8, y0 + 1, fz, red);
+    };
+    face(36);
+    face(2);
+    m.box(cx - 11, 33, cz - 11, cx + 10, 34, cz + 11, (x, y, z) => (x + z) % 4 < 2 ? teal : red);
+    chip(m, rng2, 10, wood, 1.1);
+    moss(m, rng2, 5, MOSS, 0.3, 0.22, wood);
+    sandMound(m, cx, cz, 14, 14, 2, 8);
+    return { m, yaw: 24 };
+  });
+  def("bridge", { name: "Moon Bridge", biome: "aquarium", tags: ["build", "swimthrough"], decor: { price: 380, size: 3 }, decorOnly: true }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(110, 50, 34);
+    const red = [m.color("#d8463a", { jitter: 0.05 }), m.color("#b8343a", { jitter: 0.05 }), m.color("#ee6a52", { jitter: 0.04 })];
+    const plank = [m.color("#a87848", { jitter: 0.06 }), m.color("#94683e", { jitter: 0.06 })];
+    const gold = m.color("#f2c84a", { jitter: 0.03, spec: 1.2 });
+    const stone = [m.color("#8e8e86", { jitter: 0.1 }), m.color("#7a7a72", { jitter: 0.1 })];
+    const zc = 17, ax = 55, R = 46;
+    const arcY = (x) => {
+      const d = (x - ax) / R;
+      return Math.abs(d) >= 1 ? 0 : Math.sqrt(1 - d * d) * 24;
+    };
+    for (let x = ax - R; x <= ax + R; x++) {
+      const y = arcY(x + 0.5);
+      m.box(x, Math.max(0, y - 3), zc - 8, x, y, zc + 7, (xx, yy, z) => yy >= Math.floor(y) - 0 ? plank[(xx >> 1) % 2] : red[1]);
+    }
+    for (let x = ax - R; x <= ax + R; x++) {
+      const y = arcY(x + 0.5);
+      for (const z of [zc - 9, zc + 8]) m.box(x, Math.max(0, y - 4), z, x, y - 1, z, red[0]);
+    }
+    for (let x = ax - R + 4; x <= ax + R - 4; x += 9) {
+      const y = arcY(x + 0.5);
+      for (const z of [zc - 9, zc + 8]) {
+        m.box(x, y, z, x + 1, y + 9, z, red[0]);
+        m.box(x, y + 10, z, x + 1, y + 11, z, gold);
+      }
+    }
+    for (let x = ax - R + 4; x <= ax + R - 4; x++) {
+      const y = arcY(x + 0.5);
+      for (const z of [zc - 9, zc + 8]) {
+        m.set(x, y + 8, z, red[2]);
+        m.set(x, y + 4, z, red[1]);
+      }
+    }
+    for (const fx of [ax - R, ax + R]) facetRock(m, rng2, fx, 2, zc, 7, 4, 10, stone[0], 10);
+    moss(m, rng2, 3, MOSS, 0.2, 0.2, stone);
+    return { m, yaw: 24, pitch: 26 };
+  });
+  function rbox(m, x0, y0, z0, x1, y1, z1, r, c) {
+    const cx = (x0 + x1 + 1) / 2, cy = (y0 + y1 + 1) / 2, cz = (z0 + z1 + 1) / 2;
+    const hx = (x1 + 1 - x0) / 2 - r, hy = (y1 + 1 - y0) / 2 - r, hz = (z1 + 1 - z0) / 2 - r;
+    shape(m, x0, y0, z0, x1, y1, z1, (x, y, z) => {
+      const qx = Math.abs(x - cx) - hx, qy = Math.abs(y - cy) - hy, qz = Math.abs(z - cz) - hz;
+      return Math.hypot(Math.max(qx, 0), Math.max(qy, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qy, qz), 0) <= r;
+    }, c);
+  }
+  function lathe(m, cx, cz, y0, y1, rf, c) {
+    for (let y = y0; y <= y1; y++) {
+      const r = rf((y - y0) / Math.max(1, y1 - y0), y);
+      if (r > 0.2) m.cylinder(cx, cz, y, y, r, c);
+    }
+  }
+  function ellCol(m, cx, cz, y0, y1, rf, c) {
+    for (let y = y0; y <= y1; y++) {
+      const [rx, rz] = rf((y - y0) / Math.max(1, y1 - y0));
+      shape(m, cx - rx - 1, y, cz - rz - 1, cx + rx + 1, y, cz + rz + 1, (x, yy, z) => ((x - cx) / rx) ** 2 + ((z - cz) / rz) ** 2 <= 1, c);
+    }
+  }
+  function frontZ(cx, cy, cz, r, x, y) {
+    const q = r * r - (x - cx) ** 2 - (y - cy) ** 2;
+    return q >= 0 ? Math.floor(cz + Math.sqrt(q) - 0.3) : null;
+  }
+  function miniDuck(m, x, y, z, s, yel, beak, eye, face = 1) {
+    m.ellipsoid(x, y + 1.6 * s, z, 3 * s, 2 * s, 2.4 * s, yel);
+    m.ellipsoid(x - 2.6 * s * face, y + 2.7 * s, z, 1.3 * s, 1.3 * s, 1.5 * s, yel);
+    m.sphere(x + 1.5 * s * face, y + 4.3 * s, z, 1.8 * s, yel);
+    m.ellipsoid(x + 3.3 * s * face, y + 4 * s, z, 1.3 * s, 0.6 * s, 1 * s, beak);
+    m.set(x + 2.1 * s * face, y + 4.9 * s, z + 1.4 * s, eye);
+    m.set(x + 2.1 * s * face, y + 4.9 * s, z - 1.4 * s, eye);
+  }
+  var GLYPH = {
+    A: [".#.", "#.#", "###", "#.#", "#.#"],
+    E: ["###", "#..", "##.", "#..", "###"],
+    F: ["###", "#..", "##.", "#..", "#.."],
+    H: ["#.#", "#.#", "###", "#.#", "#.#"],
+    I: ["###", ".#.", ".#.", ".#.", "###"],
+    O: ["###", "#.#", "#.#", "#.#", "###"],
+    P: ["##.", "#.#", "##.", "#..", "#.."],
+    S: [".##", "#..", ".#.", "..#", "##."],
+    T: ["###", ".#.", ".#.", ".#.", ".#."],
+    U: ["#.#", "#.#", "#.#", "#.#", "###"],
+    X: ["#.#", "#.#", ".#.", "#.#", "#.#"],
+    1: [".#.", "##.", ".#.", ".#.", "###"],
+    2: ["##.", "..#", ".#.", "#..", "###"],
+    3: ["##.", "..#", ".#.", "..#", "##."],
+    0: ["###", "#.#", "#.#", "#.#", "###"]
+  };
+  function glyphs(m, text, x, y, z, c, s = 1) {
+    for (const ch of text) {
+      const g = GLYPH[ch];
+      if (g) {
+        for (let r = 0; r < 5; r++) for (let k = 0; k < 3; k++) if (g[r][k] === "#") m.box(x + k * s, y - r * s - s + 1, z, x + k * s + s - 1, y - r * s, z, c);
+      }
+      x += 4 * s;
+    }
+  }
+  def("toilet", {
+    name: "Toilet",
+    biome: "aquarium",
+    tags: ["dumb", "home"],
+    decor: { price: 150, size: 1 },
+    decorOnly: true,
+    desc: "Fully plumbed. Fish keep diving in. Nobody knows where it goes.",
+    interact: {
+      verb: "Flush",
+      frames: 4,
+      seq: [1, 1, 2, 3, 2, 3, 2, 3, 1, 0],
+      fps: 6,
+      sfx: [["ui_toggle", 0, { vol: 0.5 }], ["click", 0.3, { pitch: 0.6 }], ["flood_rush", 0.35, { vol: 0.55 }], ["bubbles", 0.5], ["gulp", 1.35, { pitch: 0.7 }]],
+      fx: [{ at: 0.4, kind: "swirl", from: "bowl", n: 14 }, { at: 0.45, kind: "bubbles", from: "bowl", n: 16 }, { at: 0.85, kind: "bubbles", from: "bowl", n: 10 }],
+      fish: "flee",
+      use: { kind: "hide", at: "bowl", exitPlay: true }
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(48, 56, 46);
+    const por = m.color("#f4f1ea", { smooth: 0.75, jitter: 0.03, spec: 1.1, specPow: 16 });
+    const porD = m.color("#d8d2c6", { smooth: 0.75, jitter: 0.03 });
+    const seatC = m.color("#fffdf8", { smooth: 0.6, jitter: 0.02, spec: 0.9 });
+    const chrome = m.color("#c8d2de", { smooth: 0.5, spec: 2.2, specPow: 10 });
+    const water = m.color(frame >= 2 ? "#8ae0f4" : "#56b8dc", { emissive: frame >= 2 ? 0.45 : 0.15, smooth: 0.4, jitter: 0.02 });
+    const swirl = m.color("#effcff", { emissive: 0.7, jitter: 0 });
+    const paper = m.color("#fbfaf6", { smooth: 0.8, jitter: 0.03 });
+    const core = m.color("#b8905e", { jitter: 0.03 });
+    const cx = 20, cz = 28;
+    sandMound(m, cx, 25, 19, 18, 2, 6);
+    ellCol(m, cx, cz - 1, 0, 12, (t) => [7.6 - Math.sin(t * Math.PI) * 1.4 + (t < 0.15 ? 1.2 : 0), 9 - Math.sin(t * Math.PI) * 1.2 + (t < 0.15 ? 1.2 : 0)], por);
+    ellCol(m, cx, cz, 12, 23, (t) => [8 + Math.sqrt(t) * 3.4, 10.5 + Math.sqrt(t) * 4], por);
+    m.sub(() => ellCol(m, cx, cz + 0.5, 16, 24, (t) => [6.5 + t * 2, 9 + t * 2.5], 1));
+    ellCol(m, cx, cz + 0.5, 16, 17, () => [7, 9.6], water);
+    m.recolor((x, y, z, p) => p === por && y < 2 ? porD : null);
+    shape(m, cx - 13, 24, cz - 16, cx + 13, 25, cz + 16, (x, y, z) => ((x - cx) / 11.6) ** 2 + ((z - cz) / 14.8) ** 2 <= 1 && ((x - cx) / 7.4) ** 2 + ((z - cz - 0.5) / 10) ** 2 > 1, seatC);
+    if (frame === 0) {
+      ellCol(m, cx, cz, 26, 26, () => [11.4, 14.6], seatC);
+      ellCol(m, cx, cz + 0.5, 27, 27, () => [10.4, 13.4], seatC);
+    } else {
+      shape(m, cx - 12, 24, 12, cx + 12, 56, 14, (x, y, z) => ((x - cx) / 11.4) ** 2 + ((y - 39.6) / 14.6) ** 2 <= (z > 13 ? 0.86 : 1), seatC);
+    }
+    rbox(m, 7, 23, 3, 33, 44, 11, 2.2, por);
+    rbox(m, 6, 45, 2, 34, 48, 12, 1.4, por);
+    m.box(8, 44, 11, 32, 44, 11, porD);
+    m.box(cx - 2, 20, 11, cx + 1, 24, 14, por);
+    const ly = frame === 3 ? 38 : 41;
+    m.box(34, 40, 6, 35, 41, 7, chrome);
+    m.line(35, 41, 7, 36, ly, 11, chrome, 0.6);
+    m.box(35, ly - 1, 10, 37, ly + 1, 12, chrome);
+    if (frame >= 2) {
+      m.recolor((x, y, z, p) => {
+        if (p !== water || m.get(x, y + 1, z)) return null;
+        const a = Math.atan2(z + 0.5 - cz, x + 0.5 - cx), r = Math.hypot(x + 0.5 - cx, (z + 0.5 - cz) / 1.3);
+        return Math.sin(a * 2 + r * 0.9 - frame * 1.7) > 0.4 ? swirl : null;
+      });
+    }
+    m.cylinder(40, 4, 27, 35, 3.8, paper, "z");
+    m.cylinder(40, 4, 35, 35, 1.5, core, "z");
+    m.box(38, 0, 36, 42, 0, 43, paper);
+    return { m, yaw: 30, ground: [cx, 0, 25], anchors: { bowl: [cx, 18, cz + 2], top: [cx, 49, 7] } };
+  });
+  def("garden_gnome", {
+    name: "Garden Gnome",
+    biome: "aquarium",
+    tags: ["dumb", "statue"],
+    decor: { price: 90, size: 1 },
+    decorOnly: true,
+    desc: "Gone fishing. Permanently. He seems happy about it.",
+    interact: {
+      verb: "Tickle",
+      frames: 3,
+      seq: [1, 2, 2, 2, 1, 0],
+      fps: 6,
+      sfx: [["squeak", 0, { pitch: 1.5 }], ["chirp", 0.35, { pitch: 1.25 }]],
+      fx: [{ at: 0.3, kind: "hearts", from: "hat", n: 3 }, { at: 0.2, kind: "sparkle", from: "face", n: 4 }],
+      fish: "gather"
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(40, 60, 34);
+    const coat = m.color("#3a7ad8", { smooth: 0.45, jitter: 0.05 });
+    const coatL = m.color("#5a9af0", { smooth: 0.45, jitter: 0.04 });
+    const belt = m.color("#2a2028", { jitter: 0.02 });
+    const gold = m.color("#f2c84a", { spec: 1.4 });
+    const boot2 = m.color("#5a3424", { smooth: 0.6, jitter: 0.04 });
+    const skin = m.color("#f4c49a", { smooth: 0.8, jitter: 0.02 });
+    const nose = m.color("#f08a72", { smooth: 0.9, jitter: 0.02, spec: 0.8 });
+    const beard = m.color("#f6f4ee", { smooth: 0.7, jitter: 0.06 });
+    const hat = m.color("#e03e3a", { smooth: 0.6, jitter: 0.04 });
+    const hatD = m.color("#b82e34", { smooth: 0.6, jitter: 0.04 });
+    const eye = m.color("#1e1a24", { jitter: 0 });
+    const blush = m.color("#ff9aa8", { jitter: 0, smooth: 0.8 });
+    const rod = m.color("#8a5a34", { jitter: 0.04 });
+    const line = m.color("#d8e4ec", { jitter: 0 });
+    const bob = [m.color("#ff4a4a", { smooth: 0.9 }), m.color("#ffffff", { smooth: 0.9 })];
+    const cx = 20, cz = 16;
+    sandMound(m, cx, cz + 2, 15, 13, 2, 4);
+    for (const s of [-1, 1]) m.ellipsoid(cx + s * 3.5, 2.6, cz + 2, 3, 2.6, 4.6, boot2);
+    lathe(m, cx, cz, 4, 23, (t) => 9.6 - t * 3.4 + Math.sin(t * Math.PI) * 0.6, (x, y) => y < 6 ? coatL : coat);
+    lathe(m, cx, cz, 11, 12, () => 9, belt);
+    m.box(cx - 1, 10, cz + 8, cx + 1, 13, cz + 9, gold);
+    const sh = 20;
+    m.line(cx - 6.5, sh, cz, cx - 7.5, 13, cz + 5, coat, 2.2);
+    m.sphere(cx - 7.5, 12.5, cz + 6, 1.9, skin);
+    m.line(cx - 8, 11, cz + 7, cx - 18, 44, cz + 6, rod, 0.6);
+    m.line(cx - 18, 44, cz + 6, cx - 17, 4, cz + 12, line, 0);
+    m.sphere(cx - 17, 4, cz + 12, 1.6, (x, y) => y >= 4 ? bob[0] : bob[1]);
+    const up = frame > 0;
+    const hand = up ? [cx + 9, 31 + frame * 2, cz + 3] : [cx + 6, 13, cz + 7];
+    m.line(cx + 6.5, sh, cz, hand[0], hand[1] - 1, hand[2], coat, 2.2);
+    m.sphere(hand[0], hand[1], hand[2], 1.9, skin);
+    m.sphere(cx, 27, cz + 1, 5.6, skin);
+    m.ellipsoid(cx, 22, cz + 4.4, 6, 6.6, 3.6, beard);
+    m.ellipsoid(cx, 17.4, cz + 5, 3.6, 3.2, 2.6, beard);
+    for (const s of [-1, 1]) m.ellipsoid(cx + s * 2.2, 24.8, cz + 6.6, 2.2, 1.1, 1.2, beard);
+    m.sphere(cx, 26.4, cz + 6.6, 1.9, nose);
+    const ez = cz + 6;
+    if (frame === 0) {
+      m.box(cx - 3, 28, ez, cx - 2, 29, ez, eye);
+      m.box(cx + 2, 28, ez, cx + 3, 29, ez, eye);
+    } else {
+      m.box(cx - 3, 28, ez, cx - 2, 28, ez, eye);
+      m.box(cx + 2, 28, ez, cx + 3, 29, ez, eye);
+      m.box(cx + 1, 31, ez - 1, cx + 3, 31, ez - 1, beard);
+    }
+    m.set(cx - 4, 26, ez - 1, blush);
+    m.set(cx + 4, 26, ez - 1, blush);
+    const hy = 30 + (frame === 1 ? 4 : frame === 2 ? 7 : 0), hx = frame ? 1.5 : 0;
+    for (let i = 0; i <= 24; i++) {
+      const t = i / 24;
+      const px = cx + hx + Math.pow(t, 2.2) * 7, py = hy + t * 19 - Math.pow(t, 3) * 3;
+      m.sphere(px, py, cz + 1, 6.6 * Math.pow(1 - t, 0.85) + 0.6, (x, y) => y < hy + 2 ? hatD : hat);
+    }
+    return { m, yaw: 28, ground: [cx, 0, cz + 2], anchors: { hat: [cx + 4, hy + 18, cz + 1], face: [cx, 27, cz + 7] } };
+  });
+  def("plastic_flamingo", {
+    name: "Plastic Flamingo",
+    biome: "aquarium",
+    tags: ["dumb"],
+    decor: { price: 70, size: 1 },
+    decorOnly: true,
+    desc: "A lawn classic. Honks when poked, which real flamingos would never do.",
+    interact: {
+      verb: "Honk",
+      frames: 3,
+      seq: [1, 0, 1, 0, 2, 2, 2, 0],
+      fps: 6,
+      sfx: [["honk", 0, { pitch: 1.4 }], ["honk", 0.34, { pitch: 1.55 }]],
+      fx: [{ at: 0.05, kind: "burst", from: "head", n: 8, colors: ["#ff7eb6", "#ffc2dc", "#ffffff"] }],
+      fish: "flee"
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(44, 72, 26);
+    const pink = m.color("#ff80b8", { smooth: 0.75, jitter: 0.03, spec: 1.3, specPow: 14 });
+    const pinkD = m.color("#f2589e", { smooth: 0.75, jitter: 0.03 });
+    const beakW = m.color("#ffe2ec", { smooth: 0.5 });
+    const beakB = m.color("#2a2228", { jitter: 0 });
+    const eye = m.color("#1a1420", { jitter: 0 });
+    const white = m.color("#ffffff", { jitter: 0 });
+    const steel = m.color("#70747e", { spec: 1, jitter: 0.02 });
+    const cz = 13;
+    sandMound(m, 20, cz, 11, 9, 2, 9);
+    m.line(18, 0, cz, 18, 27, cz, steel, 0);
+    if (frame === 2) {
+      m.line(22, 27, cz, 26, 20, cz + 1, steel, 0);
+      m.line(26, 20, cz + 1, 22, 16, cz + 1, steel, 0);
+    } else m.line(22, 0, cz, 22, 27, cz, steel, 0);
+    m.ellipsoid(19, 32, cz, 10.5, 6.6, 6.2, pink);
+    m.ellipsoid(9, 36, cz, 4.4, 3.6, 4.2, pink);
+    m.ellipsoid(18, 33.5, cz, 7.4, 4.2, 6.8, pinkD);
+    m.ellipsoid(10, 38, cz, 2.4, 2, 2.6, pinkD);
+    const peck = frame === 1;
+    const neck = peck ? [[27, 35, cz, 2.6], [32, 38, cz, 2.3], [36, 33, cz, 2.1], [37, 26, cz, 2]] : [[27, 35, cz, 2.6], [31, 42, cz, 2.3], [28, 50, cz, 2.1], [27, 57, cz, 2], [30, 62, cz, 2.2]];
+    m.tube(neck, pink, 5);
+    const [hx, hy] = peck ? [37.5, 24] : [31, 63];
+    m.sphere(hx, hy, cz, 3.7, pink);
+    const dir = peck ? [0.35, -1] : [1, -0.25];
+    const b0 = [hx + dir[0] * 2.8, hy + dir[1] * 2.8], b1 = [hx + dir[0] * 5.2, hy + dir[1] * 5.2 - 0.6], b2 = [b1[0] + (peck ? -0.2 : 1.2), b1[1] - 2.6];
+    m.line(b0[0], b0[1], cz, b1[0], b1[1], cz, beakW, 1.2);
+    m.line(b1[0], b1[1], cz, b2[0], b2[1], cz, beakB, 0.9);
+    for (const s of [-1, 1]) {
+      m.set(hx + (peck ? 1 : 0.5), hy + 1, cz + s * 3.4, eye);
+      m.set(hx + (peck ? 1 : 0.5), hy + 2, cz + s * 3.4, white);
+    }
+    return { m, yaw: 26, ground: [20, 0, cz], anchors: { head: [hx, hy, cz] } };
+  });
+  def("toaster", {
+    name: "Toaster",
+    biome: "aquarium",
+    tags: ["dumb", "retro"],
+    decor: { price: 110, size: 1 },
+    decorOnly: true,
+    desc: "Pops out soggy toast. The fish think it is a snack dispenser. They are right.",
+    interact: {
+      verb: "Pop",
+      frames: 3,
+      seq: [1, 2, 2, 2, 1, 0],
+      fps: 7,
+      sfx: [["boing", 0, { pitch: 1.5 }], ["click", 0.7]],
+      fx: [{ at: 0.18, kind: "food", from: "slot", n: 5 }, { at: 0.15, kind: "burst", from: "slot", n: 8, colors: ["#e0a860", "#a86a30", "#f4d8a0"] }],
+      fish: "gather"
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(48, 52, 34);
+    const chrome = m.color("#cfd5df", { smooth: 0.65, spec: 2.4, specPow: 10, jitter: 0.02 });
+    const black = m.color("#24222a", { smooth: 0.3, jitter: 0.02 });
+    const slot = m.color("#141218", { jitter: 0 });
+    const crust = m.color("#b8783a", { jitter: 0.06 });
+    const toast = m.color("#e8b46a", { jitter: 0.08 });
+    const burnt = m.color("#9a5a2a", { jitter: 0.05 });
+    const red = m.color("#e04a3a", { smooth: 0.5 });
+    const cord = m.color("#2e2a30", { smooth: 0.5 });
+    const cx = 20;
+    rbox(m, 5, 0, 7, 35, 2, 23, 1, black);
+    rbox(m, 6, 2, 8, 34, 25, 22, 4, chrome);
+    for (const z of [11, 17]) m.sub(() => m.box(10, 19, z, 30, 25, z + 2));
+    for (const z of [11, 17]) m.box(10, 18, z, 30, 18, z + 2, slot);
+    const top = 25 + [0, 9, 19][frame];
+    for (const z of [11, 17]) {
+      for (let y = top - 15; y <= top; y++) {
+        const k = Math.max(0, y - (top - 3)) * 1.3;
+        for (let x = Math.ceil(10 + k); x <= Math.floor(30 - k); x++) {
+          const edge = y === top || x <= 10 + k + 0.6 || x >= 29 - k;
+          for (let zz = z; zz <= z + 2; zz++) m.set(x, y, zz, edge ? crust : zz === z + 1 ? burnt : (x + y) % 5 === 0 ? burnt : toast);
+        }
+      }
+    }
+    if (frame === 0) m.sub(() => m.box(6, 9, 8, 34, 17, 22));
+    if (frame === 0) rbox(m, 6, 2, 8, 34, 17, 22, 4, chrome);
+    const ly = frame === 0 ? 8 : 18;
+    m.box(35, 5, 13, 35, 21, 16, black);
+    m.box(36, ly, 12, 38, ly + 2, 17, black);
+    m.cylinder(13, 8, 23, 24, 2.2, black, "z");
+    m.set(13, 9, 24, red);
+    m.box(22, 6, 23, 30, 7, 23, black);
+    m.tube([[cx, 3, 8, 0.9], [cx - 6, 1, 4, 0.9], [cx - 14, 1, 3, 0.9], [cx - 17, 1, 9, 0.9]], cord, 3);
+    return { m, yaw: 30, ground: [cx, 0, 15], anchors: { slot: [cx, 27, 15] } };
+  });
+  def("disco_ball", {
+    name: "Disco Ball",
+    biome: "aquarium",
+    tags: ["glow", "party"],
+    decor: { price: 320, size: 1 },
+    decorOnly: true,
+    desc: "Saturday Night Fin. Spins gently, then really spins.",
+    interact: {
+      verb: "Party",
+      frames: 4,
+      idle: [0, 1, 2, 3],
+      idleFps: 3,
+      seq: [0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3],
+      fps: 13,
+      sfx: [["magic", 0], ["sparkle", 0.35], ["sparkle", 0.9]],
+      fx: [{ at: 0, kind: "lights", from: "ball", n: 24 }, { at: 0.55, kind: "lights", from: "ball", n: 20 }, { at: 1.1, kind: "lights", from: "ball", n: 16 }, { at: 0.1, kind: "sparkle", from: "ball", n: 8 }],
+      fish: "dance",
+      use: { kind: "orbit", at: "ball" }
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(36, 68, 36);
+    const base = m.color("#26222e", { smooth: 0.4, spec: 1.4 });
+    const pole = m.color("#c8d0dc", { smooth: 0.5, spec: 2.2, specPow: 10 });
+    const grout = m.color("#4a4e5e", { jitter: 0 });
+    const tiles = ["#eef2f8", "#c4ccda", "#9aa6ba", "#b8d4f8", "#f4c4e8", "#d8e0ec"].map((c) => m.color(c, { jitter: 0.02, spec: 2.4, specPow: 8 }));
+    const flash = [m.color("#ffffff", { emissive: 1, jitter: 0 }), m.color("#ffe8a8", { emissive: 1, jitter: 0 }), m.color("#a8f0ff", { emissive: 1, jitter: 0 })];
+    const cx = 18, cz = 18, by = 52, R = 12.5;
+    lathe(m, cx, cz, 0, 3, (t) => 10 - t * 3, base);
+    m.cylinder(cx, cz, 4, 38, 1.4, pole);
+    m.cylinder(cx, cz, 38, 39, 2.6, pole);
+    m.line(cx, 39, cz, cx, by - R + 1, cz, pole, 0.8);
+    const LAT = Math.PI / 11, LON = Math.PI * 2 / 22;
+    const rot2 = frame * LON / 4;
+    m.sphere(cx, by, cz, R, (x, y, z) => {
+      const dx = x + 0.5 - cx, dy = y + 0.5 - by, dz = z + 0.5 - cz;
+      const lat = Math.asin(clamp(dy / R, -1, 1)) + Math.PI / 2, lon = Math.atan2(dz, dx) + Math.PI + rot2;
+      const fa = lat / LAT, fo = lon / LON;
+      if (fa % 1 < 0.14 || fo % 1 < 0.12) return grout;
+      const ti = Math.floor(fa), to = Math.floor(fo) % 22;
+      const h = h3(ti, to, 3, 7);
+      if (h3(ti, to, frame, 11) < 0.07) return flash[(ti + to) % 3];
+      return tiles[Math.floor(h * tiles.length)];
+    });
+    m.sub(() => m.sphere(cx, by, cz, R - 2.2));
+    return { m, yaw: 30, ground: [cx, 0, cz], light: "#ffe8f0", anchors: { ball: [cx, by, cz] } };
+  });
+  var PIANO_TUNE = [[0.2, 0.5], [0.42, 0.63], [0.64, 0.75], [0.86, 1], [1.08, 0.84], [1.3, 0.75], [1.52, 0.63], [1.74, 0.75], [1.96, 1]];
+  def("tiny_piano", {
+    name: "Tiny Grand Piano",
+    biome: "aquarium",
+    tags: ["music", "fancy"],
+    decor: { price: 520, size: 2 },
+    decorOnly: true,
+    desc: "A concert grand, shrunk in the wash. Plays one song. Beautifully.",
+    interact: {
+      verb: "Play",
+      frames: 4,
+      seq: [1, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 1, 0],
+      fps: 5.5,
+      sfx: PIANO_TUNE.map(([at, p]) => ["bell", at, { pitch: p, vol: 0.55 }]),
+      fx: [0.2, 0.64, 1.08, 1.52, 1.96].map((at) => ({ at, kind: "notes", from: "lid", n: 2 })),
+      fish: "dance"
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(60, 56, 58);
+    const lac = m.color("#1c1a24", { spec: 1.8, specPow: 18, smooth: 0.2, jitter: 0.02 });
+    const lacL = m.color("#2c2a38", { spec: 1.4, smooth: 0.2, jitter: 0.02 });
+    const gold = m.color("#e0b048", { spec: 1.6, jitter: 0.03 });
+    const ivory = m.color("#f6f0e0", { jitter: 0.02 });
+    const ivoryD = m.color("#cfc6b0", { jitter: 0.02 });
+    const ebony = m.color("#141218", { jitter: 0 });
+    const felt = m.color("#a8302a", { jitter: 0.03 });
+    const paper = m.color("#f8f4e8", { jitter: 0 });
+    const ink = m.color("#3a3440", { jitter: 0 });
+    const velvet = m.color("#c03a4a", { smooth: 0.6, jitter: 0.04 });
+    const X0 = 8, ZF = 38, ZB = 6, W = 38;
+    const half = (z) => {
+      const u = (ZF - z) / (ZF - ZB);
+      if (u < 0 || u > 1) return -1;
+      return W - 16 * Math.pow(u, 1.4) - 7 * Math.sin(u * Math.PI) - (u > 0.85 ? (u - 0.85) * 40 : 0);
+    };
+    const inside = (x, z, inset = 0) => {
+      const w = half(z);
+      return w > 0 && x >= X0 + inset && x <= X0 + w - inset && z >= ZB + inset && z <= ZF - inset * 0.3;
+    };
+    shape(m, X0, 18, ZB, X0 + W, 26, ZF, (x, y, z) => inside(x, z), (x, y) => y === 18 ? lacL : lac);
+    m.sub(() => shape(m, X0, 21, ZB, X0 + W, 26, ZF, (x, y, z) => inside(x, z, 1.6), 1));
+    shape(m, X0, 21, ZB, X0 + W, 21, ZF, (x, y, z) => inside(x, z, 1.6), (x, y, z) => x % 2 === 0 ? gold : z % 7 === 0 ? gold : felt);
+    m.box(X0, 26, ZF - 1, X0 + W, 26, ZF, gold);
+    for (const [lx, lz] of [[X0 + 3, ZF - 3], [X0 + W - 4, ZF - 3], [X0 + 10, ZB + 6]]) {
+      lathe(m, lx, lz, 1, 17, (t) => 2.1 - t * 0.5 + (t > 0.9 ? 0.6 : 0), lac);
+      m.cylinder(lx, lz, 0, 1, 1.6, gold);
+    }
+    m.box(X0 + 17, 2, ZF - 6, X0 + 20, 16, ZF - 5, lac);
+    for (const px of [X0 + 15, X0 + 18, X0 + 21]) m.box(px, 2, ZF - 4, px + 1, 2, ZF - 2, gold);
+    const KZ0 = ZF + 1, KZ1 = ZF + 6;
+    m.box(X0, 14, KZ0, X0 + W, 16, KZ1, lac);
+    for (let x = X0 + 2; x <= X0 + W - 2; x++) {
+      const key = Math.floor((x - X0 - 2) / 2);
+      const pressed = frame >= 2 && h3(key, frame, 1, 5) < 0.28;
+      m.box(x, pressed ? 16 : 17, KZ0, x, pressed ? 16 : 17, KZ1, (x - X0 - 2) % 2 === 1 ? ivoryD : ivory);
+      const b = key % 7;
+      if ((x - X0 - 2) % 2 === 1 && b !== 2 && b !== 6) m.box(x, 18, KZ0, x, 18, KZ0 + 3, ebony);
+    }
+    m.box(X0, 17, KZ0, X0 + 1, 19, KZ1, lac);
+    m.box(X0 + W - 1, 17, KZ0, X0 + W, 19, KZ1, lac);
+    if (frame === 0) shape(m, X0, 27, ZB, X0 + W, 27, ZF, (x, y, z) => inside(x, z), lac);
+    else {
+      const a = 38 * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a);
+      for (let z = ZB; z <= ZF; z++) {
+        const w = half(z);
+        if (w <= 0) continue;
+        for (let s = 0; s <= w; s += 0.5) {
+          m.set(X0 + s * ca, 27 + s * sa, z, lac);
+          m.set(X0 + s * ca - sa, 27 + s * sa + ca * 0.6, z, lacL);
+        }
+      }
+      m.line(X0 + W - 6, 26, 20, X0 + (W - 8) * ca, 27 + (W - 8) * sa - 1, 20, gold, 0.5);
+      m.box(X0 + 10, 27, ZF - 3, X0 + 28, 33, ZF - 3, lac);
+      m.box(X0 + 12, 28, ZF - 2, X0 + 26, 32, ZF - 2, paper);
+      for (const y of [29, 31]) m.box(X0 + 13, y, ZF - 2, X0 + 25, y, ZF - 2, ink);
+    }
+    m.box(X0 + 12, 8, KZ1 + 4, X0 + 26, 10, KZ1 + 9, lac);
+    m.box(X0 + 12, 11, KZ1 + 4, X0 + 26, 11, KZ1 + 9, velvet);
+    for (const [bx, bz] of [[X0 + 13, KZ1 + 5], [X0 + 25, KZ1 + 5], [X0 + 13, KZ1 + 8], [X0 + 25, KZ1 + 8]]) m.box(bx, 0, bz, bx, 7, bz, lac);
+    return { m, yaw: 30, pitch: 28, ground: [X0 + W / 2, 0, 30], anchors: { lid: [X0 + 22, 40, 22], keys: [X0 + W / 2, 18, KZ0 + 3] } };
+  });
+  var TV_BARS = ["#f4f4f4", "#f4e04a", "#4ae0f0", "#4ad84a", "#e84ae0", "#e84a4a", "#4a5ae8"];
+  def("retro_tv", {
+    name: "Retro TV",
+    biome: "aquarium",
+    tags: ["retro", "screen", "glow"],
+    decor: { price: 260, size: 1 },
+    decorOnly: true,
+    desc: "Only gets one channel: fish. The fish love it.",
+    interact: {
+      verb: "Switch on",
+      frames: 6,
+      seq: [1, 2, 1, 2, 3, 3, 4, 5, 4, 5, 4, 5, 4, 5, 1, 0],
+      fps: 5,
+      sfx: [["crt_on", 0], ["static_burst", 0.1, { vol: 0.6 }], ["blub", 1.3, { pitch: 1.2 }], ["blub", 1.9, { pitch: 1.4 }]],
+      fx: [{ at: 0.05, kind: "sparkle", from: "screen", n: 6, colors: ["#ffffff", "#c8f8ff"] }],
+      fish: "gather",
+      use: { kind: "watch", at: "front", seq: [4, 5], fps: 3 }
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(48, 60, 38);
+    const wood = m.color("#8a5632", { jitter: 0.05 });
+    const woodD = m.color("#6e4228", { jitter: 0.05 });
+    const bezel = m.color("#e8dcc0", { jitter: 0.03, smooth: 0.3 });
+    const knob = m.color("#2a2628", { smooth: 0.6, spec: 1 });
+    const chrome = m.color("#c8d0dc", { spec: 2, smooth: 0.5 });
+    const grille = m.color("#4a3a30", { jitter: 0.02 });
+    const glass = m.color("#2a3e3a", { spec: 2.2, specPow: 10, jitter: 0.02 });
+    const glint = m.color("#5a7a74", { spec: 1, jitter: 0 });
+    const leaf = m.color("#5ab85a", { smooth: 0.4 });
+    const pot = m.color("#d8704a", { smooth: 0.5 });
+    const em = (c) => m.color(c, { emissive: 0.95, jitter: 0 });
+    const stat = ["#f2f6f6", "#a8b4b8", "#5a6670", "#2a3038"].map(em);
+    const bars = TV_BARS.map(em);
+    const sea = [em("#2a7ad0"), em("#3a9ae0"), em("#5ac0f0")];
+    const fishC = [em("#ff8a2a"), em("#ffd04a"), em("#1a1a2a"), em("#ffffff")];
+    for (const [x, z, dx, dz] of [[9, 9, -2, -2], [38, 9, 2, -2], [9, 26, -2, 2], [38, 26, 2, 2]]) m.line(x + dx, 0, z + dz, x, 9, z, woodD, 0.9);
+    rbox(m, 4, 9, 6, 43, 42, 29, 3, (x, y) => y % 3 === 0 ? woodD : wood);
+    m.box(6, 11, 30, 41, 40, 30, bezel);
+    const sx0 = 8, sx1 = 30, sy0 = 14, sy1 = 37;
+    const scr2 = (x, y) => {
+      const u = (x - sx0) / (sx1 - sx0), v = (y - sy0) / (sy1 - sy0);
+      if (frame === 0) return u + v > 1.1 && u + v < 1.3 || u + v > 1.4 && u + v < 1.48 ? glint : glass;
+      if (frame <= 2) return stat[Math.floor(h3(x, y, frame, 9) * 4)];
+      if (frame === 3) return v < 0.75 ? bars[Math.min(6, Math.floor(u * 7))] : bars[6 - Math.min(6, Math.floor(u * 7))];
+      const fx = 0.3 + (frame === 5 ? 0.25 : 0), fy = 0.5 + (frame === 5 ? 0.06 : 0);
+      const du = (u - fx) / 0.2, dv = (v - fy) / 0.13;
+      if (du * du + dv * dv < 1) return Math.abs(du - 0.25) < 0.18 ? fishC[3] : du > 0.45 && dv > -0.1 && dv < 0.4 && du < 0.75 ? fishC[2] : fishC[0];
+      if (u < fx - 0.15 && u > fx - 0.32 && Math.abs(v - fy) < (fx - 0.15 - u) * 1.2) return fishC[1];
+      if (h3(x, Math.floor(y + frame * 3), 4, 3) < 0.03) return fishC[3];
+      return sea[Math.min(2, Math.floor((1 - v) * 3))];
+    };
+    for (let y = sy0; y <= sy1; y++) for (let x = sx0; x <= sx1; x++) {
+      const ex = Math.min(x - sx0, sx1 - x), ey = Math.min(y - sy0, sy1 - y);
+      if (ex + ey < 2) continue;
+      m.set(x, y, 31, scr2(x, y));
+      if (ex > 3 && ey > 3) m.set(x, y, 32, scr2(x, y));
+    }
+    for (const ky of [33, 27]) {
+      m.cylinder(36, ky, 31, 32, 2.2, knob, "z");
+      m.set(36, ky + 1, 33, chrome);
+    }
+    for (let y = 14; y <= 22; y += 2) m.box(33, y, 31, 39, y, 31, grille);
+    m.line(24, 43, 16, 13, 57, 12, chrome, 0.5);
+    m.line(24, 43, 16, 37, 56, 19, chrome, 0.5);
+    m.sphere(13, 57, 12, 1.3, chrome);
+    m.sphere(37, 56, 19, 1.3, chrome);
+    m.box(22, 43, 14, 26, 44, 18, knob);
+    lathe(m, 10, 13, 43, 47, (t) => 2.6 + t * 0.6, pot);
+    for (let k = 0; k < 5; k++) {
+      const a = k * 1.3;
+      m.line(10, 47, 13, 10 + Math.cos(a) * 4, 52 + k % 2 * 2, 13 + Math.sin(a) * 3, leaf, 0.6);
+    }
+    return { m, yaw: 30, ground: [24, 0, 18], anchors: { screen: [19, 26, 33], front: [22, 22, 46] } };
+  });
+  def("bathtub", {
+    name: "Bubble Bath",
+    biome: "aquarium",
+    tags: ["dumb", "home"],
+    decor: { price: 380, size: 2 },
+    decorOnly: true,
+    desc: "A clawfoot tub brimming with foam and suspiciously many rubber ducks.",
+    interact: {
+      verb: "Splash",
+      frames: 3,
+      idle: [0, 1],
+      idleFps: 0.9,
+      seq: [1, 2, 1, 2, 1, 2, 0],
+      fps: 5,
+      sfx: [["squeak", 0, { pitch: 1.2 }], ["squeak", 0.25, { pitch: 1 }], ["squeak", 0.5, { pitch: 1.4 }], ["bubbles", 0.1]],
+      fx: [{ at: 0.1, kind: "bubbles", from: "foam", n: 16 }, { at: 0.5, kind: "foam", from: "foam", n: 12 }],
+      fish: "gather",
+      use: { kind: "sit", at: "water" }
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(66, 44, 42);
+    const enamel = m.color("#f6aac4", { smooth: 0.75, spec: 1.1, jitter: 0.03 });
+    const white = m.color("#fbf8f4", { smooth: 0.7, spec: 0.9, jitter: 0.02 });
+    const gold = m.color("#e8b848", { spec: 1.6, smooth: 0.5 });
+    const chrome = m.color("#d0d8e2", { spec: 2.2, smooth: 0.5 });
+    const water = m.color("#7ad0f0", { emissive: 0.2, smooth: 0.4 });
+    const foam = [m.color("#ffffff", { smooth: 0.9, jitter: 0.02 }), m.color("#e8f4fc", { smooth: 0.9, jitter: 0.02 })];
+    const yel = m.color("#ffd23a", { smooth: 0.85, spec: 1.4 });
+    const beak = m.color("#ff8a2a", { smooth: 0.6 });
+    const eye = m.color("#1a1a22", { jitter: 0 });
+    const mat = [m.color("#5ab0e8", { jitter: 0.04 }), m.color("#f4f8fc", { jitter: 0.03 })];
+    const stream = m.color("#c8f4ff", { emissive: 0.5, jitter: 0 });
+    const cx = 32, cz = 20, rx = 24, rz = 12;
+    const lvl = (x, z, k = 1) => Math.pow(Math.abs(x - cx) / (rx * k), 2.6) + Math.pow(Math.abs(z - cz) / (rz * k), 2);
+    shape(m, cx - rx, 6, cz - rz, cx + rx, 23, cz + rz, (x, y, z) => lvl(x, z, 1 + (y - 6) * 4e-3) <= 1 && y >= 6 + 3.5 * Math.pow(Math.abs(x - cx) / rx, 3), (x, y) => y >= 21 ? white : enamel);
+    m.sub(() => shape(m, cx - rx, 9, cz - rz, cx + rx, 23, cz + rz, (x, y, z) => lvl(x, z, 0.86) <= 1, 1));
+    shape(m, cx - rx, 18, cz - rz, cx + rx, 18, cz + rz, (x, y, z) => lvl(x, z, 0.86) <= 1, water);
+    for (const [fx, fz] of [[cx - 17, cz - 7], [cx + 17, cz - 7], [cx - 17, cz + 7], [cx + 17, cz + 7]]) {
+      m.ellipsoid(fx, 4, fz, 2.4, 3.6, 2.4, gold);
+      m.ellipsoid(fx + Math.sign(fx - cx) * 1.5, 1, fz + Math.sign(fz - cz) * 1.2, 2.4, 1.2, 2.2, gold);
+    }
+    const N = 26 + frame * 8;
+    for (let i = 0; i < N; i++) {
+      const a = h3(i, 1, 2, 3) * Math.PI * 2, r = Math.sqrt(h3(i, 2, 2, 3)) * 0.8;
+      const x = cx + Math.cos(a) * r * rx * 0.86, z = cz + Math.sin(a) * r * rz * 0.86;
+      const y = 19 + (1 - r) * (4 + frame * 1.5) + h3(i, 3, 2, 3) * 2;
+      m.sphere(x, y, z, 1.6 + h3(i, 4, 2, 3) * 2.2 + frame * 0.2, foam[i % 2]);
+    }
+    const bobY = [0, 1, 2][frame];
+    miniDuck(m, cx - 9, 22 + bobY, cz + 3, 1, yel, beak, eye, 1);
+    miniDuck(m, cx + 6, 23 + (2 - bobY), cz - 2, 0.85, yel, beak, eye, -1);
+    miniDuck(m, cx + 1 + frame, 24 + bobY, cz + 6, 0.75, yel, beak, eye, 1);
+    m.tube([[5, 12, cz, 1.1], [5, 26, cz, 1.1], [9, 28, cz, 1.1], [12, 26, cz, 1]], chrome, 4);
+    for (const s of [-1, 1]) m.sphere(5, 23, cz + s * 2.6, 1.3, chrome);
+    if (frame === 2) m.line(12, 25, cz, 13, 19, cz, stream, 0.6);
+    m.box(cx - 10, 0, 34, cx + 10, 0, 40, (x) => mat[x % 4 < 2 ? 0 : 1]);
+    return { m, yaw: 30, ground: [cx, 0, cz + 4], anchors: { water: [cx + 2, 21, cz], foam: [cx, 26, cz] } };
+  });
+  def("traffic_cone", {
+    name: "Traffic Cone",
+    biome: "aquarium",
+    tags: ["dumb", "junk"],
+    decor: { price: 25, size: 1 },
+    decorOnly: true,
+    desc: "Marks the spot where absolutely nothing is happening.",
+    interact: {
+      verb: "Bonk",
+      frames: 3,
+      seq: [1, 2, 1, 2, 1, 0],
+      fps: 10,
+      sfx: [["boing", 0, { pitch: 0.7 }], ["mash_pop", 0.08]],
+      fx: [{ at: 0, kind: "text", from: "top", text: "BONK" }, { at: 0, kind: "burst", from: "base", n: 8, colors: ["#e8cf96", "#d8ba80"] }],
+      fish: "flee"
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(44, 46, 32);
+    const P4 = part(m, 30, 44, 30);
+    const rub = m.color("#2a2a30", { jitter: 0.04 });
+    const orange = m.color("#ff7a1a", { smooth: 0.5, spec: 0.7, jitter: 0.03 });
+    const refl = m.color("#f6f6f2", { emissive: 0.15, spec: 1.4, jitter: 0.02 });
+    rbox(P4, 3, 0, 3, 26, 2, 26, 1.4, rub);
+    lathe(P4, 15, 15, 3, 38, (t) => 9.6 - t * 8.2, (x, y) => y >= 12 && y <= 16 || y >= 23 && y <= 26 ? refl : orange);
+    P4.sphere(15, 38.5, 15, 1.6, orange);
+    const rz = [0, 13, -13][frame], pv = frame === 2 ? [27, 0, 15] : [3, 0, 15];
+    stampRot(m, P4, pv, [pv[0] + 7, 0, 16], 0, 0, rz);
+    sandMound(m, 22, 16, 15, 14, 1, 2);
+    const tip = xformPt([15, 39, 15], pv, [pv[0] + 7, 0, 16], 0, 0, rz);
+    return { m, yaw: 30, ground: [22, 0, 16], anchors: { top: tip, base: [22, 2, 26] } };
+  });
+  def("phone_booth", {
+    name: "Phone Booth",
+    biome: "aquarium",
+    tags: ["dumb", "glow", "build"],
+    decor: { price: 450, size: 2 },
+    decorOnly: true,
+    desc: "It rings. Nobody ever answers. It is always for the crab.",
+    interact: {
+      verb: "Ring",
+      frames: 3,
+      seq: [1, 0, 1, 0, 1, 0, 2, 2, 2, 2, 2, 1, 0],
+      fps: 5,
+      sfx: [["bell", 0, { pitch: 1.5 }], ["bell", 0.12, { pitch: 1.5 }], ["bell", 0.42, { pitch: 1.5 }], ["bell", 0.54, { pitch: 1.5 }], ["bell", 0.84, { pitch: 1.5 }], ["click", 1.25]],
+      fx: [{ at: 0, kind: "text", from: "top", text: "RING!" }, { at: 1.25, kind: "sparkle", from: "door", n: 6 }],
+      shake: 1.2,
+      fish: "gather",
+      use: { kind: "hide", at: "door", seq: [2, 2], fps: 2 }
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(52, 84, 66);
+    const red = m.color("#d8282a", { spec: 0.7, jitter: 0.03 });
+    const redD = m.color("#a81e24", { jitter: 0.03 });
+    const con = m.color("#a8a49c", { jitter: 0.06 });
+    const lit = frame > 0;
+    const glass = m.color(lit ? "#ffe8a0" : "#2c4a68", lit ? { emissive: 0.75, jitter: 0.02 } : { spec: 2, specPow: 10, jitter: 0.02 });
+    const sign = m.color("#f4f4ec", { emissive: 0.6, jitter: 0 });
+    const ink = m.color("#2a2a32", { jitter: 0 });
+    const chrome = m.color("#c8d0dc", { spec: 2 });
+    const lamp = m.color("#fff0b0", { emissive: 1, jitter: 0 });
+    const phone = m.color("#1e1c22", { spec: 1 });
+    const X0 = 8, X1 = 35, Z0 = 8, Z1 = 35, Y0 = 3, Y1 = 66;
+    m.box(X0 - 3, 0, Z0 - 3, X1 + 3, 2, Z1 + 3, con);
+    const panel = (u, y) => {
+      if (y < 10) return u % 9 === 0 ? redD : red;
+      if (y > 59) return y === 60 || y === 66 ? red : y >= 62 && y <= 64 && u > 3 && u < 25 && (u % 3 !== 0 || y === 63) ? ink : sign;
+      if ((u - 2) % 7 === 0 || (y - 10) % 7 === 0 || u < 2 || u > 25) return red;
+      return glass;
+    };
+    for (let y = Y0; y <= Y1; y++) for (let u = 0; u <= X1 - X0; u++) {
+      m.set(X0 + u, y, Z0, panel(u, y));
+      m.set(X0, y, Z0 + u, panel(u, y));
+      m.set(X1, y, Z0 + u, panel(u, y));
+      if (frame < 2) m.set(X0 + u, y, Z1, panel(u, y));
+    }
+    if (frame === 2) {
+      const a = 1.35, ca = Math.cos(a), sa = Math.sin(a);
+      for (let y = Y0; y <= Y1; y++) for (let d = 0; d <= X1 - X0; d += 0.5) m.set(X0 + d * ca, y, Z1 + d * sa, panel(Math.round(d), y));
+      m.box(X0 + 8, 34, Z0 + 1, X0 + 12, 42, Z0 + 3, phone);
+      m.line(X0 + 10, 34, Z0 + 3, X0 + 13, 26, Z0 + 8, phone, 0.6);
+      m.box(X0 + 12, 24, Z0 + 7, X0 + 15, 26, Z0 + 9, phone);
+    } else m.box(X0 + 3, 34, Z1 + 1, X0 + 3, 38, Z1 + 1, chrome);
+    for (const [x, z] of [[X0, Z0], [X1, Z0], [X0, Z1], [X1, Z1]]) m.box(x - 1, Y0, z - 1, x + 1, Y1 + 1, z + 1, red);
+    m.box(X0 - 2, Y1 + 1, Z0 - 2, X1 + 2, Y1 + 3, Z1 + 2, red);
+    shape(m, X0 - 1, Y1 + 4, Z0 - 1, X1 + 1, Y1 + 10, Z1 + 1, (x, y, z) => ((x - 21.5) / 15) ** 2 + ((y - Y1 - 3) / 7) ** 2 + ((z - 21.5) / 15) ** 2 <= 1, red);
+    m.box(20, Y1 + 10, 20, 23, Y1 + 13, 23, lamp);
+    m.box(19, Y1 + 14, 19, 24, Y1 + 14, 24, red);
+    return { m, yaw: 30, ground: [21.5, 0, 21.5], light: "#ffe8a0", anchors: { door: [24, 22, 40], top: [21.5, 80, 21.5] } };
+  });
+  def("mini_volcano", {
+    name: "Mini Volcano",
+    biome: "aquarium",
+    tags: ["glow", "rock"],
+    decor: { price: 480, size: 2 },
+    decorOnly: true,
+    desc: "A real, tiny, slightly dangerous volcano. Comes with its own palm tree.",
+    interact: {
+      verb: "Erupt",
+      frames: 4,
+      seq: [1, 1, 2, 3, 2, 3, 2, 3, 2, 1, 0],
+      fps: 5,
+      sfx: [["roar", 0, { pitch: 0.55, vol: 0.6 }], ["thunder", 0.3, { vol: 0.55 }], ["puff", 0.5], ["puff", 0.95]],
+      fx: [{ at: 0.1, kind: "smoke", from: "crater", n: 10 }, { at: 0.35, kind: "lava", from: "crater", n: 24 }, { at: 0.8, kind: "lava", from: "crater", n: 18 }, { at: 1.25, kind: "lava", from: "crater", n: 12 }],
+      ambient: [{ kind: "smoke", from: "crater", every: 2.8, n: 2 }],
+      shake: 0.8,
+      fish: "flee"
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(66, 62, 58);
+    const rock = ["#5a4a4c", "#4a3c42", "#6c5a54", "#7a4a3a"].map((c) => m.color(c, { jitter: 0.12, smooth: 0.4 }));
+    const ash = m.color("#3a3036", { jitter: 0.08 });
+    const glowC = frame === 0 ? m.color("#b8482a", { emissive: 0.45, jitter: 0.04 }) : m.color("#ffb03a", { emissive: 1, jitter: 0.03 });
+    const lava = m.color("#ff7a1a", { emissive: 1, jitter: 0.04 });
+    const core = m.color("#ffe46a", { emissive: 1, jitter: 0.02 });
+    const crack = m.color("#ff5a2a", { emissive: 0.9, jitter: 0 });
+    const trunk = m.color("#9a6a3a", { jitter: 0.05 });
+    const leaf = [m.color("#4ab85a", { smooth: 0.3 }), m.color("#7ad86a", { smooth: 0.3 })];
+    const cx = 34, cz = 28, seed = 11;
+    const Rat = (y, a) => 27 - y * 0.5 + (noise3(Math.cos(a) * 2 + 5, y * 0.12, Math.sin(a) * 2, seed) - 0.5) * 7;
+    shape(m, 0, 0, 0, 65, 44, 57, (x, y, z) => {
+      const dx = x - cx, dz = z - cz, r = Math.hypot(dx, dz);
+      if (y > 41) return false;
+      if (r > Rat(y, Math.atan2(dz, dx))) return false;
+      return !(y > 33 && r < (y - 33) * 0.75 + 3.5);
+    }, (x, y, z) => y > 34 && h3(x, y, z, 2) < 0.4 ? rock[3] : rock[Math.floor(fbm3(x * 0.15, y * 0.15, z * 0.15, 2, seed) * 2.99 * 1.2) % 3]);
+    shape(m, cx - 9, 33, cz - 9, cx + 9, 35, cz + 9, (x, y, z) => Math.hypot(x - cx, z - cz) < 4 + (y - 33) * 0.75, (x, y, z, p) => p ? null : glowC);
+    m.recolor((x, y, z, p) => y > 32 && Math.hypot(x + 0.5 - cx, z + 0.5 - cz) < 8 && m.exposed(x, y, z) && p !== glowC ? ash : null);
+    if (frame >= 1) surface(m, (x, y, z, p) => y < 30 && y > 3 && h3(x, y, z, 7) < 0.025 && p !== glowC ? crack : null);
+    if (frame >= 2) {
+      const reach = frame === 2 ? 22 : 6;
+      for (const a0 of [0.35, 1.05, 1.7]) {
+        const pts = [];
+        for (let y = 38; y >= reach; y -= 1) {
+          const a = a0 + Math.sin(y * 0.2 + a0 * 3) * 0.12, r = Rat(y, a) - 0.4;
+          pts.push([cx + Math.cos(a) * r, y, cz + Math.sin(a) * r]);
+        }
+        m.recolor((x, y, z, p) => {
+          if (y < reach - 1 || y > 40 || !m.exposed(x, y, z)) return null;
+          for (const q of pts) {
+            const d = Math.hypot(x + 0.5 - q[0], y + 0.5 - q[1], z + 0.5 - q[2]);
+            if (d < 2.2) return d < 1.1 ? core : lava;
+          }
+          return null;
+        });
+      }
+      const top = frame === 2 ? 58 : 52;
+      for (let i = 0; i < 12; i++) {
+        const t = i / 11, y = 40 + t * (top - 40);
+        m.sphere(cx + Math.sin(i * 2.1) * (1 + t * 3), y, cz + Math.cos(i * 1.7) * (1 + t * 2), 2.6 - t * 1.2 + h3(i, frame, 1, 2), t < 0.5 ? core : lava);
+      }
+    }
+    const px = 9, pz = 46;
+    sandMound(m, px + 2, pz - 2, 9, 8, 2, 3);
+    const tp = [[px, 1, pz, 1.4], [px + 1, 8, pz, 1.2], [px + 3, 15, pz - 1, 1.1], [px + 6, 20, pz - 1, 1]];
+    m.tube(tp, trunk, 3);
+    for (let k = 0; k < 6; k++) {
+      const a = k * 1.05;
+      m.tube([[px + 6, 21, pz - 1, 0.9], [px + 6 + Math.cos(a) * 4, 23, pz - 1 + Math.sin(a) * 4, 0.8], [px + 6 + Math.cos(a) * 8, 19, pz - 1 + Math.sin(a) * 8, 0.6]], leaf[k % 2], 3);
+    }
+    m.sphere(px + 6, 20, pz, 1.3, trunk);
+    return { m, yaw: 30, ground: [cx, 0, cz], light: "#ff9a3a", anchors: { crater: [cx, 42, cz] } };
+  });
+  def("windmill", {
+    name: "Windmill",
+    biome: "aquarium",
+    tags: ["build"],
+    decor: { price: 420, size: 2 },
+    decorOnly: true,
+    desc: "Powered entirely by current. Grinds absolutely nothing. Very peaceful.",
+    interact: {
+      verb: "Spin",
+      frames: 4,
+      idle: [0, 1, 2, 3],
+      idleFps: 3,
+      seq: Array.from({ length: 24 }, (_, i) => i % 4),
+      fps: 16,
+      sfx: [["travel_whoosh", 0, { vol: 0.35, pitch: 1.3 }], ["bubbles", 0.3]],
+      fx: [{ at: 0.1, kind: "bubbles", from: "hub", n: 12 }, { at: 0.7, kind: "bubbles", from: "hub", n: 10 }],
+      fish: "gather",
+      use: { kind: "orbit", at: "hub" }
+    }
+  }, ({ frame, rng: rng2 }) => {
+    const m = new VoxelModel(64, 98, 48);
+    const plaster = m.color("#f2e8d4", { jitter: 0.05, smooth: 0.3 });
+    const plasterD = m.color("#dccfb6", { jitter: 0.05 });
+    const stone = m.color("#9a948c", { jitter: 0.1 });
+    const thatch = [m.color("#8a5a34", { jitter: 0.06 }), m.color("#6e4428", { jitter: 0.06 })];
+    const wood = m.color("#7a4a2a", { jitter: 0.04 });
+    const lattice = m.color("#c89a60", { jitter: 0.03 });
+    const cloth = m.color("#f8f0de", { jitter: 0.03, smooth: 0.2 });
+    const win = m.color("#ffd86a", { emissive: 0.8, jitter: 0.02 });
+    const tul = ["#ff4a5a", "#ffd84a", "#ff8ad0"].map((c) => m.color(c, { smooth: 0.6 }));
+    const stem = m.color("#4aa84a", { jitter: 0 });
+    const cx = 32, cz = 20;
+    sandMound(m, cx, cz + 6, 26, 20, 2, 5);
+    const oct = (x, z, r) => {
+      const dx = Math.abs(x - cx), dz = Math.abs(z - cz);
+      return Math.max(dx, dz, (dx + dz) * 0.7071) <= r;
+    };
+    shape(m, cx - 14, 0, cz - 14, cx + 14, 58, cz + 14, (x, y, z) => oct(x, z, 12.5 - y * 0.07), (x, y) => y < 6 ? stone : y % 6 === 0 ? plasterD : plaster);
+    m.box(cx - 3, 6, cz + 11, cx + 2, 15, cz + 13, wood);
+    m.box(cx - 2, 16, cz + 11, cx + 1, 16, cz + 12, wood);
+    for (const wy of [28, 42]) {
+      m.box(cx - 2, wy, cz + 9, cx + 1, wy + 4, cz + 11, wood);
+      m.box(cx - 1, wy + 1, cz + 11, cx, wy + 3, cz + 11, win);
+    }
+    m.box(cx + 9, 34, cz - 1, cx + 10, 37, cz + 1, win);
+    shape(m, cx - 12, 56, cz - 12, cx + 12, 72, cz + 12, (x, y, z) => ((x - cx) / 11) ** 2 + ((y - 56) / 15) ** 2 + ((z - cz) / 11) ** 2 <= 1, (x, y) => thatch[(y >> 1) % 2]);
+    const hy = 62, hz = cz + 13;
+    m.cylinder(cx, hy, cz + 8, hz + 1, 2.4, wood, "z");
+    m.cylinder(cx, hy, hz + 2, hz + 2, 1.6, lattice, "z");
+    for (let k = 0; k < 4; k++) {
+      const a = frame * (Math.PI / 8) + k * (Math.PI / 2) + 0.3;
+      const ca = Math.cos(a), sa = Math.sin(a);
+      m.line(cx, hy, hz + 2, cx + ca * 31, hy + sa * 31, hz + 2, wood, 0.7);
+      for (let s = 6; s <= 30; s += 0.5) for (let w = 0.5; w <= 6.5; w += 0.5) {
+        const x = cx + ca * s - sa * w, y = hy + sa * s + ca * w;
+        const lat = Math.abs(s % 3) < 0.5 || w < 1 || w > 6;
+        m.set(x, y, hz + 1, lat ? lattice : cloth);
+      }
+    }
+    for (let i = 0; i < 7; i++) {
+      const a = 0.4 + i * 0.42, r = 17 + rng2.float(-1, 2);
+      const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
+      m.line(x, 1, z, x, 5, z, stem, 0);
+      m.box(x - 0.5, 5, z - 0.5, x + 0.5, 6, z + 0.5, tul[i % 3]);
+    }
+    return { m, yaw: 30, ground: [cx, 0, cz], anchors: { hub: [cx, hy, hz + 3], top: [cx, 74, cz] } };
+  });
+  def("drawbridge_keep", {
+    name: "Drawbridge Keep",
+    biome: "aquarium",
+    tags: ["build", "glow", "swimthrough"],
+    decor: { price: 900, size: 3 },
+    decorOnly: true,
+    desc: "A proper stone keep with a moat and a working drawbridge. Fish only.",
+    interact: {
+      verb: "Lower bridge",
+      frames: 3,
+      seq: [1, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0],
+      fps: 3,
+      sfx: [["treasure_open", 0, { pitch: 0.7 }], ["box_close", 0.62, { pitch: 0.7 }], ["ui_unlock", 0.9], ["box_close", 3.4, { pitch: 0.8 }]],
+      fx: [{ at: 0.65, kind: "burst", from: "gate", n: 10, colors: ["#c8b090", "#e8d8b0"] }, { at: 0.95, kind: "confetti", from: "top", n: 20 }],
+      fish: "gather",
+      use: { kind: "hide", at: "gate", seq: [1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1], fps: 3 }
+    }
+  }, ({ frame, rng: rng2 }) => {
+    const m = new VoxelModel(86, 86, 74);
+    const st = CASTLE_STONE.map((c) => m.color(c, { jitter: 0.08 }));
+    const mortar = m.color("#7c7492", { jitter: 0.04 });
+    const tex2 = masonry(m, st, mortar);
+    const dark = m.color("#1e1828", { jitter: 0.02 });
+    const water = m.color("#3a9ad0", { emissive: 0.12, smooth: 0.5, jitter: 0.03 });
+    const plank = [m.color("#8a5634", { jitter: 0.06 }), m.color("#6e4428", { jitter: 0.06 })];
+    const iron = m.color("#3a3a44", { spec: 1, jitter: 0.03 });
+    const chainC = m.color("#9aa0ac", { spec: 1.2 });
+    const banner = m.color("#d83a4a", { jitter: 0.04 }), gold = m.color("#f2c84a", { spec: 1.2 });
+    const torch = m.color("#ffb84a", { emissive: 1, jitter: 0 });
+    const slit = m.color("#ffd86a", { emissive: 0.8, jitter: 0 });
+    const rk = reefRock(m, rng2);
+    facetRock(m, rng2, 43, 3, 34, 42, 7, 34, rk[0], 16);
+    stoneTex(m, rk, 6);
+    m.sub(() => m.box(24, 3, 54, 62, 9, 66));
+    m.box(24, 3, 54, 62, 4, 66, water);
+    m.box(12, 6, 12, 74, 34, 52, tex2);
+    for (let x = 12; x <= 74; x++) for (const z of [12, 52]) if (x % 4 < 2) m.box(x, 35, z, x, 37, z, st[2]);
+    for (let z = 12; z <= 52; z++) for (const x of [12, 74]) if (z % 4 < 2) m.box(x, 35, z, x, 37, z, st[2]);
+    for (const tx of [22, 64]) {
+      m.cylinder(tx, 52, 4, 48, 8, tex2);
+      m.cylinder(tx, 52, 48, 50, 9.4, st[2]);
+      for (let k = 0; k < 10; k++) if (k % 2) {
+        const a = k / 10 * Math.PI * 2;
+        m.box(tx + Math.cos(a) * 8.6, 51, 52 + Math.sin(a) * 8.6, tx + Math.cos(a) * 8.6, 53, 52 + Math.sin(a) * 8.6, st[2]);
+      }
+      m.box(tx - 1, 30, 60, tx, 34, 60, slit);
+      m.box(tx - 3, 22, 61, tx + 2, 42, 61, (x, y) => Math.abs(x - tx + 0.5) < 1 ? gold : banner);
+      for (let x = tx - 3; x <= tx + 2; x++) m.set(x, 21 - (Math.abs(x - tx + 0.5) < 1.5 ? 1 : 0), 61, banner);
+    }
+    m.box(30, 34, 18, 56, 60, 38, tex2);
+    for (let x = 30; x <= 56; x++) for (const z of [18, 38]) if (x % 4 < 2) m.box(x, 61, z, x, 63, z, st[2]);
+    m.cylinder(43, 28, 60, 74, 6, tex2);
+    m.cone(43, 28, 75, 84, 7.5, 0.5, (x, y) => y % 3 ? banner : gold);
+    for (const wx of [36, 48]) m.box(wx, 46, 39, wx + 1, 51, 39, slit);
+    m.sub(() => {
+      m.box(36, 6, 46, 50, 24, 53);
+      m.cylinder(43, 50, 24, 27, 7, 0, "y");
+    });
+    m.box(36, 6, 46, 50, 27, 46, dark);
+    const pcY = frame === 2 ? 21 : 6;
+    for (let x = 37; x <= 49; x += 3) m.box(x, pcY, 51, x, 26, 51, iron);
+    for (let y = pcY + 2; y <= 26; y += 4) m.box(36, y, 51, 50, y, 51, iron);
+    const ang = [Math.PI / 2, Math.PI / 4, 0][frame], cs = Math.cos(ang), sn = Math.sin(ang);
+    const L = 14;
+    for (let u = 0; u <= L; u += 0.5) for (let t = 0; t <= 1.5; t += 0.5) for (let x = 36; x <= 50; x++) {
+      const y = 6 + u * sn + t * cs, z = 53 + u * cs - t * sn;
+      m.set(x, y, z, (Math.abs(u - 2) < 0.6 || Math.abs(u - 12) < 0.6) && t > 1 ? iron : plank[x % 3 === 0 ? 1 : 0]);
+    }
+    const ex = 6 + L * sn, ez = 53 + L * cs;
+    m.line(35, 26, 53, 36, ex, ez, chainC, 0.5);
+    m.line(51, 26, 53, 50, ex, ez, chainC, 0.5);
+    for (const tx of [32, 54]) {
+      m.box(tx, 18, 55, tx, 21, 55, plank[1]);
+      m.box(tx, 22, 55, tx, 23, 55, torch);
+    }
+    moss(m, rng2, 3, MOSS, 0.3, 0.2, [...rk]);
+    return { m, yaw: 30, vs: 1.5, ground: [43, 0, 38], light: "#ffd86a", anchors: { gate: [43, 12, 60], top: [43, 84, 28] } };
+  });
+  def("dance_robot", {
+    name: "Disco Robot",
+    biome: "aquarium",
+    tags: ["machine", "glow", "party"],
+    decor: { price: 340, size: 1 },
+    decorOnly: true,
+    desc: "A wind-up tin robot with exactly four dance moves. All of them bangers.",
+    interact: {
+      verb: "Dance",
+      frames: 4,
+      seq: [1, 2, 1, 2, 3, 0, 3, 0, 1, 2, 1, 2, 3, 0],
+      fps: 6,
+      sfx: [["glitch", 0, { vol: 0.35 }], ["click", 0.17], ["click", 0.5], ["click", 0.83], ["click", 1.17], ["chirp", 0.33, { pitch: 0.8 }], ["chirp", 1, { pitch: 1 }], ["chirp", 1.67, { pitch: 1.2 }]],
+      fx: [{ at: 0.2, kind: "notes", from: "head", n: 2 }, { at: 1, kind: "notes", from: "head", n: 2 }, { at: 1.6, kind: "sparkle", from: "chest", n: 6 }],
+      fish: "dance",
+      use: { kind: "dance", at: "chest", seq: [1, 2, 1, 2, 3, 0, 3, 0], fps: 4 }
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(50, 68, 32);
+    const tin = m.color("#d8463a", { spec: 1.3, specPow: 14, smooth: 0.3, jitter: 0.03 });
+    const tinB = m.color("#3a7ad8", { spec: 1.3, specPow: 14, smooth: 0.3, jitter: 0.03 });
+    const steel = m.color("#b8c0cc", { spec: 1.8, smooth: 0.6 });
+    const dark = m.color("#2a2a34", { jitter: 0.03 });
+    const gold = m.color("#f2c84a", { spec: 1.2 });
+    const eyeC = m.color(frame % 2 ? "#ff6ad8" : "#5af4ff", { emissive: 1, jitter: 0 });
+    const lights = ["#ff4a5a", "#ffd84a", "#5aff8a", "#5ab8ff"].map((c, i) => m.color(c, { emissive: (i + frame) % 2 ? 1 : 0.2, jitter: 0 }));
+    const ant = m.color("#ff4a4a", { emissive: frame % 2 ? 1 : 0.4 });
+    const cx = 25, cz = 15;
+    const dy = frame === 3 ? 3 : 0;
+    for (const fx of [18, 32]) {
+      m.box(fx - 4, 0, cz - 5, fx + 3, 3, cz + 7, dark);
+      for (let y = 4; y < 18 - dy; y++) m.cylinder(fx - 0.5, cz + 1, y, y, y % 2 ? 2.4 : 2, steel);
+    }
+    rbox(m, 12, 18 - dy, 7, 37, 40 - dy, 24, 2.5, tin);
+    m.box(15, 22 - dy, 25, 34, 36 - dy, 25, steel);
+    for (let i = 0; i < 4; i++) m.box(17 + i * 4, 32 - dy, 26, 18 + i * 4, 33 - dy, 26, lights[i]);
+    for (const kx of [19, 29]) m.cylinder(kx, 27 - dy, 26, 26, 2.2, dark, "z");
+    m.set(19, 28 - dy, 27, gold);
+    m.set(30, 27 - dy, 27, gold);
+    for (let y = 23; y <= 25; y += 2) m.box(16, y - dy, 26, 33, y - dy, 26, dark);
+    const poses = [[[-3, 21, 4], [3, 21, 4]], [[-3, 21, 4], [6, 54, 3]], [[-6, 54, 3], [3, 21, 4]], [[-8, 52, 4], [8, 52, 4]]];
+    for (const s of [0, 1]) {
+      const sx = s ? 39.5 : 9.5, sy = 36 - dy;
+      const [hx, hy, hz] = poses[frame][s];
+      const hand = [sx + hx, hy - dy * 0.5, cz + hz];
+      const elbow = [(sx + hand[0]) / 2 + (s ? 2 : -2), (sy + hand[1]) / 2, cz + 2];
+      m.sphere(sx, sy, cz, 3, steel);
+      m.line(sx, sy, cz, elbow[0], elbow[1], elbow[2], steel, 1.9);
+      m.line(elbow[0], elbow[1], elbow[2], hand[0], hand[1], hand[2], steel, 1.7);
+      m.sphere(elbow[0], elbow[1], elbow[2], 2.1, dark);
+      m.box(hand[0] - 1.5, hand[1] - 1.5, hand[2] - 1, hand[0] + 1.5, hand[1] + 1.5, hand[2] + 1, dark);
+    }
+    m.cylinder(cx, cz + 0.5, 40 - dy, 43 - dy, 2.2, steel);
+    const H = part(m, 24, 24, 20);
+    rbox(H, 2, 0, 2, 21, 13, 17, 2, tinB);
+    for (const ex of [7, 15]) {
+      H.cylinder(ex, 8, 17, 18, 2.4, steel, "z");
+      H.cylinder(ex, 8, 18, 18, 1.5, eyeC, "z");
+    }
+    for (let x = 7; x <= 15; x += 2) H.box(x, 3, 18, x, 4, 18, dark);
+    for (const ex of [1, 22]) H.cylinder(7, 9, ex === 1 ? 0 : 22, ex === 1 ? 1 : 23, 2, steel, "x");
+    H.line(11, 13, 9, 11, 19, 9, steel, 0);
+    H.sphere(11, 20, 9, 1.6, ant);
+    const tilt = [0, 9, -9, 0][frame];
+    stampRot(m, H, [11.5, 0, 9.5], [cx, 43 - dy, cz], 0, 0, tilt);
+    return { m, yaw: 28, ground: [cx, 0, cz + 1], light: "#5af4ff", anchors: { head: [cx, 62, cz], chest: [cx, 28, cz + 10] } };
+  });
+  def("ufo", {
+    name: "Little UFO",
+    biome: "aquarium",
+    tags: ["glow", "machine"],
+    decor: { price: 650, size: 2 },
+    decorOnly: true,
+    desc: "Crash-landed. The pilot refuses to leave. Occasionally borrows a fish.",
+    interact: {
+      verb: "Beam up",
+      frames: 4,
+      idle: [0, 1],
+      idleFps: 2,
+      seq: [2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 0, 1],
+      fps: 4,
+      sfx: [["sonar", 0], ["glitch", 0.3, { vol: 0.45 }], ["magic", 1.2], ["sonar", 2, { pitch: 1.3 }]],
+      fx: [{ at: 0.2, kind: "rise", from: "beam", n: 14, colors: ["#b8ffd0", "#ffffff"] }, { at: 1, kind: "rise", from: "beam", n: 12, colors: ["#b8ffd0", "#ffffff"] }, { at: 1.8, kind: "rise", from: "beam", n: 10, colors: ["#b8ffd0", "#ffffff"] }],
+      fish: "abduct",
+      use: { kind: "orbit", at: "dome" }
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(64, 58, 64);
+    const hull = m.color("#c8d0dc", { spec: 2, specPow: 12, smooth: 0.8, jitter: 0.02 });
+    const hullD = m.color("#7a8496", { smooth: 0.7, jitter: 0.02 });
+    const glass = m.color("#9ae8ff", { spec: 2.5, specPow: 10, smooth: 0.9, light: 0.2, jitter: 0.01 });
+    const alien = m.color("#7ad84a", { smooth: 0.6, light: 0.1 });
+    const eyeC = m.color("#141822", { jitter: 0 });
+    const lc = [m.color("#ff5a8a", { emissive: 1, jitter: 0 }), m.color("#5affd8", { emissive: 1, jitter: 0 }), m.color("#ffe46a", { emissive: 1, jitter: 0 })];
+    const beamOn = frame >= 2;
+    const emit = m.color("#c8ffe0", { emissive: beamOn ? 1 : 0.4, jitter: 0 });
+    const beam = m.color("#7affb8", { emissive: 0.7, jitter: 0 });
+    const beam2 = m.color("#e8fff0", { emissive: 1, jitter: 0 });
+    const leg = m.color("#8a94a6", { spec: 1 });
+    const scorch = m.color("#b89a6a", { jitter: 0.06 });
+    const cx = 32, cz = 32, cy = 30;
+    sandMound(m, cx, cz, 28, 26, 2, 7);
+    m.recolor((x, y, z, p) => {
+      const r = Math.hypot(x + 0.5 - cx, z + 0.5 - cz);
+      return y <= 3 && r > 15 && r < 18 && m.exposed(x, y, z) ? scorch : null;
+    });
+    for (const a of [Math.PI / 2, Math.PI * 7 / 6, Math.PI * 11 / 6]) {
+      m.line(cx + Math.cos(a) * 13, cy - 3, cz + Math.sin(a) * 13, cx + Math.cos(a) * 19, 2, cz + Math.sin(a) * 19, leg, 0.9);
+      m.cylinder(cx + Math.cos(a) * 19, cz + Math.sin(a) * 19, 1, 2, 2.2, leg);
+    }
+    shape(m, cx - 27, cy - 6, cz - 27, cx + 27, cy + 6, cz + 27, (x, y, z) => {
+      const r = Math.hypot(x - cx, z - cz) / 26.5;
+      return r <= 1 && Math.abs(y - cy) <= 5.4 * Math.pow(1 - r * r, 0.7) + 0.6;
+    }, (x, y) => y < cy ? hullD : hull);
+    for (let k = 0; k < 14; k++) {
+      const a = k / 14 * Math.PI * 2;
+      m.box(cx + Math.cos(a) * 24.5, cy, cz + Math.sin(a) * 24.5, cx + Math.cos(a) * 25.5, cy + 1, cz + Math.sin(a) * 25.5, lc[(k + frame) % 3]);
+    }
+    m.sphere(cx, cy + 3, cz, 10, (x, y, z) => {
+      if (y < cy + 3) return null;
+      const front = z + 0.5 - cz > 5;
+      if (front && Math.abs(x + 0.5 - cx) < 4.5 && y > cy + 5 && y < cy + 13) {
+        if ((y === cy + 10 || y === cy + 9) && (Math.abs(x + 0.5 - cx - 2) < 1.2 || Math.abs(x + 0.5 - cx + 2) < 1.2)) return eyeC;
+        return alien;
+      }
+      return glass;
+    });
+    m.cylinder(cx, cz, cy + 2, cy + 3, 11, hull);
+    m.cylinder(cx, cz, cy - 6, cy - 5, 4.5, emit);
+    if (beamOn) {
+      for (let y = 3; y <= cy - 7; y++) {
+        const R = 4.5 + (cy - 7 - y) * 0.42;
+        shape(m, cx - R - 1, y, cz - R - 1, cx + R + 1, y, cz + R + 1, (x, yy, z) => {
+          const r = Math.hypot(x - cx, z - cz);
+          return r <= R && r > R - 1.3 && (Math.floor(x) + Math.floor(z) * 2 + y + frame) % 3 === 0;
+        }, (x, yy, z) => (x + z + y) % 7 === 0 ? beam2 : beam);
+      }
+    }
+    return { m, yaw: 30, ground: [cx, 0, cz], light: "#9affd8", anchors: { dome: [cx, cy + 12, cz], beam: [cx, 6, cz], under: [cx, cy - 7, cz] } };
+  });
+  def("pizza_slice", {
+    name: "Giant Pizza Slice",
+    biome: "aquarium",
+    tags: ["dumb", "food"],
+    decor: { price: 120, size: 1 },
+    decorOnly: true,
+    desc: "Pepperoni, extra cheese, extra soggy. Regrows overnight.",
+    interact: {
+      verb: "Nom",
+      frames: 3,
+      seq: [1, 1, 1, 2, 2, 2, 2, 0],
+      fps: 4,
+      sfx: [["worm_squish", 0], ["gulp", 0.75], ["grunt", 1.1, { pitch: 1.4 }]],
+      fx: [{ at: 0.75, kind: "food", from: "tip", n: 6 }, { at: 0.75, kind: "burst", from: "tip", n: 10, colors: ["#ffd060", "#e8c890", "#c83a2a"] }],
+      fish: "gather"
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(60, 30, 54);
+    const plate = m.color("#f8f8f4", { smooth: 0.6, spec: 0.6 });
+    const plateR = m.color("#d8dce4", { smooth: 0.6 });
+    const dough = m.color("#e8c890", { jitter: 0.05 });
+    const crust = m.color("#d8954a", { jitter: 0.08, smooth: 0.5 });
+    const bake = m.color("#a8642a", { jitter: 0.06 });
+    const sauce = m.color("#d8402a", { jitter: 0.04 });
+    const cheese = m.color("#ffd060", { jitter: 0.05, smooth: 0.4 });
+    const melt = m.color("#ffe8a0", { jitter: 0.03, smooth: 0.4, spec: 0.6 });
+    const pep = m.color("#c8382a", { jitter: 0.05, smooth: 0.5 });
+    const pepD = m.color("#8a2a20", { jitter: 0.03 });
+    const olive = m.color("#2a2228", { spec: 1 });
+    const green = m.color("#4aa83a", { jitter: 0.05 });
+    const A = [7, 46], dir = [Math.SQRT1_2, -Math.SQRT1_2], LEN = 46, HALF2 = 0.36;
+    const polar = (x, z) => {
+      const dx = x - A[0], dz = z - A[1];
+      const r = Math.hypot(dx, dz);
+      return [r, Math.atan2(dx * dir[1] - dz * dir[0], dx * dir[0] + dz * dir[1])];
+    };
+    lathe(m, 30, 26, 0, 1, () => 25, (x, y) => y === 1 ? plate : plateR);
+    m.recolor((x, y, z, p) => p === plate && Math.hypot(x + 0.5 - 30, z + 0.5 - 26) > 22 ? plateR : null);
+    const bite = frame === 2;
+    const lift = (r) => frame === 1 && r < 14 ? (14 - r) * 0.45 : 0;
+    const hgt = (r) => 3 + r * 0.06;
+    for (let x = 0; x < 60; x++) for (let z = 0; z < 54; z++) {
+      const [r, a] = polar(x + 0.5, z + 0.5);
+      if (r > LEN + 3 || Math.abs(a) > HALF2) continue;
+      if (bite && Math.hypot(r - 1, a * 22) < 11) continue;
+      const y0 = Math.round(2 + lift(r)), top = Math.round(hgt(r) + lift(r));
+      if (r > LEN - 3) {
+        const ch = top + 3 + Math.round(Math.sin((r - LEN + 3) / 6 * Math.PI) * 3);
+        for (let y = y0; y <= ch; y++) m.set(x, y, z, h3(x, y, z, 4) < 0.15 ? bake : crust);
+        continue;
+      }
+      for (let y = y0; y < top; y++) m.set(x, y, z, Math.abs(a) > HALF2 - 0.04 ? sauce : dough);
+      m.set(x, top, z, h3(x, 0, z, 6) < 0.18 ? melt : cheese);
+    }
+    for (const [r, a] of [[12, 0.05], [22, -0.18], [24, 0.2], [33, 0.02], [36, -0.24], [38, 0.24]]) {
+      if (bite && r < 10) continue;
+      const x = A[0] + (dir[0] * Math.cos(a) - dir[1] * Math.sin(a)) * r, z = A[1] + (dir[1] * Math.cos(a) + dir[0] * Math.sin(a)) * r;
+      const y = Math.round(hgt(r) + lift(r)) + 1;
+      m.cylinder(x, z, y, y, 3.4, (xx, yy, zz) => h3(xx, yy, zz, 2) < 0.18 ? pepD : pep);
+    }
+    for (const [r, a, c] of [[17, -0.1, olive], [29, 0.14, green], [30, -0.1, olive], [41, -0.05, green], [18, 0.2, green]]) {
+      const x = A[0] + (dir[0] * Math.cos(a) - dir[1] * Math.sin(a)) * r, z = A[1] + (dir[1] * Math.cos(a) + dir[0] * Math.sin(a)) * r;
+      const y = Math.round(hgt(r)) + 1;
+      if (c === olive) torus(m, x, y, z, 1.3, 0.6, olive);
+      else m.box(x - 1, y, z, x + 1, y, z, green);
+    }
+    if (frame === 1) for (const k of [-1, 0, 1]) m.line(A[0] + 10, 4 + k * 0.5, A[1] - 8 + k * 2, A[0] + 16, 3, A[1] - 13 + k * 2, melt, 0.5);
+    for (const [r, s] of [[20, 1], [32, -1], [27, 1]]) {
+      const a = HALF2 * s;
+      const x = A[0] + (dir[0] * Math.cos(a) - dir[1] * Math.sin(a)) * r, z = A[1] + (dir[1] * Math.cos(a) + dir[0] * Math.sin(a)) * r;
+      m.box(x, 2, z, x, Math.round(hgt(r)), z, cheese);
+    }
+    return { m, yaw: 30, pitch: 32, ground: [30, 0, 26], anchors: { tip: [A[0] + 6, 8, A[1] - 6], center: [30, 8, 26] } };
+  });
+  def("burger", {
+    name: "Mega Burger",
+    biome: "aquarium",
+    tags: ["dumb", "food"],
+    decor: { price: 130, size: 1 },
+    decorOnly: true,
+    desc: "Triple-stacked, structurally unsound, and it talks. Well, it chomps.",
+    interact: {
+      verb: "Chomp",
+      frames: 3,
+      seq: [1, 2, 1, 2, 1, 2, 0],
+      fps: 7,
+      sfx: [["gulp", 0, { pitch: 0.8 }], ["boing", 0.3, { pitch: 1.2 }], ["gulp", 0.6]],
+      fx: [{ at: 0.3, kind: "food", from: "top", n: 5 }, { at: 0.3, kind: "burst", from: "top", n: 6, colors: ["#fff0c8", "#e8a050"] }],
+      fish: "gather"
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(50, 64, 50);
+    const bun = m.color("#e0a050", { smooth: 0.65, spec: 0.4, jitter: 0.03 });
+    const bunT = m.color("#e8943a", { smooth: 0.7, spec: 0.9, jitter: 0.03 });
+    const bunD = m.color("#c08038", { smooth: 0.6, jitter: 0.03 });
+    const patty = m.color("#5a3020", { jitter: 0.1 });
+    const char = m.color("#3a2018", { jitter: 0.05 });
+    const cheese = m.color("#ffc030", { smooth: 0.4, jitter: 0.03 });
+    const lettuce = [m.color("#6ac040", { jitter: 0.05 }), m.color("#8ad860", { jitter: 0.05 })];
+    const tomato = m.color("#e04030", { smooth: 0.5, jitter: 0.04 });
+    const seed = m.color("#fff0c8", { jitter: 0 });
+    const pick2 = m.color("#d8b078", { jitter: 0 });
+    const flag = m.color("#ff4a5a", { jitter: 0 });
+    const cx = 25, cz = 25;
+    lathe(m, cx, cz, 0, 6, (t) => 16 + Math.sin(t * Math.PI * 0.5) * 2, (x, y) => y < 2 ? bunD : bun);
+    lathe(m, cx, cz, 7, 12, () => 19, (x, y, z) => y === 12 && (x + z) % 5 === 0 ? char : h3(x, y, z, 3) < 0.25 ? char : patty);
+    m.recolor((x, y, z, p) => p === patty && Math.hypot(x + 0.5 - cx, z + 0.5 - cz) > 18.2 + noise3(x * 0.4, y, z * 0.4, 3) ? 0 : null);
+    shape(m, cx - 22, 11, cz - 22, cx + 22, 13, cz + 22, (x, y, z) => {
+      const d = Math.abs(x - cx) + Math.abs(z - cz);
+      if (d > 21) return false;
+      return d > 18 ? Math.floor(y) === 11 : Math.floor(y) === 13;
+    }, cheese);
+    shape(m, cx - 22, 14, cz - 22, cx + 22, 16, cz + 22, (x, y, z) => {
+      const a = Math.atan2(z - cz, x - cx), r = Math.hypot(x - cx, z - cz);
+      return r < 20.5 + Math.sin(a * 9) * 1.2 && Math.floor(y) === 14 + (Math.sin(a * 9) > 0.3 && r > 17 ? 1 : 0);
+    }, (x, y, z) => lettuce[h3(x, y, z, 5) < 0.4 ? 1 : 0]);
+    lathe(m, cx, cz, 16, 17, () => 17, tomato);
+    const T = part(m, 40, 30, 40);
+    shape(T, 0, 0, 0, 39, 18, 39, (x, y, z) => ((x - 20) / 18) ** 2 + (y / 15) ** 2 + ((z - 20) / 18) ** 2 <= 1, (x, y) => y < 2 ? bunD : bunT);
+    for (let i = 0; i < 26; i++) {
+      const a = i * 2.4, r = Math.sqrt((i + 0.5) / 26) * 15;
+      const x = 20 + Math.cos(a) * r, z = 20 + Math.sin(a) * r;
+      let y = 0;
+      while (y < 18 && T.get(Math.floor(x), y + 1, Math.floor(z))) y++;
+      T.set(x, y + 1, z, seed);
+    }
+    T.line(20, 14, 20, 21, 25, 20, pick2, 0);
+    T.box(22, 21, 20, 26, 24, 20, flag);
+    const lift = [0, 6, 11][frame], tilt = [0, -6, -16][frame];
+    stampRot(m, T, [20, 0, 4], [cx, 18 + lift, cz - 16], tilt, 0, 0);
+    return { m, yaw: 30, ground: [cx, 0, cz], anchors: { top: [cx, 34 + lift, cz] } };
+  });
+  def("cactus_pot", {
+    name: "Potted Cactus",
+    biome: "aquarium",
+    tags: ["dumb", "plant"],
+    decor: { price: 85, size: 1 },
+    decorOnly: true,
+    desc: "Smiles a lot. Hugs are discouraged.",
+    interact: {
+      verb: "Pet (ouch)",
+      frames: 3,
+      seq: [1, 1, 2, 2, 2, 2, 2, 0],
+      fps: 4,
+      sfx: [["puff", 0, { pitch: 1.3 }], ["sparkle", 0.5]],
+      fx: [{ at: 0.05, kind: "text", from: "top", text: "OUCH" }, { at: 0.5, kind: "burst", from: "top", n: 10, colors: ["#ff7ab0", "#ffd0e8", "#fff6c8"] }, { at: 0.55, kind: "hearts", from: "top", n: 2 }],
+      fish: "flee"
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(40, 66, 38);
+    const terra = m.color("#d0704a", { smooth: 0.5, jitter: 0.04 });
+    const terraL = m.color("#e48a5e", { smooth: 0.5, jitter: 0.04 });
+    const teal = m.color("#3ab8a8", { jitter: 0.02 });
+    const soil = m.color("#4a3020", { jitter: 0.1 });
+    const pebble = m.color("#e8e0d0", { jitter: 0.05 });
+    const g = [m.color("#4a9a48", { jitter: 0.04, smooth: 0.5 }), m.color("#7ac860", { jitter: 0.04, smooth: 0.5 })];
+    const spine = m.color("#fff6c8", { jitter: 0 });
+    const eye = m.color("#1e2a1e", { jitter: 0 });
+    const blush = m.color("#ff9aa8", { jitter: 0 });
+    const petal = [m.color("#ff7ab0", { smooth: 0.6 }), m.color("#ffb0d4", { smooth: 0.6 })];
+    const yel = m.color("#ffe04a", { smooth: 0.5 });
+    const cx = 20, cz = 18;
+    lathe(m, cx, cz, 0, 13, (t) => 9.4 + t * 2, terra);
+    lathe(m, cx, cz, 14, 17, () => 12.6, terraL);
+    m.recolor((x, y, z, p) => p === terra && y >= 5 && y <= 8 && m.exposed(x, y, z) && (Math.floor(Math.atan2(z - cz, x - cx) * 6) + y) % 2 === 0 ? teal : null);
+    m.sub(() => m.cylinder(cx, cz, 16, 17, 11));
+    m.cylinder(cx, cz, 16, 16, 11.2, (x, y, z) => h3(x, y, z, 3) < 0.08 ? pebble : soil);
+    const col = (x, y, z) => Math.cos(Math.atan2(z + 0.5 - cz, x + 0.5 - cx) * 8) > 0.55 ? g[1] : g[0];
+    lathe(m, cx, cz, 17, 49, () => 5.6, col);
+    m.sphere(cx, 49, cz, 5.6, col);
+    const armL = frame ? [[cx - 5, 30, cz, 3], [cx - 11, 31, cz, 3], [cx - 12, 37, cz, 3], [cx - 11, 45, cz + 1, 2.8]] : [[cx - 5, 30, cz, 3], [cx - 11, 30, cz, 3], [cx - 11, 36, cz, 3], [cx - 11, 42, cz, 2.8]];
+    const armR = frame ? [[cx + 5, 36, cz, 3], [cx + 10, 39, cz, 3], [cx + 14, 46, cz + 1, 2.8], [cx + 15, 52, cz + 2, 2.6]] : [[cx + 5, 36, cz, 3], [cx + 11, 36, cz, 3], [cx + 11, 42, cz, 3], [cx + 11, 47, cz, 2.8]];
+    m.tube(armL, col, 3);
+    m.tube(armR, col, 3);
+    for (const a of [armL, armR]) m.sphere(a[3][0], a[3][1], a[3][2], a[3][3], col);
+    surface(m, (x, y, z, p) => p === g[1] && y > 18 && y % 3 === 0 && h3(x, y, z, 8) < 0.5 ? spine : null);
+    const fz = cz + 5;
+    m.box(cx - 3, 40, fz, cx - 2, 41, fz + 1, eye);
+    m.box(cx + 2, 40, fz, cx + 3, 41, fz + 1, eye);
+    m.box(cx - 1, 37, fz + 1, cx + 1, 37, fz + 1, eye);
+    m.set(cx - 2, 38, fz + 1, eye);
+    m.set(cx + 2, 38, fz + 1, eye);
+    m.set(cx - 4, 38, fz, blush);
+    m.set(cx + 4, 38, fz, blush);
+    if (frame === 1) m.sphere(cx, 56, cz, 1.8, petal[0]);
+    if (frame === 2) {
+      for (let k = 0; k < 6; k++) {
+        const a = k / 6 * Math.PI * 2;
+        m.ellipsoid(cx + Math.cos(a) * 3, 56, cz + Math.sin(a) * 3, 2.4, 1.2, 2.4, petal[k % 2]);
+      }
+      m.sphere(cx, 57, cz, 1.5, yel);
+    }
+    return { m, yaw: 28, ground: [cx, 0, cz], anchors: { top: [cx, 58, cz] } };
+  });
+  def("snowman", {
+    name: "Snowman",
+    biome: "aquarium",
+    tags: ["dumb"],
+    decor: { price: 150, size: 1 },
+    decorOnly: true,
+    desc: "Should have melted ages ago. Refuses on principle.",
+    interact: {
+      verb: "Say hi",
+      frames: 3,
+      seq: [1, 2, 1, 2, 1, 0],
+      fps: 5,
+      sfx: [["chirp", 0, { pitch: 1.1 }], ["sparkle", 0.2], ["chirp", 0.5, { pitch: 1.4 }]],
+      fx: [{ at: 0.1, kind: "snow", from: "top", n: 30 }],
+      fish: "gather"
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(48, 72, 42);
+    const snow = m.color("#f4f8ff", { smooth: 0.85, jitter: 0.04, ramp: ["#7a88b8", "#9aa8d4", "#c0cce8", "#e4ecfa", "#f4f8ff", "#ffffff", "#ffffff"] });
+    const coal = m.color("#24242e", { jitter: 0.04, smooth: 0.4 });
+    const carrot = m.color("#ff8a2a", { smooth: 0.5, jitter: 0.03 });
+    const black = m.color("#1e1c24", { spec: 0.8, smooth: 0.3 });
+    const band = m.color("#d83a3a", { jitter: 0.02 });
+    const scarf = [m.color("#e04040", { jitter: 0.03, smooth: 0.4 }), m.color("#fff4e8", { jitter: 0.03, smooth: 0.4 })];
+    const twig = m.color("#7a4a2a", { jitter: 0.04 });
+    const cx = 22, cz = 20;
+    const drift = SAND.map(() => "#f4f8ff");
+    sandMound(m, cx, cz, 18, 16, 2, 8, drift);
+    m.sphere(cx, 12, cz, 12, snow);
+    m.sphere(cx, 31, cz, 9.5, snow);
+    const turn = frame === 2 ? 0.5 : 0;
+    m.sphere(cx, 45, cz, 7.2, snow);
+    for (const by of [35, 31, 27]) {
+      const z = frontZ(cx, 31, cz, 9.5, cx, by);
+      m.box(cx - 0.5, by, z, cx + 0.5, by + 1, z + 1, coal);
+    }
+    const fx = (dx) => cx + dx + turn * 3;
+    for (const dx of [-2.5, 2.5]) {
+      const x = fx(dx), z = frontZ(cx, 45, cz, 7.2, x, 47);
+      m.box(x, 47, z, x + 1, 48, z + 1, coal);
+    }
+    for (let i = -2; i <= 2; i++) {
+      const x = fx(i * 1.3), y = 42 - (i * i <= 1 ? 1 : 0), z = frontZ(cx, 45, cz, 7.2, x, y);
+      m.set(x, y, z + 1, coal);
+    }
+    const nz = frontZ(cx, 45, cz, 7.2, fx(0), 45);
+    m.cone(fx(0) + 0.5, 45, nz, nz + 6, 1.7, 0.3, carrot, "z");
+    torus(m, cx, 39, cz, 6.8, 1.6, (x, y, z) => scarf[Math.floor((Math.atan2(z - cz, x - cx) + 4) * 2) % 2], "y");
+    m.box(cx + 3, 30, cz + 7, cx + 5, 38, cz + 8, (x, y) => scarf[(y >> 1) % 2]);
+    const hy = 51 + (frame === 1 ? 5 : 0), hx = frame === 1 ? 2 : 0;
+    m.cylinder(cx + hx, cz, hy, hy + 1, 6.6, black);
+    m.cylinder(cx + hx, cz, hy + 2, hy + 9, 4.6, black);
+    m.cylinder(cx + hx, cz, hy + 2, hy + 3, 4.8, band);
+    m.line(cx - 8, 32, cz, cx - 19, 38, cz + 2, twig, 0.6);
+    m.line(cx - 16, 36, cz + 1, cx - 18, 41, cz + 1, twig, 0);
+    const hand = [[cx + 19, 36, cz + 2], [cx + 13, 53, cz + 2], [cx + 18, 47, cz + 3]][frame];
+    m.line(cx + 8, 32, cz, hand[0], hand[1], hand[2], twig, 0.6);
+    m.line((cx + 8 + hand[0] * 2) / 3, (32 + hand[1] * 2) / 3, cz + 1, hand[0] + 2, hand[1] + 3, cz + 1, twig, 0);
+    return { m, yaw: 28, ground: [cx, 0, cz], anchors: { top: [cx, 64, cz], head: [cx, 48, cz + 6] } };
+  });
+  def("telescope", {
+    name: "Brass Telescope",
+    biome: "aquarium",
+    tags: ["fancy", "metal"],
+    decor: { price: 220, size: 1 },
+    decorOnly: true,
+    desc: "For spotting stars, boats, and the occasional suspicious seagull.",
+    interact: {
+      verb: "Stargaze",
+      frames: 3,
+      seq: [1, 1, 2, 2, 2, 1, 0],
+      fps: 2.5,
+      sfx: [["click", 0], ["click", 0.4], ["ui_unlock", 0.9, { vol: 0.6 }]],
+      fx: [{ at: 0.9, kind: "stars", from: "lens", n: 8 }, { at: 1.6, kind: "sparkle", from: "lens", n: 6 }],
+      fish: "gather"
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(56, 64, 44);
+    const wood = m.color("#8a5634", { jitter: 0.05 });
+    const brass = m.color("#e0b048", { spec: 1.8, specPow: 12, smooth: 0.6 });
+    const navy = m.color("#2a3a6a", { spec: 1.2, smooth: 0.6, jitter: 0.02 });
+    const lens = m.color("#9ae8ff", { emissive: 0.5, spec: 2 });
+    const cx = 26, cz = 20;
+    sandMound(m, cx, cz + 2, 18, 15, 2, 4);
+    const apex = [cx, 28, cz];
+    for (const [fx, fz] of [[cx - 13, cz - 6], [cx + 13, cz - 6], [cx, cz + 14]]) {
+      m.line(apex[0], apex[1], apex[2], fx, 1, fz, wood, 0.9);
+      m.sphere(fx, 1, fz, 1.3, brass);
+    }
+    torus(m, cx, 12, cz + 0.5, 4.6, 0.5, brass);
+    m.sphere(cx, 29, cz, 2.6, brass);
+    const dirs = [[-0.62, 0.74, 0.25], [0.08, 0.95, 0.3], [0.66, 0.7, 0.28]];
+    let d = dirs[frame];
+    const l = Math.hypot(...d);
+    d = d.map((v) => v / l);
+    const P4 = (k) => [cx + d[0] * k, 31 + d[1] * k, cz + d[2] * k];
+    const seg = (a, b, r, c) => {
+      const p = P4(a), q = P4(b);
+      m.line(p[0], p[1], p[2], q[0], q[1], q[2], c, r);
+    };
+    seg(-11, -7, 1.3, brass);
+    seg(-7, 21, 3, navy);
+    seg(21, 25, 4, navy);
+    for (const k of [-6, 4, 14, 22]) seg(k, k + 1, k === 22 ? 4.4 : 3.5, brass);
+    const e = P4(25.5);
+    m.sphere(e[0], e[1], e[2], 2.6, lens);
+    const up = [0, 1, 0];
+    const side = [d[1] * up[2] - d[2] * up[1], d[2] * up[0] - d[0] * up[2], d[0] * up[1] - d[1] * up[0]];
+    const o = side.map((v) => v * 4.4);
+    const f0 = P4(2), f1 = P4(10);
+    m.line(f0[0] + o[0], f0[1] + o[1] + 1, f0[2] + o[2], f1[0] + o[0], f1[1] + o[1] + 1, f1[2] + o[2], brass, 1);
+    return { m, yaw: 30, ground: [cx, 0, cz + 2], anchors: { lens: P4(27) } };
+  });
+  def("campfire", {
+    name: "Campfire",
+    biome: "aquarium",
+    tags: ["dumb", "glow"],
+    decor: { price: 160, size: 1 },
+    decorOnly: true,
+    desc: "An underwater campfire. Physics has filed a complaint. Marshmallow included.",
+    interact: {
+      verb: "Stoke",
+      frames: 4,
+      idle: [0, 1, 2, 1],
+      idleFps: 7,
+      seq: [3, 3, 2, 3, 3, 1, 3, 0],
+      fps: 8,
+      sfx: [["puff", 0, { pitch: 0.8 }], ["click", 0.12, { vol: 0.4 }], ["click", 0.3, { vol: 0.3, pitch: 1.3 }], ["click", 0.5, { vol: 0.4, pitch: 0.9 }]],
+      fx: [{ at: 0.05, kind: "embers", from: "flame", n: 16 }],
+      ambient: [{ kind: "embers", from: "flame", every: 0.9, n: 1 }],
+      fish: "gather",
+      use: { kind: "sit", at: "side" }
+    }
+  }, ({ frame, rng: rng2 }) => {
+    const m = new VoxelModel(46, 52, 46);
+    const stone = reefRock(m, rng2, ["#8a8690", "#74707c", "#a29ea6"]);
+    const bark = m.color("#6a4228", { jitter: 0.06 });
+    const cut = m.color("#d0a46a", { jitter: 0.04 });
+    const ash = m.color("#3a3438", { jitter: 0.08 });
+    const ember = m.color("#ff6a2a", { emissive: 0.9, jitter: 0 });
+    const fl = ["#e8402a", "#ff7a2a", "#ffc04a", "#fff4b0"].map((c) => m.color(c, { emissive: 1, jitter: 0 }));
+    const stick = m.color("#8a6a40", { jitter: 0.03 });
+    const mallow = m.color(frame === 3 ? "#c8803a" : "#fffaf0", { smooth: 0.8 });
+    const cx = 22, cz = 22;
+    sandMound(m, cx, cz, 19, 19, 2, 3);
+    for (let k = 0; k < 9; k++) {
+      const a = k / 9 * Math.PI * 2 + 0.2;
+      facetRock(m, rng2, cx + Math.cos(a) * 11.5, 2, cz + Math.sin(a) * 11.5, 3.4, 2.8, 3, stone[k % 2], 9);
+    }
+    stoneTex(m, stone, 5);
+    m.cylinder(cx, cz, 1, 2, 7.5, (x, y, z) => h3(x, y, z, 4) < 0.2 ? ember : ash);
+    for (let k = 0; k < 4; k++) {
+      const a = k * Math.PI / 2 + 0.4;
+      m.line(cx + Math.cos(a) * 8.5, 2.5, cz + Math.sin(a) * 8.5, cx + Math.cos(a) * 1.5, 13, cz + Math.sin(a) * 1.5, bark, 1.7);
+      m.sphere(cx + Math.cos(a) * 8.9, 2.2, cz + Math.sin(a) * 8.9, 1.8, cut);
+    }
+    const H = [20, 23, 19, 31][frame], W = frame === 3 ? 7.6 : 6;
+    shape(m, cx - 10, 3, cz - 10, cx + 10, 3 + H, cz + 10, (x, y, z) => {
+      const t = (y - 3) / H;
+      if (t > 1) return false;
+      const a = Math.atan2(z - cz, x - cx);
+      const wob = 0.6 + 0.4 * Math.sin(a * 3 + frame * 2.1 + y * 0.45);
+      const sway = Math.sin(t * 3 + frame) * t * 2;
+      return Math.hypot(x - cx - sway, z - cz) <= W * Math.pow(1 - t, 0.75) * (t > 0.35 ? wob : 1);
+    }, (x, y, z) => {
+      const k = (y - 3) / H * 0.9 + Math.hypot(x + 0.5 - cx, z + 0.5 - cz) / W * 0.7 + h3(x, y, z, frame) * 0.15;
+      return fl[k < 0.45 ? 3 : k < 0.75 ? 2 : k < 1.05 ? 1 : 0];
+    });
+    m.line(cx + 16, 1, cz + 14, cx + 6, 12, cz + 6, stick, 0.5);
+    m.box(cx + 4, 11, cz + 4, cx + 6, 13, cz + 6, mallow);
+    return { m, yaw: 30, ground: [cx, 0, cz], light: "#ff9a3a", anchors: { flame: [cx, 3 + H * 0.6, cz], side: [cx + 16, 9, cz + 9] } };
+  });
+  def("arcade_cabinet", {
+    name: "Arcade Cabinet",
+    biome: "aquarium",
+    tags: ["retro", "screen", "glow"],
+    decor: { price: 520, size: 2 },
+    decorOnly: true,
+    desc: "FISH: The Game. High score held by a clownfish named Gary.",
+    interact: {
+      verb: "Play",
+      frames: 4,
+      idle: [0, 1],
+      idleFps: 1.5,
+      seq: [2, 1, 2, 1, 1, 1, 3, 3, 3, 3, 0],
+      fps: 5,
+      sfx: [["ui_unlock", 0], ["glitch", 0.4, { vol: 0.35 }], ["timing_good", 0.7], ["timing_perfect", 1.2], ["coins_many", 1.3, { vol: 0.25 }]],
+      fx: [{ at: 1.2, kind: "text", from: "top", text: "HI-SCORE!" }, { at: 1.2, kind: "stars", from: "screen", n: 8 }],
+      fish: "gather",
+      use: { kind: "watch", at: "front", seq: [1, 0], fps: 2 }
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(40, 80, 40);
+    const purple = m.color("#4a2478", { jitter: 0.04 });
+    const purpleL = m.color("#6a34a8", { jitter: 0.04 });
+    const neon = m.color("#ff4ad8", { emissive: 0.7, jitter: 0 });
+    const trim = m.color("#4af4ff", { emissive: 0.6, jitter: 0 });
+    const black = m.color("#1a1820", { jitter: 0.02 });
+    const chrome = m.color("#c8d0dc", { spec: 2 });
+    const slotC = m.color("#ff4a4a", { emissive: 1, jitter: 0 });
+    const stick = m.color("#e83a3a", { smooth: 0.8, spec: 1.2 });
+    const btn = ["#ffd84a", "#4af4ff", "#ff6ad8"].map((c) => m.color(c, { smooth: 0.6, spec: 1 }));
+    const em = (c) => m.color(c, { emissive: 1, jitter: 0 });
+    const bg = em("#10184a"), star2 = em("#8aa0ff"), yel = em("#ffd84a"), org = em("#ff8a2a"), wht = em("#ffffff"), red = em("#ff4a5a"), grn = em("#5aff8a"), cyan = em("#4af4ff"), pnk = em("#ff6ad8");
+    const marq = em("#ffd84a");
+    const front = (y) => y <= 30 ? 30 : y <= 37 ? 30 + (y - 30) * 0.6 : y <= 61 ? 25 : y <= 73 ? 29 : y <= 75 ? 28 : -1;
+    shape(m, 6, 0, 6, 33, 75, 34, (x, y, z) => z <= front(Math.floor(y)) + 1, (x, y, z) => x <= 7 || x >= 32 ? purpleL : purple);
+    m.recolor((x, y, z, p) => (x === 33 || x === 6) && (y - z * 0.8 + 400) % 22 < 2 ? neon : null);
+    for (let y = 0; y <= 75; y++) {
+      const f = Math.floor(front(y));
+      if (f > 0) {
+        m.set(33, y, f + 1, trim);
+        m.set(6, y, f + 1, trim);
+      }
+    }
+    m.box(15, 9, 31, 24, 20, 31, chrome);
+    m.box(17, 15, 32, 18, 17, 32, slotC);
+    m.box(21, 15, 32, 22, 17, 32, slotC);
+    m.box(8, 36, 30, 31, 37, 34, black);
+    m.line(13, 37, 32, 13, 41, 32, black, 0.5);
+    m.sphere(13, 42, 32, 1.6, stick);
+    [[19, 32], [23, 33], [27, 32]].forEach(([bx, bz], i) => m.cylinder(bx, bz, 38, 38, 1.3, btn[i]));
+    const pix = (u, v) => {
+      if (frame === 2) return u === 0 || v === 0 || u === 19 || v === 19 ? pnk : yel;
+      if (frame === 3) {
+        if (v >= 1 && v <= 5) {
+          const g = GLYPH[["H", "I"][Math.floor((u - 6) / 4)]];
+          const k = (u - 6) % 4;
+          if (u >= 6 && u < 14 && k < 3 && g && g[v - 1][k] === "#") return yel;
+        }
+        if (v >= 8 && v % 3 === 2 && u > 2 && u < 17) return [cyan, pnk, grn, wht][Math.floor((v - 8) / 3) % 4];
+        return bg;
+      }
+      if (frame === 0) {
+        if (v >= 1 && v <= 5 && u >= 2) {
+          const i = Math.floor((u - 2) / 4), k = (u - 2) % 4;
+          const g = GLYPH["FISH"[i]];
+          if (g && k < 3 && g[v - 1][k] === "#") return yel;
+        }
+        const fu2 = u - 6, fv2 = v - 11;
+        if (fu2 >= 0 && fu2 <= 7 && Math.abs(fv2) <= 2 - (fu2 === 0 || fu2 === 7 ? 1 : 0)) return fu2 === 5 && fv2 === -1 ? wht : org;
+        if (fu2 === -1 && Math.abs(fv2) <= 2) return org;
+        if (v === 17 && u % 3 !== 0 && u > 2 && u < 17) return wht;
+        return h3(u, v, 1, 2) < 0.04 ? star2 : bg;
+      }
+      if (v === 0) return u < 8 ? cyan : bg;
+      if (v >= 3 && v <= 4 && (u % 6 === 2 || u % 6 === 3)) return v === 3 ? red : grn;
+      if (u === 9 && v >= 7 && v <= 12 && v % 2) return wht;
+      const fu = u - 6, fv = v - 15;
+      if (fu >= 0 && fu <= 6 && Math.abs(fv) <= 1) return fu === 4 && fv === -1 ? wht : org;
+      return h3(u, v, 2, 2) < 0.05 ? star2 : bg;
+    };
+    for (let v = 0; v < 20; v++) for (let u = 0; u < 20; u++) m.set(10 + u, 59 - v, 26, pix(u, v));
+    m.box(8, 38, 26, 31, 39, 26, black);
+    m.box(8, 60, 26, 31, 61, 26, black);
+    m.box(8, 38, 26, 9, 61, 26, black);
+    m.box(30, 38, 26, 31, 61, 26, black);
+    m.box(8, 63, 30, 31, 72, 30, marq);
+    glyphs(m, "FISH", 12, 70, 31, pnk);
+    m.box(8, 62, 30, 31, 62, 30, black);
+    return { m, yaw: 28, ground: [20, 0, 20], light: "#ff6ad8", anchors: { screen: [20, 50, 28], top: [20, 76, 20], front: [20, 22, 44] } };
+  });
+  var JUKE = ["#ff4ad8", "#ffd84a", "#4af4ff"];
+  def("jukebox", {
+    name: "Jukebox",
+    biome: "aquarium",
+    tags: ["retro", "music", "glow"],
+    decor: { price: 420, size: 1 },
+    decorOnly: true,
+    desc: 'Bubble tubes, chrome and exactly one record: "Under the Sea (Club Mix)".',
+    interact: {
+      verb: "Play a tune",
+      frames: 3,
+      idle: [0, 1, 2],
+      idleFps: 1.5,
+      seq: Array.from({ length: 18 }, (_, i) => i % 3),
+      fps: 8,
+      sfx: [[0.1, 0.75], [0.32, 0.84], [0.54, 1], [0.76, 0.84], [0.98, 0.75], [1.2, 0.63], [1.42, 0.75], [1.64, 1]].map(([at, p]) => ["bell", at, { pitch: p, vol: 0.5 }]).concat([["click", 0], ["click", 0.54], ["click", 1.08], ["click", 1.62]]),
+      fx: [0.1, 0.54, 0.98, 1.42].map((at) => ({ at, kind: "notes", from: "top", n: 2 })),
+      fish: "dance",
+      use: { kind: "dance", at: "front", seq: [0, 1, 2], fps: 4 }
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(46, 60, 32);
+    const wood = m.color("#8a3424", { jitter: 0.04, spec: 0.6 });
+    const chrome = m.color("#d0d8e2", { spec: 2.2, smooth: 0.5 });
+    const chromeD = m.color("#8a94a4", { spec: 1.2 });
+    const glass = m.color("#1a2a3a", { spec: 2.2, specPow: 10 });
+    const rec = m.color("#141218", { spec: 1 });
+    const card = m.color("#f4ecd0", { jitter: 0 });
+    const tubes = JUKE.map((c) => m.color(c, { emissive: 1, jitter: 0 }));
+    const label = m.color(JUKE[frame], { emissive: 0.6 });
+    const cx = 22.5, cz = 15, ay = 34;
+    rbox(m, 5, 0, 3, 40, 3, 27, 1, chromeD);
+    rbox(m, 6, 3, 4, 39, ay + 1, 26, 2, wood);
+    shape(m, 5, ay, 4, 40, ay + 18, 26, (x, y, z) => Math.hypot(x - cx, y - ay) <= 17, wood);
+    shape(m, 5, ay, 27, 40, ay + 18, 27, (x, y) => {
+      const r = Math.hypot(x - cx, y - ay);
+      return r >= 13.4 && r <= 15.6;
+    }, (x, y) => tubes[(Math.floor(Math.atan2(y + 0.5 - ay, x + 0.5 - cx) / Math.PI * 9) + frame) % 3]);
+    shape(m, 5, ay, 27, 40, ay + 18, 27, (x, y) => Math.hypot(x - cx, y - ay) < 13.4, glass);
+    for (const px of [7, 36]) m.box(px, 4, 27, px + 2, ay, 27, (x, y) => tubes[(Math.floor(y / 4) + frame + (px > 20 ? 1 : 0)) % 3]);
+    m.cylinder(cx, ay + 6, 28, 28, 7.4, rec, "z");
+    torus(m, cx, ay + 6, 28.5, 4.6, 0.4, chromeD, "z");
+    m.cylinder(cx, ay + 6, 28, 29, 2.4, label, "z");
+    m.line(cx + 10, ay + 12, 28, cx + 4, ay + 8, 29, chrome, 0.4);
+    for (let x = 12; x <= 33; x += 2) m.box(x, 7, 27, x, 21, 27, chrome);
+    for (let x = 12; x <= 33; x += 2) m.box(x, 25, 27, x, 26, 28, card);
+    m.box(12, 29, 27, 33, 31, 27, card);
+    m.box(14, 30, 28, 31, 30, 28, chromeD);
+    m.ellipsoid(cx, ay + 18, cz, 4, 2, 3, chrome);
+    return { m, yaw: 28, ground: [cx, 0, cz], light: JUKE[frame], anchors: { top: [cx, ay + 22, cz], front: [cx, 18, 36] } };
+  });
+  def("beach_set", {
+    name: "Beach Day",
+    biome: "aquarium",
+    tags: ["dumb", "home"],
+    decor: { price: 300, size: 2 },
+    decorOnly: true,
+    desc: "Umbrella, deck chair, beach ball. Forgot the sunscreen. And the beach.",
+    interact: {
+      verb: "Spin",
+      frames: 4,
+      seq: [0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0],
+      fps: 10,
+      sfx: [["chirp", 0, { pitch: 1.3 }], ["boing", 0.25, { pitch: 1.3 }]],
+      fx: [{ at: 0.1, kind: "sparkle", from: "top", n: 8, colors: ["#fff6b0"] }, { at: 0.25, kind: "confetti", from: "ball", n: 8 }],
+      fish: "gather",
+      use: { kind: "sit", at: "chair", emote: "sun" }
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(66, 58, 54);
+    const red = m.color("#e84a5a", { jitter: 0.03, smooth: 0.3 });
+    const white = m.color("#fff4e8", { jitter: 0.03, smooth: 0.3 });
+    const wood = m.color("#c89058", { jitter: 0.04 });
+    const blue = m.color("#3a8ad8", { jitter: 0.03 });
+    const ball = ["#ff4a4a", "#ffffff", "#3a8ad8", "#ffd84a", "#ffffff", "#5ac85a"].map((c) => m.color(c, { smooth: 0.85, spec: 1.2 }));
+    const bucket = m.color("#ff5a3a", { smooth: 0.5, spec: 0.6 });
+    const handle = m.color("#ffd84a", { jitter: 0 });
+    const spade = m.color("#3ab8e8", { smooth: 0.4 });
+    const shades = m.color("#1a1820", { spec: 1.5 });
+    sandMound(m, 32, 27, 31, 24, 3, 6);
+    m.line(23, 0, 24, 25, 46, 25, (x, y) => (y >> 2) % 2 ? red : white, 0.8);
+    const ucx = 25, ucz = 25;
+    for (let x = 0; x < 52; x++) for (let z = 0; z < 52; z++) {
+      const dx = x + 0.5 - ucx, dz = z + 0.5 - ucz, r = Math.hypot(dx, dz);
+      if (r > 23) continue;
+      const a = Math.atan2(dz, dx) + frame * (Math.PI / 16);
+      const sec = Math.floor((a + Math.PI * 4) / (Math.PI / 4)) % 2;
+      const scallop = r > 21 && Math.abs((a / (Math.PI / 4) % 1 + 1) % 1 - 0.5) < 0.25 ? 1 : 0;
+      const y = Math.round(48 - Math.pow(r / 23, 1.6) * 8) - scallop;
+      m.set(x, y, z, sec ? red : white);
+      m.set(x, y + 1, z, sec ? red : white);
+    }
+    m.sphere(ucx, 50, ucz, 1.6, red);
+    const rail = (u) => u < 0.6 ? [38 + u / 0.6 * 14, 6] : [52 + (u - 0.6) / 0.4 * 8, 6 + (u - 0.6) / 0.4 * 12];
+    for (let u = 0; u <= 1; u += 0.02) {
+      const [x, y] = rail(u);
+      for (const z of [30, 43]) m.set(x, y, z, wood);
+      for (let z = 31; z <= 42; z++) m.set(x, y - (u < 0.6 ? Math.sin(u / 0.6 * Math.PI) * 1.5 : 0), z, (z - 31 >> 1) % 2 ? blue : white);
+    }
+    for (const [x0, x1] of [[38, 39], [52, 50], [59, 56]]) for (const z of [30, 43]) m.line(x0, 0, z, x1, x0 === 59 ? 16 : 6, z, wood, 0);
+    m.box(54, 12, 35, 55, 13, 36, shades);
+    m.box(54, 12, 38, 55, 13, 39, shades);
+    m.box(54, 13, 37, 54, 13, 37, shades);
+    m.sphere(12, 5, 41, 4.6, (x, y, z) => y > 8 ? ball[1] : ball[Math.floor((Math.atan2(z + 0.5 - 41, x + 0.5 - 12) + Math.PI) / (Math.PI * 2) * 6) % 6]);
+    lathe(m, 8, 28, 1, 6, (t) => 2.6 + t * 0.8, bucket);
+    m.sub(() => m.cylinder(8, 28, 4, 6, 2.4));
+    m.line(5, 6, 28, 8, 9, 28, handle, 0);
+    m.line(8, 9, 28, 11, 6, 28, handle, 0);
+    m.line(13, 1, 31, 16, 10, 29, spade, 0.4);
+    m.box(12, 0, 31, 14, 2, 33, spade);
+    return { m, yaw: 30, ground: [32, 0, 27], anchors: { chair: [47, 10, 37], top: [ucx, 52, ucz], ball: [12, 8, 41] } };
+  });
+  def("trampoline", {
+    name: "Trampoline",
+    biome: "aquarium",
+    tags: ["dumb", "toy"],
+    decor: { price: 280, size: 2 },
+    decorOnly: true,
+    desc: "Boing. Boing. Boing. The fish have discovered joy.",
+    interact: {
+      verb: "Bounce",
+      frames: 3,
+      seq: [1, 2, 0, 1, 2, 0],
+      fps: 9,
+      sfx: [["boing", 0], ["boing", 0.33, { pitch: 1.2 }]],
+      fx: [{ at: 0, kind: "ring", from: "mat" }, { at: 0.1, kind: "bubbles", from: "mat", n: 8 }, { at: 0.33, kind: "ring", from: "mat" }],
+      fish: "launch",
+      use: { kind: "bounce", at: "mat" }
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(60, 26, 56);
+    const steel = m.color("#9aa4b0", { spec: 1.4, smooth: 0.4 });
+    const pad = m.color("#3a8ad8", { smooth: 0.7, jitter: 0.03 });
+    const padY = m.color("#ffd84a", { smooth: 0.7, jitter: 0.03 });
+    const mat = m.color("#26262e", { jitter: 0.02 });
+    const matL = m.color("#3a3a46", { jitter: 0.02 });
+    const spring = m.color("#e0e4ec", { spec: 1.6 });
+    const cx = 30, cz = 28, R = 22, MR = 16;
+    for (let k = 0; k < 6; k++) {
+      const a = k / 6 * Math.PI * 2 + 0.3;
+      m.line(cx + Math.cos(a) * R, 15, cz + Math.sin(a) * R, cx + Math.cos(a) * (R + 1.5), 0, cz + Math.sin(a) * (R + 1.5), steel, 0.7);
+    }
+    torus(m, cx, 15, cz, R, 1.1, steel);
+    torus(m, cx, 16.5, cz, R - 2, 1.8, (x, y, z) => Math.floor((Math.atan2(z - cz, x - cx) + Math.PI) / (Math.PI / 6)) % 2 ? pad : padY);
+    const off = (r) => (frame === 1 ? -5 : frame === 2 ? 2.5 : 0) * (1 - (r / MR) ** 2);
+    for (let x = cx - MR - 1; x <= cx + MR + 1; x++) for (let z = cz - MR - 1; z <= cz + MR + 1; z++) {
+      const r = Math.hypot(x + 0.5 - cx, z + 0.5 - cz);
+      if (r > MR) continue;
+      m.set(x, Math.round(15 + off(r)), z, r % 4 < 0.7 ? matL : mat);
+    }
+    for (let k = 0; k < 30; k++) {
+      const a = k / 30 * Math.PI * 2;
+      m.line(cx + Math.cos(a) * (MR + 0.3), 15, cz + Math.sin(a) * (MR + 0.3), cx + Math.cos(a) * (R - 3.5), 15.5, cz + Math.sin(a) * (R - 3.5), spring, 0);
+    }
+    return { m, yaw: 30, pitch: 30, ground: [cx, 0, cz], anchors: { mat: [cx, 17 + off(0), cz] } };
+  });
+  def("fish_statue", {
+    name: "Golden Fish Statue",
+    biome: "aquarium",
+    tags: ["statue", "fancy"],
+    decor: { price: 700, size: 2 },
+    decorOnly: true,
+    desc: "Erected in honour of the greatest fish. Every fish believes it is about them.",
+    interact: {
+      verb: "Admire",
+      frames: 3,
+      seq: [1, 2, 1, 2, 1, 2, 0],
+      fps: 5,
+      sfx: [["splash_small", 0], ["golden_shimmer", 0.2], ["bell", 0.5, { pitch: 1.5, vol: 0.5 }]],
+      fx: [{ at: 0.2, kind: "sparkle", from: "fish", n: 12, colors: ["#ffe27a", "#fff6c8"] }, { at: 0.1, kind: "bubbles", from: "mouth", n: 8 }, { at: 0.6, kind: "hearts", from: "fish", n: 2 }],
+      fish: "gather",
+      use: { kind: "orbit", at: "fish" }
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(52, 92, 44);
+    const marble = m.color("#ece8e0", { jitter: 0.04 });
+    const vein = m.color("#b8b4c4", { jitter: 0.02 });
+    const teal = m.color("#5ab8a8", { smooth: 0.7, jitter: 0.04 });
+    const tealL = m.color("#9ae8d8", { smooth: 0.7, jitter: 0.03 });
+    const gold = m.color("#f0c040", { spec: 2, specPow: 12, smooth: 0.7, jitter: 0.02 });
+    const goldL = m.color("#ffe27a", { spec: 2, specPow: 12, smooth: 0.7, jitter: 0.02 });
+    const goldD = m.color("#b8862a", { spec: 1, smooth: 0.6 });
+    const eye = m.color("#2a1a10", { jitter: 0 });
+    const water = m.color("#bff4ff", { emissive: 0.55, smooth: 0.6, jitter: 0 });
+    const cx = 26, cz = 22;
+    m.box(6, 0, 3, 45, 4, 41, marble);
+    m.box(9, 5, 6, 42, 24, 38, marble);
+    m.box(7, 25, 4, 44, 28, 40, marble);
+    m.recolor((x, y, z, p) => p === marble && Math.abs(fbm3(x * 0.09, y * 0.12, z * 0.09, 3, 5) - 0.5) < 0.025 ? vein : null);
+    m.box(17, 10, 39, 34, 19, 39, goldD);
+    m.box(18, 11, 39, 33, 18, 39, gold);
+    for (const [u, v] of [[3, 2], [4, 1], [4, 2], [4, 3], [5, 1], [5, 2], [5, 3], [6, 2], [7, 2], [8, 1], [8, 3], [2, 2]]) m.set(20 + u, 12 + v, 40, goldD);
+    for (const [x, y, z, r] of [[cx - 3, 30.5, cz, 4.4], [cx + 2, 30, cz + 1, 3.6], [cx - 8, 30, cz - 1, 3.4], [cx + 6, 29.5, cz, 3]]) m.sphere(x, y, z, r, (xx, yy) => yy > y + r * 0.35 ? tealL : teal);
+    const P4 = (t) => [cx - 12 + 20 * t + Math.sin(Math.PI * t) * 3, 38 + 29 * t + Math.sin(Math.PI * t) * 4, cz];
+    const rad = (t) => t < 0.25 ? 1.6 + t / 0.25 * 3 : t < 0.8 ? 4.6 + Math.sin((t - 0.25) / 0.55 * Math.PI) * 2.4 : 4.6 - ((t - 0.8) / 0.2) ** 2 * 1.8;
+    for (let t = 0; t <= 1; t += 0.01) {
+      const [x, y, z] = P4(t), r = rad(t);
+      m.ellipsoid(x, y, z, r, r, r * 0.74, (xx, yy, zz) => yy < y - r * 0.3 && xx > x ? goldL : h3(xx, yy, zz, 3) < 0.1 ? goldL : gold);
+    }
+    const tri = (a, b, c, z0, z1, col) => {
+      const minx = Math.min(a[0], b[0], c[0]), maxx = Math.max(a[0], b[0], c[0]), miny = Math.min(a[1], b[1], c[1]), maxy = Math.max(a[1], b[1], c[1]);
+      shape(m, minx, miny, z0, maxx, maxy, z1, (x, y) => {
+        const s = (p, q) => (q[0] - p[0]) * (y - p[1]) - (q[1] - p[1]) * (x - p[0]);
+        const d1 = s(a, b), d2 = s(b, c), d3 = s(c, a);
+        return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
+      }, col);
+    };
+    const T0 = P4(0), T1 = P4(0.06);
+    const dx = T1[0] - T0[0], dy = T1[1] - T0[1], dl = Math.hypot(dx, dy), ux = dx / dl, uy = dy / dl;
+    const tb = [T0[0] + ux, T0[1] + uy];
+    tri(tb, [tb[0] - ux * 9 - uy * 7, tb[1] - uy * 9 + ux * 7], [tb[0] - ux * 4, tb[1] - uy * 4], cz - 1, cz + 1, goldD);
+    tri(tb, [tb[0] - ux * 9 + uy * 7, tb[1] - uy * 9 - ux * 7], [tb[0] - ux * 4, tb[1] - uy * 4], cz - 1, cz + 1, goldD);
+    const D0 = P4(0.4), D1 = P4(0.68);
+    tri([D0[0] - 4, D0[1] + 3], [D1[0] - 5, D1[1] + 3], [(D0[0] + D1[0]) / 2 - 11, (D0[1] + D1[1]) / 2 + 8], cz, cz, goldD);
+    const A0 = P4(0.35), A1 = P4(0.5);
+    tri([A0[0] + 4, A0[1] - 3], [A1[0] + 5, A1[1] - 4], [(A0[0] + A1[0]) / 2 + 9, (A0[1] + A1[1]) / 2 - 7], cz, cz, goldD);
+    for (const s of [-1, 1]) m.ellipsoid(P4(0.72)[0] + 2, P4(0.72)[1] - 3, cz + s * 4.6, 3.2, 1.6, 1, goldD);
+    const H = P4(0.92);
+    m.box(H[0] - 1, H[1] + 1, cz + 3, H[0] + 1, H[1] + 3, cz + 3, goldL);
+    m.box(H[0], H[1] + 1, cz + 4, H[0], H[1] + 2, cz + 4, eye);
+    const M2 = P4(1);
+    m.sub(() => m.sphere(M2[0] + 1.5, M2[1] + 1.5, cz, 1.6));
+    if (frame > 0) {
+      const k = frame === 2 ? 1.5 : 1;
+      for (let s = 0; s <= 16; s += 0.25) {
+        const x = M2[0] + 2 + s * 0.55, y = M2[1] + 2 + s * 1.3 * k - s * s * 0.07 * (frame === 2 ? 0.8 : 1.3);
+        if (y < 30) break;
+        m.sphere(x, y, cz, 0.9, water);
+      }
+      for (let i = 0; i < 6; i++) m.set(M2[0] + 8 + i * 1.5, M2[1] - 2 - i * 3 + frame, cz + i % 3 - 1, water);
+    }
+    return { m, yaw: 30, ground: [cx, 0, cz], anchors: { mouth: [M2[0] + 2, M2[1] + 2, cz], fish: P4(0.5) } };
+  });
+  def("giant_sneaker", {
+    name: "Lost Sneaker",
+    biome: "aquarium",
+    tags: ["dumb", "junk", "home"],
+    decor: { price: 260, size: 2 },
+    decorOnly: true,
+    desc: "Size 97. Still has the other one somewhere. Squeaks when tapped.",
+    interact: {
+      verb: "Tap",
+      frames: 3,
+      seq: [1, 0, 1, 0, 2, 0, 2, 0],
+      fps: 9,
+      sfx: [["squeak", 0, { pitch: 0.9 }], ["squeak", 0.22, { pitch: 1.1 }], ["squeak", 0.44, { pitch: 0.8 }], ["squeak", 0.66, { pitch: 1.2 }]],
+      fx: [{ at: 0, kind: "burst", from: "toe", n: 8, colors: ["#e8cf96", "#ffffff"] }],
+      fish: "flee",
+      use: { kind: "hide", at: "opening" }
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(74, 50, 36);
+    const S5 = part(m, 64, 38, 28);
+    const rubber = m.color("#f4f4ee", { jitter: 0.03, smooth: 0.3 });
+    const tread = m.color("#b0b0ba", { jitter: 0.02 });
+    const mid = m.color("#3ac8b8", { jitter: 0.02 });
+    const leather = m.color("#f8f8f4", { jitter: 0.03, smooth: 0.45 });
+    const pink = m.color("#ff5a9a", { jitter: 0.02, smooth: 0.4 });
+    const cap = m.color("#dadae4", { jitter: 0.02, smooth: 0.4 });
+    const tab = m.color("#e84a4a", { jitter: 0.02 });
+    const collar = m.color("#2a2a48", { jitter: 0.03, smooth: 0.5 });
+    const lining = m.color("#3a3048", { jitter: 0.02 });
+    const lace = m.color("#ffffff", { jitter: 0 });
+    const eyelet = m.color("#9aa0ac", { spec: 1.4 });
+    const zc = 14;
+    const wAt = (x) => {
+      const u = (x - 2) / 58;
+      if (u < 0 || u > 1) return -1;
+      let w = 7.2 + 3.2 * Math.sin(u * Math.PI * 0.95);
+      if (u > 0.86) w *= Math.sqrt(Math.max(0, 1 - ((u - 0.86) / 0.14) ** 2));
+      if (u < 0.05) w *= Math.sqrt(Math.max(0, 1 - ((0.05 - u) / 0.05) ** 2));
+      return w;
+    };
+    const hu = (u) => 25 - 16 * smoothT(0.22, 1, u);
+    for (let x = 0; x < 64; x++) {
+      const w = wAt(x + 0.5), u = (x + 0.5 - 2) / 58;
+      if (w <= 0) continue;
+      for (let z = 0; z < 28; z++) {
+        const dz = z + 0.5 - zc;
+        if (Math.abs(dz) > w) continue;
+        for (let y = 0; y <= 4; y++) S5.set(x, y, z, y === 4 ? mid : y === 1 && x % 3 === 0 ? tread : rubber);
+        if (Math.abs(dz) > w - 0.6) continue;
+        const top = 4 + (hu(u) - 4) * Math.sqrt(Math.max(0, 1 - (dz / w) ** 2 * 0.75));
+        for (let y = 5; y <= top; y++) {
+          let c = leather;
+          const ys = 8 + 9 * Math.sin(u * Math.PI * 0.8 + 0.3);
+          if (u > 0.15 && u < 0.82 && Math.abs(y - ys + (u - 0.5) * 6) < 1.5 && Math.abs(dz) > w - 2.5) c = pink;
+          if (u > 0.86 && y < 10) c = cap;
+          if (u < 0.06 && y > 15) c = tab;
+          S5.set(x, y, z, c);
+        }
+      }
+    }
+    S5.recolor((x, y, z, p) => x < 21 && y >= 12 && Math.abs(z + 0.5 - zc) > wAt(x + 0.5) - 3 && p === leather ? collar : null);
+    S5.sub(() => shape(S5, 2, 13, 0, 20, 37, 27, (x, y, z) => Math.abs(z - zc) < wAt(x) - 2.4 && x > 3.5, 1));
+    shape(S5, 2, 12, 0, 20, 12, 27, (x, y, z) => Math.abs(z - zc) < wAt(x) - 2.4 && x > 3.5, lining);
+    S5.box(19, 18, zc - 4, 22, 29, zc + 4, leather);
+    S5.box(21, 26, zc - 2, 22, 28, zc + 2, mid);
+    for (let x = 24; x <= 38; x += 3) {
+      const u = (x - 2) / 58, yt = Math.round(hu(u)) + 1;
+      S5.set(x, yt - 1, zc - 4, eyelet);
+      S5.set(x, yt - 1, zc + 4, eyelet);
+      S5.line(x, yt, zc - 4, x + 3, yt - 0.5, zc + 4, lace, 0);
+      S5.line(x, yt, zc + 4, x + 3, yt - 0.5, zc - 4, lace, 0);
+    }
+    S5.line(26, 22, zc + 5, 31, 6, zc + 11, lace, 0);
+    S5.line(31, 6, zc + 11, 36, 1, zc + 12, lace, 0);
+    const rz = [0, 9, -7][frame], pv = frame === 2 ? [60, 0, zc] : [2, 0, zc];
+    const dp = [pv[0] + 5, 0, 17];
+    stampRot(m, S5, pv, dp, 0, 0, rz);
+    const X = (p) => xformPt(p, pv, dp, 0, 0, rz);
+    return { m, yaw: 30, ground: [36, 0, 17], anchors: { opening: X([11, 20, zc]), toe: X([58, 3, zc]) } };
+  });
+  function smoothT(a, b, v) {
+    const t = clamp((v - a) / (b - a), 0, 1);
+    return t * t * (3 - 2 * t);
+  }
+  def("bowling_pins", {
+    name: "Bowling Set",
+    biome: "aquarium",
+    tags: ["dumb", "toy"],
+    decor: { price: 140, size: 1 },
+    decorOnly: true,
+    desc: "Strike every time. The pins reset themselves out of pure professionalism.",
+    interact: {
+      verb: "Strike!",
+      frames: 3,
+      seq: [2, 1, 1, 1, 1, 1, 1, 0],
+      fps: 5,
+      sfx: [["thunder", 0, { vol: 0.35, pitch: 1.7 }], ["box_close", 0.15], ["mash_pop", 0.18], ["mash_pop", 0.24], ["timing_perfect", 0.5]],
+      fx: [{ at: 0.2, kind: "text", from: "top", text: "STRIKE!" }, { at: 0.2, kind: "confetti", from: "pins", n: 18 }],
+      fish: "flee"
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(58, 46, 50);
+    const P4 = part(m, 12, 34, 12);
+    const white = m.color("#f8f6f0", { smooth: 0.8, spec: 1.2, jitter: 0.02 });
+    const stripe = m.color("#d83a3a", { smooth: 0.8, spec: 1, jitter: 0.02 });
+    const maple = m.color("#e8c890", { jitter: 0.04 });
+    const mapleD = m.color("#d0aa70", { jitter: 0.04 });
+    const arrow = m.color("#5a3a2a", { jitter: 0 });
+    const ballA = m.color("#3a2a7a", { spec: 2.4, specPow: 14, smooth: 0.9 });
+    const ballB = m.color("#7a5ad8", { spec: 2.4, specPow: 14, smooth: 0.9 });
+    const hole = m.color("#120c20", { jitter: 0 });
+    const K = [[0, 2.4], [0.25, 4.1], [0.62, 1.7], [0.82, 2.7], [1, 0.4]];
+    lathe(P4, 6, 6, 0, 30, (t) => {
+      let i = 0;
+      while (i < K.length - 2 && t > K[i + 1][0]) i++;
+      const [t0, r0] = K[i], [t1, r1] = K[i + 1], k = (t - t0) / (t1 - t0);
+      return r0 + (r1 - r0) * (0.5 - Math.cos(k * Math.PI) / 2);
+    }, (x, y) => y >= 17 && y <= 18 || y >= 20 && y <= 21 ? stripe : white);
+    m.box(4, 0, 4, 53, 1, 47, (x, y, z) => x % 4 === 0 ? mapleD : maple);
+    for (const ax of [14, 28, 42]) {
+      m.set(ax, 2, 44, arrow);
+      m.set(ax - 1, 2, 45, arrow);
+      m.set(ax + 1, 2, 45, arrow);
+    }
+    const spots = [[28, 34], [23, 27], [33, 27], [18, 20], [28, 20], [38, 20]];
+    spots.forEach(([px, pz], k) => {
+      if (frame === 0) stampRot(m, P4, [6, 0, 6], [px, 2, pz]);
+      else if (frame === 2) stampRot(m, P4, [6, 0, 6], [px, 2, pz], k % 2 ? 40 : -30, k * 40, k % 2 ? 0 : 38);
+      else stampRot(m, P4, [6, 0, 6], [px + (k % 3 - 1) * 6, 6, pz + (k % 2 ? 3 : -4)], k % 2 ? 88 : 0, k * 47, k % 2 ? 0 : 88);
+    });
+    const [bx, bz] = frame === 0 ? [46, 41] : [28, 28];
+    m.sphere(bx, 8, bz, 6, (x, y, z) => fbm3(x * 0.25, y * 0.25, z * 0.25, 2, 9) > 0.52 ? ballB : ballA);
+    for (const [hx, hy] of [[-1.6, 3], [1.6, 3], [0, 0.5]]) {
+      const z = frontZ(bx, 8, bz, 6, bx + hx, 8 + hy);
+      if (z !== null) m.box(bx + hx, 8 + hy, z - 1, bx + hx, 8 + hy, z + 1, hole);
+    }
+    return { m, yaw: 30, ground: [28, 0, 26], anchors: { top: [28, 38, 26], pins: [28, 14, 27] } };
+  });
+  def("hot_tub", {
+    name: "Hot Tub",
+    biome: "aquarium",
+    tags: ["home", "glow"],
+    decor: { price: 550, size: 2 },
+    decorOnly: true,
+    desc: "Bubbling cedar hot tub with a tiny cocktail. Fish-only, no splashing (they splash).",
+    interact: {
+      verb: "Jets on",
+      frames: 3,
+      idle: [1, 2],
+      idleFps: 2.5,
+      seq: [1, 2, 1, 2, 1, 2, 1, 2, 1, 2],
+      fps: 8,
+      sfx: [["bubbles", 0], ["bubbles", 0.35], ["flood_rush", 0.1, { vol: 0.2, pitch: 1.6 }]],
+      fx: [{ at: 0, kind: "bubbles", from: "water", n: 20 }, { at: 0.4, kind: "bubbles", from: "water", n: 14 }, { at: 0.2, kind: "steam", from: "top", n: 10 }],
+      ambient: [{ kind: "bubbles", from: "water", every: 1.5, n: 2 }],
+      fish: "gather",
+      use: { kind: "sit", at: "water", emote: "heart" }
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(62, 32, 60);
+    const cedar = [m.color("#b8703a", { jitter: 0.05 }), m.color("#a0602e", { jitter: 0.05 })];
+    const band = m.color("#4a4a52", { spec: 1 });
+    const rim = m.color("#d8a868", { jitter: 0.04 });
+    const water = m.color("#4ad8e0", { emissive: 0.35, smooth: 0.4, jitter: 0.02 });
+    const foam = m.color("#f4fcff", { smooth: 0.9, emissive: 0.15 });
+    const step2 = [m.color("#c8884a", { jitter: 0.04 }), m.color("#a86e3a", { jitter: 0.04 })];
+    const towel = [m.color("#ff7ab0", { smooth: 0.4 }), m.color("#fff4f8", { smooth: 0.4 })];
+    const glass = m.color("#d8f4ff", { spec: 2 });
+    const drink = m.color("#ff9a3a", { emissive: 0.2 });
+    const umb = m.color("#ff4a8a", { smooth: 0.3 });
+    const yel = m.color("#ffd23a", { smooth: 0.85, spec: 1.4 }), beak = m.color("#ff8a2a"), eye = m.color("#1a1a22", { jitter: 0 });
+    const cx = 31, cz = 28, R = 22;
+    const oct = (x, z, r) => {
+      const dx = Math.abs(x - cx), dz = Math.abs(z - cz);
+      return Math.max(dx, dz, (dx + dz) * 0.7071) <= r;
+    };
+    shape(m, cx - R, 0, cz - R, cx + R, 18, cz + R, (x, y, z) => oct(x, z, R), (x, y, z) => y === 4 || y === 14 ? band : cedar[Math.floor((Math.atan2(z + 0.5 - cz, x + 0.5 - cx) + Math.PI) * 6) % 2]);
+    shape(m, cx - R - 1, 19, cz - R - 1, cx + R + 1, 20, cz + R + 1, (x, y, z) => oct(x, z, R + 0.8) && !oct(x, z, R - 3.5), rim);
+    m.sub(() => shape(m, cx - R, 5, cz - R, cx + R, 20, cz + R, (x, y, z) => oct(x, z, R - 3.2), 1));
+    shape(m, cx - R, 15, cz - R, cx + R, 15, cz + R, (x, y, z) => oct(x, z, R - 3.2), water);
+    const nb = frame === 0 ? 6 : 22;
+    for (let i = 0; i < nb; i++) {
+      const a = h3(i, frame, 1, 4) * Math.PI * 2, r = Math.sqrt(h3(i, frame, 2, 4)) * (R - 6);
+      m.sphere(cx + Math.cos(a) * r, 16, cz + Math.sin(a) * r, 0.9 + h3(i, frame, 3, 4) * (frame ? 1.1 : 0.4), foam);
+    }
+    miniDuck(m, cx - 6, 15, cz + 6, 0.9, yel, beak, eye, 1);
+    m.box(cx - 8, 0, cz + R + 1, cx + 8, 5, cz + R + 7, (x, y, z) => step2[z % 3 === 0 ? 1 : 0]);
+    m.box(cx - 8, 6, cz + R + 1, cx + 8, 11, cz + R + 3, (x, y, z) => step2[z % 3 === 0 ? 1 : 0]);
+    m.box(cx + R - 3, 21, cz - 6, cx + R + 1, 21, cz + 4, (x, y, z) => towel[(z >> 1) % 2]);
+    m.box(cx + R + 1, 9, cz - 6, cx + R + 1, 21, cz + 4, (x, y, z) => towel[(z >> 1) % 2]);
+    const gx = cx + 14, gz = cz - 14;
+    m.cylinder(gx, gz, 21, 21, 1.4, glass);
+    m.box(gx, 22, gz, gx, 23, gz, glass);
+    m.cone(gx, gz, 24, 26, 0.8, 2.2, drink);
+    m.line(gx, 26, gz, gx + 1, 30, gz, glass, 0);
+    m.cone(gx + 1, gz, 30, 31, 2.4, 0.3, umb);
+    return { m, yaw: 30, pitch: 30, ground: [cx, 0, cz], light: "#4ad8e0", anchors: { water: [cx, 17, cz], top: [cx, 24, cz] } };
+  });
+  def("map_table", {
+    name: "Treasure Map Table",
+    biome: "aquarium",
+    tags: ["treasure", "wreck"],
+    decor: { price: 360, size: 2 },
+    decorOnly: true,
+    desc: "X marks the spot. The spot is, annoyingly, this table.",
+    interact: {
+      verb: "Read map",
+      frames: 3,
+      seq: [1, 2, 2, 2, 2, 2, 1, 0],
+      fps: 3,
+      sfx: [["ui_page", 0], ["magic", 0.7], ["sparkle", 0.9]],
+      fx: [{ at: 0.7, kind: "sparkle", from: "x", n: 10, colors: ["#ffe27a", "#ff7a5a"] }, { at: 0.9, kind: "text", from: "top", text: "X MARKS THE SPOT" }],
+      fish: "gather"
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(58, 40, 46);
+    const wood = [m.color("#8a5a34", { jitter: 0.06 }), m.color("#74482a", { jitter: 0.06 })];
+    const parch = m.color("#f0dca8", { jitter: 0.04 });
+    const parchD = m.color("#d4b67a", { jitter: 0.04 });
+    const land = m.color("#8ab060", { jitter: 0.04 });
+    const inkC = m.color("#6a4a2a", { jitter: 0 });
+    const path = m.color("#c83a2a", { jitter: 0 });
+    const xC = frame === 2 ? m.color("#ff4a2a", { emissive: 1, jitter: 0 }) : m.color("#c82a2a", { jitter: 0 });
+    const gold = m.color("#f0c040", { spec: 1.6 });
+    const wax = m.color("#f8f0dc", { smooth: 0.6 });
+    const flame = m.color("#ffc84a", { emissive: 1, jitter: 0 });
+    const steel = m.color("#d0d8e4", { spec: 2 });
+    const ribbon = m.color("#d83a4a", { jitter: 0 });
+    m.box(4, 18, 6, 53, 20, 39, (x, y, z) => z % 6 === 0 ? wood[1] : wood[0]);
+    for (const [lx, lz] of [[7, 9], [50, 9], [7, 36], [50, 36]]) lathe(m, lx, lz, 0, 17, (t) => 1.6 + Math.sin(t * Math.PI * 3) * 0.6, wood[1]);
+    m.box(8, 5, 9, 49, 5, 9, wood[1]);
+    m.box(8, 5, 36, 49, 5, 36, wood[1]);
+    if (frame === 0) {
+      m.cylinder(22.5, 22, 14, 42, 2.4, parch, "x");
+      m.cylinder(22.5, 22, 13, 13, 2.8, parchD, "x");
+      m.cylinder(22.5, 22, 43, 43, 2.8, parchD, "x");
+      m.cylinder(22.5, 22, 28, 29, 2.6, ribbon, "x");
+      m.cylinder(36, 30, 21, 21, 2.4, gold);
+      m.line(34.5, 22, 30, 37.5, 22, 30, path, 0);
+    } else {
+      for (let x = 10; x <= 46; x++) for (let z = 10; z <= 34; z++) {
+        const edge = x === 10 || x === 46 || z === 10 || z === 34;
+        const isl = fbm3(x * 0.13, 0, z * 0.13, 2, 4) > 0.58;
+        m.set(x, 21, z, edge ? parchD : isl ? land : parch);
+      }
+      for (const [x, z] of [[10, 10], [46, 10], [10, 34], [46, 34]]) m.set(x, 22, z, parchD);
+      for (let t = 0; t <= 1; t += 0.035) {
+        if (Math.floor(t * 28) % 2) continue;
+        m.set(14 + t * 24, 22, 30 - t * 14 + Math.sin(t * 6) * 3, path);
+      }
+      for (let k = -2; k <= 2; k++) {
+        m.set(38 + k, 22, 16 + k, xC);
+        m.set(38 + k, 22, 16 - k, xC);
+      }
+      for (const [dx, dz] of [[0, -2], [0, 2], [-2, 0], [2, 0], [0, 0]]) m.set(16 + dx, 22, 14 + dz, inkC);
+      m.line(44, 21, 24, 44, 26, 25, steel, 0);
+      m.box(42, 27, 25, 46, 27, 25, gold);
+      m.box(44, 28, 25, 44, 30, 25, wood[1]);
+      m.set(44, 31, 25, gold);
+    }
+    m.cylinder(49, 12, 21, 21, 2.6, gold);
+    lathe(m, 49, 12, 22, 28, () => 1.3, wax);
+    m.box(49, 29, 12, 49, 30, 12, flame);
+    for (let i = 0; i < 4; i++) m.cylinder(8, 30, 21 + i, 21 + i, 1.6, gold);
+    m.cylinder(11, 33, 21, 21, 1.6, gold);
+    return { m, yaw: 30, pitch: 32, ground: [28, 0, 22], light: "#ffc84a", anchors: { x: [38, 23, 16], top: [28, 32, 22] } };
+  });
+  function lavaLamp(sc, frame, k = 1, opts = {}) {
+    const N = Math.round(26 * k);
+    const m = new VoxelModel(N, Math.round(70 * k), N);
+    const metal = [m.color(opts.metal || "#b8c0cc", { jitter: 0.04, smooth: 0.7, spec: 2, specPow: 10 }), m.color(opts.metal2 || "#8e96a4", { jitter: 0.04, smooth: 0.7 })];
+    const liquid = m.color(sc[0], { emissive: 0.75, jitter: 0.02, smooth: 0.6 });
+    const blobC = m.color(sc[1], { emissive: 1, jitter: 0.02, smooth: 0.6 });
+    const starC = opts.stars ? m.color("#ffffff", { emissive: 1, jitter: 0 }) : 0;
+    const cx = N / 2, cz = N / 2;
+    m.cone(cx, cz, 0, 18 * k, 9 * k, 5 * k, metal[1]);
+    m.cylinder(cx, cz, 0, Math.max(1, k), 9.5 * k, metal[0]);
+    m.cylinder(cx, cz, 17 * k, 18 * k, 5.6 * k, metal[0]);
+    const y0 = Math.round(19 * k), y1 = Math.round(56 * k);
+    for (let y = y0; y < y1; y++) {
+      const t = (y - y0) / (y1 - y0);
+      const r = (5.2 + Math.sin(t * Math.PI * 0.9 + 0.2) * 2.2 - t * 1.6) * k;
+      m.cylinder(cx, cz, y, y, r, (x, yy, z) => starC && h3(x, yy, z, 3 + frame) < 0.04 ? starC : liquid);
+    }
+    const blobs = [[22, 4.6, 0, 3], [32, 3.2, 2, 4.5], [40, 3.4, -1.5, 3.5], [49, 2.6, 1, 3], [28, 2.2, -3.5, 3.5], [45, 2, 3, 2]];
+    blobs.forEach(([by, br, bx, bz], i) => {
+      const y = clamp(by + (Math.sin(frame / 4 * Math.PI * 2 + i * 1.7) - Math.sin(i * 1.7)) * (i % 2 ? 3 : 4), 21, 53);
+      m.sphere(cx + bx * k, y * k, cz + bz * k, br * k, (x, yy, z, p) => p || Math.hypot(x + 0.5 - cx, z + 0.5 - cz) < 7.6 * k ? blobC : null);
+    });
+    m.cone(cx, cz, 56 * k, 62 * k, 4 * k, 2.6 * k, metal[0]);
+    m.cylinder(cx, cz, 62 * k, 63 * k, 2.2 * k, metal[1]);
+    return { m, yaw: 30, light: sc[0], ground: [cx, 0, cz], anchors: { top: [cx, 58 * k, cz], center: [cx, 36 * k, cz] } };
+  }
+  var LAMP_INTERACT = {
+    verb: "Swirl",
+    frames: 4,
+    idle: [0, 1, 2, 3],
+    idleFps: 1.2,
+    seq: [0, 1, 2, 3, 0, 1, 2, 3, 0],
+    fps: 8,
+    sfx: [["bubble", 0, { pitch: 0.6 }], ["magic", 0.15, { vol: 0.4 }]],
+    fx: [{ at: 0.1, kind: "sparkle", from: "top", n: 6 }, { at: 0.3, kind: "bubbles", from: "top", n: 6 }],
+    fish: "gather"
+  };
+  def(
+    "lava_lamp_giant",
+    { name: "Giant Lava Lamp", biome: "aquarium", tags: ["glow", "retro"], decor: { price: 520, size: 2 }, decorOnly: true, desc: "The same groovy lamp, but taller than most of your fish.", interact: LAMP_INTERACT },
+    ({ variant, frame }) => lavaLamp(LAVA[(variant + 4) % LAVA.length], frame, 1.5)
+  );
+  def(
+    "lava_lamp_slime",
+    { name: "Slime Lamp", biome: "aquarium", tags: ["glow", "retro"], decor: { price: 260, size: 1 }, decorOnly: true, desc: "Toxic-green goo in a lamp. Probably fine.", interact: LAMP_INTERACT },
+    ({ frame }) => lavaLamp(LAVA[3], frame, 1, { metal: "#4a4e5a", metal2: "#2e323c" })
+  );
+  def(
+    "lava_lamp_galaxy",
+    { name: "Galaxy Lamp", biome: "aquarium", tags: ["glow", "retro"], decor: { price: 300, size: 1 }, decorOnly: true, desc: "A pocket universe with drifting nebula blobs.", interact: LAMP_INTERACT },
+    ({ frame }) => lavaLamp(LAVA[5], frame, 1, { stars: true, metal: "#d8c890", metal2: "#a89060" })
+  );
+  def("plasma_globe", {
+    name: "Plasma Globe",
+    biome: "aquarium",
+    tags: ["glow", "machine"],
+    decor: { price: 380, size: 1 },
+    decorOnly: true,
+    desc: "Crackling lightning in a ball. Do not lick. (The fish lick it.)",
+    interact: {
+      verb: "Zap",
+      frames: 4,
+      idle: [0, 1, 2, 3],
+      idleFps: 5,
+      seq: Array.from({ length: 16 }, (_, i) => i % 4),
+      fps: 14,
+      sfx: [["static_burst", 0, { vol: 0.5 }], ["glitch", 0.2, { vol: 0.35 }], ["magic", 0.4, { pitch: 1.4, vol: 0.5 }]],
+      fx: [{ at: 0.1, kind: "sparkle", from: "orb", n: 12, colors: ["#ff9aff", "#d8b0ff", "#ffffff"] }, { at: 0.5, kind: "sparkle", from: "orb", n: 8, colors: ["#ff9aff", "#ffffff"] }],
+      fish: "gather"
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(44, 48, 44);
+    const base = m.color("#1e1c26", { spec: 1.4, smooth: 0.5 });
+    const chrome = m.color("#c8d0dc", { spec: 2 });
+    const back = m.color("#2a1a4a", { emissive: 0.15, smooth: 0.8 });
+    const glass = m.color("#c8e8ff", { spec: 2, light: 0.3, jitter: 0 });
+    const orb = m.color("#f4d0ff", { emissive: 1, jitter: 0, smooth: 0.8 });
+    const arc = m.color("#ff7aff", { emissive: 1, jitter: 0 });
+    const tip = m.color("#ffe8ff", { emissive: 1, jitter: 0 });
+    const cx = 22, cz = 22, cy = 28, R = 14;
+    lathe(m, cx, cz, 0, 12, (t) => t < 0.3 ? 10 - t * 6 : 8.2 - t * 3.2, base);
+    m.cylinder(cx, cz, 13, 13, 5.6, chrome);
+    shape(m, cx - R, cy - R, cz - R, cx + R, cy + R, cz - 2, (x, y, z) => {
+      const d = Math.hypot(x - cx, y - cy, z - cz);
+      return d <= R && d > R - 0.9;
+    }, back);
+    torus(m, cx, cy, cz, R, 0.5, glass);
+    torus(m, cx, cy, cz, R, 0.5, glass, "z");
+    for (let a = 2.1; a < 2.7; a += 0.06) m.set(cx + Math.cos(a) * (R - 1.5), cy + Math.sin(a) * (R - 1.5), cz + 6, glass);
+    m.sphere(cx, cy, cz, 3.2, orb);
+    for (let k = 0; k < 7; k++) {
+      const th = k / 7 * Math.PI * 2 + frame * 0.45 + Math.sin(k * 3.1 + frame) * 0.3;
+      const ph = (h3(k, frame, 1, 6) - 0.5) * 1.5;
+      let ez = Math.cos(ph) * Math.sin(th);
+      if (ez < -0.3) ez = -ez;
+      const E = [cx + R * 0.92 * Math.cos(ph) * Math.cos(th), cy + R * 0.92 * Math.sin(ph), cz + R * 0.92 * ez];
+      let prev = [cx, cy, cz];
+      for (let i = 1; i <= 6; i++) {
+        const t = i / 6, j = i < 6 ? 1.3 : 0;
+        const p = [cx + (E[0] - cx) * t + (h3(k, i, frame, 1) - 0.5) * 2 * j, cy + (E[1] - cy) * t + (h3(k, i, frame, 2) - 0.5) * 2 * j, cz + (E[2] - cz) * t + (h3(k, i, frame, 3) - 0.5) * 2 * j];
+        m.line(prev[0], prev[1], prev[2], p[0], p[1], p[2], arc, 0);
+        prev = p;
+      }
+      m.sphere(E[0], E[1], E[2], 1.2, tip);
+    }
+    return { m, yaw: 30, ground: [cx, 0, cz], light: "#ff9aff", anchors: { orb: [cx, cy, cz], top: [cx, cy + R, cz] } };
+  });
+  def("crystal_throne", {
+    name: "Crystal Throne",
+    biome: "aquarium",
+    tags: ["crystal", "glow", "fancy"],
+    decor: { price: 1200, size: 2 },
+    decorOnly: true,
+    desc: "Carved from one enormous amethyst. Whoever sits here is the fish king. For a bit.",
+    interact: {
+      verb: "Glow",
+      frames: 3,
+      seq: [1, 2, 1, 2, 1, 2, 0],
+      fps: 4,
+      sfx: [["magic", 0], ["golden_shimmer", 0.2], ["bell", 0.5, { pitch: 0.6, vol: 0.5 }]],
+      fx: [{ at: 0.1, kind: "sparkle", from: "back", n: 14, colors: ["#e0b0ff", "#ffffff", "#b46bff"] }, { at: 0.5, kind: "icons", icon: "crown", from: "seat", n: 1 }],
+      fish: "gather",
+      use: { kind: "sit", at: "seat", emote: "crown" }
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(64, 90, 52);
+    const stoneD = m.color("#3a3456", { jitter: 0.06 });
+    const stone = m.color("#4a4468", { jitter: 0.06 });
+    const gold = m.color("#f2c84a", { spec: 1.6 });
+    const velvet = m.color("#8a2a6a", { smooth: 0.65, jitter: 0.03 });
+    const glowK = [0.25, 0.65, 0.95][frame];
+    const cr = [m.color(frame === 2 ? "#c88aff" : "#9a5af0", { emissive: glowK, smooth: 0.2 }), m.color("#e0b8ff", { emissive: glowK, smooth: 0.2 }), m.color("#5a2aa8", { emissive: glowK * 0.6, smooth: 0.2 })];
+    const rune2 = m.color("#5af4ff", { emissive: frame === 2 ? 1 : 0.2, jitter: 0 });
+    const cx = 32, cz = 26;
+    m.box(6, 0, 4, 57, 3, 49, stoneD);
+    m.box(10, 4, 8, 53, 7, 45, stone);
+    for (let x = 12; x <= 51; x += 3) m.box(x, 5, 46, x + 1, 6, 46, rune2);
+    for (const [dx, len, r, tilt] of [[0, 30, 5, 0], [-7, 24, 4, -0.26], [7, 25, 4, 0.26], [-12, 18, 3.4, -0.55], [12, 19, 3.4, 0.55], [-3, 20, 3, -0.1], [4, 22, 3, 0.12]]) {
+      shaft(m, [cx + dx, 44, 12], [Math.sin(tilt), Math.cos(tilt), -0.12], len, r, 7, (x, y) => y > 44 + len * 0.8 ? cr[1] : h3(x, y, 0, 2) < 0.15 ? cr[2] : cr[0], 6, dx * 0.1);
+    }
+    m.box(17, 8, 12, 46, 19, 38, stone);
+    m.box(17, 19, 38, 46, 19, 38, gold);
+    rbox(m, 18, 20, 14, 45, 23, 37, 1.6, velvet);
+    for (const ax of [12, 46]) {
+      m.box(ax, 20, 14, ax + 5, 29, 38, stone);
+      m.box(ax, 30, 14, ax + 5, 30, 38, gold);
+      m.sphere(ax + 2.5, 33, 35, 3, cr[1]);
+    }
+    m.box(17, 20, 10, 46, 54, 15, stone);
+    for (let y = 20; y <= 54; y++) {
+      m.set(17, y, 15, gold);
+      m.set(46, y, 15, gold);
+    }
+    m.box(17, 54, 15, 46, 54, 15, gold);
+    for (const [x, y] of [[cx - 4, 56], [cx, 58], [cx + 4, 56], [cx - 4, 55], [cx + 4, 55], [cx - 2, 55], [cx + 2, 55], [cx, 55], [cx, 57]]) m.box(x, y, 12, x, y, 14, gold);
+    for (const [x, z] of [[8, 6], [55, 6], [8, 47], [55, 47]]) shaft(m, [x, 3, z], [0.1 * Math.sign(x - cx), 1, 0.1 * Math.sign(z - cz)], 9, 1.8, 3, cr[0], 6);
+    return { m, yaw: 30, ground: [cx, 0, cz], light: "#c88aff", anchors: { seat: [cx, 26, 30], back: [cx, 62, 12] } };
+  });
+  def("sunken_car", {
+    name: "Sunken Beetle",
+    biome: "aquarium",
+    tags: ["wreck", "metal", "home"],
+    decor: { price: 800, size: 3 },
+    decorOnly: true,
+    desc: "A rusty little car that drove off a pier in 1972. The horn still works.",
+    interact: {
+      verb: "Honk",
+      frames: 3,
+      seq: [1, 2, 1, 2, 1, 0],
+      fps: 4,
+      sfx: [["honk", 0, { pitch: 0.7 }], ["honk", 0.28, { pitch: 0.75 }]],
+      fx: [{ at: 0.1, kind: "bubbles", from: "exhaust", n: 10 }, { at: 0, kind: "text", from: "front", text: "BEEP BEEP" }],
+      fish: "flee",
+      use: { kind: "hide", at: "window" }
+    }
+  }, ({ frame, rng: rng2 }) => {
+    const m = new VoxelModel(92, 50, 54);
+    const paint = m.color("#7ad8b8", { smooth: 0.55, spec: 0.7, jitter: 0.04 });
+    const paintD = m.color("#5ab89a", { smooth: 0.55, jitter: 0.04 });
+    const glass = m.color("#2a3a4a", { spec: 2, specPow: 10 });
+    const tire = m.color("#24242a", { smooth: 0.5 });
+    const chrome = m.color("#d0d8e2", { spec: 2.2, smooth: 0.5 });
+    const head = m.color(frame === 1 ? "#fff6c0" : "#d8e8f0", frame === 1 ? { emissive: 1, jitter: 0 } : { spec: 2 });
+    const tail = m.color("#ff3a3a", { emissive: frame === 1 ? 1 : 0.15 });
+    const ind = m.color("#ffa83a", { emissive: frame === 2 ? 1 : 0.1 });
+    const kelp = [m.color("#4fa25e", { smooth: 0.3 }), m.color("#86cf74", { smooth: 0.3 })];
+    const cz = 26;
+    const H = (x) => {
+      const u = (x - 44) / 36;
+      if (Math.abs(u) >= 1) return 0;
+      return 24 * Math.sqrt(1 - u * u) * (x > 56 ? 1 - (x - 56) / 70 : 1);
+    };
+    const W = (x) => 16 * Math.sqrt(Math.max(0, 1 - ((x - 44) / 39) ** 4));
+    shape(m, 6, 7, 8, 82, 34, 44, (x, y, z) => {
+      const h = H(x), w = W(x);
+      return h > 0 && w > 0 && ((z - cz) / w) ** 2 + ((y - 7) / h) ** 2 <= 1;
+    }, paint);
+    for (const [fx, fz] of [[22, 10], [68, 10], [22, 42], [68, 42]]) shape(m, fx - 10, 7, fz - 5, fx + 10, 16, fz + 5, (x, y, z) => ((x - fx) / 9.5) ** 2 + ((y - 9) / 7) ** 2 + ((z - fz) / 4.5) ** 2 <= 1, paintD);
+    m.box(28, 7, 8, 60, 8, 10, paintD);
+    m.box(28, 7, 42, 60, 8, 44, paintD);
+    surface(m, (x, y, z, p) => {
+      if (p !== paint || y < 21 || y > 29) return null;
+      if (x >= 52 && x <= 58) return glass;
+      if (x >= 22 && x <= 27) return glass;
+      if (Math.abs(z + 0.5 - cz) > 9 && x > 29 && x < 51 && (x < 40 || x > 42)) return glass;
+      return null;
+    });
+    const rust = [m.color("#c27840", { jitter: 0.08 }), m.color("#a4552f", { jitter: 0.08 })];
+    m.recolor((x, y, z, p) => (p === paint || p === paintD) && fbm3(x * 0.12, y * 0.12, z * 0.12, 2, 7) > 0.64 ? rust[h3(x, y, z, 2) < 0.5 ? 0 : 1] : null);
+    for (const wx of [22, 68]) for (const [z0, z1, hz] of [[5, 10, 5], [42, 47, 47]]) {
+      m.cylinder(wx, 7, z0, z1, 7, tire, "z");
+      m.cylinder(wx, 7, hz, hz, 3.4, chrome, "z");
+    }
+    m.box(80, 8, 12, 81, 10, 40, chrome);
+    m.box(9, 8, 12, 10, 10, 40, chrome);
+    for (const hz of [13, 39]) {
+      m.cylinder(15, hz, 76, 78, 2.6, head, "x");
+      m.box(12, 13, hz - 1, 13, 15, hz + 1, tail);
+      m.box(74, 10, hz - 2, 75, 11, hz - 2 + (hz > 20 ? 4 : 0), ind);
+    }
+    m.cylinder(8, 36, 5, 9, 1, chrome, "x");
+    starfish(m, 68, Math.round(7 + H(68)), cz + 2, 4, m.color("#ff7a4a", { smooth: 0.5 }), m.color("#ffd0a0"));
+    for (let k = 0; k < 3; k++) {
+      const kx = 36 + k * 5, kz = cz - 4 + k * 3;
+      let ky = 0;
+      for (let y = 40; y > 10; y--) if (m.get(kx, y, kz)) {
+        ky = y;
+        break;
+      }
+      for (let y = 1; y < 12 + k * 4; y++) m.set(kx + Math.round(Math.sin(y * 0.5 + k) * 1.2), ky + y, kz, kelp[y % 5 === 0 ? 1 : 0]);
+    }
+    sandMound(m, 46, cz, 44, 25, 5, 3);
+    barnacles(m, rng2, 6, [paint, paintD]);
+    return { m, yaw: 30, light: "#fff6c0", ground: [46, 0, cz], anchors: { window: [42, 26, 44], exhaust: [5, 8, 36], front: [84, 18, cz] } };
+  });
+  var ROCKET_SEQ = [1, 1, 2, 2, ...Array(29).fill(2), 2, 1, 1, 0];
+  def("rocket_ship", {
+    name: "Retro Rocket",
+    biome: "aquarium",
+    tags: ["machine", "glow"],
+    decor: { price: 950, size: 2 },
+    decorOnly: true,
+    desc: "Fully functional. Goes up, comes back down. The pilot is a goldfish named Major Tom.",
+    interact: {
+      verb: "Launch",
+      frames: 4,
+      seq: ROCKET_SEQ,
+      fps: 6,
+      motion: { t0: 0.6, t1: 5.4, base: 3, part: 2, path: [[0.6, 0], [1.1, -8], [1.7, -70], [2.4, -460], [3.4, -460], [4.6, -90], [5.4, 0]] },
+      sfx: [["click", 0], ["puff", 0.2, { pitch: 0.7 }], ["travel_whoosh", 0.6, { vol: 0.7 }], ["thunder", 0.7, { vol: 0.45, pitch: 1.3 }], ["travel_whoosh", 3.7, { vol: 0.4, pitch: 0.7 }], ["box_close", 5.4], ["puff", 5.45]],
+      fx: [
+        { at: 0.25, kind: "smoke", from: "pad", n: 10 },
+        { at: 0.65, kind: "smoke", from: "pad", n: 16 },
+        { at: 0.9, kind: "embers", from: "nozzle", n: 10, track: true },
+        { at: 1.3, kind: "embers", from: "nozzle", n: 10, track: true },
+        { at: 1.7, kind: "smoke", from: "nozzle", n: 8, track: true },
+        { at: 4.4, kind: "embers", from: "nozzle", n: 8, track: true },
+        { at: 4.9, kind: "embers", from: "nozzle", n: 8, track: true },
+        { at: 5.4, kind: "smoke", from: "pad", n: 12 }
+      ],
+      fish: "flee",
+      shake: 0.6
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(52, 98, 52);
+    const con = m.color("#9a9aa2", { jitter: 0.06 });
+    const hz = [m.color("#ffd84a", { jitter: 0.02 }), m.color("#24242a", { jitter: 0.02 })];
+    const pit = m.color("#2a2a30", { jitter: 0 });
+    const red = m.color("#d83a2a", { spec: 0.8, jitter: 0.03 });
+    const grey = m.color("#7a7e88", { spec: 1 });
+    const beacon = m.color("#ff3a3a", { emissive: 1, jitter: 0 });
+    const white = m.color("#f2f2f6", { smooth: 0.7, spec: 1.2, jitter: 0.02 });
+    const rRed = m.color("#e04a3a", { smooth: 0.7, spec: 1.2, jitter: 0.02 });
+    const brass = m.color("#e0b048", { spec: 1.6 });
+    const nozzle = m.color("#3a3a44", { spec: 1 });
+    const portF = m.color("#ff9a3a", { emissive: 0.5 });
+    const portB = m.color("#9ae8ff", { emissive: 0.5 });
+    const eye = m.color("#1a1420", { jitter: 0 });
+    const fl = ["#ff6a2a", "#ffb04a", "#fff4b0"].map((c) => m.color(c, { emissive: 1, jitter: 0 }));
+    const cx = 26, cz = 26, rx = 27, rz = 27;
+    lathe(m, cx, cz, 0, 3, () => 23, con);
+    shape(m, cx - 22, 3, cz - 22, cx + 22, 3, cz + 22, (x, y, z) => {
+      const r = Math.hypot(x - cx, z - cz);
+      return r >= 18.5 && r <= 21.5;
+    }, (x, y, z) => hz[Math.floor((Math.atan2(z + 0.5 - cz, x + 0.5 - cx) + Math.PI) * 5) % 2]);
+    m.sub(() => m.cylinder(rx, rz, 2, 3, 5));
+    m.cylinder(rx, rz, 1, 1, 5, pit);
+    for (const [px, pz] of [[5, 5], [11, 5], [5, 11], [11, 11]]) m.box(px, 3, pz, px, 92, pz, red);
+    for (let y = 4; y < 92; y += 6) {
+      m.line(5, y, 11, 11, y + 6, 11, red, 0);
+      m.line(11, y, 5, 11, y + 6, 11, red, 0);
+    }
+    for (const y of [30, 50, 70, 90]) m.box(4, y, 4, 12, y, 12, grey);
+    m.box(7, 93, 7, 9, 94, 9, beacon);
+    for (const [sx, sz] of [[rx - 5, rz - 5], [rx + 5, rz - 5], [rx - 5, rz + 5], [rx + 5, rz + 5]]) m.box(sx, 4, sz, sx, 13, sz, grey);
+    if (frame === 0) m.line(11, 62, 9, rx - 6, 62, rz - 4, grey, 0.8);
+    else m.box(11, 62, 8, 14, 62, 10, grey);
+    if (frame === 3) {
+      const smoke = [m.color("#d8dce4", { smooth: 0.9, jitter: 0.04 }), m.color("#b8bcc8", { smooth: 0.9, jitter: 0.04 })];
+      for (let y = 6; y <= 88; y += 3) m.sphere(rx + Math.sin(y * 0.3) * 1.5, y, rz + Math.cos(y * 0.23), 4.6 - y * 0.03 + h3(y, 1, 1, 3) * 1.4, smoke[y / 3 % 2]);
+      return { m, yaw: 30, ground: [cx, 0, cz], anchors: { nozzle: [rx, 8, rz], pad: [cx, 5, 40], top: [rx, 86, rz] } };
+    }
+    const R = part(m, 52, 98, 52);
+    lathe(R, rx, rz, 14, 17, (t) => 4.8 + t * 1.7, white);
+    lathe(R, rx, rz, 18, 64, () => 6.5, (x, y) => y >= 30 && y <= 32 || y >= 56 && y <= 58 ? rRed : white);
+    lathe(R, rx, rz, 65, 82, (t) => 6.5 * Math.pow(Math.cos(t * Math.PI / 2), 0.7), rRed);
+    R.line(rx, 82, rz, rx, 86, rz, grey, 0);
+    lathe(R, rx, rz, 11, 14, (t) => 4.4 - t * 1.4, nozzle);
+    for (const [py, c] of [[48, portF], [39, portB]]) {
+      torus(R, rx, py, rz + 6.4, 2.6, 0.6, brass, "z");
+      R.cylinder(rx, py, rz + 6, rz + 6.6, 2.1, c, "z");
+      if (c === portF) {
+        R.set(rx + 1, py + 1, rz + 7, eye);
+        R.set(rx - 1, py, rz + 7, portF);
+      }
+    }
+    for (const a of [Math.PI / 2, Math.PI * 7 / 6, Math.PI * 11 / 6]) {
+      const ca = Math.cos(a), sa = Math.sin(a);
+      for (let s = 6; s <= 13; s += 0.5) for (let y = 12; y <= 31; y++) {
+        const u = (s - 6) / 7;
+        if (y < 12 + u * 1 || y > 31 - u * 13) continue;
+        R.set(rx + ca * s, y, rz + sa * s, rRed);
+        R.set(rx + ca * s - sa * 0.6, y, rz + sa * s + ca * 0.6, rRed);
+      }
+    }
+    if (frame >= 1) {
+      const y0 = frame === 2 ? 2 : 7;
+      for (let y = y0; y <= 10; y++) {
+        const t = (10 - y) / (10 - y0 + 0.01), r = (frame === 2 ? 4.2 : 3) * (1 - t * 0.7);
+        R.cylinder(rx, rz, y, y, r, (x, yy, z) => {
+          const d = Math.hypot(x + 0.5 - rx, z + 0.5 - rz) / r;
+          return fl[d < 0.4 && t < 0.7 ? 2 : d < 0.75 ? 1 : 0];
+        });
+      }
+    }
+    for (let i = 0; i < R.data.length; i++) if (R.data[i]) m.data[i] = R.data[i];
+    return { m, yaw: 30, ground: [cx, 0, cz], light: "#ffb04a", split: (x, y, z) => R.get(x, y, z) !== 0, anchors: { nozzle: [rx, 8, rz], pad: [cx, 5, 40], top: [rx, 86, rz] } };
+  });
+  def("cuckoo_clock", {
+    name: "Cuckoo Clock",
+    biome: "aquarium",
+    tags: ["retro", "home"],
+    decor: { price: 240, size: 1 },
+    decorOnly: true,
+    desc: "Keeps perfect time. Unfortunately it is the wrong timezone.",
+    interact: {
+      verb: "Cuckoo",
+      frames: 4,
+      idle: [0, 1],
+      idleFps: 1.5,
+      seq: [2, 3, 2, 3, 2, 3, 0, 1],
+      fps: 4,
+      sfx: [["chirp", 0, { pitch: 0.8 }], ["chirp", 0.25, { pitch: 0.62 }], ["chirp", 0.5, { pitch: 0.8 }], ["chirp", 0.75, { pitch: 0.62 }], ["click", 1.5]],
+      fx: [{ at: 0, kind: "text", from: "door", text: "CUCKOO!" }, { at: 0.2, kind: "burst", from: "door", n: 6, colors: ["#5ab8ff", "#ffffff"] }],
+      fish: "flee"
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(42, 78, 34);
+    const stone = m.color("#9a948c", { jitter: 0.08 });
+    const wood = m.color("#7a4a2a", { jitter: 0.05 });
+    const woodL = m.color("#9a643a", { jitter: 0.05 });
+    const roof = [m.color("#4a2e1c", { jitter: 0.04 }), m.color("#5e3a22", { jitter: 0.04 })];
+    const leaf = m.color("#5a8a3a", { jitter: 0.05 });
+    const face = m.color("#f4ecd0", { jitter: 0.02 });
+    const ink = m.color("#2a2028", { jitter: 0 });
+    const gold = m.color("#e8b848", { spec: 1.6 });
+    const dark = m.color("#1e1418", { jitter: 0 });
+    const bird = m.color("#5ab8ff", { smooth: 0.7 });
+    const beak = m.color("#ff9a2a", { jitter: 0 });
+    const cone = [m.color("#5a3a22", { jitter: 0.04 }), m.color("#7a5230", { jitter: 0.04 })];
+    const cx = 20.5, fz = 18;
+    rbox(m, 13, 0, 5, 28, 3, 21, 1, stone);
+    m.cylinder(cx, 12, 3, 36, 2.2, wood);
+    m.box(7, 36, 6, 34, 62, fz, (x, y, z) => z === fz && (x - 7) % 4 === 0 ? woodL : wood);
+    shape(m, 2, 60, 3, 39, 73, 21, (x, y, z) => {
+      const hw = (73 - y) * 1.5 + 1;
+      const d = Math.abs(x - cx);
+      return d <= hw && d > hw - 2.5;
+    }, (x, y) => roof[(Math.floor(y) >> 1) % 2]);
+    shape(m, 7, 62, fz, 34, 72, fz, (x, y) => Math.abs(x - cx) <= (73 - y) * 1.5 - 2, woodL);
+    for (const [lx, ly] of [[cx - 4, 64], [cx + 4, 64], [cx, 67], [cx - 2, 65], [cx + 2, 65]]) m.box(lx - 1, ly, fz + 1, lx + 1, ly + 1, fz + 1, leaf);
+    m.ellipsoid(cx, 75, 12, 2.4, 1.6, 1.6, woodL);
+    m.cylinder(cx, 45, fz + 1, fz + 1, 6.6, face, "z");
+    torus(m, cx, 45, fz + 1.5, 6.8, 0.5, gold, "z");
+    for (let k = 0; k < 12; k++) {
+      const a2 = k / 12 * Math.PI * 2;
+      m.set(cx + Math.cos(a2) * 5.3, 45 + Math.sin(a2) * 5.3, fz + 2, ink);
+    }
+    m.line(cx, 45, fz + 2, cx - 3, 47, fz + 2, ink, 0);
+    m.line(cx, 45, fz + 2, cx + 3, 49.5, fz + 2, ink, 0);
+    m.box(cx - 2.5, 53, fz + 1, cx + 2.5, 59, fz + 1, dark);
+    if (frame < 2) {
+      m.box(cx - 2.5, 53, fz + 2, cx - 0.5, 59, fz + 2, woodL);
+      m.box(cx + 0.5, 53, fz + 2, cx + 2.5, 59, fz + 2, woodL);
+    } else {
+      m.box(cx - 3, 53, fz + 2, cx - 3, 59, fz + 5, woodL);
+      m.box(cx + 3, 53, fz + 2, cx + 3, 59, fz + 5, woodL);
+      const out = frame === 3 ? 2 : 0;
+      m.line(cx, 55, fz + 1, cx, 55, fz + 5 + out, gold, 0);
+      m.ellipsoid(cx, 56.5, fz + 4 + out, 2.4, 1.8, 2.6, bird);
+      m.sphere(cx + 1, 58.5, fz + 5 + out, 1.6, bird);
+      m.set(cx + 2, 59, fz + 6 + out, dark);
+      if (frame === 3) {
+        m.line(cx + 2, 58.5, fz + 6 + out, cx + 4, 59.5, fz + 8 + out, beak, 0);
+        m.line(cx + 2, 58, fz + 6 + out, cx + 4, 57, fz + 8 + out, beak, 0);
+      } else m.line(cx + 2, 58.5, fz + 6 + out, cx + 3.5, 58.5, fz + 7.5 + out, beak, 0);
+    }
+    const a = (frame % 2 ? 16 : -16) * (Math.PI / 180);
+    const bx = cx + Math.sin(a) * 13, by = 36 - Math.cos(a) * 13;
+    m.line(cx, 36, fz + 1, bx, by, fz + 1, gold, 0);
+    m.cylinder(bx, by, fz + 1, fz + 1, 2.8, gold, "z");
+    m.set(bx, by, fz + 2, leaf);
+    for (const [wx, wy] of [[14, 22], [27, 27]]) {
+      m.line(wx, 36, fz - 2, wx, wy + 3, fz - 2, gold, 0);
+      m.ellipsoid(wx, wy, fz - 2, 1.9, 3.6, 1.9, (x, y) => cone[y % 2]);
+    }
+    return { m, yaw: 28, ground: [cx, 0, 13], anchors: { door: [cx, 58, fz + 6], top: [cx, 76, 12] } };
+  });
+  def("gumball_machine", {
+    name: "Gumball Machine",
+    biome: "aquarium",
+    tags: ["dumb", "retro", "treasure"],
+    decor: { price: 200, size: 1 },
+    decorOnly: true,
+    desc: "Turn the crank! Sometimes it gives a gumball. Sometimes it gives you money. Nobody knows why.",
+    interact: {
+      verb: "Turn crank",
+      frames: 3,
+      seq: [1, 1, 2, 2, 2, 0],
+      fps: 5,
+      sfx: [["reel_tick", 0], ["reel_tick", 0.1], ["reel_tick", 0.2], ["click", 0.4]],
+      fx: [{ at: 0.55, kind: "gumball", from: "chute", n: 1 }],
+      coin: { at: 0.6, from: "chute", cooldown: 150 },
+      fish: "gather"
+    }
+  }, ({ frame }) => {
+    const m = new VoxelModel(38, 62, 38);
+    const red = m.color("#e03a3a", { spec: 1.4, smooth: 0.6, jitter: 0.02 });
+    const redD = m.color("#b02a30", { smooth: 0.6 });
+    const chrome = m.color("#d0d8e2", { spec: 2.2, smooth: 0.5 });
+    const white = m.color("#ffffff", { jitter: 0 });
+    const glint = m.color("#f4fbff", { spec: 2, light: 0.4 });
+    const gums = ["#ff4a5a", "#ffd84a", "#4ac8ff", "#7ad84a", "#ff8ad8", "#ffffff", "#ff9a3a"].map((c) => m.color(c, { smooth: 0.6, spec: 1.5, specPow: 12 }));
+    const cx = 19, cz = 19, gy = 41;
+    lathe(m, cx, cz, 0, 4, (t) => 10 - t * 1.5, redD);
+    lathe(m, cx, cz, 5, 17, (t) => 5 + t * 1.2, red);
+    rbox(m, 10, 17, 10, 28, 30, 28, 3, red);
+    torus(m, cx, 31, cz, 7, 0.8, chrome);
+    m.sphere(cx, gy, cz, 11.5, (x, y, z) => {
+      const nx = (x + 0.5 - cx) / 11.5, ny = (y + 0.5 - gy) / 11.5, nz = (z + 0.5 - cz) / 11.5;
+      if (nz > 0.45 && ny > 0.1 && ny < 0.75 && nx < -0.15 && nx > -0.55) return glint;
+      return gums[Math.floor(h3(Math.floor(x / 2.5), Math.floor(y / 2.5), Math.floor(z / 2.5), 5) * gums.length)];
+    });
+    lathe(m, cx, cz, 51, 55, (t) => 6.4 - t * 2.4, red);
+    m.sphere(cx, 56.5, cz, 1.8, chrome);
+    m.box(13, 20, 29, 25, 28, 29, chrome);
+    m.box(16, 26, 30, 18, 27, 30, white);
+    if (frame === 1) {
+      m.line(cx, 20, 30, cx, 28, 30, chrome, 0.7);
+      m.sphere(cx, 20, 31, 1.3, chrome);
+      m.sphere(cx, 28, 31, 1.3, chrome);
+    } else {
+      m.line(15, 24, 30, 23, 24, 30, chrome, 0.7);
+      m.sphere(15, 24, 31, 1.3, chrome);
+      m.sphere(23, 24, 31, 1.3, chrome);
+    }
+    m.box(16, 16, 29, 22, 18, 32, chrome);
+    m.sub(() => m.box(17, 17, 31, 21, 18, 32));
+    if (frame === 2) m.sphere(cx, 18, 31.5, 1.6, gums[4]);
+    return { m, yaw: 30, ground: [cx, 0, cz], anchors: { chute: [cx, 18, 34], top: [cx, 58, cz] } };
+  });
+  def("shop_stall", { name: "Bait Stall", biome: "shop", tags: ["shop", "glow"] }, ({ rng: rng2 }) => {
+    const m = new VoxelModel(96, 96, 60);
+    const wood = [m.color("#a06a3c", { jitter: 0.08 }), m.color("#8a5a32", { jitter: 0.08 }), m.color("#b88050", { jitter: 0.06 })];
+    const seam = m.color("#5a3420", { jitter: 0.03 });
+    const awnA = m.color("#e84a5a", { jitter: 0.04, smooth: 0.4 }), awnB = m.color("#fff0d8", { jitter: 0.04, smooth: 0.4 });
+    const trim = m.color("#f2c84a", { jitter: 0.03, spec: 1 });
+    const glassC = m.color("#bfe8e0", { jitter: 0.03, smooth: 0.6, spec: 1.8, specPow: 10, light: 0.2 });
+    const lid = [m.color("#d84a3a", { jitter: 0.03 }), m.color("#3a8ad8", { jitter: 0.03 }), m.color("#5ac85a", { jitter: 0.03 }), m.color("#f2c84a", { jitter: 0.03 })];
+    const contents = [m.color("#ff8aa8", { jitter: 0.1 }), m.color("#e2b878", { jitter: 0.1 }), m.color("#7dff9a", { emissive: 0.8, jitter: 0.05 }), m.color("#ffd84a", { emissive: 0.6, jitter: 0.05 }), m.color("#8a6a4a", { jitter: 0.1 }), m.color("#b46bff", { emissive: 0.7, jitter: 0.05 })];
+    const lamp = m.color("#ffcf6a", { emissive: 1, jitter: 0 });
+    const signC = m.color("#2a4a5a", { jitter: 0.03 });
+    const letter = m.color("#fff6d8", { jitter: 0, emissive: 0.4 });
+    const rope = m.color("#d8c08a", { jitter: 0.03 });
+    const x0 = 10, x1 = 85, zb = 12, zf = 44;
+    m.box(x0 - 2, 0, zb - 2, x1 + 2, 2, zf + 4, (x, y, z) => z % 4 === 0 ? seam : wood[(x >> 3) % 2]);
+    m.box(x0, 3, zb, x1, 62, zb + 2, (x, y, z) => (x - x0) % 8 === 0 ? seam : wood[1]);
+    for (const sy of [14, 28, 42]) {
+      m.box(x0 + 2, sy, zb + 3, x1 - 2, sy + 1, zb + 9, wood[2]);
+      for (let jx = x0 + 4, k = 0; jx < x1 - 6; jx += 7, k++) {
+        const h = 6 + (h3(jx, sy, 0, 3) * 3 | 0);
+        m.box(jx, sy + 2, zb + 4, jx + 4, sy + 1 + h, zb + 8, glassC);
+        m.box(jx + 1, sy + 2, zb + 5, jx + 3, sy + h - 1, zb + 8, contents[(k + sy) % contents.length]);
+        m.box(jx, sy + 2 + h, zb + 4, jx + 4, sy + 3 + h, zb + 8, lid[(k + (sy >> 2)) % lid.length]);
+      }
+    }
+    for (const [px, pz] of [[x0, zf], [x1 - 1, zf], [x0, zb + 3], [x1 - 1, zb + 3]]) m.box(px, 3, pz, px + 1, 66, pz + 1, wood[0]);
+    for (let z = zb - 1; z <= zf + 8; z++) {
+      const y = 68 - (z - zb) * 0.28;
+      for (let x = x0 - 4; x <= x1 + 4; x++) m.box(x, y, z, x, y + 1, z, Math.floor((x - x0 + 4) / 6) % 2 ? awnB : awnA);
+    }
+    for (let x = x0 - 4; x <= x1 + 4; x++) {
+      const sc = Math.floor((x - x0 + 4) / 6) % 2 ? awnB : awnA;
+      const k = (x - x0 + 4) % 6;
+      const drop = k === 0 || k === 5 ? 1 : k === 1 || k === 4 ? 3 : 4;
+      const y = 68 - (zf + 8 - zb) * 0.28;
+      m.box(x, y - drop, zf + 8, x, y, zf + 8, sc);
+    }
+    m.box(x0 - 4, 68 - (zf + 8 - zb) * 0.28 + 2, zf + 8, x1 + 4, 68 - (zf + 8 - zb) * 0.28 + 2, zf + 8, trim);
+    const signY = 72;
+    m.box(30, signY, zb + 4, 65, signY + 12, zb + 6, signC);
+    m.box(29, signY - 1, zb + 4, 66, signY - 1, zb + 6, trim);
+    m.box(29, signY + 13, zb + 4, 66, signY + 13, zb + 6, trim);
+    const font = { B: ["###.", "#..#", "###.", "#..#", "###."], A: [".##.", "#..#", "####", "#..#", "#..#"], I: ["###", ".#.", ".#.", ".#.", "###"], T: ["###", ".#.", ".#.", ".#.", ".#."] };
+    let lx = 35;
+    for (const ch of "BAIT") {
+      const g = font[ch];
+      for (let r = 0; r < 5; r++) for (let c = 0; c < g[r].length; c++) if (g[r][c] === "#") m.box(lx + c * 2, signY + 10 - r * 2, zb + 7, lx + c * 2 + 1, signY + 11 - r * 2, zb + 7, letter);
+      lx += g[0].length * 2 + 2;
+    }
+    m.line(x1 - 6, 64, zf + 4, x1 - 6, 56, zf + 4, rope, 0.4);
+    m.box(x1 - 8, 50, zf + 2, x1 - 4, 55, zf + 6, lamp);
+    m.box(x1 - 8, 56, zf + 2, x1 - 4, 56, zf + 6, trim);
+    m.box(x1 - 8, 49, zf + 2, x1 - 4, 49, zf + 6, trim);
+    const cz0 = zf - 6, cz1 = zf + 1, ct = 17;
+    const counter = (x, y, z) => x >= x0 - 1 && x <= x1 + 1 && y >= 3 && y <= ct + 12 && z >= cz0 && z <= cz1 + 1;
+    m.box(x0, 3, cz0, x1 - 1, ct, cz1, (x, y, z) => (x - x0) % 6 === 0 ? seam : y > ct - 3 ? wood[2] : wood[Math.floor((x - x0) / 6) % 2]);
+    m.box(x0 - 1, ct + 1, cz0 - 1, x1, ct + 3, cz1 + 1, wood[2]);
+    m.box(x0 - 1, ct + 1, cz1 + 1, x1, ct + 1, cz1 + 1, trim);
+    m.box(x0 + 6, ct + 4, cz0 + 1, x0 + 11, ct + 10, cz0 + 5, glassC);
+    m.box(x0 + 7, ct + 4, cz0 + 2, x0 + 10, ct + 8, cz0 + 5, contents[0]);
+    m.box(x0 + 6, ct + 11, cz0 + 1, x0 + 11, ct + 11, cz0 + 5, lid[1]);
+    m.cylinder(x1 - 12, cz0 + 3, ct + 4, ct + 5, 3, trim);
+    m.sphere(x1 - 12, ct + 7, cz0 + 3, 2, trim);
+    m.cylinder(x1 - 22, cz0 + 3, ct + 4, ct + 4, 3.5, wood[1]);
+    m.box(x1 - 23, ct + 5, cz0 + 2, x1 - 22, ct + 5, cz0 + 3, lid[3]);
+    const kx = (x0 + x1) / 2, kz = (zb + 10 + cz0) / 2;
+    m.box(kx - 9, 3, kz - 5, kx + 8, 9, kz + 4, (x, y, z) => y === 6 || x === kx - 9 || x === kx + 8 ? seam : wood[0]);
+    const kelp = [m.color("#4fa25e", { smooth: 0.3 }), m.color("#86cf74", { smooth: 0.3 })];
+    for (let y = 2; y < 40; y++) m.set(4 + Math.round(Math.sin(y * 0.35) * 1.3), y, zf + 2, kelp[y % 6 === 0 ? 1 : 0]);
+    void rng2;
+    return {
+      m,
+      yaw: 22,
+      pitch: 24,
+      vs: 1.6,
+      light: "#ffcf6a",
+      front: counter,
+      anchors: { keeper: [kx, 10, kz] }
+    };
+  });
+  var PROPS = {};
+  for (const [id, d] of Object.entries(DEFS)) PROPS[id] = d.meta;
+  var PROP_VARIANTS = {
+    treasure_chest: [{ frame: 0, label: "chest" }, { frame: 1, label: "chest open" }],
+    crystal_cluster: GEMS.map((g, i) => ({ variant: i, label: g[0] })),
+    coral_brain: [{ variant: 0, label: "brain coral" }, { variant: 1, label: "brain lime" }, { variant: 2, label: "brain pink" }],
+    coral_branch: CORAL_SCHEMES.map((c, i) => ({ variant: i, label: "tree coral " + (i + 1) })),
+    coral_fan: [0, 1, 2].map((i) => ({ variant: i, label: "sea fan " + (i + 1) })),
+    coral_tube: [0, 1, 2].map((i) => ({ variant: i, label: "tube sponge " + (i + 1) })),
+    coral_staghorn: [0, 1, 2].map((i) => ({ variant: i, label: "staghorn " + (i + 1) })),
+    anemone_base: [0, 1, 2].map((i) => ({ variant: i, label: "anemone " + (i + 1) })),
+    server_rack: [{ frame: 0, label: "server rack" }, { frame: 1, label: "server rack f1" }],
+    circuit_coral: [0, 1, 2].map((i) => ({ variant: i, label: "circuit coral " + (i + 1) })),
+    glow_mushroom: [0, 1, 2].map((i) => ({ variant: i, label: "glow shrooms " + (i + 1) })),
+    glyph_stone: [0, 1, 2].map((i) => ({ variant: i, label: "glyph stone " + (i + 1) })),
+    lava_lamp: LAVA.map((c, i) => ({ variant: i, label: "lava lamp " + (i + 1) })),
+    lava_lamp_giant: LAVA.map((c, i) => ({ variant: i, label: "giant lamp " + (i + 1) }))
+  };
+  var ANIMATED_DECOR = Object.keys(INTERACT);
+
+  // src/gfx/character.js
+  var SKINS = {
+    green: { name: "Pickle Green", skin: "#5ccf4a", belly: "#e2f5a8", fin: "#ffa23a", lips: "#ff7f8f", spot: "#3f9e3c", gill: "#ec4a62" },
+    lime: { name: "Zesty Lime", skin: "#a6dc34", belly: "#f6fbc0", fin: "#ff6aa0", lips: "#ff7a8a", spot: "#6fa82a", gill: "#e8405a" },
+    mint: { name: "Minty Fresh", skin: "#58d8a2", belly: "#e4fbea", fin: "#ffb84a", lips: "#ff8a9a", spot: "#38a87c", gill: "#e8506a" },
+    swamp: { name: "Swamp Thing", skin: "#7f9a3e", belly: "#dcd894", fin: "#d8643a", lips: "#e8788a", spot: "#5a7228", gill: "#c8404a" },
+    forest: { name: "Deep Forest", skin: "#2f9450", belly: "#bfe6a4", fin: "#ffd04a", lips: "#ff8a8a", spot: "#1f6a3c", gill: "#e8405a" },
+    kelp: { name: "Kelp Teal", skin: "#33b49a", belly: "#d4f4dc", fin: "#ff8a5a", lips: "#ff8aa0", spot: "#1f8a78", gill: "#e8506a" },
+    blue: { name: "Big Blue", skin: "#4a8ae8", belly: "#d8ecff", fin: "#ffd04a", lips: "#ff8aa8", spot: "#2f62b8", gill: "#ff5a7a" },
+    orange: { name: "Goldie Orange", skin: "#ff8f2e", belly: "#ffe6b0", fin: "#fff2dc", lips: "#ff5a6a", spot: "#e0601a", gill: "#d8303a" },
+    pink: { name: "Bubblegum", skin: "#ff8ac4", belly: "#ffeaf4", fin: "#7ad8ff", lips: "#e8406a", spot: "#e860a0", gill: "#d8304a" },
+    purple: { name: "Grape Soda", skin: "#9a6ae0", belly: "#ecdcff", fin: "#7affc8", lips: "#ff7ab0", spot: "#7448b8", gill: "#ff4a8a" },
+    gold: { name: "Solid Gold", skin: "#f2c23a", belly: "#fff2b8", fin: "#ffffff", lips: "#ff9a6a", spot: "#d89a1a", gill: "#e8603a", shiny: true }
+  };
+  var OUTFITS = {
+    overalls: { name: "Denim Overalls", sleeve: "short", legs: "long", shirt: "#c8463a", arm: "#c8463a", pants: "#3e6cb4" },
+    raincoat: { name: "Sunny Raincoat", sleeve: "long", legs: "long", shirt: "#ffcc2e", arm: "#ffcc2e", pants: "#2c3c5e" },
+    hawaiian: { name: "Hawaiian Shirt", sleeve: "short", legs: "shorts", shirt: "#22b4b0", arm: "#22b4b0", pants: "#e6cf9c" },
+    hoodie: { name: "Comfy Hoodie", sleeve: "long", legs: "long", shirt: "#8a5ad8", arm: "#8a5ad8", pants: "#6a6e7c" },
+    wetsuit: { name: "Wetsuit", sleeve: "long", legs: "long", shirt: "#262a38", arm: "#262a38", pants: "#262a38" },
+    tuxedo: { name: "Fancy Tuxedo", sleeve: "long", legs: "long", shirt: "#24242f", arm: "#24242f", pants: "#24242f" },
+    astronaut: { name: "Astronaut Suit", sleeve: "long", legs: "long", shirt: "#e8ecf4", arm: "#e8ecf4", pants: "#e8ecf4" },
+    pajamas: { name: "Starry Pajamas", sleeve: "long", legs: "long", shirt: "#86b4f0", arm: "#86b4f0", pants: "#86b4f0" }
+  };
+  var ACC_SPOT = { sunglasses: "eyes", monocle: "eyes", snorkel: "eyes", mustache: "mouth", bandana: "neck", bowtie: "neck", scarf: "neck", earring: "ear", backpack: "back" };
+  var it = (slot, value, name, rarity, price, desc, extra = {}) => ({ id: slot + "_" + value, slot, value, name, rarity, price, desc, ...extra });
+  var pkg = { price: null, unlock: "package" };
+  var skill = (id) => ({ price: null, unlock: "skill", skill: id });
+  var WARDROBE = [
+    // skins
+    it("skin", "green", "Pickle Green", "common", 0, "The classic. Fresh, crunchy, a little briny."),
+    it("skin", "lime", "Zesty Lime", "common", 60, "Squeeze me for extra zest."),
+    it("skin", "mint", "Minty Fresh", "uncommon", 150, "Cool as a cucumber fish."),
+    it("skin", "kelp", "Kelp Teal", "uncommon", 150, "Blends right into a kelp forest."),
+    it("skin", "forest", "Deep Forest", "uncommon", 180, "Dark and mysterious. Mostly mysterious."),
+    it("skin", "swamp", "Swamp Thing", "rare", 420, "Smells faintly of pond. In a good way."),
+    it("skin", "blue", "Big Blue", "rare", 480, "Feeling blue? Look fabulous anyway."),
+    it("skin", "orange", "Goldie Orange", "rare", 520, "The goldfish-bowl glow-up."),
+    it("skin", "pink", "Bubblegum", "epic", 900, "Pop! Sweet, pink and slightly sticky."),
+    it("skin", "purple", "Grape Soda", "epic", null, "Fizzy scales from a mystery crate.", pkg),
+    it("skin", "gold", "Solid Gold", "legendary", null, "Shiny enough to blind a seagull. Earned with the Golden Hook.", skill("hook6")),
+    // eyes
+    it("eyes", "goofy", "Goofy Eyes", "common", 0, "Each one has its own opinion."),
+    it("eyes", "googly", "Googly Eyes", "common", 50, "Rattle rattle rattle."),
+    it("eyes", "sleepy", "Sleepy Eyes", "uncommon", 120, "Five more minutes..."),
+    it("eyes", "angry", "Grumpy Eyes", "uncommon", 140, "Furious about absolutely nothing."),
+    it("eyes", "starry", "Starry Eyes", "rare", 450, "Dazzled by every single fish."),
+    it("eyes", "hearts", "Lovestruck", "epic", null, "Falls in love with every catch.", pkg),
+    it("eyes", "dizzy", "Dizzy Spirals", "epic", null, "Spun around one too many times.", pkg),
+    // mouths
+    it("mouth", "pout", "Fish Pout", "common", 0, "Blub. The classic fish face."),
+    it("mouth", "grin", "Big Grin", "common", 40, "All teeth, all the time."),
+    it("mouth", "buck", "Buck Teeth", "uncommon", 110, "Great for nibbling kelp."),
+    it("mouth", "tongue", "Silly Tongue", "uncommon", 130, "Bleh!"),
+    it("mouth", "whistle", "Whistler", "rare", 380, "Always whistling a sea shanty."),
+    it("mouth", "smooch", "Smoochy Lips", "epic", null, "Mwah! Lips from a treasure crate.", pkg),
+    // hats
+    it("hat", "none", "No Hat", "common", 0, "Let that dorsal fin breathe."),
+    it("hat", "bucket", "Bucket Hat", "common", 0, "Covered in lucky lures."),
+    it("hat", "captain", "Captain Hat", "uncommon", 220, "Aye aye, cap'n Gil."),
+    it("hat", "propeller", "Propeller Beanie", "uncommon", 180, "Spins when you get excited."),
+    it("hat", "cowboy", "Cowboy Hat", "uncommon", 260, "Yee-haw, partner. Fish ho."),
+    it("hat", "souwester", "Sou'wester", "common", 90, "For very wet weather."),
+    it("hat", "party", "Party Hat", "common", 70, "Every catch is a party."),
+    it("hat", "chef", "Chef Hat", "rare", 480, "Definitely not cooking the fish. Definitely."),
+    it("hat", "viking", "Viking Helmet", "rare", 650, "Raid the seven seas."),
+    it("hat", "cone", "Traffic Cone", "epic", 1200, "Found it on the seabed. Wears it with pride."),
+    it("hat", "crown", "Royal Crown", "legendary", null, "For the Fish King. Comes in very rare crates.", pkg),
+    // outfits
+    it("outfit", "overalls", "Denim Overalls", "common", 0, "Flannel underneath. Very outdoorsy."),
+    it("outfit", "raincoat", "Sunny Raincoat", "common", 120, "Bright yellow, waterproof, extra cheerful."),
+    it("outfit", "hawaiian", "Hawaiian Shirt", "uncommon", 240, "Vacation mode: permanently on."),
+    it("outfit", "hoodie", "Comfy Hoodie", "uncommon", 260, "Pocket full of snacks."),
+    it("outfit", "pajamas", "Starry Pajamas", "rare", 520, "Night fishing in maximum comfort."),
+    it("outfit", "wetsuit", "Wetsuit", "rare", null, "Ready to dive. Unlocked by charting the Junkyard Reef.", skill("exp1")),
+    it("outfit", "tuxedo", "Fancy Tuxedo", "epic", 1500, "For fish galas and very formal splashes."),
+    it("outfit", "astronaut", "Astronaut Suit", "legendary", null, "One small cast for a fish... From legendary crates.", pkg),
+    // boots
+    it("boots", "yellow", "Yellow Wellies", "common", 0, "Squeaky, puddle-proof."),
+    it("boots", "red", "Red Wellies", "common", 60, "Same squeak, new colour."),
+    it("boots", "sneakers", "Sneakers", "uncommon", 180, "Fast enough to outrun a crab."),
+    it("boots", "bare", "Webbed Feet", "uncommon", 100, "Nature's flippers. Slightly slimy."),
+    it("boots", "flippers", "Big Flippers", "rare", 450, "Flap flap flap flap."),
+    it("boots", "cowboy", "Cowboy Boots", "rare", 480, "With real jingly spurs."),
+    it("boots", "slippers", "Bunny Slippers", "epic", null, "Fluffy. From a cozy crate.", pkg),
+    // gloves
+    it("gloves", "none", "Bare Fins", "common", 0, "Webbed fingers, firm grip."),
+    it("gloves", "rubber", "Rubber Gloves", "common", 70, "Fish slime? No problem."),
+    it("gloves", "fingerless", "Fingerless Gloves", "uncommon", 160, "Cool AND practical."),
+    it("gloves", "mittens", "Knit Mittens", "uncommon", 150, "Grandma made them."),
+    it("gloves", "oven", "Oven Mitts", "rare", 380, "For red-hot fishing streaks."),
+    it("gloves", "boxing", "Boxing Gloves", "epic", 1100, "Fight the fish fair and square."),
+    it("gloves", "gold", "Golden Gauntlets", "legendary", null, "Grip of a champion. Legendary crates only.", pkg),
+    // accessories
+    it("acc", "sunglasses", "Cool Shades", "uncommon", 200, "Too cool for the reef."),
+    it("acc", "snorkel", "Snorkel Mask", "uncommon", 220, "A fish with a snorkel. Why not."),
+    it("acc", "monocle", "Monocle", "rare", 520, "Indubitably."),
+    it("acc", "mustache", "Grand Mustache", "uncommon", 160, "Took years to grow. Fish years."),
+    it("acc", "bandana", "Red Bandana", "common", 80, "Pirate-adjacent."),
+    it("acc", "bowtie", "Bow Tie", "common", 90, "Dapper."),
+    it("acc", "scarf", "Striped Scarf", "uncommon", 140, "Cozy for deep-sea chills."),
+    it("acc", "earring", "Gold Hoop", "rare", null, "A pirate treasure, found in a crate.", pkg),
+    it("acc", "backpack", "Explorer Pack", "uncommon", 260, "Snacks, maps and a spare worm."),
+    // rods
+    it("rod", "bamboo", "Bamboo Rod", "common", 0, "Trusty, bendy, classic."),
+    it("rod", "candy", "Candy Cane Rod", "uncommon", 300, "Minty! Do not lick."),
+    it("rod", "carbon", "Carbon Rod", "rare", null, "Light and strong. Unlocked with Ball Bearings.", skill("reel3")),
+    it("rod", "neon", "Neon Rod", "epic", null, "Glows in the deep. Unlocked with the Lantern Hook.", skill("hook7")),
+    it("rod", "golden", "Golden Rod", "legendary", 4e3, "Pure gold. Fish just give up."),
+    it("rod", "laser", "Laser Rod", "legendary", null, "Pew pew. Unlocked with the Overdrive Reel.", skill("reel5")),
+    // boat paint
+    it("boat", "tomato", "Tomato Red", "common", 0, "The original paint job.", { color: "#c8583a", trim: "#f2e6c8" }),
+    it("boat", "sky", "Sky Blue", "common", 80, "Sunny day paint.", { color: "#4a9ad8", trim: "#ffffff" }),
+    it("boat", "sunny", "Sunshine", "common", 80, "Bright as a buttercup.", { color: "#f2c23a", trim: "#5a3a1a" }),
+    it("boat", "mint", "Mint Cream", "uncommon", 160, "Fresh and minty.", { color: "#6ad8a8", trim: "#fff6e0" }),
+    it("boat", "navy", "Navy Stripe", "uncommon", 180, "Very nautical.", { color: "#2a3e6e", trim: "#f2f2f2" }),
+    it("boat", "bubblegum", "Bubblegum", "rare", 380, "Pink, proud and floaty.", { color: "#ff8ac0", trim: "#ffffff" }),
+    it("boat", "pirate", "Pirate Black", "rare", 520, "Arr.", { color: "#2a2630", trim: "#d8a838" }),
+    it("boat", "gold", "Gilded Hull", "legendary", null, "Floats on pure luxury. From legendary crates.", { ...pkg, color: "#f2c03a", trim: "#8a2a2a" })
+  ];
+  var WARDROBE_BY_ID = Object.fromEntries(WARDROBE.map((w) => [w.id, w]));
+  var DEFAULT_CHARACTER = {
+    skin: "green",
+    eyes: "goofy",
+    mouth: "pout",
+    hat: "bucket",
+    outfit: "overalls",
+    boots: "yellow",
+    gloves: "none",
+    acc: [],
+    rod: "bamboo",
+    boat: "#c8583a"
+  };
+  var VALID = {};
+  var _a;
+  for (const w of WARDROBE) (VALID[_a = w.slot] || (VALID[_a] = /* @__PURE__ */ new Set())).add(w.value);
+  function normalizeLook(look) {
+    const L = { ...DEFAULT_CHARACTER, ...look || {} };
+    for (const k of ["eyes", "mouth", "hat", "outfit", "boots", "gloves", "rod"]) if (!VALID[k].has(L[k])) L[k] = DEFAULT_CHARACTER[k];
+    if (!SKINS[L.skin] && !(typeof L.skin === "string" && /^#[0-9a-f]{6}$/i.test(L.skin))) L.skin = DEFAULT_CHARACTER.skin;
+    const acc = Array.isArray(L.acc) ? L.acc : L.acc ? [L.acc] : [];
+    const spots = {};
+    for (const a of acc) if (ACC_SPOT[a]) spots[ACC_SPOT[a]] = a;
+    L.acc = Object.values(spots).sort();
+    if (typeof L.boat !== "string" || !/^#[0-9a-f]{6}$/i.test(L.boat)) L.boat = DEFAULT_CHARACTER.boat;
+    return L;
+  }
+  function skinOf(L) {
+    if (SKINS[L.skin]) return SKINS[L.skin];
+    const [h, s, l] = hexToHsl(L.skin);
+    return { skin: L.skin, belly: hslToHex(h + 10, s * 0.6, Math.min(0.92, l + 0.35)), fin: hslToHex(h + 160, 0.85, 0.62), lips: "#ff7f8f", spot: shade(L.skin, -0.3), gill: "#ec4a62" };
+  }
+  var lookKey = (L) => [L.skin, L.eyes, L.mouth, L.hat, L.outfit, L.boots, L.gloves, L.acc.join("+"), L.rod].join("|");
+  var DEG4 = Math.PI / 180;
+  function rot(rx = 0, ry = 0, rz = 0) {
+    const a = rx * DEG4, b = ry * DEG4, c = rz * DEG4;
+    const ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(b), sb = Math.sin(b), cc = Math.cos(c), sc = Math.sin(c);
+    const Rz = [cc, -sc, 0, sc, cc, 0, 0, 0, 1];
+    const Rx = [1, 0, 0, 0, ca, -sa, 0, sa, ca];
+    const Ry = [cb, 0, sb, 0, 1, 0, -sb, 0, cb];
+    return m3(Ry, m3(Rx, Rz));
+  }
+  function m3(A, B2) {
+    const o = new Array(9);
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) o[i * 3 + j] = A[i * 3] * B2[j] + A[i * 3 + 1] * B2[3 + j] + A[i * 3 + 2] * B2[6 + j];
+    return o;
+  }
+  var I3 = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+  var M = (R = I3, t = [0, 0, 0]) => ({ R, t });
+  var mv = (R, p) => [R[0] * p[0] + R[1] * p[1] + R[2] * p[2], R[3] * p[0] + R[4] * p[1] + R[5] * p[2], R[6] * p[0] + R[7] * p[1] + R[8] * p[2]];
+  var mul = (A, B2) => ({ R: m3(A.R, B2.R), t: add(mv(A.R, B2.t), A.t) });
+  var ap = (A, p) => add(mv(A.R, p), A.t);
+  var add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+  var sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  var scl = (a, k) => [a[0] * k, a[1] * k, a[2] * k];
+  var dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  var cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  var norm = (a) => {
+    const l = Math.hypot(a[0], a[1], a[2]) || 1;
+    return [a[0] / l, a[1] / l, a[2] / l];
+  };
+  var Tr = (x, y, z) => M(I3, [x, y, z]);
+  var Ro = (r) => M(rot(r[0], r[1], r[2]));
+  function alignY(dir, hint) {
+    const Y = norm(dir);
+    let Z = sub(hint, scl(Y, dot(hint, Y)));
+    if (Math.hypot(...Z) < 1e-3) Z = Math.abs(Y[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0];
+    Z = norm(sub(Z, scl(Y, dot(Z, Y))));
+    const X = cross(Y, Z);
+    return [X[0], Y[0], Z[0], X[1], Y[1], Z[1], X[2], Y[2], Z[2]];
+  }
+  function shape2(m, x0, y0, z0, x1, y1, z1, test, c) {
+    for (let y = Math.floor(y0); y <= Math.ceil(y1); y++) for (let z = Math.floor(z0); z <= Math.ceil(z1); z++) for (let x = Math.floor(x0); x <= Math.ceil(x1); x++) {
+      if (test(x + 0.5, y + 0.5, z + 0.5)) m.put(x, y, z, c);
+    }
+  }
+  function torus2(m, cx, cy, cz, R, r, c, axis = "z", sx = 1, sy = 1) {
+    const e = (R + r + 1) * Math.max(sx, sy);
+    shape2(m, cx - e, cy - e, cz - e, cx + e, cy + e, cz + e, (x, y, z) => {
+      let a, b, h;
+      if (axis === "z") {
+        a = (x - cx) / sx;
+        b = (y - cy) / sy;
+        h = z - cz;
+      } else if (axis === "y") {
+        a = (x - cx) / sx;
+        b = (z - cz) / sy;
+        h = y - cy;
+      } else {
+        a = (y - cy) / sx;
+        b = (z - cz) / sy;
+        h = x - cx;
+      }
+      const q = Math.hypot(a, b) - R;
+      return q * q + h * h <= r * r;
+    }, c);
+  }
+  function frontZ2(m, x, y) {
+    for (let z = m.nz - 1; z >= 0; z--) if (m.get(x, y, z)) return z;
+    return -1;
+  }
+  var hsh = (x, y, z, s) => hash3(x, y, z, s);
+  var KITS = /* @__PURE__ */ new Map();
+  function kitFor(look) {
+    const key = lookKey(look);
+    let k = KITS.get(key);
+    if (k) {
+      KITS.delete(key);
+      KITS.set(key, k);
+      return k;
+    }
+    k = makeKit(look, key);
+    KITS.set(key, k);
+    if (KITS.size > 40) KITS.delete(KITS.keys().next().value);
+    return k;
+  }
+  function makeKit(L, key) {
+    const holder = new VoxelModel(1, 1, 1);
+    const memo = /* @__PURE__ */ new Map();
+    const kit = {
+      key,
+      look: L,
+      pal: holder.palette,
+      parts: /* @__PURE__ */ new Map(),
+      sk: skinOf(L),
+      outfit: OUTFITS[L.outfit],
+      col(hex, opts = {}) {
+        const k = hex + "|" + JSON.stringify(opts);
+        let i = memo.get(k);
+        if (i === void 0) {
+          i = holder.color(hex, { jitter: 0.07, ...opts });
+          memo.set(k, i);
+        }
+        return i;
+      },
+      part(name, build2) {
+        let p = this.parts.get(name);
+        if (!p) {
+          p = build2();
+          p.b = p.m.bounds();
+          this.parts.set(name, p);
+        }
+        return p;
+      },
+      model(nx, ny, nz) {
+        const m = new VoxelModel(nx, ny, nz);
+        m.palette = this.pal;
+        return m;
+      }
+    };
+    const s = kit.sk;
+    const shiny = s.shiny ? { spec: 1.4, specPow: 10 } : {};
+    kit.c = {
+      skin: kit.col(s.skin, { smooth: 0.3, jitter: 0.05, edge: 0.5, ...shiny }),
+      skinD: kit.col(shade(s.skin, -0.12), { smooth: 0.3, jitter: 0.05, edge: 0.5, ...shiny }),
+      belly: kit.col(s.belly, { smooth: 0.3, jitter: 0.04, edge: 0.4, ...shiny }),
+      spot: kit.col(s.spot, { smooth: 0.5, jitter: 0.03 }),
+      fin: kit.col(s.fin, { smooth: 0.2, jitter: 0.04 }),
+      finD: kit.col(shade(s.fin, -0.32), { jitter: 0.03 }),
+      lips: kit.col(s.lips, { smooth: 0.7, spec: 0.8, specPow: 14 }),
+      lipsD: kit.col(shade(s.lips, -0.25), { smooth: 0.5 }),
+      gill: kit.col(s.gill, { jitter: 0.04 }),
+      gillLine: kit.col(shade(s.skin, -0.45), { jitter: 0.02 }),
+      blush: kit.col(mix(s.lips, "#ffe0e6", 0.45), { smooth: 0.3, light: 0.3, jitter: 0 }),
+      mouthIn: kit.col("#4a1a34", { jitter: 0.02 }),
+      tongue: kit.col("#ff6a8e", { smooth: 0.7, spec: 0.5 }),
+      teeth: kit.col("#fffaf0", { jitter: 0.02, light: 0.3 }),
+      eyeL: kit.col("#f6faff", { smooth: 1, spec: 1.1, specPow: 10, jitter: 0, aoMul: 0.5, light: 0.45, eye: 1 }),
+      eyeR: kit.col("#f6faff", { smooth: 1, spec: 1.1, specPow: 10, jitter: 0, aoMul: 0.5, light: 0.45, eye: 2 }),
+      nostril: kit.col(shade(s.skin, -0.6), { jitter: 0 }),
+      // hands get their own entries so the 'hold' pose can redraw them in front of the fish
+      hand: kit.col(s.skin, { smooth: 0.5, hand: 1, ...shiny }),
+      handD: kit.col(shade(s.skin, -0.18), { smooth: 0.4, hand: 1 }),
+      web: kit.col(s.fin, { hand: 1, jitter: 0.03 })
+    };
+    kit.handSet = /* @__PURE__ */ new Set([kit.c.hand, kit.c.handD, kit.c.web]);
+    return kit;
+  }
+  function handCol(kit, hex, opts = {}) {
+    const i = kit.col(hex, { ...opts, hand: 1 });
+    kit.handSet.add(i);
+    return i;
+  }
+  var HEAD = { nx: 32, ny: 30, nz: 34, cx: 16, cz: 15, pivot: [16, 1, 15], eyeY: 16.4, eyeX: 6.3, eyeZ: 22.6 };
+  function headInside(x, y, z) {
+    const dx = x - 16, dz = z - 15;
+    if (y < 1) return false;
+    const a = (dx / 12) ** 2 + ((y - 13) / 11.6) ** 2 + (dz / 11) ** 2;
+    const b = (dx / 12.9) ** 2 + ((y - 8.6) / 7.6) ** 2 + ((z - 16) / 10.4) ** 2;
+    const c = (dx / 8.2) ** 2 + ((y - 7.6) / 5.9) ** 2 + ((z - 21.6) / 5.1) ** 2;
+    return a <= 1 || b <= 1 || c <= 1;
+  }
+  var snoutZ = (dx, y) => 21.6 + 5.1 * Math.sqrt(Math.max(0, 1 - (dx / 8.2) ** 2 - ((y - 7.6) / 5.9) ** 2));
+  function buildHead(kit, mouth, gill) {
+    const L = kit.look, C = kit.c;
+    const m = kit.model(HEAD.nx, HEAD.ny, HEAD.nz);
+    shape2(m, 2, 0, 2, 30, 27, 30, headInside, C.skin);
+    m.recolor((x, y, z) => {
+      const yy = y + 0.5, zz = z + 0.5, dx = x + 0.5 - 16;
+      const bellyLine = 9.2 + (zz - 16) * 0.2 + Math.sin(dx * 0.55) * 0.45;
+      if (yy < bellyLine && zz > 9.5) return C.belly;
+      if (yy > 15.5 - (15 - zz) * 0.32 + Math.sin(dx * 0.4 + zz * 0.3) * 0.5 && zz < 19.5) return C.skinD;
+      return null;
+    });
+    const spots = [[-7.5, 19, 9], [6.8, 20, 8], [-2.5, 22.6, 7.5], [3.2, 18, 4.2], [-9.6, 15, 6.5], [9.8, 14.6, 7], [0.6, 23.4, 11.6], [-5, 13.4, 3.6], [5.4, 23, 13], [-6.2, 22.4, 14.6]];
+    for (const [sx0, sy0, sz0] of spots) {
+      const rr2 = 1.25 + hsh(sx0, sy0, sz0, 2) * 0.5;
+      m.recolor((x, y, z, p) => (p === C.skin || p === C.skinD) && Math.hypot(x + 0.5 - 16 - sx0, y + 0.5 - sy0, z + 0.5 - sz0) < rr2 + 1 && m.exposed(x, y, z) && Math.hypot(x + 0.5 - 16 - sx0, (y + 0.5 - sy0) * 1.2, z + 0.5 - sz0) < rr2 + 0.6 ? C.spot : null);
+    }
+    for (const sx of [-1, 1]) {
+      const bx = 16 + sx * 9.6;
+      m.recolor((x, y, z, p) => p !== C.skin && p !== C.belly ? null : Math.hypot(x + 0.5 - bx, (y + 0.5 - 11.2) * 1.5, z + 0.5 - 21.6) < 1.7 && m.exposed(x, y, z) ? C.blush : null);
+    }
+    gills(m, kit, gill);
+    dorsalFin(m, kit);
+    sideFins(m, kit);
+    eyes(m, kit);
+    mouthShape(m, kit, mouth);
+    for (const sx of [-1, 1]) {
+      const nx = Math.floor(16 + sx * 2.1 - 0.5), ny = 11;
+      const z = frontZ2(m, nx, ny);
+      if (z > 0) {
+        m.set(nx, ny, z, 0);
+        m.set(nx, ny, z - 1, C.nostril);
+      }
+    }
+    headAcc(m, kit);
+    const top = [16, 25.6, 14];
+    return { m, pivot: HEAD.pivot, anchors: { top, mouth: [16, 7.4, 27.5], eyeL: [16 + HEAD.eyeX, HEAD.eyeY, HEAD.eyeZ], eyeR: [16 - HEAD.eyeX, HEAD.eyeY, HEAD.eyeZ] }, eyeR: L.eyes === "googly" ? 5.6 : 5.1 };
+  }
+  function eyes(m, kit) {
+    const C = kit.c, L = kit.look;
+    const r = L.eyes === "googly" ? 5.6 : 5.1;
+    for (const sx of [1, -1]) {
+      const ex = 16 + sx * HEAD.eyeX, ey = HEAD.eyeY, ez = HEAD.eyeZ;
+      m.sphere(ex + sx * 0.2, ey + 0.35, ez - 2.2, r + 0.8, C.skin);
+      m.sphere(ex, ey, ez, r, sx > 0 ? C.eyeL : C.eyeR);
+      if (L.eyes === "googly") {
+        const rim = kit.col("#2a2a36", { jitter: 0 });
+        m.paint(() => torus2(m, ex, ey, ez - 1.6, r - 0.2, 0.75, rim, "z"));
+      }
+    }
+  }
+  function gills(m, kit, open) {
+    const C = kit.c;
+    const ops = [];
+    for (const sx of [-1, 1]) {
+      const gy = 8.6, gz = 20.4;
+      for (let y = 2; y < 16; y++) for (let z = 8; z < 17; z++) for (let x = 0; x < m.nx; x++) {
+        const v = m.get(x, y, z);
+        if (!v || m.get(x + sx, y, z)) continue;
+        if ((x + 0.5 - 16) * sx < 5) continue;
+        const d = Math.hypot(y + 0.5 - gy, (z + 0.5 - gz) * 0.92);
+        if (z + 0.5 > 16.2) continue;
+        if (d > 7.6 && d < 8.6) ops.push([x, y, z, C.gillLine]);
+        else if (open && d >= 8.6 && d < 9.6 && y > 3 && y < 14) ops.push([x, y, z, C.gill]);
+      }
+    }
+    for (const [x, y, z, c] of ops) m.set(x, y, z, c);
+  }
+  function dorsalFin(m, kit) {
+    const C = kit.c;
+    const cyH = 13, czH = 15, ry = 11.6, rz = 11;
+    const ops = [];
+    const N = 40;
+    for (let i = 0; i <= N; i++) {
+      const a = lerp(0.12, 1.42, i / N);
+      const sy = cyH + Math.cos(a) * ry, sz = czH - Math.sin(a) * rz;
+      const ny = Math.cos(a) / ry, nz = -Math.sin(a) / rz;
+      const nl = Math.hypot(ny, nz);
+      const u = i / N;
+      const lobe = Math.abs(Math.sin(u * Math.PI * 3.5));
+      const h = (2.2 + 3.4 * lobe) * (0.65 + 0.55 * Math.sin(u * Math.PI));
+      for (let k = -0.5; k <= h; k += 0.5) {
+        const y = sy + ny / nl * k, z = sz + nz / nl * k;
+        const tipRay = lobe > 0.86 && k > h - 2.4;
+        for (const x of [15, 16]) ops.push([x, Math.floor(y), Math.floor(z), tipRay || k > h - 0.6 ? C.finD : C.fin]);
+      }
+    }
+    for (const [x, y, z, c] of ops) if (!m.get(x, y, z) || m.get(x, y, z) === C.fin) m.set(x, y, z, c);
+  }
+  function sideFins(m, kit) {
+    const C = kit.c;
+    const ops = [];
+    for (const sx of [-1, 1]) {
+      for (let y = 3; y <= 12; y++) for (let z = 3; z <= 14; z++) {
+        const dy = y + 0.5 - 7.4, dz = z + 0.5 - 12.6;
+        const r = Math.hypot(dy, dz), ang = Math.atan2(dy, -dz);
+        if (dz > -0.5 || r > 5.4 || Math.abs(ang) > 0.95) continue;
+        let xs = -1;
+        if (sx > 0) {
+          for (let x = m.nx - 1; x >= 16; x--) if (m.get(x, y, z)) {
+            xs = x;
+            break;
+          }
+        } else {
+          for (let x = 0; x < 16; x++) if (m.get(x, y, z)) {
+            xs = x;
+            break;
+          }
+        }
+        if (xs < 0) continue;
+        const c = Math.round(ang * 4.5) & 1 ? C.fin : C.finD;
+        ops.push([xs + sx, y, z, c]);
+        if (r < 3.2) ops.push([xs + 2 * sx, y, z, c]);
+      }
+    }
+    for (const [x, y, z, c] of ops) if (!m.get(x, y, z)) m.set(x, y, z, c);
+  }
+  function mouthShape(m, kit, state) {
+    const C = kit.c, style = kit.look.mouth;
+    const cy = 7.4;
+    const zAt = (dx, y) => snoutZ(dx, y) - 0.6;
+    const ring = (ox, oy, rx, ry, thick, push = 0) => {
+      const pts = [];
+      for (let i = 0; i <= 16; i++) {
+        const a = i / 16 * TAU;
+        const dx = ox + Math.cos(a) * rx, y = cy + oy + Math.sin(a) * ry;
+        pts.push([16 + dx, y, zAt(dx, y) + push, thick]);
+      }
+      m.tube(pts, C.lips, 2);
+    };
+    const hole = (ox, oy, rx, ry, depth = 3) => {
+      const z0 = zAt(ox, cy + oy) + 1.4;
+      const bx0 = 16 + ox - rx - 2, bx1 = 16 + ox + rx + 2, by0 = cy + oy - ry - 2, by1 = cy + oy + ry + 2;
+      const ell = (x, y, k) => ((x - 16 - ox) / (rx + k)) ** 2 + ((y - cy - oy) / (ry + k)) ** 2 <= 1;
+      m.sub(() => shape2(m, bx0, by0, z0 - depth, bx1, by1, z0 + 4, (x, y, z) => ell(x, y, 0) && z > z0 - depth, 1));
+      m.paint(() => shape2(m, bx0, by0, z0 - depth - 2, bx1, by1, z0 + 1, (x, y, z) => ell(x, y, 0.7) && z < z0 - depth + 1.6, C.mouthIn));
+      return z0;
+    };
+    const arcLip = (y0, curve2, halfW, thick, c, push = 0) => {
+      const pts = [];
+      for (let i = -6; i <= 6; i++) {
+        const dx = i / 6 * halfW, y = y0 + curve2 * (dx / halfW) ** 2;
+        pts.push([16 + dx, y, zAt(dx, y) + push, thick]);
+      }
+      m.tube(pts, c, 2);
+    };
+    const teethRow = (y, halfW, z) => {
+      for (let x = Math.round(16 - halfW); x < Math.round(16 + halfW); x++) {
+        m.set(x, y, Math.round(z), C.teeth);
+        m.set(x, y, Math.round(z) - 1, C.teeth);
+      }
+    };
+    let st = state;
+    if (st === "rest") st = style;
+    if (st === "grin" || st === "open" && style === "grin") {
+      const open = state === "open" || state === "grin" ? 2.2 : 1.4;
+      const zf = hole(0, -0.2, 4.4, open, 3);
+      arcLip(cy + open + 0.2, 0.9, 5.6, 1.05, C.lips);
+      arcLip(cy - open - 0.6, 1.9, 5, 1.2, C.lips);
+      teethRow(Math.floor(cy + open - 0.6), 3.4, zf - 2.2);
+      m.ellipsoid(16, cy - open + 0.4, zf - 2.6, 2.4, 1, 1.4, C.tongue);
+    } else if (st === "open") {
+      ring(0, -0.4, 3.4, 2.9, 1.45, 0.3);
+      const zf = hole(0, -0.4, 2.7, 2.2, 4);
+      m.ellipsoid(16, cy - 2.2, zf - 3, 2.2, 1.2, 1.8, C.tongue);
+      if (style === "buck") {
+        m.box(15, cy + 0.6, zf - 2.4, 15, cy + 1.6, zf - 1.4, C.teeth);
+        m.box(17, cy + 0.6, zf - 2.4, 17, cy + 1.6, zf - 1.4, C.teeth);
+      }
+    } else if (st === "grit") {
+      const zf = hole(0, 0, 4.2, 1.6, 2);
+      arcLip(cy + 1.9, -0.3, 5.2, 1.1, C.lips);
+      arcLip(cy - 1.9, 0.2, 5, 1.15, C.lips);
+      for (let x = 12; x <= 19; x++) {
+        const zt = Math.round(zf - 2);
+        m.set(x, Math.floor(cy + 0.4), zt, C.teeth);
+        m.set(x, Math.floor(cy - 0.6), zt, x === 13 || x === 16 || x === 19 ? C.mouthIn : C.teeth);
+      }
+    } else if (st === "frown") {
+      hole(0, -0.4, 2.8, 0.7, 2);
+      arcLip(cy + 0.8, -1.4, 4.2, 1.15, C.lips);
+      arcLip(cy - 1.4, -1.8, 3.8, 1.1, C.lips);
+    } else if (st === "buck") {
+      arcLip(cy + 0.9, 0.5, 4.8, 1.2, C.lips);
+      arcLip(cy - 0.9, 0.9, 4.2, 1.15, C.lipsD);
+      const zf = zAt(0, cy);
+      m.box(14.6, cy - 2.4, zf + 0.6, 15.6, cy + 0.6, zf + 1.6, C.teeth);
+      m.box(16.4, cy - 2.4, zf + 0.6, 17.4, cy + 0.6, zf + 1.6, C.teeth);
+    } else if (st === "tongue") {
+      ring(0.4, -0.2, 2.5, 1.9, 1.4, 0.4);
+      const zf = hole(0.4, -0.2, 1.7, 1.1, 3);
+      m.tube([[16.4, cy - 0.6, zf - 2.6, 1.1], [15.8, cy - 1.6, zf - 0.2, 1.2], [14.8, cy - 3.6, zf + 1.2, 1.15], [14.4, cy - 4.8, zf + 1, 1]], C.tongue, 3);
+    } else if (st === "whistle") {
+      ring(2.2, -0.4, 1.55, 1.35, 1.2, 0.9);
+      hole(2.2, -0.4, 0.75, 0.6, 2);
+      arcLip(cy - 0.4, 0.2, 3.2, 0.8, C.lipsD, -0.2);
+    } else if (st === "smooch") {
+      ring(0, 0.6, 2.2, 1, 1.5, 1.1);
+      ring(0, -1.6, 2.4, 1, 1.55, 1.2);
+      hole(0, -0.5, 0.9, 0.5, 2);
+    } else {
+      ring(0, -0.3, 2.65, 2.15, 1.55, 0.35);
+      hole(0, -0.3, 1.75, 1.2, 3);
+    }
+  }
+  function headAcc(m, kit) {
+    const L = kit.look, C = kit.c;
+    const has = (a) => L.acc.includes(a);
+    const ey = HEAD.eyeY, ez = HEAD.eyeZ, ex = HEAD.eyeX;
+    const r = L.eyes === "googly" ? 5.6 : 5.1;
+    if (has("sunglasses")) {
+      const frame = kit.col("#1c1c26", { jitter: 0 });
+      const lens = kit.col("#2a3c6a", { jitter: 0, spec: 2.2, specPow: 6, smooth: 0.4 });
+      const glint = kit.col("#bfe0ff", { emissive: 0.3, jitter: 0 });
+      for (const sx of [-1, 1]) {
+        const cx = 16 + sx * ex;
+        m.box(cx - 4.4, ey - 3, ez + r - 1, cx + 4.4, ey + 2.6, ez + r + 0.2, frame);
+        m.box(cx - 3.4, ey - 2, ez + r - 1, cx + 3.4, ey + 1.6, ez + r + 0.6, lens);
+        m.set(Math.floor(cx - 2), Math.floor(ey + 1), Math.floor(ez + r + 0.6), glint);
+        m.set(Math.floor(cx - 1), Math.floor(ey + 1), Math.floor(ez + r + 0.6), glint);
+        m.line(cx + sx * 4.4, ey + 1.6, ez + r - 1, 16 + sx * 12.2, ey + 1, 13, frame, 0.55);
+      }
+      m.box(14.6, ey + 0.6, ez + r - 0.6, 17.4, ey + 1.6, ez + r, frame);
+    }
+    if (has("snorkel")) {
+      const strap = kit.col("#1e2a3a", { jitter: 0.03 }), rim = kit.col("#ff8a1a", { jitter: 0.03, smooth: 0.3 }), tube = kit.col("#2a8ae8", { smooth: 0.4 });
+      for (const sx of [-1, 1]) torus2(m, 16 + sx * ex, ey, ez + r - 1.6, r + 0.3, 0.85, rim, "z");
+      m.box(14, ey - 1, ez + r - 1.6, 18, ey + 1, ez + r - 0.8, rim);
+      shape2(m, 2, ey - 1, 2, 30, ey + 1.6, 26, (x, y, z) => {
+        const dx = x - 16, dz = z - 15;
+        const d = (dx / 12.6) ** 2 + (dz / 11.6) ** 2;
+        return d > 0.82 && d < 1.12 && z < 20;
+      }, strap);
+      m.tube([[16 - 13, ey - 2, 16, 1.1], [16 - 14.2, ey + 3, 14, 1.1], [16 - 14, ey + 9, 13, 1.1], [16 - 13, ey + 12, 13.5, 1.2]], tube, 3);
+      m.sphere(16 - 13, ey + 12.4, 13.6, 1.5, rim);
+    }
+    if (has("monocle")) {
+      const gold = kit.col("#f2c23a", { jitter: 0, spec: 1.2 }), glass = kit.col("#d8f0ff", { jitter: 0, spec: 2, specPow: 8, light: 0.3 });
+      torus2(m, 16 + ex, ey, ez + r - 0.4, r - 0.6, 0.75, gold, "z");
+      void glass;
+      m.line(16 + ex + r - 0.8, ey - 1.5, ez + r - 0.6, 16 + ex + 6.2, ey - 7, ez + 0.4, gold, 0.4);
+      m.line(16 + ex + 6.2, ey - 7, ez + 0.4, 16 + ex + 6.6, ey - 11, ez - 2, gold, 0.4);
+    }
+    if (has("mustache")) {
+      const hair = kit.col("#5a321c", { jitter: 0.08, smooth: 0.3 }), hairL = kit.col("#7a4a28", { jitter: 0.08, smooth: 0.3 });
+      for (const sx of [-1, 1]) {
+        const pts = [[16 + sx * 0.4, 10.6, 0, 1.25], [16 + sx * 2.6, 10.3, 0, 1.35], [16 + sx * 4.6, 9.6, 0, 1.15], [16 + sx * 6.2, 10.3, 0, 0.9], [16 + sx * 6.9, 11.8, 0, 0.75]];
+        for (const p of pts) p[2] = snoutZ(p[0] - 16, p[1]) + 0.4 - Math.max(0, Math.abs(p[0] - 16) - 3) * 0.55;
+        m.tube(pts, (x) => Math.abs(x + 0.5 - 16) < 3 ? hairL : hair, 3);
+      }
+    }
+    if (has("earring")) {
+      const gold = kit.col("#f6c83a", { jitter: 0, spec: 1.6, specPow: 8 });
+      torus2(m, 16 + 13.2, 4.2, 12.8, 1.7, 0.55, gold, "x");
+    }
+  }
+  var HAT_SEAT = [16, 22.6, 13.8];
+  var HAT_TILT = { bucket: -8, captain: -10, propeller: -6, cowboy: -9, crown: -6, chef: -6, viking: -4, cone: -10, souwester: 4, party: -14 };
+  function buildHat(kit, spin) {
+    const id = kit.look.hat;
+    if (id === "none") return null;
+    const m = kit.model(36, 30, 36);
+    const cx = 18, cz = 18, by = 4;
+    const K = (hex, o = {}) => kit.col(hex, o);
+    const domeR = (y) => 9.6 * Math.sqrt(Math.max(0, 1 - ((y - by) / 7.5) ** 2));
+    if (id === "bucket") {
+      const cloth = K("#b9ab78", { smooth: 0.35, jitter: 0.1 }), dark = K("#8f8256", { smooth: 0.3 }), band = K("#6a5434", { jitter: 0.05 });
+      m.cone(cx, cz, by - 0.5, by + 6, 9.6, 8.2, cloth);
+      m.ellipsoid(cx, by + 6, cz, 8.2, 2.2, 8.2, cloth);
+      shape2(m, cx - 14, by - 3, cz - 14, cx + 14, by + 1, cz + 14, (x, y, z) => {
+        const r = Math.hypot(x - cx, z - cz);
+        if (r > 13.4 || r < 8) return false;
+        const yy = by + 0.3 - (r - 8) * 0.42;
+        return y >= yy - 1 && y <= yy + 0.4;
+      }, dark);
+      m.paint(() => m.cone(cx, cz, by + 0.4, by + 1.6, 10, 10, band));
+      m.recolor((x, y, z, p) => p === dark && Math.abs(Math.hypot(x + 0.5 - cx, z + 0.5 - cz) - 11.5) < 0.45 ? cloth : null);
+      const red = K("#e8403a", { jitter: 0.02, spec: 0.8 }), white = K("#f4f4f0", { jitter: 0.02 }), hook = K("#c8ccd8", { jitter: 0, spec: 1 }), yel = K("#ffd23a", { jitter: 0.03 }), feather = K("#3ac8a0", { jitter: 0.05 });
+      m.box(cx + 8.6, by + 2, cz + 1, cx + 9.6, by + 4, cz + 2, red);
+      m.box(cx + 8.6, by + 4, cz + 1, cx + 9.6, by + 5, cz + 2, white);
+      m.set(cx + 9, by + 1, cz + 2, hook);
+      m.set(cx + 9, by + 0, cz + 3, hook);
+      m.box(cx - 6, by + 3, cz + 6.4, cx - 5, by + 4, cz + 7.4, yel);
+      m.line(cx - 5, by + 4, cz + 7, cx - 3, by + 6.5, cz + 7, feather, 0.5);
+    } else if (id === "captain") {
+      const white = K("#f4f4f0", { smooth: 0.4, jitter: 0.04 }), navy = K("#1a2a4e", { jitter: 0.04 }), visor = K("#14141e", { spec: 1.6, specPow: 8, jitter: 0 }), gold = K("#f2c43a", { spec: 1.2, jitter: 0 });
+      m.cone(cx, cz, by - 0.5, by + 3, 9.5, 9.5, navy);
+      m.cone(cx, cz, by + 3, by + 6.6, 9.8, 11.2, white);
+      m.ellipsoid(cx, by + 6.6, cz, 11.2, 1.4, 11.2, white);
+      m.paint(() => m.cone(cx, cz, by + 2.6, by + 3.2, 11, 11, gold));
+      shape2(m, cx - 8, by - 2, cz, cx + 8, by + 1, cz + 15, (x, y, z) => {
+        const dx = x - cx, dz = z - cz;
+        const r = Math.hypot(dx / 1.05, dz);
+        return dz > 4 && r < 13.6 && r > 8 && y >= by - 1 - (r - 8) * 0.2 && y <= by + 0.2 - (r - 8) * 0.2;
+      }, visor);
+      const g = [".#.", "###", ".#.", ".#.", "#.#", ".#."];
+      for (let ry = 0; ry < 6; ry++) for (let rx = 0; rx < 3; rx++) {
+        const zz = frontZ2(m, cx - 1 + rx, by + 8 - ry);
+        if (g[ry][rx] === "#" && zz > 0) m.set(cx - 1 + rx, by + 8 - ry, zz + 1, gold);
+      }
+    } else if (id === "propeller") {
+      const cols = ["#e8403a", "#ffd23a", "#3ac84a", "#3a8ae8"].map((h) => K(h, { smooth: 0.45, jitter: 0.05 }));
+      shape2(m, cx - 10, by - 1, cz - 10, cx + 10, by + 8, cz + 10, (x, y, z) => y >= by - 0.8 && Math.hypot(x - cx, z - cz) <= domeR(y) + 0.2, (x, y, z) => cols[((Math.atan2(z + 0.5 - cz, x + 0.5 - cx) / TAU + 1.125) * 4 | 0) % 4]);
+      const rim = K("#f4f4f0", { jitter: 0.03 });
+      m.paint(() => m.cone(cx, cz, by - 1, by + 0.4, 10, 10, rim));
+      const stem = K("#9aa0b0", { jitter: 0, spec: 1 }), bladeA = K("#e8403a", { jitter: 0 }), bladeB = K("#3a8ae8", { jitter: 0 });
+      m.cylinder(cx, cz, by + 7, by + 9.5, 0.7, stem);
+      m.sphere(cx, by + 10, cz, 1.2, K("#ffd23a", { jitter: 0, spec: 1 }));
+      const a0 = spin * Math.PI / 4;
+      for (let k = 0; k < 2; k++) {
+        const a = a0 + k * Math.PI;
+        for (let s = 1.2; s <= 7; s += 0.5) {
+          const w = 1.3 * Math.sin(s / 7 * Math.PI) + 0.4;
+          const px = cx + Math.cos(a) * s, pz = cz + Math.sin(a) * s;
+          m.line(px - Math.sin(a) * w, by + 10 + (k ? 0.4 : -0.4), pz + Math.cos(a) * w, px + Math.sin(a) * w, by + 10 + (k ? -0.4 : 0.4), pz - Math.cos(a) * w, k ? bladeB : bladeA, 0.45);
+        }
+      }
+    } else if (id === "cowboy") {
+      const felt = K("#8a5a32", { smooth: 0.35, jitter: 0.06 }), dark = K("#6a4024", { smooth: 0.3 }), band = K("#2e1e14", { jitter: 0.03 }), concho = K("#dadde8", { spec: 1.4, jitter: 0 });
+      shape2(m, cx - 9, by - 1, cz - 10, cx + 9, by + 9, cz + 10, (x, y, z) => {
+        const dx = x - cx, dz = z - cz, yy = y - by;
+        if (yy < -0.6 || yy > 8.4) return false;
+        const r = 8.6 - yy * 0.25;
+        if ((dx / r) ** 2 + (dz / (r * 1.08)) ** 2 > 1) return false;
+        if (yy > 6.6 && Math.abs(dx) < 1.4) return false;
+        if (yy > 7.4 && Math.abs(dz) > 5) return false;
+        return true;
+      }, felt);
+      m.paint(() => m.cone(cx, cz, by + 0.2, by + 1.6, 10, 10, band));
+      shape2(m, cx - 17, by - 3, cz - 16, cx + 17, by + 5, cz + 16, (x, y, z) => {
+        const dx = x - cx, dz = z - cz;
+        const r = Math.hypot(dx / 1.18, dz);
+        if (r > 13.2 || r < 7.6) return false;
+        const curl = (Math.abs(dx) / 15) ** 2 * 5.2;
+        const yy = by - 0.4 + curl - (dz > 0 ? (r - 7.6) * 0.14 : 0);
+        return y >= yy - 0.7 && y <= yy + 0.5;
+      }, dark);
+      m.set(cx, by + 1, frontZ2(m, cx, by + 1) + 1, concho);
+    } else if (id === "crown") {
+      const gold = K("#f2c23a", { spec: 1.5, specPow: 8, jitter: 0.04 }), goldD = K("#c8901c", { jitter: 0.03 });
+      const gems = ["#e8283a", "#3a8ae8", "#3ae88a"].map((h) => K(h, { emissive: 0.35, spec: 2, jitter: 0 }));
+      shape2(m, cx - 8, by - 1, cz - 8, cx + 8, by + 9, cz + 8, (x, y, z) => {
+        const dx = x - cx, dz = z - cz, yy = y - by, r = Math.hypot(dx, dz);
+        if (r > 7.4 || r < 6 || yy < -0.5) return false;
+        const a = Math.atan2(dz, dx);
+        const spike = 3.4 + 3.6 * Math.max(0, Math.cos(a * 5));
+        return yy <= spike;
+      }, (x, y) => y - by < 1.2 ? goldD : gold);
+      for (let k = 0; k < 5; k++) {
+        const a = k / 5 * TAU;
+        m.sphere(cx + Math.cos(a) * 6.8, by + 7.6, cz + Math.sin(a) * 6.8, 1.15, gold);
+        const gx = Math.round(cx + Math.cos(a + Math.PI / 5) * 7.4 - 0.5), gz = Math.round(cz + Math.sin(a + Math.PI / 5) * 7.4 - 0.5);
+        m.box(gx, by + 2, gz, gx, by + 3, gz, gems[k % 3]);
+      }
+      m.ellipsoid(cx, by + 1, cz, 6, 2.6, 6, K("#a8202a", { smooth: 0.6 }));
+    } else if (id === "chef") {
+      const w = K("#fafaf4", { smooth: 0.7, jitter: 0.03 }), w2 = K("#e8e8e0", { smooth: 0.6, jitter: 0.03 });
+      m.cone(cx, cz, by - 0.6, by + 4, 9.6, 9.2, w2);
+      const puffs = [[0, 10.5, 0, 7.6], [-4.6, 9.6, -2, 5], [4.6, 9.6, -2, 5], [0, 9.4, 4.4, 5], [0, 10, -4.4, 5], [-3, 13, 1, 4.4], [3, 13.2, -1, 4.2], [0, 14.6, 0, 4]];
+      for (const [px, py, pz, r] of puffs) m.ellipsoid(cx + px, by + py, cz + pz, r, r * 0.85, r, w);
+    } else if (id === "viking") {
+      const iron = K("#7e8496", { spec: 1, specPow: 12, smooth: 0.5, jitter: 0.05 }), band = K("#a87a3a", { jitter: 0.05, spec: 0.6 }), rivet = K("#dadeea", { jitter: 0, spec: 1.4 }), horn = K("#f2e6c8", { smooth: 0.6, jitter: 0.04 }), hornT = K("#b8a07a", { smooth: 0.5 });
+      shape2(m, cx - 11, by - 1.6, cz - 11, cx + 11, by + 9, cz + 11, (x, y, z) => y >= by - 1.4 && Math.hypot(x - cx, z - cz) <= 10.2 * Math.sqrt(Math.max(0, 1 - ((y - by + 1.4) / 9.2) ** 2)), iron);
+      m.paint(() => m.cone(cx, cz, by - 1.6, by + 0.6, 11, 11, band));
+      m.paint(() => m.box(cx - 0.8, by, cz - 11, cx + 0.8, by + 9, cz + 11, band));
+      for (let k = 0; k < 10; k++) {
+        const a = k / 10 * TAU;
+        const rx = Math.round(cx + Math.cos(a) * 10.3 - 0.5), rz = Math.round(cz + Math.sin(a) * 10.3 - 0.5);
+        m.set(rx, by - 0.5 | 0, rz, rivet);
+      }
+      for (const sx of [-1, 1]) {
+        const pts = [[cx + sx * 8.6, by + 3, cz, 2.2], [cx + sx * 12.6, by + 4.4, cz + 0.6, 1.9], [cx + sx * 15, by + 8, cz + 1, 1.4], [cx + sx * 15.4, by + 12, cz + 0.6, 0.9], [cx + sx * 14.2, by + 15, cz, 0.5]];
+        m.tube(pts, (x, y) => y > by + 11 ? hornT : horn, 3);
+      }
+    } else if (id === "cone") {
+      const orange = K("#ff6a1e", { smooth: 0.4, jitter: 0.04 }), white = K("#f8f8f4", { light: 0.3, jitter: 0.02, spec: 0.8 }), base = K("#2a2a30", { jitter: 0.04 });
+      m.box(cx - 9, by - 1, cz - 9, cx + 9, by + 0.5, cz + 9, base);
+      m.cone(cx, cz, by + 1, by + 16, 7.6, 1.6, (x, y) => Math.floor((y - by - 3) / 3.2) % 2 === 0 && y - by > 3 && y - by < 13 ? white : orange);
+    } else if (id === "souwester") {
+      const yel = K("#ffcc2e", { smooth: 0.45, jitter: 0.05 }), yelD = K("#e0a81a", { smooth: 0.4 });
+      m.ellipsoid(cx, by + 1, cz, 9.8, 7.4, 9.8, yel);
+      m.sub(() => m.box(cx - 12, by - 9, cz - 12, cx + 12, by - 1.2, cz + 12, 1));
+      shape2(m, cx - 13, by - 6, cz - 15, cx + 13, by + 1, cz + 13, (x, y, z) => {
+        const dx = x - cx, dz = z - cz;
+        const back = dz < 0 ? 1.45 : 0.95;
+        const r = Math.hypot(dx, dz / back);
+        if (r > 12 || r < 8.6) return false;
+        const yy = by - 1 - (r - 8.6) * (dz < 0 ? 0.8 : 0.3);
+        return y >= yy - 0.7 && y <= yy + 0.4;
+      }, yelD);
+      m.paint(() => shape2(m, cx - 10, by + 7, cz - 10, cx + 10, by + 8.4, cz + 10, (x, y, z) => true, yelD));
+    } else if (id === "party") {
+      const a = K("#ff5aa8", { jitter: 0.04, smooth: 0.3 }), b = K("#3ab8ff", { jitter: 0.04, smooth: 0.3 }), pom = K("#ffe23a", { smooth: 0.8, jitter: 0.1 });
+      m.cone(cx, cz, by - 0.5, by + 13, 6.6, 0.8, (x, y, z) => (Math.floor((y - by) * 0.7 + Math.atan2(z - cz, x - cx) * 1.3) % 2 + 2) % 2 ? a : b);
+      m.sphere(cx, by + 14, cz, 2.2, pom);
+      for (const [px, pz] of [[-1, 0], [1, 1], [0, -1]]) m.set(cx + px, by + 15 + (px & 1), cz + pz, pom);
+    }
+    return { m, pivot: [cx, by, cz] };
+  }
+  var TORSO = { nx: 20, ny: 22, nz: 19, cx: 10, cz: 9, hy: 4 };
+  function torsoInside(x, y, z) {
+    const dx = x - TORSO.cx, dz = z - TORSO.cz, yy = y - TORSO.hy;
+    if (yy < -2.4 || yy > 13.6) return false;
+    const a = 6.4 - Math.max(0, yy - 10.6) * 1, bz = 4.3 - Math.max(0, yy - 11.6) * 0.7;
+    const box2 = (Math.abs(dx) / a) ** 3 + (Math.abs(dz) / bz) ** 3 <= 1;
+    const pel = (Math.abs(dx) / 6.1) ** 3 + (Math.abs(dz) / 4.2) ** 3 <= 1;
+    const belly = (dx / 6.1) ** 2 + ((yy - 4) / 5.8) ** 2 + ((dz - 1.7) / 4.8) ** 2 <= 1;
+    return (yy >= 1.2 ? box2 : pel) || belly;
+  }
+  function buildTorso(kit) {
+    const L = kit.look, O = kit.outfit, C = kit.c;
+    const m = kit.model(TORSO.nx, TORSO.ny, TORSO.nz);
+    const { cx, cz, hy } = TORSO;
+    const shirt = kit.col(O.shirt, { smooth: 0.35, jitter: 0.06 });
+    const pants = kit.col(O.pants, { smooth: 0.3, jitter: 0.06 });
+    shape2(m, 0, 0, 0, TORSO.nx - 1, TORSO.ny - 1, TORSO.nz - 1, torsoInside, (x, y) => y - hy < 1.4 ? pants : shirt);
+    m.cylinder(cx, cz, hy + 13, hy + 15.4, 2.8, C.skin);
+    const R = (fn) => m.recolor((x, y, z, p) => fn(x + 0.5 - cx, y + 0.5 - hy, z + 0.5 - cz, x, y, z, p));
+    const surf = (fn) => m.recolor((x, y, z, p) => m.exposed(x, y, z) ? fn(x + 0.5 - cx, y + 0.5 - hy, z + 0.5 - cz, x, y, z, p) : null);
+    const K = (h, o = {}) => kit.col(h, { smooth: 0.3, jitter: 0.06, ...o });
+    const onFront = (dx, yy, cb) => {
+      const x = Math.floor(cx + dx), y = Math.floor(hy + yy);
+      const z = frontZ2(m, x, y);
+      if (z > 0) cb(x, y, z);
+    };
+    const id = L.outfit;
+    if (id === "overalls") {
+      const plaidA = K("#c8463a"), plaidB = K("#8a2630"), plaidC = K("#efd9b8"), denim = pants, denimD = K("#2c4f8e"), stitch = K("#f0b858", { jitter: 0 }), brass = K("#f2c84a", { spec: 1.2, jitter: 0 });
+      R((dx, yy, dz, x, y) => {
+        if (yy < 1.4) return null;
+        const bib = dz > 0.6 && Math.abs(dx) <= 4.3 && yy < 10.4;
+        const strap = Math.abs(Math.abs(dx) - 3.4) < 1 && yy >= 10;
+        const back = dz < -0.6 && Math.abs(dx) <= 4.6 && yy < 7.4;
+        if (bib || strap || back) return bib && (Math.abs(Math.abs(dx) - 4) < 0.5 || Math.abs(yy - 10) < 0.5) ? stitch : denim;
+        if (yy < 2.4) return denim;
+        const lx = x % 4 === 0, ly = y % 4 === 1;
+        return lx && ly ? plaidC : lx || ly ? plaidB : plaidA;
+      });
+      for (let dx = -2; dx <= 1; dx++) onFront(dx, 7.6, (x, y, z) => m.set(x, y, z, stitch));
+      for (const dx of [-2, 1]) for (let yy = 5; yy <= 7; yy++) onFront(dx, yy, (x, y, z) => m.set(x, y, z, denimD));
+      for (const sx of [-1, 1]) onFront(sx * 3.4, 9.8, (x, y, z) => {
+        m.set(x, y, z + 1, brass);
+        m.set(x - (sx < 0 ? 0 : 0), y, z, brass);
+      });
+      R((dx, yy) => Math.abs(yy - 1.6) < 0.5 ? denimD : null);
+    } else if (id === "raincoat") {
+      const coat = shirt, coatD = K("#e0a81a"), toggle = K("#6a3a1a", { jitter: 0.02 }), lining = K("#2c3c5e");
+      R((dx, yy) => yy < 1.4 ? coat : null);
+      shape2(m, 0, 0, 0, 19, hy + 1, 17, (x, y, z) => {
+        const dx = x - cx, dz = z - cz, yy = y - hy;
+        return yy >= -3 && yy < 1 && (Math.abs(dx) / 6.8) ** 3 + (Math.abs(dz) / 4.9) ** 3 <= 1;
+      }, coat);
+      m.cone(cx, cz, hy + 12.4, hy + 15.2, 4.2, 4.6, coatD);
+      m.sub(() => m.cone(cx, cz + 1.5, hy + 14, hy + 16, 2, 2, 1));
+      R((dx, yy, dz) => dz > 2 && Math.abs(dx) < 0.6 && yy < 12 ? coatD : null);
+      for (const yy of [2, 5.5, 9]) onFront(0.5, yy, (x, y, z) => {
+        m.set(x, y, z + 1, toggle);
+        m.set(x - 1, y, z + 1, toggle);
+      });
+      surf((dx, yy, dz) => yy < -2.2 ? lining : null);
+    } else if (id === "hawaiian") {
+      const flowerA = K("#ff6a8a", { jitter: 0.02 }), flowerB = K("#fff2a8", { jitter: 0.02 }), leaf = K("#127a5a", { jitter: 0.03 }), btn = K("#f4f0e0", { jitter: 0 });
+      surf((dx, yy, dz, x, y, z, p) => {
+        if (p !== shirt) return null;
+        if (dz > 2.4 && yy > 10.2 && Math.abs(dx) < (yy - 10.2) * 1 + 0.6) return C.belly;
+        const gx = Math.floor((x + (y >> 2)) / 4), gy = Math.floor(y / 4), gz = Math.floor(z / 4);
+        const h = hsh(gx, gy, gz, 21);
+        const ox = gx * 4 - (y >> 2) + 2, oy = gy * 4 + 2;
+        const fx = x - ox, fy = y - oy;
+        if (h < 0.5 && Math.abs(fx) + Math.abs(fy) <= 1) return fx === 0 && fy === 0 ? flowerB : h < 0.25 ? flowerA : flowerB;
+        if (h > 0.82 && fx === 1 && fy === -1) return leaf;
+        return null;
+      });
+      for (let yy = 1.6; yy < 10; yy += 2.6) onFront(0, yy, (x, y, z) => m.set(x, y, z, btn));
+    } else if (id === "hoodie") {
+      const dark = K(shade(O.shirt, -0.22)), str = K("#f2f2f2", { jitter: 0 }), rib = K(shade(O.shirt, -0.12));
+      R((dx, yy) => yy < 2.2 ? rib : null);
+      surf((dx, yy, dz) => dz > 2.4 && yy > 1.8 && yy < 5.6 && Math.abs(dx) < 4.6 - (yy - 1.8) * 0.25 ? Math.abs(yy - 5.3) < 0.5 || Math.abs(Math.abs(dx) - (4.4 - (yy - 1.8) * 0.25)) < 0.5 ? dark : null : null);
+      m.ellipsoid(cx, hy + 13.4, cz - 3.4, 5.6, 2.8, 2.8, shirt);
+      m.ellipsoid(cx, hy + 13.8, cz - 2.6, 3.6, 1.6, 1.6, dark);
+      for (const sx of [-1, 1]) for (let yy = 8.5; yy <= 12; yy++) onFront(sx * 1.5, yy, (x, y, z) => m.set(x, y, z + 1, str));
+    } else if (id === "wetsuit") {
+      const stripe = K("#2ad0c8", { jitter: 0.02 }), zip = K("#c8ccd8", { jitter: 0, spec: 1 });
+      R((dx, yy, dz) => Math.abs(Math.abs(dx) - 5.3) < 0.7 && yy > -1 ? stripe : null);
+      for (let yy = 3; yy <= 13; yy++) onFront(0, yy, (x, y, z) => m.set(x, y, z, zip));
+      m.paint(() => m.cylinder(cx, cz, hy + 13, hy + 14.4, 3.2, shirt));
+      m.cylinder(cx, cz, hy + 12.6, hy + 14.2, 3.3, shirt);
+    } else if (id === "tuxedo") {
+      const shirtW = K("#f6f6f2", { jitter: 0.02 }), satin = K("#3a3a4c", { spec: 1, specPow: 10 }), bow = K("#d8283a", { jitter: 0.02 }), btn = K("#1a1a20", { jitter: 0 });
+      surf((dx, yy, dz) => {
+        if (dz < 1.8 || yy < 1.4) return null;
+        const v = (yy - 3) * 0.5;
+        if (Math.abs(dx) < v) return shirtW;
+        if (Math.abs(dx) < v + 1.2 && yy > 4) return satin;
+        return null;
+      });
+      for (const yy of [5.2, 7.8]) onFront(0, yy, (x, y, z) => m.set(x, y, z, btn));
+      onFront(0, 12.4, (x, y, z) => {
+        m.box(x - 2, y - 1, z + 1, x + 2, y + 1, z + 1, bow);
+        m.set(x, y, z + 2, bow);
+        m.set(x - 1, y, z + 1, bow);
+      });
+      for (const sx of [-1, 1]) m.box(cx + sx * 2.6 - 1.2, hy - 4.5, cz - 4.6, cx + sx * 2.6 + 1.2, hy + 1, cz - 3.4, shirt);
+    } else if (id === "astronaut") {
+      const suitD = K("#c6ccda"), panel = K("#5a6078", { jitter: 0.02 }), ring = K("#a8b0c4", { spec: 1.2, jitter: 0.02 }), patch2 = K("#ff8a2a", { jitter: 0.02 });
+      const lights = ["#ff4a4a", "#4aff8a", "#ffd84a", "#4ac8ff"].map((h) => K(h, { emissive: 0.85, jitter: 0 }));
+      R((dx, yy) => Math.abs(yy - 1.8) < 0.6 ? suitD : null);
+      onFront(0, 6, (x, y, z) => {
+        m.box(x - 3, y, z, x + 2, y + 3, z + 1, panel);
+        for (let k = 0; k < 4; k++) m.set(x - 2 + k % 3 + (k > 2 ? 1 : 0), y + 1 + (k > 2 ? 1 : 0), z + 2, lights[k]);
+      });
+      onFront(-4.2, 11, (x, y, z) => {
+        m.box(x, y - 1, z, x + 1, y, z, patch2);
+      });
+      torus2(m, cx, hy + 13.8, cz, 4.4, 1.15, ring, "y");
+      m.box(cx - 4.5, hy + 2, cz - 7.2, cx + 4.5, hy + 12, cz - 4, suitD);
+      m.box(cx - 3.5, hy + 10, cz - 7.6, cx - 1.5, hy + 11, cz - 7.2, lights[1]);
+    } else if (id === "pajamas") {
+      const dot2 = K("#fff8e0", { jitter: 0.02 }), trim = K("#f6f2ff", { jitter: 0.02 }), moon = K("#ffe27a", { jitter: 0.02, light: 0.2 });
+      surf((dx, yy, dz, x, y, z, p) => {
+        if (Math.abs(dx) < 0.6 && dz > 2 && yy > 1.5) return trim;
+        const h = hsh(x, y, z, 31);
+        if (h < 0.055) return dot2;
+        if (h > 0.985) return moon;
+        return null;
+      });
+      m.cone(cx, cz, hy + 12.8, hy + 13.8, 4.2, 4.2, trim);
+      m.sub(() => m.cylinder(cx, cz, hy + 12.8, hy + 14, 2.9, 1));
+    }
+    neckAcc(m, kit);
+    return { m, pivot: [cx, hy, cz] };
+  }
+  function neckAcc(m, kit) {
+    const L = kit.look;
+    const { cx, cz, hy } = TORSO;
+    const has = (a) => L.acc.includes(a);
+    const K = (h, o = {}) => kit.col(h, { smooth: 0.3, jitter: 0.05, ...o });
+    if (has("bandana")) {
+      const red = K("#d8283a"), dot2 = K("#fff4ec", { jitter: 0 });
+      torus2(m, cx, hy + 13.2, cz + 0.4, 3.6, 1.05, red, "y");
+      for (let yy = 0; yy < 5; yy++) {
+        const y = hy + 12.6 - yy, w = 3.6 - yy * 0.75;
+        for (let x = Math.round(cx - w); x <= Math.round(cx + w - 1); x++) {
+          const z = frontZ2(m, x, y);
+          if (z > 0) m.set(x, y, z + 1, (x + yy) % 3 === 0 && yy % 2 === 0 ? dot2 : red);
+        }
+      }
+    }
+    if (has("bowtie")) {
+      const bt = K("#2a5ad8", { spec: 0.6 }), knot = K("#1a3a9a");
+      const y = hy + 12.4, z = frontZ2(m, cx, Math.floor(y)) + 1;
+      shape2(m, cx - 4, y - 2, z - 1, cx + 4, y + 2, z + 1, (x, yy, zz) => {
+        const dx = Math.abs(x - cx);
+        return dx < 3.6 && Math.abs(yy - y - 0.5) <= 0.6 + dx * 0.45 && zz < z + 1;
+      }, bt);
+      m.box(cx - 1, y - 0.5, z, cx, y + 0.5, z + 0.6, knot);
+    }
+    if (has("scarf")) {
+      const a = K("#e8403a"), b = K("#f8f4ea");
+      const st = (x, y) => (Math.floor(y) >> 1) % 2 ? a : b;
+      torus2(m, cx, hy + 13.3, cz, 4.2, 1.35, (x, y, z2) => Math.floor(Math.atan2(z2 - cz, x - cx) * 3) % 2 ? a : b, "y");
+      const z = frontZ2(m, cx + 3, hy + 10);
+      m.box(cx + 2, hy + 3, z, cx + 4, hy + 13, z + 1, st);
+      m.box(cx + 2, hy + 2, z, cx + 2, hy + 2, z + 1, a);
+      m.box(cx + 4, hy + 2, z, cx + 4, hy + 2, z + 1, a);
+    }
+    if (has("backpack")) {
+      const bag = K("#3a8a4a"), flap = K("#2a6a38"), strap = K("#5a3a22"), roll = K("#c84a3a", { smooth: 0.5 }), buckle = K("#d8d8e0", { jitter: 0, spec: 1 });
+      m.box(cx - 4.6, hy + 2, cz - 8.2, cx + 4.6, hy + 11.6, cz - 3.4, bag);
+      m.box(cx - 4.6, hy + 8.6, cz - 8.6, cx + 4.6, hy + 11.8, cz - 7.6, flap);
+      m.set(cx, hy + 8, cz - 9, buckle);
+      m.box(cx - 3.6, hy + 2.6, cz - 9, cx + 3.6, hy + 5.4, cz - 8.2, flap);
+      m.cylinder(hy + 12.8, cz - 5.8, cx - 6.2, cx + 6.2, 1.9, roll, "x");
+      for (const sx of [-1, 1]) {
+        for (let y = hy + 4; y <= hy + 13; y++) {
+          const x = Math.floor(cx + sx * 3.2);
+          const z = frontZ2(m, x, y);
+          if (z > 0 && z > cz) m.set(x, y, z, strap);
+        }
+      }
+    }
+  }
+  var ARM = { upper: 4.4, fore: 5.3 };
+  var LEG = { thigh: 5.5 };
+  function buildUpper(kit) {
+    const O = kit.outfit, C = kit.c;
+    const m = kit.model(8, 10, 8);
+    const sleeve = O.sleeve === "none" ? C.skin : kit.col(O.arm, { smooth: 0.3, jitter: 0.06 });
+    m.line(4, 7.4, 4, 4, 3.2, 4, sleeve, 2.25);
+    if (O.sleeve === "short") {
+      m.paint(() => m.box(0, 0, 0, 7, 3.6, 7, C.skin));
+      const cuff = kit.col(shade(O.arm, -0.18), { jitter: 0.04 });
+      m.paint(() => m.box(0, 3.6, 0, 7, 4.4, 7, cuff));
+      if (kit.look.outfit === "overalls") m.recolor((x, y, z, p) => p === sleeve && (x + y) % 4 === 0 ? kit.col("#8a2630", { smooth: 0.3, jitter: 0.06 }) : null);
+      if (kit.look.outfit === "hawaiian") m.recolor((x, y, z, p) => p === sleeve && hsh(x, y, z, 4) < 0.18 ? kit.col("#ff6a8a", { jitter: 0.02 }) : null);
+    }
+    if (kit.look.outfit === "astronaut") m.paint(() => m.box(0, 5, 0, 7, 6, 7, kit.col("#ff8a2a", { jitter: 0.02 })));
+    if (kit.look.outfit === "wetsuit") m.paint(() => m.box(0, 0, 0, 7, 9, 3.4, kit.col("#2ad0c8", { jitter: 0.02 })));
+    if (kit.look.outfit === "pajamas") m.recolor((x, y, z, p) => hsh(x, y, z, 31) < 0.08 ? kit.col("#fff8e0", { jitter: 0.02 }) : null);
+    return { m, pivot: [4, 7.4, 4] };
+  }
+  function buildFore(kit) {
+    const O = kit.outfit, C = kit.c, g = kit.look.gloves;
+    const m = kit.model(10, 13, 10);
+    const px = 5, py = 10.6, pz = 5;
+    const long = O.sleeve === "long";
+    const sleeve = long ? kit.col(O.arm, { smooth: 0.3, jitter: 0.06 }) : C.skin;
+    m.line(px, py, pz, px, py - 3.8, pz, sleeve, 2.05);
+    if (long) m.paint(() => m.box(0, py - 4.6, 0, 9, py - 3.6, 9, kit.col(shade(O.arm, -0.2), { jitter: 0.04 })));
+    if (kit.look.outfit === "pajamas" && long) m.recolor((x, y, z, p) => p === sleeve && hsh(x, y, z, 31) < 0.08 ? kit.col("#fff8e0", { jitter: 0.02 }) : null);
+    const hy = py - 6;
+    const H = (hex, o) => handCol(kit, hex, o);
+    if (g === "boxing") {
+      const red = H("#e02a2a", { smooth: 0.8, spec: 1.2, specPow: 10 }), cuff = H("#f4f4f0", { smooth: 0.5 });
+      m.ellipsoid(px, hy - 0.6, pz + 0.4, 3.3, 3.4, 3.3, red);
+      m.ellipsoid(px, hy - 0.4, pz + 2.9, 1.3, 1.6, 1, red);
+      m.cylinder(px, pz, hy + 1.8, hy + 3.4, 2.5, cuff);
+    } else if (g === "mittens" || g === "oven") {
+      const knit = g === "oven" ? H("#efe4c8", { smooth: 0.5, jitter: 0.1 }) : H("#d8303a", { smooth: 0.5, jitter: 0.14 });
+      const cuff = g === "oven" ? H("#d84a3a", { jitter: 0.04 }) : H("#f6f0e6", { smooth: 0.6, jitter: 0.12 });
+      m.ellipsoid(px, hy, pz + 0.3, 2.7, 2.9, 2.5, knit);
+      m.ellipsoid(px, hy + 0.4, pz + 2.5, 1, 1.4, 1, knit);
+      m.cylinder(px, pz, hy + 1.6, hy + 3.2, 2.45, cuff);
+      if (g === "oven") m.recolor((x, y, z, p) => p === knit && (x + y + z) % 3 === 0 ? H("#d84a3a", { jitter: 0.04 }) : null);
+    } else {
+      let palm = C.hand, palmD = C.handD;
+      if (g === "rubber") {
+        palm = H("#ffb030", { smooth: 0.7, spec: 0.9, specPow: 12 });
+        palmD = H("#e0901a", { smooth: 0.5 });
+      }
+      if (g === "fingerless") {
+        palm = H("#2a2a32", { jitter: 0.05 });
+        palmD = H("#1c1c24", { jitter: 0.03 });
+      }
+      if (g === "gold") {
+        palm = H("#f2c23a", { spec: 1.6, specPow: 8, smooth: 0.4 });
+        palmD = H("#c8901c", { spec: 0.8 });
+      }
+      m.ellipsoid(px, hy + 0.4, pz, 2.4, 2.3, 2.2, palm);
+      for (const fx of [-1.2, 0, 1.2]) m.line(px + fx, hy - 0.4, pz + 0.7, px + fx * 1.2, hy - 2.4, pz + 1.1, g === "fingerless" ? C.hand : palmD, 0.75);
+      m.line(px, hy + 0.6, pz + 1.6, px - 0.4, hy - 0.2, pz + 3, palm, 0.85);
+      if (g === "none") m.recolor((x, y, z, p) => p === palmD && y < hy - 1.8 && hsh(x, y, z, 2) < 0.3 ? C.web : null);
+      if (g === "rubber") m.cone(px, pz, hy + 1.6, hy + 3.6, 2.4, 2.8, palm);
+      if (g === "gold") m.cylinder(px, pz, hy + 1.6, hy + 3.4, 2.5, palmD);
+    }
+    return { m, pivot: [px, py, pz], anchors: { grip: [px, hy, pz + 0.4] } };
+  }
+  function buildThigh(kit) {
+    const O = kit.outfit, C = kit.c;
+    const m = kit.model(8, 11, 8);
+    const pants = kit.col(O.pants, { smooth: 0.3, jitter: 0.06 });
+    m.line(4, 8.4, 4, 4, 3, 4, pants, 2.55);
+    if (O.legs === "shorts") m.paint(() => m.box(0, 0, 0, 7, 4.6, 7, C.skin));
+    if (kit.look.outfit === "astronaut") m.paint(() => m.box(0, 0, 4.6, 7, 4.4, 7, kit.col("#c6ccda")));
+    if (kit.look.outfit === "pajamas") m.recolor((x, y, z, p) => p === pants && hsh(x, y, z, 31) < 0.08 ? kit.col("#fff8e0", { jitter: 0.02 }) : null);
+    if (kit.look.outfit === "hawaiian") m.paint(() => m.box(0, 4.6, 0, 7, 5.4, 7, kit.col("#c8b07a", { jitter: 0.04 })));
+    return { m, pivot: [4, 8.4, 4] };
+  }
+  function buildShin(kit) {
+    const O = kit.outfit, C = kit.c, b = kit.look.boots;
+    const m = kit.model(12, 10, 20);
+    const px = 6, py = 4.3, pz = 6;
+    const pants = O.legs === "long" ? kit.col(O.pants, { smooth: 0.3, jitter: 0.06 }) : C.skin;
+    m.line(px, py + 0.4, pz, px, 2.4, pz, pants, 2.4);
+    const K = (h, o = {}) => kit.col(h, { jitter: 0.05, smooth: 0.35, ...o });
+    if (b === "yellow" || b === "red") {
+      const rub = b === "yellow" ? K("#ffd23a", { spec: 0.7, specPow: 14 }) : K("#e2363a", { spec: 0.7, specPow: 14 });
+      const cuff = b === "yellow" ? K("#ffe88a") : K("#ff7a6a"), sole = K("#5a3a22", { smooth: 0 });
+      m.cylinder(px, pz, 1, 4.4, 2.75, rub);
+      m.cylinder(px, pz, 4, 4.8, 3.05, cuff);
+      shape2(m, px - 3.2, 0, pz - 3.4, px + 3.2, 2.6, pz + 5.4, (x, y, z) => ((x - px) / 3.05) ** 2 + ((z - pz - 1) / 4.4) ** 2 <= 1 && y < 2.6 - Math.max(0, z - pz - 2.6) * 0.45, rub);
+      m.recolor((x, y, z, p) => y === 0 ? sole : null);
+    } else if (b === "sneakers") {
+      const white = K("#f6f6f2"), stripe = K("#3a8ae8", { jitter: 0.02 }), sole = K("#e84a3a", { smooth: 0 }), lace = K("#ffffff", { jitter: 0 });
+      m.cylinder(px, pz, 1, 3, 2.6, white);
+      shape2(m, px - 3, 0, pz - 3.2, px + 3, 2.8, pz + 5.2, (x, y, z) => ((x - px) / 2.9) ** 2 + ((z - pz - 1) / 4.3) ** 2 <= 1 && y < 2.8 - Math.max(0, z - pz - 2.2) * 0.55, white);
+      m.recolor((x, y, z, p) => y === 0 ? sole : p === white && y === 1 && m.exposed(x, y, z) && Math.abs(x + 0.5 - px) > 2.2 ? stripe : null);
+      for (let z = pz + 1; z <= pz + 3; z++) m.set(px, 3 - (z > pz + 2 ? 1 : 0), z, lace);
+    } else if (b === "flippers") {
+      const fl = K("#2ab87a", { smooth: 0.4 }), flD = K("#1a8a5a"), strap = K("#1c2a2a");
+      m.cylinder(px, pz, 0.8, 3.2, 2.4, strap);
+      shape2(m, px - 6, 0, pz - 3, px + 6, 1.4, pz + 12, (x, y, z) => {
+        const t = (z - pz + 3) / 15;
+        const w = 2.6 + t * 3.2;
+        return Math.abs(x - px) < w && z - pz < 11.6 - Math.abs(x - px) * 0.25 && y < 1.4;
+      }, (x, y, z) => x & 1 && z > pz + 3 ? flD : fl);
+    } else if (b === "cowboy") {
+      const leather = K("#8a4e2a", { spec: 0.5 }), dark = K("#5a301a"), stitch = K("#e8c890", { jitter: 0 }), spur = K("#dadde8", { spec: 1.4, jitter: 0 });
+      m.cylinder(px, pz, 1, 5, 2.7, leather);
+      m.recolor((x, y, z, p) => p === leather && y === 3 && (x + z) % 2 === 0 ? stitch : null);
+      shape2(m, px - 3, 0, pz - 3, px + 3, 2.6, pz + 6.4, (x, y, z) => ((x - px) / (2.8 - Math.max(0, z - pz - 2) * 0.4)) ** 2 + ((z - pz - 1.4) / 5) ** 2 <= 1 && y < 2.6 - Math.max(0, z - pz - 2) * 0.35, leather);
+      m.box(px - 2, 0, pz - 3, px + 1, 1, pz - 1, dark);
+      m.recolor((x, y, z, p) => y === 0 ? dark : null);
+      m.line(px, 1.6, pz - 3, px, 1.6, pz - 4.6, spur, 0.4);
+      m.set(px, 2, pz - 5, spur);
+      m.set(px, 1, pz - 5, spur);
+    } else if (b === "slippers") {
+      const fluff = K("#ffb8d8", { smooth: 0.8, jitter: 0.14 }), inner = K("#ff8ab8", { smooth: 0.6 }), eye = K("#1a1420", { jitter: 0 }), nose = K("#ff5a8a", { jitter: 0 });
+      m.ellipsoid(px, 1.8, pz + 1.4, 3.3, 2.2, 4.8, fluff);
+      for (const sx of [-1, 1]) {
+        m.line(px + sx * 1.3, 3, pz + 3, px + sx * 2, 6.6, pz + 1.8, fluff, 0.85);
+        m.line(px + sx * 1.3, 3.4, pz + 3.6, px + sx * 2, 6.4, pz + 2.4, inner, 0.45);
+        m.set(Math.floor(px + sx * 1.3), 3, Math.floor(pz + 5.2), eye);
+      }
+      m.set(px, 2, Math.floor(pz + 6.2), nose);
+    } else {
+      const toe = C.skin;
+      m.cylinder(px, pz, 0.6, 2.6, 2.2, toe);
+      for (const fx of [-1.6, 0, 1.6]) m.line(px + fx * 0.5, 0.8, pz + 1, px + fx, 0.8, pz + 4.6, C.skinD, 0.95);
+      m.box(px - 2, 0, pz + 2, px + 2, 0, pz + 4, kit.c.fin);
+    }
+    return { m, pivot: [px, py, pz] };
+  }
+  var ROD = { len: 34 };
+  function buildRod(kit, bend, crank) {
+    const id = kit.look.rod;
+    const m = kit.model(14, 50, 30);
+    const ax = 7, az = 12, gy = 7;
+    const K = (h, o = {}) => kit.col(h, { jitter: 0.04, ...o });
+    let shaft2, shaftB, handle, reelC, tip, guide = K("#c8ccd8", { spec: 1.2, jitter: 0 });
+    if (id === "carbon") {
+      shaft2 = K("#2a2c36", { spec: 1, specPow: 16 });
+      shaftB = K("#4a4e60", { spec: 1 });
+      handle = K("#1a1a1e");
+      reelC = K("#c8ccd8", { spec: 1.4 });
+      tip = K("#ff4a3a");
+    } else if (id === "golden") {
+      shaft2 = K("#f2c23a", { spec: 1.6, specPow: 8 });
+      shaftB = K("#ffe27a", { spec: 1.6 });
+      handle = K("#8a2238", { smooth: 0.4 });
+      reelC = K("#f2c23a", { spec: 1.6 });
+      tip = K("#ffffff", { emissive: 0.4 });
+      guide = K("#fff2a8", { spec: 1.6 });
+    } else if (id === "neon") {
+      shaft2 = K("#3affd8", { emissive: 0.9, jitter: 0 });
+      shaftB = K("#ff3ad8", { emissive: 0.9, jitter: 0 });
+      handle = K("#24243a");
+      reelC = K("#3a3a5a", { spec: 1 });
+      tip = K("#ffffff", { emissive: 1 });
+    } else if (id === "candy") {
+      shaft2 = K("#e8283a", { spec: 0.8 });
+      shaftB = K("#fff8f2", { spec: 0.8 });
+      handle = K("#2aa84a", { smooth: 0.4 });
+      reelC = K("#f4f4f0", { spec: 1 });
+      tip = K("#ffd23a");
+    } else if (id === "laser") {
+      shaft2 = K("#ff3a6a", { emissive: 1, jitter: 0 });
+      shaftB = K("#fff0f4", { emissive: 1, jitter: 0 });
+      handle = K("#c8ccd8", { spec: 1.4 });
+      reelC = K("#2a2a36", { spec: 1 });
+      tip = K("#ffffff", { emissive: 1 });
+    } else {
+      shaft2 = K("#dcc27a", { spec: 0.4 });
+      shaftB = K("#9a7a3c");
+      handle = K("#c49460", { jitter: 0.12 });
+      reelC = K("#5a6074", { spec: 1 });
+      tip = K("#e8403a");
+    }
+    const handleD = K(shade(id === "laser" ? "#2a2a36" : "#3a2a1e", 0), {});
+    m.line(ax, gy - 6, az, ax, gy + 3, az, handle, 1.25);
+    m.line(ax, gy - 7, az, ax, gy - 6.2, az, handleD, 1.45);
+    m.line(ax, gy + 6.2, az, ax, gy + 8.4, az, handle, 1.1);
+    m.line(ax, gy + 3, az, ax, gy + 6.2, az, reelC, 0.9);
+    m.line(ax, gy + 4.6, az, ax, gy + 4.6, az + 2.2, reelC, 0.6);
+    m.cylinder(gy + 4.6, az + 3.6, ax - 2, ax + 1.6, 2.3, reelC, "x");
+    m.cylinder(gy + 4.6, az + 3.6, ax - 1.4, ax + 1, 1.5, K("#e8e4d8", { jitter: 0.02 }), "x");
+    const ca = crank / 8 * TAU;
+    const kx = ax + 2.6, ky = gy + 4.6 + Math.sin(ca) * 2.4, kz = az + 3.6 + Math.cos(ca) * 2.4;
+    m.line(ax + 2, gy + 4.6, az + 3.6, kx, ky, kz, reelC, 0.5);
+    m.line(kx, ky, kz, kx + 1.4, ky, kz, K("#1a1a22"), 0.6);
+    const L = ROD.len, base = gy + 8.4;
+    const pts = [];
+    for (let i = 0; i <= 24; i++) {
+      const s = i / 24;
+      pts.push([ax, base + (L - 8) * s * (1 - 0.18 * bend * s * s), az + bend * (L - 8) * 0.42 * s * s]);
+    }
+    const thick = id === "laser" ? 0.95 : 0.85;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const s = i / 24;
+      const [x0, y0, z0] = pts[i], [x1, y1, z1] = pts[i + 1];
+      let c = shaft2;
+      if (id === "bamboo") c = i % 5 === 0 ? shaftB : shaft2;
+      else if (id === "candy") c = Math.floor(i / 1.5) % 2 ? shaftB : shaft2;
+      else if (id === "carbon") c = i % 6 === 0 ? shaftB : shaft2;
+      else if (id === "neon") c = s > 0.8 ? shaftB : shaft2;
+      else if (id === "laser") c = s < 0.85 ? shaftB : shaft2;
+      m.line(x0, y0, z0, x1, y1, z1, c, s < 0.45 ? thick : 0.5);
+    }
+    if (id === "laser") for (let i = 0; i < pts.length - 1; i += 1) {
+      const [x0, y0, z0] = pts[i], [x1, y1, z1] = pts[i + 1];
+      m.line(x0 + 0.5, y0, z0, x1 + 0.5, y1, z1, shaft2, 0.5);
+    }
+    for (const s of [0.28, 0.5, 0.7, 0.87]) {
+      const p = pts[Math.round(s * 24)];
+      m.set(Math.floor(p[0]), Math.floor(p[1]), Math.floor(p[2] + 1), guide);
+    }
+    const tp = pts[24];
+    m.set(Math.floor(tp[0]), Math.floor(tp[1]), Math.floor(tp[2]), tip);
+    m.set(Math.floor(tp[0]), Math.floor(tp[1]) - 1, Math.floor(tp[2]), tip);
+    return { m, pivot: [ax, gy, az], anchors: { tip: [tp[0] + 0.5, tp[1] + 0.8, tp[2] + 0.5], knob: [kx + 0.9, ky, kz], fore: [ax, gy + 7.2, az] } };
+  }
+  var HIP_Y = 10.2;
+  var J = { hipL: [3.1, -0.4, 0], hipR: [-3.1, -0.4, 0], knee: [0, -LEG.thigh, 0], shL: [7.3, 11.4, -0.2], shR: [-7.3, 11.4, -0.2], elbow: [0, -ARM.upper, 0], neck: [0, 13.6, -0.2] };
+  var BASE_POSE = {
+    off: [0, 0, 0],
+    hips: [0, 0, 0],
+    spine: [0, 0, 0],
+    neck: [0, 0, 0],
+    hipL: [0, 0, 2],
+    knL: [0, 0, 0],
+    hipR: [0, 0, -2],
+    knR: [0, 0, 0],
+    shL: [4, 0, 10],
+    elL: [-14, 0, 0],
+    shR: [4, 0, -10],
+    elR: [-14, 0, 0],
+    handL: null,
+    handR: null,
+    rod: { pitch: 55, yaw: -40, bend: 0, crank: 0 },
+    noRod: false,
+    mouth: "rest",
+    gill: 0,
+    lid: 0,
+    squint: 0,
+    gaze: [0, 0],
+    wobble: 0
+  };
+  var P2 = (o) => ({ ...BASE_POSE, ...o, rod: { ...BASE_POSE.rod, ...o.rod || {} } });
+  var S2 = Math.sin;
+  var POSES = {
+    idle: { n: 12, dur: 4.2, loop: true, fn: (u) => {
+      const b = S2(u * TAU * 2), look = S2(u * TAU);
+      return P2({
+        off: [0, -0.15 + 0.15 * b, 0],
+        spine: [1.5 * b, 0, 0],
+        neck: [-2 + 2.5 * b, 22 * look, 3 * S2(u * TAU + 1)],
+        handR: [-5.8, 8 + 0.3 * b, 6.2],
+        rod: { pitch: 58 + 3 * b, yaw: -40 },
+        shL: [5, 0, 9 + 2 * b],
+        elL: [-12, 0, 0],
+        knL: [3 + 2 * b, 0, 0],
+        knR: [3 + 2 * b, 0, 0],
+        gill: b > 0.55 ? 1 : 0,
+        gaze: [0.5 * look, 0]
+      });
+    } },
+    cast: { n: 8, dur: 0.75, loop: false, fn: (u, i) => {
+      const K = [
+        { r: 56, h: [-5.8, 8, 6.2], sp: 0, l: 10, m: "rest" },
+        { r: 92, h: [-5.4, 13, 3.4], sp: -4, l: 30, m: "rest" },
+        { r: 128, h: [-5.2, 16.5, 0.4], sp: -7, l: 45, m: "grit" },
+        { r: 150, h: [-5.2, 17.5, -1.4], sp: -9, l: 55, m: "grit" },
+        { r: 62, h: [-5.4, 15, 6.6], sp: 6, l: 20, m: "open" },
+        { r: 24, h: [-5.6, 11, 8.4], sp: 11, l: 5, m: "open" },
+        { r: 20, h: [-5.8, 10, 7.8], sp: 9, l: 8, m: "rest" },
+        { r: 26, h: [-5.8, 9, 7], sp: 6, l: 10, m: "rest" }
+      ][i];
+      return P2({
+        spine: [K.sp, -K.sp * 0.8, 0],
+        hips: [0, -K.sp * 0.6, 0],
+        handR: K.h,
+        rod: { pitch: K.r, yaw: -30, bend: i === 4 ? -0.35 : i === 5 ? 0.25 : 0 },
+        shL: [-K.sp * 3, 0, K.l],
+        elL: [-20, 0, 0],
+        neck: [-K.sp * 0.6, 0, 0],
+        hipL: [i >= 4 ? -12 : 4, 0, 2],
+        hipR: [i >= 4 ? 8 : -6, 0, -2],
+        knL: [i >= 4 ? 10 : 2, 0, 0],
+        knR: [i >= 4 ? 6 : 12, 0, 0],
+        mouth: K.m,
+        squint: i === 2 || i === 3 ? 0.3 : 0
+      });
+    } },
+    reel: { n: 8, dur: 0.55, loop: true, fn: (u, i) => {
+      const c = S2(u * TAU);
+      return P2({ off: [0, -0.2 + 0.2 * c, 0], spine: [5, 0, 0], neck: [-4 + 2 * c, -6, 0], handR: [-5.6, 9.4, 6.8], handL: "knob", rod: { pitch: 38, yaw: -38, crank: i }, knL: [6, 0, 0], knR: [6, 0, 0], squint: 0.15, gaze: [0.6, 0.35] });
+    } },
+    pull: { n: 6, dur: 0.9, loop: true, fn: (u) => {
+      const w = S2(u * TAU), w2 = S2(u * TAU * 2);
+      return P2({
+        off: [0, -0.9, -1.2],
+        spine: [-15 - 3 * w, 0, 2 * w2],
+        neck: [8, 0, 3 * w2],
+        hipL: [-26, 0, 4],
+        knL: [18, 0, 0],
+        hipR: [12, 0, -4],
+        knR: [14, 0, 0],
+        handR: [-4.8, 12.4, 5.4],
+        handL: "fore",
+        rod: { pitch: 72 + 4 * w, yaw: -40, bend: 0.65 + 0.2 * w },
+        mouth: "grit",
+        squint: 0.35,
+        wobble: 1,
+        gaze: [0.7, -0.2]
+      });
+    } },
+    yank: { n: 8, dur: 0.6, loop: false, fn: (u, i) => {
+      const K = [
+        { sp: 10, off: [0, -1.4, 0.4], hl: -30, kl: 40, hr: -24, kr: 38, r: 30, b: 0.5, h: [-5, 9, 7.2], m: "grit" },
+        { sp: 14, off: [0, -2, 0.8], hl: -36, kl: 52, hr: -30, kr: 48, r: 24, b: 0.7, h: [-5, 8.6, 7.4], m: "grit" },
+        { sp: -8, off: [0, 0.2, -0.4], hl: -20, kl: 16, hr: 6, kr: 10, r: 72, b: 0.9, h: [-4.6, 14.4, 4.6], m: "open" },
+        { sp: -28, off: [0, 1.6, -1.6], hl: -48, kl: 22, hr: 14, kr: 6, r: 90, b: 1, h: [-4.4, 17, 2.6], m: "open" },
+        { sp: -25, off: [0, 1, -1.5], hl: -40, kl: 18, hr: 12, kr: 6, r: 88, b: 0.9, h: [-4.4, 16.6, 3], m: "open" },
+        { sp: -16, off: [0, -0.2, -1.1], hl: -28, kl: 16, hr: 12, kr: 12, r: 80, b: 0.75, h: [-4.6, 14, 4.4], m: "grit" },
+        { sp: -14, off: [0, -0.7, -1.1], hl: -26, kl: 18, hr: 12, kr: 14, r: 76, b: 0.65, h: [-4.8, 12.8, 5.2], m: "grit" },
+        { sp: -15, off: [0, -0.9, -1.2], hl: -26, kl: 18, hr: 12, kr: 14, r: 72, b: 0.65, h: [-4.8, 12.4, 5.4], m: "grit" }
+      ][i];
+      return P2({
+        off: K.off,
+        spine: [K.sp, 0, 0],
+        neck: [i === 3 || i === 4 ? -10 : 4, 0, 0],
+        hipL: [K.hl, 0, 4],
+        knL: [K.kl, 0, 0],
+        hipR: [K.hr, 0, -4],
+        knR: [K.kr, 0, 0],
+        handR: K.h,
+        handL: "fore",
+        rod: { pitch: K.r, yaw: -40, bend: K.b },
+        mouth: K.m,
+        squint: i >= 2 && i <= 4 ? 0.7 : 0.3,
+        gaze: [0.6, -0.3]
+      });
+    } },
+    hold: { n: 8, dur: 1.6, loop: true, fn: (u) => {
+      const b = Math.abs(S2(u * TAU)), sw = S2(u * TAU);
+      return P2({
+        off: [0, 0.5 * b, 0],
+        spine: [-5, 0, 2 * sw],
+        neck: [-10, 8 * sw, 3 * sw],
+        handL: [4.8, 9.6 + 0.6 * b, 8.8],
+        handR: [-4.8, 9.6 + 0.6 * b, 8.8],
+        noRod: true,
+        mouth: "grin",
+        knL: [4 * b, 0, 0],
+        knR: [4 * b, 0, 0],
+        gaze: [0, 0.2]
+      });
+    } },
+    cheer: { n: 8, dur: 0.72, loop: true, fn: (u, i) => {
+      const j = S2(u * Math.PI), f = S2(u * TAU * 2), g = S2(u * TAU * 2 + 2);
+      return P2({
+        off: [0, 6 * j, 0],
+        spine: [-6 * j, 0, 4 * f],
+        neck: [-12, 10 * g, 10 * f],
+        hipL: [-40 * j, 0, 10],
+        knL: [80 * j, 0, 0],
+        hipR: [-15 * j, 0, -14 * j],
+        knR: [55 * j, 0, 0],
+        shL: [0, -28, 92 + 34 * f],
+        elL: [0, 0, 30 + 50 * g],
+        shR: [0, 24, -92 - 30 * g],
+        elR: [0, 0, -20 - 40 * f],
+        rod: { pitch: 96 + 14 * f, yaw: -60, bend: -0.3 * f },
+        mouth: "open",
+        gaze: [0.4 * f, -0.4],
+        wobble: 1
+      });
+    } },
+    sad: { n: 8, dur: 3.2, loop: true, fn: (u) => {
+      const s = S2(u * TAU);
+      return P2({
+        off: [0, -0.6, 0],
+        spine: [13, 3 * s, 0],
+        neck: [24, 4 * s, 5 * s],
+        shL: [10, 0, 4],
+        elL: [-4, 0, 0],
+        handR: [-6.4, 4.4, 3.4],
+        rod: { pitch: -18, yaw: -48 },
+        knL: [8, 0, 0],
+        knR: [8, 0, 0],
+        mouth: "frown",
+        lid: 0.45,
+        gaze: [0.2, 0.75]
+      });
+    } },
+    sit: { n: 8, dur: 2.8, loop: true, fn: (u) => {
+      const s = S2(u * TAU), h = S2(u * TAU * 0.5 + 0.4);
+      return P2({
+        off: [0, -HIP_Y + 2.2, 0],
+        hipL: [-88, 0, 6],
+        knL: [84 + 22 * s, 0, 0],
+        hipR: [-86, 0, -6],
+        knR: [84 - 22 * s, 0, 0],
+        spine: [-4 + s, 0, 0],
+        neck: [-3, 16 * h, 3 * s],
+        handR: [-5.8, 7.6, 6.4],
+        rod: { pitch: 34, yaw: -40 },
+        handL: [4.8, 2, 6.8],
+        gill: s > 0.6 ? 1 : 0,
+        gaze: [0.4 * h, 0.1]
+      });
+    } },
+    show: { n: 12, dur: 4.4, loop: true, fn: (u) => {
+      const b = S2(u * TAU * 2), look = S2(u * TAU);
+      return P2({
+        off: [0, -0.15 + 0.15 * b, 0],
+        spine: [1.2 * b, 0, 0],
+        neck: [-3 + 2 * b, 14 * look, 3 * S2(u * TAU + 1)],
+        handR: [-9.4, 6.4 + 0.3 * b, 2.2],
+        rod: { pitch: 66, yaw: -96 },
+        handL: [6.8, 1.6, 0.6],
+        knL: [2 + 2 * b, 0, 0],
+        knR: [2 + 2 * b, 0, 0],
+        gill: b > 0.55 ? 1 : 0,
+        gaze: [0.4 * look, 0.1]
+      });
+    } },
+    wave: { n: 8, dur: 0.9, loop: true, fn: (u) => {
+      const w = S2(u * TAU), b = Math.abs(S2(u * TAU));
+      return P2({
+        off: [0, 0.4 * b, 0],
+        spine: [-2, -6, -3 * w],
+        neck: [-6, -10, 8 * w],
+        shL: [0, -34, 98 + 5 * w],
+        elL: [0, 0, 72 + 38 * w],
+        handR: [-5.8, 8.2, 6.2],
+        rod: { pitch: 62, yaw: -40 },
+        mouth: "grin",
+        gaze: [-0.2, -0.1]
+      });
+    } }
+  };
+  var POSE_NAMES = Object.keys(POSES).filter((k) => k !== "show");
+  function poseFrame(pose, t) {
+    const pd = POSES[pose] || POSES.idle;
+    const k = (t || 0) / pd.dur;
+    return pd.loop ? Math.floor((k - Math.floor(k)) * pd.n) % pd.n : clamp(Math.floor(k * pd.n), 0, pd.n - 1);
+  }
+  function ik2(Sh, Tg, a, b, hint) {
+    let d = sub(Tg, Sh);
+    let L = Math.hypot(...d);
+    const maxL = a + b - 0.08, minL = Math.abs(a - b) + 0.3;
+    if (L > maxL) {
+      d = scl(d, maxL / L);
+      L = maxL;
+    } else if (L < minL) {
+      d = scl(norm(d), minL);
+      L = minL;
+    }
+    const dn = scl(d, 1 / L);
+    const x = (a * a - b * b + L * L) / (2 * L), h = Math.sqrt(Math.max(0, a * a - x * x));
+    let hp = sub(hint, scl(dn, dot(hint, dn)));
+    hp = Math.hypot(...hp) < 1e-4 ? [1, 0, 0] : norm(hp);
+    const E = add(Sh, add(scl(dn, x), scl(hp, h)));
+    return { E, T: add(Sh, d) };
+  }
+  function solve(kit, p, fi) {
+    const items = [];
+    const at = (name, part2, W) => {
+      if (part2) items.push({ name, part: part2, W });
+    };
+    const place2 = (part2, Mw) => mul(Mw, Tr(-part2.pivot[0], -part2.pivot[1], -part2.pivot[2]));
+    const hips = mul(Tr(p.off[0], HIP_Y + p.off[1], p.off[2]), Ro(p.hips));
+    const spine = mul(hips, Ro(p.spine));
+    const bodyR = hips.R;
+    const toWorld = (v) => ap(spine, v);
+    const thigh = kit.part("thigh", () => buildThigh(kit)), shin = kit.part("shin", () => buildShin(kit));
+    for (const [hipJ, hr, kr] of [[J.hipL, p.hipL, p.knL], [J.hipR, p.hipR, p.knR]]) {
+      const Mt = mul(hips, mul(Tr(...hipJ), Ro(hr)));
+      const Mk = mul(Mt, mul(Tr(...J.knee), Ro(kr)));
+      at("thigh", thigh, place2(thigh, Mt));
+      at("shin", shin, place2(shin, Mk));
+    }
+    const torso = kit.part("torso", () => buildTorso(kit));
+    at("torso", torso, place2(torso, spine));
+    const mouth = p.mouth, gill = p.gill;
+    const head = kit.part(`head:${mouth}:${gill}`, () => buildHead(kit, mouth, gill));
+    const Mh = mul(spine, mul(Tr(...J.neck), Ro(p.neck)));
+    const Wh = place2(head, Mh);
+    at("head", head, Wh);
+    const spin = kit.look.hat === "propeller" ? fi % 2 : 0;
+    const hat = kit.look.hat === "none" ? null : kit.part("hat:" + spin, () => buildHat(kit, spin) || { m: kit.model(1, 1, 1), pivot: [0, 0, 0] });
+    let hatTop = null;
+    if (hat && hat.b) {
+      const seat = mul(Wh, mul(Tr(...HAT_SEAT), Ro([HAT_TILT[kit.look.hat] || 0, 0, 0])));
+      at("hat", hat, mul(seat, Tr(-hat.pivot[0], -hat.pivot[1], -hat.pivot[2])));
+      hatTop = ap(seat, [0, hat.b.y1 + 1 - hat.pivot[1], 0]);
+    }
+    const upper = kit.part("upper", () => buildUpper(kit)), fore = kit.part("fore", () => buildFore(kit));
+    const gripLocal = sub(fore.anchors.grip, fore.pivot);
+    const armFK = (shJ, sr, er) => {
+      const Mu = mul(spine, mul(Tr(...shJ), Ro(sr)));
+      const Mf = mul(Mu, mul(Tr(...J.elbow), Ro(er)));
+      return { Mu, Mf };
+    };
+    const armIK = (shJ, target2, side) => {
+      const Sw = toWorld(shJ);
+      const hint = mv(spine.R, [side * 0.9, -0.5, -0.65]);
+      const { E, T } = ik2(Sw, target2, ARM.upper, Math.hypot(...gripLocal), hint);
+      const fwd = mv(spine.R, [0, 0, 1]);
+      const Mu = M(alignY(sub(Sw, E), fwd), Sw);
+      const Mf = M(alignY(sub(E, T), fwd), E);
+      return { Mu, Mf };
+    };
+    const R = p.handR ? armIK(J.shR, toWorld(p.handR), -1) : armFK(J.shR, p.shR, p.elR);
+    at("upper", upper, place2(upper, R.Mu));
+    at("fore", fore, place2(fore, R.Mf));
+    const gripR = ap(R.Mf, gripLocal);
+    let rod = null, Wr = null, rodTip = gripR;
+    if (!p.noRod) {
+      const rp2 = p.rod;
+      const pr = rp2.pitch * DEG4, yr = rp2.yaw * DEG4;
+      const dir = mv(bodyR, [Math.sin(yr) * Math.cos(pr), Math.sin(pr), Math.cos(yr) * Math.cos(pr)]);
+      const down = mv(bodyR, [0, -1, 0.2]);
+      const bendB = Math.round(clamp(rp2.bend, -1, 1) * 4) / 4;
+      rod = kit.part(`rod:${bendB}:${rp2.crank % 8}`, () => buildRod(kit, bendB, rp2.crank % 8));
+      const Mr = M(alignY(dir, down), gripR);
+      Wr = place2(rod, Mr);
+      at("rod", rod, Wr);
+      rodTip = ap(Wr, rod.anchors.tip);
+    }
+    let Lh;
+    let target = p.handL;
+    if (target === "knob" && rod) target = ap(Wr, rod.anchors.knob);
+    else if (target === "fore" && rod) target = ap(Wr, rod.anchors.fore);
+    else if (Array.isArray(target)) target = toWorld(target);
+    else target = null;
+    Lh = target ? armIK(J.shL, target, 1) : armFK(J.shL, p.shL, p.elL);
+    at("upper", upper, place2(upper, Lh.Mu));
+    at("fore", fore, place2(fore, Lh.Mf));
+    const gripL = ap(Lh.Mf, gripLocal);
+    const top = hatTop || ap(Wh, head.anchors.top);
+    return {
+      items,
+      anchors: { rodTip, handR: gripR, handL: gripL, hands: p.noRod ? scl(add(gripR, gripL), 0.5) : gripR, head: top, mouth: ap(Wh, head.anchors.mouth), eyeL: ap(Wh, head.anchors.eyeL), eyeR: ap(Wh, head.anchors.eyeR), headFwd: mv(Wh.R, [0, 0, 1]) },
+      eyeR: head.eyeR
+    };
+  }
+  function stamp(dst, part2, W, gmin, mx) {
+    const src = part2.m, b = part2.b;
+    if (!b) return;
+    const R = W.R, t = W.t;
+    const toGrid = (w) => [mx * w[0] - gmin[0], w[1] - gmin[1], w[2] - gmin[2]];
+    let lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < 8; i++) {
+      const q = [i & 1 ? b.x1 + 1 : b.x0, i & 2 ? b.y1 + 1 : b.y0, i & 4 ? b.z1 + 1 : b.z0];
+      const g = toGrid(ap(W, q));
+      for (let k = 0; k < 3; k++) {
+        lo[k] = Math.min(lo[k], g[k]);
+        hi[k] = Math.max(hi[k], g[k]);
+      }
+    }
+    const { nx: snx, ny: sny, nz: snz, data: sd } = src;
+    const x0 = Math.floor(lo[0]), x1 = Math.ceil(hi[0]);
+    const ix = R[0] * mx, iy = R[1] * mx, iz = R[2] * mx;
+    for (let y = Math.floor(lo[1]); y <= Math.ceil(hi[1]); y++) for (let z = Math.floor(lo[2]); z <= Math.ceil(hi[2]); z++) {
+      const wx = mx * (x0 + 0.5 + gmin[0]) - t[0], wy = y + 0.5 + gmin[1] - t[1], wz = z + 0.5 + gmin[2] - t[2];
+      let qx = R[0] * wx + R[3] * wy + R[6] * wz;
+      let qy = R[1] * wx + R[4] * wy + R[7] * wz;
+      let qz = R[2] * wx + R[5] * wy + R[8] * wz;
+      for (let x = x0; x <= x1; x++, qx += ix, qy += iy, qz += iz) {
+        if (qx < 0 || qy < 0 || qz < 0 || qx >= snx || qy >= sny || qz >= snz) continue;
+        const v = sd[(qx | 0) + snx * ((qy | 0) + sny * (qz | 0))];
+        if (v) dst.set(x, y, z, v);
+      }
+    }
+    for (let z = b.z0; z <= b.z1; z++) for (let y = b.y0; y <= b.y1; y++) for (let x = b.x0; x <= b.x1; x++) {
+      const v = sd[x + snx * (y + sny * z)];
+      if (!v) continue;
+      const g = toGrid(ap(W, [x + 0.5, y + 0.5, z + 0.5]));
+      const gx = Math.floor(g[0]), gy = Math.floor(g[1]), gz = Math.floor(g[2]);
+      if (!dst.get(gx, gy, gz)) dst.set(gx, gy, gz, v);
+    }
+  }
+  function compose2(kit, sol, mx) {
+    let lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+    for (const { part: part2, W } of sol.items) {
+      const b = part2.b;
+      if (!b) continue;
+      for (let i = 0; i < 8; i++) {
+        const w = ap(W, [i & 1 ? b.x1 + 1 : b.x0, i & 2 ? b.y1 + 1 : b.y0, i & 4 ? b.z1 + 1 : b.z0]);
+        const g = [mx * w[0], w[1], w[2]];
+        for (let k = 0; k < 3; k++) {
+          lo[k] = Math.min(lo[k], g[k]);
+          hi[k] = Math.max(hi[k], g[k]);
+        }
+      }
+    }
+    const gmin = lo.map((v) => Math.floor(v) - 1);
+    const m = new VoxelModel(Math.ceil(hi[0]) - gmin[0] + 2, Math.ceil(hi[1]) - gmin[1] + 2, Math.ceil(hi[2]) - gmin[2] + 2);
+    m.palette = kit.pal;
+    for (const { part: part2, W } of sol.items) stamp(m, part2, W, gmin, mx);
+    return { m, gmin };
+  }
+  var BASE_VS = 1.4;
+  var PITCH = 14;
+  var FACE_YAW = 38;
+  var YAW_STEP2 = 10;
+  var MAX_FRAMES = 1400;
+  var FRAMES = /* @__PURE__ */ new Map();
+  var FAMS = /* @__PURE__ */ new Map();
+  var budgetMs3 = 9;
+  var spent3 = 0;
+  var windowStart2 = 0;
+  var statBuilt2 = 0;
+  var statFallback3 = 0;
+  var statMs = 0;
+  var now3 = () => typeof performance !== "undefined" ? performance.now() : Date.now();
+  function overBudget3() {
+    const t = now3();
+    if (t - windowStart2 > 30) {
+      windowStart2 = t;
+      spent3 = 0;
+    }
+    return spent3 >= budgetMs3;
+  }
+  var PROF = { solve: 0, compose: 0, render: 0, n: 0 };
+  function buildFrame(kit, pose, fi, yaw, vs, mx) {
+    const t0 = now3();
+    const pd = POSES[pose];
+    const u = pd.loop ? fi / pd.n : fi / Math.max(1, pd.n - 1);
+    const p = pd.fn(u, fi);
+    const ta = now3();
+    const sol = solve(kit, p, fi);
+    const tb = now3();
+    const { m, gmin } = compose2(kit, sol, mx);
+    const tc = now3();
+    const r = renderVoxels(m, { scale: vs, yaw, pitch: PITCH, ao: 1.05, edges: 0.75, sideEdges: 0.55, jitter: 0.1, depthThreshold: 2.4, glowRadius: 2 });
+    const td = now3();
+    PROF.solve += tb - ta;
+    PROF.compose += tc - tb;
+    PROF.render += td - tc;
+    PROF.n++;
+    PROF.vox = m.nx * m.ny * m.nz;
+    PROF.px = r.w * r.h;
+    const proj = (w) => r.project(mx * w[0] - gmin[0], w[1] - gmin[1], w[2] - gmin[2]);
+    const [fx, fy] = proj([0, 0, 0]);
+    const rel = (w) => {
+      const q = proj(w);
+      return [q[0] - fx, q[1] - fy];
+    };
+    const A = sol.anchors;
+    const anchors = { rodTip: rel(A.rodTip), hands: rel(A.hands), handL: rel(A.handL), handR: rel(A.handR), head: rel(A.head), mouth: rel(A.mouth) };
+    const eyes2 = [];
+    const W = r.w, ids = r.ids;
+    for (const [idx, key] of [[kit.c.eyeL, "eyeL"], [kit.c.eyeR, "eyeR"]]) {
+      let x0 = W, y0 = r.h, x1 = -1, y1 = -1, n = 0;
+      for (let i = 0; i < ids.length; i++) if (ids[i] === idx) {
+        const x = i % W, y = i / W | 0;
+        n++;
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+      if (n < 3) continue;
+      const w = x1 - x0 + 1, h = y1 - y0 + 1;
+      const mc = makeCanvas(w, h), g = ctxOf(mc), img = g.createImageData(w, h);
+      const d32 = new Uint32Array(img.data.buffer);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (ids[(y0 + y) * W + x0 + x] === idx) d32[y * w + x] = 4294967295;
+      g.putImageData(img, 0, 0);
+      const c = rel(A[key]);
+      const f = rel(add(A[key], scl(A.headFwd, sol.eyeR)));
+      eyes2.push({ key, mask: mc, x: x0 - fx, y: y0 - fy, w, h, cx: c[0], cy: c[1], fwd: [f[0] - c[0], f[1] - c[1]], r: sol.eyeR * vs, n });
+    }
+    let front = null;
+    if (pose === "hold") {
+      const hs = kit.handSet;
+      front = renderVoxels(m, { scale: vs, yaw, pitch: PITCH, ao: 1.05, edges: 0.75, sideEdges: 0.55, jitter: 0.1, depthThreshold: 2.4, keepVoxel: (x, y, z) => hs.has(m.get(x, y, z)) }).canvas;
+    }
+    const dt = now3() - t0;
+    spent3 += dt;
+    statBuilt2++;
+    statMs += dt;
+    return { canvas: r.canvas, glow: r.glow, front, fx, fy, anchors, eyes: eyes2, p, vs };
+  }
+  function yawFor(o) {
+    if (o.yaw != null) return { yaw: Math.round(o.yaw / YAW_STEP2) * YAW_STEP2, mx: 1 };
+    const f = (o.facing ?? 1) < 0 ? -1 : 1;
+    return { yaw: f > 0 ? -FACE_YAW : FACE_YAW, mx: -f };
+  }
+  function getFrame(kit, pose, fi, yaw, vs, mx, force) {
+    const fam = `${kit.key}#${pose}#${yaw}#${vs}#${mx}`;
+    const key = fam + "#" + fi;
+    let fr = FRAMES.get(key);
+    if (fr) return fr;
+    const set = FAMS.get(fam);
+    if (!force && overBudget3()) {
+      if (set && set.size) {
+        let best = -1, bd = 1e9;
+        for (const f of set) {
+          const d = Math.abs(f - fi);
+          if (d < bd) {
+            bd = d;
+            best = f;
+          }
+        }
+        statFallback3++;
+        return FRAMES.get(fam + "#" + best);
+      }
+      for (let d = YAW_STEP2; d <= 180; d += YAW_STEP2) {
+        for (const yy of [yaw - d, yaw + d]) {
+          const s2 = FAMS.get(`${kit.key}#${pose}#${yy}#${vs}#${mx}`);
+          if (s2 && s2.size) {
+            statFallback3++;
+            const f0 = s2.has(fi) ? fi : s2.values().next().value;
+            return FRAMES.get(`${kit.key}#${pose}#${yy}#${vs}#${mx}#${f0}`);
+          }
+        }
+      }
+    }
+    fr = buildFrame(kit, pose, fi, yaw, vs, mx);
+    FRAMES.set(key, fr);
+    let s = set;
+    if (!s) FAMS.set(fam, s = /* @__PURE__ */ new Set());
+    s.add(fi);
+    fr.fam = fam;
+    fr.fi = fi;
+    if (FRAMES.size > MAX_FRAMES) {
+      for (const [k, v] of FRAMES) {
+        FRAMES.delete(k);
+        FAMS.get(v.fam)?.delete(v.fi);
+        if (FRAMES.size <= MAX_FRAMES * 0.85) break;
+      }
+    }
+    return fr;
+  }
+  var vsFor = (scale) => Math.max(0.5, Math.round(BASE_VS * (scale ?? 1) * 4) / 4);
+  var EYES = /* @__PURE__ */ new Map();
+  var PUPIL = "#1a1430";
+  var scratch2 = null;
+  var sctx = null;
+  function scr(w, h) {
+    if (!scratch2 || scratch2.width < w || scratch2.height < h) {
+      scratch2 = makeCanvas(Math.max(w, scratch2?.width || 0), Math.max(h, scratch2?.height || 0));
+      sctx = ctxOf(scratch2);
+    }
+    sctx.clearRect(0, 0, w, h);
+    return sctx;
+  }
+  function disc(g, cx, cy, r, color, block = 1) {
+    g.fillStyle = color;
+    const R = Math.max(0.5, r);
+    for (let y = -Math.ceil(R); y <= Math.ceil(R); y += block) {
+      const hw = Math.sqrt(Math.max(0, R * R - (y + block / 2) * (y + block / 2)));
+      if (hw <= 0.2) continue;
+      g.fillRect(Math.round(cx - hw), Math.round(cy + y), Math.max(1, Math.round(hw * 2)), block);
+    }
+  }
+  function star(g, cx, cy, r, color, rotA) {
+    g.fillStyle = color;
+    g.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const a = rotA + i / 10 * TAU - Math.PI / 2, rr2 = i % 2 ? r * 0.45 : r;
+      const x = cx + Math.cos(a) * rr2, y = cy + Math.sin(a) * rr2;
+      if (i) g.lineTo(x, y);
+      else g.moveTo(x, y);
+    }
+    g.closePath();
+    g.fill();
+  }
+  function heart(g, cx, cy, r, color) {
+    g.fillStyle = color;
+    const s = Math.max(1, r / 3);
+    const rows = [".##.##.", "#######", "#######", ".#####.", "..###..", "...#..."];
+    const ox = cx - 3.5 * s, oy = cy - 3 * s;
+    rows.forEach((row, y) => {
+      for (let x = 0; x < 7; x++) if (row[x] === "#") g.fillRect(Math.round(ox + x * s), Math.round(oy + y * s), Math.ceil(s), Math.ceil(s));
+    });
+  }
+  function drawEyes(ctx2, fr, X, Y, o, look, t, dt, sx, ss) {
+    const id = o.id ?? "main";
+    let st = EYES.get(id);
+    if (!st) {
+      st = { px: X, py: Y, eyes: {}, blinkT: 0, nextBlink: 2 + Math.random() * 3, wander: [0, 0], wanderT: 0 };
+      EYES.set(id, st);
+    }
+    const mvx = clamp((X - st.px) / Math.max(dt, 1e-3), -600, 600), mvy = clamp((Y - st.py) / Math.max(dt, 1e-3), -600, 600);
+    const jump = Math.abs(X - st.px) > 40 || Math.abs(Y - st.py) > 40;
+    st.px = X;
+    st.py = Y;
+    st.nextBlink -= dt;
+    if (st.nextBlink <= 0) {
+      st.blinkT = 0.14;
+      st.nextBlink = 2.2 + Math.random() * 3.6;
+      if (Math.random() < 0.18) st.nextBlink = 0.25;
+    }
+    st.blinkT = Math.max(0, st.blinkT - dt);
+    st.wanderT -= dt;
+    if (st.wanderT <= 0) {
+      st.wanderT = 0.7 + Math.random() * 1.8;
+      st.wander = [Math.random() * 1.6 - 0.8, Math.random() * 1 - 0.5];
+    }
+    const p = fr.p, style = look.eyes;
+    const blink = st.blinkT > 0 ? 1 : 0;
+    const block = Math.max(1, Math.floor(fr.vs / 1.45));
+    for (const e of fr.eyes) {
+      let es = st.eyes[e.key];
+      if (!es) es = st.eyes[e.key] = { ox: 0, oy: 0, vx: 0, vy: 0, lcx: e.cx, lcy: e.cy };
+      const r = e.r;
+      const left = e.key === "eyeL";
+      const pr = r * (style === "googly" ? 0.5 : style === "goofy" ? left ? 0.47 : 0.38 : style === "angry" ? 0.36 : style === "sleepy" ? 0.44 : 0.46);
+      const maxOff = Math.max(0.5, r - pr - 0.6);
+      let tx = e.fwd[0] * 0.55 + (p.gaze[0] * sx + st.wander[0] * 0.4) * maxOff;
+      let ty = e.fwd[1] * 0.55 + (p.gaze[1] + st.wander[1] * 0.3) * maxOff;
+      if (o.lookAt) {
+        const dx = o.lookAt[0] - (X + e.cx), dy = o.lookAt[1] - (Y + e.cy);
+        const dl = Math.hypot(dx, dy) || 1;
+        const k2 = Math.min(1, dl / 40);
+        tx = tx * 0.3 + dx / dl * maxOff * k2;
+        ty = ty * 0.3 + dy / dl * maxOff * k2;
+      }
+      if (style === "googly") ty = ty * 0.4 + maxOff * 0.75;
+      const ddx = jump ? 0 : e.cx - es.lcx, ddy = jump ? 0 : e.cy - es.lcy;
+      es.lcx = e.cx;
+      es.lcy = e.cy;
+      const loose = style === "googly" ? 1.8 : style === "goofy" ? left ? 1.15 : 0.85 : 1;
+      es.vx += (-(mvx * 16e-4) - ddx * 3) * loose * ss;
+      es.vy += (-(mvy * 16e-4) - ddy * 3) * loose * ss;
+      const k = (style === "googly" ? 110 : 190) / loose, damp2 = style === "googly" ? 5 : 11;
+      es.vx += ((tx - es.ox) * k - es.vx * damp2) * dt;
+      es.vy += ((ty - es.oy) * k - es.vy * damp2) * dt;
+      if (p.wobble) {
+        es.vx += (Math.random() - 0.5) * 30 * dt * r;
+        es.vy += (Math.random() - 0.5) * 30 * dt * r;
+      }
+      es.ox += es.vx * dt;
+      es.oy += es.vy * dt;
+      const ol = Math.hypot(es.ox, es.oy);
+      if (ol > maxOff) {
+        es.ox *= maxOff / ol;
+        es.oy *= maxOff / ol;
+        if (style === "googly") {
+          es.vx *= -0.4;
+          es.vy *= -0.4;
+        }
+      }
+      const g = scr(e.w, e.h);
+      const pcx = e.cx - e.x + es.ox, pcy = e.cy - e.y + es.oy;
+      if (style === "starry") {
+        star(g, pcx, pcy, pr * 1.25, "#ffcf3a", S2(t * 2) * 0.2);
+        star(g, pcx, pcy, pr * 0.62, "#fff6c8", S2(t * 2) * 0.2);
+        disc(g, pcx, pcy, Math.max(0.5, pr * 0.2), "#7a4a10", 1);
+      } else if (style === "hearts") {
+        heart(g, pcx, pcy + 0.5, pr * (1.05 + 0.1 * Math.max(0, S2(t * 9))), "#ff3a6a");
+        g.fillStyle = "#ffd0dc";
+        g.fillRect(Math.round(pcx - pr * 0.5), Math.round(pcy - pr * 0.4), Math.max(1, block), Math.max(1, block));
+      } else if (style === "dizzy") {
+        g.fillStyle = PUPIL;
+        const turns = 2.2, n = Math.max(14, Math.round(pr * 8));
+        for (let i = 0; i < n; i++) {
+          const a = i / n * turns * TAU + t * 7 * (left ? 1 : -1), rr2 = i / n * pr * 1.05;
+          g.fillRect(Math.round(pcx + Math.cos(a) * rr2), Math.round(pcy + Math.sin(a) * rr2), block, block);
+        }
+      } else {
+        disc(g, pcx, pcy, pr, PUPIL, block);
+        if (style !== "angry") disc(g, pcx, pcy, pr * 0.5, "#3a2a5a", block);
+        g.fillStyle = "#ffffff";
+        const hs = Math.max(1, Math.round(pr * 0.36));
+        g.fillRect(Math.round(pcx - pr * 0.45), Math.round(pcy - pr * 0.5), hs, hs);
+        if (pr > 4) g.fillRect(Math.round(pcx + pr * 0.25), Math.round(pcy + pr * 0.25), Math.max(1, hs >> 1), Math.max(1, hs >> 1));
+      }
+      let lid = Math.max(p.lid, p.squint * 0.6, style === "sleepy" ? 0.5 : style === "angry" ? 0.22 : 0.06);
+      if (blink) lid = 1;
+      const lower = blink ? 0 : p.squint * 0.35;
+      const top = e.cy - e.y - r, bot = e.cy - e.y + r;
+      const inner = left === sx > 0 ? -1 : 1;
+      const slant = style === "angry" && !blink ? 0.55 : p.mouth === "frown" && !blink ? -0.35 : 0;
+      const lidCol = shade(skinOf(look).skin, -0.08), lidLine = shade(skinOf(look).skin, -0.55);
+      if (lid > 0.01) {
+        const ly = top + lid * 2 * r;
+        g.fillStyle = lidCol;
+        g.beginPath();
+        const xl = -1, xr = e.w + 1;
+        const yl = ly + slant * r * ((xl - (e.cx - e.x)) / r) * inner, yr = ly + slant * r * ((xr - (e.cx - e.x)) / r) * inner;
+        g.moveTo(xl, -2);
+        g.lineTo(xr, -2);
+        g.lineTo(xr, yr);
+        g.lineTo(xl, yl);
+        g.closePath();
+        g.fill();
+        g.strokeStyle = lidLine;
+        g.lineWidth = Math.max(1, block);
+        g.beginPath();
+        g.moveTo(xl, yl);
+        g.lineTo(xr, yr);
+        g.stroke();
+      }
+      if (lower > 0.01) {
+        g.fillStyle = lidCol;
+        g.fillRect(0, Math.round(bot - lower * 2 * r), e.w, e.h);
+      }
+      g.globalCompositeOperation = "destination-in";
+      g.drawImage(e.mask, 0, 0);
+      g.globalCompositeOperation = "source-over";
+      ctx2.drawImage(scratch2, 0, 0, e.w, e.h, X + e.x, Y + e.y, e.w, e.h);
+    }
+  }
+  var lastNow = 0;
+  function drawCharacter(ctx2, x, y, o = {}) {
+    const look = normalizeLook(o.look);
+    const kit = kitFor(look);
+    const pose = POSES[o.pose] ? o.pose : "idle";
+    const t = o.t ?? 0;
+    const scale = o.scale ?? 1;
+    const vs = vsFor(scale);
+    const { yaw, mx } = yawFor(o);
+    const fi = poseFrame(pose, t);
+    const fr = getFrame(kit, pose, fi, yaw, vs, mx, false);
+    const n = now3();
+    const dt = clamp((n - (lastNow || n)) / 1e3, 0, 0.05);
+    lastNow = n;
+    const X = Math.round(x - fr.fx), Y = Math.round(y - fr.fy);
+    const sx = o.yaw != null ? -Math.sign(Math.sin(yaw * DEG4)) || 1 : (o.facing ?? 1) < 0 ? -1 : 1;
+    if (o.shadow !== false && pose !== "sit") {
+      const lift = fr.p.off[1] > 1 ? clamp01(1 - fr.p.off[1] / 10) : 1;
+      const w = Math.round(13 * vs * lift), h = Math.max(1, Math.round(1.6 * vs * lift));
+      ctx2.fillStyle = "rgba(10,20,40,0.22)";
+      for (let i = -h; i <= h; i++) {
+        const hw = Math.round(w * Math.sqrt(1 - (i / (h + 0.5)) ** 2));
+        ctx2.fillRect(Math.round(x) - hw, Math.round(y) + i, hw * 2, 1);
+      }
+    }
+    ctx2.drawImage(fr.canvas, X, Y);
+    if (fr.glow) {
+      const prev = ctx2.globalCompositeOperation, pa = ctx2.globalAlpha;
+      ctx2.globalCompositeOperation = "lighter";
+      ctx2.globalAlpha = pa * 0.55;
+      ctx2.drawImage(fr.glow, X, Y);
+      ctx2.globalCompositeOperation = prev;
+      ctx2.globalAlpha = pa;
+    }
+    drawEyes(ctx2, fr, Math.round(x), Math.round(y), o, look, t, dt, sx, vs / BASE_VS);
+    const A = fr.anchors;
+    const ax = (a) => [Math.round(x + a[0]), Math.round(y + a[1])];
+    if (pose === "hold" && o.fish?.compiled) {
+      const c = o.fish.compiled;
+      const len = (c.L || 16) * 1.45;
+      const fs = clamp((o.fishScale ?? 1) * (34 * vs) / len, 0.25, 1.6 * vs / BASE_VS);
+      const hx = x + A.hands[0], hy = y + A.hands[1] - 1;
+      const wig = S2(t * 7) * 0.12;
+      drawFishRig(ctx2, c, {
+        x: hx,
+        y: hy,
+        facing: -sx,
+        turn: 1,
+        angle: wig,
+        scale: fs,
+        squash: S2(t * 9) * 0.08,
+        swimPhase: t * 1.3 % 1,
+        tailPhase: t * 2.6 % 1,
+        finPhase: t * 2 % 1,
+        speed01: 0.5,
+        lookX: hx + sx * 30,
+        lookY: hy - 20,
+        blink: 0,
+        emotion: o.fish.emotion || "surprised",
+        mouth: 0.4 + 0.4 * Math.abs(S2(t * 6)),
+        time: t
+      });
+      if (fr.front) ctx2.drawImage(fr.front, X, Y);
+    }
+    return { rodTip: ax(A.rodTip), hands: ax(A.hands), head: ax(A.head), handL: ax(A.handL), handR: ax(A.handR), mouth: ax(A.mouth) };
+  }
+
+  // src/build/buildings.js
+  var BUILDINGS = {
+    research_lab: {
+      name: "Research Lab",
+      rarity: "common",
+      unique: true,
+      size: 1,
+      desc: "A cosy house of science with a rooftop antenna. Enter to research blueprints, baits, upgrades and perks.",
+      lore: "Home of Professor Bubbles, who once proved fish can count (to three).",
+      cost: { coins: 80, items: { driftwood: 6, kelp_fibre: 4, sea_glass: 2 } },
+      action: "research",
+      bonus: { researchSpeed: [0, 0.15, 0.3] },
+      upgrades: [{ coins: 400, items: { driftwood: 8, gear: 3, sea_glass: 4 } }, { coins: 1400, items: { circuit_board: 3, ancient_stone: 3, pearl: 2 } }]
+    },
+    coral_garden: {
+      name: "Coral Garden",
+      rarity: "common",
+      size: 1,
+      desc: "Terraced coral beds that slowly grow coral, kelp and shells for you to harvest.",
+      lore: "The polyps unionised. They now demand ambient whale song.",
+      cost: { coins: 150, items: { coral_chunk: 3, shell: 3, kelp_fibre: 2 } },
+      action: "collect",
+      bonus: { coinMul: [0.03, 0.05, 0.08] },
+      produce: { every: 20 * 60, cap: [3, 5, 8], give: [{ id: "coral_chunk", qty: 1, w: 4 }, { id: "kelp_fibre", qty: 2, w: 4 }, { id: "shell", qty: 1, w: 3 }, { id: "pearl", qty: 1, w: 0.4 }] },
+      upgrades: [{ coins: 350, items: { coral_chunk: 6, shell: 4 } }, { coins: 1100, items: { coral_chunk: 10, pearl: 2 } }]
+    },
+    bubble_tower: {
+      name: "Bubble Tower",
+      rarity: "uncommon",
+      size: 0.7,
+      desc: "A spiralling glass tower that blows coin bubbles and widens the pull of your bait.",
+      lore: "Built by a pufferfish with very strong opinions about architecture.",
+      cost: { coins: 220, items: { sea_glass: 4, scrap_metal: 3, shell: 2 } },
+      action: "collect",
+      bonus: { baitRadius: [0.08, 0.13, 0.2] },
+      produce: { every: 12 * 60, cap: [3, 4, 6], coins: [8, 22] },
+      upgrades: [{ coins: 500, items: { sea_glass: 6, gear: 2 } }, { coins: 1500, items: { sea_glass: 10, circuit_board: 2 } }]
+    },
+    bait_workshop: {
+      name: "Bait Workshop",
+      rarity: "uncommon",
+      size: 1,
+      desc: "A tinkerer's shed with a bait press. Crafts special bait from materials, and sometimes saves a bait.",
+      lore: "Smells of worms and ambition.",
+      cost: { coins: 260, items: { driftwood: 6, scrap_metal: 4, gear: 2 } },
+      action: "workshop",
+      bonus: { baitSave: [0.06, 0.1, 0.15] },
+      upgrades: [{ coins: 600, items: { scrap_metal: 6, gear: 4 } }, { coins: 1800, items: { circuit_board: 3, gear: 6 } }]
+    },
+    shell_shack: {
+      name: "Shell Shack",
+      rarity: "uncommon",
+      size: 0.9,
+      desc: "A hermit crab's trading post. Gathers shells, glass and pearls, and haggles better prices when you sell.",
+      lore: "Shelly the hermit crab moved in and never moved out. She moves house a lot, just never out.",
+      cost: { coins: 240, items: { driftwood: 5, shell: 6, pearl: 1 } },
+      action: "collect",
+      bonus: { sellMul: [0.1, 0.18, 0.28] },
+      produce: { every: 30 * 60, cap: [2, 4, 6], give: [{ id: "shell", qty: 2, w: 4 }, { id: "sea_glass", qty: 1, w: 3 }, { id: "pearl", qty: 1, w: 1 }] },
+      upgrades: [{ coins: 550, items: { shell: 8, pearl: 2 } }, { coins: 1600, items: { pearl: 4, golden_scale: 1 } }]
+    },
+    hatchery: {
+      name: "Fish Hatchery",
+      rarity: "rare",
+      size: 1,
+      desc: "Warm nursery tanks. Lays fish eggs over time and sometimes gives a bonus egg when you catch a fish.",
+      lore: 'Every egg has a name. Most of them are "Kevin".',
+      cost: { coins: 450, items: { coral_chunk: 5, kelp_fibre: 6, fish_sample: 4 } },
+      action: "collect",
+      bonus: { eggChance: [0.04, 0.07, 0.11] },
+      produce: { every: 40 * 60, cap: [2, 3, 5], give: [{ id: "fish_egg", qty: 1, w: 1 }] },
+      upgrades: [{ coins: 900, items: { fish_sample: 8, coral_chunk: 6 } }, { coins: 2400, items: { rare_specimen: 3, pearl: 3 } }]
+    },
+    arcade: {
+      name: "Sunken Arcade",
+      rarity: "rare",
+      size: 1,
+      desc: "A flickering claw machine parlour. Spend coins to grab mystery packages. Luck rubs off on your catches.",
+      lore: "The claw is rigged. The claw has always been rigged. Play anyway.",
+      cost: { coins: 600, items: { circuit_board: 3, scrap_metal: 6, gear: 3, sea_glass: 3 } },
+      action: "arcade",
+      bonus: { luck: [0.05, 0.09, 0.14] },
+      upgrades: [{ coins: 1200, items: { circuit_board: 4, gear: 4 } }, { coins: 3200, items: { circuit_board: 6, abyss_crystal: 1 } }]
+    },
+    lighthouse: {
+      name: "Lighthouse",
+      rarity: "epic",
+      unique: true,
+      size: 0.8,
+      desc: "A sunken lighthouse whose lamp still turns. Lights the dark and draws rare night fish to your hook.",
+      lore: "The keeper is a lanternfish named Lumen. He is very proud of his job and his beard.",
+      cost: { coins: 800, items: { ancient_stone: 4, sea_glass: 6, gear: 3, pearl: 1 } },
+      action: "toggle",
+      bonus: { nightRarity: [0.15, 0.25, 0.4], light: [1, 1.35, 1.7] },
+      upgrades: [{ coins: 1600, items: { sea_glass: 8, ancient_stone: 4 } }, { coins: 4e3, items: { abyss_crystal: 2, golden_scale: 1 } }]
+    },
+    vault: {
+      name: "Treasure Vault",
+      rarity: "epic",
+      unique: true,
+      size: 1,
+      desc: "A riveted iron vault. Deposit coins and they earn interest every hour, even while you are away.",
+      lore: "Guarded by a very serious clam. The clam is not serious. The clam is asleep.",
+      cost: { coins: 1200, items: { scrap_metal: 8, gear: 4, ancient_stone: 3, pearl: 2 } },
+      action: "vault",
+      bonus: {},
+      vault: { rate: [0.012, 0.016, 0.022], cap: [3e3, 12e3, 5e4] },
+      upgrades: [{ coins: 2500, items: { scrap_metal: 10, gear: 6 } }, { coins: 6e3, items: { golden_scale: 2, ancient_stone: 6 } }]
+    },
+    totem: {
+      name: "Totem of Luck",
+      rarity: "legendary",
+      unique: true,
+      size: 0.6,
+      desc: "A grinning carved totem. Raises rare and shiny odds, and gives a blessing package once a day.",
+      lore: "It winks when nobody is looking. Everybody has seen it wink.",
+      cost: { coins: 1500, items: { driftwood: 8, abyss_crystal: 2, golden_scale: 1, ancient_stone: 3 } },
+      action: "bless",
+      bonus: { rarity: [0.05, 0.08, 0.12], shiny: [0.15, 0.25, 0.4], mutation: [0.05, 0.08, 0.12] },
+      upgrades: [{ coins: 3e3, items: { abyss_crystal: 2, driftwood: 10 } }, { coins: 8e3, items: { golden_scale: 2, abyss_crystal: 3 } }]
+    }
+  };
+  var BUILDING_ORDER = ["research_lab", "coral_garden", "bubble_tower", "bait_workshop", "shell_shack", "hatchery", "arcade", "lighthouse", "vault", "totem"];
+  var DECOR_PICK = ["castle", "moai_head", "pagoda_lantern", "mushroom_house", "tiki_head", "bridge", "pirate_ship", "sunken_pc", "diver_helmet", "anchor", "treasure_chest", "arch_ruin", "crystal_cluster", "giant_skull"];
+  var DECOR_BUILDS = {};
+  for (const id of DECOR_PICK) {
+    const p = PROPS[id];
+    if (!p?.decor) continue;
+    const price = p.decor.price;
+    const rarity = price < 150 ? "common" : price < 350 ? "uncommon" : price < 650 ? "rare" : price < 1200 ? "epic" : "legendary";
+    DECOR_BUILDS[id] = { name: p.name, rarity, prop: id, size: p.decor.size, desc: `Seabed decoration: a ${p.name.toLowerCase()} for your underwater neighbourhood.`, cost: { coins: Math.round(price * 0.25), items: {} } };
+  }
+  var BLESS_COOLDOWN = 20 * 3600 * 1e3;
+
+  // src/build/itemart.js
+  var SPIN = 16;
+  var h32 = (x, y, z, s = 0) => hash3(x, y, z, s);
+  function shape3(m, x0, y0, z0, x1, y1, z1, test, c) {
+    for (let y = Math.floor(y0); y <= Math.ceil(y1); y++) for (let z = Math.floor(z0); z <= Math.ceil(z1); z++) for (let x = Math.floor(x0); x <= Math.ceil(x1); x++) {
+      if (test(x + 0.5, y + 0.5, z + 0.5)) m.put(x, y, z, c);
+    }
+  }
+  var MODELS = {
+    driftwood() {
+      const m = new VoxelModel(22, 9, 12);
+      const wood = [m.color("#a89078", { jitter: 0.12, smooth: 0.6 }), m.color("#8a7460", { jitter: 0.12, smooth: 0.6 }), m.color("#c8b49a", { jitter: 0.08, smooth: 0.6 })];
+      const knot = m.color("#5a4636", { jitter: 0.05 });
+      const pts = [[1.5, 3.5, 6, 2.6], [6, 4, 5.5, 3.2], [11, 4.2, 6.5, 3.3], [16, 3.8, 6, 2.8], [20.5, 4.6, 5, 2]];
+      m.tube(pts, (x, y, z) => h32(x >> 1, y, z, 3) < 0.25 ? wood[1] : (y + (x >> 2)) % 4 === 0 ? wood[2] : wood[0]);
+      m.line(13, 6, 6, 15, 8, 4, wood[0], 1);
+      m.set(8, 7, 7, knot);
+      m.set(9, 7, 7, knot);
+      m.set(17, 6, 8, knot);
+      m.sub(() => {
+        m.set(0, 3, 6, 0);
+        m.set(0, 4, 6, 0);
+      });
+      m.recolor((x, y, z, p) => p === wood[0] && x === 0 ? wood[2] : null);
+      return { m, yaw: 24 };
+    },
+    kelp_fibre() {
+      const m = new VoxelModel(16, 14, 16);
+      const g = [m.color("#4f9a52", { jitter: 0.1, smooth: 0.5 }), m.color("#6cbf5a", { jitter: 0.1, smooth: 0.5 }), m.color("#3a7a46", { jitter: 0.1 })];
+      const tie = m.color("#d8b878", { jitter: 0.05 });
+      for (let y = 0; y < 12; y++) {
+        const r = 5.2 - Math.abs(y - 5.5) * 0.25;
+        m.cylinder(8, 8, y, y, r, (x, yy, z) => {
+          const a = Math.atan2(z - 8, x - 8);
+          const k = Math.floor((a * 3 + yy * 0.7) * 1.2) & 3;
+          return k === 0 ? g[1] : k === 2 ? g[2] : g[0];
+        });
+      }
+      m.sub(() => m.cylinder(8, 8, 0, 11, 2, 0));
+      for (const y of [3, 8]) m.paint(() => m.cylinder(8, 8, y, y, 6, (x, yy, z) => m.exposed(x, yy, z) ? tie : null));
+      m.line(13, 11, 8, 15, 13, 9, g[1], 0.6);
+      m.line(4, 11, 6, 2, 13, 5, g[0], 0.6);
+      return { m, yaw: 30, pitch: 34 };
+    },
+    shell() {
+      const m = new VoxelModel(16, 8, 15);
+      const c = [m.color("#f6c0b0", { smooth: 0.7, spec: 0.4 }), m.color("#e88a86", { smooth: 0.7 }), m.color("#fff0e6", { smooth: 0.7 })];
+      shape3(m, 0, 0, 0, 15, 7, 14, (x, y, z) => {
+        const dx = x - 8, dz = z - 2;
+        const r = Math.hypot(dx, dz);
+        if (dz < -0.5 || r > 7.5) return false;
+        const a = Math.atan2(dz, dx);
+        if (a < 0.1 || a > Math.PI - 0.1) return false;
+        const ridge = Math.cos(a * 11) * 0.7;
+        return y < 1 + (7.5 - r) * 0.55 + ridge * (r / 7.5) && y >= 0;
+      }, (x, y, z) => {
+        const a = Math.atan2(z - 2, x - 8);
+        return Math.cos(a * 11) > 0.3 ? c[2] : Math.hypot(x - 8, z - 2) > 6 ? c[1] : c[0];
+      });
+      m.box(6, 0, 0, 10, 2, 2, c[1]);
+      return { m, yaw: 18, pitch: 40 };
+    },
+    sea_glass() {
+      const m = new VoxelModel(16, 8, 14);
+      const cols = [["#5ad0b4", "#9af0d8"], ["#6aa8e8", "#b0dcff"], ["#a8e86a", "#dcffa8"]];
+      const pieces = [[5, 2.2, 6, 4, 2.2, 3.2, 0], [11, 1.8, 8, 3, 1.8, 2.6, 1], [7, 1.5, 11, 2.4, 1.5, 2, 2]];
+      for (const [x, y, z, rx, ry, rz, k] of pieces) {
+        const a = m.color(cols[k][0], { smooth: 0.9, spec: 1, specPow: 6, emissive: 0.15 }), b = m.color(cols[k][1], { smooth: 0.9, spec: 1, emissive: 0.2 });
+        m.ellipsoid(x, y, z, rx, ry, rz, (xx, yy, zz) => yy > y && h32(xx, yy, zz, k) < 0.3 ? b : a);
+      }
+      return { m, yaw: 26, pitch: 38 };
+    },
+    coral_chunk() {
+      const m = new VoxelModel(16, 16, 14);
+      const c = [m.color("#ff7a8a", { smooth: 0.6, jitter: 0.08 }), m.color("#ffb0a0", { smooth: 0.6 }), m.color("#d8505e", { smooth: 0.5 })];
+      const base = m.color("#c8b090", { jitter: 0.12 });
+      m.ellipsoid(8, 1.5, 7, 6, 2, 5, base);
+      const br = [[8, 2, 7, 6, 13, 6], [8, 6, 7, 12, 11, 8], [7, 8, 6, 3, 14, 5], [9, 4, 7, 13, 6, 10], [6, 4, 8, 2, 8, 10]];
+      for (const [x0, y0, z0, x1, y1, z1] of br) {
+        m.line(x0, y0, z0, x1, y1, z1, c[0], 1.3);
+        m.sphere(x1, y1, z1, 1.5, c[1]);
+      }
+      m.recolor((x, y, z, p) => p === c[0] && h32(x, y, z, 2) < 0.15 ? c[2] : null);
+      return { m, yaw: 30 };
+    },
+    pearl() {
+      const m = new VoxelModel(16, 10, 14);
+      const shell = [m.color("#d8c8e8", { smooth: 0.8 }), m.color("#a890c0", { smooth: 0.7 })];
+      const pearl = m.color("#fff6fa", { smooth: 1, spec: 1, specPow: 5, light: 0.2 });
+      shape3(m, 0, 0, 0, 15, 3, 13, (x, y, z) => Math.hypot((x - 8) / 7, (z - 7) / 6) < 1 && y < 1 + (1 - Math.hypot((x - 8) / 7, (z - 7) / 6)) * 2.5, (x, y, z) => Math.floor(Math.atan2(z - 7, x - 8) * 4) & 1 ? shell[0] : shell[1]);
+      m.sub(() => m.ellipsoid(8, 3, 7, 5.5, 2, 4.5));
+      m.sphere(8, 4.5, 7, 3.4, pearl);
+      return { m, yaw: 22, pitch: 36 };
+    },
+    scrap_metal() {
+      const m = new VoxelModel(16, 10, 14);
+      const steel = [m.color("#8a94a8", { jitter: 0.1, spec: 0.5 }), m.color("#6a7286", { jitter: 0.1 }), m.color("#b8c2d0", { spec: 0.8 })];
+      const rust = [m.color("#b0602e", { jitter: 0.15 }), m.color("#d8884a", { jitter: 0.1 })];
+      const rivet = m.color("#dfe6ee", { spec: 1 });
+      shape3(m, 1, 0, 1, 12, 3, 12, (x, y, z) => y < 1.6 + Math.sin(x * 0.4) * 0.8 && y > Math.sin(x * 0.4) * 0.8, steel[0]);
+      shape3(m, 5, 2, 4, 14, 8, 11, (x, y, z) => Math.abs(y - 2 - (x - 5) * 0.55 - 0.5) < 0.9 && z > 4.5 && z < 10.5, steel[1]);
+      m.cylinder(10, 3, 8, 9, 1.4, steel[2], "z");
+      m.box(9, 2, 3, 11, 4, 4, steel[1]);
+      m.recolor((x, y, z, p) => (p === steel[0] || p === steel[1]) && h32(x >> 1, y, z >> 1, 7) < 0.3 ? h32(x, y, z, 1) < 0.5 ? rust[0] : rust[1] : null);
+      for (const [x, z] of [[3, 3], [3, 10], [10, 3]]) m.set(x, 2, z, rivet);
+      return { m, yaw: 34, pitch: 34 };
+    },
+    gear() {
+      const m = new VoxelModel(16, 16, 6);
+      const b = [m.color("#e0a844", { spec: 0.9, smooth: 0.4 }), m.color("#b8782a", { smooth: 0.4 }), m.color("#fff2b8", { spec: 1 })];
+      shape3(m, 0, 0, 1, 15, 15, 4, (x, y, z) => {
+        const dx = x - 8, dy = y - 8, r = Math.hypot(dx, dy), a = Math.atan2(dy, dx);
+        const tooth = Math.cos(a * 8) > 0.25 ? 7.4 : 6;
+        return r < tooth && r > 2.2;
+      }, (x, y, z) => z === 4 && Math.hypot(x - 8, y - 8) < 5 && Math.hypot(x - 8, y - 8) > 3.4 ? b[2] : z === 1 ? b[1] : b[0]);
+      m.sub(() => {
+        for (let k = 0; k < 4; k++) {
+          const a = k * Math.PI / 2 + 0.78;
+          m.cylinder(8 + Math.cos(a) * 4.2, 8 + Math.sin(a) * 4.2, 1, 4, 1.1, 0, "z");
+        }
+      });
+      return { m, yaw: 28, pitch: 20 };
+    },
+    circuit_board() {
+      const m = new VoxelModel(16, 5, 13);
+      const pcb = [m.color("#2a8a4a", { jitter: 0.04 }), m.color("#1e6a3a", { jitter: 0.04 })];
+      const gold = m.color("#f0c84a", { spec: 1 });
+      const chip2 = m.color("#2a2a36", { spec: 0.4 });
+      const pin = m.color("#c8ccd8", { spec: 0.8 });
+      const led = m.color("#ff4a5a", { emissive: 1 });
+      const led2 = m.color("#5aff9a", { emissive: 1 });
+      m.box(0, 0, 0, 15, 0, 12, pcb[1]);
+      m.box(0, 1, 0, 15, 1, 12, pcb[0]);
+      for (let x = 1; x < 15; x++) if (x % 3) m.set(x, 1, 3, gold);
+      for (let z = 3; z < 11; z++) m.set(12, 1, z, gold);
+      for (let x = 2; x < 12; x++) m.set(x, 1, 10, gold);
+      m.box(3, 2, 5, 8, 3, 8, chip2);
+      for (let x = 3; x <= 8; x += 1) {
+        m.set(x, 2, 4, pin);
+        m.set(x, 2, 9, pin);
+      }
+      m.box(10, 2, 7, 11, 2, 8, chip2);
+      m.set(13, 2, 1, led);
+      m.set(13, 2, 11, led2);
+      m.box(1, 2, 1, 2, 4, 1, pin);
+      return { m, yaw: 30, pitch: 42 };
+    },
+    ancient_stone() {
+      const m = new VoxelModel(14, 14, 12);
+      const st = [m.color("#6a6898", { jitter: 0.12, smooth: 0.3 }), m.color("#55537e", { jitter: 0.12 }), m.color("#8482b4", { jitter: 0.1 })];
+      const rune2 = m.color("#5ff4ff", { emissive: 1 });
+      m.box(1, 0, 1, 12, 11, 10, (x, y, z) => h32(x >> 1, y >> 1, z >> 1, 5) < 0.3 ? st[1] : st[0]);
+      m.sub(() => {
+        m.box(0, 9, 0, 3, 13, 3);
+        m.box(10, 0, 8, 13, 3, 11);
+        m.set(12, 11, 10, 0);
+        m.set(1, 0, 10, 0);
+      });
+      m.recolor((x, y, z, p) => y === 11 && p !== 0 ? st[2] : null);
+      const R = ["..#..", ".###.", "#.#.#", "..#..", ".#.#."];
+      R.forEach((row, j) => [...row].forEach((ch, i) => {
+        if (ch === "#") m.set(4 + i, 8 - j, 10, rune2);
+      }));
+      return { m, yaw: 24 };
+    },
+    abyss_crystal() {
+      const m = new VoxelModel(16, 20, 14);
+      const cr = [m.color("#a46aff", { emissive: 0.5, smooth: 0.2, spec: 1 }), m.color("#d8b0ff", { emissive: 0.7, spec: 1 }), m.color("#6a3ac8", { emissive: 0.3 })];
+      const rock = m.color("#3a386a", { jitter: 0.15 });
+      m.ellipsoid(8, 1, 7, 7, 2, 6, rock);
+      const shard = (x, z, h, r, lx, lz) => {
+        for (let y = 0; y < h; y++) {
+          const t = y / h, rr2 = r * (t < 0.75 ? 1 : (1 - t) * 4);
+          m.cylinder(x + lx * y, z + lz * y, y + 1, y + 1, Math.max(0.5, rr2), (xx, yy, zz) => xx - x - lx * y < -0.3 ? cr[1] : h32(xx, yy, zz, 9) < 0.2 ? cr[2] : cr[0]);
+        }
+      };
+      shard(8, 7, 17, 2.4, 0, 0);
+      shard(4.5, 8, 10, 1.7, -0.18, 0.05);
+      shard(11.5, 6, 12, 1.8, 0.16, -0.05);
+      shard(8, 10.5, 8, 1.4, 0.05, 0.2);
+      return { m, yaw: 30 };
+    },
+    golden_scale() {
+      const m = new VoxelModel(15, 16, 5);
+      const g = [m.color("#ffd04a", { spec: 1, specPow: 4, emissive: 0.15 }), m.color("#e0a020", { spec: 0.6 }), m.color("#fff6c0", { spec: 1, emissive: 0.3 })];
+      shape3(m, 0, 0, 1, 14, 15, 3, (x, y, z) => {
+        const dx = (x - 7.5) / 7, dy = (y - 9) / 7;
+        return (dy < 0 ? dx * dx + dy * dy : dx * dx + Math.pow(dy, 4) * 0.2 + dy * 0.3) < 1 && y > 0;
+      }, (x, y, z) => z === 3 && Math.abs(x - 7.5) < 1 ? g[2] : Math.floor(Math.hypot(x - 7.5, y - 15) / 2.2) & 1 ? g[1] : g[0]);
+      return { m, yaw: 20, pitch: 18 };
+    },
+    fish_sample() {
+      const m = new VoxelModel(8, 18, 8);
+      const glass = m.color("#d8f4ff", { smooth: 1, spec: 1 });
+      const liquid = m.color("#5ad8ff", { emissive: 0.35, smooth: 1 });
+      const cork = m.color("#c08a50", { jitter: 0.1 });
+      const fish = m.color("#ff9a3a", { emissive: 0.2 });
+      m.cylinder(4, 4, 1, 15, 2.6, glass);
+      m.sphere(4, 2.2, 4, 2.6, glass);
+      m.cylinder(4, 4, 1, 10, 2.6, liquid);
+      m.sphere(4, 2.2, 4, 2.6, liquid);
+      m.set(4, 6, 6, fish);
+      m.set(5, 6, 6, fish);
+      m.set(3, 7, 6, fish);
+      m.cylinder(4, 4, 15, 17, 2.2, cork);
+      return { m, yaw: 30, pitch: 22 };
+    },
+    rare_specimen() {
+      const m = new VoxelModel(14, 18, 14);
+      const glass = m.color("#c8eeff", { smooth: 1, spec: 1 });
+      const liquid = m.color("#7affc8", { emissive: 0.45, smooth: 1 });
+      const lid = [m.color("#e0a844", { spec: 0.8 }), m.color("#8a5418")];
+      const fish = m.color("#ff5aa8", { emissive: 0.6 });
+      m.cylinder(7, 7, 0, 13, 5.5, glass);
+      m.cylinder(7, 7, 1, 11, 5.5, liquid);
+      m.cylinder(7, 7, 14, 16, 4.6, lid[0]);
+      m.cylinder(7, 7, 17, 17, 2.4, lid[1]);
+      for (const [x, y] of [[6, 6], [7, 6], [8, 6], [5, 7], [6, 7], [7, 7], [8, 7], [9, 7], [6, 8], [7, 8], [4, 6], [4, 8]]) m.set(x, y, 12, fish);
+      return { m, yaw: 26, pitch: 24 };
+    },
+    fish_egg() {
+      const m = new VoxelModel(16, 10, 14);
+      const egg = [m.color("#ffb04a", { emissive: 0.25, smooth: 1, spec: 1 }), m.color("#ffd88a", { emissive: 0.35, smooth: 1, spec: 1 })];
+      const yolk = m.color("#e8582a", { emissive: 0.4 });
+      const nest = m.color("#7aa85a", { jitter: 0.15 });
+      m.ellipsoid(8, 1, 7, 7, 1.6, 6, nest);
+      for (const [x, y, z, r] of [[6, 3.5, 6, 2.6], [10, 3.2, 7, 2.4], [8, 3.2, 10, 2.3], [8, 6, 7.5, 2.3], [4.5, 3, 9.5, 1.8]]) {
+        m.sphere(x, y, z, r, (xx, yy, zz) => yy > y ? egg[1] : egg[0]);
+        m.set(Math.floor(x), Math.floor(y), Math.floor(z + r - 0.5), yolk);
+      }
+      return { m, yaw: 30, pitch: 34 };
+    },
+    coins() {
+      const m = new VoxelModel(16, 10, 14);
+      const c = [m.color("#5fbf98", { spec: 0.8 }), m.color("#3a8a6a"), m.color("#b8f0d8", { spec: 1 })];
+      const stack = (x, z, n) => {
+        for (let i = 0; i < n; i++) m.cylinder(x, z, i * 1.5, i * 1.5 + 0.9, 3.2, (xx, yy, zz) => Math.hypot(xx + 0.5 - x, zz + 0.5 - z) > 2.6 ? c[1] : c[0]);
+        m.cylinder(x, z, n * 1.5 - 0.6, n * 1.5 - 0.6, 1.4, c[2]);
+      };
+      stack(5, 6, 5);
+      stack(11, 8, 3);
+      stack(7, 11, 2);
+      return { m, yaw: 30, pitch: 32 };
+    },
+    satchel() {
+      const m = new VoxelModel(18, 18, 12);
+      const lea = [m.color("#a8603a", { jitter: 0.08, smooth: 0.5 }), m.color("#83482a", { jitter: 0.08 }), m.color("#c47a4a", { smooth: 0.5 })];
+      const strap = m.color("#5a3020");
+      const buckle = m.color("#f2c84a", { spec: 1 });
+      const stitch = m.color("#f4dcb0");
+      const fish = m.color("#ff8a3a", { spec: 0.6 }), fishE = m.color("#1a1020");
+      shape3(m, 1, 0, 2, 16, 11, 10, (x, y, z) => {
+        const dx = (x - 8.5) / 7.8, dz = (z - 6) / 4.4;
+        return dx * dx * 0.6 + dz * dz < 1 && y < 11 - Math.max(0, Math.abs(x - 8.5) - 5) * 0.8;
+      }, (x, y) => y < 1 ? lea[1] : lea[0]);
+      shape3(m, 1, 6, 6, 16, 12, 11, (x, y, z) => z > 8.6 && z < 10.6 && Math.abs(x - 8.5) < 7.2 - Math.max(0, 8 - y) * 0.6, (x, y) => y === 6 || x === 2 || x === 15 ? stitch : lea[2]);
+      m.box(7, 5, 10, 10, 7, 10, buckle);
+      m.box(8, 6, 10, 9, 6, 10, lea[1]);
+      for (let i = 0; i <= 16; i++) {
+        const a = Math.PI * (i / 16);
+        m.set(Math.round(8.5 - Math.cos(a) * 7), Math.round(11 + Math.sin(a) * 6), 6, strap);
+        m.set(Math.round(8.5 - Math.cos(a) * 7), Math.round(11 + Math.sin(a) * 6), 5, strap);
+      }
+      m.set(14, 8, 11, buckle);
+      m.box(13, 4, 11, 15, 6, 11, fish);
+      m.set(12, 5, 11, fish);
+      m.set(16, 4, 11, fish);
+      m.set(16, 6, 11, fish);
+      m.set(14, 5, 11, fishE);
+      return { m, yaw: 22, pitch: 22 };
+    },
+    scroll() {
+      const m = new VoxelModel(20, 8, 8);
+      const paper = [m.color("#3a7ad8", { smooth: 0.8 }), m.color("#5a9cf0", { smooth: 0.8 }), m.color("#e8f4ff")];
+      const string = m.color("#e84a4a");
+      const wax = m.color("#c82a3a", { spec: 0.6 });
+      m.cylinder(4, 4, 1, 18, 3, (x, y, z) => Math.hypot(y - 4, z - 4) < 2 ? paper[2] : x % 5 === 0 ? paper[1] : paper[0], "x");
+      m.sub(() => m.cylinder(4, 4, 0, 1, 1.2, 0, "x"));
+      m.cylinder(4, 4, 9, 10, 3.5, string, "x");
+      m.sphere(10, 4, 7.4, 1.6, wax);
+      m.box(14, 0, 4, 19, 0, 7, paper[1]);
+      m.set(16, 1, 5, paper[2]);
+      m.set(17, 1, 5, paper[2]);
+      m.set(16, 1, 6, paper[2]);
+      return { m, yaw: 24, pitch: 30 };
+    }
+  };
+  var PKG = {
+    crate() {
+      const m = new VoxelModel(16, 15, 14);
+      const w = [m.color("#b07a48", { jitter: 0.12 }), m.color("#93603a", { jitter: 0.12 }), m.color("#c8925a", { jitter: 0.1 })];
+      const dark = m.color("#5a3a22", { jitter: 0.05 });
+      const rope = m.color("#e0c890", { jitter: 0.06 });
+      const nail = m.color("#c8ccd8", { spec: 1 });
+      m.box(1, 0, 1, 14, 9, 12, (x, y, z) => (y >> 1) % 2 ? w[0] : w[1]);
+      m.box(0, 10, 0, 15, 11, 13, (x, y, z) => x % 4 === 0 ? w[1] : w[2]);
+      for (const [x, z] of [[1, 1], [14, 1], [1, 12], [14, 12]]) m.box(x, 0, z, x, 9, z, dark);
+      for (let i = 0; i < 10; i++) {
+        m.set(2 + Math.round(i * 1.2), i, 12, w[2]);
+        m.set(2 + Math.round(i * 1.2), i, 13, dark);
+      }
+      for (const [x, y] of [[2, 1], [13, 1], [2, 8], [13, 8]]) m.set(x, y, 13, nail);
+      m.box(7, 0, 0, 8, 12, 0, rope);
+      m.box(7, 12, 0, 8, 12, 13, rope);
+      m.box(7, 0, 13, 8, 12, 13, rope);
+      m.line(7.5, 12, 6.5, 7.5, 14.5, 6.5, rope, 0.8);
+      m.set(6, 14, 6, rope);
+      m.set(9, 14, 6, rope);
+      return { m, lidY: 10 };
+    },
+    iron() {
+      const m = new VoxelModel(16, 15, 14);
+      const ir = [m.color("#5d6275", { jitter: 0.08, spec: 0.4 }), m.color("#4b4f62", { jitter: 0.08 }), m.color("#7a8094", { spec: 0.7 })];
+      const band = m.color("#b8782a", { spec: 0.8 });
+      const rivet = m.color("#ffe8a8", { spec: 1 });
+      const rust = m.color("#a4552f", { jitter: 0.15 });
+      const lock = m.color("#e0a844", { spec: 1 });
+      m.box(1, 0, 1, 14, 9, 12, (x, y, z) => h32(x >> 1, y, z >> 1, 4) < 0.12 ? rust : ir[0]);
+      m.box(0, 10, 0, 15, 12, 13, ir[2]);
+      m.box(1, 13, 1, 14, 13, 12, ir[1]);
+      for (const y of [2, 7]) m.paint(() => m.box(0, y, 0, 15, y, 13, band));
+      m.box(0, 2, 0, 0, 2, 13, band);
+      m.box(15, 2, 0, 15, 2, 13, band);
+      m.box(0, 7, 0, 0, 7, 13, band);
+      m.box(15, 7, 0, 15, 7, 13, band);
+      for (let x = 2; x < 14; x += 3) {
+        m.set(x, 2, 13, rivet);
+        m.set(x, 7, 13, rivet);
+        m.set(x, 11, 14 - 1, rivet);
+      }
+      m.box(6, 8, 13, 9, 11, 13, lock);
+      m.set(7, 9, 13, ir[1]);
+      m.set(8, 9, 13, ir[1]);
+      m.line(5, 14, 6.5, 10, 14, 6.5, ir[2], 0.7);
+      m.box(7, 14, 6, 8, 14, 7, ir[2]);
+      return { m, lidY: 10 };
+    },
+    golden() {
+      const m = new VoxelModel(18, 17, 14);
+      const wood = [m.color("#8a3a2a", { jitter: 0.1 }), m.color("#6e2a20", { jitter: 0.1 })];
+      const gold = [m.color("#f0b83c", { spec: 1, specPow: 5 }), m.color("#c88a26", { spec: 0.6 }), m.color("#fff2b8", { spec: 1 })];
+      const gem = m.color("#5ad8ff", { emissive: 0.8, spec: 1 });
+      const ruby = m.color("#ff3a6a", { emissive: 0.6, spec: 1 });
+      m.box(1, 0, 1, 16, 8, 12, (x, y, z) => (x >> 1) % 2 ? wood[0] : wood[1]);
+      shape3(m, 0, 9, 0, 17, 15, 13, (x, y, z) => {
+        const dz = (z - 7) / 7.2, dy = (y - 9) / 6;
+        return dz * dz + dy * dy < 1;
+      }, wood[0]);
+      m.paint(() => {
+        m.box(0, 0, 0, 1, 15, 13, gold[1]);
+        m.box(16, 0, 0, 17, 15, 13, gold[1]);
+        m.box(0, 8, 0, 17, 9, 13, gold[0]);
+        m.box(8, 0, 0, 9, 15, 13, gold[0]);
+      });
+      m.box(0, 0, 0, 1, 8, 13, gold[1]);
+      m.box(16, 0, 0, 17, 8, 13, gold[1]);
+      m.box(7, 6, 13, 10, 10, 13, gold[2]);
+      m.set(8, 8, 13, gem);
+      m.set(9, 8, 13, gem);
+      m.set(4, 12, 12, ruby);
+      m.set(13, 12, 12, ruby);
+      m.box(7, 15, 6, 10, 16, 7, gold[0]);
+      m.set(8, 16, 6, 0);
+      m.set(9, 16, 6, 0);
+      return { m, lidY: 9 };
+    },
+    orb() {
+      const m = new VoxelModel(16, 19, 16);
+      const glass = m.color("#7a5ad8", { emissive: 0.5, smooth: 1, spec: 1, specPow: 4 });
+      const swirl = [m.color("#ff9ae8", { emissive: 1 }), m.color("#9ae8ff", { emissive: 1 }), m.color("#ffffff", { emissive: 1 })];
+      const deep = m.color("#2a1a5a", { emissive: 0.3, smooth: 1 });
+      const cage = [m.color("#e0a844", { spec: 1 }), m.color("#8a5418")];
+      m.sphere(8, 8, 8, 7.2, (x, y, z) => {
+        const a = Math.atan2(z - 8, x - 8) + (y - 8) * 0.35;
+        const s = Math.sin(a * 3) * Math.cos((y - 8) * 0.5);
+        return s > 0.75 ? swirl[(Math.floor(y / 4) + 3) % 2] : h32(x, y, z, 2) < 0.04 ? swirl[2] : s < -0.6 ? deep : glass;
+      });
+      for (let k = 0; k < 4; k++) {
+        const a = k * Math.PI / 2 + 0.4;
+        for (let t = 0; t <= 14; t++) {
+          const b = -0.2 + t / 14 * 1.6;
+          const y = 8 + Math.sin(b) * 7.6, r = Math.cos(b) * 7.6;
+          if (y < 10) continue;
+          m.set(Math.round(8 + Math.cos(a) * r), Math.round(y), Math.round(8 + Math.sin(a) * r), cage[0]);
+        }
+      }
+      m.cylinder(8, 8, 14, 15, 2.6, cage[0]);
+      m.cylinder(8, 8, 16, 17, 1.2, cage[1]);
+      m.line(6.5, 18, 8, 9.5, 18, 8, cage[0], 0.6);
+      return { m, lidY: 13 };
+    }
+  };
+  var ART_IDS = new Set(Object.keys(MODELS));
+  var PACKAGE_ART = Object.keys(PKG);
+  var winStart = 0;
+  var spent4 = 0;
+  var BUDGET = 7;
+  function canRender() {
+    const now4 = performance.now();
+    if (now4 - winStart > 16) {
+      winStart = now4;
+      spent4 = 0;
+    }
+    return spent4 < BUDGET;
+  }
+  function timed2(fn) {
+    const t0 = performance.now();
+    const r = fn();
+    spent4 += performance.now() - t0;
+    return r;
+  }
+  var built = /* @__PURE__ */ new Map();
+  var pkgCache = /* @__PURE__ */ new Map();
+  function packageParts(tier, scale = 1, frame = 0, force = true) {
+    const key = tier + "|" + scale + "|" + frame;
+    let p = pkgCache.get(key);
+    if (p) return p;
+    if (!force && !canRender()) return null;
+    const mk = PKG[tier] || PKG.crate;
+    const b = built.get("pkgparts_" + tier) || mk();
+    built.set("pkgparts_" + tier, b);
+    p = timed2(() => {
+      const opts = { scale: 2 * scale, yaw: 30 + frame * 360 / SPIN, pitch: 26, glowRadius: 2 };
+      const full = renderVoxels(b.m, opts);
+      const body = renderVoxels(b.m, { ...opts, keepVoxel: (x, y) => y < b.lidY }).canvas;
+      const lid = renderVoxels(b.m, { ...opts, keepVoxel: (x, y) => y >= b.lidY }).canvas;
+      const top = full.project(b.m.nx / 2, b.m.ny, b.m.nz / 2);
+      const lidC = full.project(b.m.nx / 2, b.lidY + 2, b.m.nz / 2);
+      return { full: full.canvas, glow: full.glow, body, lid, ox: full.ox, oy: full.oy, w: full.w, h: full.h, top: [Math.round(top[0]), Math.round(top[1])], lidAt: [Math.round(lidC[0]), Math.round(lidC[1])] };
+    });
+    pkgCache.set(key, p);
+    return p;
+  }
+
+  // src/build/items.js
+  var ITEMS = {};
+  function add2(id, o) {
+    ITEMS[id] = { id, art: id, lore: "", biome: null, ...o };
+    return ITEMS[id];
+  }
+  var MATS = [
+    ["driftwood", "Driftwood", "common", "shallows", "Sun-bleached wood, perfect for planks and frames.", 'Washed up from a ship called "Probably Fine".'],
+    ["kelp_fibre", "Kelp Fibre", "common", "shallows", "Tough woven kelp. Rope, nets, bait binding.", "Smells like the sea and slightly like soup."],
+    ["shell", "Pretty Shell", "common", "shallows", "A pastel scallop shell. Decor, tiles and trade.", "You can hear a tiny ocean inside. It is complaining."],
+    ["sea_glass", "Sea Glass", "uncommon", "shallows", "Frosted glass pebbles. Windows, lamps and lenses.", "Every piece used to be a bottle with a message."],
+    ["coral_chunk", "Coral Chunk", "uncommon", "shallows", "A living branch of reef. Gardens and hatcheries.", "Please water it. It is underwater. It is fine."],
+    ["pearl", "Pearl", "rare", "shallows", "A flawless pearl. Prized by builders and clams alike.", "The clam wants it back. The clam is not getting it back."],
+    ["scrap_metal", "Scrap Metal", "common", "junkyard", "Bent plates and bolts. Frames, hulls and machines.", "Possibly part of a fridge. Possibly part of a submarine."],
+    ["gear", "Brass Gear", "uncommon", "junkyard", "A sturdy brass cog for anything that turns.", "Still spins when nobody is watching."],
+    ["circuit_board", "Circuit Board", "rare", "junkyard", "A salvaged board with blinking LEDs. Electronics.", "Contains 4 GB of fish memes."],
+    ["ancient_stone", "Ancient Stone", "rare", "abyss", "Carved abyssal stone with a faint glowing rune.", 'The rune translates roughly to "do not lick".'],
+    ["abyss_crystal", "Abyss Crystal", "epic", "abyss", "A humming crystal from the deep. Powers strange things.", "It glows brighter when you think about snacks."],
+    ["golden_scale", "Golden Scale", "legendary", null, "A scale shed by a legendary fish. Pure luck, solidified.", "Finders keepers. Losers weepers. Fish sleepers."],
+    ["fish_sample", "Fish Sample", "common", null, "A vial of fish DNA from your catches. Used in research.", 'Labelled "DEFINITELY NOT SUSHI".'],
+    ["rare_specimen", "Rare Specimen", "rare", null, "A preserved rare fish sample. Advanced research.", "It winked at you. Specimens do not wink."]
+  ];
+  var MAT_VAL = { common: 3, uncommon: 8, rare: 22, epic: 65, legendary: 220 };
+  for (const [id, name, rarity, biome, desc, lore] of MATS) add2(id, { name, kind: "material", rarity, biome, desc, lore, value: MAT_VAL[rarity] });
+  var MATERIAL_IDS = MATS.map((m) => m[0]);
+  add2("fish_egg", { name: "Fish Egg", kind: "egg", rarity: "uncommon", desc: "A warm egg from the Hatchery. Hatch it into a baby fish for your aquarium.", lore: "Something inside is doing a little dance.", value: 15 });
+  var BP_VAL = { common: 30, uncommon: 70, rare: 160, epic: 420, legendary: 1e3 };
+  for (const id of BUILDING_ORDER) {
+    const b = BUILDINGS[id];
+    add2("bp_" + id, { name: b.name + " Blueprint", kind: "blueprint", rarity: b.rarity, builds: id, art: "scroll", desc: b.desc, lore: b.lore, value: BP_VAL[b.rarity], building: true });
+  }
+  for (const [id, d] of Object.entries(DECOR_BUILDS)) {
+    add2("bp_" + id, { name: d.name + " Plans", kind: "blueprint", rarity: d.rarity, builds: id, art: "scroll", desc: d.desc, lore: "Some assembly required. Some fish required to hold the ladder.", value: Math.round(BP_VAL[d.rarity] * 0.5), building: false });
+  }
+  for (const id of BAIT_ORDER) {
+    const b = BAITS[id];
+    const r = b.price < 30 ? "common" : b.price < 80 ? "uncommon" : b.price < 200 ? "rare" : b.price < 600 ? "epic" : "legendary";
+    add2(id, { name: b.name, kind: "bait", rarity: r, desc: b.desc, art: null, value: Math.max(1, Math.round(b.price / b.qty * 0.4)), bait: id });
+  }
+  for (const [id, p] of Object.entries(PROPS)) {
+    if (!p.decor || ITEMS[id]) continue;
+    const pr = p.decor.price;
+    const r = pr < 80 ? "common" : pr < 220 ? "uncommon" : pr < 450 ? "rare" : pr < 900 ? "epic" : "legendary";
+    add2(id, { name: p.name, kind: "decor", rarity: r, prop: id, art: null, biome: p.biome === "aquarium" ? null : p.biome, desc: `Decoration for your aquarium${DECOR_BUILDS[id] ? " or the seabed" : ""}. Size: ${["", "small", "medium", "large"][p.decor.size] || "medium"}.`, value: Math.round(pr * 0.4) });
+  }
+  var COS_VAL = { common: 40, uncommon: 100, rare: 260, epic: 700, legendary: 1800 };
+  function wardrobeEntries() {
+    const W = WARDROBE;
+    const out = [];
+    if (Array.isArray(W)) {
+      for (const e of W) if (e && e.id && e.slot) out.push(e);
+    }
+    return out;
+  }
+  for (const w of wardrobeEntries()) {
+    if (w.price === 0 || w.unlock === "skill") continue;
+    const r = RARITY_ORDER.includes(w.rarity) ? w.rarity : "uncommon";
+    add2("cos_" + w.id, { name: w.name || w.id, kind: "cosmetic", rarity: r, wardrobe: w.id, slot: w.slot, art: null, packageOnly: w.unlock === "package", desc: w.desc || "A cosmetic for your fisher.", lore: w.unlock === "package" ? "Only found inside packages." : "Also sold at the wardrobe.", value: COS_VAL[r] });
+  }
+  var COSMETIC_IDS = Object.keys(ITEMS).filter((id) => ITEMS[id].kind === "cosmetic");
+  var TIERS = {
+    crate: {
+      name: "Driftwood Crate",
+      rarity: "uncommon",
+      rolls: [2, 3],
+      coins: [8, 30],
+      color: "#c8925a",
+      glow: "#ffe2a8",
+      cat: { material: 58, bait: 16, coins: 18, decor: 4, blueprint: 7, cosmetic: 2 },
+      rar: { common: 64, uncommon: 30, rare: 6 },
+      desc: "A soggy wooden crate tied to a fish. Something rattles inside."
+    },
+    iron: {
+      name: "Iron Crate",
+      rarity: "rare",
+      rolls: [3, 4],
+      coins: [30, 90],
+      color: "#7a8094",
+      glow: "#bfe8ff",
+      cat: { material: 46, bait: 14, coins: 16, decor: 10, blueprint: 16, cosmetic: 6 },
+      rar: { common: 30, uncommon: 40, rare: 24, epic: 6 },
+      desc: "A riveted iron crate. Heavy. Promising. Slightly rusty."
+    },
+    golden: {
+      name: "Golden Chest",
+      rarity: "epic",
+      rolls: [4, 5],
+      coins: [120, 320],
+      color: "#f0b83c",
+      glow: "#fff2b8",
+      guarantee: ["blueprint"],
+      cat: { material: 36, bait: 12, coins: 14, decor: 14, blueprint: 18, cosmetic: 10 },
+      rar: { uncommon: 22, rare: 46, epic: 26, legendary: 6 },
+      desc: "A gilded treasure chest. A fish was very proud to carry this."
+    },
+    orb: {
+      name: "Mystery Orb",
+      rarity: "legendary",
+      rolls: [5, 6],
+      coins: [300, 900],
+      color: "#a46aff",
+      glow: "#ff9ae8",
+      guarantee: ["blueprint", "cosmetic"],
+      cat: { material: 30, bait: 8, coins: 12, decor: 16, blueprint: 22, cosmetic: 14 },
+      rar: { rare: 30, epic: 46, legendary: 24 },
+      desc: "A swirling orb from beyond the abyss. It hums your favourite song."
+    }
+  };
+  var TIER_ORDER = ["crate", "iron", "golden", "orb"];
+  for (const t of TIER_ORDER) add2("pkg_" + t, { name: TIERS[t].name, kind: "package", rarity: TIERS[t].rarity, tier: t, art: "pkg_" + t, desc: TIERS[t].desc, lore: "Open it from your inventory.", value: 0 });
+  add2("coins", { name: "Coins", kind: "coins", rarity: "common", art: "coins", desc: "Oxidized Coins.", value: 1 });
+  function drawPackage(ctx2, x, y, tier, t = 0, opts = {}) {
+    const scale = opts.scale ?? 0.7;
+    const p = packageParts(TIERS[tier] ? tier : "crate", scale, 0, true);
+    if (!p) return null;
+    const rope = Math.round(opts.rope ?? 6 * scale + 3);
+    const sw = opts.swing ?? Math.sin(t * 2.3) * 1.6;
+    const bx = Math.round(x + sw), by = Math.round(y + rope);
+    ctx2.fillStyle = "#3a2614";
+    for (let i = 0; i <= rope; i++) {
+      const k = i / rope;
+      ctx2.fillRect(Math.round(x + sw * k + Math.sin(k * Math.PI) * 0.6), Math.round(y + i), 1, 1);
+    }
+    ctx2.fillStyle = "#e0c890";
+    ctx2.fillRect(Math.round(x) - 1, Math.round(y) - 1, 2, 2);
+    const dx = bx - p.top[0], dy = by - p.top[1];
+    if (p.glow && tier !== "crate") {
+      ctx2.globalCompositeOperation = "lighter";
+      ctx2.globalAlpha = 0.6 + 0.3 * Math.sin(t * 4);
+      ctx2.drawImage(p.glow, dx, dy);
+      ctx2.globalAlpha = 1;
+      ctx2.globalCompositeOperation = "source-over";
+    }
+    ctx2.drawImage(p.full, dx, dy);
+    return { x: dx, y: dy, w: p.w, h: p.h };
   }
 
   // src/fish/traits.js
@@ -7740,7 +18304,7 @@
       const w = this.world;
       const top = this.waterTop();
       const bot = this.floor();
-      if (this.state !== "leave" && this.state !== "enter") {
+      if (this.state !== "leave" && this.state !== "enter" && this.state !== "pass") {
         if (this.x < 10) this.vx += (10 - this.x) * 4 * dt;
         if (this.x > w.W - 10) this.vx -= (this.x - (w.W - 10)) * 4 * dt;
       }
@@ -7928,13 +18492,15 @@
           return this.thinkDecor(dt);
         case "court":
           return this.thinkCourt(dt);
+        case "pass":
+          return this.thinkPass(dt);
         default:
           if (this.extraThink) return this.extraThink(dt);
           return this.thinkWander(dt);
       }
     }
     startle(fromX, fromY) {
-      if (this.controlled) return;
+      if (this.controlled || this.hero) return;
       this.setState("flee");
       this.fleeFrom = { x: fromX, y: fromY };
       this.feel("scared", 1.5);
@@ -8289,6 +18855,17 @@
       if (peek) this.lookAt(this.world.cursor.x, this.world.cursor.y);
       return this.steer(tx, ty, this.cruise * 1.2, 20);
     }
+    // Hero fish: a slow, straight crossing of the scene; gone once past the far edge.
+    thinkPass(dt) {
+      const t = this.passTarget || { x: this.facing > 0 ? this.world.W + 400 : -400, y: this.y };
+      const dx = t.x - this.x;
+      if (Math.abs(dx) < 30 || Math.sign(dx) !== Math.sign(t.x - this.world.W / 2)) {
+        this.dead = true;
+        return [0, 0];
+      }
+      const sp = this.passSpeed || this.cruise;
+      return [Math.sign(dx) * sp, (t.y - this.y) * 0.08 + Math.sin(this.age * 0.35) * 2.5];
+    }
     thinkLeave(dt) {
       const tx = this.x < this.world.W / 2 ? -80 : this.world.W + 80;
       if (this.x < -60 || this.x > this.world.W + 60) this.dead = true;
@@ -8403,8 +18980,9 @@
     }
     flock() {
       let sx = 0, sy = 0, ax = 0, ay = 0, cx = 0, cy = 0, n = 0;
+      if (this.hero) return [0, 0];
       for (const o of this.world.fishes) {
-        if (o === this || o.controlled) continue;
+        if (o === this || o.controlled || o.hero) continue;
         const dx = this.x - o.x, dy = this.y - o.y;
         const d2 = dx * dx + dy * dy;
         const minD = 14 * (this.scale + o.scale);
@@ -8450,7 +19028,12 @@
         ly = c.y;
       }
       const sc = this.scale * (1 - this.z * 0.5);
+      const hd = this.controlled || this.posing ? 0 : clamp(Math.atan2(this.vz * 120, Math.abs(this.vx) + 10) * 57.3, -28, 28);
+      this.headingS = damp(this.headingS ?? 0, hd, 3, 1 / 60);
       return {
+        heading: this.headingS,
+        lod: this.z > 0.62 && !this.hero ? 1 : 0,
+        pri: this.hero ? 0.3 : 1,
         x: this.x,
         y: this.y + this.bob,
         facing: this.facing,
@@ -8483,11 +19066,63 @@
       if (this.rec.variant?.mutation === "ghost") alpha *= 0.65;
       if (alpha < 1) ctx2.globalAlpha = alpha;
       const anchors = drawFishRig(ctx2, this.c, st);
-      ctx2.globalAlpha = 1;
       this.anchors = anchors;
+      if (this.package && anchors?.mouth) this.drawCrate(ctx2, wash, time ?? this.age, alpha);
+      ctx2.globalAlpha = 1;
       return anchors;
     }
+    // Package crate hanging from the mouth on a little rope (build/items.js drawPackage, or a fallback).
+    drawCrate(ctx2, wash, t, alpha) {
+      const m = this.anchors.mouth;
+      const sc = clamp(this.scale * (1 - this.z * 0.5), 0.5, 2.6);
+      const dir = this.anchors.eyes?.length && this.anchors.eyes[0].x < m[0] ? 1 : this.facing;
+      const ax = m[0] - dir * 1.5 * sc, ay = m[1] + 1.5 * sc;
+      const swing = clamp(Math.sin(t * 2.3 + this.swimPhase * TAU) * 1.6 - this.vx * 0.04, -5, 5);
+      const opts = { scale: clamp(0.24 + sc * 0.17, 0.3, 0.7), rope: Math.round(3 + sc * 2.5), swing };
+      const tint = wash && wash.alpha > 0.03 ? wash : null;
+      if (!tint) {
+        ctx2.globalAlpha = alpha;
+        if (!drawPackage(ctx2, ax, ay, this.package.tier, t, opts)) fallbackCrate(ctx2, ax, ay, this.package.tier, opts);
+        return;
+      }
+      const g = crateScratch();
+      g.clearRect(0, 0, 96, 96);
+      g.globalCompositeOperation = "source-over";
+      if (!drawPackage(g, 48, 12, this.package.tier, t, opts)) fallbackCrate(g, 48, 12, this.package.tier, opts);
+      g.globalCompositeOperation = "source-atop";
+      g.globalAlpha = Math.min(1, tint.alpha);
+      g.fillStyle = tint.color;
+      g.fillRect(0, 0, 96, 96);
+      g.globalAlpha = 1;
+      g.globalCompositeOperation = "source-over";
+      ctx2.globalAlpha = alpha;
+      ctx2.drawImage(g.canvas, Math.round(ax) - 48, Math.round(ay) - 12);
+    }
   };
+  var crateCv = null;
+  function crateScratch() {
+    if (!crateCv) crateCv = ctxOf(makeCanvas(96, 96));
+    return crateCv;
+  }
+  var CRATE_COL = { crate: ["#5a3418", "#9a6232", "#c88a4a"], iron: ["#2a3038", "#5a6670", "#8a98a4"], golden: ["#6a4a08", "#c8961e", "#ffd84a"], orb: ["#2a1050", "#6a3ac8", "#b48aff"] };
+  function fallbackCrate(ctx2, x, y, tier, opts) {
+    const [d, m, l] = CRATE_COL[tier] || CRATE_COL.crate;
+    const rope = opts.rope ?? 6, sw = opts.swing ?? 0;
+    ctx2.fillStyle = "#3a2614";
+    for (let i = 0; i <= rope; i++) ctx2.fillRect(Math.round(x + sw * (i / rope)), Math.round(y + i), 1, 1);
+    const s = Math.max(5, Math.round(8 * (opts.scale ?? 0.7) + 2));
+    const bx = Math.round(x + sw - s / 2), by = Math.round(y + rope);
+    ctx2.fillStyle = "#1a0e08";
+    ctx2.fillRect(bx - 1, by - 1, s + 2, s + 2);
+    ctx2.fillStyle = m;
+    ctx2.fillRect(bx, by, s, s);
+    ctx2.fillStyle = l;
+    ctx2.fillRect(bx, by, s, 1);
+    ctx2.fillRect(bx, by, 1, s);
+    ctx2.fillStyle = d;
+    ctx2.fillRect(bx, by + Math.floor(s / 2), s, 1);
+    ctx2.fillRect(bx + s - 1, by, 1, s);
+  }
   function baitInterest(sp, bait) {
     if (!bait) return 0;
     const prefs = sp.bait || {};
@@ -8503,9 +19138,9 @@
   }
 
   // src/fish/species.js
-  var S2 = [];
-  var add = (o) => S2.push(o);
-  add({
+  var S3 = [];
+  var add3 = (o) => S3.push(o);
+  add3({
     id: "pixel",
     name: "Pixel",
     biome: "shallows",
@@ -8541,7 +19176,7 @@
     behavior: "Swims right up to anything new and stares at it. Bites almost anything.",
     shinyHue: 200
   });
-  add({
+  add3({
     id: "loafer",
     name: "Loafer Minnow",
     biome: "shallows",
@@ -8574,7 +19209,7 @@
     behavior: "Travels in crusty little schools. Cannot resist bread, even though bread is the problem.",
     shinyHue: 300
   });
-  add({
+  add3({
     id: "honk",
     name: "Honk Clownfish",
     biome: "shallows",
@@ -8613,7 +19248,7 @@
     behavior: "Honks at nearby fish. Loves music icons. Squeeze-to-honk is not recommended.",
     shinyHue: 160
   });
-  add({
+  add3({
     id: "guppy",
     name: "Fancy Guppy",
     biome: "shallows",
@@ -8646,7 +19281,7 @@
     behavior: "Darts around in small, sparkly gangs. Attracted to pictures, probably of itself.",
     shinyHue: 120
   });
-  add({
+  add3({
     id: "googly",
     name: "Googly Gawker",
     biome: "shallows",
@@ -8681,7 +19316,7 @@
     behavior: "Stares at the cursor with tremendous wobbly focus. Pupils rattle when it turns.",
     shinyHue: 270
   });
-  add({
+  add3({
     id: "puffer",
     name: "Sir Puffington",
     biome: "shallows",
@@ -8717,7 +19352,7 @@
     behavior: "Puffs up into a spiky ball when startled or hooked. Reads your documents with great disapproval.",
     shinyHue: 150
   });
-  add({
+  add3({
     id: "briefcase",
     name: "Mr. Briefcase",
     biome: "shallows",
@@ -8752,7 +19387,7 @@
     behavior: "Swims in straight lines at office hours and checks your calendar on the way. Ignores everything fun.",
     shinyHue: 40
   });
-  add({
+  add3({
     id: "clickcrab",
     name: "Click Crab",
     biome: "shallows",
@@ -8781,7 +19416,7 @@
     behavior: "Scuttles along the seabed and across desktop icons. Clicks at your cursor like it is trying to select you.",
     shinyHue: 190
   });
-  add({
+  add3({
     id: "seahorse",
     name: "Giddy-Up Seahorse",
     biome: "shallows",
@@ -8808,7 +19443,7 @@
     behavior: "Bobs upright and hops between windows. Holds onto icons with its tail during storms.",
     shinyHue: 230
   });
-  add({
+  add3({
     id: "flounder",
     name: "Sandy Flounder",
     biome: "shallows",
@@ -8846,7 +19481,7 @@
     behavior: "Lies flat on the seabed blending in with the sand. Lunges when bait drifts overhead.",
     shinyHue: 180
   });
-  add({
+  add3({
     id: "purin",
     name: "Purin",
     biome: "shallows",
@@ -8874,7 +19509,7 @@
     behavior: "Wobbles everywhere it goes and jiggles harder when happy. Only truly loves sugar.",
     shinyHue: 290
   });
-  add({
+  add3({
     id: "angel",
     name: "Halo Angelfish",
     biome: "shallows",
@@ -8911,7 +19546,7 @@
     behavior: "Glides serenely with a faint glow. Other fish swim a little more politely nearby.",
     shinyHue: 45
   });
-  add({
+  add3({
     id: "parrot",
     name: "Chompy Parrotfish",
     biome: "shallows",
@@ -8946,7 +19581,7 @@
     behavior: "Nibbles on icons with its beak and occasionally runs off with a corner of one.",
     shinyHue: 100
   });
-  add({
+  add3({
     id: "gourami",
     name: "Smooch Gourami",
     biome: "shallows",
@@ -8979,7 +19614,7 @@
     behavior: "Nuzzles anything shiny and forgets what it was doing halfway through. Loves chat icons.",
     shinyHue: 210
   });
-  add({
+  add3({
     id: "koi",
     name: "Golden Koi",
     biome: "shallows",
@@ -9015,7 +19650,7 @@
     behavior: "Appears only for golden bait. Leaves a faint sparkle trail and never hurries.",
     shinyHue: 320
   });
-  add({
+  add3({
     id: "betta",
     name: "Disco Betta",
     biome: "shallows",
@@ -9051,7 +19686,7 @@
     behavior: "Flares its enormous fins at other fish and at its own reflection. Comes out at night to music.",
     shinyHue: 140
   });
-  add({
+  add3({
     id: "sunfish",
     name: "Sol the Ocean Sunfish",
     biome: "shallows",
@@ -9089,7 +19724,7 @@
     behavior: "Appears on cloudless days when the water is high. Drifts through windows like it owns them.",
     shinyHue: 30
   });
-  add({
+  add3({
     id: "spam",
     name: "Spam Sardine",
     biome: "junkyard",
@@ -9123,7 +19758,7 @@
     behavior: "Arrives in huge unwanted schools whenever a mail or pop-up icon gets near the water.",
     shinyHue: 60
   });
-  add({
+  add3({
     id: "bitfish",
     name: "Bitfish",
     biome: "junkyard",
@@ -9160,7 +19795,7 @@
     behavior: "Hops in crisp eight-directional jumps. Drawn to game icons like they owe it a sequel.",
     shinyHue: 260
   });
-  add({
+  add3({
     id: "glitchminnow",
     name: "Glitch Minnow",
     biome: "junkyard",
@@ -9194,7 +19829,7 @@
     behavior: "Teleports a few pixels at random. Flickers harder near terminals and overclocked chips.",
     shinyHue: 90
   });
-  add({
+  add3({
     id: "grouper",
     name: "Rusty Grouper",
     biome: "junkyard",
@@ -9231,7 +19866,7 @@
     behavior: "Patrols the lower reef slowly and swallows settings icons whole, gears and all.",
     shinyHue: 200
   });
-  add({
+  add3({
     id: "binblob",
     name: "Bin Blob",
     biome: "junkyard",
@@ -9259,7 +19894,7 @@
     behavior: "Oozes along the seabed absorbing litter. Cannot say no to a full recycle bin.",
     shinyHue: 300
   });
-  add({
+  add3({
     id: "shortcut",
     name: "Shortcut Fish",
     biome: "junkyard",
@@ -9287,7 +19922,7 @@
     behavior: "Freezes into a perfect app icon when watched. Swims off the moment you look away.",
     shinyHue: 120
   });
-  add({
+  add3({
     id: "mechacrab",
     name: "Mecha Crab",
     biome: "junkyard",
@@ -9316,7 +19951,7 @@
     behavior: "Marches across icons with heavy steps and fires little bolts when cornered.",
     shinyHue: 160
   });
-  add({
+  add3({
     id: "cableeel",
     name: "Cable Eel",
     biome: "junkyard",
@@ -9344,7 +19979,7 @@
     behavior: "Coils around icons and tangles your line. Tries to plug itself into anything rectangular.",
     shinyHue: 30
   });
-  add({
+  add3({
     id: "floppyray",
     name: "Floppy Ray",
     biome: "junkyard",
@@ -9373,7 +20008,7 @@
     behavior: "Glides in wide loops and hums like a drive spinning up. Loves documents, old ones especially.",
     shinyHue: 330
   });
-  add({
+  add3({
     id: "cookie",
     name: "Tracking Cookie",
     biome: "junkyard",
@@ -9411,7 +20046,7 @@
     behavior: "Trails behind your cursor at a respectful-ish distance. Someone already took a bite.",
     shinyHue: 250
   });
-  add({
+  add3({
     id: "loadingangler",
     name: "Loading Angler",
     biome: "junkyard",
@@ -9446,7 +20081,7 @@
     behavior: "Hangs still in the dark with its spinner turning. Strikes when something waits too long.",
     shinyHue: 180
   });
-  add({
+  add3({
     id: "thief",
     name: "Icon Bandit",
     biome: "junkyard",
@@ -9485,7 +20120,7 @@
     behavior: "Grabs a desktop icon and bolts. Catch it to get the icon back, slightly damp.",
     shinyHue: 20
   });
-  add({
+  add3({
     id: "screendweller",
     name: "Screen Dweller",
     biome: "junkyard",
@@ -9523,7 +20158,7 @@
     behavior: "Hides in screens and peeks out through the static. Wiggles its antenna toward video icons.",
     shinyHue: 280
   });
-  add({
+  add3({
     id: "trieye",
     name: "Tri-Eyed Binfish",
     biome: "junkyard",
@@ -9559,7 +20194,7 @@
     behavior: "Lurks near trash and spits soggy debris when hooked. All three eyes blink at different times.",
     shinyHue: 210
   });
-  add({
+  add3({
     id: "usbfish",
     name: "USB Swordfish",
     biome: "junkyard",
@@ -9594,7 +20229,7 @@
     behavior: "Charges at icons nose-first trying to plug into them. Fakes out bites at least twice.",
     shinyHue: 300
   });
-  add({
+  add3({
     id: "lionfish",
     name: "Malware Lionfish",
     biome: "junkyard",
@@ -9631,7 +20266,7 @@
     behavior: "Hovers with fins flared and shoots pop-up projectiles during fights. Do not click the spines.",
     shinyHue: 190
   });
-  add({
+  add3({
     id: "bsod",
     name: "Blue Screen Ray",
     biome: "junkyard",
@@ -9677,7 +20312,7 @@
     [0.22, -0.02, 3.2, "#ff7ab8"],
     [0.88, 0.08, 2.6, "#7affea"]
   ];
-  add({
+  add3({
     id: "lanternfish",
     name: "Lanternfish",
     biome: "abyss",
@@ -9710,7 +20345,7 @@
     behavior: "Swims in glowing schools and drifts upward at night. Follows lantern pearls like moths.",
     shinyHue: 60
   });
-  add({
+  add3({
     id: "hatchet",
     name: "Hatchetfish",
     biome: "abyss",
@@ -9746,7 +20381,7 @@
     behavior: "Hovers in nervous little groups, eyes pointed up. Bolts at the slightest ripple.",
     shinyHue: 30
   });
-  add({
+  add3({
     id: "isopod",
     name: "Giant Isopod",
     biome: "abyss",
@@ -9773,7 +20408,7 @@
     behavior: "Trundles across the seabed and rolls into a ball when poked. Will eat literally anything you drop.",
     shinyHue: 160
   });
-  add({
+  add3({
     id: "glowjelly",
     name: "Nightlight Jelly",
     biome: "abyss",
@@ -9804,7 +20439,7 @@
     behavior: "Pulses gently through the water. Brightens near music and lantern light.",
     shinyHue: 110
   });
-  add({
+  add3({
     id: "blobfish",
     name: "Sad Blobfish",
     biome: "abyss",
@@ -9833,7 +20468,7 @@
     behavior: "Floats near the seabed and barely moves. Lets food come to it, and food usually does not.",
     shinyHue: 180
   });
-  add({
+  add3({
     id: "angler",
     name: "Deep Anglerfish",
     biome: "abyss",
@@ -9867,7 +20502,7 @@
     behavior: "Waits motionless with its lure bobbing. Snaps at anything that admires the light.",
     shinyHue: 140
   });
-  add({
+  add3({
     id: "dragonfish",
     name: "Dragonfish",
     biome: "abyss",
@@ -9901,7 +20536,7 @@
     behavior: "Slithers through the dark dangling its chin lure. Lightning-fast when it finally strikes.",
     shinyHue: 200
   });
-  add({
+  add3({
     id: "gulper",
     name: "Gulper Eel",
     biome: "abyss",
@@ -9935,7 +20570,7 @@
     behavior: "Opens its jaw like a parachute to scoop up bait. Its tail tip glows pink to lure snacks.",
     shinyHue: 100
   });
-  add({
+  add3({
     id: "fangtooth",
     name: "Fangtooth",
     biome: "abyss",
@@ -9969,7 +20604,7 @@
     behavior: "Charges straight at bait with a terrible grin. Bites hard, then sulks.",
     shinyHue: 60
   });
-  add({
+  add3({
     id: "ghostshark",
     name: "Ghost Shark",
     biome: "abyss",
@@ -10004,7 +20639,7 @@
     behavior: "Flies over the seabed on big wing-fins, staring at everything with enormous, worried eyes.",
     shinyHue: 300
   });
-  add({
+  add3({
     id: "glassghost",
     name: "Glass Ghostfish",
     biome: "abyss",
@@ -10039,7 +20674,7 @@
     behavior: "Nearly invisible against the dark. You can watch its heart beat when it gets nervous.",
     shinyHue: 280
   });
-  add({
+  add3({
     id: "vampsquid",
     name: "Vampire Squid",
     biome: "abyss",
@@ -10069,7 +20704,7 @@
     behavior: "Flaps its ear-fins and wraps itself in its cloak when scared. Squirts glowing goo instead of ink.",
     shinyHue: 170
   });
-  add({
+  add3({
     id: "barreleye",
     name: "Barreleye",
     biome: "abyss",
@@ -10104,7 +20739,7 @@
     behavior: "Hangs motionless, rolling its green tube-eyes toward any light above.",
     shinyHue: 260
   });
-  add({
+  add3({
     id: "dumbo",
     name: "Dumbo Octopus",
     biome: "abyss",
@@ -10132,7 +20767,7 @@
     behavior: "Flaps gently up and down near the seabed. Gets curious about cute icons.",
     shinyHue: 150
   });
-  add({
+  add3({
     id: "crystalcarp",
     name: "Crystal Carp",
     biome: "abyss",
@@ -10169,7 +20804,7 @@
     behavior: "Throws little rainbows in lantern light. Shatters into dodgeable shards of light when hooked.",
     shinyHue: 90
   });
-  add({
+  add3({
     id: "noodle",
     name: "Noodle Eel",
     biome: "abyss",
@@ -10197,7 +20832,7 @@
     behavior: "Slurps through the water and ties itself around the mouse when excited. Circle to untangle.",
     shinyHue: 20
   });
-  add({
+  add3({
     id: "manyeyes",
     name: "The Ancient Many-Eyed One",
     biome: "abyss",
@@ -10284,20 +20919,20 @@
     }
     return out;
   }
-  for (const sp of S2) {
+  for (const sp of S3) {
     const f = GROW[sp.id] ?? 1.3;
     if (f !== 1) sp.look = grow(sp.look, f, sp.look.kind ? 1 : 1.08);
   }
-  var SPECIES = S2;
-  var SPECIES_BY_ID = Object.fromEntries(S2.map((s) => [s.id, s]));
+  var SPECIES = S3;
+  var SPECIES_BY_ID = Object.fromEntries(S3.map((s) => [s.id, s]));
   var SPECIES_BY_BIOME = {
-    shallows: S2.filter((s) => s.biome === "shallows"),
-    junkyard: S2.filter((s) => s.biome === "junkyard"),
-    abyss: S2.filter((s) => s.biome === "abyss")
+    shallows: S3.filter((s) => s.biome === "shallows"),
+    junkyard: S3.filter((s) => s.biome === "junkyard"),
+    abyss: S3.filter((s) => s.biome === "abyss")
   };
 
   // src/fishing/baitart.js
-  var P2 = {
+  var P3 = {
     k: "#14131c",
     d: "#5d6677",
     m: "#9aa6b8",
@@ -10340,7 +20975,7 @@ kmkmk..
 kmlmk..
 .kmmk..
 ..kk...
-`, P2);
+`, P3);
   var BAIT_SPRITES = {
     bread: spriteFromAscii(`
 .kkkk.
@@ -10348,7 +20983,7 @@ knNNnk
 knssnk
 knssnk
 .kkkk.
-`, P2),
+`, P3),
     worm: [spriteFromAscii(`
 ...kk...
 ..kpPk..
@@ -10357,7 +20992,7 @@ knssnk
 ..kpkpPk
 ...kPpk.
 ....kk..
-`, P2), spriteFromAscii(`
+`, P3), spriteFromAscii(`
 ..kk....
 .kpPk...
 .kPk.kk.
@@ -10365,7 +21000,7 @@ knssnk
 ..kPk.kk
 .kpPk...
 ..kk....
-`, P2)],
+`, P3)],
     golden: spriteFromAscii(`
 ..kkk..
 .kygyk.
@@ -10374,7 +21009,7 @@ kgggGGk
 kgGGGGk
 .kGGGk.
 ..kkk..
-`, P2),
+`, P3),
     blackhole: spriteFromAscii(`
 ..kvvk..
 .vVbbvk.
@@ -10384,7 +21019,7 @@ vbkkkkbv
 kvbkkbVk
 .kvbbVv.
 ..kvvk..
-`, P2),
+`, P3),
     flood: spriteFromAscii(`
 ...k...
 ..kck..
@@ -10394,14 +21029,14 @@ kcCccBk
 kccccBk
 .kcBBk.
 ..kkk..
-`, P2),
+`, P3),
     sugar: spriteFromAscii(`
 kkkkk
 kwwlk
 kwlwk
 klwwk
 kkkkk
-`, P2),
+`, P3),
     chip: spriteFromAscii(`
 .k.k.k.
 kkkkkkk
@@ -10410,7 +21045,7 @@ kkeoekk
 kEeeeEk
 kkkkkkk
 .k.k.k.
-`, P2),
+`, P3),
     popup: spriteFromAscii(`
 kkkkkkkk
 kBBBBrwk
@@ -10419,7 +21054,7 @@ kwwwwwwk
 kwgggwwk
 kwwwwwwk
 kkkkkkkk
-`, P2),
+`, P3),
     lantern: spriteFromAscii(`
 ..kkk..
 .kAAAk.
@@ -10428,7 +21063,7 @@ kaaAaak
 kAaaaAk
 .kAAAk.
 ..kkk..
-`, P2),
+`, P3),
     relic: spriteFromAscii(`
 ..kkkk..
 .kTttTk.
@@ -10437,7 +21072,7 @@ kttaAttk
 kTtaatTk
 .kTttTk.
 ..kkkk..
-`, P2)
+`, P3)
   };
   function baitSprite(type, t = 0) {
     const s = BAIT_SPRITES[type];
@@ -10445,302 +21080,268 @@ kTtaatTk
     return s || BAIT_SPRITES.bread;
   }
 
-  // src/fishing/minigames.js
-  var PROMPT_Y = 26;
-  function fightMove(F, dt, tx, ty, speed, acc = 6) {
-    const f = F.fish;
-    const dx = tx - f.x, dy = ty - f.y;
-    const d = Math.hypot(dx, dy) || 1;
-    f.vx = damp(f.vx, dx / d * speed, acc, dt);
-    f.vy = damp(f.vy, dy / d * speed, acc, dt);
-    f.x += f.vx * dt;
-    f.y += f.vy * dt;
-    F.confine();
-  }
-  function prompt(ctx2, F, text, color = "#ffffff") {
-    const c = F.cursor;
-    drawText(ctx2, text, Math.round(c.x), Math.round(c.y + PROMPT_Y), { align: "center", color, outline: "#0b1622", font: "normal" });
-  }
-  var TensionPhase = class {
-    constructor(F, opts = {}) {
-      this.F = F;
-      this.name = "tension";
-      const f = F.fish;
-      this.stamina = opts.stamina ?? 1;
-      this.lineLen = Math.max(40, dist(F.cursor.x, F.cursor.y, f.x, f.y));
-      this.mode = "pull";
-      this.modeT = rng.float(0.8, 1.6);
-      this.dir = Math.atan2(f.y - F.cursor.y, f.x - F.cursor.x);
-      this.trick = null;
-      this.snapT = 0;
-      this.slackT = 0;
-      this.snag = null;
-      this.hint = 0;
+  // src/fishing/crank.js
+  var WINDOW = 0.42;
+  var MIN_R = 5;
+  var Crank = class {
+    constructor() {
+      this.reset(-100, -100);
     }
-    pickMode() {
-      const F = this.F, sp = F.sp, power = F.power;
-      const tricks = sp.fight?.tricks || [];
-      if (this.mode === "pull") {
-        this.mode = "rest";
-        this.modeT = rng.float(0.7, 1.5) * (1.2 - power * 0.5);
-      } else {
-        this.mode = "pull";
-        this.modeT = rng.float(1, 2.4) * (0.7 + power * 0.6);
-        const away = Math.atan2(F.fish.y - F.cursor.y, F.fish.x - F.cursor.x);
-        this.dir = away + rng.float(-1.1, 1.1);
-        if (tricks.length && rng.chance(0.35 + power * 0.3)) this.startTrick(rng.pick(tricks));
-      }
+    reset(x, y) {
+      this.samples = [];
+      this.t = 0;
+      this.cx = x;
+      this.cy = y;
+      this.x = x;
+      this.y = y;
+      this.prevA = null;
+      this.omega = 0;
+      this.spin = 0;
+      this.speed = 0;
+      this.power = 0;
+      this.radius = 0;
+      this.dir = 0;
+      this.turns = 0;
+      this.stun = 0;
+      this.da = 0;
     }
-    startTrick(kind) {
-      const F = this.F, f = F.fish;
-      const w = F.world;
-      switch (kind) {
-        case "dash":
-        case "fake": {
-          const d0 = this.dir;
-          this.trick = { kind, t: 0, tele: 0.35, dur: 0.5, dir: kind === "fake" ? d0 + Math.PI + rng.float(-0.5, 0.5) : d0, teleDir: d0 };
-          f.say(kind === "fake" ? "!" : "!!", 0.6);
-          f.squashV -= 8;
-          break;
-        }
-        case "dive":
-          this.trick = { kind, t: 0, tele: 0.25, dur: 0.8, dir: Math.PI / 2 + rng.float(-0.3, 0.3) };
-          f.say("arrow_d", 0.6);
-          break;
-        case "jump":
-          if (w.surfaceY !== null && f.y - w.surfaceY < 140) this.trick = { kind, t: 0, phase: "rise", dur: 2 };
-          break;
-        case "wrap": {
-          const icons = w.icons || [];
-          let best = null, bd = 180;
-          for (const r of icons) {
-            const d = dist(r.x + r.w / 2, r.y + r.h / 2, f.x, f.y);
-            if (d < bd) {
-              bd = d;
-              best = r;
-            }
-          }
-          if (best) this.trick = { kind, t: 0, icon: best, dur: 2.6, ang: Math.atan2(f.y - best.y - best.h / 2, f.x - best.x - best.w / 2) };
-          break;
-        }
-        case "hop": {
-          const wins = w.windows || [];
-          if (wins.length >= 1) this.trick = { kind, t: 0, dur: 2.2, from: rng.pick(wins), to: rng.pick(wins) };
-          break;
-        }
-        case "glitch":
-          this.trick = { kind, t: 0, dur: 0.6 };
-          break;
-        default:
-          break;
-      }
+    get active() {
+      return this.power > 0.12;
     }
-    update(dt, inp) {
-      const F = this.F, f = F.fish, c = F.cursor, power = F.power, st = F.stats;
-      this.hint += dt;
-      this.modeT -= dt;
-      if (this.modeT <= 0 && !this.trick) this.pickMode();
-      const holding = inp.down;
-      let speed = this.mode === "pull" ? 45 + power * 95 : 14;
-      let dir = this.dir;
-      let spike = 0;
-      const tr = this.trick;
-      if (tr) {
-        tr.t += dt;
-        if (tr.kind === "dash" || tr.kind === "fake" || tr.kind === "dive") {
-          if (tr.t < tr.tele) {
-            dir = tr.teleDir ?? tr.dir;
-            speed = 20;
-            f.wiggle = 0.5;
-          } else {
-            dir = tr.dir;
-            speed = 120 + power * 160;
-            spike = 0.45;
-          }
-          if (tr.t > tr.tele + tr.dur) this.trick = null;
-        } else if (tr.kind === "jump") {
-          this.updateJump(dt, tr);
-          if (tr.done) this.trick = null;
-          return this.common(dt, inp, holding, 0, true);
-        } else if (tr.kind === "wrap") {
-          tr.ang += dt * 2.6;
-          const r = tr.icon;
-          const cx = r.x + r.w / 2, cy = r.y + r.h / 2, rad = Math.max(r.w, r.h) * 0.9;
-          fightMove(F, dt, cx + Math.cos(tr.ang) * rad, cy + Math.sin(tr.ang) * rad, 140, 8);
-          if (tr.t > tr.dur) this.trick = null;
-          return this.common(dt, inp, holding, 0.1, false);
-        } else if (tr.kind === "hop") {
-          this.updateHop(dt, tr);
-          if (tr.done) this.trick = null;
-          return this.common(dt, inp, holding, 0.05, false);
-        } else if (tr.kind === "glitch") {
-          if (tr.t > 0.25 && !tr.jumped) {
-            tr.jumped = true;
-            F.world.particles?.burst(f.x, f.y, 14, { colors: ["#ff3a7a", "#3affd8", "#ffffff"], speed: 60, g: 0, life: 0.4, size: 2 });
-            f.x += rng.float(-60, 60);
-            f.y += rng.float(-40, 40);
-            F.confine();
-            F.world.audio?.play("glitch");
-            spike = 0.3;
-          }
-          if (tr.t > tr.dur) this.trick = null;
-        }
+    update(dt, x, y) {
+      if (!(dt > 0)) return;
+      this.t += dt;
+      this.x = x;
+      this.y = y;
+      this.stun = Math.max(0, this.stun - dt);
+      const s = this.samples;
+      s.push([x, y, this.t]);
+      while (s.length > 3 && this.t - s[0][2] > WINDOW) s.shift();
+      let sx = 0, sy = 0;
+      for (const p of s) {
+        sx += p[0];
+        sy += p[1];
       }
-      const tx = f.x + Math.cos(dir) * 60, ty = f.y + Math.sin(dir) * 60;
-      fightMove(F, dt, tx, ty, speed, 5);
-      return this.common(dt, inp, holding, spike, false);
-    }
-    common(dt, inp, holding, spike, airborne) {
-      const F = this.F, f = F.fish, c = F.cursor, st = F.stats, power = F.power;
-      const d = dist(c.x, c.y, f.x, f.y);
-      let snagMul = 1;
-      this.snag = null;
-      if (!airborne) {
-        for (const r of F.world.icons || []) {
-          if (segmentHitsRect(c.x, c.y, f.x, f.y, { x: r.x + 3, y: r.y + 3, w: r.w - 6, h: r.h - 6 })) {
-            this.snag = r;
-            break;
-          }
-        }
+      const mx = sx / s.length, my = sy / s.length;
+      if (Math.hypot(mx - this.cx, my - this.cy) > 160) {
+        this.cx = mx;
+        this.cy = my;
+        this.prevA = null;
       }
-      if (this.snag) {
-        snagMul = 0.25;
-        spike += 0.2;
-        this.snag.shake = 0.3;
+      this.cx = damp(this.cx, mx, 14, dt);
+      this.cy = damp(this.cy, my, 14, dt);
+      const dx = x - this.cx, dy = y - this.cy;
+      const r = Math.hypot(dx, dy);
+      this.radius = damp(this.radius, r, 8, dt);
+      const a = Math.atan2(dy, dx);
+      let da = 0;
+      if (this.prevA !== null && r > MIN_R) {
+        da = a - this.prevA;
+        if (da > Math.PI) da -= TAU;
+        if (da < -Math.PI) da += TAU;
+        if (Math.abs(da) > 2.7) da = 0;
       }
-      if (holding && !airborne) this.lineLen = Math.max(14, this.lineLen - st.reelSpeed * snagMul * dt * (this.tension > 0.95 ? 0.2 : 1));
-      let pullAway = 0;
-      if (d > this.lineLen) {
-        const over = d - this.lineLen;
-        const nx = (f.x - c.x) / d, ny = (f.y - c.y) / d;
-        if (holding) {
-          f.x -= nx * over * 0.85;
-          f.y -= ny * over * 0.85;
-          pullAway = clamp01(over / 6);
-        } else {
-          this.lineLen = d;
-          pullAway = 0.25;
-        }
-      }
-      const fvx = f.vx, fvy = f.vy;
-      const fs = Math.hypot(fvx, fvy) || 1;
-      const cs = c.speed;
-      const against = cs > 20 ? clamp(-(c.vx * fvx + c.vy * fvy) / (fs * cs), -1, 1) : 0;
-      const counter = Math.max(0, against) * clamp01(cs / 220);
-      const struggle = this.mode === "pull" ? 1 : 0.3;
-      let target = holding ? 0.32 + struggle * 0.33 * (0.6 + power * 0.6) + pullAway * 0.3 : 0.06 + struggle * 0.18 + pullAway * 0.2;
-      target += spike + counter * 0.12;
-      if (airborne) target = 0.02;
-      target /= st.lineStrength;
-      this.tension = this.tension === void 0 ? 0.3 : this.tension;
-      const rate = target > this.tension ? 3.2 : 4.5;
-      this.tension = clamp(damp(this.tension, target, rate, dt), 0, 1.2);
-      const T = this.tension;
-      F.tension = T;
-      if (holding && T > 0.22 && T < 0.92 && !airborne) {
-        const stam = (F.sp.fight?.stamina ?? 5) * (0.8 + power * 0.4);
-        this.stamina -= dt / stam * (1 + counter * 1.6) * st.staminaDrain * (this.snag ? 0.4 : 1);
-      }
-      if (T >= 1) this.snapT += dt;
-      else this.snapT = Math.max(0, this.snapT - dt * 2);
-      if (this.snapT > st.snapGrace) return "snap";
-      if (T < 0.1 && this.mode === "pull" && !airborne) this.slackT += dt;
-      else this.slackT = Math.max(0, this.slackT - dt);
-      if (this.slackT > st.slackGrace) return "throw";
-      if (this.slackT > st.slackGrace * 0.5 && !this.warnedSlack) {
-        this.warnedSlack = true;
-        F.world.audio?.play("slack_warn");
-      }
-      if (this.slackT === 0) this.warnedSlack = false;
-      f.feel(T > 0.8 ? "angry" : this.mode === "pull" ? "determined" : "tired", 0.3);
-      if (this.stamina <= 0) return "win";
-      return "ok";
-    }
-    updateJump(dt, tr) {
-      const F = this.F, f = F.fish, w = F.world;
-      const sy = w.surfaceY;
-      if (tr.phase === "rise") {
-        fightMove(F, dt, f.x + f.facing * 30, sy - 10, 180, 10, true);
-        if (f.y < sy + 4) {
-          tr.phase = "air";
-          tr.vy = -rng.float(140, 200);
-          tr.vx = f.facing * rng.float(30, 70);
-          F.world.particles?.splash(f.x, sy, 0.8);
-          F.world.audio?.play("jump_out");
-          f.feel("happy", 1);
-        }
-      } else if (tr.phase === "air") {
-        tr.vy += 380 * dt;
-        f.x += tr.vx * dt;
-        f.y += tr.vy * dt;
-        f.forceAngle = clamp(Math.atan2(tr.vy, Math.abs(tr.vx)), -1.2, 1.2);
-        if (f.y > sy && tr.vy > 0) {
-          tr.phase = "down";
-          F.world.particles?.splash(f.x, sy, 1);
-          F.world.audio?.play("splash_small");
-          f.forceAngle = void 0;
-          if (F.input.down) this.tension = Math.min(1.15, (this.tension || 0) + 0.55);
-        }
-      } else {
-        tr.t2 = (tr.t2 || 0) + dt;
-        if (tr.t2 > 0.3) tr.done = true;
-      }
-    }
-    updateHop(dt, tr) {
-      const F = this.F, f = F.fish;
-      const a = tr.from, b = tr.to;
-      if (!tr.stage) tr.stage = "in";
-      if (tr.stage === "in") {
-        fightMove(F, dt, a.x + a.w / 2, a.y + a.h / 2, 160, 8);
-        if (rectHas(a, f.x, f.y) && tr.t > 0.3) {
-          tr.stage = "under";
-          tr.ut = 0.6;
-        }
-        if (tr.t > 1.4) tr.done = true;
-      } else if (tr.stage === "under") {
-        tr.ut -= dt;
-        if (tr.ut <= 0) {
-          f.x = b.x + rng.float(10, b.w - 10);
-          f.y = b.y + rng.float(10, b.h - 10);
-          tr.stage = "out";
-          tr.ot = 0.6;
-          tr.exitDir = rng.float(0, TAU);
-        }
-      } else {
-        tr.ot -= dt;
-        fightMove(F, dt, f.x + Math.cos(tr.exitDir) * 80, f.y + Math.sin(tr.exitDir) * 80, 150, 8);
-        if (tr.ot <= 0) tr.done = true;
-      }
-    }
-    draw(ctx2) {
-      if (this.snag) {
-        const r = this.snag;
-        const t = performance.now() / 1e3;
-        ctx2.fillStyle = rgba("#ff5a5a", 0.5 + 0.3 * Math.sin(t * 12));
-        ctx2.fillRect(r.x - 1, r.y - 1, r.w + 2, 1);
-        ctx2.fillRect(r.x - 1, r.y + r.h, r.w + 2, 1);
-        ctx2.fillRect(r.x - 1, r.y, 1, r.h);
-        ctx2.fillRect(r.x + r.w, r.y, 1, r.h);
-      }
-    }
-    drawHud(ctx2) {
-      const F = this.F;
-      F.drawStamina(ctx2, this.stamina);
-      F.drawTensionGauge(ctx2, F.tension ?? 0);
-      if (this.snag) prompt(ctx2, F, "SNAGGED! Go around the icon", "#ff9a8a");
-      else if (this.trick?.kind === "jump") prompt(ctx2, F, "It jumped! Let go before it lands!", "#ffe27a");
-      else if ((F.tension ?? 0) > 0.85) prompt(ctx2, F, "Too tight! Let go!", "#ff8a7a");
-      else if (this.slackT > 0.4) prompt(ctx2, F, "Slack line! Hold to reel!", "#9ad8ff");
-      else if (this.hint < 4 || F.tutorial) prompt(ctx2, F, "{mouse_hold} Hold to reel - pull AGAINST its swim", "#ffffff");
+      this.prevA = r > MIN_R ? a : null;
+      this.da = da;
+      this.omega = damp(this.omega, da / dt, 7, dt);
+      this.spin += da;
+      this.turns += da / TAU;
+      const rev = Math.abs(this.omega) / TAU;
+      this.speed = rev;
+      const rk = clamp01((this.radius - 3) / 9);
+      const target = this.stun > 0 ? 0 : clamp((rev - 0.3) / 2, 0, 1.25) * rk;
+      this.power = damp(this.power, target, target > this.power ? 9 : 6, dt);
+      this.dir = rev > 0.3 ? Math.sign(this.omega) : 0;
     }
   };
-  function rectHas(r, x, y) {
-    return x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h;
+
+  // src/fishing/minigames.js
+  function drawCircle(ctx2, cx, cy, r, color, a = 1, w = 1, dash = 0, rot2 = 0) {
+    ctx2.fillStyle = rgba(color, a);
+    const n = Math.max(12, Math.round(r * 4));
+    let px = null, py = null;
+    for (let i = 0; i < n; i++) {
+      if (dash && Math.floor(i / n * dash * 2) % 2) continue;
+      const ang = i / n * TAU + rot2;
+      const x = Math.round(cx + Math.cos(ang) * r), y = Math.round(cy + Math.sin(ang) * r);
+      if (x === px && y === py) continue;
+      ctx2.fillRect(x, y, w, w);
+      px = x;
+      py = y;
+    }
   }
+  var Event = class {
+    constructor(F, B2, name) {
+      this.F = F;
+      this.B = B2;
+      this.fish = F.fish;
+      this.name = name;
+      this.t = 0;
+      this.home = { x: this.fish.x, y: this.fish.y };
+      this.meter = 0;
+      this.focus = null;
+      this.tension = 0.35;
+      this.usesCrank = false;
+    }
+    get power() {
+      return this.B.power;
+    }
+    hint() {
+      return this.F.toScreen(this.fish.x, this.fish.y);
+    }
+    thrashAt(dt, x, y, amp = 2, speed = 8) {
+      const f = this.fish;
+      f.x = damp(f.x, x + Math.sin(this.t * 31) * amp, speed, dt);
+      f.y = damp(f.y, y + Math.cos(this.t * 27) * amp * 0.7, speed, dt);
+      f.vx = Math.sin(this.t * 6) * 40;
+      f.vy = 0;
+    }
+    drawWorld() {
+    }
+    drawHud() {
+    }
+  };
+  var MashEvent = class extends Event {
+    constructor(F, B2) {
+      super(F, B2, "mash");
+      this.title = "MASH!";
+      this.sub = "Click as fast as you can!";
+      this.color = "#ffe27a";
+      this.meter = 0.1;
+      this.dur = 4.5 + (1 - this.power) * 1.5;
+      this.combo = 0;
+      this.prompt = "{mouse_l} CLICK CLICK CLICK!";
+      this.winText = "POWER YANK!";
+    }
+    update(dt) {
+      const F = this.F, f = this.fish, st = F.stats;
+      this.t += dt;
+      this.meter = Math.max(0, this.meter - dt * (0.1 + this.power * 0.12));
+      for (let i = 0; i < F.input.clicks; i++) {
+        this.meter += 0.085 * st.mashPower / (0.6 + this.power * 0.8);
+        this.combo++;
+        f.squashV += 6;
+        this.home.y -= 1.2;
+        const m = f.anchors?.mouth || [f.x, f.y];
+        F.particles.sparks(m[0], m[1], 4, { speed: [30, 90], g: 60 });
+        F.particles.droplets(f.x, f.y, 2, { spread: Math.PI, speed: [20, 60], g: 40 });
+        const [sx, sy] = F.toScreen(f.x, f.y);
+        F.fx.shockwave(F.input.x, F.input.y, 10, "#ffe27a", { life: 0.25 });
+        F.fx.text?.(sx + rng.float(-30, 30), sy - 30, `${this.combo}`, { color: "#ffe27a", vy: -40, life: 0.5, layer: "fg" });
+        F.sfx("mash_pop", { pitch: 0.8 + Math.min(1, this.combo * 0.04) });
+        F.setPose("yank", 0.12);
+      }
+      this.thrashAt(dt, this.home.x, this.home.y, 2.5, 10);
+      f.feel(this.meter > 0.6 ? "scared" : "angry", 0.2);
+      this.tension = 0.45 + 0.25 * Math.sin(this.t * 20);
+      if (this.meter >= 1) return "win";
+      if (this.t > this.dur) return this.meter > 0.55 ? "win" : "fail";
+      return "ok";
+    }
+    drawHud(ctx2) {
+      const F = this.F, f = this.fish;
+      const [sx, sy] = F.toScreen(f.x, f.y);
+      const R = F.zoneRadius() * 0.8;
+      const n = 32;
+      for (let i = 0; i < n; i++) {
+        const a = -Math.PI / 2 + i / n * TAU;
+        const on = i / n < this.meter;
+        ctx2.fillStyle = on ? this.meter > 0.75 ? "#9affb8" : "#ffe27a" : rgba("#0b1622", 0.6);
+        ctx2.fillRect(Math.round(sx + Math.cos(a) * R) - 1, Math.round(sy + Math.sin(a) * R) - 1, 3, 3);
+      }
+      const pulse = 1 + (Math.sin(this.t * 22) > 0 ? 1 : 0);
+      drawText(ctx2, "{mouse_l}", sx - 6 * pulse, sy + R + 6, { scale: pulse + 1 });
+      const left = Math.max(0, this.dur - this.t);
+      drawText(ctx2, left.toFixed(1) + "s", sx, sy - R - 14, { align: "center", color: "#ffffff", outline: "#0b1622" });
+    }
+  };
+  var TimingEvent = class extends Event {
+    constructor(F, B2) {
+      super(F, B2, "timing");
+      this.title = "RHYTHM!";
+      this.sub = "Click when the rings meet";
+      this.color = "#9ad8ff";
+      this.need = 3 + Math.round(this.power * 2);
+      this.hits = 0;
+      this.misses = 0;
+      this.allowed = F.stats.timingMisses;
+      this.beat = 1.15 - this.power * 0.45;
+      this.t = -0.5;
+      this.target = 26;
+      this.flash = null;
+      this.prompt = "{mouse_l} Click when the rings meet!";
+      this.winText = "IN RHYTHM!";
+    }
+    ring() {
+      return lerp(80, 0, this.t / this.beat);
+    }
+    update(dt) {
+      const F = this.F, f = this.fish;
+      this.t += dt;
+      if (this.flash) {
+        this.flash.t += dt;
+        if (this.flash.t > 0.45) this.flash = null;
+      }
+      this.thrashAt(dt, this.home.x + Math.sin(this.t * 3) * 6, this.home.y + Math.cos(this.t * 2.3) * 3, 1, 6);
+      this.tension = 0.4;
+      const r = this.ring();
+      const win = 7 * F.stats.timingWindow;
+      if (F.input.pressed) {
+        const err = Math.abs(r - this.target);
+        if (this.t > 0 && err < win) {
+          const perfect = err < win * 0.4;
+          this.hits++;
+          this.meter = this.hits / this.need;
+          this.flash = { text: perfect ? "PERFECT!" : "GOOD!", color: perfect ? "#ffe27a" : "#9affb8", t: 0 };
+          F.sfx(perfect ? "timing_perfect" : "timing_good");
+          f.squashV += 10;
+          f.feel("scared", 0.5);
+          this.home.y -= 3;
+          this.B.progress += 0.02;
+          F.particles.stars(f.x, f.y, perfect ? 10 : 6, { speed: [30, 80] });
+          F.particles.shockwave(f.x, f.y, 22, perfect ? "#ffe27a" : "#9affb8");
+          F.setPose("yank", 0.15);
+          this.t = -0.25;
+        } else this.miss();
+      } else if (this.t > 0 && r < this.target - win) this.miss();
+      if (this.hits >= this.need) return "win";
+      if (this.misses > this.allowed) return "fail";
+      return "ok";
+    }
+    miss() {
+      this.misses++;
+      this.flash = { text: "MISS", color: "#ff8a7a", t: 0 };
+      this.F.sfx("timing_miss");
+      this.fish.feel("smug", 0.6);
+      this.B.kick(0.1);
+      this.t = -0.35;
+    }
+    drawHud(ctx2) {
+      const F = this.F, f = this.fish;
+      const [sx, sy] = F.toScreen(f.x, f.y);
+      drawCircle(ctx2, sx, sy, this.target, "#ffffff", 0.95, 2);
+      drawCircle(ctx2, sx, sy, this.target - 3, "#ffffff", 0.25, 1);
+      if (this.t > 0) {
+        const r = Math.max(1, Math.round(this.ring()));
+        const close = Math.abs(r - this.target) < 7 * F.stats.timingWindow;
+        drawCircle(ctx2, sx, sy, r, close ? "#9affb8" : "#ffe27a", 0.95, 2);
+      }
+      const y = Math.round(sy - this.target - 22);
+      for (let i = 0; i < this.need; i++) {
+        ctx2.fillStyle = "#0b1622";
+        ctx2.fillRect(Math.round(sx - this.need * 6 + i * 12) - 1, y - 1, 10, 6);
+        ctx2.fillStyle = i < this.hits ? "#ffe27a" : "#2a3a4a";
+        ctx2.fillRect(Math.round(sx - this.need * 6 + i * 12), y, 8, 4);
+      }
+      let hearts = "";
+      for (let i = 0; i <= this.allowed; i++) hearts += i < this.allowed + 1 - this.misses ? "{heart}" : "{heart_empty}";
+      drawText(ctx2, hearts, sx, y - 14, { align: "center" });
+      if (this.flash) drawText(ctx2, this.flash.text, sx, sy + this.target + 10 - this.flash.t * 16, { align: "center", color: this.flash.color, outline: "#0b1622", scale: 2 });
+    }
+  };
   var PATHS = {
     figure8: (t) => [Math.sin(t), Math.sin(t * 2) * 0.5],
     circle: (t) => [Math.cos(t), Math.sin(t) * 0.7],
-    zigzag: (t) => [Math.sin(t * 0.5) * 1.1, (Math.abs(t * 0.8 % 2 - 1) - 0.5) * 1.2],
     wave: (t) => [Math.sin(t * 0.45) * 1.2, Math.sin(t * 2.2) * 0.4],
     spiral: (t) => {
       const r = 0.4 + 0.6 * Math.abs(Math.sin(t * 0.25));
@@ -10751,452 +21352,2255 @@ kTtaatTk
       return [Math.cos(t) * r, Math.sin(t) * r];
     }
   };
-  var TracePhase = class {
-    constructor(F) {
-      this.F = F;
-      this.name = "trace";
-      const f = F.fish;
-      const w = F.world;
+  var TraceEvent = class extends Event {
+    constructor(F, B2) {
+      super(F, B2, "trace");
+      this.title = "FOLLOW IT!";
+      this.sub = "Keep your cursor on the fish";
+      this.color = "#7dff9a";
       this.kind = rng.pick(Object.keys(PATHS));
-      this.cx = clamp(f.x, 120, w.W - 120);
-      this.cy = clamp(f.y, (w.surfaceY ?? 0) + 70, w.floorAt(f.x) - 70);
-      this.rx = rng.float(70, 120);
-      this.ry = rng.float(45, 70);
-      this.t = 0;
-      this.speed = 0.9 + F.power * 0.9;
-      this.progress = 0;
+      this.rx = rng.float(55, 80);
+      this.ry = rng.float(30, 46);
+      const f = this.fish, w = F.world;
+      const [top, bot] = B2.bounds(f.x);
+      this.cx = clamp(f.x, this.rx + 20, w.W - this.rx - 20);
+      this.cy = clamp(f.y, top + this.ry + 6, Math.max(top + this.ry + 6, bot - this.ry - 6));
+      this.pt = 0;
+      this.speed = 0.9 + this.power * 0.8;
       this.outT = 0;
-      this.radius = (24 - F.power * 7) * F.stats.traceRadius;
+      this.radius = (15 - this.power * 4) * F.stats.traceRadius;
       this.inside = false;
-      this.lead = 1.2;
+      this.focus = { x: this.cx, y: this.cy, zoom: 1.7 };
+      this.prompt = "Keep your cursor on the fish!";
+      this.winText = "GOT ITS RHYTHM!";
     }
     pos(t) {
       const [u, v] = PATHS[this.kind](t);
       return [this.cx + u * this.rx, this.cy + v * this.ry];
     }
-    update(dt, inp) {
-      const F = this.F, f = F.fish, c = F.cursor;
+    hint() {
+      return this.F.toScreen(this.fish.x, this.fish.y);
+    }
+    update(dt) {
+      const F = this.F, f = this.fish;
+      this.t += dt;
       const ease2 = Math.min(1, this.t * 0.6 + 0.2);
-      this.t += dt * this.speed * ease2;
-      const [tx, ty] = this.pos(this.t);
-      fightMove(F, dt, tx, ty, 260, 12);
-      this.inside = dist(c.x, c.y, f.x, f.y) < this.radius;
+      this.pt += dt * this.speed * ease2;
+      const [tx, ty] = this.pos(this.pt);
+      f.vx = (tx - f.x) * 6;
+      f.vy = (ty - f.y) * 6;
+      f.x = damp(f.x, tx, 12, dt);
+      f.y = damp(f.y, ty, 12, dt);
+      const [pwx, pwy] = F.pointerWorld();
+      this.inside = dist(pwx, pwy, f.x, f.y) < this.radius;
       if (this.inside) {
-        this.progress += dt / (3.2 + F.power * 3);
-        F.tension = 0.45;
+        this.meter += dt / (2.4 + this.power * 2.2);
+        this.tension = 0.4;
         f.feel("tired", 0.2);
+        if (rng.chance(dt * 8)) F.particles.sparkle(f.x + rng.float(-6, 6), f.y + rng.float(-4, 4), "#9affb8");
       } else {
-        this.progress = Math.max(0, this.progress - dt * 0.12);
+        this.meter = Math.max(0, this.meter - dt * 0.1);
         this.outT += dt;
-        F.tension = Math.min(1, 0.5 + this.outT * 0.15);
+        this.tension = Math.min(0.9, 0.5 + this.outT * 0.12);
         f.feel("smug", 0.2);
       }
-      if (this.outT > 3.6 * F.stats.traceForgive) return "escape";
-      if (this.progress >= 1) return "win";
+      if (this.outT > 3 * F.stats.traceForgive) return "fail";
+      if (this.meter >= 1) return "win";
       return "ok";
     }
-    draw(ctx2) {
-      const F = this.F, f = F.fish;
-      for (let i = 1; i <= 26; i++) {
-        const [x, y] = this.pos(this.t + i * 0.07 * this.speed);
-        if (i % 2) continue;
+    drawWorld(ctx2) {
+      const f = this.fish;
+      for (let i = 2; i <= 26; i += 2) {
+        const [x, y] = this.pos(this.pt + i * 0.07 * this.speed);
         ctx2.fillStyle = rgba("#e8fcff", 0.75 - i * 0.025);
-        ctx2.fillRect(Math.round(x), Math.round(y), 2, 2);
+        ctx2.fillRect(Math.round(x), Math.round(y), 1, 1);
       }
-      const r = Math.round(this.radius + Math.sin(performance.now() / 120) * 1.5);
+      const r = Math.round(this.radius + Math.sin(this.t * 8) * 1);
       drawCircle(ctx2, f.x, f.y, r, this.inside ? "#7dff9a" : "#ff7a7a", 0.9);
-      drawCircle(ctx2, f.x, f.y, r - 2, this.inside ? "#2a8a4a" : "#8a2a2a", 0.4);
     }
     drawHud(ctx2) {
       const F = this.F;
-      F.drawStamina(ctx2, 1 - this.progress, "#7dff9a");
-      prompt(ctx2, F, this.inside ? "Follow it!" : "{arrow_r} Keep your hook inside the ring!", this.inside ? "#b8ffc8" : "#ffd2c8");
-    }
-  };
-  var MashPhase = class {
-    constructor(F) {
-      this.F = F;
-      this.name = "mash";
-      this.progress = 0.08;
-      this.time = 6.5 + (1 - F.power) * 2;
-      this.t = 0;
-      this.combo = 0;
-      this.anchor = { x: F.fish.x, y: F.fish.y };
-    }
-    update(dt, inp) {
-      const F = this.F, f = F.fish;
-      this.t += dt;
-      this.progress = Math.max(0, this.progress - dt * (0.1 + F.power * 0.12));
-      if (inp.clicks > 0) {
-        for (let i = 0; i < inp.clicks; i++) {
-          this.progress += 0.075 * F.stats.mashPower / (0.6 + F.power * 0.8);
-          this.combo++;
-          f.squashV += 6;
-          f.x += (F.cursor.x - f.x) * 0.04;
-          f.y += (F.cursor.y - f.y) * 0.04;
-          F.world.audio?.play("mash_pop", { pitch: 0.8 + Math.min(1, this.combo * 0.04) });
-          F.world.particles?.burst(f.x, f.y, 4, { colors: ["#ffffff", "#ffe27a"], speed: 50, g: 0, life: 0.3 });
-        }
-      }
-      f.x = damp(f.x, this.anchor.x + Math.sin(this.t * 31) * 2, 8, dt);
-      f.y = damp(f.y, this.anchor.y + Math.cos(this.t * 27) * 1.5, 8, dt);
-      f.feel(this.progress > 0.6 ? "scared" : "angry", 0.2);
-      F.tension = 0.5 + 0.3 * Math.sin(this.t * 20);
-      if (this.progress >= 1) return "win";
-      if (this.t > this.time) return this.progress > 0.5 ? "win" : "escape";
-      return "ok";
-    }
-    draw() {
-    }
-    drawHud(ctx2) {
-      const F = this.F, f = F.fish;
-      const w = 50, x = Math.round(f.x - w / 2), y = Math.round(f.y - 26 * f.scale - 10);
+      const [sx, sy] = F.toScreen(this.fish.x, this.fish.y);
+      const w = 48, x = Math.round(sx - w / 2), y = Math.round(sy + this.radius * F.zoom() + 10);
       ctx2.fillStyle = "#0b1622";
-      ctx2.fillRect(x - 1, y - 1, w + 2, 6);
-      ctx2.fillStyle = "#3a2a1a";
-      ctx2.fillRect(x, y, w, 4);
-      ctx2.fillStyle = this.progress > 0.7 ? "#7dff9a" : "#ffd25a";
-      ctx2.fillRect(x, y, Math.round(w * clamp01(this.progress)), 4);
-      const left = Math.max(0, this.time - this.t);
-      drawText(ctx2, "MASH CLICK!", f.x, y - 12, { align: "center", color: "#ffe27a", outline: "#0b1622", wave: 1, time: this.t });
-      drawText(ctx2, left.toFixed(1) + "s", f.x, y + 7, { align: "center", font: "small", color: "#ffffff", outline: "#0b1622" });
+      ctx2.fillRect(x - 1, y - 1, w + 2, 5);
+      ctx2.fillStyle = this.inside ? "#7dff9a" : "#ff8a7a";
+      ctx2.fillRect(x, y, Math.round(w * clamp01(this.meter)), 3);
     }
   };
-  var TimingPhase = class {
-    constructor(F) {
-      this.F = F;
-      this.name = "timing";
-      this.need = 3 + Math.round(F.power * 3);
-      this.hits = 0;
-      this.misses = 0;
-      this.allowed = F.stats.timingMisses;
-      this.beat = 1.15 - F.power * 0.45;
-      this.t = -0.4;
-      this.target = 14;
-      this.flash = null;
-      this.home = { x: F.fish.x, y: F.fish.y };
-    }
-    ring() {
-      const k = this.t / this.beat;
-      return lerp(46, 0, k);
-    }
-    update(dt, inp) {
-      const F = this.F, f = F.fish;
-      this.t += dt;
-      if (this.flash) {
-        this.flash.t += dt;
-        if (this.flash.t > 0.4) this.flash = null;
-      }
-      fightMove(F, dt, this.home.x + Math.sin(this.t * 3) * 20, this.home.y + Math.cos(this.t * 2.3) * 10, 90, 6);
-      F.tension = 0.4;
-      const r = this.ring();
-      const win = 5 * F.stats.timingWindow;
-      if (inp.pressed) {
-        const err = Math.abs(r - this.target);
-        if (this.t > 0 && err < win) {
-          const perfect = err < win * 0.4;
-          this.hits++;
-          this.flash = { text: perfect ? "PERFECT!" : "GOOD!", color: perfect ? "#ffe27a" : "#9affb8", t: 0 };
-          F.world.audio?.play(perfect ? "timing_perfect" : "timing_good");
-          f.squashV += 10;
-          f.feel("scared", 0.5);
-          F.world.particles?.burst(f.x, f.y, perfect ? 12 : 7, { colors: ["#ffe27a", "#ffffff"], speed: 70, g: 0, life: 0.5 });
-          this.t = -0.25;
-        } else {
-          this.miss();
-        }
-      } else if (r < this.target - win) {
-        this.miss();
-      }
-      if (this.hits >= this.need) return "win";
-      if (this.misses > this.allowed) return "escape";
-      return "ok";
-    }
-    miss() {
-      this.misses++;
-      this.flash = { text: "MISS", color: "#ff8a7a", t: 0 };
-      this.F.world.audio?.play("timing_miss");
-      this.F.fish.feel("smug", 0.6);
-      this.t = -0.35;
-    }
-    draw(ctx2) {
-      const f = this.F.fish;
-      drawCircle(ctx2, f.x, f.y, this.target, "#ffffff", 0.9);
-      if (this.t > 0) drawCircle(ctx2, f.x, f.y, Math.max(1, Math.round(this.ring())), "#ffe27a", 0.95);
-    }
-    drawHud(ctx2) {
-      const F = this.F, f = F.fish;
-      const y = Math.round(f.y - 30 * f.scale - 14);
-      for (let i = 0; i < this.need; i++) {
-        ctx2.fillStyle = i < this.hits ? "#ffe27a" : "#2a3a4a";
-        ctx2.fillRect(Math.round(f.x - this.need * 4 + i * 8), y, 6, 3);
-      }
-      if (this.flash) drawText(ctx2, this.flash.text, f.x, y - 12 - this.flash.t * 10, { align: "center", color: this.flash.color, outline: "#0b1622" });
-      prompt(this.ctxFix || ctx2, F, "{mouse_l} Click when the rings meet!", "#ffffff");
-    }
-  };
-  var DodgePhase = class {
-    constructor(F) {
-      this.F = F;
-      this.name = "dodge";
-      this.dur = 6 + F.power * 3;
-      this.t = 0;
-      this.progress = 0;
+  var DodgeEvent = class extends Event {
+    constructor(F, B2) {
+      super(F, B2, "dodge");
+      this.title = "DODGE!";
+      this.sub = "Keep reeling - avoid the shots";
+      this.color = "#ff9a8a";
+      this.dur = 4 + this.power * 2;
       this.shots = [];
-      this.fireT = 0.8;
+      this.fireT = 0.7;
       this.hits = 0;
       this.allowed = F.stats.dodgeHits;
-      this.stun = 0;
-      const kind = F.sp.fight?.projectile || (F.sp.biome === "junkyard" ? "bolt" : F.sp.biome === "abyss" ? "ink" : "bubble");
-      this.kind = kind;
-      this.home = { x: F.fish.x, y: F.fish.y };
+      this.usesCrank = true;
+      this.kind = F.sp.fight?.projectile || (F.sp.biome === "junkyard" ? "bolt" : F.sp.biome === "abyss" ? "ink" : "bubble");
+      this.prompt = "Keep circling - DODGE the shots!";
+      this.winText = "UNTOUCHABLE!";
     }
-    update(dt, inp) {
-      const F = this.F, f = F.fish, c = F.cursor;
+    update(dt) {
+      const F = this.F, f = this.fish;
       this.t += dt;
-      this.stun = Math.max(0, this.stun - dt);
-      fightMove(F, dt, this.home.x + Math.sin(this.t * 1.3) * 40, this.home.y + Math.sin(this.t * 2.1) * 20, 80, 5);
-      f.lookAt(c.x, c.y);
+      this.meter = this.t / this.dur;
+      this.thrashAt(dt, this.home.x + Math.sin(this.t * 1.3) * 18, this.home.y + Math.sin(this.t * 2.1) * 8, 0.5, 5);
+      const [pwx, pwy] = F.pointerWorld();
+      f.lookAt?.(pwx, pwy);
+      f.facing = pwx > f.x ? 1 : -1;
       f.feel("angry", 0.2);
       this.fireT -= dt;
       if (this.fireT <= 0) {
-        this.fireT = rng.float(0.45, 1) * (1.2 - F.power * 0.5);
-        const lead = 0.25;
-        const tx = c.x + c.vx * lead, ty = c.y + c.vy * lead;
-        const a = Math.atan2(ty - f.y, tx - f.x) + rng.float(-0.1, 0.1);
-        const sp = 140 + F.power * 90;
+        this.fireT = rng.float(0.45, 0.95) * (1.2 - this.power * 0.5);
+        const a = Math.atan2(pwy - f.y, pwx - f.x) + rng.float(-0.1, 0.1);
+        const sp = 110 + this.power * 60;
         this.shots.push({ x: f.x, y: f.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, t: 0 });
         f.talkT = 0.2;
-        F.world.audio?.play(this.kind === "bolt" ? "click" : "blub", { pitch: 1.4 });
+        F.sfx(this.kind === "bolt" ? "click" : "blub", { pitch: 1.4 });
       }
       for (const s of this.shots) {
         s.t += dt;
         s.x += s.vx * dt;
         s.y += s.vy * dt;
-        if (!s.dead && dist(s.x, s.y, c.x, c.y) < 6) {
+        const [sx, sy] = F.toScreen(s.x, s.y);
+        if (!s.dead && Math.hypot(sx - F.input.x, sy - F.input.y) < 11) {
           s.dead = true;
           this.hits++;
-          this.stun = 0.6;
-          F.world.audio?.play("dodge_hit");
+          this.B.kick(0.22);
+          F.crank.stun = 0.5;
+          if (this.kind === "ink") F.inkSplat(2);
+          F.sfx("dodge_hit");
           F.shake(3);
-          F.world.particles?.burst(c.x, c.y, 10, { colors: ["#ffffff", "#ff8a7a"], speed: 60, g: 0, life: 0.4 });
+          F.fx.burst(sx, sy, 12, { colors: ["#ffffff", "#ff8a7a"], speed: 80, g: 0, life: 0.4 });
         }
       }
       this.shots = this.shots.filter((s) => !s.dead && s.t < 3);
-      if (inp.down && !this.stun) this.progress += dt / this.dur;
-      F.tension = this.stun ? 0.95 : inp.down ? 0.55 : 0.2;
-      if (this.hits > this.allowed) return "snap";
-      if (this.progress >= 1) return "win";
+      if (this.hits > this.allowed) return "fail";
+      if (this.t > this.dur) return "win";
       return "ok";
     }
-    draw(ctx2) {
-      for (const s of this.shots) {
-        const x = Math.round(s.x), y = Math.round(s.y);
-        if (this.kind === "bolt") {
-          ctx2.fillStyle = "#9aa4b8";
-          ctx2.fillRect(x - 2, y - 1, 5, 3);
-          ctx2.fillStyle = "#e8eef8";
-          ctx2.fillRect(x - 1, y - 1, 2, 1);
-          ctx2.fillStyle = "#4a5468";
-          ctx2.fillRect(x - 2, y + 1, 5, 1);
-        } else if (this.kind === "ink") {
-          ctx2.fillStyle = "#140a1e";
-          ctx2.fillRect(x - 3, y - 2, 6, 5);
-          ctx2.fillRect(x - 2, y - 3, 4, 7);
-          ctx2.fillStyle = "#3a2a5a";
-          ctx2.fillRect(x - 1, y - 2, 2, 1);
-        } else if (this.kind === "spark") {
-          ctx2.fillStyle = "#fff6a0";
-          ctx2.fillRect(x - 1, y - 1, 3, 3);
-          ctx2.fillStyle = "#ffb02a";
-          ctx2.fillRect(x - 2, y, 1, 1);
-          ctx2.fillRect(x + 2, y, 1, 1);
-        } else {
-          ctx2.fillStyle = "#cfefff";
-          ctx2.fillRect(x - 2, y - 3, 5, 7);
-          ctx2.fillRect(x - 3, y - 2, 7, 5);
-          ctx2.fillStyle = "#4aa8d8";
-          ctx2.fillRect(x - 1, y - 1, 3, 3);
-          ctx2.fillStyle = "#ffffff";
-          ctx2.fillRect(x - 2, y - 2, 1, 1);
+    drawWorld(ctx2) {
+      drawShots(ctx2, this.shots, this.kind);
+    }
+    drawHud(ctx2) {
+      const F = this.F;
+      const [sx, sy] = F.toScreen(this.fish.x, this.fish.y);
+      let hearts = "";
+      for (let i = 0; i <= this.allowed; i++) hearts += i < this.allowed + 1 - this.hits ? "{heart}" : "{heart_empty}";
+      drawText(ctx2, hearts, sx, sy - F.zoneRadius() - 12, { align: "center" });
+    }
+  };
+  function drawShots(ctx2, shots, kind) {
+    for (const s of shots) {
+      const x = Math.round(s.x), y = Math.round(s.y);
+      if (kind === "bolt") {
+        ctx2.fillStyle = "#9aa4b8";
+        ctx2.fillRect(x - 2, y - 1, 5, 3);
+        ctx2.fillStyle = "#e8eef8";
+        ctx2.fillRect(x - 1, y - 1, 2, 1);
+        ctx2.fillStyle = "#4a5468";
+        ctx2.fillRect(x - 2, y + 1, 5, 1);
+      } else if (kind === "ink") {
+        ctx2.fillStyle = "#140a1e";
+        ctx2.fillRect(x - 3, y - 2, 6, 5);
+        ctx2.fillRect(x - 2, y - 3, 4, 7);
+        ctx2.fillStyle = "#3a2a5a";
+        ctx2.fillRect(x - 1, y - 2, 2, 1);
+      } else {
+        ctx2.fillStyle = "#cfefff";
+        ctx2.fillRect(x - 2, y - 3, 5, 7);
+        ctx2.fillRect(x - 3, y - 2, 7, 5);
+        ctx2.fillStyle = "#4aa8d8";
+        ctx2.fillRect(x - 1, y - 1, 3, 3);
+        ctx2.fillStyle = "#ffffff";
+        ctx2.fillRect(x - 2, y - 2, 1, 1);
+      }
+    }
+  }
+  var UnwrapEvent = class extends Event {
+    constructor(F, B2) {
+      super(F, B2, "unwrap");
+      this.dir = rng.sign();
+      this.title = "UNTANGLE!";
+      this.color = "#ffe27a";
+      this.sub = `Circle ${this.dir > 0 ? "clockwise" : "counter-clockwise"}!`;
+      this.need = 2 + this.power * 1.5;
+      this.turns = 0;
+      this.time = 8;
+      this.coil = 0;
+      this.prompt = `${this.dir > 0 ? "{crank_cw}" : "{crank_ccw}"} Circle ${this.dir > 0 ? "CLOCKWISE" : "COUNTER-CLOCKWISE"} to unwind!`;
+      this.winText = "UNWOUND!";
+    }
+    hint() {
+      const [sx, sy] = this.F.toScreen(this.fish.x, this.fish.y);
+      return [sx + 70, sy];
+    }
+    update(dt) {
+      const F = this.F, f = this.fish, cr = F.crank;
+      this.t += dt;
+      if (cr.power > 0.08 && cr.da) {
+        if (Math.sign(cr.da) === this.dir) this.turns += Math.abs(cr.da) / TAU;
+        else this.turns = Math.max(0, this.turns - Math.abs(cr.da) / TAU * 0.5);
+      }
+      this.meter = this.turns / this.need;
+      this.coil += dt * 3 * -this.dir;
+      const rad = 16 * (1 - this.meter) + 8;
+      f.x = this.home.x + Math.cos(this.coil) * rad;
+      f.y = this.home.y + Math.sin(this.coil) * rad * 0.7;
+      f.vx = -Math.sin(this.coil) * 40 * -this.dir;
+      f.vy = Math.cos(this.coil) * 30 * -this.dir;
+      f.feel(this.meter > 0.6 ? "dizzy" : "smug", 0.2);
+      this.tension = 0.5;
+      if (this.turns >= this.need) return "win";
+      if (this.t > this.time) return "fail";
+      return "ok";
+    }
+    drawWorld(ctx2) {
+      const f = this.fish;
+      const n = 3 - Math.floor(this.meter * 3);
+      for (let k = 0; k < n; k++) {
+        for (let i = 0; i < 24; i++) {
+          const a = i / 24 * TAU + this.coil * 0.5 + k;
+          const r = 10 + k * 3;
+          ctx2.fillStyle = rgba("#e8f4ff", 0.6);
+          ctx2.fillRect(Math.round(f.x + Math.cos(a) * r), Math.round(f.y + Math.sin(a) * r * 0.5), 1, 1);
         }
       }
     }
     drawHud(ctx2) {
-      const F = this.F;
-      F.drawStamina(ctx2, 1 - this.progress, "#9ad8ff");
-      let hearts = "";
-      for (let i = 0; i <= this.allowed; i++) hearts += i < this.allowed + 1 - this.hits ? "{heart}" : "{heart_empty}";
-      drawText(ctx2, hearts, F.cursor.x, F.cursor.y - 30, { align: "center" });
-      prompt(ctx2, F, this.stun ? "Ouch!" : "{mouse_hold} Hold to reel - DODGE the shots!", this.stun ? "#ff8a7a" : "#ffffff");
+      const F = this.F, cr = F.crank;
+      const cx = cr.active ? cr.cx : F.input.x, cy = cr.active ? cr.cy : F.input.y;
+      for (let i = 0; i < 14; i++) {
+        const a = i / 14 * TAU + this.t * 4 * this.dir;
+        ctx2.fillStyle = rgba("#ffe27a", 0.2 + i / 14 * 0.8);
+        ctx2.fillRect(Math.round(cx + Math.cos(a) * 30) - 1, Math.round(cy + Math.sin(a) * 30) - 1, 3, 3);
+      }
+      drawText(ctx2, `${Math.min(this.turns, this.need).toFixed(1)} / ${this.need.toFixed(1)}`, cx, cy + 38, { align: "center", color: "#ffe27a", outline: "#0b1622" });
     }
   };
-  var UnwrapPhase = class {
-    constructor(F) {
-      this.F = F;
-      this.name = "unwrap";
-      this.dir = rng.sign();
-      this.need = TAU * (2 + F.power * 2);
-      this.progress = 0;
-      this.time = 10;
-      this.t = 0;
-      this.prevA = null;
-      this.center = { x: F.cursor.x, y: F.cursor.y };
-      this.coil = 0;
-    }
-    update(dt, inp) {
-      const F = this.F, f = F.fish, c = F.cursor;
-      this.t += dt;
-      this.center.x = damp(this.center.x, c.x, 1.5, dt);
-      this.center.y = damp(this.center.y, c.y, 1.5, dt);
-      const a = Math.atan2(c.y - this.center.y, c.x - this.center.x);
-      const r = dist(c.x, c.y, this.center.x, this.center.y);
-      if (this.prevA !== null && r > 6) {
-        let da = a - this.prevA;
-        if (da > Math.PI) da -= TAU;
-        if (da < -Math.PI) da += TAU;
-        this.progress = clamp(this.progress + da * this.dir, 0, this.need);
-      }
-      this.prevA = a;
-      this.coil += dt * 3 * -this.dir;
-      const rad = 18 * (1 - this.progress / this.need) + 8;
-      f.x = c.x + Math.cos(this.coil) * rad;
-      f.y = c.y + Math.sin(this.coil) * rad * 0.8;
-      f.vx = -Math.sin(this.coil) * 40 * -this.dir;
-      f.vy = Math.cos(this.coil) * 40 * -this.dir;
-      f.allowTurn = true;
-      f.feel(this.progress > this.need * 0.6 ? "dizzy" : "smug", 0.2);
-      F.tension = 0.5;
-      if (this.progress >= this.need) return "win";
-      if (this.t > this.time) return "escape";
-      return "ok";
-    }
-    draw(ctx2) {
-      const F = this.F, c = F.cursor;
-      const t = performance.now() / 1e3;
-      for (let i = 0; i < 10; i++) {
-        const a = i / 10 * TAU + t * 3 * this.dir;
-        ctx2.fillStyle = rgba("#ffe27a", i / 10);
-        ctx2.fillRect(Math.round(c.x + Math.cos(a) * 30), Math.round(c.y + Math.sin(a) * 30), 2, 2);
-      }
-    }
-    drawHud(ctx2) {
-      const F = this.F;
-      F.drawStamina(ctx2, 1 - this.progress / this.need, "#ffe27a");
-      prompt(ctx2, F, `It's wrapped around you! Circle ${this.dir > 0 ? "clockwise" : "counter-clockwise"}!`, "#ffe27a");
-    }
-  };
-  var NetPhase = class {
-    constructor(F) {
-      this.F = F;
-      this.name = "net";
-      this.time = 9 * F.stats.netTime;
-      this.t = 0;
+  var NetEvent = class extends Event {
+    constructor(F, B2) {
+      super(F, B2, "net");
+      this.title = "NET IT!";
+      this.sub = "Draw a circle around the fish";
+      this.color = "#ffe27a";
+      this.time = 7 * F.stats.netTime;
       this.path = [];
       this.drawing = false;
       this.fail = null;
-      this.home = { x: F.fish.x, y: F.fish.y };
-      this.caught = false;
+      this.focus = { x: this.home.x, y: this.home.y, zoom: 1.8 };
+      this.tension = 0.2;
+      this.prompt = "{net} Hold & draw a circle around it!";
+      this.winText = "NETTED!";
     }
-    update(dt, inp) {
-      const F = this.F, f = F.fish, c = F.cursor;
+    hint() {
+      return this.F.toScreen(this.fish.x, this.fish.y);
+    }
+    update(dt) {
+      const F = this.F, f = this.fish;
       this.t += dt;
+      this.meter = 1 - this.t / this.time;
       if (this.fail) {
         this.fail.t += dt;
         if (this.fail.t > 0.8) this.fail = null;
       }
-      this.home.y = damp(this.home.y, Math.min(this.home.y, F.world.floorAt(f.x) - 30), 1, dt);
-      fightMove(F, dt, this.home.x + Math.sin(this.t * 0.8) * 12, this.home.y + Math.sin(this.t * 1.7) * 4, 25, 3);
+      this.thrashAt(dt, this.home.x + Math.sin(this.t * 0.8) * 8, this.home.y + Math.sin(this.t * 1.7) * 3, 0.3, 3);
       f.feel("dizzy", 0.2);
-      F.tension = 0.2;
-      if (inp.pressed) {
+      const [px, py] = F.pointerWorld();
+      if (F.input.pressed) {
         this.drawing = true;
-        this.path = [[c.x, c.y]];
+        this.path = [[px, py]];
       }
       if (this.drawing) {
         const last = this.path[this.path.length - 1];
-        if (dist(last[0], last[1], c.x, c.y) > 3) this.path.push([c.x, c.y]);
-        const closed = this.path.length > 12 && dist(this.path[0][0], this.path[0][1], c.x, c.y) < 14 * F.stats.netTolerance;
-        if (inp.released || closed) {
+        if (dist(last[0], last[1], px, py) > 1.5) this.path.push([px, py]);
+        const closed = this.path.length > 12 && dist(this.path[0][0], this.path[0][1], px, py) < 8 * F.stats.netTolerance;
+        if (F.input.released || closed) {
           this.drawing = false;
-          if (this.check()) return "win";
+          if (this.check()) {
+            F.sfx("net_swish");
+            return "win";
+          }
           this.path = [];
           this.fail = { t: 0 };
-          F.world.audio?.play("timing_miss");
+          F.sfx("timing_miss");
         }
       }
-      if (this.t > this.time) return "recover";
+      if (this.t > this.time) return "fail";
       return "ok";
     }
     check() {
-      const F = this.F, f = F.fish;
+      const F = this.F, f = this.fish;
       if (this.path.length < 8) return false;
-      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, len = 0;
-      for (let i = 0; i < this.path.length; i++) {
-        const [x, y] = this.path[i];
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const [x, y] of this.path) {
         minX = Math.min(minX, x);
         maxX = Math.max(maxX, x);
         minY = Math.min(minY, y);
         maxY = Math.max(maxY, y);
-        if (i) len += dist(x, y, this.path[i - 1][0], this.path[i - 1][1]);
       }
       const tol = F.stats.netTolerance;
-      const size = Math.max(10, 16 * f.scale);
+      const size = Math.max(8, 12 * f.scale);
       if (maxX - minX < size * 0.8 / tol || maxY - minY < size * 0.5 / tol) return false;
-      if (maxX - minX > 360) return false;
-      const poly = this.path;
-      const pts = [[f.x, f.y], [f.x - 4 * tol, f.y], [f.x + 4 * tol, f.y]];
-      const hits = pts.filter(([x, y]) => pointInPoly(x, y, poly)).length;
+      if (maxX - minX > 260) return false;
+      const pts = [[f.x, f.y], [f.x - 3 * tol, f.y], [f.x + 3 * tol, f.y]];
+      const hits = pts.filter(([x, y]) => pointInPoly(x, y, this.path)).length;
       return hits >= (tol > 1.2 ? 1 : 2);
     }
-    draw(ctx2) {
-      const F = this.F, f = F.fish;
-      const t = this.t;
-      const r = Math.round(18 * f.scale + 6 + Math.sin(t * 5) * 2);
-      for (let i = 0; i < 24; i++) {
-        if (i % 2) continue;
-        const a = i / 24 * TAU + t;
-        ctx2.fillStyle = rgba("#ffffff", 0.6);
-        ctx2.fillRect(Math.round(f.x + Math.cos(a) * r), Math.round(f.y + Math.sin(a) * r * 0.75), 2, 2);
-      }
+    drawWorld(ctx2) {
+      const f = this.fish;
+      const r = Math.round(14 * f.scale + 5 + Math.sin(this.t * 5) * 1.5);
+      drawCircle(ctx2, f.x, f.y, r, "#ffffff", 0.7, 1, 12, this.t);
       for (let i = 1; i < this.path.length; i++) {
         const [x0, y0] = this.path[i - 1], [x1, y1] = this.path[i];
         const steps = Math.max(1, Math.ceil(dist(x0, y0, x1, y1)));
         for (let k = 0; k < steps; k++) {
           const x = Math.round(lerp(x0, x1, k / steps)), y = Math.round(lerp(y0, y1, k / steps));
           ctx2.fillStyle = (x + y) % 4 < 2 ? "#e8d2a0" : "#9a7a4a";
-          ctx2.fillRect(x, y, 2, 2);
+          ctx2.fillRect(x, y, 1, 1);
         }
       }
     }
     drawHud(ctx2) {
       const F = this.F;
-      const left = Math.max(0, this.time - this.t);
-      if (this.fail) prompt(ctx2, F, "Missed! Circle the WHOLE fish!", "#ff8a7a");
-      else prompt(ctx2, F, `{net} Draw a circle around it! ${left.toFixed(1)}s`, "#ffe27a");
+      if (this.fail) {
+        const [sx, sy] = F.toScreen(this.fish.x, this.fish.y);
+        drawText(ctx2, "Missed! Circle the WHOLE fish!", sx, sy + F.zoneRadius() + 4, { align: "center", color: "#ff8a7a", outline: "#0b1622" });
+      }
     }
   };
-  function drawCircle(ctx2, cx, cy, r, color, a = 1) {
-    ctx2.fillStyle = rgba(color, a);
-    const n = Math.max(12, Math.round(r * 4));
-    let px = null, py = null;
-    for (let i = 0; i < n; i++) {
-      const ang = i / n * TAU;
-      const x = Math.round(cx + Math.cos(ang) * r), y = Math.round(cy + Math.sin(ang) * r);
-      if (x === px && y === py) continue;
+  var EVENTS = { mash: MashEvent, timing: TimingEvent, trace: TraceEvent, dodge: DodgeEvent, unwrap: UnwrapEvent, net: NetEvent };
+  function makeEvent(name, F, B2) {
+    const C = EVENTS[name];
+    return C ? new C(F, B2) : null;
+  }
+  var EVENT_NAMES = Object.keys(EVENTS);
+
+  // src/fishing/battle.js
+  var TRICK_TITLES = {
+    dash: "DASH!",
+    fake: "FAKE-OUT!",
+    dive: "DIVE!",
+    jump: "JUMP!",
+    wrap: "TANGLED!",
+    hop: "WINDOW HOP!",
+    glitch: "GLITCH!",
+    spit: "SPIT ATTACK!",
+    ink: "INK CLOUD!"
+  };
+  var angleOf = (x, y) => Math.atan2(y, x);
+  var Battle = class {
+    constructor(F) {
+      const f = F.fish, sp = F.sp, g = F.game;
+      this.F = F;
+      this.fish = f;
+      this.sp = sp;
+      this.gentle = !!g.tutorialActive;
+      const fight = sp.fight || {};
+      this.power = clamp01((fight.power ?? 0.4) * (this.gentle ? 0.25 : 1) * (f.rec?.giant ? 1.25 : 1));
+      this.stamSecs = (fight.stamina ?? 5) * (0.8 + this.power * 0.4) * (this.gentle ? 0.45 : 1);
+      this.start = { x: f.x, y: f.y };
+      this.land = F.landingPoint(f);
+      const depth = dist(this.start.x, this.start.y, this.land.x, this.land.y);
+      this.depth = depth;
+      this.lineLen = Math.round((3 + depth / 18 + this.power * 9) * 10) / 10;
+      this.reelSecs = (4 + this.power * 9 + Math.min(3, depth / 160)) * (this.gentle ? 0.75 : 1);
+      this.progress = 0;
+      this.ghost = 0;
+      this.stamina = 1;
+      this.tension = 0.22;
+      this.offX = 0;
+      this.offY = 0;
+      this.mode = "hookset";
+      this.modeT = 0.95;
+      this.t = 0;
+      this.away = angleOf(this.start.x - this.land.x, this.start.y - this.land.y);
+      this.pullDir = this.away;
+      this.teleDir = this.away;
+      this.pending = null;
+      this.trick = null;
+      this.counter = 0;
+      this.align = 0;
+      this.inZone = false;
+      this.zoneD = 0;
+      this.snapT = 0;
+      this.slackT = 0;
+      this.hudIn = 0;
+      this.combo = 0;
+      this.exhausted = false;
+      this.idleT = 0;
+      this.surgeMul = 1;
+      this.glitchT = 0;
+      this.lastCounter = false;
+      this.warnRun = false;
+      this.warnSlack = false;
+      const phases = (fight.phases || []).filter((p) => p !== "tension");
+      this.finalNet = !this.gentle && phases.includes("net");
+      const evs = this.gentle ? [] : phases.filter((p) => p !== "net");
+      const n = evs.length;
+      this.events = evs.map((name, i) => ({ name, at: n === 1 ? 0.5 : 0.28 + i * 0.52 / (n - 1), done: false }));
+      this.event = null;
+      this.eventCool = 0;
+    }
+    get surging() {
+      return this.mode === "surge" || !!this.trick?.pulls;
+    }
+    get grace() {
+      return this.F.stats.snapGrace * (this.gentle ? 3 : 1) + 0.15;
+    }
+    anchor() {
+      const p = this.progress;
+      return [lerp(this.start.x, this.land.x, p), lerp(this.start.y, this.land.y, p)];
+    }
+    bounds(x) {
+      const F = this.F, w = F.world, f = this.fish;
+      const top = w.surfaceY !== null && w.surfaceY !== void 0 ? w.surfaceY + 8 + 4 * f.scale : F.viewTop() + 24;
+      const bottom = (w.floorAt ? w.floorAt(x) : F.viewTop() + F.H) - 8 - 3 * f.scale;
+      return [top, Math.max(top + 4, bottom)];
+    }
+    place(x, y, free = false) {
+      const f = this.fish, W = this.F.world.W;
+      x = clamp(x, 16, W - 16);
+      if (!free) {
+        const [t, b] = this.bounds(x);
+        y = clamp(y, t, b);
+      }
+      f.x = x;
+      f.y = y;
+      const [ax, ay] = this.anchor();
+      this.offX = x - ax;
+      this.offY = y - ay;
+    }
+    kick(n) {
+      this.tension = clamp(this.tension + n, 0, 1.25);
+    }
+    // ------------------------------------------------------------------ main update
+    update(dt) {
+      const F = this.F, f = this.fish, inp = F.input, cr = F.crank;
+      this.t += dt;
+      this.hudIn = Math.min(1, this.hudIn + F.rdt * 3);
+      this.eventCool = Math.max(0, this.eventCool - dt);
+      this.glitchT = Math.max(0, this.glitchT - dt);
+      f.z = damp(f.z, 0, 4, dt);
+      f.controlled = true;
+      f.allowTurn = true;
+      if (this.ghost > this.progress) this.ghost = Math.max(this.progress, this.ghost - dt * 0.25);
+      else this.ghost = this.progress;
+      if (this.event) {
+        const ev = this.event;
+        const r = ev.update(dt);
+        this.updateCounter(dt);
+        if (ev.usesCrank) this.physics(dt, { reelMul: 0.6, stamMul: 0.5 });
+        else this.tension = damp(this.tension, ev.tension ?? 0.35, 4, dt);
+        const res = r !== "ok" ? this.endEvent(r) : "ok";
+        if (res !== "ok") return res;
+        return this.checks(dt, true);
+      }
+      if (!this.trick && this.mode !== "hookset" && this.eventCool <= 0) {
+        const next = this.events.find((e) => !e.done && this.progress >= e.at);
+        if (next) {
+          next.done = true;
+          if (this.startEvent(next.name)) return "ok";
+        }
+      }
+      this.modeT -= this.mode === "hookset" ? F.rdt : dt;
+      if (this.trick) {
+        const done = this.updateTrick(dt);
+        if (done) {
+          this.trick = null;
+          this.toRest();
+        }
+      } else {
+        switch (this.mode) {
+          case "hookset":
+            this.thrash(dt, 3);
+            if (this.modeT <= 0) this.toRest();
+            break;
+          case "rest":
+            this.drift(dt);
+            if (this.modeT <= 0 && !this.exhausted) this.toTele();
+            break;
+          case "tele":
+            this.brace(dt);
+            if (this.modeT <= 0) this.toSurge();
+            break;
+          case "surge":
+            this.swimSurge(dt);
+            if (this.modeT <= 0) this.toRest();
+            break;
+          default:
+            this.toRest();
+        }
+      }
+      this.updateCounter(dt);
+      if (!this.trick?.frozen) this.physics(dt);
+      else this.airPhysics(dt);
+      return this.checks(dt, false);
+    }
+    checks(dt, inEvent) {
+      const F = this.F, st = F.stats;
+      if (this.tension >= 1) this.snapT += dt;
+      else this.snapT = Math.max(0, this.snapT - dt * 1.5);
+      if (this.snapT > this.grace) return "snap";
+      if (inEvent) return "ok";
+      const idle = F.crank.power < 0.1 && !F.input.down;
+      if (!this.gentle && this.mode === "rest" && !this.trick && idle && !this.exhausted) this.slackT += dt;
+      else this.slackT = Math.max(0, this.slackT - dt * 2);
+      const slackMax = st.slackGrace * 1.6;
+      if (this.slackT > slackMax * 0.5 && !this.warnSlack) {
+        this.warnSlack = true;
+        F.sfx("slack_warn");
+      }
+      if (this.slackT < 0.1) this.warnSlack = false;
+      if (this.slackT > slackMax) return "throw";
+      if (!this.gentle && this.progress < -0.12 && !this.warnRun) {
+        this.warnRun = true;
+        F.sfx("slack_warn", { pitch: 1.3 });
+        F.titles.pop("LINE RUNNING OUT!", F.W / 2, F.H * 0.36, "#ff8a6a", { scale: 2 });
+      }
+      if (this.progress > 0) this.warnRun = false;
+      if (!this.gentle && this.progress < -0.24) return "run";
+      if (this.gentle) this.progress = Math.max(this.progress, -0.05);
+      if (this.exhausted) {
+        this.idleT = idle ? this.idleT + dt : 0;
+        if (this.idleT > 3.5) {
+          this.exhausted = false;
+          this.stamina = 0.35;
+          this.idleT = 0;
+          F.titles.pop("It recovered!", F.W / 2, F.H * 0.36, "#ffd2a0", { scale: 2 });
+          this.fish.feel("angry", 1.5);
+        }
+      }
+      if (this.progress >= 1) {
+        this.progress = 1;
+        if (this.finalNet && !this.event) {
+          if (this.startEvent("net")) return "ok";
+        }
+        return "land";
+      }
+      return "ok";
+    }
+    // ------------------------------------------------------------------ reel physics
+    physics(dt, opts = {}) {
+      const F = this.F, st = F.stats, cr = F.crank, f = this.fish;
+      const crankP = cr.power;
+      const hold = F.input.down && !this.event;
+      const surging = this.surging;
+      const fishPull = surging ? (0.42 + this.power * 0.58) * (0.35 + 0.65 * this.stamina) * this.surgeMul : 0.06;
+      const counter = this.counter;
+      const reelStat = 0.6 + 0.4 * (st.reelSpeed / 34);
+      let reel = crankP * reelStat / this.reelSecs;
+      if (surging) reel *= 0.25 + 0.75 * counter;
+      if (hold) reel *= 1.3;
+      if (this.tension > 0.95) reel *= 0.35;
+      if (this.exhausted) reel *= 1.6;
+      if (this.mode === "hookset") reel *= 0.35;
+      if (this.trick?.noReel) reel = 0;
+      reel *= opts.reelMul ?? 1;
+      const payout = surging ? fishPull * 0.085 * (1 - counter * 0.9) * (crankP > 0.15 ? 0.7 : 1) : 0;
+      this.progress += (reel - payout) * dt;
+      this.reelRate = reel - payout;
+      let T = 0.1 + crankP * (surging ? 0.6 * (1 - counter * 0.7) : 0.16);
+      if (hold) T += 0.16 + (surging ? 0.3 * (1 - counter) : 0.04);
+      T += fishPull * 0.4 * (1 - counter * 0.6);
+      if (this.trick?.extraT) T += this.trick.extraT;
+      T *= 0.85 + this.power * 0.3;
+      T /= st.lineStrength * (this.gentle ? 1.6 : 1);
+      if (this.exhausted) T *= 0.7;
+      this.tension = clamp(damp(this.tension, T, T > this.tension ? 2.6 : 4, dt), 0, 1.25);
+      let drain = surging ? counter * (0.5 + 0.7 * crankP) + (hold ? counter * 0.6 : 0) : crankP * 0.22 + (hold ? 0.12 : 0);
+      drain *= st.staminaDrain / this.stamSecs * (opts.stamMul ?? 1);
+      if (this.mode === "hookset") drain *= 0.3;
+      this.stamina = clamp01(this.stamina - drain * dt + (drain === 0 && !this.exhausted ? 0.02 * dt : 0));
+      if (this.stamina <= 1e-3 && !this.exhausted) this.exhaust();
+      const countering = surging && this.inZone && (crankP > 0.2 || hold);
+      if (countering && !this.lastCounter) {
+        this.combo++;
+        const [sx, sy] = F.toScreen(f.x, f.y);
+        F.titles.pop(this.combo > 2 ? `COUNTER x${this.combo}!` : "COUNTER!", sx, sy - 34, "#9affb8");
+        F.sfx("timing_good", { vol: 0.5, pitch: 1 + Math.min(0.5, this.combo * 0.05) });
+        F.particles.stars(f.x, f.y, 5, { speed: [20, 50], g: 0 });
+      }
+      this.lastCounter = countering;
+      if (countering && rng.chance(dt * (2 + crankP * 4))) {
+        F.particles.scales(f.x, f.y, 1, F.scaleColors());
+        if (this.stamina < 0.35 && rng.chance(0.3)) f.say("sweat", 0.8);
+      }
+      if (F.input.pressed && !this.event && this.mode !== "hookset") this.yank();
+    }
+    // Air time during a jump: any reel or yank strains the line.
+    airPhysics(dt) {
+      const F = this.F, cr = F.crank;
+      const T = (0.05 + cr.power * 0.65 + (F.input.down ? 0.4 : 0)) / (F.stats.lineStrength * (this.gentle ? 1.6 : 1));
+      this.tension = clamp(damp(this.tension, T, 4, dt), 0, 1.25);
+    }
+    yank() {
+      const F = this.F, f = this.fish;
+      F.setPose("yank", 0.25);
+      if (this.surging) {
+        if (this.inZone) {
+          this.stamina = Math.max(0, this.stamina - 0.06 * F.stats.staminaDrain);
+          this.progress += 0.015;
+          f.squashV += 9;
+          f.wiggle = 0.5;
+          F.particles.scales(f.x, f.y, 3, F.scaleColors());
+          F.particles.shockwave(f.x, f.y, 16, "#ffffff", { life: 0.3 });
+          const [sx, sy] = F.toScreen(f.x, f.y);
+          F.titles.pop("YANK!", sx, sy - 46, "#ffe27a", { scale: 2 });
+          F.sfx("mash_pop", { pitch: 0.8 });
+          F.shake(2);
+        } else {
+          this.kick(0.12);
+          F.sfx("slack_warn", { vol: 0.4, pitch: 1.4 });
+        }
+      } else {
+        this.progress += 8e-3;
+        f.squashV += 5;
+        F.sfx("reel_tick", { vol: 0.5 });
+      }
+    }
+    exhaust() {
+      const F = this.F, f = this.fish;
+      this.exhausted = true;
+      this.mode = "rest";
+      this.modeT = 99;
+      this.trick = null;
+      f.feel("dizzy", 3);
+      f.say("sweat", 1.2);
+      F.titles.banner("EXHAUSTED!", "#ffe27a", "Reel it in!");
+      F.sfx("timing_perfect");
+      F.particles.stars(f.x, f.y - 6, 10, { speed: [20, 60], g: 0 });
+    }
+    // Counter alignment: where is the player's crank loop relative to the fish and its pull?
+    updateCounter(dt) {
+      const F = this.F, f = this.fish, cr = F.crank;
+      const [fsx, fsy] = F.toScreen(f.x, f.y);
+      const px = cr.active ? cr.cx : F.input.x, py = cr.active ? cr.cy : F.input.y;
+      const vx = px - fsx, vy = py - fsy, d = Math.hypot(vx, vy);
+      this.zoneD = d;
+      const za = this.pullDir + Math.PI;
+      const align = d > 18 ? Math.cos(angleOf(vx, vy) - za) : 0;
+      this.align = align;
+      const pulling = this.surging || this.mode === "tele";
+      const target = pulling ? clamp01((align - 0.2) / 0.6) : 0;
+      this.counter = damp(this.counter, this.mode === "tele" ? 0 : target, 9, dt);
+      this.inZone = pulling && align > 0.5 && d > 18;
+    }
+    // ------------------------------------------------------------------ fish behaviour
+    toRest() {
+      const p = this.power;
+      this.mode = "rest";
+      this.surgeMul = 1;
+      this.modeT = this.exhausted ? 99 : rng.float(0.9, 1.8) * (1.25 - p * 0.5) * (this.gentle ? 1.4 : 1);
+      this.fish.feel(this.stamina < 0.45 ? "tired" : "determined", 1);
+    }
+    toTele() {
+      const F = this.F, f = this.fish, p = this.power;
+      this.mode = "tele";
+      this.modeT = this.gentle ? 0.95 : 0.5 - p * 0.12;
+      this.teleDir = this.away + rng.float(-1.35, 1.35);
+      this.pullDir = this.teleDir;
+      this.pending = null;
+      const tricks = this.sp.fight?.tricks || [];
+      if (!this.gentle && tricks.length && rng.chance(0.3 + p * 0.35)) {
+        let kind = rng.pick(tricks);
+        if (kind === "jump" && !this.canJump()) kind = "dash";
+        this.pending = kind;
+        if (kind === "dash") this.modeT *= 0.7;
+        if (kind === "dive") {
+          this.teleDir = Math.PI / 2 + rng.float(-0.25, 0.25);
+          this.pullDir = this.teleDir;
+        }
+      }
+      f.say(this.pending === "fake" || this.pending === "dash" ? "!!" : "!", this.modeT + 0.2);
+      f.feel("angry", 1);
+      f.squashV -= 8;
+      f.wiggle = 0.6;
+      F.sfx("grunt", { vol: 0.35, pitch: 1.2 + rng.float(-0.1, 0.1) });
+    }
+    toSurge() {
+      const F = this.F, f = this.fish, p = this.power;
+      this.mode = "surge";
+      this.surgeMul = 1;
+      this.modeT = rng.float(1, 2.1) * (0.7 + p * 0.6) * (0.5 + 0.5 * this.stamina) * (this.gentle ? 0.8 : 1);
+      this.combo = this.lastCounter ? this.combo : 0;
+      const kind = this.pending;
+      this.pending = null;
+      if (kind) this.startTrick(kind);
+      if (this.mode === "surge") {
+        f.feel("determined", this.modeT);
+        F.particles.bubbleTrail(f.x, f.y, Math.cos(this.pullDir) * 80, Math.sin(this.pullDir) * 80, { n: 4 });
+        F.sfx("splash_small", { vol: 0.35, pitch: 1.3 });
+      }
+    }
+    thrash(dt, amp) {
+      const [ax, ay] = this.anchor(), f = this.fish;
+      const t = this.t;
+      this.offX = damp(this.offX, Math.sin(t * 23) * amp, 12, dt);
+      this.offY = damp(this.offY, Math.cos(t * 19) * amp * 0.6, 12, dt);
+      f.vx = Math.sin(t * 7) * 60;
+      f.vy = 0;
+      this.place(ax + this.offX, ay + this.offY);
+      f.wiggle = 0.6;
+      f.feel("surprised", 0.3);
+    }
+    drift(dt) {
+      const F = this.F, f = this.fish;
+      const [ax, ay] = this.anchor();
+      const t = this.t;
+      this.offX = damp(this.offX, Math.sin(t * 1.3) * 8, 1.4, dt);
+      this.offY = damp(this.offY, Math.sin(t * 2.1) * 4, 1.4, dt);
+      f.vx = Math.cos(this.away) * 20 + Math.sin(t * 1.3) * 6;
+      f.vy = Math.sin(this.away) * 4;
+      this.place(ax + this.offX, ay + this.offY);
+      f.lookAt?.(this.land.x, this.land.y - 40);
+      if (this.exhausted) f.feel("dizzy", 0.3);
+      if (F.crank.power > 0.3 && rng.chance(dt * 3)) F.particles.bubbleTrail(f.x, f.y, -Math.cos(this.away) * 60, -Math.sin(this.away) * 60);
+    }
+    brace(dt) {
+      const f = this.fish;
+      const [ax, ay] = this.anchor();
+      const k = Math.sin(this.t * 40) * 1.2;
+      this.offX = damp(this.offX, this.offX - Math.cos(this.teleDir) * 2 + k, 6, dt);
+      this.offY = damp(this.offY, this.offY - Math.sin(this.teleDir) * 2, 6, dt);
+      f.vx = Math.cos(this.teleDir) * 30;
+      f.vy = Math.sin(this.teleDir) * 10;
+      this.place(ax + this.offX, ay + this.offY);
+    }
+    swimSurge(dt) {
+      const F = this.F, f = this.fish;
+      const [ax, ay] = this.anchor();
+      const R = (44 + this.power * 40) * (this.surgeMul > 1.5 ? 1.4 : 1);
+      const sp = (55 + this.power * 70) * this.surgeMul * (1 - this.counter * 0.6);
+      const tx = Math.cos(this.pullDir) * R, ty = Math.sin(this.pullDir) * R;
+      const dx = tx - this.offX, dy = ty - this.offY, d = Math.hypot(dx, dy) || 1;
+      const step2 = Math.min(d, sp * dt);
+      this.offX += dx / d * step2;
+      this.offY += dy / d * step2;
+      f.vx = Math.cos(this.pullDir) * 90;
+      f.vy = Math.sin(this.pullDir) * 90;
+      this.place(ax + this.offX, ay + this.offY);
+      if (rng.chance(dt * 10)) F.particles.bubbleTrail(f.x - Math.cos(this.pullDir) * 8 * f.scale, f.y - Math.sin(this.pullDir) * 8 * f.scale, f.vx, f.vy);
+      if (this.surgeMul > 1.5 && rng.chance(dt * 20)) F.particles.wake(f.x, f.y, this.pullDir, 2);
+    }
+    canJump() {
+      const w = this.F.world;
+      return w.surfaceY !== null && w.surfaceY !== void 0 && this.fish.y - w.surfaceY < 280;
+    }
+    // ------------------------------------------------------------------ tricks
+    startTrick(kind) {
+      const F = this.F, f = this.fish, p = this.power;
+      const [sx, sy] = F.toScreen(f.x, f.y);
+      const label = TRICK_TITLES[kind];
+      switch (kind) {
+        case "dash":
+          this.surgeMul = 2.1;
+          this.modeT = 0.55 + p * 0.3;
+          this.kick(0.12);
+          F.particles.speedLines(f.x, f.y, 12, { r0: 8, r1: 30, color: "#e8fbff", add: false, len: [6, 14] });
+          F.cam?.punch?.(f.x, f.y, 0.06, 0.25);
+          F.sfx("splash_small", { pitch: 0.8 });
+          break;
+        case "fake":
+          this.pullDir = this.teleDir + Math.PI + rng.float(-0.45, 0.45);
+          this.surgeMul = 1.25;
+          F.sfx("boing", { vol: 0.5 });
+          break;
+        case "dive":
+          this.surgeMul = 1.55;
+          this.modeT = 1.4 + p * 0.5;
+          F.particles.bubbleTrail(f.x, f.y, 0, 120, { n: 8 });
+          break;
+        case "ink":
+          this.surgeMul = 1.3;
+          F.particles.ink(f.x, f.y, 16, { power: 1.4, scale: 1.3, color: this.sp.biome === "junkyard" ? "#1a1410" : "#140a22" });
+          F.inkSplat(4 + Math.round(p * 3));
+          F.sfx("blub", { pitch: 0.6 });
+          break;
+        case "glitch": {
+          F.particles.burst(f.x, f.y, 18, { colors: ["#ff3a7a", "#3affd8", "#ffffff"], speed: 70, g: 0, life: 0.45, size: 2 });
+          const a = rng.float(0, TAU), r = rng.float(35, 60);
+          const [ax, ay] = this.anchor();
+          this.place(ax + this.offX + Math.cos(a) * r, ay + this.offY + Math.sin(a) * r);
+          F.particles.burst(f.x, f.y, 14, { colors: ["#ff3a7a", "#3affd8"], speed: 50, g: 0, life: 0.35, size: 2 });
+          this.pullDir = this.away + rng.float(-1.6, 1.6);
+          this.surgeMul = 1.3;
+          this.glitchT = 0.45;
+          this.kick(0.12);
+          F.sfx("glitch");
+          break;
+        }
+        case "jump":
+          this.trick = { kind, stage: "rise", t: 0, noReel: true, sx: this.offX, sy: this.offY };
+          break;
+        case "wrap":
+          this.trick = { kind, t: 0, dur: 4.6, need: 1.4 + p, dir: rng.sign(), unwound: 0, cx: f.x, cy: f.y, ang: 0, noReel: true, extraT: 0.15 };
+          F.sfx("reel", { pitch: 0.7 });
+          break;
+        case "hop":
+          this.trick = { kind, stage: "in", t: 0, from: [f.x, f.y], noReel: false };
+          F.sfx("bubble", { pitch: 0.7 });
+          break;
+        case "spit":
+          this.trick = { kind, t: 0, shots: [], fired: 0, n: 3 + Math.round(p * 2), fireT: 0.25, noReel: false };
+          break;
+        default:
+          break;
+      }
+      if (label) F.titles.banner(label, kind === "fake" ? "#ffb0ff" : "#ff9a6a");
+      void sx;
+      void sy;
+      if (this.trick) this.mode = "trick";
+    }
+    updateTrick(dt) {
+      const tr = this.trick;
+      tr.t += dt;
+      switch (tr.kind) {
+        case "jump":
+          return this.updateJump(dt, tr);
+        case "wrap":
+          return this.updateWrap(dt, tr);
+        case "hop":
+          return this.updateHop(dt, tr);
+        case "spit":
+          return this.updateSpit(dt, tr);
+        default:
+          return true;
+      }
+    }
+    updateJump(dt, tr) {
+      const F = this.F, f = this.fish, w = F.world, sy = w.surfaceY;
+      if (tr.stage === "rise") {
+        tr.frozen = false;
+        const tx = f.x + f.facing * 30, ty = sy - 2;
+        const dx = tx - f.x, dy = ty - f.y, d = Math.hypot(dx, dy) || 1;
+        const sp = 300;
+        f.vx = dx / d * sp;
+        f.vy = dy / d * sp;
+        this.place(f.x + dx / d * Math.min(d, sp * dt), f.y + dy / d * Math.min(d, sp * dt), true);
+        if (rng.chance(dt * 25)) F.particles.bubbleTrail(f.x, f.y + 4, f.vx, f.vy);
+        if (f.y <= sy + 6 || tr.t > 1.4) {
+          tr.stage = "air";
+          tr.frozen = true;
+          const h = rng.float(45, 80) * (1 + this.power * 0.4);
+          tr.vy = -Math.sqrt(2 * 420 * h);
+          tr.vx = (f.facing || 1) * rng.float(40, 80);
+          F.particles.eruption(f.x, sy, 0.9);
+          F.sfx("jump_out");
+          F.cam?.slowmo?.(0.35, 0.9);
+          f.feel("happy", 1.5);
+          f.say("music", 1);
+        }
+      } else if (tr.stage === "air") {
+        tr.vy += 420 * dt;
+        f.vx = tr.vx;
+        f.vy = tr.vy;
+        this.place(f.x + tr.vx * dt, f.y + tr.vy * dt, true);
+        f.forceAngle = clamp(Math.atan2(tr.vy, Math.abs(tr.vx)), -1.2, 1.2);
+        if (rng.chance(dt * 40)) F.particles.droplets(f.x, f.y, 1, { dir: Math.PI / 2, spread: 0.6, speed: [10, 40], vx: tr.vx * 0.3 });
+        if (rng.chance(dt * 12)) F.particles.sparkle(f.x + rng.float(-8, 8), f.y + rng.float(-6, 6), "#ffffff");
+        if (f.y > sy && tr.vy > 0) {
+          tr.stage = "down";
+          tr.frozen = false;
+          tr.t2 = 0;
+          f.forceAngle = void 0;
+          F.particles.eruption(f.x, sy, 0.7);
+          F.sfx("splash_big", { vol: 0.7 });
+          const [sx, ssy] = F.toScreen(f.x, sy);
+          if (F.crank.power > 0.35 || F.input.down) {
+            this.kick(0.5);
+            F.titles.pop("LINE STRAIN!", sx, ssy - 30, "#ff8a6a", { scale: 2 });
+            F.shake(5);
+          } else {
+            this.stamina = Math.max(0, this.stamina - 0.2);
+            F.titles.pop("NICE!", sx, ssy - 30, "#9affb8", { scale: 2 });
+            F.particles.stars(f.x, sy, 8, { speed: [30, 70] });
+          }
+        }
+      } else {
+        tr.t2 += dt;
+        const [ax, ay] = this.anchor();
+        this.place(damp(f.x, ax + tr.sx, 5, dt), damp(f.y, ay + tr.sy, 5, dt));
+        if (tr.t2 > 0.45) return true;
+      }
+      return false;
+    }
+    updateWrap(dt, tr) {
+      const F = this.F, f = this.fish, cr = F.crank;
+      tr.ang += dt * 4 * -tr.dir;
+      const r = 14 + 6 * f.scale;
+      this.place(tr.cx + Math.cos(tr.ang) * r, tr.cy + Math.sin(tr.ang) * r * 0.7);
+      f.vx = -Math.sin(tr.ang) * 60 * -tr.dir;
+      f.vy = Math.cos(tr.ang) * 40 * -tr.dir;
+      const da = cr.da;
+      if (cr.power > 0.1 && Math.sign(da) === tr.dir) tr.unwound += Math.abs(da) / TAU;
+      else if (cr.power > 0.1 && da) {
+        this.kick(dt * 0.6);
+        tr.wrong = 0.3;
+      }
+      tr.wrong = Math.max(0, (tr.wrong || 0) - dt);
+      f.feel(tr.unwound > tr.need * 0.6 ? "dizzy" : "smug", 0.2);
+      if (tr.unwound >= tr.need) {
+        const [sx, sy] = F.toScreen(f.x, f.y);
+        F.titles.pop("UNTANGLED!", sx, sy - 40, "#9affb8", { scale: 2 });
+        F.particles.stars(f.x, f.y, 10, { speed: [30, 80] });
+        this.stamina = Math.max(0, this.stamina - 0.1);
+        F.sfx("timing_perfect");
+        return true;
+      }
+      if (tr.t > tr.dur) {
+        this.kick(0.35);
+        F.titles.pop("Tangled up!", F.W / 2, F.H * 0.36, "#ff8a6a", { scale: 2 });
+        return true;
+      }
+      return false;
+    }
+    updateHop(dt, tr) {
+      const F = this.F, f = this.fish;
+      if (tr.stage === "in") {
+        f.alpha = Math.max(0, 1 - tr.t / 0.4);
+        if (rng.chance(dt * 30)) F.particles.bubbleTrail(f.x, f.y, 0, 0, { n: 2 });
+        if (tr.t > 0.4) {
+          F.particles.ripples(f.x, f.y, 2, 0.6, { flat: 1 });
+          const [ax, ay] = this.anchor();
+          this.place(ax - this.offX * 0.9 + rng.float(-20, 20), ay - this.offY * 0.6 + rng.float(-10, 10));
+          F.particles.ripples(f.x, f.y, 2, 0.6, { flat: 1 });
+          F.particles.bubbles(f.x, f.y, 8);
+          tr.stage = "out";
+          tr.t = 0;
+          this.pullDir = angleOf(this.offX, this.offY) + rng.float(-0.4, 0.4);
+          F.sfx("boing", { pitch: 1.3 });
+        }
+      } else {
+        f.alpha = Math.min(1, tr.t / 0.3);
+        if (tr.t > 0.3) {
+          f.alpha = 1;
+          this.trick = null;
+          this.mode = "surge";
+          this.surgeMul = 1.4;
+          this.modeT = 0.9 + this.power * 0.6;
+          return false;
+        }
+      }
+      return false;
+    }
+    updateSpit(dt, tr) {
+      const F = this.F, f = this.fish;
+      this.drift(dt * 0.5);
+      const [pwx, pwy] = F.pointerWorld();
+      f.lookAt?.(pwx, pwy);
+      f.facing = pwx > f.x ? 1 : -1;
+      tr.fireT -= dt;
+      if (tr.fired < tr.n && tr.fireT <= 0) {
+        tr.fireT = 0.42 - this.power * 0.1;
+        tr.fired++;
+        const m = f.anchors?.mouth || [f.x, f.y];
+        const a = Math.atan2(pwy - m[1], pwx - m[0]) + rng.float(-0.08, 0.08);
+        const sp = 120 + this.power * 60;
+        tr.shots.push({ x: m[0], y: m[1], vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, t: 0 });
+        f.talkT = 0.2;
+        f.squashV -= 5;
+        F.sfx("blub", { pitch: 1.5 });
+      }
+      for (const s of tr.shots) {
+        s.t += dt;
+        s.x += s.vx * dt;
+        s.y += s.vy * dt;
+        const [sx, sy] = F.toScreen(s.x, s.y);
+        if (!s.dead && Math.hypot(sx - F.input.x, sy - F.input.y) < 11) {
+          s.dead = true;
+          this.kick(0.25);
+          F.crank.stun = 0.55;
+          F.fx.burst(sx, sy, 12, { colors: ["#ffffff", "#9ad8ff"], speed: 90, g: 0, life: 0.4 });
+          F.titles.pop("SPLAT!", sx, sy - 18, "#ff9a8a");
+          F.sfx("dodge_hit");
+          F.shake(3);
+        }
+      }
+      tr.shots = tr.shots.filter((s) => !s.dead && s.t < 2.5);
+      return tr.fired >= tr.n && tr.shots.length === 0;
+    }
+    // ------------------------------------------------------------------ events
+    startEvent(name) {
+      const F = this.F;
+      const ev = makeEvent(name, F, this);
+      if (!ev) return false;
+      this.event = ev;
+      this.trick = null;
+      this.mode = "rest";
+      this.modeT = 1;
+      this.fish.alpha = 1;
+      this.fish.forceAngle = void 0;
+      F.titles.banner(ev.title, ev.color || "#ffe27a", ev.sub);
+      F.sfx("notify", { pitch: 1.2 });
+      return true;
+    }
+    endEvent(r) {
+      const F = this.F, f = this.fish, ev = this.event;
+      this.event = null;
+      this.eventCool = 1.4;
+      this.place(f.x, f.y);
+      const len = Math.hypot(this.offX, this.offY);
+      if (len > 80) {
+        this.offX *= 80 / len;
+        this.offY *= 80 / len;
+      }
+      const [sx, sy] = F.toScreen(f.x, f.y);
+      if (ev.name === "net") {
+        if (r === "win") return "land";
+        this.progress = 0.8;
+        this.ghost = 1;
+        this.stamina = Math.max(this.stamina, 0.4);
+        this.exhausted = false;
+        F.titles.pop("It slipped out!", sx, sy - 40, "#ffd2a0", { scale: 2 });
+        f.feel("smug", 1.5);
+        this.toRest();
+        return "ok";
+      }
+      if (r === "snap") return "snap";
+      if (r === "win") {
+        this.progress += 0.1;
+        this.stamina = Math.max(0, this.stamina - 0.22);
+        F.titles.pop(ev.winText || "GREAT!", sx, sy - 44, "#9affb8", { scale: 3 });
+        F.particles.stars(f.x, f.y, 14, { speed: [30, 90] });
+        F.fx.confetti(sx, sy - 20, 14, { speed: [60, 160], life: 1.4 });
+        F.sfx("timing_perfect");
+      } else {
+        this.progress -= 0.08;
+        this.kick(0.25);
+        F.titles.pop("MISSED!", sx, sy - 44, "#ff8a7a", { scale: 2 });
+        f.feel("smug", 1.5);
+        F.sfx("timing_miss");
+      }
+      this.toRest();
+      return "ok";
+    }
+    // ------------------------------------------------------------------ helpers for HUD / tests
+    // Ideal screen point for the crank loop right now (used by the HUD arrow and automated tests).
+    crankHint() {
+      const F = this.F, f = this.fish;
+      const [fsx, fsy] = F.toScreen(f.x, f.y);
+      if (this.event?.hint) return this.event.hint();
+      const R = Math.max(60, F.zoneRadius());
+      if (this.mode === "tele" || this.surging) {
+        const a2 = this.pullDir + Math.PI;
+        return [fsx + Math.cos(a2) * R, fsy + Math.sin(a2) * R];
+      }
+      const a = this.away + Math.PI;
+      return [fsx + Math.cos(a) * R, fsy + Math.sin(a) * R];
+    }
+  };
+
+  // src/fishing/hud.js
+  var INK = "#0b1622";
+  var iconsReady = false;
+  function crankIcon(dir) {
+    const c = makeCanvas(11, 11);
+    const g = ctxOf(c);
+    const pts = [];
+    for (let i = 0; i < 26; i++) {
+      const a = i / 26 * TAU * 0.8 + (dir > 0 ? -Math.PI / 2 : -Math.PI / 2);
+      const aa = dir > 0 ? a : -a + Math.PI;
+      pts.push([Math.round(5 + Math.cos(aa) * 4), Math.round(5 + Math.sin(aa) * 4)]);
+    }
+    g.fillStyle = INK;
+    for (const [x, y] of pts) g.fillRect(x - 1, y - 1, 3, 3);
+    g.fillStyle = "#ffe27a";
+    for (const [x, y] of pts) g.fillRect(x, y, 1, 1);
+    const [ex, ey] = pts[pts.length - 1];
+    g.fillStyle = INK;
+    g.fillRect(ex - 2, ey - 2, 5, 5);
+    g.fillStyle = "#ffffff";
+    g.fillRect(ex - 1, ey - 1, 3, 3);
+    return c;
+  }
+  function ensureIcons() {
+    if (iconsReady) return;
+    iconsReady = true;
+    registerInlineIcon("crank_cw", crankIcon(1));
+    registerInlineIcon("crank_ccw", crankIcon(-1));
+    registerInlineIcon("crank", crankIcon(1));
+  }
+  function box(ctx2, x, y, w, h, fill, edge = INK) {
+    ctx2.fillStyle = edge;
+    ctx2.fillRect(x - 1, y, w + 2, h);
+    ctx2.fillRect(x, y - 1, w, h + 2);
+    ctx2.fillStyle = fill;
+    ctx2.fillRect(x, y, w, h);
+  }
+  function brassFrame(ctx2, x, y, w, h) {
+    ctx2.fillStyle = INK;
+    ctx2.fillRect(x - 3, y - 2, w + 6, h + 4);
+    ctx2.fillRect(x - 2, y - 3, w + 4, h + 6);
+    ctx2.fillStyle = "#8a5a1a";
+    ctx2.fillRect(x - 2, y - 2, w + 4, h + 4);
+    ctx2.fillStyle = "#d8a040";
+    ctx2.fillRect(x - 2, y - 2, w + 4, h + 3);
+    ctx2.fillStyle = "#ffe08a";
+    ctx2.fillRect(x - 1, y - 2, w + 2, 1);
+    ctx2.fillStyle = "#5a3208";
+    ctx2.fillRect(x - 1, y - 1, w + 2, h + 2);
+  }
+  function inkSplatSprite(r) {
+    return discSprite(r, "#0a0614", 0.35, "#1a1030");
+  }
+  function bands(F) {
+    const H = F.H;
+    const bars = F.cam?.bars ?? 0;
+    const barH = Math.round(H * 0.11 * bars);
+    return { barH, topH: Math.max(barH, 40), botH: Math.max(barH, 50) };
+  }
+  function drawFightScene(ctx2, F, B2) {
+    ensureIcons();
+    ctx2.save();
+    ctx2.globalAlpha = B2.hudIn;
+    drawPullZone(ctx2, F, B2);
+    drawCrankRing(ctx2, F, B2);
+    if (B2.event) B2.event.drawHud(ctx2);
+    drawInk(ctx2, F);
+    ctx2.restore();
+  }
+  function drawFightBands(ctx2, F, B2) {
+    ensureIcons();
+    const W = F.W, H = F.H;
+    const { barH, topH, botH } = bands(F);
+    ctx2.save();
+    ctx2.globalAlpha = B2.hudIn;
+    if (barH < 30) {
+      ctx2.fillStyle = rgba("#05080c", 0.55);
+      ctx2.fillRect(0, barH, W, topH - barH);
+      ctx2.fillRect(0, H - botH, W, botH - barH);
+    }
+    const ty = Math.round(topH / 2);
+    drawNamePlate(ctx2, F, 14, ty - 12);
+    drawStamina(ctx2, F, B2, W - 14, ty - 2);
+    drawStatus(ctx2, F, B2, W / 2, ty - 6);
+    const by = H - Math.round(botH / 2) - 2;
+    const bw = Math.min(380, Math.round(W * 0.42));
+    drawProgressBar(ctx2, F, B2, Math.round(W / 2 - bw / 2), by - 6, bw);
+    drawTensionDial(ctx2, F, B2, W - 64, H - 8);
+    drawAnglerCam(ctx2, F, B2, 10, H - botH - 112);
+    drawPrompt(ctx2, F, B2, W / 2, H - botH - 18);
+    ctx2.restore();
+  }
+  function drawNamePlate(ctx2, F, x, y) {
+    const sp = F.sp, rar = RARITY[sp.rarity] || RARITY.common;
+    const name = sp.name;
+    drawText(ctx2, name, x, y, { color: rar.color, outline: INK, scale: 2 });
+    const sx = x + measureText(name, "normal", 2) + 8;
+    for (let i = 0; i < 5; i++) {
+      const ic = getUiIcon(i < rar.stars ? "star" : "star_empty");
+      if (ic) ctx2.drawImage(ic, sx + i * 10, y + 2);
+    }
+    drawText(ctx2, rar.name.toUpperCase() + (F.fish?.rec?.giant ? "  GIANT!" : ""), sx, y + 14, { font: "small", color: rar.color, outline: INK });
+  }
+  function drawStamina(ctx2, F, B2, right, y) {
+    const w = 150, h = 8, x = right - w;
+    drawText(ctx2, "STAMINA", x, y - 9, { font: "small", color: "#ffd2b0", outline: INK });
+    const pct = Math.round(B2.stamina * 100) + "%";
+    drawText(ctx2, pct, right, y - 9, { font: "small", color: "#ffffff", outline: INK, align: "right" });
+    const shake = B2.counter > 0.5 && B2.surging ? Math.round(Math.sin(F.t * 60) * 1) : 0;
+    box(ctx2, x + shake, y, w, h, "#2a1214");
+    const fw = Math.round(w * clamp01(B2.stamina));
+    const col = B2.exhausted ? "#ffe27a" : B2.stamina < 0.3 ? "#ff5a4a" : "#ff8a3a";
+    ctx2.fillStyle = col;
+    ctx2.fillRect(x + shake, y, fw, h);
+    ctx2.fillStyle = rgba("#ffffff", 0.35);
+    ctx2.fillRect(x + shake, y, fw, 2);
+    ctx2.fillStyle = rgba("#000000", 0.25);
+    ctx2.fillRect(x + shake, y + h - 2, fw, 2);
+    ctx2.fillStyle = rgba(INK, 0.6);
+    for (let i = 1; i < 10; i++) ctx2.fillRect(x + shake + Math.round(w * i / 10), y, 1, h);
+    const fic = getUiIcon("fish");
+    if (fic) ctx2.drawImage(fic, x - fic.width - 4, y - 1);
+  }
+  function drawStatus(ctx2, F, B2, cx, y) {
+    let text = "REEL IT IN!", col = "#9affb8";
+    const tr = B2.trick;
+    if (B2.event) {
+      text = B2.event.title;
+      col = B2.event.color || "#ffe27a";
+    } else if (B2.mode === "hookset") {
+      text = "FISH ON!";
+      col = "#ffffff";
+    } else if (B2.exhausted) {
+      text = "IT'S EXHAUSTED!";
+      col = "#ffe27a";
+    } else if (tr?.kind === "jump") {
+      text = "IT JUMPED!";
+      col = "#9ad8ff";
+    } else if (tr?.kind === "wrap") {
+      text = "TANGLED!";
+      col = "#ffe27a";
+    } else if (tr?.kind === "spit") {
+      text = "INCOMING!";
+      col = "#ff9a8a";
+    } else if (B2.mode === "tele") {
+      text = Math.floor(F.t * 8) % 2 ? "! GET READY !" : "!  GET READY  !";
+      col = "#ffd25a";
+    } else if (B2.surging) {
+      text = B2.inZone ? "PULL! PULL!" : "IT'S PULLING!";
+      col = B2.inZone ? "#9affb8" : "#ff8a6a";
+    }
+    drawText(ctx2, text, cx, y, { align: "center", color: col, outline: INK, scale: 2 });
+  }
+  function drawProgressBar(ctx2, F, B2, x, y, w) {
+    const h = 12, t = F.t;
+    const p = clamp01(B2.progress), ghost = clamp01(B2.ghost);
+    brassFrame(ctx2, x, y, w, h);
+    ctx2.fillStyle = "#0e1a28";
+    ctx2.fillRect(x, y, w, h);
+    ctx2.fillStyle = "#13263a";
+    for (let i = 0; i < w; i += 6) ctx2.fillRect(x + i, y + 2, 3, h - 4);
+    if (ghost > p + 2e-3) {
+      ctx2.fillStyle = Math.floor(t * 12) % 2 ? "#ff5a4a" : "#c83a2a";
+      ctx2.fillRect(x + Math.round(w * p), y, Math.max(1, Math.round(w * (ghost - p))), h);
+    }
+    const fw = Math.round(w * p);
+    const ramp3 = ["#2a9ad8", "#2ab8d8", "#3ad8b8", "#5ae89a", "#8aff7a", "#c8ff6a", "#ffe85a", "#ffd23a"];
+    for (let i = 0; i < fw; i += 4) {
+      const k = i / w;
+      ctx2.fillStyle = ramp3[Math.min(ramp3.length - 1, Math.floor(k * ramp3.length))];
+      ctx2.fillRect(x + i, y, Math.min(4, fw - i), h);
+    }
+    if (fw > 0) {
+      ctx2.fillStyle = rgba("#ffffff", 0.4);
+      ctx2.fillRect(x, y + 1, fw, 2);
+      ctx2.fillStyle = rgba("#000000", 0.22);
+      ctx2.fillRect(x, y + h - 3, fw, 3);
+      ctx2.fillStyle = rgba("#ffffff", 0.18);
+      const off = Math.floor(t * 40) % 14;
+      for (let sx = -14 + off; sx < fw; sx += 14) {
+        for (let r = 0; r < h; r++) {
+          const px = sx + r * 0.5;
+          if (px >= 0 && px + 3 <= fw) ctx2.fillRect(x + Math.round(px), y + r, 3, 1);
+        }
+      }
+      ctx2.fillStyle = "#ffffff";
+      ctx2.fillRect(x + fw - 1, y, 2, h);
+      if (B2.reelRate > 0.01 && Math.random() < 0.5) F.fx.sparks(x + fw, y + h / 2, 1, { speed: [20, 60], g: 80, life: 0.4 });
+    }
+    for (const e of B2.events) {
+      const ex = x + Math.round(w * e.at);
+      ctx2.fillStyle = INK;
+      ctx2.fillRect(ex - 2, y - 7, 5, 4);
+      ctx2.fillStyle = e.done ? "#ffe27a" : "#9aa8b8";
+      ctx2.fillRect(ex - 1, y - 6, 3, 2);
+    }
+    medallion(ctx2, x - 12, y + h / 2, "fish");
+    medallion(ctx2, x + w + 12, y + h / 2, "hook");
+    const fic = getUiIcon("fish");
+    if (fic) {
+      const mx = x + Math.round(w * p) - Math.floor(fic.width / 2);
+      const bob = Math.round(Math.sin(t * 10) * (B2.surging ? 1.5 : 0.5));
+      ctx2.drawImage(fic, mx, y - fic.height - 3 + bob);
+    }
+    const m = Math.max(0, B2.lineLen * (1 - B2.progress));
+    drawText(ctx2, `${m.toFixed(1)} m`, x, y + h + 4, { font: "small", color: "#cfe8ff", outline: INK });
+    drawText(ctx2, `${Math.round(p * 100)}%`, x + w, y + h + 4, { font: "small", color: "#ffffff", outline: INK, align: "right" });
+    drawText(ctx2, "CATCH", x + w / 2, y + h + 4, { font: "small", color: "#ffe08a", outline: INK, align: "center" });
+  }
+  function medallion(ctx2, cx, cy, icon) {
+    cx = Math.round(cx);
+    cy = Math.round(cy);
+    const r = 9;
+    for (let yy = -r; yy <= r; yy++) for (let xx = -r; xx <= r; xx++) {
+      const d = Math.hypot(xx, yy);
+      if (d > r + 0.3) continue;
+      ctx2.fillStyle = d > r - 1 ? INK : d > r - 2.5 ? yy < 0 ? "#ffe08a" : "#a86a1a" : "#1a3048";
+      ctx2.fillRect(cx + xx, cy + yy, 1, 1);
+    }
+    const ic = getUiIcon(icon);
+    if (ic) ctx2.drawImage(ic, cx - Math.floor(ic.width / 2), cy - Math.floor(ic.height / 2));
+  }
+  function drawTensionDial(ctx2, F, B2, cx, cy) {
+    const R = 34, t = F.t;
+    const T = B2.tension;
+    const danger = T > 0.88;
+    const shake = danger ? Math.round(Math.sin(t * 70) * 1.5) : 0;
+    cx += shake;
+    for (let y = -R - 3; y <= 0; y++) for (let x = -R - 3; x <= R + 3; x++) {
+      const d = Math.hypot(x, y);
+      if (d > R + 3.3) continue;
+      let col;
+      if (d > R + 2) col = INK;
+      else if (d > R) col = y < -R * 0.6 ? "#ffe08a" : "#c8903a";
+      else col = danger && Math.floor(t * 10) % 2 ? "#3a1414" : "#101c2a";
+      ctx2.fillStyle = col;
+      ctx2.fillRect(cx + x, cy + y, 1, 1);
+    }
+    const n = 60;
+    for (let i = 0; i <= n; i++) {
+      const k = i / n;
+      const ang2 = Math.PI + k * Math.PI;
+      const col = k < 0.15 ? "#6ab8ff" : k < 0.7 ? "#7dff9a" : k < 0.88 ? "#ffd25a" : "#ff4a3a";
+      const lit = k <= T;
+      ctx2.fillStyle = lit ? col : rgba(col, 0.25);
+      for (let r = R - 6; r <= R - 2; r += 2) ctx2.fillRect(Math.round(cx + Math.cos(ang2) * r), Math.round(cy + Math.sin(ang2) * r), 2, 2);
+    }
+    ctx2.fillStyle = "#d8e8f8";
+    for (let i = 0; i <= 4; i++) {
+      const ang2 = Math.PI + i / 4 * Math.PI;
+      ctx2.fillRect(Math.round(cx + Math.cos(ang2) * (R - 10)), Math.round(cy + Math.sin(ang2) * (R - 10)), 1, 1);
+    }
+    if (B2.snapT > 0) {
+      const k = clamp01(B2.snapT / B2.grace);
+      ctx2.fillStyle = "#ff3a2a";
+      for (let i = 0; i <= Math.round(40 * k); i++) {
+        const ang2 = Math.PI + i / 40 * Math.PI;
+        ctx2.fillRect(Math.round(cx + Math.cos(ang2) * (R + 2)), Math.round(cy + Math.sin(ang2) * (R + 2)), 2, 2);
+      }
+    }
+    const wob = T > 0.7 ? Math.sin(t * 55) * 0.05 * (T - 0.7) * 4 : 0;
+    const ang = Math.PI + clamp(T, 0, 1.08) * Math.PI + wob;
+    const L = R - 5;
+    for (let i = 0; i <= L; i++) {
+      const x = Math.round(cx + Math.cos(ang) * i), y = Math.round(cy + Math.sin(ang) * i);
+      ctx2.fillStyle = INK;
+      ctx2.fillRect(x - 1, y - 1, 3, 3);
+    }
+    for (let i = 0; i <= L; i++) {
+      const x = Math.round(cx + Math.cos(ang) * i), y = Math.round(cy + Math.sin(ang) * i);
+      ctx2.fillStyle = i > L - 6 ? "#ff5a4a" : "#ffffff";
       ctx2.fillRect(x, y, 1, 1);
-      px = x;
-      py = y;
+    }
+    ctx2.fillStyle = INK;
+    ctx2.fillRect(cx - 3, cy - 3, 7, 4);
+    ctx2.fillStyle = "#ffe08a";
+    ctx2.fillRect(cx - 2, cy - 2, 5, 2);
+    drawText(ctx2, "TENSION", cx, cy - 13, { font: "small", align: "center", color: danger ? "#ff8a7a" : "#cfe8ff", outline: INK });
+    if (danger && Math.floor(t * 6) % 2) drawText(ctx2, "!", cx, cy - R - 16, { align: "center", color: "#ff5a4a", outline: INK, scale: 2 });
+  }
+  function drawPullZone(ctx2, F, B2) {
+    const f = F.fish;
+    if (!f || B2.event || B2.mode === "hookset" || B2.exhausted) return;
+    const tele = B2.mode === "tele";
+    if (!tele && !B2.surging) return;
+    const [sx, sy] = F.toScreen(f.x, f.y);
+    const t = F.t;
+    const R = F.zoneRadius();
+    const za = B2.pullDir + Math.PI;
+    const inZ = B2.inZone && !tele;
+    const blink = tele && Math.floor(t * 10) % 2;
+    const pa = B2.pullDir;
+    const al = R * 0.75;
+    for (let i = 10; i < al; i += 2) {
+      const k = i / al;
+      ctx2.fillStyle = rgba("#ff5a4a", 0.35 + 0.5 * k);
+      ctx2.fillRect(Math.round(sx + Math.cos(pa) * i), Math.round(sy + Math.sin(pa) * i), 2, 2);
+    }
+    arrowHead(ctx2, sx + Math.cos(pa) * al, sy + Math.sin(pa) * al, pa, "#ff5a4a", 5);
+    const span = 0.95;
+    const col = inZ ? "#9affb8" : tele ? "#ffe27a" : "#7dffb0";
+    const n = 36;
+    for (let i = 0; i <= n; i++) {
+      const a = za - span + i / n * span * 2;
+      const pulse = Math.sin(t * 10 - i * 0.4) > 0.3;
+      for (let r = R - 3; r <= R + 3; r += 2) {
+        if (!inZ && !pulse && r !== R - 1) continue;
+        ctx2.fillStyle = rgba(col, inZ ? 0.95 : blink ? 0.4 : 0.75);
+        ctx2.fillRect(Math.round(sx + Math.cos(a) * r), Math.round(sy + Math.sin(a) * r), 2, 2);
+      }
+    }
+    for (let k = 0; k < 3; k++) {
+      const r = R * 0.45 + (t * 40 + k * 10) % 30;
+      arrowHead(ctx2, sx + Math.cos(za) * r, sy + Math.sin(za) * r, za, rgba(col, 0.9 - k * 0.2), 4);
+    }
+    const lx = sx + Math.cos(za) * (R + 18), ly = sy + Math.sin(za) * (R + 18);
+    drawText(ctx2, inZ ? "PULL!" : "PULL HERE", lx, ly - 4, { align: "center", color: col, outline: INK, scale: inZ ? 2 : 1 });
+    if (inZ && Math.random() < 0.5) F.fx.sparkle(sx + Math.cos(za) * R + (Math.random() - 0.5) * 30, sy + Math.sin(za) * R + (Math.random() - 0.5) * 30, "#9affb8");
+  }
+  function arrowHead(ctx2, x, y, a, color, s) {
+    ctx2.fillStyle = color;
+    for (let i = 0; i < s; i++) {
+      const bx = x - Math.cos(a) * i, by = y - Math.sin(a) * i;
+      const px = -Math.sin(a), py = Math.cos(a);
+      for (let j = -i; j <= i; j++) ctx2.fillRect(Math.round(bx + px * j * 0.8), Math.round(by + py * j * 0.8), 2, 2);
     }
   }
-  var PHASES = {
-    tension: TensionPhase,
-    trace: TracePhase,
-    mash: MashPhase,
-    timing: TimingPhase,
-    dodge: DodgePhase,
-    unwrap: UnwrapPhase,
-    net: NetPhase
+  function drawCrankRing(ctx2, F, B2) {
+    const cr = F.crank, t = F.t;
+    const active = cr.active;
+    const cx = active ? cr.cx : F.input.x, cy = active ? cr.cy : F.input.y;
+    const R = Math.round(clamp(cr.radius, 12, 46));
+    const p = cr.power;
+    const good = B2.surging && B2.inZone;
+    const bad = B2.surging && !B2.inZone && p > 0.3;
+    const col = cr.stun > 0 ? "#ff8a7a" : good ? "#9affb8" : bad ? "#ffb07a" : p > 0.8 ? "#ffe27a" : p > 0.2 ? "#7ad8ff" : "#cfe8ff";
+    if (!active) {
+      const gr = 18;
+      for (let i = 0; i < 16; i++) {
+        const a = i / 16 * TAU + t * 5;
+        ctx2.fillStyle = rgba("#ffffff", 0.08 + i / 16 * 0.55);
+        ctx2.fillRect(Math.round(cx + Math.cos(a) * gr) - 1, Math.round(cy + Math.sin(a) * gr) - 1, 2, 2);
+      }
+      const ha = t * 5 + TAU;
+      arrowHead(ctx2, cx + Math.cos(ha) * gr, cy + Math.sin(ha) * gr, ha + Math.PI / 2, "#ffffff", 3);
+      return;
+    }
+    const n = Math.max(24, R * 3);
+    for (let i = 0; i < n; i++) {
+      const a = i / n * TAU;
+      ctx2.fillStyle = rgba(col, i % 2 ? 0.35 : 0.7);
+      ctx2.fillRect(Math.round(cx + Math.cos(a) * R), Math.round(cy + Math.sin(a) * R), 1, 1);
+    }
+    const ka = cr.spin;
+    const trail = clamp(p * 2.2, 0.2, 2.6) * (cr.dir || 1);
+    for (let i = 0; i < 18; i++) {
+      const a = ka - i / 18 * trail;
+      ctx2.fillStyle = rgba(col, (1 - i / 18) * 0.9);
+      ctx2.fillRect(Math.round(cx + Math.cos(a) * R) - 1, Math.round(cy + Math.sin(a) * R) - 1, 3, 3);
+    }
+    const kx = cx + Math.cos(ka) * R, ky = cy + Math.sin(ka) * R;
+    const steps = Math.ceil(R);
+    for (let i = 0; i <= steps; i += 2) {
+      ctx2.fillStyle = rgba("#e8f4ff", 0.5);
+      ctx2.fillRect(Math.round(cx + Math.cos(ka) * i), Math.round(cy + Math.sin(ka) * i), 1, 1);
+    }
+    ctx2.fillStyle = INK;
+    ctx2.fillRect(Math.round(cx) - 2, Math.round(cy) - 2, 5, 5);
+    ctx2.fillStyle = "#c8d8e8";
+    ctx2.fillRect(Math.round(cx) - 1, Math.round(cy) - 1, 3, 3);
+    ctx2.fillStyle = INK;
+    ctx2.fillRect(Math.round(kx) - 3, Math.round(ky) - 3, 7, 7);
+    ctx2.fillStyle = "#e04a3a";
+    ctx2.fillRect(Math.round(kx) - 2, Math.round(ky) - 2, 5, 5);
+    ctx2.fillStyle = "#ffa08a";
+    ctx2.fillRect(Math.round(kx) - 2, Math.round(ky) - 2, 2, 1);
+    if (p > 0.55 && Math.random() < p * 0.8) {
+      const tx = -Math.sin(ka) * (cr.dir || 1), ty = Math.cos(ka) * (cr.dir || 1);
+      F.fx.sparks(kx, ky, 1 + Math.floor(p * 2), { dir: Math.atan2(ty, tx), spread: 0.6, speed: [40, 120], g: 160, colors: good ? ["#9affb8", "#ffffff", "#d8ffe0"] : void 0 });
+    }
+    const rev = cr.speed;
+    drawText(ctx2, `x${rev.toFixed(1)}`, cx, cy + R + 6, { align: "center", font: "small", color: col, outline: INK });
+  }
+  function drawPrompt(ctx2, F, B2, cx, y) {
+    let text, col = "#ffffff", flash = false;
+    const cr = F.crank, tr = B2.trick;
+    if (B2.event) text = B2.event.prompt;
+    else if (B2.tension > 0.88) {
+      text = "EASE OFF! Stop cranking!";
+      col = "#ff8a7a";
+      flash = true;
+    } else if (tr?.kind === "jump") {
+      text = "IT JUMPED! Stop reeling until it lands!";
+      col = "#9ad8ff";
+    } else if (tr?.kind === "wrap") {
+      text = `${tr.dir > 0 ? "{crank_cw}" : "{crank_ccw}"} Circle ${tr.dir > 0 ? "CLOCKWISE" : "COUNTER-CLOCKWISE"} to untangle!`;
+      col = "#ffe27a";
+    } else if (tr?.kind === "spit") text = "Keep reeling - don't get hit!";
+    else if (B2.mode === "hookset") text = "{crank} Circle your mouse to REEL!";
+    else if (B2.progress < -0.08) {
+      text = "Line running out! Pull on the GREEN side!";
+      col = "#ff8a6a";
+      flash = true;
+    } else if (B2.slackT > 0.6) {
+      text = "Slack line! Keep reeling!";
+      col = "#9ad8ff";
+      flash = true;
+    } else if (B2.exhausted) {
+      text = "{crank} Crank FAST - it is exhausted!";
+      col = "#ffe27a";
+    } else if (B2.mode === "tele") {
+      text = "It's about to pull - get on the GREEN side!";
+      col = "#ffd25a";
+    } else if (B2.surging && !B2.inZone) {
+      text = "{crank} Circle on the GREEN side to pull against it!";
+      col = "#9affb8";
+    } else if (B2.surging) {
+      text = "{mouse_hold} Hold to YANK!  {crank} Keep circling!";
+      col = "#9affb8";
+    } else if (!cr.active) text = "{crank} Circle your mouse to REEL";
+    else text = "{crank} Reeling! Faster circles = faster reel";
+    if (!text) return;
+    if (flash && Math.floor(F.t * 6) % 2) col = "#ffffff";
+    const w = measureText(text) + 16;
+    ctx2.fillStyle = rgba("#05080c", 0.6);
+    ctx2.fillRect(Math.round(cx - w / 2), Math.round(y - 3), Math.round(w), 13);
+    drawText(ctx2, text, cx, y, { align: "center", color: col, outline: INK });
+  }
+  function drawInk(ctx2, F) {
+    for (const s of F.splats) {
+      const k = s.t / s.max;
+      const a = s.t < 0.15 ? s.t / 0.15 : 1 - Math.max(0, (k - 0.6) / 0.4);
+      const r = Math.round(s.r * (s.t < 0.15 ? 0.6 + s.t / 0.15 * 0.4 : 1));
+      const spr = inkSplatSprite(r);
+      ctx2.globalAlpha = clamp01(a) * 0.92;
+      ctx2.drawImage(spr, Math.round(s.x - r), Math.round(s.y - r + k * 12));
+      for (const d of s.drips) {
+        ctx2.fillStyle = "#0a0614";
+        ctx2.fillRect(Math.round(s.x + d.x), Math.round(s.y + r * 0.6), d.w, Math.round(d.l * k * 1.5 + 2));
+      }
+      ctx2.globalAlpha = 1;
+    }
+  }
+  function drawAngler(ctx2, F, x, y, o = {}) {
+    const look = F.game.state?.character;
+    try {
+      return drawCharacter(ctx2, x, y, { pose: o.pose || "idle", t: o.t ?? F.t, facing: o.facing ?? 1, scale: o.scale || 1, look, fish: o.fish });
+    } catch (e) {
+      if (!F.charErr) {
+        F.charErr = true;
+        console.warn("drawCharacter failed", e);
+      }
+      return null;
+    }
+  }
+  function drawAnglerCam(ctx2, F, B2, x, y) {
+    const w = 112, h = 104, t = F.t;
+    x = Math.round(x);
+    y = Math.round(y);
+    brassFrame(ctx2, x, y, w, h);
+    ctx2.save();
+    ctx2.beginPath();
+    ctx2.rect(x, y, w, h);
+    ctx2.clip();
+    const biome = F.world.biome;
+    const sky = biome === "abyss" ? ["#0a1028", "#141c3a", "#1e2a50"] : biome === "junkyard" ? ["#3a2a3a", "#6a4a4a", "#a8785a"] : ["#5ab8f0", "#8ad0f8", "#c8ecff"];
+    const sea = biome === "abyss" ? "#0a1a3a" : biome === "junkyard" ? "#2a4a4a" : "#2a7ab8";
+    const wl = y + h - 22;
+    for (let i = 0; i < wl - y; i++) {
+      const k = i / (wl - y);
+      ctx2.fillStyle = sky[Math.min(2, Math.floor(k * 3))];
+      ctx2.fillRect(x, y + i, w, 1);
+    }
+    ctx2.fillStyle = rgba("#ffffff", biome === "abyss" ? 0.15 : 0.7);
+    const cxo = t * 4 % (w + 40);
+    ctx2.fillRect(Math.round(x + w - cxo), y + 12, 18, 3);
+    ctx2.fillRect(Math.round(x + w - cxo + 4), y + 10, 9, 2);
+    ctx2.fillStyle = sea;
+    ctx2.fillRect(x, wl, w, h - (wl - y));
+    ctx2.fillStyle = rgba("#ffffff", 0.6);
+    for (let i = 0; i < w; i += 7) ctx2.fillRect(x + (i + Math.floor(t * 12)) % w, wl + Math.round(Math.sin(t * 3 + i) * 0.8), 3, 1);
+    const hx = x + 14, hy = wl - 4, hw = 64;
+    const bob = Math.round(Math.sin(t * 2.2) * 1);
+    ctx2.fillStyle = "#3a1a0e";
+    ctx2.fillRect(hx - 1, hy - 1 + bob, hw + 2, 9);
+    ctx2.fillStyle = F.game.state?.character?.boat || "#c8583a";
+    ctx2.fillRect(hx, hy + bob, hw, 7);
+    ctx2.fillStyle = rgba("#ffffff", 0.3);
+    ctx2.fillRect(hx, hy + bob, hw, 1);
+    ctx2.fillStyle = rgba("#000000", 0.25);
+    ctx2.fillRect(hx + 4, hy + 4 + bob, hw - 8, 1);
+    let pose = "reel";
+    if (B2.event?.name === "mash" || F.poseHold?.pose === "yank") pose = "yank";
+    else if (F.input.down || B2.surging && B2.inZone) pose = "pull";
+    else if (!F.crank.active) pose = B2.surging ? "pull" : "idle";
+    const anchors = drawAngler(ctx2, F, hx + 26, hy + bob, { pose, t, facing: 1 });
+    const rt = anchors?.rodTip || [hx + 44, hy - 26];
+    const ex = x + w + 2, ey = y + h - 4;
+    const T = B2.tension;
+    const sag = (1 - clamp01(T)) * 14;
+    const col = T > 0.88 ? "#ff6a5a" : T > 0.7 ? "#ffd25a" : "#e8f4ff";
+    ctx2.fillStyle = col;
+    const n = 40;
+    const vib = T > 0.8 ? Math.sin(t * 60) * 1.2 : 0;
+    for (let i = 0; i <= n; i++) {
+      const k = i / n;
+      const lx = lerp(rt[0], ex, k), ly = lerp(rt[1], ey, k) + Math.sin(k * Math.PI) * (sag + vib);
+      ctx2.fillRect(Math.round(lx), Math.round(ly), 1, 1);
+    }
+    ctx2.restore();
+    drawText(ctx2, "YOU", x + 3, y + 3, { font: "small", color: "#ffffff", outline: INK });
+    if (Math.floor(t * 2) % 2) {
+      ctx2.fillStyle = "#ff3a3a";
+      ctx2.fillRect(x + w - 8, y + 3, 4, 4);
+    }
+    drawText(ctx2, "LIVE", x + w - 11, y + 3, { font: "small", color: "#ffffff", outline: INK, align: "right" });
+  }
+
+  // src/fishing/cinematics.js
+  var OUT8 = [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]];
+  function drawFancyText(ctx2, text, x, y, scale, o = {}) {
+    const fill = o.fill || "#ffe27a", light = o.light || "#fffbe0", dark = o.dark || "#c8781a";
+    const outline = o.outline || "#2a0e04", ow = o.ow ?? Math.max(1, Math.round(scale * 0.5));
+    const h = 7 * scale;
+    if (o.align === "center") x -= Math.floor(measureText(text, "normal", scale) / 2);
+    x = Math.round(x);
+    y = Math.round(y);
+    drawText(ctx2, text, x + ow + 1, y + ow + 2, { scale, color: o.shadow || "rgba(10,6,20,0.55)" });
+    for (const [dx, dy] of OUT8) drawText(ctx2, text, x + dx * ow, y + dy * ow, { scale, color: outline });
+    drawText(ctx2, text, x, y, { scale, color: fill });
+    ctx2.save();
+    ctx2.beginPath();
+    ctx2.rect(x - 4, y - 4, 4e3, Math.round(h * 0.42) + 4);
+    ctx2.clip();
+    drawText(ctx2, text, x, y, { scale, color: light });
+    ctx2.restore();
+    ctx2.save();
+    ctx2.beginPath();
+    ctx2.rect(x - 4, y + Math.round(h * 0.72), 4e3, h);
+    ctx2.clip();
+    drawText(ctx2, text, x, y, { scale, color: dark });
+    ctx2.restore();
+  }
+  function drawRibbon(ctx2, cx, y, text, color = "#c8283a", o = {}) {
+    const w = Math.round(measureText(text, "normal", o.scale || 1) + 28), h = o.h || 15;
+    const x = Math.round(cx - w / 2);
+    y = Math.round(y);
+    const dark = o.dark || "#7a1020", light = o.light || "#ff6a6a";
+    ctx2.fillStyle = dark;
+    for (let i = 0; i < h; i++) {
+      const notch = Math.abs(i - (h >> 1));
+      ctx2.fillRect(x - 10 + notch * 0.5, y + 3 + i, 12 - notch * 0.5, 1);
+      ctx2.fillRect(x + w - 2, y + 3 + i, 12 - notch * 0.5, 1);
+    }
+    ctx2.fillStyle = "#1a0608";
+    ctx2.fillRect(x - 1, y - 1, w + 2, h + 2);
+    ctx2.fillStyle = color;
+    ctx2.fillRect(x, y, w, h);
+    ctx2.fillStyle = light;
+    ctx2.fillRect(x, y, w, 1);
+    ctx2.fillStyle = dark;
+    ctx2.fillRect(x, y + h - 2, w, 2);
+    ctx2.fillStyle = rgba("#ffffff", 0.25);
+    ctx2.fillRect(x + 2, y + 2, w - 4, 1);
+    drawText(ctx2, text, cx, y + Math.round((h - 7 * (o.scale || 1)) / 2), { align: "center", color: o.color || "#fff6e0", outline: dark, scale: o.scale || 1 });
+  }
+  function drawRays(ctx2, x, y, r, n, t, color, alpha, width = 0.11) {
+    if (alpha <= 0.01) return;
+    ctx2.save();
+    ctx2.globalCompositeOperation = "lighter";
+    for (let i = 0; i < n; i++) {
+      const a = i / n * TAU + t;
+      const w = width * (i % 2 ? 0.6 : 1);
+      ctx2.fillStyle = rgba(color, alpha * (i % 2 ? 0.6 : 1));
+      ctx2.beginPath();
+      ctx2.moveTo(x, y);
+      ctx2.lineTo(x + Math.cos(a - w) * r, y + Math.sin(a - w) * r);
+      ctx2.lineTo(x + Math.cos(a + w) * r, y + Math.sin(a + w) * r);
+      ctx2.closePath();
+      ctx2.fill();
+    }
+    ctx2.restore();
+  }
+  function drawGlow(ctx2, x, y, r, color, a) {
+    if (a <= 0.01) return;
+    const s = glowSprite(r, color);
+    ctx2.save();
+    ctx2.globalCompositeOperation = "lighter";
+    ctx2.globalAlpha = a;
+    ctx2.drawImage(s, Math.round(x - r), Math.round(y - r));
+    ctx2.restore();
+  }
+  var DUR = { fishon: 1.5, banner: 1.25, pop: 0.85, igotit: 2.7, snap: 1.9, escape: 2 };
+  var Titles = class {
+    constructor(F) {
+      this.F = F;
+      this.list = [];
+    }
+    add(kind, text, opts = {}) {
+      const it2 = { kind, text, t: 0, dur: opts.dur ?? DUR[kind] ?? 1, ...opts };
+      if (kind === "banner" || kind === "fishon" || kind === "igotit" || kind === "snap" || kind === "escape") {
+        this.list = this.list.filter((o) => o.kind === "pop" || kind === "banner" && o.kind !== "banner");
+      }
+      this.list.push(it2);
+      return it2;
+    }
+    banner(text, color = "#ffe27a", sub2 = "") {
+      return this.add("banner", text, { color, sub: sub2 });
+    }
+    pop(text, x, y, color = "#ffffff", opts = {}) {
+      if (this.list.filter((o) => o.kind === "pop").length > 5) this.list.splice(this.list.findIndex((o) => o.kind === "pop"), 1);
+      return this.add("pop", text, { x, y, color, scale: opts.scale || 1, ...opts });
+    }
+    clear() {
+      this.list.length = 0;
+    }
+    has(kind) {
+      return this.list.some((o) => o.kind === kind);
+    }
+    update(rdt) {
+      for (const it2 of this.list) {
+        it2.t += rdt;
+        if (it2.kind === "igotit") this.igotitFx(it2);
+      }
+      this.list = this.list.filter((it2) => it2.t < it2.dur);
+    }
+    igotitFx(it2) {
+      const F = this.F, fx = F.fx, W = F.W, H = F.H;
+      const cy = H * 0.3;
+      if (!it2.burst && it2.t > 0.12) {
+        it2.burst = true;
+        fx.confetti(W * 0.5, cy, 70, { spread: Math.PI, speed: [120, 320], life: 3.2, w: 60 });
+        fx.confetti(-4, H * 0.55, 30, { dir: -1, spread: 0.35, speed: [220, 380] });
+        fx.confetti(W + 4, H * 0.55, 30, { dir: -Math.PI + 1, spread: 0.35, speed: [220, 380] });
+        fx.lightStreaks(W * 0.5, cy, 22);
+        fx.stars(W * 0.5, cy, 24, { speed: [80, 220], g: 40, w: 90, h: 10 });
+        fx.shockwave(W * 0.5, cy + 10, 160, "#fff6c0", { life: 0.6 });
+        F.cam?.flash?.("#fff8e0", 0.6);
+      }
+      if (it2.t > 0.6 && it2.t < 2.2 && rng.chance(0.4)) fx.stars(W * 0.5 + rng.float(-150, 150), cy + rng.float(-20, 30), 1, { speed: [5, 20], g: 0 });
+      if (!it2.rain && it2.t > 0.9) {
+        it2.rain = true;
+        fx.confetti(W * 0.5, -10, 40, { dir: Math.PI / 2, spread: 1.3, speed: [20, 90], w: W * 0.45, g: 60, life: 2.4 });
+      }
+    }
+    draw(ctx2) {
+      for (const it2 of this.list) {
+        switch (it2.kind) {
+          case "fishon":
+            this.drawFishOn(ctx2, it2);
+            break;
+          case "banner":
+            this.drawBanner(ctx2, it2);
+            break;
+          case "pop":
+            this.drawPop(ctx2, it2);
+            break;
+          case "igotit":
+            this.drawIGotIt(ctx2, it2);
+            break;
+          case "snap":
+            this.drawSnap(ctx2, it2);
+            break;
+          case "escape":
+            this.drawEscape(ctx2, it2);
+            break;
+          default:
+            break;
+        }
+      }
+    }
+    drawFishOn(ctx2, it2) {
+      const W = this.F.W, H = this.F.H, t = it2.t;
+      const a = clamp01((it2.dur - t) * 4);
+      const s = Math.max(1, Math.round(lerp(7, 4, ease.outBack(clamp01(t * 5)))));
+      const cy = Math.round(H * 0.24);
+      ctx2.globalAlpha = a;
+      drawRays(ctx2, W / 2, cy + 14, 220, 14, t * 0.8, "#ffffff", 0.08 * a);
+      const jx = t < 0.25 ? rng.int(-2, 2) : 0;
+      drawFancyText(ctx2, it2.text, W / 2 + jx, cy - 7 * s / 2, s, { align: "center", fill: "#ffffff", light: "#ffffff", dark: "#b8d8f0", outline: "#0b1622" });
+      if (it2.sub) {
+        const k = ease.outCubic(clamp01((t - 0.2) * 4));
+        const sx = lerp(-200, W / 2, k);
+        drawRibbon(ctx2, sx, cy + 26, it2.sub, it2.subColor || "#2a5aa8", { dark: "#0b1a3a", light: "#6aa8ff" });
+      }
+      ctx2.globalAlpha = 1;
+    }
+    drawBanner(ctx2, it2) {
+      const W = this.F.W, H = this.F.H, t = it2.t;
+      const a = clamp01((it2.dur - t) * 5);
+      const k = ease.outBack(clamp01(t * 6));
+      const cy = Math.round(H * 0.2);
+      const x = lerp(W + 200, W / 2, k);
+      ctx2.globalAlpha = a;
+      const bw = Math.round(measureText(it2.text, "normal", 3) + 40);
+      ctx2.fillStyle = rgba("#0b1622", 0.75);
+      for (let i = 0; i < 30; i++) ctx2.fillRect(Math.round(x - bw / 2 + (30 - i) * 0.4), cy - 6 + i, bw, 1);
+      ctx2.fillStyle = it2.color;
+      ctx2.fillRect(Math.round(x - bw / 2), cy - 7, bw, 1);
+      ctx2.fillRect(Math.round(x - bw / 2 - 12), cy + 24, bw, 1);
+      drawFancyText(ctx2, it2.text, x, cy, 3, { align: "center", fill: it2.color, light: "#ffffff", dark: shadeOf(it2.color), outline: "#0b1622", ow: 1 });
+      if (it2.sub) drawText(ctx2, it2.sub, x, cy + 28, { align: "center", color: "#ffffff", outline: "#0b1622" });
+      ctx2.globalAlpha = 1;
+    }
+    drawPop(ctx2, it2) {
+      const t = it2.t, k = t / it2.dur;
+      const s = it2.scale;
+      const pop = t < 0.1 ? 1 + (0.1 - t) * 6 : 1;
+      ctx2.globalAlpha = clamp01((1 - k) * 3);
+      const y = it2.y - ease.outCubic(clamp01(t * 2)) * 14;
+      drawText(ctx2, it2.text, it2.x, y, { align: "center", color: it2.color, outline: "#0b1622", scale: Math.max(1, Math.round(s * pop)) });
+      ctx2.globalAlpha = 1;
+    }
+    drawIGotIt(ctx2, it2) {
+      const F = this.F, W = F.W, H = F.H, t = it2.t;
+      const aIn = clamp01(t * 5) * clamp01((it2.dur - t) * 2.2);
+      const cx = W / 2, cy = Math.round(H * 0.3);
+      const scale = W < 700 ? 4 : 6;
+      drawRays(ctx2, cx, cy, Math.max(W, H) * 0.7, 18, t * 0.45, "#ffe27a", 0.08 * aIn, 0.09);
+      drawRays(ctx2, cx, cy, Math.max(W, H) * 0.5, 12, -t * 0.3, "#ffffff", 0.06 * aIn, 0.05);
+      drawGlow(ctx2, cx, cy, 90, "#fff2a8", 0.55 * aIn);
+      const text = it2.text;
+      let total = 0;
+      const widths = [];
+      for (const ch of text) {
+        const w = measureText(ch, "normal", scale) + scale;
+        widths.push(w);
+        total += w;
+      }
+      let x = cx - total / 2;
+      const h = 7 * scale;
+      const out = clamp01((it2.dur - t) * 3);
+      for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        const w = widths[i];
+        if (ch !== " ") {
+          const lt = t - 0.1 - i * 0.06;
+          if (lt > 0) {
+            const k = clamp01(lt / 0.42);
+            const drop = (1 - ease.outBounce(k)) * 140;
+            let sx = 1, sy = 1;
+            if (k >= 1) {
+              const e = Math.exp(-(lt - 0.42) * 6) * Math.sin((lt - 0.42) * 26) * 0.22;
+              sx = 1 + e;
+              sy = 1 - e;
+            }
+            const wave = k >= 1 ? Math.sin(t * 6 + i * 0.8) * 3 : 0;
+            const ly = cy - h / 2 - drop + wave - (1 - out) * 30;
+            ctx2.save();
+            ctx2.globalAlpha = out;
+            ctx2.translate(Math.round(x + w / 2), Math.round(ly + h));
+            ctx2.scale(sx, sy);
+            drawFancyText(ctx2, ch, -Math.round(w / 2), -h, scale, { fill: "#ffd23a", light: "#fff6b8", dark: "#e08a1a", outline: "#3a1206", ow: 3 });
+            ctx2.restore();
+            if (Math.abs(lt - 0.42) < 0.02 && !it2["land" + i]) {
+              it2["land" + i] = true;
+              F.fx.stars(x + w / 2, cy + h / 2, 3, { speed: [30, 80], g: 60 });
+              F.sfx("mash_pop", { pitch: 1 + i * 0.08, vol: 0.5 });
+            }
+          }
+        }
+        x += w;
+      }
+      if (it2.sub && t > 0.75) {
+        const k = ease.outBack(clamp01((t - 0.75) * 4));
+        ctx2.save();
+        ctx2.globalAlpha = out;
+        ctx2.translate(cx, cy + h / 2 + 22);
+        ctx2.scale(k, k);
+        drawRibbon(ctx2, 0, 0, it2.sub, it2.color || "#c8283a", { dark: it2.dark || "#7a1020", light: it2.light || "#ff6a6a" });
+        ctx2.restore();
+        if (it2.size) drawText(ctx2, it2.size, cx, cy + h / 2 + 44, { align: "center", color: "#ffffff", outline: "#0b1622", time: t });
+      }
+    }
+    drawSnap(ctx2, it2) {
+      const W = this.F.W, H = this.F.H, t = it2.t;
+      const a = clamp01((it2.dur - t) * 3);
+      const cy = Math.round(H * 0.28);
+      const s = W < 700 ? 4 : 6;
+      const j = t < 0.5 ? (0.5 - t) * 10 : 0;
+      ctx2.globalAlpha = a;
+      drawFancyText(ctx2, it2.text, W / 2 + rng.float(-j, j), cy - 7 * s / 2 + rng.float(-j, j), s, { align: "center", fill: "#ff5a4a", light: "#ffc8b8", dark: "#a81a1a", outline: "#2a0404", ow: 3 });
+      if (t > 0.05) {
+        const r = new SeedRng(it2.seed || 7);
+        ctx2.fillStyle = rgba("#ffffff", 0.9 * a);
+        let x = W / 2 - 70, y = cy - 4;
+        for (let i = 0; i < 14; i++) {
+          const nx = x + 10, ny = cy - 4 + (r.next() - 0.5) * 22;
+          const n = 10;
+          for (let k = 0; k <= n; k++) ctx2.fillRect(Math.round(lerp(x, nx, k / n)), Math.round(lerp(y, ny, k / n)), 2, 2);
+          x = nx;
+          y = ny;
+        }
+      }
+      if (it2.sub) drawText(ctx2, it2.sub, W / 2, cy + 30, { align: "center", color: "#ffd8d0", outline: "#2a0404" });
+      ctx2.globalAlpha = 1;
+    }
+    drawEscape(ctx2, it2) {
+      const W = this.F.W, H = this.F.H, t = it2.t;
+      const a = clamp01((it2.dur - t) * 3) * clamp01(t * 6);
+      const s = W < 700 ? 3 : 4;
+      const cy = Math.round(H * 0.26);
+      const text = it2.text;
+      let total = 0;
+      const ws = [];
+      for (const ch of text) {
+        const w = measureText(ch, "normal", s) + s;
+        ws.push(w);
+        total += w;
+      }
+      let x = W / 2 - total / 2;
+      ctx2.globalAlpha = a;
+      for (let i = 0; i < text.length; i++) {
+        const droop = Math.max(0, t - 0.5 - i * 0.05);
+        const y = cy + Math.min(14, droop * droop * 40) + Math.sin(t * 3 + i) * 1.5;
+        if (text[i] !== " ") drawFancyText(ctx2, text[i], x, y, s, { fill: "#a8c8e8", light: "#e8f4ff", dark: "#5a7898", outline: "#0b1622", ow: 2 });
+        x += ws[i];
+      }
+      if (it2.sub) drawText(ctx2, it2.sub, W / 2, cy + 7 * s + 14, { align: "center", color: "#d8e8f8", outline: "#0b1622" });
+      ctx2.globalAlpha = 1;
+    }
+  };
+  var SeedRng = class {
+    constructor(s) {
+      this.s = s >>> 0 || 1;
+    }
+    next() {
+      this.s = this.s * 1664525 + 1013904223 >>> 0;
+      return this.s / 4294967296;
+    }
+  };
+  function shadeOf(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    const r = (n >> 16 & 255) * 0.6, g = (n >> 8 & 255) * 0.6, b = (n & 255) * 0.6;
+    return "#" + [r, g, b].map((v) => Math.round(v).toString(16).padStart(2, "0")).join("");
+  }
+  var Finale = class {
+    constructor(F, fish) {
+      const g = F.game, w = F.world;
+      this.F = F;
+      this.fish = fish;
+      this.t = 0;
+      this.rt = 0;
+      this.st = 0;
+      this.surface = w.surfaceY !== null && w.surfaceY !== void 0 ? w.surfaceY : null;
+      this.hasBoat = !!(g.boat && this.surface !== null && g.boat.rodTip);
+      this.stage = "surface";
+      this.from = { x: fish.x, y: fish.y };
+      this.rays = 0;
+      this.portrait = 0;
+      fish.controlled = true;
+      fish.forceAngle = void 0;
+      F.cam?.release?.(2.4);
+      if (this.hasBoat) F.scrollTo(this.surface - F.H * 0.58);
+      F.setPose("pull");
+      F.sfx("reel", { pitch: 1.3 });
+      F.particles.speedLines(fish.x, fish.y, 14, { r0: 10, r1: 34, inward: true, color: "#ffffff" });
+    }
+    hands() {
+      const g = this.F.game, b = g.boat;
+      if (this.hasBoat) {
+        const h = b.anchorsWorld?.hands || (typeof b.hands === "function" ? b.hands() : null);
+        if (h) return [h[0], h[1]];
+        const rt = b.rodTip();
+        return [lerp(b.x ?? rt[0], rt[0], 0.35), (b.y ?? this.surface) - 26];
+      }
+      return this.F.toWorld(this.F.W / 2, this.F.H * 0.47);
+    }
+    go(stage) {
+      this.stage = stage;
+      this.st = 0;
+      this.enter(stage);
+    }
+    enter(stage) {
+      const F = this.F, f = this.fish, g = F.game;
+      switch (stage) {
+        case "erupt": {
+          F.setPose("yank");
+          F.cam?.slowmo?.(0.28, 1.5);
+          F.shake(7);
+          F.cam?.flash?.("#ffffff", 0.25);
+          const sy = this.surface ?? f.y;
+          if (this.surface !== null) {
+            F.particles.eruption(f.x, sy, 1.6);
+            F.particles.foam(f.x, sy, 14, { spread: 24, scale: 1.3 });
+          } else {
+            F.particles.shockwave(f.x, f.y, 40, "#ffffff");
+            F.particles.bubbles(f.x, f.y, 16);
+          }
+          F.particles.lightStreaks(f.x, sy - 4, 12, { dir: -Math.PI / 2, spread: 1.1 });
+          F.sfx("splash_big");
+          F.sfx("jump_out", { pitch: 0.9 });
+          f.feel("surprised", 4);
+          f.say("!!", 1.2);
+          this.p0 = [f.x, this.surface !== null ? sy + 2 : f.y];
+          this.flight = 1.05;
+          break;
+        }
+        case "catch": {
+          const [hx, hy] = this.hands();
+          f.x = hx;
+          f.y = hy;
+          f.forceAngle = void 0;
+          if (this.hasBoat) {
+            f.alpha = 0;
+            g.boat.holdFish = { compiled: f.c, variant: f.rec?.variant, species: f.sp?.id };
+          } else {
+            f.alpha = 0;
+            this.portraitOn = true;
+          }
+          F.setPose("hold");
+          F.particles.droplets(hx, hy, 18, { spread: Math.PI, speed: [30, 110], g: 260 });
+          F.particles.stars(hx, hy, 12, { speed: [30, 100] });
+          F.particles.shockwave(hx, hy, 26, "#fff6c0");
+          F.shake(4);
+          F.sfx("splash_small");
+          F.sfx("magic");
+          if (this.hasBoat) F.cam?.focus?.(hx, hy - 26, 1.85, 3);
+          break;
+        }
+        case "igotit": {
+          const sp = f.sp, rar = RARITY[sp.rarity] || RARITY.common;
+          F.titles.add("igotit", "I GOT IT!", {
+            sub: sp.name,
+            color: rar.dark,
+            light: rar.color,
+            dark: "#1a0a10",
+            size: f.rec?.sizeCm ? `${f.rec.sizeCm} cm  -  ${f.rec.weightKg} kg` : ""
+          });
+          F.setPose("hold");
+          const [hx, hy] = this.hands();
+          F.particles.coins(hx, hy - 6, 10, { speed: [100, 200], floor: this.surface !== null ? this.surface - 1 : null });
+          F.particles.confetti(hx, hy - 10, 26, { speed: [80, 200] });
+          F.particles.lightStreaks(hx, hy, 14);
+          F.sfx("timing_perfect");
+          break;
+        }
+        default:
+          break;
+      }
+    }
+    update(dt, rdt) {
+      const F = this.F, f = this.fish;
+      this.t += dt;
+      this.rt += rdt;
+      this.st += this.stage === "erupt" ? dt : rdt;
+      f.controlled = true;
+      switch (this.stage) {
+        case "surface": {
+          const ty = this.surface !== null ? this.surface + 8 + 4 * f.scale : f.y - 30;
+          f.x = damp(f.x, this.from.x + Math.sin(this.rt * 30) * 2, 10, dt);
+          f.y = damp(f.y, ty, 7, dt);
+          f.vx = Math.sin(this.rt * 9) * 60;
+          f.vy = -40;
+          f.wiggle = 0.8;
+          f.feel("scared", 0.5);
+          if (rng.chance(rdt * 20)) F.particles.bubbleTrail(f.x, f.y, 0, -80);
+          if (this.surface !== null && rng.chance(rdt * 10)) F.particles.foam(f.x, this.surface, 1, { spread: 8 });
+          F.cam?.focus?.(f.x, f.y - 20, 1.6, 3);
+          if (this.st > 0.55) this.go("erupt");
+          break;
+        }
+        case "erupt": {
+          const [hx, hy] = this.hands();
+          const u = clamp01(this.st / this.flight);
+          const p0 = this.p0;
+          const apex = Math.min(p0[1], hy) - (this.hasBoat ? 70 : 90) - 20 * f.scale;
+          const mx = (p0[0] + hx) / 2;
+          const x = (1 - u) * (1 - u) * p0[0] + 2 * (1 - u) * u * mx + u * u * hx;
+          const y = (1 - u) * (1 - u) * p0[1] + 2 * (1 - u) * u * apex + u * u * hy;
+          const vx = x - f.x, vy = y - f.y;
+          f.x = x;
+          f.y = y;
+          f.facing = hx >= p0[0] ? 1 : -1;
+          f.vx = vx / Math.max(dt, 1e-3);
+          f.vy = vy / Math.max(dt, 1e-3);
+          f.forceAngle = clamp(Math.atan2(vy, Math.abs(vx) + 1e-3), -1.3, 1.3) + Math.sin(this.rt * 22) * 0.15;
+          f.wiggle = 0.8;
+          f.z = 0;
+          this.rays = Math.min(1, this.rays + rdt * 2);
+          if (rng.chance(rdt * 40)) F.particles.droplets(f.x, f.y, 2, { dir: Math.PI / 2, spread: 1.2, speed: [10, 50], g: 260, w: 6 });
+          if (rng.chance(rdt * 18)) F.particles.sparkle(f.x + rng.float(-10, 10) * f.scale, f.y + rng.float(-6, 6), "#ffffff");
+          if (rng.chance(rdt * 8)) F.particles.stars(f.x, f.y, 1, { speed: [10, 30], g: 0 });
+          const mxp = lerp(f.x, hx, 0.4), myp = lerp(f.y, hy, 0.4);
+          F.cam?.focus?.(mxp, myp - 10, this.hasBoat ? 1.35 : 1.15, 3.5);
+          if (u >= 1) this.go("catch");
+          break;
+        }
+        case "catch":
+          this.rays = Math.min(1, this.rays + rdt * 2);
+          if (this.st > 0.45) this.go("igotit");
+          break;
+        case "igotit":
+          this.rays = Math.max(0, this.rays - rdt * 1.2);
+          if (this.hasBoat) {
+            const [hx, hy] = this.hands();
+            F.cam?.focus?.(hx, hy - 26, 1.85, 3);
+          }
+          if (this.st > 2.4) return "caught";
+          break;
+        default:
+          break;
+      }
+      if (this.portraitOn) this.portrait = Math.min(1, this.portrait + rdt * 3);
+      return "ok";
+    }
+    drawWorld(ctx2) {
+      const f = this.fish;
+      if (this.rays > 0.01 && (this.stage === "erupt" || this.stage === "catch" || this.stage === "igotit")) {
+        const [x, y] = this.stage === "erupt" ? [f.x, f.y] : this.hands();
+        drawRays(ctx2, x, y, 130, 12, this.rt * 0.9, "#fff6c0", 0.09 * this.rays, 0.08);
+        drawGlow(ctx2, x, y, 26, "#fff6c0", 0.4 * this.rays);
+      }
+    }
+    drawHud(ctx2) {
+      if (this.portrait > 0.01) drawPortrait(ctx2, this.F, this.fish, this.portrait, this.stage === "igotit" ? "cheer" : "hold", this.rt);
+    }
+  };
+  function drawPortrait(ctx2, F, fish, k, pose, t) {
+    const W = F.W, H = F.H;
+    const cx = W / 2, by = H * 0.86;
+    const a = ease.outBack(clamp01(k));
+    drawGlow(ctx2, cx, by - 40, 70, "#fff2a8", 0.45 * k);
+    ctx2.save();
+    ctx2.globalAlpha = clamp01(k * 2);
+    ctx2.translate(cx, by + (1 - a) * 80);
+    drawAngler(ctx2, F, 0, 0, { pose, t, scale: 2, fish: { compiled: fish.c, variant: fish.rec?.variant } });
+    ctx2.restore();
+  }
+  var TAUNTS = ["nyeh~!", "too slow!", "bye bye!", "lol", "blub blub ha!", "catch me never!", "later, loser!", ":P", "nice try!", "smell ya later!"];
+  var EscapeCine = class {
+    constructor(F, fish, reason, line) {
+      this.F = F;
+      this.fish = fish;
+      this.reason = reason;
+      this.t = 0;
+      this.blocksHook = true;
+      this.taunt = rng.pick(TAUNTS);
+      this.line = line;
+      this.hook = reason !== "snap" ? { x: line.x1, y: line.y1, vx: -(fish.facing || 1) * 50, vy: -150, a: 0 } : null;
+      this.dirAway = fish.facing || 1;
+      fish.controlled = true;
+      fish.allowTurn = true;
+      fish.forceAngle = void 0;
+      fish.alpha = 1;
+      fish.feel("smug", 3);
+      F.setPose("sad");
+      if (reason === "snap") {
+        F.titles.add("snap", "SNAP!", { sub: "The line snapped...", seed: rng.int(1, 9999) });
+        F.shake(9);
+        F.cam?.flash?.("#ff8a7a", 0.25);
+        F.particles.sparks(line.x1, line.y1, 14, { speed: [40, 140], colors: ["#ffffff", "#e8f4ff", "#ffd25a"] });
+      } else {
+        const text = reason === "throw" ? "IT SPAT THE HOOK!" : reason === "run" ? "IT RAN OFF!" : "IT GOT AWAY...";
+        F.titles.add("escape", text, { sub: reason === "throw" ? "Keep the line tight!" : reason === "run" ? "Pull against it to stop it running!" : "" });
+        F.shake(3);
+      }
+      F.cam?.slowmo?.(0.5, 0.7);
+      F.cam?.focus?.(fish.x, fish.y, 2.3, 4);
+    }
+    update(dt, rdt) {
+      const F = this.F, f = this.fish, t = this.t += rdt;
+      f.controlled = true;
+      if (this.hook) {
+        const h = this.hook;
+        h.vy += 300 * dt;
+        h.x += h.vx * dt;
+        h.y += h.vy * dt;
+        h.a += dt * 14;
+      }
+      if (t < 0.35) {
+        f.x += -this.dirAway * 30 * dt;
+        f.vx = this.dirAway * 10;
+        f.squash = 0.2;
+        F.cam?.focus?.(f.x, f.y, 2.3, 4);
+      } else if (t < 1.55) {
+        const [cxw] = F.toWorld(F.W / 2, F.H / 2);
+        f.facing = cxw > f.x ? 1 : -1;
+        f.vx = f.facing * 5;
+        f.vy = 0;
+        f.lookAt?.(cxw, f.y - 20);
+        f.talkT = 0.2;
+        f.y += Math.sin(t * 14) * 0.4;
+        f.wiggle = 0.4;
+        f.feel("smug", 0.5);
+        if (!this.said) {
+          this.said = true;
+          F.sfx(f.sp?.sound || "blub", { pitch: 1.3 });
+          f.say(rng.pick(["music", "heart", "anger", "sweat"]), 1.1);
+        }
+        F.cam?.focus?.(f.x, f.y - 4, 2.4, 4);
+      } else {
+        if (!this.zipped) {
+          this.zipped = true;
+          F.cam?.release?.(2.5);
+          F.cam?.setLetterbox?.(false);
+          F.restoreScroll();
+          F.particles.speedLines(f.x, f.y, 10, { r0: 6, r1: 24, color: "#ffffff", add: false, len: [6, 14] });
+          F.sfx("splash_small", { pitch: 1.4 });
+        }
+        f.vx = this.dirAway * 260;
+        f.vy = -20;
+        f.x += f.vx * dt;
+        f.y += f.vy * dt * 0.3;
+        if (rng.chance(dt * 30)) F.particles.bubbleTrail(f.x - this.dirAway * 10, f.y, f.vx, 0);
+        if (rng.chance(dt * 20)) F.particles.wake(f.x, f.y, this.dirAway > 0 ? 0 : Math.PI, 2);
+      }
+      if (t > 2.05) {
+        F.finishEscape(f, this.reason);
+        return "done";
+      }
+      return "ok";
+    }
+    drawWorld(ctx2) {
+      const F = this.F;
+      const L = this.line;
+      if (this.reason === "snap" && this.t < 0.9) {
+        const k = clamp01(this.t / 0.9);
+        const n = 40;
+        for (let i = 0; i <= n; i++) {
+          const s = i / n;
+          const bx = lerp(L.x0, L.x1, s), by = lerp(L.y0, L.y1, s);
+          const tx = L.x0 + Math.sin(s * 3) * 10, ty = L.y0 + 20 + s * 30;
+          const e = ease.outCubic(clamp01(k * 1.6 - s * 0.4));
+          const wob = Math.sin(s * 12 - this.t * 30) * (1 - k) * 8 * s;
+          const x = lerp(bx, tx, e * s) + wob, y = lerp(by, ty, e * s);
+          ctx2.fillStyle = rgba(i > n - 3 ? "#ff6a5a" : "#e8f4ff", (1 - k) * 0.9);
+          ctx2.fillRect(Math.round(x), Math.round(y), 1, 1);
+        }
+      }
+      if (this.hook && this.t < 1.4) {
+        const h = this.hook;
+        ctx2.save();
+        ctx2.translate(Math.round(h.x), Math.round(h.y));
+        ctx2.rotate(h.a);
+        ctx2.drawImage(HOOK, -3, -5);
+        ctx2.restore();
+      }
+      void F;
+    }
+    drawHud(ctx2) {
+      const F = this.F, f = this.fish, t = this.t;
+      if (t > 0.4 && t < 1.6) {
+        const [sx, sy] = F.toScreen(f.x, f.y);
+        const k = ease.outBack(clamp01((t - 0.4) * 5));
+        const text = this.taunt;
+        const w = measureText(text, "normal", 1) + 12, h = 15;
+        const bx = Math.round(sx + 16), by = Math.round(sy - 46 - (1 - k) * 8);
+        ctx2.save();
+        ctx2.globalAlpha = clamp01((1.6 - t) * 5) * clamp01(k);
+        ctx2.fillStyle = "#0b1622";
+        ctx2.fillRect(bx - 1, by - 1, w + 2, h + 2);
+        ctx2.fillStyle = "#ffffff";
+        ctx2.fillRect(bx, by, w, h);
+        ctx2.fillStyle = "#d8e8f4";
+        ctx2.fillRect(bx, by + h - 2, w, 2);
+        for (let i = 0; i < 5; i++) {
+          ctx2.fillStyle = "#0b1622";
+          ctx2.fillRect(bx + 4 - i, by + h + i, 2 + (i > 0 ? 1 : 0), 1);
+          ctx2.fillStyle = "#ffffff";
+          if (i < 4) ctx2.fillRect(bx + 5 - i, by + h + i, 1, 1);
+        }
+        drawText(ctx2, text, bx + 6, by + 4 + Math.round(Math.sin(t * 20) * 0.6), { color: "#1e2a38" });
+        ctx2.restore();
+      }
+    }
+  };
+  var Outro = class {
+    constructor(F, hasBoat, fish) {
+      this.F = F;
+      this.t = 0;
+      this.hasBoat = hasBoat;
+      this.fish = fish;
+      this.blocksHook = true;
+      this.portrait = hasBoat ? 0 : 1;
+      this.released = false;
+    }
+    update(dt, rdt) {
+      const F = this.F, g = F.game;
+      this.t += rdt;
+      const open = !!g.ui?.isOpen?.("reveal");
+      if (open && !this.released) {
+        this.released = true;
+        F.cam?.release?.(3);
+        F.cam?.setLetterbox?.(false);
+      }
+      if (this.t > 0.6) this.portrait = Math.max(0, this.portrait - rdt * 3);
+      if (F.boat && this.hasBoat && !F.poseHold) F.setPose("hold");
+      if (this.t > 0.9 && !open || this.t > 60) {
+        F.cam?.release?.(3);
+        F.cam?.setLetterbox?.(false);
+        F.restoreScroll();
+        if (F.boat) {
+          F.boat.holdFish = null;
+        }
+        F.setPose("idle");
+        if (F.boat && this.hasBoat) F.setPose("cheer", 1.4);
+        return "done";
+      }
+      return "ok";
+    }
+    drawWorld() {
+    }
+    drawHud(ctx2) {
+      if (this.portrait > 0.01 && this.fish) drawPortrait(ctx2, this.F, this.fish, this.portrait, "cheer", this.t);
+    }
   };
 
   // src/fishing/fishing.js
@@ -11206,33 +23610,177 @@ kTtaatTk
       this.world = game.world;
       this.state = "idle";
       this.t = 0;
+      this.rdt = 1 / 60;
       this.hook = { x: -50, y: -50, angle: 0, av: 0, dip: 0, visible: false };
       this.rodX = 0;
       this.baitSwing = 0;
       this.baitSwingV = 0;
       this.fish = null;
-      this.fight = null;
+      this.battle = null;
+      this.finale = null;
+      this.cine = null;
       this.tension = 0;
       this.msg = null;
       this.wasInWater = false;
       this.jig = 0;
       this.cursor = game.world.cursor;
       this.input = game.input;
-      this.lineSnap = null;
       this.focus = 0;
+      this.crank = new Crank();
+      this.fx = new Particles(700);
+      this.fx.surfaceY = null;
+      this.titles = new Titles(this);
+      this.splats = [];
+      this.pose = null;
+      this.poseHold = null;
+      this.scrolled = false;
+      this.hostCine = false;
+      this.hostCineHud = false;
+      this.loops = null;
     }
+    // ------------------------------------------------------------------ accessors
     get stats() {
       return this.game.stats;
     }
     get busy() {
-      return this.state !== "idle";
+      return this.state !== "idle" || !!this.cine;
     }
     get fighting() {
       return this.state === "fight" || this.state === "landing";
     }
+    get fight() {
+      return this.battle;
+    }
+    get cam() {
+      return this.game.camera;
+    }
+    get boat() {
+      return this.game.boat || null;
+    }
+    get particles() {
+      return this.game.particles;
+    }
+    get W() {
+      return this.game.screen?.W ?? this.world.W;
+    }
+    get H() {
+      return this.game.screen?.H ?? this.world.H;
+    }
+    toScreen(x, y) {
+      const c = this.cam;
+      return c?.worldToScreen ? c.worldToScreen(x, y) : [x, y];
+    }
+    toWorld(x, y) {
+      const c = this.cam;
+      return c?.screenToWorld ? c.screenToWorld(x, y) : [x, y];
+    }
+    pointerWorld() {
+      return this.toWorld(this.input.x, this.input.y);
+    }
+    zoom() {
+      const c = this.cam;
+      return c?.xform ? c.xform()[0] : 1;
+    }
+    viewTop() {
+      return this.cam?.scrollY ?? 0;
+    }
+    zoneRadius() {
+      const f = this.fish;
+      if (!f) return 60;
+      return clamp(this.fishLen() * 0.5 * this.zoom() + 28, 56, 180);
+    }
+    scaleColors() {
+      const col = this.fish?.sp?.look?.col || {};
+      return [col.body || "#c8e8ff", col.belly || "#ffffff", col.back || col.body || "#9ad8ff"];
+    }
+    sfx(name, opts) {
+      this.game.audio?.play?.(name, opts);
+    }
+    shake(n) {
+      this.cam?.shake?.(n);
+    }
+    setPose(pose, hold = 0) {
+      if (hold > 0) this.poseHold = { pose, t: hold };
+      else this.pose = pose;
+      const b = this.boat;
+      if (b) b.pose = this.poseHold ? this.poseHold.pose : pose;
+    }
+    scrollTo(y) {
+      const c = this.cam;
+      if (!c?.scrollTo) return;
+      if (!this.scrolled) this.prevScroll = c.scrollTarget ?? c.scrollY ?? 0;
+      const target = this.game.surfaceScroll !== void 0 ? Math.max(y, this.game.surfaceScroll) : y;
+      c.scrollTo(target);
+      this.scrolled = true;
+    }
+    restoreScroll() {
+      if (!this.scrolled) return;
+      this.scrolled = false;
+      this.cam?.scrollTo?.(this.prevScroll ?? 0);
+    }
+    inkSplat(n = 3) {
+      for (let i = 0; i < n; i++) {
+        this.splats.push({
+          x: rng.float(this.W * 0.15, this.W * 0.85),
+          y: rng.float(this.H * 0.18, this.H * 0.75),
+          r: rng.int(18, 42),
+          t: -i * 0.08,
+          max: rng.float(2.2, 3.2),
+          drips: Array.from({ length: rng.int(1, 3) }, () => ({ x: rng.float(-12, 12), w: rng.pick([2, 3]), l: rng.float(6, 18) }))
+        });
+      }
+    }
+    rodTip() {
+      const b = this.boat, w = this.world;
+      if (b?.rodTip && w.surfaceY !== null && w.surfaceY !== void 0 && b.visible !== false) {
+        const r = b.rodTip();
+        if (r && Number.isFinite(r[0]) && Number.isFinite(r[1])) return r;
+      }
+      return [this.rodX, this.viewTop() - 6];
+    }
+    // World size of the fish (mouth to tail), for camera framing and HUD rings.
+    fishLen(f = this.fish) {
+      if (!f) return 30;
+      const a = f.anchors;
+      let len = (f.sp?.look?.body?.len || 30) * (f.sp?.scale || 1) * f.scale;
+      if (a?.mouth && a?.tail) len = Math.max(len * 0.6, dist(a.mouth[0], a.mouth[1], a.tail[0], a.tail[1]) * 1.15);
+      return len;
+    }
+    // Zoom that frames the hooked fish nicely (small fish get a closer look).
+    fightZoom() {
+      const noSurf = this.world.surfaceY === null || this.world.surfaceY === void 0;
+      return clamp(this.W * 0.2 / Math.max(12, this.fishLen()), noSurf ? 1.3 : 1.45, noSurf ? 1.9 : 2.4);
+    }
+    // Where the fight ends: just under the surface, outboard of the boat on the rod side, so the
+    // finale has room for a big arc into the angler's hands.
+    landingPoint(f) {
+      const w = this.world;
+      if (w.surfaceY !== null && w.surfaceY !== void 0) {
+        const [rx] = this.rodTip();
+        const b = this.boat;
+        const half = this.fishLen(f) * 0.4;
+        let x = rx + 40;
+        if (b && Number.isFinite(b.x)) {
+          let out = Math.sign(rx - b.x) || 1;
+          const bb = b.bounds?.();
+          const edge = (o) => bb ? o > 0 ? bb.x + bb.w : bb.x : b.x + o * 60;
+          x = edge(out) + out * (half + 22);
+          if (x < 30 || x > w.W - 30) {
+            out = -out;
+            x = edge(out) + out * (half + 22);
+          }
+        }
+        return { x: clamp(x, 30, w.W - 30), y: w.surfaceY + 14 + half };
+      }
+      return { x: clamp(f.x, 60, w.W - 60), y: this.viewTop() + 80 };
+    }
+    crankHint() {
+      return this.battle ? this.battle.crankHint() : [this.input.x, this.input.y];
+    }
+    // ------------------------------------------------------------------ nibble API
     // Called by fish AI when it wants to start nibbling.
     requestNibble(fish) {
-      if (this.state !== "idle" || !this.world.hook.active) return false;
+      if (this.state !== "idle" || this.cine || !this.world.hook.active) return false;
       this.fish = fish;
       fish.controlled = true;
       fish.allowTurn = true;
@@ -11243,55 +23791,75 @@ kTtaatTk
       this.nibbleT = rng.float(0.35, 0.8);
       this.nibblePhase = 0;
       this.fakeBite = rng.chance(sp.fight?.fakeBite ?? 0.15);
-      this.anchorX = this.hook.x;
-      this.anchorY = this.hook.y;
       return true;
     }
+    // Let go of the current fish (also cancels any cinematic and restores the camera).
     releaseFish(flee = true, emote = null) {
-      const f = this.fish;
+      const f = this.fish || this.cine?.fish || this.finale?.fish;
+      const wasFighting = this.fighting || !!this.cine || !!this.finale;
       if (f) {
         f.controlled = false;
         f.allowTurn = false;
         f.forceAngle = void 0;
+        f.alpha = Math.max(f.alpha ?? 1, 1);
         f.cooldown = rng.float(10, 20);
         if (flee) {
-          f.startle(this.hook.x, this.hook.y);
-          f.setState("leave");
+          f.startle?.(this.hook.x, this.hook.y);
+          f.setState?.("leave");
           f.cruise *= 1.8;
         }
-        if (emote) f.say(emote, 1.5);
+        if (emote) f.say?.(emote, 1.5);
       }
       this.fish = null;
-      this.fight = null;
+      this.battle = null;
+      this.finale = null;
+      this.cine = null;
       this.state = "idle";
+      this.tension = 0;
+      this.stopLoops();
+      if (wasFighting) this.resetCamera();
+    }
+    resetCamera() {
+      const c = this.cam, g = this.game;
+      c?.release?.(3);
+      c?.setLetterbox?.(false);
+      this.restoreScroll();
+      if (g.timeScaleTarget !== void 0) g.timeScaleTarget = 1;
+      if (this.boat) {
+        this.boat.holdFish = null;
+      }
+      this.poseHold = null;
+      this.setPose("idle");
     }
     message(text, color = "#ffffff", time = 1.6, big = false) {
       this.msg = { text, color, t: 0, max: time, big };
-    }
-    shake(n) {
-      this.game.camera.shake(n);
-    }
-    confine() {
-      const f = this.fish, w = this.world;
-      const top = (w.surfaceY ?? -1e3) + 6;
-      f.x = clamp(f.x, 12, w.W - 12);
-      if (!(this.fight?.phase?.trick?.kind === "jump")) f.y = clamp(f.y, top, w.floorAt(f.x) - 8);
     }
     // ------------------------------------------------------------------ update
     update(dt, worldInput) {
       this.t += dt;
       const g = this.game, w = this.world, inp = this.input, c = this.cursor, h = this.hook;
+      const ts = g.timeScale;
+      const rdt = Math.min(0.1, ts && ts > 0.05 ? dt / ts : dt);
+      this.rdt = rdt;
       if (this.msg) {
-        this.msg.t += dt;
+        this.msg.t += rdt;
         if (this.msg.t > this.msg.max) this.msg = null;
-      }
-      if (this.lineSnap) {
-        this.lineSnap.t += dt;
-        if (this.lineSnap.t > 0.6) this.lineSnap = null;
       }
       this.jig = Math.max(0, this.jig - dt * 0.6);
       w.jig = this.jig;
-      const canHook = worldInput && !g.paused && !g.fishingDisabled;
+      this.crank.update(rdt, inp.x, inp.y);
+      this.fx.update(rdt);
+      this.titles.update(rdt);
+      for (const s of this.splats) s.t += rdt;
+      this.splats = this.splats.filter((s) => s.t < s.max);
+      if (this.poseHold) {
+        this.poseHold.t -= rdt;
+        if (this.poseHold.t <= 0) {
+          this.poseHold = null;
+          if (this.boat) this.boat.pose = this.pose || "idle";
+        }
+      }
+      const canHook = worldInput && !g.paused && !g.fishingDisabled && !this.cine?.blocksHook;
       if (this.state === "idle" || this.state === "nibble" || this.state === "bite") {
         if (canHook) {
           h.visible = true;
@@ -11302,18 +23870,21 @@ kTtaatTk
         } else if (this.state === "idle") {
           h.visible = false;
         }
-      }
+      } else h.visible = false;
       h.angle = clamp(h.angle + h.av * dt, -0.9, 0.9);
       h.dip = damp(h.dip, 0, 6, dt);
       this.rodX = damp(this.rodX, h.x, 2.2, dt);
       this.baitSwingV += (-(h.x - (this.prevHX ?? h.x)) * 1.5 - this.baitSwing * 30 - this.baitSwingV * 4) * dt;
       this.baitSwing = clamp(this.baitSwing + this.baitSwingV * dt * 10, -0.8, 0.8);
       this.prevHX = h.x;
-      const inWater = h.visible && (w.surfaceY === null || h.y > w.surfaceY + 2);
-      if (inWater && !this.wasInWater && h.visible && w.surfaceY !== null && this.state === "idle") {
-        g.audio.play("cast", { vol: 0.6 });
-        g.particles.splash(h.x, w.surfaceY, 0.25);
-        g.state.stats.casts++;
+      const surf = w.surfaceY;
+      const inWater = h.visible && (surf === null || surf === void 0 || h.y > surf + 2);
+      if (inWater && !this.wasInWater && h.visible && surf !== null && surf !== void 0 && this.state === "idle") {
+        this.sfx("cast", { vol: 0.6 });
+        this.particles.splash(h.x, surf, 0.25);
+        this.particles.foam?.(h.x, surf, 3, { spread: 4 });
+        if (g.state?.stats) g.state.stats.casts++;
+        if (this.boat) this.setPose("cast", 0.45);
       }
       this.wasInWater = inWater;
       const bait = g.currentBait();
@@ -11325,12 +23896,13 @@ kTtaatTk
       w.hook.radiusMul = this.stats.baitRadius;
       switch (this.state) {
         case "idle":
-          if (canHook && inWater && inp.pressed && !g.ui.blocking) {
+          if (canHook && inWater && inp.pressed && !g.ui?.blocking) {
             h.dip = -5;
             h.av += rng.float(-3, 3);
             this.jig = Math.min(1.5, this.jig + 0.35);
-            g.audio.play("bubble", { vol: 0.4, pitch: rng.float(1, 1.4) });
-            g.particles.bubbles(h.x, h.y, 3);
+            this.sfx("bubble", { vol: 0.4, pitch: rng.float(1, 1.4) });
+            this.particles.bubbles(h.x, h.y, 3);
+            this.particles.ring?.(h.x, h.y, 0.3, "rgba(230,250,255,0.6)", { flat: 1 });
           }
           break;
         case "nibble":
@@ -11348,6 +23920,28 @@ kTtaatTk
         default:
           break;
       }
+      if (this.cine && this.cine.update(dt, rdt) === "done") this.cine = null;
+      this.updateLoops();
+    }
+    updateLoops() {
+      const fighting = this.state === "fight" && !!this.battle;
+      if (fighting && !this.loops) {
+        const a = this.game.audio;
+        this.loops = { reel: a?.loop?.("reel"), tension: a?.loop?.("tension") };
+      }
+      if (!this.loops) return;
+      if (!fighting) {
+        this.stopLoops();
+        return;
+      }
+      this.loops.reel?.set?.(clamp01(this.crank.power * 0.9));
+      this.loops.tension?.set?.(clamp01((this.tension - 0.45) * 1.8));
+    }
+    stopLoops() {
+      if (!this.loops) return;
+      this.loops.reel?.stop?.();
+      this.loops.tension?.stop?.();
+      this.loops = null;
     }
     updateNibble(dt, canHook) {
       const f = this.fish, h = this.hook, g = this.game, inp = this.input;
@@ -11363,7 +23957,8 @@ kTtaatTk
       const side = f.x < h.x ? -1 : 1;
       const mouthOff = 9 * f.scale + 4;
       this.nibbleT -= dt;
-      let tx = h.x + side * (mouthOff + 6), ty = h.y + 1;
+      let tx = h.x + side * (mouthOff + 6);
+      const ty = h.y + 1;
       if (this.nibblePhase > 0) {
         this.nibblePhase -= dt;
         tx = h.x + side * mouthOff;
@@ -11372,8 +23967,9 @@ kTtaatTk
           h.dip = 3 + rng.float(0, 2);
           h.av += rng.float(-2, 2);
           f.chompT = 0.15;
-          g.audio.play("nibble", { pitch: rng.float(0.9, 1.2) });
-          g.particles.bubbles(h.x, h.y, 2, { size: 1 });
+          this.sfx("nibble", { pitch: rng.float(0.9, 1.2) });
+          this.particles.bubbles(h.x, h.y, 2, { size: 1 });
+          this.particles.ring?.(h.x, h.y, 0.25, "rgba(230,250,255,0.5)", { flat: 1 });
         }
       }
       f.facing = -side;
@@ -11382,6 +23978,7 @@ kTtaatTk
       f.vy = (ty - f.y) * 8;
       f.x = damp(f.x, tx, 14, dt);
       f.y = damp(f.y, ty, 14, dt);
+      f.z = damp(f.z, 0, 2, dt);
       f.feel("happy", 0.2);
       if (this.nibbleT <= 0) {
         if (this.nibblesLeft > 0) {
@@ -11392,7 +23989,7 @@ kTtaatTk
           if (this.fakeBite && this.nibblesLeft === 1) {
             h.dip = 8;
             f.say("!", 0.4);
-            g.audio.play("nibble", { pitch: 0.7 });
+            this.sfx("nibble", { pitch: 0.7 });
             this.fakeBite = false;
           }
         } else {
@@ -11403,17 +24000,18 @@ kTtaatTk
           f.say("!", this.biteT + 0.2);
           f.feel("determined", 1);
           f.chompT = 0.3;
-          g.audio.play("bite");
-          g.particles.bubbles(h.x, h.y, 6);
+          this.sfx("bite");
+          this.particles.bubbles(h.x, h.y, 6);
+          this.particles.shockwave?.(h.x, h.y, 14, "#ffe27a", { life: 0.3 });
           if (rng.chance(this.stats.autoHook)) {
             this.setHook(true);
             return;
           }
         }
       }
-      if (inp.pressed && !g.ui.blocking && this.state === "nibble") {
+      if (inp.pressed && !g.ui?.blocking && this.state === "nibble") {
         this.message("Too early!", "#ffb0a0");
-        g.audio.play("escape", { vol: 0.5 });
+        this.sfx("escape", { vol: 0.5 });
         this.releaseFish(true, "cross");
       }
     }
@@ -11428,7 +24026,8 @@ kTtaatTk
       f.x = damp(f.x, h.x + side * (8 * f.scale + 3), 16, dt);
       f.y = damp(f.y, h.y + 2, 16, dt);
       h.dip = Math.max(h.dip, 6 + Math.sin(this.t * 40) * 2);
-      if (inp.pressed && canHook && !g.ui.blocking) {
+      if (rng.chance(dt * 12)) this.particles.bubbles(h.x, h.y, 1, { size: 1 });
+      if (inp.pressed && canHook && !g.ui?.blocking) {
         this.setHook(false);
         return;
       }
@@ -11438,169 +24037,207 @@ kTtaatTk
           g.consumeBait(bait.type);
           this.message("It stole your bait!", "#ffd2a0");
         } else this.message("Missed the bite!", "#ffd2a0");
-        g.audio.play("escape", { vol: 0.6 });
+        this.sfx("escape", { vol: 0.6 });
         this.releaseFish(true, "music");
       }
     }
-    setHook(auto) {
+    // ------------------------------------------------------------------ hook-set
+    setHook(auto = false) {
       const g = this.game, f = this.fish;
-      g.audio.play("hookset");
-      this.shake(3);
-      g.particles.burst(f.x, f.y, 10, { colors: ["#ffffff", "#ffe27a"], speed: 80, g: 0, life: 0.4 });
-      if (auto) this.message("Auto-hook!", "#9affb8", 1);
+      if (!f || this.state === "fight" || this.state === "landing") return;
+      this.sp = f.sp;
+      this.state = "fight";
+      this.cine = null;
+      this.crank.prevA = null;
+      this.battle = new Battle(this);
+      this.power = this.battle.power;
+      this.tension = this.battle.tension;
+      this.splats = [];
+      const cam = this.cam;
+      const zoomIn = this.fightZoom() + 0.3;
+      cam?.focus?.(f.x, f.y, zoomIn, 6);
+      cam?.setLetterbox?.(true);
+      cam?.slowmo?.(0.22, 0.55);
+      cam?.flash?.("#ffffff", 0.35);
+      this.shake(5);
+      this.sfx("hookset");
+      this.sfx("splash_small", { vol: 0.6, pitch: 0.8 });
+      const P4 = this.particles;
+      P4.shockwave?.(f.x, f.y, 34, "#ffffff", { life: 0.5 });
+      P4.shockwave?.(f.x, f.y, 20, "#ffe27a", { life: 0.35, delay: 0.06 });
+      P4.speedLines?.(f.x, f.y, 18, { r0: 26, r1: 60, inward: true, len: [8, 18], color: "#ffffff" });
+      P4.burst(f.x, f.y, 14, { colors: ["#ffffff", "#ffe27a"], speed: 80, g: 0, life: 0.45 });
+      P4.bubbles(f.x, f.y, 10);
+      P4.scales?.(f.x, f.y, 4, this.scaleColors());
+      const surf = this.world.surfaceY;
+      if (surf !== null && surf !== void 0 && f.y - surf < 40) P4.eruption?.(f.x, surf, 0.6);
+      this.fx.speedLines(this.W / 2, this.H / 2, 34, { r0: Math.min(this.W, this.H) * 0.35, r1: Math.max(this.W, this.H) * 0.6, inward: true, speed: [400, 700], len: [20, 46], color: "#ffffff", life: 0.35 });
+      const rar = f.sp.rarity;
+      this.titles.add("fishon", auto ? "AUTO-HOOK!" : "FISH ON!", { sub: f.sp.name, subColor: rar === "legendary" ? "#a86a12" : rar === "epic" ? "#6a2fa0" : rar === "rare" ? "#2a5aa8" : rar === "uncommon" ? "#2f7a3c" : "#3a4a5a" });
       f.feel("surprised", 0.8);
       f.squashV += 10;
-      this.state = "fight";
-      const phases = (f.sp.fight?.phases || ["tension", "net"]).slice();
-      if (g.tutorialActive) phases.splice(0, phases.length, "tension");
-      this.fight = { phases, pi: 0, phase: null, time: 0 };
-      this.power = clamp01((f.sp.fight?.power ?? 0.4) * (g.tutorialActive ? 0.25 : 1) * (f.rec.giant ? 1.25 : 1));
-      this.sp = f.sp;
-      this.tension = 0.3;
-      this.startPhase();
+      f.say("!!", 0.8);
+      this.setPose("yank", 0.35);
+      this.setPose("pull");
       g.onHooked?.(f);
     }
-    startPhase(override) {
-      const F = this.fight;
-      const name = override || F.phases[F.pi];
-      const Cls = PHASES[name] || PHASES.tension;
-      F.phase = new Cls(this, name === "tension" && override ? { stamina: 0.45 } : {});
-      F.phaseName = name;
-      F.flash = 0;
-      if (F.pi > 0 || override) this.game.audio.play("notify", { pitch: 1.2 });
-    }
     updateFight(dt) {
-      const F = this.fight, g = this.game;
-      F.time += dt;
-      F.flash += dt;
+      const g = this.game, B2 = this.battle, f = this.fish;
+      if (!B2 || !f) {
+        this.releaseFish(false);
+        return;
+      }
       const focusing = this.input.rdown && this.stats.focus > 0;
       this.focus = damp(this.focus, focusing ? 1 : 0, 8, dt);
       g.timeScaleTarget = focusing ? 0.45 : 1;
-      const r = F.phase.update(dt, this.input);
-      this.fish.controlled = true;
+      const r = B2.update(dt);
+      this.tension = B2.tension;
+      f.controlled = true;
+      const ev = B2.event?.focus;
+      let zoom = this.fightZoom();
+      if (B2.mode === "hookset") zoom += 0.3;
+      if (B2.trick?.kind === "jump") zoom = 1.55;
+      if (B2.mode === "surge" && B2.surgeMul > 1.5) zoom -= 0.15;
+      if (ev) this.cam?.focus?.(ev.x, ev.y, ev.zoom, 4);
+      else this.cam?.focus?.(f.x, f.y, zoom, B2.mode === "hookset" ? 6 : 4);
+      if (!this.poseHold) {
+        const pose = this.input.down ? "pull" : this.crank.active ? "reel" : "pull";
+        if (pose !== this.pose) this.setPose(pose);
+      }
       if (r === "ok") return;
-      if (r === "win") {
-        F.pi++;
-        if (F.pi >= F.phases.length) {
-          this.beginLanding();
-          return;
-        }
-        g.particles.burst(this.fish.x, this.fish.y, 12, { colors: ["#9affb8", "#ffffff"], speed: 70, g: 0, life: 0.5 });
-        this.startPhase();
-      } else if (r === "recover") {
-        this.message("It recovered!", "#ffd2a0");
-        F.phases.splice(F.pi, 0, "tension");
-        F.phase = new PHASES.tension(this, { stamina: 0.45 });
-        F.phaseName = "tension";
-      } else {
-        this.fail(r);
-      }
+      if (r === "land") this.beginLanding();
+      else this.fail(r);
     }
+    // ------------------------------------------------------------------ outcomes
     fail(reason) {
-      const g = this.game, f = this.fish;
-      g.timeScaleTarget = 1;
+      const g = this.game, f = this.fish, B2 = this.battle;
+      if (g.timeScaleTarget !== void 0) g.timeScaleTarget = 1;
+      const m = f.anchors?.mouth || [f.x, f.y];
+      const [rx, ry] = this.rodTip();
+      const line = { x0: rx, y0: ry, x1: m[0], y1: m[1] };
       if (reason === "snap") {
-        this.message("SNAP!", "#ff7a6a", 1.8, true);
-        g.audio.play("line_snap");
-        this.shake(6);
-        this.lineSnap = { t: 0, x: f.x, y: f.y };
-        g.state.stats.snapped++;
+        this.sfx("line_snap");
+        if (g.state?.stats) g.state.stats.snapped++;
         if (g.currentBait()?.kind === "special") g.consumeBait(g.currentBait().type);
-      } else {
-        this.message(reason === "throw" ? "It threw the hook!" : "It got away!", "#ffd2a0", 1.8, true);
-        g.audio.play("escape");
-      }
-      g.state.stats.escaped++;
-      f.feel("smug", 2);
-      this.releaseFish(true, reason === "snap" ? "music" : "cross");
-      g.onFishEscaped?.(f, reason);
+      } else this.sfx("escape");
+      if (g.state?.stats) g.state.stats.escaped++;
+      this.particles.burst(m[0], m[1], 10, { colors: ["#ffffff", "#9ad8ff"], speed: 60, g: 0, life: 0.4 });
+      this.stopLoops();
+      this.state = "idle";
+      this.fish = null;
+      this.battle = null;
+      this.tension = 0;
+      this.splats = [];
+      void B2;
+      this.cine = new EscapeCine(this, f, reason, line);
+    }
+    // Called by the escape cutscene once the fish has made its getaway.
+    finishEscape(f, reason) {
+      f.controlled = false;
+      f.allowTurn = false;
+      f.forceAngle = void 0;
+      f.alpha = 1;
+      f.cooldown = rng.float(10, 20);
+      f.startle?.(f.x - (f.facing || 1) * 20, f.y);
+      f.setState?.("leave");
+      f.cruise *= 1.8;
+      this.cam?.release?.(3);
+      this.cam?.setLetterbox?.(false);
+      this.restoreScroll();
+      this.setPose("idle");
+      this.game.onFishEscaped?.(f, reason);
     }
     beginLanding() {
       const g = this.game, f = this.fish;
       this.state = "landing";
-      this.landT = 0;
-      this.landFrom = { x: f.x, y: f.y };
-      g.timeScaleTarget = 1;
-      g.camera.punch(f.x, f.y, 0.14);
-      g.camera.slowmo(0.3, 0.55);
-      this.shake(5);
-      g.audio.play("splash_big");
-      g.particles.splash(f.x, f.y, 1.4);
-      g.particles.burst(f.x, f.y, 26, { colors: ["#ffffff", "#ffe27a", "#9af0ff"], speed: 120, g: 30, life: 0.9, add: true });
-      f.feel(rng.pick(["surprised", "scared", "dizzy"]), 3);
-      f.say("!", 1);
+      this.stopLoops();
+      if (g.timeScaleTarget !== void 0) g.timeScaleTarget = 1;
+      this.tension = 0.3;
+      this.splats = [];
+      this.finale = new Finale(this, f);
+      this.battle = null;
     }
     updateLanding(dt) {
-      const g = this.game, f = this.fish, w = this.world;
-      this.landT += dt;
-      const k = clamp01(this.landT / 0.7);
-      const topY = w.surfaceY !== null ? w.surfaceY - 30 : this.cursor.y - 40;
-      const tx = this.cursor.x, ty = Math.min(this.cursor.y, topY);
-      f.x = lerp(this.landFrom.x, tx, k);
-      f.y = lerp(this.landFrom.y, ty, k) - Math.sin(k * Math.PI) * 40;
-      f.forceAngle = -0.6 + Math.sin(this.landT * 20) * 0.3;
-      f.squash = Math.sin(this.landT * 25) * 0.25;
-      if (w.surfaceY !== null && !this.splashed && f.y < w.surfaceY) {
-        this.splashed = true;
-        g.particles.splash(f.x, w.surfaceY, 1.2);
-      }
-      if (this.landT > 0.8) {
-        this.splashed = false;
-        const fish = this.fish;
-        fish.controlled = false;
-        fish.forceAngle = void 0;
-        this.fish = null;
-        this.fight = null;
+      const F = this.finale;
+      if (!F) {
         this.state = "idle";
-        this.game.onFishCaught(fish);
+        return;
       }
+      if (F.update(dt, this.rdt) !== "caught") return;
+      const fish = this.fish;
+      const hasBoat = F.hasBoat;
+      fish.controlled = false;
+      fish.forceAngle = void 0;
+      this.fish = null;
+      this.finale = null;
+      this.state = "idle";
+      this.cine = new Outro(this, hasBoat, fish);
+      this.game.onFishCaught(fish);
     }
-    // ------------------------------------------------------------------ drawing
+    // ------------------------------------------------------------------ world drawing
     drawWorld(ctx2) {
-      const g = this.game, w = this.world, h = this.hook, c = this.cursor;
-      const fightLine = (this.state === "fight" || this.state === "landing") && this.fish;
-      if (this.fight?.phase?.draw) this.fight.phase.draw(ctx2);
-      if (fightLine) {
-        const f = this.fish;
+      const h = this.hook;
+      const f = this.fish;
+      if (this.battle?.event) this.battle.event.drawWorld(ctx2);
+      if ((this.state === "fight" || this.state === "landing" && this.finale?.stage === "surface") && f) {
         const m = f.anchors?.mouth || [f.x, f.y];
-        this.drawRope(ctx2, c.x, c.y, m[0], m[1], this.tension, true);
-        this.drawRope(ctx2, this.rodX, -6, c.x, c.y, 0.9, false, 0.35);
+        const [rx, ry] = this.rodTip();
+        this.drawRope(ctx2, rx, ry, m[0], m[1], this.tension, true);
       } else if (h.visible) {
-        this.drawRope(ctx2, this.rodX, -6, h.x, h.y - 5, 0.2, false);
+        const [rx, ry] = this.rodTip();
+        this.drawRope(ctx2, rx, ry, h.x, h.y - 5, 0.2, false);
         this.drawHookAndBait(ctx2);
       }
-      if (this.lineSnap) {
-        const k = this.lineSnap.t / 0.6;
-        ctx2.fillStyle = rgba("#e8f4ff", 1 - k);
-        for (let i = 0; i < 10; i++) {
-          const a = i * 0.7 + k * 6;
-          ctx2.fillRect(Math.round(c.x + Math.cos(a) * k * 30 * (i / 10)), Math.round(c.y + Math.sin(a) * k * 20 * (i / 10) + k * k * 20), 1, 1);
-        }
+      if (!this.hostCine) this.drawCinematicWorld(ctx2);
+    }
+    drawCinematic(ctx2) {
+      this.hostCine = true;
+      this.drawCinematicWorld(ctx2);
+    }
+    drawCinematicWorld(ctx2) {
+      const B2 = this.battle;
+      if (B2?.trick?.kind === "spit") drawShots(ctx2, B2.trick.shots, "bubble");
+      if (B2?.trick?.kind === "hop" && this.fish) {
+        const f = this.fish;
+        drawCircle(ctx2, f.x, f.y, 10 + Math.sin(this.t * 12) * 2, "#9ad8ff", 0.8, 1, 8, this.t * 3);
       }
+      if (B2?.glitchT > 0 && this.fish) {
+        const f = this.fish;
+        ctx2.fillStyle = rgba("#ff3a7a", 0.5);
+        ctx2.fillRect(Math.round(f.x - 10), Math.round(f.y - 4), 20, 2);
+        ctx2.fillStyle = rgba("#3affd8", 0.5);
+        ctx2.fillRect(Math.round(f.x - 8), Math.round(f.y + 3), 16, 2);
+      }
+      this.finale?.drawWorld(ctx2);
+      this.cine?.drawWorld?.(ctx2);
     }
     drawRope(ctx2, x0, y0, x1, y1, tension, fight, alpha = 0.85) {
       const w = this.world;
+      const surf = w.surfaceY ?? null;
       const d = dist(x0, y0, x1, y1);
       const sag = (1 - clamp01(tension)) * Math.min(40, d * 0.18);
       const vib = fight && tension > 0.75 ? Math.sin(this.t * 60) * (tension - 0.75) * 6 : 0;
       const mx = (x0 + x1) / 2 + vib, my = (y0 + y1) / 2 + sag;
-      const steps = Math.max(4, Math.ceil(d / 2));
+      const steps = Math.max(4, Math.ceil(d / 1.5));
       let col = "#e8f4ff";
       if (fight) col = tension > 0.92 ? "#ff6a5a" : tension > 0.75 ? "#ffd25a" : "#e8f4ff";
+      const reel = fight ? this.crank.power : 0;
+      const glintPhase = this.t * (0.6 + reel * 2.2) % 1;
       let px = null, py = null;
       for (let i = 0; i <= steps; i++) {
         const t = i / steps;
         const x = Math.round((1 - t) * (1 - t) * x0 + 2 * (1 - t) * t * mx + t * t * x1);
         const y = Math.round((1 - t) * (1 - t) * y0 + 2 * (1 - t) * t * my + t * t * y1);
         if (x === px && y === py) continue;
-        const under = w.surfaceY === null || y > w.surfaceY;
-        ctx2.fillStyle = rgba(col, under ? alpha * 0.8 : alpha);
+        const under = surf === null || y > surf;
+        const glint = reel > 0.15 && Math.abs((1 - t - glintPhase + 1) % 0.25) < 0.012;
+        ctx2.fillStyle = glint ? "#ffffff" : rgba(col, under ? alpha * 0.8 : alpha);
         ctx2.fillRect(x, y, 1, 1);
-        if (w.surfaceY !== null && py !== null && py <= w.surfaceY !== y <= w.surfaceY) {
+        if (surf !== null && py !== null && py <= surf !== y <= surf) {
           const r = 3 + Math.sin(this.t * 4) * 1;
           ctx2.fillStyle = rgba("#ffffff", 0.6);
-          ctx2.fillRect(Math.round(x - r), w.surfaceY + 1, 2, 1);
-          ctx2.fillRect(Math.round(x + r - 1), w.surfaceY + 1, 2, 1);
+          ctx2.fillRect(Math.round(x - r), surf + 1, 2, 1);
+          ctx2.fillRect(Math.round(x + r - 1), surf + 1, 2, 1);
         }
         px = x;
         py = y;
@@ -11621,139 +24258,112 @@ kTtaatTk
       if (spr) {
         ctx2.drawImage(spr, bx - Math.floor(spr.width / 2), by - 2 + Math.round(Math.sin(this.t * 3) * 0.6));
         if (bait.type === "golden" || bait.type === "lantern") {
-          if (rng.chance(0.15)) g.particles.sparkle(bx + rng.float(-5, 5), by + rng.float(-3, 6), bait.type === "golden" ? "#fff3a8" : "#a8fff0");
+          if (rng.chance(0.15)) this.particles.sparkle(bx + rng.float(-5, 5), by + rng.float(-3, 6), bait.type === "golden" ? "#fff3a8" : "#a8fff0");
         }
       }
     }
+    // ------------------------------------------------------------------ screen drawing
     drawHud(ctx2) {
-      const F = this.fight;
-      if (this.state === "fight" && F?.phase) {
-        F.phase.drawHud(ctx2);
-        if (F.phases.length > 1) {
-          const c = this.cursor;
-          const n = F.phases.length;
-          for (let i = 0; i < n; i++) {
-            ctx2.fillStyle = i < F.pi ? "#9affb8" : i === F.pi ? "#ffffff" : "#3a4a5a";
-            ctx2.fillRect(Math.round(c.x - n * 3 + i * 6), Math.round(c.y + 40), 4, 2);
-          }
-        }
-      }
+      if (this.state === "fight" && this.battle && this.fish) drawFightScene(ctx2, this, this.battle);
       if (this.state === "bite" && this.fish) {
         const f = this.fish;
         const k = this.biteT / this.biteMax;
-        drawText(this.ctx || ctx2, "CLICK!", f.x, f.y - 22 * f.scale - 14, { align: "center", color: "#ffe27a", outline: "#3a1a0a", scale: 2, wave: 1, time: this.t });
+        const [sx, sy] = this.toScreen(f.x, f.y);
+        const z = this.zoom();
+        const top = sy - 22 * f.scale * z;
+        drawText(ctx2, "CLICK!", sx, top - 16, { align: "center", color: "#ffe27a", outline: "#3a1a0a", scale: 2, wave: 1, time: this.t });
         ctx2.fillStyle = "#0b1622";
-        ctx2.fillRect(Math.round(f.x - 16), Math.round(f.y - 22 * f.scale - 1), 32, 3);
+        ctx2.fillRect(Math.round(sx - 17), Math.round(top + 1), 34, 5);
         ctx2.fillStyle = "#ffe27a";
-        ctx2.fillRect(Math.round(f.x - 16), Math.round(f.y - 22 * f.scale - 1), Math.round(32 * k), 3);
+        ctx2.fillRect(Math.round(sx - 16), Math.round(top + 2), Math.round(32 * k), 3);
       }
       if (this.msg) {
         const m = this.msg;
         const a = Math.min(1, (m.max - m.t) * 3);
         ctx2.globalAlpha = a;
-        const y = this.cursor.y - 40 - m.t * 12;
-        drawText(ctx2, m.text, this.cursor.x, y, { align: "center", color: m.color, outline: "#14202c", scale: m.big ? 2 : 1 });
+        const y = this.input.y - 40 - m.t * 12;
+        drawText(ctx2, m.text, this.input.x, y, { align: "center", color: m.color, outline: "#14202c", scale: m.big ? 2 : 1 });
         ctx2.globalAlpha = 1;
       }
+      if (!this.hostCineHud) this.drawCinematicHudInner(ctx2);
     }
-    drawStamina(ctx2, v, color = "#ff8a5a") {
-      const f = this.fish;
-      if (!f) return;
-      const w = 40, x = Math.round(f.x - w / 2), y = Math.round(f.y - 24 * f.scale - 8);
-      ctx2.fillStyle = "#0b1622";
-      ctx2.fillRect(x - 1, y - 1, w + 2, 5);
-      ctx2.fillStyle = "#2a1a1a";
-      ctx2.fillRect(x, y, w, 3);
-      ctx2.fillStyle = color;
-      ctx2.fillRect(x, y, Math.round(w * clamp01(v)), 3);
-      ctx2.fillStyle = rgba("#ffffff", 0.5);
-      ctx2.fillRect(x, y, Math.round(w * clamp01(v)), 1);
+    drawCinematicHud(ctx2) {
+      this.hostCineHud = true;
+      this.drawCinematicHudInner(ctx2);
     }
-    drawTensionGauge(ctx2, T) {
-      const c = this.cursor;
-      const R = 17;
-      const a0 = Math.PI * 0.75, a1 = Math.PI * 2.25;
-      const n = 54;
-      for (let i = 0; i <= n; i++) {
-        const k = i / n;
-        const a2 = lerp(a0, a1, k);
-        let col = k < 0.1 ? "#6ab8ff" : k < 0.75 ? "#7dff9a" : k < 0.9 ? "#ffd25a" : "#ff5a4a";
-        const on = k <= T;
-        ctx2.fillStyle = on ? col : rgba("#0b1622", 0.55);
-        const x = Math.round(c.x + Math.cos(a2) * R), y = Math.round(c.y + Math.sin(a2) * R);
-        ctx2.fillRect(x, y, 2, 2);
-      }
-      const a = lerp(a0, a1, clamp01(T));
-      ctx2.fillStyle = "#ffffff";
-      ctx2.fillRect(Math.round(c.x + Math.cos(a) * (R - 4)), Math.round(c.y + Math.sin(a) * (R - 4)), 2, 2);
-      ctx2.fillRect(Math.round(c.x + Math.cos(a) * (R + 3)), Math.round(c.y + Math.sin(a) * (R + 3)), 2, 2);
+    drawCinematicHudInner(ctx2) {
+      if (this.state === "fight" && this.battle && this.fish) drawFightBands(ctx2, this, this.battle);
+      this.finale?.drawHud(ctx2);
+      this.cine?.drawHud?.(ctx2);
+      this.fx.draw(ctx2, "fg", this.t);
+      this.titles.draw(ctx2);
     }
   };
 
   // src/game/skills.js
-  var S3 = (id, branch, name, cost, req, pos, effect, desc, extra = {}) => ({ id, branch, name, cost, req, pos, effect, desc, ...extra });
+  var S4 = (id, branch, name, cost, req, pos, effect, desc, extra = {}) => ({ id, branch, name, cost, req, pos, effect, desc, ...extra });
   var SKILLS = [
-    S3("hook1", "hook", "Sharper Hook", 0, [], [0, 0.04], { biteWindow: 1.25 }, "Bites stay hookable longer.", { icon: "hook" }),
+    S4("hook1", "hook", "Sharper Hook", 0, [], [0, 0.04], { biteWindow: 1.25 }, "Bites stay hookable longer.", { icon: "hook" }),
     // hooks (centre-left trunk)
-    S3("hook2", "hook", "Barbed Hook", 15, ["hook1"], [-0.16, 0.16], { slackGrace: 0.6 }, "Fish struggle longer before throwing the hook.", { icon: "hook" }),
-    S3("hook3", "hook", "Lucky Hook", 60, ["hook2"], [-0.28, 0.27], { rarityBoost: 1.2 }, "Rarer fish show up a little more often.", { icon: "star" }),
-    S3("hook5", "hook", "Steel Hook", 300, ["hook3"], [-0.36, 0.4], { lineStrength: 0.15 }, "Tough enough for junk. Needed for Junkyard Reef.", { icon: "hook" }),
-    S3("hook4", "hook", "Auto-Hook Charm", 150, ["hook3"], [-0.18, 0.4], { autoHook: 0.15 }, "15% chance to set the hook automatically.", { icon: "sparkle" }),
-    S3("hook6", "hook", "Golden Hook", 900, ["hook5"], [-0.44, 0.55], { rarityBoost: 1.3, shinyChance: 1.5 }, "Rare and shiny fish are drawn to gold.", { icon: "crown" }),
-    S3("hook7", "hook", "Lantern Hook", 1200, ["hook5"], [-0.3, 0.6], { lantern: 1 }, "Your hook glows. Needed for the Midnight Abyss.", { icon: "sun" }),
-    S3("hook8", "hook", "Auto-Hook II", 2500, ["hook4", "hook6"], [-0.36, 0.75], { autoHook: 0.15 }, "+15% more auto-hook chance.", { icon: "sparkle" }),
+    S4("hook2", "hook", "Barbed Hook", 15, ["hook1"], [-0.16, 0.16], { slackGrace: 0.6 }, "Fish struggle longer before throwing the hook.", { icon: "hook" }),
+    S4("hook3", "hook", "Lucky Hook", 60, ["hook2"], [-0.28, 0.27], { rarityBoost: 1.2 }, "Rarer fish show up a little more often.", { icon: "star" }),
+    S4("hook5", "hook", "Steel Hook", 300, ["hook3"], [-0.36, 0.4], { lineStrength: 0.15 }, "Tough enough for junk. Needed for Junkyard Reef.", { icon: "hook" }),
+    S4("hook4", "hook", "Auto-Hook Charm", 150, ["hook3"], [-0.18, 0.4], { autoHook: 0.15 }, "15% chance to set the hook automatically.", { icon: "sparkle" }),
+    S4("hook6", "hook", "Golden Hook", 900, ["hook5"], [-0.44, 0.55], { rarityBoost: 1.3, shinyChance: 1.5 }, "Rare and shiny fish are drawn to gold.", { icon: "crown" }),
+    S4("hook7", "hook", "Lantern Hook", 1200, ["hook5"], [-0.3, 0.6], { lantern: 1 }, "Your hook glows. Needed for the Deep Ocean.", { icon: "sun" }),
+    S4("hook8", "hook", "Auto-Hook II", 2500, ["hook4", "hook6"], [-0.36, 0.75], { autoHook: 0.15 }, "+15% more auto-hook chance.", { icon: "sparkle" }),
     // lines (left)
-    S3("line1", "line", "Braided Line", 20, ["hook1"], [-0.42, 0.12], { lineStrength: 0.15 }, "Line can take more tension.", { icon: "line" }),
-    S3("line2", "line", "Elastic Line", 50, ["line1"], [-0.58, 0.2], { snapGrace: 0.25 }, "Survives tension spikes a bit longer.", { icon: "line" }),
-    S3("line3", "line", "Fluoro Line", 120, ["line2"], [-0.72, 0.3], { calm: 1.25 }, "Nearly invisible: fish spook less.", { icon: "eye" }),
-    S3("line4", "line", "Steel Leader", 400, ["line3"], [-0.78, 0.45], { lineStrength: 0.2 }, "Big fish, no problem.", { icon: "line" }),
-    S3("line5", "line", "Titanium Line", 1500, ["line4"], [-0.8, 0.62], { lineStrength: 0.25, snapGrace: 0.3 }, "The strongest line on any desktop.", { icon: "line" }),
+    S4("line1", "line", "Braided Line", 20, ["hook1"], [-0.42, 0.12], { lineStrength: 0.15 }, "Line can take more tension.", { icon: "line" }),
+    S4("line2", "line", "Elastic Line", 50, ["line1"], [-0.58, 0.2], { snapGrace: 0.25 }, "Survives tension spikes a bit longer.", { icon: "line" }),
+    S4("line3", "line", "Fluoro Line", 120, ["line2"], [-0.72, 0.3], { calm: 1.25 }, "Nearly invisible: fish spook less.", { icon: "eye" }),
+    S4("line4", "line", "Steel Leader", 400, ["line3"], [-0.78, 0.45], { lineStrength: 0.2 }, "Big fish, no problem.", { icon: "line" }),
+    S4("line5", "line", "Titanium Line", 1500, ["line4"], [-0.8, 0.62], { lineStrength: 0.25, snapGrace: 0.3 }, "The strongest line on any desktop.", { icon: "line" }),
     // reels (right of trunk)
-    S3("reel1", "reel", "Quick Reel", 25, ["hook1"], [0.16, 0.15], { reelSpeed: 12 }, "Reel in faster.", { icon: "reel" }),
-    S3("reel2", "reel", "Counter Grip", 70, ["reel1"], [0.28, 0.26], { staminaDrain: 1.25 }, "Pulling against fish tires them faster.", { icon: "reel" }),
-    S3("reel3", "reel", "Ball Bearings", 180, ["reel2"], [0.36, 0.39], { reelSpeed: 14 }, "Smooth, speedy reeling.", { icon: "reel" }),
-    S3("reel4", "reel", "Drag System", 450, ["reel3"], [0.44, 0.53], { snapGrace: 0.3, slackGrace: 0.5 }, "More forgiving tension.", { icon: "reel" }),
-    S3("reel5", "reel", "Overdrive Reel", 1800, ["reel4"], [0.4, 0.7], { staminaDrain: 1.35, reelSpeed: 16 }, "Wear down even legends.", { icon: "reel" }),
+    S4("reel1", "reel", "Quick Reel", 25, ["hook1"], [0.16, 0.15], { reelSpeed: 12 }, "Reel in faster.", { icon: "reel" }),
+    S4("reel2", "reel", "Counter Grip", 70, ["reel1"], [0.28, 0.26], { staminaDrain: 1.25 }, "Pulling against fish tires them faster.", { icon: "reel" }),
+    S4("reel3", "reel", "Ball Bearings", 180, ["reel2"], [0.36, 0.39], { reelSpeed: 14 }, "Smooth, speedy reeling.", { icon: "reel" }),
+    S4("reel4", "reel", "Drag System", 450, ["reel3"], [0.44, 0.53], { snapGrace: 0.3, slackGrace: 0.5 }, "More forgiving tension.", { icon: "reel" }),
+    S4("reel5", "reel", "Overdrive Reel", 1800, ["reel4"], [0.4, 0.7], { staminaDrain: 1.35, reelSpeed: 16 }, "Wear down even legends.", { icon: "reel" }),
     // mouse mastery (right)
-    S3("mouse1", "mouse", "Calm Hands", 30, ["hook1"], [0.42, 0.1], { calm: 1.3 }, "Fish tolerate faster mouse movement.", { icon: "mouse_l" }),
-    S3("mouse8", "mouse", "Coin Magnet", 140, ["mouse1"], [0.6, 0.14], { collectRadius: 16 }, "Collect coins from further away.", { icon: "coin" }),
-    S3("mouse2", "mouse", "Lure Jigging", 80, ["mouse1"], [0.56, 0.26], { baitRadius: 1.25 }, "Clicking in the water attracts fish from further.", { icon: "bait" }),
-    S3("mouse3", "mouse", "Big Net", 100, ["mouse2"], [0.72, 0.3], { netTolerance: 1.35, netTime: 1.25 }, "Sloppy circles still catch fish.", { icon: "net" }),
-    S3("mouse4", "mouse", "Tracer Eyes", 160, ["mouse2"], [0.64, 0.42], { traceRadius: 1.3, traceForgive: 1.3 }, "Bigger ring when tracing fish.", { icon: "eye" }),
-    S3("mouse5", "mouse", "Rhythm Fins", 220, ["mouse4"], [0.8, 0.46], { timingWindow: 1.35, timingMisses: 1 }, "Wider timing window, one extra miss.", { icon: "music" }),
-    S3("mouse6", "mouse", "Power Clicks", 220, ["mouse4"], [0.7, 0.56], { mashPower: 1.35 }, "Each mash click counts more.", { icon: "mouse_l" }),
-    S3("mouse9", "mouse", "Dodge Roll", 350, ["mouse6"], [0.84, 0.62], { dodgeHits: 1 }, "Take one extra hit when dodging.", { icon: "heart" }),
-    S3("mouse7", "mouse", "Focus Mode", 600, ["mouse6"], [0.62, 0.72], { focus: 1 }, "Hold RIGHT mouse during fights to slow time.", { icon: "clock" }),
+    S4("mouse1", "mouse", "Calm Hands", 30, ["hook1"], [0.42, 0.1], { calm: 1.3 }, "Fish tolerate faster mouse movement.", { icon: "mouse_l" }),
+    S4("mouse8", "mouse", "Coin Magnet", 140, ["mouse1"], [0.6, 0.14], { collectRadius: 16 }, "Collect coins from further away.", { icon: "coin" }),
+    S4("mouse2", "mouse", "Lure Jigging", 80, ["mouse1"], [0.56, 0.26], { baitRadius: 1.25 }, "Clicking in the water attracts fish from further.", { icon: "bait" }),
+    S4("mouse3", "mouse", "Big Net", 100, ["mouse2"], [0.72, 0.3], { netTolerance: 1.35, netTime: 1.25 }, "Sloppy circles still catch fish.", { icon: "net" }),
+    S4("mouse4", "mouse", "Tracer Eyes", 160, ["mouse2"], [0.64, 0.42], { traceRadius: 1.3, traceForgive: 1.3 }, "Bigger ring when tracing fish.", { icon: "eye" }),
+    S4("mouse5", "mouse", "Rhythm Fins", 220, ["mouse4"], [0.8, 0.46], { timingWindow: 1.35, timingMisses: 1 }, "Wider timing window, one extra miss.", { icon: "music" }),
+    S4("mouse6", "mouse", "Power Clicks", 220, ["mouse4"], [0.7, 0.56], { mashPower: 1.35 }, "Each mash click counts more.", { icon: "mouse_l" }),
+    S4("mouse9", "mouse", "Dodge Roll", 350, ["mouse6"], [0.84, 0.62], { dodgeHits: 1 }, "Take one extra hit when dodging.", { icon: "heart" }),
+    S4("mouse7", "mouse", "Focus Mode", 600, ["mouse6"], [0.62, 0.72], { focus: 1 }, "Hold RIGHT mouse during fights to slow time.", { icon: "clock" }),
     // bait (upper left)
-    S3("bait1", "bait", "Bigger Bait Box", 20, ["hook2"], [-0.06, 0.28], { boxSlots: 2 }, "+2 bait box slots.", { icon: "bait" }),
-    S3("bait2", "bait", "Worm Farm", 60, ["bait1"], [-0.06, 0.42], { unlockBait: ["worm"] }, "Glowing Worms appear in the shop.", { icon: "worm" }),
-    S3("bait8", "bait", "Sugar Rush", 120, ["bait2"], [0.06, 0.5], { unlockBait: ["sugar"] }, "Sugar Cubes appear in the shop.", { icon: "food" }),
-    S3("bait3", "bait", "Golden Bait License", 250, ["bait2"], [-0.14, 0.53], { unlockBait: ["golden"] }, "Golden Bait appears in the shop.", { icon: "crown" }),
-    S3("bait4", "bait", "Flood Gates", 300, ["bait3"], [-0.06, 0.64], { unlockBait: ["flood"] }, "Flood Bait appears in the shop.", { icon: "rain" }),
-    S3("bait5", "bait", "Bait Box XL", 500, ["bait4"], [-0.16, 0.74], { boxSlots: 3 }, "+3 bait box slots.", { icon: "bait" }),
-    S3("bait7", "bait", "Potent Bait", 700, ["bait4"], [0.04, 0.76], { baitRadius: 1.3 }, "Bait smell travels much further.", { icon: "sparkle" }),
-    S3("bait6", "bait", "Black Hole Permit", 1500, ["bait7"], [-0.04, 0.88], { unlockBait: ["blackhole"] }, "Black Hole Bait appears in the shop. Handle with care.", { icon: "skull" }),
+    S4("bait1", "bait", "Bigger Bait Box", 20, ["hook2"], [-0.06, 0.28], { boxSlots: 2 }, "+2 bait box slots.", { icon: "bait" }),
+    S4("bait2", "bait", "Worm Farm", 60, ["bait1"], [-0.06, 0.42], { unlockBait: ["worm"] }, "Glowing Worms appear in the shop.", { icon: "worm" }),
+    S4("bait8", "bait", "Sugar Rush", 120, ["bait2"], [0.06, 0.5], { unlockBait: ["sugar"] }, "Sugar Cubes appear in the shop.", { icon: "food" }),
+    S4("bait3", "bait", "Golden Bait License", 250, ["bait2"], [-0.14, 0.53], { unlockBait: ["golden"] }, "Golden Bait appears in the shop.", { icon: "crown" }),
+    S4("bait4", "bait", "Flood Gates", 300, ["bait3"], [-0.06, 0.64], { unlockBait: ["flood"] }, "Flood Bait appears in the shop.", { icon: "rain" }),
+    S4("bait5", "bait", "Bait Box XL", 500, ["bait4"], [-0.16, 0.74], { boxSlots: 3 }, "+3 bait box slots.", { icon: "bait" }),
+    S4("bait7", "bait", "Potent Bait", 700, ["bait4"], [0.04, 0.76], { baitRadius: 1.3 }, "Bait smell travels much further.", { icon: "sparkle" }),
+    S4("bait6", "bait", "Black Hole Permit", 1500, ["bait7"], [-0.04, 0.88], { unlockBait: ["blackhole"] }, "Black Hole Bait appears in the shop. Handle with care.", { icon: "skull" }),
     // aquarium (lower right)
-    S3("tank1", "tank", "Bigger Tank", 40, ["reel1"], [0.14, 0.3], { tankCap: 3 }, "+3 fish in your aquarium.", { icon: "tank" }),
-    S3("tank2", "tank", "Auto-Feeder", 150, ["tank1"], [0.2, 0.42], { feeder: 1 }, "Your fish get fed while you work.", { icon: "food" }),
-    S3("tank3", "tank", "Snail Janitor", 200, ["tank1"], [0.1, 0.44], { autoCollect: 1 }, "A snail slowly collects coins for you.", { icon: "coin" }),
-    S3("tank4", "tank", "Bigger Tank II", 400, ["tank2"], [0.24, 0.56], { tankCap: 4 }, "+4 fish in your aquarium.", { icon: "tank" }),
-    S3("tank5", "tank", "Happy Water", 500, ["tank4"], [0.2, 0.68], { coinMul: 1.25 }, "Happier fish make 25% more coins.", { icon: "heart" }),
-    S3("tank6", "tank", "Coin Crab", 1200, ["tank3", "tank4"], [0.12, 0.6], { autoCollect: 1 }, "A greedy crab helps collect coins.", { icon: "coin" }),
-    S3("tank7", "tank", "Bigger Tank III", 2e3, ["tank5"], [0.26, 0.82], { tankCap: 6 }, "+6 fish in your aquarium.", { icon: "tank" }),
-    S3("tank8", "tank", "Treasure Currents", 3e3, ["tank7"], [0.16, 0.94], { coinMul: 1.5, offlineMul: 0.2 }, "+50% coins, more coins while away.", { icon: "trophy" }),
+    S4("tank1", "tank", "Bigger Tank", 40, ["reel1"], [0.14, 0.3], { tankCap: 3 }, "+3 fish in your aquarium.", { icon: "tank" }),
+    S4("tank2", "tank", "Auto-Feeder", 150, ["tank1"], [0.2, 0.42], { feeder: 1 }, "Your fish get fed while you work.", { icon: "food" }),
+    S4("tank3", "tank", "Snail Janitor", 200, ["tank1"], [0.1, 0.44], { autoCollect: 1 }, "A snail slowly collects coins for you.", { icon: "coin" }),
+    S4("tank4", "tank", "Bigger Tank II", 400, ["tank2"], [0.24, 0.56], { tankCap: 4 }, "+4 fish in your aquarium.", { icon: "tank" }),
+    S4("tank5", "tank", "Happy Water", 500, ["tank4"], [0.2, 0.68], { coinMul: 1.25 }, "Happier fish make 25% more coins.", { icon: "heart" }),
+    S4("tank6", "tank", "Coin Crab", 1200, ["tank3", "tank4"], [0.12, 0.6], { autoCollect: 1 }, "A greedy crab helps collect coins.", { icon: "coin" }),
+    S4("tank7", "tank", "Bigger Tank III", 2e3, ["tank5"], [0.26, 0.82], { tankCap: 6 }, "+6 fish in your aquarium.", { icon: "tank" }),
+    S4("tank8", "tank", "Treasure Currents", 3e3, ["tank7"], [0.16, 0.94], { coinMul: 1.5, offlineMul: 0.2 }, "+50% coins, more coins while away.", { icon: "trophy" }),
     // breeding (crown right)
-    S3("breed1", "breed", "Fish Romance", 800, ["tank5"], [0.36, 0.84], { breeding: 1 }, "Happy pairs of the same species lay eggs.", { icon: "heart" }),
-    S3("breed2", "breed", "Warm Nursery", 1200, ["breed1"], [0.5, 0.88], { hatchSpeed: 1.6 }, "Eggs hatch faster.", { icon: "sun" }),
-    S3("breed3", "breed", "Mutation Lab", 2e3, ["breed1"], [0.42, 0.96], { mutationChance: 0.05 }, "More mutations when catching and breeding.", { icon: "sparkle" }),
-    S3("breed4", "breed", "Sparkle Genes", 4e3, ["breed3"], [0.56, 0.98], { shinyChance: 2 }, "Shiny fish twice as likely.", { icon: "star" }),
+    S4("breed1", "breed", "Fish Romance", 800, ["tank5"], [0.36, 0.84], { breeding: 1 }, "Happy pairs of the same species lay eggs.", { icon: "heart" }),
+    S4("breed2", "breed", "Warm Nursery", 1200, ["breed1"], [0.5, 0.88], { hatchSpeed: 1.6 }, "Eggs hatch faster.", { icon: "sun" }),
+    S4("breed3", "breed", "Mutation Lab", 2e3, ["breed1"], [0.42, 0.96], { mutationChance: 0.05 }, "More mutations when catching and breeding.", { icon: "sparkle" }),
+    S4("breed4", "breed", "Sparkle Genes", 4e3, ["breed3"], [0.56, 0.98], { shinyChance: 2 }, "Shiny fish twice as likely.", { icon: "star" }),
     // expeditions (crown left)
-    S3("exp1", "exp", "Junkyard Reef Map", 350, ["hook5"], [-0.52, 0.42], { unlockBiome: "junkyard" }, "Travel to Junkyard Reef. Requires the Steel Hook and 6 species discovered.", { icon: "map", needSpecies: 6 }),
-    S3("exp2", "exp", "Junk Bait License", 500, ["exp1"], [-0.6, 0.56], { unlockBait: ["chip", "popup"] }, "Overclocked Chips and Pop-up Ads in the shop.", { icon: "bait" }),
-    S3("exp5", "exp", "Weather Radio", 400, ["exp1"], [-0.62, 0.7], { forecast: 1 }, "See the weather forecast and rare-fish weather.", { icon: "cloud" }),
-    S3("exp6", "exp", "Sonar Ping", 900, ["exp5"], [-0.66, 0.84], { sonar: 1 }, "Rare fish get a subtle glint.", { icon: "eye" }),
-    S3("exp3", "exp", "Midnight Abyss Map", 2500, ["exp1", "hook7"], [-0.46, 0.86], { unlockBiome: "abyss" }, "Dive to the Midnight Abyss. Requires the Lantern Hook and 16 species discovered.", { icon: "map", needSpecies: 16 }),
-    S3("exp4", "exp", "Abyss Bait License", 1800, ["exp3"], [-0.3, 0.95], { unlockBait: ["lantern", "relic"] }, "Lantern Pearls and Ancient Relics in the shop.", { icon: "skull" })
+    S4("exp1", "exp", "Junkyard Reef Map", 350, ["hook5"], [-0.52, 0.42], { unlockBiome: "junkyard" }, "Travel to Junkyard Reef. Requires the Steel Hook and 6 species discovered.", { icon: "map", needSpecies: 6 }),
+    S4("exp2", "exp", "Junk Bait License", 500, ["exp1"], [-0.6, 0.56], { unlockBait: ["chip", "popup"] }, "Overclocked Chips and Pop-up Ads in the shop.", { icon: "bait" }),
+    S4("exp5", "exp", "Weather Radio", 400, ["exp1"], [-0.62, 0.7], { forecast: 1 }, "See the weather forecast and rare-fish weather.", { icon: "cloud" }),
+    S4("exp6", "exp", "Sonar Ping", 900, ["exp5"], [-0.66, 0.84], { sonar: 1 }, "Rare fish get a subtle glint.", { icon: "eye" }),
+    S4("exp3", "exp", "Deep Ocean Map", 2500, ["exp1", "hook7"], [-0.46, 0.86], { unlockBiome: "abyss" }, "Dive into the Deep Ocean. Requires the Lantern Hook and 16 species discovered.", { icon: "map", needSpecies: 16 }),
+    S4("exp4", "exp", "Deep Ocean Bait License", 1800, ["exp3"], [-0.3, 0.95], { unlockBait: ["lantern", "relic"] }, "Lantern Pearls and Ancient Relics in the shop.", { icon: "skull" })
   ];
   var SKILL_BY_ID = Object.fromEntries(SKILLS.map((s) => [s.id, s]));
   var BASE_STATS = {
@@ -11888,9 +24498,9 @@ kTtaatTk
         this.down = true;
         this.pressed = true;
         this.clicks++;
-        const now2 = performance.now();
-        this.dblclick = now2 - this.lastClickT < 380;
-        this.lastClickT = this.dblclick ? 0 : now2;
+        const now4 = performance.now();
+        this.dblclick = now4 - this.lastClickT < 380;
+        this.lastClickT = this.dblclick ? 0 : now4;
       }, { passive: false });
       this.on(c, "contextmenu", (e) => e.preventDefault(), { passive: false });
     }
@@ -12176,7 +24786,7 @@ kTtaatTk
     for (let i = 0; i < n; i++) {
       const y0 = ys[i], y1 = ys[i + 1], ph = y1 - y0, seed = i * 31 + (tone3 === "dark" ? 7 : 0);
       const tint = (hash1(i, 3) - 0.5) * 0.16;
-      const P3 = R.map((c) => tint > 0 ? mix(c, shade(c, 0.4), tint * 2) : mix(c, shade(c, -0.4), -tint * 2));
+      const P4 = R.map((c) => tint > 0 ? mix(c, shade(c, 0.4), tint * 2) : mix(c, shade(c, -0.4), -tint * 2));
       const seams = [];
       if (w > 90 && !noSeams) {
         seams.push(Math.round(w * (0.2 + hash1(i, 5) * 0.55)));
@@ -12195,9 +24805,9 @@ kTtaatTk
             b.set(x, y, pk3(R[0]));
             continue;
           }
-          let c = P3[3];
-          if (ly === top) c = P3[4];
-          else if (ly === ph - 1) c = P3[2];
+          let c = P4[3];
+          if (ly === top) c = P4[4];
+          else if (ly === ph - 1) c = P4[2];
           else {
             let gy = y + wave[x];
             let kd = 9;
@@ -12208,19 +24818,19 @@ kTtaatTk
             }
             const ph2 = (gy + seed * 0.37) / 3.3 % 1;
             const seg = Math.sin(x * 0.07 + Math.floor(gy / 3.3) * 2.3 + seed) > -0.2;
-            if (ph2 < 0.24 && seg) c = P3[2];
-            else if (ph2 > 0.55 && ph2 < 0.7 && hash2(x >> 3, Math.floor(gy / 3.3), seed) > 0.55) c = P3[4];
-            if (knot && kd < 1) c = kd < 0.5 ? P3[1] : P3[2];
-            else if (knot && kd < 1.5) c = P3[4];
+            if (ph2 < 0.24 && seg) c = P4[2];
+            else if (ph2 > 0.55 && ph2 < 0.7 && hash2(x >> 3, Math.floor(gy / 3.3), seed) > 0.55) c = P4[4];
+            if (knot && kd < 1) c = kd < 0.5 ? P4[1] : P4[2];
+            else if (knot && kd < 1.5) c = P4[4];
           }
           if (ly >= top && (Math.abs(x - s0) <= 1 || Math.abs(x - s1) <= 1)) {
             const sx = Math.abs(x - s0) <= 1 ? s0 : s1;
             if (x === sx) c = R[0];
-            else if (x === sx + 1 && ly > top) c = P3[4];
-            else if (x === sx - 1 && ly > top && ly < ph - 1) c = P3[2];
+            else if (x === sx + 1 && ly > top) c = P4[4];
+            else if (x === sx - 1 && ly > top && ly < ph - 1) c = P4[2];
           }
-          if (x === 1 && ly > top) c = mix(c, P3[5], 0.35);
-          if (x === w - 2) c = mix(c, P3[1], 0.45);
+          if (x === 1 && ly > top) c = mix(c, P4[5], 0.35);
+          if (x === w - 2) c = mix(c, P4[1], 0.45);
           if (inset) {
             if (y === 1 || x === 1) c = R[1];
             else if (y === 2 || x === 2) c = mix(c, R[1], 0.5);
@@ -12449,8 +25059,8 @@ kTtaatTk
           const d = Math.min(x, y, w - 1 - x, h - 1 - y);
           if (d === 0 && !bump(x, y)) continue;
           let v;
-          const shape = (xx, yy) => outer(xx, yy) && !inner(xx, yy) && !(Math.min(xx, yy, w - 1 - xx, h - 1 - yy) === 0 && !bump(xx, yy));
-          if (edgeOf(shape, x, y)) v = 0;
+          const shape4 = (xx, yy) => outer(xx, yy) && !inner(xx, yy) && !(Math.min(xx, yy, w - 1 - xx, h - 1 - yy) === 0 && !bump(xx, yy));
+          if (edgeOf(shape4, x, y)) v = 0;
           else {
             const side = d === y ? "t" : d === x ? "l" : d === h - 1 - y ? "b" : "r";
             v = 3 + (side === "t" || side === "l" ? 0.8 : -0.5) - (d === fw2 - 1 ? 0.8 : 0);
@@ -12694,7 +25304,7 @@ kwwwwwwk.
   var ICON_SET = new Set(UI_ICON_NAMES);
   var HOST_STYLE = "all:initial!important;display:block!important;position:fixed!important;left:0!important;top:0!important;width:100%!important;height:100%!important;margin:0!important;padding:0!important;border:0!important;z-index:2147483647!important;overflow:hidden!important;contain:strict!important;background:transparent!important;";
   var SHADOW_CSS = "canvas{display:block;width:100%;height:100%;image-rendering:pixelated;image-rendering:crisp-edges;}@media print{:host{display:none!important}}";
-  var POOL = SPECIES.filter((s) => !s.spawn?.hidden && !s.spawn?.requires && !s.spawn?.never);
+  var POOL2 = SPECIES.filter((s) => !s.spawn?.hidden && !s.spawn?.requires && !s.spawn?.never);
   var MiniCamera = class {
     constructor(reduced) {
       this.reduced = reduced;
@@ -12979,9 +25589,9 @@ kwwwwwwk.
         this.lastScroll = { x, y };
       } else if (t && t.nodeType === 1) {
         const prev = this.innerScroll.get(t);
-        const now2 = [t.scrollLeft, t.scrollTop];
-        if (prev) this.scrollInner += Math.abs(now2[1] - prev[1]) + Math.abs(now2[0] - prev[0]);
-        this.innerScroll.set(t, now2);
+        const now4 = [t.scrollLeft, t.scrollTop];
+        if (prev) this.scrollInner += Math.abs(now4[1] - prev[1]) + Math.abs(now4[0] - prev[0]);
+        this.innerScroll.set(t, now4);
       }
       this.scanSoon(0.25);
     }
@@ -13057,7 +25667,7 @@ kwwwwwwk.
       return wt;
     }
     pickSpecies() {
-      const pool = POOL.map((s) => ({ s, w: this.weightOf(s) })).filter((e) => e.w > 0);
+      const pool = POOL2.map((s) => ({ s, w: this.weightOf(s) })).filter((e) => e.w > 0);
       return pool.length ? rng.weighted(pool).s : null;
     }
     spawn(sp, opts = {}) {
@@ -13230,10 +25840,10 @@ kwwwwwwk.
       const sp = (Math.hypot(dx, dy) + inner * 0.5) / Math.max(dt, 1e-3);
       this.scrollSpeed = damp(this.scrollSpeed, sp, 8, dt);
       if (!dx && !dy && !inner) return;
-      const mul = this.reduced ? 0.15 : 0.35;
+      const mul2 = this.reduced ? 0.15 : 0.35;
       for (const f of this.fishes) {
         if (f.controlled) continue;
-        const drag = mul * (1 - f.z * 0.5) / Math.max(0.6, f.scale);
+        const drag = mul2 * (1 - f.z * 0.5) / Math.max(0.6, f.scale);
         f.x -= dx * drag;
         f.y -= dy * drag;
         f.vx = clamp(f.vx - dx / Math.max(dt, 1e-3) * 0.04, -260, 260);
@@ -13296,14 +25906,14 @@ kwwwwwwk.
       this.sendStatus(true);
     }
     // ------------------------------------------------------------------ loop
-    frame(now2) {
+    frame(now4) {
       if (this.destroyed) return;
       this.raf = requestAnimationFrame(this.frame);
       const busy = this.fishingMode || this.card || this.fishing.busy;
       const minDt = busy ? 0 : 1 / 30 - 3e-3;
-      let dt = (now2 - this.last) / 1e3;
+      let dt = (now4 - this.last) / 1e3;
       if (dt < minDt) return;
-      this.last = now2;
+      this.last = now4;
       dt = Math.min(dt, 1 / 20);
       try {
         this.update(dt);
@@ -13400,9 +26010,9 @@ kwwwwwwk.
         if (f.rec.variant?.mutation === "ghost") alpha *= 0.65;
         const hiding = !f.controlled && f.state === "hide";
         const far = !f.controlled && f.z >= FAR_Z;
-        const box = hiding || far ? this.boxOf(f, st) : null;
-        const occ = box ? this.occluders(box, far, hiding || far) : null;
-        if (occ && (occ.media.length || occ.text.length)) this.drawOccluded(ctx2, f, st, alpha, box, occ);
+        const box2 = hiding || far ? this.boxOf(f, st) : null;
+        const occ = box2 ? this.occluders(box2, far, hiding || far) : null;
+        if (occ && (occ.media.length || occ.text.length)) this.drawOccluded(ctx2, f, st, alpha, box2, occ);
         else {
           if (alpha < 1) ctx2.globalAlpha = alpha;
           f.anchors = drawFishRig(ctx2, f.c, st);

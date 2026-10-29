@@ -3,7 +3,9 @@
 // and circuit-board floor, CRTs with live screens, blinking server racks, a glowing vending machine,
 // sagging cables, glowing algae and drifting data bits. Weathers: murky, static, oil, datarain.
 
-import { Biome } from './base.js';
+import { Biome, worldTop } from './base.js';
+import { SkyDome } from '../sky.js';
+import { factory, gantryCrane, containerStack, junkRidge } from '../horizon.js';
 import { clamp, clamp01, lerp, smoothstep, ease, hash2, fbm2, TAU } from '../../core/math.js';
 import { RNG } from '../../core/rng.js';
 import { mix, rgba, pack, hslToHex } from '../../core/color.js';
@@ -19,10 +21,11 @@ import {
 } from '../scenery.js';
 
 const SKY = {
-  day: [[0, '#768670'], [0.6, '#a2aa86'], [1, '#cdcaa0']],
-  dusk: [[0, '#3a2a40'], [0.55, '#8a4a50'], [1, '#e2925c']],
-  night: [[0, '#04070a'], [1, '#121a1c']],
+  day: [[0, '#4e6058'], [0.45, '#6a7c66'], [0.8, '#98a27e'], [0.94, '#b8b88e'], [1, '#d2cca2']],
+  dusk: [[0, '#1c1828'], [0.45, '#3c2a40'], [0.78, '#7a4048'], [0.93, '#c2704e'], [1, '#e8965c']],
+  night: [[0, '#010203'], [0.6, '#05080a'], [1, '#121a1c']],
 };
+const SKYHZ = { day: '#b8b88e', dusk: '#c2704e', night: '#0c1214' };
 const WATER = {
   day: [[0, '#86c0a4'], [0.05, '#52a08a'], [0.3, '#357a6e'], [0.65, '#225a56'], [1, '#143e40']],
   dusk: [[0, '#d0a874'], [0.05, '#82907a'], [0.35, '#40645e'], [1, '#18343a']],
@@ -177,10 +180,10 @@ export class JunkyardBiome extends Biome {
   build(W, H) {
     this.W = W; this.H = H;
     this.base = this.baseSurface(H);
+    this.top = worldTop(H);
     this.ys = new Int16Array(W + 2);
-    this.skyH = this.base + 10;
-    this.air = makeLayer(W, this.skyH);
-    this.skyBlend = new Blend(); this.waterBlend = new Blend();
+    this.ys.fill(this.base);
+    this.waterBlend = new Blend();
     this.buildSky();
     const wo = { y0: this.base - 2, y1: H, levels: 24 };
     this.water = { day: gradientStrip(H, WATER.day, wo), dusk: gradientStrip(H, WATER.dusk, wo), night: gradientStrip(H, WATER.night, wo) };
@@ -196,35 +199,24 @@ export class JunkyardBiome extends Biome {
   }
 
   buildSky() {
-    const W = this.W, h = this.skyH, base = this.base;
-    const m = new Mask(W, h);
-    const r = new RNG(17);
-    // industrial skyline: hills of junk, smokestacks, cranes, a pier
-    const rg = ridge(W, base - 3, 3, 0.02, 4, 3);
-    m.below((x) => rg[x]);
-    this.stacks = [];
-    for (const xf of [0.2, 0.23, 0.71]) { const x = Math.round(xf * W), hh = r.int(10, 15); m.rect(x, base - hh, 3, hh); m.rect(x - 1, base - hh, 5, 1); this.stacks.push({ x: x + 1, y: base - hh - 1 }); }
-    this.blinkers = [];
-    for (const xf of [0.43, 0.86]) {
-      const x = Math.round(xf * W), top = base - 18;
-      m.rect(x, top, 2, 18); m.line(x, top, x + 26, top - 3, 0.6); m.line(x - 8, top + 1, x, top, 0.6); m.line(x + 22, top - 2, x + 22, top + 8, 0.4);
-      this.blinkers.push({ x: x + 26, y: top - 4 }, { x, y: top - 1 });
-    }
-    m.rect(Math.round(W * 0.55), base - 4, 60, 2); for (let i = 0; i < 7; i++) m.rect(Math.round(W * 0.55) + i * 9, base - 4, 1, 5);
-    this.windows = [];
-    for (let i = 0; i < 18; i++) { const x = r.int(10, W - 10); this.windows.push({ x, y: Math.round(rg[x]) + r.int(1, 2), ph: r.float(0, TAU) }); }
-    const mk = (kind) => {
-      const st = SKY[kind];
-      const c = paint(W, h, (x, y) => {
-        const [rr, gg, bb] = lerpStops(st, clamp01(y / base));
-        return dpack(rr, gg, bb, x, y, 6);
-      });
-      const sil = { day: ['#4a5446', '#5c6654'], dusk: ['#2a1c2a', '#3a2834'], night: ['#020405', '#080c0e'] }[kind];
-      ctxOf(c).drawImage(m.toCanvas((x, y, v, up) => pack(up <= 1 ? sil[1] : sil[0])), 0, 0);
-      return c;
-    };
-    this.sky = { day: mk('day'), dusk: mk('dusk'), night: mk('night') };
+    const W = this.W, base = this.base, top = this.top;
+    this.sky = new SkyDome({ W, top, base, seed: 17, stops: SKY, stars: 24, haze: 0.12, clouds: { n: 11, size: [26, 64], y: [top + 30, base - 26], scale: 2, speed: 0.8, pals: ['smog', 'dusk', 'night', 'rain'] } });
+    this.sky.clouds.forEach((c) => { c.spr.day = c.spr.smog; });
+    const hz = (k) => ({ day: [SKYHZ.day, k], dusk: [SKYHZ.dusk, k + 0.08], night: [SKYHZ.night, Math.min(0.85, k + 0.32)] });
+    this.horizon = [
+      { spr: junkRidge(W, 27, hz(0.34)), x: -12, y: base + 3, full: true },
+      { spr: factory(21, hz(0.3)), x: Math.round(W * 0.22), y: base + 2, factory: true },
+      { spr: gantryCrane(23, hz(0.36)), x: Math.round(W * 0.52), y: base + 2, crane: true },
+      { spr: containerStack(25, hz(0.32)), x: Math.round(W * 0.8), y: base + 2 },
+    ];
+    for (const h of this.horizon) { h.blend = new Blend(); if (h.full) h.x = h.spr.ox - 12; }
+    const f = this.horizon[1];
+    this.stacks = Object.entries(f.spr.anchors).filter(([k]) => k.startsWith('stack')).map(([, a]) => ({ x: f.x - f.spr.ox + a[0], y: f.y - f.spr.oy + a[1] }));
+    const c = this.horizon[2];
+    this.blinkers = ['lampL', 'lampR'].map((k) => ({ x: c.x - c.spr.ox + c.spr.anchors[k][0], y: c.y - c.spr.oy + c.spr.anchors[k][1] }));
     this.smoke = [];
+    const r = new RNG(17);
+    for (let i = 0; i < 60; i++) this.smoke.push({ s: i % this.stacks.length, k: r.next(), ph: r.float(0, TAU), w: r.float(0.7, 1.3) });
   }
 
   makeSheen() {
@@ -376,6 +368,19 @@ export class JunkyardBiome extends Biome {
   }
 
   floorAt(x, z = 0) { return this.D ? this.D.floorAt(x, z) : super.floorAt(x); }
+
+  waveAt(x) {
+    const i = Math.max(0, Math.min(this.W, Math.round(x)));
+    return this.ys ? this.ys[i] : this.base;
+  }
+
+  waterLook() {
+    const tod = this.tod, wx = this.wx;
+    return {
+      refract: 12 + wx.static * 8, caustic: 6 * (0.3 + tod.day * 0.7) * (1 - wx.oil * 0.6), chroma: true, foam: 0.9,
+      causticColor: tri('#24382a', '#30261c', '#0c1a1a', tod), foamColor: this.cols.crest, crestColor: tri('#e8ffe8', '#ffe0c0', '#90b0a8', tod),
+    };
+  }
 
   buildLayers() {
     const W = this.W, H = this.H, pad = 28, D = this.D;
@@ -541,6 +546,8 @@ export class JunkyardBiome extends Biome {
     for (const d of this.rain) { d.y += d.v * dt; if (d.y > H) { d.y = -120 - Math.random() * 100; d.x = Math.round((Math.random() * W) / 4) * 4; } }
     for (const o of this.oilBlobs) { o.y += o.v * dt; if (o.y < s + 6) { o.y = H - 70; o.x = Math.random() * W; } }
     for (const f of this.floaters) { f.x += f.v * dt * 0.6; if (f.x > W + 20) f.x = -20; }
+    this.sky.update(dt, 0.8 + wx.static * 0.6);
+    waveLine(this.ys, W, s, t * 0.7, 1.1, 0.2, 0.8);
     this.bubbles.update(dt, s);
     this.emitT -= dt;
     if (this.emitT <= 0) {
@@ -555,27 +562,49 @@ export class JunkyardBiome extends Biome {
   }
 
   // ------------------------------------------------------------------ draw
-  drawAir(env) {
-    const g = this.air.ctx, W = this.W, h = this.skyH, t = this.t, tod = this.tod;
+  // Smoggy sky, voxel smog clouds, the industrial voxel skyline with smoke plumes and blinking crane lights.
+  drawAir(g, env) {
+    const W = this.W, t = this.t, tod = this.tod, sky = this.sky, wx = this.wx;
+    const view = env.view;
+    const sp = sky.span(view);
+    if (!sp) return;
+    const [y0, y1] = sp;
+    const scroll = env.scroll ?? 0, ref = env.ref ?? 0;
+    g.save();
+    g.beginPath();
+    g.rect(0, y0, W, y1 - y0);
+    g.clip();
+    sky.drawGradient(g, tod, view);
+    const clear = 0.55 - wx.oil * 0.3;
+    sky.drawBodies(g, env, tod, clear, scroll, ref);
+    sky.drawClouds(g, tod, scroll, ref, wx.static * 0.5, 0.92, view);
+    // smoke plumes from the factory stacks (dithered puffs drifting downwind)
+    g.fillStyle = tod.night > 0.5 ? '#1c2224' : '#8a8a78';
+    for (const p of this.smoke) {
+      const st = this.stacks[p.s];
+      if (!st) continue;
+      const k = (p.k + t * 0.035 * p.w) % 1;
+      const r = 1 + Math.round(k * 9 * p.w);
+      const x = Math.round(st.x + k * 70 + Math.sin(t * 0.6 + p.ph + k * 5) * (2 + k * 6)), y = Math.round(st.y - k * 150);
+      g.globalAlpha = (1 - k) * 0.5;
+      g.fillRect(x - r + 1, y - r, r * 2 - 2, r * 2);
+      g.fillRect(x - r, y - r + 1, r * 2, r * 2 - 2);
+    }
     g.globalAlpha = 1;
-    g.globalCompositeOperation = 'source-over';
-    g.drawImage(this.skyBlend.get([[this.sky.day, tod.day], [this.sky.dusk, tod.dusk], [this.sky.night, tod.night]]), 0, 0);
-    // smoke from the stacks
-    g.fillStyle = tod.night > 0.5 ? '#1a2224' : '#8a9080';
-    for (const st of this.stacks) {
-      for (let i = 0; i < 5; i++) {
-        const k = ((t * 0.15 + i / 5) % 1);
-        g.globalAlpha = (1 - k) * 0.45;
-        const r = 1 + Math.round(k * 4);
-        g.fillRect(Math.round(st.x + k * 14 + Math.sin(t + i) * 1.5) - r, Math.round(st.y - k * 12) - r, r * 2, r * 2);
+    for (const h of this.horizon) {
+      const c = h.blend.get([[h.spr.day, tod.day], [h.spr.dusk, tod.dusk], [h.spr.night, tod.night]]);
+      g.drawImage(c, h.x - h.spr.ox, h.y - h.spr.oy);
+      if (h.spr.glow && tod.night + tod.dusk * 0.4 > 0.1) {
+        g.globalCompositeOperation = 'lighter';
+        g.globalAlpha = clamp01(tod.night + tod.dusk * 0.4) * (0.6 + 0.2 * Math.sin(t * 0.7 + h.x));
+        g.drawImage(h.spr.glow, h.x - h.spr.ox, h.y - h.spr.oy);
+        g.globalCompositeOperation = 'source-over';
+        g.globalAlpha = 1;
       }
     }
-    g.globalAlpha = 1;
-    if (tod.night > 0.3) {
-      for (const wdw of this.windows) { if (Math.sin(t * 0.2 + wdw.ph) > -0.3) { g.fillStyle = '#ffd27a'; g.globalAlpha = tod.night * 0.8; g.fillRect(wdw.x, wdw.y, 1, 1); } }
-      g.globalAlpha = 1;
-    }
-    for (const b of this.blinkers) if (Math.sin(t * 2.5 + b.x) > 0.4) { g.fillStyle = '#ff4a3a'; g.fillRect(b.x, b.y, 1, 1); }
+    for (const b of this.blinkers) if (Math.sin(t * 2.5 + b.x) > 0.4) { drawGlow(g, b.x, b.y, 3, '#ff4a3a', 0.8); g.fillStyle = '#ff6a5a'; g.fillRect(b.x, b.y, 1, 1); }
+    if (wx.static > 0.05 && this.flicker > 0.02) { g.fillStyle = rgba('#e0fff0', this.flicker * 0.2); g.fillRect(0, y0, W, y1 - y0); }
+    g.restore();
   }
 
   drawBack(ctx, env) {
@@ -584,14 +613,13 @@ export class JunkyardBiome extends Biome {
     const W = this.W, H = this.H, t = this.t, tod = this.tod, wx = this.wx;
     const sy = this.surfaceAt(env);
     const ys = this.ys;
-    waveLine(ys, W, sy, t * 0.7, 1.1, 0.2, 0.8);
     let top = H;
     for (let x = 0; x <= W; x++) if (ys[x] < top) top = ys[x];
     const water = this.waterBlend.get([[this.water.day, tod.day], [this.water.dusk, tod.dusk], [this.water.night, tod.night]]);
-    const hasAir = top > -3;
+    const view = env.view;
+    const hasAir = !view || view.y0 < top + 2;
     if (hasAir) {
-      this.drawAir(env);
-      ctx.drawImage(this.air.canvas, 0, 0);
+      this.drawAir(ctx, env);
       const wp = new Path2D();
       wp.moveTo(0, H);
       waveRuns(ys, W, (x0, len, y) => { wp.lineTo(x0, y); wp.lineTo(x0 + len, y); });

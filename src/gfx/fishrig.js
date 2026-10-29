@@ -3,12 +3,24 @@
 // look, blink and emote; a mouth that talks) drawn on top every frame from small cached sprites.
 //
 // drawFishRig(ctx, compiled, st) -> anchors in world coords. See docs/ARCHITECTURE.md "Fish rig".
-// Extra st fields understood here: pose (iconfish mimic pose), chain ([{x,y}] head-first for chain kinds).
+// Two styles share this entry point: 'voxel' (default; 3D voxel sculptures from voxelfish.js that turn
+// through yaw, with the same dynamic face sprites as overlays) and 'pixel' (the layered 2D rig).
+// setFishStyle(style) switches globally; st.style overrides per call.
+// Extra st fields: pose (iconfish mimic pose), chain ([{x,y}] head-first for chain kinds), heading (deg,
+// + = swimming away from the viewer: the voxel fish turns its head into the scene), lod (0 near, 1 far:
+// fewer swim frames), pri (voxel build priority bonus), style.
+// turn is the world-space scaleX (-1..1) during a turn-around; turn: 1 with facing: -1 means "facing left".
 // The game may call beginRigFrame() once per frame; otherwise the raster budget window resets itself.
 
 import { rigLayers, rigGeom, rasterLayer, paintEye, paintMouth, eyeBox, mouthBox, isKind, chainSegment, chainHeadSprite, chainRadius, defaultChainPoints, realCues } from './fishart.js';
 import { PixelBuffer } from './pixel.js';
-import { makeCanvas, ctxOf } from '../core/canvas.js';
+import { makeCanvas, ctxOf, tinted } from '../core/canvas.js';
+import { voxelFrame, chainBall, setVoxelFishBudget, SWIM_N } from './voxelfish.js';
+
+let fishStyle = 'voxel';
+export function setFishStyle(style) { fishStyle = style === 'pixel' ? 'pixel' : 'voxel'; }
+export function getFishStyle() { return fishStyle; }
+if (typeof window !== 'undefined') { window.__fishStyle = setFishStyle; window.__rigStats = () => rigStats(); } // debug / perf
 
 const ANGLE_STEP = Math.PI / 12;
 const MAX_ITEMS = 7000;
@@ -23,9 +35,10 @@ const fract = (v) => v - Math.floor(v);
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const TAU = Math.PI * 2;
 
-export function setRigBudget(ms) { budgetMs = ms; }
+export function setRigBudget(ms) { budgetMs = ms; setVoxelFishBudget(Math.max(1.5, ms * 0.75)); }
 export function beginRigFrame() { spent = 0; windowStart = now(); }
-export function rigStats() { return { items: cache.size, spent, rasterized: statRaster, fallbacks: statFallback }; }
+let drawMs = 0, drawCalls = 0;
+export function rigStats() { return { items: cache.size, spent, rasterized: statRaster, fallbacks: statFallback, drawMs, drawCalls }; }
 export function clearRigCache() { cache.clear(); families.clear(); }
 
 function idOf(c) {
@@ -112,7 +125,8 @@ function eyeSprite(c, ev, fs, ang) {
   const R = ev.r;
   const n = Math.max(2, Math.round(R * 0.7));
   const lxq = Math.round(clamp(fs.lx, -1, 1) * n), lyq = Math.round(clamp(fs.ly, -1, 1) * n);
-  const gxq = Math.round((fs.gx || 0) * n), gyq = Math.round((fs.gy || 0) * n);
+  const googly = ev.e.type === 'googly';
+  const gxq = googly ? Math.round((fs.gx || 0) * n) : 0, gyq = googly ? Math.round((fs.gy || 0) * n) : 0;
   const bq = Math.round(clamp(fs.blink, 0, 1) * 4);
   const tq = ANIM_EMO[fs.emotion] || ev.e.type === 'googly' ? Math.floor(fs.time * 8) % 24 : 0;
   const pq = Math.round((fs.pupil || 1) * 10), dq = Math.round((fs.dim || 0) * 10);
@@ -202,7 +216,28 @@ function gillSprite(c, geo, gkey, w) {
 
 // ---- main entry
 
+// World-space scaleX of the creature: -1 facing left .. 1 facing right (through 0 mid-turn).
+function worldTurn(st) {
+  const facing = st.facing ?? 1;
+  const turn = st.turn;
+  if (turn == null) return facing;
+  if (turn === 1 && facing === -1) return -1;
+  return clamp(turn, -1, 1);
+}
+
 export function drawFishRig(ctx, c, st) {
+  const t0 = now();
+  const a = drawFishRigInner(ctx, c, st);
+  drawMs += now() - t0;
+  drawCalls++;
+  return a;
+}
+
+function drawFishRigInner(ctx, c, st) {
+  if ((st.style || fishStyle) === 'voxel') {
+    const a = c.kind === 'chain' ? drawVoxelChain(ctx, c, st) : drawVoxelRig(ctx, c, st);
+    if (a) return a;
+  }
   if (c.kind === 'chain') return drawChainRig(ctx, c, st);
   const kind = isKind(c);
   const s = Math.max(1, Math.round((st.scale ?? 1) * 8)) / 8;
@@ -230,8 +265,7 @@ export function drawFishRig(ctx, c, st) {
   let geo = cacheGet(gkey);
   if (!geo) { geo = rigGeom(c, { sw: fsw / 8, angle: ang, scale: s, inflate: inf, pose }); geo.toon = !!c.toon; geo.rest = c.mouth?.rest || 0; cachePut(gkey, geo); }
 
-  const facing = st.facing ?? 1;
-  const sx = facing * (st.turn ?? 1);
+  const sx = worldTurn(st);
   const sq = clamp(st.squash || 0, -1, 1);
   const kx = 1 + 0.22 * sq, ky = 1 - 0.2 * sq;
   const fs = faceState(st, ang, sx, st.x, st.y, geo);
@@ -294,12 +328,16 @@ function compose(ctx, items, glows, X, Y, scx, scy, st, c, bw, bh) {
   if (wash || sil || flush) {
     // composite into a scratch canvas centred on the origin, tint it, then place it
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    for (const [cv, dx, dy] of items) { x0 = Math.min(x0, dx); y0 = Math.min(y0, dy); x1 = Math.max(x1, dx + cv.width); y1 = Math.max(y1, dy + cv.height); }
+    for (const [cv, dx, dy, dw, dh] of items) { x0 = Math.min(x0, dx); y0 = Math.min(y0, dy); x1 = Math.max(x1, dx + (dw ?? cv.width)); y1 = Math.max(y1, dy + (dh ?? cv.height)); }
     if (!isFinite(x0)) return;
-    const w = x1 - x0, h = y1 - y0;
+    x0 = Math.floor(x0); y0 = Math.floor(y0);
+    const w = Math.ceil(x1 - x0), h = Math.ceil(y1 - y0);
     const sc = scratchFor(w, h);
     const g = sc._g;
-    for (const [cv, dx, dy] of items) g.drawImage(cv, dx - x0, dy - y0);
+    for (const [cv, dx, dy, dw, dh] of items) {
+      if (dw === undefined) g.drawImage(cv, dx - x0, dy - y0);
+      else g.drawImage(cv, dx - x0, dy - y0, dw, dh);
+    }
     g.globalCompositeOperation = 'source-atop';
     if (flush && !sil) {
       g.globalAlpha = flush[1];
@@ -322,7 +360,10 @@ function compose(ctx, items, glows, X, Y, scx, scy, st, c, bw, bh) {
     ctx.save();
     ctx.translate(X, Y);
     if (scx !== 1 || scy !== 1) ctx.scale(scx, scy);
-    for (const [cv, dx, dy] of items) ctx.drawImage(cv, dx, dy);
+    for (const [cv, dx, dy, dw, dh] of items) {
+      if (dw === undefined) ctx.drawImage(cv, dx, dy);
+      else ctx.drawImage(cv, dx, dy, dw, dh);
+    }
     ctx.restore();
   }
   const gs = sil ? 0 : st.glow ?? (c.glow ? 1 : 0);
@@ -332,10 +373,16 @@ function compose(ctx, items, glows, X, Y, scx, scy, st, c, bw, bh) {
     if (scx !== 1 || scy !== 1) ctx.scale(scx, scy);
     const prevOp = ctx.globalCompositeOperation, prevA = ctx.globalAlpha;
     ctx.globalCompositeOperation = 'lighter';
-    for (const [cv, dx, dy] of glows) {
-      ctx.globalAlpha = Math.min(1, gs) * 0.12;
+    for (const [cv, dx, dy, dw, dh, soft] of glows) {
+      if (soft) {
+        // pre-blurred voxel glow halo
+        ctx.globalAlpha = prevA * Math.min(1, gs) * 0.55;
+        if (dw === undefined) ctx.drawImage(cv, dx, dy); else ctx.drawImage(cv, dx, dy, dw, dh);
+        continue;
+      }
+      ctx.globalAlpha = prevA * Math.min(1, gs) * 0.12;
       ctx.drawImage(cv, dx - 1, dy); ctx.drawImage(cv, dx + 1, dy); ctx.drawImage(cv, dx, dy - 1); ctx.drawImage(cv, dx, dy + 1);
-      ctx.globalAlpha = Math.min(1, gs) * 0.45;
+      ctx.globalAlpha = prevA * Math.min(1, gs) * 0.45;
       ctx.drawImage(cv, dx, dy);
     }
     ctx.globalCompositeOperation = prevOp;
@@ -405,5 +452,179 @@ function drawChainRig(ctx, c, st) {
     bottom: [X, Y + c.chain.r * s * 2],
     tail: [last.x, last.y],
     eyes: head.face.eyes.map((e) => ({ x: X + e.x - head.o, y: Y + e.y - head.o, r: e.r, type: e.e.type })),
+  };
+}
+
+// ---- voxel style: cached voxel frame + dynamic face overlays, through the same compositor
+
+const DEG = Math.PI / 180;
+
+function pendingAnchors(c, st, S, dir) {
+  const L = (c.L || 30) * S, H = (c.H || 20) * S;
+  const x = st.x, y = st.y + (st.bob || 0);
+  return { mouth: [x + dir * L * 0.5, y], top: [x, y - H * 0.6], tail: [x - dir * L * 0.6, y], bottom: [x, y + H * 0.5], eyes: [], pending: true };
+}
+
+function drawVoxelRig(ctx, c, st) {
+  const kind = isKind(c);
+  const tau = worldTurn(st);
+  // world yaw 0..180 through the front; side-on poses sit in a slight 3/4 view so the volume reads
+  const Yw = Math.acos(clamp(tau, -1, 1)) / DEG;
+  const mirror = Yw > 90;
+  let yaw = mirror ? 180 - Yw : Yw;
+  const base = st.yawBase ?? BASE_YAW;
+  yaw = base + (90 - base) * (yaw / 90) - (st.heading || 0);
+  if (yaw < -90) yaw = -90;
+  const S = st.scale ?? 1;
+  const ang = kind ? 0 : st.angle || 0;
+  const t = st.time || 0;
+  const lod = st.lod || 0;
+  const ph = kind ? st.swimPhase ?? t * 1.2 : st.tailPhase ?? st.swimPhase ?? t * 1.2;
+  let sw = Math.floor(fract(ph) * SWIM_N) % SWIM_N;
+  if (lod) sw -= sw % 2;
+  const infl = kind ? 0 : Math.round(clamp(st.inflate || 0, 0, 1) * 3);
+  const pose = !!(st.pose || st.emotion === 'pose');
+  const res = voxelFrame(c, { S, yaw, pitch: ang / DEG, sw, infl, pose, lod, pri: st.pri ?? 1 });
+  if (!res) return pendingAnchors(c, st, S, mirror ? -1 : 1);
+  const { f, k } = res;
+  const sq = clamp(st.squash || 0, -1, 1);
+  const kx = k * (1 + 0.22 * sq), ky = k * (1 - 0.2 * sq);
+  const fang = f.pitch * DEG; // bucketed pitch of the frame (stable face sprite keys)
+  const fs = faceState(st, fang, mirror ? -1 : 1, st.x, st.y, { toon: !!c.toon, rest: c.mouth?.rest || 0 });
+  const cue = fs.cue;
+  const twitch = cue.twitch && !st.silhouette ? ((Math.floor(t * 23) % 3) - 1) * (Math.floor(t * 7) & 1) : 0;
+  const X = Math.round(st.x) + twitch, Y = Math.round(st.y + (st.bob || 0));
+  const items = [[f.canvas, -f.ax, -f.ay]];
+  const glows = f.glow ? [[f.glow, -f.ax, -f.ay, undefined, undefined, true]] : [];
+  // face overlays on the flank facing the camera (foreshortened with the yaw)
+  const cy = Math.cos(f.yaw * YAW_DEG);
+  if (!st.silhouette && lod < 2 && cy > 0.42) {
+    for (const ev of f.eyes) {
+      if (ev.r < 0.9) continue;
+      const sp = eyeSprite(c, ev, fs, fang);
+      const w = sp.canvas.width * cy;
+      const dx = ev.x - sp.o * cy, dy = Math.round(ev.y - sp.o);
+      items.push([sp.canvas, dx, dy, w, sp.canvas.height]);
+      if (sp.glowCanvas) glows.push([sp.glowCanvas, dx, dy, w, sp.canvas.height]);
+    }
+    if (f.mouth && f.mouth.m && f.mouth.m.type !== 'none' && cy > 0.6 && f.mouth.w >= 1.5) {
+      const sp = mouthSprite(c, { w: f.mouth.w, m: f.mouth.m, front: f.mouth.front, angle: fang }, fs);
+      items.push([sp.canvas, f.mouth.x - sp.o * cy, Math.round(f.mouth.y - sp.o), sp.canvas.width * cy, sp.canvas.height]);
+    }
+  }
+  const scx = (mirror ? -1 : 1) * kx;
+  const flush = !c.toon && cue.flush && !st.silhouette ? cue.flush : null;
+  const st2 = flush ? { ...st, flush } : st;
+  const translucent = (c.alpha ?? 255) < 255 && !st.silhouette;
+  const prevA = ctx.globalAlpha;
+  if (translucent) ctx.globalAlpha = prevA * Math.max(0.35, c.alpha / 255);
+  composeVoxel(ctx, f, items, glows, X, Y, scx, ky, st2, c);
+  ctx.globalAlpha = prevA;
+  const toW = (p) => [X + p[0] * scx, Y + p[1] * ky];
+  const out = {};
+  for (const [key, v] of Object.entries(f.anchors)) out[key] = toW(v);
+  out.eyes = f.eyes.map((e) => { const [x, y] = toW([e.x, e.y]); return { x, y, r: e.r * Math.abs(kx), type: e.e.type }; });
+  out.w = f.W * Math.abs(kx); out.h = f.H * ky;
+  if (c.variant?.shiny) out.shiny = true;
+  return out;
+}
+const YAW_DEG = DEG;
+
+// Voxel compositor: frame + overlays drawn straight through the transform; fog / darkness / colour flush
+// are a cached tinted silhouette of the frame drawn over it (no per-fish scratch compositing).
+function composeVoxel(ctx, f, items, glows, X, Y, scx, scy, st, c) {
+  const wash = st.wash && st.wash.alpha > 0.01 ? st.wash : null;
+  const sil = st.silhouette;
+  const prevA = ctx.globalAlpha;
+  ctx.save();
+  ctx.translate(X, Y);
+  if (scx !== 1 || scy !== 1) ctx.scale(scx, scy);
+  if (sil) {
+    ctx.drawImage(tinted(f.canvas, typeof sil === 'string' ? sil : '#102033'), items[0][1], items[0][2]);
+    ctx.restore();
+    return;
+  }
+  for (const [cv, dx, dy, dw, dh] of items) {
+    if (dw === undefined) ctx.drawImage(cv, dx, dy);
+    else ctx.drawImage(cv, dx, dy, dw, dh);
+  }
+  const [cv0, dx0, dy0, dw0, dh0] = items[0];
+  const over = (color, a) => {
+    ctx.globalAlpha = prevA * Math.min(1, a);
+    const tc = tinted(cv0, color);
+    if (dw0 === undefined) ctx.drawImage(tc, dx0, dy0); else ctx.drawImage(tc, dx0, dy0, dw0, dh0);
+  };
+  if (st.flush) over(st.flush[0], st.flush[1]);
+  if (wash) over(wash.color, wash.alpha);
+  ctx.globalAlpha = prevA;
+  const gs = st.glow ?? (c.glow ? 1 : 0);
+  if (gs > 0.01 && glows.length) {
+    ctx.globalCompositeOperation = 'lighter';
+    for (const [cv, dx, dy, dw, dh, soft] of glows) {
+      ctx.globalAlpha = prevA * Math.min(1, gs) * (soft ? 0.55 : 0.45) * (wash ? 1 - wash.alpha * 0.5 : 1);
+      if (dw === undefined) ctx.drawImage(cv, dx, dy); else ctx.drawImage(cv, dx, dy, dw, dh);
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = prevA;
+  }
+  ctx.restore();
+}
+const BASE_YAW = 15;
+
+// Chain creatures in voxel style: voxel-ball segments along the path, a voxel head pitched to the
+// travel direction (mirrored when heading left), dynamic face overlays.
+function drawVoxelChain(ctx, c, st) {
+  const s = st.scale ?? 1;
+  const t = st.time || 0;
+  const sw = st.swimPhase ?? t * 1.2;
+  const tau = worldTurn(st);
+  const pts = st.chain && st.chain.length >= 2 ? st.chain : defaultChainPoints(c, s, sw, st.x, st.y, tau >= 0 ? 1 : -1);
+  const n = pts.length;
+  const X = Math.round(pts[0].x), Y = Math.round(pts[0].y);
+  const dir = Math.atan2(pts[0].y - pts[1].y, pts[0].x - pts[1].x);
+  const mirror = Math.cos(dir) < 0;
+  let pitch = mirror ? Math.PI - dir : dir;
+  pitch = Math.atan2(Math.sin(pitch), Math.cos(pitch));
+  const res = voxelFrame(c, { S: s, yaw: 0, pitch: clamp(pitch / DEG, -90, 90), sw: 0, infl: 0, pose: false, lod: st.lod || 0, pri: st.pri ?? 1 });
+  if (!res) return pendingAnchors(c, st, s, mirror ? -1 : 1);
+  const { f, k } = res;
+  const items = [];
+  const sx = mirror ? -1 : 1;
+  // segments tail -> head (in head-local coords; mirrored items are drawn through the same transform)
+  for (let i = n - 1; i >= 1; i--) {
+    const a = pts[i], b = pts[i - 1];
+    const ra = chainRadius(c, i, n, s), rb = chainRadius(c, i - 1, n, s);
+    const d = Math.hypot(b.x - a.x, b.y - a.y);
+    const steps = Math.max(1, Math.ceil(d / Math.max(1, Math.min(ra, rb) * 0.7)));
+    for (let q = 0; q < steps; q++) {
+      const u = q / steps;
+      const ball = chainBall(c, ra + (rb - ra) * u);
+      const wx = a.x + (b.x - a.x) * u - X, wy = a.y + (b.y - a.y) * u - Y;
+      items.push([ball.canvas, Math.round(wx * sx - ball.ax), Math.round(wy - ball.ay)]);
+    }
+  }
+  items.push([f.canvas, -f.ax * k, -f.ay * k, f.W * k, f.H * k]);
+  const fs = faceState({ ...st, x: X, y: Y }, 0, sx, X, Y, { toon: !!c.toon });
+  if (st.lookX == null) { fs.lx = 0.5; fs.ly = 0; }
+  if (!st.silhouette) {
+    for (const ev of f.eyes) {
+      const sp = eyeSprite(c, { ...ev, r: ev.r * k }, fs, f.pitch * DEG);
+      items.push([sp.canvas, Math.round(ev.x * k - sp.o), Math.round(ev.y * k - sp.o)]);
+    }
+    if (f.mouth && f.mouth.m && f.mouth.m.type !== 'none') {
+      const sp = mouthSprite(c, { w: f.mouth.w * k, m: f.mouth.m, front: f.mouth.front, angle: f.pitch * DEG }, fs);
+      items.push([sp.canvas, Math.round(f.mouth.x * k - sp.o), Math.round(f.mouth.y * k - sp.o)]);
+    }
+  }
+  const glows = f.glow ? [[f.glow, -f.ax * k, -f.ay * k, f.W * k, f.H * k, true]] : [];
+  compose(ctx, items, glows, X, Y, sx, 1, st, c, 0, 0);
+  const toW = (p) => [X + p[0] * k * sx, Y + p[1] * k];
+  const last = pts[n - 1];
+  return {
+    mouth: f.anchors.mouth ? toW(f.anchors.mouth) : [X, Y],
+    top: [X, Y - c.chain.r * s * 2],
+    bottom: [X, Y + c.chain.r * s * 2],
+    tail: [last.x, last.y],
+    eyes: f.eyes.map((e) => { const [x, y] = toW([e.x, e.y]); return { x, y, r: e.r * k, type: e.e.type }; }),
   };
 }

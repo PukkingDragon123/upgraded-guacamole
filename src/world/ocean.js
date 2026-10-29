@@ -187,8 +187,7 @@ export class Ocean {
     if (this.travelState || to === this.biome.id) return;
     const from = this.biome;
     const target = this.get(to);
-    const down = { shallows: 0, junkyard: 1, abyss: 2 };
-    this.travelState = { from, to: target, t: 0, dur: 4.2, dir: Math.sign((down[to] ?? 0) - (down[from.id] ?? 0)) || 1, done, switched: false };
+    this.travelState = { from, to: target, t: 0, dur: 4.2, dir: Math.sign(depthOf(to) - depthOf(from.id)) || 1, done, switched: false };
     this.game.audio.play('travel_whoosh');
     this.game.audio.setMusic(null);
     this.game.school.clear();
@@ -263,5 +262,5 @@ export class Ocean {
 }
 
 function depthOf(id) {
-  return { shallows: 8, junkyard: 140, abyss: 3200 }[id] ?? 0;
+  return { shallows: 8, fjord: 60, junkyard: 140, metropolis: 450, volcano: 900, abyss: 3200 }[id] ?? 0;
 }

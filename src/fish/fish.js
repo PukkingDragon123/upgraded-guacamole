@@ -1,10 +1,13 @@
 // A living fish: steering-based AI with states, personality, quirks and emotions.
-// Rendering is delegated to the layered rig (gfx/fishrig.js).
+// Rendering is delegated to gfx/fishrig.js (voxel style by default). Ocean extras: hero fish ('pass'
+// state, scenery only), a package crate hanging from the mouth (fish.package, see school.js).
 
 import { TAU, clamp, clamp01, lerp, dist, angleDiff, damp, rectContains } from '../core/math.js';
 import { rng } from '../core/rng.js';
 import { compiled } from '../gfx/spritecache.js';
 import { drawFishRig } from '../gfx/fishrig.js';
+import { makeCanvas, ctxOf } from '../core/canvas.js';
+import { drawPackage } from '../build/items.js';
 import { sizeScaleOf, personalityOf } from './traits.js';
 
 const SPEED = 1.5; // world speed multiplier for the 960px canvas
@@ -183,7 +186,7 @@ export class Fish {
     const w = this.world;
     const top = this.waterTop();
     const bot = this.floor();
-    if (this.state !== 'leave' && this.state !== 'enter') {
+    if (this.state !== 'leave' && this.state !== 'enter' && this.state !== 'pass') {
       if (this.x < 10) this.vx += (10 - this.x) * 4 * dt;
       if (this.x > w.W - 10) this.vx -= (this.x - (w.W - 10)) * 4 * dt;
     }
@@ -353,6 +356,7 @@ export class Fish {
       case 'play': return this.thinkPlay(dt);
       case 'decor': return this.thinkDecor(dt);
       case 'court': return this.thinkCourt(dt);
+      case 'pass': return this.thinkPass(dt);
       default:
         if (this.extraThink) return this.extraThink(dt);
         return this.thinkWander(dt);
@@ -360,7 +364,7 @@ export class Fish {
   }
 
   startle(fromX, fromY) {
-    if (this.controlled) return;
+    if (this.controlled || this.hero) return;
     this.setState('flee');
     this.fleeFrom = { x: fromX, y: fromY };
     this.feel('scared', 1.5);
@@ -626,6 +630,15 @@ export class Fish {
     return this.steer(tx, ty, this.cruise * 1.2, 20);
   }
 
+  // Hero fish: a slow, straight crossing of the scene; gone once past the far edge.
+  thinkPass(dt) {
+    const t = this.passTarget || { x: this.facing > 0 ? this.world.W + 400 : -400, y: this.y };
+    const dx = t.x - this.x;
+    if (Math.abs(dx) < 30 || Math.sign(dx) !== Math.sign(t.x - this.world.W / 2)) { this.dead = true; return [0, 0]; }
+    const sp = this.passSpeed || this.cruise;
+    return [Math.sign(dx) * sp, (t.y - this.y) * 0.08 + Math.sin(this.age * 0.35) * 2.5];
+  }
+
   thinkLeave(dt) {
     const tx = this.x < this.world.W / 2 ? -80 : this.world.W + 80;
     if (this.x < -60 || this.x > this.world.W + 60) this.dead = true;
@@ -727,8 +740,9 @@ export class Fish {
 
   flock() {
     let sx = 0, sy = 0, ax = 0, ay = 0, cx = 0, cy = 0, n = 0;
+    if (this.hero) return [0, 0];
     for (const o of this.world.fishes) {
-      if (o === this || o.controlled) continue;
+      if (o === this || o.controlled || o.hero) continue;
       const dx = this.x - o.x, dy = this.y - o.y;
       const d2 = dx * dx + dy * dy;
       const minD = 14 * (this.scale + o.scale);
@@ -761,7 +775,11 @@ export class Fish {
     if (lx === null && this.glance) { lx = this.glance.x; ly = this.glance.y; }
     if ((this.quirks.has('googly') || this.quirks.has('manyeyes') || this.quirks.has('intro')) && c?.inWorld && lx === null) { lx = c.x; ly = c.y; }
     const sc = this.scale * (1 - this.z * 0.5);
+    // voxel style: swimming into / out of the scene turns the head away from / toward the viewer
+    const hd = this.controlled || this.posing ? 0 : clamp(Math.atan2(this.vz * 120, Math.abs(this.vx) + 10) * 57.3, -28, 28);
+    this.headingS = damp(this.headingS ?? 0, hd, 3, 1 / 60);
     return {
+      heading: this.headingS, lod: this.z > 0.62 && !this.hero ? 1 : 0, pri: this.hero ? 0.3 : 1,
       x: this.x, y: this.y + this.bob, facing: this.facing, turn: this.turn, angle: this.angle, scale: sc,
       squash: this.squash + (this.wiggle || 0) * Math.sin(this.age * 30) * 0.3,
       swimPhase: this.swimPhase, tailPhase: this.tailPhase, finPhase: this.finPhase, speed01: this.speed01 || 0,
@@ -780,10 +798,60 @@ export class Fish {
     if (this.rec.variant?.mutation === 'ghost') alpha *= 0.65;
     if (alpha < 1) ctx.globalAlpha = alpha;
     const anchors = drawFishRig(ctx, this.c, st);
-    ctx.globalAlpha = 1;
     this.anchors = anchors;
+    if (this.package && anchors?.mouth) this.drawCrate(ctx, wash, time ?? this.age, alpha);
+    ctx.globalAlpha = 1;
     return anchors;
   }
+
+  // Package crate hanging from the mouth on a little rope (build/items.js drawPackage, or a fallback).
+  drawCrate(ctx, wash, t, alpha) {
+    const m = this.anchors.mouth;
+    const sc = clamp(this.scale * (1 - this.z * 0.5), 0.5, 2.6);
+    const dir = this.anchors.eyes?.length && this.anchors.eyes[0].x < m[0] ? 1 : this.facing;
+    const ax = m[0] - dir * 1.5 * sc, ay = m[1] + 1.5 * sc;
+    const swing = clamp(Math.sin(t * 2.3 + this.swimPhase * TAU) * 1.6 - this.vx * 0.04, -5, 5);
+    const opts = { scale: clamp(0.24 + sc * 0.17, 0.3, 0.7), rope: Math.round(3 + sc * 2.5), swing };
+    const tint = wash && wash.alpha > 0.03 ? wash : null;
+    if (!tint) {
+      ctx.globalAlpha = alpha;
+      if (!drawPackage(ctx, ax, ay, this.package.tier, t, opts)) fallbackCrate(ctx, ax, ay, this.package.tier, opts);
+      return;
+    }
+    const g = crateScratch();
+    g.clearRect(0, 0, 96, 96);
+    g.globalCompositeOperation = 'source-over';
+    if (!drawPackage(g, 48, 12, this.package.tier, t, opts)) fallbackCrate(g, 48, 12, this.package.tier, opts);
+    g.globalCompositeOperation = 'source-atop';
+    g.globalAlpha = Math.min(1, tint.alpha);
+    g.fillStyle = tint.color;
+    g.fillRect(0, 0, 96, 96);
+    g.globalAlpha = 1;
+    g.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(g.canvas, Math.round(ax) - 48, Math.round(ay) - 12);
+  }
+}
+
+let crateCv = null;
+function crateScratch() {
+  if (!crateCv) crateCv = ctxOf(makeCanvas(96, 96));
+  return crateCv;
+}
+
+const CRATE_COL = { crate: ['#5a3418', '#9a6232', '#c88a4a'], iron: ['#2a3038', '#5a6670', '#8a98a4'], golden: ['#6a4a08', '#c8961e', '#ffd84a'], orb: ['#2a1050', '#6a3ac8', '#b48aff'] };
+// Small hand-drawn crate (used while build/items.js has no drawPackage art).
+function fallbackCrate(ctx, x, y, tier, opts) {
+  const [d, m, l] = CRATE_COL[tier] || CRATE_COL.crate;
+  const rope = opts.rope ?? 6, sw = opts.swing ?? 0;
+  ctx.fillStyle = '#3a2614';
+  for (let i = 0; i <= rope; i++) ctx.fillRect(Math.round(x + sw * (i / rope)), Math.round(y + i), 1, 1);
+  const s = Math.max(5, Math.round(8 * (opts.scale ?? 0.7) + 2));
+  const bx = Math.round(x + sw - s / 2), by = Math.round(y + rope);
+  ctx.fillStyle = '#1a0e08'; ctx.fillRect(bx - 1, by - 1, s + 2, s + 2);
+  ctx.fillStyle = m; ctx.fillRect(bx, by, s, s);
+  ctx.fillStyle = l; ctx.fillRect(bx, by, s, 1); ctx.fillRect(bx, by, 1, s);
+  ctx.fillStyle = d; ctx.fillRect(bx, by + Math.floor(s / 2), s, 1); ctx.fillRect(bx + s - 1, by, 1, s);
 }
 
 // Interest of a species in a bait {kind:'icon'|'special', type}.

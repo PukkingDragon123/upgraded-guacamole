@@ -579,7 +579,7 @@ const MODELS = {
 export const MODEL_IDS = new Set(Object.keys(MODELS));
 
 // Base building scale in the world (at depth z = 0); the perspective scale multiplies this.
-export const WORLD_SCALE = 0.62;
+export const WORLD_SCALE = 0.85;
 
 // ---------------------------------------------------------------- rendering + caches
 

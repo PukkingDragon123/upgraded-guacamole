@@ -3,7 +3,9 @@
 // coral props) is pre-rendered in build(); per frame we blit layers and animate the surface, rays,
 // caustics, kelp, anemones, crabs, bubbles, plankton and the occasional distant whale or turtle.
 
-import { Biome } from './base.js';
+import { Biome, worldTop } from './base.js';
+import { SkyDome, skyBodies } from '../sky.js';
+import { palmIsland, lighthouseIslet, sailboat, seaStacks, markerBuoy } from '../horizon.js';
 import { clamp, clamp01, lerp, smoothstep, ease, hash2, fbm2, TAU } from '../../core/math.js';
 import { RNG } from '../../core/rng.js';
 import { mix, rgba, pack } from '../../core/color.js';
@@ -18,10 +20,11 @@ import {
 } from '../scenery.js';
 
 const SKY = {
-  day: [[0, '#3c9fe6'], [0.45, '#68c2f2'], [0.8, '#a6e2f8'], [1, '#e2f8ff']],
-  dusk: [[0, '#2a2c6c'], [0.32, '#64398a'], [0.62, '#d45a7c'], [0.84, '#ff9858'], [1, '#ffd47a']],
-  night: [[0, '#03061a'], [0.55, '#0a1538'], [1, '#1b2e5e']],
+  day: [[0, '#2468c0'], [0.45, '#3f94e0'], [0.78, '#62b8ee'], [0.92, '#9edcf6'], [1, '#e2f8ff']],
+  dusk: [[0, '#161a4a'], [0.42, '#3a2a72'], [0.7, '#8a3e7c'], [0.86, '#e2667a'], [0.95, '#ff9a58'], [1, '#ffd47a']],
+  night: [[0, '#01030c'], [0.55, '#060e2a'], [0.85, '#0e1c44'], [1, '#1b2e5e']],
 };
+const SKYHZ = { day: '#c8ecf8', dusk: '#f0a882', night: '#18284e' };
 const OVERCAST = {
   day: [[0, '#7e8ca0'], [1, '#c6d0da']],
   dusk: [[0, '#40344e'], [1, '#a47c7a']],
@@ -77,25 +80,6 @@ function crabFrames(body = '#e8603a') {
   return out;
 }
 
-function cloudSprite(seed, w, h, pal) {
-  const r = new RNG(seed);
-  const m = new Mask(w, h);
-  const n = r.int(4, 6);
-  for (let i = 0; i < n; i++) {
-    const u = i / (n - 1);
-    const big = 1 - Math.abs(u - 0.45) * 1.4;
-    const rx = w * r.float(0.12, 0.2) * (0.7 + big * 0.6), ry = h * r.float(0.3, 0.42) * (0.6 + big * 0.7);
-    m.ellipse(lerp(w * 0.16, w * 0.84, u) + r.float(-3, 3), h - ry * 0.85 - 1, rx, ry);
-  }
-  m.rect(Math.round(w * 0.12), h - 3, Math.round(w * 0.76), 2);
-  const cols = pal.map((c) => pack(c));
-  return m.toCanvas((x, y, v, up) => {
-    const k = y / h;
-    let lv = up <= 1 ? 4 : up <= 3 ? 3 : 2.6 - k * 2.2;
-    lv += (bayer4(x, y) - 0.5) * 0.9;
-    return cols[clamp(Math.round(lv), 0, 4)];
-  });
-}
 const B4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
 const bayer4 = (x, y) => B4[(y & 3) * 4 + (x & 3)] / 16;
 
@@ -190,10 +174,10 @@ export class ShallowsBiome extends Biome {
   build(W, H) {
     this.W = W; this.H = H;
     this.base = this.baseSurface(H);
+    this.top = worldTop(H);
     this.ys = new Int16Array(W + 2);
-    this.skyH = this.base + 14;
-    this.air = makeLayer(W, this.skyH);
-    this.skyBlend = new Blend(); this.ocBlend = new Blend(); this.waterBlend = new Blend();
+    this.ys.fill(this.base);
+    this.ocBlend = new Blend(); this.waterBlend = new Blend();
     this.buildSky();
     const wo = { y0: this.base - 2, y1: H, levels: 24 };
     this.water = { day: gradientStrip(H, WATER.day, wo), dusk: gradientStrip(H, WATER.dusk, wo), night: gradientStrip(H, WATER.night, wo) };
@@ -209,127 +193,24 @@ export class ShallowsBiome extends Biome {
   }
 
   buildSky() {
-    const W = this.W, h = this.skyH, base = this.base;
-    this.sun = { day: { x: Math.round(W * 0.8), y: Math.round(base * 0.3) }, dusk: { x: Math.round(W * 0.7), y: base - 9 }, night: { x: Math.round(W * 0.6), y: Math.round(base * 0.34) } };
-    const glow = { day: [[255, 252, 225], 72, 0.6], dusk: [[255, 200, 120], 170, 0.55], night: [[150, 180, 255], 46, 0.3] };
-    const island = this.islandMask();
-    const mk = (kind) => {
-      const st = SKY[kind], s = this.sun[kind], [gc, R, ga] = glow[kind];
-      const c = paint(W, h, (x, y) => {
-        let [r, g, b] = lerpStops(st, clamp01(y / base));
-        const dx = x - s.x, dy = (y - s.y) * (kind === 'dusk' ? 1.8 : 1.1);
-        const d = Math.sqrt(dx * dx + dy * dy);
-        if (d < R) {
-          const k = Math.pow(1 - d / R, 2.2) * ga;
-          r += (gc[0] - r) * k; g += (gc[1] - g) * k; b += (gc[2] - b) * k;
-        }
-        if (kind === 'day') { const hz = smoothstep(base * 0.6, base, y) * 0.25; r += (255 - r) * hz; g += (255 - g) * hz; b += (255 - b) * hz; }
-        if (kind === 'night' && y < base - 6) {
-          const hs = hash2(x, y, 77);
-          if (hs < 0.004) { const k = 0.35 + (hs / 0.004) * 0.6; r = lerp(r, 230, k); g = lerp(g, 236, k); b = lerp(b, 255, k); }
-        }
-        return dpack(r, g, b, x, y, 5);
-      });
-      const g = ctxOf(c);
-      this.drawSunMoon(g, kind, s);
-      g.drawImage(this.paintIsland(island, kind), island.x, island.y);
-      return c;
-    };
-    this.sky = { day: mk('day'), dusk: mk('dusk'), night: mk('night') };
-    const so = { levels: 10, y0: 0, y1: base + 4 };
-    this.overcast = { day: gradientStrip(h, OVERCAST.day, so), dusk: gradientStrip(h, OVERCAST.dusk, so), night: gradientStrip(h, OVERCAST.night, so) };
-    // twinkling stars (bright ones drawn per frame)
-    const r = new RNG(31);
-    this.stars = [];
-    for (let i = 0; i < 26; i++) this.stars.push({ x: r.int(4, W - 4), y: r.int(3, base - 10), f: r.float(1, 3), ph: r.float(0, TAU), c: r.pick(['#ffffff', '#fff2c8', '#c8dcff']) });
-    // clouds in three palettes
-    const pals = {
-      day: ['#a9b6de', '#cad6f0', '#eef5ff', '#ffffff', '#ffffff'],
-      dusk: ['#6c3c74', '#a8607e', '#ec9c88', '#ffcf9e', '#ffeac4'],
-      night: ['#0e1430', '#18223f', '#22304f', '#2f3f62', '#5a6c98'],
-      rain: ['#3c4452', '#4a5464', '#5c6676', '#727c8c', '#8a94a2'],
-    };
-    this.clouds = [];
+    const W = this.W, base = this.base, top = this.top;
+    this.sky = new SkyDome({ W, top, base, seed: 5, stops: SKY, stars: 70, haze: 0.18, clouds: { n: 14, size: [20, 58], y: [top + 26, base - 22], scale: 2 } });
+    const so = { levels: 10, y0: 0, y1: base + 4 - top };
+    const oh = this.sky.h;
+    this.overcast = { day: gradientStrip(oh, OVERCAST.day, so), dusk: gradientStrip(oh, OVERCAST.dusk, so), night: gradientStrip(oh, OVERCAST.night, so) };
+    // voxel horizon: palm island, lighthouse islet, sea stacks, a sailboat drifting far out, a channel buoy
+    const hz = (k) => ({ day: [SKYHZ.day, k], dusk: [SKYHZ.dusk, k + 0.08], night: [SKYHZ.night, Math.min(0.85, k + 0.3)] });
+    this.horizon = [
+      { spr: seaStacks(12, hz(0.42)), x: Math.round(W * 0.07), y: base + 1, blend: new Blend() },
+      { spr: palmIsland(4, hz(0.16)), x: Math.round(W * 0.36), y: base + 3, blend: new Blend() },
+      { spr: lighthouseIslet(7, hz(0.3)), x: Math.round(W * 0.86), y: base + 2, blend: new Blend(), lighthouse: true },
+    ];
+    this.sail = { spr: sailboat(9, hz(0.4)), x: W * 0.62, v: 1.6, blend: new Blend() };
+    this.buoy = { spr: markerBuoy('#e2483a'), x: Math.round(W * 0.2) };
     const cr = new RNG(51);
-    for (let i = 0; i < 7; i++) {
-      const w = cr.int(34, 76), ch = Math.round(w * cr.float(0.28, 0.4));
-      const seed = 100 + i;
-      this.clouds.push({ x: cr.float(0, W), y: cr.int(2, Math.max(4, base - ch - 10)), v: cr.float(1.2, 3.2), spr: { day: cloudSprite(seed, w, ch, pals.day), dusk: cloudSprite(seed, w, ch, pals.dusk), night: cloudSprite(seed, w, ch, pals.night) }, w });
-    }
-    this.rainClouds = [];
-    for (let i = 0; i < 6; i++) {
-      const w = cr.int(70, 130), ch = Math.round(w * 0.32);
-      this.rainClouds.push({ x: cr.float(0, W), y: cr.int(-6, Math.max(0, base * 0.25)), v: cr.float(4, 9), spr: cloudSprite(300 + i, w, ch, pals.rain), w });
-    }
-    this.gulls = [0, 1, 2].map((i) => ({ x: cr.float(0, W), y: cr.float(8, base * 0.55), v: cr.float(10, 18) * (i % 2 ? -1 : 1), ph: cr.float(0, TAU) }));
+    this.gulls = [0, 1, 2, 3, 4, 5].map((i) => ({ x: cr.float(0, W), y: cr.float(top + 40, base - 12), v: cr.float(10, 18) * (i % 2 ? -1 : 1), ph: cr.float(0, TAU), s: i < 2 ? 2 : 1 }));
     this.rainTile = { day: streakTile(96, 48, 22, '#dce6f0', { seed: 3, alpha: 0.8 }), night: streakTile(96, 48, 22, '#7a8aa0', { seed: 3, alpha: 0.8 }) };
     this.rainTile2 = streakTile(128, 64, 14, '#ffffff', { seed: 8, len: [4, 8], alpha: 0.6 });
-  }
-
-  drawSunMoon(g, kind, s) {
-    const disc = (cx, cy, r, fn) => {
-      for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++) for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++) {
-        const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
-        if (d <= r) { const c = fn(x, y, d / r); if (c) { g.fillStyle = c; g.fillRect(x, y, 1, 1); } }
-      }
-    };
-    if (kind === 'day') {
-      disc(s.x, s.y, 8.5, (x, y, d) => (d > 0.86 ? '#fff1b8' : d > 0.6 ? '#fffbe0' : '#ffffff'));
-    } else if (kind === 'dusk') {
-      disc(s.x, s.y, 13, (x, y, d) => {
-        const k = (y - (s.y - 13)) / 26;
-        if (y > s.y + 2 && [4, 7, 9, 11].includes(Math.round(y - s.y))) return null;
-        return k < 0.3 ? '#fff0b0' : k < 0.55 ? '#ffd27a' : k < 0.8 ? '#ffac5a' : '#ff8a4a';
-      });
-    } else {
-      disc(s.x, s.y, 8, (x, y, d) => {
-        const dx = x + 0.5 - s.x;
-        if (dx > 4.5 && d > 0.55) return '#b4c0e6';
-        return d > 0.88 ? '#d6deff' : '#f2f5ff';
-      });
-      for (const [ox, oy, r] of [[-3, -2, 1.6], [2, 2, 2], [-1, 4, 1.1], [3, -4, 1]]) disc(s.x + ox, s.y + oy, r, () => '#c8d0ee');
-    }
-  }
-
-  islandMask() {
-    const ix = Math.round(this.W * 0.4), base = this.base;
-    const m = new Mask(110, 50);
-    const ox = 55, oy = 44; // waterline inside the mask
-    m.ellipse(ox - 4, oy + 4, 34, 13, 1);
-    m.ellipse(ox + 14, oy + 3, 20, 8, 1);
-    m.rect(ox - 44, oy - 2, 82, 4, 2);
-    m.ellipse(ox - 4, oy + 1, 40, 4, 2);
-    const palm = (bx, by, hgt, lean, dir) => {
-      let x = bx, y = by;
-      for (let i = 0; i < hgt; i++) { const k = i / hgt; x += lean * (0.4 + k); y -= 1; m.set(Math.round(x), Math.round(y), 3); if (i % 3 === 0) m.set(Math.round(x) + 1, Math.round(y), 3); }
-      const tx = Math.round(x), ty = Math.round(y);
-      for (const [a, len] of [[-2.7, 13], [-2.2, 15], [-0.5, 14], [-0.9, 12], [0.1, 11], [-1.6, 9], [3.3, 10]]) {
-        for (let j = 1; j <= len; j++) {
-          const k = j / len;
-          const fx = tx + Math.cos(a) * j * dir, fy = ty + Math.sin(a) * j * 0.55 + k * k * 6;
-          m.set(Math.round(fx), Math.round(fy), 4);
-          if (k < 0.6) m.set(Math.round(fx), Math.round(fy) + 1, 4);
-        }
-      }
-      m.ellipse(tx, ty + 1, 2, 1.6, 5);
-    };
-    palm(ox - 10, oy - 4, 22, -0.18, 1);
-    palm(ox + 6, oy - 3, 16, 0.22, -1);
-    return { m, x: ix - ox, y: base - oy };
-  }
-
-  paintIsland(isl, kind) {
-    const col = {
-      day: { 1: ['#1f6a4a', '#2f8a58', '#4aa868'], 2: ['#e0c088', '#f4dca4', '#fff0c8'], 3: ['#6a4a34', '#8a6444', '#a8805a'], 4: ['#1f7a3e', '#2f9a4a', '#5ac060'], 5: ['#7a5a2a', '#a07a3a', '#c89a4a'] },
-      dusk: { 1: ['#2a1e3c', '#38264a', '#ff9a6a'], 2: ['#3a2a44', '#4a3450', '#ffb47a'], 3: ['#2a1e34', '#2a1e34', '#3a2840'], 4: ['#2a1e3c', '#342648', '#ff9a6a'], 5: ['#2a1e34', '#2a1e34', '#2a1e34'] },
-      night: { 1: ['#060a18', '#0a1022', '#24325c'], 2: ['#0a1022', '#0e1428', '#2a3a66'], 3: ['#060a18', '#060a18', '#0a1022'], 4: ['#060a18', '#0a1022', '#24325c'], 5: ['#060a18', '#060a18', '#060a18'] },
-    }[kind];
-    return isl.m.toCanvas((x, y, v, up, left, right) => {
-      const c = col[v];
-      if (up <= 1) return pack(c[2]);
-      if (v === 1 && (right || x > 66)) return pack(c[0]);
-      return pack(c[(x + y) % 5 === 0 && v === 1 ? 0 : 1]);
-    });
   }
 
   makeShimmer() {
@@ -617,7 +498,7 @@ export class ShallowsBiome extends Biome {
     wx.clear = clamp01(1 - wx.cloud * 0.6 - wx.rain * 0.75 - wx.storm * 0.2);
     // parallax from the cursor
     const c = env.cursor;
-    const tx = c && c.x > -50 ? (c.x / W - 0.5) * -2 : 0, ty = c && c.y > -50 ? (c.y / H - 0.5) * -2 : 0;
+    const tx = c && c.x > -50 ? clamp((c.x / W - 0.5) * -2, -1, 1) : 0, ty = c && c.y > -50 ? clamp((c.y / H - 0.5) * -2, -1, 1) : 0;
     const kp = snap ? 1 : 1 - Math.exp(-dt * 2.5);
     this.par.x += (tx - this.par.x) * kp;
     this.par.y += (ty - this.par.y) * kp;
@@ -632,16 +513,29 @@ export class ShallowsBiome extends Biome {
     // weather motion
     const q = quality(env);
     const sy = this.surfaceAt(env);
-    if (wx.rain > 0.05 && sy > -4) {
+    if (wx.rain > 0.05) {
       const rate = (25 + wx.storm * 50) * wx.rain * q;
       let n = rate * dt;
-      while (n > 0) { if (Math.random() < n) this.drops.push({ x: Math.random() * W, t: 0, big: Math.random() < 0.25 }); n -= 1; }
+      const water = this.game?.water;
+      while (n > 0) {
+        if (Math.random() < n) {
+          const d = { x: Math.random() * W, t: 0, big: Math.random() < 0.25 };
+          this.drops.push(d);
+          if (water) { water.surf.impulse(d.x, d.big ? -14 : -7, 4); if (Math.random() < 0.5) water.disturb(d.x, sy + 4 + Math.random() * 20, d.big ? 0.22 : 0.12, 3); }
+        }
+        n -= 1;
+      }
     }
     for (const d of this.drops) d.t += dt;
     this.drops = this.drops.filter((d) => d.t < 0.6);
-    for (const cl of this.clouds) { cl.x += cl.v * dt * (1 + wx.storm * 2); if (cl.x > W + 10) cl.x = -cl.w - 10; }
-    for (const cl of this.rainClouds) { cl.x += cl.v * dt * (1 + wx.storm); if (cl.x > W + 10) cl.x = -cl.w - 10; }
+    this.sky.update(dt, 1 + wx.storm * 2 + wx.rain * 0.6);
     for (const gl of this.gulls) { gl.x += gl.v * dt; gl.ph += dt * 6; if (gl.x > W + 20) gl.x = -20; if (gl.x < -20) gl.x = W + 20; }
+    const sb = this.sail;
+    sb.x += sb.v * dt * (1 + wx.storm);
+    if (sb.x > W + 60) sb.x = -60;
+    // live waterline (biome waves); the water sim adds its lift on top
+    const amp = 1.4 + wx.cloud * 0.4 + wx.rain * 0.6 + wx.storm * 2.6;
+    waveLine(this.ys, W, sy, t, amp, 0.4 + wx.storm * 1.6, 1 + wx.storm * 0.7);
     // lightning
     this.flash = Math.max(0, this.flash - dt * 2.6);
     if (wx.storm > 0.5) {
@@ -650,8 +544,8 @@ export class ShallowsBiome extends Biome {
         this.flashT = 4 + Math.random() * 9;
         this.flash = 1;
         const bx = W * (0.15 + Math.random() * 0.7);
-        const pts = [[bx, -2]];
-        let x = bx, y = -2;
+        const pts = [[bx, this.top + 20]];
+        let x = bx, y = this.top + 20;
         while (y < this.base) { y += 3 + Math.random() * 5; x += (Math.random() - 0.5) * 9; pts.push([x, Math.min(y, this.base)]); }
         this.bolt = { pts, t: 0 };
         try { this.game?.audio?.play?.('thunder', { vol: 0.6 }); } catch { /* optional sound */ }
@@ -707,69 +601,77 @@ export class ShallowsBiome extends Biome {
   secrets() { return this.game?.state?.secrets || {}; }
 
   // ------------------------------------------------------------------ draw
-  drawAir(env) {
-    const g = this.air.ctx, W = this.W, h = this.skyH, t = this.t, tod = this.tod, wx = this.wx;
-    g.globalAlpha = 1;
-    g.globalCompositeOperation = 'source-over';
-    g.drawImage(this.skyBlend.get([[this.sky.day, tod.day], [this.sky.dusk, tod.dusk], [this.sky.night, tod.night]]), 0, 0);
+  // Sky, sun/moon, voxel clouds, the voxel horizon, gulls and weather, drawn straight into world space for the
+  // visible part of the sky (the default view only shows a sliver; the surface view shows most of it).
+  drawAir(g, env) {
+    const W = this.W, t = this.t, tod = this.tod, wx = this.wx, sky = this.sky;
+    const view = env.view;
+    const sp = sky.span(view);
+    if (!sp) return;
+    const [y0, y1] = sp;
+    const scroll = env.scroll ?? 0, ref = env.ref ?? 0;
+    g.save();
+    g.beginPath();
+    g.rect(0, y0, W, y1 - y0);
+    g.clip();
+    sky.drawGradient(g, tod, view);
     const oc = clamp01(wx.cloud * 0.6 + wx.rain * 0.85 + wx.storm * 0.12);
-    if (tod.night > 0.15) for (const s of this.stars) twinkle(g, s.x, s.y, (0.4 + 0.6 * Math.sin(t * s.f + s.ph)) * tod.night * (1 - oc), s.c);
-    // clouds: blend the three palettes
-    for (const cl of this.clouds) {
-      const x = Math.round(cl.x), y = cl.y;
-      let acc = 0;
-      for (const [key, wgt] of [['day', tod.day], ['dusk', tod.dusk], ['night', tod.night]]) {
-        if (wgt <= 0.01) continue;
-        acc += wgt;
-        g.globalAlpha = wgt / acc;
-        g.drawImage(cl.spr[key], x, y);
-      }
+    const clear = 1 - oc * 0.85;
+    sky.drawBodies(g, env, tod, clear, scroll, ref);
+    sky.drawClouds(g, tod, scroll, ref, clamp01(wx.rain * 0.9 + wx.storm * 0.4), 1, view);
+    // overcast veil
+    if (oc > 0.01) {
+      g.globalAlpha = oc;
+      const strip = this.ocBlend.get([[this.overcast.day, tod.day], [this.overcast.dusk, tod.dusk], [this.overcast.night, tod.night]]);
+      const pat = g.createPattern(strip, 'repeat');
+      pat.setTransform(new DOMMatrix([1, 0, 0, 1, 0, this.top]));
+      g.fillStyle = pat;
+      g.fillRect(0, y0, W, y1 - y0);
+      g.globalAlpha = 1;
     }
-    g.globalAlpha = 1;
+    // voxel horizon features (hazed per time of day)
+    const keys = (b, spr) => b.get([[spr.day, tod.day], [spr.dusk, tod.dusk], [spr.night, tod.night]]);
+    const sb = this.sail;
+    g.drawImage(keys(sb.blend, sb.spr), Math.round(sb.x - sb.spr.ox), this.base + 2 - sb.spr.oy + Math.round(Math.sin(t * 0.9) * 0.6));
+    for (const h of this.horizon) {
+      const c = keys(h.blend, h.spr);
+      g.drawImage(c, h.x - h.spr.ox, h.y - h.spr.oy);
+      if (h.lighthouse && tod.night + tod.dusk * 0.5 > 0.2) this.drawBeam(g, h, tod);
+    }
     // gulls
     const gullA = (tod.day + tod.dusk) * (1 - wx.storm) * (1 - wx.rain * 0.7);
     if (gullA > 0.05) {
       g.fillStyle = tod.dusk > 0.5 ? '#3a2438' : '#3c4658';
       g.globalAlpha = gullA;
       for (const gl of this.gulls) {
-        const x = Math.round(gl.x), y = Math.round(gl.y + Math.sin(gl.ph * 0.2) * 3);
+        const x = Math.round(gl.x), y = Math.round(gl.y + Math.sin(gl.ph * 0.2) * 3 + 0.12 * (scroll - ref));
         const f = Math.sin(gl.ph) > 0.3 ? 0 : Math.sin(gl.ph) > -0.4 ? 1 : 2;
-        if (f === 0) { g.fillRect(x - 3, y - 2, 1, 1); g.fillRect(x - 2, y - 1, 2, 1); g.fillRect(x, y, 1, 1); g.fillRect(x + 1, y - 1, 2, 1); g.fillRect(x + 3, y - 2, 1, 1); }
-        else if (f === 1) { g.fillRect(x - 3, y, 3, 1); g.fillRect(x, y, 1, 1); g.fillRect(x + 1, y, 3, 1); }
-        else { g.fillRect(x - 3, y + 1, 1, 1); g.fillRect(x - 2, y, 2, 1); g.fillRect(x, y, 1, 1); g.fillRect(x + 1, y, 2, 1); g.fillRect(x + 3, y + 1, 1, 1); }
+        const s = gl.s;
+        const R = (dx, dy, w) => g.fillRect(x + dx * s, y + dy * s, w * s, s);
+        if (f === 0) { R(-3, -2, 1); R(-2, -1, 2); R(0, 0, 1); R(1, -1, 2); R(3, -2, 1); }
+        else if (f === 1) { R(-3, 0, 3); R(0, 0, 1); R(1, 0, 3); }
+        else { R(-3, 1, 1); R(-2, 0, 2); R(0, 0, 1); R(1, 0, 2); R(3, 1, 1); }
       }
       g.globalAlpha = 1;
     }
-    // overcast
-    if (oc > 0.01) {
-      g.globalAlpha = oc;
-      fillWith(g, this.ocBlend.get([[this.overcast.day, tod.day], [this.overcast.dusk, tod.dusk], [this.overcast.night, tod.night]]), 0, 0, W, h);
-      g.globalAlpha = 1;
-    }
-    const rc = clamp01(wx.rain * 0.9 + wx.storm * 0.3);
-    if (rc > 0.02) {
-      g.globalAlpha = rc * (1 - tod.night * 0.6);
-      for (const cl of this.rainClouds) g.drawImage(cl.spr, Math.round(cl.x), cl.y);
-      g.globalAlpha = 1;
-    }
-    if (wx.storm > 0.05) { g.fillStyle = rgba('#10161e', wx.storm * 0.5); g.fillRect(0, 0, W, h); }
+    if (wx.storm > 0.05) { g.fillStyle = rgba('#10161e', wx.storm * 0.5); g.fillRect(0, y0, W, y1 - y0); }
     // rain streaks (two scrolling sheets)
     if (wx.rain > 0.05) {
-      const sp = 1 + wx.storm * 0.6;
+      const sp2 = 1 + wx.storm * 0.6;
       for (const [tile, a, v] of [[tod.night > 0.5 ? this.rainTile.night : this.rainTile.day, 0.6, 170], [this.rainTile2, 0.3 * (1 - tod.night * 0.6), 230]]) {
-        const oy = Math.floor((t * v * sp) % tile.height), ox = Math.floor((oy / 3) % tile.width);
-        g.save();
+        const oy = Math.floor((t * v * sp2) % tile.height), ox = Math.floor((oy / 3) % tile.width);
+        const pat = g.createPattern(tile, 'repeat');
+        pat.setTransform(new DOMMatrix([1, 0, 0, 1, -ox, oy]));
         g.globalAlpha = wx.rain * a;
-        g.translate(-ox, oy);
-        g.fillStyle = g.createPattern(tile, 'repeat');
-        g.fillRect(ox, -oy, W, h);
-        g.restore();
+        g.fillStyle = pat;
+        g.fillRect(0, y0, W, y1 - y0);
       }
+      g.globalAlpha = 1;
     }
     // lightning
     if (this.flash > 0.01) {
       g.fillStyle = rgba('#e8f0ff', this.flash * 0.55);
-      g.fillRect(0, 0, W, h);
+      g.fillRect(0, y0, W, y1 - y0);
     }
     if (this.bolt) {
       const pts = this.bolt.pts;
@@ -778,6 +680,28 @@ export class ShallowsBiome extends Biome {
       g.fillStyle = '#ffffff';
       for (let i = 0; i + 1 < pts.length; i++) this.pxLine(g, pts[i], pts[i + 1], 1, 0);
     }
+    g.restore();
+  }
+
+  // Sweeping lighthouse beam (dithered fan) at dusk and night.
+  drawBeam(g, h, tod) {
+    const a = h.spr.anchors.lamp;
+    if (!a) return;
+    const lx = h.x - h.spr.ox + a[0], ly = h.y - h.spr.oy + a[1];
+    const k = clamp01(tod.night + tod.dusk * 0.5);
+    const ang = Math.sin(this.t * 0.7);
+    const dir = ang > 0 ? 1 : -1;
+    const len = 60 + Math.abs(ang) * 260;
+    g.fillStyle = '#fff4c0';
+    for (let i = 4; i < len; i += 2) {
+      const spread = 1 + i * 0.07;
+      const al = k * 0.35 * (1 - i / len) * Math.abs(ang);
+      if (al < 0.02) break;
+      g.globalAlpha = al;
+      g.fillRect(Math.round(lx + dir * i), Math.round(ly - spread / 2), 2, Math.max(1, Math.round(spread)));
+    }
+    g.globalAlpha = 1;
+    drawGlow(g, lx, ly, 7, '#fff0b0', k * 0.9);
   }
 
   pxLine(g, a, b, w, o) {
@@ -788,20 +712,16 @@ export class ShallowsBiome extends Biome {
   drawBack(ctx, env) {
     this.nearHooked = !!this.nearSeen;
     this.nearSeen = false;
-    const W = this.W, H = this.H, t = this.t, tod = this.tod, wx = this.wx;
+    const W = this.W, H = this.H, tod = this.tod;
     const sy = this.surfaceAt(env);
     const ys = this.ys;
-    const amp = 1.4 + wx.cloud * 0.4 + wx.rain * 0.6 + wx.storm * 2.6;
-    waveLine(ys, W, sy, t, amp, 0.4 + wx.storm * 1.6, 1 + wx.storm * 0.7);
     let top = H;
     for (let x = 0; x <= W; x++) if (ys[x] < top) top = ys[x];
     const water = this.waterBlend.get([[this.water.day, tod.day], [this.water.dusk, tod.dusk], [this.water.night, tod.night]]);
-    const hasAir = top > -3;
+    const view = env.view;
+    const hasAir = !view || view.y0 < top + 2;
     if (hasAir) {
-      this.drawAir(env);
-      ctx.drawImage(this.air.canvas, 0, 0);
-    }
-    if (hasAir) {
+      this.drawAir(ctx, env);
       // water body below the wave: a pixel-aligned staircase path (no anti-aliasing)
       const wp = new Path2D();
       wp.moveTo(0, H);
@@ -810,11 +730,13 @@ export class ShallowsBiome extends Biome {
       wp.closePath();
       ctx.fillStyle = ctx.createPattern(water, 'repeat');
       ctx.fill(wp);
+      this.drawBuoy(ctx, env);
     } else fillWith(ctx, water, 0, -10, W, H + 10);
     // parallax layers (fogged toward the live water gradient)
     const key = this.waterBlend.key;
     const px = this.par.x, py = this.par.y;
     const wob = quality(env) >= 1 ? 1 : 0;
+    const t = this.t, wx = this.wx;
     drawWobble(ctx, this.farA.tint(water, 0.8, key), -this.pad + px * 0.8, this.farAY + py * 0.4, t, wob, 4, 0.9, 0.07);
     this.drawGiant(ctx);
     drawWobble(ctx, this.farB.tint(water, 0.74, key), -this.pad + px * 1.4, this.farBY + py * 0.5, t + 2, wob, 4, 1.1, 0.09);
@@ -826,6 +748,30 @@ export class ShallowsBiome extends Biome {
     const murk = wx.cloud * 0.08 + wx.rain * 0.14 + wx.storm * 0.1;
     if (murk > 0.01) { ctx.fillStyle = rgba(tod.night > 0.5 ? '#0a1424' : '#5a6c7c', murk); ctx.fillRect(0, Math.max(0, top), W, H - Math.max(0, top)); }
     this.drawSurface(ctx, env, sy);
+  }
+
+  // A channel buoy riding the biome waves (the water shader adds the simulated lift).
+  drawBuoy(ctx, env) {
+    const b = this.buoy;
+    if (!b) return;
+    const s = b.spr, a = s.anchors.water;
+    const y = this.waveAt(b.x) + Math.round(Math.sin(this.t * 1.7) * 1.2);
+    ctx.drawImage(s.day, Math.round(b.x - a[0]), Math.round(y - a[1]));
+    b.lamp = [b.x - a[0] + s.anchors.lamp[0], y - a[1] + s.anchors.lamp[1]];
+    void env;
+  }
+
+  waveAt(x) {
+    const i = Math.max(0, Math.min(this.W, Math.round(x)));
+    return this.ys ? this.ys[i] : this.base;
+  }
+
+  waterLook() {
+    const tod = this.tod, wx = this.wx;
+    return {
+      refract: 14 + wx.storm * 6, caustic: 10 * (0.35 + tod.day * 0.65) * (0.4 + wx.clear * 0.6), chroma: true, foam: 1,
+      causticColor: tri('#2e463c', '#3c2e24', '#0e1830', tod), foamColor: this.cols.crest, crestColor: tri('#ffffff', '#ffe8c8', '#b8d0f0', tod),
+    };
   }
 
   drawGiant(ctx) {
@@ -865,7 +811,8 @@ export class ShallowsBiome extends Biome {
     ctx.fillStyle = p2;
     ctx.fill(band);
     // sun / moon glitter column on the surface
-    const s = tod.night > 0.5 ? this.sun.night : tod.dusk > 0.4 ? this.sun.dusk : this.sun.day;
+    const B = skyBodies(env.hour ?? 12, W, this.top, this.base);
+    const s = tod.night > 0.5 ? B.moon : B.sun;
     const gc = tod.night > 0.5 ? '#c8dcff' : tod.dusk > 0.4 ? '#ffd090' : '#ffffff';
     ctx.fillStyle = gc;
     const ga = wx.clear;
@@ -1004,6 +951,7 @@ export class ShallowsBiome extends Biome {
 
   drawFront(ctx, env) {
     const t = this.t, tod = this.tod, q = quality(env);
+    if (this.buoy?.lamp && (tod.night + tod.dusk * 0.6) > 0.15 && Math.sin(t * 3.1) > -0.2) drawGlow(ctx, this.buoy.lamp[0], this.buoy.lamp[1], 6, '#ffe27a', clamp01(tod.night + tod.dusk * 0.6) * 0.9);
     this.nearMotes.draw(ctx, t, 0.8 + tod.day * 0.3, q);
     if (tod.night > 0.3) {
       // bioluminescent plankton
@@ -1040,7 +988,7 @@ export class ShallowsBiome extends Biome {
     if (dark > 0.04) {
       const n = tod.night;
       const sy = this.surfaceAt(env);
-      const m = this.sun.night;
+      const m = skyBodies(env.hour ?? 23, this.W, this.top, this.base).moon;
       if (n > 0.2 && wx.clear > 0.2) lights.push({ x: m.x, y: Math.max(0, sy) + 10, r: 150, color: '#7a9ad8', a: 0.45 * n * wx.clear });
       for (const a of this.anemones) lights.push({ x: a.x, y: a.y - 14, r: 30, color: a.glow, a: 0.55 * n + 0.1 });
       if (this.castle.state === 'intact' && !this.secrets().sandcastle) lights.push({ x: this.castle.x, y: this.castle.y - 26, r: 26, color: '#ffc870', a: 0.6 * n });

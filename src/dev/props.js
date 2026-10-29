@@ -1,15 +1,17 @@
 // Dev preview of every voxel prop:
-//   dist/dev/props.html?page=0..3|all&bg=dark&only=id,id&zoom=2&scale=1&debug
+//   dist/dev/props.html?page=0..4|all&bg=dark&only=id,id&zoom=2&scale=1&debug
+//   &frames[=id,id]  every animation frame of the interactive decor (plus the movable `part` layer)
 //   (debug draws sprite bounds, ground anchor, screen rects, light radii and anchors).
 import { ctxOf } from '../core/canvas.js';
 import { drawText } from '../gfx/font.js';
-import { getProp, PROPS, PROP_VARIANTS } from '../gfx/props.js';
+import { getProp, PROPS, PROP_VARIANTS, ANIMATED_DECOR, propInteract } from '../gfx/props.js';
 
 const PAGES = [
   { title: 'SUNNY SHALLOWS', filter: (id, p) => p.biome === 'shallows' && !p.decorOnly },
   { title: 'JUNKYARD REEF', filter: (id, p) => p.biome === 'junkyard' && !p.decorOnly },
   { title: 'MIDNIGHT ABYSS', filter: (id, p) => p.biome === 'abyss' && !p.decorOnly },
-  { title: 'AQUARIUM DECOR + SHOP', filter: (id, p) => p.decorOnly || id === 'shop_stall' },
+  { title: 'AQUARIUM DECOR + SHOP', filter: (id, p) => (p.decorOnly && !ANIMATED_DECOR.includes(id)) || id === 'shop_stall' },
+  { title: 'FUN DECOR (interactive)', filter: (id) => ANIMATED_DECOR.includes(id) },
 ];
 
 export function run(params) {
@@ -24,7 +26,16 @@ export function run(params) {
 
   // Collect entries: [{id, variant, frame, label}]
   const entries = [];
-  const ids = only ? only.split(',') : Object.keys(PROPS).filter((id) => all || PAGES[page % PAGES.length].filter(id, PROPS[id]));
+  const framesArg = params.get('frames');
+  if (params.has('frames')) {
+    const fids = framesArg ? framesArg.split(',') : ANIMATED_DECOR;
+    for (const id of fids) {
+      const n = propInteract(id)?.frames || 1;
+      for (let f = 0; f < n; f++) entries.push({ id, variant: 0, frame: f, label: f ? 'f' + f : PROPS[id]?.name || id });
+      if (propInteract(id)?.motion) entries.push({ id, variant: 0, frame: propInteract(id).motion.part, label: 'part', part: true });
+    }
+  }
+  const ids = params.has('frames') ? [] : only ? only.split(',') : Object.keys(PROPS).filter((id) => all || PAGES[page % PAGES.length].filter(id, PROPS[id]));
   for (const id of ids) {
     const vars = PROP_VARIANTS[id] || [{}];
     for (const v of vars) entries.push({ id, variant: v.variant || 0, frame: v.frame || 0, label: v.label || PROPS[id]?.name || id });
@@ -34,7 +45,8 @@ export function run(params) {
   const times = [];
   const sprites = entries.map((e) => {
     const s = performance.now();
-    const p = getProp(e.id, { variant: e.variant, frame: e.frame, scale });
+    let p = getProp(e.id, { variant: e.variant, frame: e.frame, scale });
+    if (e.part && p.part) p = { ...p, canvas: p.part.canvas, glow: p.part.glow };
     times.push([e.id + ':' + e.variant + ':' + e.frame, Math.round(performance.now() - s), p.ms]);
     return { ...e, p };
   });
@@ -64,7 +76,7 @@ export function run(params) {
   grd.addColorStop(0, bgTop); grd.addColorStop(1, bgBot);
   g.fillStyle = grd;
   g.fillRect(0, 0, W, H);
-  drawText(g, only ? 'PROPS' : all ? 'ALL PROPS' : PAGES[page % PAGES.length].title + `  (page ${page % PAGES.length + 1}/${PAGES.length})`, 10, 7, { font: 'normal', color: '#ffffff', shadow: '#0b1622' });
+  drawText(g, params.has('frames') ? 'ANIMATION FRAMES' : only ? 'PROPS' : all ? 'ALL PROPS' : PAGES[page % PAGES.length].title + `  (page ${page % PAGES.length + 1}/${PAGES.length})`, 10, 7, { font: 'normal', color: '#ffffff', shadow: '#0b1622' });
   drawText(g, `${sprites.length} sprites, ${Math.round(total)} ms`, W - 10, 7, { font: 'small', align: 'right', color: '#cfe', shadow: '#0b1622' });
 
   for (const r of rows) {

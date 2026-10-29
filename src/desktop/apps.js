@@ -310,7 +310,7 @@ const MAILS = [
   ['Pinch (Bait Shop)', 'Golden bait restocked!', 'Very shiny. Rare fish go WILD for it. Bring coins. Click click.'],
   ['Mr. Briefcase', 'RE: RE: RE: meeting', 'Per my last bubble, I will be swimming between 9 and 5. Do not hook me during office hours.'],
   ['Sir Puffington', 'complaint', 'Someone moved their mouse too fast near me. I have filed a puff.'],
-  ['Unknown Sender', '...', 'Deep below, something with many eyes is waiting. Bring an Ancient Relic to the Abyss.'],
+  ['Unknown Sender', '...', 'Deep below, something with many eyes is waiting. Bring an Ancient Relic to the Deep Ocean.'],
 ];
 const mail = {
   title: 'Mail',

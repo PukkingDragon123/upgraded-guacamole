@@ -520,7 +520,7 @@ function tailPix(c, G, lx, ly, px, py, s, tp, baseY) {
   const st = a / G.TL;
   const rr = Math.hypot(bb, a + G.TL * 0.4);
   const ang = Math.atan2(bb, a + G.TL * 0.4);
-  const da = (c.raySp * 1.15) / (G.TL * 1.4);
+  const da = ((VOXM ? Math.max(c.raySp, 2.6 / s) : c.raySp) * 1.15) / (G.TL * 1.4);
   const onRay = c.tail.rays !== false && Math.abs(fract(ang / da + 0.5) - 0.5) * da * rr * s < 0.55;
   const e1 = 1 / s;
   const edge = !tailHit(type, a + 0.6 + e1, bb, G.TL, G.TS, G.tailBase, tp) || !tailHit(type, a + 0.6, bb + e1, G.TL, G.TS, G.tailBase, tp) || !tailHit(type, a + 0.6, bb - e1, G.TL, G.TS, G.tailBase, tp);
@@ -531,6 +531,7 @@ function tailPix(c, G, lx, ly, px, py, s, tp, baseY) {
   if (bb > 0 && !edge && !onRay) idx = 3.6;
   if (c.tail.spotP && !edge && hash2(Math.floor(lx * s / 2), Math.floor(ly * s / 2), 13) < 0.13) return c.tail.spotP;
   const al = onRay || edge || st < 0.14 ? 255 : Math.round(255 * Math.min(1, c.finAlpha));
+  if (VOXM) idx = 3.3 + (idx - 3.3) * 0.5;
   return withA(tone(R, idx, px, py), al);
 }
 
@@ -553,8 +554,8 @@ function finPix(c, G, lx, ly, px, py, s, fp, sw, still, raise = 0) {
     const wob = still ? 1 : 1 + 0.08 * Math.sin(TAU * fp - t * 7);
     const fh = fhMax * finShape(f.type, t, fp, f.count) * wob;
     const along = (ue - f.from) * G.L;
-    let sp = c.raySp;
-    if (f.spines) sp = Math.max(c.raySp * 1.5, ((f.to - f.from) * G.L) / Math.max(3, f.count * 1.6));
+    let sp = VOXM ? Math.max(c.raySp, 2.6 / s) : c.raySp;
+    if (f.spines) sp = Math.max(sp * 1.5, ((f.to - f.from) * G.L) / Math.max(3, f.count * 1.6));
     const rf = fract(along / sp + 0.5) - 0.5;
     const onRay = f.rays && Math.abs(rf) * sp * s < 0.6;
     const R = f.R7;
@@ -578,6 +579,7 @@ function finPix(c, G, lx, ly, px, py, s, fp, sw, still, raise = 0) {
     if (!top && !edge && !onRay) idx -= 0.4;
     if (f.spotP && !edge && hash2(Math.floor(lx * s / 2), Math.floor(ly * s / 2), 17) < 0.14) return f.spotP;
     const al = onRay || edge ? 255 : Math.round(255 * (f.alpha ?? c.finAlpha));
+    if (VOXM) idx = 3.3 + (idx - 3.3) * 0.5;
     return withA(tone(R, idx, px, py), al);
   }
   return 0;
@@ -599,7 +601,7 @@ function pecPix(c, G, lx, ly, px, py, s, fp, baseY, still) {
   if (Math.abs(b) > wdt + 0.3) return 0;
   const ang = Math.atan2(b, a + pec.len * 0.35);
   const rr = Math.hypot(b, a + pec.len * 0.35);
-  const da = ((pec.spines ? 2.2 : 1.15) * c.raySp) / (pec.len * 1.35);
+  const da = ((pec.spines ? 2.2 : 1.15) * (VOXM ? Math.max(c.raySp, 2.6 / s) : c.raySp)) / (pec.len * 1.35);
   const rf = fract(ang / da + 0.5) - 0.5;
   const onRay = Math.abs(rf) * da * rr * s < 0.6;
   if (pec.spines && !onRay && st > 1 - 0.45 * Math.abs(rf) * 2) return 0;
@@ -608,6 +610,7 @@ function pecPix(c, G, lx, ly, px, py, s, fp, baseY, still) {
   let idx = onRay ? 2.2 : 4.6;
   if (edge) idx = 1.1;
   if (st < 0.12) idx = 2;
+  if (VOXM) idx = 3.3 + (idx - 3.3) * 0.5;
   return withA(tone(R, idx, px, py), edge ? 245 : onRay || st < 0.12 ? 215 : Math.round(255 * Math.min(1, c.finAlpha - 0.45)));
 }
 
@@ -1167,7 +1170,7 @@ function bodyPix(c, G, xp, lx, ly, px, py, s, sw, still) {
   }
   idx += patLight * 4;
   // scales: staggered rows of small arcs on the flank
-  if (c.scales && !inHead && u < 0.93 && v > -0.78 && v < 0.62) {
+  if (c.scales && !inHead && u < 0.93 && v > -0.78 && v < 0.62 && (!VOXM || s >= 1.1)) {
     const sc = c.scaleSize, rh = sc * 0.62;
     const row = Math.floor(ly / rh + 1000);
     const off = (row & 1) * sc * 0.5;
@@ -1181,7 +1184,7 @@ function bodyPix(c, G, xp, lx, ly, px, py, s, sw, still) {
     }
   }
   // lateral line: light dashes from the operculum to the tail
-  if (c.lateral && !inHead && u < 0.95) {
+  if (c.lateral && !inHead && u < 0.95 && (!VOXM || s >= 0.9)) {
     const lv = (c.look.lateralV ?? vb * 0.45 + 0.02) + (u - opU) * 0.12;
     if (Math.abs(v - lv) * (lv < 0 ? top : bot) * s < 0.55 && (Math.floor(lx * s / 2) & 1) === 0) idx += 1.1;
   }

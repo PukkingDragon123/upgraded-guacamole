@@ -13,6 +13,8 @@
 import { PROPS } from '../gfx/props.js';
 
 export const MAX_LEVEL = 3;
+// Seabed depth range buildings can stand at (DepthScene z).
+export const ZMIN = 0.04, ZMAX = 1.3;
 
 export const BUILDINGS = {
   research_lab: {

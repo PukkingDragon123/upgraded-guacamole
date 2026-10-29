@@ -76,34 +76,26 @@ for (const [id, p] of Object.entries(PROPS)) {
 }
 
 // ---------------------------------------------------------------- cosmetics (WARDROBE from character.js)
+// Cosmetics are ownership flags (state.cosmetics via grantCosmetic); duplicates stack in the inventory to sell.
+const COS_VAL = { common: 40, uncommon: 100, rare: 260, epic: 700, legendary: 1800 };
 function wardrobeEntries() {
   const W = CHAR.WARDROBE;
   const out = [];
-  const push = (e, slot) => {
-    if (!e) return;
-    if (typeof e === 'string') e = { id: e };
-    const s = e.slot || slot;
-    if (!e.id || !s) return;
-    out.push({ ...e, slot: s });
-  };
-  if (Array.isArray(W)) for (const e of W) push(e);
-  else if (W && typeof W === 'object') {
-    for (const [slot, list] of Object.entries(W)) {
-      if (Array.isArray(list)) for (const e of list) push(e, slot);
-      else if (list && typeof list === 'object') for (const [id, e] of Object.entries(list)) push({ id, ...(typeof e === 'object' ? e : { name: String(e) }) }, slot);
-    }
-  }
+  if (Array.isArray(W)) for (const e of W) if (e && e.id && e.slot) out.push(e);
   return out;
 }
-const COS_VAL = { common: 40, uncommon: 100, rare: 260, epic: 700, legendary: 1800 };
-const DEFAULT_LOOK = CHAR.DEFAULT_CHARACTER || {};
-for (const e of wardrobeEntries()) {
-  if (DEFAULT_LOOK[e.slot] === e.id || e.default || e.starter) continue; // starter wardrobe is already owned
-  const r = RARITY_ORDER.includes(e.rarity) ? e.rarity : e.price ? (e.price < 100 ? 'common' : e.price < 300 ? 'uncommon' : e.price < 800 ? 'rare' : e.price < 2000 ? 'epic' : 'legendary') : 'uncommon';
-  const name = e.name || e.id.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-  add(`cos_${e.slot}_${e.id}`, { name, kind: 'cosmetic', rarity: r, slot: e.slot, look: e.id, art: null, desc: e.desc || `A ${e.slot} for your fisher. Wear it with pride (and a little bit of seaweed).`, value: COS_VAL[r] });
+for (const w of wardrobeEntries()) {
+  if (w.price === 0 || w.unlock === 'skill') continue; // starter gear and skill rewards never drop
+  const r = RARITY_ORDER.includes(w.rarity) ? w.rarity : 'uncommon';
+  add('cos_' + w.id, { name: w.name || w.id, kind: 'cosmetic', rarity: r, wardrobe: w.id, slot: w.slot, art: null, packageOnly: w.unlock === 'package', desc: w.desc || 'A cosmetic for your fisher.', lore: w.unlock === 'package' ? 'Only found inside packages.' : 'Also sold at the wardrobe.', value: COS_VAL[r] });
 }
 export const COSMETIC_IDS = Object.keys(ITEMS).filter((id) => ITEMS[id].kind === 'cosmetic');
+export function wardrobeItem(id) { return CHAR.WARDROBE_BY_ID?.[ITEMS[id]?.wardrobe] || null; }
+export function ownsWardrobe(state, id) {
+  const w = wardrobeItem(id);
+  if (!w) return false;
+  return typeof CHAR.ownsCosmetic === 'function' ? CHAR.ownsCosmetic(state, w) : !!state.cosmetics?.[w.id];
+}
 
 // ---------------------------------------------------------------- packages
 export const TIERS = {
@@ -138,6 +130,12 @@ export function addItem(state, id, qty = 1) {
   const it = ITEMS[id];
   if (it?.kind === 'bait') { state.baits[id] = (state.baits[id] || 0) + qty; return; }
   if (it?.kind === 'package') { for (let i = 0; i < qty; i++) addPackage(state, it.tier); return; }
+  if (it?.kind === 'cosmetic' && !ownsWardrobe(state, id)) {
+    if (typeof CHAR.grantCosmetic === 'function') CHAR.grantCosmetic(state, it.wardrobe);
+    else (state.cosmetics ||= {})[it.wardrobe] = true;
+    (inventory(state).fresh ||= {})[id] = Date.now();
+    if (--qty <= 0) return;
+  }
   const inv = inventory(state);
   inv.items[id] = (inv.items[id] || 0) + qty;
   (inv.fresh ||= {})[id] = Date.now();
@@ -162,6 +160,7 @@ export function countItem(state, id) {
   const it = ITEMS[id];
   if (it?.kind === 'bait') return state.baits?.[id] || 0;
   if (it?.kind === 'package') return (state.inventory?.packages || []).filter((p) => p.tier === it.tier).length;
+  if (it?.kind === 'cosmetic') return (ownsWardrobe(state, id) ? 1 : 0) + (state.inventory?.items?.[id] || 0);
   return state.inventory?.items?.[id] || 0;
 }
 
@@ -220,7 +219,7 @@ function pickOf(cat, rarity, biome) {
   const want = RARITY_ORDER.indexOf(rarity);
   for (let d = 0; d < 5; d++) {
     const cands = pool.filter((it) => Math.abs(RARITY_ORDER.indexOf(it.rarity) - want) === d && (d > 0 || RARITY_ORDER.indexOf(it.rarity) <= want));
-    if (cands.length) return rng.weighted(cands, (it) => (cat === 'material' && biome && it.biome === biome ? 3 : 1) * (cat === 'blueprint' && it.building ? 1.6 : 1));
+    if (cands.length) return rng.weighted(cands, (it) => (cat === 'material' && biome && it.biome === biome ? 3 : 1) * (cat === 'blueprint' && it.building ? 1.6 : 1) * (cat === 'cosmetic' && it.packageOnly ? 2.5 : 1));
   }
   return rng.pick(pool);
 }

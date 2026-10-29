@@ -5,6 +5,10 @@
 //     label: overrides the coloured tag on file-type icons ('JPG'); day: calendar number.
 //   getMiniIcon(icon, {state}) -> 14x14 canvas (no drop shadow)
 //   getFileTypeIcon(ext) / fileTypeInfo(name, isDir) -> {icon, type, label, state}
+//   App tiers (AppSea store): getAppIcon(icon, {tier}) or the id shorthand 'notes@3' adds a tier badge
+//     (1 STD, 2 PRO, 3 ULTRA, 4 ENT; 0 = Lite, no badge); getMiniIcon('notes@3') adds a small tier pip.
+//   APPS flags: system (always on the desktop), store (downloaded from AppSea), nobait (cannot go in the
+//     bait box / be stolen), hidden (never a desktop icon; window title/icon lookup only).
 
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { PixelBuffer } from '../gfx/pixel.js';
@@ -15,23 +19,27 @@ export const ICON_SIZE = 32;
 export const MINI_SIZE = 14;
 
 export const APPS = [
-  { id: 'mycomputer', label: 'My Computer', type: 'computer', icon: 'computer' },
-  { id: 'recycle', label: 'Recycle Bin', type: 'trash', icon: 'trash' },
-  { id: 'fishnet', label: 'FishNet Explorer', type: 'browser', icon: 'browser' },
-  { id: 'documents', label: 'Documents', type: 'folder', icon: 'documents' },
-  { id: 'photos', label: 'Photos', type: 'image', icon: 'image' },
-  { id: 'music', label: 'Music', type: 'music', icon: 'music' },
-  { id: 'games', label: 'Games', type: 'game', icon: 'game' },
-  { id: 'mail', label: 'Mail', type: 'mail', icon: 'mail' },
-  { id: 'notes', label: 'Notes.txt', type: 'docs', icon: 'notes' },
-  { id: 'terminal', label: 'Terminal', type: 'terminal', icon: 'terminal' },
-  { id: 'settings', label: 'Settings', type: 'settings', icon: 'settings' },
-  { id: 'calculator', label: 'Calculator', type: 'calc', icon: 'calc' },
-  { id: 'calendar', label: 'Calendar', type: 'calendar', icon: 'calendar' },
-  { id: 'chat', label: 'Chat', type: 'chat', icon: 'chat' },
-  { id: 'paint', label: 'Paint', type: 'paint', icon: 'paint' },
-  { id: 'videos', label: 'Videos', type: 'video', icon: 'video' },
-  { id: 'fishtop', label: 'FISHTOP', type: 'game', icon: 'fishtop' },
+  { id: 'mycomputer', label: 'My Computer', type: 'computer', icon: 'computer', app: 'computer', system: true },
+  { id: 'recycle', label: 'Recycle Bin', type: 'trash', icon: 'trash', app: 'trash', system: true },
+  { id: 'appsea', label: 'AppSea', type: 'browser', icon: 'store', app: 'appsea', system: true, nobait: true },
+  { id: 'fishnet', label: 'FishNet Explorer', type: 'browser', icon: 'browser', app: 'browser', store: true },
+  { id: 'documents', label: 'Documents', type: 'folder', icon: 'documents', store: true },
+  { id: 'photos', label: 'Photos', type: 'image', icon: 'image', store: true },
+  { id: 'music', label: 'Music', type: 'music', icon: 'music', store: true },
+  { id: 'games', label: 'Games', type: 'game', icon: 'game', store: true },
+  { id: 'mail', label: 'Mail', type: 'mail', icon: 'mail', store: true },
+  { id: 'notes', label: 'Notes.txt', type: 'docs', icon: 'notes', store: true },
+  { id: 'terminal', label: 'Terminal', type: 'terminal', icon: 'terminal', store: true },
+  { id: 'settings', label: 'Settings', type: 'settings', icon: 'settings', store: true },
+  { id: 'calculator', label: 'Calculator', type: 'calc', icon: 'calc', app: 'calc', store: true },
+  { id: 'calendar', label: 'Calendar', type: 'calendar', icon: 'calendar', store: true },
+  { id: 'chat', label: 'Chat', type: 'chat', icon: 'chat', store: true },
+  { id: 'paint', label: 'Paint', type: 'paint', icon: 'paint', store: true },
+  { id: 'videos', label: 'Videos', type: 'video', icon: 'video', app: 'video', store: true },
+  { id: 'fishtop', label: 'FISHTOP', type: 'game', icon: 'fishtop', store: true },
+  { id: 'moreram', label: 'More RAM', type: 'computer', icon: 'ram', store: true },
+  { id: 'notavirus', label: 'NotAVirus.exe', type: 'trash', icon: 'virus', store: true },
+  { id: 'appsea_dl', label: 'Downloads', type: 'folder', icon: 'download', app: 'appsea_dl', hidden: true, nobait: true },
 ];
 
 // ---------------------------------------------------------------- painter
@@ -188,6 +196,7 @@ const TINY = {
   0: '###|#.#|#.#|#.#|###', 1: '.#.|##.|.#.|.#.|###', 2: '##.|..#|.#.|#..|###', 3: '##.|..#|.#.|..#|##.',
   4: '#.#|#.#|###|..#|..#', 5: '###|#..|##.|..#|##.', 6: '.##|#..|###|#.#|###', 7: '###|..#|.#.|.#.|.#.',
   8: '###|#.#|###|#.#|###', 9: '###|#.#|###|..#|##.', '.': '.|.|.|.|#', '-': '...|...|###|...|...',
+  '+': '...|.#.|###|.#.|...',
 };
 function tinyWidth(s) {
   let w = 0;
@@ -890,6 +899,270 @@ function drawFishtop(p) {
   });
 }
 
+// ---------------------------------------------------------------- AppSea-era icons
+
+const AQUA = ['#123a6a', '#1f64a8', '#2f96d6', '#62c8f0', '#bff0ff'];
+const NAVY = ['#141a40', '#24306a', '#3a4c94', '#6a82c8', '#b4c6f0'];
+const PCB = ['#0c3324', '#17543a', '#23784e', '#3fa064', '#86d48e'];
+const GERM = ['#1e4a2c', '#2f7a3a', '#4fb04a', '#8ade66', '#d4f8a0'];
+const HULL = ['#5a1424', '#a02a34', '#d8483e', '#f47a5e', '#ffc0a0'];
+const WHITE = ['#5a5c72', '#a4a8bc', '#d4d8e6', '#eef0f8', '#ffffff'];
+
+function sparkle(p, x, y, big) {
+  p.px(x, y, '#ffffff');
+  p.px(x - 1, y, '#fff4b8');
+  p.px(x + 1, y, '#fff4b8');
+  p.px(x, y - 1, '#fff4b8');
+  p.px(x, y + 1, '#fff4b8');
+  if (big) {
+    p.px(x - 2, y, '#ffd86a');
+    p.px(x + 2, y, '#ffd86a');
+    p.px(x, y - 2, '#ffd86a');
+    p.px(x, y + 2, '#ffd86a');
+  }
+}
+
+// Gold down-arrow (download) centred on cx; shaft from y0, tip at y1.
+function dlArrow(q, cx, y0, y1, hw, sw, R = GOLD) {
+  const hy = y1 - hw * 1.05;
+  q.rect(Math.round(cx - sw / 2), y0, sw, Math.ceil(hy - y0) + 1, R[2]);
+  q.poly([[cx - hw, hy], [cx + hw, hy], [cx, y1]], R[2]);
+  bevelPaint(q, Math.floor(cx - hw - 1), y0 - 1, Math.ceil(hw * 2) + 3, y1 - y0 + 3, R, 0.58, 0.3);
+}
+
+function drawStore(p) {
+  // rope handle behind the bag
+  p.each(6, 1, 21, 13, (x, y) => {
+    const dx = (x + 0.5 - 16) / 6.8, dy = (y + 0.5 - 12.5) / 9;
+    const e = Math.hypot(dx, dy);
+    if (y > 12 || e < 0.72 || e > 1) return null;
+    const outer = (e - 0.72) / 0.28;
+    return dith(0.4 + (outer > 0.55 ? 0.22 : -0.12) + (dx < 0 ? 0.16 : -0.08) + (dy < -0.8 ? 0.12 : 0), NAVY, x, y);
+  });
+  // bag body: front face + right gusset
+  p.poly([[25.5, 12], [29, 14], [30, 29.5], [27.5, 30]], AQUA[1]);
+  p.paint(25, 12, 6, 19, (x, y) => (p.on(x, y) ? dith(0.22 + (x === 29 ? -0.1 : 0.06) - (y - 12) * 0.006, AQUA, x, y) : null));
+  p.poly([[5, 12], [26, 12], [27.5, 30], [3.5, 30]], AQUA[2]);
+  const crest = (x) => 23.5 + Math.sin(x * 0.72 + 0.6) * 1.2;
+  p.paint(3, 12, 25, 19, (x, y) => {
+    if (x >= 26 && y < 30 && !p.on(x - 1, y)) return null;
+    const cy = crest(x);
+    if (y >= cy) {
+      if (y < cy + 1) return '#e6fbff';
+      return dith(0.36 - (y - cy) * 0.05 - (x - 4) * 0.004, AQUA, x, y);
+    }
+    let v = 0.72 - (y - 12) * 0.018 - (x - 4) * 0.012;
+    if (y <= 14) v += 0.2;
+    if (y === 15) v -= 0.18;
+    if (x <= 5) v += 0.1;
+    return dith(v, AQUA, x, y);
+  });
+  p.hl(5, 12, 21, '#e8faff');
+  for (const gx of [10, 21]) {
+    p.rect(gx, 13, 2, 2, '#0c1a3a');
+    p.px(gx, 13, '#c8d4f0');
+  }
+  // download arrow on the front
+  layer(p, (q) => dlArrow(q, 15.5, 15, 27, 6, 5));
+  for (const [x, y] of [[9, 27], [22, 26], [6, 25]]) p.px(x, y, '#bff0ff');
+  sparkle(p, 26, 5, true);
+  sparkle(p, 4, 9, false);
+}
+
+function drawModem(p) {
+  const B = BEIGE;
+  // curly phone cord (behind)
+  for (let i = 0; i <= 64; i++) {
+    const t = i / 64;
+    const bx = 8.5 - t * 6.5, by = 12 - t * 10.5;
+    const ph = t * Math.PI * 10;
+    const x = Math.round(bx + Math.cos(ph) * 1.5), y = Math.round(by + Math.sin(ph) * 0.9);
+    if (!p.on(x, y) || Math.sin(ph) > 0) p.px(x, y, Math.sin(ph) > 0 ? '#2a2a3c' : Math.cos(ph) < -0.3 ? '#9a9ab4' : '#5c5c74');
+  }
+  // body: top face, front face, right side
+  p.poly([[7, 11], [29.5, 11], [27.5, 16], [3, 16]], B[3]);
+  p.rect(3, 16, 25, 8, B[2]);
+  p.poly([[27.5, 16], [29.5, 11], [29.5, 19.5], [27.5, 24]], B[1]);
+  p.paint(2, 10, 29, 15, (x, y) => {
+    if (y < 16 && x < 28 + (16 - y) * 0.4) {
+      let v = 0.7 - (y - 11) * 0.03;
+      if (y === 11) v = 0.95;
+      return dith(v, B, x, y);
+    }
+    if (y >= 16 && x <= 27) {
+      let v = 0.52 - (y - 16) * 0.025;
+      if (y === 16) v = 0.36;
+      if (y === 23) v = 0.22;
+      if (x === 3) v += 0.15;
+      return dith(v, B, x, y);
+    }
+    return dith(0.24 - (y - 11) * 0.01, B, x, y);
+  });
+  // vents on top
+  for (let i = 0; i < 5; i++) p.line(8 + i * 2.2, 15, 10 + i * 2.2, 12, B[1]);
+  // LEDs
+  const leds = [['#8cff86', '#2e7a3a'], ['#8cff86', '#2e7a3a'], ['#ffd23a', '#9a6a1a'], ['#ff6a5a', '#8a2a2a']];
+  leds.forEach(([on, off], i) => {
+    const x = 5 + i * 3;
+    p.px(x, 19, on);
+    p.px(x + 1, 19, off);
+    p.px(x, 20, off);
+    p.px(x + 1, 20, off);
+  });
+  tinyText(p, '56K', 17, 18, '#6a5a52');
+  p.hl(17, 17, 11, B[3]);
+  for (const x of [5, 6, 24, 25]) p.px(x, 24, '#3a2e3a');
+  // screechy signal waves
+  for (const [r, c] of [[3.2, '#ffffff'], [5.6, '#9ae8ff'], [8, '#62c8f0']]) {
+    for (let a = -2.2; a <= -0.9; a += 0.12) {
+      const x = Math.round(24 + Math.cos(a) * r), y = Math.round(9 + Math.sin(a) * r);
+      if (!p.on(x, y)) p.px(x, y, c);
+    }
+  }
+}
+
+function drawRam(p) {
+  const P = PCB;
+  p.rect(2, 8, 28, 15, P[2]);
+  p.clearCirc(2.2, 15.5, 1.8);
+  p.clearCirc(29.8, 15.5, 1.8);
+  bevelPaint(p, 1, 7, 30, 17, P, 0.5, 0.26);
+  // copper traces
+  for (const y of [18, 20]) for (let x = 4; x < 28; x += 3) p.px(x, y, P[3]);
+  // memory chips
+  for (const x of [4, 10, 17, 23]) {
+    p.rect(x, 10, 5, 7, '#24242f');
+    p.hl(x, 10, 5, '#54546a');
+    p.vl(x, 11, 6, '#3a3a4a');
+    p.hl(x, 16, 5, '#14141c');
+    p.px(x + 1, 11, '#8a8aa0');
+    for (let k = 0; k < 5; k += 2) { p.px(x + k, 9, '#c8ccd8'); p.px(x + k, 17, '#8a8ea0'); }
+  }
+  // sticker
+  p.rect(7, 17, 19, 6, '#fbf8ee');
+  p.hl(7, 17, 19, '#ffffff');
+  p.hl(7, 22, 19, '#c8c0b0');
+  tinyText(p, '+RAM', 9, 18, '#c8343a');
+  // gold contacts
+  for (let x = 3; x < 29; x += 2) {
+    if (x === 15) continue;
+    p.rect(x, 23, 1, 3, GOLD[3]);
+    p.px(x, 23, GOLD[4]);
+    p.px(x, 25, GOLD[1]);
+  }
+  sparkle(p, 27, 4, true);
+  sparkle(p, 5, 4, false);
+}
+
+function drawGerm(p) {
+  const G = GERM, cx = 16, cy = 17;
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2 + 0.25;
+    const x = cx + Math.cos(a) * 11.6, y = cy + Math.sin(a) * 11;
+    p.line(cx + Math.cos(a) * 8, cy + Math.sin(a) * 8, x, y, G[2]);
+    p.line(cx + Math.cos(a) * 8 + 0.6, cy + Math.sin(a) * 8, x + 0.6, y, G[2]);
+    p.circ(x, y, 1.9, G[2]);
+  }
+  p.circ(cx, cy, 9.6, G[2]);
+  p.paint(0, 0, 32, 32, (x, y) => {
+    const dx = x + 0.5 - cx, dy = y + 0.5 - cy, d = Math.hypot(dx, dy);
+    let v = 0.56 - (dx + dy) / 26;
+    if (d < 9.6) v += 0.12 * Math.sqrt(Math.max(0, 1 - (d / 9.6) ** 2));
+    if (!p.on(x, y - 1)) v += 0.3;
+    else if (!p.on(x - 1, y)) v += 0.15;
+    if (!p.on(x, y + 1)) v -= 0.3;
+    else if (!p.on(x + 1, y)) v -= 0.15;
+    return dith(v, G, x, y);
+  });
+  // freckles
+  for (const [x, y] of [[9, 21], [22, 22], [11, 10], [21, 9]]) p.px(x, y, G[1]);
+  // disguise: brows, round glasses, eyes, nose, moustache
+  const K = '#1a1226';
+  for (const ex of [12, 20]) {
+    p.each(ex - 3, 12, 7, 7, (x, y) => {
+      const d = Math.hypot(x + 0.5 - (ex + 0.5), y + 0.5 - 15.5);
+      if (d > 3.4) return null;
+      if (d > 2.5) return K;
+      return y < 15 ? '#ffffff' : '#dce8f4';
+    });
+    p.rect(ex + 1, 15, 2, 2, K);
+    p.px(ex + 1, 15, '#5a5a7a');
+  }
+  p.hl(15, 14, 3, K);
+  p.rect(8, 10, 6, 2, K);
+  p.rect(18, 10, 6, 2, K);
+  p.px(8, 12, K);
+  p.px(23, 12, K);
+  p.circ(16.5, 19.6, 2.5, '#ff8a9a');
+  p.circ(16, 19, 1.4, '#ffc0c8');
+  p.px(15, 18, '#ffffff');
+  p.poly([[9.5, 22.5], [16.5, 21], [23.5, 22.5], [22, 24.5], [16.5, 23.2], [11, 24.5]], '#3a2418');
+  p.hl(13, 22, 7, '#5a3a28');
+  p.hl(14, 26, 5, G[0]);
+  p.px(13, 25, G[0]);
+  p.px(19, 25, G[0]);
+}
+
+function drawBoat(p) {
+  // sea
+  p.each(0, 24, 32, 8, (x, y) => {
+    const crest = 25 + Math.round(Math.sin(x * 0.55) * 0.8);
+    if (y < crest) return null;
+    if (y === crest) return '#d8f6ff';
+    return dith(0.62 - (y - crest) * 0.09, OCEAN, x, y);
+  });
+  // mast, flag, rod
+  p.vl(21, 3, 16, '#5a3a2a');
+  p.vl(22, 4, 15, '#3a2418');
+  p.poly([[22, 3], [28, 5], [22, 7.5]], '#ffd23a');
+  p.hl(23, 4, 3, '#fff4b0');
+  p.line(25, 17, 31, 7, '#2a2a3a');
+  p.line(31, 7, 31, 23, '#a8c8e0');
+  // cabin
+  layer(p, (q) => {
+    q.rect(6, 11, 11, 9, WHITE[3]);
+    q.rect(5, 9, 13, 3, HULL[2]);
+    q.hl(5, 9, 13, HULL[3]);
+    q.hl(5, 11, 13, HULL[1]);
+    q.vl(6, 12, 8, WHITE[4]);
+    q.vl(16, 12, 8, WHITE[1]);
+    q.rect(8, 13, 3, 3, '#2a5aa0');
+    q.rect(12, 13, 3, 3, '#2a5aa0');
+    q.px(8, 13, '#9ae0ff');
+    q.px(12, 13, '#9ae0ff');
+  });
+  // hull
+  layer(p, (q) => {
+    q.poly([[1.5, 18.5], [30.5, 17.5], [26.5, 27.5], [6, 27.5]], HULL[2]);
+    q.paint(0, 17, 32, 12, (x, y) => {
+      if (y <= 20) return y === 18 ? WHITE[4] : WHITE[3];
+      if (y === 21) return '#2a64d0';
+      let v = 0.55 - (y - 22) * 0.07 - (x - 16) * 0.008;
+      return dith(v, HULL, x, y);
+    });
+    for (const x of [9, 14, 19, 24]) q.px(x, 19, WHITE[1]);
+  });
+  p.hl(4, 27, 24, '#9ae8ff');
+}
+
+function drawDownload(p) {
+  const S = STEEL;
+  // tray
+  p.poly([[2, 18], [30, 18], [28, 29], [4, 29]], S[2]);
+  p.paint(1, 17, 31, 13, (x, y) => {
+    if (y <= 20 && x > 4 && x < 27) return y === 18 ? S[0] : '#2a3048';
+    let v = 0.62 - (y - 18) * 0.03 - (x - 4) * 0.008;
+    if (y === 18) v = 0.9;
+    if (y === 28) v = 0.2;
+    return dith(v, S, x, y);
+  });
+  p.rect(10, 23, 12, 2, S[1]);
+  p.hl(10, 23, 12, S[0]);
+  // arrow
+  layer(p, (q) => dlArrow(q, 16, 2, 22, 7.5, 6, LAND));
+  sparkle(p, 26, 6, false);
+}
+
 // File-type page icons: a dog-eared page with a glyph and a coloured tag.
 const PAGE_KINDS = {
   file: { band: null },
@@ -1164,6 +1437,76 @@ const MINI = {
     p.each(1, 1, 12, 3, (x, y) => (y >= 3 - Math.floor(x / 5) && y <= 4 - Math.floor(x / 5) ? (Math.floor((x + y) / 2) % 2 ? '#2a2838' : '#f4f0e8') : null));
     p.hl(3, 9, 5, '#b8b6cc');
   },
+  store(p) {
+    p.each(4, 0, 7, 5, (x, y) => {
+      const e = Math.hypot((x + 0.5 - 7.5) / 3, (y + 0.5 - 5) / 4);
+      return e > 0.62 && e <= 1 && y < 5 ? NAVY[2] : null;
+    });
+    p.poly([[2, 5], [12, 5], [13, 13], [1, 13]], AQUA[2]);
+    p.paint(1, 5, 13, 9, (x, y) => (y >= 11 ? (y === 11 ? '#e6fbff' : AQUA[1]) : y === 5 ? AQUA[4] : x < 4 ? AQUA[3] : AQUA[2]));
+    p.rect(6, 6, 3, 3, GOLD[3]);
+    p.poly([[4, 8.5], [11, 8.5], [7.5, 12.5]], GOLD[3]);
+    p.hl(6, 6, 3, GOLD[4]);
+    p.px(12, 1, '#ffffff');
+  },
+  isp(p) {
+    const B = BEIGE;
+    p.poly([[3, 5], [13, 5], [12, 8], [1, 8]], B[3]);
+    p.rect(1, 8, 11, 4, B[2]);
+    p.poly([[12, 8], [13, 5], [13, 10], [12, 12]], B[1]);
+    p.hl(3, 5, 10, B[4]);
+    p.hl(1, 11, 11, B[1]);
+    p.px(3, 9, '#8cff86');
+    p.px(5, 9, '#8cff86');
+    p.px(7, 9, '#ffd23a');
+    for (const [x, y] of [[3, 3], [2, 2], [1, 1]]) p.px(x, y, '#3a3a4c');
+    for (const [x, y] of [[9, 2], [10, 1], [11, 2]]) p.px(x, y, '#9ae8ff');
+  },
+  ram(p) {
+    p.rect(0, 3, 14, 7, PCB[2]);
+    p.hl(0, 3, 14, PCB[4]);
+    p.hl(0, 9, 14, PCB[1]);
+    for (const x of [1, 5, 9]) { p.rect(x, 4, 3, 3, '#24242f'); p.px(x, 4, '#54546a'); }
+    p.hl(2, 8, 10, '#fbf8ee');
+    for (let x = 1; x < 14; x += 2) if (x !== 7) p.rect(x, 10, 1, 2, GOLD[3]);
+    p.px(12, 1, '#ffffff');
+  },
+  virus(p) {
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + 0.3;
+      p.circ(7 + Math.cos(a) * 5.8, 7 + Math.sin(a) * 5.8, 1.1, GERM[2]);
+    }
+    p.circ(7, 7, 4.9, GERM[2]);
+    bevelPaint(p, 0, 0, 14, 14, GERM, 0.55, 0.26);
+    p.rect(3, 5, 3, 2, '#1a1226');
+    p.rect(8, 5, 3, 2, '#1a1226');
+    p.px(4, 6, '#ffffff');
+    p.px(9, 6, '#ffffff');
+    p.rect(6, 7, 2, 2, '#ff8a9a');
+    p.hl(4, 9, 6, '#3a2418');
+  },
+  download(p) {
+    p.poly([[1, 8], [13, 8], [12, 13], [2, 13]], STEEL[2]);
+    p.hl(1, 8, 12, STEEL[4]);
+    p.rect(3, 8, 8, 2, '#2a3048');
+    p.hl(2, 12, 10, STEEL[1]);
+    p.rect(5, 1, 4, 5, LAND[3]);
+    p.poly([[2.5, 5.5], [11.5, 5.5], [7, 10.5]], LAND[3]);
+    p.vl(5, 1, 5, LAND[4]);
+    p.vl(8, 1, 5, LAND[1]);
+  },
+  boat(p) {
+    p.vl(8, 1, 7, '#5a3a2a');
+    p.poly([[9, 1], [12, 2.5], [9, 4]], '#ffd23a');
+    p.rect(2, 5, 5, 3, WHITE[3]);
+    p.hl(1, 4, 7, HULL[2]);
+    p.px(3, 6, '#2a5aa0');
+    p.px(5, 6, '#2a5aa0');
+    p.poly([[0, 8], [14, 7.5], [12, 12], [2.5, 12]], HULL[2]);
+    p.hl(0, 8, 14, WHITE[4]);
+    p.hl(1, 9, 13, '#2a64d0');
+    p.each(0, 12, 14, 2, (x, y) => (y === 12 ? (x % 4 === 1 ? '#d8f6ff' : OCEAN[3]) : OCEAN[2]));
+  },
   fishtop(p) {
     p.rrect(1, 1, 12, 12, '#000', 2);
     p.paint(1, 1, 12, 12, (x, y) => (y < 5 ? dith((y - 1) / 4, ['#ffe2a8', '#c6f0f0'], x, y) : dith((y - 5) / 7, ['#56d2e0', '#2878b8', '#1e4c8c'], x, y)));
@@ -1260,6 +1603,34 @@ function shortcutBadge(p) {
   ], { k: '#1a1226', h: '#ffffff', w: '#c8d0e0', b: '#2a6ad8' });
 }
 
+// Tier badges (AppSea app tiers). 0 = Lite (no badge).
+export const TIER_BADGES = [null, { text: 'STD', color: '#2c9c5c', ink: '#ffffff' }, { text: 'PRO', color: '#2a64d0', ink: '#ffffff' }, { text: 'ULTRA', color: '#8a34d0', ink: '#ffffff' }, { text: 'ENT', color: '#e8a62a', ink: '#3a1e06' }];
+
+function tierBadge(p, tier) {
+  const b = TIER_BADGES[tier];
+  if (!b) return;
+  const w = tinyWidth(b.text) + 4, h = 8, x = p.w - w, y = p.h - h;
+  p.rect(x, y, w, h, '#1a1226');
+  p.rect(x + 1, y + 1, w - 2, h - 2, b.color);
+  p.hl(x + 1, y + 1, w - 2, shade(b.color, 0.4));
+  p.vl(x + w - 2, y + 2, h - 3, shade(b.color, -0.25));
+  tinyText(p, b.text, x + 2, y + 2, b.ink);
+}
+
+function tierPip(p, tier) {
+  const b = TIER_BADGES[tier];
+  if (!b) return;
+  p.rect(10, 10, 4, 4, '#1a1226');
+  p.rect(11, 11, 2, 2, b.color);
+  p.px(11, 11, shade(b.color, 0.5));
+}
+
+function splitTier(icon, opts) {
+  const m = /^(.+)@(\d)$/.exec(icon);
+  if (m) return [m[1], Number(m[2])];
+  return [icon, Number(opts.tier) || 0];
+}
+
 function render(icon, st, opts) {
   const p = new Painter(32, 32);
   if (icon.startsWith('file')) drawPage(p, icon, opts.label);
@@ -1283,21 +1654,29 @@ function render(icon, st, opts) {
       case 'paint': drawPaint(p); break;
       case 'video': drawVideo(p); break;
       case 'fishtop': drawFishtop(p); break;
+      case 'store': drawStore(p); break;
+      case 'isp': drawModem(p); break;
+      case 'ram': drawRam(p); break;
+      case 'virus': drawGerm(p); break;
+      case 'boat': drawBoat(p); break;
+      case 'download': drawDownload(p); break;
       default: drawPage(p, 'file');
     }
   }
   const crumbs = st.has('chewed') ? applyBite(p, 1) : [];
   finish(p, { crumbs });
   if (st.has('shortcut')) shortcutBadge(p);
+  if (opts.tier) tierBadge(p, opts.tier);
   return p.b.toCanvas();
 }
 
-function renderMini(icon, st) {
+function renderMini(icon, st, tier) {
   const p = new Painter(14, 14);
   if (icon.startsWith('file')) miniPage(p, icon);
   else (MINI[icon] || ((q) => miniPage(q, 'file')))(p, st);
   const crumbs = st.has('chewed') ? applyBite(p, 0.5) : [];
   finish(p, { shadow: false, crumbs });
+  if (tier) tierPip(p, tier);
   return p.b.toCanvas();
 }
 
@@ -1305,12 +1684,14 @@ const cache = new Map();
 
 export function getAppIcon(icon, opts = {}) {
   const size = opts.size || 32;
+  const [base, tier] = splitTier(String(icon), opts);
+  if (base !== icon || tier !== (Number(opts.tier) || 0)) return getAppIcon(base, { ...opts, tier });
   const st = parseState(opts.state);
-  const key = icon + '|' + size + '|' + [...st].sort().join(',') + '|' + (opts.label || '') + '|' + (opts.day || '');
+  const key = icon + '|' + size + '|' + [...st].sort().join(',') + '|' + (opts.label || '') + '|' + (opts.day || '') + '|' + tier;
   let c = cache.get(key);
   if (c) return c;
   if (size <= MINI_SIZE + 2) {
-    const m = getMiniIcon(icon, { state: opts.state });
+    const m = getMiniIcon(icon, { state: opts.state, tier: opts.tier });
     if (size === MINI_SIZE) c = m;
     else {
       c = makeCanvas(size, size);
@@ -1332,12 +1713,13 @@ export function getAppIcon(icon, opts = {}) {
 }
 
 export function getMiniIcon(icon, opts = {}) {
+  const [base, tier] = splitTier(String(icon), opts);
   const st = parseState(opts.state);
   st.delete('shortcut');
-  const key = 'mini|' + icon + '|' + [...st].sort().join(',');
+  const key = 'mini|' + base + '|' + [...st].sort().join(',') + '|' + tier;
   let c = cache.get(key);
   if (!c) {
-    c = renderMini(icon, st);
+    c = renderMini(base, st, tier);
     cache.set(key, c);
   }
   return c;
@@ -1414,5 +1796,5 @@ export function fileTypeInfo(name, isDir = false) {
   return { ...getFileTypeIcon(ext), state: '' };
 }
 
-export const ICON_IDS = ['computer', 'trash', 'browser', 'folder', 'documents', 'image', 'music', 'game', 'mail', 'notes', 'terminal', 'settings', 'calc', 'calendar', 'chat', 'paint', 'video', 'fishtop'];
+export const ICON_IDS = ['computer', 'trash', 'browser', 'folder', 'documents', 'image', 'music', 'game', 'mail', 'notes', 'terminal', 'settings', 'calc', 'calendar', 'chat', 'paint', 'video', 'fishtop', 'store', 'isp', 'ram', 'virus', 'boat', 'download'];
 export const FILE_ICON_IDS = Object.keys(PAGE_KINDS);

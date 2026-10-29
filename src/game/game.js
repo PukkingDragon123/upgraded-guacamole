@@ -16,6 +16,7 @@ import { registerUiIcons, getUiIcon, CURSOR_HOTSPOT } from '../gfx/uiicons.js';
 import { getMiniIcon } from '../desktop/icons.js';
 import { Clock } from '../world/clock.js';
 import { Ocean } from '../world/ocean.js';
+import { biomesReady, BIOMES } from '../world/biomes/index.js';
 import { Desktop, fileBait } from '../desktop/desktop.js';
 import { School } from '../fish/school.js';
 import { SPECIES, SPECIES_BY_ID } from '../fish/species.js';
@@ -91,6 +92,8 @@ export class Game {
     this.tutorial = new Tutorial(this);
     try { this.build = new Build(this); } catch (e) { console.error(e); this.build = null; }
     this.ocean.setBiome(this.state.biome);
+    // optional biomes register asynchronously; switch once the saved one is available
+    biomesReady.then(() => { if (this.ocean.biome?.id !== this.state.biome && BIOMES[this.state.biome] && !this.ocean.travelState) this.ocean.setBiome(this.state.biome); });
     this.screen.onResize(() => this.onResize());
     this.onResize();
     this.bindHost();
@@ -112,6 +115,24 @@ export class Game {
   on(ev, fn) { (this.events[ev] ||= []).push(fn); }
   off(ev, fn) { this.events[ev] = (this.events[ev] || []).filter((f) => f !== fn); }
   emit(ev, data) { for (const f of this.events[ev] || []) f(data); }
+
+  // Every particle splash also kicks the water sim (surface waves + ripples).
+  wireSplashes() {
+    const ps = this.particles;
+    if (!ps || typeof ps.splash !== 'function' || ps.__water) return;
+    const orig = ps.splash.bind(ps);
+    ps.__water = true;
+    ps.splash = (x, y, power = 1, ...rest) => {
+      const r = orig(x, y, power, ...rest);
+      const w = this.water;
+      if (w && Number.isFinite(x) && Number.isFinite(y)) {
+        const s = w.surfaceY;
+        if (s !== null && Math.abs(y - s) < 16) w.splash(x, 0.6 + power * 0.9, 8 + power * 10);
+        else w.disturb(x, y + 3, 0.6 + power * 0.8, 6 + power * 6);
+      }
+      return r;
+    };
+  }
 
   recomputeStats() {
     this.stats = computeStats(this.state.skills);
@@ -361,6 +382,7 @@ export class Game {
   setView(v) {
     if (this.fishing.fighting) return;
     this.state.view = v;
+    if (v !== 'ocean') this.camera.scrollTo(0, true);
     if (v === 'aquarium') { this.fishing.releaseFish(false); this.aquarium.closeWindow?.(); }
     audio.play('travel_whoosh', { vol: 0.5 });
     audio.setMusic(this.musicFor());
@@ -376,7 +398,7 @@ export class Game {
 
   musicTrackName() {
     const t = this.musicFor();
-    return { desktop: 'Desktop Lullaby', shallows: 'Sunny Shallows Groove', junkyard: 'Junkyard Glitch-Hop', abyss: 'Midnight Abyss Drone', aquarium: 'Aquarium Dreams' }[t] || 'Silence';
+    return { desktop: 'Desktop Lullaby', shallows: 'Sunny Shallows Groove', junkyard: 'Junkyard Glitch-Hop', abyss: 'Deep Ocean Drone', aquarium: 'Aquarium Dreams' }[t] || 'Silence';
   }
 
   setMini(on) {
@@ -395,6 +417,7 @@ export class Game {
     if (this.fishing.busy) this.fishing.releaseFish(false);
     this.ui.stack = [];
     this.setView('ocean');
+    this.camera.scrollTo(0, true);
     this.ocean.travel(id, () => {
       this.state.biome = id;
       this.world.biome = id;
@@ -432,51 +455,84 @@ export class Game {
   update(dtReal) {
     const inp = this.input;
     inp.update(dtReal);
-    this.camera.update(dtReal);
-    this.timeScale = damp(this.timeScale, this.timeScaleTarget * this.camera.timeScale(), 10, dtReal);
+    const cam = this.camera;
+    const view = this.state.view;
+    const ocean = this.ocean;
+    // the camera may only leave the default view in the open ocean
+    const canScroll = view === 'ocean' && !this.mini && ocean.reveal >= 1 && !ocean.travelState && !this.tutorial.active;
+    cam.setScrollRange(canScroll ? this.surfaceScroll : 0, 0);
+    cam.update(dtReal);
+    this.timeScale = damp(this.timeScale, this.timeScaleTarget * cam.timeScale(), 10, dtReal);
     const dt = dtReal * this.timeScale;
     this.time += dt;
     this.state.stats.playTime += dtReal;
 
-    // world env sync
+    // world env sync (the world cursor lives in world space; the input stays in screen space)
     const w = this.world, cur = w.cursor;
-    cur.x = inp.x; cur.y = inp.y; cur.vx = inp.vx; cur.vy = inp.vy; cur.speed = inp.speed;
+    const [z] = cam.xform();
+    const [cwx, cwy] = cam.screenToWorld(inp.x, inp.y);
+    cur.x = cwx; cur.y = cwy; cur.vx = inp.vx / z; cur.vy = inp.vy / z; cur.speed = inp.speed / z;
     w.night = this.clock.isNight(); w.dusk = this.clock.isDusk(); w.hour = this.clock.hour();
-    w.weather = this.ocean.weather; w.biome = this.ocean.biome.id;
+    w.weather = ocean.weather; w.biome = ocean.biome.id;
     w.rarityBoost = this.stats.rarityBoost * this.baitFx.rarityMul();
     w.calmMul = this.stats.calm;
     w.lowPower = this.lowPower;
     w.populationMul = this.baitFx.populationMul();
     w.rollMods = { mutationChance: this.stats.mutationChance, shinyChance: this.stats.shinyChance };
-    w.icons = this.desktop.iconRects();
-    w.windows = this.desktop.windowRects().concat(this.aquarium.windowRect ? [this.aquarium.windowRect()] : []).filter(Boolean);
+    const toWorld = (r) => { if (r) { const [x0, y0] = cam.screenToWorld(r.x, r.y); r.x = x0; r.y = y0; r.w /= z; r.h /= z; } return r; };
+    w.icons = this.desktop.iconRects().map(toWorld);
+    w.windows = this.desktop.windowRects().concat(this.aquarium.windowRect ? [this.aquarium.windowRect()] : []).filter(Boolean).map((r) => toWorld({ ...r }));
     w.isTank = false;
-    w.surfaceY = this.ocean.reveal < 1 ? null : this.ocean.surfaceY();
-    this.particles.surfaceY = this.state.view === 'ocean' ? w.surfaceY : null;
-    w.glowLevel = this.ocean.biome.lighting(this.ocean.env).dark;
+    w.surfaceY = ocean.reveal < 1 ? null : ocean.surfaceY();
+    this.particles.surfaceY = view === 'ocean' ? w.surfaceY : null;
+    w.glowLevel = ocean.biome.lighting(ocean.env).dark;
+    ocean.env.view = cam.view();
+    ocean.env.top = ocean.top;
+    ocean.env.scroll = cam.scrollY;
+    ocean.env.ref = this.surfaceScroll;
+    w.boat = this.boat;
+    w.water = this.water;
 
     this.ui.update(dtReal);
-    this.ocean.update(dt);
+    ocean.update(dt);
     this.baitFx.update(dt);
 
     // ---- input routing (top-most first)
     const fighting = this.fishing.fighting;
+    const openWater = view === 'ocean' && !this.mini && ocean.reveal >= 1 && !ocean.travelState;
     let layer = null;
     if (this.tutorial.capturesInput?.()) layer = 'tutorial';
     else if (this.ui.hit(inp.x, inp.y) && !fighting) layer = 'ui';
     else if (!fighting) layer = this.aquarium.hit?.(inp.x, inp.y) ? 'tank' : this.overlay ? (this.desktop.overBox(inp.x, inp.y) ? 'box' : null) : this.desktop.hit(inp.x, inp.y);
     if (this.desktop.drag && !fighting) layer = 'drag';
+    // world objects under the cursor: build mode / buildings, then the boat
+    if (layer === null && !fighting && openWater && inp.inside) {
+      let bh = false;
+      try { bh = !!(this.build?.active || this.build?.hit?.(cur.x, cur.y)); } catch (e) { bh = false; }
+      if (bh) layer = 'build';
+      else if (this.boat.dragging || (!this.fishing.busy && this.boat.hit(cur.x, cur.y))) layer = 'boat';
+    }
+    if (this.boat.dragging && !fighting && !this.mini) layer = 'boat';
     if (this.mini) layer = this.aquarium.hit?.(inp.x, inp.y) ? 'tank' : 'mini';
     this.layer = layer;
     // Desktop overlay (Electron): stay click-through unless fishing or the pointer is on game UI.
     if (host.clickThrough) {
-      const want = this.mode === 'overlay' && ((this.overlayFishing && !this.paused) || this.fishing.busy || layer === 'ui' || this.ui.blocking || !!this.desktop.drag);
+      const want = this.mode === 'overlay' && ((this.overlayFishing && !this.paused) || this.fishing.busy || layer === 'ui' || this.ui.blocking || !!this.desktop.drag || layer === 'boat');
       if (want !== this.interactive) { this.interactive = want; host.setInteractive(want); }
     }
-    cur.inWorld = (layer === null || fighting) && this.state.view === 'ocean' && inp.inside;
+    cur.inWorld = (layer === null || fighting) && view === 'ocean' && inp.inside;
+
+    // mouse wheel over open water scrolls between the underwater view and the surface/boat view
+    if (inp.wheel && canScroll && (layer === null || layer === 'boat') && !fighting && !cam.focusOn) {
+      cam.scrollBy(inp.wheel * this.screen.H * 0.11);
+    }
+    if (canScroll && !fighting) {
+      if (inp.keyPressed('PageUp') || inp.keyPressed('Home')) cam.scrollTo(this.surfaceScroll);
+      if (inp.keyPressed('PageDown') || inp.keyPressed('End')) cam.scrollTo(0);
+    }
 
     if (!this.mini && layer !== 'tutorial') {
-      const deskLayer = layer === 'ui' || layer === 'tank' ? 'ui' : layer === 'drag' ? null : layer;
+      const deskLayer = layer === 'ui' || layer === 'tank' ? 'ui' : layer === 'drag' ? null : layer === 'boat' || layer === 'build' ? 'ui-blocked' : layer;
       this.desktop.update(dt, inp, deskLayer === 'ui' ? 'ui-blocked' : deskLayer);
     }
     this.aquarium.update(dt, layer === 'tank' ? inp : null);
@@ -486,20 +542,24 @@ export class Game {
       for (const f of inp.files.slice(0, 3)) this.addFileBait(f.name, f.isDir);
     }
 
-    const worldInput = (layer === null || fighting) && this.state.view === 'ocean' && !this.mini && (!host.clickThrough || this.overlayFishing || fighting) && (this.ocean.reveal >= 1 || this.tutorial.allowFishing) && !this.ocean.travelState;
+    const worldInput = (layer === null || fighting) && view === 'ocean' && !this.mini && (!host.clickThrough || this.overlayFishing || fighting) && (ocean.reveal >= 1 || this.tutorial.allowFishing) && !ocean.travelState;
     // double-clicking a posing Shortcut Fish unmasks it
     if (worldInput && inp.dblclick && !fighting) {
-      for (const f of this.school.fishes) if (f.posing && dist(f.x, f.y, inp.x, inp.y) < 18) { f.unmask(); inp.consume(); }
+      for (const f of this.school.fishes) if (f.posing && dist(f.x, f.y, cur.x, cur.y) < 18) { f.unmask(); inp.consume(); }
     }
-    if (this.state.view === 'ocean' && !this.mini) {
+    // the boat and the building system (world space)
+    this.boat.update(dt, layer === 'boat' ? inp : null);
+    try { this.build?.update?.(dt, inp, layer); } catch (e) { if (!this.buildErr) { this.buildErr = true; console.error(e); } }
+    if (view === 'ocean' && !this.mini) {
       this.school.update(dt);
       this.fishing.update(dt, worldInput);
       // secrets
       if (worldInput && inp.pressed && !this.fishing.busy) {
-        const sid = this.ocean.biome.secretAt?.(inp.x, inp.y);
-        if (sid) this.ocean.biome.onSecret?.(sid, this);
+        const sid = ocean.biome.secretAt?.(cur.x, cur.y);
+        if (sid) ocean.biome.onSecret?.(sid, this);
       }
     }
+    this.updateWater(dt);
     this.tutorial.update(dt);
     this.particles.update(dt);
     this.handleKeys();
@@ -507,6 +567,59 @@ export class Game {
     // autosave
     this.saveT -= dtReal;
     if (this.saveT <= 0) { this.saveT = 15; this.save(); }
+  }
+
+  // Feed the water sim: hook trail, the line cutting the surface, fish wakes and jumps, then step it.
+  updateWater(dt) {
+    const water = this.water, ocean = this.ocean;
+    if (!water) return;
+    const live = this.state.view === 'ocean' && !this.mini && ocean.reveal >= 1 && !ocean.travelState;
+    const level = live ? ocean.waterLevel() : null;
+    water.update(dt, { surfaceY: level, top: ocean.top, W: this.screen.W, H: this.screen.H, waveAt: (x) => ocean.waveAt(x) });
+    if (!live) return;
+    this.waterT = (this.waterT || 0) + dt;
+    const tick = this.waterT >= 1 / 30;
+    if (tick) this.waterT = 0;
+    const h = this.fishing.hook;
+    if (h?.visible && tick) {
+      const hx = h.x, hy = h.y;
+      const px = this.prevHook?.[0] ?? hx, py = this.prevHook?.[1] ?? hy;
+      const sp = Math.hypot(hx - px, hy - py) * 30;
+      if (sp > 25 && (level === null || hy > level + 2)) water.disturb(hx, hy, Math.min(0.9, sp / 520), 4 + Math.min(4, sp / 200));
+      // where the line crosses the surface
+      if (level !== null && this.boat.visible && hy > level) {
+        const [rx, ry] = this.boat.rodTip();
+        if (ry < level) {
+          const k = (level - ry) / Math.max(1, hy - ry);
+          const lx = rx + (hx - rx) * k;
+          const plx = this.prevLineX ?? lx;
+          const lsp = Math.abs(lx - plx) * 30;
+          if (lsp > 20) water.surf.impulse(lx, -Math.min(40, lsp * 0.12), 6);
+          this.prevLineX = lx;
+        }
+      }
+      this.prevHook = [hx, hy];
+    } else if (!h?.visible) this.prevHook = null;
+    // fish: wakes near the surface, faint trails when dashing, splashes when they break the surface
+    const s = level;
+    for (const f of this.school.fishes) {
+      const fy = f.y, py = f.__wy ?? fy;
+      f.__wy = fy;
+      if (s === null) continue;
+      if ((py > s) !== (fy > s) && Math.abs(fy - py) < 60) {
+        const k = Math.min(1.6, (f.scale || 1) * 0.8 + Math.abs(fy - py) * 0.04);
+        water.splash(f.x, 0.6 + k, 10 + k * 10);
+        water.disturb(f.x, s + 4, 0.8 * k, 8 + k * 6);
+        continue;
+      }
+      if (!tick) continue;
+      const v = Math.hypot(f.vx || 0, f.vy || 0);
+      const depth = fy - s;
+      if (depth > 0 && depth < 26 && v > 14 && f.z < 0.7) {
+        water.surf.impulse(f.x, -(4 + v * 0.06) * (1 - depth / 26), 8 + (f.scale || 1) * 6);
+        if (Math.random() < 0.25) water.disturb(f.x - Math.sign(f.vx || 1) * 8, fy, 0.18, 5);
+      } else if (v > 70 && f.z < 0.5 && Math.random() < 0.2) water.disturb(f.x - Math.sign(f.vx || 1) * 10 * (f.scale || 1), fy, 0.12, 5);
+    }
   }
 
   handleKeys() {
@@ -523,6 +636,9 @@ export class Game {
   }
 
   // ------------------------------------------------------------------ drawing
+  // Layers: [world A: biome back/seabed/near + far & mid fish, offscreen when the water shader runs]
+  //   -> water post-process -> boat -> darkness pass -> boat lights -> desktop icons
+  //   -> [world B: near fish, fg particles, biome front, bait fx, line & hook, cinematics] -> windows, HUD, UI.
   draw(dt) {
     const ctx = this.screen.ctx;
     const W = this.screen.W, H = this.screen.H;
@@ -535,42 +651,73 @@ export class Game {
 
     const ocean = this.ocean;
     const view = this.state.view;
+    const cam = this.camera;
     // adjustable transparency: overlay shows the real desktop through the water; on web the classic wallpaper
     const opacity = this.mode === 'overlay' ? this.state.settings.overlayOpacity ?? 0.25 : this.state.settings.oceanOpacity ?? 1;
     if (!realDesktop && opacity < 1 && view === 'ocean') this.wallpaper.draw(ctx, dt);
-    this.camera.apply(ctx);
+    const liveOcean = view === 'ocean' && !ocean.travelState && ocean.reveal >= 1;
+    const shader = liveOcean && !this.lowPower && this.water?.available;
+    let wctx = ctx;
+    if (shader) {
+      const Lw = this.worldLayer;
+      if (Lw.w !== W || Lw.h !== H) resizeLayer(Lw, W, H);
+      Lw.ctx.setTransform(1, 0, 0, 1, 0, 0);
+      Lw.ctx.globalAlpha = 1;
+      Lw.ctx.globalCompositeOperation = 'source-over';
+      Lw.ctx.clearRect(0, 0, W, H);
+      wctx = Lw.ctx;
+    }
+    cam.apply(wctx);
     let L = { dark: 0, tint: '#000000', lights: [] };
+    const env = ocean.env;
     if (view === 'aquarium') {
-      this.aquarium.drawFull(ctx, dt);
+      this.aquarium.drawFull(wctx, dt);
     } else if (ocean.travelState) {
-      ocean.drawTravel(ctx);
+      ocean.drawTravel(wctx);
     } else {
-      const env = ocean.env;
+      env.view = cam.view();
       const sorted = this.school.sorted();
       this.sortedCache = sorted;
-      if (ocean.reveal < 1) this.wallpaper.draw(ctx, dt);
+      if (ocean.reveal < 1) this.wallpaper.draw(wctx, dt);
       if (ocean.reveal > 0) {
-        if (ocean.reveal < 1) { ctx.save(); this.wallpaper.clipOcean(ctx); }
-        ctx.globalAlpha = opacity;
-        ocean.biome.drawBack(ctx, env);
+        if (ocean.reveal < 1) { wctx.save(); this.wallpaper.clipOcean(wctx); }
+        wctx.globalAlpha = opacity;
+        ocean.biome.drawBack(wctx, env);
         L = ocean.lighting();
-        ctx.globalAlpha = 1;
-        this.drawFishRange(ctx, sorted, 0.66, 2, L);
-        ctx.globalAlpha = opacity;
-        ocean.biome.drawSeabed(ctx, env);
-        ctx.globalAlpha = 1;
-        this.drawFishRange(ctx, sorted, 0.33, 0.66, L);
-        ctx.globalAlpha = opacity;
-        ocean.biome.drawNear?.(ctx, env);
-        ctx.globalAlpha = 1;
-        this.particles.draw(ctx, 'bg', this.time);
-        if (!realDesktop) ocean.applyLighting(ctx, L);
-        if (ocean.reveal < 1) { ctx.restore(); this.wallpaper.drawWaterline(ctx); }
+        wctx.globalAlpha = 1;
+        this.drawFishRange(wctx, sorted, 0.66, 2, L);
+        wctx.globalAlpha = opacity;
+        ocean.biome.drawSeabed(wctx, env);
+        wctx.globalAlpha = 1;
+        try { this.build?.drawWorld?.(wctx, env); } catch (e) { if (!this.buildDrawErr) { this.buildDrawErr = true; console.error(e); } }
+        this.drawFishRange(wctx, sorted, 0.33, 0.66, L);
+        wctx.globalAlpha = opacity;
+        ocean.biome.drawNear?.(wctx, env);
+        wctx.globalAlpha = 1;
+        this.particles.draw(wctx, 'bg', this.time);
+        if (ocean.reveal < 1) { wctx.restore(); this.wallpaper.drawWaterline(wctx); }
       } else {
-        this.drawFishRange(ctx, sorted, 0.33, 2, L);
+        this.drawFishRange(wctx, sorted, 0.33, 2, L);
       }
     }
-    this.camera.reset(ctx);
+    cam.reset(wctx);
+    if (shader) {
+      const out = this.water.render(this.worldLayer.canvas, cam, ocean.biome.waterLook?.(env) || {});
+      ctx.drawImage(out || this.worldLayer.canvas, 0, 0);
+    }
+    // the boat rides the processed waterline; then the darkness pass and the boat's own lights
+    if (liveOcean) {
+      cam.apply(ctx);
+      this.boat.draw(ctx, env);
+      cam.reset(ctx);
+      if (L.dark > 0.02) L.lights.push(...this.boat.lights());
+    }
+    if (!realDesktop && view === 'ocean' && !ocean.travelState && ocean.reveal > 0) ocean.applyLighting(ctx, L);
+    if (liveOcean) {
+      cam.apply(ctx);
+      this.boat.drawLights(ctx, L.dark);
+      cam.reset(ctx);
+    }
 
     // desktop icons sit above the ocean (kept readable)
     if ((view === 'ocean' || view === 'aquarium') && !realDesktop) {
@@ -579,17 +726,18 @@ export class Game {
       if (this.tutorial.boxVisible()) this.desktop.drawBox(ctx, this.tutorial.boxOffset());
     }
 
-    this.camera.apply(ctx);
+    cam.apply(ctx);
     if (view === 'ocean' && !ocean.travelState) {
       this.drawFishRange(ctx, this.sortedCache || [], -1, 0.33, L);
       this.particles.draw(ctx, 'fg', this.time);
-      if (ocean.reveal > 0) ocean.biome.drawFront(ctx, ocean.env);
+      if (ocean.reveal > 0) ocean.biome.drawFront(ctx, env);
       this.baitFx.drawWorld(ctx);
       this.fishing.drawWorld(ctx);
+      this.fishing.drawCinematic?.(ctx);
     } else {
       this.particles.draw(ctx, 'fg', this.time);
     }
-    this.camera.reset(ctx);
+    cam.reset(ctx);
 
     this.tutorial.drawWorld?.(ctx);
     if (this.mode === 'wallpaper') return;
@@ -602,7 +750,10 @@ export class Game {
       this.desktop.drawTaskbar(ctx);
     }
     this.fishing.drawHud(ctx);
+    try { this.build?.drawUi?.(ctx); } catch (e) { if (!this.buildUiErr) { this.buildUiErr = true; console.error(e); } }
     this.ui.drawHud(ctx, dt);
+    cam.drawBars(ctx);
+    this.fishing.drawCinematicHud?.(ctx);
     ocean.drawTitleCard(ctx, dt);
     this.ui.drawPanels(ctx, dt);
     this.tutorial.drawUi?.(ctx);
@@ -610,9 +761,9 @@ export class Game {
     this.ui.drawToasts(ctx);
     this.desktop.drawTooltip(ctx, this.input);
     this.ui.drawTip(ctx);
-    this.camera.drawFlash(ctx);
+    cam.drawFlash(ctx);
     if (this.paused) drawText(ctx, 'FISHING PAUSED (P)', W / 2, 6, { align: 'center', color: '#ffe8a8', outline: '#1a0e06' });
-    if (this.state.settings.showFps) drawText(ctx, `${Math.round(this.fps)} fps  ${this.school.fishes.length} fish  ${this.particles.list.length} p`, 4, H - 36, { font: 'small', color: '#ffffff', outline: '#000' });
+    if (this.state.settings.showFps) drawText(ctx, `${Math.round(this.fps)} fps  ${this.school.fishes.length} fish  ${this.particles.list.length} p  water:${this.water?.active ? this.water.kind : '2d'}`, 4, H - 36, { font: 'small', color: '#ffffff', outline: '#000' });
     this.drawCursor(ctx);
   }
 
@@ -669,8 +820,8 @@ export class Game {
     const fishingCursor = this.world.cursor.inWorld && !this.paused && this.state.view === 'ocean' && !this.mini && (this.ocean.reveal >= 1 || this.tutorial.allowFishing);
     if (fishingCursor && !this.fishing.fighting) return; // the hook itself is the cursor
     let name = 'cursor';
-    if (this.desktop.drag) name = 'cursor_grab';
-    else if (this.layer === 'icon' || this.layer === 'box' || this.ui.dockHover >= 0) name = 'cursor_hand';
+    if (this.desktop.drag || this.boat.dragging) name = 'cursor_grab';
+    else if (this.layer === 'boat' || this.layer === 'icon' || this.layer === 'box' || this.ui.dockHover >= 0) name = 'cursor_hand';
     if (this.fishing.fighting) name = 'cursor_reel';
     const spr = getUiIcon(name) || getUiIcon('arrow_u');
     const hs = CURSOR_HOTSPOT[name] || [0, 0];

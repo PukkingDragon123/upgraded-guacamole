@@ -224,6 +224,23 @@ const MODELS = {
     stack(5, 6, 5); stack(11, 8, 3); stack(7, 11, 2);
     return { m, yaw: 30, pitch: 32 };
   },
+  satchel() {
+    const m = new VoxelModel(18, 18, 12);
+    const lea = [m.color('#a8603a', { jitter: 0.08, smooth: 0.5 }), m.color('#83482a', { jitter: 0.08 }), m.color('#c47a4a', { smooth: 0.5 })];
+    const strap = m.color('#5a3020');
+    const buckle = m.color('#f2c84a', { spec: 1 });
+    const stitch = m.color('#f4dcb0');
+    const fish = m.color('#ff8a3a', { spec: 0.6 }), fishE = m.color('#1a1020');
+    shape(m, 1, 0, 2, 16, 11, 10, (x, y, z) => { const dx = (x - 8.5) / 7.8, dz = (z - 6) / 4.4; return dx * dx * 0.6 + dz * dz < 1 && y < 11 - Math.max(0, Math.abs(x - 8.5) - 5) * 0.8; }, (x, y) => (y < 1 ? lea[1] : lea[0]));
+    // flap over the front with stitching and a buckle
+    shape(m, 1, 6, 6, 16, 12, 11, (x, y, z) => z > 8.6 && z < 10.6 && Math.abs(x - 8.5) < 7.2 - Math.max(0, 8 - y) * 0.6, (x, y) => (y === 6 || x === 2 || x === 15 ? stitch : lea[2]));
+    m.box(7, 5, 10, 10, 7, 10, buckle); m.box(8, 6, 10, 9, 6, 10, lea[1]);
+    // strap arch
+    for (let i = 0; i <= 16; i++) { const a = Math.PI * (i / 16); m.set(Math.round(8.5 - Math.cos(a) * 7), Math.round(11 + Math.sin(a) * 6), 6, strap); m.set(Math.round(8.5 - Math.cos(a) * 7), Math.round(11 + Math.sin(a) * 6), 5, strap); }
+    // fish keychain
+    m.set(14, 8, 11, buckle); m.box(13, 4, 11, 15, 6, 11, fish); m.set(12, 5, 11, fish); m.set(16, 4, 11, fish); m.set(16, 6, 11, fish); m.set(14, 5, 11, fishE);
+    return { m, yaw: 22, pitch: 22 };
+  },
   scroll() {
     const m = new VoxelModel(20, 8, 8);
     const paper = [m.color('#3a7ad8', { smooth: 0.8 }), m.color('#5a9cf0', { smooth: 0.8 }), m.color('#e8f4ff')];

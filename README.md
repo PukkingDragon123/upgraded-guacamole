@@ -4,7 +4,7 @@ Your desktop is secretly an ocean. FISHTOP turns your PC desktop into a living p
 Fish swim behind your icons and hide behind windows. Your mouse becomes a fishing hook, and your
 own app icons become bait. Catch weird fish, raise them in an aquarium that makes Oxidized
 Coins, grow a skill board, and dive from the Sunny Shallows to the Junkyard Reef and the
-Midnight Abyss.
+Deep Ocean.
 
 All art (high-resolution pixel art, voxel props, 51 procedurally rendered fish species), all
 music and all sound effects are generated in code. There are no asset files and no network access.
@@ -61,7 +61,7 @@ species opens new oceans with stranger fish, legendary bosses and secrets.
   and their own music:
   - **Sunny Shallows**: reef, rays, caustics, gulls, rain and storms.
   - **Junkyard Reef**: live CRTs, server racks, a vending machine, static storms and data rain.
-  - **The Midnight Abyss**: a bioluminescent canyon, ruins, a leviathan and a lantern hook.
+  - **The Deep Ocean**: a bioluminescent canyon, ruins, a leviathan and a lantern hook.
 - **51 species**, realistic-anatomy pixel art with a layered animation rig: tail, fins and body
   each animate on their own phases, plus a live face that breathes, gapes, flares its gills and
   follows things with its eyes. The cast includes:

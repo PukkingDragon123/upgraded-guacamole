@@ -2452,30 +2452,8 @@ def('sunken_pc', { name: 'Sunken PC', biome: 'aquarium', tags: ['computer', 'scr
   return { m, yaw: 22, screens: [screen], light: '#7fffd0' };
 });
 
-const LAVA = [['#ff4a8a', '#ffd84a'], ['#2ac8d8', '#e0ff6a'], ['#8a4aff', '#ffa0e0']];
-def('lava_lamp', { name: 'Lava Lamp', biome: 'aquarium', tags: ['glow', 'retro'], decor: { price: 240, size: 1 }, decorOnly: true }, ({ variant }) => {
-  const sc = LAVA[variant % LAVA.length];
-  const m = new VoxelModel(26, 70, 26);
-  const metal = [m.color('#b8c0cc', { jitter: 0.04, smooth: 0.7, spec: 2, specPow: 10 }), m.color('#8e96a4', { jitter: 0.04, smooth: 0.7 })];
-  const liquid = m.color(sc[0], { emissive: 0.75, jitter: 0.02, smooth: 0.6 });
-  const blobC = m.color(sc[1], { emissive: 1, jitter: 0.02, smooth: 0.6 });
-  const cx = 13, cz = 13;
-  m.cone(cx, cz, 0, 18, 9, 5, metal[1]);
-  m.cylinder(cx, cz, 0, 1, 9.5, metal[0]);
-  m.cylinder(cx, cz, 17, 18, 5.6, metal[0]);
-  for (let y = 19; y < 56; y++) {
-    const t = (y - 19) / 37;
-    const r = 5.2 + Math.sin(t * Math.PI * 0.9 + 0.2) * 2.2 - t * 1.6;
-    m.cylinder(cx, cz, y, y, r, liquid);
-  }
-  // Blobs of lava floating inside, poking out of the glass surface for visibility.
-  for (const [by, br, bx, bz] of [[22, 4.6, 0, 3], [32, 3.2, 2, 4.5], [40, 3.4, -1.5, 3.5], [49, 2.6, 1, 3], [28, 2.2, -3.5, 3.5], [45, 2, 3, 2]]) {
-    m.sphere(cx + bx, by, cz + bz, br, (x, y, z, p) => (p || Math.hypot(x + 0.5 - cx, z + 0.5 - cz) < 7.6 ? blobC : null));
-  }
-  m.cone(cx, cz, 56, 62, 4, 2.6, metal[0]);
-  m.cylinder(cx, cz, 62, 63, 2.2, metal[1]);
-  return { m, yaw: 30, light: sc[0] };
-});
+const LAVA = [['#ff4a8a', '#ffd84a'], ['#2ac8d8', '#e0ff6a'], ['#8a4aff', '#ffa0e0'], ['#3ac83a', '#e8ff5a'], ['#ff6a2a', '#ffd0e0'], ['#1a2a6a', '#a8c0ff']];
+def('lava_lamp', { name: 'Lava Lamp', biome: 'aquarium', tags: ['glow', 'retro'], decor: { price: 240, size: 1 }, decorOnly: true }, ({ variant, frame }) => lavaLamp(LAVA[variant % LAVA.length], frame));
 
 def('rubber_duck', { name: 'Rubber Duck', biome: 'aquarium', tags: ['toy'], decor: { price: 30, size: 1 }, decorOnly: true }, () => {
   const m = new VoxelModel(40, 36, 30);
@@ -2649,6 +2627,2057 @@ def('bridge', { name: 'Moon Bridge', biome: 'aquarium', tags: ['build', 'swimthr
   return { m, yaw: 24, pitch: 26 };
 });
 
+// ===================== FUN & FANCY DECOR (interactive, aquarium) =====================
+// Every piece here is animated: build({frame}) changes geometry per frame (lids, lights, poses).
+// `ground` pins the sprite anchor so frames with different bounds stay aligned, `anchors` are voxel
+// points (projected per frame) used by the aquarium for particles and fish behaviours, `split`
+// marks voxels rendered into a separate movable layer (`part`, e.g. a launching rocket).
+
+// Rounded box from its signed distance (r = corner radius).
+function rbox(m, x0, y0, z0, x1, y1, z1, r, c) {
+  const cx = (x0 + x1 + 1) / 2, cy = (y0 + y1 + 1) / 2, cz = (z0 + z1 + 1) / 2;
+  const hx = (x1 + 1 - x0) / 2 - r, hy = (y1 + 1 - y0) / 2 - r, hz = (z1 + 1 - z0) / 2 - r;
+  shape(m, x0, y0, z0, x1, y1, z1, (x, y, z) => {
+    const qx = Math.abs(x - cx) - hx, qy = Math.abs(y - cy) - hy, qz = Math.abs(z - cz) - hz;
+    return Math.hypot(Math.max(qx, 0), Math.max(qy, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qy, qz), 0) <= r;
+  }, c);
+}
+
+// Solid of revolution around y: rf(t, y) -> radius for t = 0..1 over [y0, y1].
+function lathe(m, cx, cz, y0, y1, rf, c) {
+  for (let y = y0; y <= y1; y++) {
+    const r = rf((y - y0) / Math.max(1, y1 - y0), y);
+    if (r > 0.2) m.cylinder(cx, cz, y, y, r, c);
+  }
+}
+
+// Elliptic column: rf(t) -> [rx, rz].
+function ellCol(m, cx, cz, y0, y1, rf, c) {
+  for (let y = y0; y <= y1; y++) {
+    const [rx, rz] = rf((y - y0) / Math.max(1, y1 - y0));
+    shape(m, cx - rx - 1, y, cz - rz - 1, cx + rx + 1, y, cz + rz + 1, (x, yy, z) => ((x - cx) / rx) ** 2 + ((z - cz) / rz) ** 2 <= 1, c);
+  }
+}
+
+// Front surface z of a sphere at (x, y), or null outside it.
+function frontZ(cx, cy, cz, r, x, y) {
+  const q = r * r - (x - cx) ** 2 - (y - cy) ** 2;
+  return q >= 0 ? Math.floor(cz + Math.sqrt(q) - 0.3) : null;
+}
+
+// A little rubber duck facing +x (face = -1 faces -x).
+function miniDuck(m, x, y, z, s, yel, beak, eye, face = 1) {
+  m.ellipsoid(x, y + 1.6 * s, z, 3 * s, 2 * s, 2.4 * s, yel);
+  m.ellipsoid(x - 2.6 * s * face, y + 2.7 * s, z, 1.3 * s, 1.3 * s, 1.5 * s, yel);
+  m.sphere(x + 1.5 * s * face, y + 4.3 * s, z, 1.8 * s, yel);
+  m.ellipsoid(x + 3.3 * s * face, y + 4 * s, z, 1.3 * s, 0.6 * s, 1 * s, beak);
+  m.set(x + 2.1 * s * face, y + 4.9 * s, z + 1.4 * s, eye);
+  m.set(x + 2.1 * s * face, y + 4.9 * s, z - 1.4 * s, eye);
+}
+
+// Tiny 3x5 pixel font written in the x-y plane at depth z (top-left at x, y).
+const GLYPH = {
+  A: ['.#.', '#.#', '###', '#.#', '#.#'], E: ['###', '#..', '##.', '#..', '###'], F: ['###', '#..', '##.', '#..', '#..'],
+  H: ['#.#', '#.#', '###', '#.#', '#.#'], I: ['###', '.#.', '.#.', '.#.', '###'], O: ['###', '#.#', '#.#', '#.#', '###'],
+  P: ['##.', '#.#', '##.', '#..', '#..'], S: ['.##', '#..', '.#.', '..#', '##.'], T: ['###', '.#.', '.#.', '.#.', '.#.'],
+  U: ['#.#', '#.#', '#.#', '#.#', '###'], X: ['#.#', '#.#', '.#.', '#.#', '#.#'], 1: ['.#.', '##.', '.#.', '.#.', '###'],
+  2: ['##.', '..#', '.#.', '#..', '###'], 3: ['##.', '..#', '.#.', '..#', '##.'], 0: ['###', '#.#', '#.#', '#.#', '###'],
+};
+function glyphs(m, text, x, y, z, c, s = 1) {
+  for (const ch of text) {
+    const g = GLYPH[ch];
+    if (g) for (let r = 0; r < 5; r++) for (let k = 0; k < 3; k++) if (g[r][k] === '#') m.box(x + k * s, y - r * s - s + 1, z, x + k * s + s - 1, y - r * s, z, c);
+    x += 4 * s;
+  }
+}
+
+def('toilet', {
+  name: 'Toilet', biome: 'aquarium', tags: ['dumb', 'home'], decor: { price: 150, size: 1 }, decorOnly: true,
+  desc: 'Fully plumbed. Fish keep diving in. Nobody knows where it goes.',
+  interact: {
+    verb: 'Flush', frames: 4, seq: [1, 1, 2, 3, 2, 3, 2, 3, 1, 0], fps: 6,
+    sfx: [['ui_toggle', 0, { vol: 0.5 }], ['click', 0.3, { pitch: 0.6 }], ['flood_rush', 0.35, { vol: 0.55 }], ['bubbles', 0.5], ['gulp', 1.35, { pitch: 0.7 }]],
+    fx: [{ at: 0.4, kind: 'swirl', from: 'bowl', n: 14 }, { at: 0.45, kind: 'bubbles', from: 'bowl', n: 16 }, { at: 0.85, kind: 'bubbles', from: 'bowl', n: 10 }],
+    fish: 'flee', use: { kind: 'hide', at: 'bowl', exitPlay: true },
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(48, 56, 46);
+  const por = m.color('#f4f1ea', { smooth: 0.75, jitter: 0.03, spec: 1.1, specPow: 16 });
+  const porD = m.color('#d8d2c6', { smooth: 0.75, jitter: 0.03 });
+  const seatC = m.color('#fffdf8', { smooth: 0.6, jitter: 0.02, spec: 0.9 });
+  const chrome = m.color('#c8d2de', { smooth: 0.5, spec: 2.2, specPow: 10 });
+  const water = m.color(frame >= 2 ? '#8ae0f4' : '#56b8dc', { emissive: frame >= 2 ? 0.45 : 0.15, smooth: 0.4, jitter: 0.02 });
+  const swirl = m.color('#effcff', { emissive: 0.7, jitter: 0 });
+  const paper = m.color('#fbfaf6', { smooth: 0.8, jitter: 0.03 });
+  const core = m.color('#b8905e', { jitter: 0.03 });
+  const cx = 20, cz = 28;
+  sandMound(m, cx, 25, 19, 18, 2, 6);
+  // Pedestal flaring at the foot, bowl widening to the rim.
+  ellCol(m, cx, cz - 1, 0, 12, (t) => [7.6 - Math.sin(t * Math.PI) * 1.4 + (t < 0.15 ? 1.2 : 0), 9 - Math.sin(t * Math.PI) * 1.2 + (t < 0.15 ? 1.2 : 0)], por);
+  ellCol(m, cx, cz, 12, 23, (t) => [8 + Math.sqrt(t) * 3.4, 10.5 + Math.sqrt(t) * 4], por);
+  m.sub(() => ellCol(m, cx, cz + 0.5, 16, 24, (t) => [6.5 + t * 2, 9 + t * 2.5], 1));
+  ellCol(m, cx, cz + 0.5, 16, 17, () => [7, 9.6], water);
+  m.recolor((x, y, z, p) => (p === por && y < 2 ? porD : null));
+  // Seat ring and lid (closed on frame 0, leaning on the cistern otherwise).
+  shape(m, cx - 13, 24, cz - 16, cx + 13, 25, cz + 16, (x, y, z) => ((x - cx) / 11.6) ** 2 + ((z - cz) / 14.8) ** 2 <= 1 && ((x - cx) / 7.4) ** 2 + ((z - cz - 0.5) / 10) ** 2 > 1, seatC);
+  if (frame === 0) {
+    ellCol(m, cx, cz, 26, 26, () => [11.4, 14.6], seatC);
+    ellCol(m, cx, cz + 0.5, 27, 27, () => [10.4, 13.4], seatC);
+  } else {
+    shape(m, cx - 12, 24, 12, cx + 12, 56, 14, (x, y, z) => ((x - cx) / 11.4) ** 2 + ((y - 39.6) / 14.6) ** 2 <= (z > 13 ? 0.86 : 1), seatC);
+  }
+  // Cistern with lid, side lever (pressed on frame 3) and a pipe to the bowl.
+  rbox(m, 7, 23, 3, 33, 44, 11, 2.2, por);
+  rbox(m, 6, 45, 2, 34, 48, 12, 1.4, por);
+  m.box(8, 44, 11, 32, 44, 11, porD);
+  m.box(cx - 2, 20, 11, cx + 1, 24, 14, por);
+  const ly = frame === 3 ? 38 : 41;
+  m.box(34, 40, 6, 35, 41, 7, chrome);
+  m.line(35, 41, 7, 36, ly, 11, chrome, 0.6);
+  m.box(35, ly - 1, 10, 37, ly + 1, 12, chrome);
+  // Swirling flush.
+  if (frame >= 2) {
+    m.recolor((x, y, z, p) => {
+      if (p !== water || m.get(x, y + 1, z)) return null;
+      const a = Math.atan2(z + 0.5 - cz, x + 0.5 - cx), r = Math.hypot(x + 0.5 - cx, (z + 0.5 - cz) / 1.3);
+      return Math.sin(a * 2 + r * 0.9 - frame * 1.7) > 0.4 ? swirl : null;
+    });
+  }
+  // A spare loo roll with a trailing sheet.
+  m.cylinder(40, 4, 27, 35, 3.8, paper, 'z');
+  m.cylinder(40, 4, 35, 35, 1.5, core, 'z');
+  m.box(38, 0, 36, 42, 0, 43, paper);
+  return { m, yaw: 30, ground: [cx, 0, 25], anchors: { bowl: [cx, 18, cz + 2], top: [cx, 49, 7] } };
+});
+
+def('garden_gnome', {
+  name: 'Garden Gnome', biome: 'aquarium', tags: ['dumb', 'statue'], decor: { price: 90, size: 1 }, decorOnly: true,
+  desc: 'Gone fishing. Permanently. He seems happy about it.',
+  interact: {
+    verb: 'Tickle', frames: 3, seq: [1, 2, 2, 2, 1, 0], fps: 6,
+    sfx: [['squeak', 0, { pitch: 1.5 }], ['chirp', 0.35, { pitch: 1.25 }]],
+    fx: [{ at: 0.3, kind: 'hearts', from: 'hat', n: 3 }, { at: 0.2, kind: 'sparkle', from: 'face', n: 4 }],
+    fish: 'gather',
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(40, 60, 34);
+  const coat = m.color('#3a7ad8', { smooth: 0.45, jitter: 0.05 });
+  const coatL = m.color('#5a9af0', { smooth: 0.45, jitter: 0.04 });
+  const belt = m.color('#2a2028', { jitter: 0.02 });
+  const gold = m.color('#f2c84a', { spec: 1.4 });
+  const boot = m.color('#5a3424', { smooth: 0.6, jitter: 0.04 });
+  const skin = m.color('#f4c49a', { smooth: 0.8, jitter: 0.02 });
+  const nose = m.color('#f08a72', { smooth: 0.9, jitter: 0.02, spec: 0.8 });
+  const beard = m.color('#f6f4ee', { smooth: 0.7, jitter: 0.06 });
+  const hat = m.color('#e03e3a', { smooth: 0.6, jitter: 0.04 });
+  const hatD = m.color('#b82e34', { smooth: 0.6, jitter: 0.04 });
+  const eye = m.color('#1e1a24', { jitter: 0 });
+  const blush = m.color('#ff9aa8', { jitter: 0, smooth: 0.8 });
+  const rod = m.color('#8a5a34', { jitter: 0.04 });
+  const line = m.color('#d8e4ec', { jitter: 0 });
+  const bob = [m.color('#ff4a4a', { smooth: 0.9 }), m.color('#ffffff', { smooth: 0.9 })];
+  const cx = 20, cz = 16;
+  sandMound(m, cx, cz + 2, 15, 13, 2, 4);
+  for (const s of [-1, 1]) m.ellipsoid(cx + s * 3.5, 2.6, cz + 2, 3, 2.6, 4.6, boot);
+  lathe(m, cx, cz, 4, 23, (t) => 9.6 - t * 3.4 + Math.sin(t * Math.PI) * 0.6, (x, y) => (y < 6 ? coatL : coat));
+  lathe(m, cx, cz, 11, 12, () => 9, belt);
+  m.box(cx - 1, 10, cz + 8, cx + 1, 13, cz + 9, gold);
+  // Arms: the left holds a fishing rod, the right rests (frame 0) or lifts the hat.
+  const sh = 20;
+  m.line(cx - 6.5, sh, cz, cx - 7.5, 13, cz + 5, coat, 2.2);
+  m.sphere(cx - 7.5, 12.5, cz + 6, 1.9, skin);
+  m.line(cx - 8, 11, cz + 7, cx - 18, 44, cz + 6, rod, 0.6);
+  m.line(cx - 18, 44, cz + 6, cx - 17, 4, cz + 12, line, 0);
+  m.sphere(cx - 17, 4, cz + 12, 1.6, (x, y) => (y >= 4 ? bob[0] : bob[1]));
+  const up = frame > 0;
+  const hand = up ? [cx + 9, 31 + frame * 2, cz + 3] : [cx + 6, 13, cz + 7];
+  m.line(cx + 6.5, sh, cz, hand[0], hand[1] - 1, hand[2], coat, 2.2);
+  m.sphere(hand[0], hand[1], hand[2], 1.9, skin);
+  // Head, beard, moustache, nose, eyes (wink while tickled).
+  m.sphere(cx, 27, cz + 1, 5.6, skin);
+  m.ellipsoid(cx, 22, cz + 4.4, 6, 6.6, 3.6, beard);
+  m.ellipsoid(cx, 17.4, cz + 5, 3.6, 3.2, 2.6, beard);
+  for (const s of [-1, 1]) m.ellipsoid(cx + s * 2.2, 24.8, cz + 6.6, 2.2, 1.1, 1.2, beard);
+  m.sphere(cx, 26.4, cz + 6.6, 1.9, nose);
+  const ez = cz + 6;
+  if (frame === 0) { m.box(cx - 3, 28, ez, cx - 2, 29, ez, eye); m.box(cx + 2, 28, ez, cx + 3, 29, ez, eye); } else {
+    m.box(cx - 3, 28, ez, cx - 2, 28, ez, eye); m.box(cx + 2, 28, ez, cx + 3, 29, ez, eye);
+    m.box(cx + 1, 31, ez - 1, cx + 3, 31, ez - 1, beard);
+  }
+  m.set(cx - 4, 26, ez - 1, blush); m.set(cx + 4, 26, ez - 1, blush);
+  // Floppy hat (lifted while tickled), tip bent to the side.
+  const hy = 30 + (frame === 1 ? 4 : frame === 2 ? 7 : 0), hx = frame ? 1.5 : 0;
+  for (let i = 0; i <= 24; i++) {
+    const t = i / 24;
+    const px = cx + hx + Math.pow(t, 2.2) * 7, py = hy + t * 19 - Math.pow(t, 3) * 3;
+    m.sphere(px, py, cz + 1, 6.6 * Math.pow(1 - t, 0.85) + 0.6, (x, y) => (y < hy + 2 ? hatD : hat));
+  }
+  return { m, yaw: 28, ground: [cx, 0, cz + 2], anchors: { hat: [cx + 4, hy + 18, cz + 1], face: [cx, 27, cz + 7] } };
+});
+
+def('plastic_flamingo', {
+  name: 'Plastic Flamingo', biome: 'aquarium', tags: ['dumb'], decor: { price: 70, size: 1 }, decorOnly: true,
+  desc: 'A lawn classic. Honks when poked, which real flamingos would never do.',
+  interact: {
+    verb: 'Honk', frames: 3, seq: [1, 0, 1, 0, 2, 2, 2, 0], fps: 6,
+    sfx: [['honk', 0, { pitch: 1.4 }], ['honk', 0.34, { pitch: 1.55 }]],
+    fx: [{ at: 0.05, kind: 'burst', from: 'head', n: 8, colors: ['#ff7eb6', '#ffc2dc', '#ffffff'] }],
+    fish: 'flee',
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(44, 72, 26);
+  const pink = m.color('#ff80b8', { smooth: 0.75, jitter: 0.03, spec: 1.3, specPow: 14 });
+  const pinkD = m.color('#f2589e', { smooth: 0.75, jitter: 0.03 });
+  const beakW = m.color('#ffe2ec', { smooth: 0.5 });
+  const beakB = m.color('#2a2228', { jitter: 0 });
+  const eye = m.color('#1a1420', { jitter: 0 });
+  const white = m.color('#ffffff', { jitter: 0 });
+  const steel = m.color('#70747e', { spec: 1, jitter: 0.02 });
+  const cz = 13;
+  sandMound(m, 20, cz, 11, 9, 2, 9);
+  // Wire legs (one tucked up on frame 2).
+  m.line(18, 0, cz, 18, 27, cz, steel, 0);
+  if (frame === 2) { m.line(22, 27, cz, 26, 20, cz + 1, steel, 0); m.line(26, 20, cz + 1, 22, 16, cz + 1, steel, 0); } else m.line(22, 0, cz, 22, 27, cz, steel, 0);
+  // Body, upturned tail and wing.
+  m.ellipsoid(19, 32, cz, 10.5, 6.6, 6.2, pink);
+  m.ellipsoid(9, 36, cz, 4.4, 3.6, 4.2, pink);
+  m.ellipsoid(18, 33.5, cz, 7.4, 4.2, 6.8, pinkD);
+  m.ellipsoid(10, 38, cz, 2.4, 2, 2.6, pinkD);
+  // S-curved neck, head and the bent black-tipped beak.
+  const peck = frame === 1;
+  const neck = peck ? [[27, 35, cz, 2.6], [32, 38, cz, 2.3], [36, 33, cz, 2.1], [37, 26, cz, 2]] : [[27, 35, cz, 2.6], [31, 42, cz, 2.3], [28, 50, cz, 2.1], [27, 57, cz, 2], [30, 62, cz, 2.2]];
+  m.tube(neck, pink, 5);
+  const [hx, hy] = peck ? [37.5, 24] : [31, 63];
+  m.sphere(hx, hy, cz, 3.7, pink);
+  const dir = peck ? [0.35, -1] : [1, -0.25];
+  const b0 = [hx + dir[0] * 2.8, hy + dir[1] * 2.8], b1 = [hx + dir[0] * 5.2, hy + dir[1] * 5.2 - 0.6], b2 = [b1[0] + (peck ? -0.2 : 1.2), b1[1] - 2.6];
+  m.line(b0[0], b0[1], cz, b1[0], b1[1], cz, beakW, 1.2);
+  m.line(b1[0], b1[1], cz, b2[0], b2[1], cz, beakB, 0.9);
+  for (const s of [-1, 1]) { m.set(hx + (peck ? 1 : 0.5), hy + 1, cz + s * 3.4, eye); m.set(hx + (peck ? 1 : 0.5), hy + 2, cz + s * 3.4, white); }
+  return { m, yaw: 26, ground: [20, 0, cz], anchors: { head: [hx, hy, cz] } };
+});
+
+def('toaster', {
+  name: 'Toaster', biome: 'aquarium', tags: ['dumb', 'retro'], decor: { price: 110, size: 1 }, decorOnly: true,
+  desc: 'Pops out soggy toast. The fish think it is a snack dispenser. They are right.',
+  interact: {
+    verb: 'Pop', frames: 3, seq: [1, 2, 2, 2, 1, 0], fps: 7,
+    sfx: [['boing', 0, { pitch: 1.5 }], ['click', 0.7]],
+    fx: [{ at: 0.18, kind: 'food', from: 'slot', n: 5 }, { at: 0.15, kind: 'burst', from: 'slot', n: 8, colors: ['#e0a860', '#a86a30', '#f4d8a0'] }],
+    fish: 'gather',
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(48, 52, 34);
+  const chrome = m.color('#cfd5df', { smooth: 0.65, spec: 2.4, specPow: 10, jitter: 0.02 });
+  const black = m.color('#24222a', { smooth: 0.3, jitter: 0.02 });
+  const slot = m.color('#141218', { jitter: 0 });
+  const crust = m.color('#b8783a', { jitter: 0.06 });
+  const toast = m.color('#e8b46a', { jitter: 0.08 });
+  const burnt = m.color('#9a5a2a', { jitter: 0.05 });
+  const red = m.color('#e04a3a', { smooth: 0.5 });
+  const cord = m.color('#2e2a30', { smooth: 0.5 });
+  const cx = 20;
+  rbox(m, 5, 0, 7, 35, 2, 23, 1, black);
+  rbox(m, 6, 2, 8, 34, 25, 22, 4, chrome);
+  for (const z of [11, 17]) m.sub(() => m.box(10, 19, z, 30, 25, z + 2));
+  for (const z of [11, 17]) m.box(10, 18, z, 30, 18, z + 2, slot);
+  // Two slices; frame 0 down, 1 popping, 2 airborne.
+  const top = 25 + [0, 9, 19][frame];
+  for (const z of [11, 17]) {
+    for (let y = top - 15; y <= top; y++) {
+      const k = Math.max(0, y - (top - 3)) * 1.3;
+      for (let x = Math.ceil(10 + k); x <= Math.floor(30 - k); x++) {
+        const edge = y === top || x <= 10 + k + 0.6 || x >= 29 - k;
+        for (let zz = z; zz <= z + 2; zz++) m.set(x, y, zz, edge ? crust : zz === z + 1 ? burnt : (x + y) % 5 === 0 ? burnt : toast);
+      }
+    }
+  }
+  if (frame === 0) m.sub(() => m.box(6, 9, 8, 34, 17, 22));
+  if (frame === 0) rbox(m, 6, 2, 8, 34, 17, 22, 4, chrome);
+  // Lever on the side (down while toasting), browning dial, a little cord.
+  const ly = frame === 0 ? 8 : 18;
+  m.box(35, 5, 13, 35, 21, 16, black);
+  m.box(36, ly, 12, 38, ly + 2, 17, black);
+  m.cylinder(13, 8, 23, 24, 2.2, black, 'z');
+  m.set(13, 9, 24, red);
+  m.box(22, 6, 23, 30, 7, 23, black);
+  m.tube([[cx, 3, 8, 0.9], [cx - 6, 1, 4, 0.9], [cx - 14, 1, 3, 0.9], [cx - 17, 1, 9, 0.9]], cord, 3);
+  return { m, yaw: 30, ground: [cx, 0, 15], anchors: { slot: [cx, 27, 15] } };
+});
+
+def('disco_ball', {
+  name: 'Disco Ball', biome: 'aquarium', tags: ['glow', 'party'], decor: { price: 320, size: 1 }, decorOnly: true,
+  desc: 'Saturday Night Fin. Spins gently, then really spins.',
+  interact: {
+    verb: 'Party', frames: 4, idle: [0, 1, 2, 3], idleFps: 3, seq: [0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3], fps: 13,
+    sfx: [['magic', 0], ['sparkle', 0.35], ['sparkle', 0.9]],
+    fx: [{ at: 0, kind: 'lights', from: 'ball', n: 24 }, { at: 0.55, kind: 'lights', from: 'ball', n: 20 }, { at: 1.1, kind: 'lights', from: 'ball', n: 16 }, { at: 0.1, kind: 'sparkle', from: 'ball', n: 8 }],
+    fish: 'dance', use: { kind: 'orbit', at: 'ball' },
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(36, 68, 36);
+  const base = m.color('#26222e', { smooth: 0.4, spec: 1.4 });
+  const pole = m.color('#c8d0dc', { smooth: 0.5, spec: 2.2, specPow: 10 });
+  const grout = m.color('#4a4e5e', { jitter: 0 });
+  const tiles = ['#eef2f8', '#c4ccda', '#9aa6ba', '#b8d4f8', '#f4c4e8', '#d8e0ec'].map((c) => m.color(c, { jitter: 0.02, spec: 2.4, specPow: 8 }));
+  const flash = [m.color('#ffffff', { emissive: 1, jitter: 0 }), m.color('#ffe8a8', { emissive: 1, jitter: 0 }), m.color('#a8f0ff', { emissive: 1, jitter: 0 })];
+  const cx = 18, cz = 18, by = 52, R = 12.5;
+  lathe(m, cx, cz, 0, 3, (t) => 10 - t * 3, base);
+  m.cylinder(cx, cz, 4, 38, 1.4, pole);
+  m.cylinder(cx, cz, 38, 39, 2.6, pole);
+  m.line(cx, 39, cz, cx, by - R + 1, cz, pole, 0.8);
+  const LAT = Math.PI / 11, LON = (Math.PI * 2) / 22;
+  const rot = (frame * LON) / 4;
+  m.sphere(cx, by, cz, R, (x, y, z) => {
+    const dx = x + 0.5 - cx, dy = y + 0.5 - by, dz = z + 0.5 - cz;
+    const lat = Math.asin(clamp(dy / R, -1, 1)) + Math.PI / 2, lon = Math.atan2(dz, dx) + Math.PI + rot;
+    const fa = lat / LAT, fo = lon / LON;
+    if (fa % 1 < 0.14 || fo % 1 < 0.12) return grout;
+    const ti = Math.floor(fa), to = Math.floor(fo) % 22;
+    const h = h3(ti, to, 3, 7);
+    if (h3(ti, to, frame, 11) < 0.07) return flash[(ti + to) % 3];
+    return tiles[Math.floor(h * tiles.length)];
+  });
+  m.sub(() => m.sphere(cx, by, cz, R - 2.2));
+  return { m, yaw: 30, ground: [cx, 0, cz], light: '#ffe8f0', anchors: { ball: [cx, by, cz] } };
+});
+
+const PIANO_TUNE = [[0.2, 0.5], [0.42, 0.63], [0.64, 0.75], [0.86, 1], [1.08, 0.84], [1.3, 0.75], [1.52, 0.63], [1.74, 0.75], [1.96, 1]];
+def('tiny_piano', {
+  name: 'Tiny Grand Piano', biome: 'aquarium', tags: ['music', 'fancy'], decor: { price: 520, size: 2 }, decorOnly: true,
+  desc: 'A concert grand, shrunk in the wash. Plays one song. Beautifully.',
+  interact: {
+    verb: 'Play', frames: 4, seq: [1, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 1, 0], fps: 5.5,
+    sfx: PIANO_TUNE.map(([at, p]) => ['bell', at, { pitch: p, vol: 0.55 }]),
+    fx: [0.2, 0.64, 1.08, 1.52, 1.96].map((at) => ({ at, kind: 'notes', from: 'lid', n: 2 })),
+    fish: 'dance',
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(60, 56, 58);
+  const lac = m.color('#1c1a24', { spec: 1.8, specPow: 18, smooth: 0.2, jitter: 0.02 });
+  const lacL = m.color('#2c2a38', { spec: 1.4, smooth: 0.2, jitter: 0.02 });
+  const gold = m.color('#e0b048', { spec: 1.6, jitter: 0.03 });
+  const ivory = m.color('#f6f0e0', { jitter: 0.02 });
+  const ivoryD = m.color('#cfc6b0', { jitter: 0.02 });
+  const ebony = m.color('#141218', { jitter: 0 });
+  const felt = m.color('#a8302a', { jitter: 0.03 });
+  const paper = m.color('#f8f4e8', { jitter: 0 });
+  const ink = m.color('#3a3440', { jitter: 0 });
+  const velvet = m.color('#c03a4a', { smooth: 0.6, jitter: 0.04 });
+  const X0 = 8, ZF = 38, ZB = 6, W = 38;
+  const half = (z) => {
+    const u = (ZF - z) / (ZF - ZB);
+    if (u < 0 || u > 1) return -1;
+    return W - 16 * Math.pow(u, 1.4) - 7 * Math.sin(u * Math.PI) - (u > 0.85 ? (u - 0.85) * 40 : 0);
+  };
+  const inside = (x, z, inset = 0) => { const w = half(z); return w > 0 && x >= X0 + inset && x <= X0 + w - inset && z >= ZB + inset && z <= ZF - inset * 0.3; };
+  // Case (rim), harp + strings visible when open, legs, lyre and pedals.
+  shape(m, X0, 18, ZB, X0 + W, 26, ZF, (x, y, z) => inside(x, z), (x, y) => (y === 18 ? lacL : lac));
+  m.sub(() => shape(m, X0, 21, ZB, X0 + W, 26, ZF, (x, y, z) => inside(x, z, 1.6), 1));
+  shape(m, X0, 21, ZB, X0 + W, 21, ZF, (x, y, z) => inside(x, z, 1.6), (x, y, z) => (x % 2 === 0 ? gold : (z % 7 === 0 ? gold : felt)));
+  m.box(X0, 26, ZF - 1, X0 + W, 26, ZF, gold);
+  for (const [lx, lz] of [[X0 + 3, ZF - 3], [X0 + W - 4, ZF - 3], [X0 + 10, ZB + 6]]) {
+    lathe(m, lx, lz, 1, 17, (t) => 2.1 - t * 0.5 + (t > 0.9 ? 0.6 : 0), lac);
+    m.cylinder(lx, lz, 0, 1, 1.6, gold);
+  }
+  m.box(X0 + 17, 2, ZF - 6, X0 + 20, 16, ZF - 5, lac);
+  for (const px of [X0 + 15, X0 + 18, X0 + 21]) m.box(px, 2, ZF - 4, px + 1, 2, ZF - 2, gold);
+  // Keyboard (pressed keys change per frame) and cheek blocks.
+  const KZ0 = ZF + 1, KZ1 = ZF + 6;
+  m.box(X0, 14, KZ0, X0 + W, 16, KZ1, lac);
+  for (let x = X0 + 2; x <= X0 + W - 2; x++) {
+    const key = Math.floor((x - X0 - 2) / 2);
+    const pressed = frame >= 2 && h3(key, frame, 1, 5) < 0.28;
+    m.box(x, pressed ? 16 : 17, KZ0, x, pressed ? 16 : 17, KZ1, (x - X0 - 2) % 2 === 1 ? ivoryD : ivory);
+    const b = key % 7;
+    if ((x - X0 - 2) % 2 === 1 && b !== 2 && b !== 6) m.box(x, 18, KZ0, x, 18, KZ0 + 3, ebony);
+  }
+  m.box(X0, 17, KZ0, X0 + 1, 19, KZ1, lac);
+  m.box(X0 + W - 1, 17, KZ0, X0 + W, 19, KZ1, lac);
+  // Lid: closed flat, or propped open along the spine with a stick and a music stand.
+  if (frame === 0) shape(m, X0, 27, ZB, X0 + W, 27, ZF, (x, y, z) => inside(x, z), lac);
+  else {
+    const a = (38 * Math.PI) / 180, ca = Math.cos(a), sa = Math.sin(a);
+    for (let z = ZB; z <= ZF; z++) {
+      const w = half(z);
+      if (w <= 0) continue;
+      for (let s = 0; s <= w; s += 0.5) { m.set(X0 + s * ca, 27 + s * sa, z, lac); m.set(X0 + s * ca - sa, 27 + s * sa + ca * 0.6, z, lacL); }
+    }
+    m.line(X0 + W - 6, 26, 20, X0 + (W - 8) * ca, 27 + (W - 8) * sa - 1, 20, gold, 0.5);
+    m.box(X0 + 10, 27, ZF - 3, X0 + 28, 33, ZF - 3, lac);
+    m.box(X0 + 12, 28, ZF - 2, X0 + 26, 32, ZF - 2, paper);
+    for (const y of [29, 31]) m.box(X0 + 13, y, ZF - 2, X0 + 25, y, ZF - 2, ink);
+  }
+  // Bench.
+  m.box(X0 + 12, 8, KZ1 + 4, X0 + 26, 10, KZ1 + 9, lac);
+  m.box(X0 + 12, 11, KZ1 + 4, X0 + 26, 11, KZ1 + 9, velvet);
+  for (const [bx, bz] of [[X0 + 13, KZ1 + 5], [X0 + 25, KZ1 + 5], [X0 + 13, KZ1 + 8], [X0 + 25, KZ1 + 8]]) m.box(bx, 0, bz, bx, 7, bz, lac);
+  return { m, yaw: 30, pitch: 28, ground: [X0 + W / 2, 0, 30], anchors: { lid: [X0 + 22, 40, 22], keys: [X0 + W / 2, 18, KZ0 + 3] } };
+});
+
+// Retro TV screen pictures per frame: 0 off, 1-2 static, 3 colour bars, 4-5 fish show.
+const TV_BARS = ['#f4f4f4', '#f4e04a', '#4ae0f0', '#4ad84a', '#e84ae0', '#e84a4a', '#4a5ae8'];
+def('retro_tv', {
+  name: 'Retro TV', biome: 'aquarium', tags: ['retro', 'screen', 'glow'], decor: { price: 260, size: 1 }, decorOnly: true,
+  desc: 'Only gets one channel: fish. The fish love it.',
+  interact: {
+    verb: 'Switch on', frames: 6, seq: [1, 2, 1, 2, 3, 3, 4, 5, 4, 5, 4, 5, 4, 5, 1, 0], fps: 5,
+    sfx: [['crt_on', 0], ['static_burst', 0.1, { vol: 0.6 }], ['blub', 1.3, { pitch: 1.2 }], ['blub', 1.9, { pitch: 1.4 }]],
+    fx: [{ at: 0.05, kind: 'sparkle', from: 'screen', n: 6, colors: ['#ffffff', '#c8f8ff'] }],
+    fish: 'gather', use: { kind: 'watch', at: 'front', seq: [4, 5], fps: 3 },
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(48, 60, 38);
+  const wood = m.color('#8a5632', { jitter: 0.05 });
+  const woodD = m.color('#6e4228', { jitter: 0.05 });
+  const bezel = m.color('#e8dcc0', { jitter: 0.03, smooth: 0.3 });
+  const knob = m.color('#2a2628', { smooth: 0.6, spec: 1 });
+  const chrome = m.color('#c8d0dc', { spec: 2, smooth: 0.5 });
+  const grille = m.color('#4a3a30', { jitter: 0.02 });
+  const glass = m.color('#2a3e3a', { spec: 2.2, specPow: 10, jitter: 0.02 });
+  const glint = m.color('#5a7a74', { spec: 1, jitter: 0 });
+  const leaf = m.color('#5ab85a', { smooth: 0.4 });
+  const pot = m.color('#d8704a', { smooth: 0.5 });
+  const em = (c) => m.color(c, { emissive: 0.95, jitter: 0 });
+  const stat = ['#f2f6f6', '#a8b4b8', '#5a6670', '#2a3038'].map(em);
+  const bars = TV_BARS.map(em);
+  const sea = [em('#2a7ad0'), em('#3a9ae0'), em('#5ac0f0')];
+  const fishC = [em('#ff8a2a'), em('#ffd04a'), em('#1a1a2a'), em('#ffffff')];
+  // Splayed legs and cabinet with wood grain.
+  for (const [x, z, dx, dz] of [[9, 9, -2, -2], [38, 9, 2, -2], [9, 26, -2, 2], [38, 26, 2, 2]]) m.line(x + dx, 0, z + dz, x, 9, z, woodD, 0.9);
+  rbox(m, 4, 9, 6, 43, 42, 29, 3, (x, y) => (y % 3 === 0 ? woodD : wood));
+  m.box(6, 11, 30, 41, 40, 30, bezel);
+  // Screen: slightly bulging rounded rectangle.
+  const sx0 = 8, sx1 = 30, sy0 = 14, sy1 = 37;
+  const scr = (x, y) => {
+    const u = (x - sx0) / (sx1 - sx0), v = (y - sy0) / (sy1 - sy0);
+    if (frame === 0) return (u + v > 1.1 && u + v < 1.3) || (u + v > 1.4 && u + v < 1.48) ? glint : glass;
+    if (frame <= 2) return stat[Math.floor(h3(x, y, frame, 9) * 4)];
+    if (frame === 3) return v < 0.75 ? bars[Math.min(6, Math.floor(u * 7))] : bars[6 - Math.min(6, Math.floor(u * 7))];
+    const fx = 0.3 + (frame === 5 ? 0.25 : 0), fy = 0.5 + (frame === 5 ? 0.06 : 0);
+    const du = (u - fx) / 0.2, dv = (v - fy) / 0.13;
+    if (du * du + dv * dv < 1) return Math.abs(du - 0.25) < 0.18 ? fishC[3] : du > 0.45 && dv > -0.1 && dv < 0.4 && du < 0.75 ? fishC[2] : fishC[0];
+    if (u < fx - 0.15 && u > fx - 0.32 && Math.abs(v - fy) < (fx - 0.15 - u) * 1.2) return fishC[1];
+    if (h3(x, Math.floor(y + frame * 3), 4, 3) < 0.03) return fishC[3];
+    return sea[Math.min(2, Math.floor((1 - v) * 3))];
+  };
+  for (let y = sy0; y <= sy1; y++) for (let x = sx0; x <= sx1; x++) {
+    const ex = Math.min(x - sx0, sx1 - x), ey = Math.min(y - sy0, sy1 - y);
+    if (ex + ey < 2) continue;
+    m.set(x, y, 31, scr(x, y));
+    if (ex > 3 && ey > 3) m.set(x, y, 32, scr(x, y));
+  }
+  // Knobs, speaker grille, antenna and a little plant on top.
+  for (const ky of [33, 27]) { m.cylinder(36, ky, 31, 32, 2.2, knob, 'z'); m.set(36, ky + 1, 33, chrome); }
+  for (let y = 14; y <= 22; y += 2) m.box(33, y, 31, 39, y, 31, grille);
+  m.line(24, 43, 16, 13, 57, 12, chrome, 0.5);
+  m.line(24, 43, 16, 37, 56, 19, chrome, 0.5);
+  m.sphere(13, 57, 12, 1.3, chrome);
+  m.sphere(37, 56, 19, 1.3, chrome);
+  m.box(22, 43, 14, 26, 44, 18, knob);
+  lathe(m, 10, 13, 43, 47, (t) => 2.6 + t * 0.6, pot);
+  for (let k = 0; k < 5; k++) { const a = k * 1.3; m.line(10, 47, 13, 10 + Math.cos(a) * 4, 52 + (k % 2) * 2, 13 + Math.sin(a) * 3, leaf, 0.6); }
+  return { m, yaw: 30, ground: [24, 0, 18], anchors: { screen: [19, 26, 33], front: [22, 22, 46] } };
+});
+
+def('bathtub', {
+  name: 'Bubble Bath', biome: 'aquarium', tags: ['dumb', 'home'], decor: { price: 380, size: 2 }, decorOnly: true,
+  desc: 'A clawfoot tub brimming with foam and suspiciously many rubber ducks.',
+  interact: {
+    verb: 'Splash', frames: 3, idle: [0, 1], idleFps: 0.9, seq: [1, 2, 1, 2, 1, 2, 0], fps: 5,
+    sfx: [['squeak', 0, { pitch: 1.2 }], ['squeak', 0.25, { pitch: 1 }], ['squeak', 0.5, { pitch: 1.4 }], ['bubbles', 0.1]],
+    fx: [{ at: 0.1, kind: 'bubbles', from: 'foam', n: 16 }, { at: 0.5, kind: 'foam', from: 'foam', n: 12 }],
+    fish: 'gather', use: { kind: 'sit', at: 'water' },
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(66, 44, 42);
+  const enamel = m.color('#f6aac4', { smooth: 0.75, spec: 1.1, jitter: 0.03 });
+  const white = m.color('#fbf8f4', { smooth: 0.7, spec: 0.9, jitter: 0.02 });
+  const gold = m.color('#e8b848', { spec: 1.6, smooth: 0.5 });
+  const chrome = m.color('#d0d8e2', { spec: 2.2, smooth: 0.5 });
+  const water = m.color('#7ad0f0', { emissive: 0.2, smooth: 0.4 });
+  const foam = [m.color('#ffffff', { smooth: 0.9, jitter: 0.02 }), m.color('#e8f4fc', { smooth: 0.9, jitter: 0.02 })];
+  const yel = m.color('#ffd23a', { smooth: 0.85, spec: 1.4 });
+  const beak = m.color('#ff8a2a', { smooth: 0.6 });
+  const eye = m.color('#1a1a22', { jitter: 0 });
+  const mat = [m.color('#5ab0e8', { jitter: 0.04 }), m.color('#f4f8fc', { jitter: 0.03 })];
+  const stream = m.color('#c8f4ff', { emissive: 0.5, jitter: 0 });
+  const cx = 32, cz = 20, rx = 24, rz = 12;
+  const lvl = (x, z, k = 1) => Math.pow(Math.abs(x - cx) / (rx * k), 2.6) + Math.pow(Math.abs(z - cz) / (rz * k), 2);
+  shape(m, cx - rx, 6, cz - rz, cx + rx, 23, cz + rz, (x, y, z) => lvl(x, z, 1 + (y - 6) * 0.004) <= 1 && y >= 6 + 3.5 * Math.pow(Math.abs(x - cx) / rx, 3), (x, y) => (y >= 21 ? white : enamel));
+  m.sub(() => shape(m, cx - rx, 9, cz - rz, cx + rx, 23, cz + rz, (x, y, z) => lvl(x, z, 0.86) <= 1, 1));
+  shape(m, cx - rx, 18, cz - rz, cx + rx, 18, cz + rz, (x, y, z) => lvl(x, z, 0.86) <= 1, water);
+  // Feet.
+  for (const [fx, fz] of [[cx - 17, cz - 7], [cx + 17, cz - 7], [cx - 17, cz + 7], [cx + 17, cz + 7]]) {
+    m.ellipsoid(fx, 4, fz, 2.4, 3.6, 2.4, gold);
+    m.ellipsoid(fx + Math.sign(fx - cx) * 1.5, 1, fz + Math.sign(fz - cz) * 1.2, 2.4, 1.2, 2.2, gold);
+  }
+  // Foam heap (grows with the frame) and the duck flotilla.
+  const N = 26 + frame * 8;
+  for (let i = 0; i < N; i++) {
+    const a = h3(i, 1, 2, 3) * Math.PI * 2, r = Math.sqrt(h3(i, 2, 2, 3)) * 0.8;
+    const x = cx + Math.cos(a) * r * rx * 0.86, z = cz + Math.sin(a) * r * rz * 0.86;
+    const y = 19 + (1 - r) * (4 + frame * 1.5) + h3(i, 3, 2, 3) * 2;
+    m.sphere(x, y, z, 1.6 + h3(i, 4, 2, 3) * 2.2 + frame * 0.2, foam[i % 2]);
+  }
+  const bobY = [0, 1, 2][frame];
+  miniDuck(m, cx - 9, 22 + bobY, cz + 3, 1, yel, beak, eye, 1);
+  miniDuck(m, cx + 6, 23 + (2 - bobY), cz - 2, 0.85, yel, beak, eye, -1);
+  miniDuck(m, cx + 1 + frame, 24 + bobY, cz + 6, 0.75, yel, beak, eye, 1);
+  // Faucet with a stream on the busiest frame.
+  m.tube([[5, 12, cz, 1.1], [5, 26, cz, 1.1], [9, 28, cz, 1.1], [12, 26, cz, 1]], chrome, 4);
+  for (const s of [-1, 1]) m.sphere(5, 23, cz + s * 2.6, 1.3, chrome);
+  if (frame === 2) m.line(12, 25, cz, 13, 19, cz, stream, 0.6);
+  m.box(cx - 10, 0, 34, cx + 10, 0, 40, (x) => mat[x % 4 < 2 ? 0 : 1]);
+  return { m, yaw: 30, ground: [cx, 0, cz + 4], anchors: { water: [cx + 2, 21, cz], foam: [cx, 26, cz] } };
+});
+
+def('traffic_cone', {
+  name: 'Traffic Cone', biome: 'aquarium', tags: ['dumb', 'junk'], decor: { price: 25, size: 1 }, decorOnly: true,
+  desc: 'Marks the spot where absolutely nothing is happening.',
+  interact: {
+    verb: 'Bonk', frames: 3, seq: [1, 2, 1, 2, 1, 0], fps: 10,
+    sfx: [['boing', 0, { pitch: 0.7 }], ['mash_pop', 0.08]],
+    fx: [{ at: 0, kind: 'text', from: 'top', text: 'BONK' }, { at: 0, kind: 'burst', from: 'base', n: 8, colors: ['#e8cf96', '#d8ba80'] }],
+    fish: 'flee',
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(44, 46, 32);
+  const P = part(m, 30, 44, 30);
+  const rub = m.color('#2a2a30', { jitter: 0.04 });
+  const orange = m.color('#ff7a1a', { smooth: 0.5, spec: 0.7, jitter: 0.03 });
+  const refl = m.color('#f6f6f2', { emissive: 0.15, spec: 1.4, jitter: 0.02 });
+  rbox(P, 3, 0, 3, 26, 2, 26, 1.4, rub);
+  lathe(P, 15, 15, 3, 38, (t) => 9.6 - t * 8.2, (x, y) => ((y >= 12 && y <= 16) || (y >= 23 && y <= 26) ? refl : orange));
+  P.sphere(15, 38.5, 15, 1.6, orange);
+  const rz = [0, 13, -13][frame], pv = frame === 2 ? [27, 0, 15] : [3, 0, 15];
+  stampRot(m, P, pv, [pv[0] + 7, 0, 16], 0, 0, rz);
+  sandMound(m, 22, 16, 15, 14, 1, 2);
+  const tip = xformPt([15, 39, 15], pv, [pv[0] + 7, 0, 16], 0, 0, rz);
+  return { m, yaw: 30, ground: [22, 0, 16], anchors: { top: tip, base: [22, 2, 26] } };
+});
+
+def('phone_booth', {
+  name: 'Phone Booth', biome: 'aquarium', tags: ['dumb', 'glow', 'build'], decor: { price: 450, size: 2 }, decorOnly: true,
+  desc: 'It rings. Nobody ever answers. It is always for the crab.',
+  interact: {
+    verb: 'Ring', frames: 3, seq: [1, 0, 1, 0, 1, 0, 2, 2, 2, 2, 2, 1, 0], fps: 5,
+    sfx: [['bell', 0, { pitch: 1.5 }], ['bell', 0.12, { pitch: 1.5 }], ['bell', 0.42, { pitch: 1.5 }], ['bell', 0.54, { pitch: 1.5 }], ['bell', 0.84, { pitch: 1.5 }], ['click', 1.25]],
+    fx: [{ at: 0, kind: 'text', from: 'top', text: 'RING!' }, { at: 1.25, kind: 'sparkle', from: 'door', n: 6 }],
+    shake: 1.2, fish: 'gather', use: { kind: 'hide', at: 'door', seq: [2, 2], fps: 2 },
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(52, 84, 66);
+  const red = m.color('#d8282a', { spec: 0.7, jitter: 0.03 });
+  const redD = m.color('#a81e24', { jitter: 0.03 });
+  const con = m.color('#a8a49c', { jitter: 0.06 });
+  const lit = frame > 0;
+  const glass = m.color(lit ? '#ffe8a0' : '#2c4a68', lit ? { emissive: 0.75, jitter: 0.02 } : { spec: 2, specPow: 10, jitter: 0.02 });
+  const sign = m.color('#f4f4ec', { emissive: 0.6, jitter: 0 });
+  const ink = m.color('#2a2a32', { jitter: 0 });
+  const chrome = m.color('#c8d0dc', { spec: 2 });
+  const lamp = m.color('#fff0b0', { emissive: 1, jitter: 0 });
+  const phone = m.color('#1e1c22', { spec: 1 });
+  const X0 = 8, X1 = 35, Z0 = 8, Z1 = 35, Y0 = 3, Y1 = 66;
+  m.box(X0 - 3, 0, Z0 - 3, X1 + 3, 2, Z1 + 3, con);
+  // One wall panel: kick plate, glazing grid, sign band.
+  const panel = (u, y) => {
+    if (y < 10) return u % 9 === 0 ? redD : red;
+    if (y > 59) return y === 60 || y === 66 ? red : (y >= 62 && y <= 64 && u > 3 && u < 25 && (u % 3 !== 0 || y === 63)) ? ink : sign;
+    if ((u - 2) % 7 === 0 || (y - 10) % 7 === 0 || u < 2 || u > 25) return red;
+    return glass;
+  };
+  for (let y = Y0; y <= Y1; y++) for (let u = 0; u <= X1 - X0; u++) {
+    m.set(X0 + u, y, Z0, panel(u, y));
+    m.set(X0, y, Z0 + u, panel(u, y));
+    m.set(X1, y, Z0 + u, panel(u, y));
+    if (frame < 2) m.set(X0 + u, y, Z1, panel(u, y));
+  }
+  // Door swings open on frame 2 (hinged at the right edge).
+  if (frame === 2) {
+    const a = 1.35, ca = Math.cos(a), sa = Math.sin(a);
+    for (let y = Y0; y <= Y1; y++) for (let d = 0; d <= X1 - X0; d += 0.5) m.set(X0 + d * ca, y, Z1 + d * sa, panel(Math.round(d), y));
+    m.box(X0 + 8, 34, Z0 + 1, X0 + 12, 42, Z0 + 3, phone);
+    m.line(X0 + 10, 34, Z0 + 3, X0 + 13, 26, Z0 + 8, phone, 0.6);
+    m.box(X0 + 12, 24, Z0 + 7, X0 + 15, 26, Z0 + 9, phone);
+  } else m.box(X0 + 3, 34, Z1 + 1, X0 + 3, 38, Z1 + 1, chrome);
+  for (const [x, z] of [[X0, Z0], [X1, Z0], [X0, Z1], [X1, Z1]]) m.box(x - 1, Y0, z - 1, x + 1, Y1 + 1, z + 1, red);
+  // Crown roof with a little lamp.
+  m.box(X0 - 2, Y1 + 1, Z0 - 2, X1 + 2, Y1 + 3, Z1 + 2, red);
+  shape(m, X0 - 1, Y1 + 4, Z0 - 1, X1 + 1, Y1 + 10, Z1 + 1, (x, y, z) => ((x - 21.5) / 15) ** 2 + ((y - Y1 - 3) / 7) ** 2 + ((z - 21.5) / 15) ** 2 <= 1, red);
+  m.box(20, Y1 + 10, 20, 23, Y1 + 13, 23, lamp);
+  m.box(19, Y1 + 14, 19, 24, Y1 + 14, 24, red);
+  return { m, yaw: 30, ground: [21.5, 0, 21.5], light: '#ffe8a0', anchors: { door: [24, 22, 40], top: [21.5, 80, 21.5] } };
+});
+
+def('mini_volcano', {
+  name: 'Mini Volcano', biome: 'aquarium', tags: ['glow', 'rock'], decor: { price: 480, size: 2 }, decorOnly: true,
+  desc: 'A real, tiny, slightly dangerous volcano. Comes with its own palm tree.',
+  interact: {
+    verb: 'Erupt', frames: 4, seq: [1, 1, 2, 3, 2, 3, 2, 3, 2, 1, 0], fps: 5,
+    sfx: [['roar', 0, { pitch: 0.55, vol: 0.6 }], ['thunder', 0.3, { vol: 0.55 }], ['puff', 0.5], ['puff', 0.95]],
+    fx: [{ at: 0.1, kind: 'smoke', from: 'crater', n: 10 }, { at: 0.35, kind: 'lava', from: 'crater', n: 24 }, { at: 0.8, kind: 'lava', from: 'crater', n: 18 }, { at: 1.25, kind: 'lava', from: 'crater', n: 12 }],
+    ambient: [{ kind: 'smoke', from: 'crater', every: 2.8, n: 2 }], shake: 0.8, fish: 'flee',
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(66, 62, 58);
+  const rock = ['#5a4a4c', '#4a3c42', '#6c5a54', '#7a4a3a'].map((c) => m.color(c, { jitter: 0.12, smooth: 0.4 }));
+  const ash = m.color('#3a3036', { jitter: 0.08 });
+  const glowC = frame === 0 ? m.color('#b8482a', { emissive: 0.45, jitter: 0.04 }) : m.color('#ffb03a', { emissive: 1, jitter: 0.03 });
+  const lava = m.color('#ff7a1a', { emissive: 1, jitter: 0.04 });
+  const core = m.color('#ffe46a', { emissive: 1, jitter: 0.02 });
+  const crack = m.color('#ff5a2a', { emissive: 0.9, jitter: 0 });
+  const trunk = m.color('#9a6a3a', { jitter: 0.05 });
+  const leaf = [m.color('#4ab85a', { smooth: 0.3 }), m.color('#7ad86a', { smooth: 0.3 })];
+  const cx = 34, cz = 28, seed = 11;
+  const Rat = (y, a) => 27 - y * 0.5 + (noise3(Math.cos(a) * 2 + 5, y * 0.12, Math.sin(a) * 2, seed) - 0.5) * 7;
+  shape(m, 0, 0, 0, 65, 44, 57, (x, y, z) => {
+    const dx = x - cx, dz = z - cz, r = Math.hypot(dx, dz);
+    if (y > 41) return false;
+    if (r > Rat(y, Math.atan2(dz, dx))) return false;
+    return !(y > 33 && r < (y - 33) * 0.75 + 3.5);
+  }, (x, y, z) => (y > 34 && h3(x, y, z, 2) < 0.4 ? rock[3] : rock[Math.floor(fbm3(x * 0.15, y * 0.15, z * 0.15, 2, seed) * 2.99 * 1.2) % 3]));
+  // Crater pool, glowing cracks, lava streams growing down the visible flanks.
+  shape(m, cx - 9, 33, cz - 9, cx + 9, 35, cz + 9, (x, y, z) => Math.hypot(x - cx, z - cz) < 4 + (y - 33) * 0.75, (x, y, z, p) => (p ? null : glowC));
+  m.recolor((x, y, z, p) => (y > 32 && Math.hypot(x + 0.5 - cx, z + 0.5 - cz) < 8 && m.exposed(x, y, z) && p !== glowC ? ash : null));
+  if (frame >= 1) surface(m, (x, y, z, p) => (y < 30 && y > 3 && h3(x, y, z, 7) < 0.025 && p !== glowC ? crack : null));
+  if (frame >= 2) {
+    const reach = frame === 2 ? 22 : 6;
+    for (const a0 of [0.35, 1.05, 1.7]) {
+      const pts = [];
+      for (let y = 38; y >= reach; y -= 1) {
+        const a = a0 + Math.sin(y * 0.2 + a0 * 3) * 0.12, r = Rat(y, a) - 0.4;
+        pts.push([cx + Math.cos(a) * r, y, cz + Math.sin(a) * r]);
+      }
+      m.recolor((x, y, z, p) => {
+        if (y < reach - 1 || y > 40 || !m.exposed(x, y, z)) return null;
+        for (const q of pts) { const d = Math.hypot(x + 0.5 - q[0], y + 0.5 - q[1], z + 0.5 - q[2]); if (d < 2.2) return d < 1.1 ? core : lava; }
+        return null;
+      });
+    }
+    // Fountain of lava blobs above the crater.
+    const top = frame === 2 ? 58 : 52;
+    for (let i = 0; i < 12; i++) {
+      const t = i / 11, y = 40 + t * (top - 40);
+      m.sphere(cx + Math.sin(i * 2.1) * (1 + t * 3), y, cz + Math.cos(i * 1.7) * (1 + t * 2), 2.6 - t * 1.2 + h3(i, frame, 1, 2), t < 0.5 ? core : lava);
+    }
+  }
+  // A tiny palm tree on the beach.
+  const px = 9, pz = 46;
+  sandMound(m, px + 2, pz - 2, 9, 8, 2, 3);
+  const tp = [[px, 1, pz, 1.4], [px + 1, 8, pz, 1.2], [px + 3, 15, pz - 1, 1.1], [px + 6, 20, pz - 1, 1]];
+  m.tube(tp, trunk, 3);
+  for (let k = 0; k < 6; k++) {
+    const a = k * 1.05;
+    m.tube([[px + 6, 21, pz - 1, 0.9], [px + 6 + Math.cos(a) * 4, 23, pz - 1 + Math.sin(a) * 4, 0.8], [px + 6 + Math.cos(a) * 8, 19, pz - 1 + Math.sin(a) * 8, 0.6]], leaf[k % 2], 3);
+  }
+  m.sphere(px + 6, 20, pz, 1.3, trunk);
+  return { m, yaw: 30, ground: [cx, 0, cz], light: '#ff9a3a', anchors: { crater: [cx, 42, cz] } };
+});
+
+def('windmill', {
+  name: 'Windmill', biome: 'aquarium', tags: ['build'], decor: { price: 420, size: 2 }, decorOnly: true,
+  desc: 'Powered entirely by current. Grinds absolutely nothing. Very peaceful.',
+  interact: {
+    verb: 'Spin', frames: 4, idle: [0, 1, 2, 3], idleFps: 3, seq: Array.from({ length: 24 }, (_, i) => i % 4), fps: 16,
+    sfx: [['travel_whoosh', 0, { vol: 0.35, pitch: 1.3 }], ['bubbles', 0.3]],
+    fx: [{ at: 0.1, kind: 'bubbles', from: 'hub', n: 12 }, { at: 0.7, kind: 'bubbles', from: 'hub', n: 10 }],
+    fish: 'gather', use: { kind: 'orbit', at: 'hub' },
+  },
+}, ({ frame, rng }) => {
+  const m = new VoxelModel(64, 98, 48);
+  const plaster = m.color('#f2e8d4', { jitter: 0.05, smooth: 0.3 });
+  const plasterD = m.color('#dccfb6', { jitter: 0.05 });
+  const stone = m.color('#9a948c', { jitter: 0.1 });
+  const thatch = [m.color('#8a5a34', { jitter: 0.06 }), m.color('#6e4428', { jitter: 0.06 })];
+  const wood = m.color('#7a4a2a', { jitter: 0.04 });
+  const lattice = m.color('#c89a60', { jitter: 0.03 });
+  const cloth = m.color('#f8f0de', { jitter: 0.03, smooth: 0.2 });
+  const win = m.color('#ffd86a', { emissive: 0.8, jitter: 0.02 });
+  const tul = ['#ff4a5a', '#ffd84a', '#ff8ad0'].map((c) => m.color(c, { smooth: 0.6 }));
+  const stem = m.color('#4aa84a', { jitter: 0 });
+  const cx = 32, cz = 20;
+  sandMound(m, cx, cz + 6, 26, 20, 2, 5);
+  const oct = (x, z, r) => { const dx = Math.abs(x - cx), dz = Math.abs(z - cz); return Math.max(dx, dz, (dx + dz) * 0.7071) <= r; };
+  shape(m, cx - 14, 0, cz - 14, cx + 14, 58, cz + 14, (x, y, z) => oct(x, z, 12.5 - y * 0.07), (x, y) => (y < 6 ? stone : y % 6 === 0 ? plasterD : plaster));
+  // Door and windows on the front.
+  m.box(cx - 3, 6, cz + 11, cx + 2, 15, cz + 13, wood);
+  m.box(cx - 2, 16, cz + 11, cx + 1, 16, cz + 12, wood);
+  for (const wy of [28, 42]) { m.box(cx - 2, wy, cz + 9, cx + 1, wy + 4, cz + 11, wood); m.box(cx - 1, wy + 1, cz + 11, cx, wy + 3, cz + 11, win); }
+  m.box(cx + 9, 34, cz - 1, cx + 10, 37, cz + 1, win);
+  // Thatched cap.
+  shape(m, cx - 12, 56, cz - 12, cx + 12, 72, cz + 12, (x, y, z) => ((x - cx) / 11) ** 2 + ((y - 56) / 15) ** 2 + ((z - cz) / 11) ** 2 <= 1, (x, y) => thatch[(y >> 1) % 2]);
+  // Hub and four lattice sails at the current angle.
+  const hy = 62, hz = cz + 13;
+  m.cylinder(cx, hy, cz + 8, hz + 1, 2.4, wood, 'z');
+  m.cylinder(cx, hy, hz + 2, hz + 2, 1.6, lattice, 'z');
+  for (let k = 0; k < 4; k++) {
+    const a = frame * (Math.PI / 8) + k * (Math.PI / 2) + 0.3;
+    const ca = Math.cos(a), sa = Math.sin(a);
+    m.line(cx, hy, hz + 2, cx + ca * 31, hy + sa * 31, hz + 2, wood, 0.7);
+    for (let s = 6; s <= 30; s += 0.5) for (let w = 0.5; w <= 6.5; w += 0.5) {
+      const x = cx + ca * s - sa * w, y = hy + sa * s + ca * w;
+      const lat = Math.abs(s % 3) < 0.5 || w < 1 || w > 6;
+      m.set(x, y, hz + 1, lat ? lattice : cloth);
+    }
+  }
+  // Tulips around the base.
+  for (let i = 0; i < 7; i++) {
+    const a = 0.4 + i * 0.42, r = 17 + rng.float(-1, 2);
+    const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
+    m.line(x, 1, z, x, 5, z, stem, 0);
+    m.box(x - 0.5, 5, z - 0.5, x + 0.5, 6, z + 0.5, tul[i % 3]);
+  }
+  return { m, yaw: 30, ground: [cx, 0, cz], anchors: { hub: [cx, hy, hz + 3], top: [cx, 74, cz] } };
+});
+
+def('drawbridge_keep', {
+  name: 'Drawbridge Keep', biome: 'aquarium', tags: ['build', 'glow', 'swimthrough'], decor: { price: 900, size: 3 }, decorOnly: true,
+  desc: 'A proper stone keep with a moat and a working drawbridge. Fish only.',
+  interact: {
+    verb: 'Lower bridge', frames: 3, seq: [1, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0], fps: 3,
+    sfx: [['treasure_open', 0, { pitch: 0.7 }], ['box_close', 0.62, { pitch: 0.7 }], ['ui_unlock', 0.9], ['box_close', 3.4, { pitch: 0.8 }]],
+    fx: [{ at: 0.65, kind: 'burst', from: 'gate', n: 10, colors: ['#c8b090', '#e8d8b0'] }, { at: 0.95, kind: 'confetti', from: 'top', n: 20 }],
+    fish: 'gather', use: { kind: 'hide', at: 'gate', seq: [1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1], fps: 3 },
+  },
+}, ({ frame, rng }) => {
+  const m = new VoxelModel(86, 86, 74);
+  const st = CASTLE_STONE.map((c) => m.color(c, { jitter: 0.08 }));
+  const mortar = m.color('#7c7492', { jitter: 0.04 });
+  const tex = masonry(m, st, mortar);
+  const dark = m.color('#1e1828', { jitter: 0.02 });
+  const water = m.color('#3a9ad0', { emissive: 0.12, smooth: 0.5, jitter: 0.03 });
+  const plank = [m.color('#8a5634', { jitter: 0.06 }), m.color('#6e4428', { jitter: 0.06 })];
+  const iron = m.color('#3a3a44', { spec: 1, jitter: 0.03 });
+  const chainC = m.color('#9aa0ac', { spec: 1.2 });
+  const banner = m.color('#d83a4a', { jitter: 0.04 }), gold = m.color('#f2c84a', { spec: 1.2 });
+  const torch = m.color('#ffb84a', { emissive: 1, jitter: 0 });
+  const slit = m.color('#ffd86a', { emissive: 0.8, jitter: 0 });
+  const rk = reefRock(m, rng);
+  // Rock platform with a moat in front.
+  facetRock(m, rng, 43, 3, 34, 42, 7, 34, rk[0], 16);
+  stoneTex(m, rk, 6);
+  m.sub(() => m.box(24, 3, 54, 62, 9, 66));
+  m.box(24, 3, 54, 62, 4, 66, water);
+  // Walls, front towers, keep, central tower.
+  m.box(12, 6, 12, 74, 34, 52, tex);
+  for (let x = 12; x <= 74; x++) for (const z of [12, 52]) if (x % 4 < 2) m.box(x, 35, z, x, 37, z, st[2]);
+  for (let z = 12; z <= 52; z++) for (const x of [12, 74]) if (z % 4 < 2) m.box(x, 35, z, x, 37, z, st[2]);
+  for (const tx of [22, 64]) {
+    m.cylinder(tx, 52, 4, 48, 8, tex);
+    m.cylinder(tx, 52, 48, 50, 9.4, st[2]);
+    for (let k = 0; k < 10; k++) if (k % 2) { const a = (k / 10) * Math.PI * 2; m.box(tx + Math.cos(a) * 8.6, 51, 52 + Math.sin(a) * 8.6, tx + Math.cos(a) * 8.6, 53, 52 + Math.sin(a) * 8.6, st[2]); }
+    m.box(tx - 1, 30, 60, tx, 34, 60, slit);
+    // Banner.
+    m.box(tx - 3, 22, 61, tx + 2, 42, 61, (x, y) => (Math.abs(x - tx + 0.5) < 1 ? gold : banner));
+    for (let x = tx - 3; x <= tx + 2; x++) m.set(x, 21 - (Math.abs(x - tx + 0.5) < 1.5 ? 1 : 0), 61, banner);
+  }
+  m.box(30, 34, 18, 56, 60, 38, tex);
+  for (let x = 30; x <= 56; x++) for (const z of [18, 38]) if (x % 4 < 2) m.box(x, 61, z, x, 63, z, st[2]);
+  m.cylinder(43, 28, 60, 74, 6, tex);
+  m.cone(43, 28, 75, 84, 7.5, 0.5, (x, y) => (y % 3 ? banner : gold));
+  for (const wx of [36, 48]) m.box(wx, 46, 39, wx + 1, 51, 39, slit);
+  // Gate with portcullis (raised on frame 2).
+  m.sub(() => { m.box(36, 6, 46, 50, 24, 53); m.cylinder(43, 50, 24, 27, 7, 0, 'y'); });
+  m.box(36, 6, 46, 50, 27, 46, dark);
+  const pcY = frame === 2 ? 21 : 6;
+  for (let x = 37; x <= 49; x += 3) m.box(x, pcY, 51, x, 26, 51, iron);
+  for (let y = pcY + 2; y <= 26; y += 4) m.box(36, y, 51, 50, y, 51, iron);
+  // Drawbridge hinged at the gate sill: up / half / down.
+  const ang = [Math.PI / 2, Math.PI / 4, 0][frame], cs = Math.cos(ang), sn = Math.sin(ang);
+  const L = 14;
+  for (let u = 0; u <= L; u += 0.5) for (let t = 0; t <= 1.5; t += 0.5) for (let x = 36; x <= 50; x++) {
+    const y = 6 + u * sn + t * cs, z = 53 + u * cs - t * sn;
+    m.set(x, y, z, (Math.abs(u - 2) < 0.6 || Math.abs(u - 12) < 0.6) && t > 1 ? iron : plank[x % 3 === 0 ? 1 : 0]);
+  }
+  const ex = 6 + L * sn, ez = 53 + L * cs;
+  m.line(35, 26, 53, 36, ex, ez, chainC, 0.5);
+  m.line(51, 26, 53, 50, ex, ez, chainC, 0.5);
+  for (const tx of [32, 54]) { m.box(tx, 18, 55, tx, 21, 55, plank[1]); m.box(tx, 22, 55, tx, 23, 55, torch); }
+  moss(m, rng, 3, MOSS, 0.3, 0.2, [...rk]);
+  return { m, yaw: 30, vs: 1.5, ground: [43, 0, 38], light: '#ffd86a', anchors: { gate: [43, 12, 60], top: [43, 84, 28] } };
+});
+
+def('dance_robot', {
+  name: 'Disco Robot', biome: 'aquarium', tags: ['machine', 'glow', 'party'], decor: { price: 340, size: 1 }, decorOnly: true,
+  desc: 'A wind-up tin robot with exactly four dance moves. All of them bangers.',
+  interact: {
+    verb: 'Dance', frames: 4, seq: [1, 2, 1, 2, 3, 0, 3, 0, 1, 2, 1, 2, 3, 0], fps: 6,
+    sfx: [['glitch', 0, { vol: 0.35 }], ['click', 0.17], ['click', 0.5], ['click', 0.83], ['click', 1.17], ['chirp', 0.33, { pitch: 0.8 }], ['chirp', 1.0, { pitch: 1 }], ['chirp', 1.67, { pitch: 1.2 }]],
+    fx: [{ at: 0.2, kind: 'notes', from: 'head', n: 2 }, { at: 1.0, kind: 'notes', from: 'head', n: 2 }, { at: 1.6, kind: 'sparkle', from: 'chest', n: 6 }],
+    fish: 'dance', use: { kind: 'dance', at: 'chest', seq: [1, 2, 1, 2, 3, 0, 3, 0], fps: 4 },
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(50, 68, 32);
+  const tin = m.color('#d8463a', { spec: 1.3, specPow: 14, smooth: 0.3, jitter: 0.03 });
+  const tinB = m.color('#3a7ad8', { spec: 1.3, specPow: 14, smooth: 0.3, jitter: 0.03 });
+  const steel = m.color('#b8c0cc', { spec: 1.8, smooth: 0.6 });
+  const dark = m.color('#2a2a34', { jitter: 0.03 });
+  const gold = m.color('#f2c84a', { spec: 1.2 });
+  const eyeC = m.color(frame % 2 ? '#ff6ad8' : '#5af4ff', { emissive: 1, jitter: 0 });
+  const lights = ['#ff4a5a', '#ffd84a', '#5aff8a', '#5ab8ff'].map((c, i) => m.color(c, { emissive: (i + frame) % 2 ? 1 : 0.2, jitter: 0 }));
+  const ant = m.color('#ff4a4a', { emissive: frame % 2 ? 1 : 0.4 });
+  const cx = 25, cz = 15;
+  const dy = frame === 3 ? 3 : 0;
+  // Feet and accordion legs (knees bend on frame 3).
+  for (const fx of [18, 32]) {
+    m.box(fx - 4, 0, cz - 5, fx + 3, 3, cz + 7, dark);
+    for (let y = 4; y < 18 - dy; y++) m.cylinder(fx - 0.5, cz + 1, y, y, y % 2 ? 2.4 : 2, steel);
+  }
+  // Body with chest panel.
+  rbox(m, 12, 18 - dy, 7, 37, 40 - dy, 24, 2.5, tin);
+  m.box(15, 22 - dy, 25, 34, 36 - dy, 25, steel);
+  for (let i = 0; i < 4; i++) m.box(17 + i * 4, 32 - dy, 26, 18 + i * 4, 33 - dy, 26, lights[i]);
+  for (const kx of [19, 29]) m.cylinder(kx, 27 - dy, 26, 26, 2.2, dark, 'z');
+  m.set(19, 28 - dy, 27, gold); m.set(30, 27 - dy, 27, gold);
+  for (let y = 23; y <= 25; y += 2) m.box(16, y - dy, 26, 33, y - dy, 26, dark);
+  // Arms per pose.
+  const poses = [[[-3, 21, 4], [3, 21, 4]], [[-3, 21, 4], [6, 54, 3]], [[-6, 54, 3], [3, 21, 4]], [[-8, 52, 4], [8, 52, 4]]];
+  for (const s of [0, 1]) {
+    const sx = s ? 39.5 : 9.5, sy = 36 - dy;
+    const [hx, hy, hz] = poses[frame][s];
+    const hand = [sx + hx, hy - dy * 0.5, cz + hz];
+    const elbow = [(sx + hand[0]) / 2 + (s ? 2 : -2), (sy + hand[1]) / 2, cz + 2];
+    m.sphere(sx, sy, cz, 3, steel);
+    m.line(sx, sy, cz, elbow[0], elbow[1], elbow[2], steel, 1.9);
+    m.line(elbow[0], elbow[1], elbow[2], hand[0], hand[1], hand[2], steel, 1.7);
+    m.sphere(elbow[0], elbow[1], elbow[2], 2.1, dark);
+    m.box(hand[0] - 1.5, hand[1] - 1.5, hand[2] - 1, hand[0] + 1.5, hand[1] + 1.5, hand[2] + 1, dark);
+  }
+  // Head (tilts with the beat) on a neck.
+  m.cylinder(cx, cz + 0.5, 40 - dy, 43 - dy, 2.2, steel);
+  const H = part(m, 24, 24, 20);
+  rbox(H, 2, 0, 2, 21, 13, 17, 2, tinB);
+  for (const ex of [7, 15]) { H.cylinder(ex, 8, 17, 18, 2.4, steel, 'z'); H.cylinder(ex, 8, 18, 18, 1.5, eyeC, 'z'); }
+  for (let x = 7; x <= 15; x += 2) H.box(x, 3, 18, x, 4, 18, dark);
+  for (const ex of [1, 22]) H.cylinder(7, 9, ex === 1 ? 0 : 22, ex === 1 ? 1 : 23, 2, steel, 'x');
+  H.line(11, 13, 9, 11, 19, 9, steel, 0);
+  H.sphere(11, 20, 9, 1.6, ant);
+  const tilt = [0, 9, -9, 0][frame];
+  stampRot(m, H, [11.5, 0, 9.5], [cx, 43 - dy, cz], 0, 0, tilt);
+  return { m, yaw: 28, ground: [cx, 0, cz + 1], light: '#5af4ff', anchors: { head: [cx, 62, cz], chest: [cx, 28, cz + 10] } };
+});
+
+def('ufo', {
+  name: 'Little UFO', biome: 'aquarium', tags: ['glow', 'machine'], decor: { price: 650, size: 2 }, decorOnly: true,
+  desc: 'Crash-landed. The pilot refuses to leave. Occasionally borrows a fish.',
+  interact: {
+    verb: 'Beam up', frames: 4, idle: [0, 1], idleFps: 2, seq: [2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 0, 1], fps: 4,
+    sfx: [['sonar', 0], ['glitch', 0.3, { vol: 0.45 }], ['magic', 1.2], ['sonar', 2.0, { pitch: 1.3 }]],
+    fx: [{ at: 0.2, kind: 'rise', from: 'beam', n: 14, colors: ['#b8ffd0', '#ffffff'] }, { at: 1.0, kind: 'rise', from: 'beam', n: 12, colors: ['#b8ffd0', '#ffffff'] }, { at: 1.8, kind: 'rise', from: 'beam', n: 10, colors: ['#b8ffd0', '#ffffff'] }],
+    fish: 'abduct', use: { kind: 'orbit', at: 'dome' },
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(64, 58, 64);
+  const hull = m.color('#c8d0dc', { spec: 2, specPow: 12, smooth: 0.8, jitter: 0.02 });
+  const hullD = m.color('#7a8496', { smooth: 0.7, jitter: 0.02 });
+  const glass = m.color('#9ae8ff', { spec: 2.5, specPow: 10, smooth: 0.9, light: 0.2, jitter: 0.01 });
+  const alien = m.color('#7ad84a', { smooth: 0.6, light: 0.1 });
+  const eyeC = m.color('#141822', { jitter: 0 });
+  const lc = [m.color('#ff5a8a', { emissive: 1, jitter: 0 }), m.color('#5affd8', { emissive: 1, jitter: 0 }), m.color('#ffe46a', { emissive: 1, jitter: 0 })];
+  const beamOn = frame >= 2;
+  const emit = m.color('#c8ffe0', { emissive: beamOn ? 1 : 0.4, jitter: 0 });
+  const beam = m.color('#7affb8', { emissive: 0.7, jitter: 0 });
+  const beam2 = m.color('#e8fff0', { emissive: 1, jitter: 0 });
+  const leg = m.color('#8a94a6', { spec: 1 });
+  const scorch = m.color('#b89a6a', { jitter: 0.06 });
+  const cx = 32, cz = 32, cy = 30;
+  sandMound(m, cx, cz, 28, 26, 2, 7);
+  m.recolor((x, y, z, p) => { const r = Math.hypot(x + 0.5 - cx, z + 0.5 - cz); return y <= 3 && r > 15 && r < 18 && m.exposed(x, y, z) ? scorch : null; });
+  // Landing legs.
+  for (const a of [Math.PI / 2, (Math.PI * 7) / 6, (Math.PI * 11) / 6]) {
+    m.line(cx + Math.cos(a) * 13, cy - 3, cz + Math.sin(a) * 13, cx + Math.cos(a) * 19, 2, cz + Math.sin(a) * 19, leg, 0.9);
+    m.cylinder(cx + Math.cos(a) * 19, cz + Math.sin(a) * 19, 1, 2, 2.2, leg);
+  }
+  // Saucer lens with a light ring.
+  shape(m, cx - 27, cy - 6, cz - 27, cx + 27, cy + 6, cz + 27, (x, y, z) => {
+    const r = Math.hypot(x - cx, z - cz) / 26.5;
+    return r <= 1 && Math.abs(y - cy) <= 5.4 * Math.pow(1 - r * r, 0.7) + 0.6;
+  }, (x, y) => (y < cy ? hullD : hull));
+  for (let k = 0; k < 14; k++) {
+    const a = (k / 14) * Math.PI * 2;
+    m.box(cx + Math.cos(a) * 24.5, cy, cz + Math.sin(a) * 24.5, cx + Math.cos(a) * 25.5, cy + 1, cz + Math.sin(a) * 25.5, lc[(k + frame) % 3]);
+  }
+  // Dome with the little pilot painted on the glass.
+  m.sphere(cx, cy + 3, cz, 10, (x, y, z) => {
+    if (y < cy + 3) return null;
+    const front = z + 0.5 - cz > 5;
+    if (front && Math.abs(x + 0.5 - cx) < 4.5 && y > cy + 5 && y < cy + 13) {
+      if ((y === cy + 10 || y === cy + 9) && (Math.abs(x + 0.5 - cx - 2) < 1.2 || Math.abs(x + 0.5 - cx + 2) < 1.2)) return eyeC;
+      return alien;
+    }
+    return glass;
+  });
+  m.cylinder(cx, cz, cy + 2, cy + 3, 11, hull);
+  m.cylinder(cx, cz, cy - 6, cy - 5, 4.5, emit);
+  // Tractor beam: a dithered glowing cone shell.
+  if (beamOn) {
+    for (let y = 3; y <= cy - 7; y++) {
+      const R = 4.5 + (cy - 7 - y) * 0.42;
+      shape(m, cx - R - 1, y, cz - R - 1, cx + R + 1, y, cz + R + 1, (x, yy, z) => {
+        const r = Math.hypot(x - cx, z - cz);
+        return r <= R && r > R - 1.3 && (Math.floor(x) + Math.floor(z) * 2 + y + frame) % 3 === 0;
+      }, (x, yy, z) => ((x + z + y) % 7 === 0 ? beam2 : beam));
+    }
+  }
+  return { m, yaw: 30, ground: [cx, 0, cz], light: '#9affd8', anchors: { dome: [cx, cy + 12, cz], beam: [cx, 6, cz], under: [cx, cy - 7, cz] } };
+});
+
+def('pizza_slice', {
+  name: 'Giant Pizza Slice', biome: 'aquarium', tags: ['dumb', 'food'], decor: { price: 120, size: 1 }, decorOnly: true,
+  desc: 'Pepperoni, extra cheese, extra soggy. Regrows overnight.',
+  interact: {
+    verb: 'Nom', frames: 3, seq: [1, 1, 1, 2, 2, 2, 2, 0], fps: 4,
+    sfx: [['worm_squish', 0], ['gulp', 0.75], ['grunt', 1.1, { pitch: 1.4 }]],
+    fx: [{ at: 0.75, kind: 'food', from: 'tip', n: 6 }, { at: 0.75, kind: 'burst', from: 'tip', n: 10, colors: ['#ffd060', '#e8c890', '#c83a2a'] }],
+    fish: 'gather',
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(60, 30, 54);
+  const plate = m.color('#f8f8f4', { smooth: 0.6, spec: 0.6 });
+  const plateR = m.color('#d8dce4', { smooth: 0.6 });
+  const dough = m.color('#e8c890', { jitter: 0.05 });
+  const crust = m.color('#d8954a', { jitter: 0.08, smooth: 0.5 });
+  const bake = m.color('#a8642a', { jitter: 0.06 });
+  const sauce = m.color('#d8402a', { jitter: 0.04 });
+  const cheese = m.color('#ffd060', { jitter: 0.05, smooth: 0.4 });
+  const melt = m.color('#ffe8a0', { jitter: 0.03, smooth: 0.4, spec: 0.6 });
+  const pep = m.color('#c8382a', { jitter: 0.05, smooth: 0.5 });
+  const pepD = m.color('#8a2a20', { jitter: 0.03 });
+  const olive = m.color('#2a2228', { spec: 1 });
+  const green = m.color('#4aa83a', { jitter: 0.05 });
+  const A = [7, 46], dir = [Math.SQRT1_2, -Math.SQRT1_2], LEN = 46, HALF = 0.36;
+  const polar = (x, z) => { const dx = x - A[0], dz = z - A[1]; const r = Math.hypot(dx, dz); return [r, Math.atan2(dx * dir[1] - dz * dir[0], dx * dir[0] + dz * dir[1])]; };
+  lathe(m, 30, 26, 0, 1, () => 25, (x, y) => (y === 1 ? plate : plateR));
+  m.recolor((x, y, z, p) => (p === plate && Math.hypot(x + 0.5 - 30, z + 0.5 - 26) > 22 ? plateR : null));
+  const bite = frame === 2;
+  const lift = (r) => (frame === 1 && r < 14 ? (14 - r) * 0.45 : 0);
+  const hgt = (r) => 3 + r * 0.06;
+  for (let x = 0; x < 60; x++) for (let z = 0; z < 54; z++) {
+    const [r, a] = polar(x + 0.5, z + 0.5);
+    if (r > LEN + 3 || Math.abs(a) > HALF) continue;
+    if (bite && Math.hypot(r - 1, a * 22) < 11) continue;
+    const y0 = Math.round(2 + lift(r)), top = Math.round(hgt(r) + lift(r));
+    if (r > LEN - 3) {
+      const ch = top + 3 + Math.round(Math.sin(((r - LEN + 3) / 6) * Math.PI) * 3);
+      for (let y = y0; y <= ch; y++) m.set(x, y, z, h3(x, y, z, 4) < 0.15 ? bake : crust);
+      continue;
+    }
+    for (let y = y0; y < top; y++) m.set(x, y, z, Math.abs(a) > HALF - 0.04 ? sauce : dough);
+    m.set(x, top, z, h3(x, 0, z, 6) < 0.18 ? melt : cheese);
+  }
+  // Toppings at fixed polar spots.
+  for (const [r, a] of [[12, 0.05], [22, -0.18], [24, 0.2], [33, 0.02], [36, -0.24], [38, 0.24]]) {
+    if (bite && r < 10) continue;
+    const x = A[0] + (dir[0] * Math.cos(a) - dir[1] * Math.sin(a)) * r, z = A[1] + (dir[1] * Math.cos(a) + dir[0] * Math.sin(a)) * r;
+    const y = Math.round(hgt(r) + lift(r)) + 1;
+    m.cylinder(x, z, y, y, 3.4, (xx, yy, zz) => (h3(xx, yy, zz, 2) < 0.18 ? pepD : pep));
+  }
+  for (const [r, a, c] of [[17, -0.1, olive], [29, 0.14, green], [30, -0.1, olive], [41, -0.05, green], [18, 0.2, green]]) {
+    const x = A[0] + (dir[0] * Math.cos(a) - dir[1] * Math.sin(a)) * r, z = A[1] + (dir[1] * Math.cos(a) + dir[0] * Math.sin(a)) * r;
+    const y = Math.round(hgt(r)) + 1;
+    if (c === olive) torus(m, x, y, z, 1.3, 0.6, olive); else m.box(x - 1, y, z, x + 1, y, z, green);
+  }
+  // Cheese strings on the pull frame, drips over the edge.
+  if (frame === 1) for (const k of [-1, 0, 1]) m.line(A[0] + 10, 4 + k * 0.5, A[1] - 8 + k * 2, A[0] + 16, 3, A[1] - 13 + k * 2, melt, 0.5);
+  for (const [r, s] of [[20, 1], [32, -1], [27, 1]]) {
+    const a = HALF * s;
+    const x = A[0] + (dir[0] * Math.cos(a) - dir[1] * Math.sin(a)) * r, z = A[1] + (dir[1] * Math.cos(a) + dir[0] * Math.sin(a)) * r;
+    m.box(x, 2, z, x, Math.round(hgt(r)), z, cheese);
+  }
+  return { m, yaw: 30, pitch: 32, ground: [30, 0, 26], anchors: { tip: [A[0] + 6, 8, A[1] - 6], center: [30, 8, 26] } };
+});
+
+def('burger', {
+  name: 'Mega Burger', biome: 'aquarium', tags: ['dumb', 'food'], decor: { price: 130, size: 1 }, decorOnly: true,
+  desc: 'Triple-stacked, structurally unsound, and it talks. Well, it chomps.',
+  interact: {
+    verb: 'Chomp', frames: 3, seq: [1, 2, 1, 2, 1, 2, 0], fps: 7,
+    sfx: [['gulp', 0, { pitch: 0.8 }], ['boing', 0.3, { pitch: 1.2 }], ['gulp', 0.6]],
+    fx: [{ at: 0.3, kind: 'food', from: 'top', n: 5 }, { at: 0.3, kind: 'burst', from: 'top', n: 6, colors: ['#fff0c8', '#e8a050'] }],
+    fish: 'gather',
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(50, 64, 50);
+  const bun = m.color('#e0a050', { smooth: 0.65, spec: 0.4, jitter: 0.03 });
+  const bunT = m.color('#e8943a', { smooth: 0.7, spec: 0.9, jitter: 0.03 });
+  const bunD = m.color('#c08038', { smooth: 0.6, jitter: 0.03 });
+  const patty = m.color('#5a3020', { jitter: 0.1 });
+  const char = m.color('#3a2018', { jitter: 0.05 });
+  const cheese = m.color('#ffc030', { smooth: 0.4, jitter: 0.03 });
+  const lettuce = [m.color('#6ac040', { jitter: 0.05 }), m.color('#8ad860', { jitter: 0.05 })];
+  const tomato = m.color('#e04030', { smooth: 0.5, jitter: 0.04 });
+  const seed = m.color('#fff0c8', { jitter: 0 });
+  const pick = m.color('#d8b078', { jitter: 0 });
+  const flag = m.color('#ff4a5a', { jitter: 0 });
+  const cx = 25, cz = 25;
+  lathe(m, cx, cz, 0, 6, (t) => 16 + Math.sin(t * Math.PI * 0.5) * 2, (x, y) => (y < 2 ? bunD : bun));
+  lathe(m, cx, cz, 7, 12, () => 19, (x, y, z) => (y === 12 && (x + z) % 5 === 0 ? char : h3(x, y, z, 3) < 0.25 ? char : patty));
+  m.recolor((x, y, z, p) => (p === patty && Math.hypot(x + 0.5 - cx, z + 0.5 - cz) > 18.2 + noise3(x * 0.4, y, z * 0.4, 3) ? 0 : null));
+  // Cheese diamond with drooping corners.
+  shape(m, cx - 22, 11, cz - 22, cx + 22, 13, cz + 22, (x, y, z) => {
+    const d = Math.abs(x - cx) + Math.abs(z - cz);
+    if (d > 21) return false;
+    return d > 18 ? Math.floor(y) === 11 : Math.floor(y) === 13;
+  }, cheese);
+  shape(m, cx - 22, 14, cz - 22, cx + 22, 16, cz + 22, (x, y, z) => {
+    const a = Math.atan2(z - cz, x - cx), r = Math.hypot(x - cx, z - cz);
+    return r < 20.5 + Math.sin(a * 9) * 1.2 && Math.floor(y) === 14 + (Math.sin(a * 9) > 0.3 && r > 17 ? 1 : 0);
+  }, (x, y, z) => lettuce[h3(x, y, z, 5) < 0.4 ? 1 : 0]);
+  lathe(m, cx, cz, 16, 17, () => 17, tomato);
+  // Top bun (lifted / tilted while chomping) with sesame seeds and a flag.
+  const T = part(m, 40, 30, 40);
+  shape(T, 0, 0, 0, 39, 18, 39, (x, y, z) => ((x - 20) / 18) ** 2 + (y / 15) ** 2 + ((z - 20) / 18) ** 2 <= 1, (x, y) => (y < 2 ? bunD : bunT));
+  for (let i = 0; i < 26; i++) {
+    const a = i * 2.4, r = Math.sqrt((i + 0.5) / 26) * 15;
+    const x = 20 + Math.cos(a) * r, z = 20 + Math.sin(a) * r;
+    let y = 0; while (y < 18 && T.get(Math.floor(x), y + 1, Math.floor(z))) y++;
+    T.set(x, y + 1, z, seed);
+  }
+  T.line(20, 14, 20, 21, 25, 20, pick, 0);
+  T.box(22, 21, 20, 26, 24, 20, flag);
+  const lift = [0, 6, 11][frame], tilt = [0, -6, -16][frame];
+  stampRot(m, T, [20, 0, 4], [cx, 18 + lift, cz - 16], tilt, 0, 0);
+  return { m, yaw: 30, ground: [cx, 0, cz], anchors: { top: [cx, 34 + lift, cz] } };
+});
+
+def('cactus_pot', {
+  name: 'Potted Cactus', biome: 'aquarium', tags: ['dumb', 'plant'], decor: { price: 85, size: 1 }, decorOnly: true,
+  desc: 'Smiles a lot. Hugs are discouraged.',
+  interact: {
+    verb: 'Pet (ouch)', frames: 3, seq: [1, 1, 2, 2, 2, 2, 2, 0], fps: 4,
+    sfx: [['puff', 0, { pitch: 1.3 }], ['sparkle', 0.5]],
+    fx: [{ at: 0.05, kind: 'text', from: 'top', text: 'OUCH' }, { at: 0.5, kind: 'burst', from: 'top', n: 10, colors: ['#ff7ab0', '#ffd0e8', '#fff6c8'] }, { at: 0.55, kind: 'hearts', from: 'top', n: 2 }],
+    fish: 'flee',
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(40, 66, 38);
+  const terra = m.color('#d0704a', { smooth: 0.5, jitter: 0.04 });
+  const terraL = m.color('#e48a5e', { smooth: 0.5, jitter: 0.04 });
+  const teal = m.color('#3ab8a8', { jitter: 0.02 });
+  const soil = m.color('#4a3020', { jitter: 0.1 });
+  const pebble = m.color('#e8e0d0', { jitter: 0.05 });
+  const g = [m.color('#4a9a48', { jitter: 0.04, smooth: 0.5 }), m.color('#7ac860', { jitter: 0.04, smooth: 0.5 })];
+  const spine = m.color('#fff6c8', { jitter: 0 });
+  const eye = m.color('#1e2a1e', { jitter: 0 });
+  const blush = m.color('#ff9aa8', { jitter: 0 });
+  const petal = [m.color('#ff7ab0', { smooth: 0.6 }), m.color('#ffb0d4', { smooth: 0.6 })];
+  const yel = m.color('#ffe04a', { smooth: 0.5 });
+  const cx = 20, cz = 18;
+  lathe(m, cx, cz, 0, 13, (t) => 9.4 + t * 2, terra);
+  lathe(m, cx, cz, 14, 17, () => 12.6, terraL);
+  m.recolor((x, y, z, p) => (p === terra && y >= 5 && y <= 8 && m.exposed(x, y, z) && (Math.floor(Math.atan2(z - cz, x - cx) * 6) + y) % 2 === 0 ? teal : null));
+  m.sub(() => m.cylinder(cx, cz, 16, 17, 11));
+  m.cylinder(cx, cz, 16, 16, 11.2, (x, y, z) => (h3(x, y, z, 3) < 0.08 ? pebble : soil));
+  const col = (x, y, z) => (Math.cos(Math.atan2(z + 0.5 - cz, x + 0.5 - cx) * 8) > 0.55 ? g[1] : g[0]);
+  lathe(m, cx, cz, 17, 49, () => 5.6, col);
+  m.sphere(cx, 49, cz, 5.6, col);
+  // Arms: waving on frames 1-2.
+  const armL = frame ? [[cx - 5, 30, cz, 3], [cx - 11, 31, cz, 3], [cx - 12, 37, cz, 3], [cx - 11, 45, cz + 1, 2.8]] : [[cx - 5, 30, cz, 3], [cx - 11, 30, cz, 3], [cx - 11, 36, cz, 3], [cx - 11, 42, cz, 2.8]];
+  const armR = frame ? [[cx + 5, 36, cz, 3], [cx + 10, 39, cz, 3], [cx + 14, 46, cz + 1, 2.8], [cx + 15, 52, cz + 2, 2.6]] : [[cx + 5, 36, cz, 3], [cx + 11, 36, cz, 3], [cx + 11, 42, cz, 3], [cx + 11, 47, cz, 2.8]];
+  m.tube(armL, col, 3); m.tube(armR, col, 3);
+  for (const a of [armL, armR]) m.sphere(a[3][0], a[3][1], a[3][2], a[3][3], col);
+  surface(m, (x, y, z, p) => ((p === g[1]) && y > 18 && y % 3 === 0 && h3(x, y, z, 8) < 0.5 ? spine : null));
+  // Smiley face.
+  const fz = cz + 5;
+  m.box(cx - 3, 40, fz, cx - 2, 41, fz + 1, eye); m.box(cx + 2, 40, fz, cx + 3, 41, fz + 1, eye);
+  m.box(cx - 1, 37, fz + 1, cx + 1, 37, fz + 1, eye); m.set(cx - 2, 38, fz + 1, eye); m.set(cx + 2, 38, fz + 1, eye);
+  m.set(cx - 4, 38, fz, blush); m.set(cx + 4, 38, fz, blush);
+  // Flower: bud on frame 1, bloom on frame 2.
+  if (frame === 1) m.sphere(cx, 56, cz, 1.8, petal[0]);
+  if (frame === 2) {
+    for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; m.ellipsoid(cx + Math.cos(a) * 3, 56, cz + Math.sin(a) * 3, 2.4, 1.2, 2.4, petal[k % 2]); }
+    m.sphere(cx, 57, cz, 1.5, yel);
+  }
+  return { m, yaw: 28, ground: [cx, 0, cz], anchors: { top: [cx, 58, cz] } };
+});
+
+def('snowman', {
+  name: 'Snowman', biome: 'aquarium', tags: ['dumb'], decor: { price: 150, size: 1 }, decorOnly: true,
+  desc: 'Should have melted ages ago. Refuses on principle.',
+  interact: {
+    verb: 'Say hi', frames: 3, seq: [1, 2, 1, 2, 1, 0], fps: 5,
+    sfx: [['chirp', 0, { pitch: 1.1 }], ['sparkle', 0.2], ['chirp', 0.5, { pitch: 1.4 }]],
+    fx: [{ at: 0.1, kind: 'snow', from: 'top', n: 30 }],
+    fish: 'gather',
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(48, 72, 42);
+  const snow = m.color('#f4f8ff', { smooth: 0.85, jitter: 0.04, ramp: ['#7a88b8', '#9aa8d4', '#c0cce8', '#e4ecfa', '#f4f8ff', '#ffffff', '#ffffff'] });
+  const coal = m.color('#24242e', { jitter: 0.04, smooth: 0.4 });
+  const carrot = m.color('#ff8a2a', { smooth: 0.5, jitter: 0.03 });
+  const black = m.color('#1e1c24', { spec: 0.8, smooth: 0.3 });
+  const band = m.color('#d83a3a', { jitter: 0.02 });
+  const scarf = [m.color('#e04040', { jitter: 0.03, smooth: 0.4 }), m.color('#fff4e8', { jitter: 0.03, smooth: 0.4 })];
+  const twig = m.color('#7a4a2a', { jitter: 0.04 });
+  const cx = 22, cz = 20;
+  const drift = SAND.map(() => '#f4f8ff');
+  sandMound(m, cx, cz, 18, 16, 2, 8, drift);
+  m.sphere(cx, 12, cz, 12, snow);
+  m.sphere(cx, 31, cz, 9.5, snow);
+  const turn = frame === 2 ? 0.5 : 0;
+  m.sphere(cx, 45, cz, 7.2, snow);
+  // Coal buttons, eyes and smile on the sphere fronts.
+  for (const by of [35, 31, 27]) { const z = frontZ(cx, 31, cz, 9.5, cx, by); m.box(cx - 0.5, by, z, cx + 0.5, by + 1, z + 1, coal); }
+  const fx = (dx) => cx + dx + turn * 3;
+  for (const dx of [-2.5, 2.5]) { const x = fx(dx), z = frontZ(cx, 45, cz, 7.2, x, 47); m.box(x, 47, z, x + 1, 48, z + 1, coal); }
+  for (let i = -2; i <= 2; i++) { const x = fx(i * 1.3), y = 42 - (i * i <= 1 ? 1 : 0), z = frontZ(cx, 45, cz, 7.2, x, y); m.set(x, y, z + 1, coal); }
+  // Carrot nose (turns with the head).
+  const nz = frontZ(cx, 45, cz, 7.2, fx(0), 45);
+  m.cone(fx(0) + 0.5, 45, nz, nz + 6, 1.7, 0.3, carrot, 'z');
+  // Scarf.
+  torus(m, cx, 39, cz, 6.8, 1.6, (x, y, z) => scarf[Math.floor((Math.atan2(z - cz, x - cx) + 4) * 2) % 2], 'y');
+  m.box(cx + 3, 30, cz + 7, cx + 5, 38, cz + 8, (x, y) => scarf[(y >> 1) % 2]);
+  // Top hat (lifted on frame 1).
+  const hy = 51 + (frame === 1 ? 5 : 0), hx = frame === 1 ? 2 : 0;
+  m.cylinder(cx + hx, cz, hy, hy + 1, 6.6, black);
+  m.cylinder(cx + hx, cz, hy + 2, hy + 9, 4.6, black);
+  m.cylinder(cx + hx, cz, hy + 2, hy + 3, 4.8, band);
+  // Twig arms (the right one waves).
+  m.line(cx - 8, 32, cz, cx - 19, 38, cz + 2, twig, 0.6);
+  m.line(cx - 16, 36, cz + 1, cx - 18, 41, cz + 1, twig, 0);
+  const hand = [[cx + 19, 36, cz + 2], [cx + 13, 53, cz + 2], [cx + 18, 47, cz + 3]][frame];
+  m.line(cx + 8, 32, cz, hand[0], hand[1], hand[2], twig, 0.6);
+  m.line((cx + 8 + hand[0] * 2) / 3, (32 + hand[1] * 2) / 3, cz + 1, hand[0] + 2, hand[1] + 3, cz + 1, twig, 0);
+  return { m, yaw: 28, ground: [cx, 0, cz], anchors: { top: [cx, 64, cz], head: [cx, 48, cz + 6] } };
+});
+
+def('telescope', {
+  name: 'Brass Telescope', biome: 'aquarium', tags: ['fancy', 'metal'], decor: { price: 220, size: 1 }, decorOnly: true,
+  desc: 'For spotting stars, boats, and the occasional suspicious seagull.',
+  interact: {
+    verb: 'Stargaze', frames: 3, seq: [1, 1, 2, 2, 2, 1, 0], fps: 2.5,
+    sfx: [['click', 0], ['click', 0.4], ['ui_unlock', 0.9, { vol: 0.6 }]],
+    fx: [{ at: 0.9, kind: 'stars', from: 'lens', n: 8 }, { at: 1.6, kind: 'sparkle', from: 'lens', n: 6 }],
+    fish: 'gather',
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(56, 64, 44);
+  const wood = m.color('#8a5634', { jitter: 0.05 });
+  const brass = m.color('#e0b048', { spec: 1.8, specPow: 12, smooth: 0.6 });
+  const navy = m.color('#2a3a6a', { spec: 1.2, smooth: 0.6, jitter: 0.02 });
+  const lens = m.color('#9ae8ff', { emissive: 0.5, spec: 2 });
+  const cx = 26, cz = 20;
+  sandMound(m, cx, cz + 2, 18, 15, 2, 4);
+  const apex = [cx, 28, cz];
+  for (const [fx, fz] of [[cx - 13, cz - 6], [cx + 13, cz - 6], [cx, cz + 14]]) {
+    m.line(apex[0], apex[1], apex[2], fx, 1, fz, wood, 0.9);
+    m.sphere(fx, 1, fz, 1.3, brass);
+  }
+  torus(m, cx, 12, cz + 0.5, 4.6, 0.5, brass);
+  m.sphere(cx, 29, cz, 2.6, brass);
+  // Tube aims left / up / right per frame.
+  const dirs = [[-0.62, 0.74, 0.25], [0.08, 0.95, 0.3], [0.66, 0.7, 0.28]];
+  let d = dirs[frame];
+  const l = Math.hypot(...d); d = d.map((v) => v / l);
+  const P = (k) => [cx + d[0] * k, 31 + d[1] * k, cz + d[2] * k];
+  const seg = (a, b, r, c) => { const p = P(a), q = P(b); m.line(p[0], p[1], p[2], q[0], q[1], q[2], c, r); };
+  seg(-11, -7, 1.3, brass);
+  seg(-7, 21, 3, navy);
+  seg(21, 25, 4, navy);
+  for (const k of [-6, 4, 14, 22]) seg(k, k + 1, k === 22 ? 4.4 : 3.5, brass);
+  const e = P(25.5);
+  m.sphere(e[0], e[1], e[2], 2.6, lens);
+  // Finder scope riding on top.
+  const up = [0, 1, 0];
+  const side = [d[1] * up[2] - d[2] * up[1], d[2] * up[0] - d[0] * up[2], d[0] * up[1] - d[1] * up[0]];
+  const o = side.map((v) => v * 4.4);
+  const f0 = P(2), f1 = P(10);
+  m.line(f0[0] + o[0], f0[1] + o[1] + 1, f0[2] + o[2], f1[0] + o[0], f1[1] + o[1] + 1, f1[2] + o[2], brass, 1);
+  return { m, yaw: 30, ground: [cx, 0, cz + 2], anchors: { lens: P(27) } };
+});
+
+def('campfire', {
+  name: 'Campfire', biome: 'aquarium', tags: ['dumb', 'glow'], decor: { price: 160, size: 1 }, decorOnly: true,
+  desc: 'An underwater campfire. Physics has filed a complaint. Marshmallow included.',
+  interact: {
+    verb: 'Stoke', frames: 4, idle: [0, 1, 2, 1], idleFps: 7, seq: [3, 3, 2, 3, 3, 1, 3, 0], fps: 8,
+    sfx: [['puff', 0, { pitch: 0.8 }], ['click', 0.12, { vol: 0.4 }], ['click', 0.3, { vol: 0.3, pitch: 1.3 }], ['click', 0.5, { vol: 0.4, pitch: 0.9 }]],
+    fx: [{ at: 0.05, kind: 'embers', from: 'flame', n: 16 }],
+    ambient: [{ kind: 'embers', from: 'flame', every: 0.9, n: 1 }], fish: 'gather', use: { kind: 'sit', at: 'side' },
+  },
+}, ({ frame, rng }) => {
+  const m = new VoxelModel(46, 52, 46);
+  const stone = reefRock(m, rng, ['#8a8690', '#74707c', '#a29ea6']);
+  const bark = m.color('#6a4228', { jitter: 0.06 });
+  const cut = m.color('#d0a46a', { jitter: 0.04 });
+  const ash = m.color('#3a3438', { jitter: 0.08 });
+  const ember = m.color('#ff6a2a', { emissive: 0.9, jitter: 0 });
+  const fl = ['#e8402a', '#ff7a2a', '#ffc04a', '#fff4b0'].map((c) => m.color(c, { emissive: 1, jitter: 0 }));
+  const stick = m.color('#8a6a40', { jitter: 0.03 });
+  const mallow = m.color(frame === 3 ? '#c8803a' : '#fffaf0', { smooth: 0.8 });
+  const cx = 22, cz = 22;
+  sandMound(m, cx, cz, 19, 19, 2, 3);
+  for (let k = 0; k < 9; k++) { const a = (k / 9) * Math.PI * 2 + 0.2; facetRock(m, rng, cx + Math.cos(a) * 11.5, 2, cz + Math.sin(a) * 11.5, 3.4, 2.8, 3, stone[k % 2], 9); }
+  stoneTex(m, stone, 5);
+  m.cylinder(cx, cz, 1, 2, 7.5, (x, y, z) => (h3(x, y, z, 4) < 0.2 ? ember : ash));
+  for (let k = 0; k < 4; k++) {
+    const a = k * Math.PI / 2 + 0.4;
+    m.line(cx + Math.cos(a) * 8.5, 2.5, cz + Math.sin(a) * 8.5, cx + Math.cos(a) * 1.5, 13, cz + Math.sin(a) * 1.5, bark, 1.7);
+    m.sphere(cx + Math.cos(a) * 8.9, 2.2, cz + Math.sin(a) * 8.9, 1.8, cut);
+  }
+  // Flickering flame tongues (frame 3 flares up).
+  const H = [20, 23, 19, 31][frame], W = frame === 3 ? 7.6 : 6;
+  shape(m, cx - 10, 3, cz - 10, cx + 10, 3 + H, cz + 10, (x, y, z) => {
+    const t = (y - 3) / H;
+    if (t > 1) return false;
+    const a = Math.atan2(z - cz, x - cx);
+    const wob = 0.6 + 0.4 * Math.sin(a * 3 + frame * 2.1 + y * 0.45);
+    const sway = Math.sin(t * 3 + frame) * t * 2;
+    return Math.hypot(x - cx - sway, z - cz) <= W * Math.pow(1 - t, 0.75) * (t > 0.35 ? wob : 1);
+  }, (x, y, z) => {
+    const k = ((y - 3) / H) * 0.9 + (Math.hypot(x + 0.5 - cx, z + 0.5 - cz) / W) * 0.7 + h3(x, y, z, frame) * 0.15;
+    return fl[k < 0.45 ? 3 : k < 0.75 ? 2 : k < 1.05 ? 1 : 0];
+  });
+  // Marshmallow on a stick (toasted when the fire flares).
+  m.line(cx + 16, 1, cz + 14, cx + 6, 12, cz + 6, stick, 0.5);
+  m.box(cx + 4, 11, cz + 4, cx + 6, 13, cz + 6, mallow);
+  return { m, yaw: 30, ground: [cx, 0, cz], light: '#ff9a3a', anchors: { flame: [cx, 3 + H * 0.6, cz], side: [cx + 16, 9, cz + 9] } };
+});
+
+def('arcade_cabinet', {
+  name: 'Arcade Cabinet', biome: 'aquarium', tags: ['retro', 'screen', 'glow'], decor: { price: 520, size: 2 }, decorOnly: true,
+  desc: 'FISH: The Game. High score held by a clownfish named Gary.',
+  interact: {
+    verb: 'Play', frames: 4, idle: [0, 1], idleFps: 1.5, seq: [2, 1, 2, 1, 1, 1, 3, 3, 3, 3, 0], fps: 5,
+    sfx: [['ui_unlock', 0], ['glitch', 0.4, { vol: 0.35 }], ['timing_good', 0.7], ['timing_perfect', 1.2], ['coins_many', 1.3, { vol: 0.25 }]],
+    fx: [{ at: 1.2, kind: 'text', from: 'top', text: 'HI-SCORE!' }, { at: 1.2, kind: 'stars', from: 'screen', n: 8 }],
+    fish: 'gather', use: { kind: 'watch', at: 'front', seq: [1, 0], fps: 2 },
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(40, 80, 40);
+  const purple = m.color('#4a2478', { jitter: 0.04 });
+  const purpleL = m.color('#6a34a8', { jitter: 0.04 });
+  const neon = m.color('#ff4ad8', { emissive: 0.7, jitter: 0 });
+  const trim = m.color('#4af4ff', { emissive: 0.6, jitter: 0 });
+  const black = m.color('#1a1820', { jitter: 0.02 });
+  const chrome = m.color('#c8d0dc', { spec: 2 });
+  const slotC = m.color('#ff4a4a', { emissive: 1, jitter: 0 });
+  const stick = m.color('#e83a3a', { smooth: 0.8, spec: 1.2 });
+  const btn = ['#ffd84a', '#4af4ff', '#ff6ad8'].map((c) => m.color(c, { smooth: 0.6, spec: 1 }));
+  const em = (c) => m.color(c, { emissive: 1, jitter: 0 });
+  const bg = em('#10184a'), star = em('#8aa0ff'), yel = em('#ffd84a'), org = em('#ff8a2a'), wht = em('#ffffff'), red = em('#ff4a5a'), grn = em('#5aff8a'), cyan = em('#4af4ff'), pnk = em('#ff6ad8');
+  const marq = em('#ffd84a');
+  const front = (y) => (y <= 30 ? 30 : y <= 37 ? 30 + (y - 30) * 0.6 : y <= 61 ? 25 : y <= 73 ? 29 : y <= 75 ? 28 : -1);
+  shape(m, 6, 0, 6, 33, 75, 34, (x, y, z) => z <= front(Math.floor(y)) + 1, (x, y, z) => (x <= 7 || x >= 32 ? purpleL : purple));
+  // Side art: neon stripes and a glowing edge trim.
+  m.recolor((x, y, z, p) => ((x === 33 || x === 6) && ((y - z * 0.8 + 400) % 22) < 2 ? neon : null));
+  for (let y = 0; y <= 75; y++) { const f = Math.floor(front(y)); if (f > 0) { m.set(33, y, f + 1, trim); m.set(6, y, f + 1, trim); } }
+  // Coin door, control panel with joystick and buttons.
+  m.box(15, 9, 31, 24, 20, 31, chrome);
+  m.box(17, 15, 32, 18, 17, 32, slotC); m.box(21, 15, 32, 22, 17, 32, slotC);
+  m.box(8, 36, 30, 31, 37, 34, black);
+  m.line(13, 37, 32, 13, 41, 32, black, 0.5);
+  m.sphere(13, 42, 32, 1.6, stick);
+  [[19, 32], [23, 33], [27, 32]].forEach(([bx, bz], i) => m.cylinder(bx, bz, 38, 38, 1.3, btn[i]));
+  // Screen pictures: attract, gameplay, flash, high scores.
+  const pix = (u, v) => {
+    if (frame === 2) return u === 0 || v === 0 || u === 19 || v === 19 ? pnk : yel;
+    if (frame === 3) {
+      if (v >= 1 && v <= 5) { const g = GLYPH[['H', 'I'][Math.floor((u - 6) / 4)]]; const k = (u - 6) % 4; if (u >= 6 && u < 14 && k < 3 && g && g[v - 1][k] === '#') return yel; }
+      if (v >= 8 && v % 3 === 2 && u > 2 && u < 17) return [cyan, pnk, grn, wht][Math.floor((v - 8) / 3) % 4];
+      return bg;
+    }
+    if (frame === 0) {
+      if (v >= 1 && v <= 5 && u >= 2) { const i = Math.floor((u - 2) / 4), k = (u - 2) % 4; const g = GLYPH['FISH'[i]]; if (g && k < 3 && g[v - 1][k] === '#') return yel; }
+      const fu = u - 6, fv = v - 11;
+      if (fu >= 0 && fu <= 7 && Math.abs(fv) <= 2 - (fu === 0 || fu === 7 ? 1 : 0)) return fu === 5 && fv === -1 ? wht : org;
+      if (fu === -1 && Math.abs(fv) <= 2) return org;
+      if (v === 17 && u % 3 !== 0 && u > 2 && u < 17) return wht;
+      return h3(u, v, 1, 2) < 0.04 ? star : bg;
+    }
+    if (v === 0) return u < 8 ? cyan : bg;
+    if (v >= 3 && v <= 4 && (u % 6 === 2 || u % 6 === 3)) return v === 3 ? red : grn;
+    if (u === 9 && v >= 7 && v <= 12 && v % 2) return wht;
+    const fu = u - 6, fv = v - 15;
+    if (fu >= 0 && fu <= 6 && Math.abs(fv) <= 1) return fu === 4 && fv === -1 ? wht : org;
+    return h3(u, v, 2, 2) < 0.05 ? star : bg;
+  };
+  for (let v = 0; v < 20; v++) for (let u = 0; u < 20; u++) m.set(10 + u, 59 - v, 26, pix(u, v));
+  m.box(8, 38, 26, 31, 39, 26, black); m.box(8, 60, 26, 31, 61, 26, black);
+  m.box(8, 38, 26, 9, 61, 26, black); m.box(30, 38, 26, 31, 61, 26, black);
+  // Marquee with FISH in pink.
+  m.box(8, 63, 30, 31, 72, 30, marq);
+  glyphs(m, 'FISH', 12, 70, 31, pnk);
+  m.box(8, 62, 30, 31, 62, 30, black);
+  return { m, yaw: 28, ground: [20, 0, 20], light: '#ff6ad8', anchors: { screen: [20, 50, 28], top: [20, 76, 20], front: [20, 22, 44] } };
+});
+
+const JUKE = ['#ff4ad8', '#ffd84a', '#4af4ff'];
+def('jukebox', {
+  name: 'Jukebox', biome: 'aquarium', tags: ['retro', 'music', 'glow'], decor: { price: 420, size: 1 }, decorOnly: true,
+  desc: 'Bubble tubes, chrome and exactly one record: "Under the Sea (Club Mix)".',
+  interact: {
+    verb: 'Play a tune', frames: 3, idle: [0, 1, 2], idleFps: 1.5, seq: Array.from({ length: 18 }, (_, i) => i % 3), fps: 8,
+    sfx: [[0.1, 0.75], [0.32, 0.84], [0.54, 1], [0.76, 0.84], [0.98, 0.75], [1.2, 0.63], [1.42, 0.75], [1.64, 1]].map(([at, p]) => ['bell', at, { pitch: p, vol: 0.5 }]).concat([['click', 0], ['click', 0.54], ['click', 1.08], ['click', 1.62]]),
+    fx: [0.1, 0.54, 0.98, 1.42].map((at) => ({ at, kind: 'notes', from: 'top', n: 2 })),
+    fish: 'dance', use: { kind: 'dance', at: 'front', seq: [0, 1, 2], fps: 4 },
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(46, 60, 32);
+  const wood = m.color('#8a3424', { jitter: 0.04, spec: 0.6 });
+  const chrome = m.color('#d0d8e2', { spec: 2.2, smooth: 0.5 });
+  const chromeD = m.color('#8a94a4', { spec: 1.2 });
+  const glass = m.color('#1a2a3a', { spec: 2.2, specPow: 10 });
+  const rec = m.color('#141218', { spec: 1 });
+  const card = m.color('#f4ecd0', { jitter: 0 });
+  const tubes = JUKE.map((c) => m.color(c, { emissive: 1, jitter: 0 }));
+  const label = m.color(JUKE[frame], { emissive: 0.6 });
+  const cx = 22.5, cz = 15, ay = 34;
+  rbox(m, 5, 0, 3, 40, 3, 27, 1, chromeD);
+  rbox(m, 6, 3, 4, 39, ay + 1, 26, 2, wood);
+  shape(m, 5, ay, 4, 40, ay + 18, 26, (x, y, z) => Math.hypot(x - cx, y - ay) <= 17, wood);
+  // Bubble-tube arch and side pilasters cycling colours.
+  shape(m, 5, ay, 27, 40, ay + 18, 27, (x, y) => { const r = Math.hypot(x - cx, y - ay); return r >= 13.4 && r <= 15.6; }, (x, y) => tubes[(Math.floor((Math.atan2(y + 0.5 - ay, x + 0.5 - cx) / Math.PI) * 9) + frame) % 3]);
+  shape(m, 5, ay, 27, 40, ay + 18, 27, (x, y) => Math.hypot(x - cx, y - ay) < 13.4, glass);
+  for (const px of [7, 36]) m.box(px, 4, 27, px + 2, ay, 27, (x, y) => tubes[(Math.floor(y / 4) + frame + (px > 20 ? 1 : 0)) % 3]);
+  // A record spinning behind the window, plus tone arm.
+  m.cylinder(cx, ay + 6, 28, 28, 7.4, rec, 'z');
+  torus(m, cx, ay + 6, 28.5, 4.6, 0.4, chromeD, 'z');
+  m.cylinder(cx, ay + 6, 28, 29, 2.4, label, 'z');
+  m.line(cx + 10, ay + 12, 28, cx + 4, ay + 8, 29, chrome, 0.4);
+  // Grille, buttons, title strip, chrome top ornament.
+  for (let x = 12; x <= 33; x += 2) m.box(x, 7, 27, x, 21, 27, chrome);
+  for (let x = 12; x <= 33; x += 2) m.box(x, 25, 27, x, 26, 28, card);
+  m.box(12, 29, 27, 33, 31, 27, card);
+  m.box(14, 30, 28, 31, 30, 28, chromeD);
+  m.ellipsoid(cx, ay + 18, cz, 4, 2, 3, chrome);
+  return { m, yaw: 28, ground: [cx, 0, cz], light: JUKE[frame], anchors: { top: [cx, ay + 22, cz], front: [cx, 18, 36] } };
+});
+
+def('beach_set', {
+  name: 'Beach Day', biome: 'aquarium', tags: ['dumb', 'home'], decor: { price: 300, size: 2 }, decorOnly: true,
+  desc: 'Umbrella, deck chair, beach ball. Forgot the sunscreen. And the beach.',
+  interact: {
+    verb: 'Spin', frames: 4, seq: [0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0], fps: 10,
+    sfx: [['chirp', 0, { pitch: 1.3 }], ['boing', 0.25, { pitch: 1.3 }]],
+    fx: [{ at: 0.1, kind: 'sparkle', from: 'top', n: 8, colors: ['#fff6b0'] }, { at: 0.25, kind: 'confetti', from: 'ball', n: 8 }],
+    fish: 'gather', use: { kind: 'sit', at: 'chair', emote: 'sun' },
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(66, 58, 54);
+  const red = m.color('#e84a5a', { jitter: 0.03, smooth: 0.3 });
+  const white = m.color('#fff4e8', { jitter: 0.03, smooth: 0.3 });
+  const wood = m.color('#c89058', { jitter: 0.04 });
+  const blue = m.color('#3a8ad8', { jitter: 0.03 });
+  const ball = ['#ff4a4a', '#ffffff', '#3a8ad8', '#ffd84a', '#ffffff', '#5ac85a'].map((c) => m.color(c, { smooth: 0.85, spec: 1.2 }));
+  const bucket = m.color('#ff5a3a', { smooth: 0.5, spec: 0.6 });
+  const handle = m.color('#ffd84a', { jitter: 0 });
+  const spade = m.color('#3ab8e8', { smooth: 0.4 });
+  const shades = m.color('#1a1820', { spec: 1.5 });
+  sandMound(m, 32, 27, 31, 24, 3, 6);
+  // Umbrella: striped pole, sloping canopy that spins with the frame.
+  m.line(23, 0, 24, 25, 46, 25, (x, y) => ((y >> 2) % 2 ? red : white), 0.8);
+  const ucx = 25, ucz = 25;
+  for (let x = 0; x < 52; x++) for (let z = 0; z < 52; z++) {
+    const dx = x + 0.5 - ucx, dz = z + 0.5 - ucz, r = Math.hypot(dx, dz);
+    if (r > 23) continue;
+    const a = Math.atan2(dz, dx) + frame * (Math.PI / 16);
+    const sec = Math.floor(((a + Math.PI * 4) / (Math.PI / 4))) % 2;
+    const scallop = r > 21 && Math.abs(((a / (Math.PI / 4)) % 1 + 1) % 1 - 0.5) < 0.25 ? 1 : 0;
+    const y = Math.round(48 - Math.pow(r / 23, 1.6) * 8) - scallop;
+    m.set(x, y, z, sec ? red : white);
+    m.set(x, y + 1, z, sec ? red : white);
+  }
+  m.sphere(ucx, 50, ucz, 1.6, red);
+  // Deck chair with a striped sling and sunglasses.
+  const rail = (u) => (u < 0.6 ? [38 + u / 0.6 * 14, 6] : [52 + (u - 0.6) / 0.4 * 8, 6 + (u - 0.6) / 0.4 * 12]);
+  for (let u = 0; u <= 1; u += 0.02) {
+    const [x, y] = rail(u);
+    for (const z of [30, 43]) m.set(x, y, z, wood);
+    for (let z = 31; z <= 42; z++) m.set(x, y - (u < 0.6 ? Math.sin((u / 0.6) * Math.PI) * 1.5 : 0), z, ((z - 31) >> 1) % 2 ? blue : white);
+  }
+  for (const [x0, x1] of [[38, 39], [52, 50], [59, 56]]) for (const z of [30, 43]) m.line(x0, 0, z, x1, x0 === 59 ? 16 : 6, z, wood, 0);
+  m.box(54, 12, 35, 55, 13, 36, shades); m.box(54, 12, 38, 55, 13, 39, shades); m.box(54, 13, 37, 54, 13, 37, shades);
+  // Beach ball, bucket and spade.
+  m.sphere(12, 5, 41, 4.6, (x, y, z) => (y > 8 ? ball[1] : ball[Math.floor(((Math.atan2(z + 0.5 - 41, x + 0.5 - 12) + Math.PI) / (Math.PI * 2)) * 6) % 6]));
+  lathe(m, 8, 28, 1, 6, (t) => 2.6 + t * 0.8, bucket);
+  m.sub(() => m.cylinder(8, 28, 4, 6, 2.4));
+  m.line(5, 6, 28, 8, 9, 28, handle, 0); m.line(8, 9, 28, 11, 6, 28, handle, 0);
+  m.line(13, 1, 31, 16, 10, 29, spade, 0.4);
+  m.box(12, 0, 31, 14, 2, 33, spade);
+  return { m, yaw: 30, ground: [32, 0, 27], anchors: { chair: [47, 10, 37], top: [ucx, 52, ucz], ball: [12, 8, 41] } };
+});
+
+def('trampoline', {
+  name: 'Trampoline', biome: 'aquarium', tags: ['dumb', 'toy'], decor: { price: 280, size: 2 }, decorOnly: true,
+  desc: 'Boing. Boing. Boing. The fish have discovered joy.',
+  interact: {
+    verb: 'Bounce', frames: 3, seq: [1, 2, 0, 1, 2, 0], fps: 9,
+    sfx: [['boing', 0], ['boing', 0.33, { pitch: 1.2 }]],
+    fx: [{ at: 0, kind: 'ring', from: 'mat' }, { at: 0.1, kind: 'bubbles', from: 'mat', n: 8 }, { at: 0.33, kind: 'ring', from: 'mat' }],
+    fish: 'launch', use: { kind: 'bounce', at: 'mat' },
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(60, 26, 56);
+  const steel = m.color('#9aa4b0', { spec: 1.4, smooth: 0.4 });
+  const pad = m.color('#3a8ad8', { smooth: 0.7, jitter: 0.03 });
+  const padY = m.color('#ffd84a', { smooth: 0.7, jitter: 0.03 });
+  const mat = m.color('#26262e', { jitter: 0.02 });
+  const matL = m.color('#3a3a46', { jitter: 0.02 });
+  const spring = m.color('#e0e4ec', { spec: 1.6 });
+  const cx = 30, cz = 28, R = 22, MR = 16;
+  for (let k = 0; k < 6; k++) {
+    const a = (k / 6) * Math.PI * 2 + 0.3;
+    m.line(cx + Math.cos(a) * R, 15, cz + Math.sin(a) * R, cx + Math.cos(a) * (R + 1.5), 0, cz + Math.sin(a) * (R + 1.5), steel, 0.7);
+  }
+  torus(m, cx, 15, cz, R, 1.1, steel);
+  torus(m, cx, 16.5, cz, R - 2, 1.8, (x, y, z) => (Math.floor((Math.atan2(z - cz, x - cx) + Math.PI) / (Math.PI / 6)) % 2 ? pad : padY));
+  const off = (r) => (frame === 1 ? -5 : frame === 2 ? 2.5 : 0) * (1 - (r / MR) ** 2);
+  for (let x = cx - MR - 1; x <= cx + MR + 1; x++) for (let z = cz - MR - 1; z <= cz + MR + 1; z++) {
+    const r = Math.hypot(x + 0.5 - cx, z + 0.5 - cz);
+    if (r > MR) continue;
+    m.set(x, Math.round(15 + off(r)), z, r % 4 < 0.7 ? matL : mat);
+  }
+  for (let k = 0; k < 30; k++) {
+    const a = (k / 30) * Math.PI * 2;
+    m.line(cx + Math.cos(a) * (MR + 0.3), 15, cz + Math.sin(a) * (MR + 0.3), cx + Math.cos(a) * (R - 3.5), 15.5, cz + Math.sin(a) * (R - 3.5), spring, 0);
+  }
+  return { m, yaw: 30, pitch: 30, ground: [cx, 0, cz], anchors: { mat: [cx, 17 + off(0), cz] } };
+});
+
+def('fish_statue', {
+  name: 'Golden Fish Statue', biome: 'aquarium', tags: ['statue', 'fancy'], decor: { price: 700, size: 2 }, decorOnly: true,
+  desc: 'Erected in honour of the greatest fish. Every fish believes it is about them.',
+  interact: {
+    verb: 'Admire', frames: 3, seq: [1, 2, 1, 2, 1, 2, 0], fps: 5,
+    sfx: [['splash_small', 0], ['golden_shimmer', 0.2], ['bell', 0.5, { pitch: 1.5, vol: 0.5 }]],
+    fx: [{ at: 0.2, kind: 'sparkle', from: 'fish', n: 12, colors: ['#ffe27a', '#fff6c8'] }, { at: 0.1, kind: 'bubbles', from: 'mouth', n: 8 }, { at: 0.6, kind: 'hearts', from: 'fish', n: 2 }],
+    fish: 'gather', use: { kind: 'orbit', at: 'fish' },
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(52, 92, 44);
+  const marble = m.color('#ece8e0', { jitter: 0.04 });
+  const vein = m.color('#b8b4c4', { jitter: 0.02 });
+  const teal = m.color('#5ab8a8', { smooth: 0.7, jitter: 0.04 });
+  const tealL = m.color('#9ae8d8', { smooth: 0.7, jitter: 0.03 });
+  const gold = m.color('#f0c040', { spec: 2, specPow: 12, smooth: 0.7, jitter: 0.02 });
+  const goldL = m.color('#ffe27a', { spec: 2, specPow: 12, smooth: 0.7, jitter: 0.02 });
+  const goldD = m.color('#b8862a', { spec: 1, smooth: 0.6 });
+  const eye = m.color('#2a1a10', { jitter: 0 });
+  const water = m.color('#bff4ff', { emissive: 0.55, smooth: 0.6, jitter: 0 });
+  const cx = 26, cz = 22;
+  m.box(6, 0, 3, 45, 4, 41, marble);
+  m.box(9, 5, 6, 42, 24, 38, marble);
+  m.box(7, 25, 4, 44, 28, 40, marble);
+  m.recolor((x, y, z, p) => (p === marble && Math.abs(fbm3(x * 0.09, y * 0.12, z * 0.09, 3, 5) - 0.5) < 0.025 ? vein : null));
+  m.box(17, 10, 39, 34, 19, 39, goldD);
+  m.box(18, 11, 39, 33, 18, 39, gold);
+  for (const [u, v] of [[3, 2], [4, 1], [4, 2], [4, 3], [5, 1], [5, 2], [5, 3], [6, 2], [7, 2], [8, 1], [8, 3], [2, 2]]) m.set(20 + u, 12 + v, 40, goldD);
+  // Wave crest the fish leaps out of.
+  for (const [x, y, z, r] of [[cx - 3, 30.5, cz, 4.4], [cx + 2, 30, cz + 1, 3.6], [cx - 8, 30, cz - 1, 3.4], [cx + 6, 29.5, cz, 3]]) m.sphere(x, y, z, r, (xx, yy) => (yy > y + r * 0.35 ? tealL : teal));
+  // Leaping golden fish along a curved spine (thin tail stem, fat body, blunt head).
+  const P = (t) => [cx - 12 + 20 * t + Math.sin(Math.PI * t) * 3, 38 + 29 * t + Math.sin(Math.PI * t) * 4, cz];
+  const rad = (t) => (t < 0.25 ? 1.6 + (t / 0.25) * 3 : t < 0.8 ? 4.6 + Math.sin(((t - 0.25) / 0.55) * Math.PI) * 2.4 : 4.6 - ((t - 0.8) / 0.2) ** 2 * 1.8);
+  for (let t = 0; t <= 1; t += 0.01) {
+    const [x, y, z] = P(t), r = rad(t);
+    m.ellipsoid(x, y, z, r, r, r * 0.74, (xx, yy, zz) => (yy < y - r * 0.3 && xx > x ? goldL : h3(xx, yy, zz, 3) < 0.1 ? goldL : gold));
+  }
+  const tri = (a, b, c, z0, z1, col) => {
+    const minx = Math.min(a[0], b[0], c[0]), maxx = Math.max(a[0], b[0], c[0]), miny = Math.min(a[1], b[1], c[1]), maxy = Math.max(a[1], b[1], c[1]);
+    shape(m, minx, miny, z0, maxx, maxy, z1, (x, y) => {
+      const s = (p, q) => (q[0] - p[0]) * (y - p[1]) - (q[1] - p[1]) * (x - p[0]);
+      const d1 = s(a, b), d2 = s(b, c), d3 = s(c, a);
+      return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
+    }, col);
+  };
+  const T0 = P(0), T1 = P(0.06);
+  const dx = T1[0] - T0[0], dy = T1[1] - T0[1], dl = Math.hypot(dx, dy), ux = dx / dl, uy = dy / dl;
+  const tb = [T0[0] + ux, T0[1] + uy];
+  tri(tb, [tb[0] - ux * 9 - uy * 7, tb[1] - uy * 9 + ux * 7], [tb[0] - ux * 4, tb[1] - uy * 4], cz - 1, cz + 1, goldD);
+  tri(tb, [tb[0] - ux * 9 + uy * 7, tb[1] - uy * 9 - ux * 7], [tb[0] - ux * 4, tb[1] - uy * 4], cz - 1, cz + 1, goldD);
+  const D0 = P(0.4), D1 = P(0.68);
+  tri([D0[0] - 4, D0[1] + 3], [D1[0] - 5, D1[1] + 3], [(D0[0] + D1[0]) / 2 - 11, (D0[1] + D1[1]) / 2 + 8], cz, cz, goldD);
+  const A0 = P(0.35), A1 = P(0.5);
+  tri([A0[0] + 4, A0[1] - 3], [A1[0] + 5, A1[1] - 4], [(A0[0] + A1[0]) / 2 + 9, (A0[1] + A1[1]) / 2 - 7], cz, cz, goldD);
+  for (const s of [-1, 1]) m.ellipsoid(P(0.72)[0] + 2, P(0.72)[1] - 3, cz + s * 4.6, 3.2, 1.6, 1, goldD);
+  const H = P(0.92);
+  m.box(H[0] - 1, H[1] + 1, cz + 3, H[0] + 1, H[1] + 3, cz + 3, goldL);
+  m.box(H[0], H[1] + 1, cz + 4, H[0], H[1] + 2, cz + 4, eye);
+  const M = P(1);
+  m.sub(() => m.sphere(M[0] + 1.5, M[1] + 1.5, cz, 1.6));
+  // Fountain from the mouth.
+  if (frame > 0) {
+    const k = frame === 2 ? 1.5 : 1;
+    for (let s = 0; s <= 16; s += 0.25) {
+      const x = M[0] + 2 + s * 0.55, y = M[1] + 2 + s * 1.3 * k - s * s * 0.07 * (frame === 2 ? 0.8 : 1.3);
+      if (y < 30) break;
+      m.sphere(x, y, cz, 0.9, water);
+    }
+    for (let i = 0; i < 6; i++) m.set(M[0] + 8 + i * 1.5, M[1] - 2 - i * 3 + frame, cz + (i % 3) - 1, water);
+  }
+  return { m, yaw: 30, ground: [cx, 0, cz], anchors: { mouth: [M[0] + 2, M[1] + 2, cz], fish: P(0.5) } };
+});
+
+def('giant_sneaker', {
+  name: 'Lost Sneaker', biome: 'aquarium', tags: ['dumb', 'junk', 'home'], decor: { price: 260, size: 2 }, decorOnly: true,
+  desc: 'Size 97. Still has the other one somewhere. Squeaks when tapped.',
+  interact: {
+    verb: 'Tap', frames: 3, seq: [1, 0, 1, 0, 2, 0, 2, 0], fps: 9,
+    sfx: [['squeak', 0, { pitch: 0.9 }], ['squeak', 0.22, { pitch: 1.1 }], ['squeak', 0.44, { pitch: 0.8 }], ['squeak', 0.66, { pitch: 1.2 }]],
+    fx: [{ at: 0, kind: 'burst', from: 'toe', n: 8, colors: ['#e8cf96', '#ffffff'] }],
+    fish: 'flee', use: { kind: 'hide', at: 'opening' },
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(74, 50, 36);
+  const S = part(m, 64, 38, 28);
+  const rubber = m.color('#f4f4ee', { jitter: 0.03, smooth: 0.3 });
+  const tread = m.color('#b0b0ba', { jitter: 0.02 });
+  const mid = m.color('#3ac8b8', { jitter: 0.02 });
+  const leather = m.color('#f8f8f4', { jitter: 0.03, smooth: 0.45 });
+  const pink = m.color('#ff5a9a', { jitter: 0.02, smooth: 0.4 });
+  const cap = m.color('#dadae4', { jitter: 0.02, smooth: 0.4 });
+  const tab = m.color('#e84a4a', { jitter: 0.02 });
+  const collar = m.color('#2a2a48', { jitter: 0.03, smooth: 0.5 });
+  const lining = m.color('#3a3048', { jitter: 0.02 });
+  const lace = m.color('#ffffff', { jitter: 0 });
+  const eyelet = m.color('#9aa0ac', { spec: 1.4 });
+  const zc = 14;
+  const wAt = (x) => {
+    const u = (x - 2) / 58;
+    if (u < 0 || u > 1) return -1;
+    let w = 7.2 + 3.2 * Math.sin(u * Math.PI * 0.95);
+    if (u > 0.86) w *= Math.sqrt(Math.max(0, 1 - ((u - 0.86) / 0.14) ** 2));
+    if (u < 0.05) w *= Math.sqrt(Math.max(0, 1 - ((0.05 - u) / 0.05) ** 2));
+    return w;
+  };
+  const hu = (u) => 25 - 16 * smoothT(0.22, 1, u);
+  for (let x = 0; x < 64; x++) {
+    const w = wAt(x + 0.5), u = (x + 0.5 - 2) / 58;
+    if (w <= 0) continue;
+    for (let z = 0; z < 28; z++) {
+      const dz = z + 0.5 - zc;
+      if (Math.abs(dz) > w) continue;
+      for (let y = 0; y <= 4; y++) S.set(x, y, z, y === 4 ? mid : y === 1 && x % 3 === 0 ? tread : rubber);
+      if (Math.abs(dz) > w - 0.6) continue;
+      const top = 4 + (hu(u) - 4) * Math.sqrt(Math.max(0, 1 - (dz / w) ** 2 * 0.75));
+      for (let y = 5; y <= top; y++) {
+        let c = leather;
+        const ys = 8 + 9 * Math.sin(u * Math.PI * 0.8 + 0.3);
+        if (u > 0.15 && u < 0.82 && Math.abs(y - ys + (u - 0.5) * 6) < 1.5 && Math.abs(dz) > w - 2.5) c = pink;
+        if (u > 0.86 && y < 10) c = cap;
+        if (u < 0.06 && y > 15) c = tab;
+        S.set(x, y, z, c);
+      }
+    }
+  }
+  // Opening with padded collar, tongue, laces.
+  S.recolor((x, y, z, p) => (x < 21 && y >= 12 && Math.abs(z + 0.5 - zc) > wAt(x + 0.5) - 3 && p === leather ? collar : null));
+  S.sub(() => shape(S, 2, 13, 0, 20, 37, 27, (x, y, z) => Math.abs(z - zc) < wAt(x) - 2.4 && x > 3.5, 1));
+  shape(S, 2, 12, 0, 20, 12, 27, (x, y, z) => Math.abs(z - zc) < wAt(x) - 2.4 && x > 3.5, lining);
+  S.box(19, 18, zc - 4, 22, 29, zc + 4, leather);
+  S.box(21, 26, zc - 2, 22, 28, zc + 2, mid);
+  for (let x = 24; x <= 38; x += 3) {
+    const u = (x - 2) / 58, yt = Math.round(hu(u)) + 1;
+    S.set(x, yt - 1, zc - 4, eyelet); S.set(x, yt - 1, zc + 4, eyelet);
+    S.line(x, yt, zc - 4, x + 3, yt - 0.5, zc + 4, lace, 0);
+    S.line(x, yt, zc + 4, x + 3, yt - 0.5, zc - 4, lace, 0);
+  }
+  S.line(26, 22, zc + 5, 31, 6, zc + 11, lace, 0);
+  S.line(31, 6, zc + 11, 36, 1, zc + 12, lace, 0);
+  const rz = [0, 9, -7][frame], pv = frame === 2 ? [60, 0, zc] : [2, 0, zc];
+  const dp = [pv[0] + 5, 0, 17];
+  stampRot(m, S, pv, dp, 0, 0, rz);
+  const X = (p) => xformPt(p, pv, dp, 0, 0, rz);
+  return { m, yaw: 30, ground: [36, 0, 17], anchors: { opening: X([11, 20, zc]), toe: X([58, 3, zc]) } };
+});
+function smoothT(a, b, v) { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
+
+def('bowling_pins', {
+  name: 'Bowling Set', biome: 'aquarium', tags: ['dumb', 'toy'], decor: { price: 140, size: 1 }, decorOnly: true,
+  desc: 'Strike every time. The pins reset themselves out of pure professionalism.',
+  interact: {
+    verb: 'Strike!', frames: 3, seq: [2, 1, 1, 1, 1, 1, 1, 0], fps: 5,
+    sfx: [['thunder', 0, { vol: 0.35, pitch: 1.7 }], ['box_close', 0.15], ['mash_pop', 0.18], ['mash_pop', 0.24], ['timing_perfect', 0.5]],
+    fx: [{ at: 0.2, kind: 'text', from: 'top', text: 'STRIKE!' }, { at: 0.2, kind: 'confetti', from: 'pins', n: 18 }],
+    fish: 'flee',
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(58, 46, 50);
+  const P = part(m, 12, 34, 12);
+  const white = m.color('#f8f6f0', { smooth: 0.8, spec: 1.2, jitter: 0.02 });
+  const stripe = m.color('#d83a3a', { smooth: 0.8, spec: 1, jitter: 0.02 });
+  const maple = m.color('#e8c890', { jitter: 0.04 });
+  const mapleD = m.color('#d0aa70', { jitter: 0.04 });
+  const arrow = m.color('#5a3a2a', { jitter: 0 });
+  const ballA = m.color('#3a2a7a', { spec: 2.4, specPow: 14, smooth: 0.9 });
+  const ballB = m.color('#7a5ad8', { spec: 2.4, specPow: 14, smooth: 0.9 });
+  const hole = m.color('#120c20', { jitter: 0 });
+  const K = [[0, 2.4], [0.25, 4.1], [0.62, 1.7], [0.82, 2.7], [1, 0.4]];
+  lathe(P, 6, 6, 0, 30, (t) => {
+    let i = 0; while (i < K.length - 2 && t > K[i + 1][0]) i++;
+    const [t0, r0] = K[i], [t1, r1] = K[i + 1], k = (t - t0) / (t1 - t0);
+    return r0 + (r1 - r0) * (0.5 - Math.cos(k * Math.PI) / 2);
+  }, (x, y) => ((y >= 17 && y <= 18) || (y >= 20 && y <= 21) ? stripe : white));
+  m.box(4, 0, 4, 53, 1, 47, (x, y, z) => (x % 4 === 0 ? mapleD : maple));
+  for (const ax of [14, 28, 42]) { m.set(ax, 2, 44, arrow); m.set(ax - 1, 2, 45, arrow); m.set(ax + 1, 2, 45, arrow); }
+  const spots = [[28, 34], [23, 27], [33, 27], [18, 20], [28, 20], [38, 20]];
+  spots.forEach(([px, pz], k) => {
+    if (frame === 0) stampRot(m, P, [6, 0, 6], [px, 2, pz]);
+    else if (frame === 2) stampRot(m, P, [6, 0, 6], [px, 2, pz], k % 2 ? 40 : -30, k * 40, k % 2 ? 0 : 38);
+    else stampRot(m, P, [6, 0, 6], [px + (k % 3 - 1) * 6, 6, pz + (k % 2 ? 3 : -4)], k % 2 ? 88 : 0, k * 47, k % 2 ? 0 : 88);
+  });
+  const [bx, bz] = frame === 0 ? [46, 41] : [28, 28];
+  m.sphere(bx, 8, bz, 6, (x, y, z) => (fbm3(x * 0.25, y * 0.25, z * 0.25, 2, 9) > 0.52 ? ballB : ballA));
+  for (const [hx, hy] of [[-1.6, 3], [1.6, 3], [0, 0.5]]) { const z = frontZ(bx, 8, bz, 6, bx + hx, 8 + hy); if (z !== null) m.box(bx + hx, 8 + hy, z - 1, bx + hx, 8 + hy, z + 1, hole); }
+  return { m, yaw: 30, ground: [28, 0, 26], anchors: { top: [28, 38, 26], pins: [28, 14, 27] } };
+});
+
+def('hot_tub', {
+  name: 'Hot Tub', biome: 'aquarium', tags: ['home', 'glow'], decor: { price: 550, size: 2 }, decorOnly: true,
+  desc: 'Bubbling cedar hot tub with a tiny cocktail. Fish-only, no splashing (they splash).',
+  interact: {
+    verb: 'Jets on', frames: 3, idle: [1, 2], idleFps: 2.5, seq: [1, 2, 1, 2, 1, 2, 1, 2, 1, 2], fps: 8,
+    sfx: [['bubbles', 0], ['bubbles', 0.35], ['flood_rush', 0.1, { vol: 0.2, pitch: 1.6 }]],
+    fx: [{ at: 0, kind: 'bubbles', from: 'water', n: 20 }, { at: 0.4, kind: 'bubbles', from: 'water', n: 14 }, { at: 0.2, kind: 'steam', from: 'top', n: 10 }],
+    ambient: [{ kind: 'bubbles', from: 'water', every: 1.5, n: 2 }], fish: 'gather', use: { kind: 'sit', at: 'water', emote: 'heart' },
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(62, 32, 60);
+  const cedar = [m.color('#b8703a', { jitter: 0.05 }), m.color('#a0602e', { jitter: 0.05 })];
+  const band = m.color('#4a4a52', { spec: 1 });
+  const rim = m.color('#d8a868', { jitter: 0.04 });
+  const water = m.color('#4ad8e0', { emissive: 0.35, smooth: 0.4, jitter: 0.02 });
+  const foam = m.color('#f4fcff', { smooth: 0.9, emissive: 0.15 });
+  const step = [m.color('#c8884a', { jitter: 0.04 }), m.color('#a86e3a', { jitter: 0.04 })];
+  const towel = [m.color('#ff7ab0', { smooth: 0.4 }), m.color('#fff4f8', { smooth: 0.4 })];
+  const glass = m.color('#d8f4ff', { spec: 2 });
+  const drink = m.color('#ff9a3a', { emissive: 0.2 });
+  const umb = m.color('#ff4a8a', { smooth: 0.3 });
+  const yel = m.color('#ffd23a', { smooth: 0.85, spec: 1.4 }), beak = m.color('#ff8a2a'), eye = m.color('#1a1a22', { jitter: 0 });
+  const cx = 31, cz = 28, R = 22;
+  const oct = (x, z, r) => { const dx = Math.abs(x - cx), dz = Math.abs(z - cz); return Math.max(dx, dz, (dx + dz) * 0.7071) <= r; };
+  shape(m, cx - R, 0, cz - R, cx + R, 18, cz + R, (x, y, z) => oct(x, z, R), (x, y, z) => (y === 4 || y === 14 ? band : cedar[Math.floor((Math.atan2(z + 0.5 - cz, x + 0.5 - cx) + Math.PI) * 6) % 2]));
+  shape(m, cx - R - 1, 19, cz - R - 1, cx + R + 1, 20, cz + R + 1, (x, y, z) => oct(x, z, R + 0.8) && !oct(x, z, R - 3.5), rim);
+  m.sub(() => shape(m, cx - R, 5, cz - R, cx + R, 20, cz + R, (x, y, z) => oct(x, z, R - 3.2), 1));
+  shape(m, cx - R, 15, cz - R, cx + R, 15, cz + R, (x, y, z) => oct(x, z, R - 3.2), water);
+  const nb = frame === 0 ? 6 : 22;
+  for (let i = 0; i < nb; i++) {
+    const a = h3(i, frame, 1, 4) * Math.PI * 2, r = Math.sqrt(h3(i, frame, 2, 4)) * (R - 6);
+    m.sphere(cx + Math.cos(a) * r, 16, cz + Math.sin(a) * r, 0.9 + h3(i, frame, 3, 4) * (frame ? 1.1 : 0.4), foam);
+  }
+  miniDuck(m, cx - 6, 15, cz + 6, 0.9, yel, beak, eye, 1);
+  // Steps in front, towel over the side, a cocktail on the rim.
+  m.box(cx - 8, 0, cz + R + 1, cx + 8, 5, cz + R + 7, (x, y, z) => step[z % 3 === 0 ? 1 : 0]);
+  m.box(cx - 8, 6, cz + R + 1, cx + 8, 11, cz + R + 3, (x, y, z) => step[z % 3 === 0 ? 1 : 0]);
+  m.box(cx + R - 3, 21, cz - 6, cx + R + 1, 21, cz + 4, (x, y, z) => towel[(z >> 1) % 2]);
+  m.box(cx + R + 1, 9, cz - 6, cx + R + 1, 21, cz + 4, (x, y, z) => towel[(z >> 1) % 2]);
+  const gx = cx + 14, gz = cz - 14;
+  m.cylinder(gx, gz, 21, 21, 1.4, glass); m.box(gx, 22, gz, gx, 23, gz, glass);
+  m.cone(gx, gz, 24, 26, 0.8, 2.2, drink);
+  m.line(gx, 26, gz, gx + 1, 30, gz, glass, 0);
+  m.cone(gx + 1, gz, 30, 31, 2.4, 0.3, umb);
+  return { m, yaw: 30, pitch: 30, ground: [cx, 0, cz], light: '#4ad8e0', anchors: { water: [cx, 17, cz], top: [cx, 24, cz] } };
+});
+
+def('map_table', {
+  name: 'Treasure Map Table', biome: 'aquarium', tags: ['treasure', 'wreck'], decor: { price: 360, size: 2 }, decorOnly: true,
+  desc: 'X marks the spot. The spot is, annoyingly, this table.',
+  interact: {
+    verb: 'Read map', frames: 3, seq: [1, 2, 2, 2, 2, 2, 1, 0], fps: 3,
+    sfx: [['ui_page', 0], ['magic', 0.7], ['sparkle', 0.9]],
+    fx: [{ at: 0.7, kind: 'sparkle', from: 'x', n: 10, colors: ['#ffe27a', '#ff7a5a'] }, { at: 0.9, kind: 'text', from: 'top', text: 'X MARKS THE SPOT' }],
+    fish: 'gather',
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(58, 40, 46);
+  const wood = [m.color('#8a5a34', { jitter: 0.06 }), m.color('#74482a', { jitter: 0.06 })];
+  const parch = m.color('#f0dca8', { jitter: 0.04 });
+  const parchD = m.color('#d4b67a', { jitter: 0.04 });
+  const land = m.color('#8ab060', { jitter: 0.04 });
+  const inkC = m.color('#6a4a2a', { jitter: 0 });
+  const path = m.color('#c83a2a', { jitter: 0 });
+  const xC = frame === 2 ? m.color('#ff4a2a', { emissive: 1, jitter: 0 }) : m.color('#c82a2a', { jitter: 0 });
+  const gold = m.color('#f0c040', { spec: 1.6 });
+  const wax = m.color('#f8f0dc', { smooth: 0.6 });
+  const flame = m.color('#ffc84a', { emissive: 1, jitter: 0 });
+  const steel = m.color('#d0d8e4', { spec: 2 });
+  const ribbon = m.color('#d83a4a', { jitter: 0 });
+  m.box(4, 18, 6, 53, 20, 39, (x, y, z) => (z % 6 === 0 ? wood[1] : wood[0]));
+  for (const [lx, lz] of [[7, 9], [50, 9], [7, 36], [50, 36]]) lathe(m, lx, lz, 0, 17, (t) => 1.6 + Math.sin(t * Math.PI * 3) * 0.6, wood[1]);
+  m.box(8, 5, 9, 49, 5, 9, wood[1]); m.box(8, 5, 36, 49, 5, 36, wood[1]);
+  if (frame === 0) {
+    m.cylinder(22.5, 22, 14, 42, 2.4, parch, 'x');
+    m.cylinder(22.5, 22, 13, 13, 2.8, parchD, 'x'); m.cylinder(22.5, 22, 43, 43, 2.8, parchD, 'x');
+    m.cylinder(22.5, 22, 28, 29, 2.6, ribbon, 'x');
+    m.cylinder(36, 30, 21, 21, 2.4, gold); m.line(34.5, 22, 30, 37.5, 22, 30, path, 0);
+  } else {
+    // Flat map: parchment, islands, dotted path, X, compass rose, curled corners.
+    for (let x = 10; x <= 46; x++) for (let z = 10; z <= 34; z++) {
+      const edge = x === 10 || x === 46 || z === 10 || z === 34;
+      const isl = fbm3(x * 0.13, 0, z * 0.13, 2, 4) > 0.58;
+      m.set(x, 21, z, edge ? parchD : isl ? land : parch);
+    }
+    for (const [x, z] of [[10, 10], [46, 10], [10, 34], [46, 34]]) m.set(x, 22, z, parchD);
+    for (let t = 0; t <= 1; t += 0.035) {
+      if (Math.floor(t * 28) % 2) continue;
+      m.set(14 + t * 24, 22, 30 - t * 14 + Math.sin(t * 6) * 3, path);
+    }
+    for (let k = -2; k <= 2; k++) { m.set(38 + k, 22, 16 + k, xC); m.set(38 + k, 22, 16 - k, xC); }
+    for (const [dx, dz] of [[0, -2], [0, 2], [-2, 0], [2, 0], [0, 0]]) m.set(16 + dx, 22, 14 + dz, inkC);
+    m.line(44, 21, 24, 44, 26, 25, steel, 0); m.box(42, 27, 25, 46, 27, 25, gold); m.box(44, 28, 25, 44, 30, 25, wood[1]); m.set(44, 31, 25, gold);
+  }
+  m.cylinder(49, 12, 21, 21, 2.6, gold);
+  lathe(m, 49, 12, 22, 28, () => 1.3, wax);
+  m.box(49, 29, 12, 49, 30, 12, flame);
+  for (let i = 0; i < 4; i++) m.cylinder(8, 30, 21 + i, 21 + i, 1.6, gold);
+  m.cylinder(11, 33, 21, 21, 1.6, gold);
+  return { m, yaw: 30, pitch: 32, ground: [28, 0, 22], light: '#ffc84a', anchors: { x: [38, 23, 16], top: [28, 32, 22] } };
+});
+
+// Lava lamps: shared builder (k scales the whole lamp), frames shift the blobs.
+function lavaLamp(sc, frame, k = 1, opts = {}) {
+  const N = Math.round(26 * k);
+  const m = new VoxelModel(N, Math.round(70 * k), N);
+  const metal = [m.color(opts.metal || '#b8c0cc', { jitter: 0.04, smooth: 0.7, spec: 2, specPow: 10 }), m.color(opts.metal2 || '#8e96a4', { jitter: 0.04, smooth: 0.7 })];
+  const liquid = m.color(sc[0], { emissive: 0.75, jitter: 0.02, smooth: 0.6 });
+  const blobC = m.color(sc[1], { emissive: 1, jitter: 0.02, smooth: 0.6 });
+  const starC = opts.stars ? m.color('#ffffff', { emissive: 1, jitter: 0 }) : 0;
+  const cx = N / 2, cz = N / 2;
+  m.cone(cx, cz, 0, 18 * k, 9 * k, 5 * k, metal[1]);
+  m.cylinder(cx, cz, 0, Math.max(1, k), 9.5 * k, metal[0]);
+  m.cylinder(cx, cz, 17 * k, 18 * k, 5.6 * k, metal[0]);
+  const y0 = Math.round(19 * k), y1 = Math.round(56 * k);
+  for (let y = y0; y < y1; y++) {
+    const t = (y - y0) / (y1 - y0);
+    const r = (5.2 + Math.sin(t * Math.PI * 0.9 + 0.2) * 2.2 - t * 1.6) * k;
+    m.cylinder(cx, cz, y, y, r, (x, yy, z) => (starC && h3(x, yy, z, 3 + frame) < 0.04 ? starC : liquid));
+  }
+  const blobs = [[22, 4.6, 0, 3], [32, 3.2, 2, 4.5], [40, 3.4, -1.5, 3.5], [49, 2.6, 1, 3], [28, 2.2, -3.5, 3.5], [45, 2, 3, 2]];
+  blobs.forEach(([by, br, bx, bz], i) => {
+    const y = clamp(by + (Math.sin((frame / 4) * Math.PI * 2 + i * 1.7) - Math.sin(i * 1.7)) * (i % 2 ? 3 : 4), 21, 53);
+    m.sphere(cx + bx * k, y * k, cz + bz * k, br * k, (x, yy, z, p) => (p || Math.hypot(x + 0.5 - cx, z + 0.5 - cz) < 7.6 * k ? blobC : null));
+  });
+  m.cone(cx, cz, 56 * k, 62 * k, 4 * k, 2.6 * k, metal[0]);
+  m.cylinder(cx, cz, 62 * k, 63 * k, 2.2 * k, metal[1]);
+  return { m, yaw: 30, light: sc[0], ground: [cx, 0, cz], anchors: { top: [cx, 58 * k, cz], center: [cx, 36 * k, cz] } };
+}
+const LAMP_INTERACT = {
+  verb: 'Swirl', frames: 4, idle: [0, 1, 2, 3], idleFps: 1.2, seq: [0, 1, 2, 3, 0, 1, 2, 3, 0], fps: 8,
+  sfx: [['bubble', 0, { pitch: 0.6 }], ['magic', 0.15, { vol: 0.4 }]],
+  fx: [{ at: 0.1, kind: 'sparkle', from: 'top', n: 6 }, { at: 0.3, kind: 'bubbles', from: 'top', n: 6 }], fish: 'gather',
+};
+def('lava_lamp_giant', { name: 'Giant Lava Lamp', biome: 'aquarium', tags: ['glow', 'retro'], decor: { price: 520, size: 2 }, decorOnly: true, desc: 'The same groovy lamp, but taller than most of your fish.', interact: LAMP_INTERACT },
+  ({ variant, frame }) => lavaLamp(LAVA[(variant + 4) % LAVA.length], frame, 1.5));
+def('lava_lamp_slime', { name: 'Slime Lamp', biome: 'aquarium', tags: ['glow', 'retro'], decor: { price: 260, size: 1 }, decorOnly: true, desc: 'Toxic-green goo in a lamp. Probably fine.', interact: LAMP_INTERACT },
+  ({ frame }) => lavaLamp(LAVA[3], frame, 1, { metal: '#4a4e5a', metal2: '#2e323c' }));
+def('lava_lamp_galaxy', { name: 'Galaxy Lamp', biome: 'aquarium', tags: ['glow', 'retro'], decor: { price: 300, size: 1 }, decorOnly: true, desc: 'A pocket universe with drifting nebula blobs.', interact: LAMP_INTERACT },
+  ({ frame }) => lavaLamp(LAVA[5], frame, 1, { stars: true, metal: '#d8c890', metal2: '#a89060' }));
+
+def('plasma_globe', {
+  name: 'Plasma Globe', biome: 'aquarium', tags: ['glow', 'machine'], decor: { price: 380, size: 1 }, decorOnly: true,
+  desc: 'Crackling lightning in a ball. Do not lick. (The fish lick it.)',
+  interact: {
+    verb: 'Zap', frames: 4, idle: [0, 1, 2, 3], idleFps: 5, seq: Array.from({ length: 16 }, (_, i) => i % 4), fps: 14,
+    sfx: [['static_burst', 0, { vol: 0.5 }], ['glitch', 0.2, { vol: 0.35 }], ['magic', 0.4, { pitch: 1.4, vol: 0.5 }]],
+    fx: [{ at: 0.1, kind: 'sparkle', from: 'orb', n: 12, colors: ['#ff9aff', '#d8b0ff', '#ffffff'] }, { at: 0.5, kind: 'sparkle', from: 'orb', n: 8, colors: ['#ff9aff', '#ffffff'] }],
+    fish: 'gather',
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(44, 48, 44);
+  const base = m.color('#1e1c26', { spec: 1.4, smooth: 0.5 });
+  const chrome = m.color('#c8d0dc', { spec: 2 });
+  const back = m.color('#2a1a4a', { emissive: 0.15, smooth: 0.8 });
+  const glass = m.color('#c8e8ff', { spec: 2, light: 0.3, jitter: 0 });
+  const orb = m.color('#f4d0ff', { emissive: 1, jitter: 0, smooth: 0.8 });
+  const arc = m.color('#ff7aff', { emissive: 1, jitter: 0 });
+  const tip = m.color('#ffe8ff', { emissive: 1, jitter: 0 });
+  const cx = 22, cz = 22, cy = 28, R = 14;
+  lathe(m, cx, cz, 0, 12, (t) => (t < 0.3 ? 10 - t * 6 : 8.2 - t * 3.2), base);
+  m.cylinder(cx, cz, 13, 13, 5.6, chrome);
+  shape(m, cx - R, cy - R, cz - R, cx + R, cy + R, cz - 2, (x, y, z) => { const d = Math.hypot(x - cx, y - cy, z - cz); return d <= R && d > R - 0.9; }, back);
+  torus(m, cx, cy, cz, R, 0.5, glass);
+  torus(m, cx, cy, cz, R, 0.5, glass, 'z');
+  for (let a = 2.1; a < 2.7; a += 0.06) m.set(cx + Math.cos(a) * (R - 1.5), cy + Math.sin(a) * (R - 1.5), cz + 6, glass);
+  m.sphere(cx, cy, cz, 3.2, orb);
+  for (let k = 0; k < 7; k++) {
+    const th = (k / 7) * Math.PI * 2 + frame * 0.45 + Math.sin(k * 3.1 + frame) * 0.3;
+    const ph = (h3(k, frame, 1, 6) - 0.5) * 1.5;
+    let ez = Math.cos(ph) * Math.sin(th);
+    if (ez < -0.3) ez = -ez;
+    const E = [cx + R * 0.92 * Math.cos(ph) * Math.cos(th), cy + R * 0.92 * Math.sin(ph), cz + R * 0.92 * ez];
+    let prev = [cx, cy, cz];
+    for (let i = 1; i <= 6; i++) {
+      const t = i / 6, j = i < 6 ? 1.3 : 0;
+      const p = [cx + (E[0] - cx) * t + (h3(k, i, frame, 1) - 0.5) * 2 * j, cy + (E[1] - cy) * t + (h3(k, i, frame, 2) - 0.5) * 2 * j, cz + (E[2] - cz) * t + (h3(k, i, frame, 3) - 0.5) * 2 * j];
+      m.line(prev[0], prev[1], prev[2], p[0], p[1], p[2], arc, 0);
+      prev = p;
+    }
+    m.sphere(E[0], E[1], E[2], 1.2, tip);
+  }
+  return { m, yaw: 30, ground: [cx, 0, cz], light: '#ff9aff', anchors: { orb: [cx, cy, cz], top: [cx, cy + R, cz] } };
+});
+
+def('crystal_throne', {
+  name: 'Crystal Throne', biome: 'aquarium', tags: ['crystal', 'glow', 'fancy'], decor: { price: 1200, size: 2 }, decorOnly: true,
+  desc: 'Carved from one enormous amethyst. Whoever sits here is the fish king. For a bit.',
+  interact: {
+    verb: 'Glow', frames: 3, seq: [1, 2, 1, 2, 1, 2, 0], fps: 4,
+    sfx: [['magic', 0], ['golden_shimmer', 0.2], ['bell', 0.5, { pitch: 0.6, vol: 0.5 }]],
+    fx: [{ at: 0.1, kind: 'sparkle', from: 'back', n: 14, colors: ['#e0b0ff', '#ffffff', '#b46bff'] }, { at: 0.5, kind: 'icons', icon: 'crown', from: 'seat', n: 1 }],
+    fish: 'gather', use: { kind: 'sit', at: 'seat', emote: 'crown' },
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(64, 90, 52);
+  const stoneD = m.color('#3a3456', { jitter: 0.06 });
+  const stone = m.color('#4a4468', { jitter: 0.06 });
+  const gold = m.color('#f2c84a', { spec: 1.6 });
+  const velvet = m.color('#8a2a6a', { smooth: 0.65, jitter: 0.03 });
+  const glowK = [0.25, 0.65, 0.95][frame];
+  const cr = [m.color(frame === 2 ? '#c88aff' : '#9a5af0', { emissive: glowK, smooth: 0.2 }), m.color('#e0b8ff', { emissive: glowK, smooth: 0.2 }), m.color('#5a2aa8', { emissive: glowK * 0.6, smooth: 0.2 })];
+  const rune = m.color('#5af4ff', { emissive: frame === 2 ? 1 : 0.2, jitter: 0 });
+  const cx = 32, cz = 26;
+  m.box(6, 0, 4, 57, 3, 49, stoneD);
+  m.box(10, 4, 8, 53, 7, 45, stone);
+  for (let x = 12; x <= 51; x += 3) m.box(x, 5, 46, x + 1, 6, 46, rune);
+  // Crystal shards fanning out behind the backrest.
+  for (const [dx, len, r, tilt] of [[0, 30, 5, 0], [-7, 24, 4, -0.26], [7, 25, 4, 0.26], [-12, 18, 3.4, -0.55], [12, 19, 3.4, 0.55], [-3, 20, 3, -0.1], [4, 22, 3, 0.12]]) {
+    shaft(m, [cx + dx, 44, 12], [Math.sin(tilt), Math.cos(tilt), -0.12], len, r, 7, (x, y) => (y > 44 + len * 0.8 ? cr[1] : h3(x, y, 0, 2) < 0.15 ? cr[2] : cr[0]), 6, dx * 0.1);
+  }
+  m.box(17, 8, 12, 46, 19, 38, stone);
+  m.box(17, 19, 38, 46, 19, 38, gold);
+  rbox(m, 18, 20, 14, 45, 23, 37, 1.6, velvet);
+  for (const ax of [12, 46]) { m.box(ax, 20, 14, ax + 5, 29, 38, stone); m.box(ax, 30, 14, ax + 5, 30, 38, gold); m.sphere(ax + 2.5, 33, 35, 3, cr[1]); }
+  m.box(17, 20, 10, 46, 54, 15, stone);
+  for (let y = 20; y <= 54; y++) { m.set(17, y, 15, gold); m.set(46, y, 15, gold); }
+  m.box(17, 54, 15, 46, 54, 15, gold);
+  for (const [x, y] of [[cx - 4, 56], [cx, 58], [cx + 4, 56], [cx - 4, 55], [cx + 4, 55], [cx - 2, 55], [cx + 2, 55], [cx, 55], [cx, 57]]) m.box(x, y, 12, x, y, 14, gold);
+  for (const [x, z] of [[8, 6], [55, 6], [8, 47], [55, 47]]) shaft(m, [x, 3, z], [0.1 * Math.sign(x - cx), 1, 0.1 * Math.sign(z - cz)], 9, 1.8, 3, cr[0], 6);
+  return { m, yaw: 30, ground: [cx, 0, cz], light: '#c88aff', anchors: { seat: [cx, 26, 30], back: [cx, 62, 12] } };
+});
+
+def('sunken_car', {
+  name: 'Sunken Beetle', biome: 'aquarium', tags: ['wreck', 'metal', 'home'], decor: { price: 800, size: 3 }, decorOnly: true,
+  desc: 'A rusty little car that drove off a pier in 1972. The horn still works.',
+  interact: {
+    verb: 'Honk', frames: 3, seq: [1, 2, 1, 2, 1, 0], fps: 4,
+    sfx: [['honk', 0, { pitch: 0.7 }], ['honk', 0.28, { pitch: 0.75 }]],
+    fx: [{ at: 0.1, kind: 'bubbles', from: 'exhaust', n: 10 }, { at: 0, kind: 'text', from: 'front', text: 'BEEP BEEP' }],
+    fish: 'flee', use: { kind: 'hide', at: 'window' },
+  },
+}, ({ frame, rng }) => {
+  const m = new VoxelModel(92, 50, 54);
+  const paint = m.color('#7ad8b8', { smooth: 0.55, spec: 0.7, jitter: 0.04 });
+  const paintD = m.color('#5ab89a', { smooth: 0.55, jitter: 0.04 });
+  const glass = m.color('#2a3a4a', { spec: 2, specPow: 10 });
+  const tire = m.color('#24242a', { smooth: 0.5 });
+  const chrome = m.color('#d0d8e2', { spec: 2.2, smooth: 0.5 });
+  const head = m.color(frame === 1 ? '#fff6c0' : '#d8e8f0', frame === 1 ? { emissive: 1, jitter: 0 } : { spec: 2 });
+  const tail = m.color('#ff3a3a', { emissive: frame === 1 ? 1 : 0.15 });
+  const ind = m.color('#ffa83a', { emissive: frame === 2 ? 1 : 0.1 });
+  const kelp = [m.color('#4fa25e', { smooth: 0.3 }), m.color('#86cf74', { smooth: 0.3 })];
+  const cz = 26;
+  const H = (x) => { const u = (x - 44) / 36; if (Math.abs(u) >= 1) return 0; return 24 * Math.sqrt(1 - u * u) * (x > 56 ? 1 - (x - 56) / 70 : 1); };
+  const W = (x) => 16 * Math.sqrt(Math.max(0, 1 - ((x - 44) / 39) ** 4));
+  shape(m, 6, 7, 8, 82, 34, 44, (x, y, z) => { const h = H(x), w = W(x); return h > 0 && w > 0 && ((z - cz) / w) ** 2 + ((y - 7) / h) ** 2 <= 1; }, paint);
+  for (const [fx, fz] of [[22, 10], [68, 10], [22, 42], [68, 42]]) shape(m, fx - 10, 7, fz - 5, fx + 10, 16, fz + 5, (x, y, z) => ((x - fx) / 9.5) ** 2 + ((y - 9) / 7) ** 2 + ((z - fz) / 4.5) ** 2 <= 1, paintD);
+  m.box(28, 7, 8, 60, 8, 10, paintD); m.box(28, 7, 42, 60, 8, 44, paintD);
+  // Windows: windscreen, side windows split by the B-pillar, rear window.
+  surface(m, (x, y, z, p) => {
+    if (p !== paint || y < 21 || y > 29) return null;
+    if (x >= 52 && x <= 58) return glass;
+    if (x >= 22 && x <= 27) return glass;
+    if (Math.abs(z + 0.5 - cz) > 9 && x > 29 && x < 51 && (x < 40 || x > 42)) return glass;
+    return null;
+  });
+  // Rust patches.
+  const rust = [m.color('#c27840', { jitter: 0.08 }), m.color('#a4552f', { jitter: 0.08 })];
+  m.recolor((x, y, z, p) => ((p === paint || p === paintD) && fbm3(x * 0.12, y * 0.12, z * 0.12, 2, 7) > 0.64 ? rust[h3(x, y, z, 2) < 0.5 ? 0 : 1] : null));
+  for (const wx of [22, 68]) for (const [z0, z1, hz] of [[5, 10, 5], [42, 47, 47]]) { m.cylinder(wx, 7, z0, z1, 7, tire, 'z'); m.cylinder(wx, 7, hz, hz, 3.4, chrome, 'z'); }
+  m.box(80, 8, 12, 81, 10, 40, chrome); m.box(9, 8, 12, 10, 10, 40, chrome);
+  for (const hz of [13, 39]) { m.cylinder(15, hz, 76, 78, 2.6, head, 'x'); m.box(12, 13, hz - 1, 13, 15, hz + 1, tail); m.box(74, 10, hz - 2, 75, 11, hz - 2 + (hz > 20 ? 4 : 0), ind); }
+  m.cylinder(8, 36, 5, 9, 1, chrome, 'x');
+  starfish(m, 68, Math.round(7 + H(68)), cz + 2, 4, m.color('#ff7a4a', { smooth: 0.5 }), m.color('#ffd0a0'));
+  for (let k = 0; k < 3; k++) {
+    const kx = 36 + k * 5, kz = cz - 4 + k * 3;
+    let ky = 0; for (let y = 40; y > 10; y--) if (m.get(kx, y, kz)) { ky = y; break; }
+    for (let y = 1; y < 12 + k * 4; y++) m.set(kx + Math.round(Math.sin(y * 0.5 + k) * 1.2), ky + y, kz, kelp[y % 5 === 0 ? 1 : 0]);
+  }
+  sandMound(m, 46, cz, 44, 25, 5, 3);
+  barnacles(m, rng, 6, [paint, paintD]);
+  return { m, yaw: 30, light: '#fff6c0', ground: [46, 0, cz], anchors: { window: [42, 26, 44], exhaust: [5, 8, 36], front: [84, 18, cz] } };
+});
+
+const ROCKET_SEQ = [1, 1, 2, 2, ...Array(29).fill(2), 2, 1, 1, 0];
+def('rocket_ship', {
+  name: 'Retro Rocket', biome: 'aquarium', tags: ['machine', 'glow'], decor: { price: 950, size: 2 }, decorOnly: true,
+  desc: 'Fully functional. Goes up, comes back down. The pilot is a goldfish named Major Tom.',
+  interact: {
+    verb: 'Launch', frames: 4, seq: ROCKET_SEQ, fps: 6,
+    motion: { t0: 0.6, t1: 5.4, base: 3, part: 2, path: [[0.6, 0], [1.1, -8], [1.7, -70], [2.4, -460], [3.4, -460], [4.6, -90], [5.4, 0]] },
+    sfx: [['click', 0], ['puff', 0.2, { pitch: 0.7 }], ['travel_whoosh', 0.6, { vol: 0.7 }], ['thunder', 0.7, { vol: 0.45, pitch: 1.3 }], ['travel_whoosh', 3.7, { vol: 0.4, pitch: 0.7 }], ['box_close', 5.4], ['puff', 5.45]],
+    fx: [{ at: 0.25, kind: 'smoke', from: 'pad', n: 10 }, { at: 0.65, kind: 'smoke', from: 'pad', n: 16 }, { at: 0.9, kind: 'embers', from: 'nozzle', n: 10, track: true }, { at: 1.3, kind: 'embers', from: 'nozzle', n: 10, track: true },
+      { at: 1.7, kind: 'smoke', from: 'nozzle', n: 8, track: true }, { at: 4.4, kind: 'embers', from: 'nozzle', n: 8, track: true }, { at: 4.9, kind: 'embers', from: 'nozzle', n: 8, track: true }, { at: 5.4, kind: 'smoke', from: 'pad', n: 12 }],
+    fish: 'flee', shake: 0.6,
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(52, 98, 52);
+  const con = m.color('#9a9aa2', { jitter: 0.06 });
+  const hz = [m.color('#ffd84a', { jitter: 0.02 }), m.color('#24242a', { jitter: 0.02 })];
+  const pit = m.color('#2a2a30', { jitter: 0 });
+  const red = m.color('#d83a2a', { spec: 0.8, jitter: 0.03 });
+  const grey = m.color('#7a7e88', { spec: 1 });
+  const beacon = m.color('#ff3a3a', { emissive: 1, jitter: 0 });
+  const white = m.color('#f2f2f6', { smooth: 0.7, spec: 1.2, jitter: 0.02 });
+  const rRed = m.color('#e04a3a', { smooth: 0.7, spec: 1.2, jitter: 0.02 });
+  const brass = m.color('#e0b048', { spec: 1.6 });
+  const nozzle = m.color('#3a3a44', { spec: 1 });
+  const portF = m.color('#ff9a3a', { emissive: 0.5 });
+  const portB = m.color('#9ae8ff', { emissive: 0.5 });
+  const eye = m.color('#1a1420', { jitter: 0 });
+  const fl = ['#ff6a2a', '#ffb04a', '#fff4b0'].map((c) => m.color(c, { emissive: 1, jitter: 0 }));
+  const cx = 26, cz = 26, rx = 27, rz = 27;
+  lathe(m, cx, cz, 0, 3, () => 23, con);
+  shape(m, cx - 22, 3, cz - 22, cx + 22, 3, cz + 22, (x, y, z) => { const r = Math.hypot(x - cx, z - cz); return r >= 18.5 && r <= 21.5; }, (x, y, z) => hz[Math.floor((Math.atan2(z + 0.5 - cz, x + 0.5 - cx) + Math.PI) * 5) % 2]);
+  m.sub(() => m.cylinder(rx, rz, 2, 3, 5));
+  m.cylinder(rx, rz, 1, 1, 5, pit);
+  // Gantry tower (always taller than the rocket so every frame keeps the same bounds).
+  for (const [px, pz] of [[5, 5], [11, 5], [5, 11], [11, 11]]) m.box(px, 3, pz, px, 92, pz, red);
+  for (let y = 4; y < 92; y += 6) { m.line(5, y, 11, 11, y + 6, 11, red, 0); m.line(11, y, 5, 11, y + 6, 11, red, 0); }
+  for (const y of [30, 50, 70, 90]) m.box(4, y, 4, 12, y, 12, grey);
+  m.box(7, 93, 7, 9, 94, 9, beacon);
+  for (const [sx, sz] of [[rx - 5, rz - 5], [rx + 5, rz - 5], [rx - 5, rz + 5], [rx + 5, rz + 5]]) m.box(sx, 4, sz, sx, 13, sz, grey);
+  if (frame === 0) m.line(11, 62, 9, rx - 6, 62, rz - 4, grey, 0.8); else m.box(11, 62, 8, 14, 62, 10, grey);
+  if (frame === 3) {
+    // Launched: a lingering exhaust column (also keeps the model dense enough for the ray caster's brick skipping).
+    const smoke = [m.color('#d8dce4', { smooth: 0.9, jitter: 0.04 }), m.color('#b8bcc8', { smooth: 0.9, jitter: 0.04 })];
+    for (let y = 6; y <= 88; y += 3) m.sphere(rx + Math.sin(y * 0.3) * 1.5, y, rz + Math.cos(y * 0.23), 4.6 - y * 0.03 + h3(y, 1, 1, 3) * 1.4, smoke[(y / 3) % 2]);
+    return { m, yaw: 30, ground: [cx, 0, cz], anchors: { nozzle: [rx, 8, rz], pad: [cx, 5, 40], top: [rx, 86, rz] } };
+  }
+  // The rocket (and its exhaust) lives in its own layer so it can fly.
+  const R = part(m, 52, 98, 52);
+  lathe(R, rx, rz, 14, 17, (t) => 4.8 + t * 1.7, white);
+  lathe(R, rx, rz, 18, 64, () => 6.5, (x, y) => ((y >= 30 && y <= 32) || (y >= 56 && y <= 58) ? rRed : white));
+  lathe(R, rx, rz, 65, 82, (t) => 6.5 * Math.pow(Math.cos((t * Math.PI) / 2), 0.7), rRed);
+  R.line(rx, 82, rz, rx, 86, rz, grey, 0);
+  lathe(R, rx, rz, 11, 14, (t) => 4.4 - t * 1.4, nozzle);
+  for (const [py, c] of [[48, portF], [39, portB]]) {
+    torus(R, rx, py, rz + 6.4, 2.6, 0.6, brass, 'z');
+    R.cylinder(rx, py, rz + 6, rz + 6.6, 2.1, c, 'z');
+    if (c === portF) { R.set(rx + 1, py + 1, rz + 7, eye); R.set(rx - 1, py, rz + 7, portF); }
+  }
+  for (const a of [Math.PI / 2, (Math.PI * 7) / 6, (Math.PI * 11) / 6]) {
+    const ca = Math.cos(a), sa = Math.sin(a);
+    for (let s = 6; s <= 13; s += 0.5) for (let y = 12; y <= 31; y++) {
+      const u = (s - 6) / 7;
+      if (y < 12 + u * 1 || y > 31 - u * 13) continue;
+      R.set(rx + ca * s, y, rz + sa * s, rRed);
+      R.set(rx + ca * s - sa * 0.6, y, rz + sa * s + ca * 0.6, rRed);
+    }
+  }
+  if (frame >= 1) {
+    const y0 = frame === 2 ? 2 : 7;
+    for (let y = y0; y <= 10; y++) {
+      const t = (10 - y) / (10 - y0 + 0.01), r = (frame === 2 ? 4.2 : 3) * (1 - t * 0.7);
+      R.cylinder(rx, rz, y, y, r, (x, yy, z) => { const d = Math.hypot(x + 0.5 - rx, z + 0.5 - rz) / r; return fl[d < 0.4 && t < 0.7 ? 2 : d < 0.75 ? 1 : 0]; });
+    }
+  }
+  for (let i = 0; i < R.data.length; i++) if (R.data[i]) m.data[i] = R.data[i];
+  return { m, yaw: 30, ground: [cx, 0, cz], light: '#ffb04a', split: (x, y, z) => R.get(x, y, z) !== 0, anchors: { nozzle: [rx, 8, rz], pad: [cx, 5, 40], top: [rx, 86, rz] } };
+});
+
+def('cuckoo_clock', {
+  name: 'Cuckoo Clock', biome: 'aquarium', tags: ['retro', 'home'], decor: { price: 240, size: 1 }, decorOnly: true,
+  desc: 'Keeps perfect time. Unfortunately it is the wrong timezone.',
+  interact: {
+    verb: 'Cuckoo', frames: 4, idle: [0, 1], idleFps: 1.5, seq: [2, 3, 2, 3, 2, 3, 0, 1], fps: 4,
+    sfx: [['chirp', 0, { pitch: 0.8 }], ['chirp', 0.25, { pitch: 0.62 }], ['chirp', 0.5, { pitch: 0.8 }], ['chirp', 0.75, { pitch: 0.62 }], ['click', 1.5]],
+    fx: [{ at: 0, kind: 'text', from: 'door', text: 'CUCKOO!' }, { at: 0.2, kind: 'burst', from: 'door', n: 6, colors: ['#5ab8ff', '#ffffff'] }],
+    fish: 'flee',
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(42, 78, 34);
+  const stone = m.color('#9a948c', { jitter: 0.08 });
+  const wood = m.color('#7a4a2a', { jitter: 0.05 });
+  const woodL = m.color('#9a643a', { jitter: 0.05 });
+  const roof = [m.color('#4a2e1c', { jitter: 0.04 }), m.color('#5e3a22', { jitter: 0.04 })];
+  const leaf = m.color('#5a8a3a', { jitter: 0.05 });
+  const face = m.color('#f4ecd0', { jitter: 0.02 });
+  const ink = m.color('#2a2028', { jitter: 0 });
+  const gold = m.color('#e8b848', { spec: 1.6 });
+  const dark = m.color('#1e1418', { jitter: 0 });
+  const bird = m.color('#5ab8ff', { smooth: 0.7 });
+  const beak = m.color('#ff9a2a', { jitter: 0 });
+  const cone = [m.color('#5a3a22', { jitter: 0.04 }), m.color('#7a5230', { jitter: 0.04 })];
+  const cx = 20.5, fz = 18;
+  rbox(m, 13, 0, 5, 28, 3, 21, 1, stone);
+  m.cylinder(cx, 12, 3, 36, 2.2, wood);
+  m.box(7, 36, 6, 34, 62, fz, (x, y, z) => (z === fz && (x - 7) % 4 === 0 ? woodL : wood));
+  shape(m, 2, 60, 3, 39, 73, 21, (x, y, z) => { const hw = (73 - y) * 1.5 + 1; const d = Math.abs(x - cx); return d <= hw && d > hw - 2.5; }, (x, y) => roof[(Math.floor(y) >> 1) % 2]);
+  shape(m, 7, 62, fz, 34, 72, fz, (x, y) => Math.abs(x - cx) <= (73 - y) * 1.5 - 2, woodL);
+  for (const [lx, ly] of [[cx - 4, 64], [cx + 4, 64], [cx, 67], [cx - 2, 65], [cx + 2, 65]]) m.box(lx - 1, ly, fz + 1, lx + 1, ly + 1, fz + 1, leaf);
+  m.ellipsoid(cx, 75, 12, 2.4, 1.6, 1.6, woodL);
+  // Clock face with hands.
+  m.cylinder(cx, 45, fz + 1, fz + 1, 6.6, face, 'z');
+  torus(m, cx, 45, fz + 1.5, 6.8, 0.5, gold, 'z');
+  for (let k = 0; k < 12; k++) { const a = (k / 12) * Math.PI * 2; m.set(cx + Math.cos(a) * 5.3, 45 + Math.sin(a) * 5.3, fz + 2, ink); }
+  m.line(cx, 45, fz + 2, cx - 3, 47, fz + 2, ink, 0);
+  m.line(cx, 45, fz + 2, cx + 3, 49.5, fz + 2, ink, 0);
+  // Little door and the bird.
+  m.box(cx - 2.5, 53, fz + 1, cx + 2.5, 59, fz + 1, dark);
+  if (frame < 2) { m.box(cx - 2.5, 53, fz + 2, cx - 0.5, 59, fz + 2, woodL); m.box(cx + 0.5, 53, fz + 2, cx + 2.5, 59, fz + 2, woodL); }
+  else {
+    m.box(cx - 3, 53, fz + 2, cx - 3, 59, fz + 5, woodL); m.box(cx + 3, 53, fz + 2, cx + 3, 59, fz + 5, woodL);
+    const out = frame === 3 ? 2 : 0;
+    m.line(cx, 55, fz + 1, cx, 55, fz + 5 + out, gold, 0);
+    m.ellipsoid(cx, 56.5, fz + 4 + out, 2.4, 1.8, 2.6, bird);
+    m.sphere(cx + 1, 58.5, fz + 5 + out, 1.6, bird);
+    m.set(cx + 2, 59, fz + 6 + out, dark);
+    if (frame === 3) { m.line(cx + 2, 58.5, fz + 6 + out, cx + 4, 59.5, fz + 8 + out, beak, 0); m.line(cx + 2, 58, fz + 6 + out, cx + 4, 57, fz + 8 + out, beak, 0); } else m.line(cx + 2, 58.5, fz + 6 + out, cx + 3.5, 58.5, fz + 7.5 + out, beak, 0);
+  }
+  // Pendulum ticks left / right, pine-cone weights on chains.
+  const a = (frame % 2 ? 16 : -16) * (Math.PI / 180);
+  const bx = cx + Math.sin(a) * 13, by = 36 - Math.cos(a) * 13;
+  m.line(cx, 36, fz + 1, bx, by, fz + 1, gold, 0);
+  m.cylinder(bx, by, fz + 1, fz + 1, 2.8, gold, 'z');
+  m.set(bx, by, fz + 2, leaf);
+  for (const [wx, wy] of [[14, 22], [27, 27]]) {
+    m.line(wx, 36, fz - 2, wx, wy + 3, fz - 2, gold, 0);
+    m.ellipsoid(wx, wy, fz - 2, 1.9, 3.6, 1.9, (x, y) => cone[y % 2]);
+  }
+  return { m, yaw: 28, ground: [cx, 0, 13], anchors: { door: [cx, 58, fz + 6], top: [cx, 76, 12] } };
+});
+
+def('gumball_machine', {
+  name: 'Gumball Machine', biome: 'aquarium', tags: ['dumb', 'retro', 'treasure'], decor: { price: 200, size: 1 }, decorOnly: true,
+  desc: 'Turn the crank! Sometimes it gives a gumball. Sometimes it gives you money. Nobody knows why.',
+  interact: {
+    verb: 'Turn crank', frames: 3, seq: [1, 1, 2, 2, 2, 0], fps: 5,
+    sfx: [['reel_tick', 0], ['reel_tick', 0.1], ['reel_tick', 0.2], ['click', 0.4]],
+    fx: [{ at: 0.55, kind: 'gumball', from: 'chute', n: 1 }],
+    coin: { at: 0.6, from: 'chute', cooldown: 150 }, fish: 'gather',
+  },
+}, ({ frame }) => {
+  const m = new VoxelModel(38, 62, 38);
+  const red = m.color('#e03a3a', { spec: 1.4, smooth: 0.6, jitter: 0.02 });
+  const redD = m.color('#b02a30', { smooth: 0.6 });
+  const chrome = m.color('#d0d8e2', { spec: 2.2, smooth: 0.5 });
+  const white = m.color('#ffffff', { jitter: 0 });
+  const glint = m.color('#f4fbff', { spec: 2, light: 0.4 });
+  const gums = ['#ff4a5a', '#ffd84a', '#4ac8ff', '#7ad84a', '#ff8ad8', '#ffffff', '#ff9a3a'].map((c) => m.color(c, { smooth: 0.6, spec: 1.5, specPow: 12 }));
+  const cx = 19, cz = 19, gy = 41;
+  lathe(m, cx, cz, 0, 4, (t) => 10 - t * 1.5, redD);
+  lathe(m, cx, cz, 5, 17, (t) => 5 + t * 1.2, red);
+  rbox(m, 10, 17, 10, 28, 30, 28, 3, red);
+  torus(m, cx, 31, cz, 7, 0.8, chrome);
+  m.sphere(cx, gy, cz, 11.5, (x, y, z) => {
+    const nx = (x + 0.5 - cx) / 11.5, ny = (y + 0.5 - gy) / 11.5, nz = (z + 0.5 - cz) / 11.5;
+    if (nz > 0.45 && ny > 0.1 && ny < 0.75 && nx < -0.15 && nx > -0.55) return glint;
+    return gums[Math.floor(h3(Math.floor(x / 2.5), Math.floor(y / 2.5), Math.floor(z / 2.5), 5) * gums.length)];
+  });
+  lathe(m, cx, cz, 51, 55, (t) => 6.4 - t * 2.4, red);
+  m.sphere(cx, 56.5, cz, 1.8, chrome);
+  // Coin plate, crank (turned on frame 1), chute with a gumball on frame 2.
+  m.box(13, 20, 29, 25, 28, 29, chrome);
+  m.box(16, 26, 30, 18, 27, 30, white);
+  if (frame === 1) { m.line(cx, 20, 30, cx, 28, 30, chrome, 0.7); m.sphere(cx, 20, 31, 1.3, chrome); m.sphere(cx, 28, 31, 1.3, chrome); }
+  else { m.line(15, 24, 30, 23, 24, 30, chrome, 0.7); m.sphere(15, 24, 31, 1.3, chrome); m.sphere(23, 24, 31, 1.3, chrome); }
+  m.box(16, 16, 29, 22, 18, 32, chrome);
+  m.sub(() => m.box(17, 17, 31, 21, 18, 32));
+  if (frame === 2) m.sphere(cx, 18, 31.5, 1.6, gums[4]);
+  return { m, yaw: 30, ground: [cx, 0, cz], anchors: { chute: [cx, 18, 34], top: [cx, 58, cz] } };
+});
+
 // ===================== SHOP =====================
 
 def('shop_stall', { name: 'Bait Stall', biome: 'shop', tags: ['shop', 'glow'] }, ({ rng }) => {
@@ -2757,7 +4786,77 @@ export const PROP_VARIANTS = {
   glow_mushroom: [0, 1, 2].map((i) => ({ variant: i, label: 'glow shrooms ' + (i + 1) })),
   glyph_stone: [0, 1, 2].map((i) => ({ variant: i, label: 'glyph stone ' + (i + 1) })),
   lava_lamp: LAVA.map((c, i) => ({ variant: i, label: 'lava lamp ' + (i + 1) })),
+  lava_lamp_giant: LAVA.map((c, i) => ({ variant: i, label: 'giant lamp ' + (i + 1) })),
 };
+
+// ---------- interactions ----------
+// propInteract(id) -> normalised click/animation spec (every prop has one; decor-only pieces are
+// hand-tuned, the rest get a tag-based default):
+//   { verb, frames, seq: [frame...], fps, idle: [frame...] | null, idleFps, dur (s),
+//     sfx: [{name, at, vol?, pitch?}], fx: [{at, kind, from (anchor), n, colors?, text?, icon?, track?}],
+//     ambient: [{kind, from, every, n}], fish: 'flee'|'gather'|'dance'|'abduct'|'launch'|null,
+//     use: {kind: 'hide'|'sit'|'bounce'|'orbit'|'watch'|'dance', at, seq?, fps?, emote?} | null,
+//     motion: {t0, t1, base, part, path: [[t, dy]]} | null  (draw frame `base` + `part` layer of frame `part` offset by dy),
+//     coin: {at, from, cooldown (s)} | null, squash, shake }
+// Frames are getProp(id, {frame}); anchors (getProp(...).anchors[name]) locate fx sources ('top' and
+// 'center' fall back to the sprite bounds). fx kinds: bubbles, sparkle, burst, notes, hearts, icons, smoke,
+// lava, embers, confetti, lights, snow, steam, rise, swirl, foam, ring, text, food, gumball, stars.
+const TAG_INTERACT = [
+  ['toy', { verb: 'Squeeze', sfx: [['squeak', 0, { pitch: 1.2 }]], fx: [{ kind: 'bubbles', from: 'top', n: 4 }], squash: 0.2, fish: 'gather' }],
+  ['bone', { verb: 'Rattle', sfx: [['roar', 0, { pitch: 0.5, vol: 0.35 }], ['click', 0.1]], fx: [{ kind: 'smoke', from: 'top', n: 6 }], fish: 'flee' }],
+  ['crystal', { verb: 'Chime', sfx: [['bell', 0, { pitch: 1.3, vol: 0.5 }], ['sparkle', 0.1]], fx: [{ kind: 'sparkle', from: 'top', n: 10 }], fish: 'gather' }],
+  ['ruin', { verb: 'Touch', sfx: [['magic', 0, { pitch: 0.8, vol: 0.5 }]], fx: [{ kind: 'sparkle', from: 'top', n: 8, colors: ['#9affff', '#ffffff'] }], fish: 'gather' }],
+  ['coral', { verb: 'Tickle', sfx: [['blub', 0, { pitch: 1.2 }]], fx: [{ kind: 'bubbles', from: 'top', n: 6 }, { kind: 'sparkle', from: 'top', n: 3 }], fish: 'gather' }],
+  ['plant', { verb: 'Shake', sfx: [['puff', 0, { pitch: 1.4, vol: 0.5 }]], fx: [{ kind: 'sparkle', from: 'top', n: 8, colors: ['#9affc8', '#ffffff'] }], fish: 'gather' }],
+  ['treasure', { verb: 'Polish', sfx: [['sparkle', 0]], fx: [{ kind: 'sparkle', from: 'top', n: 8 }], fish: 'gather' }],
+  ['wreck', { verb: 'Knock', sfx: [['bell', 0, { pitch: 0.45, vol: 0.4 }]], fx: [{ kind: 'bubbles', from: 'top', n: 8 }] }],
+  ['metal', { verb: 'Knock', sfx: [['bell', 0, { pitch: 0.45, vol: 0.4 }]], fx: [{ kind: 'bubbles', from: 'top', n: 8 }] }],
+  ['glow', { verb: 'Glow', sfx: [['magic', 0, { vol: 0.5 }]], fx: [{ kind: 'sparkle', from: 'top', n: 8 }], fish: 'gather' }],
+  ['rock', { verb: 'Pat', sfx: [['bubble', 0, { pitch: 0.8 }]], fx: [{ kind: 'bubbles', from: 'top', n: 5 }], squash: 0.05 }],
+];
+const EXTRA_INTERACT = {
+  treasure_chest: { verb: 'Open', frames: 2, seq: [1, 1, 1, 1, 1, 1, 1, 0], fps: 3, sfx: [['treasure_open', 0], ['coins_many', 0.3, { vol: 0.5 }]], fx: [{ at: 0.25, kind: 'sparkle', from: 'top', n: 14 }, { at: 0.3, kind: 'burst', from: 'top', n: 10, colors: ['#ffe27a', '#fff6c8', '#f0b030'] }], fish: 'gather', squash: 0 },
+  rubber_duck: { verb: 'Squeak', sfx: [['squeak', 0, { pitch: 1.1 }], ['squeak', 0.22, { pitch: 1.3 }]], fx: [{ kind: 'bubbles', from: 'top', n: 4 }, { at: 0.1, kind: 'hearts', from: 'top', n: 1 }], squash: 0.25, fish: 'gather' },
+  castle: { verb: 'Fanfare', sfx: [['ui_unlock', 0], ['bell', 0.3, { pitch: 0.75 }]], fx: [{ at: 0.1, kind: 'confetti', from: 'top', n: 18 }], fish: 'gather', use: { kind: 'hide', at: 'center' } },
+  pirate_ship: { verb: 'Fire!', sfx: [['thunder', 0, { vol: 0.5, pitch: 1.4 }], ['puff', 0.05], ['thunder', 0.4, { vol: 0.4, pitch: 1.6 }]], fx: [{ at: 0, kind: 'smoke', from: 'center', n: 12 }, { at: 0.4, kind: 'smoke', from: 'center', n: 10 }, { at: 0.1, kind: 'text', from: 'top', text: 'ARRR!' }], fish: 'flee', squash: 0.04, shake: 0.4 },
+  sunken_pc: { verb: 'Reboot', sfx: [['crt_on', 0], ['glitch', 0.3, { vol: 0.4 }]], fx: [{ at: 0.3, kind: 'text', from: 'top', text: 'ERROR: FISH' }, { at: 0.1, kind: 'sparkle', from: 'center', n: 6, colors: ['#7fffd0'] }], fish: 'gather', squash: 0.04 },
+  diver_helmet: { verb: 'Knock', sfx: [['bell', 0, { pitch: 0.55, vol: 0.4 }], ['bubbles', 0.15]], fx: [{ at: 0.1, kind: 'bubbles', from: 'top', n: 12 }], use: { kind: 'hide', at: 'center' } },
+  moai_head: { verb: 'Poke', sfx: [['grunt', 0, { pitch: 0.55 }]], fx: [{ at: 0.2, kind: 'text', from: 'top', text: '...' }], squash: 0.03 },
+  tiki_head: { verb: 'Drum', sfx: [['thunder', 0, { pitch: 2.2, vol: 0.3 }], ['thunder', 0.25, { pitch: 2.4, vol: 0.3 }], ['roar', 0.4, { pitch: 1.6, vol: 0.4 }]], fx: [{ at: 0.4, kind: 'embers', from: 'top', n: 8 }], fish: 'dance' },
+  mushroom_house: { verb: 'Knock', sfx: [['boing', 0, { pitch: 0.9 }], ['click', 0.15]], fx: [{ at: 0.1, kind: 'sparkle', from: 'top', n: 12, colors: ['#fff6b0', '#ffffff', '#ffb0b0'] }], squash: 0.12, fish: 'gather', use: { kind: 'hide', at: 'center' } },
+  pagoda_lantern: { verb: 'Ring', sfx: [['bell', 0, { pitch: 0.7, vol: 0.6 }]], fx: [{ at: 0.1, kind: 'embers', from: 'center', n: 10 }], fish: 'gather' },
+  bridge: { verb: 'Stomp', sfx: [['box_close', 0, { pitch: 1.3 }], ['splash_small', 0.1]], fx: [{ kind: 'bubbles', from: 'center', n: 10 }], squash: 0.05 },
+  anemone_base: { verb: 'Tickle', sfx: [['blub', 0, { pitch: 1.4 }]], fx: [{ kind: 'hearts', from: 'top', n: 2 }, { kind: 'bubbles', from: 'top', n: 6 }], fish: 'gather', squash: 0.15, use: { kind: 'sit', at: 'top' } },
+  clam_pearl: { verb: 'Tickle', sfx: [['bubbles', 0], ['sparkle', 0.2]], fx: [{ kind: 'bubbles', from: 'top', n: 10 }, { at: 0.2, kind: 'sparkle', from: 'center', n: 8 }], fish: 'gather' },
+  message_bottle: { verb: 'Uncork', sfx: [['puff', 0, { pitch: 1.6 }], ['ui_page', 0.2]], fx: [{ at: 0.1, kind: 'bubbles', from: 'top', n: 8 }, { at: 0.3, kind: 'text', from: 'top', text: 'HELP. -FISH' }] },
+  lava_lamp: { verb: 'Swirl', frames: 4, idle: [0, 1, 2, 3], idleFps: 1.2, seq: [0, 1, 2, 3, 0, 1, 2, 3, 0], fps: 8, sfx: [['bubble', 0, { pitch: 0.6 }], ['magic', 0.15, { vol: 0.4 }]], fx: [{ at: 0.1, kind: 'sparkle', from: 'top', n: 6 }], fish: 'gather' },
+};
+function defaultInteract(id, meta) {
+  if (EXTRA_INTERACT[id]) return EXTRA_INTERACT[id];
+  for (const [tag, s] of TAG_INTERACT) if (meta.tags.includes(tag)) return s;
+  return { verb: 'Poke', sfx: [['bubble', 0]], fx: [{ kind: 'bubbles', from: 'top', n: 5 }] };
+}
+const interactCache = new Map();
+export function propInteract(id) {
+  let s = interactCache.get(id);
+  if (s) return s;
+  const meta = PROPS[id];
+  if (!meta) return null;
+  const raw = INTERACT[id] || defaultInteract(id, meta);
+  const frames = raw.frames || 1;
+  s = {
+    verb: raw.verb || 'Poke', frames, seq: raw.seq || [], fps: raw.fps || 8, idle: raw.idle || null, idleFps: raw.idleFps || 4,
+    sfx: (raw.sfx || []).map(([name, at = 0, o = {}]) => ({ name, at, ...o })),
+    fx: (raw.fx || []).map((f) => ({ at: 0, n: 6, from: 'top', ...f })),
+    ambient: raw.ambient || [], fish: raw.fish || null, use: raw.use || null, motion: raw.motion || null, coin: raw.coin || null,
+    squash: raw.squash ?? (frames > 1 ? 0.04 : 0.1), shake: raw.shake || 0, custom: !!INTERACT[id],
+  };
+  s.dur = Math.max(0.5, s.seq.length / s.fps, ...s.sfx.map((e) => e.at + 0.25), ...s.fx.map((f) => f.at + 0.25), s.motion ? s.motion.t1 : 0, s.coin ? s.coin.at + 0.2 : 0);
+  interactCache.set(id, s);
+  return s;
+}
+// Decor-only ids that carry hand-built multi-frame animations (for galleries / dev pages).
+export const ANIMATED_DECOR = Object.keys(INTERACT);
 
 const cache = new Map();
 export function getProp(id, { scale = 1, variant = 0, frame = 0 } = {}) {
@@ -2792,7 +4891,18 @@ export function getProp(id, { scale = 1, variant = 0, frame = 0 } = {}) {
       lights.push({ x: Math.round(reg.cx), y: Math.round(reg.cy), r: Math.round(Math.max(reg.w, reg.h) * 0.7 + 10 * scale), color: res.light || pe.color });
     }
   }
-  p = { canvas: r.canvas, glow: r.glow, ox: r.ox, oy: r.oy, w: r.w, h: r.h, screens, lights, ms: [Math.round(t1 - t0), Math.round(performance.now() - t1)] };
+  let ox = r.ox, oy = r.oy;
+  if (res.ground) {
+    // Pinned anchor: every frame of an animated prop lines up regardless of its bounds.
+    const [gx, gy] = r.project(res.ground[0], res.ground[1], res.ground[2]);
+    ox = Math.round(gx); oy = Math.round(gy);
+  }
+  p = { canvas: r.canvas, glow: r.glow, ox, oy, w: r.w, h: r.h, screens, lights, ms: [Math.round(t1 - t0), Math.round(performance.now() - t1)] };
+  if (res.split) {
+    // Movable layer (same framing) holding only the voxels the prop marks as split.
+    const pr = renderVoxels(res.m, { ...opts, keepVoxel: res.split });
+    p.part = { canvas: pr.canvas, glow: pr.glow };
+  }
   if (res.anchors) {
     p.anchors = {};
     for (const [k, a] of Object.entries(res.anchors)) {

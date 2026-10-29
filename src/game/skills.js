@@ -22,7 +22,7 @@ export const SKILLS = [
   S('hook5', 'hook', 'Steel Hook', 300, ['hook3'], [-0.36, 0.4], { lineStrength: 0.15 }, 'Tough enough for junk. Needed for Junkyard Reef.', { icon: 'hook' }),
   S('hook4', 'hook', 'Auto-Hook Charm', 150, ['hook3'], [-0.18, 0.4], { autoHook: 0.15 }, '15% chance to set the hook automatically.', { icon: 'sparkle' }),
   S('hook6', 'hook', 'Golden Hook', 900, ['hook5'], [-0.44, 0.55], { rarityBoost: 1.3, shinyChance: 1.5 }, 'Rare and shiny fish are drawn to gold.', { icon: 'crown' }),
-  S('hook7', 'hook', 'Lantern Hook', 1200, ['hook5'], [-0.3, 0.6], { lantern: 1 }, 'Your hook glows. Needed for the Midnight Abyss.', { icon: 'sun' }),
+  S('hook7', 'hook', 'Lantern Hook', 1200, ['hook5'], [-0.3, 0.6], { lantern: 1 }, 'Your hook glows. Needed for the Deep Ocean.', { icon: 'sun' }),
   S('hook8', 'hook', 'Auto-Hook II', 2500, ['hook4', 'hook6'], [-0.36, 0.75], { autoHook: 0.15 }, '+15% more auto-hook chance.', { icon: 'sparkle' }),
   // lines (left)
   S('line1', 'line', 'Braided Line', 20, ['hook1'], [-0.42, 0.12], { lineStrength: 0.15 }, 'Line can take more tension.', { icon: 'line' }),
@@ -74,8 +74,8 @@ export const SKILLS = [
   S('exp2', 'exp', 'Junk Bait License', 500, ['exp1'], [-0.6, 0.56], { unlockBait: ['chip', 'popup'] }, 'Overclocked Chips and Pop-up Ads in the shop.', { icon: 'bait' }),
   S('exp5', 'exp', 'Weather Radio', 400, ['exp1'], [-0.62, 0.7], { forecast: 1 }, 'See the weather forecast and rare-fish weather.', { icon: 'cloud' }),
   S('exp6', 'exp', 'Sonar Ping', 900, ['exp5'], [-0.66, 0.84], { sonar: 1 }, 'Rare fish get a subtle glint.', { icon: 'eye' }),
-  S('exp3', 'exp', 'Midnight Abyss Map', 2500, ['exp1', 'hook7'], [-0.46, 0.86], { unlockBiome: 'abyss' }, 'Dive to the Midnight Abyss. Requires the Lantern Hook and 16 species discovered.', { icon: 'map', needSpecies: 16 }),
-  S('exp4', 'exp', 'Abyss Bait License', 1800, ['exp3'], [-0.3, 0.95], { unlockBait: ['lantern', 'relic'] }, 'Lantern Pearls and Ancient Relics in the shop.', { icon: 'skull' }),
+  S('exp3', 'exp', 'Deep Ocean Map', 2500, ['exp1', 'hook7'], [-0.46, 0.86], { unlockBiome: 'abyss' }, 'Dive into the Deep Ocean. Requires the Lantern Hook and 16 species discovered.', { icon: 'map', needSpecies: 16 }),
+  S('exp4', 'exp', 'Deep Ocean Bait License', 1800, ['exp3'], [-0.3, 0.95], { unlockBait: ['lantern', 'relic'] }, 'Lantern Pearls and Ancient Relics in the shop.', { icon: 'skull' }),
 ];
 
 export const SKILL_BY_ID = Object.fromEntries(SKILLS.map((s) => [s.id, s]));

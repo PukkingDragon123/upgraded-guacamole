@@ -9,8 +9,8 @@ export const BAITS = {
   blackhole: { name: 'Black Hole Bait', price: 320, qty: 1, desc: 'Pulls icons and deep fish toward your hook. Icons spring back after.', effect: 'blackhole' },
   chip: { name: 'Overclocked Chip', price: 70, qty: 2, desc: 'Sparks attract mechanical and digital fish.', effect: null },
   popup: { name: 'Pop-up Ad', price: 45, qty: 3, desc: '"YOU WON A FREE FISH!" Spam fish can\'t resist.', effect: null },
-  lantern: { name: 'Lantern Pearl', price: 160, qty: 2, desc: 'A glowing pearl for the deep. Abyss fish follow the light.', effect: 'lantern' },
-  relic: { name: 'Ancient Relic', price: 1250, qty: 1, desc: 'Something ancient answers. Use only in the Abyss.', effect: 'relic' },
+  lantern: { name: 'Lantern Pearl', price: 160, qty: 2, desc: 'A glowing pearl for the deep. Deep Ocean fish follow the light.', effect: 'lantern' },
+  relic: { name: 'Ancient Relic', price: 1250, qty: 1, desc: 'Something ancient answers. Use only in the Deep Ocean.', effect: 'relic' },
 };
 
 export const BAIT_ORDER = ['bread', 'worm', 'sugar', 'golden', 'flood', 'blackhole', 'chip', 'popup', 'lantern', 'relic'];
