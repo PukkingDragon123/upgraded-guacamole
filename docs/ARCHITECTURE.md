@@ -175,3 +175,66 @@ cheer, sad, sit, wave`. `look` = `game.state.character` (see `DEFAULT_CHARACTER`
 Save: `state.inventory = {items: {id: qty}, packages: [{uid, tier, from}]}`, `state.buildings = [...]`.
 `build.js`: `class Build` (`game.build`): `update(dt, inp, layer)`, `drawWorld(ctx, env)` (buildings on the
 seabed, world space), `drawUi(ctx)`, `hit(wx, wy)`, `active` (build mode), `toggle()`.
+
+## Phase 3 contracts (Frutiger Aero overhaul)
+
+### Direction (applies to every agent)
+- **100% Frutiger Aero**: glossy glass, aqua/sky-blue + grass-green + white, soft gradients, specular highlights,
+  bubbles, lens flares, bokeh, light shafts, chrome and translucent plastic, optimistic eco-tech (wind turbines,
+  leaves, water drops, dolphins, orbs). Bright and clean, never grungy. UI = glossy glass panels and pill buttons.
+- **Voxel art stays the medium.** Everything alive is voxel, with **voxel eyes** (a real 3D eyeball: sclera,
+  iris, pupil, a glossy specular voxel). **Never draw 2D overlay eyes or faces.** Crustaceans look realistic.
+- **Less text, more visuals.** Prefer icons, motion, particles and colour over labels and sentences.
+- **Currency** is **Aero** (`CURRENCY` in `src/ui/aero.js`). `state.coins` still holds the amount; every
+  label/icon says Aero and uses `drawAeroCoin`/`fmtAero`. "Oxidized Coins" is gone.
+- **Progression** is Fisch-like: you unlock better rods (stats: lure speed, luck, control, resilience,
+  strength, shock), boats, tanks and oceans. **Everything is unlocked in The Lab** (`src/game/lab.js`): there is
+  no shop, no separate research panel, no boatyard. Crafting recipes (buildings, bait, decor) are Lab unlocks.
+- **Desktop = ocean.** The desktop's floating app icons **are the game menu** (The Lab, Aquarium, FishDex,
+  Satchel, Wardrobe, Map, AppSea, Multiplayer, Settings ...), bobbing in the water. Icons are no longer bait.
+- **Bait** comes from AppSea downloads (or Lab-crafted custom bait) and is **one-time use** (`src/store/bait.js`).
+- **No fish carry packages any more.** Floating boxes drift in the water and can be fished up (`src/world/floaters.js`).
+- **Start**: a goldfish jar (aquarium tier 0) in a Frutiger Aero room, a bubble-person player, the **(OS)cean**
+  (id `oscean`): the classic rolling-green-hill-under-blue-sky desktop wallpaper, flooded (an original landscape,
+  no copied photo or OS logos). Ocean order: oscean, shallows, fjord, junkyard, metropolis, volcano, abyss.
+- Pop-culture fish stay affectionate parodies (pun names, original designs). No real logos or exact trademarks.
+
+### Ownership (phase 3)
+| Agent | Owns (may create/rewrite) |
+| --- | --- |
+| UI | `src/ui/aero.js`, `panels.js`, `ui.js`, `tabbar.js` (to be removed), `bigicons.js`, `uiicons.js`, `journal.js`, `inventory.js`, `settings.js`, `mappanel.js` (restyle), `welcome.js`, `src/desktop/desktop.js`, `icons.js`, `apps.js`, `src/gfx/font.js` |
+| Fish | `src/fish/*` (incl. new `species-oscean.js`), `src/gfx/voxelfish.js`, `fishrig.js`, `fishart.js`, `spritecache.js` |
+| World | `src/world/*` except `boatmodels.js`; `src/gfx/watergl.js`, `props.js`, `src/world/floaters.js` |
+| Character | `src/gfx/character.js`, `src/gfx/npcs.js`, `src/world/boatmodels.js`, `src/ui/wardrobe.js` |
+| Lab | `src/game/lab.js`, `rods.js`, `skills.js`, `shopdata.js`, `src/ui/skilltree.js` (becomes the Lab), new `src/ui/lab*.js`, `src/build/*`, `src/ui/research.js`, `buildpanel.js`, `boatyard.js`, `shop.js` (retire) |
+| Fishing | `src/fishing/*` except `baitart.js`; `src/gfx/particles.js`, `src/ui/reveal.js` |
+| Aquarium | `src/aquarium/*` |
+| Online & AppSea | `src/store/*` (incl. `bait.js`), `src/net/*`, new `src/ui/multiplayer.js`, `src/ui/baitpanel.js`, `src/fishing/baitart.js`, `tools/relay*` |
+| Intro | `src/game/tutorial.js`, `src/desktop/wallpaper.js`, new `src/game/intro3d.js`, `tests/smoke.mjs` |
+| Orchestrator | `src/game/game.js`, `state.js`, `src/ui/registry.js`, `src/ui/dock.js`, `docs/`, `README.md` |
+
+Shared files you do not own: if you truly need a hook in `game.js`/`state.js`/`registry.js`, make a **small additive
+`Edit`** (never `Write`), tag it `// [phase3:<agent>]`, and list it in your report. Re-read before editing (the Edit tool
+rejects stale reads). Never revert someone else's change.
+
+### Shared APIs (see each file's header for the exact signatures)
+- `src/ui/aero.js`: `AERO`, `CURRENCY`, `fmtAero`, `drawAeroPanel`, `drawAeroButton`, `drawAeroBar`, `drawAeroCoin`, `drawGlossOrb`.
+- `src/game/lab.js`: `ensureLab`, `LAB_NODES`, `labHas`, `labStatus`, `unlocked(state, kind, id)`, `grantUnlock`, `computeLabStats`.
+  Kinds: `rod`, `boat`, `tank`, `recipe`, `biome`, `bait`, `cosmetic`, `feature`. Events `labStarted`, `labDone`, `unlocked`.
+  `skills.js` keeps its old exports (`SKILLS`, `SKILL_BY_ID`, `skillStatus`, `computeStats`, `BASE_STATS`) as thin wrappers.
+- `src/game/rods.js`: `RODS`, `ROD_BY_ID`, `ensureRods`, `equippedRod`, `rodStats(state, stats)`.
+- `src/store/bait.js`: `BAITS`, `ensureBait`, `currentBait(state)`, `consumeBait(state)`, `addBait`.
+  `game.currentBait()` delegates here. Bait objects keep `type` compatible with species `bait` preferences.
+- `src/world/floaters.js`: `Floaters` (`list`, `update`, `draw(ctx, layer)`, `hitHook`, `take`). `game.floaters`.
+  Fishing reels a box in and calls `game.onBoxCaught(f)`; loot from `src/build/items.js` (`rollCrate(tier, biome, luck)` -> `{aero, items:[{id, qty}]}`, `grantLoot`).
+- `src/gfx/character.js`: `drawCharacter(ctx, x, y, o)` (same call shape), player look in `state.character` (now a
+  **bubble person**), cosmetics registry + `grantCosmetic(state, id)`. `src/gfx/npcs.js`: `NPCS`, `drawNPC(ctx, id, o)`.
+- `src/world/boatmodels.js`: boat tiers/parts; `state.boat = {tier, parts:{hull, sail, flag, engine, decal}}`.
+- Aquarium: `state.tank.tier` (0 = goldfish jar) from Lab unlocks `tank:<id>`; idle Aero via the existing coin flow
+  plus offline earnings on return.
+- Multiplayer (`src/net/`): opt-in only (Multiplayer panel), a chosen display name, no personal data. Transports: the
+  artifact `room` capability when hosted on claude.ai (`await window.claude?.use?.('room')`, presence for absolute
+  state, events for moments), `BroadcastChannel` for local multi-window. Everything heard from peers is untrusted:
+  validate, clamp and length-limit it. The game must work fully offline.
+- Panel ids after phase 3: `lab` (replaces `skills`, `shop`, `research`, `boatyard`), `crafting`, `journal`, `inventory`,
+  `wardrobe`, `map`, `settings`, `bait`, `multiplayer`, `reveal`, `welcome`, `building`, `buildtray`, `package`→`crate`.
