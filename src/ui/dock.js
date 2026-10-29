@@ -107,7 +107,7 @@ export class Dock {
   isVisible(id) {
     const g = this.game;
     // after the tutorial the floating tab bar takes over these buttons; Cap'n Bloat's stall stays on the seabed
-    if (id !== 'shop' && g.ui.tabbar && !g.tutorial.active) return false;
+    if (g.ui.tabbar && !g.tutorial.active && (id !== 'shop' || g.state.view === 'aquarium')) return false;
     return !this.hidden.has(id) && (g.tutorial.dockVisible?.(id) ?? true);
   }
 

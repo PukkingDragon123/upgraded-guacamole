@@ -43,7 +43,8 @@ function buildFlag(paint, small) {
 export class Boat {
   constructor(game) {
     this.game = game;
-    this.x = Math.round((game.screen?.W || 960) * 0.56);
+    // default to the left third, clear of the desktop icon column (x < 80) and the top-right tab bar
+    this.x = Math.max(150, Math.round((game.screen?.W || 960) * 0.2));
     this.y = 0;
     this.vx = 0; this.vy = 0;
     this.dir = 1;

@@ -20093,6 +20093,7 @@
     if (bait.type === "bread") v = Math.max(v, sp.rarity === "common" ? 1.6 : sp.rarity === "uncommon" ? 0.7 : 0.2);
     if (bait.type === "worm") v = Math.max(v, 1.1);
     if (sp.spawn?.requires && sp.spawn.requires !== bait.type) v *= 0.15;
+    if (bait.mods) v *= bait.mods.attract;
     if (sp.quirks?.includes("intro")) v = Math.max(v, 3);
     return v;
   }

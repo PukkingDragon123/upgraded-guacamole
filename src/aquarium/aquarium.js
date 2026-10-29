@@ -469,6 +469,32 @@ export class Aquarium {
     return f;
   }
 
+  // Species with evolve: {into, afterMinutes} transform after enough time in the tank (Flopikarp -> Dragon-Karp).
+  evolveFish(dt) {
+    for (const f of this.fish.slice()) {
+      const ev = f.sp.evolve;
+      if (!ev || !SPECIES_BY_ID[ev.into]) continue;
+      const rec = f.rec;
+      rec.tankAge = (rec.tankAge || 0) + dt;
+      if (rec.tankAge < ev.afterMinutes * 60) continue;
+      const g = this.game, into = SPECIES_BY_ID[ev.into];
+      rec.species = into.id; rec.tankAge = 0;
+      const j = (g.state.journal[into.id] ||= { seen: true, caught: 0, maxSize: 0, minSize: 9999, first: Date.now(), variants: {} });
+      j.caught++; j.maxSize = Math.max(j.maxSize, rec.sizeCm || 0); j.minSize = Math.min(j.minSize, rec.sizeCm || 9999);
+      this.fish.splice(this.fish.indexOf(f), 1);
+      const nf = this.makeFish(rec, { splash: false, at: { x: f.x, y: f.y, z: f.z } });
+      if (this.visibleKey) {
+        this.particles.shockwave(f.x, f.y, 26, '#fff2b0');
+        this.particles.confetti(f.x, f.y, 24);
+        for (let i = 0; i < 10; i++) this.particles.sparkle(f.x + rng.float(-10, 10), f.y + rng.float(-8, 8), '#ffe27a');
+      }
+      this.sfx('catch_epic', { vol: 0.7 });
+      g.toast?.(`Your ${f.sp.name} evolved into ${into.name}!`, 'sparkle', 5);
+      g.emit?.('fishEvolved', { rec, from: f.sp.id, into: into.id, fish: nf });
+      g.save?.();
+    }
+  }
+
   syncFish() {
     const recs = this.st.fish || [];
     for (const rec of recs) if (rec.inTank && !this.fish.some((f) => f.rec === rec)) this.makeFish(rec, { splash: false });
@@ -789,7 +815,7 @@ export class Aquarium {
     this.comboT = Math.max(0, this.comboT - dt);
 
     this.syncT -= dt;
-    if (this.syncT <= 0) { this.syncT = 0.5; this.syncFish(); }
+    if (this.syncT <= 0) { this.syncT = 0.5; this.syncFish(); this.evolveFish(0.5); }
 
     if (this.zoom && this.shownKey() !== this.zoom.vk) this.zoom = null;
     this.updateZoom(dt);

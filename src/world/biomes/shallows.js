@@ -8,18 +8,17 @@ import { SkyDome, skyBodies } from '../sky.js';
 import { palmIsland, lighthouseIslet, sailboat, seaStacks, markerBuoy } from '../horizon.js';
 import { render, strip, spire, mesa, rockArch, ridgeStrip, kelpColumn, propSprite } from '../farvox.js';
 import { VoxelGiant } from '../giants.js';
-import { reefSprite, coralSprite, voxAnim, placeAnim, drawCoralGlow } from '../coral.js';
+import { reefSprite, coralSprite, voxAnim, placeAnim, drawCoralGlow, voxCrab } from '../coral.js';
 import { clamp, clamp01, lerp, smoothstep, ease, hash2, fbm2, TAU } from '../../core/math.js';
 import { RNG } from '../../core/rng.js';
 import { mix, rgba, pack } from '../../core/color.js';
 import { ctxOf } from '../../core/canvas.js';
-import { PixelBuffer, selOut } from '../../gfx/pixel.js';
 import { PROPS } from '../../gfx/props.js';
 import { worldProp } from '../voxkit.js';
 import {
   paint, dpack, lerpStops, gradientStrip, stopPalette, ditherPick, Blend, FogLayer, fillWith, drawWobble, makeRays,
-  drawGlow, twinkle, Caustics, lumaMask, waveLine, waveRuns, Strands, Motes, Bubbles, Mask, ridge, todWeights,
-  quality, inRect, bladeSprites, SwayAnim, streakTile, DepthScene, BandSet, DepthDecor, qscale, waterColorAt, FogCache,
+  drawGlow, twinkle, Caustics, lumaMask, waveLine, waveRuns, Motes, Bubbles, Mask, ridge, todWeights,
+  quality, inRect, streakTile, DepthScene, BandSet, DepthDecor, qscale, waterColorAt, FogCache,
   hazeMask,
 } from '../scenery.js';
 
@@ -52,37 +51,6 @@ const tri = (a, b, c, w) => qmix(qmix(a, b, w.dusk / Math.max(0.001, w.day + w.d
 
 // ------------------------------------------------------------------ sprites
 
-function crabFrames(body = '#e8603a') {
-  const out = [];
-  const cBody = pack(body), cLight = pack(mix(body, '#ffd0a0', 0.45)), cDark = pack(mix(body, '#5a1430', 0.45));
-  const eye = pack('#16101c'), stalk = pack(mix(body, '#5a1430', 0.3)), white = pack('#fff6e8');
-  for (let f = 0; f < 3; f++) {
-    const b = new PixelBuffer(17, 11);
-    // legs
-    for (let i = 0; i < 3; i++) {
-      const o = f === 0 ? 0 : (i % 2 ? 1 : -1) * (f === 1 ? 1 : -1);
-      b.line(5 + i * 1.5, 7, 3 + i * 1.5 + o, 10, cDark);
-      b.line(11 - i * 1.5, 7, 13 - i * 1.5 + o, 10, cDark);
-    }
-    b.fillEllipse(8.5, 6.5, 5, 2.6, cBody);
-    for (let x = 5; x <= 11; x++) b.set(x, 4, cLight);
-    b.set(7, 5, white);
-    for (let x = 4; x <= 13; x++) b.set(x, 8, cDark);
-    // claws
-    const cy = f === 0 ? 3 : 4;
-    for (const [cx, dir] of [[2, -1], [15, 1]]) {
-      b.fillCircle(cx + 0.5, cy + 1.5, 1.7, cBody);
-      b.set(cx - dir, cy - 1, cBody); b.set(cx + dir * 0, cy - 1, cLight);
-      b.line(cx + (dir < 0 ? 1 : -1), cy + 2, cx + (dir < 0 ? 3 : -3), 6, cBody);
-    }
-    // eye stalks
-    b.set(7, 3, stalk); b.set(10, 3, stalk);
-    b.set(7, 2, eye); b.set(10, 2, eye);
-    b.outline(selOut(0.75));
-    out.push(b.toCanvas());
-  }
-  return out;
-}
 
 const B4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
 const bayer4 = (x, y) => B4[(y & 3) * 4 + (x & 3)] / 16;
@@ -121,17 +89,22 @@ export class ShallowsBiome extends Biome {
     this.ys = new Int16Array(W + 2);
     this.ys.fill(this.base);
     this.ocBlend = new Blend(); this.waterBlend = new Blend();
+    const t0 = performance.now();
     this.buildSky();
+    const t1 = performance.now();
     const wo = { y0: this.base - 2, y1: H, levels: 24 };
     this.water = { day: gradientStrip(H, WATER.day, wo), dusk: gradientStrip(H, WATER.dusk, wo), night: gradientStrip(H, WATER.night, wo) };
     this.buildDepth();
+    const t2 = performance.now();
     this.buildLayers();
+    const t3 = performance.now();
     const rh = H - this.base;
     this.raysA = new FogLayer(makeRays(W, rh, { seed: 4, count: 8, sunX: W * 0.78, sunY: -H * 0.8, minW: 10, maxW: 34, len: 0.95, color: '#ffffff', alpha: 0.5, levels: 5 }));
     this.raysB = new FogLayer(makeRays(W, rh, { seed: 9, count: 14, sunX: W * 0.74, sunY: -H * 0.7, minW: 3, maxW: 9, len: 0.75, color: '#ffffff', alpha: 0.6, levels: 4 }));
     this.caustics = new Caustics({ tw: 150, th: 44, cx: 11, cy: 5, seed: 11, color: '#fffbe2', thick: 0.65, core: 0.75, rim: 0.22 });
     this.shimmer = this.makeShimmer();
     this.buildLife();
+    this.buildMs = { sky: Math.round(t1 - t0), depth: Math.round(t2 - t1), layers: Math.round(t3 - t2), life: Math.round(performance.now() - t3) };
     this.fresh = true;
   }
 
@@ -327,12 +300,10 @@ export class ShallowsBiome extends Biome {
     const yB = Math.round(hz - 130), hB = H - yB;
     const baseB = hz - yB + 22;
     const B = [];
-    const kinds = [['coral_branch', 4], ['coral_fan', 3], ['coral_brain', 3], ['coral_tube', 3], ['coral_staghorn', 3], ['rock_big', 1], ['rock_small', 1], ['anemone_base', 3], ['starfish_rock', 1]];
-    for (let i = 0; i < 60; i++) {
-      const [id, nv] = kinds[r.int(0, kinds.length - 1)];
-      const sp = propSprite(id, r.pick([0.4, 0.5, 0.6]), r.int(0, nv - 1));
-      if (sp) B.push({ spr: sp, x: r.float(0, LW), y: baseB + r.int(-3, 3), z: r.next() });
-    }
+    const kinds = ['staghorn', 'staghorn', 'fan', 'fan', 'brain', 'tube', 'table', 'pillar', 'bubble', 'whip'];
+    for (let i = 0; i < 46; i++) B.push({ spr: coralSprite(kinds[r.int(0, kinds.length - 1)], 200 + r.int(0, 11), 'shallows', r.pick([12, 16, 20]), r.pick([0.6, 0.8])), x: r.float(0, LW), y: baseB + r.int(-3, 3), z: r.next() });
+    for (let i = 0; i < 6; i++) B.push({ spr: reefSprite(220 + i, 'shallows', { w: 110, h: 64, d: 40 }, 0.6), x: r.float(0, LW), y: baseB + r.int(0, 3), z: r.next() });
+    for (const [id, nv] of [['rock_big', 1], ['rock_small', 1], ['starfish_rock', 1], ['rock_big', 1]]) { const sp = propSprite(id, r.pick([0.4, 0.5]), r.int(0, nv - 1)); if (sp) B.push({ spr: sp, x: r.float(0, LW), y: baseB + r.int(-3, 3), z: r.next() }); }
     for (let i = 0; i < 10; i++) B.push({ spr: kelpColumn(60 + i, r.int(30, 60), ['#3e6a2a', '#5a8a34', '#86b048'], 1), x: r.float(0, LW), y: baseB + r.int(-2, 2), z: r.float(0.6, 1) });
     const ridgeB = ridgeStrip(55, LW, { amp: 6, base: 5, d: 12, cols: ['#e2cc98', '#d0b884', '#bca674'], rocks: { cols: ['#8a8a9a', '#a09aa8'] } });
     this.farB = new FogLayer(strip(LW, hB, B, { canvas: ridgeB.canvas, x: Math.round(LW / 2 - ridgeB.ox), y: Math.round(baseB + 10 - ridgeB.oy) }), -pad, yB);
@@ -349,69 +320,34 @@ export class ShallowsBiome extends Biome {
     const W = this.W, H = this.H, D = this.D;
     const r = new RNG(9);
     this.decor = new DepthDecor(D);
-    // kelp forests at several depths (pre-rendered sway, fog tinted per depth)
-    const bladesBig = bladeSprites({ len: 13, w: 2.6, cols: ['#36561f', '#52742a', '#749634', '#9cb446', '#c4d064'], curl: 0.5, outline: 0.5 });
-    const bladesSmall = bladeSprites({ len: 8, w: 1.8, cols: ['#36561f', '#52742a', '#749634', '#9cb446'], curl: 0.5, outline: 0.4 });
-    for (const [xf, z, n] of [[0.03, 0.78, 34], [0.07, 0.92, 38], [0.115, 0.72, 28], [0.83, 0.82, 32], [0.875, 0.7, 36], [0.93, 0.95, 28], [0.56, 1.02, 30], [0.5, 0.86, 22], [0.62, 0.68, 26], [0.075, 0.4, 30], [0.905, 0.42, 26], [0.25, 1.1, 34], [0.4, 1.25, 30]]) {
-      const s = D.s(z), x = Math.round(xf * W);
-      const st = new Strands();
-      st.add({ x, y: Math.round(D.floorAt(x, z)) + 3, n, seg: Math.max(2, Math.round(4 * s)), w: s > 0.6 ? 2 : 1, amp: 0.15, speed: 0.7, sec: 1, phase: r.float(0, TAU), wave: 0.2, lean: r.float(-0.06, 0.06),
-        cols: ['#2c461c', '#44662a', '#5a7e30'], out: '#162a16', blades: s > 0.62 ? bladesBig : bladesSmall, leafEvery: 2, bulb: s > 0.6 ? '#d0b850' : null, bulbEvery: 6, hl: false });
-      this.decor.add({ anim: new SwayAnim(st, { frames: 20 }), z, off: r.int(0, 19) });
+    // voxel kelp forests at several depths (pre-rendered sway frames, fog tinted per depth)
+    const sc = (z, step = 0.2) => qscale(1.5 * D.s(z), step, 0.3);
+    const life = (kind, seed, size, z, x, palKey = null, frames = 8) => {
+      const A = voxAnim(kind, seed, 'shallows', size, sc(z), frames, palKey);
+      const it = this.decor.add({ anim: placeAnim(A, x, Math.round(D.floorAt(x, z)) + 1), z, off: r.int(0, A.n - 1) });
+      if (A.nights[0]) this.coralGlow.push({ anim: it.anim, off: it.off, band: it.band, z });
+      return it;
+    };
+    for (const [xf, z, n] of [[0.03, 0.78, 3], [0.07, 0.92, 3], [0.115, 0.72, 2], [0.83, 0.82, 3], [0.875, 0.7, 3], [0.93, 0.95, 2], [0.56, 1.02, 3], [0.5, 0.86, 2], [0.62, 0.68, 2], [0.075, 0.4, 2], [0.905, 0.42, 2], [0.25, 1.1, 3], [0.4, 1.25, 3]]) {
+      for (let i = 0; i < n; i++) {
+        const zz = z + (i - (n - 1) / 2) * 0.03, x = Math.round(xf * W + (i - (n - 1) / 2) * 9 * D.s(z) + r.int(-2, 2));
+        life('kelp', 1 + ((i + Math.round(xf * 10)) % 3), i === 1 ? 16 : 13, zz, x);
+      }
     }
-    // sea grass & seaweed tufts at many depths
-    const weedSets = [
-      ['#1e6a46', '#2e8a52', '#4aaa5e', '#86d27a'], ['#2a7a3a', '#3e9a46', '#62bc5a', '#a2e07e'], ['#6a2a5a', '#943a6e', '#c4588a', '#f08ab0'], ['#7a4a1e', '#a8682a', '#d0903a', '#f0c060'],
-    ];
-    const spots = [[0.06, -0.12], [0.15, -0.15], [0.2, 0.05], [0.248, 0.16], [0.285, 0.1], [0.322, 0.26], [0.4, 0.12], [0.447, -0.05], [0.505, -0.18], [0.585, 0.15], [0.62, 0.0], [0.735, 0.14], [0.77, -0.1], [0.83, 0.02], [0.9, -0.12], [0.96, 0.2], [0.69, -0.2],
+    // sea grass meadows at many depths
+    const spots = [[0.06, -0.12], [0.15, -0.15], [0.2, 0.05], [0.248, 0.16], [0.285, 0.1], [0.4, 0.12], [0.447, -0.05], [0.505, -0.18], [0.585, 0.15], [0.62, 0.0], [0.735, 0.14], [0.77, -0.1], [0.83, 0.02], [0.9, -0.12], [0.96, 0.2], [0.69, -0.2],
       [0.12, 0.42], [0.27, 0.5], [0.41, 0.4], [0.58, 0.55], [0.72, 0.48], [0.97, 0.5], [0.2, 0.8], [0.35, 0.9], [0.48, 0.75], [0.66, 0.9], [0.8, 0.75], [0.9, 0.85]];
-    for (const [xf, z] of spots) {
-      const s = D.s(z), x0 = Math.round(xf * W), y0 = Math.round(D.floorAt(x0, z)) + 1;
-      const set = weedSets[r.chance(0.75) ? r.int(0, 1) : r.int(2, 3)];
-      const tall = r.chance(0.4);
-      const st = new Strands();
-      const k = r.int(4, 7);
-      for (let i = 0; i < k; i++) {
-        const lean = (i / (k - 1) - 0.5) * 0.9 + r.float(-0.15, 0.15);
-        st.add({ x: x0 + Math.round(lean * 8 * s) + r.int(-1, 1), y: y0 + r.int(-1, 0), n: Math.max(3, Math.round((tall ? r.int(8, 13) : r.int(4, 8)) * Math.min(1.15, s))), seg: 2, w: tall && s > 0.7 ? 2 : 1, amp: 0.28, speed: 1.6, sec: 2, phase: r.float(0, TAU), wave: 0.5, lean, curl: lean * 0.4,
-          cols: set, out: tall && s > 0.7 ? '#0e2a24' : null, hl: false, taper: 0.3 });
-      }
-      this.decor.add({ anim: new SwayAnim(st, { frames: 16 }), z, off: r.int(0, 15) });
-    }
-    // anemones with swaying tentacles (near band)
+    for (const [xf, z] of spots) life('seagrass', 1 + r.int(0, 3), r.pick([7, 9]), z, Math.round(xf * W));
+    // anemones and soft tree corals sway in the current
     this.anemones = [];
-    for (const [xf, z, cols, tip, glow, baseC] of [
-      [0.385, 0.02, ['#b03272', '#de4e92', '#ff7cb4', '#ffb4d6'], '#fff0f6', '#ff7ab0', ['#5a1e46', '#8a3462', '#b4507e']],
-      [0.18, -0.08, ['#1e8090', '#2aaab6', '#5ae2e2', '#b0fff6'], '#ffffff', '#5affea', ['#3e2a5a', '#5a3e7a', '#7a5a9a']],
-      [0.79, 0.1, ['#b0602a', '#e2803a', '#ffaa5e', '#ffdcac'], '#fff4e0', '#ffb070', ['#5a2e1e', '#7a4a2a', '#9a6a3a']],
-      [0.56, 0.5, ['#7a3ab0', '#9a5ad8', '#c08aff', '#e4c8ff'], '#ffffff', '#c08aff', ['#3a1e5a', '#5a2e7a', '#7a4a9a']]]) {
-      const x = Math.round(xf * W), y = Math.round(D.floorAt(x, z)) + 1, s = D.s(z);
-      const st = new Strands();
-      const N = 17;
-      for (let i = 0; i < N; i++) {
-        const u = i / (N - 1) - 0.5;
-        const lean = u * 2.3 + r.float(-0.08, 0.08);
-        st.add({ x: x + Math.round(u * 10 * s), y: y - Math.round(7 * s) + Math.round(Math.abs(u) * 3 * s), n: Math.max(3, Math.round((5 + ((i * 7) % 3)) * Math.min(1.1, s))), seg: 2, w: s > 0.8 ? 2 : 1, amp: 0.32, speed: 1.5, sec: 2, phase: i * 0.45, wave: 0.6, lean, curl: lean * 0.45,
-          cols, out: null, hl: false, tip, tipR: 1 });
-      }
-      const under = (gg) => {
-        const bh = Math.round(8 * s);
-        for (let yy = -bh; yy <= 0; yy++) {
-          const hw = Math.round((6 - (yy + bh) * 0.12 + (yy > -2 ? 1 : 0)) * s);
-          gg.fillStyle = baseC[yy < -bh * 0.75 ? 2 : yy < -2 ? 1 : 0];
-          gg.fillRect(x - hw, y + yy, hw * 2 + 1, 1);
-          gg.fillStyle = baseC[2];
-          gg.fillRect(x - hw + 1, y + yy, 2, 1);
-        }
-        gg.fillStyle = '#2a1424';
-        gg.fillRect(x - Math.round(7 * s), y + 1, Math.round(14 * s) + 1, 1);
-      };
-      const anim = new SwayAnim(st, { frames: 16, under, bounds: { x0: x - 9, y0: y - 9, x1: x + 9, y1: y + 2 } });
-      this.decor.add({ anim, z, off: r.int(0, 15) });
-      this.anemones.push({ x, y, z, glow });
+    for (const [xf, z, pal, glow] of [[0.385, 0.02, 'pink', '#ff7ab0'], [0.18, -0.08, 'teal', '#5affea'], [0.79, 0.1, 'orange', '#ffb070'], [0.56, 0.5, 'purple', '#c08aff'], [0.66, -0.16, 'magenta', '#ff8af0'], [0.28, 0.36, 'yellow', '#ffe27a']]) {
+      const x = Math.round(xf * W);
+      const it = life('anemone', 3 + Math.round(xf * 20), 9, z, x, pal);
+      this.anemones.push({ x, y: it.anim.y + it.anim.frames[0].height - 4, z, glow });
     }
+    for (const [xf, z, pal] of [[0.125, 0.1, 'red'], [0.548, 0.28, 'orange'], [0.745, 0.32, 'pink'], [0.43, 0.58, 'cream'], [0.99, 0.08, 'purple'], [0.3, 0.86, 'yellow']]) life('soft', 7 + Math.round(xf * 30), 12, z, Math.round(xf * W), pal);
     // critters
-    this.crabSpr = [crabFrames('#e8603a'), crabFrames('#f0a040')];
+    this.crabSpr = [voxCrab('#e0502e', 1.5), voxCrab('#f09a3a', 1.5)];
     this.crabs = [[0.52, -0.05], [0.86, 0.06], [0.25, -0.2]].map(([xf, z], i) => ({ x: xf * W, z, dir: i % 2 ? -1 : 1, state: 'walk', t: r.float(1, 4), f: 0, kind: i % 2, ft: 0 }));
     // particles
     const sy = this.base;
@@ -849,7 +785,7 @@ export class ShallowsBiome extends Biome {
     for (const cr of this.crabs) {
       const y = Math.round(this.D.floorAt(cr.x, cr.z));
       const spr = this.crabSpr[cr.kind][cr.state === 'walk' ? 1 + (Math.floor(cr.ft) % 2) : 0];
-      ctx.drawImage(spr, Math.round(cr.x) - 8, y - 10);
+      ctx.drawImage(spr.canvas, Math.round(cr.x - spr.ox), y - spr.oy + 1);
     }
     // secret hints
     const s = this.secrets();
@@ -896,6 +832,14 @@ export class ShallowsBiome extends Biome {
     const t = this.t, tod = this.tod, q = quality(env);
     if (this.buoy?.lamp && (tod.night + tod.dusk * 0.6) > 0.15 && Math.sin(t * 3.1) > -0.2) drawGlow(ctx, this.buoy.lamp[0], this.buoy.lamp[1], 6, '#ffe27a', clamp01(tod.night + tod.dusk * 0.6) * 0.9);
     this.nearMotes.draw(ctx, t, 0.8 + tod.day * 0.3, q);
+    // gentle coral bioluminescence: growth tips glow after dark (same parallax as their seabed band)
+    const ga = tod.night * 0.75 * (0.8 + 0.2 * Math.sin(t * 0.8));
+    if (ga > 0.03) {
+      const fog = (z) => this.D.fog(z), px = this.par.x, py = this.par.y;
+      drawCoralGlow(ctx, this.coralGlow, 2, px * 2, py * 0.6, ga * 0.7, fog, t);
+      drawCoralGlow(ctx, this.coralGlow, 1, px * 3, py * 0.8, ga * 0.85, fog, t);
+      drawCoralGlow(ctx, this.coralGlow, 0, px * 4, py, ga, fog, t);
+    }
     if (tod.night > 0.3) {
       // bioluminescent plankton
       ctx.globalCompositeOperation = 'lighter';

@@ -94,7 +94,7 @@ export class TabBar {
   visibleItems() { return this.items.filter((it) => safe(it.visible, false) && this.unlocked(it)); }
 
   wantsShow() { return this.allowed() && !this.wantsDock(); }
-  wantsDock() { return this.allowed() && !!this.game.ui?.blocking; }
+  wantsDock() { return this.allowed() && (!!this.game.ui?.blocking || this.game.state?.view === 'aquarium'); }
   get docked() { return this.dockK > 0 && this.show < 0.05; }
 
   allowed() {

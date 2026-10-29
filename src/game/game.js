@@ -33,6 +33,7 @@ import { host } from '../platform/host.js';
 import { installBrowserBridge } from './browserbridge.js';
 import { Boat } from '../world/boat.js';
 import { Build } from '../build/build.js';
+import { boatBonus, baitMods, CATALOG_BY_ID } from '../store/index.js';
 import { WaterFX } from '../gfx/watergl.js';
 import { makeLayer, resizeLayer } from '../core/canvas.js';
 
@@ -51,6 +52,7 @@ export class Game {
     this.camera = new Camera(this);
     this.clock = new Clock(this);
     this.events = {};
+    this.on('boatUpgraded', () => this.recomputeStats());
     this.time = 0;
     this.timeScale = 1; this.timeScaleTarget = 1;
     this.paused = false;
@@ -135,7 +137,13 @@ export class Game {
   }
 
   recomputeStats() {
-    this.stats = computeStats(this.state.skills);
+    const s = this.stats = computeStats(this.state.skills);
+    // boat perks (Barnaby's Boatyard)
+    const b = (k) => boatBonus(this.state, k);
+    s.boxSlots += b('baitSlots');
+    s.reelSpeed *= b('reel');
+    s.collectRadius *= b('coinMagnet');
+    s.rarityBoost *= b('rarity');
   }
 
   onResize() {
@@ -230,7 +238,7 @@ export class Game {
     if (e.kind === 'icon') {
       const ic = this.desktop.iconById(e.id);
       if (!ic || !this.state.baitBox.includes(e.id)) return null;
-      return { kind: 'icon', type: ic.type, id: ic.id, mini: getMiniIcon(ic.icon), label: ic.label };
+      return { kind: 'icon', type: ic.type, id: ic.id, mini: getMiniIcon(ic.icon), label: ic.label, mods: CATALOG_BY_ID[ic.id] ? baitMods(ic.id, this.state) : null };
     }
     if (e.kind === 'file') {
       const f = this.state.files.find((x) => x.id === e.id);
@@ -477,11 +485,12 @@ export class Game {
     cur.x = cwx; cur.y = cwy; cur.vx = inp.vx / z; cur.vy = inp.vy / z; cur.speed = inp.speed / z;
     w.night = this.clock.isNight(); w.dusk = this.clock.isDusk(); w.hour = this.clock.hour();
     w.weather = ocean.weather; w.biome = ocean.biome.id;
-    w.rarityBoost = this.stats.rarityBoost * this.baitFx.rarityMul() * (1 + this.bonus('rarity') + (w.night ? this.bonus('nightRarity') : 0));
+    const bm = this.currentBait()?.mods; // AppSea bait power (bigger downloads = better fish)
+    w.rarityBoost = this.stats.rarityBoost * this.baitFx.rarityMul() * (bm?.rarity || 1) * (1 + this.bonus('rarity') + (w.night ? this.bonus('nightRarity') : 0));
     w.calmMul = this.stats.calm;
     w.lowPower = this.lowPower;
     w.populationMul = this.baitFx.populationMul();
-    w.rollMods = { mutationChance: this.stats.mutationChance * (1 + this.bonus('mutation')), shinyChance: this.stats.shinyChance * (1 + this.bonus('shiny')) };
+    w.rollMods = { mutationChance: this.stats.mutationChance * (1 + this.bonus('mutation')), shinyChance: this.stats.shinyChance * (1 + this.bonus('shiny')), ...(bm ? { sizeBonus: bm.sizeBonus, giantChance: 0.04 * bm.giantMul } : {}) };
     const toWorld = (r) => { if (r) { const [x0, y0] = cam.screenToWorld(r.x, r.y); r.x = x0; r.y = y0; r.w /= z; r.h /= z; } return r; };
     w.icons = this.desktop.iconRects().map(toWorld);
     w.windows = this.desktop.windowRects().concat(this.aquarium.windowRect ? [this.aquarium.windowRect()] : []).filter(Boolean).map((r) => toWorld({ ...r }));

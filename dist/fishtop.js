@@ -21451,6 +21451,7 @@
     if (bait.type === "bread") v = Math.max(v, sp.rarity === "common" ? 1.6 : sp.rarity === "uncommon" ? 0.7 : 0.2);
     if (bait.type === "worm") v = Math.max(v, 1.1);
     if (sp.spawn?.requires && sp.spawn.requires !== bait.type) v *= 0.15;
+    if (bait.mods) v *= bait.mods.attract;
     if (sp.quirks?.includes("intro")) v = Math.max(v, 3);
     return v;
   }
@@ -34710,6 +34711,35 @@ are just virtual copies - Restore All Icons anytime.`;
           this.fish.push(f);
           return f;
         }
+        // Species with evolve: {into, afterMinutes} transform after enough time in the tank (Flopikarp -> Dragon-Karp).
+        evolveFish(dt) {
+          var _a2, _b;
+          for (const f of this.fish.slice()) {
+            const ev = f.sp.evolve;
+            if (!ev || !SPECIES_BY_ID[ev.into]) continue;
+            const rec = f.rec;
+            rec.tankAge = (rec.tankAge || 0) + dt;
+            if (rec.tankAge < ev.afterMinutes * 60) continue;
+            const g = this.game, into = SPECIES_BY_ID[ev.into];
+            rec.species = into.id;
+            rec.tankAge = 0;
+            const j = (_a2 = g.state.journal)[_b = into.id] || (_a2[_b] = { seen: true, caught: 0, maxSize: 0, minSize: 9999, first: Date.now(), variants: {} });
+            j.caught++;
+            j.maxSize = Math.max(j.maxSize, rec.sizeCm || 0);
+            j.minSize = Math.min(j.minSize, rec.sizeCm || 9999);
+            this.fish.splice(this.fish.indexOf(f), 1);
+            const nf = this.makeFish(rec, { splash: false, at: { x: f.x, y: f.y, z: f.z } });
+            if (this.visibleKey) {
+              this.particles.shockwave(f.x, f.y, 26, "#fff2b0");
+              this.particles.confetti(f.x, f.y, 24);
+              for (let i = 0; i < 10; i++) this.particles.sparkle(f.x + rng.float(-10, 10), f.y + rng.float(-8, 8), "#ffe27a");
+            }
+            this.sfx("catch_epic", { vol: 0.7 });
+            g.toast?.(`Your ${f.sp.name} evolved into ${into.name}!`, "sparkle", 5);
+            g.emit?.("fishEvolved", { rec, from: f.sp.id, into: into.id, fish: nf });
+            g.save?.();
+          }
+        }
         syncFish() {
           const recs = this.st.fish || [];
           for (const rec of recs) if (rec.inTank && !this.fish.some((f) => f.rec === rec)) this.makeFish(rec, { splash: false });
@@ -35039,6 +35069,7 @@ are just virtual copies - Restore All Icons anytime.`;
           if (this.syncT <= 0) {
             this.syncT = 0.5;
             this.syncFish();
+            this.evolveFish(0.5);
           }
           if (this.zoom && this.shownKey() !== this.zoom.vk) this.zoom = null;
           this.updateZoom(dt);
@@ -39788,7 +39819,42 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
     }
     return s;
   }
-  var THEMES, pickPal, SPECIES2, ANIMATED, animCache, spriteCache;
+  function voxCrab(body = "#e0502e", scale = 1.5) {
+    const key = body + scale;
+    if (crabCache.has(key)) return crabCache.get(key);
+    const frames2 = [0, 1, 2].map((f) => {
+      const m = new VoxelModel(20, 11, 13);
+      const C = (c, o = {}) => m.color(c, { jitter: 0.08, ...o });
+      const shell = C(body), top = C(mix(body, "#ffd8a8", 0.35), { spec: 0.4 }), under = C(mix(body, "#4a1028", 0.4)), leg = C(mix(body, "#5a1430", 0.3));
+      const claw2 = C(mix(body, "#ffffff", 0.12), { spec: 0.3 }), tipC = C(mix(body, "#2a0a10", 0.55)), eye = C("#120c14", { spec: 0.9 }), dot2 = C(mix(body, "#fff0d8", 0.6));
+      const cx = 10, cz = 6;
+      for (let i = 0; i < 3; i++) for (const side of [-1, 1]) {
+        const o = f === 0 ? 0 : ((i + (side > 0 ? 1 : 0)) % 2 ? 1 : -1) * (f === 1 ? 1 : -1);
+        const kx = cx + side * 4, kz = cz - 2 + i * 2;
+        m.line(kx, 3, kz, cx + side * 7, 4, kz + o * 0.5, leg, 0.6);
+        m.line(cx + side * 7, 4, kz + o * 0.5, cx + side * (8 + (o > 0 ? 1 : 0)), 0, kz + o, leg, 0.6);
+      }
+      m.ellipsoid(cx, 3.6, cz, 4.6, 2.2, 3.4, (x, y, z) => y >= 5 ? hash3(x, y, z, 3) < 0.2 ? dot2 : top : y <= 2 ? under : shell);
+      const cy = f === 0 ? 6 : 5;
+      for (const side of [-1, 1]) {
+        m.line(cx + side * 3, 3, cz + 3, cx + side * 5, cy - 1, cz + 5, shell, 0.7);
+        m.ellipsoid(cx + side * 5.5, cy, cz + 5.5, 1.6, 1.3, 1.3, claw2);
+        m.set(cx + side * 5, cy + 1, cz + 7, tipC);
+        m.set(cx + side * 6, cy + 1, cz + 7, tipC);
+        m.set(cx + side * 5, cy - 1, cz + 7, tipC);
+      }
+      for (const side of [-1, 1]) {
+        m.set(cx + side * 1.5, 6, cz + 3, shell);
+        m.set(cx + side * 1.5, 7, cz + 3, eye);
+      }
+      const r = renderModel(m, { scale, outline: true, jitter: 0.08, ao: 1.1, edges: 0.6 });
+      const p = r.project(cx, 0, cz + 2);
+      return { canvas: r.canvas, ox: Math.round(p[0]), oy: Math.round(p[1]) };
+    });
+    crabCache.set(key, frames2);
+    return frames2;
+  }
+  var THEMES, pickPal, SPECIES2, ANIMATED, animCache, spriteCache, crabCache;
   var init_coral = __esm({
     "src/world/coral.js"() {
       init_voxel();
@@ -39861,6 +39927,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
       ANIMATED = { anemone, soft: softCoral, kelp, seagrass };
       animCache = /* @__PURE__ */ new Map();
       spriteCache = /* @__PURE__ */ new Map();
+      crabCache = /* @__PURE__ */ new Map();
     }
   });
 
@@ -39869,37 +39936,6 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
   __export(shallows_exports, {
     ShallowsBiome: () => ShallowsBiome
   });
-  function crabFrames(body = "#e8603a") {
-    const out2 = [];
-    const cBody = pack(body), cLight = pack(mix(body, "#ffd0a0", 0.45)), cDark = pack(mix(body, "#5a1430", 0.45));
-    const eye = pack("#16101c"), stalk = pack(mix(body, "#5a1430", 0.3)), white = pack("#fff6e8");
-    for (let f = 0; f < 3; f++) {
-      const b = new PixelBuffer(17, 11);
-      for (let i = 0; i < 3; i++) {
-        const o = f === 0 ? 0 : (i % 2 ? 1 : -1) * (f === 1 ? 1 : -1);
-        b.line(5 + i * 1.5, 7, 3 + i * 1.5 + o, 10, cDark);
-        b.line(11 - i * 1.5, 7, 13 - i * 1.5 + o, 10, cDark);
-      }
-      b.fillEllipse(8.5, 6.5, 5, 2.6, cBody);
-      for (let x = 5; x <= 11; x++) b.set(x, 4, cLight);
-      b.set(7, 5, white);
-      for (let x = 4; x <= 13; x++) b.set(x, 8, cDark);
-      const cy = f === 0 ? 3 : 4;
-      for (const [cx, dir] of [[2, -1], [15, 1]]) {
-        b.fillCircle(cx + 0.5, cy + 1.5, 1.7, cBody);
-        b.set(cx - dir, cy - 1, cBody);
-        b.set(cx + dir * 0, cy - 1, cLight);
-        b.line(cx + (dir < 0 ? 1 : -1), cy + 2, cx + (dir < 0 ? 3 : -3), 6, cBody);
-      }
-      b.set(7, 3, stalk);
-      b.set(10, 3, stalk);
-      b.set(7, 2, eye);
-      b.set(10, 2, eye);
-      b.outline(selOut(0.75));
-      out2.push(b.toCanvas());
-    }
-    return out2;
-  }
   var SKY, SKYHZ, OVERCAST, WATER2, RIDDLES, qmix, tri, ShallowsBiome;
   var init_shallows = __esm({
     "src/world/biomes/shallows.js"() {
@@ -39913,7 +39949,6 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
       init_rng();
       init_color();
       init_canvas();
-      init_pixel();
       init_props();
       init_voxkit();
       init_scenery();
@@ -39980,17 +40015,22 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           this.ys.fill(this.base);
           this.ocBlend = new Blend();
           this.waterBlend = new Blend();
+          const t0 = performance.now();
           this.buildSky();
+          const t1 = performance.now();
           const wo = { y0: this.base - 2, y1: H9, levels: 24 };
           this.water = { day: gradientStrip(H9, WATER2.day, wo), dusk: gradientStrip(H9, WATER2.dusk, wo), night: gradientStrip(H9, WATER2.night, wo) };
           this.buildDepth();
+          const t2 = performance.now();
           this.buildLayers();
+          const t3 = performance.now();
           const rh = H9 - this.base;
           this.raysA = new FogLayer(makeRays(W9, rh, { seed: 4, count: 8, sunX: W9 * 0.78, sunY: -H9 * 0.8, minW: 10, maxW: 34, len: 0.95, color: "#ffffff", alpha: 0.5, levels: 5 }));
           this.raysB = new FogLayer(makeRays(W9, rh, { seed: 9, count: 14, sunX: W9 * 0.74, sunY: -H9 * 0.7, minW: 3, maxW: 9, len: 0.75, color: "#ffffff", alpha: 0.6, levels: 4 }));
           this.caustics = new Caustics({ tw: 150, th: 44, cx: 11, cy: 5, seed: 11, color: "#fffbe2", thick: 0.65, core: 0.75, rim: 0.22 });
           this.shimmer = this.makeShimmer();
           this.buildLife();
+          this.buildMs = { sky: Math.round(t1 - t0), depth: Math.round(t2 - t1), layers: Math.round(t3 - t2), life: Math.round(performance.now() - t3) };
           this.fresh = true;
         }
         buildSky() {
@@ -40202,10 +40242,11 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           const yB = Math.round(hz - 130), hB = H9 - yB;
           const baseB = hz - yB + 22;
           const B2 = [];
-          const kinds = [["coral_branch", 4], ["coral_fan", 3], ["coral_brain", 3], ["coral_tube", 3], ["coral_staghorn", 3], ["rock_big", 1], ["rock_small", 1], ["anemone_base", 3], ["starfish_rock", 1]];
-          for (let i = 0; i < 60; i++) {
-            const [id, nv] = kinds[r.int(0, kinds.length - 1)];
-            const sp = propSprite(id, r.pick([0.4, 0.5, 0.6]), r.int(0, nv - 1));
+          const kinds = ["staghorn", "staghorn", "fan", "fan", "brain", "tube", "table", "pillar", "bubble", "whip"];
+          for (let i = 0; i < 46; i++) B2.push({ spr: coralSprite(kinds[r.int(0, kinds.length - 1)], 200 + r.int(0, 11), "shallows", r.pick([12, 16, 20]), r.pick([0.6, 0.8])), x: r.float(0, LW), y: baseB + r.int(-3, 3), z: r.next() });
+          for (let i = 0; i < 6; i++) B2.push({ spr: reefSprite(220 + i, "shallows", { w: 110, h: 64, d: 40 }, 0.6), x: r.float(0, LW), y: baseB + r.int(0, 3), z: r.next() });
+          for (const [id, nv] of [["rock_big", 1], ["rock_small", 1], ["starfish_rock", 1], ["rock_big", 1]]) {
+            const sp = propSprite(id, r.pick([0.4, 0.5]), r.int(0, nv - 1));
             if (sp) B2.push({ spr: sp, x: r.float(0, LW), y: baseB + r.int(-3, 3), z: r.next() });
           }
           for (let i = 0; i < 10; i++) B2.push({ spr: kelpColumn(60 + i, r.int(30, 60), ["#3e6a2a", "#5a8a34", "#86b048"], 1), x: r.float(0, LW), y: baseB + r.int(-2, 2), z: r.float(0.6, 1) });
@@ -40222,46 +40263,25 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           const W9 = this.W, H9 = this.H, D = this.D;
           const r = new RNG(9);
           this.decor = new DepthDecor(D);
-          const bladesBig = bladeSprites({ len: 13, w: 2.6, cols: ["#36561f", "#52742a", "#749634", "#9cb446", "#c4d064"], curl: 0.5, outline: 0.5 });
-          const bladesSmall = bladeSprites({ len: 8, w: 1.8, cols: ["#36561f", "#52742a", "#749634", "#9cb446"], curl: 0.5, outline: 0.4 });
-          for (const [xf, z, n] of [[0.03, 0.78, 34], [0.07, 0.92, 38], [0.115, 0.72, 28], [0.83, 0.82, 32], [0.875, 0.7, 36], [0.93, 0.95, 28], [0.56, 1.02, 30], [0.5, 0.86, 22], [0.62, 0.68, 26], [0.075, 0.4, 30], [0.905, 0.42, 26], [0.25, 1.1, 34], [0.4, 1.25, 30]]) {
-            const s = D.s(z), x = Math.round(xf * W9);
-            const st = new Strands();
-            st.add({
-              x,
-              y: Math.round(D.floorAt(x, z)) + 3,
-              n,
-              seg: Math.max(2, Math.round(4 * s)),
-              w: s > 0.6 ? 2 : 1,
-              amp: 0.15,
-              speed: 0.7,
-              sec: 1,
-              phase: r.float(0, TAU),
-              wave: 0.2,
-              lean: r.float(-0.06, 0.06),
-              cols: ["#2c461c", "#44662a", "#5a7e30"],
-              out: "#162a16",
-              blades: s > 0.62 ? bladesBig : bladesSmall,
-              leafEvery: 2,
-              bulb: s > 0.6 ? "#d0b850" : null,
-              bulbEvery: 6,
-              hl: false
-            });
-            this.decor.add({ anim: new SwayAnim(st, { frames: 20 }), z, off: r.int(0, 19) });
+          const sc = (z, step2 = 0.2) => qscale(1.5 * D.s(z), step2, 0.3);
+          const life = (kind2, seed, size, z, x, palKey = null, frames2 = 8) => {
+            const A = voxAnim(kind2, seed, "shallows", size, sc(z), frames2, palKey);
+            const it2 = this.decor.add({ anim: placeAnim(A, x, Math.round(D.floorAt(x, z)) + 1), z, off: r.int(0, A.n - 1) });
+            if (A.nights[0]) this.coralGlow.push({ anim: it2.anim, off: it2.off, band: it2.band, z });
+            return it2;
+          };
+          for (const [xf, z, n] of [[0.03, 0.78, 3], [0.07, 0.92, 3], [0.115, 0.72, 2], [0.83, 0.82, 3], [0.875, 0.7, 3], [0.93, 0.95, 2], [0.56, 1.02, 3], [0.5, 0.86, 2], [0.62, 0.68, 2], [0.075, 0.4, 2], [0.905, 0.42, 2], [0.25, 1.1, 3], [0.4, 1.25, 3]]) {
+            for (let i = 0; i < n; i++) {
+              const zz = z + (i - (n - 1) / 2) * 0.03, x = Math.round(xf * W9 + (i - (n - 1) / 2) * 9 * D.s(z) + r.int(-2, 2));
+              life("kelp", 1 + (i + Math.round(xf * 10)) % 3, i === 1 ? 16 : 13, zz, x);
+            }
           }
-          const weedSets = [
-            ["#1e6a46", "#2e8a52", "#4aaa5e", "#86d27a"],
-            ["#2a7a3a", "#3e9a46", "#62bc5a", "#a2e07e"],
-            ["#6a2a5a", "#943a6e", "#c4588a", "#f08ab0"],
-            ["#7a4a1e", "#a8682a", "#d0903a", "#f0c060"]
-          ];
           const spots = [
             [0.06, -0.12],
             [0.15, -0.15],
             [0.2, 0.05],
             [0.248, 0.16],
             [0.285, 0.1],
-            [0.322, 0.26],
             [0.4, 0.12],
             [0.447, -0.05],
             [0.505, -0.18],
@@ -40286,85 +40306,15 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
             [0.8, 0.75],
             [0.9, 0.85]
           ];
-          for (const [xf, z] of spots) {
-            const s = D.s(z), x0 = Math.round(xf * W9), y0 = Math.round(D.floorAt(x0, z)) + 1;
-            const set = weedSets[r.chance(0.75) ? r.int(0, 1) : r.int(2, 3)];
-            const tall = r.chance(0.4);
-            const st = new Strands();
-            const k = r.int(4, 7);
-            for (let i = 0; i < k; i++) {
-              const lean = (i / (k - 1) - 0.5) * 0.9 + r.float(-0.15, 0.15);
-              st.add({
-                x: x0 + Math.round(lean * 8 * s) + r.int(-1, 1),
-                y: y0 + r.int(-1, 0),
-                n: Math.max(3, Math.round((tall ? r.int(8, 13) : r.int(4, 8)) * Math.min(1.15, s))),
-                seg: 2,
-                w: tall && s > 0.7 ? 2 : 1,
-                amp: 0.28,
-                speed: 1.6,
-                sec: 2,
-                phase: r.float(0, TAU),
-                wave: 0.5,
-                lean,
-                curl: lean * 0.4,
-                cols: set,
-                out: tall && s > 0.7 ? "#0e2a24" : null,
-                hl: false,
-                taper: 0.3
-              });
-            }
-            this.decor.add({ anim: new SwayAnim(st, { frames: 16 }), z, off: r.int(0, 15) });
-          }
+          for (const [xf, z] of spots) life("seagrass", 1 + r.int(0, 3), r.pick([7, 9]), z, Math.round(xf * W9));
           this.anemones = [];
-          for (const [xf, z, cols, tip, glow, baseC] of [
-            [0.385, 0.02, ["#b03272", "#de4e92", "#ff7cb4", "#ffb4d6"], "#fff0f6", "#ff7ab0", ["#5a1e46", "#8a3462", "#b4507e"]],
-            [0.18, -0.08, ["#1e8090", "#2aaab6", "#5ae2e2", "#b0fff6"], "#ffffff", "#5affea", ["#3e2a5a", "#5a3e7a", "#7a5a9a"]],
-            [0.79, 0.1, ["#b0602a", "#e2803a", "#ffaa5e", "#ffdcac"], "#fff4e0", "#ffb070", ["#5a2e1e", "#7a4a2a", "#9a6a3a"]],
-            [0.56, 0.5, ["#7a3ab0", "#9a5ad8", "#c08aff", "#e4c8ff"], "#ffffff", "#c08aff", ["#3a1e5a", "#5a2e7a", "#7a4a9a"]]
-          ]) {
-            const x = Math.round(xf * W9), y = Math.round(D.floorAt(x, z)) + 1, s = D.s(z);
-            const st = new Strands();
-            const N = 17;
-            for (let i = 0; i < N; i++) {
-              const u = i / (N - 1) - 0.5;
-              const lean = u * 2.3 + r.float(-0.08, 0.08);
-              st.add({
-                x: x + Math.round(u * 10 * s),
-                y: y - Math.round(7 * s) + Math.round(Math.abs(u) * 3 * s),
-                n: Math.max(3, Math.round((5 + i * 7 % 3) * Math.min(1.1, s))),
-                seg: 2,
-                w: s > 0.8 ? 2 : 1,
-                amp: 0.32,
-                speed: 1.5,
-                sec: 2,
-                phase: i * 0.45,
-                wave: 0.6,
-                lean,
-                curl: lean * 0.45,
-                cols,
-                out: null,
-                hl: false,
-                tip,
-                tipR: 1
-              });
-            }
-            const under = (gg) => {
-              const bh = Math.round(8 * s);
-              for (let yy = -bh; yy <= 0; yy++) {
-                const hw = Math.round((6 - (yy + bh) * 0.12 + (yy > -2 ? 1 : 0)) * s);
-                gg.fillStyle = baseC[yy < -bh * 0.75 ? 2 : yy < -2 ? 1 : 0];
-                gg.fillRect(x - hw, y + yy, hw * 2 + 1, 1);
-                gg.fillStyle = baseC[2];
-                gg.fillRect(x - hw + 1, y + yy, 2, 1);
-              }
-              gg.fillStyle = "#2a1424";
-              gg.fillRect(x - Math.round(7 * s), y + 1, Math.round(14 * s) + 1, 1);
-            };
-            const anim = new SwayAnim(st, { frames: 16, under, bounds: { x0: x - 9, y0: y - 9, x1: x + 9, y1: y + 2 } });
-            this.decor.add({ anim, z, off: r.int(0, 15) });
-            this.anemones.push({ x, y, z, glow });
+          for (const [xf, z, pal2, glow] of [[0.385, 0.02, "pink", "#ff7ab0"], [0.18, -0.08, "teal", "#5affea"], [0.79, 0.1, "orange", "#ffb070"], [0.56, 0.5, "purple", "#c08aff"], [0.66, -0.16, "magenta", "#ff8af0"], [0.28, 0.36, "yellow", "#ffe27a"]]) {
+            const x = Math.round(xf * W9);
+            const it2 = life("anemone", 3 + Math.round(xf * 20), 9, z, x, pal2);
+            this.anemones.push({ x, y: it2.anim.y + it2.anim.frames[0].height - 4, z, glow });
           }
-          this.crabSpr = [crabFrames("#e8603a"), crabFrames("#f0a040")];
+          for (const [xf, z, pal2] of [[0.125, 0.1, "red"], [0.548, 0.28, "orange"], [0.745, 0.32, "pink"], [0.43, 0.58, "cream"], [0.99, 0.08, "purple"], [0.3, 0.86, "yellow"]]) life("soft", 7 + Math.round(xf * 30), 12, z, Math.round(xf * W9), pal2);
+          this.crabSpr = [voxCrab("#e0502e", 1.5), voxCrab("#f09a3a", 1.5)];
           this.crabs = [[0.52, -0.05], [0.86, 0.06], [0.25, -0.2]].map(([xf, z], i) => ({ x: xf * W9, z, dir: i % 2 ? -1 : 1, state: "walk", t: r.float(1, 4), f: 0, kind: i % 2, ft: 0 }));
           const sy = this.base;
           this.plankton = new Motes(110, { x0: 0, y0: sy + 4, x1: W9, y1: H9 - 60 }, { seed: 3, vx: [-3, 3], vy: [-2.5, 1.5], sizes: [1, 1, 1, 2], colors: ["#d8fff4", "#ffffff", "#b8f0ff", "#fff6c8"], alpha: [0.25, 0.75], wob: 5 });
@@ -40845,7 +40795,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           for (const cr of this.crabs) {
             const y = Math.round(this.D.floorAt(cr.x, cr.z));
             const spr2 = this.crabSpr[cr.kind][cr.state === "walk" ? 1 + Math.floor(cr.ft) % 2 : 0];
-            ctx3.drawImage(spr2, Math.round(cr.x) - 8, y - 10);
+            ctx3.drawImage(spr2.canvas, Math.round(cr.x - spr2.ox), y - spr2.oy + 1);
           }
           const s = this.secrets();
           const hk = (period, off) => {
@@ -48520,7 +48470,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           return this.allowed() && !this.wantsDock();
         }
         wantsDock() {
-          return this.allowed() && !!this.game.ui?.blocking;
+          return this.allowed() && (!!this.game.ui?.blocking || this.game.state?.view === "aquarium");
         }
         get docked() {
           return this.dockK > 0 && this.show < 0.05;
@@ -68319,7 +68269,7 @@ kTtaatTk
       Boat = class {
         constructor(game) {
           this.game = game;
-          this.x = Math.round((game.screen?.W || 960) * 0.56);
+          this.x = Math.max(150, Math.round((game.screen?.W || 960) * 0.2));
           this.y = 0;
           this.vx = 0;
           this.vy = 0;
@@ -72538,7 +72488,9 @@ kTtaatTk
           for (const it2 of this.items) it2.draw = (ctx3, hover, t) => this.drawItem(ctx3, it2, hover, t);
         }
         isVisible(id) {
-          return !this.hidden.has(id) && (this.game.tutorial.dockVisible?.(id) ?? true);
+          const g = this.game;
+          if (g.ui.tabbar && !g.tutorial.active && (id !== "shop" || g.state.view === "aquarium")) return false;
+          return !this.hidden.has(id) && (g.tutorial.dockVisible?.(id) ?? true);
         }
         layout() {
           const g = this.game;
@@ -72802,7 +72754,7 @@ kTtaatTk
               }
               break;
             case "fight":
-              this.say("Hold! Pull back!");
+              this.say("{mouse_l} Circle your mouse to reel it in!");
               break;
             case "flood":
               g.audio.play("flood_rush");
@@ -73745,6 +73697,7 @@ void main() {
       init_browserbridge();
       init_boat();
       init_build();
+      init_store();
       init_watergl();
       init_canvas();
       Game = class {
@@ -73762,6 +73715,7 @@ void main() {
           this.camera = new Camera(this);
           this.clock = new Clock(this);
           this.events = {};
+          this.on("boatUpgraded", () => this.recomputeStats());
           this.time = 0;
           this.timeScale = 1;
           this.timeScaleTarget = 1;
@@ -73873,7 +73827,12 @@ void main() {
           };
         }
         recomputeStats() {
-          this.stats = computeStats(this.state.skills);
+          const s = this.stats = computeStats(this.state.skills);
+          const b = (k) => boatBonus(this.state, k);
+          s.boxSlots += b("baitSlots");
+          s.reelSpeed *= b("reel");
+          s.collectRadius *= b("coinMagnet");
+          s.rarityBoost *= b("rarity");
         }
         onResize() {
           const { W: W9, H: H9 } = this.screen;
@@ -73980,7 +73939,7 @@ void main() {
           if (e.kind === "icon") {
             const ic = this.desktop.iconById(e.id);
             if (!ic || !this.state.baitBox.includes(e.id)) return null;
-            return { kind: "icon", type: ic.type, id: ic.id, mini: getMiniIcon(ic.icon), label: ic.label };
+            return { kind: "icon", type: ic.type, id: ic.id, mini: getMiniIcon(ic.icon), label: ic.label, mods: CATALOG_BY_ID[ic.id] ? baitMods(ic.id, this.state) : null };
           }
           if (e.kind === "file") {
             const f = this.state.files.find((x) => x.id === e.id);
@@ -74234,11 +74193,12 @@ void main() {
           w.hour = this.clock.hour();
           w.weather = ocean3.weather;
           w.biome = ocean3.biome.id;
-          w.rarityBoost = this.stats.rarityBoost * this.baitFx.rarityMul() * (1 + this.bonus("rarity") + (w.night ? this.bonus("nightRarity") : 0));
+          const bm = this.currentBait()?.mods;
+          w.rarityBoost = this.stats.rarityBoost * this.baitFx.rarityMul() * (bm?.rarity || 1) * (1 + this.bonus("rarity") + (w.night ? this.bonus("nightRarity") : 0));
           w.calmMul = this.stats.calm;
           w.lowPower = this.lowPower;
           w.populationMul = this.baitFx.populationMul();
-          w.rollMods = { mutationChance: this.stats.mutationChance * (1 + this.bonus("mutation")), shinyChance: this.stats.shinyChance * (1 + this.bonus("shiny")) };
+          w.rollMods = { mutationChance: this.stats.mutationChance * (1 + this.bonus("mutation")), shinyChance: this.stats.shinyChance * (1 + this.bonus("shiny")), ...bm ? { sizeBonus: bm.sizeBonus, giantChance: 0.04 * bm.giantMul } : {} };
           const toWorld = (r) => {
             if (r) {
               const [x0, y0] = cam.screenToWorld(r.x, r.y);
