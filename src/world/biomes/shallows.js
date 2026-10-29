@@ -104,7 +104,7 @@ export class ShallowsBiome extends Biome {
     this.caustics = new Caustics({ tw: 150, th: 44, cx: 11, cy: 5, seed: 11, color: '#fffbe2', thick: 0.65, core: 0.75, rim: 0.22 });
     this.shimmer = this.makeShimmer();
     this.buildLife();
-    this.buildMs = { sky: Math.round(t1 - t0), depth: Math.round(t2 - t1), layers: Math.round(t3 - t2), life: Math.round(performance.now() - t3) };
+    (this.buildMs ||= []).push({ sky: Math.round(t1 - t0), depth: Math.round(t2 - t1), layers: Math.round(t3 - t2), life: Math.round(performance.now() - t3) });
     this.fresh = true;
   }
 
@@ -195,7 +195,7 @@ export class ShallowsBiome extends Biome {
     reef(101, 0.335, 0.26, { w: 116, h: 74, d: 46 });
     reef(102, 0.085, 0.18, { w: 84, h: 60, d: 38 });
     coral('brain', 111, 0.452, 0.05, 15); coral('staghorn', 112, 0.47, 0.22, 20); coral('fan', 113, 0.268, 0.07, 18); coral('tube', 114, 0.41, 0.31, 16);
-    coral('table', 115, 0.635, 0.3, 18); coral('bubble', 116, 0.505, -0.06, 12); coral('pillar', 117, 0.705, 0.24, 14); coral('whip', 118, 0.2, -0.04, 12);
+    coral('staghorn', 115, 0.635, 0.3, 17); coral('bubble', 116, 0.505, -0.06, 12); coral('pillar', 117, 0.705, 0.24, 14); coral('whip', 118, 0.2, -0.04, 12);
     // mid
     reef(121, 0.17, 0.5, { w: 140, h: 84, d: 54 });
     reef(122, 0.48, 0.47, { w: 124, h: 80, d: 50 });

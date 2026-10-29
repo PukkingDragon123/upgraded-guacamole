@@ -31,6 +31,25 @@ export function run(params) {
   const ctx = ctxOf(cv);
   const view = params.get('view') || 'boats';
   const night = params.get('night') === '1';
+  if (view === 'coralprof') {
+    // build-cost profile: model generation vs rendering per reef size factor
+    const out = [];
+    for (const k of [0.6, 0.9, 1.2, 1.5]) {
+      const t0 = performance.now();
+      const m = reefFormation(77, THEMES.shallows, { w: Math.round(140 * k), h: Math.round(84 * k), d: Math.round(54 * k), sizes: [10 * k, 24 * k] });
+      const t1 = performance.now();
+      renderCoral(m, 1, THEMES.shallows);
+      const t2 = performance.now();
+      out.push(`k${k} model ${Math.round(t1 - t0)}ms [${globalThis.RFT}] render ${Math.round(t2 - t1)}ms`);
+    }
+    for (const kind of ['kelp', 'anemone', 'seagrass', 'soft']) {
+      const t0 = performance.now();
+      voxAnim(kind, 3, 'shallows', kind === 'kelp' ? 14 : 10, 1.2);
+      out.push(`${kind} x8 ${Math.round(performance.now() - t0)}ms`);
+    }
+    console.warn('PROF ' + out.join(' | ') + ' SPT ' + JSON.stringify(Object.fromEntries(Object.entries(globalThis.SPT || {}).map(([a, b]) => [a, Math.round(b)]))));
+    return;
+  }
   if (view === 'coral') {
     const themeId = params.get('theme') || 'shallows';
     const theme = THEMES[themeId];

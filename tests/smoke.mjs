@@ -143,8 +143,8 @@ for (const id of ['journal', 'shop', 'skills', 'map', 'settings', 'bait']) {
   await page.screenshot({ path: join(out, `10_panel_${id}.png`) });
   await G('g.ui.close()');
 }
-await G('(g.state.coins += 99999, g.state.skills.hook5 = g.state.skills.hook7 = true, g.state.unlockedBiomes.push("junkyard", "abyss"), g.recomputeStats())');
-for (const b of ['junkyard', 'abyss']) {
+await G('(g.state.coins += 99999, g.state.skills.hook5 = g.state.skills.hook7 = true, g.state.unlockedBiomes.push("fjord", "junkyard", "metropolis", "volcano", "abyss"), g.recomputeStats())');
+for (const b of ["fjord", "junkyard", "metropolis", "volcano", "abyss"]) {
   await G(`g.travel('${b}')`);
   await wait(2200);
   await page.screenshot({ path: join(out, `11_travel_${b}.png`) });

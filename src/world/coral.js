@@ -128,28 +128,32 @@ function staghorn(m, o, size, P, r) {
   }
 }
 
+// Tabular acropora: a stout stalk carrying lobed horizontal tiers whose tops bristle with short upward
+// branchlets (pale tips), shaded undersides and upturned rims.
 function tableCoral(m, o, size, P, r) {
   const [cx, y0, cz] = o;
-  const h0 = Math.round(size * 0.45);
-  m.cylinder(cx, cz, y0, y0 + h0, Math.max(1, size * 0.1), P.c[0]);
+  const h0 = Math.round(size * 0.5);
+  const sr = Math.max(1.2, size * 0.13);
+  for (let y = 0; y <= h0; y++) m.cylinder(cx, cz, y0 + y, y0 + y, sr * (1 + Math.max(0, 3 - y) * 0.25), (x, yy, z) => (hash3(x, yy, z, 4) < 0.3 ? P.c[1] : P.c[0]));
   const tiers = size > 9 ? 3 : 2;
   for (let t = 0; t < tiers; t++) {
-    const R = size * (0.95 - t * 0.24), y = y0 + h0 + t * 3;
-    const ox = cx + r.float(-2, 2) * t, oz = cz + r.float(-1.5, 1.5) * t;
+    const R = size * (1 - t * 0.26), y = y0 + h0 + Math.round(t * Math.max(3, size * 0.22));
+    const ox = cx + r.float(-1.5, 1.5) * t, oz = cz + r.float(-1, 1) * t;
     const seed = r.int(0, 999);
+    if (t > 0) m.line(cx, y0 + h0, cz, ox, y, oz, P.c[0], sr * 0.7);
     for (let z = Math.floor(oz - R); z <= Math.ceil(oz + R); z++) for (let x = Math.floor(ox - R); x <= Math.ceil(ox + R); x++) {
-      const d = Math.hypot(x + 0.5 - ox, (z + 0.5 - oz) * 1.15);
-      const edge = R * (0.86 + 0.18 * noise3(x * 0.3, z * 0.3, t, seed));
+      const a = Math.atan2(z + 0.5 - oz, x + 0.5 - ox);
+      const d = Math.hypot(x + 0.5 - ox, (z + 0.5 - oz) * 1.1);
+      const edge = R * (0.8 + 0.14 * Math.sin(a * 5 + seed) + 0.16 * noise3(x * 0.25, z * 0.25, t, seed));
       if (d > edge) continue;
-      const rim = d > edge - 1.2;
-      const k = d / edge;
-      const ring = Math.floor(d * 0.7 + noise3(x * 0.4, z * 0.4, 1, seed) * 1.5) % 2;
-      m.set(x, y, z, rim ? P.c[3] : ring ? P.c[2] : P.c[1]);
-      if (k < 0.45) m.set(x, y - 1, z, P.c[0]);
-      if (!rim && hash3(x, y, z, 5) < 0.22) m.set(x, y + 1, z, P.dot);
-      if (rim && hash3(x, y, z, 6) < 0.5) m.set(x, y + 1, z, P.c[3]);
+      const rim = d > edge - 1.4;
+      m.set(x, y, z, rim ? P.c[2] : P.c[1]);
+      m.set(x, y - 1, z, P.c[0]);
+      const hb = hash3(x, y, z, 5);
+      if (rim) { if (hb < 0.6) m.set(x, y + 1, z, P.c[3]); continue; }
+      // bristling branchlets
+      if (hb < 0.42) { m.set(x, y + 1, z, P.c[2]); if (hb < 0.16) m.set(x, y + 2, z, P.c[3]); }
     }
-    m.cylinder(ox, oz, y - 1, y - 1, R * 0.5, P.c[0]);
   }
 }
 
@@ -194,10 +198,10 @@ function brainCoral(m, o, size, P, r) {
     if (q > 1) continue;
     // meandering grooves: contour bands of warped noise near the surface
     if (q > 0.62) {
-      const n = noise3(x * 0.2, y * 0.2, z * 0.2, seed) * 7 + noise3(x * 0.45, y * 0.45, z * 0.45, seed + 3) * 1.4;
+      const n = noise3(x * 0.11, y * 0.11, z * 0.11, seed) * 6 + noise3(x * 0.3, y * 0.3, z * 0.3, seed + 3) * 0.9;
       const f = n - Math.floor(n);
-      if (f < 0.3 && q > 0.72) continue;
-      m.set(x, y, z, f < 0.3 ? P.dark : f > 0.66 ? P.c[3] : f > 0.48 ? P.c[2] : P.c[1]);
+      if (f < 0.26 && q > 0.72) continue;
+      m.set(x, y, z, f < 0.26 ? P.dark : f > 0.7 ? P.c[3] : f > 0.45 ? P.c[2] : P.c[1]);
     } else m.set(x, y, z, P.dark);
   }
   m.cylinder(cx, cz, y0, y0, R * 0.9, P.c[0]);
@@ -290,7 +294,7 @@ function rockMound(m, theme, r, cx, cz, w, h, d) {
     }
   }
   // encrusting coralline algae and turf in patches on exposed tops
-  for (let z = 0; z < m.nz; z++) for (let x = 0; x < m.nx; x++) for (let y = m.ny - 2; y >= 0; y--) {
+  for (let z = 0; z < m.nz; z++) for (let x = 0; x < m.nx; x++) for (let y = Math.min(m.ny - 2, Math.ceil(h * 1.5) + 2); y >= 0; y--) {
     const v = m.get(x, y, z);
     if (!v) continue;
     if (!m.get(x, y + 1, z)) {
@@ -312,15 +316,24 @@ function surfaceY(m, x, z) {
 function encrust(m, theme, r, scheme, seed) {
   const pals = (scheme || Object.keys(theme.pals)).map((k) => palIdx(m, theme.pals[k], theme.glow > 0.5));
   const { nx, ny, nz } = m;
-  const shelves = [];
-  for (let z = 1; z < nz - 1; z++) for (let y = 1; y < ny - 1; y++) for (let x = 1; x < nx - 1; x++) {
-    const v = m.get(x, y, z);
-    if (!v || !m.palette[v].rock) continue;
-    const front = !m.get(x, y, z + 1), up = !m.get(x, y + 1, z);
-    if (!front && !up) continue;
+  const D = m.data, SZ = nx * ny;
+  const isRock = new Uint8Array(256);
+  m.palette.forEach((pe, i) => { if (pe?.rock) isRock[i] = 1; });
+  const shelves = [], todo = [];
+  for (let z = 1; z < nz - 1; z++) for (let y = 1; y < ny - 1; y++) {
+    let i = 1 + nx * (y + ny * z);
+    for (let x = 1; x < nx - 1; x++, i++) {
+      if (!isRock[D[i]]) continue;
+      const front = !D[i + SZ], up = !D[i + nx];
+      if (front || up) todo.push(x, y, z, front ? 1 : 0, up ? 1 : 0);
+    }
+  }
+  for (let q = 0; q < todo.length; q += 5) {
+    const x = todo[q], y = todo[q + 1], z = todo[q + 2], front = todo[q + 3], up = todo[q + 4];
     const n = noise3(x * 0.08, y * 0.08, z * 0.08, seed + 21);
-    const P = pals[Math.floor(noise3(x * 0.03, y * 0.03, z * 0.03, seed + 7) * 0.999 * pals.length * 1.6) % pals.length];
     const h = hash3(x, y, z, seed + 3);
+    if (n <= 0.56 && h >= 0.009 && !(front && !up && y > 4 && h > 0.9985)) continue;
+    const P = pals[Math.floor(noise3(x * 0.03, y * 0.03, z * 0.03, seed + 7) * 0.999 * pals.length * 1.6) % pals.length];
     if (n > 0.56) {
       // crust: one voxel proud of the face, gradient by exposure, polyp dots
       const tx = x, ty = up ? y + 1 : y, tz = up ? z : z + 1;
@@ -331,7 +344,7 @@ function encrust(m, theme, r, scheme, seed) {
       for (let k = 0; k < 5; k++) m.set(x + r.int(-1, 1), y + (up ? 1 : r.int(-1, 1)), z + (front ? 1 : 0), k ? P.c[3] : P.c[2]);
     } else if (h < 0.009) {
       ball(m, x, y + (up ? 1 : 0), z + (front ? 1 : 0), r.float(1, 1.8), P.c[r.int(1, 2)]);
-    } else if (front && !up && y > 4 && h > 0.9985) shelves.push([x, y, z, P]);
+    } else shelves.push([x, y, z, P]);
   }
   for (const [x, y, z, P] of shelves) {
     const R = r.float(3, 6.5);
@@ -350,8 +363,11 @@ export function reefFormation(seed, theme, { w = 140, h = 84, d = 54, density = 
   const m = new VoxelModel(w, h, d);
   const cx = w / 2, cz = d / 2;
   const scheme = theme.schemes ? theme.schemes[r.int(0, theme.schemes.length - 1)] : null;
+  const T0 = performance.now();
   rockMound(m, theme, r, cx, cz, w * 0.82, h * rock, d * 0.7);
+  const T1 = performance.now();
   encrust(m, theme, r, scheme, seed);
+  const T2 = performance.now();
   const kinds = Object.entries(theme.weights);
   const total = kinds.reduce((a, [, wt]) => a + wt, 0);
   const pick = () => { let q = r.next() * total; for (const [k, wt] of kinds) { q -= wt; if (q <= 0) return k; } return kinds[0][0]; };
@@ -367,9 +383,13 @@ export function reefFormation(seed, theme, { w = 140, h = 84, d = 54, density = 
     if (y + size * 1.4 >= h - 2) continue;
     used.push([x, z, size]);
     const P = palIdx(m, pickPal(theme, r, scheme), theme.glow > 0.5);
+    const ts = performance.now();
     SPECIES[kind](m, [x, y, kind === 'fan' ? Math.max(3, Math.round(z * 0.6)) : z], size, P, r);
+    (globalThis.SPT ||= {})[kind] = (globalThis.SPT[kind] || 0) + performance.now() - ts;
   }
+  const T3 = performance.now();
   polyps(m, seed);
+  globalThis.RFT = [T1 - T0, T2 - T1, T3 - T2, performance.now() - T3].map(Math.round);
   return m;
 }
 
@@ -387,14 +407,21 @@ export function coralModel(kind, seed, theme, size = 10) {
 // Sprinkle lighter polyp dots on exposed coral voxels (not on rock or sand).
 function polyps(m, seed) {
   const lighter = new Map();
-  for (let z = 1; z < m.nz - 1; z++) for (let y = 1; y < m.ny - 1; y++) for (let x = 1; x < m.nx - 1; x++) {
-    const v = m.get(x, y, z);
-    if (!v || hash3(x, y, z, seed + 11) > 0.1 || !m.exposed(x, y, z)) continue;
-    const pe = m.palette[v];
-    if (!pe || !pe.coral) continue;
-    let l = lighter.get(v);
-    if (l === undefined) { l = m.palette.length < 250 ? m.color(shade(pe.color, 0.3), { jitter: 0.04 }) : v; lighter.set(v, l); }
-    m.set(x, y, z, l);
+  const { nx, ny, nz } = m;
+  const D = m.data, SZ = nx * ny;
+  const isCoral = new Uint8Array(256);
+  m.palette.forEach((pe, i) => { if (pe?.coral) isCoral[i] = 1; });
+  for (let z = 1; z < nz - 1; z++) for (let y = 1; y < ny - 1; y++) {
+    let i = 1 + nx * (y + ny * z);
+    for (let x = 1; x < nx - 1; x++, i++) {
+      const v = D[i];
+      if (!isCoral[v]) continue;
+      if (D[i + 1] && D[i - 1] && D[i + nx] && D[i - nx] && D[i + SZ] && D[i - SZ]) continue;
+      if (hash3(x, y, z, seed + 11) > 0.1) continue;
+      let l = lighter.get(v);
+      if (l === undefined) { l = m.palette.length < 250 ? m.color(shade(m.palette[v].color, 0.3), { jitter: 0.04 }) : v; lighter.set(v, l); }
+      D[i] = l;
+    }
   }
 }
 
@@ -605,35 +632,37 @@ export function drawCoralGlow(ctx, list, band, dx, dy, alpha, fogOf, t = 0) {
 
 // Front-facing voxel crab: frames [idle (claws up), walk A, walk B] as {canvas, ox, oy} (ox/oy = feet centre).
 const crabCache = new Map();
-export function voxCrab(body = '#e0502e', scale = 1.5) {
+export function voxCrab(body = '#e0502e', scale = 1) {
   const key = body + scale;
   if (crabCache.has(key)) return crabCache.get(key);
+  const K = 1.6; // voxel detail (model units -> voxels)
   const frames = [0, 1, 2].map((f) => {
-    const m = new VoxelModel(20, 11, 13);
-    const C = (c, o = {}) => m.color(c, { jitter: 0.08, ...o });
-    const shell = C(body), top = C(mix(body, '#ffd8a8', 0.35), { spec: 0.4 }), under = C(mix(body, '#4a1028', 0.4)), leg = C(mix(body, '#5a1430', 0.3));
-    const claw = C(mix(body, '#ffffff', 0.12), { spec: 0.3 }), tipC = C(mix(body, '#2a0a10', 0.55)), eye = C('#120c14', { spec: 0.9 }), dot = C(mix(body, '#fff0d8', 0.6));
-    const cx = 10, cz = 6;
-    // legs (three a side) splay out and down; walking frames alternate the feet
-    for (let i = 0; i < 3; i++) for (const side of [-1, 1]) {
+    const m = new VoxelModel(Math.ceil(20 * K), Math.ceil(11 * K), Math.ceil(13 * K));
+    const C = (c, o = {}) => m.color(c, { jitter: 0.06, ...o });
+    const shell = C(body), top = C(mix(body, '#ffd8a8', 0.3), { spec: 0.5 }), under = C(mix(body, '#4a1028', 0.4)), leg = C(mix(body, '#5a1430', 0.25)), legHi = C(mix(body, '#ffe0c0', 0.25));
+    const claw = C(mix(body, '#ffffff', 0.1), { spec: 0.4 }), tipC = C(mix(body, '#2a0a10', 0.6)), eye = C('#120c14', { spec: 0.9 }), dot = C(mix(body, '#fff0d8', 0.55));
+    const cx = 10 * K, cz = 6 * K;
+    const L = (x0, y0, z0, x1, y1, z1, c, rr) => m.line(x0 * K, y0 * K, z0 * K, x1 * K, y1 * K, z1 * K, c, rr * K);
+    // legs (four a side) splay out and down; walking frames alternate the feet
+    for (let i = 0; i < 4; i++) for (const side of [-1, 1]) {
       const o = f === 0 ? 0 : ((i + (side > 0 ? 1 : 0)) % 2 ? 1 : -1) * (f === 1 ? 1 : -1);
-      const kx = cx + side * 4, kz = cz - 2 + i * 2;
-      m.line(kx, 3, kz, cx + side * 7, 4, kz + o * 0.5, leg, 0.6);
-      m.line(cx + side * 7, 4, kz + o * 0.5, cx + side * (8 + (o > 0 ? 1 : 0)), 0, kz + o, leg, 0.6);
+      const kz = 6 - 2.4 + i * 1.6;
+      L(10 + side * 4, 3, kz, 10 + side * 7, 4.6, kz + o * 0.4, leg, 0.45);
+      L(10 + side * 7, 4.6, kz + o * 0.4, 10 + side * (8.6 + (o > 0 ? 0.8 : 0)), 0, kz + o * 0.8, i % 2 ? legHi : leg, 0.4);
     }
-    m.ellipsoid(cx, 3.6, cz, 4.6, 2.2, 3.4, (x, y, z) => (y >= 5 ? (hash3(x, y, z, 3) < 0.2 ? dot : top) : y <= 2 ? under : shell));
+    m.ellipsoid(cx, 3.6 * K, cz, 4.8 * K, 2.3 * K, 3.5 * K, (x, y, z) => (y >= 5 * K ? (hash3(x, y, z, 3) < 0.18 ? dot : top) : y <= 2 * K ? under : shell));
     // claws held forward (raised when idle)
-    const cy = f === 0 ? 6 : 5;
+    const cy = f === 0 ? 6.2 : 5;
     for (const side of [-1, 1]) {
-      m.line(cx + side * 3, 3, cz + 3, cx + side * 5, cy - 1, cz + 5, shell, 0.7);
-      m.ellipsoid(cx + side * 5.5, cy, cz + 5.5, 1.6, 1.3, 1.3, claw);
-      m.set(cx + side * 5, cy + 1, cz + 7, tipC); m.set(cx + side * 6, cy + 1, cz + 7, tipC);
-      m.set(cx + side * 5, cy - 1, cz + 7, tipC);
+      L(10 + side * 3, 3, 9, 10 + side * 5.2, cy - 1, 11, shell, 0.55);
+      m.ellipsoid((10 + side * 5.6) * K, cy * K, 11.6 * K, 1.7 * K, 1.3 * K, 1.4 * K, claw);
+      L(10 + side * 5, cy + 0.4, 12.6, 10 + side * 5.8, cy + 0.6, 13, tipC, 0.35);
+      L(10 + side * 5, cy - 0.8, 12.6, 10 + side * 5.6, cy - 0.6, 12.9, tipC, 0.3);
     }
     // eye stalks
-    for (const side of [-1, 1]) { m.set(cx + side * 1.5, 6, cz + 3, shell); m.set(cx + side * 1.5, 7, cz + 3, eye); }
-    const r = renderModel(m, { scale, outline: true, jitter: 0.08, ao: 1.1, edges: 0.6 });
-    const p = r.project(cx, 0, cz + 2);
+    for (const side of [-1, 1]) { L(10 + side * 1.4, 5, 9, 10 + side * 1.6, 6.6, 9.4, shell, 0.35); m.sphere((10 + side * 1.6) * K, 7.1 * K, 9.4 * K, 0.7 * K, eye); }
+    const r = renderModel(m, { scale, outline: true, jitter: 0.06, ao: 1.1, edges: 0.6 });
+    const p = r.project(cx, 0, cz + 2 * K);
     return { canvas: r.canvas, ox: Math.round(p[0]), oy: Math.round(p[1]) };
   });
   crabCache.set(key, frames);
