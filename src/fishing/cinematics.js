@@ -387,7 +387,7 @@ export class Finale {
         F.shake(4);
         F.sfx('splash_small');
         F.sfx('magic');
-        if (this.hasBoat) F.cam?.focus?.(hx, hy - 26, 1.85, 3);
+        if (this.hasBoat) F.focusCam(hx, hy - 26, 1.85, 3);
         break;
       }
       case 'igotit': {
@@ -423,7 +423,7 @@ export class Finale {
         f.feel('scared', 0.5);
         if (rng.chance(rdt * 20)) F.particles.bubbleTrail(f.x, f.y, 0, -80);
         if (this.surface !== null && rng.chance(rdt * 10)) F.particles.foam(f.x, this.surface, 1, { spread: 8 });
-        F.cam?.focus?.(f.x, f.y - 20, 1.6, 3);
+        if (this.hasBoat) F.focusCam(f.x, f.y - 20, 1.6, 3);
         if (this.st > 0.55) this.go('erupt');
         break;
       }
@@ -447,7 +447,7 @@ export class Finale {
         if (rng.chance(rdt * 18)) F.particles.sparkle(f.x + rng.float(-10, 10) * f.scale, f.y + rng.float(-6, 6), '#ffffff');
         if (rng.chance(rdt * 8)) F.particles.stars(f.x, f.y, 1, { speed: [10, 30], g: 0 });
         const mxp = lerp(f.x, hx, 0.4), myp = lerp(f.y, hy, 0.4);
-        F.cam?.focus?.(mxp, myp - 10, this.hasBoat ? 1.35 : 1.15, 3.5);
+        if (this.hasBoat) F.focusCam(mxp, myp - 10, 1.35, 3.5);
         if (u >= 1) this.go('catch');
         break;
       }
@@ -457,7 +457,7 @@ export class Finale {
         break;
       case 'igotit':
         this.rays = Math.max(0, this.rays - rdt * 1.2);
-        if (this.hasBoat) { const [hx, hy] = this.hands(); F.cam?.focus?.(hx, hy - 26, 1.85, 3); }
+        if (this.hasBoat) { const [hx, hy] = this.hands(); F.focusCam(hx, hy - 26, 1.85, 3); }
         if (this.st > 2.4) return 'caught';
         break;
       default: break;
@@ -522,7 +522,7 @@ export class EscapeCine {
       F.shake(3);
     }
     F.cam?.slowmo?.(0.5, 0.7);
-    F.cam?.focus?.(fish.x, fish.y, 2.3, 4);
+    F.focusCam(fish.x, fish.y, 2.3, 4);
   }
 
   update(dt, rdt) {
@@ -536,7 +536,7 @@ export class EscapeCine {
       // recoil
       f.x += -this.dirAway * 30 * dt; f.vx = this.dirAway * 10;
       f.squash = 0.2;
-      F.cam?.focus?.(f.x, f.y, 2.3, 4);
+      F.focusCam(f.x, f.y, 2.3, 4);
     } else if (t < 1.55) {
       // the taunt: turn to the player, blabber, wiggle
       const [cxw] = F.toWorld(F.W / 2, F.H / 2);
@@ -548,7 +548,7 @@ export class EscapeCine {
       f.wiggle = 0.4;
       f.feel('smug', 0.5);
       if (!this.said) { this.said = true; F.sfx(f.sp?.sound || 'blub', { pitch: 1.3 }); f.say(rng.pick(['music', 'heart', 'anger', 'sweat']), 1.1); }
-      F.cam?.focus?.(f.x, f.y - 4, 2.4, 4);
+      F.focusCam(f.x, f.y - 4, 2.4, 4);
     } else {
       // zip away
       if (!this.zipped) {

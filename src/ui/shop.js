@@ -145,7 +145,7 @@ for (let i = 0; i < 70; i++) {
 
 const BLOAT_VS = 2.7; // px per voxel
 // inf 0..1 puffed up, br 0..1 breath. Returns {canvas, a: anchors (canvas px)}.
-function buildBloat(inf, br) {
+function buildBloat(inf, br, vs = BLOAT_VS) {
   const k = 1 + inf * 0.36;
   const RX = 31 * k + br * 0.5, RY = 27 * k + br * 0.8, RZ = 26 * k + br * 0.5;
   const SL = 1.1 + inf * 7.5;
@@ -285,7 +285,7 @@ function buildBloat(inf, br) {
       }
     }
   }
-  const r = renderVoxels(m, { scale: BLOAT_VS, yaw: 7, pitch: 13 });
+  const r = renderVoxels(m, { scale: vs, yaw: 7, pitch: 13 });
   const P = (x, y, z) => { const p = r.project(x, y, z); return [Math.round(p[0]), Math.round(p[1])]; };
   const eyeZ = cz + RZ * 0.86 + 4;
   const a = {
@@ -300,6 +300,14 @@ function buildBloat(inf, br) {
     chain: P(cx - RX * 0.32, cy - RY * 0.5, cz + RZ * 0.95),
   };
   return { canvas: r.canvas, a, w: r.w, h: r.h };
+}
+
+// Small Cap'n Bloat for the seabed stall in the dock (cached breath frames).
+const miniBloat = [];
+export function bloatMini(i) {
+  i = Math.max(0, Math.min(2, i | 0));
+  if (!miniBloat[i]) miniBloat[i] = buildBloat(0, i / 2, 0.62);
+  return miniBloat[i];
 }
 
 // ================================================================ small 2D sprites

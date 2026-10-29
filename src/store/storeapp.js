@@ -219,9 +219,9 @@ function appKey(appId) {
 // ------------------------------------------------------------------ page sections
 function header(P, x, y, W) {
   const { ctx, t, g } = P;
-  A.drawGrad(ctx, x, y, W, 46, ['#06064a', '#1a32b0', '#2a86e8', '#62dcff']);
+  A.drawGrad(ctx, x, y, W, 50, ['#06064a', '#1a32b0', '#2a86e8', '#62dcff']);
   for (let i = 0; i < 12; i++) {
-    const bx = x + Math.round(hash1(i, 4) * (W - 4)), by = y + 44 - ((t * (8 + i % 4 * 3) + i * 11) % 44);
+    const bx = x + Math.round(hash1(i, 4) * (W - 4)), by = y + 48 - ((t * (8 + i % 4 * 3) + i * 11) % 48);
     ctx.fillStyle = 'rgba(220,250,255,0.55)';
     ctx.fillRect(bx, Math.round(by), 2, 2);
     ctx.fillStyle = 'rgba(255,255,255,0.8)';
@@ -234,13 +234,13 @@ function header(P, x, y, W) {
   const logo = A.wordArt('AppSea', { scale: 3 });
   ctx.drawImage(logo, x + 4, y + 2);
   A.drawBurst(ctx, x + logo.width + 2, y + 5, 'WOW!', t);
-  drawText(ctx, "THE OCEAN'S #1 DOWNLOAD SITE!!!", x + 10, y + 36, { font: 'small', color: '#ffffff', shadow: '#06064a', wave: 1, time: t });
+  drawText(ctx, "THE OCEAN'S #1 DOWNLOAD SITE!!!", x + 10, y + 40, { font: 'small', color: '#ffffff', shadow: '#06064a', wave: 1, time: t });
   // visitor counter + guestbook
   const vx = x + W - 58;
   drawText(ctx, 'VISITORS:', vx, y + 6, { font: 'small', color: '#bff0ff' });
   A.drawCounter(ctx, vx - 1, y + 13, 1337000 + Math.floor(Date.now() / 3000) % 900000, 8);
   if (Math.floor(t * 1.5) % 2 === 0 || P.hot) link(P, 'GUESTBOOK', vx + 2, y + 27, () => g.toast?.('Guestbook entry #4,812: "nice site!!! - a fish"', 'book'), { font: 'small', color: '#ffff40', hot: '#ffffff', url: `http://${HOST}/guestbook.cgi` });
-  return y + 46;
+  return y + 50;
 }
 
 function marquee(P, x, y, W) {
@@ -426,7 +426,7 @@ function staffPicks(P) {
   const hl = P.d.hl;
   const out = hl && CATALOG_BY_ID[hl] ? [hl, ...ids.filter((i) => i !== hl)] : ids;
   // the tutorial app first for brand new players
-  if (!S.st.installed.length && !S.st.downloads.length && out.includes('notes')) return ['notes', ...out.filter((i) => i !== 'notes')].slice(0, 3);
+  if (!S.st.installed.length && out.includes('notes') && hl !== 'notes') return [...(hl ? [hl] : []), 'notes', ...out.filter((i) => i !== 'notes' && i !== hl)].slice(0, 3);
   return out.slice(0, 3);
 }
 

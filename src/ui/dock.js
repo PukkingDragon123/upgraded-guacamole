@@ -12,6 +12,7 @@ import { skillStatus, SKILLS } from '../game/skills.js';
 import { TASKBAR_H } from '../desktop/desktop.js';
 import { drawText } from '../gfx/font.js';
 import { drawWardrobeIcon } from './wardrobe.js';
+import { bloatMini } from './shop.js';
 
 export const PINCH_LOOK = {
   kind: 'crab', mustache: true, body: { len: 26, h: 17 },
@@ -91,7 +92,7 @@ export class Dock {
     this.t = 0;
     this.wiggle = {};
     this.items = [
-      { id: 'shop', label: "Pinch's Bait Shop (S)", w: 74, action: () => game.command('shop') },
+      { id: 'shop', label: "Cap'n Bloat's Bait Shop (S)", w: 74, action: () => game.command('shop') },
       { id: 'skills', label: 'Coral Skill Tree (K)', w: 34, action: () => game.command('skills') },
       { id: 'journal', label: 'Fish Journal (J)', w: 30, action: () => game.command('journal') },
       { id: 'tank', label: 'My Aquarium (click: window / A: full view)', w: 36, action: () => game.command('tankwindow') },
@@ -155,7 +156,14 @@ export class Dock {
         const kp = p?.anchors?.keeper;
         const kx = kp ? sx + kp.x : cx - 4;
         const ky = kp ? sy + kp.y - 16 : base - 20;
-        drawFishRig(ctx, this.pinch, { x: kx, y: ky, facing: -1, turn: -1, angle: 0, scale: 0.75, squash: Math.sin(t * 3) * 0.04, swimPhase: (t * 0.6) % 1, tailPhase: 0, finPhase: (t * 0.8) % 1, speed01: 0, inflate: 0, lookX: g.input.x, lookY: g.input.y, blink: (t % 4) < 0.12 ? 1 : 0, emotion: hover ? 'happy' : 'neutral', mouth: talking ? Math.abs(Math.sin(t * 12)) * 0.7 : 0.05, time: t });
+        // Cap'n Bloat, the old pufferfish shopkeeper, minds the stall (breathes, puffs his cigar)
+        const bf = bloatMini(Math.floor((Math.sin(t * 2) * 0.5 + 0.5) * 2.99));
+        const bx = Math.round(kx - bf.a.c[0]), by = Math.round(ky - 5 - bf.a.c[1] - (talking ? Math.abs(Math.sin(t * 10)) : 0));
+        ctx.drawImage(bf.canvas, bx, by);
+        const [mx, my] = [bx + bf.a.mouth[0] + 1, by + bf.a.mouth[1] + 1];
+        ctx.fillStyle = '#7a4a2a'; ctx.fillRect(mx, my, 6, 2);
+        ctx.fillStyle = '#ff7a3a'; ctx.fillRect(mx + 6, my, 1, 2);
+        if (Math.random() < 0.04) g.particles.bubble(mx + 7, my - 1, { size: 1, vy: -14, life: 1.6, layer: 'fg' });
         if (p?.front) ctx.drawImage(p.front, sx, sy);
         if (hover && Math.floor(t * 2) % 6 === 0 && !this.babbled) { this.babbled = true; g.audio.babble('click click', 'crab'); }
         if (Math.floor(t * 2) % 6 !== 0) this.babbled = false;

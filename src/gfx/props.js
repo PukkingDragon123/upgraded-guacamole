@@ -2698,7 +2698,7 @@ def('toilet', {
     verb: 'Flush', frames: 4, seq: [1, 1, 2, 3, 2, 3, 2, 3, 1, 0], fps: 6,
     sfx: [['ui_toggle', 0, { vol: 0.5 }], ['click', 0.3, { pitch: 0.6 }], ['flood_rush', 0.35, { vol: 0.55 }], ['bubbles', 0.5], ['gulp', 1.35, { pitch: 0.7 }]],
     fx: [{ at: 0.4, kind: 'swirl', from: 'bowl', n: 14 }, { at: 0.45, kind: 'bubbles', from: 'bowl', n: 16 }, { at: 0.85, kind: 'bubbles', from: 'bowl', n: 10 }],
-    fish: 'flee', use: { kind: 'hide', at: 'bowl', exitPlay: true },
+    fish: 'flee', use: { kind: 'hide', at: 'bowl', exitPlay: true, seq: [1], fps: 1, loop: true },
   },
 }, ({ frame }) => {
   const m = new VoxelModel(48, 56, 46);

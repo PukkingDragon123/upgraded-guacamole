@@ -1,4 +1,5 @@
-// FISHTOP species collection: 17 per biome (Sunny Shallows, Junkyard Reef, The Midnight Abyss).
+// FISHTOP species collection (Sunny Shallows, Junkyard Reef, The Deep Ocean - biome id 'abyss').
+// Theme: affectionate pop-culture parodies (pun names, original designs) and literal pun fish.
 // Schema: docs/ARCHITECTURE.md "Species schema". Looks are authored at the 960x540 logical scale
 // (body len in px; tails/fins add to that). Bait interest 0..3 (unspecified = 0.25).
 //
@@ -12,7 +13,7 @@ const add = (o) => S.push(o);
 // SUNNY SHALLOWS
 
 add({
-  id: 'pixel', name: 'Pixel', biome: 'shallows', rarity: 'common',
+  id: 'pixel', name: 'Flopikarp', biome: 'shallows', rarity: 'common',
   size: [2, 4], weight: [0.005, 0.02],
   look: {
     toon: true,
@@ -36,13 +37,13 @@ add({
   fight: { phases: ['tension'], power: 0.08, stamina: 2, tricks: [], biteWindow: 1.4, nibbles: [0, 1], fakeBite: 0 },
   spawn: { weight: 1.2, weather: null, time: null, requires: null, hidden: null },
   sound: 'chirp',
-  desc: 'A single square pixel that escaped a screenshot and decided to become a fish. It has one eye and approximately one thought, and the thought is "what\'s that?".',
-  behavior: 'Swims right up to anything new and stares at it. Bites almost anything.',
+  desc: 'The most famously useless fish in any ocean. It uses Splash. Nothing happens. Raise one in your aquarium long enough, though, and it might just become something terrifying.',
+  behavior: 'Flops right up to anything new and bites almost everything. Evolves in the aquarium after a while.',
   shinyHue: 200,
 });
 
 add({
-  id: 'loafer', name: 'Loafer Minnow', biome: 'shallows', rarity: 'common',
+  id: 'loafer', name: 'Tetromino Tetra', biome: 'shallows', rarity: 'common',
   size: [6, 11], weight: [0.04, 0.15],
   look: {
     body: { len: 24, h: 13, shape: 'box', hump: 0.12, belly: -0.12, nose: 3, tip: 0.35 },
@@ -65,13 +66,13 @@ add({
   fight: { phases: ['tension'], power: 0.15, stamina: 2.5, tricks: ['dash'], biteWindow: 1.1, nibbles: [1, 2], fakeBite: 0.05 },
   spawn: { weight: 1.4, weather: null, time: null, requires: null, hidden: null },
   sound: 'blub',
-  desc: 'Ate so much bread it slowly turned into a small loaf. Smells faintly of a bakery and regret.',
-  behavior: 'Travels in crusty little schools. Cannot resist bread, even though bread is the problem.',
+  desc: 'Blocky little schoolers that fall into place in perfectly straight rows. When four of them line up exactly, they vanish in a flash and a satisfying chime. Nobody knows where they go.',
+  behavior: 'Schools in tidy lines near the surface. Loves bread and sugar.',
   shinyHue: 300,
 });
 
 add({
-  id: 'honk', name: 'Honk Clownfish', biome: 'shallows', rarity: 'common',
+  id: 'honk', name: 'Bozo the Clownfish', biome: 'shallows', rarity: 'common',
   size: [7, 12], weight: [0.08, 0.25],
   look: {
     body: { len: 40, h: 22, shape: 'oval', nose: 2.2, tip: 0.22 },
@@ -101,13 +102,13 @@ add({
   fight: { phases: ['mash', 'tension'], power: 0.22, stamina: 3, tricks: ['dash', 'fake'], biteWindow: 0.9, nibbles: [1, 2], fakeBite: 0.15 },
   spawn: { weight: 1.2, weather: null, time: null, requires: null, hidden: null },
   sound: 'honk',
-  desc: 'Born with a red nose and a dream. Honks when startled, honks when happy, honks during funerals.',
-  behavior: 'Honks at nearby fish. Loves music icons. Squeeze-to-honk is not recommended.',
+  desc: 'An actual clown. Red nose, juggling act, terrible jokes. Honks the nose when startled and takes a little bow when you laugh. Nobody laughs.',
+  behavior: 'Juggles in mid-water and honks when spooked. Can\'t resist music and games.',
   shinyHue: 160,
 });
 
 add({
-  id: 'guppy', name: 'Fancy Guppy', biome: 'shallows', rarity: 'common',
+  id: 'guppy', name: 'Wakka Fish', biome: 'shallows', rarity: 'common',
   size: [3, 6], weight: [0.01, 0.04],
   look: {
     body: { len: 26, h: 12, shape: 'torpedo', tip: 0.2 },
@@ -131,13 +132,13 @@ add({
   fight: { phases: ['tension', 'net'], power: 0.12, stamina: 2, tricks: ['dash'], biteWindow: 0.8, nibbles: [1, 3], fakeBite: 0.1 },
   spawn: { weight: 1.3, weather: null, time: null, requires: null, hidden: null },
   sound: 'squeak',
-  desc: 'Ninety percent tail, ten percent fish, one hundred percent fashion. Has never once been underdressed.',
-  behavior: 'Darts around in small, sparkly gangs. Attracted to pictures, probably of itself.',
+  desc: 'A round yellow fish with one enormous appetite. Eats dots, power pellets and, occasionally, your bait. Turns and flees whenever anything ghostly swims past.',
+  behavior: 'Schools through the shallows chomping constantly. Loves images and paint.',
   shinyHue: 120,
 });
 
 add({
-  id: 'googly', name: 'Googly Gawker', biome: 'shallows', rarity: 'common',
+  id: 'googly', name: 'Mike Wazowfish', biome: 'shallows', rarity: 'common',
   size: [8, 14], weight: [0.1, 0.35],
   look: {
     toon: true,
@@ -163,13 +164,13 @@ add({
   fight: { phases: ['timing', 'tension'], power: 0.2, stamina: 3, tricks: ['fake'], biteWindow: 1, nibbles: [1, 2], fakeBite: 0.25 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'boing',
-  desc: 'Its eyes are not glued on. We checked. We wish they were.',
-  behavior: 'Stares at the cursor with tremendous wobbly focus. Pupils rattle when it turns.',
+  desc: 'One gigantic eye, two tiny horns, zero chill. A small green worrier who insists he is the scariest fish on the reef and will absolutely not stop staring at your cursor.',
+  behavior: 'Follows the cursor with its single huge eye. Loves images and videos.',
   shinyHue: 270,
 });
 
 add({
-  id: 'puffer', name: 'Sir Puffington', biome: 'shallows', rarity: 'uncommon',
+  id: 'puffer', name: 'Cacopuff', biome: 'shallows', rarity: 'uncommon',
   size: [12, 30], weight: [0.4, 2.1],
   look: {
     toon: true,
@@ -196,13 +197,13 @@ add({
   fight: { phases: ['mash', 'tension', 'net'], power: 0.45, stamina: 5, tricks: ['dash', 'fake'], biteWindow: 0.55, nibbles: [1, 3], fakeBite: 0.2 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'puff',
-  desc: 'A gentleman of considerable volume. Inflates when insulted, which is always.',
-  behavior: 'Puffs up into a spiky ball when startled or hooked. Reads your documents with great disapproval.',
+  desc: 'A floating red demon-puffer with one huge green eye and a mouth full of bad intentions. Puffs up into a spiky meatball when cornered. Do not feed after midnight. Do not feed ever.',
+  behavior: 'Inflates into a spiky ball when startled. Weirdly fond of documents and mail.',
   shinyHue: 150,
 });
 
 add({
-  id: 'briefcase', name: 'Mr. Briefcase', biome: 'shallows', rarity: 'uncommon',
+  id: 'briefcase', name: 'Regional Manager Fish', biome: 'shallows', rarity: 'uncommon',
   size: [6, 10], weight: [0.06, 0.2],
   look: {
     toon: true,
@@ -228,13 +229,13 @@ add({
   fight: { phases: ['tension', 'trace'], power: 0.32, stamina: 4, tricks: ['dash', 'hop'], biteWindow: 0.5, nibbles: [0, 1], fakeBite: 0.1 },
   spawn: { weight: 1, weather: null, time: 'day', requires: null, hidden: null },
   sound: 'grunt',
-  desc: 'Commutes from one side of the screen to the other, every day, forever. Nobody knows what is in the briefcase. Probably more briefcase.',
-  behavior: 'Swims in straight lines at office hours and checks your calendar on the way. Ignores everything fun.',
+  desc: 'Commutes at 9, eats lunch at 12, leaves at 5 sharp - unless there\'s a meeting, and there is always a meeting. Owns a mug that says World\'s Best Boss. He bought it himself.',
+  behavior: 'Keeps real office hours by your clock. Loves mail, calendars and documents.',
   shinyHue: 40,
 });
 
 add({
-  id: 'clickcrab', name: 'Click Crab', biome: 'shallows', rarity: 'uncommon',
+  id: 'clickcrab', name: 'Mister Clicks', biome: 'shallows', rarity: 'uncommon',
   size: [5, 9], weight: [0.08, 0.3],
   look: {
     kind: 'crab', shell: 'mouse', toon: true,
@@ -252,13 +253,13 @@ add({
   fight: { phases: ['timing', 'mash'], power: 0.3, stamina: 4, tricks: ['hop', 'fake'], biteWindow: 0.7, nibbles: [1, 2], fakeBite: 0.2 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'click',
-  desc: 'Found an old computer mouse and moved in. Double-clicks its claws when nervous, which opens nothing.',
-  behavior: 'Scuttles along the seabed and across desktop icons. Clicks at your cursor like it is trying to select you.',
+  desc: 'A hermit crab who moved into an old computer mouse and now charges the reef rent. Double-clicks his claws whenever money is mentioned. Money! I mean... mouse!',
+  behavior: 'Scuttles along the seabed and perches on icons. Loves computers and chips.',
   shinyHue: 190,
 });
 
 add({
-  id: 'seahorse', name: 'Giddy-Up Seahorse', biome: 'shallows', rarity: 'uncommon',
+  id: 'seahorse', name: 'Old Town Seahorse', biome: 'shallows', rarity: 'uncommon',
   size: [8, 17], weight: [0.02, 0.08],
   look: {
     kind: 'seahorse',
@@ -276,13 +277,13 @@ add({
   fight: { phases: ['trace', 'net'], power: 0.2, stamina: 4, tricks: ['hop'], biteWindow: 0.8, nibbles: [2, 4], fakeBite: 0.1 },
   spawn: { weight: 0.9, weather: null, time: null, requires: null, hidden: null },
   sound: 'chirp',
-  desc: 'Technically a fish. Spiritually a tiny horse. Practically a question mark that swims.',
-  behavior: 'Bobs upright and hops between windows. Holds onto icons with its tail during storms.',
+  desc: 'Gonna take its horse to the old reef road and ride till it can\'t no more. Hops along like it\'s at a rodeo, yee-hawing in tiny bubbles.',
+  behavior: 'Hovers upright and hops between perches. Loves games and music.',
   shinyHue: 230,
 });
 
 add({
-  id: 'flounder', name: 'Sandy Flounder', biome: 'shallows', rarity: 'uncommon',
+  id: 'flounder', name: 'Where\'s Walleye?', biome: 'shallows', rarity: 'uncommon',
   size: [15, 40], weight: [0.3, 2.5],
   look: {
     body: { len: 50, h: 15, shape: 'disc', hump: 0.25, belly: -0.35, nose: 1.8, tip: 0.2 },
@@ -310,13 +311,13 @@ add({
   fight: { phases: ['tension', 'trace', 'net'], power: 0.38, stamina: 5, tricks: ['dive', 'fake'], biteWindow: 0.45, nibbles: [1, 3], fakeBite: 0.3 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'blub',
-  desc: 'Both eyes migrated to one side of its face as a child and refuse to talk about it.',
-  behavior: 'Lies flat on the seabed blending in with the sand. Lunges when bait drifts overhead.',
+  desc: 'Lies flat on the sand in a red-and-white striped hat and round glasses, utterly convinced it is perfectly hidden. It is, somehow. Every single time.',
+  behavior: 'Camouflaged on the seabed until your cursor comes close. Loves worms.',
   shinyHue: 180,
 });
 
 add({
-  id: 'purin', name: 'Purin', biome: 'shallows', rarity: 'rare',
+  id: 'purin', name: 'The Pudding is a Lie', biome: 'shallows', rarity: 'rare',
   size: [6, 10], weight: [0.1, 0.25],
   look: {
     kind: 'pudding', toon: true,
@@ -334,13 +335,13 @@ add({
   fight: { phases: ['timing', 'mash', 'net'], power: 0.25, stamina: 4, tricks: ['hop', 'fake'], biteWindow: 0.7, nibbles: [1, 3], fakeBite: 0.2 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'boing',
-  desc: 'A jelly pudding that wandered into the sea and was too polite to leave. Contains no fish. Is the fish.',
-  behavior: 'Wobbles everywhere it goes and jiggles harder when happy. Only truly loves sugar.',
+  desc: 'You were promised cake. You received a wobbly, sentient pudding with a cherry on top that insists it is cake. It is not cake. The cake was never real.',
+  behavior: 'Hops along the bottom and wobbles when poked. Can\'t resist sugar.',
   shinyHue: 290,
 });
 
 add({
-  id: 'angel', name: 'Halo Angelfish', biome: 'shallows', rarity: 'rare',
+  id: 'angel', name: 'Master Chef Angelfish', biome: 'shallows', rarity: 'rare',
   size: [10, 20], weight: [0.1, 0.4],
   look: {
     body: { len: 32, h: 34, shape: 'disc', nose: 1.5, tip: 0.14, peak: 0.42, tailW: 0.24 },
@@ -366,13 +367,13 @@ add({
   fight: { phases: ['trace', 'timing', 'net'], power: 0.35, stamina: 6, tricks: ['jump', 'fake'], biteWindow: 0.55, nibbles: [1, 2], fakeBite: 0.15 },
   spawn: { weight: 0.8, weather: 'clear', time: 'day', requires: null, hidden: null },
   sound: 'bell',
-  desc: 'Has never done anything wrong in its life and would like you to know about it.',
-  behavior: 'Glides serenely with a faint glow. Other fish swim a little more politely nearby.',
+  desc: 'A legendary super-soldier of the reef in green armour and a golden visor, still wearing the halo from its last tour. Finishes every fight, and every meal, with perfect plating.',
+  behavior: 'Patrols the sunny upper water on clear days. Loves music and golden bait.',
   shinyHue: 45,
 });
 
 add({
-  id: 'parrot', name: 'Chompy Parrotfish', biome: 'shallows', rarity: 'rare',
+  id: 'parrot', name: 'Captain Jack Parrotfish', biome: 'shallows', rarity: 'rare',
   size: [25, 60], weight: [1.5, 6],
   look: {
     body: { len: 58, h: 28, shape: 'oval', hump: 0.12, nose: 2.4, tip: 0.3 },
@@ -397,13 +398,13 @@ add({
   fight: { phases: ['mash', 'tension', 'net'], power: 0.55, stamina: 7, tricks: ['dash', 'dive'], biteWindow: 0.5, nibbles: [1, 2], fakeBite: 0.1 },
   spawn: { weight: 0.9, weather: null, time: null, requires: null, hidden: null },
   sound: 'grunt',
-  desc: 'Chews coral, poops sand. Most of the beach is, technically, its fault.',
-  behavior: 'Nibbles on icons with its beak and occasionally runs off with a corner of one.',
+  desc: 'A swaggering pirate parrotfish in a battered tricorn and an eye patch, forever borrowing things that aren\'t nailed down. Why is the rum always gone? Why are your icons always gone?',
+  behavior: 'Steals desktop icons and swims off with them. Loves paint and calculators.',
   shinyHue: 100,
 });
 
 add({
-  id: 'gourami', name: 'Smooch Gourami', biome: 'shallows', rarity: 'rare',
+  id: 'gourami', name: 'Just-Keep-Swimming Tang', biome: 'shallows', rarity: 'rare',
   size: [8, 16], weight: [0.08, 0.3],
   look: {
     body: { len: 40, h: 26, shape: 'oval', nose: 2, tip: 0.26 },
@@ -427,13 +428,13 @@ add({
   fight: { phases: ['timing', 'trace', 'net'], power: 0.3, stamina: 5, tricks: ['fake'], biteWindow: 0.75, nibbles: [2, 4], fakeBite: 0.35 },
   spawn: { weight: 0.9, weather: null, time: null, requires: null, hidden: null },
   sound: 'squeak',
-  desc: 'Kisses everything: rocks, glass, other fish, your cursor. Has no concept of personal space or consent forms.',
-  behavior: 'Nuzzles anything shiny and forgets what it was doing halfway through. Loves chat icons.',
+  desc: 'A cheerful blue tang with the memory of a goldfish. Will happily help you find something, then forget what it was, then introduce itself again. Claims to speak whale.',
+  behavior: 'Forgets where it was going and turns around mid-swim. Loves chat and mail.',
   shinyHue: 210,
 });
 
 add({
-  id: 'koi', name: 'Golden Koi', biome: 'shallows', rarity: 'epic',
+  id: 'koi', name: 'Arrow-in-the-Knee Koi', biome: 'shallows', rarity: 'epic',
   size: [35, 80], weight: [2, 9],
   look: {
     body: { len: 68, h: 22, shape: 'torpedo', nose: 2, tip: 0.24, hump: 0.08 },
@@ -458,13 +459,13 @@ add({
   fight: { phases: ['trace', 'tension', 'timing', 'net'], power: 0.6, stamina: 9, tricks: ['dash', 'jump', 'fake'], biteWindow: 0.4, nibbles: [2, 4], fakeBite: 0.3 },
   spawn: { weight: 1, weather: null, time: 'day', requires: 'golden', hidden: true },
   sound: 'bell',
-  desc: 'Said to grant one wish to whoever catches it. The wish is always "please put me back".',
-  behavior: 'Appears only for golden bait. Leaves a faint sparkle trail and never hurries.',
+  desc: 'It used to be an adventurer like you. Then it took an arrow to the knee. Now it guards the golden shallows and tells every passing fish about it. Every. Single. One.',
+  behavior: 'Only shows up for golden bait on sunny days. Calm, proud, slightly limping.',
   shinyHue: 320,
 });
 
 add({
-  id: 'betta', name: 'Disco Betta', biome: 'shallows', rarity: 'epic',
+  id: 'betta', name: 'Rainbow Road Betta', biome: 'shallows', rarity: 'epic',
   size: [6, 9], weight: [0.02, 0.06],
   look: {
     body: { len: 32, h: 13, shape: 'torpedo', tip: 0.2 },
@@ -489,13 +490,13 @@ add({
   fight: { phases: ['timing', 'dodge', 'trace', 'net'], power: 0.5, stamina: 7, tricks: ['dash', 'fake', 'jump'], biteWindow: 0.4, nibbles: [1, 2], fakeBite: 0.25 },
   spawn: { weight: 0.9, weather: null, time: 'night', requires: null, hidden: null },
   sound: 'bell',
-  desc: 'Practising its moves for a dance battle no one agreed to. Has already won, in its heart.',
-  behavior: 'Flares its enormous fins at other fish and at its own reflection. Comes out at night to music.',
+  desc: 'Its fins shimmer in every colour of the rainbow and it drifts as if it\'s on the final lap of the hardest track in the galaxy. Falls off the edge constantly. Respawns looking fabulous.',
+  behavior: 'Night-time show-off near the surface. Loves music and videos.',
   shinyHue: 140,
 });
 
 add({
-  id: 'sunfish', name: 'Sol the Ocean Sunfish', biome: 'shallows', rarity: 'legendary',
+  id: 'sunfish', name: 'Praise-the-Sun-fish', biome: 'shallows', rarity: 'legendary',
   size: [180, 330], weight: [250, 1000],
   look: {
     body: { len: 96, h: 86, shape: 'disc', tailW: 0.62, taper: 0.7, nose: 2.4, peak: 0.42, tip: 0.3 },
@@ -523,8 +524,8 @@ add({
   fight: { phases: ['tension', 'timing', 'trace', 'mash', 'net'], power: 0.85, stamina: 16, tricks: ['dive', 'jump', 'fake'], biteWindow: 0.6, nibbles: [2, 5], fakeBite: 0.2 },
   spawn: { weight: 1, weather: 'clear', time: 'day', requires: null, hidden: true },
   sound: 'roar',
-  desc: 'A swimming head the size of a car, crowned by nobody in particular. Basks at the surface to recharge its sunshine.',
-  behavior: 'Appears on cloudless days when the water is high. Drifts through windows like it owns them.',
+  desc: 'A colossal, jolly sunfish that rises to the surface on clear days, raises both fins high and praises the sun. If only it could be so grossly incandescent!',
+  behavior: 'Basks at the surface on clear sunny days. Only bites golden or flood bait.',
   shinyHue: 30,
 });
 
@@ -532,7 +533,7 @@ add({
 // JUNKYARD REEF
 
 add({
-  id: 'spam', name: 'Spam Sardine', biome: 'junkyard', rarity: 'common',
+  id: 'spam', name: 'Clickbait Sardine', biome: 'junkyard', rarity: 'common',
   size: [8, 15], weight: [0.03, 0.1],
   look: {
     body: { len: 26, h: 8, shape: 'torpedo', tip: 0.18 },
@@ -557,13 +558,13 @@ add({
   fight: { phases: ['mash', 'tension'], power: 0.15, stamina: 2, tricks: ['dash'], biteWindow: 1, nibbles: [0, 1], fakeBite: 0.05 },
   spawn: { weight: 1.5, weather: null, time: null, requires: null, hidden: null },
   sound: 'squeak',
-  desc: 'Always has exactly one unread message. Opening it unsubscribes you from nothing.',
-  behavior: 'Arrives in huge unwanted schools whenever a mail or pop-up icon gets near the water.',
+  desc: 'Doctors HATE this one weird sardine! You won\'t BELIEVE what it does next (it swims slightly to the left). Travels in enormous schools with a permanent notification badge.',
+  behavior: 'Huge schools that swarm pop-up bait and mail.',
   shinyHue: 60,
 });
 
 add({
-  id: 'bitfish', name: 'Bitfish', biome: 'junkyard', rarity: 'common',
+  id: 'bitfish', name: 'Boomfish', biome: 'junkyard', rarity: 'common',
   size: [5, 9], weight: [0.04, 0.12],
   look: {
     toon: true,
@@ -588,13 +589,13 @@ add({
   fight: { phases: ['timing', 'tension'], power: 0.2, stamina: 3, tricks: ['hop'], biteWindow: 0.8, nibbles: [1, 1], fakeBite: 0.1 },
   spawn: { weight: 1.3, weather: null, time: null, requires: null, hidden: null },
   sound: 'chirp',
-  desc: 'Rendered at a very low budget. Moves in tiny steps because nobody animated the in-between frames.',
-  behavior: 'Hops in crisp eight-directional jumps. Drawn to game icons like they owe it a sequel.',
+  desc: 'A blocky green fish with a permanently disappointed face. Sneaks up behind other fish, goes sssss... and then pops. Completely harmless, deeply unsettling.',
+  behavior: 'Hops in small groups and hisses at anything nearby. Loves games.',
   shinyHue: 260,
 });
 
 add({
-  id: 'glitchminnow', name: 'Glitch Minnow', biome: 'junkyard', rarity: 'common',
+  id: 'glitchminnow', name: 'Sus Fish', biome: 'junkyard', rarity: 'common',
   size: [4, 8], weight: [0.01, 0.05],
   look: {
     body: { len: 28, h: 10, shape: 'torpedo', tip: 0.18 },
@@ -619,13 +620,13 @@ add({
   fight: { phases: ['trace', 'tension'], power: 0.18, stamina: 3, tricks: ['glitch', 'dash'], biteWindow: 0.6, nibbles: [1, 2], fakeBite: 0.15 },
   spawn: { weight: 1.2, weather: null, time: null, requires: null, hidden: null },
   sound: 'glitch',
-  desc: 'A minnow with corrupted save data. It has been in three places at once, which is two too many.',
-  behavior: 'Teleports a few pixels at random. Flickers harder near terminals and overclocked chips.',
+  desc: 'A small red bean-shaped fish with a big glass visor and a tiny backpack. Swims very normally. Too normally. Vanishes into seabed vents and pops out somewhere else. Emergency meeting!',
+  behavior: 'Teleports through vents when spooked. Loves chips and terminals.',
   shinyHue: 90,
 });
 
 add({
-  id: 'grouper', name: 'Rusty Grouper', biome: 'junkyard', rarity: 'common',
+  id: 'grouper', name: 'It\'s-a-Trap Snapper', biome: 'junkyard', rarity: 'common',
   size: [40, 110], weight: [3, 25],
   look: {
     body: { len: 70, h: 32, shape: 'oval', belly: 0.12, hump: 0.08, nose: 1.7, tip: 0.3 },
@@ -652,13 +653,13 @@ add({
   fight: { phases: ['tension', 'mash'], power: 0.5, stamina: 6, tricks: ['dive'], biteWindow: 0.7, nibbles: [1, 2], fakeBite: 0.05 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'grunt',
-  desc: 'Half fish, half shipwreck. Squeaks like an old hinge when it turns. Please do not tighten it.',
-  behavior: 'Patrols the lower reef slowly and swallows settings icons whole, gears and all.',
+  desc: 'A lumpy, wise old snapper with huge eyes and a white admiral\'s collar. Spots every trap on the reef instantly and announces it at full volume. Gets caught anyway.',
+  behavior: 'Lurks near the bottom. Bites on settings icons and trash.',
   shinyHue: 200,
 });
 
 add({
-  id: 'binblob', name: 'Bin Blob', biome: 'junkyard', rarity: 'common',
+  id: 'binblob', name: 'Grumpy Bin Grouch', biome: 'junkyard', rarity: 'common',
   size: [15, 35], weight: [0.8, 4],
   look: {
     kind: 'blob', toon: true,
@@ -676,13 +677,13 @@ add({
   fight: { phases: ['mash', 'tension', 'net'], power: 0.3, stamina: 5, tricks: [], biteWindow: 1.2, nibbles: [0, 1], fakeBite: 0 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'blub',
-  desc: 'Everything you ever deleted, lovingly reassembled into a friend. It remembers your old drafts.',
-  behavior: 'Oozes along the seabed absorbing litter. Cannot say no to a full recycle bin.',
+  desc: 'Lives in a trash heap and loves it there. Scowls at everyone, hoards garbage and tells you to scram. Secretly loves it when you visit. Do not tell anyone.',
+  behavior: 'Oozes along the seabed eating trash. Loves trash and pop-ups.',
   shinyHue: 300,
 });
 
 add({
-  id: 'shortcut', name: 'Shortcut Fish', biome: 'junkyard', rarity: 'uncommon',
+  id: 'shortcut', name: 'Spy Fish', biome: 'junkyard', rarity: 'uncommon',
   size: [6, 9], weight: [0.05, 0.12],
   look: {
     kind: 'iconfish', toon: true,
@@ -700,13 +701,13 @@ add({
   fight: { phases: ['timing', 'trace', 'net'], power: 0.3, stamina: 4, tricks: ['fake', 'hop'], biteWindow: 0.5, nibbles: [1, 2], fakeBite: 0.4 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'click',
-  desc: 'Pretends to be a desktop icon. Double-click it and it opens a very small, very wet window.',
-  behavior: 'Freezes into a perfect app icon when watched. Swims off the moment you look away.',
+  desc: 'A master of disguise who poses as a desktop icon so convincingly that you double-click it. Right behind you! Its catchphrase is a gentlemanly \'Gotcha\'.',
+  behavior: 'Hides among your desktop icons. Double-click it to unmask it.',
   shinyHue: 120,
 });
 
 add({
-  id: 'mechacrab', name: 'Mecha Crab', biome: 'junkyard', rarity: 'uncommon',
+  id: 'mechacrab', name: 'Crabformer', biome: 'junkyard', rarity: 'uncommon',
   size: [12, 25], weight: [1, 4],
   look: {
     kind: 'crab', shell: 'mech', toon: true,
@@ -724,13 +725,13 @@ add({
   fight: { phases: ['mash', 'dodge', 'net'], power: 0.5, stamina: 6, tricks: ['spit', 'hop'], biteWindow: 0.6, nibbles: [1, 2], fakeBite: 0.1 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'click',
-  desc: 'Upgraded itself with spare parts until there was no crab left, then kept going. Runs on spite and AA batteries.',
-  behavior: 'Marches across icons with heavy steps and fires little bolts when cornered.',
+  desc: 'More than meets the eye: a crab disguised as a robot disguised as a crab. Transforms with a tremendous whirring noise into... a slightly different crab.',
+  behavior: 'Scuttles on the seabed and fires sparks. Loves chips and settings.',
   shinyHue: 160,
 });
 
 add({
-  id: 'cableeel', name: 'Cable Eel', biome: 'junkyard', rarity: 'uncommon',
+  id: 'cableeel', name: 'Cardboard Snake-Eel', biome: 'junkyard', rarity: 'uncommon',
   size: [60, 160], weight: [0.5, 3],
   look: {
     kind: 'chain', toon: true,
@@ -748,13 +749,13 @@ add({
   fight: { phases: ['unwrap', 'tension', 'net'], power: 0.45, stamina: 6, tricks: ['wrap', 'dash'], biteWindow: 0.6, nibbles: [1, 2], fakeBite: 0.15 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'click',
-  desc: 'Every drawer has one. This one escaped. It does not fit any socket and is furious about it.',
-  behavior: 'Coils around icons and tangles your line. Tries to plug itself into anything rectangular.',
+  desc: 'A tactical espionage eel that hides under a cardboard box and believes this makes it invisible. An exclamation mark pops over the box when it spots you. Kept you waiting, huh?',
+  behavior: 'Wraps its long body around icons and your line. Loves computers.',
   shinyHue: 30,
 });
 
 add({
-  id: 'floppyray', name: 'Floppy Ray', biome: 'junkyard', rarity: 'uncommon',
+  id: 'floppyray', name: 'Save Point Skate', biome: 'junkyard', rarity: 'uncommon',
   size: [9, 9], weight: [0.02, 0.03],
   look: {
     kind: 'ray', square: true, toon: true,
@@ -772,13 +773,13 @@ add({
   fight: { phases: ['trace', 'timing', 'net'], power: 0.3, stamina: 5, tricks: ['jump', 'fake'], biteWindow: 0.55, nibbles: [1, 3], fakeBite: 0.2 },
   spawn: { weight: 0.9, weather: null, time: null, requires: null, hidden: null },
   sound: 'click',
-  desc: '1.44 megabytes of pure attitude. Contains one saved game from 1997 that it will not let you see.',
-  behavior: 'Glides in wide loops and hums like a drive spinning up. Loves documents, old ones especially.',
+  desc: 'A floppy-disk-shaped skate that glows softly when you\'re near, like every save point ever. Your progress is safe with it. Probably. Do not turn off the power.',
+  behavior: 'Glides through mid-water. Loves documents and folders.',
   shinyHue: 330,
 });
 
 add({
-  id: 'cookie', name: 'Tracking Cookie', biome: 'junkyard', rarity: 'uncommon',
+  id: 'cookie', name: 'Om-Nom Cookiefish', biome: 'junkyard', rarity: 'uncommon',
   size: [6, 12], weight: [0.05, 0.2],
   look: {
     toon: true,
@@ -803,13 +804,13 @@ add({
   fight: { phases: ['mash', 'trace', 'net'], power: 0.3, stamina: 4, tricks: ['fake', 'dash'], biteWindow: 0.7, nibbles: [1, 3], fakeBite: 0.25 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'chirp',
-  desc: 'Follows you everywhere and remembers everything you clicked. Forgets you completely when you clear the cache.',
-  behavior: 'Trails behind your cursor at a respectful-ish distance. Someone already took a bite.',
+  desc: 'A chocolate chip cookie that has already taken a bite out of itself. Follows you around the internet, remembers everything you clicked and says om nom nom a lot.',
+  behavior: 'Forgets what it was doing and doubles back. Loves browsers and sugar.',
   shinyHue: 250,
 });
 
 add({
-  id: 'loadingangler', name: 'Loading Angler', biome: 'junkyard', rarity: 'rare',
+  id: 'loadingangler', name: 'Loading Screen Angler', biome: 'junkyard', rarity: 'rare',
   size: [20, 45], weight: [2, 8],
   look: {
     body: { len: 50, h: 36, shape: 'blunt', tip: 0.55 },
@@ -835,13 +836,13 @@ add({
   fight: { phases: ['timing', 'dodge', 'tension', 'net'], power: 0.55, stamina: 8, tricks: ['fake', 'spit', 'dive'], biteWindow: 0.45, nibbles: [2, 4], fakeBite: 0.35 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'glitch',
-  desc: 'Its lure shows a loading spinner. Fish wait for it, forever, politely, right up until the very end.',
-  behavior: 'Hangs still in the dark with its spinner turning. Strikes when something waits too long.',
+  desc: 'Its lure is a spinning loading wheel that never quite finishes. Fish gather around it, waiting patiently. TIP: fish are attracted to bait. TIP: did you know you can catch fish?',
+  behavior: 'Hovers deep with its spinner lure. Loves chips and videos.',
   shinyHue: 180,
 });
 
 add({
-  id: 'thief', name: 'Icon Bandit', biome: 'junkyard', rarity: 'rare',
+  id: 'thief', name: 'Grand Theft Tuna', biome: 'junkyard', rarity: 'rare',
   size: [12, 22], weight: [0.2, 0.7],
   look: {
     toon: true,
@@ -871,13 +872,13 @@ add({
   fight: { phases: ['trace', 'mash', 'tension', 'net'], power: 0.45, stamina: 7, tricks: ['dash', 'hop', 'fake'], biteWindow: 0.35, nibbles: [0, 1], fakeBite: 0.3 },
   spawn: { weight: 1, weather: null, time: 'night', requires: null, hidden: null },
   sound: 'squeak',
-  desc: 'Steals desktop icons and hides them in the reef. Your "New Folder (7)" is in there somewhere.',
-  behavior: 'Grabs a desktop icon and bolts. Catch it to get the icon back, slightly damp.',
+  desc: 'Sunglasses on, wanted level rising. This tuna steals your desktop icons and speeds off with them without signalling. Five stars on the reef. None of them good.',
+  behavior: 'Night-time icon thief, fast and slippery. Loves folders, images and gold.',
   shinyHue: 20,
 });
 
 add({
-  id: 'screendweller', name: 'Screen Dweller', biome: 'junkyard', rarity: 'rare',
+  id: 'screendweller', name: 'Seven-Days Screenfish', biome: 'junkyard', rarity: 'rare',
   size: [14, 30], weight: [1, 5],
   look: {
     toon: true,
@@ -902,13 +903,13 @@ add({
   fight: { phases: ['dodge', 'trace', 'timing', 'net'], power: 0.45, stamina: 7, tricks: ['glitch', 'hop', 'spit'], biteWindow: 0.5, nibbles: [1, 3], fakeBite: 0.2 },
   spawn: { weight: 0.9, weather: 'storm', time: null, requires: null, hidden: null },
   sound: 'glitch',
-  desc: 'Lives inside old CRT monitors and only comes out to complain about the reception.',
-  behavior: 'Hides in screens and peeks out through the static. Wiggles its antenna toward video icons.',
+  desc: 'A creepy old TV-fish whose screen shows nothing but static and a distant well. Watch it too long and it crawls a little closer. Seven days later it\'s still here, humming.',
+  behavior: 'Appears in storms, hovering with its screen aglow. Loves videos.',
   shinyHue: 280,
 });
 
 add({
-  id: 'trieye', name: 'Tri-Eyed Binfish', biome: 'junkyard', rarity: 'rare',
+  id: 'trieye', name: 'Three-Eyed Blinky', biome: 'junkyard', rarity: 'rare',
   size: [15, 35], weight: [0.5, 2.5],
   look: {
     body: { len: 44, h: 24, shape: 'oval', hump: 0.18, nose: 1.8 },
@@ -935,13 +936,13 @@ add({
   fight: { phases: ['dodge', 'mash', 'tension', 'net'], power: 0.5, stamina: 7, tricks: ['spit', 'dash'], biteWindow: 0.5, nibbles: [1, 2], fakeBite: 0.15 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'grunt',
-  desc: 'Grew a third eye from living next to the recycle bin. Uses it exclusively for judging you.',
-  behavior: 'Lurks near trash and spits soggy debris when hooked. All three eyes blink at different times.',
+  desc: 'A cheerful orange fish with three eyes, found swimming right next to a certain glowing power plant. The plant\'s owner insists it\'s an evolutionary improvement. Excellent.',
+  behavior: 'Bottom-feeder near the junk piles. Loves trash and black holes.',
   shinyHue: 210,
 });
 
 add({
-  id: 'usbfish', name: 'USB Swordfish', biome: 'junkyard', rarity: 'epic',
+  id: 'usbfish', name: 'Excalibur Swordfish', biome: 'junkyard', rarity: 'epic',
   size: [80, 180], weight: [20, 90],
   look: {
     body: { len: 72, h: 20, shape: 'torpedo', nose: 1.6, tip: 0.3, tailW: 0.2 },
@@ -967,13 +968,13 @@ add({
   fight: { phases: ['timing', 'tension', 'dodge', 'net'], power: 0.75, stamina: 11, tricks: ['dash', 'fake', 'jump'], biteWindow: 0.35, nibbles: [2, 3], fakeBite: 0.4 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'click',
-  desc: 'Never plugs in on the first try. Flips over. Tries again. Flips over again. It worked the first time.',
-  behavior: 'Charges at icons nose-first trying to plug into them. Fakes out bites at least twice.',
+  desc: 'A swordfish that pulled a real sword out of a sunken stone and refuses to put it down. Rightful ruler of the junkyard reef, by its own decree.',
+  behavior: 'Blazing-fast charger. Loves computers and chips.',
   shinyHue: 300,
 });
 
 add({
-  id: 'lionfish', name: 'Malware Lionfish', biome: 'junkyard', rarity: 'epic',
+  id: 'lionfish', name: 'Circle-of-Life Lionfish', biome: 'junkyard', rarity: 'epic',
   size: [20, 40], weight: [0.5, 1.4],
   look: {
     body: { len: 44, h: 22, shape: 'oval', nose: 1.8, tip: 0.24 },
@@ -1000,13 +1001,13 @@ add({
   fight: { phases: ['dodge', 'tension', 'trace', 'net'], power: 0.65, stamina: 10, tricks: ['spit', 'fake', 'glitch'], biteWindow: 0.4, nibbles: [1, 3], fakeBite: 0.3 },
   spawn: { weight: 1, weather: 'storm', time: null, requires: null, hidden: null },
   sound: 'glitch',
-  desc: 'Every spine is an unskippable ad. Looking at it for too long installs a toolbar.',
-  behavior: 'Hovers with fins flared and shoots pop-up projectiles during fights. Do not click the spines.',
+  desc: 'A lionfish with an actual lion\'s mane who believes everything the light touches is its kingdom. Roars at sunrise, glitches out at sunset and will not stop singing about it.',
+  behavior: 'Hovers among the junk in storms, roaring and glitching. Loves pop-ups.',
   shinyHue: 190,
 });
 
 add({
-  id: 'bsod', name: 'Blue Screen Ray', biome: 'junkyard', rarity: 'legendary',
+  id: 'bsod', name: 'The Blue Screen of Death Ray', biome: 'junkyard', rarity: 'legendary',
   size: [300, 600], weight: [400, 1400],
   look: {
     kind: 'ray', bsod: true, manta: true, toon: true,
@@ -1024,8 +1025,8 @@ add({
   fight: { phases: ['dodge', 'timing', 'trace', 'mash', 'net'], power: 0.95, stamina: 18, tricks: ['glitch', 'spit', 'dive', 'fake'], biteWindow: 0.4, nibbles: [2, 4], fakeBite: 0.3 },
   spawn: { weight: 1, weather: 'storm', time: 'night', requires: null, hidden: true },
   sound: 'roar',
-  desc: 'A fatal exception the size of a bus. Collecting error info... 0% complete. Has been 0% since 1995.',
-  behavior: 'Glides out of the dark during thunderstorms. Its face changes with its mood. It is never in a good mood.',
+  desc: 'A colossal blue manta whose body reads \':( Your reef ran into a problem and needs to restart.\' Collecting error info: 0%... 0%... 0%...',
+  behavior: 'Glides through storms at night and glitches everything near it.',
   shinyHue: 120,
 });
 
@@ -1040,7 +1041,7 @@ const GLOW_EYES = [
 ];
 
 add({
-  id: 'lanternfish', name: 'Lanternfish', biome: 'abyss', rarity: 'common',
+  id: 'lanternfish', name: 'In-Brightest-Day Lanternfish', biome: 'abyss', rarity: 'common',
   size: [3, 10], weight: [0.01, 0.06],
   look: {
     body: { len: 26, h: 10, shape: 'blunt', tip: 0.4, nose: 2.6 },
@@ -1064,13 +1065,13 @@ add({
   fight: { phases: ['trace', 'tension'], power: 0.15, stamina: 2.5, tricks: ['dash'], biteWindow: 0.8, nibbles: [1, 2], fakeBite: 0.1 },
   spawn: { weight: 1.5, weather: null, time: null, requires: null, hidden: null },
   sound: 'chirp',
-  desc: 'The night lights of the deep. Billions of them rise every evening, which is why the ocean never needs a nightlight.',
-  behavior: 'Swims in glowing schools and drifts upward at night. Follows lantern pearls like moths.',
+  desc: 'Small schooling fish that each glow with a green ring. In brightest day, in blackest deep, no bait shall escape their sight. They take the oath very seriously.',
+  behavior: 'Glowing schools in the upper deep. Love lantern bait.',
   shinyHue: 60,
 });
 
 add({
-  id: 'hatchet', name: 'Hatchetfish', biome: 'abyss', rarity: 'common',
+  id: 'hatchet', name: 'Here\'s-Johnny Hatchetfish', biome: 'abyss', rarity: 'common',
   size: [3, 8], weight: [0.01, 0.04],
   look: {
     body: { len: 22, h: 24, shape: 'pointy', belly: 0.5, hump: -0.12, peak: 0.32, tailW: 0.16, tip: 0.2 },
@@ -1096,13 +1097,13 @@ add({
   fight: { phases: ['timing', 'tension'], power: 0.14, stamina: 2.5, tricks: ['dash', 'jump'], biteWindow: 0.7, nibbles: [1, 2], fakeBite: 0.1 },
   spawn: { weight: 1.3, weather: null, time: null, requires: null, hidden: null },
   sound: 'squeak',
-  desc: 'Shaped like a tiny axe and permanently startled about it. Its belly lights match the moonlight so nothing below can see it.',
-  behavior: 'Hovers in nervous little groups, eyes pointed up. Bolts at the slightest ripple.',
+  desc: 'A thin silver fish shaped exactly like a hatchet, with wide, unblinking eyes. Pokes its face through gaps in the rocks to announce itself. All work and no play makes it a dull fish.',
+  behavior: 'Darting schools that peek out of cracks. Loves lantern bait and worms.',
   shinyHue: 30,
 });
 
 add({
-  id: 'isopod', name: 'Giant Isopod', biome: 'abyss', rarity: 'common',
+  id: 'isopod', name: 'Hollow Isopod', biome: 'abyss', rarity: 'common',
   size: [20, 45], weight: [0.8, 1.7],
   look: {
     kind: 'isopod',
@@ -1120,13 +1121,13 @@ add({
   fight: { phases: ['mash', 'tension'], power: 0.3, stamina: 4, tricks: [], biteWindow: 1, nibbles: [0, 1], fakeBite: 0 },
   spawn: { weight: 1.2, weather: null, time: null, requires: null, hidden: null },
   sound: 'click',
-  desc: 'Can go five years without eating. Has chosen not to. Eats like a holiday every time it finds a snack.',
-  behavior: 'Trundles across the seabed and rolls into a ball when poked. Will eat literally anything you drop.',
+  desc: 'A tiny armoured knight of the deep that wanders endless caverns in silence, bonks things with its nail and sits on benches to rest. Surprisingly hard to beat.',
+  behavior: 'Crawls along the seabed. Will eat almost any worm.',
   shinyHue: 160,
 });
 
 add({
-  id: 'glowjelly', name: 'Nightlight Jelly', biome: 'abyss', rarity: 'common',
+  id: 'glowjelly', name: 'Jelly-on-Toast Jellyfish', biome: 'abyss', rarity: 'common',
   size: [8, 25], weight: [0.05, 0.4],
   look: {
     kind: 'jelly', glow: true, noFace: true,
@@ -1144,13 +1145,13 @@ add({
   fight: { phases: ['trace', 'net'], power: 0.12, stamina: 3, tricks: [], biteWindow: 1.2, nibbles: [2, 4], fakeBite: 0 },
   spawn: { weight: 1.2, weather: null, time: null, requires: null, hidden: null },
   sound: 'bell',
-  desc: 'Glows softly so the other fish are not scared of the dark. Has no brain, but a very big heart, metaphorically.',
-  behavior: 'Pulses gently through the water. Brightens near music and lantern light.',
+  desc: 'A jellyfish made of exactly what you think: a slice of golden toast with a thick layer of glowing grape jelly. Pulses gently. Smells like breakfast.',
+  behavior: 'Drifts and pulses through the dark. Loves lantern bait.',
   shinyHue: 110,
 });
 
 add({
-  id: 'blobfish', name: 'Sad Blobfish', biome: 'abyss', rarity: 'common',
+  id: 'blobfish', name: 'Inside-Out Blobfish', biome: 'abyss', rarity: 'common',
   size: [15, 30], weight: [0.5, 2],
   look: {
     kind: 'blob', blobfish: true,
@@ -1169,13 +1170,13 @@ add({
   fight: { phases: ['tension', 'mash'], power: 0.2, stamina: 3, tricks: [], biteWindow: 1.4, nibbles: [0, 2], fakeBite: 0 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'blub',
-  desc: 'Looks perfectly normal at home under the crushing pressure. It is only sad because you brought it up here.',
-  behavior: 'Floats near the seabed and barely moves. Lets food come to it, and food usually does not.',
+  desc: 'A droopy blue blobfish who is in charge of all of the ocean\'s sadness, and is very good at it. Crying helps it slow down and obsess over the weight of life\'s problems.',
+  behavior: 'Drifts sadly near the bottom. Bites slowly and reluctantly.',
   shinyHue: 180,
 });
 
 add({
-  id: 'angler', name: 'Deep Anglerfish', biome: 'abyss', rarity: 'uncommon',
+  id: 'angler', name: 'Upside-Down Angler', biome: 'abyss', rarity: 'uncommon',
   size: [10, 40], weight: [0.5, 5],
   look: {
     body: { len: 46, h: 34, shape: 'blunt', tip: 0.55 },
@@ -1200,13 +1201,13 @@ add({
   fight: { phases: ['tension', 'dodge', 'net'], power: 0.45, stamina: 6, tricks: ['fake', 'dive'], biteWindow: 0.5, nibbles: [1, 3], fakeBite: 0.25 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'grunt',
-  desc: 'Invented the night light, then used it for crimes. Its smile is 40% teeth and 60% more teeth.',
-  behavior: 'Waits motionless with its lure bobbing. Snaps at anything that admires the light.',
+  desc: 'An angler from the other side of the deep whose lure blinks like a string of fairy lights to spell out messages. R-U-N. It is mostly just trying to say hi.',
+  behavior: 'Hovers in the dark with a flickering lure. Loves lantern bait.',
   shinyHue: 140,
 });
 
 add({
-  id: 'dragonfish', name: 'Dragonfish', biome: 'abyss', rarity: 'uncommon',
+  id: 'dragonfish', name: 'Mother of Dragonfish', biome: 'abyss', rarity: 'uncommon',
   size: [15, 40], weight: [0.1, 0.6],
   look: {
     body: { len: 72, h: 13, shape: 'long', tip: 0.35 },
@@ -1231,13 +1232,13 @@ add({
   fight: { phases: ['trace', 'dodge', 'net'], power: 0.45, stamina: 6, tricks: ['dash', 'fake'], biteWindow: 0.45, nibbles: [1, 2], fakeBite: 0.25 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'roar',
-  desc: 'Sees in red light nothing else can see. Uses this superpower mostly to sneak up on shrimp.',
-  behavior: 'Slithers through the dark dangling its chin lure. Lightning-fast when it finally strikes.',
+  desc: 'A sleek black dragonfish with a glowing chin barbel, three small photophores it calls its children and a list of titles longer than its body. Unburnt. Mostly unbothered.',
+  behavior: 'Hunts in the deep with its glowing barbel. Loves lantern bait.',
   shinyHue: 200,
 });
 
 add({
-  id: 'gulper', name: 'Gulper Eel', biome: 'abyss', rarity: 'uncommon',
+  id: 'gulper', name: 'Hungry Hungry Gulper', biome: 'abyss', rarity: 'uncommon',
   size: [40, 100], weight: [0.5, 1.5],
   look: {
     body: { len: 80, h: 18, shape: 'blunt', peak: 0.14, tailW: 0.06, taper: 0.45, tip: 0.6 },
@@ -1261,13 +1262,13 @@ add({
   fight: { phases: ['mash', 'tension', 'net'], power: 0.4, stamina: 6, tricks: ['dive', 'wrap'], biteWindow: 0.6, nibbles: [1, 2], fakeBite: 0.1 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'blub',
-  desc: 'Mouth: enormous. Rest of fish: an afterthought. Can swallow things larger than itself and frequently regrets it.',
-  behavior: 'Opens its jaw like a parachute to scoop up bait. Its tail tip glows pink to lure snacks.',
+  desc: 'Nothing but an enormous mouth attached to a very long tail. Snaps at anything that moves, especially marbles. Has never once been full. Never will be.',
+  behavior: 'Swallows bait whole from far away. Loves black holes and trash.',
   shinyHue: 100,
 });
 
 add({
-  id: 'fangtooth', name: 'Fangtooth', biome: 'abyss', rarity: 'uncommon',
+  id: 'fangtooth', name: 'Count Fangula', biome: 'abyss', rarity: 'uncommon',
   size: [8, 18], weight: [0.1, 0.4],
   look: {
     body: { len: 40, h: 28, shape: 'blunt', hump: 0.1, tip: 0.5 },
@@ -1291,13 +1292,13 @@ add({
   fight: { phases: ['mash', 'dodge', 'tension'], power: 0.5, stamina: 6, tricks: ['dash', 'spit'], biteWindow: 0.45, nibbles: [0, 1], fakeBite: 0.05 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'roar',
-  desc: 'Has the largest teeth for its body size of any fish. Cannot close its mouth. Very self-conscious about it.',
-  behavior: 'Charges straight at bait with a terrible grin. Bites hard, then sulks.',
+  desc: 'An aristocratic fangtooth in a high-collared cape who only comes out in the dark - which, down here, is always. Does not drink... worms. Vants to bite your bait.',
+  behavior: 'Lurks in the deepest water. Bites fast and fights hard.',
   shinyHue: 60,
 });
 
 add({
-  id: 'ghostshark', name: 'Ghost Shark', biome: 'abyss', rarity: 'uncommon',
+  id: 'ghostshark', name: 'Who-You-Gonna-Call Ghost Shark', biome: 'abyss', rarity: 'uncommon',
   size: [40, 100], weight: [1, 6],
   look: {
     body: { len: 50, h: 19, shape: 'torpedo', peak: 0.25, tailW: 0.1, taper: 0.7, tip: 0.3, nose: 2.2 },
@@ -1322,13 +1323,13 @@ add({
   fight: { phases: ['trace', 'tension', 'net'], power: 0.4, stamina: 6, tricks: ['dive', 'fake'], biteWindow: 0.55, nibbles: [1, 2], fakeBite: 0.2 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'squeak',
-  desc: 'Not a ghost. Not technically a shark. Haunts the seabed anyway, out of professional courtesy.',
-  behavior: 'Flies over the seabed on big wing-fins, staring at everything with enormous, worried eyes.',
+  desc: 'A pale green, translucent ghost shark that slimes everything it touches and hides by fading away. Nobody has the right equipment to catch it. Except you, apparently.',
+  behavior: 'Fades from view unless your cursor gets close. Loves worms.',
   shinyHue: 300,
 });
 
 add({
-  id: 'glassghost', name: 'Glass Ghostfish', biome: 'abyss', rarity: 'rare',
+  id: 'glassghost', name: 'Cloaking Glassfish', biome: 'abyss', rarity: 'rare',
   size: [6, 14], weight: [0.02, 0.08],
   look: {
     body: { len: 46, h: 20, shape: 'oval', nose: 1.7 },
@@ -1352,13 +1353,13 @@ add({
   fight: { phases: ['trace', 'timing', 'tension', 'net'], power: 0.35, stamina: 6, tricks: ['fake', 'glitch'], biteWindow: 0.45, nibbles: [1, 3], fakeBite: 0.3 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'bell',
-  desc: 'Completely see-through, so you always know exactly what it had for lunch (you). Its heart beats a little faster near cameras.',
-  behavior: 'Nearly invisible against the dark. You can watch its heart beat when it gets nervous.',
+  desc: 'Fully transparent apart from its organs, which makes its active camouflage about 60% effective. You can see its lunch. It knows you can see its lunch.',
+  behavior: 'Nearly invisible unless your cursor is close. Loves images.',
   shinyHue: 280,
 });
 
 add({
-  id: 'vampsquid', name: 'Vampire Squid', biome: 'abyss', rarity: 'rare',
+  id: 'vampsquid', name: 'Squid Gamer', biome: 'abyss', rarity: 'rare',
   size: [15, 30], weight: [0.3, 1.2],
   look: {
     kind: 'squid', cape: true, photophores: true,
@@ -1377,13 +1378,13 @@ add({
   fight: { phases: ['dodge', 'trace', 'unwrap', 'net'], power: 0.5, stamina: 7, tricks: ['ink', 'wrap', 'fake'], biteWindow: 0.5, nibbles: [1, 3], fakeBite: 0.2 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'squeak',
-  desc: 'Despite the name and the cape, it is a gentle vegetarian of sea snow. The cape is purely a fashion choice.',
-  behavior: 'Flaps its ear-fins and wraps itself in its cloak when scared. Squirts glowing goo instead of ink.',
+  desc: 'A deep-sea squid in a hot-pink outfit that challenges everything it meets to children\'s games with unreasonably high stakes. Red light, green light! It inks whoever moves.',
+  behavior: 'Hovers and squirts ink when threatened. Loves lantern bait and videos.',
   shinyHue: 170,
 });
 
 add({
-  id: 'barreleye', name: 'Barreleye', biome: 'abyss', rarity: 'rare',
+  id: 'barreleye', name: 'Major Tom Barreleye', biome: 'abyss', rarity: 'rare',
   size: [10, 16], weight: [0.05, 0.2],
   look: {
     body: { len: 44, h: 17, shape: 'torpedo', tip: 0.3 },
@@ -1408,13 +1409,13 @@ add({
   fight: { phases: ['timing', 'trace', 'tension', 'net'], power: 0.35, stamina: 6, tricks: ['fake', 'jump'], biteWindow: 0.6, nibbles: [1, 3], fakeBite: 0.25 },
   spawn: { weight: 0.9, weather: null, time: null, requires: null, hidden: null },
   sound: 'chirp',
-  desc: 'Those two dots on its face are its nostrils. Its actual eyes are inside its see-through head, looking up at you. Hello.',
-  behavior: 'Hangs motionless, rolling its green tube-eyes toward any light above.',
+  desc: 'Ground control to Major Fish: this barreleye has a transparent space helmet for a head and floats in a most peculiar way, green eyes fixed on the distant stars.',
+  behavior: 'Hovers motionless, gazing up through its dome. Loves lantern bait.',
   shinyHue: 260,
 });
 
 add({
-  id: 'dumbo', name: 'Dumbo Octopus', biome: 'abyss', rarity: 'rare',
+  id: 'dumbo', name: 'Baby Cthulhu', biome: 'abyss', rarity: 'rare',
   size: [8, 20], weight: [0.1, 0.6],
   look: {
     kind: 'octopus',
@@ -1433,13 +1434,13 @@ add({
   fight: { phases: ['trace', 'timing', 'net'], power: 0.25, stamina: 5, tricks: ['hop', 'ink'], biteWindow: 0.75, nibbles: [1, 3], fakeBite: 0.15 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'boing',
-  desc: 'Flies through the deep by flapping its ears. Has never seen a cartoon elephant and resents the comparison anyway.',
-  behavior: 'Flaps gently up and down near the seabed. Gets curious about cute icons.',
+  desc: 'A small, adorable green octopus with stubby little wings who will one day awaken and devour the world. For now it flaps around saying \'ph\'nglui\' and wants a hug.',
+  behavior: 'Pulses gently through the deep. Loves sugar and music.',
   shinyHue: 150,
 });
 
 add({
-  id: 'crystalcarp', name: 'Crystal Carp', biome: 'abyss', rarity: 'epic',
+  id: 'crystalcarp', name: 'Toss-a-Coin Carp', biome: 'abyss', rarity: 'epic',
   size: [30, 70], weight: [3, 12],
   look: {
     body: { len: 58, h: 26, shape: 'oval', hump: 0.14, nose: 1.9, tip: 0.24 },
@@ -1464,13 +1465,13 @@ add({
   fight: { phases: ['timing', 'dodge', 'trace', 'tension', 'net'], power: 0.65, stamina: 11, tricks: ['jump', 'fake', 'glitch'], biteWindow: 0.4, nibbles: [2, 4], fakeBite: 0.3 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: true },
   sound: 'bell',
-  desc: 'Grew facets after centuries in a cave full of glowing gems. Tinkles like a wind chime when it swims.',
-  behavior: 'Throws little rainbows in lantern light. Shatters into dodgeable shards of light when hooked.',
+  desc: 'A glittering crystal carp that carries a gold coin in its mouth for the next wandering monster hunter. Hums the same catchy tune all day. O\' valley of plenty...',
+  behavior: 'Hidden deep; appears for golden or lantern bait. Sparkles constantly.',
   shinyHue: 90,
 });
 
 add({
-  id: 'noodle', name: 'Noodle Eel', biome: 'abyss', rarity: 'epic',
+  id: 'noodle', name: 'Believe-It Ramen Eel', biome: 'abyss', rarity: 'epic',
   size: [80, 200], weight: [0.4, 1.5],
   look: {
     kind: 'chain', toon: true,
@@ -1488,13 +1489,13 @@ add({
   fight: { phases: ['unwrap', 'tension', 'unwrap', 'trace', 'net'], power: 0.55, stamina: 10, tricks: ['wrap', 'fake', 'dash'], biteWindow: 0.6, nibbles: [1, 3], fakeBite: 0.2 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'boing',
-  desc: 'A single impossibly long noodle that came to life at the bottom of a soup bowl. Loves hugs. Hugs your cursor. Will not let go.',
-  behavior: 'Slurps through the water and ties itself around the mouse when excited. Circle to untangle.',
+  desc: 'A long, slurpy ramen noodle with a fishcake swirl hat and endless enthusiasm. Never gives up, never goes back on its word, always wraps around your cursor. Believe it!',
+  behavior: 'Wraps itself around the cursor and your line. Loves chat and sugar.',
   shinyHue: 20,
 });
 
 add({
-  id: 'manyeyes', name: 'The Ancient Many-Eyed One', biome: 'abyss', rarity: 'legendary',
+  id: 'manyeyes', name: 'The Great Old One of Many Eyes', biome: 'abyss', rarity: 'legendary',
   size: [600, 1200], weight: [2000, 9000],
   look: {
     body: { len: 170, h: 70, shape: 'blunt', hump: 0.12, belly: 0.1, tip: 0.45, nose: 2.6 },
@@ -1522,8 +1523,8 @@ add({
   fight: { phases: ['dodge', 'timing', 'trace', 'tension', 'net'], power: 1, stamina: 24, tricks: ['spit', 'ink', 'dive', 'glitch'], biteWindow: 0.5, nibbles: [3, 5], fakeBite: 0.2 },
   spawn: { weight: 1, weather: null, time: null, requires: 'relic', hidden: true },
   sound: 'roar',
-  desc: 'Older than the ocean\'s first screensaver. Every one of its eyes has seen your browser history.',
-  behavior: 'Rises only when an ancient relic is offered. All of its eyes follow your cursor. All of them.',
+  desc: 'An impossibly ancient leviathan covered in eyes that each see a different century. Hunters speak of it in whispers: fear the old depths. Every eye has seen your browser history.',
+  behavior: 'The guardian of the deep. Rises only when an Ancient Relic is offered here.',
   shinyHue: 240,
 });
 

@@ -123,16 +123,23 @@ export class SkyDome {
     this.W = W; this.top = top; this.base = base;
     this.h = base + 16 - top;
     this.blend = new Blend();
-    const mk = (kind) => paint(W, this.h, (x, yy) => {
-      const y = yy + top;
-      let [r, g, b] = lerpStops(o.stops[kind], clamp01((y - top) / (base - top)));
-      if (kind === 'night' && y < base - 8) {
-        const hs = hash2(x, y, 77);
-        if (hs < 0.0035) { const k = 0.3 + (hs / 0.0035) * 0.6; r = lerp(r, 230, k); g = lerp(g, 236, k); b = lerp(b, 255, k); }
+    const mk = (kind) => {
+      const rows = new Float32Array(this.h * 3);
+      for (let yy = 0; yy < this.h; yy++) {
+        const y = yy + top;
+        let [r, g, b] = lerpStops(o.stops[kind], clamp01((y - top) / (base - top)));
+        if (o.haze && y > base - 40) { const k = smoothstep(base - 40, base + 2, y) * o.haze; r += (255 - r) * k; g += (255 - g) * k; b += (255 - b) * k; }
+        rows[yy * 3] = r; rows[yy * 3 + 1] = g; rows[yy * 3 + 2] = b;
       }
-      if (o.haze && y > base - 40) { const k = smoothstep(base - 40, base + 2, y) * o.haze; r += (255 - r) * k; g += (255 - g) * k; b += (255 - b) * k; }
-      return dpack(r, g, b, x, yy, 5);
-    });
+      return paint(W, this.h, (x, yy) => {
+        let r = rows[yy * 3], g = rows[yy * 3 + 1], b = rows[yy * 3 + 2];
+        if (kind === 'night' && yy + top < base - 8) {
+          const hs = hash2(x, yy + top, 77);
+          if (hs < 0.0035) { const k = 0.3 + (hs / 0.0035) * 0.6; r = lerp(r, 230, k); g = lerp(g, 236, k); b = lerp(b, 255, k); }
+        }
+        return dpack(r, g, b, x, yy, 5);
+      });
+    };
     this.kinds = o.nightOnly ? ['night'] : ['day', 'dusk', 'night'];
     this.canvas = {};
     for (const k of this.kinds) this.canvas[k] = mk(k);

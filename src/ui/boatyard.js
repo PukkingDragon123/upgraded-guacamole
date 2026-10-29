@@ -221,13 +221,16 @@ export class BoatyardPanel {
     const shown = this.drop ? this.drop.tier : this.sel;
     const spr = boatSprite(shown, 1);
     const bx = S.x + 282, bob = Math.sin(t * 1.6) * 1.5;
-    let by = S.y + WATER_Y + bob, hookY = S.y + 120 + Math.sin(t * 1.3) * 3, rope = true;
+    const restHook = S.y + 120 + Math.sin(t * 1.3) * 3;
+    let by = S.y + WATER_Y + bob, hookY = restHook, slings = false;
     if (this.drop) {
       const d = this.drop;
       d.t += dt;
       const k = clamp01(d.t / 1.6);
-      by = lerp(S.y + 110, S.y + WATER_Y, ease.inCubic(k)) + (k >= 1 ? Math.sin((d.t - 1.6) * 9) * Math.max(0, 3 - (d.t - 1.6) * 3) : 0);
-      hookY = by - spr.oy + 6;
+      by = lerp(S.y + 130, S.y + WATER_Y, ease.inCubic(k)) + (k >= 1 ? Math.sin((d.t - 1.6) * 9) * Math.max(0, 3 - (d.t - 1.6) * 3) : 0);
+      const lowHook = by - spr.oy - 8;
+      hookY = k < 1 ? lowHook : lerp(lowHook, restHook, ease.inOutCubic(clamp01((d.t - 1.7) / 1.1)));
+      slings = k < 1;
       if (k >= 1 && !d.splashed) {
         d.splashed = true;
         g.audio.play('splash_big');
@@ -236,38 +239,46 @@ export class BoatyardPanel {
         g.audio.play('ui_unlock');
       }
       if (d.t > 3) this.drop = null;
-      rope = k < 1.02;
     }
     // crane trolley + hook
     const hx = bx;
     ctx.fillStyle = '#3a3448';
     ctx.fillRect(Math.round(hx) - 5, S.y + 64, 10, 5);
-    if (rope) {
+    ctx.fillStyle = '#2a2a3a';
+    ctx.fillRect(Math.round(hx), S.y + 69, 1, Math.max(0, Math.round(hookY - S.y - 69)));
+    ctx.fillStyle = '#7a849c';
+    ctx.fillRect(Math.round(hx) - 2, Math.round(hookY), 5, 3);
+    ctx.fillRect(Math.round(hx) + 1, Math.round(hookY) + 3, 2, 3);
+    if (slings) {
       ctx.fillStyle = '#2a2a3a';
-      ctx.fillRect(Math.round(hx), S.y + 69, 1, Math.max(0, Math.round(hookY - S.y - 69)));
-      ctx.fillStyle = '#7a849c';
-      ctx.fillRect(Math.round(hx) - 2, Math.round(hookY), 5, 3);
-      ctx.fillRect(Math.round(hx) + 1, Math.round(hookY) + 3, 2, 3);
+      const deck = Math.round(by - 16);
+      for (const ex of [-44, 44]) for (let i = 0; i < 24; i++) ctx.fillRect(Math.round(hx + (ex * i) / 24), Math.round(hookY + 5 + ((deck - hookY - 5) * i) / 24), 1, 1);
     }
-    if (this.drop && rope) {
-      ctx.fillStyle = '#2a2a3a';
-      const top = Math.round(by - spr.oy + 8);
-      for (const ex of [-40, 40]) { for (let i = 0; i < 12; i++) ctx.fillRect(Math.round(hx + (ex * i) / 12), Math.round(hookY + 4 + ((top - hookY - 4) * i) / 12), 1, 1); }
-    }
-    ctx.drawImage(spr.canvas, Math.round(bx - spr.ox), Math.round(by - spr.oy));
-    // water over the hull below the waterline
-    ctx.fillStyle = 'rgba(42,106,176,0.55)';
-    ctx.fillRect(Math.round(bx - spr.ox), S.y + WATER_Y + 2, spr.w, S.h);
-    this.drawWaves(ctx, S, t, 1, bx - spr.ox, spr.w);
+    // hull above the waterline crisp, below it faded into the water
+    const sx = Math.round(bx - spr.ox), sy = Math.round(by - spr.oy), wl = S.y + WATER_Y + 2;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(sx, sy, spr.w, Math.max(0, wl - sy)); ctx.clip();
+    ctx.drawImage(spr.canvas, sx, sy);
+    ctx.restore();
+    ctx.save();
+    ctx.beginPath(); ctx.rect(sx, wl, spr.w, spr.h); ctx.clip();
+    ctx.globalAlpha = 0.38;
+    ctx.drawImage(spr.canvas, sx, sy);
+    ctx.restore();
+    this.drawWaves(ctx, S, t, 1, sx - 6, spr.w + 12);
     // status flag on the boat
     const owned = shown <= cur;
     const tag = this.drop ? 'NEW!' : shown === cur ? 'IN USE' : owned ? 'OWNED' : 'FOR SALE';
     const tw = measureText(tag, 'small') + 8;
-    const tx = Math.round(bx - tw / 2), ty = S.y + 152 + Math.round(Math.sin(t * 2) * 2);
-    ctx.fillStyle = '#1a1226'; ctx.fillRect(tx - 1, ty - 1, tw + 2, 11);
-    ctx.fillStyle = shown === cur ? '#3ad040' : owned ? '#8a96a8' : '#ffd23a'; ctx.fillRect(tx, ty, tw, 9);
-    drawText(ctx, tag, tx + 4, ty + 2, { font: 'small', color: '#1a1226' });
-    if (!owned && !this.drop) drawText(ctx, `{coin} ${formatCommas(BOAT_TIERS[shown].price)}`, bx, ty + 13, { align: 'center', color: '#fff3dc', outline: '#1a1226' });
+    const price = !owned && !this.drop ? `{coin} ${formatCommas(BOAT_TIERS[shown].price)}` : '';
+    const pw2 = price ? measureText(price) + 6 : 0;
+    const tx = Math.round(bx - (tw + pw2) / 2), ty = Math.round(Math.min(S.y + 160, by - spr.oy - 14) + Math.sin(t * 2) * 2);
+    if (!this.drop || this.drop.t > 1.6) {
+      ctx.fillStyle = '#1a1226'; ctx.fillRect(tx - 1, ty - 1, tw + 2, 11);
+      ctx.fillStyle = shown === cur ? '#3ad040' : owned ? '#8a96a8' : '#ffd23a'; ctx.fillRect(tx, ty, tw, 9);
+      drawText(ctx, tag, tx + 4, ty + 2, { font: 'small', color: '#1a1226' });
+      if (price) drawText(ctx, price, tx + tw + 6, ty + 1, { color: '#fff3dc', outline: '#1a1226' });
+    }
     // Barnaby on the dock
     const talking = this.lineT < this.talk;
     const frame = talking && Math.floor(t * 8) % 2 ? 2 : Math.floor(t * 0.7) % 7 === 0 && (t % 1.43) < 0.15 ? 1 : 0;
@@ -332,7 +343,7 @@ export class BoatyardPanel {
     drawText(ctx, 'FLEET CATALOGUE', P.x + P.w / 2, P.y + 7, { align: 'center', color: '#5a2a10' });
     ctx.fillStyle = '#c8ac80';
     ctx.fillRect(P.x + 10, P.y + 17, P.w - 20, 1);
-    const rowH = 36;
+    const rowH = 32;
     BOAT_TIERS.forEach((b, i) => {
       const y = P.y + 21 + i * rowH;
       const rr = { x: P.x + 4, y, w: P.w - 8, h: rowH - 2 };
@@ -341,17 +352,17 @@ export class BoatyardPanel {
       else if (hov) { ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fillRect(rr.x, rr.y, rr.w, rr.h); }
       if (ui.clicked(rr) && !this.drop) { this.sel = i; g.audio.play('ui_tab'); if (i <= cur) this.say(pick(LINES.owned)); }
       const th = boatSprite(i, 0.3);
-      ctx.drawImage(th.canvas, Math.round(rr.x + 30 - th.ox), Math.round(y + 26 - th.oy));
+      ctx.drawImage(th.canvas, Math.round(rr.x + 30 - th.ox), Math.round(y + 24 - th.oy));
       ctx.fillStyle = 'rgba(42,106,176,0.35)';
-      ctx.fillRect(rr.x + 30 - th.ox, y + 26, th.w, 6);
-      drawText(ctx, b.name, rr.x + 62, y + 6, { color: '#2e1f1c' });
+      ctx.fillRect(rr.x + 30 - th.ox, y + 24, th.w, 5);
+      drawText(ctx, b.name, rr.x + 62, y + 5, { color: '#2e1f1c' });
       let status, color;
       if (i === cur) { status = 'IN USE'; color = '#2a8a2a'; }
       else if (i < cur) { status = 'OWNED'; color = '#8a7a6a'; }
       else if (i === cur + 1) { status = `{coin} ${formatCommas(b.price)}`; color = (st.coins || 0) >= b.price ? '#8a5a00' : '#c03a2a'; }
       else { status = `{lock} ${formatCommas(b.price)}`; color = '#9a8a7a'; }
-      drawText(ctx, status, rr.x + 62, y + 18, { color, font: i > cur ? 'normal' : 'small' });
-      if (i === cur) ctx.drawImage(getUiIcon('check'), rr.x + rr.w - 14, y + 6);
+      drawText(ctx, status, rr.x + 62, y + 17, { color, font: i > cur ? 'normal' : 'small' });
+      if (i === cur) ctx.drawImage(getUiIcon('check'), rr.x + rr.w - 14, y + 5);
     });
     // perks of the selection vs current boat
     let y = P.y + 21 + BOAT_TIERS.length * rowH + 2;
@@ -359,7 +370,7 @@ export class BoatyardPanel {
     ctx.fillRect(P.x + 10, y - 2, P.w - 20, 1);
     const sb = BOAT_TIERS[this.sel], cb = BOAT_TIERS[cur];
     wrapText(sb.desc, P.w - 20).slice(0, 2).forEach((l, i) => drawText(ctx, l, P.x + 10, y + 2 + i * 10, { color: '#6b4f43' }));
-    y += 22;
+    y += 25;
     for (const [k, meta] of Object.entries(BOAT_PERKS)) {
       const v = sb.perks[k], c0 = cb.perks[k];
       const neutral = meta.kind === 'mul' ? v === 1 : v === 0;
@@ -375,7 +386,7 @@ export class BoatyardPanel {
     const can = this.sel === cur + 1;
     const label = this.sel <= cur ? (this.sel === cur ? 'Your current boat' : 'Already owned') : can ? `Buy for ${formatCommas(sb.price)}` : 'Buy the one before';
     if (ui.button(ctx, P.x + 14, by, P.w - 28, 22, label, { icon: can ? 'coin' : this.sel <= cur ? 'check' : 'lock', disabled: !can || !!this.drop, tip: can ? sb.desc : null })) this.buy(this.sel);
-    if (this.sel === cur && cur === BOAT_TIERS.length - 1) drawStamp(ctx, P.x + P.w / 2, P.y + 120, 'FLEET COMPLETE', { color: '#2a8a2a', angle: -0.2 });
+    if (this.sel === cur && cur === BOAT_TIERS.length - 1) drawStamp(ctx, P.x + P.w / 2 + 20, P.y + 56, 'FLEET COMPLETE', { color: '#2a8a2a', angle: -0.2 });
     void t;
   }
 }

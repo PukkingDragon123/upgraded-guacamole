@@ -201,7 +201,7 @@ export function playDecor(aq, d, opts = {}) {
   events.sort((a, b) => a.at - b.at);
   const motion = !opts.seq && !quiet ? s.motion : null;
   const dur = opts.dur ?? Math.max(seq.length / fps, quiet ? 0 : s.dur, 0.45);
-  d.anim = { t: 0, seq, fps, dur, events, ei: 0, motion, shake: quiet ? 0 : s.shake, loop: !!opts.loop, byFish: !!opts.byFish };
+  d.anim = { t: 0, seq, fps, dur, events, ei: 0, motion, shake: quiet ? 0 : s.shake, loop: !!opts.loop, until: opts.until, byFish: !!opts.byFish };
   d.squash = 0.45; d.squashAmt = quiet ? s.squash * 0.5 : s.squash;
   if (s.frames > 1) queueDecorFrames(aq, d, d.scale, true);
   // A fish hiding inside gets flushed / scared out.
@@ -380,7 +380,7 @@ function runUse(aq, f, u, dt, T, fs) {
       st.phase = 'on'; st.t = 0;
       st.dur = u.kind === 'hide' ? rng.float(3, 6) : u.kind === 'bounce' ? rng.float(2.4, 3.6) : u.kind === 'orbit' ? rng.float(4, 6) : rng.float(6, 10);
       if (u.kind === 'hide') st.phase = 'hidden';
-      if (use.seq) playDecor(aq, d, { quiet: true, byFish: true, seq: use.seq, fps: use.fps || 3, loop: u.kind === 'watch' || u.kind === 'dancer', dur: st.dur + 1 });
+      if (use.seq) playDecor(aq, d, { quiet: true, byFish: true, seq: use.seq, fps: use.fps || 3, loop: u.kind === 'watch' || u.kind === 'dancer' || !!use.loop, dur: st.dur + 1, until: st.dur + 0.6 });
       if (u.kind === 'sit' || u.kind === 'watch') f.say(use.emote || (u.kind === 'watch' ? 'exclaim' : 'heart'), 1.6);
       if (u.kind === 'dancer') f.say('music', 1.5);
     }

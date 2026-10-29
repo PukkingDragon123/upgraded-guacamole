@@ -47,7 +47,7 @@ const ZONE1 = SEA - depthY(200), ZONE2 = SEA - depthY(1000); // sunlight / twili
 export const MAP_LOCATIONS = [
   {
     id: 'shallows', name: 'Sunny Shallows', sub: 'Crystal-clear tropical lagoon', depth: 8, color: '#ffc24a', skill: null,
-    geo: { u: 24, w: 26, h: SEA - 6, s: 17, rad: 34 }, pin: [19, SEA + 17, 21], focus: [19, SEA + 6, 21], sea: [34, 38],
+    geo: { u: 24, w: 26, h: SEA - 6, s: 17, rad: 34 }, pin: [19, SEA + 17, 21], focus: [19, SEA + 6, 21], sea: [40, 22],
     desc: 'Warm, bright and friendly. Perfect for new anglers and very curious fish.',
     weathers: ['sunny', 'cloudy', 'rain', 'storm'],
   },
@@ -59,25 +59,25 @@ export const MAP_LOCATIONS = [
   },
   {
     id: 'junkyard', name: 'Junkyard Reef', sub: 'Where old computers go to sleep', depth: 140, color: '#a6e05a', skill: 'exp1',
-    geo: { u: 30, w: 76, h: SEA - 24, s: 17, rad: 34 }, pin: [30, SEA + 9, 76], focus: [30, SEA - 16, 76], sea: [42, 96],
+    geo: { u: 30, w: 76, h: SEA - 24, s: 17, rad: 34 }, pin: [30, SEA + 3, 76], focus: [30, SEA - 16, 76], sea: [44, 97],
     desc: 'A reef of sunken hardware. Glitchy, mechanical and slightly rusty fish.',
     weathers: ['murky', 'static', 'oil', 'datarain'],
   },
   {
     id: 'metropolis', name: 'Sunken Metropolis', sub: 'A drowned neon city', depth: 450, color: '#ff6ae0', skill: 'exp8',
-    geo: { u: 90, w: 77, h: SEA - 38, s: 17, rad: 34 }, pin: [87, SEA + 15, 78], focus: [87, SEA - 6, 78], sea: [104, 94],
+    geo: { u: 90, w: 77, h: SEA - 38, s: 17, rad: 34 }, pin: [87, SEA + 12, 78], focus: [87, SEA - 6, 78], sea: [106, 95],
     desc: 'Skyscrapers still glowing under 450 m of water. The fish here never sleep.',
     weathers: ['neonrain', 'blackout', 'static', 'rushhour'],
   },
   {
     id: 'volcano', name: 'Lava Rift', sub: 'Volcanic vents & magma glow', depth: 900, color: '#ff7a3a', skill: 'exp9',
-    geo: { u: 150, w: 28, h: SEA - 46, s: 17, rad: 34 }, pin: [150, SEA + 33, 27], focus: [150, SEA + 21, 27], sea: [128, 50],
+    geo: { u: 146, w: 28, h: SEA - 46, s: 17, rad: 34 }, pin: [146, SEA + 35, 28], focus: [146, SEA + 23, 28], sea: [124, 44],
     desc: 'Black glass, boiling vents and rivers of magma. Fireproof fish only.',
     weathers: ['ashfall', 'eruption', 'heathaze', 'embers'],
   },
   {
     id: 'abyss', name: 'The Deep Ocean', sub: 'Something down here is watching', depth: 3200, color: '#8a9aff', skill: 'exp3',
-    geo: { u: 146, w: 80, h: SEA - 32, s: 17, rad: 30 }, pin: [148, SEA + 7, 90], focus: [149, 16, 92], sea: [150, 92],
+    geo: { u: 146, w: 80, h: SEA - 32, s: 17, rad: 30 }, pin: [148, SEA + 4, 90], focus: [149, 16, 92], sea: [132, 95],
     desc: 'Pitch black and ancient. Bring a light. Bring courage. Bring snacks.',
     weathers: ['still', 'snow', 'current', 'glowtide'],
   },
@@ -148,8 +148,8 @@ const CRACKS = [
   [[124, 12], [120, 19], [124, 27], [121, 33]],
 ];
 const ROAD_U = [70, 81, 92, 103], ROAD_W = [62, 73, 84];
-const VC = [150, 27]; // volcano centre (block-local)
-const SMOKERS = [[126, 37, 7], [134, 47, 5], [162, 53, 8], [121, 22, 6], [141, 52, 4]];
+const VC = [146, 28]; // volcano centre (block-local)
+const SMOKERS = [[118, 42, 7], [128, 52, 5], [163, 58, 8], [114, 26, 6], [136, 60, 4]];
 
 // Terrain column height + surface material for block-local (u, w).
 function landAt(u, w) {
@@ -204,20 +204,20 @@ function landAt(u, w) {
   // --- lava rift: volcano cone (cut by the right face), lava streams, glowing cracks in the seabed
   {
     const du = u - VC[0], dw = w - VC[1], r = Math.hypot(du, dw);
-    if (r < 33) {
-      const Rc = 4.5, Rr = Rc + 1.8, Rw = 15, top = SEA + 20;
+    if (r < 38) {
+      const Rc = 5, Rr = Rc + 1.8, Rw = 18, top = SEA + 22;
       let vh;
       if (r < Rc) vh = top - 2;
       else if (r < Rr) vh = top + 1;
       else if (r < Rw) vh = top - (top - SEA) * Math.pow((r - Rr) / (Rw - Rr), 0.85);
-      else vh = SEA - 46 * Math.pow((r - Rw) / (33 - Rw), 0.7);
+      else vh = SEA - 46 * Math.pow((r - Rw) / (38 - Rw), 0.7);
       vh += (fbm2(u * 0.17, w * 0.17, 2, 33) - 0.5) * 4 * Math.min(1, r / 9);
       if (vh > h) {
         h = Math.round(vh);
         mt = r < Rc ? LAVAHOT : BASALT;
         if (r >= Rc) {
           const a = Math.atan2(dw, du);
-          for (const [sa, len, ph] of [[2.3, 21, 0], [1.6, 18, 2], [2.95, 16, 4]]) {
+          for (const [sa, len, ph] of [[2.3, 24, 0], [1.55, 21, 2], [3.0, 19, 4]]) {
             const off = angAbs(a, sa + Math.sin(r * 0.32 + ph) * 0.16) * r;
             const wd = 1.7 - (r / len) * 0.6;
             if (r < len && off < wd) mt = off < wd * 0.45 ? LAVAHOT : LAVA;
@@ -305,7 +305,7 @@ function buildDiorama() {
     sand: P('#f2da9e', { jitter: 0.18 }, o.shallows), sand2: P('#e4c88a', { jitter: 0.18 }, o.shallows), sandD: P('#c8a874', { jitter: 0.15 }, o.shallows),
     grass: P('#6ccc58', { jitter: 0.2 }, o.shallows), grass2: P('#4cae4c', { jitter: 0.2 }, o.shallows),
     rock: P('#7a8498', { jitter: 0.22 }, o.fjord), rock2: P('#646e84', { jitter: 0.22 }, o.fjord), rockD: P('#4e566c', { jitter: 0.2 }, o.fjord),
-    snow: P('#f2f8fc', { jitter: 0.08 }, o.fjord), ice: P('#c8ecfa', { jitter: 0.1, spec: 0.35 }, o.fjord), crev: P('#7ac4e8', { jitter: 0.08 }, o.fjord),
+    snow: P('#f2f8fc', { jitter: 0.08 }, o.fjord), ice: P('#b8e0f2', { jitter: 0.12, spec: 0.3 }, o.fjord), crev: P('#5aa2d2', { jitter: 0.08 }, o.fjord),
     basalt: P('#3c3446', { jitter: 0.2 }, o.volcano), ash: P('#5c5262', { jitter: 0.2 }, o.volcano), basaltD: P('#2a2432', { jitter: 0.15 }, o.volcano),
     lava: P('#ff6a1c', { emissive: 1, jitter: 0.1 }, o.volcano), lavaHot: P('#ffc63a', { emissive: 1, jitter: 0.1 }, o.volcano),
     crust: P('#6a2c24', { emissive: 0.25, jitter: 0.2 }, o.volcano), rift: P('#ff8a2c', { emissive: 1, jitter: 0.1 }, o.volcano),
@@ -419,7 +419,10 @@ function buildDiorama() {
       }
     }
   }
-  return { model: m, own, terr, LI, ext, C, ms: Math.round(performance.now() - t0) };
+  // 'plain' = unowned palette entries that are not seabed surface (strata, plinth, buried treasures)
+  const plain = new Uint8Array(256), surfSet = new Set(Object.values(TP).flatMap((q) => [q.a, q.b]));
+  for (let i = 1; i < m.palette.length; i++) plain[i] = own[i] === 0 && !surfSet.has(i) ? 1 : 0;
+  return { model: m, own, plain, terr, LI, ext, C, ms: Math.round(performance.now() - t0) };
 }
 
 // ---------------------------------------------------------------- location models
@@ -603,7 +606,7 @@ function buildVolcano({ m, P, ground }, o) {
   }
   // obsidian shards jutting from the flanks
   for (let k = 0; k < 9; k++) {
-    const a = rng.float(1.2, 3.6), r = rng.float(9, 20);
+    const a = rng.float(1.2, 3.6), r = rng.float(10, 24);
     const u = VC[0] + Math.cos(a) * r, w = VC[1] + Math.sin(a) * r;
     if (u < 2 || u > BX - 2 || w < 1 || w > BZ - 1) continue;
     const gy = ground(u, w);
@@ -612,7 +615,7 @@ function buildVolcano({ m, P, ground }, o) {
   // magma chamber + conduit, exposed by the right-hand cut face
   m.paint(() => {
     m.ellipsoid(XR - 3, 17, Z(27), 9, 6.5, 12, chamber);
-    m.tube([[XR - 1.5, 20, Z(27), 2], [XR - 1.5, 34, Z(25), 1.7], [XR - 2.5, 46, Z(28), 1.6], [X(158), 60, Z(27), 1.5], [X(152), 76, Z(27), 1.4], [X(VC[0]), SEA + 19, Z(27), 1.4]], conduit, 4);
+    m.tube([[XR - 1.5, 20, Z(28), 2], [XR - 1.5, 34, Z(26), 1.7], [XR - 2.5, 46, Z(29), 1.6], [X(156), 60, Z(28), 1.5], [X(149), 78, Z(28), 1.4], [X(VC[0]), SEA + 21, Z(28), 1.4]], conduit, 4);
     m.tube([[XR - 1, 22, Z(17), 0.8], [XR - 1, 30, Z(11), 0.7], [XR - 1, 38, Z(8), 0.6]], conduit, 3);
     m.tube([[XR - 1, 24, Z(37), 0.8], [XR - 1, 33, Z(43), 0.7], [XR - 1, 40, Z(42), 0.6]], conduit, 3);
   });
@@ -1097,7 +1100,7 @@ function bakeView(dio, yaw, scale) {
   const proj = (x, y, z) => [(x * R[0] + y * R[1] + z * R[2]) * scale + p0x, -(x * U[0] + y * U[1] + z * U[2]) * scale + p0y];
   const [cx, cy] = proj(C[0], C[1], C[2]);
   return {
-    canvas: r.canvas, W, H, scale, yaw, cam, hitT, obj, terr, surf, surfList, glows, anchors, proj, cx, cy,
+    canvas: r.canvas, W, H, scale, yaw, cam, hitT, obj, terr, surf, surfList, glows, anchors, proj, cx, cy, ids, plain: dio.plain,
     outlines: {}, fogs: {}, ok, ms: [Math.round(t1 - t0), Math.round(performance.now() - t1)],
     // canvas-space point + visibility against the baked depth (water is not an occluder)
     vis(x, y, z) {
@@ -1132,8 +1135,8 @@ function outlineFor(bk, li) {
 // Fog bank over a locked location's territory (soft, dithered, drifting at runtime).
 function fogFor(bk, li) {
   if (bk.fogs[li]) return bk.fogs[li];
-  const { W, H, obj, terr } = bk;
-  const inMask = (p) => obj[p] === li || (!obj[p] && terr[p] === li);
+  const { W, H, obj, terr, surf, ids, plain } = bk;
+  const inMask = (p) => obj[p] === li || (!obj[p] && terr[p] === li && (surf[p] || !plain[ids[p]]));
   let x0 = W, y0 = H, x1 = -1, y1 = -1;
   for (let p = 0; p < W * H; p++) if (inMask(p)) { const x = p % W, y = (p / W) | 0; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
   if (x1 < 0) return (bk.fogs[li] = null);
@@ -1160,11 +1163,11 @@ function fogFor(bk, li) {
     }
   }
   const c = makeCanvas(w, h), cg = ctxOf(c), im = cg.createImageData(w, h), out = new Uint32Array(im.data.buffer);
-  const A = RGB('#d6e2ee'), B = RGB('#8a9ab6');
+  const A = RGB('#e4ecf4'), B = RGB('#8090ac');
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const i = y * w + x, d = dist[i];
-    const n = fbm2((x + x0) * 0.045, (y + y0) * 0.07, 3, li * 13);
-    let a = 0.72 * smoothstep(pad + 1, 0, d) * (0.55 + n * 0.7);
+    const n = fbm2((x + x0) * 0.04, (y + y0) * 0.075, 3, li * 13);
+    let a = 0.7 * smoothstep(pad + 1, 0, d) * (0.4 + n * 0.85);
     a = Math.floor(a * 6 + bayer(x, y)) / 6;
     if (a <= 0) continue;
     const k = clamp01(n * 1.6 - 0.3);
@@ -1241,7 +1244,7 @@ function boatSprite(yaw) {
     m.box(2, 7, 1, 8, 7, 7, teal);
     m.box(11, 4, 4, 11, 11, 4, mast);
     m.box(12, 9, 4, 14, 10, 4, flag);
-    return renderVoxels(m, { scale: 1.25, yaw: key * 22.5, pitch: PITCH });
+    return renderVoxels(m, { scale: 1.5, yaw: key * 22.5, pitch: PITCH });
   });
 }
 
@@ -1255,10 +1258,10 @@ function discSprite(r, color) {
 const packHex = (h) => { const [r, g, b] = RGB(h); return ((255 << 24) | (b << 16) | (g << 8) | r) >>> 0; };
 
 // Painted backdrop for the view window (cached per size).
-function backdrop(w, h) {
-  return sprite(`bg${w}x${h}`, () => {
+function backdrop(w, h, night) {
+  return sprite(`bg${w}x${h}${night ? 'n' : 'd'}`, () => {
     const b = new PixelBuffer(w, h);
-    const top = RGB('#0e2240'), mid = RGB('#24507e'), bot = RGB('#4a8cb6');
+    const top = RGB(night ? '#0a1a34' : '#1a4a7c'), mid = RGB(night ? '#1e4472' : '#3a7cb0'), bot = RGB(night ? '#3e7aa6' : '#7ab8d8');
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const k = y / h + (bayer(x, y) - 0.5) * 0.06;
       const [ca, cb, t] = k < 0.55 ? [top, mid, k / 0.55] : [mid, bot, (k - 0.55) / 0.45];
@@ -1268,7 +1271,7 @@ function backdrop(w, h) {
       r += (150 - r) * glow; g += (220 - g) * glow; bb += (240 - bb) * glow;
       b.set(x, y, ((255 << 24) | (Math.round(bb) << 16) | (Math.round(g) << 8) | Math.round(r)) >>> 0);
     }
-    for (let i = 0; i < 70; i++) {
+    for (let i = 0; i < (night ? 80 : 0); i++) {
       const x = Math.floor(hash1(i, 3) * w), y = Math.floor(hash1(i, 4) ** 1.6 * h * 0.5);
       b.set(x, y, hash1(i, 5) < 0.3 ? packHex('#fff6d8') : packHex('#9ec4e8'));
     }
@@ -1412,7 +1415,8 @@ export class MapPanel {
     ctx.fillRect(view.x - 1, view.y - 1, view.w + 2, view.h + 2);
     ctx.save();
     ctx.beginPath(); ctx.rect(view.x, view.y, view.w, view.h); ctx.clip();
-    ctx.drawImage(backdrop(view.w, view.h), view.x, view.y);
+    const night = !!g.clock?.isNight?.();
+    ctx.drawImage(backdrop(view.w, view.h, night), view.x, view.y);
 
     // ------------------------------------------------ input: hover, drag-rotate, click-select, wheel
     const inView = ui.hover(view) && !this.sail;
@@ -1431,16 +1435,18 @@ export class MapPanel {
     if (inView && inp.pressed && !this.overControl(inp.x, inp.y, Lay)) {
       inp.pressed = false;
       this.drag = { x0: inp.x, i0: this.yawI, moved: false, hit: hov };
+      if (inp.dblclick && hov) { this.select(hov); this.trySail(LOC_BY_ID[hov], true); }
     }
     if (inView && inp.wheel) { this.setYaw(this.yawI + Math.sign(inp.wheel)); inp.wheel = 0; }
     if (!this.sail && inp.keyPressed?.('ArrowLeft')) this.setYaw(this.yawI - 1);
     if (!this.sail && inp.keyPressed?.('ArrowRight')) this.setYaw(this.yawI + 1);
+    if (this.listHover) hov = this.listHover;
     if (this.debugHover !== undefined) hov = this.debugHover;
     if (hov !== this.hover) { this.hover = hov; if (hov) g.audio.play('ui_hover', { vol: 0.3 }); }
     if (this.drag?.moved) ui.tip = null;
 
     // ------------------------------------------------ scene
-    this.drawSky(ctx, Lay, bk, ox, oy, t, reduced);
+    this.drawSky(ctx, Lay, bk, ox, oy, t, reduced, night);
     ctx.drawImage(bk.canvas, ox, oy);
     if (this.prev && this.fade < 1 && this.prev !== bk) {
       ctx.globalAlpha = 1 - this.fade;
@@ -1466,6 +1472,7 @@ export class MapPanel {
 
     // ------------------------------------------------ title + card + close
     this.drawBanner(ctx, view.x + view.w / 2, r.y + 3, 'WORLD MAP');
+    this.listHover = null;
     this.drawCard(ctx, ui, card, LOC_BY_ID[focus] || LOC_BY_ID[cur], t);
     if (ui.button(ctx, r.x + r.w - 27, r.y + 8, 18, 17, '', { icon: 'cross', style: 'shell', tip: 'Close (Esc)' })) ui.close(this.id);
     if (!this.sail && this.sel && (inp.keyPressed?.('Enter'))) this.trySail(LOC_BY_ID[this.sel]);
@@ -1492,22 +1499,38 @@ export class MapPanel {
     return c && x >= c.x && y >= c.y && x < c.x + c.w && y < c.y + c.h;
   }
 
-  trySail(L) {
+  trySail(L, sound = false) {
     if (!L || this.sail || L.id === this.current() || !this.unlocked(L.id)) return;
+    if (sound) this.game.audio.play('travel_whoosh');
     const reduced = !!this.game.state.settings?.reducedMotion;
     this.sail = { from: this.current(), to: L.id, t: 0, dur: reduced ? 0.5 : 1.5 };
   }
 
   // Sky behind the diorama: aurora over the fjord, drifting voxel clouds, sun.
-  drawSky(ctx, Lay, bk, ox, oy, t, reduced) {
+  drawSky(ctx, Lay, bk, ox, oy, t, reduced, night) {
     const { view } = Lay;
     const tt = reduced ? 0 : t;
-    // sun
-    const sx = view.x + view.w - 70, sy = view.y + 44;
-    ctx.drawImage(discSprite(13, '#fff2b0'), sx - 13, sy - 13);
-    ctx.globalAlpha = 0.18;
-    ctx.drawImage(discSprite(20, '#fff2b0'), sx - 20, sy - 20);
+    // sun / moon
+    const sx = view.x + view.w - 64, sy = view.y + 46;
+    ctx.globalAlpha = 0.14;
+    ctx.drawImage(discSprite(22, night ? '#cfe0ff' : '#fff2b0'), sx - 22, sy - 22);
+    ctx.globalAlpha = 0.25;
+    ctx.drawImage(discSprite(16, night ? '#cfe0ff' : '#fff2b0'), sx - 16, sy - 16);
     ctx.globalAlpha = 1;
+    if (night) {
+      ctx.drawImage(discSprite(11, '#eef2fa'), sx - 11, sy - 11);
+      ctx.drawImage(discSprite(3, '#c4cce0'), sx - 5, sy - 3);
+      ctx.drawImage(discSprite(2, '#c4cce0'), sx + 3, sy + 2);
+      ctx.drawImage(discSprite(1, '#c4cce0'), sx + 2, sy - 6);
+    } else {
+      ctx.fillStyle = '#ffe48a';
+      for (let k = 0; k < 12; k++) {
+        const a = (k / 12) * TAU + tt * 0.1, r0 = 15, r1 = k % 2 ? 19 : 22;
+        for (let q = r0; q <= r1; q++) ctx.fillRect(Math.round(sx + Math.cos(a) * q), Math.round(sy + Math.sin(a) * q), 1, 1);
+      }
+      ctx.drawImage(discSprite(12, '#ffe48a'), sx - 12, sy - 12);
+      ctx.drawImage(discSprite(10, '#fff4c0'), sx - 11, sy - 11);
+    }
     // aurora curtains above the fjord
     const fj = LOC_BY_ID.fjord, [ax, ay] = bk.proj(fj.pin[0] + M, SEA + 26, fj.pin[2] + M - 6);
     for (let i = 0; i < 60; i++) {
@@ -1564,13 +1587,13 @@ export class MapPanel {
       ctx.globalAlpha = 0.85;
       ctx.fillRect(ox + x - (l >> 1), oy + y, l, 1);
     });
-    ctx.globalAlpha = 0.45;
-    for (let i = 0; i < 90; i++) {
+    ctx.globalAlpha = 0.32;
+    for (let i = 0; i < 44; i++) {
       const x = M + ((hash1(i, 31) * BX + tt * (1.5 + hash1(i, 32) * 1.5)) % BX), z = M + hash1(i, 33) * BZ;
       const [sx, sy] = bk.proj(x, SEA, z);
       const qx = Math.floor(sx), qy = Math.floor(sy);
       if (qx < 0 || qy < 0 || qx >= W || qy >= bk.H || !bk.surf[qy * W + qx]) continue;
-      ctx.fillRect(ox + qx - 2, oy + qy, 4, 1);
+      ctx.fillRect(ox + qx - 1, oy + qy, 3, 1);
     }
     ctx.globalAlpha = 1;
     // fish schools
@@ -1612,7 +1635,7 @@ export class MapPanel {
     ctx.globalAlpha = 1;
     // volcano smoke + embers
     if (this.unlocked('volcano') || true) {
-      const [vx, vy] = bk.proj(VC[0] + M, SEA + 20, VC[1] + M);
+      const [vx, vy] = bk.proj(VC[0] + M, SEA + 22, VC[1] + M);
       for (let k = 0; k < 9; k++) {
         const ph = (tt * 0.18 + k / 9) % 1;
         const rr = Math.round(2 + ph * 6);
@@ -1723,7 +1746,8 @@ export class MapPanel {
 
   drawPins(ctx, bk, ox, oy, t, reduced, cur) {
     const hits = [];
-    const order = LOCS.map((L, i) => [L, i]).sort((a, b) => bk.proj(a[0].pin[0] + M, a[0].pin[1], a[0].pin[2] + M)[1] - bk.proj(b[0].pin[0] + M, b[0].pin[1], b[0].pin[2] + M)[1]);
+    const rank = (L) => (L.id === this.hover ? 1e4 : L.id === this.sel ? 5e3 : 0) + bk.proj(L.pin[0] + M, L.pin[1], L.pin[2] + M)[1];
+    const order = LOCS.map((L, i) => [L, i]).sort((a, b) => rank(a[0]) - rank(b[0]));
     for (const [L, i] of order) {
       const open = this.unlocked(L.id), isH = this.hover === L.id, isS = this.sel === L.id;
       const [px, py] = bk.proj(L.pin[0] + M, L.pin[1], L.pin[2] + M);
@@ -1886,7 +1910,8 @@ export class MapPanel {
     y += 6;
     // description or unlock checklist
     if (open) {
-      wrapText(L.desc, w).slice(0, 5).forEach((l, i) => drawText(ctx, l, x, y + i * 10, { color: INK_L }));
+      wrapText(L.desc, w).slice(0, 4).forEach((l, i) => drawText(ctx, l, x, y + i * 10, { color: INK_L }));
+      y += Math.min(4, wrapText(L.desc, w).length) * 10 + 4;
     } else {
       drawText(ctx, 'TO SAIL HERE YOU NEED:', x, y, { font: 'small', color: RED });
       y += 9;
@@ -1897,14 +1922,40 @@ export class MapPanel {
         lines.slice(0, 2).forEach((l, i) => drawText(ctx, l, x + 13, y + 1 + i * 9, { color: q.ok ? '#3a6a2a' : INK }));
         y += 9 * Math.min(2, lines.length) + 3;
       }
-      drawText(ctx, 'Unlock it in the Skill Tree.', x, y + 2, { font: 'small', color: INK_L });
+      drawText(ctx, 'UNLOCK IT IN THE SKILL TREE', x, y + 1, { font: 'small', color: INK_L });
+      y += 10;
     }
     // travel button
     const bw = w, bh = 24, bx = x, by = rc.y + rc.h - bh - 9;
+    // destinations list (also a way to select without hunting on the diorama)
+    const rowH = 15, listH = LOCS.length * rowH + 12;
+    const ly = by - listH - 6;
+    if (ly > y + 4) {
+      ctx.fillStyle = rgba(INK_L, 0.4);
+      ctx.fillRect(x, ly, w, 1);
+      drawText(ctx, 'DESTINATIONS', x, ly + 4, { font: 'small', color: INK_L });
+      LOCS.forEach((D, i) => {
+        const ry = ly + 12 + i * rowH, rr = { x: x - 2, y: ry - 1, w: w + 4, h: rowH - 1 };
+        const isOpen = this.unlocked(D.id), isSel = this.sel === D.id, isHere = D.id === this.current();
+        const hv = !this.sail && ui.hover(rr);
+        if (hv) { this.listHover = D.id; ui.tip = null; }
+        if (isSel || hv) { ctx.fillStyle = rgba(isSel ? D.color : '#ffffff', isSel ? 0.28 : 0.35); ctx.fillRect(rr.x, rr.y, rr.w, rr.h); }
+        if (isOpen) { ctx.fillStyle = shade(D.color, -0.45); ctx.fillRect(x + 1, ry + 2, 7, 7); ctx.fillStyle = D.color; ctx.fillRect(x + 2, ry + 3, 5, 5); ctx.fillStyle = mix(D.color, '#ffffff', 0.6); ctx.fillRect(x + 3, ry + 4, 2, 1); }
+        else ctx.drawImage(getUiIcon('lock'), x, ry + 1);
+        drawText(ctx, D.name, x + 12, ry + 2, { color: isOpen ? INK : '#9a8a74' });
+        const right = isHere ? 'HERE' : `${formatCommas(D.depth)} M`;
+        drawText(ctx, right, x + w, ry + 3, { font: 'small', align: 'right', color: isHere ? RED : INK_L });
+        if (hv && g.input.pressed) {
+          g.input.pressed = false;
+          this.select(D.id);
+          if (g.input.dblclick) this.trySail(D, true);
+        }
+      });
+    }
     if (this.sail) {
       drawButton(ctx, bx, by, bw, bh, { label: 'Sailing...', icon: getUiIcon('map'), state: 'down', style: 'wood' });
     } else if (here) {
-      drawText(ctx, 'YOU ARE HERE', bx + bw / 2, by + 8, { align: 'center', color: RED });
+      drawButton(ctx, bx, by, bw, bh, { label: 'You are here', icon: getUiIcon('home'), state: 'disabled', style: 'wood' });
     } else if (open) {
       if (ui.button(ctx, bx, by, bw, bh, `Sail to ${L.name.replace('The ', '')}`, { icon: 'map', style: 'wood', sound: 'travel_whoosh', tip: `Travel to ${L.name}` })) {
         this.sel = L.id;

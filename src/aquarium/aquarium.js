@@ -637,6 +637,7 @@ export class Aquarium {
     const vk = this.visibleKey;
     let sx, sy;
     if (vk) { const o = this.innerOrigin(vk); sx = o.x + p.x; sy = o.y + p.y; }
+    if (by === 'player') this.lastGrabT = this.t;
     this.game.addCoins?.(c.value, sx, sy);
     if (vk) {
       this.combo = this.comboT > 0 ? this.combo + 1 : 0;
@@ -845,8 +846,11 @@ export class Aquarium {
       } else {
         this.press = null;
         if (!pr.moved && !pr.collected) {
+          // (a click that just grabbed a coin, or one during the tank / coin tutorial, stays a coin grab)
+          const tut = g.tutorial?.active && (g.tutorial.step === 'tank' || g.tutorial.step === 'coin');
+          const grab = pr.kind === 'glass' && (tut || this.t - (this.lastGrabT ?? -9) < 0.6);
           if ((pr.kind === 'decor' || pr.kind === 'decorFull') && this.decor.includes(pr.d)) this.interact(pr.d);
-          else if (pr.kind === 'lid' || pr.kind === 'glass') { this.openFull(); return; }
+          else if ((pr.kind === 'lid' && !tut) || (pr.kind === 'glass' && !grab)) { this.openFull(); return; }
         }
       }
     }

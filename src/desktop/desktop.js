@@ -376,7 +376,7 @@ export class Desktop {
       { id: 'journal', label: 'Fish Journal', icon: 'book', key: 'J' },
       { id: 'tank', label: g.state.view === 'aquarium' ? 'Back to Ocean' : 'My Aquarium', icon: 'tank', key: 'A' },
       { id: 'skills', label: 'Coral Skill Tree', icon: 'coral', key: 'K' },
-      { id: 'shop', label: "Pinch's Bait Shop", icon: 'shop', key: 'S' },
+      { id: 'shop', label: "Cap'n Bloat's Shop", icon: 'shop', key: 'S' },
       { id: 'map', label: 'Travel Map', icon: 'map', key: 'T' },
       { id: 'bait', label: 'Bait Box', icon: 'bait', key: 'B' },
       { id: 'pause', label: g.paused ? 'Resume Fishing' : 'Pause Fishing', icon: g.paused ? 'play' : 'pause', key: 'P' },

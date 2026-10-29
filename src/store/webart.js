@@ -130,7 +130,8 @@ export function glossButton(ctx, x, y, w, h, label, { color = 'green', hover = f
   const th = lines.length * lh - (lh - (font === 'small' ? 5 : 7));
   lines.forEach((l, i) => {
     const ty = y + Math.round((h - th) / 2) + i * lh + (down ? 1 : 0);
-    drawText(ctx, l, x + w / 2, ty, { align: 'center', color: disabled ? '#e8e8ec' : '#ffffff', font, outline: disabled ? null : GLOSS[col][0] });
+    if (disabled) drawText(ctx, l, x + w / 2, ty, { align: 'center', color: '#4a4a56', font, shadow: '#f4f4f8' });
+    else drawText(ctx, l, x + w / 2, ty, { align: 'center', color: '#ffffff', font, outline: GLOSS[col][0] });
   });
 }
 

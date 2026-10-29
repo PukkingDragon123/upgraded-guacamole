@@ -91,6 +91,17 @@ export class Fishing {
     if (b) b.pose = this.poseHold ? this.poseHold.pose : pose;
   }
 
+  // Camera focus that never shows past the edges of a world without water above (desktop intro).
+  focusCam(x, y, zoom, speed) {
+    const c = this.cam;
+    if (!c?.focus) return;
+    if (this.world.surfaceY === null || this.world.surfaceY === undefined) {
+      const top = c.scrollY ?? 0, half = this.H / (2 * zoom);
+      y = clamp(y, top + half, top + this.H - half);
+    }
+    c.focus(x, y, zoom, speed);
+  }
+
   scrollTo(y) {
     const c = this.cam;
     if (!c?.scrollTo) return;
@@ -158,6 +169,14 @@ export class Fishing {
       return { x: clamp(x, 30, w.W - 30), y: w.surfaceY + 14 + half };
     }
     return { x: clamp(f.x, 60, w.W - 60), y: this.viewTop() + 80 };
+  }
+
+  // Start the current species event now (debug / older test drivers).
+  startPhase() {
+    const B = this.battle;
+    if (!B) return;
+    const name = B.phases[B.pi];
+    if (name && name !== 'tension') B.startEvent(name);
   }
 
   crankHint() { return this.battle ? this.battle.crankHint() : [this.input.x, this.input.y]; }
@@ -411,7 +430,7 @@ export class Fishing {
     // cinematic: slow-mo punch-in with letterbox
     const cam = this.cam;
     const zoomIn = this.fightZoom() + 0.3;
-    cam?.focus?.(f.x, f.y, zoomIn, 6);
+    this.focusCam(f.x, f.y, zoomIn, 6);
     cam?.setLetterbox?.(true);
     cam?.slowmo?.(0.22, 0.55);
     cam?.flash?.('#ffffff', 0.35);
@@ -454,8 +473,8 @@ export class Fishing {
     if (B.mode === 'hookset') zoom += 0.3;
     if (B.trick?.kind === 'jump') zoom = 1.55;
     if (B.mode === 'surge' && B.surgeMul > 1.5) zoom -= 0.15;
-    if (ev) this.cam?.focus?.(ev.x, ev.y, ev.zoom, 4);
-    else this.cam?.focus?.(f.x, f.y, zoom, B.mode === 'hookset' ? 6 : 4);
+    if (ev) this.focusCam(ev.x, ev.y, ev.zoom, 4);
+    else this.focusCam(f.x, f.y, zoom, B.mode === 'hookset' ? 6 : 4);
     // character pose from what the player is doing
     if (!this.poseHold) {
       const pose = this.input.down ? 'pull' : this.crank.active ? 'reel' : 'pull';

@@ -94,7 +94,7 @@ export function drawFightBands(ctx, F, B) {
   }
   const ty = Math.round(topH / 2);
   drawNamePlate(ctx, F, 14, ty - 12);
-  drawStamina(ctx, F, B, W - 14, ty - 2);
+  drawStamina(ctx, F, B, W - (F.game.tutorial?.active ? 96 : 14), ty - 2);
   drawStatus(ctx, F, B, W / 2, ty - 6);
   const by = H - Math.round(botH / 2) - 2;
   const bw = Math.min(380, Math.round(W * 0.42));

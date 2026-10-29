@@ -1198,7 +1198,8 @@ export class FjordBiome extends Biome {
   drawSky(ctx, env, y0) {
     const W = this.W, t = this.t, tod = this.tod, wx = this.wx, base = this.base, skyY = this.skyY;
     const w3 = (o) => [[o.day, tod.day], [o.dusk, tod.dusk], [o.night, tod.night]];
-    ctx.drawImage(this.skyBlend.get(w3(this.sky)), 0, skyY);
+    const r0 = clamp(Math.floor(y0) - skyY, 0, this.skyH - 1), rh = this.skyH - r0;
+    ctx.drawImage(this.skyBlend.get(w3(this.sky)), 0, r0, W, rh, 0, skyY + r0, W, rh);
     const oc = clamp01(wx.snow * 0.7 + wx.bliz * 0.9);
     const clear = 1 - oc;
     if (y0 < base - 60) {
@@ -1224,7 +1225,7 @@ export class FjordBiome extends Biome {
     }
     const ocCanvas = oc > 0.02 ? this.ocBlend.get(w3(this.overcast)) : null;
     if (ocCanvas) { ctx.globalAlpha = oc * 0.85; fillWith(ctx, ocCanvas, 0, skyY, W, this.skyH); ctx.globalAlpha = 1; }
-    ctx.drawImage(this.mtnBlend.get(w3(this.mtn)), 0, skyY);
+    ctx.drawImage(this.mtnBlend.get(w3(this.mtn)), 0, r0, W, rh, 0, skyY + r0, W, rh);
     if (ocCanvas) { ctx.globalAlpha = oc * 0.42; fillWith(ctx, ocCanvas, 0, skyY, W, this.skyH); ctx.globalAlpha = 1; }
     if (wx.snow > 0.05 || wx.bliz > 0.05) {
       const n = Math.round(this.airSnow.list.length * clamp01(wx.snow + wx.bliz));

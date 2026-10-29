@@ -56,7 +56,13 @@ export class Battle {
     this.events = evs.map((name, i) => ({ name, at: n === 1 ? 0.5 : 0.28 + (i * 0.52) / (n - 1), done: false }));
     this.event = null;
     this.eventCool = 0;
+    this.phases = this.events.map((e) => e.name).concat(this.finalNet ? ['net'] : []);
+    this.pi = 0;
   }
+
+  // Compatibility with older test drivers: fight.phase.startTrick(kind), fight.phaseName.
+  get phase() { return this; }
+  get phaseName() { return this.event ? this.event.name : 'tension'; }
 
   get surging() { return this.mode === 'surge' || !!this.trick?.pulls; }
   get grace() { return this.F.stats.snapGrace * (this.gentle ? 3 : 1) + 0.15; }
@@ -194,8 +200,8 @@ export class Battle {
     // progress
     const reelStat = 0.6 + 0.4 * (st.reelSpeed / 34);
     let reel = (crankP * reelStat) / this.reelSecs;
-    // first fight: holding the button also reels a little, so nobody gets stuck
-    if (this.gentle && hold && crankP < 0.3) reel = Math.max(reel, (0.3 * reelStat) / this.reelSecs);
+    // holding the button pumps the rod: a slow reel without cranking (the crank is much faster)
+    if (hold && crankP < 0.3) reel = Math.max(reel, ((this.gentle ? 0.35 : 0.22) * reelStat) / this.reelSecs);
     if (surging) reel *= 0.25 + 0.75 * counter;
     if (hold) reel *= 1.3;
     if (this.tension > 0.95) reel *= 0.35;
@@ -408,6 +414,8 @@ export class Battle {
   // ------------------------------------------------------------------ tricks
   startTrick(kind) {
     const F = this.F, f = this.fish, p = this.power;
+    if (kind === 'jump' && !this.canJump()) kind = 'dash';
+    if (this.trick || this.event) return;
     const [sx, sy] = F.toScreen(f.x, f.y);
     const label = TRICK_TITLES[kind];
     switch (kind) {

@@ -9113,7 +9113,7 @@
           sfx: [["ui_toggle", 0, { vol: 0.5 }], ["click", 0.3, { pitch: 0.6 }], ["flood_rush", 0.35, { vol: 0.55 }], ["bubbles", 0.5], ["gulp", 1.35, { pitch: 0.7 }]],
           fx: [{ at: 0.4, kind: "swirl", from: "bowl", n: 14 }, { at: 0.45, kind: "bubbles", from: "bowl", n: 16 }, { at: 0.85, kind: "bubbles", from: "bowl", n: 10 }],
           fish: "flee",
-          use: { kind: "hide", at: "bowl", exitPlay: true }
+          use: { kind: "hide", at: "bowl", exitPlay: true, seq: [1], fps: 1, loop: true }
         }
       }, ({ frame: frame2 }) => {
         const m = new VoxelModel(48, 56, 46);
@@ -9157,7 +9157,11 @@
         m.cylinder(40, 4, 27, 35, 3.8, paper, "z");
         m.cylinder(40, 4, 35, 35, 1.5, core, "z");
         m.box(38, 0, 36, 42, 0, 43, paper);
-        return { m, yaw: 30, ground: [cx, 0, 25], anchors: { bowl: [cx, 18, cz + 2], top: [cx, 49, 7] } };
+        const front = (x, y, z) => {
+          const v = m.get(x, y, z);
+          return z + 0.5 > cz && y < 28 && v !== water && v !== swirl;
+        };
+        return { m, yaw: 30, ground: [cx, 0, 25], front, anchors: { bowl: [cx, 18, cz + 2], top: [cx, 49, 7] } };
       });
       def("garden_gnome", {
         name: "Garden Gnome",
@@ -9592,7 +9596,9 @@
         for (const s of [-1, 1]) m.sphere(5, 23, cz + s * 2.6, 1.3, chrome);
         if (frame2 === 2) m.line(12, 25, cz, 13, 19, cz, stream, 0.6);
         m.box(cx - 10, 0, 34, cx + 10, 0, 40, (x) => mat[x % 4 < 2 ? 0 : 1]);
-        return { m, yaw: 30, ground: [cx, 0, cz + 4], anchors: { water: [cx + 2, 21, cz], foam: [cx, 26, cz] } };
+        const inner = /* @__PURE__ */ new Set([water, foam[0], foam[1], yel, beak, eye, stream]);
+        const front = (x, y, z) => z + 0.5 > cz - 1 && !inner.has(m.get(x, y, z));
+        return { m, yaw: 30, ground: [cx, 0, cz + 4], front, anchors: { water: [cx + 2, 21, cz], foam: [cx, 26, cz] } };
       });
       def("traffic_cone", {
         name: "Traffic Cone",
@@ -10922,7 +10928,9 @@
         m.cone(gx, gz, 24, 26, 0.8, 2.2, drink);
         m.line(gx, 26, gz, gx + 1, 30, gz, glass, 0);
         m.cone(gx + 1, gz, 30, 31, 2.4, 0.3, umb);
-        return { m, yaw: 30, pitch: 30, ground: [cx, 0, cz], light: "#4ad8e0", anchors: { water: [cx, 17, cz], top: [cx, 24, cz] } };
+        const inner = /* @__PURE__ */ new Set([water, foam, yel, beak, eye]);
+        const front = (x, y, z) => z + 0.5 > cz - 2 && !inner.has(m.get(x, y, z));
+        return { m, yaw: 30, pitch: 30, ground: [cx, 0, cz], light: "#4ad8e0", front, anchors: { water: [cx, 17, cz], top: [cx, 24, cz] } };
       });
       def("map_table", {
         name: "Treasure Map Table",
@@ -22127,7 +22135,7 @@
       add3 = (o) => S3.push(o);
       add3({
         id: "pixel",
-        name: "Pixel",
+        name: "Flopikarp",
         biome: "shallows",
         rarity: "common",
         size: [2, 4],
@@ -22157,13 +22165,13 @@
         fight: { phases: ["tension"], power: 0.08, stamina: 2, tricks: [], biteWindow: 1.4, nibbles: [0, 1], fakeBite: 0 },
         spawn: { weight: 1.2, weather: null, time: null, requires: null, hidden: null },
         sound: "chirp",
-        desc: `A single square pixel that escaped a screenshot and decided to become a fish. It has one eye and approximately one thought, and the thought is "what's that?".`,
-        behavior: "Swims right up to anything new and stares at it. Bites almost anything.",
+        desc: "The most famously useless fish in any ocean. It uses Splash. Nothing happens. Raise one in your aquarium long enough, though, and it might just become something terrifying.",
+        behavior: "Flops right up to anything new and bites almost everything. Evolves in the aquarium after a while.",
         shinyHue: 200
       });
       add3({
         id: "loafer",
-        name: "Loafer Minnow",
+        name: "Tetromino Tetra",
         biome: "shallows",
         rarity: "common",
         size: [6, 11],
@@ -22190,13 +22198,13 @@
         fight: { phases: ["tension"], power: 0.15, stamina: 2.5, tricks: ["dash"], biteWindow: 1.1, nibbles: [1, 2], fakeBite: 0.05 },
         spawn: { weight: 1.4, weather: null, time: null, requires: null, hidden: null },
         sound: "blub",
-        desc: "Ate so much bread it slowly turned into a small loaf. Smells faintly of a bakery and regret.",
-        behavior: "Travels in crusty little schools. Cannot resist bread, even though bread is the problem.",
+        desc: "Blocky little schoolers that fall into place in perfectly straight rows. When four of them line up exactly, they vanish in a flash and a satisfying chime. Nobody knows where they go.",
+        behavior: "Schools in tidy lines near the surface. Loves bread and sugar.",
         shinyHue: 300
       });
       add3({
         id: "honk",
-        name: "Honk Clownfish",
+        name: "Bozo the Clownfish",
         biome: "shallows",
         rarity: "common",
         size: [7, 12],
@@ -22229,13 +22237,13 @@
         fight: { phases: ["mash", "tension"], power: 0.22, stamina: 3, tricks: ["dash", "fake"], biteWindow: 0.9, nibbles: [1, 2], fakeBite: 0.15 },
         spawn: { weight: 1.2, weather: null, time: null, requires: null, hidden: null },
         sound: "honk",
-        desc: "Born with a red nose and a dream. Honks when startled, honks when happy, honks during funerals.",
-        behavior: "Honks at nearby fish. Loves music icons. Squeeze-to-honk is not recommended.",
+        desc: "An actual clown. Red nose, juggling act, terrible jokes. Honks the nose when startled and takes a little bow when you laugh. Nobody laughs.",
+        behavior: "Juggles in mid-water and honks when spooked. Can't resist music and games.",
         shinyHue: 160
       });
       add3({
         id: "guppy",
-        name: "Fancy Guppy",
+        name: "Wakka Fish",
         biome: "shallows",
         rarity: "common",
         size: [3, 6],
@@ -22262,13 +22270,13 @@
         fight: { phases: ["tension", "net"], power: 0.12, stamina: 2, tricks: ["dash"], biteWindow: 0.8, nibbles: [1, 3], fakeBite: 0.1 },
         spawn: { weight: 1.3, weather: null, time: null, requires: null, hidden: null },
         sound: "squeak",
-        desc: "Ninety percent tail, ten percent fish, one hundred percent fashion. Has never once been underdressed.",
-        behavior: "Darts around in small, sparkly gangs. Attracted to pictures, probably of itself.",
+        desc: "A round yellow fish with one enormous appetite. Eats dots, power pellets and, occasionally, your bait. Turns and flees whenever anything ghostly swims past.",
+        behavior: "Schools through the shallows chomping constantly. Loves images and paint.",
         shinyHue: 120
       });
       add3({
         id: "googly",
-        name: "Googly Gawker",
+        name: "Mike Wazowfish",
         biome: "shallows",
         rarity: "common",
         size: [8, 14],
@@ -22297,13 +22305,13 @@
         fight: { phases: ["timing", "tension"], power: 0.2, stamina: 3, tricks: ["fake"], biteWindow: 1, nibbles: [1, 2], fakeBite: 0.25 },
         spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
         sound: "boing",
-        desc: "Its eyes are not glued on. We checked. We wish they were.",
-        behavior: "Stares at the cursor with tremendous wobbly focus. Pupils rattle when it turns.",
+        desc: "One gigantic eye, two tiny horns, zero chill. A small green worrier who insists he is the scariest fish on the reef and will absolutely not stop staring at your cursor.",
+        behavior: "Follows the cursor with its single huge eye. Loves images and videos.",
         shinyHue: 270
       });
       add3({
         id: "puffer",
-        name: "Sir Puffington",
+        name: "Cacopuff",
         biome: "shallows",
         rarity: "uncommon",
         size: [12, 30],
@@ -22333,13 +22341,13 @@
         fight: { phases: ["mash", "tension", "net"], power: 0.45, stamina: 5, tricks: ["dash", "fake"], biteWindow: 0.55, nibbles: [1, 3], fakeBite: 0.2 },
         spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
         sound: "puff",
-        desc: "A gentleman of considerable volume. Inflates when insulted, which is always.",
-        behavior: "Puffs up into a spiky ball when startled or hooked. Reads your documents with great disapproval.",
+        desc: "A floating red demon-puffer with one huge green eye and a mouth full of bad intentions. Puffs up into a spiky meatball when cornered. Do not feed after midnight. Do not feed ever.",
+        behavior: "Inflates into a spiky ball when startled. Weirdly fond of documents and mail.",
         shinyHue: 150
       });
       add3({
         id: "briefcase",
-        name: "Mr. Briefcase",
+        name: "Regional Manager Fish",
         biome: "shallows",
         rarity: "uncommon",
         size: [6, 10],
@@ -22368,13 +22376,13 @@
         fight: { phases: ["tension", "trace"], power: 0.32, stamina: 4, tricks: ["dash", "hop"], biteWindow: 0.5, nibbles: [0, 1], fakeBite: 0.1 },
         spawn: { weight: 1, weather: null, time: "day", requires: null, hidden: null },
         sound: "grunt",
-        desc: "Commutes from one side of the screen to the other, every day, forever. Nobody knows what is in the briefcase. Probably more briefcase.",
-        behavior: "Swims in straight lines at office hours and checks your calendar on the way. Ignores everything fun.",
+        desc: "Commutes at 9, eats lunch at 12, leaves at 5 sharp - unless there's a meeting, and there is always a meeting. Owns a mug that says World's Best Boss. He bought it himself.",
+        behavior: "Keeps real office hours by your clock. Loves mail, calendars and documents.",
         shinyHue: 40
       });
       add3({
         id: "clickcrab",
-        name: "Click Crab",
+        name: "Mister Clicks",
         biome: "shallows",
         rarity: "uncommon",
         size: [5, 9],
@@ -22397,13 +22405,13 @@
         fight: { phases: ["timing", "mash"], power: 0.3, stamina: 4, tricks: ["hop", "fake"], biteWindow: 0.7, nibbles: [1, 2], fakeBite: 0.2 },
         spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
         sound: "click",
-        desc: "Found an old computer mouse and moved in. Double-clicks its claws when nervous, which opens nothing.",
-        behavior: "Scuttles along the seabed and across desktop icons. Clicks at your cursor like it is trying to select you.",
+        desc: "A hermit crab who moved into an old computer mouse and now charges the reef rent. Double-clicks his claws whenever money is mentioned. Money! I mean... mouse!",
+        behavior: "Scuttles along the seabed and perches on icons. Loves computers and chips.",
         shinyHue: 190
       });
       add3({
         id: "seahorse",
-        name: "Giddy-Up Seahorse",
+        name: "Old Town Seahorse",
         biome: "shallows",
         rarity: "uncommon",
         size: [8, 17],
@@ -22424,13 +22432,13 @@
         fight: { phases: ["trace", "net"], power: 0.2, stamina: 4, tricks: ["hop"], biteWindow: 0.8, nibbles: [2, 4], fakeBite: 0.1 },
         spawn: { weight: 0.9, weather: null, time: null, requires: null, hidden: null },
         sound: "chirp",
-        desc: "Technically a fish. Spiritually a tiny horse. Practically a question mark that swims.",
-        behavior: "Bobs upright and hops between windows. Holds onto icons with its tail during storms.",
+        desc: "Gonna take its horse to the old reef road and ride till it can't no more. Hops along like it's at a rodeo, yee-hawing in tiny bubbles.",
+        behavior: "Hovers upright and hops between perches. Loves games and music.",
         shinyHue: 230
       });
       add3({
         id: "flounder",
-        name: "Sandy Flounder",
+        name: "Where's Walleye?",
         biome: "shallows",
         rarity: "uncommon",
         size: [15, 40],
@@ -22462,13 +22470,13 @@
         fight: { phases: ["tension", "trace", "net"], power: 0.38, stamina: 5, tricks: ["dive", "fake"], biteWindow: 0.45, nibbles: [1, 3], fakeBite: 0.3 },
         spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
         sound: "blub",
-        desc: "Both eyes migrated to one side of its face as a child and refuse to talk about it.",
-        behavior: "Lies flat on the seabed blending in with the sand. Lunges when bait drifts overhead.",
+        desc: "Lies flat on the sand in a red-and-white striped hat and round glasses, utterly convinced it is perfectly hidden. It is, somehow. Every single time.",
+        behavior: "Camouflaged on the seabed until your cursor comes close. Loves worms.",
         shinyHue: 180
       });
       add3({
         id: "purin",
-        name: "Purin",
+        name: "The Pudding is a Lie",
         biome: "shallows",
         rarity: "rare",
         size: [6, 10],
@@ -22490,13 +22498,13 @@
         fight: { phases: ["timing", "mash", "net"], power: 0.25, stamina: 4, tricks: ["hop", "fake"], biteWindow: 0.7, nibbles: [1, 3], fakeBite: 0.2 },
         spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
         sound: "boing",
-        desc: "A jelly pudding that wandered into the sea and was too polite to leave. Contains no fish. Is the fish.",
-        behavior: "Wobbles everywhere it goes and jiggles harder when happy. Only truly loves sugar.",
+        desc: "You were promised cake. You received a wobbly, sentient pudding with a cherry on top that insists it is cake. It is not cake. The cake was never real.",
+        behavior: "Hops along the bottom and wobbles when poked. Can't resist sugar.",
         shinyHue: 290
       });
       add3({
         id: "angel",
-        name: "Halo Angelfish",
+        name: "Master Chef Angelfish",
         biome: "shallows",
         rarity: "rare",
         size: [10, 20],
@@ -22527,13 +22535,13 @@
         fight: { phases: ["trace", "timing", "net"], power: 0.35, stamina: 6, tricks: ["jump", "fake"], biteWindow: 0.55, nibbles: [1, 2], fakeBite: 0.15 },
         spawn: { weight: 0.8, weather: "clear", time: "day", requires: null, hidden: null },
         sound: "bell",
-        desc: "Has never done anything wrong in its life and would like you to know about it.",
-        behavior: "Glides serenely with a faint glow. Other fish swim a little more politely nearby.",
+        desc: "A legendary super-soldier of the reef in green armour and a golden visor, still wearing the halo from its last tour. Finishes every fight, and every meal, with perfect plating.",
+        behavior: "Patrols the sunny upper water on clear days. Loves music and golden bait.",
         shinyHue: 45
       });
       add3({
         id: "parrot",
-        name: "Chompy Parrotfish",
+        name: "Captain Jack Parrotfish",
         biome: "shallows",
         rarity: "rare",
         size: [25, 60],
@@ -22562,13 +22570,13 @@
         fight: { phases: ["mash", "tension", "net"], power: 0.55, stamina: 7, tricks: ["dash", "dive"], biteWindow: 0.5, nibbles: [1, 2], fakeBite: 0.1 },
         spawn: { weight: 0.9, weather: null, time: null, requires: null, hidden: null },
         sound: "grunt",
-        desc: "Chews coral, poops sand. Most of the beach is, technically, its fault.",
-        behavior: "Nibbles on icons with its beak and occasionally runs off with a corner of one.",
+        desc: "A swaggering pirate parrotfish in a battered tricorn and an eye patch, forever borrowing things that aren't nailed down. Why is the rum always gone? Why are your icons always gone?",
+        behavior: "Steals desktop icons and swims off with them. Loves paint and calculators.",
         shinyHue: 100
       });
       add3({
         id: "gourami",
-        name: "Smooch Gourami",
+        name: "Just-Keep-Swimming Tang",
         biome: "shallows",
         rarity: "rare",
         size: [8, 16],
@@ -22595,13 +22603,13 @@
         fight: { phases: ["timing", "trace", "net"], power: 0.3, stamina: 5, tricks: ["fake"], biteWindow: 0.75, nibbles: [2, 4], fakeBite: 0.35 },
         spawn: { weight: 0.9, weather: null, time: null, requires: null, hidden: null },
         sound: "squeak",
-        desc: "Kisses everything: rocks, glass, other fish, your cursor. Has no concept of personal space or consent forms.",
-        behavior: "Nuzzles anything shiny and forgets what it was doing halfway through. Loves chat icons.",
+        desc: "A cheerful blue tang with the memory of a goldfish. Will happily help you find something, then forget what it was, then introduce itself again. Claims to speak whale.",
+        behavior: "Forgets where it was going and turns around mid-swim. Loves chat and mail.",
         shinyHue: 210
       });
       add3({
         id: "koi",
-        name: "Golden Koi",
+        name: "Arrow-in-the-Knee Koi",
         biome: "shallows",
         rarity: "epic",
         size: [35, 80],
@@ -22631,13 +22639,13 @@
         fight: { phases: ["trace", "tension", "timing", "net"], power: 0.6, stamina: 9, tricks: ["dash", "jump", "fake"], biteWindow: 0.4, nibbles: [2, 4], fakeBite: 0.3 },
         spawn: { weight: 1, weather: null, time: "day", requires: "golden", hidden: true },
         sound: "bell",
-        desc: 'Said to grant one wish to whoever catches it. The wish is always "please put me back".',
-        behavior: "Appears only for golden bait. Leaves a faint sparkle trail and never hurries.",
+        desc: "It used to be an adventurer like you. Then it took an arrow to the knee. Now it guards the golden shallows and tells every passing fish about it. Every. Single. One.",
+        behavior: "Only shows up for golden bait on sunny days. Calm, proud, slightly limping.",
         shinyHue: 320
       });
       add3({
         id: "betta",
-        name: "Disco Betta",
+        name: "Rainbow Road Betta",
         biome: "shallows",
         rarity: "epic",
         size: [6, 9],
@@ -22667,13 +22675,13 @@
         fight: { phases: ["timing", "dodge", "trace", "net"], power: 0.5, stamina: 7, tricks: ["dash", "fake", "jump"], biteWindow: 0.4, nibbles: [1, 2], fakeBite: 0.25 },
         spawn: { weight: 0.9, weather: null, time: "night", requires: null, hidden: null },
         sound: "bell",
-        desc: "Practising its moves for a dance battle no one agreed to. Has already won, in its heart.",
-        behavior: "Flares its enormous fins at other fish and at its own reflection. Comes out at night to music.",
+        desc: "Its fins shimmer in every colour of the rainbow and it drifts as if it's on the final lap of the hardest track in the galaxy. Falls off the edge constantly. Respawns looking fabulous.",
+        behavior: "Night-time show-off near the surface. Loves music and videos.",
         shinyHue: 140
       });
       add3({
         id: "sunfish",
-        name: "Sol the Ocean Sunfish",
+        name: "Praise-the-Sun-fish",
         biome: "shallows",
         rarity: "legendary",
         size: [180, 330],
@@ -22705,13 +22713,13 @@
         fight: { phases: ["tension", "timing", "trace", "mash", "net"], power: 0.85, stamina: 16, tricks: ["dive", "jump", "fake"], biteWindow: 0.6, nibbles: [2, 5], fakeBite: 0.2 },
         spawn: { weight: 1, weather: "clear", time: "day", requires: null, hidden: true },
         sound: "roar",
-        desc: "A swimming head the size of a car, crowned by nobody in particular. Basks at the surface to recharge its sunshine.",
-        behavior: "Appears on cloudless days when the water is high. Drifts through windows like it owns them.",
+        desc: "A colossal, jolly sunfish that rises to the surface on clear days, raises both fins high and praises the sun. If only it could be so grossly incandescent!",
+        behavior: "Basks at the surface on clear sunny days. Only bites golden or flood bait.",
         shinyHue: 30
       });
       add3({
         id: "spam",
-        name: "Spam Sardine",
+        name: "Clickbait Sardine",
         biome: "junkyard",
         rarity: "common",
         size: [8, 15],
@@ -22739,13 +22747,13 @@
         fight: { phases: ["mash", "tension"], power: 0.15, stamina: 2, tricks: ["dash"], biteWindow: 1, nibbles: [0, 1], fakeBite: 0.05 },
         spawn: { weight: 1.5, weather: null, time: null, requires: null, hidden: null },
         sound: "squeak",
-        desc: "Always has exactly one unread message. Opening it unsubscribes you from nothing.",
-        behavior: "Arrives in huge unwanted schools whenever a mail or pop-up icon gets near the water.",
+        desc: "Doctors HATE this one weird sardine! You won't BELIEVE what it does next (it swims slightly to the left). Travels in enormous schools with a permanent notification badge.",
+        behavior: "Huge schools that swarm pop-up bait and mail.",
         shinyHue: 60
       });
       add3({
         id: "bitfish",
-        name: "Bitfish",
+        name: "Boomfish",
         biome: "junkyard",
         rarity: "common",
         size: [5, 9],
@@ -22776,13 +22784,13 @@
         fight: { phases: ["timing", "tension"], power: 0.2, stamina: 3, tricks: ["hop"], biteWindow: 0.8, nibbles: [1, 1], fakeBite: 0.1 },
         spawn: { weight: 1.3, weather: null, time: null, requires: null, hidden: null },
         sound: "chirp",
-        desc: "Rendered at a very low budget. Moves in tiny steps because nobody animated the in-between frames.",
-        behavior: "Hops in crisp eight-directional jumps. Drawn to game icons like they owe it a sequel.",
+        desc: "A blocky green fish with a permanently disappointed face. Sneaks up behind other fish, goes sssss... and then pops. Completely harmless, deeply unsettling.",
+        behavior: "Hops in small groups and hisses at anything nearby. Loves games.",
         shinyHue: 260
       });
       add3({
         id: "glitchminnow",
-        name: "Glitch Minnow",
+        name: "Sus Fish",
         biome: "junkyard",
         rarity: "common",
         size: [4, 8],
@@ -22810,13 +22818,13 @@
         fight: { phases: ["trace", "tension"], power: 0.18, stamina: 3, tricks: ["glitch", "dash"], biteWindow: 0.6, nibbles: [1, 2], fakeBite: 0.15 },
         spawn: { weight: 1.2, weather: null, time: null, requires: null, hidden: null },
         sound: "glitch",
-        desc: "A minnow with corrupted save data. It has been in three places at once, which is two too many.",
-        behavior: "Teleports a few pixels at random. Flickers harder near terminals and overclocked chips.",
+        desc: "A small red bean-shaped fish with a big glass visor and a tiny backpack. Swims very normally. Too normally. Vanishes into seabed vents and pops out somewhere else. Emergency meeting!",
+        behavior: "Teleports through vents when spooked. Loves chips and terminals.",
         shinyHue: 90
       });
       add3({
         id: "grouper",
-        name: "Rusty Grouper",
+        name: "It's-a-Trap Snapper",
         biome: "junkyard",
         rarity: "common",
         size: [40, 110],
@@ -22847,13 +22855,13 @@
         fight: { phases: ["tension", "mash"], power: 0.5, stamina: 6, tricks: ["dive"], biteWindow: 0.7, nibbles: [1, 2], fakeBite: 0.05 },
         spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
         sound: "grunt",
-        desc: "Half fish, half shipwreck. Squeaks like an old hinge when it turns. Please do not tighten it.",
-        behavior: "Patrols the lower reef slowly and swallows settings icons whole, gears and all.",
+        desc: "A lumpy, wise old snapper with huge eyes and a white admiral's collar. Spots every trap on the reef instantly and announces it at full volume. Gets caught anyway.",
+        behavior: "Lurks near the bottom. Bites on settings icons and trash.",
         shinyHue: 200
       });
       add3({
         id: "binblob",
-        name: "Bin Blob",
+        name: "Grumpy Bin Grouch",
         biome: "junkyard",
         rarity: "common",
         size: [15, 35],
@@ -22875,13 +22883,13 @@
         fight: { phases: ["mash", "tension", "net"], power: 0.3, stamina: 5, tricks: [], biteWindow: 1.2, nibbles: [0, 1], fakeBite: 0 },
         spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
         sound: "blub",
-        desc: "Everything you ever deleted, lovingly reassembled into a friend. It remembers your old drafts.",
-        behavior: "Oozes along the seabed absorbing litter. Cannot say no to a full recycle bin.",
+        desc: "Lives in a trash heap and loves it there. Scowls at everyone, hoards garbage and tells you to scram. Secretly loves it when you visit. Do not tell anyone.",
+        behavior: "Oozes along the seabed eating trash. Loves trash and pop-ups.",
         shinyHue: 300
       });
       add3({
         id: "shortcut",
-        name: "Shortcut Fish",
+        name: "Spy Fish",
         biome: "junkyard",
         rarity: "uncommon",
         size: [6, 9],
@@ -22903,13 +22911,13 @@
         fight: { phases: ["timing", "trace", "net"], power: 0.3, stamina: 4, tricks: ["fake", "hop"], biteWindow: 0.5, nibbles: [1, 2], fakeBite: 0.4 },
         spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
         sound: "click",
-        desc: "Pretends to be a desktop icon. Double-click it and it opens a very small, very wet window.",
-        behavior: "Freezes into a perfect app icon when watched. Swims off the moment you look away.",
+        desc: "A master of disguise who poses as a desktop icon so convincingly that you double-click it. Right behind you! Its catchphrase is a gentlemanly 'Gotcha'.",
+        behavior: "Hides among your desktop icons. Double-click it to unmask it.",
         shinyHue: 120
       });
       add3({
         id: "mechacrab",
-        name: "Mecha Crab",
+        name: "Crabformer",
         biome: "junkyard",
         rarity: "uncommon",
         size: [12, 25],
@@ -22932,13 +22940,13 @@
         fight: { phases: ["mash", "dodge", "net"], power: 0.5, stamina: 6, tricks: ["spit", "hop"], biteWindow: 0.6, nibbles: [1, 2], fakeBite: 0.1 },
         spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
         sound: "click",
-        desc: "Upgraded itself with spare parts until there was no crab left, then kept going. Runs on spite and AA batteries.",
-        behavior: "Marches across icons with heavy steps and fires little bolts when cornered.",
+        desc: "More than meets the eye: a crab disguised as a robot disguised as a crab. Transforms with a tremendous whirring noise into... a slightly different crab.",
+        behavior: "Scuttles on the seabed and fires sparks. Loves chips and settings.",
         shinyHue: 160
       });
       add3({
         id: "cableeel",
-        name: "Cable Eel",
+        name: "Cardboard Snake-Eel",
         biome: "junkyard",
         rarity: "uncommon",
         size: [60, 160],
@@ -22960,13 +22968,13 @@
         fight: { phases: ["unwrap", "tension", "net"], power: 0.45, stamina: 6, tricks: ["wrap", "dash"], biteWindow: 0.6, nibbles: [1, 2], fakeBite: 0.15 },
         spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
         sound: "click",
-        desc: "Every drawer has one. This one escaped. It does not fit any socket and is furious about it.",
-        behavior: "Coils around icons and tangles your line. Tries to plug itself into anything rectangular.",
+        desc: "A tactical espionage eel that hides under a cardboard box and believes this makes it invisible. An exclamation mark pops over the box when it spots you. Kept you waiting, huh?",
+        behavior: "Wraps its long body around icons and your line. Loves computers.",
         shinyHue: 30
       });
       add3({
         id: "floppyray",
-        name: "Floppy Ray",
+        name: "Save Point Skate",
         biome: "junkyard",
         rarity: "uncommon",
         size: [9, 9],
@@ -22989,13 +22997,13 @@
         fight: { phases: ["trace", "timing", "net"], power: 0.3, stamina: 5, tricks: ["jump", "fake"], biteWindow: 0.55, nibbles: [1, 3], fakeBite: 0.2 },
         spawn: { weight: 0.9, weather: null, time: null, requires: null, hidden: null },
         sound: "click",
-        desc: "1.44 megabytes of pure attitude. Contains one saved game from 1997 that it will not let you see.",
-        behavior: "Glides in wide loops and hums like a drive spinning up. Loves documents, old ones especially.",
+        desc: "A floppy-disk-shaped skate that glows softly when you're near, like every save point ever. Your progress is safe with it. Probably. Do not turn off the power.",
+        behavior: "Glides through mid-water. Loves documents and folders.",
         shinyHue: 330
       });
       add3({
         id: "cookie",
-        name: "Tracking Cookie",
+        name: "Om-Nom Cookiefish",
         biome: "junkyard",
         rarity: "uncommon",
         size: [6, 12],
@@ -23027,13 +23035,13 @@
         fight: { phases: ["mash", "trace", "net"], power: 0.3, stamina: 4, tricks: ["fake", "dash"], biteWindow: 0.7, nibbles: [1, 3], fakeBite: 0.25 },
         spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
         sound: "chirp",
-        desc: "Follows you everywhere and remembers everything you clicked. Forgets you completely when you clear the cache.",
-        behavior: "Trails behind your cursor at a respectful-ish distance. Someone already took a bite.",
+        desc: "A chocolate chip cookie that has already taken a bite out of itself. Follows you around the internet, remembers everything you clicked and says om nom nom a lot.",
+        behavior: "Forgets what it was doing and doubles back. Loves browsers and sugar.",
         shinyHue: 250
       });
       add3({
         id: "loadingangler",
-        name: "Loading Angler",
+        name: "Loading Screen Angler",
         biome: "junkyard",
         rarity: "rare",
         size: [20, 45],
@@ -23062,13 +23070,13 @@
         fight: { phases: ["timing", "dodge", "tension", "net"], power: 0.55, stamina: 8, tricks: ["fake", "spit", "dive"], biteWindow: 0.45, nibbles: [2, 4], fakeBite: 0.35 },
         spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
         sound: "glitch",
-        desc: "Its lure shows a loading spinner. Fish wait for it, forever, politely, right up until the very end.",
-        behavior: "Hangs still in the dark with its spinner turning. Strikes when something waits too long.",
+        desc: "Its lure is a spinning loading wheel that never quite finishes. Fish gather around it, waiting patiently. TIP: fish are attracted to bait. TIP: did you know you can catch fish?",
+        behavior: "Hovers deep with its spinner lure. Loves chips and videos.",
         shinyHue: 180
       });
       add3({
         id: "thief",
-        name: "Icon Bandit",
+        name: "Grand Theft Tuna",
         biome: "junkyard",
         rarity: "rare",
         size: [12, 22],
@@ -23101,13 +23109,13 @@
         fight: { phases: ["trace", "mash", "tension", "net"], power: 0.45, stamina: 7, tricks: ["dash", "hop", "fake"], biteWindow: 0.35, nibbles: [0, 1], fakeBite: 0.3 },
         spawn: { weight: 1, weather: null, time: "night", requires: null, hidden: null },
         sound: "squeak",
-        desc: 'Steals desktop icons and hides them in the reef. Your "New Folder (7)" is in there somewhere.',
-        behavior: "Grabs a desktop icon and bolts. Catch it to get the icon back, slightly damp.",
+        desc: "Sunglasses on, wanted level rising. This tuna steals your desktop icons and speeds off with them without signalling. Five stars on the reef. None of them good.",
+        behavior: "Night-time icon thief, fast and slippery. Loves folders, images and gold.",
         shinyHue: 20
       });
       add3({
         id: "screendweller",
-        name: "Screen Dweller",
+        name: "Seven-Days Screenfish",
         biome: "junkyard",
         rarity: "rare",
         size: [14, 30],
@@ -23139,13 +23147,13 @@
         fight: { phases: ["dodge", "trace", "timing", "net"], power: 0.45, stamina: 7, tricks: ["glitch", "hop", "spit"], biteWindow: 0.5, nibbles: [1, 3], fakeBite: 0.2 },
         spawn: { weight: 0.9, weather: "storm", time: null, requires: null, hidden: null },
         sound: "glitch",
-        desc: "Lives inside old CRT monitors and only comes out to complain about the reception.",
-        behavior: "Hides in screens and peeks out through the static. Wiggles its antenna toward video icons.",
+        desc: "A creepy old TV-fish whose screen shows nothing but static and a distant well. Watch it too long and it crawls a little closer. Seven days later it's still here, humming.",
+        behavior: "Appears in storms, hovering with its screen aglow. Loves videos.",
         shinyHue: 280
       });
       add3({
         id: "trieye",
-        name: "Tri-Eyed Binfish",
+        name: "Three-Eyed Blinky",
         biome: "junkyard",
         rarity: "rare",
         size: [15, 35],
@@ -23175,13 +23183,13 @@
         fight: { phases: ["dodge", "mash", "tension", "net"], power: 0.5, stamina: 7, tricks: ["spit", "dash"], biteWindow: 0.5, nibbles: [1, 2], fakeBite: 0.15 },
         spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
         sound: "grunt",
-        desc: "Grew a third eye from living next to the recycle bin. Uses it exclusively for judging you.",
-        behavior: "Lurks near trash and spits soggy debris when hooked. All three eyes blink at different times.",
+        desc: "A cheerful orange fish with three eyes, found swimming right next to a certain glowing power plant. The plant's owner insists it's an evolutionary improvement. Excellent.",
+        behavior: "Bottom-feeder near the junk piles. Loves trash and black holes.",
         shinyHue: 210
       });
       add3({
         id: "usbfish",
-        name: "USB Swordfish",
+        name: "Excalibur Swordfish",
         biome: "junkyard",
         rarity: "epic",
         size: [80, 180],
@@ -23210,13 +23218,13 @@
         fight: { phases: ["timing", "tension", "dodge", "net"], power: 0.75, stamina: 11, tricks: ["dash", "fake", "jump"], biteWindow: 0.35, nibbles: [2, 3], fakeBite: 0.4 },
         spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
         sound: "click",
-        desc: "Never plugs in on the first try. Flips over. Tries again. Flips over again. It worked the first time.",
-        behavior: "Charges at icons nose-first trying to plug into them. Fakes out bites at least twice.",
+        desc: "A swordfish that pulled a real sword out of a sunken stone and refuses to put it down. Rightful ruler of the junkyard reef, by its own decree.",
+        behavior: "Blazing-fast charger. Loves computers and chips.",
         shinyHue: 300
       });
       add3({
         id: "lionfish",
-        name: "Malware Lionfish",
+        name: "Circle-of-Life Lionfish",
         biome: "junkyard",
         rarity: "epic",
         size: [20, 40],
@@ -23247,13 +23255,13 @@
         fight: { phases: ["dodge", "tension", "trace", "net"], power: 0.65, stamina: 10, tricks: ["spit", "fake", "glitch"], biteWindow: 0.4, nibbles: [1, 3], fakeBite: 0.3 },
         spawn: { weight: 1, weather: "storm", time: null, requires: null, hidden: null },
         sound: "glitch",
-        desc: "Every spine is an unskippable ad. Looking at it for too long installs a toolbar.",
-        behavior: "Hovers with fins flared and shoots pop-up projectiles during fights. Do not click the spines.",
+        desc: "A lionfish with an actual lion's mane who believes everything the light touches is its kingdom. Roars at sunrise, glitches out at sunset and will not stop singing about it.",
+        behavior: "Hovers among the junk in storms, roaring and glitching. Loves pop-ups.",
         shinyHue: 190
       });
       add3({
         id: "bsod",
-        name: "Blue Screen Ray",
+        name: "The Blue Screen of Death Ray",
         biome: "junkyard",
         rarity: "legendary",
         size: [300, 600],
@@ -23277,8 +23285,8 @@
         fight: { phases: ["dodge", "timing", "trace", "mash", "net"], power: 0.95, stamina: 18, tricks: ["glitch", "spit", "dive", "fake"], biteWindow: 0.4, nibbles: [2, 4], fakeBite: 0.3 },
         spawn: { weight: 1, weather: "storm", time: "night", requires: null, hidden: true },
         sound: "roar",
-        desc: "A fatal exception the size of a bus. Collecting error info... 0% complete. Has been 0% since 1995.",
-        behavior: "Glides out of the dark during thunderstorms. Its face changes with its mood. It is never in a good mood.",
+        desc: "A colossal blue manta whose body reads ':( Your reef ran into a problem and needs to restart.' Collecting error info: 0%... 0%... 0%...",
+        behavior: "Glides through storms at night and glitches everything near it.",
         shinyHue: 120
       });
       GLOW_EYES = [
@@ -23299,7 +23307,7 @@
       ];
       add3({
         id: "lanternfish",
-        name: "Lanternfish",
+        name: "In-Brightest-Day Lanternfish",
         biome: "abyss",
         rarity: "common",
         size: [3, 10],
@@ -23326,13 +23334,13 @@
         fight: { phases: ["trace", "tension"], power: 0.15, stamina: 2.5, tricks: ["dash"], biteWindow: 0.8, nibbles: [1, 2], fakeBite: 0.1 },
         spawn: { weight: 1.5, weather: null, time: null, requires: null, hidden: null },
         sound: "chirp",
-        desc: "The night lights of the deep. Billions of them rise every evening, which is why the ocean never needs a nightlight.",
-        behavior: "Swims in glowing schools and drifts upward at night. Follows lantern pearls like moths.",
+        desc: "Small schooling fish that each glow with a green ring. In brightest day, in blackest deep, no bait shall escape their sight. They take the oath very seriously.",
+        behavior: "Glowing schools in the upper deep. Love lantern bait.",
         shinyHue: 60
       });
       add3({
         id: "hatchet",
-        name: "Hatchetfish",
+        name: "Here's-Johnny Hatchetfish",
         biome: "abyss",
         rarity: "common",
         size: [3, 8],
@@ -23362,13 +23370,13 @@
         fight: { phases: ["timing", "tension"], power: 0.14, stamina: 2.5, tricks: ["dash", "jump"], biteWindow: 0.7, nibbles: [1, 2], fakeBite: 0.1 },
         spawn: { weight: 1.3, weather: null, time: null, requires: null, hidden: null },
         sound: "squeak",
-        desc: "Shaped like a tiny axe and permanently startled about it. Its belly lights match the moonlight so nothing below can see it.",
-        behavior: "Hovers in nervous little groups, eyes pointed up. Bolts at the slightest ripple.",
+        desc: "A thin silver fish shaped exactly like a hatchet, with wide, unblinking eyes. Pokes its face through gaps in the rocks to announce itself. All work and no play makes it a dull fish.",
+        behavior: "Darting schools that peek out of cracks. Loves lantern bait and worms.",
         shinyHue: 30
       });
       add3({
         id: "isopod",
-        name: "Giant Isopod",
+        name: "Hollow Isopod",
         biome: "abyss",
         rarity: "common",
         size: [20, 45],
@@ -23389,13 +23397,13 @@
         fight: { phases: ["mash", "tension"], power: 0.3, stamina: 4, tricks: [], biteWindow: 1, nibbles: [0, 1], fakeBite: 0 },
         spawn: { weight: 1.2, weather: null, time: null, requires: null, hidden: null },
         sound: "click",
-        desc: "Can go five years without eating. Has chosen not to. Eats like a holiday every time it finds a snack.",
-        behavior: "Trundles across the seabed and rolls into a ball when poked. Will eat literally anything you drop.",
+        desc: "A tiny armoured knight of the deep that wanders endless caverns in silence, bonks things with its nail and sits on benches to rest. Surprisingly hard to beat.",
+        behavior: "Crawls along the seabed. Will eat almost any worm.",
         shinyHue: 160
       });
       add3({
         id: "glowjelly",
-        name: "Nightlight Jelly",
+        name: "Jelly-on-Toast Jellyfish",
         biome: "abyss",
         rarity: "common",
         size: [8, 25],
@@ -23420,13 +23428,13 @@
         fight: { phases: ["trace", "net"], power: 0.12, stamina: 3, tricks: [], biteWindow: 1.2, nibbles: [2, 4], fakeBite: 0 },
         spawn: { weight: 1.2, weather: null, time: null, requires: null, hidden: null },
         sound: "bell",
-        desc: "Glows softly so the other fish are not scared of the dark. Has no brain, but a very big heart, metaphorically.",
-        behavior: "Pulses gently through the water. Brightens near music and lantern light.",
+        desc: "A jellyfish made of exactly what you think: a slice of golden toast with a thick layer of glowing grape jelly. Pulses gently. Smells like breakfast.",
+        behavior: "Drifts and pulses through the dark. Loves lantern bait.",
         shinyHue: 110
       });
       add3({
         id: "blobfish",
-        name: "Sad Blobfish",
+        name: "Inside-Out Blobfish",
         biome: "abyss",
         rarity: "common",
         size: [15, 30],
@@ -23449,13 +23457,13 @@
         fight: { phases: ["tension", "mash"], power: 0.2, stamina: 3, tricks: [], biteWindow: 1.4, nibbles: [0, 2], fakeBite: 0 },
         spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
         sound: "blub",
-        desc: "Looks perfectly normal at home under the crushing pressure. It is only sad because you brought it up here.",
-        behavior: "Floats near the seabed and barely moves. Lets food come to it, and food usually does not.",
+        desc: "A droopy blue blobfish who is in charge of all of the ocean's sadness, and is very good at it. Crying helps it slow down and obsess over the weight of life's problems.",
+        behavior: "Drifts sadly near the bottom. Bites slowly and reluctantly.",
         shinyHue: 180
       });
       add3({
         id: "angler",
-        name: "Deep Anglerfish",
+        name: "Upside-Down Angler",
         biome: "abyss",
         rarity: "uncommon",
         size: [10, 40],
@@ -23483,13 +23491,13 @@
         fight: { phases: ["tension", "dodge", "net"], power: 0.45, stamina: 6, tricks: ["fake", "dive"], biteWindow: 0.5, nibbles: [1, 3], fakeBite: 0.25 },
         spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
         sound: "grunt",
-        desc: "Invented the night light, then used it for crimes. Its smile is 40% teeth and 60% more teeth.",
-        behavior: "Waits motionless with its lure bobbing. Snaps at anything that admires the light.",
+        desc: "An angler from the other side of the deep whose lure blinks like a string of fairy lights to spell out messages. R-U-N. It is mostly just trying to say hi.",
+        behavior: "Hovers in the dark with a flickering lure. Loves lantern bait.",
         shinyHue: 140
       });
       add3({
         id: "dragonfish",
-        name: "Dragonfish",
+        name: "Mother of Dragonfish",
         biome: "abyss",
         rarity: "uncommon",
         size: [15, 40],
@@ -23517,13 +23525,13 @@
         fight: { phases: ["trace", "dodge", "net"], power: 0.45, stamina: 6, tricks: ["dash", "fake"], biteWindow: 0.45, nibbles: [1, 2], fakeBite: 0.25 },
         spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
         sound: "roar",
-        desc: "Sees in red light nothing else can see. Uses this superpower mostly to sneak up on shrimp.",
-        behavior: "Slithers through the dark dangling its chin lure. Lightning-fast when it finally strikes.",
+        desc: "A sleek black dragonfish with a glowing chin barbel, three small photophores it calls its children and a list of titles longer than its body. Unburnt. Mostly unbothered.",
+        behavior: "Hunts in the deep with its glowing barbel. Loves lantern bait.",
         shinyHue: 200
       });
       add3({
         id: "gulper",
-        name: "Gulper Eel",
+        name: "Hungry Hungry Gulper",
         biome: "abyss",
         rarity: "uncommon",
         size: [40, 100],
@@ -23551,13 +23559,13 @@
         fight: { phases: ["mash", "tension", "net"], power: 0.4, stamina: 6, tricks: ["dive", "wrap"], biteWindow: 0.6, nibbles: [1, 2], fakeBite: 0.1 },
         spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
         sound: "blub",
-        desc: "Mouth: enormous. Rest of fish: an afterthought. Can swallow things larger than itself and frequently regrets it.",
-        behavior: "Opens its jaw like a parachute to scoop up bait. Its tail tip glows pink to lure snacks.",
+        desc: "Nothing but an enormous mouth attached to a very long tail. Snaps at anything that moves, especially marbles. Has never once been full. Never will be.",
+        behavior: "Swallows bait whole from far away. Loves black holes and trash.",
         shinyHue: 100
       });
       add3({
         id: "fangtooth",
-        name: "Fangtooth",
+        name: "Count Fangula",
         biome: "abyss",
         rarity: "uncommon",
         size: [8, 18],
@@ -23585,13 +23593,13 @@
         fight: { phases: ["mash", "dodge", "tension"], power: 0.5, stamina: 6, tricks: ["dash", "spit"], biteWindow: 0.45, nibbles: [0, 1], fakeBite: 0.05 },
         spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
         sound: "roar",
-        desc: "Has the largest teeth for its body size of any fish. Cannot close its mouth. Very self-conscious about it.",
-        behavior: "Charges straight at bait with a terrible grin. Bites hard, then sulks.",
+        desc: "An aristocratic fangtooth in a high-collared cape who only comes out in the dark - which, down here, is always. Does not drink... worms. Vants to bite your bait.",
+        behavior: "Lurks in the deepest water. Bites fast and fights hard.",
         shinyHue: 60
       });
       add3({
         id: "ghostshark",
-        name: "Ghost Shark",
+        name: "Who-You-Gonna-Call Ghost Shark",
         biome: "abyss",
         rarity: "uncommon",
         size: [40, 100],
@@ -23620,13 +23628,13 @@
         fight: { phases: ["trace", "tension", "net"], power: 0.4, stamina: 6, tricks: ["dive", "fake"], biteWindow: 0.55, nibbles: [1, 2], fakeBite: 0.2 },
         spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
         sound: "squeak",
-        desc: "Not a ghost. Not technically a shark. Haunts the seabed anyway, out of professional courtesy.",
-        behavior: "Flies over the seabed on big wing-fins, staring at everything with enormous, worried eyes.",
+        desc: "A pale green, translucent ghost shark that slimes everything it touches and hides by fading away. Nobody has the right equipment to catch it. Except you, apparently.",
+        behavior: "Fades from view unless your cursor gets close. Loves worms.",
         shinyHue: 300
       });
       add3({
         id: "glassghost",
-        name: "Glass Ghostfish",
+        name: "Cloaking Glassfish",
         biome: "abyss",
         rarity: "rare",
         size: [6, 14],
@@ -23655,13 +23663,13 @@
         fight: { phases: ["trace", "timing", "tension", "net"], power: 0.35, stamina: 6, tricks: ["fake", "glitch"], biteWindow: 0.45, nibbles: [1, 3], fakeBite: 0.3 },
         spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
         sound: "bell",
-        desc: "Completely see-through, so you always know exactly what it had for lunch (you). Its heart beats a little faster near cameras.",
-        behavior: "Nearly invisible against the dark. You can watch its heart beat when it gets nervous.",
+        desc: "Fully transparent apart from its organs, which makes its active camouflage about 60% effective. You can see its lunch. It knows you can see its lunch.",
+        behavior: "Nearly invisible unless your cursor is close. Loves images.",
         shinyHue: 280
       });
       add3({
         id: "vampsquid",
-        name: "Vampire Squid",
+        name: "Squid Gamer",
         biome: "abyss",
         rarity: "rare",
         size: [15, 30],
@@ -23685,13 +23693,13 @@
         fight: { phases: ["dodge", "trace", "unwrap", "net"], power: 0.5, stamina: 7, tricks: ["ink", "wrap", "fake"], biteWindow: 0.5, nibbles: [1, 3], fakeBite: 0.2 },
         spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
         sound: "squeak",
-        desc: "Despite the name and the cape, it is a gentle vegetarian of sea snow. The cape is purely a fashion choice.",
-        behavior: "Flaps its ear-fins and wraps itself in its cloak when scared. Squirts glowing goo instead of ink.",
+        desc: "A deep-sea squid in a hot-pink outfit that challenges everything it meets to children's games with unreasonably high stakes. Red light, green light! It inks whoever moves.",
+        behavior: "Hovers and squirts ink when threatened. Loves lantern bait and videos.",
         shinyHue: 170
       });
       add3({
         id: "barreleye",
-        name: "Barreleye",
+        name: "Major Tom Barreleye",
         biome: "abyss",
         rarity: "rare",
         size: [10, 16],
@@ -23720,13 +23728,13 @@
         fight: { phases: ["timing", "trace", "tension", "net"], power: 0.35, stamina: 6, tricks: ["fake", "jump"], biteWindow: 0.6, nibbles: [1, 3], fakeBite: 0.25 },
         spawn: { weight: 0.9, weather: null, time: null, requires: null, hidden: null },
         sound: "chirp",
-        desc: "Those two dots on its face are its nostrils. Its actual eyes are inside its see-through head, looking up at you. Hello.",
-        behavior: "Hangs motionless, rolling its green tube-eyes toward any light above.",
+        desc: "Ground control to Major Fish: this barreleye has a transparent space helmet for a head and floats in a most peculiar way, green eyes fixed on the distant stars.",
+        behavior: "Hovers motionless, gazing up through its dome. Loves lantern bait.",
         shinyHue: 260
       });
       add3({
         id: "dumbo",
-        name: "Dumbo Octopus",
+        name: "Baby Cthulhu",
         biome: "abyss",
         rarity: "rare",
         size: [8, 20],
@@ -23748,13 +23756,13 @@
         fight: { phases: ["trace", "timing", "net"], power: 0.25, stamina: 5, tricks: ["hop", "ink"], biteWindow: 0.75, nibbles: [1, 3], fakeBite: 0.15 },
         spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
         sound: "boing",
-        desc: "Flies through the deep by flapping its ears. Has never seen a cartoon elephant and resents the comparison anyway.",
-        behavior: "Flaps gently up and down near the seabed. Gets curious about cute icons.",
+        desc: "A small, adorable green octopus with stubby little wings who will one day awaken and devour the world. For now it flaps around saying 'ph'nglui' and wants a hug.",
+        behavior: "Pulses gently through the deep. Loves sugar and music.",
         shinyHue: 150
       });
       add3({
         id: "crystalcarp",
-        name: "Crystal Carp",
+        name: "Toss-a-Coin Carp",
         biome: "abyss",
         rarity: "epic",
         size: [30, 70],
@@ -23785,13 +23793,13 @@
         fight: { phases: ["timing", "dodge", "trace", "tension", "net"], power: 0.65, stamina: 11, tricks: ["jump", "fake", "glitch"], biteWindow: 0.4, nibbles: [2, 4], fakeBite: 0.3 },
         spawn: { weight: 1, weather: null, time: null, requires: null, hidden: true },
         sound: "bell",
-        desc: "Grew facets after centuries in a cave full of glowing gems. Tinkles like a wind chime when it swims.",
-        behavior: "Throws little rainbows in lantern light. Shatters into dodgeable shards of light when hooked.",
+        desc: "A glittering crystal carp that carries a gold coin in its mouth for the next wandering monster hunter. Hums the same catchy tune all day. O' valley of plenty...",
+        behavior: "Hidden deep; appears for golden or lantern bait. Sparkles constantly.",
         shinyHue: 90
       });
       add3({
         id: "noodle",
-        name: "Noodle Eel",
+        name: "Believe-It Ramen Eel",
         biome: "abyss",
         rarity: "epic",
         size: [80, 200],
@@ -23813,13 +23821,13 @@
         fight: { phases: ["unwrap", "tension", "unwrap", "trace", "net"], power: 0.55, stamina: 10, tricks: ["wrap", "fake", "dash"], biteWindow: 0.6, nibbles: [1, 3], fakeBite: 0.2 },
         spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
         sound: "boing",
-        desc: "A single impossibly long noodle that came to life at the bottom of a soup bowl. Loves hugs. Hugs your cursor. Will not let go.",
-        behavior: "Slurps through the water and ties itself around the mouse when excited. Circle to untangle.",
+        desc: "A long, slurpy ramen noodle with a fishcake swirl hat and endless enthusiasm. Never gives up, never goes back on its word, always wraps around your cursor. Believe it!",
+        behavior: "Wraps itself around the cursor and your line. Loves chat and sugar.",
         shinyHue: 20
       });
       add3({
         id: "manyeyes",
-        name: "The Ancient Many-Eyed One",
+        name: "The Great Old One of Many Eyes",
         biome: "abyss",
         rarity: "legendary",
         size: [600, 1200],
@@ -23852,8 +23860,8 @@
         fight: { phases: ["dodge", "timing", "trace", "tension", "net"], power: 1, stamina: 24, tricks: ["spit", "ink", "dive", "glitch"], biteWindow: 0.5, nibbles: [3, 5], fakeBite: 0.2 },
         spawn: { weight: 1, weather: null, time: null, requires: "relic", hidden: true },
         sound: "roar",
-        desc: "Older than the ocean's first screensaver. Every one of its eyes has seen your browser history.",
-        behavior: "Rises only when an ancient relic is offered. All of its eyes follow your cursor. All of them.",
+        desc: "An impossibly ancient leviathan covered in eyes that each see a different century. Hunters speak of it in whispers: fear the old depths. Every eye has seen your browser history.",
+        behavior: "The guardian of the deep. Rises only when an Ancient Relic is offered here.",
         shinyHue: 240
       });
       GROW = {
@@ -26708,7 +26716,7 @@ are just virtual copies - Restore All Icons anytime.`;
             { id: "journal", label: "Fish Journal", icon: "book", key: "J" },
             { id: "tank", label: g.state.view === "aquarium" ? "Back to Ocean" : "My Aquarium", icon: "tank", key: "A" },
             { id: "skills", label: "Coral Skill Tree", icon: "coral", key: "K" },
-            { id: "shop", label: "Pinch's Bait Shop", icon: "shop", key: "S" },
+            { id: "shop", label: "Cap'n Bloat's Shop", icon: "shop", key: "S" },
             { id: "map", label: "Travel Map", icon: "map", key: "T" },
             { id: "bait", label: "Bait Box", icon: "bait", key: "B" },
             { id: "pause", label: g.paused ? "Resume Fishing" : "Pause Fishing", icon: g.paused ? "play" : "pause", key: "P" },
@@ -28771,7 +28779,7 @@ are just virtual copies - Restore All Icons anytime.`;
     events.sort((a, b) => a.at - b.at);
     const motion = !opts.seq && !quiet ? s.motion : null;
     const dur = opts.dur ?? Math.max(seq.length / fps, quiet ? 0 : s.dur, 0.45);
-    d.anim = { t: 0, seq, fps, dur, events, ei: 0, motion, shake: quiet ? 0 : s.shake, loop: !!opts.loop, byFish: !!opts.byFish };
+    d.anim = { t: 0, seq, fps, dur, events, ei: 0, motion, shake: quiet ? 0 : s.shake, loop: !!opts.loop, until: opts.until, byFish: !!opts.byFish };
     d.squash = 0.45;
     d.squashAmt = quiet ? s.squash * 0.5 : s.squash;
     if (s.frames > 1) queueDecorFrames(aq, d, d.scale, true);
@@ -28980,7 +28988,9 @@ are just virtual copies - Restore All Icons anytime.`;
   function runUse(aq, f, u, dt, T, fs) {
     const st = u.st, d = u.d, spec = specOf(d), use = spec.use;
     const a = anchorAt(aq, d, use.at || "center");
-    const behind = use.at === "water" || u.kind === "hide" || use.behind;
+    const inside = !!d.drawP?.front && (use.at === "water" || u.kind === "hide");
+    const behind = !inside && (use.at === "water" || u.kind === "hide" || use.behind);
+    const zIn = inside ? d.z - 4e-3 : d.z + 0.015;
     let tx = a.x, ty = a.y;
     if (u.kind === "bounce") ty = a.y - 24 * fs;
     if (u.kind === "watch") {
@@ -29006,11 +29016,14 @@ are just virtual copies - Restore All Icons anytime.`;
         st.t = 0;
         st.dur = u.kind === "hide" ? rng.float(3, 6) : u.kind === "bounce" ? rng.float(2.4, 3.6) : u.kind === "orbit" ? rng.float(4, 6) : rng.float(6, 10);
         if (u.kind === "hide") st.phase = "hidden";
-        if (use.seq) playDecor(aq, d, { quiet: true, byFish: true, seq: use.seq, fps: use.fps || 3, loop: u.kind === "watch" || u.kind === "dancer", dur: st.dur + 1 });
+        if (use.seq) playDecor(aq, d, { quiet: true, byFish: true, seq: use.seq, fps: use.fps || 3, loop: u.kind === "watch" || u.kind === "dancer" || !!use.loop, dur: st.dur + 1, until: st.dur + 0.6 });
         if (u.kind === "sit" || u.kind === "watch") f.say(use.emote || (u.kind === "watch" ? "exclaim" : "heart"), 1.6);
         if (u.kind === "dancer") f.say("music", 1.5);
       }
-      if (behind && dist(f.x, f.y, tx, ty) < 30 * fs) f.useZ = d.z + 0.015;
+      if ((behind || inside) && dist(f.x, f.y, tx, ty) < 30 * fs) {
+        f.useZ = zIn;
+        u.front = inside;
+      }
       f.z = lerp(f.z, clamp(d.z + (behind ? 0.01 : -0.03), 0, 0.85), 1 - Math.exp(-dt * 2));
       return steerTo(f, tx, ty, Math.min(Math.max(f.burst, 60) * 1.5, Math.max(f.cruise * 2.5, 40 * fs, dd * 0.9)), 16 * fs + 4);
     }
@@ -29018,12 +29031,13 @@ are just virtual copies - Restore All Icons anytime.`;
     f.vy = 0;
     switch (u.kind) {
       case "sit": {
-        f.useZ = behind ? d.z + 0.015 : d.z - 0.012;
+        f.useZ = behind || inside ? zIn : d.z - 0.012;
+        u.front = inside;
         f.x = lerp(f.x, tx + Math.sin(st.t * 0.8) * 2 * fs, 1 - Math.exp(-dt * 6));
         f.y = lerp(f.y, ty + Math.sin(st.t * 2.2) * 1.2 * fs, 1 - Math.exp(-dt * 6));
         f.feel(st.t > st.dur * 0.6 ? "sleepy" : "happy", 0.3);
         if (rng.chance(dt * 0.25)) f.say(rng.pick([use.emote || "heart", "zzz", "music"]), 1.4);
-        if (behind && rng.chance(dt * 1.2)) aq.particles.bubble(f.x + rng.float(-4, 4) * fs, f.y - 3 * fs, { size: 1 });
+        if ((behind || inside) && rng.chance(dt * 1.2)) aq.particles.bubble(f.x + rng.float(-4, 4) * fs, f.y - 3 * fs, { size: 1 });
         if (st.t > st.dur) {
           f.vy = -30 * fs;
           endScript(f, "heart");
@@ -29031,8 +29045,10 @@ are just virtual copies - Restore All Icons anytime.`;
         return [0, 0];
       }
       case "hide": {
-        f.useZ = d.z + 0.02;
-        f.alpha = Math.max(0, 1 - st.t * 3);
+        f.useZ = inside ? zIn : d.z + 0.02;
+        u.front = inside;
+        f.alpha = Math.max(0, 1 - st.t * (inside ? 1.5 : 3));
+        if (inside) ty += Math.min(1, st.t * 2) * 8 * fs;
         f.x = lerp(f.x, tx, 1 - Math.exp(-dt * 6));
         f.y = lerp(f.y, ty, 1 - Math.exp(-dt * 6));
         if (st.t > st.dur) {
@@ -29946,6 +29962,7 @@ are just virtual copies - Restore All Icons anytime.`;
             sx = o.x + p.x;
             sy = o.y + p.y;
           }
+          if (by === "player") this.lastGrabT = this.t;
           this.game.addCoins?.(c.value, sx, sy);
           if (vk) {
             this.combo = this.comboT > 0 ? this.combo + 1 : 0;
@@ -30156,8 +30173,10 @@ are just virtual copies - Restore All Icons anytime.`;
             } else {
               this.press = null;
               if (!pr.moved && !pr.collected) {
+                const tut = g.tutorial?.active && (g.tutorial.step === "tank" || g.tutorial.step === "coin");
+                const grab = pr.kind === "glass" && (tut || this.t - (this.lastGrabT ?? -9) < 0.6);
                 if ((pr.kind === "decor" || pr.kind === "decorFull") && this.decor.includes(pr.d)) this.interact(pr.d);
-                else if (pr.kind === "lid" || pr.kind === "glass") {
+                else if (pr.kind === "lid" && !tut || pr.kind === "glass" && !grab) {
                   this.openFull();
                   return;
                 }
@@ -30923,7 +30942,10 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
             it2.y = y;
             n++;
           };
-          for (const d of this.decor) push(d.z, "decor", d);
+          for (const d of this.decor) {
+            push(d.z, "decor", d);
+            if (d.user?.front && d.drawP?.front) push(d.z - 8e-3, "decorFront", d);
+          }
           for (const p of this.view.plants) push(p.z, "plant", p);
           for (const f of this.fish) {
             let z = f.z;
@@ -30991,6 +31013,11 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
                 g.globalAlpha = 1;
                 g.globalCompositeOperation = "source-over";
               }
+              break;
+            }
+            case "decorFront": {
+              const fc = o.drawP?.front;
+              if (fc) g.drawImage(fc, o.drawX, o.drawY, o.drawW, o.drawH);
               break;
             }
             case "plant": {
@@ -33473,26 +33500,35 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           this.base = base;
           this.h = base + 16 - top;
           this.blend = new Blend();
-          const mk = (kind2) => paint2(W8, this.h, (x, yy) => {
-            const y = yy + top;
-            let [r2, g, b] = lerpStops(o.stops[kind2], clamp01((y - top) / (base - top)));
-            if (kind2 === "night" && y < base - 8) {
-              const hs = hash2(x, y, 77);
-              if (hs < 35e-4) {
-                const k = 0.3 + hs / 35e-4 * 0.6;
-                r2 = lerp(r2, 230, k);
-                g = lerp(g, 236, k);
-                b = lerp(b, 255, k);
+          const mk = (kind2) => {
+            const rows = new Float32Array(this.h * 3);
+            for (let yy = 0; yy < this.h; yy++) {
+              const y = yy + top;
+              let [r2, g, b] = lerpStops(o.stops[kind2], clamp01((y - top) / (base - top)));
+              if (o.haze && y > base - 40) {
+                const k = smoothstep(base - 40, base + 2, y) * o.haze;
+                r2 += (255 - r2) * k;
+                g += (255 - g) * k;
+                b += (255 - b) * k;
               }
+              rows[yy * 3] = r2;
+              rows[yy * 3 + 1] = g;
+              rows[yy * 3 + 2] = b;
             }
-            if (o.haze && y > base - 40) {
-              const k = smoothstep(base - 40, base + 2, y) * o.haze;
-              r2 += (255 - r2) * k;
-              g += (255 - g) * k;
-              b += (255 - b) * k;
-            }
-            return dpack(r2, g, b, x, yy, 5);
-          });
+            return paint2(W8, this.h, (x, yy) => {
+              let r2 = rows[yy * 3], g = rows[yy * 3 + 1], b = rows[yy * 3 + 2];
+              if (kind2 === "night" && yy + top < base - 8) {
+                const hs = hash2(x, yy + top, 77);
+                if (hs < 35e-4) {
+                  const k = 0.3 + hs / 35e-4 * 0.6;
+                  r2 = lerp(r2, 230, k);
+                  g = lerp(g, 236, k);
+                  b = lerp(b, 255, k);
+                }
+              }
+              return dpack(r2, g, b, x, yy, 5);
+            });
+          };
           this.kinds = o.nightOnly ? ["night"] : ["day", "dusk", "night"];
           this.canvas = {};
           for (const k of this.kinds) this.canvas[k] = mk(k);
@@ -38429,7 +38465,8 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
         drawSky(ctx3, env2, y0) {
           const W8 = this.W, t = this.t, tod = this.tod, wx = this.wx, base = this.base, skyY = this.skyY;
           const w3 = (o) => [[o.day, tod.day], [o.dusk, tod.dusk], [o.night, tod.night]];
-          ctx3.drawImage(this.skyBlend.get(w3(this.sky)), 0, skyY);
+          const r0 = clamp(Math.floor(y0) - skyY, 0, this.skyH - 1), rh = this.skyH - r0;
+          ctx3.drawImage(this.skyBlend.get(w3(this.sky)), 0, r0, W8, rh, 0, skyY + r0, W8, rh);
           const oc = clamp01(wx.snow * 0.7 + wx.bliz * 0.9);
           const clear = 1 - oc;
           if (y0 < base - 60) {
@@ -38468,7 +38505,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
             fillWith(ctx3, ocCanvas, 0, skyY, W8, this.skyH);
             ctx3.globalAlpha = 1;
           }
-          ctx3.drawImage(this.mtnBlend.get(w3(this.mtn)), 0, skyY);
+          ctx3.drawImage(this.mtnBlend.get(w3(this.mtn)), 0, r0, W8, rh, 0, skyY + r0, W8, rh);
           if (ocCanvas) {
             ctx3.globalAlpha = oc * 0.42;
             fillWith(ctx3, ocCanvas, 0, skyY, W8, this.skyH);
@@ -39251,6 +39288,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           }));
           this.bombs = [];
           this.ashTile = cloudTile(320, 140, "#3a3036", { seed: 4, alpha: 0.5, scale: 0.03, bias: 0.5, levels: 3 });
+          this.sulfTile = cloudTile(360, 180, "#c8c060", { seed: 12, alpha: 0.3, scale: 0.02, bias: 0.5, levels: 4 });
         }
         buildDepth() {
           const W8 = this.W, H8 = this.H;
@@ -39399,7 +39437,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
             this.crackLights.push({ x: lx, y: ly, r: clamp(14 + Math.sqrt(n) * 3.2, 18, 64) * (1 - clamp01(z) * 0.4), n, a: clamp01(0.3 + n / 120) * (1 - D.fog(z) * 0.7), ph: hash2(k, 3, 7) * TAU });
           }
           this.crackLights.sort((a, b) => b.n - a.n);
-          this.crackLights.length = Math.min(this.crackLights.length, 22);
+          this.crackLights.length = Math.min(this.crackLights.length, 16);
           this.propLights = [];
           for (const q of D.items) {
             if (!q.p?.lights?.length || q.z > 1.2) continue;
@@ -39407,7 +39445,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
             this.propLights.push({ x: q.left + l.x, y: q.top + l.y, r: clamp(l.r * 0.9 + 10, 22, 70) * (0.6 + 0.4 * q.s), color: l.color, a: 1 - D.fog(q.z) * 0.75 });
           }
           this.propLights.sort((a, b) => b.r * b.a - a.r * a.a);
-          this.propLights.length = Math.min(this.propLights.length, 10);
+          this.propLights.length = Math.min(this.propLights.length, 8);
         }
         buildLayers() {
           const W8 = this.W, H8 = this.H, pad = 30, D = this.D;
@@ -39430,7 +39468,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
             for (let y = Math.max(0, Math.round(tp)); y < baseA; y++) mA.set(xx, y, 1);
           }
           this.falls = [];
-          for (const fxf of [0.12, 0.23, 0.8, 0.9]) {
+          for (const fxf of [0.34, 0.43, 0.59, 0.68]) {
             const fx = Math.round(fxf * LW);
             for (let y = 0; y < baseA; y++) if (mA.get(fx, y)) {
               this.falls.push({ x: fx - pad, y0: yA + y, y1: yA + baseA - 6, w: 2 + (fxf * 10 % 2 > 1 ? 1 : 0) });
@@ -39499,8 +39537,8 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           this.smoke = [];
           for (let i = 0; i < 16; i++) this.smoke.push({ k: i / 16, ph: r.float(0, TAU), s: r.float(0.7, 1.3) });
           this.puffS = [2, 3, 4, 5, 6, 7, 8, 9].map((rr2) => paint2(rr2 * 2 + 1, rr2 * 2 + 1, (x, y) => Math.hypot(x - rr2, y - rr2) <= rr2 + 0.2 ? pack("#ffffff") : 0));
-          this.puffY = this.puffS.map((c) => tinted(c, "#c8c050"));
-          this.puffK = this.puffS.map((c) => tinted(c, "#16100e"));
+          this.puffY = this.puffS.map((c) => tinted(c, "#b8b46a"));
+          this.puffK = this.puffS.map((c) => tinted(c, "#2a2220"));
         }
         // ------------------------------------------------------------------ update
         update(dt, env2) {
@@ -39645,6 +39683,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           for (const v of this.farVents) drawGlow(ctx3, v.x + px0 * 1.4, v.y + py0 * 0.5, 5, "#ff7a2a", 0.35 + 0.25 * Math.sin(t * 2 + v.ph) + wx.magma * 0.3);
           ctx3.globalCompositeOperation = "source-over";
           this.paintBand(ctx3, 2, px0 * 2, py0 * 0.6);
+          if (quality(env2) >= 1) this.heatShimmer(ctx3, px0 * 2, py0 * 0.6);
           ctx3.drawImage(this.haze.tint(this.water, 1, "h"), 0, this.hazeY);
           if (wx.sulfur > 0.05) {
             ctx3.fillStyle = rgba("#6a6a2a", wx.sulfur * 0.18);
@@ -39724,8 +39763,12 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           for (const f of this.falls) {
             const x = Math.round(f.x + dx);
             ctx3.fillStyle = "#ff6a1a";
-            ctx3.globalAlpha = 0.6;
-            ctx3.fillRect(x, Math.round(f.y0 + dy), f.w, Math.round(f.y1 - f.y0));
+            const len = f.y1 - f.y0;
+            for (let y = 0; y < len; y += 3) {
+              const xo = Math.round(Math.sin((f.y0 + y) * 0.13 + f.x) * 1.2);
+              ctx3.globalAlpha = 0.45 + 0.25 * Math.sin(y * 0.4 - t * 6);
+              ctx3.fillRect(x + xo, Math.round(f.y0 + y + dy), f.w + 1, 3);
+            }
             ctx3.fillStyle = "#ffd060";
             ctx3.globalAlpha = 0.9;
             for (let k = 0; k < 5; k++) {
@@ -39835,9 +39878,9 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
             const k = (p.k + t * 0.06) % 1;
             const y = c.y - k * 130 * s;
             const x = c.x + Math.sin(t * 0.7 + p.ph + k * 4) * (2 + k * 12) * s + k * 20 * s;
-            const ri = clamp(Math.floor(k * 8 * p.s * s), 0, 7);
-            ctx3.globalAlpha = (1 - k) * (0.45 + wx.sulfur * 0.3);
-            const spr2 = p.k * 16 % 3 < 1 ? this.puffK[ri] : this.puffY[ri];
+            const ri = clamp(Math.floor((1 + k * 7) * p.s * s), 0, 7);
+            ctx3.globalAlpha = (1 - k) * (1 - k) * (0.32 + wx.sulfur * 0.25);
+            const spr2 = p.k * 16 % 4 < 1 ? this.puffK[ri] : this.puffY[ri];
             ctx3.drawImage(spr2, Math.round(x - spr2.width / 2), Math.round(y - spr2.height / 2));
           }
           ctx3.globalAlpha = 1;
@@ -39939,12 +39982,14 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
             ctx3.globalAlpha = 1;
           }
           ctx3.globalCompositeOperation = "source-over";
-          if (q >= 1) this.heatShimmer(ctx3);
           if (wx.sulfur > 0.05) {
-            const pat = ctx3.createPattern(this.ashTile, "repeat");
+            const pat = ctx3.createPattern(this.sulfTile, "repeat");
             pat.setTransform(new DOMMatrix([1, 0, 0, 1, Math.round(t * 6), Math.round(Math.sin(t * 0.2) * 12)]));
-            ctx3.globalAlpha = wx.sulfur * 0.3;
-            ctx3.fillStyle = rgba("#a8a040", 1);
+            ctx3.globalAlpha = wx.sulfur * 0.55;
+            ctx3.fillStyle = pat;
+            ctx3.fillRect(0, env2.view ? env2.view.y0 : 0, W8, this.H + 400);
+            ctx3.globalAlpha = wx.sulfur * 0.12;
+            ctx3.fillStyle = "#a8a040";
             ctx3.fillRect(0, env2.view ? env2.view.y0 : 0, W8, this.H + 400);
             ctx3.globalAlpha = 1;
           }
@@ -39953,36 +39998,27 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
             ctx3.fillRect(0, env2.view ? env2.view.y0 : 0, W8, this.H + 400);
           }
         }
-        // Heat shimmer: copy the finished pixels above each near/mid vent once, then lay them back in 2 px rows with a
-        // travelling sine x-offset.
-        heatShimmer(ctx3) {
-          const m = ctx3.getTransform(), t = this.t;
-          const cw = ctx3.canvas.width, ch = ctx3.canvas.height;
-          const list = this.vents.filter((v) => v.z < 0.8).map((v) => [v.x, v.y, 22 * v.s, 64 * v.s]);
-          if (this.secrets().volcano_plug) list.push([this.plug.x, this.plug.top, 14, 40]);
-          if (!this.shimmerL) this.shimmerL = makeLayer(64, 160);
-          const L2 = this.shimmerL;
-          ctx3.save();
-          ctx3.setTransform(1, 0, 0, 1, 0, 0);
-          for (const [wx0, wy0, hw, hh] of list) {
-            const sx = Math.round(m.a * (wx0 - hw) + m.e), sy = Math.round(m.d * (wy0 - hh) + m.f);
-            const w = Math.min(64, Math.round(hw * 2 * m.a)), h = Math.min(160, Math.round(hh * m.d));
-            if (sx < 2 || sy < 0 || sx + w > cw - 2 || sy + h > ch || w < 4 || h < 4) continue;
-            L2.ctx.clearRect(0, 0, w, h);
-            L2.ctx.drawImage(ctx3.canvas, sx, sy, w, h, 0, 0, w, h);
+        // Heat shimmer: the far band behind each near/mid vent is re-laid in 2 px rows with a travelling sine offset.
+        heatShimmer(ctx3, dx, dy) {
+          const t = this.t, D = this.D, B2 = D.bands[2], src = this.bands.canvas(2, null);
+          const list = this.vents.filter((v) => v.z < 0.8).map((v) => [v.x, v.y, 22 * v.s, 70 * v.s]);
+          if (this.secrets().volcano_plug) list.push([this.plug.x, this.plug.top, 14, 44]);
+          for (const [x0, y0, hw, hh] of list) {
+            const sx = Math.round(x0 - hw), sy = Math.round(y0 - hh), w = Math.round(hw * 2), h = Math.round(hh);
             for (let r = 0; r < h; r += 2) {
-              const o = Math.round(Math.sin(t * 7 + (sy + r) * 0.35) * 1.4 * (0.4 + 0.6 * r / h));
-              if (o) ctx3.drawImage(L2.canvas, 0, r, w, 2, sx + o, sy + r, w, 2);
+              const yy = sy + r - B2.y;
+              if (yy < 0 || yy + 2 > src.height) continue;
+              const o = Math.round(Math.sin(t * 7 + (sy + r) * 0.35) * 1.5 * (0.4 + 0.6 * r / h));
+              if (o) ctx3.drawImage(src, sx + D.pad, yy, w, 2, Math.round(sx + dx + o), Math.round(sy + r + dy), w, 2);
             }
           }
-          ctx3.restore();
         }
         // ------------------------------------------------------------------ lighting
         lighting(env2) {
           const tod = todWeights(env2), wx = this.wx, t = this.t;
-          let dark = 0.66 + tod.night * 0.12 - wx.magma * 0.08 + wx.sulfur * 0.06;
+          let dark = 0.6 + tod.night * 0.12 - wx.magma * 0.08 + wx.sulfur * 0.06;
           dark *= 1 - skyward(env2, this.H) * 0.62;
-          const tint = qmix3(qmix3("#1c0c10", "#1e1c08", wx.sulfur * 0.6), "#2a0a06", wx.magma * 0.5);
+          const tint = qmix3(qmix3("#2a1014", "#24200a", wx.sulfur * 0.6), "#340c06", wx.magma * 0.5);
           const lights = [];
           const gk = 1 + wx.magma * 0.5 + wx.erupt * 0.25;
           for (const l of this.crackLights) lights.push({ x: l.x, y: l.y, r: l.r * (1 + wx.magma * 0.3), color: "#ff6a1a", a: clamp01(l.a * (0.75 + 0.25 * Math.sin(t * 1.3 + l.ph)) * gk) });
@@ -49049,20 +49085,20 @@ kTtaatTk
     }
     {
       const du = u - VC[0], dw = w - VC[1], r = Math.hypot(du, dw);
-      if (r < 33) {
-        const Rc = 4.5, Rr = Rc + 1.8, Rw = 15, top = SEA + 20;
+      if (r < 38) {
+        const Rc = 5, Rr = Rc + 1.8, Rw = 18, top = SEA + 22;
         let vh;
         if (r < Rc) vh = top - 2;
         else if (r < Rr) vh = top + 1;
         else if (r < Rw) vh = top - (top - SEA) * Math.pow((r - Rr) / (Rw - Rr), 0.85);
-        else vh = SEA - 46 * Math.pow((r - Rw) / (33 - Rw), 0.7);
+        else vh = SEA - 46 * Math.pow((r - Rw) / (38 - Rw), 0.7);
         vh += (fbm2(u * 0.17, w * 0.17, 2, 33) - 0.5) * 4 * Math.min(1, r / 9);
         if (vh > h) {
           h = Math.round(vh);
           mt = r < Rc ? LAVAHOT : BASALT;
           if (r >= Rc) {
             const a = Math.atan2(dw, du);
-            for (const [sa, len, ph] of [[2.3, 21, 0], [1.6, 18, 2], [2.95, 16, 4]]) {
+            for (const [sa, len, ph] of [[2.3, 24, 0], [1.55, 21, 2], [3, 19, 4]]) {
               const off = angAbs(a, sa + Math.sin(r * 0.32 + ph) * 0.16) * r;
               const wd = 1.7 - r / len * 0.6;
               if (r < len && off < wd) mt = off < wd * 0.45 ? LAVAHOT : LAVA2;
@@ -49168,8 +49204,8 @@ kTtaatTk
       rock2: P5("#646e84", { jitter: 0.22 }, o.fjord),
       rockD: P5("#4e566c", { jitter: 0.2 }, o.fjord),
       snow: P5("#f2f8fc", { jitter: 0.08 }, o.fjord),
-      ice: P5("#c8ecfa", { jitter: 0.1, spec: 0.35 }, o.fjord),
-      crev: P5("#7ac4e8", { jitter: 0.08 }, o.fjord),
+      ice: P5("#b8e0f2", { jitter: 0.12, spec: 0.3 }, o.fjord),
+      crev: P5("#5aa2d2", { jitter: 0.08 }, o.fjord),
       basalt: P5("#3c3446", { jitter: 0.2 }, o.volcano),
       ash: P5("#5c5262", { jitter: 0.2 }, o.volcano),
       basaltD: P5("#2a2432", { jitter: 0.15 }, o.volcano),
@@ -49301,7 +49337,9 @@ kTtaatTk
         }
       }
     }
-    return { model: m, own, terr, LI, ext, C, ms: Math.round(performance.now() - t0) };
+    const plain = new Uint8Array(256), surfSet = new Set(Object.values(TP).flatMap((q) => [q.a, q.b]));
+    for (let i = 1; i < m.palette.length; i++) plain[i] = own[i] === 0 && !surfSet.has(i) ? 1 : 0;
+    return { model: m, own, plain, terr, LI, ext, C, ms: Math.round(performance.now() - t0) };
   }
   function buildShallows({ m, P: P5, ground }, o) {
     const rng2 = new RNG(4101);
@@ -49481,7 +49519,7 @@ kTtaatTk
       m.cylinder(x, z, gy + h, gy + h, 0.9, smokerT);
     }
     for (let k = 0; k < 9; k++) {
-      const a = rng2.float(1.2, 3.6), r = rng2.float(9, 20);
+      const a = rng2.float(1.2, 3.6), r = rng2.float(10, 24);
       const u = VC[0] + Math.cos(a) * r, w = VC[1] + Math.sin(a) * r;
       if (u < 2 || u > BX - 2 || w < 1 || w > BZ - 1) continue;
       const gy = ground(u, w);
@@ -49489,7 +49527,7 @@ kTtaatTk
     }
     m.paint(() => {
       m.ellipsoid(XR - 3, 17, Z(27), 9, 6.5, 12, chamber);
-      m.tube([[XR - 1.5, 20, Z(27), 2], [XR - 1.5, 34, Z(25), 1.7], [XR - 2.5, 46, Z(28), 1.6], [X(158), 60, Z(27), 1.5], [X(152), 76, Z(27), 1.4], [X(VC[0]), SEA + 19, Z(27), 1.4]], conduit, 4);
+      m.tube([[XR - 1.5, 20, Z(28), 2], [XR - 1.5, 34, Z(26), 1.7], [XR - 2.5, 46, Z(29), 1.6], [X(156), 60, Z(28), 1.5], [X(149), 78, Z(28), 1.4], [X(VC[0]), SEA + 21, Z(28), 1.4]], conduit, 4);
       m.tube([[XR - 1, 22, Z(17), 0.8], [XR - 1, 30, Z(11), 0.7], [XR - 1, 38, Z(8), 0.6]], conduit, 3);
       m.tube([[XR - 1, 24, Z(37), 0.8], [XR - 1, 33, Z(43), 0.7], [XR - 1, 40, Z(42), 0.6]], conduit, 3);
     });
@@ -50065,6 +50103,8 @@ kTtaatTk
       proj,
       cx,
       cy,
+      ids,
+      plain: dio.plain,
       outlines: {},
       fogs: {},
       ok,
@@ -50107,8 +50147,8 @@ kTtaatTk
   }
   function fogFor(bk, li) {
     if (bk.fogs[li]) return bk.fogs[li];
-    const { W: W8, H: H8, obj, terr } = bk;
-    const inMask = (p) => obj[p] === li || !obj[p] && terr[p] === li;
+    const { W: W8, H: H8, obj, terr, surf, ids, plain } = bk;
+    const inMask = (p) => obj[p] === li || !obj[p] && terr[p] === li && (surf[p] || !plain[ids[p]]);
     let x0 = W8, y0 = H8, x1 = -1, y1 = -1;
     for (let p = 0; p < W8 * H8; p++) if (inMask(p)) {
       const x = p % W8, y = p / W8 | 0;
@@ -50143,11 +50183,11 @@ kTtaatTk
       }
     }
     const c = makeCanvas(w, h), cg = ctxOf(c), im = cg.createImageData(w, h), out2 = new Uint32Array(im.data.buffer);
-    const A = RGB("#d6e2ee"), B2 = RGB("#8a9ab6");
+    const A = RGB("#e4ecf4"), B2 = RGB("#8090ac");
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const i = y * w + x, d = dist2[i];
-      const n = fbm2((x + x0) * 0.045, (y + y0) * 0.07, 3, li * 13);
-      let a = 0.72 * smoothstep(pad + 1, 0, d) * (0.55 + n * 0.7);
+      const n = fbm2((x + x0) * 0.04, (y + y0) * 0.075, 3, li * 13);
+      let a = 0.7 * smoothstep(pad + 1, 0, d) * (0.4 + n * 0.85);
       a = Math.floor(a * 6 + bayer(x, y)) / 6;
       if (a <= 0) continue;
       const k = clamp01(n * 1.6 - 0.3);
@@ -50222,7 +50262,7 @@ kTtaatTk
       m.box(2, 7, 1, 8, 7, 7, teal);
       m.box(11, 4, 4, 11, 11, 4, mast);
       m.box(12, 9, 4, 14, 10, 4, flag);
-      return renderVoxels(m, { scale: 1.25, yaw: key * 22.5, pitch: PITCH2 });
+      return renderVoxels(m, { scale: 1.5, yaw: key * 22.5, pitch: PITCH2 });
     });
   }
   function discSprite3(r, color) {
@@ -50232,10 +50272,10 @@ kTtaatTk
       return b.toCanvas();
     });
   }
-  function backdrop(w, h) {
-    return sprite(`bg${w}x${h}`, () => {
+  function backdrop(w, h, night) {
+    return sprite(`bg${w}x${h}${night ? "n" : "d"}`, () => {
       const b = new PixelBuffer(w, h);
-      const top = RGB("#0e2240"), mid = RGB("#24507e"), bot = RGB("#4a8cb6");
+      const top = RGB(night ? "#0a1a34" : "#1a4a7c"), mid = RGB(night ? "#1e4472" : "#3a7cb0"), bot = RGB(night ? "#3e7aa6" : "#7ab8d8");
       for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
         const k = y / h + (bayer(x, y) - 0.5) * 0.06;
         const [ca, cb, t] = k < 0.55 ? [top, mid, k / 0.55] : [mid, bot, (k - 0.55) / 0.45];
@@ -50247,7 +50287,7 @@ kTtaatTk
         bb += (240 - bb) * glow;
         b.set(x, y, (255 << 24 | Math.round(bb) << 16 | Math.round(g) << 8 | Math.round(r)) >>> 0);
       }
-      for (let i = 0; i < 70; i++) {
+      for (let i = 0; i < (night ? 80 : 0); i++) {
         const x = Math.floor(hash1(i, 3) * w), y = Math.floor(hash1(i, 4) ** 1.6 * h * 0.5);
         b.set(x, y, hash1(i, 5) < 0.3 ? packHex("#fff6d8") : packHex("#9ec4e8"));
       }
@@ -50309,7 +50349,7 @@ kTtaatTk
           geo: { u: 24, w: 26, h: SEA - 6, s: 17, rad: 34 },
           pin: [19, SEA + 17, 21],
           focus: [19, SEA + 6, 21],
-          sea: [34, 38],
+          sea: [40, 22],
           desc: "Warm, bright and friendly. Perfect for new anglers and very curious fish.",
           weathers: ["sunny", "cloudy", "rain", "storm"]
         },
@@ -50335,9 +50375,9 @@ kTtaatTk
           color: "#a6e05a",
           skill: "exp1",
           geo: { u: 30, w: 76, h: SEA - 24, s: 17, rad: 34 },
-          pin: [30, SEA + 9, 76],
+          pin: [30, SEA + 3, 76],
           focus: [30, SEA - 16, 76],
-          sea: [20, 92],
+          sea: [44, 97],
           desc: "A reef of sunken hardware. Glitchy, mechanical and slightly rusty fish.",
           weathers: ["murky", "static", "oil", "datarain"]
         },
@@ -50349,9 +50389,9 @@ kTtaatTk
           color: "#ff6ae0",
           skill: "exp8",
           geo: { u: 90, w: 77, h: SEA - 38, s: 17, rad: 34 },
-          pin: [87, SEA + 15, 78],
+          pin: [87, SEA + 12, 78],
           focus: [87, SEA - 6, 78],
-          sea: [104, 94],
+          sea: [106, 95],
           desc: "Skyscrapers still glowing under 450 m of water. The fish here never sleep.",
           weathers: ["neonrain", "blackout", "static", "rushhour"]
         },
@@ -50362,10 +50402,10 @@ kTtaatTk
           depth: 900,
           color: "#ff7a3a",
           skill: "exp9",
-          geo: { u: 150, w: 28, h: SEA - 46, s: 17, rad: 34 },
-          pin: [150, SEA + 33, 27],
-          focus: [150, SEA + 21, 27],
-          sea: [128, 50],
+          geo: { u: 146, w: 28, h: SEA - 46, s: 17, rad: 34 },
+          pin: [146, SEA + 35, 28],
+          focus: [146, SEA + 23, 28],
+          sea: [124, 44],
           desc: "Black glass, boiling vents and rivers of magma. Fireproof fish only.",
           weathers: ["ashfall", "eruption", "heathaze", "embers"]
         },
@@ -50377,9 +50417,9 @@ kTtaatTk
           color: "#8a9aff",
           skill: "exp3",
           geo: { u: 146, w: 80, h: SEA - 32, s: 17, rad: 30 },
-          pin: [148, SEA + 7, 90],
+          pin: [148, SEA + 4, 90],
           focus: [149, 16, 92],
-          sea: [150, 92],
+          sea: [132, 95],
           desc: "Pitch black and ancient. Bring a light. Bring courage. Bring snacks.",
           weathers: ["still", "snow", "current", "glowtide"]
         }
@@ -50435,8 +50475,8 @@ kTtaatTk
       ];
       ROAD_U = [70, 81, 92, 103];
       ROAD_W = [62, 73, 84];
-      VC = [150, 27];
-      SMOKERS = [[126, 37, 7], [134, 47, 5], [162, 53, 8], [121, 22, 6], [141, 52, 4]];
+      VC = [146, 28];
+      SMOKERS = [[118, 42, 7], [128, 52, 5], [163, 58, 8], [114, 26, 6], [136, 60, 4]];
       _t0 = 0;
       _t1 = 0;
       _ax = 0;
@@ -50584,7 +50624,8 @@ kTtaatTk
           ctx3.beginPath();
           ctx3.rect(view.x, view.y, view.w, view.h);
           ctx3.clip();
-          ctx3.drawImage(backdrop(view.w, view.h), view.x, view.y);
+          const night = !!g.clock?.isNight?.();
+          ctx3.drawImage(backdrop(view.w, view.h, night), view.x, view.y);
           const inView = ui.hover(view) && !this.sail;
           if (this.drag) {
             if (!inp.down) {
@@ -50601,6 +50642,10 @@ kTtaatTk
           if (inView && inp.pressed && !this.overControl(inp.x, inp.y, Lay)) {
             inp.pressed = false;
             this.drag = { x0: inp.x, i0: this.yawI, moved: false, hit: hov };
+            if (inp.dblclick && hov) {
+              this.select(hov);
+              this.trySail(LOC_BY_ID[hov], true);
+            }
           }
           if (inView && inp.wheel) {
             this.setYaw(this.yawI + Math.sign(inp.wheel));
@@ -50608,13 +50653,14 @@ kTtaatTk
           }
           if (!this.sail && inp.keyPressed?.("ArrowLeft")) this.setYaw(this.yawI - 1);
           if (!this.sail && inp.keyPressed?.("ArrowRight")) this.setYaw(this.yawI + 1);
+          if (this.listHover) hov = this.listHover;
           if (this.debugHover !== void 0) hov = this.debugHover;
           if (hov !== this.hover) {
             this.hover = hov;
             if (hov) g.audio.play("ui_hover", { vol: 0.3 });
           }
           if (this.drag?.moved) ui.tip = null;
-          this.drawSky(ctx3, Lay, bk, ox, oy, t, reduced);
+          this.drawSky(ctx3, Lay, bk, ox, oy, t, reduced, night);
           ctx3.drawImage(bk.canvas, ox, oy);
           if (this.prev && this.fade < 1 && this.prev !== bk) {
             ctx3.globalAlpha = 1 - this.fade;
@@ -50638,6 +50684,7 @@ kTtaatTk
           this.drawControls(ctx3, ui, Lay);
           ctx3.restore();
           this.drawBanner(ctx3, view.x + view.w / 2, r.y + 3, "WORLD MAP");
+          this.listHover = null;
           this.drawCard(ctx3, ui, card2, LOC_BY_ID[focus] || LOC_BY_ID[cur], t);
           if (ui.button(ctx3, r.x + r.w - 27, r.y + 8, 18, 17, "", { icon: "cross", style: "shell", tip: "Close (Esc)" })) ui.close(this.id);
           if (!this.sail && this.sel && inp.keyPressed?.("Enter")) this.trySail(LOC_BY_ID[this.sel]);
@@ -50665,20 +50712,36 @@ kTtaatTk
           const c = this.ctrlRect;
           return c && x >= c.x && y >= c.y && x < c.x + c.w && y < c.y + c.h;
         }
-        trySail(L2) {
+        trySail(L2, sound = false) {
           if (!L2 || this.sail || L2.id === this.current() || !this.unlocked(L2.id)) return;
+          if (sound) this.game.audio.play("travel_whoosh");
           const reduced = !!this.game.state.settings?.reducedMotion;
           this.sail = { from: this.current(), to: L2.id, t: 0, dur: reduced ? 0.5 : 1.5 };
         }
         // Sky behind the diorama: aurora over the fjord, drifting voxel clouds, sun.
-        drawSky(ctx3, Lay, bk, ox, oy, t, reduced) {
+        drawSky(ctx3, Lay, bk, ox, oy, t, reduced, night) {
           const { view } = Lay;
           const tt = reduced ? 0 : t;
-          const sx = view.x + view.w - 70, sy = view.y + 44;
-          ctx3.drawImage(discSprite3(13, "#fff2b0"), sx - 13, sy - 13);
-          ctx3.globalAlpha = 0.18;
-          ctx3.drawImage(discSprite3(20, "#fff2b0"), sx - 20, sy - 20);
+          const sx = view.x + view.w - 64, sy = view.y + 46;
+          ctx3.globalAlpha = 0.14;
+          ctx3.drawImage(discSprite3(22, night ? "#cfe0ff" : "#fff2b0"), sx - 22, sy - 22);
+          ctx3.globalAlpha = 0.25;
+          ctx3.drawImage(discSprite3(16, night ? "#cfe0ff" : "#fff2b0"), sx - 16, sy - 16);
           ctx3.globalAlpha = 1;
+          if (night) {
+            ctx3.drawImage(discSprite3(11, "#eef2fa"), sx - 11, sy - 11);
+            ctx3.drawImage(discSprite3(3, "#c4cce0"), sx - 5, sy - 3);
+            ctx3.drawImage(discSprite3(2, "#c4cce0"), sx + 3, sy + 2);
+            ctx3.drawImage(discSprite3(1, "#c4cce0"), sx + 2, sy - 6);
+          } else {
+            ctx3.fillStyle = "#ffe48a";
+            for (let k = 0; k < 12; k++) {
+              const a = k / 12 * TAU + tt * 0.1, r0 = 15, r1 = k % 2 ? 19 : 22;
+              for (let q = r0; q <= r1; q++) ctx3.fillRect(Math.round(sx + Math.cos(a) * q), Math.round(sy + Math.sin(a) * q), 1, 1);
+            }
+            ctx3.drawImage(discSprite3(12, "#ffe48a"), sx - 12, sy - 12);
+            ctx3.drawImage(discSprite3(10, "#fff4c0"), sx - 11, sy - 11);
+          }
           const fj = LOC_BY_ID.fjord, [ax, ay] = bk.proj(fj.pin[0] + M2, SEA + 26, fj.pin[2] + M2 - 6);
           for (let i = 0; i < 60; i++) {
             const x = Math.round(ox + ax - 90 + i * 3);
@@ -50732,13 +50795,13 @@ kTtaatTk
             ctx3.globalAlpha = 0.85;
             ctx3.fillRect(ox + x - (l >> 1), oy + y, l, 1);
           });
-          ctx3.globalAlpha = 0.45;
-          for (let i = 0; i < 90; i++) {
+          ctx3.globalAlpha = 0.32;
+          for (let i = 0; i < 44; i++) {
             const x = M2 + (hash1(i, 31) * BX + tt * (1.5 + hash1(i, 32) * 1.5)) % BX, z = M2 + hash1(i, 33) * BZ;
             const [sx, sy] = bk.proj(x, SEA, z);
             const qx = Math.floor(sx), qy = Math.floor(sy);
             if (qx < 0 || qy < 0 || qx >= W8 || qy >= bk.H || !bk.surf[qy * W8 + qx]) continue;
-            ctx3.fillRect(ox + qx - 2, oy + qy, 4, 1);
+            ctx3.fillRect(ox + qx - 1, oy + qy, 3, 1);
           }
           ctx3.globalAlpha = 1;
           LOCS.forEach((L2, li) => {
@@ -50783,7 +50846,7 @@ kTtaatTk
           });
           ctx3.globalAlpha = 1;
           if (this.unlocked("volcano") || true) {
-            const [vx, vy] = bk.proj(VC[0] + M2, SEA + 20, VC[1] + M2);
+            const [vx, vy] = bk.proj(VC[0] + M2, SEA + 22, VC[1] + M2);
             for (let k = 0; k < 9; k++) {
               const ph = (tt * 0.18 + k / 9) % 1;
               const rr2 = Math.round(2 + ph * 6);
@@ -50891,7 +50954,8 @@ kTtaatTk
         }
         drawPins(ctx3, bk, ox, oy, t, reduced, cur) {
           const hits = [];
-          const order2 = LOCS.map((L2, i) => [L2, i]).sort((a, b) => bk.proj(a[0].pin[0] + M2, a[0].pin[1], a[0].pin[2] + M2)[1] - bk.proj(b[0].pin[0] + M2, b[0].pin[1], b[0].pin[2] + M2)[1]);
+          const rank = (L2) => (L2.id === this.hover ? 1e4 : L2.id === this.sel ? 5e3 : 0) + bk.proj(L2.pin[0] + M2, L2.pin[1], L2.pin[2] + M2)[1];
+          const order2 = LOCS.map((L2, i) => [L2, i]).sort((a, b) => rank(a[0]) - rank(b[0]));
           for (const [L2, i] of order2) {
             const open = this.unlocked(L2.id), isH = this.hover === L2.id, isS = this.sel === L2.id;
             const [px3, py] = bk.proj(L2.pin[0] + M2, L2.pin[1], L2.pin[2] + M2);
@@ -51069,7 +51133,8 @@ kTtaatTk
           ctx3.fillRect(x, y, w, 1);
           y += 6;
           if (open) {
-            wrapText(L2.desc, w).slice(0, 5).forEach((l, i) => drawText(ctx3, l, x, y + i * 10, { color: INK_L }));
+            wrapText(L2.desc, w).slice(0, 4).forEach((l, i) => drawText(ctx3, l, x, y + i * 10, { color: INK_L }));
+            y += Math.min(4, wrapText(L2.desc, w).length) * 10 + 4;
           } else {
             drawText(ctx3, "TO SAIL HERE YOU NEED:", x, y, { font: "small", color: RED });
             y += 9;
@@ -51080,13 +51145,50 @@ kTtaatTk
               lines.slice(0, 2).forEach((l, i) => drawText(ctx3, l, x + 13, y + 1 + i * 9, { color: q.ok ? "#3a6a2a" : INK3 }));
               y += 9 * Math.min(2, lines.length) + 3;
             }
-            drawText(ctx3, "Unlock it in the Skill Tree.", x, y + 2, { font: "small", color: INK_L });
+            drawText(ctx3, "UNLOCK IT IN THE SKILL TREE", x, y + 1, { font: "small", color: INK_L });
+            y += 10;
           }
           const bw = w, bh = 24, bx = x, by = rc.y + rc.h - bh - 9;
+          const rowH = 15, listH = LOCS.length * rowH + 12;
+          const ly = by - listH - 6;
+          if (ly > y + 4) {
+            ctx3.fillStyle = rgba(INK_L, 0.4);
+            ctx3.fillRect(x, ly, w, 1);
+            drawText(ctx3, "DESTINATIONS", x, ly + 4, { font: "small", color: INK_L });
+            LOCS.forEach((D, i) => {
+              const ry = ly + 12 + i * rowH, rr2 = { x: x - 2, y: ry - 1, w: w + 4, h: rowH - 1 };
+              const isOpen = this.unlocked(D.id), isSel = this.sel === D.id, isHere = D.id === this.current();
+              const hv = !this.sail && ui.hover(rr2);
+              if (hv) {
+                this.listHover = D.id;
+                ui.tip = null;
+              }
+              if (isSel || hv) {
+                ctx3.fillStyle = rgba(isSel ? D.color : "#ffffff", isSel ? 0.28 : 0.35);
+                ctx3.fillRect(rr2.x, rr2.y, rr2.w, rr2.h);
+              }
+              if (isOpen) {
+                ctx3.fillStyle = shade(D.color, -0.45);
+                ctx3.fillRect(x + 1, ry + 2, 7, 7);
+                ctx3.fillStyle = D.color;
+                ctx3.fillRect(x + 2, ry + 3, 5, 5);
+                ctx3.fillStyle = mix(D.color, "#ffffff", 0.6);
+                ctx3.fillRect(x + 3, ry + 4, 2, 1);
+              } else ctx3.drawImage(getUiIcon("lock"), x, ry + 1);
+              drawText(ctx3, D.name, x + 12, ry + 2, { color: isOpen ? INK3 : "#9a8a74" });
+              const right = isHere ? "HERE" : `${formatCommas(D.depth)} M`;
+              drawText(ctx3, right, x + w, ry + 3, { font: "small", align: "right", color: isHere ? RED : INK_L });
+              if (hv && g.input.pressed) {
+                g.input.pressed = false;
+                this.select(D.id);
+                if (g.input.dblclick) this.trySail(D, true);
+              }
+            });
+          }
           if (this.sail) {
             drawButton(ctx3, bx, by, bw, bh, { label: "Sailing...", icon: getUiIcon("map"), state: "down", style: "wood" });
           } else if (here) {
-            drawText(ctx3, "YOU ARE HERE", bx + bw / 2, by + 8, { align: "center", color: RED });
+            drawButton(ctx3, bx, by, bw, bh, { label: "You are here", icon: getUiIcon("home"), state: "disabled", style: "wood" });
           } else if (open) {
             if (ui.button(ctx3, bx, by, bw, bh, `Sail to ${L2.name.replace("The ", "")}`, { icon: "map", style: "wood", sound: "travel_whoosh", tip: `Travel to ${L2.name}` })) {
               this.sel = L2.id;
@@ -53520,7 +53622,7 @@ kTtaatTk
     const ord = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4 };
     return out2.filter((c) => c.price !== 0).sort((a, b) => (a.price == null) - (b.price == null) || (a.price ?? 0) - (b.price ?? 0) || (ord[a.rarity] ?? 0) - (ord[b.rarity] ?? 0));
   }
-  function buildBloat(inf, br) {
+  function buildBloat(inf, br, vs = BLOAT_VS) {
     const k = 1 + inf * 0.36;
     const RX = 31 * k + br * 0.5, RY = 27 * k + br * 0.8, RZ = 26 * k + br * 0.5;
     const SL = 1.1 + inf * 7.5;
@@ -53654,7 +53756,7 @@ kTtaatTk
         }
       }
     }
-    const r = renderVoxels(m, { scale: BLOAT_VS, yaw: 7, pitch: 13 });
+    const r = renderVoxels(m, { scale: vs, yaw: 7, pitch: 13 });
     const P5 = (x, y, z) => {
       const p = r.project(x, y, z);
       return [Math.round(p[0]), Math.round(p[1])];
@@ -53675,6 +53777,11 @@ kTtaatTk
       chain: P5(cx - RX * 0.32, cy - RY * 0.5, cz + RZ * 0.95)
     };
     return { canvas: r.canvas, a, w: r.w, h: r.h };
+  }
+  function bloatMini(i) {
+    i = Math.max(0, Math.min(2, i | 0));
+    if (!miniBloat[i]) miniBloat[i] = buildBloat(0, i / 2, 0.62);
+    return miniBloat[i];
   }
   function glowSprite3(r, color, strength = 1) {
     return memo2(`glow|${r}|${color}|${strength}`, () => {
@@ -54026,7 +54133,7 @@ kTtaatTk
     const size = ["", "A small touch", "A handsome centrepiece", "A grand landmark"][d.size] || "A decoration";
     return `${size} for your aquarium. ${where} Fish love to explore it.`;
   }
-  var pick4, rnd, VOICE, LINES3, BAIT_QUIP, BAIT_FX, TIPS, STOCK, DECOR_SCALE, TABS2, BIOME_NAMES2, JAR_GLOW, cache10, prettify, SPOTS, SPIKES, BLOAT_VS, BAIT_FRAMES, ShopPanel;
+  var pick4, rnd, VOICE, LINES3, BAIT_QUIP, BAIT_FX, TIPS, STOCK, DECOR_SCALE, TABS2, BIOME_NAMES2, JAR_GLOW, cache10, prettify, SPOTS, SPIKES, BLOAT_VS, miniBloat, BAIT_FRAMES, ShopPanel;
   var init_shop = __esm({
     "src/ui/shop.js"() {
       init_math();
@@ -54130,6 +54237,7 @@ kTtaatTk
         SPIKES.push([Math.cos(a) * r, y, Math.sin(a) * r]);
       }
       BLOAT_VS = 2.7;
+      miniBloat = [];
       BAIT_FRAMES = 16;
       ShopPanel = class {
         constructor() {
@@ -58354,13 +58462,16 @@ kTtaatTk
           const shown = this.drop ? this.drop.tier : this.sel;
           const spr2 = boatSprite2(shown, 1);
           const bx = S6.x + 282, bob = Math.sin(t * 1.6) * 1.5;
-          let by = S6.y + WATER_Y + bob, hookY = S6.y + 120 + Math.sin(t * 1.3) * 3, rope = true;
+          const restHook = S6.y + 120 + Math.sin(t * 1.3) * 3;
+          let by = S6.y + WATER_Y + bob, hookY = restHook, slings = false;
           if (this.drop) {
             const d = this.drop;
             d.t += dt;
             const k = clamp01(d.t / 1.6);
-            by = lerp(S6.y + 110, S6.y + WATER_Y, ease.inCubic(k)) + (k >= 1 ? Math.sin((d.t - 1.6) * 9) * Math.max(0, 3 - (d.t - 1.6) * 3) : 0);
-            hookY = by - spr2.oy + 6;
+            by = lerp(S6.y + 130, S6.y + WATER_Y, ease.inCubic(k)) + (k >= 1 ? Math.sin((d.t - 1.6) * 9) * Math.max(0, 3 - (d.t - 1.6) * 3) : 0);
+            const lowHook = by - spr2.oy - 8;
+            hookY = k < 1 ? lowHook : lerp(lowHook, restHook, ease.inOutCubic(clamp01((d.t - 1.7) / 1.1)));
+            slings = k < 1;
             if (k >= 1 && !d.splashed) {
               d.splashed = true;
               g.audio.play("splash_big");
@@ -58369,39 +58480,49 @@ kTtaatTk
               g.audio.play("ui_unlock");
             }
             if (d.t > 3) this.drop = null;
-            rope = k < 1.02;
           }
           const hx = bx;
           ctx3.fillStyle = "#3a3448";
           ctx3.fillRect(Math.round(hx) - 5, S6.y + 64, 10, 5);
-          if (rope) {
+          ctx3.fillStyle = "#2a2a3a";
+          ctx3.fillRect(Math.round(hx), S6.y + 69, 1, Math.max(0, Math.round(hookY - S6.y - 69)));
+          ctx3.fillStyle = "#7a849c";
+          ctx3.fillRect(Math.round(hx) - 2, Math.round(hookY), 5, 3);
+          ctx3.fillRect(Math.round(hx) + 1, Math.round(hookY) + 3, 2, 3);
+          if (slings) {
             ctx3.fillStyle = "#2a2a3a";
-            ctx3.fillRect(Math.round(hx), S6.y + 69, 1, Math.max(0, Math.round(hookY - S6.y - 69)));
-            ctx3.fillStyle = "#7a849c";
-            ctx3.fillRect(Math.round(hx) - 2, Math.round(hookY), 5, 3);
-            ctx3.fillRect(Math.round(hx) + 1, Math.round(hookY) + 3, 2, 3);
+            const deck = Math.round(by - 16);
+            for (const ex of [-44, 44]) for (let i = 0; i < 24; i++) ctx3.fillRect(Math.round(hx + ex * i / 24), Math.round(hookY + 5 + (deck - hookY - 5) * i / 24), 1, 1);
           }
-          if (this.drop && rope) {
-            ctx3.fillStyle = "#2a2a3a";
-            const top = Math.round(by - spr2.oy + 8);
-            for (const ex of [-40, 40]) {
-              for (let i = 0; i < 12; i++) ctx3.fillRect(Math.round(hx + ex * i / 12), Math.round(hookY + 4 + (top - hookY - 4) * i / 12), 1, 1);
-            }
-          }
-          ctx3.drawImage(spr2.canvas, Math.round(bx - spr2.ox), Math.round(by - spr2.oy));
-          ctx3.fillStyle = "rgba(42,106,176,0.55)";
-          ctx3.fillRect(Math.round(bx - spr2.ox), S6.y + WATER_Y + 2, spr2.w, S6.h);
-          this.drawWaves(ctx3, S6, t, 1, bx - spr2.ox, spr2.w);
+          const sx = Math.round(bx - spr2.ox), sy = Math.round(by - spr2.oy), wl = S6.y + WATER_Y + 2;
+          ctx3.save();
+          ctx3.beginPath();
+          ctx3.rect(sx, sy, spr2.w, Math.max(0, wl - sy));
+          ctx3.clip();
+          ctx3.drawImage(spr2.canvas, sx, sy);
+          ctx3.restore();
+          ctx3.save();
+          ctx3.beginPath();
+          ctx3.rect(sx, wl, spr2.w, spr2.h);
+          ctx3.clip();
+          ctx3.globalAlpha = 0.38;
+          ctx3.drawImage(spr2.canvas, sx, sy);
+          ctx3.restore();
+          this.drawWaves(ctx3, S6, t, 1, sx - 6, spr2.w + 12);
           const owned = shown <= cur;
           const tag = this.drop ? "NEW!" : shown === cur ? "IN USE" : owned ? "OWNED" : "FOR SALE";
           const tw = measureText(tag, "small") + 8;
-          const tx = Math.round(bx - tw / 2), ty = S6.y + 152 + Math.round(Math.sin(t * 2) * 2);
-          ctx3.fillStyle = "#1a1226";
-          ctx3.fillRect(tx - 1, ty - 1, tw + 2, 11);
-          ctx3.fillStyle = shown === cur ? "#3ad040" : owned ? "#8a96a8" : "#ffd23a";
-          ctx3.fillRect(tx, ty, tw, 9);
-          drawText(ctx3, tag, tx + 4, ty + 2, { font: "small", color: "#1a1226" });
-          if (!owned && !this.drop) drawText(ctx3, `{coin} ${formatCommas(BOAT_TIERS[shown].price)}`, bx, ty + 13, { align: "center", color: "#fff3dc", outline: "#1a1226" });
+          const price = !owned && !this.drop ? `{coin} ${formatCommas(BOAT_TIERS[shown].price)}` : "";
+          const pw2 = price ? measureText(price) + 6 : 0;
+          const tx = Math.round(bx - (tw + pw2) / 2), ty = Math.round(Math.min(S6.y + 160, by - spr2.oy - 14) + Math.sin(t * 2) * 2);
+          if (!this.drop || this.drop.t > 1.6) {
+            ctx3.fillStyle = "#1a1226";
+            ctx3.fillRect(tx - 1, ty - 1, tw + 2, 11);
+            ctx3.fillStyle = shown === cur ? "#3ad040" : owned ? "#8a96a8" : "#ffd23a";
+            ctx3.fillRect(tx, ty, tw, 9);
+            drawText(ctx3, tag, tx + 4, ty + 2, { font: "small", color: "#1a1226" });
+            if (price) drawText(ctx3, price, tx + tw + 6, ty + 1, { color: "#fff3dc", outline: "#1a1226" });
+          }
           const talking = this.lineT < this.talk;
           const frame2 = talking && Math.floor(t * 8) % 2 ? 2 : Math.floor(t * 0.7) % 7 === 0 && t % 1.43 < 0.15 ? 1 : 0;
           const wsp = walrusSprite(frame2);
@@ -58473,7 +58594,7 @@ kTtaatTk
           drawText(ctx3, "FLEET CATALOGUE", P5.x + P5.w / 2, P5.y + 7, { align: "center", color: "#5a2a10" });
           ctx3.fillStyle = "#c8ac80";
           ctx3.fillRect(P5.x + 10, P5.y + 17, P5.w - 20, 1);
-          const rowH = 36;
+          const rowH = 32;
           BOAT_TIERS.forEach((b, i) => {
             const y2 = P5.y + 21 + i * rowH;
             const rr2 = { x: P5.x + 4, y: y2, w: P5.w - 8, h: rowH - 2 };
@@ -58491,10 +58612,10 @@ kTtaatTk
               if (i <= cur) this.say(pick5(LINES4.owned));
             }
             const th = boatSprite2(i, 0.3);
-            ctx3.drawImage(th.canvas, Math.round(rr2.x + 30 - th.ox), Math.round(y2 + 26 - th.oy));
+            ctx3.drawImage(th.canvas, Math.round(rr2.x + 30 - th.ox), Math.round(y2 + 24 - th.oy));
             ctx3.fillStyle = "rgba(42,106,176,0.35)";
-            ctx3.fillRect(rr2.x + 30 - th.ox, y2 + 26, th.w, 6);
-            drawText(ctx3, b.name, rr2.x + 62, y2 + 6, { color: "#2e1f1c" });
+            ctx3.fillRect(rr2.x + 30 - th.ox, y2 + 24, th.w, 5);
+            drawText(ctx3, b.name, rr2.x + 62, y2 + 5, { color: "#2e1f1c" });
             let status, color;
             if (i === cur) {
               status = "IN USE";
@@ -58509,15 +58630,15 @@ kTtaatTk
               status = `{lock} ${formatCommas(b.price)}`;
               color = "#9a8a7a";
             }
-            drawText(ctx3, status, rr2.x + 62, y2 + 18, { color, font: i > cur ? "normal" : "small" });
-            if (i === cur) ctx3.drawImage(getUiIcon("check"), rr2.x + rr2.w - 14, y2 + 6);
+            drawText(ctx3, status, rr2.x + 62, y2 + 17, { color, font: i > cur ? "normal" : "small" });
+            if (i === cur) ctx3.drawImage(getUiIcon("check"), rr2.x + rr2.w - 14, y2 + 5);
           });
           let y = P5.y + 21 + BOAT_TIERS.length * rowH + 2;
           ctx3.fillStyle = "#c8ac80";
           ctx3.fillRect(P5.x + 10, y - 2, P5.w - 20, 1);
           const sb = BOAT_TIERS[this.sel], cb = BOAT_TIERS[cur];
           wrapText(sb.desc, P5.w - 20).slice(0, 2).forEach((l, i) => drawText(ctx3, l, P5.x + 10, y + 2 + i * 10, { color: "#6b4f43" }));
-          y += 22;
+          y += 25;
           for (const [k, meta] of Object.entries(BOAT_PERKS)) {
             const v = sb.perks[k], c0 = cb.perks[k];
             const neutral = meta.kind === "mul" ? v === 1 : v === 0;
@@ -58532,7 +58653,7 @@ kTtaatTk
           const can = this.sel === cur + 1;
           const label3 = this.sel <= cur ? this.sel === cur ? "Your current boat" : "Already owned" : can ? `Buy for ${formatCommas(sb.price)}` : "Buy the one before";
           if (ui.button(ctx3, P5.x + 14, by, P5.w - 28, 22, label3, { icon: can ? "coin" : this.sel <= cur ? "check" : "lock", disabled: !can || !!this.drop, tip: can ? sb.desc : null })) this.buy(this.sel);
-          if (this.sel === cur && cur === BOAT_TIERS.length - 1) drawStamp(ctx3, P5.x + P5.w / 2, P5.y + 120, "FLEET COMPLETE", { color: "#2a8a2a", angle: -0.2 });
+          if (this.sel === cur && cur === BOAT_TIERS.length - 1) drawStamp(ctx3, P5.x + P5.w / 2 + 20, P5.y + 56, "FLEET COMPLETE", { color: "#2a8a2a", angle: -0.2 });
           void t;
         }
       };
@@ -59498,8 +59619,19 @@ kTtaatTk
     const th = lines.length * lh - (lh - (font === "small" ? 5 : 7));
     lines.forEach((l, i) => {
       const ty = y + Math.round((h - th) / 2) + i * lh + (down ? 1 : 0);
-      drawText(ctx3, l, x + w / 2, ty, { align: "center", color: disabled ? "#e8e8ec" : "#ffffff", font, outline: disabled ? null : GLOSS[col][0] });
+      if (disabled) drawText(ctx3, l, x + w / 2, ty, { align: "center", color: "#4a4a56", font, shadow: "#f4f4f8" });
+      else drawText(ctx3, l, x + w / 2, ty, { align: "center", color: "#ffffff", font, outline: GLOSS[col][0] });
     });
+  }
+  function drawArrow(ctx3, x, y, w, h, dir, color = "#000000") {
+    ctx3.fillStyle = color;
+    const cx = Math.floor(x + w / 2), cy = Math.floor(y + h / 2);
+    for (let i = 0; i < 3; i++) {
+      if (dir === "up") ctx3.fillRect(cx - i, cy - 1 + i, i * 2 + 1, 1);
+      else if (dir === "down") ctx3.fillRect(cx - i, cy + 1 - i, i * 2 + 1, 1);
+      else if (dir === "left") ctx3.fillRect(cx - 1 + i, cy - i, 1, i * 2 + 1);
+      else ctx3.fillRect(cx + 1 - i, cy - i, 1, i * 2 + 1);
+    }
   }
   function starTex(kind2) {
     return cached2("star|" + kind2, () => {
@@ -59602,19 +59734,20 @@ kTtaatTk
       const c = makeCanvas(tw + pad * 2 + scale, th + pad * 2 + scale);
       const g = ctxOf(c);
       const fill = makeCanvas(c.width, c.height), fg = ctxOf(fill);
-      drawText(fg, text, pad, pad, { scale, color: "#ffffff" });
-      fg.globalCompositeOperation = "source-in";
       for (let y = 0; y < c.height; y++) {
         const k = clamp((y - pad) / th, 0, 1);
-        const band = Math.round(k * 5) / 5;
-        fg.fillStyle = mix(top, bottom, band);
+        fg.fillStyle = mix(top, bottom, Math.round(k * 5) / 5);
         fg.fillRect(0, y, c.width, 1);
       }
       fg.fillStyle = "rgba(255,255,255,0.75)";
       fg.fillRect(0, pad + 1, c.width, Math.max(1, Math.floor(scale / 2)));
-      for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, 1], [1, -1], [-1, 1]]) drawText(g, text, pad + dx * Math.max(1, scale - 1), pad + dy * Math.max(1, scale - 1), { scale, color: outline });
-      drawText(g, text, pad + scale, pad + scale + 1, { scale, color: shadow });
-      for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) drawText(g, text, pad + dx * Math.max(1, scale - 1), pad + dy * Math.max(1, scale - 1), { scale, color: outline });
+      const mask = makeCanvas(c.width, c.height);
+      drawText(ctxOf(mask), text, pad, pad, { scale, color: "#ffffff" });
+      fg.globalCompositeOperation = "destination-in";
+      fg.drawImage(mask, 0, 0);
+      const o = Math.max(1, scale - 1);
+      drawText(g, text, pad + o + 1, pad + o + 2, { scale, color: shadow });
+      for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, 1], [1, -1], [-1, 1]]) drawText(g, text, pad + dx * o, pad + dy * o, { scale, color: outline });
       g.drawImage(fill, 0, 0);
       return c;
     });
@@ -59937,7 +60070,7 @@ kTtaatTk
     if (price) drawText(ctx3, `{coin} ${price}`, bx + bw / 2, y + 32, { color: broke ? "#c00000" : "#8a5a00", align: "center" });
     else if (Math.floor(t * 2) % 2 === 0) drawText(ctx3, "FREE!!", bx + bw / 2, y + 32, { color: "#e00000", align: "center" });
     const eta = L2.kb / S6.speed();
-    drawText(ctx3, `~${formatShortTime(eta).toUpperCase()} ON ${S6.isp().short.toUpperCase()}`, bx + bw / 2, y + 44, { font: "small", color: eta > 300 ? "#c00000" : GREY, align: "center" });
+    drawText(ctx3, `ETA ${formatShortTime(eta).toUpperCase()} ON ${S6.isp().short.toUpperCase()}`, bx + bw / 2, y + 44, { font: "small", color: eta > 300 ? "#c00000" : GREY, align: "center" });
     if (eta > 120) link(P5, "go faster?", bx + bw / 2 - 20, y + 53, () => navigate(P5.w, g, "isp"), { font: "small", url: pageUrl("isp") });
     if (hl) {
       const hand = getUiIcon("cursor_hand");
@@ -59951,9 +60084,9 @@ kTtaatTk
   }
   function header(P5, x, y, W8) {
     const { ctx: ctx3, t, g } = P5;
-    drawGrad(ctx3, x, y, W8, 46, ["#06064a", "#1a32b0", "#2a86e8", "#62dcff"]);
+    drawGrad(ctx3, x, y, W8, 50, ["#06064a", "#1a32b0", "#2a86e8", "#62dcff"]);
     for (let i = 0; i < 12; i++) {
-      const bx = x + Math.round(hash1(i, 4) * (W8 - 4)), by = y + 44 - (t * (8 + i % 4 * 3) + i * 11) % 44;
+      const bx = x + Math.round(hash1(i, 4) * (W8 - 4)), by = y + 48 - (t * (8 + i % 4 * 3) + i * 11) % 48;
       ctx3.fillStyle = "rgba(220,250,255,0.55)";
       ctx3.fillRect(bx, Math.round(by), 2, 2);
       ctx3.fillStyle = "rgba(255,255,255,0.8)";
@@ -59969,12 +60102,12 @@ kTtaatTk
     const logo = wordArt("AppSea", { scale: 3 });
     ctx3.drawImage(logo, x + 4, y + 2);
     drawBurst(ctx3, x + logo.width + 2, y + 5, "WOW!", t);
-    drawText(ctx3, "THE OCEAN'S #1 DOWNLOAD SITE!!!", x + 10, y + 33, { font: "small", color: "#ffffff", shadow: "#06064a", wave: 1, time: t });
+    drawText(ctx3, "THE OCEAN'S #1 DOWNLOAD SITE!!!", x + 10, y + 40, { font: "small", color: "#ffffff", shadow: "#06064a", wave: 1, time: t });
     const vx = x + W8 - 58;
     drawText(ctx3, "VISITORS:", vx, y + 6, { font: "small", color: "#bff0ff" });
     drawCounter(ctx3, vx - 1, y + 13, 1337e3 + Math.floor(Date.now() / 3e3) % 9e5, 8);
     if (Math.floor(t * 1.5) % 2 === 0 || P5.hot) link(P5, "GUESTBOOK", vx + 2, y + 27, () => g.toast?.('Guestbook entry #4,812: "nice site!!! - a fish"', "book"), { font: "small", color: "#ffff40", hot: "#ffffff", url: `http://${HOST}/guestbook.cgi` });
-    return y + 46;
+    return y + 50;
   }
   function marquee(P5, x, y, W8) {
     const { ctx: ctx3, t } = P5;
@@ -60113,13 +60246,13 @@ kTtaatTk
   }
   function welcome(P5, x, y, w) {
     const { ctx: ctx3, t } = P5;
-    box(ctx3, x, y, w, 52, "WELCOME!!!", { head: ["#8000a0", "#ff40c0"], border: "#8000a0", body: "#fffff0" });
+    box(ctx3, x, y, w, 64, "WELCOME!!!", { head: ["#8000a0", "#ff40c0"], border: "#8000a0", body: "#fffff0" });
     drawText(ctx3, "Welcome to AppSea!!!", x + 6, y + 15, { color: "#c000a0", wave: 1, time: t });
     const txt = "Every program here is 100% real and 100% bait. Download apps, drag them into your Bait Box and fish bite! Bigger files = hungrier fish.";
-    wrapText(txt, w - 60).forEach((l, i) => drawText(ctx3, l, x + 6, y + 26 + i * 9, { font: "small", color: TEXT }));
-    drawCrab(ctx3, x + w - 40, y + 30, t);
-    drawConstruction(ctx3, x + w - 54, y + 15, 50, t);
-    return y + 58;
+    wrapText(txt, w - 12, "small").forEach((l, i) => drawText(ctx3, l, x + 6, y + 26 + i * 8, { font: "small", color: TEXT }));
+    drawConstruction(ctx3, x + 1, y + 52, w - 2, t);
+    drawCrab(ctx3, x + 8 + Math.abs(t * 18 % ((w - 34) * 2) - (w - 34)), y + 43, t);
+    return y + 70;
   }
   function footer(P5, x, y, W8) {
     const { ctx: ctx3, t, g } = P5;
@@ -60154,7 +60287,7 @@ kTtaatTk
     const ids = avail.map((a) => a.id);
     const hl = P5.d.hl;
     const out2 = hl && CATALOG_BY_ID[hl] ? [hl, ...ids.filter((i) => i !== hl)] : ids;
-    if (!S6.st.installed.length && !S6.st.downloads.length && out2.includes("notes")) return ["notes", ...out2.filter((i) => i !== "notes")].slice(0, 3);
+    if (!S6.st.installed.length && out2.includes("notes") && hl !== "notes") return [...hl ? [hl] : [], "notes", ...out2.filter((i) => i !== "notes" && i !== hl)].slice(0, 3);
     return out2.slice(0, 3);
   }
   function mainHome(P5, x, y, w) {
@@ -60319,7 +60452,9 @@ kTtaatTk
       const br = { x: bx2, y: r.y + 2, w: 18, h: 11 };
       const hov = enabled && P5.hot2 && rectContains(br, P5.mx, P5.my);
       if (enabled) P5.chrome.push({ ...br, fn });
-      winButton(ctx3, br.x, br.y, br.w, br.h, label3, { hover: hov, disabled: !enabled, down: hov && g.input?.down, font: "small" });
+      const arrow = label3 === "<" ? "left" : label3 === ">" ? "right" : null;
+      winButton(ctx3, br.x, br.y, br.w, br.h, arrow ? "" : label3, { hover: hov, disabled: !enabled, down: hov && g.input?.down, font: "small" });
+      if (arrow) drawArrow(ctx3, br.x, br.y, br.w, br.h, arrow, enabled ? "#000000" : "#909090");
       return bx2 + 20;
     };
     let bx = r.x + 2;
@@ -60343,7 +60478,7 @@ kTtaatTk
     });
     bx = btn(bx, "H", true, () => navigate(w, g, "home"));
     drawText(ctx3, "Address", bx + 2, r.y + 4, { color: "#000000" });
-    const ax = bx + 36, aw = r.x + r.w - ax - 26;
+    const ax = bx + 40, aw = r.x + r.w - ax - 26;
     bevel(ctx3, ax, r.y + 2, aw, 11, { face: "#ffffff", inset: true, thin: true });
     ctx3.drawImage(getMiniIcon("browser"), ax + 1, r.y + 1, 11, 11);
     let url = pageUrl(d.page);
@@ -60380,8 +60515,10 @@ kTtaatTk
       ctx3.fillRect(xx, yy, 1, 1);
     }
     const up = { x, y: y0, w: SW2, h: SW2 }, dn = { x, y: y0 + h - SW2, w: SW2, h: SW2 };
-    winButton(ctx3, up.x, up.y, up.w, up.h, "^", { font: "small" });
-    winButton(ctx3, dn.x, dn.y, dn.w, dn.h, "v", { font: "small" });
+    winButton(ctx3, up.x, up.y, up.w, up.h, "", { font: "small" });
+    winButton(ctx3, dn.x, dn.y, dn.w, dn.h, "", { font: "small" });
+    drawArrow(ctx3, up.x, up.y, up.w, up.h, "up");
+    drawArrow(ctx3, dn.x, dn.y, dn.w, dn.h, "down");
     P5.chrome.push({ ...up, fn: () => {
       w.scroll = clamp(w.scroll - 24, 0, maxS);
     } });
@@ -64012,6 +64149,15 @@ kTtaatTk
           this.events = evs.map((name, i) => ({ name, at: n === 1 ? 0.5 : 0.28 + i * 0.52 / (n - 1), done: false }));
           this.event = null;
           this.eventCool = 0;
+          this.phases = this.events.map((e) => e.name).concat(this.finalNet ? ["net"] : []);
+          this.pi = 0;
+        }
+        // Compatibility with older test drivers: fight.phase.startTrick(kind), fight.phaseName.
+        get phase() {
+          return this;
+        }
+        get phaseName() {
+          return this.event ? this.event.name : "tension";
         }
         get surging() {
           return this.mode === "surge" || !!this.trick?.pulls;
@@ -64161,7 +64307,7 @@ kTtaatTk
           const counter = this.counter;
           const reelStat = 0.6 + 0.4 * (st.reelSpeed / 34);
           let reel = crankP * reelStat / this.reelSecs;
-          if (this.gentle && hold && crankP < 0.3) reel = Math.max(reel, 0.3 * reelStat / this.reelSecs);
+          if (hold && crankP < 0.3) reel = Math.max(reel, (this.gentle ? 0.35 : 0.22) * reelStat / this.reelSecs);
           if (surging) reel *= 0.25 + 0.75 * counter;
           if (hold) reel *= 1.3;
           if (this.tension > 0.95) reel *= 0.35;
@@ -64363,6 +64509,8 @@ kTtaatTk
         // ------------------------------------------------------------------ tricks
         startTrick(kind2) {
           const F = this.F, f = this.fish, p = this.power;
+          if (kind2 === "jump" && !this.canJump()) kind2 = "dash";
+          if (this.trick || this.event) return;
           const [sx, sy] = F.toScreen(f.x, f.y);
           const label3 = TRICK_TITLES[kind2];
           switch (kind2) {
@@ -64746,7 +64894,7 @@ kTtaatTk
     }
     const ty = Math.round(topH / 2);
     drawNamePlate(ctx3, F, 14, ty - 12);
-    drawStamina(ctx3, F, B2, W8 - 14, ty - 2);
+    drawStamina(ctx3, F, B2, W8 - (F.game.tutorial?.active ? 96 : 14), ty - 2);
     drawStatus(ctx3, F, B2, W8 / 2, ty - 6);
     const by = H8 - Math.round(botH / 2) - 2;
     const bw = Math.min(380, Math.round(W8 * 0.42));
@@ -65616,7 +65764,7 @@ kTtaatTk
               F.shake(4);
               F.sfx("splash_small");
               F.sfx("magic");
-              if (this.hasBoat) F.cam?.focus?.(hx, hy - 26, 1.85, 3);
+              if (this.hasBoat) F.focusCam(hx, hy - 26, 1.85, 3);
               break;
             }
             case "igotit": {
@@ -65657,7 +65805,7 @@ kTtaatTk
               f.feel("scared", 0.5);
               if (rng.chance(rdt * 20)) F.particles.bubbleTrail(f.x, f.y, 0, -80);
               if (this.surface !== null && rng.chance(rdt * 10)) F.particles.foam(f.x, this.surface, 1, { spread: 8 });
-              F.cam?.focus?.(f.x, f.y - 20, 1.6, 3);
+              if (this.hasBoat) F.focusCam(f.x, f.y - 20, 1.6, 3);
               if (this.st > 0.55) this.go("erupt");
               break;
             }
@@ -65683,7 +65831,7 @@ kTtaatTk
               if (rng.chance(rdt * 18)) F.particles.sparkle(f.x + rng.float(-10, 10) * f.scale, f.y + rng.float(-6, 6), "#ffffff");
               if (rng.chance(rdt * 8)) F.particles.stars(f.x, f.y, 1, { speed: [10, 30], g: 0 });
               const mxp = lerp(f.x, hx, 0.4), myp = lerp(f.y, hy, 0.4);
-              F.cam?.focus?.(mxp, myp - 10, this.hasBoat ? 1.35 : 1.15, 3.5);
+              if (this.hasBoat) F.focusCam(mxp, myp - 10, 1.35, 3.5);
               if (u >= 1) this.go("catch");
               break;
             }
@@ -65695,7 +65843,7 @@ kTtaatTk
               this.rays = Math.max(0, this.rays - rdt * 1.2);
               if (this.hasBoat) {
                 const [hx, hy] = this.hands();
-                F.cam?.focus?.(hx, hy - 26, 1.85, 3);
+                F.focusCam(hx, hy - 26, 1.85, 3);
               }
               if (this.st > 2.4) return "caught";
               break;
@@ -65746,7 +65894,7 @@ kTtaatTk
             F.shake(3);
           }
           F.cam?.slowmo?.(0.5, 0.7);
-          F.cam?.focus?.(fish.x, fish.y, 2.3, 4);
+          F.focusCam(fish.x, fish.y, 2.3, 4);
         }
         update(dt, rdt) {
           const F = this.F, f = this.fish, t = this.t += rdt;
@@ -65762,7 +65910,7 @@ kTtaatTk
             f.x += -this.dirAway * 30 * dt;
             f.vx = this.dirAway * 10;
             f.squash = 0.2;
-            F.cam?.focus?.(f.x, f.y, 2.3, 4);
+            F.focusCam(f.x, f.y, 2.3, 4);
           } else if (t < 1.55) {
             const [cxw] = F.toWorld(F.W / 2, F.H / 2);
             f.facing = cxw > f.x ? 1 : -1;
@@ -65778,7 +65926,7 @@ kTtaatTk
               F.sfx(f.sp?.sound || "blub", { pitch: 1.3 });
               f.say(rng.pick(["music", "heart", "anger", "sweat"]), 1.1);
             }
-            F.cam?.focus?.(f.x, f.y - 4, 2.4, 4);
+            F.focusCam(f.x, f.y - 4, 2.4, 4);
           } else {
             if (!this.zipped) {
               this.zipped = true;
@@ -66014,6 +66162,16 @@ kTtaatTk
           const b = this.boat;
           if (b) b.pose = this.poseHold ? this.poseHold.pose : pose;
         }
+        // Camera focus that never shows past the edges of a world without water above (desktop intro).
+        focusCam(x, y, zoom2, speed) {
+          const c = this.cam;
+          if (!c?.focus) return;
+          if (this.world.surfaceY === null || this.world.surfaceY === void 0) {
+            const top = c.scrollY ?? 0, half = this.H / (2 * zoom2);
+            y = clamp(y, top + half, top + this.H - half);
+          }
+          c.focus(x, y, zoom2, speed);
+        }
         scrollTo(y) {
           const c = this.cam;
           if (!c?.scrollTo) return;
@@ -66082,6 +66240,13 @@ kTtaatTk
             return { x: clamp(x, 30, w.W - 30), y: w.surfaceY + 14 + half };
           }
           return { x: clamp(f.x, 60, w.W - 60), y: this.viewTop() + 80 };
+        }
+        // Start the current species event now (debug / older test drivers).
+        startPhase() {
+          const B2 = this.battle;
+          if (!B2) return;
+          const name = B2.phases[B2.pi];
+          if (name && name !== "tension") B2.startEvent(name);
         }
         crankHint() {
           return this.battle ? this.battle.crankHint() : [this.input.x, this.input.y];
@@ -66364,7 +66529,7 @@ kTtaatTk
           this.splats = [];
           const cam = this.cam;
           const zoomIn = this.fightZoom() + 0.3;
-          cam?.focus?.(f.x, f.y, zoomIn, 6);
+          this.focusCam(f.x, f.y, zoomIn, 6);
           cam?.setLetterbox?.(true);
           cam?.slowmo?.(0.22, 0.55);
           cam?.flash?.("#ffffff", 0.35);
@@ -66407,8 +66572,8 @@ kTtaatTk
           if (B2.mode === "hookset") zoom2 += 0.3;
           if (B2.trick?.kind === "jump") zoom2 = 1.55;
           if (B2.mode === "surge" && B2.surgeMul > 1.5) zoom2 -= 0.15;
-          if (ev) this.cam?.focus?.(ev.x, ev.y, ev.zoom, 4);
-          else this.cam?.focus?.(f.x, f.y, zoom2, B2.mode === "hookset" ? 6 : 4);
+          if (ev) this.focusCam(ev.x, ev.y, ev.zoom, 4);
+          else this.focusCam(f.x, f.y, zoom2, B2.mode === "hookset" ? 6 : 4);
           if (!this.poseHold) {
             const pose = this.input.down ? "pull" : this.crank.active ? "reel" : "pull";
             if (pose !== this.pose) this.setPose(pose);
@@ -66861,6 +67026,7 @@ kTtaatTk
       init_desktop();
       init_font();
       init_wardrobe();
+      init_shop();
       PINCH_LOOK = {
         kind: "crab",
         mustache: true,
@@ -66876,7 +67042,7 @@ kTtaatTk
           this.t = 0;
           this.wiggle = {};
           this.items = [
-            { id: "shop", label: "Pinch's Bait Shop (S)", w: 74, action: () => game.command("shop") },
+            { id: "shop", label: "Cap'n Bloat's Bait Shop (S)", w: 74, action: () => game.command("shop") },
             { id: "skills", label: "Coral Skill Tree (K)", w: 34, action: () => game.command("skills") },
             { id: "journal", label: "Fish Journal (J)", w: 30, action: () => game.command("journal") },
             { id: "tank", label: "My Aquarium (click: window / A: full view)", w: 36, action: () => game.command("tankwindow") },
@@ -66940,7 +67106,15 @@ kTtaatTk
               const kp = p?.anchors?.keeper;
               const kx = kp ? sx + kp.x : cx - 4;
               const ky = kp ? sy + kp.y - 16 : base - 20;
-              drawFishRig(ctx3, this.pinch, { x: kx, y: ky, facing: -1, turn: -1, angle: 0, scale: 0.75, squash: Math.sin(t * 3) * 0.04, swimPhase: t * 0.6 % 1, tailPhase: 0, finPhase: t * 0.8 % 1, speed01: 0, inflate: 0, lookX: g.input.x, lookY: g.input.y, blink: t % 4 < 0.12 ? 1 : 0, emotion: hover ? "happy" : "neutral", mouth: talking ? Math.abs(Math.sin(t * 12)) * 0.7 : 0.05, time: t });
+              const bf = bloatMini(Math.floor((Math.sin(t * 2) * 0.5 + 0.5) * 2.99));
+              const bx = Math.round(kx - bf.a.c[0]), by = Math.round(ky - 5 - bf.a.c[1] - (talking ? Math.abs(Math.sin(t * 10)) : 0));
+              ctx3.drawImage(bf.canvas, bx, by);
+              const [mx, my] = [bx + bf.a.mouth[0] + 1, by + bf.a.mouth[1] + 1];
+              ctx3.fillStyle = "#7a4a2a";
+              ctx3.fillRect(mx, my, 6, 2);
+              ctx3.fillStyle = "#ff7a3a";
+              ctx3.fillRect(mx + 6, my, 1, 2);
+              if (Math.random() < 0.04) g.particles.bubble(mx + 7, my - 1, { size: 1, vy: -14, life: 1.6, layer: "fg" });
               if (p?.front) ctx3.drawImage(p.front, sx, sy);
               if (hover && Math.floor(t * 2) % 6 === 0 && !this.babbled) {
                 this.babbled = true;

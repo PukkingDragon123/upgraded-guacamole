@@ -309,6 +309,7 @@ export class VolcanoBiome extends Biome {
     }));
     this.bombs = [];
     this.ashTile = cloudTile(320, 140, '#3a3036', { seed: 4, alpha: 0.5, scale: 0.03, bias: 0.5, levels: 3 });
+    this.sulfTile = cloudTile(360, 180, '#c8c060', { seed: 12, alpha: 0.3, scale: 0.02, bias: 0.5, levels: 4 });
   }
 
   buildDepth() {
@@ -449,7 +450,7 @@ export class VolcanoBiome extends Biome {
       this.crackLights.push({ x: lx, y: ly, r: clamp(14 + Math.sqrt(n) * 3.2, 18, 64) * (1 - clamp01(z) * 0.4), n, a: clamp01(0.3 + n / 120) * (1 - D.fog(z) * 0.7), ph: hash2(k, 3, 7) * TAU });
     }
     this.crackLights.sort((a, b) => b.n - a.n);
-    this.crackLights.length = Math.min(this.crackLights.length, 22);
+    this.crackLights.length = Math.min(this.crackLights.length, 16);
     this.propLights = [];
     for (const q of D.items) {
       if (!q.p?.lights?.length || q.z > 1.2) continue;
@@ -457,7 +458,7 @@ export class VolcanoBiome extends Biome {
       this.propLights.push({ x: q.left + l.x, y: q.top + l.y, r: clamp(l.r * 0.9 + 10, 22, 70) * (0.6 + 0.4 * q.s), color: l.color, a: 1 - D.fog(q.z) * 0.75 });
     }
     this.propLights.sort((a, b) => b.r * b.a - a.r * a.a);
-    this.propLights.length = Math.min(this.propLights.length, 10);
+    this.propLights.length = Math.min(this.propLights.length, 8);
   }
 
   buildLayers() {
@@ -475,7 +476,7 @@ export class VolcanoBiome extends Biome {
     for (let i = 0; i < 9; i++) { const px0 = r.float(0.25, 0.75) * LW, tp = r.float(10, baseA - 110), w = r.float(6, 16); mA.poly([[px0 - w * 1.4, baseA], [px0 - w * 0.3, tp + 10], [px0, tp], [px0 + w * 0.4, tp + 14], [px0 + w * 1.5, baseA]]); }
     for (const side of [0, 1]) for (let x = 0; x < LW * 0.3; x++) { const xx = side ? LW - 1 - x : x; const tp = baseA - 260 + x * 0.6 + (fbm2(x * 0.03, side, 2, 3) - 0.5) * 60; for (let y = Math.max(0, Math.round(tp)); y < baseA; y++) mA.set(xx, y, 1); }
     this.falls = [];
-    for (const fxf of [0.12, 0.23, 0.8, 0.9]) {
+    for (const fxf of [0.34, 0.43, 0.59, 0.68]) {
       const fx = Math.round(fxf * LW);
       for (let y = 0; y < baseA; y++) if (mA.get(fx, y)) { this.falls.push({ x: fx - pad, y0: yA + y, y1: yA + baseA - 6, w: 2 + (fxf * 10 % 2 > 1 ? 1 : 0) }); break; }
     }
@@ -533,8 +534,8 @@ export class VolcanoBiome extends Biome {
     this.smoke = [];
     for (let i = 0; i < 16; i++) this.smoke.push({ k: i / 16, ph: r.float(0, TAU), s: r.float(0.7, 1.3) });
     this.puffS = [2, 3, 4, 5, 6, 7, 8, 9].map((rr) => paint(rr * 2 + 1, rr * 2 + 1, (x, y) => (Math.hypot(x - rr, y - rr) <= rr + 0.2 ? pack('#ffffff') : 0)));
-    this.puffY = this.puffS.map((c) => tinted(c, '#c8c050'));
-    this.puffK = this.puffS.map((c) => tinted(c, '#16100e'));
+    this.puffY = this.puffS.map((c) => tinted(c, '#b8b46a'));
+    this.puffK = this.puffS.map((c) => tinted(c, '#2a2220'));
   }
 
   // ------------------------------------------------------------------ update
@@ -656,6 +657,7 @@ export class VolcanoBiome extends Biome {
     for (const v of this.farVents) drawGlow(ctx, v.x + px0 * 1.4, v.y + py0 * 0.5, 5, '#ff7a2a', 0.35 + 0.25 * Math.sin(t * 2 + v.ph) + wx.magma * 0.3);
     ctx.globalCompositeOperation = 'source-over';
     this.paintBand(ctx, 2, px0 * 2, py0 * 0.6);
+    if (quality(env) >= 1) this.heatShimmer(ctx, px0 * 2, py0 * 0.6);
     ctx.drawImage(this.haze.tint(this.water, 1, 'h'), 0, this.hazeY);
     if (wx.sulfur > 0.05) { ctx.fillStyle = rgba('#6a6a2a', wx.sulfur * 0.18); ctx.fillRect(0, Math.max(y0, sy), W, y1 - Math.max(y0, sy)); }
   }
@@ -730,8 +732,12 @@ export class VolcanoBiome extends Biome {
     for (const f of this.falls) {
       const x = Math.round(f.x + dx);
       ctx.fillStyle = '#ff6a1a';
-      ctx.globalAlpha = 0.6;
-      ctx.fillRect(x, Math.round(f.y0 + dy), f.w, Math.round(f.y1 - f.y0));
+      const len = f.y1 - f.y0;
+      for (let y = 0; y < len; y += 3) {
+        const xo = Math.round(Math.sin((f.y0 + y) * 0.13 + f.x) * 1.2);
+        ctx.globalAlpha = 0.45 + 0.25 * Math.sin(y * 0.4 - t * 6);
+        ctx.fillRect(x + xo, Math.round(f.y0 + y + dy), f.w + 1, 3);
+      }
       ctx.fillStyle = '#ffd060';
       ctx.globalAlpha = 0.9;
       for (let k = 0; k < 5; k++) {
@@ -845,9 +851,9 @@ export class VolcanoBiome extends Biome {
       const k = (p.k + t * 0.06) % 1;
       const y = c.y - k * 130 * s;
       const x = c.x + Math.sin(t * 0.7 + p.ph + k * 4) * (2 + k * 12) * s + k * 20 * s;
-      const ri = clamp(Math.floor(k * 8 * p.s * s), 0, 7);
-      ctx.globalAlpha = (1 - k) * (0.45 + wx.sulfur * 0.3);
-      const spr = (p.k * 16) % 3 < 1 ? this.puffK[ri] : this.puffY[ri];
+      const ri = clamp(Math.floor((1 + k * 7) * p.s * s), 0, 7);
+      ctx.globalAlpha = (1 - k) * (1 - k) * (0.32 + wx.sulfur * 0.25);
+      const spr = (p.k * 16) % 4 < 1 ? this.puffK[ri] : this.puffY[ri];
       ctx.drawImage(spr, Math.round(x - spr.width / 2), Math.round(y - spr.height / 2));
     }
     ctx.globalAlpha = 1;
@@ -931,49 +937,42 @@ export class VolcanoBiome extends Biome {
       ctx.globalAlpha = 1;
     }
     ctx.globalCompositeOperation = 'source-over';
-    if (q >= 1) this.heatShimmer(ctx);
     if (wx.sulfur > 0.05) {
-      const pat = ctx.createPattern(this.ashTile, 'repeat');
+      const pat = ctx.createPattern(this.sulfTile, 'repeat');
       pat.setTransform(new DOMMatrix([1, 0, 0, 1, Math.round(t * 6), Math.round(Math.sin(t * 0.2) * 12)]));
-      ctx.globalAlpha = wx.sulfur * 0.3;
-      ctx.fillStyle = rgba('#a8a040', 1);
+      ctx.globalAlpha = wx.sulfur * 0.55;
+      ctx.fillStyle = pat;
+      ctx.fillRect(0, env.view ? env.view.y0 : 0, W, this.H + 400);
+      ctx.globalAlpha = wx.sulfur * 0.12;
+      ctx.fillStyle = '#a8a040';
       ctx.fillRect(0, env.view ? env.view.y0 : 0, W, this.H + 400);
       ctx.globalAlpha = 1;
     }
     if (this.flash > 0.02) { ctx.fillStyle = rgba('#ff7a3a', this.flash * 0.12); ctx.fillRect(0, env.view ? env.view.y0 : 0, W, this.H + 400); }
   }
 
-  // Heat shimmer: copy the finished pixels above each near/mid vent once, then lay them back in 2 px rows with a
-  // travelling sine x-offset.
-  heatShimmer(ctx) {
-    const m = ctx.getTransform(), t = this.t;
-    const cw = ctx.canvas.width, ch = ctx.canvas.height;
-    const list = this.vents.filter((v) => v.z < 0.8).map((v) => [v.x, v.y, 22 * v.s, 64 * v.s]);
-    if (this.secrets().volcano_plug) list.push([this.plug.x, this.plug.top, 14, 40]);
-    if (!this.shimmerL) this.shimmerL = makeLayer(64, 160);
-    const L = this.shimmerL;
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    for (const [wx0, wy0, hw, hh] of list) {
-      const sx = Math.round(m.a * (wx0 - hw) + m.e), sy = Math.round(m.d * (wy0 - hh) + m.f);
-      const w = Math.min(64, Math.round(hw * 2 * m.a)), h = Math.min(160, Math.round(hh * m.d));
-      if (sx < 2 || sy < 0 || sx + w > cw - 2 || sy + h > ch || w < 4 || h < 4) continue;
-      L.ctx.clearRect(0, 0, w, h);
-      L.ctx.drawImage(ctx.canvas, sx, sy, w, h, 0, 0, w, h);
+  // Heat shimmer: the far band behind each near/mid vent is re-laid in 2 px rows with a travelling sine offset.
+  heatShimmer(ctx, dx, dy) {
+    const t = this.t, D = this.D, B = D.bands[2], src = this.bands.canvas(2, null);
+    const list = this.vents.filter((v) => v.z < 0.8).map((v) => [v.x, v.y, 22 * v.s, 70 * v.s]);
+    if (this.secrets().volcano_plug) list.push([this.plug.x, this.plug.top, 14, 44]);
+    for (const [x0, y0, hw, hh] of list) {
+      const sx = Math.round(x0 - hw), sy = Math.round(y0 - hh), w = Math.round(hw * 2), h = Math.round(hh);
       for (let r = 0; r < h; r += 2) {
-        const o = Math.round(Math.sin(t * 7 + (sy + r) * 0.35) * 1.4 * (0.4 + 0.6 * r / h));
-        if (o) ctx.drawImage(L.canvas, 0, r, w, 2, sx + o, sy + r, w, 2);
+        const yy = sy + r - B.y;
+        if (yy < 0 || yy + 2 > src.height) continue;
+        const o = Math.round(Math.sin(t * 7 + (sy + r) * 0.35) * 1.5 * (0.4 + 0.6 * r / h));
+        if (o) ctx.drawImage(src, sx + D.pad, yy, w, 2, Math.round(sx + dx + o), Math.round(sy + r + dy), w, 2);
       }
     }
-    ctx.restore();
   }
 
   // ------------------------------------------------------------------ lighting
   lighting(env) {
     const tod = todWeights(env), wx = this.wx, t = this.t;
-    let dark = 0.66 + tod.night * 0.12 - wx.magma * 0.08 + wx.sulfur * 0.06;
+    let dark = 0.6 + tod.night * 0.12 - wx.magma * 0.08 + wx.sulfur * 0.06;
     dark *= 1 - skyward(env, this.H) * 0.62;
-    const tint = qmix(qmix('#1c0c10', '#1e1c08', wx.sulfur * 0.6), '#2a0a06', wx.magma * 0.5);
+    const tint = qmix(qmix('#2a1014', '#24200a', wx.sulfur * 0.6), '#340c06', wx.magma * 0.5);
     const lights = [];
     const gk = 1 + wx.magma * 0.5 + wx.erupt * 0.25;
     for (const l of this.crackLights) lights.push({ x: l.x, y: l.y, r: l.r * (1 + wx.magma * 0.3), color: '#ff6a1a', a: clamp01(l.a * (0.75 + 0.25 * Math.sin(t * 1.3 + l.ph)) * gk) });
