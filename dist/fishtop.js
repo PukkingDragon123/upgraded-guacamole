@@ -5021,14 +5021,14 @@
     ctx2.drawImage(k, x0 - 4, ry - 1);
     ctx2.drawImage(k, x1 - 2, ry - 1);
     const B2 = getBobbers();
-    const spr = opts.hover || opts.down ? B2.hover : B2.normal;
+    const spr2 = opts.hover || opts.down ? B2.hover : B2.normal;
     const by = y + (opts.down ? 0 : opts.hover ? -2 : -1);
     if (opts.hover && !opts.down) {
       ctx2.fillStyle = rgba("#fff2b0", 0.35);
       ctx2.fillRect(kx - 5, ry + 6, 11, 1);
     }
-    ctx2.drawImage(spr, kx - Math.floor(spr.width / 2), by);
-    return { knob: { x: kx - 5, y: by, w: 11, h: spr.height }, x, y, w, h: SLIDER_H };
+    ctx2.drawImage(spr2, kx - Math.floor(spr2.width / 2), by);
+    return { knob: { x: kx - 5, y: by, w: 11, h: spr2.height }, x, y, w, h: SLIDER_H };
   }
   function shellFan(q, cx, cy, rx, ry, R, flip, inner) {
     const N = 8;
@@ -6802,8 +6802,8 @@
   }
   function stoneTex(m, idx, seed, freq = 0.12) {
     const set = new Set(idx);
-    const pick4 = patch(idx, freq, seed);
-    m.recolor((x, y, z, p) => set.has(p) ? pick4(x, y, z) : null);
+    const pick5 = patch(idx, freq, seed);
+    m.recolor((x, y, z, p) => set.has(p) ? pick5(x, y, z) : null);
     m.recolor((x, y, z, p) => set.has(p) && m.exposed(x, y, z) && h3(x, y, z, seed + 1) < 0.03 ? idx[2] : null);
   }
   function starfish(m, cx, cy, cz, R, col, dot2, rot2 = 0) {
@@ -10142,7 +10142,7 @@
         const lettuce = [m.color("#6ac040", { jitter: 0.05 }), m.color("#8ad860", { jitter: 0.05 })];
         const tomato = m.color("#e04030", { smooth: 0.5, jitter: 0.04 });
         const seed = m.color("#fff0c8", { jitter: 0 });
-        const pick4 = m.color("#d8b078", { jitter: 0 });
+        const pick5 = m.color("#d8b078", { jitter: 0 });
         const flag = m.color("#ff4a5a", { jitter: 0 });
         const cx = 25, cz = 25;
         lathe(m, cx, cz, 0, 6, (t) => 16 + Math.sin(t * Math.PI * 0.5) * 2, (x, y) => y < 2 ? bunD : bun);
@@ -10167,7 +10167,7 @@
           while (y < 18 && T.get(Math.floor(x), y + 1, Math.floor(z))) y++;
           T.set(x, y + 1, z, seed);
         }
-        T.line(20, 14, 20, 21, 25, 20, pick4, 0);
+        T.line(20, 14, 20, 21, 25, 20, pick5, 0);
         T.box(22, 21, 20, 26, 24, 20, flag);
         const lift = [0, 6, 11][frame2], tilt = [0, -6, -16][frame2];
         stampRot(m, T, [20, 0, 4], [cx, 18 + lift, cz - 16], tilt, 0, 0);
@@ -15170,21 +15170,67 @@
     for (let i = 0; i < W6 * H6; i++) D[i] = mask[i] ? Math.sqrt(g[i]) - 0.5 : -1;
     return D;
   }
-  function buildLayout(c, r, infl, pose, kf) {
-    const kind2 = isKind(c) ? c.kind : null;
-    if (c.kind === "chain") return buildChainLayout(c, r);
-    const ph = kind2 ? kf / KIND_N : 0;
-    const q = { sw: ph, angle: 0, scale: r, inflate: kind2 ? 0 : infl, still: true, pose };
-    const geo = rigGeom(c, q);
+  function resampleRaster(R, f) {
     const PAD = 2;
-    const GW = geo.w + PAD * 2, GH = geo.h + PAD * 2;
+    const sw = R.GW - 4, sh = R.GH - 4;
+    const tw = Math.max(1, Math.round(sw * f)), th = Math.max(1, Math.round(sh * f));
+    const GW = tw + 4, GH = th + 4;
+    const fx = sw / tw, fy = sh / th;
     const L2 = {};
-    for (const ly of rigLayers(c)) {
-      const lp = kind2 ? ph : ly.id === "tail" ? TAIL_NEUTRAL : 0;
-      const ras = rasterLayerVox(c, ly.id, { ph: lp, angle: 0, scale: r, inflate: kind2 ? 0 : infl, still: true, pose });
-      if (!ras.data) continue;
-      L2[ly.id] = place(ras, ras.x + PAD, ras.y + PAD, GW, GH);
+    const counts = /* @__PURE__ */ new Map();
+    for (const [id, ly] of Object.entries(R.L)) {
+      const col = new Uint32Array(GW * GH);
+      const glow = ly.glow ? new Uint8Array(GW * GH) : null;
+      for (let ty = 0; ty < th; ty++) {
+        const y0 = Math.floor(ty * fy), y1 = Math.max(y0 + 1, Math.floor((ty + 1) * fy));
+        for (let tx = 0; tx < tw; tx++) {
+          const x0 = Math.floor(tx * fx), x1 = Math.max(x0 + 1, Math.floor((tx + 1) * fx));
+          counts.clear();
+          let n = 0, tot = 0, gl = false, best = 0, bn = 0;
+          for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+            const i = (y + PAD) * R.GW + x + PAD;
+            tot++;
+            const p = ly.col[i];
+            if (!p) continue;
+            n++;
+            if (glow && ly.glow[i]) gl = true;
+            const k = counts.get(p) || 0;
+            counts.set(p, k + 1);
+            if (k + 1 > bn) {
+              bn = k + 1;
+              best = p;
+            }
+          }
+          if (!n || n < tot * 0.4) continue;
+          const o = (ty + PAD) * GW + tx + PAD;
+          col[o] = best;
+          if (gl) glow[o] = 1;
+        }
+      }
+      L2[id] = { col, glow };
     }
+    const geo = R.geo;
+    const sc = (v) => v * f;
+    return {
+      r: R.r * f,
+      GW,
+      GH,
+      PAD,
+      L: L2,
+      geo: {
+        w: tw,
+        h: th,
+        ox: sc(geo.ox),
+        oy: sc(geo.oy),
+        eyes: (geo.eyes || []).map((e) => ({ ...e, x: sc(e.x), y: sc(e.y), r: e.r * f })),
+        mouth: geo.mouth ? { ...geo.mouth, x: sc(geo.mouth.x), y: sc(geo.mouth.y), w: geo.mouth.w * f } : null,
+        anchors: Object.fromEntries(Object.entries(geo.anchors || {}).map(([k, v]) => [k, Array.isArray(v) ? [sc(v[0]), sc(v[1])] : v]))
+      }
+    };
+  }
+  function buildLayout(c, R, infl, kf) {
+    const kind2 = isKind(c) ? c.kind : null;
+    const { r, geo, PAD, GW, GH, L: L2 } = R;
     const N = GW * GH;
     const body = L2.body?.col || new Uint32Array(N);
     const mask = new Uint8Array(N);
@@ -15259,11 +15305,11 @@
     const eyeCol = new Uint32Array(N), eyeGlow = new Uint8Array(N);
     const eyes2 = [];
     for (const ev of geo.eyes || []) {
-      const R = Math.max(0.8, ev.r);
-      const hb = eyeBox(R);
+      const R2 = Math.max(0.8, ev.r);
+      const hb = eyeBox(R2);
       const buf = new PixelBuffer(hb * 2, hb * 2);
       const gb = ev.e.type === "glow" ? new PixelBuffer(hb * 2, hb * 2) : null;
-      voxAlbedo(() => paintEye(buf, gb, hb, hb, c, ev.e, { emotion: "neutral", blink: 0, lx: 0.2, ly: 0, gx: 0.15, gy: 0.5, time: 0, mirror: ev.mirror, cheek: false, main: ev.main, pupil: 1, dim: 0 }, 0, R));
+      voxAlbedo(() => paintEye(buf, gb, hb, hb, c, ev.e, { emotion: "neutral", blink: 0, lx: 0.2, ly: 0, gx: 0.15, gy: 0.5, time: 0, mirror: ev.mirror, cheek: false, main: ev.main, pupil: 1, dim: 0 }, 0, R2));
       const ox = Math.round(ev.x) - hb + PAD, oy = Math.round(ev.y) - hb + PAD;
       for (let y = 0; y < buf.h; y++) for (let x = 0; x < buf.w; x++) {
         const p = buf.data[y * buf.w + x];
@@ -15273,7 +15319,7 @@
         eyeCol[gy * GW + gx] = p | 4278190080;
         if (gb && gb.data[y * buf.w + x]) eyeGlow[gy * GW + gx] = 1;
       }
-      eyes2.push({ x: ev.x + PAD, y: ev.y + PAD, rv: R, rLook: R / r, e: ev.e, idx: ev.idx, mirror: ev.mirror, cheek: ev.cheek, main: ev.main });
+      eyes2.push({ x: ev.x + PAD, y: ev.y + PAD, rv: R2, rLook: R2 / r, e: ev.e, idx: ev.idx, mirror: ev.mirror, cheek: ev.cheek, main: ev.main });
     }
     const mouthCol = new Uint32Array(N);
     let mouth = null;
@@ -15760,6 +15806,20 @@
     }
     return outB;
   }
+  function glowCanvas(core, W6, H6, R) {
+    const c0 = toCanvas2(core, W6, H6);
+    const out = makeCanvas(W6, H6);
+    const g = ctxOf(out);
+    if ("filter" in g) {
+      g.filter = `blur(${Math.max(1, R * 0.7)}px)`;
+      g.drawImage(c0, 0, 0);
+      g.drawImage(c0, 0, 0);
+      g.filter = "none";
+      g.drawImage(c0, 0, 0);
+      return out;
+    }
+    return toCanvas2(glowHalo2(core, W6, H6, R), W6, H6);
+  }
   function toCanvas2(buf, W6, H6) {
     const c = makeCanvas(W6, H6);
     const g = ctxOf(c);
@@ -15772,7 +15832,25 @@
     map.delete(k);
     map.set(k, v);
   }
-  function layoutFor(c, rk, infl, pose, kf) {
+  function rasterFor(c, srcK, infl, pose, kf, deadline) {
+    const key = vidOf(c) + "|" + srcK + "|" + infl + "|" + (pose ? 1 : 0) + "|" + kf;
+    let R = rasters.get(key);
+    if (!R) {
+      R = new RasterJob(c, Math.pow(2, srcK / 2), infl / INFL_N, pose, kf);
+      rasters.set(key, R);
+      if (rasters.size > LAYOUT_MAX) rasters.delete(rasters.keys().next().value);
+    }
+    while (!R.done) {
+      if (now() >= deadline) return null;
+      const t0 = now();
+      R.step();
+      const dt = now() - t0;
+      spent += dt;
+      workTotal += dt;
+    }
+    return R;
+  }
+  function layoutFor(c, rk, infl, pose, kf, deadline) {
     const key = vidOf(c) + "|" + rk + "|" + infl + "|" + (pose ? 1 : 0) + "|" + kf;
     let L2 = layouts.get(key);
     if (L2) {
@@ -15780,7 +15858,13 @@
       return L2;
     }
     const t0 = now();
-    L2 = buildLayout(c, Math.pow(2, rk / 2), infl / INFL_N, pose, kf);
+    if (c.kind === "chain") L2 = buildChainLayout(c, Math.pow(2, rk / 2));
+    else {
+      const srcK = Math.max(rk, 0);
+      const R = rasterFor(c, srcK, infl, pose, kf, deadline);
+      if (!R) return null;
+      L2 = buildLayout(c, srcK === rk ? R : resampleRaster(R, Math.pow(2, (rk - srcK) / 2)), infl / INFL_N, kf);
+    }
     spent += now() - t0;
     workTotal += now() - t0;
     L2.key = key;
@@ -15791,7 +15875,7 @@
     }
     return L2;
   }
-  function gridFor(c, rk, infl, pose, sw) {
+  function gridFor(c, rk, infl, pose, sw, deadline) {
     const kind2 = isKind(c) || c.kind === "chain";
     const kf = kind2 && c.kind !== "chain" ? sw : 0;
     const lkey = vidOf(c) + "|" + rk + "|" + infl + "|" + (pose ? 1 : 0) + "|" + kf;
@@ -15801,7 +15885,8 @@
       touch(grids, gkey2, G2);
       return G2;
     }
-    const Lo = layoutFor(c, rk, infl, pose, kf);
+    const Lo = layoutFor(c, rk, infl, pose, kf, deadline);
+    if (!Lo) return null;
     const t0 = now();
     G2 = buildGrid(Lo, kind2 ? 0 : sw);
     spent += now() - t0;
@@ -15829,7 +15914,8 @@
       byCreature.get(f.vid)?.delete(k);
     }
   }
-  function makeFrame(job, meta) {
+  function makeFrame(job, meta, up = 1) {
+    const Sf = meta.Sb / up;
     const { cam, G: G2 } = job;
     const C = cam.project(G2.center);
     const ax = C[0], ay = C[1];
@@ -15847,18 +15933,19 @@
       ax,
       ay,
       s: job.s,
-      Sb: meta.Sb,
+      Sb: Sf,
+      up,
       vid: meta.vid,
       yaw: meta.yawI * YAW_STEP,
       pitch: meta.pitchI * (G2.Lo.kind === "chain" ? CHAIN_PITCH_STEP : PITCH_STEP),
       r: G2.Lo.r,
       eyes: G2.eyes.map((e) => {
         const q = rel(e.p);
-        return { x: q[0], y: q[1], z: q[2], r: e.rLook * meta.Sb, e: e.e, idx: e.idx, mirror: e.mirror, cheek: e.cheek, main: e.main };
+        return { x: q[0], y: q[1], z: q[2], r: e.rLook * Sf, e: e.e, idx: e.idx, mirror: e.mirror, cheek: e.cheek, main: e.main };
       }),
       mouth: G2.mouth ? (() => {
         const q = rel(G2.mouth.p);
-        return { x: q[0], y: q[1], w: G2.mouth.wLook * meta.Sb, m: G2.mouth.m, front: G2.mouth.front };
+        return { x: q[0], y: q[1], w: G2.mouth.wLook * Sf, m: G2.mouth.m, front: G2.mouth.front };
       })() : null,
       anchors
     };
@@ -15869,9 +15956,12 @@
   function work(c, m, fkey, deadline) {
     let J2 = jobs.get(fkey);
     if (!J2) {
-      const G2 = gridFor(c, m.rk, m.infl, m.pose, m.sw);
+      const G2 = gridFor(c, m.rk, m.infl, m.pose, m.sw, deadline);
+      if (!G2) return null;
       const yaw = m.yawI * YAW_STEP, pitch = m.pitchI * (c.kind === "chain" ? CHAIN_PITCH_STEP : PITCH_STEP);
-      J2 = { job: new Job(G2, yaw, pitch, m.Sb / G2.Lo.r, { outline: true }), meta: m };
+      const s = m.Sb / G2.Lo.r;
+      const up = s > 2.6 ? Math.ceil(s / 2.2) : 1;
+      J2 = { job: new Job(G2, yaw, pitch, s / up, { outline: true }), meta: m, up };
       jobs.set(fkey, J2);
       statJobs++;
     }
@@ -15883,7 +15973,7 @@
     workTotal += dt;
     if (!done) return null;
     jobs.delete(fkey);
-    const fr = makeFrame(J2.job, m);
+    const fr = makeFrame(J2.job, m, J2.up);
     storeFrame(fkey, m, fr);
     statBuilt++;
     return fr;
@@ -16014,11 +16104,12 @@
   function benchVoxel(c, S6, yaw = 15, pitch = 0) {
     const Sb = bucketScale(scaleBucket(S6)), rk = resLevel(c, Sb);
     const t0 = now();
-    const Lo = buildLayout(c, Math.pow(2, rk / 2), 0, false, 0);
+    const Lo = layoutFor(c, rk, 0, false, 0, Infinity);
     const t1 = now();
     const G2 = buildGrid(Lo, 1);
     const t2 = now();
-    const job = new Job(G2, yaw, pitch, Sb / Lo.r, { outline: true });
+    const s = Sb / Lo.r, up = s > 2.6 ? Math.ceil(s / 2.2) : 1;
+    const job = new Job(G2, yaw, pitch, s / up, { outline: true });
     for (let y = 0; y < job.cam.H; y++) job.traceRow(y);
     const t3 = now();
     job.finish();
@@ -16098,7 +16189,7 @@
     ctx2.globalAlpha = 1;
     return a;
   }
-  var VP, SCALE_STEP, YAW_STEP, PITCH_STEP, PITCH_MAX, CHAIN_PITCH_STEP, CHAIN_PITCH_MAX, CAM_TILT, SWIM_N, KIND_N, INFL_N, MAX_VOX_LEN, FRAME_PX_MAX, GRID_BYTES_MAX, LAYOUT_MAX, TAIL_NEUTRAL, TAU2, DEG2, clamp2, clamp013, now, SHAPE_K, KIND_K, REVOLVE, budgetMs, spent, forceSpent, rafOn, lastReset, statBuilt, statFallback, statJobs, statPx, workTotal, FORCE_MS, WARM_MS, nextVid, vidOf, scaleBucket, bucketScale, Pal, KX, KY, KZ, KW, KN, FACET, FN, LIGHT, HALF, Job, layouts, grids, frames, jobs, byCreature, gridBytes, framePx, warmQ, warmed, wants, balls;
+  var VP, SCALE_STEP, YAW_STEP, PITCH_STEP, PITCH_MAX, CHAIN_PITCH_STEP, CHAIN_PITCH_MAX, CAM_TILT, SWIM_N, KIND_N, INFL_N, MAX_VOX_LEN, FRAME_PX_MAX, GRID_BYTES_MAX, LAYOUT_MAX, TAIL_NEUTRAL, TAU2, DEG2, clamp2, clamp013, now, SHAPE_K, KIND_K, REVOLVE, budgetMs, spent, forceSpent, rafOn, lastReset, statBuilt, statFallback, statJobs, statPx, workTotal, FORCE_MS, WARM_MS, nextVid, vidOf, scaleBucket, bucketScale, Pal, RasterJob, KX, KY, KZ, KW, KN, FACET, FN, LIGHT, HALF, Job, layouts, grids, frames, jobs, byCreature, gridBytes, rasters, framePx, warmQ, warmed, wants, balls;
   var init_voxelfish = __esm({
     "src/gfx/voxelfish.js"() {
       init_fishart();
@@ -16116,7 +16207,7 @@
       SWIM_N = 6;
       KIND_N = 6;
       INFL_N = 3;
-      MAX_VOX_LEN = 300;
+      MAX_VOX_LEN = 120;
       FRAME_PX_MAX = 16e6;
       GRID_BYTES_MAX = 64e6;
       LAYOUT_MAX = 260;
@@ -16171,6 +16262,34 @@
           this.ramps.push(null);
           this.map.set(key, i);
           return i;
+        }
+      };
+      RasterJob = class {
+        constructor(c, r, infl, pose, kf) {
+          this.c = c;
+          this.r = r;
+          this.infl = infl;
+          this.pose = pose;
+          this.kf = kf;
+          this.kind = isKind(c) ? c.kind : null;
+          this.ph = this.kind ? kf / KIND_N : 0;
+          this.geo = rigGeom(c, { sw: this.ph, angle: 0, scale: r, inflate: this.kind ? 0 : infl, still: true, pose });
+          this.PAD = 2;
+          this.GW = this.geo.w + 4;
+          this.GH = this.geo.h + 4;
+          this.L = {};
+          this.todo = rigLayers(c).map((ly) => ly.id);
+          this.done = false;
+        }
+        step() {
+          const id = this.todo.shift();
+          if (id) {
+            const lp = this.kind ? this.ph : id === "tail" ? TAIL_NEUTRAL : 0;
+            const ras = rasterLayerVox(this.c, id, { ph: lp, angle: 0, scale: this.r, inflate: this.kind ? 0 : this.infl, still: true, pose: this.pose });
+            if (ras.data) this.L[id] = place(ras, ras.x + this.PAD, ras.y + this.PAD, this.GW, this.GH);
+          }
+          if (!this.todo.length) this.done = true;
+          return this.done;
         }
       };
       KX = [];
@@ -16547,7 +16666,7 @@
             }
           }
           this.canvas = toCanvas2(out, W6, H6);
-          if (this.glow) this.glowCanvas = toCanvas2(glowHalo2(this.glow, W6, H6, this.glowR || 2), W6, H6);
+          if (this.glow) this.glowCanvas = glowCanvas(this.glow, W6, H6, this.glowR || 2);
           statPx += N;
           this.hk = this.hv = this.hg = null;
           this.depth = null;
@@ -16559,6 +16678,7 @@
       jobs = /* @__PURE__ */ new Map();
       byCreature = /* @__PURE__ */ new Map();
       gridBytes = 0;
+      rasters = /* @__PURE__ */ new Map();
       framePx = 0;
       warmQ = [];
       warmed = /* @__PURE__ */ new Set();
@@ -17405,9 +17525,9 @@
     const s = kit.sk;
     const shiny = s.shiny ? { spec: 1.4, specPow: 10 } : {};
     kit.c = {
-      skin: kit.col(s.skin, { smooth: 0.3, jitter: 0.05, edge: 0.5, ...shiny }),
-      skinD: kit.col(shade(s.skin, -0.12), { smooth: 0.3, jitter: 0.05, edge: 0.5, ...shiny }),
-      belly: kit.col(s.belly, { smooth: 0.3, jitter: 0.04, edge: 0.4, ...shiny }),
+      skin: kit.col(s.skin, { smooth: 0.7, jitter: 0.03, edge: 0.15, aoMul: 0.55, ...shiny }),
+      skinD: kit.col(shade(s.skin, -0.12), { smooth: 0.7, jitter: 0.03, edge: 0.15, aoMul: 0.55, ...shiny }),
+      belly: kit.col(s.belly, { smooth: 0.9, jitter: 0.02, edge: 0, aoMul: 0.4, ...shiny }),
       spot: kit.col(s.spot, { smooth: 0.5, jitter: 0.03 }),
       fin: kit.col(s.fin, { smooth: 0.2, jitter: 0.04 }),
       finD: kit.col(shade(s.fin, -0.32), { jitter: 0.03 }),
@@ -17419,8 +17539,8 @@
       mouthIn: kit.col("#4a1a34", { jitter: 0.02 }),
       tongue: kit.col("#ff6a8e", { smooth: 0.7, spec: 0.5 }),
       teeth: kit.col("#fffaf0", { jitter: 0.02, light: 0.3 }),
-      eyeL: kit.col("#f6faff", { smooth: 1, spec: 1.1, specPow: 10, jitter: 0, aoMul: 0.5, light: 0.45, eye: 1 }),
-      eyeR: kit.col("#f6faff", { smooth: 1, spec: 1.1, specPow: 10, jitter: 0, aoMul: 0.5, light: 0.45, eye: 2 }),
+      eyeL: kit.col("#f6faff", { smooth: 1, spec: 1.1, specPow: 10, jitter: 0, aoMul: 0.5, light: 0.45, edge: 0, ramp: EYE_RAMP, eye: 1 }),
+      eyeR: kit.col("#f6faff", { smooth: 1, spec: 1.1, specPow: 10, jitter: 0, aoMul: 0.5, light: 0.45, edge: 0, ramp: EYE_RAMP, eye: 2 }),
       nostril: kit.col(shade(s.skin, -0.6), { jitter: 0 }),
       // hands get their own entries so the 'hold' pose can redraw them in front of the fish
       hand: kit.col(s.skin, { smooth: 0.5, hand: 1, ...shiny }),
@@ -18480,7 +18600,11 @@
     const fam = `${kit.key}#${pose}#${yaw}#${vs}#${mx}`;
     const key = fam + "#" + fi;
     let fr = FRAMES2.get(key);
-    if (fr) return fr;
+    if (fr) {
+      FRAMES2.delete(key);
+      FRAMES2.set(key, fr);
+      return fr;
+    }
     const set = FAMS.get(fam);
     if (!force && overBudget3()) {
       if (set && set.size) {
@@ -18507,17 +18631,21 @@
       }
     }
     fr = buildFrame(kit, pose, fi, yaw, vs, mx);
+    fr.px = fr.canvas.width * fr.canvas.height * (fr.front ? 2 : 1) * (fr.glow ? 1.5 : 1);
+    framePx2 += fr.px;
     FRAMES2.set(key, fr);
     let s = set;
     if (!s) FAMS.set(fam, s = /* @__PURE__ */ new Set());
     s.add(fi);
     fr.fam = fam;
     fr.fi = fi;
-    if (FRAMES2.size > MAX_FRAMES) {
+    if (FRAMES2.size > MAX_FRAMES || framePx2 > MAX_PIXELS) {
       for (const [k, v] of FRAMES2) {
+        if (v === fr) continue;
         FRAMES2.delete(k);
+        framePx2 -= v.px;
         FAMS.get(v.fam)?.delete(v.fi);
-        if (FRAMES2.size <= MAX_FRAMES * 0.85) break;
+        if (FRAMES2.size <= MAX_FRAMES * 0.85 && framePx2 <= MAX_PIXELS * 0.85) break;
       }
     }
     return fr;
@@ -18574,13 +18702,17 @@
       for (let x = 0; x < 7; x++) if (row[x] === "#") g.fillRect(Math.round(ox + x * s), Math.round(oy + y * s), Math.ceil(s), Math.ceil(s));
     });
   }
-  function drawEyes(ctx2, fr, X, Y, o, look, t, dt, sx, ss) {
+  function drawEyes(ctx2, fr, X, Y, o, look, t, dtHint, sx, ss) {
     const id = o.id ?? "main";
     let st = EYES.get(id);
+    const tn = now3();
     if (!st) {
-      st = { px: X, py: Y, eyes: {}, blinkT: 0, nextBlink: 2 + Math.random() * 3, wander: [0, 0], wanderT: 0 };
+      st = { px: X, py: Y, eyes: {}, blinkT: 0, nextBlink: 2 + Math.random() * 3, wander: [0, 0], wanderT: 0, last: tn };
       EYES.set(id, st);
+      if (EYES.size > 300) EYES.delete(EYES.keys().next().value);
     }
+    const dt = dtHint ?? clamp((tn - st.last) / 1e3, 0, 0.05);
+    st.last = tn;
     const mvx = clamp((X - st.px) / Math.max(dt, 1e-3), -600, 600), mvy = clamp((Y - st.py) / Math.max(dt, 1e-3), -600, 600);
     const jump = Math.abs(X - st.px) > 40 || Math.abs(Y - st.py) > 40;
     st.px = X;
@@ -18712,9 +18844,6 @@
     const { yaw, mx } = yawFor(o);
     const fi = poseFrame(pose, t);
     const fr = getFrame(kit, pose, fi, yaw, vs, mx, false);
-    const n = now3();
-    const dt = clamp((n - (lastNow || n)) / 1e3, 0, 0.05);
-    lastNow = n;
     const X = Math.round(x - fr.fx), Y = Math.round(y - fr.fy);
     const sx = o.yaw != null ? -Math.sign(Math.sin(yaw * DEG4)) || 1 : (o.facing ?? 1) < 0 ? -1 : 1;
     if (o.shadow !== false && pose !== "sit") {
@@ -18735,7 +18864,7 @@
       ctx2.globalCompositeOperation = prev;
       ctx2.globalAlpha = pa;
     }
-    drawEyes(ctx2, fr, Math.round(x), Math.round(y), o, look, t, dt, sx, vs / BASE_VS);
+    drawEyes(ctx2, fr, Math.round(x), Math.round(y), o, look, t, null, sx, vs / BASE_VS);
     const A = fr.anchors;
     const ax = (a) => [Math.round(x + a[0]), Math.round(y + a[1])];
     if (pose === "hold" && o.fish?.compiled) {
@@ -18777,7 +18906,7 @@
     if (!force && overBudget3()) return null;
     const kit = kitFor(L2);
     const t0 = now3();
-    const vs = Math.max(0.75, Math.round(BASE_VS * size * 4) / 4);
+    const vs = Math.max(0.6, Math.round(BASE_VS * size * 20) / 20);
     let m, yaw = -28, pitch = 12;
     const slot = item.slot;
     if (slot === "rod") {
@@ -18814,7 +18943,7 @@
           items.push({ part: hat, W: mul(seat, Tr(-hat.pivot[0], -hat.pivot[1], -hat.pivot[2])) });
         }
         const { m: hm, gmin } = compose2(kit, { items }, 1);
-        const yw = slot === "acc" && item.value === "earring" ? 40 : -24;
+        const yw = slot === "acc" && item.value === "earring" ? 40 : slot === "mouth" || slot === "acc" && item.value === "mustache" ? -10 : slot === "eyes" ? -16 : -24;
         const r = renderVoxels(hm, { scale: vs, yaw: yw, pitch: 10, ao: 1.05, edges: 0.75, sideEdges: 0.55, jitter: 0.1, glowRadius: 2 });
         const proj = (w) => r.project(w[0] - gmin[0], w[1] - gmin[1], w[2] - gmin[2]);
         const Wh = items[0].W;
@@ -18840,7 +18969,9 @@
         }
         pv = { canvas: r.canvas, glow: r.glow, ox: r.w / 2, oy: r.h, w: r.w, h: r.h, eyes: eyes2, vs, p: P2({}) };
       } else {
-        const fr = getFrame(kit, "idle", 0, -30, vs, 1, true);
+        const L22 = { ...L2, hat: "none" };
+        const kit2 = kitFor(L22);
+        const fr = getFrame(kit2, "stand", 0, slot === "acc" && item.value === "backpack" ? 140 : -30, vs, 1, true);
         pv = { canvas: fr.canvas, glow: fr.glow, ox: fr.fx, oy: fr.fy, w: fr.canvas.width, h: fr.canvas.height, eyes: fr.eyes.map((e) => ({ ...e, x: e.x + fr.fx, y: e.y + fr.fy, cx: e.cx + fr.fx, cy: e.cy + fr.fy })), vs, p: fr.p };
       }
     }
@@ -18850,7 +18981,20 @@
     if (PREVIEWS.size > 400) PREVIEWS.delete(PREVIEWS.keys().next().value);
     return pv;
   }
-  var SKINS, OUTFITS, ACC_SPOT, it, pkg, skill, WARDROBE, WARDROBE_BY_ID, DEFAULT_CHARACTER, VALID, _a, lookKey, DEG4, I3, M, mv, mul, ap, add, sub, scl, dot, cross, norm, Tr, Ro, hsh, KITS, HEAD, snoutZ, HAT_SEAT, HAT_TILT, TORSO, ARM, LEG, ROD, HIP_Y, J, BASE_POSE, P2, S2, POSES, POSE_NAMES, BASE_VS, PITCH, FACE_YAW, YAW_STEP2, MAX_FRAMES, FRAMES2, FAMS, budgetMs3, spent3, windowStart2, statBuilt2, statFallback3, statMs, now3, PROF, vsFor, EYES, PUPIL, scratch3, sctx, lastNow, PREVIEWS;
+  function drawItemPreview(ctx2, pv, x, y, t = 0, id = "thumb") {
+    const X = Math.round(x - pv.ox), Y = Math.round(y - pv.oy);
+    ctx2.drawImage(pv.canvas, X, Y);
+    if (pv.glow) {
+      const g = ctx2.globalCompositeOperation;
+      ctx2.globalCompositeOperation = "lighter";
+      ctx2.globalAlpha = 0.5;
+      ctx2.drawImage(pv.glow, X, Y);
+      ctx2.globalAlpha = 1;
+      ctx2.globalCompositeOperation = g;
+    }
+    if (pv.eyes?.length) drawEyes(ctx2, { eyes: pv.eyes, p: pv.p, vs: pv.vs }, X, Y, { id }, pv.look, t, null, 1, 1);
+  }
+  var SKINS, OUTFITS, ACC_SPOT, WARDROBE_SLOTS, it, pkg, skill, WARDROBE, WARDROBE_BY_ID, DEFAULT_CHARACTER, VALID, _a, lookKey, DEG4, I3, M, mv, mul, ap, add, sub, scl, dot, cross, norm, Tr, Ro, hsh, EYE_RAMP, KITS, HEAD, snoutZ, HAT_SEAT, HAT_TILT, TORSO, ARM, LEG, ROD, HIP_Y, J, BASE_POSE, P2, S2, POSES, POSE_NAMES, BASE_VS, PITCH, FACE_YAW, YAW_STEP2, MAX_FRAMES, MAX_PIXELS, framePx2, FRAMES2, FAMS, budgetMs3, spent3, windowStart2, statBuilt2, statFallback3, statMs, now3, PROF, vsFor, EYES, PUPIL, scratch3, sctx, PREVIEWS;
   var init_character = __esm({
     "src/gfx/character.js"() {
       init_voxel();
@@ -18882,6 +19026,18 @@
         pajamas: { name: "Starry Pajamas", sleeve: "long", legs: "long", shirt: "#86b4f0", arm: "#86b4f0", pants: "#86b4f0" }
       };
       ACC_SPOT = { sunglasses: "eyes", monocle: "eyes", snorkel: "eyes", mustache: "mouth", bandana: "neck", bowtie: "neck", scarf: "neck", earring: "ear", backpack: "back" };
+      WARDROBE_SLOTS = [
+        { id: "skin", name: "Skin", desc: "Scales and fins" },
+        { id: "eyes", name: "Eyes", desc: "Peepers" },
+        { id: "mouth", name: "Mouth", desc: "Lips and grins" },
+        { id: "hat", name: "Hats", desc: "Headwear" },
+        { id: "outfit", name: "Outfits", desc: "Clothes" },
+        { id: "boots", name: "Boots", desc: "Footwear" },
+        { id: "gloves", name: "Gloves", desc: "Handwear" },
+        { id: "acc", name: "Extras", desc: "Accessories (mix & match)" },
+        { id: "rod", name: "Rods", desc: "Fishing rods" },
+        { id: "boat", name: "Boat", desc: "Boat paint" }
+      ];
       it = (slot, value, name, rarity, price, desc, extra = {}) => ({ id: slot + "_" + value, slot, value, name, rarity, price, desc, ...extra });
       pkg = { price: null, unlock: "package" };
       skill = (id) => ({ price: null, unlock: "skill", skill: id });
@@ -19011,11 +19167,12 @@
       Tr = (x, y, z) => M(I3, [x, y, z]);
       Ro = (r) => M(rot(r[0], r[1], r[2]));
       hsh = (x, y, z, s) => hash3(x, y, z, s);
+      EYE_RAMP = ["#7a7488", "#a8a6b8", "#ccccd8", "#ececf0", "#fafaf8", "#ffffff", "#ffffff"];
       KITS = /* @__PURE__ */ new Map();
       HEAD = { nx: 32, ny: 30, nz: 34, cx: 16, cz: 15, pivot: [16, 1, 15], eyeY: 16.4, eyeX: 6.3, eyeZ: 22.6 };
       snoutZ = (dx, y) => 21.6 + 5.1 * Math.sqrt(Math.max(0, 1 - (dx / 8.2) ** 2 - ((y - 7.6) / 5.9) ** 2));
-      HAT_SEAT = [16, 22.6, 13.8];
-      HAT_TILT = { bucket: -8, captain: -10, propeller: -6, cowboy: -9, crown: -6, chef: -6, viking: -4, cone: -10, souwester: 4, party: -14 };
+      HAT_SEAT = [16, 23.2, 13.6];
+      HAT_TILT = { bucket: -12, captain: -13, propeller: -6, cowboy: -12, crown: -6, chef: -8, viking: -5, cone: -10, souwester: -2, party: -14 };
       TORSO = { nx: 20, ny: 22, nz: 19, cx: 10, cz: 9, hy: 4 };
       ARM = { upper: 4.4, fore: 5.3 };
       LEG = { thigh: 5.5 };
@@ -19226,6 +19383,7 @@
             gaze: [0.4 * look, 0.1]
           });
         } },
+        stand: { n: 1, dur: 1, loop: true, fn: () => P2({ noRod: true, shL: [2, -10, 16], elL: [-12, 0, 0], shR: [2, 10, -16], elR: [-12, 0, 0], neck: [-3, 0, 0], gaze: [0.2, 0] }) },
         wave: { n: 8, dur: 0.9, loop: true, fn: (u) => {
           const w = S2(u * TAU), b = Math.abs(S2(u * TAU));
           return P2({
@@ -19241,12 +19399,14 @@
           });
         } }
       };
-      POSE_NAMES = Object.keys(POSES).filter((k) => k !== "show");
+      POSE_NAMES = Object.keys(POSES).filter((k) => k !== "show" && k !== "stand");
       BASE_VS = 1.4;
       PITCH = 14;
       FACE_YAW = 38;
       YAW_STEP2 = 10;
       MAX_FRAMES = 1400;
+      MAX_PIXELS = 9e6;
+      framePx2 = 0;
       FRAMES2 = /* @__PURE__ */ new Map();
       FAMS = /* @__PURE__ */ new Map();
       budgetMs3 = 9;
@@ -19262,7 +19422,6 @@
       PUPIL = "#1a1430";
       scratch3 = null;
       sctx = null;
-      lastNow = 0;
       PREVIEWS = /* @__PURE__ */ new Map();
     }
   });
@@ -19381,7 +19540,7 @@
           size: 1,
           desc: "A cosy house of science with a rooftop antenna. Enter to research blueprints, baits, upgrades and perks.",
           lore: "Home of Professor Bubbles, who once proved fish can count (to three).",
-          cost: { coins: 80, items: { driftwood: 6, kelp_fibre: 4, sea_glass: 2 } },
+          cost: { coins: 30, items: { driftwood: 6, kelp_fibre: 4, sea_glass: 2 } },
           action: "research",
           bonus: { researchSpeed: [0, 0.15, 0.3] },
           upgrades: [{ coins: 400, items: { driftwood: 8, gear: 3, sea_glass: 4 } }, { coins: 1400, items: { circuit_board: 3, ancient_stone: 3, pearl: 2 } }]
@@ -19572,8 +19731,8 @@
     cache5.set(key, s);
     return s;
   }
-  function packageParts(tier, scale = 1, frame2 = 0, force = true) {
-    const key = tier + "|" + scale + "|" + frame2;
+  function packageParts(tier, scale = 1, frame2 = 0, force = true, full = false) {
+    const key = tier + "|" + scale + "|" + frame2 + (full ? "|f" : "");
     let p = pkgCache.get(key);
     if (p) return p;
     if (!force && !canRender()) return null;
@@ -19582,12 +19741,12 @@
     built.set("pkgparts_" + tier, b);
     p = timed2(() => {
       const opts = { scale: 2 * scale, yaw: 30 + frame2 * 360 / SPIN, pitch: 26, glowRadius: 2 };
-      const full = renderVoxels(b.m, opts);
-      const body = renderVoxels(b.m, { ...opts, keepVoxel: (x, y) => y < b.lidY }).canvas;
-      const lid = renderVoxels(b.m, { ...opts, keepVoxel: (x, y) => y >= b.lidY }).canvas;
-      const top = full.project(b.m.nx / 2, b.m.ny, b.m.nz / 2);
-      const lidC = full.project(b.m.nx / 2, b.lidY + 2, b.m.nz / 2);
-      return { full: full.canvas, glow: full.glow, body, lid, ox: full.ox, oy: full.oy, w: full.w, h: full.h, top: [Math.round(top[0]), Math.round(top[1])], lidAt: [Math.round(lidC[0]), Math.round(lidC[1])] };
+      const R = renderVoxels(b.m, opts);
+      const body = full ? null : renderVoxels(b.m, { ...opts, keepVoxel: (x, y) => y < b.lidY }).canvas;
+      const lid = full ? null : renderVoxels(b.m, { ...opts, keepVoxel: (x, y) => y >= b.lidY }).canvas;
+      const top = R.project(b.m.nx / 2, b.m.ny, b.m.nz / 2);
+      const lidC = R.project(b.m.nx / 2, b.lidY + 2, b.m.nz / 2);
+      return { full: R.canvas, glow: R.glow, body, lid, ox: R.ox, oy: R.oy, w: R.w, h: R.h, top: [Math.round(top[0]), Math.round(top[1])], lidAt: [Math.round(lidC[0]), Math.round(lidC[1])] };
     });
     pkgCache.set(key, p);
     return p;
@@ -20083,7 +20242,10 @@
     if (!it2 || !it2.value) return 0;
     return Math.max(1, Math.round(it2.value * (1 + buildingBonus(state, "sellMul"))));
   }
-  function rollPackage(species, biome, luck = 0) {
+  function setPackageLuck(v) {
+    packageLuck = Number.isFinite(v) ? Math.max(0, v) : 0;
+  }
+  function rollPackage(species, biome, luck = packageLuck) {
     const r = species?.rarity || "common";
     const deep = biome === "abyss" ? 1.15 : biome === "junkyard" ? 1.05 : 1;
     if (!rng.chance((FISH_CHANCE[r] ?? 0.08) * deep * (1 + luck))) return null;
@@ -20151,8 +20313,8 @@
     }
   }
   function drawPackage(ctx2, x, y, tier, t = 0, opts = {}) {
-    const scale = opts.scale ?? 0.7;
-    const p = packageParts(TIERS[tier] ? tier : "crate", scale, 0, true);
+    const scale = Math.max(0.2, Math.round((opts.scale ?? 0.7) * 10) / 10);
+    const p = packageParts(TIERS[tier] ? tier : "crate", scale, 0, true, true);
     if (!p) return null;
     const rope = Math.round(opts.rope ?? 6 * scale + 3);
     const sw = opts.swing ?? Math.sin(t * 2.3) * 1.6;
@@ -20175,7 +20337,7 @@
     ctx2.drawImage(p.full, dx, dy);
     return { x: dx, y: dy, w: p.w, h: p.h };
   }
-  var ITEMS, MATS, MAT_VAL, MATERIAL_IDS, BP_VAL, COS_VAL, COSMETIC_IDS, TIERS, TIER_ORDER, FISH_CHANCE, FISH_TIERS;
+  var ITEMS, MATS, MAT_VAL, MATERIAL_IDS, BP_VAL, COS_VAL, COSMETIC_IDS, TIERS, TIER_ORDER, FISH_CHANCE, FISH_TIERS, packageLuck;
   var init_items = __esm({
     "src/build/items.js"() {
       init_rng();
@@ -20291,6 +20453,7 @@
         epic: [24, 40, 28, 8],
         legendary: [0, 30, 48, 22]
       };
+      packageLuck = 0;
     }
   });
 
@@ -26141,11 +26304,11 @@ are just virtual copies - Restore All Icons anytime.`;
             ctx2.fillStyle = rgba("#bfe8ff", this.selected === ic ? 0.28 : 0.16 * ic.hover);
             ctx2.fillRect(Math.round(x + 4), Math.round(y), ic.w - 8, ic.h - 2);
           }
-          const spr = getAppIcon(ic.icon, { size: ICON, state: ic.chewed > 0 ? "chewed" : ic.id === "trash" && this.game.trashFull ? "full" : void 0 });
+          const spr2 = getAppIcon(ic.icon, { size: ICON, state: ic.chewed > 0 ? "chewed" : ic.id === "trash" && this.game.trashFull ? "full" : void 0 });
           ctx2.globalAlpha = alpha * ic.alpha * 0.35;
-          ctx2.drawImage(spr, ix + 1, iy + 2);
+          ctx2.drawImage(spr2, ix + 1, iy + 2);
           ctx2.globalAlpha = alpha * ic.alpha;
-          ctx2.drawImage(spr, ix, iy);
+          ctx2.drawImage(spr2, ix, iy);
           const label3 = ic.label;
           const lw = measureText(label3);
           const lx = Math.round(x + ic.w / 2), ly = Math.round(y + ICON + 6 + bob);
@@ -27641,16 +27804,16 @@ are just virtual copies - Restore All Icons anytime.`;
     const s = T.s(egg.z);
     const k = clamp01(egg.t / egg.dur);
     const r = Math.max(1, Math.round((2.4 * vs * s + 0.4) * 2) / 2);
-    const spr = eggSprite(r, egg.color || "#ffd8a0");
+    const spr2 = eggSprite(r, egg.color || "#ffd8a0");
     const cx = T.sx(egg.X, egg.z), cy = T.sy(T.groundZ(egg.X, egg.z), egg.z);
     for (let i = 0; i < egg.n; i++) {
       const a = i * 2.4, rr2 = (i ? 1.6 + i % 3 * 0.7 : 0) * r;
       const wob = k > 0.82 ? Math.round(Math.sin(aq.t * 22 + i * 1.7) * (k > 0.95 ? 1.2 : 0.6)) : 0;
-      const x = Math.round(cx + Math.cos(a) * rr2 * 1.3 - spr.width / 2 + wob), y = Math.round(cy - r - Math.abs(Math.sin(a)) * rr2 * 0.5 - spr.height / 2 + 1);
-      ctx2.drawImage(spr, x, y);
+      const x = Math.round(cx + Math.cos(a) * rr2 * 1.3 - spr2.width / 2 + wob), y = Math.round(cy - r - Math.abs(Math.sin(a)) * rr2 * 0.5 - spr2.height / 2 + 1);
+      ctx2.drawImage(spr2, x, y);
       if (k > 0.35) {
         ctx2.fillStyle = "#1a1424";
-        const ex = x + Math.floor(spr.width / 2) + (i % 2 ? 0 : 1), ey = y + Math.floor(spr.height / 2);
+        const ex = x + Math.floor(spr2.width / 2) + (i % 2 ? 0 : 1), ey = y + Math.floor(spr2.height / 2);
         ctx2.fillRect(ex, ey, 1, 1);
         if (k > 0.6 && r >= 2) ctx2.fillRect(ex - 1, ey, 1, 1);
       }
@@ -27872,6 +28035,604 @@ are just virtual copies - Restore All Icons anytime.`;
     }
   });
 
+  // src/aquarium/decoranim.js
+  function specOf(d) {
+    if (d.spec === void 0) d.spec = propInteract(d.rec.id) || null;
+    return d.spec;
+  }
+  function queueDecorFrames(aq, d, scale, urgent = false) {
+    const s = specOf(d);
+    if (!s || s.frames < 2) return;
+    const order2 = [];
+    for (const f of s.idle || []) if (f && !order2.includes(f)) order2.push(f);
+    for (const f of s.seq) if (f && !order2.includes(f)) order2.push(f);
+    if (s.motion) {
+      for (const f of [s.motion.base, s.motion.part]) if (f && !order2.includes(f)) order2.push(f);
+    }
+    for (let f = 1; f < s.frames; f++) if (!order2.includes(f)) order2.push(f);
+    const have = d.frames?.get(scale);
+    for (const f of order2) if (!have?.[f]) aq.queueProp(d, scale, f, urgent);
+  }
+  function frameProp(d, scale, f) {
+    if (!f) return d.props.get(scale) || null;
+    return d.frames?.get(scale)?.[f] || null;
+  }
+  function currentFrame(aq, d) {
+    const a = d.anim;
+    if (a && a.seq.length) {
+      const i = Math.floor(a.t * a.fps);
+      if (i < a.seq.length) return a.seq[i];
+      if (a.loop) return a.seq[i % a.seq.length];
+    }
+    const s = d.spec;
+    if (s?.idle && !a) return s.idle[Math.floor((aq.t + (d.idlePh || 0)) * s.idleFps) % s.idle.length];
+    return 0;
+  }
+  function motionDy(a) {
+    const m = a?.motion;
+    if (!m || a.t < m.t0 || a.t > m.t1) return null;
+    const P5 = m.path;
+    for (let i = 0; i < P5.length - 1; i++) {
+      if (a.t <= P5[i + 1][0]) {
+        const k = (a.t - P5[i][0]) / Math.max(1e-3, P5[i + 1][0] - P5[i][0]);
+        const e = k * k * (3 - 2 * k);
+        return P5[i][1] + (P5[i + 1][1] - P5[i][1]) * e;
+      }
+    }
+    return P5[P5.length - 1][1];
+  }
+  function decorDrawState(aq, d, p, sc) {
+    const out = { p, part: null, dy: 0, sx: 1, sy: 1, ox: 0 };
+    const s = specOf(d);
+    if (!s) return out;
+    const a = d.anim;
+    if (sc === 1 && s.frames > 1) {
+      const scale = p.scale;
+      const dy = motionDy(a);
+      if (dy !== null) {
+        const base = frameProp(d, scale, a.motion.base), src = frameProp(d, scale, a.motion.part);
+        if (base && src?.part) {
+          out.p = base;
+          out.part = src.part;
+          out.dy = dy * scale;
+        } else queueDecorFrames(aq, d, scale, true);
+      } else {
+        const f = currentFrame(aq, d);
+        if (f) {
+          const fp = frameProp(d, scale, f);
+          if (fp) out.p = fp;
+          else if (a) queueDecorFrames(aq, d, scale, true);
+        }
+      }
+    }
+    if (d.squash > 0) {
+      const k = d.squash / 0.45, amt = (d.squashAmt || 0.1) * Math.sin((1 - k) * Math.PI * 3) * k;
+      out.sy = 1 - amt;
+      out.sx = 1 + amt * 0.6;
+    }
+    if (a && a.shake && a.t < a.shake) out.ox = Math.round(Math.sin(a.t * 70) * 1.2);
+    return out;
+  }
+  function anchorAt(aq, d, name, track = false) {
+    const T = aq.T;
+    const p = d.drawP || d.prop || [...d.props.values()][0];
+    const bx = T.sx(d.X, d.z), by = T.sy(T.groundZ(d.X, d.z), d.z);
+    if (!p) return { x: bx, y: by - 10, z: d.z };
+    const k = d.drawK || 1;
+    const a = p.anchors?.[name];
+    let x, y;
+    if (a) {
+      x = bx + (a.x - p.ox) * k;
+      y = by + (a.y - p.oy) * k;
+    } else if (name === "center") {
+      x = bx;
+      y = by + (p.h * 0.5 - p.oy) * k;
+    } else {
+      x = bx;
+      y = by + (4 - p.oy) * k;
+    }
+    if (track) y += motionDy(d.anim) * (p.scale || 1) || 0;
+    return { x, y, z: d.z };
+  }
+  function viewK(aq) {
+    const key = aq.view?.key;
+    return key === "full" ? 1 : key === "mini" ? 0.35 : 0.6;
+  }
+  function spawnFx(aq, d, fx) {
+    const P5 = aq.particles;
+    const k = viewK(aq), fs = aq.view.fishScale;
+    const { x, y } = anchorAt(aq, d, fx.from, fx.track);
+    const n = Math.max(1, Math.round((fx.n ?? 6) * (k < 1 ? k + 0.15 : 1)));
+    const sp = (v) => v * (0.45 + 0.55 * k);
+    const cols = fx.colors;
+    const icon = (name, vy = -18) => {
+      const ic = getUiIcon(name);
+      if (ic) for (let i = 0; i < n; i++) P5.sprite(x + rng.float(-8, 8) * k, y - rng.float(0, 6), ic, { vy: vy * (0.6 + 0.4 * k), vx: rng.float(-10, 10) * k, life: rng.float(1, 1.6) });
+    };
+    switch (fx.kind) {
+      case "bubbles":
+        P5.bubbles(x, y, n, { size: k < 0.5 ? 1 : rng.pick([1, 2, 2, 3]) });
+        break;
+      case "sparkle":
+        for (let i = 0; i < n; i++) P5.sparkle(x + rng.float(-14, 14) * k, y + rng.float(-10, 10) * k, cols ? rng.pick(cols) : "#fff6b0");
+        break;
+      case "stars":
+        for (let i = 0; i < n; i++) P5.sparkle(x + rng.float(-30, 30) * k, y - rng.float(0, 40) * k, rng.pick(cols || ["#fff6b0", "#ffffff", "#bfe8ff"]), { vy: -rng.float(2, 8), life: rng.float(0.8, 1.6) });
+        break;
+      case "burst":
+        P5.burst(x, y, n, { colors: cols || ["#ffffff"], speed: sp(60), g: 60, life: 0.9, up: sp(20) });
+        break;
+      case "confetti":
+        P5.burst(x, y, n, { colors: cols || RAINBOW, speed: sp(70), g: 26, drag: 1.4, life: 1.6, lifeMin: 0.8, up: sp(30), size: k < 0.6 ? 1 : rng.pick([1, 2]) });
+        break;
+      case "lava":
+        P5.burst(x, y, n, { colors: cols || ["#ff7a1a", "#ffd84a", "#ff4a2a", "#fff4b0"], speed: sp(70), g: 90, life: 1.1, up: sp(60), add: true, size: k < 0.6 ? 1 : 2 });
+        break;
+      case "smoke":
+        P5.burst(x, y, n, { colors: cols || ["#8a8a96", "#6a6a78", "#b8b8c4"], speed: sp(22), g: -16, drag: 2.2, life: 1.8, lifeMin: 0.9, size: k < 0.6 ? 2 : 3 });
+        break;
+      case "steam":
+        P5.burst(x, y, n, { colors: ["#ffffff", "#e8f6ff"], speed: sp(14), g: -20, drag: 2.5, life: 1.4, size: 2 });
+        break;
+      case "foam":
+        P5.burst(x, y, n, { colors: ["#ffffff", "#e8f6ff", "#c8ecff"], speed: sp(40), g: 30, life: 0.9, up: sp(20), size: k < 0.6 ? 1 : 2 });
+        break;
+      case "embers":
+        for (let i = 0; i < n; i++) P5.sparkle(x + rng.float(-6, 6) * k, y + rng.float(-4, 4) * k, rng.pick(cols || ["#ffb04a", "#ff7a2a", "#ffe46a"]), { vy: -rng.float(14, 34) * (0.5 + 0.5 * k), vx: rng.float(-8, 8) * k, life: rng.float(0.7, 1.5), big: false });
+        break;
+      case "rise":
+        for (let i = 0; i < n; i++) P5.sparkle(x + rng.float(-8, 8) * k, y - rng.float(0, 30) * k, rng.pick(cols || ["#b8ffd0", "#ffffff"]), { vy: -rng.float(14, 30) * (0.5 + 0.5 * k), vx: 0, life: rng.float(0.8, 1.6) });
+        break;
+      case "snow":
+        P5.burst(x, y, n, { colors: ["#ffffff", "#e8f4ff"], speed: sp(36), g: 8, drag: 1.2, life: 2.4, lifeMin: 1.2, up: sp(24), size: 1 });
+        break;
+      case "gumball":
+        P5.burst(x, y, Math.max(1, n), { colors: RAINBOW, speedMin: 10, speed: sp(30), g: 120, life: 1, up: sp(25), size: k < 0.6 ? 2 : 3, drag: 0.5 });
+        break;
+      case "ring":
+        P5.ring(x, y, 0.25 + 0.4 * k * fs);
+        break;
+      case "swirl":
+        for (let i = 0; i < n; i++) {
+          const a = i / n * TAU, r = 8 * k;
+          P5.sparkle(x + Math.cos(a) * r, y + Math.sin(a) * r * 0.4, "#c8f8ff", { vx: -Math.sin(a) * 30 * k, vy: Math.cos(a) * 8 * k - 6, life: 0.7 });
+        }
+        P5.ring(x, y, 0.3 * k + 0.1, "rgba(200,248,255,0.9)");
+        break;
+      case "lights":
+        for (let i = 0; i < n; i++) {
+          const a = rng.float(0, TAU), r = rng.float(30, 150) * k;
+          const c = rng.pick(RAINBOW);
+          P5.add({ kind: "dot", x: x + Math.cos(a) * r, y: y + Math.sin(a) * r * 0.55 + 20 * k, vx: rng.sign() * rng.float(15, 40) * k, vy: 0, size: k < 0.6 ? 1 : 2, color: c, add: true, life: rng.float(0.5, 1.1), g: 0, drag: 0 });
+        }
+        break;
+      case "notes":
+        icon("music");
+        break;
+      case "hearts":
+        icon("heart", -14);
+        break;
+      case "icons":
+        icon(fx.icon || "star", -12);
+        break;
+      case "text":
+        P5.text(x, y - 8 * k, fx.text || "!", { font: k < 0.7 ? "small" : "normal", color: fx.color || "#fff6c8", layer: "fg", life: 1.3, vy: -14 * (0.5 + 0.5 * k) });
+        break;
+      case "food":
+        aq.dropFood?.(x, y, n);
+        break;
+      default:
+        break;
+    }
+  }
+  function dropCoinFrom(aq, d, c) {
+    const now4 = Date.now();
+    const cd = (c.cooldown || 120) * 1e3;
+    if (now4 - (d.rec.coinAt || 0) < cd) {
+      aq.sfx("gulp", { vol: 0.35, pitch: 1.4 });
+      return;
+    }
+    d.rec.coinAt = now4;
+    const T = aq.T;
+    const { x, y } = anchorAt(aq, d, c.from || "top");
+    const D = Math.max(0, d.z * T.DEPTH - 3);
+    const X = clamp(T.X(x, d.z), 4, T.W - 4), Y = clamp(T.Y(y, d.z), T.surf + 2, T.groundZ(X, d.z) - 2);
+    aq.coins.spawn(X, Y, D, 0, { vx: rng.float(-10, 10), vy: -rng.float(10, 24), vd: rng.float(2, 8) });
+    aq.coinsDirty = true;
+    aq.sfx("coin_spawn", { vol: 0.6 });
+    aq.game.save?.();
+  }
+  function playDecor(aq, d, opts = {}) {
+    const s = specOf(d);
+    if (!s) return;
+    if (d.anim && !opts.force && d.anim.t < Math.min(0.5, d.anim.dur * 0.5) && !opts.quiet) return;
+    const quiet = !!opts.quiet;
+    const seq = opts.seq || s.seq;
+    const fps = opts.fps || s.fps;
+    const events = [];
+    if (!quiet) {
+      for (const e of s.sfx) events.push({ at: e.at, sfx: e });
+      for (const f of s.fx) events.push({ at: f.at, fx: f });
+      if (s.coin) events.push({ at: s.coin.at ?? 0.5, coin: s.coin });
+      if (s.fish) events.push({ at: s.fishAt ?? 0.05, fish: s.fish });
+    }
+    events.sort((a, b) => a.at - b.at);
+    const motion = !opts.seq && !quiet ? s.motion : null;
+    const dur = opts.dur ?? Math.max(seq.length / fps, quiet ? 0 : s.dur, 0.45);
+    d.anim = { t: 0, seq, fps, dur, events, ei: 0, motion, shake: quiet ? 0 : s.shake, loop: !!opts.loop, byFish: !!opts.byFish };
+    d.squash = 0.45;
+    d.squashAmt = quiet ? s.squash * 0.5 : s.squash;
+    if (s.frames > 1) queueDecorFrames(aq, d, d.scale, true);
+    if (!quiet && !opts.byFish && d.user?.st && d.user.st.phase === "hidden") d.user.st.t = d.user.st.dur;
+    if (!quiet) aq.game.emit?.("decorPlayed", d.rec.id);
+  }
+  function fishReact(aq, d, kind2) {
+    const T = aq.T;
+    const c = anchorAt(aq, d, "center");
+    const p = d.prop;
+    const R = Math.max(40 * aq.view.fishScale + 20, (p ? p.w * 0.5 * (d.drawK || 1) : 30) + 30 * aq.view.fishScale);
+    const near = aq.fish.filter((f) => f.state !== "script" && !f.controlled && dist(f.x, f.y, c.x, c.y) < R * (kind2 === "flee" || kind2 === "launch" ? 1.2 : 2.6) && Math.abs(f.z - d.z) < 0.45);
+    near.sort((a, b) => dist(a.x, a.y, c.x, c.y) - dist(b.x, b.y, c.x, c.y));
+    switch (kind2) {
+      case "flee":
+        for (const f of near.slice(0, 8)) f.startle(c.x, c.y);
+        break;
+      case "gather":
+        for (const f of near.slice(0, 5)) startScript(aq, f, d, "gather");
+        break;
+      case "dance":
+        for (const f of near.slice(0, 6)) startScript(aq, f, d, "dance");
+        break;
+      case "launch":
+        for (const f of near.slice(0, 4)) {
+          f.vy = -rng.float(90, 140) * aq.view.fishScale;
+          f.squashV += 10;
+          f.say("!", 1.2);
+          f.feel("surprised", 1.2);
+        }
+        break;
+      case "abduct": {
+        const beam = anchorAt(aq, d, "beam");
+        const f = aq.fish.filter((q) => q.state !== "script" && !q.controlled).sort((a, b) => dist(a.x, a.y, beam.x, beam.y) - dist(b.x, b.y, beam.x, beam.y))[0];
+        if (f && dist(f.x, f.y, beam.x, beam.y) < R * 3.5) startScript(aq, f, d, "abduct");
+        for (const q of near.slice(0, 3)) if (q !== f) {
+          q.say("!", 1);
+        }
+        break;
+      }
+      default:
+        break;
+    }
+    void T;
+  }
+  function updateDecor(aq, dt) {
+    const vis = !!aq.visibleKey;
+    for (const d of aq.decor) {
+      const s = specOf(d);
+      if (!s) continue;
+      if (d.idlePh === void 0) d.idlePh = rng.float(0, 10);
+      if (d.squash > 0) d.squash = Math.max(0, d.squash - dt);
+      const a = d.anim;
+      if (a) {
+        a.t += dt;
+        while (a.ei < a.events.length && a.events[a.ei].at <= a.t) {
+          const e = a.events[a.ei++];
+          if (e.sfx) aq.sfx(e.sfx.name, { vol: e.sfx.vol ?? 0.7, pitch: e.sfx.pitch ?? 1 });
+          else if (e.fx && vis) spawnFx(aq, d, e.fx);
+          else if (e.coin) dropCoinFrom(aq, d, e.coin);
+          else if (e.fish) fishReact(aq, d, e.fish);
+        }
+        if (!a.loop && a.t >= a.dur) d.anim = null;
+        else if (a.loop && a.until !== void 0 && a.t >= a.until) d.anim = null;
+      }
+      if (vis && s.ambient.length) {
+        d.ambT || (d.ambT = s.ambient.map((m) => rng.float(0, m.every)));
+        s.ambient.forEach((m, i) => {
+          d.ambT[i] -= dt;
+          if (d.ambT[i] <= 0) {
+            d.ambT[i] = m.every * rng.float(0.7, 1.3);
+            spawnFx(aq, d, { ...m, at: 0 });
+          }
+        });
+      }
+    }
+    updateUsers(aq, dt);
+  }
+  function cleanupFish(f) {
+    if (!f.use) return;
+    if (f.use.d?.user === f.use) f.use.d.user = null;
+    f.use = null;
+    f.alpha = 1;
+    f.useZ = null;
+    f.forceAngle = void 0;
+  }
+  function endScript(f, emote) {
+    cleanupFish(f);
+    f.setState("wander");
+    if (emote) f.say(emote, 1.2);
+  }
+  function steerTo(f, x, y, speed, arrive = 12) {
+    const dx = x - f.x, dy = y - f.y, dd = Math.hypot(dx, dy) || 1;
+    const sp = dd < arrive ? speed * (dd / arrive) : speed;
+    return [dx / dd * sp, dy / dd * sp];
+  }
+  function startScript(aq, f, d, kind2) {
+    if (f.controlled) return false;
+    cleanupFish(f);
+    const u = { d, kind: kind2, st: { t: 0, phase: "go", dur: 0 } };
+    f.use = u;
+    const fs = aq.view.fishScale;
+    const spec = specOf(d);
+    const c0 = anchorAt(aq, d, kind2 === "gather" || kind2 === "dance" ? "center" : spec?.use?.at || "center");
+    const st = u.st;
+    st.ax = c0.x;
+    st.ay = c0.y;
+    st.off = rng.float(-1, 1);
+    if (kind2 === "gather") {
+      st.dur = rng.float(2.5, 4);
+      st.tx = c0.x + rng.float(-50, 50) * fs;
+      st.ty = c0.y - rng.float(10, 40) * fs;
+      st.icon = rng.pick(["!", "heart", "?", "exclaim"]);
+    }
+    if (kind2 === "dance") {
+      st.dur = rng.float(2.8, 4);
+      st.tx = f.x;
+      st.ty = f.y;
+    }
+    if (kind2 === "abduct") st.dur = 3.4;
+    f.script = (fish, dt) => runScript(aq, fish, u, dt);
+    f.setState("script");
+    if (["sit", "hide", "bounce", "orbit", "watch", "dancer"].includes(kind2)) d.user = u;
+    return true;
+  }
+  function runScript(aq, f, u, dt) {
+    const st = u.st, d = u.d, fs = aq.view.fishScale;
+    st.t += dt;
+    if (!aq.decor.includes(d)) {
+      endScript(f, "?");
+      return [0, 0];
+    }
+    const T = aq.T;
+    switch (u.kind) {
+      case "gather": {
+        f.lookAt(st.ax, st.ay);
+        if (st.t > st.dur) {
+          endScript(f, rng.chance(0.5) ? "heart" : null);
+          return [0, 0];
+        }
+        if (st.t > 0.6 && !st.said) {
+          st.said = true;
+          f.say(st.icon, 1.4);
+          f.feel("surprised", 1);
+        }
+        return steerTo(f, st.tx, st.ty, f.cruise * 1.3, 14 * fs + 4);
+      }
+      case "dance": {
+        if (st.t > st.dur) {
+          endScript(f, "heart");
+          return [0, 0];
+        }
+        if (!st.said) {
+          st.said = true;
+          f.say("music", 1.4);
+        }
+        f.feel("happy", 0.3);
+        const beat = Math.floor(st.t / 0.33);
+        if (beat !== st.beat) {
+          st.beat = beat;
+          f.facing = beat % 2 ? 1 : -1;
+          f.squashV += 5;
+        }
+        f.forceAngle = Math.sin(st.t * 9) * 0.35;
+        f.x = lerp(f.x, st.tx + Math.sin(st.t * 4.5 + st.off) * 6 * fs, 1 - Math.exp(-dt * 4));
+        f.y = lerp(f.y, st.ty + Math.abs(Math.sin(st.t * 9.4)) * -5 * fs, 1 - Math.exp(-dt * 8));
+        f.vx = f.vy = 0;
+        return [0, 0];
+      }
+      case "abduct": {
+        const beam = anchorAt(aq, d, "beam"), under = anchorAt(aq, d, "under");
+        if (st.t < 0.7) {
+          f.x = lerp(f.x, beam.x, 1 - Math.exp(-dt * 5));
+          f.vx = f.vy = 0;
+          f.feel("surprised", 0.5);
+          if (!st.said) {
+            st.said = true;
+            f.say("!", 1);
+          }
+          return [0, 0];
+        }
+        if (st.t < 2.4) {
+          const k = (st.t - 0.7) / 1.7;
+          f.x = beam.x + Math.sin(st.t * 8) * 2 * fs;
+          f.y = lerp(f.y, lerp(beam.y, under.y + 6 * fs, k), 1 - Math.exp(-dt * 6));
+          f.z = lerp(f.z, d.z, 1 - Math.exp(-dt * 3));
+          if (Math.floor(st.t / 0.25) % 2) f.facing = -f.facing;
+          f.vx = f.vy = 0;
+          f.feel("dizzy", 0.5);
+          return [0, 0];
+        }
+        if (!st.dropped) {
+          st.dropped = true;
+          f.vy = 40 * fs;
+          f.squashV += 8;
+          f.say("?", 1.5);
+          f.feel("dizzy", 2);
+        }
+        if (st.t > st.dur) endScript(f);
+        return [0, 10 * fs];
+      }
+      default:
+        return runUse(aq, f, u, dt, T, fs);
+    }
+  }
+  function runUse(aq, f, u, dt, T, fs) {
+    const st = u.st, d = u.d, spec = specOf(d), use = spec.use;
+    const a = anchorAt(aq, d, use.at || "center");
+    const behind = use.at === "water" || u.kind === "hide" || use.behind;
+    let tx = a.x, ty = a.y;
+    if (u.kind === "bounce") ty = a.y - 24 * fs;
+    if (u.kind === "watch") {
+      tx = a.x + st.off * 10 * fs;
+      ty = a.y - 4 * fs;
+    }
+    if (u.kind === "dancer") {
+      tx = a.x + (st.off > 0 ? 1 : -1) * (22 + Math.abs(st.off) * 12) * fs;
+      ty = a.y - 8 * fs;
+    }
+    if (st.phase === "go") {
+      f.lookAt(tx, ty);
+      if (st.t > 12) {
+        endScript(f, "?");
+        return [0, 0];
+      }
+      if (dist(f.x, f.y, tx, ty) < 5 + 4 * fs) {
+        st.phase = "on";
+        st.t = 0;
+        st.dur = u.kind === "hide" ? rng.float(3, 6) : u.kind === "bounce" ? rng.float(2.4, 3.6) : u.kind === "orbit" ? rng.float(4, 6) : rng.float(6, 10);
+        if (u.kind === "hide") st.phase = "hidden";
+        if (use.seq) playDecor(aq, d, { quiet: true, byFish: true, seq: use.seq, fps: use.fps || 3, loop: u.kind === "watch" || u.kind === "dancer", dur: st.dur + 1 });
+        if (u.kind === "sit" || u.kind === "watch") f.say(use.emote || (u.kind === "watch" ? "exclaim" : "heart"), 1.6);
+        if (u.kind === "dancer") f.say("music", 1.5);
+      }
+      if (behind && dist(f.x, f.y, tx, ty) < 30 * fs) f.useZ = d.z + 0.015;
+      f.z = lerp(f.z, clamp(d.z + (behind ? 0.01 : -0.03), 0, 0.85), 1 - Math.exp(-dt * 2));
+      return steerTo(f, tx, ty, f.cruise * 1.4, 16 * fs + 4);
+    }
+    f.vx = 0;
+    f.vy = 0;
+    switch (u.kind) {
+      case "sit": {
+        f.useZ = behind ? d.z + 0.015 : d.z - 0.012;
+        f.x = lerp(f.x, tx + Math.sin(st.t * 0.8) * 2 * fs, 1 - Math.exp(-dt * 6));
+        f.y = lerp(f.y, ty + Math.sin(st.t * 2.2) * 1.2 * fs, 1 - Math.exp(-dt * 6));
+        f.feel(st.t > st.dur * 0.6 ? "sleepy" : "happy", 0.3);
+        if (rng.chance(dt * 0.25)) f.say(rng.pick([use.emote || "heart", "zzz", "music"]), 1.4);
+        if (behind && rng.chance(dt * 1.2)) aq.particles.bubble(f.x + rng.float(-4, 4) * fs, f.y - 3 * fs, { size: 1 });
+        if (st.t > st.dur) {
+          f.vy = -30 * fs;
+          endScript(f, "heart");
+        }
+        return [0, 0];
+      }
+      case "hide": {
+        f.useZ = d.z + 0.02;
+        f.alpha = Math.max(0, 1 - st.t * 3);
+        f.x = lerp(f.x, tx, 1 - Math.exp(-dt * 6));
+        f.y = lerp(f.y, ty, 1 - Math.exp(-dt * 6));
+        if (st.t > st.dur) {
+          if (use.exitPlay) playDecor(aq, d, { byFish: true });
+          f.alpha = 1;
+          f.vy = -rng.float(60, 90) * fs;
+          f.vx = rng.sign() * 30 * fs;
+          f.squashV += 10;
+          aq.particles.bubbles(f.x, f.y, Math.round(4 + 4 * fs));
+          endScript(f, use.exitPlay ? "sweat" : rng.pick(["music", "...", "heart"]));
+          f.feel(use.exitPlay ? "dizzy" : "happy", 1.5);
+        }
+        return [0, 0];
+      }
+      case "bounce": {
+        const T0 = 0.62, ph = st.t % T0 / T0, n = Math.floor(st.t / T0);
+        if (n !== st.n) {
+          st.n = n;
+          playDecor(aq, d, { quiet: true, byFish: true, seq: [1, 2, 0], fps: 9 });
+          aq.sfx("boing", { vol: 0.35, pitch: rng.float(1.1, 1.5) });
+          f.squashV += 9;
+          if (n === 1) f.say("!", 1);
+        }
+        const H6 = (28 + Math.min(n, 3) * 6) * fs;
+        f.x = lerp(f.x, a.x + Math.sin(st.t * 1.3) * 4 * fs, 1 - Math.exp(-dt * 5));
+        f.y = a.y - 3 * fs - Math.sin(ph * Math.PI) * H6;
+        f.forceAngle = (ph - 0.5) * 0.5;
+        f.feel("happy", 0.3);
+        if (st.t > st.dur && ph > 0.4) {
+          f.vy = -60 * fs;
+          endScript(f, "heart");
+        }
+        return [0, 0];
+      }
+      case "orbit": {
+        const r = (24 + Math.abs(st.off) * 10) * fs * (d.drawK || 1) * 1.6;
+        const th = st.t * (1.6 + st.off * 0.3);
+        f.x = lerp(f.x, a.x + Math.cos(th) * r, 1 - Math.exp(-dt * 4));
+        f.y = lerp(f.y, a.y + Math.sin(th * 2) * 6 * fs, 1 - Math.exp(-dt * 4));
+        f.facing = -Math.sin(th) >= 0 ? 1 : -1;
+        f.useZ = d.z + Math.sin(th) * 0.04;
+        f.z = clamp(d.z + Math.sin(th) * 0.04, 0, 0.85);
+        if (rng.chance(dt * 0.4)) f.say(rng.pick(["music", "heart", "sparkle"]), 1.2);
+        f.feel("happy", 0.3);
+        if (st.t > st.dur) endScript(f);
+        return [0, 0];
+      }
+      case "watch":
+      case "dancer": {
+        f.useZ = d.z - 0.02;
+        f.lookAt(a.x, a.y - 30 * fs);
+        f.facing = a.x >= f.x ? 1 : -1;
+        if (u.kind === "dancer") {
+          const beat = Math.floor(st.t / 0.33);
+          if (beat !== st.beat) {
+            st.beat = beat;
+            f.facing = beat % 2 ? 1 : -1;
+            f.squashV += 4;
+          }
+          f.forceAngle = Math.sin(st.t * 9) * 0.3;
+          f.y = lerp(f.y, ty - Math.abs(Math.sin(st.t * 9.4)) * 4 * fs, 1 - Math.exp(-dt * 8));
+          if (rng.chance(dt * 0.6)) spawnFx(aq, d, { kind: "notes", from: use.at || "top", n: 1 });
+        } else {
+          f.y = lerp(f.y, ty + Math.sin(st.t * 1.7) * 1.5 * fs, 1 - Math.exp(-dt * 5));
+          if (rng.chance(dt * 0.3)) f.say(rng.pick(["heart", "!", "music", "exclaim"]), 1.2);
+        }
+        f.x = lerp(f.x, tx, 1 - Math.exp(-dt * 4));
+        f.feel("happy", 0.3);
+        if (st.t > st.dur) {
+          if (d.anim?.byFish) d.anim = null;
+          endScript(f, "heart");
+        }
+        return [0, 0];
+      }
+      default:
+        endScript(f);
+        return [0, 0];
+    }
+  }
+  function updateUsers(aq, dt) {
+    aq.useT = (aq.useT ?? rng.float(3, 8)) - dt;
+    if (aq.useT > 0) return;
+    aq.useT = rng.float(5, 12) / (aq.useBoost || 1);
+    const busy = aq.fish.filter((f2) => f2.use).length;
+    if (busy >= MAX_USERS) return;
+    const decor = aq.decor.filter((d2) => specOf(d2)?.use && !d2.user && d2.prop);
+    if (!decor.length) return;
+    const d = rng.pick(decor);
+    const free = aq.fish.filter((f2) => (f2.state === "wander" || f2.state === "idle") && !f2.controlled && !f2.use);
+    if (!free.length) return;
+    const c = anchorAt(aq, d, "center");
+    free.sort((a, b) => dist(a.x, a.y, c.x, c.y) - dist(b.x, b.y, c.x, c.y));
+    const f = free[Math.min(free.length - 1, rng.int(0, 1))];
+    const kind2 = { dance: "dancer" }[d.spec.use.kind] || d.spec.use.kind;
+    startScript(aq, f, d, kind2);
+  }
+  function forceUse(aq, d) {
+    const s = specOf(d);
+    if (!s?.use) return false;
+    const f = aq.fish.find((q) => !q.use && !q.controlled);
+    if (!f) return false;
+    if (d.user) return false;
+    return startScript(aq, f, d, { dance: "dancer" }[s.use.kind] || s.use.kind);
+  }
+  var RAINBOW, MAX_USERS;
+  var init_decoranim = __esm({
+    "src/aquarium/decoranim.js"() {
+      init_math();
+      init_rng();
+      init_uiicons();
+      init_props();
+      RAINBOW = ["#ff4a6a", "#ffd84a", "#5aff8a", "#4ac8ff", "#c87aff", "#ff8ad8"];
+      MAX_USERS = 3;
+    }
+  });
+
   // src/aquarium/aquarium.js
   function segDist(px3, py, ax, ay, bx, by) {
     const dx = bx - ax, dy = by - ay;
@@ -27994,6 +28755,7 @@ are just virtual copies - Restore All Icons anytime.`;
       init_voxplants();
       init_critters();
       init_voxelfish();
+      init_decoranim();
       COIN_CAP = 150;
       HUNGER_RATE = 1 / 2e3;
       ICONS2 = new Set(UI_ICON_NAMES);
@@ -28056,13 +28818,16 @@ are just virtual copies - Restore All Icons anytime.`;
             for (const d of this.decor) {
               this.warmJobs.push(() => {
                 const sc = this.decorScale(d, clamp(d.rec.z ?? 0.5, 0.04, 0.95), v);
-                if (d.props.has(sc)) return;
-                try {
-                  const p = getProp(d.rec.id, { scale: sc, variant: d.rec.v || 0 });
-                  p.scale = sc;
-                  d.props.set(sc, p);
-                } catch {
+                if (!d.props.has(sc)) {
+                  try {
+                    const p = getProp(d.rec.id, { scale: sc, variant: d.rec.v || 0 });
+                    p.scale = sc;
+                    d.props.set(sc, p);
+                  } catch {
+                    return;
+                  }
                 }
+                if (key === "full") queueDecorFrames(this, d, sc);
               });
             }
           }
@@ -28274,6 +29039,10 @@ are just virtual copies - Restore All Icons anytime.`;
             this.crab?.rescale(sx);
             this.bubbles.length = 0;
             this.particles.clear();
+            for (const f of this.fish) if (f.use || f.state === "script") {
+              cleanupFish(f);
+              f.setState("wander");
+            }
           }
           this.view = nv;
           this.T = T;
@@ -28309,6 +29078,7 @@ are just virtual copies - Restore All Icons anytime.`;
             d.scale = this.decorScale(d, d.z);
             d.prop = d.props.get(d.scale) || null;
             if (!d.prop) this.queueProp(d, d.scale);
+            else queueDecorFrames(this, d, d.scale);
             this.addCollider(d);
             const meta = PROPS[d.rec.id];
             const p = d.prop || [...d.props.values()][0];
@@ -28325,16 +29095,52 @@ are just virtual copies - Restore All Icons anytime.`;
           const s = this.T.s(d.z);
           this.colliders.push({ X: d.X, D: d.z * this.T.DEPTH, R: Math.max(3, p.w * 0.3 / s), H: Math.max(3, p.h * 0.72 / s), base: this.T.groundZ(d.X, d.z), d });
         }
-        queueProp(d, scale) {
-          this.propQueue || (this.propQueue = []);
-          if (!this.propQueue.some((q) => q.d === d && q.scale === scale)) this.propQueue.push({ d, scale });
+        // Decor renders are built one per frame (urgent ones first: a clicked decoration's animation frames).
+        queueProp(d, scale, frame2 = 0, urgent = false) {
+          const q = this.propQueue || (this.propQueue = []);
+          const i = q.findIndex((j) => j.d === d && j.scale === scale && j.frame === frame2);
+          if (i >= 0) {
+            if (urgent && i > 0) {
+              const [j] = q.splice(i, 1);
+              j.urgent = true;
+              q.unshift(j);
+            }
+            return;
+          }
+          const job = { d, scale, frame: frame2, urgent };
+          if (urgent) q.unshift(job);
+          else q.push(job);
         }
         pumpProps() {
           const q = this.propQueue;
           if (!q?.length) return;
-          const job = q.shift();
+          const t0 = performance.now();
+          for (let n = 0; n < 3; n++) {
+            const i = this.visibleKey ? 0 : q.findIndex((j) => !j.frame || j.urgent);
+            if (i < 0 || n > 0 && (!q[i].urgent || performance.now() - t0 > 10)) return;
+            const [job] = q.splice(i, 1);
+            this.runPropJob(job);
+            if (!q.length) return;
+          }
+        }
+        runPropJob(job) {
           const d = job.d;
-          if (!this.decor.includes(d) || d.props.has(job.scale)) return;
+          if (!this.decor.includes(d)) return;
+          if (job.frame) {
+            let arr = d.frames?.get(job.scale);
+            if (arr?.[job.frame]) return;
+            try {
+              const p = getProp(d.rec.id, { scale: job.scale, variant: d.rec.v || 0, frame: job.frame });
+              p.scale = job.scale;
+              d.frames || (d.frames = /* @__PURE__ */ new Map());
+              if (!arr) d.frames.set(job.scale, arr = []);
+              arr[job.frame] = p;
+            } catch (e) {
+              console.warn("decor frame", d.rec.id, job.frame, e);
+            }
+            return;
+          }
+          if (d.props.has(job.scale)) return;
           try {
             const p = getProp(d.rec.id, { scale: job.scale, variant: d.rec.v || 0 });
             p.scale = job.scale;
@@ -28530,6 +29336,7 @@ are just virtual copies - Restore All Icons anytime.`;
         }
         hit(x, y) {
           const g = this.game;
+          if (this.zoom || this.press) return true;
           if (g.mini) return rectContains(this.miniRect(), x, y);
           if (g.state.view === "aquarium") {
             if (this.drag) return true;
@@ -28772,9 +29579,13 @@ are just virtual copies - Restore All Icons anytime.`;
             this.syncT = 0.5;
             this.syncFish();
           }
+          if (this.zoom && this.shownKey() !== this.zoom.vk) this.zoom = null;
+          this.updateZoom(dt);
+          this.zoomIn = Math.max(0, (this.zoomIn || 0) - dt);
           this.handleInput(dt, inp);
           this.updateFood(dt);
           this.updateFish(dt);
+          updateDecor(this, dt);
           this.updateEconomy(dt);
           this.coins.step(dt);
           this.updateEggs(dt);
@@ -28794,15 +29605,48 @@ are just virtual copies - Restore All Icons anytime.`;
           this.hoverFish = null;
           this.hoverBtn = null;
           this.hoverDecor = null;
+          if (this.zoom) {
+            cur.inWorld = false;
+            if (inp?.pressed) inp.consume();
+            return;
+          }
           if (!inp || !vk) {
             cur.inWorld = false;
             if (this.drag && (!inp || !inp.down)) this.endDrag();
+            if (!inp || !inp.down) this.press = null;
             this.prevCursor = null;
             return;
           }
           const o = this.innerOrigin(vk);
           const v = this.view, T = this.T;
           const lx = inp.x - o.x, ly = inp.y - o.y;
+          const tip = (t) => {
+            if (g.desktop) g.desktop.tooltip = t;
+          };
+          const pr = this.press;
+          if (pr) {
+            if (Math.hypot(inp.x - pr.x, inp.y - pr.y) > 4) pr.moved = true;
+            if (inp.down) {
+              if (pr.moved && pr.kind === "lid" && vk === "window") {
+                const tw = g.state.tankWindow;
+                this.drag = { kind: "window", dx: pr.x - tw.x, dy: pr.y - tw.y };
+                this.press = null;
+              } else if (pr.moved && pr.kind === "decorFull" && this.decor.includes(pr.d)) {
+                this.drag = { kind: "decor", d: pr.d, dy: pr.dy };
+                this.press = null;
+                this.sfx("icon_pickup", { vol: 0.5 });
+              }
+            } else {
+              this.press = null;
+              if (!pr.moved && !pr.collected) {
+                if ((pr.kind === "decor" || pr.kind === "decorFull") && this.decor.includes(pr.d)) this.interact(pr.d);
+                else if (pr.kind === "lid" || pr.kind === "glass") {
+                  this.openFull();
+                  return;
+                }
+              }
+            }
+          }
           if (vk === "window" || vk === "mini") {
             const tw = g.state.tankWindow;
             if (this.drag?.kind === "window") {
@@ -28815,16 +29659,21 @@ are just virtual copies - Restore All Icons anytime.`;
             }
             const fr = FRAME2[vk];
             const r = vk === "window" ? this.windowRect() : this.miniRect();
+            if (!r) {
+              cur.inWorld = false;
+              return;
+            }
             const btns = this.chromeButtons(vk, r);
             for (const b of btns) if (rectContains(b, inp.x, inp.y)) this.hoverBtn = b.id;
             if (inp.y < r.y + fr.lid + (vk === "window" ? this.slideOff() : 0)) {
-              if (this.hoverBtn) g.desktop && (g.desktop.tooltip = btns.find((b) => b.id === this.hoverBtn).tip);
+              if (this.hoverBtn) tip(btns.find((b) => b.id === this.hoverBtn).tip);
+              else if (!this.press) tip(vk === "window" ? "{mouse_l} Dive into the aquarium\n{mouse_hold} Drag to move" : "{mouse_l} Dive into the aquarium");
               if (inp.pressed) {
                 inp.consume();
                 if (this.hoverBtn === "close") this.closeWindow();
-                else if (this.hoverBtn === "expand") g.command?.("tank");
+                else if (this.hoverBtn === "expand") this.openFull();
                 else if (this.hoverBtn === "restore") g.setMini?.(false);
-                else if (vk === "window") this.drag = { kind: "window", dx: inp.x - tw.x, dy: inp.y - tw.y };
+                else this.press = { kind: "lid", x: inp.x, y: inp.y };
               }
               cur.inWorld = false;
               return;
@@ -28848,7 +29697,7 @@ are just virtual copies - Restore All Icons anytime.`;
             }
             if (this.st.tank.stored.length && rectContains(lay.unpack, inp.x, inp.y)) {
               this.hoverBtn = "unpack";
-              if (g.desktop) g.desktop.tooltip = `Place a stored decoration (${PROPS[this.st.tank.stored.at(-1)]?.name || "decor"})`;
+              tip(`Place a stored decoration (${PROPS[this.st.tank.stored.at(-1)]?.name || "decor"})`);
               if (inp.pressed) {
                 inp.consume();
                 this.placeStored();
@@ -28871,43 +29720,48 @@ are just virtual copies - Restore All Icons anytime.`;
               d.rec.z = clamp(pk5.z, 0.05, 0.92);
               d.X = d.rec.x * T.W;
               d.z = d.rec.z;
-              g.desktop && (g.desktop.tooltip = null);
+              tip(null);
             } else this.endDrag();
             return;
           }
-          if (vk === "full") {
-            const hd = this.decorAt(lx, ly);
-            if (hd) {
-              this.hoverDecor = hd;
-              if (g.desktop) g.desktop.tooltip = `${PROPS[hd.rec.id]?.name || "Decoration"}
-{mouse_l} drag to move  {mouse_r} store`;
-              if (inp.rpressed) {
-                this.storeDecor(hd);
-                inp.rpressed = false;
-                return;
-              }
-              if (inp.pressed) {
-                inp.consume();
-                const base = T.floorAt(T.sx(hd.X, hd.z), hd.z);
-                this.drag = { kind: "decor", d: hd, dy: base - ly };
-                this.sfx("icon_pickup", { vol: 0.5 });
-                return;
-              }
+          const hd = this.press ? null : this.decorAt(lx, ly);
+          if (hd) {
+            this.hoverDecor = hd;
+            const name = PROPS[hd.rec.id]?.name || "Decoration", verb = specOf(hd)?.verb || "Poke";
+            tip(vk === "full" ? `${name}
+{mouse_l} ${verb}  {mouse_hold} move  {mouse_r} store` : `${name}
+{mouse_l} ${verb}`);
+            if (vk === "full" && inp.rpressed) {
+              this.storeDecor(hd);
+              inp.rpressed = false;
+              return;
+            }
+            if (inp.pressed) {
+              inp.consume();
+              const base = T.floorAt(T.sx(hd.X, hd.z), hd.z);
+              this.press = { kind: vk === "full" ? "decorFull" : "decor", d: hd, x: inp.x, y: inp.y, dy: base - ly };
+              return;
             }
           }
           const rad = this.stats.collectRadius || 14;
           const p0 = this.prevCursor || { x: lx, y: ly };
           const sweep = inp.down;
+          let got = 0;
           for (let i = this.coins.list.length - 1; i >= 0; i--) {
             const c = this.coins.list[i];
             const p = this.toLocal(c.X, c.Y, c.D);
             const rr2 = (sweep ? rad * 1.35 : rad) + c.vr * T.s(p.z) * 0.5;
             const d = sweep ? segDist(p.x, p.y, p0.x, p0.y, lx, ly) : dist(p.x, p.y, lx, ly);
-            if (d < rr2) this.collectCoin(c, "player");
+            if (d < rr2) {
+              this.collectCoin(c, "player");
+              got++;
+            }
           }
+          if (got && this.press) this.press.collected = true;
           this.prevCursor = { x: lx, y: ly };
           let best = null, bd = Infinity;
           for (const f of this.fish) {
+            if (f.alpha === 0) continue;
             const s = T.s(f.z);
             const r = (11 * f.scale + 5) * s;
             const d = dist(f.x, f.y, lx, ly) + f.z * 10;
@@ -28917,11 +29771,77 @@ are just virtual copies - Restore All Icons anytime.`;
             }
           }
           this.hoverFish = best;
-          if (best && g.desktop && !this.hoverDecor) g.desktop.tooltip = this.fishTip(best);
-          if (inp.pressed && cur.inWorld) {
-            inp.consume();
-            if (best) this.pet(best);
-            else this.sprinkle(lx, ly);
+          if (best && !this.hoverDecor) tip(this.fishTip(best) + (vk === "full" ? "" : "\n{mouse_l} Dive in"));
+          if (vk === "full") {
+            if (inp.pressed && cur.inWorld) {
+              inp.consume();
+              if (best) this.pet(best);
+              else this.sprinkle(lx, ly);
+            }
+          } else {
+            const inGlass = lx >= 0 && ly >= 0 && lx < v.iw && ly < v.ih;
+            this.glassHover = inGlass && !best && !hd && !inp.down ? (this.glassHover || 0) + dt : 0;
+            if (this.glassHover > 0.6 && !this.coins.list.length) tip("{mouse_l} Dive into the aquarium");
+            if (inp.pressed && inGlass) {
+              inp.consume();
+              this.press = { kind: "glass", x: inp.x, y: inp.y, collected: got > 0 };
+            }
+          }
+        }
+        // Click on a decoration: play its animation, sounds and particles (fish react).
+        interact(d) {
+          if (typeof d === "string") d = this.decor.find((q) => q.rec.id === d);
+          if (!d) return false;
+          playDecor(this, d);
+          return true;
+        }
+        // Dev / debug: send a fish to use a decoration right away.
+        useDecor(d) {
+          if (typeof d === "string") d = this.decor.find((q) => q.rec.id === d);
+          return d ? forceUse(this, d) : false;
+        }
+        // Window / mini tank -> full scene, with a zoom of the tank filling the screen.
+        openFull() {
+          const g = this.game;
+          const vk = this.visibleKey;
+          if (this.zoom) return;
+          if (vk !== "window" && vk !== "mini") {
+            if (g.mini) g.setMini?.(false);
+            g.setView?.("aquarium");
+            return;
+          }
+          const r = vk === "mini" ? this.miniRect() : this.windowRect();
+          if (!r) {
+            g.setView?.("aquarium");
+            return;
+          }
+          this.press = null;
+          this.drag = null;
+          this.zoom = { t: 0, dur: 0.5, vk, r: { x: r.x, y: r.y + (vk === "window" ? this.slideOff() : 0), w: r.w, h: r.h } };
+          this.sfx("window_open", { vol: 0.45 });
+        }
+        updateZoom(dt) {
+          const z = this.zoom;
+          if (!z) return;
+          z.t += dt;
+          if (z.t < z.dur) return;
+          this.zoom = null;
+          const g = this.game;
+          if (g.mini) g.setMini?.(false);
+          g.setView?.("aquarium");
+          this.zoomIn = 0.4;
+          this.visibleKey = null;
+        }
+        // Food dropped by a decoration (toaster crumbs, pizza toppings) at a tank-local point.
+        dropFood(lx, ly, n = 4, z = 0.4) {
+          const T = this.T;
+          if (this.food.length > 60) return;
+          const cols = ["#e8b46a", "#c8803a", "#f0d090", "#e86a3a", "#8ac04a"];
+          for (let i = 0; i < n; i++) {
+            const fz = clamp(z - 0.04 + rng.float(-0.03, 0.03), 0.02, 0.9);
+            const X = clamp(T.X(lx + rng.float(-6, 6), fz), 3, T.W - 3);
+            const Y = clamp(T.Y(ly + rng.float(-3, 3), fz), T.surf + 1, T.groundZ(X, fz) - 2);
+            this.food.push({ X, Y, z: fz, vy: rng.float(3, 7), t: 0, c: rng.pick(cols), x: 0, y: 0, eaten: false, wob: rng.float(0, TAU), landed: false });
           }
         }
         chromeButtons(vk, r) {
@@ -29053,6 +29973,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
             else if (f.state === "sleep" && f.bed) f.target = { x: f.bed.x, y: f.bed.y, z: f.bed.z ?? f.z };
             if (f.target && f.target.z !== void 0) f.target.z = clamp(f.target.z, 0, 0.85);
             f.update(dt);
+            if (f.use && f.state !== "script") cleanupFish(f);
             const z = f.z = clamp(f.z, 0, 0.85);
             const s = T.s(z);
             const m = (8 * f.scale + 3) * s;
@@ -29184,6 +30105,10 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           if (this.view?.key !== "full") return;
           this.drawTank(ctx2, 0, 0);
           this.drawRim(ctx2, this.view);
+          if (this.zoomIn > 0) {
+            ctx2.fillStyle = rgba("#d8f6ff", this.zoomIn / 0.4 * 0.5);
+            ctx2.fillRect(0, 0, this.view.iw, this.view.ih);
+          }
           const sm3 = this.tankSummary();
           const label3 = `My Aquarium  {fish}${sm3.fish}/${sm3.cap}  {heart}${sm3.fish ? Math.round(sm3.happiness * 100) + "%" : "--"}  {coin}${sm3.coinsPerMin.toFixed(1)}/min`;
           const { plank: p, btn: b, unpack: u } = this.fullLayout();
@@ -29195,6 +30120,10 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
         }
         drawWindow(ctx2, dt) {
           if (this.visibleKey !== "window" || this.view?.key !== "window") return;
+          if (this.zoom) {
+            this.drawZoom(ctx2);
+            return;
+          }
           const r = this.windowRect();
           const v = this.view;
           const off = this.slideOff();
@@ -29211,6 +30140,10 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
         }
         drawMini(ctx2, dt) {
           if (this.view?.key !== "mini") return;
+          if (this.zoom) {
+            this.drawZoom(ctx2);
+            return;
+          }
           const r = this.miniRect();
           const v = this.view;
           ctx2.fillStyle = "rgba(4,14,24,0.28)";
@@ -29219,6 +30152,30 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           this.drawTank(ctx2, r.x + f.side, r.y + f.lid);
           this.drawFrame(ctx2, v, r.x, r.y);
           this.drawChrome(ctx2, "mini", r, 0);
+        }
+        // Zoom transition: the whole window (tank, cabinet, chrome) rendered off-screen, then scaled so its
+        // glass grows from the window rect to the full-screen tank area, fading into a bright water flash.
+        drawZoom(ctx2) {
+          const z = this.zoom, v = this.view, f = FRAME2[z.vk], r = z.r;
+          let cv = this.zoomCv;
+          if (!cv || cv.width !== r.w || cv.height !== r.h) cv = this.zoomCv = makeCanvas(r.w, r.h);
+          const zg = ctxOf(cv);
+          zg.clearRect(0, 0, r.w, r.h);
+          this.drawTank(zg, f.side, f.lid);
+          this.drawFrame(zg, v, 0, 0);
+          this.drawChrome(zg, z.vk, { x: 0, y: -this.slideOff(), w: r.w, h: r.h }, 0);
+          const k = ease.inOutCubic(clamp01(z.t / z.dur));
+          const { W: W6, H: H6 } = this.game.screen;
+          const fh = H6 - TASKBAR_H + 8;
+          const sx = lerp(1, W6 / v.iw, k), sy = lerp(1, fh / v.ih, k);
+          const ix = lerp(r.x + f.side, 0, k), iy = lerp(r.y + f.lid, 0, k);
+          ctx2.fillStyle = rgba("#04101c", 0.25 * k);
+          ctx2.fillRect(0, 0, W6, H6);
+          ctx2.drawImage(cv, Math.round(ix - f.side * sx), Math.round(iy - f.lid * sy), Math.round(r.w * sx), Math.round(r.h * sy));
+          if (k > 0.55) {
+            ctx2.fillStyle = rgba("#d8f6ff", (k - 0.55) / 0.45 * 0.5);
+            ctx2.fillRect(Math.round(ix), Math.round(iy), Math.round(v.iw * sx), Math.round(v.ih * sy));
+          }
         }
         drawFrame(ctx2, v, x, y) {
           const fr = v.frame;
@@ -29257,8 +30214,8 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           const sm3 = this.tankSummary();
           for (const b of this.chromeButtons(vk, r)) {
             const hov = this.hoverBtn === b.id;
-            const spr = brassButton(b.w, hov);
-            ctx2.drawImage(spr, b.x, b.y);
+            const spr2 = brassButton(b.w, hov);
+            ctx2.drawImage(spr2, b.x, b.y);
             const ic = getUiIcon(b.icon);
             if (ic && b.w >= 10) ctx2.drawImage(ic, Math.round(b.x + (b.w - ic.width) / 2), Math.round(b.y + (b.h - ic.height) / 2) + (hov ? 0 : 0));
           }
@@ -29357,9 +30314,9 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
             if (night > 0.2) {
               ctx2.globalAlpha = night * 0.85;
               for (const d of this.decor) {
-                if (!d.prop?.glow) continue;
-                const x = Math.round(T.sx(d.X, d.z) - d.prop.ox), y = Math.round(T.sy(T.groundZ(d.X, d.z), d.z) - d.prop.oy);
-                ctx2.drawImage(d.prop.glow, x, y);
+                const q = d.drawP;
+                if (q?.glow) ctx2.drawImage(q.glow, d.drawX, d.drawY, d.drawW, d.drawH);
+                if (d.drawPart?.c.glow) ctx2.drawImage(d.drawPart.c.glow, d.drawPart.x, d.drawPart.y);
               }
             }
             ctx2.globalAlpha = 1;
@@ -29453,7 +30410,8 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           for (const p of this.view.plants) push(p.z, "plant", p);
           for (const f of this.fish) {
             let z = f.z;
-            if (f.hideInDecor && f.state === "decor" && f.decorSpot) z = f.decorSpot.z + 0.015;
+            if (f.useZ != null) z = f.useZ;
+            else if (f.hideInDecor && f.state === "decor" && f.decorSpot) z = f.decorSpot.z + 0.015;
             push(z, "fish", f, f.y);
           }
           for (const c of this.coins.list) push(c.D / T.DEPTH, "coin", c, c.Y);
@@ -29487,14 +30445,32 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
                 sc = want / p.scale;
                 if (Math.abs(sc - 1) > 0.01 && this.drag?.d !== o) this.queueProp(o, want);
               }
-              const bx = T.sx(o.X, o.z), by = T.sy(T.groundZ(o.X, o.z), o.z) - (this.drag?.d === o ? 4 : 0);
-              this.grow(bx - p.ox * sc, by - p.oy * sc, bx + (p.canvas.width - p.ox) * sc, by + (p.canvas.height - p.oy) * sc);
-              if (sc === 1) g.drawImage(p.canvas, Math.round(bx - p.ox), Math.round(by - p.oy));
-              else g.drawImage(p.canvas, Math.round(bx - p.ox * sc), Math.round(by - p.oy * sc), Math.round(p.canvas.width * sc), Math.round(p.canvas.height * sc));
+              const ds = decorDrawState(this, o, p, Math.abs(sc - 1) < 0.01 ? 1 : sc);
+              const q = ds.p;
+              const bx = T.sx(o.X, o.z) + ds.ox, by = T.sy(T.groundZ(o.X, o.z), o.z) - (this.drag?.d === o ? 4 : 0);
+              const kx = sc * ds.sx, ky = sc * ds.sy;
+              const x = Math.round(bx - q.ox * kx), y = Math.round(by - q.oy * ky);
+              const w = Math.round(q.canvas.width * kx), h = Math.round(q.canvas.height * ky);
+              o.drawP = q;
+              o.drawK = sc;
+              o.drawX = x;
+              o.drawY = y;
+              o.drawW = w;
+              o.drawH = h;
+              o.drawPart = null;
+              this.grow(x, y, x + w, y + h);
+              if (kx === 1 && ky === 1) g.drawImage(q.canvas, x, y);
+              else g.drawImage(q.canvas, x, y, w, h);
+              if (ds.part) {
+                const py = Math.round(y + ds.dy);
+                g.drawImage(ds.part.canvas, x, py);
+                this.grow(x, py, x + ds.part.canvas.width, py + ds.part.canvas.height);
+                o.drawPart = { c: ds.part, x, y: py };
+              }
               if (this.hoverDecor === o && !this.drag) {
                 g.globalCompositeOperation = "lighter";
                 g.globalAlpha = 0.18 + 0.08 * Math.sin(this.t * 6);
-                g.drawImage(tinted(p.canvas, "#fff4c8"), Math.round(bx - p.ox), Math.round(by - p.oy));
+                g.drawImage(tinted(q.canvas, "#fff4c8"), x, y, w, h);
                 g.globalAlpha = 1;
                 g.globalCompositeOperation = "source-over";
               }
@@ -29603,16 +30579,16 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           const fi = (Math.floor(this.t * 8) % frames2.length + frames2.length) % frames2.length;
           for (const [y0, y1, sx, sy, al] of bands2) {
             const tw = Math.max(16, Math.round(64 * sx * Math.max(0.5, sc))), th = Math.max(6, Math.round(32 * sy * Math.max(0.5, sc)));
-            const strip = causticStrip(frames2, fi, tw, th);
+            const strip2 = causticStrip(frames2, fi, tw, th);
             const offx = Math.round(this.t * 3 * sx % tw);
             ctx2.globalAlpha = al;
-            for (let y = Math.floor(y0); y < y1; y += th) for (let x = -offx; x < v.iw; x += strip.width) ctx2.drawImage(strip, x, y);
+            for (let y = Math.floor(y0); y < y1; y += th) for (let x = -offx; x < v.iw; x += strip2.width) ctx2.drawImage(strip2, x, y);
           }
           ctx2.restore();
         }
         drawShafts(ctx2, v, night, z0, z1) {
           const T = v.T;
-          const spr = tinted(shaftSprite(), night > 0.5 ? "#8ab0ff" : "#fff0c4");
+          const spr2 = tinted(shaftSprite(), night > 0.5 ? "#8ab0ff" : "#fff0c4");
           ctx2.globalCompositeOperation = "lighter";
           for (const s of v.shafts) {
             if (s.z < z0 || s.z >= z1) continue;
@@ -29622,7 +30598,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
             const x = Math.round(T.sx(X, s.z) - w / 2), y0 = Math.round(T.top(s.z));
             const y1 = Math.round(T.floorAt(x + w / 2, s.z));
             ctx2.globalAlpha = clamp01(s.a * (0.65 + 0.35 * Math.sin(this.t * 0.6 + s.ph)) * (1 - night * 0.6) * (z0 === 0 ? 0.6 : 1));
-            ctx2.drawImage(spr, x, y0, w, Math.max(4, y1 - y0));
+            ctx2.drawImage(spr2, x, y0, w, Math.max(4, y1 - y0));
           }
           ctx2.globalAlpha = 1;
           ctx2.globalCompositeOperation = "source-over";
@@ -29653,14 +30629,14 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           }
         }
         drawGlints(ctx2) {
-          const spr = glintSprite();
+          const spr2 = glintSprite();
           ctx2.globalCompositeOperation = "lighter";
           let w = 0;
           for (const gl of this.glints) {
             gl.t += 1 / 60;
             if (gl.t > 0.5) continue;
             ctx2.globalAlpha = Math.sin(gl.t / 0.5 * Math.PI);
-            ctx2.drawImage(spr, gl.x - 3, gl.y - 3);
+            ctx2.drawImage(spr2, gl.x - 3, gl.y - 3);
             this.glints[w++] = gl;
           }
           this.glints.length = w;
@@ -30036,7 +31012,20 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
     window.AQ = aq;
     window.GAME = game;
     if (mode2 === "window") aq.openWindow(true);
-    if (params2.get("decor")) for (const id of params2.get("decor").split(",")) aq.addDecor(id);
+    const decorIds = (params2.get("decor") || "").split(",").filter(Boolean).flatMap((id) => {
+      const m = /^fun(\d)$/.exec(id);
+      return m ? ANIMATED_DECOR.slice(Number(m[1]) * 10, Number(m[1]) * 10 + 10) : [id];
+    });
+    decorIds.forEach((id, i) => aq.addDecor(id, { x: decorIds.length > 3 ? 0.06 + i / Math.max(1, decorIds.length - 1) * 0.88 : void 0, z: decorIds.length > 3 ? 0.18 + i % 3 * 0.24 : void 0 }));
+    if (params2.get("use")) aq.useBoost = Number(params2.get("use"));
+    const play2 = params2.get("play");
+    if (play2) {
+      const at = Number(params2.get("playAt") || 2.5) * 1e3;
+      setTimeout(() => {
+        const list = play2 === "all" ? aq.decor : aq.decor.filter((d) => d.rec.id === play2);
+        list.forEach((d, i) => setTimeout(() => aq.interact(d), i * 450));
+      }, at);
+    }
     if (!state.tank.decor.length) for (const id of ["rock_arch", "coral_fan"]) aq.addDecor(id);
     const offline = Number(params2.get("offline") || 0);
     if (offline) console.log("offline coins", aq.offlineCoins(offline));
@@ -30153,6 +31142,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
       init_coins();
       init_voxelfish();
       init_fish();
+      init_props();
     }
   });
 
@@ -31880,11 +32870,11 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
     m.sub(() => m.box(0, 0, 0, w - 1, 0, d - 1, c));
     return m;
   }
-  function cloudSprites(seed, w, h, d, scale = 2, pals = ["day", "dusk", "night", "rain"]) {
+  function cloudSprites(seed, w, h, d, scale = 2, pals2 = ["day", "dusk", "night", "rain"]) {
     const m = cloudModel(seed, w, h, d);
     const r = renderModel(m, { scale, yaw: 18, pitch: 10, outline: false, edges: 0.35, sideEdges: 0.2, ao: 0.8, jitter: 0.08, light: { top: 4.9, lit: 3.9, dark: 2.6, bottom: 1.6 } });
     const out = { w: r.w, h: r.h, ox: Math.round(r.w / 2), oy: r.oy };
-    for (const p of pals) out[p] = recolor(r.canvas, CLOUD_PALS[p] || CLOUD_PALS.day);
+    for (const p of pals2) out[p] = recolor(r.canvas, CLOUD_PALS[p] || CLOUD_PALS.day);
     return out;
   }
   function skyBodies(hour, W6, top, base) {
@@ -32001,9 +32991,9 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
               const k = i / Math.max(1, co.n - 1);
               const cw = Math.round(r.float(co.size[0], co.size[1]));
               const ch = Math.round(cw * r.float(0.32, 0.42));
-              const spr = cloudSprites((o.seed ?? 3) * 100 + i, cw, ch, Math.max(8, Math.round(ch * 0.9)), co.scale ?? 2, co.pals || ["day", "dusk", "night", "rain"]);
+              const spr2 = cloudSprites((o.seed ?? 3) * 100 + i, cw, ch, Math.max(8, Math.round(ch * 0.9)), co.scale ?? 2, co.pals || ["day", "dusk", "night", "rain"]);
               const y = Math.round(lerp(co.y[0], co.y[1], Math.pow(r.next(), 0.8)));
-              this.clouds.push({ x: r.float(-60, W6), y, v: r.float(1.2, 3.6) * (co.speed ?? 1), p: r.float(0.06, 0.22), spr, k });
+              this.clouds.push({ x: r.float(-60, W6), y, v: r.float(1.2, 3.6) * (co.speed ?? 1), p: r.float(0.06, 0.22), spr: spr2, k });
             }
             this.clouds.sort((a, b) => a.spr.w - b.spr.w);
           }
@@ -32323,6 +33313,31 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
     }
     return finish3(m, { scale: 1, yaw: 18, pitch: 8, jitter: 0.2 }, haze);
   }
+  function junkRidge(W6, seed = 27, haze) {
+    const r = new RNG(seed);
+    const nx = W6 + 24, ny = 30, nz = 18;
+    const m = new VoxelModel(nx, ny, nz);
+    const cols = ["#7a6a5a", "#6a6e78", "#8a5a3e", "#5a6a5a", "#9a8a6a", "#4a5e7a", "#8a3e34", "#6e6a5e"].map((c) => m.color(c, { jitter: 0.2 }));
+    const dirt = m.color("#5a5446", { jitter: 0.2 });
+    const H6 = new Float32Array(nx);
+    for (let x = 0; x < nx; x++) H6[x] = 5 + Math.sin(x * 0.021 + 1.3) * 3 + Math.sin(x * 0.063 + 0.4) * 2 + Math.sin(x * 0.17) * 0.8;
+    for (let x = 0; x < nx; x++) for (let z = 0; z < nz; z++) {
+      const h = Math.round(H6[x] * (0.6 + 0.4 * Math.sin(z / nz * Math.PI)));
+      for (let y = 0; y < h; y++) m.set(x, y, z, dirt);
+    }
+    for (let i = 0; i < nx / 5; i++) {
+      const x = r.int(2, nx - 3), z = r.int(2, nz - 4), base = Math.round(H6[x]) - 2;
+      const c = r.pick(cols), k = r.next();
+      if (k < 0.45) {
+        const w = r.int(2, 6), h = r.int(2, 5), d = r.int(2, 4);
+        m.box(x, base, z, x + w, base + h, z + d, c);
+      } else if (k < 0.65) m.cylinder(x, z, base, base + r.int(3, 6), r.float(1.2, 2.2), c);
+      else if (k < 0.8) {
+        for (let a = 0; a < TAU; a += 0.4) m.set(x + Math.cos(a) * 2.2, base + 2 + Math.sin(a) * 2.2, z, cols[1]);
+      } else m.line(x, base, z, x + r.int(-4, 4), base + r.int(5, 12), z + r.int(-2, 2), c, 0);
+    }
+    return finish3(m, { scale: 1, yaw: 0, pitch: 14, jitter: 0.2 }, haze);
+  }
   var init_horizon = __esm({
     "src/world/horizon.js"() {
       init_voxel();
@@ -32330,6 +33345,175 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
       init_rng();
       init_math();
       init_voxkit();
+    }
+  });
+
+  // src/world/farvox.js
+  function propSprite(id, scale = 1.15, variant = 0) {
+    try {
+      const p = getProp(id, { scale, variant });
+      return { canvas: p.canvas, ox: p.ox, oy: p.oy, w: p.w, h: p.h };
+    } catch {
+      return null;
+    }
+  }
+  function strip(LW, h, items, ridge2 = null) {
+    const c = makeCanvas(LW, h);
+    const g = ctxOf(c);
+    items.sort((a, b) => b.z - a.z);
+    let ridgeDone = !ridge2;
+    for (const it2 of items) {
+      if (!ridgeDone && it2.z <= 0.5) {
+        g.drawImage(ridge2.canvas, ridge2.x, ridge2.y);
+        ridgeDone = true;
+      }
+      const s = it2.spr;
+      if (!s) continue;
+      g.drawImage(s.canvas, Math.round(it2.x - s.ox), Math.round(it2.y - s.oy));
+    }
+    if (!ridgeDone) g.drawImage(ridge2.canvas, ridge2.x, ridge2.y);
+    return c;
+  }
+  function spire(seed, { h = 60, w = 9, d = 18, lean = 0, cols, crown = null, ledges = 8, taper = 0.62 }) {
+    const r = new RNG(seed);
+    const W6 = Math.ceil(w * 2 + Math.abs(lean) * h + 8), D = d;
+    const m = new VoxelModel(W6, h + 6, D);
+    const P5 = pals(m, cols);
+    const cx0 = W6 / 2 - lean * h / 2, cz = D / 2;
+    let ledge = r.int(4, ledges);
+    for (let y = 0; y < h; y++) {
+      const k = y / h;
+      let rr2 = w * (1 - Math.pow(k, 1.3) * taper) * (0.92 + 0.16 * Math.sin(y * 0.45 + seed));
+      if (y === ledge) {
+        rr2 *= 1.25;
+        ledge += r.int(5, ledges + 4);
+      }
+      const cx = cx0 + lean * y + Math.sin(y * 0.11 + seed) * 1.2;
+      const rz = Math.min(D / 2 - 0.5, rr2 * 0.85);
+      for (let z = 0; z < D; z++) for (let x = Math.floor(cx - rr2 - 1); x <= Math.ceil(cx + rr2 + 1); x++) {
+        const dx = (x + 0.5 - cx) / rr2, dz = (z + 0.5 - cz) / rz;
+        if (dx * dx + dz * dz > 1) continue;
+        const band = Math.floor((y + hash3(x, 0, z, 3) * 3) / 4) % P5.length;
+        m.set(x, y, z, P5[band]);
+      }
+    }
+    if (crown) decorate(m, r, crown);
+    return m;
+  }
+  function mesa(seed, { h = 34, w = 26, d = 18, cols, crown = null }) {
+    const r = new RNG(seed);
+    const W6 = w * 2 + 8;
+    const m = new VoxelModel(W6, h + 8, d);
+    const P5 = pals(m, cols);
+    const tiers = r.int(2, 4);
+    for (let t = 0; t < tiers; t++) {
+      const y0 = Math.round(t / tiers * h), y1 = Math.round((t + 1) / tiers * h);
+      const rw = w * (1 - t * 0.22) * r.float(0.9, 1.05), rz = Math.min(d / 2 - 0.5, d / 2 * (1 - t * 0.12));
+      const cx = W6 / 2 + r.float(-3, 3);
+      for (let y = y0; y < y1; y++) for (let z = 0; z < d; z++) for (let x = 0; x < W6; x++) {
+        const dx = (x + 0.5 - cx) / (rw * (1 - (y - y0) / (y1 - y0 + 1) * 0.08)), dz = (z + 0.5 - d / 2) / rz;
+        if (Math.pow(Math.abs(dx), 3) + Math.pow(Math.abs(dz), 3) > 1) continue;
+        m.set(x, y, z, P5[Math.floor((y + hash3(x, 0, z, 9) * 2) / 3) % P5.length]);
+      }
+    }
+    if (crown) decorate(m, r, crown);
+    return m;
+  }
+  function rockArch(seed, { span = 44, h = 50, th = 7, d = 16, cols, crown = null }) {
+    const r = new RNG(seed);
+    const W6 = span + th * 2 + 10;
+    const m = new VoxelModel(W6, h + th + 6, d);
+    const P5 = pals(m, cols);
+    const cx = W6 / 2, R = span / 2 + th / 2;
+    const put = (x, y, z, rr2) => {
+      for (let k = 0; k < d; k++) for (let i = -rr2; i <= rr2; i++) for (let j = -rr2; j <= rr2; j++) {
+        if (i * i + j * j > rr2 * rr2 || Math.abs(k + 0.5 - d / 2) > d / 2 - 1 + Math.sin(y * 0.3) * 0.8) continue;
+        m.set(Math.round(x + i), Math.round(y + j), k, P5[Math.floor((y + j + hash3(x + i, 0, k, 2) * 3) / 4) % P5.length]);
+      }
+    };
+    for (let a = 0; a <= Math.PI; a += 0.02) put(cx + Math.cos(a) * R, h - R + Math.sin(a) * R * 0.95, 0, th * (0.8 + 0.3 * Math.sin(a * 3 + seed)));
+    for (let y = 0; y < h - R; y++) {
+      put(cx - R, y, 0, th * 1.05);
+      put(cx + R, y, 0, th * 1.05);
+    }
+    if (crown) decorate(m, r, crown);
+    return m;
+  }
+  function decorate(m, r, crown) {
+    const C = crown.cols.map((c) => m.color(c, { jitter: 0.15 }));
+    const tops = [];
+    for (let z = 0; z < m.nz; z++) for (let x = 0; x < m.nx; x++) {
+      for (let y = m.ny - 2; y >= 0; y--) {
+        if (m.get(x, y, z)) {
+          if (!m.get(x, y + 1, z)) tops.push([x, y, z]);
+          break;
+        }
+      }
+    }
+    for (const [x, y, z] of tops) if (r.chance(crown.density ?? 0.5)) m.set(x, y + (r.chance(0.3) ? 1 : 0), z, r.pick(C));
+    for (let i = 0; i < (crown.blobs ?? 10); i++) {
+      const [x, y, z] = tops[r.int(0, tops.length - 1)] || [0, 0, 0];
+      const c = r.pick(C);
+      if (crown.branch && r.chance(0.5)) {
+        for (let k = 0; k < r.int(2, 4); k++) m.line(x, y + 1, z, x + r.int(-3, 3), y + r.int(3, 6), z + r.int(-1, 1), c, 0);
+      } else m.ellipsoid(x + 0.5, y + 1.5, z + 0.5, r.float(1.2, 2.6), r.float(1, 2.2), r.float(1.2, 2.2), c);
+    }
+    for (let z = 1; z < m.nz - 1; z++) for (let y = 1; y < m.ny - 1; y++) for (let x = 1; x < m.nx - 1; x++) {
+      if (!m.get(x, y, z) || m.get(x, y + 1, z) || hash3(x, y, z, 5) > (crown.ledge ?? 0.18)) continue;
+      m.set(x, y + 1, z, C[Math.floor(hash3(x, y, z, 7) * C.length)]);
+    }
+  }
+  function ridgeStrip(seed, LW, { amp = 10, base = 6, d = 16, cols, rocks = null, scale = 2 }) {
+    const r = new RNG(seed);
+    const nx = Math.ceil(LW / scale) + 2;
+    const m = new VoxelModel(nx, base + amp + 12, d);
+    const P5 = pals(m, cols);
+    for (let x = 0; x < nx; x++) {
+      const hh = base + amp * (0.5 + 0.5 * Math.sin(x * 0.037 + seed) * 0.6 + (fbm2(x * 0.05, seed, 3, seed) - 0.5) * 0.9);
+      for (let z = 0; z < d; z++) {
+        const h = Math.round(hh * (0.55 + 0.45 * Math.sin((z + 0.5) / d * Math.PI)));
+        for (let y = 0; y < h; y++) m.set(x, y, z, P5[Math.min(P5.length - 1, Math.floor((h - y) / 2 + hash3(x, y, z, 1) * 1.5))]);
+      }
+    }
+    if (rocks) {
+      const R = rocks.cols.map((c) => m.color(c, { jitter: 0.2 }));
+      for (let i = 0; i < nx / 6; i++) {
+        const x = r.int(2, nx - 3), z = r.int(3, d - 4);
+        let y = 0;
+        while (m.get(x, y, z)) y++;
+        m.ellipsoid(x, y, z, r.float(1.5, 3.5), r.float(1.2, 3), r.float(1.5, 3), r.pick(R));
+      }
+    }
+    const out = render2(m, { scale, yaw: 0, pitch: 18 });
+    return out;
+  }
+  function kelpColumn(seed, h, cols, scale = 2) {
+    const r = new RNG(seed);
+    const m = new VoxelModel(16, h + 4, 8);
+    const C = cols.map((c) => m.color(c, { jitter: 0.15 }));
+    let x = 8;
+    for (let y = 0; y < h; y++) {
+      x += Math.sin(y * 0.18 + seed) * 0.35;
+      m.set(Math.round(x), y, 4, C[0]);
+      if (y % 3 === 0 && y > 3) {
+        const s = y / 3 % 2 ? 1 : -1, len = r.int(2, 4);
+        for (let k = 1; k <= len; k++) m.set(Math.round(x) + s * k, y + Math.floor(k / 2), 4, C[Math.min(C.length - 1, 1 + (k > 2 ? 1 : 0))]);
+      }
+    }
+    return render2(m, { yaw: 0, pitch: 10, outline: true, scale });
+  }
+  var spr, render2, pals;
+  var init_farvox = __esm({
+    "src/world/farvox.js"() {
+      init_voxel();
+      init_props();
+      init_canvas();
+      init_rng();
+      init_math();
+      init_voxkit();
+      spr = (r) => ({ canvas: r.canvas, ox: r.ox, oy: r.oy, w: r.w, h: r.h });
+      render2 = (m, o = {}) => spr(renderModel(m, { scale: 2, yaw: 24, pitch: 16, jitter: 0.16, ...o }));
+      pals = (m, cols, o = {}) => cols.map((c) => m.color(c, { jitter: 0.2, ...o }));
     }
   });
 
@@ -32426,6 +33610,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
       init_base();
       init_sky();
       init_horizon();
+      init_farvox();
       init_math();
       init_rng();
       init_color();
@@ -32697,59 +33882,31 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           const LW = W6 + pad * 2;
           const r = new RNG(5);
           const hz = D.hz;
+          const ROCK = ["#5a6a92", "#6c7ea2", "#4c5a80", "#7e8eae", "#5e6e8c"];
+          const CORAL2 = { cols: ["#e86a8a", "#f0a050", "#f0d060", "#6ac070", "#a070d0", "#ff8aa8"], density: 0.55, blobs: 14, ledge: 0.16, branch: true };
           const yA = Math.round(hz - H6 * 0.3), hA = H6 - yA;
-          const mA = new Mask(LW, hA);
           const baseA = hz - yA + 12;
-          const rA = ridge(LW, baseA - 30, 22, 65e-4, 3.1, 4, 0.25);
-          mA.below((x) => rA[x]);
-          for (let i = 0; i < 6; i++) {
-            const px3 = r.float(0.05, 0.95) * LW, top = r.float(10, baseA - 70), w = r.float(9, 20);
-            mA.poly([[px3 - w * 1.6, baseA], [px3 - w * 0.6, top + 18], [px3 - w * 0.25, top + 4], [px3 + w * 0.35, top], [px3 + w * 0.7, top + 14], [px3 + w * 1.5, baseA]]);
-          }
-          const ax = LW * 0.58, ay = baseA - 62;
-          mA.ellipse(ax, ay, 46, 30);
-          mA.ellipse(ax, ay + 6, 30, 22, 0);
-          mA.rect(ax - 30, ay + 6, 60, 70, 0);
-          mA.rect(ax - 46, ay + 20, 16, 70);
-          mA.rect(ax + 30, ay + 20, 16, 70);
-          const palA = stopPalette([[0, "#0c3650"], [1, "#2a7a98"]], 6);
-          this.farA = new FogLayer(mA.toCanvas((x, y, v, up) => {
-            if (up <= 1) return pack("#64c4d4");
-            return ditherPick(palA, 0.75 - Math.min(1, up / 70) * 0.6 + (fbm2(x * 0.05, y * 0.05, 2, 2) - 0.5) * 0.35, x, y);
-          }), -pad, yA);
+          const A = [];
+          const spires = [[0.04, 46, 8], [0.17, 70, 10], [0.3, 40, 7], [0.78, 76, 11], [0.9, 52, 9], [0.99, 38, 7], [0.44, 34, 6]];
+          spires.forEach(([xf, h, w], i) => A.push({ spr: render2(spire(40 + i, { h, w, d: 16, lean: r.float(-0.08, 0.08), cols: ROCK, crown: CORAL2 }), { yaw: i % 2 ? 22 : -22 }), x: xf * LW, y: baseA + r.int(-2, 4), z: 1 + r.next() * 0.1 }));
+          A.push({ spr: render2(rockArch(51, { span: 46, h: 58, th: 7, d: 14, cols: ROCK, crown: CORAL2 }), { yaw: 18 }), x: LW * 0.6, y: baseA + 2, z: 0.95 });
+          A.push({ spr: render2(mesa(52, { h: 26, w: 30, d: 18, cols: ROCK, crown: CORAL2 }), { yaw: -16 }), x: LW * 0.35, y: baseA + 4, z: 0.9 });
+          A.push({ spr: render2(mesa(53, { h: 18, w: 22, d: 16, cols: ROCK, crown: CORAL2 }), { yaw: 20 }), x: LW * 0.69, y: baseA + 6, z: 0.4 });
+          const ridgeA = ridgeStrip(54, LW, { amp: 8, base: 7, d: 14, cols: ["#8a9ab4", "#7a8aa6", "#6a7a98"], rocks: { cols: ROCK } });
+          this.farA = new FogLayer(strip(LW, hA, A, { canvas: ridgeA.canvas, x: Math.round(LW / 2 - ridgeA.ox), y: Math.round(baseA + 14 - ridgeA.oy) }), -pad, yA);
           this.farAY = yA;
           const yB = Math.round(hz - 130), hB = H6 - yB;
-          const mB = new Mask(LW, hB);
           const baseB = hz - yB + 22;
-          const rB = ridge(LW, baseB - 8, 10, 0.011, 7.7, 3);
-          mB.below((x) => rB[x]);
-          for (let i = 0; i < 30; i++) {
-            const px3 = r.float(0, LW), by = rB[Math.round(clamp(px3, 0, LW))] + 4;
-            const k = r.next();
-            if (k < 0.35) mB.ellipse(px3, by - 4, r.float(8, 18), r.float(6, 12));
-            else if (k < 0.7) mB.branch(px3, by, r.float(-0.2, 0.2), r.float(10, 20), r.float(1.6, 3), 3, r, 1, 0.6);
-            else if (k < 0.85) {
-              const fr = r.float(12, 20);
-              for (let a = -1.1; a <= 1.1; a += 0.22) mB.line(px3, by, px3 + Math.sin(a) * fr, by - Math.cos(a) * fr * 1.1, 1.1);
-              mB.ellipse(px3, by - fr * 0.6, fr * 0.85, fr * 0.55);
-            } else {
-              let x = px3, y = by;
-              for (let j = 0; j < 26; j++) {
-                const nx = x + Math.sin(j * 0.4 + i) * 1.4, ny = y - 4;
-                mB.line(x, y, nx, ny, 1.3);
-                x = nx;
-                y = ny;
-              }
-            }
+          const B2 = [];
+          const kinds = [["coral_branch", 4], ["coral_fan", 3], ["coral_brain", 3], ["coral_tube", 3], ["coral_staghorn", 3], ["rock_big", 1], ["rock_small", 1], ["anemone_base", 3], ["starfish_rock", 1]];
+          for (let i = 0; i < 60; i++) {
+            const [id, nv] = kinds[r.int(0, kinds.length - 1)];
+            const sp = propSprite(id, r.pick([0.4, 0.5, 0.6]), r.int(0, nv - 1));
+            if (sp) B2.push({ spr: sp, x: r.float(0, LW), y: baseB + r.int(-3, 3), z: r.next() });
           }
-          const palB = stopPalette([[0, "#0a3246"], [1, "#2a6e88"]], 6);
-          const palS = stopPalette([[0, "#6a8a8a"], [1, "#b8b49a"]], 5);
-          this.farB = new FogLayer(mB.toCanvas((x, y, v, up) => {
-            if (y > rB[x] + 6) return ditherPick(palS, 0.4 + (y - rB[x]) / 60 + (fbm2(x * 0.05, y * 0.2, 2, 6) - 0.5) * 0.3, x, y);
-            if (up <= 1) return pack("#7ed4dc");
-            if (up === 2) return pack("#3e8ea4");
-            return ditherPick(palB, 0.72 - Math.min(1, up / 40) * 0.55 + (fbm2(x * 0.08, y * 0.08, 2, 6) - 0.5) * 0.4, x, y);
-          }), -pad, yB);
+          for (let i = 0; i < 10; i++) B2.push({ spr: kelpColumn(60 + i, r.int(30, 60), ["#3e6a2a", "#5a8a34", "#86b048"], 1), x: r.float(0, LW), y: baseB + r.int(-2, 2), z: r.float(0.6, 1) });
+          const ridgeB = ridgeStrip(55, LW, { amp: 6, base: 5, d: 12, cols: ["#e2cc98", "#d0b884", "#bca674"], rocks: { cols: ["#8a8a9a", "#a09aa8"] } });
+          this.farB = new FogLayer(strip(LW, hB, B2, { canvas: ridgeB.canvas, x: Math.round(LW / 2 - ridgeB.ox), y: Math.round(baseB + 10 - ridgeB.oy) }), -pad, yB);
           this.farBY = yB;
           this.whale = whaleFrames(230);
           this.whaleL = this.whale.map(flipCanvas);
@@ -33095,14 +34252,14 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           sky.drawClouds(g, tod, scroll, ref, clamp01(wx.rain * 0.9 + wx.storm * 0.4), 1, view);
           if (oc > 0.01) {
             g.globalAlpha = oc;
-            const strip = this.ocBlend.get([[this.overcast.day, tod.day], [this.overcast.dusk, tod.dusk], [this.overcast.night, tod.night]]);
-            const pat = g.createPattern(strip, "repeat");
+            const strip2 = this.ocBlend.get([[this.overcast.day, tod.day], [this.overcast.dusk, tod.dusk], [this.overcast.night, tod.night]]);
+            const pat = g.createPattern(strip2, "repeat");
             pat.setTransform(new DOMMatrix([1, 0, 0, 1, 0, this.top]));
             g.fillStyle = pat;
             g.fillRect(0, y0, W6, y1 - y0);
             g.globalAlpha = 1;
           }
-          const keys = (b, spr) => b.get([[spr.day, tod.day], [spr.dusk, tod.dusk], [spr.night, tod.night]]);
+          const keys = (b, spr2) => b.get([[spr2.day, tod.day], [spr2.dusk, tod.dusk], [spr2.night, tod.night]]);
           const sb = this.sail;
           g.drawImage(keys(sb.blend, sb.spr), Math.round(sb.x - sb.spr.ox), this.base + 2 - sb.spr.oy + Math.round(Math.sin(t * 0.9) * 0.6));
           for (const h of this.horizon) {
@@ -33221,9 +34378,9 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           const px3 = this.par.x, py = this.par.y;
           const wob = quality(env) >= 1 ? 1 : 0;
           const t = this.t, wx = this.wx;
-          drawWobble(ctx2, this.farA.tint(water, 0.8, key), -this.pad + px3 * 0.8, this.farAY + py * 0.4, t, wob, 4, 0.9, 0.07);
+          drawWobble(ctx2, this.farA.tint(water, 0.64, key), -this.pad + px3 * 0.8, this.farAY + py * 0.4, t, wob, 4, 0.9, 0.07);
           this.drawGiant(ctx2);
-          drawWobble(ctx2, this.farB.tint(water, 0.74, key), -this.pad + px3 * 1.4, this.farBY + py * 0.5, t + 2, wob, 4, 1.1, 0.09);
+          drawWobble(ctx2, this.farB.tint(water, 0.66, key), -this.pad + px3 * 1.4, this.farBY + py * 0.5, t + 2, wob, 4, 1.1, 0.09);
           this.bands.draw(ctx2, 2, tod, px3 * 2, py * 0.6);
           ctx2.drawImage(this.haze.tint(water, 1, key), 0, this.hazeY);
           this.decor.draw(ctx2, 2, t, px3 * 2, py * 0.6, 1 + wx.storm * 0.8);
@@ -33264,10 +34421,10 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           const gi = this.giant;
           if (!gi) return;
           const fr = gi.kind === "whale" ? gi.dir > 0 ? this.whale : this.whaleL : gi.dir > 0 ? this.turtle : this.turtleL;
-          const spr = fr[Math.floor(gi.ph / TAU * fr.length % fr.length + fr.length) % fr.length];
-          const c = tinted(spr, "#08304a");
+          const spr2 = fr[Math.floor(gi.ph / TAU * fr.length % fr.length + fr.length) % fr.length];
+          const c = tinted(spr2, "#08304a");
           ctx2.globalAlpha = gi.kind === "whale" ? 0.26 : 0.3;
-          const s = gi.s || 1, w = Math.round(spr.width * s), h = Math.round(spr.height * s);
+          const s = gi.s || 1, w = Math.round(spr2.width * s), h = Math.round(spr2.height * s);
           ctx2.drawImage(c, Math.round(gi.x - w / 2 + this.par.x * 1.1), Math.round(gi.y - h / 2 + this.par.y * 0.5), w, h);
           ctx2.globalAlpha = 1;
         }
@@ -33384,8 +34541,8 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           this.decor.draw(ctx2, 0, t, 0, 0, 1 + wx.storm * 0.8);
           for (const cr of this.crabs) {
             const y = Math.round(this.D.floorAt(cr.x, cr.z));
-            const spr = this.crabSpr[cr.kind][cr.state === "walk" ? 1 + Math.floor(cr.ft) % 2 : 0];
-            ctx2.drawImage(spr, Math.round(cr.x) - 8, y - 10);
+            const spr2 = this.crabSpr[cr.kind][cr.state === "walk" ? 1 + Math.floor(cr.ft) % 2 : 0];
+            ctx2.drawImage(spr2, Math.round(cr.x) - 8, y - 10);
           }
           const s = this.secrets();
           const hk = (period, off) => {
@@ -33573,10 +34730,12 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
       return pack(x === 1 ? mix(c, "#ffffff", 0.4) : x === 4 ? mix(c, "#200810", 0.4) : y === 3 ? "#f0f0f0" : c);
     });
   }
-  var SKY2, WATER3, qmix2, tri2, SCREEN_TEXT, VEND, ScreenFX, JunkyardBiome;
+  var SKY2, SKYHZ2, WATER3, qmix2, tri2, SCREEN_TEXT, VEND, ScreenFX, JunkyardBiome;
   var init_junkyard = __esm({
     "src/world/biomes/junkyard.js"() {
       init_base();
+      init_sky();
+      init_horizon();
       init_math();
       init_rng();
       init_color();
@@ -33586,10 +34745,11 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
       init_shopdata();
       init_scenery();
       SKY2 = {
-        day: [[0, "#768670"], [0.6, "#a2aa86"], [1, "#cdcaa0"]],
-        dusk: [[0, "#3a2a40"], [0.55, "#8a4a50"], [1, "#e2925c"]],
-        night: [[0, "#04070a"], [1, "#121a1c"]]
+        day: [[0, "#4e6058"], [0.45, "#6a7c66"], [0.8, "#98a27e"], [0.94, "#b8b88e"], [1, "#d2cca2"]],
+        dusk: [[0, "#1c1828"], [0.45, "#3c2a40"], [0.78, "#7a4048"], [0.93, "#c2704e"], [1, "#e8965c"]],
+        night: [[0, "#010203"], [0.6, "#05080a"], [1, "#121a1c"]]
       };
+      SKYHZ2 = { day: "#b8b88e", dusk: "#c2704e", night: "#0c1214" };
       WATER3 = {
         day: [[0, "#86c0a4"], [0.05, "#52a08a"], [0.3, "#357a6e"], [0.65, "#225a56"], [1, "#143e40"]],
         dusk: [[0, "#d0a874"], [0.05, "#82907a"], [0.35, "#40645e"], [1, "#18343a"]],
@@ -33742,10 +34902,9 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           this.W = W6;
           this.H = H6;
           this.base = this.baseSurface(H6);
+          this.top = worldTop(H6);
           this.ys = new Int16Array(W6 + 2);
-          this.skyH = this.base + 10;
-          this.air = makeLayer(W6, this.skyH);
-          this.skyBlend = new Blend();
+          this.ys.fill(this.base);
           this.waterBlend = new Blend();
           this.buildSky();
           const wo = { y0: this.base - 2, y1: H6, levels: 24 };
@@ -33761,46 +34920,29 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           this.fresh = true;
         }
         buildSky() {
-          const W6 = this.W, h = this.skyH, base = this.base;
-          const m = new Mask(W6, h);
-          const r = new RNG(17);
-          const rg = ridge(W6, base - 3, 3, 0.02, 4, 3);
-          m.below((x) => rg[x]);
-          this.stacks = [];
-          for (const xf of [0.2, 0.23, 0.71]) {
-            const x = Math.round(xf * W6), hh = r.int(10, 15);
-            m.rect(x, base - hh, 3, hh);
-            m.rect(x - 1, base - hh, 5, 1);
-            this.stacks.push({ x: x + 1, y: base - hh - 1 });
+          const W6 = this.W, base = this.base, top = this.top;
+          this.sky = new SkyDome({ W: W6, top, base, seed: 17, stops: SKY2, stars: 24, haze: 0.12, clouds: { n: 11, size: [26, 64], y: [top + 30, base - 26], scale: 2, speed: 0.8, pals: ["smog", "dusk", "night", "rain"] } });
+          this.sky.clouds.forEach((c2) => {
+            c2.spr.day = c2.spr.smog;
+          });
+          const hz = (k) => ({ day: [SKYHZ2.day, k], dusk: [SKYHZ2.dusk, k + 0.08], night: [SKYHZ2.night, Math.min(0.85, k + 0.32)] });
+          this.horizon = [
+            { spr: junkRidge(W6, 27, hz(0.34)), x: -12, y: base + 3, full: true },
+            { spr: factory(21, hz(0.3)), x: Math.round(W6 * 0.22), y: base + 2, factory: true },
+            { spr: gantryCrane(23, hz(0.36)), x: Math.round(W6 * 0.52), y: base + 2, crane: true },
+            { spr: containerStack(25, hz(0.32)), x: Math.round(W6 * 0.8), y: base + 2 }
+          ];
+          for (const h of this.horizon) {
+            h.blend = new Blend();
+            if (h.full) h.x = h.spr.ox - 12;
           }
-          this.blinkers = [];
-          for (const xf of [0.43, 0.86]) {
-            const x = Math.round(xf * W6), top = base - 18;
-            m.rect(x, top, 2, 18);
-            m.line(x, top, x + 26, top - 3, 0.6);
-            m.line(x - 8, top + 1, x, top, 0.6);
-            m.line(x + 22, top - 2, x + 22, top + 8, 0.4);
-            this.blinkers.push({ x: x + 26, y: top - 4 }, { x, y: top - 1 });
-          }
-          m.rect(Math.round(W6 * 0.55), base - 4, 60, 2);
-          for (let i = 0; i < 7; i++) m.rect(Math.round(W6 * 0.55) + i * 9, base - 4, 1, 5);
-          this.windows = [];
-          for (let i = 0; i < 18; i++) {
-            const x = r.int(10, W6 - 10);
-            this.windows.push({ x, y: Math.round(rg[x]) + r.int(1, 2), ph: r.float(0, TAU) });
-          }
-          const mk = (kind2) => {
-            const st = SKY2[kind2];
-            const c = paint2(W6, h, (x, y) => {
-              const [rr2, gg, bb] = lerpStops(st, clamp01(y / base));
-              return dpack(rr2, gg, bb, x, y, 6);
-            });
-            const sil = { day: ["#4a5446", "#5c6654"], dusk: ["#2a1c2a", "#3a2834"], night: ["#020405", "#080c0e"] }[kind2];
-            ctxOf(c).drawImage(m.toCanvas((x, y, v, up) => pack(up <= 1 ? sil[1] : sil[0])), 0, 0);
-            return c;
-          };
-          this.sky = { day: mk("day"), dusk: mk("dusk"), night: mk("night") };
+          const f = this.horizon[1];
+          this.stacks = Object.entries(f.spr.anchors).filter(([k]) => k.startsWith("stack")).map(([, a]) => ({ x: f.x - f.spr.ox + a[0], y: f.y - f.spr.oy + a[1] }));
+          const c = this.horizon[2];
+          this.blinkers = ["lampL", "lampR"].map((k) => ({ x: c.x - c.spr.ox + c.spr.anchors[k][0], y: c.y - c.spr.oy + c.spr.anchors[k][1] }));
           this.smoke = [];
+          const r = new RNG(17);
+          for (let i = 0; i < 60; i++) this.smoke.push({ s: i % this.stacks.length, k: r.next(), ph: r.float(0, TAU), w: r.float(0.7, 1.3) });
         }
         makeSheen() {
           const W6 = this.W + 256, h = 10;
@@ -33992,6 +35134,22 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
         }
         floorAt(x, z = 0) {
           return this.D ? this.D.floorAt(x, z) : super.floorAt(x);
+        }
+        waveAt(x) {
+          const i = Math.max(0, Math.min(this.W, Math.round(x)));
+          return this.ys ? this.ys[i] : this.base;
+        }
+        waterLook() {
+          const tod = this.tod, wx = this.wx;
+          return {
+            refract: 12 + wx.static * 8,
+            caustic: 6 * (0.3 + tod.day * 0.7) * (1 - wx.oil * 0.6),
+            chroma: true,
+            foam: 0.9,
+            causticColor: tri2("#24382a", "#30261c", "#0c1a1a", tod),
+            foamColor: this.cols.crest,
+            crestColor: tri2("#e8ffe8", "#ffe0c0", "#90b0a8", tod)
+          };
         }
         buildLayers() {
           const W6 = this.W, H6 = this.H, pad = 28, D = this.D;
@@ -34187,7 +35345,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           wx.data += ((w === "datarain" ? 1 : 0) - wx.data) * k;
           wx.murk += ((w === "murky" ? 1 : 0.4) - wx.murk) * k;
           const c = env.cursor;
-          const tx = c && c.x > -50 ? (c.x / W6 - 0.5) * -2 : 0, ty = c && c.y > -50 ? (c.y / H6 - 0.5) * -2 : 0;
+          const tx = c && c.x > -50 ? clamp((c.x / W6 - 0.5) * -2, -1, 1) : 0, ty = c && c.y > -50 ? clamp((c.y / H6 - 0.5) * -2, -1, 1) : 0;
           const kp = snap ? 1 : 1 - Math.exp(-dt * 2.5);
           this.par.x += (tx - this.par.x) * kp;
           this.par.y += (ty - this.par.y) * kp;
@@ -34232,6 +35390,8 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
             f.x += f.v * dt * 0.6;
             if (f.x > W6 + 20) f.x = -20;
           }
+          this.sky.update(dt, 0.8 + wx.static * 0.6);
+          waveLine(this.ys, W6, s, t * 0.7, 1.1, 0.2, 0.8);
           this.bubbles.update(dt, s);
           this.emitT -= dt;
           if (this.emitT <= 0) {
@@ -34245,35 +35405,55 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           this.hint += dt;
         }
         // ------------------------------------------------------------------ draw
-        drawAir(env) {
-          const g = this.air.ctx, W6 = this.W, h = this.skyH, t = this.t, tod = this.tod;
-          g.globalAlpha = 1;
-          g.globalCompositeOperation = "source-over";
-          g.drawImage(this.skyBlend.get([[this.sky.day, tod.day], [this.sky.dusk, tod.dusk], [this.sky.night, tod.night]]), 0, 0);
-          g.fillStyle = tod.night > 0.5 ? "#1a2224" : "#8a9080";
-          for (const st of this.stacks) {
-            for (let i = 0; i < 5; i++) {
-              const k = (t * 0.15 + i / 5) % 1;
-              g.globalAlpha = (1 - k) * 0.45;
-              const r = 1 + Math.round(k * 4);
-              g.fillRect(Math.round(st.x + k * 14 + Math.sin(t + i) * 1.5) - r, Math.round(st.y - k * 12) - r, r * 2, r * 2);
-            }
+        // Smoggy sky, voxel smog clouds, the industrial voxel skyline with smoke plumes and blinking crane lights.
+        drawAir(g, env) {
+          const W6 = this.W, t = this.t, tod = this.tod, sky = this.sky, wx = this.wx;
+          const view = env.view;
+          const sp = sky.span(view);
+          if (!sp) return;
+          const [y0, y1] = sp;
+          const scroll = env.scroll ?? 0, ref = env.ref ?? 0;
+          g.save();
+          g.beginPath();
+          g.rect(0, y0, W6, y1 - y0);
+          g.clip();
+          sky.drawGradient(g, tod, view);
+          const clear = 0.55 - wx.oil * 0.3;
+          sky.drawBodies(g, env, tod, clear, scroll, ref);
+          sky.drawClouds(g, tod, scroll, ref, wx.static * 0.5, 0.92, view);
+          g.fillStyle = tod.night > 0.5 ? "#1c2224" : "#8a8a78";
+          for (const p of this.smoke) {
+            const st = this.stacks[p.s];
+            if (!st) continue;
+            const k = (p.k + t * 0.035 * p.w) % 1;
+            const r = 1 + Math.round(k * 9 * p.w);
+            const x = Math.round(st.x + k * 70 + Math.sin(t * 0.6 + p.ph + k * 5) * (2 + k * 6)), y = Math.round(st.y - k * 150);
+            g.globalAlpha = (1 - k) * 0.5;
+            g.fillRect(x - r + 1, y - r, r * 2 - 2, r * 2);
+            g.fillRect(x - r, y - r + 1, r * 2, r * 2 - 2);
           }
           g.globalAlpha = 1;
-          if (tod.night > 0.3) {
-            for (const wdw of this.windows) {
-              if (Math.sin(t * 0.2 + wdw.ph) > -0.3) {
-                g.fillStyle = "#ffd27a";
-                g.globalAlpha = tod.night * 0.8;
-                g.fillRect(wdw.x, wdw.y, 1, 1);
-              }
+          for (const h of this.horizon) {
+            const c = h.blend.get([[h.spr.day, tod.day], [h.spr.dusk, tod.dusk], [h.spr.night, tod.night]]);
+            g.drawImage(c, h.x - h.spr.ox, h.y - h.spr.oy);
+            if (h.spr.glow && tod.night + tod.dusk * 0.4 > 0.1) {
+              g.globalCompositeOperation = "lighter";
+              g.globalAlpha = clamp01(tod.night + tod.dusk * 0.4) * (0.6 + 0.2 * Math.sin(t * 0.7 + h.x));
+              g.drawImage(h.spr.glow, h.x - h.spr.ox, h.y - h.spr.oy);
+              g.globalCompositeOperation = "source-over";
+              g.globalAlpha = 1;
             }
-            g.globalAlpha = 1;
           }
           for (const b of this.blinkers) if (Math.sin(t * 2.5 + b.x) > 0.4) {
-            g.fillStyle = "#ff4a3a";
+            drawGlow(g, b.x, b.y, 3, "#ff4a3a", 0.8);
+            g.fillStyle = "#ff6a5a";
             g.fillRect(b.x, b.y, 1, 1);
           }
+          if (wx.static > 0.05 && this.flicker > 0.02) {
+            g.fillStyle = rgba("#e0fff0", this.flicker * 0.2);
+            g.fillRect(0, y0, W6, y1 - y0);
+          }
+          g.restore();
         }
         drawBack(ctx2, env) {
           this.nearHooked = !!this.nearSeen;
@@ -34281,14 +35461,13 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           const W6 = this.W, H6 = this.H, t = this.t, tod = this.tod, wx = this.wx;
           const sy = this.surfaceAt(env);
           const ys = this.ys;
-          waveLine(ys, W6, sy, t * 0.7, 1.1, 0.2, 0.8);
           let top = H6;
           for (let x = 0; x <= W6; x++) if (ys[x] < top) top = ys[x];
           const water = this.waterBlend.get([[this.water.day, tod.day], [this.water.dusk, tod.dusk], [this.water.night, tod.night]]);
-          const hasAir = top > -3;
+          const view = env.view;
+          const hasAir = !view || view.y0 < top + 2;
           if (hasAir) {
-            this.drawAir(env);
-            ctx2.drawImage(this.air.canvas, 0, 0);
+            this.drawAir(ctx2, env);
             const wp = new Path2D();
             wp.moveTo(0, H6);
             waveRuns(ys, W6, (x0, len, y) => {
@@ -34566,21 +35745,21 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
             }
             let total = 0;
             for (const [, w] of VEND) total += w;
-            let roll = Math.random() * total, pick4 = VEND[0][0];
+            let roll = Math.random() * total, pick5 = VEND[0][0];
             for (const [b, w] of VEND) {
               roll -= w;
               if (roll <= 0) {
-                pick4 = b;
+                pick5 = b;
                 break;
               }
             }
             st.baits || (st.baits = {});
-            st.baits[pick4] = (st.baits[pick4] || 0) + 1;
+            st.baits[pick5] = (st.baits[pick5] || 0) + 1;
             v.t = 0;
-            v.item = canSprite({ bread: "#e0b060", worm: "#ff7ab0", sugar: "#f0f0ff", chip: "#3ad08a", popup: "#ff4a6a", golden: "#ffd040" }[pick4] || "#d8343a");
+            v.item = canSprite({ bread: "#e0b060", worm: "#ff7ab0", sugar: "#f0f0ff", chip: "#3ad08a", popup: "#ff4a6a", golden: "#ffd040" }[pick5] || "#d8343a");
             audio2?.play?.("vending");
-            if (pick4 === "golden") setTimeout(() => audio2?.play?.("sparkle"), 400);
-            game.toast?.(`*clunk* The vending machine drops 1 ${BAITS[pick4]?.name || pick4}!`, "bait");
+            if (pick5 === "golden") setTimeout(() => audio2?.play?.("sparkle"), 400);
+            game.toast?.(`*clunk* The vending machine drops 1 ${BAITS[pick5]?.name || pick5}!`, "bait");
             game.save?.();
           }
         }
@@ -34601,16 +35780,20 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
     const s = r * 2 + 1;
     return paint2(s, s, (x, y) => Math.hypot(x - r, y - r) <= r + 0.2 ? pack("#ffffff") : 0);
   }
-  var WATER4, GLYPHS, GLYPH_IDS, ORDER, STRATA, AbyssBiome;
+  var SKY_NIGHT, UPPER, WATER4, GLYPHS, GLYPH_IDS, ORDER, STRATA, AbyssBiome;
   var init_abyss = __esm({
     "src/world/biomes/abyss.js"() {
       init_base();
+      init_sky();
+      init_horizon();
       init_math();
       init_rng();
       init_color();
       init_canvas();
       init_props();
       init_scenery();
+      SKY_NIGHT = { night: [[0, "#010208"], [0.6, "#050a1e"], [0.9, "#0c1838"], [1, "#18305a"]] };
+      UPPER = [[0, "#3a6a9a"], [0.05, "#2c5688"], [0.35, "#22447a"], [1, "#1c2e60"]];
       WATER4 = [[0, "#1c2e60"], [0.3, "#2a4280"], [0.5, "#34529a"], [0.62, "#2c4686"], [0.8, "#1c2e60"], [1, "#101c40"]];
       GLYPHS = {
         moon: ["..###..", ".##....", "##.....", "##.....", "##.....", ".##....", "..###.."],
@@ -34625,7 +35808,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
         constructor(ocean2) {
           super(ocean2);
           this.id = "abyss";
-          this.name = "The Midnight Abyss";
+          this.name = "The Deep Ocean";
           this.subtitle = "Something down here is watching";
           this.music = "abyss";
           this.weathers = [{ id: "still", name: "Still Water", weight: 4 }, { id: "snow", name: "Marine Snow", weight: 2 }, { id: "current", name: "Deep Current", weight: 1.5 }, { id: "glowtide", name: "Glow Tide", weight: 0.8 }];
@@ -34642,6 +35825,17 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
         baseSurface() {
           return null;
         }
+        // The abyss has no surface in view; far above it the dim night sea where the boat floats.
+        boatLevel() {
+          return this.level ?? null;
+        }
+        waveAt(x) {
+          const i = Math.max(0, Math.min(this.W, Math.round(x)));
+          return this.ys ? this.ys[i] : this.level;
+        }
+        waterLook() {
+          return { refract: 11, caustic: 3 + this.wx.glow * 4, chroma: true, foam: 0.8, causticColor: "#1a2e4a", foamColor: "#9ab8e8", crestColor: "#c8dcff" };
+        }
         secrets() {
           return this.game?.state?.secrets || {};
         }
@@ -34652,12 +35846,98 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
         build(W6, H6) {
           this.W = W6;
           this.H = H6;
+          this.top = worldTop(H6);
+          this.level = Math.round(this.top * 0.62);
+          this.ys = new Int16Array(W6 + 2);
+          this.ys.fill(this.level);
           this.waterStrip = gradientStrip(H6, WATER4, { levels: 22 });
+          this.buildAbove();
           this.buildDepth();
           this.buildLayers();
           this.rays = makeRays(W6, H6, { seed: 31, count: 6, sunX: W6 * 0.48, sunY: -H6 * 1.5, minW: 14, maxW: 40, len: 0.8, color: "#6a8ae0", alpha: 0.3, levels: 3 });
           this.buildLife();
           this.fresh = true;
+        }
+        // The dim surface far above the abyss: night sky, moon, voxel rock spires, a marker buoy, upper water.
+        buildAbove() {
+          const W6 = this.W, top = this.top, level = this.level;
+          this.sky = new SkyDome({ W: W6, top, base: level, seed: 41, stops: SKY_NIGHT, nightOnly: true, stars: 110, sun: false, clouds: { n: 6, size: [26, 60], y: [top + 20, level - 30], scale: 2, speed: 0.6, pals: ["night"] } });
+          this.upper = gradientStrip(-level + 4, UPPER, { levels: 16 });
+          this.spires = rockSpires(31, { night: ["#0c1838", 0.45] });
+          this.spireX = Math.round(W6 * 0.74);
+          this.buoy = { spr: markerBuoy("#2a3a5a"), x: Math.round(W6 * 0.26) };
+          this.moonRays = makeRays(W6, -level, { seed: 52, count: 7, sunX: W6 * 0.6, sunY: level * 1.6, minW: 6, maxW: 22, len: 0.9, color: "#8aa8ff", alpha: 0.35, levels: 3 });
+        }
+        drawAbove(ctx2, env) {
+          const view = env.view;
+          if (view && view.y0 >= 0) return;
+          const W6 = this.W, t = this.t, level = this.level, ys = this.ys;
+          const sky = this.sky, tod = { day: 0, dusk: 0, night: 1 };
+          const sp = sky.span(view);
+          if (sp) {
+            ctx2.save();
+            ctx2.beginPath();
+            ctx2.rect(0, sp[0], W6, sp[1] - sp[0]);
+            ctx2.clip();
+            sky.drawGradient(ctx2, tod, view);
+            sky.drawBodies(ctx2, { hour: 23.5 }, tod, 1, env.scroll ?? 0, env.ref ?? 0);
+            sky.drawClouds(ctx2, tod, env.scroll ?? 0, env.ref ?? 0, 0, 0.9, view);
+            ctx2.drawImage(this.spires.night, this.spireX - this.spires.ox, level + 2 - this.spires.oy);
+            for (let i = 0; i < 3; i++) {
+              ctx2.fillStyle = ["#3affb0", "#5ac8ff", "#a87aff"][i];
+              for (let x = 0; x < W6; x += 3) {
+                const y = Math.round(this.top + 60 + i * 18 + Math.sin(x * 0.012 + t * 0.15 + i) * 16 + Math.sin(x * 0.031 - t * 0.1) * 6);
+                const a2 = 0.06 + 0.05 * Math.sin(x * 0.02 + t * 0.4 + i * 2);
+                if (a2 <= 0.02) continue;
+                ctx2.globalAlpha = a2;
+                ctx2.fillRect(x, y, 3, 10 + i * 3);
+              }
+            }
+            ctx2.globalAlpha = 1;
+            ctx2.restore();
+          }
+          const wp = new Path2D();
+          wp.moveTo(0, 1);
+          waveRuns(ys, W6, (x0, len, y) => {
+            wp.lineTo(x0, y);
+            wp.lineTo(x0 + len, y);
+          });
+          wp.lineTo(W6, 1);
+          wp.closePath();
+          const pat = ctx2.createPattern(this.upper, "repeat");
+          pat.setTransform(new DOMMatrix([1, 0, 0, 1, 0, level - 2]));
+          ctx2.fillStyle = pat;
+          ctx2.fill(wp);
+          ctx2.globalCompositeOperation = "lighter";
+          ctx2.globalAlpha = 0.5 + 0.15 * Math.sin(t * 0.3);
+          ctx2.drawImage(this.moonRays, Math.round(Math.sin(t * 0.04) * 14), level);
+          ctx2.globalCompositeOperation = "source-over";
+          ctx2.globalAlpha = 1;
+          const b = this.buoy, a = b.spr.anchors.water;
+          const by = this.waveAt(b.x) + Math.round(Math.sin(t * 1.5) * 1.2);
+          ctx2.drawImage(b.spr.day, Math.round(b.x - a[0]), Math.round(by - a[1]));
+          b.lamp = [b.x - a[0] + b.spr.anchors.lamp[0], by - a[1] + b.spr.anchors.lamp[1]];
+          const crest = new Path2D(), sub2 = new Path2D();
+          waveRuns(ys, W6, (x0, len, y) => {
+            crest.rect(x0, y, len, 1);
+            sub2.rect(x0, y + 1, len, 2);
+          });
+          ctx2.fillStyle = "#5a7ab0";
+          ctx2.globalAlpha = 0.6;
+          ctx2.fill(sub2);
+          ctx2.globalAlpha = 1;
+          ctx2.fillStyle = "#9ab8e8";
+          ctx2.fill(crest);
+          const m = skyBodies(23.5, W6, this.top, level).moon;
+          ctx2.fillStyle = "#c8dcff";
+          for (let i = 0; i < 18; i++) {
+            const ph = Math.floor(t * 2.4 + i * 0.61);
+            const x = Math.round(m.x + (hash2(i, ph, 5) - 0.5) * (30 + i * 4));
+            if (x < 0 || x >= W6) continue;
+            ctx2.globalAlpha = Math.sin((t * 2.4 + i * 0.61) % 1 * Math.PI) * 0.7;
+            ctx2.fillRect(x, ys[x] + 1 + Math.floor(hash2(i, ph, 6) * 5), 2 + Math.floor(hash2(i, ph, 7) * 3), 1);
+          }
+          ctx2.globalAlpha = 1;
         }
         buildDepth() {
           const W6 = this.W, H6 = this.H;
@@ -34907,12 +36187,14 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           wx.current += ((w === "current" ? 1 : 0) - wx.current) * k;
           wx.glow += ((w === "glowtide" ? 1 : 0) - wx.glow) * k;
           const c = env.cursor;
-          const tx = c && c.x > -50 ? (c.x / W6 - 0.5) * -2 : 0, ty = c && c.y > -50 ? (c.y / H6 - 0.5) * -2 : 0;
+          const tx = c && c.x > -50 ? clamp((c.x / W6 - 0.5) * -2, -1, 1) : 0, ty = c && c.y > -50 ? clamp((c.y / H6 - 0.5) * -2, -1, 1) : 0;
           const kp = snap ? 1 : 1 - Math.exp(-dt * 2.5);
           this.par.x += (tx - this.par.x) * kp;
           this.par.y += (ty - this.par.y) * kp;
           this.fresh = false;
           const drift = wx.current * 34;
+          this.sky.update(dt, 0.6 + wx.current);
+          waveLine(this.ys, W6, this.level, this.t * 0.6, 1.3, 0.35, 0.75);
           this.snow.update(dt * (1 + wx.snow * 0.6), drift, 0);
           this.nearSnow.update(dt * (1 + wx.snow * 0.6), drift * 1.4, 0);
           this.sparks.update(dt, drift * 0.6, 0);
@@ -34944,7 +36226,8 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           this.nearHooked = !!this.nearSeen;
           this.nearSeen = false;
           const W6 = this.W, H6 = this.H, t = this.t, wx = this.wx;
-          fillWith(ctx2, this.waterStrip, 0, -10, W6, H6 + 10);
+          fillWith(ctx2, this.waterStrip, 0, 0, W6, H6);
+          if (!env.view || env.view.y0 < 0) this.drawAbove(ctx2, env);
           const px3 = this.par.x, py = this.par.y;
           const wob = quality(env) >= 1 ? 1 : 0;
           ctx2.globalCompositeOperation = "lighter";
@@ -35062,8 +36345,8 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
             const x = x0 + Math.sin(t * 0.8 + p.ph + k * 4) * (3 + k * 14) * s + wx.current * k * 60;
             const ri = clamp(Math.floor(k * 7 * p.s * s), 0, 6);
             ctx2.globalAlpha = (1 - k) * 0.7;
-            const spr = this.puff[ri];
-            ctx2.drawImage(spr, Math.round(x - spr.width / 2), Math.round(y - spr.height / 2));
+            const spr2 = this.puff[ri];
+            ctx2.drawImage(spr2, Math.round(x - spr2.width / 2), Math.round(y - spr2.height / 2));
           }
           ctx2.globalAlpha = 1;
           ctx2.globalCompositeOperation = "lighter";
@@ -35109,6 +36392,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
         }
         drawFront(ctx2, env) {
           const t = this.t, wx = this.wx, q = quality(env), W6 = this.W, H6 = this.H;
+          if (this.buoy?.lamp && Math.sin(t * 2.2) > 0) drawGlow(ctx2, this.buoy.lamp[0], this.buoy.lamp[1], 6, "#ff5a4a", 0.9);
           this.nearSnow.draw(ctx2, t, 0.8 + wx.snow * 0.5, q * (0.4 + wx.snow * 0.6));
           const n = Math.round(this.sparks.list.length * q * (0.35 + wx.glow * 0.65));
           ctx2.globalCompositeOperation = "lighter";
@@ -35157,6 +36441,10 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           const pg = this.pillarGlyphs[1];
           lights.push({ x: pg.x + 3, y: pg.y + 10, r: 30, color: "#5affff", a: 0.45 });
           if (solved || this.solveT > 0) lights.push({ x: this.statue.x, y: this.statue.top + this.statue.p.h * 0.45, r: 80, color: "#9affff", a: this.solveT > 0 ? 1 : 0.5 });
+          if (this.level !== void 0) {
+            lights.push({ x: this.W * 0.5, y: this.level - 60, r: this.W * 0.7, color: "#4a64b0", a: 0.75 });
+            if (this.buoy?.lamp && Math.sin(t * 2.2) > 0) lights.push({ x: this.buoy.lamp[0], y: this.buoy.lamp[1], r: 30, color: "#ff5a4a", a: 0.8 });
+          }
           return { dark, tint: "#060c26", lights };
         }
         // ------------------------------------------------------------------ secrets
@@ -35506,7 +36794,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
   function shipModel() {
     const m = new VoxelModel(116, 82, 46);
     const wood = [m.color("#5a3a2a", { jitter: 0.12 }), m.color("#6e4a34", { jitter: 0.12 }), m.color("#82593c", { jitter: 0.12 }), m.color("#3a2620", { jitter: 0.08 })];
-    const frost = [m.color("#e6f4fc", { jitter: 0.06, smooth: 0.5 }), m.color("#b8dcf0", { jitter: 0.06, smooth: 0.5 }), m.color("#ffffff", { jitter: 0.04, smooth: 0.5 })];
+    const frost = [m.color("#e6f4fc", { jitter: 0.02, smooth: 0.7 }), m.color("#b8dcf0", { jitter: 0.03, smooth: 0.6 }), m.color("#f4faff", { jitter: 0.02, smooth: 0.7 })];
     const ice = [m.color("#9adcf0", { jitter: 0.05, smooth: 0.4, emissive: 0.08 }), m.color("#d4f6ff", { jitter: 0.04, smooth: 0.4, emissive: 0.15 })];
     const iron = m.color("#4a4e60", { jitter: 0.1 }), dark = m.color("#160e14", { jitter: 0 });
     const tilt = 0.2, roll = 0.12;
@@ -35575,6 +36863,33 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
     }, (x, y, z) => hash2(x, z, 6) < 0.15 ? frost[1] : hash2(x, z, 7) < 0.5 ? silt[0] : silt[1]));
     return { m, yaw: 22, pitch: 24 };
   }
+  function softCloud(w, h, seed) {
+    return paint2(w, h, (x, y) => {
+      const dx = (x - w / 2) / (w / 2), dy = (y - h * 0.6) / (h * 0.5);
+      const fall = 1 - dx * dx - dy * dy * 1.4;
+      if (fall <= 0) return 0;
+      const n = fbm2(x * 0.06 + seed, y * 0.12, 3, seed) + fall * 0.55 - 0.62;
+      if (n <= 0) return 0;
+      const q = Math.floor(clamp01(n * 2.4) * 4 + bayer(x, y)) / 4;
+      if (q <= 0) return 0;
+      return pack(y > h * 0.62 ? "#c8d8ec" : "#ffffff", Math.round(q * 200));
+    });
+  }
+  function iceBlockSprite(w, h, seed) {
+    const m = new Mask(w, h);
+    const r = new RNG(seed);
+    const pts = [[2, h * 0.28], [w * 0.22, 1], [w * 0.62, 0], [w - 2, h * 0.18], [w - 1, h * 0.7], [w * 0.8, h - 1], [w * 0.2, h - 1], [0, h * 0.75]].map(([x, y]) => [x + r.float(-1, 1), y + r.float(-1, 1)]);
+    m.poly(pts);
+    return m.toCanvas((x, y, v, up, left, right) => {
+      if (up <= 1) return pack("#ffffff", 235);
+      if (left) return pack("#e8fdff", 200);
+      if (right) return pack("#4aa4c8", 200);
+      if (y > h - 3) return pack("#3a8ab0", 180);
+      const facet = (x * 0.8 + y * 1.3 + fbm2(x * 0.2, y * 0.2, 2, seed) * 8) % 12;
+      if (facet < 1) return pack("#ffffff", 150);
+      return pack(facet < 6 ? "#b4eef8" : "#8adcf0", 120 + (x + y) % 2 * 14);
+    });
+  }
   function singingCrystal(size) {
     const m = new VoxelModel(16, Math.round(14 + size * 10), 14);
     const base = m.color("#6a7690", { jitter: 0.12, smooth: 0.6 });
@@ -35630,9 +36945,9 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
         night: [[0, "#5aa8c4"], [0.1, "#2e7aa0"], [0.5, "#1c5282"], [1, "#103262"]]
       };
       MT = {
-        day: { far: ["#7e9cc4", "#9ab6d8", "#c2d8ee", "#e4f0fa"], rock: ["#28324a", "#3c4862", "#56637e", "#7a88a2"], snow: ["#8aa4cc", "#b4cae6", "#dcebfa", "#ffffff"], ice: ["#2a86b4", "#46aed4", "#86dcee", "#d0f8ff"] },
-        dusk: { far: ["#5a4a7a", "#7e5c88", "#b87a92", "#eaa49c"], rock: ["#1e1834", "#2e2446", "#463460", "#664a78"], snow: ["#76629a", "#b47ea4", "#f2a8a0", "#ffd8bc"], ice: ["#3a4a8a", "#5a64a8", "#c08ab0", "#ffc8c0"] },
-        night: { far: ["#0c1430", "#13203e", "#1c2e52", "#2a4068"], rock: ["#04070f", "#080d1c", "#0f172c", "#18223c"], snow: ["#1e2c4e", "#304670", "#4a6496", "#7690c4"], ice: ["#0c2442", "#14385c", "#22567e", "#3a78a2"] }
+        day: { far: ["#7e9cc4", "#98b4d6", "#b8cee8", "#d8e8f6", "#eef6fc"], rock: ["#1e2638", "#2e3a52", "#46526c", "#5e6c88", "#8090aa"], snow: ["#7e98c4", "#a4bcde", "#c8daf0", "#e6f0fa", "#ffffff"], ice: ["#1e78a8", "#3aa0cc", "#6ccae4", "#a8ecf8", "#e2fcff"] },
+        dusk: { far: ["#4a3e6e", "#6a5288", "#946a98", "#c8869a", "#eeaa9e"], rock: ["#160f26", "#241a3a", "#382852", "#523a6a", "#70508a"], snow: ["#5a4e86", "#8a68a0", "#c88aa8", "#f2aea2", "#ffdcc0"], ice: ["#2a3a7a", "#4a589a", "#8a78b0", "#e0a0b0", "#ffd0c4"] },
+        night: { far: ["#0a1228", "#101c38", "#18284a", "#22365c", "#30486e"], rock: ["#020409", "#060a16", "#0c1324", "#141e36", "#1e2c4a"], snow: ["#16223e", "#22345a", "#34507e", "#4e6c9e", "#7090c4"], ice: ["#0a1e36", "#10304e", "#1a4a6c", "#2a6890", "#4a8ab2"] }
       };
       STRATA2 = [[104, 116, 140], [88, 100, 124], [118, 128, 150], [96, 104, 130], [80, 90, 114]];
       NEON_ICE = "#9ff4ff";
@@ -35699,158 +37014,158 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           this.buildLife();
           this.fresh = true;
         }
-        // Sky canvas (world y skyY .. base + 14) per time of day: gradient, sun/moon, stars, mountains, glacier, icebergs.
+        // Sky (gradient, sun/moon, baked stars) and a separate mountain canvas (fjord walls, peaks, glacier, icebergs)
+        // per time of day, both spanning world y skyY .. base + 14. Aurora, clouds and birds are drawn between the two.
         buildSky() {
-          const W6 = this.W, base = this.base;
-          const skyY = this.top - 12;
+          const W6 = this.W, base = this.base, top = this.top;
+          const skyY = top - 12;
           this.skyY = skyY;
           const h = base + 14 - skyY;
           this.skyH = h;
-          const wy = (row) => row + skyY;
-          const ry = (y) => y - skyY;
-          const far = new Float32Array(W6 + 1), mid = new Float32Array(W6 + 1);
-          const farR = ridge(W6, base - 92, 52, 0.011, 2.4, 4, 0.55);
-          for (let x = 0; x <= W6; x++) far[x] = farR[x];
-          const peaks = [[0.27, 228, 0.16], [0.4, 150, 0.1], [0.66, 170, 0.12], [0.79, 236, 0.15], [0.55, 112, 0.08]];
-          for (let x = 0; x <= W6; x++) {
-            let y = base + 4;
-            for (const [pxf, ph, hw] of peaks) {
-              const d = Math.abs(x / W6 - pxf) / hw;
-              y = Math.min(y, base - ph + Math.pow(d, 1.25) * ph * 0.82);
-            }
-            y += (fbm2(x * 0.05, 3.3, 3, 21) - 0.5) * 16 + Math.abs(Math.sin(x * 0.11)) * 2;
-            mid[x] = y;
-          }
-          const gx0 = Math.round(W6 * 0.43), gx1 = Math.round(W6 * 0.66), gTop = base - 104;
-          const glacierTop = (x) => gTop + Math.pow(Math.abs((x - (gx0 + gx1) / 2) / ((gx1 - gx0) / 2)), 2) * 34 + (fbm2(x * 0.08, 1, 2, 5) - 0.5) * 4;
-          const wallL = (y) => W6 * 0.16 + (y - this.top) * -0.05 + (fbm2(2.1, y * 0.03, 3, 31) - 0.5) * 34 + (y > base - 40 ? (y - (base - 40)) * -0.55 : 0);
-          const wallR = (y) => W6 * 0.835 + (y - this.top) * 0.04 + (fbm2(7.7, y * 0.03, 3, 33) - 0.5) * 30 + (y > base - 30 ? (y - (base - 30)) * 0.7 : 0);
-          this.wallL = wallL;
-          this.wallR = wallR;
-          this.bergs = [[0.34, 26, 18], [0.71, 18, 12], [0.58, 10, 7]].map(([xf, w, hh]) => ({ x: Math.round(xf * W6), w, h: hh }));
           const N = W6 * h;
           const mat = new Uint8Array(N), tone3 = new Float32Array(N);
+          const far = ridge(W6, base - 98, 46, 0.012, 2.4, 4, 0.6);
+          const peaks = [[0.27, 238, 0.17], [0.385, 158, 0.095], [0.675, 172, 0.11], [0.8, 248, 0.16], [0.555, 122, 0.075]];
+          const mid = new Float32Array(W6 + 1), owner = new Int8Array(W6 + 1);
+          for (let x = 0; x <= W6; x++) {
+            let y = base + 4, o = -1;
+            peaks.forEach(([pxf, ph, hw], k) => {
+              const yy = base - ph + Math.pow(Math.abs(x / W6 - pxf) / hw, 1.2) * ph * 0.85;
+              if (yy < y) {
+                y = yy;
+                o = k;
+              }
+            });
+            mid[x] = y + (fbm2(x * 0.06, 3.3, 3, 21) - 0.5) * 12 + Math.abs(Math.sin(x * 0.13)) * 2;
+            owner[x] = o;
+          }
+          const gx0 = W6 * 0.425, gx1 = W6 * 0.67, gc = (gx0 + gx1) / 2, ghw = (gx1 - gx0) / 2;
+          const gSaddle = base - 116;
+          const gTop = (x) => gSaddle + Math.pow(Math.abs((x - gc) / ghw), 2.2) * 34 + (fbm2(x * 0.08, 1, 2, 5) - 0.5) * 4;
+          const gCliff = (x) => base - 20 + Math.round((fbm2(x * 0.07, 2, 2, 9) - 0.5) * 8);
+          const wallL = (y) => W6 * 0.135 + (fbm2(2.1, y * 0.018, 3, 31) - 0.5) * 50 + smoothstep(base - 70, base, y) * W6 * 0.035;
+          const wallR = (y) => W6 * 0.865 + (fbm2(7.7, y * 0.018, 3, 33) - 0.5) * 46 - smoothstep(base - 60, base, y) * W6 * 0.03;
+          this.bergs = [[0.34, 26, 18], [0.735, 18, 12], [0.58, 10, 7]].map(([xf, w, hh]) => ({ x: Math.round(xf * W6), w, h: hh }));
+          const icefalls = [[W6 * 0.055, 7, base - 300], [W6 * 0.95, 9, base - 250], [W6 * 0.115, 4, base - 160]];
+          const nearRel = (x, y) => fbm2(x * 0.05, y * 9e-3, 3, 41);
+          const ridged = (u, v, seed) => 1 - Math.abs(fbm2(u, v, 3, seed) * 2 - 1);
           for (let row = 0; row < h; row++) {
-            const y = wy(row);
+            const y = row + skyY;
             if (y > base + 1) continue;
             const xl = wallL(y), xr = wallR(y);
             for (let x = 0; x < W6; x++) {
               const i = row * W6 + x;
               if (x < xl || x > xr) {
-                const edge = x < xl ? xl - x : x - xr;
-                const gully = fbm2(x * 0.06, y * 0.012, 3, 41);
-                const ledge = Math.sin(y * 0.09 + fbm2(x * 0.02, y * 0.02, 2, 43) * 6);
-                const snowy = ledge > 0.86 && gully > 0.4 || edge < 3 && hash2(x, Math.floor(y / 3), 4) < 0.5 && y < base - 20 || gully > 0.66 && y < base - 60;
-                mat[i] = snowy ? 7 : 6;
-                tone3[i] = clamp01((x < xl ? 0.55 : 0.32) + (gully - 0.5) * 0.8 + (edge < 2 ? 0.25 : 0) + (ledge > 0.7 ? 0.15 : 0));
+                const left = x < xl, edge = left ? xl - x : x - xr;
+                let fall = false;
+                for (const [fx, fw, fy] of icefalls) if (Math.abs(x - fx) < fw * (0.6 + 0.4 * Math.sin(y * 0.05 + fx)) && y > fy) fall = true;
+                const d = nearRel(x - 1, y) - nearRel(x + 1, y);
+                const lv = (y + (fbm2(x * 0.03, 7, 2, 44) - 0.5) * 60 + fbm2(x * 0.11, y * 0.02, 2, 46) * 14) / (24 + 10 * Math.sin(y * 0.013)), f = lv - Math.floor(lv);
+                const prot = nearRel(x, y);
+                if (fall) {
+                  mat[i] = 11;
+                  tone3[i] = clamp01(0.55 + (fbm2(x * 0.6, y * 0.04, 2, 45) - 0.5) * 1.2 + (y > base - 6 ? 0.3 : 0));
+                  continue;
+                }
+                if (f < 0.05 && prot > 0.5 && fbm2(x * 0.09, y * 0.05, 2, 47) > 0.45) {
+                  mat[i] = 7;
+                  tone3[i] = f < 0.03 ? 1 : 0.7;
+                  continue;
+                }
+                mat[i] = 6;
+                let tn = (left ? 0.36 : 0.52) + d * 9 + (prot - 0.5) * 0.5;
+                if (f < 0.16 && prot > 0.5) tn -= 0.22;
+                if (edge < 2.5) {
+                  mat[i] = y < base - 30 && hash2(x, y >> 2, 4) < 0.6 ? 7 : 6;
+                  tn = left ? 0.75 : 0.95;
+                }
+                tone3[i] = clamp01(tn);
                 continue;
               }
               let berg = false;
               for (const b of this.bergs) {
-                const d = Math.abs(x - b.x) / b.w;
-                const topY = base - b.h * (1 - Math.pow(d, 1.6)) - (hash2(Math.floor(x / 3), b.x, 2) < 0.3 ? 1 : 0);
-                if (d < 1 && y >= topY && y <= base + 1) {
-                  mat[i] = y < topY + 2 ? 9 : 8;
-                  tone3[i] = clamp01(0.55 + (x < b.x ? 0.25 : -0.15) + (fbm2(x * 0.3, y * 0.15, 2, 7) - 0.5) * 0.6);
+                const dd = Math.abs(x - b.x) / b.w;
+                const tY = base - b.h * (1 - Math.pow(dd, 1.6)) - (hash2(Math.floor(x / 3), b.x, 2) < 0.3 ? 1 : 0);
+                if (dd < 1 && y >= tY && y <= base + 1) {
+                  mat[i] = y < tY + 2 ? 9 : 8;
+                  tone3[i] = clamp01(0.6 + (x < b.x ? 0.25 : -0.2) + (fbm2(x * 0.3, y * 0.15, 2, 7) - 0.5) * 0.5);
                   berg = true;
                   break;
                 }
               }
               if (berg) continue;
-              if (x > gx0 - 4 && x < gx1 + 4 && y >= glacierTop(x)) {
-                const cliff = base - 22 + (fbm2(x * 0.07, 2, 2, 9) - 0.5) * 8;
-                if (y >= cliff) {
-                  mat[i] = 5;
-                  tone3[i] = clamp01(0.45 + (fbm2(x * 0.5, y * 0.04, 2, 11) - 0.5) * 0.9 + (y < cliff + 2 ? 0.4 : 0) - (y > base - 3 ? 0.2 : 0));
-                } else {
-                  mat[i] = 4;
-                  const k = (y - glacierTop(x)) / Math.max(1, cliff - glacierTop(x));
-                  const crev = Math.abs(Math.sin((y - Math.abs(x - (gx0 + gx1) / 2) * 0.2) * 0.55 + fbm2(x * 0.1, y * 0.1, 2, 12) * 2)) > 0.93;
-                  const moraine = Math.abs(x - (gx0 + gx1) / 2 - Math.sin(y * 0.1) * 3) < 1.5 && hash2(x, y, 9) < 0.7;
-                  tone3[i] = moraine ? -1 : crev ? 0.15 : clamp01(0.85 - k * 0.3 + (fbm2(x * 0.08, y * 0.08, 2, 13) - 0.5) * 0.3);
-                }
-              }
-              if (y >= mid[x] && (mat[i] === 0 || (x < gx0 + 10 || x > gx1 - 10) && y < glacierTop(x) + 8)) {
-                const d = y - mid[x];
-                const slope = (mid[Math.min(W6, x + 2)] - mid[Math.max(0, x - 2)]) / 4;
-                const gully = fbm2(x * 0.09, y * 0.02, 3, 51);
-                const snowLine = base - 70 + (fbm2(x * 0.03, 0, 2, 52) - 0.5) * 50;
-                const snowy = d < 3 + gully * 10 || y < snowLine && (gully > 0.5 || Math.abs(slope) < 0.45) || gully > 0.68 && y < base - 30;
-                mat[i] = snowy ? 3 : 2;
-                tone3[i] = clamp01(0.5 + (slope < -0.1 ? 0.3 : slope > 0.25 ? -0.3 : 0) + (gully - 0.5) * 0.7 + (d < 2 ? 0.2 : 0));
+              const inGlacier = x > gx0 - 30 && x < gx1 + 30 && y >= gTop(x);
+              if (y >= mid[x] && !(inGlacier && owner[x] === 4)) {
+                const [pxf, ph] = peaks[owner[x]] || peaks[0];
+                const pxx = pxf * W6, side = x < pxx ? 1 : -1;
+                const R = (xx) => ridged((xx + side * (y - (base - ph)) * (0.7 + 0.25 * Math.sin(xx * 0.01))) * 0.028 + fbm2(xx * 0.01, y * 0.01, 2, 54) * 0.8, y * 8e-3, 51 + owner[x]);
+                const rc = R(x), dR = R(x + 1) - R(x - 1);
+                const alt = clamp01((base - y) / ph);
+                const sl = 0.42 + (fbm2(x * 0.02, 1, 2, 52) - 0.5) * 0.25;
+                const top0 = y - mid[x];
+                const lit = dR * 6 + (side > 0 ? 0.14 : -0.16) * clamp01(1 - Math.abs(x - pxx) / (W6 * 0.2) + 0.4);
+                let snow = top0 < 2.5 || (alt > sl ? !(rc > 0.82 && dR < 0) : rc < 0.2 && alt > 0.12 && hash2(x, y, 53) < 0.9);
+                if (alt > sl && rc > 0.9) snow = false;
+                mat[i] = snow ? 3 : 2;
+                tone3[i] = clamp01((snow ? 0.62 : 0.5) + lit + (rc - 0.5) * 0.25 - (snow ? 0 : (1 - alt) * 0.15));
                 continue;
               }
-              if (mat[i]) continue;
+              if (inGlacier) {
+                const cl = gCliff(x);
+                if (y >= cl) {
+                  mat[i] = 5;
+                  tone3[i] = clamp01(0.5 + (fbm2(x * 0.55, y * 0.05, 2, 11) - 0.5) * 1.1 + (y < cl + 2 ? 0.5 : 0) - (y > base - 3 ? 0.35 : 0) + (x < gc ? 0.08 : -0.08));
+                } else {
+                  mat[i] = 4;
+                  const u = (x - gc) / ghw;
+                  const k = (y - gSaddle) / (cl - gSaddle);
+                  const cv = (y - gSaddle - u * u * 14 * (0.3 + k)) / (5 + k * 7) + (fbm2(x * 0.06, y * 0.06, 2, 12) - 0.5) * 0.8;
+                  const fr = cv - Math.floor(cv);
+                  const morain = Math.abs(u - Math.sin(k * 3) * 0.05) < 0.012 + k * 0.012 && hash2(x, y, 9) < 0.45;
+                  const brk = fbm2(x * 0.09, y * 0.07, 2, 14) > 0.5;
+                  tone3[i] = morain ? -1 : brk && fr < 0.1 ? 0.12 : brk && fr < 0.2 ? 0.98 : clamp01(0.72 - k * 0.22 - u * 0.12 + (fbm2(x * 0.1, y * 0.1, 2, 13) - 0.5) * 0.2);
+                }
+                continue;
+              }
               if (y >= far[x]) {
-                const slope = (far[Math.min(W6, x + 2)] - far[Math.max(0, x - 2)]) / 4;
                 const d = y - far[x];
-                mat[i] = d < 6 + fbm2(x * 0.1, 0, 2, 61) * 12 ? 10 : 1;
-                tone3[i] = clamp01(0.55 + (slope < 0 ? 0.25 : -0.2) + (fbm2(x * 0.08, y * 0.05, 2, 62) - 0.5) * 0.5 - d / 80);
+                const fx = ridged(x * 0.04 + y * 0.03, y * 0.012, 61), dF = ridged((x + 1) * 0.04 + y * 0.03, y * 0.012, 61) - ridged((x - 1) * 0.04 + y * 0.03, y * 0.012, 61);
+                mat[i] = d < 5 + fx * 16 ? 10 : 1;
+                tone3[i] = clamp01(0.55 + dF * 5 + (fx - 0.5) * 0.3 - d / 90);
               }
             }
           }
-          const sunPos = { day: [0.7, base - 196], dusk: [0.62, base - 60], night: [0.28, base - 250] };
+          const sunPos = { day: [0.7, base - 196], dusk: [0.62, base - 64], night: [0.27, base - 300] };
           this.sun = sunPos;
-          const mk = (kind2) => {
-            const st = SKY3[kind2], P5 = MT[kind2];
-            const pal2 = {};
-            for (const k of ["far", "rock", "snow", "ice"]) pal2[k] = P5[k].map((c2) => pack(c2) >>> 0);
+          const skyOf = (kind2) => {
+            const st = SKY3[kind2];
             const [sxf, sy] = sunPos[kind2];
             const sx = sxf * W6;
-            const glow = { day: [[255, 250, 230], 90, 0.55], dusk: [[255, 196, 140], 200, 0.6], night: [[150, 180, 255], 50, 0.25] }[kind2];
+            const glow = { day: [[255, 250, 230], 100, 0.55], dusk: [[255, 196, 140], 220, 0.65], night: [[150, 180, 255], 60, 0.25] }[kind2];
             const c = paint2(W6, h, (x, row) => {
-              const i = row * W6 + x, y = wy(row), mt = mat[i];
-              const tn = tone3[i];
-              if (!mt) {
-                let [r2, g2, b] = lerpStops(st, clamp01((y - this.top) / (base - this.top)));
-                const d = Math.hypot(x - sx, (y - sy) * 1.2);
-                if (d < glow[1]) {
-                  const k = Math.pow(1 - d / glow[1], 2.2) * glow[2];
-                  r2 += (glow[0][0] - r2) * k;
-                  g2 += (glow[0][1] - g2) * k;
-                  b += (glow[0][2] - b) * k;
-                }
-                if (kind2 === "night" && y < base - 20) {
-                  const hs = hash2(x, row, 77);
-                  if (hs < 35e-4) {
-                    const k = 0.3 + hs / 35e-4 * 0.65;
-                    r2 = lerp(r2, 230, k);
-                    g2 = lerp(g2, 236, k);
-                    b = lerp(b, 255, k);
-                  }
-                }
-                return dpack(r2, g2, b, x, row, 5);
+              const y = row + skyY;
+              let [r2, g2, b] = lerpStops(st, clamp01((y - top) / (base - top)));
+              const d = Math.hypot(x - sx, (y - sy) * 1.2);
+              if (d < glow[1]) {
+                const k = Math.pow(1 - d / glow[1], 2.2) * glow[2];
+                r2 += (glow[0][0] - r2) * k;
+                g2 += (glow[0][1] - g2) * k;
+                b += (glow[0][2] - b) * k;
               }
-              switch (mt) {
-                case 1:
-                  return ditherPick(pal2.far, tn * 0.9, x, row);
-                case 10:
-                  return ditherPick(pal2.far, 0.7 + tn * 0.3, x, row);
-                case 2:
-                  return ditherPick(pal2.rock, tn, x, row);
-                case 3:
-                  return ditherPick(pal2.snow, 0.25 + tn * 0.75, x, row);
-                case 4:
-                  return tn < 0 ? pal2.rock[1] : ditherPick(pal2.snow, 0.35 + tn * 0.65, x, row);
-                case 5:
-                  return ditherPick(pal2.ice, tn, x, row);
-                case 6:
-                  return ditherPick(pal2.rock, tn * 0.85, x, row);
-                case 7:
-                  return ditherPick(pal2.snow, 0.2 + tn * 0.8, x, row);
-                case 8:
-                  return ditherPick(pal2.ice, 0.3 + tn * 0.7, x, row);
-                case 9:
-                  return pal2.snow[3];
-                default:
-                  return 0;
+              if (kind2 === "night" && y < base - 30) {
+                const hs = hash2(x, row, 77);
+                if (hs < 35e-4) {
+                  const k = 0.3 + hs / 35e-4 * 0.65;
+                  r2 = lerp(r2, 230, k);
+                  g2 = lerp(g2, 236, k);
+                  b = lerp(b, 255, k);
+                }
               }
+              return dpack(r2, g2, b, x, row, 5);
             });
-            const g = ctxOf(c);
-            const [mx, my] = [sx, ry(sy)];
+            const g = ctxOf(c), my = sy - skyY;
             const disc3 = (cx, cy, r2, fn) => {
               for (let y = Math.floor(cy - r2); y <= Math.ceil(cy + r2); y++) for (let x = Math.floor(cx - r2); x <= Math.ceil(cx + r2); x++) {
-                if (mat[Math.max(0, y) * W6 + Math.max(0, Math.min(W6 - 1, x))]) continue;
                 const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
                 if (d <= r2) {
                   const col = fn(d / r2, x, y);
@@ -35861,54 +37176,89 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
                 }
               }
             };
-            if (kind2 === "day") disc3(mx, my, 9, (d) => d > 0.86 ? "#fff4c8" : d > 0.6 ? "#fffbe8" : "#ffffff");
-            else if (kind2 === "dusk") disc3(mx, my, 12, (d, x, y) => [4, 7, 9].includes(Math.round(y - my)) ? null : y < my - 4 ? "#fff2c0" : y < my + 3 ? "#ffc880" : "#ff9a5a");
+            if (kind2 === "day") disc3(sx, my, 9, (d) => d > 0.86 ? "#fff4c8" : d > 0.6 ? "#fffbe8" : "#ffffff");
+            else if (kind2 === "dusk") disc3(sx, my, 13, (d, x, y) => [4, 7, 9].includes(Math.round(y - my)) ? null : y < my - 4 ? "#fff2c0" : y < my + 3 ? "#ffc880" : "#ff9a5a");
             else {
-              disc3(mx, my, 7.5, (d, x) => x + 0.5 - mx > 3.5 && d > 0.5 ? "#aab6dc" : d > 0.86 ? "#d6deff" : "#f2f5ff");
-              for (const [ox, oy, r2] of [[-3, -2, 1.5], [1, 2, 1.8], [-1, 4, 1]]) disc3(mx + ox, my + oy, r2, () => "#c4ccea");
+              disc3(sx, my, 7.5, (d, x) => x + 0.5 - sx > 3.5 && d > 0.5 ? "#aab6dc" : d > 0.86 ? "#d6deff" : "#f2f5ff");
+              for (const [ox, oy, r2] of [[-3, -2, 1.5], [1, 2, 1.8], [-1, 4, 1]]) disc3(sx + ox, my + oy, r2, () => "#c4ccea");
             }
             return c;
           };
-          this.sky = { day: mk("day"), dusk: mk("dusk"), night: mk("night") };
-          this.skyMat = mat;
-          const so = { levels: 10 };
-          const overH = h;
-          this.overcast = {
-            day: paint2(8, overH, (x, y) => ditherPick(stopPalette(OVERCAST2.day, 10), y / overH, x, y)),
-            dusk: paint2(8, overH, (x, y) => ditherPick(stopPalette(OVERCAST2.dusk, 10), y / overH, x, y)),
-            night: paint2(8, overH, (x, y) => ditherPick(stopPalette(OVERCAST2.night, 10), y / overH, x, y))
+          const mtnOf = (kind2) => {
+            const P5 = MT[kind2];
+            const pal2 = {};
+            for (const k of ["far", "rock", "snow", "ice"]) pal2[k] = P5[k].map((c) => pack(c) >>> 0);
+            return paint2(W6, h, (x, row) => {
+              const i = row * W6 + x, tn = tone3[i];
+              switch (mat[i]) {
+                case 1:
+                  return ditherPick(pal2.far, tn * 0.75, x, row);
+                case 10:
+                  return ditherPick(pal2.far, 0.55 + tn * 0.45, x, row);
+                case 2:
+                  return ditherPick(pal2.rock, tn, x, row);
+                case 3:
+                  return ditherPick(pal2.snow, tn, x, row);
+                case 4:
+                  return tn < 0 ? pal2.rock[3] : ditherPick(pal2.snow, 0.15 + tn * 0.85, x, row);
+                case 5:
+                  return ditherPick(pal2.ice, tn, x, row);
+                case 6:
+                  return ditherPick(pal2.rock, tn * 0.9, x, row);
+                case 7:
+                  return ditherPick(pal2.snow, 0.35 + tn * 0.65, x, row);
+                case 8:
+                  return ditherPick(pal2.ice, 0.35 + tn * 0.65, x, row);
+                case 9:
+                  return pal2.snow[4];
+                case 11:
+                  return ditherPick(pal2.ice, 0.3 + tn * 0.7, x, row);
+                default:
+                  return 0;
+              }
+            });
           };
-          void so;
-          this.skyMask = paint2(W6, h, (x, row) => mat[row * W6 + x] ? 0 : pack("#ffffff"));
+          this.sky = { day: skyOf("day"), dusk: skyOf("dusk"), night: skyOf("night") };
+          this.mtn = { day: mtnOf("day"), dusk: mtnOf("dusk"), night: mtnOf("night") };
+          this.mtnBlend = new Blend();
+          this.overcast = {};
+          for (const k of ["day", "dusk", "night"]) {
+            const pal2 = stopPalette(OVERCAST2[k], 10);
+            this.overcast[k] = paint2(8, h, (x, y) => ditherPick(pal2, y / h, x, y));
+          }
           const r = new RNG(31);
           this.stars = [];
-          for (let i = 0; i < 40; i++) {
-            const x = r.int(4, W6 - 4), y = r.int(this.top + 10, base - 90);
+          for (let i = 0; i < 46; i++) {
+            const x = r.int(4, W6 - 4), y = r.int(top + 6, base - 120);
             if (!mat[(y - skyY) * W6 + x]) this.stars.push({ x, y, f: r.float(0.8, 3), ph: r.float(0, TAU), c: r.pick(["#ffffff", "#e8f0ff", "#c8dcff", "#fff4d8"]) });
           }
-          this.aurora = [this.auroraTex(Math.round(W6 * 1.6), 150, 3, ["#4affa0", "#3ae0c0", "#9a6aff"]), this.auroraTex(Math.round(W6 * 1.6), 110, 9, ["#7aff8a", "#4ad8ff", "#ff6ac8"])];
+          this.aurora = [this.auroraTex(Math.round(W6 * 1.7), 170, 3, ["#5affa8", "#2ae0c8", "#a66aff"]), this.auroraTex(Math.round(W6 * 1.7), 120, 9, ["#8aff7a", "#3ac8ff", "#ff6ad0"])];
           this.clouds = [];
-          for (let i = 0; i < 6; i++) this.clouds.push({ x: r.float(0, W6), y: r.int(this.top + 30, base - 150), v: r.float(1.5, 4), tile: cloudTile(r.int(120, 200), r.int(26, 40), "#ffffff", { seed: 40 + i, alpha: 0.75, scale: 0.05, bias: 0.45, levels: 4 }) });
-          this.snowTile = streakTile(128, 128, 30, "#ffffff", { seed: 5, len: [1, 2], slant: 6, alpha: 0.9 });
+          for (let i = 0; i < 6; i++) this.clouds.push({ x: r.float(0, W6), y: r.int(top + 30, base - 170), v: r.float(1.5, 4), tile: softCloud(r.int(110, 190), r.int(22, 34), 40 + i) });
           this.blizTile = streakTile(160, 96, 46, "#f4faff", { seed: 9, len: [4, 9], slant: 1, alpha: 0.75 });
         }
-        // A wide aurora curtain texture: vertical rays hanging from a wavy lower edge, green at the hem fading up to violet.
+        // A wide aurora curtain: folded hem, fine vertical rays, green at the hem fading up through teal to violet.
         auroraTex(w, h, seed, cols) {
-          const [c0, c1, c2] = cols.map((c) => lerpStops([[0, c]], 0));
-          const r0 = new Float32Array(w);
-          for (let x = 0; x < w; x++) r0[x] = Math.pow(clamp01(fbm2(x * 0.045, seed, 3, seed) * 1.6 - 0.35), 1.4) * (0.6 + 0.4 * Math.sin(x * 0.31 + seed));
+          const C = cols.map((c) => lerpStops([[0, c]], 0));
+          const hem = new Float32Array(w), ray = new Float32Array(w), fold = new Float32Array(w);
+          for (let x = 0; x < w; x++) hem[x] = h * 0.8 + Math.sin(x * 85e-4 + seed) * h * 0.09 + Math.sin(x * 0.021 + seed * 2.1) * h * 0.05 + Math.sin(x * 0.07 + seed) * 2;
+          for (let x = 1; x < w - 1; x++) fold[x] = Math.min(1, Math.abs(hem[x + 1] - hem[x - 1]) * 0.7);
+          for (let x = 0; x < w; x++) {
+            const big = clamp01(fbm2(x * 0.012, seed, 3, seed) * 1.8 - 0.45);
+            const fine = 0.45 + 0.55 * Math.pow(fbm2(x * 0.16, seed + 3, 2, seed + 1), 1.5) * 1.6;
+            ray[x] = big * fine;
+          }
           return paint2(w, h, (x, y) => {
-            const hem = h * 0.78 + Math.sin(x * 0.013 + seed) * h * 0.12 + Math.sin(x * 0.041) * 4;
-            if (y > hem + 2) return 0;
-            const up = (hem - y) / (h * 0.8);
-            if (up > 1) return 0;
-            let v = r0[x] * (up < 0 ? 1 + up * 0.5 : Math.pow(1 - up, 1.3)) * (0.7 + 0.3 * Math.sin(x * 0.9 + y * 0.05));
-            if (Math.abs(y - hem) < 1.5) v *= 1.5;
-            const k = clamp01(up * 1.3);
-            const col = k < 0.45 ? [lerp(c0[0], c1[0], k / 0.45), lerp(c0[1], c1[1], k / 0.45), lerp(c0[2], c1[2], k / 0.45)] : [lerp(c1[0], c2[0], (k - 0.45) / 0.55), lerp(c1[1], c2[1], (k - 0.45) / 0.55), lerp(c1[2], c2[2], (k - 0.45) / 0.55)];
-            const q = Math.floor(clamp01(v) * 5 + (x * 3 + y * 5) % 4 / 4) / 5;
+            const up = (hem[x] - y) / (h * 0.85);
+            if (up < -0.04 || up > 1) return 0;
+            let v = ray[x] * (1 + fold[x] * 0.8) * (up < 0 ? 1 + up * 20 : Math.exp(-up * 2.4)) * (0.8 + 0.2 * Math.sin(y * 0.11 + x * 0.05));
+            if (up >= 0 && up < 0.03) v *= 1.6;
+            const k = clamp01(up * 1.25);
+            const a = k < 0.4 ? C[0] : C[1], b = k < 0.4 ? C[1] : C[2], kk = k < 0.4 ? k / 0.4 : (k - 0.4) / 0.6;
+            const col = [lerp(a[0], b[0], kk), lerp(a[1], b[1], kk), lerp(a[2], b[2], kk)];
+            const q = Math.floor(clamp01(v) * 6 + bayer(x, y)) / 6;
             if (q <= 0) return 0;
-            return pack("#" + col.map((c) => clamp(Math.round(c), 0, 255).toString(16).padStart(2, "0")).join(""), Math.round(q * 230));
+            return (Math.round(q * 210) << 24 | Math.round(col[2]) << 16 | Math.round(col[1]) << 8 | Math.round(col[0])) >>> 0;
           });
         }
         makeShimmer() {
@@ -35947,13 +37297,13 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           const cap = (z) => D.K - (surf - D.hz) / D.s(z);
           const cliff = (X, z) => {
             const side = X < cx ? -1 : 1;
-            const over = Math.abs(X - cx) - edge(z, side) - (fbm2(z * 6, side * 4, 2, 76) - 0.5) * 20;
+            const over = Math.abs(X - cx) - edge(z, side) - (fbm2(z * 6, side * 4, 2, 76) - 0.5) * 22;
             if (over <= 0) return null;
             let h;
-            if (over < 12) h = 30 + Math.round(fbm2(X * 0.05, z * 5, 2, 77) * 8) * 2;
-            else if (over < 28) h = 74;
-            else if (over < 46) h = 128;
-            else h = 900;
+            if (over < 10) h = 26 + Math.round(fbm2(X * 0.05, z * 5, 2, 77) * 8) * 2;
+            else if (over < 26) h = 64 + Math.round(fbm2(X * 0.04, z * 4, 2, 90) * 6) * 2;
+            else if (over < 44) h = 112;
+            else h = z > 0.3 + fbm2(X * 0.01, 5, 2, 93) * 0.25 ? 900 : 150 + Math.round(fbm2(X * 0.03, z * 3, 2, 95) * 4) * 2;
             return Math.min(h, cap(z));
           };
           D.terrain({
@@ -35972,6 +37322,10 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
             height: (X, z) => cliff(X, z) ?? floorH(X, z),
             floorHeight: floorH,
             color: (X, z, h) => {
+              if (h >= 140) {
+                const n2 = fbm2(X * 0.04, z * 5, 2, 96);
+                return n2 > 0.62 ? [200, 216, 228] : n2 > 0.4 ? [112, 124, 146] : [96, 106, 128];
+              }
               if (h >= 28) {
                 const ice = fbm2(X * 0.012, z * 3, 2, 78) > 0.52;
                 if (ice) return hash2(Math.floor(X / 2), Math.floor(z * 50), 79) < 0.2 ? [200, 240, 250] : [226, 248, 255];
@@ -35989,20 +37343,21 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
             },
             wallColor: (X, z, hp, h) => {
               const ice = fbm2(X * 0.012, z * 3, 2, 78) > 0.52;
+              const top = hp > h - 3 && h < 400;
               if (ice) {
-                const band2 = Math.floor((hp + fbm2(X * 0.02, z * 3, 2, 86) * 20) / 7);
-                const crevasse = hash2(Math.floor(X / 3), Math.floor(z * 30), 87) < 0.1;
-                const base = [[150, 226, 244], [120, 206, 236], [176, 238, 250], [98, 186, 226]][(band2 % 4 + 4) % 4];
-                let k2 = 1 - smoothstep(30, 420, hp) * 0.32;
-                if (crevasse) k2 *= 0.62;
-                if (hp > h - 3) k2 *= 1.2;
-                return [base[0] * k2, base[1] * k2, Math.min(255, base[2] * k2)];
+                const v = fbm2(X * 0.16, hp * 0.012 + z * 3, 2, 86);
+                const layer2 = Math.sin((hp + fbm2(X * 0.02, z, 2, 91) * 30) * 0.21) > 0.93 ? 0.05 : 0;
+                const slot = fbm2(X * 0.09, z * 9, 2, 87) > 0.72 && hp < h - 6;
+                let k2 = (0.82 + (v - 0.5) * 0.5 + layer2) * (1 - smoothstep(30, 420, hp) * 0.3);
+                if (slot) k2 *= 0.55;
+                if (top) k2 = 1.22;
+                return [150 * k2, 222 * k2, Math.min(255, 246 * k2)];
               }
-              const band = Math.floor((hp + fbm2(X * 0.015, z * 2, 2, 88) * 26) / 8);
-              const c = STRATA2[(band % STRATA2.length + STRATA2.length) % STRATA2.length];
-              let k = 1 - smoothstep(30, 420, hp) * 0.4;
-              if (hash2(Math.floor(X / 3), Math.floor(hp / 6), 89) < 0.06) k *= 0.62;
-              if (hp > h - 3 && h < 400) k *= 1.3;
+              const m = fbm2(X * 0.03, hp * 0.025 + z * 4, 3, 88);
+              const c = STRATA2[Math.min(STRATA2.length - 1, Math.floor(m * STRATA2.length * 1.3) % STRATA2.length)];
+              let k = (0.86 + (m - 0.5) * 0.6) * (1 - smoothstep(30, 420, hp) * 0.38);
+              if (fbm2(X * 0.05, hp * 0.05, 2, 92) > 0.6 && Math.abs(Math.sin((X * 0.6 + hp) * 0.09 + fbm2(X * 0.03, hp * 0.03, 2, 94) * 4)) < 0.06) k *= 0.7;
+              if (top) return [214, 230, 240];
               return [c[0] * k, c[1] * k, c[2] * k];
             }
           });
@@ -36039,9 +37394,9 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           this.crystals = sizes.map((sz, i) => {
             const z = [0.02, 0.1, -0.04, 0.06][i];
             const x = Math.round(W6 * (0.265 + i * 0.033));
-            const spr = voxSprite("fj_sing" + sz, () => singingCrystal(sz), { scale: qscale(0.9 * D.s(z)) });
+            const spr2 = voxSprite("fj_sing" + sz, () => singingCrystal(sz), { scale: qscale(0.9 * D.s(z)) });
             const y = Math.round(D.floorAt(x, z)) + 1;
-            return { size: sz, x, y, z, spr, lit: 0, rect: { x: x - spr.ox, y: y - spr.oy, w: spr.w, h: spr.oy }, cx: x, cy: y - Math.round(spr.oy * 0.6) };
+            return { size: sz, x, y, z, spr: spr2, lit: 0, rect: { x: x - spr2.ox, y: y - spr2.oy, w: spr2.w, h: spr2.oy }, cx: x, cy: y - Math.round(spr2.oy * 0.6) };
           });
           D.render([{ key: "day", strip: this.water.day }, { key: "dusk", strip: this.water.dusk }, { key: "night", strip: this.water.night }]);
           this.bands = new BandSet(D);
@@ -36488,17 +37843,17 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           this.drawSurface(ctx2, env, sy);
         }
         drawSky(ctx2, env, y0) {
-          const W6 = this.W, t = this.t, tod = this.tod, wx = this.wx, base = this.base;
-          ctx2.drawImage(this.skyBlend.get([[this.sky.day, tod.day], [this.sky.dusk, tod.dusk], [this.sky.night, tod.night]]), 0, this.skyY);
-          const visTop = y0 < base - 120;
+          const W6 = this.W, t = this.t, tod = this.tod, wx = this.wx, base = this.base, skyY = this.skyY;
+          const w3 = (o) => [[o.day, tod.day], [o.dusk, tod.dusk], [o.night, tod.night]];
+          ctx2.drawImage(this.skyBlend.get(w3(this.sky)), 0, skyY);
           const oc = clamp01(wx.snow * 0.7 + wx.bliz * 0.9);
           const clear = 1 - oc;
-          if (visTop) {
+          if (y0 < base - 60) {
             if (tod.night > 0.15 && clear > 0.1) for (const s of this.stars) twinkle(ctx2, s.x, s.y, (0.4 + 0.6 * Math.sin(t * s.f + s.ph)) * tod.night * clear, s.c);
-            const au = clamp01((tod.night * 0.65 + tod.dusk * 0.25 + wx.aurora * (0.55 + tod.night * 0.45) + tod.day * wx.aurora * 0.12) * clear * (0.4 + wx.aurora * 0.6));
+            const au = clamp01((tod.night * 0.55 + tod.dusk * 0.15 + wx.aurora * (0.5 + tod.night * 0.5) + tod.day * wx.aurora * 0.1) * clear);
             if (au > 0.04) this.drawAurora(ctx2, au);
             for (const cl of this.clouds) {
-              ctx2.globalAlpha = (0.25 + oc * 0.6) * (1 - tod.night * 0.6);
+              ctx2.globalAlpha = (0.3 + oc * 0.6) * (1 - tod.night * 0.65);
               ctx2.drawImage(cl.tile, Math.round(cl.x), cl.y);
             }
             ctx2.globalAlpha = 1;
@@ -36507,8 +37862,8 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
               ctx2.fillStyle = tod.dusk > 0.5 ? "#3a2438" : "#2c3448";
               ctx2.globalAlpha = ba;
               for (const b of this.birds) {
-                const x = Math.round(b.x), y = Math.round(b.y + Math.sin(b.ph * 0.3) * 4), f = Math.sin(b.ph) > 0 ? 0 : 1;
-                if (f === 0) {
+                const x = Math.round(b.x), y = Math.round(b.y + Math.sin(b.ph * 0.3) * 4);
+                if (Math.sin(b.ph) > 0) {
                   ctx2.fillRect(x - 3, y - 2, 1, 1);
                   ctx2.fillRect(x - 2, y - 1, 2, 1);
                   ctx2.fillRect(x, y, 1, 1);
@@ -36523,14 +37878,17 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
               ctx2.globalAlpha = 1;
             }
           }
-          if (oc > 0.02) {
-            ctx2.globalAlpha = oc * 0.75;
-            fillWith(ctx2, this.ocBlend.get([[this.overcast.day, tod.day], [this.overcast.dusk, tod.dusk], [this.overcast.night, tod.night]]), 0, this.skyY, W6, base - 20 - this.skyY);
-            ctx2.globalAlpha = oc * 0.45;
-            ctx2.drawImage(this.ocBlend.layer.canvas, 0, 0, 8, 8, 0, 0, 0, 0);
+          const ocCanvas = oc > 0.02 ? this.ocBlend.get(w3(this.overcast)) : null;
+          if (ocCanvas) {
+            ctx2.globalAlpha = oc * 0.85;
+            fillWith(ctx2, ocCanvas, 0, skyY, W6, this.skyH);
             ctx2.globalAlpha = 1;
-            ctx2.fillStyle = rgba(tod.night > 0.5 ? "#141c2a" : "#c8d4de", oc * 0.35);
-            ctx2.fillRect(0, this.skyY, W6, base + 2 - this.skyY);
+          }
+          ctx2.drawImage(this.mtnBlend.get(w3(this.mtn)), 0, skyY);
+          if (ocCanvas) {
+            ctx2.globalAlpha = oc * 0.42;
+            fillWith(ctx2, ocCanvas, 0, skyY, W6, this.skyH);
+            ctx2.globalAlpha = 1;
           }
           if (wx.snow > 0.05 || wx.bliz > 0.05) {
             const n = Math.round(this.airSnow.list.length * clamp01(wx.snow + wx.bliz));
@@ -36549,7 +37907,7 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
               const pat = ctx2.createPattern(tile, "repeat");
               pat.setTransform(new DOMMatrix([1, 0, 0, 1, ox, oy]));
               ctx2.fillStyle = pat;
-              ctx2.fillRect(0, this.skyY, W6, base - this.skyY);
+              ctx2.fillRect(0, skyY, W6, base - skyY);
               ctx2.restore();
             }
             ctx2.globalAlpha = 1;
@@ -36560,14 +37918,14 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           const t = this.t, W6 = this.W;
           const op = ctx2.globalCompositeOperation;
           ctx2.globalCompositeOperation = "lighter";
-          const conf = [[this.aurora[0], this.top + 26, 6, 0.9], [this.aurora[1], this.top + 96, -9, 0.6]];
+          const conf = [[this.aurora[0], this.top + 20, 5, 1], [this.aurora[1], this.top + 110, -8, 0.65]];
           for (const [tex2, y0, sp, am] of conf) {
             const off = Math.floor((t * sp % tex2.width + tex2.width) % tex2.width);
-            for (let x = 0; x < W6; x += 3) {
-              const sx = (x + off) % (tex2.width - 3);
-              const dy = Math.sin(x * 0.011 + t * 0.21) * 16 + Math.sin(x * 0.027 - t * 0.37) * 6;
-              ctx2.globalAlpha = clamp01(a * am * (0.7 + 0.3 * Math.sin(x * 0.04 + t * 0.9)));
-              ctx2.drawImage(tex2, sx, 0, 3, tex2.height, x, Math.round(y0 + dy), 3, tex2.height);
+            for (let x = 0; x < W6; x += 2) {
+              const sx = (x + off) % (tex2.width - 2);
+              const dy = Math.sin(x * 0.0105 + t * 0.19) * 18 + Math.sin(x * 0.029 - t * 0.33) * 6;
+              ctx2.globalAlpha = clamp01(a * am * (0.65 + 0.35 * Math.sin(x * 0.037 + t * 0.8) * Math.sin(x * 0.013 - t * 0.45)));
+              ctx2.drawImage(tex2, sx, 0, 2, tex2.height, x, Math.round(y0 + dy), 2, tex2.height);
             }
           }
           ctx2.globalAlpha = 1;
@@ -36577,10 +37935,10 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           const gi = this.giant;
           if (!gi) return;
           const fr = gi.kind === "beluga" ? gi.dir > 0 ? this.beluga : this.belugaL : gi.dir > 0 ? this.sealS : this.sealSL;
-          const spr = fr[Math.floor((gi.ph / TAU * fr.length % fr.length + fr.length) % fr.length)];
-          const c = tinted(spr, gi.kind === "beluga" ? "#7ab8d0" : "#0e3a56");
+          const spr2 = fr[Math.floor((gi.ph / TAU * fr.length % fr.length + fr.length) % fr.length)];
+          const c = tinted(spr2, gi.kind === "beluga" ? "#7ab8d0" : "#0e3a56");
           ctx2.globalAlpha = gi.kind === "beluga" ? 0.32 : 0.36;
-          const s = gi.s || 1, w = Math.round(spr.width * s), h = Math.round(spr.height * s);
+          const s = gi.s || 1, w = Math.round(spr2.width * s), h = Math.round(spr2.height * s);
           ctx2.drawImage(c, Math.round(gi.x - w / 2 + this.par.x * 1.1), Math.round(gi.y - h / 2 + this.par.y * 0.5), w, h);
           ctx2.globalAlpha = 1;
         }
@@ -36590,9 +37948,9 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           const fr = F.dir > 0 ? this.penguin : this.penguinL;
           for (const p of F.birds) {
             if (p.x < -20 || p.x > this.W + 20) continue;
-            const spr = fr[4 + Math.floor(this.t * 10 + p.ph) % 2];
+            const spr2 = fr[4 + Math.floor(this.t * 10 + p.ph) % 2];
             ctx2.globalAlpha = 0.85;
-            ctx2.drawImage(spr, Math.round(p.x - 7), Math.round(p.y - 3));
+            ctx2.drawImage(spr2, Math.round(p.x - 7), Math.round(p.y - 3));
           }
           ctx2.globalAlpha = 1;
         }
@@ -36671,17 +38029,17 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
             const fl = p.floe, fx = Math.round(fl.x + p.dx);
             const fr = p.dir > 0 ? this.penguin : this.penguinL;
             if (p.state === "swim") continue;
-            let spr, x, y;
+            let spr2, x, y;
             if (p.state === "jump" || p.state === "hop") {
-              spr = fr[3];
+              spr2 = fr[3];
               x = Math.round(p.wx) - 5;
               y = Math.round(p.wy) - 12;
             } else {
-              spr = p.state === "walk" ? fr[1 + Math.floor(p.f) % 2] : p.state === "flap" ? fr[Math.floor(p.f) % 2 ? 3 : 0] : fr[0];
+              spr2 = p.state === "walk" ? fr[1 + Math.floor(p.f) % 2] : p.state === "flap" ? fr[Math.floor(p.f) % 2 ? 3 : 0] : fr[0];
               x = fx - 5;
               y = (fl.top ?? this.base) - 13;
             }
-            ctx2.drawImage(spr, x, y);
+            ctx2.drawImage(spr2, x, y);
             if (p.gift > 0 && p.state !== "jump") {
               ctx2.fillStyle = "#ffd84a";
               ctx2.fillRect(x + (p.dir > 0 ? 9 : 0), y + 4, 2, 2);
@@ -36801,20 +38159,8 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
           }
           const r = c.rect;
           const x0 = r.x + sx, y0 = r.y, w = r.w, h = r.h;
-          ctx2.globalAlpha = 0.5;
-          ctx2.fillStyle = "#9ae6f6";
-          ctx2.fillRect(x0 + 1, y0, w - 2, h);
-          ctx2.fillRect(x0, y0 + 1, w, h - 2);
-          ctx2.globalAlpha = 0.75;
-          ctx2.fillStyle = "#e8fdff";
-          ctx2.fillRect(x0 + 1, y0, w - 2, 1);
-          ctx2.fillRect(x0, y0 + 1, 1, h - 3);
-          ctx2.fillRect(x0 + 3, y0 + 3, 1, 6);
-          ctx2.fillRect(x0 + 5, y0 + 3, 1, 3);
-          ctx2.fillStyle = "#5ab4d4";
-          ctx2.fillRect(x0 + w - 1, y0 + 2, 1, h - 3);
-          ctx2.fillRect(x0 + 2, y0 + h - 1, w - 3, 1);
-          ctx2.globalAlpha = 1;
+          if (!this.iceBlock || this.iceBlock.width !== w) this.iceBlock = iceBlockSprite(w, h, 7);
+          ctx2.drawImage(this.iceBlock, x0, y0);
           ctx2.fillStyle = "#ffffff";
           const cr = c.cracks;
           if (cr >= 1) for (let i = 0; i < 7; i++) ctx2.fillRect(x0 + w - 6 - i, y0 + 2 + i + (i > 3 ? 1 : 0), 1, 1);
@@ -38951,9 +40297,9 @@ ${status}  {coin}${rate.toFixed(1)}/min`;
     if (rw.plans) {
       const ids = Object.keys(DECOR_BUILDS).filter((d) => ITEMS["bp_" + d]);
       for (let i = 0; i < rw.plans && ids.length; i++) {
-        const pick4 = ids.splice(Math.floor(Math.random() * ids.length), 1)[0];
-        addItem(st, "bp_" + pick4, 1);
-        got.push({ id: "bp_" + pick4, qty: 1 });
+        const pick5 = ids.splice(Math.floor(Math.random() * ids.length), 1)[0];
+        addItem(st, "bp_" + pick5, 1);
+        got.push({ id: "bp_" + pick5, qty: 1 });
       }
     }
     game.save?.();
@@ -40091,10 +41437,10 @@ kTtaatTk
             const prefs = Object.entries(sp.bait || {}).filter(([, v]) => v >= 1).sort((a, b) => b[1] - a[1]).slice(0, 5);
             let bx = L2;
             for (const [type, v] of prefs) {
-              const spr = BAITS[type] ? baitSprite(type, this.t) : getMiniIcon(TYPE_ICON[type] || "documents");
+              const spr2 = BAITS[type] ? baitSprite(type, this.t) : getMiniIcon(TYPE_ICON[type] || "documents");
               const br = { x: bx, y: by + 8, w: 14 + 22, h: 16 };
-              if (BAITS[type]) ctx2.drawImage(spr, bx + Math.round((14 - spr.width) / 2), by + 9 + Math.round((14 - spr.height) / 2));
-              else ctx2.drawImage(spr, bx, by + 9);
+              if (BAITS[type]) ctx2.drawImage(spr2, bx + Math.round((14 - spr2.width) / 2), by + 9 + Math.round((14 - spr2.height) / 2));
+              else ctx2.drawImage(spr2, bx, by + 9);
               for (let i = 0; i < 3; i++) ctx2.drawImage(heartPip(i < v), bx + 16 + i % 3 * 7, by + 13);
               if (live && !this.flip && ui.hover(br)) ui.tip = `${BAITS[type]?.name || TYPE_NAME[type] || type}: ${["", "likes it", "loves it", "can't resist it"][Math.min(3, Math.round(v))]}`;
               bx += 41;
@@ -40243,7 +41589,7 @@ kTtaatTk
     const key = buildId + "|" + w + "|" + h;
     let c = sheets2.get(key);
     if (c) return c;
-    const spr = fittedBuilding(buildId, w - 10, h - 10);
+    const spr2 = fittedBuilding(buildId, w - 10, h - 10);
     c = makeCanvas(w, h);
     const g = ctxOf(c);
     g.fillStyle = "#1f5aa8";
@@ -40261,9 +41607,9 @@ kTtaatTk
     g.fillRect(0, h - 1, w, 1);
     g.fillRect(0, 0, 1, h);
     g.fillRect(w - 1, 0, 1, h);
-    if (spr) {
-      const dx = Math.round(w / 2 - spr.w / 2), dy = Math.round(h - 4 - spr.h);
-      g.drawImage(technical(spr.canvas), dx, dy);
+    if (spr2) {
+      const dx = Math.round(w / 2 - spr2.w / 2), dy = Math.round(h - 4 - spr2.h);
+      g.drawImage(technical(spr2.canvas), dx, dy);
     }
     g.fillStyle = "#0a0a14";
     g.clearRect(w - 5, 0, 5, 1);
@@ -40287,7 +41633,7 @@ kTtaatTk
     const art = it2?.art || (id === "coins" ? "coins" : null);
     let src = null;
     if (art && !art.startsWith("pkg_")) src = itemSprite(art, { scale: 0.5, frame: 0, force: true })?.canvas;
-    else if (art) src = packageParts(art.slice(4), 0.5, 0, true)?.full;
+    else if (art) src = packageParts(art.slice(4), 0.5, 0, true, true)?.full;
     else if (it2?.kind === "bait") src = baitSprite(id, 0);
     else if (it2?.kind === "decor") src = fittedProp(id, size * 2, size * 2)?.canvas;
     if (!src) return null;
@@ -40315,7 +41661,8 @@ kTtaatTk
     if (!it2 && id !== "coins") return false;
     const art = it2?.art || (id === "coins" ? "coins" : null);
     if (it2?.kind === "package") {
-      const p = packageParts(it2.tier, big === 2 ? 1.6 : 0.9, o.spin ? spinF : 0, true);
+      const psc = big === 2 ? 1.6 : 0.9;
+      const p = packageParts(it2.tier, psc, o.spin ? spinF : 0, false, true) || packageParts(it2.tier, psc, 0, true, true);
       if (!p) return false;
       const k = Math.min(1, bw / p.w, bh / p.h);
       if (p.glow) {
@@ -40878,7 +42225,7 @@ kTtaatTk
           let bx = ip.x + 6;
           const by = ip.y + ip.h - 28;
           for (const a of acts) {
-            const bw = Math.max(54, measureText(a.label) + (a.icon ? 24 : 14));
+            const bw = Math.max(54, measureText(a.label) + (a.icon ? 30 : 16));
             if (ui.button(ctx2, bx, by, bw, 20, a.label, { icon: a.icon, style: a.style || "wood", disabled: a.disabled, tip: a.tip })) a.run();
             bx += bw + 4;
           }
@@ -41247,24 +42594,24 @@ kTtaatTk
           ctx2.fillRect(r.x + 2, r.y + 2, 6, 2);
           const bob = on ? Math.round(Math.sin(t * 5) * 1) : 0;
           if (e.known) {
-            const spr = buildingSprite(e.id, { scale: 0.22, force: true });
-            if (spr) {
-              const k = Math.min(1, (r.w - 8) / spr.w, (r.h - 26) / spr.h);
-              const w = Math.round(spr.w * k), h = Math.round(spr.h * k);
+            const spr2 = buildingSprite(e.id, { scale: 0.22, force: true });
+            if (spr2) {
+              const k = Math.min(1, (r.w - 8) / spr2.w, (r.h - 26) / spr2.h);
+              const w = Math.round(spr2.w * k), h = Math.round(spr2.h * k);
               const dx = Math.round(r.x + r.w / 2 - w / 2), dy = r.y + r.h - 22 - h + bob;
               if (!usable) {
                 ctx2.globalAlpha = 0.45;
-                ctx2.drawImage(tinted2(spr.canvas), dx, dy, w, h);
+                ctx2.drawImage(tinted2(spr2.canvas), dx, dy, w, h);
                 ctx2.globalAlpha = 1;
-              } else ctx2.drawImage(spr.canvas, dx, dy, w, h);
+              } else ctx2.drawImage(spr2.canvas, dx, dy, w, h);
             }
           } else {
-            const spr = buildingSprite(e.id, { scale: 0.22, force: true });
-            if (spr) {
-              const k = Math.min(1, (r.w - 8) / spr.w, (r.h - 26) / spr.h);
-              const w = Math.round(spr.w * k), h = Math.round(spr.h * k);
+            const spr2 = buildingSprite(e.id, { scale: 0.22, force: true });
+            if (spr2) {
+              const k = Math.min(1, (r.w - 8) / spr2.w, (r.h - 26) / spr2.h);
+              const w = Math.round(spr2.w * k), h = Math.round(spr2.h * k);
               ctx2.globalAlpha = 0.55;
-              ctx2.drawImage(silhouette(spr.canvas), Math.round(r.x + r.w / 2 - w / 2), r.y + r.h - 22 - h, w, h);
+              ctx2.drawImage(silhouette(spr2.canvas), Math.round(r.x + r.w / 2 - w / 2), r.y + r.h - 22 - h, w, h);
               ctx2.globalAlpha = 1;
             }
             drawText(ctx2, "?", r.x + r.w / 2, r.y + 18, { align: "center", scale: 2, color: "#e8f6ff", outline: "#0a2a5a" });
@@ -41338,6 +42685,7 @@ kTtaatTk
           this.t = 0;
           this.page = 0;
           this.claw = null;
+          this.fitFor = null;
           const st = this.game.state;
           const b = this.b();
           if (b?.id === "vault") vaultAccrue(st);
@@ -41462,15 +42810,23 @@ kTtaatTk
           ctx2.fillRect(pv.x, ground, pv.w, 18);
           ctx2.fillStyle = "#e8cf95";
           for (let x = 0; x < pv.w; x += 2) ctx2.fillRect(pv.x + x, ground - 1 + Math.round(Math.sin(x * 0.08) * 1), 2, 3);
+          if (this.fitFor !== b.id) {
+            const s0 = buildingSprite(b.id, { scale: 0.62, force: true });
+            this.fitFor = b.id;
+            this.fitScale = s0 ? Math.min(1.5, 0.62 * Math.min((pv.w - 24) / s0.w, (pv.h - 40) / s0.h)) : 0.62;
+          }
           const yaw = def2.decor ? null : 30 + Math.round(Math.sin(t * 0.8) * 2) * 12;
-          let spr = buildingSprite(b.id, { scale: 0.62, yaw, force: false }) || buildingSprite(b.id, { scale: 0.62, force: true });
-          if (spr) {
-            const k = Math.min(1, (pv.w - 16) / spr.w, (pv.h - 30) / spr.h) * (spr.approx || 1);
-            const w = Math.round(spr.w * k), h = Math.round(spr.h * k);
-            ctx2.drawImage(b.flip ? spr.flipped() : spr.canvas, Math.round(pv.x + pv.w / 2 - spr.ox * k), Math.round(ground + 4 - spr.oy * k), w, h);
-            if (spr.glow && deep) {
+          const spr2 = buildingSprite(b.id, { scale: this.fitScale, yaw, force: false }) || buildingSprite(b.id, { scale: this.fitScale, force: true });
+          if (spr2) {
+            const k = spr2.approx || 1;
+            const w = Math.round(spr2.w * k), h = Math.round(spr2.h * k);
+            const dx = Math.round(pv.x + pv.w / 2 - (b.flip ? spr2.w - spr2.ox : spr2.ox) * k), dy = Math.round(ground + 6 - spr2.oy * k);
+            ctx2.fillStyle = rgba("#000000", 0.2);
+            ctx2.fillRect(Math.round(pv.x + pv.w / 2 - w * 0.4), ground + 4, Math.round(w * 0.8), 3);
+            ctx2.drawImage(b.flip ? spr2.flipped() : spr2.canvas, dx, dy, w, h);
+            if (spr2.glow && deep) {
               ctx2.globalCompositeOperation = "lighter";
-              ctx2.drawImage(spr.glow, Math.round(pv.x + pv.w / 2 - spr.ox * k), Math.round(ground + 4 - spr.oy * k), w, h);
+              ctx2.drawImage(b.flip ? spr2.glowFlipped() : spr2.glow, dx, dy, w, h);
               ctx2.globalCompositeOperation = "source-over";
             }
           }
@@ -42583,12 +43939,30 @@ kTtaatTk
           ctx2.globalCompositeOperation = "source-over";
           ctx2.fillStyle = "#1a1018";
           ctx2.fillRect(r.x, floor + 8, r.w, r.h);
-          ctx2.fillStyle = "#2a1a24";
-          for (let i = 0; i < 6; i++) ctx2.fillRect(Math.round(cx - 90 + i * 4), floor + 6 + i, 180 - i * 8, 1);
-          ctx2.fillStyle = mix(T.color, "#3a1a2a", 0.5);
-          ctx2.fillRect(cx - 70, floor + 6, 140, 6);
-          ctx2.fillStyle = T.color;
-          ctx2.fillRect(cx - 70, floor + 6, 140, 1);
+          for (let i = 0; i < 10; i++) {
+            ctx2.fillStyle = rgba("#000000", 0.04 * (10 - i));
+            ctx2.fillRect(r.x, floor + 8 + i * 2, r.w, 2);
+          }
+          const pr = 74, ph2 = 12;
+          for (let yy = -ph2; yy <= ph2 + 10; yy++) {
+            const k = yy <= ph2 ? Math.sqrt(Math.max(0, 1 - (yy / ph2) ** 2)) : Math.sqrt(Math.max(0, 1 - ((yy - 10) / ph2) ** 2));
+            const w = Math.round(pr * k);
+            if (w <= 0) continue;
+            ctx2.fillStyle = yy < 0 ? "#7a4a28" : yy <= ph2 ? yy < 2 ? "#9a6232" : "#6a3e22" : "#3a2010";
+            if (yy > ph2 - 2 && yy <= ph2 + 10) ctx2.fillStyle = yy & 1 ? "#4a2a18" : "#3a2010";
+            ctx2.fillRect(cx - w, floor + 2 + yy, w * 2, 1);
+          }
+          for (let a = 0; a < TAU; a += 0.012) {
+            ctx2.fillStyle = T.color;
+            ctx2.fillRect(Math.round(cx + Math.cos(a) * pr), Math.round(floor + 2 + Math.sin(a) * ph2), 1, 1);
+          }
+          ctx2.globalCompositeOperation = "lighter";
+          ctx2.fillStyle = rgba(T.glow, 0.12 + 0.05 * Math.sin(t * 3));
+          for (let yy = -ph2 + 2; yy <= ph2 - 2; yy++) {
+            const w = Math.round((pr - 8) * Math.sqrt(Math.max(0, 1 - (yy / ph2) ** 2)));
+            ctx2.fillRect(cx - w, floor + 2 + yy, w * 2, 1);
+          }
+          ctx2.globalCompositeOperation = "source-over";
           if (this.phase !== "empty") {
             const parts = packageParts(this.pkg.tier, 2.2, this.phase === "idle" ? Math.floor(t * 3) % 16 : 0, true);
             let sx = 0, sy = 0, squash = 0;
@@ -42985,22 +44359,22 @@ kTtaatTk
         layout(b) {
           const s = this.sAt(b.z);
           const scale = WORLD_SCALE * s * (BUILDINGS[b.id] ? 1 : 1.05);
-          const spr = buildingSprite(b.id, { scale });
-          if (!spr) return null;
-          const k = spr.approx || 1;
+          const spr2 = buildingSprite(b.id, { scale });
+          if (!spr2) return null;
+          const k = spr2.approx || 1;
           const [px3, py] = this.par(b.z);
           const gx = Math.round(b.x + px3), gy = Math.round(this.floorY(b.x, b.z) + 1 + py);
           const flip = !!b.flip;
-          const canvas = flip ? spr.flipped() : spr.canvas;
-          const ox = flip ? spr.w - spr.ox : spr.ox;
-          const w = Math.round(spr.w * k), h = Math.round(spr.h * k);
-          const dx = Math.round(gx - ox * k), dy = Math.round(gy - spr.oy * k);
+          const canvas = flip ? spr2.flipped() : spr2.canvas;
+          const ox = flip ? spr2.w - spr2.ox : spr2.ox;
+          const w = Math.round(spr2.w * k), h = Math.round(spr2.h * k);
+          const dx = Math.round(gx - ox * k), dy = Math.round(gy - spr2.oy * k);
           const anchor = (name) => {
-            const a = spr.anchors?.[name];
+            const a = spr2.anchors?.[name];
             if (!a) return null;
-            return [dx + (flip ? spr.w - a.x : a.x) * k, dy + a.y * k];
+            return [dx + (flip ? spr2.w - a.x : a.x) * k, dy + a.y * k];
           };
-          return { spr, canvas, glow: flip ? spr.glowFlipped?.() : spr.glow, k, gx, gy, dx, dy, w, h, s, anchor, hw: w * 0.36 };
+          return { spr: spr2, canvas, glow: flip ? spr2.glowFlipped?.() : spr2.glow, k, gx, gy, dx, dy, w, h, s, anchor, hw: w * 0.36 };
         }
         sorted() {
           return this.state.buildings.slice().sort((a, b) => b.z - a.z);
@@ -43234,8 +44608,8 @@ kTtaatTk
             if (it2.id === "coins") g.addCoins?.(it2.qty, sx, sy);
             else {
               addItem(this.state, it2.id, it2.qty);
-              const spr = itemSprite(ITEMS[it2.id]?.art || it2.id, { frame: 0, force: true });
-              if (spr) g.particles?.sprite(sx + rng.float(-10, 10), sy, spr.canvas, { layer: "ui", vy: -30, life: 1.4 });
+              const spr2 = itemSprite(ITEMS[it2.id]?.art || it2.id, { frame: 0, force: true });
+              if (spr2) g.particles?.sprite(sx + rng.float(-10, 10), sy, spr2.canvas, { layer: "ui", vy: -30, life: 1.4 });
               g.particles?.text(sx, sy - 16, `+${it2.qty} ${ITEMS[it2.id]?.name || it2.id}`, { color: RARITY[ITEMS[it2.id]?.rarity || "common"].color });
             }
           }
@@ -43278,11 +44652,11 @@ kTtaatTk
           for (const f of fishes) {
             if (f._pkgRolled || !f.sp) continue;
             f._pkgRolled = true;
-            f.pkg = rollPackage(f.sp, biome, this.bonus("luck"));
+            if (!("package" in f)) f.pkg = rollPackage(f.sp, biome);
           }
         }
         drawFishPackage(ctx2, f, t = this.t) {
-          if (!f?.pkg) return;
+          if (!f?.pkg || f.package) return;
           const a = f.anchors?.bottom || [f.x, f.y + 6 * (f.scale || 1)];
           drawPackage(ctx2, a[0] - (f.facing || 1) * 2, a[1] - 1, f.pkg.tier, t + (f.x || 0) * 0.013, { scale: clamp(0.42 * (f.scale || 1) * (1 - (f.z || 0) * 0.4), 0.32, 0.6) });
         }
@@ -43301,16 +44675,24 @@ kTtaatTk
           if (r === "rare" && rng.chance(0.35) || r === "epic" && rng.chance(0.65) || r === "legendary") give("rare_specimen", 1);
           if (r === "legendary" && rng.chance(0.4)) give("golden_scale", 1);
           if (rng.chance(this.bonus("eggChance"))) give("fish_egg", 1);
-          let pkg2 = fish?.pkg;
-          if (pkg2 === void 0 && !fish?._pkgRolled) pkg2 = rollPackage(sp, biome, this.bonus("luck"));
+          let pkg2 = fish?.package || fish?.pkg || rec?.package || null;
+          if (!pkg2 && fish && !("package" in fish) && !fish._pkgRolled && !rec?.package) pkg2 = rollPackage(sp, biome);
           if (pkg2) {
             const p = addPackage(st, pkg2.tier, { species: sp?.id || null, biome });
             items.push({ id: "pkg_" + p.tier, qty: 1, uid: p.uid });
-            if (fish) fish.pkg = null;
+            if (fish) {
+              fish.package = null;
+              fish.pkg = null;
+            }
+            if (rec) rec.package = null;
             setTimeout(() => g.toast?.(`${sp?.name || "The fish"} was carrying a ${TIERS[p.tier].name}! Open it in your Inventory.`, "star", 5), 900);
             setTimeout(() => g.audio?.play(p.tier === "orb" || p.tier === "golden" ? "golden_shimmer" : "treasure_open", { vol: 0.6 }), 700);
           }
-          if (rng.chance(this.bonus("baitSave"))) this.savedBait = true;
+          const bait = g.currentBait?.();
+          if (bait?.kind === "special" && rng.chance(this.bonus("baitSave"))) {
+            st.baits[bait.type] = (st.baits[bait.type] || 0) + 1;
+            setTimeout(() => g.toast?.("The Bait Workshop saved your bait!", "bait"), 1400);
+          }
           return { pkg: pkg2 || null, items };
         }
         // ------------------------------------------------------------------ update
@@ -43319,6 +44701,12 @@ kTtaatTk
           this.t += dt;
           this.ensure();
           this.registerPanels();
+          setPackageLuck(this.bonus("luck"));
+          if (this.welcomed !== this.state) {
+            this.welcomed = this.state;
+            const n = readyCount(this.state);
+            if (n) setTimeout(() => this.game.toast?.(`Professor Bubbles finished ${n} research project${n > 1 ? "s" : ""} while you were away!`, "book", 5), 3500);
+          }
           for (const [u, a] of this.anims) {
             a.t += dt;
             if (a.kind === "build") this.buildFx(u, a, dt);
@@ -43354,8 +44742,8 @@ kTtaatTk
             this.flip = !this.flip;
             g.audio?.play("ui_toggle");
           }
-          if (inp.keyPressed?.("w") || inp.keyPressed?.("ArrowUp")) this.setDepth(this.depth + 0.05);
-          if (inp.keyPressed?.("s") || inp.keyPressed?.("ArrowDown")) this.setDepth(this.depth - 0.05);
+          if (inp.keyPressed?.("e") || inp.keyPressed?.("ArrowUp")) this.setDepth(this.depth + 0.05);
+          if (inp.keyPressed?.("q") || inp.keyPressed?.("ArrowDown")) this.setDepth(this.depth - 0.05);
           const overUi = layer2 === "ui" || layer2 === "tank" || layer2 === "drag" || layer2 === "tutorial" || layer2 === "boat";
           if (overUi) {
             this.hover = null;
@@ -43751,7 +45139,7 @@ kTtaatTk
           if (this.ghost?.show !== false && this.ghost) this.drawGhost(ctx2, this.ghost, t);
           ctx2.restore();
           const mv2 = this.moving ? this.byUid(this.moving) : null;
-          const hint = mv2 ? "Click to set it down  -  F: flip  -  W/S or wheel: depth  -  Right-click: cancel" : this.mode === "move" ? "Click a building to move it  -  Right-click: back to placing" : this.mode === "demolish" ? "Click a building twice to demolish it (refunds the blueprint and half the cost)" : this.sel ? "Click the seabed to build  -  F: flip  -  W/S or wheel: depth  -  Right-click: deselect" : "Pick a blueprint from the tray below";
+          const hint = mv2 ? "Click to set it down  -  F: flip  -  Q/E or wheel: depth  -  Right-click: cancel" : this.mode === "move" ? "Click a building to move it  -  Right-click: back to placing" : this.mode === "demolish" ? "Click a building twice to demolish it (refunds the blueprint and half the cost)" : this.sel ? "Click the seabed to build  -  F: flip  -  Q/E or wheel: depth  -  Right-click: deselect" : "Pick a blueprint from the tray below";
           const hw = measureText(hint) + 16;
           ctx2.fillStyle = rgba("#06204a", 0.8);
           ctx2.fillRect(Math.round(W6 / 2 - hw / 2), 30, hw, 15);
@@ -43776,7 +45164,7 @@ kTtaatTk
             const [px4, py2] = this.par(z2);
             for (let x = 0; x <= W6; x += 2) {
               if (hash2(x >> 1, zi, 7) < 0.18) continue;
-              chalk(x + px4, this.floorY(x, z2) + py2, 0.32 - zi * 0.012);
+              chalk(x + px4, this.floorY(x, z2) + py2, 0.45 - zi * 0.018);
             }
           }
           for (let k = -14; k <= 14; k++) {
@@ -43787,7 +45175,7 @@ kTtaatTk
               if (sx < 0 || sx > W6) continue;
               const [px4, py2] = this.par(z2);
               if (hash2(k + 40, Math.floor(zz * 300), 3) < 0.2) continue;
-              chalk(sx + px4, this.floorY(sx, z2) + py2, 0.26);
+              chalk(sx + px4, this.floorY(sx, z2) + py2, 0.36);
             }
           }
           const z = this.depth;
@@ -44073,6 +45461,12 @@ kTtaatTk
     put("bubble_tower", Math.round(W6 * 0.58), 0.9);
     put("arcade", Math.round(W6 * 0.7), 0.42);
     put("totem", Math.round(W6 * 0.5), 0.2);
+    if (g.params.has("all")) {
+      put("bait_workshop", Math.round(W6 * 0.3), 0.85);
+      put("hatchery", Math.round(W6 * 0.84), 0.6);
+      put("vault", Math.round(W6 * 0.62), 0.25);
+      put("shell_shack", Math.round(W6 * 0.9), 1.05);
+    }
     st.research.done = { marine_bio: now4, eng1: now4, coral_prop: now4 };
     st.research.active = [{ id: "tinkering", start: now4 - 2e5, end: now4 + 28e4 }, { id: "bubble_physics", start: now4 - 5e5, end: now4 - 1 }];
     st.vault.coins = 900;
@@ -44214,12 +45608,1027 @@ kTtaatTk
     }
   });
 
+  // src/ui/wardrobe.js
+  var pick3, LINES2, SLOT_SOUND, POSE_BTNS, POSE_SOUND, THUMB, HEAD_ACC, WardrobePanel;
+  var init_wardrobe = __esm({
+    "src/ui/wardrobe.js"() {
+      init_math();
+      init_color();
+      init_canvas();
+      init_font();
+      init_panels();
+      init_uiicons();
+      init_character();
+      init_spritecache();
+      init_species();
+      init_skills();
+      pick3 = (a) => a[Math.floor(Math.random() * a.length)];
+      LINES2 = {
+        open: ["Time for a makeover!", "Do these fins look big in this?", "Fashion is my passion. Also fish.", "Ooh, the dressing room!", "Make me look fin-tastic!"],
+        equip: ["Fin-tastic!", "Oh, that's SO me.", "Snazzy!", "Gill-iant choice!", "Very dapper. Very damp.", "Looking sharp as a fishhook!", "Scale-tacular!"],
+        tryon: ["Ooh, can I keep it?", "Hmm, try before you buy!", "This one feels... expensive.", "Do I look rich yet?"],
+        buy: ["Ka-ching! Lookin' sharp!", "Worth every coin!", "Into the closet it goes!", "New threads! Blub blub!"],
+        broke: ["My wallet is lighter than a minnow...", "Need more coins. Back to fishing!", "Can I pay in fish?"],
+        pkg: ["Only found in mystery crates!", "Crack open some crates to find this!"],
+        random: ["Surprise me!", "Wardrobe roulette!", "Chaos mode!", "Eyes closed... GO!"],
+        reset: ["Back to the classic!", "Old reliable."],
+        spin: ["Wheee!", "I'm getting dizzy...", "Spin me right round!", "Blurgh. Too fast."],
+        mirror: ["Who's the fishiest of them all?", "Lookin' fishy!", "Hey there, handsome.", "Nice fins, pal."],
+        poke: ["Hey! That tickles!", "Blub?", "Personal space, please!", "Hehehe."]
+      };
+      SLOT_SOUND = { skin: "blub", eyes: "boing", mouth: "honk", hat: "boing", outfit: "puff", boots: "squeak", gloves: "squeak", acc: "bell", rod: "reel_tick", boat: "splash_small" };
+      POSE_BTNS = [["show", "Pose"], ["wave", "Wave"], ["cheer", "Cheer"], ["cast", "Cast"], ["reel", "Reel"], ["sit", "Sit"], ["sad", "Sad"], ["hold", "Hold"]];
+      POSE_SOUND = { wave: "chirp", cheer: "honk", cast: "cast", reel: "reel", sit: "puff", sad: "deflate", hold: "catch", show: "boing" };
+      THUMB = { skin: 1.25, eyes: 1.25, mouth: 1.25, hat: 0.95, outfit: 0.9, acc: 0.9, boots: 1.6, gloves: 1.7, rod: 0.95 };
+      HEAD_ACC = /* @__PURE__ */ new Set(["sunglasses", "snorkel", "monocle", "mustache", "earring"]);
+      WardrobePanel = class {
+        constructor() {
+          this.id = "wardrobe";
+          this.modal = true;
+          this.sound = "box_open";
+          this.slot = "hat";
+          this.t = 0;
+          this.yaw = -24;
+          this.yawV = 0;
+          this.drag = null;
+          this.pose = "show";
+          this.poseT = 0;
+          this.sel = null;
+          this.line = null;
+          this.pop = {};
+          this.cache = {};
+        }
+        open(data) {
+          const g = this.game;
+          if (data?.slot && WARDROBE_SLOTS.some((s) => s.id === data.slot)) this.slot = data.slot;
+          this.t = 0;
+          this.openT = 0;
+          this.pose = "show";
+          this.poseT = 0;
+          this.yaw = -24;
+          this.yawV = 0;
+          this.idleT = 0;
+          this.spin = 0;
+          this.sold = 0;
+          this.selectEquipped();
+          this.say(pick3(LINES2.open));
+          g.audio.play("net_swish", { vol: 0.5 });
+          if (!g.state.character) g.state.character = normalizeLook(null);
+        }
+        close() {
+          this.drag = null;
+        }
+        get look() {
+          return normalizeLook(this.game.state.character);
+        }
+        items(slot = this.slot) {
+          return WARDROBE.filter((w) => w.slot === slot);
+        }
+        owns(item) {
+          return ownsCosmetic(this.game.state, item);
+        }
+        selectEquipped() {
+          const L2 = this.look;
+          const list = this.items();
+          this.sel = (list.find((w) => isEquipped(L2, w)) || list[0])?.id;
+        }
+        selItem() {
+          return WARDROBE.find((w) => w.id === this.sel) || null;
+        }
+        // What the mannequin wears: the saved look plus the item being tried on.
+        previewLook() {
+          const L2 = this.look;
+          const it2 = this.selItem();
+          if (it2 && !this.owns(it2) && !isEquipped(L2, it2)) return equipItem(L2, it2);
+          return L2;
+        }
+        say(text, dur) {
+          this.line = text;
+          this.lineT = 0;
+          this.talkT = dur ?? clamp(text.length * 0.05, 0.9, 2.6);
+          this.game.audio.babble?.(text, "fish");
+        }
+        // auto poses (reactions) fall back to the showcase pose; picked poses stay until changed
+        setPose(p, auto = true) {
+          this.pose = p;
+          this.poseT = 0;
+          this.autoPose = auto && p !== "show";
+        }
+        equip(item) {
+          const g = this.game;
+          g.state.character = equipItem(this.look, item);
+          g.audio.play(SLOT_SOUND[item.slot] || "ui_click", { vol: 0.7, pitch: 0.9 + Math.random() * 0.3 });
+          this.pop[item.id] = 0;
+          this.burst(item.slot === "boat" ? "#7fe0ff" : "#fff6b0", 8);
+          if (this.t - (this.lastSay || -9) > 1.2) {
+            this.say(pick3(LINES2.equip));
+            this.lastSay = this.t;
+          }
+          if (Math.random() < 0.35 && this.pose === "show") this.setPose("cheer");
+          this.changed();
+        }
+        changed() {
+          const g = this.game;
+          g.save?.();
+          g.emit?.("character", g.state.character);
+        }
+        buy(item) {
+          const g = this.game;
+          if (this.owns(item)) return;
+          if (item.price == null) {
+            g.audio.play("ui_error");
+            if (item.unlock === "skill") this.say(`Grow '${SKILL_BY_ID[item.skill]?.name || "a skill"}' to unlock this!`);
+            else this.say(pick3(LINES2.pkg));
+            return;
+          }
+          if (g.state.coins < item.price || !g.spendCoins(item.price)) {
+            g.audio.play("ui_error");
+            this.say(pick3(LINES2.broke));
+            this.shakeT = 0.4;
+            this.setPose("sad");
+            return;
+          }
+          grantCosmetic(g.state, item.id);
+          g.audio.play("ui_buy");
+          g.audio.play("coin_collect", { vol: 0.6 });
+          if (item.rarity === "epic" || item.rarity === "legendary") g.audio.play("catch_rare", { vol: 0.5 });
+          this.sold = 1;
+          this.say(pick3(LINES2.buy));
+          g.emit?.("buy", item.id);
+          this.equip(item);
+          this.setPose("cheer");
+          this.burst("#ffd25a", 16);
+        }
+        randomize() {
+          const g = this.game, st = g.state;
+          let L2 = this.look;
+          for (const s of WARDROBE_SLOTS) {
+            if (s.id === "acc") continue;
+            const own = this.items(s.id).filter((w) => this.owns(w));
+            if (own.length) L2 = equipItem(L2, pick3(own));
+          }
+          L2.acc = [];
+          const accs = this.items("acc").filter((w) => this.owns(w));
+          for (let i = 0; i < 3 && accs.length; i++) if (Math.random() < 0.45) L2 = equipItem(L2, pick3(accs));
+          st.character = normalizeLook(L2);
+          g.audio.play("boing", { pitch: 1.2 });
+          g.audio.play("puff", { vol: 0.6 });
+          this.spin = 1;
+          this.yawV = 900;
+          this.say(pick3(LINES2.random));
+          this.setPose("cheer");
+          this.burst("#ff9ad0", 14);
+          this.selectEquipped();
+          this.changed();
+        }
+        reset() {
+          const g = this.game;
+          g.state.character = normalizeLook({ ...DEFAULT_CHARACTER, boat: this.look.boat });
+          g.audio.play("puff");
+          this.say(pick3(LINES2.reset));
+          this.setPose("wave");
+          this.selectEquipped();
+          this.changed();
+        }
+        burst(color, n) {
+          const P5 = this.game.particles, a = this.anchor;
+          if (!P5 || !a) return;
+          for (let i = 0; i < n; i++) P5.sparkle(a.x + (Math.random() - 0.5) * 60, a.y + (Math.random() - 0.5) * 70, i % 2 ? color : "#ffffff", { layer: "ui" });
+        }
+        fish() {
+          const st = this.game.state;
+          let best = null, bestR = -1;
+          const order2 = ["common", "uncommon", "rare", "epic", "legendary"];
+          for (const [id, j] of Object.entries(st.journal || {})) {
+            const sp = SPECIES_BY_ID[id];
+            if (!j?.caught || !sp || sp.look?.kind) continue;
+            const r = order2.indexOf(sp.rarity);
+            if (r > bestR) {
+              bestR = r;
+              best = sp;
+            }
+          }
+          best || (best = SPECIES_BY_ID.parrot || SPECIES.find((s) => !s.look?.kind));
+          if (!best) return null;
+          if (this.cache.fishId !== best.id) this.cache.fishC = { compiled: compiled(best.look, null, "wardrobe:" + best.id) }, this.cache.fishId = best.id;
+          return this.cache.fishC;
+        }
+        // ------------------------------------------------------------------------------------------ frame
+        draw(ctx2, ui, dt) {
+          const g = this.game, inp = g.input;
+          dt = Math.max(0, Math.min(dt, 0.1));
+          this.t += dt;
+          this.openT = Math.min(1, (this.openT || 0) + dt * 1.4);
+          const SW = g.screen.W, SH = g.screen.H;
+          const W6 = Math.min(SW - 16, 748), H6 = Math.min(SH - 44, 444);
+          const r = { x: Math.round((SW - W6) / 2), y: Math.round((SH - H6) / 2) + 12, w: W6, h: H6 };
+          this.rect = { x: r.x, y: r.y - 28, w: W6, h: H6 + 28 };
+          drawWood(ctx2, r.x, r.y, W6, H6, { tone: "dark" });
+          const stage = { x: r.x + 8, y: r.y + 8, w: Math.round(W6 * 0.41), h: H6 - 16 - 25 };
+          const drawers = { x: stage.x + stage.w + 7, y: r.y + 8, w: 76, h: H6 - 16 };
+          const rx = drawers.x + drawers.w + 7, rw = r.x + W6 - 8 - rx;
+          this.drawStage(ctx2, ui, stage, dt);
+          this.drawPoseBar(ctx2, ui, { x: stage.x, y: stage.y + stage.h + 5, w: stage.w, h: 18 });
+          this.drawDrawers(ctx2, ui, drawers);
+          this.drawHeader(ctx2, ui, { x: rx, y: r.y + 8, w: rw, h: 20 });
+          if (!ui.isOpen(this.id)) return;
+          const slipH = 84;
+          this.drawRack(ctx2, ui, { x: rx, y: r.y + 31, w: rw, h: H6 - 31 - 8 - slipH - 6 }, dt);
+          this.drawSlip(ctx2, ui, { x: rx, y: r.y + H6 - 8 - slipH, w: rw, h: slipH }, dt);
+          drawPlank(ctx2, r.x + Math.round(W6 / 2) - 104, r.y - 22, 208, 22, { rope: 8, label: "GIL'S DRESSING ROOM" });
+          if (inp.keyPressed?.("KeyR")) this.randomize();
+        }
+        // ------------------------------------------------------------------------------------------ stage
+        drawStage(ctx2, ui, s, dt) {
+          const g = this.game, inp = g.input, t = this.t;
+          ctx2.save();
+          ctx2.beginPath();
+          ctx2.rect(s.x, s.y, s.w, s.h);
+          ctx2.clip();
+          ctx2.drawImage(this.roomBg(s.w, s.h), s.x, s.y);
+          const floorY = s.y + Math.round(s.h * 0.8);
+          const cx = s.x + Math.round(s.w * 0.6);
+          const mw = Math.round(s.w * 0.36), mh = Math.round(s.h * 0.5);
+          const mr = { x: s.x + Math.round(s.w * 0.2), y: s.y + 30, w: mw, h: mh };
+          const mcx = mr.x + (mw >> 1);
+          this.mirrorRect = mr;
+          const inner = drawFrame(ctx2, mr.x - 6, mr.y - 6, mr.w + 12, mr.h + 12, { style: "gold" });
+          ctx2.save();
+          ctx2.beginPath();
+          ctx2.rect(inner.x, inner.y, inner.w, inner.h);
+          ctx2.clip();
+          const grd = ctx2.createLinearGradient(0, inner.y, 0, inner.y + inner.h);
+          grd.addColorStop(0, "#a8d8dc");
+          grd.addColorStop(0.7, "#6fa8b4");
+          grd.addColorStop(1, "#4a7a88");
+          ctx2.fillStyle = grd;
+          ctx2.fillRect(inner.x, inner.y, inner.w, inner.h);
+          ctx2.fillStyle = rgba("#2a5a68", 0.35);
+          for (let x = inner.x + (t * 0 | 0); x < inner.x + inner.w; x += 10) ctx2.fillRect(x, inner.y, 4, inner.h);
+          ctx2.fillStyle = rgba("#5a3a28", 0.55);
+          ctx2.fillRect(inner.x, inner.y + inner.h - 16, inner.w, 16);
+          const look = this.previewLook();
+          const sc = this.charScale(s);
+          ctx2.save();
+          ctx2.translate(mcx * 2 + 10, 0);
+          ctx2.scale(-1, 1);
+          ctx2.globalAlpha = 0.92;
+          drawCharacter(ctx2, mcx + 5, inner.y + inner.h - 4, { pose: this.pose === "hold" ? "show" : this.pose, t: this.poseT, yaw: this.yaw + 150, scale: Math.max(1, Math.round(sc * 0.6 * 4) / 4), look, id: "wardrobe-mirror", shadow: false });
+          ctx2.restore();
+          ctx2.fillStyle = rgba("#bff4ff", 0.16);
+          ctx2.fillRect(inner.x, inner.y, inner.w, inner.h);
+          ctx2.fillStyle = rgba("#ffffff", 0.22);
+          for (const [o, w] of [[18, 10], [34, 4], [80, 6]]) {
+            ctx2.beginPath();
+            const gx = inner.x + o + Math.sin(t * 0.3) * 3;
+            ctx2.moveTo(gx, inner.y);
+            ctx2.lineTo(gx + w, inner.y);
+            ctx2.lineTo(gx + w - 40, inner.y + inner.h);
+            ctx2.lineTo(gx - 40, inner.y + inner.h);
+            ctx2.fill();
+          }
+          ctx2.restore();
+          const bulbs = [];
+          for (let i = 0; i < 6; i++) bulbs.push([mr.x - 9 + (mr.w + 18) * i / 5, mr.y - 11]);
+          for (let i = 1; i < 6; i++) {
+            bulbs.push([mr.x - 11, mr.y - 9 + mr.h * i / 6]);
+            bulbs.push([mr.x + mr.w + 11, mr.y - 9 + mr.h * i / 6]);
+          }
+          bulbs.forEach(([bx, by], i) => {
+            const tw = 0.75 + 0.25 * Math.sin(t * 2.2 + i * 1.7) + (this.sold > 0 ? 0.4 * Math.sin(t * 30 + i) : 0);
+            ctx2.globalCompositeOperation = "lighter";
+            ctx2.fillStyle = rgba("#ffd890", 0.16 * tw);
+            ctx2.beginPath();
+            ctx2.arc(bx, by, 9, 0, TAU);
+            ctx2.fill();
+            ctx2.globalCompositeOperation = "source-over";
+            ctx2.fillStyle = "#7a4a1c";
+            ctx2.fillRect(Math.round(bx) - 2, Math.round(by) - 1, 4, 3);
+            ctx2.fillStyle = tw > 0.6 ? "#fff6d0" : "#ffe08a";
+            ctx2.fillRect(Math.round(bx) - 2, Math.round(by) - 3, 4, 4);
+            ctx2.fillStyle = "#ffffff";
+            ctx2.fillRect(Math.round(bx) - 1, Math.round(by) - 3, 1, 1);
+          });
+          ctx2.globalCompositeOperation = "lighter";
+          const sg = ctx2.createLinearGradient(0, s.y, 0, floorY + 10);
+          sg.addColorStop(0, rgba("#fff4c8", 0));
+          sg.addColorStop(1, rgba("#fff4c8", 0.13));
+          ctx2.fillStyle = sg;
+          ctx2.beginPath();
+          ctx2.moveTo(cx - 10, s.y);
+          ctx2.lineTo(cx + 22, s.y);
+          ctx2.lineTo(cx + 74, floorY + 12);
+          ctx2.lineTo(cx - 70, floorY + 12);
+          ctx2.fill();
+          ctx2.globalCompositeOperation = "source-over";
+          this.drawPedestal(ctx2, cx, floorY, s);
+          const fish = this.pose === "hold" ? this.fish() : null;
+          const shake = this.shakeT > 0 ? Math.round(Math.sin(t * 60) * 2) : 0;
+          this.shakeT = Math.max(0, (this.shakeT || 0) - dt);
+          const lookAt = ui.hover(s) && !this.drag ? [inp.x, inp.y] : null;
+          const a = drawCharacter(ctx2, cx + shake, floorY - 6, { pose: this.pose, t: this.poseT, yaw: this.yaw, scale: sc, look, fish, id: "wardrobe", lookAt, shadow: true });
+          this.anchor = { x: a.head[0], y: (a.head[1] + floorY) / 2 };
+          this.drawCurtains(ctx2, s, ease.outCubic(this.openT));
+          const sel = this.selItem();
+          if (sel && !this.owns(sel)) {
+            const bob = Math.round(Math.sin(t * 3) * 1);
+            const tx = s.x + 8, ty = s.y + s.h - 26 + bob;
+            ctx2.fillStyle = "#2a1a10";
+            ctx2.fillRect(tx - 1, ty - 1, 74, 15);
+            ctx2.fillStyle = "#ffd25a";
+            ctx2.fillRect(tx, ty, 72, 13);
+            ctx2.fillStyle = "#fff2a8";
+            ctx2.fillRect(tx, ty, 72, 1);
+            drawText(ctx2, "TRYING ON", tx + 36, ty + 4, { font: "small", align: "center", color: "#5a2a10" });
+          }
+          ctx2.restore();
+          ctx2.fillStyle = "#1a0e08";
+          ctx2.fillRect(s.x - 1, s.y - 1, s.w + 2, 1);
+          ctx2.fillRect(s.x - 1, s.y + s.h, s.w + 2, 1);
+          ctx2.fillRect(s.x - 1, s.y, 1, s.h);
+          ctx2.fillRect(s.x + s.w, s.y, 1, s.h);
+          this.updateSpin(ui, s, mr, dt);
+          this.drawSpeech(ctx2, s, a, dt);
+          this.poseT += dt;
+          if (this.autoPose && this.poseT > 2.3) this.setPose("show");
+          else if (this.pose === "cast" && this.poseT > 1.8) this.poseT = 0;
+        }
+        charScale(s) {
+          return clamp(Math.round(s.h * 0.6 / (64 * 1.4) * 4) / 4, 1.5, 2.75);
+        }
+        updateSpin(ui, s, mr, dt) {
+          const g = this.game, inp = g.input;
+          const over = ui.hover(s);
+          if (over && inp.pressed && !this.drag) {
+            inp.pressed = false;
+            if (ui.hover(mr) && inp.y < mr.y + mr.h * 0.45) {
+              g.audio.play("bell", { vol: 0.5, pitch: 1.2 });
+              this.say(pick3(LINES2.mirror));
+            } else {
+              this.drag = { x: inp.x, yaw: this.yaw, last: inp.x, moved: 0 };
+              this.yawV = 0;
+            }
+          }
+          if (this.drag) {
+            if (inp.down) {
+              const dx = inp.x - this.drag.last;
+              this.drag.moved += Math.abs(dx);
+              this.drag.last = inp.x;
+              this.yaw -= dx * 1.6;
+              this.yawV = lerp(this.yawV, -dx * 1.6 / Math.max(dt, 1e-3), 0.5);
+              ui.tip = null;
+            } else {
+              if (this.drag.moved < 3) {
+                g.audio.play(pick3(["squeak", "blub", "boing"]), { vol: 0.6 });
+                this.say(pick3(LINES2.poke));
+                this.setPose(pick3(["wave", "cheer"]));
+                this.yawV = 0;
+              } else if (Math.abs(this.yawV) > 700) this.say(pick3(LINES2.spin));
+              this.drag = null;
+            }
+            this.idleT = 0;
+          } else {
+            this.yaw += this.yawV * dt;
+            this.yawV *= Math.exp(-dt * 2.8);
+            if (Math.abs(this.yawV) < 4) this.yawV = 0;
+            this.idleT = (this.idleT || 0) + dt;
+            if (this.idleT > 6 && !this.yawV) {
+              const target = -24 + Math.sin(this.t * 0.35) * 18;
+              let d = ((target - this.yaw) % 360 + 540) % 360 - 180;
+              this.yaw += d * Math.min(1, dt * 0.8);
+            }
+          }
+          this.yaw = ((this.yaw + 180) % 360 + 360) % 360 - 180;
+          const step2 = Math.round(this.yaw / 15);
+          if (step2 !== this.lastStep) {
+            if (this.lastStep !== void 0 && (this.drag || Math.abs(this.yawV) > 30)) g.audio.play("reel_tick", { vol: 0.25, pitch: 1.4 + Math.random() * 0.2 });
+            this.lastStep = step2;
+          }
+          if (over && !this.drag) ui.tip = ui.tip || "Drag to spin Gil around";
+        }
+        drawSpeech(ctx2, s, a, dt) {
+          if (!this.line) return;
+          this.lineT += dt;
+          this.talkT = Math.max(0, (this.talkT || 0) - dt);
+          const fade = this.lineT > 4 ? clamp01(1 - (this.lineT - 4) * 2) : 1;
+          if (fade <= 0) {
+            this.line = null;
+            return;
+          }
+          const lines = wrapText(this.line, s.w - 60);
+          const bw = Math.min(s.w - 20, Math.max(...lines.map((l) => measureText(l))) + 18), bh = lines.length * 10 + 11;
+          const hx = clamp(a.head[0], s.x + 20, s.x + s.w - 20);
+          const bx = clamp(Math.round(hx - bw / 2 + 24), s.x + 6, s.x + s.w - bw - 6), by = Math.max(s.y + 4, Math.round(a.head[1] - bh - 16));
+          ctx2.globalAlpha = Math.min(1, this.lineT * 8) * fade;
+          const cr = drawBubble(ctx2, bx, by, bw, bh, { tailX: hx + 6, tailY: by + bh + 8 });
+          let left = Math.floor(this.lineT * 45);
+          lines.forEach((l, i) => {
+            drawText(ctx2, l.slice(0, Math.max(0, left)), cr.x + 3, cr.y + 2 + i * 10, { color: "#2e2a3a" });
+            left -= l.length + 1;
+          });
+          ctx2.globalAlpha = 1;
+        }
+        drawPedestal(ctx2, cx, fy, s) {
+          const rx = Math.round(s.w * 0.25), ry = Math.round(rx * 0.24);
+          for (const [k, c] of [[1.55, "#5a2a48"], [1.45, "#8a3a62"], [1.3, "#c8607a"], [1.18, "#8a3a62"]]) {
+            ctx2.fillStyle = c;
+            ctx2.beginPath();
+            ctx2.ellipse(cx, fy + 6, rx * k, ry * k, 0, 0, TAU);
+            ctx2.fill();
+          }
+          ctx2.fillStyle = "#ffd890";
+          for (let i = 0; i < 28; i++) {
+            const a = i / 28 * TAU;
+            ctx2.fillRect(Math.round(cx + Math.cos(a) * rx * 1.37), Math.round(fy + 6 + Math.sin(a) * ry * 1.37), 2, 1);
+          }
+          ctx2.fillStyle = "#4a2a18";
+          ctx2.beginPath();
+          ctx2.ellipse(cx, fy + 4, rx, ry, 0, 0, TAU);
+          ctx2.fill();
+          ctx2.fillRect(cx - rx, fy - 2, rx * 2, 6);
+          ctx2.fillStyle = "#b8783a";
+          ctx2.beginPath();
+          ctx2.ellipse(cx, fy - 2, rx, ry, 0, 0, TAU);
+          ctx2.fill();
+          ctx2.fillStyle = "#d89a5a";
+          ctx2.beginPath();
+          ctx2.ellipse(cx, fy - 3, rx - 3, ry - 1.5, 0, 0, TAU);
+          ctx2.fill();
+          ctx2.fillStyle = "#e8b878";
+          ctx2.beginPath();
+          ctx2.ellipse(cx - rx * 0.2, fy - 4, rx * 0.5, ry * 0.4, 0, 0, TAU);
+          ctx2.fill();
+          for (let i = 0; i < 12; i++) {
+            const a = i / 12 * TAU - this.yaw * Math.PI / 180;
+            const sy = Math.sin(a);
+            if (sy < -0.1) continue;
+            const px3 = Math.round(cx + Math.cos(a) * (rx - 0.5)), py = Math.round(fy + 1 + sy * ry);
+            ctx2.fillStyle = "#7a4a1c";
+            ctx2.fillRect(px3 - 1, py, 3, 2);
+            ctx2.fillStyle = "#ffe08a";
+            ctx2.fillRect(px3 - 1, py, 2, 1);
+          }
+          const pw = 26;
+          ctx2.fillStyle = "#3e2210";
+          ctx2.fillRect(cx - pw / 2 - 1, fy + ry + 1, pw + 2, 9);
+          ctx2.fillStyle = "#e0a844";
+          ctx2.fillRect(cx - pw / 2, fy + ry + 2, pw, 7);
+          ctx2.fillStyle = "#fff2b8";
+          ctx2.fillRect(cx - pw / 2, fy + ry + 2, pw, 1);
+          drawText(ctx2, "GIL", cx, fy + ry + 4, { font: "small", align: "center", color: "#5a3010" });
+        }
+        drawCurtains(ctx2, s, k) {
+          const cw = Math.round(s.w * 0.2);
+          const tex2 = this.curtainTex(cw, s.h);
+          const closed = s.w / 2;
+          const off = lerp(closed - cw * 0.35, 0, k);
+          ctx2.drawImage(tex2, Math.round(s.x - cw * 0.35 + off), s.y);
+          ctx2.save();
+          ctx2.translate(Math.round(s.x + s.w + cw * 0.35 - off), s.y);
+          ctx2.scale(-1, 1);
+          ctx2.drawImage(tex2, 0, 0);
+          ctx2.restore();
+          ctx2.drawImage(this.valanceTex(s.w), s.x, s.y);
+        }
+        // scalloped valance with a gold fringe
+        valanceTex(w) {
+          const key = `val|${w}`;
+          if (this.cache[key]) return this.cache[key];
+          const c = makeCanvas(w, 20), g = ctxOf(c);
+          for (let x = 0; x < w; x++) {
+            const sc = x % 24 - 12;
+            const h = 10 + Math.round(Math.sqrt(Math.max(0, 144 - sc * sc)) * 0.35);
+            g.fillStyle = x % 24 < 2 ? "#6a1020" : "#a8243a";
+            g.fillRect(x, 0, 1, h);
+            g.fillStyle = "#e04a5a";
+            g.fillRect(x, 2, 1, 1);
+            g.fillStyle = x % 3 ? "#e8b848" : "#a8782a";
+            g.fillRect(x, h, 1, 2 + (x % 3 === 0 ? 1 : 0));
+          }
+          this.cache[key] = c;
+          return c;
+        }
+        curtainTex(w, h) {
+          const key = `cur|${w}|${h}`;
+          if (this.cache[key]) return this.cache[key];
+          const c = makeCanvas(w + 6, h), g = ctxOf(c);
+          const R = ["#3a0812", "#5e1020", "#8a1a2e", "#b4263c", "#d8404e", "#ee6a6e"];
+          const tieY = Math.round(h * 0.58);
+          for (let y = 0; y < h; y++) {
+            const k = y < tieY ? 1 - y / tieY * 0.55 : 0.45 + (y - tieY) / (h - tieY) * 0.3;
+            const ww = Math.round(w * k);
+            for (let x = 0; x < ww; x++) {
+              const u = x / ww;
+              const fold = 0.5 + 0.5 * Math.sin(u * TAU * 2.6 + (y < tieY ? 0 : 0.6));
+              const v = 1.2 + fold * 3.2 - (x > ww - 2 ? 1.6 : 0) + (u < 0.08 ? -0.6 : 0);
+              const i = clamp(Math.floor(v + (bayer(x, y) - 0.5) * 0.8), 0, 5);
+              g.fillStyle = R[i];
+              g.fillRect(x, y, 1, 1);
+            }
+            g.fillStyle = "#1e0408";
+            g.fillRect(ww, y, 1, 1);
+          }
+          const tw = Math.round(w * 0.45);
+          for (let x = 0; x <= tw + 2; x++) {
+            g.fillStyle = x % 3 ? "#e8b848" : "#a8782a";
+            g.fillRect(x, tieY - 1 + x % 2, 1, 3);
+          }
+          g.fillStyle = "#a8782a";
+          g.fillRect(tw, tieY + 2, 4, 2);
+          for (let y = 0; y < 9; y++) {
+            g.fillStyle = y % 2 ? "#e8b848" : "#f8d878";
+            g.fillRect(tw - 1 + (y > 2 ? 0 : 1), tieY + 4 + y, y > 2 ? 6 : 4, 1);
+          }
+          const bw = Math.round(w * 0.75);
+          for (let x = 0; x < bw; x++) {
+            g.fillStyle = x % 3 ? "#e8b848" : "#a8782a";
+            g.fillRect(x, h - 3, 1, 3);
+          }
+          this.cache[key] = c;
+          return c;
+        }
+        roomBg(w, h) {
+          const key = `room|${w}|${h}`;
+          if (this.cache[key]) return this.cache[key];
+          const c = makeCanvas(w, h), g = ctxOf(c);
+          const floorY = Math.round(h * 0.8), wainY = Math.round(h * 0.6);
+          for (let x = 0; x < w; x++) {
+            const st = Math.floor(x / 9) % 2;
+            g.fillStyle = st ? "#2f6c78" : "#285e6c";
+            g.fillRect(x, 0, 1, wainY);
+            if (x % 9 === 0) {
+              g.fillStyle = "#4a8a8a";
+              g.fillRect(x, 0, 1, wainY);
+            }
+          }
+          g.fillStyle = "#3e8288";
+          for (let y = 14; y < wainY - 6; y += 16) for (let x = 13; x < w; x += 18) {
+            g.fillRect(x, y - 1, 1, 3);
+            g.fillRect(x - 1, y, 3, 1);
+          }
+          for (let x = 0; x < 24; x++) {
+            g.fillStyle = rgba("#0a1a22", 0.3 * (1 - x / 24));
+            g.fillRect(x, 0, 1, floorY);
+            g.fillRect(w - 1 - x, 0, 1, floorY);
+          }
+          g.fillStyle = "#5a3a24";
+          g.fillRect(0, 0, w, 4);
+          g.fillStyle = "#8a5a34";
+          g.fillRect(0, 4, w, 2);
+          drawWood(g, 0, wainY, w, floorY - wainY, { tone: "light", nails: false, planks: 1, seams: false, round: 0 });
+          g.fillStyle = "#5a3420";
+          g.fillRect(0, wainY, w, 2);
+          g.fillStyle = "#c08a52";
+          g.fillRect(0, wainY + 2, w, 1);
+          for (let x = 8; x < w - 20; x += 34) {
+            g.fillStyle = rgba("#3a2010", 0.45);
+            g.fillRect(x, wainY + 8, 26, floorY - wainY - 14);
+            g.fillStyle = rgba("#f2d098", 0.25);
+            g.fillRect(x + 1, wainY + 9, 24, 1);
+          }
+          for (let y = floorY; y < h; y++) {
+            const k = (y - floorY) / (h - floorY);
+            g.fillStyle = mix("#7a4a2a", "#a06a3a", k * 0.7);
+            g.fillRect(0, y, w, 1);
+            if ((y - floorY) % Math.max(3, Math.round(4 + k * 6)) === 0) {
+              g.fillStyle = rgba("#3a2010", 0.45);
+              g.fillRect(0, y, w, 1);
+            }
+          }
+          for (let i = -8; i <= 8; i++) {
+            g.strokeStyle = rgba("#3a2010", 0.35);
+            g.beginPath();
+            g.moveTo(w / 2 + i * 14, floorY);
+            g.lineTo(w / 2 + i * 34, h);
+            g.stroke();
+          }
+          g.fillStyle = "#3a2010";
+          g.fillRect(0, floorY - 1, w, 2);
+          const px3 = w - 34, py = floorY - 2;
+          g.fillStyle = "#7a3a22";
+          g.fillRect(px3 - 8, py - 12, 16, 12);
+          g.fillStyle = "#a85a32";
+          g.fillRect(px3 - 9, py - 14, 18, 3);
+          g.fillStyle = "#c87a4a";
+          g.fillRect(px3 - 9, py - 14, 18, 1);
+          for (const [ox, ph, hh] of [[-4, 0, 40], [0, 1.3, 54], [4, 2.4, 34]]) {
+            for (let y = 0; y < hh; y++) {
+              g.fillStyle = y % 7 < 2 ? "#7ad06a" : "#3a9a4a";
+              g.fillRect(Math.round(px3 + ox + Math.sin(y * 0.18 + ph) * 3), py - 14 - y, 2, 1);
+            }
+          }
+          this.cache[key] = c;
+          return c;
+        }
+        drawPoseBar(ctx2, ui, b) {
+          const n = POSE_BTNS.length, bw = Math.floor((b.w - (n - 1) * 2) / n);
+          POSE_BTNS.forEach(([id, label3], i) => {
+            const x = b.x + i * (bw + 2);
+            if (ui.button(ctx2, x, b.y, bw, b.h, label3, { style: "shell", font: "small", active: this.pose === id, tip: id === "hold" ? "Show off your best catch" : `Pose: ${label3}`, sound: "ui_click" })) {
+              this.setPose(id, false);
+              this.game.audio.play(POSE_SOUND[id] || "boing", { vol: 0.45 });
+              if (id === "hold") this.say("Look at this beauty!");
+            }
+          });
+        }
+        drawDrawers(ctx2, ui, d) {
+          const g = this.game, inp = g.input, t = this.t;
+          drawWood(ctx2, d.x, d.y, d.w, d.h, { tone: "light", nails: true });
+          const n = WARDROBE_SLOTS.length;
+          const dh = Math.floor((d.h - 10) / n);
+          WARDROBE_SLOTS.forEach((sl, i) => {
+            const active = this.slot === sl.id;
+            const rr2 = { x: d.x + 5, y: d.y + 5 + i * dh, w: d.w - 10, h: dh - 3 };
+            const hov = !active && ui.hover(rr2);
+            const ox = active ? -3 : 0, oy = hov ? -1 : 0;
+            if (active) {
+              ctx2.fillStyle = rgba("#000000", 0.35);
+              ctx2.fillRect(rr2.x + 2, rr2.y + rr2.h, rr2.w, 2);
+            }
+            drawWood(ctx2, rr2.x + ox, rr2.y + oy, rr2.w + (active ? 6 : 0), rr2.h, { tone: active ? "light" : "dark", nails: false, planks: 1, seams: false, round: 1 });
+            const hx = rr2.x + ox + 5, hy = rr2.y + oy + rr2.h - 9;
+            ctx2.fillStyle = "#3e2210";
+            ctx2.fillRect(hx - 1, hy - 1, 12, 5);
+            ctx2.fillStyle = active ? "#ffe08a" : "#e0a844";
+            ctx2.fillRect(hx, hy, 10, 3);
+            ctx2.fillStyle = "#fff2b8";
+            ctx2.fillRect(hx, hy, 10, 1);
+            const own = this.items(sl.id).filter((w) => this.owns(w)).length, tot = this.items(sl.id).length;
+            drawText(ctx2, sl.name.toUpperCase(), rr2.x + ox + 4, rr2.y + oy + 4, { font: "small", color: active ? "#4a2a10" : "#f4d8a8", shadow: active ? null : "#1a0e06" });
+            drawText(ctx2, `${own}/${tot}`, rr2.x + ox + 4, rr2.y + oy + 12, { font: "small", color: active ? "#8a5a2a" : "#a88a6a" });
+            this.drawDrawerThumb(ctx2, sl.id, { x: rr2.x + ox + rr2.w - 30 + (active ? 6 : 0), y: rr2.y + oy + 2, w: 28, h: rr2.h - 4 });
+            if (hov) ui.tip = sl.desc;
+            if (hov && inp.pressed) {
+              inp.pressed = false;
+              this.slot = sl.id;
+              this.selectEquipped();
+              g.audio.play("box_close", { vol: 0.35, pitch: 1.3 });
+              g.audio.play("ui_tab", { vol: 0.6 });
+              if (t - (this.lastSay || -9) > 3 && Math.random() < 0.4) {
+                this.say(pick3([`Ooh, ${sl.name.toLowerCase()}!`, `Let's see the ${sl.name.toLowerCase()}...`]));
+                this.lastSay = t;
+              }
+            }
+          });
+        }
+        drawDrawerThumb(ctx2, slot, a) {
+          const L2 = this.look;
+          const it2 = slot === "acc" ? WARDROBE.find((w) => w.slot === "acc" && L2.acc.includes(w.value)) : WARDROBE.find((w) => w.slot === slot && isEquipped(L2, w));
+          ctx2.fillStyle = rgba("#1a0e06", 0.35);
+          ctx2.fillRect(a.x, a.y, a.w, a.h);
+          if (!it2) return;
+          ctx2.save();
+          ctx2.beginPath();
+          ctx2.rect(a.x, a.y, a.w, a.h);
+          ctx2.clip();
+          if (slot === "boat") {
+            ctx2.fillStyle = it2.trim;
+            ctx2.fillRect(a.x + 5, a.y + a.h - 14, a.w - 10, 2);
+            ctx2.fillStyle = it2.color;
+            ctx2.fillRect(a.x + 5, a.y + a.h - 12, a.w - 10, 4);
+            ctx2.fillRect(a.x + 8, a.y + a.h - 8, a.w - 16, 3);
+          } else {
+            const k = { skin: 0.55, eyes: 0.55, mouth: 0.55, hat: 0.45, outfit: 0.4, acc: 0.4, boots: 0.75, gloves: 0.8, rod: 0.4 }[slot] ?? 0.5;
+            const pv = itemPreview(L2, it2, k);
+            if (pv) {
+              const body = slot === "outfit" || slot === "acc" && !HEAD_ACC.has(it2.value);
+              drawItemPreview(ctx2, pv, a.x + a.w / 2, body ? a.y + a.h + 1 : a.y + Math.round(a.h / 2 + Math.min(pv.h, a.h) / 2), this.t, "drawer:" + slot);
+            }
+          }
+          ctx2.restore();
+        }
+        drawHeader(ctx2, ui, h) {
+          const g = this.game, st = g.state;
+          const sl = WARDROBE_SLOTS.find((s) => s.id === this.slot);
+          drawText(ctx2, sl.name, h.x + 2, h.y + 6, { color: "#ffe8b8", shadow: "#1a0e06" });
+          drawText(ctx2, sl.desc, h.x + 8 + measureText(sl.name), h.y + 7, { font: "small", color: "#c8a880", shadow: "#1a0e06" });
+          const ctxt = formatCommas(Math.floor(this.ui?.coinShown ?? st.coins));
+          const pw = measureText(ctxt) + 26;
+          const px3 = h.x + h.w - pw - 24;
+          drawWood(ctx2, px3, h.y + 1, pw, 17, { tone: "light", nails: false, round: 2, planks: 1 });
+          ctx2.drawImage(getUiIcon("coin"), px3 + 5, h.y + 5);
+          drawText(ctx2, ctxt, px3 + pw - 6, h.y + 6, { align: "right", color: "#fff3dc", shadow: "#2a160a" });
+          if (ui.button(ctx2, h.x + h.w - 19, h.y, 18, 18, "", { icon: "cross", style: "shell", tip: "Close (Esc)" })) ui.close(this.id);
+        }
+        // ------------------------------------------------------------------------------------------ rack
+        drawRack(ctx2, ui, b, dt) {
+          const g = this.game, inp = g.input, t = this.t;
+          drawWood(ctx2, b.x, b.y, b.w, b.h, { tone: "dark", inset: true, nails: false });
+          const items = this.items();
+          const cols = 4, rows = 3;
+          const cw = Math.floor((b.w - 8) / cols), ch = Math.floor((b.h - 8) / rows);
+          const base = this.look;
+          let hov = null;
+          for (let r = 0; r < rows; r++) {
+            const ry = b.y + 4 + r * ch + 3;
+            ctx2.fillStyle = "#3a2412";
+            ctx2.fillRect(b.x + 3, ry, b.w - 6, 3);
+            ctx2.fillStyle = "#c8a070";
+            ctx2.fillRect(b.x + 3, ry, b.w - 6, 1);
+          }
+          items.forEach((it2, i) => {
+            if (i >= cols * rows) return;
+            const c = i % cols, r = Math.floor(i / cols);
+            const cell = { x: b.x + 4 + c * cw, y: b.y + 4 + r * ch, w: cw - 3, h: ch - 3 };
+            const isHov = ui.hover(cell);
+            if (isHov) hov = it2;
+            this.drawCard(ctx2, it2, cell, base, isHov, t, dt);
+            if (isHov && inp.pressed) {
+              inp.pressed = false;
+              this.click(it2);
+            }
+          });
+          if (hov) {
+            const own = this.owns(hov);
+            ui.tip = own ? isEquipped(base, hov) ? `${hov.name} (wearing)` : `${hov.name} - click to wear` : hov.price != null ? `${hov.name} - ${formatCommas(hov.price)} coins (try it on!)` : `${hov.name} - ${hov.unlock === "skill" ? "skill reward" : "found in crates"}`;
+            if (hov.id !== this.hoverId) {
+              this.hoverId = hov.id;
+              g.audio.play("ui_hover", { vol: 0.4 });
+            }
+          } else this.hoverId = null;
+        }
+        click(it2) {
+          const g = this.game;
+          const L2 = this.look;
+          const was = this.sel;
+          this.sel = it2.id;
+          this.pop[it2.id] = 0;
+          if (this.owns(it2)) {
+            if (it2.slot === "acc" || !isEquipped(L2, it2)) this.equip(it2);
+            else g.audio.play("ui_click", { vol: 0.6 });
+          } else {
+            g.audio.play("ui_click");
+            g.audio.play(SLOT_SOUND[it2.slot] || "boing", { vol: 0.35, pitch: 1.3 });
+            if (was !== it2.id && this.t - (this.lastSay || -9) > 1.5) {
+              this.say(it2.price == null ? pick3(it2.unlock === "skill" ? [`Grow '${SKILL_BY_ID[it2.skill]?.name || "a skill"}' to get this!`] : LINES2.pkg) : pick3(LINES2.tryon));
+              this.lastSay = this.t;
+            }
+          }
+        }
+        drawCard(ctx2, it2, c, base, hov, t, dt) {
+          const own = this.owns(it2), worn = isEquipped(base, it2), sel = this.sel === it2.id;
+          const locked = !own && it2.price == null;
+          let pop = 0;
+          if (this.pop[it2.id] !== void 0) {
+            this.pop[it2.id] += dt;
+            pop = Math.sin(clamp01(this.pop[it2.id] / 0.35) * Math.PI) * 3;
+            if (this.pop[it2.id] > 0.35) delete this.pop[it2.id];
+          }
+          const lift = Math.round((hov ? 2 : 0) + pop);
+          const x = c.x, y = c.y + 8 - lift, w = c.w, h = c.h - 9;
+          const rar = RARITY[it2.rarity] || RARITY.common;
+          const hx = x + Math.round(w / 2);
+          ctx2.fillStyle = "#8a8e9a";
+          ctx2.fillRect(hx, c.y + 1 - lift, 1, 6);
+          ctx2.fillRect(hx - 2, c.y + 1 - lift, 3, 1);
+          ctx2.fillRect(hx - 2, c.y + 2 - lift, 1, 1);
+          ctx2.fillStyle = "#c8ccd8";
+          ctx2.fillRect(hx, c.y + 2 - lift, 1, 2);
+          ctx2.fillStyle = "#6a4024";
+          ctx2.fillRect(x + 8, y - 2, w - 16, 3);
+          ctx2.fillStyle = "#a8784a";
+          ctx2.fillRect(x + 8, y - 2, w - 16, 1);
+          if (sel || worn) {
+            ctx2.fillStyle = sel ? rgba("#ffe27a", 0.6 + 0.25 * Math.sin(t * 5)) : rgba("#9affc8", 0.55);
+            ctx2.fillRect(x - 2, y - 2 + 3, w + 4, h + 4 - 3);
+          }
+          drawPaper(ctx2, x, y + 1, w, h - 1, { aged: locked });
+          ctx2.fillStyle = rar.color;
+          ctx2.fillRect(x + 1, y + h - 4, w - 2, 3);
+          ctx2.fillStyle = rar.dark;
+          ctx2.fillRect(x + 1, y + h - 2, w - 2, 1);
+          const area = { x: x + 3, y: y + 4, w: w - 6, h: h - 26 };
+          ctx2.save();
+          ctx2.beginPath();
+          ctx2.rect(area.x, area.y, area.w, area.h);
+          ctx2.clip();
+          ctx2.fillStyle = mix(rar.color, "#f4ead4", 0.78);
+          ctx2.fillRect(area.x, area.y, area.w, area.h);
+          ctx2.fillStyle = rgba("#ffffff", 0.35);
+          ctx2.fillRect(area.x, area.y, area.w, 1);
+          if (it2.slot === "boat") this.drawBoatThumb(ctx2, it2, area, t);
+          else {
+            const pv = itemPreview(base, it2, THUMB[it2.slot] ?? 1);
+            if (pv) {
+              const headOnly = ["skin", "eyes", "mouth", "hat"].includes(it2.slot) || it2.slot === "acc" && HEAD_ACC.has(it2.value);
+              const bob = hov ? Math.round(Math.sin(t * 6) * 1) : 0;
+              const by = it2.slot === "outfit" || it2.slot === "acc" && !headOnly ? area.y + area.h + 2 : area.y + Math.round(area.h / 2 + Math.min(pv.h, area.h) / 2) + 1;
+              if (locked) ctx2.globalAlpha = 0.45;
+              drawItemPreview(ctx2, pv, area.x + area.w / 2, by + bob, t, "thumb:" + it2.id);
+              ctx2.globalAlpha = 1;
+            } else {
+              const r = 5 + Math.sin(t * 4 + x) * 1;
+              ctx2.strokeStyle = rgba("#5a8aa8", 0.7);
+              ctx2.beginPath();
+              ctx2.arc(area.x + area.w / 2, area.y + area.h / 2, r, 0, TAU);
+              ctx2.stroke();
+            }
+          }
+          if (locked) {
+            ctx2.fillStyle = rgba("#3a3448", 0.35);
+            ctx2.fillRect(area.x, area.y, area.w, area.h);
+            ctx2.drawImage(getUiIcon("lock"), Math.round(area.x + area.w / 2 - 4), Math.round(area.y + area.h / 2 - 4));
+          }
+          ctx2.restore();
+          for (let s = 0; s < rar.stars; s++) ctx2.drawImage(getUiIcon("star"), x + 3 + s * 7, y + 5);
+          let name = it2.name.toUpperCase();
+          while (measureText(name, "small") > w - 6 && name.length > 3) name = name.slice(0, -2) + ".";
+          drawText(ctx2, name, x + w / 2, y + h - 21, { font: "small", align: "center", color: locked ? "#6a6070" : "#3a2414" });
+          const ty = y + h - 13;
+          if (worn) {
+            ctx2.drawImage(getUiIcon("check"), Math.round(x + w / 2 - 17), ty - 1);
+            drawText(ctx2, "WEARING", x + w / 2 + 5, ty + 1, { font: "small", align: "center", color: "#2a7a3a" });
+          } else if (own) drawText(ctx2, "OWNED", x + w / 2, ty + 1, { font: "small", align: "center", color: "#5a8a5a" });
+          else if (locked) drawText(ctx2, it2.unlock === "skill" ? "SKILL" : "CRATE", x + w / 2, ty + 1, { font: "small", align: "center", color: "#8a5a8a" });
+          else {
+            const p = formatCommas(it2.price);
+            const tw = measureText(p, "small") + 13;
+            const afford = this.game.state.coins >= it2.price;
+            drawText(ctx2, p, x + w / 2 - tw / 2, ty + 1, { font: "small", color: afford ? "#3a2414" : "#a8283a" });
+            ctx2.drawImage(getUiIcon("coin"), Math.round(x + w / 2 + tw / 2 - 9), ty - 1);
+          }
+        }
+        drawBoatThumb(ctx2, it2, a, t) {
+          const cx = a.x + a.w / 2, wy = a.y + a.h - 12;
+          ctx2.fillStyle = "#5ab8d8";
+          ctx2.fillRect(a.x, wy, a.w, a.h);
+          ctx2.fillStyle = "#8ad8f0";
+          for (let x = 0; x < a.w; x += 6) ctx2.fillRect(a.x + x + Math.round(Math.sin(t * 2 + x) * 1), wy + x / 6 % 2, 3, 1);
+          const bob = Math.round(Math.sin(t * 2.4 + a.x) * 1);
+          const hull2 = it2.color, trim = it2.trim;
+          const bw = 44, by = wy - 8 + bob;
+          for (let y = 0; y < 12; y++) {
+            const inset = Math.round((y / 12) ** 1.6 * 9);
+            ctx2.fillStyle = y < 2 ? trim : y < 3 ? shade(trim, -0.3) : y > 9 ? shade(hull2, -0.35) : y > 7 ? shade(hull2, -0.15) : hull2;
+            ctx2.fillRect(Math.round(cx - bw / 2 + inset), by + y, bw - inset * 2, 1);
+          }
+          ctx2.fillStyle = shade(hull2, 0.35);
+          ctx2.fillRect(Math.round(cx - bw / 2 + 2), by + 3, bw - 6, 1);
+          ctx2.fillStyle = "#5a3a22";
+          ctx2.fillRect(Math.round(cx) - 1, by - 14, 1, 14);
+          ctx2.fillStyle = trim;
+          ctx2.fillRect(Math.round(cx), by - 14, 7, 4);
+          ctx2.fillStyle = rgba("#ffffff", 0.25);
+          ctx2.fillRect(a.x, wy, a.w, 1);
+        }
+        drawSlip(ctx2, ui, rr2, dt) {
+          const g = this.game, st = g.state;
+          drawPaper(ctx2, rr2.x, rr2.y, rr2.w, rr2.h, { lined: true });
+          const it2 = this.selItem();
+          const bw = 62;
+          if (ui.button(ctx2, rr2.x + rr2.w - bw * 2 - 12, rr2.y + 6, bw, 17, "Shuffle", { style: "paper", font: "small", icon: "sparkle", tip: "Random outfit from your closet (R)", sound: "ui_click" })) this.randomize();
+          if (ui.button(ctx2, rr2.x + rr2.w - bw - 8, rr2.y + 6, bw, 17, "Classic", { style: "paper", font: "small", icon: "home", tip: "Back to the default look", sound: "ui_click" })) this.reset();
+          if (!it2) return;
+          const rar = RARITY[it2.rarity] || RARITY.common;
+          drawText(ctx2, it2.name, rr2.x + 10, rr2.y + 7, { color: "#2a1a10" });
+          drawText(ctx2, rar.name.toUpperCase(), rr2.x + 10, rr2.y + 19, { font: "small", color: rar.dark });
+          for (let s = 0; s < rar.stars; s++) ctx2.drawImage(getUiIcon("star"), rr2.x + 14 + measureText(rar.name.toUpperCase(), "small") + s * 8, rr2.y + 17);
+          const own = this.owns(it2), worn = isEquipped(this.look, it2);
+          let desc = it2.desc;
+          if (!own && it2.unlock === "skill") desc += ` Skill: ${SKILL_BY_ID[it2.skill]?.name || it2.skill}.`;
+          const lines = wrapText(desc, rr2.w - 150).slice(0, 3);
+          lines.forEach((l, i) => drawText(ctx2, l, rr2.x + 10, rr2.y + 31 + i * 10, { color: "#6a5444" }));
+          const ax = rr2.x + rr2.w - 132, ay = rr2.y + rr2.h - 30, aw = 124;
+          if (own) {
+            const label3 = it2.slot === "acc" ? worn ? "Take off" : "Wear" : worn ? "Wearing" : "Wear";
+            if (ui.button(ctx2, ax, ay, aw, 22, label3, { style: "wood", disabled: worn && it2.slot !== "acc", icon: worn ? "check" : null, tip: it2.slot === "acc" ? worn ? "Take it off" : `Wear ${it2.name}` : worn ? "Already wearing it" : `Wear ${it2.name}` })) this.equip(it2);
+          } else if (it2.price != null) {
+            const afford = st.coins >= it2.price;
+            const hovR = { x: ax, y: ay, w: aw, h: 22 };
+            const brokeClick = !afford && ui.hover(hovR) && g.input.pressed;
+            if (ui.button(ctx2, ax, ay, aw, 22, `Buy ${formatCommas(it2.price)}{coin}`, { style: "coral", disabled: !afford, tip: afford ? `Buy ${it2.name}` : `You need ${formatCommas(it2.price - st.coins)} more coins` })) this.buy(it2);
+            else if (brokeClick) {
+              this.say(pick3(LINES2.broke));
+              this.shakeT = 0.4;
+            }
+          } else {
+            const hovR = { x: ax, y: ay, w: aw, h: 22 };
+            const lockClick = ui.hover(hovR) && g.input.pressed;
+            ui.button(ctx2, ax, ay, aw, 22, it2.unlock === "skill" ? "Skill reward" : "Crate reward", { style: "wood", disabled: true, icon: "lock", tip: it2.unlock === "skill" ? `Grow '${SKILL_BY_ID[it2.skill]?.name || it2.skill}' in the skill tree` : "Find it in package crates fish carry" });
+            if (lockClick) this.buy(it2);
+          }
+          if (this.sold > 0) {
+            this.sold = Math.max(0, this.sold - dt * 0.9);
+            const k = 1 - this.sold;
+            ctx2.globalAlpha = clamp01(this.sold * 3);
+            drawStamp(ctx2, rr2.x + rr2.w - 70, rr2.y + rr2.h - 46, "SOLD!", { color: "#2a8a4a", angle: -0.2, scale: lerp(1.8, 1, ease.outCubic(clamp01(k * 4))) });
+            ctx2.globalAlpha = 1;
+          }
+        }
+      };
+    }
+  });
+
   // src/dev/character.js
   var character_exports2 = {};
   __export(character_exports2, {
     run: () => run5
   });
+  function runWardrobe(params2, cv) {
+    const W6 = Number(params2.get("w")) || 960, H6 = Number(params2.get("h")) || 540;
+    cv.width = W6;
+    cv.height = H6;
+    cv.style.width = W6 * 2 + "px";
+    cv.style.height = H6 * 2 + "px";
+    const ctx2 = ctxOf(cv);
+    registerUiIcons();
+    const st = defaultState();
+    st.coins = Number(params2.get("coins") ?? 2400);
+    st.journal = { parrot: { seen: true, caught: 2 } };
+    if (params2.has("rich")) {
+      st.skills = { hook6: true, reel3: true };
+      st.cosmetics = { hat_crown: true, acc_earring: true, outfit_astronaut: true };
+    }
+    if (params2.get("look")) try {
+      st.character = JSON.parse(params2.get("look"));
+    } catch {
+    }
+    const listeners = {};
+    const g = {
+      params: params2,
+      canvas: cv,
+      screen: { W: W6, H: H6, scale: 2 },
+      state: st,
+      audio,
+      particles: new Particles(900),
+      time: 0,
+      fishing: { fighting: false },
+      stats: computeStats(st.skills),
+      on(ev, fn) {
+        (listeners[ev] || (listeners[ev] = [])).push(fn);
+      },
+      emit(ev, d) {
+        for (const f of listeners[ev] || []) f(d);
+      },
+      save() {
+      },
+      toast(text, icon) {
+        g.ui.toast(text, icon);
+      },
+      spendCoins(n) {
+        if (st.coins < n) {
+          audio.play("ui_error");
+          return false;
+        }
+        st.coins -= n;
+        return true;
+      }
+    };
+    const toLogical = (cx, cy) => {
+      const r = cv.getBoundingClientRect();
+      return [(cx - r.left) / r.width * W6, (cy - r.top) / r.height * H6];
+    };
+    g.input = new Input(cv, toLogical);
+    g.ui = new UI(g);
+    g.ui.register(new WardrobePanel());
+    window.FISHTOP = g;
+    g.ui.open("wardrobe", { slot: params2.get("slot") || "hat" });
+    let last = performance.now();
+    const frame2 = (now4) => {
+      requestAnimationFrame(frame2);
+      const dt = Math.max(0, Math.min(0.05, (now4 - last) / 1e3));
+      last = now4;
+      g.time += dt;
+      const tf0 = performance.now();
+      try {
+        g.input.update(dt);
+        g.ui.update(dt);
+        g.particles.update(dt);
+        ctx2.setTransform(1, 0, 0, 1, 0, 0);
+        const grd = ctx2.createLinearGradient(0, 0, 0, H6);
+        grd.addColorStop(0, "#3aa0c0");
+        grd.addColorStop(1, "#123a5a");
+        ctx2.fillStyle = grd;
+        ctx2.fillRect(0, 0, W6, H6);
+        g.ui.tip = null;
+        if (!g.ui.stack.length && g.input.pressed) {
+          g.input.pressed = false;
+          g.ui.open("wardrobe");
+        }
+        g.ui.drawPanels(ctx2, dt);
+        g.particles.draw(ctx2, "ui", g.time);
+        g.ui.drawToasts(ctx2);
+        g.ui.drawTip(ctx2);
+        const st2 = characterStats();
+        drawText(ctx2, `${st.coins} coins  frames ${st2.frames} built ${st2.built} (${st2.avgMs} ms)`, 6, H6 - 10, { font: "small", color: "#ffffff", shadow: "#000000" });
+        const cur = getUiIcon("cursor"), hs = CURSOR_HOTSPOT.cursor;
+        if (g.input.inside) ctx2.drawImage(cur, Math.round(g.input.x) - hs[0], Math.round(g.input.y) - hs[1]);
+      } catch (e) {
+        console.error(e);
+      }
+      const fms = performance.now() - tf0;
+      (window.__wardMs || (window.__wardMs = [])).push(fms);
+      if (window.__wardMs.length > 240) window.__wardMs.shift();
+      g.input.endFrame();
+    };
+    requestAnimationFrame(frame2);
+    window.__charReady = true;
+  }
   function run5(params2) {
+    if (params2.get("view") === "wardrobe") {
+      runWardrobe(params2, document.getElementById("screen"));
+      return;
+    }
     const W6 = 960, H6 = 540;
     const cv = document.getElementById("screen");
     cv.width = W6;
@@ -44365,6 +46774,14 @@ kTtaatTk
       init_font();
       init_character();
       init_spritecache();
+      init_input();
+      init_audio();
+      init_particles();
+      init_uiicons();
+      init_state();
+      init_skills();
+      init_ui();
+      init_wardrobe();
       init_species();
       LOOKS = [
         { ...DEFAULT_CHARACTER },
@@ -45402,8 +47819,8 @@ kTtaatTk
               ctx2.fillStyle = rgba(on ? "#ffe27a" : "#ffffff", on ? 0.35 : 0.12);
               ctx2.fillRect(x, y, cell - 2, cell - 2);
             }
-            const spr = getAppIcon(iconId, { size: 32 });
-            if (spr) ctx2.drawImage(spr, x + 3, y + 1 + (hov ? -1 : 0));
+            const spr2 = getAppIcon(iconId, { size: 32 });
+            if (spr2) ctx2.drawImage(spr2, x + 3, y + 1 + (hov ? -1 : 0));
             if (on) drawText(ctx2, "ON", x + cell - 5, y + cell - 9, { font: "small", color: "#ffe27a", align: "right", outline: "#1a0e06" });
             if (hov) hoverInfo = { title: label3, text: `${type} bait - attracts: ${TYPE_HINT[type] || "all sorts of fish"}`, extra: s.kind === "icon" ? "Right-click: put back on desktop" : "Right-click: remove" };
             if (ui.clicked(rr2)) g.equip(s.kind, s.id);
@@ -45429,8 +47846,8 @@ kTtaatTk
             const on = eq?.kind === "special" && eq.id === id;
             ctx2.fillStyle = rgba(on ? "#ffe27a" : "#1a0e06", on ? 0.35 : 0.55);
             ctx2.fillRect(x, y, cell - 2, cell - 2);
-            const spr = baitSprite(id, this.t);
-            ctx2.drawImage(spr, Math.round(x + (cell - 2 - spr.width * 2) / 2), Math.round(y + 5), spr.width * 2, spr.height * 2);
+            const spr2 = baitSprite(id, this.t);
+            ctx2.drawImage(spr2, Math.round(x + (cell - 2 - spr2.width * 2) / 2), Math.round(y + 5), spr2.width * 2, spr2.height * 2);
             drawText(ctx2, "x" + n, x + cell - 5, y + cell - 9, { font: "small", align: "right", color: "#ffffff", outline: "#1a0e06" });
             if (hov) hoverInfo = { title: BAITS[id].name, text: BAITS[id].desc, extra: "Used up when a fish is caught or steals it." };
             if (ui.clicked(rr2)) g.equip("special", id);
@@ -45760,7 +48177,7 @@ kTtaatTk
         exp3: "The map is mostly black. That's the point.",
         exp4: "What sleeps below likes shiny things."
       };
-      BIOME_NAMES = { shallows: "Sunny Shallows", junkyard: "Junkyard Reef", abyss: "Midnight Abyss" };
+      BIOME_NAMES = { shallows: "Sunny Shallows", junkyard: "Junkyard Reef", abyss: "The Deep Ocean" };
       pct2 = (v) => `${Math.round(v * 100)}%`;
       mul2 = (v) => `x${(Math.round(v * 100) / 100).toFixed(2)}`;
       onoff = (v) => v ? "ON" : "off";
@@ -46354,11 +48771,11 @@ kTtaatTk
             }
             ctx2.globalCompositeOperation = "source-over";
           }
-          const spr = tileSprite(status, sk.id === "hook1" ? "#f2866e" : B2.color);
+          const spr2 = tileSprite(status, sk.id === "hook1" ? "#f2866e" : B2.color);
           if (sc !== 1) {
-            const w = Math.round(spr.width * sc), h = Math.round(spr.height * sc);
-            ctx2.drawImage(spr, Math.round(x - w / 2 + dx), Math.round(y - lift - TILE / 2 * sc - 3 * sc), w, h);
-          } else ctx2.drawImage(spr, x0, y0 - 3);
+            const w = Math.round(spr2.width * sc), h = Math.round(spr2.height * sc);
+            ctx2.drawImage(spr2, Math.round(x - w / 2 + dx), Math.round(y - lift - TILE / 2 * sc - 3 * sc), w, h);
+          } else ctx2.drawImage(spr2, x0, y0 - 3);
           const ic = getUiIcon(sk.icon || "star");
           const iw = Math.round(ic.width * 2 * sc), ih = Math.round(ic.height * 2 * sc);
           const ix = Math.round(x - iw / 2 + dx), iy = Math.round(y - ih / 2 - lift);
@@ -46635,11 +49052,11 @@ kTtaatTk
           ctx2.drawImage(ci, x + w - cw + 2, y + Math.round(4.5 - ci.height / 2));
           drawText(ctx2, chip2[0], x + w - 4, y + 2, { font: "small", color: "#fff6e2", align: "right" });
           y += 14;
-          const spr = tileSprite(S6, sk.id === "hook1" ? "#f2866e" : B2.color);
+          const spr2 = tileSprite(S6, sk.id === "hook1" ? "#f2866e" : B2.color);
           const bob = S6 === "ready" ? Math.round(Math.sin(t * 3)) : 0;
           ctx2.fillStyle = rgba("#3a2410", 0.25);
           ctx2.fillRect(x + 4, y + 68, 60, 2);
-          ctx2.drawImage(spr, x, y + bob, spr.width * 2, spr.height * 2);
+          ctx2.drawImage(spr2, x, y + bob, spr2.width * 2, spr2.height * 2);
           const ic = getUiIcon(sk.icon || "star");
           const icx = Math.round(x + 32 - ic.width * 2), icy = Math.round(y + 6 + 32 - ic.height * 2) + bob;
           if (S6 === "locked") ctx2.drawImage(tinted(ic, "#2c3a48"), icx, icy, ic.width * 4, ic.height * 4);
@@ -46927,28 +49344,20 @@ kTtaatTk
   function wardrobeItems() {
     const W6 = WARDROBE;
     const out = [];
-    const seen = /* @__PURE__ */ new Set();
     const push = (it2, slot, i) => {
       if (it2 == null) return;
       if (typeof it2 !== "object") it2 = { id: it2 };
-      const id = it2.id ?? it2.key ?? it2.value;
+      const id = it2.id ?? it2.key;
       if (id == null) return;
-      const s = it2.slot || it2.kind || it2.part || it2.type || slot || "hat";
-      const key = `${s}:${id}`;
-      if (seen.has(key)) return;
-      seen.add(key);
-      const hex = typeof id === "string" && id.startsWith("#");
-      const def2 = DEFAULT_CHARACTER?.[s] === id;
-      out.push({ id: String(id), key, slot: s, name: it2.name || it2.label || (hex ? `${prettify(s)} Dye` : prettify(id)), price: def2 ? 0 : it2.price ?? it2.cost ?? 40 + i * 37 % 9 * 15, desc: it2.desc || it2.description || "", swatch: hex ? id : it2.color || null });
+      const s = it2.slot || slot || "hat";
+      out.push({ id: String(id), slot: s, value: it2.value ?? id, name: it2.name || prettify(id), price: it2.price === void 0 ? 40 + i * 37 % 9 * 15 : it2.price, unlock: it2.unlock || null, skill: it2.skill || null, rarity: it2.rarity || "common", desc: it2.desc || "", swatch: s === "boat" ? it2.color || null : null, item: it2 });
     };
     if (Array.isArray(W6)) W6.forEach((it2, i) => push(it2, null, i));
     else if (W6 && typeof W6 === "object") {
-      for (const [slot, list] of Object.entries(W6)) {
-        if (Array.isArray(list)) list.forEach((it2, i) => push(it2, slot, i));
-        else if (list && typeof list === "object") Object.entries(list).forEach(([id, it2], i) => push(typeof it2 === "object" ? { id, ...it2 } : { id, name: String(it2) }, slot, i));
-      }
+      for (const [slot, list] of Object.entries(W6)) if (Array.isArray(list)) list.forEach((it2, i) => push(it2, slot, i));
     }
-    return out;
+    const ord = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4 };
+    return out.filter((c) => c.price !== 0).sort((a, b) => (a.price == null) - (b.price == null) || (a.price ?? 0) - (b.price ?? 0) || (ord[a.rarity] ?? 0) - (ord[b.rarity] ?? 0));
   }
   function buildBloat(inf, br) {
     const k = 1 + inf * 0.36;
@@ -47038,10 +49447,11 @@ kTtaatTk
       m.line(wx - s * 1.2, wy - 0.8, wz - 1.2, wx + s * 0.6, wy - 1.4, wz + 0.8, knit[2], 6.6);
       A[s < 0 ? "handL" : "handR"] = [wx + s * 1.5, wy - 4, wz + 3];
     }
-    for (const s of [-1, 1]) {
-      const rx0 = cx + s * (RX * 0.97 - 1), ry0 = cy + RY * 0.08, rz0 = cz + RZ * 0.05;
-      m.ellipsoid(rx0 + s * 4.5, ry0 + 2.5, rz0 - 1.5, 5, 4.6, 1.3, finC);
-      for (let k2 = 0; k2 < 4; k2++) m.line(rx0, ry0 + 1 - k2 * 0.6, rz0, rx0 + s * (8.5 - Math.abs(k2 - 1.5)), ry0 + 6.5 - k2 * 2.4, rz0 - 2.5, finR, 0.7);
+    {
+      const tx0 = cx + RX * 0.55, ty0 = cy + RY * 0.15, tz0 = cz - RZ * 0.8;
+      for (let k2 = 0; k2 < 5; k2++) m.line(tx0, ty0, tz0, tx0 + 9 + Math.abs(k2 - 2) * -1, ty0 - 7 + k2 * 3.5, tz0 - 7, k2 % 2 ? finC : finR, 1.1);
+      m.ellipsoid(tx0 + 6, ty0, tz0 - 5, 2.5, 6.5, 2.5, finC);
+      m.ellipsoid(cx - RX * 0.3, cy + RY * 0.9, cz - RZ * 0.55, 1.4, 4, 4.5, finC);
     }
     m.sphere(cx, cy + RY * 0.02, cz + RZ * 0.97, 4.6, noseC);
     for (const s of [-1, 1]) {
@@ -47120,19 +49530,24 @@ kTtaatTk
   }
   function finSprite(side, pose) {
     return memo2(`fin|${side}|${pose}`, () => {
-      const b = new PixelBuffer(16, 14);
-      const C = ["#f8e29a", "#e8c46a", "#c8984a", "#9a6a32"].map((c) => pack(c));
-      const ang = pose === 2 ? -0.9 : pose === 1 ? -0.35 : 0.15;
-      for (let k = 0; k < 5; k++) {
-        const a = ang + (k - 2) * 0.28;
-        for (let t = 0; t < 7; t++) {
-          const x = 3 + Math.cos(a) * t * 1.35, y = 8 + Math.sin(a) * t * 1.35;
-          b.set(Math.round(x), Math.round(y), C[t > 4 ? 0 : k % 2 ? 1 : 2]);
-          b.set(Math.round(x), Math.round(y) + 1, C[t > 4 ? 1 : 2]);
+      const b = new PixelBuffer(26, 22);
+      const C = ["#fbe6a2", "#ecc66c", "#cf9c4c", "#9a6a32"].map((c) => pack(c));
+      const ang = pose === 2 ? -1 : pose === 1 ? -0.4 : 0.12;
+      for (let k = 0; k < 6; k++) {
+        const a = ang + (k - 2.5) * 0.26;
+        for (let t = 0; t < 12; t++) {
+          const x = 5 + Math.cos(a) * t * 1.45, y = 12 + Math.sin(a) * t * 1.45;
+          b.set(Math.round(x), Math.round(y), C[t > 8 ? 0 : 1]);
+          b.set(Math.round(x), Math.round(y) + 1, C[t > 8 ? 1 : 1]);
         }
       }
-      b.fillCircle(3, 8.5, 2.6, C[2]);
-      b.set(2, 7, C[0]);
+      for (let k = 0; k < 6; k += 1) {
+        const a = ang + (k - 2.5) * 0.26;
+        for (let t = 1; t < 10; t++) b.set(Math.round(5 + Math.cos(a) * t * 1.45), Math.round(12 + Math.sin(a) * t * 1.45), C[k % 2 ? 2 : 3]);
+      }
+      b.fillCircle(5, 12.5, 3.6, C[2]);
+      b.set(4, 11, C[0]);
+      b.set(3, 12, C[1]);
       b.outline(() => pack("#4a2a14"));
       const cv = b.toCanvas();
       if (side > 0) return cv;
@@ -47446,11 +49861,11 @@ kTtaatTk
     });
   }
   function decorDesc(d) {
-    const where = { shallows: "Found in the Sunny Shallows.", junkyard: "Salvaged from Junkyard Reef.", abyss: "Hauled up from the Midnight Abyss.", aquarium: "A classic aquarium ornament." }[d.biome] || "";
+    const where = { shallows: "Found in the Sunny Shallows.", junkyard: "Salvaged from Junkyard Reef.", abyss: "Hauled up from the Deep Ocean.", aquarium: "A classic aquarium ornament." }[d.biome] || "";
     const size = ["", "A small touch", "A handsome centrepiece", "A grand landmark"][d.size] || "A decoration";
     return `${size} for your aquarium. ${where} Fish love to explore it.`;
   }
-  var pick3, rnd, VOICE, LINES2, BAIT_QUIP, BAIT_FX, TIPS, STOCK, DECOR_SCALE, TABS2, BIOME_NAMES2, JAR_GLOW, cache10, prettify, SPOTS, SPIKES, BLOAT_VS, BAIT_FRAMES, ShopPanel;
+  var pick4, rnd, VOICE, LINES3, BAIT_QUIP, BAIT_FX, TIPS, STOCK, DECOR_SCALE, TABS2, BIOME_NAMES2, JAR_GLOW, cache10, prettify, SPOTS, SPIKES, BLOAT_VS, BAIT_FRAMES, ShopPanel;
   var init_shop = __esm({
     "src/ui/shop.js"() {
       init_math();
@@ -47471,10 +49886,10 @@ kTtaatTk
       init_species();
       init_fish();
       init_baitart();
-      pick3 = (a) => a[Math.floor(Math.random() * a.length)];
+      pick4 = (a) => a[Math.floor(Math.random() * a.length)];
       rnd = (a, b) => a + Math.random() * (b - a);
       VOICE = "deep";
-      LINES2 = {
+      LINES3 = {
         greet: ["Ahoy. Wipe yer fins.", "Well, well. A customer. Don't dawdle.", "Mornin', sprat. What'll it be?", "Bell rang. Must be money.", "Come in, come in. Mind the jars."],
         idle: ["Back in my day we fished with our bare fins.", "Bait's fresh. Fresher'n me, anyway.", "Don't touch the jars. I count 'em.", "Fifty years I run this shop. Fifty! ...or five.", "These specs? For spottin' cheapskates.", "I've seen fish ye wouldn't believe. Ate most of 'em.", "Smokin? Underwater? Mind yer business.", "The sea was saltier in my day.", "Hmph. Kids these days and their clicky mice.", "I'm not grumpy. This is my happy face."],
         buy: ["Pleasure. Now don't waste it.", "Hah! Good eye, sprat.", "Ka-ching! Music to me old fins.", "Sold! Tell yer friends. Actually, don't.", "A fine choice. For a landlubber.", "That'll catch 'em. Probably."],
@@ -47511,8 +49926,8 @@ kTtaatTk
         blackhole: ["Pulls icons and deep fish to the hook", "x1.3 rarity, +35% population", "Icons spring back after"],
         chip: ["Sparks attract mechanical fish", "Junkyard Reef favourite"],
         popup: ["Spam fish cannot resist", "+30% fish population"],
-        lantern: ["Lights up the Midnight Abyss", "Abyss fish follow the light"],
-        relic: ["Summons the abyss guardian", "Use only in the Midnight Abyss"]
+        lantern: ["Lights up the Deep Ocean", "Deep-sea fish follow the light"],
+        relic: ["Summons the guardian of the deep", "Use only in the Deep Ocean"]
       };
       TIPS = {
         bread: "Commons first, sprat. Build up yer coins before ye splurge.",
@@ -47523,8 +49938,8 @@ kTtaatTk
         blackhole: "Keep yer hook away from the taskbar. Ask me how I know.",
         chip: "Junkyard fish go mad for sparks. Bring a spare line.",
         popup: "Spam fish swarm it. Close the ad before it closes you.",
-        lantern: "Down in the Abyss, light is life. Bring two.",
-        relic: "Only in the Abyss. And don't say I didn't warn ye.",
+        lantern: "Down in the Deep, light is life. Bring two.",
+        relic: "Only in the Deep Ocean. And don't say I didn't warn ye.",
         decor: "Fish with a place to hide are happy fish. Happy fish pay rent.",
         cosmetic: "A sharp-dressed fisher catches the eye. And the fish.",
         bundle: "Bundles save ye coins. I'm practically givin' it away."
@@ -47537,7 +49952,7 @@ kTtaatTk
         { id: "cosmetics", label: "Cosmetics", icon: "crown", color: "#8a4ab0" },
         { id: "specials", label: "Specials", icon: "star", color: "#c8902a" }
       ];
-      BIOME_NAMES2 = { shallows: "Sunny Shallows", junkyard: "Junkyard Reef", abyss: "Midnight Abyss", aquarium: "Aquarium classics", shop: "The shop" };
+      BIOME_NAMES2 = { shallows: "Sunny Shallows", junkyard: "Junkyard Reef", abyss: "The Deep Ocean", aquarium: "Aquarium classics", shop: "The shop" };
       JAR_GLOW = { bread: null, worm: "#ff7ac8", sugar: "#ffffff", golden: "#ffd84a", flood: "#4ac8ff", blackhole: "#b46bff", chip: "#5aff8a", popup: "#ffd84a", lantern: "#5affc8", relic: "#5ae8ff" };
       cache10 = /* @__PURE__ */ new Map();
       prettify = (s) => String(s).replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -47627,7 +50042,7 @@ kTtaatTk
           this.drumT = 0;
           this.pop = {};
           this.line = null;
-          this.say(pick3(LINES2.greet), "grumpy", void 0, 0.5);
+          this.say(pick4(LINES3.greet), "grumpy", void 0, 0.5);
           g.audio.play("bell", { vol: 0.35, pitch: 1.4 });
           this.shopState();
         }
@@ -47637,12 +50052,10 @@ kTtaatTk
         }
         // persistent shop bookkeeping lives in state.shop (stock sold today, cosmetics owned)
         shopState() {
-          var _a2;
           const st = this.game.state;
           const day = Math.floor((Date.now() - (/* @__PURE__ */ new Date()).getTimezoneOffset() * 6e4) / 864e5);
           st.shop || (st.shop = {});
           if (!st.shop.stock || st.shop.stock.day !== day) st.shop.stock = { day, sold: {} };
-          (_a2 = st.shop).cosmetics || (_a2.cosmetics = {});
           return st.shop;
         }
         dailySpecial() {
@@ -47667,7 +50080,16 @@ kTtaatTk
             });
           }
           if (tab === "decor") return this.decor.map((d) => ({ id: d.id, kind: "decor", name: d.name, desc: decorDesc(d), base: d.price, size: d.size, biome: d.biome, tags: d.tags, locked: false }));
-          if (tab === "cosmetics") return this.cosmetics.map((c) => ({ ...c, id: c.key, cid: c.id, kind: "cosmetic", base: c.price, locked: false, desc: c.desc || `A fine ${prettify(c.slot).toLowerCase()} for your fisher. Wear it with pride.` }));
+          if (tab === "cosmetics") {
+            const list = this.cosmetics.map((c) => {
+              const own = this.ownsCos(c);
+              const locked = !own && c.price == null;
+              const why = c.unlock === "skill" ? SKILLS.find((q) => q.id === c.skill) : null;
+              return { ...c, kind: "cosmetic", base: c.price ?? 0, locked, own, skill: why, lockWhy: c.unlock === "package" ? "Found only in mystery crates" : why ? `Grow '${why.name}'` : "Not for sale", desc: c.desc || `A fine ${prettify(c.slot).toLowerCase()} for your fisher.` };
+            });
+            const rank = (q) => q.own ? 2 : q.locked ? 1 : 0;
+            return list.sort((a, b) => rank(a) - rank(b));
+          }
           const has = (id) => g.stats.unlockBait.has(id);
           const sp = this.special;
           const deal = sp && this.items(sp.tab).find((q) => q.id === sp.id);
@@ -47694,10 +50116,32 @@ kTtaatTk
           const st = this.game.state;
           if (it2.kind === "deal") return this.owned(it2.dealOf);
           if (it2.kind === "bait") return st.baits[it2.id] || 0;
-          if (it2.kind === "cosmetic") return it2.base === 0 || this.shopState().cosmetics[it2.id] || st.character?.[it2.slot] === it2.cid ? 1 : 0;
+          if (it2.kind === "cosmetic") return this.ownsCos(it2) ? 1 : 0;
           if (it2.kind === "bundle") return 0;
           const idOf2 = (d) => typeof d === "string" ? d : d?.id;
           return [...st.tank?.decor || [], ...st.tank?.stored || []].filter((d) => idOf2(d) === it2.id).length;
+        }
+        ownsCos(c) {
+          const st = this.game.state;
+          if (ownsCosmetic) return !!ownsCosmetic(st, c.item || c.id);
+          return c.price === 0 || !!st.cosmetics?.[c.id];
+        }
+        wearing(c) {
+          const st = this.game.state;
+          if (isEquipped) {
+            try {
+              return !!isEquipped(st.character, c.item);
+            } catch {
+              return false;
+            }
+          }
+          return st.character?.[c.slot] === c.value;
+        }
+        wear(c) {
+          const g = this.game, st = g.state;
+          st.character = equipItem ? equipItem(st.character, c.item) : { ...DEFAULT_CHARACTER || {}, ...st.character || {}, [c.slot]: c.value };
+          g.emit("wardrobe", { slot: c.slot, id: c.id });
+          g.save?.();
         }
         stockLeft(it2) {
           const sold = this.shopState().stock.sold;
@@ -47730,7 +50174,7 @@ kTtaatTk
         }
         cough() {
           this.coughT = 1.1;
-          this.say(pick3(LINES2.cough), "cough", 1.6);
+          this.say(pick4(LINES3.cough), "cough", 1.6);
           this.game.audio.play("grunt", { vol: 0.35, pitch: 0.6 });
           this.game.audio.play("bubbles", { vol: 0.35 });
         }
@@ -47741,17 +50185,22 @@ kTtaatTk
           const price = this.price(it2);
           if (it2.locked) {
             g.audio.play("ui_error");
-            this.say(pick3(LINES2.locked), "smug");
+            this.say(pick4(LINES3.locked), "smug");
             return false;
           }
           if (this.stockLeft(it2) <= 0) {
             g.audio.play("ui_error");
-            this.say(it2.kind === "cosmetic" ? "Ye already own that one, sprat." : pick3(LINES2.soldout), "grumpy");
+            this.say(it2.kind === "cosmetic" ? "Ye already own that one, sprat." : pick4(LINES3.soldout), "grumpy");
+            return false;
+          }
+          if (it2.kind === "cosmetic" && it2.price == null) {
+            g.audio.play("ui_error");
+            this.say("Not for sale. Find it in a crate.", "smug");
             return false;
           }
           if (st.coins < price) {
             g.audio.play("ui_error");
-            this.say(pick3(LINES2.broke), "angry");
+            this.say(pick4(LINES3.broke), "angry");
             this.puffUp();
             return false;
           }
@@ -47779,7 +50228,7 @@ kTtaatTk
                 const pool = BAIT_ORDER.filter((b) => g.stats.unlockBait.has(b) && b !== "relic");
                 contents = [];
                 for (let i = 0; i < 3; i++) {
-                  const b = pick3(pool);
+                  const b = pick4(pool);
                   contents.push([b, BAITS[b].qty]);
                 }
                 this.mystery = contents;
@@ -47791,18 +50240,16 @@ kTtaatTk
               ok = true;
             }
           } else if (real.kind === "cosmetic") {
-            if (g.buyCosmetic) ok = g.buyCosmetic(real.cid, real.slot, price) !== false;
-            else if (g.spendCoins(price)) {
-              this.shopState().cosmetics[real.cid] = true;
-              st.character = { ...DEFAULT_CHARACTER || {}, ...st.character || {}, [real.slot]: real.cid };
+            if (g.spendCoins(price)) {
+              if (!grantCosmetic?.(st, real.id)) (st.cosmetics || (st.cosmetics = {}))[real.id] = true;
+              this.wear(real);
               g.audio.play("ui_buy");
-              g.emit("buy", real.cid);
-              g.emit("wardrobe", { slot: real.slot, id: real.cid });
+              g.emit("buy", real.id);
               ok = true;
             }
           }
           if (!ok) {
-            this.say(pick3(LINES2.broke), "angry");
+            this.say(pick4(LINES3.broke), "angry");
             this.puffUp();
             return false;
           }
@@ -47812,7 +50259,7 @@ kTtaatTk
           g.save?.();
           g.audio.play("coin_pile", { vol: 0.5 });
           setTimeout(() => g.audio.play("bell", { vol: 0.25, pitch: 2 }), 180);
-          this.say(it2.kind === "deal" || this.special?.id === it2.id ? "A bargain! Ye robbed me! Hah!" : it2.kind === "cosmetic" ? pick3(LINES2.cosmetic) : pick3(LINES2.buy), "happy");
+          this.say(it2.kind === "deal" || this.special?.id === it2.id ? "A bargain! Ye robbed me! Hah!" : it2.kind === "cosmetic" ? pick4(LINES3.cosmetic) : pick4(LINES3.buy), "happy");
           this.hop = 0.7;
           this.sold = 1;
           this.drawer = 1;
@@ -47842,9 +50289,9 @@ kTtaatTk
             cab: { x: split + 10, y: 50, w: sw - split - 22, h: floorY - 50 + 10 },
             port: { x: 62, y: 112, r: 42 },
             shelf: { x: Math.round(split * 0.25), y: 64 },
-            reg: { x: split - 92, y: counterTop },
-            bell: { x: split - 128, y: counterTop - 2 },
-            mat: { x: Math.round(split * 0.43) + 142, y: counterTop + 6 },
+            reg: { x: split - 86, y: counterTop },
+            bell: { x: split - 104, y: counterTop - 2 },
+            mat: { x: Math.round(split * 0.43) + 134, y: counterTop + 6 },
             deal: { x: 24, y: counterTop - 62, w: 78, h: 60 },
             lamp1: { x: Math.round(split * 0.7), y: 14 },
             lamp2: { x: sw - 30, y: 10 }
@@ -47932,7 +50379,7 @@ kTtaatTk
           this.idleT -= dt;
           if (this.idleT <= 0) {
             this.idleT = 10 + Math.random() * 7;
-            if (t - this.lastLine > 6 && !this.puffT) this.say(pick3(LINES2.idle), pick3(["grumpy", "neutral", "smug"]));
+            if (t - this.lastLine > 6 && !this.puffT) this.say(pick4(LINES3.idle), pick4(["grumpy", "neutral", "smug"]));
           }
         }
         pumpBuilds() {
@@ -48051,6 +50498,7 @@ kTtaatTk
               c.globalCompositeOperation = "source-over";
             }
           }
+          this.drawLifeRing(c, L2.split - 22, 250);
           this.drawShipBell(c, ui, L2, t, sp, interactive2);
           this.drawLantern(c, L2.lamp1.x, L2.lamp1.y, 58, t, 0);
           this.drawCabinet(c, ui, L2, t, dt, sp, interactive2);
@@ -48250,6 +50698,33 @@ kTtaatTk
           c.fillStyle = "#7a4a1c";
           c.fillRect(lx - 2, ly - 4, 4, 3);
         }
+        drawLifeRing(c, x, y) {
+          const ring2 = memo2("lifering", () => {
+            const R = 19, D = R * 2 + 3, b = new PixelBuffer(D, D);
+            for (let yy = 0; yy < D; yy++) for (let xx = 0; xx < D; xx++) {
+              const dx = xx + 0.5 - D / 2, dy = yy + 0.5 - D / 2, d = Math.hypot(dx, dy);
+              if (d > R || d < R - 9) continue;
+              const a = Math.atan2(dy, dx);
+              const red = Math.floor((a + Math.PI) / TAU * 8) % 2 === 0;
+              const l = (-dx - dy) / d * 0.5 + (R - 4.5 - Math.abs(d - (R - 4.5))) / 4.5;
+              const base = red ? ["#7a1420", "#c8283a", "#ff5a5a"] : ["#a8a094", "#e8e0d0", "#ffffff"];
+              b.set(xx, yy, pack(base[clamp(Math.round(l + 0.4 + (bayer(xx, yy) - 0.5) * 0.6), 0, 2)]));
+            }
+            b.outline(() => pack("#2a1410"));
+            return b.toCanvas();
+          });
+          c.fillStyle = "#2a1a0e";
+          c.fillRect(x - 1, y - ring2.height / 2 - 6, 3, 6);
+          c.drawImage(ring2, Math.round(x - ring2.width / 2), Math.round(y - ring2.height / 2));
+          for (const a of [0.6, 2.2, 3.8, 5.4]) {
+            const rx = Math.round(x + Math.cos(a) * 14), ry = Math.round(y + Math.sin(a) * 14);
+            c.fillStyle = "#d8c08a";
+            c.fillRect(rx - 1, ry - 2, 3, 5);
+            c.fillStyle = "#8a6a3a";
+            c.fillRect(rx, ry - 2, 1, 5);
+          }
+          drawText(c, "S.S. BLOAT", x, y + 22, { align: "center", font: "small", color: "#d8c8a8", shadow: "#1a0e06" });
+        }
         drawShipBell(c, ui, L2, t, sp, interactive2) {
           const x = L2.port.x + L2.port.r + 24, y = 58;
           c.fillStyle = "#2a1a0e";
@@ -48293,7 +50768,7 @@ kTtaatTk
               this.game.input.pressed = false;
               this.bellSwing = 1.2;
               this.game.audio.play("bell", { vol: 0.6, pitch: 0.7 });
-              this.say(pick3(LINES2.bell), "grumpy");
+              this.say(pick4(LINES3.bell), "grumpy");
             }
           }
         }
@@ -48625,8 +51100,9 @@ kTtaatTk
             const drum = this.drumT > 0 ? Math.floor(t * 9) % 4 : -1;
             const wave = h.happy && this.hop > 0;
             const fl = finSprite(-1, wave ? 2 : 0), fr = finSprite(1, wave ? 2 : drum === 0 || drum === 2 ? 1 : 0);
-            c.drawImage(fl, Math.round(h.L[0] - fl.width + 4), Math.round(Math.max(h.L[1], counter.y - 6) - 6));
-            c.drawImage(fr, Math.round(h.R[0] - 4), Math.round(Math.max(h.R[1], counter.y - 6) - 6 - (drum === 0 || drum === 2 ? 1 : 0)));
+            const up = Math.round(this.puffAmt * 6) + (wave ? 3 : 0);
+            c.drawImage(fl, Math.round(h.L[0] - fl.width + 7), counter.y - 19 - up);
+            c.drawImage(fr, Math.round(h.R[0] - 7), counter.y - 19 - up - (drum === 0 || drum === 2 ? 2 : 0));
           }
           const ax = L2.bloat.x - 72, ay = counter.y - 3;
           c.fillStyle = "#5a3a2a";
@@ -48683,7 +51159,7 @@ kTtaatTk
             if (inp.pressed) {
               inp.pressed = false;
               g.audio.play("bell", { vol: 0.5, pitch: 1.3 });
-              this.say(pick3(LINES2.bell), "grumpy");
+              this.say(pick4(LINES3.bell), "grumpy");
             }
           }
           if (this.regR) {
@@ -48738,9 +51214,9 @@ kTtaatTk
               inp.pressed = false;
               if (Math.random() < 0.3) {
                 this.puffUp();
-                this.say(pick3(LINES2.poke), "angry");
+                this.say(pick4(LINES3.poke), "angry");
               } else {
-                this.say(pick3(LINES2.poke), "grumpy");
+                this.say(pick4(LINES3.poke), "grumpy");
                 g.audio.play("squeak", { vol: 0.3, pitch: 0.6 });
               }
             }
@@ -48994,11 +51470,11 @@ kTtaatTk
         quip(it2) {
           if (it2.locked) return `Grow '${it2.skill?.name || "a skill"}' first, greenhorn.`;
           if (it2.kind === "bait") return BAIT_QUIP[it2.id] || "Fine bait, this.";
-          if (it2.kind === "deal") return pick3(LINES2.special);
+          if (it2.kind === "deal") return pick4(LINES3.special);
           if (it2.kind === "bundle") return it2.id === "b_mystery" ? "What's inside? Even I forget." : "Bundle up and save, sprat.";
-          if (it2.kind === "cosmetic") return pick3(LINES2.cosmetic);
-          if (this.price(it2) >= 500) return pick3(LINES2.fancy);
-          return pick3(LINES2.decor).replace("{n}", it2.name);
+          if (it2.kind === "cosmetic") return pick4(LINES3.cosmetic);
+          if (this.price(it2) >= 500) return pick4(LINES3.fancy);
+          return pick4(LINES3.decor).replace("{n}", it2.name);
         }
         select(it2, x, y) {
           const g = this.game;
@@ -49009,7 +51485,7 @@ kTtaatTk
           g.audio.play("travel_whoosh", { vol: 0.18, pitch: 1.6 });
           this.pop[it2.id] = 0;
           this.quipFor = this.quip(it2);
-          if (this.t - this.lastLine > 0.8) this.say(it2.kind === "bait" || it2.locked ? this.quipFor : pick3(LINES2.closeup), it2.locked ? "smug" : "neutral", void 0, 0.35);
+          if (this.t - this.lastLine > 0.8) this.say(it2.kind === "bait" || it2.locked ? this.quipFor : pick4(LINES3.closeup), it2.locked ? "smug" : "neutral", void 0, 0.35);
           void x;
           void y;
         }
@@ -49048,7 +51524,7 @@ kTtaatTk
             k.fillStyle = rgba("#ffffff", 0.4);
             k.fillRect(w / 2 - 8, h - 24, 6, 2);
           } else {
-            const look = { ...DEFAULT_CHARACTER || {}, ...this.game.state.character || {}, [it2.slot]: it2.cid };
+            const look = equipItem ? equipItem(this.game.state.character, it2.item) : { ...DEFAULT_CHARACTER || {}, ...this.game.state.character || {}, [it2.slot]: it2.value };
             try {
               drawCharacter(k, Math.round(w / 2), h - 2, { pose: "idle", t: 0, facing: 1, scale, look });
             } catch {
@@ -49090,25 +51566,55 @@ kTtaatTk
               }
             } else this.unpacking(c, cx, shelfY - 16, t);
           } else if (real.kind === "cosmetic") {
+            const rc = RARITY[real.rarity]?.color || "#c9d4dc";
             c.fillStyle = "#2a1408";
-            c.fillRect(cx - 9, shelfY - 3, 18, 3);
-            c.fillStyle = "#8a5428";
-            c.fillRect(cx - 8, shelfY - 3, 16, 2);
-            const d = this.cosmeticSprite(real, 48, Math.min(64, cell.h - 24));
-            if (d) c.drawImage(d, Math.round(cx - d.width / 2), shelfY - 3 - d.height - lift);
-            else this.unpacking(c, cx, shelfY - 16, t);
-            if (this.owned(real)) drawText(c, "OWNED", cx, shelfY - 12 - lift, { align: "center", font: "small", color: "#9affc8", outline: "#1a0e06" });
+            c.fillRect(cx - 13, shelfY - 4, 26, 4);
+            c.fillStyle = shade(rc, -0.35);
+            c.fillRect(cx - 12, shelfY - 4, 24, 3);
+            c.fillStyle = rc;
+            c.fillRect(cx - 12, shelfY - 4, 24, 1);
+            if (real.swatch) {
+              c.fillStyle = "#2a1408";
+              c.fillRect(cx - 11, shelfY - 28 - lift, 22, 22);
+              c.fillStyle = real.swatch;
+              c.fillRect(cx - 10, shelfY - 27 - lift, 20, 20);
+              c.fillStyle = rgba("#ffffff", 0.45);
+              c.fillRect(cx - 9, shelfY - 26 - lift, 7, 2);
+              drawText(c, "PAINT", cx, shelfY - 19 - lift, { align: "center", font: "small", color: "#ffffff", outline: "#1a0e06" });
+            } else {
+              let pv = null;
+              try {
+                pv = itemPreview?.(this.game.state.character, real.item, 1);
+              } catch {
+                pv = null;
+              }
+              if (pv) {
+                if (it2.locked) {
+                  c.globalAlpha = 0.45;
+                  c.drawImage(tinted(pv.canvas, "#1a2030"), Math.round(cx - pv.ox), Math.round(shelfY - 4 - pv.oy - lift));
+                  c.globalAlpha = 1;
+                } else drawItemPreview(c, pv, cx, shelfY - 4 - lift, t, "shop:" + real.id);
+              } else {
+                const d = this.cosmeticSprite(real, 48, Math.min(64, cell.h - 24));
+                if (d) c.drawImage(d, Math.round(cx - d.width / 2), shelfY - 4 - d.height - lift);
+                else this.unpacking(c, cx, shelfY - 16, t);
+              }
+            }
+            if (it2.locked) {
+              const lk = getUiIcon("lock");
+              c.drawImage(lk, Math.round(cx - lk.width / 2), shelfY - 22 - lift);
+            }
           } else if (real.kind === "bundle") this.drawCrate(c, real, cx, shelfY, lift, t, hov);
           if (it2.kind === "deal") drawStamp(c, cx + 18, shelfY - 40 - lift, "-20%", { color: "#e8283a", angle: 0.25, font: "small" });
           if (soldOut) drawStamp(c, cx, shelfY - 22, "SOLD OUT", { color: "#c8283a", angle: -0.2, font: "small" });
           const price = this.price(it2);
-          const label3 = it2.locked ? "LOCKED" : it2.kind === "cosmetic" && this.owned(it2) ? "OWNED" : price === 0 ? "FREE" : formatCommas(price);
+          const label3 = it2.locked ? it2.kind === "cosmetic" && it2.unlock === "package" ? "CRATES" : "LOCKED" : it2.kind === "cosmetic" && this.owned(it2) ? this.wearing(it2) ? "WEARING" : "OWNED" : price === 0 ? "FREE" : formatCommas(price);
           const showCoin = !it2.locked && !(it2.kind === "cosmetic" && this.owned(it2)) && price > 0;
           const tw = measureText(label3, "small") + (showCoin ? 15 : 8);
           const tx = Math.round(cx - tw / 2), ty = shelfY + 10;
           c.fillStyle = "#d8c8a0";
           c.fillRect(cx, shelfY + 7, 1, 3);
-          const tagCol = special ? "#e8505a" : it2.locked ? "#8a8078" : "#f4e6c4";
+          const tagCol = special ? "#e8505a" : it2.locked ? "#8a8078" : it2.kind === "cosmetic" && this.owned(it2) ? "#9ad8a8" : "#f4e6c4";
           c.fillStyle = "#2a1a10";
           c.fillRect(tx - 1, ty - 1, tw + 2, 11);
           c.fillStyle = tagCol;
@@ -49324,10 +51830,19 @@ kTtaatTk
               }
             }
           } else if (real.kind === "cosmetic") {
-            const d = this.cosmeticSprite(real, 96, 128, 2);
-            if (d) {
-              const flip = Math.sin(spin * 0.6) < 0;
-              ctx2.drawImage(flip ? this.flipped(d) : d, Math.round(mx - d.width / 2), base - d.height + bob);
+            if (real.swatch) {
+              ctx2.fillStyle = "#2a1408";
+              ctx2.fillRect(mx - 31, base - 66, 62, 62);
+              ctx2.fillStyle = real.swatch;
+              ctx2.fillRect(mx - 30, base - 65, 60, 60);
+              ctx2.fillStyle = rgba("#ffffff", 0.4);
+              ctx2.fillRect(mx - 27, base - 62, 20, 4);
+            } else {
+              const look = equipItem ? equipItem(st.character, real.item) : { ...st.character || {}, [real.slot]: real.value };
+              try {
+                drawCharacter(ctx2, mx, base - 2 + bob, { pose: "idle", t: this.focusT, scale: 2, look, yaw: spin * 57.3 % 360, lookAt: [inp.x, inp.y], id: "shopPreview", shadow: false });
+              } catch {
+              }
             }
           } else {
             ctx2.save();
@@ -49419,18 +51934,21 @@ kTtaatTk
             y += 2;
           } else if (real.kind === "cosmetic") {
             section("DETAILS");
+            const slotName = (WARDROBE_SLOTS || []).find((q) => q.id === real.slot)?.name || prettify(real.slot);
+            const R = RARITY[real.rarity] || RARITY.common;
             drawText(ctx2, "Slot", x, y, { color: INK33 });
-            drawText(ctx2, prettify(real.slot), x + w, y, { color: INK23, align: "right" });
+            drawText(ctx2, slotName, x + w, y, { color: INK23, align: "right" });
+            y += 10;
+            drawText(ctx2, "Rarity", x, y, { color: INK33 });
+            drawText(ctx2, R.name, x + w, y, { color: R.dark, align: "right" });
             y += 10;
             drawText(ctx2, "Status", x, y, { color: INK33 });
-            const wearing = st.character?.[real.slot] === real.cid;
-            drawText(ctx2, wearing ? "Wearing it" : this.owned(real) ? "In your wardrobe" : "Not owned", x + w, y, { color: wearing || this.owned(real) ? GOOD2 : INK23, align: "right" });
+            const wearing = this.wearing(real);
+            drawText(ctx2, wearing ? "Wearing it" : this.owned(real) ? "In your wardrobe" : real.locked ? real.lockWhy : "Not owned", x + w, y, { color: wearing || this.owned(real) ? GOOD2 : real.locked ? BAD2 : INK23, align: "right" });
             y += 12;
             if (this.owned(real) && !wearing && ui.button(ctx2, x, y, w, 18, "Wear it", { style: "wood" })) {
-              st.character = { ...DEFAULT_CHARACTER || {}, ...st.character || {}, [real.slot]: real.cid };
-              g.emit("wardrobe", { slot: real.slot, id: real.cid });
-              g.save?.();
-              this.say(pick3(LINES2.cosmetic), "happy");
+              this.wear(real);
+              this.say(pick4(LINES3.cosmetic), "happy");
             }
             if (this.owned(real) && !wearing) y += 22;
           } else if (real.kind === "bundle") {
@@ -49465,7 +51983,7 @@ kTtaatTk
           section("STOCK");
           const left = this.stockLeft(it2);
           const own = this.owned(it2);
-          drawText(ctx2, real.kind === "cosmetic" ? own ? "Owned" : "One of a kind" : left === Infinity ? "Plenty in the back" : left > 0 ? `${left} left today` : "Sold out - back tomorrow", x, y, { color: left > 0 ? INK23 : BAD2 });
+          drawText(ctx2, real.kind === "cosmetic" ? own ? "Already in your wardrobe" : "One of a kind" : left === Infinity ? "Plenty in the back" : left > 0 ? `${left} left today` : "Sold out - back tomorrow", x, y, { color: real.kind === "cosmetic" ? own ? GOOD2 : INK23 : left > 0 ? INK23 : BAD2 });
           if (real.kind === "bait") drawText(ctx2, `You have ${own}`, x + w, y, { color: INK33, align: "right" });
           y += 12;
           section("DAILY DEAL");
@@ -49527,7 +52045,7 @@ kTtaatTk
           }
           drawText(ctx2, price ? `${formatCommas(price)}{coin}` : "FREE", x + (isDeal && price !== real.base ? measureText(formatCommas(real.base)) + 8 : 0), by + 2, { scale: 2, color: INK7 });
           drawText(ctx2, st.coins >= price ? `You have ${formatCommas(Math.floor(st.coins))}` : `Need ${formatCommas(Math.ceil(price - st.coins))} more`, x, by + 20, { font: "small", color: st.coins >= price ? GOOD2 : BAD2 });
-          const canBuy = !it2.locked && left > 0 && !(real.kind === "cosmetic" && own);
+          const canBuy = !it2.locked && left > 0 && !(real.kind === "cosmetic" && own) && !(real.kind === "cosmetic" && real.price == null);
           const label3 = it2.locked ? "Locked" : real.kind === "cosmetic" && own ? "Owned" : left <= 0 ? "Sold out" : "Buy!";
           const bw = 104, bx = x + w - bw;
           const bR = { x: bx, y: by - 2, w: bw, h: 26 };
@@ -49542,7 +52060,8 @@ kTtaatTk
               P5.bubbles(mx, base - 30, 8, { layer: "ui" });
             }
           } else if (pressedOver) this.buy(it2);
-          if (it2.locked && it2.skill) drawText(ctx2, `Unlock: grow '${it2.skill.name}' (${BRANCHES[it2.skill.branch].name})`, x, by - 18, { font: "small", color: BAD2 });
+          if (it2.locked && real.kind === "cosmetic") drawText(ctx2, real.lockWhy, x, by - 18, { font: "small", color: BAD2 });
+          else if (it2.locked && it2.skill) drawText(ctx2, `Unlock: grow '${it2.skill.name}' (${BRANCHES[it2.skill.branch].name})`, x, by - 18, { font: "small", color: BAD2 });
           if (this.buyFlash > 0) {
             this.buyFlash = Math.max(0, this.buyFlash - dt * 1.2);
             ctx2.globalAlpha = a * clamp01(this.buyFlash * 3);
@@ -50607,6 +53126,7 @@ kTtaatTk
   // src/ui/registry.js
   function registerPanels(ui) {
     for (const P5 of [RevealPanel, BaitPanel, SkillTreePanel, JournalPanel, ShopPanel, MapPanel, SettingsPanel, WelcomePanel]) ui.register(new P5());
+    registerBuildPanels(ui);
   }
   var init_registry = __esm({
     "src/ui/registry.js"() {
@@ -50618,6 +53138,7 @@ kTtaatTk
       init_mappanel();
       init_settings();
       init_welcome();
+      init_panels2();
     }
   });
 
@@ -52005,8 +54526,12 @@ kTtaatTk
       for (const [id, S6] of [["honk", 1.6], ["koi", 1.4], ["grouper", 1.3], ["puffer", 5.5], ["manyeyes", 1.2], ["clickcrab", 1.7], ["glowjelly", 1.7]]) {
         const sp = SPECIES_BY_ID[id];
         const c = compiled(sp.look, null, sp.id);
-        benchVoxel(c, S6);
-        out.push([id, S6, benchVoxel(c, S6)]);
+        let best = null;
+        for (let k = 0; k < 6; k++) {
+          const b = benchVoxel(c, S6);
+          if (!best || b.trace < best.trace) best = b;
+        }
+        out.push([id, S6, best]);
       }
       window.__vf.bench = out;
       console.log(JSON.stringify(out));
@@ -54488,15 +57013,16 @@ kTtaatTk
           const payout = surging ? fishPull * 0.085 * (1 - counter * 0.9) * (crankP > 0.15 ? 0.7 : 1) : 0;
           this.progress += (reel - payout) * dt;
           this.reelRate = reel - payout;
-          let T = 0.1 + crankP * (surging ? 0.6 * (1 - counter * 0.7) : 0.16);
+          let T = 0.1 + crankP * (surging ? 0.75 * (1 - counter * 0.7) : 0.16);
           if (hold) T += 0.16 + (surging ? 0.3 * (1 - counter) : 0.04);
-          T += fishPull * 0.4 * (1 - counter * 0.6);
+          T += fishPull * 0.45 * (1 - counter * 0.6);
           if (this.trick?.extraT) T += this.trick.extraT;
           T *= 0.85 + this.power * 0.3;
           T /= st.lineStrength * (this.gentle ? 1.6 : 1);
           if (this.exhausted) T *= 0.7;
+          this.Ttarget = T;
           this.tension = clamp(damp(this.tension, T, T > this.tension ? 2.6 : 4, dt), 0, 1.25);
-          let drain = surging ? counter * (0.5 + 0.7 * crankP) + (hold ? counter * 0.6 : 0) : crankP * 0.22 + (hold ? 0.12 : 0);
+          let drain = surging ? counter * (0.5 + 0.7 * crankP) + (hold ? counter * 0.6 : 0) : crankP * 0.22 + (hold ? 0.06 : 0);
           drain *= st.staminaDrain / this.stamSecs * (opts.stamMul ?? 1);
           if (this.mode === "hookset") drain *= 0.3;
           this.stamina = clamp01(this.stamina - drain * dt + (drain === 0 && !this.exhausted ? 0.02 * dt : 0));
@@ -55412,9 +57938,9 @@ kTtaatTk
       const k = s.t / s.max;
       const a = s.t < 0.15 ? s.t / 0.15 : 1 - Math.max(0, (k - 0.6) / 0.4);
       const r = Math.round(s.r * (s.t < 0.15 ? 0.6 + s.t / 0.15 * 0.4 : 1));
-      const spr = inkSplatSprite(r);
+      const spr2 = inkSplatSprite(r);
       ctx2.globalAlpha = clamp01(a) * 0.92;
-      ctx2.drawImage(spr, Math.round(s.x - r), Math.round(s.y - r + k * 12));
+      ctx2.drawImage(spr2, Math.round(s.x - r), Math.round(s.y - r + k * 12));
       for (const d of s.drips) {
         ctx2.fillStyle = "#0a0614";
         ctx2.fillRect(Math.round(s.x + d.x), Math.round(s.y + r * 0.6), d.w, Math.round(d.l * k * 1.5 + 2));
@@ -56878,9 +59404,9 @@ kTtaatTk
           const bait = g.currentBait();
           if (!bait) return;
           const bx = Math.round(h.x + Math.sin(h.angle * 0.6) * 4 + this.baitSwing * 4), by = Math.round(h.y + 8);
-          const spr = bait.kind === "icon" ? bait.mini : baitSprite(bait.type, this.t);
-          if (spr) {
-            ctx2.drawImage(spr, bx - Math.floor(spr.width / 2), by - 2 + Math.round(Math.sin(this.t * 3) * 0.6));
+          const spr2 = bait.kind === "icon" ? bait.mini : baitSprite(bait.type, this.t);
+          if (spr2) {
+            ctx2.drawImage(spr2, bx - Math.floor(spr2.width / 2), by - 2 + Math.round(Math.sin(this.t * 3) * 0.6));
             if (bait.type === "golden" || bait.type === "lantern") {
               if (rng.chance(0.15)) this.particles.sparkle(bx + rng.float(-5, 5), by + rng.float(-3, 6), bait.type === "golden" ? "#fff3a8" : "#a8fff0");
             }
@@ -57205,6 +59731,11 @@ kTtaatTk
         }
         layout() {
           const g = this.game;
+          if (!this.buildAdded && g.build?.dockItems) {
+            this.buildAdded = true;
+            this.items.unshift(...g.build.dockItems());
+            g.ui.setDock(this.items);
+          }
           const W6 = g.screen.W, H6 = g.screen.H;
           let x = W6 - 12;
           for (const it2 of this.items.slice().reverse()) {
@@ -57727,8 +60258,8 @@ kTtaatTk
           const x1 = box2.x + box2.w / 2, y1 = box2.y + 10;
           const x = lerp(x0, x1, p), y = lerp(y0, y1, p) - Math.sin(p * Math.PI) * 30;
           ctx2.globalAlpha = 0.55 * (1 - Math.max(0, k - 0.8) * 5);
-          const spr = getAppIcon(ic.icon, { size: 32 });
-          if (spr) ctx2.drawImage(spr, Math.round(x - 16), Math.round(y - 16));
+          const spr2 = getAppIcon(ic.icon, { size: 32 });
+          if (spr2) ctx2.drawImage(spr2, Math.round(x - 16), Math.round(y - 16));
           const hand = getUiIcon("cursor_grab") || getUiIcon("cursor");
           if (hand) ctx2.drawImage(hand, Math.round(x), Math.round(y));
           ctx2.globalAlpha = 1;
@@ -59128,6 +61659,10 @@ void main() {
           const view = this.state.view;
           const cam = this.camera;
           const opacity = this.mode === "overlay" ? this.state.settings.overlayOpacity ?? 0.25 : this.state.settings.oceanOpacity ?? 1;
+          if (!realDesktop && opacity >= 1 && view === "ocean") {
+            ctx2.fillStyle = "#0b1622";
+            ctx2.fillRect(0, 0, W6, H6);
+          }
           if (!realDesktop && opacity < 1 && view === "ocean") this.wallpaper.draw(ctx2, dt);
           const liveOcean = view === "ocean" && !ocean2.travelState && ocean2.reveal >= 1;
           const shader = liveOcean && !this.lowPower && this.water?.available;
@@ -59308,9 +61843,9 @@ void main() {
           if (this.desktop.drag || this.boat.dragging) name = "cursor_grab";
           else if (this.layer === "boat" || this.layer === "icon" || this.layer === "box" || this.ui.dockHover >= 0) name = "cursor_hand";
           if (this.fishing.fighting) name = "cursor_reel";
-          const spr = getUiIcon(name) || getUiIcon("arrow_u");
+          const spr2 = getUiIcon(name) || getUiIcon("arrow_u");
           const hs = CURSOR_HOTSPOT[name] || [0, 0];
-          ctx2.drawImage(spr, x - hs[0], y - hs[1]);
+          ctx2.drawImage(spr2, x - hs[0], y - hs[1]);
         }
         // ------------------------------------------------------------------ loop
         start() {

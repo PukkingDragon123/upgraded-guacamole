@@ -281,6 +281,7 @@ export class BuildingPanel {
     this.t = 0;
     this.page = 0;
     this.claw = null;
+    this.fitFor = null;
     const st = this.game.state;
     const b = this.b();
     if (b?.id === 'vault') vaultAccrue(st);
@@ -383,14 +384,21 @@ export class BuildingPanel {
     ctx.fillStyle = '#c8a86a'; ctx.fillRect(pv.x, ground, pv.w, 18);
     ctx.fillStyle = '#e8cf95';
     for (let x = 0; x < pv.w; x += 2) ctx.fillRect(pv.x + x, ground - 1 + Math.round(Math.sin(x * 0.08) * 1), 2, 3);
-    // gentle turntable: a few yaw steps around the hero angle
+    // gentle turntable: a few yaw steps around the hero angle, rendered at a scale that fills the box
+    if (this.fitFor !== b.id) {
+      const s0 = buildingSprite(b.id, { scale: 0.62, force: true });
+      this.fitFor = b.id;
+      this.fitScale = s0 ? Math.min(1.5, 0.62 * Math.min((pv.w - 24) / s0.w, (pv.h - 40) / s0.h)) : 0.62;
+    }
     const yaw = def.decor ? null : 30 + Math.round(Math.sin(t * 0.8) * 2) * 12;
-    let spr = buildingSprite(b.id, { scale: 0.62, yaw, force: false }) || buildingSprite(b.id, { scale: 0.62, force: true });
+    const spr = buildingSprite(b.id, { scale: this.fitScale, yaw, force: false }) || buildingSprite(b.id, { scale: this.fitScale, force: true });
     if (spr) {
-      const k = Math.min(1, (pv.w - 16) / spr.w, (pv.h - 30) / spr.h) * (spr.approx || 1);
+      const k = spr.approx || 1;
       const w = Math.round(spr.w * k), h = Math.round(spr.h * k);
-      ctx.drawImage(b.flip ? spr.flipped() : spr.canvas, Math.round(pv.x + pv.w / 2 - spr.ox * k), Math.round(ground + 4 - spr.oy * k), w, h);
-      if (spr.glow && deep) { ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(spr.glow, Math.round(pv.x + pv.w / 2 - spr.ox * k), Math.round(ground + 4 - spr.oy * k), w, h); ctx.globalCompositeOperation = 'source-over'; }
+      const dx = Math.round(pv.x + pv.w / 2 - (b.flip ? spr.w - spr.ox : spr.ox) * k), dy = Math.round(ground + 6 - spr.oy * k);
+      ctx.fillStyle = rgba('#000000', 0.2); ctx.fillRect(Math.round(pv.x + pv.w / 2 - w * 0.4), ground + 4, Math.round(w * 0.8), 3);
+      ctx.drawImage(b.flip ? spr.flipped() : spr.canvas, dx, dy, w, h);
+      if (spr.glow && deep) { ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(b.flip ? spr.glowFlipped() : spr.glow, dx, dy, w, h); ctx.globalCompositeOperation = 'source-over'; }
     }
     if (Math.random() < 0.06) g.particles?.bubble(pv.x + 10 + Math.random() * (pv.w - 20), ground - 2, { layer: 'ui', life: 2.5, vy: -14 });
     ctx.restore();

@@ -21,7 +21,7 @@ export const BUILDINGS = {
     name: 'Research Lab', rarity: 'common', unique: true, size: 1,
     desc: 'A cosy house of science with a rooftop antenna. Enter to research blueprints, baits, upgrades and perks.',
     lore: 'Home of Professor Bubbles, who once proved fish can count (to three).',
-    cost: { coins: 80, items: { driftwood: 6, kelp_fibre: 4, sea_glass: 2 } },
+    cost: { coins: 30, items: { driftwood: 6, kelp_fibre: 4, sea_glass: 2 } },
     action: 'research', bonus: { researchSpeed: [0, 0.15, 0.3] },
     upgrades: [{ coins: 400, items: { driftwood: 8, gear: 3, sea_glass: 4 } }, { coins: 1400, items: { circuit_board: 3, ancient_stone: 3, pearl: 2 } }],
   },

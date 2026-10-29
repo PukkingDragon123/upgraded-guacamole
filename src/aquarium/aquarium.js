@@ -6,7 +6,11 @@
 //
 // API used by the game: addFish(rec), update(dt, inpOrNull), hit(x, y), drawFull, drawWindow, drawMini,
 // windowRect(), toggleWindow(), openWindow(force), closeWindow(), forceCoin(), offlineCoins(sec), onResize().
-// Extra: addDecor(id) (shop), storedDecor(), placeStored(id), tankSummary().
+// Extra: addDecor(id) (shop), storedDecor(), placeStored(id), tankSummary(), interact(decorOrId) (play a
+// decoration's animation), openFull() (zoom from the window / mini tank into the full scene).
+// Clicking the window or mini tank (not a decoration / button) zooms into the full aquarium view; the lid
+// still drags the window. Decorations are clickable in every view (see decoranim.js); emits
+// 'decorPlayed' (id) through game.emit.
 
 import { clamp, clamp01, lerp, dist, ease, rectContains, smoothstep, TAU } from '../core/math.js';
 import { rng, RNG } from '../core/rng.js';
@@ -30,6 +34,7 @@ import { VoxelModel, renderVoxels } from '../gfx/voxel.js';
 import { voxPlant, plantFrame, pumpVoxPlants, PLANT_FRAMES } from './voxplants.js';
 import { Snail, CoinCrab, drawEggs, eggColor } from './critters.js';
 import { drawVoxelFish, beginVoxelFishFrame, warmVoxelFish, voxelFishStats, setVoxelFishBudget } from '../gfx/voxelfish.js';
+import { playDecor, updateDecor, decorDrawState, queueDecorFrames, cleanupFish, specOf, forceUse } from './decoranim.js';
 
 const COIN_CAP = 150;
 const HUNGER_RATE = 1 / 2000; // 0 -> 0.6 ("hungry") in 20 minutes
@@ -90,8 +95,10 @@ export class Aquarium {
       for (const d of this.decor) {
         this.warmJobs.push(() => {
           const sc = this.decorScale(d, clamp(d.rec.z ?? 0.5, 0.04, 0.95), v);
-          if (d.props.has(sc)) return;
-          try { const p = getProp(d.rec.id, { scale: sc, variant: d.rec.v || 0 }); p.scale = sc; d.props.set(sc, p); } catch { /* unknown prop */ }
+          if (!d.props.has(sc)) {
+            try { const p = getProp(d.rec.id, { scale: sc, variant: d.rec.v || 0 }); p.scale = sc; d.props.set(sc, p); } catch { return; /* unknown prop */ }
+          }
+          if (key === 'full') queueDecorFrames(this, d, sc);
         });
       }
     }
@@ -270,6 +277,7 @@ export class Aquarium {
       this.crab?.rescale(sx);
       this.bubbles.length = 0;
       this.particles.clear();
+      for (const f of this.fish) if (f.use || f.state === 'script') { cleanupFish(f); f.setState('wander'); }
     }
     this.view = nv;
     this.T = T;
@@ -306,6 +314,7 @@ export class Aquarium {
       d.scale = this.decorScale(d, d.z);
       d.prop = d.props.get(d.scale) || null;
       if (!d.prop) this.queueProp(d, d.scale);
+      else queueDecorFrames(this, d, d.scale);
       this.addCollider(d);
       const meta = PROPS[d.rec.id];
       const p = d.prop || [...d.props.values()][0];
@@ -324,17 +333,48 @@ export class Aquarium {
     this.colliders.push({ X: d.X, D: d.z * this.T.DEPTH, R: Math.max(3, (p.w * 0.3) / s), H: Math.max(3, (p.h * 0.72) / s), base: this.T.groundZ(d.X, d.z), d });
   }
 
-  queueProp(d, scale) {
-    (this.propQueue ||= []);
-    if (!this.propQueue.some((q) => q.d === d && q.scale === scale)) this.propQueue.push({ d, scale });
+  // Decor renders are built one per frame (urgent ones first: a clicked decoration's animation frames).
+  queueProp(d, scale, frame = 0, urgent = false) {
+    const q = (this.propQueue ||= []);
+    const i = q.findIndex((j) => j.d === d && j.scale === scale && j.frame === frame);
+    if (i >= 0) {
+      if (urgent && i > 0) { const [j] = q.splice(i, 1); j.urgent = true; q.unshift(j); }
+      return;
+    }
+    const job = { d, scale, frame, urgent };
+    if (urgent) q.unshift(job); else q.push(job);
   }
 
   pumpProps() {
     const q = this.propQueue;
     if (!q?.length) return;
-    const job = q.shift();
+    const t0 = performance.now();
+    for (let n = 0; n < 3; n++) {
+      // Hidden tank: only base renders and urgent frames (animation frames wait until it is shown).
+      const i = this.visibleKey ? 0 : q.findIndex((j) => !j.frame || j.urgent);
+      if (i < 0 || (n > 0 && (!q[i].urgent || performance.now() - t0 > 10))) return;
+      const [job] = q.splice(i, 1);
+      this.runPropJob(job);
+      if (!q.length) return;
+    }
+  }
+
+  runPropJob(job) {
     const d = job.d;
-    if (!this.decor.includes(d) || d.props.has(job.scale)) return;
+    if (!this.decor.includes(d)) return;
+    if (job.frame) {
+      let arr = d.frames?.get(job.scale);
+      if (arr?.[job.frame]) return;
+      try {
+        const p = getProp(d.rec.id, { scale: job.scale, variant: d.rec.v || 0, frame: job.frame });
+        p.scale = job.scale;
+        d.frames ||= new Map();
+        if (!arr) d.frames.set(job.scale, (arr = []));
+        arr[job.frame] = p;
+      } catch (e) { console.warn('decor frame', d.rec.id, job.frame, e); }
+      return;
+    }
+    if (d.props.has(job.scale)) return;
     try {
       const p = getProp(d.rec.id, { scale: job.scale, variant: d.rec.v || 0 });
       p.scale = job.scale;
@@ -510,6 +550,7 @@ export class Aquarium {
 
   hit(x, y) {
     const g = this.game;
+    if (this.zoom || this.press) return true;
     if (g.mini) return rectContains(this.miniRect(), x, y);
     if (g.state.view === 'aquarium') {
       if (this.drag) return true;
@@ -749,9 +790,13 @@ export class Aquarium {
     this.syncT -= dt;
     if (this.syncT <= 0) { this.syncT = 0.5; this.syncFish(); }
 
+    if (this.zoom && this.shownKey() !== this.zoom.vk) this.zoom = null;
+    this.updateZoom(dt);
+    this.zoomIn = Math.max(0, (this.zoomIn || 0) - dt);
     this.handleInput(dt, inp);
     this.updateFood(dt);
     this.updateFish(dt);
+    updateDecor(this, dt);
     this.updateEconomy(dt);
     this.coins.step(dt);
     this.updateEggs(dt);
@@ -770,17 +815,43 @@ export class Aquarium {
     this.hoverFish = null;
     this.hoverBtn = null;
     this.hoverDecor = null;
+    if (this.zoom) { cur.inWorld = false; if (inp?.pressed) inp.consume(); return; }
     if (!inp || !vk) {
       cur.inWorld = false;
       if (this.drag && (!inp || !inp.down)) this.endDrag();
+      if (!inp || !inp.down) this.press = null;
       this.prevCursor = null;
       return;
     }
     const o = this.innerOrigin(vk);
     const v = this.view, T = this.T;
     const lx = inp.x - o.x, ly = inp.y - o.y;
+    const tip = (t) => { if (g.desktop) g.desktop.tooltip = t; };
 
-    // window chrome: drag by the lid, close / expand buttons
+    // A pending press becomes a drag once the pointer moves, or a click when released in place.
+    const pr = this.press;
+    if (pr) {
+      if (Math.hypot(inp.x - pr.x, inp.y - pr.y) > 4) pr.moved = true;
+      if (inp.down) {
+        if (pr.moved && pr.kind === 'lid' && vk === 'window') {
+          const tw = g.state.tankWindow;
+          this.drag = { kind: 'window', dx: pr.x - tw.x, dy: pr.y - tw.y };
+          this.press = null;
+        } else if (pr.moved && pr.kind === 'decorFull' && this.decor.includes(pr.d)) {
+          this.drag = { kind: 'decor', d: pr.d, dy: pr.dy };
+          this.press = null;
+          this.sfx('icon_pickup', { vol: 0.5 });
+        }
+      } else {
+        this.press = null;
+        if (!pr.moved && !pr.collected) {
+          if ((pr.kind === 'decor' || pr.kind === 'decorFull') && this.decor.includes(pr.d)) this.interact(pr.d);
+          else if (pr.kind === 'lid' || pr.kind === 'glass') { this.openFull(); return; }
+        }
+      }
+    }
+
+    // window chrome: drag by the lid (click it to dive in), close / expand buttons
     if (vk === 'window' || vk === 'mini') {
       const tw = g.state.tankWindow;
       if (this.drag?.kind === 'window') {
@@ -790,16 +861,18 @@ export class Aquarium {
       }
       const fr = FRAME[vk];
       const r = vk === 'window' ? this.windowRect() : this.miniRect();
+      if (!r) { cur.inWorld = false; return; }
       const btns = this.chromeButtons(vk, r);
       for (const b of btns) if (rectContains(b, inp.x, inp.y)) this.hoverBtn = b.id;
       if (inp.y < r.y + fr.lid + (vk === 'window' ? this.slideOff() : 0)) {
-        if (this.hoverBtn) g.desktop && (g.desktop.tooltip = btns.find((b) => b.id === this.hoverBtn).tip);
+        if (this.hoverBtn) tip(btns.find((b) => b.id === this.hoverBtn).tip);
+        else if (!this.press) tip(vk === 'window' ? '{mouse_l} Dive into the aquarium\n{mouse_hold} Drag to move' : '{mouse_l} Dive into the aquarium');
         if (inp.pressed) {
           inp.consume();
           if (this.hoverBtn === 'close') this.closeWindow();
-          else if (this.hoverBtn === 'expand') g.command?.('tank');
+          else if (this.hoverBtn === 'expand') this.openFull();
           else if (this.hoverBtn === 'restore') g.setMini?.(false);
-          else if (vk === 'window') this.drag = { kind: 'window', dx: inp.x - tw.x, dy: inp.y - tw.y };
+          else this.press = { kind: 'lid', x: inp.x, y: inp.y };
         }
         cur.inWorld = false;
         return;
@@ -816,7 +889,7 @@ export class Aquarium {
       }
       if (this.st.tank.stored.length && rectContains(lay.unpack, inp.x, inp.y)) {
         this.hoverBtn = 'unpack';
-        if (g.desktop) g.desktop.tooltip = `Place a stored decoration (${PROPS[this.st.tank.stored.at(-1)]?.name || 'decor'})`;
+        tip(`Place a stored decoration (${PROPS[this.st.tank.stored.at(-1)]?.name || 'decor'})`);
         if (inp.pressed) { inp.consume(); this.placeStored(); }
         cur.inWorld = false;
         return;
@@ -835,23 +908,23 @@ export class Aquarium {
         d.rec.x = clamp(pk.X / T.W, 0.04, 0.96);
         d.rec.z = clamp(pk.z, 0.05, 0.92);
         d.X = d.rec.x * T.W; d.z = d.rec.z;
-        g.desktop && (g.desktop.tooltip = null);
+        tip(null);
       } else this.endDrag();
       return;
     }
-    if (vk === 'full') {
-      const hd = this.decorAt(lx, ly);
-      if (hd) {
-        this.hoverDecor = hd;
-        if (g.desktop) g.desktop.tooltip = `${PROPS[hd.rec.id]?.name || 'Decoration'}\n{mouse_l} drag to move  {mouse_r} store`;
-        if (inp.rpressed) { this.storeDecor(hd); inp.rpressed = false; return; }
-        if (inp.pressed) {
-          inp.consume();
-          const base = T.floorAt(T.sx(hd.X, hd.z), hd.z);
-          this.drag = { kind: 'decor', d: hd, dy: base - ly };
-          this.sfx('icon_pickup', { vol: 0.5 });
-          return;
-        }
+
+    // decorations: hover glow + click to play in every view; the full view also drags / stores them
+    const hd = this.press ? null : this.decorAt(lx, ly);
+    if (hd) {
+      this.hoverDecor = hd;
+      const name = PROPS[hd.rec.id]?.name || 'Decoration', verb = specOf(hd)?.verb || 'Poke';
+      tip(vk === 'full' ? `${name}\n{mouse_l} ${verb}  {mouse_hold} move  {mouse_r} store` : `${name}\n{mouse_l} ${verb}`);
+      if (vk === 'full' && inp.rpressed) { this.storeDecor(hd); inp.rpressed = false; return; }
+      if (inp.pressed) {
+        inp.consume();
+        const base = T.floorAt(T.sx(hd.X, hd.z), hd.z);
+        this.press = { kind: vk === 'full' ? 'decorFull' : 'decor', d: hd, x: inp.x, y: inp.y, dy: base - ly };
+        return;
       }
     }
 
@@ -859,29 +932,96 @@ export class Aquarium {
     const rad = this.stats.collectRadius || 14;
     const p0 = this.prevCursor || { x: lx, y: ly };
     const sweep = inp.down;
+    let got = 0;
     for (let i = this.coins.list.length - 1; i >= 0; i--) {
       const c = this.coins.list[i];
       const p = this.toLocal(c.X, c.Y, c.D);
       const rr = (sweep ? rad * 1.35 : rad) + c.vr * T.s(p.z) * 0.5;
       const d = sweep ? segDist(p.x, p.y, p0.x, p0.y, lx, ly) : dist(p.x, p.y, lx, ly);
-      if (d < rr) this.collectCoin(c, 'player');
+      if (d < rr) { this.collectCoin(c, 'player'); got++; }
     }
+    if (got && this.press) this.press.collected = true;
     this.prevCursor = { x: lx, y: ly };
 
-    // fish hover tooltip and petting
+    // fish hover tooltip and petting (full view); the window / mini tank opens the full view on click
     let best = null, bd = Infinity;
     for (const f of this.fish) {
+      if (f.alpha === 0) continue;
       const s = T.s(f.z);
       const r = (11 * f.scale + 5) * s;
       const d = dist(f.x, f.y, lx, ly) + f.z * 10;
       if (dist(f.x, f.y, lx, ly) < r && d < bd) { bd = d; best = f; }
     }
     this.hoverFish = best;
-    if (best && g.desktop && !this.hoverDecor) g.desktop.tooltip = this.fishTip(best);
-    if (inp.pressed && cur.inWorld) {
-      inp.consume();
-      if (best) this.pet(best);
-      else this.sprinkle(lx, ly);
+    if (best && !this.hoverDecor) tip(this.fishTip(best) + (vk === 'full' ? '' : '\n{mouse_l} Dive in'));
+    if (vk === 'full') {
+      if (inp.pressed && cur.inWorld) {
+        inp.consume();
+        if (best) this.pet(best);
+        else this.sprinkle(lx, ly);
+      }
+    } else {
+      const inGlass = lx >= 0 && ly >= 0 && lx < v.iw && ly < v.ih;
+      this.glassHover = inGlass && !best && !hd && !inp.down ? (this.glassHover || 0) + dt : 0;
+      if (this.glassHover > 0.6 && !this.coins.list.length) tip('{mouse_l} Dive into the aquarium');
+      if (inp.pressed && inGlass) {
+        inp.consume();
+        this.press = { kind: 'glass', x: inp.x, y: inp.y, collected: got > 0 };
+      }
+    }
+  }
+
+  // Click on a decoration: play its animation, sounds and particles (fish react).
+  interact(d) {
+    if (typeof d === 'string') d = this.decor.find((q) => q.rec.id === d);
+    if (!d) return false;
+    playDecor(this, d);
+    return true;
+  }
+
+  // Dev / debug: send a fish to use a decoration right away.
+  useDecor(d) {
+    if (typeof d === 'string') d = this.decor.find((q) => q.rec.id === d);
+    return d ? forceUse(this, d) : false;
+  }
+
+  // Window / mini tank -> full scene, with a zoom of the tank filling the screen.
+  openFull() {
+    const g = this.game;
+    const vk = this.visibleKey;
+    if (this.zoom) return;
+    if (vk !== 'window' && vk !== 'mini') { if (g.mini) g.setMini?.(false); g.setView?.('aquarium'); return; }
+    const r = vk === 'mini' ? this.miniRect() : this.windowRect();
+    if (!r) { g.setView?.('aquarium'); return; }
+    this.press = null;
+    this.drag = null;
+    this.zoom = { t: 0, dur: 0.5, vk, r: { x: r.x, y: r.y + (vk === 'window' ? this.slideOff() : 0), w: r.w, h: r.h } };
+    this.sfx('window_open', { vol: 0.45 });
+  }
+
+  updateZoom(dt) {
+    const z = this.zoom;
+    if (!z) return;
+    z.t += dt;
+    if (z.t < z.dur) return;
+    this.zoom = null;
+    const g = this.game;
+    if (g.mini) g.setMini?.(false);
+    g.setView?.('aquarium');
+    this.zoomIn = 0.4;
+    this.visibleKey = null; // the full view takes over from the next update
+  }
+
+  // Food dropped by a decoration (toaster crumbs, pizza toppings) at a tank-local point.
+  dropFood(lx, ly, n = 4, z = 0.4) {
+    const T = this.T;
+    if (this.food.length > 60) return;
+    const cols = ['#e8b46a', '#c8803a', '#f0d090', '#e86a3a', '#8ac04a'];
+    for (let i = 0; i < n; i++) {
+      const fz = clamp(z - 0.04 + rng.float(-0.03, 0.03), 0.02, 0.9);
+      const X = clamp(T.X(lx + rng.float(-6, 6), fz), 3, T.W - 3);
+      const Y = clamp(T.Y(ly + rng.float(-3, 3), fz), T.surf + 1, T.groundZ(X, fz) - 2);
+      this.food.push({ X, Y, z: fz, vy: rng.float(3, 7), t: 0, c: rng.pick(cols), x: 0, y: 0, eaten: false, wob: rng.float(0, TAU), landed: false });
     }
   }
 
@@ -1005,6 +1145,7 @@ export class Aquarium {
       else if (f.state === 'sleep' && f.bed) f.target = { x: f.bed.x, y: f.bed.y, z: f.bed.z ?? f.z };
       if (f.target && f.target.z !== undefined) f.target.z = clamp(f.target.z, 0, 0.85);
       f.update(dt);
+      if (f.use && f.state !== 'script') cleanupFish(f);
       // keep inside the glass box at its depth
       const z = (f.z = clamp(f.z, 0, 0.85));
       const s = T.s(z);
@@ -1123,6 +1264,11 @@ export class Aquarium {
     if (this.view?.key !== 'full') return;
     this.drawTank(ctx, 0, 0);
     this.drawRim(ctx, this.view);
+    // the tail of the zoom-in from the window: a bright water flash settling
+    if (this.zoomIn > 0) {
+      ctx.fillStyle = rgba('#d8f6ff', (this.zoomIn / 0.4) * 0.5);
+      ctx.fillRect(0, 0, this.view.iw, this.view.ih);
+    }
     // top plaque: tank stats + back to the ocean
     const sm = this.tankSummary();
     const label = `My Aquarium  {fish}${sm.fish}/${sm.cap}  {heart}${sm.fish ? Math.round(sm.happiness * 100) + '%' : '--'}  {coin}${sm.coinsPerMin.toFixed(1)}/min`;
@@ -1136,6 +1282,7 @@ export class Aquarium {
 
   drawWindow(ctx, dt) {
     if (this.visibleKey !== 'window' || this.view?.key !== 'window') return;
+    if (this.zoom) { this.drawZoom(ctx); return; }
     const r = this.windowRect();
     const v = this.view;
     const off = this.slideOff();
@@ -1154,6 +1301,7 @@ export class Aquarium {
 
   drawMini(ctx, dt) {
     if (this.view?.key !== 'mini') return;
+    if (this.zoom) { this.drawZoom(ctx); return; }
     const r = this.miniRect();
     const v = this.view;
     ctx.fillStyle = 'rgba(4,14,24,0.28)';
@@ -1162,6 +1310,31 @@ export class Aquarium {
     this.drawTank(ctx, r.x + f.side, r.y + f.lid);
     this.drawFrame(ctx, v, r.x, r.y);
     this.drawChrome(ctx, 'mini', r, 0);
+  }
+
+  // Zoom transition: the whole window (tank, cabinet, chrome) rendered off-screen, then scaled so its
+  // glass grows from the window rect to the full-screen tank area, fading into a bright water flash.
+  drawZoom(ctx) {
+    const z = this.zoom, v = this.view, f = FRAME[z.vk], r = z.r;
+    let cv = this.zoomCv;
+    if (!cv || cv.width !== r.w || cv.height !== r.h) cv = this.zoomCv = makeCanvas(r.w, r.h);
+    const zg = ctxOf(cv);
+    zg.clearRect(0, 0, r.w, r.h);
+    this.drawTank(zg, f.side, f.lid);
+    this.drawFrame(zg, v, 0, 0);
+    this.drawChrome(zg, z.vk, { x: 0, y: -this.slideOff(), w: r.w, h: r.h }, 0);
+    const k = ease.inOutCubic(clamp01(z.t / z.dur));
+    const { W, H } = this.game.screen;
+    const fh = H - TASKBAR_H + 8;
+    const sx = lerp(1, W / v.iw, k), sy = lerp(1, fh / v.ih, k);
+    const ix = lerp(r.x + f.side, 0, k), iy = lerp(r.y + f.lid, 0, k);
+    ctx.fillStyle = rgba('#04101c', 0.25 * k);
+    ctx.fillRect(0, 0, W, H);
+    ctx.drawImage(cv, Math.round(ix - f.side * sx), Math.round(iy - f.lid * sy), Math.round(r.w * sx), Math.round(r.h * sy));
+    if (k > 0.55) {
+      ctx.fillStyle = rgba('#d8f6ff', ((k - 0.55) / 0.45) * 0.5);
+      ctx.fillRect(Math.round(ix), Math.round(iy), Math.round(v.iw * sx), Math.round(v.ih * sy));
+    }
   }
 
   drawFrame(ctx, v, x, y) {
@@ -1299,9 +1472,9 @@ export class Aquarium {
       if (night > 0.2) {
         ctx.globalAlpha = night * 0.85;
         for (const d of this.decor) {
-          if (!d.prop?.glow) continue;
-          const x = Math.round(T.sx(d.X, d.z) - d.prop.ox), y = Math.round(T.sy(T.groundZ(d.X, d.z), d.z) - d.prop.oy);
-          ctx.drawImage(d.prop.glow, x, y);
+          const q = d.drawP;
+          if (q?.glow) ctx.drawImage(q.glow, d.drawX, d.drawY, d.drawW, d.drawH);
+          if (d.drawPart?.c.glow) ctx.drawImage(d.drawPart.c.glow, d.drawPart.x, d.drawPart.y);
         }
       }
       ctx.globalAlpha = 1;
@@ -1395,7 +1568,8 @@ export class Aquarium {
     for (const p of this.view.plants) push(p.z, 'plant', p);
     for (const f of this.fish) {
       let z = f.z;
-      if (f.hideInDecor && f.state === 'decor' && f.decorSpot) z = f.decorSpot.z + 0.015;
+      if (f.useZ != null) z = f.useZ;
+      else if (f.hideInDecor && f.state === 'decor' && f.decorSpot) z = f.decorSpot.z + 0.015;
       push(z, 'fish', f, f.y);
     }
     for (const c of this.coins.list) push(c.D / T.DEPTH, 'coin', c, c.Y);
@@ -1430,14 +1604,27 @@ export class Aquarium {
           sc = want / p.scale;
           if (Math.abs(sc - 1) > 0.01 && this.drag?.d !== o) this.queueProp(o, want);
         }
-        const bx = T.sx(o.X, o.z), by = T.sy(T.groundZ(o.X, o.z), o.z) - (this.drag?.d === o ? 4 : 0);
-        this.grow(bx - p.ox * sc, by - p.oy * sc, bx + (p.canvas.width - p.ox) * sc, by + (p.canvas.height - p.oy) * sc);
-        if (sc === 1) g.drawImage(p.canvas, Math.round(bx - p.ox), Math.round(by - p.oy));
-        else g.drawImage(p.canvas, Math.round(bx - p.ox * sc), Math.round(by - p.oy * sc), Math.round(p.canvas.width * sc), Math.round(p.canvas.height * sc));
+        // current animation frame (pre-rendered), squash on click, flying part (rocket)
+        const ds = decorDrawState(this, o, p, Math.abs(sc - 1) < 0.01 ? 1 : sc);
+        const q = ds.p;
+        const bx = T.sx(o.X, o.z) + ds.ox, by = T.sy(T.groundZ(o.X, o.z), o.z) - (this.drag?.d === o ? 4 : 0);
+        const kx = sc * ds.sx, ky = sc * ds.sy;
+        const x = Math.round(bx - q.ox * kx), y = Math.round(by - q.oy * ky);
+        const w = Math.round(q.canvas.width * kx), h = Math.round(q.canvas.height * ky);
+        o.drawP = q; o.drawK = sc; o.drawX = x; o.drawY = y; o.drawW = w; o.drawH = h; o.drawPart = null;
+        this.grow(x, y, x + w, y + h);
+        if (kx === 1 && ky === 1) g.drawImage(q.canvas, x, y);
+        else g.drawImage(q.canvas, x, y, w, h);
+        if (ds.part) {
+          const py = Math.round(y + ds.dy);
+          g.drawImage(ds.part.canvas, x, py);
+          this.grow(x, py, x + ds.part.canvas.width, py + ds.part.canvas.height);
+          o.drawPart = { c: ds.part, x, y: py };
+        }
         if (this.hoverDecor === o && !this.drag) {
           g.globalCompositeOperation = 'lighter';
           g.globalAlpha = 0.18 + 0.08 * Math.sin(this.t * 6);
-          g.drawImage(tinted(p.canvas, '#fff4c8'), Math.round(bx - p.ox), Math.round(by - p.oy));
+          g.drawImage(tinted(q.canvas, '#fff4c8'), x, y, w, h);
           g.globalAlpha = 1;
           g.globalCompositeOperation = 'source-over';
         }

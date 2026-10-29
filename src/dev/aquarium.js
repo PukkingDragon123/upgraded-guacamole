@@ -3,6 +3,9 @@
 //   mode: full (default) = full-screen view; window = floating window over a plain desktop; mini = mini tank.
 //   rain: fish drop coins rapidly; coins=N pre-fills a pile; night: moonlight; skills=all unlocks every skill
 //   (snail + crab, feeder, breeding); decor: extra decorations; ff=N fast-forwards N seconds before drawing.
+//   decor=fun0..fun3 adds a set of ten interactive fun decorations; play=all|id plays decor animations
+//   (staggered, after playAt seconds, default 2.5); use=N makes fish use decor N times more often;
+//   stay=1 keeps the stub from switching views (for screenshots of the zoom). window.AQ = the aquarium.
 
 import { ctxOf } from '../core/canvas.js';
 import { drawText } from '../gfx/font.js';
@@ -16,6 +19,7 @@ import { rollIndividual } from '../fish/traits.js';
 import { coinSheet, SPIN_N } from '../aquarium/coins.js';
 import { drawVoxelFish, setVoxelFishBudget, voxelFishStats } from '../gfx/voxelfish.js';
 import { Fish } from '../fish/fish.js';
+import { ANIMATED_DECOR } from '../gfx/props.js';
 
 // Voxel fish gallery: ?voxfish=biome|all&yaw=0&spin (rotating) &scale=1
 function voxFishGallery(g, W, H, params) {
@@ -122,7 +126,20 @@ export function run(params) {
   window.AQ = aq;
   window.GAME = game;
   if (mode === 'window') aq.openWindow(true);
-  if (params.get('decor')) for (const id of params.get('decor').split(',')) aq.addDecor(id);
+  const decorIds = (params.get('decor') || '').split(',').filter(Boolean).flatMap((id) => {
+    const m = /^fun(\d)$/.exec(id);
+    return m ? ANIMATED_DECOR.slice(Number(m[1]) * 10, Number(m[1]) * 10 + 10) : [id];
+  });
+  decorIds.forEach((id, i) => aq.addDecor(id, { x: decorIds.length > 3 ? 0.06 + (i / Math.max(1, decorIds.length - 1)) * 0.88 : undefined, z: decorIds.length > 3 ? 0.18 + (i % 3) * 0.24 : undefined }));
+  if (params.get('use')) aq.useBoost = Number(params.get('use'));
+  const play = params.get('play');
+  if (play) {
+    const at = Number(params.get('playAt') || 2.5) * 1000;
+    setTimeout(() => {
+      const list = play === 'all' ? aq.decor : aq.decor.filter((d) => d.rec.id === play);
+      list.forEach((d, i) => setTimeout(() => aq.interact(d), i * 450));
+    }, at);
+  }
   if (!state.tank.decor.length) for (const id of ['rock_arch', 'coral_fan']) aq.addDecor(id);
   const offline = Number(params.get('offline') || 0);
   if (offline) console.log('offline coins', aq.offlineCoins(offline));

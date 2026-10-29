@@ -104,13 +104,23 @@ export class PackagePanel {
       ctx.fill();
     }
     ctx.globalCompositeOperation = 'source-over';
-    // floor + rug
+    // floor + a round wooden pedestal trimmed in the tier colour
     ctx.fillStyle = '#1a1018'; ctx.fillRect(r.x, floor + 8, r.w, r.h);
-    ctx.fillStyle = '#2a1a24';
-    for (let i = 0; i < 6; i++) ctx.fillRect(Math.round(cx - 90 + i * 4), floor + 6 + i, 180 - i * 8, 1);
-    ctx.fillStyle = mix(T.color, '#3a1a2a', 0.5);
-    ctx.fillRect(cx - 70, floor + 6, 140, 6);
-    ctx.fillStyle = T.color; ctx.fillRect(cx - 70, floor + 6, 140, 1);
+    for (let i = 0; i < 10; i++) { ctx.fillStyle = rgba('#000000', 0.04 * (10 - i)); ctx.fillRect(r.x, floor + 8 + i * 2, r.w, 2); }
+    const pr = 74, ph2 = 12;
+    for (let yy = -ph2; yy <= ph2 + 10; yy++) {
+      const k = yy <= ph2 ? Math.sqrt(Math.max(0, 1 - (yy / ph2) ** 2)) : Math.sqrt(Math.max(0, 1 - ((yy - 10) / ph2) ** 2));
+      const w = Math.round(pr * k);
+      if (w <= 0) continue;
+      ctx.fillStyle = yy < 0 ? '#7a4a28' : yy <= ph2 ? (yy < 2 ? '#9a6232' : '#6a3e22') : '#3a2010';
+      if (yy > ph2 - 2 && yy <= ph2 + 10) ctx.fillStyle = (yy & 1) ? '#4a2a18' : '#3a2010';
+      ctx.fillRect(cx - w, floor + 2 + yy, w * 2, 1);
+    }
+    for (let a = 0; a < TAU; a += 0.012) { ctx.fillStyle = T.color; ctx.fillRect(Math.round(cx + Math.cos(a) * pr), Math.round(floor + 2 + Math.sin(a) * ph2), 1, 1); }
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = rgba(T.glow, 0.12 + 0.05 * Math.sin(t * 3));
+    for (let yy = -ph2 + 2; yy <= ph2 - 2; yy++) { const w = Math.round((pr - 8) * Math.sqrt(Math.max(0, 1 - (yy / ph2) ** 2))); ctx.fillRect(cx - w, floor + 2 + yy, w * 2, 1); }
+    ctx.globalCompositeOperation = 'source-over';
     // ---- crate
     if (this.phase !== 'empty') {
       const parts = packageParts(this.pkg.tier, 2.2, this.phase === 'idle' ? Math.floor(t * 3) % 16 : 0, true);
@@ -303,4 +313,4 @@ export class PackagePanel {
 }
 const cwMin = 30;
 
-void TIER_ORDER; void shade; void measureText; void getUiIcon; void drawWood; void clamp; void TAU;
+void TIER_ORDER; void shade; void measureText; void getUiIcon; void drawWood; void clamp;

@@ -399,7 +399,7 @@ export class InventoryPanel {
     let bx = ip.x + 6;
     const by = ip.y + ip.h - 28;
     for (const a of acts) {
-      const bw = Math.max(54, measureText(a.label) + (a.icon ? 24 : 14));
+      const bw = Math.max(54, measureText(a.label) + (a.icon ? 30 : 16));
       if (ui.button(ctx, bx, by, bw, 20, a.label, { icon: a.icon, style: a.style || 'wood', disabled: a.disabled, tip: a.tip })) a.run();
       bx += bw + 4;
     }

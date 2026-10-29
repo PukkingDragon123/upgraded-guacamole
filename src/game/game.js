@@ -654,6 +654,7 @@ export class Game {
     const cam = this.camera;
     // adjustable transparency: overlay shows the real desktop through the water; on web the classic wallpaper
     const opacity = this.mode === 'overlay' ? this.state.settings.overlayOpacity ?? 0.25 : this.state.settings.oceanOpacity ?? 1;
+    if (!realDesktop && opacity >= 1 && view === 'ocean') { ctx.fillStyle = '#0b1622'; ctx.fillRect(0, 0, W, H); }
     if (!realDesktop && opacity < 1 && view === 'ocean') this.wallpaper.draw(ctx, dt);
     const liveOcean = view === 'ocean' && !ocean.travelState && ocean.reveal >= 1;
     const shader = liveOcean && !this.lowPower && this.water?.available;

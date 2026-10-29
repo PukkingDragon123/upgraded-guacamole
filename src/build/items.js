@@ -193,7 +193,11 @@ const FISH_TIERS = {
   common: [82, 16, 2, 0], uncommon: [66, 28, 5.5, 0.5], rare: [46, 38, 14, 2], epic: [24, 40, 28, 8], legendary: [0, 30, 48, 22],
 };
 
-export function rollPackage(species, biome, luck = 0) {
+// Building / research luck bonus applied to every roll (game.build keeps it updated).
+let packageLuck = 0;
+export function setPackageLuck(v) { packageLuck = Number.isFinite(v) ? Math.max(0, v) : 0; }
+
+export function rollPackage(species, biome, luck = packageLuck) {
   const r = species?.rarity || 'common';
   const deep = biome === 'abyss' ? 1.15 : biome === 'junkyard' ? 1.05 : 1;
   if (!rng.chance((FISH_CHANCE[r] ?? 0.08) * deep * (1 + luck))) return null;
@@ -266,8 +270,8 @@ export function grantLoot(game, loot, x, y) {
 
 // Crate hanging below the rope attachment point (x, y). opts: {scale, rope (px), swing}
 export function drawPackage(ctx, x, y, tier, t = 0, opts = {}) {
-  const scale = opts.scale ?? 0.7;
-  const p = packageParts(TIERS[tier] ? tier : 'crate', scale, 0, true);
+  const scale = Math.max(0.2, Math.round((opts.scale ?? 0.7) * 10) / 10);
+  const p = packageParts(TIERS[tier] ? tier : 'crate', scale, 0, true, true);
   if (!p) return null;
   const rope = Math.round(opts.rope ?? 6 * scale + 3);
   const sw = opts.swing ?? Math.sin(t * 2.3) * 1.6;

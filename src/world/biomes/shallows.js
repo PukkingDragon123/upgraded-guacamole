@@ -6,6 +6,7 @@
 import { Biome, worldTop } from './base.js';
 import { SkyDome, skyBodies } from '../sky.js';
 import { palmIsland, lighthouseIslet, sailboat, seaStacks, markerBuoy } from '../horizon.js';
+import { render, strip, spire, mesa, rockArch, ridgeStrip, kelpColumn, propSprite } from '../farvox.js';
 import { clamp, clamp01, lerp, smoothstep, ease, hash2, fbm2, TAU } from '../../core/math.js';
 import { RNG } from '../../core/rng.js';
 import { mix, rgba, pack } from '../../core/color.js';
@@ -351,47 +352,33 @@ export class ShallowsBiome extends Biome {
     const LW = W + pad * 2;
     const r = new RNG(5);
     const hz = D.hz;
-    // --- far A: distant reef wall with pinnacles & an arch, rising out of the horizon fog
+    const ROCK = ['#5a6a92', '#6c7ea2', '#4c5a80', '#7e8eae', '#5e6e8c'];
+    const CORAL = { cols: ['#e86a8a', '#f0a050', '#f0d060', '#6ac070', '#a070d0', '#ff8aa8'], density: 0.55, blobs: 14, ledge: 0.16, branch: true };
+    // --- far A: a distant reef massif of voxel pinnacles, mesas and a great arch crowned with coral
     const yA = Math.round(hz - H * 0.3), hA = H - yA;
-    const mA = new Mask(LW, hA);
     const baseA = hz - yA + 12;
-    const rA = ridge(LW, baseA - 30, 22, 0.0065, 3.1, 4, 0.25);
-    mA.below((x) => rA[x]);
-    for (let i = 0; i < 6; i++) {
-      const px = r.float(0.05, 0.95) * LW, top = r.float(10, baseA - 70), w = r.float(9, 20);
-      mA.poly([[px - w * 1.6, baseA], [px - w * 0.6, top + 18], [px - w * 0.25, top + 4], [px + w * 0.35, top], [px + w * 0.7, top + 14], [px + w * 1.5, baseA]]);
-    }
-    const ax = LW * 0.58, ay = baseA - 62;
-    mA.ellipse(ax, ay, 46, 30); mA.ellipse(ax, ay + 6, 30, 22, 0); mA.rect(ax - 30, ay + 6, 60, 70, 0);
-    mA.rect(ax - 46, ay + 20, 16, 70); mA.rect(ax + 30, ay + 20, 16, 70);
-    const palA = stopPalette([[0, '#0c3650'], [1, '#2a7a98']], 6);
-    this.farA = new FogLayer(mA.toCanvas((x, y, v, up) => {
-      if (up <= 1) return pack('#64c4d4');
-      return ditherPick(palA, 0.75 - Math.min(1, up / 70) * 0.6 + (fbm2(x * 0.05, y * 0.05, 2, 2) - 0.5) * 0.35, x, y);
-    }), -pad, yA);
+    const A = [];
+    const spires = [[0.04, 46, 8], [0.17, 70, 10], [0.3, 40, 7], [0.78, 76, 11], [0.9, 52, 9], [0.99, 38, 7], [0.44, 34, 6]];
+    spires.forEach(([xf, h, w], i) => A.push({ spr: render(spire(40 + i, { h, w, d: 16, lean: r.float(-0.08, 0.08), cols: ROCK, crown: CORAL }), { yaw: i % 2 ? 22 : -22 }), x: xf * LW, y: baseA + r.int(-2, 4), z: 1 + r.next() * 0.1 }));
+    A.push({ spr: render(rockArch(51, { span: 46, h: 58, th: 7, d: 14, cols: ROCK, crown: CORAL }), { yaw: 18 }), x: LW * 0.6, y: baseA + 2, z: 0.95 });
+    A.push({ spr: render(mesa(52, { h: 26, w: 30, d: 18, cols: ROCK, crown: CORAL }), { yaw: -16 }), x: LW * 0.35, y: baseA + 4, z: 0.9 });
+    A.push({ spr: render(mesa(53, { h: 18, w: 22, d: 16, cols: ROCK, crown: CORAL }), { yaw: 20 }), x: LW * 0.69, y: baseA + 6, z: 0.4 });
+    const ridgeA = ridgeStrip(54, LW, { amp: 8, base: 7, d: 14, cols: ['#8a9ab4', '#7a8aa6', '#6a7a98'], rocks: { cols: ROCK } });
+    this.farA = new FogLayer(strip(LW, hA, A, { canvas: ridgeA.canvas, x: Math.round(LW / 2 - ridgeA.ox), y: Math.round(baseA + 14 - ridgeA.oy) }), -pad, yA);
     this.farAY = yA;
-    // --- far B: coral heads, branching coral, sea fans, kelp silhouettes on the horizon
+    // --- far B: the horizon coral garden: voxel corals, sea fans, boulders and kelp columns on a sand ridge
     const yB = Math.round(hz - 130), hB = H - yB;
-    const mB = new Mask(LW, hB);
     const baseB = hz - yB + 22;
-    const rB = ridge(LW, baseB - 8, 10, 0.011, 7.7, 3);
-    mB.below((x) => rB[x]);
-    for (let i = 0; i < 30; i++) {
-      const px = r.float(0, LW), by = rB[Math.round(clamp(px, 0, LW))] + 4;
-      const k = r.next();
-      if (k < 0.35) mB.ellipse(px, by - 4, r.float(8, 18), r.float(6, 12));
-      else if (k < 0.7) mB.branch(px, by, r.float(-0.2, 0.2), r.float(10, 20), r.float(1.6, 3), 3, r, 1, 0.6);
-      else if (k < 0.85) { const fr = r.float(12, 20); for (let a = -1.1; a <= 1.1; a += 0.22) mB.line(px, by, px + Math.sin(a) * fr, by - Math.cos(a) * fr * 1.1, 1.1); mB.ellipse(px, by - fr * 0.6, fr * 0.85, fr * 0.55); }
-      else { let x = px, y = by; for (let j = 0; j < 26; j++) { const nx = x + Math.sin(j * 0.4 + i) * 1.4, ny = y - 4; mB.line(x, y, nx, ny, 1.3); x = nx; y = ny; } }
+    const B = [];
+    const kinds = [['coral_branch', 4], ['coral_fan', 3], ['coral_brain', 3], ['coral_tube', 3], ['coral_staghorn', 3], ['rock_big', 1], ['rock_small', 1], ['anemone_base', 3], ['starfish_rock', 1]];
+    for (let i = 0; i < 60; i++) {
+      const [id, nv] = kinds[r.int(0, kinds.length - 1)];
+      const sp = propSprite(id, r.pick([0.4, 0.5, 0.6]), r.int(0, nv - 1));
+      if (sp) B.push({ spr: sp, x: r.float(0, LW), y: baseB + r.int(-3, 3), z: r.next() });
     }
-    const palB = stopPalette([[0, '#0a3246'], [1, '#2a6e88']], 6);
-    const palS = stopPalette([[0, '#6a8a8a'], [1, '#b8b49a']], 5);
-    this.farB = new FogLayer(mB.toCanvas((x, y, v, up) => {
-      if (y > rB[x] + 6) return ditherPick(palS, 0.4 + (y - rB[x]) / 60 + (fbm2(x * 0.05, y * 0.2, 2, 6) - 0.5) * 0.3, x, y);
-      if (up <= 1) return pack('#7ed4dc');
-      if (up === 2) return pack('#3e8ea4');
-      return ditherPick(palB, 0.72 - Math.min(1, up / 40) * 0.55 + (fbm2(x * 0.08, y * 0.08, 2, 6) - 0.5) * 0.4, x, y);
-    }), -pad, yB);
+    for (let i = 0; i < 10; i++) B.push({ spr: kelpColumn(60 + i, r.int(30, 60), ['#3e6a2a', '#5a8a34', '#86b048'], 1), x: r.float(0, LW), y: baseB + r.int(-2, 2), z: r.float(0.6, 1) });
+    const ridgeB = ridgeStrip(55, LW, { amp: 6, base: 5, d: 12, cols: ['#e2cc98', '#d0b884', '#bca674'], rocks: { cols: ['#8a8a9a', '#a09aa8'] } });
+    this.farB = new FogLayer(strip(LW, hB, B, { canvas: ridgeB.canvas, x: Math.round(LW / 2 - ridgeB.ox), y: Math.round(baseB + 10 - ridgeB.oy) }), -pad, yB);
     this.farBY = yB;
     // giants
     this.whale = whaleFrames(230);
@@ -737,9 +724,9 @@ export class ShallowsBiome extends Biome {
     const px = this.par.x, py = this.par.y;
     const wob = quality(env) >= 1 ? 1 : 0;
     const t = this.t, wx = this.wx;
-    drawWobble(ctx, this.farA.tint(water, 0.8, key), -this.pad + px * 0.8, this.farAY + py * 0.4, t, wob, 4, 0.9, 0.07);
+    drawWobble(ctx, this.farA.tint(water, 0.64, key), -this.pad + px * 0.8, this.farAY + py * 0.4, t, wob, 4, 0.9, 0.07);
     this.drawGiant(ctx);
-    drawWobble(ctx, this.farB.tint(water, 0.74, key), -this.pad + px * 1.4, this.farBY + py * 0.5, t + 2, wob, 4, 1.1, 0.09);
+    drawWobble(ctx, this.farB.tint(water, 0.66, key), -this.pad + px * 1.4, this.farBY + py * 0.5, t + 2, wob, 4, 1.1, 0.09);
     // far band of the perspective seabed (behind the far fish)
     this.bands.draw(ctx, 2, tod, px * 2, py * 0.6);
     ctx.drawImage(this.haze.tint(water, 1, key), 0, this.hazeY);

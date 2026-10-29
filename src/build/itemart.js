@@ -401,8 +401,8 @@ export function itemSprite(id, { scale = 1, frame = 0, force = false } = {}) {
 
 const pkgCache = new Map();
 // Package body + lid rendered with identical framing (lid drawn on top at the same offset).
-export function packageParts(tier, scale = 1, frame = 0, force = true) {
-  const key = tier + '|' + scale + '|' + frame;
+export function packageParts(tier, scale = 1, frame = 0, force = true, full = false) {
+  const key = tier + '|' + scale + '|' + frame + (full ? '|f' : '');
   let p = pkgCache.get(key);
   if (p) return p;
   if (!force && !canRender()) return null;
@@ -411,12 +411,12 @@ export function packageParts(tier, scale = 1, frame = 0, force = true) {
   built.set('pkgparts_' + tier, b);
   p = timed(() => {
     const opts = { scale: 2 * scale, yaw: 30 + (frame * 360) / SPIN, pitch: 26, glowRadius: 2 };
-    const full = renderVoxels(b.m, opts);
-    const body = renderVoxels(b.m, { ...opts, keepVoxel: (x, y) => y < b.lidY }).canvas;
-    const lid = renderVoxels(b.m, { ...opts, keepVoxel: (x, y) => y >= b.lidY }).canvas;
-    const top = full.project(b.m.nx / 2, b.m.ny, b.m.nz / 2);
-    const lidC = full.project(b.m.nx / 2, b.lidY + 2, b.m.nz / 2);
-    return { full: full.canvas, glow: full.glow, body, lid, ox: full.ox, oy: full.oy, w: full.w, h: full.h, top: [Math.round(top[0]), Math.round(top[1])], lidAt: [Math.round(lidC[0]), Math.round(lidC[1])] };
+    const R = renderVoxels(b.m, opts);
+    const body = full ? null : renderVoxels(b.m, { ...opts, keepVoxel: (x, y) => y < b.lidY }).canvas;
+    const lid = full ? null : renderVoxels(b.m, { ...opts, keepVoxel: (x, y) => y >= b.lidY }).canvas;
+    const top = R.project(b.m.nx / 2, b.m.ny, b.m.nz / 2);
+    const lidC = R.project(b.m.nx / 2, b.lidY + 2, b.m.nz / 2);
+    return { full: R.canvas, glow: R.glow, body, lid, ox: R.ox, oy: R.oy, w: R.w, h: R.h, top: [Math.round(top[0]), Math.round(top[1])], lidAt: [Math.round(lidC[0]), Math.round(lidC[1])] };
   });
   pkgCache.set(key, p);
   return p;

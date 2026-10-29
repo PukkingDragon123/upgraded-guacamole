@@ -9,7 +9,7 @@
 
 import { clamp, clamp01, lerp, damp, ease, TAU, bayer, hash1, hash2, hash3, formatCommas } from '../core/math.js';
 import { RNG } from '../core/rng.js';
-import { rgba, shade, mix, pack } from '../core/color.js';
+import { rgba, shade, mix, pack, RARITY } from '../core/color.js';
 import { tinted, makeCanvas, ctxOf } from '../core/canvas.js';
 import { PixelBuffer } from '../gfx/pixel.js';
 import { VoxelModel, renderVoxels } from '../gfx/voxel.js';
@@ -61,8 +61,8 @@ const BAIT_FX = {
   blackhole: ['Pulls icons and deep fish to the hook', 'x1.3 rarity, +35% population', 'Icons spring back after'],
   chip: ['Sparks attract mechanical fish', 'Junkyard Reef favourite'],
   popup: ['Spam fish cannot resist', '+30% fish population'],
-  lantern: ['Lights up the Midnight Abyss', 'Abyss fish follow the light'],
-  relic: ['Summons the abyss guardian', 'Use only in the Midnight Abyss'],
+  lantern: ['Lights up the Deep Ocean', 'Deep-sea fish follow the light'],
+  relic: ['Summons the guardian of the deep', 'Use only in the Deep Ocean'],
 };
 const TIPS = {
   bread: "Commons first, sprat. Build up yer coins before ye splurge.",
@@ -73,8 +73,8 @@ const TIPS = {
   blackhole: 'Keep yer hook away from the taskbar. Ask me how I know.',
   chip: 'Junkyard fish go mad for sparks. Bring a spare line.',
   popup: 'Spam fish swarm it. Close the ad before it closes you.',
-  lantern: 'Down in the Abyss, light is life. Bring two.',
-  relic: "Only in the Abyss. And don't say I didn't warn ye.",
+  lantern: 'Down in the Deep, light is life. Bring two.',
+  relic: "Only in the Deep Ocean. And don't say I didn't warn ye.",
   decor: 'Fish with a place to hide are happy fish. Happy fish pay rent.',
   cosmetic: 'A sharp-dressed fisher catches the eye. And the fish.',
   bundle: "Bundles save ye coins. I'm practically givin' it away.",
@@ -88,7 +88,7 @@ const TABS = [
   { id: 'cosmetics', label: 'Cosmetics', icon: 'crown', color: '#8a4ab0' },
   { id: 'specials', label: 'Specials', icon: 'star', color: '#c8902a' },
 ];
-const BIOME_NAMES = { shallows: 'Sunny Shallows', junkyard: 'Junkyard Reef', abyss: 'Midnight Abyss', aquarium: 'Aquarium classics', shop: 'The shop' };
+const BIOME_NAMES = { shallows: 'Sunny Shallows', junkyard: 'Junkyard Reef', abyss: 'The Deep Ocean', aquarium: 'Aquarium classics', shop: 'The shop' };
 const JAR_GLOW = { bread: null, worm: '#ff7ac8', sugar: '#ffffff', golden: '#ffd84a', flood: '#4ac8ff', blackhole: '#b46bff', chip: '#5aff8a', popup: '#ffd84a', lantern: '#5affc8', relic: '#5ae8ff' };
 
 const cache = new Map();
@@ -108,32 +108,24 @@ function decorList() {
 
 const prettify = (s) => String(s).replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
-// WARDROBE may be an array of items or {slot: [items] | {id: item}}; normalise defensively.
+// WARDROBE: [{id, slot, value, name, rarity, price | null (unlock: 'package' | 'skill', skill), desc, color}]
+// (older shapes {slot: [items]} are normalised too). Ownership/equip go through the character module helpers.
 function wardrobeItems() {
   const W = CHAR.WARDROBE;
   const out = [];
-  const seen = new Set();
   const push = (it, slot, i) => {
     if (it == null) return;
     if (typeof it !== 'object') it = { id: it };
-    const id = it.id ?? it.key ?? it.value;
+    const id = it.id ?? it.key;
     if (id == null) return;
-    const s = it.slot || it.kind || it.part || it.type || slot || 'hat';
-    const key = `${s}:${id}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    const hex = typeof id === 'string' && id.startsWith('#');
-    const def = CHAR.DEFAULT_CHARACTER?.[s] === id;
-    out.push({ id: String(id), key, slot: s, name: it.name || it.label || (hex ? `${prettify(s)} Dye` : prettify(id)), price: def ? 0 : it.price ?? it.cost ?? 40 + ((i * 37) % 9) * 15, desc: it.desc || it.description || '', swatch: hex ? id : it.color || null });
+    const s = it.slot || slot || 'hat';
+    out.push({ id: String(id), slot: s, value: it.value ?? id, name: it.name || prettify(id), price: it.price === undefined ? 40 + ((i * 37) % 9) * 15 : it.price, unlock: it.unlock || null, skill: it.skill || null, rarity: it.rarity || 'common', desc: it.desc || '', swatch: s === 'boat' ? it.color || null : null, item: it });
   };
   if (Array.isArray(W)) W.forEach((it, i) => push(it, null, i));
-  else if (W && typeof W === 'object') {
-    for (const [slot, list] of Object.entries(W)) {
-      if (Array.isArray(list)) list.forEach((it, i) => push(it, slot, i));
-      else if (list && typeof list === 'object') Object.entries(list).forEach(([id, it], i) => push(typeof it === 'object' ? { id, ...it } : { id, name: String(it) }, slot, i));
-    }
-  }
-  return out;
+  else if (W && typeof W === 'object') for (const [slot, list] of Object.entries(W)) if (Array.isArray(list)) list.forEach((it, i) => push(it, slot, i));
+  const ord = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4 };
+  // free starter items live in the wardrobe, not on the shop shelves
+  return out.filter((c) => c.price !== 0).sort((a, b) => (a.price == null) - (b.price == null) || (a.price ?? 0) - (b.price ?? 0) || (ord[a.rarity] ?? 0) - (ord[b.rarity] ?? 0));
 }
 
 // ================================================================ Cap'n Bloat (voxel body)
@@ -738,7 +730,6 @@ export class ShopPanel {
     const day = Math.floor((Date.now() - new Date().getTimezoneOffset() * 60000) / 86400000);
     st.shop ||= {};
     if (!st.shop.stock || st.shop.stock.day !== day) st.shop.stock = { day, sold: {} };
-    st.shop.cosmetics ||= {};
     return st.shop;
   }
 
@@ -765,7 +756,17 @@ export class ShopPanel {
       });
     }
     if (tab === 'decor') return this.decor.map((d) => ({ id: d.id, kind: 'decor', name: d.name, desc: decorDesc(d), base: d.price, size: d.size, biome: d.biome, tags: d.tags, locked: false }));
-    if (tab === 'cosmetics') return this.cosmetics.map((c) => ({ ...c, id: c.key, cid: c.id, kind: 'cosmetic', base: c.price, locked: false, desc: c.desc || `A fine ${prettify(c.slot).toLowerCase()} for your fisher. Wear it with pride.` }));
+    if (tab === 'cosmetics') {
+      const list = this.cosmetics.map((c) => {
+        const own = this.ownsCos(c);
+        const locked = !own && c.price == null;
+        const why = c.unlock === 'skill' ? SKILLS.find((q) => q.id === c.skill) : null;
+        return { ...c, kind: 'cosmetic', base: c.price ?? 0, locked, own, skill: why, lockWhy: c.unlock === 'package' ? 'Found only in mystery crates' : why ? `Grow '${why.name}'` : 'Not for sale', desc: c.desc || `A fine ${prettify(c.slot).toLowerCase()} for your fisher.` };
+      });
+      // things you can still buy first, then crate / skill teasers, then what you already own
+      const rank = (q) => (q.own ? 2 : q.locked ? 1 : 0);
+      return list.sort((a, b) => rank(a) - rank(b));
+    }
     // specials: today's deal + bundles built from unlocked bait
     const has = (id) => g.stats.unlockBait.has(id);
     const sp = this.special;
@@ -795,10 +796,29 @@ export class ShopPanel {
     const st = this.game.state;
     if (it.kind === 'deal') return this.owned(it.dealOf);
     if (it.kind === 'bait') return st.baits[it.id] || 0;
-    if (it.kind === 'cosmetic') return it.base === 0 || this.shopState().cosmetics[it.id] || st.character?.[it.slot] === it.cid ? 1 : 0;
+    if (it.kind === 'cosmetic') return this.ownsCos(it) ? 1 : 0;
     if (it.kind === 'bundle') return 0;
     const idOf = (d) => (typeof d === 'string' ? d : d?.id);
     return [...(st.tank?.decor || []), ...(st.tank?.stored || [])].filter((d) => idOf(d) === it.id).length;
+  }
+
+  ownsCos(c) {
+    const st = this.game.state;
+    if (CHAR.ownsCosmetic) return !!CHAR.ownsCosmetic(st, c.item || c.id);
+    return c.price === 0 || !!st.cosmetics?.[c.id];
+  }
+
+  wearing(c) {
+    const st = this.game.state;
+    if (CHAR.isEquipped) { try { return !!CHAR.isEquipped(st.character, c.item); } catch { return false; } }
+    return st.character?.[c.slot] === c.value;
+  }
+
+  wear(c) {
+    const g = this.game, st = g.state;
+    st.character = CHAR.equipItem ? CHAR.equipItem(st.character, c.item) : { ...(CHAR.DEFAULT_CHARACTER || {}), ...(st.character || {}), [c.slot]: c.value };
+    g.emit('wardrobe', { slot: c.slot, id: c.id });
+    g.save?.();
   }
 
   stockLeft(it) {
@@ -844,6 +864,7 @@ export class ShopPanel {
     const price = this.price(it);
     if (it.locked) { g.audio.play('ui_error'); this.say(pick(LINES.locked), 'smug'); return false; }
     if (this.stockLeft(it) <= 0) { g.audio.play('ui_error'); this.say(it.kind === 'cosmetic' ? 'Ye already own that one, sprat.' : pick(LINES.soldout), 'grumpy'); return false; }
+    if (it.kind === 'cosmetic' && it.price == null) { g.audio.play('ui_error'); this.say('Not for sale. Find it in a crate.', 'smug'); return false; }
     if (st.coins < price) { g.audio.play('ui_error'); this.say(pick(LINES.broke), 'angry'); this.puffUp(); return false; }
     let ok = false;
     const real = it.kind === 'deal' ? it.dealOf : it;
@@ -878,13 +899,11 @@ export class ShopPanel {
         ok = true;
       }
     } else if (real.kind === 'cosmetic') {
-      if (g.buyCosmetic) ok = g.buyCosmetic(real.cid, real.slot, price) !== false;
-      else if (g.spendCoins(price)) {
-        this.shopState().cosmetics[real.cid] = true;
-        st.character = { ...(CHAR.DEFAULT_CHARACTER || {}), ...(st.character || {}), [real.slot]: real.cid };
+      if (g.spendCoins(price)) {
+        if (!CHAR.grantCosmetic?.(st, real.id)) (st.cosmetics ||= {})[real.id] = true;
+        this.wear(real);
         g.audio.play('ui_buy');
-        g.emit('buy', real.cid);
-        g.emit('wardrobe', { slot: real.slot, id: real.cid });
+        g.emit('buy', real.id);
         ok = true;
       }
     }
@@ -1642,8 +1661,9 @@ export class ShopPanel {
       const drum = this.drumT > 0 ? Math.floor(t * 9) % 4 : -1;
       const wave = h.happy && this.hop > 0;
       const fl = finSprite(-1, wave ? 2 : 0), fr = finSprite(1, wave ? 2 : drum === 0 || drum === 2 ? 1 : 0);
-      c.drawImage(fl, Math.round(h.L[0] - fl.width + 7), Math.round(Math.max(h.L[1], counter.y - 8) - 11));
-      c.drawImage(fr, Math.round(h.R[0] - 7), Math.round(Math.max(h.R[1], counter.y - 8) - 11 - (drum === 0 || drum === 2 ? 2 : 0)));
+      const up = Math.round(this.puffAmt * 6) + (wave ? 3 : 0);
+      c.drawImage(fl, Math.round(h.L[0] - fl.width + 7), counter.y - 19 - up);
+      c.drawImage(fr, Math.round(h.R[0] - 7), counter.y - 19 - up - (drum === 0 || drum === 2 ? 2 : 0));
     }
     // ashtray shell with a smouldering stub, ledger
     const ax = L.bloat.x - 72, ay = counter.y - 3;
@@ -1991,7 +2011,7 @@ export class ShopPanel {
       k.fillStyle = it.swatch; k.fillRect(w / 2 - 9, h - 25, 18, 18);
       k.fillStyle = rgba('#ffffff', 0.4); k.fillRect(w / 2 - 8, h - 24, 6, 2);
     } else {
-      const look = { ...(CHAR.DEFAULT_CHARACTER || {}), ...(this.game.state.character || {}), [it.slot]: it.cid };
+      const look = CHAR.equipItem ? CHAR.equipItem(this.game.state.character, it.item) : { ...(CHAR.DEFAULT_CHARACTER || {}), ...(this.game.state.character || {}), [it.slot]: it.value };
       try { CHAR.drawCharacter(k, Math.round(w / 2), h - 2, { pose: 'idle', t: 0, facing: 1, scale, look }); } catch { /* the character module may still be landing */ }
     }
     d = this.cosSpr[key] = cv;
@@ -2025,25 +2045,40 @@ export class ShopPanel {
         if (d.glow) { c.globalCompositeOperation = 'lighter'; c.globalAlpha = 0.6; c.drawImage(d.glow, Math.round(cx - d.ox), Math.round(shelfY + 1 - d.oy - lift)); c.globalAlpha = 1; c.globalCompositeOperation = 'source-over'; }
       } else this.unpacking(c, cx, shelfY - 16, t);
     } else if (real.kind === 'cosmetic') {
-      // a little mannequin stand
-      c.fillStyle = '#2a1408'; c.fillRect(cx - 9, shelfY - 3, 18, 3);
-      c.fillStyle = '#8a5428'; c.fillRect(cx - 8, shelfY - 3, 16, 2);
-      const d = this.cosmeticSprite(real, 48, Math.min(64, cell.h - 24));
-      if (d) c.drawImage(d, Math.round(cx - d.width / 2), shelfY - 3 - d.height - lift);
-      else this.unpacking(c, cx, shelfY - 16, t);
-      if (this.owned(real)) drawText(c, 'OWNED', cx, shelfY - 12 - lift, { align: 'center', font: 'small', color: '#9affc8', outline: '#1a0e06' });
+      // a little display stand with a rarity-coloured cushion
+      const rc = RARITY[real.rarity]?.color || '#c9d4dc';
+      c.fillStyle = '#2a1408'; c.fillRect(cx - 13, shelfY - 4, 26, 4);
+      c.fillStyle = shade(rc, -0.35); c.fillRect(cx - 12, shelfY - 4, 24, 3);
+      c.fillStyle = rc; c.fillRect(cx - 12, shelfY - 4, 24, 1);
+      if (real.swatch) {
+        c.fillStyle = '#2a1408'; c.fillRect(cx - 11, shelfY - 28 - lift, 22, 22);
+        c.fillStyle = real.swatch; c.fillRect(cx - 10, shelfY - 27 - lift, 20, 20);
+        c.fillStyle = rgba('#ffffff', 0.45); c.fillRect(cx - 9, shelfY - 26 - lift, 7, 2);
+        drawText(c, 'PAINT', cx, shelfY - 19 - lift, { align: 'center', font: 'small', color: '#ffffff', outline: '#1a0e06' });
+      } else {
+        let pv = null;
+        try { pv = CHAR.itemPreview?.(this.game.state.character, real.item, 1); } catch { pv = null; }
+        if (pv) {
+          if (it.locked) { c.globalAlpha = 0.45; c.drawImage(tinted(pv.canvas, '#1a2030'), Math.round(cx - pv.ox), Math.round(shelfY - 4 - pv.oy - lift)); c.globalAlpha = 1; } else CHAR.drawItemPreview(c, pv, cx, shelfY - 4 - lift, t, 'shop:' + real.id);
+        } else {
+          const d = this.cosmeticSprite(real, 48, Math.min(64, cell.h - 24));
+          if (d) c.drawImage(d, Math.round(cx - d.width / 2), shelfY - 4 - d.height - lift);
+          else this.unpacking(c, cx, shelfY - 16, t);
+        }
+      }
+      if (it.locked) { const lk = getUiIcon('lock'); c.drawImage(lk, Math.round(cx - lk.width / 2), shelfY - 22 - lift); }
     } else if (real.kind === 'bundle') this.drawCrate(c, real, cx, shelfY, lift, t, hov);
     if (it.kind === 'deal') drawStamp(c, cx + 18, shelfY - 40 - lift, '-20%', { color: '#e8283a', angle: 0.25, font: 'small' });
     if (soldOut) drawStamp(c, cx, shelfY - 22, 'SOLD OUT', { color: '#c8283a', angle: -0.2, font: 'small' });
     // price tag hanging under the shelf
     const price = this.price(it);
-    const label = it.locked ? 'LOCKED' : it.kind === 'cosmetic' && this.owned(it) ? 'OWNED' : price === 0 ? 'FREE' : formatCommas(price);
+    const label = it.locked ? (it.kind === 'cosmetic' && it.unlock === 'package' ? 'CRATES' : 'LOCKED') : it.kind === 'cosmetic' && this.owned(it) ? (this.wearing(it) ? 'WEARING' : 'OWNED') : price === 0 ? 'FREE' : formatCommas(price);
     const showCoin = !it.locked && !(it.kind === 'cosmetic' && this.owned(it)) && price > 0;
     const tw = measureText(label, 'small') + (showCoin ? 15 : 8);
     const tx = Math.round(cx - tw / 2), ty = shelfY + 10;
     c.fillStyle = '#d8c8a0';
     c.fillRect(cx, shelfY + 7, 1, 3);
-    const tagCol = special ? '#e8505a' : it.locked ? '#8a8078' : '#f4e6c4';
+    const tagCol = special ? '#e8505a' : it.locked ? '#8a8078' : it.kind === 'cosmetic' && this.owned(it) ? '#9ad8a8' : '#f4e6c4';
     c.fillStyle = '#2a1a10';
     c.fillRect(tx - 1, ty - 1, tw + 2, 11);
     c.fillStyle = tagCol;
@@ -2210,10 +2245,13 @@ export class ShopPanel {
         if (p.glow) { ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(cs < 0 ? this.flipped(p.glow) : p.glow, x, y, w, p.h); ctx.globalCompositeOperation = 'source-over'; }
       }
     } else if (real.kind === 'cosmetic') {
-      const d = this.cosmeticSprite(real, 96, 128, 2);
-      if (d) {
-        const flip = Math.sin(spin * 0.6) < 0;
-        ctx.drawImage(flip ? this.flipped(d) : d, Math.round(mx - d.width / 2), base - d.height + bob);
+      if (real.swatch) {
+        ctx.fillStyle = '#2a1408'; ctx.fillRect(mx - 31, base - 66, 62, 62);
+        ctx.fillStyle = real.swatch; ctx.fillRect(mx - 30, base - 65, 60, 60);
+        ctx.fillStyle = rgba('#ffffff', 0.4); ctx.fillRect(mx - 27, base - 62, 20, 4);
+      } else {
+        const look = CHAR.equipItem ? CHAR.equipItem(st.character, real.item) : { ...(st.character || {}), [real.slot]: real.value };
+        try { CHAR.drawCharacter(ctx, mx, base - 2 + bob, { pose: 'idle', t: this.focusT, scale: 2, look, yaw: (spin * 57.3) % 360, lookAt: [inp.x, inp.y], id: 'shopPreview', shadow: false }); } catch { /* character module still landing */ }
       }
     } else {
       ctx.save();
@@ -2273,14 +2311,15 @@ export class ShopPanel {
       y += 2;
     } else if (real.kind === 'cosmetic') {
       section('DETAILS');
-      drawText(ctx, 'Slot', x, y, { color: INK3 }); drawText(ctx, prettify(real.slot), x + w, y, { color: INK2, align: 'right' }); y += 10;
+      const slotName = (CHAR.WARDROBE_SLOTS || []).find((q) => q.id === real.slot)?.name || prettify(real.slot);
+      const R = RARITY[real.rarity] || RARITY.common;
+      drawText(ctx, 'Slot', x, y, { color: INK3 }); drawText(ctx, slotName, x + w, y, { color: INK2, align: 'right' }); y += 10;
+      drawText(ctx, 'Rarity', x, y, { color: INK3 }); drawText(ctx, R.name, x + w, y, { color: R.dark, align: 'right' }); y += 10;
       drawText(ctx, 'Status', x, y, { color: INK3 });
-      const wearing = st.character?.[real.slot] === real.cid;
-      drawText(ctx, wearing ? 'Wearing it' : this.owned(real) ? 'In your wardrobe' : 'Not owned', x + w, y, { color: wearing || this.owned(real) ? GOOD : INK2, align: 'right' }); y += 12;
+      const wearing = this.wearing(real);
+      drawText(ctx, wearing ? 'Wearing it' : this.owned(real) ? 'In your wardrobe' : real.locked ? real.lockWhy : 'Not owned', x + w, y, { color: wearing || this.owned(real) ? GOOD : real.locked ? BAD : INK2, align: 'right' }); y += 12;
       if (this.owned(real) && !wearing && ui.button(ctx, x, y, w, 18, 'Wear it', { style: 'wood' })) {
-        st.character = { ...(CHAR.DEFAULT_CHARACTER || {}), ...(st.character || {}), [real.slot]: real.cid };
-        g.emit('wardrobe', { slot: real.slot, id: real.cid });
-        g.save?.();
+        this.wear(real);
         this.say(pick(LINES.cosmetic), 'happy');
       }
       if (this.owned(real) && !wearing) y += 22;
@@ -2307,7 +2346,7 @@ export class ShopPanel {
     section('STOCK');
     const left = this.stockLeft(it);
     const own = this.owned(it);
-    drawText(ctx, real.kind === 'cosmetic' ? (own ? 'Owned' : 'One of a kind') : left === Infinity ? 'Plenty in the back' : left > 0 ? `${left} left today` : 'Sold out - back tomorrow', x, y, { color: left > 0 ? INK2 : BAD });
+    drawText(ctx, real.kind === 'cosmetic' ? (own ? 'Already in your wardrobe' : 'One of a kind') : left === Infinity ? 'Plenty in the back' : left > 0 ? `${left} left today` : 'Sold out - back tomorrow', x, y, { color: real.kind === 'cosmetic' ? (own ? GOOD : INK2) : left > 0 ? INK2 : BAD });
     if (real.kind === 'bait') drawText(ctx, `You have ${own}`, x + w, y, { color: INK3, align: 'right' });
     y += 12;
     section('DAILY DEAL');
@@ -2361,7 +2400,7 @@ export class ShopPanel {
     }
     drawText(ctx, price ? `${formatCommas(price)}{coin}` : 'FREE', x + (isDeal && price !== real.base ? measureText(formatCommas(real.base)) + 8 : 0), by + 2, { scale: 2, color: INK });
     drawText(ctx, st.coins >= price ? `You have ${formatCommas(Math.floor(st.coins))}` : `Need ${formatCommas(Math.ceil(price - st.coins))} more`, x, by + 20, { font: 'small', color: st.coins >= price ? GOOD : BAD });
-    const canBuy = !it.locked && left > 0 && !(real.kind === 'cosmetic' && own);
+    const canBuy = !it.locked && left > 0 && !(real.kind === 'cosmetic' && own) && !(real.kind === 'cosmetic' && real.price == null);
     const label = it.locked ? 'Locked' : real.kind === 'cosmetic' && own ? 'Owned' : left <= 0 ? 'Sold out' : 'Buy!';
     const bw = 104, bx = x + w - bw;
     const bR = { x: bx, y: by - 2, w: bw, h: 26 };
@@ -2376,7 +2415,8 @@ export class ShopPanel {
         P.bubbles(mx, base - 30, 8, { layer: 'ui' });
       }
     } else if (pressedOver) this.buy(it);
-    if (it.locked && it.skill) drawText(ctx, `Unlock: grow '${it.skill.name}' (${BRANCHES[it.skill.branch].name})`, x, by - 18, { font: 'small', color: BAD });
+    if (it.locked && real.kind === 'cosmetic') drawText(ctx, real.lockWhy, x, by - 18, { font: 'small', color: BAD });
+    else if (it.locked && it.skill) drawText(ctx, `Unlock: grow '${it.skill.name}' (${BRANCHES[it.skill.branch].name})`, x, by - 18, { font: 'small', color: BAD });
     if (this.buyFlash > 0) {
       this.buyFlash = Math.max(0, this.buyFlash - dt * 1.2);
       ctx.globalAlpha = a * clamp01(this.buyFlash * 3);
@@ -2486,7 +2526,7 @@ export class ShopPanel {
 }
 
 function decorDesc(d) {
-  const where = { shallows: 'Found in the Sunny Shallows.', junkyard: 'Salvaged from Junkyard Reef.', abyss: 'Hauled up from the Midnight Abyss.', aquarium: 'A classic aquarium ornament.' }[d.biome] || '';
+  const where = { shallows: 'Found in the Sunny Shallows.', junkyard: 'Salvaged from Junkyard Reef.', abyss: 'Hauled up from the Deep Ocean.', aquarium: 'A classic aquarium ornament.' }[d.biome] || '';
   const size = ['', 'A small touch', 'A handsome centrepiece', 'A grand landmark'][d.size] || 'A decoration';
   return `${size} for your aquarium. ${where} Fish love to explore it.`;
 }

@@ -105,6 +105,12 @@ export class Dock {
 
   layout() {
     const g = this.game;
+    // building system buttons (Blueprint scroll + Inventory satchel) join the dock once game.build exists
+    if (!this.buildAdded && g.build?.dockItems) {
+      this.buildAdded = true;
+      this.items.unshift(...g.build.dockItems());
+      g.ui.setDock(this.items);
+    }
     const W = g.screen.W, H = g.screen.H;
     let x = W - 12;
     for (const it of this.items.slice().reverse()) {

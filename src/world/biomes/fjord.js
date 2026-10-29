@@ -10,7 +10,7 @@
 // used by the volcano and metropolis biomes.
 
 import { Biome, worldTop } from './base.js';
-import { clamp, clamp01, lerp, smoothstep, ease, hash2, fbm2, TAU } from '../../core/math.js';
+import { clamp, clamp01, lerp, smoothstep, ease, hash2, fbm2, bayer, TAU } from '../../core/math.js';
 import { RNG } from '../../core/rng.js';
 import { mix, rgba, pack } from '../../core/color.js';
 import { makeCanvas, ctxOf, makeLayer, tinted } from '../../core/canvas.js';
@@ -147,11 +147,11 @@ const WATER = {
   dusk: [[0, '#f2c8b8'], [0.04, '#a4c0cc'], [0.14, '#5094b8'], [0.5, '#2e6098'], [1, '#1a3a6c']],
   night: [[0, '#5aa8c4'], [0.1, '#2e7aa0'], [0.5, '#1c5282'], [1, '#103262']],
 };
-// mountain material palettes: far range, rock, snow, glacier ice (dark -> light)
+// mountain material palettes (dark -> light): far range, rock, snow, glacier ice
 const MT = {
-  day: { far: ['#7e9cc4', '#9ab6d8', '#c2d8ee', '#e4f0fa'], rock: ['#28324a', '#3c4862', '#56637e', '#7a88a2'], snow: ['#8aa4cc', '#b4cae6', '#dcebfa', '#ffffff'], ice: ['#2a86b4', '#46aed4', '#86dcee', '#d0f8ff'] },
-  dusk: { far: ['#5a4a7a', '#7e5c88', '#b87a92', '#eaa49c'], rock: ['#1e1834', '#2e2446', '#463460', '#664a78'], snow: ['#76629a', '#b47ea4', '#f2a8a0', '#ffd8bc'], ice: ['#3a4a8a', '#5a64a8', '#c08ab0', '#ffc8c0'] },
-  night: { far: ['#0c1430', '#13203e', '#1c2e52', '#2a4068'], rock: ['#04070f', '#080d1c', '#0f172c', '#18223c'], snow: ['#1e2c4e', '#304670', '#4a6496', '#7690c4'], ice: ['#0c2442', '#14385c', '#22567e', '#3a78a2'] },
+  day: { far: ['#7e9cc4', '#98b4d6', '#b8cee8', '#d8e8f6', '#eef6fc'], rock: ['#1e2638', '#2e3a52', '#46526c', '#5e6c88', '#8090aa'], snow: ['#7e98c4', '#a4bcde', '#c8daf0', '#e6f0fa', '#ffffff'], ice: ['#1e78a8', '#3aa0cc', '#6ccae4', '#a8ecf8', '#e2fcff'] },
+  dusk: { far: ['#4a3e6e', '#6a5288', '#946a98', '#c8869a', '#eeaa9e'], rock: ['#160f26', '#241a3a', '#382852', '#523a6a', '#70508a'], snow: ['#5a4e86', '#8a68a0', '#c88aa8', '#f2aea2', '#ffdcc0'], ice: ['#2a3a7a', '#4a589a', '#8a78b0', '#e0a0b0', '#ffd0c4'] },
+  night: { far: ['#0a1228', '#101c38', '#18284a', '#22365c', '#30486e'], rock: ['#020409', '#060a16', '#0c1324', '#141e36', '#1e2c4a'], snow: ['#16223e', '#22345a', '#34507e', '#4e6c9e', '#7090c4'], ice: ['#0a1e36', '#10304e', '#1a4a6c', '#2a6890', '#4a8ab2'] },
 };
 const STRATA = [[104, 116, 140], [88, 100, 124], [118, 128, 150], [96, 104, 130], [80, 90, 114]];
 const NEON_ICE = '#9ff4ff';
@@ -323,7 +323,7 @@ function iceArchModel() {
 function shipModel() {
   const m = new VoxelModel(116, 82, 46);
   const wood = [m.color('#5a3a2a', { jitter: 0.12 }), m.color('#6e4a34', { jitter: 0.12 }), m.color('#82593c', { jitter: 0.12 }), m.color('#3a2620', { jitter: 0.08 })];
-  const frost = [m.color('#e6f4fc', { jitter: 0.06, smooth: 0.5 }), m.color('#b8dcf0', { jitter: 0.06, smooth: 0.5 }), m.color('#ffffff', { jitter: 0.04, smooth: 0.5 })];
+  const frost = [m.color('#e6f4fc', { jitter: 0.02, smooth: 0.7 }), m.color('#b8dcf0', { jitter: 0.03, smooth: 0.6 }), m.color('#f4faff', { jitter: 0.02, smooth: 0.7 })];
   const ice = [m.color('#9adcf0', { jitter: 0.05, smooth: 0.4, emissive: 0.08 }), m.color('#d4f6ff', { jitter: 0.04, smooth: 0.4, emissive: 0.15 })];
   const iron = m.color('#4a4e60', { jitter: 0.1 }), dark = m.color('#160e14', { jitter: 0 });
   const tilt = 0.2, roll = 0.12;
@@ -396,6 +396,37 @@ function shipModel() {
     return d < 1 && y < (1 - d * d) * 6 + fbm2(x * 0.2, z * 0.2, 2, 8) * 2;
   }, (x, y, z) => (hash2(x, z, 6) < 0.15 ? frost[1] : hash2(x, z, 7) < 0.5 ? silt[0] : silt[1])));
   return { m, yaw: 22, pitch: 24 };
+}
+
+// Wispy soft-edged cloud (white, dithered alpha, bluish underside).
+function softCloud(w, h, seed) {
+  return paint(w, h, (x, y) => {
+    const dx = (x - w / 2) / (w / 2), dy = (y - h * 0.6) / (h * 0.5);
+    const fall = 1 - dx * dx - dy * dy * 1.4;
+    if (fall <= 0) return 0;
+    const n = fbm2(x * 0.06 + seed, y * 0.12, 3, seed) + fall * 0.55 - 0.62;
+    if (n <= 0) return 0;
+    const q = Math.floor(clamp01(n * 2.4) * 4 + bayer(x, y)) / 4;
+    if (q <= 0) return 0;
+    return pack(y > h * 0.62 ? '#c8d8ec' : '#ffffff', Math.round(q * 200));
+  });
+}
+
+// Translucent faceted ice block (the chest's prison): irregular outline, bright rim, inner facets.
+function iceBlockSprite(w, h, seed) {
+  const m = new Mask(w, h);
+  const r = new RNG(seed);
+  const pts = [[2, h * 0.28], [w * 0.22, 1], [w * 0.62, 0], [w - 2, h * 0.18], [w - 1, h * 0.7], [w * 0.8, h - 1], [w * 0.2, h - 1], [0, h * 0.75]].map(([x, y]) => [x + r.float(-1, 1), y + r.float(-1, 1)]);
+  m.poly(pts);
+  return m.toCanvas((x, y, v, up, left, right) => {
+    if (up <= 1) return pack('#ffffff', 235);
+    if (left) return pack('#e8fdff', 200);
+    if (right) return pack('#4aa4c8', 200);
+    if (y > h - 3) return pack('#3a8ab0', 180);
+    const facet = (x * 0.8 + y * 1.3 + fbm2(x * 0.2, y * 0.2, 2, seed) * 8) % 12;
+    if (facet < 1) return pack('#ffffff', 150);
+    return pack(facet < 6 ? '#b4eef8' : '#8adcf0', 120 + ((x + y) % 2) * 14);
+  });
 }
 
 function singingCrystal(size) {
@@ -476,203 +507,213 @@ export class FjordBiome extends Biome {
     this.fresh = true;
   }
 
-  // Sky canvas (world y skyY .. base + 14) per time of day: gradient, sun/moon, stars, mountains, glacier, icebergs.
+  // Sky (gradient, sun/moon, baked stars) and a separate mountain canvas (fjord walls, peaks, glacier, icebergs)
+  // per time of day, both spanning world y skyY .. base + 14. Aurora, clouds and birds are drawn between the two.
   buildSky() {
-    const W = this.W, base = this.base;
-    const skyY = this.top - 12;
+    const W = this.W, base = this.base, top = this.top;
+    const skyY = top - 12;
     this.skyY = skyY;
     const h = base + 14 - skyY;
     this.skyH = h;
-    const wy = (row) => row + skyY;
-    const ry = (y) => y - skyY;
-    // ---- silhouettes (world y of each layer's top edge per column)
-    const far = new Float32Array(W + 1), mid = new Float32Array(W + 1);
-    const farR = ridge(W, base - 92, 52, 0.011, 2.4, 4, 0.55);
-    for (let x = 0; x <= W; x++) far[x] = farR[x];
-    const peaks = [[0.27, 228, 0.16], [0.4, 150, 0.1], [0.66, 170, 0.12], [0.79, 236, 0.15], [0.55, 112, 0.08]];
-    for (let x = 0; x <= W; x++) {
-      let y = base + 4;
-      for (const [pxf, ph, hw] of peaks) {
-        const d = Math.abs(x / W - pxf) / hw;
-        y = Math.min(y, base - ph + Math.pow(d, 1.25) * ph * 0.82);
-      }
-      y += (fbm2(x * 0.05, 3.3, 3, 21) - 0.5) * 16 + Math.abs(Math.sin(x * 0.11)) * 2;
-      mid[x] = y;
-    }
-    // glacier between the middle peaks: from a high saddle down to a calving cliff at the water
-    const gx0 = Math.round(W * 0.43), gx1 = Math.round(W * 0.66), gTop = base - 104;
-    const glacierTop = (x) => gTop + Math.pow(Math.abs((x - (gx0 + gx1) / 2) / ((gx1 - gx0) / 2)), 2) * 34 + (fbm2(x * 0.08, 1, 2, 5) - 0.5) * 4;
-    // near walls (left/right) as x-extent per world y
-    const wallL = (y) => W * 0.16 + (y - this.top) * -0.05 + (fbm2(2.1, y * 0.03, 3, 31) - 0.5) * 34 + (y > base - 40 ? (y - (base - 40)) * -0.55 : 0);
-    const wallR = (y) => W * 0.835 + (y - this.top) * 0.04 + (fbm2(7.7, y * 0.03, 3, 33) - 0.5) * 30 + (y > base - 30 ? (y - (base - 30)) * 0.7 : 0);
-    this.wallL = wallL; this.wallR = wallR;
-    // icebergs floating on the fjord (their keels show underwater in the far layer)
-    this.bergs = [[0.34, 26, 18], [0.71, 18, 12], [0.58, 10, 7]].map(([xf, w, hh]) => ({ x: Math.round(xf * W), w, h: hh }));
-    // ---- material + tone maps (shared by the three palettes)
     const N = W * h;
+    // mat: 0 sky, 1 far range, 2 rock, 3 snow, 4 glacier, 5 glacier cliff, 6 wall rock, 7 wall snow, 8 berg ice, 9 berg top, 10 far snow, 11 icefall
     const mat = new Uint8Array(N), tone = new Float32Array(N);
-    // mat: 0 sky, 1 far range, 2 mid rock, 3 mid snow, 4 glacier, 5 glacier cliff, 6 near rock, 7 near snow, 8 berg ice, 9 berg top, 10 far snow
+    const far = ridge(W, base - 98, 46, 0.012, 2.4, 4, 0.6);
+    const peaks = [[0.27, 238, 0.17], [0.385, 158, 0.095], [0.675, 172, 0.11], [0.8, 248, 0.16], [0.555, 122, 0.075]];
+    const mid = new Float32Array(W + 1), owner = new Int8Array(W + 1);
+    for (let x = 0; x <= W; x++) {
+      let y = base + 4, o = -1;
+      peaks.forEach(([pxf, ph, hw], k) => {
+        const yy = base - ph + Math.pow(Math.abs(x / W - pxf) / hw, 1.2) * ph * 0.85;
+        if (yy < y) { y = yy; o = k; }
+      });
+      mid[x] = y + (fbm2(x * 0.06, 3.3, 3, 21) - 0.5) * 12 + Math.abs(Math.sin(x * 0.13)) * 2;
+      owner[x] = o;
+    }
+    const gx0 = W * 0.425, gx1 = W * 0.67, gc = (gx0 + gx1) / 2, ghw = (gx1 - gx0) / 2;
+    const gSaddle = base - 116;
+    const gTop = (x) => gSaddle + Math.pow(Math.abs((x - gc) / ghw), 2.2) * 34 + (fbm2(x * 0.08, 1, 2, 5) - 0.5) * 4;
+    const gCliff = (x) => base - 20 + Math.round((fbm2(x * 0.07, 2, 2, 9) - 0.5) * 8);
+    const wallL = (y) => W * 0.135 + (fbm2(2.1, y * 0.018, 3, 31) - 0.5) * 50 + smoothstep(base - 70, base, y) * W * 0.035;
+    const wallR = (y) => W * 0.865 + (fbm2(7.7, y * 0.018, 3, 33) - 0.5) * 46 - smoothstep(base - 60, base, y) * W * 0.03;
+    this.bergs = [[0.34, 26, 18], [0.735, 18, 12], [0.58, 10, 7]].map(([xf, w, hh]) => ({ x: Math.round(xf * W), w, h: hh }));
+    const icefalls = [[W * 0.055, 7, base - 300], [W * 0.95, 9, base - 250], [W * 0.115, 4, base - 160]];
+    const nearRel = (x, y) => fbm2(x * 0.05, y * 0.009, 3, 41);
+    const ridged = (u, v, seed) => 1 - Math.abs(fbm2(u, v, 3, seed) * 2 - 1);
     for (let row = 0; row < h; row++) {
-      const y = wy(row);
+      const y = row + skyY;
       if (y > base + 1) continue;
       const xl = wallL(y), xr = wallR(y);
       for (let x = 0; x < W; x++) {
         const i = row * W + x;
-        // near walls
+        // ---- near walls: vertical relief, snowy ledges, frozen waterfalls
         if (x < xl || x > xr) {
-          const edge = x < xl ? xl - x : x - xr;
-          const gully = fbm2(x * 0.06, y * 0.012, 3, 41);
-          const ledge = Math.sin(y * 0.09 + fbm2(x * 0.02, y * 0.02, 2, 43) * 6);
-          const snowy = (ledge > 0.86 && gully > 0.4) || (edge < 3 && hash2(x, Math.floor(y / 3), 4) < 0.5 && y < base - 20) || (gully > 0.66 && y < base - 60);
-          mat[i] = snowy ? 7 : 6;
-          tone[i] = clamp01((x < xl ? 0.55 : 0.32) + (gully - 0.5) * 0.8 + (edge < 2 ? 0.25 : 0) + (ledge > 0.7 ? 0.15 : 0));
+          const left = x < xl, edge = left ? xl - x : x - xr;
+          let fall = false;
+          for (const [fx, fw, fy] of icefalls) if (Math.abs(x - fx) < fw * (0.6 + 0.4 * Math.sin(y * 0.05 + fx)) && y > fy) fall = true;
+          const d = nearRel(x - 1, y) - nearRel(x + 1, y);
+          const lv = (y + (fbm2(x * 0.03, 7, 2, 44) - 0.5) * 60 + fbm2(x * 0.11, y * 0.02, 2, 46) * 14) / (24 + 10 * Math.sin(y * 0.013)), f = lv - Math.floor(lv);
+          const prot = nearRel(x, y);
+          if (fall) { mat[i] = 11; tone[i] = clamp01(0.55 + (fbm2(x * 0.6, y * 0.04, 2, 45) - 0.5) * 1.2 + (y > base - 6 ? 0.3 : 0)); continue; }
+          if (f < 0.05 && prot > 0.5 && fbm2(x * 0.09, y * 0.05, 2, 47) > 0.45) { mat[i] = 7; tone[i] = f < 0.03 ? 1 : 0.7; continue; }
+          mat[i] = 6;
+          let tn = (left ? 0.36 : 0.52) + d * 9 + (prot - 0.5) * 0.5;
+          if (f < 0.16 && prot > 0.5) tn -= 0.22;            // shadow under a ledge
+          if (edge < 2.5) { mat[i] = y < base - 30 && hash2(x, y >> 2, 4) < 0.6 ? 7 : 6; tn = left ? 0.75 : 0.95; }
+          tone[i] = clamp01(tn);
           continue;
         }
-        // icebergs at the waterline
+        // ---- icebergs on the waterline
         let berg = false;
         for (const b of this.bergs) {
-          const d = Math.abs(x - b.x) / b.w;
-          const topY = base - b.h * (1 - Math.pow(d, 1.6)) - (hash2(Math.floor(x / 3), b.x, 2) < 0.3 ? 1 : 0);
-          if (d < 1 && y >= topY && y <= base + 1) {
-            mat[i] = y < topY + 2 ? 9 : 8;
-            tone[i] = clamp01(0.55 + (x < b.x ? 0.25 : -0.15) + (fbm2(x * 0.3, y * 0.15, 2, 7) - 0.5) * 0.6);
+          const dd = Math.abs(x - b.x) / b.w;
+          const tY = base - b.h * (1 - Math.pow(dd, 1.6)) - (hash2(Math.floor(x / 3), b.x, 2) < 0.3 ? 1 : 0);
+          if (dd < 1 && y >= tY && y <= base + 1) {
+            mat[i] = y < tY + 2 ? 9 : 8;
+            tone[i] = clamp01(0.6 + (x < b.x ? 0.25 : -0.2) + (fbm2(x * 0.3, y * 0.15, 2, 7) - 0.5) * 0.5);
             berg = true;
             break;
           }
         }
         if (berg) continue;
-        // glacier
-        if (x > gx0 - 4 && x < gx1 + 4 && y >= glacierTop(x)) {
-          const cliff = base - 22 + (fbm2(x * 0.07, 2, 2, 9) - 0.5) * 8;
-          if (y >= cliff) {
-            mat[i] = 5;
-            tone[i] = clamp01(0.45 + (fbm2(x * 0.5, y * 0.04, 2, 11) - 0.5) * 0.9 + (y < cliff + 2 ? 0.4 : 0) - (y > base - 3 ? 0.2 : 0));
-          } else {
-            mat[i] = 4;
-            const k = (y - glacierTop(x)) / Math.max(1, cliff - glacierTop(x));
-            const crev = Math.abs(Math.sin((y - Math.abs(x - (gx0 + gx1) / 2) * 0.2) * 0.55 + fbm2(x * 0.1, y * 0.1, 2, 12) * 2)) > 0.93;
-            const moraine = Math.abs(x - (gx0 + gx1) / 2 - Math.sin(y * 0.1) * 3) < 1.5 && hash2(x, y, 9) < 0.7;
-            tone[i] = moraine ? -1 : crev ? 0.15 : clamp01(0.85 - k * 0.3 + (fbm2(x * 0.08, y * 0.08, 2, 13) - 0.5) * 0.3);
-          }
-        }
-        // mid mountains (in front of the glacier sides)
-        if (y >= mid[x] && (mat[i] === 0 || (x < gx0 + 10 || x > gx1 - 10) && y < glacierTop(x) + 8)) {
-          const d = y - mid[x];
-          const slope = (mid[Math.min(W, x + 2)] - mid[Math.max(0, x - 2)]) / 4;
-          const gully = fbm2(x * 0.09, y * 0.02, 3, 51);
-          const snowLine = base - 70 + (fbm2(x * 0.03, 0, 2, 52) - 0.5) * 50;
-          const snowy = d < 3 + gully * 10 || (y < snowLine && (gully > 0.5 || Math.abs(slope) < 0.45)) || (gully > 0.68 && y < base - 30);
-          mat[i] = snowy ? 3 : 2;
-          tone[i] = clamp01(0.5 + (slope < -0.1 ? 0.3 : slope > 0.25 ? -0.3 : 0) + (gully - 0.5) * 0.7 + (d < 2 ? 0.2 : 0));
+        // ---- mid peaks (side peaks stand in front of the glacier, the head peak behind it)
+        const inGlacier = x > gx0 - 30 && x < gx1 + 30 && y >= gTop(x);
+        if (y >= mid[x] && !(inGlacier && owner[x] === 4)) {
+          const [pxf, ph] = peaks[owner[x]] || peaks[0];
+          const pxx = pxf * W, side = x < pxx ? 1 : -1;
+          const R = (xx) => ridged((xx + side * (y - (base - ph)) * (0.7 + 0.25 * Math.sin(xx * 0.01))) * 0.028 + fbm2(xx * 0.01, y * 0.01, 2, 54) * 0.8, y * 0.008, 51 + owner[x]);
+          const rc = R(x), dR = R(x + 1) - R(x - 1);
+          const alt = clamp01((base - y) / ph);
+          const sl = 0.42 + (fbm2(x * 0.02, 1, 2, 52) - 0.5) * 0.25;
+          const top0 = y - mid[x];
+          const lit = dR * 6 + (side > 0 ? 0.14 : -0.16) * clamp01(1 - Math.abs(x - pxx) / (W * 0.2) + 0.4);
+          let snow = top0 < 2.5 || (alt > sl ? !(rc > 0.82 && dR < 0) : rc < 0.2 && alt > 0.12 && hash2(x, y, 53) < 0.9);
+          if (alt > sl && rc > 0.9) snow = false;
+          mat[i] = snow ? 3 : 2;
+          tone[i] = clamp01((snow ? 0.62 : 0.5) + lit + (rc - 0.5) * 0.25 - (snow ? 0 : (1 - alt) * 0.15));
           continue;
         }
-        if (mat[i]) continue;
-        // far range
+        // ---- glacier: crevassed tongue ending in a turquoise calving cliff
+        if (inGlacier) {
+          const cl = gCliff(x);
+          if (y >= cl) {
+            mat[i] = 5;
+            tone[i] = clamp01(0.5 + (fbm2(x * 0.55, y * 0.05, 2, 11) - 0.5) * 1.1 + (y < cl + 2 ? 0.5 : 0) - (y > base - 3 ? 0.35 : 0) + (x < gc ? 0.08 : -0.08));
+          } else {
+            mat[i] = 4;
+            const u = (x - gc) / ghw;
+            const k = (y - gSaddle) / (cl - gSaddle);
+            const cv = (y - gSaddle - u * u * 14 * (0.3 + k)) / (5 + k * 7) + (fbm2(x * 0.06, y * 0.06, 2, 12) - 0.5) * 0.8;
+            const fr = cv - Math.floor(cv);
+            const morain = Math.abs(u - Math.sin(k * 3) * 0.05) < 0.012 + k * 0.012 && hash2(x, y, 9) < 0.45;
+            const brk = fbm2(x * 0.09, y * 0.07, 2, 14) > 0.5;
+            tone[i] = morain ? -1 : brk && fr < 0.1 ? 0.12 : brk && fr < 0.2 ? 0.98 : clamp01(0.72 - k * 0.22 - u * 0.12 + (fbm2(x * 0.1, y * 0.1, 2, 13) - 0.5) * 0.2);
+          }
+          continue;
+        }
+        // ---- far range
         if (y >= far[x]) {
-          const slope = (far[Math.min(W, x + 2)] - far[Math.max(0, x - 2)]) / 4;
           const d = y - far[x];
-          mat[i] = d < 6 + fbm2(x * 0.1, 0, 2, 61) * 12 ? 10 : 1;
-          tone[i] = clamp01(0.55 + (slope < 0 ? 0.25 : -0.2) + (fbm2(x * 0.08, y * 0.05, 2, 62) - 0.5) * 0.5 - d / 80);
+          const fx = ridged(x * 0.04 + y * 0.03, y * 0.012, 61), dF = ridged((x + 1) * 0.04 + y * 0.03, y * 0.012, 61) - ridged((x - 1) * 0.04 + y * 0.03, y * 0.012, 61);
+          mat[i] = d < 5 + fx * 16 ? 10 : 1;
+          tone[i] = clamp01(0.55 + dF * 5 + (fx - 0.5) * 0.3 - d / 90);
         }
       }
     }
-    const sunPos = { day: [0.7, base - 196], dusk: [0.62, base - 60], night: [0.28, base - 250] };
+    const sunPos = { day: [0.7, base - 196], dusk: [0.62, base - 64], night: [0.27, base - 300] };
     this.sun = sunPos;
-    const mk = (kind) => {
-      const st = SKY[kind], P = MT[kind];
-      const pal = {};
-      for (const k of ['far', 'rock', 'snow', 'ice']) pal[k] = P[k].map((c) => pack(c) >>> 0);
+    const skyOf = (kind) => {
+      const st = SKY[kind];
       const [sxf, sy] = sunPos[kind];
       const sx = sxf * W;
-      const glow = { day: [[255, 250, 230], 90, 0.55], dusk: [[255, 196, 140], 200, 0.6], night: [[150, 180, 255], 50, 0.25] }[kind];
+      const glow = { day: [[255, 250, 230], 100, 0.55], dusk: [[255, 196, 140], 220, 0.65], night: [[150, 180, 255], 60, 0.25] }[kind];
       const c = paint(W, h, (x, row) => {
-        const i = row * W + x, y = wy(row), mt = mat[i];
-        const tn = tone[i];
-        if (!mt) {
-          let [r, g, b] = lerpStops(st, clamp01((y - this.top) / (base - this.top)));
-          const d = Math.hypot(x - sx, (y - sy) * 1.2);
-          if (d < glow[1]) { const k = Math.pow(1 - d / glow[1], 2.2) * glow[2]; r += (glow[0][0] - r) * k; g += (glow[0][1] - g) * k; b += (glow[0][2] - b) * k; }
-          if (kind === 'night' && y < base - 20) {
-            const hs = hash2(x, row, 77);
-            if (hs < 0.0035) { const k = 0.3 + (hs / 0.0035) * 0.65; r = lerp(r, 230, k); g = lerp(g, 236, k); b = lerp(b, 255, k); }
-          }
-          return dpack(r, g, b, x, row, 5);
+        const y = row + skyY;
+        let [r, g, b] = lerpStops(st, clamp01((y - top) / (base - top)));
+        const d = Math.hypot(x - sx, (y - sy) * 1.2);
+        if (d < glow[1]) { const k = Math.pow(1 - d / glow[1], 2.2) * glow[2]; r += (glow[0][0] - r) * k; g += (glow[0][1] - g) * k; b += (glow[0][2] - b) * k; }
+        if (kind === 'night' && y < base - 30) {
+          const hs = hash2(x, row, 77);
+          if (hs < 0.0035) { const k = 0.3 + (hs / 0.0035) * 0.65; r = lerp(r, 230, k); g = lerp(g, 236, k); b = lerp(b, 255, k); }
         }
-        switch (mt) {
-          case 1: return ditherPick(pal.far, tn * 0.9, x, row);
-          case 10: return ditherPick(pal.far, 0.7 + tn * 0.3, x, row);
-          case 2: return ditherPick(pal.rock, tn, x, row);
-          case 3: return ditherPick(pal.snow, 0.25 + tn * 0.75, x, row);
-          case 4: return tn < 0 ? pal.rock[1] : ditherPick(pal.snow, 0.35 + tn * 0.65, x, row);
-          case 5: return ditherPick(pal.ice, tn, x, row);
-          case 6: return ditherPick(pal.rock, tn * 0.85, x, row);
-          case 7: return ditherPick(pal.snow, 0.2 + tn * 0.8, x, row);
-          case 8: return ditherPick(pal.ice, 0.3 + tn * 0.7, x, row);
-          case 9: return pal.snow[3];
-          default: return 0;
-        }
+        return dpack(r, g, b, x, row, 5);
       });
-      const g = ctxOf(c);
-      const [mx, my] = [sx, ry(sy)];
+      const g = ctxOf(c), my = sy - skyY;
       const disc = (cx, cy, r, fn) => {
         for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++) for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++) {
-          if (mat[Math.max(0, y) * W + Math.max(0, Math.min(W - 1, x))]) continue;
           const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
           if (d <= r) { const col = fn(d / r, x, y); if (col) { g.fillStyle = col; g.fillRect(x, y, 1, 1); } }
         }
       };
-      if (kind === 'day') disc(mx, my, 9, (d) => (d > 0.86 ? '#fff4c8' : d > 0.6 ? '#fffbe8' : '#ffffff'));
-      else if (kind === 'dusk') disc(mx, my, 12, (d, x, y) => ([4, 7, 9].includes(Math.round(y - my)) ? null : y < my - 4 ? '#fff2c0' : y < my + 3 ? '#ffc880' : '#ff9a5a'));
+      if (kind === 'day') disc(sx, my, 9, (d) => (d > 0.86 ? '#fff4c8' : d > 0.6 ? '#fffbe8' : '#ffffff'));
+      else if (kind === 'dusk') disc(sx, my, 13, (d, x, y) => ([4, 7, 9].includes(Math.round(y - my)) ? null : y < my - 4 ? '#fff2c0' : y < my + 3 ? '#ffc880' : '#ff9a5a'));
       else {
-        disc(mx, my, 7.5, (d, x) => (x + 0.5 - mx > 3.5 && d > 0.5 ? '#aab6dc' : d > 0.86 ? '#d6deff' : '#f2f5ff'));
-        for (const [ox, oy, r] of [[-3, -2, 1.5], [1, 2, 1.8], [-1, 4, 1]]) disc(mx + ox, my + oy, r, () => '#c4ccea');
+        disc(sx, my, 7.5, (d, x) => (x + 0.5 - sx > 3.5 && d > 0.5 ? '#aab6dc' : d > 0.86 ? '#d6deff' : '#f2f5ff'));
+        for (const [ox, oy, r] of [[-3, -2, 1.5], [1, 2, 1.8], [-1, 4, 1]]) disc(sx + ox, my + oy, r, () => '#c4ccea');
       }
       return c;
     };
-    this.sky = { day: mk('day'), dusk: mk('dusk'), night: mk('night') };
-    this.skyMat = mat;
-    const so = { levels: 10 };
-    const overH = h;
-    this.overcast = {
-      day: paint(8, overH, (x, y) => ditherPick(stopPalette(OVERCAST.day, 10), y / overH, x, y)),
-      dusk: paint(8, overH, (x, y) => ditherPick(stopPalette(OVERCAST.dusk, 10), y / overH, x, y)),
-      night: paint(8, overH, (x, y) => ditherPick(stopPalette(OVERCAST.night, 10), y / overH, x, y)),
+    const mtnOf = (kind) => {
+      const P = MT[kind];
+      const pal = {};
+      for (const k of ['far', 'rock', 'snow', 'ice']) pal[k] = P[k].map((c) => pack(c) >>> 0);
+      return paint(W, h, (x, row) => {
+        const i = row * W + x, tn = tone[i];
+        switch (mat[i]) {
+          case 1: return ditherPick(pal.far, tn * 0.75, x, row);
+          case 10: return ditherPick(pal.far, 0.55 + tn * 0.45, x, row);
+          case 2: return ditherPick(pal.rock, tn, x, row);
+          case 3: return ditherPick(pal.snow, tn, x, row);
+          case 4: return tn < 0 ? pal.rock[3] : ditherPick(pal.snow, 0.15 + tn * 0.85, x, row);
+          case 5: return ditherPick(pal.ice, tn, x, row);
+          case 6: return ditherPick(pal.rock, tn * 0.9, x, row);
+          case 7: return ditherPick(pal.snow, 0.35 + tn * 0.65, x, row);
+          case 8: return ditherPick(pal.ice, 0.35 + tn * 0.65, x, row);
+          case 9: return pal.snow[4];
+          case 11: return ditherPick(pal.ice, 0.3 + tn * 0.7, x, row);
+          default: return 0;
+        }
+      });
     };
-    void so;
-    // mountains mask (for drawing overcast/fog only over the sky)
-    this.skyMask = paint(W, h, (x, row) => (mat[row * W + x] ? 0 : pack('#ffffff')));
+    this.sky = { day: skyOf('day'), dusk: skyOf('dusk'), night: skyOf('night') };
+    this.mtn = { day: mtnOf('day'), dusk: mtnOf('dusk'), night: mtnOf('night') };
+    this.mtnBlend = new Blend();
+    this.overcast = {};
+    for (const k of ['day', 'dusk', 'night']) { const pal = stopPalette(OVERCAST[k], 10); this.overcast[k] = paint(8, h, (x, y) => ditherPick(pal, y / h, x, y)); }
     const r = new RNG(31);
     this.stars = [];
-    for (let i = 0; i < 40; i++) {
-      const x = r.int(4, W - 4), y = r.int(this.top + 10, base - 90);
+    for (let i = 0; i < 46; i++) {
+      const x = r.int(4, W - 4), y = r.int(top + 6, base - 120);
       if (!mat[(y - skyY) * W + x]) this.stars.push({ x, y, f: r.float(0.8, 3), ph: r.float(0, TAU), c: r.pick(['#ffffff', '#e8f0ff', '#c8dcff', '#fff4d8']) });
     }
-    // aurora curtains
-    this.aurora = [this.auroraTex(Math.round(W * 1.6), 150, 3, ['#4affa0', '#3ae0c0', '#9a6aff']), this.auroraTex(Math.round(W * 1.6), 110, 9, ['#7aff8a', '#4ad8ff', '#ff6ac8'])];
-    // clouds
+    this.aurora = [this.auroraTex(Math.round(W * 1.7), 170, 3, ['#5affa8', '#2ae0c8', '#a66aff']), this.auroraTex(Math.round(W * 1.7), 120, 9, ['#8aff7a', '#3ac8ff', '#ff6ad0'])];
     this.clouds = [];
-    for (let i = 0; i < 6; i++) this.clouds.push({ x: r.float(0, W), y: r.int(this.top + 30, base - 150), v: r.float(1.5, 4), tile: cloudTile(r.int(120, 200), r.int(26, 40), '#ffffff', { seed: 40 + i, alpha: 0.75, scale: 0.05, bias: 0.45, levels: 4 }) });
-    this.snowTile = streakTile(128, 128, 30, '#ffffff', { seed: 5, len: [1, 2], slant: 6, alpha: 0.9 });
+    for (let i = 0; i < 6; i++) this.clouds.push({ x: r.float(0, W), y: r.int(top + 30, base - 170), v: r.float(1.5, 4), tile: softCloud(r.int(110, 190), r.int(22, 34), 40 + i) });
     this.blizTile = streakTile(160, 96, 46, '#f4faff', { seed: 9, len: [4, 9], slant: 1, alpha: 0.75 });
   }
 
-  // A wide aurora curtain texture: vertical rays hanging from a wavy lower edge, green at the hem fading up to violet.
+  // A wide aurora curtain: folded hem, fine vertical rays, green at the hem fading up through teal to violet.
   auroraTex(w, h, seed, cols) {
-    const [c0, c1, c2] = cols.map((c) => lerpStops([[0, c]], 0));
-    const r0 = new Float32Array(w);
-    for (let x = 0; x < w; x++) r0[x] = Math.pow(clamp01(fbm2(x * 0.045, seed, 3, seed) * 1.6 - 0.35), 1.4) * (0.6 + 0.4 * Math.sin(x * 0.31 + seed));
+    const C = cols.map((c) => lerpStops([[0, c]], 0));
+    const hem = new Float32Array(w), ray = new Float32Array(w), fold = new Float32Array(w);
+    for (let x = 0; x < w; x++) hem[x] = h * 0.8 + Math.sin(x * 0.0085 + seed) * h * 0.09 + Math.sin(x * 0.021 + seed * 2.1) * h * 0.05 + Math.sin(x * 0.07 + seed) * 2;
+    for (let x = 1; x < w - 1; x++) fold[x] = Math.min(1, Math.abs(hem[x + 1] - hem[x - 1]) * 0.7);
+    for (let x = 0; x < w; x++) {
+      const big = clamp01(fbm2(x * 0.012, seed, 3, seed) * 1.8 - 0.45);
+      const fine = 0.45 + 0.55 * Math.pow(fbm2(x * 0.16, seed + 3, 2, seed + 1), 1.5) * 1.6;
+      ray[x] = big * fine;
+    }
     return paint(w, h, (x, y) => {
-      const hem = h * 0.78 + Math.sin(x * 0.013 + seed) * h * 0.12 + Math.sin(x * 0.041) * 4;
-      if (y > hem + 2) return 0;
-      const up = (hem - y) / (h * 0.8);
-      if (up > 1) return 0;
-      let v = r0[x] * (up < 0 ? 1 + up * 0.5 : Math.pow(1 - up, 1.3)) * (0.7 + 0.3 * Math.sin(x * 0.9 + y * 0.05));
-      if (Math.abs(y - hem) < 1.5) v *= 1.5;
-      const k = clamp01(up * 1.3);
-      const col = k < 0.45 ? [lerp(c0[0], c1[0], k / 0.45), lerp(c0[1], c1[1], k / 0.45), lerp(c0[2], c1[2], k / 0.45)] : [lerp(c1[0], c2[0], (k - 0.45) / 0.55), lerp(c1[1], c2[1], (k - 0.45) / 0.55), lerp(c1[2], c2[2], (k - 0.45) / 0.55)];
-      const q = Math.floor(clamp01(v) * 5 + ((x * 3 + y * 5) % 4) / 4) / 5;
+      const up = (hem[x] - y) / (h * 0.85);
+      if (up < -0.04 || up > 1) return 0;
+      let v = ray[x] * (1 + fold[x] * 0.8) * (up < 0 ? 1 + up * 20 : Math.exp(-up * 2.4)) * (0.8 + 0.2 * Math.sin(y * 0.11 + x * 0.05));
+      if (up >= 0 && up < 0.03) v *= 1.6;
+      const k = clamp01(up * 1.25);
+      const a = k < 0.4 ? C[0] : C[1], b = k < 0.4 ? C[1] : C[2], kk = k < 0.4 ? k / 0.4 : (k - 0.4) / 0.6;
+      const col = [lerp(a[0], b[0], kk), lerp(a[1], b[1], kk), lerp(a[2], b[2], kk)];
+      const q = Math.floor(clamp01(v) * 6 + bayer(x, y)) / 6;
       if (q <= 0) return 0;
-      return pack('#' + col.map((c) => clamp(Math.round(c), 0, 255).toString(16).padStart(2, '0')).join(''), Math.round(q * 230));
+      return ((Math.round(q * 210) << 24) | (Math.round(col[2]) << 16) | (Math.round(col[1]) << 8) | Math.round(col[0])) >>> 0;
     });
   }
 
@@ -710,13 +751,13 @@ export class FjordBiome extends Biome {
     const cap = (z) => D.K - (surf - D.hz) / D.s(z);
     const cliff = (X, z) => {
       const side = X < cx ? -1 : 1;
-      const over = Math.abs(X - cx) - edge(z, side) - (fbm2(z * 6, side * 4, 2, 76) - 0.5) * 20;
+      const over = Math.abs(X - cx) - edge(z, side) - (fbm2(z * 6, side * 4, 2, 76) - 0.5) * 22;
       if (over <= 0) return null;
       let h;
-      if (over < 12) h = 30 + Math.round(fbm2(X * 0.05, z * 5, 2, 77) * 8) * 2;
-      else if (over < 28) h = 74;
-      else if (over < 46) h = 128;
-      else h = 900;
+      if (over < 10) h = 26 + Math.round(fbm2(X * 0.05, z * 5, 2, 77) * 8) * 2;
+      else if (over < 26) h = 64 + Math.round(fbm2(X * 0.04, z * 4, 2, 90) * 6) * 2;
+      else if (over < 44) h = 112;
+      else h = z > 0.3 + fbm2(X * 0.01, 5, 2, 93) * 0.25 ? 900 : 150 + Math.round(fbm2(X * 0.03, z * 3, 2, 95) * 4) * 2;
       return Math.min(h, cap(z));
     };
     D.terrain({
@@ -724,6 +765,10 @@ export class FjordBiome extends Biome {
       height: (X, z) => cliff(X, z) ?? floorH(X, z),
       floorHeight: floorH,
       color: (X, z, h) => {
+        if (h >= 140) {
+          const n = fbm2(X * 0.04, z * 5, 2, 96);
+          return n > 0.62 ? [200, 216, 228] : n > 0.4 ? [112, 124, 146] : [96, 106, 128];
+        }
         if (h >= 28) {
           const ice = fbm2(X * 0.012, z * 3, 2, 78) > 0.52;
           if (ice) return hash2(Math.floor(X / 2), Math.floor(z * 50), 79) < 0.2 ? [200, 240, 250] : [226, 248, 255];
@@ -741,20 +786,23 @@ export class FjordBiome extends Biome {
       },
       wallColor: (X, z, hp, h) => {
         const ice = fbm2(X * 0.012, z * 3, 2, 78) > 0.52;
+        const top = hp > h - 3 && h < 400;
         if (ice) {
-          const band = Math.floor((hp + fbm2(X * 0.02, z * 3, 2, 86) * 20) / 7);
-          const crevasse = hash2(Math.floor(X / 3), Math.floor(z * 30), 87) < 0.1;
-          const base = [[150, 226, 244], [120, 206, 236], [176, 238, 250], [98, 186, 226]][((band % 4) + 4) % 4];
-          let k = 1 - smoothstep(30, 420, hp) * 0.32;
-          if (crevasse) k *= 0.62;
-          if (hp > h - 3) k *= 1.2;
-          return [base[0] * k, base[1] * k, Math.min(255, base[2] * k)];
+          // glacial ice: vertical blue streaks, faint annual layers, dark crevasse slots, bright lip
+          const v = fbm2(X * 0.16, hp * 0.012 + z * 3, 2, 86);
+          const layer = Math.sin((hp + fbm2(X * 0.02, z, 2, 91) * 30) * 0.21) > 0.93 ? 0.05 : 0;
+          const slot = fbm2(X * 0.09, z * 9, 2, 87) > 0.72 && hp < h - 6;
+          let k = (0.82 + (v - 0.5) * 0.5 + layer) * (1 - smoothstep(30, 420, hp) * 0.3);
+          if (slot) k *= 0.55;
+          if (top) k = 1.22;
+          return [150 * k, 222 * k, Math.min(255, 246 * k)];
         }
-        const band = Math.floor((hp + fbm2(X * 0.015, z * 2, 2, 88) * 26) / 8);
-        const c = STRATA[((band % STRATA.length) + STRATA.length) % STRATA.length];
-        let k = 1 - smoothstep(30, 420, hp) * 0.4;
-        if (hash2(Math.floor(X / 3), Math.floor(hp / 6), 89) < 0.06) k *= 0.62;
-        if (hp > h - 3 && h < 400) k *= 1.3;
+        // granite: mottled tone, diagonal joints, snowy ledge lips
+        const m = fbm2(X * 0.03, hp * 0.025 + z * 4, 3, 88);
+        const c = STRATA[Math.min(STRATA.length - 1, Math.floor(m * STRATA.length * 1.3) % STRATA.length)];
+        let k = (0.86 + (m - 0.5) * 0.6) * (1 - smoothstep(30, 420, hp) * 0.38);
+        if (fbm2(X * 0.05, hp * 0.05, 2, 92) > 0.6 && Math.abs(Math.sin((X * 0.6 + hp) * 0.09 + fbm2(X * 0.03, hp * 0.03, 2, 94) * 4)) < 0.06) k *= 0.7;
+        if (top) return [214, 230, 240];
         return [c[0] * k, c[1] * k, c[2] * k];
       },
     });
@@ -1148,47 +1196,36 @@ export class FjordBiome extends Biome {
   }
 
   drawSky(ctx, env, y0) {
-    const W = this.W, t = this.t, tod = this.tod, wx = this.wx, base = this.base;
-    ctx.drawImage(this.skyBlend.get([[this.sky.day, tod.day], [this.sky.dusk, tod.dusk], [this.sky.night, tod.night]]), 0, this.skyY);
-    const visTop = y0 < base - 120;
+    const W = this.W, t = this.t, tod = this.tod, wx = this.wx, base = this.base, skyY = this.skyY;
+    const w3 = (o) => [[o.day, tod.day], [o.dusk, tod.dusk], [o.night, tod.night]];
+    ctx.drawImage(this.skyBlend.get(w3(this.sky)), 0, skyY);
     const oc = clamp01(wx.snow * 0.7 + wx.bliz * 0.9);
     const clear = 1 - oc;
-    if (visTop) {
-      // twinkling stars
+    if (y0 < base - 60) {
       if (tod.night > 0.15 && clear > 0.1) for (const s of this.stars) twinkle(ctx, s.x, s.y, (0.4 + 0.6 * Math.sin(t * s.f + s.ph)) * tod.night * clear, s.c);
-      // aurora
-      const au = clamp01((tod.night * 0.65 + tod.dusk * 0.25 + wx.aurora * (0.55 + tod.night * 0.45) + tod.day * wx.aurora * 0.12) * clear * (0.4 + wx.aurora * 0.6));
+      const au = clamp01((tod.night * 0.55 + tod.dusk * 0.15 + wx.aurora * (0.5 + tod.night * 0.5) + tod.day * wx.aurora * 0.1) * clear);
       if (au > 0.04) this.drawAurora(ctx, au);
-      // wispy clouds / snow clouds
       for (const cl of this.clouds) {
-        ctx.globalAlpha = (0.25 + oc * 0.6) * (1 - tod.night * 0.6);
+        ctx.globalAlpha = (0.3 + oc * 0.6) * (1 - tod.night * 0.65);
         ctx.drawImage(cl.tile, Math.round(cl.x), cl.y);
       }
       ctx.globalAlpha = 1;
-      // terns
       const ba = (tod.day + tod.dusk) * (1 - wx.bliz) * clear;
       if (ba > 0.05) {
         ctx.fillStyle = tod.dusk > 0.5 ? '#3a2438' : '#2c3448';
         ctx.globalAlpha = ba;
         for (const b of this.birds) {
-          const x = Math.round(b.x), y = Math.round(b.y + Math.sin(b.ph * 0.3) * 4), f = Math.sin(b.ph) > 0 ? 0 : 1;
-          if (f === 0) { ctx.fillRect(x - 3, y - 2, 1, 1); ctx.fillRect(x - 2, y - 1, 2, 1); ctx.fillRect(x, y, 1, 1); ctx.fillRect(x + 1, y - 1, 2, 1); ctx.fillRect(x + 3, y - 2, 1, 1); }
+          const x = Math.round(b.x), y = Math.round(b.y + Math.sin(b.ph * 0.3) * 4);
+          if (Math.sin(b.ph) > 0) { ctx.fillRect(x - 3, y - 2, 1, 1); ctx.fillRect(x - 2, y - 1, 2, 1); ctx.fillRect(x, y, 1, 1); ctx.fillRect(x + 1, y - 1, 2, 1); ctx.fillRect(x + 3, y - 2, 1, 1); }
           else { ctx.fillRect(x - 3, y, 3, 1); ctx.fillRect(x, y, 1, 1); ctx.fillRect(x + 1, y, 3, 1); }
         }
         ctx.globalAlpha = 1;
       }
     }
-    // overcast & falling snow over the sky
-    if (oc > 0.02) {
-      ctx.globalAlpha = oc * 0.75;
-      fillWith(ctx, this.ocBlend.get([[this.overcast.day, tod.day], [this.overcast.dusk, tod.dusk], [this.overcast.night, tod.night]]), 0, this.skyY, W, base - 20 - this.skyY);
-      ctx.globalAlpha = oc * 0.45;
-      ctx.drawImage(this.ocBlend.layer.canvas, 0, 0, 8, 8, 0, 0, 0, 0);
-      ctx.globalAlpha = 1;
-      // haze over the mountains too
-      ctx.fillStyle = rgba(tod.night > 0.5 ? '#141c2a' : '#c8d4de', oc * 0.35);
-      ctx.fillRect(0, this.skyY, W, base + 2 - this.skyY);
-    }
+    const ocCanvas = oc > 0.02 ? this.ocBlend.get(w3(this.overcast)) : null;
+    if (ocCanvas) { ctx.globalAlpha = oc * 0.85; fillWith(ctx, ocCanvas, 0, skyY, W, this.skyH); ctx.globalAlpha = 1; }
+    ctx.drawImage(this.mtnBlend.get(w3(this.mtn)), 0, skyY);
+    if (ocCanvas) { ctx.globalAlpha = oc * 0.42; fillWith(ctx, ocCanvas, 0, skyY, W, this.skyH); ctx.globalAlpha = 1; }
     if (wx.snow > 0.05 || wx.bliz > 0.05) {
       const n = Math.round(this.airSnow.list.length * clamp01(wx.snow + wx.bliz));
       ctx.fillStyle = tod.night > 0.5 ? '#a8b8d0' : '#ffffff';
@@ -1206,7 +1243,7 @@ export class FjordBiome extends Biome {
         const pat = ctx.createPattern(tile, 'repeat');
         pat.setTransform(new DOMMatrix([1, 0, 0, 1, ox, oy]));
         ctx.fillStyle = pat;
-        ctx.fillRect(0, this.skyY, W, base - this.skyY);
+        ctx.fillRect(0, skyY, W, base - skyY);
         ctx.restore();
       }
       ctx.globalAlpha = 1;
@@ -1218,14 +1255,14 @@ export class FjordBiome extends Biome {
     const t = this.t, W = this.W;
     const op = ctx.globalCompositeOperation;
     ctx.globalCompositeOperation = 'lighter';
-    const conf = [[this.aurora[0], this.top + 26, 6, 0.9], [this.aurora[1], this.top + 96, -9, 0.6]];
+    const conf = [[this.aurora[0], this.top + 20, 5, 1], [this.aurora[1], this.top + 110, -8, 0.65]];
     for (const [tex, y0, sp, am] of conf) {
       const off = Math.floor(((t * sp) % tex.width + tex.width) % tex.width);
-      for (let x = 0; x < W; x += 3) {
-        const sx = (x + off) % (tex.width - 3);
-        const dy = Math.sin(x * 0.011 + t * 0.21) * 16 + Math.sin(x * 0.027 - t * 0.37) * 6;
-        ctx.globalAlpha = clamp01(a * am * (0.7 + 0.3 * Math.sin(x * 0.04 + t * 0.9)));
-        ctx.drawImage(tex, sx, 0, 3, tex.height, x, Math.round(y0 + dy), 3, tex.height);
+      for (let x = 0; x < W; x += 2) {
+        const sx = (x + off) % (tex.width - 2);
+        const dy = Math.sin(x * 0.0105 + t * 0.19) * 18 + Math.sin(x * 0.029 - t * 0.33) * 6;
+        ctx.globalAlpha = clamp01(a * am * (0.65 + 0.35 * Math.sin(x * 0.037 + t * 0.8) * Math.sin(x * 0.013 - t * 0.45)));
+        ctx.drawImage(tex, sx, 0, 2, tex.height, x, Math.round(y0 + dy), 2, tex.height);
       }
     }
     ctx.globalAlpha = 1;
@@ -1456,19 +1493,8 @@ export class FjordBiome extends Biome {
     // the ice block around the chest
     const r = c.rect;
     const x0 = r.x + sx, y0 = r.y, w = r.w, h = r.h;
-    ctx.globalAlpha = 0.5;
-    ctx.fillStyle = '#9ae6f6';
-    ctx.fillRect(x0 + 1, y0, w - 2, h);
-    ctx.fillRect(x0, y0 + 1, w, h - 2);
-    ctx.globalAlpha = 0.75;
-    ctx.fillStyle = '#e8fdff';
-    ctx.fillRect(x0 + 1, y0, w - 2, 1);
-    ctx.fillRect(x0, y0 + 1, 1, h - 3);
-    ctx.fillRect(x0 + 3, y0 + 3, 1, 6); ctx.fillRect(x0 + 5, y0 + 3, 1, 3);
-    ctx.fillStyle = '#5ab4d4';
-    ctx.fillRect(x0 + w - 1, y0 + 2, 1, h - 3);
-    ctx.fillRect(x0 + 2, y0 + h - 1, w - 3, 1);
-    ctx.globalAlpha = 1;
+    if (!this.iceBlock || this.iceBlock.width !== w) this.iceBlock = iceBlockSprite(w, h, 7);
+    ctx.drawImage(this.iceBlock, x0, y0);
     // cracks spread with each knock
     ctx.fillStyle = '#ffffff';
     const cr = c.cracks;

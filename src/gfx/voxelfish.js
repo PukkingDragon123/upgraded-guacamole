@@ -36,7 +36,7 @@ const CAM_TILT = 16;               // we look slightly down onto the fish
 export const SWIM_N = 6;           // tail-beat frames
 const KIND_N = 6;                  // animation frames for kinds (legs, tentacles...)
 const INFL_N = 3;                  // inflate steps: 0, 1/3, 2/3, 1
-const MAX_VOX_LEN = 300;           // cap on model length (voxels) for giants
+const MAX_VOX_LEN = 120;           // cap on model length (voxels): giants get chunkier voxels
 const FRAME_PX_MAX = 16e6;         // frame cache budget (pixels)
 const GRID_BYTES_MAX = 64e6;
 const LAYOUT_MAX = 260;
@@ -218,21 +218,85 @@ function distanceField(mask, W, H) {
   return D;
 }
 
-function buildLayout(c, r, infl, pose, kf) {
-  const kind = isKind(c) ? c.kind : null;
-  if (c.kind === 'chain') return buildChainLayout(c, r);
-  const ph = kind ? kf / KIND_N : 0;
-  const q = { sw: ph, angle: 0, scale: r, inflate: kind ? 0 : infl, still: true, pose };
-  const geo = rigGeom(c, q);
-  const PAD = 2;
-  const GW = geo.w + PAD * 2, GH = geo.h + PAD * 2;
-  const L = {};
-  for (const ly of rigLayers(c)) {
-    const lp = kind ? ph : ly.id === 'tail' ? TAIL_NEUTRAL : 0;
-    const ras = rasterLayerVox(c, ly.id, { ph: lp, angle: 0, scale: r, inflate: kind ? 0 : infl, still: true, pose });
-    if (!ras.data) continue;
-    L[ly.id] = place(ras, ras.x + PAD, ras.y + PAD, GW, GH);
+// Rasterising the procedural look is the expensive part: it runs once per creature at a source
+// resolution (one layer per step, so it spreads over frames) and lower levels are resampled from it.
+class RasterJob {
+  constructor(c, r, infl, pose, kf) {
+    this.c = c; this.r = r; this.infl = infl; this.pose = pose; this.kf = kf;
+    this.kind = isKind(c) ? c.kind : null;
+    this.ph = this.kind ? kf / KIND_N : 0;
+    this.geo = rigGeom(c, { sw: this.ph, angle: 0, scale: r, inflate: this.kind ? 0 : infl, still: true, pose });
+    this.PAD = 2;
+    this.GW = this.geo.w + 4; this.GH = this.geo.h + 4;
+    this.L = {};
+    this.todo = rigLayers(c).map((ly) => ly.id);
+    this.done = false;
   }
+  step() {
+    const id = this.todo.shift();
+    if (id) {
+      const lp = this.kind ? this.ph : id === 'tail' ? TAIL_NEUTRAL : 0;
+      const ras = rasterLayerVox(this.c, id, { ph: lp, angle: 0, scale: this.r, inflate: this.kind ? 0 : this.infl, still: true, pose: this.pose });
+      if (ras.data) this.L[id] = place(ras, ras.x + this.PAD, ras.y + this.PAD, this.GW, this.GH);
+    }
+    if (!this.todo.length) this.done = true;
+    return this.done;
+  }
+}
+
+// Resample a raster set to a lower resolution (footprint mode of opaque colours).
+function resampleRaster(R, f) {
+  const PAD = 2;
+  const sw = R.GW - 4, sh = R.GH - 4;
+  const tw = Math.max(1, Math.round(sw * f)), th = Math.max(1, Math.round(sh * f));
+  const GW = tw + 4, GH = th + 4;
+  const fx = sw / tw, fy = sh / th;
+  const L = {};
+  const counts = new Map();
+  for (const [id, ly] of Object.entries(R.L)) {
+    const col = new Uint32Array(GW * GH);
+    const glow = ly.glow ? new Uint8Array(GW * GH) : null;
+    for (let ty = 0; ty < th; ty++) {
+      const y0 = Math.floor(ty * fy), y1 = Math.max(y0 + 1, Math.floor((ty + 1) * fy));
+      for (let tx = 0; tx < tw; tx++) {
+        const x0 = Math.floor(tx * fx), x1 = Math.max(x0 + 1, Math.floor((tx + 1) * fx));
+        counts.clear();
+        let n = 0, tot = 0, gl = false, best = 0, bn = 0;
+        for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+          const i = (y + PAD) * R.GW + x + PAD;
+          tot++;
+          const p = ly.col[i];
+          if (!p) continue;
+          n++;
+          if (glow && ly.glow[i]) gl = true;
+          const k = counts.get(p) || 0;
+          counts.set(p, k + 1);
+          if (k + 1 > bn) { bn = k + 1; best = p; }
+        }
+        if (!n || n < tot * 0.4) continue;
+        const o = (ty + PAD) * GW + tx + PAD;
+        col[o] = best;
+        if (gl) glow[o] = 1;
+      }
+    }
+    L[id] = { col, glow };
+  }
+  const geo = R.geo;
+  const sc = (v) => v * f;
+  return {
+    r: R.r * f, GW, GH, PAD, L,
+    geo: {
+      w: tw, h: th, ox: sc(geo.ox), oy: sc(geo.oy),
+      eyes: (geo.eyes || []).map((e) => ({ ...e, x: sc(e.x), y: sc(e.y), r: e.r * f })),
+      mouth: geo.mouth ? { ...geo.mouth, x: sc(geo.mouth.x), y: sc(geo.mouth.y), w: geo.mouth.w * f } : null,
+      anchors: Object.fromEntries(Object.entries(geo.anchors || {}).map(([k, v]) => [k, Array.isArray(v) ? [sc(v[0]), sc(v[1])] : v])),
+    },
+  };
+}
+
+function buildLayout(c, R, infl, kf) {
+  const kind = isKind(c) ? c.kind : null;
+  const { r, geo, PAD, GW, GH, L } = R;
   const N = GW * GH;
   const body = L.body?.col || new Uint32Array(N);
   const mask = new Uint8Array(N);
@@ -923,7 +987,7 @@ class Job {
       }
     }
     this.canvas = toCanvas(out, W, H);
-    if (this.glow) this.glowCanvas = toCanvas(glowHalo(this.glow, W, H, this.glowR || 2), W, H);
+    if (this.glow) this.glowCanvas = glowCanvas(this.glow, W, H, this.glowR || 2);
     statPx += N;
     // free scratch
     this.hk = this.hv = this.hg = null;
@@ -990,6 +1054,22 @@ function glowHalo(g, W, H, R) {
   return outB;
 }
 
+// Emissive core + soft halo (GPU canvas blur when available).
+function glowCanvas(core, W, H, R) {
+  const c0 = toCanvas(core, W, H);
+  const out = makeCanvas(W, H);
+  const g = ctxOf(out);
+  if ('filter' in g) {
+    g.filter = `blur(${Math.max(1, R * 0.7)}px)`;
+    g.drawImage(c0, 0, 0);
+    g.drawImage(c0, 0, 0);
+    g.filter = 'none';
+    g.drawImage(c0, 0, 0);
+    return out;
+  }
+  return toCanvas(glowHalo(core, W, H, R), W, H);
+}
+
 function toCanvas(buf, W, H) {
   const c = makeCanvas(W, H);
   const g = ctxOf(c);
@@ -1010,12 +1090,38 @@ let gridBytes = 0;
 
 function touch(map, k, v) { map.delete(k); map.set(k, v); }
 
-function layoutFor(c, rk, infl, pose, kf) {
+const rasters = new Map();   // source rasters (RasterJob, done or in progress)
+function rasterFor(c, srcK, infl, pose, kf, deadline) {
+  const key = vidOf(c) + '|' + srcK + '|' + infl + '|' + (pose ? 1 : 0) + '|' + kf;
+  let R = rasters.get(key);
+  if (!R) {
+    R = new RasterJob(c, Math.pow(2, srcK / 2), infl / INFL_N, pose, kf);
+    rasters.set(key, R);
+    if (rasters.size > LAYOUT_MAX) rasters.delete(rasters.keys().next().value);
+  }
+  while (!R.done) {
+    if (now() >= deadline) return null;
+    const t0 = now();
+    R.step();
+    const dt = now() - t0;
+    spent += dt; workTotal += dt;
+  }
+  return R;
+}
+
+function layoutFor(c, rk, infl, pose, kf, deadline) {
   const key = vidOf(c) + '|' + rk + '|' + infl + '|' + (pose ? 1 : 0) + '|' + kf;
   let L = layouts.get(key);
   if (L) { touch(layouts, key, L); return L; }
   const t0 = now();
-  L = buildLayout(c, Math.pow(2, rk / 2), infl / INFL_N, pose, kf);
+  if (c.kind === 'chain') L = buildChainLayout(c, Math.pow(2, rk / 2));
+  else {
+    // one source raster per creature for every level up to 1 voxel / look px
+    const srcK = Math.max(rk, 0);
+    const R = rasterFor(c, srcK, infl, pose, kf, deadline);
+    if (!R) return null;
+    L = buildLayout(c, srcK === rk ? R : resampleRaster(R, Math.pow(2, (rk - srcK) / 2)), infl / INFL_N, kf);
+  }
   spent += now() - t0; workTotal += now() - t0;
   L.key = key;
   layouts.set(key, L);
@@ -1023,14 +1129,15 @@ function layoutFor(c, rk, infl, pose, kf) {
   return L;
 }
 
-function gridFor(c, rk, infl, pose, sw) {
+function gridFor(c, rk, infl, pose, sw, deadline) {
   const kind = isKind(c) || c.kind === 'chain';
   const kf = kind && c.kind !== 'chain' ? sw : 0;
   const lkey = vidOf(c) + '|' + rk + '|' + infl + '|' + (pose ? 1 : 0) + '|' + kf;
   const gkey = lkey + '#' + (kind ? 0 : sw);
   let G = grids.get(gkey);
   if (G) { touch(grids, gkey, G); return G; }
-  const Lo = layoutFor(c, rk, infl, pose, kf);
+  const Lo = layoutFor(c, rk, infl, pose, kf, deadline);
+  if (!Lo) return null;
   const t0 = now();
   G = buildGrid(Lo, kind ? 0 : sw);
   spent += now() - t0; workTotal += now() - t0;
@@ -1060,7 +1167,8 @@ function storeFrame(fkey, meta, fr) {
   }
 }
 
-function makeFrame(job, meta) {
+function makeFrame(job, meta, up = 1) {
+  const Sf = meta.Sb / up;
   const { cam, G } = job;
   const C = cam.project(G.center);
   const ax = C[0], ay = C[1];
@@ -1068,10 +1176,10 @@ function makeFrame(job, meta) {
   const anchors = {};
   for (const [k, p] of Object.entries(G.anchors)) anchors[k] = rel(p);
   return {
-    canvas: job.canvas, glow: job.glowCanvas || null, W: cam.W, H: cam.H, ax, ay, s: job.s, Sb: meta.Sb, vid: meta.vid,
+    canvas: job.canvas, glow: job.glowCanvas || null, W: cam.W, H: cam.H, ax, ay, s: job.s, Sb: Sf, up, vid: meta.vid,
     yaw: meta.yawI * YAW_STEP, pitch: meta.pitchI * (G.Lo.kind === 'chain' ? CHAIN_PITCH_STEP : PITCH_STEP), r: G.Lo.r,
-    eyes: G.eyes.map((e) => { const q = rel(e.p); return { x: q[0], y: q[1], z: q[2], r: e.rLook * meta.Sb, e: e.e, idx: e.idx, mirror: e.mirror, cheek: e.cheek, main: e.main }; }),
-    mouth: G.mouth ? (() => { const q = rel(G.mouth.p); return { x: q[0], y: q[1], w: G.mouth.wLook * meta.Sb, m: G.mouth.m, front: G.mouth.front }; })() : null,
+    eyes: G.eyes.map((e) => { const q = rel(e.p); return { x: q[0], y: q[1], z: q[2], r: e.rLook * Sf, e: e.e, idx: e.idx, mirror: e.mirror, cheek: e.cheek, main: e.main }; }),
+    mouth: G.mouth ? (() => { const q = rel(G.mouth.p); return { x: q[0], y: q[1], w: G.mouth.wLook * Sf, m: G.mouth.m, front: G.mouth.front }; })() : null,
     anchors,
   };
 }
@@ -1082,9 +1190,13 @@ function fkeyOf(m) { return m.vid + '|' + m.rk + '|' + m.infl + '|' + m.pose + '
 function work(c, m, fkey, deadline) {
   let J = jobs.get(fkey);
   if (!J) {
-    const G = gridFor(c, m.rk, m.infl, m.pose, m.sw);
+    const G = gridFor(c, m.rk, m.infl, m.pose, m.sw, deadline);
+    if (!G) return null;
     const yaw = m.yawI * YAW_STEP, pitch = m.pitchI * (c.kind === 'chain' ? CHAIN_PITCH_STEP : PITCH_STEP);
-    J = { job: new Job(G, yaw, pitch, m.Sb / G.Lo.r, { outline: true }), meta: m };
+    // chunky voxels (giants at capped resolution) render at an integer fraction and upscale when drawn
+    const s = m.Sb / G.Lo.r;
+    const up = s > 2.6 ? Math.ceil(s / 2.2) : 1;
+    J = { job: new Job(G, yaw, pitch, s / up, { outline: true }), meta: m, up };
     jobs.set(fkey, J);
     statJobs++;
   }
@@ -1095,7 +1207,7 @@ function work(c, m, fkey, deadline) {
   spent += dt; workTotal += dt;
   if (!done) return null;
   jobs.delete(fkey);
-  const fr = makeFrame(J.job, m);
+  const fr = makeFrame(J.job, m, J.up);
   storeFrame(fkey, m, fr);
   statBuilt++;
   return fr;
@@ -1225,11 +1337,12 @@ export function warmVoxelFish(c, scale) {
 export function benchVoxel(c, S, yaw = 15, pitch = 0) {
   const Sb = bucketScale(scaleBucket(S)), rk = resLevel(c, Sb);
   const t0 = now();
-  const Lo = buildLayout(c, Math.pow(2, rk / 2), 0, false, 0);
+  const Lo = layoutFor(c, rk, 0, false, 0, Infinity);
   const t1 = now();
   const G = buildGrid(Lo, 1);
   const t2 = now();
-  const job = new Job(G, yaw, pitch, Sb / Lo.r, { outline: true });
+  const s = Sb / Lo.r, up = s > 2.6 ? Math.ceil(s / 2.2) : 1;
+  const job = new Job(G, yaw, pitch, s / up, { outline: true });
   for (let y = 0; y < job.cam.H; y++) job.traceRow(y);
   const t3 = now();
   job.finish();
@@ -1238,7 +1351,7 @@ export function benchVoxel(c, S, yaw = 15, pitch = 0) {
 }
 
 export function clearVoxelFishCache() {
-  layouts.clear(); grids.clear(); frames.clear(); jobs.clear(); byCreature.clear(); warmQ.length = 0; warmed.clear();
+  rasters.clear(); layouts.clear(); grids.clear(); frames.clear(); jobs.clear(); byCreature.clear(); warmQ.length = 0; warmed.clear();
   gridBytes = 0; framePx = 0;
 }
 

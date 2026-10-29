@@ -11,11 +11,11 @@ import { clamp, clamp01, lerp, ease, TAU, formatCommas, bayer } from '../core/ma
 import { rgba, shade, mix, RARITY } from '../core/color.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { drawText, measureText, wrapText } from '../gfx/font.js';
-import { drawWood, drawPaper, drawPlank, drawBubble, drawFrame } from './panels.js';
+import { drawWood, drawPaper, drawPlank, drawBubble, drawFrame, drawStamp } from './panels.js';
 import { getUiIcon } from '../gfx/uiicons.js';
 import {
   drawCharacter, WARDROBE, WARDROBE_SLOTS, DEFAULT_CHARACTER, normalizeLook, ownsCosmetic, grantCosmetic, equipItem, isEquipped,
-  itemPreview, drawItemPreview, boatPaint,
+  itemPreview, drawItemPreview,
 } from '../gfx/character.js';
 import { compiled } from '../gfx/spritecache.js';
 import { SPECIES, SPECIES_BY_ID } from '../fish/species.js';
@@ -38,7 +38,7 @@ const LINES = {
 const SLOT_SOUND = { skin: 'blub', eyes: 'boing', mouth: 'honk', hat: 'boing', outfit: 'puff', boots: 'squeak', gloves: 'squeak', acc: 'bell', rod: 'reel_tick', boat: 'splash_small' };
 const POSE_BTNS = [['show', 'Pose'], ['wave', 'Wave'], ['cheer', 'Cheer'], ['cast', 'Cast'], ['reel', 'Reel'], ['sit', 'Sit'], ['sad', 'Sad'], ['hold', 'Hold']];
 const POSE_SOUND = { wave: 'chirp', cheer: 'honk', cast: 'cast', reel: 'reel', sit: 'puff', sad: 'deflate', hold: 'catch', show: 'boing' };
-const THUMB = { skin: 1.25, eyes: 1.25, mouth: 1.25, hat: 0.95, outfit: 0.68, acc: 0.68, boots: 1.6, gloves: 1.7, rod: 0.95 };
+const THUMB = { skin: 1.25, eyes: 1.25, mouth: 1.25, hat: 0.95, outfit: 0.9, acc: 0.9, boots: 1.6, gloves: 1.7, rod: 0.95 };
 const HEAD_ACC = new Set(['sunglasses', 'snorkel', 'monocle', 'mustache', 'earring']);
 
 export class WardrobePanel {
@@ -108,9 +108,11 @@ export class WardrobePanel {
     this.game.audio.babble?.(text, 'fish');
   }
 
-  setPose(p) {
+  // auto poses (reactions) fall back to the showcase pose; picked poses stay until changed
+  setPose(p, auto = true) {
     this.pose = p;
     this.poseT = 0;
+    this.autoPose = auto && p !== 'show';
   }
 
   equip(item) {
@@ -246,10 +248,11 @@ export class WardrobePanel {
     ctx.beginPath(); ctx.rect(s.x, s.y, s.w, s.h); ctx.clip();
     ctx.drawImage(this.roomBg(s.w, s.h), s.x, s.y);
     const floorY = s.y + Math.round(s.h * 0.8);
-    const cx = s.x + Math.round(s.w / 2);
-    // --- vanity mirror with bulbs; the reflection shows Gil's back
-    const mw = Math.round(s.w * 0.44), mh = Math.round(s.h * 0.5);
-    const mr = { x: cx - (mw >> 1), y: s.y + 26, w: mw, h: mh };
+    const cx = s.x + Math.round(s.w * 0.6);
+    // --- vanity mirror with bulbs on the back wall; the reflection shows Gil's back
+    const mw = Math.round(s.w * 0.36), mh = Math.round(s.h * 0.5);
+    const mr = { x: s.x + Math.round(s.w * 0.2), y: s.y + 30, w: mw, h: mh };
+    const mcx = mr.x + (mw >> 1);
     this.mirrorRect = mr;
     const inner = drawFrame(ctx, mr.x - 6, mr.y - 6, mr.w + 12, mr.h + 12, { style: 'gold' });
     ctx.save();
@@ -265,10 +268,11 @@ export class WardrobePanel {
     const look = this.previewLook();
     const sc = this.charScale(s);
     ctx.save();
-    ctx.translate(cx * 2, 0);
+    ctx.translate(mcx * 2 + 10, 0);
     ctx.scale(-1, 1);
-    ctx.globalAlpha = 0.9;
-    drawCharacter(ctx, cx, inner.y + inner.h - 6, { pose: this.pose === 'hold' ? 'show' : this.pose, t: this.poseT, yaw: this.yaw + 180, scale: sc * 0.62, look, id: 'wardrobe-mirror', shadow: false });
+    ctx.globalAlpha = 0.92;
+    // the mirror stands to Gil's right, so it sees his back three-quarters
+    drawCharacter(ctx, mcx + 5, inner.y + inner.h - 4, { pose: this.pose === 'hold' ? 'show' : this.pose, t: this.poseT, yaw: this.yaw + 150, scale: Math.max(1, Math.round(sc * 0.6 * 4) / 4), look, id: 'wardrobe-mirror', shadow: false });
     ctx.restore();
     ctx.fillStyle = rgba('#bff4ff', 0.16);
     ctx.fillRect(inner.x, inner.y, inner.w, inner.h);
@@ -300,7 +304,7 @@ export class WardrobePanel {
     const sg = ctx.createLinearGradient(0, s.y, 0, floorY + 10);
     sg.addColorStop(0, rgba('#fff4c8', 0.0)); sg.addColorStop(1, rgba('#fff4c8', 0.13));
     ctx.fillStyle = sg;
-    ctx.beginPath(); ctx.moveTo(cx - 18, s.y); ctx.lineTo(cx + 18, s.y); ctx.lineTo(cx + 78, floorY + 12); ctx.lineTo(cx - 78, floorY + 12); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(cx - 10, s.y); ctx.lineTo(cx + 22, s.y); ctx.lineTo(cx + 74, floorY + 12); ctx.lineTo(cx - 70, floorY + 12); ctx.fill();
     ctx.globalCompositeOperation = 'source-over';
     // --- rug + turntable pedestal (dots on the rim turn with Gil)
     this.drawPedestal(ctx, cx, floorY, s);
@@ -333,11 +337,9 @@ export class WardrobePanel {
     // speech bubble
     this.drawSpeech(ctx, s, a, dt);
     this.poseT += dt;
-    // one-shot / special poses return to the showcase pose
-    const P = this.pose;
-    if ((P === 'cast' && this.poseT > 1.7) || (P === 'cheer' && this.poseT > 2.4 && this.autoPose !== P)) this.poseT = P === 'cast' ? 0 : this.poseT;
-    if (P === 'cheer' && this.poseT > 2.2 && !this.pinned) this.setPose('show');
-    if (P === 'sad' && this.poseT > 2.6 && !this.pinned) this.setPose('show');
+    // reactions return to the showcase pose; a picked cast keeps re-casting
+    if (this.autoPose && this.poseT > 2.3) this.setPose('show');
+    else if (this.pose === 'cast' && this.poseT > 1.8) this.poseT = 0;
   }
 
   charScale(s) { return clamp(Math.round(((s.h * 0.6) / (64 * 1.4)) * 4) / 4, 1.5, 2.75); }
@@ -417,7 +419,7 @@ export class WardrobePanel {
   }
 
   drawPedestal(ctx, cx, fy, s) {
-    const rx = Math.round(s.w * 0.27), ry = Math.round(rx * 0.24);
+    const rx = Math.round(s.w * 0.25), ry = Math.round(rx * 0.24);
     // rug
     for (const [k, c] of [[1.55, '#5a2a48'], [1.45, '#8a3a62'], [1.3, '#c8607a'], [1.18, '#8a3a62']]) {
       ctx.fillStyle = c;
@@ -466,15 +468,24 @@ export class WardrobePanel {
     ctx.scale(-1, 1);
     ctx.drawImage(tex, 0, 0);
     ctx.restore();
-    // valance with gold fringe
-    for (let x = 0; x < s.w; x++) {
+    ctx.drawImage(this.valanceTex(s.w), s.x, s.y);
+  }
+
+  // scalloped valance with a gold fringe
+  valanceTex(w) {
+    const key = `val|${w}`;
+    if (this.cache[key]) return this.cache[key];
+    const c = makeCanvas(w, 20), g = ctxOf(c);
+    for (let x = 0; x < w; x++) {
       const sc = ((x % 24) - 12);
       const h = 10 + Math.round(Math.sqrt(Math.max(0, 144 - sc * sc)) * 0.35);
-      ctx.fillStyle = (x % 24) < 2 ? '#6a1020' : '#a8243a';
-      ctx.fillRect(s.x + x, s.y, 1, h);
-      ctx.fillStyle = '#e04a5a'; ctx.fillRect(s.x + x, s.y + 2, 1, 1);
-      ctx.fillStyle = x % 3 ? '#e8b848' : '#a8782a'; ctx.fillRect(s.x + x, s.y + h, 1, 2 + (x % 3 === 0 ? 1 : 0));
+      g.fillStyle = (x % 24) < 2 ? '#6a1020' : '#a8243a';
+      g.fillRect(x, 0, 1, h);
+      g.fillStyle = '#e04a5a'; g.fillRect(x, 2, 1, 1);
+      g.fillStyle = x % 3 ? '#e8b848' : '#a8782a'; g.fillRect(x, h, 1, 2 + (x % 3 === 0 ? 1 : 0));
     }
+    this.cache[key] = c;
+    return c;
   }
 
   curtainTex(w, h) {
@@ -574,8 +585,7 @@ export class WardrobePanel {
     POSE_BTNS.forEach(([id, label], i) => {
       const x = b.x + i * (bw + 2);
       if (ui.button(ctx, x, b.y, bw, b.h, label, { style: 'shell', font: 'small', active: this.pose === id, tip: id === 'hold' ? 'Show off your best catch' : `Pose: ${label}`, sound: 'ui_click' })) {
-        this.setPose(id);
-        this.pinned = id !== 'show';
+        this.setPose(id, false);
         this.game.audio.play(POSE_SOUND[id] || 'boing', { vol: 0.45 });
         if (id === 'hold') this.say('Look at this beauty!');
       }
@@ -594,14 +604,15 @@ export class WardrobePanel {
       const ox = active ? -3 : 0, oy = hov ? -1 : 0;
       if (active) { ctx.fillStyle = rgba('#000000', 0.35); ctx.fillRect(rr.x + 2, rr.y + rr.h, rr.w, 2); }
       drawWood(ctx, rr.x + ox, rr.y + oy, rr.w + (active ? 6 : 0), rr.h, { tone: active ? 'light' : 'dark', nails: false, planks: 1, seams: false, round: 1 });
-      // brass handle
-      const hx = rr.x + ox + 6, hy = rr.y + oy + Math.round(rr.h / 2) - 2;
-      ctx.fillStyle = '#3e2210'; ctx.fillRect(hx - 1, hy - 1, 6, 6);
-      ctx.fillStyle = active ? '#ffe08a' : '#e0a844'; ctx.fillRect(hx, hy, 4, 4);
-      ctx.fillStyle = '#fff2b8'; ctx.fillRect(hx, hy, 2, 1);
+      // brass handle, label, count and a tiny preview of what is worn from this drawer
+      const hx = rr.x + ox + 5, hy = rr.y + oy + rr.h - 9;
+      ctx.fillStyle = '#3e2210'; ctx.fillRect(hx - 1, hy - 1, 12, 5);
+      ctx.fillStyle = active ? '#ffe08a' : '#e0a844'; ctx.fillRect(hx, hy, 10, 3);
+      ctx.fillStyle = '#fff2b8'; ctx.fillRect(hx, hy, 10, 1);
       const own = this.items(sl.id).filter((w) => this.owns(w)).length, tot = this.items(sl.id).length;
-      drawText(ctx, sl.name.toUpperCase(), rr.x + ox + 14, rr.y + oy + 3, { font: 'small', color: active ? '#4a2a10' : '#f4d8a8', shadow: active ? null : '#1a0e06' });
-      drawText(ctx, `${own}/${tot}`, rr.x + ox + 14, rr.y + oy + rr.h - 8, { font: 'small', color: active ? '#8a5a2a' : '#a88a6a' });
+      drawText(ctx, sl.name.toUpperCase(), rr.x + ox + 4, rr.y + oy + 4, { font: 'small', color: active ? '#4a2a10' : '#f4d8a8', shadow: active ? null : '#1a0e06' });
+      drawText(ctx, `${own}/${tot}`, rr.x + ox + 4, rr.y + oy + 12, { font: 'small', color: active ? '#8a5a2a' : '#a88a6a' });
+      this.drawDrawerThumb(ctx, sl.id, { x: rr.x + ox + rr.w - 30 + (active ? 6 : 0), y: rr.y + oy + 2, w: 28, h: rr.h - 4 });
       if (hov) ui.tip = sl.desc;
       if (hov && inp.pressed) {
         inp.pressed = false;
@@ -612,6 +623,28 @@ export class WardrobePanel {
         if (t - (this.lastSay || -9) > 3 && Math.random() < 0.4) { this.say(pick([`Ooh, ${sl.name.toLowerCase()}!`, `Let's see the ${sl.name.toLowerCase()}...`])); this.lastSay = t; }
       }
     });
+  }
+
+  drawDrawerThumb(ctx, slot, a) {
+    const L = this.look;
+    const it = slot === 'acc' ? WARDROBE.find((w) => w.slot === 'acc' && L.acc.includes(w.value)) : WARDROBE.find((w) => w.slot === slot && isEquipped(L, w));
+    ctx.fillStyle = rgba('#1a0e06', 0.35);
+    ctx.fillRect(a.x, a.y, a.w, a.h);
+    if (!it) return;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(a.x, a.y, a.w, a.h); ctx.clip();
+    if (slot === 'boat') {
+      ctx.fillStyle = it.trim; ctx.fillRect(a.x + 5, a.y + a.h - 14, a.w - 10, 2);
+      ctx.fillStyle = it.color; ctx.fillRect(a.x + 5, a.y + a.h - 12, a.w - 10, 4); ctx.fillRect(a.x + 8, a.y + a.h - 8, a.w - 16, 3);
+    } else {
+      const k = { skin: 0.55, eyes: 0.55, mouth: 0.55, hat: 0.45, outfit: 0.4, acc: 0.4, boots: 0.75, gloves: 0.8, rod: 0.4 }[slot] ?? 0.5;
+      const pv = itemPreview(L, it, k);
+      if (pv) {
+        const body = slot === 'outfit' || (slot === 'acc' && !HEAD_ACC.has(it.value));
+        drawItemPreview(ctx, pv, a.x + a.w / 2, body ? a.y + a.h + 1 : a.y + Math.round(a.h / 2 + Math.min(pv.h, a.h) / 2), this.t, 'drawer:' + slot);
+      }
+    }
+    ctx.restore();
   }
 
   drawHeader(ctx, ui, h) {
@@ -798,7 +831,7 @@ export class WardrobePanel {
     const ax = rr.x + rr.w - 132, ay = rr.y + rr.h - 30, aw = 124;
     if (own) {
       const label = it.slot === 'acc' ? (worn ? 'Take off' : 'Wear') : worn ? 'Wearing' : 'Wear';
-      if (ui.button(ctx, ax, ay, aw, 22, label, { style: 'wood', disabled: worn && it.slot !== 'acc', icon: worn ? 'check' : null, tip: worn ? 'Already wearing it' : `Wear ${it.name}` })) this.equip(it);
+      if (ui.button(ctx, ax, ay, aw, 22, label, { style: 'wood', disabled: worn && it.slot !== 'acc', icon: worn ? 'check' : null, tip: it.slot === 'acc' ? (worn ? 'Take it off' : `Wear ${it.name}`) : worn ? 'Already wearing it' : `Wear ${it.name}` })) this.equip(it);
     } else if (it.price != null) {
       const afford = st.coins >= it.price;
       const hovR = { x: ax, y: ay, w: aw, h: 22 };
@@ -815,23 +848,8 @@ export class WardrobePanel {
       this.sold = Math.max(0, this.sold - dt * 0.9);
       const k = 1 - this.sold;
       ctx.globalAlpha = clamp01(this.sold * 3);
-      const bp = boatPaint(this.look);
-      void bp;
-      drawStampText(ctx, rr.x + rr.w - 70, rr.y + rr.h - 46, lerp(1.6, 1, ease.outCubic(clamp01(k * 4))));
+      drawStamp(ctx, rr.x + rr.w - 70, rr.y + rr.h - 46, 'SOLD!', { color: '#2a8a4a', angle: -0.2, scale: lerp(1.8, 1, ease.outCubic(clamp01(k * 4))) });
       ctx.globalAlpha = 1;
     }
   }
-}
-
-function drawStampText(ctx, x, y, k) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(-0.18);
-  ctx.scale(k, k);
-  const w = 52, h = 16;
-  ctx.fillStyle = '#2a8a4a';
-  ctx.fillRect(-w / 2, -h / 2, w, 2); ctx.fillRect(-w / 2, h / 2 - 2, w, 2);
-  ctx.fillRect(-w / 2, -h / 2, 2, h); ctx.fillRect(w / 2 - 2, -h / 2, 2, h);
-  drawText(ctx, 'SOLD!', 0, -3, { align: 'center', color: '#2a8a4a' });
-  ctx.restore();
 }

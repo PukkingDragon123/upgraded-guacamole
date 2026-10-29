@@ -109,7 +109,7 @@ export function itemIcon(id, size = 14) {
   const art = it?.art || (id === 'coins' ? 'coins' : null);
   let src = null;
   if (art && !art.startsWith('pkg_')) src = itemSprite(art, { scale: 0.5, frame: 0, force: true })?.canvas;
-  else if (art) src = packageParts(art.slice(4), 0.5, 0, true)?.full;
+  else if (art) src = packageParts(art.slice(4), 0.5, 0, true, true)?.full;
   else if (it?.kind === 'bait') src = baitSprite(id, 0);
   else if (it?.kind === 'decor') src = fittedProp(id, size * 2, size * 2)?.canvas;
   if (!src) return null;
@@ -139,7 +139,8 @@ export function drawItem(ctx, id, cx, by, o = {}) {
   if (!it && id !== 'coins') return false;
   const art = it?.art || (id === 'coins' ? 'coins' : null);
   if (it?.kind === 'package') {
-    const p = packageParts(it.tier, big === 2 ? 1.6 : 0.9, o.spin ? spinF : 0, true);
+    const psc = big === 2 ? 1.6 : 0.9;
+    const p = packageParts(it.tier, psc, o.spin ? spinF : 0, false, true) || packageParts(it.tier, psc, 0, true, true);
     if (!p) return false;
     const k = Math.min(1, bw / p.w, bh / p.h);
     if (p.glow) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 3); ctx.drawImage(p.glow, Math.round(cx - p.ox * k), Math.round(by - p.oy * k), Math.round(p.w * k), Math.round(p.h * k)); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }

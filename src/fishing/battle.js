@@ -205,16 +205,17 @@ export class Battle {
     this.progress += (reel - payout) * dt;
     this.reelRate = reel - payout;
     // tension
-    let T = 0.1 + crankP * (surging ? 0.6 * (1 - counter * 0.7) : 0.16);
+    let T = 0.1 + crankP * (surging ? 0.75 * (1 - counter * 0.7) : 0.16);
     if (hold) T += 0.16 + (surging ? 0.3 * (1 - counter) : 0.04);
-    T += fishPull * 0.4 * (1 - counter * 0.6);
+    T += fishPull * 0.45 * (1 - counter * 0.6);
     if (this.trick?.extraT) T += this.trick.extraT;
     T *= 0.85 + this.power * 0.3;
     T /= st.lineStrength * (this.gentle ? 1.6 : 1);
     if (this.exhausted) T *= 0.7;
+    this.Ttarget = T;
     this.tension = clamp(damp(this.tension, T, T > this.tension ? 2.6 : 4, dt), 0, 1.25);
     // stamina
-    let drain = surging ? counter * (0.5 + 0.7 * crankP) + (hold ? counter * 0.6 : 0) : crankP * 0.22 + (hold ? 0.12 : 0);
+    let drain = surging ? counter * (0.5 + 0.7 * crankP) + (hold ? counter * 0.6 : 0) : crankP * 0.22 + (hold ? 0.06 : 0);
     drain *= (st.staminaDrain / this.stamSecs) * (opts.stamMul ?? 1);
     if (this.mode === 'hookset') drain *= 0.3;
     this.stamina = clamp01(this.stamina - drain * dt + (drain === 0 && !this.exhausted ? 0.02 * dt : 0));

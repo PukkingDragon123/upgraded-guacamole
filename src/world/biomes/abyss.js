@@ -5,17 +5,21 @@
 // Art is authored "lit": the lighting pass (dark ~0.86) hides it except where the glowing things shine.
 // Weathers: still, snow, current, glowtide.
 
-import { Biome } from './base.js';
+import { Biome, worldTop } from './base.js';
+import { SkyDome, skyBodies } from '../sky.js';
+import { rockSpires, markerBuoy } from '../horizon.js';
 import { clamp, clamp01, smoothstep, hash2, fbm2, TAU } from '../../core/math.js';
 import { RNG } from '../../core/rng.js';
 import { pack } from '../../core/color.js';
 import { tinted, makeLayer } from '../../core/canvas.js';
 import { getProp } from '../../gfx/props.js';
 import {
-  paint, gradientStrip, stopPalette, ditherPick, FogLayer, fillWith, drawWobble, makeRays, drawGlow, twinkle, Motes,
+  waveLine, waveRuns, paint, gradientStrip, stopPalette, ditherPick, FogLayer, fillWith, drawWobble, makeRays, drawGlow, twinkle, Motes,
   Bubbles, Mask, ridge, quality, inRect, Strands, SwayAnim, cloudTile, DepthScene, BandSet, DepthDecor, qscale, hazeMask,
 } from '../scenery.js';
 
+const SKY_NIGHT = { night: [[0, '#010208'], [0.6, '#050a1e'], [0.9, '#0c1838'], [1, '#18305a']] };
+const UPPER = [[0, '#3a6a9a'], [0.05, '#2c5688'], [0.35, '#22447a'], [1, '#1c2e60']];
 const WATER = [[0, '#1c2e60'], [0.3, '#2a4280'], [0.5, '#34529a'], [0.62, '#2c4686'], [0.8, '#1c2e60'], [1, '#101c40']];
 const GLYPHS = {
   moon: ['..###..', '.##....', '##.....', '##.....', '##.....', '.##....', '..###..'],
@@ -54,18 +58,105 @@ export class AbyssBiome extends Biome {
   }
 
   baseSurface() { return null; }
+  // The abyss has no surface in view; far above it the dim night sea where the boat floats.
+  boatLevel() { return this.level ?? null; }
+  waveAt(x) { const i = Math.max(0, Math.min(this.W, Math.round(x))); return this.ys ? this.ys[i] : this.level; }
+  waterLook() {
+    return { refract: 11, caustic: 3 + this.wx.glow * 4, chroma: true, foam: 0.8, causticColor: '#1a2e4a', foamColor: '#9ab8e8', crestColor: '#c8dcff' };
+  }
   secrets() { return this.game?.state?.secrets || {}; }
   floorAt(x, z = 0) { return this.D ? this.D.floorAt(x, z) : super.floorAt(x); }
 
   // ------------------------------------------------------------------ build
   build(W, H) {
     this.W = W; this.H = H;
+    this.top = worldTop(H);
+    this.level = Math.round(this.top * 0.62);
+    this.ys = new Int16Array(W + 2);
+    this.ys.fill(this.level);
     this.waterStrip = gradientStrip(H, WATER, { levels: 22 });
+    this.buildAbove();
     this.buildDepth();
     this.buildLayers();
     this.rays = makeRays(W, H, { seed: 31, count: 6, sunX: W * 0.48, sunY: -H * 1.5, minW: 14, maxW: 40, len: 0.8, color: '#6a8ae0', alpha: 0.3, levels: 3 });
     this.buildLife();
     this.fresh = true;
+  }
+
+  // The dim surface far above the abyss: night sky, moon, voxel rock spires, a marker buoy, upper water.
+  buildAbove() {
+    const W = this.W, top = this.top, level = this.level;
+    this.sky = new SkyDome({ W, top, base: level, seed: 41, stops: SKY_NIGHT, nightOnly: true, stars: 110, sun: false, clouds: { n: 6, size: [26, 60], y: [top + 20, level - 30], scale: 2, speed: 0.6, pals: ['night'] } });
+    this.upper = gradientStrip(-level + 4, UPPER, { levels: 16 });
+    this.spires = rockSpires(31, { night: ['#0c1838', 0.45] });
+    this.spireX = Math.round(W * 0.74);
+    this.buoy = { spr: markerBuoy('#2a3a5a'), x: Math.round(W * 0.26) };
+    this.moonRays = makeRays(W, -level, { seed: 52, count: 7, sunX: W * 0.6, sunY: level * 1.6, minW: 6, maxW: 22, len: 0.9, color: '#8aa8ff', alpha: 0.35, levels: 3 });
+  }
+
+  drawAbove(ctx, env) {
+    const view = env.view;
+    if (view && view.y0 >= 0) return;
+    const W = this.W, t = this.t, level = this.level, ys = this.ys;
+    const sky = this.sky, tod = { day: 0, dusk: 0, night: 1 };
+    const sp = sky.span(view);
+    if (sp) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, sp[0], W, sp[1] - sp[0]);
+      ctx.clip();
+      sky.drawGradient(ctx, tod, view);
+      sky.drawBodies(ctx, { hour: 23.5 }, tod, 1, env.scroll ?? 0, env.ref ?? 0);
+      sky.drawClouds(ctx, tod, env.scroll ?? 0, env.ref ?? 0, 0, 0.9, view);
+      ctx.drawImage(this.spires.night, this.spireX - this.spires.ox, level + 2 - this.spires.oy);
+      // faint aurora ribbons
+      for (let i = 0; i < 3; i++) {
+        ctx.fillStyle = ['#3affb0', '#5ac8ff', '#a87aff'][i];
+        for (let x = 0; x < W; x += 3) {
+          const y = Math.round(this.top + 60 + i * 18 + Math.sin(x * 0.012 + t * 0.15 + i) * 16 + Math.sin(x * 0.031 - t * 0.1) * 6);
+          const a = 0.06 + 0.05 * Math.sin(x * 0.02 + t * 0.4 + i * 2);
+          if (a <= 0.02) continue;
+          ctx.globalAlpha = a;
+          ctx.fillRect(x, y, 3, 10 + i * 3);
+        }
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+    // upper water from the waterline down to the abyss proper
+    const wp = new Path2D();
+    wp.moveTo(0, 1);
+    waveRuns(ys, W, (x0, len, y) => { wp.lineTo(x0, y); wp.lineTo(x0 + len, y); });
+    wp.lineTo(W, 1);
+    wp.closePath();
+    const pat = ctx.createPattern(this.upper, 'repeat');
+    pat.setTransform(new DOMMatrix([1, 0, 0, 1, 0, level - 2]));
+    ctx.fillStyle = pat;
+    ctx.fill(wp);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.5 + 0.15 * Math.sin(t * 0.3);
+    ctx.drawImage(this.moonRays, Math.round(Math.sin(t * 0.04) * 14), level);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    // buoy riding the waves, crest + under-glint
+    const b = this.buoy, a = b.spr.anchors.water;
+    const by = this.waveAt(b.x) + Math.round(Math.sin(t * 1.5) * 1.2);
+    ctx.drawImage(b.spr.day, Math.round(b.x - a[0]), Math.round(by - a[1]));
+    b.lamp = [b.x - a[0] + b.spr.anchors.lamp[0], by - a[1] + b.spr.anchors.lamp[1]];
+    const crest = new Path2D(), sub = new Path2D();
+    waveRuns(ys, W, (x0, len, y) => { crest.rect(x0, y, len, 1); sub.rect(x0, y + 1, len, 2); });
+    ctx.fillStyle = '#5a7ab0'; ctx.globalAlpha = 0.6; ctx.fill(sub); ctx.globalAlpha = 1;
+    ctx.fillStyle = '#9ab8e8'; ctx.fill(crest);
+    const m = skyBodies(23.5, W, this.top, level).moon;
+    ctx.fillStyle = '#c8dcff';
+    for (let i = 0; i < 18; i++) {
+      const ph = Math.floor(t * 2.4 + i * 0.61);
+      const x = Math.round(m.x + (hash2(i, ph, 5) - 0.5) * (30 + i * 4));
+      if (x < 0 || x >= W) continue;
+      ctx.globalAlpha = Math.sin(((t * 2.4 + i * 0.61) % 1) * Math.PI) * 0.7;
+      ctx.fillRect(x, ys[x] + 1 + Math.floor(hash2(i, ph, 6) * 5), 2 + Math.floor(hash2(i, ph, 7) * 3), 1);
+    }
+    ctx.globalAlpha = 1;
   }
 
   buildDepth() {
@@ -280,6 +371,8 @@ export class AbyssBiome extends Biome {
     this.par.y += (ty - this.par.y) * kp;
     this.fresh = false;
     const drift = wx.current * 34;
+    this.sky.update(dt, 0.6 + wx.current);
+    waveLine(this.ys, W, this.level, this.t * 0.6, 1.3, 0.35, 0.75);
     this.snow.update(dt * (1 + wx.snow * 0.6), drift, 0);
     this.nearSnow.update(dt * (1 + wx.snow * 0.6), drift * 1.4, 0);
     this.sparks.update(dt, drift * 0.6, 0);
@@ -309,7 +402,8 @@ export class AbyssBiome extends Biome {
     this.nearHooked = !!this.nearSeen;
     this.nearSeen = false;
     const W = this.W, H = this.H, t = this.t, wx = this.wx;
-    fillWith(ctx, this.waterStrip, 0, -10, W, H + 10);
+    fillWith(ctx, this.waterStrip, 0, 0, W, H);
+    if (!env.view || env.view.y0 < 0) this.drawAbove(ctx, env);
     const px = this.par.x, py = this.par.y;
     const wob = quality(env) >= 1 ? 1 : 0;
     ctx.globalCompositeOperation = 'lighter';
@@ -485,6 +579,7 @@ export class AbyssBiome extends Biome {
 
   drawFront(ctx, env) {
     const t = this.t, wx = this.wx, q = quality(env), W = this.W, H = this.H;
+    if (this.buoy?.lamp && Math.sin(t * 2.2) > 0) drawGlow(ctx, this.buoy.lamp[0], this.buoy.lamp[1], 6, '#ff5a4a', 0.9);
     this.nearSnow.draw(ctx, t, 0.8 + wx.snow * 0.5, q * (0.4 + wx.snow * 0.6));
     const n = Math.round(this.sparks.list.length * q * (0.35 + wx.glow * 0.65));
     ctx.globalCompositeOperation = 'lighter';
@@ -534,6 +629,10 @@ export class AbyssBiome extends Biome {
     const pg = this.pillarGlyphs[1];
     lights.push({ x: pg.x + 3, y: pg.y + 10, r: 30, color: '#5affff', a: 0.45 });
     if (solved || this.solveT > 0) lights.push({ x: this.statue.x, y: this.statue.top + this.statue.p.h * 0.45, r: 80, color: '#9affff', a: this.solveT > 0 ? 1 : 0.5 });
+    if (this.level !== undefined) {
+      lights.push({ x: this.W * 0.5, y: this.level - 60, r: this.W * 0.7, color: '#4a64b0', a: 0.75 });
+      if (this.buoy?.lamp && Math.sin(t * 2.2) > 0) lights.push({ x: this.buoy.lamp[0], y: this.buoy.lamp[1], r: 30, color: '#ff5a4a', a: 0.8 });
+    }
     return { dark, tint: '#060c26', lights };
   }
 

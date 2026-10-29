@@ -134,6 +134,12 @@ function enrich(g, W) {
   put('bubble_tower', Math.round(W * 0.58), 0.9);
   put('arcade', Math.round(W * 0.7), 0.42);
   put('totem', Math.round(W * 0.5), 0.2);
+  if (g.params.has('all')) {
+    put('bait_workshop', Math.round(W * 0.3), 0.85);
+    put('hatchery', Math.round(W * 0.84), 0.6);
+    put('vault', Math.round(W * 0.62), 0.25);
+    put('shell_shack', Math.round(W * 0.9), 1.05);
+  }
   st.research.done = { marine_bio: now, eng1: now, coral_prop: now };
   st.research.active = [{ id: 'tinkering', start: now - 200e3, end: now + 280e3 }, { id: 'bubble_physics', start: now - 500e3, end: now - 1 }];
   st.vault.coins = 900;

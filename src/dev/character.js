@@ -5,6 +5,14 @@ import { ctxOf } from '../core/canvas.js';
 import { drawText } from '../gfx/font.js';
 import { drawCharacter, DEFAULT_CHARACTER, POSE_NAMES, characterStats, setCharacterBudget, normalizeLook, WARDROBE, boatPaint, warmCharacter, PROF } from '../gfx/character.js';
 import { compiled } from '../gfx/spritecache.js';
+import { Input } from '../core/input.js';
+import { audio } from '../core/audio.js';
+import { Particles } from '../gfx/particles.js';
+import { getUiIcon, registerUiIcons, CURSOR_HOTSPOT } from '../gfx/uiicons.js';
+import { defaultState } from '../game/state.js';
+import { computeStats } from '../game/skills.js';
+import { UI } from '../ui/ui.js';
+import { WardrobePanel } from '../ui/wardrobe.js';
 import { SPECIES } from '../fish/species.js';
 
 const LOOKS = [
@@ -20,7 +28,69 @@ const LOOKS = [
   { skin: 'purple', eyes: 'googly', mouth: 'pout', hat: 'party', outfit: 'hoodie', boots: 'sneakers', gloves: 'none', acc: ['scarf'], rod: 'neon' },
 ];
 
+// Stub game hosting the wardrobe panel (&coins=N &slot=hat &rich: owns lots).
+function runWardrobe(params, cv) {
+  const W = Number(params.get('w')) || 960, H = Number(params.get('h')) || 540;
+  cv.width = W; cv.height = H;
+  cv.style.width = W * 2 + 'px'; cv.style.height = H * 2 + 'px';
+  const ctx = ctxOf(cv);
+  registerUiIcons();
+  const st = defaultState();
+  st.coins = Number(params.get('coins') ?? 2400);
+  st.journal = { parrot: { seen: true, caught: 2 } };
+  if (params.has('rich')) { st.skills = { hook6: true, reel3: true }; st.cosmetics = { hat_crown: true, acc_earring: true, outfit_astronaut: true }; }
+  if (params.get('look')) try { st.character = JSON.parse(params.get('look')); } catch { /* ignore */ }
+  const listeners = {};
+  const g = {
+    params, canvas: cv, screen: { W, H, scale: 2 }, state: st, audio, particles: new Particles(900), time: 0,
+    fishing: { fighting: false }, stats: computeStats(st.skills),
+    on(ev, fn) { (listeners[ev] ||= []).push(fn); }, emit(ev, d) { for (const f of listeners[ev] || []) f(d); },
+    save() {}, toast(text, icon) { g.ui.toast(text, icon); },
+    spendCoins(n) { if (st.coins < n) { audio.play('ui_error'); return false; } st.coins -= n; return true; },
+  };
+  const toLogical = (cx, cy) => { const r = cv.getBoundingClientRect(); return [((cx - r.left) / r.width) * W, ((cy - r.top) / r.height) * H]; };
+  g.input = new Input(cv, toLogical);
+  g.ui = new UI(g);
+  g.ui.register(new WardrobePanel());
+  window.FISHTOP = g;
+  g.ui.open('wardrobe', { slot: params.get('slot') || 'hat' });
+  let last = performance.now();
+  const frame = (now) => {
+    requestAnimationFrame(frame);
+    const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));
+    last = now;
+    g.time += dt;
+    const tf0 = performance.now();
+    try {
+      g.input.update(dt);
+      g.ui.update(dt);
+      g.particles.update(dt);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      const grd = ctx.createLinearGradient(0, 0, 0, H);
+      grd.addColorStop(0, '#3aa0c0'); grd.addColorStop(1, '#123a5a');
+      ctx.fillStyle = grd; ctx.fillRect(0, 0, W, H);
+      g.ui.tip = null;
+      if (!g.ui.stack.length && g.input.pressed) { g.input.pressed = false; g.ui.open('wardrobe'); }
+      g.ui.drawPanels(ctx, dt);
+      g.particles.draw(ctx, 'ui', g.time);
+      g.ui.drawToasts(ctx);
+      g.ui.drawTip(ctx);
+      const st2 = characterStats();
+      drawText(ctx, `${st.coins} coins  frames ${st2.frames} built ${st2.built} (${st2.avgMs} ms)`, 6, H - 10, { font: 'small', color: '#ffffff', shadow: '#000000' });
+      const cur = getUiIcon('cursor'), hs = CURSOR_HOTSPOT.cursor;
+      if (g.input.inside) ctx.drawImage(cur, Math.round(g.input.x) - hs[0], Math.round(g.input.y) - hs[1]);
+    } catch (e) { console.error(e); }
+    const fms = performance.now() - tf0;
+    (window.__wardMs ||= []).push(fms);
+    if (window.__wardMs.length > 240) window.__wardMs.shift();
+    g.input.endFrame();
+  };
+  requestAnimationFrame(frame);
+  window.__charReady = true;
+}
+
 export function run(params) {
+  if (params.get('view') === 'wardrobe') { runWardrobe(params, document.getElementById('screen')); return; }
   const W = 960, H = 540;
   const cv = document.getElementById('screen');
   cv.width = W; cv.height = H;

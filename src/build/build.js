@@ -23,7 +23,7 @@ import { tinted, drawWashed, makeCanvas, ctxOf } from '../core/canvas.js';
 import { drawText, measureText } from '../gfx/font.js';
 import { getUiIcon } from '../gfx/uiicons.js';
 import { drawTooltip } from '../ui/panels.js';
-import { ITEMS, addItem, removeItem, countItem, hasItems, takeItems, addPackage, rollPackage, drawPackage, TIERS, inventory } from './items.js';
+import { ITEMS, addItem, removeItem, countItem, hasItems, takeItems, addPackage, rollPackage, drawPackage, TIERS, inventory, setPackageLuck } from './items.js';
 import { BUILDINGS, BUILDING_ORDER, DECOR_BUILDS, buildingDef, buildingBonus, produceInfo, rollProduce, markCollected, levelOf, maxLevelFor, upgradeCost, vaultAccrue, MAX_LEVEL, ZMIN, ZMAX } from './buildings.js';
 import { registerBuildPanels } from './panels.js';
 import { buildingSprite, WORLD_SCALE, MODEL_IDS } from './buildingmodels.js';
@@ -404,12 +404,12 @@ export class Build {
     for (const f of fishes) {
       if (f._pkgRolled || !f.sp) continue;
       f._pkgRolled = true;
-      f.pkg = rollPackage(f.sp, biome, this.bonus('luck'));
+      if (!('package' in f)) f.pkg = rollPackage(f.sp, biome);
     }
   }
 
   drawFishPackage(ctx, f, t = this.t) {
-    if (!f?.pkg) return;
+    if (!f?.pkg || f.package) return;
     const a = f.anchors?.bottom || [f.x, f.y + 6 * (f.scale || 1)];
     drawPackage(ctx, a[0] - (f.facing || 1) * 2, a[1] - 1, f.pkg.tier, t + (f.x || 0) * 0.013, { scale: clamp(0.42 * (f.scale || 1) * (1 - (f.z || 0) * 0.4), 0.32, 0.6) });
   }
@@ -426,16 +426,23 @@ export class Build {
     if ((r === 'rare' && rng.chance(0.35)) || (r === 'epic' && rng.chance(0.65)) || r === 'legendary') give('rare_specimen', 1);
     if (r === 'legendary' && rng.chance(0.4)) give('golden_scale', 1);
     if (rng.chance(this.bonus('eggChance'))) give('fish_egg', 1);
-    let pkg = fish?.pkg;
-    if (pkg === undefined && !fish?._pkgRolled) pkg = rollPackage(sp, biome, this.bonus('luck'));
+    // the crate the fish carried (school.js rolls fish.package at spawn; rec.package survives in the record)
+    let pkg = fish?.package || fish?.pkg || rec?.package || null;
+    if (!pkg && fish && !('package' in fish) && !fish._pkgRolled && !rec?.package) pkg = rollPackage(sp, biome);
     if (pkg) {
       const p = addPackage(st, pkg.tier, { species: sp?.id || null, biome });
       items.push({ id: 'pkg_' + p.tier, qty: 1, uid: p.uid });
-      if (fish) fish.pkg = null;
+      if (fish) { fish.package = null; fish.pkg = null; }
+      if (rec) rec.package = null;
       setTimeout(() => g.toast?.(`${sp?.name || 'The fish'} was carrying a ${TIERS[p.tier].name}! Open it in your Inventory.`, 'star', 5), 900);
       setTimeout(() => g.audio?.play(p.tier === 'orb' || p.tier === 'golden' ? 'golden_shimmer' : 'treasure_open', { vol: 0.6 }), 700);
     }
-    if (rng.chance(this.bonus('baitSave'))) this.savedBait = true;
+    // Bait Workshop: sometimes the special bait survives the catch
+    const bait = g.currentBait?.();
+    if (bait?.kind === 'special' && rng.chance(this.bonus('baitSave'))) {
+      st.baits[bait.type] = (st.baits[bait.type] || 0) + 1;
+      setTimeout(() => g.toast?.('The Bait Workshop saved your bait!', 'bait'), 1400);
+    }
     return { pkg: pkg || null, items };
   }
 
@@ -445,6 +452,12 @@ export class Build {
     this.t += dt;
     this.ensure();
     this.registerPanels();
+    setPackageLuck(this.bonus('luck'));
+    if (this.welcomed !== this.state) {
+      this.welcomed = this.state;
+      const n = readyCount(this.state);
+      if (n) setTimeout(() => this.game.toast?.(`Professor Bubbles finished ${n} research project${n > 1 ? 's' : ''} while you were away!`, 'book', 5), 3500);
+    }
     for (const [u, a] of this.anims) {
       a.t += dt;
       if (a.kind === 'build') this.buildFx(u, a, dt);
@@ -471,8 +484,8 @@ export class Build {
     // ---- blueprint mode
     if (g.state.view !== 'ocean' || g.ocean?.travelState || g.fishing?.fighting) { this.toggle(false); return; }
     if (inp.keyPressed?.('f') || inp.keyPressed?.('r')) { this.flip = !this.flip; g.audio?.play('ui_toggle'); }
-    if (inp.keyPressed?.('w') || inp.keyPressed?.('ArrowUp')) this.setDepth(this.depth + 0.05);
-    if (inp.keyPressed?.('s') || inp.keyPressed?.('ArrowDown')) this.setDepth(this.depth - 0.05);
+    if (inp.keyPressed?.('e') || inp.keyPressed?.('ArrowUp')) this.setDepth(this.depth + 0.05);
+    if (inp.keyPressed?.('q') || inp.keyPressed?.('ArrowDown')) this.setDepth(this.depth - 0.05);
     const overUi = layer === 'ui' || layer === 'tank' || layer === 'drag' || layer === 'tutorial' || layer === 'boat';
     if (overUi) { this.hover = null; if (this.ghost) this.ghost.show = false; return; }
     if (inp.wheel) { this.setDepth(this.depth + inp.wheel * 0.03); inp.wheel = 0; }
@@ -830,10 +843,10 @@ export class Build {
     ctx.restore();
     // top hint + title block
     const mv = this.moving ? this.byUid(this.moving) : null;
-    const hint = mv ? 'Click to set it down  -  F: flip  -  W/S or wheel: depth  -  Right-click: cancel'
+    const hint = mv ? 'Click to set it down  -  F: flip  -  Q/E or wheel: depth  -  Right-click: cancel'
       : this.mode === 'move' ? 'Click a building to move it  -  Right-click: back to placing'
         : this.mode === 'demolish' ? 'Click a building twice to demolish it (refunds the blueprint and half the cost)'
-          : this.sel ? 'Click the seabed to build  -  F: flip  -  W/S or wheel: depth  -  Right-click: deselect' : 'Pick a blueprint from the tray below';
+          : this.sel ? 'Click the seabed to build  -  F: flip  -  Q/E or wheel: depth  -  Right-click: deselect' : 'Pick a blueprint from the tray below';
     const hw = measureText(hint) + 16;
     ctx.fillStyle = rgba('#06204a', 0.8);
     ctx.fillRect(Math.round(W / 2 - hw / 2), 30, hw, 15);
@@ -855,7 +868,7 @@ export class Build {
       const [px, py] = this.par(z);
       for (let x = 0; x <= W; x += 2) {
         if (hash2(x >> 1, zi, 7) < 0.18) continue;
-        chalk(x + px, this.floorY(x, z) + py, 0.32 - zi * 0.012);
+        chalk(x + px, this.floorY(x, z) + py, 0.45 - zi * 0.018);
       }
     }
     for (let k = -14; k <= 14; k++) {
@@ -866,7 +879,7 @@ export class Build {
         if (sx < 0 || sx > W) continue;
         const [px, py] = this.par(z);
         if (hash2(k + 40, Math.floor(zz * 300), 3) < 0.2) continue;
-        chalk(sx + px, this.floorY(sx, z) + py, 0.26);
+        chalk(sx + px, this.floorY(sx, z) + py, 0.36);
       }
     }
     // the chosen depth line, bright and wobbling

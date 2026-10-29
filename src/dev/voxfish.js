@@ -64,8 +64,9 @@ export function run(params) {
     for (const [id, S] of [['honk', 1.6], ['koi', 1.4], ['grouper', 1.3], ['puffer', 5.5], ['manyeyes', 1.2], ['clickcrab', 1.7], ['glowjelly', 1.7]]) {
       const sp = SPECIES_BY_ID[id];
       const c = compiled(sp.look, null, sp.id);
-      benchVoxel(c, S);
-      out.push([id, S, benchVoxel(c, S)]);
+      let best = null;
+      for (let k = 0; k < 6; k++) { const b = benchVoxel(c, S); if (!best || b.trace < best.trace) best = b; }
+      out.push([id, S, best]);
     }
     window.__vf.bench = out;
     console.log(JSON.stringify(out));

@@ -311,6 +311,7 @@ const hsh = (x, y, z, s) => hash3(x, y, z, s);
 
 // ====================================================================== kit (per look: palette + lazily built parts)
 
+const EYE_RAMP = ['#7a7488', '#a8a6b8', '#ccccd8', '#ececf0', '#fafaf8', '#ffffff', '#ffffff'];
 const KITS = new Map();
 function kitFor(look) {
   const key = lookKey(look);
@@ -343,9 +344,9 @@ function makeKit(L, key) {
   const s = kit.sk;
   const shiny = s.shiny ? { spec: 1.4, specPow: 10 } : {};
   kit.c = {
-    skin: kit.col(s.skin, { smooth: 0.3, jitter: 0.05, edge: 0.5, ...shiny }),
-    skinD: kit.col(shade(s.skin, -0.12), { smooth: 0.3, jitter: 0.05, edge: 0.5, ...shiny }),
-    belly: kit.col(s.belly, { smooth: 0.3, jitter: 0.04, edge: 0.4, ...shiny }),
+    skin: kit.col(s.skin, { smooth: 0.7, jitter: 0.03, edge: 0.15, aoMul: 0.55, ...shiny }),
+    skinD: kit.col(shade(s.skin, -0.12), { smooth: 0.7, jitter: 0.03, edge: 0.15, aoMul: 0.55, ...shiny }),
+    belly: kit.col(s.belly, { smooth: 0.9, jitter: 0.02, edge: 0, aoMul: 0.4, ...shiny }),
     spot: kit.col(s.spot, { smooth: 0.5, jitter: 0.03 }),
     fin: kit.col(s.fin, { smooth: 0.2, jitter: 0.04 }),
     finD: kit.col(shade(s.fin, -0.32), { jitter: 0.03 }),
@@ -357,8 +358,8 @@ function makeKit(L, key) {
     mouthIn: kit.col('#4a1a34', { jitter: 0.02 }),
     tongue: kit.col('#ff6a8e', { smooth: 0.7, spec: 0.5 }),
     teeth: kit.col('#fffaf0', { jitter: 0.02, light: 0.3 }),
-    eyeL: kit.col('#f6faff', { smooth: 1, spec: 1.1, specPow: 10, jitter: 0, aoMul: 0.5, light: 0.45, eye: 1 }),
-    eyeR: kit.col('#f6faff', { smooth: 1, spec: 1.1, specPow: 10, jitter: 0, aoMul: 0.5, light: 0.45, eye: 2 }),
+    eyeL: kit.col('#f6faff', { smooth: 1, spec: 1.1, specPow: 10, jitter: 0, aoMul: 0.5, light: 0.45, edge: 0, ramp: EYE_RAMP, eye: 1 }),
+    eyeR: kit.col('#f6faff', { smooth: 1, spec: 1.1, specPow: 10, jitter: 0, aoMul: 0.5, light: 0.45, edge: 0, ramp: EYE_RAMP, eye: 2 }),
     nostril: kit.col(shade(s.skin, -0.6), { jitter: 0 }),
     // hands get their own entries so the 'hold' pose can redraw them in front of the fish
     hand: kit.col(s.skin, { smooth: 0.5, hand: 1, ...shiny }),
@@ -648,8 +649,8 @@ function headAcc(m, kit) {
 
 // ---------------------------------------------------------------------- hats (pivot = seat on the crown)
 
-const HAT_SEAT = [16, 22.6, 13.8];
-const HAT_TILT = { bucket: -8, captain: -10, propeller: -6, cowboy: -9, crown: -6, chef: -6, viking: -4, cone: -10, souwester: 4, party: -14 };
+const HAT_SEAT = [16, 23.2, 13.6];
+const HAT_TILT = { bucket: -12, captain: -13, propeller: -6, cowboy: -12, crown: -6, chef: -8, viking: -5, cone: -10, souwester: -2, party: -14 };
 
 function buildHat(kit, spin) {
   const id = kit.look.hat;
@@ -1229,13 +1230,14 @@ const POSES = {
       handR: [-9.4, 6.4 + 0.3 * b, 2.2], rod: { pitch: 66, yaw: -96 }, handL: [6.8, 1.6, 0.6], knL: [2 + 2 * b, 0, 0], knR: [2 + 2 * b, 0, 0],
       gill: b > 0.55 ? 1 : 0, gaze: [0.4 * look, 0.1] });
   } },
+  stand: { n: 1, dur: 1, loop: true, fn: () => P({ noRod: true, shL: [2, -10, 16], elL: [-12, 0, 0], shR: [2, 10, -16], elR: [-12, 0, 0], neck: [-3, 0, 0], gaze: [0.2, 0] }) },
   wave: { n: 8, dur: 0.9, loop: true, fn: (u) => {
     const w = S(u * TAU), b = Math.abs(S(u * TAU));
     return P({ off: [0, 0.4 * b, 0], spine: [-2, -6, -3 * w], neck: [-6, -10, 8 * w], shL: [0, -34, 98 + 5 * w], elL: [0, 0, 72 + 38 * w], handR: [-5.8, 8.2, 6.2], rod: { pitch: 62, yaw: -40 },
       mouth: 'grin', gaze: [-0.2, -0.1] });
   } },
 };
-export const POSE_NAMES = Object.keys(POSES).filter((k) => k !== 'show');
+export const POSE_NAMES = Object.keys(POSES).filter((k) => k !== 'show' && k !== 'stand');
 
 function poseFrame(pose, t) {
   const pd = POSES[pose] || POSES.idle;
@@ -1404,6 +1406,8 @@ const PITCH = 14;         // camera looks slightly down
 const FACE_YAW = 38;      // 3/4 view angle for facing left/right
 const YAW_STEP = 10;
 const MAX_FRAMES = 1400;
+const MAX_PIXELS = 9e6;   // ~36 MB of cached frame canvases
+let framePx = 0;
 const FRAMES = new Map();
 const FAMS = new Map();   // family (all but frame index) -> Set(fi)
 let budgetMs = 9, spent = 0, windowStart = 0, statBuilt = 0, statFallback = 0, statMs = 0;
@@ -1473,7 +1477,7 @@ function getFrame(kit, pose, fi, yaw, vs, mx, force) {
   const fam = `${kit.key}#${pose}#${yaw}#${vs}#${mx}`;
   const key = fam + '#' + fi;
   let fr = FRAMES.get(key);
-  if (fr) return fr;
+  if (fr) { FRAMES.delete(key); FRAMES.set(key, fr); return fr; }
   const set = FAMS.get(fam);
   if (!force && overBudget()) {
     // nearest ready frame of the same family, else any yaw of this pose, else build anyway
@@ -1491,16 +1495,20 @@ function getFrame(kit, pose, fi, yaw, vs, mx, force) {
     }
   }
   fr = buildFrame(kit, pose, fi, yaw, vs, mx);
+  fr.px = fr.canvas.width * fr.canvas.height * (fr.front ? 2 : 1) * (fr.glow ? 1.5 : 1);
+  framePx += fr.px;
   FRAMES.set(key, fr);
   let s = set;
   if (!s) FAMS.set(fam, (s = new Set()));
   s.add(fi);
   fr.fam = fam; fr.fi = fi;
-  if (FRAMES.size > MAX_FRAMES) {
+  if (FRAMES.size > MAX_FRAMES || framePx > MAX_PIXELS) {
     for (const [k, v] of FRAMES) {
+      if (v === fr) continue;
       FRAMES.delete(k);
+      framePx -= v.px;
       FAMS.get(v.fam)?.delete(v.fi);
-      if (FRAMES.size <= MAX_FRAMES * 0.85) break;
+      if (FRAMES.size <= MAX_FRAMES * 0.85 && framePx <= MAX_PIXELS * 0.85) break;
     }
   }
   return fr;
@@ -1565,10 +1573,13 @@ function heart(g, cx, cy, r, color) {
   rows.forEach((row, y) => { for (let x = 0; x < 7; x++) if (row[x] === '#') g.fillRect(Math.round(ox + x * s), Math.round(oy + y * s), Math.ceil(s), Math.ceil(s)); });
 }
 
-function drawEyes(ctx, fr, X, Y, o, look, t, dt, sx, ss) {
+function drawEyes(ctx, fr, X, Y, o, look, t, dtHint, sx, ss) {
   const id = o.id ?? 'main';
   let st = EYES.get(id);
-  if (!st) { st = { px: X, py: Y, eyes: {}, blinkT: 0, nextBlink: 2 + Math.random() * 3, wander: [0, 0], wanderT: 0 }; EYES.set(id, st); }
+  const tn = now();
+  if (!st) { st = { px: X, py: Y, eyes: {}, blinkT: 0, nextBlink: 2 + Math.random() * 3, wander: [0, 0], wanderT: 0, last: tn }; EYES.set(id, st); if (EYES.size > 300) EYES.delete(EYES.keys().next().value); }
+  const dt = dtHint ?? clamp((tn - st.last) / 1000, 0, 0.05);
+  st.last = tn;
   // character motion (screen) pushes the pupils around
   const mvx = clamp((X - st.px) / Math.max(dt, 1e-3), -600, 600), mvy = clamp((Y - st.py) / Math.max(dt, 1e-3), -600, 600);
   const jump = Math.abs(X - st.px) > 40 || Math.abs(Y - st.py) > 40;
@@ -1666,7 +1677,6 @@ function drawEyes(ctx, fr, X, Y, o, look, t, dt, sx, ss) {
 
 // ====================================================================== draw
 
-let lastNow = 0;
 export function drawCharacter(ctx, x, y, o = {}) {
   const look = normalizeLook(o.look);
   const kit = kitFor(look);
@@ -1677,9 +1687,6 @@ export function drawCharacter(ctx, x, y, o = {}) {
   const { yaw, mx } = yawFor(o);
   const fi = poseFrame(pose, t);
   const fr = getFrame(kit, pose, fi, yaw, vs, mx, false);
-  const n = now();
-  const dt = clamp((n - (lastNow || n)) / 1000, 0, 0.05);
-  lastNow = n;
   const X = Math.round(x - fr.fx), Y = Math.round(y - fr.fy);
   const sx = o.yaw != null ? -Math.sign(Math.sin(yaw * DEG)) || 1 : (o.facing ?? 1) < 0 ? -1 : 1;
   if (o.shadow !== false && pose !== 'sit') {
@@ -1696,7 +1703,7 @@ export function drawCharacter(ctx, x, y, o = {}) {
     ctx.drawImage(fr.glow, X, Y);
     ctx.globalCompositeOperation = prev; ctx.globalAlpha = pa;
   }
-  drawEyes(ctx, fr, Math.round(x), Math.round(y), o, look, t, dt, sx, vs / BASE_VS);
+  drawEyes(ctx, fr, Math.round(x), Math.round(y), o, look, t, null, sx, vs / BASE_VS);
   const A = fr.anchors;
   const ax = (a) => [Math.round(x + a[0]), Math.round(y + a[1])];
   if (pose === 'hold' && o.fish?.compiled) {
@@ -1730,7 +1737,7 @@ export function itemPreview(look, item, size = 1, force = false) {
   if (!force && overBudget()) return null;
   const kit = kitFor(L);
   const t0 = now();
-  const vs = Math.max(0.75, Math.round(BASE_VS * size * 4) / 4);
+  const vs = Math.max(0.6, Math.round(BASE_VS * size * 20) / 20);
   let m, yaw = -28, pitch = 12;
   const slot = item.slot;
   if (slot === 'rod') {
@@ -1762,7 +1769,7 @@ export function itemPreview(look, item, size = 1, force = false) {
         items.push({ part: hat, W: mul(seat, Tr(-hat.pivot[0], -hat.pivot[1], -hat.pivot[2])) });
       }
       const { m: hm, gmin } = compose(kit, { items }, 1);
-      const yw = slot === 'acc' && item.value === 'earring' ? 40 : -24;
+      const yw = slot === 'acc' && item.value === 'earring' ? 40 : slot === 'mouth' || (slot === 'acc' && item.value === 'mustache') ? -10 : slot === 'eyes' ? -16 : -24;
       const r = renderVoxels(hm, { scale: vs, yaw: yw, pitch: 10, ao: 1.05, edges: 0.75, sideEdges: 0.55, jitter: 0.1, glowRadius: 2 });
       const proj = (w) => r.project(w[0] - gmin[0], w[1] - gmin[1], w[2] - gmin[2]);
       const Wh = items[0].W;
@@ -1781,7 +1788,10 @@ export function itemPreview(look, item, size = 1, force = false) {
       }
       pv = { canvas: r.canvas, glow: r.glow, ox: r.w / 2, oy: r.h, w: r.w, h: r.h, eyes, vs, p: P({}) };
     } else {
-      const fr = getFrame(kit, 'idle', 0, -30, vs, 1, true);
+      // full figure, hatless (unless it is the point), neutral stance without the rod
+      const L2 = { ...L, hat: 'none' };
+      const kit2 = kitFor(L2);
+      const fr = getFrame(kit2, 'stand', 0, slot === 'acc' && item.value === 'backpack' ? 140 : -30, vs, 1, true);
       pv = { canvas: fr.canvas, glow: fr.glow, ox: fr.fx, oy: fr.fy, w: fr.canvas.width, h: fr.canvas.height, eyes: fr.eyes.map((e) => ({ ...e, x: e.x + fr.fx, y: e.y + fr.fy, cx: e.cx + fr.fx, cy: e.cy + fr.fy })), vs, p: fr.p };
     }
   }
@@ -1797,5 +1807,5 @@ export function drawItemPreview(ctx, pv, x, y, t = 0, id = 'thumb') {
   const X = Math.round(x - pv.ox), Y = Math.round(y - pv.oy);
   ctx.drawImage(pv.canvas, X, Y);
   if (pv.glow) { const g = ctx.globalCompositeOperation; ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.5; ctx.drawImage(pv.glow, X, Y); ctx.globalAlpha = 1; ctx.globalCompositeOperation = g; }
-  if (pv.eyes?.length) drawEyes(ctx, { eyes: pv.eyes, p: pv.p, vs: pv.vs }, X, Y, { id }, pv.look, t, 1 / 60, 1, 1);
+  if (pv.eyes?.length) drawEyes(ctx, { eyes: pv.eyes, p: pv.p, vs: pv.vs }, X, Y, { id }, pv.look, t, null, 1, 1);
 }
