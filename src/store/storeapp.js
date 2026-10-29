@@ -202,7 +202,7 @@ function cardAction(P, bx, y, appId, L, { cur, next, dl, hl }) {
   if (price) drawText(ctx, `{coin} ${price}`, bx + bw / 2, y + 32, { color: broke ? '#c00000' : '#8a5a00', align: 'center' });
   else if (Math.floor(t * 2) % 2 === 0) drawText(ctx, 'FREE!!', bx + bw / 2, y + 32, { color: '#e00000', align: 'center' });
   const eta = L.kb / S.speed();
-  drawText(ctx, `~${formatShortTime(eta).toUpperCase()} ON ${S.isp().short.toUpperCase()}`, bx + bw / 2, y + 44, { font: 'small', color: eta > 300 ? '#c00000' : GREY, align: 'center' });
+  drawText(ctx, `ETA ${formatShortTime(eta).toUpperCase()} ON ${S.isp().short.toUpperCase()}`, bx + bw / 2, y + 44, { font: 'small', color: eta > 300 ? '#c00000' : GREY, align: 'center' });
   if (eta > 120) link(P, 'go faster?', bx + bw / 2 - 20, y + 53, () => navigate(P.w, g, 'isp'), { font: 'small', url: pageUrl('isp') });
   if (hl) {
     const hand = getUiIcon('cursor_hand');
@@ -234,7 +234,7 @@ function header(P, x, y, W) {
   const logo = A.wordArt('AppSea', { scale: 3 });
   ctx.drawImage(logo, x + 4, y + 2);
   A.drawBurst(ctx, x + logo.width + 2, y + 5, 'WOW!', t);
-  drawText(ctx, "THE OCEAN'S #1 DOWNLOAD SITE!!!", x + 10, y + 33, { font: 'small', color: '#ffffff', shadow: '#06064a', wave: 1, time: t });
+  drawText(ctx, "THE OCEAN'S #1 DOWNLOAD SITE!!!", x + 10, y + 36, { font: 'small', color: '#ffffff', shadow: '#06064a', wave: 1, time: t });
   // visitor counter + guestbook
   const vx = x + W - 58;
   drawText(ctx, 'VISITORS:', vx, y + 6, { font: 'small', color: '#bff0ff' });
@@ -380,13 +380,13 @@ function bannerAd(P, x, y, w) {
 
 function welcome(P, x, y, w) {
   const { ctx, t } = P;
-  box(ctx, x, y, w, 52, 'WELCOME!!!', { head: ['#8000a0', '#ff40c0'], border: '#8000a0', body: '#fffff0' });
+  box(ctx, x, y, w, 64, 'WELCOME!!!', { head: ['#8000a0', '#ff40c0'], border: '#8000a0', body: '#fffff0' });
   drawText(ctx, 'Welcome to AppSea!!!', x + 6, y + 15, { color: '#c000a0', wave: 1, time: t });
   const txt = 'Every program here is 100% real and 100% bait. Download apps, drag them into your Bait Box and fish bite! Bigger files = hungrier fish.';
-  wrapText(txt, w - 60).forEach((l, i) => drawText(ctx, l, x + 6, y + 26 + i * 9, { font: 'small', color: TEXT }));
-  A.drawCrab(ctx, x + w - 40, y + 30, t);
-  A.drawConstruction(ctx, x + w - 54, y + 15, 50, t);
-  return y + 58;
+  wrapText(txt, w - 12, 'small').forEach((l, i) => drawText(ctx, l, x + 6, y + 26 + i * 8, { font: 'small', color: TEXT }));
+  A.drawConstruction(ctx, x + 1, y + 52, w - 2, t);
+  A.drawCrab(ctx, x + 8 + Math.abs(((t * 18) % ((w - 34) * 2)) - (w - 34)), y + 43, t);
+  return y + 70;
 }
 
 function footer(P, x, y, W) {
@@ -587,7 +587,9 @@ function toolbar(P, r) {
     const br = { x: bx, y: r.y + 2, w: 18, h: 11 };
     const hov = enabled && P.hot2 && rectContains(br, P.mx, P.my);
     if (enabled) P.chrome.push({ ...br, fn });
-    A.winButton(ctx, br.x, br.y, br.w, br.h, label, { hover: hov, disabled: !enabled, down: hov && g.input?.down, font: 'small' });
+    const arrow = label === '<' ? 'left' : label === '>' ? 'right' : null;
+    A.winButton(ctx, br.x, br.y, br.w, br.h, arrow ? '' : label, { hover: hov, disabled: !enabled, down: hov && g.input?.down, font: 'small' });
+    if (arrow) A.drawArrow(ctx, br.x, br.y, br.w, br.h, arrow, enabled ? '#000000' : '#909090');
     return bx + 20;
   };
   let bx = r.x + 2;
@@ -595,7 +597,7 @@ function toolbar(P, r) {
   bx = btn(bx, '>', d.fwd.length > 0, () => { const p = d.fwd.pop(); if (p) { d.back.push({ page: d.page, scroll: w.scroll }); d.page = p.page; w.scroll = p.scroll; d.loadT0 = d.lastT; } });
   bx = btn(bx, 'H', true, () => navigate(w, g, 'home'));
   drawText(ctx, 'Address', bx + 2, r.y + 4, { color: '#000000' });
-  const ax = bx + 36, aw = r.x + r.w - ax - 26;
+  const ax = bx + 40, aw = r.x + r.w - ax - 26;
   A.bevel(ctx, ax, r.y + 2, aw, 11, { face: '#ffffff', inset: true, thin: true });
   ctx.drawImage(getMiniIcon('browser'), ax + 1, r.y + 1, 11, 11);
   let url = pageUrl(d.page);
@@ -629,8 +631,10 @@ function scrollbar(P, r, view, maxS) {
   ctx.fillRect(x, y0, SW, h);
   for (let yy = y0; yy < y0 + h; yy++) for (let xx = x + ((yy & 1) ? 1 : 0); xx < x + SW; xx += 2) { ctx.fillStyle = '#ffffff'; ctx.fillRect(xx, yy, 1, 1); }
   const up = { x, y: y0, w: SW, h: SW }, dn = { x, y: y0 + h - SW, w: SW, h: SW };
-  A.winButton(ctx, up.x, up.y, up.w, up.h, '^', { font: 'small' });
-  A.winButton(ctx, dn.x, dn.y, dn.w, dn.h, 'v', { font: 'small' });
+  A.winButton(ctx, up.x, up.y, up.w, up.h, '', { font: 'small' });
+  A.winButton(ctx, dn.x, dn.y, dn.w, dn.h, '', { font: 'small' });
+  A.drawArrow(ctx, up.x, up.y, up.w, up.h, 'up');
+  A.drawArrow(ctx, dn.x, dn.y, dn.w, dn.h, 'down');
   P.chrome.push({ ...up, fn: () => { w.scroll = clamp(w.scroll - 24, 0, maxS); } });
   P.chrome.push({ ...dn, fn: () => { w.scroll = clamp(w.scroll + 24, 0, maxS); } });
   const tr = { x, y: y0 + SW, w: SW, h: h - SW * 2 };

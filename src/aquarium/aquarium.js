@@ -1564,7 +1564,10 @@ export class Aquarium {
       it.z = z; it.kind = kind; it.o = o; it.y = y;
       n++;
     };
-    for (const d of this.decor) push(d.z, 'decor', d);
+    for (const d of this.decor) {
+      push(d.z, 'decor', d);
+      if (d.user?.front && d.drawP?.front) push(d.z - 0.008, 'decorFront', d);
+    }
     for (const p of this.view.plants) push(p.z, 'plant', p);
     for (const f of this.fish) {
       let z = f.z;
@@ -1628,6 +1631,12 @@ export class Aquarium {
           g.globalAlpha = 1;
           g.globalCompositeOperation = 'source-over';
         }
+        break;
+      }
+      case 'decorFront': {
+        // front walls of a tub redrawn over the fish soaking in it
+        const fc = o.drawP?.front;
+        if (fc) g.drawImage(fc, o.drawX, o.drawY, o.drawW, o.drawH);
         break;
       }
       case 'plant': {

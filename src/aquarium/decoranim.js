@@ -360,7 +360,11 @@ function runScript(aq, f, u, dt) {
 function runUse(aq, f, u, dt, T, fs) {
   const st = u.st, d = u.d, spec = specOf(d), use = spec.use;
   const a = anchorAt(aq, d, use.at || 'center');
-  const behind = use.at === 'water' || u.kind === 'hide' || use.behind;
+  // Tubs / the toilet have a front-wall layer: the fish sits in front of the sprite and the walls are
+  // redrawn over it (aquarium 'decorFront' item). Other hiding spots just put the fish behind.
+  const inside = !!(d.drawP?.front) && (use.at === 'water' || u.kind === 'hide');
+  const behind = !inside && (use.at === 'water' || u.kind === 'hide' || use.behind);
+  const zIn = inside ? d.z - 0.004 : d.z + 0.015;
   let tx = a.x, ty = a.y;
   if (u.kind === 'bounce') ty = a.y - 24 * fs;
   if (u.kind === 'watch') { tx = a.x + st.off * 10 * fs; ty = a.y - 4 * fs; }
@@ -380,26 +384,29 @@ function runUse(aq, f, u, dt, T, fs) {
       if (u.kind === 'sit' || u.kind === 'watch') f.say(use.emote || (u.kind === 'watch' ? 'exclaim' : 'heart'), 1.6);
       if (u.kind === 'dancer') f.say('music', 1.5);
     }
-    // Swim over the decor's front, slipping behind it when hiding / soaking.
-    if (behind && dist(f.x, f.y, tx, ty) < 30 * fs) f.useZ = d.z + 0.015;
+    // Swim over the decor's front, slipping in / behind it when hiding / soaking.
+    if ((behind || inside) && dist(f.x, f.y, tx, ty) < 30 * fs) { f.useZ = zIn; u.front = inside; }
     f.z = lerp(f.z, clamp(d.z + (behind ? 0.01 : -0.03), 0, 0.85), 1 - Math.exp(-dt * 2));
     return steerTo(f, tx, ty, Math.min(Math.max(f.burst, 60) * 1.5, Math.max(f.cruise * 2.5, 40 * fs, dd * 0.9)), 16 * fs + 4);
   }
   f.vx = 0; f.vy = 0;
   switch (u.kind) {
     case 'sit': {
-      f.useZ = behind ? d.z + 0.015 : d.z - 0.012;
+      f.useZ = behind || inside ? zIn : d.z - 0.012;
+      u.front = inside;
       f.x = lerp(f.x, tx + Math.sin(st.t * 0.8) * 2 * fs, 1 - Math.exp(-dt * 6));
       f.y = lerp(f.y, ty + Math.sin(st.t * 2.2) * 1.2 * fs, 1 - Math.exp(-dt * 6));
       f.feel(st.t > st.dur * 0.6 ? 'sleepy' : 'happy', 0.3);
       if (rng.chance(dt * 0.25)) f.say(rng.pick([use.emote || 'heart', 'zzz', 'music']), 1.4);
-      if (behind && rng.chance(dt * 1.2)) aq.particles.bubble(f.x + rng.float(-4, 4) * fs, f.y - 3 * fs, { size: 1 });
+      if ((behind || inside) && rng.chance(dt * 1.2)) aq.particles.bubble(f.x + rng.float(-4, 4) * fs, f.y - 3 * fs, { size: 1 });
       if (st.t > st.dur) { f.vy = -30 * fs; endScript(f, 'heart'); }
       return [0, 0];
     }
     case 'hide': {
-      f.useZ = d.z + 0.02;
-      f.alpha = Math.max(0, 1 - st.t * 3);
+      f.useZ = inside ? zIn : d.z + 0.02;
+      u.front = inside;
+      f.alpha = Math.max(0, 1 - st.t * (inside ? 1.5 : 3));
+      if (inside) ty += Math.min(1, st.t * 2) * 8 * fs;
       f.x = lerp(f.x, tx, 1 - Math.exp(-dt * 6)); f.y = lerp(f.y, ty, 1 - Math.exp(-dt * 6));
       if (st.t > st.dur) {
         // Pop back out (the toilet flushes them out, others just peek and leave).

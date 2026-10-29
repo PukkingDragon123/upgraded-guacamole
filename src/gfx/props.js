@@ -2747,7 +2747,8 @@ def('toilet', {
   m.cylinder(40, 4, 27, 35, 3.8, paper, 'z');
   m.cylinder(40, 4, 35, 35, 1.5, core, 'z');
   m.box(38, 0, 36, 42, 0, 43, paper);
-  return { m, yaw: 30, ground: [cx, 0, 25], anchors: { bowl: [cx, 18, cz + 2], top: [cx, 49, 7] } };
+  const front = (x, y, z) => { const v = m.get(x, y, z); return z + 0.5 > cz && y < 28 && v !== water && v !== swirl; };
+  return { m, yaw: 30, ground: [cx, 0, 25], front, anchors: { bowl: [cx, 18, cz + 2], top: [cx, 49, 7] } };
 });
 
 def('garden_gnome', {
@@ -3129,7 +3130,9 @@ def('bathtub', {
   for (const s of [-1, 1]) m.sphere(5, 23, cz + s * 2.6, 1.3, chrome);
   if (frame === 2) m.line(12, 25, cz, 13, 19, cz, stream, 0.6);
   m.box(cx - 10, 0, 34, cx + 10, 0, 40, (x) => mat[x % 4 < 2 ? 0 : 1]);
-  return { m, yaw: 30, ground: [cx, 0, cz + 4], anchors: { water: [cx + 2, 21, cz], foam: [cx, 26, cz] } };
+  const inner = new Set([water, foam[0], foam[1], yel, beak, eye, stream]);
+  const front = (x, y, z) => z + 0.5 > cz - 1 && !inner.has(m.get(x, y, z));
+  return { m, yaw: 30, ground: [cx, 0, cz + 4], front, anchors: { water: [cx + 2, 21, cz], foam: [cx, 26, cz] } };
 });
 
 def('traffic_cone', {
@@ -4267,7 +4270,10 @@ def('hot_tub', {
   m.cone(gx, gz, 24, 26, 0.8, 2.2, drink);
   m.line(gx, 26, gz, gx + 1, 30, gz, glass, 0);
   m.cone(gx + 1, gz, 30, 31, 2.4, 0.3, umb);
-  return { m, yaw: 30, pitch: 30, ground: [cx, 0, cz], light: '#4ad8e0', anchors: { water: [cx, 17, cz], top: [cx, 24, cz] } };
+  // Front walls only: drawn over a fish soaking in the tub.
+  const inner = new Set([water, foam, yel, beak, eye]);
+  const front = (x, y, z) => z + 0.5 > cz - 2 && !inner.has(m.get(x, y, z));
+  return { m, yaw: 30, pitch: 30, ground: [cx, 0, cz], light: '#4ad8e0', front, anchors: { water: [cx, 17, cz], top: [cx, 24, cz] } };
 });
 
 def('map_table', {

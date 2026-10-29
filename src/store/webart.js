@@ -134,6 +134,18 @@ export function glossButton(ctx, x, y, w, h, label, { color = 'green', hover = f
   });
 }
 
+// Small solid triangle arrow (dir: 'up'|'down'|'left'|'right') centred in a box.
+export function drawArrow(ctx, x, y, w, h, dir, color = '#000000') {
+  ctx.fillStyle = color;
+  const cx = Math.floor(x + w / 2), cy = Math.floor(y + h / 2);
+  for (let i = 0; i < 3; i++) {
+    if (dir === 'up') ctx.fillRect(cx - i, cy - 1 + i, i * 2 + 1, 1);
+    else if (dir === 'down') ctx.fillRect(cx - i, cy + 1 - i, i * 2 + 1, 1);
+    else if (dir === 'left') ctx.fillRect(cx - 1 + i, cy - i, 1, i * 2 + 1);
+    else ctx.fillRect(cx + 1 - i, cy - i, 1, i * 2 + 1);
+  }
+}
+
 // ---------------------------------------------------------------- stars, badges, counters
 const STAR = ['..#..', '.###.', '#####', '.###.', '.#.#.'];
 function starTex(kind) {
@@ -245,20 +257,21 @@ export function wordArt(text, { scale = 3, top = '#fff27a', bottom = '#ff8a1e', 
     const c = makeCanvas(tw + pad * 2 + scale, th + pad * 2 + scale);
     const g = ctxOf(c);
     const fill = makeCanvas(c.width, c.height), fg = ctxOf(fill);
-    drawText(fg, text, pad, pad, { scale, color: '#ffffff' });
-    fg.globalCompositeOperation = 'source-in';
     for (let y = 0; y < c.height; y++) {
       const k = clamp((y - pad) / th, 0, 1);
-      const band = Math.round(k * 5) / 5;
-      fg.fillStyle = mix(top, bottom, band);
+      fg.fillStyle = mix(top, bottom, Math.round(k * 5) / 5);
       fg.fillRect(0, y, c.width, 1);
     }
     fg.fillStyle = 'rgba(255,255,255,0.75)';
     fg.fillRect(0, pad + 1, c.width, Math.max(1, Math.floor(scale / 2)));
+    const mask = makeCanvas(c.width, c.height);
+    drawText(ctxOf(mask), text, pad, pad, { scale, color: '#ffffff' });
+    fg.globalCompositeOperation = 'destination-in';
+    fg.drawImage(mask, 0, 0);
     // outline + drop shadow
-    for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, 1], [1, -1], [-1, 1]]) drawText(g, text, pad + dx * Math.max(1, scale - 1), pad + dy * Math.max(1, scale - 1), { scale, color: outline });
-    drawText(g, text, pad + scale, pad + scale + 1, { scale, color: shadow });
-    for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) drawText(g, text, pad + dx * Math.max(1, scale - 1), pad + dy * Math.max(1, scale - 1), { scale, color: outline });
+    const o = Math.max(1, scale - 1);
+    drawText(g, text, pad + o + 1, pad + o + 2, { scale, color: shadow });
+    for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, 1], [1, -1], [-1, 1]]) drawText(g, text, pad + dx * o, pad + dy * o, { scale, color: outline });
     g.drawImage(fill, 0, 0);
     return c;
   });
