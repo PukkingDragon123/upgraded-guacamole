@@ -478,7 +478,7 @@ export class Finale {
   }
 
   drawHud(ctx) {
-    if (this.portrait > 0.01) drawPortrait(ctx, this.F, this.fish, this.portrait, this.stage === 'igotit' ? 'cheer' : 'hold', this.rt);
+    if (this.portrait > 0.01) drawPortrait(ctx, this.F, this.fish, this.portrait, 'hold', this.rt);
   }
 }
 
@@ -658,7 +658,7 @@ export class Outro {
   drawWorld() {}
 
   drawHud(ctx) {
-    if (this.portrait > 0.01 && this.fish) drawPortrait(ctx, this.F, this.fish, this.portrait, 'cheer', this.t);
+    if (this.portrait > 0.01 && this.fish) drawPortrait(ctx, this.F, this.fish, this.portrait, 'hold', this.t);
   }
 }
 

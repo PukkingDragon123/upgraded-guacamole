@@ -12,7 +12,7 @@ import { paint, dpack, lerpStops, Blend, twinkle, glowSprite } from './scenery.j
 import { renderModel } from './voxkit.js';
 
 export const CLOUD_PALS = {
-  day: ['#9aa8cc', '#bccbe8', '#dfe9f8', '#f6fbff', '#ffffff'],
+  day: ['#7a8cba', '#a2b4dc', '#cad8f0', '#eaf2fc', '#ffffff'],
   dusk: ['#4c3462', '#8a5278', '#d07e86', '#ffbe96', '#ffe6c4'],
   night: ['#0c1228', '#141c36', '#1e2a48', '#2a3a5e', '#43567c'],
   rain: ['#2c323e', '#3a424f', '#4a5362', '#5e6876', '#78828f'],
@@ -20,17 +20,25 @@ export const CLOUD_PALS = {
 };
 
 // Re-colour a rendered sprite through a 5-step ramp by luminance (keeps the voxel shading and the alpha).
-export function recolor(src, ramp) {
+export function recolor(src, ramp, gamma = 1, vshade = 0) {
   const w = src.width, h = src.height;
   const s = ctxOf(src).getImageData(0, 0, w, h).data;
   const R = ramp.map(hexToRgb);
   const n = R.length - 1;
+  let lo = 1, hi = 0;
+  for (let i = 0; i < s.length; i += 4) {
+    if (!s[i + 3]) continue;
+    const l = (s[i] * 0.3 + s[i + 1] * 0.55 + s[i + 2] * 0.15) / 255;
+    if (l < lo) lo = l; if (l > hi) hi = l;
+  }
+  const span = Math.max(0.05, hi - lo);
   return paint(w, h, (x, y) => {
     const i = (y * w + x) * 4, a = s[i + 3];
     if (!a) return 0;
     const l = (s[i] * 0.3 + s[i + 1] * 0.55 + s[i + 2] * 0.15) / 255;
-    const q = clamp01((l - 0.35) / 0.65) * n;
-    const k = Math.min(n, Math.floor(q + bayer(x, y) * 0.9));
+    const yk = y / h;
+    const q = clamp01(Math.pow(clamp01((l - lo) / span), gamma) - vshade * yk * yk) * n;
+    const k = Math.min(n, Math.floor(q + 0.25 + bayer(x, y) * 0.5));
     const c = R[k];
     return packRGB(c[0], c[1], c[2], a);
   });
@@ -40,7 +48,7 @@ export function recolor(src, ramp) {
 export function cloudModel(seed, w, h, d) {
   const r = new RNG(seed);
   const m = new VoxelModel(w, h, d);
-  const c = m.color('#ffffff', { jitter: 0.06, smooth: 0.55 });
+  const c = m.color('#8a94a8', { jitter: 0.02, smooth: 0.55 });
   const n = r.int(4, 7);
   for (let i = 0; i < n; i++) {
     const u = n === 1 ? 0.5 : i / (n - 1);
@@ -58,9 +66,9 @@ export function cloudModel(seed, w, h, d) {
 
 export function cloudSprites(seed, w, h, d, scale = 2, pals = ['day', 'dusk', 'night', 'rain']) {
   const m = cloudModel(seed, w, h, d);
-  const r = renderModel(m, { scale, yaw: 18, pitch: 10, outline: false, edges: 0.35, sideEdges: 0.2, ao: 0.8, jitter: 0.08, light: { top: 4.9, lit: 3.9, dark: 2.6, bottom: 1.6 } });
+  const r = renderModel(m, { scale, yaw: 18, pitch: 10, outline: false, edges: 0.5, sideEdges: 0.3, ao: 1.1, jitter: 0.03, light: { top: 5.2, lit: 3.8, dark: 2.2, bottom: 0.8 } });
   const out = { w: r.w, h: r.h, ox: Math.round(r.w / 2), oy: r.oy };
-  for (const p of pals) out[p] = recolor(r.canvas, CLOUD_PALS[p] || CLOUD_PALS.day);
+  for (const p of pals) out[p] = recolor(r.canvas, CLOUD_PALS[p] || CLOUD_PALS.day, 1.15, 0.45);
   return out;
 }
 

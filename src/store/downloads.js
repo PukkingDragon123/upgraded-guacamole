@@ -31,7 +31,9 @@ export function defaultAppsState() {
 export function ensureStoreState(state) {
   if (!state.apps || typeof state.apps !== 'object') {
     state.apps = defaultAppsState();
-    if (state.tutorialDone) for (const id of LEGACY_APPS) { state.apps.installed.push(id); state.apps.tiers[id] = 0; }
+    // a save that already fished before the store existed keeps its old desktop apps (Lite)
+    const veteran = (state.stats?.caught || 0) > 0 || (state.fish?.length || 0) > 0;
+    if (veteran) for (const id of LEGACY_APPS) { state.apps.installed.push(id); state.apps.tiers[id] = 0; }
   }
   const a = state.apps;
   a.installed ||= [];

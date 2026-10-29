@@ -144,8 +144,9 @@ function torus(m, cx, cy, cz, R, r, c, axis = 'y', arc = null) {
 // ---------------------------------------------------------------- the diorama model
 const AUTO = 0, SAND = 1, GRASS = 2, ROCK = 3, SNOW = 4, ICE = 5, CREV = 6, BASALT = 7, LAVA = 8, LAVAHOT = 9, CRUST = 10, RIFT = 11, PLAZA = 12, ROAD = 13, ROADLINE = 14;
 const CRACKS = [
-  [[116, 30], [123, 37], [130, 40], [136, 46], [143, 47], [151, 44], [158, 48], [164, 47], [168, 50]],
-  [[124, 12], [120, 19], [124, 27], [121, 33]],
+  [[92, 40], [99, 45], [106, 43], [113, 49], [120, 47], [127, 53], [134, 51], [140, 57]],
+  [[106, 43], [109, 36], [106, 29], [110, 22]],
+  [[120, 47], [122, 56], [118, 63]],
 ];
 const ROAD_U = [70, 81, 92, 103], ROAD_W = [62, 73, 84];
 const VC = [146, 28]; // volcano centre (block-local)
@@ -226,10 +227,10 @@ function landAt(u, w) {
         }
       }
     }
-    if (u > 110 && w < 60) {
-      const cd = Math.min(polyDist(u, w, CRACKS[0]), polyDist(u, w, CRACKS[1]));
-      if (cd < 2.3 && h < SEA - 30) {
-        if (cd < 0.85) { mt = RIFT; h -= 1; } else mt = CRUST;
+    if (u > 86 && w < 68) {
+      const cd = Math.min(...CRACKS.map((c) => polyDist(u, w, c)));
+      if (cd < 2.6 && h < SEA - 28) {
+        if (cd < 1.1) { mt = RIFT; h -= 1; } else mt = CRUST;
       }
     }
   }
@@ -925,6 +926,7 @@ function camVec(yaw) {
   return { R: [cy, 0, -sy], U: [-sp * sy, cp, -sp * cy], D: [-sy * cp, -sp, -cy * cp] };
 }
 
+const DEBUG = { noWater: false };
 let _t0 = 0, _t1 = 0, _ax = 0;
 function slab(ox, oy, oz, ix, iy, iz, x0, x1, y0, y1, z0, z1) {
   let a = (x0 - ox) * ix, b = (x1 - ox) * ix;
@@ -992,7 +994,7 @@ function bakeView(dio, yaw, scale) {
         obj[p] = dio.own[ids[p]];
         if (hx >= M && hx < XR && hz >= M && hz < ZF) terr[p] = dio.terr[hx + NX * hz];
       }
-      if (!slab(ox, oy, oz, ix, iy, iz, M, XR, Y0, SEA, M, ZF)) continue;
+      if (DEBUG.noWater || !slab(ox, oy, oz, ix, iy, iz, M, XR, Y0, SEA, M, ZF)) continue;
       const tw0 = _t0, tw1 = _t1, ax = _ax;
       const thick = Math.min(tw1, th) - tw0;
       if (thick <= 0.02) continue;
@@ -1008,7 +1010,7 @@ function bakeView(dio, yaw, scale) {
         grad(TOPG, dh, wc);
         a = Math.min(0.64, 0.14 + thick * 0.0095);
         const wv = Math.sin(ex * 0.45 + Math.sin(ez * 0.23) * 2.2) + Math.sin(ez * 0.38 - ex * 0.12 + 1.3);
-        if (wv + bq * 0.5 > 1.72) { wc[0] = lerp(wc[0], 236, 0.3); wc[1] = lerp(wc[1], 252, 0.3); wc[2] = lerp(wc[2], 255, 0.3); a = Math.max(a, 0.36); }
+        if (wv + bq * 0.4 > 1.8) { wc[0] = lerp(wc[0], 236, 0.24); wc[1] = lerp(wc[1], 252, 0.24); wc[2] = lerp(wc[2], 255, 0.24); a = Math.max(a, 0.32); }
         else if (wv - bq * 0.5 < -1.7) { wc[0] *= 0.9; wc[1] *= 0.92; wc[2] *= 0.95; a += 0.04; }
       } else {
         const dz = SEA - ey + (bq - 0.5) * 2.2;
@@ -1125,8 +1127,9 @@ function outlineFor(bk, li) {
   const at = (x, y) => (x >= 0 && y >= 0 && x < W && y < H ? obj[y * W + x] === li : false);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const X = x + x0, Y = y + y0;
-    if (at(X, Y)) out[y * w + x] = 0x30ffffff;
+    if (at(X, Y)) out[y * w + x] = 0x38ffffff;
     else if (at(X - 1, Y) || at(X + 1, Y) || at(X, Y - 1) || at(X, Y + 1)) out[y * w + x] = 0xffffffff;
+    else if (at(X - 2, Y) || at(X + 2, Y) || at(X, Y - 2) || at(X, Y + 2)) out[y * w + x] = 0x70ffffff;
   }
   cg.putImageData(im, 0, 0);
   return (bk.outlines[li] = { canvas: c, x: x0, y: y0 });
@@ -1164,10 +1167,12 @@ function fogFor(bk, li) {
   }
   const c = makeCanvas(w, h), cg = ctxOf(c), im = cg.createImageData(w, h), out = new Uint32Array(im.data.buffer);
   const A = RGB('#e4ecf4'), B = RGB('#8090ac');
+  const [fx, fy] = bk.anchors[li - 1], RX = 64 * bk.scale / 2.4, RY = 52 * bk.scale / 2.4;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const i = y * w + x, d = dist[i];
     const n = fbm2((x + x0) * 0.04, (y + y0) * 0.075, 3, li * 13);
-    let a = 0.7 * smoothstep(pad + 1, 0, d) * (0.4 + n * 0.85);
+    const rad = Math.hypot((x + x0 - fx) / RX, (y + y0 - fy) / RY);
+    let a = 0.72 * smoothstep(pad + 1, 0, d) * (0.4 + n * 0.85) * smoothstep(1.15, 0.55, rad);
     a = Math.floor(a * 6 + bayer(x, y)) / 6;
     if (a <= 0) continue;
     const k = clamp01(n * 1.6 - 0.3);
@@ -1405,6 +1410,7 @@ export class MapPanel {
     const Lay = this.layout(), { r, view, card } = Lay;
     this.rect = r;
     const bk = getBake(Lay.s, MAP_YAWS[this.yawI]);
+    this.bk = bk;
     const ox = Math.round(Lay.ax - bk.cx), oy = Math.round(Lay.ay - bk.cy);
     this.fade = Math.min(1, this.fade + dt / 0.14);
     const cur = this.current();
@@ -1460,7 +1466,7 @@ export class MapPanel {
       if (!id) continue;
       const ol = outlineFor(bk, LOCS.findIndex((L) => L.id === id) + 1);
       if (!ol) continue;
-      ctx.globalAlpha = id === this.hover ? 0.55 + 0.25 * Math.sin(t * 6) : 0.35;
+      ctx.globalAlpha = id === this.hover ? 0.75 + 0.25 * Math.sin(t * 6) : 0.4;
       ctx.drawImage(ol.canvas, ox + ol.x, oy + ol.y);
       ctx.globalAlpha = 1;
     }
@@ -1847,6 +1853,38 @@ export class MapPanel {
     drawText(ctx, text, Math.round(cx), y + 4, { align: 'center', scale: 2, color: '#fff0d8', shadow: shade(RED, -0.6) });
   }
 
+  drawPostcard(ctx, x, y, w, h, L, open) {
+    const bk = this.bk, i = LOCS.indexOf(L);
+    const [ax, ay] = bk.anchors[i];
+    const sw = Math.floor((w - 6) / 2), sh = Math.floor((h - 6) / 2);
+    const sx = clamp(Math.round(ax - sw / 2), 0, bk.W - sw), sy = clamp(Math.round(ay - sh / 2 - (L.focus[1] > SEA ? 4 : 0)), 0, bk.H - sh);
+    ctx.fillStyle = '#3a2a1c';
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = '#fbf3df';
+    ctx.fillRect(x + 1, y + 1, w - 2, h - 2);
+    ctx.drawImage(backdrop(sw * 2, sh * 2, false), x + 3, y + 3);
+    ctx.drawImage(bk.canvas, sx, sy, sw, sh, x + 3, y + 3, sw * 2, sh * 2);
+    const gl = bk.glows[i];
+    if (gl && open) {
+      ctx.save();
+      ctx.beginPath(); ctx.rect(x + 3, y + 3, sw * 2, sh * 2); ctx.clip();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.3 + 0.2 * Math.sin(this.t * 2);
+      ctx.drawImage(gl.canvas, x + 3 + (gl.x - sx) * 2, y + 3 + (gl.y - sy) * 2, gl.canvas.width * 2, gl.canvas.height * 2);
+      ctx.restore();
+    }
+    if (!open) {
+      ctx.fillStyle = rgba('#3a4660', 0.62);
+      ctx.fillRect(x + 3, y + 3, sw * 2, sh * 2);
+      const lk = padlockSprite();
+      ctx.drawImage(lk.canvas, Math.round(x + w / 2 - lk.w / 2), Math.round(y + h / 2 - lk.h / 2 - 4));
+      drawText(ctx, 'UNCHARTED', x + w / 2, y + h / 2 + lk.h / 2, { font: 'small', align: 'center', color: '#e8eef8', shadow: '#1a2030' });
+    }
+    // little photo corners
+    ctx.fillStyle = '#5a3a20';
+    for (const [cx, cy] of [[x + 2, y + 2], [x + w - 6, y + 2], [x + 2, y + h - 6], [x + w - 6, y + h - 6]]) ctx.fillRect(cx, cy, 4, 4);
+  }
+
   drawCard(ctx, ui, rc, L, t) {
     const g = this.game, st = g.state;
     const open = this.unlocked(L.id), here = L.id === this.current();
@@ -1930,6 +1968,9 @@ export class MapPanel {
     // destinations list (also a way to select without hunting on the diorama)
     const rowH = 15, listH = LOCS.length * rowH + 12;
     const ly = by - listH - 6;
+    // postcard: 2x close-up of the location cut from the bake
+    const pcH = Math.min(104, ly - y - 8);
+    if (this.bk && pcH >= 48) this.drawPostcard(ctx, x, y, w, pcH, L, open);
     if (ly > y + 4) {
       ctx.fillStyle = rgba(INK_L, 0.4);
       ctx.fillRect(x, ly, w, 1);
@@ -1972,4 +2013,4 @@ export class MapPanel {
 }
 
 // Dev hooks (src/dev/mapview.js).
-export const __mapDev = { buildDiorama, bakeView, getDio, getBake, outlineFor, fogFor, BAKES };
+export const __mapDev = { buildDiorama, bakeView, getDio, getBake, outlineFor, fogFor, BAKES, DEBUG };

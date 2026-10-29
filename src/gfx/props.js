@@ -2912,7 +2912,7 @@ def('disco_ball', {
   interact: {
     verb: 'Party', frames: 4, idle: [0, 1, 2, 3], idleFps: 3, seq: [0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3], fps: 13,
     sfx: [['magic', 0], ['sparkle', 0.35], ['sparkle', 0.9]],
-    fx: [{ at: 0, kind: 'lights', from: 'ball', n: 24 }, { at: 0.55, kind: 'lights', from: 'ball', n: 20 }, { at: 1.1, kind: 'lights', from: 'ball', n: 16 }, { at: 0.1, kind: 'sparkle', from: 'ball', n: 8 }],
+    fx: [0, 0.3, 0.6, 0.9, 1.2].map((at) => ({ at, kind: 'lights', from: 'ball', n: 18 })).concat([{ at: 0.1, kind: 'sparkle', from: 'ball', n: 8 }]),
     fish: 'dance', use: { kind: 'orbit', at: 'ball' },
   },
 }, ({ frame }) => {

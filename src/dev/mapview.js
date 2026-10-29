@@ -67,6 +67,7 @@ function backdrop(ctx) {
 
 function runBake(ctx, params) {
   const t0 = performance.now();
+  if (params.has('nowater')) __mapDev.DEBUG.noWater = true;
   const dio = __mapDev.getDio();
   const t1 = performance.now();
   const yaw = MAP_YAWS[Number(params.get('yaw') ?? 4)];
@@ -102,6 +103,7 @@ export function run(params) {
   g.ui = new UI(g);
   g.ui.register(new MapPanel());
   window.FISHTOP = g;
+  window.__mapDev = __mapDev;
   const panel = g.ui.panels.map;
   const t0 = performance.now();
   g.ui.open('map');

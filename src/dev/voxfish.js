@@ -96,9 +96,10 @@ export function run(params) {
 
 function drawAll(g, t, frozen, params) {
   const which = params.get('biome') || 'all';
-  const list = SPECIES.filter((s) => which === 'all' || s.biome === which || s.id === which);
+  const ids = params.get('ids')?.split(',');
+  const list = ids ? ids.map((id) => SPECIES_BY_ID[id]).filter(Boolean) : SPECIES.filter((s) => which === 'all' || s.biome === which || s.id === which);
   bg(g, ...(BG[which] || BG.all));
-  const cols = which === 'all' ? 9 : 5;
+  const cols = Number(params.get('cols')) || (which === 'all' && !ids ? 9 : 5);
   const rows = Math.ceil(list.length / cols);
   const cw = W / cols, ch = (H - 14) / rows;
   const spin = params.has('spin');

@@ -36,7 +36,8 @@ export function queueDecorFrames(aq, d, scale, urgent = false) {
   if (s.motion) for (const f of [s.motion.base, s.motion.part]) if (f && !order.includes(f)) order.push(f);
   for (let f = 1; f < s.frames; f++) if (!order.includes(f)) order.push(f);
   const have = d.frames?.get(scale);
-  for (const f of order) if (!have?.[f]) aq.queueProp(d, scale, f, urgent);
+  // urgent jobs are pushed to the queue head, so add them in reverse to keep the playback order
+  for (const f of urgent ? order.reverse() : order) if (!have?.[f]) aq.queueProp(d, scale, f, urgent);
 }
 
 export function frameProp(d, scale, f) {
@@ -53,7 +54,7 @@ function currentFrame(aq, d) {
     if (a.loop) return a.seq[i % a.seq.length];
   }
   const s = d.spec;
-  if (s?.idle && !a) return s.idle[Math.floor((aq.t + (d.idlePh || 0)) * s.idleFps) % s.idle.length];
+  if (s?.idle) return s.idle[Math.floor((aq.t + (d.idlePh || 0)) * s.idleFps) % s.idle.length];
   return 0;
 }
 
@@ -156,14 +157,14 @@ function spawnFx(aq, d, fx) {
       for (let i = 0; i < n; i++) {
         const a = rng.float(0, TAU), r = rng.float(30, 150) * k;
         const c = rng.pick(RAINBOW);
-        P.add({ kind: 'dot', x: x + Math.cos(a) * r, y: y + Math.sin(a) * r * 0.55 + 20 * k, vx: rng.sign() * rng.float(15, 40) * k, vy: 0, size: k < 0.6 ? 1 : 2, color: c, add: true, life: rng.float(0.5, 1.1), g: 0, drag: 0 });
+        P.add({ kind: 'dot', x: x + Math.cos(a) * r, y: y + Math.sin(a) * r * 0.55 + 20 * k, vx: rng.sign() * rng.float(15, 40) * k, vy: 0, size: k < 0.5 ? 1 : k < 0.9 ? 2 : 3, color: c, add: true, life: rng.float(0.7, 1.4), g: 0, drag: 0 });
       }
       break;
     case 'notes': icon('music'); break;
     case 'hearts': icon('heart', -14); break;
     case 'icons': icon(fx.icon || 'star', -12); break;
     case 'text': P.text(x, y - 8 * k, fx.text || '!', { font: k < 0.7 ? 'small' : 'normal', color: fx.color || '#fff6c8', layer: 'fg', life: 1.3, vy: -14 * (0.5 + 0.5 * k) }); break;
-    case 'food': aq.dropFood?.(x, y, n); break;
+    case 'food': aq.dropFood?.(x, y, n, d.z); break;
     default: break;
   }
 }
@@ -187,7 +188,7 @@ function dropCoinFrom(aq, d, c) {
 export function playDecor(aq, d, opts = {}) {
   const s = specOf(d);
   if (!s) return;
-  if (d.anim && !opts.force && d.anim.t < Math.min(0.5, d.anim.dur * 0.5) && !opts.quiet) return;
+  if (d.anim && !opts.force && !opts.quiet && (d.anim.t < Math.min(0.5, d.anim.dur * 0.5) || (d.anim.motion && d.anim.t < d.anim.dur))) return;
   const quiet = !!opts.quiet;
   const seq = opts.seq || s.seq;
   const fps = opts.fps || s.fps;
@@ -210,7 +211,6 @@ export function playDecor(aq, d, opts = {}) {
 }
 
 function fishReact(aq, d, kind) {
-  const T = aq.T;
   const c = anchorAt(aq, d, 'center');
   const p = d.prop;
   const R = Math.max(40 * aq.view.fishScale + 20, (p ? p.w * 0.5 * (d.drawK || 1) : 30) + 30 * aq.view.fishScale);
@@ -232,7 +232,6 @@ function fishReact(aq, d, kind) {
     }
     default: break;
   }
-  void T;
 }
 
 // ------------------------------------------------------------------ update
@@ -243,6 +242,7 @@ export function updateDecor(aq, dt) {
     if (!s) continue;
     if (d.idlePh === undefined) d.idlePh = rng.float(0, 10);
     if (d.squash > 0) d.squash = Math.max(0, d.squash - dt);
+    if (d.user && !aq.fish.some((f) => f.use === d.user)) d.user = null; // the fish left the tank
     const a = d.anim;
     if (a) {
       a.t += dt;
