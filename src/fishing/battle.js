@@ -92,7 +92,7 @@ export class Battle {
 
   // ------------------------------------------------------------------ main update
   update(dt) {
-    const F = this.F, f = this.fish, inp = F.input, cr = F.crank;
+    const F = this.F, f = this.fish;
     this.t += dt;
     this.hudIn = Math.min(1, this.hudIn + F.rdt * 3);
     this.eventCool = Math.max(0, this.eventCool - dt);

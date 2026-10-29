@@ -257,3 +257,22 @@ export class SkyDome {
     ctx.globalAlpha = 1;
   }
 }
+
+// Shaded voxel smoke puffs (radius 1..6 voxels at 2 px) in one colour, cached.
+const puffCache = new Map();
+export function puffSprites(color) {
+  let out = puffCache.get(color);
+  if (out) return out;
+  out = [];
+  for (let r = 1; r <= 6; r++) {
+    const n = r * 2 + 2;
+    const m = new VoxelModel(n, n, n);
+    const c = m.color(color, { jitter: 0.05, smooth: 0.7 });
+    m.sphere(n / 2, n / 2, n / 2, r + 0.35, c);
+    if (r > 2) { m.sphere(n / 2 - r * 0.45, n / 2 - r * 0.2, n / 2, r * 0.6, c); m.sphere(n / 2 + r * 0.4, n / 2 + r * 0.25, n / 2, r * 0.55, c); }
+    const rr = renderModel(m, { scale: 2, yaw: 20, pitch: 14, outline: false, edges: 0.3, sideEdges: 0.2, jitter: 0.04 });
+    out.push(rr.canvas);
+  }
+  puffCache.set(color, out);
+  return out;
+}

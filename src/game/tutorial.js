@@ -136,7 +136,7 @@ export class Tutorial {
         if (this.fish) { this.fish.setState('wander'); this.fish.script = null; this.fish.cooldown = 0; this.fish.noticeT = 0.2; }
         break;
       case 'fight':
-        this.say('Hold! Pull back!');
+        this.say('{mouse_l} Circle your mouse to reel it in!');
         break;
       case 'flood':
         g.audio.play('flood_rush');
@@ -257,7 +257,19 @@ export class Tutorial {
         this.crab.show = Math.min(1, this.crab.show + dt * 2);
         this.boxDrop = Math.min(1, this.boxDrop + dt * 1.6);
         if (this.boxDrop >= 1 && !this.thudded) { this.thudded = true; g.audio.play('box_close'); g.camera.shake(2); g.particles.burst(g.desktop.box.x + 26, g.desktop.box.y + 34, 14, { colors: ['#e8d8b8', '#c8b898'], speed: 40, g: 30, life: 0.6, up: 10 }); }
-        if (this.t > 2 && !this.bubble?.drag) this.say('{mouse_l} Drag an icon into the box!', { drag: true, silent: true });
+        {
+          // store-first start: download an app from AppSea, then drag it into the box
+          const apps = g.desktop.icons.filter((i) => i.state === 'normal' && !i.nobait && !['mycomputer', 'recycle'].includes(i.id));
+          const storeOpen = g.desktop.windows.some((w) => String(w.app).startsWith('appsea'));
+          const downloading = (g.state.apps?.downloads || []).some((d) => d.state !== 'done');
+          let msg, key;
+          if (apps.length) { msg = '{mouse_l} Drag your new app into the box!'; key = 'drag'; }
+          else if (downloading) { msg = 'Downloading... 56k is slow. Hehe.'; key = 'dl'; }
+          else if (storeOpen) { msg = 'Download Notes Lite - it is tiny!'; key = 'store'; }
+          else { msg = 'You need bait! {mouse_l}{mouse_l} Double-click AppSea and download an app!'; key = 'open'; }
+          if (this.t > 2 && this.bubble?.key !== key) this.say(msg, { key, drag: key === 'drag', silent: key !== 'open' });
+          this.demoApp = apps[0] || null;
+        }
         if (g.state.baitBox.length && this.t > 0.8) this.go('bait');
         break;
       case 'tank':
@@ -357,8 +369,14 @@ export class Tutorial {
   drawDragDemo(ctx) {
     const g = this.game;
     if (this.t < 1.5) return;
-    const ic = g.desktop.icons.find((i) => i.state === 'normal' && i !== this.hideIcon);
-    if (!ic) return;
+    // no app yet: bob an arrow over the AppSea icon instead of the drag demo
+    if (!this.demoApp) {
+      const st = g.desktop.icons.find((i) => i.id === 'appsea' && i.state === 'normal');
+      const a = getUiIcon('arrow_d');
+      if (st && a && !g.desktop.windows.some((w) => String(w.app).startsWith('appsea'))) ctx.drawImage(a, Math.round(st.x + st.w / 2 - a.width / 2), Math.round(st.y - 12 + Math.sin(this.t * 6) * 3));
+      return;
+    }
+    const ic = this.demoApp;
     const k = ((this.t - 1.5) % 2.4) / 2.4;
     const p = ease.inOutCubic(clamp01(k * 1.3));
     const x0 = ic.x + ic.w / 2, y0 = ic.y + 16;

@@ -20,6 +20,7 @@
 // Every offset is rounded to whole logical pixels so the result stays crisp pixel art.
 
 const SURF_RANGE = 32; // packed surface lift range (+-px)
+const SURF_MAX = 11;   // physical clamp of the simulated lift (px)
 const MAX_IMP = 24;
 
 const VS = `
@@ -186,11 +187,11 @@ class SurfaceSim {
       for (let i = 0; i < n; i++) {
         const l = h[i > 0 ? i - 1 : 0], r = h[i < n - 1 ? i + 1 : n - 1];
         v[i] += ((l + r - 2 * h[i]) * c2 - h[i] * 6) * sub;
-        v[i] *= 0.9935;
+        v[i] *= 0.991;
       }
       for (let i = 0; i < n; i++) {
         h[i] += v[i] * sub;
-        if (h[i] > SURF_RANGE - 1) { h[i] = SURF_RANGE - 1; v[i] = 0; } else if (h[i] < 1 - SURF_RANGE) { h[i] = 1 - SURF_RANGE; v[i] = 0; }
+        if (h[i] > SURF_MAX) { h[i] = SURF_MAX; v[i] *= -0.2; } else if (h[i] < -SURF_MAX) { h[i] = -SURF_MAX; v[i] *= -0.2; }
       }
     }
     const fd = Math.exp(-dt * 1.8);

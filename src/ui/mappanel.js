@@ -306,7 +306,7 @@ function buildDiorama() {
     sand: P('#f2da9e', { jitter: 0.18 }, o.shallows), sand2: P('#e4c88a', { jitter: 0.18 }, o.shallows), sandD: P('#c8a874', { jitter: 0.15 }, o.shallows),
     grass: P('#6ccc58', { jitter: 0.2 }, o.shallows), grass2: P('#4cae4c', { jitter: 0.2 }, o.shallows),
     rock: P('#7a8498', { jitter: 0.22 }, o.fjord), rock2: P('#646e84', { jitter: 0.22 }, o.fjord), rockD: P('#4e566c', { jitter: 0.2 }, o.fjord),
-    snow: P('#f2f8fc', { jitter: 0.08 }, o.fjord), ice: P('#b8e0f2', { jitter: 0.12, spec: 0.3 }, o.fjord), crev: P('#5aa2d2', { jitter: 0.08 }, o.fjord),
+    snow: P('#f2f8fc', { jitter: 0.08 }, o.fjord), ice: P('#a6d2ea', { jitter: 0.14, spec: 0.25 }, o.fjord), crev: P('#4a8ec4', { jitter: 0.08 }, o.fjord),
     basalt: P('#3c3446', { jitter: 0.2 }, o.volcano), ash: P('#5c5262', { jitter: 0.2 }, o.volcano), basaltD: P('#2a2432', { jitter: 0.15 }, o.volcano),
     lava: P('#ff6a1c', { emissive: 1, jitter: 0.1 }, o.volcano), lavaHot: P('#ffc63a', { emissive: 1, jitter: 0.1 }, o.volcano),
     crust: P('#6a2c24', { emissive: 0.25, jitter: 0.2 }, o.volcano), rift: P('#ff8a2c', { emissive: 1, jitter: 0.1 }, o.volcano),
@@ -399,6 +399,19 @@ function buildDiorama() {
   buildMetropolis(ctx, o.metropolis);
   buildAbyss(ctx, o.abyss);
   buildFaceArt(ctx);
+  // keep every empty brick within renderVoxels' 7-brick skip range: anchored marker buoys where needed
+  {
+    const red = P('#ff7a3a', { jitter: 0.05 }), white = P('#f2eee4', {}), chainC = P('#3a3a44', {});
+    for (let it = 0; it < 16; it++) {
+      const far = farBricks(m);
+      if (!far.length) break;
+      const [bx, , bz] = far[Math.floor(far.length / 2)];
+      const x = clamp(bx * 4 + 2, M + 3, XR - 4), z = clamp(bz * 4 + 2, M + 3, ZF - 4);
+      m.line(x + 0.5, SEA - 1, z + 0.5, x + 0.5, ground(x - M, z - M), z + 0.5, chainC);
+      m.cylinder(x + 0.5, z + 0.5, SEA - 1, SEA + 2, 1.2, (xx, y) => (y === SEA ? white : red));
+      m.set(x, SEA + 3, z, white);
+    }
+  }
 
   // ------------------------------------------------ column tops + screen extents per yaw (for layout)
   const top = new Int16Array(NC).fill(-1);
@@ -588,7 +601,7 @@ function buildFjord({ m, P, ground, hm, mat, ci }, o) {
   {
     const cx = X(87) + 0.5, cy = SEA - 1.5, cz = Z(19.5);
     m.sub(() => m.ellipsoid(cx, cy, cz, 4.5, 4.2, 4.5));
-    const glow = P('#86e8ff', { emissive: 0.45, jitter: 0.1 }, o);
+    const glow = P('#7adcf6', { light: 0.8, jitter: 0.1 }, o);
     m.recolor((x, y, z) => (Math.hypot(x + 0.5 - cx, (y + 0.5 - cy) * 1.1, z + 0.5 - cz) < 6.2 && m.exposed(x, y, z) ? glow : null));
   }
 }
@@ -880,6 +893,20 @@ function buildAbyss({ m, P, ground }, o) {
     m.sphere(x + 2.2, y + 0.3, z + 3.6, 0.9, rune);
     for (let k = -3; k <= 3; k += 2) m.set(Math.floor(x + k), Math.floor(y - 3), Math.floor(z + 4.5), bone);
   }
+  // research buoy lowering a bathysphere into the trench
+  {
+    const red = P('#e2483a', { jitter: 0.06 }, o), white = P('#f2eee4', {}, o), steel = P('#9aa4b4', { spec: 0.6 }, o), cable = P('#2a2a30', {}, o);
+    const brass = P('#d8a84a', { spec: 0.8, jitter: 0.05 }, o), lamp = P('#fff0a0', { emissive: 1 }, o);
+    const bx = X(139) + 0.5, bz = Z(86) + 0.5;
+    m.cylinder(bx, bz, SEA - 1, SEA, 2.6, (x, y, z) => (Math.floor((Math.atan2(z + 0.5 - bz, x + 0.5 - bx) + Math.PI) * 1.3) % 2 ? red : white));
+    m.cylinder(bx, bz, SEA + 1, SEA + 4, 0.7, steel);
+    m.box(Math.floor(bx) - 1, SEA + 4, Math.floor(bz), Math.floor(bx) + 1, SEA + 4, Math.floor(bz), steel);
+    m.set(Math.floor(bx), SEA + 5, Math.floor(bz), lamp);
+    m.line(bx, SEA - 1, bz, bx, 33, bz, cable);
+    m.sphere(bx, 30, bz, 2.6, brass);
+    m.sphere(bx, 30, bz + 1.8, 1.1, rune);
+    m.box(Math.floor(bx) - 1, 27, Math.floor(bz) - 1, Math.floor(bx) + 1, 27, Math.floor(bz) + 1, steel);
+  }
   // bioluminescent mushrooms + crystals on the trench walls
   for (let n = 0, tries = 0; n < 16 && tries < 300; tries++) {
     const u = rng.int(130, 166), w = rng.int(56, 99);
@@ -918,6 +945,30 @@ function buildFaceArt({ m, P }) {
   for (const [du, dy] of [[-2, 0], [-3, 1], [9, 0], [10, 1], [11, 0], [-1, 2]]) setF(cx + du, cy + dy, coin);
   // crystal geode near the trench
   for (let a = 0; a < TAU; a += 0.2) for (let r = 1; r <= 3.4; r += 0.7) setF(Math.round(128 + Math.cos(a) * r * 1.3), Math.round(13 + Math.sin(a) * r), r > 2.5 ? gem2 : gem, r > 2.5 ? 1 : 2);
+}
+
+// renderVoxels skips (bdist - 1) * 4 voxels per empty brick but leaves bricks 8+ bricks away from any solid at
+// 255, which makes rays starting there jump straight through the model. List such bricks (within the bounds).
+function farBricks(m) {
+  const { nx, ny, nz, data } = m;
+  const b = m.bounds();
+  const bnx = (nx >> 2) + 1, bny = (ny >> 2) + 1, bnz = (nz >> 2) + 1, nb = bnx * bny * bnz;
+  let cur = new Uint8Array(nb), tmp = new Uint8Array(nb);
+  for (let z = 0; z < nz; z++) for (let y = 0; y < ny; y++) {
+    const row = nx * (y + ny * z), brow = bnx * ((y >> 2) + bny * (z >> 2));
+    for (let x = 0; x < nx; x++) if (data[row + x]) cur[brow + (x >> 2)] = 1;
+  }
+  for (let pass = 1; pass < 8; pass++) {
+    for (let i = 0; i < nb; i++) { const x = i % bnx; tmp[i] = cur[i] | (x > 0 ? cur[i - 1] : 0) | (x < bnx - 1 ? cur[i + 1] : 0); }
+    for (let i = 0; i < nb; i++) { const y = ((i / bnx) | 0) % bny; cur[i] = tmp[i] | (y > 0 ? tmp[i - bnx] : 0) | (y < bny - 1 ? tmp[i + bnx] : 0); }
+    for (let i = 0; i < nb; i++) { const z = (i / (bnx * bny)) | 0; tmp[i] = cur[i] | (z > 0 ? cur[i - bnx * bny] : 0) | (z < bnz - 1 ? cur[i + bnx * bny] : 0); }
+    const q = cur; cur = tmp; tmp = q;
+  }
+  const out = [];
+  for (let bz = b.z0 >> 2; bz <= b.z1 >> 2; bz++) for (let by = b.y0 >> 2; by <= b.y1 >> 2; by++) for (let bx = b.x0 >> 2; bx <= b.x1 >> 2; bx++) {
+    if (!cur[bx + bnx * (by + bny * bz)]) out.push([bx, by, bz]);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- bake: render + water pass + masks
@@ -1140,15 +1191,21 @@ function fogFor(bk, li) {
   if (bk.fogs[li]) return bk.fogs[li];
   const { W, H, obj, terr, surf, ids, plain } = bk;
   const inMask = (p) => obj[p] === li || (!obj[p] && terr[p] === li && (surf[p] || !plain[ids[p]]));
-  let x0 = W, y0 = H, x1 = -1, y1 = -1;
-  for (let p = 0; p < W * H; p++) if (inMask(p)) { const x = p % W, y = (p / W) | 0; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-  if (x1 < 0) return (bk.fogs[li] = null);
+  const [fx, fy] = bk.anchors[li - 1], RX = 64 * bk.scale / 2.4, RY = 52 * bk.scale / 2.4;
   const pad = 6;
+  const ex0 = Math.max(0, Math.floor(fx - RX * 1.2)), ex1 = Math.min(W - 1, Math.ceil(fx + RX * 1.2));
+  const ey0 = Math.max(0, Math.floor(fy - RY * 1.2)), ey1 = Math.min(H - 1, Math.ceil(fy + RY * 1.2));
+  let x0 = W, y0 = H, x1 = -1, y1 = -1;
+  for (let y = ey0; y <= ey1; y++) for (let x = ex0; x <= ex1; x++) if (inMask(y * W + x)) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (x1 < 0) return (bk.fogs[li] = null);
   x0 = Math.max(0, x0 - pad); y0 = Math.max(0, y0 - pad * 2); x1 = Math.min(W - 1, x1 + pad); y1 = Math.min(H - 1, y1 + pad);
   const w = x1 - x0 + 1, h = y1 - y0 + 1;
   // distance-to-mask (chamfer) for soft edges
   const dist = new Float32Array(w * h).fill(99);
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (inMask((y + y0) * W + x + x0)) dist[y * w + x] = 0;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const X = x + x0, Y = y + y0;
+    if (X >= ex0 && X <= ex1 && Y >= ey0 && Y <= ey1 && inMask(Y * W + X)) dist[y * w + x] = 0;
+  }
   for (let pass = 0; pass < 2; pass++) {
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const i = y * w + x;
@@ -1167,11 +1224,12 @@ function fogFor(bk, li) {
   }
   const c = makeCanvas(w, h), cg = ctxOf(c), im = cg.createImageData(w, h), out = new Uint32Array(im.data.buffer);
   const A = RGB('#e4ecf4'), B = RGB('#8090ac');
-  const [fx, fy] = bk.anchors[li - 1], RX = 64 * bk.scale / 2.4, RY = 52 * bk.scale / 2.4;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const i = y * w + x, d = dist[i];
-    const n = fbm2((x + x0) * 0.04, (y + y0) * 0.075, 3, li * 13);
+    if (d > pad + 1) continue;
     const rad = Math.hypot((x + x0 - fx) / RX, (y + y0 - fy) / RY);
+    if (rad > 1.15) continue;
+    const n = fbm2((x + x0) * 0.04, (y + y0) * 0.075, 3, li * 13);
     let a = 0.72 * smoothstep(pad + 1, 0, d) * (0.4 + n * 0.85) * smoothstep(1.15, 0.55, rad);
     a = Math.floor(a * 6 + bayer(x, y)) / 6;
     if (a <= 0) continue;
@@ -1286,7 +1344,7 @@ function backdrop(w, h, night) {
 
 // ---------------------------------------------------------------- panel
 const INK = '#4a2e18', INK_L = '#7a5a3c', RED = '#b8302a';
-const idle = (f) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(f, { timeout: 2000 }) : setTimeout(f, 80));
+const idle = (f) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(f, { timeout: 400 }) : setTimeout(f, 60));
 
 let DIO = null;
 const BAKES = new Map();
@@ -1311,7 +1369,7 @@ export class MapPanel {
     this.yawI = YAW0;
     this.prev = null;
     this.fade = 1;
-    if (typeof window !== 'undefined') setTimeout(() => this.warm(), 2500);
+    if (typeof window !== 'undefined') setTimeout(() => this.warm(), 1500);
   }
 
   // Pre-build the model and every yaw in idle time so the first open is instant.
@@ -1319,13 +1377,31 @@ export class MapPanel {
     if (!this.game?.screen) return;
     const steps = [() => getDio(), () => getBake(this.layout().s, MAP_YAWS[this.yawI])];
     const order = MAP_YAWS.map((y, i) => i).filter((i) => i !== this.yawI).sort((a, b) => Math.abs(a - this.yawI) - Math.abs(b - this.yawI));
-    for (const i of order) steps.push(() => getBake(this.layout().s, MAP_YAWS[i]));
-    steps.push(() => { LOCS.forEach((L) => pinSprite(L.color)); padlockSprite(); [1, 2, 3].forEach(cloudSprite); });
+    steps.push(() => {
+      const Lay = this.layout(), bk = getBake(Lay.s, MAP_YAWS[this.yawI]);
+      LOCS.forEach((L, i) => { if (!this.unlocked(L.id)) fogFor(bk, i + 1); });
+      LOCS.forEach((L) => pinSprite(L.color)); padlockSprite(); [1, 2, 3].forEach(cloudSprite);
+      backdrop(Lay.view.w, Lay.view.h, false); backdrop(Lay.view.w, Lay.view.h, true);
+      outlineFor(bk, LOCS.findIndex((L) => L.id === this.current()) + 1);
+      // panels.js caches its wood / paper / button textures per size: build them now, off screen
+      const sc = ctxOf(makeCanvas(Lay.r.w, Lay.r.h)), bw = Lay.card.w - 18;
+      drawWood(sc, 0, 0, Lay.r.w, Lay.r.h, { tone: 'dark' });
+      drawPaper(sc, 0, 0, Lay.card.w, Lay.card.h, { aged: true });
+      for (const state of ['normal', 'hover', 'down', 'disabled']) drawButton(sc, 0, 0, bw, 24, { label: 'x', state, style: 'wood' });
+      for (let k = 0; k < 16; k++) boatSprite(k * 22.5);
+    });
+    for (const i of order) steps.push(() => {
+      const bk = getBake(this.layout().s, MAP_YAWS[i]);
+      LOCS.forEach((L, k) => { if (!this.unlocked(L.id)) fogFor(bk, k + 1); });
+    });
+    this.warmLog = [];
     const run = () => {
       const f = steps.shift();
       if (!f) return;
+      const t0 = performance.now();
       try { f(); } catch (e) { console.error(e); return; }
-      setTimeout(() => idle(run), 250);
+      this.warmLog.push([Math.round(t0), Math.round(performance.now() - t0)]);
+      setTimeout(() => idle(run), 100);
     };
     idle(run);
   }
@@ -1433,12 +1509,12 @@ export class MapPanel {
       } else {
         const dx = inp.x - this.drag.x0;
         if (Math.abs(dx) > 4) this.drag.moved = true;
-        if (this.drag.moved) this.setYaw(this.drag.i0 + Math.round(dx / 46));
+        if (this.drag.moved) this.setYaw(this.drag.i0 - Math.round(dx / 46));
       }
     }
     let hov = null;
     if (inView && !this.drag?.moved) hov = this.pick(bk, ox, oy, inp.x, inp.y);
-    if (inView && inp.pressed && !this.overControl(inp.x, inp.y, Lay)) {
+    if (inView && inp.pressed && !this.overControl(inp.x, inp.y)) {
       inp.pressed = false;
       this.drag = { x0: inp.x, i0: this.yawI, moved: false, hit: hov };
       if (inp.dblclick && hov) { this.select(hov); this.trySail(LOC_BY_ID[hov], true); }
@@ -1500,7 +1576,7 @@ export class MapPanel {
     if (this.sel !== id) { this.sel = id; this.game.audio.play('ui_click'); }
   }
 
-  overControl(x, y, Lay) {
+  overControl(x, y) {
     const c = this.ctrlRect;
     return c && x >= c.x && y >= c.y && x < c.x + c.w && y < c.y + c.h;
   }
@@ -1640,7 +1716,7 @@ export class MapPanel {
     });
     ctx.globalAlpha = 1;
     // volcano smoke + embers
-    if (this.unlocked('volcano') || true) {
+    {
       const [vx, vy] = bk.proj(VC[0] + M, SEA + 22, VC[1] + M);
       for (let k = 0; k < 9; k++) {
         const ph = (tt * 0.18 + k / 9) % 1;
@@ -1697,7 +1773,7 @@ export class MapPanel {
     let moving = false;
     if (this.sail) {
       const a = at(this.sail.from), b = at(this.sail.to);
-      const k = ease.inOutCubic ? ease.inOutCubic(clamp01(this.sail.t / this.sail.dur)) : clamp01(this.sail.t / this.sail.dur);
+      const k = ease.inOutCubic(clamp01(this.sail.t / this.sail.dur));
       const mx = (a[0] + b[0]) / 2 + (b[1] - a[1]) * 0.25, mz = (a[1] + b[1]) / 2 - (b[0] - a[0]) * 0.25;
       const q = (u) => [(1 - u) * (1 - u) * a[0] + 2 * (1 - u) * u * mx + u * u * b[0], (1 - u) * (1 - u) * a[1] + 2 * (1 - u) * u * mz + u * u * b[1]];
       [x, z] = q(k);
@@ -1720,7 +1796,6 @@ export class MapPanel {
     if (!moving && !reduced) {
       // idle ripples
       const ph = (t * 0.6) % 1, rr = 6 + ph * 10;
-      ctx.strokeStyle = rgba('#e8fcff', 0.5 * (1 - ph));
       ctx.fillStyle = rgba('#e8fcff', 0.45 * (1 - ph));
       for (let a = 0; a < TAU; a += 0.35) ctx.fillRect(Math.round(ox + sx + Math.cos(a) * rr), Math.round(oy + sy + 1 + Math.sin(a) * rr * 0.45), 1, 1);
     }
@@ -1969,7 +2044,7 @@ export class MapPanel {
     const rowH = 15, listH = LOCS.length * rowH + 12;
     const ly = by - listH - 6;
     // postcard: 2x close-up of the location cut from the bake
-    const pcH = Math.min(104, ly - y - 8);
+    const pcH = Math.min(128, ly - y - 8);
     if (this.bk && pcH >= 48) this.drawPostcard(ctx, x, y, w, pcH, L, open);
     if (ly > y + 4) {
       ctx.fillStyle = rgba(INK_L, 0.4);
@@ -2013,4 +2088,4 @@ export class MapPanel {
 }
 
 // Dev hooks (src/dev/mapview.js).
-export const __mapDev = { buildDiorama, bakeView, getDio, getBake, outlineFor, fogFor, BAKES, DEBUG };
+export const __mapDev = { farBricks, buildDiorama, bakeView, getDio, getBake, outlineFor, fogFor, BAKES, DEBUG };

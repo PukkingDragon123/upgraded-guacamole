@@ -49,6 +49,18 @@ export function drawGrad(ctx, x, y, w, h, stops, dir = 'v') {
   ctx.drawImage(gradCanvas(Math.round(w), Math.round(h), stops, dir), Math.round(x), Math.round(y));
 }
 
+// 50% checkerboard (classic scrollbar track).
+export function checker(w, h, a = '#e8e6e0', b = '#ffffff') {
+  return cached(`ck|${w}|${h}|${a}|${b}`, () => {
+    const c = makeCanvas(w, h), g = ctxOf(c);
+    g.fillStyle = a;
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = b;
+    for (let y = 0; y < h; y++) for (let x = y & 1; x < w; x += 2) g.fillRect(x, y, 1, 1);
+    return c;
+  });
+}
+
 // ---------------------------------------------------------------- bevels & buttons
 export const WIN = { face: '#d4d0c8', light: '#ffffff', mid: '#e8e6e0', shadow: '#808080', dark: '#404040', text: '#000000', title: '#0a246a' };
 

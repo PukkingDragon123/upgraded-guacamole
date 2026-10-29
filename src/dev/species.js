@@ -1,11 +1,13 @@
 // Dev preview of the species collection and the layered fish rig.
-// dist/dev/species.html?page=N  (&frozen for a deterministic still frame)
+// dist/dev/species.html?page=N  (&frozen for a deterministic still frame, &style=pixel for the 2D rig;
+// the default is the voxel style)
 //  0-2  biomes (rig, animated, eyes follow the mouse)      3-5  same biomes at angle -0.4, blinking, mirrored cells
 //  6    every emotion on several kinds                      7    rig features: layers, talk, look, turn, squash, wash, inflate
 //  8    random mutations / shiny per species                9    baked frame() API for every species
 
 import { compiled, frame } from '../gfx/spritecache.js';
-import { drawFishRig, rigStats, beginRigFrame } from '../gfx/fishrig.js';
+import { drawFishRig, rigStats, beginRigFrame, setFishStyle } from '../gfx/fishrig.js';
+import { setVoxelSync } from '../gfx/voxelfish.js';
 import { rasterLayer, rigGeom, rigLayers } from '../gfx/fishart.js';
 import { ctxOf } from '../core/canvas.js';
 import { drawText } from '../gfx/font.js';
@@ -141,14 +143,28 @@ function label(g, sp, x, y) {
   drawText(g, r.name + ' ' + '*'.repeat(r.stars), x, y + 8, { font: 'small', align: 'center', color: r.dark, shadow: '#05070c' });
 }
 
-// Cell layout for one biome: 16 species in a 4x4 grid + the legendary in a tall right column.
+// Cell layout for one biome: everything but the legendaries in a 6-column grid, legendaries in a right column.
 function biomeCells(biome) {
   const list = SPECIES.filter((s) => s.biome === biome);
   const leg = list.filter((s) => s.rarity === 'legendary');
   const rest = list.filter((s) => s.rarity !== 'legendary');
-  const cells = rest.map((sp, i) => ({ sp, x: 90 + (i % 4) * 180, y: 64 + Math.floor(i / 4) * 124, ly: 44 }));
-  leg.forEach((sp) => cells.push({ sp, x: 836, y: 270, ly: 150 }));
+  const rows = Math.ceil(rest.length / 6);
+  const ch = (H - 30) / rows;
+  const cells = rest.map((sp, i) => ({ sp, x: 62 + (i % 6) * 124, y: 34 + Math.floor(i / 6) * ch + ch * 0.36, ly: ch * 0.42, fit: [112, ch * 0.6] }));
+  leg.forEach((sp, i) => cells.push({ sp, x: 868, y: 120 + i * 230, ly: 90, fit: [170, 150] }));
   return cells;
+}
+
+const fitCache = new Map();
+function fitScale(sp, w, h) {
+  const k = sp.id + w + 'x' + h;
+  if (fitCache.has(k)) return fitCache.get(k);
+  const c = compiled(sp.look, null, sp.id);
+  let s;
+  if (c.kind === 'chain') s = Math.min(1, w / (c.chain.segs * c.chain.r * 1.15 + c.chain.r * 4));
+  else { const g = rigGeom(c, { sw: 0, angle: 0, scale: 1, inflate: 0, still: true }); s = Math.min(1.2, w / g.w, h / g.h); }
+  fitCache.set(k, s);
+  return s;
 }
 
 function stateFor(sp, t, frozen, i, extra = {}) {
@@ -167,6 +183,8 @@ export function run(params) {
   cv.style.width = W * 2 + 'px'; cv.style.height = H * 2 + 'px';
   const g = ctxOf(cv);
   const frozen = params.has('frozen');
+  if (params.get('style') === 'pixel') setFishStyle('pixel');
+  if (frozen) setVoxelSync(true);
   const page = Number(params.get('page') || 0);
   let mouse = null;
   cv.addEventListener('mousemove', (e) => { const r = cv.getBoundingClientRect(); mouse = [(e.clientX - r.left) / 2, (e.clientY - r.top) / 2]; });
@@ -206,7 +224,7 @@ function drawBiome(g, biome, second, t, frozen, mouse) {
     const c = comp(sp);
     const facing = second && (i & 1) ? -1 : 1;
     const st = stateFor(sp, t, frozen, i, {
-      x, y, facing,
+      x, y, facing, scale: fitScale(sp, ...cell.fit),
       angle: second ? -0.4 : 0,
       blink: second ? 1 : stateFor(sp, t, frozen, i).blink,
       lookX: mouse && !frozen ? mouse[0] : null, lookY: mouse && !frozen ? mouse[1] : null,
@@ -215,7 +233,7 @@ function drawBiome(g, biome, second, t, frozen, mouse) {
       chain: null,
     });
     drawFishRig(g, c, st);
-    label(g, sp, x, y + cell.ly);
+    label(g, sp, x, y + cell.ly - 6);
   });
 }
 
@@ -304,11 +322,11 @@ function drawMutations(g, t, frozen) {
     const shiny = i % 5 === 2;
     const v = { mutation: mut, shiny, shinyHue: sp.shinyHue, pattern: i % 4 === 1 ? ['spots', 'stripes', 'bands'][i % 3] : null, seed: i + 1 };
     const c = comp(sp, v);
-    const col = i % 9, row = Math.floor(i / 9);
-    const x = 54 + col * 106, y = 52 + row * 88;
-    const scale = sp.rarity === 'legendary' ? 0.4 : sp.look.body?.len > 60 || sp.look.kind === 'chain' ? 0.6 : 0.8;
+    const col = i % 12, row = Math.floor(i / 12);
+    const x = 40 + col * 80, y = 44 + row * 84;
+    const scale = fitScale(sp, 74, 52);
     drawFishRig(g, c, stateFor(sp, t, frozen, i, { x, y, scale }));
-    drawText(g, mut + (shiny ? '+shiny' : '') + (v.pattern ? '+' + v.pattern : ''), x, y + 34, { font: 'small', align: 'center', color: '#cfe6ff', shadow: '#000' });
+    drawText(g, mut + (shiny ? '+shiny' : '') + (v.pattern ? '+' + v.pattern : ''), x, y + 32, { font: 'small', align: 'center', color: '#cfe6ff', shadow: '#000' });
   });
 }
 
@@ -316,13 +334,13 @@ function drawBaked(g, t, frozen) {
   bg(g, '#2b6f8f', '#173a52');
   SPECIES.forEach((sp, i) => {
     const c = comp(sp);
-    const col = i % 9, row = Math.floor(i / 9);
-    const x = 54 + col * 106, y = 52 + row * 88;
-    const scale = sp.rarity === 'legendary' ? 0.4 : sp.look.body?.len > 60 || sp.look.kind === 'chain' ? 0.6 : 0.8;
+    const col = i % 12, row = Math.floor(i / 12);
+    const x = 40 + col * 80, y = 44 + row * 84;
+    const scale = fitScale(sp, 74, 52);
     const f = frame(c, { phase: frozen ? 0.2 : t, angle: i % 2 ? -0.4 : 0, scale, blink: i % 3 === 0, mouth: i % 4 === 0, expr: i % 5 === 0 ? 'happy' : undefined, inflate: sp.id === 'puffer' ? 1 : 0 });
     g.drawImage(f.canvas, Math.round(x - f.ox), Math.round(y - f.oy));
     if (f.glowCanvas) { g.globalCompositeOperation = 'lighter'; g.globalAlpha = 0.5; g.drawImage(f.glowCanvas, Math.round(x - f.ox), Math.round(y - f.oy)); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; }
-    drawText(g, sp.name, x, y + 34, { font: 'small', align: 'center', color: RARITY[sp.rarity].color, shadow: '#000' });
+    drawText(g, sp.name.length > 16 ? sp.name.slice(0, 15) + '.' : sp.name, x, y + 32, { font: 'small', align: 'center', color: RARITY[sp.rarity].color, shadow: '#000' });
   });
 }
 

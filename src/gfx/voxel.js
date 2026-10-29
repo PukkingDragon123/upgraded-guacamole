@@ -409,6 +409,8 @@ function buildVolumes(model, groundAO) {
     const q = cur; cur = tmp; tmp = q;
     if (!changed) break;
   }
+  // bricks the dilation never reached are at least 8 away (not 255: that would skip ~1000 voxels)
+  for (let i = 0; i < nb; i++) if (bdist[i] === 255) bdist[i] = 8;
   return { occ, SY, SZ, bdist, bnx, bny };
 }
 

@@ -7,17 +7,16 @@
 // ground point, z = draw order: higher is further back). Ridge: an optional voxel ground strip drawn after z > 0.5.
 
 import { VoxelModel } from '../gfx/voxel.js';
-import { getProp } from '../gfx/props.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { RNG } from '../core/rng.js';
 import { TAU, smoothstep, hash3, fbm2 } from '../core/math.js';
-import { renderModel } from './voxkit.js';
+import { renderModel, worldProp } from './voxkit.js';
 
 const spr = (r) => ({ canvas: r.canvas, ox: r.ox, oy: r.oy, w: r.w, h: r.h });
 export const render = (m, o = {}) => spr(renderModel(m, { scale: 2, yaw: 24, pitch: 16, jitter: 0.16, ...o }));
 
 export function propSprite(id, scale = 1.15, variant = 0) {
-  try { const p = getProp(id, { scale, variant }); return { canvas: p.canvas, ox: p.ox, oy: p.oy, w: p.w, h: p.h }; } catch { return null; }
+  try { const p = worldProp(id, { scale, variant }); return { canvas: p.canvas, ox: p.ox, oy: p.oy, w: p.w, h: p.h }; } catch { return null; }
 }
 
 export function strip(LW, h, items, ridge = null) {

@@ -57,7 +57,10 @@ const REVOLVE = new Set(['jelly', 'pudding', 'octopus']);
 
 let budgetMs = 3.2, spent = 0, forceSpent = 0, rafOn = false, lastReset = 0;
 let statBuilt = 0, statFallback = 0, statJobs = 0, statPx = 0, workTotal = 0;
-const FORCE_MS = 14;               // extra per-frame allowance to get a creature's very first frame
+const FORCE_MS = 20;               // extra per-frame allowance to get a creature's very first frame
+let syncAll = false;
+/** Build every requested frame synchronously (dev stills / one-shot renders). */
+export function setVoxelSync(on) { syncAll = !!on; }
 const WARM_MS = 1;                 // idle warm-up per animation frame
 
 export function setVoxelFishBudget(ms) { budgetMs = ms; }
@@ -1281,6 +1284,7 @@ function runWarm() {
  */
 export function voxelFrame(c, req) {
   ensureTick();
+  if (syncAll) req = { ...req, force: true };
   const sb = scaleBucket(req.S);
   const Sb = bucketScale(sb);
   const rk = resLevel(c, Sb);
@@ -1295,6 +1299,7 @@ export function voxelFrame(c, req) {
   const fkey = fkeyOf(m);
   let f = frames.get(fkey);
   if (f) { touch(frames, fkey, f); return { f, k: req.S / f.Sb }; }
+  if (req.force) { f = work(c, m, fkey, now() + 1e6); if (f) return { f, k: req.S / f.Sb }; }
   // a neighbouring scale bucket of the same pose is close enough (drawn <= ~9% scaled): no rebuild
   for (const d of [1, -1]) {
     const sb2 = sb + d, Sb2 = bucketScale(sb2);

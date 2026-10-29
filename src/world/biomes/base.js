@@ -52,6 +52,13 @@ export class Biome {
 
   waveAt() { return null; }
 
+  // Without the GPU water pass, fold the simulated surface lift into the drawn waterline (2D fallback).
+  applySimLift(ys) {
+    const w = this.game?.water;
+    if (!w || w.active || !ys) return;
+    for (let x = 0; x < ys.length; x++) ys[x] -= Math.round(w.surfaceOffset(x));
+  }
+
   floorAt(x) {
     if (!this.floor) return this.H - 40;
     const i = Math.max(0, Math.min(this.W, Math.round(x)));

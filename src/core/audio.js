@@ -7,9 +7,10 @@
 //   unlock() -> bool, isUnlocked()
 //   play(name, {vol=1, pitch=1, pan=0})          one-shot SFX (see SFX_NAMES)
 //   loop(name) -> {set(v 0..1), stop()}          tension|reel|rain|storm|static|blackhole|flood
-//   setMusic(track|null)                         desktop|shallows|junkyard|abyss|aquarium (2.5 s crossfade)
+//   setMusic(track|null)                         desktop|shallows|junkyard|abyss|aquarium|fjord|volcano|metropolis (2.5 s crossfade)
 //   setAmbience(biome|null|'off', {weather, night})  null = desktop fan hum; weather layers:
-//     rain storm (any biome), static datarain oil (junkyard), current snow glowtide (abyss)
+//     rain storm (any biome), static datarain oil (junkyard), current snow glowtide (abyss),
+//     snowfall blizzard aurora (fjord), eruption sulfur magma (volcano), neonstorm rushhour blackout (metropolis)
 //   setNight(bool), setVolumes({master, music, sfx, ambience}), getVolumes(), setMuffle(0..1)
 //   babble(text, voice='crab'|'fish'|'tiny'|'deep')  1-2 char calls = rate-limited typewriter blips
 //
@@ -851,6 +852,34 @@ const SFX = {
     [79, 84, 88].forEach((m, i) => chime(o, m2f(m), 0.18 + i * 0.07, 0.07, 1.0, 0.35));
     bub(o, 0.15, 500, 0.06);
   },
+  // new oceans
+  ice_crack: (o) => {
+    noise(o, { dur: 0.09, type: 'highpass', f: 2600, vol: 0.32, a: 0.001 });
+    for (let i = 0; i < 4; i++) noise(o, { at: 0.02 + i * rand(0.02, 0.05), dur: 0.03, type: 'bandpass', f: rand(1800, 4200), q: 2, vol: 0.14, a: 0.001 });
+    tink(o, 2400, 0.03, 0.05);
+    thump(o, 0, 140, 0.12);
+  },
+  ice_chime: (o) => {
+    fm(o, { f: m2f(86), ratio: 3.5, index: 1.4, index2: 0.1, idur: 0.3, dur: 2.2, a: 0.002, vol: 0.09, verb: 0.7 });
+    tone(o, { f: m2f(98), dur: 1.4, vol: 0.02, a: 0.002, verb: 0.8 });
+    tone(o, { f: m2f(86) * 2.76, dur: 0.5, vol: 0.015, a: 0.002 });
+  },
+  penguin: (o) => {
+    for (const at of [0, 0.16]) tone(o, { at, f: 760, f2: 520, glide: 0.1, dur: 0.12, type: 'square', vol: 0.05, a: 0.004, vib: [28, 30], filt: { type: 'bandpass', f: 1100, q: 2 } });
+  },
+  eruption_boom: (o) => {
+    tone(o, { f: 70, f2: 32, glide: 0.5, dur: 0.7, vol: 0.35, a: 0.004 });
+    noise(o, { dur: 2.2, type: 'lowpass', f: 380, f2: 90, glide: 1.8, color: 'brown', vol: 0.55, a: 0.01 });
+    for (let i = 0; i < 10; i++) noise(o, { at: 0.15 + Math.random() * 1.4, dur: 0.02, type: 'bandpass', f: rand(600, 2400), q: 2, vol: rand(0.04, 0.1), a: 0.001 });
+  },
+  neon_buzz: (o) => {
+    tone(o, { f: 120, dur: 0.35, type: 'sawtooth', vol: 0.05, a: 0.004, vib: [48, 6], filt: { type: 'bandpass', f: 900, q: 3 }, shape: 'sus', r: 0.05 });
+    for (let i = 0; i < 5; i++) noise(o, { at: i * 0.05 + Math.random() * 0.03, dur: 0.012, type: 'highpass', f: 3500, vol: 0.12, a: 0.0006 });
+  },
+  train_ding: (o) => {
+    bell(o, m2f(76), 0, 0.08, 1.2, 0.4);
+    bell(o, m2f(72), 0.32, 0.08, 1.6, 0.4);
+  },
   unlock_biome: (o) => {
     [60, 67, 71, 74, 76].forEach((m) => tone(o, { f: m2f(m), dur: 2.4, type: 'sawtooth', unison: [-8, 8], vol: 0.022, a: 0.8, shape: 'sus', r: 1.1, filt: { type: 'lowpass', f: 300, f2: 3000, glide: 1.6 }, verb: 0.4 }));
     thump(o, 0, 70, 0.3);
@@ -1148,6 +1177,65 @@ const AMB = {
       { min: night ? 9 : 6, max: night ? 20 : 14, fn: (t) => fire(chimeEv, t, evOut(g, night ? 0.18 : 0.25, rand(-0.8, 0.8), 0, 0.9)) },
     ];
   },
+  // icy wind over the fjord, lapping water, groaning ice and far-off calving
+  fjord(g, night) {
+    const wind = gNoise(g, 'pink', null, night ? 0.035 : 0.05, { type: 'bandpass', f: 650, q: 1.2 });
+    gLfo(g, 0.09, 260, wind.fl.frequency);
+    gLfo(g, 0.05, night ? 0.02 : 0.03, wind.amp.gain);
+    const lap = gNoise(g, 'brown', null, 0.07, { type: 'lowpass', f: 320, q: 0.6 });
+    gLfo(g, 0.14, 0.04, lap.amp.gain);
+    const groan = (o) => {
+      const f = rand(45, 90), d = rand(1.2, 2.6);
+      tone(o, { f: [[0, f], [d * 0.6, f * rand(1.2, 1.6)], [d, f * 1.1]], dur: d, type: 'sawtooth', vol: 0.05, a: 0.3, shape: 'sus', r: 0.6, vib: [rand(6, 14), 3], filt: { type: 'bandpass', f: 420, q: 5 } });
+    };
+    const calve = (o) => {
+      noise(o, { dur: 0.3, type: 'highpass', f: 1800, vol: 0.1, a: 0.002 });
+      noise(o, { at: 0.1, dur: 2.4, type: 'lowpass', f: 260, color: 'brown', vol: 0.3, a: 0.05 });
+      tone(o, { at: 0.1, f: 60, f2: 38, glide: 1, dur: 1.4, vol: 0.12 });
+    };
+    const tinkles = (o) => { for (let i = 0, n = 2 + ((Math.random() * 3) | 0); i < n; i++) tink(o, rand(2600, 4600), i * rand(0.08, 0.2), 0.03, rand(-0.6, 0.6)); };
+    return [
+      { min: night ? 6 : 9, max: night ? 16 : 22, fn: (t) => fire(groan, t, evOut(g, 0.6, rand(-0.8, 0.8), 900, 0.6)) },
+      { min: 25, max: 60, first: rand(8, 20), fn: (t) => fire(calve, t, evOut(g, 0.45, rand(-0.7, 0.7), 1400, 0.7, rand(0.8, 1.1))) },
+      { min: 3, max: 9, fn: (t) => fire(tinkles, t, evOut(g, night ? 0.3 : 0.4, 0, 0, 0.8)) },
+    ];
+  },
+  // the rift: sub rumble, hissing vents, boiling bubbles, distant booms and lava gloops
+  volcano(g, night) {
+    gNoise(g, 'brown', null, night ? 0.16 : 0.18, { type: 'lowpass', f: 75, q: 0.8 });
+    gOsc(g, 'sine', 31, null, 0.05);
+    const hiss = gNoise(g, 'white', null, 0.012, { type: 'bandpass', f: 2600, q: 0.6 });
+    gLfo(g, 0.21, 0.008, hiss.amp.gain);
+    const boil = (o) => { for (let i = 0, n = 3 + ((Math.random() * 6) | 0); i < n; i++) bub(o, i * rand(0.03, 0.09), rand(110, 360), rand(0.04, 0.08), 0, rand(0.05, 0.11)); };
+    const boom = (o) => { thump(o, 0, 55, 0.25); noise(o, { dur: 1.8, type: 'lowpass', f: 220, f2: 80, color: 'brown', vol: 0.3, a: 0.02 }); };
+    const gloop = (o) => tone(o, { f: rand(70, 110), f2: rand(160, 240), glide: 0.25, dur: 0.3, vol: 0.08, vib: [rand(18, 30), 12], filt: { type: 'lowpass', f: 600 } });
+    return [
+      { min: 0.5, max: 2.2, fn: (t) => fire(boil, t, evOut(g, 0.55, rand(-0.8, 0.8), 1200, 0.3)) },
+      { min: night ? 12 : 16, max: night ? 30 : 40, first: rand(4, 12), fn: (t) => fire(boom, t, evOut(g, 0.5, rand(-0.6, 0.6), 600, 0.6)) },
+      { min: 3, max: 8, fn: (t) => fire(gloop, t, evOut(g, 0.5, rand(-0.7, 0.7), 900, 0.4)) },
+    ];
+  },
+  // the drowned city: muffled traffic hum, neon buzz, trains in the far tunnels, drips and creaking steel
+  metropolis(g, night) {
+    gOsc(g, 'sawtooth', 50, null, night ? 0.012 : 0.016, { type: 'lowpass', f: 140, q: 1 });
+    const traffic = gNoise(g, 'brown', null, night ? 0.05 : 0.07, { type: 'bandpass', f: 380, q: 0.7 });
+    gLfo(g, 0.06, 120, traffic.fl.frequency);
+    const buzz = gOsc(g, 'sine', 120, null, night ? 0.006 : 0.004);
+    gOsc(g, 'square', 240, null, 0.0015, { type: 'lowpass', f: 900 });
+    gLfo(g, 7, 0.002, buzz.amp.gain);
+    const train = (o) => {
+      noise(o, { dur: 6, type: 'lowpass', f: 180, f2: 420, glide: 3, color: 'brown', vol: 0.18, a: 2.2, shape: 'lin' });
+      for (let i = 0; i < 12; i++) noise(o, { at: 1.5 + i * 0.32, dur: 0.05, type: 'bandpass', f: 700, q: 2, vol: 0.05, a: 0.002 });
+    };
+    const horn = (o) => { for (const [at, m] of [[0, 57], [0.4, 53]]) tone(o, { at, f: m2f(m), dur: 0.5, type: 'triangle', vol: 0.03, a: 0.05, shape: 'sus', r: 0.2, filt: { type: 'lowpass', f: 700 } }); };
+    const drip = (o) => bub(o, 0, rand(1400, 2600), 0.04, 0, 0.05);
+    return [
+      { min: 20, max: 50, first: rand(6, 15), fn: (t) => fire(train, t, evOut(g, 0.5, rand(-0.9, 0.9), 900, 0.5)) },
+      { min: 14, max: 40, fn: (t) => fire(horn, t, evOut(g, night ? 0.2 : 0.3, rand(-0.8, 0.8), 1200, 0.7)) },
+      { min: 1.5, max: 5, fn: (t) => fire(drip, t, evOut(g, 0.4, rand(-0.8, 0.8), 0, 0.5)) },
+      { min: 8, max: 20, fn: (t) => fire((o) => creak(o, rand(0.4, 0.8)), t, evOut(g, 0.4, rand(-0.8, 0.8), 1200, 0.5)) },
+    ];
+  },
 };
 AMB.aquarium = AMB.desktop;
 
@@ -1177,6 +1265,53 @@ const WEATHER = {
   glowtide: (g) => evLayer([{ min: 5, max: 11, fn: (t) => fire((o) => {
     for (const m of pick([[62, 69, 76], [58, 65, 74], [60, 67, 74]])) tone(o, { f: m2f(m + 12), dur: 4, vol: 0.03, a: 1.6, shape: 'sus', r: 2, vib: [0.3, 1.5] });
   }, t, evOut(g, 0.4, rand(-0.5, 0.5), 0, 0.9)) }]),
+  // fjord
+  snowfall: (g) => {
+    gNoise(g, 'pink', null, 0.02, [{ type: 'highpass', f: 2800 }, { type: 'lowpass', f: 7000 }]);
+    return evLayer([{ min: 1.2, max: 3.5, fn: (t) => fire((o) => tink(o, rand(3000, 5200), 0, 0.02, rand(-0.8, 0.8)), t, evOut(g, 0.3, 0, 0, 0.8)) }]);
+  },
+  blizzard: (g) => {
+    const howl = gNoise(g, 'pink', null, 0.12, { type: 'bandpass', f: 700, q: 2.2 });
+    gLfo(g, 0.13, 420, howl.fl.frequency);
+    gLfo(g, 0.07, 0.06, howl.amp.gain);
+    gNoise(g, 'brown', null, 0.12, { type: 'lowpass', f: 260 });
+    const gust = (o) => noise(o, { dur: rand(1.5, 3), type: 'bandpass', f: rand(400, 900), f2: rand(1200, 2000), q: 1.4, vol: 0.18, a: 0.8, shape: 'lin' });
+    return evLayer([{ min: 3, max: 7, fn: (t) => fire(gust, t, evOut(g, 0.5, rand(-0.9, 0.9), 0, 0.3)) }]);
+  },
+  aurora: (g) => evLayer([{ min: 4, max: 9, fn: (t) => fire((o) => {
+    for (const m of pick([[74, 78, 81, 85], [71, 74, 78, 81], [69, 73, 76, 81]])) tone(o, { f: m2f(m + 12), dur: 5, vol: 0.022, a: 2, shape: 'sus', r: 2.4, vib: [0.25, 2] });
+    for (let i = 0; i < 4; i++) tink(o, m2f(pick([93, 95, 98, 100])), 1 + i * rand(0.3, 0.7), 0.015, rand(-0.6, 0.6));
+  }, t, evOut(g, 0.45, rand(-0.5, 0.5), 0, 0.9)) }]),
+  // lava rift
+  eruption: (g) => {
+    gNoise(g, 'brown', null, 0.1, { type: 'lowpass', f: 110 });
+    const crackle = (o) => { for (let i = 0; i < 6; i++) noise(o, { at: i * rand(0.02, 0.08), dur: 0.015, type: 'bandpass', f: rand(500, 1800), q: 2, vol: rand(0.05, 0.12), a: 0.001 }); };
+    return evLayer([
+      { min: 6, max: 14, fn: (t) => fire(SFX.eruption_boom, t, evOut(g, 0.45, rand(-0.6, 0.6), 1200, 0.5)) },
+      { min: 0.4, max: 1.5, fn: (t) => fire(crackle, t, evOut(g, 0.4, rand(-0.8, 0.8), 2400, 0.2)) },
+    ]);
+  },
+  sulfur: (g) => {
+    const hiss = gNoise(g, 'white', null, 0.03, { type: 'bandpass', f: 3400, q: 0.5 });
+    gLfo(g, 0.3, 0.015, hiss.amp.gain);
+    return evLayer([{ min: 0.3, max: 1.2, fn: (t) => fire((o) => bub(o, 0, rand(200, 600), 0.05, 0, rand(0.06, 0.1)), t, evOut(g, 0.4, rand(-0.8, 0.8), 1500, 0.3)) }]);
+  },
+  magma: (g) => {
+    const throb = gOsc(g, 'sine', 42, null, 0.05);
+    gLfo(g, 0.35, 0.04, throb.amp.gain);
+    return evLayer([{ min: 1, max: 3, fn: (t) => fire((o) => tone(o, { f: rand(60, 90), f2: rand(200, 320), glide: 0.4, dur: 0.5, vol: 0.07, vib: [22, 14], filt: { type: 'lowpass', f: 700 } }), t, evOut(g, 0.5, rand(-0.7, 0.7), 900, 0.5)) }]);
+  },
+  // sunken metropolis
+  neonstorm: (g) => evLayer([{ min: 0.8, max: 3, fn: (t) => fire(SFX.neon_buzz, t, evOut(g, 0.35, rand(-0.8, 0.8), 0, 0.3)) }],
+    withV(LOOPS.static(subGroup(g, 0.3)), 0.25)),
+  rushhour: (g) => evLayer([
+    { min: 0.6, max: 2, fn: (t) => fire((o) => whoosh(o, 0, rand(0.6, 1.2), rand(400, 900), rand(1500, 2600), 0.1), t, evOut(g, 0.4, rand(-0.9, 0.9), 0, 0.2)) },
+    { min: 0.3, max: 1, fn: (t) => fire((o) => { for (let i = 0; i < 3; i++) bub(o, i * 0.05, rand(500, 1200), 0.03, 0, 0.05); }, t, evOut(g, 0.35, rand(-0.8, 0.8), 0, 0.2)) },
+  ]),
+  blackout: (g) => {
+    gNoise(g, 'brown', null, 0.06, { type: 'bandpass', f: 120, q: 1 });
+    return evLayer([{ min: 6, max: 14, fn: (t) => fire((o) => creak(o, rand(0.3, 0.6)), t, evOut(g, 0.4, rand(-0.9, 0.9), 900, 0.7)) }]);
+  },
 };
 
 let scene = null;
@@ -1294,6 +1429,21 @@ const AB_CH = [[50, 57, 62, 65], [46, 53, 57, 62], [43, 50, 57, 58], [45, 52, 57
 const AQ_CH = { G: [55, 59, 62], Em: [52, 55, 59], C: [48, 52, 55], D: [50, 54, 57], Am: [45, 48, 52] };
 const AQ_PROGS = [['G', 'Em', 'C', 'D'], ['G', 'C', 'G', 'D'], ['C', 'D', 'G', 'Em'], ['G', 'Em', 'Am', 'D']];
 const AQ_MEL = [74, 76, 79, 81, 83, 86, 88]; // G major pentatonic
+
+// new oceans: chords (pad voicings + root) and melody pools
+const FJ_CH = [
+  { pad: [62, 66, 69, 73], root: 38, arp: [74, 78, 81, 85, 86] }, { pad: [59, 62, 66, 69], root: 35, arp: [71, 74, 78, 81, 83] },
+  { pad: [55, 62, 66, 69], root: 31, arp: [74, 79, 81, 83, 86] }, { pad: [57, 61, 64, 69], root: 33, arp: [73, 76, 81, 85, 88] },
+];
+const FJ_PROGS = [[0, 1, 2, 3], [0, 2, 1, 3], [2, 3, 0, 1], [0, 3, 2, 1]];
+const VO_CH = [{ pad: [52, 59, 64], root: 28 }, { pad: [53, 60, 65], root: 29 }, { pad: [52, 59, 64], root: 28 }, { pad: [50, 57, 62], root: 26 }, { pad: [55, 59, 62], root: 31 }];
+const VO_RIFF = [0, 0, 1, 0, 3, 0, 1, -2];
+const ME_CH = [
+  { pad: [57, 60, 64, 67], root: 45 }, { pad: [53, 57, 60, 64], root: 41 }, { pad: [50, 53, 57, 60], root: 38 }, { pad: [52, 56, 59, 62], root: 40 },
+  { pad: [55, 59, 62, 65], root: 43 }, { pad: [48, 52, 55, 59], root: 36 },
+];
+const ME_PROGS = [[0, 1, 2, 3], [0, 4, 5, 1], [2, 3, 0, 0], [0, 1, 4, 3]];
+const ME_LEAD = [69, 72, 74, 75, 76, 79, 81, 84]; // A minor blues
 
 const TRACKS = {
   // music-box notes drifting over the ordinary desktop
@@ -1427,6 +1577,109 @@ const TRACKS = {
       if (s === 4 && bar % 8 === 6 && chance(0.6)) {
         tone(o, { f: m2f(pick([26, 33])), dur: 7, type: 'triangle', vol: 0.08, a: 3, shape: 'sus', r: 3, verb: 0.3 });
         noise(o, { dur: 7, type: 'lowpass', f: 200, color: 'brown', vol: 0.15, a: 3, shape: 'lin', verb: 0.3 });
+      }
+    },
+  },
+
+  // icy & crystalline: glass arpeggios over a soft Lydian pad, music-box sparkles; aurora nights shimmer
+  fjord: {
+    bpm: 72, verb: 0.55, fadeIn: 3,
+    step(tr, i, t) {
+      const st = tr.st, s = i % 16, bar = (i / 16) | 0, night = S.night, sd = tr.stepDur;
+      const aurora = S.ambOpts.weather === 'aurora', bliz = S.ambOpts.weather === 'blizzard';
+      if (s === 0) {
+        if (bar % 4 === 0 || !st.prog) { st.prog = pick(FJ_PROGS); st.dir = chance(0.5) ? 1 : -1; }
+        st.ch = FJ_CH[st.prog[bar % 4]];
+        for (const m of st.ch.pad) INS.pad(tr.o(t, null, 0.6), m, sd * 16 + 1, night ? 0.012 : 0.015, night ? 700 : 1100, 0, 1.4, 1.6, 'triangle');
+        tone(tr.o(t), { f: m2f(st.ch.root), dur: sd * 12, vol: 0.07, a: 0.2, shape: 'sus', r: 1 });
+      }
+      const ch = st.ch;
+      if (!ch) return;
+      const o = tr.o(t);
+      if (s % 2 === 0 && (!night || s % 4 === 0) && !bliz) {
+        const k = (s / 2) % ch.arp.length;
+        INS.celesta(o, ch.arp[st.dir > 0 ? k : ch.arp.length - 1 - k] + (bar % 2 && s >= 8 ? 12 : 0), night ? 0.03 : 0.04, 0, 1.4);
+      }
+      if (chance(night ? 0.06 : 0.1)) INS.glass(o, pick(ch.arp) + 12, 0.025, 0, 3, 0.85);
+      if (s === 8 && chance(0.4)) INS.musicbox(o, pick(ch.arp), 0.04, 0, 2, 0.6);
+      if ((aurora || night) && s === 0 && bar % 2 === 0) for (const m of ch.arp.slice(0, 3)) tone(tr.o(t, null, 0.9), { f: m2f(m + 12), dur: sd * 30, vol: aurora ? 0.016 : 0.009, a: 2.4, shape: 'sus', r: 2.5, vib: [0.3, 2] });
+      if (s === 12 && !night) noise(o, { dur: 0.6, type: 'highpass', f: 8000, vol: 0.02, a: 0.2 });
+    },
+  },
+
+  // ominous rumbling: a droning Phrygian riff, taiko hits like a giant heartbeat, anvil strikes from the deep
+  volcano: {
+    bpm: 66, verb: 0.35, fadeIn: 3,
+    init(tr) {
+      const g = tr.g;
+      const lp = biquad('lowpass', 220, 1.2, g.fade);
+      g.nodes.push(lp); tr.droneLp = lp;
+      gOsc(g, 'sawtooth', m2f(28), lp, 0.05, null, -8);
+      gOsc(g, 'sawtooth', m2f(28), lp, 0.05, null, 9);
+      gOsc(g, 'sawtooth', m2f(35), lp, 0.025, null, 4);
+      gOsc(g, 'sine', m2f(16), null, 0.06);
+      gLfo(g, 0.07, 90, lp.frequency);
+    },
+    step(tr, i, t) {
+      const st = tr.st, s = i % 16, bar = (i / 16) | 0, night = S.night, sd = tr.stepDur;
+      const erupt = S.ambOpts.weather === 'eruption', magma = S.ambOpts.weather === 'magma';
+      if (s === 0) {
+        st.ch = VO_CH[bar % 4 === 3 ? 3 + (bar % 8 === 7 ? 1 : 0) : bar % 2 ? 1 : 0];
+        if (bar % 2 === 0) for (const m of st.ch.pad) INS.pad(tr.o(t, null, 0.5), m, sd * 32, 0.014, magma ? 900 : 480, 0, 2.5, 2.5);
+        ramp(tr.droneLp.frequency, erupt ? 520 : night ? 180 : 240, 1, t);
+      }
+      const ch = st.ch;
+      if (!ch) return;
+      const o = tr.o(t);
+      // taiko heartbeat
+      const pat = erupt ? [1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0] : [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0];
+      if (pat[s] && (!night || s === 0 || erupt)) {
+        tone(o, { f: 90, f2: 42, glide: 0.18, dur: 0.6, vol: s === 0 ? 0.3 : 0.2, a: 0.002 });
+        noise(o, { dur: 0.08, type: 'lowpass', f: 900, color: 'pink', vol: 0.12, a: 0.001 });
+      }
+      // riff
+      if (s % 2 === 0) {
+        const n = VO_RIFF[(s / 2) % 8];
+        if (n !== undefined && (s % 4 === 0 || chance(0.6))) tone(o, { f: m2f(ch.root + 12 + n), dur: sd * 1.8, type: 'sawtooth', vol: 0.05, a: 0.01, shape: 'sus', r: 0.08, filt: { type: 'lowpass', f: 380, f2: 900, glide: sd } });
+      }
+      // anvil strikes and distant metal
+      if (s === 10 && chance(erupt ? 0.8 : 0.35)) fm(o, { f: m2f(pick([64, 65, 71])), ratio: 1.41, index: 3.5, index2: 0.2, idur: 0.15, dur: 1.8, vol: 0.05, verb: 0.6 });
+      if (s === 4 && bar % 4 === 2 && chance(0.6)) tone(o, { f: m2f(pick([76, 77, 79])), dur: 3, type: 'triangle', vol: 0.025, a: 0.4, shape: 'sus', r: 1.2, vib: [4, 6], verb: 0.7 });
+      if (magma && s % 8 === 6) tone(o, { f: m2f(40), f2: m2f(52), glide: sd * 4, dur: sd * 4, type: 'sawtooth', vol: 0.03, filt: { type: 'lowpass', f: 600 } });
+    },
+  },
+
+  // synthwave noir: gated minor-7th pads, octave-jumping saw bass, gated snare, a smoky FM sax lead
+  metropolis: {
+    bpm: 96, swing: 0.05, verb: 0.3, fadeIn: 2.5,
+    step(tr, i, t) {
+      const st = tr.st, s = i % 16, bar = (i / 16) | 0, night = S.night, sd = tr.stepDur;
+      const w = S.ambOpts.weather, black = w === 'blackout', rush = w === 'rushhour', storm = w === 'neonstorm';
+      if (s === 0) {
+        if (bar % 4 === 0 || !st.prog) { st.prog = pick(ME_PROGS); newPhrase(st, night ? 0.3 : 0.22, ME_LEAD.length); }
+        st.ch = ME_CH[st.prog[bar % 4]];
+      }
+      const ch = st.ch;
+      if (!ch) return;
+      const o = tr.o(t);
+      // gated pad pulses (8ths), or a long pad in a blackout
+      if (black) { if (s === 0) for (const m of ch.pad) INS.pad(tr.o(t, null, 0.6), m, sd * 16, 0.012, 600, 0, 1, 1.5); }
+      else if (s % 2 === 0) for (const m of ch.pad) tone(tr.o(t, null, 0.35), { f: m2f(m), dur: sd * 1.4, type: 'sawtooth', unison: [-9, 9], vol: night ? 0.009 : 0.011, a: 0.01, shape: 'sus', r: 0.06, filt: { type: 'lowpass', f: night ? 1200 : 1800, q: 1.5 } });
+      // octave bass
+      if (!black && s % 2 === 0) tone(o, { f: m2f(ch.root - 12 + (s % 4 === 2 ? 12 : 0)), dur: sd * 1.6, type: 'sawtooth', vol: 0.07, a: 0.004, shape: 'sus', r: 0.04, filt: { type: 'lowpass', f: 520, q: 3 } });
+      // drums
+      if (!black) {
+        if (s === 0 || s === 8 || (s === 11 && !night)) INS.kick(o, 0.24);
+        if (s === 4 || s === 12) { INS.snare(tr.o(t, null, 0.55), night ? 0.12 : 0.16); }
+        if (rush ? true : s % 2 === 0) INS.hat(o, (s % 4 === 2 ? 0.07 : 0.045) * (night ? 0.7 : 1), 0, s === 14 && chance(0.3));
+      }
+      if (storm && s === 15 && chance(0.5)) for (let k = 0; k < 4; k++) tone(o, { at: (k * sd) / 4, f: m2f(pick(ch.pad) + 24), dur: sd * 0.2, wave: 'pulse12', vol: 0.03 });
+      // noir sax lead
+      const ri = (bar % 2) * 16 + s;
+      if (st.rhythm[ri] && (night || black || bar % 4 >= 2)) {
+        let idx = st.motif[ri];
+        if (s % 8 === 0) idx = snapIdx(ME_LEAD, idx, ch.pad.map((m) => m % 12));
+        fm(tr.o(t, null, 0.45), { f: m2f(ME_LEAD[idx] - 12), ratio: 1, index: 1.8, index2: 0.6, idur: 0.12, dur: sd * 3, a: 0.03, vol: 0.05, shape: 'sus', r: 0.12 });
       }
     },
   },

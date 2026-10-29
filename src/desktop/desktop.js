@@ -10,6 +10,7 @@ import { drawWindowChrome, drawTaskbar, drawButton, drawWood, drawTooltip } from
 import { getUiIcon } from '../gfx/uiicons.js';
 import { APP_RENDERERS } from './apps.js';
 import { makeBaitBoxSprites } from './baitbox.js';
+import { installStore, syncDesktopIcons, openStore, STORE_RENDERERS } from '../store/index.js';
 
 export const CELL_W = 74, CELL_H = 62, ICON = 32;
 export const TASKBAR_H = 24;
@@ -103,7 +104,7 @@ export class Desktop {
   }
 
   randomStealable() {
-    const list = this.icons.filter((i) => i.state === 'normal' && i.id !== 'fishtop');
+    const list = this.icons.filter((i) => i.state === 'normal' && i.id !== 'fishtop' && !i.nobait);
     return list.length ? rng.pick(list) : null;
   }
 
@@ -140,6 +141,11 @@ export class Desktop {
 
   putInBox(ic) {
     const st = this.game.state;
+    if (ic.nobait) {
+      this.game.toast("The AppSea store can't be used as bait - download apps from it instead!", 'cross');
+      this.game.audio.play('ui_error');
+      return false;
+    }
     const cap = this.game.stats.boxSlots;
     if (st.baitBox.length >= cap) {
       this.game.toast(`Bait box is full (${cap} slots). Upgrade it in the skill tree!`, 'cross');
@@ -231,6 +237,14 @@ export class Desktop {
   // ------------------------------------------------------------ update / input
   update(dt, inp, layer) {
     this.time += dt;
+    // AppSea: the desktop only shows system icons plus apps you have downloaded
+    if (!this.storeReady) {
+      this.storeReady = true;
+      Object.assign(APP_RENDERERS, STORE_RENDERERS); // registered at runtime (store <-> desktop import cycle)
+      installStore(this.game);
+      syncDesktopIcons(this, this.game.state);
+      this.game.on('appInstalled', () => syncDesktopIcons(this, this.game.state));
+    }
     if (this.layoutDirty) this.layout();
     const g = this.game;
     for (const ic of this.icons) {
@@ -379,6 +393,8 @@ export class Desktop {
       { id: 'shop', label: "Cap'n Bloat's Shop", icon: 'shop', key: 'S' },
       { id: 'map', label: 'Travel Map', icon: 'map', key: 'T' },
       { id: 'bait', label: 'Bait Box', icon: 'bait', key: 'B' },
+      { id: 'store', label: 'AppSea Store', icon: 'plus' },
+      { id: 'boatyard', label: "Barnaby's Boatyard", icon: 'home' },
       { id: 'pause', label: g.paused ? 'Resume Fishing' : 'Pause Fishing', icon: g.paused ? 'play' : 'pause', key: 'P' },
       { id: 'mini', label: 'Mini Mode', icon: 'minimize', key: 'M' },
       { id: 'restore', label: 'Restore All Icons', icon: 'home' },
@@ -408,7 +424,10 @@ export class Desktop {
       if (inp.pressed && items[i]) {
         this.startOpen = false;
         g.audio.play('ui_click');
-        g.command(items[i].id);
+        const id = items[i].id;
+        if (id === 'store') openStore(g);
+        else if (id === 'boatyard') g.ui.toggle('boatyard');
+        else g.command(id);
         inp.consume();
       }
       return true;

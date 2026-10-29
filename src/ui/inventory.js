@@ -443,7 +443,7 @@ export class InventoryPanel {
     }
     const v = sellValue(st, e.id);
     if (v) stats.push(['SELLS FOR', `${v} coins each`, '#2a6a3a']);
-    if (it?.biome) stats.push(['FOUND IN', { shallows: 'Sunny Shallows', junkyard: 'Junkyard Reef', abyss: 'Midnight Abyss' }[it.biome] || it.biome]);
+    if (it?.biome) stats.push(['FOUND IN', { shallows: 'Sunny Shallows', fjord: 'Frosty Fjord', junkyard: 'Junkyard Reef', metropolis: 'Sunken Metropolis', volcano: 'Lava Rift', abyss: 'The Deep Ocean' }[it.biome] || it.biome]);
     if (e.kind === 'material' || e.kind === 'egg') uses = usesOf(e.id);
     if (e.kind === 'egg') uses = ['Hatch into a baby fish', ...uses];
     if (e.kind === 'bait') {

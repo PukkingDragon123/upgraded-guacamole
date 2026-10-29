@@ -202,8 +202,8 @@
     return [shade(hex, -0.62 * contrast), shade(hex, -0.3 * contrast), hex, shade(hex, 0.32 * contrast), shade(hex, 0.62 * contrast)];
   }
   function adjust(hex, { h = 0, s = 0, l = 0, sMul = 1, lMul = 1 } = {}) {
-    const [H, S5, L] = hexToHsl(hex);
-    return hslToHex(H + h, clamp01(S5 * sMul + s), clamp01(L * lMul + l));
+    const [H, S6, L] = hexToHsl(hex);
+    return hslToHex(H + h, clamp01(S6 * sMul + s), clamp01(L * lMul + l));
   }
   function invert(hex) {
     const [r, g, b] = hexToRgb(hex);
@@ -1264,6 +1264,34 @@
       [79, 84, 88].forEach((m, i) => chime(o, m2f(m), 0.18 + i * 0.07, 0.07, 1, 0.35));
       bub(o, 0.15, 500, 0.06);
     },
+    // new oceans
+    ice_crack: (o) => {
+      noise(o, { dur: 0.09, type: "highpass", f: 2600, vol: 0.32, a: 1e-3 });
+      for (let i = 0; i < 4; i++) noise(o, { at: 0.02 + i * rand(0.02, 0.05), dur: 0.03, type: "bandpass", f: rand(1800, 4200), q: 2, vol: 0.14, a: 1e-3 });
+      tink(o, 2400, 0.03, 0.05);
+      thump(o, 0, 140, 0.12);
+    },
+    ice_chime: (o) => {
+      fm(o, { f: m2f(86), ratio: 3.5, index: 1.4, index2: 0.1, idur: 0.3, dur: 2.2, a: 2e-3, vol: 0.09, verb: 0.7 });
+      tone(o, { f: m2f(98), dur: 1.4, vol: 0.02, a: 2e-3, verb: 0.8 });
+      tone(o, { f: m2f(86) * 2.76, dur: 0.5, vol: 0.015, a: 2e-3 });
+    },
+    penguin: (o) => {
+      for (const at of [0, 0.16]) tone(o, { at, f: 760, f2: 520, glide: 0.1, dur: 0.12, type: "square", vol: 0.05, a: 4e-3, vib: [28, 30], filt: { type: "bandpass", f: 1100, q: 2 } });
+    },
+    eruption_boom: (o) => {
+      tone(o, { f: 70, f2: 32, glide: 0.5, dur: 0.7, vol: 0.35, a: 4e-3 });
+      noise(o, { dur: 2.2, type: "lowpass", f: 380, f2: 90, glide: 1.8, color: "brown", vol: 0.55, a: 0.01 });
+      for (let i = 0; i < 10; i++) noise(o, { at: 0.15 + Math.random() * 1.4, dur: 0.02, type: "bandpass", f: rand(600, 2400), q: 2, vol: rand(0.04, 0.1), a: 1e-3 });
+    },
+    neon_buzz: (o) => {
+      tone(o, { f: 120, dur: 0.35, type: "sawtooth", vol: 0.05, a: 4e-3, vib: [48, 6], filt: { type: "bandpass", f: 900, q: 3 }, shape: "sus", r: 0.05 });
+      for (let i = 0; i < 5; i++) noise(o, { at: i * 0.05 + Math.random() * 0.03, dur: 0.012, type: "highpass", f: 3500, vol: 0.12, a: 6e-4 });
+    },
+    train_ding: (o) => {
+      bell(o, m2f(76), 0, 0.08, 1.2, 0.4);
+      bell(o, m2f(72), 0.32, 0.08, 1.6, 0.4);
+    },
     unlock_biome: (o) => {
       [60, 67, 71, 74, 76].forEach((m) => tone(o, { f: m2f(m), dur: 2.4, type: "sawtooth", unison: [-8, 8], vol: 0.022, a: 0.8, shape: "sus", r: 1.1, filt: { type: "lowpass", f: 300, f2: 3e3, glide: 1.6 }, verb: 0.4 }));
       thump(o, 0, 70, 0.3);
@@ -1590,6 +1618,74 @@
         { min: night ? 30 : 20, max: night ? 70 : 45, first: rand(6, 15), fn: (t) => fire(SFX.whale_call, t, evOut(g, 0.32, rand(-0.8, 0.8), 700, 0.8, rand(0.6, 0.85))) },
         { min: night ? 9 : 6, max: night ? 20 : 14, fn: (t) => fire(chimeEv, t, evOut(g, night ? 0.18 : 0.25, rand(-0.8, 0.8), 0, 0.9)) }
       ];
+    },
+    // icy wind over the fjord, lapping water, groaning ice and far-off calving
+    fjord(g, night) {
+      const wind = gNoise(g, "pink", null, night ? 0.035 : 0.05, { type: "bandpass", f: 650, q: 1.2 });
+      gLfo(g, 0.09, 260, wind.fl.frequency);
+      gLfo(g, 0.05, night ? 0.02 : 0.03, wind.amp.gain);
+      const lap = gNoise(g, "brown", null, 0.07, { type: "lowpass", f: 320, q: 0.6 });
+      gLfo(g, 0.14, 0.04, lap.amp.gain);
+      const groan = (o) => {
+        const f = rand(45, 90), d = rand(1.2, 2.6);
+        tone(o, { f: [[0, f], [d * 0.6, f * rand(1.2, 1.6)], [d, f * 1.1]], dur: d, type: "sawtooth", vol: 0.05, a: 0.3, shape: "sus", r: 0.6, vib: [rand(6, 14), 3], filt: { type: "bandpass", f: 420, q: 5 } });
+      };
+      const calve = (o) => {
+        noise(o, { dur: 0.3, type: "highpass", f: 1800, vol: 0.1, a: 2e-3 });
+        noise(o, { at: 0.1, dur: 2.4, type: "lowpass", f: 260, color: "brown", vol: 0.3, a: 0.05 });
+        tone(o, { at: 0.1, f: 60, f2: 38, glide: 1, dur: 1.4, vol: 0.12 });
+      };
+      const tinkles = (o) => {
+        for (let i = 0, n = 2 + (Math.random() * 3 | 0); i < n; i++) tink(o, rand(2600, 4600), i * rand(0.08, 0.2), 0.03, rand(-0.6, 0.6));
+      };
+      return [
+        { min: night ? 6 : 9, max: night ? 16 : 22, fn: (t) => fire(groan, t, evOut(g, 0.6, rand(-0.8, 0.8), 900, 0.6)) },
+        { min: 25, max: 60, first: rand(8, 20), fn: (t) => fire(calve, t, evOut(g, 0.45, rand(-0.7, 0.7), 1400, 0.7, rand(0.8, 1.1))) },
+        { min: 3, max: 9, fn: (t) => fire(tinkles, t, evOut(g, night ? 0.3 : 0.4, 0, 0, 0.8)) }
+      ];
+    },
+    // the rift: sub rumble, hissing vents, boiling bubbles, distant booms and lava gloops
+    volcano(g, night) {
+      gNoise(g, "brown", null, night ? 0.16 : 0.18, { type: "lowpass", f: 75, q: 0.8 });
+      gOsc(g, "sine", 31, null, 0.05);
+      const hiss = gNoise(g, "white", null, 0.012, { type: "bandpass", f: 2600, q: 0.6 });
+      gLfo(g, 0.21, 8e-3, hiss.amp.gain);
+      const boil = (o) => {
+        for (let i = 0, n = 3 + (Math.random() * 6 | 0); i < n; i++) bub(o, i * rand(0.03, 0.09), rand(110, 360), rand(0.04, 0.08), 0, rand(0.05, 0.11));
+      };
+      const boom = (o) => {
+        thump(o, 0, 55, 0.25);
+        noise(o, { dur: 1.8, type: "lowpass", f: 220, f2: 80, color: "brown", vol: 0.3, a: 0.02 });
+      };
+      const gloop = (o) => tone(o, { f: rand(70, 110), f2: rand(160, 240), glide: 0.25, dur: 0.3, vol: 0.08, vib: [rand(18, 30), 12], filt: { type: "lowpass", f: 600 } });
+      return [
+        { min: 0.5, max: 2.2, fn: (t) => fire(boil, t, evOut(g, 0.55, rand(-0.8, 0.8), 1200, 0.3)) },
+        { min: night ? 12 : 16, max: night ? 30 : 40, first: rand(4, 12), fn: (t) => fire(boom, t, evOut(g, 0.5, rand(-0.6, 0.6), 600, 0.6)) },
+        { min: 3, max: 8, fn: (t) => fire(gloop, t, evOut(g, 0.5, rand(-0.7, 0.7), 900, 0.4)) }
+      ];
+    },
+    // the drowned city: muffled traffic hum, neon buzz, trains in the far tunnels, drips and creaking steel
+    metropolis(g, night) {
+      gOsc(g, "sawtooth", 50, null, night ? 0.012 : 0.016, { type: "lowpass", f: 140, q: 1 });
+      const traffic = gNoise(g, "brown", null, night ? 0.05 : 0.07, { type: "bandpass", f: 380, q: 0.7 });
+      gLfo(g, 0.06, 120, traffic.fl.frequency);
+      const buzz = gOsc(g, "sine", 120, null, night ? 6e-3 : 4e-3);
+      gOsc(g, "square", 240, null, 15e-4, { type: "lowpass", f: 900 });
+      gLfo(g, 7, 2e-3, buzz.amp.gain);
+      const train = (o) => {
+        noise(o, { dur: 6, type: "lowpass", f: 180, f2: 420, glide: 3, color: "brown", vol: 0.18, a: 2.2, shape: "lin" });
+        for (let i = 0; i < 12; i++) noise(o, { at: 1.5 + i * 0.32, dur: 0.05, type: "bandpass", f: 700, q: 2, vol: 0.05, a: 2e-3 });
+      };
+      const horn = (o) => {
+        for (const [at, m] of [[0, 57], [0.4, 53]]) tone(o, { at, f: m2f(m), dur: 0.5, type: "triangle", vol: 0.03, a: 0.05, shape: "sus", r: 0.2, filt: { type: "lowpass", f: 700 } });
+      };
+      const drip = (o) => bub(o, 0, rand(1400, 2600), 0.04, 0, 0.05);
+      return [
+        { min: 20, max: 50, first: rand(6, 15), fn: (t) => fire(train, t, evOut(g, 0.5, rand(-0.9, 0.9), 900, 0.5)) },
+        { min: 14, max: 40, fn: (t) => fire(horn, t, evOut(g, night ? 0.2 : 0.3, rand(-0.8, 0.8), 1200, 0.7)) },
+        { min: 1.5, max: 5, fn: (t) => fire(drip, t, evOut(g, 0.4, rand(-0.8, 0.8), 0, 0.5)) },
+        { min: 8, max: 20, fn: (t) => fire((o) => creak(o, rand(0.4, 0.8)), t, evOut(g, 0.4, rand(-0.8, 0.8), 1200, 0.5)) }
+      ];
     }
   };
   AMB.aquarium = AMB.desktop;
@@ -1628,7 +1724,60 @@
     snow: (g) => evLayer([{ min: 0.8, max: 2.6, fn: (t) => fire((o) => tone(o, { f: rand(2400, 4200), dur: 0.5, vol: 0.05, a: 3e-3 }), t, evOut(g, 0.3, rand(-0.9, 0.9), 0, 0.8)) }]),
     glowtide: (g) => evLayer([{ min: 5, max: 11, fn: (t) => fire((o) => {
       for (const m of pick([[62, 69, 76], [58, 65, 74], [60, 67, 74]])) tone(o, { f: m2f(m + 12), dur: 4, vol: 0.03, a: 1.6, shape: "sus", r: 2, vib: [0.3, 1.5] });
-    }, t, evOut(g, 0.4, rand(-0.5, 0.5), 0, 0.9)) }])
+    }, t, evOut(g, 0.4, rand(-0.5, 0.5), 0, 0.9)) }]),
+    // fjord
+    snowfall: (g) => {
+      gNoise(g, "pink", null, 0.02, [{ type: "highpass", f: 2800 }, { type: "lowpass", f: 7e3 }]);
+      return evLayer([{ min: 1.2, max: 3.5, fn: (t) => fire((o) => tink(o, rand(3e3, 5200), 0, 0.02, rand(-0.8, 0.8)), t, evOut(g, 0.3, 0, 0, 0.8)) }]);
+    },
+    blizzard: (g) => {
+      const howl = gNoise(g, "pink", null, 0.12, { type: "bandpass", f: 700, q: 2.2 });
+      gLfo(g, 0.13, 420, howl.fl.frequency);
+      gLfo(g, 0.07, 0.06, howl.amp.gain);
+      gNoise(g, "brown", null, 0.12, { type: "lowpass", f: 260 });
+      const gust = (o) => noise(o, { dur: rand(1.5, 3), type: "bandpass", f: rand(400, 900), f2: rand(1200, 2e3), q: 1.4, vol: 0.18, a: 0.8, shape: "lin" });
+      return evLayer([{ min: 3, max: 7, fn: (t) => fire(gust, t, evOut(g, 0.5, rand(-0.9, 0.9), 0, 0.3)) }]);
+    },
+    aurora: (g) => evLayer([{ min: 4, max: 9, fn: (t) => fire((o) => {
+      for (const m of pick([[74, 78, 81, 85], [71, 74, 78, 81], [69, 73, 76, 81]])) tone(o, { f: m2f(m + 12), dur: 5, vol: 0.022, a: 2, shape: "sus", r: 2.4, vib: [0.25, 2] });
+      for (let i = 0; i < 4; i++) tink(o, m2f(pick([93, 95, 98, 100])), 1 + i * rand(0.3, 0.7), 0.015, rand(-0.6, 0.6));
+    }, t, evOut(g, 0.45, rand(-0.5, 0.5), 0, 0.9)) }]),
+    // lava rift
+    eruption: (g) => {
+      gNoise(g, "brown", null, 0.1, { type: "lowpass", f: 110 });
+      const crackle = (o) => {
+        for (let i = 0; i < 6; i++) noise(o, { at: i * rand(0.02, 0.08), dur: 0.015, type: "bandpass", f: rand(500, 1800), q: 2, vol: rand(0.05, 0.12), a: 1e-3 });
+      };
+      return evLayer([
+        { min: 6, max: 14, fn: (t) => fire(SFX.eruption_boom, t, evOut(g, 0.45, rand(-0.6, 0.6), 1200, 0.5)) },
+        { min: 0.4, max: 1.5, fn: (t) => fire(crackle, t, evOut(g, 0.4, rand(-0.8, 0.8), 2400, 0.2)) }
+      ]);
+    },
+    sulfur: (g) => {
+      const hiss = gNoise(g, "white", null, 0.03, { type: "bandpass", f: 3400, q: 0.5 });
+      gLfo(g, 0.3, 0.015, hiss.amp.gain);
+      return evLayer([{ min: 0.3, max: 1.2, fn: (t) => fire((o) => bub(o, 0, rand(200, 600), 0.05, 0, rand(0.06, 0.1)), t, evOut(g, 0.4, rand(-0.8, 0.8), 1500, 0.3)) }]);
+    },
+    magma: (g) => {
+      const throb = gOsc(g, "sine", 42, null, 0.05);
+      gLfo(g, 0.35, 0.04, throb.amp.gain);
+      return evLayer([{ min: 1, max: 3, fn: (t) => fire((o) => tone(o, { f: rand(60, 90), f2: rand(200, 320), glide: 0.4, dur: 0.5, vol: 0.07, vib: [22, 14], filt: { type: "lowpass", f: 700 } }), t, evOut(g, 0.5, rand(-0.7, 0.7), 900, 0.5)) }]);
+    },
+    // sunken metropolis
+    neonstorm: (g) => evLayer(
+      [{ min: 0.8, max: 3, fn: (t) => fire(SFX.neon_buzz, t, evOut(g, 0.35, rand(-0.8, 0.8), 0, 0.3)) }],
+      withV(LOOPS.static(subGroup(g, 0.3)), 0.25)
+    ),
+    rushhour: (g) => evLayer([
+      { min: 0.6, max: 2, fn: (t) => fire((o) => whoosh(o, 0, rand(0.6, 1.2), rand(400, 900), rand(1500, 2600), 0.1), t, evOut(g, 0.4, rand(-0.9, 0.9), 0, 0.2)) },
+      { min: 0.3, max: 1, fn: (t) => fire((o) => {
+        for (let i = 0; i < 3; i++) bub(o, i * 0.05, rand(500, 1200), 0.03, 0, 0.05);
+      }, t, evOut(g, 0.35, rand(-0.8, 0.8), 0, 0.2)) }
+    ]),
+    blackout: (g) => {
+      gNoise(g, "brown", null, 0.06, { type: "bandpass", f: 120, q: 1 });
+      return evLayer([{ min: 6, max: 14, fn: (t) => fire((o) => creak(o, rand(0.3, 0.6)), t, evOut(g, 0.4, rand(-0.9, 0.9), 900, 0.7)) }]);
+    }
   };
   var scene = null;
   function buildScene(key, biome, weather, night) {
@@ -1748,6 +1897,25 @@
   var AQ_CH = { G: [55, 59, 62], Em: [52, 55, 59], C: [48, 52, 55], D: [50, 54, 57], Am: [45, 48, 52] };
   var AQ_PROGS = [["G", "Em", "C", "D"], ["G", "C", "G", "D"], ["C", "D", "G", "Em"], ["G", "Em", "Am", "D"]];
   var AQ_MEL = [74, 76, 79, 81, 83, 86, 88];
+  var FJ_CH = [
+    { pad: [62, 66, 69, 73], root: 38, arp: [74, 78, 81, 85, 86] },
+    { pad: [59, 62, 66, 69], root: 35, arp: [71, 74, 78, 81, 83] },
+    { pad: [55, 62, 66, 69], root: 31, arp: [74, 79, 81, 83, 86] },
+    { pad: [57, 61, 64, 69], root: 33, arp: [73, 76, 81, 85, 88] }
+  ];
+  var FJ_PROGS = [[0, 1, 2, 3], [0, 2, 1, 3], [2, 3, 0, 1], [0, 3, 2, 1]];
+  var VO_CH = [{ pad: [52, 59, 64], root: 28 }, { pad: [53, 60, 65], root: 29 }, { pad: [52, 59, 64], root: 28 }, { pad: [50, 57, 62], root: 26 }, { pad: [55, 59, 62], root: 31 }];
+  var VO_RIFF = [0, 0, 1, 0, 3, 0, 1, -2];
+  var ME_CH = [
+    { pad: [57, 60, 64, 67], root: 45 },
+    { pad: [53, 57, 60, 64], root: 41 },
+    { pad: [50, 53, 57, 60], root: 38 },
+    { pad: [52, 56, 59, 62], root: 40 },
+    { pad: [55, 59, 62, 65], root: 43 },
+    { pad: [48, 52, 55, 59], root: 36 }
+  ];
+  var ME_PROGS = [[0, 1, 2, 3], [0, 4, 5, 1], [2, 3, 0, 0], [0, 1, 4, 3]];
+  var ME_LEAD = [69, 72, 74, 75, 76, 79, 81, 84];
   var TRACKS = {
     // music-box notes drifting over the ordinary desktop
     desktop: {
@@ -1894,6 +2062,116 @@
         if (s === 4 && bar % 8 === 6 && chance(0.6)) {
           tone(o, { f: m2f(pick([26, 33])), dur: 7, type: "triangle", vol: 0.08, a: 3, shape: "sus", r: 3, verb: 0.3 });
           noise(o, { dur: 7, type: "lowpass", f: 200, color: "brown", vol: 0.15, a: 3, shape: "lin", verb: 0.3 });
+        }
+      }
+    },
+    // icy & crystalline: glass arpeggios over a soft Lydian pad, music-box sparkles; aurora nights shimmer
+    fjord: {
+      bpm: 72,
+      verb: 0.55,
+      fadeIn: 3,
+      step(tr, i, t) {
+        const st = tr.st, s = i % 16, bar = i / 16 | 0, night = S.night, sd = tr.stepDur;
+        const aurora = S.ambOpts.weather === "aurora", bliz = S.ambOpts.weather === "blizzard";
+        if (s === 0) {
+          if (bar % 4 === 0 || !st.prog) {
+            st.prog = pick(FJ_PROGS);
+            st.dir = chance(0.5) ? 1 : -1;
+          }
+          st.ch = FJ_CH[st.prog[bar % 4]];
+          for (const m of st.ch.pad) INS.pad(tr.o(t, null, 0.6), m, sd * 16 + 1, night ? 0.012 : 0.015, night ? 700 : 1100, 0, 1.4, 1.6, "triangle");
+          tone(tr.o(t), { f: m2f(st.ch.root), dur: sd * 12, vol: 0.07, a: 0.2, shape: "sus", r: 1 });
+        }
+        const ch = st.ch;
+        if (!ch) return;
+        const o = tr.o(t);
+        if (s % 2 === 0 && (!night || s % 4 === 0) && !bliz) {
+          const k = s / 2 % ch.arp.length;
+          INS.celesta(o, ch.arp[st.dir > 0 ? k : ch.arp.length - 1 - k] + (bar % 2 && s >= 8 ? 12 : 0), night ? 0.03 : 0.04, 0, 1.4);
+        }
+        if (chance(night ? 0.06 : 0.1)) INS.glass(o, pick(ch.arp) + 12, 0.025, 0, 3, 0.85);
+        if (s === 8 && chance(0.4)) INS.musicbox(o, pick(ch.arp), 0.04, 0, 2, 0.6);
+        if ((aurora || night) && s === 0 && bar % 2 === 0) for (const m of ch.arp.slice(0, 3)) tone(tr.o(t, null, 0.9), { f: m2f(m + 12), dur: sd * 30, vol: aurora ? 0.016 : 9e-3, a: 2.4, shape: "sus", r: 2.5, vib: [0.3, 2] });
+        if (s === 12 && !night) noise(o, { dur: 0.6, type: "highpass", f: 8e3, vol: 0.02, a: 0.2 });
+      }
+    },
+    // ominous rumbling: a droning Phrygian riff, taiko hits like a giant heartbeat, anvil strikes from the deep
+    volcano: {
+      bpm: 66,
+      verb: 0.35,
+      fadeIn: 3,
+      init(tr) {
+        const g = tr.g;
+        const lp = biquad("lowpass", 220, 1.2, g.fade);
+        g.nodes.push(lp);
+        tr.droneLp = lp;
+        gOsc(g, "sawtooth", m2f(28), lp, 0.05, null, -8);
+        gOsc(g, "sawtooth", m2f(28), lp, 0.05, null, 9);
+        gOsc(g, "sawtooth", m2f(35), lp, 0.025, null, 4);
+        gOsc(g, "sine", m2f(16), null, 0.06);
+        gLfo(g, 0.07, 90, lp.frequency);
+      },
+      step(tr, i, t) {
+        const st = tr.st, s = i % 16, bar = i / 16 | 0, night = S.night, sd = tr.stepDur;
+        const erupt = S.ambOpts.weather === "eruption", magma = S.ambOpts.weather === "magma";
+        if (s === 0) {
+          st.ch = VO_CH[bar % 4 === 3 ? 3 + (bar % 8 === 7 ? 1 : 0) : bar % 2 ? 1 : 0];
+          if (bar % 2 === 0) for (const m of st.ch.pad) INS.pad(tr.o(t, null, 0.5), m, sd * 32, 0.014, magma ? 900 : 480, 0, 2.5, 2.5);
+          ramp2(tr.droneLp.frequency, erupt ? 520 : night ? 180 : 240, 1, t);
+        }
+        const ch = st.ch;
+        if (!ch) return;
+        const o = tr.o(t);
+        const pat = erupt ? [1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0] : [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0];
+        if (pat[s] && (!night || s === 0 || erupt)) {
+          tone(o, { f: 90, f2: 42, glide: 0.18, dur: 0.6, vol: s === 0 ? 0.3 : 0.2, a: 2e-3 });
+          noise(o, { dur: 0.08, type: "lowpass", f: 900, color: "pink", vol: 0.12, a: 1e-3 });
+        }
+        if (s % 2 === 0) {
+          const n = VO_RIFF[s / 2 % 8];
+          if (n !== void 0 && (s % 4 === 0 || chance(0.6))) tone(o, { f: m2f(ch.root + 12 + n), dur: sd * 1.8, type: "sawtooth", vol: 0.05, a: 0.01, shape: "sus", r: 0.08, filt: { type: "lowpass", f: 380, f2: 900, glide: sd } });
+        }
+        if (s === 10 && chance(erupt ? 0.8 : 0.35)) fm(o, { f: m2f(pick([64, 65, 71])), ratio: 1.41, index: 3.5, index2: 0.2, idur: 0.15, dur: 1.8, vol: 0.05, verb: 0.6 });
+        if (s === 4 && bar % 4 === 2 && chance(0.6)) tone(o, { f: m2f(pick([76, 77, 79])), dur: 3, type: "triangle", vol: 0.025, a: 0.4, shape: "sus", r: 1.2, vib: [4, 6], verb: 0.7 });
+        if (magma && s % 8 === 6) tone(o, { f: m2f(40), f2: m2f(52), glide: sd * 4, dur: sd * 4, type: "sawtooth", vol: 0.03, filt: { type: "lowpass", f: 600 } });
+      }
+    },
+    // synthwave noir: gated minor-7th pads, octave-jumping saw bass, gated snare, a smoky FM sax lead
+    metropolis: {
+      bpm: 96,
+      swing: 0.05,
+      verb: 0.3,
+      fadeIn: 2.5,
+      step(tr, i, t) {
+        const st = tr.st, s = i % 16, bar = i / 16 | 0, night = S.night, sd = tr.stepDur;
+        const w = S.ambOpts.weather, black = w === "blackout", rush = w === "rushhour", storm = w === "neonstorm";
+        if (s === 0) {
+          if (bar % 4 === 0 || !st.prog) {
+            st.prog = pick(ME_PROGS);
+            newPhrase(st, night ? 0.3 : 0.22, ME_LEAD.length);
+          }
+          st.ch = ME_CH[st.prog[bar % 4]];
+        }
+        const ch = st.ch;
+        if (!ch) return;
+        const o = tr.o(t);
+        if (black) {
+          if (s === 0) for (const m of ch.pad) INS.pad(tr.o(t, null, 0.6), m, sd * 16, 0.012, 600, 0, 1, 1.5);
+        } else if (s % 2 === 0) for (const m of ch.pad) tone(tr.o(t, null, 0.35), { f: m2f(m), dur: sd * 1.4, type: "sawtooth", unison: [-9, 9], vol: night ? 9e-3 : 0.011, a: 0.01, shape: "sus", r: 0.06, filt: { type: "lowpass", f: night ? 1200 : 1800, q: 1.5 } });
+        if (!black && s % 2 === 0) tone(o, { f: m2f(ch.root - 12 + (s % 4 === 2 ? 12 : 0)), dur: sd * 1.6, type: "sawtooth", vol: 0.07, a: 4e-3, shape: "sus", r: 0.04, filt: { type: "lowpass", f: 520, q: 3 } });
+        if (!black) {
+          if (s === 0 || s === 8 || s === 11 && !night) INS.kick(o, 0.24);
+          if (s === 4 || s === 12) {
+            INS.snare(tr.o(t, null, 0.55), night ? 0.12 : 0.16);
+          }
+          if (rush ? true : s % 2 === 0) INS.hat(o, (s % 4 === 2 ? 0.07 : 0.045) * (night ? 0.7 : 1), 0, s === 14 && chance(0.3));
+        }
+        if (storm && s === 15 && chance(0.5)) for (let k = 0; k < 4; k++) tone(o, { at: k * sd / 4, f: m2f(pick(ch.pad) + 24), dur: sd * 0.2, wave: "pulse12", vol: 0.03 });
+        const ri = bar % 2 * 16 + s;
+        if (st.rhythm[ri] && (night || black || bar % 4 >= 2)) {
+          let idx = st.motif[ri];
+          if (s % 8 === 0) idx = snapIdx(ME_LEAD, idx, ch.pad.map((m) => m % 12));
+          fm(tr.o(t, null, 0.45), { f: m2f(ME_LEAD[idx] - 12), ratio: 1, index: 1.8, index2: 0.6, idur: 0.12, dur: sd * 3, a: 0.03, vol: 0.05, shape: "sus", r: 0.12 });
         }
       }
     },
@@ -4099,10 +4377,10 @@
     return buf.toCanvas();
   }
   function buildReelCursor() {
-    const S5 = 13, c = 6.5;
-    const buf = new PixelBuffer(S5, S5);
-    for (let y = 1; y < S5 - 1; y++) {
-      for (let x = 1; x < S5 - 1; x++) {
+    const S6 = 13, c = 6.5;
+    const buf = new PixelBuffer(S6, S6);
+    for (let y = 1; y < S6 - 1; y++) {
+      for (let x = 1; x < S6 - 1; x++) {
         const dx = x + 0.5 - c, dy = y + 0.5 - c, d = Math.hypot(dx, dy);
         if (d > 5.4) continue;
         const lit = d > 0 ? (-dx - dy) / (d * 1.414) : 0;
@@ -8029,7 +8307,8 @@
   var statJobs = 0;
   var statPx = 0;
   var workTotal = 0;
-  var FORCE_MS = 14;
+  var FORCE_MS = 20;
+  var syncAll = false;
   var WARM_MS = 1;
   function setVoxelFishBudget(ms) {
     budgetMs = ms;
@@ -8079,7 +8358,7 @@
     const cap = Math.floor(2 * Math.log2(MAX_VOX_LEN / lookLen(c)));
     return clamp2(Math.min(rk, cap), -6, 4);
   }
-  var scaleBucket = (S5) => Math.round(Math.log(Math.max(0.05, S5)) / Math.log(SCALE_STEP));
+  var scaleBucket = (S6) => Math.round(Math.log(Math.max(0.05, S6)) / Math.log(SCALE_STEP));
   var bucketScale = (sb) => Math.pow(SCALE_STEP, sb);
   var Pal = class {
     constructor() {
@@ -9496,6 +9775,7 @@
   }
   function voxelFrame(c, req) {
     ensureTick();
+    if (syncAll) req = { ...req, force: true };
     const sb = scaleBucket(req.S);
     const Sb = bucketScale(sb);
     const rk = resLevel(c, Sb);
@@ -9517,6 +9797,10 @@
     if (f) {
       touch(frames, fkey, f);
       return { f, k: req.S / f.Sb };
+    }
+    if (req.force) {
+      f = work(c, m, fkey, now() + 1e6);
+      if (f) return { f, k: req.S / f.Sb };
     }
     for (const d of [1, -1]) {
       const sb2 = sb + d, Sb2 = bucketScale(sb2);
@@ -10075,11 +10359,6 @@
     };
   }
   var DEG2 = Math.PI / 180;
-  function pendingAnchors(c, st, S5, dir) {
-    const L = (c.L || 30) * S5, H = (c.H || 20) * S5;
-    const x = st.x, y = st.y + (st.bob || 0);
-    return { mouth: [x + dir * L * 0.5, y], top: [x, y - H * 0.6], tail: [x - dir * L * 0.6, y], bottom: [x, y + H * 0.5], eyes: [], pending: true };
-  }
   function drawVoxelRig(ctx2, c, st) {
     const kind = isKind(c);
     const tau = worldTurn(st);
@@ -10089,7 +10368,7 @@
     const base = st.yawBase ?? BASE_YAW;
     yaw = base + (90 - base) * (yaw / 90) - (st.heading || 0);
     if (yaw < -90) yaw = -90;
-    const S5 = st.scale ?? 1;
+    const S6 = st.scale ?? 1;
     const ang = kind ? 0 : st.angle || 0;
     const t = st.time || 0;
     const lod = st.lod || 0;
@@ -10098,8 +10377,8 @@
     if (lod) sw -= sw % 2;
     const infl = kind ? 0 : Math.round(clamp3(st.inflate || 0, 0, 1) * 3);
     const pose = !!(st.pose || st.emotion === "pose");
-    const res = voxelFrame(c, { S: S5, yaw, pitch: ang / DEG2, sw, infl, pose, lod, pri: st.pri ?? 1 });
-    if (!res) return pendingAnchors(c, st, S5, mirror ? -1 : 1);
+    const res = voxelFrame(c, { S: S6, yaw, pitch: ang / DEG2, sw, infl, pose, lod, pri: st.pri ?? 1 });
+    if (!res) return null;
     const { f, k } = res;
     const sq = clamp3(st.squash || 0, -1, 1);
     const kx = k * (1 + 0.22 * sq), ky = k * (1 - 0.2 * sq);
@@ -10199,7 +10478,7 @@
     let pitch = mirror ? Math.PI - dir : dir;
     pitch = Math.atan2(Math.sin(pitch), Math.cos(pitch));
     const res = voxelFrame(c, { S: s, yaw: 0, pitch: clamp3(pitch / DEG2, -90, 90), sw: 0, infl: 0, pose: false, lod: st.lod || 0, pri: st.pri ?? 1 });
-    if (!res) return pendingAnchors(c, st, s, mirror ? -1 : 1);
+    if (!res) return null;
     const { f, k } = res;
     const items = [];
     const sx = mirror ? -1 : 1;
@@ -10671,6 +10950,7 @@
       tmp = q;
       if (!changed) break;
     }
+    for (let i = 0; i < nb; i++) if (bdist[i] === 255) bdist[i] = 8;
     return { occ, SY, SZ, bdist, bnx, bny };
   }
   function traceRays(model, b, cam, vol, hitVox, hitN, depth, hitU, hitV) {
@@ -11458,7 +11738,10 @@
   function def(id, meta, build2) {
     DEFS[id] = { meta: { name: meta.name, biome: meta.biome, tags: meta.tags || [], decor: meta.decor || null, decorOnly: !!meta.decorOnly }, build: build2 };
     if (meta.desc) DEFS[id].meta.desc = meta.desc;
-    if (meta.interact) INTERACT[id] = meta.interact;
+    if (meta.interact) {
+      INTERACT[id] = meta.interact;
+      DEFS[id].meta.animated = true;
+    }
   }
   function reefRock(m, rng2, cols = REEF_ROCK) {
     return cols.map((c, i) => m.color(c, { jitter: 0.16, smooth: 0.8, light: i === 2 ? 0.15 : 0 }));
@@ -13009,7 +13292,7 @@
     biolum(m, rng2, 14, bone, "#5ff4ff");
     biolum(m, rng2, 6, bone, "#c07bff");
     sandMound(m, 60, 50, 46, 36, 6, 8, ABYSS_SILT);
-    return { m, yaw: 30, vs: 1.6, light: "#5ff4ff" };
+    return { m, yaw: 30, vs: 1.6, light: "#5ff4ff", turn: -32 };
   });
   def("giant_skull", { name: "Giant Skull", biome: "abyss", tags: ["bone", "glow"], decor: { price: 550, size: 2 } }, ({ rng: rng2 }) => {
     const m = new VoxelModel(90, 60, 58);
@@ -13557,6 +13840,18 @@
     moss(m, rng2, 3, MOSS, 0.2, 0.2, stone);
     return { m, yaw: 24, pitch: 26 };
   });
+  var BASES = /* @__PURE__ */ new Map();
+  function frameBase(key, build2) {
+    let b = BASES.get(key);
+    if (!b) {
+      b = build2();
+      BASES.set(key, b);
+    }
+    const m = new VoxelModel(b.m.nx, b.m.ny, b.m.nz);
+    m.data.set(b.m.data);
+    m.palette = b.m.palette.slice();
+    return { ...b, m };
+  }
   function rbox(m, x0, y0, z0, x1, y1, z1, r, c) {
     const cx = (x0 + x1 + 1) / 2, cy = (y0 + y1 + 1) / 2, cz = (z0 + z1 + 1) / 2;
     const hx = (x1 + 1 - x0) / 2 - r, hy = (y1 + 1 - y0) / 2 - r, hz = (z1 + 1 - z0) / 2 - r;
@@ -13674,10 +13969,10 @@
     m.cylinder(40, 4, 27, 35, 3.8, paper, "z");
     m.cylinder(40, 4, 35, 35, 1.5, core, "z");
     m.box(38, 0, 36, 42, 0, 43, paper);
-    const front = (x, y, z) => {
+    const front = frame === 1 ? (x, y, z) => {
       const v = m.get(x, y, z);
       return z + 0.5 > cz && y < 28 && v !== water && v !== swirl;
-    };
+    } : null;
     return { m, yaw: 30, ground: [cx, 0, 25], front, anchors: { bowl: [cx, 18, cz + 2], top: [cx, 49, 7] } };
   });
   def("garden_gnome", {
@@ -13871,7 +14166,7 @@
       seq: [0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3],
       fps: 13,
       sfx: [["magic", 0], ["sparkle", 0.35], ["sparkle", 0.9]],
-      fx: [{ at: 0, kind: "lights", from: "ball", n: 24 }, { at: 0.55, kind: "lights", from: "ball", n: 20 }, { at: 1.1, kind: "lights", from: "ball", n: 16 }, { at: 0.1, kind: "sparkle", from: "ball", n: 8 }],
+      fx: [0, 0.3, 0.6, 0.9, 1.2].map((at) => ({ at, kind: "lights", from: "ball", n: 18 })).concat([{ at: 0.1, kind: "sparkle", from: "ball", n: 8 }]),
       fish: "dance",
       use: { kind: "orbit", at: "ball" }
     }
@@ -14225,42 +14520,55 @@
       fish: "flee"
     }
   }, ({ frame }) => {
-    const m = new VoxelModel(66, 62, 58);
-    const rock = ["#5a4a4c", "#4a3c42", "#6c5a54", "#7a4a3a"].map((c) => m.color(c, { jitter: 0.12, smooth: 0.4 }));
-    const ash = m.color("#3a3036", { jitter: 0.08 });
-    const glowC = frame === 0 ? m.color("#b8482a", { emissive: 0.45, jitter: 0.04 }) : m.color("#ffb03a", { emissive: 1, jitter: 0.03 });
+    const cx = 34, cz = 28, seed = 11;
+    const Rat = (y, a) => 27 - y * 0.5 + (noise3(Math.cos(a) * 2 + 5, y * 0.12, Math.sin(a) * 2, seed) - 0.5) * 7;
+    const B2 = frameBase("mini_volcano", () => {
+      const m2 = new VoxelModel(66, 62, 58);
+      const rock = ["#5a4a4c", "#4a3c42", "#6c5a54", "#7a4a3a"].map((c) => m2.color(c, { jitter: 0.12, smooth: 0.4 }));
+      const ash = m2.color("#3a3036", { jitter: 0.08 });
+      const pool = m2.color("#b8482a", { emissive: 0.45, jitter: 0.04 });
+      const trunk = m2.color("#9a6a3a", { jitter: 0.05 });
+      const leaf = [m2.color("#4ab85a", { smooth: 0.3 }), m2.color("#7ad86a", { smooth: 0.3 })];
+      shape(m2, 0, 0, 0, 65, 44, 57, (x, y, z) => {
+        const dx = x - cx, dz = z - cz, r = Math.hypot(dx, dz);
+        if (y > 41) return false;
+        if (r > Rat(y, Math.atan2(dz, dx))) return false;
+        return !(y > 33 && r < (y - 33) * 0.75 + 3.5);
+      }, (x, y, z) => y > 34 && h3(x, y, z, 2) < 0.4 ? rock[3] : rock[Math.floor(fbm3(x * 0.15, y * 0.15, z * 0.15, 2, seed) * 2.99 * 1.2) % 3]);
+      shape(m2, cx - 9, 33, cz - 9, cx + 9, 35, cz + 9, (x, y, z) => Math.hypot(x - cx, z - cz) < 4 + (y - 33) * 0.75, (x, y, z, p) => p ? null : pool);
+      m2.recolor((x, y, z, p) => y > 32 && Math.hypot(x + 0.5 - cx, z + 0.5 - cz) < 8 && m2.exposed(x, y, z) && p !== pool ? ash : null);
+      const px = 9, pz = 46;
+      sandMound(m2, px + 2, pz - 2, 9, 8, 2, 3);
+      m2.tube([[px, 1, pz, 1.4], [px + 1, 8, pz, 1.2], [px + 3, 15, pz - 1, 1.1], [px + 6, 20, pz - 1, 1]], trunk, 3);
+      for (let k = 0; k < 6; k++) {
+        const a = k * 1.05;
+        m2.tube([[px + 6, 21, pz - 1, 0.9], [px + 6 + Math.cos(a) * 4, 23, pz - 1 + Math.sin(a) * 4, 0.8], [px + 6 + Math.cos(a) * 8, 19, pz - 1 + Math.sin(a) * 8, 0.6]], leaf[k % 2], 3);
+      }
+      m2.sphere(px + 6, 20, pz, 1.3, trunk);
+      return { m: m2, pool };
+    });
+    const m = B2.m;
     const lava = m.color("#ff7a1a", { emissive: 1, jitter: 0.04 });
     const core = m.color("#ffe46a", { emissive: 1, jitter: 0.02 });
     const crack = m.color("#ff5a2a", { emissive: 0.9, jitter: 0 });
-    const trunk = m.color("#9a6a3a", { jitter: 0.05 });
-    const leaf = [m.color("#4ab85a", { smooth: 0.3 }), m.color("#7ad86a", { smooth: 0.3 })];
-    const cx = 34, cz = 28, seed = 11;
-    const Rat = (y, a) => 27 - y * 0.5 + (noise3(Math.cos(a) * 2 + 5, y * 0.12, Math.sin(a) * 2, seed) - 0.5) * 7;
-    shape(m, 0, 0, 0, 65, 44, 57, (x, y, z) => {
-      const dx = x - cx, dz = z - cz, r = Math.hypot(dx, dz);
-      if (y > 41) return false;
-      if (r > Rat(y, Math.atan2(dz, dx))) return false;
-      return !(y > 33 && r < (y - 33) * 0.75 + 3.5);
-    }, (x, y, z) => y > 34 && h3(x, y, z, 2) < 0.4 ? rock[3] : rock[Math.floor(fbm3(x * 0.15, y * 0.15, z * 0.15, 2, seed) * 2.99 * 1.2) % 3]);
-    shape(m, cx - 9, 33, cz - 9, cx + 9, 35, cz + 9, (x, y, z) => Math.hypot(x - cx, z - cz) < 4 + (y - 33) * 0.75, (x, y, z, p) => p ? null : glowC);
-    m.recolor((x, y, z, p) => y > 32 && Math.hypot(x + 0.5 - cx, z + 0.5 - cz) < 8 && m.exposed(x, y, z) && p !== glowC ? ash : null);
-    if (frame >= 1) surface(m, (x, y, z, p) => y < 30 && y > 3 && h3(x, y, z, 7) < 0.025 && p !== glowC ? crack : null);
+    if (frame >= 1) {
+      const hot = m.color("#ffb03a", { emissive: 1, jitter: 0.03 });
+      m.paint(() => m.box(cx - 9, 33, cz - 9, cx + 9, 35, cz + 9, (x, y, z, p) => p === B2.pool ? hot : null));
+      surface(m, (x, y, z, p) => y < 30 && y > 3 && h3(x, y, z, 7) < 0.025 && p !== B2.pool ? crack : null);
+    }
     if (frame >= 2) {
       const reach = frame === 2 ? 22 : 6;
       for (const a0 of [0.35, 1.05, 1.7]) {
-        const pts = [];
         for (let y = 38; y >= reach; y -= 1) {
           const a = a0 + Math.sin(y * 0.2 + a0 * 3) * 0.12, r = Rat(y, a) - 0.4;
-          pts.push([cx + Math.cos(a) * r, y, cz + Math.sin(a) * r]);
-        }
-        m.recolor((x, y, z, p) => {
-          if (y < reach - 1 || y > 40 || !m.exposed(x, y, z)) return null;
-          for (const q of pts) {
-            const d = Math.hypot(x + 0.5 - q[0], y + 0.5 - q[1], z + 0.5 - q[2]);
-            if (d < 2.2) return d < 1.1 ? core : lava;
+          const qx = cx + Math.cos(a) * r, qz = cz + Math.sin(a) * r;
+          for (let z = Math.floor(qz - 2.2); z <= qz + 2.2; z++) for (let yy = Math.max(reach - 1, Math.floor(y - 2.2)); yy <= Math.min(40, y + 2.2); yy++) for (let x = Math.floor(qx - 2.2); x <= qx + 2.2; x++) {
+            const v = m.get(x, yy, z);
+            if (!v || v === core) continue;
+            const d = Math.hypot(x + 0.5 - qx, yy + 0.5 - y, z + 0.5 - qz);
+            if (d < 2.2 && m.exposed(x, yy, z)) m.set(x, yy, z, d < 1.1 ? core : lava);
           }
-          return null;
-        });
+        }
       }
       const top = frame === 2 ? 58 : 52;
       for (let i = 0; i < 12; i++) {
@@ -14268,15 +14576,6 @@
         m.sphere(cx + Math.sin(i * 2.1) * (1 + t * 3), y, cz + Math.cos(i * 1.7) * (1 + t * 2), 2.6 - t * 1.2 + h3(i, frame, 1, 2), t < 0.5 ? core : lava);
       }
     }
-    const px = 9, pz = 46;
-    sandMound(m, px + 2, pz - 2, 9, 8, 2, 3);
-    const tp = [[px, 1, pz, 1.4], [px + 1, 8, pz, 1.2], [px + 3, 15, pz - 1, 1.1], [px + 6, 20, pz - 1, 1]];
-    m.tube(tp, trunk, 3);
-    for (let k = 0; k < 6; k++) {
-      const a = k * 1.05;
-      m.tube([[px + 6, 21, pz - 1, 0.9], [px + 6 + Math.cos(a) * 4, 23, pz - 1 + Math.sin(a) * 4, 0.8], [px + 6 + Math.cos(a) * 8, 19, pz - 1 + Math.sin(a) * 8, 0.6]], leaf[k % 2], 3);
-    }
-    m.sphere(px + 6, 20, pz, 1.3, trunk);
     return { m, yaw: 30, ground: [cx, 0, cz], light: "#ff9a3a", anchors: { crater: [cx, 42, cz] } };
   });
   def("windmill", {
@@ -14364,47 +14663,56 @@
       use: { kind: "hide", at: "gate", seq: [1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1], fps: 3 }
     }
   }, ({ frame, rng: rng2 }) => {
-    const m = new VoxelModel(86, 86, 74);
-    const st = CASTLE_STONE.map((c) => m.color(c, { jitter: 0.08 }));
-    const mortar = m.color("#7c7492", { jitter: 0.04 });
-    const tex2 = masonry(m, st, mortar);
-    const dark = m.color("#1e1828", { jitter: 0.02 });
-    const water = m.color("#3a9ad0", { emissive: 0.12, smooth: 0.5, jitter: 0.03 });
-    const plank = [m.color("#8a5634", { jitter: 0.06 }), m.color("#6e4428", { jitter: 0.06 })];
-    const iron = m.color("#3a3a44", { spec: 1, jitter: 0.03 });
-    const chainC = m.color("#9aa0ac", { spec: 1.2 });
-    const banner = m.color("#d83a4a", { jitter: 0.04 }), gold = m.color("#f2c84a", { spec: 1.2 });
-    const torch = m.color("#ffb84a", { emissive: 1, jitter: 0 });
-    const slit = m.color("#ffd86a", { emissive: 0.8, jitter: 0 });
-    const rk = reefRock(m, rng2);
-    facetRock(m, rng2, 43, 3, 34, 42, 7, 34, rk[0], 16);
-    stoneTex(m, rk, 6);
-    m.sub(() => m.box(24, 3, 54, 62, 9, 66));
-    m.box(24, 3, 54, 62, 4, 66, water);
-    m.box(12, 6, 12, 74, 34, 52, tex2);
-    for (let x = 12; x <= 74; x++) for (const z of [12, 52]) if (x % 4 < 2) m.box(x, 35, z, x, 37, z, st[2]);
-    for (let z = 12; z <= 52; z++) for (const x of [12, 74]) if (z % 4 < 2) m.box(x, 35, z, x, 37, z, st[2]);
-    for (const tx of [22, 64]) {
-      m.cylinder(tx, 52, 4, 48, 8, tex2);
-      m.cylinder(tx, 52, 48, 50, 9.4, st[2]);
-      for (let k = 0; k < 10; k++) if (k % 2) {
-        const a = k / 10 * Math.PI * 2;
-        m.box(tx + Math.cos(a) * 8.6, 51, 52 + Math.sin(a) * 8.6, tx + Math.cos(a) * 8.6, 53, 52 + Math.sin(a) * 8.6, st[2]);
+    const B2 = frameBase("drawbridge_keep", () => {
+      const m2 = new VoxelModel(86, 86, 74);
+      const st = CASTLE_STONE.map((c) => m2.color(c, { jitter: 0.08 }));
+      const mortar = m2.color("#7c7492", { jitter: 0.04 });
+      const tex2 = masonry(m2, st, mortar);
+      const dark = m2.color("#1e1828", { jitter: 0.02 });
+      const water = m2.color("#3a9ad0", { emissive: 0.12, smooth: 0.5, jitter: 0.03 });
+      const plank2 = [m2.color("#8a5634", { jitter: 0.06 }), m2.color("#6e4428", { jitter: 0.06 })];
+      const iron2 = m2.color("#3a3a44", { spec: 1, jitter: 0.03 });
+      const chainC2 = m2.color("#9aa0ac", { spec: 1.2 });
+      const banner = m2.color("#d83a4a", { jitter: 0.04 }), gold = m2.color("#f2c84a", { spec: 1.2 });
+      const torch = m2.color("#ffb84a", { emissive: 1, jitter: 0 });
+      const slit = m2.color("#ffd86a", { emissive: 0.8, jitter: 0 });
+      const rk = reefRock(m2, rng2);
+      facetRock(m2, rng2, 43, 3, 34, 42, 7, 34, rk[0], 16);
+      stoneTex(m2, rk, 6);
+      m2.sub(() => m2.box(24, 3, 54, 62, 9, 66));
+      m2.box(24, 3, 54, 62, 4, 66, water);
+      moss(m2, rng2, 3, MOSS, 0.3, 0.2, [...rk]);
+      m2.box(12, 6, 12, 74, 34, 52, tex2);
+      for (let x = 12; x <= 74; x++) for (const z of [12, 52]) if (x % 4 < 2) m2.box(x, 35, z, x, 37, z, st[2]);
+      for (let z = 12; z <= 52; z++) for (const x of [12, 74]) if (z % 4 < 2) m2.box(x, 35, z, x, 37, z, st[2]);
+      for (const tx of [22, 64]) {
+        m2.cylinder(tx, 52, 4, 48, 8, tex2);
+        m2.cylinder(tx, 52, 48, 50, 9.4, st[2]);
+        for (let k = 0; k < 10; k++) if (k % 2) {
+          const a = k / 10 * Math.PI * 2;
+          m2.box(tx + Math.cos(a) * 8.6, 51, 52 + Math.sin(a) * 8.6, tx + Math.cos(a) * 8.6, 53, 52 + Math.sin(a) * 8.6, st[2]);
+        }
+        m2.box(tx - 1, 30, 60, tx, 34, 60, slit);
+        m2.box(tx - 3, 22, 61, tx + 2, 42, 61, (x) => Math.abs(x - tx + 0.5) < 1 ? gold : banner);
+        for (let x = tx - 3; x <= tx + 2; x++) m2.set(x, 21 - (Math.abs(x - tx + 0.5) < 1.5 ? 1 : 0), 61, banner);
       }
-      m.box(tx - 1, 30, 60, tx, 34, 60, slit);
-      m.box(tx - 3, 22, 61, tx + 2, 42, 61, (x, y) => Math.abs(x - tx + 0.5) < 1 ? gold : banner);
-      for (let x = tx - 3; x <= tx + 2; x++) m.set(x, 21 - (Math.abs(x - tx + 0.5) < 1.5 ? 1 : 0), 61, banner);
-    }
-    m.box(30, 34, 18, 56, 60, 38, tex2);
-    for (let x = 30; x <= 56; x++) for (const z of [18, 38]) if (x % 4 < 2) m.box(x, 61, z, x, 63, z, st[2]);
-    m.cylinder(43, 28, 60, 74, 6, tex2);
-    m.cone(43, 28, 75, 84, 7.5, 0.5, (x, y) => y % 3 ? banner : gold);
-    for (const wx of [36, 48]) m.box(wx, 46, 39, wx + 1, 51, 39, slit);
-    m.sub(() => {
-      m.box(36, 6, 46, 50, 24, 53);
-      m.cylinder(43, 50, 24, 27, 7, 0, "y");
+      m2.box(30, 34, 18, 56, 60, 38, tex2);
+      for (let x = 30; x <= 56; x++) for (const z of [18, 38]) if (x % 4 < 2) m2.box(x, 61, z, x, 63, z, st[2]);
+      m2.cylinder(43, 28, 60, 74, 6, tex2);
+      m2.cone(43, 28, 75, 84, 7.5, 0.5, (x, y) => y % 3 ? banner : gold);
+      for (const wx of [36, 48]) m2.box(wx, 46, 39, wx + 1, 51, 39, slit);
+      m2.sub(() => {
+        m2.box(36, 6, 46, 50, 24, 53);
+        m2.cylinder(43, 50, 24, 27, 7, 0, "y");
+      });
+      m2.box(36, 6, 46, 50, 27, 46, dark);
+      for (const tx of [32, 54]) {
+        m2.box(tx, 18, 55, tx, 21, 55, plank2[1]);
+        m2.box(tx, 22, 55, tx, 23, 55, torch);
+      }
+      return { m: m2, plank: plank2, iron: iron2, chainC: chainC2 };
     });
-    m.box(36, 6, 46, 50, 27, 46, dark);
+    const { m, plank, iron, chainC } = B2;
     const pcY = frame === 2 ? 21 : 6;
     for (let x = 37; x <= 49; x += 3) m.box(x, pcY, 51, x, 26, 51, iron);
     for (let y = pcY + 2; y <= 26; y += 4) m.box(36, y, 51, 50, y, 51, iron);
@@ -14417,11 +14725,6 @@
     const ex = 6 + L * sn, ez = 53 + L * cs;
     m.line(35, 26, 53, 36, ex, ez, chainC, 0.5);
     m.line(51, 26, 53, 50, ex, ez, chainC, 0.5);
-    for (const tx of [32, 54]) {
-      m.box(tx, 18, 55, tx, 21, 55, plank[1]);
-      m.box(tx, 22, 55, tx, 23, 55, torch);
-    }
-    moss(m, rng2, 3, MOSS, 0.3, 0.2, [...rk]);
     return { m, yaw: 30, vs: 1.5, ground: [43, 0, 38], light: "#ffd86a", anchors: { gate: [43, 12, 60], top: [43, 84, 28] } };
   });
   def("dance_robot", {
@@ -15272,7 +15575,7 @@
     }
   }, ({ frame }) => {
     const m = new VoxelModel(74, 50, 36);
-    const S5 = part(m, 64, 38, 28);
+    const S6 = part(m, 64, 38, 28);
     const rubber = m.color("#f4f4ee", { jitter: 0.03, smooth: 0.3 });
     const tread = m.color("#b0b0ba", { jitter: 0.02 });
     const mid = m.color("#3ac8b8", { jitter: 0.02 });
@@ -15300,7 +15603,7 @@
       for (let z = 0; z < 28; z++) {
         const dz = z + 0.5 - zc;
         if (Math.abs(dz) > w) continue;
-        for (let y = 0; y <= 4; y++) S5.set(x, y, z, y === 4 ? mid : y === 1 && x % 3 === 0 ? tread : rubber);
+        for (let y = 0; y <= 4; y++) S6.set(x, y, z, y === 4 ? mid : y === 1 && x % 3 === 0 ? tread : rubber);
         if (Math.abs(dz) > w - 0.6) continue;
         const top = 4 + (hu(u) - 4) * Math.sqrt(Math.max(0, 1 - (dz / w) ** 2 * 0.75));
         for (let y = 5; y <= top; y++) {
@@ -15309,27 +15612,27 @@
           if (u > 0.15 && u < 0.82 && Math.abs(y - ys + (u - 0.5) * 6) < 1.5 && Math.abs(dz) > w - 2.5) c = pink;
           if (u > 0.86 && y < 10) c = cap;
           if (u < 0.06 && y > 15) c = tab;
-          S5.set(x, y, z, c);
+          S6.set(x, y, z, c);
         }
       }
     }
-    S5.recolor((x, y, z, p) => x < 21 && y >= 12 && Math.abs(z + 0.5 - zc) > wAt(x + 0.5) - 3 && p === leather ? collar : null);
-    S5.sub(() => shape(S5, 2, 13, 0, 20, 37, 27, (x, y, z) => Math.abs(z - zc) < wAt(x) - 2.4 && x > 3.5, 1));
-    shape(S5, 2, 12, 0, 20, 12, 27, (x, y, z) => Math.abs(z - zc) < wAt(x) - 2.4 && x > 3.5, lining);
-    S5.box(19, 18, zc - 4, 22, 29, zc + 4, leather);
-    S5.box(21, 26, zc - 2, 22, 28, zc + 2, mid);
+    S6.recolor((x, y, z, p) => x < 21 && y >= 12 && Math.abs(z + 0.5 - zc) > wAt(x + 0.5) - 3 && p === leather ? collar : null);
+    S6.sub(() => shape(S6, 2, 13, 0, 20, 37, 27, (x, y, z) => Math.abs(z - zc) < wAt(x) - 2.4 && x > 3.5, 1));
+    shape(S6, 2, 12, 0, 20, 12, 27, (x, y, z) => Math.abs(z - zc) < wAt(x) - 2.4 && x > 3.5, lining);
+    S6.box(19, 18, zc - 4, 22, 29, zc + 4, leather);
+    S6.box(21, 26, zc - 2, 22, 28, zc + 2, mid);
     for (let x = 24; x <= 38; x += 3) {
       const u = (x - 2) / 58, yt = Math.round(hu(u)) + 1;
-      S5.set(x, yt - 1, zc - 4, eyelet);
-      S5.set(x, yt - 1, zc + 4, eyelet);
-      S5.line(x, yt, zc - 4, x + 3, yt - 0.5, zc + 4, lace, 0);
-      S5.line(x, yt, zc + 4, x + 3, yt - 0.5, zc - 4, lace, 0);
+      S6.set(x, yt - 1, zc - 4, eyelet);
+      S6.set(x, yt - 1, zc + 4, eyelet);
+      S6.line(x, yt, zc - 4, x + 3, yt - 0.5, zc + 4, lace, 0);
+      S6.line(x, yt, zc + 4, x + 3, yt - 0.5, zc - 4, lace, 0);
     }
-    S5.line(26, 22, zc + 5, 31, 6, zc + 11, lace, 0);
-    S5.line(31, 6, zc + 11, 36, 1, zc + 12, lace, 0);
+    S6.line(26, 22, zc + 5, 31, 6, zc + 11, lace, 0);
+    S6.line(31, 6, zc + 11, 36, 1, zc + 12, lace, 0);
     const rz = [0, 9, -7][frame], pv = frame === 2 ? [60, 0, zc] : [2, 0, zc];
     const dp = [pv[0] + 5, 0, 17];
-    stampRot(m, S5, pv, dp, 0, 0, rz);
+    stampRot(m, S6, pv, dp, 0, 0, rz);
     const X = (p) => xformPt(p, pv, dp, 0, 0, rz);
     return { m, yaw: 30, ground: [36, 0, 17], anchors: { opening: X([11, 20, zc]), toe: X([58, 3, zc]) } };
   });
@@ -15722,12 +16025,18 @@
     for (const [fx, fz] of [[22, 10], [68, 10], [22, 42], [68, 42]]) shape(m, fx - 10, 7, fz - 5, fx + 10, 16, fz + 5, (x, y, z) => ((x - fx) / 9.5) ** 2 + ((y - 9) / 7) ** 2 + ((z - fz) / 4.5) ** 2 <= 1, paintD);
     m.box(28, 7, 8, 60, 8, 10, paintD);
     m.box(28, 7, 42, 60, 8, 44, paintD);
+    const glint = m.color("#6a8a9a", { spec: 2 });
     surface(m, (x, y, z, p) => {
-      if (p !== paint || y < 21 || y > 29) return null;
-      if (x >= 52 && x <= 58) return glass;
-      if (x >= 22 && x <= 27) return glass;
-      if (Math.abs(z + 0.5 - cz) > 9 && x > 29 && x < 51 && (x < 40 || x > 42)) return glass;
-      return null;
+      if (p !== paint) return null;
+      const h = H(x + 0.5), w = W(x + 0.5);
+      if (h <= 0 || w <= 0) return null;
+      const ny = (y + 0.5 - 7) / h, nz = Math.abs(z + 0.5 - cz) / w, phi = Math.atan2(ny, nz);
+      let win = false;
+      if (x > 29 && x < 51 && (x < 39 || x > 42) && phi > 0.6 && phi < 1.12 && ny > 0.58) win = true;
+      if (x >= 51 && x <= 58 && ny > 0.6 && nz < 0.72) win = true;
+      if (x >= 20 && x <= 27 && ny > 0.62 && nz < 0.6) win = true;
+      if (!win) return null;
+      return (x + y) % 9 === 0 ? glint : glass;
     });
     const rust = [m.color("#c27840", { jitter: 0.08 }), m.color("#a4552f", { jitter: 0.08 })];
     m.recolor((x, y, z, p) => (p === paint || p === paintD) && fbm3(x * 0.12, y * 0.12, z * 0.12, 2, 7) > 0.64 ? rust[h3(x, y, z, 2) < 0.5 ? 0 : 1] : null);
@@ -19788,17 +20097,1326 @@
     return v;
   }
 
-  // src/fish/species.js
+  // src/fish/species-extra.js
   var S3 = [];
   var add3 = (o) => S3.push(o);
-  var SPEC_EXTRA = {};
+  var fight = (phases, power, stamina, tricks, o = {}) => ({ phases, power, stamina, tricks, biteWindow: 0.8, nibbles: [1, 2], fakeBite: 0.1, ...o });
+  var spawn = (o = {}) => ({ weight: 1, weather: null, time: null, requires: null, hidden: null, ...o });
   add3({
+    id: "icebabycod",
+    name: "Ice Ice Baby Cod",
+    biome: "fjord",
+    rarity: "common",
+    size: [12, 25],
+    weight: [0.1, 0.4],
+    look: {
+      body: { len: 40, h: 13, shape: "torpedo", hump: 0.08, nose: 1.6, tip: 0.2 },
+      col: { body: "#a8bccc", belly: "#eef6fa", back: "#4a6278", fin: "#8aa0b4" },
+      shade: { back: -0.4, belly: 0.35 },
+      spec: 1.2,
+      pattern: [{ type: "spots", size: 0.8, density: 0.4, tone: -1.6, vmax: 0.1, seed: 3 }],
+      tail: { type: "truncate", len: 9, spread: 8 },
+      dorsal: { type: "round", from: 0.32, to: 0.44, h: 5 },
+      dorsal2: { type: "round", from: 0.5, to: 0.64, h: 5 },
+      anal: { type: "round", from: 0.5, to: 0.8, h: 4 },
+      pelvic: { from: 0.26, to: 0.32, h: 4 },
+      pectoral: { len: 6 },
+      eye: { r: 3, u: 0.12, v: -0.18, iris: "#8ab0d8" },
+      mouth: { type: "small", v: 0.35 },
+      extras: [{ type: "barbel", len: 5, color: "#c8d4dc", color2: "#e8f0f4" }, { type: "cap", style: "cap", u: 0.22, color: "#e8f0ff", color2: "#3a6ad8" }],
+      scales: true,
+      scaleSize: 2.6,
+      lateral: true
+    },
+    scale: 1,
+    move: { style: "swim", speed: 16, burst: 60, agility: 4, depth: [0.15, 0.75], school: 5 },
+    activity: "any",
+    traits: { curiosity: 0.6, shyness: 0.3, greed: 0.7, aggression: 0.1 },
+    bait: { music: 3, bread: 2, worm: 2, game: 1 },
+    quirks: ["school"],
+    fight: fight(["tension"], 0.15, 2.5, ["dash"], { biteWindow: 1.1 }),
+    spawn: spawn({ weight: 1.4 }),
+    sound: "chirp",
+    desc: "The polar cod that keeps the whole fjord fed. Stop, collaborate and swim: the school drops a fresh beat every time it turns.",
+    behavior: "Raps along in tight silver schools under the ice. Cannot resist a music icon.",
+    shinyHue: 210
+  });
+  add3({
+    id: "fishsticks",
+    name: "Frozen Fishsticks",
+    biome: "fjord",
+    rarity: "common",
+    size: [8, 10],
+    weight: [0.03, 0.05],
+    look: {
+      toon: true,
+      body: { len: 30, h: 10, shape: "box", tip: 0.6, tailW: 0.5 },
+      col: { body: "#e0a858", belly: "#f2c87a", back: "#b8783a", fin: "#f4d8a0" },
+      shade: { back: -0.3, belly: 0.25 },
+      pattern: [{ type: "speckle", density: 0.3, tone: 1.6, seed: 5 }, { type: "speckle", density: 0.12, tone: -1.4, seed: 9 }],
+      tail: { type: "truncate", len: 5, spread: 6 },
+      dorsal: null,
+      anal: null,
+      pectoral: { len: 4 },
+      eye: { r: 2.6, u: 0.18, v: -0.2, iris: "#5ab8e8" },
+      mouth: { type: "small", v: 0.35 },
+      extras: [{ type: "blush" }],
+      scales: false,
+      gills: false,
+      nostril: false,
+      lateral: false
+    },
+    scale: 1,
+    move: { style: "swim", speed: 14, burst: 40, agility: 2, depth: [0.1, 0.6], school: 6 },
+    activity: "any",
+    traits: { curiosity: 0.5, shyness: 0.4, greed: 0.8, aggression: 0 },
+    bait: { bread: 3, sugar: 2, docs: 1, folder: 1 },
+    quirks: ["school"],
+    fight: fight(["mash"], 0.1, 2, [], { biteWindow: 1.3, nibbles: [0, 1] }),
+    spawn: spawn({ weight: 1.5 }),
+    sound: "squeak",
+    desc: "Escaped from a freezer aisle and decided to let it go. Breaded on the outside, perfectly cold on the inside. The cold never bothered them anyway.",
+    behavior: "Drifts in neat rows of ten, like a family pack. Easily lured by bread crumbs, which is a bit awkward.",
+    shinyHue: 190
+  });
+  add3({
+    id: "nootfish",
+    name: "Noot-Noot Tuxfish",
+    biome: "fjord",
+    rarity: "common",
+    size: [10, 18],
+    weight: [0.1, 0.3],
+    look: {
+      toon: true,
+      body: { len: 36, h: 18, shape: "torpedo", hump: 0.1, nose: 2.2, tip: 0.28 },
+      col: { body: "#1a1e2a", belly: "#f6f8fc", back: "#0e1018", fin: "#1a1e2a" },
+      shade: { back: -0.15, belly: 0.05 },
+      pattern: [{ type: "face", color: "#1a1e2a", to: 0.16 }],
+      tail: { type: "round", len: 6, spread: 6, color: "#1a1e2a" },
+      dorsal: null,
+      anal: null,
+      pectoral: { len: 11, w: 0.45, angle: 0.5, color: "#141822" },
+      eye: { r: 2.8, u: 0.13, v: -0.3, iris: "#2a2a30" },
+      mouth: { type: "beak", color: "#ff9a2a" },
+      extras: [{ type: "collar", style: "fur", color: "#ffd84a", w: 2 }],
+      scales: false,
+      gills: false,
+      lateral: false
+    },
+    scale: 1,
+    move: { style: "hop", speed: 18, burst: 70, agility: 6, depth: [0.05, 0.5], school: 0 },
+    activity: "day",
+    traits: { curiosity: 0.9, shyness: 0.2, greed: 0.6, aggression: 0.1 },
+    bait: { game: 3, video: 2, chat: 2, bread: 1, worm: 1 },
+    quirks: ["mimic", "hopper"],
+    fight: fight(["timing", "tension"], 0.2, 3, ["hop", "jump"], { fakeBite: 0.2 }),
+    spawn: spawn({ weight: 1.2 }),
+    sound: "honk",
+    desc: 'A fish that badly wants to be a penguin. Waddles on its pectorals, wears a little tuxedo, and honks "noot noot" at anything that will listen.',
+    behavior: "Hops along the surface between ice floes, copying the real penguins. They are not impressed.",
+    shinyHue: 40
+  });
+  add3({
+    id: "chillsculpin",
+    name: "Binge-and-Chill Sculpin",
+    biome: "fjord",
+    rarity: "common",
+    size: [8, 20],
+    weight: [0.05, 0.3],
+    look: {
+      body: { len: 36, h: 16, shape: "blunt", hump: 0.1, tip: 0.48, tailW: 0.3, taper: 0.8 },
+      col: { body: "#8a7a6a", belly: "#e8dcc8", back: "#4a3e36", fin: "#a08a72" },
+      shade: { back: -0.2, belly: 0.35 },
+      pattern: [{ type: "patches", threshold: 0.55, freq: 0.5, tone: -1.6 }, { type: "speckle", density: 0.1, tone: 1.4 }],
+      tail: { type: "round", len: 8, spread: 7, spots: "#4a3e36" },
+      dorsal: { type: "spiky", from: 0.24, to: 0.44, h: 6, count: 4, spots: "#4a3e36" },
+      dorsal2: { type: "long", from: 0.48, to: 0.84, h: 5, spots: "#4a3e36" },
+      anal: { type: "long", from: 0.52, to: 0.84, h: 4 },
+      pectoral: { len: 11, w: 0.6, angle: 0.8, spines: true, color: "#c88a5a" },
+      eye: { r: 3, u: 0.14, v: -0.55, iris: "#c8a040", lid: "#4a3e36" },
+      mouth: { type: "big", v: 0.3 },
+      extras: [{ type: "cap", style: "beanie", stripes: true, color: "#3a8ad8", color2: "#f4f0ea", u: 0.2 }],
+      scales: false,
+      lateral: true
+    },
+    scale: 1,
+    move: { style: "crawl", speed: 6, burst: 45, agility: 3, depth: [0.9, 1], school: 0 },
+    activity: "any",
+    traits: { curiosity: 0.3, shyness: 0.4, greed: 0.7, aggression: 0.2 },
+    bait: { video: 3, game: 2, worm: 2, bread: 1 },
+    quirks: ["crawler", "camouflage"],
+    fight: fight(["tension", "mash"], 0.22, 3, ["dive"], { biteWindow: 1 }),
+    spawn: spawn({ weight: 1.1 }),
+    sound: "grunt",
+    desc: 'A spiky little couch potato of the seabed. Has watched every season of everything, twice, and still asks "are you still watching?"',
+    behavior: "Sits perfectly still on rocks in its beanie and lunges at anything that streams past. Loves video icons.",
+    shinyHue: 160
+  });
+  add3({
+    id: "snowcrab",
+    name: "Frosty the Snow Crab",
+    biome: "fjord",
+    rarity: "common",
+    size: [10, 22],
+    weight: [0.3, 1.2],
+    look: {
+      kind: "crab",
+      shell: "round",
+      toon: true,
+      body: { len: 40, h: 24 },
+      col: { body: "#f2f6fa", belly: "#b8c8d8", fin: "#ff8a3a" },
+      eye: { r: 2.8, iris: "#1a1a24" },
+      mouth: { type: "small" }
+    },
+    scale: 1,
+    move: { style: "crawl", speed: 8, burst: 30, agility: 3, depth: [0.9, 1], school: 0 },
+    activity: "any",
+    traits: { curiosity: 0.6, shyness: 0.4, greed: 0.5, aggression: 0.3 },
+    bait: { image: 2, calendar: 3, sugar: 2, bread: 1 },
+    quirks: ["crawler"],
+    fight: fight(["mash", "timing"], 0.25, 3.5, ["hop"], { biteWindow: 0.9 }),
+    spawn: spawn({ weight: 1 }),
+    sound: "click",
+    desc: "A jolly, happy soul with orange claws and two eyes made out of... well, eyes. Comes to life every winter, which in the fjord is always.",
+    behavior: "Scuttles over icons in little sideways dances. Gets very excited near calendars in December.",
+    shinyHue: 330
+  });
+  add3({
+    id: "letitgo",
+    name: "Let-It-Go Snow Puffer",
+    biome: "fjord",
+    rarity: "uncommon",
+    size: [14, 30],
+    weight: [0.4, 1.8],
+    look: {
+      toon: true,
+      body: { len: 38, h: 28, shape: "round", tip: 0.3 },
+      col: { body: "#b8e8fa", belly: "#f4fcff", back: "#5aa8d8", fin: "#d8f4ff" },
+      shade: { back: -0.3, belly: 0.25 },
+      spec: 1.4,
+      pattern: [{ type: "spots", color: "#ffffff", size: 1.4, density: 0.45, only: "top", hl: true, seed: 8 }],
+      tail: { type: "fan", len: 9, spread: 9, color: "#e0f8ff" },
+      dorsal: { type: "round", from: 0.6, to: 0.82, h: 6, color: "#e0f8ff" },
+      anal: { type: "round", from: 0.6, to: 0.8, h: 5 },
+      pectoral: { len: 8 },
+      spikes: 9,
+      eye: { r: 4.4, u: 0.24, v: -0.28, iris: "#3a8ad8" },
+      mouth: { type: "small", v: 0.3 },
+      extras: [{ type: "cap", style: "crown", u: 0.4, w: 10, color: "#d8f4ff" }, { type: "blush" }],
+      scales: false,
+      finAlpha: 0.8
+    },
+    scale: 1,
+    move: { style: "swim", speed: 9, burst: 35, agility: 2, depth: [0.25, 0.8], school: 0 },
+    activity: "any",
+    traits: { curiosity: 0.5, shyness: 0.5, greed: 0.4, aggression: 0.3 },
+    bait: { music: 3, image: 2, sugar: 2, golden: 1 },
+    quirks: ["inflate", "sparkle"],
+    fight: fight(["mash", "tension", "net"], 0.42, 5, ["dash", "fake"], { biteWindow: 0.6, nibbles: [1, 3], fakeBite: 0.25 }),
+    spawn: spawn({ weight: 1 }),
+    sound: "puff",
+    desc: "When upset it does not inflate so much as build an ice palace around itself and refuse to come out. Sings about it. Constantly. At full volume.",
+    behavior: "Puffs up into a frosty spiked ball when hooked. Drawn to music, especially power ballads.",
+    shinyHue: 300
+  });
+  add3({
+    id: "unicod",
+    name: "Narwhal-ish Unicod",
+    biome: "fjord",
+    rarity: "uncommon",
+    size: [40, 90],
+    weight: [3, 12],
+    look: {
+      body: { len: 58, h: 18, shape: "torpedo", hump: 0.1, nose: 2.4, tip: 0.3, tailW: 0.25 },
+      col: { body: "#c8ccd8", belly: "#f2f4f8", back: "#5a6274", fin: "#8a92a4" },
+      shade: { back: -0.35, belly: 0.3 },
+      pattern: [{ type: "spots", size: 1.2, density: 0.45, tone: -1.8, vmax: 0.2, seed: 12 }],
+      tail: { type: "moon", len: 14, spread: 14 },
+      dorsal: { type: "round", from: 0.48, to: 0.62, h: 3 },
+      pectoral: { len: 7 },
+      eye: { r: 2.6, u: 0.1, v: -0.15, iris: "#3a3a4a" },
+      mouth: { type: "small", v: 0.4 },
+      extras: [{ type: "horn", u: 0.02, len: 30, angle: -0.12, r: 1.6, color: "#f4ecd8" }],
+      scales: false,
+      lateral: true
+    },
+    scale: 1,
+    move: { style: "swim", speed: 14, burst: 80, agility: 3, depth: [0.2, 0.7], school: 0 },
+    activity: "any",
+    traits: { curiosity: 0.7, shyness: 0.4, greed: 0.4, aggression: 0.3 },
+    bait: { image: 3, paint: 2, music: 2, golden: 1 },
+    quirks: ["sparkle"],
+    fight: fight(["trace", "tension", "net"], 0.45, 6, ["dash", "jump"], { biteWindow: 0.55 }),
+    spawn: spawn({ weight: 1 }),
+    sound: "bell",
+    desc: "Narwhal, narwhal, swimming in the fjord, causing a commotion, cause it is a cod. Its spiral tusk is 90% fashion and 10% jousting.",
+    behavior: "Jousts with other fish for fun and pokes icons with its tusk. Loves pretty pictures.",
+    shinyHue: 260
+  });
+  add3({
+    id: "sealwrasse",
+    name: "Seal-of-Approval Wrasse",
+    biome: "fjord",
+    rarity: "uncommon",
+    size: [20, 40],
+    weight: [0.8, 3],
+    look: {
+      toon: true,
+      body: { len: 44, h: 20, shape: "oval", hump: 0.12, nose: 2.6, tip: 0.35 },
+      col: { body: "#8a929e", belly: "#d8dce4", back: "#4a505c", fin: "#6a7280" },
+      shade: { back: -0.25, belly: 0.35 },
+      pattern: [{ type: "spots", size: 1.3, density: 0.5, tone: -1.6, seed: 21 }],
+      tail: { type: "fan", len: 10, spread: 11, color: "#5a6270" },
+      dorsal: null,
+      anal: null,
+      pectoral: { len: 9, w: 0.5, angle: 0.6 },
+      eye: { r: 4.2, u: 0.14, v: -0.25, iris: "#1a1a22", pupilSize: 0.85 },
+      mouth: { type: "small", v: 0.4 },
+      extras: [{ type: "whiskers", len: 10, count: 3, color: "#e8ecf0", color2: "#ffffff" }, { type: "badge", u: 0.5, r: 3.5, color: "#3ad87a" }],
+      scales: false,
+      gills: false,
+      lateral: false
+    },
+    scale: 1,
+    move: { style: "swim", speed: 15, burst: 70, agility: 5, depth: [0.15, 0.8], school: 0 },
+    activity: "day",
+    traits: { curiosity: 1, shyness: 0.1, greed: 0.6, aggression: 0 },
+    bait: { image: 3, chat: 2, docs: 2, mail: 1 },
+    quirks: ["forgetful"],
+    fight: fight(["timing", "trace", "net"], 0.35, 5, ["jump", "fake"], { biteWindow: 0.7, fakeBite: 0.2 }),
+    spawn: spawn({ weight: 1 }),
+    sound: "honk",
+    desc: "Part fish, part seal, fully a fan. Inspects your files and stamps the good ones with a little green check. Your tax return did not pass.",
+    behavior: "Follows the cursor with huge wet eyes and claps its fins at anything it likes.",
+    shinyHue: 120
+  });
+  add3({
+    id: "icekingfish",
+    name: "Ice-King Icefish",
+    biome: "fjord",
+    rarity: "rare",
+    size: [30, 55],
+    weight: [0.8, 2.5],
+    look: {
+      body: { len: 54, h: 15, shape: "long", nose: 1.4, tip: 0.2, tailW: 0.35 },
+      col: { body: "#d8eef6", belly: "#f6feff", back: "#8ab4cc", fin: "#c8e8f4" },
+      shade: { back: -0.3, belly: 0.3 },
+      translucent: 0.72,
+      organs: { bone: "#ffffff", stomach: "#c8f0ff" },
+      tail: { type: "truncate", len: 10, spread: 9 },
+      dorsal: { type: "sail", from: 0.2, to: 0.36, h: 9, color: "#a8d8ec" },
+      dorsal2: { type: "long", from: 0.44, to: 0.86, h: 5 },
+      anal: { type: "long", from: 0.48, to: 0.86, h: 5 },
+      pectoral: { len: 9, w: 0.5 },
+      eye: { r: 3.4, u: 0.12, v: -0.3, iris: "#5ab8e8" },
+      mouth: { type: "big", v: 0.2, sag: 0.1 },
+      extras: [{ type: "cap", style: "crown", u: 0.2, w: 11, color: "#ffd23a" }, { type: "mustache", color: "#f4fcff", color2: "#c8e8f4" }],
+      scales: false,
+      finAlpha: 0.7
+    },
+    scale: 1,
+    move: { style: "swim", speed: 10, burst: 55, agility: 3, depth: [0.3, 0.9], school: 0 },
+    activity: "night",
+    traits: { curiosity: 0.7, shyness: 0.3, greed: 0.5, aggression: 0.6 },
+    bait: { image: 3, chat: 3, mail: 2, music: 1 },
+    quirks: ["camouflage", "sparkle"],
+    fight: fight(["trace", "dodge", "tension", "net"], 0.52, 7, ["ink", "fake", "dash"], { biteWindow: 0.45, nibbles: [1, 3], fakeBite: 0.3 }),
+    spawn: spawn({ weight: 1 }),
+    sound: "bell",
+    desc: "A see-through icefish with no red blood, a big crown and an even bigger beard. Keeps trying to kidnap princess-shaped icons. Means well. Mostly.",
+    behavior: "Glides invisibly at night and spits freezing bursts when hooked. Desperately wants a friend; check your chat icons.",
+    shinyHue: 200
+  });
+  add3({
+    id: "badwolffish",
+    name: "Big Bad Wolffish",
+    biome: "fjord",
+    rarity: "rare",
+    size: [60, 140],
+    weight: [5, 18],
+    look: {
+      body: { len: 70, h: 22, shape: "blunt", hump: 0.16, nose: 2.6, tip: 0.5, tailW: 0.3, taper: 0.7 },
+      col: { body: "#7a8494", belly: "#b8c0cc", back: "#3a4252", fin: "#5a6474" },
+      shade: { back: -0.3, belly: 0.35 },
+      pattern: [{ type: "bars", at: [0.3, 0.42, 0.54, 0.66, 0.78], width: 0.03, tone: -1.6, bottom: 0.3, slant: 0.06 }],
+      tail: { type: "round", len: 12, spread: 11 },
+      dorsal: { type: "long", from: 0.18, to: 0.94, h: 6 },
+      anal: { type: "long", from: 0.5, to: 0.94, h: 5 },
+      pectoral: { len: 12, w: 0.55 },
+      eye: { r: 3.2, u: 0.1, v: -0.4, iris: "#e8c040" },
+      mouth: { type: "fangs", v: 0.3, w: 14, rest: 0.3, teeth: true },
+      extras: [{ type: "ears", style: "dog", u: 0.16, color: "#4a5262", color2: "#8a6a72" }, { type: "collar", style: "fur", color: "#9aa2b0" }],
+      scales: false,
+      lateral: true
+    },
+    scale: 1,
+    move: { style: "swim", speed: 8, burst: 50, agility: 2, depth: [0.6, 1], school: 0 },
+    activity: "night",
+    traits: { curiosity: 0.4, shyness: 0.2, greed: 0.9, aggression: 0.9 },
+    bait: { folder: 3, docs: 2, worm: 2, bread: 1 },
+    quirks: [],
+    fight: fight(["mash", "tension", "dodge", "net"], 0.6, 8, ["dash", "spit", "dive"], { biteWindow: 0.5, nibbles: [0, 1], fakeBite: 0.1 }),
+    spawn: spawn({ weight: 1 }),
+    sound: "roar",
+    desc: "Huffs and puffs and crunches sea urchins like crackers. Hangs around folder icons because it heard three little houses are in there somewhere.",
+    behavior: "Prowls the bottom of the fjord at night. Bites hard and spits urchin spines when hooked.",
+    shinyHue: 30
+  });
+  add3({
+    id: "auroraray",
+    name: "Aurora-Borealis Ray",
+    biome: "fjord",
+    rarity: "epic",
+    size: [120, 260],
+    weight: [30, 120],
+    look: {
+      kind: "ray",
+      manta: true,
+      body: { len: 80, h: 48 },
+      col: { body: "#1a4a5a", belly: "#d8fff0", fin: "#2a8a6a" },
+      eye: { r: 2.6, iris: "#7affb8" },
+      mouth: { type: "small" }
+    },
+    scale: 1,
+    glowColor: "#7affb8",
+    move: { style: "glide", speed: 10, burst: 55, agility: 2, depth: [0.15, 0.6], school: 0 },
+    activity: "night",
+    traits: { curiosity: 0.5, shyness: 0.4, greed: 0.3, aggression: 0.1 },
+    bait: { golden: 3, image: 2, music: 2, lantern: 2 },
+    quirks: ["glow", "sparkle"],
+    fight: fight(["trace", "timing", "dodge", "net"], 0.7, 11, ["jump", "fake", "glitch"], { biteWindow: 0.45, nibbles: [2, 4], fakeBite: 0.3 }),
+    spawn: spawn({ weight: 1, weather: "aurora" }),
+    sound: "bell",
+    desc: "Aurora borealis? At this time of year, at this time of day, in this part of the desktop, localised entirely within your fishing line? Yes. May I see it? No.",
+    behavior: "Only rises on aurora nights, its wings shimmering green and violet. Very hard to land, very easy to stare at.",
+    shinyHue: 290
+  });
+  add3({
+    id: "eldershark",
+    name: "The Elder Greenland Shark",
+    biome: "fjord",
+    rarity: "legendary",
+    size: [400, 640],
+    weight: [400, 1100],
+    look: {
+      body: { len: 150, h: 40, shape: "blunt", hump: 0.08, nose: 2.4, tip: 0.45, tailW: 0.22, taper: 0.8 },
+      col: { body: "#5e6672", belly: "#8e96a2", back: "#363c48", fin: "#4a5260" },
+      shade: { back: -0.3, belly: 0.35 },
+      pattern: [{ type: "speckle", density: 0.08, tone: -1.4 }, { type: "patches", threshold: 0.62, freq: 0.12, tone: 1.1 }],
+      tail: { type: "lyre", len: 34, spread: 30 },
+      dorsal: { type: "tri", from: 0.4, to: 0.5, h: 10 },
+      dorsal2: { type: "tri", from: 0.62, to: 0.7, h: 8 },
+      pelvic: { from: 0.58, to: 0.66, h: 7 },
+      pectoral: { len: 18, w: 0.5, angle: 0.7 },
+      eye: { r: 4, u: 0.08, v: -0.3, iris: "#a8c8d8" },
+      mouth: { type: "big", v: 0.45, sag: 0.05 },
+      extras: [{ type: "monocle" }, { type: "mustache", color: "#e8ecf0", color2: "#b8c0c8" }, { type: "barnacles", color: "#9a9a8a", density: 0.1 }, { type: "scar", u: 0.4 }],
+      scales: false,
+      lateral: true
+    },
+    scale: 1,
+    move: { style: "swim", speed: 4, burst: 25, agility: 1, depth: [0.5, 0.95], school: 0 },
+    activity: "night",
+    traits: { curiosity: 0.8, shyness: 0, greed: 0.5, aggression: 0.4 },
+    bait: { golden: 3, calendar: 3, docs: 2, lantern: 2 },
+    quirks: ["glow"],
+    fight: fight(["tension", "trace", "timing", "mash", "net"], 0.95, 22, ["dive", "fake", "dash"], { biteWindow: 0.6, nibbles: [2, 5], fakeBite: 0.2 }),
+    spawn: spawn({ weight: 1, time: "night", hidden: "fjord_song" }),
+    sound: "roar",
+    desc: "Four hundred years old and still swimming at a brisk 1 km per hour. Remembers when the fjord was a glacier and will tell you about it, slowly, for several centuries.",
+    behavior: "Wakes only on nights after the singing crystals have been played. Drifts out of the deep blue like a grumpy submarine.",
+    shinyHue: 180
+  });
+  add3({
+    id: "fireflower",
+    name: "Fire-Flower Tetra",
+    biome: "volcano",
+    rarity: "common",
+    size: [3, 5],
+    weight: [5e-3, 0.02],
+    look: {
+      body: { len: 26, h: 10, shape: "torpedo", tip: 0.2 },
+      col: { body: "#ff7a2a", belly: "#ffe0a0", back: "#c83a1a", fin: "#ffb04a" },
+      shade: { back: -0.3, belly: 0.4 },
+      pattern: [{ type: "stripes", color: "#fff06a", at: [-0.1], width: 0.12, from: 0.15, to: 0.85, glow: true }],
+      tail: { type: "fork", len: 8, spread: 7, color: "#ff5a1a" },
+      dorsal: { type: "tri", from: 0.42, to: 0.56, h: 4, color: "#ffd04a" },
+      anal: { type: "long", from: 0.56, to: 0.82, h: 3 },
+      pelvic: { from: 0.4, to: 0.46, h: 2 },
+      pectoral: { len: 3 },
+      eye: { r: 2.4, u: 0.12, iris: "#ffe080" },
+      scales: false
+    },
+    scale: 1,
+    glowColor: "#ffb04a",
+    move: { style: "swim", speed: 20, burst: 70, agility: 6, depth: [0.15, 0.7], school: 7 },
+    activity: "any",
+    traits: { curiosity: 0.6, shyness: 0.4, greed: 0.6, aggression: 0.1 },
+    bait: { game: 3, worm: 2, bread: 2, golden: 1 },
+    quirks: ["school", "glow"],
+    fight: fight(["tension"], 0.1, 2, ["dash"], { biteWindow: 1 }),
+    spawn: spawn({ weight: 1.5 }),
+    sound: "chirp",
+    desc: "Eat one and you can throw little fireballs for exactly ten seconds. Please do not eat one. They come in glowing swarms that bounce off the rift walls.",
+    behavior: "Swarms in glittering ember clouds over the magma cracks. Loves game icons.",
+    shinyHue: 120
+  });
+  add3({
+    id: "floorlava",
+    name: "Floor-is-Lava Goby",
+    biome: "volcano",
+    rarity: "common",
+    size: [5, 9],
+    weight: [0.02, 0.06],
+    look: {
+      toon: true,
+      body: { len: 30, h: 13, shape: "blunt", tip: 0.42, tailW: 0.4 },
+      col: { body: "#5a4a46", belly: "#d8c0a8", back: "#2e2422", fin: "#ff8a4a" },
+      shade: { back: -0.25, belly: 0.35 },
+      pattern: [{ type: "spots", color: "#ff7a2a", size: 1, density: 0.5, seed: 7 }],
+      tail: { type: "round", len: 7, spread: 6 },
+      dorsal: { type: "round", from: 0.3, to: 0.44, h: 6, color: "#ff8a4a" },
+      dorsal2: { type: "round", from: 0.52, to: 0.78, h: 5 },
+      anal: { type: "round", from: 0.56, to: 0.78, h: 4 },
+      pectoral: { len: 6 },
+      eye: { r: 3.4, u: 0.16, v: -0.6, iris: "#ffd04a" },
+      mouth: { type: "small", v: 0.3 },
+      scales: false
+    },
+    scale: 1,
+    move: { style: "hop", speed: 12, burst: 50, agility: 6, depth: [0.75, 0.95], school: 0 },
+    activity: "any",
+    traits: { curiosity: 0.5, shyness: 0.7, greed: 0.5, aggression: 0 },
+    bait: { game: 3, worm: 2, folder: 1, chip: 1 },
+    quirks: ["hopper"],
+    fight: fight(["timing", "mash"], 0.18, 3, ["hop"], { biteWindow: 0.9 }),
+    spawn: spawn({ weight: 1.3 }),
+    sound: "boing",
+    desc: 'Has been playing "the floor is lava" since birth. In the Lava Rift the floor genuinely is lava, so it is the only fish that has ever been right about anything.',
+    behavior: "Hops nervously from rock to icon to rock, never touching the seabed. Screams a tiny scream if it does.",
+    shinyHue: 200
+  });
+  add3({
+    id: "ashsnapper",
+    name: "Ash Catch-'em Snapper",
+    biome: "volcano",
+    rarity: "common",
+    size: [20, 50],
+    weight: [0.8, 4],
+    look: {
+      body: { len: 46, h: 20, shape: "oval", hump: 0.14, nose: 1.8, tip: 0.22 },
+      col: { body: "#8a8488", belly: "#d8d0cc", back: "#4a4448", fin: "#c84a3a" },
+      shade: { back: -0.35, belly: 0.35 },
+      pattern: [{ type: "speckle", density: 0.12, tone: -1.4 }],
+      tail: { type: "fork", len: 12, spread: 11, color: "#c84a3a" },
+      dorsal: { type: "spiky", from: 0.28, to: 0.5, h: 6, count: 5, color: "#a84a3a" },
+      dorsal2: { type: "round", from: 0.52, to: 0.78, h: 6 },
+      anal: { type: "round", from: 0.6, to: 0.8, h: 5 },
+      pelvic: { from: 0.32, to: 0.4, h: 5 },
+      pectoral: { len: 8 },
+      eye: { r: 3, u: 0.13, iris: "#ff5a3a" },
+      mouth: { type: "big", v: 0.3 },
+      extras: [{ type: "cap", style: "cap", u: 0.2, color: "#e83a3a", color2: "#ffffff" }],
+      scales: true,
+      scaleSize: 3.5
+    },
+    scale: 1,
+    move: { style: "swim", speed: 14, burst: 60, agility: 3, depth: [0.3, 0.9], school: 0 },
+    activity: "any",
+    traits: { curiosity: 0.8, shyness: 0.2, greed: 0.7, aggression: 0.4 },
+    bait: { game: 3, image: 2, worm: 2, bread: 1 },
+    quirks: [],
+    fight: fight(["tension", "mash"], 0.25, 3.5, ["dash", "fake"], { biteWindow: 0.8, fakeBite: 0.15 }),
+    spawn: spawn({ weight: 1.1 }),
+    sound: "grunt",
+    desc: "Ash-grey, cap on backwards, ten years old for the last twenty-five years. It wants to be the very best, like no fish ever was. It has caught zero things.",
+    behavior: "Tries to catch every other fish in the rift. Rushes at game icons yelling something about a choice.",
+    shinyHue: 50
+  });
+  add3({
+    id: "steamcrab",
+    name: "Steampunk Steam Crab",
+    biome: "volcano",
+    rarity: "common",
+    size: [12, 25],
+    weight: [0.5, 2],
+    look: {
+      kind: "crab",
+      shell: "mech",
+      toon: true,
+      body: { len: 40, h: 26 },
+      col: { body: "#b8783a", belly: "#6a3a1e", fin: "#d8a050" },
+      eye: { type: "glow", glow: "#ffb04a", r: 3 },
+      mouth: { type: "small" }
+    },
+    scale: 1,
+    glowColor: "#ffb04a",
+    move: { style: "crawl", speed: 8, burst: 32, agility: 3, depth: [0.88, 1], school: 0 },
+    activity: "any",
+    traits: { curiosity: 0.5, shyness: 0.3, greed: 0.5, aggression: 0.5 },
+    bait: { settings: 3, chip: 2, calc: 2, computer: 1 },
+    quirks: ["crawler"],
+    fight: fight(["mash", "dodge"], 0.28, 4, ["spit", "hop"], { biteWindow: 0.8 }),
+    spawn: spawn({ weight: 1 }),
+    sound: "click",
+    desc: "Brass shell, copper claws and a little boiler where its heart should be. Whistles like a kettle when it is happy and like a bigger kettle when it is angry.",
+    behavior: "Clanks across icons venting jets of steam. Fires hot pellets when cornered.",
+    shinyHue: 160
+  });
+  add3({
+    id: "pumicepuffer",
+    name: "Floaty Pumice Puffer",
+    biome: "volcano",
+    rarity: "common",
+    size: [10, 22],
+    weight: [0.1, 0.4],
+    look: {
+      toon: true,
+      body: { len: 34, h: 26, shape: "round", tip: 0.3 },
+      col: { body: "#b8aca0", belly: "#e8e0d4", back: "#7a7068", fin: "#d0c4b4" },
+      shade: { back: -0.25, belly: 0.25 },
+      pattern: [{ type: "speckle", density: 0.18, tone: -2, seed: 3 }, { type: "spots", size: 0.9, density: 0.4, tone: -2.4, seed: 6 }],
+      tail: { type: "fan", len: 8, spread: 8 },
+      dorsal: { type: "round", from: 0.6, to: 0.8, h: 5 },
+      anal: { type: "round", from: 0.6, to: 0.78, h: 4 },
+      pectoral: { len: 7 },
+      spikes: 7,
+      eye: { r: 4, u: 0.24, v: -0.28, iris: "#a87a4a" },
+      mouth: { type: "small", v: 0.3 },
+      extras: [{ type: "blush" }],
+      scales: false
+    },
+    scale: 1,
+    move: { style: "drift", speed: 6, burst: 25, agility: 2, depth: [0.05, 0.5], school: 0 },
+    activity: "any",
+    traits: { curiosity: 0.5, shyness: 0.4, greed: 0.5, aggression: 0.1 },
+    bait: { bread: 3, sugar: 2, docs: 1, worm: 1 },
+    quirks: ["inflate"],
+    fight: fight(["mash", "tension"], 0.18, 3, ["jump"], { biteWindow: 1 }),
+    spawn: spawn({ weight: 1.1 }),
+    sound: "puff",
+    desc: "Made of volcanic foam, so it floats whether it wants to or not. Inflating makes it float harder. It has never once reached the seabed and would like to talk to the manager.",
+    behavior: "Bobs helplessly upwards through the rift. Puffs into a crunchy ball when hooked.",
+    shinyHue: 280
+  });
+  add3({
+    id: "jalapeno",
+    name: "Jalapeno Popper Fish",
+    biome: "volcano",
+    rarity: "uncommon",
+    size: [8, 14],
+    weight: [0.05, 0.15],
+    look: {
+      toon: true,
+      body: { len: 40, h: 14, shape: "long", hump: 0.3, belly: -0.1, tip: 0.15, nose: 1.4, tailW: 0.2, taper: 0.7 },
+      col: { body: "#3aa83a", belly: "#8ae06a", back: "#1e6a24", fin: "#5ac84a" },
+      shade: { back: -0.3, belly: 0.3 },
+      spec: 1.6,
+      pattern: [{ type: "tailend", from: 0.9, color: "#c83a1a" }],
+      tail: { type: "pointed", len: 6, spread: 3, color: "#c83a1a" },
+      dorsal: null,
+      anal: null,
+      pectoral: { len: 4 },
+      eye: { r: 2.6, u: 0.14, v: -0.2, iris: "#ff3a1a" },
+      mouth: { type: "small", v: 0.3 },
+      extras: [{ type: "stem", color: "#4a7a2a" }, { type: "blush", color: "#ff5a3a" }],
+      scales: false,
+      gills: false,
+      lateral: false
+    },
+    scale: 1,
+    move: { style: "swim", speed: 18, burst: 90, agility: 5, depth: [0.2, 0.8], school: 0 },
+    activity: "any",
+    traits: { curiosity: 0.6, shyness: 0.3, greed: 0.5, aggression: 0.6 },
+    bait: { sugar: 3, bread: 2, chat: 2, popup: 1 },
+    quirks: ["glow"],
+    glowColor: "#ff5a2a",
+    fight: fight(["dodge", "mash", "net"], 0.4, 5, ["spit", "dash"], { biteWindow: 0.6, fakeBite: 0.2 }),
+    spawn: spawn({ weight: 1 }),
+    sound: "squeak",
+    desc: "3,000 on the Scoville scale and every unit of it is attitude. Turns red when angry, which is always, then spits little sparks at your hook.",
+    behavior: "Darts between vents and pelts hooks with spicy embers. Weirdly fond of sugar.",
+    shinyHue: 300
+  });
+  add3({
+    id: "blockcrafter",
+    name: "Block-Crafter Boxfish",
+    biome: "volcano",
+    rarity: "uncommon",
+    size: [10, 20],
+    weight: [0.2, 0.7],
+    look: {
+      toon: true,
+      body: { len: 34, h: 26, shape: "box", tip: 0.7, tailW: 0.4 },
+      col: { body: "#3a3236", belly: "#5a4a44", back: "#241e22", fin: "#ff8a2a" },
+      shade: { back: -0.4, belly: 0.4 },
+      pattern: [{ type: "checker", size: 4, color: "#ff6a1a", umin: 0.15, glow: true }, { type: "plates", size: 8, tone: -1 }],
+      tail: { type: "truncate", len: 7, spread: 7, color: "#ff8a2a" },
+      dorsal: null,
+      anal: null,
+      pectoral: { len: 5 },
+      eye: { type: "pixel", r: 2.6, u: 0.18, v: -0.25, sclera: "#1a0a08" },
+      mouth: { type: "small", v: 0.35, w: 4 },
+      scales: false,
+      shine: false,
+      gills: false,
+      nostril: false
+    },
+    scale: 1,
+    glowColor: "#ff7a2a",
+    move: { style: "hover", speed: 9, burst: 40, agility: 2, depth: [0.4, 0.95], school: 0 },
+    activity: "any",
+    traits: { curiosity: 0.7, shyness: 0.3, greed: 0.4, aggression: 0.1 },
+    bait: { game: 3, folder: 2, calc: 2, computer: 1 },
+    quirks: ["glow"],
+    fight: fight(["timing", "trace", "net"], 0.36, 5, ["hop", "fake"], { biteWindow: 0.6, fakeBite: 0.25 }),
+    spawn: spawn({ weight: 1 }),
+    sound: "click",
+    desc: "A perfectly cubic boxfish of magma blocks. Punch it nine times and it drops a smaller version of itself. Do not dig straight down near it.",
+    behavior: "Hovers in square little paths at exact right angles. Loves game and folder icons.",
+    shinyHue: 140
+  });
+  add3({
+    id: "chefsnapper",
+    name: "Hell's Kitchen Chef-fish",
+    biome: "volcano",
+    rarity: "uncommon",
+    size: [30, 60],
+    weight: [1.5, 6],
+    look: {
+      toon: true,
+      body: { len: 50, h: 24, shape: "oval", hump: 0.16, nose: 1.8, tip: 0.24 },
+      col: { body: "#e84a3a", belly: "#ffd0b8", back: "#a82a22", fin: "#ff8a6a" },
+      shade: { back: -0.35, belly: 0.35 },
+      pattern: [{ type: "speckle", density: 0.06, tone: 1.4 }],
+      tail: { type: "fork", len: 12, spread: 11 },
+      dorsal: { type: "spiky", from: 0.26, to: 0.52, h: 7, count: 5 },
+      dorsal2: { type: "round", from: 0.54, to: 0.8, h: 6 },
+      anal: { type: "round", from: 0.6, to: 0.8, h: 5 },
+      pectoral: { len: 9 },
+      eye: { r: 3, u: 0.14, v: -0.25, iris: "#2a6ad8", brow: true },
+      mouth: { type: "big", v: 0.3 },
+      extras: [{ type: "cap", style: "tophat", u: 0.28, w: 10, color: "#f8f8f4", color2: "#e8e8e0" }, { type: "mustache", color: "#f0d8a0", color2: "#c8a060" }],
+      scales: true,
+      scaleSize: 3.5
+    },
+    scale: 1,
+    move: { style: "swim", speed: 15, burst: 70, agility: 3, depth: [0.3, 0.85], school: 0 },
+    activity: "any",
+    traits: { curiosity: 0.6, shyness: 0.1, greed: 0.7, aggression: 0.95 },
+    bait: { bread: 3, sugar: 2, worm: 2, docs: 1 },
+    quirks: ["honk"],
+    fight: fight(["mash", "tension", "net"], 0.42, 6, ["dash", "spit"], { biteWindow: 0.55, fakeBite: 0.1 }),
+    spawn: spawn({ weight: 1 }),
+    sound: "grunt",
+    desc: "Runs the hottest kitchen on the planet, directly on top of an active magma vent. Inspects every bait you lower and shouts that it is RAW. It is a worm. It is supposed to be raw.",
+    behavior: "Yells at other fish until they swim away. Turns its nose up at most bait, then eats it anyway.",
+    shinyHue: 200
+  });
+  add3({
+    id: "preciouseel",
+    name: "My-Precious Magma Eel",
+    biome: "volcano",
+    rarity: "rare",
+    size: [80, 180],
+    weight: [2, 8],
+    look: {
+      kind: "chain",
+      toon: true,
+      chain: { segs: 22, r: 6, head: "eel", glow: true },
+      col: { body: "#3a1e1a", belly: "#ff7a2a", fin: "#ff4a1a" },
+      eye: { r: 3, iris: "#ffd04a" },
+      mouth: { type: "small" }
+    },
+    scale: 1,
+    glowColor: "#ff6a1a",
+    move: { style: "chain", speed: 13, burst: 55, agility: 4, depth: [0.4, 0.95], school: 0 },
+    activity: "night",
+    traits: { curiosity: 0.7, shyness: 0.6, greed: 1, aggression: 0.5 },
+    bait: { golden: 3, chip: 2, image: 1, worm: 1 },
+    quirks: ["noodle", "glow", "thief"],
+    fight: fight(["unwrap", "trace", "tension", "net"], 0.55, 8, ["wrap", "fake", "dash"], { biteWindow: 0.5, nibbles: [1, 3], fakeBite: 0.35 }),
+    spawn: spawn({ weight: 1, time: "night" }),
+    sound: "squeak",
+    desc: 'Found a golden ring in the magma once and has not been the same since. Whispers "my precioussss" to every golden bait and coils around it, glowing like the inside of a forge.',
+    behavior: "Slithers out at night and steals shiny things. Wraps your line around icons when hooked.",
+    shinyHue: 60
+  });
+  add3({
+    id: "infernalangler",
+    name: "Infernal Lantern Angler",
+    biome: "volcano",
+    rarity: "rare",
+    size: [20, 60],
+    weight: [2, 10],
+    look: {
+      body: { len: 50, h: 36, shape: "blunt", tip: 0.55 },
+      col: { body: "#4a1e1e", belly: "#7a3a2a", back: "#2a0e0e", fin: "#6a2a1e" },
+      shade: { back: -0.2, belly: 0.4 },
+      pattern: [{ type: "circuit", color: "#ff6a1a", glow: true, vmax: 0.3 }],
+      mouth: { type: "fangs", v: 0.35, w: 16, sag: -0.1, rest: 0.3 },
+      tail: { type: "round", len: 12, spread: 12 },
+      dorsal: { type: "spiky", from: 0.42, to: 0.72, h: 7, count: 4 },
+      anal: { type: "round", from: 0.66, to: 0.84, h: 6 },
+      pectoral: { len: 9 },
+      eye: { type: "glow", glow: "#ffb04a", r: 3.4, u: 0.2, v: -0.32 },
+      extras: [{ type: "lure", color: "#5a2a1e", glow: true, color2: "#ffd04a", reach: 20, h: 32 }, { type: "horn", u: 0.26, len: 10, angle: -1.9, r: 1.6, color: "#2a1a14" }],
+      scales: false
+    },
+    scale: 1,
+    glowColor: "#ffb04a",
+    move: { style: "hover", speed: 6, burst: 60, agility: 2, depth: [0.5, 0.95], school: 0 },
+    activity: "night",
+    traits: { curiosity: 0.3, shyness: 0.2, greed: 0.9, aggression: 0.8 },
+    bait: { lantern: 3, worm: 2, golden: 2, blackhole: 1 },
+    quirks: ["lure", "glow"],
+    fight: fight(["timing", "dodge", "tension", "net"], 0.6, 8, ["spit", "fake", "dive"], { biteWindow: 0.45, nibbles: [2, 4], fakeBite: 0.35 }),
+    spawn: spawn({ weight: 1 }),
+    sound: "roar",
+    desc: "Abandon all hope, ye who bite here. Its lure is a real ember from the ninth circle of the rift, and its little horn is real too. It is very proud of the horn.",
+    behavior: "Hangs in the dark above the cracks with its ember bobbing. Lobs hot coals when hooked.",
+    shinyHue: 230
+  });
+  add3({
+    id: "ripandtear",
+    name: "Rip-and-Tear Grouper",
+    biome: "volcano",
+    rarity: "epic",
+    size: [80, 180],
+    weight: [30, 120],
+    look: {
+      body: { len: 76, h: 36, shape: "oval", belly: 0.12, hump: 0.12, nose: 1.7, tip: 0.3 },
+      col: { body: "#26222a", belly: "#4a4250", back: "#100c14", fin: "#1e1a22" },
+      shade: { back: -0.25, belly: 0.4 },
+      spec: 2,
+      pattern: [{ type: "facets", color: "#6a5a9a", size: 7, tone: 0.6 }, { type: "rust", color: "#ff5a1a", threshold: 0.72 }],
+      mouth: { type: "big", v: 0.35, sag: 0.15, teeth: true },
+      tail: { type: "round", len: 16, spread: 15 },
+      dorsal: { type: "spiky", from: 0.24, to: 0.52, h: 10, count: 6 },
+      dorsal2: { type: "round", from: 0.54, to: 0.82, h: 10 },
+      anal: { type: "round", from: 0.64, to: 0.84, h: 8 },
+      pelvic: { from: 0.3, to: 0.4, h: 8 },
+      pectoral: { len: 12 },
+      eye: { type: "glow", glow: "#ff3a1a", r: 3.4, u: 0.15, v: -0.35 },
+      extras: [{ type: "cap", style: "helmet", color: "#4e6e2c", color2: "#e8a028" }, { type: "scar", u: 0.5 }, { type: "bolts", color: "#8a8a94" }],
+      scales: true,
+      scaleSize: 4
+    },
+    scale: 1,
+    glowColor: "#ff3a1a",
+    move: { style: "swim", speed: 12, burst: 120, agility: 2, depth: [0.4, 0.95], school: 0 },
+    activity: "any",
+    traits: { curiosity: 0.3, shyness: 0, greed: 0.8, aggression: 1 },
+    bait: { game: 3, chip: 3, trash: 2, golden: 1 },
+    quirks: ["glow"],
+    fight: fight(["dodge", "mash", "tension", "net"], 0.8, 13, ["dash", "spit", "dive"], { biteWindow: 0.4, nibbles: [0, 1], fakeBite: 0.05 }),
+    spawn: spawn({ weight: 1, weather: "magma" }),
+    sound: "roar",
+    desc: "An obsidian grouper in a dented green helmet who has never said a single word. Swims through the rift one demon at a time, to an extremely loud soundtrack only it can hear.",
+    behavior: "Charges anything that moves during magma blooms. Does not do fake bites. Does not do anything halfway.",
+    shinyHue: 100
+  });
+  add3({
+    id: "moltenleviathan",
+    name: "The Molten Leviathan",
+    biome: "volcano",
+    rarity: "legendary",
+    size: [700, 1400],
+    weight: [3e3, 9e3],
+    look: {
+      body: { len: 176, h: 44, shape: "long", hump: 0.1, nose: 1.6, tip: 0.38, tailW: 0.3, taper: 0.6 },
+      col: { body: "#2a1a1c", belly: "#4a2a22", back: "#120a0c", fin: "#3a1a14" },
+      shade: { back: -0.3, belly: 0.4 },
+      pattern: [{ type: "circuit", color: "#ff6a1a", glow: true }, { type: "plates", size: 10, tone: -0.8 }, { type: "glowspots", count: 9, u0: 0.15, span: 0.75, v: 0.6, color: "#ffd04a" }],
+      mouth: { type: "fangs", w: 34, v: 0.35, sag: 0.05, rest: 0.25 },
+      tail: { type: "lobe", len: 44, spread: 34, color: "#ff5a1a" },
+      dorsal: { type: "spiky", from: 0.12, to: 0.8, h: 18, count: 12, color: "#3a1a14" },
+      anal: { type: "spiky", from: 0.58, to: 0.86, h: 10, count: 4 },
+      pectoral: { len: 22, w: 0.45, color: "#ff6a2a" },
+      eye: { type: "glow", glow: "#ffd04a", r: 6, u: 0.08, v: -0.3 },
+      extras: [{ type: "horn", u: 0.12, len: 26, angle: -2.3, r: 3, color: "#1a1010" }, { type: "horn", u: 0.2, len: 20, angle: -2.5, r: 2.6, color: "#1a1010" }, { type: "whiskers", len: 40, count: 2, color: "#ff8a3a", color2: "#ffd04a" }],
+      scales: true,
+      scaleSize: 8
+    },
+    scale: 1,
+    glowColor: "#ff7a2a",
+    move: { style: "swim", speed: 7, burst: 40, agility: 1, depth: [0.3, 0.85], school: 0 },
+    activity: "any",
+    traits: { curiosity: 0.6, shyness: 0, greed: 0.6, aggression: 0.95 },
+    bait: { golden: 3, blackhole: 3, relic: 2, chip: 1 },
+    quirks: ["glow", "manyeyes"],
+    fight: fight(["dodge", "timing", "trace", "tension", "net"], 1, 26, ["spit", "dive", "dash", "fake"], { biteWindow: 0.45, nibbles: [3, 5], fakeBite: 0.25 }),
+    spawn: spawn({ weight: 1, weather: "eruption" }),
+    sound: "roar",
+    desc: "Born in the fires of the mountain where the One Bait was forged. Its veins run with magma and its patience runs out at roughly 1,200 degrees. Eruptions are just it rolling over in bed.",
+    behavior: "Surfaces from the rift floor only during eruptions, lighting the canyon like a sunrise. Spits magma; bring the good bait.",
+    shinyHue: 190
+  });
+  add3({
+    id: "neonpunk",
+    name: "Neon Tetra Punk",
+    biome: "metropolis",
+    rarity: "common",
+    size: [3, 5],
+    weight: [5e-3, 0.02],
+    look: {
+      body: { len: 26, h: 10, shape: "torpedo", tip: 0.2 },
+      col: { body: "#c8d0e8", belly: "#f4f6ff", back: "#2a3a7a", fin: "#d8e0f4" },
+      shade: { back: -0.25, belly: 0.4 },
+      pattern: [{ type: "stripes", color: "#3af0ff", at: [-0.2], width: 0.14, from: 0.12, to: 0.82, glow: true }, { type: "stripes", color: "#ff2a5a", at: [0.35], width: 0.22, from: 0.45, to: 0.95 }],
+      tail: { type: "fork", len: 8, spread: 7 },
+      dorsal: { type: "tri", from: 0.42, to: 0.56, h: 4 },
+      anal: { type: "long", from: 0.56, to: 0.82, h: 3 },
+      pectoral: { len: 3 },
+      eye: { r: 2.4, u: 0.12, iris: "#3af0ff" },
+      extras: [{ type: "cap", style: "mohawk", color: "#ff3aa8", u: 0.3, w: 5 }],
+      scales: false
+    },
+    scale: 1,
+    glowColor: "#3af0ff",
+    move: { style: "swim", speed: 22, burst: 80, agility: 6, depth: [0.1, 0.7], school: 8 },
+    activity: "night",
+    traits: { curiosity: 0.7, shyness: 0.2, greed: 0.6, aggression: 0.3 },
+    bait: { music: 3, video: 2, game: 2, popup: 1 },
+    quirks: ["school", "glow"],
+    fight: fight(["tension"], 0.12, 2, ["dash"], { biteWindow: 1 }),
+    spawn: spawn({ weight: 1.5 }),
+    sound: "chirp",
+    desc: "Glows in the dark, refuses to sell out, and has a hand-drawn band logo on every scale. The entire school is the band. None of them can play anything.",
+    behavior: "Moshes around the neon signs at night in electric blue gangs. Loves loud music icons.",
+    shinyHue: 160
+  });
+  add3({
+    id: "surfermullet",
+    name: "Subway Surfer Mullet",
+    biome: "metropolis",
+    rarity: "common",
+    size: [20, 45],
+    weight: [0.5, 2.5],
+    look: {
+      body: { len: 46, h: 16, shape: "torpedo", hump: 0.08, nose: 2.2, tip: 0.3 },
+      col: { body: "#9aa4b4", belly: "#e8ecf2", back: "#4a5468", fin: "#7a8496" },
+      shade: { back: -0.35, belly: 0.35 },
+      pattern: [{ type: "lines", count: 6, width: 0.08, tone: -1.4, vmax: 0.2 }],
+      tail: { type: "fork", len: 11, spread: 10 },
+      dorsal: { type: "tri", from: 0.36, to: 0.46, h: 5 },
+      dorsal2: { type: "tri", from: 0.6, to: 0.7, h: 4 },
+      anal: { type: "tri", from: 0.62, to: 0.74, h: 4 },
+      pectoral: { len: 6 },
+      eye: { r: 2.8, u: 0.11, iris: "#c8a040" },
+      mouth: { type: "small", v: 0.4 },
+      extras: [{ type: "mane", u: 0.3, color: "#8a5a2a" }, { type: "glasses", style: "shades" }],
+      scales: true,
+      scaleSize: 3
+    },
+    scale: 1,
+    move: { style: "swim", speed: 24, burst: 110, agility: 5, depth: [0.4, 0.95], school: 3 },
+    activity: "day",
+    traits: { curiosity: 0.5, shyness: 0.3, greed: 0.7, aggression: 0.2 },
+    bait: { game: 3, bread: 2, video: 2, trash: 1 },
+    quirks: ["commuter", "school"],
+    fight: fight(["trace", "tension"], 0.24, 3, ["dash", "hop"], { biteWindow: 0.8 }),
+    spawn: spawn({ weight: 1.2, weather: "rushhour" }),
+    sound: "grunt",
+    desc: "Business in the front, party in the back. Surfs the old subway tunnels at full speed, dodging trains that stopped running decades ago. Has never once been caught by the inspector.",
+    behavior: "Streams down the avenue in packs at rush hour, weaving between lanes. Collects every coin it sees.",
+    shinyHue: 20
+  });
+  add3({
+    id: "conefish",
+    name: "Traffic-Cone Fish",
+    biome: "metropolis",
+    rarity: "common",
+    size: [10, 20],
+    weight: [0.1, 0.4],
+    look: {
+      toon: true,
+      body: { len: 32, h: 22, shape: "pointy", nose: 1.1, tip: 0.08, peak: 0.6, tailW: 0.45 },
+      col: { body: "#ff7a1a", belly: "#ff9a3a", back: "#e05a10", fin: "#ff8a2a" },
+      shade: { back: -0.2, belly: 0.25 },
+      pattern: [{ type: "bands", color: "#f8f8f4", at: [0.32, 0.62], width: 0.07, keepTone: true }],
+      tail: { type: "truncate", len: 6, spread: 12, color: "#3a3a40" },
+      dorsal: null,
+      anal: null,
+      pectoral: { len: 5 },
+      eye: { r: 3, u: 0.3, v: -0.15, iris: "#2a2a30" },
+      mouth: { type: "small", v: 0.3 },
+      scales: false,
+      gills: false,
+      lateral: false
+    },
+    scale: 1,
+    move: { style: "hover", speed: 6, burst: 30, agility: 2, depth: [0.6, 1], school: 0 },
+    activity: "any",
+    traits: { curiosity: 0.3, shyness: 0.2, greed: 0.4, aggression: 0.3 },
+    bait: { settings: 3, trash: 2, calc: 1, bread: 1 },
+    quirks: ["mimic"],
+    fight: fight(["mash", "tension"], 0.16, 2.5, ["fake"], { biteWindow: 1 }),
+    spawn: spawn({ weight: 1.2 }),
+    sound: "honk",
+    desc: "Stands in the middle of the road for no reason, forever. Nobody remembers who put it there. It does not remember either, but it is committed now.",
+    behavior: "Hovers perfectly still and freezes into a cone when watched. Blocks lanes of rush-hour fish.",
+    shinyHue: 210
+  });
+  add3({
+    id: "pigeonfish",
+    name: "City Pigeonfish",
+    biome: "metropolis",
+    rarity: "common",
+    size: [15, 30],
+    weight: [0.3, 1],
+    look: {
+      body: { len: 40, h: 22, shape: "oval", hump: 0.2, nose: 2, tip: 0.24 },
+      col: { body: "#8a90a0", belly: "#c8ccd8", back: "#4a5060", fin: "#6a7080" },
+      shade: { back: -0.3, belly: 0.3 },
+      pattern: [{ type: "face", color: "#5a6a8a", to: 0.3 }, { type: "gradient", color: "#5aa88a", from: 0.22, dir: "h", umax: 0.38 }, { type: "bars", at: [0.62, 0.7], width: 0.025, tone: -2, bottom: 0.4 }],
+      tail: { type: "truncate", len: 10, spread: 10, color: "#3a3e4a" },
+      dorsal: { type: "spiky", from: 0.3, to: 0.6, h: 5, count: 5 },
+      dorsal2: { type: "round", from: 0.62, to: 0.82, h: 5 },
+      anal: { type: "round", from: 0.58, to: 0.82, h: 5 },
+      pectoral: { len: 8 },
+      eye: { r: 2.6, u: 0.13, iris: "#ff7a2a" },
+      mouth: { type: "small", v: 0.35 },
+      scales: true,
+      scaleSize: 2.6
+    },
+    scale: 1,
+    move: { style: "hop", speed: 10, burst: 45, agility: 3, depth: [0.5, 0.95], school: 4 },
+    activity: "day",
+    traits: { curiosity: 0.9, shyness: 0.1, greed: 1, aggression: 0.2 },
+    bait: { bread: 3, trash: 2, sugar: 2, chat: 1 },
+    quirks: ["thief", "school"],
+    fight: fight(["mash", "timing"], 0.18, 2.5, ["hop"], { biteWindow: 1.1, nibbles: [0, 2] }),
+    spawn: spawn({ weight: 1.3 }),
+    sound: "blub",
+    desc: "Has the same iridescent neck, the same head-bob and the same total lack of fear as the city birds it copied. Will steal your sandwich-shaped icons.",
+    behavior: "Bobs its head while hopping along the sidewalk and mobs anyone holding bread.",
+    shinyHue: 300
+  });
+  add3({
+    id: "taxicrab",
+    name: "Taxi-Crab",
+    biome: "metropolis",
+    rarity: "common",
+    size: [12, 24],
+    weight: [0.5, 2],
+    look: {
+      kind: "crab",
+      shell: "round",
+      toon: true,
+      body: { len: 40, h: 24 },
+      col: { body: "#ffd02a", belly: "#c89a1a", fin: "#2a2a30" },
+      eye: { r: 2.8, iris: "#1a1a20" },
+      mouth: { type: "small" }
+    },
+    scale: 1,
+    move: { style: "crawl", speed: 13, burst: 45, agility: 4, depth: [0.88, 1], school: 0 },
+    activity: "any",
+    traits: { curiosity: 0.6, shyness: 0.2, greed: 0.8, aggression: 0.5 },
+    bait: { calendar: 2, mail: 3, folder: 2, chat: 1 },
+    quirks: ["crawler", "honk"],
+    fight: fight(["mash", "tension"], 0.24, 3.5, ["hop", "dash"], { biteWindow: 0.9 }),
+    spawn: spawn({ weight: 1.1 }),
+    sound: "honk",
+    desc: "Yellow, fast, rude, and always somehow going the long way round. Honks at anything that moves and charges you extra for luggage.",
+    behavior: "Scuttles sideways down the lanes, honking. Picks up mail icons and delivers them nowhere.",
+    shinyHue: 180
+  });
+  add3({
+    id: "bettercallsole",
+    name: "Better-Call-Sole",
+    biome: "metropolis",
+    rarity: "uncommon",
+    size: [20, 45],
+    weight: [0.5, 2],
+    look: {
+      toon: true,
+      body: { len: 50, h: 15, shape: "disc", hump: 0.25, belly: -0.35, nose: 1.8, tip: 0.2 },
+      col: { body: "#7a6a5a", belly: "#d8ccb8", back: "#4a3e34", fin: "#9a8a74" },
+      shade: { back: -0.1, belly: 0.55 },
+      pattern: [{ type: "suit", color: "#f6f6f2" }, { type: "spots", color: "#5a4a3e", size: 1.6, density: 0.4, ring: true, umin: 0.45 }],
+      dorsal: { type: "long", from: 0.08, to: 0.92, h: 5, lean: 0.25 },
+      anal: { type: "long", from: 0.18, to: 0.92, h: 4.5, lean: 0.25 },
+      tail: { type: "round", len: 10, spread: 8 },
+      pectoral: null,
+      eye: { r: 2.6, u: 0.11, v: -0.8, iris: "#c89a3a" },
+      moreEyes: [{ r: 2.4, u: 0.19, v: -0.98, iris: "#c89a3a" }],
+      mouth: { type: "small", v: 0.1 },
+      extras: [{ type: "tie", color: "#e8c03a", color2: "#9a7a1a", u: 0.26 }, { type: "briefcase", draw: true, u: 0.45 }],
+      scales: false,
+      lateral: true
+    },
+    scale: 1,
+    move: { style: "glide", speed: 9, burst: 70, agility: 3, depth: [0.9, 1], school: 0 },
+    activity: "day",
+    traits: { curiosity: 0.6, shyness: 0.6, greed: 0.8, aggression: 0.1 },
+    bait: { docs: 3, mail: 3, calendar: 2, calc: 1, golden: 1 },
+    quirks: ["camouflage", "commuter"],
+    fight: fight(["tension", "trace", "net"], 0.4, 6, ["dive", "fake"], { biteWindow: 0.5, nibbles: [1, 3], fakeBite: 0.35 }),
+    spawn: spawn({ weight: 1 }),
+    sound: "squeak",
+    desc: "Did you know you have rights? This flatfish does, and it bills by the minute. Lies flat on the pavement outside the courthouse handing out business cards that dissolve immediately.",
+    behavior: "Hides flat on the street until a document floats by, then pounces. Fakes bites to argue technicalities.",
+    shinyHue: 160
+  });
+  add3({
+    id: "mindthegap",
+    name: "Mind-the-Gap Catfish",
+    biome: "metropolis",
+    rarity: "uncommon",
+    size: [40, 110],
+    weight: [3, 20],
+    look: {
+      body: { len: 64, h: 20, shape: "blunt", nose: 2.6, peak: 0.34, tailW: 0.42, taper: 0.8, tip: 0.5 },
+      col: { body: "#4a4e5a", back: "#22242c", belly: "#d8d0c0", fin: "#3a3e48" },
+      shade: { back: -0.1, belly: 0.3 },
+      pattern: [{ type: "patches", threshold: 0.55, freq: 0.45, vmax: 0.4, tone: -1.6, body: true }, { type: "stripes", color: "#d83a4a", at: [0.1], width: 0.07, from: 0.3, to: 0.9 }],
+      tail: { type: "truncate", len: 11, spread: 10 },
+      dorsal: { type: "tri", from: 0.28, to: 0.4, h: 10 },
+      dorsal2: { type: "round", from: 0.8, to: 0.88, h: 3, rays: false },
+      anal: { type: "long", from: 0.58, to: 0.88, h: 6 },
+      pelvic: { from: 0.42, to: 0.5, h: 5 },
+      pectoral: { len: 7 },
+      eye: { r: 2.4, u: 0.1, v: -0.25, iris: "#f0b020" },
+      mouth: { type: "big", v: 0.3 },
+      extras: [{ type: "whiskers", len: 26, count: 4, color: "#2a2a32", color2: "#6a6a74" }, { type: "cap", style: "porkpie", u: 0.22, color: "#1e2a4a", color2: "#e8c03a" }],
+      scales: false
+    },
+    scale: 1,
+    move: { style: "swim", speed: 9, burst: 50, agility: 2, depth: [0.6, 1], school: 0 },
+    activity: "night",
+    traits: { curiosity: 0.4, shyness: 0.3, greed: 0.8, aggression: 0.3 },
+    bait: { calendar: 3, worm: 2, trash: 2, docs: 1 },
+    quirks: ["commuter"],
+    fight: fight(["tension", "mash", "net"], 0.45, 7, ["dive", "dash"], { biteWindow: 0.6 }),
+    spawn: spawn({ weight: 1 }),
+    sound: "grunt",
+    desc: "Conducted the 6:15 underwater express for forty years after the city flooded and nobody told it to stop. Still punches every ticket. Still reminds you to mind the gap.",
+    behavior: "Patrols the old subway car on a strict timetable. Bites calendars because they are schedules.",
+    shinyHue: 40
+  });
+  add3({
+    id: "adbreakray",
+    name: "Ad-Break Billboard Ray",
+    biome: "metropolis",
+    rarity: "uncommon",
+    size: [40, 80],
+    weight: [2, 8],
+    look: {
+      kind: "ray",
+      manta: true,
+      toon: true,
+      body: { len: 52, h: 30 },
+      col: { body: "#3a1a6a", belly: "#ffc8f0", fin: "#ff3aa8" },
+      eye: { r: 3, iris: "#3af0ff" },
+      mouth: { type: "small" }
+    },
+    scale: 1,
+    glowColor: "#ff3aa8",
+    move: { style: "glide", speed: 12, burst: 50, agility: 3, depth: [0.2, 0.7], school: 0 },
+    activity: "any",
+    traits: { curiosity: 0.7, shyness: 0.2, greed: 0.5, aggression: 0.1 },
+    bait: { popup: 3, video: 3, browser: 2, image: 1 },
+    quirks: ["screen", "glow"],
+    fight: fight(["timing", "trace", "net"], 0.38, 6, ["glitch", "fake"], { biteWindow: 0.55, fakeBite: 0.3 }),
+    spawn: spawn({ weight: 1 }),
+    sound: "glitch",
+    desc: "A flat, glowing ray that plays ads on its back. You cannot skip them. The fish in the next five seconds will be: this one.",
+    behavior: "Glides slowly past the windows, flashing slogans. Pop-up bait is irresistible to it.",
+    shinyHue: 120
+  });
+  add3({
+    id: "gottagofast",
+    name: "Gotta-Go-Fast Bluefin",
+    biome: "metropolis",
+    rarity: "rare",
+    size: [80, 200],
+    weight: [40, 200],
+    look: {
+      body: { len: 68, h: 22, shape: "torpedo", nose: 1.7, tip: 0.26, tailW: 0.16 },
+      col: { body: "#2a5ae8", belly: "#f0f4ff", back: "#14288a", fin: "#ffd23a" },
+      shade: { back: -0.3, belly: 0.3 },
+      spec: 1.6,
+      pattern: [{ type: "face", color: "#f8e8c8", to: 0.12, vmin: 0 }],
+      tail: { type: "moon", len: 20, spread: 18 },
+      dorsal: { type: "spiky", from: 0.1, to: 0.5, h: 12, count: 4, lean: 1.2, color: "#1e3aaa" },
+      dorsal2: { type: "tri", from: 0.62, to: 0.7, h: 6, color: "#ffd23a" },
+      anal: { type: "tri", from: 0.62, to: 0.7, h: 5, color: "#ffd23a" },
+      pectoral: { len: 9, w: 0.3, angle: 0.8 },
+      eye: { r: 3.6, u: 0.11, v: -0.25, iris: "#3ad84a" },
+      mouth: { type: "small", v: 0.4 },
+      extras: [{ type: "coin", color: "#ffd23a" }],
+      scales: false,
+      lateral: true
+    },
+    scale: 1,
+    move: { style: "swim", speed: 34, burst: 180, agility: 4, depth: [0.2, 0.7], school: 0 },
+    activity: "day",
+    traits: { curiosity: 0.6, shyness: 0.2, greed: 0.8, aggression: 0.4 },
+    bait: { golden: 3, game: 3, sugar: 1, chip: 1 },
+    quirks: ["sparkle"],
+    fight: fight(["trace", "timing", "tension", "net"], 0.6, 9, ["dash", "jump", "fake"], { biteWindow: 0.35, nibbles: [1, 2], fakeBite: 0.25 }),
+    spawn: spawn({ weight: 1, weather: "rushhour" }),
+    sound: "boing",
+    desc: "Spiky, blue, impatient and absolutely sure it can outrun anything. Collects golden rings, taps its fin when you take too long, and drops every coin the moment it gets bumped.",
+    behavior: "Blasts down the avenue at rush hour faster than any other fish. Sometimes drops a coin when it dashes.",
+    shinyHue: 330
+  });
+  add3({
+    id: "hadouken",
+    name: "Hadouken Haddock",
+    biome: "metropolis",
+    rarity: "rare",
+    size: [30, 70],
+    weight: [1, 4],
+    look: {
+      body: { len: 50, h: 18, shape: "torpedo", hump: 0.12, nose: 1.8, tip: 0.22 },
+      col: { body: "#b4b8c4", belly: "#f0f2f6", back: "#3a3e4c", fin: "#6a7080" },
+      shade: { back: -0.35, belly: 0.3 },
+      pattern: [{ type: "stripes", color: "#1a1e28", at: [-0.1], width: 0.05, from: 0.15, to: 0.95 }, { type: "ocellus", at: [[0.24, -0.1]], color: "#1a1e28", r: 2.6 }],
+      tail: { type: "truncate", len: 12, spread: 11 },
+      dorsal: { type: "tri", from: 0.28, to: 0.4, h: 9 },
+      dorsal2: { type: "tri", from: 0.46, to: 0.6, h: 6 },
+      anal: { type: "tri", from: 0.52, to: 0.66, h: 5 },
+      pelvic: { from: 0.26, to: 0.32, h: 4 },
+      pectoral: { len: 7 },
+      eye: { r: 3, u: 0.11, v: -0.2, iris: "#3a3a44", brow: true },
+      mouth: { type: "small", v: 0.4 },
+      extras: [{ type: "cap", style: "beanie", stripes: false, color: "#e8282a", u: 0.18, w: 7 }, { type: "barbel", len: 4, color: "#b4b8c4", color2: "#d8dce4" }],
+      scales: true,
+      scaleSize: 2.8,
+      lateral: true
+    },
+    scale: 1,
+    move: { style: "swim", speed: 15, burst: 90, agility: 5, depth: [0.3, 0.9], school: 0 },
+    activity: "any",
+    traits: { curiosity: 0.6, shyness: 0.1, greed: 0.5, aggression: 0.9 },
+    bait: { game: 3, music: 2, video: 2, worm: 1 },
+    quirks: [],
+    fight: fight(["dodge", "timing", "mash", "net"], 0.58, 8, ["spit", "dash", "fake"], { biteWindow: 0.45, nibbles: [1, 2], fakeBite: 0.2 }),
+    spawn: spawn({ weight: 1 }),
+    sound: "roar",
+    desc: "Trained for years in a flooded arcade, between the claw machine and a broken dance mat. Down, down-forward, forward, fin. Its fireballs are mostly bubbles, but very confident bubbles.",
+    behavior: "Squares up to bigger fish and launches bubble-fireballs at your hook. Wins most fights by perfect timing.",
+    shinyHue: 210
+  });
+  add3({
+    id: "kingconger",
+    name: "King Conger",
+    biome: "metropolis",
+    rarity: "epic",
+    size: [150, 300],
+    weight: [20, 70],
+    look: {
+      kind: "chain",
+      toon: true,
+      chain: { segs: 30, r: 7, head: "eel" },
+      col: { body: "#3a3436", belly: "#7a6a62", fin: "#2a2426" },
+      eye: { r: 3.2, iris: "#ffd23a" },
+      mouth: { type: "small" }
+    },
+    scale: 1,
+    move: { style: "chain", speed: 12, burst: 50, agility: 3, depth: [0.15, 0.9], school: 0 },
+    activity: "night",
+    traits: { curiosity: 0.6, shyness: 0.2, greed: 0.7, aggression: 0.8 },
+    bait: { image: 3, video: 2, golden: 2, browser: 1 },
+    quirks: ["noodle"],
+    fight: fight(["unwrap", "tension", "dodge", "net"], 0.75, 12, ["wrap", "dash", "spit"], { biteWindow: 0.5, nibbles: [1, 3], fakeBite: 0.15 }),
+    spawn: spawn({ weight: 1, weather: "neonstorm" }),
+    sound: "roar",
+    desc: "A conger eel the length of a city bus that coils up the tallest tower during neon storms and swats at the lightning. Secretly very gentle with small fish. Loves pictures of blondes, for some reason.",
+    behavior: "Climbs the skyscrapers in neon storms and wraps your line around half the skyline when hooked.",
+    shinyHue: 30
+  });
+  add3({
+    id: "mayorgrouper",
+    name: "The Mayor Grouper",
+    biome: "metropolis",
+    rarity: "legendary",
+    size: [200, 270],
+    weight: [250, 400],
+    look: {
+      toon: true,
+      body: { len: 120, h: 58, shape: "oval", belly: 0.18, hump: 0.12, nose: 1.8, tip: 0.3 },
+      col: { body: "#6a5a4e", belly: "#c8b49a", back: "#3a2e28", fin: "#5a4a3e" },
+      shade: { back: -0.3, belly: 0.35 },
+      pattern: [{ type: "suit", color: "#f6f6f2" }, { type: "spots", size: 2.4, density: 0.35, tone: -1.6, seed: 9, umin: 0.45 }],
+      mouth: { type: "big", v: 0.35, sag: 0.18, teeth: false },
+      tail: { type: "round", len: 24, spread: 22 },
+      dorsal: { type: "spiky", from: 0.26, to: 0.52, h: 14, count: 6 },
+      dorsal2: { type: "round", from: 0.54, to: 0.82, h: 14 },
+      anal: { type: "round", from: 0.64, to: 0.84, h: 11 },
+      pelvic: { from: 0.3, to: 0.4, h: 12 },
+      pectoral: { len: 18 },
+      eye: { r: 5, u: 0.15, v: -0.35, iris: "#c8a040" },
+      extras: [{ type: "cap", style: "tophat", u: 0.3, w: 22, color: "#1e1a22", color2: "#c8283a" }, { type: "monocle" }, { type: "mustache", color: "#e8e0d0", color2: "#b8a888" }, { type: "tie", color: "#c8283a", color2: "#8a1a22", u: 0.24 }, { type: "badge", u: 0.55, r: 5, color: "#ffd23a" }],
+      scales: true,
+      scaleSize: 6
+    },
+    scale: 1,
+    move: { style: "swim", speed: 6, burst: 35, agility: 1, depth: [0.3, 0.85], school: 0 },
+    activity: "day",
+    traits: { curiosity: 0.8, shyness: 0, greed: 0.7, aggression: 0.3 },
+    bait: { golden: 3, mail: 3, calendar: 3, docs: 2 },
+    quirks: ["glow", "halo", "honk"],
+    fight: fight(["tension", "timing", "trace", "mash", "net"], 0.92, 20, ["dash", "fake", "dive"], { biteWindow: 0.6, nibbles: [2, 5], fakeBite: 0.3 }),
+    spawn: spawn({ weight: 1, time: "day", hidden: "metro_key" }),
+    sound: "roar",
+    desc: "Has been re-elected every term since the city sank, mostly because nobody else showed up. Cuts ribbons, kisses baby fish and holds a press conference about every single bubble.",
+    behavior: "Will only grant an audience to whoever holds the Key to the City. Shows up by day to shake fins with the public.",
+    shinyHue: 280
+  });
+  var GROW = {
+    fireflower: 1.3,
+    neonpunk: 1.3,
+    floorlava: 1.3,
+    fishsticks: 1.35,
+    icebabycod: 1.3,
+    eldershark: 1,
+    moltenleviathan: 1,
+    mayorgrouper: 1,
+    kingconger: 1.1,
+    preciouseel: 1.2,
+    snowcrab: 1.2,
+    steamcrab: 1.2,
+    taxicrab: 1.2,
+    auroraray: 1.05,
+    adbreakray: 1.15,
+    ripandtear: 1.08,
+    badwolffish: 1.1,
+    gottagofast: 1.08
+  };
+  var GROW_KEYS = ["len", "h", "spread", "r", "w", "reach", "size", "spacing", "rx", "ry", "scaleSize", "spikes", "tentacles", "curl", "thick"];
+  function grow(o, f, eyeF, key = "") {
+    if (Array.isArray(o)) return o.map((v) => grow(v, f, eyeF, key));
+    if (!o || typeof o !== "object") return o;
+    const out = {};
+    for (const [k, v] of Object.entries(o)) {
+      if (typeof v === "number" && GROW_KEYS.includes(k)) out[k] = +(v * (k === "r" && (key === "eye" || key === "moreEyes") ? f * eyeF : key === "tail" && (k === "len" || k === "spread") ? f * 1.12 : f)).toFixed(2);
+      else if (typeof v === "object") out[k] = grow(v, f, eyeF, k);
+      else out[k] = v;
+    }
+    return out;
+  }
+  for (const sp of S3) {
+    const f = GROW[sp.id] ?? 1.25;
+    if (f !== 1) sp.look = grow(sp.look, f, sp.look.kind ? 1 : 1.08);
+  }
+  var EXTRA_SPECIES = S3;
+  var EXTRA_BIOMES = ["fjord", "volcano", "metropolis"];
+  var EXTRA_BY_BIOME = Object.fromEntries(EXTRA_BIOMES.map((b) => [b, S3.filter((s) => s.biome === b)]));
+
+  // src/fish/species.js
+  var S4 = [];
+  var add4 = (o) => S4.push(o);
+  var SPEC_EXTRA = {};
+  add4({
     id: "pixel",
     name: "Flopikarp",
     biome: "shallows",
     rarity: "common",
-    size: [2, 4],
-    weight: [5e-3, 0.02],
+    size: [18, 32],
+    weight: [0.3, 1.1],
     look: {
       toon: true,
       body: { len: 18, h: 14, shape: "box", hump: 0.06, tip: 0.45 },
@@ -19828,7 +21446,7 @@
     behavior: "Flops right up to anything new and bites almost everything. Evolves in the aquarium after a while.",
     shinyHue: 200
   });
-  add3({
+  add4({
     id: "loafer",
     name: "Tetromino Tetra",
     biome: "shallows",
@@ -19861,7 +21479,7 @@
     behavior: "Schools in tidy lines near the surface. Loves bread and sugar.",
     shinyHue: 300
   });
-  add3({
+  add4({
     id: "honk",
     name: "Bozo the Clownfish",
     biome: "shallows",
@@ -19900,7 +21518,7 @@
     behavior: "Juggles in mid-water and honks when spooked. Can't resist music and games.",
     shinyHue: 160
   });
-  add3({
+  add4({
     id: "guppy",
     name: "Wakka Fish",
     biome: "shallows",
@@ -19933,7 +21551,7 @@
     behavior: "Schools through the shallows chomping constantly. Loves images and paint.",
     shinyHue: 120
   });
-  add3({
+  add4({
     id: "googly",
     name: "Mike Wazowfish",
     biome: "shallows",
@@ -19968,7 +21586,7 @@
     behavior: "Follows the cursor with its single huge eye. Loves images and videos.",
     shinyHue: 270
   });
-  add3({
+  add4({
     id: "puffer",
     name: "Cacopuff",
     biome: "shallows",
@@ -20004,7 +21622,7 @@
     behavior: "Inflates into a spiky ball when startled. Weirdly fond of documents and mail.",
     shinyHue: 150
   });
-  add3({
+  add4({
     id: "briefcase",
     name: "Regional Manager Fish",
     biome: "shallows",
@@ -20039,7 +21657,7 @@
     behavior: "Keeps real office hours by your clock. Loves mail, calendars and documents.",
     shinyHue: 40
   });
-  add3({
+  add4({
     id: "clickcrab",
     name: "Mister Clicks",
     biome: "shallows",
@@ -20068,7 +21686,7 @@
     behavior: "Scuttles along the seabed and perches on icons. Loves computers and chips.",
     shinyHue: 190
   });
-  add3({
+  add4({
     id: "seahorse",
     name: "Old Town Seahorse",
     biome: "shallows",
@@ -20095,7 +21713,7 @@
     behavior: "Hovers upright and hops between perches. Loves games and music.",
     shinyHue: 230
   });
-  add3({
+  add4({
     id: "flounder",
     name: "Where's Walleye?",
     biome: "shallows",
@@ -20133,7 +21751,7 @@
     behavior: "Camouflaged on the seabed until your cursor comes close. Loves worms.",
     shinyHue: 180
   });
-  add3({
+  add4({
     id: "purin",
     name: "The Pudding is a Lie",
     biome: "shallows",
@@ -20161,7 +21779,7 @@
     behavior: "Hops along the bottom and wobbles when poked. Can't resist sugar.",
     shinyHue: 290
   });
-  add3({
+  add4({
     id: "angel",
     name: "Master Chef Angelfish",
     biome: "shallows",
@@ -20198,7 +21816,7 @@
     behavior: "Patrols the sunny upper water on clear days. Loves music and golden bait.",
     shinyHue: 45
   });
-  add3({
+  add4({
     id: "parrot",
     name: "Captain Jack Parrotfish",
     biome: "shallows",
@@ -20233,7 +21851,7 @@
     behavior: "Steals desktop icons and swims off with them. Loves paint and calculators.",
     shinyHue: 100
   });
-  add3({
+  add4({
     id: "gourami",
     name: "Just-Keep-Swimming Tang",
     biome: "shallows",
@@ -20266,7 +21884,7 @@
     behavior: "Forgets where it was going and turns around mid-swim. Loves chat and mail.",
     shinyHue: 210
   });
-  add3({
+  add4({
     id: "koi",
     name: "Arrow-in-the-Knee Koi",
     biome: "shallows",
@@ -20302,7 +21920,7 @@
     behavior: "Only shows up for golden bait on sunny days. Calm, proud, slightly limping.",
     shinyHue: 320
   });
-  add3({
+  add4({
     id: "betta",
     name: "Rainbow Road Betta",
     biome: "shallows",
@@ -20338,7 +21956,7 @@
     behavior: "Night-time show-off near the surface. Loves music and videos.",
     shinyHue: 140
   });
-  add3({
+  add4({
     id: "sunfish",
     name: "Praise-the-Sun-fish",
     biome: "shallows",
@@ -20376,7 +21994,7 @@
     behavior: "Basks at the surface on clear sunny days. Only bites golden or flood bait.",
     shinyHue: 30
   });
-  add3({
+  add4({
     id: "spam",
     name: "Clickbait Sardine",
     biome: "junkyard",
@@ -20410,7 +22028,7 @@
     behavior: "Huge schools that swarm pop-up bait and mail.",
     shinyHue: 60
   });
-  add3({
+  add4({
     id: "bitfish",
     name: "Boomfish",
     biome: "junkyard",
@@ -20447,7 +22065,7 @@
     behavior: "Hops in small groups and hisses at anything nearby. Loves games.",
     shinyHue: 260
   });
-  add3({
+  add4({
     id: "glitchminnow",
     name: "Sus Fish",
     biome: "junkyard",
@@ -20481,7 +22099,7 @@
     behavior: "Teleports through vents when spooked. Loves chips and terminals.",
     shinyHue: 90
   });
-  add3({
+  add4({
     id: "grouper",
     name: "It's-a-Trap Snapper",
     biome: "junkyard",
@@ -20518,7 +22136,7 @@
     behavior: "Lurks near the bottom. Bites on settings icons and trash.",
     shinyHue: 200
   });
-  add3({
+  add4({
     id: "binblob",
     name: "Grumpy Bin Grouch",
     biome: "junkyard",
@@ -20546,7 +22164,7 @@
     behavior: "Oozes along the seabed eating trash. Loves trash and pop-ups.",
     shinyHue: 300
   });
-  add3({
+  add4({
     id: "shortcut",
     name: "Spy Fish",
     biome: "junkyard",
@@ -20574,7 +22192,7 @@
     behavior: "Hides among your desktop icons. Double-click it to unmask it.",
     shinyHue: 120
   });
-  add3({
+  add4({
     id: "mechacrab",
     name: "Crabformer",
     biome: "junkyard",
@@ -20603,7 +22221,7 @@
     behavior: "Scuttles on the seabed and fires sparks. Loves chips and settings.",
     shinyHue: 160
   });
-  add3({
+  add4({
     id: "cableeel",
     name: "Cardboard Snake-Eel",
     biome: "junkyard",
@@ -20631,7 +22249,7 @@
     behavior: "Wraps its long body around icons and your line. Loves computers.",
     shinyHue: 30
   });
-  add3({
+  add4({
     id: "floppyray",
     name: "Save Point Skate",
     biome: "junkyard",
@@ -20660,7 +22278,7 @@
     behavior: "Glides through mid-water. Loves documents and folders.",
     shinyHue: 330
   });
-  add3({
+  add4({
     id: "cookie",
     name: "Om-Nom Cookiefish",
     biome: "junkyard",
@@ -20698,7 +22316,7 @@
     behavior: "Forgets what it was doing and doubles back. Loves browsers and sugar.",
     shinyHue: 250
   });
-  add3({
+  add4({
     id: "loadingangler",
     name: "Loading Screen Angler",
     biome: "junkyard",
@@ -20733,7 +22351,7 @@
     behavior: "Hovers deep with its spinner lure. Loves chips and videos.",
     shinyHue: 180
   });
-  add3({
+  add4({
     id: "thief",
     name: "Grand Theft Tuna",
     biome: "junkyard",
@@ -20772,7 +22390,7 @@
     behavior: "Night-time icon thief, fast and slippery. Loves folders, images and gold.",
     shinyHue: 20
   });
-  add3({
+  add4({
     id: "screendweller",
     name: "Seven-Days Screenfish",
     biome: "junkyard",
@@ -20810,7 +22428,7 @@
     behavior: "Appears in storms, hovering with its screen aglow. Loves videos.",
     shinyHue: 280
   });
-  add3({
+  add4({
     id: "trieye",
     name: "Three-Eyed Blinky",
     biome: "junkyard",
@@ -20846,7 +22464,7 @@
     behavior: "Bottom-feeder near the junk piles. Loves trash and black holes.",
     shinyHue: 210
   });
-  add3({
+  add4({
     id: "usbfish",
     name: "Excalibur Swordfish",
     biome: "junkyard",
@@ -20881,7 +22499,7 @@
     behavior: "Blazing-fast charger. Loves computers and chips.",
     shinyHue: 300
   });
-  add3({
+  add4({
     id: "lionfish",
     name: "Circle-of-Life Lionfish",
     biome: "junkyard",
@@ -20918,7 +22536,7 @@
     behavior: "Hovers among the junk in storms, roaring and glitching. Loves pop-ups.",
     shinyHue: 190
   });
-  add3({
+  add4({
     id: "bsod",
     name: "The Blue Screen of Death Ray",
     biome: "junkyard",
@@ -20964,7 +22582,7 @@
     [0.22, -0.02, 3.2, "#ff7ab8"],
     [0.88, 0.08, 2.6, "#7affea"]
   ];
-  add3({
+  add4({
     id: "lanternfish",
     name: "In-Brightest-Day Lanternfish",
     biome: "abyss",
@@ -20997,7 +22615,7 @@
     behavior: "Glowing schools in the upper deep. Love lantern bait.",
     shinyHue: 60
   });
-  add3({
+  add4({
     id: "hatchet",
     name: "Here's-Johnny Hatchetfish",
     biome: "abyss",
@@ -21033,7 +22651,7 @@
     behavior: "Darting schools that peek out of cracks. Loves lantern bait and worms.",
     shinyHue: 30
   });
-  add3({
+  add4({
     id: "isopod",
     name: "Hollow Isopod",
     biome: "abyss",
@@ -21060,7 +22678,7 @@
     behavior: "Crawls along the seabed. Will eat almost any worm.",
     shinyHue: 160
   });
-  add3({
+  add4({
     id: "glowjelly",
     name: "Jelly-on-Toast Jellyfish",
     biome: "abyss",
@@ -21091,7 +22709,7 @@
     behavior: "Drifts and pulses through the dark. Loves lantern bait.",
     shinyHue: 110
   });
-  add3({
+  add4({
     id: "blobfish",
     name: "Inside-Out Blobfish",
     biome: "abyss",
@@ -21120,7 +22738,7 @@
     behavior: "Drifts sadly near the bottom. Bites slowly and reluctantly.",
     shinyHue: 180
   });
-  add3({
+  add4({
     id: "angler",
     name: "Upside-Down Angler",
     biome: "abyss",
@@ -21154,7 +22772,7 @@
     behavior: "Hovers in the dark with a flickering lure. Loves lantern bait.",
     shinyHue: 140
   });
-  add3({
+  add4({
     id: "dragonfish",
     name: "Mother of Dragonfish",
     biome: "abyss",
@@ -21188,7 +22806,7 @@
     behavior: "Hunts in the deep with its glowing barbel. Loves lantern bait.",
     shinyHue: 200
   });
-  add3({
+  add4({
     id: "gulper",
     name: "Hungry Hungry Gulper",
     biome: "abyss",
@@ -21222,7 +22840,7 @@
     behavior: "Swallows bait whole from far away. Loves black holes and trash.",
     shinyHue: 100
   });
-  add3({
+  add4({
     id: "fangtooth",
     name: "Count Fangula",
     biome: "abyss",
@@ -21256,7 +22874,7 @@
     behavior: "Lurks in the deepest water. Bites fast and fights hard.",
     shinyHue: 60
   });
-  add3({
+  add4({
     id: "ghostshark",
     name: "Who-You-Gonna-Call Ghost Shark",
     biome: "abyss",
@@ -21291,7 +22909,7 @@
     behavior: "Fades from view unless your cursor gets close. Loves worms.",
     shinyHue: 300
   });
-  add3({
+  add4({
     id: "glassghost",
     name: "Cloaking Glassfish",
     biome: "abyss",
@@ -21326,7 +22944,7 @@
     behavior: "Nearly invisible unless your cursor is close. Loves images.",
     shinyHue: 280
   });
-  add3({
+  add4({
     id: "vampsquid",
     name: "Squid Gamer",
     biome: "abyss",
@@ -21356,7 +22974,7 @@
     behavior: "Hovers and squirts ink when threatened. Loves lantern bait and videos.",
     shinyHue: 170
   });
-  add3({
+  add4({
     id: "barreleye",
     name: "Major Tom Barreleye",
     biome: "abyss",
@@ -21391,7 +23009,7 @@
     behavior: "Hovers motionless, gazing up through its dome. Loves lantern bait.",
     shinyHue: 260
   });
-  add3({
+  add4({
     id: "dumbo",
     name: "Baby Cthulhu",
     biome: "abyss",
@@ -21419,7 +23037,7 @@
     behavior: "Pulses gently through the deep. Loves sugar and music.",
     shinyHue: 150
   });
-  add3({
+  add4({
     id: "crystalcarp",
     name: "Toss-a-Coin Carp",
     biome: "abyss",
@@ -21456,7 +23074,7 @@
     behavior: "Hidden deep; appears for golden or lantern bait. Sparkles constantly.",
     shinyHue: 90
   });
-  add3({
+  add4({
     id: "noodle",
     name: "Believe-It Ramen Eel",
     biome: "abyss",
@@ -21484,7 +23102,7 @@
     behavior: "Wraps itself around the cursor and your line. Loves chat and sugar.",
     shinyHue: 20
   });
-  add3({
+  add4({
     id: "manyeyes",
     name: "The Great Old One of Many Eyes",
     biome: "abyss",
@@ -21664,11 +23282,11 @@
     dumbo: (l) => ({ ...l, col: { body: "#7ac87a", fin: "#a8e8a0" } }),
     crystalcarp: (l) => ({ ...l, extras: [...l.extras || [], { type: "coin" }] })
   };
-  for (const sp of S3) if (COSTUME[sp.id]) sp.look = COSTUME[sp.id](sp.look);
+  for (const sp of S4) if (COSTUME[sp.id]) sp.look = COSTUME[sp.id](sp.look);
   SPEC_EXTRA.pixel = { evolve: { into: "dragonkarp", afterMinutes: 30 } };
   var COMMON_FIGHT = (power, phases = ["tension"]) => ({ phases, power, stamina: 2.5 + power * 4, tricks: ["dash"], biteWindow: 1, nibbles: [1, 2], fakeBite: 0.1 });
   var NOSPAWN = { weight: 1, weather: null, time: null, requires: null, hidden: null };
-  add3({
+  add4({
     id: "dragonkarp",
     name: "Rage Dragon-Karp",
     biome: "shallows",
@@ -21704,7 +23322,7 @@
     evolvedFrom: "pixel",
     shinyHue: 15
   });
-  add3({
+  add4({
     id: "bananafish",
     name: "Banana Fish",
     biome: "shallows",
@@ -21713,7 +23331,7 @@
     weight: [0.12, 0.25],
     look: {
       toon: true,
-      body: { len: 44, h: 12, shape: "long", hump: 0.9, belly: -0.55, tip: 0.22, nose: 1.5, tailW: 0.22 },
+      body: { len: 46, h: 11, shape: "long", hump: 1.25, belly: -0.85, tip: 0.16, nose: 1.3, tailW: 0.16, taper: 0.6 },
       col: { body: "#ffe14a", belly: "#fff2a0", back: "#e8b820", fin: "#fff0a0" },
       shade: { back: -0.3, belly: 0.25 },
       pattern: [{ type: "spots", color: "#8a5a1e", size: 0.9, density: 0.22, seed: 4, umin: 0.15 }, { type: "tailend", from: 0.92, color: "#4a3016" }],
@@ -21741,7 +23359,7 @@
     behavior: "Bobs about the sunny shallows. Loves bread and sugar.",
     shinyHue: 60
   });
-  add3({
+  add4({
     id: "catfish",
     name: "Literal Catfish",
     biome: "shallows",
@@ -21778,7 +23396,7 @@
     behavior: "Wanders off mid-chase, then comes back. Loves cat pictures and videos.",
     shinyHue: 30
   });
-  add3({
+  add4({
     id: "starfish",
     name: "Too-Cool Starfish",
     biome: "shallows",
@@ -21807,7 +23425,7 @@
     behavior: "Crawls along the sunny seabed. Loves music.",
     shinyHue: 280
   });
-  add3({
+  add4({
     id: "zebrafish",
     name: "Zebrafish",
     biome: "shallows",
@@ -21816,7 +23434,7 @@
     weight: [0.01, 0.03],
     look: {
       body: { len: 30, h: 11, shape: "torpedo", tip: 0.25 },
-      col: { body: "#f4f4f0", belly: "#ffffff", back: "#2a2a30", fin: "#f0f0ec" },
+      col: { body: "#f4f4f0", belly: "#ffffff", back: "#dcdcd8", fin: "#f0f0ec" },
       shade: { back: -0.15, belly: 0.3 },
       pattern: [{ type: "stripes", color: "#1a1a22", at: [-0.5, -0.12, 0.25, 0.62], width: 0.12, from: 0.12, to: 0.98 }],
       tail: { type: "fork", len: 9, spread: 7, color: "#e8e8e4" },
@@ -21840,7 +23458,7 @@
     behavior: "Fast-moving herds near the surface. Loves bread.",
     shinyHue: 300
   });
-  add3({
+  add4({
     id: "unicornfish",
     name: "Unicornfish",
     biome: "shallows",
@@ -21873,7 +23491,7 @@
     behavior: "Shimmers through the sunny shallows on clear days. Loves sugar and paint.",
     shinyHue: 330
   });
-  add3({
+  add4({
     id: "companioncube",
     name: "Companion Cube-fish",
     biome: "shallows",
@@ -21911,7 +23529,7 @@
     behavior: "Follows you around faithfully. Loves games.",
     shinyHue: 320
   });
-  add3({
+  add4({
     id: "bruce",
     name: "Bruce the Big Shark",
     biome: "shallows",
@@ -21946,7 +23564,7 @@
     behavior: "Cruises the shallows when golden bait is in the water.",
     shinyHue: 200
   });
-  add3({
+  add4({
     id: "heisenbass",
     name: "Heisenbass",
     biome: "junkyard",
@@ -21964,7 +23582,7 @@
       anal: { type: "tri", from: 0.62, to: 0.8, h: 5 },
       eye: { r: 2.4, u: 0.14, iris: "#6a5a3a" },
       mouth: { type: "big", v: 0.32 },
-      extras: [{ type: "cap", style: "porkpie", u: 0.3 }, { type: "glasses", style: "square" }]
+      extras: [{ type: "cap", style: "porkpie", u: 0.3, color: "#18161a" }, { type: "glasses", style: "square" }]
     },
     scale: 1,
     move: { style: "swim", speed: 11, burst: 60, agility: 3, depth: [0.4, 0.9], school: 0 },
@@ -21979,7 +23597,7 @@
     behavior: "Comes out at night. Can only be tempted by calculators and chips.",
     shinyHue: 110
   });
-  add3({
+  add4({
     id: "rockfish",
     name: "Rockfish",
     biome: "junkyard",
@@ -22012,7 +23630,7 @@
     behavior: "Headbangs in mid-water. Cannot resist music.",
     shinyHue: 270
   });
-  add3({
+  add4({
     id: "hammerhead",
     name: "Hammer-Head Shark",
     biome: "junkyard",
@@ -22046,7 +23664,7 @@
     behavior: "Patrols the junk heaps hammering things. Loves settings icons.",
     shinyHue: 190
   });
-  add3({
+  add4({
     id: "pizzafish",
     name: "Pizza Fish",
     biome: "junkyard",
@@ -22083,7 +23701,7 @@
     behavior: "Drifts around the junk piles looking for crusts. Loves bread.",
     shinyHue: 40
   });
-  add3({
+  add4({
     id: "goldbar",
     name: "Gold-Bar Goldfish",
     biome: "junkyard",
@@ -22117,7 +23735,7 @@
     behavior: "Swims low and heavy. Bites best on golden bait and calculators.",
     shinyHue: 50
   });
-  add3({
+  add4({
     id: "dogfish",
     name: "Good-Boy Dogfish",
     biome: "junkyard",
@@ -22136,7 +23754,7 @@
       pectoral: { len: 6 },
       eye: { r: 3, u: 0.16, v: -0.2, iris: "#5a3a1a" },
       mouth: { type: "big", v: 0.45, rest: 0.25 },
-      extras: [{ type: "ears", style: "dog", color: "#7a4a1e" }, { type: "clownnose", color: "#1a1214", r: 2.2 }],
+      extras: [{ type: "ears", style: "dog", color: "#4a2610" }, { type: "clownnose", color: "#1a1214", r: 2.2 }],
       scales: false,
       lateral: false
     },
@@ -22153,7 +23771,7 @@
     behavior: "Rushes over to anything you do. Barks at mail icons.",
     shinyHue: 25
   });
-  add3({
+  add4({
     id: "seabass",
     name: "Sea Bass",
     biome: "junkyard",
@@ -22185,7 +23803,7 @@
     behavior: "Everywhere, all the time. Bites on worms.",
     shinyHue: 210
   });
-  add3({
+  add4({
     id: "moonfish",
     name: "Moonfish",
     biome: "abyss",
@@ -22219,7 +23837,7 @@
     behavior: "Drifts up from the deep at night. Loves lantern bait and lullabies.",
     shinyHue: 230
   });
-  add3({
+  add4({
     id: "monkfish",
     name: "Monkfish",
     biome: "abyss",
@@ -22252,7 +23870,7 @@
     behavior: "Sits perfectly still near the bottom, then strikes. Loves worms.",
     shinyHue: 35
   });
-  add3({
+  add4({
     id: "batfish",
     name: "The Dark Batfish",
     biome: "abyss",
@@ -22287,7 +23905,7 @@
     behavior: "Swoops through the dark at night. Loves lantern bait.",
     shinyHue: 260
   });
-  add3({
+  add4({
     id: "toadfish",
     name: "Toadfish",
     biome: "abyss",
@@ -22322,7 +23940,7 @@
     behavior: "Croaks from the seabed. Bites on worms.",
     shinyHue: 90
   });
-  add3({
+  add4({
     id: "wintercod",
     name: "Winter-is-Coming Cod",
     biome: "abyss",
@@ -22355,7 +23973,7 @@
     behavior: "Patrols the cold deep. Strangely drawn to calendars.",
     shinyHue: 205
   });
-  var GROW = {
+  var GROW2 = {
     pixel: 1.75,
     loafer: 1.4,
     guppy: 1.3,
@@ -22411,30 +24029,34 @@
     cableeel: 1.2,
     noodle: 1.15
   };
-  var GROW_KEYS = ["len", "h", "spread", "r", "w", "reach", "size", "spacing", "rx", "ry", "scaleSize", "spikes", "tentacles", "curl", "thick"];
-  function grow(o, f, eyeF, key = "") {
-    if (Array.isArray(o)) return o.map((v) => grow(v, f, eyeF, key));
+  var GROW_KEYS2 = ["len", "h", "spread", "r", "w", "reach", "size", "spacing", "rx", "ry", "scaleSize", "spikes", "tentacles", "curl", "thick"];
+  function grow2(o, f, eyeF, key = "") {
+    if (Array.isArray(o)) return o.map((v) => grow2(v, f, eyeF, key));
     if (!o || typeof o !== "object") return o;
     const out = {};
     for (const [k, v] of Object.entries(o)) {
-      if (typeof v === "number" && GROW_KEYS.includes(k)) out[k] = +(v * (k === "r" && (key === "eye" || key === "moreEyes") ? f * eyeF : key === "tail" && (k === "len" || k === "spread") ? f * 1.12 : f)).toFixed(2);
-      else if (typeof v === "object") out[k] = grow(v, f, eyeF, k);
+      if (typeof v === "number" && GROW_KEYS2.includes(k)) out[k] = +(v * (k === "r" && (key === "eye" || key === "moreEyes") ? f * eyeF : key === "tail" && (k === "len" || k === "spread") ? f * 1.12 : f)).toFixed(2);
+      else if (typeof v === "object") out[k] = grow2(v, f, eyeF, k);
       else out[k] = v;
     }
     return out;
   }
-  for (const sp of S3) {
-    const f = GROW[sp.id] ?? 1.3;
-    if (f !== 1) sp.look = grow(sp.look, f, sp.look.kind ? 1 : 1.08);
+  for (const sp of S4) {
+    const f = GROW2[sp.id] ?? 1.3;
+    if (f !== 1) sp.look = grow2(sp.look, f, sp.look.kind ? 1 : 1.08);
   }
-  for (const sp of S3) if (SPEC_EXTRA[sp.id]) Object.assign(sp, SPEC_EXTRA[sp.id]);
-  var SPECIES = S3;
-  var SPECIES_BY_ID = Object.fromEntries(S3.map((s) => [s.id, s]));
-  var SPECIES_BY_BIOME = {
-    shallows: S3.filter((s) => s.biome === "shallows"),
-    junkyard: S3.filter((s) => s.biome === "junkyard"),
-    abyss: S3.filter((s) => s.biome === "abyss")
-  };
+  for (const sp of S4) if (SPEC_EXTRA[sp.id]) Object.assign(sp, SPEC_EXTRA[sp.id]);
+  var EXTRA_RENAME = { chefsnapper: "Heck's Kitchen Chef-fish", surfermullet: "Subway Surfin' Mullet" };
+  for (const sp of EXTRA_SPECIES) {
+    if (S4.some((o) => o.id === sp.id)) continue;
+    if (EXTRA_RENAME[sp.id]) sp.name = EXTRA_RENAME[sp.id];
+    S4.push(sp);
+  }
+  var SPECIES = S4;
+  var SPECIES_BY_ID = Object.fromEntries(S4.map((s) => [s.id, s]));
+  var SPECIES_BY_BIOME = Object.fromEntries(
+    ["shallows", "junkyard", "abyss", "fjord", "volcano", "metropolis"].map((b) => [b, S4.filter((s) => s.biome === b)])
+  );
 
   // src/fishing/baitart.js
   var P3 = {
@@ -23205,9 +24827,9 @@ kTtaatTk
       this.fish = f;
       this.sp = sp;
       this.gentle = !!g.tutorialActive;
-      const fight = sp.fight || {};
-      this.power = clamp01((fight.power ?? 0.4) * (this.gentle ? 0.25 : 1) * (f.rec?.giant ? 1.25 : 1));
-      this.stamSecs = (fight.stamina ?? 5) * (0.8 + this.power * 0.4) * (this.gentle ? 0.45 : 1);
+      const fight2 = sp.fight || {};
+      this.power = clamp01((fight2.power ?? 0.4) * (this.gentle ? 0.25 : 1) * (f.rec?.giant ? 1.25 : 1));
+      this.stamSecs = (fight2.stamina ?? 5) * (0.8 + this.power * 0.4) * (this.gentle ? 0.45 : 1);
       this.start = { x: f.x, y: f.y };
       this.land = F.landingPoint(f);
       const depth = dist(this.start.x, this.start.y, this.land.x, this.land.y);
@@ -23243,7 +24865,7 @@ kTtaatTk
       this.lastCounter = false;
       this.warnRun = false;
       this.warnSlack = false;
-      const phases = (fight.phases || []).filter((p) => p !== "tension");
+      const phases = (fight2.phases || []).filter((p) => p !== "tension");
       this.finalNet = !this.gentle && phases.includes("net");
       const evs = this.gentle ? [] : phases.filter((p) => p !== "net");
       const n = evs.length;
@@ -23294,7 +24916,7 @@ kTtaatTk
     }
     // ------------------------------------------------------------------ main update
     update(dt) {
-      const F = this.F, f = this.fish, inp = F.input, cr = F.crank;
+      const F = this.F, f = this.fish;
       this.t += dt;
       this.hudIn = Math.min(1, this.hudIn + F.rdt * 3);
       this.eventCool = Math.max(0, this.eventCool - dt);
@@ -23977,7 +25599,7 @@ kTtaatTk
     ctx2.save();
     ctx2.globalAlpha = B2.hudIn;
     drawPullZone(ctx2, F, B2);
-    drawCrankRing(ctx2, F, B2);
+    if (!B2.event || B2.event.usesCrank) drawCrankRing(ctx2, F, B2);
     if (B2.event) B2.event.drawHud(ctx2);
     drawInk(ctx2, F);
     ctx2.restore();
@@ -23995,7 +25617,7 @@ kTtaatTk
     }
     const ty = Math.round(topH / 2);
     drawNamePlate(ctx2, F, 14, ty - 12);
-    drawStamina(ctx2, F, B2, W - (F.game.tutorial?.active ? 96 : 14), ty - 2);
+    drawStamina(ctx2, F, B2, W - 96, ty - 2);
     drawStatus(ctx2, F, B2, W / 2, ty - 6);
     const by = H - Math.round(botH / 2) - 2;
     const bw = Math.min(380, Math.round(W * 0.42));
@@ -24122,16 +25744,29 @@ kTtaatTk
     drawText(ctx2, `${Math.round(p * 100)}%`, x + w, y + h + 4, { font: "small", color: "#ffffff", outline: INK, align: "right" });
     drawText(ctx2, "CATCH", x + w / 2, y + h + 4, { font: "small", color: "#ffe08a", outline: INK, align: "center" });
   }
+  var ART = /* @__PURE__ */ new Map();
+  function cached(key, w, h, paint) {
+    let c = ART.get(key);
+    if (!c) {
+      c = makeCanvas(w, h);
+      paint(ctxOf(c));
+      ART.set(key, c);
+    }
+    return c;
+  }
   function medallion(ctx2, cx, cy, icon) {
     cx = Math.round(cx);
     cy = Math.round(cy);
     const r = 9;
-    for (let yy = -r; yy <= r; yy++) for (let xx = -r; xx <= r; xx++) {
-      const d = Math.hypot(xx, yy);
-      if (d > r + 0.3) continue;
-      ctx2.fillStyle = d > r - 1 ? INK : d > r - 2.5 ? yy < 0 ? "#ffe08a" : "#a86a1a" : "#1a3048";
-      ctx2.fillRect(cx + xx, cy + yy, 1, 1);
-    }
+    const disc2 = cached("medal", r * 2 + 1, r * 2 + 1, (g) => {
+      for (let yy = -r; yy <= r; yy++) for (let xx = -r; xx <= r; xx++) {
+        const d = Math.hypot(xx, yy);
+        if (d > r + 0.3) continue;
+        g.fillStyle = d > r - 1 ? INK : d > r - 2.5 ? yy < 0 ? "#ffe08a" : "#a86a1a" : "#1a3048";
+        g.fillRect(xx + r, yy + r, 1, 1);
+      }
+    });
+    ctx2.drawImage(disc2, cx - r, cy - r);
     const ic = getUiIcon(icon);
     if (ic) ctx2.drawImage(ic, cx - Math.floor(ic.width / 2), cy - Math.floor(ic.height / 2));
   }
@@ -24141,16 +25776,20 @@ kTtaatTk
     const danger = T > 0.88;
     const shake = danger ? Math.round(Math.sin(t * 70) * 1.5) : 0;
     cx += shake;
-    for (let y = -R - 3; y <= 0; y++) for (let x = -R - 3; x <= R + 3; x++) {
-      const d = Math.hypot(x, y);
-      if (d > R + 3.3) continue;
-      let col;
-      if (d > R + 2) col = INK;
-      else if (d > R) col = y < -R * 0.6 ? "#ffe08a" : "#c8903a";
-      else col = danger && Math.floor(t * 10) % 2 ? "#3a1414" : "#101c2a";
-      ctx2.fillStyle = col;
-      ctx2.fillRect(cx + x, cy + y, 1, 1);
-    }
+    const red = danger && Math.floor(t * 10) % 2;
+    const face = cached("dial" + (red ? "r" : ""), R * 2 + 7, R + 4, (g) => {
+      for (let y = -R - 3; y <= 0; y++) for (let x = -R - 3; x <= R + 3; x++) {
+        const d = Math.hypot(x, y);
+        if (d > R + 3.3) continue;
+        let col;
+        if (d > R + 2) col = INK;
+        else if (d > R) col = y < -R * 0.6 ? "#ffe08a" : "#c8903a";
+        else col = red ? "#3a1414" : "#101c2a";
+        g.fillStyle = col;
+        g.fillRect(x + R + 3, y + R + 3, 1, 1);
+      }
+    });
+    ctx2.drawImage(face, cx - R - 3, cy - R - 3);
     const n = 60;
     for (let i = 0; i <= n; i++) {
       const k = i / n;
@@ -24205,13 +25844,15 @@ kTtaatTk
     const inZ = B2.inZone && !tele;
     const blink = tele && Math.floor(t * 10) % 2;
     const pa = B2.pullDir;
-    const al = R * 0.75;
+    const al = R * 0.8;
     for (let i = 10; i < al; i += 2) {
       const k = i / al;
-      ctx2.fillStyle = rgba("#ff5a4a", 0.35 + 0.5 * k);
+      ctx2.fillStyle = rgba(INK, 0.5);
+      ctx2.fillRect(Math.round(sx + Math.cos(pa) * i) - 1, Math.round(sy + Math.sin(pa) * i) - 1, 4, 4);
+      ctx2.fillStyle = rgba("#ff5a4a", 0.4 + 0.6 * k);
       ctx2.fillRect(Math.round(sx + Math.cos(pa) * i), Math.round(sy + Math.sin(pa) * i), 2, 2);
     }
-    arrowHead(ctx2, sx + Math.cos(pa) * al, sy + Math.sin(pa) * al, pa, "#ff5a4a", 5);
+    arrowHead(ctx2, sx + Math.cos(pa) * al, sy + Math.sin(pa) * al, pa, "#ff5a4a", 6);
     const span = 0.95;
     const col = inZ ? "#9affb8" : tele ? "#ffe27a" : "#7dffb0";
     const n = 36;
@@ -24263,7 +25904,12 @@ kTtaatTk
     const n = Math.max(24, R * 3);
     for (let i = 0; i < n; i++) {
       const a = i / n * TAU;
-      ctx2.fillStyle = rgba(col, i % 2 ? 0.35 : 0.7);
+      ctx2.fillStyle = rgba(INK, 0.45);
+      ctx2.fillRect(Math.round(cx + Math.cos(a) * R) - 1, Math.round(cy + Math.sin(a) * R) - 1, 3, 3);
+    }
+    for (let i = 0; i < n; i++) {
+      const a = i / n * TAU;
+      ctx2.fillStyle = rgba(col, i % 3 === 2 ? 0.3 : 0.85);
       ctx2.fillRect(Math.round(cx + Math.cos(a) * R), Math.round(cy + Math.sin(a) * R), 1, 1);
     }
     const ka = cr.spin;
@@ -24780,7 +26426,7 @@ kTtaatTk
         const rt = b.rodTip();
         return [lerp(b.x ?? rt[0], rt[0], 0.35), (b.y ?? this.surface) - 26];
       }
-      return this.F.toWorld(this.F.W / 2, this.F.H * 0.47);
+      return this.F.toWorld(this.F.W / 2 + 8, this.F.H * 0.86 - 52);
     }
     go(stage) {
       this.stage = stage;
@@ -24831,7 +26477,7 @@ kTtaatTk
           F.shake(4);
           F.sfx("splash_small");
           F.sfx("magic");
-          if (this.hasBoat) F.focusCam(hx, hy - 26, 1.85, 3);
+          if (this.hasBoat) F.focusCam(hx, hy - 36, 2.4, 3);
           break;
         }
         case "igotit": {
@@ -24863,7 +26509,7 @@ kTtaatTk
       f.controlled = true;
       switch (this.stage) {
         case "surface": {
-          const ty = this.surface !== null ? this.surface + 8 + 4 * f.scale : f.y - 30;
+          const ty = this.surface !== null ? this.surface + 8 + 4 * f.scale : this.from.y - 14;
           f.x = damp(f.x, this.from.x + Math.sin(this.rt * 30) * 2, 10, dt);
           f.y = damp(f.y, ty, 7, dt);
           f.vx = Math.sin(this.rt * 9) * 60;
@@ -24880,7 +26526,8 @@ kTtaatTk
           const [hx, hy] = this.hands();
           const u = clamp01(this.st / this.flight);
           const p0 = this.p0;
-          const apex = Math.min(p0[1], hy) - (this.hasBoat ? 70 : 90) - 20 * f.scale;
+          let apex = Math.min(p0[1], hy) - (this.hasBoat ? 70 : 60) - 20 * f.scale;
+          if (!this.hasBoat) apex = Math.max(apex, this.F.toWorld(0, this.F.H * 0.2)[1]);
           const mx = (p0[0] + hx) / 2;
           const x = (1 - u) * (1 - u) * p0[0] + 2 * (1 - u) * u * mx + u * u * hx;
           const y = (1 - u) * (1 - u) * p0[1] + 2 * (1 - u) * u * apex + u * u * hy;
@@ -24910,7 +26557,7 @@ kTtaatTk
           this.rays = Math.max(0, this.rays - rdt * 1.2);
           if (this.hasBoat) {
             const [hx, hy] = this.hands();
-            F.focusCam(hx, hy - 26, 1.85, 3);
+            F.focusCam(hx, hy - 36, 2.4, 3);
           }
           if (this.st > (this.compact ? 0.05 : 2.4)) return "caught";
           break;
@@ -24929,7 +26576,7 @@ kTtaatTk
       }
     }
     drawHud(ctx2) {
-      if (this.portrait > 0.01) drawPortrait(ctx2, this.F, this.fish, this.portrait, this.stage === "igotit" ? "cheer" : "hold", this.rt);
+      if (this.portrait > 0.01) drawPortrait(ctx2, this.F, this.fish, this.portrait, "hold", this.rt);
     }
   };
   function drawPortrait(ctx2, F, fish, k, pose, t) {
@@ -25118,7 +26765,7 @@ kTtaatTk
     drawWorld() {
     }
     drawHud(ctx2) {
-      if (this.portrait > 0.01 && this.fish) drawPortrait(ctx2, this.F, this.fish, this.portrait, "cheer", this.t);
+      if (this.portrait > 0.01 && this.fish) drawPortrait(ctx2, this.F, this.fish, this.portrait, "hold", this.t);
     }
   };
 
@@ -25301,7 +26948,7 @@ kTtaatTk
         }
         return { x: clamp(x, 30, w.W - 30), y: w.surfaceY + 14 + half };
       }
-      return { x: clamp(f.x, 60, w.W - 60), y: this.viewTop() + 80 };
+      return { x: clamp(f.x, 60, w.W - 60), y: this.viewTop() + this.H * 0.38 };
     }
     // Start the current species event now (debug / older test drivers).
     startPhase() {
@@ -25747,17 +27394,17 @@ kTtaatTk
       this.finale?.drawWorld(ctx2);
       this.cine?.drawWorld?.(ctx2);
     }
-    drawRope(ctx2, x0, y0, x1, y1, tension, fight, alpha = 0.85) {
+    drawRope(ctx2, x0, y0, x1, y1, tension, fight2, alpha = 0.85) {
       const w = this.world;
       const surf = w.surfaceY ?? null;
       const d = dist(x0, y0, x1, y1);
       const sag = (1 - clamp01(tension)) * Math.min(40, d * 0.18);
-      const vib = fight && tension > 0.75 ? Math.sin(this.t * 60) * (tension - 0.75) * 6 : 0;
+      const vib = fight2 && tension > 0.75 ? Math.sin(this.t * 60) * (tension - 0.75) * 6 : 0;
       const mx = (x0 + x1) / 2 + vib, my = (y0 + y1) / 2 + sag;
       const steps = Math.max(4, Math.ceil(d / 1.5));
       let col = "#e8f4ff";
-      if (fight) col = tension > 0.92 ? "#ff6a5a" : tension > 0.75 ? "#ffd25a" : "#e8f4ff";
-      const reel = fight ? this.crank.power : 0;
+      if (fight2) col = tension > 0.92 ? "#ff6a5a" : tension > 0.75 ? "#ffd25a" : "#e8f4ff";
+      const reel = fight2 ? this.crank.power : 0;
       const glintPhase = this.t * (0.6 + reel * 2.2) % 1;
       let px = null, py = null;
       for (let i = 0; i <= steps; i++) {
@@ -25837,69 +27484,72 @@ kTtaatTk
   };
 
   // src/game/skills.js
-  var S4 = (id, branch, name, cost, req, pos, effect, desc, extra = {}) => ({ id, branch, name, cost, req, pos, effect, desc, ...extra });
+  var S5 = (id, branch, name, cost, req, pos, effect, desc, extra = {}) => ({ id, branch, name, cost, req, pos, effect, desc, ...extra });
   var SKILLS = [
-    S4("hook1", "hook", "Sharper Hook", 0, [], [0, 0.04], { biteWindow: 1.25 }, "Bites stay hookable longer.", { icon: "hook" }),
+    S5("hook1", "hook", "Sharper Hook", 0, [], [0, 0.04], { biteWindow: 1.25 }, "Bites stay hookable longer.", { icon: "hook" }),
     // hooks (centre-left trunk)
-    S4("hook2", "hook", "Barbed Hook", 15, ["hook1"], [-0.16, 0.16], { slackGrace: 0.6 }, "Fish struggle longer before throwing the hook.", { icon: "hook" }),
-    S4("hook3", "hook", "Lucky Hook", 60, ["hook2"], [-0.28, 0.27], { rarityBoost: 1.2 }, "Rarer fish show up a little more often.", { icon: "star" }),
-    S4("hook5", "hook", "Steel Hook", 300, ["hook3"], [-0.36, 0.4], { lineStrength: 0.15 }, "Tough enough for junk. Needed for Junkyard Reef.", { icon: "hook" }),
-    S4("hook4", "hook", "Auto-Hook Charm", 150, ["hook3"], [-0.18, 0.4], { autoHook: 0.15 }, "15% chance to set the hook automatically.", { icon: "sparkle" }),
-    S4("hook6", "hook", "Golden Hook", 900, ["hook5"], [-0.44, 0.55], { rarityBoost: 1.3, shinyChance: 1.5 }, "Rare and shiny fish are drawn to gold.", { icon: "crown" }),
-    S4("hook7", "hook", "Lantern Hook", 1200, ["hook5"], [-0.3, 0.6], { lantern: 1 }, "Your hook glows. Needed for the Deep Ocean.", { icon: "sun" }),
-    S4("hook8", "hook", "Auto-Hook II", 2500, ["hook4", "hook6"], [-0.36, 0.75], { autoHook: 0.15 }, "+15% more auto-hook chance.", { icon: "sparkle" }),
+    S5("hook2", "hook", "Barbed Hook", 15, ["hook1"], [-0.16, 0.16], { slackGrace: 0.6 }, "Fish struggle longer before throwing the hook.", { icon: "hook" }),
+    S5("hook3", "hook", "Lucky Hook", 60, ["hook2"], [-0.28, 0.27], { rarityBoost: 1.2 }, "Rarer fish show up a little more often.", { icon: "star" }),
+    S5("hook5", "hook", "Steel Hook", 300, ["hook3"], [-0.36, 0.4], { lineStrength: 0.15 }, "Tough enough for junk. Needed for Junkyard Reef.", { icon: "hook" }),
+    S5("hook4", "hook", "Auto-Hook Charm", 150, ["hook3"], [-0.18, 0.4], { autoHook: 0.15 }, "15% chance to set the hook automatically.", { icon: "sparkle" }),
+    S5("hook6", "hook", "Golden Hook", 900, ["hook5"], [-0.44, 0.55], { rarityBoost: 1.3, shinyChance: 1.5 }, "Rare and shiny fish are drawn to gold.", { icon: "crown" }),
+    S5("hook7", "hook", "Lantern Hook", 1200, ["hook5"], [-0.3, 0.6], { lantern: 1 }, "Your hook glows. Needed for the Deep Ocean.", { icon: "sun" }),
+    S5("hook8", "hook", "Auto-Hook II", 2500, ["hook4", "hook6"], [-0.36, 0.75], { autoHook: 0.15 }, "+15% more auto-hook chance.", { icon: "sparkle" }),
     // lines (left)
-    S4("line1", "line", "Braided Line", 20, ["hook1"], [-0.42, 0.12], { lineStrength: 0.15 }, "Line can take more tension.", { icon: "line" }),
-    S4("line2", "line", "Elastic Line", 50, ["line1"], [-0.58, 0.2], { snapGrace: 0.25 }, "Survives tension spikes a bit longer.", { icon: "line" }),
-    S4("line3", "line", "Fluoro Line", 120, ["line2"], [-0.72, 0.3], { calm: 1.25 }, "Nearly invisible: fish spook less.", { icon: "eye" }),
-    S4("line4", "line", "Steel Leader", 400, ["line3"], [-0.78, 0.45], { lineStrength: 0.2 }, "Big fish, no problem.", { icon: "line" }),
-    S4("line5", "line", "Titanium Line", 1500, ["line4"], [-0.8, 0.62], { lineStrength: 0.25, snapGrace: 0.3 }, "The strongest line on any desktop.", { icon: "line" }),
+    S5("line1", "line", "Braided Line", 20, ["hook1"], [-0.42, 0.12], { lineStrength: 0.15 }, "Line can take more tension.", { icon: "line" }),
+    S5("line2", "line", "Elastic Line", 50, ["line1"], [-0.58, 0.2], { snapGrace: 0.25 }, "Survives tension spikes a bit longer.", { icon: "line" }),
+    S5("line3", "line", "Fluoro Line", 120, ["line2"], [-0.72, 0.3], { calm: 1.25 }, "Nearly invisible: fish spook less.", { icon: "eye" }),
+    S5("line4", "line", "Steel Leader", 400, ["line3"], [-0.78, 0.45], { lineStrength: 0.2 }, "Big fish, no problem.", { icon: "line" }),
+    S5("line5", "line", "Titanium Line", 1500, ["line4"], [-0.8, 0.62], { lineStrength: 0.25, snapGrace: 0.3 }, "The strongest line on any desktop.", { icon: "line" }),
     // reels (right of trunk)
-    S4("reel1", "reel", "Quick Reel", 25, ["hook1"], [0.16, 0.15], { reelSpeed: 12 }, "Reel in faster.", { icon: "reel" }),
-    S4("reel2", "reel", "Counter Grip", 70, ["reel1"], [0.28, 0.26], { staminaDrain: 1.25 }, "Pulling against fish tires them faster.", { icon: "reel" }),
-    S4("reel3", "reel", "Ball Bearings", 180, ["reel2"], [0.36, 0.39], { reelSpeed: 14 }, "Smooth, speedy reeling.", { icon: "reel" }),
-    S4("reel4", "reel", "Drag System", 450, ["reel3"], [0.44, 0.53], { snapGrace: 0.3, slackGrace: 0.5 }, "More forgiving tension.", { icon: "reel" }),
-    S4("reel5", "reel", "Overdrive Reel", 1800, ["reel4"], [0.4, 0.7], { staminaDrain: 1.35, reelSpeed: 16 }, "Wear down even legends.", { icon: "reel" }),
+    S5("reel1", "reel", "Quick Reel", 25, ["hook1"], [0.16, 0.15], { reelSpeed: 12 }, "Reel in faster.", { icon: "reel" }),
+    S5("reel2", "reel", "Counter Grip", 70, ["reel1"], [0.28, 0.26], { staminaDrain: 1.25 }, "Pulling against fish tires them faster.", { icon: "reel" }),
+    S5("reel3", "reel", "Ball Bearings", 180, ["reel2"], [0.36, 0.39], { reelSpeed: 14 }, "Smooth, speedy reeling.", { icon: "reel" }),
+    S5("reel4", "reel", "Drag System", 450, ["reel3"], [0.44, 0.53], { snapGrace: 0.3, slackGrace: 0.5 }, "More forgiving tension.", { icon: "reel" }),
+    S5("reel5", "reel", "Overdrive Reel", 1800, ["reel4"], [0.4, 0.7], { staminaDrain: 1.35, reelSpeed: 16 }, "Wear down even legends.", { icon: "reel" }),
     // mouse mastery (right)
-    S4("mouse1", "mouse", "Calm Hands", 30, ["hook1"], [0.42, 0.1], { calm: 1.3 }, "Fish tolerate faster mouse movement.", { icon: "mouse_l" }),
-    S4("mouse8", "mouse", "Coin Magnet", 140, ["mouse1"], [0.6, 0.14], { collectRadius: 16 }, "Collect coins from further away.", { icon: "coin" }),
-    S4("mouse2", "mouse", "Lure Jigging", 80, ["mouse1"], [0.56, 0.26], { baitRadius: 1.25 }, "Clicking in the water attracts fish from further.", { icon: "bait" }),
-    S4("mouse3", "mouse", "Big Net", 100, ["mouse2"], [0.72, 0.3], { netTolerance: 1.35, netTime: 1.25 }, "Sloppy circles still catch fish.", { icon: "net" }),
-    S4("mouse4", "mouse", "Tracer Eyes", 160, ["mouse2"], [0.64, 0.42], { traceRadius: 1.3, traceForgive: 1.3 }, "Bigger ring when tracing fish.", { icon: "eye" }),
-    S4("mouse5", "mouse", "Rhythm Fins", 220, ["mouse4"], [0.8, 0.46], { timingWindow: 1.35, timingMisses: 1 }, "Wider timing window, one extra miss.", { icon: "music" }),
-    S4("mouse6", "mouse", "Power Clicks", 220, ["mouse4"], [0.7, 0.56], { mashPower: 1.35 }, "Each mash click counts more.", { icon: "mouse_l" }),
-    S4("mouse9", "mouse", "Dodge Roll", 350, ["mouse6"], [0.84, 0.62], { dodgeHits: 1 }, "Take one extra hit when dodging.", { icon: "heart" }),
-    S4("mouse7", "mouse", "Focus Mode", 600, ["mouse6"], [0.62, 0.72], { focus: 1 }, "Hold RIGHT mouse during fights to slow time.", { icon: "clock" }),
+    S5("mouse1", "mouse", "Calm Hands", 30, ["hook1"], [0.42, 0.1], { calm: 1.3 }, "Fish tolerate faster mouse movement.", { icon: "mouse_l" }),
+    S5("mouse8", "mouse", "Coin Magnet", 140, ["mouse1"], [0.6, 0.14], { collectRadius: 16 }, "Collect coins from further away.", { icon: "coin" }),
+    S5("mouse2", "mouse", "Lure Jigging", 80, ["mouse1"], [0.56, 0.26], { baitRadius: 1.25 }, "Clicking in the water attracts fish from further.", { icon: "bait" }),
+    S5("mouse3", "mouse", "Big Net", 100, ["mouse2"], [0.72, 0.3], { netTolerance: 1.35, netTime: 1.25 }, "Sloppy circles still catch fish.", { icon: "net" }),
+    S5("mouse4", "mouse", "Tracer Eyes", 160, ["mouse2"], [0.64, 0.42], { traceRadius: 1.3, traceForgive: 1.3 }, "Bigger ring when tracing fish.", { icon: "eye" }),
+    S5("mouse5", "mouse", "Rhythm Fins", 220, ["mouse4"], [0.8, 0.46], { timingWindow: 1.35, timingMisses: 1 }, "Wider timing window, one extra miss.", { icon: "music" }),
+    S5("mouse6", "mouse", "Power Clicks", 220, ["mouse4"], [0.7, 0.56], { mashPower: 1.35 }, "Each mash click counts more.", { icon: "mouse_l" }),
+    S5("mouse9", "mouse", "Dodge Roll", 350, ["mouse6"], [0.84, 0.62], { dodgeHits: 1 }, "Take one extra hit when dodging.", { icon: "heart" }),
+    S5("mouse7", "mouse", "Focus Mode", 600, ["mouse6"], [0.62, 0.72], { focus: 1 }, "Hold RIGHT mouse during fights to slow time.", { icon: "clock" }),
     // bait (upper left)
-    S4("bait1", "bait", "Bigger Bait Box", 20, ["hook2"], [-0.06, 0.28], { boxSlots: 2 }, "+2 bait box slots.", { icon: "bait" }),
-    S4("bait2", "bait", "Worm Farm", 60, ["bait1"], [-0.06, 0.42], { unlockBait: ["worm"] }, "Glowing Worms appear in the shop.", { icon: "worm" }),
-    S4("bait8", "bait", "Sugar Rush", 120, ["bait2"], [0.06, 0.5], { unlockBait: ["sugar"] }, "Sugar Cubes appear in the shop.", { icon: "food" }),
-    S4("bait3", "bait", "Golden Bait License", 250, ["bait2"], [-0.14, 0.53], { unlockBait: ["golden"] }, "Golden Bait appears in the shop.", { icon: "crown" }),
-    S4("bait4", "bait", "Flood Gates", 300, ["bait3"], [-0.06, 0.64], { unlockBait: ["flood"] }, "Flood Bait appears in the shop.", { icon: "rain" }),
-    S4("bait5", "bait", "Bait Box XL", 500, ["bait4"], [-0.16, 0.74], { boxSlots: 3 }, "+3 bait box slots.", { icon: "bait" }),
-    S4("bait7", "bait", "Potent Bait", 700, ["bait4"], [0.04, 0.76], { baitRadius: 1.3 }, "Bait smell travels much further.", { icon: "sparkle" }),
-    S4("bait6", "bait", "Black Hole Permit", 1500, ["bait7"], [-0.04, 0.88], { unlockBait: ["blackhole"] }, "Black Hole Bait appears in the shop. Handle with care.", { icon: "skull" }),
+    S5("bait1", "bait", "Bigger Bait Box", 20, ["hook2"], [-0.06, 0.28], { boxSlots: 2 }, "+2 bait box slots.", { icon: "bait" }),
+    S5("bait2", "bait", "Worm Farm", 60, ["bait1"], [-0.06, 0.42], { unlockBait: ["worm"] }, "Glowing Worms appear in the shop.", { icon: "worm" }),
+    S5("bait8", "bait", "Sugar Rush", 120, ["bait2"], [0.06, 0.5], { unlockBait: ["sugar"] }, "Sugar Cubes appear in the shop.", { icon: "food" }),
+    S5("bait3", "bait", "Golden Bait License", 250, ["bait2"], [-0.14, 0.53], { unlockBait: ["golden"] }, "Golden Bait appears in the shop.", { icon: "crown" }),
+    S5("bait4", "bait", "Flood Gates", 300, ["bait3"], [-0.06, 0.64], { unlockBait: ["flood"] }, "Flood Bait appears in the shop.", { icon: "rain" }),
+    S5("bait5", "bait", "Bait Box XL", 500, ["bait4"], [-0.16, 0.74], { boxSlots: 3 }, "+3 bait box slots.", { icon: "bait" }),
+    S5("bait7", "bait", "Potent Bait", 700, ["bait4"], [0.04, 0.76], { baitRadius: 1.3 }, "Bait smell travels much further.", { icon: "sparkle" }),
+    S5("bait6", "bait", "Black Hole Permit", 1500, ["bait7"], [-0.04, 0.88], { unlockBait: ["blackhole"] }, "Black Hole Bait appears in the shop. Handle with care.", { icon: "skull" }),
     // aquarium (lower right)
-    S4("tank1", "tank", "Bigger Tank", 40, ["reel1"], [0.14, 0.3], { tankCap: 3 }, "+3 fish in your aquarium.", { icon: "tank" }),
-    S4("tank2", "tank", "Auto-Feeder", 150, ["tank1"], [0.2, 0.42], { feeder: 1 }, "Your fish get fed while you work.", { icon: "food" }),
-    S4("tank3", "tank", "Snail Janitor", 200, ["tank1"], [0.1, 0.44], { autoCollect: 1 }, "A snail slowly collects coins for you.", { icon: "coin" }),
-    S4("tank4", "tank", "Bigger Tank II", 400, ["tank2"], [0.24, 0.56], { tankCap: 4 }, "+4 fish in your aquarium.", { icon: "tank" }),
-    S4("tank5", "tank", "Happy Water", 500, ["tank4"], [0.2, 0.68], { coinMul: 1.25 }, "Happier fish make 25% more coins.", { icon: "heart" }),
-    S4("tank6", "tank", "Coin Crab", 1200, ["tank3", "tank4"], [0.12, 0.6], { autoCollect: 1 }, "A greedy crab helps collect coins.", { icon: "coin" }),
-    S4("tank7", "tank", "Bigger Tank III", 2e3, ["tank5"], [0.26, 0.82], { tankCap: 6 }, "+6 fish in your aquarium.", { icon: "tank" }),
-    S4("tank8", "tank", "Treasure Currents", 3e3, ["tank7"], [0.16, 0.94], { coinMul: 1.5, offlineMul: 0.2 }, "+50% coins, more coins while away.", { icon: "trophy" }),
+    S5("tank1", "tank", "Bigger Tank", 40, ["reel1"], [0.14, 0.3], { tankCap: 3 }, "+3 fish in your aquarium.", { icon: "tank" }),
+    S5("tank2", "tank", "Auto-Feeder", 150, ["tank1"], [0.2, 0.42], { feeder: 1 }, "Your fish get fed while you work.", { icon: "food" }),
+    S5("tank3", "tank", "Snail Janitor", 200, ["tank1"], [0.1, 0.44], { autoCollect: 1 }, "A snail slowly collects coins for you.", { icon: "coin" }),
+    S5("tank4", "tank", "Bigger Tank II", 400, ["tank2"], [0.24, 0.56], { tankCap: 4 }, "+4 fish in your aquarium.", { icon: "tank" }),
+    S5("tank5", "tank", "Happy Water", 500, ["tank4"], [0.2, 0.68], { coinMul: 1.25 }, "Happier fish make 25% more coins.", { icon: "heart" }),
+    S5("tank6", "tank", "Coin Crab", 1200, ["tank3", "tank4"], [0.12, 0.6], { autoCollect: 1 }, "A greedy crab helps collect coins.", { icon: "coin" }),
+    S5("tank7", "tank", "Bigger Tank III", 2e3, ["tank5"], [0.26, 0.82], { tankCap: 6 }, "+6 fish in your aquarium.", { icon: "tank" }),
+    S5("tank8", "tank", "Treasure Currents", 3e3, ["tank7"], [0.16, 0.94], { coinMul: 1.5, offlineMul: 0.2 }, "+50% coins, more coins while away.", { icon: "trophy" }),
     // breeding (crown right)
-    S4("breed1", "breed", "Fish Romance", 800, ["tank5"], [0.36, 0.84], { breeding: 1 }, "Happy pairs of the same species lay eggs.", { icon: "heart" }),
-    S4("breed2", "breed", "Warm Nursery", 1200, ["breed1"], [0.5, 0.88], { hatchSpeed: 1.6 }, "Eggs hatch faster.", { icon: "sun" }),
-    S4("breed3", "breed", "Mutation Lab", 2e3, ["breed1"], [0.42, 0.96], { mutationChance: 0.05 }, "More mutations when catching and breeding.", { icon: "sparkle" }),
-    S4("breed4", "breed", "Sparkle Genes", 4e3, ["breed3"], [0.56, 0.98], { shinyChance: 2 }, "Shiny fish twice as likely.", { icon: "star" }),
+    S5("breed1", "breed", "Fish Romance", 800, ["tank5"], [0.36, 0.84], { breeding: 1 }, "Happy pairs of the same species lay eggs.", { icon: "heart" }),
+    S5("breed2", "breed", "Warm Nursery", 1200, ["breed1"], [0.5, 0.88], { hatchSpeed: 1.6 }, "Eggs hatch faster.", { icon: "sun" }),
+    S5("breed3", "breed", "Mutation Lab", 2e3, ["breed1"], [0.42, 0.96], { mutationChance: 0.05 }, "More mutations when catching and breeding.", { icon: "sparkle" }),
+    S5("breed4", "breed", "Sparkle Genes", 4e3, ["breed3"], [0.56, 0.98], { shinyChance: 2 }, "Shiny fish twice as likely.", { icon: "star" }),
     // expeditions (crown left)
-    S4("exp1", "exp", "Junkyard Reef Map", 350, ["hook5"], [-0.52, 0.42], { unlockBiome: "junkyard" }, "Travel to Junkyard Reef. Requires the Steel Hook and 6 species discovered.", { icon: "map", needSpecies: 6 }),
-    S4("exp2", "exp", "Junk Bait License", 500, ["exp1"], [-0.6, 0.56], { unlockBait: ["chip", "popup"] }, "Overclocked Chips and Pop-up Ads in the shop.", { icon: "bait" }),
-    S4("exp5", "exp", "Weather Radio", 400, ["exp1"], [-0.62, 0.7], { forecast: 1 }, "See the weather forecast and rare-fish weather.", { icon: "cloud" }),
-    S4("exp6", "exp", "Sonar Ping", 900, ["exp5"], [-0.66, 0.84], { sonar: 1 }, "Rare fish get a subtle glint.", { icon: "eye" }),
-    S4("exp3", "exp", "Deep Ocean Map", 2500, ["exp1", "hook7"], [-0.46, 0.86], { unlockBiome: "abyss" }, "Dive into the Deep Ocean. Requires the Lantern Hook and 16 species discovered.", { icon: "map", needSpecies: 16 }),
-    S4("exp4", "exp", "Deep Ocean Bait License", 1800, ["exp3"], [-0.3, 0.95], { unlockBait: ["lantern", "relic"] }, "Lantern Pearls and Ancient Relics in the shop.", { icon: "skull" })
+    S5("exp1", "exp", "Junkyard Reef Map", 350, ["hook5"], [-0.52, 0.42], { unlockBiome: "junkyard" }, "Travel to Junkyard Reef. Requires the Steel Hook and 6 species discovered.", { icon: "map", needSpecies: 6 }),
+    S5("exp2", "exp", "Junk Bait License", 500, ["exp1"], [-0.6, 0.56], { unlockBait: ["chip", "popup"] }, "Overclocked Chips and Pop-up Ads in the shop.", { icon: "bait" }),
+    S5("exp5", "exp", "Weather Radio", 400, ["exp1"], [-0.62, 0.7], { forecast: 1 }, "See the weather forecast and rare-fish weather.", { icon: "cloud" }),
+    S5("exp6", "exp", "Sonar Ping", 900, ["exp5"], [-0.66, 0.84], { sonar: 1 }, "Rare fish get a subtle glint.", { icon: "eye" }),
+    S5("exp7", "exp", "Frosty Fjord Chart", 220, ["hook3"], [-0.4, 0.3], { unlockBiome: "fjord" }, "Sail north to the Frosty Fjord. Requires the Lucky Hook and 4 species discovered.", { icon: "map", needSpecies: 4 }),
+    S5("exp8", "exp", "Sunken Metropolis Chart", 1200, ["exp1"], [-0.56, 0.62], { unlockBiome: "metropolis" }, "Dive the drowned neon city. Requires 10 species discovered.", { icon: "map", needSpecies: 10 }),
+    S5("exp9", "exp", "Lava Rift Chart", 1800, ["exp8"], [-0.5, 0.76], { unlockBiome: "volcano" }, "Brave the volcanic vents. Requires 13 species discovered.", { icon: "map", needSpecies: 13 }),
+    S5("exp3", "exp", "Deep Ocean Map", 2500, ["exp1", "hook7"], [-0.46, 0.86], { unlockBiome: "abyss" }, "Dive into the Deep Ocean. Requires the Lantern Hook and 16 species discovered.", { icon: "map", needSpecies: 16 }),
+    S5("exp4", "exp", "Deep Ocean Bait License", 1800, ["exp3"], [-0.3, 0.95], { unlockBait: ["lantern", "relic"] }, "Lantern Pearls and Ancient Relics in the shop.", { icon: "skull" })
   ];
   var SKILL_BY_ID = Object.fromEntries(SKILLS.map((s) => [s.id, s]));
   var BASE_STATS = {
@@ -26295,7 +27945,7 @@ kTtaatTk
   var edgeOf = (m, x, y) => !m(x - 1, y) || !m(x + 1, y) || !m(x, y - 1) || !m(x, y + 1);
   var tex = /* @__PURE__ */ new Map();
   var volatileTex = /* @__PURE__ */ new Map();
-  function cached(key, build2, store = tex, limit = 500) {
+  function cached2(key, build2, store = tex, limit = 500) {
     let c = store.get(key);
     if (c) {
       store.delete(key);
@@ -26399,7 +28049,7 @@ kTtaatTk
     if (w < 3 || h < 3) return;
     const tone3 = opts.tone === "dark" ? "dark" : "light";
     const nails = opts.nails !== false, inset = !!opts.inset, round = opts.round ?? 1, planks = opts.planks || 0, noSeams = opts.seams === false;
-    blitRect(ctx2, cached(`wood|${w}|${h}|${tone3}|${nails}|${inset}|${round}|${planks}|${noSeams}`, () => woodTex(w, h, tone3, nails, inset, round, planks, noSeams)), x, y);
+    blitRect(ctx2, cached2(`wood|${w}|${h}|${tone3}|${nails}|${inset}|${round}|${planks}|${noSeams}`, () => woodTex(w, h, tone3, nails, inset, round, planks, noSeams)), x, y);
   }
   function paperTex(w, h, torn, lined, aged, fold) {
     const tTop = torn === "top" || torn === "both", tBot = torn === true || torn === "bottom" || torn === "both";
@@ -26466,7 +28116,7 @@ kTtaatTk
     h = Math.round(h);
     if (w < 4 || h < 4) return;
     const torn = opts.torn || false, lined = !!opts.lined, aged = !!opts.aged, fold = !!opts.fold;
-    blitRect(ctx2, cached(`paper|${w}|${h}|${torn}|${lined}|${aged}|${fold}`, () => paperTex(w, h, torn, lined, aged, fold)), x, y);
+    blitRect(ctx2, cached2(`paper|${w}|${h}|${torn}|${lined}|${aged}|${fold}`, () => paperTex(w, h, torn, lined, aged, fold)), x, y);
   }
   function bandFrame(b, w, h, fw, R, opts = {}) {
     const outer = rr(w, h, opts.r ?? 2);
@@ -26551,7 +28201,7 @@ kTtaatTk
     if (Math.abs(angle) > Math.PI) angle = angle * Math.PI / 180;
     angle = Math.round(angle * 100) / 100;
     const font = opts.font || "normal";
-    const c = cached(`stamp|${text}|${color}|${angle}|${font}`, () => stampTex(String(text), color, angle, font), volatileTex, 96);
+    const c = cached2(`stamp|${text}|${color}|${angle}|${font}`, () => stampTex(String(text), color, angle, font), volatileTex, 96);
     const k = opts.scale || 1;
     if (k === 1) ctx2.drawImage(c, Math.round(x - c.width / 2), Math.round(y - c.height / 2));
     else {
@@ -26625,7 +28275,7 @@ kTtaatTk
     w = Math.round(w);
     h = Math.round(h);
     const style = opts.style === "gold" || opts.style === "coral" ? opts.style : "wood";
-    if (w >= 14 && h >= 14) ctx2.drawImage(cached(`frame|${w}|${h}|${style}`, () => frameTex(w, h, style)), x, y);
+    if (w >= 14 && h >= 14) ctx2.drawImage(cached2(`frame|${w}|${h}|${style}`, () => frameTex(w, h, style)), x, y);
     const fw = style === "coral" ? 6 : 5;
     return { x: x + fw, y: y + fw, w: w - fw * 2, h: h - fw * 2 };
   }
@@ -27190,14 +28840,14 @@ kwwwwwwk.
       w.glowLevel = w.night ? 0.25 : 0;
     }
     weightOf(sp) {
-      const w = this.world, spawn = sp.spawn || {};
-      let wt = (RARITY[sp.rarity]?.weight ?? 10) * (spawn.weight ?? 1);
+      const w = this.world, spawn2 = sp.spawn || {};
+      let wt = (RARITY[sp.rarity]?.weight ?? 10) * (spawn2.weight ?? 1);
       if (sp.biome === "abyss") wt *= w.night ? 1 : 0.06;
       if (sp.activity === "night") wt *= w.night ? 2 : 0.2;
       if (sp.activity === "day") wt *= w.night ? 0.2 : 1.3;
       if (sp.activity === "dusk") wt *= w.dusk ? 3 : 0.4;
-      if (spawn.weather && !String(spawn.weather).includes(w.weather)) wt *= 0.05;
-      if (spawn.time && spawn.time !== (w.night ? "night" : "day")) wt *= 0.1;
+      if (spawn2.weather && !String(spawn2.weather).includes(w.weather)) wt *= 0.05;
+      if (spawn2.time && spawn2.time !== (w.night ? "night" : "day")) wt *= 0.1;
       if (sp.bait?.browser) wt *= 1 + sp.bait.browser * 0.5;
       if (sp.rarity === "legendary" && this.fishes.some((f) => f.sp === sp)) wt = 0;
       return wt;

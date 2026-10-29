@@ -61,11 +61,14 @@ export class Store {
     this.connecting = null; // {t0, dur}
     this.jitter = 1;
     this.lastJ = 0;
-    this.listeners = [];
     this.tick();
   }
 
-  get st() { return this.game.state.apps; }
+  get st() {
+    const state = this.game.state;
+    if (state !== this.boundState) { this.boundState = state; ensureStoreState(state); bindCatalogState(state); }
+    return state.apps || ensureStoreState(state);
+  }
   speed() { return ispSpeed(this.game.state); }
   isp() { return ISP_TIERS[ispTier(this.game.state)]; }
 

@@ -9,7 +9,7 @@
 // 'landing'), busy, fighting, hook {x, y, visible}, tension.
 // If the host never calls drawCinematic/drawCinematicHud, drawWorld/drawHud draw them instead.
 
-import { clamp, clamp01, lerp, dist, damp } from '../core/math.js';
+import { clamp, clamp01, dist, damp } from '../core/math.js';
 import { rng } from '../core/rng.js';
 import { rgba } from '../core/color.js';
 import { drawText } from '../gfx/font.js';
@@ -168,7 +168,7 @@ export class Fishing {
       }
       return { x: clamp(x, 30, w.W - 30), y: w.surfaceY + 14 + half };
     }
-    return { x: clamp(f.x, 60, w.W - 60), y: this.viewTop() + 80 };
+    return { x: clamp(f.x, 60, w.W - 60), y: this.viewTop() + this.H * 0.38 };
   }
 
   // Start the current species event now (debug / older test drivers).

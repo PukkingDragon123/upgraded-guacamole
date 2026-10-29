@@ -4,14 +4,15 @@
 // sagging cables, glowing algae and drifting data bits. Weathers: murky, static, oil, datarain.
 
 import { Biome, worldTop } from './base.js';
-import { SkyDome } from '../sky.js';
+import { SkyDome, puffSprites } from '../sky.js';
 import { factory, gantryCrane, containerStack, junkRidge } from '../horizon.js';
 import { render, strip, ridgeStrip, junkHeap, freighter, latticeCrane, containerStackModel, utilityPole, propSprite } from '../farvox.js';
 import { clamp, clamp01, lerp, smoothstep, ease, hash2, fbm2, TAU } from '../../core/math.js';
 import { RNG } from '../../core/rng.js';
 import { mix, rgba, pack, hslToHex } from '../../core/color.js';
 import { makeCanvas, ctxOf, makeLayer } from '../../core/canvas.js';
-import { getProp } from '../../gfx/props.js';
+import { PROPS } from '../../gfx/props.js';
+import { worldProp } from '../voxkit.js';
 import { drawText } from '../../gfx/font.js';
 import { BAITS } from '../../game/shopdata.js';
 import {
@@ -276,7 +277,7 @@ export class JunkyardBiome extends Biome {
       glow: (X, z, h) => (h < 14 && hash2(Math.floor(X / 2), Math.floor(z * 50), 13) < 0.003 ? [140, 255, 90] : null),
     });
     const place = (id, xf, z, base, variant = 0) => {
-      const p = getProp(id, { scale: qscale(base * D.s(z)), variant });
+      const p = worldProp(id, { scale: qscale(base * D.s(z)), variant });
       return D.add({ sprite: p, x: Math.round(xf * W), z, id });
     };
     const P = [
@@ -291,6 +292,8 @@ export class JunkyardBiome extends Biome {
       ['satellite_dish', 0.905, 1.0, 1.35], ['pipe_bend', 0.48, 1.3, 1.5], ['tire', 0.335, 0.76, 1.0], ['rusty_barrel', 0.275, 0.82, 1.0], ['crt_monitor', 0.665, 0.78, 1.0],
       ['broken_robot', 0.985, 1.25, 1.4], ['vending_machine', 0.03, 1.3, 1.4], ['circuit_coral', 0.79, 0.74, 0.9, 0], ['keyboard_slab', 0.54, 0.7, 0.8],
     ];
+    for (const e of [['phone_booth', 0.255, 0.5, 0.8], ['retro_tv', 0.585, 0.58, 0.7], ['toilet', 0.47, 0.64, 0.7], ['arcade_cabinet', 0.12, 0.96, 0.95], ['bathtub', 0.8, 1.14, 1.0],
+      ['traffic_cone', 0.37, 0.72, 0.65], ['giant_sneaker', 0.69, 0.08, 0.55], ['toaster', 0.315, 0.16, 0.5], ['jukebox', 0.94, 0.8, 0.9], ['sunken_pc', 0.06, 0.62, 0.8]]) if (PROPS[e[0]]) P.push(e);
     const placed = P.map(([id, xf, z, base, v]) => place(id, xf, z, base, v || 0));
     for (const q of placed) { q.left = q.x - q.sprite.ox; q.top = q.y - q.sprite.oy; q.p = q.sprite; q.s = D.s(q.z); }
     this.placed = placed;
@@ -457,7 +460,7 @@ export class JunkyardBiome extends Biome {
     this.murk = cloudTile(480, 240, '#a8c8b0', { seed: 3, alpha: 0.13, scale: 0.016, bias: 0.5, levels: 3 });
     this.murk2 = cloudTile(400, 200, '#0e2420', { seed: 9, alpha: 0.16, scale: 0.02, bias: 0.5, levels: 3 });
     // floating trash at the surface
-    this.duck = getProp('rubber_duck', { scale: 0.45 });
+    this.duck = worldProp('rubber_duck', { scale: 0.45 });
     this.bottle = bottleSprite();
     this.can = canSprite();
     this.floaters = [[0.3, 'duck'], [0.52, 'bottle'], [0.68, 'can'], [0.9, 'bottle']].map(([xf, k], i) => ({ x: xf * W, k, v: 2 + i, ph: i * 1.7 }));
@@ -519,6 +522,7 @@ export class JunkyardBiome extends Biome {
     for (const f of this.floaters) { f.x += f.v * dt * 0.6; if (f.x > W + 20) f.x = -20; }
     this.sky.update(dt, 0.8 + wx.static * 0.6);
     waveLine(this.ys, W, s, t * 0.7, 1.1, 0.2, 0.8);
+    this.applySimLift(this.ys);
     this.bubbles.update(dt, s);
     this.emitT -= dt;
     if (this.emitT <= 0) {
@@ -550,16 +554,15 @@ export class JunkyardBiome extends Biome {
     sky.drawBodies(g, env, tod, clear, scroll, ref);
     sky.drawClouds(g, tod, scroll, ref, wx.static * 0.5, 0.92, view);
     // smoke plumes from the factory stacks (dithered puffs drifting downwind)
-    g.fillStyle = tod.night > 0.5 ? '#1c2224' : '#8a8a78';
+    const puffs = puffSprites(tod.night > 0.5 ? '#2a3032' : tod.dusk > 0.5 ? '#8a6a62' : '#8e8e7c');
     for (const p of this.smoke) {
       const st = this.stacks[p.s];
       if (!st) continue;
       const k = (p.k + t * 0.035 * p.w) % 1;
-      const r = 1 + Math.round(k * 9 * p.w);
+      const s = puffs[Math.min(5, Math.floor(k * 6 * p.w))];
       const x = Math.round(st.x + k * 70 + Math.sin(t * 0.6 + p.ph + k * 5) * (2 + k * 6)), y = Math.round(st.y - k * 150);
-      g.globalAlpha = (1 - k) * 0.5;
-      g.fillRect(x - r + 1, y - r, r * 2 - 2, r * 2);
-      g.fillRect(x - r, y - r + 1, r * 2, r * 2 - 2);
+      g.globalAlpha = (1 - k) * 0.6;
+      g.drawImage(s, x - (s.width >> 1), y - (s.height >> 1));
     }
     g.globalAlpha = 1;
     for (const h of this.horizon) {

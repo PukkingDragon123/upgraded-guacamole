@@ -12,7 +12,8 @@ import { RNG } from '../../core/rng.js';
 import { rgba, pack } from '../../core/color.js';
 import { makeCanvas, ctxOf, makeLayer, tinted } from '../../core/canvas.js';
 import { VoxelModel } from '../../gfx/voxel.js';
-import { getProp, fbm3 } from '../../gfx/props.js';
+import { fbm3 } from '../../gfx/props.js';
+import { worldProp } from '../voxkit.js';
 import {
   paint, dpack, lerpStops, stopPalette, ditherPick, Blend, FogLayer, fillWith, drawWobble, makeRays, drawGlow, twinkle,
   waveLine, waveRuns, Strands, Motes, Bubbles, Mask, ridge, todWeights, quality, inRect, SwayAnim, cloudTile, DepthScene,
@@ -384,7 +385,7 @@ export class VolcanoBiome extends Biome {
       },
     });
     const S = (key, build, xf, z, base) => placeSprite(D, W, voxSprite(key, build, { scale: qscale(base * D.s(z)) }), xf, z);
-    const P = (id, xf, z, base, variant = 0) => placeSprite(D, W, getProp(id, { scale: qscale(base * D.s(z)), variant }), xf, z, { id });
+    const P = (id, xf, z, base, variant = 0) => placeSprite(D, W, worldProp(id, { scale: qscale(base * D.s(z)), variant }), xf, z, { id });
     const vents = [], chimneys = [];
     // near
     S('vo_basalt0', () => basaltModel(3, 1), 0.2, 0.22, 0.85);

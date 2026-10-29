@@ -6,6 +6,7 @@ import { rgba } from '../core/color.js';
 import { drawText, measureText, wrapText } from '../gfx/font.js';
 import { drawButton, drawSlider, drawToggle, drawTooltip, drawTab, drawWood, drawPlank } from './panels.js';
 import { getUiIcon } from '../gfx/uiicons.js';
+import { TabBar } from './tabbar.js';
 
 export class UI {
   constructor(game) {
@@ -67,6 +68,7 @@ export class UI {
     for (const p of this.stack) if (p.rect && rectContains(p.rect, x, y)) return true;
     if (this.dockHit(x, y) >= 0) return true;
     if (this.coinRect && rectContains(this.coinRect, x, y)) return true;
+    if (this.tabbar?.hit(x, y)) return true;
     return false;
   }
 
@@ -89,6 +91,9 @@ export class UI {
       return true;
     });
     for (const p of this.stack) p.anim = Math.min(1, (p.anim || 0) + dt * 5);
+    // floating big-icon tab bar: takes its clicks before panels and the world see them
+    if (!this.tabbar && g.state) this.tabbar = new TabBar(g);
+    this.tabbar?.update(dt);
   }
 
   // ---------------------------------------------------------------- immediate-mode widgets
@@ -176,6 +181,7 @@ export class UI {
     this.tip = null;
     // coin counter: hanging wooden plank top-right
     const W = g.screen.W;
+    if (!this.tabbar?.ownsCoins) {
     const txt = formatCommas(this.coinShown);
     const tw = measureText(txt) + 30;
     const bump = this.coinBump > 0 ? Math.sin(this.coinBump * 10) * this.coinBump * 2 : 0;
@@ -185,6 +191,7 @@ export class UI {
     ctx.drawImage(getUiIcon('coin'), r.x + 6, r.y + 6);
     drawText(ctx, txt, r.x + r.w - 7, r.y + 7, { align: 'right', color: '#fff3dc', shadow: '#2a160a' });
     if (this.hover(r)) this.tip = 'Oxidized Coins - your fish make these!';
+    }
     // dock
     this.dockHover = this.blocking ? -1 : this.dockHit(this.inp.x, this.inp.y);
     for (let i = 0; i < this.dock.length; i++) {
@@ -233,11 +240,12 @@ export class UI {
       this.close();
     }
     if (a && this.game.input.keyPressed('Escape')) this.close();
+    this.tabbar?.draw(ctx); // above the modal dim so tabs switch panels
   }
 
   drawToasts(ctx) {
     const g = this.game;
-    let y = 34;
+    let y = Math.max(34, (this.tabbar?.bottom ?? 0) + 4);
     for (const t of this.toasts) {
       const a = Math.min(1, t.t * 5, (t.max - t.t) * 3);
       const lines = wrapText(t.text, 230);

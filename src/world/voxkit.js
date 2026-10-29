@@ -2,8 +2,21 @@
 // lays voxel sprites into wide parallax layers (back to front).
 
 import { VoxelModel, renderVoxels } from '../gfx/voxel.js';
+import { getProp } from '../gfx/props.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { pack } from '../core/color.js';
+
+// ONE camera for the whole world diorama: every voxel element (terrain props, coral, rocks, far formations,
+// horizon, clouds, the boat) is rendered front-facing (yaw 0, edges level with the screen) with the same slight
+// downward pitch, so nothing looks rotated against the level seabed. Depth comes from the receding floor,
+// perspective scale and fog only.
+export const WORLD_YAW = 0;
+export const WORLD_PITCH = 24;
+
+// Library prop rendered with the world camera.
+export function worldProp(id, opts = {}) {
+  return getProp(id, { ...opts, yaw: WORLD_YAW, pitch: WORLD_PITCH });
+}
 
 // Rotate a model about the z axis (screen-plane roll) around (px, py) in voxel units. Positive degrees lift +x.
 // Returns { model, map(x, y) -> [x', y'] } (map transforms anchor points into the rotated model).
@@ -84,9 +97,9 @@ export function idPaint(r, colors) {
   return c;
 }
 
-// Render helper returning the renderVoxels result plus a projector for model points.
-export function renderModel(m, opts) {
-  return renderVoxels(m, { scale: 2, yaw: 0, pitch: 20, outline: true, ...opts });
+// Render helper (world camera enforced) returning the renderVoxels result plus a projector for model points.
+export function renderModel(m, opts = {}) {
+  return renderVoxels(m, { scale: 2, outline: true, ...opts, yaw: WORLD_YAW, pitch: opts.flat ? 0 : WORLD_PITCH });
 }
 
 // Lay sprites ({canvas, ox, oy}) into a strip: items [{sprite, x, y, z}] drawn far (high z) to near.

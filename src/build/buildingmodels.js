@@ -1,7 +1,8 @@
 // Hand-built voxel models for the seabed buildings, rendered by voxel.js into pixel-art sprites.
 //
 // buildingSprite(id, {scale, yaw, force}) -> {canvas, glow, flipped(), ox, oy, w, h, anchors: {top, smoke, lamp, door, ...}, lights: [{x, y, r, color}]}
-//   (ox, oy) = footprint centre on the ground; anchors / lights are canvas-relative.
+//   Rendered front-facing (yaw 0, pitch BUILD_PITCH). (ox, oy) = footprint centre on the ground; anchors / lights
+//   are canvas-relative.
 //   Decor builds (PROPS ids) go through getProp. Renders are budgeted per 16 ms window; when over budget the
 //   nearest cached scale is returned with `approx` = scale ratio (draw it scaled).
 // MODEL_IDS: building ids that have a model.
@@ -142,6 +143,13 @@ const MODELS = {
     // attic porthole on the gable
     shape(m, 50, 40, 22, 51, 48, 30, (x, y, z) => Math.hypot(y - 44, z - 26) < 4.2, frame);
     shape(m, 50, 40, 22, 51, 48, 30, (x, y, z) => Math.hypot(y - 44, z - 26) < 3, (x, y) => (x === 51 ? 0 : glass2));
+    // dormer on the front roof slope with a round lit window
+    m.box(23, 38, 36, 35, 47, 41, planks(wall));
+    shape(m, 21, 47, 34, 37, 54, 43, (x, y, z) => Math.abs(x - 29) <= 8 * (1 - (y - 47) / 7) + 0.5 && z < 42.5, (x, y) => ((y - 47) % 2 === 0 ? roof[2] : roof[0]));
+    m.box(21, 47, 42, 37, 47, 43, roofTrim);
+    m.cylinder(29, 43, 41, 42, 3.6, frame, 'z');
+    m.cylinder(29, 43, 42, 42, 2.4, glass2, 'z');
+    m.set(29, 43, 42, frame); m.box(26.5, 43, 42, 31.5, 43, 42, frame);
     // front: round-top door, two lit windows with shutters and flower boxes
     const fz = 42;
     m.sub(() => m.box(25, 5, fz, 33, 20, fz));
@@ -251,7 +259,7 @@ const MODELS = {
       if (Math.abs(Math.sin(a * 4)) < 0.12 || (y - 8) % 7 === 0) return rib[0];
       return h3(x, y, z, 2) < 0.05 ? domeB : dome;
     });
-    m.sub(() => shape(m, 8, 10, 30, 52, 26, 50, (x, y, z) => z - 28 > 9 && Math.abs(x - 30 - (z - 28) * 0.4) < 11 && m.get(Math.floor(x), Math.floor(y), Math.floor(z)) === dome, 0));
+    m.sub(() => shape(m, 8, 10, 30, 52, 26, 50, (x, y, z) => z - 28 > 9 && Math.abs(x - 30) < 10 && m.get(Math.floor(x), Math.floor(y), Math.floor(z)) === dome, 0));
     m.cylinder(30, 28, 33, 36, 3, rib[0]); m.cylinder(30, 28, 37, 38, 1.5, rib[1]);
     // side nursery tanks with water and tiny fry
     for (const [x, z] of [[56, 22], [57, 38]]) {
@@ -580,6 +588,9 @@ export const MODEL_IDS = new Set(Object.keys(MODELS));
 
 // Base building scale in the world (at depth z = 0); the perspective scale multiplies this.
 export const WORLD_SCALE = 0.85;
+// Buildings face the viewer square-on (yaw 0) and are seen slightly from above, like the 3D seabed:
+// they sit level on the floor with horizontal edges parallel to the screen.
+export const BUILD_YAW = 0, BUILD_PITCH = 24;
 
 // ---------------------------------------------------------------- rendering + caches
 
@@ -618,7 +629,7 @@ function renderBuilding(id, scale, yaw) {
     return { canvas: p.canvas, glow: p.glow, ox: p.ox, oy: p.oy, w: p.w, h: p.h, anchors: { top }, lights: p.lights || [], decor: true };
   }
   const b = modelOf(id);
-  const r = renderVoxels(b.m, { scale: (b.vs ?? 1.6) * scale, yaw: yaw ?? b.yaw ?? 30, pitch: b.pitch ?? 26, glowRadius: 3 });
+  const r = renderVoxels(b.m, { scale: (b.vs ?? 1.6) * scale, yaw: yaw ?? BUILD_YAW, pitch: BUILD_PITCH, glowRadius: 3 });
   const anchors = {};
   for (const [k, a] of Object.entries(b.anchors || {})) {
     const [x, y] = r.project(a[0], a[1], a[2]);

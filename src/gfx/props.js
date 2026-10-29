@@ -1,14 +1,19 @@
 // Voxel props for every biome, the aquarium and the shop. Each prop is a hand-built,
 // seeded voxel model rendered once (cached) by voxel.js into a pixel-art sprite.
 //
-// getProp(id, {scale, variant, frame}) -> {canvas, glow, ox, oy, w, h, screens, lights, anchors?, front?}
+// getProp(id, {scale, variant, frame, yaw?, pitch?}) -> {canvas, glow, ox, oy, w, h, screens, lights, anchors?, front?}
+//   yaw / pitch (degrees) override the prop's own 3/4 camera (yaw 0 = straight front view).
 //   (ox, oy) = ground contact point (footprint centre); draw at (x - ox, y - oy).
 //   screens: [{x, y, w, h}] emissive screen faces (largest inner rect) for animated content.
 //   lights:  [{x, y, r, color}] suggested light sources, canvas-relative.
 //   shop_stall also returns `front` (counter-only overlay to draw after the shopkeeper) and
 //   `anchors.keeper` (where the shopkeeper's feet go), both canvas-relative.
-// PROPS[id] = {name, biome, tags, decor: {price, size: 1 small | 2 medium | 3 large} | null, decorOnly}
+// PROPS[id] = {name, biome, tags, decor: {price, size: 1 small | 2 medium | 3 large} | null, decorOnly,
+//   desc? (shop flavour text), animated? (true for hand-animated interactive decor)}
 //   biome is 'shallows' | 'junkyard' | 'abyss', or 'aquarium' (decor-only items) / 'shop' (shop_stall).
+// propInteract(id) -> click / animation / fish-use spec (see "interactions" below); ANIMATED_DECOR = ids.
+// getProp(...) may also return `part` ({canvas, glow}: movable layer, e.g. a launching rocket) and
+// `front` (canvas of a tub's front walls, drawn over a fish sitting inside).
 // PROP_VARIANTS[id] = [{variant, frame, label}] notable variants/frames (for galleries and shops).
 //   Animated: treasure_chest frame 0 closed / 1 open, server_rack frame 0/1 LED blink.
 //   Coloured variants: crystal_cluster 0-4 (amethyst, emerald, topaz, sapphire, ruby), corals,
@@ -401,7 +406,7 @@ const INTERACT = {};
 function def(id, meta, build) {
   DEFS[id] = { meta: { name: meta.name, biome: meta.biome, tags: meta.tags || [], decor: meta.decor || null, decorOnly: !!meta.decorOnly }, build };
   if (meta.desc) DEFS[id].meta.desc = meta.desc;
-  if (meta.interact) INTERACT[id] = meta.interact;
+  if (meta.interact) { INTERACT[id] = meta.interact; DEFS[id].meta.animated = true; }
 }
 
 // ===================== SUNNY SHALLOWS =====================
@@ -2054,7 +2059,7 @@ def('ribcage', { name: 'Leviathan Ribs', biome: 'abyss', tags: ['bone', 'hero', 
   biolum(m, rng, 14, bone, '#5ff4ff');
   biolum(m, rng, 6, bone, '#c07bff');
   sandMound(m, 60, 50, 46, 36, 6, 8, ABYSS_SILT);
-  return { m, yaw: 30, vs: 1.6, light: '#5ff4ff' };
+  return { m, yaw: 30, vs: 1.6, light: '#5ff4ff', turn: -32 };
 });
 
 def('giant_skull', { name: 'Giant Skull', biome: 'abyss', tags: ['bone', 'glow'], decor: { price: 550, size: 2 } }, ({ rng }) => {
@@ -2633,6 +2638,17 @@ def('bridge', { name: 'Moon Bridge', biome: 'aquarium', tags: ['build', 'swimthr
 // points (projected per frame) used by the aquarium for particles and fish behaviours, `split`
 // marks voxels rendered into a separate movable layer (`part`, e.g. a launching rocket).
 
+// Frame-independent geometry shared by every frame of an animated prop: built once, cloned per frame.
+const BASES = new Map();
+function frameBase(key, build) {
+  let b = BASES.get(key);
+  if (!b) { b = build(); BASES.set(key, b); }
+  const m = new VoxelModel(b.m.nx, b.m.ny, b.m.nz);
+  m.data.set(b.m.data);
+  m.palette = b.m.palette.slice();
+  return { ...b, m };
+}
+
 // Rounded box from its signed distance (r = corner radius).
 function rbox(m, x0, y0, z0, x1, y1, z1, r, c) {
   const cx = (x0 + x1 + 1) / 2, cy = (y0 + y1 + 1) / 2, cz = (z0 + z1 + 1) / 2;
@@ -2747,7 +2763,8 @@ def('toilet', {
   m.cylinder(40, 4, 27, 35, 3.8, paper, 'z');
   m.cylinder(40, 4, 35, 35, 1.5, core, 'z');
   m.box(38, 0, 36, 42, 0, 43, paper);
-  const front = (x, y, z) => { const v = m.get(x, y, z); return z + 0.5 > cz && y < 28 && v !== water && v !== swirl; };
+  // Bowl front (only on the lid-up frame a hiding fish uses): drawn over the fish diving in.
+  const front = frame === 1 ? (x, y, z) => { const v = m.get(x, y, z); return z + 0.5 > cz && y < 28 && v !== water && v !== swirl; } : null;
   return { m, yaw: 30, ground: [cx, 0, 25], front, anchors: { bowl: [cx, 18, cz + 2], top: [cx, 49, 7] } };
 });
 
@@ -3223,58 +3240,64 @@ def('mini_volcano', {
     ambient: [{ kind: 'smoke', from: 'crater', every: 2.8, n: 2 }], shake: 0.8, fish: 'flee',
   },
 }, ({ frame }) => {
-  const m = new VoxelModel(66, 62, 58);
-  const rock = ['#5a4a4c', '#4a3c42', '#6c5a54', '#7a4a3a'].map((c) => m.color(c, { jitter: 0.12, smooth: 0.4 }));
-  const ash = m.color('#3a3036', { jitter: 0.08 });
-  const glowC = frame === 0 ? m.color('#b8482a', { emissive: 0.45, jitter: 0.04 }) : m.color('#ffb03a', { emissive: 1, jitter: 0.03 });
+  const cx = 34, cz = 28, seed = 11;
+  const Rat = (y, a) => 27 - y * 0.5 + (noise3(Math.cos(a) * 2 + 5, y * 0.12, Math.sin(a) * 2, seed) - 0.5) * 7;
+  const B = frameBase('mini_volcano', () => {
+    const m = new VoxelModel(66, 62, 58);
+    const rock = ['#5a4a4c', '#4a3c42', '#6c5a54', '#7a4a3a'].map((c) => m.color(c, { jitter: 0.12, smooth: 0.4 }));
+    const ash = m.color('#3a3036', { jitter: 0.08 });
+    const pool = m.color('#b8482a', { emissive: 0.45, jitter: 0.04 });
+    const trunk = m.color('#9a6a3a', { jitter: 0.05 });
+    const leaf = [m.color('#4ab85a', { smooth: 0.3 }), m.color('#7ad86a', { smooth: 0.3 })];
+    shape(m, 0, 0, 0, 65, 44, 57, (x, y, z) => {
+      const dx = x - cx, dz = z - cz, r = Math.hypot(dx, dz);
+      if (y > 41) return false;
+      if (r > Rat(y, Math.atan2(dz, dx))) return false;
+      return !(y > 33 && r < (y - 33) * 0.75 + 3.5);
+    }, (x, y, z) => (y > 34 && h3(x, y, z, 2) < 0.4 ? rock[3] : rock[Math.floor(fbm3(x * 0.15, y * 0.15, z * 0.15, 2, seed) * 2.99 * 1.2) % 3]));
+    shape(m, cx - 9, 33, cz - 9, cx + 9, 35, cz + 9, (x, y, z) => Math.hypot(x - cx, z - cz) < 4 + (y - 33) * 0.75, (x, y, z, p) => (p ? null : pool));
+    m.recolor((x, y, z, p) => (y > 32 && Math.hypot(x + 0.5 - cx, z + 0.5 - cz) < 8 && m.exposed(x, y, z) && p !== pool ? ash : null));
+    // A tiny palm tree on the beach.
+    const px = 9, pz = 46;
+    sandMound(m, px + 2, pz - 2, 9, 8, 2, 3);
+    m.tube([[px, 1, pz, 1.4], [px + 1, 8, pz, 1.2], [px + 3, 15, pz - 1, 1.1], [px + 6, 20, pz - 1, 1]], trunk, 3);
+    for (let k = 0; k < 6; k++) {
+      const a = k * 1.05;
+      m.tube([[px + 6, 21, pz - 1, 0.9], [px + 6 + Math.cos(a) * 4, 23, pz - 1 + Math.sin(a) * 4, 0.8], [px + 6 + Math.cos(a) * 8, 19, pz - 1 + Math.sin(a) * 8, 0.6]], leaf[k % 2], 3);
+    }
+    m.sphere(px + 6, 20, pz, 1.3, trunk);
+    return { m, pool };
+  });
+  const m = B.m;
   const lava = m.color('#ff7a1a', { emissive: 1, jitter: 0.04 });
   const core = m.color('#ffe46a', { emissive: 1, jitter: 0.02 });
   const crack = m.color('#ff5a2a', { emissive: 0.9, jitter: 0 });
-  const trunk = m.color('#9a6a3a', { jitter: 0.05 });
-  const leaf = [m.color('#4ab85a', { smooth: 0.3 }), m.color('#7ad86a', { smooth: 0.3 })];
-  const cx = 34, cz = 28, seed = 11;
-  const Rat = (y, a) => 27 - y * 0.5 + (noise3(Math.cos(a) * 2 + 5, y * 0.12, Math.sin(a) * 2, seed) - 0.5) * 7;
-  shape(m, 0, 0, 0, 65, 44, 57, (x, y, z) => {
-    const dx = x - cx, dz = z - cz, r = Math.hypot(dx, dz);
-    if (y > 41) return false;
-    if (r > Rat(y, Math.atan2(dz, dx))) return false;
-    return !(y > 33 && r < (y - 33) * 0.75 + 3.5);
-  }, (x, y, z) => (y > 34 && h3(x, y, z, 2) < 0.4 ? rock[3] : rock[Math.floor(fbm3(x * 0.15, y * 0.15, z * 0.15, 2, seed) * 2.99 * 1.2) % 3]));
-  // Crater pool, glowing cracks, lava streams growing down the visible flanks.
-  shape(m, cx - 9, 33, cz - 9, cx + 9, 35, cz + 9, (x, y, z) => Math.hypot(x - cx, z - cz) < 4 + (y - 33) * 0.75, (x, y, z, p) => (p ? null : glowC));
-  m.recolor((x, y, z, p) => (y > 32 && Math.hypot(x + 0.5 - cx, z + 0.5 - cz) < 8 && m.exposed(x, y, z) && p !== glowC ? ash : null));
-  if (frame >= 1) surface(m, (x, y, z, p) => (y < 30 && y > 3 && h3(x, y, z, 7) < 0.025 && p !== glowC ? crack : null));
+  // Glowing crater and cracks, lava streams growing down the visible flanks, a fountain of blobs.
+  if (frame >= 1) {
+    const hot = m.color('#ffb03a', { emissive: 1, jitter: 0.03 });
+    m.paint(() => m.box(cx - 9, 33, cz - 9, cx + 9, 35, cz + 9, (x, y, z, p) => (p === B.pool ? hot : null)));
+    surface(m, (x, y, z, p) => (y < 30 && y > 3 && h3(x, y, z, 7) < 0.025 && p !== B.pool ? crack : null));
+  }
   if (frame >= 2) {
     const reach = frame === 2 ? 22 : 6;
     for (const a0 of [0.35, 1.05, 1.7]) {
-      const pts = [];
       for (let y = 38; y >= reach; y -= 1) {
         const a = a0 + Math.sin(y * 0.2 + a0 * 3) * 0.12, r = Rat(y, a) - 0.4;
-        pts.push([cx + Math.cos(a) * r, y, cz + Math.sin(a) * r]);
+        const qx = cx + Math.cos(a) * r, qz = cz + Math.sin(a) * r;
+        for (let z = Math.floor(qz - 2.2); z <= qz + 2.2; z++) for (let yy = Math.max(reach - 1, Math.floor(y - 2.2)); yy <= Math.min(40, y + 2.2); yy++) for (let x = Math.floor(qx - 2.2); x <= qx + 2.2; x++) {
+          const v = m.get(x, yy, z);
+          if (!v || v === core) continue;
+          const d = Math.hypot(x + 0.5 - qx, yy + 0.5 - y, z + 0.5 - qz);
+          if (d < 2.2 && m.exposed(x, yy, z)) m.set(x, yy, z, d < 1.1 ? core : lava);
+        }
       }
-      m.recolor((x, y, z, p) => {
-        if (y < reach - 1 || y > 40 || !m.exposed(x, y, z)) return null;
-        for (const q of pts) { const d = Math.hypot(x + 0.5 - q[0], y + 0.5 - q[1], z + 0.5 - q[2]); if (d < 2.2) return d < 1.1 ? core : lava; }
-        return null;
-      });
     }
-    // Fountain of lava blobs above the crater.
     const top = frame === 2 ? 58 : 52;
     for (let i = 0; i < 12; i++) {
       const t = i / 11, y = 40 + t * (top - 40);
       m.sphere(cx + Math.sin(i * 2.1) * (1 + t * 3), y, cz + Math.cos(i * 1.7) * (1 + t * 2), 2.6 - t * 1.2 + h3(i, frame, 1, 2), t < 0.5 ? core : lava);
     }
   }
-  // A tiny palm tree on the beach.
-  const px = 9, pz = 46;
-  sandMound(m, px + 2, pz - 2, 9, 8, 2, 3);
-  const tp = [[px, 1, pz, 1.4], [px + 1, 8, pz, 1.2], [px + 3, 15, pz - 1, 1.1], [px + 6, 20, pz - 1, 1]];
-  m.tube(tp, trunk, 3);
-  for (let k = 0; k < 6; k++) {
-    const a = k * 1.05;
-    m.tube([[px + 6, 21, pz - 1, 0.9], [px + 6 + Math.cos(a) * 4, 23, pz - 1 + Math.sin(a) * 4, 0.8], [px + 6 + Math.cos(a) * 8, 19, pz - 1 + Math.sin(a) * 8, 0.6]], leaf[k % 2], 3);
-  }
-  m.sphere(px + 6, 20, pz, 1.3, trunk);
   return { m, yaw: 30, ground: [cx, 0, cz], light: '#ff9a3a', anchors: { crater: [cx, 42, cz] } };
 });
 
@@ -3344,49 +3367,54 @@ def('drawbridge_keep', {
     fish: 'gather', use: { kind: 'hide', at: 'gate', seq: [1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1], fps: 3 },
   },
 }, ({ frame, rng }) => {
-  const m = new VoxelModel(86, 86, 74);
-  const st = CASTLE_STONE.map((c) => m.color(c, { jitter: 0.08 }));
-  const mortar = m.color('#7c7492', { jitter: 0.04 });
-  const tex = masonry(m, st, mortar);
-  const dark = m.color('#1e1828', { jitter: 0.02 });
-  const water = m.color('#3a9ad0', { emissive: 0.12, smooth: 0.5, jitter: 0.03 });
-  const plank = [m.color('#8a5634', { jitter: 0.06 }), m.color('#6e4428', { jitter: 0.06 })];
-  const iron = m.color('#3a3a44', { spec: 1, jitter: 0.03 });
-  const chainC = m.color('#9aa0ac', { spec: 1.2 });
-  const banner = m.color('#d83a4a', { jitter: 0.04 }), gold = m.color('#f2c84a', { spec: 1.2 });
-  const torch = m.color('#ffb84a', { emissive: 1, jitter: 0 });
-  const slit = m.color('#ffd86a', { emissive: 0.8, jitter: 0 });
-  const rk = reefRock(m, rng);
-  // Rock platform with a moat in front.
-  facetRock(m, rng, 43, 3, 34, 42, 7, 34, rk[0], 16);
-  stoneTex(m, rk, 6);
-  m.sub(() => m.box(24, 3, 54, 62, 9, 66));
-  m.box(24, 3, 54, 62, 4, 66, water);
-  // Walls, front towers, keep, central tower.
-  m.box(12, 6, 12, 74, 34, 52, tex);
-  for (let x = 12; x <= 74; x++) for (const z of [12, 52]) if (x % 4 < 2) m.box(x, 35, z, x, 37, z, st[2]);
-  for (let z = 12; z <= 52; z++) for (const x of [12, 74]) if (z % 4 < 2) m.box(x, 35, z, x, 37, z, st[2]);
-  for (const tx of [22, 64]) {
-    m.cylinder(tx, 52, 4, 48, 8, tex);
-    m.cylinder(tx, 52, 48, 50, 9.4, st[2]);
-    for (let k = 0; k < 10; k++) if (k % 2) { const a = (k / 10) * Math.PI * 2; m.box(tx + Math.cos(a) * 8.6, 51, 52 + Math.sin(a) * 8.6, tx + Math.cos(a) * 8.6, 53, 52 + Math.sin(a) * 8.6, st[2]); }
-    m.box(tx - 1, 30, 60, tx, 34, 60, slit);
-    // Banner.
-    m.box(tx - 3, 22, 61, tx + 2, 42, 61, (x, y) => (Math.abs(x - tx + 0.5) < 1 ? gold : banner));
-    for (let x = tx - 3; x <= tx + 2; x++) m.set(x, 21 - (Math.abs(x - tx + 0.5) < 1.5 ? 1 : 0), 61, banner);
-  }
-  m.box(30, 34, 18, 56, 60, 38, tex);
-  for (let x = 30; x <= 56; x++) for (const z of [18, 38]) if (x % 4 < 2) m.box(x, 61, z, x, 63, z, st[2]);
-  m.cylinder(43, 28, 60, 74, 6, tex);
-  m.cone(43, 28, 75, 84, 7.5, 0.5, (x, y) => (y % 3 ? banner : gold));
-  for (const wx of [36, 48]) m.box(wx, 46, 39, wx + 1, 51, 39, slit);
-  // Gate with portcullis (raised on frame 2).
-  m.sub(() => { m.box(36, 6, 46, 50, 24, 53); m.cylinder(43, 50, 24, 27, 7, 0, 'y'); });
-  m.box(36, 6, 46, 50, 27, 46, dark);
+  const B = frameBase('drawbridge_keep', () => {
+    const m = new VoxelModel(86, 86, 74);
+    const st = CASTLE_STONE.map((c) => m.color(c, { jitter: 0.08 }));
+    const mortar = m.color('#7c7492', { jitter: 0.04 });
+    const tex = masonry(m, st, mortar);
+    const dark = m.color('#1e1828', { jitter: 0.02 });
+    const water = m.color('#3a9ad0', { emissive: 0.12, smooth: 0.5, jitter: 0.03 });
+    const plank = [m.color('#8a5634', { jitter: 0.06 }), m.color('#6e4428', { jitter: 0.06 })];
+    const iron = m.color('#3a3a44', { spec: 1, jitter: 0.03 });
+    const chainC = m.color('#9aa0ac', { spec: 1.2 });
+    const banner = m.color('#d83a4a', { jitter: 0.04 }), gold = m.color('#f2c84a', { spec: 1.2 });
+    const torch = m.color('#ffb84a', { emissive: 1, jitter: 0 });
+    const slit = m.color('#ffd86a', { emissive: 0.8, jitter: 0 });
+    const rk = reefRock(m, rng);
+    // Rock platform with a moat in front.
+    facetRock(m, rng, 43, 3, 34, 42, 7, 34, rk[0], 16);
+    stoneTex(m, rk, 6);
+    m.sub(() => m.box(24, 3, 54, 62, 9, 66));
+    m.box(24, 3, 54, 62, 4, 66, water);
+    moss(m, rng, 3, MOSS, 0.3, 0.2, [...rk]);
+    // Walls, front towers, keep, central tower.
+    m.box(12, 6, 12, 74, 34, 52, tex);
+    for (let x = 12; x <= 74; x++) for (const z of [12, 52]) if (x % 4 < 2) m.box(x, 35, z, x, 37, z, st[2]);
+    for (let z = 12; z <= 52; z++) for (const x of [12, 74]) if (z % 4 < 2) m.box(x, 35, z, x, 37, z, st[2]);
+    for (const tx of [22, 64]) {
+      m.cylinder(tx, 52, 4, 48, 8, tex);
+      m.cylinder(tx, 52, 48, 50, 9.4, st[2]);
+      for (let k = 0; k < 10; k++) if (k % 2) { const a = (k / 10) * Math.PI * 2; m.box(tx + Math.cos(a) * 8.6, 51, 52 + Math.sin(a) * 8.6, tx + Math.cos(a) * 8.6, 53, 52 + Math.sin(a) * 8.6, st[2]); }
+      m.box(tx - 1, 30, 60, tx, 34, 60, slit);
+      m.box(tx - 3, 22, 61, tx + 2, 42, 61, (x) => (Math.abs(x - tx + 0.5) < 1 ? gold : banner));
+      for (let x = tx - 3; x <= tx + 2; x++) m.set(x, 21 - (Math.abs(x - tx + 0.5) < 1.5 ? 1 : 0), 61, banner);
+    }
+    m.box(30, 34, 18, 56, 60, 38, tex);
+    for (let x = 30; x <= 56; x++) for (const z of [18, 38]) if (x % 4 < 2) m.box(x, 61, z, x, 63, z, st[2]);
+    m.cylinder(43, 28, 60, 74, 6, tex);
+    m.cone(43, 28, 75, 84, 7.5, 0.5, (x, y) => (y % 3 ? banner : gold));
+    for (const wx of [36, 48]) m.box(wx, 46, 39, wx + 1, 51, 39, slit);
+    // Gate opening.
+    m.sub(() => { m.box(36, 6, 46, 50, 24, 53); m.cylinder(43, 50, 24, 27, 7, 0, 'y'); });
+    m.box(36, 6, 46, 50, 27, 46, dark);
+    for (const tx of [32, 54]) { m.box(tx, 18, 55, tx, 21, 55, plank[1]); m.box(tx, 22, 55, tx, 23, 55, torch); }
+    return { m, plank, iron, chainC };
+  });
+  const { m, plank, iron, chainC } = B;
+  // Portcullis (raised on frame 2) and the drawbridge hinged at the gate sill: up / half / down.
   const pcY = frame === 2 ? 21 : 6;
   for (let x = 37; x <= 49; x += 3) m.box(x, pcY, 51, x, 26, 51, iron);
   for (let y = pcY + 2; y <= 26; y += 4) m.box(36, y, 51, 50, y, 51, iron);
-  // Drawbridge hinged at the gate sill: up / half / down.
   const ang = [Math.PI / 2, Math.PI / 4, 0][frame], cs = Math.cos(ang), sn = Math.sin(ang);
   const L = 14;
   for (let u = 0; u <= L; u += 0.5) for (let t = 0; t <= 1.5; t += 0.5) for (let x = 36; x <= 50; x++) {
@@ -3396,8 +3424,6 @@ def('drawbridge_keep', {
   const ex = 6 + L * sn, ez = 53 + L * cs;
   m.line(35, 26, 53, 36, ex, ez, chainC, 0.5);
   m.line(51, 26, 53, 50, ex, ez, chainC, 0.5);
-  for (const tx of [32, 54]) { m.box(tx, 18, 55, tx, 21, 55, plank[1]); m.box(tx, 22, 55, tx, 23, 55, torch); }
-  moss(m, rng, 3, MOSS, 0.3, 0.2, [...rk]);
   return { m, yaw: 30, vs: 1.5, ground: [43, 0, 38], light: '#ffd86a', anchors: { gate: [43, 12, 60], top: [43, 84, 28] } };
 });
 
@@ -4479,12 +4505,19 @@ def('sunken_car', {
   for (const [fx, fz] of [[22, 10], [68, 10], [22, 42], [68, 42]]) shape(m, fx - 10, 7, fz - 5, fx + 10, 16, fz + 5, (x, y, z) => ((x - fx) / 9.5) ** 2 + ((y - 9) / 7) ** 2 + ((z - fz) / 4.5) ** 2 <= 1, paintD);
   m.box(28, 7, 8, 60, 8, 10, paintD); m.box(28, 7, 42, 60, 8, 44, paintD);
   // Windows: windscreen, side windows split by the B-pillar, rear window.
+  // Windows painted by their position on the shell's cross-section (phi = elevation around the body).
+  const glint = m.color('#6a8a9a', { spec: 2 });
   surface(m, (x, y, z, p) => {
-    if (p !== paint || y < 21 || y > 29) return null;
-    if (x >= 52 && x <= 58) return glass;
-    if (x >= 22 && x <= 27) return glass;
-    if (Math.abs(z + 0.5 - cz) > 9 && x > 29 && x < 51 && (x < 40 || x > 42)) return glass;
-    return null;
+    if (p !== paint) return null;
+    const h = H(x + 0.5), w = W(x + 0.5);
+    if (h <= 0 || w <= 0) return null;
+    const ny = (y + 0.5 - 7) / h, nz = Math.abs(z + 0.5 - cz) / w, phi = Math.atan2(ny, nz);
+    let win = false;
+    if (x > 29 && x < 51 && (x < 39 || x > 42) && phi > 0.6 && phi < 1.12 && ny > 0.58) win = true;
+    if (x >= 51 && x <= 58 && ny > 0.6 && nz < 0.72) win = true;
+    if (x >= 20 && x <= 27 && ny > 0.62 && nz < 0.6) win = true;
+    if (!win) return null;
+    return (x + y) % 9 === 0 ? glint : glass;
   });
   // Rust patches.
   const rust = [m.color('#c27840', { jitter: 0.08 }), m.color('#a4552f', { jitter: 0.08 })];
@@ -4864,9 +4897,27 @@ export function propInteract(id) {
 // Decor-only ids that carry hand-built multi-frame animations (for galleries / dev pages).
 export const ANIMATED_DECOR = Object.keys(INTERACT);
 
+function turnModel(res, deg) {
+  const src = res.m, b = src.bounds();
+  if (!b) return;
+  const c = [(b.x0 + b.x1 + 1) / 2, 0, (b.z0 + b.z1 + 1) / 2];
+  const a = (Math.abs(deg) * Math.PI) / 180, w = b.x1 - b.x0 + 1, dz = b.z1 - b.z0 + 1;
+  const n = Math.ceil(w * Math.cos(a) + dz * Math.sin(a)) + 4;
+  const m = new VoxelModel(n, src.ny, n);
+  m.palette = src.palette;
+  const dc = [n / 2, 0, n / 2];
+  stampRot(m, src, c, dc, 0, deg, 0);
+  const X = (p) => xformPt(p, c, dc, 0, deg, 0);
+  res.m = m;
+  if (res.ground) res.ground = X(res.ground);
+  if (res.anchors) for (const k of Object.keys(res.anchors)) res.anchors[k] = X(res.anchors[k]);
+}
+
 const cache = new Map();
-export function getProp(id, { scale = 1, variant = 0, frame = 0 } = {}) {
-  const key = id + '|' + scale + '|' + variant + '|' + frame;
+// Optional camera overrides: yaw / pitch (degrees) replace the prop's own framing, e.g. yaw 0 renders
+// every prop front-facing with a shared pitch (the ocean); omitted = the prop's tuned 3/4 view.
+export function getProp(id, { scale = 1, variant = 0, frame = 0, yaw = null, pitch = null } = {}) {
+  const key = id + '|' + scale + '|' + variant + '|' + frame + (yaw !== null || pitch !== null ? '|' + yaw + '|' + pitch : '');
   let p = cache.get(key);
   if (p) return p;
   const d = DEFS[id];
@@ -4874,6 +4925,9 @@ export function getProp(id, { scale = 1, variant = 0, frame = 0 } = {}) {
   const rng = new RNG((hashStr(id) ^ Math.imul(variant + 1, 0x9e3779b1)) >>> 0);
   const t0 = performance.now();
   const res = d.build({ rng, variant, frame });
+  // Under a camera override a prop may turn its own model (res.turn degrees about y) so long, thin
+  // pieces (a ribcage seen end-on) keep a readable silhouette in a straight front view.
+  if (yaw !== null && res.turn) turnModel(res, res.turn);
   const t1 = performance.now();
   const opts = {
     scale: (res.vs ?? 1.75) * scale,
@@ -4882,6 +4936,8 @@ export function getProp(id, { scale = 1, variant = 0, frame = 0 } = {}) {
     track: res.screens || [],
     ...(res.render || {}),
   };
+  if (yaw !== null) opts.yaw = yaw;
+  if (pitch !== null) opts.pitch = pitch;
   const r = renderVoxels(res.m, opts);
   const screens = (res.screens || []).map((k) => r.regions[k]?.inner).filter((q) => q && q.w > 0);
   let lights = [];

@@ -11,7 +11,7 @@ import { drawText } from '../gfx/font.js';
 import { RARITY } from '../core/color.js';
 import { compiled } from '../gfx/spritecache.js';
 import { drawFishRig, setFishStyle } from '../gfx/fishrig.js';
-import { voxelFishStats, setVoxelFishBudget, benchVoxel } from '../gfx/voxelfish.js';
+import { voxelFishStats, setVoxelFishBudget, benchVoxel, setVoxelSync } from '../gfx/voxelfish.js';
 import { rigGeom } from '../gfx/fishart.js';
 import { SPECIES, SPECIES_BY_ID } from '../fish/species.js';
 import { School } from '../fish/school.js';
@@ -73,6 +73,7 @@ export function run(params) {
     return;
   }
   const frozen = params.has('frozen');
+  if (frozen) setVoxelSync(true);
   let t = 0, last = performance.now();
   let mouse = null;
   cv.addEventListener('mousemove', (e) => { const r = cv.getBoundingClientRect(); mouse = [(e.clientX - r.left) / 2, (e.clientY - r.top) / 2]; });

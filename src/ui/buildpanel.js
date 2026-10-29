@@ -384,13 +384,13 @@ export class BuildingPanel {
     ctx.fillStyle = '#c8a86a'; ctx.fillRect(pv.x, ground, pv.w, 18);
     ctx.fillStyle = '#e8cf95';
     for (let x = 0; x < pv.w; x += 2) ctx.fillRect(pv.x + x, ground - 1 + Math.round(Math.sin(x * 0.08) * 1), 2, 3);
-    // gentle turntable: a few yaw steps around the hero angle, rendered at a scale that fills the box
+    // front-facing building, rendered at a scale that fills the box
     if (this.fitFor !== b.id) {
       const s0 = buildingSprite(b.id, { scale: 0.62, force: true });
       this.fitFor = b.id;
       this.fitScale = s0 ? Math.min(1.5, 0.62 * Math.min((pv.w - 24) / s0.w, (pv.h - 40) / s0.h)) : 0.62;
     }
-    const yaw = def.decor ? null : 30 + Math.round(Math.sin(t * 0.8) * 2) * 12;
+    const yaw = null;
     const spr = buildingSprite(b.id, { scale: this.fitScale, yaw, force: false }) || buildingSprite(b.id, { scale: this.fitScale, force: true });
     if (spr) {
       const k = spr.approx || 1;

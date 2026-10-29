@@ -104,7 +104,12 @@ export class Dock {
     for (const it of this.items) it.draw = (ctx, hover, t) => this.drawItem(ctx, it, hover, t);
   }
 
-  isVisible(id) { return !this.hidden.has(id) && (this.game.tutorial.dockVisible?.(id) ?? true); }
+  isVisible(id) {
+    const g = this.game;
+    // after the tutorial the floating tab bar takes over these buttons; Cap'n Bloat's stall stays on the seabed
+    if (id !== 'shop' && g.ui.tabbar && !g.tutorial.active) return false;
+    return !this.hidden.has(id) && (g.tutorial.dockVisible?.(id) ?? true);
+  }
 
   layout() {
     const g = this.game;

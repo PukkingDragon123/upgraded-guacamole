@@ -459,11 +459,6 @@ function drawChainRig(ctx, c, st) {
 
 const DEG = Math.PI / 180;
 
-function pendingAnchors(c, st, S, dir) {
-  const L = (c.L || 30) * S, H = (c.H || 20) * S;
-  const x = st.x, y = st.y + (st.bob || 0);
-  return { mouth: [x + dir * L * 0.5, y], top: [x, y - H * 0.6], tail: [x - dir * L * 0.6, y], bottom: [x, y + H * 0.5], eyes: [], pending: true };
-}
 
 function drawVoxelRig(ctx, c, st) {
   const kind = isKind(c);
@@ -485,7 +480,7 @@ function drawVoxelRig(ctx, c, st) {
   const infl = kind ? 0 : Math.round(clamp(st.inflate || 0, 0, 1) * 3);
   const pose = !!(st.pose || st.emotion === 'pose');
   const res = voxelFrame(c, { S, yaw, pitch: ang / DEG, sw, infl, pose, lod, pri: st.pri ?? 1 });
-  if (!res) return pendingAnchors(c, st, S, mirror ? -1 : 1);
+  if (!res) return null; // first frame still building: the pixel rig stands in this once
   const { f, k } = res;
   const sq = clamp(st.squash || 0, -1, 1);
   const kx = k * (1 + 0.22 * sq), ky = k * (1 - 0.2 * sq);
@@ -586,7 +581,7 @@ function drawVoxelChain(ctx, c, st) {
   let pitch = mirror ? Math.PI - dir : dir;
   pitch = Math.atan2(Math.sin(pitch), Math.cos(pitch));
   const res = voxelFrame(c, { S: s, yaw: 0, pitch: clamp(pitch / DEG, -90, 90), sw: 0, infl: 0, pose: false, lod: st.lod || 0, pri: st.pri ?? 1 });
-  if (!res) return pendingAnchors(c, st, s, mirror ? -1 : 1);
+  if (!res) return null;
   const { f, k } = res;
   const items = [];
   const sx = mirror ? -1 : 1;

@@ -341,7 +341,8 @@ export class Finale {
       const rt = b.rodTip();
       return [lerp(b.x ?? rt[0], rt[0], 0.35), (b.y ?? this.surface) - 26];
     }
-    return this.F.toWorld(this.F.W / 2, this.F.H * 0.47);
+    // no boat: the angler pops up at the bottom centre of the screen (see drawPortrait)
+    return this.F.toWorld(this.F.W / 2 + 8, this.F.H * 0.86 - 52);
   }
 
   go(stage) { this.stage = stage; this.st = 0; this.enter(stage); }
@@ -389,7 +390,7 @@ export class Finale {
         F.shake(4);
         F.sfx('splash_small');
         F.sfx('magic');
-        if (this.hasBoat) F.focusCam(hx, hy - 26, 1.85, 3);
+        if (this.hasBoat) F.focusCam(hx, hy - 36, 2.4, 3);
         break;
       }
       case 'igotit': {
@@ -417,7 +418,7 @@ export class Finale {
     switch (this.stage) {
       case 'surface': {
         // haul it right under the surface, thrashing
-        const ty = this.surface !== null ? this.surface + 8 + 4 * f.scale : f.y - 30;
+        const ty = this.surface !== null ? this.surface + 8 + 4 * f.scale : this.from.y - 14;
         f.x = damp(f.x, this.from.x + Math.sin(this.rt * 30) * 2, 10, dt);
         f.y = damp(f.y, ty, 7, dt);
         f.vx = Math.sin(this.rt * 9) * 60; f.vy = -40;
@@ -433,7 +434,8 @@ export class Finale {
         const [hx, hy] = this.hands();
         const u = clamp01(this.st / this.flight);
         const p0 = this.p0;
-        const apex = Math.min(p0[1], hy) - (this.hasBoat ? 70 : 90) - 20 * f.scale;
+        let apex = Math.min(p0[1], hy) - (this.hasBoat ? 70 : 60) - 20 * f.scale;
+        if (!this.hasBoat) apex = Math.max(apex, this.F.toWorld(0, this.F.H * 0.2)[1]);
         const mx = (p0[0] + hx) / 2;
         const x = (1 - u) * (1 - u) * p0[0] + 2 * (1 - u) * u * mx + u * u * hx;
         const y = (1 - u) * (1 - u) * p0[1] + 2 * (1 - u) * u * apex + u * u * hy;
@@ -459,7 +461,7 @@ export class Finale {
         break;
       case 'igotit':
         this.rays = Math.max(0, this.rays - rdt * 1.2);
-        if (this.hasBoat) { const [hx, hy] = this.hands(); F.focusCam(hx, hy - 26, 1.85, 3); }
+        if (this.hasBoat) { const [hx, hy] = this.hands(); F.focusCam(hx, hy - 36, 2.4, 3); }
         if (this.st > (this.compact ? 0.05 : 2.4)) return 'caught';
         break;
       default: break;

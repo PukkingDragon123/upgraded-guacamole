@@ -87,7 +87,7 @@ const LORE = {
   exp4: 'What sleeps below likes shiny things.',
 };
 
-const BIOME_NAMES = { shallows: 'Sunny Shallows', junkyard: 'Junkyard Reef', abyss: 'The Deep Ocean' };
+const BIOME_NAMES = { shallows: 'Sunny Shallows', fjord: 'Frosty Fjord', junkyard: 'Junkyard Reef', metropolis: 'Sunken Metropolis', volcano: 'Lava Rift', abyss: 'The Deep Ocean' };
 const pct = (v) => `${Math.round(v * 100)}%`;
 const mul = (v) => `x${(Math.round(v * 100) / 100).toFixed(2)}`;
 const onoff = (v) => (v ? 'ON' : 'off');

@@ -18,6 +18,7 @@ import { MetropolisBiome } from '../world/biomes/metropolis.js';
 import { EXTRA_SPECIES } from '../fish/species-extra.js';
 import { compiled } from '../gfx/spritecache.js';
 import { drawFishRig, beginRigFrame } from '../gfx/fishrig.js';
+import { audio } from '../core/audio.js';
 
 const TASKBAR_H = 24;
 Object.assign(BIOMES, { fjord: FjordBiome, volcano: VolcanoBiome, metropolis: MetropolisBiome });
@@ -50,6 +51,7 @@ function makeGame(W, H, params, cam) {
 
 export function run(params) {
   if (params.get('mode') === 'species') { runSpecies(params); return; }
+  if (params.get('mode') === 'audio') { runAudio(params); return; }
   const W = Number(params.get('w') || 960), H = Number(params.get('h') || 540);
   const S = Number(params.get('zoom') || 2);
   const cv = document.getElementById('screen');
@@ -274,4 +276,40 @@ function runSpecies(params) {
     else if ((window.__warm = (window.__warm || 0) + 1) < 40) requestAnimationFrame(draw);
   }
   draw();
+}
+
+// ---------------------------------------------------------------- audio self-test
+// Plays every new track, ambience x weather and SFX for a moment and records the master level.
+async function runAudio(params) {
+  const cv = document.getElementById('screen');
+  cv.width = 640; cv.height = 360; cv.style.width = '1280px'; cv.style.height = '720px';
+  const g = ctxOf(cv);
+  const out = [];
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  window.addEventListener('error', (e) => out.push('ERROR ' + e.message));
+  audio.unlock();
+  await wait(300);
+  const m = audio._meter?.();
+  const probe = async (label, fn, ms) => {
+    try { fn(); } catch (e) { out.push('THROW ' + label + ' ' + e.message); }
+    m?.read();
+    await wait(ms);
+    const r = m ? m.read() : { peak: -1, rms: -1 };
+    out.push(`${label}: peak ${r.peak.toFixed(3)} rms ${r.rms.toFixed(4)}`);
+  };
+  const ms = Number(params.get('ms') || 2500);
+  for (const tr of (params.get('tracks') || 'fjord,volcano,metropolis').split(',')) {
+    audio.setAmbience('off');
+    await probe('music ' + tr, () => audio.setMusic(tr), ms);
+  }
+  audio.setMusic(null);
+  if (params.has('tracks')) { window.__audioResults = out; return; }
+  const W = { fjord: [null, 'snowfall', 'blizzard', 'aurora'], volcano: [null, 'eruption', 'sulfur', 'magma'], metropolis: [null, 'neonstorm', 'rushhour', 'blackout'] };
+  for (const [b, list] of Object.entries(W)) for (const w of list) await probe(`amb ${b} ${w || 'bed'}`, () => audio.setAmbience(b, { weather: w, night: false }), ms * 0.8);
+  audio.setAmbience('off');
+  for (const n of ['ice_crack', 'ice_chime', 'penguin', 'eruption_boom', 'neon_buzz', 'train_ding']) await probe('sfx ' + n, () => audio.play(n), 700);
+  window.__audioResults = out;
+  g.fillStyle = '#101820'; g.fillRect(0, 0, 640, 360);
+  out.forEach((l, i) => drawText(g, l, 6, 4 + i * 9, { font: 'small', color: l.startsWith('ERR') || l.startsWith('THR') ? '#ff6a6a' : '#cfe8ff' }));
+  console.log(out.join('\n'));
 }

@@ -149,8 +149,7 @@ export function drawItem(ctx, id, cx, by, o = {}) {
   }
   if (it?.kind === 'blueprint') {
     if (o.building) {
-      const yaw = o.spin ? 30 + Math.round(Math.sin(t * 0.9) * 2) * 15 : null;
-      const s = fittedBuilding(it.builds, bw, bh, yaw);
+      const s = fittedBuilding(it.builds, bw, bh, null);
       if (!s) return false;
       ctx.drawImage(s.canvas, Math.round(cx - s.w / 2), Math.round(by - s.h));
       return true;

@@ -73,7 +73,7 @@ export function drawFightScene(ctx, F, B) {
   ctx.save();
   ctx.globalAlpha = B.hudIn;
   drawPullZone(ctx, F, B);
-  drawCrankRing(ctx, F, B);
+  if (!B.event || B.event.usesCrank) drawCrankRing(ctx, F, B);
   if (B.event) B.event.drawHud(ctx);
   drawInk(ctx, F);
   ctx.restore();
@@ -94,7 +94,7 @@ export function drawFightBands(ctx, F, B) {
   }
   const ty = Math.round(topH / 2);
   drawNamePlate(ctx, F, 14, ty - 12);
-  drawStamina(ctx, F, B, W - (F.game.tutorial?.active ? 96 : 14), ty - 2);
+  drawStamina(ctx, F, B, W - 96, ty - 2);
   drawStatus(ctx, F, B, W / 2, ty - 6);
   const by = H - Math.round(botH / 2) - 2;
   const bw = Math.min(380, Math.round(W * 0.42));
@@ -216,15 +216,26 @@ function drawProgressBar(ctx, F, B, x, y, w) {
   drawText(ctx, 'CATCH', x + w / 2, y + h + 4, { font: 'small', color: '#ffe08a', outline: INK, align: 'center' });
 }
 
+// Cached static art (built once, blitted every frame).
+const ART = new Map();
+function cached(key, w, h, paint) {
+  let c = ART.get(key);
+  if (!c) { c = makeCanvas(w, h); paint(ctxOf(c)); ART.set(key, c); }
+  return c;
+}
+
 function medallion(ctx, cx, cy, icon) {
   cx = Math.round(cx); cy = Math.round(cy);
   const r = 9;
-  for (let yy = -r; yy <= r; yy++) for (let xx = -r; xx <= r; xx++) {
-    const d = Math.hypot(xx, yy);
-    if (d > r + 0.3) continue;
-    ctx.fillStyle = d > r - 1 ? INK : d > r - 2.5 ? (yy < 0 ? '#ffe08a' : '#a86a1a') : '#1a3048';
-    ctx.fillRect(cx + xx, cy + yy, 1, 1);
-  }
+  const disc = cached('medal', r * 2 + 1, r * 2 + 1, (g) => {
+    for (let yy = -r; yy <= r; yy++) for (let xx = -r; xx <= r; xx++) {
+      const d = Math.hypot(xx, yy);
+      if (d > r + 0.3) continue;
+      g.fillStyle = d > r - 1 ? INK : d > r - 2.5 ? (yy < 0 ? '#ffe08a' : '#a86a1a') : '#1a3048';
+      g.fillRect(xx + r, yy + r, 1, 1);
+    }
+  });
+  ctx.drawImage(disc, cx - r, cy - r);
   const ic = getUiIcon(icon);
   if (ic) ctx.drawImage(ic, cx - Math.floor(ic.width / 2), cy - Math.floor(ic.height / 2));
 }
@@ -237,16 +248,20 @@ function drawTensionDial(ctx, F, B, cx, cy) {
   const shake = danger ? Math.round(Math.sin(t * 70) * 1.5) : 0;
   cx += shake;
   // dial face (upper half disc)
-  for (let y = -R - 3; y <= 0; y++) for (let x = -R - 3; x <= R + 3; x++) {
-    const d = Math.hypot(x, y);
-    if (d > R + 3.3) continue;
-    let col;
-    if (d > R + 2) col = INK;
-    else if (d > R) col = y < -R * 0.6 ? '#ffe08a' : '#c8903a';
-    else col = danger && Math.floor(t * 10) % 2 ? '#3a1414' : '#101c2a';
-    ctx.fillStyle = col;
-    ctx.fillRect(cx + x, cy + y, 1, 1);
-  }
+  const red = danger && Math.floor(t * 10) % 2;
+  const face = cached('dial' + (red ? 'r' : ''), R * 2 + 7, R + 4, (g) => {
+    for (let y = -R - 3; y <= 0; y++) for (let x = -R - 3; x <= R + 3; x++) {
+      const d = Math.hypot(x, y);
+      if (d > R + 3.3) continue;
+      let col;
+      if (d > R + 2) col = INK;
+      else if (d > R) col = y < -R * 0.6 ? '#ffe08a' : '#c8903a';
+      else col = red ? '#3a1414' : '#101c2a';
+      g.fillStyle = col;
+      g.fillRect(x + R + 3, y + R + 3, 1, 1);
+    }
+  });
+  ctx.drawImage(face, cx - R - 3, cy - R - 3);
   // coloured scale
   const n = 60;
   for (let i = 0; i <= n; i++) {
@@ -304,13 +319,15 @@ function drawPullZone(ctx, F, B) {
   const blink = tele && Math.floor(t * 10) % 2;
   // pull direction arrow (red) from the fish
   const pa = B.pullDir;
-  const al = R * 0.75;
+  const al = R * 0.8;
   for (let i = 10; i < al; i += 2) {
     const k = i / al;
-    ctx.fillStyle = rgba('#ff5a4a', 0.35 + 0.5 * k);
+    ctx.fillStyle = rgba(INK, 0.5);
+    ctx.fillRect(Math.round(sx + Math.cos(pa) * i) - 1, Math.round(sy + Math.sin(pa) * i) - 1, 4, 4);
+    ctx.fillStyle = rgba('#ff5a4a', 0.4 + 0.6 * k);
     ctx.fillRect(Math.round(sx + Math.cos(pa) * i), Math.round(sy + Math.sin(pa) * i), 2, 2);
   }
-  arrowHead(ctx, sx + Math.cos(pa) * al, sy + Math.sin(pa) * al, pa, '#ff5a4a', 5);
+  arrowHead(ctx, sx + Math.cos(pa) * al, sy + Math.sin(pa) * al, pa, '#ff5a4a', 6);
   // counter zone arc (green) on the opposite side
   const span = 0.95;
   const col = inZ ? '#9affb8' : tele ? '#ffe27a' : '#7dffb0';
@@ -365,11 +382,16 @@ function drawCrankRing(ctx, F, B) {
     arrowHead(ctx, cx + Math.cos(ha) * gr, cy + Math.sin(ha) * gr, ha + Math.PI / 2, '#ffffff', 3);
     return;
   }
-  // ring
+  // ring: dark backing + dashed bright track
   const n = Math.max(24, R * 3);
   for (let i = 0; i < n; i++) {
     const a = (i / n) * TAU;
-    ctx.fillStyle = rgba(col, i % 2 ? 0.35 : 0.7);
+    ctx.fillStyle = rgba(INK, 0.45);
+    ctx.fillRect(Math.round(cx + Math.cos(a) * R) - 1, Math.round(cy + Math.sin(a) * R) - 1, 3, 3);
+  }
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * TAU;
+    ctx.fillStyle = rgba(col, i % 3 === 2 ? 0.3 : 0.85);
     ctx.fillRect(Math.round(cx + Math.cos(a) * R), Math.round(cy + Math.sin(a) * R), 1, 1);
   }
   // motion trail behind the knob

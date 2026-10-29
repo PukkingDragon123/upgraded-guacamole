@@ -15,12 +15,13 @@ import { makeLayer, resizeLayer } from '../core/canvas.js';
 import { clamp, clamp01, damp, hash2, TAU } from '../core/math.js';
 import { mix } from '../core/color.js';
 import { rng } from '../core/rng.js';
-import { rollModel, mirrorModel, idOverlay, idPaint, renderModel } from './voxkit.js';
+import { rollModel, mirrorModel, idOverlay, idPaint, renderModel, WORLD_YAW, WORLD_PITCH } from './voxkit.js';
 import { glowSprite } from './scenery.js';
+import { puffSprites } from './sky.js';
 import { buildBoatModel, BOAT_TIERS } from './boatmodels.js';
 
 const VS = 2;            // px per voxel
-const YAW = 10, PITCH = 16;
+const YAW = WORLD_YAW, PITCH = WORLD_PITCH;
 const ROLLS = [-8, -5.3, -2.7, 0, 2.7, 5.3, 8];
 const CHAR_SCALE = 0.62;
 
@@ -36,7 +37,7 @@ function buildFlag(paint, small) {
     m.set(x, y, 0, x === 0 || y === 0 || y === h - 1 ? edge : ch === '#' ? fishC : field);
   }
   m.set(small ? 3 : 4, small ? 3 : 4, 0, eye);
-  return renderModel(m, { scale: VS, yaw: 0, pitch: 0, outline: true, edges: 0, sideEdges: 0 });
+  return renderModel(m, { scale: VS, flat: true, outline: true, edges: 0, sideEdges: 0 });
 }
 
 export class Boat {
@@ -166,7 +167,8 @@ export class Boat {
     const o = this.ocean;
     const base = o?.waveAt ? o.waveAt(x) : this.level();
     if (base === null || base === undefined) return null;
-    return base - (this.game.water?.surfaceOffset?.(x) || 0);
+    const w = this.game.water;
+    return w?.active ? base - (w.surfaceOffset(x) || 0) : base;
   }
 
   // ---------------------------------------------------------------- update
@@ -236,8 +238,8 @@ export class Boat {
       if (sp > 10) {
         const k = Math.min(1, sp / 260);
         water.disturb(this.x - this.dir * (half + 6), lvl + 4, 0.35 + k * 0.9, 7 + k * 6);
-        water.surf.impulse(this.x + this.dir * (half + 8), -(12 + k * 70), 14);
-        water.surf.impulse(this.x - this.dir * (half + 10), 10 + k * 40, 18);
+        water.surf.impulse(this.x + this.dir * (half + 8), -(5 + k * 22), 12);
+        water.surf.impulse(this.x - this.dir * (half + 10), 4 + k * 14, 16);
         if (k > 0.35 && rng.chance(0.5)) g.particles?.burst?.(this.x + this.dir * (half + 10), lvl - 2, 3, { colors: ['#ffffff', '#d8f4ff'], speed: 50 * k, up: 40, g: 200, life: 0.6, flat: 0.6 });
       } else water.disturb(this.x + rng.float(-half, half), lvl + 6, 0.12, 6);
     }
@@ -379,14 +381,12 @@ export class Boat {
 
   drawSmoke(ctx) {
     if (!this.smoke.length) return;
-    ctx.fillStyle = this.game.world?.night ? '#5a6070' : '#e8eef2';
+    const puffs = puffSprites(this.game.world?.night ? '#565c6c' : '#dfe6ec');
     for (const p of this.smoke) {
       const k = p.t / p.life;
-      const r = Math.max(1, Math.round(p.r + k * 4));
-      ctx.globalAlpha = (1 - k) * 0.55;
-      const x = Math.round(p.x), y = Math.round(p.y);
-      ctx.fillRect(x - r + 1, y - r, r * 2 - 2, r * 2);
-      ctx.fillRect(x - r, y - r + 1, r * 2, r * 2 - 2);
+      const s = puffs[Math.min(puffs.length - 1, Math.max(0, Math.round(p.r * 0.5 + k * 4) - 1))];
+      ctx.globalAlpha = (1 - k) * (1 - k) * 0.85;
+      ctx.drawImage(s, Math.round(p.x - s.width / 2), Math.round(p.y - s.height / 2));
     }
     ctx.globalAlpha = 1;
   }

@@ -7,6 +7,7 @@ import { ctxOf } from '../core/canvas.js';
 import { drawText } from '../gfx/font.js';
 import { Boat } from '../world/boat.js';
 import { BOAT_TIERS } from '../world/boatmodels.js';
+import { THEMES, coralModel, reefFormation, renderCoral, voxAnim, placeAnim } from '../world/coral.js';
 import { palmIsland, lighthouseIslet, sailboat, seaStacks, markerBuoy, factory, gantryCrane, containerStack, rockSpires } from '../world/horizon.js';
 
 function fakeGame(W, H, params, tier) {
@@ -30,6 +31,38 @@ export function run(params) {
   const ctx = ctxOf(cv);
   const view = params.get('view') || 'boats';
   const night = params.get('night') === '1';
+  if (view === 'coral') {
+    const themeId = params.get('theme') || 'shallows';
+    const theme = THEMES[themeId];
+    const scale = Number(params.get('scale') || 1.5);
+    ctx.fillStyle = { shallows: '#2a9ac0', junkyard: '#2e6a5e', abyss: '#14204a' }[themeId];
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = { shallows: '#d8c08a', junkyard: '#6e6a56', abyss: '#2e3450' }[themeId];
+    ctx.fillRect(0, H * 0.42, W, 6); ctx.fillRect(0, H * 0.97, W, 6);
+    const kinds = ['staghorn', 'table', 'fan', 'brain', 'tube', 'bubble', 'pillar', 'whip'];
+    kinds.forEach((k, i) => {
+      const spr = renderCoral(coralModel(k, 10 + i, theme, Number(params.get('size') || 22)), scale, theme);
+      ctx.drawImage(spr.canvas, Math.round(60 + i * 112 - spr.ox), Math.round(H * 0.42 - spr.oy));
+      drawText(ctx, k, 60 + i * 112, H * 0.42 + 10, { align: 'center', color: '#fff', outline: '#000' });
+    });
+    const t0 = performance.now();
+    [[170, 0], [480, 1], [790, 2]].forEach(([x, i]) => {
+      const spr = renderCoral(reefFormation(40 + i, theme, {}), scale, theme);
+      ctx.drawImage(spr.canvas, Math.round(x - spr.ox), Math.round(H * 0.97 - spr.oy));
+    });
+    console.log('formations ms', Math.round(performance.now() - t0));
+    const anims = ['anemone', 'soft', 'kelp', 'seagrass'].map((k, i) => ({ a: placeAnim(voxAnim(k, 5 + i, themeId, k === 'kelp' ? 14 : 18, scale), 60 + i * 80, H * 0.62), k }));
+    let t = 0;
+    const loop = () => {
+      requestAnimationFrame(loop);
+      t += 1 / 60;
+      ctx.fillStyle = { shallows: '#2a9ac0', junkyard: '#2e6a5e', abyss: '#14204a' }[themeId];
+      ctx.fillRect(0, H * 0.44, 380, H * 0.2);
+      for (const { a } of anims) ctx.drawImage(a.frame(t), a.x, a.y);
+    };
+    loop();
+    return;
+  }
   if (view === 'horizon') {
     ctx.fillStyle = night ? '#0a1430' : '#8ccff0';
     ctx.fillRect(0, 0, W, H);

@@ -172,8 +172,8 @@ function cardAction(P, bx, y, appId, L, { cur, next, dl, hl }) {
     if (dl.state === 'confirm') {
       drawText(ctx, 'AWAITING', bx + bw / 2, y + 10, { font: 'small', color: '#c06000', align: 'center' });
       drawText(ctx, 'YOUR OK...', bx + bw / 2, y + 18, { font: 'small', color: '#c06000', align: 'center' });
-      if (hit(P, { x: bx + 4, y: y + 28, w: bw - 8, h: 14 }, () => S.openDialog(P.w), 'dialog')) ctx.fillStyle = '#ffe8a0';
-      A.winButton(ctx, bx + 4, y + 28, bw - 8, 14, 'Show', { font: 'small' });
+      const hov = hit(P, { x: bx + 4, y: y + 28, w: bw - 8, h: 14 }, () => S.openDialog(P.w), 'dialog');
+      A.winButton(ctx, bx + 4, y + 28, bw - 8, 14, 'Show', { font: 'small', hover: hov });
       return;
     }
     const active = S.active() === dl;
@@ -188,7 +188,6 @@ function cardAction(P, bx, y, appId, L, { cur, next, dl, hl }) {
   if (next < 0) {
     A.glossButton(ctx, bx, y + 8, bw, 22, 'INSTALLED', { color: 'grey', disabled: true });
     drawText(ctx, 'MAX TIER!', bx + bw / 2, y + 35, { font: 'small', color: '#2a8a2a', align: 'center' });
-    if (hit(P, { x: bx, y: y + 44, w: bw, h: 9 }, () => g.desktop?.openApp?.(appKey(appId)), 'open')) ctx.globalAlpha = 1;
     link(P, 'open', bx + bw / 2 - 9, y + 46, () => g.desktop?.openApp?.(appKey(appId)), { url: 'file:///C:/Desktop/' + appId });
     return;
   }
@@ -440,7 +439,7 @@ function mainHome(P, x, y, w) {
   for (const id of picks) y = card(P, x, y, w, id);
   y = sectionBar(ctx, x, y + 2, w, 'NEW & HOT THIS WEEK', t, ['#0040c0', '#00a0ff', '#80ffff']);
   for (const id of ['videos', 'moreram'].filter((i) => !picks.includes(i))) y = card(P, x, y, w, id);
-  void S;
+  if (S.st.installed.length >= 3) y = card(P, x, y, w, 'notavirus');
   return y;
 }
 
@@ -627,9 +626,7 @@ function statusBar(P, r, loading) {
 function scrollbar(P, r, view, maxS) {
   const { ctx, w, g } = P;
   const x = r.x + r.w - SW, y0 = view.y, h = view.h;
-  ctx.fillStyle = '#e8e6e0';
-  ctx.fillRect(x, y0, SW, h);
-  for (let yy = y0; yy < y0 + h; yy++) for (let xx = x + ((yy & 1) ? 1 : 0); xx < x + SW; xx += 2) { ctx.fillStyle = '#ffffff'; ctx.fillRect(xx, yy, 1, 1); }
+  ctx.drawImage(A.checker(SW, h), x, y0);
   const up = { x, y: y0, w: SW, h: SW }, dn = { x, y: y0 + h - SW, w: SW, h: SW };
   A.winButton(ctx, up.x, up.y, up.w, up.h, '', { font: 'small' });
   A.winButton(ctx, dn.x, dn.y, dn.w, dn.h, '', { font: 'small' });
@@ -701,7 +698,8 @@ export const appsea = {
     if (!d.back) this.init(w, g);
     const S = store(g);
     S.updateConnect(nowS());
-    if (d.lastT === 0 && !d.loadT0) d.loadT0 = t;
+    if ((d.lastT === 0 && !d.loadT0) || (S.connected && !d.wasConnected)) d.loadT0 = t;
+    d.wasConnected = S.connected;
     d.lastT = t;
     const view = { x: r.x, y: r.y + TB, w: r.w - SW, h: r.h - TB - SBAR };
     d.viewH = view.h;

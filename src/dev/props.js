@@ -1,6 +1,7 @@
 // Dev preview of every voxel prop:
 //   dist/dev/props.html?page=0..4|all&bg=dark&only=id,id&zoom=2&scale=1&debug
 //   &frames[=id,id]  every animation frame of the interactive decor (plus the movable `part` layer)
+//   &yaw=0&pitch=20  camera override (e.g. the ocean's front-facing view)
 //   (debug draws sprite bounds, ground anchor, screen rects, light radii and anchors).
 import { ctxOf } from '../core/canvas.js';
 import { drawText } from '../gfx/font.js';
@@ -22,6 +23,7 @@ export function run(params) {
   const page = all ? 0 : Number(params.get('page') || 0);
   const only = params.get('only');
   const scale = Number(params.get('scale') || 1);
+  const cam = { yaw: params.has('yaw') ? Number(params.get('yaw')) : null, pitch: params.has('pitch') ? Number(params.get('pitch')) : null };
   const cv = document.getElementById('screen');
 
   // Collect entries: [{id, variant, frame, label}]
@@ -45,7 +47,7 @@ export function run(params) {
   const times = [];
   const sprites = entries.map((e) => {
     const s = performance.now();
-    let p = getProp(e.id, { variant: e.variant, frame: e.frame, scale });
+    let p = getProp(e.id, { variant: e.variant, frame: e.frame, scale, ...cam });
     if (e.part && p.part) p = { ...p, canvas: p.part.canvas, glow: p.part.glow };
     times.push([e.id + ':' + e.variant + ':' + e.frame, Math.round(performance.now() - s), p.ms]);
     return { ...e, p };

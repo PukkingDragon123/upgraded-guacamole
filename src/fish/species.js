@@ -1,4 +1,5 @@
-// FISHTOP species collection (Sunny Shallows, Junkyard Reef, The Deep Ocean - biome id 'abyss').
+// FISHTOP species collection (Sunny Shallows, Junkyard Reef, The Deep Ocean - biome id 'abyss'; plus
+// Frosty Fjord / Lava Rift / Sunken Metropolis from species-extra.js: 'fjord', 'volcano', 'metropolis').
 // Theme: affectionate pop-culture parodies (pun names, original designs) and literal pun fish.
 // Schema: docs/ARCHITECTURE.md "Species schema". Looks are authored at the 960x540 logical scale
 // (body len in px; tails/fins add to that). Bait interest 0..3 (unspecified = 0.25).
@@ -7,6 +8,8 @@
 // evolve: {into, afterMinutes} on a species = it evolves in the aquarium (Flopikarp -> Rage Dragon-Karp);
 // evolution-only species carry spawn.never and evolvedFrom.
 // Fight phases grow with rarity and depth; legendaries run 5 phases.
+
+import { EXTRA_SPECIES } from './species-extra.js';
 
 const S = [];
 const add = (o) => S.push(o);
@@ -17,7 +20,7 @@ const SPEC_EXTRA = {}; // extra per-species fields (e.g. evolve) merged in after
 
 add({
   id: 'pixel', name: 'Flopikarp', biome: 'shallows', rarity: 'common',
-  size: [2, 4], weight: [0.005, 0.02],
+  size: [18, 32], weight: [0.3, 1.1],
   look: {
     toon: true,
     body: { len: 18, h: 14, shape: 'box', hump: 0.06, tip: 0.45 },
@@ -2278,11 +2281,19 @@ for (const sp of S) {
 
 for (const sp of S) if (SPEC_EXTRA[sp.id]) Object.assign(sp, SPEC_EXTRA[sp.id]);
 
+// The three newer oceans (Frosty Fjord, Lava Rift, Sunken Metropolis) ship at final size from
+// species-extra.js, so they join after the GROW pass above.
+// (Two names there are nudged from exact show / game titles to puns.)
+const EXTRA_RENAME = { chefsnapper: "Heck's Kitchen Chef-fish", surfermullet: "Subway Surfin' Mullet" };
+for (const sp of EXTRA_SPECIES) {
+  if (S.some((o) => o.id === sp.id)) continue;
+  if (EXTRA_RENAME[sp.id]) sp.name = EXTRA_RENAME[sp.id];
+  S.push(sp);
+}
+
 export { grow as growLook };
 export const SPECIES = S;
 export const SPECIES_BY_ID = Object.fromEntries(S.map((s) => [s.id, s]));
-export const SPECIES_BY_BIOME = {
-  shallows: S.filter((s) => s.biome === 'shallows'),
-  junkyard: S.filter((s) => s.biome === 'junkyard'),
-  abyss: S.filter((s) => s.biome === 'abyss'),
-};
+export const SPECIES_BY_BIOME = Object.fromEntries(
+  ['shallows', 'junkyard', 'abyss', 'fjord', 'volcano', 'metropolis'].map((b) => [b, S.filter((s) => s.biome === b)]),
+);

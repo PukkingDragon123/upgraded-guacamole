@@ -22,8 +22,11 @@ import { baitSprite } from '../fishing/baitart.js';
 
 const BIOMES = [
   { id: 'shallows', name: 'Sunny Shallows', tab: 'Shallows', color: '#3aa0c8', icon: 'sun', water: ['#9ae4f4', '#3a9ec8'] },
+  { id: 'fjord', name: 'Frosty Fjord', tab: 'Fjord', color: '#5aa8d0', icon: 'cloud', water: ['#c8ecf8', '#5a9ac0'] },
   { id: 'junkyard', name: 'Junkyard Reef', tab: 'Junkyard', color: '#6e9a44', icon: 'gear', water: ['#8ab8a0', '#3a6a5a'] },
-  { id: 'abyss', name: 'The Midnight Abyss', tab: 'Abyss', color: '#6a4ab0', icon: 'moon', water: ['#2a3a6a', '#0a0e24'] },
+  { id: 'metropolis', name: 'Sunken Metropolis', tab: 'Metro', color: '#b04a9a', icon: 'home', water: ['#7a5aa8', '#2a1a4a'] },
+  { id: 'volcano', name: 'Lava Rift', tab: 'Lava', color: '#c0562a', icon: 'sparkle', water: ['#a86a4a', '#3a160e'] },
+  { id: 'abyss', name: 'The Deep Ocean', tab: 'Deep', color: '#6a4ab0', icon: 'moon', water: ['#2a3a6a', '#0a0e24'] },
 ];
 const BIOME_BY_ID = Object.fromEntries(BIOMES.map((b) => [b.id, b]));
 

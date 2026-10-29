@@ -3,11 +3,9 @@
 // in by the crane with a splash). Right: a paper fleet catalogue with the five tiers, perks and Buy button.
 // Buying sets game.state.boat.tier (see src/store/boats.js for perk data / boatBonus) and emits 'boatUpgraded'.
 
-import { clamp, clamp01, lerp, ease, formatCommas, hash1 } from '../core/math.js';
-import { makeCanvas, ctxOf } from '../core/canvas.js';
+import { clamp, clamp01, lerp, ease, formatCommas, bayer } from '../core/math.js';
 import { PixelBuffer } from '../gfx/pixel.js';
 import { pack } from '../core/color.js';
-import { bayer } from '../core/math.js';
 import { drawText, measureText, wrapText } from '../gfx/font.js';
 import { drawWood, drawPaper, drawPlank, drawBubble, drawStamp } from './panels.js';
 import { getUiIcon } from '../gfx/uiicons.js';
@@ -386,8 +384,7 @@ export class BoatyardPanel {
     const can = this.sel === cur + 1;
     const label = this.sel <= cur ? (this.sel === cur ? 'Your current boat' : 'Already owned') : can ? `Buy for ${formatCommas(sb.price)}` : 'Buy the one before';
     if (ui.button(ctx, P.x + 14, by, P.w - 28, 22, label, { icon: can ? 'coin' : this.sel <= cur ? 'check' : 'lock', disabled: !can || !!this.drop, tip: can ? sb.desc : null })) this.buy(this.sel);
-    if (this.sel === cur && cur === BOAT_TIERS.length - 1) drawStamp(ctx, P.x + P.w / 2 + 20, P.y + 56, 'FLEET COMPLETE', { color: '#2a8a2a', angle: -0.2 });
-    void t;
+    if (this.sel === cur && cur === BOAT_TIERS.length - 1) drawStamp(ctx, P.x + P.w / 2 + 20, P.y + 56, 'FLEET COMPLETE', { color: '#2a8a2a', angle: -0.2 + Math.sin(t) * 0.01 });
   }
 }
 
@@ -401,4 +398,3 @@ export function perkSummary(tier) {
   return out.join(', ');
 }
 
-void hash1; void makeCanvas; void ctxOf;

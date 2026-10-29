@@ -13,7 +13,8 @@ import { clamp, clamp01, smoothstep, hash2, fbm2, TAU } from '../../core/math.js
 import { RNG } from '../../core/rng.js';
 import { pack } from '../../core/color.js';
 import { tinted, makeLayer } from '../../core/canvas.js';
-import { getProp } from '../../gfx/props.js';
+import { PROPS } from '../../gfx/props.js';
+import { worldProp } from '../voxkit.js';
 import {
   waveLine, waveRuns, paint, gradientStrip, stopPalette, ditherPick, FogLayer, fillWith, drawWobble, makeRays, drawGlow, twinkle, Motes,
   Bubbles, Mask, ridge, quality, inRect, Strands, SwayAnim, cloudTile, DepthScene, BandSet, DepthDecor, qscale, hazeMask,
@@ -72,7 +73,7 @@ export class AbyssBiome extends Biome {
   build(W, H) {
     this.W = W; this.H = H;
     this.top = worldTop(H);
-    this.level = Math.round(this.top * 0.62);
+    this.level = Math.round(this.top * 0.46);
     this.ys = new Int16Array(W + 2);
     this.ys.fill(this.level);
     this.waterStrip = gradientStrip(H, WATER, { levels: 22 });
@@ -92,6 +93,9 @@ export class AbyssBiome extends Biome {
     this.spires = rockSpires(31, { night: ['#0c1838', 0.45] });
     this.spireX = Math.round(W * 0.74);
     this.buoy = { spr: markerBuoy('#2a3a5a'), x: Math.round(W * 0.26) };
+    const jr = new RNG(44);
+    this.jellies = [];
+    for (let i = 0; i < 9; i++) this.jellies.push({ x: jr.float(20, W - 20), y: jr.float(level + 30, -14), ph: jr.float(0, TAU), r: jr.int(2, 4), c: jr.pick(['#7affff', '#c87aff', '#7affb0', '#ff8ad8']), v: jr.float(2, 5) });
     this.moonRays = makeRays(W, -level, { seed: 52, count: 7, sunX: W * 0.6, sunY: level * 1.6, minW: 6, maxW: 22, len: 0.9, color: '#8aa8ff', alpha: 0.35, levels: 3 });
   }
 
@@ -139,6 +143,19 @@ export class AbyssBiome extends Biome {
     ctx.drawImage(this.moonRays, Math.round(Math.sin(t * 0.04) * 14), level);
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
+    // drifting bioluminescent jellies (glows are added in drawFront, after the darkness pass)
+    for (const j of this.jellies) {
+      const pulse = Math.sin(t * 1.6 + j.ph);
+      const x = Math.round(j.x + Math.sin(t * 0.2 + j.ph) * 8), y = Math.round(j.y - pulse * 1.5);
+      ctx.fillStyle = j.c;
+      ctx.globalAlpha = 0.75;
+      const r = j.r + (pulse > 0 ? 0 : 1);
+      ctx.fillRect(x - r, y - 1, r * 2 + 1, 2);
+      ctx.fillRect(x - r + 1, y - 2, r * 2 - 1, 1);
+      ctx.globalAlpha = 0.45;
+      for (let k = -r + 1; k <= r - 1; k += 2) ctx.fillRect(x + k, y + 1 + (k & 1), 1, 3 + ((k + Math.round(t * 3)) & 3));
+      ctx.globalAlpha = 1;
+    }
     // buoy riding the waves, crest + under-glint
     const b = this.buoy, a = b.spr.anchors.water;
     const by = this.waveAt(b.x) + Math.round(Math.sin(t * 1.5) * 1.2);
@@ -215,7 +232,7 @@ export class AbyssBiome extends Biome {
       },
     });
     const place = (id, xf, z, base, variant = 0, extra = {}) => {
-      const p = getProp(id, { scale: qscale(base * D.s(z)), variant });
+      const p = worldProp(id, { scale: qscale(base * D.s(z)), variant });
       const it = D.add({ sprite: p, x: Math.round(xf * W), z, id, variant, ...extra });
       it.p = p; it.left = it.x - p.ox; it.top = it.y - p.oy; it.s = D.s(z);
       return it;
@@ -233,6 +250,7 @@ export class AbyssBiome extends Biome {
       ['pillar_broken', 0.645, 1.18, 1.3, 0], ['crystal_cluster', 0.44, 1.02, 0.9, 1], ['crystal_cluster', 0.575, 1.25, 1.0, 2], ['glow_mushroom', 0.33, 0.78, 0.8, 0],
       ['statue_head', 0.59, 1.42, 1.5, 0], ['pillar_ruin', 0.47, 1.4, 1.4, 0], ['glow_mushroom', 0.68, 0.95, 0.8, 1],
     ];
+    for (const e of [['moai_head', 0.415, 0.66, 0.85], ['fish_statue', 0.535, 1.16, 1.2], ['diver_helmet', 0.665, 0.18, 0.5]]) if (PROPS[e[0]]) P.push(e);
     const placed = P.map(([id, xf, z, base, v]) => place(id, xf, z, base, v || 0));
     // glowing growths on the canyon terraces
     this.ledges = [];
@@ -324,7 +342,7 @@ export class AbyssBiome extends Biome {
     const W = this.W, H = this.H, D = this.D;
     const r = new RNG(29);
     this.decor = new DepthDecor(D);
-    this.snow = new Motes(150, { x0: 0, y0: -10, x1: W, y1: H }, { seed: 5, vx: [-1.5, 1.5], vy: [5, 11], sizes: [1, 1, 1, 2], colors: ['#c8d4f0', '#a8b8e0', '#e8eeff'], alpha: [0.25, 0.7], wob: 3 });
+    this.snow = new Motes(210, { x0: 0, y0: this.level, x1: W, y1: H }, { seed: 5, vx: [-1.5, 1.5], vy: [5, 11], sizes: [1, 1, 1, 2], colors: ['#c8d4f0', '#a8b8e0', '#e8eeff'], alpha: [0.25, 0.7], wob: 3 });
     this.nearSnow = new Motes(40, { x0: 0, y0: -10, x1: W, y1: H }, { seed: 6, vx: [-2, 2], vy: [8, 16], sizes: [2, 2, 3], colors: ['#c8d4f0', '#e8eeff'], alpha: [0.12, 0.35], wob: 5 });
     this.sparks = new Motes(70, { x0: 0, y0: 20, x1: W, y1: H - 40 }, { seed: 7, vx: [-1, 1], vy: [-1.5, 1], sizes: [1], colors: ['#5affff', '#c87aff', '#7affb0', '#7aa8ff'], alpha: [0.5, 1], wob: 6 });
     this.bubbles = new Bubbles(50, '#c8d8ff');
@@ -372,7 +390,9 @@ export class AbyssBiome extends Biome {
     this.fresh = false;
     const drift = wx.current * 34;
     this.sky.update(dt, 0.6 + wx.current);
+    for (const j of this.jellies) { j.y -= j.v * dt * (0.5 + 0.5 * Math.max(0, Math.sin(this.t * 1.6 + j.ph))); j.x += wx.current * 20 * dt; if (j.y < this.level + 20) { j.y = -10; j.x = Math.random() * W; } if (j.x > W + 10) j.x = -10; }
     waveLine(this.ys, W, this.level, this.t * 0.6, 1.3, 0.35, 0.75);
+    this.applySimLift(this.ys);
     this.snow.update(dt * (1 + wx.snow * 0.6), drift, 0);
     this.nearSnow.update(dt * (1 + wx.snow * 0.6), drift * 1.4, 0);
     this.sparks.update(dt, drift * 0.6, 0);
@@ -580,6 +600,7 @@ export class AbyssBiome extends Biome {
   drawFront(ctx, env) {
     const t = this.t, wx = this.wx, q = quality(env), W = this.W, H = this.H;
     if (this.buoy?.lamp && Math.sin(t * 2.2) > 0) drawGlow(ctx, this.buoy.lamp[0], this.buoy.lamp[1], 6, '#ff5a4a', 0.9);
+    if (!env.view || env.view.y0 < 0) for (const j of this.jellies) drawGlow(ctx, j.x + Math.sin(t * 0.2 + j.ph) * 8, j.y, 6 + j.r, j.c, 0.35 + 0.2 * Math.sin(t * 1.6 + j.ph));
     this.nearSnow.draw(ctx, t, 0.8 + wx.snow * 0.5, q * (0.4 + wx.snow * 0.6));
     const n = Math.round(this.sparks.list.length * q * (0.35 + wx.glow * 0.65));
     ctx.globalCompositeOperation = 'lighter';

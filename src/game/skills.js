@@ -74,6 +74,9 @@ export const SKILLS = [
   S('exp2', 'exp', 'Junk Bait License', 500, ['exp1'], [-0.6, 0.56], { unlockBait: ['chip', 'popup'] }, 'Overclocked Chips and Pop-up Ads in the shop.', { icon: 'bait' }),
   S('exp5', 'exp', 'Weather Radio', 400, ['exp1'], [-0.62, 0.7], { forecast: 1 }, 'See the weather forecast and rare-fish weather.', { icon: 'cloud' }),
   S('exp6', 'exp', 'Sonar Ping', 900, ['exp5'], [-0.66, 0.84], { sonar: 1 }, 'Rare fish get a subtle glint.', { icon: 'eye' }),
+  S('exp7', 'exp', 'Frosty Fjord Chart', 220, ['hook3'], [-0.4, 0.3], { unlockBiome: 'fjord' }, 'Sail north to the Frosty Fjord. Requires the Lucky Hook and 4 species discovered.', { icon: 'map', needSpecies: 4 }),
+  S('exp8', 'exp', 'Sunken Metropolis Chart', 1200, ['exp1'], [-0.56, 0.62], { unlockBiome: 'metropolis' }, 'Dive the drowned neon city. Requires 10 species discovered.', { icon: 'map', needSpecies: 10 }),
+  S('exp9', 'exp', 'Lava Rift Chart', 1800, ['exp8'], [-0.5, 0.76], { unlockBiome: 'volcano' }, 'Brave the volcanic vents. Requires 13 species discovered.', { icon: 'map', needSpecies: 13 }),
   S('exp3', 'exp', 'Deep Ocean Map', 2500, ['exp1', 'hook7'], [-0.46, 0.86], { unlockBiome: 'abyss' }, 'Dive into the Deep Ocean. Requires the Lantern Hook and 16 species discovered.', { icon: 'map', needSpecies: 16 }),
   S('exp4', 'exp', 'Deep Ocean Bait License', 1800, ['exp3'], [-0.3, 0.95], { unlockBait: ['lantern', 'relic'] }, 'Lantern Pearls and Ancient Relics in the shop.', { icon: 'skull' }),
 ];

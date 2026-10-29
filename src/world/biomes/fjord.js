@@ -16,7 +16,8 @@ import { mix, rgba, pack } from '../../core/color.js';
 import { makeCanvas, ctxOf, makeLayer, tinted } from '../../core/canvas.js';
 import { flipCanvas } from '../../gfx/pixel.js';
 import { VoxelModel, renderVoxels } from '../../gfx/voxel.js';
-import { getProp, noise3, fbm3 } from '../../gfx/props.js';
+import { noise3, fbm3 } from '../../gfx/props.js';
+import { worldProp, WORLD_YAW, WORLD_PITCH } from '../voxkit.js';
 import {
   paint, dpack, lerpStops, stopPalette, ditherPick, Blend, FogLayer, fillWith, drawWobble, makeRays, drawGlow, twinkle,
   Caustics, lumaMask, waveLine, waveRuns, Strands, Motes, Bubbles, Mask, ridge, todWeights, quality, inRect, bladeSprites,
@@ -86,15 +87,16 @@ export function vprism(m, p0, dir, len, r, tip, c, sides = 6, rot = 0) {
   }, c);
 }
 
-// Cached voxel sprite: build() -> {m, yaw?, pitch?, vs?, lights?: [{at, r, color}], light?, track?, screens?}.
+// Cached voxel sprite: build() -> {m, vs?, lights?: [{at, r, color}], light?, track?, screens?, anchors?, ground?}.
+// Rendered with the shared world camera (voxkit WORLD_YAW / WORLD_PITCH) like every other world prop.
 const MODELS = new Map(), SPRITES = new Map();
-export function voxSprite(key, build, { scale = 1, yaw = 30, pitch = 27, vs = 1.75 } = {}) {
+export function voxSprite(key, build, { scale = 1, vs = 1.75 } = {}) {
   const sk = key + '|' + scale;
   let p = SPRITES.get(sk);
   if (p) return p;
   let res = MODELS.get(key);
   if (!res) { res = build(); MODELS.set(key, res); }
-  const r = renderVoxels(res.m, { scale: (res.vs ?? vs) * scale, yaw: res.yaw ?? yaw, pitch: res.pitch ?? pitch, outline: true, track: res.track || res.screens || [], ...(res.render || {}) });
+  const r = renderVoxels(res.m, { scale: (res.vs ?? vs) * scale, outline: true, track: res.track || res.screens || [], ...(res.render || {}), yaw: WORLD_YAW, pitch: res.flat ? 0 : WORLD_PITCH });
   const lights = [];
   if (res.lights) for (const l of res.lights) { const [x, y] = r.project(...l.at); lights.push({ x: Math.round(x), y: Math.round(y), r: Math.round(l.r * scale), color: l.color }); }
   else {
@@ -795,6 +797,7 @@ export class FjordBiome extends Biome {
           let k = (0.82 + (v - 0.5) * 0.5 + layer) * (1 - smoothstep(30, 420, hp) * 0.3);
           if (slot) k *= 0.55;
           if (top) k = 1.22;
+          if ((hp + fbm2(X * 0.02, z * 3, 2, 99) * 60) % 90 < 1.2 && fbm2(X * 0.05, z * 6, 2, 96) > 0.6) k = 1.18; // pressure ridge
           return [150 * k, 222 * k, Math.min(255, 246 * k)];
         }
         // granite: mottled tone, diagonal joints, snowy ledge lips
@@ -803,11 +806,15 @@ export class FjordBiome extends Biome {
         let k = (0.86 + (m - 0.5) * 0.6) * (1 - smoothstep(30, 420, hp) * 0.38);
         if (fbm2(X * 0.05, hp * 0.05, 2, 92) > 0.6 && Math.abs(Math.sin((X * 0.6 + hp) * 0.09 + fbm2(X * 0.03, hp * 0.03, 2, 94) * 4)) < 0.06) k *= 0.7;
         if (top) return [214, 230, 240];
+        const lv = (hp + fbm2(X * 0.02, z * 3, 2, 97) * 60) % 70;
+        const ledgy = fbm2(X * 0.05, z * 6 + Math.floor(hp / 70) * 3.1, 2, 98) > 0.6;
+        if (lv < 1.6 && ledgy) return [218, 232, 242];   // snowy ledge
+        if (lv < 5 && ledgy) k *= 0.62;                  // its shadow
         return [c[0] * k, c[1] * k, c[2] * k];
       },
     });
     const S = (key, build, xf, z, base, extra = {}) => placeSprite(D, W, voxSprite(key, build, { scale: qscale(base * D.s(z)) }), xf, z, extra);
-    const P = (id, xf, z, base, variant = 0) => placeSprite(D, W, getProp(id, { scale: qscale(base * D.s(z)), variant }), xf, z, { id });
+    const P = (id, xf, z, base, variant = 0) => placeSprite(D, W, worldProp(id, { scale: qscale(base * D.s(z)), variant }), xf, z, { id });
     // near
     S('fj_boulder1', () => boulderModel(11, 1), 0.205, 0.2, 0.8);
     S('fj_crystal0', () => crystalModel(5, 1, 0), 0.815, 0.22, 0.7);
@@ -834,8 +841,8 @@ export class FjordBiome extends Biome {
     this.ship = ship;
     // iced-in chest (secret) and the singing crystals, drawn live in the near band
     const chz = 0.08, chx = Math.round(W * 0.505);
-    this.chestProp = getProp('treasure_chest', { scale: qscale(0.62 * D.s(chz)), frame: 0 });
-    this.chestOpen = getProp('treasure_chest', { scale: qscale(0.62 * D.s(chz)), frame: 1 });
+    this.chestProp = worldProp('treasure_chest', { scale: qscale(0.62 * D.s(chz)), frame: 0 });
+    this.chestOpen = worldProp('treasure_chest', { scale: qscale(0.62 * D.s(chz)), frame: 1 });
     const cy = Math.round(D.floorAt(chx, chz)) + 1, cp = this.chestProp;
     this.chest = { x: chx, y: cy, w: cp.w + 10, h: cp.oy + 10, cracks: 0, shake: 0, t: 0, open: false };
     this.chest.rect = { x: chx - cp.ox - 5, y: cy - cp.oy - 8, w: cp.w + 10, h: cp.oy + 10 };
@@ -996,7 +1003,7 @@ export class FjordBiome extends Biome {
     this.penguins = [-12, -3, 7].map((dx, i) => ({ floe: fl, dx, dir: i === 1 ? -1 : 1, state: 'stand', t: fr.float(1, 4), f: 0, secret: i === 1, y: 0, vx: 0, vy: 0, wx: 0, wy: 0 }));
     // particles
     const sy = this.base;
-    this.slush = new Motes(130, { x0: 0, y0: sy + 4, x1: W, y1: H - 40 }, { seed: 3, vx: [-2, 2], vy: [3, 9], sizes: [1, 1, 1, 2], colors: ['#ffffff', '#e8faff', '#c8f0ff'], alpha: [0.3, 0.8], wob: 4 });
+    this.slush = new Motes(200, { x0: 0, y0: sy + 4, x1: W, y1: H - 40 }, { seed: 3, vx: [-2, 2], vy: [3, 9], sizes: [1, 1, 1, 2], colors: ['#ffffff', '#e8faff', '#c8f0ff'], alpha: [0.3, 0.8], wob: 4 });
     this.iceMotes = new Motes(40, { x0: 0, y0: sy + 10, x1: W, y1: H - 40 }, { seed: 8, vx: [-3, 3], vy: [-2, 2], sizes: [1], colors: ['#ffffff', '#c8fbff', NEON_ICE], alpha: [0.5, 1], wob: 6 });
     this.nearMotes = new Motes(24, { x0: 0, y0: sy + 10, x1: W, y1: H - 30 }, { seed: 9, vx: [-4, 4], vy: [1, 5], sizes: [2, 2, 3], colors: ['#f0fcff', '#d0f4ff'], alpha: [0.12, 0.3], wob: 8 });
     this.airSnow = new Motes(160, { x0: 0, y0: this.top - 10, x1: W, y1: sy + 4 }, { seed: 11, vx: [-6, 6], vy: [12, 26], sizes: [1, 1, 1, 2], colors: ['#ffffff', '#eef6ff'], alpha: [0.5, 1], wob: 5 });
@@ -1190,8 +1197,8 @@ export class FjordBiome extends Biome {
     this.decor.draw(ctx, 2, t, px * 2, py * 0.6, 1 + wx.bliz * 0.6);
     this.drawGlints(ctx, 2, px * 2, py * 0.6);
     this.drawFlock(ctx);
-    const murk = wx.snow * 0.06 + wx.bliz * 0.14;
-    if (murk > 0.01) { ctx.fillStyle = rgba(tod.night > 0.5 ? '#0a1424' : '#8aa4b4', murk); ctx.fillRect(0, Math.max(y0, top), W, y1 - Math.max(y0, top)); }
+    const murk = wx.snow * 0.07 + wx.bliz * 0.26;
+    if (murk > 0.01) { ctx.fillStyle = rgba(tod.night > 0.5 ? '#0a1424' : '#7a94a8', murk); ctx.fillRect(0, Math.max(y0, top), W, y1 - Math.max(y0, top)); }
     this.drawSurface(ctx, env, sy);
   }
 
@@ -1398,7 +1405,7 @@ export class FjordBiome extends Biome {
       ctx.globalCompositeOperation = 'source-over';
       ctx.globalAlpha = 1;
     }
-    this.slush.draw(ctx, t, 0.55 + wx.snow * 0.35 + tod.day * 0.2, q * (0.45 + wx.snow * 0.35 + wx.bliz * 0.2), 0.3);
+    this.slush.draw(ctx, t, 0.55 + wx.snow * 0.35 + wx.bliz * 0.3 + tod.day * 0.2, q * (0.4 + wx.snow * 0.4 + wx.bliz * 0.6), 0.3);
     const dx = this.par.x * 3, dy = this.par.y * 0.8;
     this.bands.draw(ctx, 1, tod, dx, dy);
     const ca = this.causticA(q);
@@ -1528,7 +1535,7 @@ export class FjordBiome extends Biome {
   // ------------------------------------------------------------------ lighting
   lighting(env) {
     const tod = todWeights(env), wx = this.wx;
-    let dark = tod.night * 0.5 + tod.dusk * 0.12 + wx.snow * 0.05 + wx.bliz * 0.14;
+    let dark = tod.night * 0.5 + tod.dusk * 0.12 + wx.snow * 0.06 + wx.bliz * 0.22;
     dark -= wx.aurora * tod.night * 0.08;
     dark *= 1 - skyward(env, this.H) * 0.45;
     let tint = qmix('#a86a74', '#1a2c66', tod.night / Math.max(0.001, tod.night + tod.dusk));
@@ -1576,7 +1583,7 @@ export class FjordBiome extends Biome {
           game.toast?.(`The penguin pops back up with a shiny pebble for you. It is a coin. +${c} coins`, 'coin');
           game.save?.();
         }, 4200);
-        game.toast?.('Pingu dives for something...', 'info');
+        game.toast?.('The penguin dives for something...', 'info');
       } else game.toast?.(['The penguin does a little bow before diving.', 'Splash! Showing off again.', 'It returns with a fish. For itself.'][Math.floor(Math.random() * 3)], 'info');
       return;
     }
