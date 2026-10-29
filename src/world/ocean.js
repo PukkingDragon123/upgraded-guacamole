@@ -6,6 +6,7 @@ import { rgba, mix, hexToRgb } from '../core/color.js';
 import { makeLayer, resizeLayer } from '../core/canvas.js';
 import { drawText } from '../gfx/font.js';
 import { BIOMES } from './biomes/index.js';
+import { worldTop } from './biomes/base.js';
 
 export class Ocean {
   constructor(game) {
@@ -19,8 +20,9 @@ export class Ocean {
     this.travelState = null;
     this.env = {
       daylight: 1, dusk: 0, night: false, weather: 'calm', time: 0, flood: 0, cursor: game.world.cursor,
-      lantern: null, wind: 0, hour: 12, quality: 1,
+      lantern: null, wind: 0, hour: 12, quality: 1, view: null, top: 0,
     };
+    this.top = -400; // world y of the highest point the camera can show (sky / surface view)
     this.reveal = 1; // 0 = plain wallpaper, 1 = full ocean (opening flood animation)
   }
 
@@ -46,6 +48,8 @@ export class Ocean {
   }
 
   onResize() {
+    this.top = Ocean.topFor(this.H);
+    this.env.top = this.top;
     for (const b of Object.values(this.cache)) b.build(this.W, this.H);
     resizeLayer(this.light, this.W, this.H);
   }
@@ -59,6 +63,24 @@ export class Ocean {
   }
 
   floorAt(x, z = 0) { return this.biome.floorAt(x, z); }
+
+  // World y of the highest visible point for a screen height (scroll range + a margin for shake/zoom).
+  static topFor(H) { return worldTop(H); }
+
+  // Still water level the boat floats on (the abyss keeps a distant surface far above its view).
+  waterLevel() {
+    if (this.travelState) return null;
+    const b = this.biome;
+    if (b.boatLevel) return b.boatLevel(this.env);
+    return this.surfaceY();
+  }
+
+  // Animated waterline (biome waves) at world x; the water sim lift is applied on top by the caller.
+  waveAt(x) {
+    const b = this.biome;
+    const v = b.waveAt ? b.waveAt(x, this.env) : null;
+    return v ?? this.waterLevel();
+  }
 
   pickWeather(initial = false) {
     const ws = this.biome.weathers;
@@ -124,31 +146,40 @@ export class Ocean {
     return L;
   }
 
-  // Multiply darkness with additive light pools.
+  // Multiply darkness with additive light pools. Lights are in world space; the pass runs in screen space
+  // (call with any transform: it resets to identity and maps lights through the game camera).
   applyLighting(ctx, L) {
     if (L.dark < 0.02) return;
     const lc = this.light;
-    if (lc.w !== this.W || lc.h !== this.H) resizeLayer(lc, this.W, this.H);
+    const W = this.W, H = this.H;
+    if (lc.w !== W || lc.h !== H) resizeLayer(lc, W, H);
+    const cam = this.game.camera;
+    const [z, ox, oy] = cam?.xform ? cam.xform() : [1, 0, 0];
     const g = lc.ctx;
     const [tr, tg, tb] = hexToRgb(L.tint || '#1a2440');
     const k = clamp01(L.dark);
     g.globalCompositeOperation = 'source-over';
     g.fillStyle = `rgb(${Math.round(lerp(255, tr, k))},${Math.round(lerp(255, tg, k))},${Math.round(lerp(255, tb, k))})`;
-    g.fillRect(0, 0, lc.w, lc.h);
+    g.fillRect(0, 0, W, H);
     g.globalCompositeOperation = 'lighter';
     for (const l of L.lights) {
-      const gr = g.createRadialGradient(l.x, l.y, 0, l.x, l.y, l.r);
-      const [r, gg, b] = hexToRgb(l.color || '#ffffff');
+      const x = l.x * z + ox, y = l.y * z + oy, r = l.r * z;
+      if (x + r < 0 || y + r < 0 || x - r > W || y - r > H || r < 1) continue;
+      const gr = g.createRadialGradient(x, y, 0, x, y, r);
+      const [rr, gg, b] = hexToRgb(l.color || '#ffffff');
       const a = (l.a ?? 1) * k;
-      gr.addColorStop(0, `rgba(${r},${gg},${b},${a})`);
-      gr.addColorStop(0.55, `rgba(${r},${gg},${b},${a * 0.45})`);
-      gr.addColorStop(1, `rgba(${r},${gg},${b},0)`);
+      gr.addColorStop(0, `rgba(${rr},${gg},${b},${a})`);
+      gr.addColorStop(0.55, `rgba(${rr},${gg},${b},${a * 0.45})`);
+      gr.addColorStop(1, `rgba(${rr},${gg},${b},0)`);
       g.fillStyle = gr;
-      g.fillRect(l.x - l.r, l.y - l.r, l.r * 2, l.r * 2);
+      g.fillRect(x - r, y - r, r * 2, r * 2);
     }
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'multiply';
     ctx.drawImage(lc.canvas, 0, 0);
-    ctx.globalCompositeOperation = 'source-over';
+    ctx.restore();
   }
 
   // ------------------------------------------------------------- travel cinematic

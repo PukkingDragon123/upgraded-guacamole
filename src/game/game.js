@@ -30,6 +30,10 @@ import { Wallpaper } from '../desktop/wallpaper.js';
 import { Dock } from '../ui/dock.js';
 import { host } from '../platform/host.js';
 import { installBrowserBridge } from './browserbridge.js';
+import { Boat } from '../world/boat.js';
+import { Build } from '../build/build.js';
+import { WaterFX } from '../gfx/watergl.js';
+import { makeLayer, resizeLayer } from '../core/canvas.js';
 
 export class Game {
   constructor(canvas, params) {
@@ -68,6 +72,11 @@ export class Game {
       rollMods: {},
     };
     this.ocean = new Ocean(this);
+    const wgl = params.get('watergl');
+    this.water = new WaterFX(this, { force: wgl === 'force' || wgl === '1', disabled: wgl === '0' || this.state.settings.waterFx === false });
+    this.worldLayer = makeLayer(8, 8);
+    this.boat = new Boat(this);
+    this.wireSplashes();
     this.desktop = new Desktop(this);
     this.world.desktop = this.desktop;
     this.school = new School(this.world);
@@ -80,6 +89,7 @@ export class Game {
     registerUiIcons();
     registerPanels(this.ui);
     this.tutorial = new Tutorial(this);
+    try { this.build = new Build(this); } catch (e) { console.error(e); this.build = null; }
     this.ocean.setBiome(this.state.biome);
     this.screen.onResize(() => this.onResize());
     this.onResize();
@@ -111,6 +121,8 @@ export class Game {
     const { W, H } = this.screen;
     this.world.W = W; this.world.H = H;
     this.ocean.onResize();
+    this.surfaceScroll = -Math.round(H * 0.62);
+    this.camera.setScrollRange(this.surfaceScroll, 0);
     this.desktop.onResize();
     this.aquarium.onResize?.();
     this.wallpaper.onResize?.();

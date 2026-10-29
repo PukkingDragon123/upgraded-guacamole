@@ -99,6 +99,16 @@ export class Camera {
     return [z, Math.round(W / 2 - cx * z + this.ox), Math.round(H / 2 - cy * z + this.oy)];
   }
 
+  // Visible world rectangle {x0, y0, x1, y1, z} (includes shake/zoom).
+  view() {
+    const [z, ox, oy] = this.xform();
+    const W = this.game.screen.W, H = this.game.screen.H;
+    return { x0: -ox / z, y0: -oy / z, x1: (W - ox) / z, y1: (H - oy) / z, z };
+  }
+
+  // 0 = default underwater view, 1 = fully scrolled up to the surface view.
+  surfaceK() { return this.minScroll < 0 ? clamp(this.scrollY / this.minScroll, 0, 1) : 0; }
+
   worldToScreen(x, y) {
     const [z, ox, oy] = this.xform();
     return [x * z + ox, y * z + oy];

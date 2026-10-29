@@ -311,13 +311,13 @@ const spineAt = (c, u, phase) => c.bend * Math.sin(TAU * phase - u * 3.2) * u * 
 // Clean pixel-art quantisation: a 2x2 checker only where a value sits between two tones.
 function rampPick(R, b, x, y, dither = 0.85) {
   const n = R.length - 1;
-  const chk = ((x + y) & 1) ? 0.5 : -0.5;
+  const chk = VOXM ? 0 : ((x + y) & 1) ? 0.5 : -0.5;
   const idx = clamp(Math.round(b * n + chk * Math.min(0.3, dither * 0.3)), 0, n);
   return R[idx];
 }
 // 7-tone index pick with checker transitions; idx in tone units (0 darkest .. 6 lightest).
 function tone(R, idx, x, y) {
-  const chk = ((x + y) & 1) ? 0.2 : -0.2;
+  const chk = VOXM ? 0 : ((x + y) & 1) ? 0.2 : -0.2;
   return R[clamp(Math.round(5 + (idx - 3) * 1.5 + chk), 0, R.length - 1)];
 }
 // 10 hue-shifted tones per colour (index 5 = base); tone() maps the 0..6 authoring scale onto them.
@@ -389,6 +389,36 @@ function rectFor(box, angle, scale, ox, oy, w, h) {
 
 let gOut = 0;
 let patLight = 0;
+// Voxel albedo mode (voxelfish.js): no checker dither, no 2D form shading / outline, raw buffers out.
+let VOXM = false;
+
+/** Run fn with the painters in voxel albedo mode (flat tones; the voxel renderer does the lighting). */
+export function voxAlbedo(fn) {
+  const prev = VOXM;
+  VOXM = true;
+  try { return fn(); } finally { VOXM = prev; }
+}
+
+/** rasterLayer in voxel albedo mode: returns {data, glow, w, h, x, y} (packed pixels) or null data. */
+export function rasterLayerVox(c, layer, q) {
+  return voxAlbedo(() => rasterLayer(c, layer, q));
+}
+
+/** Kind/chain head face sprite raw pixels (voxel albedo mode). */
+export function chainHeadVox(c, s) {
+  return voxAlbedo(() => {
+    const r = c.chain.r * s;
+    const hb = Math.ceil(r * 4.5 + 6);
+    const buf = new PixelBuffer(hb * 2, hb * 2);
+    const face = paintChainHead(c, buf, null, hb, hb, 0, s, 0);
+    return { data: buf.data, w: buf.w, h: buf.h, o: hb, face };
+  });
+}
+
+/** Chain segment colour at normalised disc coords (dx, dy in -1..1). */
+export function chainSegColor(c, dx, dy, x, y) {
+  return voxAlbedo(() => segColor(c, dx, dy, x, y));
+}
 
 function finShape(type, t, phase, count) {
   switch (type) {
@@ -1111,10 +1141,12 @@ function bodyPix(c, G, xp, lx, ly, px, py, s, sw, still) {
     idx += (opU - u) * 0.8;
   }
   // form shading: dark dorsal ridge, belly core shadow, darker peduncle
-  if (dT < 1.05) idx -= 1;
-  if (dB < 1.2) idx -= 1.9;
-  else if (dB < 2.3) idx -= 0.8;
-  if (u > 0.82) idx -= (u - 0.82) * 3.5;
+  if (!VOXM) {
+    if (dT < 1.05) idx -= 1;
+    if (dB < 1.2) idx -= 1.9;
+    else if (dB < 2.3) idx -= 0.8;
+    if (u > 0.82) idx -= (u - 0.82) * 3.5;
+  }
   patLight = 0;
   let patHit = false;
   for (const pat of c.patterns) {
@@ -1170,7 +1202,7 @@ function bodyPix(c, G, xp, lx, ly, px, py, s, sw, still) {
     if (Math.abs((u - nu) * L * s) < 0.55 && Math.abs((v - nv) * top * s) < 0.55) idx = 0.6;
   }
   // specular strip along the upper flank and head
-  if (c.shine && c.spec) {
+  if (c.shine && c.spec && !VOXM) {
     const sv0 = vb - 0.24, sv1 = vb - 0.02;
     if (v > sv0 && v < sv1 && u > 0.05 && u < 0.7) {
       const dash = u < opU + 0.04 || (Math.floor(lx * s / 2) & 1) === 0;
@@ -3244,6 +3276,25 @@ function finishBuf(c, buf, glow, sil, noOutline = false) {
   }
 }
 
+// Raw (voxel mode) crop: packed pixel arrays instead of canvases.
+function rawOut(buf, glow) {
+  const { w, h, data } = buf;
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (data[y * w + x] >>> 24 || (glow && glow.data[y * w + x])) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  }
+  if (x1 < 0) return { data: null, glow: null, w: 0, h: 0, x: 0, y: 0 };
+  const cw = x1 - x0 + 1, ch = y1 - y0 + 1;
+  const d = new Uint32Array(cw * ch);
+  const g = glow ? new Uint32Array(cw * ch) : null;
+  for (let y = 0; y < ch; y++) {
+    const so = (y + y0) * w + x0;
+    d.set(data.subarray(so, so + cw), y * cw);
+    if (g) g.set(glow.data.subarray(so, so + cw), y * cw);
+  }
+  return { data: d, glow: g, w: cw, h: ch, x: x0, y: y0 };
+}
+
 // Crop transparent margins; returns canvases plus the crop offset inside the source buffer.
 function cropOut(buf, glow) {
   const { w, h, data } = buf;
@@ -3313,6 +3364,7 @@ export function rasterLayer(c, layer, q) {
     const buf = new PixelBuffer(B.w, B.h);
     const glow = c.glow ? new PixelBuffer(B.w, B.h) : null;
     K.paint(c, layer, buf, glow, B.ox, B.oy, s, q.ph || 0, q);
+    if (VOXM) return rawOut(buf, glow);
     finishBuf(c, buf, glow, false);
     return cropOut(buf, glow);
   }
@@ -3328,6 +3380,12 @@ export function rasterLayer(c, layer, q) {
   const ph = q.ph || 0;
   const prm = { still: q.still, inflate: q.inflate, sw: layer === 'body' ? ph : 0, tp: ph, fp: ph, raise: q.raise || 0 };
   paintGeneric(c, buf, glow, rect.x0, rect.y0, B.ox, B.oy, angle, s, layer, prm, G, rect);
+  if (VOXM) {
+    const raw = rawOut(buf, glow);
+    raw.x += rect.x0;
+    raw.y += rect.y0;
+    return raw;
+  }
   finishBuf(c, buf, glow, false, layer === 'front');
   const out = cropOut(buf, glow);
   out.x += rect.x0;

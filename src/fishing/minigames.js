@@ -1,313 +1,214 @@
-// Fight minigames. Each phase object: update(dt, inp) -> 'ok' | 'win' | 'snap' | 'throw' | 'escape' | 'recover'
-// and draw(ctx) for world-space visuals; drawHud(ctx) for prompts.
+// Species special events, played inside the zoomed fight scene on top of the crank backbone.
+// Each event: update(dt) -> 'ok' | 'win' | 'fail' | 'snap'; drawWorld(ctx) (world space, after the
+// fish); drawHud(ctx) (screen space); title/sub/color for the banner; prompt for the prompt line;
+// meter (0..1) for the HUD event bar; focus {x, y, zoom} to steer the camera; hint() -> screen point.
 
-import { TAU, clamp, clamp01, lerp, dist, damp, pointInPoly, segmentHitsRect } from '../core/math.js';
+import { TAU, clamp, clamp01, lerp, dist, damp, pointInPoly } from '../core/math.js';
 import { rng } from '../core/rng.js';
 import { rgba } from '../core/color.js';
 import { drawText } from '../gfx/font.js';
 
-const PROMPT_Y = 26;
-
-// Shared fish fight movement inside the water.
-export function fightMove(F, dt, tx, ty, speed, acc = 6) {
-  const f = F.fish;
-  const dx = tx - f.x, dy = ty - f.y;
-  const d = Math.hypot(dx, dy) || 1;
-  f.vx = damp(f.vx, (dx / d) * speed, acc, dt);
-  f.vy = damp(f.vy, (dy / d) * speed, acc, dt);
-  f.x += f.vx * dt;
-  f.y += f.vy * dt;
-  F.confine();
+export function drawCircle(ctx, cx, cy, r, color, a = 1, w = 1, dash = 0, rot = 0) {
+  ctx.fillStyle = rgba(color, a);
+  const n = Math.max(12, Math.round(r * 4));
+  let px = null, py = null;
+  for (let i = 0; i < n; i++) {
+    if (dash && Math.floor((i / n) * dash * 2) % 2) continue;
+    const ang = (i / n) * TAU + rot;
+    const x = Math.round(cx + Math.cos(ang) * r), y = Math.round(cy + Math.sin(ang) * r);
+    if (x === px && y === py) continue;
+    ctx.fillRect(x, y, w, w);
+    px = x; py = y;
+  }
 }
 
-function prompt(ctx, F, text, color = '#ffffff') {
-  const c = F.cursor;
-  drawText(ctx, text, Math.round(c.x), Math.round(c.y + PROMPT_Y), { align: 'center', color, outline: '#0b1622', font: 'normal' });
+class Event {
+  constructor(F, B, name) {
+    this.F = F; this.B = B; this.fish = F.fish; this.name = name;
+    this.t = 0;
+    this.home = { x: this.fish.x, y: this.fish.y };
+    this.meter = 0;
+    this.focus = null;
+    this.tension = 0.35;
+    this.usesCrank = false;
+  }
+
+  get power() { return this.B.power; }
+  hint() { return this.F.toScreen(this.fish.x, this.fish.y); }
+  thrashAt(dt, x, y, amp = 2, speed = 8) {
+    const f = this.fish;
+    f.x = damp(f.x, x + Math.sin(this.t * 31) * amp, speed, dt);
+    f.y = damp(f.y, y + Math.cos(this.t * 27) * amp * 0.7, speed, dt);
+    f.vx = Math.sin(this.t * 6) * 40; f.vy = 0;
+  }
+  drawWorld() {}
+  drawHud() {}
 }
 
-// ---------------------------------------------------------------- tension
-export class TensionPhase {
-  constructor(F, opts = {}) {
-    this.F = F;
-    this.name = 'tension';
-    const f = F.fish;
-    this.stamina = opts.stamina ?? 1;
-    this.lineLen = Math.max(40, dist(F.cursor.x, F.cursor.y, f.x, f.y));
-    this.mode = 'pull';
-    this.modeT = rng.float(0.8, 1.6);
-    this.dir = Math.atan2(f.y - F.cursor.y, f.x - F.cursor.x);
-    this.trick = null;
-    this.snapT = 0; this.slackT = 0;
-    this.snag = null;
-    this.hint = 0;
+// ---------------------------------------------------------------- mash: rapid clicks yank it up
+class MashEvent extends Event {
+  constructor(F, B) {
+    super(F, B, 'mash');
+    this.title = 'MASH!'; this.sub = 'Click as fast as you can!'; this.color = '#ffe27a';
+    this.meter = 0.1;
+    this.dur = 4.5 + (1 - this.power) * 1.5;
+    this.combo = 0;
+    this.prompt = '{mouse_l} CLICK CLICK CLICK!';
+    this.winText = 'POWER YANK!';
   }
 
-  pickMode() {
-    const F = this.F, sp = F.sp, power = F.power;
-    const tricks = sp.fight?.tricks || [];
-    if (this.mode === 'pull') {
-      this.mode = 'rest';
-      this.modeT = rng.float(0.7, 1.5) * (1.2 - power * 0.5);
-    } else {
-      this.mode = 'pull';
-      this.modeT = rng.float(1, 2.4) * (0.7 + power * 0.6);
-      const away = Math.atan2(F.fish.y - F.cursor.y, F.fish.x - F.cursor.x);
-      this.dir = away + rng.float(-1.1, 1.1);
-      if (tricks.length && rng.chance(0.35 + power * 0.3)) this.startTrick(rng.pick(tricks));
+  update(dt) {
+    const F = this.F, f = this.fish, st = F.stats;
+    this.t += dt;
+    this.meter = Math.max(0, this.meter - dt * (0.1 + this.power * 0.12));
+    for (let i = 0; i < F.input.clicks; i++) {
+      this.meter += (0.085 * st.mashPower) / (0.6 + this.power * 0.8);
+      this.combo++;
+      f.squashV += 6;
+      this.home.y -= 1.2;
+      const m = f.anchors?.mouth || [f.x, f.y];
+      F.particles.sparks(m[0], m[1], 4, { speed: [30, 90], g: 60 });
+      F.particles.droplets(f.x, f.y, 2, { spread: Math.PI, speed: [20, 60], g: 40 });
+      const [sx, sy] = F.toScreen(f.x, f.y);
+      F.fx.shockwave(F.input.x, F.input.y, 10, '#ffe27a', { life: 0.25 });
+      F.fx.text?.(sx + rng.float(-30, 30), sy - 30, `${this.combo}`, { color: '#ffe27a', vy: -40, life: 0.5, layer: 'fg' });
+      F.sfx('mash_pop', { pitch: 0.8 + Math.min(1, this.combo * 0.04) });
+      F.setPose('yank', 0.12);
     }
-  }
-
-  startTrick(kind) {
-    const F = this.F, f = F.fish;
-    const w = F.world;
-    switch (kind) {
-      case 'dash': case 'fake': {
-        const d0 = this.dir;
-        this.trick = { kind, t: 0, tele: 0.35, dur: 0.5, dir: kind === 'fake' ? d0 + Math.PI + rng.float(-0.5, 0.5) : d0, teleDir: d0 };
-        f.say(kind === 'fake' ? '!' : '!!', 0.6);
-        f.squashV -= 8;
-        break;
-      }
-      case 'dive':
-        this.trick = { kind, t: 0, tele: 0.25, dur: 0.8, dir: Math.PI / 2 + rng.float(-0.3, 0.3) };
-        f.say('arrow_d', 0.6);
-        break;
-      case 'jump':
-        if (w.surfaceY !== null && f.y - w.surfaceY < 140) this.trick = { kind, t: 0, phase: 'rise', dur: 2 };
-        break;
-      case 'wrap': {
-        const icons = w.icons || [];
-        let best = null, bd = 180;
-        for (const r of icons) { const d = dist(r.x + r.w / 2, r.y + r.h / 2, f.x, f.y); if (d < bd) { bd = d; best = r; } }
-        if (best) this.trick = { kind, t: 0, icon: best, dur: 2.6, ang: Math.atan2(f.y - best.y - best.h / 2, f.x - best.x - best.w / 2) };
-        break;
-      }
-      case 'hop': {
-        const wins = w.windows || [];
-        if (wins.length >= 1) this.trick = { kind, t: 0, dur: 2.2, from: rng.pick(wins), to: rng.pick(wins) };
-        break;
-      }
-      case 'glitch':
-        this.trick = { kind, t: 0, dur: 0.6 };
-        break;
-      default: break;
-    }
-  }
-
-  update(dt, inp) {
-    const F = this.F, f = F.fish, c = F.cursor, power = F.power, st = F.stats;
-    this.hint += dt;
-    this.modeT -= dt;
-    if (this.modeT <= 0 && !this.trick) this.pickMode();
-    const holding = inp.down;
-    // desired fish motion
-    let speed = this.mode === 'pull' ? (45 + power * 95) : 14;
-    let dir = this.dir;
-    let spike = 0;
-    const tr = this.trick;
-    if (tr) {
-      tr.t += dt;
-      if (tr.kind === 'dash' || tr.kind === 'fake' || tr.kind === 'dive') {
-        if (tr.t < tr.tele) { dir = tr.teleDir ?? tr.dir; speed = 20; f.wiggle = 0.5; }
-        else { dir = tr.dir; speed = (120 + power * 160); spike = 0.45; }
-        if (tr.t > tr.tele + tr.dur) this.trick = null;
-      } else if (tr.kind === 'jump') {
-        this.updateJump(dt, tr);
-        if (tr.done) this.trick = null;
-        return this.common(dt, inp, holding, 0, true);
-      } else if (tr.kind === 'wrap') {
-        tr.ang += dt * 2.6;
-        const r = tr.icon;
-        const cx = r.x + r.w / 2, cy = r.y + r.h / 2, rad = Math.max(r.w, r.h) * 0.9;
-        fightMove(F, dt, cx + Math.cos(tr.ang) * rad, cy + Math.sin(tr.ang) * rad, 140, 8);
-        if (tr.t > tr.dur) this.trick = null;
-        return this.common(dt, inp, holding, 0.1, false);
-      } else if (tr.kind === 'hop') {
-        this.updateHop(dt, tr);
-        if (tr.done) this.trick = null;
-        return this.common(dt, inp, holding, 0.05, false);
-      } else if (tr.kind === 'glitch') {
-        if (tr.t > 0.25 && !tr.jumped) {
-          tr.jumped = true;
-          F.world.particles?.burst(f.x, f.y, 14, { colors: ['#ff3a7a', '#3affd8', '#ffffff'], speed: 60, g: 0, life: 0.4, size: 2 });
-          f.x += rng.float(-60, 60); f.y += rng.float(-40, 40);
-          F.confine();
-          F.world.audio?.play('glitch');
-          spike = 0.3;
-        }
-        if (tr.t > tr.dur) this.trick = null;
-      }
-    }
-    const tx = f.x + Math.cos(dir) * 60, ty = f.y + Math.sin(dir) * 60;
-    fightMove(F, dt, tx, ty, speed, 5);
-    return this.common(dt, inp, holding, spike, false);
-  }
-
-  common(dt, inp, holding, spike, airborne) {
-    const F = this.F, f = F.fish, c = F.cursor, st = F.stats, power = F.power;
-    // reel / line length
-    const d = dist(c.x, c.y, f.x, f.y);
-    let snagMul = 1;
-    this.snag = null;
-    if (!airborne) {
-      for (const r of F.world.icons || []) {
-        if (segmentHitsRect(c.x, c.y, f.x, f.y, { x: r.x + 3, y: r.y + 3, w: r.w - 6, h: r.h - 6 })) { this.snag = r; break; }
-      }
-    }
-    if (this.snag) { snagMul = 0.25; spike += 0.2; this.snag.shake = 0.3; }
-    if (holding && !airborne) this.lineLen = Math.max(14, this.lineLen - st.reelSpeed * snagMul * dt * (this.tension > 0.95 ? 0.2 : 1));
-    // rope constraint
-    let pullAway = 0;
-    if (d > this.lineLen) {
-      const over = d - this.lineLen;
-      const nx = (f.x - c.x) / d, ny = (f.y - c.y) / d;
-      if (holding) {
-        f.x -= nx * over * 0.85; f.y -= ny * over * 0.85;
-        pullAway = clamp01(over / 6);
-      } else {
-        this.lineLen = d;
-        pullAway = 0.25;
-      }
-    }
-    // cursor moving against the fish = counter pressure
-    const fvx = f.vx, fvy = f.vy;
-    const fs = Math.hypot(fvx, fvy) || 1;
-    const cs = c.speed;
-    const against = cs > 20 ? clamp(-(c.vx * fvx + c.vy * fvy) / (fs * cs), -1, 1) : 0;
-    const counter = Math.max(0, against) * clamp01(cs / 220);
-    const struggle = this.mode === 'pull' ? 1 : 0.3;
-    let target = holding ? 0.32 + struggle * 0.33 * (0.6 + power * 0.6) + pullAway * 0.3 : 0.06 + struggle * 0.18 + pullAway * 0.2;
-    target += spike + counter * 0.12;
-    if (airborne) target = 0.02;
-    target /= st.lineStrength;
-    this.tension = this.tension === undefined ? 0.3 : this.tension;
-    const rate = target > this.tension ? 3.2 : 4.5;
-    this.tension = clamp(damp(this.tension, target, rate, dt), 0, 1.2);
-    const T = this.tension;
-    F.tension = T;
-    // stamina
-    if (holding && T > 0.22 && T < 0.92 && !airborne) {
-      const stam = (F.sp.fight?.stamina ?? 5) * (0.8 + power * 0.4);
-      this.stamina -= (dt / stam) * (1 + counter * 1.6) * st.staminaDrain * (this.snag ? 0.4 : 1);
-    }
-    // snap / slack
-    if (T >= 1) this.snapT += dt; else this.snapT = Math.max(0, this.snapT - dt * 2);
-    if (this.snapT > st.snapGrace) return 'snap';
-    if (T < 0.1 && this.mode === 'pull' && !airborne) this.slackT += dt; else this.slackT = Math.max(0, this.slackT - dt);
-    if (this.slackT > st.slackGrace) return 'throw';
-    if (this.slackT > st.slackGrace * 0.5 && !this.warnedSlack) { this.warnedSlack = true; F.world.audio?.play('slack_warn'); }
-    if (this.slackT === 0) this.warnedSlack = false;
-    f.feel(T > 0.8 ? 'angry' : this.mode === 'pull' ? 'determined' : 'tired', 0.3);
-    if (this.stamina <= 0) return 'win';
+    this.thrashAt(dt, this.home.x, this.home.y, 2.5, 10);
+    f.feel(this.meter > 0.6 ? 'scared' : 'angry', 0.2);
+    this.tension = 0.45 + 0.25 * Math.sin(this.t * 20);
+    if (this.meter >= 1) return 'win';
+    if (this.t > this.dur) return this.meter > 0.55 ? 'win' : 'fail';
     return 'ok';
   }
 
-  updateJump(dt, tr) {
-    const F = this.F, f = F.fish, w = F.world;
-    const sy = w.surfaceY;
-    if (tr.phase === 'rise') {
-      fightMove(F, dt, f.x + f.facing * 30, sy - 10, 180, 10, true);
-      if (f.y < sy + 4) {
-        tr.phase = 'air';
-        tr.vy = -rng.float(140, 200);
-        tr.vx = f.facing * rng.float(30, 70);
-        F.world.particles?.splash(f.x, sy, 0.8);
-        F.world.audio?.play('jump_out');
-        f.feel('happy', 1);
-      }
-    } else if (tr.phase === 'air') {
-      tr.vy += 380 * dt;
-      f.x += tr.vx * dt; f.y += tr.vy * dt;
-      f.forceAngle = clamp(Math.atan2(tr.vy, Math.abs(tr.vx)), -1.2, 1.2);
-      if (f.y > sy && tr.vy > 0) {
-        tr.phase = 'down';
-        F.world.particles?.splash(f.x, sy, 1);
-        F.world.audio?.play('splash_small');
-        f.forceAngle = undefined;
-        if (F.input.down) this.tension = Math.min(1.15, (this.tension || 0) + 0.55);
-      }
-    } else {
-      tr.t2 = (tr.t2 || 0) + dt;
-      if (tr.t2 > 0.3) tr.done = true;
+  drawHud(ctx) {
+    const F = this.F, f = this.fish;
+    const [sx, sy] = F.toScreen(f.x, f.y);
+    const R = F.zoneRadius() * 0.8;
+    // segmented power ring around the fish
+    const n = 32;
+    for (let i = 0; i < n; i++) {
+      const a = -Math.PI / 2 + (i / n) * TAU;
+      const on = i / n < this.meter;
+      ctx.fillStyle = on ? (this.meter > 0.75 ? '#9affb8' : '#ffe27a') : rgba('#0b1622', 0.6);
+      ctx.fillRect(Math.round(sx + Math.cos(a) * R) - 1, Math.round(sy + Math.sin(a) * R) - 1, 3, 3);
     }
+    const pulse = 1 + (Math.sin(this.t * 22) > 0 ? 1 : 0);
+    drawText(ctx, '{mouse_l}', sx - 6 * pulse, sy + R + 6, { scale: pulse + 1 });
+    const left = Math.max(0, this.dur - this.t);
+    drawText(ctx, left.toFixed(1) + 's', sx, sy - R - 14, { align: 'center', color: '#ffffff', outline: '#0b1622' });
+  }
+}
+
+// ---------------------------------------------------------------- timing: click on the beat
+class TimingEvent extends Event {
+  constructor(F, B) {
+    super(F, B, 'timing');
+    this.title = 'RHYTHM!'; this.sub = 'Click when the rings meet'; this.color = '#9ad8ff';
+    this.need = 3 + Math.round(this.power * 2);
+    this.hits = 0; this.misses = 0;
+    this.allowed = F.stats.timingMisses;
+    this.beat = 1.15 - this.power * 0.45;
+    this.t = -0.5;
+    this.target = 26;
+    this.flash = null;
+    this.prompt = '{mouse_l} Click when the rings meet!';
+    this.winText = 'IN RHYTHM!';
   }
 
-  updateHop(dt, tr) {
-    const F = this.F, f = F.fish;
-    const a = tr.from, b = tr.to;
-    if (!tr.stage) tr.stage = 'in';
-    if (tr.stage === 'in') {
-      fightMove(F, dt, a.x + a.w / 2, a.y + a.h / 2, 160, 8);
-      if (rectHas(a, f.x, f.y) && tr.t > 0.3) { tr.stage = 'under'; tr.ut = 0.6; }
-      if (tr.t > 1.4) tr.done = true;
-    } else if (tr.stage === 'under') {
-      tr.ut -= dt;
-      if (tr.ut <= 0) {
-        f.x = b.x + rng.float(10, b.w - 10); f.y = b.y + rng.float(10, b.h - 10);
-        tr.stage = 'out';
-        tr.ot = 0.6;
-        tr.exitDir = rng.float(0, TAU);
-      }
-    } else {
-      tr.ot -= dt;
-      fightMove(F, dt, f.x + Math.cos(tr.exitDir) * 80, f.y + Math.sin(tr.exitDir) * 80, 150, 8);
-      if (tr.ot <= 0) tr.done = true;
-    }
+  ring() { return lerp(80, 0, this.t / this.beat); }
+
+  update(dt) {
+    const F = this.F, f = this.fish;
+    this.t += dt;
+    if (this.flash) { this.flash.t += dt; if (this.flash.t > 0.45) this.flash = null; }
+    this.thrashAt(dt, this.home.x + Math.sin(this.t * 3) * 6, this.home.y + Math.cos(this.t * 2.3) * 3, 1, 6);
+    this.tension = 0.4;
+    const r = this.ring();
+    const win = 7 * F.stats.timingWindow;
+    if (F.input.pressed) {
+      const err = Math.abs(r - this.target);
+      if (this.t > 0 && err < win) {
+        const perfect = err < win * 0.4;
+        this.hits++;
+        this.meter = this.hits / this.need;
+        this.flash = { text: perfect ? 'PERFECT!' : 'GOOD!', color: perfect ? '#ffe27a' : '#9affb8', t: 0 };
+        F.sfx(perfect ? 'timing_perfect' : 'timing_good');
+        f.squashV += 10;
+        f.feel('scared', 0.5);
+        this.home.y -= 3;
+        this.B.progress += 0.02;
+        F.particles.stars(f.x, f.y, perfect ? 10 : 6, { speed: [30, 80] });
+        F.particles.shockwave(f.x, f.y, 22, perfect ? '#ffe27a' : '#9affb8');
+        F.setPose('yank', 0.15);
+        this.t = -0.25;
+      } else this.miss();
+    } else if (this.t > 0 && r < this.target - win) this.miss();
+    if (this.hits >= this.need) return 'win';
+    if (this.misses > this.allowed) return 'fail';
+    return 'ok';
   }
 
-  draw(ctx) {
-    if (this.snag) {
-      const r = this.snag;
-      const t = performance.now() / 1000;
-      ctx.fillStyle = rgba('#ff5a5a', 0.5 + 0.3 * Math.sin(t * 12));
-      ctx.fillRect(r.x - 1, r.y - 1, r.w + 2, 1); ctx.fillRect(r.x - 1, r.y + r.h, r.w + 2, 1);
-      ctx.fillRect(r.x - 1, r.y, 1, r.h); ctx.fillRect(r.x + r.w, r.y, 1, r.h);
-    }
+  miss() {
+    this.misses++;
+    this.flash = { text: 'MISS', color: '#ff8a7a', t: 0 };
+    this.F.sfx('timing_miss');
+    this.fish.feel('smug', 0.6);
+    this.B.kick(0.1);
+    this.t = -0.35;
   }
 
   drawHud(ctx) {
-    const F = this.F;
-    F.drawStamina(ctx, this.stamina);
-    F.drawTensionGauge(ctx, F.tension ?? 0);
-    if (this.snag) prompt(ctx, F, 'SNAGGED! Go around the icon', '#ff9a8a');
-    else if (this.trick?.kind === 'jump') prompt(ctx, F, 'It jumped! Let go before it lands!', '#ffe27a');
-    else if ((F.tension ?? 0) > 0.85) prompt(ctx, F, 'Too tight! Let go!', '#ff8a7a');
-    else if (this.slackT > 0.4) prompt(ctx, F, 'Slack line! Hold to reel!', '#9ad8ff');
-    else if (this.hint < 4 || F.tutorial) prompt(ctx, F, '{mouse_hold} Hold to reel - pull AGAINST its swim', '#ffffff');
+    const F = this.F, f = this.fish;
+    const [sx, sy] = F.toScreen(f.x, f.y);
+    drawCircle(ctx, sx, sy, this.target, '#ffffff', 0.95, 2);
+    drawCircle(ctx, sx, sy, this.target - 3, '#ffffff', 0.25, 1);
+    if (this.t > 0) {
+      const r = Math.max(1, Math.round(this.ring()));
+      const close = Math.abs(r - this.target) < 7 * F.stats.timingWindow;
+      drawCircle(ctx, sx, sy, r, close ? '#9affb8' : '#ffe27a', 0.95, 2);
+    }
+    const y = Math.round(sy - this.target - 22);
+    for (let i = 0; i < this.need; i++) {
+      ctx.fillStyle = '#0b1622'; ctx.fillRect(Math.round(sx - this.need * 6 + i * 12) - 1, y - 1, 10, 6);
+      ctx.fillStyle = i < this.hits ? '#ffe27a' : '#2a3a4a'; ctx.fillRect(Math.round(sx - this.need * 6 + i * 12), y, 8, 4);
+    }
+    let hearts = '';
+    for (let i = 0; i <= this.allowed; i++) hearts += i < this.allowed + 1 - this.misses ? '{heart}' : '{heart_empty}';
+    drawText(ctx, hearts, sx, y - 14, { align: 'center' });
+    if (this.flash) drawText(ctx, this.flash.text, sx, sy + this.target + 10 - this.flash.t * 16, { align: 'center', color: this.flash.color, outline: '#0b1622', scale: 2 });
   }
 }
 
-function rectHas(r, x, y) {
-  return x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h;
-}
-
-// ---------------------------------------------------------------- trace
+// ---------------------------------------------------------------- trace: stay on the fish
 const PATHS = {
   figure8: (t) => [Math.sin(t), Math.sin(t * 2) * 0.5],
   circle: (t) => [Math.cos(t), Math.sin(t) * 0.7],
-  zigzag: (t) => [Math.sin(t * 0.5) * 1.1, (Math.abs(((t * 0.8) % 2) - 1) - 0.5) * 1.2],
   wave: (t) => [Math.sin(t * 0.45) * 1.2, Math.sin(t * 2.2) * 0.4],
   spiral: (t) => { const r = 0.4 + 0.6 * Math.abs(Math.sin(t * 0.25)); return [Math.cos(t) * r, Math.sin(t) * r * 0.8]; },
   clover: (t) => { const r = Math.cos(2 * t); return [Math.cos(t) * r, Math.sin(t) * r]; },
 };
 
-export class TracePhase {
-  constructor(F) {
-    this.F = F;
-    this.name = 'trace';
-    const f = F.fish;
-    const w = F.world;
+class TraceEvent extends Event {
+  constructor(F, B) {
+    super(F, B, 'trace');
+    this.title = 'FOLLOW IT!'; this.sub = 'Keep your cursor on the fish'; this.color = '#7dff9a';
     this.kind = rng.pick(Object.keys(PATHS));
-    this.cx = clamp(f.x, 120, w.W - 120);
-    this.cy = clamp(f.y, (w.surfaceY ?? 0) + 70, w.floorAt(f.x) - 70);
-    this.rx = rng.float(70, 120); this.ry = rng.float(45, 70);
-    this.t = 0;
-    this.speed = 0.9 + F.power * 0.9;
-    this.progress = 0;
+    this.rx = rng.float(55, 80); this.ry = rng.float(30, 46);
+    const f = this.fish, w = F.world;
+    const [top, bot] = B.bounds(f.x);
+    this.cx = clamp(f.x, this.rx + 20, w.W - this.rx - 20);
+    this.cy = clamp(f.y, top + this.ry + 6, Math.max(top + this.ry + 6, bot - this.ry - 6));
+    this.pt = 0;
+    this.speed = 0.9 + this.power * 0.8;
     this.outT = 0;
-    this.radius = (24 - F.power * 7) * F.stats.traceRadius;
+    this.radius = (15 - this.power * 4) * F.stats.traceRadius;
     this.inside = false;
-    this.lead = 1.2;
+    this.focus = { x: this.cx, y: this.cy, zoom: 1.7 };
+    this.prompt = 'Keep your cursor on the fish!';
+    this.winText = 'GOT ITS RHYTHM!';
   }
 
   pos(t) {
@@ -315,437 +216,289 @@ export class TracePhase {
     return [this.cx + u * this.rx, this.cy + v * this.ry];
   }
 
-  update(dt, inp) {
-    const F = this.F, f = F.fish, c = F.cursor;
+  hint() { return this.F.toScreen(this.fish.x, this.fish.y); }
+
+  update(dt) {
+    const F = this.F, f = this.fish;
+    this.t += dt;
     const ease = Math.min(1, this.t * 0.6 + 0.2);
-    this.t += dt * this.speed * ease;
-    const [tx, ty] = this.pos(this.t);
-    fightMove(F, dt, tx, ty, 260, 12);
-    this.inside = dist(c.x, c.y, f.x, f.y) < this.radius;
+    this.pt += dt * this.speed * ease;
+    const [tx, ty] = this.pos(this.pt);
+    f.vx = (tx - f.x) * 6; f.vy = (ty - f.y) * 6;
+    f.x = damp(f.x, tx, 12, dt); f.y = damp(f.y, ty, 12, dt);
+    const [pwx, pwy] = F.pointerWorld();
+    this.inside = dist(pwx, pwy, f.x, f.y) < this.radius;
     if (this.inside) {
-      this.progress += dt / (3.2 + F.power * 3);
-      F.tension = 0.45;
+      this.meter += dt / (2.4 + this.power * 2.2);
+      this.tension = 0.4;
       f.feel('tired', 0.2);
+      if (rng.chance(dt * 8)) F.particles.sparkle(f.x + rng.float(-6, 6), f.y + rng.float(-4, 4), '#9affb8');
     } else {
-      this.progress = Math.max(0, this.progress - dt * 0.12);
+      this.meter = Math.max(0, this.meter - dt * 0.1);
       this.outT += dt;
-      F.tension = Math.min(1, 0.5 + this.outT * 0.15);
+      this.tension = Math.min(0.9, 0.5 + this.outT * 0.12);
       f.feel('smug', 0.2);
     }
-    if (this.outT > 3.6 * F.stats.traceForgive) return 'escape';
-    if (this.progress >= 1) return 'win';
+    if (this.outT > 3 * F.stats.traceForgive) return 'fail';
+    if (this.meter >= 1) return 'win';
     return 'ok';
   }
 
-  draw(ctx) {
-    const F = this.F, f = F.fish;
-    // dotted path preview
-    for (let i = 1; i <= 26; i++) {
-      const [x, y] = this.pos(this.t + i * 0.07 * this.speed);
-      if (i % 2) continue;
+  drawWorld(ctx) {
+    const f = this.fish;
+    for (let i = 2; i <= 26; i += 2) {
+      const [x, y] = this.pos(this.pt + i * 0.07 * this.speed);
       ctx.fillStyle = rgba('#e8fcff', 0.75 - i * 0.025);
-      ctx.fillRect(Math.round(x), Math.round(y), 2, 2);
+      ctx.fillRect(Math.round(x), Math.round(y), 1, 1);
     }
-    const r = Math.round(this.radius + Math.sin(performance.now() / 120) * 1.5);
+    const r = Math.round(this.radius + Math.sin(this.t * 8) * 1);
     drawCircle(ctx, f.x, f.y, r, this.inside ? '#7dff9a' : '#ff7a7a', 0.9);
-    drawCircle(ctx, f.x, f.y, r - 2, this.inside ? '#2a8a4a' : '#8a2a2a', 0.4);
   }
 
   drawHud(ctx) {
     const F = this.F;
-    F.drawStamina(ctx, 1 - this.progress, '#7dff9a');
-    prompt(ctx, F, this.inside ? 'Follow it!' : '{arrow_r} Keep your hook inside the ring!', this.inside ? '#b8ffc8' : '#ffd2c8');
+    const [sx, sy] = F.toScreen(this.fish.x, this.fish.y);
+    const w = 48, x = Math.round(sx - w / 2), y = Math.round(sy + this.radius * F.zoom() + 10);
+    ctx.fillStyle = '#0b1622'; ctx.fillRect(x - 1, y - 1, w + 2, 5);
+    ctx.fillStyle = this.inside ? '#7dff9a' : '#ff8a7a'; ctx.fillRect(x, y, Math.round(w * clamp01(this.meter)), 3);
   }
 }
 
-// ---------------------------------------------------------------- mash
-export class MashPhase {
-  constructor(F) {
-    this.F = F;
-    this.name = 'mash';
-    this.progress = 0.08;
-    this.time = 6.5 + (1 - F.power) * 2;
-    this.t = 0;
-    this.combo = 0;
-    this.anchor = { x: F.fish.x, y: F.fish.y };
-  }
-
-  update(dt, inp) {
-    const F = this.F, f = F.fish;
-    this.t += dt;
-    this.progress = Math.max(0, this.progress - dt * (0.1 + F.power * 0.12));
-    if (inp.clicks > 0) {
-      for (let i = 0; i < inp.clicks; i++) {
-        this.progress += (0.075 * F.stats.mashPower) / (0.6 + F.power * 0.8);
-        this.combo++;
-        f.squashV += 6;
-        f.x += (F.cursor.x - f.x) * 0.04;
-        f.y += (F.cursor.y - f.y) * 0.04;
-        F.world.audio?.play('mash_pop', { pitch: 0.8 + Math.min(1, this.combo * 0.04) });
-        F.world.particles?.burst(f.x, f.y, 4, { colors: ['#ffffff', '#ffe27a'], speed: 50, g: 0, life: 0.3 });
-      }
-    }
-    // fish jitters in place
-    f.x = damp(f.x, this.anchor.x + Math.sin(this.t * 31) * 2, 8, dt);
-    f.y = damp(f.y, this.anchor.y + Math.cos(this.t * 27) * 1.5, 8, dt);
-    f.feel(this.progress > 0.6 ? 'scared' : 'angry', 0.2);
-    F.tension = 0.5 + 0.3 * Math.sin(this.t * 20);
-    if (this.progress >= 1) return 'win';
-    if (this.t > this.time) return this.progress > 0.5 ? 'win' : 'escape';
-    return 'ok';
-  }
-
-  draw() {}
-
-  drawHud(ctx) {
-    const F = this.F, f = F.fish;
-    const w = 50, x = Math.round(f.x - w / 2), y = Math.round(f.y - 26 * f.scale - 10);
-    ctx.fillStyle = '#0b1622'; ctx.fillRect(x - 1, y - 1, w + 2, 6);
-    ctx.fillStyle = '#3a2a1a'; ctx.fillRect(x, y, w, 4);
-    ctx.fillStyle = this.progress > 0.7 ? '#7dff9a' : '#ffd25a';
-    ctx.fillRect(x, y, Math.round(w * clamp01(this.progress)), 4);
-    const left = Math.max(0, this.time - this.t);
-    drawText(ctx, 'MASH CLICK!', f.x, y - 12, { align: 'center', color: '#ffe27a', outline: '#0b1622', wave: 1, time: this.t });
-    drawText(ctx, left.toFixed(1) + 's', f.x, y + 7, { align: 'center', font: 'small', color: '#ffffff', outline: '#0b1622' });
-  }
-}
-
-// ---------------------------------------------------------------- timing
-export class TimingPhase {
-  constructor(F) {
-    this.F = F;
-    this.name = 'timing';
-    this.need = 3 + Math.round(F.power * 3);
-    this.hits = 0;
-    this.misses = 0;
-    this.allowed = F.stats.timingMisses;
-    this.beat = (1.15 - F.power * 0.45);
-    this.t = -0.4;
-    this.target = 14;
-    this.flash = null;
-    this.home = { x: F.fish.x, y: F.fish.y };
-  }
-
-  ring() {
-    const k = this.t / this.beat;
-    return lerp(46, 0, k);
-  }
-
-  update(dt, inp) {
-    const F = this.F, f = F.fish;
-    this.t += dt;
-    if (this.flash) { this.flash.t += dt; if (this.flash.t > 0.4) this.flash = null; }
-    // fish thrash
-    fightMove(F, dt, this.home.x + Math.sin(this.t * 3) * 20, this.home.y + Math.cos(this.t * 2.3) * 10, 90, 6);
-    F.tension = 0.4;
-    const r = this.ring();
-    const win = 5 * F.stats.timingWindow;
-    if (inp.pressed) {
-      const err = Math.abs(r - this.target);
-      if (this.t > 0 && err < win) {
-        const perfect = err < win * 0.4;
-        this.hits++;
-        this.flash = { text: perfect ? 'PERFECT!' : 'GOOD!', color: perfect ? '#ffe27a' : '#9affb8', t: 0 };
-        F.world.audio?.play(perfect ? 'timing_perfect' : 'timing_good');
-        f.squashV += 10;
-        f.feel('scared', 0.5);
-        F.world.particles?.burst(f.x, f.y, perfect ? 12 : 7, { colors: ['#ffe27a', '#ffffff'], speed: 70, g: 0, life: 0.5 });
-        this.t = -0.25;
-      } else {
-        this.miss();
-      }
-    } else if (r < this.target - win) {
-      this.miss();
-    }
-    if (this.hits >= this.need) return 'win';
-    if (this.misses > this.allowed) return 'escape';
-    return 'ok';
-  }
-
-  miss() {
-    this.misses++;
-    this.flash = { text: 'MISS', color: '#ff8a7a', t: 0 };
-    this.F.world.audio?.play('timing_miss');
-    this.F.fish.feel('smug', 0.6);
-    this.t = -0.35;
-  }
-
-  draw(ctx) {
-    const f = this.F.fish;
-    drawCircle(ctx, f.x, f.y, this.target, '#ffffff', 0.9);
-    if (this.t > 0) drawCircle(ctx, f.x, f.y, Math.max(1, Math.round(this.ring())), '#ffe27a', 0.95);
-  }
-
-  drawHud(ctx) {
-    const F = this.F, f = F.fish;
-    const y = Math.round(f.y - 30 * f.scale - 14);
-    for (let i = 0; i < this.need; i++) {
-      ctx.fillStyle = i < this.hits ? '#ffe27a' : '#2a3a4a';
-      ctx.fillRect(Math.round(f.x - this.need * 4 + i * 8), y, 6, 3);
-    }
-    if (this.flash) drawText(ctx, this.flash.text, f.x, y - 12 - this.flash.t * 10, { align: 'center', color: this.flash.color, outline: '#0b1622' });
-    prompt(this.ctxFix || ctx, F, '{mouse_l} Click when the rings meet!', '#ffffff');
-  }
-}
-
-// ---------------------------------------------------------------- dodge
-export class DodgePhase {
-  constructor(F) {
-    this.F = F;
-    this.name = 'dodge';
-    this.dur = 6 + F.power * 3;
-    this.t = 0;
-    this.progress = 0;
+// ---------------------------------------------------------------- dodge: crank while it shoots
+class DodgeEvent extends Event {
+  constructor(F, B) {
+    super(F, B, 'dodge');
+    this.title = 'DODGE!'; this.sub = 'Keep reeling - avoid the shots'; this.color = '#ff9a8a';
+    this.dur = 4 + this.power * 2;
     this.shots = [];
-    this.fireT = 0.8;
+    this.fireT = 0.7;
     this.hits = 0;
     this.allowed = F.stats.dodgeHits;
-    this.stun = 0;
-    const kind = F.sp.fight?.projectile || (F.sp.biome === 'junkyard' ? 'bolt' : F.sp.biome === 'abyss' ? 'ink' : 'bubble');
-    this.kind = kind;
-    this.home = { x: F.fish.x, y: F.fish.y };
+    this.usesCrank = true;
+    this.kind = F.sp.fight?.projectile || (F.sp.biome === 'junkyard' ? 'bolt' : F.sp.biome === 'abyss' ? 'ink' : 'bubble');
+    this.prompt = 'Keep circling - DODGE the shots!';
+    this.winText = 'UNTOUCHABLE!';
   }
 
-  update(dt, inp) {
-    const F = this.F, f = F.fish, c = F.cursor;
+  update(dt) {
+    const F = this.F, f = this.fish;
     this.t += dt;
-    this.stun = Math.max(0, this.stun - dt);
-    fightMove(F, dt, this.home.x + Math.sin(this.t * 1.3) * 40, this.home.y + Math.sin(this.t * 2.1) * 20, 80, 5);
-    f.lookAt(c.x, c.y);
+    this.meter = this.t / this.dur;
+    this.thrashAt(dt, this.home.x + Math.sin(this.t * 1.3) * 18, this.home.y + Math.sin(this.t * 2.1) * 8, 0.5, 5);
+    const [pwx, pwy] = F.pointerWorld();
+    f.lookAt?.(pwx, pwy);
+    f.facing = pwx > f.x ? 1 : -1;
     f.feel('angry', 0.2);
     this.fireT -= dt;
     if (this.fireT <= 0) {
-      this.fireT = rng.float(0.45, 1.0) * (1.2 - F.power * 0.5);
-      const lead = 0.25;
-      const tx = c.x + c.vx * lead, ty = c.y + c.vy * lead;
-      const a = Math.atan2(ty - f.y, tx - f.x) + rng.float(-0.1, 0.1);
-      const sp = 140 + F.power * 90;
+      this.fireT = rng.float(0.45, 0.95) * (1.2 - this.power * 0.5);
+      const a = Math.atan2(pwy - f.y, pwx - f.x) + rng.float(-0.1, 0.1);
+      const sp = 110 + this.power * 60;
       this.shots.push({ x: f.x, y: f.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, t: 0 });
       f.talkT = 0.2;
-      F.world.audio?.play(this.kind === 'bolt' ? 'click' : 'blub', { pitch: 1.4 });
+      F.sfx(this.kind === 'bolt' ? 'click' : 'blub', { pitch: 1.4 });
     }
     for (const s of this.shots) {
       s.t += dt;
       s.x += s.vx * dt; s.y += s.vy * dt;
-      if (!s.dead && dist(s.x, s.y, c.x, c.y) < 6) {
+      const [sx, sy] = F.toScreen(s.x, s.y);
+      if (!s.dead && Math.hypot(sx - F.input.x, sy - F.input.y) < 11) {
         s.dead = true;
         this.hits++;
-        this.stun = 0.6;
-        F.world.audio?.play('dodge_hit');
+        this.B.kick(0.22);
+        F.crank.stun = 0.5;
+        if (this.kind === 'ink') F.inkSplat(2);
+        F.sfx('dodge_hit');
         F.shake(3);
-        F.world.particles?.burst(c.x, c.y, 10, { colors: ['#ffffff', '#ff8a7a'], speed: 60, g: 0, life: 0.4 });
+        F.fx.burst(sx, sy, 12, { colors: ['#ffffff', '#ff8a7a'], speed: 80, g: 0, life: 0.4 });
       }
     }
     this.shots = this.shots.filter((s) => !s.dead && s.t < 3);
-    if (inp.down && !this.stun) this.progress += dt / this.dur;
-    F.tension = this.stun ? 0.95 : inp.down ? 0.55 : 0.2;
-    if (this.hits > this.allowed) return 'snap';
-    if (this.progress >= 1) return 'win';
+    if (this.hits > this.allowed) return 'fail';
+    if (this.t > this.dur) return 'win';
     return 'ok';
   }
 
-  draw(ctx) {
-    for (const s of this.shots) {
-      const x = Math.round(s.x), y = Math.round(s.y);
-      if (this.kind === 'bolt') {
-        ctx.fillStyle = '#9aa4b8'; ctx.fillRect(x - 2, y - 1, 5, 3);
-        ctx.fillStyle = '#e8eef8'; ctx.fillRect(x - 1, y - 1, 2, 1);
-        ctx.fillStyle = '#4a5468'; ctx.fillRect(x - 2, y + 1, 5, 1);
-      } else if (this.kind === 'ink') {
-        ctx.fillStyle = '#140a1e'; ctx.fillRect(x - 3, y - 2, 6, 5); ctx.fillRect(x - 2, y - 3, 4, 7);
-        ctx.fillStyle = '#3a2a5a'; ctx.fillRect(x - 1, y - 2, 2, 1);
-      } else if (this.kind === 'spark') {
-        ctx.fillStyle = '#fff6a0'; ctx.fillRect(x - 1, y - 1, 3, 3);
-        ctx.fillStyle = '#ffb02a'; ctx.fillRect(x - 2, y, 1, 1); ctx.fillRect(x + 2, y, 1, 1);
-      } else {
-        ctx.fillStyle = '#cfefff'; ctx.fillRect(x - 2, y - 3, 5, 7); ctx.fillRect(x - 3, y - 2, 7, 5);
-        ctx.fillStyle = '#4aa8d8'; ctx.fillRect(x - 1, y - 1, 3, 3);
-        ctx.fillStyle = '#ffffff'; ctx.fillRect(x - 2, y - 2, 1, 1);
+  drawWorld(ctx) { drawShots(ctx, this.shots, this.kind); }
+
+  drawHud(ctx) {
+    const F = this.F;
+    const [sx, sy] = F.toScreen(this.fish.x, this.fish.y);
+    let hearts = '';
+    for (let i = 0; i <= this.allowed; i++) hearts += i < this.allowed + 1 - this.hits ? '{heart}' : '{heart_empty}';
+    drawText(ctx, hearts, sx, sy - F.zoneRadius() - 12, { align: 'center' });
+  }
+}
+
+export function drawShots(ctx, shots, kind) {
+  for (const s of shots) {
+    const x = Math.round(s.x), y = Math.round(s.y);
+    if (kind === 'bolt') {
+      ctx.fillStyle = '#9aa4b8'; ctx.fillRect(x - 2, y - 1, 5, 3);
+      ctx.fillStyle = '#e8eef8'; ctx.fillRect(x - 1, y - 1, 2, 1);
+      ctx.fillStyle = '#4a5468'; ctx.fillRect(x - 2, y + 1, 5, 1);
+    } else if (kind === 'ink') {
+      ctx.fillStyle = '#140a1e'; ctx.fillRect(x - 3, y - 2, 6, 5); ctx.fillRect(x - 2, y - 3, 4, 7);
+      ctx.fillStyle = '#3a2a5a'; ctx.fillRect(x - 1, y - 2, 2, 1);
+    } else {
+      ctx.fillStyle = '#cfefff'; ctx.fillRect(x - 2, y - 3, 5, 7); ctx.fillRect(x - 3, y - 2, 7, 5);
+      ctx.fillStyle = '#4aa8d8'; ctx.fillRect(x - 1, y - 1, 3, 3);
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(x - 2, y - 2, 1, 1);
+    }
+  }
+}
+
+// ---------------------------------------------------------------- unwrap: crank the other way
+class UnwrapEvent extends Event {
+  constructor(F, B) {
+    super(F, B, 'unwrap');
+    this.dir = rng.sign();
+    this.title = 'UNTANGLE!'; this.color = '#ffe27a';
+    this.sub = `Circle ${this.dir > 0 ? 'clockwise' : 'counter-clockwise'}!`;
+    this.need = 2 + this.power * 1.5;
+    this.turns = 0;
+    this.time = 8;
+    this.coil = 0;
+    this.prompt = `${this.dir > 0 ? '{crank_cw}' : '{crank_ccw}'} Circle ${this.dir > 0 ? 'CLOCKWISE' : 'COUNTER-CLOCKWISE'} to unwind!`;
+    this.winText = 'UNWOUND!';
+  }
+
+  hint() {
+    const [sx, sy] = this.F.toScreen(this.fish.x, this.fish.y);
+    return [sx + 70, sy];
+  }
+
+  update(dt) {
+    const F = this.F, f = this.fish, cr = F.crank;
+    this.t += dt;
+    if (cr.power > 0.08 && cr.da) {
+      if (Math.sign(cr.da) === this.dir) this.turns += Math.abs(cr.da) / TAU;
+      else this.turns = Math.max(0, this.turns - Math.abs(cr.da) / TAU * 0.5);
+    }
+    this.meter = this.turns / this.need;
+    this.coil += dt * 3 * -this.dir;
+    const rad = 16 * (1 - this.meter) + 8;
+    f.x = this.home.x + Math.cos(this.coil) * rad;
+    f.y = this.home.y + Math.sin(this.coil) * rad * 0.7;
+    f.vx = -Math.sin(this.coil) * 40 * -this.dir; f.vy = Math.cos(this.coil) * 30 * -this.dir;
+    f.feel(this.meter > 0.6 ? 'dizzy' : 'smug', 0.2);
+    this.tension = 0.5;
+    if (this.turns >= this.need) return 'win';
+    if (this.t > this.time) return 'fail';
+    return 'ok';
+  }
+
+  drawWorld(ctx) {
+    // the tangled line coils around the fish
+    const f = this.fish;
+    const n = 3 - Math.floor(this.meter * 3);
+    for (let k = 0; k < n; k++) {
+      for (let i = 0; i < 24; i++) {
+        const a = (i / 24) * TAU + this.coil * 0.5 + k;
+        const r = 10 + k * 3;
+        ctx.fillStyle = rgba('#e8f4ff', 0.6);
+        ctx.fillRect(Math.round(f.x + Math.cos(a) * r), Math.round(f.y + Math.sin(a) * r * 0.5), 1, 1);
       }
     }
   }
 
   drawHud(ctx) {
-    const F = this.F;
-    F.drawStamina(ctx, 1 - this.progress, '#9ad8ff');
-    let hearts = '';
-    for (let i = 0; i <= this.allowed; i++) hearts += i < this.allowed + 1 - this.hits ? '{heart}' : '{heart_empty}';
-    drawText(ctx, hearts, F.cursor.x, F.cursor.y - 30, { align: 'center' });
-    prompt(ctx, F, this.stun ? 'Ouch!' : '{mouse_hold} Hold to reel - DODGE the shots!', this.stun ? '#ff8a7a' : '#ffffff');
+    const F = this.F, cr = F.crank;
+    const cx = cr.active ? cr.cx : F.input.x, cy = cr.active ? cr.cy : F.input.y;
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * TAU + this.t * 4 * this.dir;
+      ctx.fillStyle = rgba('#ffe27a', 0.2 + (i / 14) * 0.8);
+      ctx.fillRect(Math.round(cx + Math.cos(a) * 30) - 1, Math.round(cy + Math.sin(a) * 30) - 1, 3, 3);
+    }
+    drawText(ctx, `${Math.min(this.turns, this.need).toFixed(1)} / ${this.need.toFixed(1)}`, cx, cy + 38, { align: 'center', color: '#ffe27a', outline: '#0b1622' });
   }
 }
 
-// ---------------------------------------------------------------- unwrap (noodle)
-export class UnwrapPhase {
-  constructor(F) {
-    this.F = F;
-    this.name = 'unwrap';
-    this.dir = rng.sign();
-    this.need = TAU * (2 + F.power * 2);
-    this.progress = 0;
-    this.time = 10;
-    this.t = 0;
-    this.prevA = null;
-    this.center = { x: F.cursor.x, y: F.cursor.y };
-    this.coil = 0;
-  }
-
-  update(dt, inp) {
-    const F = this.F, f = F.fish, c = F.cursor;
-    this.t += dt;
-    this.center.x = damp(this.center.x, c.x, 1.5, dt);
-    this.center.y = damp(this.center.y, c.y, 1.5, dt);
-    const a = Math.atan2(c.y - this.center.y, c.x - this.center.x);
-    const r = dist(c.x, c.y, this.center.x, this.center.y);
-    if (this.prevA !== null && r > 6) {
-      let da = a - this.prevA;
-      if (da > Math.PI) da -= TAU;
-      if (da < -Math.PI) da += TAU;
-      this.progress = clamp(this.progress + da * this.dir, 0, this.need);
-    }
-    this.prevA = a;
-    // the noodle coils around the cursor
-    this.coil += dt * 3 * -this.dir;
-    const rad = 18 * (1 - this.progress / this.need) + 8;
-    f.x = c.x + Math.cos(this.coil) * rad;
-    f.y = c.y + Math.sin(this.coil) * rad * 0.8;
-    f.vx = -Math.sin(this.coil) * 40 * -this.dir; f.vy = Math.cos(this.coil) * 40 * -this.dir;
-    f.allowTurn = true;
-    f.feel(this.progress > this.need * 0.6 ? 'dizzy' : 'smug', 0.2);
-    F.tension = 0.5;
-    if (this.progress >= this.need) return 'win';
-    if (this.t > this.time) return 'escape';
-    return 'ok';
-  }
-
-  draw(ctx) {
-    const F = this.F, c = F.cursor;
-    // circular arrow showing direction
-    const t = performance.now() / 1000;
-    for (let i = 0; i < 10; i++) {
-      const a = (i / 10) * TAU + t * 3 * this.dir;
-      ctx.fillStyle = rgba('#ffe27a', i / 10);
-      ctx.fillRect(Math.round(c.x + Math.cos(a) * 30), Math.round(c.y + Math.sin(a) * 30), 2, 2);
-    }
-  }
-
-  drawHud(ctx) {
-    const F = this.F;
-    F.drawStamina(ctx, 1 - this.progress / this.need, '#ffe27a');
-    prompt(ctx, F, `It's wrapped around you! Circle ${this.dir > 0 ? 'clockwise' : 'counter-clockwise'}!`, '#ffe27a');
-  }
-}
-
-// ---------------------------------------------------------------- net
-export class NetPhase {
-  constructor(F) {
-    this.F = F;
-    this.name = 'net';
-    this.time = 9 * F.stats.netTime;
-    this.t = 0;
+// ---------------------------------------------------------------- net: draw a loop around it
+class NetEvent extends Event {
+  constructor(F, B) {
+    super(F, B, 'net');
+    this.title = 'NET IT!'; this.sub = 'Draw a circle around the fish'; this.color = '#ffe27a';
+    this.time = 7 * F.stats.netTime;
     this.path = [];
     this.drawing = false;
     this.fail = null;
-    this.home = { x: F.fish.x, y: F.fish.y };
-    this.caught = false;
+    this.focus = { x: this.home.x, y: this.home.y, zoom: 1.8 };
+    this.tension = 0.2;
+    this.prompt = '{net} Hold & draw a circle around it!';
+    this.winText = 'NETTED!';
   }
 
-  update(dt, inp) {
-    const F = this.F, f = F.fish, c = F.cursor;
+  hint() { return this.F.toScreen(this.fish.x, this.fish.y); }
+
+  update(dt) {
+    const F = this.F, f = this.fish;
     this.t += dt;
+    this.meter = 1 - this.t / this.time;
     if (this.fail) { this.fail.t += dt; if (this.fail.t > 0.8) this.fail = null; }
-    // exhausted drift
-    this.home.y = damp(this.home.y, Math.min(this.home.y, F.world.floorAt(f.x) - 30), 1, dt);
-    fightMove(F, dt, this.home.x + Math.sin(this.t * 0.8) * 12, this.home.y + Math.sin(this.t * 1.7) * 4, 25, 3);
+    this.thrashAt(dt, this.home.x + Math.sin(this.t * 0.8) * 8, this.home.y + Math.sin(this.t * 1.7) * 3, 0.3, 3);
     f.feel('dizzy', 0.2);
-    F.tension = 0.2;
-    if (inp.pressed) { this.drawing = true; this.path = [[c.x, c.y]]; }
+    const [px, py] = F.pointerWorld();
+    if (F.input.pressed) { this.drawing = true; this.path = [[px, py]]; }
     if (this.drawing) {
       const last = this.path[this.path.length - 1];
-      if (dist(last[0], last[1], c.x, c.y) > 3) this.path.push([c.x, c.y]);
-      const closed = this.path.length > 12 && dist(this.path[0][0], this.path[0][1], c.x, c.y) < 14 * F.stats.netTolerance;
-      if (inp.released || closed) {
+      if (dist(last[0], last[1], px, py) > 1.5) this.path.push([px, py]);
+      const closed = this.path.length > 12 && dist(this.path[0][0], this.path[0][1], px, py) < 8 * F.stats.netTolerance;
+      if (F.input.released || closed) {
         this.drawing = false;
-        if (this.check()) return 'win';
+        if (this.check()) { F.sfx('net_swish'); return 'win'; }
         this.path = [];
         this.fail = { t: 0 };
-        F.world.audio?.play('timing_miss');
+        F.sfx('timing_miss');
       }
     }
-    if (this.t > this.time) return 'recover';
+    if (this.t > this.time) return 'fail';
     return 'ok';
   }
 
   check() {
-    const F = this.F, f = F.fish;
+    const F = this.F, f = this.fish;
     if (this.path.length < 8) return false;
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, len = 0;
-    for (let i = 0; i < this.path.length; i++) {
-      const [x, y] = this.path[i];
-      minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y);
-      if (i) len += dist(x, y, this.path[i - 1][0], this.path[i - 1][1]);
-    }
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const [x, y] of this.path) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y); }
     const tol = F.stats.netTolerance;
-    const size = Math.max(10, 16 * f.scale);
-    if (maxX - minX < size * 0.8 / tol || maxY - minY < size * 0.5 / tol) return false;
-    if (maxX - minX > 360) return false;
-    // close the loop and test the fish centre (plus generous tolerance points)
-    const poly = this.path;
-    const pts = [[f.x, f.y], [f.x - 4 * tol, f.y], [f.x + 4 * tol, f.y]];
-    const hits = pts.filter(([x, y]) => pointInPoly(x, y, poly)).length;
+    const size = Math.max(8, 12 * f.scale);
+    if (maxX - minX < (size * 0.8) / tol || maxY - minY < (size * 0.5) / tol) return false;
+    if (maxX - minX > 260) return false;
+    const pts = [[f.x, f.y], [f.x - 3 * tol, f.y], [f.x + 3 * tol, f.y]];
+    const hits = pts.filter(([x, y]) => pointInPoly(x, y, this.path)).length;
     return hits >= (tol > 1.2 ? 1 : 2);
   }
 
-  draw(ctx) {
-    const F = this.F, f = F.fish;
-    const t = this.t;
-    // target hint
-    const r = Math.round(18 * f.scale + 6 + Math.sin(t * 5) * 2);
-    for (let i = 0; i < 24; i++) {
-      if (i % 2) continue;
-      const a = (i / 24) * TAU + t;
-      ctx.fillStyle = rgba('#ffffff', 0.6);
-      ctx.fillRect(Math.round(f.x + Math.cos(a) * r), Math.round(f.y + Math.sin(a) * r * 0.75), 2, 2);
-    }
-    // drawn net rope
+  drawWorld(ctx) {
+    const f = this.fish;
+    const r = Math.round(14 * f.scale + 5 + Math.sin(this.t * 5) * 1.5);
+    drawCircle(ctx, f.x, f.y, r, '#ffffff', 0.7, 1, 12, this.t);
     for (let i = 1; i < this.path.length; i++) {
       const [x0, y0] = this.path[i - 1], [x1, y1] = this.path[i];
       const steps = Math.max(1, Math.ceil(dist(x0, y0, x1, y1)));
       for (let k = 0; k < steps; k++) {
         const x = Math.round(lerp(x0, x1, k / steps)), y = Math.round(lerp(y0, y1, k / steps));
         ctx.fillStyle = (x + y) % 4 < 2 ? '#e8d2a0' : '#9a7a4a';
-        ctx.fillRect(x, y, 2, 2);
+        ctx.fillRect(x, y, 1, 1);
       }
     }
   }
 
   drawHud(ctx) {
     const F = this.F;
-    const left = Math.max(0, this.time - this.t);
-    if (this.fail) prompt(ctx, F, 'Missed! Circle the WHOLE fish!', '#ff8a7a');
-    else prompt(ctx, F, `{net} Draw a circle around it! ${left.toFixed(1)}s`, '#ffe27a');
+    if (this.fail) {
+      const [sx, sy] = F.toScreen(this.fish.x, this.fish.y);
+      drawText(ctx, 'Missed! Circle the WHOLE fish!', sx, sy + F.zoneRadius() + 4, { align: 'center', color: '#ff8a7a', outline: '#0b1622' });
+    }
   }
 }
 
-export function drawCircle(ctx, cx, cy, r, color, a = 1) {
-  ctx.fillStyle = rgba(color, a);
-  const n = Math.max(12, Math.round(r * 4));
-  let px = null, py = null;
-  for (let i = 0; i < n; i++) {
-    const ang = (i / n) * TAU;
-    const x = Math.round(cx + Math.cos(ang) * r), y = Math.round(cy + Math.sin(ang) * r);
-    if (x === px && y === py) continue;
-    ctx.fillRect(x, y, 1, 1);
-    px = x; py = y;
-  }
+const EVENTS = { mash: MashEvent, timing: TimingEvent, trace: TraceEvent, dodge: DodgeEvent, unwrap: UnwrapEvent, net: NetEvent };
+
+export function makeEvent(name, F, B) {
+  const C = EVENTS[name];
+  return C ? new C(F, B) : null;
 }
 
-export const PHASES = {
-  tension: TensionPhase,
-  trace: TracePhase,
-  mash: MashPhase,
-  timing: TimingPhase,
-  dodge: DodgePhase,
-  unwrap: UnwrapPhase,
-  net: NetPhase,
-};
+export const EVENT_NAMES = Object.keys(EVENTS);

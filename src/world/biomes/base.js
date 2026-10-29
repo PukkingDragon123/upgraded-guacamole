@@ -12,8 +12,15 @@
 //   weathers: [{id, name, weight}]   weather states for this biome
 //   secretAt(x, y) -> id | null      clickable hidden spots; onSecret(id, game) reacts
 //   ambient: audio ambience id;  music: audio track id;  title / subtitle for the travel card
+//   boatLevel(env) -> y | null       still water level the boat floats on (may lie above the default view)
+//   waveAt(x, env) -> y | null       animated waterline at x (biome waves, before the water sim lift)
+// World space: y = 0 is the top of the default view; the camera can scroll up to worldTop(H) (the sky/surface
+// view), so drawBack must also paint the region above y = 0 (env.view = visible world rect, env.top = worldTop).
 
-import { lerp } from '../../core/math.js';
+import { lerp, ease, clamp01 } from '../../core/math.js';
+
+// World y of the highest point the camera can show for a screen height H (surface view + shake/zoom margin).
+export const worldTop = (H) => -Math.ceil(H * 0.74);
 
 export class Biome {
   constructor(ocean) {
@@ -30,11 +37,20 @@ export class Biome {
 
   build(W, H) {
     this.W = W; this.H = H;
+    this.top = worldTop(H);
     this.floor = new Float32Array(W + 1);
     for (let x = 0; x <= W; x++) this.floor[x] = H - 46 - Math.sin(x * 0.01) * 6;
   }
 
   baseSurface(H) { return Math.round(H * 0.12); }
+
+  boatLevel(env) {
+    const s = this.baseSurface(this.H);
+    if (s === null) return null;
+    return Math.round(lerp(s, -6, ease.inOutCubic(clamp01(env?.flood || 0))));
+  }
+
+  waveAt() { return null; }
 
   floorAt(x) {
     if (!this.floor) return this.H - 40;

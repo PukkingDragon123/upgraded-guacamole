@@ -1,627 +1,1222 @@
-// Voxel fish: every species becomes a chunky 3D voxel sculpture built from its 2D look, so fish turn
-// smoothly in 3D instead of flipping.
+// Voxel fish engine: every creature becomes a 3D voxel sculpture built from its procedural look, rendered
+// by a fish-specialised orthographic ray-caster, so fish turn smoothly through yaw instead of flipping.
 //
-// Source model per (look+variant, swim frame, inflate, mouth): each rig layer of fishart.js is
-// rasterised at native scale and downsampled (VOX px -> 1 voxel, outline pixels ignored). The body is
-// extruded with an elliptical cross-section (laterally compressed per body shape); jellies, puddings,
-// octopuses and blobs become solids of revolution; fins are 1-voxel slabs (pectorals hug both flanks);
-// painted eyes and mouth are stamped on both sides and protrude. Swim frames sweep the tail sideways
-// (in depth); pitch is a model rotation. Frames are rendered with voxel.js (AO, hue-shifted ramps,
-// smoothed normals, specular sheen, outline) per yaw step (24 around), swim frame, pitch bucket and
-// on-screen scale bucket, cached lazily under a per-frame time budget with nearest-frame fallback.
+// Model resolution follows the on-screen size (~VP screen px per voxel), so big fish get finer voxels.
+//  1. Layout: the look's rig layers are rasterised in voxel-albedo mode (fishart.rasterLayerVox: clean
+//     tones, no 2D lighting) at the model resolution, one pixel per voxel column.
+//  2. Grid (per swim frame): the body is extruded with an elliptical cross-section from a Euclidean
+//     distance transform (laterally compressed per shape); the spine bends along a travelling wave with
+//     arc-length compression (the tail visibly sweeps even side-on); fins are translucent 1-voxel
+//     membranes with opaque rays; pectorals hinge out from the flanks; eyes/mouth are stamped on both
+//     flanks (eyes domed). Kinds (crab, jelly, ray...) use their 2D animation frames; jellies, puddings,
+//     octopuses and blobs are solids of revolution.
+//  3. Render (per yaw / pitch / scale bucket): camera-space light from the upper left, blend of smoothed
+//     and per-face normals (visible voxel facets), per-face AO, sky/bounce ambient, Blinn glints, an
+//     underwater rim light, a hue-shifted 21-tone ramp, translucent membranes over the body, interior
+//     depth lines, a selective dark outline and an emissive glow halo. Frames render progressively
+//     (row slices) under a per-frame time budget, with nearest-frame fallback, LRU caches and warm-up.
 //
-// drawVoxelFish(ctx, fish, {scale, wash, glow, time}) draws a Fish (fish/fish.js) and returns anchors
-// {top, mouth, eyes}; beginVoxelFishFrame() resets the budget; voxelFishStats() for profiling.
+// Canonical yaw is -90..90 (0 = facing right, 90 = toward the viewer); left-facing fish are mirrored.
+// Composition (face overlays, wash, glow, silhouette) lives in fishrig.js (drawFishRig, style 'voxel').
+// drawVoxelFish(ctx, fish, {scale, glow, alpha}) remains for the aquarium (fish objects in tank space).
 
-import { VoxelModel, renderVoxels } from './voxel.js';
-import { rigLayers, rigGeom, rasterLayer, paintEye, eyeBox, paintMouth, mouthBox, isKind, chainSegment, chainHeadSprite } from './fishart.js';
+import { rigLayers, rigGeom, rasterLayerVox, voxAlbedo, paintEye, eyeBox, paintMouth, mouthBox, isKind, chainHeadVox, chainSegColor } from './fishart.js';
 import { PixelBuffer } from './pixel.js';
-import { ctxOf } from '../core/canvas.js';
-import { pack, unpack, shade, mix, rgba } from '../core/color.js';
-import { clamp, clamp01, lerp, smoothstep, TAU } from '../core/math.js';
+import { makeCanvas, ctxOf } from '../core/canvas.js';
+import { drawFishRig } from './fishrig.js';
 
-export const VOX = 2;          // look pixels per voxel: chunky
-export const YAW_N = 24;
-const SWIM_N = 4;
-const PITCH_STEP = 16;         // degrees per model pitch bucket (-1..1)
-const CAM_PITCH = 11;          // we look slightly down onto the fish
-const SCALE_STEP = 1.14;       // geometric on-screen scale buckets
-const MAX_FRAMES = 6000;
+export const VP = 2;               // target on-screen pixels per voxel
+const SCALE_STEP = 1.09;           // on-screen scale buckets (drawn scaled to the exact size)
+export const YAW_STEP = 15;        // degrees per canonical yaw bucket (-90..90)
+const PITCH_STEP = 8;              // degrees per pitch bucket
+const PITCH_MAX = 4;
+const CHAIN_PITCH_STEP = 15;
+const CHAIN_PITCH_MAX = 6;
+const CAM_TILT = 12;               // we look slightly down onto the fish
+export const SWIM_N = 6;           // tail-beat frames
+const KIND_N = 6;                  // animation frames for kinds (legs, tentacles...)
+const INFL_N = 3;                  // inflate steps: 0, 1/3, 2/3, 1
+const MAX_VOX_LEN = 300;           // cap on model length (voxels) for giants
+const FRAME_PX_MAX = 16e6;         // frame cache budget (pixels)
+const GRID_BYTES_MAX = 64e6;
+const LAYOUT_MAX = 260;
+const TAIL_NEUTRAL = 1 - 0.7 / (Math.PI * 2); // tail painter phase with no 2D flap
 
-const SHAPE_K = { oval: 0.5, torpedo: 0.58, round: 0.8, disc: 0.3, long: 0.62, box: 0.72, blunt: 0.6, pointy: 0.46 };
+const TAU = Math.PI * 2;
+const DEG = Math.PI / 180;
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+const fract = (v) => v - Math.floor(v);
+const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+const SHAPE_K = { oval: 0.52, torpedo: 0.6, round: 0.8, disc: 0.3, long: 0.62, box: 0.72, blunt: 0.62, pointy: 0.48 };
 const KIND_K = { crab: 0.72, seahorse: 0.55, ray: 0.16, squid: 0.62, isopod: 0.78, iconfish: 0.42, octopus: 1, jelly: 1, pudding: 1, blob: 1, chain: 0.85 };
 const REVOLVE = new Set(['jelly', 'pudding', 'octopus', 'blob']);
 
-const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
-let budgetMs = 2, spent = 0, windowStart = 0;
-let statBuilt = 0, statFallback = 0;
+// ------------------------------------------------------------------ budget
+
+let budgetMs = 4.5, spent = 0, forceSpent = 0, rafOn = false, lastReset = 0;
+let statBuilt = 0, statFallback = 0, statJobs = 0, statPx = 0;
+const FORCE_MS = 14;               // extra per-frame allowance to get a creature's very first frame
+const WARM_MS = 1.6;               // idle warm-up per animation frame
+
 export function setVoxelFishBudget(ms) { budgetMs = ms; }
-export function beginVoxelFishFrame() { spent = 0; windowStart = now(); }
-export function voxelFishStats() { return { frames: frames.size, sources: sources.size, built: statBuilt, fallbacks: statFallback, spent }; }
+export function beginVoxelFishFrame() { if (!rafOn) { spent = 0; forceSpent = 0; } }
+export function voxelFishStats() {
+  return { frames: frames.size, framePx: statPx, grids: grids.size, layouts: layouts.size, jobs: jobs.size, built: statBuilt, fallbacks: statFallback, jobsStarted: statJobs, spent: +spent.toFixed(2), warm: warmQ.length };
+}
+function ensureTick() {
+  if (rafOn || typeof requestAnimationFrame === 'undefined') return;
+  rafOn = true;
+  const tick = () => {
+    spent = 0; forceSpent = 0; lastReset = now();
+    runWarm();
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
 function overBudget() {
-  const t = now();
-  if (t - windowStart > 15) { windowStart = t; spent = 0; }
+  if (!rafOn) { const t = now(); if (t - lastReset > 15) { lastReset = t; spent = 0; forceSpent = 0; } }
   return spent >= budgetMs;
 }
 
-// ------------------------------------------------------------------ raster -> voxel cells
+// ------------------------------------------------------------------ ids / keys
 
-function pixelsOf(canvas) {
-  const d = ctxOf(canvas).getImageData(0, 0, canvas.width, canvas.height).data;
-  return new Uint32Array(d.buffer.slice(0));
+let nextVid = 1;
+const vidOf = (c) => c._vid || (c._vid = nextVid++);
+
+function lookLen(c) {
+  if (c.kind === 'chain') return (c.chain?.r || 4) * 5;
+  return Math.max(c.L || 30, c.H || 20) * 1.5;
 }
 
-// Downsample a layer raster (placed at ox, oy in grid px) into VOX x VOX cells.
-// Returns Map cellIndex -> {col (packed), glow}. Outline pixels (opaque next to transparent) are only
-// used when a cell has nothing else (keeps thin fin rays, drops the dark rim of solid bodies).
-function cellsOf(r, ox, oy, GW, GH, keepRim) {
-  const out = new Map();
-  if (!r?.canvas) return out;
-  const w = r.canvas.width, h = r.canvas.height;
-  const px = pixelsOf(r.canvas);
-  const gl = r.glowCanvas ? pixelsOf(r.glowCanvas) : null;
-  const A = (x, y) => (x < 0 || y < 0 || x >= w || y >= h ? 0 : px[y * w + x] >>> 24);
-  const acc = new Map();
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const c = px[y * w + x];
-    if ((c >>> 24) < 90) continue;
-    const rim = A(x - 1, y) < 90 || A(x + 1, y) < 90 || A(x, y - 1) < 90 || A(x, y + 1) < 90;
-    const gx = Math.floor((x + ox) / VOX), gy = Math.floor((y + oy) / VOX);
-    if (gx < 0 || gy < 0 || gx >= GW || gy >= GH) continue;
-    const k = gy * GW + gx;
-    let a = acc.get(k);
-    if (!a) acc.set(k, (a = { n: 0, inner: new Map(), rim: new Map(), glow: 0 }));
-    a.n++;
-    const m = rim ? a.rim : a.inner;
-    const cc = (c | 0xff000000) >>> 0;
-    m.set(cc, (m.get(cc) || 0) + 1);
-    if (gl && gl[y * w + x] >>> 24) a.glow++;
-  }
-  const need = Math.ceil((VOX * VOX) / 2);
-  for (const [k, a] of acc) {
-    if (a.n < need && !(keepRim && a.n >= 1 && a.inner.size)) continue;
-    let src = a.inner.size ? a.inner : keepRim ? a.rim : null;
-    if (!src) continue;
-    let best = 0, bn = -1;
-    for (const [c, n] of src) if (n > bn) { bn = n; best = c; }
-    out.set(k, { col: best, glow: a.glow > 0, rim: !a.inner.size });
-  }
-  return out;
+// Model resolution level (voxels per look px = 2^(rk/2)) for a scale bucket.
+function resLevel(c, Sb) {
+  let rk = Math.round(2 * Math.log2(Sb / VP));
+  const cap = Math.floor(2 * Math.log2(MAX_VOX_LEN / lookLen(c)));
+  return clamp(Math.min(rk, cap), -6, 4);
 }
+export const scaleBucket = (S) => Math.round(Math.log(Math.max(0.05, S)) / Math.log(SCALE_STEP));
+const bucketScale = (sb) => Math.pow(SCALE_STEP, sb);
 
-// Palette: near-identical colours share an entry; each entry carries a material role.
+// ------------------------------------------------------------------ palette
+
 class Pal {
-  constructor(model) { this.m = model; this.map = new Map(); }
-  idx(col, role, glow = false) {
-    const [r, g, b] = unpack(col);
-    const q = this.map.size > 170 ? 4 : 3;
-    const key = (r >> q) + ',' + (g >> q) + ',' + (b >> q) + role + (glow ? 'g' : '');
+  constructor() {
+    this.map = new Map();
+    this.rgb = [0]; this.alpha = [1]; this.role = [0]; this.em = [0];
+    this.ramps = [null];
+  }
+  // role: 0 body, 1 fin, 2 eye, 3 mouth, 4 thin extra
+  idx(col, role, glow) {
+    const a = col >>> 24;
+    const aq = a >= 235 ? 4 : a >= 170 ? 3 : a >= 110 ? 2 : 1;
+    const key = (col & 0xffffff) + 16777216 * (role + 8 * aq + (glow ? 64 : 0));
     let i = this.map.get(key);
     if (i !== undefined) return i;
-    if (this.m.palette.length >= 250) {
-      // palette full: nearest existing colour
-      let bi = 1, bd = Infinity;
-      for (let k = 1; k < this.m.palette.length; k++) {
-        const [r2, g2, b2] = this.m.palette[k]._rgb;
-        const d = (r - r2) ** 2 + (g - g2) ** 2 + (b - b2) ** 2;
-        if (d < bd) { bd = d; bi = k; }
-      }
-      return bi;
-    }
-    const hex = '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('');
-    const opt = role === 'body' ? { smooth: 0.6, jitter: 0.035, spec: 0.55, specPow: 16, edge: 0.35 }
-      : role === 'fin' ? { smooth: 0.1, jitter: 0.02, light: 0.35, edge: 0.3, aoMul: 0.5 }
-        : role === 'eye' ? { smooth: 0.4, jitter: 0, spec: 1.3, specPow: 10, aoMul: 0.3 }
-          : { smooth: 0.3, jitter: 0.03 };
-    if (glow) opt.emissive = 0.75;
-    i = this.m.color(hex, opt);
-    this.m.palette[i]._rgb = [r, g, b];
+    if (this.rgb.length >= 65000) return 1;
+    i = this.rgb.length;
+    this.rgb.push(col & 0xffffff);
+    this.alpha.push(aq === 4 ? 1 : aq === 3 ? 0.82 : aq === 2 ? 0.66 : 0.5);
+    this.role.push(role);
+    this.em.push(glow ? 1 : 0);
+    this.ramps.push(null);
     this.map.set(key, i);
     return i;
   }
 }
 
-// ------------------------------------------------------------------ source model
+// Hue-shifted tone ramp: shadows drift cool/purple, highlights warm. t in -1..1, 21 steps.
+function rampOf(pal, v) {
+  let r = pal.ramps[v];
+  if (r) return r;
+  r = new Uint32Array(21);
+  const c = pal.rgb[v];
+  const R = c & 255, G = (c >>> 8) & 255, B = (c >>> 16) & 255;
+  for (let i = 0; i < 21; i++) {
+    const t = (i - 10) / 10;
+    let r2, g2, b2;
+    if (t < 0) {
+      const k = Math.pow(-t, 0.92);
+      r2 = R + (R * 0.26 + 12 - R) * k; g2 = G + (G * 0.3 + 10 - G) * k; b2 = B + (B * 0.46 + 40 - B) * k;
+    } else {
+      const k = Math.pow(t, 1.12);
+      r2 = R + (Math.min(255, R + (255 - R) * 0.74 + 10) - R) * k;
+      g2 = G + (Math.min(255, G + (255 - G) * 0.66 + 4) - G) * k;
+      b2 = B + (Math.max(0, B + (255 - B) * 0.5 - 8) - B) * k;
+      // mid-light tones get a touch more saturation
+      const sat = 0.12 * Math.sin(Math.PI * Math.min(1, t * 1.6));
+      const m = (r2 + g2 + b2) / 3;
+      r2 += (r2 - m) * sat; g2 += (g2 - m) * sat; b2 += (b2 - m) * sat;
+    }
+    r[i] = (0xff000000 | (clamp(Math.round(b2), 0, 255) << 16) | (clamp(Math.round(g2), 0, 255) << 8) | clamp(Math.round(r2), 0, 255)) >>> 0;
+  }
+  pal.ramps[v] = r;
+  return r;
+}
 
-// A source is the unrotated voxel sculpture: grid + palette + face anchors (in voxel coords).
-function buildSource(c, sw, inflate, mouthOpen) {
-  const kind = c.kind || 'fish';
-  if (kind === 'chain') return buildChainHead(c);
-  const kindLook = isKind(c);
-  const ph = sw / SWIM_N;
-  const q = { sw: 0, angle: 0, scale: 1, inflate, still: true };
+// ------------------------------------------------------------------ layout (2D, per res level)
+
+function place(ras, ox, oy, GW, GH) {
+  const col = new Uint32Array(GW * GH);
+  const glow = ras.glow ? new Uint8Array(GW * GH) : null;
+  for (let y = 0; y < ras.h; y++) {
+    const gy = y + oy;
+    if (gy < 0 || gy >= GH) continue;
+    for (let x = 0; x < ras.w; x++) {
+      const gx = x + ox;
+      if (gx < 0 || gx >= GW) continue;
+      const p = ras.data[y * ras.w + x];
+      if ((p >>> 24) < 40) continue;
+      col[gy * GW + gx] = p;
+      if (glow && ras.glow[y * ras.w + x]) glow[gy * GW + gx] = 1;
+    }
+  }
+  return { col, glow };
+}
+
+// Squared Euclidean distance transform (Felzenszwalb-Huttenlocher), in place on f (0 outside, INF inside).
+function edt1d(f, n, d, v, z) {
+  let k = 0;
+  v[0] = 0; z[0] = -1e20; z[1] = 1e20;
+  for (let q = 1; q < n; q++) {
+    let s;
+    for (;;) {
+      const p = v[k];
+      s = ((f[q] + q * q) - (f[p] + p * p)) / (2 * q - 2 * p);
+      if (s <= z[k] && k > 0) k--; else break;
+    }
+    if (s <= z[k]) { k = 0; v[0] = q; z[0] = -1e20; z[1] = 1e20; continue; }
+    k++; v[k] = q; z[k] = s; z[k + 1] = 1e20;
+  }
+  k = 0;
+  for (let q = 0; q < n; q++) {
+    while (z[k + 1] < q) k++;
+    const p = v[k];
+    d[q] = (q - p) * (q - p) + f[p];
+  }
+}
+function distanceField(mask, W, H) {
+  const INF = 1e12;
+  const g = new Float64Array(W * H);
+  for (let i = 0; i < W * H; i++) g[i] = mask[i] ? INF : 0;
+  const n = Math.max(W, H) + 2;
+  const f = new Float64Array(n), d = new Float64Array(n), v = new Int32Array(n), z = new Float64Array(n + 1);
+  for (let x = 0; x < W; x++) {
+    for (let y = 0; y < H; y++) f[y] = g[y * W + x];
+    edt1d(f, H, d, v, z);
+    for (let y = 0; y < H; y++) g[y * W + x] = d[y];
+  }
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) f[x] = g[y * W + x];
+    edt1d(f, W, d, v, z);
+    for (let x = 0; x < W; x++) g[y * W + x] = d[x];
+  }
+  const D = new Float32Array(W * H);
+  for (let i = 0; i < W * H; i++) D[i] = mask[i] ? Math.sqrt(g[i]) - 0.5 : -1;
+  return D;
+}
+
+function buildLayout(c, r, infl, pose, kf) {
+  const kind = isKind(c) ? c.kind : null;
+  if (c.kind === 'chain') return buildChainLayout(c, r);
+  const ph = kind ? kf / KIND_N : 0;
+  const q = { sw: ph, angle: 0, scale: r, inflate: kind ? 0 : infl, still: true, pose };
   const geo = rigGeom(c, q);
-  const GW = Math.ceil(geo.w / VOX) + 2, GH = Math.ceil(geo.h / VOX) + 2;
-  const layers = rigLayers(c);
+  const PAD = 2;
+  const GW = geo.w + PAD * 2, GH = geo.h + PAD * 2;
   const L = {};
-  for (const ly of layers) {
-    const r = rasterLayer(c, ly.id, { ph: ly.id === 'tail' || (kindLook && ly.id === 'back') ? ph : 0, angle: 0, scale: 1, inflate, still: true });
-    const off = geo.offsets?.[ly.id] || [0, 0];
-    L[ly.id] = cellsOf(r, r.x + off[0], r.y + off[1], GW, GH, ly.id !== 'body');
+  for (const ly of rigLayers(c)) {
+    const lp = kind ? ph : ly.id === 'tail' ? TAIL_NEUTRAL : 0;
+    const ras = rasterLayerVox(c, ly.id, { ph: lp, angle: 0, scale: r, inflate: kind ? 0 : infl, still: true, pose });
+    if (!ras.data) continue;
+    L[ly.id] = place(ras, ras.x + PAD, ras.y + PAD, GW, GH);
   }
-  const body = L.body || new Map();
-  let k = kindLook ? KIND_K[kind] ?? 0.6 : SHAPE_K[c.look.body?.shape || 'oval'] ?? 0.5;
+  const N = GW * GH;
+  const body = L.body?.col || new Uint32Array(N);
+  const mask = new Uint8Array(N);
+  for (let i = 0; i < N; i++) if ((body[i] >>> 24) >= (kind ? 60 : 110)) mask[i] = 1;
+  // thickness
+  let k = kind ? KIND_K[kind] ?? 0.6 : SHAPE_K[c.look.body?.shape || 'oval'] ?? 0.5;
   if (c.look.body?.thick) k = c.look.body.thick;
-  if (inflate > 0) k = lerp(k, 0.96, inflate);
+  if (c.look.vox?.thick) k = c.look.vox.thick;
+  if (infl > 0) k = k + (0.96 - k) * infl;
+  const T = new Float32Array(N).fill(-1);
   const revolve = REVOLVE.has(kind);
-
-  // Rounded thickness from a distance transform: t = k * sqrt(d (2 Dm - d)), where d is the distance
-  // to the silhouette edge and Dm the ridge depth (min of the row / column maxima), so horizontal fish,
-  // vertical seahorses and little hats all get elliptical cross-sections of their own narrow width.
-  const D = new Float32Array(GW * GH);
-  {
-    const edge = [];
-    for (let gy = -1; gy <= GH; gy++) for (let gx = -1; gx <= GW; gx++) {
-      if (gx >= 0 && gy >= 0 && gx < GW && gy < GH && body.has(gy * GW + gx)) continue;
-      const nb = (x, y) => x >= 0 && y >= 0 && x < GW && y < GH && body.has(y * GW + x);
-      if (nb(gx + 1, gy) || nb(gx - 1, gy) || nb(gx, gy + 1) || nb(gx, gy - 1)) edge.push(gx, gy);
-    }
-    for (const key of body.keys()) {
-      const gx = key % GW, gy = (key / GW) | 0;
-      let best = 1e9;
-      for (let i = 0; i < edge.length; i += 2) {
-        const dx = edge[i] - gx, dy = edge[i + 1] - gy;
-        const d2 = dx * dx + dy * dy;
-        if (d2 < best) best = d2;
-      }
-      D[key] = Math.sqrt(best) - 0.5;
-    }
-  }
-  const colMax = new Float32Array(GW * GH), rowMax = new Float32Array(GW * GH);
-  for (let gx = 0; gx < GW; gx++) {
-    let a = -1;
-    for (let gy = 0; gy <= GH; gy++) {
-      const on = gy < GH && body.has(gy * GW + gx);
-      if (on && a < 0) a = gy;
-      if (!on && a >= 0) { let mx = 0; for (let y = a; y < gy; y++) mx = Math.max(mx, D[y * GW + gx]); for (let y = a; y < gy; y++) colMax[y * GW + gx] = mx; a = -1; }
-    }
-  }
-  for (let gy = 0; gy < GH; gy++) {
-    let a = -1;
-    for (let gx = 0; gx <= GW; gx++) {
-      const on = gx < GW && body.has(gy * GW + gx);
-      if (on && a < 0) a = gx;
-      if (!on && a >= 0) { let mx = 0; for (let x = a; x < gx; x++) mx = Math.max(mx, D[gy * GW + x]); for (let x = a; x < gx; x++) rowMax[gy * GW + x] = mx; a = -1; }
-    }
-  }
-  const T = new Float32Array(GW * GH).fill(-1);
-  let maxW = 1;
-  for (const key of body.keys()) {
-    const d = Math.max(0, D[key]), dm = Math.max(0.5, Math.min(colMax[key], rowMax[key]));
-    const t = k * Math.sqrt(Math.max(0, d * (2 * dm - d))) * 1.05;
-    T[key] = t;
-    if (t > maxW) maxW = t;
-  }
-  // main body run per column (pectoral fins attach to it)
-  const mainRun = new Int32Array(GW * 2).fill(-1);
-  for (let gx = 0; gx < GW; gx++) {
-    let best = null, run = null;
-    for (let gy = 0; gy <= GH; gy++) {
-      const on = gy < GH && body.has(gy * GW + gx);
-      if (on && !run) run = [gy, gy];
-      else if (on) run[1] = gy;
-      else if (run) { if (!best || run[1] - run[0] > best[1] - best[0]) best = run; run = null; }
-    }
-    if (best) { mainRun[gx * 2] = best[0]; mainRun[gx * 2 + 1] = best[1]; }
-  }
-  const NZ = Math.ceil(maxW * 2 + 6 + (kindLook ? 4 : GW * 0.2));
-  const zc = Math.floor(NZ / 2);
-  // nose / tail ends for the swim sweep
-  let nose = 0, tailEnd = GW;
-  for (const m of [body, L.tail || new Map()]) for (const key of m.keys()) { const gx = key % GW; nose = Math.max(nose, gx); tailEnd = Math.min(tailEnd, gx); }
-  const len = Math.max(1, nose - tailEnd);
-  const bendA = kindLook ? 0 : len * 0.16 * Math.sin(ph * TAU);
-  const bend = (gx) => {
-    const u = clamp01((nose - gx) / len);
-    return Math.round(bendA * Math.pow(smoothstep(0.32, 1, u), 1.5));
-  };
-
-  const m = new VoxelModel(GW, GH, NZ);
-  const pal = new Pal(m);
-  const vy = (gy) => GH - 1 - gy;
-  const surf = (gx, gy) => {
-    if (gx < 0 || gy < 0 || gx >= GW || gy >= GH) return -1;
-    if (revolve) return revolveT(gx, gy);
-    return T[gy * GW + gx];
-  };
-  // solids of revolution: per row, radius from the run containing the creature's axis
-  let axis = 0, rowRun = null;
   if (revolve) {
     let sx = 0, n = 0;
-    for (const key of body.keys()) { sx += key % GW; n++; }
-    axis = n ? sx / n + 0.5 : GW / 2;
-    rowRun = new Float32Array(GH * 2).fill(-1);
+    for (let i = 0; i < N; i++) if (mask[i]) { sx += i % GW; n++; }
+    const axis = n ? sx / n + 0.5 : GW / 2;
     for (let gy = 0; gy < GH; gy++) {
       let a = -1, b = -1;
-      for (let gx = Math.floor(axis); gx >= 0 && body.has(gy * GW + gx); gx--) a = gx;
-      for (let gx = Math.floor(axis); gx < GW && body.has(gy * GW + gx); gx++) b = gx;
-      if (a >= 0 && b >= 0) { rowRun[gy * 2] = a; rowRun[gy * 2 + 1] = b; }
-    }
-  }
-  function revolveT(gx, gy) {
-    const a = rowRun[gy * 2], b = rowRun[gy * 2 + 1];
-    if (a < 0 || gx < a || gx > b) return -1;
-    const mid = (a + b + 1) / 2, r = (b - a + 1) / 2;
-    const d = gx + 0.5 - mid;
-    return Math.sqrt(Math.max(0, r * r - d * d)) * 0.92;
-  }
-
-  // body voxels
-  for (const [key, cell] of body) {
-    const gx = key % GW, gy = (key / GW) | 0;
-    let t = surf(gx, gy);
-    const pi = pal.idx(cell.col, 'body', cell.glow);
-    const off = bend(gx);
-    if (t < 0) t = 0.6;
-    const zt = Math.round(t);
-    for (let z = -zt; z <= zt; z++) m.set(gx, vy(gy), zc + z + off, pi);
-  }
-  // fins / limbs
-  const finZ = (layer, gx, gy) => {
-    if (kindLook) {
-      if (layer === 'back') return kind === 'ray' || kind === 'squid' ? [0] : [-Math.max(1, Math.round(maxW * 0.6))];
-      if (layer === 'front') return [Math.max(1, Math.round(maxW * 0.6))];
-      return [0];
-    }
-    if (layer === 'front') {
-      // pectorals lie against both flanks
-      let gyb = clamp(gy, mainRun[gx * 2], mainRun[gx * 2 + 1]);
-      if (mainRun[gx * 2] < 0) gyb = gy;
-      const t = Math.max(0, surf(gx, gyb));
-      const z = Math.round(t) + 1;
-      return [z, -z];
-    }
-    return [0];
-  };
-  for (const id of ['tail', 'back', 'front']) {
-    const cells = L[id];
-    if (!cells) continue;
-    for (const [key, cell] of cells) {
-      const gx = key % GW, gy = (key / GW) | 0;
-      if (!kindLook && id !== 'front' && surf(gx, gy) >= 0 && body.has(key)) continue; // inside the body
-      const col = cell.rim && !kindLook ? pack(mix(hexOf(cell.col), c.finHex, 0.45)) : cell.col;
-      const pi = pal.idx(col, kindLook ? 'body' : 'fin', cell.glow);
-      const off = bend(gx);
-      for (const z of finZ(id, gx, gy)) {
-        m.set(gx, vy(gy), zc + z + off, pi);
-        if (kindLook && id !== 'tail') m.set(gx, vy(gy), zc + z + off + Math.sign(z || 1), pi);
+      for (let gx = Math.floor(axis); gx >= 0 && mask[gy * GW + gx]; gx--) a = gx;
+      for (let gx = Math.floor(axis); gx < GW && mask[gy * GW + gx]; gx++) b = gx;
+      if (a < 0 || b < 0) {
+        // rows that miss the axis (e.g. tentacle tips): plain thin slab
+        for (let gx = 0; gx < GW; gx++) if (mask[gy * GW + gx]) T[gy * GW + gx] = 0.6;
+        continue;
+      }
+      const mid = (a + b + 1) / 2, rr = (b - a + 1) / 2;
+      for (let gx = 0; gx < GW; gx++) {
+        if (!mask[gy * GW + gx]) continue;
+        const d = gx + 0.5 - mid;
+        T[gy * GW + gx] = gx >= a && gx <= b ? Math.sqrt(Math.max(0, rr * rr - d * d)) * 0.94 : 0.6;
       }
     }
-  }
-  // face: painted eyes and mouth stamped onto both flanks, protruding one voxel
-  const eyes3 = [];
-  const stamp = (buf, cx, cy, role, protrude) => {
-    const w = buf.w, h = buf.h;
-    const cells = new Map();
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      const p = buf.data[y * w + x];
-      if ((p >>> 24) < 90) continue;
-      const gx = Math.floor((x + cx) / VOX), gy = Math.floor((y + cy) / VOX);
-      if (gx < 0 || gy < 0 || gx >= GW || gy >= GH) continue;
-      const kk = gy * GW + gx;
-      let a = cells.get(kk);
-      if (!a) cells.set(kk, (a = new Map()));
-      const cc = (p | 0xff000000) >>> 0;
-      a.set(cc, (a.get(cc) || 0) + 1);
-    }
-    // darkest-wins for pupils/mouth lines so tiny eyes stay readable
-    for (const [kk, a] of cells) {
-      let best = 0, score = -1;
-      for (const [cc, n] of a) {
-        const [r, g, b] = unpack(cc);
-        const lum = (r * 0.3 + g * 0.59 + b * 0.11) / 255;
-        const sc = n + (role === 'eye' ? (lum < 0.25 ? 2.2 : lum > 0.85 ? 0.8 : 0) : lum < 0.3 ? 1.5 : 0);
-        if (sc > score) { score = sc; best = cc; }
+  } else {
+    const D = distanceField(mask, GW, GH);
+    // ridge depth: min of the row / column run maxima -> elliptical cross-section of the narrow width
+    const colMax = new Float32Array(N), rowMax = new Float32Array(N);
+    for (let gx = 0; gx < GW; gx++) {
+      let a = -1;
+      for (let gy = 0; gy <= GH; gy++) {
+        const on = gy < GH && mask[gy * GW + gx];
+        if (on && a < 0) a = gy;
+        if (!on && a >= 0) { let mx = 0; for (let y = a; y < gy; y++) mx = Math.max(mx, D[y * GW + gx]); for (let y = a; y < gy; y++) colMax[y * GW + gx] = mx; a = -1; }
       }
-      const gx = kk % GW, gy = (kk / GW) | 0;
-      const t = surf(gx, gy);
-      const zt = t >= 0 ? Math.round(t) + protrude : 1;
-      const pi = pal.idx(best, role);
-      const off = bend(gx);
-      m.set(gx, vy(gy), zc + zt + off, pi);
-      m.set(gx, vy(gy), zc - zt + off, pi);
     }
-  };
-  const fstate = { emotion: 'neutral', blink: 0, lx: 0.25, ly: 0, gx: 0.15, gy: 0.5, time: 0, pupil: 1, dim: 0 };
+    for (let gy = 0; gy < GH; gy++) {
+      let a = -1;
+      for (let gx = 0; gx <= GW; gx++) {
+        const on = gx < GW && mask[gy * GW + gx];
+        if (on && a < 0) a = gx;
+        if (!on && a >= 0) { let mx = 0; for (let x = a; x < gx; x++) mx = Math.max(mx, D[gy * GW + x]); for (let x = a; x < gx; x++) rowMax[gy * GW + x] = mx; a = -1; }
+      }
+    }
+    for (let i = 0; i < N; i++) {
+      if (!mask[i]) continue;
+      const d = Math.max(0, D[i]), dm = Math.max(0.5, Math.min(colMax[i], rowMax[i]));
+      T[i] = k * Math.sqrt(Math.max(0, d * (2 * dm - d))) * 1.06;
+    }
+  }
+  let maxT = 0;
+  for (let i = 0; i < N; i++) if (T[i] > maxT) maxT = T[i];
+  // face: eyes + closed mouth painted at model resolution
+  const eyeCol = new Uint32Array(N), eyeGlow = new Uint8Array(N);
+  const eyes = [];
   for (const ev of geo.eyes || []) {
-    const R = Math.max(1, ev.r);
+    const R = Math.max(0.8, ev.r);
     const hb = eyeBox(R);
     const buf = new PixelBuffer(hb * 2, hb * 2);
-    paintEye(buf, null, hb, hb, c, ev.e, { ...fstate, mirror: ev.mirror, cheek: false, main: ev.main }, 0, R);
-    stamp(buf, ev.x - hb, ev.y - hb, 'eye', R >= 2.5 ? 1 : 0);
-    const gx = Math.floor(ev.x / VOX), gy = Math.floor(ev.y / VOX);
-    const t = surf(gx, gy);
-    eyes3.push({ x: ev.x / VOX, y: GH - ev.y / VOX, z: (t >= 0 ? t + 1 : 1), r: R / VOX, zc });
+    const gb = ev.e.type === 'glow' ? new PixelBuffer(hb * 2, hb * 2) : null;
+    voxAlbedo(() => paintEye(buf, gb, hb, hb, c, ev.e, { emotion: 'neutral', blink: 0, lx: 0.2, ly: 0, gx: 0.15, gy: 0.5, time: 0, mirror: ev.mirror, cheek: false, main: ev.main, pupil: 1, dim: 0 }, 0, R));
+    const ox = Math.round(ev.x) - hb + PAD, oy = Math.round(ev.y) - hb + PAD;
+    for (let y = 0; y < buf.h; y++) for (let x = 0; x < buf.w; x++) {
+      const p = buf.data[y * buf.w + x];
+      if ((p >>> 24) < 100) continue;
+      const gx = x + ox, gy = y + oy;
+      if (gx < 0 || gy < 0 || gx >= GW || gy >= GH) continue;
+      eyeCol[gy * GW + gx] = p | 0xff000000;
+      if (gb && gb.data[y * buf.w + x]) eyeGlow[gy * GW + gx] = 1;
+    }
+    eyes.push({ x: ev.x + PAD, y: ev.y + PAD, rv: R, rLook: R / r, e: ev.e, idx: ev.idx, mirror: ev.mirror, cheek: ev.cheek, main: ev.main });
   }
-  if (geo.mouth && geo.mouth.m && geo.mouth.m.type !== 'none') {
+  const mouthCol = new Uint32Array(N);
+  let mouth = null;
+  if (geo.mouth && geo.mouth.m && geo.mouth.m.type !== 'none' && geo.mouth.w >= 1) {
     const mo = geo.mouth;
     const hb = mouthBox(mo.w);
     const buf = new PixelBuffer(hb * 2, hb * 2);
-    paintMouth(buf, hb, hb, c, mo.m, { emotion: 'neutral', open: mouthOpen ? 1 : 0, time: 0 }, mo.angle || 0, mo.w, mo.front);
-    stamp(buf, mo.x - hb, mo.y - hb, 'mouth', 0);
+    voxAlbedo(() => paintMouth(buf, hb, hb, c, mo.m, { emotion: 'neutral', open: 0, time: 0 }, 0, mo.w, mo.front));
+    const ox = Math.round(mo.x) - hb + PAD, oy = Math.round(mo.y) - hb + PAD;
+    for (let y = 0; y < buf.h; y++) for (let x = 0; x < buf.w; x++) {
+      const p = buf.data[y * buf.w + x];
+      if ((p >>> 24) < 100) continue;
+      const gx = x + ox, gy = y + oy;
+      if (gx >= 0 && gy >= 0 && gx < GW && gy < GH) mouthCol[gy * GW + gx] = p | 0xff000000;
+    }
+    mouth = { x: mo.x + PAD, y: mo.y + PAD, wLook: mo.w / r, m: mo.m, front: mo.front };
   }
-  const anc = geo.anchors || {};
+  const anchors = {};
+  for (const [k2, v] of Object.entries(geo.anchors || {})) if (Array.isArray(v)) anchors[k2] = [v[0] + PAD, v[1] + PAD];
+  // spine extents for the swim bend
+  let nose = -1, bodyTail = GW, tailEnd = GW;
+  for (let i = 0; i < N; i++) if (mask[i]) { const gx = i % GW; if (gx > nose) nose = gx; if (gx < bodyTail) bodyTail = gx; }
+  if (L.tail) for (let i = 0; i < N; i++) if (L.tail.col[i]) { const gx = i % GW; if (gx < tailEnd) tailEnd = gx; }
+  tailEnd = Math.min(tailEnd, bodyTail);
+  // pectoral hinge (front layer, generic fish): its front-most column
+  let pecRoot = -1;
+  if (!kind && L.front) for (let i = 0; i < N; i++) if (L.front.col[i]) pecRoot = Math.max(pecRoot, i % GW);
   return {
-    m, zc, GW, GH, NZ,
-    center: [geo.ox / VOX, GH - geo.oy / VOX, zc + 0.5],
-    eyes: eyes3,
-    mouth: anc.mouth ? [anc.mouth[0] / VOX, GH - anc.mouth[1] / VOX, zc + 0.5] : null,
-    top: anc.top ? [anc.top[0] / VOX, GH - anc.top[1] / VOX, zc + 0.5] : null,
-    lid: shade(c.bodyHex || '#888888', -0.15),
+    c, kind, revolve, r, GW, GH, PAD, L, mask, T, maxT, eyeCol, eyeGlow, mouthCol, eyes, mouth, anchors,
+    origin: [geo.ox + PAD, geo.oy + PAD], nose, bodyTail, tailEnd, pecRoot,
+    wave: c.wave ?? 0.5, pal: new Pal(), bytes: N * 40,
   };
 }
 
-function hexOf(cc) {
-  const [r, g, b] = unpack(cc);
-  return '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('');
-}
-
-// Chain creatures: the head is an extruded voxel head; segments are voxel spheres (see chainFrame).
-function buildChainHead(c) {
-  const h = chainHeadSprite(c, 0, 1, 0);
-  const cv = h.canvas || h.c || h;
-  const w = cv.width, hgt = cv.height;
-  const GW = Math.ceil(w / VOX) + 2, GH = Math.ceil(hgt / VOX) + 2;
-  const cells = cellsOf({ canvas: cv }, 0, 0, GW, GH, false);
-  const NZ = GH + 4, zc = Math.floor(NZ / 2);
-  const m = new VoxelModel(GW, GH, NZ);
-  const pal = new Pal(m);
-  const cols = new Map();
-  for (const key of cells.keys()) { const gx = key % GW, gy = (key / GW) | 0; const r = cols.get(gx) || [gy, gy]; r[0] = Math.min(r[0], gy); r[1] = Math.max(r[1], gy); cols.set(gx, r); }
-  for (const [key, cell] of cells) {
-    const gx = key % GW, gy = (key / GW) | 0;
-    const [a, b] = cols.get(gx);
-    const hh = (b - a + 1) / 2, e = (gy + 0.5 - (a + b + 1) / 2) / hh;
-    const zt = Math.round(hh * 0.85 * Math.sqrt(Math.max(0, 1 - e * e)));
-    const pi = pal.idx(cell.col, 'body', cell.glow);
-    for (let z = -zt; z <= zt; z++) m.set(gx, GH - 1 - gy, zc + z, pi);
+// Chain head: painted head extruded with per-column elliptical thickness.
+function buildChainLayout(c, r) {
+  const hv = chainHeadVox(c, r);
+  const PAD = 2;
+  const GW = hv.w + PAD * 2, GH = hv.h + PAD * 2, N = GW * GH;
+  const col = new Uint32Array(N);
+  const mask = new Uint8Array(N);
+  for (let y = 0; y < hv.h; y++) for (let x = 0; x < hv.w; x++) {
+    const p = hv.data[y * hv.w + x];
+    if ((p >>> 24) < 60) continue;
+    col[(y + PAD) * GW + x + PAD] = p;
+    mask[(y + PAD) * GW + x + PAD] = 1;
   }
-  const ox = (h.o ?? h.ox ?? w / 2), oy = (h.o ?? h.oy ?? hgt / 2);
-  return { m, zc, GW, GH, NZ, center: [ox / VOX, GH - oy / VOX, zc + 0.5], eyes: [], mouth: null, top: null, lid: shade(c.bodyHex, -0.15) };
-}
-
-// Rotate a source model about z (pitch, degrees; positive = nose down) by inverse nearest sampling.
-function pitched(src, deg) {
-  if (!deg) return src.m;
-  const a = (-deg * Math.PI) / 180, ca = Math.cos(a), sa = Math.sin(a);
-  const { GW, GH, NZ } = src;
-  const cx = src.center[0], cy = src.center[1];
-  const R = Math.ceil(Math.hypot(GW, GH) / 2) + 2;
-  const nx = R * 2, ny = R * 2;
-  const out = new VoxelModel(nx, ny, NZ);
-  out.palette = src.m.palette;
-  const sm = src.m;
-  for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) {
-    const dx = x + 0.5 - R, dy = y + 0.5 - R;
-    const sx = Math.floor(cx + dx * ca + dy * sa), sy = Math.floor(cy - dx * sa + dy * ca);
-    if (sx < 0 || sy < 0 || sx >= GW || sy >= GH) continue;
-    for (let z = 0; z < NZ; z++) {
-      const v = sm.data[sx + GW * (sy + GH * z)];
-      if (v) out.data[x + nx * (y + ny * z)] = v;
+  const T = new Float32Array(N).fill(-1);
+  let maxT = 0;
+  for (let gx = 0; gx < GW; gx++) {
+    let a = -1, b = -1;
+    for (let gy = 0; gy < GH; gy++) if (mask[gy * GW + gx]) { if (a < 0) a = gy; b = gy; }
+    if (a < 0) continue;
+    const hh = (b - a + 1) / 2, mid = (a + b + 1) / 2;
+    for (let gy = a; gy <= b; gy++) {
+      if (!mask[gy * GW + gx]) continue;
+      const e = (gy + 0.5 - mid) / hh;
+      const t = hh * 0.85 * Math.sqrt(Math.max(0, 1 - e * e));
+      T[gy * GW + gx] = t;
+      if (t > maxT) maxT = t;
     }
   }
-  out._shift = [R - cx, R - cy];
-  return out;
-}
-
-// ------------------------------------------------------------------ frame cache
-
-const sources = new Map();
-const frames = new Map();
-const families = new Map();
-
-function sourceFor(c, sw, infl, mouth) {
-  const key = c.id + '|' + sw + '|' + infl + '|' + mouth;
-  let s = sources.get(key);
-  if (!s) { s = buildSource(c, sw, infl, mouth); s.pitched = new Map(); sources.set(key, s); }
-  return s;
-}
-
-function render(c, sw, infl, mouth, pitch, yawI, sb) {
-  const src = sourceFor(c, sw, infl, mouth);
-  let pm = src.pitched.get(pitch);
-  if (!pm) { pm = pitched(src, pitch * PITCH_STEP); src.pitched.set(pitch, pm); }
-  const shift = pm._shift || [0, 0];
-  const scale = Math.pow(SCALE_STEP, sb) * VOX;
-  const yaw = (yawI / YAW_N) * 360;
-  const r = renderVoxels(pm, { scale, yaw, pitch: CAM_PITCH, groundAO: false, ao: 0.9, edges: 0.55, sideEdges: 0.35, depthThreshold: 3 });
-  const P = (p) => r.project(p[0] + shift[0], p[1] + shift[1], p[2]);
-  const [ax, ay] = P(src.center);
-  // visible eye: the flank facing the camera
-  const cy = Math.cos((yaw * Math.PI) / 180);
-  const eyes = [];
-  for (const e of src.eyes) {
-    if (Math.abs(cy) < 0.25) continue;
-    const z = cy > 0 ? e.zc + e.z + 0.5 : e.zc - e.z + 0.5;
-    const [ex, ey] = P([e.x, e.y, z]);
-    eyes.push({ x: ex - ax, y: ey - ay, r: Math.max(1, e.r * scale) });
-  }
-  const mouthP = src.mouth ? P(src.mouth) : null;
-  const topP = src.top ? P(src.top) : null;
+  const o = hv.o + PAD;
+  const eyes = hv.face.eyes.map((ev) => ({ x: ev.x + PAD, y: ev.y + PAD, rv: ev.r, rLook: ev.r / r, e: ev.e, idx: ev.idx, mirror: ev.mirror, cheek: ev.cheek, main: ev.main }));
+  const mo = hv.face.mouth;
   return {
-    canvas: r.canvas, glow: r.glow, ax, ay, w: r.w, h: r.h, eyes, lid: src.lid,
-    mouth: mouthP ? [mouthP[0] - ax, mouthP[1] - ay] : null, top: topP ? [topP[0] - ax, topP[1] - ay] : [0, -r.h / 2],
+    c, kind: 'chain', revolve: false, r, GW, GH, PAD, L: { body: { col, glow: null } }, mask, T, maxT,
+    eyeCol: new Uint32Array(N), eyeGlow: new Uint8Array(N), mouthCol: new Uint32Array(N), eyes,
+    mouth: mo ? { x: mo.x + PAD, y: mo.y + PAD, wLook: mo.w / r, m: mo.m, front: mo.front } : null,
+    anchors: { mouth: [hv.face.nose[0] + PAD, hv.face.nose[1] + PAD], top: [o, o - c.chain.r * r * 1.2], bottom: [o, o + c.chain.r * r * 1.2], tail: [o - c.chain.r * r, o] },
+    origin: [o, o], nose: GW - 1, bodyTail: 0, tailEnd: 0, pecRoot: -1, wave: 0, pal: new Pal(), bytes: N * 30,
   };
 }
 
-function famKey(c, sw, infl, mouth, pitch, sb) { return c.id + '|' + sw + '|' + infl + '|' + mouth + '|' + pitch + '|' + sb; }
+// ------------------------------------------------------------------ grid (3D, per swim frame)
 
-function getFrame(c, sw, infl, mouth, pitch, yawI, sb, force = false) {
-  const fk = famKey(c, sw, infl, mouth, pitch, sb);
-  const key = fk + '#' + yawI;
-  let f = frames.get(key);
-  if (f) return { f, sc: 1 };
-  if (force || !overBudget()) {
-    const t0 = now();
-    try { f = render(c, sw, infl, mouth, pitch, yawI, sb); } catch (e) { console.warn('voxelfish', e); f = null; }
-    spent += now() - t0;
-    statBuilt++;
-    if (f) {
-      frames.set(key, f);
-      let fam = families.get(fk);
-      if (!fam) families.set(fk, (fam = new Set()));
-      fam.add(yawI);
-      if (frames.size > MAX_FRAMES) evict();
-      return { f, sc: 1 };
+function buildGrid(Lo, sw) {
+  const { c, kind, GW, GH, L, mask, T, maxT, eyeCol, eyeGlow, mouthCol, pal } = Lo;
+  const fish = !kind;
+  const ph = sw / SWIM_N;
+  // spine: travelling wave, arc-length compressed so the tail sweep reads side-on
+  const bodyLen = Math.max(4, Lo.nose - Lo.bodyTail);
+  const amp = fish ? (0.05 + 0.1 * clamp01(Lo.wave)) * bodyLen : 0;
+  const total = Math.max(1, Lo.nose - Lo.tailEnd + 2);
+  const off = (u) => {
+    if (u <= 1) return amp * u * u * Math.sin(TAU * ph - u * 3.2);
+    const o1 = amp * Math.sin(TAU * ph - 3.2);
+    const d1 = amp * (2 * Math.sin(TAU * ph - 3.2) - 3.2 * Math.cos(TAU * ph - 3.2));
+    return o1 + d1 * (u - 1);
+  };
+  const srcOf = new Int32Array(GW), zOf = new Int16Array(GW);
+  for (let gx = 0; gx < GW; gx++) { srcOf[gx] = gx; zOf[gx] = 0; }
+  if (fish && amp > 0.3) {
+    // integrate the spine from the nose backwards
+    const X = new Float32Array(total + 1), Z = new Float32Array(total + 1);
+    X[0] = Lo.nose + 0.5; Z[0] = 0;
+    for (let s = 0; s < total; s++) {
+      const u0 = s / bodyLen, u1 = (s + 1) / bodyLen;
+      const dz = off(u1) - off(u0);
+      const th = Math.atan(dz);
+      X[s + 1] = X[s] - Math.cos(th);
+      Z[s + 1] = Z[s] + Math.sin(th);
+    }
+    let s = 0;
+    for (let tx = Lo.nose; tx >= 0; tx--) {
+      const cx = tx + 0.5;
+      while (s < total && Math.abs(X[s + 1] - cx) <= Math.abs(X[s] - cx)) s++;
+      if (s >= total && X[total] - cx > 0.75) { srcOf[tx] = -1; continue; }
+      srcOf[tx] = Lo.nose - s;
+      zOf[tx] = Math.round(Z[s]);
     }
   }
-  statFallback++;
-  // nearest yaw in this family, then relax swim / mouth / pitch, then neighbouring scales
-  const tries = [[sw, infl, mouth, pitch, sb], [0, infl, 0, pitch, sb], [sw, infl, 0, 0, sb], [0, infl, 0, 0, sb], [0, 0, 0, 0, sb]];
-  for (let d = 1; d <= 6; d++) { tries.push([0, infl, 0, 0, sb - d], [0, infl, 0, 0, sb + d], [0, 0, 0, 0, sb - d], [0, 0, 0, 0, sb + d]); }
-  for (const [s2, i2, m2, p2, b2] of tries) {
-    const fam = families.get(famKey(c, s2, i2, m2, p2, b2));
-    if (!fam || !fam.size) continue;
-    let best = -1, bd = 99;
-    for (const y of fam) { const d = Math.min(Math.abs(y - yawI), YAW_N - Math.abs(y - yawI)); if (d < bd) { bd = d; best = y; } }
-    const ff = frames.get(famKey(c, s2, i2, m2, p2, b2) + '#' + best);
-    if (ff) return { f: ff, sc: Math.pow(SCALE_STEP, sb - b2) };
+  let bendMax = 0;
+  for (let gx = 0; gx < GW; gx++) bendMax = Math.max(bendMax, Math.abs(zOf[gx]));
+  // pectoral hinge flap (generic fish)
+  const pecA = 0.42 + 0.32 * Math.sin(TAU * ph + 1.1);
+  const pecReach = Lo.pecRoot >= 0 && L.front ? 18 : 0;
+  const NZ = 2 * (Math.ceil(maxT) + bendMax + 4 + Math.ceil(pecReach * Math.sin(0.8))) + 3;
+  const zc = NZ >> 1;
+  const NX = GW, NY = GH, NXY = NX * NY;
+  const data = new Uint16Array(NXY * NZ);
+  const zmin = new Int16Array(NXY).fill(32767), zmax = new Int16Array(NXY).fill(-1);
+  const set = (x, gy, z, v) => {
+    if (x < 0 || x >= NX || z < 0 || z >= NZ) return;
+    const y = NY - 1 - gy;
+    const col = x + y * NX;
+    data[col + z * NXY] = v;
+    if (z < zmin[col]) zmin[col] = z;
+    if (z > zmax[col]) zmax[col] = z;
+  };
+  const tAt = (gx, gy) => (gx < 0 || gy < 0 || gx >= GW || gy >= GH ? -1 : T[gy * GW + gx]);
+  const glowOf = (ly, i) => !!(ly.glow && ly.glow[i]);
+  // body
+  const bcol = L.body?.col;
+  for (let tx = 0; tx < GW; tx++) {
+    const gx = srcOf[tx];
+    if (gx < 0) continue;
+    const zo = zOf[tx];
+    for (let gy = 0; gy < GH; gy++) {
+      const i = gy * GW + gx;
+      if (!mask[i]) continue;
+      const t = T[i];
+      const zr = Math.max(0, Math.round(t));
+      const thin = t < 0.9;
+      const pv = pal.idx(bcol[i] | 0xff000000, thin && !kind ? 4 : 0, glowOf(L.body, i));
+      for (let z = -zr; z <= zr; z++) set(tx, gy, zc + z + zo, pv);
+      // face stamps on both flanks
+      const ec = eyeCol[i];
+      if (ec) {
+        const pe = pal.idx(ec, 2, !!eyeGlow[i]);
+        const ev = nearestEye(Lo, gx, gy);
+        let dome = 1;
+        if (ev && ev.rv >= 2.6) {
+          const d2 = ((gx + 0.5 - ev.x) ** 2 + (gy + 0.5 - ev.y) ** 2) / (ev.rv * ev.rv);
+          dome = 1 + Math.round(Math.max(0, 1 - d2) * Math.min(2, ev.rv * 0.28));
+        }
+        for (let z = zr + 1; z <= zr + dome; z++) { set(tx, gy, zc + z + zo, pe); set(tx, gy, zc - z + zo, pe); }
+        if (dome > 1) { set(tx, gy, zc + zr + zo, pe); set(tx, gy, zc - zr + zo, pe); }
+      }
+      const mc = mouthCol[i];
+      if (mc) {
+        const pm = pal.idx(mc, 3, false);
+        set(tx, gy, zc + zr + zo, pm); set(tx, gy, zc - zr + zo, pm);
+      }
+    }
   }
-  // nothing cached at all for this creature: build it anyway (once)
+  // eyes / mouth outside the body mask (eye stalks, faces on thin parts): stamp on the centre plane
+  for (let gy = 0; gy < GH; gy++) for (let gx = 0; gx < GW; gx++) {
+    const i = gy * GW + gx;
+    if (mask[i]) continue;
+    const ec = eyeCol[i], mc = mouthCol[i];
+    if (!ec && !mc) continue;
+    const pv = ec ? pal.idx(ec, 2, !!eyeGlow[i]) : pal.idx(mc, 3, false);
+    for (let z = -1; z <= 1; z++) set(gx, gy, zc + z + zOfSrc(srcOf, zOf, gx), pv);
+  }
+  // fins and limbs
+  const kindZ = Math.max(1, Math.round(maxT * 0.6));
+  for (const id of ['tail', 'back', 'front']) {
+    const ly = L[id];
+    if (!ly) continue;
+    const colA = ly.col;
+    if (fish && id === 'front') {
+      // pectoral: hinged at its front edge, swung out from both flanks
+      const root = Lo.pecRoot;
+      const ca = Math.cos(pecA), sa = Math.sin(pecA);
+      for (let gy = 0; gy < GH; gy++) for (let gx = 0; gx < GW; gx++) {
+        const i = gy * GW + gx;
+        const p = colA[i];
+        if (!p) continue;
+        const d = root - gx;
+        const tx = Math.round(root - d * ca);
+        // body thickness under the fin's root, at this height
+        let tb = tAt(root, gy);
+        if (tb < 0) { for (let k2 = 1; k2 < 8 && tb < 0; k2++) tb = Math.max(tAt(root - k2, gy), tAt(root, gy - k2), tAt(root, gy + k2)); }
+        if (tb < 0) tb = maxT * 0.5;
+        const zo = zOfSrc(srcOf, zOf, tx);
+        const zz = Math.round(tb) + 1 + Math.round(d * sa * 0.85);
+        const pv = pal.idx(p, 1, glowOf(ly, i));
+        set(tx, gy, zc + zz + zo, pv);
+        set(tx, gy, zc - zz + zo, pv);
+      }
+      continue;
+    }
+    for (let tx = 0; tx < GW; tx++) {
+      const gx = fish ? srcOf[tx] : tx;
+      if (gx < 0) continue;
+      const zo = fish ? zOf[tx] : 0;
+      for (let gy = 0; gy < GH; gy++) {
+        const i = gy * GW + gx;
+        const p = colA[i];
+        if (!p) continue;
+        if (fish) {
+          if (mask[i] && T[i] >= 0.9) continue; // inside the body
+          set(tx, gy, zc + zo, pal.idx(p, 1, glowOf(ly, i)));
+          continue;
+        }
+        // kinds: back layer behind, front layer in front (on the body surface where they overlap it)
+        const pv = pal.idx(p | ((p >>> 24) >= 200 ? 0xff000000 : 0), (p >>> 24) >= 200 ? 0 : 1, glowOf(ly, i));
+        const t = mask[i] ? Math.round(T[i]) + 1 : 0;
+        if (id === 'tail' || ((kind === 'ray' || kind === 'squid') && id === 'back')) { set(tx, gy, zc, pv); continue; }
+        const sgn = id === 'back' ? -1 : 1;
+        const z0 = mask[i] ? t : kindZ;
+        set(tx, gy, zc + sgn * z0, pv);
+        set(tx, gy, zc + sgn * (z0 + 1), pv);
+      }
+    }
+  }
+  // occupied bounds
+  let x0 = NX, x1 = -1, y0 = NY, y1 = -1, z0 = NZ, z1 = -1;
+  for (let y = 0; y < NY; y++) for (let x = 0; x < NX; x++) {
+    const col = x + y * NX;
+    if (zmax[col] < 0) continue;
+    if (x < x0) x0 = x; if (x > x1) x1 = x;
+    if (y < y0) y0 = y; if (y > y1) y1 = y;
+    if (zmin[col] < z0) z0 = zmin[col];
+    if (zmax[col] > z1) z1 = zmax[col];
+  }
+  if (x1 < 0) { x0 = y0 = z0 = 0; x1 = y1 = z1 = 0; }
+  // 3D anchor points (grid coords, y up)
+  const P3 = (p, zExtra = 0) => {
+    const tx = clamp(Math.floor(p[0]), 0, NX - 1);
+    return [p[0], NY - p[1], zc + 0.5 + zExtra + zOf[tx]];
+  };
+  const eyes = Lo.eyes.map((e) => {
+    const gx = clamp(Math.floor(e.x), 0, GW - 1), gy = clamp(Math.floor(e.y), 0, GH - 1);
+    const t = Math.max(0, Math.round(tAt(gx, gy)));
+    return { ...e, p: P3([e.x, e.y], t + 1.2) };
+  });
+  const mouth = Lo.mouth ? (() => {
+    const gx = clamp(Math.floor(Lo.mouth.x), 0, GW - 1), gy = clamp(Math.floor(Lo.mouth.y), 0, GH - 1);
+    return { ...Lo.mouth, p: P3([Lo.mouth.x, Lo.mouth.y], Math.max(0, Math.round(tAt(gx, gy))) + 0.8) };
+  })() : null;
+  const anchors = {};
+  for (const [k2, v] of Object.entries(Lo.anchors)) anchors[k2] = P3(v);
+  return {
+    Lo, data, NX, NY, NZ, NXY, zmin, zmax, pal, x0, x1, y0, y1, z0, z1,
+    center: [Lo.origin[0], NY - Lo.origin[1], zc + 0.5],
+    eyes, mouth, anchors, bytes: data.byteLength + NXY * 4,
+  };
+}
+
+function zOfSrc(srcOf, zOf, tx) { return tx >= 0 && tx < zOf.length ? zOf[tx] : 0; }
+
+function nearestEye(Lo, gx, gy) {
+  let best = null, bd = Infinity;
+  for (const e of Lo.eyes) {
+    const d = (gx + 0.5 - e.x) ** 2 + (gy + 0.5 - e.y) ** 2;
+    if (d < bd) { bd = d; best = e; }
+  }
+  return best;
+}
+
+// ------------------------------------------------------------------ renderer
+
+// Kernel for smoothed normals: 26 neighbours + 6 at distance 2.
+const KX = [], KY = [], KZ = [], KW = [];
+for (let z = -1; z <= 1; z++) for (let y = -1; y <= 1; y++) for (let x = -1; x <= 1; x++) {
+  if (!x && !y && !z) continue;
+  KX.push(x); KY.push(y); KZ.push(z); KW.push(1 / (x * x + y * y + z * z));
+}
+for (const [x, y, z] of [[2, 0, 0], [-2, 0, 0], [0, 2, 0], [0, -2, 0], [0, 0, 2], [0, 0, -2]]) { KX.push(x); KY.push(y); KZ.push(z); KW.push(0.25); }
+const KN = KX.length;
+const FN = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+// light (camera space, from the upper left front) and the Blinn half vector
+const LIGHT = (() => { const v = [-0.5, 0.74, 0.46]; const l = Math.hypot(...v); return v.map((a) => a / l); })();
+const HALF = (() => { const v = [LIGHT[0], LIGHT[1], LIGHT[2] + 1]; const l = Math.hypot(...v); return v.map((a) => a / l); })();
+
+function hash3(x, y, z) {
+  let h = (x * 374761393 + y * 668265263 + z * 2147483647) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+function camera(G, yawDeg, pitchDeg, s) {
+  // M = Tilt * Ry(yaw) * Rz(-pitch): rows are the camera axes expressed in model space
+  const xf = (v) => {
+    const cp = Math.cos(-pitchDeg * DEG), sp = Math.sin(-pitchDeg * DEG);
+    let x = v[0] * cp - v[1] * sp, y = v[0] * sp + v[1] * cp, z = v[2];
+    const cy = Math.cos(yawDeg * DEG), sy = Math.sin(yawDeg * DEG);
+    const x2 = x * cy - z * sy, z2 = x * sy + z * cy;
+    x = x2; z = z2;
+    const ct = Math.cos(CAM_TILT * DEG), st = Math.sin(CAM_TILT * DEG);
+    const y2 = y * ct - z * st, z3 = y * st + z * ct;
+    return [x, y2, z3];
+  };
+  const ex = xf([1, 0, 0]), ey = xf([0, 1, 0]), ez = xf([0, 0, 1]);
+  const R0 = [ex[0], ey[0], ez[0]], R1 = [ex[1], ey[1], ez[1]], R2 = [ex[2], ey[2], ez[2]];
+  const C = G.center;
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (let i = 0; i < 8; i++) {
+    const px = (i & 1 ? G.x1 + 1 : G.x0) - C[0], py = (i & 2 ? G.y1 + 1 : G.y0) - C[1], pz = (i & 4 ? G.z1 + 1 : G.z0) - C[2];
+    const X = px * R0[0] + py * R0[1] + pz * R0[2], Y = px * R1[0] + py * R1[1] + pz * R1[2];
+    if (X < minX) minX = X; if (X > maxX) maxX = X; if (Y < minY) minY = Y; if (Y > maxY) maxY = Y;
+  }
+  const pad = 2;
+  const W = Math.max(1, Math.ceil((maxX - minX) * s) + pad * 2), H = Math.max(1, Math.ceil((maxY - minY) * s) + pad * 2);
+  const project = (p) => {
+    const px = p[0] - C[0], py = p[1] - C[1], pz = p[2] - C[2];
+    const X = px * R0[0] + py * R0[1] + pz * R0[2], Y = px * R1[0] + py * R1[1] + pz * R1[2], Z = px * R2[0] + py * R2[1] + pz * R2[2];
+    return [(X - minX) * s + pad, (maxY - Y) * s + pad, Z];
+  };
+  return { R0, R1, R2, minX, maxY, s, pad, W, H, project };
+}
+
+// A render job: rows are traced/shaded in slices (resumable), then finished with the post passes.
+class Job {
+  constructor(G, yaw, pitch, s, opts) {
+    this.G = G; this.yaw = yaw; this.pitch = pitch; this.s = s; this.opts = opts;
+    const cam = camera(G, yaw, pitch, s);
+    this.cam = cam;
+    const N = cam.W * cam.H;
+    this.out = new Uint32Array(N);
+    this.depth = new Float32Array(N).fill(1e9);
+    this.glow = null;
+    this.row = 0;
+    this.done = false;
+    let hs = 1024;
+    while (hs < N * 0.7) hs <<= 1;
+    this.hk = new Int32Array(hs).fill(-1);
+    this.hv = new Uint32Array(hs);
+    this.hg = new Uint8Array(hs);
+    this.hmask = hs - 1;
+    this.cost = N;
+  }
+
+  step(deadline) {
+    const { cam } = this;
+    while (this.row < cam.H) {
+      this.traceRow(this.row++);
+      if ((this.row & 3) === 0 && now() > deadline) return false;
+    }
+    this.finish();
+    this.done = true;
+    return true;
+  }
+
+  traceRow(py) {
+    const { G, cam, out, depth } = this;
+    const { R0, R1, R2, s, pad, minX, maxY, W } = cam;
+    const { data, NX, NXY, zmin, zmax, pal } = G;
+    const C = G.center;
+    const dx = -R2[0], dy = -R2[1], dz = -R2[2];
+    const bx0 = G.x0, by0 = G.y0, bz0 = G.z0, bx1 = G.x1 + 1, by1 = G.y1 + 1, bz1 = G.z1 + 1;
+    const BIG = 1e30;
+    const zx = Math.abs(dx) < 1e-9, zy = Math.abs(dy) < 1e-9, zz = Math.abs(dz) < 1e-9;
+    const idx = zx ? BIG : 1 / dx, idy = zy ? BIG : 1 / dy, idz = zz ? BIG : 1 / dz;
+    const sx = dx > 0 ? 1 : -1, sy = dy > 0 ? 1 : -1, sz = dz > 0 ? 1 : -1;
+    const tdx = Math.abs(idx), tdy = Math.abs(idy), tdz = Math.abs(idz);
+    const fX = sx > 0 ? 1 : 0, fY = sy > 0 ? 3 : 2, fZ = sz > 0 ? 5 : 4; // face hit when stepping along +axis is the -axis face
+    const Y = maxY - (py - pad + 0.5) / s;
+    const alphaArr = pal.alpha;
+    for (let px = 0; px < W; px++) {
+      const X = minX + (px - pad + 0.5) / s;
+      const ox = C[0] + X * R0[0] + Y * R1[0], oy = C[1] + X * R0[1] + Y * R1[1], oz = C[2] + X * R0[2] + Y * R1[2];
+      let t0x, t1x, t0y, t1y, t0z, t1z;
+      if (zx) { if (ox < bx0 || ox >= bx1) continue; t0x = -BIG; t1x = BIG; } else { t0x = (bx0 - ox) * idx; t1x = (bx1 - ox) * idx; if (t0x > t1x) { const q = t0x; t0x = t1x; t1x = q; } }
+      if (zy) { if (oy < by0 || oy >= by1) continue; t0y = -BIG; t1y = BIG; } else { t0y = (by0 - oy) * idy; t1y = (by1 - oy) * idy; if (t0y > t1y) { const q = t0y; t0y = t1y; t1y = q; } }
+      if (zz) { if (oz < bz0 || oz >= bz1) continue; t0z = -BIG; t1z = BIG; } else { t0z = (bz0 - oz) * idz; t1z = (bz1 - oz) * idz; if (t0z > t1z) { const q = t0z; t0z = t1z; t1z = q; } }
+      const tEnter = Math.max(t0x, t0y, t0z), tExit = Math.min(t1x, t1y, t1z);
+      if (tEnter >= tExit) continue;
+      let face = tEnter === t0x ? fX : tEnter === t0y ? fY : fZ;
+      let t = tEnter;
+      let te = t + 1e-5;
+      let ix = clamp(Math.floor(ox + dx * te), bx0, bx1 - 1);
+      let iy = clamp(Math.floor(oy + dy * te), by0, by1 - 1);
+      let iz = clamp(Math.floor(oz + dz * te), bz0, bz1 - 1);
+      let tmx = zx ? BIG : (ix + (sx > 0 ? 1 : 0) - ox) * idx;
+      let tmy = zy ? BIG : (iy + (sy > 0 ? 1 : 0) - oy) * idy;
+      let tmz = zz ? BIG : (iz + (sz > 0 ? 1 : 0) - oz) * idz;
+      let transC = 0, transA = 0, transT = 0, hitC = 0, hitT = 0, hitG = 0, transG = 0;
+      for (let guard = 0; guard < 4096; guard++) {
+        const col = ix + iy * NX;
+        const zmn = zmin[col];
+        const tCol = tmx < tmy ? tmx : tmy;
+        let inspect = zmn !== 32767;
+        if (inspect) {
+          const tEnd = tCol < tExit ? tCol : tExit;
+          const za = oz + dz * t, zb = oz + dz * tEnd;
+          const lo = za < zb ? za : zb, hi = za < zb ? zb : za;
+          if (hi < zmn || lo >= zmax[col] + 1) inspect = false;
+        }
+        if (inspect) {
+          let found = false;
+          for (;;) {
+            const vi = col + iz * NXY;
+            const v = data[vi];
+            if (v) {
+              const a = alphaArr[v];
+              if (a >= 1) {
+                hitC = this.shade(vi, face, ix, iy, iz);
+                hitG = this.lastGlow;
+                hitT = t;
+                found = true;
+                break;
+              }
+              if (!transA) {
+                transC = this.shade(vi, face, ix, iy, iz);
+                transG = this.lastGlow;
+                transA = a; transT = t;
+              }
+            }
+            if (tmz < tCol) {
+              iz += sz; t = tmz; tmz += tdz; face = fZ;
+              if (iz < bz0 || iz >= bz1 || t >= tExit) break;
+            } else break;
+          }
+          if (found) break;
+        }
+        // next column
+        if (tmx < tmy) { ix += sx; t = tmx; tmx += tdx; face = fX; if (ix < bx0 || ix >= bx1) break; }
+        else { iy += sy; t = tmy; tmy += tdy; face = fY; if (iy < by0 || iy >= by1) break; }
+        if (t >= tExit) break;
+        te = t + 1e-5;
+        iz = clamp(Math.floor(oz + dz * te), bz0, bz1 - 1);
+        tmz = zz ? BIG : (iz + (sz > 0 ? 1 : 0) - oz) * idz;
+      }
+      const p = py * W + px;
+      if (hitC) {
+        let cOut = hitC;
+        if (transA) cOut = mixPacked(hitC, transC, transA);
+        out[p] = cOut;
+        depth[p] = transA ? transT : hitT;
+        const g = transA && transG ? transC : hitG ? hitC : 0;
+        if (g) (this.glow ||= new Uint32Array(W * cam.H))[p] = g;
+      } else if (transA) {
+        out[p] = ((transC & 0xffffff) | (Math.round(transA * 255) << 24)) >>> 0;
+        depth[p] = transT;
+        if (transG) (this.glow ||= new Uint32Array(W * cam.H))[p] = transC;
+      }
+    }
+  }
+
+  // Shade one voxel face (cached): returns a packed colour; sets this.lastGlow.
+  shade(vi, face, ix, iy, iz) {
+    const key = vi * 6 + face;
+    const hk = this.hk, m = this.hmask;
+    let h = Math.imul(key, 0x9e3779b1) >>> 0 & m;
+    for (;;) {
+      const k = hk[h];
+      if (k === key) { this.lastGlow = this.hg[h]; return this.hv[h]; }
+      if (k === -1) break;
+      h = (h + 1) & m;
+    }
+    const G = this.G, pal = G.pal, cam = this.cam;
+    const { data, NX, NY, NZ, NXY } = G;
+    const v = data[vi];
+    const role = pal.role[v];
+    const fn = FN[face];
+    let nx = fn[0], ny = fn[1], nz = fn[2];
+    // smoothed normal from the occupancy gradient (opaque voxels)
+    let gx = 0, gy = 0, gz = 0;
+    if (role !== 1) {
+      for (let k = 0; k < KN; k++) {
+        const x = ix + KX[k], y = iy + KY[k], z = iz + KZ[k];
+        if (x < 0 || y < 0 || z < 0 || x >= NX || y >= NY || z >= NZ) continue;
+        const w = data[x + y * NX + z * NXY];
+        if (w && pal.alpha[w] >= 1) { gx -= KX[k] * KW[k]; gy -= KY[k] * KW[k]; gz -= KZ[k] * KW[k]; }
+      }
+      const gl = Math.hypot(gx, gy, gz);
+      if (gl > 0.4) {
+        const wf = role === 2 ? 0.25 : role === 4 ? 0.6 : 0.42;
+        nx = nx * wf + (gx / gl) * (1 - wf); ny = ny * wf + (gy / gl) * (1 - wf); nz = nz * wf + (gz / gl) * (1 - wf);
+        const l = Math.hypot(nx, ny, nz) || 1;
+        nx /= l; ny /= l; nz /= l;
+        gx /= gl; gy /= gl; gz /= gl;
+      } else { gx = nx; gy = ny; gz = nz; }
+    } else { gx = nx; gy = ny; gz = nz; }
+    const { R0, R1, R2 } = cam;
+    const cx = R0[0] * nx + R0[1] * ny + R0[2] * nz;
+    const cy = R1[0] * nx + R1[1] * ny + R1[2] * nz;
+    const cz = R2[0] * nx + R2[1] * ny + R2[2] * nz;
+    const lam = cx * LIGHT[0] + cy * LIGHT[1] + cz * LIGHT[2];
+    // per-face AO: occupancy of the 8 cells around the face, in the layer in front of it
+    const ax = face >> 1;
+    const fx = ix + fn[0], fy = iy + fn[1], fz = iz + fn[2];
+    let occ = 0;
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+      if (!a && !b) continue;
+      let x = fx, y = fy, z = fz;
+      if (ax === 0) { y += a; z += b; } else if (ax === 1) { x += a; z += b; } else { x += a; y += b; }
+      if (x < 0 || y < 0 || z < 0 || x >= NX || y >= NY || z >= NZ) continue;
+      const w = data[x + y * NX + z * NXY];
+      if (w && pal.alpha[w] >= 1) occ += a && b ? 0.55 : 1;
+    }
+    const ao = 1 - Math.min(1, occ / 5.2);
+    let tone;
+    if (role === 1) {
+      // thin membrane: lit through from both sides
+      const d = Math.abs(lam);
+      tone = (0.34 + 0.4 * d + 0.18 * (0.5 + 0.5 * cy)) * (0.75 + 0.25 * ao);
+      tone = (tone - 0.6) * 2.1;
+    } else {
+      const diff = clamp01((lam + 0.22) / 1.22);
+      const sky = 0.5 + 0.5 * cy;
+      let lit = 0.16 + 0.58 * diff + 0.26 * sky;
+      lit *= 0.5 + 0.5 * ao;
+      tone = (lit - 0.6) * 2.35;
+      // glints on the smooth surface, rim light from the water above
+      const scx = R0[0] * gx + R0[1] * gy + R0[2] * gz, scy = R1[0] * gx + R1[1] * gy + R1[2] * gz, scz = R2[0] * gx + R2[1] * gy + R2[2] * gz;
+      const hd = scx * HALF[0] + scy * HALF[1] + scz * HALF[2];
+      const specK = role === 2 ? 1.6 : role === 0 ? 0.75 : 0.4;
+      if (hd > 0.8) tone += Math.pow((hd - 0.8) / 0.2, 3) * specK;
+      const rim = Math.pow(1 - clamp01(scz), 2.6) * clamp01(scy * 1.4 + 0.25);
+      tone += rim * 0.42;
+    }
+    tone += (hash3(ix, iy, iz) - 0.5) * 0.07;
+    const em = pal.em[v];
+    if (em) tone = Math.max(tone, 0.3) * 0.5 + 0.32;
+    const ti = clamp(Math.round(tone * 10), -10, 10) + 10;
+    const col = rampOf(pal, v)[ti];
+    // store
+    hk[h] = key; this.hv[h] = col; this.hg[h] = em;
+    this.lastGlow = em;
+    return col;
+  }
+
+  finish() {
+    const { cam, out, depth } = this;
+    const { W, H } = cam;
+    const N = W * H;
+    // interior depth lines: a nearer surface overlapping a farther one darkens the far pixel
+    const thr = 2.4;
+    const src = out.slice();
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const p = y * W + x;
+      const c = src[p];
+      if (!c) continue;
+      const d = depth[p] - thr;
+      if ((x > 0 && src[p - 1] && depth[p - 1] < d) || (x + 1 < W && src[p + 1] && depth[p + 1] < d) || (y > 0 && src[p - W] && depth[p - W] < d) || (y + 1 < H && src[p + W] && depth[p + W] < d)) {
+        out[p] = darkPacked(c, 0.62);
+      }
+    }
+    // selective outline around opaque silhouettes
+    if (this.opts.outline !== false) {
+      const src2 = out.slice();
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const p = y * W + x;
+        if (src2[p] >>> 24) continue;
+        let n = 0;
+        if (y > 0 && (src2[p - W] >>> 24) >= 200) n = src2[p - W];
+        else if (x > 0 && (src2[p - 1] >>> 24) >= 200) n = src2[p - 1];
+        else if (x + 1 < W && (src2[p + 1] >>> 24) >= 200) n = src2[p + 1];
+        else if (y + 1 < H && (src2[p + W] >>> 24) >= 200) n = src2[p + W];
+        if (n) out[p] = outlinePacked(n);
+      }
+    }
+    this.canvas = toCanvas(out, W, H);
+    if (this.glow) this.glowCanvas = toCanvas(glowHalo(this.glow, W, H, Math.max(2, Math.round(this.s * 1.4))), W, H);
+    statPx += N;
+    // free scratch
+    this.hk = this.hv = this.hg = null;
+    this.depth = null;
+  }
+}
+
+function mixPacked(a, b, t) {
+  const ar = a & 255, ag = (a >>> 8) & 255, ab = (a >>> 16) & 255;
+  const br = b & 255, bg = (b >>> 8) & 255, bb = (b >>> 16) & 255;
+  return (0xff000000 | (Math.round(ab + (bb - ab) * t) << 16) | (Math.round(ag + (bg - ag) * t) << 8) | Math.round(ar + (br - ar) * t)) >>> 0;
+}
+function darkPacked(c, k) {
+  const r = c & 255, g = (c >>> 8) & 255, b = (c >>> 16) & 255;
+  return ((c & 0xff000000) | (Math.round(b * k + 10 * (1 - k)) << 16) | (Math.round(g * k * 0.96) << 8) | Math.round(r * k * 0.92)) >>> 0;
+}
+function outlinePacked(n) {
+  const r = n & 255, g = (n >>> 8) & 255, b = (n >>> 16) & 255;
+  return (0xff000000 | (Math.round(b * 0.26 + 22) << 16) | (Math.round(g * 0.2 + 8) << 8) | Math.round(r * 0.22 + 10)) >>> 0;
+}
+
+function glowHalo(g, W, H, R) {
+  // emissive core + a soft halo (two box blurs) carrying the emissive colour
+  const N = W * H;
+  const r = new Float32Array(N), gg = new Float32Array(N), b = new Float32Array(N), a = new Float32Array(N);
+  for (let p = 0; p < N; p++) {
+    const c = g[p];
+    if (!c) continue;
+    r[p] = c & 255; gg[p] = (c >>> 8) & 255; b[p] = (c >>> 16) & 255; a[p] = 1;
+  }
+  const tmp = new Float32Array(N);
+  const blur = (ch) => {
+    for (let pass = 0; pass < 2; pass++) {
+      for (let y = 0; y < H; y++) {
+        let acc = 0;
+        const row = y * W;
+        for (let x = -R; x < W + R; x++) {
+          if (x + R < W) acc += ch[row + x + R];
+          if (x - R - 1 >= 0) acc -= ch[row + x - R - 1];
+          if (x >= 0 && x < W) tmp[row + x] = acc / (2 * R + 1);
+        }
+      }
+      for (let x = 0; x < W; x++) {
+        let acc = 0;
+        for (let y = -R; y < H + R; y++) {
+          if (y + R < H) acc += tmp[(y + R) * W + x];
+          if (y - R - 1 >= 0) acc -= tmp[(y - R - 1) * W + x];
+          if (y >= 0 && y < H) ch[y * W + x] = acc / (2 * R + 1);
+        }
+      }
+    }
+  };
+  const core = g.slice();
+  blur(r); blur(gg); blur(b); blur(a);
+  const outB = new Uint32Array(N);
+  for (let p = 0; p < N; p++) {
+    if (core[p]) { outB[p] = core[p] | 0xff000000; continue; }
+    const al = a[p];
+    if (al < 0.01) continue;
+    const k = 1 / al;
+    const A = Math.min(255, Math.round(Math.pow(al, 0.8) * 230));
+    outB[p] = ((A << 24) | (clamp(Math.round(b[p] * k), 0, 255) << 16) | (clamp(Math.round(gg[p] * k), 0, 255) << 8) | clamp(Math.round(r[p] * k), 0, 255)) >>> 0;
+  }
+  return outB;
+}
+
+function toCanvas(buf, W, H) {
+  const c = makeCanvas(W, H);
+  const g = ctxOf(c);
+  const img = g.createImageData(W, H);
+  new Uint32Array(img.data.buffer).set(buf);
+  g.putImageData(img, 0, 0);
+  return c;
+}
+
+// ------------------------------------------------------------------ caches
+
+const layouts = new Map();   // lkey -> layout
+const grids = new Map();     // gkey -> grid
+const frames = new Map();    // fkey -> frame
+const jobs = new Map();      // fkey -> {job, meta, gkey, last}
+const byCreature = new Map(); // vid -> Map(fkey -> meta)
+let gridBytes = 0;
+
+function touch(map, k, v) { map.delete(k); map.set(k, v); }
+
+function layoutFor(c, rk, infl, pose, kf) {
+  const key = vidOf(c) + '|' + rk + '|' + infl + '|' + (pose ? 1 : 0) + '|' + kf;
+  let L = layouts.get(key);
+  if (L) { touch(layouts, key, L); return L; }
   const t0 = now();
-  f = render(c, 0, infl, 0, 0, yawI, sb);
+  L = buildLayout(c, Math.pow(2, rk / 2), infl / INFL_N, pose, kf);
   spent += now() - t0;
-  frames.set(famKey(c, 0, infl, 0, 0, sb) + '#' + yawI, f);
-  let fam = families.get(famKey(c, 0, infl, 0, 0, sb));
-  if (!fam) families.set(famKey(c, 0, infl, 0, 0, sb), (fam = new Set()));
-  fam.add(yawI);
-  return { f, sc: 1 };
+  L.key = key;
+  layouts.set(key, L);
+  if (layouts.size > LAYOUT_MAX) { const k = layouts.keys().next().value; layouts.delete(k); }
+  return L;
 }
 
-function evict() {
-  const it = frames.keys();
-  for (let i = 0; i < 600; i++) {
-    const k = it.next().value;
-    if (k === undefined) break;
+function gridFor(c, rk, infl, pose, sw) {
+  const kind = isKind(c) || c.kind === 'chain';
+  const kf = kind && c.kind !== 'chain' ? sw : 0;
+  const lkey = vidOf(c) + '|' + rk + '|' + infl + '|' + (pose ? 1 : 0) + '|' + kf;
+  const gkey = lkey + '#' + (kind ? 0 : sw);
+  let G = grids.get(gkey);
+  if (G) { touch(grids, gkey, G); return G; }
+  const Lo = layoutFor(c, rk, infl, pose, kf);
+  const t0 = now();
+  G = buildGrid(Lo, kind ? 0 : sw);
+  spent += now() - t0;
+  grids.set(gkey, G);
+  gridBytes += G.bytes;
+  while (gridBytes > GRID_BYTES_MAX && grids.size > 4) {
+    const k = grids.keys().next().value;
+    gridBytes -= grids.get(k).bytes;
+    grids.delete(k);
+  }
+  return G;
+}
+
+let framePx = 0;
+function storeFrame(fkey, meta, fr) {
+  frames.set(fkey, fr);
+  framePx += fr.W * fr.H;
+  let m = byCreature.get(meta.vid);
+  if (!m) byCreature.set(meta.vid, (m = new Map()));
+  m.set(fkey, meta);
+  while (framePx > FRAME_PX_MAX && frames.size > 8) {
+    const k = frames.keys().next().value;
+    const f = frames.get(k);
+    framePx -= f.W * f.H;
     frames.delete(k);
-    const bar = k.lastIndexOf('#');
-    families.get(k.slice(0, bar))?.delete(Number(k.slice(bar + 1)));
+    byCreature.get(f.vid)?.delete(k);
   }
 }
 
-export function scaleBucket(s) { return Math.round(Math.log(Math.max(0.05, s)) / Math.log(SCALE_STEP)); }
+function makeFrame(job, meta) {
+  const { cam, G } = job;
+  const C = cam.project(G.center);
+  const ax = C[0], ay = C[1];
+  const rel = (p) => { const q = cam.project(p); return [q[0] - ax, q[1] - ay, q[2]]; };
+  const anchors = {};
+  for (const [k, p] of Object.entries(G.anchors)) anchors[k] = rel(p);
+  return {
+    canvas: job.canvas, glow: job.glowCanvas || null, W: cam.W, H: cam.H, ax, ay, s: job.s, Sb: meta.Sb, vid: meta.vid,
+    yaw: meta.yaw, pitch: meta.pitch, r: G.Lo.r,
+    eyes: G.eyes.map((e) => { const q = rel(e.p); return { x: q[0], y: q[1], z: q[2], r: e.rLook * meta.Sb, e: e.e, idx: e.idx, mirror: e.mirror, cheek: e.cheek, main: e.main }; }),
+    mouth: G.mouth ? (() => { const q = rel(G.mouth.p); return { x: q[0], y: q[1], w: G.mouth.wLook * meta.Sb, m: G.mouth.m, front: G.mouth.front }; })() : null,
+    anchors,
+  };
+}
 
-// Pre-build frames for a creature (e.g. while the tank is loading): both facings at one scale.
+function fkeyOf(m) { return m.vid + '|' + m.rk + '|' + m.infl + '|' + m.pose + '|' + m.sw + '|' + m.yawI + '|' + m.pitchI + '|' + m.sb; }
+
+// Advance (or start) the job for a frame; returns the frame when complete.
+function work(c, m, fkey, deadline) {
+  let J = jobs.get(fkey);
+  if (!J) {
+    const G = gridFor(c, m.rk, m.infl, m.pose, m.sw);
+    const yaw = m.yawI * YAW_STEP, pitch = m.pitchI * (c.kind === 'chain' ? CHAIN_PITCH_STEP : PITCH_STEP);
+    J = { job: new Job(G, yaw, pitch, m.Sb / G.Lo.r, { outline: true }), meta: m };
+    jobs.set(fkey, J);
+    statJobs++;
+  }
+  J.last = now();
+  const t0 = now();
+  const done = J.job.step(deadline);
+  spent += now() - t0;
+  if (!done) return null;
+  jobs.delete(fkey);
+  const fr = makeFrame(J.job, m);
+  storeFrame(fkey, m, fr);
+  statBuilt++;
+  return fr;
+}
+
+// Nearest cached frame of the same creature (yaw first, then pitch, scale, swim frame).
+function fallback(m) {
+  const list = byCreature.get(m.vid);
+  if (!list || !list.size) return null;
+  let best = null, bd = Infinity;
+  for (const [k, q] of list) {
+    let d = Math.abs(q.yawI - m.yawI) * 4 + Math.abs(q.pitchI - m.pitchI) * 1.5 + Math.abs(q.sb - m.sb) * 0.9 + Math.abs(q.infl - m.infl) * 3 + (q.pose !== m.pose ? 20 : 0);
+    const ds = Math.abs(q.sw - m.sw);
+    d += Math.min(ds, SWIM_N - ds) * 0.5;
+    if (d < bd) { const f = frames.get(k); if (f) { bd = d; best = f; } }
+  }
+  return best;
+}
+
+// ------------------------------------------------------------------ warm-up queue
+
+const warmQ = [];
+const warmed = new Set();
+function queueWarm(c, m) {
+  const key = m.vid + '|' + m.rk + '|' + m.infl + '|' + m.pose + '|' + m.sb + '|' + m.pitchI;
+  if (warmed.has(key)) return;
+  warmed.add(key);
+  if (warmed.size > 4000) warmed.clear();
+  const isK = isKind(c) || c.kind === 'chain';
+  // the turn-around sweep first (so turning never pops), then the swim cycle side-on
+  for (const y of [3, 6, 1, 2, 4, 5, -1, -2]) warmQ.push({ c, m: { ...m, yawI: y, sw: 0 } });
+  if (!isK) for (let s = 1; s < SWIM_N; s++) warmQ.push({ c, m: { ...m, yawI: 0, sw: s } });
+  else for (let s = 1; s < KIND_N; s++) warmQ.push({ c, m: { ...m, yawI: 0, sw: s } });
+  if (warmQ.length > 600) warmQ.splice(0, warmQ.length - 600);
+}
+function runWarm() {
+  // drop stale jobs
+  const t = now();
+  for (const [k, J] of jobs) if (t - J.last > 4000) jobs.delete(k);
+  if (!warmQ.length) return;
+  const deadline = t + WARM_MS;
+  let n = 0;
+  while (warmQ.length && now() < deadline && n < 40) {
+    const { c, m } = warmQ[0];
+    const fkey = fkeyOf(m);
+    if (frames.has(fkey)) { warmQ.shift(); n++; continue; }
+    const fr = work(c, m, fkey, deadline);
+    if (fr) warmQ.shift();
+    n++;
+  }
+}
+
+// ------------------------------------------------------------------ public frame API
+
+/**
+ * Best available voxel frame for a creature. req: {S (on-screen scale), yaw (canonical deg), pitch (deg),
+ * sw (frame index), infl (0..INFL_N), pose, lod}. Returns {f, k} (k = extra draw scale) or null.
+ */
+export function voxelFrame(c, req) {
+  ensureTick();
+  const sb = scaleBucket(req.S);
+  const Sb = bucketScale(sb);
+  const rk = resLevel(c, Sb);
+  const chain = c.kind === 'chain';
+  const pStep = chain ? CHAIN_PITCH_STEP : PITCH_STEP, pMax = chain ? CHAIN_PITCH_MAX : PITCH_MAX;
+  const m = {
+    vid: vidOf(c), rk, Sb, sb,
+    infl: req.infl || 0, pose: req.pose ? 1 : 0, sw: req.sw || 0,
+    yawI: clamp(Math.round(req.yaw / YAW_STEP), -6, 6),
+    pitchI: clamp(Math.round((req.pitch || 0) / pStep), -pMax, pMax),
+  };
+  const fkey = fkeyOf(m);
+  let f = frames.get(fkey);
+  if (f) { touch(frames, fkey, f); return { f, k: req.S / f.Sb }; }
+  if (!overBudget() || jobs.has(fkey)) {
+    f = work(c, m, fkey, now() + Math.max(0.5, budgetMs - spent));
+    if (f) return { f, k: req.S / f.Sb };
+  }
+  queueWarm(c, m);
+  const fb = fallback(m);
+  if (fb) { statFallback++; return { f: fb, k: req.S / fb.Sb }; }
+  // nothing at all for this creature yet: finish one frame now within a separate allowance
+  if (forceSpent < FORCE_MS || req.force) {
+    const t0 = now();
+    f = work(c, m, fkey, t0 + 1e6);
+    forceSpent += now() - t0;
+    if (f) return { f, k: req.S / f.Sb };
+  }
+  return null;
+}
+
+/** Pre-build frames for a creature at one on-screen scale (both swim halves, side-on, and the turn). */
 export function warmVoxelFish(c, scale) {
   const sb = scaleBucket(scale);
-  for (const y of [0, YAW_N / 2]) for (let sw = 0; sw < SWIM_N; sw++) getFrame(c, sw, 0, 0, 0, y, sb, true);
+  const Sb = bucketScale(sb);
+  const m = { vid: vidOf(c), rk: resLevel(c, Sb), Sb, sb, infl: 0, pose: 0, sw: 0, yawI: 0, pitchI: 0 };
+  const fkey = fkeyOf(m);
+  if (!frames.has(fkey)) work(c, m, fkey, now() + 1e6);
+  queueWarm(c, m);
 }
 
-// ------------------------------------------------------------------ chain creatures
-
-const segCache = new Map();
-function chainSeg(c, r) {
-  const rq = Math.max(1, Math.round(r * 2) / 2);
-  const key = c.id + '|' + rq;
-  let s = segCache.get(key);
-  if (s) return s;
-  const disc = chainSegment(c, rq);
-  const cv = disc.canvas;
-  const n = Math.ceil(cv.width / VOX) + 2;
-  const cells = cellsOf({ canvas: cv }, 0, 0, n, n, false);
-  const m = new VoxelModel(n, n, n);
-  const pal = new Pal(m);
-  const mid = (cv.width / 2) / VOX;
-  for (const [key2, cell] of cells) {
-    const gx = key2 % n, gy = (key2 / n) | 0;
-    const R = Math.max(0.6, rq / VOX);
-    const dx = gx + 0.5 - mid, dy = gy + 0.5 - mid;
-    const t = Math.round(Math.sqrt(Math.max(0, R * R - dx * dx - dy * dy)));
-    const pi = pal.idx(cell.col, 'body', cell.glow);
-    for (let z = -t; z <= t; z++) m.set(gx, n - 1 - gy, Math.floor(n / 2) + z, pi);
-  }
-  const r2 = renderVoxels(m, { scale: VOX, yaw: 20, pitch: CAM_PITCH, groundAO: false, ao: 0.8, edges: 0.4 });
-  const [ax, ay] = r2.project(mid, n - mid, Math.floor(n / 2) + 0.5);
-  s = { canvas: r2.canvas, ax, ay };
-  segCache.set(key, s);
-  return s;
+export function clearVoxelFishCache() {
+  layouts.clear(); grids.clear(); frames.clear(); jobs.clear(); byCreature.clear(); warmQ.length = 0; warmed.clear();
+  gridBytes = 0; framePx = 0;
 }
 
-// ------------------------------------------------------------------ drawing
+// ------------------------------------------------------------------ chain segments (voxel balls)
 
-const LIDS = new Map();
-function lidColor(hex) { let v = LIDS.get(hex); if (!v) LIDS.set(hex, (v = rgba(hex, 1))); return v; }
-
-// Draw a Fish as a voxel sculpture. opts: {scale (on-screen, incl. depth), glow 0..1, alpha}.
-export function drawVoxelFish(ctx, f, opts = {}) {
-  const c = f.c;
-  const S = opts.scale ?? f.scale;
-  const x = Math.round(f.x), y = Math.round(f.y + (f.bob || 0));
-  if (c.kind === 'chain' && f.chain) return drawChain(ctx, f, S, opts);
-  // yaw: facing + turn-around through the front, plus heading into / out of the tank
-  const turn = clamp(f.turn ?? f.facing, -1, 1);
-  let yaw = (Math.acos(turn) * 180) / Math.PI; // 0 = facing right, 90 = toward the viewer, 180 = left
-  const vz = f.vz || 0, sp = Math.abs(f.vx || 0) + 6;
-  const into = clamp((Math.atan2(vz * 260, sp) * 180) / Math.PI, -55, 55); // moving back -> head turns away
-  yaw += (f.facing >= 0 ? -into : into);
-  f._vyaw = f._vyaw === undefined ? yaw : f._vyaw + angDelta(f._vyaw, yaw) * 0.25;
-  const yawI = ((Math.round((f._vyaw / 360) * YAW_N) % YAW_N) + YAW_N) % YAW_N;
-  const isKindC = isKind(c);
-  const sw = isKindC && !REVOLVE.has(c.kind) ? 0 : Math.floor(((f.tailPhase ?? f.swimPhase ?? 0) % 1) * SWIM_N) % SWIM_N;
-  const pitch = isKindC ? 0 : clamp(Math.round((((f.angle || 0) * 180) / Math.PI) / PITCH_STEP), -1, 1) * (f.facing >= 0 ? 1 : -1);
-  const infl = f.quirks?.has('inflate') ? Math.round(clamp01(f.inflate || 0) * 2) / 2 : 0;
-  const sb = scaleBucket(S);
-  const { f: fr, sc } = getFrame(c, sw, infl, 0, pitch, yawI, sb);
-  const sq = clamp(f.squash || 0, -0.5, 0.5);
-  const kx = sc * (1 + 0.18 * sq), ky = sc * (1 - 0.16 * sq);
-  const alpha = opts.alpha ?? 1;
-  if (alpha < 1) ctx.globalAlpha = alpha;
-  if (kx === 1 && ky === 1) ctx.drawImage(fr.canvas, x - Math.round(fr.ax), y - Math.round(fr.ay));
-  else ctx.drawImage(fr.canvas, Math.round(x - fr.ax * kx), Math.round(y - fr.ay * ky), Math.round(fr.canvas.width * kx), Math.round(fr.canvas.height * ky));
-  // expressive face overlays: blinking / sleepy lids and an open mouth
-  const lid = f.emotion === 'sleepy' ? 0.55 : f.blink || 0;
-  if (lid > 0.3 && fr.eyes.length) {
-    ctx.fillStyle = lidColor(fr.lid);
-    for (const e of fr.eyes) {
-      const r = Math.max(1, Math.round(e.r * kx));
-      const hgt = lid > 0.8 ? r * 2 : r;
-      ctx.fillRect(Math.round(x + e.x * kx - r), Math.round(y + e.y * ky - r), r * 2, Math.max(1, hgt));
+const balls = new Map();
+export function chainBall(c, rScreen) {
+  const rq = Math.max(1, Math.round(rScreen * 2) / 2);
+  const key = vidOf(c) + '|' + rq;
+  let b = balls.get(key);
+  if (b) return b;
+  const Rv = Math.max(1.5, rq / VP);
+  const n = Math.ceil(Rv * 2) + 2;
+  const NXY = n * n;
+  const data = new Uint16Array(NXY * n);
+  const zmin = new Int16Array(NXY).fill(32767), zmax = new Int16Array(NXY).fill(-1);
+  const pal = new Pal();
+  const m = n / 2;
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const dx = (x + 0.5 - m) / Rv, dy = -(y + 0.5 - m) / Rv; // dy: down positive in the 2D painter
+    const d2 = dx * dx + dy * dy;
+    if (d2 > 1) continue;
+    const col = chainSegColor(c, dx, dy, x, y) | 0xff000000;
+    const pv = pal.idx(col, 0, false);
+    const t = Math.round(Rv * Math.sqrt(1 - d2));
+    const gy = n - 1 - y;
+    for (let z = -t; z <= t; z++) {
+      const zz = Math.floor(m) + z;
+      if (zz < 0 || zz >= n) continue;
+      const cc = x + gy * n;
+      data[cc + zz * NXY] = pv;
+      if (zz < zmin[cc]) zmin[cc] = zz;
+      if (zz > zmax[cc]) zmax[cc] = zz;
     }
   }
-  // open mouth (talking / chomping): a dark gap at the snout
-  if ((f.mouth || 0) > 0.45 && fr.mouth && fr.eyes.length) {
-    const ms = Math.max(1, Math.round(1.6 * kx * (S / Math.max(0.3, S)) * Math.min(2, S * 1.6)));
-    ctx.fillStyle = '#2a0a12';
-    ctx.fillRect(Math.round(x + fr.mouth[0] * kx - ms / 2), Math.round(y + fr.mouth[1] * ky - ms / 2), ms, ms);
-  }
-  if (fr.glow && (opts.glow ?? 0) > 0.02) {
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = Math.min(1, opts.glow) * 0.7 * alpha;
-    ctx.drawImage(fr.glow, Math.round(x - fr.ax * kx), Math.round(y - fr.ay * ky), Math.round(fr.glow.width * kx), Math.round(fr.glow.height * ky));
-    ctx.globalCompositeOperation = 'source-over';
-  }
+  const G = { Lo: { r: 1 }, data, NX: n, NY: n, NZ: n, NXY, zmin, zmax, pal, x0: 0, y0: 0, z0: 0, x1: n - 1, y1: n - 1, z1: n - 1, center: [m, m, m], eyes: [], mouth: null, anchors: {} };
+  const job = new Job(G, 0, 0, rq / Rv, { outline: true });
+  job.step(Infinity);
+  const C = job.cam.project(G.center);
+  b = { canvas: job.canvas, ax: C[0], ay: C[1] };
+  balls.set(key, b);
+  if (balls.size > 400) balls.delete(balls.keys().next().value);
+  return b;
+}
+
+// ------------------------------------------------------------------ aquarium API
+
+/**
+ * Draw a fish object (aquarium / tank space) as a voxel sculpture. f: {c, x, y, facing, turn, vx, vz,
+ * angle, tailPhase, swimPhase, finPhase, bob, squash, blink, mouth, emotion, inflate, quirks, chain}.
+ * opts: {scale, glow, alpha}. Returns anchors {top, mouth, eyes, w, h}.
+ */
+export function drawVoxelFish(ctx, f, opts = {}) {
+  const S = opts.scale ?? f.scale ?? 1;
+  const vz = f.vz || 0, sp = Math.abs(f.vx || 0) + 6;
+  const heading = clamp(Math.atan2(vz * 260, sp) / DEG, -55, 55);
+  const alpha = opts.alpha ?? 1;
+  if (alpha < 1) ctx.globalAlpha = alpha;
+  const a = drawFishRig(ctx, f.c, {
+    x: f.x, y: f.y, bob: f.bob || 0, facing: f.facing ?? 1, turn: f.turn ?? f.facing ?? 1, angle: f.angle || 0, scale: S,
+    squash: f.squash || 0, swimPhase: f.swimPhase ?? f.tailPhase ?? 0, tailPhase: f.tailPhase ?? 0, finPhase: f.finPhase ?? 0,
+    speed01: f.speed01 ?? 0.4, inflate: f.quirks?.has?.('inflate') ? f.inflate || 0 : 0,
+    lookX: f.lookX ?? null, lookY: f.lookY ?? null, blink: f.blink || 0, emotion: f.emotion || 'neutral', mouth: f.mouth || 0,
+    time: f.age ?? 0, glow: opts.glow ?? 0, heading, chain: f.chain, style: 'voxel', voxAlpha: alpha,
+  });
   ctx.globalAlpha = 1;
-  const top = [x + fr.top[0] * kx, y + fr.top[1] * ky];
-  return {
-    top, mouth: fr.mouth ? [x + fr.mouth[0] * kx, y + fr.mouth[1] * ky] : [x + f.facing * fr.canvas.width * 0.4, y],
-    eyes: fr.eyes.map((e) => ({ x: x + e.x * kx, y: y + e.y * ky, r: e.r * kx })),
-    w: fr.canvas.width * kx, h: fr.canvas.height * ky,
-  };
-}
-
-function drawChain(ctx, f, S, opts) {
-  const c = f.c, ch = f.chain;
-  const n = ch.length;
-  const r0 = (c.chain?.r || 4) * S;
-  for (let i = n - 1; i >= 1; i--) {
-    const t = i / n;
-    const r = Math.max(1, r0 * (1 - 0.55 * t * t));
-    const s = chainSeg(c, r);
-    ctx.drawImage(s.canvas, Math.round(ch[i].x - s.ax), Math.round(ch[i].y - s.ay));
-  }
-  // head: voxel head model, turned toward the travel direction
-  const ang = Math.atan2(ch[0].y - ch[1].y, ch[0].x - ch[1].x);
-  const facing = Math.cos(ang) >= 0 ? 1 : -1;
-  const yawI = facing > 0 ? 0 : YAW_N / 2;
-  const pitch = clamp(Math.round(((facing > 0 ? ang : Math.PI - ang) * 180 / Math.PI) / PITCH_STEP), -2, 2) * facing;
-  const { f: fr, sc } = getFrame(c, 0, 0, 0, pitch, yawI, scaleBucket(S));
-  ctx.drawImage(fr.canvas, Math.round(ch[0].x - fr.ax * sc), Math.round(ch[0].y - fr.ay * sc), Math.round(fr.canvas.width * sc), Math.round(fr.canvas.height * sc));
-  return { top: [ch[0].x, ch[0].y - r0 * 2], mouth: [ch[0].x + facing * r0 * 1.5, ch[0].y], eyes: [], w: fr.canvas.width, h: fr.canvas.height };
-}
-
-function angDelta(a, b) {
-  let d = (b - a) % 360;
-  if (d > 180) d -= 360;
-  if (d < -180) d += 360;
-  return d;
+  return a;
 }

@@ -397,8 +397,11 @@ const RUST = ['#a4552f', '#c27840', '#7d3f2c'];
 
 // ---------- prop definitions ----------
 const DEFS = {};
+const INTERACT = {};
 function def(id, meta, build) {
   DEFS[id] = { meta: { name: meta.name, biome: meta.biome, tags: meta.tags || [], decor: meta.decor || null, decorOnly: !!meta.decorOnly }, build };
+  if (meta.desc) DEFS[id].meta.desc = meta.desc;
+  if (meta.interact) INTERACT[id] = meta.interact;
 }
 
 // ===================== SUNNY SHALLOWS =====================
