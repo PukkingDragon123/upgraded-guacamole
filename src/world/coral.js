@@ -21,6 +21,7 @@ import { RNG } from '../core/rng.js';
 import { TAU, clamp, hash3 } from '../core/math.js';
 import { mix, shade } from '../core/color.js';
 import { renderModel, idPaint } from './voxkit.js';
+import { flipCanvas } from '../gfx/pixel.js';
 
 // ------------------------------------------------------------------ themes
 
@@ -288,8 +289,8 @@ function rockMound(m, theme, r, cx, cz, w, h, d) {
     if (rx < 4 || rz < 3) continue;
     for (let y = 0; y <= ry; y++) for (let z = Math.floor(lz - rz); z <= Math.ceil(lz + rz); z++) for (let x = Math.floor(lx - rx); x <= Math.ceil(lx + rx); x++) {
       const dx = (x + 0.5 - lx) / rx, dy = (y + 0.5) / ry, dz = (z + 0.5 - lz) / rz;
-      const n = noise3(x * 0.18, y * 0.18, z * 0.18, seed) * 0.5;
-      if (dx * dx + dy * dy + dz * dz > 0.85 + n) continue;
+      const q = dx * dx + dy * dy + dz * dz;
+      if (q > 1.35 || (q > 0.85 && q > 0.85 + noise3(x * 0.18, y * 0.18, z * 0.18, seed) * 0.5)) continue;
       m.set(x, y, z, R[Math.floor(clamp(y / ry + (hash3(x, y, z, 2) - 0.5) * 0.4, 0, 0.999) * R.length)]);
     }
   }
@@ -363,11 +364,8 @@ export function reefFormation(seed, theme, { w = 140, h = 84, d = 54, density = 
   const m = new VoxelModel(w, h, d);
   const cx = w / 2, cz = d / 2;
   const scheme = theme.schemes ? theme.schemes[r.int(0, theme.schemes.length - 1)] : null;
-  const T0 = performance.now();
   rockMound(m, theme, r, cx, cz, w * 0.82, h * rock, d * 0.7);
-  const T1 = performance.now();
   encrust(m, theme, r, scheme, seed);
-  const T2 = performance.now();
   const kinds = Object.entries(theme.weights);
   const total = kinds.reduce((a, [, wt]) => a + wt, 0);
   const pick = () => { let q = r.next() * total; for (const [k, wt] of kinds) { q -= wt; if (q <= 0) return k; } return kinds[0][0]; };
@@ -383,13 +381,9 @@ export function reefFormation(seed, theme, { w = 140, h = 84, d = 54, density = 
     if (y + size * 1.4 >= h - 2) continue;
     used.push([x, z, size]);
     const P = palIdx(m, pickPal(theme, r, scheme), theme.glow > 0.5);
-    const ts = performance.now();
     SPECIES[kind](m, [x, y, kind === 'fan' ? Math.max(3, Math.round(z * 0.6)) : z], size, P, r);
-    (globalThis.SPT ||= {})[kind] = (globalThis.SPT[kind] || 0) + performance.now() - ts;
   }
-  const T3 = performance.now();
   polyps(m, seed);
-  globalThis.RFT = [T1 - T0, T2 - T1, T3 - T2, performance.now() - T3].map(Math.round);
   return m;
 }
 
@@ -591,8 +585,14 @@ export function placeAnim(A, x, y) {
 // `k` is the perspective size factor: models gain or lose voxels and always render at 1 px per voxel, so
 // near corals carry the most detail and nothing is resampled at fractional scales.
 const spriteCache = new Map();
-export function reefSprite(seed, themeId, opts, k = 1) {
+const flipped = (s) => ({ ...s, canvas: flipCanvas(s.canvas), night: s.night ? flipCanvas(s.night) : null, ox: s.canvas.width - s.ox });
+export function reefSprite(seed, themeId, opts, k = 1, flip = false) {
   const key = 'reef|' + seed + '|' + themeId + '|' + JSON.stringify(opts) + '|' + k;
+  if (flip) {
+    let f = spriteCache.get(key + '|flip');
+    if (!f) { f = flipped(reefSprite(seed, themeId, opts, k)); spriteCache.set(key + '|flip', f); }
+    return f;
+  }
   let s = spriteCache.get(key);
   if (!s) {
     const theme = THEMES[themeId];

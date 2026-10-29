@@ -189,7 +189,7 @@ export class ShallowsBiome extends Biome {
     // living reef: voxel coral bommies and single corals at many depths (all front-facing, world camera)
     this.coralGlow = [];
     const glowOf = (it) => { if (it.sprite.night) this.coralGlow.push({ night: it.sprite.night, x: it.x - it.sprite.ox, y: it.y - it.sprite.oy, band: it.band, z: it.z }); return it; };
-    const reef = (seed, xf, z, opts = {}) => glowOf(D.add({ sprite: reefSprite(seed, 'shallows', opts, qscale(1.5 * D.s(z), 0.1, 0.3)), x: Math.round(xf * W), z, id: 'reef' }));
+    const reef = (seed, xf, z, opts = {}, flip = false) => glowOf(D.add({ sprite: reefSprite(seed, 'shallows', opts, qscale(1.5 * D.s(z), 0.1, 0.3), flip), x: Math.round(xf * W), z, id: 'reef' }));
     const coral = (kind, seed, xf, z, size) => glowOf(D.add({ sprite: coralSprite(kind, seed, 'shallows', size, qscale(1.5 * D.s(z), 0.1, 0.3)), x: Math.round(xf * W), z, id: 'coral_' + kind }));
     // near
     reef(101, 0.335, 0.26, { w: 116, h: 74, d: 46 });
@@ -202,7 +202,8 @@ export class ShallowsBiome extends Biome {
     reef(123, 0.92, 0.6, { w: 132, h: 86, d: 52 });
     coral('fan', 124, 0.065, 0.45, 24); coral('staghorn', 125, 0.57, 0.6, 24); coral('table', 126, 0.31, 0.64, 22); coral('tube', 127, 0.8, 0.52, 18); coral('fan', 128, 0.72, 0.63, 22);
     // far
-    for (const [seed, xf, z, w] of [[131, 0.13, 0.9, 150], [132, 0.42, 1.0, 160], [133, 0.75, 0.94, 150], [134, 0.6, 1.36, 170], [135, 0.25, 1.42, 170], [136, 0.9, 1.3, 160], [137, 0.03, 1.12, 140], [138, 0.52, 0.78, 120]]) reef(seed, xf, z, { w, h: Math.round(w * 0.6), d: Math.round(w * 0.38) });
+    // (far bommies share three models at two sizes, mirrored for variety)
+    for (const [seed, xf, z, fl] of [[131, 0.13, 0.9, 0], [132, 0.42, 1.0, 0], [133, 0.75, 0.94, 0], [131, 0.6, 1.36, 1], [132, 0.25, 1.42, 1], [133, 0.9, 1.3, 1], [132, 0.03, 1.12, 1], [131, 0.52, 0.78, 1]]) reef(seed, xf, z, { w: 150, h: 90, d: 56 }, !!fl);
     for (const [kind, seed, xf, z, size] of [['staghorn', 141, 0.33, 0.76, 26], ['fan', 142, 0.68, 0.8, 26], ['table', 143, 0.86, 0.84, 24], ['fan', 144, 0.985, 0.76, 26], ['staghorn', 145, 0.2, 1.06, 28], ['tube', 146, 0.55, 1.12, 22]]) coral(kind, seed, xf, z, size);
     const P = [
       // near (in front of the mid fish)
@@ -300,9 +301,9 @@ export class ShallowsBiome extends Biome {
     const yB = Math.round(hz - 130), hB = H - yB;
     const baseB = hz - yB + 22;
     const B = [];
-    const kinds = ['staghorn', 'staghorn', 'fan', 'fan', 'brain', 'tube', 'table', 'pillar', 'bubble', 'whip'];
-    for (let i = 0; i < 46; i++) B.push({ spr: coralSprite(kinds[r.int(0, kinds.length - 1)], 200 + r.int(0, 11), 'shallows', r.pick([12, 16, 20]), r.pick([0.6, 0.8])), x: r.float(0, LW), y: baseB + r.int(-3, 3), z: r.next() });
-    for (let i = 0; i < 6; i++) B.push({ spr: reefSprite(220 + i, 'shallows', { w: 110, h: 64, d: 40 }, 0.6), x: r.float(0, LW), y: baseB + r.int(0, 3), z: r.next() });
+    const kinds = ['staghorn', 'fan', 'brain', 'tube', 'table', 'pillar', 'staghorn', 'fan'];
+    for (let i = 0; i < 46; i++) { const j = r.int(0, kinds.length - 1); B.push({ spr: coralSprite(kinds[j], 200 + j, 'shallows', r.pick([12, 18]), 0.7), x: r.float(0, LW), y: baseB + r.int(-3, 3), z: r.next() }); }
+    for (let i = 0; i < 6; i++) B.push({ spr: reefSprite(220 + (i % 2), 'shallows', { w: 110, h: 64, d: 40 }, 0.6, i >= 2 && i % 2 === 0), x: r.float(0, LW), y: baseB + r.int(0, 3), z: r.next() });
     for (const [id, nv] of [['rock_big', 1], ['rock_small', 1], ['starfish_rock', 1], ['rock_big', 1]]) { const sp = propSprite(id, r.pick([0.4, 0.5]), r.int(0, nv - 1)); if (sp) B.push({ spr: sp, x: r.float(0, LW), y: baseB + r.int(-3, 3), z: r.next() }); }
     for (let i = 0; i < 10; i++) B.push({ spr: kelpColumn(60 + i, r.int(30, 60), ['#3e6a2a', '#5a8a34', '#86b048'], 1), x: r.float(0, LW), y: baseB + r.int(-2, 2), z: r.float(0.6, 1) });
     const ridgeB = ridgeStrip(55, LW, { amp: 6, base: 5, d: 12, cols: ['#e2cc98', '#d0b884', '#bca674'], rocks: { cols: ['#8a8a9a', '#a09aa8'] } });
