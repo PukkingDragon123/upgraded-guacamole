@@ -11,6 +11,7 @@ import { SPECIES_BY_ID } from '../fish/species.js';
 import { skillStatus, SKILLS } from '../game/skills.js';
 import { TASKBAR_H } from '../desktop/desktop.js';
 import { drawText } from '../gfx/font.js';
+import { drawWardrobeIcon } from './wardrobe.js';
 
 export const PINCH_LOOK = {
   kind: 'crab', mustache: true, body: { len: 26, h: 17 },
@@ -95,6 +96,7 @@ export class Dock {
       { id: 'journal', label: 'Fish Journal (J)', w: 30, action: () => game.command('journal') },
       { id: 'tank', label: 'My Aquarium (click: window / A: full view)', w: 36, action: () => game.command('tankwindow') },
       { id: 'map', label: 'Travel Map (T)', w: 26, action: () => game.command('map') },
+      { id: 'wardrobe', label: 'Wardrobe - dress up your fisherman (W)', w: 28, action: () => game.ui.toggle('wardrobe'), custom: true },
     ];
     this.hidden = new Set();
     game.ui.setDock(this.items);
@@ -187,6 +189,9 @@ export class Dock {
         }
         break;
       }
+      case 'wardrobe':
+        drawWardrobeIcon(ctx, cx, base, { hover, t, look: g.state.character });
+        break;
       case 'map': {
         const p = getProp('message_bottle', { scale: 0.6 });
         if (p) ctx.drawImage(p.canvas, Math.round(cx - p.ox + wig), Math.round(base - p.oy));

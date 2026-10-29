@@ -8,8 +8,9 @@ import { MapPanel } from './mappanel.js';
 import { SettingsPanel } from './settings.js';
 import { WelcomePanel } from './welcome.js';
 import { registerBuildPanels } from '../build/panels.js';
+import { WardrobePanel } from './wardrobe.js';
 
 export function registerPanels(ui) {
-  for (const P of [RevealPanel, BaitPanel, SkillTreePanel, JournalPanel, ShopPanel, MapPanel, SettingsPanel, WelcomePanel]) ui.register(new P());
+  for (const P of [RevealPanel, BaitPanel, SkillTreePanel, JournalPanel, ShopPanel, MapPanel, SettingsPanel, WelcomePanel, WardrobePanel]) ui.register(new P());
   registerBuildPanels(ui); // inventory, research, package, building, buildtray
 }

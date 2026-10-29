@@ -74,6 +74,7 @@ uniform vec3 u_cam;      // zoom, offset x, offset y (screen = world * zoom + of
 uniform vec4 u_dom;      // sim top (world y), cell size, sim w, sim h
 uniform vec3 u_surf;     // still surface world y (< -9e4 none), surface texels, surface cell
 uniform vec4 u_k;        // refraction px, caustic gain, chroma (0/1), foam gain
+uniform float u_shine;   // ripple light/shadow banding
 uniform vec3 u_foamCol;
 uniform vec3 u_causCol;
 uniform vec3 u_crestCol;
@@ -107,6 +108,7 @@ void main() {
   bool water = !hasSurf || wp.y > line + 0.5;
   vec3 add = vec3(0.0);
   vec2 fr = vec2(0.0);
+  float lit = 0.0;
   if (water) {
     vec2 c = floor((wp - vec2(0.0, u_dom.x)) / u_dom.y);
     float h = simH(c);
@@ -120,6 +122,9 @@ void main() {
     cs = floor(cs * 3.0 + bayer4(sp)) / 3.0;
     add += u_causCol * cs;
     if (u_k.z > 0.5 && length(g) > 0.035) fr = vec2(g.x > 0.0 ? 1.0 : -1.0, 0.0);
+    // ripple faces tilted toward the light (top-left) brighten, the others darken; quantised + dithered
+    float sh = clamp((-g.x * 0.55 - g.y * 0.85) * u_shine, -1.0, 1.0);
+    lit = (floor(abs(sh) * 3.0 + bayer4(sp + 1.0)) / 3.0) * sign(sh);
   }
   vec2 o = floor(off * z + 0.5);
   vec4 col = scene(sp + o);
@@ -128,6 +133,7 @@ void main() {
     col.b = scene(sp + o - fr).b;
   }
   col.rgb += add * col.a;
+  col.rgb *= 1.0 + (lit > 0.0 ? lit * 0.16 : lit * 0.12);
   if (hasSurf) {
     float ls = floor(line * z + u_cam.z);
     float d = sp.y - ls;
@@ -402,7 +408,7 @@ export class WaterFX {
           const r = Math.max(1, q[i + 3] / this.cell);
           buf[n * 4] = q[i] / this.cell;
           buf[n * 4 + 1] = (q[i + 1] - this.top) / this.cell;
-          buf[n * 4 + 2] = Math.max(-0.9, Math.min(0.9, q[i + 2] * 0.22));
+          buf[n * 4 + 2] = Math.max(-0.9, Math.min(0.9, q[i + 2] * 0.45));
           buf[n * 4 + 3] = r;
           n++;
         }
@@ -470,7 +476,8 @@ export class WaterFX {
       gl.uniform3f(P.u.u_cam, z, ox, oy);
       gl.uniform4f(P.u.u_dom, this.top, this.cell, this.sw, this.sh);
       gl.uniform3f(P.u.u_surf, this.surfaceY === null ? -1e5 : this.surfaceY, this.surf.n, this.surf.cell);
-      gl.uniform4f(P.u.u_k, look.refract ?? 14, look.caustic ?? 9, look.chroma === false ? 0 : 1, look.foam ?? 1);
+      gl.uniform4f(P.u.u_k, (look.refract ?? 14) * 2.2, look.caustic ?? 9, look.chroma === false ? 0 : 1, look.foam ?? 1);
+      gl.uniform1f(P.u.u_shine, look.shine ?? 9);
       gl.uniform3fv(P.u.u_foamCol, hex3(look.foamColor || '#f4fffc'));
       gl.uniform3fv(P.u.u_causCol, hex3(look.causticColor || '#2a3a30'));
       gl.uniform3fv(P.u.u_crestCol, hex3(look.crestColor || '#ffffff'));

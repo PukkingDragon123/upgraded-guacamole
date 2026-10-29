@@ -194,6 +194,8 @@ export class Battle {
     // progress
     const reelStat = 0.6 + 0.4 * (st.reelSpeed / 34);
     let reel = (crankP * reelStat) / this.reelSecs;
+    // first fight: holding the button also reels a little, so nobody gets stuck
+    if (this.gentle && hold && crankP < 0.3) reel = Math.max(reel, (0.3 * reelStat) / this.reelSecs);
     if (surging) reel *= 0.25 + 0.75 * counter;
     if (hold) reel *= 1.3;
     if (this.tension > 0.95) reel *= 0.35;

@@ -665,7 +665,7 @@ export class ShopPanel {
     this.pend = [];
     // pre-build Cap'n Bloat in idle time so the shop opens instantly
     const idle = (fn) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(fn, { timeout: 4000 }) : setTimeout(fn, 200));
-    const warm = (i) => { if (i < 6 && !this.warmDone) idle(() => { try { this.bloatFrame(i < 3 ? 'br' : 'pf', i < 3 ? i : i - 3, true); } catch { /* ignore */ } warm(i + 1); }); };
+    const warm = (i) => { if (i < 5 && !this.warmDone) idle(() => { try { this.bloatFrame(i < 2 ? 'br' : 'pf', i < 2 ? i : i - 2, true); } catch { /* ignore */ } warm(i + 1); }); };
     setTimeout(() => warm(0), 1500);
   }
 
@@ -674,9 +674,7 @@ export class ShopPanel {
     const list = this.frames[kind];
     if (list[i]) return list[i];
     if (!build) return null;
-    const t0 = performance.now();
-    const f = kind === 'br' ? buildBloat(0, i / 2) : buildBloat((i + 1) / 3, 0);
-    (globalThis.__shopMs ||= []).push([kind, i, Math.round(performance.now() - t0), f.w, f.h]);
+    const f = kind === 'br' ? buildBloat(0, i) : buildBloat((i + 1) / 3, 0);
     list[i] = f;
     return f;
   }
@@ -926,7 +924,9 @@ export class ShopPanel {
   // ------------------------------------------------ layout
   layout() {
     const g = this.game;
-    const r = { x: 8, y: 6, w: g.screen.W - 16, h: g.screen.H - 12 };
+    // fills most of the screen, but stays a cosy room on very large logical screens
+    const rw = Math.min(g.screen.W - 16, 1040), rh = Math.min(g.screen.H - 12, 600);
+    const r = { x: Math.round((g.screen.W - rw) / 2), y: Math.round((g.screen.H - rh) / 2), w: rw, h: rh };
     const S = { x: r.x + 6, y: r.y + 6, w: r.w - 12, h: r.h - 12 };
     const sw = S.w, sh = S.h;
     const split = Math.round(sw * 0.52);
@@ -944,7 +944,7 @@ export class ShopPanel {
       mat: { x: Math.round(split * 0.43) + 134, y: counterTop + 6 },
       deal: { x: 24, y: counterTop - 62, w: 78, h: 60 },
       lamp1: { x: Math.round(split * 0.7), y: 14 },
-      lamp2: { x: sw - 30, y: 10 },
+      lamp2: { x: split - 16, y: 14 },
     };
     // close-up framing: zoom 2 around the counter, Cap'n Bloat on the left, the mat in the middle
     L.close = { x: clamp(L.bloat.x - 118, 0, sw / 2), y: clamp(counterTop - 200, 0, sh / 2), z: 2 };
@@ -977,23 +977,27 @@ export class ShopPanel {
       this.layer = makeCanvas(L.sw, L.sh);
       this.lctx = ctxOf(this.layer);
     }
-    const sc = this.lctx;
-    sc.setTransform(1, 0, 0, 1, 0, 0);
-    sc.globalAlpha = 1;
-    sc.globalCompositeOperation = 'source-over';
     // scene-space pointer
     const sp = { x: (inp.x - L.S.x) / Z + ox, y: (inp.y - L.S.y) / Z + oy, inside: inp.inside };
     this.sp = sp;
-    this.drawScene(sc, ui, L, t, dt, sp, interactive);
-
-    // frame + scene
     drawWood(ctx, L.r.x, L.r.y, L.r.w, L.r.h, { tone: 'dark' });
     ctx.save();
     ctx.beginPath(); ctx.rect(L.S.x, L.S.y, L.S.w, L.S.h); ctx.clip();
-    if (Z === 1) ctx.drawImage(this.layer, L.S.x, L.S.y);
-    else ctx.drawImage(this.layer, ox, oy, L.sw / Z, L.sh / Z, L.S.x, L.S.y, L.sw, L.sh);
-    // vignette
-    ctx.drawImage(this.vignette(L.sw, L.sh), L.S.x, L.S.y);
+    if (this.zoom === 0) {
+      // shelves view: draw straight onto the screen
+      ctx.save();
+      ctx.translate(L.S.x, L.S.y);
+      this.drawScene(ctx, ui, L, t, dt, sp, interactive);
+      ctx.restore();
+    } else {
+      // camera move / close-up: render the scene into its layer, then zoom it onto the screen
+      const sc = this.lctx;
+      sc.setTransform(1, 0, 0, 1, 0, 0);
+      sc.globalAlpha = 1;
+      sc.globalCompositeOperation = 'source-over';
+      this.drawScene(sc, ui, L, t, dt, sp, interactive);
+      ctx.drawImage(this.layer, ox, oy, L.sw / Z, L.sh / Z, L.S.x, L.S.y, L.sw, L.sh);
+    }
     if (this.zoom > 0) this.drawCloseUp(ctx, ui, L, t, dt, ez);
     this.drawSpeech(ctx, L, t, dt);
     ctx.restore();
@@ -1042,7 +1046,7 @@ export class ShopPanel {
     // at most ~8 ms of lazy sprite building per frame
     const t0 = performance.now();
     if (!this.bloatFrame('br', 0)) this.bloatFrame('br', 0, true);
-    for (const [k, i] of [['br', 1], ['br', 2], ['pf', 0], ['pf', 1], ['pf', 2]]) {
+    for (const [k, i] of [['br', 1], ['pf', 0], ['pf', 1], ['pf', 2]]) {
       if (performance.now() - t0 > 8) break;
       if (!this.frames[k][i]) { this.bloatFrame(k, i, true); break; }
     }
@@ -1106,15 +1110,9 @@ export class ShopPanel {
   // ================================================================ scene
   drawScene(c, ui, L, t, dt, sp, interactive) {
     const g = this.game;
-    const { sw, sh, split, floorY } = L;
-    // wall + ceiling beam + floor
-    c.drawImage(wallTex(sw, floorY + 4), 0, 0);
-    drawWood(c, 0, floorY, sw, sh - floorY, { tone: 'dark', nails: false, planks: 3, round: 0 });
-    c.fillStyle = rgba('#000000', 0.35);
-    c.fillRect(0, floorY, sw, 3);
-    drawWood(c, -4, 0, sw + 8, 16, { tone: 'dark', nails: true, planks: 1, round: 0 });
-    c.fillStyle = rgba('#000000', 0.4);
-    c.fillRect(0, 16, sw, 2);
+    const { sw, sh } = L;
+    // everything static (walls, posters, nets, jar shelf, cabinet body) comes from one cached layer
+    c.drawImage(this.backdrop(L), 0, 0);
     // light shafts from the porthole
     c.globalCompositeOperation = 'lighter';
     for (let i = 0; i < 3; i++) {
@@ -1125,23 +1123,16 @@ export class ShopPanel {
     }
     c.globalCompositeOperation = 'source-over';
     this.drawPorthole(c, L, t);
-    this.drawPosters(c, L, t);
-    this.drawNets(c, L, t);
-    // shelves of glowing jars behind Cap'n Bloat
-    if (this.shelfR) {
+    // the jars on the back shelves glow and pulse
+    if (this.shelfR?.glow) {
       const s = this.shelfR;
-      const x = L.shelf.x, y = L.shelf.y;
-      c.drawImage(s.canvas, x, y);
-      if (s.glow) {
-        c.globalCompositeOperation = 'lighter';
-        c.globalAlpha = 0.8 + 0.2 * Math.sin(t * 1.7);
-        c.drawImage(s.glow, x, y);
-        c.drawImage(s.glow, x, y);
-        c.globalAlpha = 1;
-        c.globalCompositeOperation = 'source-over';
-      }
+      const gl = memo(`shelfglow|${s.w}`, () => { const cv = makeCanvas(s.w, s.h), k = ctxOf(cv); k.globalCompositeOperation = 'lighter'; k.drawImage(s.glow, 0, 0); k.drawImage(s.glow, 0, 0); return cv; });
+      c.globalCompositeOperation = 'lighter';
+      c.globalAlpha = 0.8 + 0.2 * Math.sin(t * 1.7);
+      c.drawImage(gl, L.shelf.x, L.shelf.y);
+      c.globalAlpha = 1;
+      c.globalCompositeOperation = 'source-over';
     }
-    this.drawLifeRing(c, L.split - 22, 250);
     this.drawShipBell(c, ui, L, t, sp, interactive);
     // lantern glow pools (behind)
     this.drawLantern(c, L.lamp1.x, L.lamp1.y, 58, t, 0);
@@ -1151,7 +1142,7 @@ export class ShopPanel {
     this.drawBloat(c, L, t, dt, sp);
     // counter
     this.drawCounter(c, ui, L, t, dt, sp, interactive);
-    this.drawLantern(c, L.lamp2.x, L.lamp2.y, 40, t, 1.3);
+    this.drawLantern(c, L.lamp2.x, L.lamp2.y, 96, t, 1.3);
     // ambient bubbles
     this.ambient ||= [];
     if (Math.random() < dt * 2.2) this.ambient.push({ x: rnd(10, sw - 10), y: sh - 2, vy: rnd(-26, -14), s: Math.random() < 0.25 ? 2 : 1, ph: rnd(0, TAU), t: 0 });
@@ -1162,6 +1153,47 @@ export class ShopPanel {
       c.drawImage(bubbleDot(b.s), bx, Math.round(b.y));
     }
     this.ambient = this.ambient.filter((b) => b.y > 18);
+  }
+
+  backdrop(L) {
+    const key = `${L.sw}x${L.sh}|${this.tab}|${this.shelfR ? 1 : 0}`;
+    if (this.back?.key === key) return this.back.canvas;
+    const cv = this.back?.canvas?.width === L.sw && this.back.canvas.height === L.sh ? this.back.canvas : makeCanvas(L.sw, L.sh);
+    const c = ctxOf(cv);
+    c.clearRect(0, 0, L.sw, L.sh);
+    const { sw, sh, floorY } = L;
+    c.drawImage(wallTex(sw, floorY + 4), 0, 0);
+    drawWood(c, 0, floorY, sw, sh - floorY, { tone: 'dark', nails: false, planks: 3, round: 0 });
+    c.fillStyle = rgba('#000000', 0.35);
+    c.fillRect(0, floorY, sw, 3);
+    drawWood(c, -4, 0, sw + 8, 16, { tone: 'dark', nails: true, planks: 1, round: 0 });
+    c.fillStyle = rgba('#000000', 0.4);
+    c.fillRect(0, 16, sw, 2);
+    this.drawPosters(c, L, 0);
+    this.drawNets(c, L, 0);
+    if (this.shelfR) c.drawImage(this.shelfR.canvas, L.shelf.x, L.shelf.y);
+    this.drawLifeRing(c, L.split - 22, 250);
+    this.cabinetStatic(c, L);
+    c.drawImage(this.vignette(sw, sh), 0, 0);
+    this.back = { key, canvas: cv };
+    return cv;
+  }
+
+  cabinetStatic(c, L) {
+    const cab = L.cab;
+    c.drawImage(this.cabinetTex(cab.w, cab.h), cab.x, cab.y);
+    const head = { x: cab.x + 7, y: cab.y + 7, w: cab.w - 14, h: 26 };
+    const inner = { x: cab.x + 7, y: cab.y + 36, w: cab.w - 14, h: cab.h - 47 };
+    drawWood(c, inner.x, inner.y, inner.w, inner.h, { tone: 'dark', inset: true, nails: false, planks: Math.round(inner.h / 22) });
+    const title = { bait: 'FINE BAITS & LURES', decor: 'AQUARIUM DECOR', cosmetics: 'FISHER FASHION', specials: "THE CAP'N'S SPECIALS" }[this.tab];
+    const pw2 = measureText(title) + 34, px2 = Math.round(head.x + head.w / 2 - pw2 / 2);
+    c.fillStyle = '#2a1408'; c.fillRect(px2 - 1, head.y + 3, pw2 + 2, 20);
+    c.fillStyle = '#c8902a'; c.fillRect(px2, head.y + 4, pw2, 18);
+    c.fillStyle = '#f6d27a'; c.fillRect(px2, head.y + 4, pw2, 1); c.fillRect(px2, head.y + 4, 1, 18);
+    c.fillStyle = '#7a4a1c'; c.fillRect(px2, head.y + 21, pw2, 1);
+    for (const sx of [px2 + 4, px2 + pw2 - 6]) { c.fillStyle = '#fff2b8'; c.fillRect(sx, head.y + 12, 2, 2); c.fillStyle = '#5a3410'; c.fillRect(sx + 1, head.y + 13, 1, 1); }
+    drawText(c, title, head.x + head.w / 2, head.y + 10, { align: 'center', color: '#3a1a08', shadow: '#f6d27a' });
+    c.fillStyle = '#2a1408'; c.fillRect(cab.x + 6, cab.y + cab.h, 10, 4); c.fillRect(cab.x + cab.w - 16, cab.y + cab.h, 10, 4);
   }
 
   drawPorthole(c, L, t) {
@@ -1381,8 +1413,8 @@ export class ShopPanel {
     let fr;
     if (pa > 0.15) fr = this.bloatFrame('pf', clamp(Math.round(pa * 3) - 1, 0, 2)) || this.bloatFrame('pf', 0) || null;
     if (!fr) {
-      const b = (Math.sin(t * 1.6) + 1) / 2;
-      const i = this.drag && this.drag < 1.3 ? 2 : Math.round(b * 2);
+      // slow breathing: exhale frame most of the time, inhale on the crest (and while taking a drag)
+      const i = (this.drag && this.drag < 1.3) || Math.sin(t * 1.6) > 0.35 ? 1 : 0;
       fr = this.bloatFrame('br', i) || this.bloatFrame('br', 0);
     }
     if (!fr) return;
@@ -1489,20 +1521,26 @@ export class ShopPanel {
 
   drawSpecs(c, eL, eR, tL, tR, chain, t, pa) {
     const gold = '#e8b850', dark = '#3a2410';
+    const R = 12;
+    const lens = memo(`specs|${R}`, () => {
+      const D = R * 2 + 5, b = new PixelBuffer(D, D), o = R + 2;
+      for (let yy = 0; yy < D; yy++) for (let xx = 0; xx < D; xx++) {
+        const d = Math.hypot((xx - o) / R, (yy - o) / (R - 0.5));
+        if (d < 0.93) b.set(xx, yy, pack('#d8f4ff', 34));
+      }
+      for (let a = 0; a < TAU; a += 0.03) {
+        const px = Math.round(o + Math.cos(a) * R), py = Math.round(o + Math.sin(a) * (R - 0.5));
+        for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) if (b.alpha(px + dx, py + dy) < 200) b.set(px + dx, py + dy, pack(dark));
+      }
+      for (let a = 0; a < TAU; a += 0.03) {
+        const px = Math.round(o + Math.cos(a) * R), py = Math.round(o + Math.sin(a) * (R - 0.5));
+        b.set(px, py, pack(Math.sin(a) < -0.3 ? '#fff0a0' : gold));
+      }
+      return b.toCanvas();
+    });
     const ring = (x, y) => {
       x = Math.round(x); y = Math.round(y);
-      const R = 12;
-      for (let a = 0; a < TAU; a += 0.06) {
-        const px = Math.round(x + Math.cos(a) * R), py = Math.round(y + Math.sin(a) * (R - 0.5));
-        c.fillStyle = dark; c.fillRect(px - 1, py, 3, 1); c.fillRect(px, py - 1, 1, 3);
-      }
-      for (let a = 0; a < TAU; a += 0.06) {
-        const px = Math.round(x + Math.cos(a) * R), py = Math.round(y + Math.sin(a) * (R - 0.5));
-        c.fillStyle = Math.sin(a) < -0.3 ? '#fff0a0' : gold; c.fillRect(px, py, 1, 1);
-      }
-      // lens tint + glint
-      c.fillStyle = rgba('#d8f4ff', 0.13);
-      c.beginPath(); c.arc(x, y, R - 1, 0, TAU); c.fill();
+      c.drawImage(lens, x - R - 2, y - R - 2);
       const gp = (t * 0.25) % 1;
       c.fillStyle = rgba('#ffffff', 0.75);
       for (let i = 0; i < 5; i++) c.fillRect(x - 7 + i, y - 4 - i + (gp < 0.1 ? 1 : 0), 1, 1);
@@ -1873,22 +1911,8 @@ export class ShopPanel {
       if (hov && inp.pressed) { inp.pressed = false; this.setTab(tb.id); }
       tx += tw + 2;
     }
-    // cabinet body: sea-green painted wood, worn at the edges
-    c.drawImage(this.cabinetTex(cab.w, cab.h), cab.x, cab.y);
-    const head = { x: cab.x + 7, y: cab.y + 7, w: cab.w - 14, h: 26 };
+    // cabinet body, plaque and back panel are part of the cached backdrop
     const inner = { x: cab.x + 7, y: cab.y + 36, w: cab.w - 14, h: cab.h - 47 };
-    drawWood(c, inner.x, inner.y, inner.w, inner.h, { tone: 'dark', inset: true, nails: false, planks: Math.round(inner.h / 22) });
-    // brass plaque with the department name
-    const title = { bait: 'FINE BAITS & LURES', decor: 'AQUARIUM DECOR', cosmetics: 'FISHER FASHION', specials: "THE CAP'N'S SPECIALS" }[this.tab];
-    const pw2 = measureText(title) + 34, px2 = Math.round(head.x + head.w / 2 - pw2 / 2);
-    c.fillStyle = '#2a1408'; c.fillRect(px2 - 1, head.y + 3, pw2 + 2, 20);
-    c.fillStyle = '#c8902a'; c.fillRect(px2, head.y + 4, pw2, 18);
-    c.fillStyle = '#f6d27a'; c.fillRect(px2, head.y + 4, pw2, 1); c.fillRect(px2, head.y + 4, 1, 18);
-    c.fillStyle = '#7a4a1c'; c.fillRect(px2, head.y + 21, pw2, 1);
-    for (const sx of [px2 + 4, px2 + pw2 - 6]) { c.fillStyle = '#fff2b8'; c.fillRect(sx, head.y + 12, 2, 2); c.fillStyle = '#5a3410'; c.fillRect(sx + 1, head.y + 13, 1, 1); }
-    drawText(c, title, head.x + head.w / 2, head.y + 10, { align: 'center', color: '#3a1a08', shadow: '#f6d27a' });
-    // feet
-    c.fillStyle = '#2a1408'; c.fillRect(cab.x + 6, cab.y + cab.h, 10, 4); c.fillRect(cab.x + cab.w - 16, cab.y + cab.h, 10, 4);
 
     const items = this.items();
     const { cols, rows } = this.grid(this.tab);
@@ -2068,7 +2092,7 @@ export class ShopPanel {
       }
       if (it.locked) { const lk = getUiIcon('lock'); c.drawImage(lk, Math.round(cx - lk.width / 2), shelfY - 22 - lift); }
     } else if (real.kind === 'bundle') this.drawCrate(c, real, cx, shelfY, lift, t, hov);
-    if (it.kind === 'deal') drawStamp(c, cx + 18, shelfY - 40 - lift, '-20%', { color: '#e8283a', angle: 0.25, font: 'small' });
+    if (it.kind === 'deal') drawStamp(c, cx + cell.w / 2 - 16, shelfY - cell.h + 44, '-20%', { color: '#e8283a', angle: 0.25, font: 'small' });
     if (soldOut) drawStamp(c, cx, shelfY - 22, 'SOLD OUT', { color: '#c8283a', angle: -0.2, font: 'small' });
     // price tag hanging under the shelf
     const price = this.price(it);
@@ -2205,8 +2229,10 @@ export class ShopPanel {
     ctx.fillStyle = rgba('#fff0c8', 0.07);
     ctx.beginPath(); ctx.moveTo(mx - 30, L.S.y); ctx.lineTo(mx + 30, L.S.y); ctx.lineTo(mx + 110, my); ctx.lineTo(mx - 110, my); ctx.fill();
     ctx.globalCompositeOperation = 'source-over';
-    // turntable
-    const spin = this.focusT * 0.9;
+    // turntable: true 3D items (voxel bait, the fisherman) spin all the way round, flat sprites sway
+    const real0 = it.kind === 'deal' ? it.dealOf : it;
+    const full = real0.kind === 'bait' || (real0.kind === 'cosmetic' && !real0.swatch);
+    const spin = full ? this.focusT * 0.9 : Math.sin(this.focusT * 0.9) * 0.95;
     const tr = 64, ty = Math.round(my - 4);
     ctx.fillStyle = '#1a0e08'; ctx.beginPath(); ctx.ellipse(mx, ty + 3, tr + 2, 14, 0, 0, TAU); ctx.fill();
     ctx.fillStyle = '#b8782a'; ctx.beginPath(); ctx.ellipse(mx, ty + 2, tr, 12, 0, 0, TAU); ctx.fill();
@@ -2236,8 +2262,7 @@ export class ShopPanel {
     } else if (real.kind === 'decor') {
       const p = this.closeProp(real);
       if (p) {
-        const an = spin * 0.8;
-        const cs = Math.cos(an);
+        const cs = Math.cos(spin);
         const w = Math.max(2, Math.round(Math.abs(cs) * p.w));
         const src = cs < 0 ? this.flipped(p.canvas) : p.canvas;
         const x = Math.round(mx - (p.ox / p.w) * w), y = Math.round(base - p.oy + bob);
@@ -2309,6 +2334,29 @@ export class ShopPanel {
       section('EFFECTS');
       for (const l of ['Fish explore it and hide inside', 'Happier fish make more coins']) { ctx.drawImage(getUiIcon('heart'), x, y); drawText(ctx, l, x + 13, y + 1, { color: INK2 }); y += 10; }
       y += 2;
+      // a few pieces from the same reef that look good together
+      const pals = this.decor.filter((d) => d.id !== real.id && (d.biome === real.biome || d.tags.some((tg) => (real.tags || []).includes(tg)))).slice(0, 4);
+      if (pals.length) {
+        section('PAIRS WELL WITH');
+        const pw = Math.floor(w / 4);
+        pals.forEach((d, i) => {
+          const px = x + i * pw, cell = { x: px, y, w: pw - 4, h: 48 };
+          const hv = ui.hover(cell);
+          ctx.fillStyle = rgba('#7a5a3c', hv ? 0.22 : 0.1);
+          ctx.fillRect(cell.x, cell.y, cell.w, cell.h);
+          const di = { id: d.id, size: d.size };
+          const sp2 = this.decorSprite(di, pw - 10, 30);
+          if (sp2) ctx.drawImage(sp2.canvas, Math.round(px + cell.w / 2 - sp2.ox), Math.round(y + 34 - sp2.oy));
+          let nm = d.name;
+          while (measureText(nm, 'small') > cell.w - 4 && nm.length > 3) nm = nm.slice(0, -1);
+          drawText(ctx, nm, px + cell.w / 2, y + 38, { align: 'center', font: 'small', color: hv ? '#1a4a6a' : '#5a4636' });
+          if (hv) {
+            ui.tip = `${d.name} - ${formatCommas(d.price)} coins`;
+            if (inp.pressed) { inp.pressed = false; const q = this.items('decor').find((z) => z.id === d.id); if (q) { this.select(q); this.focusT = 0; } }
+          }
+        });
+        y += 52;
+      }
     } else if (real.kind === 'cosmetic') {
       section('DETAILS');
       const slotName = (CHAR.WARDROBE_SLOTS || []).find((q) => q.id === real.slot)?.name || prettify(real.slot);

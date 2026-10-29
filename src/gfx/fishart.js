@@ -33,6 +33,11 @@
 //    feelers (gourami threads), barbel (chin lure), dome (barreleye head), barnacles, bandage, briefcase
 //    (anchor only, game draws it), cap {style: cap|beanie|tophat|crown}, antennae {style: bug|rabbit},
 //    lure {spinner: true (loading spinner tip), r}, whiskers {len, count}. Fine lines have no outline.
+//    Accessories: glasses {style: shades|round|square|patch, both}, sword {len}, hammer {len, w}, guitar {u, size,
+//    angle}, horn {u, len, angle}, ears {style: cat|dog}, wings {style: bat}, mane {u, r, w}, arrow {u, v, angle},
+//    juggle (three balls), coin, stem, collar {style: fur|vampire}, heart {u, v, r}; cap styles + porkpie, cowboy,
+//    pirate, helmet (visor over the head), hood, mohawk; beanie {stripes}. kinds: + 'star' (starfish);
+//    chain head + 'box' (cardboard box).
 //  look.glitch 0..1 (row slicing + RGB split), look.gills / look.lateral / look.noGill, look.scaleSize.
 //  kinds: + 'octopus' (dumbo), 'chain' (head painter + preview); ray {square, bsod, manta};
 //    blob {blobfish}; crab {shell: round|mouse|mech}; jelly {glow, tentacleCount, gonad, noFace}.
@@ -228,6 +233,7 @@ export function compileLook(look, variant = null) {
     if (e.color2) e.P2 = P(vc(e.color2, 'extra'));
     if (e.glow) c.glow = true;
     if (e.type === 'monocle') c.monocle = e;
+    if (e.type === 'glasses') c.glasses = e;
     if (e.type === 'bite') c.hasBite = true;
   }
   if (variant?.mutation === 'neon') c.glow = true;
@@ -1011,6 +1017,110 @@ function prepExtras(c, G, sw, still, s) {
         q.box = [q.cx - q.bw / 2 - 1, q.hy - 1, q.cx + q.bw / 2 + 1, q.top + q.bh + 1];
         break;
       }
+      case 'sword': {
+        q.len = e.len ?? L * 0.8;
+        q.hh = e.h ?? Math.max(1, H * 0.06);
+        q.x0 = halfL + 0.4; q.y0 = G.mouthY + (e.dy ?? 0);
+        q.box = [q.x0 - 1, q.y0 - q.hh * 3.6, q.x0 + q.len + 1, q.y0 + q.hh * 3.6];
+        break;
+      }
+      case 'hammer': {
+        q.len = e.len ?? L * 0.5;
+        q.hw = e.w ?? H * 0.42; q.hl = q.hw * 0.62;
+        q.hr = Math.max(0.7, H * 0.045);
+        q.x0 = halfL + 0.2; q.y0 = G.mouthY;
+        q.box = [q.x0 - 1, q.y0 - q.hw - 1, q.x0 + q.len + 1, q.y0 + q.hw + 1];
+        break;
+      }
+      case 'guitar': {
+        const u0 = e.u ?? 0.42;
+        q.sz = e.size ?? H * 0.42;
+        q.cx = halfL - L * u0; q.cy = G.halfBot(u0) * 0.5;
+        q.a = e.angle ?? -0.75;
+        const r = q.sz * 2.55;
+        q.box = [q.cx - r, q.cy - r, q.cx + r, q.cy + r];
+        break;
+      }
+      case 'horn': {
+        const u0 = e.u ?? 0.12;
+        q.bx = halfL - L * u0; q.by = -G.halfTop(u0) * 0.85;
+        q.len = e.len ?? H * 0.62; q.rb = e.r ?? Math.max(1.2, H * 0.085);
+        q.a = e.angle ?? -1.1;
+        q.box = bboxOf([[q.bx, q.by], [q.bx + Math.cos(q.a) * q.len, q.by + Math.sin(q.a) * q.len]], q.rb + 1.5);
+        break;
+      }
+      case 'ears': {
+        if (e.style === 'dog') {
+          q.cx = halfL - L * (e.u ?? 0.3); q.cy = -G.halfTop(e.u ?? 0.3) * 0.45;
+          q.rx = e.w ?? H * 0.15; q.ry = e.len ?? H * 0.36;
+          q.flop = Math.sin(sw * TAU) * 0.12 * sway;
+          q.box = [q.cx - q.ry - 1, q.cy - q.rx - 1, q.cx + q.ry + 1, q.cy + q.ry * 2.2 + 1];
+        } else {
+          q.ears = [e.u ?? 0.1, (e.u ?? 0.1) + (e.gap ?? 0.17)].map((u) => [halfL - L * u, -G.halfTop(u) + H * 0.06]);
+          q.w = e.w ?? H * 0.17; q.h = e.len ?? H * 0.34;
+          q.box = bboxOf(q.ears.map(([x, y]) => [x, y - q.h]).concat(q.ears), q.w + 1);
+        }
+        break;
+      }
+      case 'wings': {
+        const u0 = e.u ?? 0.45;
+        q.bx = halfL - L * u0; q.by = -G.halfTop(u0) * 0.75;
+        q.span = e.len ?? H * 1.05;
+        q.a = -2.05 + Math.sin(sw * TAU) * 0.32 * sway;
+        q.box = [q.bx - q.span * 1.05, q.by - q.span * 1.05, q.bx + q.span * 0.7, q.by + 2];
+        break;
+      }
+      case 'mane': {
+        q.hx = halfL - L * (e.u ?? 0.2); q.hy = G.mouthY * 0.3;
+        q.rin = e.r ?? H * 0.33; q.rout = q.rin + (e.w ?? H * 0.34);
+        q.box = [q.hx - q.rout * 1.25, q.hy - q.rout * 1.25, q.hx + q.rin * 0.7, q.hy + q.rout * 1.25];
+        break;
+      }
+      case 'arrow': {
+        const u0 = e.u ?? 0.55, v0 = e.v ?? -0.25;
+        q.ex = halfL - L * u0; q.ey = v0 < 0 ? v0 * G.halfTop(u0) : v0 * G.halfBot(u0);
+        q.a = e.angle ?? -2.25; q.len = e.len ?? H * 0.95;
+        q.w = Math.max(0.55 / s, k * 0.22);
+        q.box = bboxOf([[q.ex, q.ey], [q.ex + Math.cos(q.a) * q.len, q.ey + Math.sin(q.a) * q.len]], H * 0.16 + 1);
+        break;
+      }
+      case 'juggle': {
+        q.x0 = halfL - L * 0.12; q.y0 = -G.halfTop(0.12) - H * 0.18;
+        q.w = e.w ?? L * 0.2; q.h = e.h ?? H * 0.75; q.r = e.r ?? Math.max(1.3, H * 0.075);
+        q.balls = [0, 1, 2].map((i) => {
+          const a = TAU * (sw * sway + i / 3);
+          return [q.x0 + Math.cos(a) * q.w, q.y0 - q.h * 0.5 - Math.sin(a) * q.h * 0.5, i];
+        });
+        q.box = [q.x0 - q.w - q.r - 1, q.y0 - q.h - q.r - 1, q.x0 + q.w + q.r + 1, q.y0 + q.r + 1];
+        break;
+      }
+      case 'coin': {
+        q.r = e.r ?? Math.max(1.6, H * 0.15);
+        q.cx = halfL + q.r * 0.45; q.cy = G.mouthY + q.r * 0.15;
+        q.box = [q.cx - q.r - 1, q.cy - q.r - 1, q.cx + q.r + 1, q.cy + q.r + 1];
+        break;
+      }
+      case 'stem': {
+        q.len = e.len ?? H * 0.45; q.hh = e.h ?? Math.max(0.9, H * 0.11);
+        q.x0 = halfL - L * 0.04; q.y0 = -G.halfTop(0.04) * 0.2;
+        q.box = [q.x0 - 1, q.y0 - q.len * 0.6 - q.hh, q.x0 + q.len + 1, q.y0 + q.hh + 1];
+        break;
+      }
+      case 'collar': {
+        const u0 = e.u ?? c.opU + 0.03;
+        q.x = halfL - L * u0; q.u = u0;
+        q.bw = e.w ?? H * 0.2;
+        q.top = -G.halfTop(u0); q.bot = G.halfBot(u0);
+        q.box = [q.x - q.bw * 2.2 - H * 0.3, q.top - H * 0.62, q.x + q.bw * 1.6, q.bot + H * 0.12];
+        break;
+      }
+      case 'heart': {
+        const u0 = e.u ?? 0.5, v0 = e.v ?? 0;
+        q.cx = halfL - L * u0; q.cy = v0 < 0 ? v0 * G.halfTop(u0) : v0 * G.halfBot(u0);
+        q.r = e.r ?? H * 0.22;
+        q.box = [q.cx - q.r * 1.2, q.cy - q.r * 1.2, q.cx + q.r * 1.2, q.cy + q.r * 1.2];
+        break;
+      }
       case 'mustache': {
         const len = e.len ?? L * 0.26, rc = e.curl ?? H * 0.075;
         const x0 = halfL - L * 0.02, y0 = G.mouthY - H * 0.05;
@@ -1070,6 +1180,24 @@ function overlayPix(c, xp, lx, ly, px, py, s, G) {
         if (Math.abs(dx - q.r * 0.05) < gw && Math.abs(dy) < q.r * 0.52) return P('#ffffff');
         if (dy < -q.r * 0.25 && dy > -q.r * 0.52 && dx < 0 && dx > -q.r * 0.3 && Math.abs(dy + q.r * 0.38 + dx * 0.6) < gw) return P('#ffffff');
         return rampPick(R, clamp01(0.7 - dy / q.r * 0.3 - dx / q.r * 0.1), px, py);
+      }
+      case 'sword': case 'hammer': case 'guitar': case 'coin': case 'stem': case 'collar': case 'heart': case 'mane': case 'arrow': {
+        if (!inBox(q.box, lx, ly)) break;
+        const r = accessoryPix(c, q, lx, ly, px, py, s, G);
+        if (r) return r;
+        break;
+      }
+      case 'ears': {
+        if (e.style !== 'dog' || !inBox(q.box, lx, ly)) break;
+        const r = accessoryPix(c, q, lx, ly, px, py, s, G);
+        if (r) return r;
+        break;
+      }
+      case 'cap': {
+        if (e.style !== 'helmet' && e.style !== 'hood') break;
+        const r = headgearPix(c, q, lx, ly, px, py, s, G);
+        if (r) return r;
+        break;
       }
       case 'usb': {
         const x = lx - q.x0, ady = Math.abs(ly - q.y0);
@@ -1399,6 +1527,12 @@ function freePix(c, G, xp, lx, ly, px, py, s, sw, still) {
         if (r) return r;
         break;
       }
+      case 'horn': case 'wings': case 'juggle': case 'ears': {
+        if (e.type === 'ears' && e.style === 'dog') break;
+        const r = accessoryPix(c, q, lx, ly, px, py, s, G);
+        if (r) return r;
+        break;
+      }
       case 'halo': {
         const nx = (lx - q.cx) / q.rx, ny = (ly - q.cy) / q.ry;
         const dd = Math.hypot(nx, ny);
@@ -1475,15 +1609,62 @@ function freePix(c, G, xp, lx, ly, px, py, s, sw, still) {
   return 0;
 }
 
+const CAP_COL = { tophat: '#2a2630', crown: '#ffd23a', beanie: '#3a4a6a', porkpie: '#2c2a2e', cowboy: '#b47a42', pirate: '#1e1a22', helmet: '#4e6e2c', hood: '#6a4426', mohawk: '#ff3aa8' };
 function capPix(c, q, lx, ly, px, py, s) {
   const e = q.e;
   const style = e.style || 'cap';
+  if (style === 'helmet' || style === 'hood') return 0; // drawn over the head (headgearPix)
   const w = q.w, x = lx - q.cx, y = ly - q.cy;
-  const C1 = c._capR || (c._capR = ramp(c.vc(e.color || (style === 'tophat' ? '#2a2630' : style === 'crown' ? '#ffd23a' : style === 'beanie' ? '#3a4a6a' : '#d93a3a'), 'extra')).map((h) => P(h)));
-  const C2 = e.P2 || P(c.vc(style === 'beanie' ? '#e8e0d0' : style === 'tophat' ? '#c8283a' : '#c0c6d2', 'extra'));
+  const C1 = c._capR || (c._capR = ramp(c.vc(e.color || CAP_COL[style] || '#d93a3a', 'extra')).map((h) => P(h)));
+  const C2 = e.P2 || P(c.vc(style === 'beanie' ? '#e8e0d0' : style === 'tophat' ? '#c8283a' : style === 'pirate' ? '#e8c040' : '#c0c6d2', 'extra'));
+  if (style === 'porkpie') {
+    if (Math.abs(y) < Math.max(0.6 / s, w * 0.08) && Math.abs(x) < w * 0.62) return rampPick(C1, 0.45 - x / w * 0.2, px, py);
+    if (y < 0 && Math.abs(x) < w * 0.4) {
+      const top = -w * 0.46 + (Math.abs(x) < w * 0.24 ? w * 0.06 : 0);
+      if (y < top) return 0;
+      if (y > -w * 0.15) return C2 === P('#c0c6d2') ? C1[0] : C2;
+      return rampPick(C1, clamp01(0.55 - x / w * 0.5 + (y < top + 1 / s ? 0.2 : 0)), px, py);
+    }
+    return 0;
+  }
+  if (style === 'cowboy') {
+    const ax = Math.abs(x);
+    const curl = Math.pow(Math.min(1, ax / (w * 0.95)), 3) * w * 0.3;
+    if (ax < w * 0.95 && y < w * 0.05 - curl * 0.2 && y > -w * 0.1 - curl) return rampPick(C1, clamp01(0.5 - x / w * 0.2 + (y < -w * 0.05 - curl ? 0.2 : 0)), px, py);
+    if (ax < w * 0.42 && y < 0) {
+      const top = -w * 0.68 + w * 0.13 * Math.exp(-((x / (w * 0.12)) ** 2));
+      if (y < top) return 0;
+      if (y > -w * 0.22 && y < -w * 0.1) return P(c.vc('#4a2a14', 'extra'));
+      return rampPick(C1, clamp01(0.62 - x / w * 0.6 - (y > -w * 0.25 ? 0.1 : 0)), px, py);
+    }
+    return 0;
+  }
+  if (style === 'pirate') {
+    const ax = Math.abs(x);
+    const hy = -w * 0.62 * (1 - Math.pow(ax / (w * 0.95), 1.6));
+    if (ax < w * 0.95 && y < w * 0.08 && y > hy) {
+      if (y > hy && y < hy + 1.1 / s && ax < w * 0.85) return C2;
+      // skull
+      if (Math.hypot(x, y + w * 0.3) < w * 0.12) return P('#f0ece0');
+      if (Math.abs(y + w * 0.14) < w * 0.04 && Math.abs(x) < w * 0.16 && Math.abs(Math.abs(x) - w * 0.1) < w * 0.07) return P('#f0ece0');
+      return rampPick(C1, clamp01(0.5 - x / w * 0.25 - y / w * 0.2), px, py);
+    }
+    return 0;
+  }
+  if (style === 'mohawk') {
+    const ax = x + w * 0.1;
+    if (Math.abs(ax) < w * 0.7 && y < w * 0.1) {
+      const k = (ax / (w * 0.7) + 1) / 2;
+      const spike = fract(k * 5);
+      const hh = w * (0.45 + 0.4 * Math.sin(Math.PI * k)) * (1 - Math.abs(spike - 0.5) * 1.2);
+      if (-y < hh) return rampPick(C1, clamp01(0.75 - (-y / hh) * 0.4 - (spike > 0.5 ? 0.15 : 0)), px, py);
+    }
+    return 0;
+  }
   if (style === 'beanie') {
     const rx = w * 0.55, ry = w * 0.6;
     if (y <= 0.5 && (x / rx) ** 2 + (y / ry) ** 2 <= 1) {
+      if (e.stripes && y <= -w * 0.2 && (Math.floor((-y) / Math.max(1 / s, w * 0.16)) & 1)) return rampPick(ramp(c.vc(e.color2 || '#f4f0ea', 'extra')).map((h) => P(h)), clamp01(0.6 - x / rx * 0.25), px, py);
       if (y > -w * 0.2) return ((Math.floor(lx * s) & 1) === 0) ? C1[1] : C1[0];
       const rib = (Math.floor((x + rx) * s / 2) & 1) === 0;
       return rampPick(C1, clamp01(0.62 - x / rx * 0.25 - (rib ? 0.15 : 0)), px, py);
@@ -1524,6 +1705,219 @@ function capPix(c, q, lx, ly, px, py, s) {
 // ---------------------------------------------------------------------------
 // Generic fish: extents, layer boxes, raster driver, face geometry.
 
+// Accessories that draw over and around the body (local fish coords, +x nose, y down).
+function accR(c, key, hex) {
+  if (!c._acc) c._acc = new Map();
+  let r = c._acc.get(key + hex);
+  if (!r) { r = c.R7(c.vc(hex, 'extra')); c._acc.set(key + hex, r); }
+  return r;
+}
+function accessoryPix(c, q, lx, ly, px, py, s, G) {
+  const e = q.e;
+  const px1 = 1 / s;
+  switch (e.type) {
+    case 'sword': {
+      const x = lx - q.x0, y = ly - q.y0, hh = q.hh, L2 = q.len;
+      const S7 = accR(c, 'sw', e.color || '#c8d2e0'), G7 = accR(c, 'sg', e.color2 || '#e8b830');
+      if (x > L2 * 0.07 && x < L2) {
+        const bh = hh * Math.min(1, (L2 - x) / (L2 * 0.16)) + 0.3;
+        if (Math.abs(y) > bh) return 0;
+        if (Math.abs(y) < 0.5 * px1 && x < L2 * 0.78) return tone(S7, 2.3, px, py);
+        if (y < -bh + px1) return tone(S7, 5.4, px, py);
+        return tone(S7, y < 0 ? 4.4 : 2.9, px, py);
+      }
+      if (x >= 0 && x <= L2 * 0.07 && Math.abs(y) < hh * 3.3) return tone(G7, 4.2 - Math.abs(y) / (hh * 3.3) * 1.4 - (y > 0 ? 0.7 : 0), px, py);
+      return 0;
+    }
+    case 'hammer': {
+      const x = lx - q.x0, y = ly - q.y0;
+      const M7 = accR(c, 'hm', e.color || '#8a929e'), W7 = accR(c, 'hw', e.color2 || '#9a6234');
+      if (x > q.len - q.hl && x < q.len && Math.abs(y) < q.hw) {
+        if (x > q.len - px1 * 1.2) return tone(M7, 5, px, py);
+        if (Math.abs(y) > q.hw - px1) return tone(M7, 1.6, px, py);
+        return tone(M7, 3.8 - y / q.hw * 1.2 - (x < q.len - q.hl + px1 ? 1 : 0), px, py);
+      }
+      if (x >= 0 && x <= q.len - q.hl && Math.abs(y) < q.hr) return tone(W7, y < 0 ? 4.2 : 2.8, px, py);
+      return 0;
+    }
+    case 'guitar': {
+      const dx = lx - q.cx, dy = ly - q.cy, ca = Math.cos(q.a), sa = Math.sin(q.a), sz = q.sz;
+      const gx = dx * ca + dy * sa, gy = -dx * sa + dy * ca;
+      const B7 = accR(c, 'gb', e.color || '#d8342c'), N7 = accR(c, 'gn', '#7a4a24');
+      const d1 = Math.hypot(gx + sz * 0.42, gy) / (sz * 0.66), d2 = Math.hypot(gx - sz * 0.28, gy) / (sz * 0.5);
+      const waist = gx > -sz * 0.2 && gx < sz * 0.1 && Math.abs(gy) < sz * 0.42;
+      if (d1 < 1 || d2 < 1 || waist) {
+        const edge = d1 > 1 - px1 / (sz * 0.66) * 1.2 && d2 > 1 - px1 / (sz * 0.5) * 1.2 && !(waist && Math.abs(gy) < sz * 0.42 - px1);
+        if (edge) return tone(B7, 1.2, px, py);
+        if (Math.hypot(gx - sz * 0.05, gy) < sz * 0.17) return P('#1a1210');
+        if (Math.abs(gx + sz * 0.55) < sz * 0.07 && Math.abs(gy) < sz * 0.26) return tone(N7, 1.4, px, py);
+        if (gy < -sz * 0.2 && gx < 0 && Math.hypot(gx + sz * 0.42, gy) > sz * 0.5) return P(c.vc('#f4ece0', 'extra'));
+        return tone(B7, 3.9 - gy / sz * 0.8 - gx / sz * 0.25, px, py);
+      }
+      if (gx > sz * 0.5 && gx < sz * 2.15 && Math.abs(gy) < Math.max(0.55 * px1, sz * 0.085)) return fract(gx / (sz * 0.2)) < 0.15 ? P('#e8e0c8') : tone(N7, gy < 0 ? 4 : 2.8, px, py);
+      if (gx >= sz * 2.15 && gx < sz * 2.5 && Math.abs(gy) < sz * 0.15) return Math.abs(gy) > sz * 0.1 && (Math.floor(gx / (sz * 0.1)) & 1) ? P('#e8e0d0') : tone(N7, 1.6, px, py);
+      return 0;
+    }
+    case 'horn': {
+      const dx = lx - q.bx, dy = ly - q.by, ca = Math.cos(q.a), sa = Math.sin(q.a);
+      const al = dx * ca + dy * sa, pr = -dx * sa + dy * ca;
+      if (al < -q.rb * 0.4 || al > q.len) return 0;
+      const wdt = q.rb * (1 - Math.max(0, al) / q.len) + 0.3 * px1;
+      if (Math.abs(pr) > wdt) return 0;
+      const H7 = accR(c, 'hn', e.color || '#f4e6b8');
+      const band = fract(al / (q.len * 0.16) + pr / q.rb * 0.35) < 0.32;
+      return tone(H7, (pr < 0 ? 4.6 : 3.2) - (band ? 1.1 : 0), px, py);
+    }
+    case 'ears': {
+      const E7 = accR(c, 'ea', e.color || c.bodyHex), I7 = accR(c, 'ei', e.color2 || '#ff9ab0');
+      if (e.style === 'dog') {
+        const dx = lx - q.cx, dy = ly - q.cy;
+        const ca = Math.cos(0.35 + q.flop), sa = Math.sin(0.35 + q.flop);
+        const ax = dx * ca + dy * sa, ay = -dx * sa + dy * ca;
+        const t = ay / q.ry;
+        if (t < -0.15 || t > 1) return 0;
+        const wdt = q.rx * (0.7 + 0.5 * Math.sin(Math.PI * Math.min(1, t * 0.9 + 0.1)));
+        if (Math.abs(ax) > wdt) return 0;
+        return tone(E7, Math.abs(ax) > wdt - px1 ? 1.3 : 2.6 - t * 0.6 - ax / wdt * 0.4, px, py);
+      }
+      for (const [bx, by] of q.ears) {
+        const t = (by - ly) / q.h;
+        if (t < 0 || t > 1) continue;
+        const dx = lx - bx + t * q.w * 0.25;
+        const wdt = q.w * (1 - t);
+        if (Math.abs(dx) > wdt) continue;
+        if (Math.abs(dx) < wdt * 0.5 && t < 0.72 && t > 0.08) return tone(I7, 3.6 - t, px, py);
+        return tone(E7, Math.abs(dx) > wdt - px1 ? 1.6 : 3.6 - dx / q.w * 0.8, px, py);
+      }
+      return 0;
+    }
+    case 'wings': {
+      const dx = lx - q.bx, dy = ly - q.by, ca = Math.cos(q.a), sa = Math.sin(q.a);
+      const al = dx * ca + dy * sa, pr = -dx * sa + dy * ca;
+      const t = al / q.span;
+      if (t < 0 || t > 1) return 0;
+      const pr2 = -pr;
+      const W7 = accR(c, 'wn', e.color || '#4a3a5a');
+      const wdt = q.span * 0.5 * Math.pow(Math.sin(Math.PI * Math.min(1, t * 1.05)), 0.7) * (1 - 0.22 * Math.abs(Math.sin(t * Math.PI * 3)));
+      if (pr2 < -Math.max(0.6 * px1, q.span * 0.04) || pr2 > wdt) return 0;
+      if (pr2 < Math.max(0.6 * px1, q.span * 0.035)) return tone(W7, 1.4, px, py);
+      for (const ft of [0.38, 0.7]) if (Math.abs(pr2 / Math.max(0.01, wdt) - (1 - Math.abs(t - ft) * 2.2)) < 0.07 && Math.abs(t - ft) < 0.35) return tone(W7, 1.8, px, py);
+      return tone(W7, 3.2 - pr2 / q.span * 1.2, px, py);
+    }
+    case 'juggle': {
+      const cols = ['#ff3a3a', '#ffd23a', '#3a8aff'];
+      for (const [bx, by, i] of q.balls) {
+        const d = Math.hypot(lx - bx, ly - by);
+        if (d > q.r) continue;
+        const R7 = accR(c, 'jb' + i, cols[i]);
+        if (Math.hypot(lx - bx + q.r * 0.35, ly - by + q.r * 0.35) < q.r * 0.35) return P('#ffffff');
+        return tone(R7, 4 - (ly - by) / q.r * 1.2 - (d > q.r - px1 ? 1.4 : 0), px, py);
+      }
+      return 0;
+    }
+    case 'coin': {
+      const dx = lx - q.cx, dy = ly - q.cy, d = Math.hypot(dx, dy * 1.05);
+      if (d > q.r) return 0;
+      const G7 = accR(c, 'cn', e.color || '#ffcc33');
+      if (d > q.r - px1) return tone(G7, 1.8, px, py);
+      if (Math.abs(d - q.r * 0.62) < px1 * 0.6) return tone(G7, 2.6, px, py);
+      return tone(G7, 4.3 - (dx + dy) / q.r * 0.9, px, py);
+    }
+    case 'stem': {
+      const x = lx - q.x0, t = x / q.len;
+      if (t < 0 || t > 1) return 0;
+      const yc = q.y0 - Math.pow(t, 1.6) * q.len * 0.55;
+      const hh = q.hh * (1 - 0.35 * t);
+      if (Math.abs(ly - yc) > hh) return 0;
+      const S7 = accR(c, 'st', e.color || '#5a6a2a');
+      return t > 0.9 ? tone(S7, 1.4, px, py) : tone(S7, ly < yc ? 3.8 : 2.4, px, py);
+    }
+    case 'collar': {
+      const x = lx - q.x, uu = (G.halfL - lx) / G.L;
+      if (e.style === 'vampire') {
+        // tall pointed collar rising behind the head
+        const R7 = accR(c, 'cv', e.color || '#1a1420'), I7 = accR(c, 'ci', e.color2 || '#c81a2a');
+        const t = (q.top - ly) / (G.H * 0.6);
+        if (t >= 0 && t <= 1 && x < q.bw * 0.6 && x > -q.bw * 2.2) {
+          const front = q.bw * 0.6 - t * q.bw * 0.4, back = -q.bw * 2.2 + t * q.bw * 1.6;
+          if (x < front && x > back + (1 - Math.abs(fract(t * 2.5) - 0.5) * 2) * q.bw * 0.3) return x > front - q.bw * 0.35 ? tone(I7, 3.4 - t, px, py) : tone(R7, 3 - t, px, py);
+        }
+        if (Math.abs(x) < q.bw * 0.45 && ly >= q.top && ly <= q.bot && uu > 0) return tone(R7, 2.4, px, py);
+        return 0;
+      }
+      const F7 = accR(c, 'cf', e.color || '#e8e4dc');
+      const ang = Math.sin(ly * 1.7) * 0.25 + Math.sin(ly * 4.3) * 0.12;
+      const half = q.bw * (1 + ang);
+      if (Math.abs(x) > half || ly < q.top - G.H * 0.12 || ly > q.bot + G.H * 0.08) return 0;
+      const strand = fract(ly / Math.max(1.6 * px1, G.H * 0.07) + x * 0.3) < 0.3;
+      return tone(F7, 4 - (strand ? 1.2 : 0) - (Math.abs(x) > half - px1 ? 1.2 : 0) + (ly < 0 ? 0.4 : -0.2), px, py);
+    }
+    case 'heart': {
+      const hx = (lx - q.cx) / q.r, hy = -(ly - q.cy) / q.r + 0.15;
+      const v = (hx * hx + hy * hy - 0.42) ** 3 - hx * hx * hy * hy * hy * 1.15;
+      if (v >= 0) return 0;
+      const H7 = accR(c, 'ht', e.color || '#ff5a9a');
+      const edge = ((hx * hx + hy * hy - 0.42) ** 3 - hx * hx * hy * hy * hy * 1.15) > -0.004 * (1 + q.r * s * 0.02);
+      return edge ? tone(H7, 1.8, px, py) : tone(H7, 3.8 + hy * 0.9 - hx * 0.3, px, py);
+    }
+    case 'mane': {
+      const dx = lx - q.hx, dy = (ly - q.hy) * 0.92;
+      const d = Math.hypot(dx, dy), ang = Math.atan2(dy, dx);
+      if (dx > q.rin * 0.45) return 0;
+      const shag = q.rout * (1 + 0.1 * Math.sin(ang * 9 + 1) + 0.06 * Math.sin(ang * 23));
+      if (d < q.rin || d > shag) return 0;
+      const M7 = accR(c, 'mn', e.color || '#c8762a');
+      const strand = fract(ang * 18 / TAU + d * 0.05) < 0.35;
+      return tone(M7, 3.6 - (strand ? 1 : 0) - (d > shag - px1 * 1.2 ? 1.2 : 0) - dy / q.rout * 0.6, px, py);
+    }
+    case 'arrow': {
+      const dx = lx - q.ex, dy = ly - q.ey, ca = Math.cos(q.a), sa = Math.sin(q.a);
+      const al = dx * ca + dy * sa, pr = -dx * sa + dy * ca;
+      if (al < 0 || al > q.len) return 0;
+      const W7 = accR(c, 'aw', '#8a5a2e');
+      const fl = al > q.len * 0.72;
+      const fw = fl ? q.w + (al - q.len * 0.72) / (q.len * 0.28) * G.H * 0.13 : 0;
+      if (fl && Math.abs(pr) < fw && Math.abs(pr) > q.w * 0.6) return (Math.floor(al / Math.max(px1 * 1.5, q.len * 0.06)) & 1) ? P(c.vc('#f4f0e8', 'extra')) : P(c.vc('#d8342c', 'extra'));
+      if (Math.abs(pr) < q.w) return tone(W7, pr < 0 ? 4 : 2.6, px, py);
+      return 0;
+    }
+    default: return 0;
+  }
+}
+
+// Headgear that covers the head itself (drawn over the body): helmet with visor, monk hood.
+function headgearPix(c, q, lx, ly, px, py, s, G) {
+  const e = q.e;
+  const px1 = 1 / s;
+  const hx = G.halfL - G.L * 0.2, hy = -G.H * 0.06;
+  if (e.style === 'helmet') {
+    const rx = G.L * 0.27, ry = G.H * 0.56;
+    const nx = (lx - hx) / rx, ny = (ly - hy) / ry;
+    if (nx * nx + ny * ny > 1 || ly > G.mouthY - G.H * 0.02) return 0;
+    const A7 = accR(c, 'hl', e.color || '#4e6e2c'), V7 = accR(c, 'hv', e.color2 || '#f0a828');
+    const e0 = c.eyes[0];
+    const ey = e0.v * G.H / 2;
+    if (lx > hx - rx * 0.15 && Math.abs(ly - ey) < G.H * 0.16) {
+      if (Math.abs(ly - ey) > G.H * 0.16 - px1) return tone(A7, 1.2, px, py);
+      return tone(V7, 4.4 - (ly - ey) / (G.H * 0.16) * 1.4 + ((lx - ly) * s % 7 < 1.2 ? 1.2 : 0), px, py);
+    }
+    if (nx * nx + ny * ny > 1 - 2.2 * px1 / rx) return tone(A7, 1.5, px, py);
+    return tone(A7, 3.8 - ny * 1.3 - nx * 0.4 - (Math.abs(nx + 0.35) < 0.04 ? 1 : 0), px, py);
+  }
+  // hood: covers the back of the head, leaves a face opening
+  const rx = G.L * 0.36, ry = G.H * 0.66;
+  const cx = hx - G.L * 0.08;
+  const nx = (lx - cx) / rx, ny = (ly - hy) / ry;
+  if (nx * nx + ny * ny > 1) return 0;
+  const fx = (lx - (hx + G.L * 0.08)) / (G.L * 0.17), fy = (ly - (hy + G.H * 0.08)) / (G.H * 0.36);
+  if (fx * fx + fy * fy < 1) return 0;
+  const R7 = accR(c, 'hd', e.color || '#6a4426');
+  if (fx * fx + fy * fy < 1.25) return tone(R7, 1.3, px, py);
+  return tone(R7, 3.4 - ny * 1.1 - (Math.abs(fract(nx * 3) - 0.5) < 0.06 ? 0.8 : 0), px, py);
+}
+
+const ACC_TYPES = new Set(['sword', 'hammer', 'guitar', 'horn', 'ears', 'wings', 'mane', 'arrow', 'juggle', 'coin', 'stem', 'collar', 'heart']);
+const CAP_WIDE = new Set(['cowboy', 'pirate', 'helmet', 'hood', 'mohawk']);
 function genericExtent(c, G) {
   const { L, H, halfL, TL, TS } = G;
   let finTop = 0, finBot = 0, leanBack = 0;
@@ -1544,7 +1938,7 @@ function genericExtent(c, G) {
       case 'whiskers': exFront = Math.max(exFront, 2); exBot = Math.max(exBot, (e.len ?? H * 0.5) * 0.8); break;
       case 'feelers': exBot = Math.max(exBot, (e.len ?? L * 0.7) * 0.7 + H * 0.15); exBack = Math.max(exBack, (e.len ?? L * 0.7) * 0.8 - L * (1 - (e.u ?? 0.36))); break;
       case 'barbel': exBot = Math.max(exBot, (e.len ?? H * 0.8) * 0.85 + 2); break;
-      case 'cap': exTop = Math.max(exTop, (e.w ?? H * 0.55) * 1.35); exFront = Math.max(exFront, (e.w ?? H * 0.55) * 0.5); break;
+      case 'cap': exTop = Math.max(exTop, (e.w ?? H * 0.55) * (e.style === 'cowboy' ? 0.9 : 1.35)); exFront = Math.max(exFront, (e.w ?? H * 0.55) * (e.style === 'cowboy' || e.style === 'pirate' ? 1.0 : 0.5)); break;
       case 'antennae': exTop = Math.max(exTop, (e.len ?? H * 0.75) + 3); break;
       case 'halo': exTop = Math.max(exTop, (e.h ?? H * 0.36) + (e.r ?? L * 0.16) * 0.35 + 3); break;
       case 'dome': exTop = Math.max(exTop, (e.ry ?? H * 0.85) * 0.75); break;
@@ -1555,6 +1949,17 @@ function genericExtent(c, G) {
       case 'briefcase': if (e.draw) exBot = Math.max(exBot, (e.w ?? H * 0.95) * 0.62 + H * 0.2 + 2); break;
       case 'kype': exFront = Math.max(exFront, (e.len ?? H * 0.22) + 2); exBot = Math.max(exBot, H * 0.2); break;
       default: break;
+    }
+  }
+  // accessories with explicit boxes (sword, hammer, guitar, horn, ears, wings, mane, arrow, juggle...)
+  const ACC = ACC_TYPES;
+  if (c.extras.some((e) => ACC.has(e.type) || (e.type === 'cap' && CAP_WIDE.has(e.style)))) {
+    for (const q of prepExtras(c, G, 0.25, true, 1)) {
+      if (!q.box || !(ACC.has(q.e.type) || (q.e.type === 'cap' && CAP_WIDE.has(q.e.style)))) continue;
+      exFront = Math.max(exFront, q.box[2] - halfL);
+      exBack = Math.max(exBack, -halfL - q.box[0]);
+      exTop = Math.max(exTop, -q.box[1] - H / 2);
+      exBot = Math.max(exBot, q.box[3] - H / 2);
     }
   }
   // face extras (open mouth, eye emotion marks) must fit in the baked sprite
@@ -1909,12 +2314,46 @@ export function paintEye(buf, glow, cx, cy, c, e, f, ang, R) {
           }
         }
       }
+      if (c.glasses && (f.main || c.glasses.both)) col = glassesPix(c.glasses, mx, ey, R, col);
       if (col) {
         buf.set(x, y, col);
         if (glow && gl) glow.set(x, y, gl);
       }
     }
   }
+}
+
+// Glasses / eye patch painted with the eye (eye-local coords, +mx toward the nose).
+const GL_FRAME = P('#16141c'), GL_LENS = P('#12121c'), GL_LENS2 = P('#2c2e40'), GL_GLINT = P('#a8b8d8'), GL_SHINE = P('#eef4ff');
+function glassesPix(g, mx, ey, R, col) {
+  const style = g.style || 'shades';
+  const t = Math.max(1.05, R * 0.2) / R;
+  const frame = g.P || (style === 'round' ? P('#3a2a18') : GL_FRAME);
+  // arm back toward the ear
+  if (style !== 'patch' && mx < -1.25 && mx > -2.65 && Math.abs(ey + 0.3 - (mx + 1.25) * 0.08) < t * 0.75) return frame;
+  if (style === 'patch') {
+    const dd = Math.hypot(mx / 1.08, (ey - 0.02) / 1.15);
+    if (dd < 1) return dd > 1 - t ? P('#05050a') : mx < -0.25 && ey < -0.35 ? P('#34303c') : GL_LENS;
+    if (Math.abs(ey + 0.95 + (mx + 0.3) * 0.85) < t * 0.7 && mx < 0.1 && mx > -2.5) return GL_LENS;
+    return col;
+  }
+  if (style === 'square') {
+    const ax = Math.abs(mx), ay = Math.abs(ey + 0.05);
+    if (ax < 1.42 && ay < 1.12) {
+      if (ax > 1.42 - t || ay > 1.12 - t) return frame;
+      if (col && Math.abs(mx + ey + 0.5) < 0.13 && ey < 0) return GL_SHINE;
+    }
+    return col;
+  }
+  const shades = style === 'shades';
+  const dd = Math.hypot(mx, (ey + (shades ? 0.05 : 0)) * (shades ? 1.12 : 1));
+  const rr = shades ? 1.45 : 1.36;
+  if (dd < rr && !(shades && ey < -1.12)) {
+    if (dd > rr - t || (shades && ey < -1.12 + t)) return frame;
+    if (shades) return Math.abs(mx + ey + 0.45) < 0.17 && ey < 0.1 ? GL_GLINT : ey < -0.5 ? GL_LENS2 : GL_LENS;
+    if (col && Math.abs(mx + ey + 0.6) < 0.12 && ey < 0) return GL_SHINE;
+  }
+  return col;
 }
 
 export const mouthBox = (W) => Math.ceil(W * 1.25 + 5);
@@ -3037,6 +3476,42 @@ KINDS.blob = {
   },
 };
 
+// Starfish: five tapering arms with tubercles, front-facing face (crawler).
+KINDS.star = {
+  layers: [['body', 'swim', 8]],
+  ext(c) { const r = c.L * 0.55; return [-r * 1.12, -r * 1.12, r * 1.12, r * 1.05]; },
+  paint(c, part, buf, glow, ox, oy, s, ph) {
+    const Rr = c.L * 0.5 * s;
+    const R = c.bodyR;
+    const D = rp(c, c.look.col?.back || shade(c.bodyHex, -0.3));
+    for (let y = Math.floor(oy - Rr * 1.1); y <= Math.ceil(oy + Rr * 1.05); y++) for (let x = Math.floor(ox - Rr * 1.1); x <= Math.ceil(ox + Rr * 1.1); x++) {
+      const dx = x + 0.5 - ox, dy = y + 0.5 - oy;
+      const d = Math.hypot(dx, dy);
+      const th = Math.atan2(dy, dx) + Math.PI / 2;
+      const arm = Math.pow(Math.abs(Math.cos(th * 2.5)), 1.5);
+      const wig = 0.05 * Math.sin(ph * TAU + th * 5);
+      const r = Rr * (0.38 + 0.62 * arm + wig);
+      if (d > r) continue;
+      const edge = d > r - 1.2;
+      let col = rampPick(R, clamp01(0.62 - dy / Rr * 0.3 - dx / Rr * 0.12 - (d / r) * 0.15), x, y);
+      if (arm > 0.55 && Math.abs(fract(d / Math.max(2.4, Rr * 0.14)) - 0.5) < 0.18 && d > Rr * 0.3 && hash2(x >> 1, y >> 1, 9) > 0.4) col = D[2];
+      if (hash2(x, y, 31) > 0.93) col = R[4];
+      if (edge) col = R[1];
+      buf.set(x, y, col);
+    }
+  },
+  face(c, ph, s, ox, oy) {
+    const Rr = c.L * 0.5 * s;
+    const R = c.look.eye?.r ? c.look.eye.r * s : Math.max(1.6, Rr * 0.12);
+    const ey = oy - Rr * 0.04;
+    return {
+      eyes: [-1, 1].map((sd, i) => ({ x: ox + sd * Rr * 0.16, y: ey, r: R, e: c.eyes[0], idx: i, mirror: sd < 0, cheek: true, main: i === 1, angle: 0 })),
+      mouth: { x: ox, y: ey + R * 2.2, w: Math.max(3, Rr * 0.2), m: c.mouth, front: true, angle: 0 },
+      anchors: { mouth: [ox, ey + R * 2.4], top: [ox, oy - Rr], tail: [ox - Rr * 0.8, oy + Rr * 0.3], bottom: [ox, oy + Rr * 0.8] },
+    };
+  },
+};
+
 KINDS.iconfish = {
   layers: [['back', 'tail', 12], ['body', 'swim', 8], ['front', 'fin', 8]],
   ext(c) { const z = c.L; return [-z * 1.0, -z * 0.68, z * 0.62, z * 0.68]; },
@@ -3172,6 +3647,17 @@ function paintChainHead(c, buf, glow, cx, cy, ang, s, ph) {
         col = M[ly < 0 ? 3 : 2];
         if (lx > 2.0 && lx < 2.2) col = M[0];
       }
+    } else if (head === 'box') {
+      // a cardboard box with the eel peeking out of the front flap
+      const bxr = Math.max(0, Math.abs(lx - 0.1) - 1.25), byr = Math.max(0, Math.abs(ly) - 1.0);
+      if (Math.hypot(bxr, byr) < 0.18) {
+        const B = rp(c, c.chain.box || '#c89a5a');
+        col = rampPick(B, clamp01(0.62 - ly * 0.28 - (lx < -0.6 ? 0.12 : 0)), x, y);
+        if (Math.abs(ly + 0.15) < 0.16 && lx < 1.1) col = rp(c, '#e8d8b0')[3];
+        if (Math.abs(lx - 0.1) < 0.05 && ly < -0.3) col = B[1];
+        if (lx > 1.0 && Math.abs(ly - 0.25) < 0.32) col = P('#1a1008');
+        if (Math.abs(lx - 1.36) < 0.06 || Math.abs(ly + 1.05) < 0.06) col = B[1];
+      }
     } else if (head === 'noodle') {
       const d = Math.hypot(lx / 1.35, ly);
       if (d < 1) col = rampPick(R, clamp01(0.58 - ly * 0.3 - lx * 0.05 + (Math.abs(ly + 0.45) < 0.15 ? 0.25 : 0)), x, y);
@@ -3196,12 +3682,12 @@ function paintChainHead(c, buf, glow, cx, cy, ang, s, ph) {
   const er = Math.max(1.6, r * (head === 'noodle' ? 0.32 : head === 'plug' ? 0.34 : 0.3));
   const eyes = head === 'noodle'
     ? [[0.35, -0.2, 0], [0.85, -0.2, 1]]
-    : head === 'plug' ? [[0.3, -0.35, 0], [0.95, -0.35, 1]] : [[0.75, -0.3, 0]];
-  const mouthAt = head === 'noodle' ? [1.05, 0.38] : head === 'plug' ? [1.25, 0.4] : [1.85, 0.3];
+    : head === 'plug' ? [[0.3, -0.35, 0], [0.95, -0.35, 1]] : head === 'box' ? [[1.12, 0.12, 0], [1.42, 0.12, 1]] : [[0.75, -0.3, 0]];
+  const mouthAt = head === 'noodle' ? [1.05, 0.38] : head === 'plug' ? [1.25, 0.4] : head === 'box' ? [1.5, 0.55] : [1.85, 0.3];
   return {
     eyes: eyes.map(([lx, ly, i]) => { const [x, y] = toC(lx, ly); return { x, y, r: er, e: c.eyes[0], idx: i, mirror: false, cheek: i === 0, main: i === eyes.length - 1, angle: ang }; }),
     mouth: { x: toC(...mouthAt)[0], y: toC(...mouthAt)[1], w: Math.max(2.5, r * 0.7), m: c.mouth, front: false, angle: ang },
-    nose: toC(head === 'plug' ? 2.6 : 1.9, 0),
+    nose: toC(head === 'plug' ? 2.6 : head === 'box' ? 1.5 : 1.9, 0),
   };
 }
 

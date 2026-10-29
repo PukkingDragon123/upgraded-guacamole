@@ -1,5 +1,6 @@
 // End-to-end smoke test: boots the game in headless Chromium, plays through the intro with real
-// mouse input (drag an icon into the bait box, hook the first fish, fight it), checks the flood,
+// mouse input (drag an icon into the bait box, hook the first fish, fight it by circling the mouse
+// to crank the reel), checks the I GOT IT finale, the flood,
 // the reveal, the aquarium coin and the first skill, then exercises panels and travel. Fails on any
 // console error. Screenshots land in tests/out/.
 import { createRequire } from 'node:module';
@@ -84,19 +85,27 @@ await page.mouse.up();
 await wait(100);
 check('hook set -> fight', ['fight', 'landing'].includes(await G('g.fishing.state')), await G('g.fishing.state'));
 
-// ---- fight: hold to reel while moving against the fish; release when tension is high
-for (let i = 0; i < 300; i++) {
-  const s = await G('(() => { const f = g.fishing; return { st: f.state, T: f.tension, fx: f.fish && f.fish.x, fy: f.fish && f.fish.y, cx: g.input.x, cy: g.input.y }; })()');
+// ---- fight: crank the reel by circling the mouse quickly, keeping the loop on the side opposite
+// to the fish's pull (fishing.crankHint() = where the HUD's green pull zone is); ease off when the
+// line gets too tight. One small step per mouse event (each event lands on its own frame).
+const pxPerL = await page.evaluate(() => { const g = window.FISHTOP; return g.canvas.getBoundingClientRect().width / g.screen.W; });
+let crankA = 0, fightShot = false;
+const fightT0 = Date.now();
+for (let i = 0; i < 2000 && Date.now() - fightT0 < 90000; i++) {
+  const s = await G('(() => { const f = g.fishing; return { st: f.state, T: f.tension, hint: f.crankHint ? f.crankHint() : [g.input.x, g.input.y], W: g.screen.W, H: g.screen.H }; })()');
   if (s.st !== 'fight') break;
-  if (s.T > 0.82) await page.mouse.up(); else await page.mouse.down();
-  // move opposite to the fish relative to the cursor, but keep inside the screen
-  const dx = s.cx - s.fx, dy = s.cy - s.fy, d = Math.hypot(dx, dy) || 1;
-  const nx = Math.max(40, Math.min(900, s.cx + (dx / d) * 6)), ny = Math.max(60, Math.min(450, s.cy + (dy / d) * 4));
-  await moveL(nx, ny, 2);
-  if (i === 20) await page.screenshot({ path: join(out, '04_fight.png') });
-  await wait(40);
+  if (s.T > 0.85) { await wait(80); continue; }
+  const hx = Math.max(40, Math.min(s.W - 40, s.hint[0])), hy = Math.max(70, Math.min(s.H - 70, s.hint[1]));
+  const [ox, oy] = await toPage(hx, hy);
+  for (let k = 0; k < 4; k++) {
+    crankA += 1.0;
+    await page.mouse.move(ox + Math.cos(crankA) * 22 * pxPerL, oy + Math.sin(crankA) * 22 * pxPerL);
+  }
+  if (!fightShot && Date.now() - fightT0 > 2500) { fightShot = true; await page.screenshot({ path: join(out, '04_fight.png') }); }
 }
-await page.mouse.up();
+check('fight won by cranking', ['landing', 'idle'].includes(await G('g.fishing.state')) && (await G('g.state.stats.escaped')) === 0, `${await G('g.fishing.state')} in ${((Date.now() - fightT0) / 1000).toFixed(1)}s`);
+await wait(1800);
+await page.screenshot({ path: join(out, '04b_igotit.png') });
 await page.waitForFunction(() => ['flood', 'reveal', 'tank'].includes(window.FISHTOP.tutorial.step), null, { timeout: 15000 }).catch(() => {});
 check('first fish caught -> flood', ['flood', 'reveal', 'tank'].includes(await G('g.tutorial.step')), await G('g.tutorial.step'));
 await wait(2500);

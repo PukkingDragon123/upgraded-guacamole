@@ -11,13 +11,15 @@
 //   queueDecorFrames(aq, d, scale, urgent)         pre-render the animation frames for a scale
 //   anchorAt(aq, d, name)                          tank-local point of a prop anchor
 
-import { clamp, clamp01, lerp, dist, TAU } from '../core/math.js';
+import { clamp, lerp, dist, TAU } from '../core/math.js';
 import { rng } from '../core/rng.js';
 import { getUiIcon } from '../gfx/uiicons.js';
 import { propInteract } from '../gfx/props.js';
 
 const RAINBOW = ['#ff4a6a', '#ffd84a', '#5aff8a', '#4ac8ff', '#c87aff', '#ff8ad8'];
 const MAX_USERS = 3;
+// Fish that walk / hop / slither can't be pinned to a seat or carried by a beam.
+const free = (f) => !f.controlled && f.style !== 'crawl' && f.style !== 'hop' && f.style !== 'chain';
 
 export function specOf(d) {
   if (d.spec === undefined) d.spec = propInteract(d.rec.id) || null;
@@ -212,7 +214,7 @@ function fishReact(aq, d, kind) {
   const c = anchorAt(aq, d, 'center');
   const p = d.prop;
   const R = Math.max(40 * aq.view.fishScale + 20, (p ? p.w * 0.5 * (d.drawK || 1) : 30) + 30 * aq.view.fishScale);
-  const near = aq.fish.filter((f) => f.state !== 'script' && !f.controlled && dist(f.x, f.y, c.x, c.y) < R * (kind === 'flee' || kind === 'launch' ? 1.2 : 2.6) && Math.abs(f.z - d.z) < 0.45);
+  const near = aq.fish.filter((f) => f.state !== 'script' && !f.controlled && (kind === 'flee' || free(f)) && dist(f.x, f.y, c.x, c.y) < R * (kind === 'flee' || kind === 'launch' ? 1.2 : 2.6) && Math.abs(f.z - d.z) < 0.45);
   near.sort((a, b) => dist(a.x, a.y, c.x, c.y) - dist(b.x, b.y, c.x, c.y));
   switch (kind) {
     case 'flee': for (const f of near.slice(0, 8)) f.startle(c.x, c.y); break;
@@ -223,7 +225,7 @@ function fishReact(aq, d, kind) {
       break;
     case 'abduct': {
       const beam = anchorAt(aq, d, 'beam');
-      const f = aq.fish.filter((q) => q.state !== 'script' && !q.controlled).sort((a, b) => dist(a.x, a.y, beam.x, beam.y) - dist(b.x, b.y, beam.x, beam.y))[0];
+      const f = aq.fish.filter((q) => q.state !== 'script' && free(q)).sort((a, b) => dist(a.x, a.y, beam.x, beam.y) - dist(b.x, b.y, beam.x, beam.y))[0];
       if (f && dist(f.x, f.y, beam.x, beam.y) < R * 3.5) startScript(aq, f, d, 'abduct');
       for (const q of near.slice(0, 3)) if (q !== f) { q.say('!', 1); }
       break;
@@ -363,10 +365,14 @@ function runUse(aq, f, u, dt, T, fs) {
   if (u.kind === 'bounce') ty = a.y - 24 * fs;
   if (u.kind === 'watch') { tx = a.x + st.off * 10 * fs; ty = a.y - 4 * fs; }
   if (u.kind === 'dancer') { tx = a.x + (st.off > 0 ? 1 : -1) * (22 + Math.abs(st.off) * 12) * fs; ty = a.y - 8 * fs; }
+  // Never aim below what the tank / fish confinement lets the fish reach.
+  ty = Math.min(ty, T.floorAt(tx, f.z) - (3 * f.scale + 1) * T.s(f.z) - 1, f.floor(tx) - 1);
+  st.tx = tx; st.ty = ty;
   if (st.phase === 'go') {
     f.lookAt(tx, ty);
     if (st.t > 12) { endScript(f, '?'); return [0, 0]; }
-    if (dist(f.x, f.y, tx, ty) < 5 + 4 * fs) {
+    const dd = dist(f.x, f.y, tx, ty);
+    if (dd < 6 + 5 * fs || (st.t > 4 && dd < 30 * fs + 10)) {
       st.phase = 'on'; st.t = 0;
       st.dur = u.kind === 'hide' ? rng.float(3, 6) : u.kind === 'bounce' ? rng.float(2.4, 3.6) : u.kind === 'orbit' ? rng.float(4, 6) : rng.float(6, 10);
       if (u.kind === 'hide') st.phase = 'hidden';
@@ -377,7 +383,7 @@ function runUse(aq, f, u, dt, T, fs) {
     // Swim over the decor's front, slipping behind it when hiding / soaking.
     if (behind && dist(f.x, f.y, tx, ty) < 30 * fs) f.useZ = d.z + 0.015;
     f.z = lerp(f.z, clamp(d.z + (behind ? 0.01 : -0.03), 0, 0.85), 1 - Math.exp(-dt * 2));
-    return steerTo(f, tx, ty, f.cruise * 1.4, 16 * fs + 4);
+    return steerTo(f, tx, ty, Math.min(Math.max(f.burst, 60) * 1.5, Math.max(f.cruise * 2.5, 40 * fs, dd * 0.9)), 16 * fs + 4);
   }
   f.vx = 0; f.vy = 0;
   switch (u.kind) {
@@ -468,11 +474,11 @@ function updateUsers(aq, dt) {
   const decor = aq.decor.filter((d) => specOf(d)?.use && !d.user && d.prop);
   if (!decor.length) return;
   const d = rng.pick(decor);
-  const free = aq.fish.filter((f) => (f.state === 'wander' || f.state === 'idle') && !f.controlled && !f.use);
-  if (!free.length) return;
+  const idle = aq.fish.filter((f) => (f.state === 'wander' || f.state === 'idle') && free(f) && !f.use);
+  if (!idle.length) return;
   const c = anchorAt(aq, d, 'center');
-  free.sort((a, b) => dist(a.x, a.y, c.x, c.y) - dist(b.x, b.y, c.x, c.y));
-  const f = free[Math.min(free.length - 1, rng.int(0, 1))];
+  idle.sort((a, b) => dist(a.x, a.y, c.x, c.y) - dist(b.x, b.y, c.x, c.y));
+  const f = idle[Math.min(idle.length - 1, rng.int(0, 1))];
   const kind = { dance: 'dancer' }[d.spec.use.kind] || d.spec.use.kind;
   startScript(aq, f, d, kind);
 }
@@ -481,10 +487,9 @@ function updateUsers(aq, dt) {
 export function forceUse(aq, d) {
   const s = specOf(d);
   if (!s?.use) return false;
-  const f = aq.fish.find((q) => !q.use && !q.controlled);
+  const f = aq.fish.find((q) => !q.use && free(q));
   if (!f) return false;
   if (d.user) return false;
   return startScript(aq, f, d, { dance: 'dancer' }[s.use.kind] || s.use.kind);
 }
 
-export function clamp01Safe(v) { return clamp01(v); }

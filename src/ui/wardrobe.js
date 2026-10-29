@@ -5,7 +5,8 @@
 // thumbnails, price tags, rarity ribbons) and an order slip with Buy / Equip / Randomize / Reset.
 // Unowned items are tried on in the preview; buying uses game.spendCoins and stores ownership in
 // game.state.cosmetics, choices in game.state.character.
-// open({slot: 'hat'|...})
+// open({slot: 'hat'|...}). drawWardrobeIcon(ctx, x, y, {hover, t, look}) draws a small dock object (an armoire
+// with Gil peeking out), bottom centre at (x, y), and returns its rect.
 
 import { clamp, clamp01, lerp, ease, TAU, formatCommas, bayer } from '../core/math.js';
 import { rgba, shade, mix, RARITY } from '../core/color.js';
@@ -211,7 +212,10 @@ export class WardrobePanel {
     }
     best ||= SPECIES_BY_ID.parrot || SPECIES.find((s) => !s.look?.kind);
     if (!best) return null;
-    if (this.cache.fishId !== best.id) this.cache.fishC = { compiled: compiled(best.look, null, 'wardrobe:' + best.id) }, this.cache.fishId = best.id;
+    if (this.cache.fishId !== best.id) {
+      this.cache.fishC = { compiled: compiled(best.look, null, 'wardrobe:' + best.id) };
+      this.cache.fishId = best.id;
+    }
     return this.cache.fishC;
   }
 
@@ -238,7 +242,9 @@ export class WardrobePanel {
     this.drawRack(ctx, ui, { x: rx, y: r.y + 31, w: rw, h: H - 31 - 8 - slipH - 6 }, dt);
     this.drawSlip(ctx, ui, { x: rx, y: r.y + H - 8 - slipH, w: rw, h: slipH }, dt);
     drawPlank(ctx, r.x + Math.round(W / 2) - 104, r.y - 22, 208, 22, { rope: 8, label: "GIL'S DRESSING ROOM" });
-    if (inp.keyPressed?.('KeyR')) this.randomize();
+    if (inp.keyPressed?.('r')) this.randomize();
+    if (inp.keyPressed?.('ArrowLeft')) { this.yawV += 260; this.idleT = 0; }
+    if (inp.keyPressed?.('ArrowRight')) { this.yawV -= 260; this.idleT = 0; }
   }
 
   // ------------------------------------------------------------------------------------------ stage
@@ -313,7 +319,9 @@ export class WardrobePanel {
     const shake = this.shakeT > 0 ? Math.round(Math.sin(t * 60) * 2) : 0;
     this.shakeT = Math.max(0, (this.shakeT || 0) - dt);
     const lookAt = ui.hover(s) && !this.drag ? [inp.x, inp.y] : null;
-    const a = drawCharacter(ctx, cx + shake, floorY - 6, { pose: this.pose, t: this.poseT, yaw: this.yaw, scale: sc, look, fish, id: 'wardrobe', lookAt, shadow: true });
+    let seatY = floorY - 6;
+    if (this.pose === 'sit') seatY = this.drawStool(ctx, cx, floorY - 4, Math.round(sc * 1.4 * 7.4));
+    const a = drawCharacter(ctx, cx + shake, seatY, { pose: this.pose, t: this.poseT, yaw: this.yaw, scale: sc, look, fish, id: 'wardrobe', lookAt, shadow: true });
     this.anchor = { x: a.head[0], y: (a.head[1] + floorY) / 2 };
     // --- curtains slide open on arrival
     this.drawCurtains(ctx, s, ease.outCubic(this.openT));
@@ -340,6 +348,23 @@ export class WardrobePanel {
     // reactions return to the showcase pose; a picked cast keeps re-casting
     if (this.autoPose && this.poseT > 2.3) this.setPose('show');
     else if (this.pose === 'cast' && this.poseT > 1.8) this.poseT = 0;
+  }
+
+  // A little wooden stool for the sitting pose; returns the seat y.
+  drawStool(ctx, cx, fy, h) {
+    const w = Math.round(h * 2.1), top = fy - h;
+    ctx.fillStyle = 'rgba(10,20,40,0.25)';
+    ctx.beginPath(); ctx.ellipse(cx, fy, w * 0.6, 4, 0, 0, TAU); ctx.fill();
+    for (const lx of [-w / 2 + 3, w / 2 - 7, -w / 4, w / 4 - 4]) {
+      const back = Math.abs(lx) < w / 3;
+      ctx.fillStyle = back ? '#5a3420' : '#7a4a28'; ctx.fillRect(Math.round(cx + lx), top + 4, 4, h - (back ? 6 : 4));
+      ctx.fillStyle = back ? '#6a4024' : '#a06a3a'; ctx.fillRect(Math.round(cx + lx), top + 4, 1, h - (back ? 6 : 4));
+    }
+    ctx.fillStyle = '#6a4024'; ctx.fillRect(Math.round(cx - w / 2 + 3), top + Math.round(h * 0.6), w - 6, 2);
+    ctx.fillStyle = '#3e2210'; ctx.beginPath(); ctx.ellipse(cx, top + 4, w / 2 + 1, 5, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#b8783a'; ctx.beginPath(); ctx.ellipse(cx, top + 2, w / 2, 5, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#d89a5a'; ctx.beginPath(); ctx.ellipse(cx - 3, top + 1, w / 2 - 6, 3, 0, 0, TAU); ctx.fill();
+    return top + 3;
   }
 
   charScale(s) { return clamp(Math.round(((s.h * 0.6) / (64 * 1.4)) * 4) / 4, 1.5, 2.75); }
@@ -395,7 +420,7 @@ export class WardrobePanel {
       if (this.lastStep !== undefined && (this.drag || Math.abs(this.yawV) > 30)) g.audio.play('reel_tick', { vol: 0.25, pitch: 1.4 + Math.random() * 0.2 });
       this.lastStep = step;
     }
-    if (over && !this.drag) ui.tip = ui.tip || 'Drag to spin Gil around';
+    if (over && !this.drag) ui.tip = ui.tip || 'Drag (or arrow keys) to spin Gil around';
   }
 
   drawSpeech(ctx, s, a, dt) {
@@ -853,3 +878,41 @@ export class WardrobePanel {
     }
   }
 }
+
+// Dock object: a little wooden armoire, doors ajar, Gil's voxel head peeking out (bobs on hover).
+export function drawWardrobeIcon(ctx, x, y, o = {}) {
+  const t = o.t || 0, hov = !!o.hover;
+  const w = 28, h = 34, X = Math.round(x - w / 2), Y = Math.round(y - h);
+  ctx.fillStyle = 'rgba(10,20,40,0.25)';
+  ctx.fillRect(X - 2, y - 1, w + 4, 2);
+  // body
+  ctx.fillStyle = '#3e2210'; ctx.fillRect(X - 1, Y - 1, w + 2, h + 1);
+  ctx.fillStyle = '#8a5a32'; ctx.fillRect(X, Y, w, h);
+  ctx.fillStyle = '#a8703c'; ctx.fillRect(X, Y, w, 2);
+  ctx.fillStyle = '#5a3420'; ctx.fillRect(X - 2, Y - 3, w + 4, 3);
+  ctx.fillStyle = '#c08a52'; ctx.fillRect(X - 2, Y - 3, w + 4, 1);
+  // open interior + hanging shirts
+  const gap = hov ? 10 : 6, gx = X + Math.round(w / 2 - gap / 2);
+  ctx.fillStyle = '#1e1008'; ctx.fillRect(gx, Y + 3, gap, h - 7);
+  ctx.fillStyle = '#c8463a'; ctx.fillRect(gx + 1, Y + 9, 3, 10);
+  ctx.fillStyle = '#3e6cb4'; ctx.fillRect(gx + gap - 4, Y + 9, 3, 12);
+  ctx.fillStyle = '#c8ccd8'; ctx.fillRect(gx, Y + 6, gap, 1);
+  // doors
+  for (const [dx, dw] of [[X + 2, gx - X - 2], [gx + gap, X + w - 2 - gx - gap]]) {
+    ctx.fillStyle = '#9a6538'; ctx.fillRect(dx, Y + 3, dw, h - 7);
+    ctx.fillStyle = '#b8804a'; ctx.fillRect(dx + 1, Y + 4, dw - 2, 1);
+    ctx.fillStyle = '#6e4224'; ctx.fillRect(dx + 1, Y + 8, dw - 2, 1); ctx.fillRect(dx + 1, Y + h - 10, dw - 2, 1);
+  }
+  ctx.fillStyle = '#ffd25a'; ctx.fillRect(gx - 2, Y + 16, 1, 3); ctx.fillRect(gx + gap + 1, Y + 16, 1, 3);
+  // legs
+  ctx.fillStyle = '#3e2210'; ctx.fillRect(X + 1, y - 4, 3, 4); ctx.fillRect(X + w - 4, y - 4, 3, 4);
+  // Gil peeking over the top
+  const skin = WARDROBE.find((q) => q.slot === 'skin' && q.value === normalizeLook(o.look).skin) || WARDROBE[0];
+  const pv = itemPreview(o.look, skin, 0.5);
+  if (pv) {
+    const bob = hov ? Math.round(Math.abs(Math.sin(t * 6)) * -3) : Math.round(Math.sin(t * 1.5));
+    drawItemPreview(ctx, pv, x + 6, Y + 6 + bob, t, 'dock:wardrobe');
+  }
+  return { x: X - 2, y: Y - 14, w: w + 4, h: h + 14 };
+}
+

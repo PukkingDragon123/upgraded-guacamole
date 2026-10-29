@@ -12,7 +12,7 @@ import { getUiIcon, registerUiIcons, CURSOR_HOTSPOT } from '../gfx/uiicons.js';
 import { defaultState } from '../game/state.js';
 import { computeStats } from '../game/skills.js';
 import { UI } from '../ui/ui.js';
-import { WardrobePanel } from '../ui/wardrobe.js';
+import { WardrobePanel, drawWardrobeIcon } from '../ui/wardrobe.js';
 import { SPECIES } from '../fish/species.js';
 
 const LOOKS = [
@@ -191,6 +191,9 @@ export function run(params) {
     if (view === 'all') {
       const pb = boatPaint(look);
       label(`${WARDROBE.length} wardrobe items  boat ${pb.name}`, 790, 300, '#fff6c8');
+      drawWardrobeIcon(g, 690, 520, { t, hover: Math.sin(t * 2) > 0, look });
+      drawWardrobeIcon(g, 640, 520, { t, hover: false, look: LOOKS[5] });
+      label('dock icon', 665, 526);
     }
     const ms = performance.now() - t0;
     times.push(ms);

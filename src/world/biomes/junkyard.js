@@ -6,6 +6,7 @@
 import { Biome, worldTop } from './base.js';
 import { SkyDome } from '../sky.js';
 import { factory, gantryCrane, containerStack, junkRidge } from '../horizon.js';
+import { render, strip, ridgeStrip, junkHeap, freighter, latticeCrane, containerStackModel, utilityPole, propSprite } from '../farvox.js';
 import { clamp, clamp01, lerp, smoothstep, ease, hash2, fbm2, TAU } from '../../core/math.js';
 import { RNG } from '../../core/rng.js';
 import { mix, rgba, pack, hslToHex } from '../../core/color.js';
@@ -388,74 +389,44 @@ export class JunkyardBiome extends Biome {
     const LW = W + pad * 2;
     const r = new RNG(8);
     const hz = D.hz;
-    const junk = (m, x, y, s, v = 1) => {
-      const k = r.next();
-      if (k < 0.25) { const w = r.float(10, 26) * s, h = r.float(8, 18) * s, a = r.float(-0.4, 0.4); const c = Math.cos(a), sn = Math.sin(a); m.poly([[-w, -h], [w, -h], [w, h], [-w, h]].map(([px, py]) => [x + px * c - py * sn, y + px * sn + py * c])); }
-      else if (k < 0.45) { const rr = r.float(5, 11) * s; m.ellipse(x, y, rr, rr, v); m.ellipse(x, y, rr * 0.45, rr * 0.45, 0); }
-      else if (k < 0.62) { const w = r.float(9, 14) * s; m.rect(x - w, y - w * 0.8, w * 2, w * 1.6, v); m.rect(x - w * 0.6, y - w * 0.45, w * 1.2, w * 0.9, 0); m.rect(x - w * 0.4, y + w * 0.8, w * 0.8, 3, v); }
-      else if (k < 0.75) { m.line(x, y, x + r.float(-14, 14) * s, y - r.float(16, 34) * s, r.float(1, 2)); }
-      else { const w = r.float(14, 22) * s; m.ellipse(x, y, w, w * 0.45); m.ellipse(x - w * 0.55, y + w * 0.3, w * 0.22, w * 0.22); m.ellipse(x + w * 0.55, y + w * 0.3, w * 0.22, w * 0.22); }
-    };
-    // --- far A: junk mountains, a sunken freighter and a crane beyond the horizon
+    // --- far A: voxel junk mountains, a sunken freighter and a lattice dock crane beyond the horizon
     const yA = Math.round(hz - H * 0.36), hA = H - yA;
-    const mA = new Mask(LW, hA);
     const baseA = hz - yA + 14;
-    const rA = ridge(LW, baseA - 40, 26, 0.0075, 1.4, 4, 0.2);
-    mA.below((x) => rA[x]);
-    for (let i = 0; i < 70; i++) { const x = r.float(0, LW); junk(mA, x, rA[Math.round(x)] + r.float(-2, 8), 1.1); }
-    const sx = LW * 0.64, sy = baseA - 8;
-    const hull = [[-170, 0], [-160, -46], [150, -60], [190, -78], [196, -60], [178, 10]].map(([px, py]) => [sx + px, sy + py + px * -0.036]);
-    mA.poly(hull);
-    mA.rect(sx - 140, sy - 86, 52, 50); mA.rect(sx - 130, sy - 104, 30, 20); mA.rect(sx - 118, sy - 126, 8, 24);
-    for (let k = 0; k < 4; k++) mA.rect(sx - 70 + k * 50, sy - 70 - k * 4, 34, 18);
-    mA.line(sx + 120, sy - 70, sx + 132, sy - 150, 2); mA.line(sx + 104, sy - 128, sx + 160, sy - 136, 1);
-    for (let k = 0; k < 9; k++) mA.ellipse(sx - 140 + k * 34, sy - 30 + k * -1.5, 2.5, 2.5, 0);
-    mA.rect(sx - 136, sy - 82, 44, 4, 0); mA.rect(sx - 136, sy - 70, 44, 4, 0);
-    const cx = LW * 0.2, cy = rA[Math.round(cx)] + 4, ct = Math.max(4, cy - 200);
-    for (const dx of [-8, 8]) mA.line(cx + dx, cy, cx + dx * 0.5, ct, 1.2);
-    for (let y = cy; y > ct + 10; y -= 14) { mA.line(cx - 8, y, cx + 8, y - 14, 0.7); mA.line(cx + 8, y, cx - 8, y - 14, 0.7); }
-    const bx1 = cx + 170, by1 = ct + 40;
-    mA.line(cx, ct, bx1, by1, 1.2); mA.line(cx, ct + 10, bx1, by1 + 4, 1);
-    for (let k = 0; k < 10; k++) { const u = k / 10; mA.line(lerp(cx, bx1, u), lerp(ct, by1, u), lerp(cx, bx1, u + 0.1), lerp(ct + 10, by1 + 4, u + 0.1), 0.5); }
-    mA.line(cx - 40, ct + 6, cx, ct, 1.2); mA.rect(cx - 50, ct + 4, 14, 10);
-    mA.line(bx1 - 10, by1 + 2, bx1 - 10, by1 + 110, 0.5); mA.ellipse(bx1 - 10, by1 + 114, 4, 3); mA.ellipse(bx1 - 10, by1 + 114, 2, 1.5, 0);
-    const palA = stopPalette([[0, '#0e2420'], [1, '#2a4a40']], 6);
-    this.farA = new FogLayer(mA.toCanvas((x, y, v, up) => (up <= 1 ? pack('#6aa48a') : ditherPick(palA, 0.7 - Math.min(1, up / 60) * 0.5 + (fbm2(x * 0.06, y * 0.06, 2, 3) - 0.5) * 0.4, x, y))), -pad, yA);
+    const A = [];
+    [[0.08, 58, 40], [0.33, 46, 30], [0.92, 64, 46], [0.6, 34, 22]].forEach(([xf, w, h], i) => A.push({ spr: render(junkHeap(70 + i, { w, h, d: 22 }), { yaw: i % 2 ? 14 : -14, pitch: 18 }), x: xf * LW, y: baseA + 6, z: 1 - i * 0.02 }));
+    A.push({ spr: render(freighter(71), { yaw: -12, pitch: 14 }), x: LW * 0.64, y: baseA + 4, z: 0.97 });
+    A.push({ spr: render(latticeCrane(72, 84), { yaw: 18, pitch: 12 }), x: LW * 0.2, y: baseA + 2, z: 0.99 });
+    const ridgeA = ridgeStrip(73, LW, { amp: 9, base: 7, d: 16, cols: ['#6a6a58', '#5a5a4a', '#4a4a3e'], rocks: { cols: ['#6a5a4a', '#5a6066', '#7a4a34', '#4a5a6a'] } });
+    this.farA = new FogLayer(strip(LW, hA, A, { canvas: ridgeA.canvas, x: Math.round(LW / 2 - ridgeA.ox), y: Math.round(baseA + 16 - ridgeA.oy) }), -pad, yA);
     this.farAY = yA;
-    // --- far B: container stacks, utility poles with sagging wires, junk piles on the horizon
+    // --- far B: container stacks, utility poles with sagging wires, small junk on the horizon
     const yB = Math.round(hz - 130), hB = H - yB;
-    const mB = new Mask(LW, hB);
     const baseB = hz - yB + 22;
-    const rB = ridge(LW, baseB - 10, 10, 0.012, 9.3, 3);
-    mB.below((x) => rB[x]);
-    for (let i = 0; i < 60; i++) { const x = r.float(0, LW); junk(mB, x, rB[Math.round(x)] + r.float(0, 6), 0.75); }
-    for (const xf of [0.12, 0.47, 0.83]) {
-      const x0 = LW * xf, y0 = rB[Math.round(x0)] + 4;
-      for (let k = 0; k < 3; k++) {
-        const w = 40, h = 16, yy = y0 - h * (k + 1) + 2, xx = x0 + (k % 2) * 8 - (k === 2 ? 14 : 0);
-        mB.rect(xx, yy, w, h - 2);
-        for (let q = 4; q < w - 2; q += 4) mB.rect(xx + q, yy + 2, 1, h - 7, 0);
-      }
-    }
+    const B = [];
+    for (const [xf, c, rw] of [[0.13, 3, 2], [0.48, 4, 3], [0.84, 3, 3]]) B.push({ spr: render(containerStackModel(80 + c + rw, c, rw), { scale: 1, yaw: 20, pitch: 14 }), x: xf * LW, y: baseB + 2, z: 0.8 });
     const poles = [];
     for (let i = 0; i < 6; i++) {
-      const x = LW * (0.06 + i * 0.18) + r.float(-10, 10), y0 = rB[Math.round(clamp(x, 0, LW))] + 4, hgt = r.float(70, 90), lean = r.float(-0.12, 0.12);
-      const tx = x + lean * hgt, ty = y0 - hgt;
-      mB.line(x, y0, tx, ty, 1.4); mB.line(tx - 8, ty + 6, tx + 8, ty + 4, 1); mB.line(tx - 6, ty + 11, tx + 6, ty + 10, 0.8);
-      poles.push([tx, ty + 5]);
+      const x = LW * (0.06 + i * 0.18) + r.float(-10, 10);
+      const sp = render(utilityPole(90 + i, r.int(56, 70)), { scale: 1, yaw: 0, pitch: 6 });
+      B.push({ spr: sp, x, y: baseB + 4, z: 0.7 });
+      poles.push([x, baseB + 4 - sp.oy + 6]);
     }
+    const junk = ['crt_pile', 'tire', 'shopping_cart', 'satellite_dish', 'gear_big', 'server_rack', 'rusty_barrel', 'crt_monitor', 'toilet', 'bathtub', 'traffic_cone', 'phone_booth', 'retro_tv', 'giant_sneaker', 'arcade_cabinet', 'broken_robot'];
+    for (let i = 0; i < 46; i++) {
+      const sp = propSprite(r.pick(junk), r.pick([0.38, 0.46, 0.55]));
+      if (sp) B.push({ spr: sp, x: r.float(0, LW), y: baseB + r.int(-2, 4), z: r.next() * 0.9 });
+    }
+    for (let i = 0; i < 6; i++) B.push({ spr: render(junkHeap(100 + i, { w: r.int(14, 24), h: r.int(8, 14), d: 12 }), { scale: 1, yaw: 10, pitch: 16 }), x: r.float(0, LW), y: baseB + 4, z: 0.95 });
+    const ridgeB = ridgeStrip(74, LW, { amp: 5, base: 5, d: 12, cols: ['#7a7660', '#6a6652', '#5a5644'], rocks: { cols: ['#8a5a3e', '#5a6a7a', '#6a6a6a'] } });
+    const cB = strip(LW, hB, B, { canvas: ridgeB.canvas, x: Math.round(LW / 2 - ridgeB.ox), y: Math.round(baseB + 10 - ridgeB.oy) });
+    const g = ctxOf(cB);
     for (let i = 0; i + 1 < poles.length; i++) {
-      for (const dy of [0, 6]) {
-        const pts = catenary(poles[i][0] - 8, poles[i][1] + dy, poles[i + 1][0] - 8, poles[i + 1][1] + dy, 20 + dy * 1.5, 40);
-        for (let k = 0; k + 1 < pts.length; k++) mB.line(pts[k][0], pts[k][1], pts[k + 1][0], pts[k + 1][1], 0.5);
+      for (const dy of [0, 7]) {
+        const pts = catenary(poles[i][0] - 9, poles[i][1] + dy, poles[i + 1][0] - 9, poles[i + 1][1] + dy, 16 + dy, 40);
+        drawCable(g, pts, '#3a3e3a', 1);
       }
     }
-    const palB = stopPalette([[0, '#0c201c'], [1, '#26443c']], 6);
-    const palS = stopPalette([[0, '#3a4a40'], [1, '#6a6a56']], 5);
-    this.farB = new FogLayer(mB.toCanvas((x, y, v, up) => {
-      if (y > rB[x] + 8) return ditherPick(palS, 0.4 + (y - rB[x]) / 60 + (fbm2(x * 0.05, y * 0.2, 2, 6) - 0.5) * 0.3, x, y);
-      return up <= 1 ? pack('#7ab496') : up === 2 ? pack('#3e6a5a') : ditherPick(palB, 0.7 - Math.min(1, up / 40) * 0.5 + (fbm2(x * 0.08, y * 0.08, 2, 5) - 0.5) * 0.4, x, y);
-    }), -pad, yB);
+    this.farB = new FogLayer(cB, -pad, yB);
     this.farBY = yB;
   }
 
@@ -631,8 +602,8 @@ export class JunkyardBiome extends Biome {
     const key = this.waterBlend.key;
     const px = this.par.x, py = this.par.y;
     const wob = quality(env) >= 1 ? 1 : 0;
-    drawWobble(ctx, this.farA.tint(water, 0.76, key), -this.pad + px * 0.8, this.farAY + py * 0.4, t, wob, 4, 0.8, 0.07);
-    drawWobble(ctx, this.farB.tint(water, 0.66, key), -this.pad + px * 1.4, this.farBY + py * 0.5, t + 2, wob, 4, 1, 0.09);
+    drawWobble(ctx, this.farA.tint(water, 0.68, key), -this.pad + px * 0.8, this.farAY + py * 0.4, t, wob, 4, 0.8, 0.07);
+    drawWobble(ctx, this.farB.tint(water, 0.6, key), -this.pad + px * 1.4, this.farBY + py * 0.5, t + 2, wob, 4, 1, 0.09);
     // far band of the perspective junk field
     this.bands.draw(ctx, 2, tod, px * 2, py * 0.6);
     ctx.drawImage(this.haze.tint(water, 1, key), 0, this.hazeY);

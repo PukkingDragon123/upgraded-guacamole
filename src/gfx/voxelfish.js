@@ -50,7 +50,7 @@ const fract = (v) => v - Math.floor(v);
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
 const SHAPE_K = { oval: 0.52, torpedo: 0.6, round: 0.8, disc: 0.3, long: 0.62, box: 0.72, blunt: 0.62, pointy: 0.48 };
-const KIND_K = { crab: 0.72, seahorse: 0.55, ray: 0.16, squid: 0.62, isopod: 0.78, iconfish: 0.42, octopus: 1, jelly: 1, pudding: 1, blob: 0.9, chain: 0.85 };
+const KIND_K = { star: 0.34, crab: 0.72, seahorse: 0.55, ray: 0.16, squid: 0.62, isopod: 0.78, iconfish: 0.42, octopus: 1, jelly: 1, pudding: 1, blob: 0.9, chain: 0.85 };
 const REVOLVE = new Set(['jelly', 'pudding', 'octopus']);
 
 // ------------------------------------------------------------------ budget

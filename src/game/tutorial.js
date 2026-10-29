@@ -162,7 +162,7 @@ export class Tutorial {
         setTimeout(() => { if (this.step === 'skill') g.ui.open('skills', { highlight: 'hook1' }); }, 1200);
         break;
       case 'done':
-        for (const id of ['shop', 'journal', 'map', 'tank', 'skills']) this.dockShown.add(id);
+        for (const id of ['shop', 'journal', 'map', 'tank', 'skills', 'wardrobe', 'build', 'inventory']) this.dockShown.add(id);
         this.crab.emo = 'happy';
         this.say('Go fish! Click click!');
         g.state.tutorialDone = true;

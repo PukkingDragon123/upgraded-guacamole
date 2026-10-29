@@ -1,6 +1,8 @@
 // Dev preview of the menu panels with a stub game: dist/dev/panels.html?p=shop|skills|journal|map|settings|welcome
 //   &coins=N  &fresh (empty save)  &rich (lots of progress)  &hl=hook1 (skills highlight)  &sp=<species id>
-//   &biome=junkyard (journal tab / current location)  &tab=decor (shop)  &forecast  &away=seconds  &w=800&h=450 (logical size)
+//   &biome=junkyard (journal tab / current location)  &forecast  &away=seconds  &w=800&h=450 (logical size)
+//   shop:   &tab=bait|decor|cosmetics|specials  &item=<id> (open the counter close-up)  &puff (Cap'n Bloat puffs up)
+//   skills: &sel=<skill id> (select)  &z=2 (zoom level, centred on the selection)
 import { ctxOf } from '../core/canvas.js';
 import { Input } from '../core/input.js';
 import { audio } from '../core/audio.js';
@@ -156,6 +158,24 @@ export function run(params) {
   const p = params.get('p') || 'skills';
   const data = p === 'skills' && params.get('hl') ? { highlight: params.get('hl') } : p === 'journal' && params.get('sp') ? { species: params.get('sp') } : p === 'shop' && params.get('tab') ? { tab: params.get('tab') } : undefined;
   g.ui.open(p, data);
+  const panel = g.ui.panels[p];
+  if (p === 'shop') {
+    const id = params.get('item');
+    if (id) {
+      setTimeout(() => {
+        for (const tab of ['bait', 'decor', 'cosmetics', 'specials']) {
+          const it = panel.items(tab).find((q) => q.id === id);
+          if (it) { panel.tab = tab; panel.select(it); break; }
+        }
+      }, 300);
+    }
+    if (params.has('puff')) setTimeout(() => { panel.say('HMPH! Puffed up for the camera.', 'angry'); panel.puffUp(); }, 600);
+  }
+  if (p === 'skills') {
+    if (params.get('sel')) panel.sel = params.get('sel');
+    const z = Number(params.get('z'));
+    if (z) setTimeout(() => { panel.zoomTo(z, panel.view); if (panel.sel) panel.focusTile(panel.sel, panel.view); }, 200);
+  }
   let last = performance.now();
   const frame = (now) => {
     requestAnimationFrame(frame);

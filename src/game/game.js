@@ -308,13 +308,16 @@ export class Game {
     if (fish.carry) { this.desktop.returnIcon(fish.carry); fish.carry = null; }
     const bonus = Math.round((CATCH_BONUS[sp.rarity] || 2) * valueMultiplier(rec));
     this.addCoins(bonus, fish.x, fish.y);
+    // buildings: samples, carried crates, bait saves (before the bait is consumed)
+    let loot = null;
+    try { loot = this.build?.onCatch?.(fish, sp, rec) ?? null; } catch (e) { console.error(e); }
     const bait = this.currentBait();
     if (bait?.kind === 'special') this.consumeBait(bait.type);
     audio.play(sp.rarity === 'legendary' ? 'catch_legendary' : sp.rarity === 'epic' ? 'catch_epic' : sp.rarity === 'rare' ? 'catch_rare' : 'catch');
     if (sp.sound) setTimeout(() => audio.play(sp.sound, { pitch: 1 / Math.max(0.6, fish.scale) }), 250);
     this.camera.flash('#ffffff', sp.rarity === 'legendary' ? 0.9 : 0.5);
     this.emit('caught', { rec, sp, isNew, record });
-    const data = { rec, sp, isNew, record, bonus, emotion: fish.emotion };
+    const data = { rec, sp, isNew, record, bonus, emotion: fish.emotion, loot };
     if (!this.tutorial.onCaught(fish, data)) this.ui.open('reveal', data);
     this.save();
   }
@@ -474,11 +477,11 @@ export class Game {
     cur.x = cwx; cur.y = cwy; cur.vx = inp.vx / z; cur.vy = inp.vy / z; cur.speed = inp.speed / z;
     w.night = this.clock.isNight(); w.dusk = this.clock.isDusk(); w.hour = this.clock.hour();
     w.weather = ocean.weather; w.biome = ocean.biome.id;
-    w.rarityBoost = this.stats.rarityBoost * this.baitFx.rarityMul();
+    w.rarityBoost = this.stats.rarityBoost * this.baitFx.rarityMul() * (1 + this.bonus('rarity') + (w.night ? this.bonus('nightRarity') : 0));
     w.calmMul = this.stats.calm;
     w.lowPower = this.lowPower;
     w.populationMul = this.baitFx.populationMul();
-    w.rollMods = { mutationChance: this.stats.mutationChance, shinyChance: this.stats.shinyChance };
+    w.rollMods = { mutationChance: this.stats.mutationChance * (1 + this.bonus('mutation')), shinyChance: this.stats.shinyChance * (1 + this.bonus('shiny')) };
     const toWorld = (r) => { if (r) { const [x0, y0] = cam.screenToWorld(r.x, r.y); r.x = x0; r.y = y0; r.w /= z; r.h /= z; } return r; };
     w.icons = this.desktop.iconRects().map(toWorld);
     w.windows = this.desktop.windowRects().concat(this.aquarium.windowRect ? [this.aquarium.windowRect()] : []).filter(Boolean).map((r) => toWorld({ ...r }));
@@ -553,6 +556,8 @@ export class Game {
     if (view === 'ocean' && !this.mini) {
       this.school.update(dt);
       this.fishing.update(dt, worldInput);
+      const rb = this.bonus('baitRadius');
+      if (rb) w.hook.radiusMul = (w.hook.radiusMul || 1) * (1 + rb);
       // secrets
       if (worldInput && inp.pressed && !this.fishing.busy) {
         const sid = ocean.biome.secretAt?.(cur.x, cur.y);
@@ -633,6 +638,10 @@ export class Game {
       }
     }
     if (inp.keyPressed('F3')) this.state.settings.showFps = !this.state.settings.showFps;
+    if (!this.tutorial.active && !this.mini) {
+      if (inp.keyPressed('u')) { try { this.build?.toggle?.(); } catch (e) { console.error(e); } }
+      if (inp.keyPressed('i') && this.ui.panels?.inventory) this.ui.toggle('inventory');
+    }
   }
 
   // ------------------------------------------------------------------ drawing
@@ -685,16 +694,18 @@ export class Game {
         wctx.globalAlpha = opacity;
         ocean.biome.drawBack(wctx, env);
         L = ocean.lighting();
+        try { this.build?.addLights?.(L); } catch (e) { if (!this.buildLightErr) { this.buildLightErr = true; console.error(e); } }
         wctx.globalAlpha = 1;
         this.drawFishRange(wctx, sorted, 0.66, 2, L);
         wctx.globalAlpha = opacity;
         ocean.biome.drawSeabed(wctx, env);
         wctx.globalAlpha = 1;
-        try { this.build?.drawWorld?.(wctx, env); } catch (e) { if (!this.buildDrawErr) { this.buildDrawErr = true; console.error(e); } }
+        this.drawBuildings(wctx, env, 'far');
         this.drawFishRange(wctx, sorted, 0.33, 0.66, L);
         wctx.globalAlpha = opacity;
         ocean.biome.drawNear?.(wctx, env);
         wctx.globalAlpha = 1;
+        this.drawBuildings(wctx, env, 0);
         this.particles.draw(wctx, 'bg', this.time);
         if (ocean.reveal < 1) { wctx.restore(); this.wallpaper.drawWaterline(wctx); }
       } else {
@@ -767,6 +778,17 @@ export class Game {
     if (this.state.settings.showFps) drawText(ctx, `${Math.round(this.fps)} fps  ${this.school.fishes.length} fish  ${this.particles.list.length} p  water:${this.water?.active ? this.water.kind : '2d'}`, 4, H - 36, { font: 'small', color: '#ffffff', outline: '#000' });
     this.drawCursor(ctx);
   }
+
+  drawBuildings(ctx, env, band) {
+    try { this.build?.drawWorld?.(ctx, env, band); } catch (e) { if (!this.buildDrawErr) { this.buildDrawErr = true; console.error(e); } }
+  }
+
+  bonus(key) {
+    try { return Number(this.build?.bonus?.(key)) || 0; } catch { return 0; }
+  }
+
+  // aquarium coin production multiplier from buildings
+  get coinMulBonus() { return 1 + this.bonus('coinMul'); }
 
   drawFishRange(ctx, list, z0, z1, L) {
     const ocean = this.ocean;

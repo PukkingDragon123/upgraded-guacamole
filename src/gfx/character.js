@@ -20,7 +20,7 @@
 
 import { VoxelModel, renderVoxels } from './voxel.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
-import { shade, mix, rgba, hexToHsl, hslToHex } from '../core/color.js';
+import { shade, mix, hexToHsl, hslToHex } from '../core/color.js';
 import { clamp, clamp01, lerp, hash3, TAU } from '../core/math.js';
 import { drawFishRig } from './fishrig.js';
 
@@ -301,10 +301,6 @@ function torus(m, cx, cy, cz, R, r, c, axis = 'z', sx = 1, sy = 1) {
 // Highest solid z at column (x, y) (front surface), -1 if none.
 function frontZ(m, x, y) {
   for (let z = m.nz - 1; z >= 0; z--) if (m.get(x, y, z)) return z;
-  return -1;
-}
-function backZ(m, x, y) {
-  for (let z = 0; z < m.nz; z++) if (m.get(x, y, z)) return z;
   return -1;
 }
 const hsh = (x, y, z, s) => hash3(x, y, z, s);
@@ -1157,7 +1153,7 @@ const BASE_POSE = {
   mouth: 'rest', gill: 0, lid: 0, squint: 0, gaze: [0, 0], wobble: 0,
 };
 const P = (o) => ({ ...BASE_POSE, ...o, rod: { ...BASE_POSE.rod, ...(o.rod || {}) } });
-const S = Math.sin, Cs = Math.cos;
+const S = Math.sin;
 
 const POSES = {
   idle: { n: 12, dur: 4.2, loop: true, fn: (u) => {

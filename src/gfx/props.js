@@ -4504,7 +4504,7 @@ def('rocket_ship', {
   desc: 'Fully functional. Goes up, comes back down. The pilot is a goldfish named Major Tom.',
   interact: {
     verb: 'Launch', frames: 4, seq: ROCKET_SEQ, fps: 6,
-    motion: { t0: 0.6, t1: 5.4, base: 3, part: 2, path: [[0.6, 0], [1.1, -8], [1.7, -70], [2.4, -460], [3.4, -460], [4.6, -90], [5.4, 0]] },
+    motion: { t0: 0.6, t1: 5.4, base: 3, part: 2, path: [[0.6, 0], [1.1, -8], [1.7, -80], [2.4, -640], [3.4, -640], [4.6, -110], [5.4, 0]] },
     sfx: [['click', 0], ['puff', 0.2, { pitch: 0.7 }], ['travel_whoosh', 0.6, { vol: 0.7 }], ['thunder', 0.7, { vol: 0.45, pitch: 1.3 }], ['travel_whoosh', 3.7, { vol: 0.4, pitch: 0.7 }], ['box_close', 5.4], ['puff', 5.45]],
     fx: [{ at: 0.25, kind: 'smoke', from: 'pad', n: 10 }, { at: 0.65, kind: 'smoke', from: 'pad', n: 16 }, { at: 0.9, kind: 'embers', from: 'nozzle', n: 10, track: true }, { at: 1.3, kind: 'embers', from: 'nozzle', n: 10, track: true },
       { at: 1.7, kind: 'smoke', from: 'nozzle', n: 8, track: true }, { at: 4.4, kind: 'embers', from: 'nozzle', n: 8, track: true }, { at: 4.9, kind: 'embers', from: 'nozzle', n: 8, track: true }, { at: 5.4, kind: 'smoke', from: 'pad', n: 12 }],

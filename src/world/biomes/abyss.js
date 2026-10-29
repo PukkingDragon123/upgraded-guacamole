@@ -8,6 +8,7 @@
 import { Biome, worldTop } from './base.js';
 import { SkyDome, skyBodies } from '../sky.js';
 import { rockSpires, markerBuoy } from '../horizon.js';
+import { render, strip, ridgeStrip, spire, ziggurat, colonnade, obelisk, propSprite } from '../farvox.js';
 import { clamp, clamp01, smoothstep, hash2, fbm2, TAU } from '../../core/math.js';
 import { RNG } from '../../core/rng.js';
 import { pack } from '../../core/color.js';
@@ -289,34 +290,33 @@ export class AbyssBiome extends Biome {
     const LW = W + pad * 2;
     const r = new RNG(13);
     const hz = D.hz;
-    // --- far A: a stepped temple and a colonnade at the canyon's end
+    const STONE = ['#5a6496', '#4a5484', '#6a76aa'];
+    const ROCK = ['#3a4270', '#464e80', '#30385e', '#525c90'];
+    const CRYST = { cols: ['#5affff', '#c87aff', '#7affb0', '#7aa8ff'], density: 0.25, blobs: 8, ledge: 0.08 };
+    // --- far A: the sunken temple city at the canyon's end: a stepped ziggurat, colonnades, obelisks, spires
     const yA = Math.round(hz - H * 0.36), hA = H - yA;
-    const mA = new Mask(LW, hA);
     const baseA = hz - yA + 10;
-    const rA = ridge(LW, baseA - 26, 16, 0.006, 5.1, 4, 0.3);
-    mA.below((x) => rA[x]);
-    const tx = LW * 0.52, ty = baseA - 18;
-    for (let k = 0; k < 6; k++) mA.rect(tx - 80 + k * 13, ty - (k + 1) * 13, 160 - k * 26, 14);
-    mA.rect(tx - 11, ty - 104, 22, 28); mA.rect(tx - 5, ty - 96, 10, 20, 0);
-    for (let k = 0; k < 7; k++) { const cxx = LW * 0.3 + k * 15, cy = baseA - 16, hh = k % 3 === 1 ? 24 : 48; mA.rect(cxx, cy - hh, 6, hh); mA.rect(cxx - 2, cy - hh - 3, 10, 3); }
-    mA.rect(LW * 0.3 - 4, baseA - 70, 112, 4);
-    for (let i = 0; i < 4; i++) { const px = r.float(0.3, 0.75) * LW, top = r.float(20, baseA - 90); mA.poly([[px - 22, baseA], [px - 6, top + 10], [px + 2, top], [px + 9, top + 14], [px + 24, baseA]]); }
-    const palA = stopPalette([[0, '#0a1230'], [1, '#1c2a58']], 5);
-    this.farA = new FogLayer(mA.toCanvas((x, y, v, up) => (up <= 1 ? pack('#4a6ab0') : ditherPick(palA, 0.7 - Math.min(1, up / 60) * 0.5 + (fbm2(x * 0.05, y * 0.05, 2, 2) - 0.5) * 0.35, x, y))), -pad, yA);
+    const A = [];
+    A.push({ spr: render(ziggurat(81, { w: 60, steps: 6, stepH: 7, d: 30, cols: STONE, glow: '#5affff' }), { yaw: 22, pitch: 16 }), x: LW * 0.52, y: baseA + 2, z: 1 });
+    A.push({ spr: render(colonnade(82, { n: 7, h: 36, gap: 12, cols: STONE }), { yaw: -18, pitch: 14 }), x: LW * 0.3, y: baseA + 4, z: 0.9 });
+    A.push({ spr: render(colonnade(83, { n: 5, h: 30, gap: 12, cols: STONE, broken: 0.5 }), { yaw: 18, pitch: 14 }), x: LW * 0.74, y: baseA + 4, z: 0.9 });
+    [[0.38, 52], [0.66, 46], [0.14, 40], [0.86, 58]].forEach(([xf, h], i) => A.push({ spr: render(obelisk(84 + i, { h, cols: STONE, glow: '#5affff' }), { yaw: 30 }), x: xf * LW, y: baseA + 3, z: 0.95 }));
+    [[0.04, 70, 9], [0.95, 80, 10], [0.22, 50, 7]].forEach(([xf, h, w], i) => A.push({ spr: render(spire(88 + i, { h, w, d: 14, cols: ROCK, crown: CRYST }), { yaw: i % 2 ? 20 : -20 }), x: xf * LW, y: baseA + 4, z: 1.05 }));
+    const ridgeA = ridgeStrip(89, LW, { amp: 8, base: 6, d: 14, cols: ['#3a4472', '#323a64', '#2a3258'], rocks: { cols: ROCK } });
+    this.farA = new FogLayer(strip(LW, hA, A, { canvas: ridgeA.canvas, x: Math.round(LW / 2 - ridgeA.ox), y: Math.round(baseA + 14 - ridgeA.oy) }), -pad, yA);
     this.farAY = yA;
-    // --- far B: broken arches & pillars on the horizon
+    // --- far B: broken arches, pillars, heads and crystals on the horizon
     const yB = Math.round(hz - 120), hB = H - yB;
-    const mB = new Mask(LW, hB);
     const baseB = hz - yB + 16;
-    const rB = ridge(LW, baseB - 6, 8, 0.01, 2.6, 3);
-    mB.below((x) => rB[x]);
-    for (let i = 0; i < 6; i++) {
-      const px = r.float(0.32, 0.72) * LW, base = rB[Math.round(px)] + 2, hh = r.float(30, 70);
-      if (r.chance(0.5)) { mB.rect(px - 4, base - hh, 8, hh); mB.rect(px - 7, base - hh - 3, 14, 3); }
-      else { const aw = r.float(20, 32); mB.ellipse(px, base - hh * 0.8, aw, hh * 0.55); mB.ellipse(px, base - hh * 0.72, aw * 0.6, hh * 0.42, 0); mB.rect(px - aw * 0.6, base - hh * 0.72, aw * 1.2, hh, 0); mB.rect(px - aw, base - hh * 0.8, aw * 0.4, hh * 0.8 + 2); mB.rect(px + aw * 0.6, base - hh * 0.8, aw * 0.4, hh * 0.8 + 2); }
+    const B = [];
+    const ruins = [['arch_ruin', 0.5], ['pillar_ruin', 0.55], ['pillar_broken', 0.55], ['statue_head', 0.45], ['crystal_cluster', 0.45], ['glyph_stone', 0.5], ['ribcage', 0.4], ['giant_skull', 0.4]];
+    for (let i = 0; i < 26; i++) {
+      const [id, sc] = ruins[r.int(0, ruins.length - 1)];
+      const sp = propSprite(id, sc * r.float(0.8, 1.15), r.int(0, 4));
+      if (sp) B.push({ spr: sp, x: LW * r.float(0.22, 0.8), y: baseB + r.int(-2, 3), z: r.next() });
     }
-    const palB = stopPalette([[0, '#080e26'], [1, '#18244c']], 5);
-    this.farB = new FogLayer(mB.toCanvas((x, y, v, up) => (up <= 1 ? pack('#5a7ac0') : up === 2 ? pack('#2a3a70') : ditherPick(palB, 0.7 - Math.min(1, up / 40) * 0.5 + (fbm2(x * 0.08, y * 0.08, 2, 5) - 0.5) * 0.4, x, y))), -pad, yB);
+    const ridgeB = ridgeStrip(90, LW, { amp: 5, base: 4, d: 10, cols: ['#4a5488', '#3e4878', '#343e6a'] });
+    this.farB = new FogLayer(strip(LW, hB, B, { canvas: ridgeB.canvas, x: Math.round(LW / 2 - ridgeB.ox), y: Math.round(baseB + 8 - ridgeB.oy) }), -pad, yB);
     this.farBY = yB;
   }
 
@@ -411,9 +411,9 @@ export class AbyssBiome extends Biome {
     ctx.drawImage(this.rays, Math.round(Math.sin(t * 0.03) * 20), -20);
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
-    drawWobble(ctx, this.farA.tint(this.waterStrip, 0.66, 'a'), -this.pad + px * 0.8, this.farAY + py * 0.4, t, wob, 4, 0.6, 0.06);
+    drawWobble(ctx, this.farA.tint(this.waterStrip, 0.6, 'a'), -this.pad + px * 0.8, this.farAY + py * 0.4, t, wob, 4, 0.6, 0.06);
     this.drawLeviathan(ctx);
-    drawWobble(ctx, this.farB.tint(this.waterStrip, 0.5, 'b'), -this.pad + px * 1.4, this.farBY + py * 0.5, t + 2, wob, 4, 0.8, 0.08);
+    drawWobble(ctx, this.farB.tint(this.waterStrip, 0.46, 'b'), -this.pad + px * 1.4, this.farBY + py * 0.5, t + 2, wob, 4, 0.8, 0.08);
     if (wx.current > 0.05) {
       const pat = ctx.createPattern(this.current, 'repeat');
       pat.setTransform(new DOMMatrix([1, 0, 0, 1, Math.round(t * 60), 0]));
