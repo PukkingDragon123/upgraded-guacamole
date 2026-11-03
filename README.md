@@ -1,13 +1,12 @@
 # FISHTOP
 
-Your desktop is secretly an ocean. FISHTOP turns your PC desktop into a living voxel sea.
-Fish swim behind your icons and hide behind windows. Your mouse becomes a fishing hook, and the apps
-you download become bait. Catch ridiculous fish, raise them in an aquarium that makes Oxidized Coins,
-build an underwater village, upgrade your boat and sail from the Sunny Shallows all the way down to
-The Deep Ocean.
+Your desktop is secretly an ocean. FISHTOP floods your desktop with a glossy, sunny Frutiger Aero sea, built
+entirely from voxels. The floating app icons are the game menu, AppSea downloads become bait, and you play as a
+bubble person fishing up internet-meme fish. Start with a goldfish jar on a glass desk, earn Aero, and research
+your way through The Lab to better rods, boats, tanks and seven oceans.
 
-All art (voxel world, voxel fish, high-resolution pixel UI), all music and all sound effects are
-generated in code. There are no asset files and no network access.
+All art (voxel world, voxel fish, voxel characters and rooms), all music and all sound effects are generated in
+code. There are no asset files. Multiplayer is opt-in, and the game is fully playable offline.
 
 ## Play
 
@@ -22,85 +21,102 @@ and `extension/overlay.js` with esbuild.
 
 ### Controls
 
-- **Getting bait**: you start with no apps. Double-click **AppSea** and download one from the
-  old-school download site (Notes Lite is tiny). Downloads take real time on your 56k modem, so
-  upgrade your internet plan for faster ones. Bigger, higher-tier apps make stronger bait. Drag an
-  installed app into the wooden **Bait Box**. You can also drop a real file onto the window; only its
-  name and type are read.
-- **Fishing**: your cursor is the hook. Move *slowly* near fish, because fast swipes scare them.
-  When the `!` pops, **click** to set the hook. The camera zooms in and slows down.
-- **Fighting**:
-  - **Circle your mouse** to crank the reel and fill the catch bar.
-  - When the fish surges (red arrow), circle on the green side opposite it to tire it out.
-  - **Hold** the button to yank.
-  - Cranking into an uncountered surge raises tension until the line snaps.
-  - Species tricks become short events: jumps, mashing, timing rings, tracing, dodging,
-    unwrapping, and a final net.
-  - Land it for the **I GOT IT!** moment and a photo of your angler holding the catch.
-- **Boat**: scroll up (or `Home`) to the surface to see your voxel boat and your angler, Gil. Drag
-  the boat around with the mouse. `End` dives back down.
-- **Tabs**: the floating icon bar at the top opens everything: Aquarium, FishDex, Skills, Shop,
-  Map, Satchel, Build, Lab, Wardrobe, AppSea, Boatyard and Settings. It docks into the taskbar while a
-  panel is open, so you can switch panels with one click.
+- **Menu**: click the glossy app bubbles floating in the water. They open:
+  - The Lab
+  - Aquarium
+  - FishDex
+  - Satchel
+  - Wardrobe
+  - Map
+  - AppSea
+  - Bait
+  - Multiplayer
+  - Settings
+
+  While a panel is open, the bubbles work as tabs.
+- **Bait**: open **AppSea** and download bait packs. Downloads take real time on your dial-up, and the Lab
+  unlocks faster internet. Each bait is used up when a fish bites. Mix your own custom bait in the Bait panel
+  once the Lab unlocks the recipe. You can also fish without bait, but fewer fish will bite.
+- **Fishing**: click the water to cast. When the `!` pops, click to set the hook. Then:
+  - **Crank**: circle your mouse. The big glossy reel's handle follows your cursor, and the spool fills
+    as you win.
+  - **Shock**: right-click, press Space, or hit the reel's gold button to zap the fish. A stunned fish
+    reels in fast. Your rod sets the number of charges and the cooldown.
+  - **Surge**: when the fish bolts, hold the button and drag against the glossy arrow.
+  - **Floating boxes**: hover the hook over a drifting crate, capsule, bottle or orb, click, and crank it in
+    for loot.
+- **Boat**: scroll up (or press `Home`) to the surface and your boat. Drag it around with the mouse. Press `End` to go
+  back down.
 - **Keys**:
-  - **Panels**: `J` journal, `K` skills, `S` shop, `T` travel map, `B` bait box, `A` aquarium,
-    `U` blueprint/build mode, `I` inventory.
-  - **Game**: `P` pause fishing, `M` mini mode, `F3` FPS, `Esc` close.
-  - **Desktop app**: `Ctrl+Alt+F` toggles fishing (click-through otherwise), `Ctrl+Alt+P` pauses,
-    `Ctrl+Alt+M` switches to mini mode and `Ctrl+Alt+O` switches to overlay.
+  - **Panels**: `L` The Lab, `J` FishDex, `I` Satchel, `W` Wardrobe, `T` map, `B` bait, `O` multiplayer,
+    `A` aquarium.
+  - **Building**: `U` blueprint/build mode.
+  - **Game**: `P` pause fishing, `M` mini mode, `Esc` close.
+  - **Desktop app**: `Ctrl+Alt+F` toggles fishing, `Ctrl+Alt+P` pauses, `Ctrl+Alt+M` switches to mini mode and
+    `Ctrl+Alt+O` switches to overlay.
 
 ### The loop
 
-Catch fish, then keep them in the aquarium (or release them for coins). Fish make spinning Oxidized
-Coins; click the aquarium to dive into its full scene and collect them. Some fish carry package
-crates with blueprints, materials and cosmetics. Spend coins on:
+Catch fish and keep them in your aquarium. Kept fish make glossy **Aero** drops; collect them by hovering,
+clicking or sweeping. The tank also earns while you're away. Spend Aero, materials and fish on research in
+**The Lab**, a radial tree of 120 nodes in 8 branches:
 
-- Cap'n Bloat's bait shop
-- the skill board
-- research in the Lab
-- buildings
-- decorations
-- boat upgrades at Barnaby's Boatyard
+- Rods (15 Fisch-style rods with lure speed, luck, control, resilience, strength and shock stats)
+- Reel & Shock
+- Boats (raft to submarine)
+- Aquarium (goldfish jar to wall aquarium)
+- Oceans
+- Bait
+- Crafting (buildings, decor and custom bait)
+- Luck & Idle
 
-Charting new waters on the skill board opens new oceans with stranger fish and legendary bosses.
+Research takes real time, and a floating beaker shows its progress.
 
 ## What's inside
 
-- **Opening**: an ordinary desktop. Then a strange fish, a hook from the sky and Pinch the crab,
-  who shows you how to download your first bait. Your first catch floods the wallpaper into an ocean.
-- **Six 3D voxel oceans**, with depth, fog, a custom water shader, day/night following your real
-  clock, weather, secrets and their own music:
-  - **Sunny Shallows**: reef and caustics.
-  - **Frosty Fjord**: glaciers, auroras and penguins.
-  - **Junkyard Reef**: live CRTs, server racks and data rain.
-  - **Sunken Metropolis**: a drowned neon city with a subway car.
-  - **Lava Rift**: magma vents and eruptions.
-  - **The Deep Ocean**: a bioluminescent canyon and a leviathan.
-- **The travel map** is a 3D voxel diorama that you can turn around. Your boat sails between the pins.
-- **107 voxel fish species**, big and expressive, with swimming tails, translucent fins and glowing
-  lures. Most are affectionate pop-culture parodies with pun names and original designs, such as:
-  - the Flopikarp (it evolves in your tank)
-  - the Tetromino Tetra
-  - the Wakka Fish
-  - Mike Wazowfish
-  - Grand Theft Tuna
-  - the Blue Screen of Death Ray
+- **The opening**: a 24-second voxel film. The camera pushes from a sunny Aero room into the monitor. The hill
+  wallpaper floods, and bubbles from your goldfish jar become you.
+- **Goldie the goldfish** guides a short tutorial with icons and arrows.
+- **Seven voxel oceans**, each with a glossy water shader, day and night following your real clock, weather,
+  secrets and its own music:
+  - **(OS)cean**: the classic green-hill wallpaper, flooded, with wind turbines, a green glass globe and a
+    glass city in a water bubble.
+  - **Sunny Shallows**
+  - **Frosty Fjord**
+  - **Junkyard Reef**
+  - **Sunken Metropolis**
+  - **Lava Rift**
+  - **The Deep Ocean**
+- **111 voxel fish** with cute cartoon eyes. Most are internet and meme puns with original designs:
+  - Wi-Fish
+  - Stonks Salmon
+  - Rickroll Rockfish
+  - 404 Fish Not Found
+  - Touch Grass Grouper
   - Squid Gamer
-  - Heisenbass
+  - The Algorithm
 
-  There are also fun real-ish fish, like the Banana Fish and the Literal Catfish (an actual cat).
-  Fish also come with mutations, shinies, giants and personalities.
-- **Gil**, your goofy green voxel angler: dress him up in the Wardrobe and watch him fight every
-  catch from the boat.
-- **Building**: blueprint mode places voxel buildings on the seabed: a Research Lab, a Fish Hatchery
-  and more, each with gameplay bonuses. The Lab researches new tech, and the Satchel inventory holds
-  every item, material and blueprint.
-- **Dozens of interactive decorations**, in the ocean and the aquarium. Fish react to them and use them.
-- **Fish AI**: steering, schools, curiosity, fear of fast mice, bait preferences, hiding behind
-  windows, stealing icons (always returned) and aquarium life (eating, sleeping, playing, courting,
-  breeding, evolving).
-- **Procedural audio** in WebAudio: bubbly UI, coin clinks, reel clicks, splashes, creature voices,
-  per-ocean ambience and generative music.
+  Gimmick fish:
+  - the Turbine Shark has a spinning rotor
+  - the Bubble Pufferfish has a soap-bubble body
+  - the Sneakerhead walks in white high-tops
+  - the Wakka Fish is a retro chomper that runs a grid eating pellets
+  - the Flopikarp evolves in your tank
+
+  Fish also come with mutations, shinies and giants.
+- **You are a bubble person**, with 140 cosmetics and a glossy wardrobe.
+- **Boats**: seven eco boats with swappable hull, sail, flag, engine and decal.
+- **NPCs**: Professor Fizz, Goldie, Pinch, Dot, Marina and Captain Bloat.
+- **The aquarium**:
+  - Six tanks, from the goldfish jar to a wall aquarium. One is the "Aqua Lamp", a moving-picture
+    lamp with a rotating voxel reef drum.
+  - The voxel room around the tank looks out on rolling hills.
+  - You can feed fish, breed them and decorate the tank.
+- **Multiplayer fishing** (opt-in): when the game is opened from its shared claude.ai link, you see other
+  players' bubble people and boats in your ocean, their catches and their emotes. Fishing with other people in
+  the same ocean gives up to +30% luck. Windows on one computer can also see each other.
+- **Procedural audio** in WebAudio: reel clicks, zaps, splashes, creature voices, per-ocean ambience and
+  generative music.
 
 ## Safety and privacy
 
@@ -110,6 +126,9 @@ Charting new waters on the skill board opens new oceans with stranger fish and l
 - The desktop app asks before listing your Desktop folder. That listing is read-only and stays on
   your machine.
 - The browser extension reads only element positions, never page text, and sends nothing anywhere.
+- Multiplayer is off until you turn it on. It shares only the display name you choose and your in-game state
+  (look, boat, ocean, catches, emotes). Everything received from other players is validated and treated as
+  untrusted.
 - In the desktop app's overlay mode, clicks pass through to your real desktop unless you are
   fishing or pointing at game UI. `P` / `Ctrl+Alt+P` pauses fishing at any time.
 
