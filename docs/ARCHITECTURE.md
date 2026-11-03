@@ -281,3 +281,11 @@ User direction (supersedes earlier phases where they conflict):
 | Fish | `src/fish/*`, `src/gfx/voxelfish.js`, `fishrig.js`, `fishart.js`, `spritecache.js`, `src/fish/fishicon.js` |
 | Intro | `src/game/tutorial.js`, `src/game/intro3d.js`, `src/desktop/wallpaper.js` (retire), `tests/smoke.mjs`, `src/dev/intro.js` |
 Other agents: tiny tagged edits (`// [phase4:<agent>]`) only. Never revert others' work.
+
+## Phase 5 (cinematic intro, Clip guide, water physics)
+- `src/gfx/alagard.js`: `loadAlagard()`, `alagardBitmap(text, {size, color})` (Alagard pixel font, embedded). Use it for
+  titles, the guide's dialogue and extruded 3D voxel text.
+- The (OS)cean meadow is ONLY grass and flowers (no coral, kelp or crystal plants).
+- Intro agent owns `src/game/intro3d.js`, `tutorial.js`, new `src/game/dialogue.js`, new `src/gfx/text3d.js`, the 'clip' NPC
+  (tagged additions in `src/gfx/npcs.js`), `tests/smoke.mjs`. Water agent owns `src/gfx/watergl.js`, new `src/world/watersim.js`,
+  water/surface parts of `src/world/ocean.js` and biomes (tagged), splash additions in `src/gfx/particles.js` (tagged).

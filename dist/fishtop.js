@@ -32179,70 +32179,6 @@
       return null;
     };
   }
-  function buildCrystalApps(size, cols = ["#2ad8ff", "#6ae84a", "#ffb02a", "#4a9aff", "#ff6ab4"]) {
-    return (m, [cx, y0, cz], ph, r) => {
-      const stem = m.color("#8af0ff", { jitter: 0.03, spec: 0.6 });
-      const glow = [];
-      const tiles = cols.map((c) => {
-        const base = m.color(c, { jitter: 0.02, spec: 0.6, specPow: 12, emissive: 0.25 });
-        const top = m.color(mix(c, "#ffffff", 0.55), { jitter: 0.02, spec: 0.8, emissive: 0.25 });
-        const dark = m.color(shade(c, -0.3), { jitter: 0.02, emissive: 0.15 });
-        glow.push(base, top);
-        return { base, top, dark };
-      });
-      const n2 = r.int(3, 5);
-      const ts = Math.max(3, Math.round(size * 0.28));
-      for (let i = 0; i < n2; i++) {
-        const hgt = size * r.float(0.55, 1.2);
-        const lean = lerp(-0.5, 0.5, n2 === 1 ? 0.5 : i / (n2 - 1)) + r.float(-0.1, 0.1);
-        const z = cz + r.int(-2, 2);
-        let x = cx, y = y0;
-        for (let s = 0; s < hgt; s += 0.5) {
-          x = cx + Math.sin(lean + Math.sin(ph + i) * 0.07) * s;
-          y = y0 + Math.cos(lean) * s;
-          m.set(x, y, z, stem);
-        }
-        const T2 = tiles[(i + r.int(0, 4)) % tiles.length];
-        const x0 = Math.round(x - ts / 2), yb = Math.round(y);
-        for (let yy = 0; yy < ts; yy++) for (let xx = 0; xx < ts; xx++) {
-          const corner = (xx === 0 || xx === ts - 1) && (yy === 0 || yy === ts - 1);
-          if (corner) continue;
-          const c = yy >= ts * 0.55 ? T2.top : yy === 0 ? T2.dark : T2.base;
-          m.set(x0 + xx, yb + yy, z, c);
-          m.set(x0 + xx, yb + yy, z - 1, T2.dark);
-        }
-      }
-      return glow;
-    };
-  }
-  function buildBubblePlant(size) {
-    return (m, [cx, y0, cz], ph, r) => {
-      const stem = m.color("#2ab8a8", { jitter: 0.04 });
-      const ball2 = m.color("#5ae8f0", { jitter: 0.03, spec: 0.9, specPow: 10, smooth: 0.8, emissive: 0.15 });
-      const ballL = m.color("#c8fcff", { jitter: 0.02, spec: 0.9, smooth: 0.8, emissive: 0.2 });
-      const n2 = r.int(3, 4);
-      for (let i = 0; i < n2; i++) {
-        const hgt = size * r.float(0.8, 1.3), lean = r.float(-0.35, 0.35), off = r.float(0, TAU);
-        const z = cz + r.int(-2, 2);
-        let x = cx;
-        for (let s = 0; s < hgt; s += 0.5) {
-          const t = s / hgt;
-          x = cx + Math.sin(lean + Math.sin(ph + off) * 0.18 * t) * s;
-          const y = y0 + s;
-          m.set(x, y, z, stem);
-          if (s > hgt * 0.35 && Math.abs(s % 3.5 - 1.75) < 0.26) {
-            const side = Math.floor(s / 3.5) % 2 ? 1 : -1;
-            const br = r.float(1, 1.8);
-            m.sphere(x + side * (br + 0.6), y, z + 0.5, br, ball2);
-            m.set(x + side * (br + 0.6) - 0.6, y + br * 0.5, z + br, ballL);
-          }
-        }
-        m.sphere(x, y0 + hgt + 1, z + 0.5, 1.9, ball2);
-        m.set(x - 0.6, y0 + hgt + 2, z + 2, ballL);
-      }
-      return [ball2, ballL];
-    };
-  }
   function pierModel(len = 90, deep = 30, scale = 2) {
     return memo("pier|" + len + "|" + deep + "|" + scale, () => {
       const D = 12, deckY = deep, H8 = deep + 30;
@@ -43829,7 +43765,6 @@ ${hearts} ${status}
       init_rng();
       init_color();
       init_pixel();
-      init_coral();
       init_voxcritters();
       init_canvas();
       init_voxel();
@@ -44156,23 +44091,6 @@ ${hearts} ${status}
             const it2 = D.add({ sprite: spr2, x: Math.round(xf * W8), z, dy: 2 });
             this.restOrbs.push({ x: it2.x, y: it2.y - r - 1, r, z, band: it2.band, tint: ORB_TINTS[ti] });
           }
-          const kz = (z) => qscale(1.5 * D.s(z), 0.1, 0.3);
-          const reef = (seed, xf, z, o, flip = false) => D.add({ sprite: reefSprite(seed, "oscean", o, kz(z), flip), x: Math.round(xf * W8), z, id: "reef" });
-          const coral = (kind2, seed, xf, z, size) => D.add({ sprite: coralSprite(kind2, seed, "oscean", size, kz(z)), x: Math.round(xf * W8), z, id: "coral" });
-          reef(301, 0.3, 0.2, { w: 92, h: 62, d: 34 });
-          reef(302, 0.76, 0.28, { w: 86, h: 58, d: 32 }, true);
-          reef(303, 0.53, 0.58, { w: 96, h: 62, d: 36 });
-          for (const [kind2, seed, xf, z, size] of [
-            ["staghorn", 311, 0.09, 0.1, 12],
-            ["fan", 312, 0.44, 0, 12],
-            ["brain", 313, 0.63, -0.12, 8],
-            ["tube", 314, 0.9, 0.08, 10],
-            ["staghorn", 316, 0.66, 0.42, 14],
-            ["fan", 317, 0.12, 0.55, 15],
-            ["whip", 319, 0.38, 0.4, 10],
-            ["bubble", 320, 0.86, -0.2, 8],
-            ["brain", 321, 0.17, -0.22, 8]
-          ]) coral(kind2, seed, xf, z, size);
           const big = this.restOrbs[0];
           this.orbSecret = { x: big.x - big.r - 2, y: big.y - big.r - 2, w: big.r * 2 + 4, h: big.r * 2 + 4, cx: big.x, cy: big.y };
         }
@@ -44219,16 +44137,6 @@ ${hearts} ${status}
             const s = Math.round(size * k), s2 = s * 2;
             add6(swayAnim("lvs" + seed + "|" + s + hue, [s * 3 + 10, s * 2 + 10, 16], buildLeaves(s, hue), { seed, frames: frames2, period: 4.2, hi: { key: "lvs" + seed + "|" + s2 + hue, dims: [s2 * 3 + 20, s2 * 2 + 20, 32], build: buildLeaves(s2, hue) } }), Math.round(xf * W8), z);
           };
-          const bubbly = (seed, xf, z, size) => {
-            const k = sc(z);
-            const s = Math.round(size * k), s2 = s * 2;
-            add6(swayAnim("bpl" + seed + "|" + s, [s * 3 + 10, s * 2 + 12, 12], buildBubblePlant(s), { seed, frames: 6, period: 3.2, hi: { key: "bpl" + seed + "|" + s2, dims: [s2 * 3 + 20, s2 * 2 + 24, 24], build: buildBubblePlant(s2) } }), Math.round(xf * W8), z, true);
-          };
-          const crystal = (seed, xf, z, size) => {
-            const k = sc(z);
-            const s = Math.round(size * k), s2 = s * 2;
-            add6(swayAnim("cry" + seed + "|" + s, [s * 2 + 14, s * 2 + 12, 10], buildCrystalApps(s), { seed, frames: 4, period: 5, hi: { key: "cry" + seed + "|" + s2, dims: [s2 * 2 + 28, s2 * 2 + 24, 20], build: buildCrystalApps(s2) } }), Math.round(xf * W8), z, true);
-          };
           flower(1, 0.065, 0.02, 12);
           flower(2, 0.345, -0.12, 11);
           flower(3, 0.585, 0.06, 12);
@@ -44238,13 +44146,42 @@ ${hearts} ${status}
           leaves(13, 0.99, -0.34, 32, "#22c040", 4);
           leaves(12, 0.405, 0.04, 13, "#4ad85a");
           leaves(14, 0.56, 0.36, 13, "#5ae06a");
-          bubbly(21, 0.125, -0.02, 13);
-          bubbly(22, 0.645, 0.24, 13);
-          bubbly(24, 0.3, 0.7, 13);
-          crystal(31, 0.535, -0.08, 14);
-          crystal(32, 0.765, 0.18, 13);
-          crystal(34, 0.44, 0.74, 14);
-          for (const [xf, z] of [[0.05, 0.62], [0.085, 0.68], [0.97, 0.7], [0.92, 0.78], [0.42, 1], [0.46, 1.05]]) add6(voxAnim("kelp", 2 + r.int(0, 1), "oscean", 10, sc(z), 8), Math.round(xf * W8), z);
+          let fs = 40;
+          for (const [xf, z, size] of [
+            [0.15, 0.08, 10],
+            [0.22, -0.1, 11],
+            [0.29, 0.3, 10],
+            [0.37, 0.12, 12],
+            [0.47, -0.16, 10],
+            [0.5, 0.28, 11],
+            [0.6, 0.44, 10],
+            [0.69, -0.06, 12],
+            [0.73, 0.3, 11],
+            [0.79, -0.2, 10],
+            [0.9, 0.3, 11],
+            [0.25, 0.62, 10],
+            [0.4, 0.58, 11],
+            [0.55, 0.7, 10],
+            [0.7, 0.66, 11],
+            [0.86, 0.56, 10]
+          ]) flower(fs++, xf, z, size);
+          for (const [xf, z] of [
+            [0.04, 0.3],
+            [0.13, 0.36],
+            [0.27, -0.24],
+            [0.35, 0.38],
+            [0.48, 0.04],
+            [0.57, -0.24],
+            [0.64, 0.32],
+            [0.71, 0.08],
+            [0.84, -0.08],
+            [0.94, 0.42],
+            [0.18, 0.86],
+            [0.38, 0.84],
+            [0.58, 0.9],
+            [0.78, 0.86],
+            [0.96, 0.9]
+          ]) add6(voxAnim("seagrass", 1 + r.int(0, 2), "oscean", 8, sc(z), 8), Math.round(xf * W8), z);
           const sy = this.base;
           this.orbs = [];
           for (let i = 0; i < 6; i++) this.orbs.push({ x: r.float(0, W8), y: r.float(sy + 40, H8 * 0.55), r: r.pick([4, 5, 6, 8, 10]), tint: ORB_TINTS[i % ORB_TINTS.length], ph: r.float(0, TAU), vx: r.float(-3, 3), far: i < 2 });

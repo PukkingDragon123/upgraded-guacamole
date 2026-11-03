@@ -10,8 +10,9 @@ person in a little boat on a glossy, sunlit sea:
 Then fill your goldfish jar with realistic voxel fish that earn Aero, and research better rods, boats, tanks and
 seven oceans in The Lab.
 
-All art (voxel world, fish, characters and rooms), all music and all sound effects are generated in code. There
-are no asset files. Multiplayer is opt-in, and the game is fully playable offline.
+All art (voxel world, fish, characters and rooms), all music and all sound effects are generated in code. The
+one asset is the Alagard pixel font by Hewett Tsoi (`assets/fonts/alagard.ttf`, embedded in the build) used for
+titles, dialogue and 3D text. Multiplayer is opt-in, and the game is fully playable offline.
 
 ## Play
 

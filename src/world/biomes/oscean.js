@@ -5,7 +5,7 @@
 // spinning white wind turbines, a lone round tree and a glass city inside a giant water bubble, a floating green glass
 // globe dripping into the sea, glossy leafy branches framing the top corners, splashes on the surface and a glossy pier
 // where NPCs hang out. Underwater: the glossy grass hill continues as the seabed under vivid aquarium-lamp blue, with
-// candy-coloured coral reefs, clouds made of bubbles, light shafts, wind turbines turning in the current, glass orbs
+// a grass-and-flower meadow, clouds made of bubbles, light shafts, wind turbines turning in the current, glass orbs
 // and chrome droplets, big glossy leaves in the corners, flowers, aqua bubble plants, app-like crystal plants and a
 // passing dolphin pod.
 // Weathers: sunny, bubble breeze, glossy rain, aurora night. Static art is baked in build() (also exposed as a
@@ -21,7 +21,6 @@ import { clamp, clamp01, lerp, smoothstep, ease, hash2, fbm2, TAU } from '../../
 import { RNG } from '../../core/rng.js';
 import { mix, rgba, pack } from '../../core/color.js';
 import { flipCanvas } from '../../gfx/pixel.js';
-import { reefSprite, coralSprite } from '../coral.js';
 import { voxBall, voxCloudSprite } from '../voxcritters.js';
 import { makeCanvas, ctxOf } from '../../core/canvas.js';
 import { VoxelModel } from '../../gfx/voxel.js';
@@ -34,7 +33,7 @@ import {
 } from '../scenery.js';
 import {
   AeroOverlay, AERO_LOOKS, glassOrb, chromeDrop, soapBubble, bubbleCloud, rainbowArc, auroraRibbon, turbineTower, rotorFrames,
-  swayAnim, buildLeaves, buildFlowers, buildCrystalApps, buildBubblePlant, pierModel, sparkleStar, bloomStrip, waterGloss,
+  swayAnim, buildLeaves, buildFlowers, pierModel, sparkleStar, bloomStrip, waterGloss,
   skyArcs, sunRays, GlassGlobe, voxWaterBubble, voxDrop, glassCity, roundTree, splashFrames, leafBranch, planetEdge,
 } from '../aerokit.js';
 
@@ -324,15 +323,7 @@ export class OsceanBiome extends Biome {
       const it = D.add({ sprite: spr, x: Math.round(xf * W), z, dy: 2 });
       this.restOrbs.push({ x: it.x, y: it.y - r - 1, r, z, band: it.band, tint: ORB_TINTS[ti] });
     }
-    // candy-coloured coral reefs on the meadow (the moving-picture aquarium lamp)
-    const kz = (z) => qscale(1.5 * D.s(z), 0.1, 0.3);
-    const reef = (seed, xf, z, o, flip = false) => D.add({ sprite: reefSprite(seed, 'oscean', o, kz(z), flip), x: Math.round(xf * W), z, id: 'reef' });
-    const coral = (kind, seed, xf, z, size) => D.add({ sprite: coralSprite(kind, seed, 'oscean', size, kz(z)), x: Math.round(xf * W), z, id: 'coral' });
-    reef(301, 0.3, 0.2, { w: 92, h: 62, d: 34 });
-    reef(302, 0.76, 0.28, { w: 86, h: 58, d: 32 }, true);
-    reef(303, 0.53, 0.58, { w: 96, h: 62, d: 36 });
-    for (const [kind, seed, xf, z, size] of [['staghorn', 311, 0.09, 0.1, 12], ['fan', 312, 0.44, 0.0, 12], ['brain', 313, 0.63, -0.12, 8], ['tube', 314, 0.9, 0.08, 10],
-      ['staghorn', 316, 0.66, 0.42, 14], ['fan', 317, 0.12, 0.55, 15], ['whip', 319, 0.38, 0.4, 10], ['bubble', 320, 0.86, -0.2, 8], ['brain', 321, 0.17, -0.22, 8]]) coral(kind, seed, xf, z, size);
+    // the meadow is a grass-and-flower field (no coral here): plants are placed in buildLife()
     const big = this.restOrbs[0];
     this.orbSecret = { x: big.x - big.r - 2, y: big.y - big.r - 2, w: big.r * 2 + 4, h: big.r * 2 + 4, cx: big.x, cy: big.y };
   }
@@ -356,15 +347,15 @@ export class OsceanBiome extends Biome {
     // each plant also knows its double-detail twin (o.hi), built in the background for the zoomed-in camera
     const flower = (seed, xf, z, size) => { const k = sc(z); const s = Math.round(size * k), s2 = s * 2; add(swayAnim('flw' + seed + '|' + s, [s * 3 + 10, s * 2 + 12, 12], buildFlowers(s), { seed, frames: 6, period: 3.6, hi: { key: 'flw' + seed + '|' + s2, dims: [s2 * 3 + 20, s2 * 2 + 24, 24], build: buildFlowers(s2) } }), Math.round(xf * W), z); };
     const leaves = (seed, xf, z, size, hue, frames = 6) => { const k = sc(z); const s = Math.round(size * k), s2 = s * 2; add(swayAnim('lvs' + seed + '|' + s + hue, [s * 3 + 10, s * 2 + 10, 16], buildLeaves(s, hue), { seed, frames, period: 4.2, hi: { key: 'lvs' + seed + '|' + s2 + hue, dims: [s2 * 3 + 20, s2 * 2 + 20, 32], build: buildLeaves(s2, hue) } }), Math.round(xf * W), z); };
-    const bubbly = (seed, xf, z, size) => { const k = sc(z); const s = Math.round(size * k), s2 = s * 2; add(swayAnim('bpl' + seed + '|' + s, [s * 3 + 10, s * 2 + 12, 12], buildBubblePlant(s), { seed, frames: 6, period: 3.2, hi: { key: 'bpl' + seed + '|' + s2, dims: [s2 * 3 + 20, s2 * 2 + 24, 24], build: buildBubblePlant(s2) } }), Math.round(xf * W), z, true); };
-    const crystal = (seed, xf, z, size) => { const k = sc(z); const s = Math.round(size * k), s2 = s * 2; add(swayAnim('cry' + seed + '|' + s, [s * 2 + 14, s * 2 + 12, 10], buildCrystalApps(s), { seed, frames: 4, period: 5, hi: { key: 'cry' + seed + '|' + s2, dims: [s2 * 2 + 28, s2 * 2 + 24, 20], build: buildCrystalApps(s2) } }), Math.round(xf * W), z, true); };
     flower(1, 0.065, 0.02, 12); flower(2, 0.345, -0.12, 11); flower(3, 0.585, 0.06, 12); flower(5, 0.97, 0.12, 11); flower(7, 0.83, 0.38, 12);
     // big glossy leaves framing the bottom corners, smaller clumps on the meadow
     leaves(11, 0.01, -0.36, 30, '#26c83a', 4); leaves(13, 0.99, -0.34, 32, '#22c040', 4); leaves(12, 0.405, 0.04, 13, '#4ad85a'); leaves(14, 0.56, 0.36, 13, '#5ae06a');
-    bubbly(21, 0.125, -0.02, 13); bubbly(22, 0.645, 0.24, 13); bubbly(24, 0.3, 0.7, 13);
-    crystal(31, 0.535, -0.08, 14); crystal(32, 0.765, 0.18, 13); crystal(34, 0.44, 0.74, 14);
-    // aqua kelp ribbons rising along the far slopes
-    for (const [xf, z] of [[0.05, 0.62], [0.085, 0.68], [0.97, 0.7], [0.92, 0.78], [0.42, 1.0], [0.46, 1.05]]) add(voxAnim('kelp', 2 + r.int(0, 1), 'oscean', 10, sc(z), 8), Math.round(xf * W), z);
+    // a meadow of only grass and flowers: dense flower patches and extra grass across the whole hill
+    let fs = 40;
+    for (const [xf, z, size] of [[0.15, 0.08, 10], [0.22, -0.1, 11], [0.29, 0.3, 10], [0.37, 0.12, 12], [0.47, -0.16, 10], [0.5, 0.28, 11], [0.6, 0.44, 10],
+      [0.69, -0.06, 12], [0.73, 0.3, 11], [0.79, -0.2, 10], [0.9, 0.3, 11], [0.25, 0.62, 10], [0.4, 0.58, 11], [0.55, 0.7, 10], [0.7, 0.66, 11], [0.86, 0.56, 10]]) flower(fs++, xf, z, size);
+    for (const [xf, z] of [[0.04, 0.3], [0.13, 0.36], [0.27, -0.24], [0.35, 0.38], [0.48, 0.04], [0.57, -0.24], [0.64, 0.32], [0.71, 0.08], [0.84, -0.08],
+      [0.94, 0.42], [0.18, 0.86], [0.38, 0.84], [0.58, 0.9], [0.78, 0.86], [0.96, 0.9]]) add(voxAnim('seagrass', 1 + r.int(0, 2), 'oscean', 8, sc(z), 8), Math.round(xf * W), z);
     // floating glass orbs and chrome droplets in the open water
     const sy = this.base;
     this.orbs = [];
