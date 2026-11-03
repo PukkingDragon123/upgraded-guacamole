@@ -58,7 +58,7 @@ export class Tutorial {
     this.intro = null;
     this.guide = { x: -60, y: 120, show: 0, facing: 1, say: null, sayT: 0, talk: 0 };
     this.fishTries = 0;
-    game.on('iconOpen', (ic) => { if (this.step === 'appsea' && ic?.id === 'appsea') this.go('download'); if (this.step === 'lab' && ic?.id === 'lab') this.go('research'); });
+    game.on('iconOpen', (ic) => { if (this.step === 'appsea' && ic?.id === 'appsea') this.go('download'); });
     game.on('baitDownloaded', () => { if (this.step === 'download' || this.step === 'appsea') this.go('cast'); });
     game.on('hooked', () => { if (['cast', 'wait'].includes(this.step)) this.go('fight'); });
     game.on('escaped', () => this.onEscape());
@@ -192,7 +192,8 @@ export class Tutorial {
         const id = this.firstResearch();
         this.researchId = id;
         if (id) this.ensureAffordable(id);
-        if (g.ui?.panels?.lab && !g.ui.isOpen?.('lab')) g.ui.open('lab', { focus: id, highlight: id });
+        // (re)focus the tree on it; the player may already have opened the Lab from its bubble
+        if (g.ui?.panels?.lab) g.ui.open('lab', { tab: 'tree', focus: id, highlight: id });
         this.say('research');
         break;
       }
