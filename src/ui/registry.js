@@ -2,6 +2,7 @@
 import { RevealPanel } from './reveal.js';
 import { BaitPanel } from './baitpanel.js';
 import { LabPanel, LabAlias } from './lab.js'; // [phase3:lab] The Lab replaces skills, shop, research, boatyard
+import { LabWidget } from './labwidget.js'; // [phase3:lab] floating research-in-progress bubble
 import { JournalPanel } from './journal.js';
 import { MapPanel } from './mappanel.js';
 import { SettingsPanel } from './settings.js';
@@ -16,6 +17,7 @@ export function registerPanels(ui) {
   const lab = new LabPanel();
   ui.register(lab);
   for (const [id, tab] of [['skills', 'tree'], ['research', 'tree'], ['shop', 'craft'], ['crafting', 'craft'], ['boatyard', 'boats']]) ui.register(new LabAlias(id, lab, { tab }));
+  ui.register(new LabWidget()); // [phase3:lab] id 'labwidget' (game.build opens it while research runs)
   registerBuildPanels(ui); // inventory, package, building, buildtray
   ui.register(new MultiplayerPanel()); // [phase3:online] id 'multiplayer'
 }

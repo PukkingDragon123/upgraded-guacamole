@@ -545,8 +545,7 @@ export class Fishing {
     P.ringWave?.(f.x, f.y, 22, '#8ff0ff', { life: 0.35, w: 2, delay: 0.06 });
     P.speedLines?.(f.x, f.y, 18, { r0: 26, r1: 60, inward: true, len: [8, 18], color: '#ffffff' });
     P.burst(f.x, f.y, 14, { colors: ['#ffffff', '#bff8ff', '#c8f56a'], speed: 80, g: 0, life: 0.45 });
-    P.aeroBubbles?.(f.x, f.y, 10, { w: 8, h: 6 });
-    P.glints?.(f.x, f.y, 5, { w: 14, h: 10 });
+    P.splashBurst?.(f.x, f.y, 1.1);
     P.scales?.(f.x, f.y, 4, this.scaleColors());
     const surf = this.world.surfaceY;
     if (surf !== null && surf !== undefined && f.y - surf < 40) P.eruption?.(f.x, surf, 0.6);
@@ -554,6 +553,7 @@ export class Fishing {
     const W = this.W, H = this.H;
     this.fx.speedLines(W / 2, H / 2, 34, { r0: Math.min(W, H) * 0.35, r1: Math.max(W, H) * 0.6, inward: true, speed: [400, 700], len: [20, 46], color: '#ffffff', life: 0.35 });
     this.fx.lensFlare(sx, sy, { cx: W / 2, cy: H / 2, life: 0.9, scale: 0.9 });
+    this.fx.bloom(sx, sy, 60, '#e8fbff', { life: 0.5 });
     this.titles.add('fishon', auto ? 'AUTO!' : 'FISH ON!', { rarity: f.sp.rarity });
     f.feel('surprised', 0.8);
     f.squashV += 10;
@@ -623,9 +623,8 @@ export class Fishing {
       this.sfx(combo > 1 ? 'timing_perfect' : 'timing_good', { pitch: 1 + Math.min(0.5, combo * 0.08) });
       this.sfx('splash_small', { vol: 0.5, pitch: 1.2 });
       this.shake(3 + Math.min(3, combo));
-      P.ringWave?.(f.x, f.y, 26, '#c8f56a', { life: 0.4, w: 3 });
+      P.splashBurst?.(f.x, f.y, 0.8, { color: '#c8f56a' });
       P.stars?.(f.x, f.y, 8 + combo * 2, { speed: [30, 90], colors: ['#ffffff', '#e2ffb0', '#8be04a'] });
-      P.aeroBubbles?.(f.x, f.y, 6, { w: 6 });
       fx.ringWave(px, py, 34, '#8be04a', { life: 0.4, w: 4 });
       fx.lightStreaks(px, py, 10, { dir: dir + Math.PI, spread: 0.5, colors: ['#e2ffb0', '#ffffff', '#8be04a'] });
       fx.glints(px, py, 4, { w: 20, h: 14, color: '#e2ffb0' });
@@ -652,7 +651,7 @@ export class Fishing {
     this.sfx('neon_buzz', { vol: 0.5, pitch: 1.6 });
     const L = this.reel.lay;
     if (L) {
-      this.fx.electrify(L.bx, L.by, L.br + 6, 4, { flat: 1, sparks: 8 });
+      this.fx.boltBurst(L.bx, L.by, L.br + 16, 7);
       this.fx.ringWave(L.bx, L.by, L.br + 16, '#fff07a', { life: 0.3, w: 3 });
     }
     const [rx, ry] = this.rodTip();
@@ -664,6 +663,7 @@ export class Fishing {
     if (!f) return;
     const R = this.fishLen() * 0.55;
     P.electrify?.(f.x, f.y, R, 7, { sparks: 10 });
+    P.boltBurst?.(f.x, f.y, R + 14, 9);
     P.ringWave?.(f.x, f.y, R + 16, '#bff8ff', { life: 0.45, w: 3 });
     P.ringWave?.(f.x, f.y, R + 6, '#fff07a', { life: 0.3, w: 2, delay: 0.05 });
     P.aeroBubbles?.(f.x, f.y, 8, { w: R * 0.6, sizes: [2, 2, 3, 4] });
@@ -676,6 +676,7 @@ export class Fishing {
     f.say('!!', 0.6);
     const [sx, sy] = this.fishScreen();
     this.fx.lensFlare(sx, sy, { cx: this.W / 2, cy: this.H / 2, life: 0.6, scale: 0.6, tint: '#bff8ff' });
+    this.fx.bloom(sx, sy, 50, '#bff8ff', { life: 0.35 });
     void B;
   }
 
@@ -845,11 +846,17 @@ export class Fishing {
     }
   }
 
-  // Loot for a reeled-in box (game.onBoxCaught delegates here): take it, roll + grant loot, glossy pop-up.
+  // Fallback when the host has no onBoxCaught: take the box, roll + grant loot, glossy pop-up.
   landBox(f) {
     const g = this.game;
     try { g.floaters?.take?.(f); } catch (e) { console.error(e); }
     return landBoxLoot(this, f);
+  }
+
+  // The host rolled and granted the loot (game.onBoxCaught -> build.onBoxCaught): show the glossy pop-up.
+  // A null loot means nobody rolled it: roll and grant here.
+  showBoxLoot(f, loot) {
+    return landBoxLoot(this, f, loot || undefined);
   }
 
   // ------------------------------------------------------------------ world drawing

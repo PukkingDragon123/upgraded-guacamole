@@ -39,7 +39,11 @@ function whaleModel(ph) {
   // long pectoral fins (humpback), white underside
   const px = Math.round(L * 0.64), pr = R * 0.9;
   for (const side of [-1, 1]) m.line(px, cy - 3, cz + side * pr * 0.8, px - 20, cy - 16 + Math.sin(ph + 1) * 3, cz + side * (pr + 8), side > 0 ? fin : finD, 1.6);
-  m.set(Math.round(L * 0.9), Math.round(cy - 2), Math.round(cz + R * 0.55), eye);
+  // cute cartoon eye (big glossy pupil + white shine)
+  const ex = Math.round(L * 0.89), ey = Math.round(cy - 2), ez = Math.round(cz + R * 0.55);
+  const shine = C('#ffffff');
+  for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1], [0, -1], [1, -1]]) m.set(ex + dx, ey + dy, ez + 1, eye);
+  m.set(ex + 1, ey + 1, ez + 2, shine);
   return m;
 }
 
@@ -59,7 +63,8 @@ function turtleModel(ph) {
   // neck + head
   m.line(cx + 12, cy - 1, cz, cx + 18, cy, cz, skinD, 2.2);
   m.ellipsoid(cx + 21, cy + 0.5, cz, 4, 3, 3, (x, y, z) => ((x + y + z) % 4 === 0 ? spot : skin));
-  m.set(cx + 23, cy + 1, cz + 3, eye); m.set(cx + 23, cy + 1, cz - 3, eye);
+  const shine = C('#ffffff');
+  for (const zs of [3, -3]) { for (const [dx, dy] of [[0, 0], [0, 1], [-1, 0], [-1, 1]]) m.set(cx + 23 + dx, cy + 1 + dy, cz + zs, eye); m.set(cx + 23, cy + 2, cz + zs + Math.sign(zs), shine); }
   // front flippers sweep down and back, rear flippers paddle
   const a = 0.25 + (Math.sin(ph) * 0.5 + 0.5) * 1.05;
   for (const side of [-1, 1]) {

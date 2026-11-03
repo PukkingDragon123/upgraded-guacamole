@@ -33,6 +33,7 @@ import { TankSpace, renderBackdrop, renderGlass, shaftSprite, causticFrames, FOG
 import { TANK_TIERS, tankTier, aeroRate, sceneSize, sceneLayout, tankOpts, FRAME } from './tanks.js';
 import { roomArt, drawRoomBack, drawRoomFront, RoomAmbient, roomHit } from './room.js';
 import { shellArt } from './shell.js';
+import { reefPanorama, drawReef } from './reef.js';
 import { startUpgrade, updateUpgrade, drawUpgradeBack, drawUpgradeFront, upgradeHidesFish, upgradeFill, upgradeScale } from './upgrade.js';
 import { VoxelModel, renderVoxels } from '../gfx/voxel.js';
 import { voxPlant, plantFrame, pumpVoxPlants, PLANT_FRAMES } from './voxplants.js';
@@ -249,8 +250,9 @@ export class Aquarium {
       fg.fillStyle = T.water[clamp(Math.round(lerp(t, 0.5, 0.35) * 12), 0, 12)];
       fg.fillRect(0, y, 1, 1);
     }
+    const back = bd.back;
     v.art = {
-      backdrop: bd.canvas, glass: renderGlass(T), fog,
+      backdrop: bd.canvas, floor: bd.floor, back, reef: reefPanorama(back.y1 - back.y0, 3 + v.tier, T.round ? 0.45 : 1), glass: renderGlass(T), fog,
       floorPoly: bd.floorPoly, ceilPoly: bd.ceilPoly, floorTopY: Math.min(...bd.floorTop),
       layer: makeCanvas(T.W, T.H), caustics: v.cfg.caustics,
     };
@@ -651,7 +653,7 @@ export class Aquarium {
     let X = T.W / 2, z = 0.12;
     if (f) { X = clamp(T.X(f.x, f.z), T.W * 0.3, T.W * 0.7); }
     X = this.fitFloorX(T, X, z, 10);
-    const c = this.coins.spawn(X, T.surf + (T.floorFront - T.surf) * 0.55, z * T.DEPTH, 1, { value: DENOMS[0] });
+    const c = this.coins.spawn(X, T.surf + (T.floorFront - T.surf) * 0.75, z * T.DEPTH, 1, { value: DENOMS[0] });
     c.hint = true;
     this.coinsDirty = true;
     if (f) { f.say?.('$', 1.4); f.feel?.('happy', 1); }
@@ -857,6 +859,9 @@ export class Aquarium {
     this.par.x += (this.parT.x - this.par.x) * k;
     this.par.y += (this.parT.y - this.par.y) * k;
     for (const id in this.toyT) this.toyT[id] = Math.max(0, this.toyT[id] - dt);
+    // the back-glass reef picture turns slowly (stops when the lamp tank is switched off)
+    this.reefSpeed = lerp(this.reefSpeed ?? 1, this.st.tank.lampOff ? 0 : 1, Math.min(1, dt * 2));
+    this.reefOff = (this.reefOff || 0) + dt * 5 * this.reefSpeed;
     if (this.visibleKey) this.room.update(dt, roomArt(this.view.L));
 
     this.saveT -= dt;
@@ -983,6 +988,21 @@ export class Aquarium {
       }
     }
 
+    // the Aqua Lamp's rocker switch: light + scrolling reef on / off
+    const shl = shellArt(L, T.ell);
+    if (shl.switch && !this.drag && rectContains({ x: shl.switch.x - 2, y: shl.switch.y - 2, w: shl.switch.w + 4, h: shl.switch.h + 4 }, scx, scy)) {
+      this.hoverBtn = 'lampswitch';
+      tip(this.st.tank.lampOff ? '{mouse_l} Lamp on' : '{mouse_l} Lamp off');
+      if (inp.pressed) {
+        inp.consume();
+        this.st.tank.lampOff = !this.st.tank.lampOff;
+        this.toyT.lampswitch = 0.25;
+        this.sfx('click', { vol: 0.6, pitch: this.st.tank.lampOff ? 0.8 : 1.25 });
+        this.game.save?.();
+      }
+      cur.inWorld = false;
+      return;
+    }
     const inGlass = this.inGlass(lx, ly);
     // cursor in tank space (fish curiosity / fear use it)
     cur.x = lx; cur.y = ly; cur.vx = inp.vx; cur.vy = inp.vy; cur.speed = inp.speed;
@@ -1026,7 +1046,7 @@ export class Aquarium {
     for (let i = this.coins.list.length - 1; i >= 0; i--) {
       const c = this.coins.list[i];
       const p = this.toLocal(c.X, c.Y, c.D);
-      const rr = (sweep ? rad * 1.35 : rad) * 0.6 + c.vr * T.s(p.z);
+      const rr = (sweep ? rad * 1.35 : rad) * 0.6 + c.vr * T.s(p.z) + (c.hint ? 18 : 0);
       const d = sweep ? segDist(p.x, p.y, p0.x, p0.y, lx, ly) : dist(p.x, p.y, lx, ly);
       if (d < rr) { this.collectCoin(c, 'player'); got++; }
     }
@@ -1545,12 +1565,53 @@ export class Aquarium {
     if (sh.back) ctx.drawImage(sh.back.canvas, sx + sh.back.x, sy + sh.back.y);
     this.drawTank(ctx, sx + L.tank.x, sy + L.tank.y);
     ctx.drawImage(sh.front.canvas, sx + sh.front.x, sy + sh.front.y);
+    if (sh.switch) this.drawLampParts(ctx, sx, sy, sh);
     if (this.stats.feeder) this.drawFeeder(ctx, sx, sy);
     if (gs !== 1) ctx.restore();
     drawRoomFront(ctx, art, sx, sy, t, this.par, this.lampOn);
     this.room.draw(ctx, art, sx, sy);
     if (up) drawUpgradeFront(this, ctx, sx, sy);
     this.drawSceneFx(ctx, sx, sy);
+  }
+
+  // Aqua Lamp: the blue light strip under the hood and the black rocker switch (on = '|' side down).
+  drawLampParts(ctx, sx, sy, sh) {
+    const on = !this.st.tank.lampOff;
+    const L = this.view.L, u = L.u;
+    const hd = sh.hood;
+    const ly = Math.round(sy + L.tank.y);
+    if (on) {
+      const fl = 0.85 + 0.15 * Math.sin(this.t * 3.1) * Math.sin(this.t * 1.3);
+      ctx.fillStyle = rgba('#7fd0ff', 0.95 * fl);
+      ctx.fillRect(Math.round(sx + L.tank.x + 2), ly, L.tank.w - 4, Math.max(1, Math.round(1.5 * u)));
+      ctx.globalCompositeOperation = 'lighter';
+      drawAeroGlow(ctx, sx + L.tank.x + L.tank.w * 0.3, ly, L.tank.w * 0.22, '#5ab4ff', 0.35 * fl);
+      drawAeroGlow(ctx, sx + L.tank.x + L.tank.w * 0.7, ly, L.tank.w * 0.22, '#5ab4ff', 0.35 * fl);
+      ctx.globalCompositeOperation = 'source-over';
+    } else {
+      ctx.fillStyle = 'rgba(40,60,90,0.8)';
+      ctx.fillRect(Math.round(sx + L.tank.x + 2), ly, L.tank.w - 4, Math.max(1, Math.round(1.5 * u)));
+    }
+    void hd;
+    const s = sh.switch;
+    const x = Math.round(sx + s.x), y = Math.round(sy + s.y), w = s.w, h = s.h;
+    const hov = this.hoverBtn === 'lampswitch';
+    ctx.fillStyle = '#0c1016';
+    ctx.fillRect(x, y, w, h);
+    const half = Math.floor(w / 2);
+    // rocker: the pressed half sits low and dark, the raised half catches the light
+    ctx.fillStyle = on ? '#1c222c' : '#3a4452';
+    ctx.fillRect(x + 1, y + 1, half - 1, h - 2);
+    ctx.fillStyle = on ? '#3a4452' : '#1c222c';
+    ctx.fillRect(x + half, y + 1, w - half - 1, h - 2);
+    ctx.fillStyle = on ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.12)';
+    ctx.fillRect(on ? x + half : x + 1, y + 1, on ? w - half - 1 : half - 1, 1);
+    ctx.fillStyle = '#e8eef4';
+    const mh = Math.max(2, Math.round(h * 0.4));
+    ctx.fillRect(x + Math.round(half / 2), y + Math.round((h - mh) / 2), 1, mh);                  // '|'
+    const ox = x + half + Math.round((w - half) / 2) - 1, oy = y + Math.round(h / 2) - 1;
+    ctx.fillRect(ox, oy - 1, 2, 1); ctx.fillRect(ox, oy + 2, 2, 1); ctx.fillRect(ox - 1, oy, 1, 2); ctx.fillRect(ox + 2, oy, 1, 2); // 'o'
+    if (hov) { ctx.fillStyle = 'rgba(191,246,255,0.5)'; ctx.fillRect(x - 1, y - 1, w + 2, 1); ctx.fillRect(x - 1, y + h, w + 2, 1); }
   }
 
   // Auto-feeder: a glossy little hopper clipped to the rim.
@@ -1608,6 +1669,7 @@ export class Aquarium {
     ctx.translate(ox, oy);
     this.clipGlass(ctx, v);
     ctx.drawImage(art.backdrop, 0, 0);
+    this.drawPanorama(ctx, v, art, night);
     if (art.caustics) this.drawCaustics(ctx, v, art, night);
     this.drawShadows(ctx, v);
     this.drawShafts(ctx, v, night, 0.3, 2);
@@ -1665,6 +1727,19 @@ export class Aquarium {
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = 'source-over';
     }
+    // the Aqua Lamp: blue light from the hood when on, a dim tank when off
+    if (v.L.shape === 'lamp') {
+      if (this.st.tank.lampOff) {
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.fillStyle = '#5a6a94';
+        ctx.fillRect(0, 0, v.iw, v.ih);
+        ctx.globalCompositeOperation = 'source-over';
+      } else {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.drawImage(lampGlow(v.ih), 0, 0, v.iw, Math.round(v.ih * 0.45));
+        ctx.globalCompositeOperation = 'source-over';
+      }
+    }
     // hood light pooling just under the lid (box tanks)
     if (!T.round) {
       ctx.globalCompositeOperation = 'lighter';
@@ -1693,6 +1768,30 @@ export class Aquarium {
       }
     }
     ctx.restore();
+  }
+
+  // The illustrated reef on the back glass, scrolling like a moving-picture lamp; the floor goes back on top.
+  drawPanorama(ctx, v, art, night) {
+    const b = art.back, T = v.T;
+    if (!art.reef || b.x1 <= b.x0) return;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
+    ctx.clip();
+    if (T.round) ctx.globalAlpha = 0.7;
+    drawReef(ctx, art.reef, b.x0, b.y0, b.x1, b.y1, this.reefOff * (art.reef.h / 120));
+    ctx.globalAlpha = 1;
+    // a veil of water in front of the picture (more through the curved globe)
+    ctx.fillStyle = rgba(T.water[9], T.round ? 0.3 : 0.14);
+    ctx.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
+    if (!T.round) {
+      // the picture sits on the back glass: it shades toward the top where the hood light does not reach
+      ctx.fillStyle = rgba(T.water[2], 0.12);
+      ctx.fillRect(b.x0, b.y0, b.x1 - b.x0, Math.max(1, Math.round((b.y1 - b.y0) * 0.08)));
+    }
+    ctx.restore();
+    ctx.drawImage(art.floor, 0, 0);
+    void night;
   }
 
   // Soft contact shadows on the floor under fish (fainter the higher they swim).
@@ -1927,7 +2026,9 @@ export class Aquarium {
       const x = Math.round(T.sx(X, s.z) - w / 2), y0 = Math.round(T.top(s.z));
       const y1 = Math.round(T.floorAt(x + w / 2, s.z));
       ctx.globalAlpha = clamp01(s.a * (0.65 + 0.35 * Math.sin(this.t * 0.6 + s.ph)) * (1 - night * 0.6) * (z0 === 0 ? 0.6 : 1));
-      ctx.drawImage(spr, x, y0, w, Math.max(4, y1 - y0));
+      // pre-scaled once per size (scaled additive blits are slow without a GPU)
+      const hh = Math.max(4, Math.round((y1 - y0) / 4) * 4);
+      ctx.drawImage(scaledShaft(spr, w, hh), x, y0);
     }
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
@@ -2020,6 +2121,38 @@ function airStone(r) {
   c = { canvas: rr.canvas, ax: Math.round(ax), ay: Math.round(ay) };
   stoneCache.set(r, c);
   return c;
+}
+
+const shaftCache = new Map();
+function scaledShaft(spr, w, h) {
+  const key = w + 'x' + h + (spr.width === 24 ? '' : 'n');
+  let c = shaftCache.get(spr)?.get(key);
+  if (c) return c;
+  let m = shaftCache.get(spr);
+  if (!m) shaftCache.set(spr, (m = new Map()));
+  c = makeCanvas(w, h);
+  const g = ctxOf(c);
+  g.imageSmoothingEnabled = true;
+  g.drawImage(spr, 0, 0, w, h);
+  m.set(key, c);
+  if (m.size > 80) m.delete(m.keys().next().value);
+  return c;
+}
+
+// Vertical blue glow from the lamp hood (additive), 1 px wide, stretched across the tank.
+let lampGlowCv = null;
+function lampGlow(h) {
+  if (lampGlowCv) return lampGlowCv;
+  const n = 64;
+  lampGlowCv = makeCanvas(1, n);
+  const g = ctxOf(lampGlowCv);
+  for (let y = 0; y < n; y++) {
+    const k = Math.pow(1 - y / n, 2.2);
+    g.fillStyle = `rgba(70,150,255,${(k * 0.45).toFixed(3)})`;
+    g.fillRect(0, y, 1, 1);
+  }
+  void h;
+  return lampGlowCv;
 }
 
 const shadowCache = new Map();

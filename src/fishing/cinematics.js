@@ -201,6 +201,8 @@ export class Titles {
       fx.ringWave(W * 0.5, cy + 10, 170, '#bff8ff', { life: 0.7, w: 5 });
       fx.ringWave(W * 0.5, cy + 10, 120, '#ffffff', { life: 0.5, w: 3, delay: 0.08 });
       fx.lensFlare(W * 0.28, cy - 40, { cx: W / 2, cy: H / 2, life: 1.8, scale: 1.3 });
+      fx.bloom(W * 0.5, cy, 140, '#e8fbff', { life: 0.8 });
+      fx.splashBurst(W * 0.5, H * 0.62, 2.2, { g: 300 });
       fx.aeroBubbles(W * 0.5, H + 10, 26, { w: W * 0.45, speed: [60, 160], sizes: [3, 4, 5, 6, 8, 10], life: [2, 3.5] });
       F.cam?.flash?.('#f0fcff', 0.6);
     }
@@ -473,6 +475,7 @@ export class Finale {
           F.particles.bubbles(f.x, f.y, 16);
         }
         F.particles.aeroBubbles?.(f.x, sy, 14, { w: 12, speed: [40, 120], sizes: [2, 3, 4, 5, 6] });
+        F.particles.splashBurst?.(f.x, sy, 1.4);
         F.particles.lightStreaks(f.x, sy - 4, 12, { dir: -Math.PI / 2, spread: 1.1, colors: ['#ffffff', '#bff8ff', '#e2ffb0'] });
         const [sx, sy2] = F.toScreen(f.x, sy);
         F.fx.lensFlare(sx, sy2 - 10, { cx: F.W / 2, cy: F.H / 2, life: 1.4, scale: 1 });

@@ -11,7 +11,8 @@ import { drawText, measureText, registerInlineIcon } from '../gfx/font.js';
 import { getUiIcon } from '../gfx/uiicons.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { drawCharacter } from '../gfx/character.js';
-import { discSprite, glowSprite, pixelLine } from '../gfx/particles.js';
+import { discSprite, glowSprite, pixelLine, gbubbleSprite } from '../gfx/particles.js';
+import { glossText, drawGlassPill } from './cinematics.js';
 
 const INK = '#0c3a52';
 
@@ -71,7 +72,7 @@ function mouseHold(lit) {
 // ------------------------------------------------------------------ glossy arrow (per-pixel, any angle)
 let arrowCanvas = null, arrowCtx = null;
 const ARROW_RAMPS = {
-  pull: { fill: ['#2f7a1e', '#3fae2a', '#6cd03a', '#a6ec5a', '#e2ffb0'], empty: ['#0d8fb5', '#1fb8dc', '#4fd8f0', '#8ff0ff', '#e8fdff'] },
+  pull: { fill: ['#2f7a1e', '#3fae2a', '#6cd03a', '#a6ec5a', '#e2ffb0'], empty: ['#3f8fbc', '#7cc8ec', '#b8ecff', '#e2f8ff', '#ffffff'] },
   surge: { fill: ['#8a1a10', '#d8402a', '#ff6a3a', '#ff9d5a', '#ffe0c0'], empty: ['#8a1a10', '#d8402a', '#ff6a3a', '#ff9d5a', '#ffe0c0'] },
   ok: { fill: ['#0d6f9a', '#1fb8dc', '#4fe0f0', '#9ff4ff', '#ffffff'], empty: ['#0d6f9a', '#1fb8dc', '#4fe0f0', '#9ff4ff', '#ffffff'] },
 };
@@ -149,6 +150,54 @@ export function drawPill(ctx, x, y, w, h, top = '#ffffff', bot = '#9fe0ff', edge
 function mixHex(a, b, t) {
   const A = hexRgb(a), B = hexRgb(b);
   return `rgb(${Math.round(A[0] + (B[0] - A[0]) * t)},${Math.round(A[1] + (B[1] - A[1]) * t)},${Math.round(A[2] + (B[2] - A[2]) * t)})`;
+}
+
+// ------------------------------------------------------------------ bite cue: a big glossy "!" bubble
+// above the fish, a shrinking timer ring and a pulsing left-mouse glyph. No words.
+export function drawBiteCue(ctx, F) {
+  const f = F.fish;
+  const k = clamp01(F.biteT / Math.max(0.01, F.biteMax));
+  const [sx, sy] = F.toScreen(f.x, f.y);
+  const z = F.zoom();
+  const t = F.t;
+  const cx = Math.round(sx), cy = Math.round(sy - 22 * f.scale * z - 22);
+  const pop = 1 + Math.max(0, 0.25 - (1 - k) * 2) + Math.sin(t * 30) * 0.04;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 20);
+  ctx.drawImage(glowSprite(26, '#ffe27a'), cx - 26, cy - 26);
+  ctx.restore();
+  // timer ring
+  const R = 17, n = 48;
+  for (let i = 0; i < n; i++) {
+    const u = i / n;
+    const a = -Math.PI / 2 + u * TAU;
+    const on = u <= k;
+    ctx.fillStyle = on ? (k < 0.35 ? '#ff6a5a' : '#ffe27a') : 'rgba(12,58,82,0.35)';
+    ctx.fillRect(Math.round(cx + Math.cos(a) * R) - 1, Math.round(cy + Math.sin(a) * R) - 1, 2, 2);
+  }
+  const b = gbubbleSprite(14);
+  ctx.drawImage(b, cx - 14, cy - 14);
+  const g = glossText('!', 4, 'sun');
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(pop, pop);
+  ctx.drawImage(g.c, Math.round(-g.w / 2 - g.ox), Math.round(-g.h / 2 - g.oy));
+  ctx.restore();
+  const mg = mouseHold(Math.floor(t * 8) % 2 === 0);
+  ctx.drawImage(mg, cx + R + 4, cy - 6);
+}
+
+// Short message near the cursor (external callers: tutorial, overlay toasts) as a glass pill.
+export function drawMessage(ctx, F, m) {
+  const a = Math.min(1, (m.max - m.t) * 3);
+  const x = F.input.x, y = Math.round(F.input.y - 44 - m.t * 12);
+  const w = measureText(m.text, 'normal', 1) + 16;
+  ctx.save();
+  ctx.globalAlpha = a;
+  drawGlassPill(ctx, x, y - 4, w, 15, '#bfeaff', 0.92);
+  drawText(ctx, m.text, x, y, { align: 'center', color: INK });
+  ctx.restore();
 }
 
 // ------------------------------------------------------------------ in-scene markers
@@ -257,9 +306,9 @@ function drawQte(ctx, F, B) {
     const gx = sx + Math.cos(surgeA) * (R0 + 26), gy = sy + Math.sin(surgeA) * (R0 + 26);
     ctx.drawImage(glowSprite(26, '#ff6a3a'), Math.round(gx - 26), Math.round(gy - 26));
     ctx.restore();
-    drawGlossArrow(ctx, sx + Math.cos(surgeA) * R0, sy + Math.sin(surgeA) * R0, surgeA, { len: 46 * appear + 4, w: 12, kind: 'surge', alpha: blink ? 0.6 : 0.95 });
+    drawGlossArrow(ctx, sx + Math.cos(surgeA) * R0, sy + Math.sin(surgeA) * R0, surgeA, { len: 54 * appear + 4, w: 15, kind: 'surge', alpha: blink ? 0.6 : 0.95 });
     // the PULL arrow at the cursor: drag along it while holding the button
-    const L = 92, W = 22;
+    const L = 112, W = 26;
     const ax = F.input.x - Math.cos(pullA) * (q.holding ? q.k * 10 : 0), ay = F.input.y - Math.sin(pullA) * (q.holding ? q.k * 10 : 0);
     const off = 16;
     const tx = clamp(ax + Math.cos(pullA) * off, 20, F.W - 20), ty = clamp(ay + Math.sin(pullA) * off, 20, F.H - 20);
@@ -270,7 +319,7 @@ function drawQte(ctx, F, B) {
     ctx.drawImage(glowSprite(40, q.holding ? '#8be04a' : '#59c3ff'), Math.round(hx - 40), Math.round(hy - 40));
     ctx.restore();
     const shake = flip > 0 ? Math.round(Math.sin(t * 60) * flip * 3) : 0;
-    drawGlossArrow(ctx, tx + shake, ty, pullA, { len: L * (0.6 + 0.4 * appear), w: W, k: q.k, kind: 'pull', emptyAlpha: 0.5 });
+    drawGlossArrow(ctx, tx + shake, ty, pullA, { len: L * (0.6 + 0.4 * appear), w: W, k: q.k, kind: 'pull', emptyAlpha: 0.78 });
     // hold glyph by the tail, nudging along the arrow
     const nud = (t * 1.6) % 1;
     const mg = mouseHold(q.holding || Math.floor(t * 4) % 2 === 0);
@@ -285,7 +334,7 @@ function drawQte(ctx, F, B) {
     const k = q.t / 0.6;
     ctx.save();
     ctx.globalAlpha = 1 - k;
-    drawGlossArrow(ctx, F.input.x, F.input.y, q.dir + Math.PI, { len: 92 + k * 30, w: 22, k: 1, kind: q.stunned ? 'ok' : 'pull' });
+    drawGlossArrow(ctx, F.input.x, F.input.y, q.dir + Math.PI, { len: 112 + k * 40, w: 26, k: 1, kind: q.stunned ? 'ok' : 'pull' });
     ctx.restore();
   }
 }
@@ -310,28 +359,31 @@ function drawWrapHint(ctx, F, B) {
 function drawEdges(ctx, F, B) {
   const W = F.W, H = F.H, t = F.t;
   // soft Aero vignette: pale aqua corners
-  const v = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.42, W / 2, H / 2, Math.max(W, H) * 0.72);
+  const v = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.45, W / 2, H / 2, Math.max(W, H) * 0.75);
   v.addColorStop(0, 'rgba(190,240,255,0)');
-  v.addColorStop(1, 'rgba(190,240,255,0.32)');
+  v.addColorStop(1, 'rgba(190,240,255,0.26)');
   ctx.fillStyle = v;
   ctx.fillRect(0, 0, W, H);
   const q = B.qte;
   if (q?.active) {
+    // the surge pulls the light toward its side; a winning pull glows green on the other side
     const dx = Math.cos(q.dir), dy = Math.sin(q.dir);
-    const pulse = 0.55 + 0.35 * Math.sin(t * 12);
-    const a = (B.mode === 'surge' ? 0.5 : 0.28) * pulse;
-    edgeTint(ctx, W, H, dx, dy, '255,106,58', a);
-    if (q.holding && q.k > 0.02) edgeTint(ctx, W, H, -dx, -dy, '139,224,74', 0.25 + q.k * 0.35);
+    const pulse = 0.6 + 0.4 * Math.sin(t * 10);
+    const a = (B.mode === 'surge' ? 0.3 : 0.16) * pulse * (1 - q.k * 0.7);
+    edgeTint(ctx, W, H, dx, dy, '255,140,70', a);
+    if (q.holding && q.k > 0.02) edgeTint(ctx, W, H, -dx, -dy, '160,236,90', 0.12 + q.k * 0.3);
   }
   if (B.stunned) {
     const k = clamp01(B.stunT / B.stunMax);
-    edgeTint(ctx, W, H, 1, 0, '127,244,255', 0.18 * k);
-    edgeTint(ctx, W, H, -1, 0, '127,244,255', 0.18 * k);
+    const fl = Math.floor(t * 20) % 3 === 0 ? 1.4 : 1;
+    edgeTint(ctx, W, H, 1, 0, '127,244,255', 0.16 * k * fl);
+    edgeTint(ctx, W, H, -1, 0, '127,244,255', 0.16 * k * fl);
+    edgeTint(ctx, W, H, 0, 1, '255,240,122', 0.08 * k * fl);
   }
   if (B.tension > 0.92) {
-    const a = (B.tension - 0.92) * 3 * (0.6 + 0.4 * Math.sin(t * 20));
+    const a = Math.min(0.28, (B.tension - 0.92) * 2.2) * (0.6 + 0.4 * Math.sin(t * 20));
     edgeTint(ctx, W, H, 0, 1, '255,79,94', a);
-    edgeTint(ctx, W, H, 0, -1, '255,79,94', a);
+    edgeTint(ctx, W, H, 0, -1, '255,79,94', a * 0.6);
   }
 }
 

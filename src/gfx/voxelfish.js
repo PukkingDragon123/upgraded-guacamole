@@ -24,6 +24,7 @@ import { rigLayers, rigGeom, rasterLayerVox, voxAlbedo, paintMouth, mouthBox, is
 import { PixelBuffer } from './pixel.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { drawFishRig } from './fishrig.js';
+import { drawPellets, wakkaRig } from '../fish/wakka.js';
 
 export const VP = 2;               // target on-screen pixels per voxel
 const SCALE_STEP = 1.09;           // on-screen scale buckets (drawn scaled to the exact size)
@@ -139,7 +140,8 @@ class Pal {
 }
 
 // Creature material (look.vox): Frutiger Aero gloss, iridescent sheen, glassy aqua fins, chrome, glass bodies.
-const DEF_MAT = { gloss: 0.75, iri: 0.16, chrome: 0, glass: 0, finGlass: 0.5, finTint: 0.4, sheen: 1, scales: false, rim: 1 };
+const DEF_MAT = { gloss: 0.8, iri: 0.14, chrome: 0, glass: 0, finGlass: 0.84, finTint: 0.14, sheen: 1, scales: false, rim: 1 };
+const VIVID = 0.32;
 export function matOf(c) {
   if (c._vmat) return c._vmat;
   const v = c.look.vox || {};
@@ -150,8 +152,8 @@ export function matOf(c) {
     iri: v.iri ?? (c.variant?.shiny ? 0.5 : 0.16),
     chrome: v.chrome ?? 0,
     glass: v.glass ?? 0,
-    finGlass: v.finGlass ?? 0.5,
-    finTint: v.finTint ?? 0.4,
+    finGlass: v.finGlass ?? DEF_MAT.finGlass,
+    finTint: v.finTint ?? DEF_MAT.finTint,
     sheen: v.sheen ?? 1,
     rim: v.rim ?? 1,
     scales: !!c.scales,
@@ -403,7 +405,12 @@ function buildLayout(c, R, infl, kf) {
       const gx = Math.round(x + ax), gy = Math.round(y + ay);
       if (gx < 0 || gy < 0 || gx >= GW || gy >= GH) continue;
       const p = bc[gy * GW + gx];
-      if ((p >>> 24) >= 120) return p | 0xff000000;
+      if ((p >>> 24) >= 120) {
+        // cartoon lids use the skin colour; skip dark pattern bands / outlines
+        const lum = (p & 255) * 0.3 + ((p >>> 8) & 255) * 0.59 + ((p >>> 16) & 255) * 0.11;
+        if (lum < 70 && c.bodyR?.[2]) return c.bodyR[2] | 0xff000000;
+        return p | 0xff000000;
+      }
     }
     return c.bodyR?.[2] ?? 0xff8899aa;
   };
@@ -580,7 +587,8 @@ function buildGrid(Lo, sw) {
   for (const e of Lo.eyes) eyeOut = Math.max(eyeOut, e.rv * (e.stalk ? 1.1 : 0.75) + 1);
   const rot = Lo.rotors;
   const rotOut = rot ? Math.max(...rot.map((q) => q.zReach)) : 0;
-  const NZ = 2 * (Math.ceil(Math.max(maxT + eyeOut, rotOut)) + bendMax + 4 + Math.ceil(pecReach * 0.6)) + 3;
+  const orbOut = Lo.c.look.orb ? (Lo.c.look.orb.r ?? Math.max(Lo.c.L * 0.62, Lo.c.H * 1.1)) * Lo.r + 1 : 0;
+  const NZ = 2 * (Math.ceil(Math.max(maxT + eyeOut, rotOut, orbOut)) + bendMax + 4 + Math.ceil(pecReach * 0.6)) + 3;
   const zc = NZ >> 1;
   const NX = GW, NY = GH, NXY = NX * NY;
   const data = new Uint16Array(NXY * NZ);
@@ -599,8 +607,9 @@ function buildGrid(Lo, sw) {
   };
   const tAt = (gx, gy) => (gx < 0 || gy < 0 || gx >= GW || gy >= GH ? -1 : T[gy * GW + gx]);
   const glowOf = (ly, i) => !!(ly.glow && ly.glow[i]);
-  // body
+  // body (soap-bubble creatures: a see-through iridescent glass body)
   const bcol = L.body?.col;
+  const glassBody = (Lo.mat.glass ?? 0) >= 0.5;
   for (let tx = 0; tx < GW; tx++) {
     const gx = srcOf[tx];
     if (gx < 0) continue;
@@ -611,7 +620,7 @@ function buildGrid(Lo, sw) {
       const t = T[i];
       const zr = Math.max(0, Math.round(t));
       const thin = t < 0.9;
-      const pv = pal.idx(bcol[i] | 0xff000000, thin && !kind ? 4 : 0, glowOf(L.body, i));
+      const pv = pal.idx(bcol[i] | 0xff000000, glassBody ? R_GLASS : thin && !kind ? 4 : 0, glowOf(L.body, i));
       for (let z = -zr; z <= zr; z++) set(tx, gy, zc + z + zo, pv);
       // closed mouth: a groove cut into both flanks
       const mc = mouthCol[i];
@@ -697,6 +706,9 @@ function buildGrid(Lo, sw) {
       for (let dx = -3; dx <= 3; dx++) for (let dy = -3; dy <= 3; dy++) if (dx * dx + dy * dy <= (q.rn * tip) ** 2 + 0.3) set(tx + dx, Math.round(q.hy) + dy, zc + zo + z, ph);
     }
   }
+  // silly outfits and gadgets
+  if (fish && c.look.sneakers) stampSneakers(Lo, c.look.sneakers, ph, { set, NY, zc, maxT, mask, GW, GH, NZ });
+  if (c.look.orb) stampOrb(Lo, c.look.orb, { set, NX, NY, NZ, zc, maxT, mask, GW, GH });
   // voxel eyeballs: neutral domes set into the head (dynamic eye parts are drawn over them up close)
   const eyes3 = [];
   for (const e of Lo.eyes) {
@@ -714,6 +726,8 @@ function buildGrid(Lo, sw) {
       const n = fl === 0 ? norm3(0.35, 0.25, 1) : e.front ? [0, 0, 1] : norm3(0.24, 0.06, fl);
       out.flanks.push({ fl, c: [cx, cy, cz], n });
       stampEyeball(e, rb, [cx, cy, cz], n, fl, (x, y, z, v) => { if (y >= 0 && y < NY) set(x, NY - 1 - y, z, v); }, pal, NX, NZ);
+      const gl = c.glasses;
+      if (gl && (e.main || gl.both || e.front)) stampGlasses(gl, rb, [cx, cy, cz], n, (x, y, z, v) => { if (y >= 0 && y < NY) set(x, NY - 1 - y, z, v); }, pal);
     }
     eyes3.push(out);
   }
@@ -753,10 +767,89 @@ function buildGrid(Lo, sw) {
 
 const norm3 = (x, y, z) => { const l = Math.hypot(x, y, z) || 1; return [x / l, y / l, z / l]; };
 
+// A pair of generic white high-top sneakers under the belly (look.sneakers {u, h, len, sole, accent}):
+// rubber sole with an aqua stripe, toe cap, canvas upper, criss-cross laces, eyelets and a heel tab.
+// The feet take alternating steps over the swim cycle (ph), so a crawling sneakerhead walks.
+function stampSneakers(Lo, q, ph, G) {
+  const { c, r, nose, bodyTail } = Lo;
+  const { set, zc, maxT, mask, GW, GH } = G;
+  const pal = Lo.pal;
+  const Hs = Math.max(3, (q.h ?? c.H * 0.55) * r), Ls = Math.max(4, (q.len ?? c.H * 0.85) * r), Ws = Math.max(2, Ls * 0.42);
+  const hipX = Math.round(nose - (q.u ?? 0.45) * (nose - bodyTail));
+  let belly = -1;
+  for (let gy = GH - 1; gy >= 0 && belly < 0; gy--) for (let dx = -1; dx <= 1; dx++) if (mask[gy * GW + clamp(hipX + dx, 0, GW - 1)]) { belly = gy; break; }
+  if (belly < 0) return;
+  const sole = Math.min(GH - 1, Math.round(belly + Hs * 0.92));
+  const P = (hex, role = R_BODY) => pal.idx(hexP(hex), role, false);
+  const vW = P(q.color || '#fbfdff'), vW2 = P('#e4ecf4'), vSole = P(q.sole || '#f2f4f6'), vStripe = P(q.accent || '#22c8ff');
+  const vToe = P('#eef2f6'), vLace = P('#ffffff'), vLace2 = P('#b8c4d0'), vEye = P('#4a5868', R_LIMB), vCollar = P('#d8e2ec'), vTab = P(q.accent || '#22c8ff');
+  const zf = Math.max(1, Math.round(maxT * 0.5 + Ws * 0.15));
+  for (const side of [-1, 1]) {
+    const p = ph + (side > 0 ? 0 : 0.5);
+    const fx = hipX + side * Ls * 0.2 + Math.sin(TAU * p) * Ls * 0.18;
+    const lift = Math.max(0, -Math.cos(TAU * p)) * Hs * 0.22;
+    const zC = zc + side * zf;
+    const hw = Ws / 2;
+    for (let lx = -Ls / 2 - 1; lx <= Ls / 2 + 1; lx += 1) {
+      const t = (lx + Ls / 2) / Ls; // 0 heel .. 1 toe
+      // side profile: tall rounded ankle shaft at the back, a low rounded toe box at the front
+      const toeT = clamp01((t - 0.48) / 0.52);
+      const top = Hs * (t < 0.48 ? 1 - 0.1 * Math.pow(1 - t / 0.48, 3) : 0.34 + 0.66 * Math.sqrt(Math.max(0, 1 - toeT * toeT)) * (1 - toeT * 0.25));
+      const soleH = Math.max(1.5, Hs * 0.2);
+      for (let ly = 0; ly <= top; ly += 1) {
+        const inSole = ly < soleH;
+        // plan view: rounded toe and heel; the sole flares a little wider than the canvas upper
+        const half = hw * (inSole ? 1.12 : 1) * (ly > Hs * 0.6 ? 0.86 : 1) * Math.sqrt(Math.max(0, 1 - Math.pow(Math.max(0, ly - soleH) / (top + 1), 4) * 0.5));
+        const tipD = lx - (Ls / 2 - half), heelD = -lx - (Ls / 2 - half * 0.9);
+        for (let lz = -Math.ceil(half); lz <= Math.ceil(half); lz += 1) {
+          if (Math.abs(lz) > half) continue;
+          if (tipD > 0 && tipD * tipD + lz * lz > half * half) continue;
+          if (heelD > 0 && heelD * heelD + lz * lz > (half * 0.9) ** 2) continue;
+          if (!inSole && (lx > Ls / 2 || lx < -Ls / 2)) continue;
+          const surfTop = ly > top - 1.2, outer = Math.abs(lz) > half - 1.1;
+          let v = vW;
+          if (inSole) v = Math.abs(ly - soleH * 0.55) < 0.6 && outer ? vStripe : vSole;
+          else if (t > 0.8 && ly < Hs * 0.45) v = vToe;
+          else if (surfTop && t < 0.5 && ly > Hs * 0.8) v = vCollar;
+          else if (surfTop && t >= 0.4 && t < 0.86 && Math.abs(lz) < half * 0.55) v = ((Math.round(lx) + Math.round(lz)) & 1) ? vLace : vLace2;
+          else if (outer && t > 0.4 && t < 0.62 && ly > top - 2.6 && ly <= top - 1.2 && (Math.round(lx) % 2 === 0)) v = vEye;
+          else if (t < 0.07 && ly > Hs * 0.4) v = vTab;
+          else if (outer && ly < Hs * 0.42) v = vW2;
+          set(Math.round(fx + lx), sole - Math.round(ly + lift), zC + Math.round(lz), v);
+        }
+      }
+    }
+    // a stubby leg from the belly into the shoe while the foot is lifted
+    for (let ly = Math.round(Hs + lift); ly <= sole - belly + 1; ly++) set(Math.round(fx - Ls * 0.12), sole - ly, zC, pal.idx(c.bodyR?.[2] ?? 0xff8899aa, R_LIMB, false));
+  }
+}
+
+// A water bubble around the creature (look.orb {r, color}): a thin iridescent glass shell plus a few
+// floating droplets inside.
+function stampOrb(Lo, q, G) {
+  const { set, NX, NY, NZ, zc } = G;
+  const pal = Lo.pal;
+  const [ox, oy] = Lo.origin;
+  const R = Math.max(4, (q.r ?? Math.max(Lo.c.L * 0.62, Lo.c.H * 1.1)) * Lo.r);
+  const v = pal.idx(hexP(q.color || '#c8f6ff'), R_GLASS, false), vD = pal.idx(0xffffffff, R_GLASS, false);
+  const cy = NY - oy, cx = ox;
+  const th = Math.max(1, R * 0.06);
+  for (let z = Math.max(0, Math.floor(zc - R)); z <= Math.min(NZ - 1, Math.ceil(zc + R)); z++) {
+    for (let y = Math.max(0, Math.floor(cy - R)); y <= Math.min(NY - 1, Math.ceil(cy + R)); y++) {
+      for (let x = Math.max(0, Math.floor(cx - R)); x <= Math.min(NX - 1, Math.ceil(cx + R)); x++) {
+        const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy, z + 0.5 - zc);
+        if (d > R || d < R - th) continue;
+        set(x, NY - 1 - y, z, (hash3(x, y, z) > 0.97) ? vD : v);
+      }
+    }
+  }
+}
+
 // Eye surface colour for a unit direction (dx, dy, dz) from the eyeball centre, gaze axis g.
-// Returns [packed colour, role, glow]. Fish eyes are mostly iris; toon/googly eyes show more sclera.
-const SCLERA_P = 0xfffaf4ee, SCLERA_D = 0xffe8dcd2, PUPIL_P = 0xff1e0e0a, GOOGLY_P = 0xff1c1014;
-function eyeColor(e, dx, dy, dz, g, pupMul, love) {
+// Returns [packed colour, role, glow]. Cute glossy CARTOON eyes only: a white ball and a big dark pupil
+// (the white shine voxel is added by the eye builders); love = a pink heart pupil, dizzy = a swirl.
+const SCLERA_P = 0xfffffcfa, PUPIL_P = 0xff3a1a10, GOOGLY_P = 0xff1c1014, HEART_P = 0xff8a4aff, HEART_HI = 0xffc8b4ff;
+function eyeColor(e, dx, dy, dz, g, pupMul, love, dizzy) {
   const t = e.type;
   const cosA = dx * g[0] + dy * g[1] + dz * g[2];
   let rho;
@@ -766,22 +859,32 @@ function eyeColor(e, dx, dy, dz, g, pupMul, love) {
     rho = Math.max(Math.abs(uy), Math.hypot(ux, uz));
   } else rho = Math.sqrt(Math.max(0, 1 - cosA * cosA));
   const front = cosA > 0;
-  if (t === 'dot') return [front && rho < 0.5 ? (e.pupil | 0xff000000) : 0xff2a2030, R_PUPIL, 0];
-  const toonish = t === 'googly' || t === 'pixel';
-  const pr = clamp((e.pupilSize ?? (toonish ? 0.42 : 0.46)) * pupMul, 0.12, 0.8) * (toonish ? 1 : 0.86);
-  const ir = toonish ? (t === 'pixel' ? 0 : 0) : Math.max(pr + 0.18, e.irisSize ?? 0.84);
-  if (front && rho < pr) return [t === 'googly' ? GOOGLY_P : (e.pupil | 0xff000000) === 0xff000000 ? PUPIL_P : (e.pupil | 0xff000000), R_PUPIL, 0];
-  if (front && rho < ir) {
-    if (t === 'glow') return [hexP(e.glowHex || '#9ffcff'), R_EYE, 1];
-    const RI = love ? LOVE_IRIS : e.realIris;
-    let k = rho < pr + 0.1 ? 3 : rho > ir - 0.12 ? 0 : 2;
-    if (dy > 0.5 && k > 1) k--;
-    if (k === 2 && ((Math.atan2(dy, dx) * 7) & 1)) k = 1.5;
-    return [(k === 1.5 ? mixP(RI[1], RI[2], 0.5) : RI[k]) | 0xff000000, R_EYE, 0];
+  if (t === 'dot') return [front && rho < 0.62 ? (e.pupil | 0xff000000) : 0xff2a2030, R_PUPIL, 0];
+  if (t === 'glow') {
+    if (front && rho < 0.3 * pupMul) return [0xffffffff, R_EYE, 1];
+    return [hexP(e.glowHex || '#9ffcff'), R_EYE, 1];
   }
-  return [dy < -0.35 ? SCLERA_D : (e.sclera && e.sclera !== 0xffffffff ? e.sclera | 0xff000000 : SCLERA_P), R_EYE, 0];
+  const pr = clamp((e.pupilSize ?? 0.6) * pupMul, 0.18, 0.82);
+  if (front && (love || dizzy)) {
+    // gaze-plane coordinates: right / up across the gaze axis
+    let rx = g[2], rz = -g[0];
+    const rl = Math.hypot(rx, rz) || 1;
+    rx /= rl; rz /= rl;
+    const pu = dx * rx + dz * rz;
+    const ux = g[1] * rz, uy = g[2] * rx - g[0] * rz, uz = -g[1] * rx;
+    const pv = dx * ux + dy * uy + dz * uz;
+    if (love) {
+      const hx = pu / (pr * 1.25), hy = pv / (pr * 1.25) + 0.25;
+      if ((hx * hx + hy * hy - 1) ** 3 - hx * hx * hy * hy * hy < 0) return [hx < -0.25 && hy > 0.35 ? HEART_HI : HEART_P, R_PUPIL, 0];
+      return [SCLERA_P, R_EYE, 0];
+    }
+    const rr = rho / pr, th = Math.atan2(pv, pu);
+    if (rr < 1.15 && (rr < 0.22 || ((rr * 2.2 - th / (Math.PI * 2)) % 1 + 1) % 1 < 0.38)) return [PUPIL_P, R_PUPIL, 0];
+    return [SCLERA_P, R_EYE, 0];
+  }
+  if (front && rho < pr) return [t === 'googly' ? GOOGLY_P : (e.pupil | 0xff000000) || PUPIL_P, R_PUPIL, 0];
+  return [SCLERA_P, R_EYE, 0];
 }
-const LOVE_IRIS = ['#7a0a2a', '#c81e4a', '#ff4d7a', '#ff9ab4', '#ffd0dc'].map((h) => hexP(h));
 function hexP(hex) {
   const n = parseInt(hex.slice(1, 7), 16);
   return (0xff000000 | ((n & 255) << 16) | (n & 0xff00) | (n >> 16)) >>> 0;
@@ -792,11 +895,42 @@ function mixP(a, b, t) {
   return (0xff000000 | (Math.round(ab + (bb - ab) * t) << 16) | (Math.round(ag + (bg - ag) * t) << 8) | Math.round(ar + (br - ar) * t)) >>> 0;
 }
 
+// Voxel eyewear over an eyeball (look extras glasses {style: shades|round|square|patch}): glossy dark lenses
+// or a pirate patch hovering just in front of the eye, a frame rim and an arm back toward the ear.
+function stampGlasses(g, rb, C, n, put, pal) {
+  const style = g.style || 'shades';
+  let up = [0, 1, 0];
+  const dn = n[1];
+  up = norm3(up[0] - n[0] * dn, up[1] - n[1] * dn, up[2] - n[2] * dn);
+  const fw = norm3(up[1] * n[2] - up[2] * n[1], up[2] * n[0] - up[0] * n[2], up[0] * n[1] - up[1] * n[0]);
+  const vLens = pal.idx(hexP(style === 'patch' ? '#14121c' : '#141a2a'), R_PUPIL, false);
+  const vGlint = pal.idx(hexP('#9ab8e8'), R_SPEC, false), vFrame = pal.idx(g.P || hexP(style === 'round' ? '#3a2a18' : '#0e1018'), R_CHROME, false);
+  const R = style === 'patch' ? rb * 1.15 : style === 'shades' ? rb * 1.5 : rb * 1.35;
+  const off = rb * (style === 'patch' ? 0.85 : 1.05);
+  const step = 0.45;
+  for (let a = -R - 1; a <= R + 1; a += step) for (let b = -R - 1; b <= R + 1; b += step) {
+    let v = 0;
+    const shadesCut = style === 'shades' && b > R * 0.62;
+    const d = style === 'square' ? Math.max(Math.abs(a), Math.abs(b) * 1.25) : Math.hypot(a, b * (style === 'shades' ? 1.15 : 1));
+    if (d <= R && !shadesCut) {
+      const rim = d > R - 0.9 || (style === 'shades' && b > R * 0.62 - 0.9);
+      if (style === 'round' || style === 'square') v = rim ? vFrame : 0;
+      else v = rim ? vFrame : Math.abs(a - b + R * 0.2) < 0.5 && b > 0 ? vGlint : vLens;
+    } else if (style !== 'patch' && a < -R && a > -R * 2.2 && Math.abs(b - R * 0.2) < 0.6) v = vFrame;
+    else if (style === 'patch' && Math.abs(b - R * 0.75 - (a + R) * -0.6) < 0.55 && a < 0 && a > -R * 2.4) v = vFrame;
+    if (!v) continue;
+    const curve = -Math.hypot(a, b) * 0.12;
+    put(Math.floor(C[0] + n[0] * (off + curve) + fw[0] * a + up[0] * b), Math.floor(C[1] + n[1] * (off + curve) + fw[1] * a + up[1] * b), Math.floor(C[2] + n[2] * (off + curve) + fw[2] * a + up[2] * b), v);
+  }
+}
+
 // Baked neutral eyeball (body grid resolution): the outer part of a sphere, gaze along its axis.
 function stampEyeball(e, rb, C, n, fl, put, pal, NX, NZ) {
   const R = Math.ceil(rb + 1);
   const g = norm3(n[0] + 0.12, n[1], n[2]);
   const cube = e.e.type === 'pixel';
+  const sd = norm3(g[0] + 0.3, g[1] + 0.45, g[2]);
+  let best = -2, bx = 0, by = 0, bz = 0;
   for (let dz = -R; dz <= R; dz++) for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
     const x = Math.floor(C[0]) + dx, y = Math.floor(C[1]) + dy, z = Math.floor(C[2]) + dz;
     const qx = (x + 0.5 - C[0]) / rb, qy = (y + 0.5 - C[1]) / rb, qz = (z + 0.5 - C[2]) / rb;
@@ -805,9 +939,15 @@ function stampEyeball(e, rb, C, n, fl, put, pal, NX, NZ) {
     if (fl && qz * fl < -0.35) continue;
     if (x < 0 || x >= NX || z < 0 || z >= NZ) continue;
     const dd = Math.hypot(qx, qy, qz) || 1;
-    const [col, role, gl] = eyeColor(e.e, qx / dd, qy / dd, qz / dd, g, 1, false);
+    const [col, role, gl] = eyeColor(e.e, qx / dd, qy / dd, qz / dd, g, 1, false, false);
     put(x, y, z, pal.idx(col, role, !!gl));
+    // the shine: the surface voxel facing up-front-out
+    if (d > 1 - 1.2 / rb && role === R_PUPIL && e.e.type !== 'dot') {
+      const sh = (qx * sd[0] + qy * sd[1] + qz * sd[2]) / dd;
+      if (sh > best) { best = sh; bx = x; by = y; bz = z; }
+    }
   }
+  if (best > -1) put(bx, by, bz, pal.idx(0xffffffff, R_SPEC, false));
 }
 
 function zOfSrc(srcOf, zOf, tx) { return tx >= 0 && tx < zOf.length ? zOf[tx] : 0; }
@@ -1120,11 +1260,12 @@ class Job {
       r = Math.min(1, r * k + 0.12); g = Math.min(1, g * k + 0.12); b = Math.min(1, b * k + 0.12);
     } else if (role === R_FIN) {
       // glassy aqua membrane: pastel glass tone, lit through from both sides, frosted bright edges
+      // keep the fin's own vivid hue, lifted and tinted toward bright aqua glass
       const tn = mat.finTint;
-      r = r * 0.72 + 0.26; g = g * 0.72 + 0.26; b = b * 0.72 + 0.28;
-      r += (0.62 - r) * tn; g += (0.95 - g) * tn; b += (1.0 - b) * tn;
+      r = r * 0.95 + 0.05; g = g * 0.95 + 0.05; b = b * 0.95 + 0.06;
+      g += (0.96 - g) * tn * 0.35; b += (1.0 - b) * tn * 0.7;
       const d = Math.abs(lam);
-      const lit = (0.7 + 0.34 * d + 0.18 * cy) * (0.85 + 0.15 * ao);
+      const lit = (0.88 + 0.26 * d + 0.12 * cy) * (0.9 + 0.1 * ao);
       r *= lit; g *= lit; b *= lit;
       const sp = Math.pow(Math.max(0, Math.abs(hd)), 20) * 0.55 * mat.gloss;
       r += sp; g += sp; b += sp;
@@ -1149,9 +1290,9 @@ class Job {
       const aoF = 0.5 + 0.5 * ao;
       const chrome = role === R_CHROME ? 1 : mat.chrome;
       // light colours: warm sun, aqua sky fill, sea-green bounce from below
-      const lr = (0.36 + 0.22 * sky) * 0.62 + (1 - sky) * 0.06 + diff * 0.86;
-      const lg = (0.36 + 0.22 * sky) * 0.84 + (1 - sky) * 0.12 + diff * 0.84;
-      const lb = (0.36 + 0.22 * sky) * 1.05 + (1 - sky) * 0.11 + diff * 0.78;
+      const lr = (0.44 + 0.2 * sky) * 0.86 + (1 - sky) * 0.12 + diff * 0.84;
+      const lg = (0.44 + 0.2 * sky) * 0.9 + (1 - sky) * 0.11 + diff * 0.82;
+      const lb = (0.44 + 0.2 * sky) * 0.98 + (1 - sky) * 0.12 + diff * 0.78;
       r *= lr * aoF; g *= lg * aoF; b *= lb * aoF;
       // Frutiger gloss: a glass sheen band on the upper flank (crisp lower edge), sky reflection by fresnel
       const gloss = role === R_EYE || role === R_PUPIL ? 1 : role === R_LIMB ? mat.gloss * 0.9 : role === R_THIN ? mat.gloss * 0.6 : mat.gloss;
@@ -1186,6 +1327,11 @@ class Job {
         const k = (iy & 1) === 0 ? (sc === 0 ? 0.07 : sc === 1 ? 0.03 : 0) : sc === 0 ? -0.05 : 0;
         r *= 1 + k; g *= 1 + k; b *= 1 + k;
       }
+    }
+    if (role === R_BODY || role === R_LIMB || role === R_THIN || role === R_FIN) {
+      // vivid tropical colour (aquarium-lamp saturation)
+      const mm = (r + g + b) / 3, kv = role === R_FIN ? 0.2 : VIVID;
+      r = mm + (r - mm) * (1 + kv); g = mm + (g - mm) * (1 + kv); b = mm + (b - mm) * (1 + kv);
     }
     const nse = 1 + (hash3(ix, iy, iz) - 0.5) * 0.04;
     r = clamp01(r * nse); g = clamp01(g * nse); b = clamp01(b * nse);
@@ -1742,9 +1888,9 @@ function inBody(F, bx, by, bz, inset) {
 // s = slant (+ lowers the lid toward the snout: angry; - lowers it toward the back: sad).
 const LIDS = {
   open: { u: 1.2, l: -1.2, s: 0 },
-  neutral: { u: 0.72, l: -0.86, s: 0 }, happy: { u: 0.5, l: -0.2, s: 0 }, sad: { u: 0.3, l: -0.82, s: -0.4 },
+  neutral: { u: 1.05, l: -1.05, s: 0 }, happy: { u: 0.18, l: -0.05, s: 0 }, sad: { u: 0.4, l: -1.05, s: -0.45 },
   angry: { u: 0.12, l: -0.6, s: 0.5 }, scared: { u: 1.05, l: -1.05, s: 0 }, surprised: { u: 1.1, l: -1.1, s: 0 },
-  love: { u: 0.45, l: -0.35, s: 0 }, sleepy: { u: -0.02, l: -0.62, s: -0.1 }, dizzy: { u: 0.42, l: -0.7, s: 0.15 },
+  love: { u: 1.05, l: -1.05, s: 0 }, sleepy: { u: -0.02, l: -0.62, s: -0.1 }, dizzy: { u: 1.05, l: -1.05, s: 0 },
   smug: { u: 0.1, l: -0.45, s: -0.12 }, determined: { u: 0.22, l: -0.62, s: 0.35 }, tired: { u: 0.05, l: -0.66, s: -0.22 },
   disgust: { u: 0.15, l: -0.32, s: 0.25 },
 };
@@ -1766,7 +1912,7 @@ function eyeState(c, fs, st, e) {
   const pup = toon ? (emotionParams(emo).pupil ?? 1) : fs.pupil || 1;
   return {
     u: q6(u), l: q6(l), s: Math.round(s * 4) / 4, lx: Math.round(clamp(lx, -1, 1) * 3) / 3, ly: Math.round(clamp(ly, -1, 1) * 3) / 3,
-    pup: Math.round(clamp(pup, 0.4, 1.6) * 6) / 6, love: toon && emo === 'love',
+    pup: Math.round(clamp(pup, 0.4, 1.6) * 6) / 6, love: toon && emo === 'love', dizzy: toon && emo === 'dizzy',
   };
 }
 
@@ -1817,9 +1963,9 @@ function buildEyePart(F, e3, fl, S, fe) {
     const eU = S.u - S.s * qf, eL = S.l + 0.12 * qf * qf;
     if (d <= 1) {
       // eyeball (parts under closed lids are hidden by the lid shell in front)
-      const [col, role, gl] = eyeColor(e, ux, uy, uz, g, S.pup, S.love);
+      const [col, role, gl] = eyeColor(e, ux, uy, uz, g, S.pup, S.love, S.dizzy);
       P.put(i, j, k, pal.idx(col, role, !!gl));
-      if (d > 1 - 1.5 / Re && qu < eU - 0.08 && qu > eL + 0.08) {
+      if (d > 1 - 1.5 / Re && qu < eU - 0.08 && qu > eL + 0.08 && role === R_PUPIL) {
         const h1 = ux * hM[0] + uy * hM[1] + uz * hM[2], h2d = ux * h2[0] + uy * h2[1] + uz * h2[2];
         if (h1 > best) { best = h1; bestAt = i + j * N + k * N * N; }
         if (h2d > best2) { best2 = h2d; best2At = i + j * N + k * N * N; }
@@ -2012,15 +2158,17 @@ export function voxelParts(items, glows, c, f, st, fs, lod = 0) {
   const time = st.time || 0;
   // eyes (skip tiny / far ones: their baked eyeball reads fine)
   if (lod < 1 || st.pri > 1) {
+    const gl = c.glasses, lens = gl && (gl.style || 'shades') !== 'round' && gl.style !== 'square';
     for (const e3 of F.eyes3) {
       if (e3.rb * scr < 1.6) continue;
+      if (lens && (e3.main || gl.both || e3.front)) continue; // behind dark lenses / an eye patch
       const S = eyeState(c, fs, st, e3.e);
       const fe = clamp(Math.min(Math.round(scr), Math.floor(9 / e3.rb)), 1, 3);
       for (const fl of e3.flanks) {
         const vis = fl.n[0] * R2[0] + fl.n[1] * R2[1] + fl.n[2] * R2[2];
         if (fl.fl !== 0 && vis < -0.12) continue;
         const base = F.pkey + '|e' + e3.idx + '|' + fl.fl + '|' + fe;
-        const key = base + '|' + S.u + ',' + S.l + ',' + S.s + ',' + S.lx + ',' + S.ly + ',' + S.pup + (S.love ? 'L' : '');
+        const key = base + '|' + S.u + ',' + S.l + ',' + S.s + ',' + S.lx + ',' + S.ly + ',' + S.pup + (S.love ? 'L' : '') + (S.dizzy ? 'D' : '');
         const nS = eyeState(c, { emotion: 'neutral', blink: 0, lx: 0, ly: 0, pupil: 1, gx: 0, gy: 0.5 }, st, e3.e);
         const fbKey = base + '|' + nS.u + ',' + nS.l + ',' + nS.s + ',' + nS.lx + ',' + nS.ly + ',' + nS.pup;
         const p = build(key, () => buildEyePart(F, e3, fl, S, fe), fbKey);
@@ -2074,13 +2222,14 @@ export function drawVoxelFish(ctx, f, opts = {}) {
   const vz = f.vz || 0, sp = Math.abs(f.vx || 0) + 6;
   const heading = clamp(Math.atan2(vz * 260, sp) / DEG, -55, 55);
   const alpha = opts.alpha ?? 1;
+  if (f.wk) drawPellets(ctx, f, alpha);
   if (alpha < 1) ctx.globalAlpha = alpha;
   const a = drawFishRig(ctx, f.c, {
     x: f.x, y: f.y, bob: f.bob || 0, facing: f.facing ?? 1, turn: f.turn ?? f.facing ?? 1, angle: f.angle || 0, scale: S,
     squash: f.squash || 0, swimPhase: f.swimPhase ?? f.tailPhase ?? 0, tailPhase: f.tailPhase ?? 0, finPhase: f.finPhase ?? 0,
     speed01: f.speed01 ?? 0.4, inflate: f.quirks?.has?.('inflate') ? f.inflate || 0 : 0,
     lookX: f.lookX ?? null, lookY: f.lookY ?? null, blink: f.blink || 0, emotion: f.emotion || 'neutral', mouth: f.mouth || 0,
-    time: f.age ?? 0, glow: opts.glow ?? 0, heading, chain: f.chain, voxAlpha: alpha,
+    time: f.age ?? 0, glow: opts.glow ?? 0, heading, chain: f.chain, voxAlpha: alpha, ...(f.wk ? wakkaRig(f) : null),
   });
   ctx.globalAlpha = 1;
   return a;

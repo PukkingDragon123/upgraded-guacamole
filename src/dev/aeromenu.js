@@ -58,6 +58,7 @@ function makeGame(canvas, params) {
     toast(text, icon) { g.ui.toast(text, icon); },
     coinDisplay() { return Math.floor(g.ui.coinShown).toLocaleString('en'); },
     clockTooltip: () => 'Sunny Shallows',
+    biomeName: () => 'Sunny Shallows',
     addCoins(n, x, y) { st.coins += n; if (x !== undefined) for (let i = 0; i < Math.min(6, Math.ceil(n / 3)); i++) g.ui.coinFly(x, y, n); },
     spendCoins(n) { if (st.coins < n) return false; st.coins -= n; return true; },
     command(id) {

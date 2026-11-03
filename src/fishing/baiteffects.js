@@ -18,9 +18,11 @@ export class BaitEffects {
     this.relicT = 0;
   }
 
+  // Special-bait effect id: one-time bait from src/store/bait.js carries `effect` (worm|golden|flood|
+  // blackhole|chip|popup|lantern|relic, also on custom bait built on those bases); legacy special bait used its type.
   bait() {
     const b = this.game.currentBait();
-    return b?.kind === 'special' ? b.type : null;
+    return b?.effect || (b?.kind === 'special' ? b.type : null);
   }
 
   onEquip(b) {

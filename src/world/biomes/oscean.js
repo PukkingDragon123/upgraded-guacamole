@@ -1,10 +1,13 @@
 // (OS)cean (id 'oscean', 4 m): the classic default desktop wallpaper - a smooth rolling green hill under a bright
-// blue sky with soft cumulus - has flooded. An original landscape (no photo, no logos), all voxel on the shared world
-// camera. Above the surface: an Aero sky (sun with lens flare, voxel cumulus, aurora ribbons, a rainbow after the
-// rain), the crest of a flooded hill poking out on the horizon with spinning white wind turbines, and a glossy pier
-// where NPCs hang out. Underwater: the huge glossy grass hill continues as the seabed under water as blue as the sky,
-// clouds made of bubbles, light shafts, wind turbines turning slowly in the current, glass orbs and chrome droplets,
-// glossy leaves and flowers, aqua bubble plants, app-like crystal plants and a passing dolphin pod.
+// blue sky with soft cumulus - has flooded, styled after an eco Aero wallpaper. An original landscape (no photo, no
+// logos), voxel on the shared world camera. Above the surface: a saturated Aero sky (sun rays, a big lens flare, white
+// arc lines, voxel cumulus, aurora ribbons, a rainbow after the rain), the CURVED grass horizon of a little planet with
+// spinning white wind turbines, a lone round tree and a glass city inside a giant water bubble, a floating green glass
+// globe dripping into the sea, glossy leafy branches framing the top corners, splashes on the surface and a glossy pier
+// where NPCs hang out. Underwater: the glossy grass hill continues as the seabed under vivid aquarium-lamp blue, with
+// candy-coloured coral reefs, clouds made of bubbles, light shafts, wind turbines turning in the current, glass orbs
+// and chrome droplets, big glossy leaves in the corners, flowers, aqua bubble plants, app-like crystal plants and a
+// passing dolphin pod.
 // Weathers: sunny, bubble breeze, glossy rain, aurora night. Static art is baked in build() (also exposed as a
 // step generator, steps(W, H), so the Ocean can spread the work over frames while travelling).
 
@@ -17,6 +20,8 @@ import { renderModel } from '../voxkit.js';
 import { clamp, clamp01, lerp, smoothstep, ease, hash2, fbm2, TAU } from '../../core/math.js';
 import { RNG } from '../../core/rng.js';
 import { mix, rgba, pack } from '../../core/color.js';
+import { flipCanvas } from '../../gfx/pixel.js';
+import { reefSprite, coralSprite } from '../coral.js';
 import { makeCanvas, ctxOf } from '../../core/canvas.js';
 import { VoxelModel } from '../../gfx/voxel.js';
 import * as NPC from '../../gfx/npcs.js';
@@ -29,10 +34,11 @@ import {
 import {
   AeroOverlay, AERO_LOOKS, glassOrb, chromeDrop, soapBubble, bubbleCloud, rainbowArc, auroraRibbon, turbineTower, rotorFrames,
   swayAnim, buildLeaves, buildFlowers, buildCrystalApps, buildBubblePlant, pierModel, sparkleStar, bloomStrip, waterGloss,
+  skyArcs, sunRays, GlassGlobe, waterBubble, glassCity, roundTree, splashFrames, leafBranch, planetEdge,
 } from '../aerokit.js';
 
 const SKY = {
-  day: [[0, '#0b52c4'], [0.36, '#2380e8'], [0.68, '#55b4fa'], [0.88, '#a6e0ff'], [1, '#e8fcff']],
+  day: [[0, '#0646c8'], [0.34, '#1676f0'], [0.66, '#3ea8ff'], [0.88, '#9adcff'], [1, '#f0fcff']],
   dusk: [[0, '#16246a'], [0.4, '#45449a'], [0.68, '#c46aa8'], [0.86, '#ff9e8a'], [1, '#ffe2a8']],
   night: [[0, '#020816'], [0.55, '#071840'], [0.85, '#112e6a'], [1, '#1c4686']],
 };
@@ -43,7 +49,7 @@ const OVERCAST = {
   night: [[0, '#060c1c'], [1, '#182844']],
 };
 const WATER = {
-  day: [[0, '#d6fbff'], [0.05, '#8ae2ff'], [0.24, '#55c2fa'], [0.6, '#3a9cec'], [1, '#2a7ad4']],
+  day: [[0, '#d6fbff'], [0.05, '#78dcff'], [0.22, '#38b2ff'], [0.6, '#1e8cf2'], [1, '#166ee0']],
   dusk: [[0, '#ffd6c2'], [0.04, '#c2b6e2'], [0.14, '#6aa0da'], [0.5, '#3a68b8'], [1, '#283f8e']],
   night: [[0, '#4a8ed0'], [0.1, '#2e6eb0'], [0.5, '#1e5094'], [1, '#133676']],
 };
@@ -51,58 +57,6 @@ const ORB_TINTS = ['#7fdcff', '#8af0a8', '#ffffff', '#ffd27a', '#c8a8ff'];
 
 const qmix = (a, b, t) => mix(a, b, Math.round(clamp01(t) * 32) / 32);
 const tri = (a, b, c, w) => qmix(qmix(a, b, w.dusk / Math.max(0.001, w.day + w.dusk)), c, w.night);
-
-// ------------------------------------------------------------------ voxel horizon: a flooded hill's crest
-
-function hillIsland(seed, nx, nh, turbines, haze) {
-  const r = new RNG(seed);
-  const nz = 26;
-  const m = new VoxelModel(nx, nh + 2, nz);
-  const C = (c, o = {}) => m.color(c, { jitter: 0.05, ...o });
-  const grass = C('#5cd246', { spec: 0.35, smooth: 0.5 }), grassL = C('#9cf060', { spec: 0.5, smooth: 0.5 }), grassD = C('#2fa23e', { smooth: 0.4 });
-  const wet = C('#2a8a6a'), flower = C('#ffffff'), flowerY = C('#ffe23a');
-  const cx = nx / 2, cz = nz / 2;
-  for (let z = 0; z < nz; z++) for (let x = 0; x < nx; x++) {
-    const dx = (x + 0.5 - cx) / (nx / 2 - 1), dz = (z + 0.5 - cz) / (nz / 2 - 1);
-    const q = 1 - dx * dx * 0.9 - dz * dz;
-    if (q <= 0) continue;
-    const h = Math.round(nh * Math.pow(q, 0.8) + Math.sin(x * 0.3 + seed) * 0.6);
-    for (let y = 0; y < h; y++) {
-      let c = y < 2 ? wet : y >= h - 1 ? (dx < -0.1 ? grassL : grass) : grassD;
-      if (y === h - 1 && hash2(x, z, seed) < 0.03) c = hash2(z, x, seed) < 0.5 ? flower : flowerY;
-      m.set(x, y, z, c);
-    }
-  }
-  const base = renderModel(m, { scale: 2, outline: true, jitter: 0.04, ao: 0.9, light: { top: 5, lit: 3.8, dark: 2.2, bottom: 1.2 } });
-  // towers stand on the dome; the rotors spin live
-  const towers = [];
-  let minX = 0, minY = 0, maxX = base.w, maxY = base.h;
-  for (const [xf, th] of turbines) {
-    const vx = Math.round(xf * nx), vz = Math.round(cz);
-    let vy = 0;
-    while (vy < m.ny && m.get(vx, vy, vz)) vy++;
-    const p = base.project(vx + 0.5, vy, vz + 0.5);
-    const T = turbineTower(th, 1);
-    const x = Math.round(p[0] - T.ox), y = Math.round(p[1] - T.oy + 1);
-    towers.push({ T, x, y });
-    minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x + T.w); maxY = Math.max(maxY, y + T.h);
-  }
-  const L = Math.round(Math.max(...turbines.map((t) => t[1])) * 0.4);
-  minY -= L + 4; minX -= L + 4; maxX += L + 4;
-  const W = maxX - minX, H = maxY - minY;
-  const comp = makeCanvas(W, H);
-  const g = ctxOf(comp);
-  g.drawImage(base.canvas, -minX, -minY);
-  const hubs = [];
-  for (const t of towers) {
-    g.drawImage(t.T.canvas, t.x - minX, t.y - minY);
-    hubs.push({ x: t.x - minX + t.T.hub[0], y: t.y - minY + t.T.hub[1], L: Math.max(5, Math.round(t.T.h * 0.36)), ph: r.float(0, TAU), v: r.float(1.6, 2.4) });
-  }
-  const water = base.project(cx, 1, nz);
-  const out = { w: W, h: H, ox: Math.round(water[0] - minX), oy: Math.round(water[1] - minY), hubs };
-  for (const [k, [col, a]] of Object.entries(haze)) out[k] = hazed(comp, col, a);
-  return out;
-}
 
 // ------------------------------------------------------------------ biome
 
@@ -150,10 +104,11 @@ export class OsceanBiome extends Biome {
     this.ys = new Int16Array(W + 2);
     this.ys.fill(this.base);
     this.waterBlend = new Blend(); this.ocBlend = new Blend();
+    this.rainbow = null; this.aurora = null;
     const prof = {};
     let t0 = performance.now();
     const lap = (k) => { const t1 = performance.now(); prof[k] = Math.round(t1 - t0); t0 = t1; };
-    this.buildSky(); lap('sky');
+    yield* this.skySteps(); lap('sky');
     yield;
     const wo = { y0: this.base - 2, y1: H, levels: 24 };
     this.water = { day: gradientStrip(H, WATER.day, wo), dusk: gradientStrip(H, WATER.dusk, wo), night: gradientStrip(H, WATER.night, wo) };
@@ -176,22 +131,98 @@ export class OsceanBiome extends Biome {
     this.fresh = true;
   }
 
-  buildSky() {
+  buildSky() { const it = this.skySteps(); while (!it.next().done) { /* all */ } }
+
+  *skySteps() {
     const W = this.W, base = this.base, top = this.top;
-    this.sky = new SkyDome({ W, top, base, seed: 31, stops: SKY, stars: 80, haze: 0.2, clouds: { n: 11, size: [26, 66], y: [top + 30, base - 34], scale: 2 } });
+    const P = (this.skyMs = {});
+    let t0 = performance.now();
+    const lap = (k) => { const t1 = performance.now(); P[k] = Math.round(t1 - t0); t0 = t1; };
+    this.sky = new SkyDome({ W, top, base, seed: 31, stops: SKY, stars: 80, haze: 0.2, clouds: { n: 8, size: [26, 60], y: [top + 30, base - 60], scale: 2 } });
     const so = { levels: 10, y0: 0, y1: base + 4 - top };
     const oh = this.sky.h;
     this.overcast = { day: gradientStrip(oh, OVERCAST.day, so), dusk: gradientStrip(oh, OVERCAST.dusk, so), night: gradientStrip(oh, OVERCAST.night, so) };
     const hz = (k) => ({ day: [SKYHZ.day, k], dusk: [SKYHZ.dusk, k + 0.08], night: [SKYHZ.night, Math.min(0.85, k + 0.3)] });
-    this.islands = [
-      { spr: hillIsland(7, 74, 9, [[0.5, 22]], hz(0.42)), x: Math.round(W * 0.16), blend: new Blend() },
-      { spr: hillIsland(3, 130, 15, [[0.26, 30], [0.48, 36], [0.7, 30]], hz(0.2)), x: Math.round(W * 0.55), blend: new Blend() },
-    ];
-    for (const is of this.islands) for (const h of is.spr.hubs) h.R = rotorFrames(h.L, 1, 12);
+    // the curved grass horizon of a little planet, with its set pieces baked on (turbine rotors spin live)
+    lap('dome');
+    yield;
+    this.edge = this.buildEdge(hz(0.1));
+    lap('edge');
+    yield;
+    for (const h of this.edge.hubs) h.R = rotorFrames(h.L, 1, 10);
+    lap('rotors');
+    this.arcs = skyArcs(Math.round(W * 0.66), 210);
+    this.rays = [sunRays(150, 3), sunRays(150, 7, 18)];
+    lap('arcsrays');
+    this.globe = new GlassGlobe(54, 24, 4);
+    this.globe.frame(0);
+    lap('globe');
+    this.globePos = { x: Math.round(W * 0.8), y: Math.round(base - 182) };
+    const br = leafBranch(2, 78, 2), bl = leafBranch(5, 56, 2, '#3cc84a');
+    this.branches = [{ c: br.canvas, x: W - br.w + 6, y: top + 52, ph: 0 }, { c: flipCanvas(bl.canvas), x: -6, y: top + 50, ph: 2 }];
+    lap('branches');
+    this.splashF = splashFrames(9, 6, 2);
+    this.splashes = [];
+    this.globeDrops = [];
     this.rainTile = streakTile(96, 48, 26, '#f2fbff', { seed: 3, alpha: 0.85 });
     this.rainTile2 = streakTile(128, 64, 14, '#bfefff', { seed: 8, len: [5, 9], alpha: 0.7 });
-    this.rainbow = rainbowArc(Math.round(W * 0.42), 4);
-    this.aurora = [auroraRibbon(480, 130, 5), auroraRibbon(400, 110, 9, ['#a8ffd8', '#7ad8ff', '#ff9ae0'])];
+    // the rainbow and the aurora ribbons are built the first time their weather shows up
+    lap('rest');
+  }
+
+  // Curved planet-edge horizon + glass city in a water bubble + lone tree + turbines, composed into one sprite with
+  // day / dusk / night haze variants. Returns {w, h, ox, oy (waterline at the left end), hubs, day, dusk, night}.
+  buildEdge(haze) {
+    const W = this.W;
+    const E = planetEdge(W, { peak: 0.38, height: 46, chord: 0.58 });
+    const items = [];
+    const city = glassCity(3, 2), tree = roundTree(2, 5);
+    const towers = [[0.29, 34], [0.62, 40], [0.73, 30]].map(([xf, th]) => ({ xf, T: turbineTower(th, 1) }));
+    let minX = 0, minY = 0, maxX = E.w, maxY = E.h;
+    const put = (spr, xf, dy = 0) => {
+      const [cx, cy] = E.crest(xf);
+      const it = { spr, x: Math.round(cx - spr.ox), y: Math.round(cy - spr.oy + dy) };
+      items.push(it);
+      minX = Math.min(minX, it.x); minY = Math.min(minY, it.y); maxX = Math.max(maxX, it.x + spr.w); maxY = Math.max(maxY, it.y + spr.h);
+      return it;
+    };
+    const cityIt = put(city, 0.13, 4);
+    const treeIt = put(tree, 0.5, 3);
+    const tw = towers.map((t) => ({ ...t, it: put({ canvas: t.T.canvas, ox: t.T.ox, oy: t.T.oy, w: t.T.w, h: t.T.h }, t.xf, 2) }));
+    const bubR = Math.round(city.w * 0.62);
+    const bub = waterBubble(bubR);
+    const [bcx, bcy0] = E.crest(0.13, 0.3);
+    const bub0 = { x: bcx - (bub.width >> 1), y: Math.round(bcy0 - bubR * 0.62 - (bub.height >> 1)) };
+    minY = Math.min(minY, bub0.y - 4); minX = Math.min(minX, bub0.x);
+    const L = 18;
+    minY -= L + 2;
+    const w = maxX - minX, h = maxY - minY;
+    const comp = makeCanvas(w, h);
+    const g = ctxOf(comp);
+    // the bubble's back half, the city seen through water, then the edge, then the bubble's glossy front
+    g.globalAlpha = 0.35;
+    g.drawImage(bub, bub0.x - minX, bub0.y - minY);
+    g.globalAlpha = 1;
+    g.drawImage(city.canvas, cityIt.x - minX, cityIt.y - minY);
+    g.globalCompositeOperation = 'source-atop';
+    g.globalAlpha = 0.18;
+    g.fillStyle = '#7ad8ff';
+    g.fillRect(cityIt.x - minX, cityIt.y - minY, city.w, city.h);
+    g.globalCompositeOperation = 'source-over';
+    g.globalAlpha = 1;
+    g.drawImage(E.canvas, -minX, -minY);
+    g.drawImage(tree.canvas, treeIt.x - minX, treeIt.y - minY);
+    const hubs = [];
+    const r = new RNG(12);
+    for (const t of tw) {
+      g.drawImage(t.T.canvas, t.it.x - minX, t.it.y - minY);
+      hubs.push({ x: t.it.x - minX + t.T.hub[0], y: t.it.y - minY + t.T.hub[1], L: Math.max(5, Math.round(t.T.h * 0.36)), ph: r.float(0, TAU), v: r.float(1.6, 2.4) });
+    }
+    g.drawImage(bub, bub0.x - minX, bub0.y - minY);
+    const out = { w, h, ox: E.ox - minX, oy: E.oy - minY, hubs };
+    for (const [k, [col, a]] of Object.entries(haze)) out[k] = hazed(comp, col, a);
+    out.blend = new Blend();
+    return out;
   }
 
   // The flooded wallpaper: a voxel heightfield of rolling grass hills (front meadow, a shoulder on the left, the big
@@ -214,8 +245,9 @@ export class OsceanBiome extends Biome {
       return h;
     };
     this.smoothH = smoothH;
+    let lastS = 0;
     const height = (X, z) => {
-      let h = smoothH(X, z);
+      let h = (lastS = smoothH(X, z));
       const front = 1 - smoothstep(0.0, 0.45, z);
       h += (fbm2(X * 0.0045, z * 1.6, 3, 21) - 0.5) * 16 * (1 - front * 0.55) + Math.sin(X * 0.011 + z * 5) * 2 * front;
       return Math.max(-2, h);
@@ -234,14 +266,16 @@ export class OsceanBiome extends Biome {
         const n = fbm2(X * 0.012, z * 3.2, 2, 5);
         if (n > 0.6) c = [lerp(c[0], GL[0], 0.45), lerp(c[1], GL[1], 0.45), lerp(c[2], GL[2], 0.45)];
         else if (n < 0.36) c = [c[0] * 0.86, c[1] * 0.9, c[2] * 0.84];
-        // glossy sheen from the smooth hill shape
-        const e = 3;
-        const dX = (smoothH(X + e, z) - smoothH(X - e, z)) / (2 * e), dZ = (smoothH(X, z + 0.03) - smoothH(X, z - 0.03)) / 6;
-        let nx = -dX, ny = 1, nz = -dZ;
-        const nl = Math.hypot(nx, ny, nz);
-        nx /= nl; ny /= nl; nz /= nl;
-        const sp = Math.pow(Math.max(0, nx * Hx + ny * Hy + nz * Hz), 22) * 0.9 + Math.pow(Math.max(0, nx * Hx + ny * Hy + nz * Hz), 6) * 0.12;
-        if (sp > 0.02) c = [lerp(c[0], 236, sp), lerp(c[1], 255, sp), lerp(c[2], 196, sp)];
+        // glossy sheen from the smooth hill shape (forward differences; the far range is fogged anyway)
+        if (z < 1.25) {
+          const dX = (smoothH(X + 4, z) - lastS) / 4, dZ = (smoothH(X, z + 0.04) - lastS) / 8;
+          let nx = -dX, ny = 1, nz = -dZ;
+          const nl = Math.hypot(nx, ny, nz);
+          nx /= nl; ny /= nl; nz /= nl;
+          const hd = Math.max(0, nx * Hx + ny * Hy + nz * Hz);
+          const sp = Math.pow(hd, 22) * 0.9 + Math.pow(hd, 6) * 0.12;
+          if (sp > 0.02) c = [lerp(c[0], 236, sp), lerp(c[1], 255, sp), lerp(c[2], 196, sp)];
+        }
         // flowers and clover in the near meadow
         if (z < 0.7) {
           const hs = hash2(Math.floor(X / 2), Math.floor(z * 50), 5);
@@ -262,13 +296,13 @@ export class OsceanBiome extends Biome {
     const W = this.W, D = this.D;
     // underwater wind turbines (towers baked, rotors live)
     this.turbines = [];
-    for (const [xf, z, th, sc] of [[0.13, 0.36, 74, 1.7], [0.78, 0.9, 64, 1.05], [0.6, 1.12, 56, 0.8], [0.93, 1.02, 48, 0.75], [0.36, 0.86, 44, 0.85]]) {
+    for (const [xf, z, th, sc] of [[0.13, 0.36, 74, 1.7], [0.78, 0.9, 64, 1.05], [0.6, 1.12, 56, 0.8]]) {
       const s = qscale(sc, 0.05, 0.4);
       const T = turbineTower(th, s);
       const x = Math.round(xf * W);
       const it = D.add({ sprite: T, x, z, dy: 2 });
       const L = Math.round(th * 0.4);
-      this.turbines.push({ x: it.x - T.ox + T.hub[0], y: it.y - T.oy + T.hub[1], z, band: it.band, R: rotorFrames(L, s, 12), ph: xf * 9, v: 0.25 + (1 - z) * 0.1 });
+      this.turbines.push({ x: it.x - T.ox + T.hub[0], y: it.y - T.oy + T.hub[1], z, band: it.band, R: rotorFrames(L, s, 10), ph: xf * 9, v: 0.25 + (1 - z) * 0.1 });
     }
     // glass orbs resting in the grass
     this.restOrbs = [];
@@ -277,6 +311,15 @@ export class OsceanBiome extends Biome {
       const it = D.add({ sprite: spr, x: Math.round(xf * W), z, dy: 2 });
       this.restOrbs.push({ x: it.x, y: it.y - r - 1, r, z, band: it.band, tint: ORB_TINTS[ti] });
     }
+    // candy-coloured coral reefs on the meadow (the moving-picture aquarium lamp)
+    const kz = (z) => qscale(1.5 * D.s(z), 0.1, 0.3);
+    const reef = (seed, xf, z, o, flip = false) => D.add({ sprite: reefSprite(seed, 'oscean', o, kz(z), flip), x: Math.round(xf * W), z, id: 'reef' });
+    const coral = (kind, seed, xf, z, size) => D.add({ sprite: coralSprite(kind, seed, 'oscean', size, kz(z)), x: Math.round(xf * W), z, id: 'coral' });
+    reef(301, 0.3, 0.2, { w: 92, h: 62, d: 34 });
+    reef(302, 0.76, 0.28, { w: 86, h: 58, d: 32 }, true);
+    reef(303, 0.53, 0.58, { w: 96, h: 62, d: 36 });
+    for (const [kind, seed, xf, z, size] of [['staghorn', 311, 0.09, 0.1, 12], ['fan', 312, 0.44, 0.0, 12], ['brain', 313, 0.63, -0.12, 8], ['tube', 314, 0.9, 0.08, 10],
+      ['staghorn', 316, 0.66, 0.42, 14], ['fan', 317, 0.12, 0.55, 15], ['whip', 319, 0.38, 0.4, 10], ['bubble', 320, 0.86, -0.2, 8], ['brain', 321, 0.17, -0.22, 8]]) coral(kind, seed, xf, z, size);
     const big = this.restOrbs[0];
     this.orbSecret = { x: big.x - big.r - 2, y: big.y - big.r - 2, w: big.r * 2 + 4, h: big.r * 2 + 4, cx: big.x, cy: big.y };
   }
@@ -293,19 +336,19 @@ export class OsceanBiome extends Biome {
       return it;
     };
     // swaying grass tufts all over the meadow and up the hill
-    const tufts = [[0.03, -0.1], [0.09, 0.12], [0.16, -0.18], [0.24, 0.2], [0.31, -0.06], [0.39, 0.16], [0.44, -0.2], [0.55, 0.1], [0.61, -0.14], [0.66, 0.22],
-      [0.74, -0.04], [0.8, 0.14], [0.88, -0.16], [0.95, 0.08], [0.2, 0.5], [0.33, 0.6], [0.5, 0.45], [0.62, 0.58], [0.75, 0.5], [0.9, 0.62], [0.12, 0.7]];
+    const tufts = [[0.09, 0.12], [0.16, -0.18], [0.24, 0.2], [0.31, -0.06], [0.39, 0.16], [0.44, -0.2], [0.55, 0.1], [0.61, -0.14], [0.66, 0.22],
+      [0.74, -0.04], [0.8, 0.14], [0.88, -0.16], [0.2, 0.5], [0.33, 0.6], [0.5, 0.45], [0.62, 0.58], [0.75, 0.5], [0.9, 0.62], [0.12, 0.7]];
     for (const [xf, z] of tufts) add(voxAnim('seagrass', 1 + r.int(0, 2), 'oscean', 8, sc(z), 8), Math.round(xf * W), z);
     // flowers, glossy leaves, aqua bubble plants, app-like crystal plants
     const flower = (seed, xf, z, size) => { const k = sc(z); const s = Math.round(size * k); add(swayAnim('flw' + seed + '|' + s, [s * 3 + 10, s * 2 + 12, 12], buildFlowers(s), { seed, frames: 6, period: 3.6 }), Math.round(xf * W), z); };
-    const leaves = (seed, xf, z, size, hue) => { const k = sc(z); const s = Math.round(size * k); add(swayAnim('lvs' + seed + '|' + s + hue, [s * 3 + 10, s * 2 + 10, 16], buildLeaves(s, hue), { seed, frames: 6, period: 4.2 }), Math.round(xf * W), z); };
+    const leaves = (seed, xf, z, size, hue, frames = 6) => { const k = sc(z); const s = Math.round(size * k); add(swayAnim('lvs' + seed + '|' + s + hue, [s * 3 + 10, s * 2 + 10, 16], buildLeaves(s, hue), { seed, frames, period: 4.2 }), Math.round(xf * W), z); };
     const bubbly = (seed, xf, z, size) => { const k = sc(z); const s = Math.round(size * k); add(swayAnim('bpl' + seed + '|' + s, [s * 3 + 10, s * 2 + 12, 12], buildBubblePlant(s), { seed, frames: 6, period: 3.2 }), Math.round(xf * W), z, true); };
     const crystal = (seed, xf, z, size) => { const k = sc(z); const s = Math.round(size * k); add(swayAnim('cry' + seed + '|' + s, [s * 2 + 14, s * 2 + 12, 10], buildCrystalApps(s), { seed, frames: 4, period: 5 }), Math.round(xf * W), z, true); };
-    flower(1, 0.065, 0.02, 12); flower(2, 0.345, -0.12, 11); flower(3, 0.585, 0.06, 12); flower(4, 0.71, -0.18, 10); flower(5, 0.97, 0.12, 11);
-    flower(6, 0.43, 0.3, 12); flower(7, 0.83, 0.38, 12); flower(8, 0.18, 0.62, 12);
-    leaves(11, 0.015, -0.24, 16, '#3fcf4a'); leaves(12, 0.405, 0.04, 13, '#4ad85a'); leaves(13, 0.905, -0.08, 15, '#36c04a'); leaves(14, 0.56, 0.36, 13, '#5ae06a'); leaves(15, 0.255, 0.3, 12, '#2fbf5a');
-    bubbly(21, 0.125, -0.02, 13); bubbly(22, 0.645, 0.24, 13); bubbly(23, 0.95, 0.44, 12); bubbly(24, 0.3, 0.7, 13);
-    crystal(31, 0.535, -0.08, 14); crystal(32, 0.765, 0.18, 13); crystal(33, 0.2, 0.32, 12); crystal(34, 0.44, 0.74, 14);
+    flower(1, 0.065, 0.02, 12); flower(2, 0.345, -0.12, 11); flower(3, 0.585, 0.06, 12); flower(5, 0.97, 0.12, 11); flower(7, 0.83, 0.38, 12);
+    // big glossy leaves framing the bottom corners, smaller clumps on the meadow
+    leaves(11, 0.01, -0.36, 30, '#26c83a', 4); leaves(13, 0.99, -0.34, 32, '#22c040', 4); leaves(12, 0.405, 0.04, 13, '#4ad85a'); leaves(14, 0.56, 0.36, 13, '#5ae06a');
+    bubbly(21, 0.125, -0.02, 13); bubbly(22, 0.645, 0.24, 13); bubbly(24, 0.3, 0.7, 13);
+    crystal(31, 0.535, -0.08, 14); crystal(32, 0.765, 0.18, 13); crystal(34, 0.44, 0.74, 14);
     // aqua kelp ribbons rising along the far slopes
     for (const [xf, z] of [[0.05, 0.62], [0.085, 0.68], [0.97, 0.7], [0.92, 0.78], [0.42, 1.0], [0.46, 1.05]]) add(voxAnim('kelp', 2 + r.int(0, 1), 'oscean', 10, sc(z), 8), Math.round(xf * W), z);
     // floating glass orbs and chrome droplets in the open water
@@ -344,7 +387,7 @@ export class OsceanBiome extends Biome {
     this.pier.top = cropRows(P.canvas, 0, cut);
     this.pier.under = hazed(cropRows(P.canvas, cut, P.h), '#4ab4ea', 0.5);
     this.pier.cut = cut;
-    this.npcs = [{ id: 'marina', x: x0 + 52, facing: -1, ph: 0 }, { id: 'fizz', x: x0 + 118, facing: -1, ph: 2.1 }];
+    this.npcs = [{ id: 'marina', x: x0 + 46, facing: -1, ph: 0, pose: 'wave' }, { id: 'fizz', x: x0 + 132, facing: -1, ph: 2.1, pose: 'idle' }];
     this.secretT = 0;
   }
 
@@ -439,7 +482,19 @@ export class OsceanBiome extends Biome {
     this.airSoap = this.airSoap.filter((b) => b.x < W + 30 && b.life < 30);
     // turbines
     for (const tb of this.turbines) tb.ph += dt * tb.v * (1 + wx.bubbles * 0.8);
-    for (const is of this.islands) for (const h of is.spr.hubs) h.ph += dt * h.v * (1 + wx.bubbles * 1.2 + wx.rain * 0.4);
+    for (const h of this.edge.hubs) h.ph += dt * h.v * (1 + wx.bubbles * 1.2 + wx.rain * 0.4);
+    this.globe.warm();
+    // the globe drips into the sea; splashes pop up along the surface
+    const gp = this.globePos;
+    if (Math.random() < dt * 0.9 && this.globeDrops.length < 4) this.globeDrops.push({ x: gp.x + (Math.random() - 0.5) * 50, y: gp.y + 40, vy: 20, h: Math.random() < 0.5 ? 7 : 9 });
+    for (const d of this.globeDrops) {
+      d.vy += 240 * dt; d.y += d.vy * dt;
+      if (d.y >= this.waveAt(d.x) - 1) { d.done = true; this.addSplash(d.x, 0.7); water?.splash?.(d.x, 0.35, 5); }
+    }
+    this.globeDrops = this.globeDrops.filter((d) => !d.done);
+    if (Math.random() < dt * (0.5 + wx.bubbles + wx.rain * 2) * q) this.addSplash(Math.random() * W, 0.5 + Math.random() * 0.5);
+    for (const sp of this.splashes) sp.t += dt;
+    this.splashes = this.splashes.filter((sp) => sp.t < sp.dur);
     // dolphin pod in the far water
     if (this.pod) {
       this.dolphin.warm();
@@ -457,6 +512,12 @@ export class OsceanBiome extends Biome {
     for (const n of this.npcs) n.ph += dt;
     this.secretT = Math.max(0, this.secretT - dt);
     this.aero.update(dt, env);
+  }
+
+  addSplash(x, k = 1) {
+    if (this.splashes.length > 10) return;
+    if (this.pier && x > this.pier.x0 - 8) return;
+    this.splashes.push({ x, t: 0, dur: 0.55 + k * 0.25, k });
   }
 
   secrets() { return this.game?.state?.secrets || {}; }
@@ -478,6 +539,7 @@ export class OsceanBiome extends Biome {
     const au = wx.aurora * (0.28 + 0.72 * tod.night) + tod.night * 0.08;
     if (au > 0.02) {
       g.globalCompositeOperation = 'lighter';
+      this.aurora ||= [auroraRibbon(480, 130, 5), auroraRibbon(400, 110, 9, ['#a8ffd8', '#7ad8ff', '#ff9ae0'])];
       this.aurora.forEach((spr, i) => {
         const pat = g.createPattern(spr, 'repeat-x');
         const ox = (t * (i ? -7 : 5)) % spr.width;
@@ -491,11 +553,32 @@ export class OsceanBiome extends Biome {
       g.globalAlpha = 1;
     }
     const clear = wx.clear;
+    // sun rays fanning out behind everything
+    const B = skyBodies(env.hour ?? 12, W, this.top, this.base);
+    const pv = Math.round(0.28 * (scroll - ref));
+    const ra = clear * (tod.day + tod.dusk * 0.7) * (B.sun.up ? 1 : 0);
+    if (ra > 0.02) {
+      g.globalCompositeOperation = 'lighter';
+      this.rays.forEach((spr, i) => {
+        g.globalAlpha = ra * (i ? 0.5 + 0.5 * Math.sin(t * 0.21) : 0.5 - 0.5 * Math.sin(t * 0.21)) * 0.75;
+        g.drawImage(spr, Math.round(B.sun.x - (spr.width >> 1)), Math.round(B.sun.y + pv - (spr.height >> 1)));
+      });
+      g.globalCompositeOperation = 'source-over';
+      g.globalAlpha = 1;
+    }
     sky.drawBodies(g, env, tod, clear, scroll, ref);
+    // white arc lines sweeping across the sky
+    const aa = (0.55 + tod.day * 0.35) * (1 - tod.night * 0.6) * (1 - wx.rain * 0.4);
+    if (aa > 0.03) {
+      g.globalAlpha = aa * (0.85 + 0.15 * Math.sin(t * 0.5));
+      g.drawImage(this.arcs, Math.round(W * 0.2), this.base - 250 + Math.round(0.2 * (scroll - ref)));
+      g.globalAlpha = 1;
+    }
     // rainbow after the glossy rain
     const rb = wx.rain * (tod.day + tod.dusk * 0.4) * 0.9;
     if (rb > 0.02) {
       g.globalAlpha = rb * (0.7 + 0.2 * Math.sin(t * 0.4));
+      this.rainbow ||= rainbowArc(Math.round(W * 0.42), 4);
       g.drawImage(this.rainbow, Math.round(W * 0.42 - this.rainbow.width / 2), this.base - this.rainbow.height + 4 + Math.round(0.1 * (scroll - ref)));
       g.globalAlpha = 1;
     }
@@ -510,18 +593,20 @@ export class OsceanBiome extends Biome {
       g.fillRect(0, y0, W, y1 - y0);
       g.globalAlpha = 1;
     }
-    // the flooded hills' crests on the horizon with their turbines
-    for (const is of this.islands) {
-      const s = is.spr;
-      const c = is.blend.get([[s.day, tod.day], [s.dusk, tod.dusk], [s.night, tod.night]]);
-      const x = is.x - s.ox, y = this.base + 2 - s.oy;
+    // the floating green glass globe (drips into the sea)
+    this.drawGlobe(g, scroll, ref);
+    // the curved grass horizon with its city bubble, tree and turbines
+    const E = this.edge;
+    {
+      const c = E.blend.get([[E.day, tod.day], [E.dusk, tod.dusk], [E.night, tod.night]]);
+      const x = -E.ox, y = this.base + 2 - E.oy;
       g.drawImage(c, x, y);
-      for (const h of s.hubs) {
+      g.globalAlpha = 1 - tod.night * 0.35;
+      for (const h of E.hubs) {
         const R = h.R, f = R.frames[Math.floor(((h.ph / (TAU / 3)) * R.n) % R.n + R.n) % R.n];
-        g.globalAlpha = 1 - tod.night * 0.35;
         g.drawImage(f, Math.round(x + h.x - R.cx), Math.round(y + h.y - R.cy));
-        g.globalAlpha = 1;
       }
+      g.globalAlpha = 1;
     }
     // soap bubbles riding the breeze
     for (const b of this.airSoap) {
@@ -541,7 +626,25 @@ export class OsceanBiome extends Biome {
       g.globalAlpha = 1;
       for (const d of this.fallDrops) { const spr = chromeDrop(d.h); g.drawImage(spr, Math.round(d.x - spr.width / 2), Math.round(d.y - d.h)); }
     }
+    // glossy leafy branches framing the top corners
+    for (const b of this.branches) {
+      const sway = Math.round(Math.sin(t * 0.7 + b.ph) * 1.5 * (1 + wx.bubbles));
+      g.globalAlpha = 1 - tod.night * 0.3;
+      g.drawImage(b.c, b.x + sway, b.y + Math.round(0.35 * (scroll - ref)) + Math.round(Math.sin(t * 0.5 + b.ph)));
+    }
+    g.globalAlpha = 1;
     g.restore();
+  }
+
+  drawGlobe(g, scroll, ref) {
+    const G = this.globe, P = this.globePos, tod = this.tod;
+    const spr = G.get(Math.floor(this.t / 0.42));
+    const x = P.x - (spr.width >> 1), y = Math.round(P.y + Math.sin(this.t * 0.6) * 4 + 0.22 * (scroll - ref)) - (spr.height >> 1);
+    drawGlow(g, P.x, y + (spr.height >> 1), 70, '#c8ffb0', (0.25 + tod.day * 0.15) * (1 - tod.night * 0.5));
+    g.globalAlpha = 1 - tod.night * 0.3;
+    g.drawImage(spr, x, y);
+    g.globalAlpha = 1;
+    for (const d of this.globeDrops) { const c = chromeDrop(d.h, '#7af0a8'); g.drawImage(c, Math.round(d.x - c.width / 2), Math.round(d.y - d.h)); }
   }
 
   drawBack(ctx, env) {
@@ -626,7 +729,9 @@ export class OsceanBiome extends Biome {
     // NPCs standing on the deck (drawNPC is owned by the character module)
     const deck = p.deckY + lift;
     for (const n of this.npcs) {
-      try { NPC.drawNPC?.(ctx, n.id, { x: n.x, y: deck, t: n.ph, scale: 1, facing: n.facing, pose: 'idle', mood: 'happy' }); } catch { /* npc art pending */ }
+      // same size as the fisherman on the boat; Marina waves now and then
+      const pose = n.pose === 'wave' && (n.ph % 9) > 6.5 ? 'wave' : 'idle';
+      try { NPC.drawNPC?.(ctx, n.id, { x: n.x, y: deck, t: n.ph, scale: 0.62, facing: n.facing, pose, mood: 'happy', id: 'pier_' + n.id }); } catch { /* npc art pending */ }
     }
     const tod = this.tod;
     if (tod.night + tod.dusk * 0.5 > 0.15) drawGlow(ctx, x + p.P.lamp[0], y + p.P.lamp[1], 9, '#fff2b0', clamp01(tod.night + tod.dusk * 0.5) * (0.85 + 0.1 * Math.sin(this.t * 3)));
@@ -700,6 +805,15 @@ export class OsceanBiome extends Biome {
       }
       ctx.globalAlpha = 1;
     }
+    // splash crowns
+    const F = this.splashF;
+    for (const sp of this.splashes) {
+      const f = F[Math.min(F.length - 1, Math.floor((sp.t / sp.dur) * F.length))];
+      ctx.globalAlpha = 0.9 * (1 - tod.night * 0.3);
+      const x = Math.round(sp.x), y = ys[clamp(x, 0, W)];
+      ctx.drawImage(f.canvas, x - f.ox, y + 1 - f.oy);
+    }
+    ctx.globalAlpha = 1;
     // aurora shimmer on the water at night
     const au = this.wx.aurora * tod.night;
     if (au > 0.05) {

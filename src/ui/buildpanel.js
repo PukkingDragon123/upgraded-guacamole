@@ -116,7 +116,7 @@ export class BuildTrayPanel {
     ctx.save();
     ctx.beginPath(); ctx.rect(area.x, area.y - 4, area.w, area.h + 8); ctx.clip();
     if (!list.length) {
-      drawText(ctx, this.tab === 'decor' ? 'No decoration plans yet - research the Architecture Club or find plans in packages!' : 'No blueprints yet.', area.x + 6, area.y + 34, { color: '#bfe2ff' });
+      drawText(ctx, this.tab === 'decor' ? 'No decor plans yet - craft some in the Lab!' : 'No blueprints yet - craft them in the Lab!', area.x + 6, area.y + 34, { color: '#bfe2ff' });
     }
     list.forEach((e, i) => {
       const cx = area.x + i * (cw + gap) - this.scroll;
@@ -139,13 +139,13 @@ export class BuildTrayPanel {
       const def = buildingDef(it.builds);
       drawText(ctx, def.name.toUpperCase(), px, y + 9, { color: '#ffffff', outline: '#0a2a5a' });
       drawText(ctx, `x${countItem(st, sel)} blueprint${countItem(st, sel) > 1 ? 's' : ''}${def.unique ? ' - unique' : ''}`, px + measureText(def.name.toUpperCase()) + 8, y + 10, { font: 'small', color: '#9ad0ff' });
-      drawCost(ctx, st, def.cost, px, y + 23, { ui, color: '#e8f6ff', bad: '#ffb0a0', shadow: '#0a2a5a' });
+      drawText(ctx, 'Click the seabed to place it. Free!', px, y + 23, { color: '#bfe2ff' });
     } else if (B.moving) {
       drawText(ctx, 'MOVING ' + (buildingDef(B.byUid(B.moving)?.id)?.name || '').toUpperCase(), px, y + 9, { color: '#ffe27a', outline: '#0a2a5a' });
       drawText(ctx, 'Free of charge. Click the seabed to set it down.', px, y + 23, { color: '#bfe2ff' });
     } else {
       drawText(ctx, B.mode === 'demolish' ? 'DEMOLISH MODE' : B.mode === 'move' ? 'MOVE MODE' : 'PICK A BLUEPRINT', px, y + 9, { color: B.mode === 'demolish' ? '#ffb0a0' : '#ffffff', outline: '#0a2a5a' });
-      drawText(ctx, B.mode === 'demolish' ? 'Refunds the blueprint + half the cost.' : B.mode === 'move' ? 'Click a building to pick it up.' : 'Blueprints come from packages and research.', px, y + 23, { color: '#bfe2ff' });
+      drawText(ctx, B.mode === 'demolish' ? 'Packs it up: the blueprint comes back.' : B.mode === 'move' ? 'Click a building to pick it up.' : 'Craft blueprints in the Lab.', px, y + 23, { color: '#bfe2ff' });
     }
     // tool buttons
     const by = y + 38;
@@ -213,7 +213,7 @@ export class BuildTrayPanel {
     }
     if (e.built && !e.n) drawText(ctx, 'BUILT', r.x + r.w - 3, r.y + 3, { font: 'small', align: 'right', color: '#9affc8' });
     if (hov) {
-      ui.tip = e.known ? `${def.name}: ${def.desc}${usable ? '' : ' (No blueprint left - find more in packages.)'}` : 'Undiscovered building. Fish up its blueprint in packages, or research it in the Lab!';
+      ui.tip = e.known ? `${def.name}: ${def.desc}${usable ? '' : ' (No blueprint left - craft another in the Lab.)'}` : 'Undiscovered building. Research it in the Lab, then craft its blueprint!';
       if (inp.pressed) {
         inp.pressed = false;
         if (usable) { B.select(e.item); g.audio.play('ui_click'); } else g.audio.play('ui_error');
@@ -355,8 +355,8 @@ export class BuildingPanel {
       drawText(ctx, on ? 'The lamp is lit. Rare night fish are drawn in.' : 'The lamp is dark. The keeper is sulking.', act.x + 2, act.y + 2, { color: '#3a2a22' });
       if (ui.button(ctx, act.x, act.y + 16, 120, 20, on ? 'Switch off' : 'Light the lamp', { style: on ? 'paper' : 'coral', icon: on ? 'moon' : 'sun' })) { b.on = !on; g.audio.play(on ? 'ui_toggle' : 'magic'); g.save?.(); }
     } else if (kind === 'research') {
-      drawText(ctx, 'Professor Bubbles is waiting inside.', act.x + 2, act.y + 2, { color: '#3a2a22' });
-      if (ui.button(ctx, act.x, act.y + 16, 120, 20, 'Enter the Lab', { style: 'coral', icon: 'book' })) { ui.close(this.id); ui.open('research'); return; }
+      drawText(ctx, 'Professor Fizz is waiting inside.', act.x + 2, act.y + 2, { color: '#3a2a22' });
+      if (ui.button(ctx, act.x, act.y + 16, 120, 20, 'Enter the Lab', { style: 'coral', icon: 'book' })) { ui.close(this.id); ui.open('lab'); return; }
     } else if (def.decor) {
       drawText(ctx, 'A lovely decoration. Your fish approve.', act.x + 2, act.y + 2, { color: '#3a2a22' });
     }
@@ -423,36 +423,11 @@ export class BuildingPanel {
     }
   }
 
+  // Bait is crafted on the Lab's crafting bench now (phase 3); the workshop keeps its bait-saving perk.
   drawWorkshop(ctx, ui, b, a, t) {
-    const g = this.game, st = g.state;
-    const lv = levelOf(b);
-    const list = RECIPES.filter((r) => !r.research || st.research?.done?.[r.research]);
-    const per = 4;
-    const pages = Math.ceil(list.length / per);
-    this.page = clamp(this.page, 0, pages - 1);
-    list.slice(this.page * per, this.page * per + per).forEach((rc, i) => {
-      const y = a.y + i * 16;
-      const s = baitSprite(rc.id, t + i);
-      ctx.drawImage(s, a.x, y - 2);
-      const locked = rc.lvl > lv;
-      drawText(ctx, `${rc.qty}x ${BAITS[rc.id]?.name || rc.id}`, a.x + 16, y + 1, { color: locked ? '#9a8a7a' : '#3a2a22' });
-      if (locked) { drawText(ctx, `needs Lv ${rc.lvl}`, a.x + 150, y + 1, { font: 'small', color: '#a8583a' }); return; }
-      drawCost(ctx, st, { coins: rc.coins, items: rc.items }, a.x + 116, y, { ui, color: '#3a2a22', bad: '#c8382a', shadow: null });
-      const ok = st.coins >= rc.coins && hasItems(st, rc.items);
-      if (ui.button(ctx, a.x + a.w - 44, y - 3, 44, 15, 'Craft', { style: ok ? 'coral' : 'paper', font: 'small', disabled: !ok })) {
-        if (rc.coins && !g.spendCoins(rc.coins)) return;
-        takeItems(st, rc.items);
-        addItem(st, rc.id, rc.qty);
-        g.audio.play('ui_buy'); g.audio.play('worm_squish', { vol: 0.5 });
-        g.particles?.text(a.x + a.w - 20, y - 6, `+${rc.qty}`, { color: '#9affc8' });
-        g.save?.();
-      }
-    });
-    if (pages > 1) {
-      if (ui.button(ctx, a.x, a.y + per * 16, 16, 14, '', { icon: 'arrow_l', style: 'paper', disabled: this.page === 0 })) this.page--;
-      drawText(ctx, `${this.page + 1}/${pages}`, a.x + 22, a.y + per * 16 + 4, { font: 'small', color: '#6b4f43' });
-      if (ui.button(ctx, a.x + 44, a.y + per * 16, 16, 14, '', { icon: 'arrow_r', style: 'paper', disabled: this.page >= pages - 1 })) this.page++;
-    }
+    drawText(ctx, `Saves a bait now and then (${Math.round(bonusOf(b, 'baitSave') * 100)}%).`, a.x + 2, a.y + 2, { color: '#3a2a22' });
+    if (ui.button(ctx, a.x, a.y + 16, 130, 20, 'Craft bait in the Lab', { style: 'coral', icon: 'bait' })) { ui.close(this.id); ui.open('lab', { tab: 'craft', cat: 'bait' }); }
+    void t;
   }
 
   drawVault(ctx, ui, b, a, t) {

@@ -2,7 +2,8 @@
 // "juice" kinds used by the fishing cinematics: trailing droplets, foam, mist, speed lines / light
 // streaks, crank sparks, fish scales, ink clouds, confetti, spinning coins, stars, shockwaves, glows,
 // and the Frutiger Aero kit: electric arcs (arc/electrify), glossy bubbles (aeroBubbles), glints,
-// bokeh orbs, lens flares (lensFlare), leaves and Aero confetti (aeroConfetti), thick glossy rings.
+// bokeh orbs, lens flares (lensFlare), leaves and Aero confetti (aeroConfetti), thick glossy rings, and
+// the big-moment combos: bloom (swelling soft light), splashBurst (Aero water burst), boltBurst (radial lightning).
 //
 // add(p) takes a plain object (kind, x, y, vx, vy, life, size, color, g, drag, layer, add, delay...).
 // `delay` (s) keeps a particle invisible and frozen until it is due. When the pool is full new
@@ -538,6 +539,35 @@ export class Particles {
   // Thick glossy ring wave.
   ringWave(x, y, r = 30, color = '#bfeaff', opts = {}) {
     return this.add({ kind: 'ring2', x, y, life: opts.life ?? 0.5, r0: opts.r0 ?? 3, r1: r, w: opts.w ?? 3, color, flat: opts.flat ?? 1, layer: opts.layer || 'fg', delay: opts.delay, fade: false });
+  }
+
+  // Bloom: a big soft additive light that swells and fades (sun-flare moments).
+  bloom(x, y, r = 40, color = '#e8fbff', opts = {}) {
+    this.glow(x, y, r, color, { life: opts.life ?? 0.6, grow: opts.grow ?? 0.6, layer: opts.layer });
+    return this.glow(x, y, Math.round(r * 0.45), '#ffffff', { life: (opts.life ?? 0.6) * 0.7, grow: 0.3, layer: opts.layer });
+  }
+
+  // Aero water burst (any layer, also screen space): radial droplets with trails, a glossy ring,
+  // foam puffs, soap bubbles and glints.
+  splashBurst(x, y, power = 1, opts = {}) {
+    const layer = opts.layer || 'fg';
+    this.droplets(x, y, Math.round(18 * power), { dir: opts.dir ?? -Math.PI / 2, spread: opts.spread ?? Math.PI, speed: [40 * power, 150 * power], g: opts.g ?? 220, w: 3, layer, colors: ['#ffffff', '#e8fbff', '#bff8ff', '#7fd8ff'] });
+    this.ringWave(x, y, Math.round(14 + 18 * power), opts.color || '#bff8ff', { life: 0.4, w: 2 + Math.round(power), layer });
+    this.foam(x, y, Math.round(4 + 4 * power), { spread: 6 * power, layer, scale: 0.8 + power * 0.3 });
+    this.aeroBubbles(x, y, Math.round(4 + 6 * power), { w: 6 * power, h: 4, layer, speed: [30, 90], sizes: [2, 2, 3, 4, 5] });
+    this.glints(x, y, Math.round(2 + 2 * power), { w: 10 * power, h: 8 * power, layer });
+  }
+
+  // Radial lightning: jagged bolts shooting out of a point, a cyan ring and white-hot sparks.
+  boltBurst(x, y, r = 30, n = 6, opts = {}) {
+    const layer = opts.layer || 'fg';
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * TAU + rng.float(-0.3, 0.3), rr = r * rng.float(0.6, 1.1);
+      this.arc(x, y, x + Math.cos(a) * rr, y + Math.sin(a) * rr * (opts.flat ?? 1), { jag: opts.jag ?? 5, layer, life: rng.float(0.12, 0.26), color: opts.color, delay: rng.float(0, 0.08) });
+    }
+    this.ringWave(x, y, Math.round(r * 1.2), '#bff8ff', { life: 0.3, w: 2, layer });
+    this.sparks(x, y, Math.round(n * 1.5), { colors: ['#ffffff', '#bff8ff', '#7ff4ff', '#fff6a0'], speed: [60, 180], g: 60, layer, life: 0.4 });
+    this.glow(x, y, Math.round(r * 0.7), '#bff8ff', { life: 0.25, grow: 0.5, layer });
   }
 
   // ---------------------------------------------------------------- simulation

@@ -321,6 +321,11 @@ export function ensureLab(state) {
       for (const u of LAB_BY_ID[id].unlock) applyUnlock(state, u.kind, u.id);
     }
   }
+  // oceans that are already open (a default save may start with more than the (OS)cean) count as charted
+  for (const b of state.unlockedBiomes || []) {
+    const nd = nodeFor('biome', b);
+    if (nd && !L.done[nd.id]) { L.done[nd.id] = Date.now(); for (const u of nd.unlock) applyUnlock(state, u.kind, u.id); }
+  }
   L.slots = L.slots.filter((s) => s && LAB_BY_ID[s.id] && !L.done[s.id]);
   L.active = L.slots[0] || null;
   return L;

@@ -8,7 +8,7 @@ import { rgba } from '../core/color.js';
 import { drawText, measureText, wrapText } from '../gfx/font.js';
 import { drawButton, drawSlider, drawToggle, drawTooltip, drawTab, TOGGLE_W, TOGGLE_H } from './panels.js';
 import { getUiIcon } from '../gfx/uiicons.js';
-import { AERO, CURRENCY, fmtAero, aeroSurface, aeroCached, drawAeroCoin, drawSparkle, drawAeroGlow } from './aero.js';
+import { AERO, CURRENCY, fmtAero, aeroSurface, aeroCached, drawAeroCoin, drawSparkle, drawAeroGlow, drawAeroLeaf } from './aero.js';
 
 export class UI {
   constructor(game) {
@@ -112,7 +112,11 @@ export class UI {
     if (hov) this.markHot(label + x + y);
     drawButton(ctx, x, y, w, h, { label, icon: opts.icon ? getUiIcon(opts.icon) : opts.iconCanvas, state: opts.disabled ? 'disabled' : down ? 'down' : hov ? 'hover' : opts.active ? 'down' : 'normal', style: opts.style || 'wood', font: opts.font, align: opts.align });
     if (hov && opts.tip) this.tip = opts.tip;
-    if (!opts.disabled && this.clicked(r)) { this.game.audio.play(opts.sound || 'ui_click'); return true; }
+    if (!opts.disabled && this.clicked(r)) {
+      this.game.audio.play(opts.sound || 'ui_click');
+      this.splash(this.inp.x, this.inp.y, w > 40 ? 1 : 0.6);
+      return true;
+    }
     if (opts.disabled && this.hover(r) && this.inp.pressed) { this.inp.pressed = false; this.game.audio.play('ui_error'); }
     return false;
   }
@@ -145,6 +149,16 @@ export class UI {
     drawTab(ctx, x, y, w, h, { label, active, hover: this.hover(r) });
     if (this.clicked(r)) { this.game.audio.play('ui_tab'); return true; }
     return false;
+  }
+
+  // water-splash accent on clicks: aqua droplets + a couple of bubbles (UI particle layer)
+  splash(x, y, k = 1) {
+    const ps = this.game.particles;
+    if (!ps || this.game.state?.settings?.reducedMotion) return;
+    try {
+      ps.burst(x, y, Math.round(6 * k), { colors: ['#ffffff', '#bff4ff', '#5cd0ff'], speed: 70 * k, speedMin: 20, g: 220, life: 0.45, up: 50, layer: 'ui', drag: 1 });
+      ps.bubbles?.(x, y, Math.round(2 * k), { layer: 'ui', life: 0.9 });
+    } catch { /* particles are optional */ }
   }
 
   markHot(id) {
@@ -209,6 +223,8 @@ export class UI {
     const hov = this.hover(r) && !this.blocking;
     if (this.coinBump > 0.05) drawAeroGlow(ctx, r.x + 11, r.y + 10, 16, '#9ff6ff', this.coinBump * 0.8);
     ctx.drawImage(aeroCached(`hudpill|${w}|${hov}`, () => aeroSurface(w, h, { tone: hov ? { top: '#ffffff', mid: '#f4fcff', bot: '#cdeefc', edge: '#2a86c4', a: [0.97, 0.95], glow: '#ffffff' } : 'frost', r: 'pill', gloss: 0.75, glossH: 9, curve: 2, rim: 0.9, glow: 0.5, glowColor: '#bfeaff', sparkle: 1 })), r.x, r.y);
+    drawAeroLeaf(ctx, r.x + 4, r.y + 15, 13, 7, 150, { tone: 'deep', flip: true });
+    drawAeroLeaf(ctx, r.x + 5, r.y + 14, 15, 8, -160, { tone: 'lime' });
     drawAeroCoin(ctx, r.x + 11, r.y + 10, 6.5, this.time);
     drawText(ctx, txt, r.x + w - 8, r.y + 7, { align: 'right', color: AERO.ink, shadow: '#ffffff' });
     if (hov) this.tip = CURRENCY;
@@ -262,6 +278,7 @@ export class UI {
       ctx.drawImage(aeroCached(`toast|${w}|${h}`, () => aeroSurface(w, h, { tone: 'frost', r: Math.min(8, Math.floor(h / 2)), gloss: 0.6, glossH: Math.min(9, Math.round(h * 0.45)), curve: 2, rim: 0.9, glow: 0.45, glowColor: '#bfeaff', sparkle: 1 })), x, y);
       // icon sits in a little aqua bubble
       ctx.drawImage(aeroCached('toastdot', () => aeroSurface(15, 15, { tone: 'aqua', r: 'pill', gloss: 0.8, glossH: 7, curve: 1, rim: 0.7, glow: 0.6 })), x + 4, y + Math.round((h - 15) / 2));
+      drawAeroLeaf(ctx, x + 6, y + Math.round(h / 2) + 5, 10, 6, 140, { tone: 'lime', flip: true });
       const ic = getUiIcon(t.icon) || getUiIcon('info');
       ctx.drawImage(ic, x + 4 + Math.round((15 - ic.width) / 2), y + Math.round((h - ic.height) / 2));
       lines.forEach((l, i) => drawText(ctx, l, x + 24, y + 5 + i * 10, { color: AERO.ink }));

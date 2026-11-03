@@ -12,13 +12,13 @@
 // turn is the world-space scaleX (-1..1) during a turn-around; turn: 1 with facing: -1 means "facing left".
 // The game may call beginRigFrame() once per frame; otherwise the raster budget window resets itself.
 
-import { rigLayers, rigGeom, rasterLayer, paintEye, paintMouth, eyeBox, mouthBox, isKind, chainSegment, chainHeadSprite, chainRadius, defaultChainPoints, realCues } from './fishart.js';
+import { rigLayers, rigGeom, rasterLayer, paintEye, paintMouth, eyeBox, mouthBox, isKind, kindRotates, chainSegment, chainHeadSprite, chainRadius, defaultChainPoints, realCues } from './fishart.js';
 import { PixelBuffer } from './pixel.js';
 import { makeCanvas, ctxOf, tinted } from '../core/canvas.js';
 import { voxelFrame, chainBall, setVoxelFishBudget, SWIM_N, voxelParts } from './voxelfish.js';
 
-let fishStyle = 'pixel';
-export function setFishStyle(style) { fishStyle = style === 'voxel' ? 'voxel' : 'pixel'; }
+let fishStyle = 'voxel';
+export function setFishStyle(style) { fishStyle = style === 'pixel' ? 'pixel' : 'voxel'; }
 export function getFishStyle() { return fishStyle; }
 if (typeof window !== 'undefined') { window.__fishStyle = setFishStyle; window.__rigStats = () => rigStats(); } // debug / perf
 
@@ -234,14 +234,16 @@ export function drawFishRig(ctx, c, st) {
 }
 
 function drawFishRigInner(ctx, c, st) {
-  if ((st.style || fishStyle) === 'voxel') {
+  // the Wakka chomper is the one deliberate pixel-art fish: always the 2D rig
+  if ((st.style || fishStyle) === 'voxel' && !kindRotates(c)) {
     const a = c.kind === 'chain' ? drawVoxelChain(ctx, c, st) : drawVoxelRig(ctx, c, st);
     if (a) return a;
   }
   if (c.kind === 'chain') return drawChainRig(ctx, c, st);
   const kind = isKind(c);
+  const rot = !kind || kindRotates(c);
   const s = Math.max(1, Math.round((st.scale ?? 1) * 8)) / 8;
-  const angle = kind ? 0 : st.angle || 0;
+  const angle = rot ? st.angle || 0 : 0;
   let a = clamp(Math.round(angle / ANGLE_STEP), -6, 6);
   const inf = kind ? 0 : Math.round(clamp(st.inflate || 0, 0, 1) * 4) / 4;
   const pose = !!(st.pose || st.emotion === 'pose');
@@ -253,7 +255,7 @@ function drawFishRigInner(ctx, c, st) {
   const layers = rigLayers(c);
   const fam = (L, aa) => `${id}|${L}|${aa}|${s}|${inf}|${pose ? 1 : 0}`;
   // over budget and this angle bucket not ready: snap to the nearest bucket whose body exists
-  if (!kind && !families.get(fam('body', a))?.size && overBudget()) {
+  if (rot && !families.get(fam('body', a))?.size && overBudget()) {
     for (let d = 1; d <= 12; d++) {
       const cand = [a - d, a + d].find((v) => v >= -6 && v <= 6 && families.get(fam('body', v))?.size);
       if (cand !== undefined) { a = cand; statFallback++; break; }

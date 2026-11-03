@@ -1,20 +1,114 @@
-// Voxel models for the player's boat, one per upgrade tier (state.boat.tier 0..4):
-//   0 dinghy (clinker rowboat, shipped oars, bow lantern, pennant)
-//   1 fishing boat (wheelhouse, mast, stays, rod holders, fenders, life ring, net boom)
-//   2 trawler (steel hull, forward wheelhouse, funnel, A-frame gantry with nets and floats, net drum, knuckle crane)
-//   3 yacht (white hull with accent cove stripe and hull windows, two-level superstructure, flybridge, radar arch,
-//     dressing line of signal flags and string lights, sun loungers and parasol, swim platform, underwater LEDs)
-//   4 research vessel / submarine hybrid (rounded submarine lower hull with glowing viewports, dive planes and
-//     propeller shroud, tall bridge, radome and sonar dish mast, stern A-frame with a hanging mini-sub, labs)
-// Model axes: x stern -> bow, y up, z far -> near (toward the viewer). Each builder returns
-//   { m, front: Set<palette idx drawn over the fisherman>, night: Map<idx, hex>, A: anchors, pivot, ... }.
+// Voxel boats (phase 3, Frutiger Aero; OWNER: Character agent). Glossy white + aqua eco-tech boats, one per Lab tier
+// (ids match lab.js BOAT_ORDER, state.boat.tier = index):
+//   0 raft       Bubble Raft     glossy pontoon floats, bamboo deck, leaf sail, bubble lamp
+//   1 dinghy     Bubble Dinghy   inflatable white tube collar, little outboard, bow lamp
+//   2 skiff      Aero Skiff      sleek glossy runabout, curved glass windshield, chrome rail
+//   3 hydrofoil  Hydrofoil       hull lifted on chrome struts and aqua foils, glass canopy, wing
+//   4 yacht      Glass Yacht     wraparound glass decks, solar roof, planters, radar dome
+//   5 catamaran  Eco Catamaran   twin hulls, two SPINNING wind turbines, solar cabin, leaf sail
+//   6 submarine  Bubble Sub      surfaced sub with a glass bubble dome cockpit, glowing portholes, bubble jets
+//
+// Parts (state.boat = {tier, parts: {hull, sail, flag, engine, decal}}, ids from BOAT_PARTS[slot][i].id; missing or
+// unknown ids fall back to the tier default): hull paint (+ trim), sail (masted tiers), flag, engine (outboard /
+// turbine / solar / bubble jet / paddle wheel) and hull decal.
+//
+// API
+//   BOAT_TIERS[i] = {id, name, desc, build}                     (BOAT_TIERS.length = 7)
+//   BOAT_PARTS = {hull:[{id,name,color,trim,rarity}], sail:[...], flag:[...], engine:[...], decal:[...]}, BOAT_PART_SLOTS
+//   buildBoatModel(tier, paint, trim = '#ffffff', parts = null) -> T   (paint/trim are overridden by parts.hull when set)
+//     T = {m, front: Set<palette idx drawn over the character>, night: Map<idx, hex>, wl, zc, pivot:[x, y],
+//          A: {stand, flag, bow, stern, top, keel, lantern?, mast?, cabin?, sub?, under?, turbine0.., bubbles0..},
+//          lights: [[anchorKey, radius, color, alpha]], flagScale, spin: [{at, r, n, color, speed}], bubbles: [anchorKey],
+//          flag: flag part id, parts (resolved), tier}
+//     Model axes: x stern -> bow, y up, z far -> near. No chimney: eco boats don't smoke.
+//   buildFlagModel(flagId, paint) -> VoxelModel (1 voxel deep, render flat; rows top -> bottom)
+//   drawBoatAnim(ctx, T, A, bx, by, t, dir, vs = 2)   spinning turbine blades + bubble jets; A = screen anchors
+//     relative to (bx, by) (boat.js's sprite.A), call after the boat sprite and the character are drawn.
+//   resolveBoat(state) -> {tier, parts, paint, trim, key}   (key changes whenever the model must be rebuilt)
+//   renderBoatPreview(tier, parts, {scale, t}) -> {canvas, front, px, py, stand:[x,y], A, drawFront(ctx, bx, by, t, dir)}
+//     (wardrobe Boat tab / Lab / dev; cached)
+//   ensureBoat(state) normalises state.boat.
 
-import { VoxelModel } from '../gfx/voxel.js';
-import { RNG } from '../core/rng.js';
-import { smoothstep, hash3, TAU } from '../core/math.js';
+import { VoxelModel, renderVoxels } from '../gfx/voxel.js';
+import { smoothstep, hash3, TAU, clamp } from '../core/math.js';
 import { mix, shade } from '../core/color.js';
 
 const sm = smoothstep;
+
+// ------------------------------------------------------------------ parts
+
+const P_ = (id, name, rarity, extra = {}) => ({ id, name, rarity, ...extra });
+export const BOAT_PARTS = {
+  hull: [
+    P_('aqua', 'Aqua Gloss', 'common', { color: '#2fb8e8', trim: '#ffffff' }),
+    P_('white', 'Pearl White', 'common', { color: '#f2f8fc', trim: '#2fd3e8' }),
+    P_('sky', 'Sky Blue', 'common', { color: '#59a8f0', trim: '#ffffff' }),
+    P_('lime', 'Lime Pop', 'uncommon', { color: '#8be04a', trim: '#ffffff' }),
+    P_('leaf', 'Leaf Green', 'uncommon', { color: '#3fae2a', trim: '#e8ffd0' }),
+    P_('coral', 'Coral Reef', 'uncommon', { color: '#ff7a6a', trim: '#ffffff' }),
+    P_('sunny', 'Sunshine', 'rare', { color: '#ffd23a', trim: '#ffffff' }),
+    P_('navy', 'Deep Navy', 'rare', { color: '#1a3a7a', trim: '#7affff' }),
+    P_('bubblegum', 'Bubblegum', 'rare', { color: '#ff8ac8', trim: '#ffffff' }),
+    P_('chrome', 'Chrome', 'epic', { color: '#c8d8e6', trim: '#2fd3e8' }),
+    P_('tomato', 'Retro Tomato', 'common', { color: '#c8583a', trim: '#f2e6c8' }),
+    P_('gold', 'Gilded', 'legendary', { color: '#f2c03a', trim: '#ffffff' }),
+  ],
+  sail: [
+    P_('none', 'No Sail', 'common'), P_('white', 'Classic White', 'common'), P_('stripe', 'Aqua Stripes', 'common'), P_('leaf', 'Leaf Sail', 'uncommon'),
+    P_('bubble', 'Glass Sail', 'rare'), P_('rainbow', 'Rainbow', 'rare'), P_('solar', 'Solar Sail', 'epic'),
+  ],
+  flag: [
+    P_('fish', 'Fish Flag', 'common'), P_('drop', 'Water Drop', 'common'), P_('leaf', 'Leaf', 'common'), P_('heart', 'Heart', 'uncommon'),
+    P_('star', 'Star', 'uncommon'), P_('smile', 'Smiley', 'rare'), P_('rainbow', 'Rainbow', 'rare'), P_('bubble', 'Bubble', 'epic'),
+  ],
+  engine: [
+    P_('none', 'No Motor', 'common'), P_('outboard', 'Aero Outboard', 'common'), P_('turbine', 'Wind Turbine', 'uncommon'), P_('solar', 'Solar Canopy', 'rare'),
+    P_('bubble', 'Bubble Jet', 'epic'), P_('paddle', 'Paddle Wheel', 'rare'),
+  ],
+  decal: [
+    P_('none', 'Plain', 'common'), P_('swoosh', 'Aqua Swoosh', 'common'), P_('wave', 'Wave', 'common'), P_('leaves', 'Leaves', 'uncommon'),
+    P_('bubbles', 'Bubbles', 'uncommon'), P_('stripes', 'Racing Stripes', 'rare'), P_('dolphin', 'Dolphins', 'rare'),
+  ],
+};
+export const BOAT_PART_SLOTS = [
+  { id: 'hull', name: 'Paint' }, { id: 'sail', name: 'Sail' }, { id: 'flag', name: 'Flag' }, { id: 'engine', name: 'Engine' }, { id: 'decal', name: 'Decal' },
+];
+const PART_BY = Object.fromEntries(Object.entries(BOAT_PARTS).map(([k, list]) => [k, Object.fromEntries(list.map((p) => [p.id, p]))]));
+
+// Tier defaults (what you get when a slot is unset).
+const DEFAULTS = [
+  { hull: 'aqua', sail: 'leaf', flag: 'fish', engine: 'none', decal: 'none' },
+  { hull: 'aqua', sail: 'none', flag: 'drop', engine: 'outboard', decal: 'bubbles' },
+  { hull: 'white', sail: 'none', flag: 'fish', engine: 'outboard', decal: 'swoosh' },
+  { hull: 'white', sail: 'none', flag: 'star', engine: 'none', decal: 'stripes' },
+  { hull: 'white', sail: 'none', flag: 'drop', engine: 'solar', decal: 'wave' },
+  { hull: 'white', sail: 'leaf', flag: 'leaf', engine: 'none', decal: 'leaves' },
+  { hull: 'aqua', sail: 'none', flag: 'bubble', engine: 'bubble', decal: 'bubbles' },
+];
+const MASTED = [true, true, true, false, true, true, false];
+
+export function resolveParts(tier, parts) {
+  const d = DEFAULTS[tier] || DEFAULTS[0];
+  const out = {};
+  for (const k of Object.keys(d)) out[k] = parts && typeof parts[k] === 'string' && PART_BY[k][parts[k]] ? parts[k] : d[k];
+  return out;
+}
+
+export function ensureBoat(state) {
+  const b = (state.boat ||= { tier: 0, parts: {} });
+  b.tier = clamp(Math.round(Number(b.tier) || 0), 0, BOAT_TIERS.length - 1);
+  if (!b.parts || typeof b.parts !== 'object') b.parts = {};
+  for (const k of Object.keys(b.parts)) if (!PART_BY[k]?.[b.parts[k]]) delete b.parts[k];
+  return b;
+}
+
+export function resolveBoat(state) {
+  const b = state?.boat || {};
+  const tier = clamp(Math.round(Number(b.tier) || 0), 0, BOAT_TIERS.length - 1);
+  const parts = resolveParts(tier, b.parts);
+  const H = PART_BY.hull[parts.hull];
+  return { tier, parts, paint: H.color, trim: H.trim, key: tier + '|' + JSON.stringify(parts) };
+}
 
 // ------------------------------------------------------------------ helpers
 
@@ -24,8 +118,21 @@ function palette(m, defs) {
   return out;
 }
 
-// Planked hull from profile functions. spec: {x0, len, zc, keel(u), sheer(u), beam(u), deck(u), vee, skin, deckC}
-// skin(y, u, ys, yb, z) -> palette idx for shell voxels; deckC(x, z, u) -> idx for the deck top layer.
+// Shared Aero palette for a boat.
+function aeroPal(m, paint, trim) {
+  return palette(m, {
+    paint: [paint, { jitter: 0.06, spec: 1.1, specPow: 12, smooth: 0.5 }], paintD: [shade(paint, -0.16), { jitter: 0.05, spec: 0.8 }], paintL: [mix(paint, '#ffffff', 0.35), { jitter: 0.04, spec: 1 }],
+    bottom: [mix(paint, '#0a3a6e', 0.6), { jitter: 0.08 }], trim: [trim, { jitter: 0.03, spec: 1.1 }],
+    white: ['#f6fbff', { jitter: 0.03, spec: 1.2, specPow: 12, smooth: 0.5 }], whiteD: ['#d2e4f0', { jitter: 0.04 }], aqua: ['#2fd3e8', { spec: 1.2 }], aquaD: ['#1890c0', { spec: 0.8 }],
+    lime: ['#8be04a', { spec: 1 }], leaf: ['#4cb82e', { spec: 0.9 }], leafL: ['#9be84a', { spec: 1 }], vein: ['#d8f8a0', { jitter: 0 }],
+    deck: ['#f4dca0', { jitter: 0.1 }], deckD: ['#d8b878', { jitter: 0.08 }], bamboo: ['#c8e078', { jitter: 0.1 }], bambooD: ['#98b850', { jitter: 0.06 }],
+    glass: ['#8ee4ff', { jitter: 0, spec: 1.6, specPow: 16, smooth: 0.8 }], glassHi: ['#e8fbff', { jitter: 0, spec: 1.6 }], glassD: ['#4ab4e8', { jitter: 0, spec: 1.4 }],
+    chrome: ['#e2eaf2', { jitter: 0, spec: 1.7, specPow: 8 }], chromeD: ['#9fb4c8', { jitter: 0, spec: 1.2 }], solar: ['#1a3a7a', { jitter: 0.02, spec: 1.5, specPow: 16 }], solarL: ['#6a9ae8', { jitter: 0, spec: 1.4 }],
+    rope: ['#f2e2b8', { jitter: 0.08 }], red: ['#ff5a5a', { spec: 0.8 }], navy: ['#13284a', { spec: 1 }], orange: ['#ff9a2a', { spec: 0.8 }], fish: ['#ffb84a', { spec: 0.6 }],
+    lamp: ['#fff2b0', { emissive: 0.85, jitter: 0 }], led: ['#7affff', { emissive: 0.9, jitter: 0 }], ledG: ['#a8ff6a', { emissive: 0.9, jitter: 0 }], ledR: ['#ff6a6a', { emissive: 0.9, jitter: 0 }],
+  });
+}
+
 function hull(m, s) {
   const vee = s.vee ?? 0.3, thick = s.thick ?? 1.25;
   for (let u = 0; u < s.len; u++) {
@@ -47,11 +154,8 @@ function hull(m, s) {
     }
   }
 }
-
-// Deck height: flat at `base`, rising as a forecastle so the bulwark stays `bulwark` voxels tall.
 const deckFn = (base, sheer, bulwark) => (u) => Math.max(base, Math.round(sheer(u)) - bulwark);
 
-// Posts + top rail following the sheer on both sides.
 function railing(m, s, c, o = {}) {
   const { from = 2, to = s.len - 4, every = 5, h = 3, sides = [-1, 1], post = c } = o;
   for (let u = from; u < to; u++) {
@@ -64,7 +168,6 @@ function railing(m, s, c, o = {}) {
   }
 }
 
-// Turn palette entries inside `test` into duplicate "front" entries (drawn over the fisherman).
 function twinFront(m, keys, test) {
   const twins = new Map();
   for (const k of keys) {
@@ -76,514 +179,559 @@ function twinFront(m, keys, test) {
     const v = m.get(x, y, z);
     if (v && twins.has(v) && test(x, y, z)) m.set(x, y, z, twins.get(v));
   }
-  return { set: new Set(twins.values()), twins };
+  return new Set(twins.values());
 }
 
-function ring(m, cx, cy, z, r, cA, cB, quarters = 4) {
+function ringZ(m, cx, cy, z, r, cA, cB, quarters = 4) {
   for (let a = 0; a < TAU; a += 0.5 / r) m.set(cx + Math.cos(a) * r, cy + Math.sin(a) * r, z, Math.floor(((a + 0.4) / TAU) * quarters) % 2 ? cA : cB);
 }
-
 function porthole(m, x, y, z, rim, glass) {
   for (const [dx, dy] of [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]]) m.set(x + dx, y + dy, z, rim);
   m.set(x, y, z, glass);
 }
-
-function fender(m, x, z, yTop, y0, y1, rope, col, band) {
-  m.line(x, yTop, z - 1, x, y1 + 1, z, rope, 0);
-  m.cylinder(x, z, y0, y1, 1.3, (xx, y) => (band && y === Math.round((y0 + y1) / 2) ? band : col), 'y');
+function shapeIn(m, x0, y0, z0, x1, y1, z1, test, c) {
+  for (let y = Math.floor(y0); y <= Math.ceil(y1); y++) for (let z = Math.floor(z0); z <= Math.ceil(z1); z++) for (let x = Math.floor(x0); x <= Math.ceil(x1); x++) if (test(x + 0.5, y + 0.5, z + 0.5)) m.put(x, y, z, c);
 }
-
-function lantern(m, x, y, z, frame, glass) {
-  m.box(x - 1, y - 2, z - 1, x + 1, y + 1, z + 1, glass);
-  m.box(x - 1, y + 2, z - 1, x + 1, y + 2, z + 1, frame);
-  m.box(x - 1, y - 3, z - 1, x + 1, y - 3, z + 1, frame);
-  m.set(x, y + 3, z, frame);
-  for (const [ax, az] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) for (let yy = y - 2; yy <= y + 1; yy++) m.set(x + ax, yy, z + az, frame);
+// Recolour hull-side voxels (both sides, outermost layer) with a decal pattern fn(x, y) -> idx | null.
+function sideDecal(m, zc, x0, x1, y0, y1, ok, fn) {
+  for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) {
+    for (const s of [1, -1]) {
+      let z = s > 0 ? m.nz - 1 : 0;
+      for (; s > 0 ? z > zc : z < zc; z -= s) if (m.get(x, y, z)) break;
+      const v = m.get(x, y, z);
+      if (!v || !ok.has(v)) continue;
+      const c = fn(x, y);
+      if (c) m.set(x, y, z, c);
+    }
+  }
 }
-
-function rodInHolder(m, hx, hz, base, tx, ty, metal, rod, reel, tip) {
-  m.line(hx, base, hz, hx, base + 4, hz, metal, 0);
-  m.line(hx, base + 3, hz, tx, ty, hz, rod, 0);
-  m.set(hx - 1, base + 6, hz, reel);
-  m.set(tx, ty, hz, tip);
-}
-
-function crate(m, x0, y0, z0, x1, y1, z1, c, dark) {
-  m.box(x0, y0, z0, x1, y1, z1, (x, y, z) => (x === x0 || x === x1 || y === y1 || y === y0 || z === z0 || z === z1) && ((x === x0 || x === x1) + (y === y0 || y === y1) + (z === z0 || z === z1) >= 2) ? dark : c);
-}
-
-// ------------------------------------------------------------------ tier 0: dinghy
-
-function dinghy(paint, trim) {
-  const m = new VoxelModel(72, 44, 19);
-  const X0 = 10, LEN = 46, ZC = 9, WL = 3, FLOOR = 3;
-  const p = palette(m, {
-    bottom: [mix(paint, '#1c2034', 0.62), { jitter: 0.12 }], paint: [paint, { jitter: 0.1 }], paintD: [shade(paint, -0.18), { jitter: 0.08 }],
-    trim: [trim, { jitter: 0.05 }], cap: ['#8a5a32', { jitter: 0.1 }], floor: ['#c99a62', { jitter: 0.14 }], floorD: ['#a07246', { jitter: 0.08 }],
-    wood: ['#a8743e', { jitter: 0.12 }], metal: ['#4c505e', { spec: 0.5 }], brass: ['#d8a84a', { spec: 0.9 }], rope: ['#d8c08a', { jitter: 0.1 }],
-    glass: ['#ffe08a', { emissive: 0.85 }], inner: ['#b8844a', { jitter: 0.1 }], red: '#e2483a', blue: '#3e8acc', orange: ['#ff8a2a', { jitter: 0.06 }], white: '#f4f0e6', fish: ['#9ad0e0', { spec: 0.6 }],
+function applyDecal(m, p, id, zc, x0, x1, y0, y1) {
+  if (id === 'none') return;
+  const ok = new Set([p.paint, p.paintD, p.white, p.trim, p.paintL]);
+  const L = x1 - x0, mid = (y0 + y1) / 2, h = y1 - y0;
+  if (id === 'swoosh') sideDecal(m, zc, x0, x1, y0, y1, ok, (x, y) => { const u = (x - x0) / L; const c = y0 + h * (0.25 + 0.55 * u * u); return Math.abs(y - c) < 0.9 + u * 0.8 ? p.aqua : Math.abs(y - c - 1.6 - u) < 0.5 ? p.white : null; });
+  else if (id === 'wave') sideDecal(m, zc, x0, x1, y0, y1, ok, (x, y) => (Math.abs(y - mid - Math.sin(x * 0.4) * h * 0.22) < 0.6 ? p.white : y < mid + Math.sin(x * 0.4) * h * 0.22 - 0.6 ? p.aquaD : null));
+  else if (id === 'stripes') sideDecal(m, zc, x0, x1, y0, y1, ok, (x, y) => { const c = mid + (x - x0) * 0.08; return Math.abs(y - c) < 0.6 ? p.aqua : Math.abs(y - c - 1.6) < 0.5 ? p.lime : null; });
+  else if (id === 'bubbles') sideDecal(m, zc, x0, x1, y0, y1, ok, (x, y) => {
+    for (let i = 0; i < L / 5; i++) { const bx = x0 + 3 + i * 5 + hash3(i, 1, 2, 3) * 2, by = y0 + 1 + hash3(i, 4, 5, 6) * (h - 2), r = 0.9 + hash3(i, 7, 8, 9) * 1.4; const d = Math.hypot(x - bx, y - by); if (d < r + 0.5 && d > r - 0.5) return p.white; if (d < 0.6 && r > 1.5) return p.white; }
+    return null;
   });
-  const s = {
-    x0: X0, len: LEN, zc: ZC, vee: 0.35,
-    keel: (u) => 1.5 * (1 - sm(0, 5, u)) + 5.5 * Math.pow(sm(30, 46, u), 1.6),
-    sheer: (u) => 8 + 0.8 * (1 - sm(0, 10, u)) + 3.4 * Math.pow(sm(26, 46, u), 1.4),
-    beam: (u) => (u < 18 ? 6 + 1.4 * sm(0, 18, u) : 7.4 * Math.sqrt(Math.max(0, 1 - Math.pow((u - 18) / 28.5, 2)))),
-    deck: () => FLOOR, inner: null,
-    skin: (y, u, ys) => (y === ys ? p.cap : y === ys - 1 ? p.trim : y < WL ? p.bottom : (y - WL) % 2 ? p.paintD : p.paint),
-    deckC: (x) => (x % 3 === 0 ? p.floorD : p.floor),
-  };
-  s.inner = p.inner;
-  hull(m, s);
-  for (let y = 2; y <= 9; y++) for (let z = ZC - 7; z <= ZC + 7; z++) if (m.get(X0, y, z)) m.set(X0, y, z, y >= 8 ? p.cap : p.wood);
-  for (let y = 4; y <= 12; y++) m.set(X0 + LEN - 1, y, ZC, p.cap);
-  // thwarts
-  for (const u of [7, 27]) {
-    const ys = Math.round(s.sheer(u)), hb = s.beam(u);
-    m.box(X0 + u, ys - 2, ZC - Math.floor(hb) + 1, X0 + u + 2, ys - 2, ZC + Math.floor(hb) - 1, p.wood);
+  else if (id === 'leaves') sideDecal(m, zc, x0, x1, y0, y1, ok, (x, y) => {
+    for (let i = 0; i < L / 7; i++) { const bx = x0 + 4 + i * 7, by = mid + (i % 2 ? 0.8 : -0.8); const u = (x - bx) * 0.7 + (y - by) * 0.7, v = -(x - bx) * 0.7 + (y - by) * 0.7; if ((u / 3) ** 2 + (v / 1.3) ** 2 < 1) return Math.abs(v) < 0.4 ? p.vein : i % 2 ? p.leaf : p.leafL; }
+    return null;
+  });
+  else if (id === 'dolphin') {
+    const D = ['......##..', '....####..', '.#########', '##########', '.########.', '..#...##..'];
+    sideDecal(m, zc, x0, x1, y0, y1, ok, (x, y) => {
+      for (const bx of [x0 + Math.round(L * 0.3), x0 + Math.round(L * 0.65)]) { const i = x - bx, j = Math.round(mid + 3) - y; if (i >= 0 && i < 10 && j >= 0 && j < 6 && D[j][i] === '#') return p.white; }
+      return null;
+    });
   }
-  // shipped oars along both sides, blades forward
-  for (const side of [-1, 1]) {
-    const z = ZC + side * 4;
-    m.line(X0 + 4, 9, z, X0 + 38, 10, z, p.wood, 0);
-    m.box(X0 + 33, 10, z - 1, X0 + 40, 10, z + 1, p.wood);
-    m.set(X0 + 22, Math.round(s.sheer(22)) + 1, ZC + side * 7, p.brass);
-  }
-  // bow lantern pole + pennant
-  const lx = X0 + 37;
-  m.line(lx, FLOOR + 1, ZC, lx, 21, ZC, p.wood, 0);
-  m.line(lx, 20, ZC, lx + 3, 20, ZC, p.metal, 0);
-  m.line(lx + 3, 20, ZC, lx + 3, 18, ZC, p.metal, 0);
-  lantern(m, lx + 3, 15, ZC, p.metal, p.glass);
-  // bucket with a fish, tackle box, rope coil, spare rod, a float
-  m.cylinder(X0 + 3, ZC + 3, FLOOR + 1, FLOOR + 3, 1.5, p.blue);
-  m.set(X0 + 3, FLOOR + 4, ZC + 3, p.fish);
-  m.box(X0 + 13, FLOOR + 1, ZC - 3, X0 + 16, FLOOR + 2, ZC - 1, p.red);
-  m.box(X0 + 13, FLOOR + 3, ZC - 3, X0 + 16, FLOOR + 3, ZC - 1, p.metal);
-  for (let a = 0; a < TAU; a += 0.35) m.set(X0 + 29 + Math.round(Math.cos(a) * 1.6), FLOOR + 1, ZC - 2 + Math.round(Math.sin(a) * 1.6), p.rope);
-  rodInHolder(m, X0 + 2, ZC - 4, FLOOR + 1, 1, 24, p.metal, p.cap, p.brass, p.red);
-  m.sphere(X0 + 1, 6, ZC + 7, 1.4, p.orange);
-  m.line(X0 + 1, 7, ZC + 7, X0 + 2, 8, ZC + 6, p.rope, 0);
-  const tw = twinFront(m, [p.paint, p.paintD, p.trim, p.cap, p.orange, p.brass, p.rope], (x, y, z) => z >= ZC + 3 && y > FLOOR);
-  return {
-    m, front: tw.set, night: new Map([[p.glass, '#fff0b8']]), wl: WL, zc: ZC,
-    A: { stand: [X0 + 18, FLOOR + 1, ZC], lantern: [lx + 3.5, 15, ZC + 0.5], mast: [lx + 0.5, 21, ZC + 0.5], flag: [lx + 0.5, 21.5, ZC + 0.5], chimney: null,
-      bow: [X0 + LEN, WL, ZC], stern: [X0, WL, ZC], top: [X0 + 20, 14, ZC], keel: [X0 + 20, 0, ZC] },
-    pivot: [X0 + LEN / 2, WL], flagScale: 0.6, lights: [['lantern', 70, '#ffcf70', 0.95]],
-  };
 }
 
-// ------------------------------------------------------------------ tier 1: fishing boat
-
-function fishingBoat(paint, trim) {
-  const m = new VoxelModel(92, 72, 23);
-  const X0 = 10, LEN = 66, ZC = 11, WL = 6, DECK = 10;
-  const p = palette(m, {
-    bottom: [mix(paint, '#1c2034', 0.72), { jitter: 0.12 }], boot: ['#f2ead6', { jitter: 0.05 }], paint: [paint, { jitter: 0.1 }], seam: [shade(paint, -0.16), { jitter: 0.06 }],
-    strake: [trim, { jitter: 0.05 }], cap: ['#8a5a32', { jitter: 0.1 }], rail: ['#e8dcc0', { jitter: 0.04 }], deck: ['#c99a62', { jitter: 0.14 }], deckSeam: ['#a07246', { jitter: 0.08 }],
-    wall: ['#f1ebdc', { jitter: 0.06 }], trim: ['#7e5230', { jitter: 0.08 }], roof: [mix('#2f7f8f', paint, 0.12), { jitter: 0.08 }], roofRim: ['#e8e0cc', { jitter: 0.04 }],
-    glass: ['#86c8e4', { jitter: 0.02, spec: 0.8, edge: 0.4 }], glassHi: '#dff6ff', metal: ['#4c505e', { jitter: 0.06, spec: 0.5 }], brass: ['#d8a84a', { spec: 0.9 }],
-    rope: ['#d8c08a', { jitter: 0.1 }], red: ['#e2483a', { jitter: 0.06 }], white: '#f4f0e6', lamp: ['#ffe08a', { emissive: 0.85 }], mastLamp: ['#fff6d8', { emissive: 1 }],
-    tip: ['#ff5a4a', { emissive: 1 }], wood: ['#9a6a3c', { jitter: 0.1 }], crate: ['#b8864e', { jitter: 0.14 }], crateD: ['#7a5230', { jitter: 0.08 }],
-    barrel: ['#8a5a34', { jitter: 0.1 }], hoop: '#5a5e6a', net: ['#5aa070', { jitter: 0.2 }], fish: ['#9ad0e0', { spec: 0.6 }], bucket: '#3e8acc', orange: ['#ff8a2a', { jitter: 0.06 }],
-  });
-  const s = {
-    x0: X0, len: LEN, zc: ZC,
-    keel: (u) => 2 * (1 - sm(0, 8, u)) + 9 * Math.pow(sm(42, 66, u), 1.8),
-    sheer: (u) => 11.4 + 0.9 * (1 - sm(0, 18, u)) + 5.4 * Math.pow(sm(32, 66, u), 1.5),
-    beam: (u) => (u < 34 ? 8.2 + 1.3 * sm(0, 26, u) : 9.5 * Math.sqrt(Math.max(0, 1 - Math.pow((u - 34) / 32.5, 2)))),
-    skin: (y, u, ys) => (y === ys ? p.cap : y === ys - 1 ? p.strake : y <= WL - 1 ? p.bottom : y <= WL + 1 ? p.boot : (y - WL) % 3 === 0 ? p.seam : p.paint),
-    deckC: (x, z) => (z % 3 === 0 ? p.deckSeam : p.deck),
-  };
-  s.deck = deckFn(DECK, s.sheer, 2);
-  s.inner = p.rail;
-  hull(m, s);
-  for (let y = Math.round(s.keel(LEN - 1)); y <= Math.round(s.sheer(LEN - 1)) + 2; y++) m.set(X0 + LEN - 1, y, ZC, p.cap);
-  for (let y = 2; y <= 12; y++) for (let z = ZC - 7; z <= ZC + 7; z++) if (m.get(X0, y, z)) m.set(X0, y, z, y >= 12 ? p.cap : y <= WL - 1 ? p.bottom : p.trim);
-  m.line(X0 + LEN - 2, 17, ZC, X0 + LEN + 8, 19, ZC, p.cap, 0.7);
-  railing(m, s, p.rail, { from: 2, to: LEN - 4, every: 5, h: 3 });
-  // wheelhouse
-  const cx0 = X0 + 6, cx1 = X0 + 25, cz0 = ZC - 6, cz1 = ZC + 5, cy0 = DECK + 1, cy1 = DECK + 21;
-  m.box(cx0, cy0, cz0, cx1, cy1, cz1, (x, y, z) => (y === cy0 || ((x === cx0 || x === cx1) && (z === cz0 || z === cz1)) ? p.trim : p.wall));
-  for (const wx of [cx0 + 2, cx0 + 8, cx0 + 14]) {
-    m.box(wx - 1, cy0 + 10, cz1, wx + 4, cy0 + 18, cz1, p.trim);
-    m.box(wx, cy0 + 11, cz1, wx + 3, cy0 + 17, cz1, p.glass);
-    m.set(wx, cy0 + 17, cz1, p.glassHi); m.set(wx + 1, cy0 + 16, cz1, p.glassHi);
+// Mast + sail. The sail is a 1-voxel plane at z = zc spanning aft of the mast.
+function mastSail(m, p, id, mx, y0, y1, zc, aft, flagTop = true) {
+  for (let y = y0; y <= y1; y++) m.set(mx, y, zc, y % 6 === 0 ? p.chromeD : p.chrome);
+  m.set(mx, y1 + 1, zc, p.aqua);
+  if (id === 'none') return [mx + 0.5, y1 + 1.5, zc + 0.5];
+  const H = y1 - y0 - 3, by = y0 + 3;
+  m.line(mx, by, zc, mx - aft, by, zc, p.chromeD, 0);
+  for (let y = by + 1; y <= y1 - 1; y++) {
+    const k = (y - by) / H;
+    let w = aft * (1 - k) * (id === 'leaf' ? 0.55 + 0.6 * Math.sin(k * Math.PI) : 1);
+    if (id === 'bubble') w = aft * Math.sqrt(Math.max(0, 1 - ((k - 0.42) / 0.62) ** 2)) * 0.95;
+    for (let x = mx - 1; x >= mx - w; x--) {
+      const u = (mx - x) / Math.max(1, aft);
+      let c = p.white;
+      if (id === 'stripe') c = Math.floor(k * 9) % 2 ? p.aqua : p.white;
+      else if (id === 'leaf') c = Math.abs(u - (1 - k) * 0.45) < 0.035 ? p.vein : (x + y) % 5 === 0 ? p.leaf : p.leafL;
+      else if (id === 'rainbow') c = [p.red, p.orange, p.lamp, p.lime, p.aqua, p.solarL][Math.floor(u * 6) % 6];
+      else if (id === 'solar') c = (x % 4 === 0 || y % 3 === 0) ? p.solarL : p.solar;
+      else if (id === 'bubble') c = (x + y) % 9 === 0 ? p.glassHi : p.glass;
+      if (x <= mx - w + 0.8 && id !== 'leaf' && id !== 'bubble') c = id === 'solar' ? p.chrome : p.trim;
+      m.set(x, y, zc, c);
+    }
   }
-  m.box(cx1, cy0 + 10, cz0 + 1, cx1, cy0 + 18, cz1 - 1, p.trim);
-  m.box(cx1, cy0 + 11, cz0 + 2, cx1, cy0 + 17, cz1 - 2, p.glass);
-  m.box(cx0 + 1, cy0 + 6, cz1, cx1 - 1, cy0 + 7, cz1, (x) => (x % 2 ? p.paint : p.seam));
-  porthole(m, cx0 + 4, cy0 + 3, cz1, p.brass, p.glass);
-  m.box(cx0 - 2, cy1 + 1, cz0 - 1, cx1 + 2, cy1 + 1, cz1 + 1, p.roofRim);
-  m.box(cx0 - 1, cy1 + 2, cz0, cx1 + 1, cy1 + 2, cz1, p.roof);
-  m.cylinder(cx0 + 4, cz0 + 3, cy1 + 3, cy1 + 8, 1.2, p.metal);
-  m.box(cx0 + 3, cy1 + 9, cz0 + 2, cx0 + 5, cy1 + 9, cz0 + 4, p.metal);
-  m.box(cx1 - 3, cy1 + 3, cz1 - 3, cx1 - 1, cy1 + 4, cz1 - 1, p.white);
-  m.box(cx1, cy1 + 3, cz1 - 3, cx1, cy1 + 4, cz1 - 1, p.glassHi);
-  m.line(cx0 + 10, cy1 + 3, cz0 + 2, cx0 + 10, cy1 + 15, cz0 + 2, p.metal, 0);
-  m.line(cx0 + 8, cy1 + 12, cz0 + 2, cx0 + 12, cy1 + 12, cz0 + 2, p.metal, 0);
-  m.set(cx0 + 10, cy1 + 16, cz0 + 2, p.tip);
-  const LT = [cx0 + 1, cy1 - 3, ZC + 6];
-  m.line(LT[0], LT[1] + 4, LT[2], LT[0], LT[1] + 2, LT[2], p.metal, 0);
-  lantern(m, LT[0], LT[1], LT[2], p.metal, p.lamp);
-  // mast, spreader, stays, boom with a net
-  const mx = X0 + 46;
-  m.cylinder(mx, ZC, DECK + 1, 61, 0.9, p.wood);
-  m.box(mx, 52, ZC - 5, mx, 52, ZC + 5, p.wood);
-  m.set(mx, 62, ZC, p.mastLamp);
-  m.line(mx, 59, ZC, X0 + LEN, 18, ZC, p.rope, 0);
-  m.line(mx, 59, ZC, cx1 + 1, cy1 + 2, ZC, p.rope, 0);
-  m.line(mx, 52, ZC - 5, mx + 6, DECK + 2, ZC - 7, p.rope, 0);
-  m.line(mx, 52, ZC + 5, mx + 6, DECK + 2, ZC + 7, p.rope, 0);
-  m.line(mx, 20, ZC, mx + 13, 29, ZC, p.wood, 0.6);
-  m.line(mx + 13, 29, ZC, mx + 13, 24, ZC, p.rope, 0);
-  m.ellipsoid(mx + 13, 22, ZC, 2.2, 2.8, 2, p.net);
-  m.set(mx + 13, 21, ZC + 2, p.fish); m.set(mx + 12, 23, ZC + 2, p.orange);
-  // cargo: crates, barrel, coiled rope, fish bucket
-  crate(m, X0 + 50, DECK + 1, ZC - 6, X0 + 55, DECK + 6, ZC - 1, p.crate, p.crateD);
-  crate(m, X0 + 51, DECK + 7, ZC - 5, X0 + 54, DECK + 10, ZC - 2, p.crate, p.crateD);
-  m.cylinder(X0 + 57, ZC + 3, DECK + 1, DECK + 7, 2.2, (x, y) => (y === DECK + 2 || y === DECK + 6 ? p.hoop : p.barrel));
-  for (let a = 0; a < TAU; a += 0.3) m.set(X0 + 31 + Math.round(Math.cos(a) * 2), DECK + 1, ZC - 5 + Math.round(Math.sin(a) * 2), p.rope);
-  m.cylinder(X0 + 3, ZC + 4, DECK + 1, DECK + 4, 1.6, p.bucket);
-  m.set(X0 + 3, DECK + 5, ZC + 4, p.fish);
-  rodInHolder(m, X0 + 2, ZC + 6, DECK + 1, 2, 40, p.metal, p.trim, p.brass, p.red);
-  rodInHolder(m, X0 + 3, ZC - 5, DECK + 1, 5, 43, p.metal, p.trim, p.brass, p.red);
-  // fenders, life ring, portholes, anchor
-  for (const [u, col] of [[14, p.red], [29, p.white], [44, p.orange]]) fender(m, X0 + u, Math.round(ZC + s.beam(u) + 0.8), Math.round(s.sheer(u)) + 2, 6, 10, p.rope, col, col !== p.white ? p.white : null);
-  ring(m, X0 + 36, 10.5, Math.round(ZC + s.beam(36) + 0.6), 2.6, p.red, p.white);
-  for (const u of [10, 18, 54]) porthole(m, X0 + u, 9, Math.round(ZC + s.beam(u) * (0.3 + 0.7 * Math.pow(Math.max(0, 8.5 - s.keel(u)) / Math.max(1, s.sheer(u) - s.keel(u)), 0.5))), p.brass, p.glass);
-  {
-    const x = X0 + 60, z = Math.round(ZC + s.beam(60) + 0.4);
-    m.line(x, 13, z, x, 8, z, p.metal, 0); m.line(x - 1, 12, z, x + 1, 12, z, p.metal, 0);
-    m.line(x - 2, 9, z, x, 7, z, p.metal, 0); m.line(x + 2, 9, z, x, 7, z, p.metal, 0);
-  }
-  const tw = twinFront(m, [p.paint, p.seam, p.strake, p.cap, p.rail, p.rope, p.red, p.white, p.orange, p.brass, p.metal, p.glass], (x, y, z) => x > cx1 && z >= ZC + 4 && y > DECK);
-  return {
-    m, front: tw.set, wl: WL, zc: ZC,
-    night: new Map([[p.glass, '#ffcf6e'], [tw.twins.get(p.glass), '#ffcf6e'], [p.glassHi, '#ffe9b0'], [p.lamp, '#fff0b8'], [p.mastLamp, '#ffffff'], [p.tip, '#ff6a50']]),
-    A: { stand: [X0 + 36, DECK + 1, ZC], lantern: [LT[0] + 0.5, LT[1], LT[2] + 0.5], mast: [mx + 0.5, 63, ZC + 0.5], flag: [mx + 0.5, 61.5, ZC + 0.5], chimney: [cx0 + 4.5, cy1 + 10, cz0 + 3.5],
-      bow: [X0 + LEN, WL, ZC], stern: [X0, WL, ZC], top: [X0 + 16, cy1 + 3, ZC], keel: [X0 + 30, 0, ZC] },
-    pivot: [X0 + LEN / 2, WL], flagScale: 1, lights: [['lantern', 78, '#ffcf70', 0.95], ['mast', 34, '#fff6d8', 0.6], ['cabin', 56, '#ffc870', 0.45]],
-    cabin: [(cx0 + cx1) / 2, cy0 + 12, cz1],
-  };
+  if (id === 'rainbow') for (let x = 0; x < m.nx; x++) for (let y = 0; y < m.ny; y++) { const v = m.get(x, y, zc); if (v === p.lamp) m.set(x, y, zc, p.deck); }
+  return [mx + 0.5, y1 + 1.5, zc + 0.5];
 }
 
-// ------------------------------------------------------------------ tier 2: trawler
-
-function trawler(paint, trim) {
-  const m = new VoxelModel(116, 86, 27);
-  const X0 = 12, LEN = 86, ZC = 13, WL = 7, DECK = 12;
-  const r = new RNG(77);
-  const p = palette(m, {
-    bottom: ['#a83a32', { jitter: 0.12 }], boot: ['#f2ead6', { jitter: 0.05 }], paint: [paint, { jitter: 0.12 }], rust: [mix(paint, '#7a3a20', 0.45), { jitter: 0.14 }],
-    seam: [shade(paint, -0.18), { jitter: 0.06 }], strake: [trim, { jitter: 0.05 }], steel: ['#5a6070', { jitter: 0.08 }], deck: ['#8a8478', { jitter: 0.12 }], deckD: ['#6e6a62', { jitter: 0.08 }],
-    wall: ['#f0eadc', { jitter: 0.06 }], wallD: ['#c8c0ae', { jitter: 0.06 }], glass: ['#7ab8d8', { spec: 0.8, edge: 0.4 }], glassHi: '#dff6ff', roof: ['#3e4654', { jitter: 0.06 }],
-    yel: ['#e8a83a', { jitter: 0.08 }], yelD: ['#b07a2a', { jitter: 0.06 }], black: '#24262e', net: ['#3e8a5a', { jitter: 0.25 }], netL: ['#6ab878', { jitter: 0.2 }], float: ['#ff7a2a', { jitter: 0.06 }],
-    metal: ['#4c505e', { spec: 0.5 }], rope: ['#d8c08a', { jitter: 0.1 }], tyre: ['#2a2a30', { jitter: 0.1 }], white: '#f4f0e6', blue: ['#3e7acc', { jitter: 0.06 }], fish: ['#9ad0e0', { spec: 0.6 }],
-    lamp: ['#fff2b0', { emissive: 1 }], red: ['#ff4a3a', { emissive: 1 }], green: ['#4aff7a', { emissive: 1 }], radar: '#d8dce4',
-  });
-  const s = {
-    x0: X0, len: LEN, zc: ZC, vee: 0.38,
-    keel: (u) => 2 * (1 - sm(0, 10, u)) + 11 * Math.pow(sm(58, 86, u), 1.8),
-    sheer: (u) => 15 + 1 * (1 - sm(0, 20, u)) + 6.5 * Math.pow(sm(46, 86, u), 1.5),
-    beam: (u) => (u < 40 ? 10.5 + 1.5 * sm(0, 30, u) : 12 * Math.sqrt(Math.max(0, 1 - Math.pow((u - 40) / 46.5, 2)))),
-    skin: (y, u, ys, yb, z) => {
-      if (y === ys) return p.steel;
-      if (y === ys - 1) return p.strake;
-      if (y < WL) return p.bottom;
-      if (y <= WL + 1) return p.boot;
-      if (hash3(u, 0, z, 9) < 0.08 && y < ys - 2 && hash3(u, y >> 2, 0, 3) < 0.6) return p.rust;
-      return (y - WL) % 4 === 0 ? p.seam : p.paint;
-    },
-    deckC: (x, z) => ((x + z) % 7 === 0 ? p.deckD : p.deck),
-  };
-  s.deck = deckFn(DECK, s.sheer, 3);
-  s.inner = p.wallD;
-  hull(m, s);
-  for (let y = 2; y <= 16; y++) for (let z = ZC - 10; z <= ZC + 10; z++) if (m.get(X0, y, z)) m.set(X0, y, z, y < WL ? p.bottom : y >= 15 ? p.steel : p.paint);
-  // forward wheelhouse with bridge, mast, radar, lights
-  const wx0 = X0 + 52, wx1 = X0 + 68, wz0 = ZC - 8, wz1 = ZC + 7, wy0 = DECK + 1, wy1 = DECK + 22;
-  m.box(wx0, wy0, wz0, wx1, wy1, wz1, (x, y, z) => (y < wy0 + 2 ? p.wallD : p.wall));
-  for (let k = 0; k < 4; k++) { const x = wx0 + 2 + k * 4; m.box(x, wy1 - 7, wz1, x + 2, wy1 - 2, wz1, p.glass); m.set(x, wy1 - 2, wz1, p.glassHi); }
-  m.box(wx1, wy1 - 7, wz0 + 1, wx1, wy1 - 2, wz1 - 1, p.glass);
-  for (const u of [55, 59]) porthole(m, X0 + u, wy0 + 6, wz1, p.metal, p.glass);
-  m.box(wx0 - 1, wy1 + 1, wz0 - 1, wx1 + 2, wy1 + 1, wz1 + 1, p.roof);
-  railing(m, { x0: wx0, len: wx1 - wx0 + 1, zc: ZC, sheer: () => wy1 + 1, beam: () => 8.4 }, p.white, { from: 0, to: wx1 - wx0 + 1, every: 4, h: 3 });
-  const mx = wx0 + 6;
-  m.cylinder(mx, ZC, wy1 + 2, wy1 + 26, 0.9, p.white);
-  m.box(mx - 5, wy1 + 16, ZC - 1, mx + 5, wy1 + 17, ZC + 1, p.radar);
-  m.box(mx - 1, wy1 + 20, ZC - 6, mx + 1, wy1 + 20, ZC + 6, p.white);
-  m.set(mx, wy1 + 27, ZC, p.lamp); m.set(mx, wy1 + 20, ZC + 6, p.green); m.set(mx, wy1 + 20, ZC - 6, p.red);
-  m.cylinder(wx0 + 12, ZC - 4, wy1 + 2, wy1 + 4, 2.2, p.white); // life raft canister
-  // funnel
-  const fx = X0 + 47;
-  m.cylinder(fx, ZC - 2, DECK + 1, DECK + 28, 2.8, (x, y) => (y > DECK + 25 ? p.black : y > DECK + 21 && y < DECK + 24 ? p.strake : p.paint));
-  // stern A-frame gantry with hanging net and floats
-  const gx = X0 + 4;
-  for (const side of [-1, 1]) m.line(gx + 3, DECK + 1, ZC + side * 10, gx - 2, 46, ZC + side * 9, p.yel, 1);
-  m.line(gx - 2, 46, ZC - 9, gx - 2, 46, ZC + 9, p.yel, 1.1);
-  m.box(gx - 3, 43, ZC - 1, gx - 1, 45, ZC + 1, p.yelD);
-  m.line(gx - 2, 43, ZC, gx - 1, 30, ZC, p.metal, 0);
-  m.ellipsoid(gx, 25, ZC, 4.5, 6, 4, (x, y, z) => ((x + y + z) % 3 ? p.net : p.netL));
-  for (let k = 0; k < 5; k++) m.sphere(gx - 3 + k * 1.6, 31 - k * 0.4, ZC + 4, 1.1, p.float);
-  m.set(gx - 2, 47, ZC + 9, p.lamp); m.set(gx - 2, 47, ZC - 9, p.lamp);
-  // net drum
-  const dx = X0 + 17;
-  for (let z = ZC - 7; z <= ZC + 7; z++) {
-    const flange = z === ZC - 7 || z === ZC + 7;
-    m.cylinder(dx, DECK + 7, z, z, flange ? 5 : 4, (x, y) => (flange ? p.yelD : (x + y + z) % 3 ? p.net : p.netL), 'z');
+// Stern engine part. Returns extra anchors {turbine?, bubbles?}.
+function engine(m, p, id, x, y, zc, A, spin, bubbles, o = {}) {
+  if (id === 'outboard') {
+    m.box(x - 3, y, zc - 2, x, y + 5, zc + 2, p.white);
+    m.box(x - 3, y + 2, zc - 2, x, y + 2, zc + 2, p.aqua);
+    m.box(x - 2, y - 7, zc, x - 1, y, zc, p.chromeD);
+    m.box(x - 3, y - 8, zc - 1, x - 1, y - 7, zc + 1, p.chromeD);
+    m.set(x - 4, y + 4, zc, p.navy);
+  } else if (id === 'turbine') {
+    const h = o.poleH ?? 18;
+    m.line(x, y, zc, x, y + h, zc, p.white, 0.6);
+    m.ellipsoid(x, y + h, zc, 2.2, 1.4, 1.4, p.white);
+    m.set(x + 2, y + h, zc, p.aqua);
+    m.set(x, y + h, zc + 2, p.lime);
+    A.turbineE = [x + 0.5, y + h + 0.5, zc + 2.5];
+    spin.push({ at: 'turbineE', r: 8, n: 3, speed: 5 });
+  } else if (id === 'solar') {
+    const x0 = o.x0 ?? x + 2, x1 = o.x1 ?? x + 16, top = y + (o.h ?? 22);
+    for (const px of [x0, x1]) for (const pz of [zc - 6, zc + 6]) m.line(px, y, pz, px, top, pz, p.chrome, 0.4);
+    m.box(x0 - 1, top, zc - 7, x1 + 1, top + 1, zc + 7, (xx, yy, zz) => (yy > top ? ((xx + zz) % 4 === 0 ? p.solarL : p.solar) : p.chrome));
+  } else if (id === 'bubble') {
+    m.sphere(x - 1, y + 3, zc, 3.4, p.glass);
+    m.sphere(x - 2, y + 4, zc + 1.6, 1, p.glassHi);
+    m.box(x - 1, y, zc - 1, x + 1, y + 1, zc + 1, p.chrome);
+    m.set(x - 1, y + 3, zc + 3, p.led);
+    A.bubbles0 = [x - 3.5, y - 1, zc + 0.5];
+    bubbles.push('bubbles0');
+  } else if (id === 'paddle') {
+    const cy = y + 1;
+    for (let a = 0; a < TAU; a += 0.14) { m.set(x - 4 + Math.cos(a) * 5, cy + Math.sin(a) * 5, zc - 3, p.red); m.set(x - 4 + Math.cos(a) * 5, cy + Math.sin(a) * 5, zc + 3, p.red); }
+    for (let i = 0; i < 8; i++) { const a = (i / 8) * TAU; m.box(x - 4 + Math.cos(a) * 4.6, cy + Math.sin(a) * 4.6, zc - 3, x - 4 + Math.cos(a) * 4.6, cy + Math.sin(a) * 4.6, zc + 3, p.white); }
+    m.box(x - 5, cy - 1, zc - 3, x - 3, cy + 1, zc + 3, p.chrome);
   }
-  m.box(dx - 1, DECK + 1, ZC - 8, dx + 1, DECK + 7, ZC - 8, p.yel); m.box(dx - 1, DECK + 1, ZC + 8, dx + 1, DECK + 7, ZC + 8, p.yel);
-  // knuckle-boom crane
-  const kx = X0 + 36, kz = ZC + 7;
-  m.cylinder(kx, kz, DECK + 1, DECK + 8, 1.6, p.yel);
-  m.line(kx, DECK + 8, kz, kx + 8, DECK + 22, kz, p.yel, 1);
-  m.line(kx + 8, DECK + 22, kz, kx + 14, DECK + 16, kz, p.yelD, 0.8);
-  m.line(kx + 14, DECK + 16, kz, kx + 14, DECK + 9, kz, p.metal, 0);
-  m.box(kx + 13, DECK + 7, kz - 1, kx + 15, DECK + 8, kz + 1, p.metal);
-  // fish boxes, hatch, coiled ropes, tyre fenders
-  for (let k = 0; k < 3; k++) {
-    crate(m, X0 + 24 + k * 5, DECK + 1, ZC - 9, X0 + 28 + k * 5, DECK + 3, ZC - 5, p.blue, p.white);
-    m.set(X0 + 26 + k * 5, DECK + 4, ZC - 7, p.fish);
-  }
-  crate(m, X0 + 25, DECK + 4, ZC - 9, X0 + 29, DECK + 6, ZC - 5, p.blue, p.white);
-  m.box(X0 + 28, DECK + 1, ZC - 2, X0 + 33, DECK + 2, ZC + 3, p.steel);
-  for (const u of [20, 42, 62]) {
-    const z = Math.round(ZC + s.beam(u) + 0.5);
-    ring(m, X0 + u, 10, z, 2.2, p.tyre, p.tyre);
-    m.line(X0 + u, 12, z, X0 + u, Math.round(s.sheer(u)), z - 1, p.rope, 0);
-  }
-  for (const u of [8, 14]) for (let z = ZC - 2; z <= ZC + 2; z++) m.set(X0 + u, 9 + (z % 2), Math.round(ZC + s.beam(u) + 0.3), p.white);
-  // bow anchor
-  {
-    const x = X0 + 76, z = Math.round(ZC + s.beam(76) + 0.4);
-    m.line(x, 17, z, x, 11, z, p.metal, 0); m.line(x - 2, 12, z, x, 10, z, p.metal, 0); m.line(x + 2, 12, z, x, 10, z, p.metal, 0);
-  }
-  void r;
-  const tw = twinFront(m, [p.paint, p.seam, p.rust, p.strake, p.steel, p.white, p.rope, p.tyre], (x, y, z) => x > X0 + 8 && x < wx0 && z >= ZC + 6 && y > DECK);
-  return {
-    m, front: tw.set, wl: WL, zc: ZC,
-    night: new Map([[p.glass, '#ffcf6e'], [p.glassHi, '#ffe9b0'], [p.lamp, '#ffffff'], [p.red, '#ff6a50'], [p.green, '#6aff8a']]),
-    A: { stand: [X0 + 27, DECK + 1, ZC + 1], lantern: [gx - 1.5, 47.5, ZC + 9.5], mast: [mx + 0.5, wy1 + 28, ZC + 0.5], flag: [mx + 0.5, wy1 + 26.5, ZC + 0.5], chimney: [fx + 0.5, DECK + 29, ZC - 1.5],
-      bow: [X0 + LEN, WL, ZC], stern: [X0, WL, ZC], top: [X0 + 40, wy1 + 2, ZC], keel: [X0 + 40, 0, ZC] },
-    pivot: [X0 + LEN / 2, WL], flagScale: 1, lights: [['lantern', 90, '#fff2c8', 0.9], ['mast', 40, '#ffffff', 0.6], ['cabin', 60, '#ffc870', 0.5]],
-    cabin: [(wx0 + wx1) / 2, wy1 - 4, wz1],
-  };
 }
 
-// ------------------------------------------------------------------ tier 3: yacht
+function bubbleLamp(m, p, x, y, z, h) {
+  m.line(x, y, z, x, y + h, z, p.chrome, 0.4);
+  m.sphere(x, y + h + 1.6, z, 1.6, p.lamp);
+  m.set(x - 1, y + h + 2, z + 1, p.glassHi);
+}
 
-function yacht(paint) {
-  const m = new VoxelModel(120, 74, 27);
-  const X0 = 14, LEN = 90, ZC = 13, WL = 6, DECK = 11;
-  const p = palette(m, {
-    bottom: ['#1e2a44', { jitter: 0.08 }], hull: ['#f6f4ee', { jitter: 0.02, spec: 0.2 }], hullS: ['#dcdad4', { jitter: 0.02 }], accent: [paint, { jitter: 0.06, spec: 0.4 }],
-    hullWin: ['#1e2c3e', { spec: 0.9 }], teak: ['#c08a52', { jitter: 0.12 }], teakD: ['#9a6a3a', { jitter: 0.08 }], chrome: ['#d8dee8', { spec: 0.4, jitter: 0.02 }],
-    tint: ['#243848', { spec: 1, edge: 0.6 }], tintHi: '#8ab8d8', white: ['#fbfaf6', { jitter: 0.03 }], canopy: ['#e8e6e0', { jitter: 0.03 }], cushion: [mix(paint, '#ffffff', 0.35), { jitter: 0.05 }],
-    para: [paint, { jitter: 0.05 }], paraW: '#fbf6ea', pole: '#8a8a90', led: ['#5affff', { emissive: 1 }], lampW: ['#fffbe0', { emissive: 1 }],
-    l1: ['#ff5a5a', { emissive: 1 }], l2: ['#ffd84a', { emissive: 1 }], l3: ['#5aff8a', { emissive: 1 }], l4: ['#5ab4ff', { emissive: 1 }],
-    f1: '#e8403a', f2: '#f8d040', f3: '#3a7ae0', f4: '#f4f0e6', rope: '#d8d0c0', dark: '#2a2e38', rubber: ['#3a3e48', { jitter: 0.06 }], ringR: '#e2483a',
+const finish = (o) => ({ flagScale: 1, spin: [], bubbles: [], lights: [], night: new Map(), ...o });
+
+// ------------------------------------------------------------------ 0 raft
+
+function raft(paint, trim, parts) {
+  const m = new VoxelModel(64, 56, 22);
+  const p = aeroPal(m, paint, trim);
+  const X0 = 10, LEN = 40, ZC = 11, WL = 3, DECK = 6;
+  const A = {}, spin = [], bubbles = [];
+  // two glossy pontoon floats with white bands
+  for (const s of [-1, 1]) {
+    const z = ZC + s * 5.5;
+    shapeIn(m, X0 - 2, 0, z - 4, X0 + LEN + 3, 7, z + 4, (x, y, zz) => {
+      const u = (x - X0) / LEN, end = Math.min(1, Math.min(u, 1 - u) * 8 + 0.15);
+      const r = 2.7 * Math.sqrt(Math.max(0, end));
+      return u > -0.02 && u < 1.02 && Math.hypot(y - 3.4, zz - z) <= r;
+    }, (x) => ((x - X0) % 9 === 0 ? p.trim : (x - X0) % 9 === 1 ? p.paintL : p.paint));
+  }
+  // bamboo deck slats + lashings
+  for (let x = X0 + 2; x <= X0 + LEN - 2; x++) for (let z = ZC - 8; z <= ZC + 8; z++) m.set(x, DECK, z, x % 3 === 0 ? p.bambooD : z === ZC - 8 || z === ZC + 8 ? p.bambooD : p.bamboo);
+  for (const x of [X0 + 2, X0 + LEN - 2]) for (let z = ZC - 8; z <= ZC + 8; z++) m.set(x, DECK + 1, z, p.bambooD);
+  for (const x of [X0 + 8, X0 + 20, X0 + 32]) for (const s of [-1, 1]) m.set(x, DECK - 1, ZC + s * 5.5, p.rope);
+  applyDecal(m, p, parts.decal, ZC, X0, X0 + LEN, 1, 6);
+  // mast + sail, cooler, bubble lamp, a little potted sprout (eco!)
+  const mx = X0 + 28;
+  A.flag = mastSail(m, p, parts.sail, mx, DECK + 1, DECK + 30, ZC, 14);
+  A.mast = A.flag;
+  m.box(X0 + 33, DECK + 1, ZC - 3, X0 + 37, DECK + 4, ZC + 1, p.white);
+  m.box(X0 + 33, DECK + 5, ZC - 3, X0 + 37, DECK + 5, ZC + 1, p.aqua);
+  bubbleLamp(m, p, X0 + 3, DECK + 1, ZC - 6, 8);
+  A.lantern = [X0 + 3.5, DECK + 10.5, ZC - 5.5];
+  m.cylinder(X0 + 6, ZC + 5, DECK + 1, DECK + 3, 1.4, p.white);
+  m.line(X0 + 6, DECK + 3, ZC + 5, X0 + 6, DECK + 6, ZC + 5, p.leaf, 0);
+  m.set(X0 + 5, DECK + 6, ZC + 5, p.leafL); m.set(X0 + 7, DECK + 7, ZC + 5, p.leafL);
+  engine(m, p, parts.engine, X0 + 1, DECK + 1, ZC, A, spin, bubbles, { x0: X0 + 4, x1: X0 + 20, h: 22 });
+  return finish({
+    m, front: new Set(), wl: WL, zc: ZC, spin, bubbles,
+    A: { ...A, stand: [X0 + 15, DECK + 1, ZC], bow: [X0 + LEN + 2, WL, ZC], stern: [X0 - 2, WL, ZC], top: [X0 + 20, DECK + 30, ZC], keel: [X0 + 20, 0, ZC] },
+    pivot: [X0 + LEN / 2, WL], flagScale: 0.6, night: new Map([[p.lamp, '#fff2b0']]), lights: [['lantern', 70, '#fff2b0', 0.9]],
   });
+}
+
+// ------------------------------------------------------------------ 1 dinghy (inflatable bubble collar)
+
+function dinghy(paint, trim, parts) {
+  const m = new VoxelModel(72, 56, 24);
+  const p = aeroPal(m, paint, trim);
+  const X0 = 12, LEN = 46, ZC = 12, WL = 3, DECK = 4;
+  const A = {}, spin = [], bubbles = [];
+  const beam = (u) => (u < 30 ? 7.4 : 7.4 * Math.sqrt(Math.max(0, 1 - ((u - 30) / 16.5) ** 2)));
+  // rigid hull below the tube
+  hull(m, { x0: X0, len: LEN, zc: ZC, vee: 0.4, keel: (u) => 0.6 + 2.6 * Math.pow(sm(30, 46, u), 1.6), sheer: () => 5, beam: (u) => beam(u) * 0.9, deck: () => DECK, skin: (y) => (y < 2 ? p.bottom : p.paintD), deckC: (x) => (x % 3 ? p.deck : p.deckD) });
+  // inflatable tube collar (white + paint band) following the outline, closed at the transom
+  for (let u = 0; u <= LEN; u += 0.5) {
+    const w = beam(u), x = X0 + u, rise = 2.4 * Math.pow(sm(30, 46, u), 1.4);
+    for (const s of [-1, 1]) m.sphere(x, 6.2 + rise, ZC + s * (w - 0.6), 2.3, (xx, y) => (y < 5 + rise ? p.paint : p.trim === p.white ? p.white : p.white));
+  }
+  for (let z = -6; z <= 6; z += 0.5) m.sphere(X0 + 0.5, 6.2, ZC + z, 2.3, p.white);
+  sideDecal(m, ZC, X0, X0 + LEN, 4, 9, new Set([p.white]), (x, y) => (y === 6 && (x - X0) % 2 === 0 ? p.paintL : null));
+  applyDecal(m, p, parts.decal, ZC, X0 + 2, X0 + LEN - 6, 1, 4);
+  // bench, bucket with a fish, bow lamp
+  m.box(X0 + 20, DECK + 2, ZC - 6, X0 + 23, DECK + 2, ZC + 6, p.white);
+  m.cylinder(X0 + 30, ZC - 3, DECK + 1, DECK + 3, 1.5, p.aqua);
+  m.set(X0 + 30, DECK + 4, ZC - 3, p.fish);
+  bubbleLamp(m, p, X0 + 41, 9, ZC, 7);
+  A.lantern = [X0 + 41.5, 17.5, ZC + 0.5];
+  if (MASTED[1] && parts.sail !== 'none') A.flag = mastSail(m, p, parts.sail, X0 + 33, DECK + 1, DECK + 24, ZC, 12);
+  else { m.line(X0 + 1, 8, ZC - 5, X0 + 1, 22, ZC - 5, p.chrome, 0); A.flag = [X0 + 1.5, 22.5, ZC - 4.5]; }
+  engine(m, p, parts.engine, X0, DECK + 3, ZC, A, spin, bubbles, { x0: X0 + 4, x1: X0 + 22, h: 18, poleH: 16 });
+  const front = twinFront(m, [p.white, p.paint, p.paintL], (x, y, z) => z >= ZC + 3 && y >= 5);
+  return finish({
+    m, front, wl: WL, zc: ZC, spin, bubbles,
+    A: { ...A, stand: [X0 + 13, DECK + 1, ZC], bow: [X0 + LEN, WL, ZC], stern: [X0 - 2, WL, ZC], top: [X0 + 20, 22, ZC], keel: [X0 + 20, 0, ZC] },
+    pivot: [X0 + LEN / 2, WL], flagScale: 0.7, night: new Map([[p.lamp, '#fff2b0']]), lights: [['lantern', 70, '#fff2b0', 0.9]],
+  });
+}
+
+// ------------------------------------------------------------------ 2 skiff
+
+function skiff(paint, trim, parts) {
+  const m = new VoxelModel(86, 56, 24);
+  const p = aeroPal(m, paint, trim);
+  const X0 = 12, LEN = 60, ZC = 12, WL = 3, DECK = 6;
+  const A = {}, spin = [], bubbles = [];
   const s = {
     x0: X0, len: LEN, zc: ZC, vee: 0.3,
-    keel: (u) => 1.5 * (1 - sm(0, 8, u)) + 10 * Math.pow(sm(46, 90, u), 1.5),
-    sheer: (u) => 12 + 4.5 * Math.pow(sm(40, 90, u), 1.3),
-    beam: (u) => (u < 36 ? 10.5 + 1.5 * sm(0, 28, u) : 12 * Math.sqrt(Math.max(0, 1 - Math.pow((u - 36) / 54.5, 2)))),
-    skin: (y, u, ys) => {
-      if (y === ys) return p.chrome;
-      if (y < WL - 1) return p.bottom;
-      if (y === WL - 1) return p.accent;
-      if (y === 9 || y === 10) return u > 6 && u < 82 ? p.accent : p.hull;
-      if (y === 7 && u > 30 && u < 62 && (u - 30) % 11 < 8) return p.hullWin;
-      return y > ys - 3 ? p.hull : p.hullS;
-    },
-    deckC: (x, z) => (z % 2 ? p.teakD : p.teak),
-  };
-  s.deck = deckFn(DECK, s.sheer, 1);
-  s.inner = p.hull;
-  hull(m, s);
-  // swim platform + ladder at the stern
-  m.box(X0 - 6, 5, ZC - 9, X0, 6, ZC + 9, (x, y) => (y === 6 ? p.teak : p.white));
-  for (let y = 1; y <= 5; y++) m.set(X0 - 5, y, ZC + 6, y % 2 ? p.chrome : p.chrome);
-  // main superstructure with tinted window band and raked front
-  const sx0 = X0 + 18, sx1 = X0 + 64, sz0 = ZC - 9, sz1 = ZC + 8, sy0 = DECK + 1, sy1 = DECK + 10;
-  for (let x = sx0; x <= sx1; x++) {
-    const rake = Math.max(0, x - (sx1 - 10)) * 0.9;
-    const yt = Math.round(sy1 - rake);
-    for (let y = sy0; y <= yt; y++) for (let z = sz0; z <= sz1; z++) {
-      const band = y >= sy0 + 3 && y <= sy1 - 2 && x > sx0 + 1;
-      m.set(x, y, z, band && (z === sz1 || z === sz0 || x >= sx1 - 12) ? (y === sy1 - 2 && (x % 6 === 0) ? p.tintHi : p.tint) : p.white);
-    }
-  }
-  // flybridge with canopy and radar arch
-  const fx0 = X0 + 26, fx1 = X0 + 52, fy = sy1 + 1;
-  m.box(fx0, fy, ZC - 7, fx1, fy, ZC + 6, p.white);
-  m.box(fx0 + 1, fy + 1, ZC - 6, fx0 + 6, fy + 3, ZC + 5, p.white);
-  m.box(fx0 + 12, fy + 1, ZC - 2, fx0 + 15, fy + 4, ZC + 1, p.dark);
-  railing(m, { x0: fx0, len: fx1 - fx0 + 1, zc: ZC, sheer: () => fy, beam: () => 7.2 }, p.chrome, { from: 0, to: fx1 - fx0 + 1, every: 4, h: 3 });
-  const ax = X0 + 30;
-  for (const side of [-1, 1]) m.line(ax, fy + 1, ZC + side * 7, ax + 3, fy + 12, ZC + side * 5, p.white, 0.9);
-  m.box(ax + 2, fy + 12, ZC - 6, ax + 5, fy + 13, ZC + 6, p.white);
-  m.box(ax + 4, fy + 11, ZC - 6, fx1 - 4, fy + 11, ZC + 6, p.canopy);
-  m.sphere(ax + 3, fy + 16, ZC, 2.2, p.white);
-  m.line(ax + 6, fy + 14, ZC, ax + 6, fy + 22, ZC, p.chrome, 0);
-  m.set(ax + 6, fy + 23, ZC, p.lampW);
-  // bow chrome rail, sun loungers, parasol
-  railing(m, s, p.chrome, { from: 64, to: LEN - 8, every: 4, h: 2 });
-  railing(m, s, p.chrome, { from: 1, to: 18, every: 3, h: 3 });
-  for (const [x, z] of [[X0 + 67, ZC - 4], [X0 + 67, ZC + 2]]) {
-    const dk = s.deck(x - X0 + 4);
-    m.box(x, dk + 1, z - 2, x + 9, dk + 1, z + 1, p.white);
-    m.box(x, dk + 2, z - 2, x + 7, dk + 2, z + 1, p.cushion);
-    for (let k = 0; k < 4; k++) m.box(x - k * 0.5, dk + 2 + k, z - 2, x + 1 - k * 0.5, dk + 2 + k, z + 1, p.cushion);
-  }
-  const px = X0 + 80;
-  const pdk = s.deck(px - X0);
-  m.line(px, pdk + 1, ZC, px, pdk + 14, ZC, p.pole, 0);
-  for (let y = 0; y < 3; y++) m.cylinder(px, ZC, pdk + 15 - y, pdk + 15 - y, 1.5 + y * 2, (x, yy, z) => (Math.floor((Math.atan2(z - ZC, x - px) + Math.PI) / (Math.PI / 3)) % 2 ? p.para : p.paraW));
-  // dressing line: signal flags + string lights from the bow over the arch to the stern
-  const lines = [[[X0 + LEN - 1, s.sheer(LEN - 1) + 2], [ax + 6, fy + 22]], [[ax + 6, fy + 22], [X0 + 1, DECK + 7]]];
-  let k = 0;
-  for (const [[x0, y0], [x1, y1]] of lines) {
-    const n = Math.round(Math.hypot(x1 - x0, y1 - y0));
-    for (let i = 1; i < n; i++) {
-      const t = i / n, x = Math.round(x0 + (x1 - x0) * t), y = Math.round(y0 + (y1 - y0) * t - Math.sin(t * Math.PI) * 3);
-      m.set(x, y, ZC, p.rope);
-      if (i % 4 === 0) { k++; m.set(x, y - 1, ZC, [p.l1, p.l2, p.l3, p.l4][k % 4]); }
-      else if (i % 4 === 2) { const fc = [p.f1, p.f2, p.f3, p.f4][(i >> 2) % 4]; m.box(x, y - 2, ZC, x + 1, y - 1, ZC, fc); }
-    }
-  }
-  // ensign staff, life ring, fenders, underwater LEDs
-  m.line(X0 + 1, DECK + 1, ZC, X0 - 1, DECK + 12, ZC, p.chrome, 0);
-  ring(m, X0 + 12, DECK + 5, ZC + 10, 2.4, p.ringR, p.white);
-  for (const u of [24, 40, 56]) fender(m, X0 + u, Math.round(ZC + s.beam(u) + 0.8), Math.round(s.sheer(u)) + 1, 5, 9, p.rope, p.white, null);
-  for (let u = 6; u < 80; u += 9) m.set(X0 + u, 3, Math.round(ZC + s.beam(u) * 0.62), p.led);
-  // tender on the stern platform
-  m.ellipsoid(X0 - 3, 8, ZC - 3, 4, 1.6, 2.6, p.rubber);
-  const tw = twinFront(m, [p.chrome, p.hull, p.hullS, p.accent, p.rope, p.white, p.ringR], (x, y, z) => (x < sx0 || x > sx1) && z >= ZC + 6 && y > DECK);
-  return {
-    m, front: tw.set, wl: WL, zc: ZC,
-    night: new Map([[p.tint, '#ffd58a'], [p.tintHi, '#fff0c0'], [p.hullWin, '#ffcf80'], [p.led, '#5affff'], [p.lampW, '#ffffff'], [p.l1, '#ff6a6a'], [p.l2, '#ffe070'], [p.l3, '#6aff9a'], [p.l4, '#6ac4ff']]),
-    A: { stand: [X0 + 9, DECK + 1, ZC], lantern: [ax + 6.5, fy + 23, ZC + 0.5], mast: [ax + 6.5, fy + 23, ZC + 0.5], flag: [X0 - 0.5, DECK + 12.5, ZC + 0.5], chimney: null,
-      bow: [X0 + LEN, WL, ZC], stern: [X0 - 6, WL, ZC], top: [X0 + 36, fy + 12, ZC], keel: [X0 + 40, 0, ZC] },
-    pivot: [X0 + LEN / 2, WL], flagScale: 0.8, lights: [['lantern', 50, '#fffbe0', 0.7], ['cabin', 80, '#ffd58a', 0.6], ['under', 70, '#5affff', 0.5]],
-    cabin: [(sx0 + sx1) / 2, sy0 + 6, sz1], under: [X0 + 40, 3, ZC + 8],
-  };
-}
-
-// ------------------------------------------------------------------ tier 4: research vessel / submarine hybrid
-
-function research(paint, trim) {
-  const m = new VoxelModel(132, 96, 31);
-  const X0 = 16, LEN = 96, ZC = 15, WL = 9, DECK = 16;
-  const p = palette(m, {
-    sub: ['#2a3040', { jitter: 0.06, spec: 0.4 }], subL: ['#3a4256', { jitter: 0.06 }], paint: [paint, { jitter: 0.08 }], paintD: [shade(paint, -0.2), { jitter: 0.06 }],
-    band: [trim, { jitter: 0.02 }], white: ['#f2f0ea', { jitter: 0.02 }], whiteD: ['#cfccc4', { jitter: 0.02 }], deck: ['#7a8a8a', { jitter: 0.1 }], deckD: ['#5e6c6c', { jitter: 0.08 }],
-    view: ['#3a6a8a', { spec: 0.9 }], viewRim: ['#9aa4b4', { spec: 0.8 }], glass: ['#1e3a52', { spec: 1, edge: 0.6 }], glassHi: '#9ad0f0', black: '#22242c',
-    yel: ['#f0b832', { jitter: 0.06 }], yelD: ['#c08a22', { jitter: 0.06 }], subBody: ['#ffd23a', { jitter: 0.05, spec: 0.5 }], dome: ['#bfefff', { spec: 1 }], metal: ['#4c505e', { spec: 0.5 }],
-    radome: ['#f6f6f2', { smooth: 0.7 }], dish: ['#e4e6ea', { smooth: 0.4, spec: 0.6 }], blue: '#2e6ac8', orange: ['#ff7a2a', { jitter: 0.05 }],
-    lamp: ['#fff6d0', { emissive: 1 }], red: ['#ff4a3a', { emissive: 1 }], green: ['#4aff7a', { emissive: 1 }], subLamp: ['#bfffff', { emissive: 1 }], rope: '#d8c08a',
-  });
-  const s = {
-    x0: X0, len: LEN, zc: ZC, vee: 0.5, round: 0.35,
-    keel: (u) => 3 * (1 - sm(0, 12, u)) + 12 * Math.pow(sm(66, 96, u), 1.7),
-    sheer: (u) => 19 + 1 * (1 - sm(0, 20, u)) + 6 * Math.pow(sm(58, 96, u), 1.4),
-    beam: (u) => (u < 46 ? 12 + 1.5 * sm(0, 30, u) : 13.5 * Math.sqrt(Math.max(0, 1 - Math.pow((u - 46) / 50.5, 2)))),
-    skin: (y, u, ys) => {
-      if (y === ys) return p.white;
-      if (y >= ys - 2) return p.band;
-      if (y < WL - 1) return y % 3 === 0 ? p.subL : p.sub;
-      if (y === WL - 1 || y === WL) return p.band;
-      return (y - WL) % 4 === 0 ? p.paintD : p.paint;
-    },
-    deckC: (x, z) => ((x + z) % 5 === 0 ? p.deckD : p.deck),
+    keel: (u) => 1 + 5 * Math.pow(sm(36, 60, u), 1.7),
+    sheer: (u) => 9 + 3.2 * Math.pow(sm(30, 60, u), 1.5),
+    beam: (u) => (u < 34 ? 8.4 : 8.4 * Math.sqrt(Math.max(0, 1 - ((u - 34) / 26.5) ** 2))),
+    skin: (y, u, ys) => (y === ys ? p.trim : y <= WL ? p.bottom : y <= WL + 2 ? p.paint : p.white),
+    deckC: (x) => (x % 2 ? p.deck : p.deckD),
   };
   s.deck = deckFn(DECK, s.sheer, 3);
   s.inner = p.whiteD;
   hull(m, s);
-  // glowing viewports on the submarine lower hull, dive planes, propeller shroud and rudder
-  for (let u = 12; u < 80; u += 9) {
-    const yb = s.keel(u), ys = s.sheer(u), t = (5 - yb) / Math.max(1, ys - yb);
-    const z = Math.round(ZC + s.beam(u) * (0.5 + 0.5 * Math.pow(Math.max(0, t), 0.35)));
-    porthole(m, X0 + u, 5, z, p.viewRim, p.view);
-  }
-  for (const [u, y] of [[86, 6], [6, 4]]) m.box(X0 + u - 3, y, ZC - 16, X0 + u + 2, y, ZC + 16, p.subL);
-  for (let a = 0; a < TAU; a += 0.2) m.set(X0 - 3, 5 + Math.sin(a) * 3.4, ZC + Math.cos(a) * 3.4, p.metal);
-  m.box(X0 - 2, 4, ZC, X0 - 2, 6, ZC, p.yel);
-  m.box(X0 - 6, 1, ZC, X0 - 4, 10, ZC, p.sub);
-  for (let y = 2; y <= 20; y++) for (let z = ZC - 12; z <= ZC + 12; z++) if (m.get(X0, y, z)) m.set(X0, y, z, y < WL ? p.sub : y >= 18 ? p.band : p.paint);
-  // superstructure: accommodation + bridge with wraparound windows + wings
-  const bx0 = X0 + 58, bx1 = X0 + 80, bz0 = ZC - 10, bz1 = ZC + 9;
-  m.box(bx0, DECK + 1, bz0, bx1, DECK + 13, bz1, (x, y, z) => (y === DECK + 1 ? p.whiteD : p.white));
-  for (let x = bx0 + 2; x < bx1 - 1; x += 3) for (const y of [DECK + 5, DECK + 10]) porthole(m, x, y, bz1, p.whiteD, p.glass);
-  m.box(bx0 + 2, DECK + 14, bz0 - 2, bx1 + 1, DECK + 22, bz1 + 2, (x, y, z) => (y >= DECK + 16 && y <= DECK + 20 && (z === bz1 + 2 || x === bx1 + 1 || z === bz0 - 2) ? ((x + y) % 7 === 0 ? p.glassHi : p.glass) : p.white));
-  m.box(bx0 + 1, DECK + 23, bz0 - 3, bx1 + 2, DECK + 23, bz1 + 3, p.black);
-  // mast with radome, sonar dish, antennas, lights
-  const mx = bx0 + 10;
-  m.box(mx - 1, DECK + 24, ZC - 1, mx + 1, DECK + 52, ZC + 1, (x, y) => (y % 4 === 0 ? p.whiteD : p.white));
-  m.box(mx - 7, DECK + 38, ZC, mx + 7, DECK + 38, ZC, p.white);
-  m.sphere(mx + 6, DECK + 43, ZC, 3.4, p.radome);
-  m.line(mx + 6, DECK + 38, ZC, mx + 6, DECK + 40, ZC, p.white, 0);
-  // sonar / satellite dish (shallow paraboloid facing up-left)
-  {
-    const cx = mx - 7, cy = DECK + 44, cz = ZC;
-    for (let i = -6; i <= 6; i++) for (let j = -6; j <= 6; j++) {
-      const r2 = i * i + j * j;
-      if (r2 > 36) continue;
-      const d = r2 * 0.09;
-      m.set(cx + Math.round(i * 0.7 + d * 0.5), cy + Math.round(i * 0.7 - d * 0.7), cz + j, p.dish);
-    }
-    m.line(cx + 2, cy - 2, cz, mx - 1, DECK + 38, cz, p.metal, 0.5);
-    m.line(cx, cy, cz, cx - 3, cy + 4, cz, p.metal, 0);
-  }
-  for (const [dx, h] of [[-3, 8], [3, 6]]) m.line(mx + dx, DECK + 52, ZC, mx + dx, DECK + 52 + h, ZC, p.metal, 0);
-  m.set(mx, DECK + 53, ZC, p.lamp); m.set(mx - 3, DECK + 61, ZC, p.red); m.set(mx + 7, DECK + 38, ZC, p.green); m.set(mx - 7, DECK + 38, ZC, p.red);
-  // funnel
-  const fx = X0 + 50;
-  m.cylinder(fx, ZC - 3, DECK + 1, DECK + 24, 3.2, (x, y) => (y > DECK + 21 ? p.black : y > DECK + 16 && y < DECK + 20 ? p.paint : p.white));
-  // labs + ROV on deck
-  for (const [x, z] of [[X0 + 32, ZC - 9], [X0 + 42, ZC - 9]]) crate(m, x, DECK + 1, z, x + 8, DECK + 7, z + 6, p.white, p.blue);
-  m.box(X0 + 34, DECK + 1, ZC + 2, X0 + 39, DECK + 5, ZC + 6, p.orange);
-  m.box(X0 + 35, DECK + 2, ZC + 7, X0 + 38, DECK + 4, ZC + 7, p.black);
-  // stern A-frame with the yellow mini-sub dangling over the water
-  const gx = X0 + 6;
-  for (const side of [-1, 1]) m.line(gx + 4, DECK + 1, ZC + side * 12, gx - 5, 60, ZC + side * 11, p.yel, 1.2);
-  m.line(gx - 5, 60, ZC - 11, gx - 5, 60, ZC + 11, p.yel, 1.3);
-  m.set(gx - 5, 62, ZC + 11, p.lamp); m.set(gx - 5, 62, ZC - 11, p.lamp);
-  const sx = gx - 7, sy = 33;
-  m.ellipsoid(sx, sy, ZC, 11, 4.8, 4.8, (x) => (Math.abs(x + 0.5 - sx) < 1.5 ? p.white : p.subBody));
-  m.sub(() => m.box(sx + 7, sy - 5, ZC - 5, sx + 12, sy + 5, ZC + 5, 1));
-  m.sphere(sx + 7, sy, ZC, 4, p.dome);
-  m.box(sx - 3, sy + 4, ZC - 1, sx + 2, sy + 7, ZC + 1, p.subBody);
-  m.box(sx - 2, sy + 8, ZC - 1, sx + 1, sy + 8, ZC + 1, p.metal);
-  m.box(sx - 13, sy - 4, ZC, sx - 10, sy + 4, ZC, p.yelD);
-  m.box(sx - 13, sy, ZC - 4, sx - 10, sy, ZC + 4, p.yelD);
-  for (let a = 0; a < TAU; a += 0.3) m.set(sx - 14, sy + Math.sin(a) * 2.5, ZC + Math.cos(a) * 2.5, p.metal);
-  for (const dz of [-3, 3]) { m.box(sx - 7, sy - 7, ZC + dz, sx + 6, sy - 7, ZC + dz, p.metal); m.line(sx - 4, sy - 7, ZC + dz, sx - 4, sy - 4, ZC + dz, p.metal, 0); m.line(sx + 3, sy - 7, ZC + dz, sx + 3, sy - 4, ZC + dz, p.metal, 0); }
-  m.set(sx + 3, sy - 3, ZC + 4, p.subLamp); m.set(sx + 3, sy - 3, ZC - 4, p.subLamp); m.set(sx - 1, sy + 9, ZC, p.red);
-  for (const dz of [-1, 1]) m.line(gx - 5, 58, ZC + dz, sx, sy + 9, ZC + dz, p.metal, 0);
-  // rails, ring buoys
-  railing(m, s, p.white, { from: 2, to: 56, every: 4, h: 3 });
-  ring(m, X0 + 54, DECK + 4, Math.round(ZC + s.beam(54) + 0.5), 2.4, p.orange, p.white);
-  const tw = twinFront(m, [p.white, p.band, p.paint, p.paintD, p.orange], (x, y, z) => x > X0 + 8 && x < bx0 && z >= ZC + 7 && y > DECK);
-  return {
-    m, front: tw.set, wl: WL, zc: ZC,
-    night: new Map([[p.glass, '#ffd58a'], [p.glassHi, '#fff0c0'], [p.view, '#9affff'], [p.lamp, '#ffffff'], [p.red, '#ff6a50'], [p.green, '#6aff8a'], [p.subLamp, '#d8ffff'], [p.dome, '#9affff']]),
-    A: { stand: [X0 + 24, DECK + 1, ZC + 1], lantern: [gx - 4.5, 62.5, ZC + 11.5], mast: [mx + 0.5, DECK + 54, ZC + 0.5], flag: [mx + 0.5, DECK + 52.5, ZC + 0.5], chimney: [fx + 0.5, DECK + 25, ZC - 2.5],
-      bow: [X0 + LEN, WL, ZC], stern: [X0 - 6, WL, ZC], top: [X0 + 60, DECK + 23, ZC], keel: [X0 + 40, 0, ZC] },
-    pivot: [X0 + LEN / 2, WL], flagScale: 1, lights: [['lantern', 100, '#fff6d0', 0.9], ['mast', 44, '#ffffff', 0.6], ['cabin', 70, '#ffd58a', 0.5], ['sub', 50, '#bfffff', 0.6], ['under', 80, '#9affff', 0.5]],
-    cabin: [(bx0 + bx1) / 2, DECK + 18, bz1 + 2], sub: [sx + 8, sy, ZC + 4], under: [X0 + 40, 5, ZC + 12],
+  applyDecal(m, p, parts.decal, ZC, X0 + 2, X0 + LEN - 4, WL + 3, 11);
+  railing(m, s, p.chrome, { from: 36, to: LEN - 3, every: 6, h: 2 });
+  // console + curved glass windshield
+  const cx = X0 + 30;
+  m.box(cx, DECK + 1, ZC - 3, cx + 5, DECK + 7, ZC + 3, (x, y) => (y === DECK + 7 ? p.aqua : p.white));
+  for (let z = -6; z <= 6; z++) for (let k = 0; k < 6; k++) { const x = cx + 6 + Math.round(k * 0.6 + (z * z) / 14); m.set(x, DECK + 7 + k, ZC + z, k === 5 ? p.chrome : (k + z) % 5 === 0 ? p.glassHi : p.glass); }
+  m.box(cx + 1, DECK + 8, ZC - 1, cx + 3, DECK + 9, ZC + 1, p.navy);
+  m.set(cx + 2, DECK + 10, ZC, p.chrome);
+  // bench seat + cooler
+  m.box(X0 + 8, DECK + 1, ZC - 6, X0 + 12, DECK + 3, ZC + 6, p.white);
+  m.box(X0 + 8, DECK + 4, ZC - 6, X0 + 9, DECK + 7, ZC + 6, p.aqua);
+  // whip antenna with the flag + nav lights
+  m.line(X0 + 4, DECK + 1, ZC - 5, X0 + 4, DECK + 26, ZC - 5, p.chrome, 0);
+  A.flag = [X0 + 4.5, DECK + 26.5, ZC - 4.5];
+  m.set(X0 + LEN - 6, 13, ZC + 7, p.ledG); m.set(X0 + LEN - 6, 13, ZC - 7, p.ledR);
+  if (parts.sail !== 'none') A.flag = mastSail(m, p, parts.sail, X0 + 44, DECK + 1, DECK + 28, ZC, 12);
+  engine(m, p, parts.engine, X0, DECK + 2, ZC, A, spin, bubbles, { x0: X0 + 6, x1: X0 + 26, h: 18, poleH: 16 });
+  const front = twinFront(m, [p.white, p.trim, p.paint, p.chrome, p.aqua, p.paintL, p.paintD], (x, y, z) => z >= ZC + 5 && y > DECK);
+  return finish({
+    m, front, wl: WL, zc: ZC, spin, bubbles,
+    A: { ...A, stand: [X0 + 20, DECK + 1, ZC], bow: [X0 + LEN, WL, ZC], stern: [X0 - 2, WL, ZC], top: [X0 + 30, DECK + 22, ZC], keel: [X0 + 30, 0, ZC], lantern: [X0 + LEN - 5.5, 13.5, ZC + 7.5] },
+    pivot: [X0 + LEN / 2, WL], flagScale: 0.8, night: new Map([[p.ledG, '#a8ff6a'], [p.ledR, '#ff6a6a'], [p.lamp, '#fff2b0']]), lights: [['lantern', 40, '#a8ff6a', 0.6]],
+  });
+}
+
+// ------------------------------------------------------------------ 3 hydrofoil
+
+function hydrofoil(paint, trim, parts) {
+  const m = new VoxelModel(92, 56, 28);
+  const p = aeroPal(m, paint, trim);
+  const X0 = 12, LEN = 64, ZC = 14, WL = 4, LIFT = 7, DECK = LIFT + 6;
+  const A = {}, spin = [], bubbles = [];
+  const s = {
+    x0: X0, len: LEN, zc: ZC, vee: 0.25,
+    keel: (u) => LIFT + 1 + 5 * Math.pow(sm(36, 64, u), 1.6),
+    sheer: (u) => LIFT + 9 + 2.6 * Math.pow(sm(34, 64, u), 1.4),
+    beam: (u) => (u < 36 ? 8.6 : 8.6 * Math.sqrt(Math.max(0, 1 - ((u - 36) / 28.5) ** 2))),
+    skin: (y, u, ys) => (y === ys ? p.trim : y <= LIFT + 3 ? p.paint : y <= LIFT + 4 ? p.aqua : p.white),
+    deckC: (x) => (x % 2 ? p.white : p.whiteD),
   };
+  s.deck = deckFn(DECK, s.sheer, 3);
+  s.inner = p.whiteD;
+  hull(m, s);
+  applyDecal(m, p, parts.decal, ZC, X0 + 2, X0 + LEN - 4, LIFT + 4, LIFT + 9);
+  // struts + foils (front and back), chrome
+  for (const [u, span] of [[12, 13], [50, 9]]) {
+    const x = X0 + u;
+    for (const sd of [-1, 1]) m.line(x, s.keel(u) + 1, ZC + sd * 5, x + 1, 1.5, ZC + sd * (span - 1), p.chrome, 0.6);
+    m.box(x - 3, 1, ZC - span, x + 3, 1, ZC + span, p.aqua);
+    m.box(x - 2, 0, ZC - span, x + 2, 0, ZC + span, p.aquaD);
+    for (const sd of [-1, 1]) m.box(x - 3, 1, ZC + sd * span, x + 3, 3, ZC + sd * span, p.white);
+  }
+  // glass bubble canopy forward of the cockpit
+  const cx = X0 + 34;
+  shapeIn(m, cx, DECK, ZC - 8, cx + 18, DECK + 9, ZC + 8, (x, y, z) => ((x - cx - 6) / 11) ** 2 + ((y - DECK) / 7.4) ** 2 + ((z - ZC) / 6.4) ** 2 <= 1 && y > DECK, (x, y, z) => ((x + y) % 7 === 0 ? p.glassHi : y > DECK + 5 ? p.glassD : p.glass));
+  m.box(cx - 1, DECK + 1, ZC - 6, cx, DECK + 6, ZC + 6, p.chrome);
+  // stern wing
+  for (const sd of [-1, 1]) m.line(X0 + 3, DECK + 1, ZC + sd * 5, X0 + 1, DECK + 7, ZC + sd * 5, p.white, 0.5);
+  m.box(X0 - 1, DECK + 7, ZC - 7, X0 + 4, DECK + 8, ZC + 7, (x, y) => (y === DECK + 8 ? p.aqua : p.white));
+  A.flag = [X0 + 1.5, DECK + 9, ZC - 6.5];
+  m.line(X0 + 1, DECK + 8, ZC - 7, X0 + 1, DECK + 20, ZC - 7, p.chrome, 0);
+  A.flag = [X0 + 1.5, DECK + 20.5, ZC - 6.5];
+  m.set(X0 + LEN - 4, LIFT + 7, ZC + 6, p.led); m.set(X0 + LEN - 4, LIFT + 7, ZC - 6, p.led);
+  engine(m, p, parts.engine, X0, DECK + 2, ZC, A, spin, bubbles, { x0: X0 + 6, x1: X0 + 26, h: 16, poleH: 14 });
+  const front = twinFront(m, [p.white, p.trim, p.whiteD, p.aqua], (x, y, z) => z >= ZC + 6 && y > DECK && x < cx - 1);
+  return finish({
+    m, front, wl: WL, zc: ZC, spin, bubbles,
+    A: { ...A, stand: [X0 + 20, DECK + 1, ZC], bow: [X0 + LEN, WL, ZC], stern: [X0 - 2, WL, ZC], top: [X0 + 30, DECK + 18, ZC], keel: [X0 + 30, 0, ZC], under: [X0 + 30, 2, ZC + 10], lantern: [X0 + LEN - 3.5, LIFT + 7.5, ZC + 6.5] },
+    pivot: [X0 + LEN / 2, WL], flagScale: 0.8, night: new Map([[p.led, '#7affff'], [p.glass, '#bff6ff']]), lights: [['under', 60, '#7affff', 0.5], ['lantern', 40, '#7affff', 0.6]],
+  });
+}
+
+// ------------------------------------------------------------------ 4 glass yacht
+
+function yacht(paint, trim, parts) {
+  const m = new VoxelModel(116, 72, 30);
+  const p = aeroPal(m, paint, trim);
+  const X0 = 14, LEN = 86, ZC = 15, WL = 5, DECK = 12;
+  const A = {}, spin = [], bubbles = [];
+  const s = {
+    x0: X0, len: LEN, zc: ZC, vee: 0.3,
+    keel: (u) => 1 + 7 * Math.pow(sm(50, 86, u), 1.7),
+    sheer: (u) => 14.4 + 4 * Math.pow(sm(46, 86, u), 1.5),
+    beam: (u) => (u < 46 ? 11.4 : 11.4 * Math.sqrt(Math.max(0, 1 - ((u - 46) / 40.5) ** 2))),
+    skin: (y, u, ys) => (y === ys ? p.chrome : y <= WL - 1 ? p.bottom : y <= WL + 1 ? p.paint : y === WL + 2 ? p.trim : p.white),
+    deckC: (x) => (x % 2 ? p.deck : p.deckD),
+  };
+  s.deck = deckFn(DECK, s.sheer, 2);
+  s.inner = p.whiteD;
+  hull(m, s);
+  applyDecal(m, p, parts.decal, ZC, X0 + 4, X0 + LEN - 8, WL + 4, 13);
+  for (let u = 26; u < 74; u += 7) porthole(m, X0 + u, WL + 5, Math.round(ZC + s.beam(u) * 0.97), p.chrome, p.glass);
+  railing(m, s, p.chrome, { from: 2, to: 20, every: 4, h: 3 });
+  railing(m, s, p.chrome, { from: 64, to: LEN - 3, every: 4, h: 3 });
+  // lower glass salon (curved wraparound windows) + upper glass flybridge
+  const bx0 = X0 + 24, bx1 = X0 + 62;
+  shapeIn(m, bx0, DECK + 1, ZC - 10, bx1 + 6, DECK + 11, ZC + 10, (x, y, z) => {
+    const fx = x - bx1; const lim = fx > 0 ? 9.6 - fx * 1.6 : 9.6;
+    return Math.abs(z - ZC) <= lim && x >= bx0 && y <= DECK + 10 - Math.max(0, fx) * 0.8;
+  }, (x, y, z) => (y <= DECK + 2 || y >= DECK + 9 ? p.white : (x + y * 2) % 11 === 0 ? p.glassHi : y > DECK + 6 ? p.glassD : p.glass));
+  shapeIn(m, bx0 + 6, DECK + 11, ZC - 8, bx1 - 2, DECK + 19, ZC + 8, (x, y, z) => { const fx = x - (bx1 - 8); const lim = fx > 0 ? 7.6 - fx * 1.5 : 7.6; return Math.abs(z - ZC) <= lim && y <= DECK + 18 - Math.max(0, fx) * 0.9; }, (x, y) => (y <= DECK + 12 || y >= DECK + 17 ? p.white : (x + y) % 9 === 0 ? p.glassHi : p.glass));
+  // radar arch + dome + mast lights
+  for (const sd of [-1, 1]) m.line(bx0 + 10, DECK + 19, ZC + sd * 6, bx0 + 14, DECK + 26, ZC + sd * 3, p.white, 0.8);
+  m.box(bx0 + 13, DECK + 26, ZC - 4, bx0 + 16, DECK + 27, ZC + 4, p.white);
+  m.sphere(bx0 + 15, DECK + 29, ZC, 2.4, p.white);
+  m.set(bx0 + 15, DECK + 29, ZC + 2, p.aqua);
+  A.mast = [bx0 + 15.5, DECK + 32, ZC + 0.5];
+  // planters with little trees (eco), sun loungers on the aft deck
+  for (const x of [bx0 - 3, bx1 + 9]) { m.box(x - 2, DECK + 1, ZC + 4, x + 2, DECK + 3, ZC + 8, p.white); m.sphere(x, DECK + 6, ZC + 6, 2.6, p.leaf); m.sphere(x - 1, DECK + 7, ZC + 6.5, 1.4, p.leafL); }
+  for (const z of [ZC - 6, ZC - 2]) { m.box(X0 + 4, DECK + 1, z, X0 + 12, DECK + 2, z + 2, p.white); m.box(X0 + 4, DECK + 3, z, X0 + 6, DECK + 4, z + 2, p.aqua); }
+  m.cylinder(X0 + 9, ZC - 8, DECK + 1, DECK + 12, 0.4, p.chrome);
+  shapeIn(m, X0 + 3, DECK + 12, ZC - 14, X0 + 15, DECK + 14, ZC - 2, (x, y, z) => ((x - X0 - 9) / 6) ** 2 + ((z - ZC + 8) / 6) ** 2 <= 1 && y <= DECK + 14 - Math.hypot(x - X0 - 9, z - ZC + 8) * 0.3, (x, y, z) => (Math.floor(Math.atan2(z - ZC + 8, x - X0 - 9) * 3) % 2 ? p.aqua : p.white));
+  // flag staff at the stern + nav lights + underwater LEDs
+  m.line(X0 + 1, DECK + 1, ZC, X0 - 1, DECK + 16, ZC, p.chrome, 0);
+  A.flag = [X0 - 0.5, DECK + 16.5, ZC + 0.5];
+  if (parts.sail !== 'none') A.flag = mastSail(m, p, parts.sail, X0 + 74, DECK + 1, DECK + 40, ZC, 12);
+  for (let u = 10; u < 80; u += 8) m.set(X0 + u, WL - 1, Math.round(ZC + s.beam(u) * 0.95), p.led);
+  engine(m, p, parts.engine, X0 + 2, DECK + 1, ZC, A, spin, bubbles, { x0: X0 + 2, x1: X0 + 20, h: 20, poleH: 20 });
+  const front = twinFront(m, [p.white, p.chrome, p.whiteD], (x, y, z) => z >= ZC + 8 && y > DECK && x < bx0 - 4);
+  return finish({
+    m, front, wl: WL, zc: ZC, spin, bubbles,
+    A: { ...A, stand: [X0 + 17, DECK + 1, ZC + 2], bow: [X0 + LEN, WL, ZC], stern: [X0 - 2, WL, ZC], top: [X0 + 40, DECK + 30, ZC], keel: [X0 + 40, 0, ZC], cabin: [(bx0 + bx1) / 2, DECK + 6, ZC + 10], under: [X0 + 40, WL - 1, ZC + 11] },
+    pivot: [X0 + LEN / 2, WL], flagScale: 0.9, night: new Map([[p.glass, '#ffe2a0'], [p.glassD, '#ffd27a'], [p.led, '#7affff']]), lights: [['cabin', 80, '#ffe2a0', 0.5], ['under', 90, '#7affff', 0.45]],
+  });
+}
+
+// ------------------------------------------------------------------ 5 eco catamaran (spinning turbines)
+
+function catamaran(paint, trim, parts) {
+  const m = new VoxelModel(104, 76, 36);
+  const p = aeroPal(m, paint, trim);
+  const X0 = 14, LEN = 74, ZC = 18, WL = 4, DECK = 10;
+  const A = {}, spin = [], bubbles = [];
+  // two slim hulls
+  for (const sd of [-1, 1]) {
+    const zc = ZC + sd * 10;
+    hull(m, {
+      x0: X0, len: LEN, zc, vee: 0.35,
+      keel: (u) => 1 + 5 * Math.pow(sm(50, 74, u), 1.6), sheer: (u) => DECK + 1 + 2 * Math.pow(sm(50, 74, u), 1.4),
+      beam: (u) => (u < 52 ? 3.8 : 3.8 * Math.sqrt(Math.max(0, 1 - ((u - 52) / 22.5) ** 2))), deck: () => DECK + 1,
+      skin: (y, u, ys) => (y === ys ? p.trim : y <= WL - 1 ? p.bottom : y <= WL + 1 ? p.paint : p.white), deckC: () => p.white,
+    });
+  }
+  applyDecal(m, p, parts.decal, ZC, X0 + 3, X0 + LEN - 6, WL + 2, DECK);
+  // bridge deck (trampoline net forward)
+  for (let x = X0 + 2; x <= X0 + 58; x++) for (let z = ZC - 9; z <= ZC + 9; z++) m.set(x, DECK, z, x > X0 + 44 ? ((x + z) % 2 ? p.rope : 0) : x % 3 ? p.deck : p.deckD);
+  // cabin with wraparound glass + solar roof
+  const cx0 = X0 + 22, cx1 = X0 + 44;
+  m.box(cx0, DECK + 1, ZC - 7, cx1, DECK + 9, ZC + 7, (x, y, z) => (y <= DECK + 2 || y >= DECK + 8 ? p.white : (x + y) % 8 === 0 ? p.glassHi : p.glass));
+  m.box(cx0 - 2, DECK + 10, ZC - 9, cx1 + 2, DECK + 10, ZC + 9, p.chrome);
+  m.box(cx0 - 1, DECK + 11, ZC - 8, cx1 + 1, DECK + 11, ZC + 8, (x, y, z) => ((x + z) % 4 === 0 ? p.solarL : p.solar));
+  // two wind turbines on the stern corners (blades spin as an overlay)
+  for (const [k, sd] of [[0, -1], [1, 1]]) {
+    const tx = X0 + 6, tz = ZC + sd * 8, top = DECK + 30 + k * 2;
+    m.line(tx, DECK + 1, tz, tx, top, tz, p.white, 0.7);
+    m.ellipsoid(tx + 1, top, tz, 2.6, 1.5, 1.5, p.white);
+    m.set(tx + 3, top, tz, p.aqua);
+    m.set(tx, top + 1, tz + 1, p.lime);
+    A['turbine' + k] = [tx + 3.5, top + 0.5, tz + 2.5];
+    spin.push({ at: 'turbine' + k, r: 10, n: 3, speed: 4 + k * 0.7 });
+  }
+  // mast + sail forward
+  A.flag = mastSail(m, p, parts.sail, X0 + 50, DECK + 1, DECK + 40, ZC, 18);
+  A.mast = A.flag;
+  // planters along the cabin
+  for (let x = cx0 + 2; x < cx1; x += 5) { m.box(x, DECK + 1, ZC + 8, x + 2, DECK + 2, ZC + 9, p.white); m.sphere(x + 1, DECK + 4, ZC + 8.5, 1.6, p.leafL); }
+  m.set(X0 + LEN - 6, DECK, ZC + 14, p.ledG); m.set(X0 + LEN - 6, DECK, ZC - 14, p.ledR);
+  engine(m, p, parts.engine === 'turbine' ? 'none' : parts.engine, X0, DECK + 1, ZC, A, spin, bubbles, { x0: X0 + 4, x1: X0 + 18, h: 16, poleH: 16 });
+  const front = twinFront(m, [p.white, p.trim, p.leafL], (x, y, z) => z >= ZC + 7 && y > DECK && x >= cx0 - 1);
+  return finish({
+    m, front, wl: WL, zc: ZC, spin, bubbles,
+    A: { ...A, stand: [X0 + 13, DECK + 1, ZC + 1], bow: [X0 + LEN, WL, ZC], stern: [X0 - 2, WL, ZC], top: [X0 + 40, DECK + 40, ZC], keel: [X0 + 40, 0, ZC], cabin: [(cx0 + cx1) / 2, DECK + 5, ZC + 8], lantern: [X0 + LEN - 5.5, DECK + 0.5, ZC + 14.5] },
+    pivot: [X0 + LEN / 2, WL], flagScale: 0.9, night: new Map([[p.glass, '#ffe2a0'], [p.ledG, '#a8ff6a'], [p.ledR, '#ff6a6a']]), lights: [['cabin', 70, '#ffe2a0', 0.5], ['lantern', 40, '#a8ff6a', 0.6]],
+  });
+}
+
+// ------------------------------------------------------------------ 6 bubble submarine
+
+function submarine(paint, trim, parts) {
+  const m = new VoxelModel(112, 64, 32);
+  const p = aeroPal(m, paint, trim);
+  const X0 = 14, LEN = 84, ZC = 16, WL = 9, CY = 7, R = 8.6;
+  const A = {}, spin = [], bubbles = [];
+  // cigar body: paint below, white top band, aqua stripe
+  shapeIn(m, X0 - 2, 0, ZC - 10, X0 + LEN + 2, CY + R + 1, ZC + 10, (x, y, z) => {
+    const u = (x - X0) / LEN;
+    if (u < 0 || u > 1) return false;
+    const prof = u < 0.2 ? Math.sqrt(1 - ((0.2 - u) / 0.2) ** 2) : u > 0.75 ? Math.sqrt(Math.max(0, 1 - ((u - 0.75) / 0.25) ** 2)) * 0.98 + 0.02 : 1;
+    const r = R * Math.max(0.25, prof);
+    return Math.hypot(y - CY, (z - ZC) * 1.05) <= r;
+  }, (x, y) => (y > CY + 4.4 ? p.white : y > CY + 3.2 ? p.aqua : y < CY - 4 ? p.bottom : p.paint));
+  applyDecal(m, p, parts.decal, ZC, X0 + 6, X0 + LEN - 10, CY - 3, CY + 3);
+  for (let u = 18; u < 70; u += 9) porthole(m, X0 + u, CY, Math.round(ZC + R * 0.95), p.chrome, p.led);
+  // glass bubble dome cockpit (open ribs at the front so the pilot shows), flat deck inside
+  const dx = X0 + 30, dTop = CY + R - 1;
+  for (let x = dx - 9; x <= dx + 9; x++) for (let z = ZC - 6; z <= ZC + 6; z++) m.set(x, dTop, z, p.white);
+  shapeIn(m, dx - 11, dTop, ZC - 11, dx + 11, dTop + 12, ZC + 11, (x, y, z) => { const d = Math.hypot(x - dx, y - dTop, z - ZC); return d <= 10.6 && d > 9.6 && y > dTop; }, (x, y, z) => {
+    const front = z > ZC + 1.5;
+    const rib = Math.abs(Math.round((x - dx) / 4) * 4 - (x - dx)) < 0.6 || Math.abs(y - dTop - 1) < 0.6;
+    if (front) return rib ? p.chrome : null;
+    return rib ? p.chrome : (x + y) % 7 === 0 ? p.glassHi : p.glass;
+  });
+  // periscope, dive fins, tail fin + propeller shroud, nose light
+  m.line(dx + 14, dTop, ZC - 2, dx + 14, dTop + 8, ZC - 2, p.chrome, 0.6);
+  m.line(dx + 14, dTop + 8, ZC - 2, dx + 17, dTop + 8, ZC - 2, p.chrome, 0.6);
+  for (const [u, w] of [[64, 6], [10, 5]]) for (const sd of [-1, 1]) m.box(X0 + u - 3, CY, ZC + sd * (R - 1), X0 + u + 2, CY, ZC + sd * (R + w), p.aqua);
+  m.box(X0 + 2, CY, ZC, X0 + 7, CY + R + 4, ZC, p.aqua);
+  for (let a = 0; a < TAU; a += 0.2) m.set(X0 - 2, CY + Math.sin(a) * 3.6, ZC + Math.cos(a) * 3.6, p.chrome);
+  m.sphere(X0 + LEN, CY + 1, ZC, 1.6, p.lamp);
+  A.flag = [dx + 14.5, dTop + 8.5, ZC - 1.5];
+  if (parts.engine !== 'none') engine(m, p, parts.engine === 'outboard' ? 'bubble' : parts.engine, X0 + 1, CY + R - 2, ZC, A, spin, bubbles, { x0: X0 + 10, x1: X0 + 22, h: 12, poleH: 14 });
+  if (!A.bubbles0) { A.bubbles0 = [X0 - 3, CY, ZC + 0.5]; bubbles.push('bubbles0'); }
+  const front = twinFront(m, [p.chrome], (x, y, z) => z > ZC + 1.5 && y > dTop);
+  return finish({
+    m, front, wl: WL, zc: ZC, spin, bubbles,
+    A: { ...A, stand: [dx, dTop + 1, ZC], bow: [X0 + LEN, WL, ZC], stern: [X0 - 3, WL, ZC], top: [dx, dTop + 12, ZC], keel: [X0 + 40, 0, ZC], sub: [X0 + LEN, CY + 1, ZC + 2], under: [X0 + 40, CY, ZC + 10], lantern: [X0 + LEN + 0.5, CY + 1.5, ZC + 1.5] },
+    pivot: [X0 + LEN / 2, WL], flagScale: 0.8, night: new Map([[p.led, '#9affff'], [p.lamp, '#ffffff'], [p.glass, '#bff6ff']]), lights: [['sub', 60, '#ffffff', 0.6], ['under', 90, '#7affff', 0.5]],
+  });
 }
 
 export const BOAT_TIERS = [
-  { name: 'Dinghy', build: dinghy },
-  { name: 'Fishing Boat', build: fishingBoat },
-  { name: 'Trawler', build: trawler },
-  { name: 'Yacht', build: yacht },
-  { name: 'Research Vessel', build: research },
+  { id: 'raft', name: 'Bubble Raft', desc: 'Pontoons, bamboo and a leaf sail.', build: raft },
+  { id: 'dinghy', name: 'Bubble Dinghy', desc: 'Bouncy inflatable with a little motor.', build: dinghy },
+  { id: 'skiff', name: 'Aero Skiff', desc: 'Sleek, glossy and quick.', build: skiff },
+  { id: 'hydrofoil', name: 'Hydrofoil', desc: 'Flies over the waves on foils.', build: hydrofoil },
+  { id: 'yacht', name: 'Glass Yacht', desc: 'Two decks of shining glass.', build: yacht },
+  { id: 'catamaran', name: 'Eco Catamaran', desc: 'Twin hulls, wind turbines, solar roof.', build: catamaran },
+  { id: 'submarine', name: 'Bubble Submarine', desc: 'A glass dome cockpit. Dive with the fish!', build: submarine },
 ];
+export const BOAT_TIER_BY_ID = Object.fromEntries(BOAT_TIERS.map((b, i) => [b.id, i]));
 
-export function buildBoatModel(tier, paint, trim = '#efe2c2') {
-  const T = BOAT_TIERS[Math.max(0, Math.min(BOAT_TIERS.length - 1, tier | 0))];
-  return T.build(paint, trim);
+export function buildBoatModel(tier, paint, trim = '#ffffff', parts = null) {
+  const i = Math.max(0, Math.min(BOAT_TIERS.length - 1, tier | 0));
+  const P2 = resolveParts(i, parts);
+  if (parts?.hull && PART_BY.hull[parts.hull]) { paint = PART_BY.hull[parts.hull].color; trim = PART_BY.hull[parts.hull].trim; }
+  const T = BOAT_TIERS[i].build(paint || '#2fb8e8', trim || '#ffffff', P2);
+  T.flag = P2.flag; T.parts = P2; T.tier = i;
+  return T;
+}
+
+// ------------------------------------------------------------------ flags
+
+const FLAG_ROWS = {
+  fish: ['............', '.....###....', '...######..#', '..#######.##', '..########..', '...######.##', '.....###...#', '............'],
+  drop: ['............', '.....#......', '....###.....', '...#####....', '...#####....', '...#####....', '....###.....', '............'],
+  leaf: ['............', '.......###..', '.....#####..', '...###o###..', '..##o####...', '..#o####....', '.o..##......', '............'],
+  heart: ['............', '..##..##....', '.########...', '.########...', '..######....', '...####.....', '....##......', '............'],
+  star: ['............', '.....#......', '....###.....', '.#########..', '...#####....', '...##.##....', '..#.....#...', '............'],
+  smile: ['............', '...######...', '..#.#..#.#..', '..########..', '..#.####.#..', '..##....##..', '...######...', '............'],
+  bubble: ['............', '....####....', '...#o..##...', '..#o....#...', '..#......#..', '...#....#...', '....####....', '............'],
+  rainbow: ['RRRRRRRRRRRR', 'OOOOOOOOOOOO', 'YYYYYYYYYYYY', 'GGGGGGGGGGGG', 'BBBBBBBBBBBB', 'VVVVVVVVVVVV', 'RRRRRRRRRRRR', 'OOOOOOOOOOOO'],
+};
+export function buildFlagModel(id, paint = '#2fb8e8') {
+  const rows = FLAG_ROWS[id] || FLAG_ROWS.fish;
+  const w = rows[0].length, h = rows.length;
+  const m = new VoxelModel(w, h, 1);
+  const field = m.color('#ffffff', { jitter: 0.03 }), edge = m.color(id === 'leaf' ? '#3fae2a' : paint, { jitter: 0.04 });
+  const ink = m.color(id === 'leaf' ? '#5cc832' : id === 'heart' ? '#ff4a8a' : id === 'star' ? '#ffcf3a' : id === 'bubble' ? '#59c3ff' : id === 'smile' ? '#ffd23a' : mix(paint, '#0a3a6e', 0.25), { jitter: 0.03 });
+  const hi = m.color(id === 'leaf' ? '#d8f8a0' : '#ffffff', { jitter: 0 });
+  const RB = { R: '#ff5a6a', O: '#ffb02a', Y: '#ffe24a', G: '#5cd84a', B: '#3fa8ff', V: '#a070ff' };
+  const rb = Object.fromEntries(Object.entries(RB).map(([k, v]) => [k, m.color(v, { jitter: 0.02 })]));
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const ch = rows[h - 1 - y][x];
+    m.set(x, y, 0, rb[ch] || (x === 0 ? edge : ch === '#' ? ink : ch === 'o' ? hi : field));
+  }
+  if (id === 'fish') m.set(4, 4, 0, field);
+  return m;
+}
+
+// ------------------------------------------------------------------ live bits: turbines + bubbles
+
+// A: screen anchors relative to (bx, by); vs = px per voxel of the boat sprite.
+export function drawBoatAnim(ctx, T, A, bx, by, t, dir = 1, vs = 2) {
+  if (!T || !A) return;
+  for (const s of T.spin || []) {
+    const a = A[s.at];
+    if (!a) continue;
+    const hx = Math.round(bx + a[0]), hy = Math.round(by + a[1]);
+    const L = s.r * vs;
+    for (let i = 0; i < s.n; i++) {
+      const ang = t * s.speed * dir + (i / s.n) * TAU;
+      const ca = Math.cos(ang), sa = Math.sin(ang);
+      for (let k = 1.5; k <= L; k += 0.8) {
+        const w = k < L * 0.35 ? 2 : k > L * 0.85 ? 1 : 2;
+        ctx.fillStyle = k > L * 0.82 ? '#2fd3e8' : '#f6fbff';
+        ctx.fillRect(Math.round(hx + ca * k - w / 2), Math.round(hy + sa * k * 0.92 - w / 2), w, w);
+      }
+    }
+    ctx.fillStyle = '#9fb4c8'; ctx.fillRect(hx - 1, hy - 1, 3, 3);
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(hx - 1, hy - 1, 1, 1);
+  }
+  for (const k of T.bubbles || []) {
+    const a = A[k];
+    if (!a) continue;
+    for (let i = 0; i < 6; i++) {
+      const ph = (t * 0.8 + i / 6) % 1;
+      const x = Math.round(bx + a[0] - dir * ph * 18 + Math.sin(t * 3 + i * 2) * 2), y = Math.round(by + a[1] - ph * 10);
+      const r = 1 + (i % 2);
+      ctx.globalAlpha = 1 - ph;
+      ctx.fillStyle = '#e8ffff';
+      ctx.fillRect(x - r, y, 1, 1); ctx.fillRect(x + r, y, 1, 1); ctx.fillRect(x, y - r, 1, 1); ctx.fillRect(x, y + r, 1, 1);
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(x - 1, y - 1, 1, 1);
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ------------------------------------------------------------------ previews (wardrobe Boat tab, Lab, dev)
+
+const PREV = new Map();
+const PREVIEW_YAW = 0, PREVIEW_PITCH = 24;
+export function renderBoatPreview(tier, parts = null, o = {}) {
+  const i = Math.max(0, Math.min(BOAT_TIERS.length - 1, tier | 0));
+  const vs = 2 * (o.scale ?? 1);
+  const P2 = resolveParts(i, parts);
+  const key = i + '|' + JSON.stringify(P2) + '|' + vs;
+  let pv = PREV.get(key);
+  if (!pv) {
+    const T = buildBoatModel(i, null, null, P2);
+    const r = renderVoxels(T.m, { scale: vs, yaw: PREVIEW_YAW, pitch: PREVIEW_PITCH, outline: true, jitter: 0.18, glowRadius: 2 });
+    const front = T.front.size ? renderVoxels(T.m, { scale: vs, yaw: PREVIEW_YAW, pitch: PREVIEW_PITCH, outline: true, jitter: 0.18, keepVoxel: (x, y, z) => T.front.has(T.m.get(x, y, z)) }).canvas : null;
+    const piv = r.project(T.pivot[0], T.pivot[1], T.zc + 0.5);
+    const A = {};
+    for (const [k, p] of Object.entries(T.A)) if (p) { const q = r.project(p[0], p[1], p[2]); A[k] = [q[0] - piv[0], q[1] - piv[1]]; }
+    const flagM = buildFlagModel(T.flag, PART_BY.hull[P2.hull].color);
+    const flag = renderVoxels(flagM, { scale: vs * 0.5 * (T.flagScale || 1) * 1.6, yaw: 0, pitch: 0, outline: true, edges: 0, sideEdges: 0 }).canvas;
+    pv = {
+      T, canvas: r.canvas, glow: r.glow, front, flag, px: Math.round(piv[0]), py: Math.round(piv[1]), A, stand: A.stand, vs,
+      drawFront(ctx, bx, by, t = 0, dir = 1) {
+        if (this.front) ctx.drawImage(this.front, Math.round(bx - this.px), Math.round(by - this.py));
+        if (this.A.flag) {
+          const f = this.flag, w = f.width, h = f.height, fx = Math.round(bx + this.A.flag[0]), fy = Math.round(by + this.A.flag[1]);
+          const st = Math.max(1, Math.round(vs / 2));
+          for (let c = 0; c < w; c += st) { const k = c / w; const off = Math.round(Math.sin(t * 5 - c * 0.35) * k * 2.2); ctx.drawImage(f, c, 0, st, h, fx - c - st, fy - h + 4 + off, st, h); }
+        }
+        drawBoatAnim(ctx, this.T, this.A, bx, by, t, dir, vs);
+      },
+    };
+    PREV.set(key, pv);
+    if (PREV.size > 40) PREV.delete(PREV.keys().next().value);
+  }
+  return pv;
 }

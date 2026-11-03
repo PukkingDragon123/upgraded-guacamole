@@ -231,13 +231,17 @@ function drawRope(ctx, x0, y0, x1, y1, tension, surf, t, alpha) {
 // ---------------------------------------------------------------- tags, emotes, pop-ups
 export function drawPeerTags(ctx, net, peers) {
   const t = net.t;
+  const viewTop = viewTopOf(net.game);
   for (const peer of peers) {
     const a = peer.anch;
     if (!a) continue;
     ctx.globalAlpha = peer.fade;
     const name = peer.p.name + (peer.isMe ? ' (you)' : '');
     const tw = measureText(name, 'small') + 16;
-    const tx = Math.round(a.head[0] - tw / 2), ty = Math.round(a.top - 12);
+    // above the boat when there is room, otherwise just under the hull (stack grows downward)
+    const need = 12 + (peer.emote ? 24 : 0) + peer.pops.length * 16;
+    const below = a.top - need < viewTop + 2;
+    const tx = Math.round(a.head[0] - tw / 2), ty = Math.round(below ? a.y + 10 : a.top - 12);
     pill(ctx, tx, ty, tw, 10, { color: '#f4fbff', edge: peer.color, r: 5 });
     drawGlossOrb(ctx, tx + 6, ty + 5, 2.6, peer.color);
     drawText(ctx, name, tx + 11, ty + 3, { font: 'small', color: '#0c3a52' });
@@ -254,7 +258,7 @@ export function drawPeerTags(ctx, net, peers) {
       if (age < 3.2) {
         const e = EMOTE_BY_ID[peer.emote.id];
         const pop = Math.min(1, age * 6), out = clamp01((3.2 - age) * 3);
-        const bx = Math.round(a.head[0] + 10), by = Math.round(ty - 20 - Math.sin(age * 3) * 1.5);
+        const bx = Math.round(a.head[0] + (below ? 22 : 10)), by = Math.round((below ? Math.max(viewTop + 10, a.head[1] - 6) : ty - 20) - Math.sin(age * 3) * 1.5);
         ctx.globalAlpha = peer.fade * out;
         speechBubble(ctx, bx, by, Math.round(20 * (0.6 + 0.4 * pop)), Math.round(16 * (0.6 + 0.4 * pop)), e?.color || '#4ac8ff');
         const ic = getUiIcon(e?.icon || 'heart');
@@ -262,7 +266,7 @@ export function drawPeerTags(ctx, net, peers) {
       } else peer.emote = null;
     }
     // catch pop-ups (newest on top)
-    let py = ty - (peer.emote ? 38 : 16);
+    let py = below ? ty + 13 : ty - (peer.emote ? 38 : 16);
     for (let i = peer.pops.length - 1; i >= 0; i--) {
       const c = peer.pops[i];
       const age = t - c.t0;
@@ -271,7 +275,7 @@ export function drawPeerTags(ctx, net, peers) {
       const fade = clamp01((4.5 - age) * 2);
       const col = RARITY[c.r]?.color || '#c9d4dc';
       const label = c.text, w = measureText(label, 'small') + 26, h = 13;
-      const x = Math.round(a.head[0] - w / 2), y = Math.round(py - rise * 6);
+      const x = Math.round(a.head[0] - w / 2), y = Math.round(below ? py + (1 - rise) * 6 : py - rise * 6);
       ctx.globalAlpha = peer.fade * fade;
       pill(ctx, x, y, w, h, { color: '#ffffff', edge: col, r: 6 });
       drawGlossOrb(ctx, x + 7, y + 6.5, 4, col);
@@ -279,7 +283,7 @@ export function drawPeerTags(ctx, net, peers) {
       if (fi) ctx.drawImage(fi, x + 7 - Math.floor(fi.width / 2), y + 7 - Math.floor(fi.height / 2));
       drawText(ctx, label, x + 14, y + 4, { font: 'small', color: '#0c3a52' });
       if (c.r === 'legendary' || c.r === 'epic') for (let k = 0; k < 3; k++) drawSparkle(ctx, x + 6 + ((k * 37 + age * 30) % w), y - 2 + ((k * 13) % (h + 4)), 2, 0.5 + 0.5 * Math.sin(age * 8 + k), '#ffffff');
-      py = y - h - 3;
+      py = below ? y + h + 3 : y - h - 3;
     }
     ctx.globalAlpha = 1;
   }
@@ -298,11 +302,18 @@ function speechBubble(ctx, cx, cy, w, h, color) {
   ctx.restore();
 }
 
-// Small clover pill above the player's own boat while the party buff is active.
+function viewTopOf(game) {
+  try { const p = game.camera?.screenToWorld?.(0, 0); if (p && Number.isFinite(p[1])) return p[1]; } catch { /* ignore */ }
+  return -Infinity;
+}
+
+// Small clover pill by the player's own boat while the party buff is active (above it, or under the hull).
 export function drawPartyBadge(ctx, net, luck, boat) {
   if (!(luck > 1) || !boat?.visible) return;
   const b = boat.bounds?.();
-  const x = Math.round(boat.x), y = Math.round((b ? b.y : boat.y - 50) - 16);
+  const head = boat.anchorsWorld?.head?.[1];
+  const top = Math.min(b ? b.y : boat.y - 50, Number.isFinite(head) ? head - 14 : Infinity) - 14;
+  const x = Math.round(boat.x), y = Math.round(top < viewTopOf(net.game) + 2 ? boat.y + 10 : top);
   const txt = `PARTY +${Math.round((luck - 1) * 100)}%`;
   const w = measureText(txt, 'small') + 18;
   pill(ctx, x - w / 2, y, w, 11, { color: '#7ee04a', edge: 'rgba(255,255,255,0.95)', r: 5 });

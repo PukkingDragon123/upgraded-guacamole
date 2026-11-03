@@ -2,6 +2,7 @@
 // modules), and a set of hand-made pixel glyphs for stat nodes. Every icon is cached per (key, size).
 //   labIcon(key, px) -> canvas (fits a px x px box) | null
 //     key: 'rod:<id>' | 'boat:<id>' | 'tank:<id>' | 'biome:<id>' | 'bait:<id>' | 'bp:<buildingId>' | 'mat:<itemId>' | glyph name
+//   labIconCached(key, px) -> canvas | undefined (only when already rendered; cheap)
 //   GLYPHS: names of the pixel glyphs (hook, line, star, gear, reel, bolt, battery, eye, music, mouse, heart, ...)
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { PixelBuffer, selOut } from '../gfx/pixel.js';
@@ -63,6 +64,7 @@ const GLYPH_ART = {
   hammer: ['.SSSSS...', 'SWWWWWS..', 'SSSSSSS..', '...nn....', '...nn....', '...nn....', '...nn....', '...nN....', '...NN....'],
   globe: ['...bbbb...', '.bbeebbbb.', 'bbeeeebbbb', 'bbbeebbeeb', 'bbbbbbeeeb', 'beebbbbeeb', 'beeebbbbbb', '.beebbbbb.', '...bbbb...'],
   bubble: ['...aaa...', '.aa...aa.', 'a.w.....a', 'a.w.....a', 'a.......a', 'a.......a', '.aa...aa.', '...aaa...'],
+  fish: ['.....ww....', '...wwbbw..w', '.wwbbbbbw.ww', 'wbkbbbbbbwbw', 'wbbbbbbbbbbw', '.wbbBbbbBw.w', '...wBBBBw..w', '.....ww....'],
   trophy: ['yyyyyyyyy', 'yYyyyyyYy', '.yyyyyyy.', '..yyyyy..', '...yyy...', '....y....', '...yyy...', '..YYYYY..'],
 };
 export const GLYPHS = Object.keys(GLYPH_ART);
@@ -249,6 +251,8 @@ function fitCanvas(src, px, upscale = true) {
   return c;
 }
 
+export function labIconCached(key, px = 18) { return cache.get(key + '|' + Math.max(6, Math.round(px))); }
+
 export function labIcon(key, px = 18) {
   px = Math.max(6, Math.round(px));
   const ck = key + '|' + px;
@@ -265,7 +269,8 @@ export function labIcon(key, px = 18) {
       const s = buildingSprite(id, { scale: 0.2, force: true });
       if (s) {
         const k = Math.min(px / s.w, px / s.h) * 0.2;
-        c = buildingSprite(id, { scale: Math.max(0.06, Math.floor(k * 40) / 40), force: true })?.canvas || null;
+        const b = buildingSprite(id, { scale: Math.max(0.05, Math.round(k * 100) / 100), force: true });
+        c = b ? fitCanvas(b.canvas, px, false) : null;
       }
     } else if (kind === 'mat') c = itemIcon(id, px);
     else if (key === 'globe') c = fitVoxel(() => globeModel('oscean'), px);

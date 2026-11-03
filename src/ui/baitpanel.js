@@ -20,6 +20,7 @@ import { pill, glassCard, statBar, button, orbButton, wordArt, tag, INK, INK_SOF
 import { unlocked } from '../game/lab.js';
 import { ITEMS, countItem, takeItems } from '../build/items.js';
 import { itemSprite } from '../build/itemart.js';
+import { ecoBand, ecoCorners, splashButton } from '../store/ecoart.js';
 
 const DEPS = {
   unlocked: (s) => { try { return !!unlocked(s, 'recipe', 'custombait'); } catch { return false; } },
@@ -71,14 +72,16 @@ export class BaitPanel {
     const r = centerRect(g, W, H);
     this.rect = r;
     drawAeroPanel(ctx, r.x, r.y, W, H, { tone: 'glass', radius: 12 });
-    // header: title orb, tabs, total, close
+    // eco header: sky band, title bubble, tabs, total, close
+    ecoBand(ctx, r.x + 3, r.y + 3, W - 6, 28, this.t, { sun: [0.45, 0.15] });
+    ecoCorners(ctx, r.x, r.y, W, H, this.t, 0.72);
     drawBaitGloss(ctx, BAITS.worm.art, r.x + 20, r.y + 17, 24, this.t, { tint: '#d8f8ff' });
-    ctx.drawImage(wordArt('Bait', { scale: 2 }), r.x + 36, r.y + 6);
+    ctx.drawImage(wordArt('Bait', { scale: 2, top: '#ffffff', bottom: '#ffb02e', edge: '#7a3a06' }), r.x + 36, r.y + 6);
     const tabs = [['inv', 'Bait Box'], ['craft', 'Customize']];
     let tx = r.x + 98;
     for (const [id, label] of tabs) {
-      const w = measureText(label) + 26;
       const locked = id === 'craft' && !DEPS.unlocked(st);
+      const w = measureText(label) + 26 + (locked ? 12 : 0);
       if (button(ui, ctx, tx, r.y + 8, w, 18, label, { tone: this.tab === id ? 'green' : 'glass', active: this.tab === id, icon: locked ? getUiIcon('lock') : null })) { this.tab = id; }
       tx += w + 6;
     }
@@ -116,7 +119,7 @@ export class BaitPanel {
       if (hk) ctx.drawImage(hk, Math.round(cx - hk.width / 2), Math.round(ly + 40 - hk.height / 2));
       drawText(ctx, 'Empty hook', cx, ly + 86, { align: 'center', color: INK_SOFT });
     }
-    if (button(ui, ctx, lx + 10, ly + lh - 26, lw - 20, 18, 'Get bait', { tone: 'green', tip: 'AppSea: download bait packs' })) this.openStore();
+    if (splashButton(ui, ctx, lx + 10, ly + lh - 26, lw - 20, 18, 'Get bait', { tone: 'green', tip: 'AppSea: download bait packs' })) this.openStore();
     // right: bait grid
     const list = baitList(st);
     const gx = r.x + 160, gy = r.y + 34, gw = W - 170, gh = H - 80;
@@ -297,7 +300,7 @@ export class BaitPanel {
       if (button(ui, ctx, ox + 10 + i * 36, y, 32, 18, 'x' + b, { tone: this.batch === b ? 'green' : 'glass', active: this.batch === b })) this.batch = b;
     });
     const chk = canCraft(st, rec, this.batch, DEPS);
-    if (button(ui, ctx, ox + ow - 92, y - 1, 84, 20, 'Craft!', { tone: 'orange', disabled: !chk.ok, sound: 'ui_buy', tip: chk.ok ? `Make ${this.batch}` : chk.reason === 'items' ? 'Need more materials' : chk.reason === 'aero' ? 'Need more Aero' : null })) {
+    if (splashButton(ui, ctx, ox + ow - 92, y - 1, 84, 20, 'Craft!', { tone: 'orange', disabled: !chk.ok, sound: 'ui_buy', tip: chk.ok ? `Make ${this.batch}` : chk.reason === 'items' ? 'Need more materials' : chk.reason === 'aero' ? 'Need more Aero' : null })) {
       const res = craftCustom(st, rec, this.batch, DEPS);
       if (res.ok) {
         g.toast?.(`Crafted ${this.batch}x ${res.bait.name}!`, 'sparkle');
@@ -320,7 +323,7 @@ export class BaitPanel {
     if (lk) ctx.drawImage(lk, Math.round(x + w / 2 - lk.width / 2), Math.round(y + h / 2 - 34 - lk.height / 2));
     drawText(ctx, 'Custom Bait', x + w / 2, y + h / 2 - 6, { align: 'center', color: INK, scale: 1 });
     drawText(ctx, 'RESEARCH IT IN THE LAB', x + w / 2, y + h / 2 + 8, { align: 'center', font: 'small', color: INK_SOFT });
-    if (button(ui, ctx, x + w / 2 - 50, y + h / 2 + 22, 100, 20, 'The Lab', { tone: 'green' })) {
+    if (splashButton(ui, ctx, x + w / 2 - 50, y + h / 2 + 22, 100, 20, 'The Lab', { tone: 'green' })) {
       if (g.ui.panels.lab) { g.ui.close(this.id); g.ui.open('lab', { focus: 'custombait' }); } else g.toast?.('The Lab is being built. Check back soon!', 'info');
     }
   }

@@ -32,7 +32,7 @@ export class AeroDrops {
   radius(d, value) {
     const base = [2.4, 3.1, 4.1][d] ?? 2.4;
     const extra = value > DENOMS[d] ? Math.min(2.6, Math.log2(value / DENOMS[d]) * 0.45) : 0;
-    return Math.max(2.5, (base + extra) * (0.55 + this.scale * 0.75));
+    return Math.max(2.5, (base + extra) * (0.7 + this.scale * 1.05));
   }
 
   spawn(X, Y, D, d = 0, o = {}) {
@@ -69,7 +69,7 @@ export class AeroDrops {
       const restY = T.surf + c.r * 0.55 + Math.sin(c.ph) * 0.5;
       if (c.hint) {
         // tutorial drop: hovers low in the water so it is easy to find, gently bobbing
-        const hy = c.hintY ?? (c.hintY = T.surf + (T.floorFront - T.surf) * 0.58);
+        const hy = c.hintY ?? (c.hintY = Math.min(T.surf + (T.floorFront - T.surf) * 0.8, T.groundZ(c.X, c.D / T.DEPTH) - c.r * 2.5));
         c.vy += ((hy + Math.sin(c.ph * 0.9) * 2 - c.Y) * 3 - c.vy) * Math.min(1, dt * 4);
       } else if (c.hold > 0) {
         c.hold -= dt;

@@ -15,6 +15,7 @@ import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { hash2, fbm1, clamp01, smoothstep, TAU } from '../core/math.js';
 import { VoxelModel, renderVoxels } from '../gfx/voxel.js';
 import { Paint, C, setMix, grad, sdRR } from './paint.js';
+import { cityBubble, glassGlobe, paintArcs, paintLeafBranch } from './scenery.js';
 
 // ------------------------------------------------------------------ palette
 
@@ -96,6 +97,7 @@ function paintSky(w, h, u) {
     if (d < 7 * u + 2) { c[0] = 255; c[1] = 254; c[2] = 244; }
     return 1;
   });
+  paintArcs(P, w, h, u);
   return { canvas: P.toCanvas(4), sun: [sx, sy] };
 }
 
@@ -135,7 +137,11 @@ function paintHills(w, h, layer, seed, u, skyH) {
   const c = P.c;
   const amp = [0.12, 0.17, 0.2][layer] * h, base = [0.5, 0.62, 0.78][layer] * h;
   const f1 = [0.006, 0.008, 0.005][layer] / Math.max(0.5, u), f2 = f1 * 2.7;
-  const crest = (x) => base - amp * (0.55 * Math.sin(x * f1 + seed) + 0.3 * Math.sin(x * f2 + seed * 2.3) + 0.4 * (fbm1(x * f1 * 0.7 + seed, 3, seed) - 0.5));
+  // the near layer is the curved green horizon of a little planet (a wide dome), the others roll
+  const dcx = w * 0.4, dw = w * 0.62;
+  const crest = layer === 2
+    ? (x) => { const q = (x - dcx) / dw; return h * 0.99 - h * 0.6 * (1 - q * q) + Math.sin(x * f1 * 2 + seed) * h * 0.012; }
+    : (x) => base - amp * (0.55 * Math.sin(x * f1 + seed) + 0.3 * Math.sin(x * f2 + seed * 2.3) + 0.4 * (fbm1(x * f1 * 0.7 + seed, 3, seed) - 0.5));
   const cols = [
     [C('#a9d9c6'), C('#8cc9b0'), C('#6fb69c')],
     [C('#b8ef7a'), C('#6fcf3c'), C('#3f9f2c')],
@@ -151,6 +157,16 @@ function paintHills(w, h, layer, seed, u, skyH) {
     grad(c, [[0, cols[2]], [0.5, cols[1]], [1, cols[0]]], lit);
     // glossy crest sheen
     if (dy < 2.2 * u + 1 && layer > 0) setMix(c, c, C('#f4ffd0'), 0.55 * (1 - dy / (2.2 * u + 1)));
+    if (layer === 2) {
+      // curved mowing stripes following the dome and a little winding path to the top
+      const dd = Math.hypot((x - dcx) / dw, (y - h * 1.6) / (h * 1.4));
+      if (Math.sin(dd * 60) > 0.6) setMix(c, c, C('#ffffff'), 0.07);
+      const top = crest(dcx - w * 0.1);
+      const px = dcx - w * 0.1 + (y - top) * 0.55 + Math.sin((y - top) * 0.09 / Math.max(0.5, u)) * 6 * u;
+      const pw = (0.6 + (y - top) / h * 6) * u;
+      if (y > top && Math.abs(x - px) < pw) setMix(c, c, C('#eaf8b0'), 0.75);
+      return 1;
+    }
     // mowing stripes on the near hills
     if (layer > 0) {
       const s = Math.sin((x * 0.05 / Math.max(0.5, u)) + dy * 0.09 + seed);
@@ -514,6 +530,18 @@ export function roomArt(L) {
     props.push({ ...it, rect: { x, y, w: r.canvas.width, h: r.canvas.height }, glow: r.glow, bulb: r.bulb, sh0 });
     if (r.bulb && r.glow) props[props.length - 1].glowAt = { x, y };
   }
+  // glossy leafy branches framing the view (front layer)
+  if (plan.key !== 'mini') {
+    const LP = new Paint(sw, sh);
+    if (plan.key === 'full') {
+      paintLeafBranch(LP, sw + 6 * u, -10 * u, 2.45, 210 * u, u, 3, { leaves: 8, bend: 0.5 });
+      paintLeafBranch(LP, sw + 4 * u, 70 * u, 2.9, 120 * u, u, 8, { leaves: 5, bend: -0.4 });
+      paintLeafBranch(LP, -8 * u, sh * 0.93, -0.55, 170 * u, u, 5, { leaves: 7, bend: -0.35 });
+    } else {
+      paintLeafBranch(LP, sw + 4 * u, -6 * u, 2.5, 150 * u, u, 3, { leaves: 6, bend: 0.5 });
+    }
+    fg.drawImage(LP.toCanvas(4), 0, 0);
+  }
   // sky + parallax layers
   let sky = null;
   if (plan.sky) {
@@ -521,7 +549,7 @@ export function roomArt(L) {
     const m = Math.round(18 * u) + 4;
     const skyArt = paintSky(s.w, s.h, u);
     const hills = [0, 1, 2].map((i) => {
-      const hh = Math.round(s.h * [0.62, 0.5, 0.36][i]);
+      const hh = Math.round(s.h * [0.62, 0.5, 0.42][i]);
       const hl = paintHills(s.w + m * 2, hh, i, 3.1 + i * 1.7 + L.tier * 0.37, u, s.h);
       return { canvas: hl.canvas, crest: hl.crest, y: s.y + s.h - hh, depth: [0.25, 0.55, 1][i] };
     });
@@ -540,7 +568,14 @@ export function roomArt(L) {
       const th = Math.round((22 - i * 3) * u + 6);
       turbines.push({ x: fx, base: far.y + far.crest(fx) + 2, h: th, ph: i * 0.7, layer: far });
     }
-    sky = { rect: s, canvas: skyArt.canvas, sun: [s.x + skyArt.sun[0], s.y + skyArt.sun[1]], hills, clouds, turbines, m };
+    // a glass city in a water bubble on the horizon (left) and a green glass globe floating on the right
+    const near = hills[2];
+    const cityR = Math.round(Math.min(s.h * 0.17, s.w * 0.075));
+    const cityX = s.w * (plan.wins.length > 1 ? 0.12 : 0.17) + m;
+    const city = { canvas: cityBubble(cityR), x: cityX, base: near.y + near.crest(cityX) + cityR * 0.35 };
+    const globeR = Math.round(Math.min(s.h * 0.2, s.w * 0.085));
+    const globe = { canvas: glassGlobe(globeR), x: s.x + s.w * 0.8, y: s.y + s.h * 0.42, r: globeR };
+    sky = { rect: s, canvas: skyArt.canvas, sun: [s.x + skyArt.sun[0], s.y + skyArt.sun[1]], hills, clouds, turbines, m, city, globe };
   }
   // sun shafts radiating from the window into the room (additive)
   let shafts = null;
@@ -557,7 +592,7 @@ export function roomArt(L) {
       c[0] = 255; c[1] = 250; c[2] = 222;
       return a;
     });
-    shafts = S.toCanvas(8);
+    shafts = cropAlpha(S.toCanvas(8));
   }
   // window bloom (soft glow spilling over the frame)
   let bloom = null;
@@ -574,8 +609,24 @@ export function roomArt(L) {
       });
     }
     bloom = B.toCanvas(8);
+    // static: bake it into the room once (one less full-scene additive blit per frame)
+    g.globalCompositeOperation = 'lighter';
+    g.globalAlpha = 0.85;
+    g.drawImage(bloom, 0, 0);
+    g.globalAlpha = 1;
+    g.globalCompositeOperation = 'source-over';
+    bloom = null;
   }
-  art = { key, plan, room, front, props, sky, shafts, bloom, sw, sh, u };
+  // the front layer is mostly empty: keep only the cropped quadrants that hold something
+  const frontParts = [];
+  const hw = Math.ceil(sw / 2), hh2 = Math.ceil(sh / 2);
+  for (const [qx, qy] of [[0, 0], [hw, 0], [0, hh2], [hw, hh2]]) {
+    const q = makeCanvas(Math.min(hw, sw - qx), Math.min(hh2, sh - qy));
+    ctxOf(q).drawImage(front, -qx, -qy);
+    const cp = cropAlpha(q);
+    if (cp) frontParts.push({ canvas: cp.canvas, x: qx + cp.x, y: qy + cp.y });
+  }
+  art = { key, plan, room, front: frontParts, props, sky, shafts, bloom, sw, sh, u };
   artCache.set(key, art);
   if (artCache.size > 12) artCache.delete(artCache.keys().next().value);
   return art;
@@ -600,6 +651,10 @@ export function drawRoomBack(ctx, art, ox, oy, t, par = { x: 0, y: 0 }) {
     for (let i = 0; i < s.hills.length; i++) {
       const h = s.hills[i];
       const dx = Math.round(-s.m - par.x * 10 * art.u * h.depth), dy = Math.round(-par.y * 3 * art.u * h.depth);
+      if (i === 2 && s.city) {
+        const cv = s.city.canvas;
+        ctx.drawImage(cv, Math.round(ox + r.x + dx + s.city.x - cv.width / 2), Math.round(oy + s.city.base + dy - cv.height + cv.pad));
+      }
       ctx.drawImage(h.canvas, ox + r.x + dx, oy + h.y + dy);
       if (i === 0) {
         for (const tb of s.turbines) {
@@ -611,6 +666,11 @@ export function drawRoomBack(ctx, art, ox, oy, t, par = { x: 0, y: 0 }) {
           ctx.drawImage(f, x - (f.width >> 1), y0 - tb.h - (f.height >> 1));
         }
       }
+    }
+    if (s.globe) {
+      const gl = s.globe, cv = gl.canvas;
+      const gx = ox + gl.x - par.x * 7 * art.u, gy = oy + gl.y + Math.sin(t * 0.6) * 2 * art.u - par.y * 2 * art.u;
+      ctx.drawImage(cv, Math.round(gx - cv.width / 2), Math.round(gy - cv.height / 2));
     }
     // lens flare from the sun (very soft)
     const sx = ox + s.sun[0], sy = oy + s.sun[1];
@@ -641,11 +701,12 @@ export function drawRoomFront(ctx, art, ox, oy, t, par = { x: 0, y: 0 }, lampOn 
   if (art.shafts) {
     ctx.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = 0.75 + 0.25 * Math.sin(t * 0.35);
-    ctx.drawImage(art.shafts, ox, oy);
+    ctx.drawImage(art.shafts.canvas, ox + art.shafts.x, oy + art.shafts.y);
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
   }
-  ctx.drawImage(art.front, Math.round(ox + par.x * 4 * art.u), oy);
+  const fx = Math.round(ox + par.x * 4 * art.u);
+  for (const f of art.front) ctx.drawImage(f.canvas, fx + f.x, oy + f.y);
   if (lampOn) {
     ctx.globalCompositeOperation = 'lighter';
     for (const p of art.props) {
@@ -671,6 +732,21 @@ export function roomHit(art, x, y) {
     if (x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h) return p.kind;
   }
   return null;
+}
+
+// Trim a canvas to the bounding box of its visible pixels -> {canvas, x, y}.
+function cropAlpha(cv) {
+  const { width: w, height: h } = cv;
+  const d = ctxOf(cv).getImageData(0, 0, w, h).data;
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (d[(y * w + x) * 4 + 3] < 4) continue;
+    if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+  }
+  if (x1 < 0) return null;
+  const c = makeCanvas(x1 - x0 + 1, y1 - y0 + 1);
+  ctxOf(c).drawImage(cv, -x0, -y0);
+  return { canvas: c, x: x0, y: y0 };
 }
 
 // ------------------------------------------------------------------ sprites

@@ -43,8 +43,9 @@ function rampAt(ramp, v, x, y) {
 
 const CHROME = ['#2c4a62', '#4f7690', '#7fa4bc', '#b4d0e2', '#e2f2fc', '#ffffff'].map(hex);
 const AQUA = ['#0a5f88', '#0d8fb5', '#1fb8dc', '#4fd8f0', '#8ff0ff', '#d8fcff'].map(hex);
-const GLASS = ['#06243a', '#0a3450', '#0f4766', '#175c7e'].map(hex);
-const LINE = ['#7fc4e0', '#a8e2f6', '#d2f4ff', '#f4fdff'].map(hex);
+const GLASS = ['#0d6fb8', '#1e8fe0', '#38aef0', '#6cd0ff', '#b8ecff'].map(hex);
+const LINE = ['#1f6a14', '#3fa02a', '#6cd03a', '#a6ec5a', '#e2ffb0'].map(hex);
+const PLATE = ['#6f8ea8', '#a8c0d4', '#d4e4f0', '#eef6fb', '#ffffff'].map(hex);
 const LIME = ['#2f7a1e', '#3fae2a', '#6cd03a', '#a6ec5a', '#e2ffb0'].map(hex);
 const HOT = ['#7a1a1a', '#c8303a', '#ff5a4a', '#ff9a7a', '#ffe0d0'].map(hex);
 const VOLT = ['#a86a00', '#e0a000', '#ffd23a', '#fff07a', '#fffbe0'].map(hex);
@@ -95,19 +96,19 @@ function bodySprite(R) {
         return [...rampAt(CHROME, l, x, y), 255];
       }
       if (d > R - 6.5) {
-        // glossy aqua side plate (slightly domed)
-        const facing = -(nx * LX + ny * LY);
-        let l = 0.55 - 0.32 * (dy / R) - 0.1 * (dx / R);
-        // glossy lip highlight crescent on the upper-left
+        // glossy white plastic side plate (slightly domed) with an aqua accent ring
         const ang = Math.atan2(dy, dx);
-        if (d > R - 3.5 && d < R + 0.5 && Math.abs(ang + 2.25) < 0.7) l = 0.97;
-        if (d < R - 5.5) l *= 0.7; // inner bevel shadow
-        void facing;
-        return [...rampAt(AQUA, l, x, y), 255];
+        if (d < R - 5.2) return [...rampAt(AQUA, 0.62 - 0.3 * (dy / R), x, y), 255];
+        let l = 0.62 - 0.36 * (dy / R) - 0.12 * (dx / R);
+        // glossy lip highlight crescent on the upper-left
+        if (d > R - 3.5 && d < R + 0.5 && Math.abs(ang + 2.25) < 0.7) l = 1;
+        // leaf-green accent arc along the lower right
+        if (d > R - 2.2 && Math.abs(ang - 0.75) < 0.55) return [...rampAt(LIME, 0.75 - 0.3 * (dy / R), x, y), 255];
+        return [...rampAt(PLATE, l, x, y), 255];
       }
-      // dark glass spool window (lit from below by the bay)
-      let l = 0.25 + 0.55 * clamp01((dy / R + 1) / 2) ** 2;
-      if (d > R - 8.5 && dy < 0) l *= 0.5; // inner shadow along the top
+      // aqua glass spool window (sky-lit from above, deeper below)
+      let l = 0.85 - 0.6 * clamp01((dy / R + 1) / 2);
+      if (d > R - 8.5 && dy < 0) l *= 0.6; // inner shadow along the top
       return [...rampAt(GLASS, l, x, y), 255];
     });
   });
@@ -280,13 +281,13 @@ function drawBailWire(ctx, cx, cy, rr, a0, a1, flip, t) {
     pts.push([Math.round(x), Math.round(y)]);
   }
   ctx.fillStyle = '#0c3a52';
-  for (const [x, y] of pts) ctx.fillRect(x - 1, y - 1, 3, 3);
+  for (const [x, y] of pts) ctx.fillRect(x - 1, y - 1, 4, 4);
   for (let i = 0; i < pts.length; i++) {
     const [x, y] = pts[i];
     const u = i / (pts.length - 1);
     const lit = flip > 0 ? (u < 0.45 ? '#ffffff' : u < 0.7 ? '#e2f2fc' : '#b4d0e2') : '#7fa4bc';
-    ctx.fillStyle = lit; ctx.fillRect(x, y, 1, 1);
-    ctx.fillStyle = flip > 0 ? '#7fa4bc' : '#4f7690'; ctx.fillRect(x, y + 1, 1, 1);
+    ctx.fillStyle = lit; ctx.fillRect(x, y, 2, 1);
+    ctx.fillStyle = flip > 0 ? '#9ab8cc' : '#4f7690'; ctx.fillRect(x, y + 1, 2, 1);
   }
   // a glint sliding along the wire
   const gi = Math.floor(((t * 0.7) % 1) * pts.length);
@@ -333,8 +334,8 @@ export class Reel {
 
   layout(W, H) {
     if (this.lay && this.layW === W && this.layH === H) return this.lay;
-    const R = Math.round(clamp(H * 0.1, 32, 64));
-    const cx = Math.round(W - R - 40), cy = Math.round(H - R - 30);
+    const R = Math.round(clamp(H * 0.12, 34, 72));
+    const cx = Math.round(W - R - 44), cy = Math.round(H - R - 34);
     const br = Math.max(10, Math.round(R * 0.3));
     const bx = Math.round(cx - R - br - 14), by = Math.round(cy + R * 0.42);
     this.lay = { R, cx, cy, br, bx, by, Rk: R - 8 };
@@ -549,13 +550,16 @@ export class Reel {
   }
 
   drawBail(ctx, cx, cy, R, t, front) {
-    const rr = R + 7;
+    const rr = R + 12;
     const f = front ? ease(clamp01((this.bail - 0.5) * 2)) : -ease(clamp01((0.5 - this.bail) * 2)) * 0.55;
     const a0 = Math.PI * 1.08, a1 = Math.PI * 1.92;
     const pts = drawBailWire(ctx, cx, cy - 2, rr, a0, a1, f, t);
     // pivots
     for (const a of [a0, a1]) {
-      const x = Math.round(cx + Math.cos(a) * rr), y = Math.round(cy - 2 + Math.sin(a) * rr * 0);
+      const x = Math.round(cx + Math.cos(a) * rr), y = Math.round(cy - 2);
+      // bail arm from the rotor to the pivot
+      ctx.fillStyle = '#0c3a52'; ctx.fillRect(Math.min(x, cx + Math.sign(x - cx) * (R + 4)) - 1, y - 2, Math.abs(x - (cx + Math.sign(x - cx) * (R + 4))) + 2, 5);
+      ctx.fillStyle = '#e2f2fc'; ctx.fillRect(Math.min(x, cx + Math.sign(x - cx) * (R + 4)), y - 1, Math.abs(x - (cx + Math.sign(x - cx) * (R + 4))), 2);
       ctx.drawImage(hubSprite(), x - 4, y - 4);
     }
     // the line roller on the right end of the bail, spinning with the spool

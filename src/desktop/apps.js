@@ -11,8 +11,8 @@ import { SPECIES_BY_ID } from '../fish/species.js';
 import { getUiIcon } from '../gfx/uiicons.js';
 import { getAppIcon } from './icons.js';
 
-const INK = '#1e2a38';
-const PAPER = '#f4ecd8';
+const INK = '#0c3a52';
+const PAPER = '#f4fbff';
 
 function paperBg(ctx, r, color = PAPER) {
   ctx.fillStyle = color;
@@ -27,18 +27,16 @@ function textLines(ctx, lines, x, y, color = INK, lh = 11) {
 // ------------------------------------------------------------------ notes
 const NOTES = `Welcome to FISHTOP!
 
-- Your mouse is a fishing hook. Move SLOWLY near fish.
-- Drag desktop icons into the Bait Box (bottom-left).
-- Different icons attract different fish!
+- Your mouse is a fishing hook. Move SLOWLY.
+- Bait comes from AppSea (bottom-left tray).
 - Wait for the "!" then CLICK to set the hook.
 - Hold to reel. Pull AGAINST the fish.
-- Draw a circle around tired fish to net them.
-- Fish in your aquarium make Oxidized Coins.
-- Spend coins on the Coral Skill Tree.
+- Your aquarium makes Aero.
+- Spend Aero in The Lab.
+- The floating bubbles are your menu.
 - P pauses fishing. M = mini mode.
 
-Your files are never touched. Icons in the bait box
-are just virtual copies - Restore All Icons anytime.`;
+Your files are never touched.`;
 
 const notes = {
   title: 'Notes.txt',
@@ -189,7 +187,7 @@ const music = {
   title: 'Tunes',
   size: [210, 110],
   draw(ctx, w, g, r, t) {
-    ctx.fillStyle = '#1a1e2e'; ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.fillStyle = '#0e3a66'; ctx.fillRect(r.x, r.y, r.w, r.h);
     const track = g.musicTrackName?.() || 'Silence';
     drawText(ctx, 'Now playing:', r.x + 8, r.y + 6, { color: '#8aa0c8', font: 'small' });
     drawText(ctx, track, r.x + 8, r.y + 16, { color: '#e8f0ff' });
@@ -199,9 +197,9 @@ const music = {
       ctx.fillRect(r.x + 8 + i * 8, r.y + 56 - hgt, 6, hgt);
     }
     w.data.btn = { x: r.x + 8, y: r.y + 64, w: 60, h: 14 };
-    ctx.fillStyle = '#2a3a5a'; ctx.fillRect(w.data.btn.x, w.data.btn.y, 60, 14);
+    ctx.fillStyle = '#2fa8e8'; ctx.fillRect(w.data.btn.x, w.data.btn.y, 60, 14);
+    ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fillRect(w.data.btn.x, w.data.btn.y, 60, 6);
     drawText(ctx, g.muted ? 'Unmute' : 'Mute', w.data.btn.x + 30, w.data.btn.y + 4, { align: 'center', color: '#ffffff' });
-    drawText(ctx, 'Music changes with each ocean.', r.x + 76, r.y + 68, { font: 'small', color: '#8aa0c8' });
   },
   input(w, g, inp) {
     if (inp.pressed && w.data.btn && rectContains(w.data.btn, inp.x, inp.y)) g.command('mute');
@@ -212,24 +210,34 @@ const music = {
 const JUNK = ['old_homework.doc', 'final_FINAL_v7.psd', 'ex_photos.zip', 'cursed_meme.png', 'tax_2019.pdf', 'virus_definitely.exe', 'banana.jpg', 'diary.txt'];
 const trash = {
   title: 'Recycle Bin',
-  size: [240, 170],
-  draw(ctx, w, g, r) {
-    paperBg(ctx, r, '#ffffff');
-    drawText(ctx, 'Junk files (mutant fish LOVE trash bait)', r.x + 6, r.y + 5, { font: 'small', color: '#6a7a8a' });
-    JUNK.forEach((n, i) => {
-      const y = r.y + 18 + i * 17;
+  size: [220, 170],
+  init(w) { w.data.gone = new Set(); },
+  draw(ctx, w, g, r, t) {
+    paperBg(ctx, r, '#f4fbff');
+    const left = JUNK.filter((n) => !w.data.gone.has(n));
+    if (!left.length) {
+      ctx.drawImage(getAppIcon('trash'), Math.round(r.x + r.w / 2 - 16), Math.round(r.y + r.h / 2 - 22 + Math.sin(t * 2) * 2));
+      drawText(ctx, 'Squeaky clean!', r.x + r.w / 2, r.y + r.h / 2 + 16, { align: 'center', color: '#2a8a3a' });
+      return;
+    }
+    left.forEach((n, i) => {
+      const y = r.y + 4 + i * 17;
       const hot = w.data.hover === i;
-      if (hot) { ctx.fillStyle = '#d8ecff'; ctx.fillRect(r.x + 2, y - 2, r.w - 4, 16); }
+      if (hot) { ctx.fillStyle = '#d0f4ff'; ctx.fillRect(r.x + 2, y - 2, r.w - 4, 16); }
       ctx.drawImage(getUiIcon('trash'), r.x + 6, y);
       drawText(ctx, n, r.x + 20, y + 1, { color: INK });
-      if (hot) drawText(ctx, 'click: use as bait', r.x + r.w - 6, y + 2, { font: 'small', color: '#2a6ab8', align: 'right' });
+      if (hot) ctx.drawImage(getUiIcon('sparkle'), r.x + r.w - 16, y);
     });
   },
   input(w, g, inp, r) {
-    const i = Math.floor((inp.y - r.y - 16) / 17);
-    w.data.hover = i >= 0 && i < JUNK.length ? i : -1;
+    const left = JUNK.filter((n) => !w.data.gone.has(n));
+    const i = Math.floor((inp.y - r.y - 2) / 17);
+    w.data.hover = i >= 0 && i < left.length ? i : -1;
     if (inp.pressed && w.data.hover >= 0) {
-      g.addFileBait(JUNK[w.data.hover], false, 'trash');
+      w.data.gone.add(left[w.data.hover]);
+      g.audio.play('bubble', { pitch: 1.2 });
+      g.particles?.bubbles?.(inp.x, inp.y, 6, { layer: 'ui' });
+      g.ui?.splash?.(inp.x, inp.y, 0.8);
     }
   },
 };
@@ -239,12 +247,12 @@ const computer = {
   title: 'My Computer',
   size: [250, 170],
   draw(ctx, w, g, r) {
-    paperBg(ctx, r, '#eef3f8');
+    paperBg(ctx, r, '#eef9ff');
     const s = g.state.stats;
     const caught = Object.values(g.state.journal).filter((j) => j.caught).length;
     const rows = [
       ['Fish caught', s.caught], ['Species found', caught], ['Got away', s.escaped], ['Lines snapped', s.snapped],
-      ['Coins earned', Math.floor(g.state.totalCoins)], ['Fish in tank', g.state.fish.filter((f) => f.inTank).length],
+      ['Aero earned', Math.floor(g.state.totalCoins)], ['Fish in tank', g.state.fish.filter((f) => f.inTank).length],
       ['Time fishing', Math.floor(s.playTime / 60) + ' min'], ['Ocean', g.biomeName()],
     ];
     drawText(ctx, 'Local Disk (C:) is 72% ocean', r.x + 8, r.y + 6, { color: '#2a4a6a' });
@@ -290,10 +298,10 @@ const terminal = {
 function runCommand(cmd, g) {
   const [c, ...args] = cmd.toLowerCase().split(/\s+/);
   switch (c) {
-    case 'help': return ['commands: help, ls, fish, coins, whoami,', 'weather, time, sudo, clear, crab'];
-    case 'ls': return ['desktop/  ocean/  aquarium/  bait_box/', 'secrets.txt (access denied)'];
+    case 'help': return ['commands: help, ls, fish, aero, whoami,', 'weather, time, sudo, clear, crab'];
+    case 'ls': return ['desktop/  ocean/  aquarium/  the_lab/', 'secrets.txt (access denied)'];
     case 'fish': g.debugSpawnRandom?.(); return ['a fish appears... probably.'];
-    case 'coins': return [`you have ${Math.floor(g.state.coins)} oxidized coins`];
+    case 'aero': case 'money': return [`you have ${Math.floor(g.state.coins)} Aero`];
     case 'whoami': return ['a fisher of desktops'];
     case 'weather': return [`${g.biomeName()}: ${g.ocean?.weatherName?.() || 'calm'}`];
     case 'time': return [`ocean time ${g.clock.hour().toFixed(1)}h`];
@@ -307,7 +315,7 @@ function runCommand(cmd, g) {
 
 // ------------------------------------------------------------------ mail
 const MAILS = [
-  ['Pinch (Bait Shop)', 'Golden bait restocked!', 'Very shiny. Rare fish go WILD for it. Bring coins. Click click.'],
+  ['Pinch', 'Golden bait on AppSea!', 'Very shiny. Rare fish go WILD for it. Bring Aero. Click click.'],
   ['Mr. Briefcase', 'RE: RE: RE: meeting', 'Per my last bubble, I will be swimming between 9 and 5. Do not hook me during office hours.'],
   ['Sir Puffington', 'complaint', 'Someone moved their mouse too fast near me. I have filed a puff.'],
   ['Unknown Sender', '...', 'Deep below, something with many eyes is waiting. Bring an Ancient Relic to the Deep Ocean.'],
@@ -343,7 +351,7 @@ const calendar = {
   title: 'Calendar',
   size: [220, 170],
   draw(ctx, w, g, r) {
-    paperBg(ctx, r, '#fffaf0');
+    paperBg(ctx, r, '#f4fbff');
     const d = new Date();
     const month = d.toLocaleString('en', { month: 'long' });
     drawText(ctx, `${month} ${d.getFullYear()}`, r.x + r.w / 2, r.y + 6, { align: 'center', color: '#a83a3a' });
@@ -374,19 +382,21 @@ const paint = { ...generic, title: 'Paint', init(w) { w.data.text = 'Paint is ou
 const calc = {
   title: 'Calculator', size: [160, 120],
   draw(ctx, w, g, r, t) {
-    ctx.fillStyle = '#2a2e38'; ctx.fillRect(r.x, r.y, r.w, r.h);
-    ctx.fillStyle = '#b8d8a8'; ctx.fillRect(r.x + 6, r.y + 6, r.w - 12, 20);
+    ctx.fillStyle = '#0e3a66'; ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.fillStyle = '#c8f6ff'; ctx.fillRect(r.x + 6, r.y + 6, r.w - 12, 20);
     const n = Math.floor(g.state.coins);
     drawText(ctx, String(n), r.x + r.w - 10, r.y + 12, { align: 'right', color: '#1a2a1a' });
-    drawText(ctx, 'coins = ' + (n * 0.0001).toFixed(4) + ' fish-bucks', r.x + 8, r.y + 34, { font: 'small', color: '#c8d0e0' });
+    drawText(ctx, 'AERO = ' + (n * 0.0001).toFixed(4) + ' BUBBLES', r.x + 8, r.y + 34, { font: 'small', color: '#c8f0ff' });
     for (let i = 0; i < 12; i++) {
-      ctx.fillStyle = '#3e4452';
+      ctx.fillStyle = '#2a6ab0';
       ctx.fillRect(r.x + 8 + (i % 4) * 36, r.y + 46 + Math.floor(i / 4) * 20, 32, 16);
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.fillRect(r.x + 8 + (i % 4) * 36, r.y + 46 + Math.floor(i / 4) * 20, 32, 7);
       drawText(ctx, '789456123.0='[i], r.x + 24 + (i % 4) * 36, r.y + 50 + Math.floor(i / 4) * 20, { align: 'center', color: '#e8ecf4' });
     }
   },
 };
-const chat = { ...generic, title: 'Chat', size: [240, 130], init(w) { w.data.text = 'Pinch: psst. fish like slow hands.\nPinch: and golden things.\nPinch: and my shop. buy stuff. click click.'; } };
+const chat = { ...generic, title: 'Chat', size: [240, 130], init(w) { w.data.text = 'Pinch: psst. fish like slow hands.\nPinch: and golden things.\nPinch: and AppSea bait. click click.'; } };
 const video = {
   title: 'FishTube', size: [240, 150],
   draw(ctx, w, g, r, t) {
@@ -419,8 +429,8 @@ const folder = (title, text) => ({ ...generic, title, init(w) { w.data.text = te
 
 export const APP_RENDERERS = {
   notes, browser, music, trash, computer, terminal, mail, calendar, paint, calc, chat, video, photos, generic,
-  documents: folder('Documents', 'resume_final.doc, fish_facts.txt, totally_not_bait.pdf\n\nFolders attract curious fish. Try dragging this folder into the Bait Box!'),
-  games: folder('Games', 'FISHTOP is the only game you need right now.\n\nGame icons attract playful fish like the Honk Clownfish.'),
+  documents: folder('Documents', 'resume_final.doc, fish_facts.txt, totally_not_bait.pdf'),
+  games: folder('Games', 'FISHTOP is the only game you need right now.'),
   settings: { ...generic, title: 'Settings', init(w, g) { w.data.text = 'Opening settings...'; g.ui.open('settings'); setTimeout(() => g.desktop.closeWindow(w), 30); } },
   fishtop: { ...generic, title: 'FISHTOP', init(w, g) { w.data.text = 'Opening your Fish Journal...'; g.ui.open('journal'); setTimeout(() => g.desktop.closeWindow(w), 30); } },
 };

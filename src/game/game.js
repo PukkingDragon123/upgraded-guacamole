@@ -39,6 +39,7 @@ import { makeLayer, resizeLayer } from '../core/canvas.js';
 import { Floaters } from '../world/floaters.js'; // [phase3:world]
 import { installNet } from '../net/index.js'; // [phase3:online] multiplayer (opt-in)
 import { currentBait as currentBait3 } from '../store/bait.js'; // [phase3:online] consumable bait
+import { consumeBait as consumeBait3 } from '../store/bait.js'; // [phase3:fishing] one bait used per hook-set
 
 export class Game {
   constructor(canvas, params) {
@@ -265,6 +266,7 @@ export class Game {
   }
 
   consumeBait(type) {
+    if (this.currentBait()?.kind === 'bait') { const ok = consumeBait3(this.state); this.baitFx.onEquip(this.currentBait()); return ok; } // [phase3:fishing] one-time bait (store/bait.js), used at hook-set
     const b = this.state.baits;
     if (!b[type]) return;
     b[type]--;
@@ -339,6 +341,15 @@ export class Game {
 
   onFishEscaped(fish, reason) {
     this.emit('escaped', { fish, reason });
+  }
+
+  // [phase3:fishing] a floating box reeled in by the line: take it, loot via build (items.rollCrate), glossy pop-up
+  onBoxCaught(f) {
+    try { this.floaters?.take?.(f); } catch (e) { console.error(e); }
+    let loot = null;
+    try { loot = this.build?.onBoxCaught?.(f) ?? null; } catch (e) { console.error(e); }
+    this.fishing.showBoxLoot?.(f, loot);
+    return loot;
   }
 
   tankCount() { return this.state.fish.filter((f) => f.inTank).length; }
@@ -495,6 +506,7 @@ export class Game {
     const bm = this.currentBait()?.mods; // AppSea bait power (bigger downloads = better fish)
     w.rarityBoost = this.stats.rarityBoost * this.baitFx.rarityMul() * (bm?.rarity || 1) * (1 + this.bonus('rarity') + (w.night ? this.bonus('nightRarity') : 0));
     w.rarityBoost *= this.net?.partyLuck?.() || 1; // [phase3:online] party buff: +10% per player in this ocean (max +30%)
+    w.rarityBoost *= this.fishing.luckMul?.() || 1; // [phase3:fishing] rod luck (rodStats().luck x bait luck)
     w.calmMul = this.stats.calm;
     w.lowPower = this.lowPower;
     w.populationMul = this.baitFx.populationMul();

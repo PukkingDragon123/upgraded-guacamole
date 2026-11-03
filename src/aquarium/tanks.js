@@ -1,6 +1,6 @@
 // Aquarium tank tiers (phase 3) and the scene layout that places the tank in the Aero room.
 //
-//   TANK_TIERS[i]          {id, name, shape: 'round'|'box'|'wall', cap (extra fish over stats.tankCap),
+//   TANK_TIERS[i]          {id, name, shape: 'round'|'box'|'lamp'|'wall', cap (extra fish over stats.tankCap),
 //                           rate (income multiplier), offlineH (offline earnings cap, hours), fish (fish scale
 //                           in the full view), plants [back, side, front, tufts], water: 'aero'|'reef'}
 //   tankTier(state)        0..5 (state.tank.tier, raised to the best Lab unlock 'tank:<id>')
@@ -18,12 +18,14 @@ import * as shop from '../game/shopdata.js';
 export const TANK_IDS = ['jar', 'bowl', 'smalltank', 'bigtank', 'reeftank', 'wallaquarium'];
 
 export const TANK_TIERS = [
-  { id: 'jar', name: 'Goldfish Jar', shape: 'round', cap: 0, rate: 1, offlineH: 4, fish: 0.5, plants: [1, 0, 1, 2], water: 'aero' },
-  { id: 'bowl', name: 'Bubble Bowl', shape: 'round', cap: 2, rate: 1.15, offlineH: 5, fish: 0.56, plants: [2, 1, 1, 3], water: 'aero' },
-  { id: 'smalltank', name: 'Glass Tank', shape: 'box', cap: 4, rate: 1.3, offlineH: 6, fish: 0.62, plants: [4, 2, 2, 3], water: 'aero' },
-  { id: 'bigtank', name: 'Big Tank', shape: 'box', cap: 7, rate: 1.5, offlineH: 7, fish: 0.72, plants: [6, 2, 2, 4], water: 'aero' },
-  { id: 'reeftank', name: 'Reef Tank', shape: 'box', cap: 10, rate: 1.75, offlineH: 8, fish: 0.84, plants: [7, 3, 3, 5], water: 'reef' },
-  { id: 'wallaquarium', name: 'Wall Aquarium', shape: 'wall', cap: 14, rate: 2.1, offlineH: 10, fish: 0.96, plants: [9, 4, 3, 6], water: 'aero' },
+  // cap = extra fish over stats.tankCap (= the tier index); the Aqua Lamp is the moving-picture lamp look
+  // (silver frame, blue top light, a rocker switch that turns its light and the scrolling reef on / off)
+  { id: 'jar', name: 'Goldfish Jar', shape: 'round', cap: 0, rate: 1, offlineH: 3, fish: 0.66, plants: [1, 0, 1, 2], water: 'aero' },
+  { id: 'bowl', name: 'Bubble Bowl', shape: 'round', cap: 1, rate: 1.15, offlineH: 4, fish: 0.68, plants: [2, 1, 1, 3], water: 'aero' },
+  { id: 'smalltank', name: 'Aqua Lamp', shape: 'lamp', cap: 2, rate: 1.3, offlineH: 5, fish: 0.7, plants: [3, 2, 2, 3], water: 'aero' },
+  { id: 'bigtank', name: 'Big Tank', shape: 'box', cap: 3, rate: 1.5, offlineH: 6, fish: 0.78, plants: [5, 2, 2, 4], water: 'aero' },
+  { id: 'reeftank', name: 'Reef Tank', shape: 'box', cap: 4, rate: 1.75, offlineH: 7, fish: 0.86, plants: [6, 3, 3, 5], water: 'reef' },
+  { id: 'wallaquarium', name: 'Wall Aquarium', shape: 'wall', cap: 5, rate: 2.1, offlineH: 8, fish: 0.96, plants: [8, 4, 3, 6], water: 'aero' },
 ];
 
 // Aero per minute by rarity (falls back to the shop table when the Lab rebalances it).
@@ -63,7 +65,7 @@ const REF_W = 960, REF_H = 516;
 const FULL = [
   [236, 222, 0, 0, 0.8],
   [318, 236, 0, 0, 0.8],
-  [384, 228, 13, 12, 0.81],
+  [384, 222, 22, 30, 0.82],
   [536, 288, 15, 13, 0.83],
   [668, 330, 14, 15, 0.86],
   [826, 398, 14, 14, 0.9],
@@ -132,7 +134,7 @@ export function tankOpts(tier, iw, ih, key) {
     };
   }
   return {
-    shape: 'box', K: 0.5, vpy: 0.44, surf: Math.max(3, Math.round(ih * 0.05)), floorFront: ih - Math.max(8, Math.round(ih * 0.13)),
+    shape: 'box', K: T.shape === 'lamp' ? 0.3 : 0.5, vpy: 0.44, surf: Math.max(3, Math.round(ih * 0.05)), floorFront: ih - Math.max(8, Math.round(ih * 0.13)),
     slope: Math.max(5, Math.round(ih * 0.075)), cell, step, seed: 7 + tier, edgeRise: 0.75, bowl: 0.4, water: T.water, detail: small,
   };
 }

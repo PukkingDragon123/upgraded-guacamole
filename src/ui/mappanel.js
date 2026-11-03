@@ -1,5 +1,5 @@
-// Travel map: a hand-built 3D voxel diorama of the whole ocean, cut like an aquarium slice and set on a wooden
-// plinth. Six mini locations sit on / under a translucent water block whose glass front shows the depth zones.
+// Travel map: a hand-built 3D voxel diorama of the whole ocean, cut like an aquarium slice, in a glossy Aero
+// eco-glass window. Six mini locations sit on / under a translucent water block whose glass front shows the depth zones.
 // The diorama is ray-cast once per yaw angle by voxel.js (cached, pre-warmed in idle time after boot); a custom
 // water pass then tints every pixel by the exact distance its view ray travels through water (hit voxels are
 // recovered through renderVoxels' keepVoxel callback), adds caustics, surface waves and glass edges, and keeps a
@@ -15,7 +15,8 @@ import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { PixelBuffer } from '../gfx/pixel.js';
 import { VoxelModel, renderVoxels } from '../gfx/voxel.js';
 import { drawText, measureText, wrapText } from '../gfx/font.js';
-import { drawButton, drawWood, drawPaper, drawBar } from './panels.js';
+import { drawButton, drawPaper, drawBar } from './panels.js';
+import { AERO, aeroCached, aeroSurface, drawAeroFrame, toneFrom } from './aero.js';
 import { getUiIcon } from '../gfx/uiicons.js';
 import { SKILLS, SKILL_BY_ID } from '../game/skills.js';
 import { SPECIES } from '../fish/species.js';
@@ -1343,7 +1344,7 @@ function backdrop(w, h, night) {
 }
 
 // ---------------------------------------------------------------- panel
-const INK = '#4a2e18', INK_L = '#7a5a3c', RED = '#b8302a';
+const INK = AERO.ink, INK_L = AERO.inkSoft, RED = '#e8364a';
 const idle = (f) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(f, { timeout: 400 }) : setTimeout(f, 60));
 
 let DIO = null;
@@ -1385,7 +1386,7 @@ export class MapPanel {
       outlineFor(bk, LOCS.findIndex((L) => L.id === this.current()) + 1);
       // panels.js caches its wood / paper / button textures per size: build them now, off screen
       const sc = ctxOf(makeCanvas(Lay.r.w, Lay.r.h)), bw = Lay.card.w - 18;
-      drawWood(sc, 0, 0, Lay.r.w, Lay.r.h, { tone: 'dark' });
+      drawAeroFrame(sc, 0, 0, Lay.r.w, Lay.r.h, { leaves: false, seed: 17 });
       drawPaper(sc, 0, 0, Lay.card.w, Lay.card.h, { aged: true });
       for (const state of ['normal', 'hover', 'down', 'disabled']) drawButton(sc, 0, 0, bw, 24, { label: 'x', state, style: 'wood' });
       for (let k = 0; k < 16; k++) boatSprite(k * 22.5);
@@ -1433,7 +1434,7 @@ export class MapPanel {
     const found = this.game.speciesFound?.() ?? 0;
     const out = (sk.req || []).map((r) => ({ text: SKILL_BY_ID[r]?.name || r, sub: 'skill', ok: !!st.skills?.[r] }));
     if (sk.needSpecies) out.push({ text: `Discover ${sk.needSpecies} species`, sub: `${Math.min(found, sk.needSpecies)}/${sk.needSpecies}`, ok: found >= sk.needSpecies });
-    out.push({ text: `Grow '${sk.name}'`, sub: `${formatCommas(sk.cost)}{coin}`, ok: !!st.skills?.[sk.id] });
+    out.push({ text: `Unlock '${sk.name}'`, sub: `${formatCommas(sk.cost)}{aero}`, ok: !!st.skills?.[sk.id] });
     return out;
   }
 
@@ -1492,9 +1493,11 @@ export class MapPanel {
     const cur = this.current();
 
     // ------------------------------------------------ frame
-    drawWood(ctx, r.x, r.y, r.w, r.h, { tone: 'dark' });
-    ctx.fillStyle = '#1a0e08';
+    const FR = drawAeroFrame(ctx, r.x, r.y, r.w, r.h, { seed: 17 });
+    ctx.fillStyle = '#0b4a8a';
     ctx.fillRect(view.x - 1, view.y - 1, view.w + 2, view.h + 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.fillRect(view.x - 1, view.y + view.h, view.w + 2, 1);
     ctx.save();
     ctx.beginPath(); ctx.rect(view.x, view.y, view.w, view.h); ctx.clip();
     const night = !!g.clock?.isNight?.();
@@ -1553,10 +1556,11 @@ export class MapPanel {
     ctx.restore();
 
     // ------------------------------------------------ title + card + close
-    this.drawBanner(ctx, view.x + view.w / 2, r.y + 3, 'WORLD MAP');
+    this.drawBanner(ctx, view.x + view.w / 2, r.y + 3, 'World Map');
     this.listHover = null;
     this.drawCard(ctx, ui, card, LOC_BY_ID[focus] || LOC_BY_ID[cur], t);
-    if (ui.button(ctx, r.x + r.w - 27, r.y + 8, 18, 17, '', { icon: 'cross', style: 'shell', tip: 'Close (Esc)' })) ui.close(this.id);
+    FR.finish();
+    if (ui.button(ctx, FR.close.x, FR.close.y, FR.close.w, FR.close.h, '', { icon: 'cross', tip: 'Close (Esc)' })) ui.close(this.id);
     if (!this.sail && this.sel && (inp.keyPressed?.('Enter'))) this.trySail(LOC_BY_ID[this.sel]);
 
     // ------------------------------------------------ sailing -> travel
@@ -1892,8 +1896,7 @@ export class MapPanel {
     const { view } = Lay;
     const x = view.x + 8, y = view.y + view.h - 30;
     this.ctrlRect = { x, y, w: 92, h: 22 };
-    ctx.fillStyle = rgba('#06121e', 0.55);
-    ctx.fillRect(x - 2, y - 2, 96, 26);
+    ctx.drawImage(aeroCached('mapctl', () => aeroSurface(98, 28, { tone: 'dark', r: 'pill', gloss: 0.6, glossH: 12, curve: 2, rim: 0.8, glow: 0.5, a: [0.8, 0.85] })), x - 3, y - 3);
     if (ui.button(ctx, x, y, 22, 20, '', { icon: 'arrow_l', style: 'shell', tip: 'Rotate (drag the map, wheel or arrow keys)', disabled: this.yawI === 0 })) this.setYaw(this.yawI - 1);
     if (ui.button(ctx, x + 70, y, 22, 20, '', { icon: 'arrow_r', style: 'shell', tip: 'Rotate (drag the map, wheel or arrow keys)', disabled: this.yawI === MAP_YAWS.length - 1 })) this.setYaw(this.yawI + 1);
     const cx = x + 46, cy = y + 10, a = -MAP_YAWS[this.yawI] * DEG;
@@ -1913,19 +1916,10 @@ export class MapPanel {
   }
 
   drawBanner(ctx, cx, y, text) {
-    const tw = measureText(text, 'normal', 2) + 26;
+    const tw = measureText(text, 'normal', 2) + 30;
     const x = Math.round(cx - tw / 2);
-    ctx.fillStyle = shade(RED, -0.45);
-    ctx.fillRect(x - 10, y + 6, 14, 12); ctx.fillRect(x + tw - 4, y + 6, 14, 12);
-    ctx.fillStyle = '#1a0e08';
-    ctx.fillRect(x - 10, y + 10, 3, 4); ctx.fillRect(x + tw + 7, y + 10, 3, 4);
-    ctx.fillStyle = '#2a0a08';
-    ctx.fillRect(x, y, tw, 21);
-    ctx.fillStyle = RED;
-    ctx.fillRect(x + 1, y + 1, tw - 2, 19);
-    ctx.fillStyle = shade(RED, 0.35);
-    ctx.fillRect(x + 1, y + 1, tw - 2, 2);
-    drawText(ctx, text, Math.round(cx), y + 4, { align: 'center', scale: 2, color: '#fff0d8', shadow: shade(RED, -0.6) });
+    ctx.drawImage(aeroCached(`mapban|${tw}`, () => aeroSurface(tw, 22, { tone: 'aqua', r: 'pill', gloss: 0.8, glossH: 10, curve: 2, rim: 0.85, glow: 0.7, sparkle: 2 })), x, y);
+    drawText(ctx, text, Math.round(cx), y + 5, { align: 'center', scale: 2, color: '#ffffff', shadow: '#0a4680' });
   }
 
   drawPostcard(ctx, x, y, w, h, L, open) {
@@ -1933,10 +1927,7 @@ export class MapPanel {
     const [ax, ay] = bk.anchors[i];
     const sw = Math.floor((w - 6) / 2), sh = Math.floor((h - 6) / 2);
     const sx = clamp(Math.round(ax - sw / 2), 0, bk.W - sw), sy = clamp(Math.round(ay - sh / 2 - (L.focus[1] > SEA ? 4 : 0)), 0, bk.H - sh);
-    ctx.fillStyle = '#3a2a1c';
-    ctx.fillRect(x, y, w, h);
-    ctx.fillStyle = '#fbf3df';
-    ctx.fillRect(x + 1, y + 1, w - 2, h - 2);
+    ctx.drawImage(aeroCached(`mappc|${w}|${h}`, () => aeroSurface(w, h, { tone: 'white', r: 5, gloss: 0.4, glossH: 10, rim: 0.9, glow: 0.4 })), x, y);
     ctx.drawImage(backdrop(sw * 2, sh * 2, false), x + 3, y + 3);
     ctx.drawImage(bk.canvas, sx, sy, sw, sh, x + 3, y + 3, sw * 2, sh * 2);
     const gl = bk.glows[i];
@@ -1955,9 +1946,9 @@ export class MapPanel {
       ctx.drawImage(lk.canvas, Math.round(x + w / 2 - lk.w / 2), Math.round(y + h / 2 - lk.h / 2 - 4));
       drawText(ctx, 'UNCHARTED', x + w / 2, y + h / 2 + lk.h / 2, { font: 'small', align: 'center', color: '#e8eef8', shadow: '#1a2030' });
     }
-    // little photo corners
-    ctx.fillStyle = '#5a3a20';
-    for (const [cx, cy] of [[x + 2, y + 2], [x + w - 6, y + 2], [x + 2, y + h - 6], [x + w - 6, y + h - 6]]) ctx.fillRect(cx, cy, 4, 4);
+    // glossy glass over the photo
+    ctx.fillStyle = 'rgba(255,255,255,0.22)';
+    ctx.fillRect(x + 3, y + 3, w - 6, Math.round((h - 6) * 0.38));
   }
 
   drawCard(ctx, ui, rc, L, t) {
@@ -1968,12 +1959,7 @@ export class MapPanel {
     let y = rc.y + 8;
     // header band
     const band = open ? L.color : '#8a92a2';
-    ctx.fillStyle = shade(band, -0.55);
-    ctx.fillRect(x, y, w, 32);
-    ctx.fillStyle = shade(band, -0.25);
-    ctx.fillRect(x + 1, y + 1, w - 2, 30);
-    ctx.fillStyle = rgba('#ffffff', 0.18);
-    ctx.fillRect(x + 1, y + 1, w - 2, 2);
+    ctx.drawImage(aeroCached(`mapband|${w}|${band}`, () => aeroSurface(w, 32, { tone: toneFrom(band), r: 7, gloss: 0.7, glossH: 14, curve: 3, rim: 0.85, glow: 0.6, sparkle: 1 })), x, y);
     if (open) { const pin = pinSprite(L.color); ctx.drawImage(pin.canvas, x + 4, y + 4); } else { const lk = padlockSprite(); ctx.drawImage(lk.canvas, x + 3, y + 5); }
     const big = measureText(L.name, 'normal', 2) <= w - 26;
     drawText(ctx, L.name, x + 22, y + (big ? 4 : 6), { scale: big ? 2 : 1, color: '#ffffff', shadow: shade(band, -0.7) });
@@ -1985,11 +1971,11 @@ export class MapPanel {
       drawText(ctx, value, x + w, yy - 1, { align: 'right', color: INK });
     };
     row('DEPTH', `${formatCommas(L.depth)} m`, y);
-    drawBar(ctx, x, y + 9, w, 6, clamp01(Math.log10(L.depth + 1) / Math.log10(3201)), { color: '#3a7ac8', back: '#d8c8a0' });
+    drawBar(ctx, x, y + 9, w, 6, clamp01(Math.log10(L.depth + 1) / Math.log10(3201)), { color: '#3a9ef0' });
     y += 22;
     const [got, tot] = this.fishCount(L);
     row('FISH DISCOVERED', tot ? `${got} / ${tot}` : '? / ?', y);
-    drawBar(ctx, x, y + 9, w, 6, tot ? got / tot : 0, { color: open ? shade(L.color, -0.15) : '#9a9aa4', back: '#d8c8a0' });
+    drawBar(ctx, x, y + 9, w, 6, tot ? got / tot : 0, { color: open ? L.color : '#9a9aa4' });
     y += 22;
     // weather
     drawText(ctx, 'WEATHER', x, y, { font: 'small', color: INK_L });
@@ -2035,7 +2021,7 @@ export class MapPanel {
         lines.slice(0, 2).forEach((l, i) => drawText(ctx, l, x + 13, y + 1 + i * 9, { color: q.ok ? '#3a6a2a' : INK }));
         y += 9 * Math.min(2, lines.length) + 3;
       }
-      drawText(ctx, 'UNLOCK IT IN THE SKILL TREE', x, y + 1, { font: 'small', color: INK_L });
+      drawText(ctx, 'UNLOCK IN THE LAB', x, y + 1, { font: 'small', color: INK_L });
       y += 10;
     }
     // travel button
@@ -2058,7 +2044,7 @@ export class MapPanel {
         if (isSel || hv) { ctx.fillStyle = rgba(isSel ? D.color : '#ffffff', isSel ? 0.28 : 0.35); ctx.fillRect(rr.x, rr.y, rr.w, rr.h); }
         if (isOpen) { ctx.fillStyle = shade(D.color, -0.45); ctx.fillRect(x + 1, ry + 2, 7, 7); ctx.fillStyle = D.color; ctx.fillRect(x + 2, ry + 3, 5, 5); ctx.fillStyle = mix(D.color, '#ffffff', 0.6); ctx.fillRect(x + 3, ry + 4, 2, 1); }
         else ctx.drawImage(getUiIcon('lock'), x, ry + 1);
-        drawText(ctx, D.name, x + 12, ry + 2, { color: isOpen ? INK : '#9a8a74' });
+        drawText(ctx, D.name, x + 12, ry + 2, { color: isOpen ? INK : AERO.inkFaint });
         const right = isHere ? 'HERE' : `${formatCommas(D.depth)} M`;
         drawText(ctx, right, x + w, ry + 3, { font: 'small', align: 'right', color: isHere ? RED : INK_L });
         if (hv && g.input.pressed) {
@@ -2073,14 +2059,14 @@ export class MapPanel {
     } else if (here) {
       drawButton(ctx, bx, by, bw, bh, { label: 'You are here', icon: getUiIcon('home'), state: 'disabled', style: 'wood' });
     } else if (open) {
-      if (ui.button(ctx, bx, by, bw, bh, `Sail to ${L.name.replace('The ', '')}`, { icon: 'map', style: 'wood', sound: 'travel_whoosh', tip: `Travel to ${L.name}` })) {
+      if (ui.button(ctx, bx, by, bw, bh, `Sail to ${L.name.replace('The ', '')}`, { icon: 'map', style: 'green', sound: 'travel_whoosh', tip: `Travel to ${L.name}` })) {
         this.sel = L.id;
         this.trySail(L);
       }
     } else {
       drawButton(ctx, bx, by, bw, bh, { label: 'Locked', icon: getUiIcon('lock'), state: 'disabled', style: 'wood' });
       if (ui.hover({ x: bx, y: by, w: bw, h: bh })) {
-        ui.tip = 'Unlock it in the Skill Tree (Expeditions)';
+        ui.tip = 'Unlock it in The Lab';
         if (g.input.pressed) { g.input.pressed = false; g.audio.play('ui_error'); }
       }
     }

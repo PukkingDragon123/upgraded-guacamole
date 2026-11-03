@@ -13,6 +13,7 @@ import { installNet, EMOTES, NAME_MAX, randomName } from '../net/index.js';
 import { OCEAN_NAMES } from '../game/lab.js';
 import { SPECIES_BY_ID } from '../fish/species.js';
 import * as Character from '../gfx/character.js';
+import { ecoBand, ecoCorners, ecoGlobe, ecoSky, splashButton } from '../store/ecoart.js';
 
 const PRIVACY = 'Only your chosen name, look, boat, ocean and catches are shared, and only while you are online. No accounts, no chat, no files.';
 
@@ -43,9 +44,11 @@ export class MultiplayerPanel {
     const r = centerRect(g, W, H);
     this.rect = r;
     drawAeroPanel(ctx, r.x, r.y, W, H, { tone: 'glass', radius: 12 });
-    // header
-    this.drawGlobe(ctx, r.x + 20, r.y + 17, 10);
-    ctx.drawImage(wordArt('Multiplayer', { scale: 2 }), r.x + 36, r.y + 6);
+    // eco header: sky band, green glass globe emblem, glossy title
+    ecoBand(ctx, r.x + 3, r.y + 3, W - 6, 28, this.t, { sun: [0.55, 0.15] });
+    ecoCorners(ctx, r.x, r.y, W, H, this.t, 0.72);
+    ecoGlobe(ctx, r.x + 19, r.y + 17, 10, this.t);
+    ctx.drawImage(wordArt('Multiplayer', { scale: 2, top: '#ffffff', bottom: '#8ee04a', edge: '#1d5a12' }), r.x + 34, r.y + 6);
     const n = net.list ? net.list().length : 0;
     const label = net.status === 'online' ? `ONLINE  ${n + 1} HERE` : net.status === 'connecting' ? 'CONNECTING' : 'OFFLINE';
     const sw = measureText(label, 'small') + 22;
@@ -60,20 +63,6 @@ export class MultiplayerPanel {
     this.drawFeed(ctx, ui, r.x + 174, r.y + 188, W - 184, H - 198);
     if (!net.unlocked?.()) this.drawLocked(ctx, ui, r.x + 8, r.y + 32, W - 16, H - 40);
     if (this.edit) this.placeEdit();
-  }
-
-  drawGlobe(ctx, cx, cy, rad) {
-    drawGlossOrb(ctx, cx, cy, rad, '#2fa8e8', this.t);
-    ctx.save();
-    ctx.beginPath(); ctx.arc(cx, cy, rad - 1, 0, Math.PI * 2); ctx.clip();
-    ctx.fillStyle = 'rgba(110,220,80,0.85)';
-    const o = (this.t * 4) % (rad * 4);
-    for (const [dx, dy, w, h] of [[-6, -3, 6, 4], [1, 1, 5, 5], [-3, 4, 4, 3], [5, -5, 4, 3]]) {
-      for (const k of [0, rad * 4]) ctx.fillRect(Math.round(cx + dx + o - k), Math.round(cy + dy), w, h);
-    }
-    ctx.restore();
-    ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    ctx.beginPath(); ctx.ellipse(cx - 3, cy - 5, 5, 2.5, -0.3, 0, Math.PI * 2); ctx.fill();
   }
 
   // ---------------------------------------------------------------- left: switch, name, me, party, privacy
@@ -110,19 +99,22 @@ export class MultiplayerPanel {
       this.endEdit(false);
       net.setName(randomName());
     }
-    // me
-    const px = x + w / 2, py = y + 128;
-    ctx.fillStyle = 'rgba(47,184,240,0.18)';
-    ctx.beginPath(); ctx.ellipse(px, py, 26, 5, 0, 0, Math.PI * 2); ctx.fill();
+    // me, standing on a little eco hill
+    const px = x + w / 2, py = y + 126;
+    ctx.save();
+    rrect(ctx, x + 6, y + 64, w - 12, 70, 8); ctx.clip();
+    ecoSky(ctx, x + 6, y + 64, w - 12, 70, t, { sun: [0.2, 0.2], clouds: true, grass: 16 });
+    ctx.restore();
+    rrect(ctx, x + 6.5, y + 64.5, w - 13, 69, 8); ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1; ctx.stroke();
     if (!this.charErr) {
       try { Character.drawCharacter(ctx, px, py, { pose: on ? 'wave' : 'idle', t, facing: 1, look: g.state.character, scale: 0.62, id: 'mp-preview', shadow: false }); } catch (e) { this.charErr = true; }
     }
     if (on) {
       const nm = net.name;
       const nw = measureText(nm, 'small') + 16;
-      pill(ctx, px - nw / 2, y + 66, nw, 10, { color: '#f4fbff', edge: '#2fb8f0', r: 5 });
-      drawGlossOrb(ctx, px - nw / 2 + 6, y + 71, 2.6, '#2fb8f0');
-      drawText(ctx, nm, px - nw / 2 + 11, y + 69, { font: 'small', color: INK });
+      pill(ctx, px - nw / 2, y + 68, nw, 10, { color: '#f4fbff', edge: '#2fb8f0', r: 5 });
+      drawGlossOrb(ctx, px - nw / 2 + 6, y + 73, 2.6, '#2fb8f0');
+      drawText(ctx, nm, px - nw / 2 + 11, y + 71, { font: 'small', color: INK });
     }
     // party luck
     const luck = net.partyLuck?.() || 1, k = Math.round((luck - 1) * 10);
@@ -176,7 +168,7 @@ export class MultiplayerPanel {
       // boat tier dots
       for (let k = 0; k <= Math.min(6, p.p.boat.t); k++) drawGlossOrb(ctx, x + w - 78 + k * 5, ry + 8, 1.8, '#2fb8f0');
       if (p.p.cn) drawText(ctx, String(p.p.cn), x + w - 52, ry + 5, { font: 'small', align: 'right', color: INK_SOFT });
-      if (button(ui, ctx, x + w - 46, ry + 1, 38, 15, 'Wave', { tone: 'aqua', tip: `Wave at ${p.p.name}` })) net.wave(p.key);
+      if (splashButton(ui, ctx, x + w - 46, ry + 1, 38, 14, 'Wave', { tone: 'aqua', tip: `Wave at ${p.p.name}` })) net.wave(p.key);
     });
     if (maxS > 0) {
       const sh = h - 20, th = Math.max(10, sh * (rows / list.length));
@@ -236,12 +228,13 @@ export class MultiplayerPanel {
     rrect(ctx, x, y, w, h, 10);
     ctx.fillStyle = 'rgba(225,245,255,0.86)'; ctx.fill();
     const cx = x + w / 2, cy = y + h / 2;
-    drawGlossOrb(ctx, cx, cy - 40, 22, '#ffd27a', this.t);
+    ecoGlobe(ctx, cx, cy - 40, 22, this.t);
+    drawGlossOrb(ctx, cx + 16, cy - 26, 8, '#ffd27a', this.t);
     const lk = getUiIcon('lock');
-    if (lk) ctx.drawImage(lk, Math.round(cx - lk.width / 2), Math.round(cy - 40 - lk.height / 2));
+    if (lk) ctx.drawImage(lk, Math.round(cx + 16 - lk.width / 2), Math.round(cy - 26 - lk.height / 2));
     ctx.drawImage(wordArt('Friendly Seas', { scale: 2 }), Math.round(cx - wordArt('Friendly Seas', { scale: 2 }).width / 2), Math.round(cy - 10));
     drawText(ctx, 'FISH TOGETHER WITH FRIENDS. RESEARCH IT IN THE LAB!', cx, cy + 14, { align: 'center', font: 'small', color: INK_SOFT });
-    if (button(ui, ctx, cx - 50, cy + 26, 100, 20, 'The Lab', { tone: 'green' })) {
+    if (splashButton(ui, ctx, cx - 50, cy + 26, 100, 20, 'The Lab', { tone: 'green' })) {
       if (g.ui.panels.lab) { g.ui.close(this.id); g.ui.open('lab', { focus: 'sea_multi' }); } else g.toast?.('The Lab is being built. Check back soon!', 'info');
     }
   }

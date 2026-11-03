@@ -1,10 +1,11 @@
-// Dev preview for the Frutiger Aero pixel fish (phase 3).
+// Dev preview for the Frutiger Aero fish (phase 3): voxel fish by default, &style=pixel for the 2D rig.
 // dist/dev/fishpix.html?mode=grid&biome=oscean&scale=1.6   roster grid of one ocean (or ids=a,b,c)
 //   mode=emo&ids=a,b     every expression on a few species (big)
 //   mode=swim&biome=x    a live ocean-like tank: real Fish AI (incl. the Wakka quirk), n=<count>
 //   &frozen for a still frame
 import { compiled } from '../gfx/spritecache.js';
-import { drawFishRig, beginRigFrame, rigStats } from '../gfx/fishrig.js';
+import { drawFishRig, beginRigFrame, rigStats, setFishStyle } from '../gfx/fishrig.js';
+import { setVoxelSync, beginVoxelFishFrame } from '../gfx/voxelfish.js';
 import { rigGeom } from '../gfx/fishart.js';
 import { ctxOf } from '../core/canvas.js';
 import { drawText } from '../gfx/font.js';
@@ -42,7 +43,9 @@ export function run(params) {
   const g = ctxOf(cv);
   const mode = params.get('mode') || 'grid';
   MAXS = Number(params.get('maxs') || 3);
+  if (params.get('style') === 'pixel') setFishStyle('pixel');
   const frozen = params.has('frozen');
+  if (frozen) setVoxelSync(true);
   const ids = params.get('ids')?.split(',').filter((id) => SPECIES_BY_ID[id]);
   const biome = params.get('biome') || 'oscean';
   const list = ids?.length ? ids.map((id) => SPECIES_BY_ID[id]) : SPECIES.filter((s) => s.biome === biome || biome === 'all');
@@ -62,6 +65,7 @@ export function run(params) {
     fpsT += dt; fpsN++;
     if (fpsT > 1) { fps = fpsN / fpsT; fpsT = 0; fpsN = 0; window.__fp.fps = fps; window.__fp.worst = worst; worst = 0; }
     beginRigFrame();
+    beginVoxelFishFrame();
     if (mode === 'grid') drawGrid(g, list, cols, t, frozen, mouse);
     else if (mode === 'emo') drawEmo(g, list, t, frozen);
     else drawSwim(g, world, dt, t);

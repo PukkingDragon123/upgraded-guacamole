@@ -336,7 +336,14 @@ export function renderBackdrop(T) {
   const bl = T.sx(0, 1), br = T.sx(W, 1), bt = T.sy(surf, 1);
   const ceilPoly = T.round ? null : [[0, surf], [W, surf], [br, bt], [bl, bt]];
   void WH;
-  return { canvas: buf.toCanvas(), floorTop, floorPoly, ceilPoly };
+  // the floor alone (drawn again over the scrolling reef panorama on the back glass)
+  const fb = new PixelBuffer(W, H);
+  for (let i = 0; i < W * H; i++) if (isFloor[i]) fb.data[i] = buf.data[i];
+  // back-glass region (screen space) where the panorama shows: box = the back wall, round = the water body
+  const back = T.round
+    ? { x0: T.ell.cx - T.ell.rx, y0: T.surf, x1: T.ell.cx + T.ell.rx, y1: Math.min(T.floorFront, Math.min(...floorTop) + Math.round(T.H * 0.05)) }
+    : { x0: Math.floor(bl), y0: Math.floor(bt), x1: Math.ceil(br), y1: Math.ceil(T.sy(floorBack, 1)) + 2 };
+  return { canvas: buf.toCanvas(), floor: fb.toCanvas(), back, floorTop, floorPoly, ceilPoly };
 }
 
 // Box tanks: back wall with soft rock silhouettes, receding side walls, the underside of the surface.

@@ -259,12 +259,15 @@ export function drawBaitGloss(ctx, art, cx, cy, px, t = 0, o = {}) {
   const r = px / 2;
   ctx.save();
   if (o.bubble !== false) {
+    // bright glass tinted by the bait's own colour, a white rim and a reflected light along the bottom
+    const tint = o.tint || (a.color ? mix(a.color, '#ffffff', 0.62) : '#c8f4ff');
     const g = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.4, r * 0.1, cx, cy, r);
-    g.addColorStop(0, 'rgba(255,255,255,0.85)');
-    g.addColorStop(0.45, rgba(o.tint || '#bfefff', 0.35));
-    g.addColorStop(1, rgba(o.rim || '#2fb8e0', 0.45));
+    g.addColorStop(0, 'rgba(255,255,255,0.92)');
+    g.addColorStop(0.5, rgba(tint, 0.42));
+    g.addColorStop(1, rgba(o.rim || '#2fb8e0', 0.55));
     ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.fillStyle = g; ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineWidth = 1; ctx.stroke();
+    if (r >= 8) { ctx.beginPath(); ctx.arc(cx, cy, r - 2, Math.PI * 0.2, Math.PI * 0.8); ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.stroke(); }
   }
   const aura = o.aura ?? a.scent;
   if (aura && aura !== '#ffffff') {

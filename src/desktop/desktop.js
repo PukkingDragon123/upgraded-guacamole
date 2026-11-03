@@ -20,7 +20,7 @@ import { PixelBuffer } from '../gfx/pixel.js';
 import { drawText, measureText } from '../gfx/font.js';
 import { APPS, getMiniIcon, fileTypeInfo } from './icons.js';
 import { drawWindowChrome, windowRects, drawTaskbar, drawButton, drawTooltip } from '../ui/panels.js';
-import { aeroCached, aeroSurface, drawAeroGlow, drawAeroBadge, drawAeroLabel, drawSparkle, drawAeroBubble, AERO } from '../ui/aero.js';
+import { aeroCached, aeroSurface, drawAeroGlow, drawAeroBadge, drawAeroLabel, drawSparkle, drawAeroBubble, drawAeroLeaf, drawLeafSprig, drawSunFlare, AERO } from '../ui/aero.js';
 import { getUiIcon } from '../gfx/uiicons.js';
 import { getBigIcon } from '../gfx/bigicons.js';
 import { APP_RENDERERS } from './apps.js';
@@ -69,7 +69,7 @@ function bubbleTex(D, tint, part) {
     if (part === 'back') {
       const ty = (y + 0.5) / D;
       const base = [L[0] + (T[0] - L[0]) * ty, L[1] + (T[1] - L[1]) * ty, L[2] + (T[2] - L[2]) * ty];
-      put(x, y, base, 0.2 + 0.5 * u * u * u);
+      put(x, y, base, 0.3 + 0.52 * Math.pow(u, 2.4));
       // refracted light pooling at the bottom
       const pool = Math.max(0, dy / r) * Math.max(0, u - 0.4) * 1.7;
       if (pool > 0) put(x, y, Gl, Math.min(0.7, pool * 0.75));
@@ -782,6 +782,19 @@ export class Desktop {
     draw(back);
     if (spr) draw(spr.canvas, ic.pop > 0 ? -Math.round(Math.sin(ic.pop * Math.PI) * 2) : 0);
     draw(front);
+    if (app >= 1) {
+      // eco sprout: two glossy leaves on the rim
+      const lx = bx + ICON - 13, ly = by + 6;
+      drawAeroLeaf(ctx, lx, ly, 12, 7, -40, { tone: 'lime' });
+      drawAeroLeaf(ctx, lx - 1, ly + 1, 9, 6, -95, { tone: 'leaf', flip: true });
+      // bloom twinkle + a bubble rising off the orb now and then
+      const ph = (t * 0.32 + ic.phase * 0.17) % 1;
+      if (ph < 0.06) drawSparkle(ctx, bx + 11, by + 10, ph < 0.03 ? 3 : 2, 1);
+      if (!this.game.state.settings?.reducedMotion) {
+        const q = (t * 0.22 + ic.phase * 0.31) % 1;
+        if (q < 0.5) drawAeroBubble(ctx, bx + ICON / 2 + Math.sin(t * 3 + ic.phase) * 3 - 8, by + 4 - q * 40, 1.5 + (ic.gy % 2), 1 - q * 2);
+      }
+    }
     if (active) {
       // a crisp white selection ring + sparkle orbiting the bubble
       ctx.globalAlpha = a0 * alpha * 0.9;
@@ -906,6 +919,8 @@ export class Desktop {
     const g = this.game;
     const H = this.H, y = H - TASKBAR_H;
     drawTaskbar(ctx, 0, y, this.W, TASKBAR_H);
+    // eco frame: a leafy sprig rising from the right end, a sun glint on the glass
+    drawLeafSprig(ctx, this.W - 78, y + 4, 'tr', 0.7);
     // window buttons (glass pills)
     for (const b of this.taskButtons()) {
       const active = this.windows[this.windows.length - 1] === b.win && !b.win.min;
@@ -929,6 +944,8 @@ export class Desktop {
     const st = this.startOpen ? 'down' : this.startHot ? 'hover' : 'normal';
     if (st !== 'normal') drawAeroGlow(ctx, o.x + ORB / 2, o.y + ORB / 2, 20, '#8ff6ff', st === 'hover' ? 0.6 : 0.4);
     ctx.drawImage(aeroCached(`orb|${ORB}|${st}`, () => orbTex(st)), o.x, o.y);
+    drawAeroLeaf(ctx, o.x + ORB - 7, o.y + 4, 13, 7, -35, { tone: 'lime' });
+    drawAeroLeaf(ctx, o.x + ORB - 8, o.y + 5, 10, 6, -85, { tone: 'leaf', flip: true });
     if (st === 'hover' && (this.time * 0.8) % 2 < 0.15) drawSparkle(ctx, o.x + 8, o.y + 6, 2, 1);
     if (this.startOpen) this.drawStart(ctx);
   }

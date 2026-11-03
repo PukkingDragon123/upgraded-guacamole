@@ -173,6 +173,7 @@ export class SettingsPanel {
     ctx.drawImage(aeroCached(`setnote|${R.w - 14}`, () => aeroSurface(R.w - 14, 16, { tone: 'grass', r: 'pill', gloss: 0.7, glossH: 7, curve: 1, rim: 0.8, glow: 0.6 })), R.x + 7, ny);
     ctx.drawImage(getUiIcon('heart'), R.x + 13, ny + 4);
     drawText(ctx, 'Your files stay untouched', R.x + 27, ny + 5, { font: 'small', color: '#ffffff', shadow: '#1c5a0e' });
+    F.finish();
   }
 
   divider(ctx, x, y, w) {

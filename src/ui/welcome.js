@@ -161,5 +161,6 @@ export class WelcomePanel {
       this.collect();
       ui.close(this.id);
     }
+    F.finish();
   }
 }

@@ -214,8 +214,8 @@ export function drawBottle(ctx, x, y, w, h, opts = {}) {
       const cc = makeCanvas(w, h);
       const g = ctxOf(cc);
       const capW = Math.max(5, Math.round(h * 0.45));
-      g.drawImage(aeroSurface(w - capW + 2, h, { top: mix(tint, '#ffffff', 0.6), mid: tint, bot: shade(tint, -0.3), a: [0.55, 0.7], edge: shade(tint, -0.6), r: 'pill', gloss: 0.75, glossH: Math.round(h * 0.42), rim: 0.7, glow: 0.6 }), 0, 0);
-      g.drawImage(aeroSurface(capW, Math.max(6, h - 6), { tone: 'aqua', r: 3, gloss: 0.8, glossH: Math.round(h * 0.3), rim: 0.8, glow: 0.6 }), w - capW, 3);
+      g.drawImage(aeroSurface(w - capW + Math.round(h / 2), h, { top: mix(tint, '#ffffff', 0.6), mid: tint, bot: shade(tint, -0.3), a: [0.55, 0.7], edge: shade(tint, -0.6), r: 'pill', gloss: 0.75, glossH: Math.round(h * 0.42), rim: 0.7, glow: 0.6 }), 0, 0);
+      g.drawImage(aeroSurface(capW, Math.max(6, h - 4), { tone: 'aqua', r: Math.min(5, Math.floor(capW / 2)), gloss: 0.8, glossH: Math.round(h * 0.34), curve: 1, rim: 0.85, glow: 0.6 }), w - capW, 2);
       if (note) {
         const { bodyEnd } = bottleGeom(w, h);
         const nx = 6, ny = Math.round(h * 0.34), nw = Math.max(6, bodyEnd - 8), nh = Math.max(3, Math.round(h * 0.32));
@@ -465,8 +465,8 @@ const TITLE_H = 14, FRAME = 3;
 
 function windowTex(w, h, active) {
   const tone = active
-    ? { top: '#c4f0ff', mid: '#6cc8f4', bot: '#2e8ed8', edge: '#0b3f74', a: [0.9, 0.86], glow: '#bff6ff' }
-    : { top: '#e4eef6', mid: '#a8c4d8', bot: '#7e9cb6', edge: '#3a5670', a: [0.86, 0.82], glow: '#e8f2fa' };
+    ? { top: '#c4f0ff', mid: '#6cc8f4', bot: '#2e8ed8', edge: '#0b3f74', a: [0.97, 0.95], glow: '#bff6ff' }
+    : { top: '#e4eef6', mid: '#a8c4d8', bot: '#7e9cb6', edge: '#3a5670', a: [0.95, 0.92], glow: '#e8f2fa' };
   const frame = aeroSurface(w, h, { tone, r: 6, gloss: 0.55, glossH: TITLE_H + FRAME - 2, curve: 3, rim: 0.85, glow: 0.35, streak: true, sparkle: active ? 2 : 0, seed: w });
   const c = makeCanvas(w, h);
   const g = ctxOf(c);

@@ -1,11 +1,13 @@
 // Floating boxes (phase 3): hover the hook over a box drifting in the water and click to snag it, then a
 // short, light reel (circle the mouse; no fish fighting back) hauls it up, bobbing and splashing, until it
-// pops out of the water; fishing then calls game.onBoxCaught(f) (-> Fishing.landBox -> landBoxLoot) which
-// rolls loot from src/build/items.js (rollCrate when present, else openPackage), grants it, and shows a
-// glossy Aero loot pop-up. Floaters.draw should skip boxes with f.hooked: this module draws them while reeling.
+// pops out of the water; fishing then calls game.onBoxCaught(f) (game.js: floaters.take + build.onBoxCaught
+// rolls/grants via items.rollCrate, then Fishing.showBoxLoot(f, loot) -> the glossy Aero loot pop-up).
+// Without a host onBoxCaught, landBoxLoot rolls (items.rollCrate / openPackage) and grants it itself.
+// The World floaters keep drawing a hooked box (f.hooked: fishing owns f.x / f.y); when a host has no
+// floater renderer (f.selfDraw) this module draws a glossy pixel box instead.
 //
 //   new BoxReel(F, f) -> update(dt) 'ok' | 'caught'; drawWorld(ctx); drawHud(ctx); drawBands(ctx); crankHint(); cancel()
-//   landBoxLoot(F, f) -> loot list [{id, qty}]          drawBoxHover(ctx, F, f)    boxSprite(kind, tier)
+//   landBoxLoot(F, f, loot?) -> loot list [{id, qty}]   drawBoxHover(ctx, F, f)    boxSprite(kind, tier)
 
 import { TAU, clamp, clamp01, lerp, damp, ease } from '../core/math.js';
 import { rng } from '../core/rng.js';
@@ -179,7 +181,7 @@ export class BoxReel {
         this.p0 = [f.x, f.y];
         const sy = this.surface ?? f.y;
         F.particles.eruption?.(f.x, sy, 0.9);
-        F.particles.aeroBubbles?.(f.x, sy, 10, { w: 10, speed: [40, 110] });
+        F.particles.splashBurst?.(f.x, sy, 1);
         F.particles.lightStreaks?.(f.x, sy - 4, 8, { dir: -Math.PI / 2, spread: 1, colors: ['#ffffff', '#bff8ff'] });
         F.sfx('splash_big', { vol: 0.7 });
         F.sfx('jump_out', { pitch: 1.2 });
@@ -217,6 +219,8 @@ export class BoxReel {
     ctx.globalAlpha = 0.3 + 0.15 * Math.sin(this.t * 5);
     ctx.drawImage(glowSprite(16, T.glow), Math.round(f.x - 16), Math.round(f.y - 16));
     ctx.restore();
+    f.roll = this.ang * 57.3;
+    if (!f.selfDraw) return;
     ctx.save();
     ctx.translate(Math.round(f.x), Math.round(f.y));
     ctx.rotate(this.ang);
@@ -254,11 +258,19 @@ function loadItemDraw() {
   import('../build/itemdraw.js').then((m) => { itemDraw = m; }).catch(() => { itemDraw = null; });
 }
 
-export function landBoxLoot(F, f) {
+// loot: what the host already rolled and granted ({aero, items} or [{id, qty}]); omitted -> roll + grant here.
+export function landBoxLoot(F, f, loot) {
   const g = F.game;
   const tier = ITEMS.TIERS?.[f.tier] ? f.tier : 'crate';
   const biome = g.ocean?.biome?.id || F.world.biome || null;
   const luck = Math.max(0, F.luckMul() - 1);
+  const [sx, sy] = F.toScreen(f.x, f.y);
+  if (loot) {
+    const list = Array.isArray(loot) ? loot : [...(loot.aero ? [{ id: 'coins', qty: loot.aero }] : []), ...(loot.items || [])];
+    loadItemDraw();
+    F.lootPop = new LootPop(F, list.length ? list : [{ id: 'coins', qty: 0 }], sx, sy, loot.tier || tier);
+    return list;
+  }
   let list = null;
   try {
     if (typeof ITEMS.rollCrate === 'function') {
@@ -269,7 +281,6 @@ export function landBoxLoot(F, f) {
     if (!list && typeof ITEMS.openPackage === 'function') list = ITEMS.openPackage({ tier, biome });
   } catch (e) { console.error(e); }
   if (!list || !list.length) list = [{ id: 'coins', qty: 5 + rng.int(0, 10) }];
-  const [sx, sy] = F.toScreen(f.x, f.y);
   try {
     if (typeof ITEMS.grantLoot === 'function') ITEMS.grantLoot(g, list, sx, sy);
     else for (const it of list) if (it.id === 'coins') g.addCoins?.(it.qty, sx, sy);
@@ -317,13 +328,14 @@ class LootPop {
     const a = clamp01(t * 6) * clamp01((this.dur - t) * 3);
     if (a <= 0) return;
     const [cx, cy] = this.pos();
-    const n = this.list.length, cell = 34;
-    const w = n * cell + 24, h = 52;
+    const n = this.list.length, cell = 46;
+    const w = n * cell + 28, h = 62;
     const T = TIER_COL[this.tier] || TIER_COL.crate;
     const pop = ease.outBack(clamp01(t * 3));
     ctx.save();
     ctx.globalAlpha = a;
-    drawRays(ctx, cx, cy, 150, 14, t * 0.6, T.glow, 0.08, 0.09);
+    drawRays(ctx, cx, cy, 190, 16, t * 0.6, T.glow, 0.1, 0.09);
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.4 * a; ctx.drawImage(glowSprite(90, T.glow), Math.round(cx - 90), Math.round(cy - 90)); ctx.restore();
     ctx.translate(cx, cy);
     ctx.scale(pop, pop);
     // glass tray
@@ -333,23 +345,23 @@ class LootPop {
     ctx.drawImage(spr, Math.round(-spr.width), Math.round(-h / 2 - spr.height * 2 + 6), spr.width * 2, spr.height * 2);
     for (let i = 0; i < n; i++) {
       const it = this.list[i];
-      const ix = Math.round(-w / 2 + 12 + i * cell + cell / 2), iy = 2;
+      const ix = Math.round(-w / 2 + 14 + i * cell + cell / 2), iy = 2;
       const k = ease.outBack(clamp01((t - 0.25 - i * 0.12) * 4));
       if (k <= 0) continue;
       ctx.save();
       ctx.translate(ix, iy);
       ctx.scale(k, k);
       const rar = ITEMS.ITEMS?.[it.id]?.rarity || 'common';
-      const b = gbubbleSprite(13);
+      const b = gbubbleSprite(18);
       ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = a * 0.5;
-      ctx.drawImage(glowSprite(15, RARITY[rar]?.color || '#bff8ff'), -15, -15);
+      ctx.globalAlpha = a * 0.55;
+      ctx.drawImage(glowSprite(21, RARITY[rar]?.color || '#bff8ff'), -21, -21);
       ctx.globalCompositeOperation = 'source-over';
       ctx.globalAlpha = a;
       this.drawIcon(ctx, it.id, 0, 0);
-      ctx.drawImage(b, -13, -13);
+      ctx.drawImage(b, -18, -18);
       const label = it.id === 'coins' ? '+' + it.qty : it.qty > 1 ? 'x' + it.qty : '';
-      if (label) drawText(ctx, label, 0, 9, { align: 'center', color: '#ffffff', outline: '#0c3a52', font: 'small' });
+      if (label) drawText(ctx, label, 0, 12, { align: 'center', color: '#ffffff', outline: '#0c3a52' });
       ctx.restore();
     }
     ctx.restore();
@@ -358,12 +370,12 @@ class LootPop {
   drawIcon(ctx, id, x, y) {
     if (id === 'coins') {
       const g = glossText('A', 2, 'aqua');
-      ctx.drawImage(gbubbleSprite(7), x - 7, y - 9);
-      ctx.drawImage(g.c, Math.round(x - g.w / 2 - g.ox), Math.round(y - 6 - g.oy));
+      ctx.drawImage(gbubbleSprite(9), x - 9, y - 12);
+      ctx.drawImage(g.c, Math.round(x - g.w / 2 - g.ox), Math.round(y - 10 - g.oy));
       return;
     }
     let ic = null;
-    try { ic = itemDraw?.itemIcon?.(id, 18) || null; } catch (e) { ic = null; }
+    try { ic = itemDraw?.itemIcon?.(id, 24) || null; } catch (e) { ic = null; }
     if (ic) { ctx.drawImage(ic, Math.round(x - ic.width / 2), Math.round(y - ic.height / 2 - 2)); return; }
     const col = RARITY[ITEMS.ITEMS?.[id]?.rarity || 'common']?.color || '#bff8ff';
     ctx.fillStyle = '#0c3a52'; ctx.fillRect(x - 5, y - 7, 10, 10);

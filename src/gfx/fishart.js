@@ -221,7 +221,7 @@ export function compileLook(look, variant = null) {
   const mkEye = (e, def) => {
     const o = { type: 'normal', ...def, ...e };
     // big cartoon eyes: generic fish get a cute minimum size (relative to body height)
-    if (kind === 'fish' && o.type !== 'dot' && !e.keepSize) o.r = clamp(Math.max(o.r * 1.3, H * 0.17), 1, Math.max(o.r, H * 0.3));
+    if (kind === 'fish' && o.type !== 'dot' && !e.keepSize) o.r = clamp(Math.max(o.r * 1.25, H * 0.16), 1, Math.max(o.r, H * 0.24));
     else if (o.type !== 'dot' && !e.keepSize) o.r *= 1.18;
     o.pupilSize = e.pupilSize ? Math.max(0.5, e.pupilSize) : 0.6;
     o.pupil = P(vc(o.color || '#101a33', 'eye'));
@@ -1046,6 +1046,23 @@ function prepExtras(c, G, sw, still, s) {
         q.box = bboxOf(q.pts, q.rb + 1.5);
         break;
       }
+      case 'paperclip': {
+        // a bent-wire paperclip standing up from the back (the office-assistant porpoise)
+        const u0 = e.u ?? 0.42;
+        const bx = halfL - L * u0, by = -G.halfTop(u0) + 0.8;
+        const wd = e.w ?? H * 0.34;
+        const tl = (e.tilt ?? -0.22) + Math.sin(sw * TAU) * 0.05 * sway;
+        const ca = Math.cos(tl), sa = Math.sin(tl);
+        const P2 = [];
+        const seg = (x0, y0, x1, y1, n = 5) => { for (let i = 0; i <= n; i++) { const t = i / n; P2.push([x0 + (x1 - x0) * t, y0 + (y1 - y0) * t]); } };
+        const arc = (cx, cy, r, a0, a1, n = 8) => { for (let i = 0; i <= n; i++) { const a = a0 + ((a1 - a0) * i) / n; P2.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]); } };
+        seg(0.25, 0.75, 0.25, 2.0); arc(0.5, 2.0, 0.25, Math.PI, 0); seg(0.75, 2.0, 0.75, 0.45);
+        arc(0.375, 0.45, 0.375, 0, -Math.PI); seg(0, 0.45, 0, 2.25); arc(0.5, 2.25, 0.5, Math.PI, 0); seg(1, 2.25, 1, 0.95);
+        q.pts = P2.map(([x, y]) => { const X = (x - 0.5) * wd, Y = -(y - 0.05) * wd; return [bx + X * ca - Y * sa, by + X * sa + Y * ca]; });
+        q.w = Math.max(px1 * 0.6, wd * 0.07);
+        q.box = bboxOf(q.pts, q.w + 1);
+        break;
+      }
       case 'antennae': {
         const u0 = e.u ?? 0.22;
         const bx = halfL - L * u0, by = -G.halfTop(u0) + 0.5;
@@ -1659,6 +1676,11 @@ function freePix(c, G, xp, lx, ly, px, py, s, sw, still) {
         if (polyDist2(q.pts, lx, ly) < q.w * q.w + 0.1) return withA(e.P || c.bodyR[1], 253);
         break;
       }
+      case 'paperclip': {
+        const d2 = polyDist2(q.pts, lx, ly);
+        if (d2 < q.w * q.w + 0.1) return d2 < q.w * q.w * 0.2 && ly < q.box[1] + (q.box[3] - q.box[1]) * 0.5 ? P('#ffffff') : e.P || P('#d8ecff');
+        break;
+      }
       case 'antennae': {
         for (const [tx, ty] of q.tips) {
           if (Math.hypot(lx - tx, ly - ty) < q.rb) {
@@ -2093,6 +2115,7 @@ function genericExtent(c, G) {
       case 'barbel': exBot = Math.max(exBot, (e.len ?? H * 0.8) * 0.85 + 2); break;
       case 'cap': exTop = Math.max(exTop, (e.w ?? H * 0.55) * (e.style === 'cowboy' ? 0.9 : 1.35)); exFront = Math.max(exFront, (e.w ?? H * 0.55) * (e.style === 'cowboy' || e.style === 'pirate' ? 1.0 : 0.5)); break;
       case 'antennae': exTop = Math.max(exTop, (e.len ?? H * 0.75) + 3); break;
+      case 'paperclip': exTop = Math.max(exTop, (e.w ?? H * 0.34) * 2.5 + 3); break;
       case 'halo': exTop = Math.max(exTop, (e.h ?? H * 0.36) + (e.r ?? L * 0.16) * 0.35 + 3); break;
       case 'dome': exTop = Math.max(exTop, (e.ry ?? H * 0.85) * 0.75); break;
       case 'badge': exTop = Math.max(exTop, (e.r ?? H * 0.15) * 1.3); break;
@@ -2105,6 +2128,13 @@ function genericExtent(c, G) {
     }
   }
   for (const q of [].concat(c.look.rotor || [])) exTop = Math.max(exTop, (q.h ?? 10) + Math.max(4, (q.r ?? 12) * 0.25) + 3);
+  // a pair of sneakers under the belly; a water bubble all around
+  if (c.look.sneakers) exBot = Math.max(exBot, (c.look.sneakers.h ?? H * 0.55) * 1.25 + 2);
+  if (c.look.orb) {
+    const R = c.look.orb.r ?? Math.max(L * 0.62, H * 1.1);
+    exTop = Math.max(exTop, R - H / 2 + 2); exBot = Math.max(exBot, R - H / 2 + 2);
+    exFront = Math.max(exFront, R - halfL + 2); exBack = Math.max(exBack, R - halfL + 2);
+  }
   // accessories with explicit boxes (sword, hammer, guitar, horn, ears, wings, mane, arrow, juggle...)
   const ACC = ACC_TYPES;
   if (c.extras.some((e) => ACC.has(e.type) || (e.type === 'cap' && CAP_WIDE.has(e.style)))) {
@@ -3643,6 +3673,77 @@ KINDS.star = {
   },
 };
 
+// Wakka chomper: a round glossy body that is mostly mouth (a chomping wedge), a perky dorsal fin, a
+// forked tail and big cartoon eye. Rotates in 90-degree steps (st.angle) for grid runs up and down.
+// body.len = body diameter. The body layer's phase is the chomp (0 closed .. 0.5 wide open).
+KINDS.chomper = {
+  rotates: true,
+  layers: [['back', 'tail', 12], ['body', 'swim', 8]],
+  ext(c) { const r = c.L / 2; return [-r * 1.75, -r * 1.42, r + 2, r * 1.12 + 2]; },
+  open(ph) { return 0.5 - 0.5 * Math.cos(fract(ph) * TAU); },
+  paint(c, part, buf, glow, ox, oy, s, ph, q = {}) {
+    const ang = q.angle || 0, ca = Math.cos(ang), sa = Math.sin(ang);
+    const r = c.L / 2;
+    const body = part === 'body' || part === 'all', back = part === 'back' || part === 'all';
+    const half = 0.05 + 0.68 * (body ? this.open(ph) : 0.3);
+    const T = c.T, F = c.tail.R7, D = c.fins[0]?.R7 || F;
+    const inner = P('#152448'), tongue = P('#ff6f9a'), tongueH = P('#ffb4cc'), blush = P('#ff8ab8');
+    const flap = back ? Math.sin(TAU * ph) * 0.22 : 0;
+    const ext = this.ext(c);
+    const B = Math.ceil(Math.max(-ext[0], ext[2], -ext[1], ext[3]) * s) + 2;
+    for (let y = Math.floor(oy - B); y <= Math.ceil(oy + B); y++) for (let x = Math.floor(ox - B); x <= Math.ceil(ox + B); x++) {
+      const dx = x + 0.5 - ox, dy = y + 0.5 - oy;
+      const lx = (dx * ca + dy * sa) / s, ly = (-dx * sa + dy * ca) / s;
+      const d = Math.hypot(lx, ly);
+      let col = 0;
+      if (body && d <= r) {
+        const a = Math.atan2(ly, lx);
+        if (Math.abs(a - 0.06) < half) {
+          // inside the wedge: the throat near the centre, open water beyond
+          if (d < r * 0.5 && half > 0.16) col = ly > r * 0.05 && d > r * 0.16 ? (ly > r * 0.2 && lx < r * 0.25 ? tongueH : tongue) : inner;
+        } else {
+          const belly = ly > r * (0.38 + 0.06 * Math.sin(lx / r * 5));
+          col = tone(belly ? T.belly : ly < -r * 0.62 + 0.05 * lx ? T.back : T.body, 3, x, y);
+          // cheek blush under the eye, freckle sparkles on the back
+          if (Math.hypot(lx - r * 0.02, ly + r * 0.02) < r * 0.13 && ly > -r * 0.12) col = blush;
+          if (c.look.freckles !== false && ly < -r * 0.2 && lx < -r * 0.15 && hash2(Math.floor(lx * 0.45), Math.floor(ly * 0.45), 41) > 0.86 && d < r * 0.82) col = tone(T.body, 4.4, x, y);
+        }
+      }
+      if (!col && back) {
+        // forked tail behind the body
+        const tx = -lx - r * 0.82, ty = ly - tx * flap;
+        if (tx > -1 && tx < r * 0.9) {
+          const t = tx / (r * 0.9);
+          const outer = r * (0.18 + 0.62 * Math.pow(Math.max(0, t), 0.8));
+          const notch = r * 0.5 * Math.max(0, (t - 0.45) / 0.55);
+          if (Math.abs(ty) < outer && Math.abs(ty) > notch) col = tone(F, t > 0.6 ? 4.2 : t < 0.15 ? 2.2 : 3, x, y);
+        }
+        // perky dorsal fin
+        const fx = -lx - r * 0.05, fy = -ly - r * 0.82;
+        if (!col && fy > -1 && fy < r * 0.55) {
+          const t = fy / (r * 0.55);
+          if (fx > -r * 0.35 * (1 - t) && fx < r * 0.45 * (1 - t * 0.55) + t * r * 0.25) col = tone(D, t > 0.55 ? 4.2 : 3, x, y);
+        }
+        // little pelvic fin
+        const px2 = -lx + r * 0.05, py2 = ly - r * 0.86;
+        if (!col && py2 > -1 && py2 < r * 0.28 && Math.abs(px2 - py2 * 0.6) < r * 0.16) col = tone(D, 3, x, y);
+      }
+      if (col) buf.set(x, y, col);
+    }
+  },
+  face(c, ph, s, ox, oy, q = {}) {
+    const ang = q.angle || 0, ca = Math.cos(ang), sa = Math.sin(ang);
+    const r = c.L / 2 * s;
+    const toC = (x, y) => [ox + x * ca - y * sa, oy + x * sa + y * ca];
+    const [ex, ey] = toC(r * 0.12, -r * 0.48);
+    return {
+      eyes: [{ x: ex, y: ey, r: Math.max(1.6, c.eyes[0].r * s), e: c.eyes[0], idx: 0, mirror: false, cheek: true, main: true, angle: ang }],
+      mouth: null,
+      anchors: { mouth: toC(r, 0), top: toC(0, -r), bottom: toC(0, r), tail: toC(-r * 1.6, 0) },
+    };
+  },
+};
+
 KINDS.iconfish = {
   layers: [['back', 'tail', 12], ['body', 'swim', 8], ['front', 'fin', 8]],
   ext(c) { const z = c.L; return [-z * 1.0, -z * 0.68, z * 0.62, z * 0.68]; },
@@ -3936,6 +4037,8 @@ function cropOut(buf, glow) {
 }
 
 export const isKind = (c) => !!KINDS[c.kind];
+/** Kinds whose 2D sprite turns with st.angle (the pixel-art chomper). */
+export const kindRotates = (c) => !!KINDS[c.kind]?.rotates;
 
 // Layer list for the rig: [{id, phase: 'tail'|'fin'|'swim', frames}] in back-to-front order.
 export function rigLayers(c) {
@@ -3962,7 +4065,7 @@ export function rigGeom(c, q) {
   const s = q.scale || 1;
   const K = KINDS[c.kind];
   if (K) {
-    const B = boundsFor(K.ext(c), 0, s);
+    const B = boundsFor(K.ext(c), K.rotates ? q.angle || 0 : 0, s);
     const f = K.face(c, q.sw || 0, s, B.ox, B.oy, q);
     return { w: B.w, h: B.h, ox: B.ox, oy: B.oy, eyes: f.eyes, mouth: f.mouth, anchors: f.anchors, offsets: null };
   }
@@ -3980,7 +4083,7 @@ export function rasterLayer(c, layer, q) {
   const s = q.scale || 1;
   const K = KINDS[c.kind];
   if (K) {
-    const B = boundsFor(K.ext(c), 0, s);
+    const B = boundsFor(K.ext(c), K.rotates ? q.angle || 0 : 0, s);
     const buf = new PixelBuffer(B.w, B.h);
     const glow = c.glow ? new PixelBuffer(B.w, B.h) : null;
     K.paint(c, layer, buf, glow, B.ox, B.oy, s, q.ph || 0, q);

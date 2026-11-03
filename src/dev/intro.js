@@ -45,11 +45,14 @@ export async function run(params) {
     const dt = Math.min(1 / 20, (now - last) / 1000) * speed;
     last = now;
     input.update(dt);
+    const t0 = performance.now();
     if (!freeze) intro.update(dt);
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.fillStyle = '#0b3a5c';
     g.fillRect(0, 0, W, H);
     intro.draw(g);
+    const ms = performance.now() - t0;
+    if (intro.ready) { const k = Math.floor(intro.t); (window.__prof ||= {})[k] = Math.max(window.__prof[k] || 0, Math.round(ms)); }
     input.endFrame();
   };
   requestAnimationFrame(frame);

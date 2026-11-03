@@ -1160,32 +1160,41 @@ export class DepthScene {
       return { y: Math.floor(bt), canvases: {}, h: this.H - Math.floor(bt) };
     });
     const tmp = makeLayer(8, 8);
+    // band + fog per pixel once (shared by every variant), then one pass per variant fills all three bands
+    const N = TH * LW;
+    const bandOf = new Uint8Array(N), fogOf = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      const cc = pc[i];
+      if (!cc) continue;
+      const z = pz[i];
+      bandOf[i] = this.band(z);
+      fogOf[i] = this.fog(z) * (((cc >>> 24) & 1) ? 0.5 : 1);
+    }
     for (const v of variants) {
       const sd = ctxOf(v.strip).getImageData(0, 0, v.strip.width, v.strip.height).data;
       const sw = v.strip.width;
-      for (let b = 0; b < 3; b++) {
-        const B = bands[b];
+      const out = bands.map((B) => {
         const c = makeCanvas(LW, B.h);
         const g = ctxOf(c);
         const img = g.createImageData(LW, B.h);
-        const d = new Uint32Array(img.data.buffer);
-        const off = top - B.y;
-        for (let y = 0; y < TH; y++) {
-          const yy = y + off;
-          const sy = Math.min(v.strip.height - 1, y + top);
-          for (let x = 0; x < LW; x++) {
-            const i = y * LW + x;
-            const cc = pc[i];
-            if (!cc) continue;
-            const z = pz[i];
-            if (this.band(z) !== b) continue;
-            const glow = (cc >>> 24) & 1;
-            let f = this.fog(z) * (glow ? 0.5 : 1);
-            const si = (sy * sw + (x & (sw - 1))) * 4;
-            const r = lerp(cc & 255, sd[si], f), gg = lerp((cc >> 8) & 255, sd[si + 1], f), bb = lerp((cc >> 16) & 255, sd[si + 2], f);
-            d[yy * LW + x] = dpack(r, gg, bb, x, y, 4);
-          }
+        return { c, g, img, d: new Uint32Array(img.data.buffer), off: top - B.y };
+      });
+      for (let y = 0; y < TH; y++) {
+        const sy = Math.min(v.strip.height - 1, y + top);
+        for (let x = 0; x < LW; x++) {
+          const i = y * LW + x;
+          const cc = pc[i];
+          if (!cc) continue;
+          const o = out[bandOf[i]];
+          const f = fogOf[i];
+          const si = (sy * sw + (x & (sw - 1))) * 4;
+          const r = lerp(cc & 255, sd[si], f), gg = lerp((cc >> 8) & 255, sd[si + 1], f), bb = lerp((cc >> 16) & 255, sd[si + 2], f);
+          o.d[(y + o.off) * LW + x] = dpack(r, gg, bb, x, y, 4);
         }
+      }
+      for (let b = 0; b < 3; b++) {
+        const B = bands[b];
+        const { c, g, img } = out[b];
         g.putImageData(img, 0, 0);
         // props of this band, far to near, each fog-tinted toward the gradient
         for (const it of this.items) {

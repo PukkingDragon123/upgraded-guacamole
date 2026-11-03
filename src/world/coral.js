@@ -58,16 +58,18 @@ export const THEMES = {
     schemes: [['ghost', 'cyan', 'bamboo'], ['violet', 'rose', 'ghost'], ['black', 'cyan', 'violet'], ['bamboo', 'ghost', 'rose']],
     glow: 1, alwaysGlow: true,
   },
-  // (OS)cean: glossy Frutiger Aero greens, aquas and candy accents
+  // (OS)cean: the moving-picture aquarium lamp - saturated candy corals on glossy pale rock, plus Aero aquas
   oscean: {
     pals: {
-      grass: ['#1e7a2a', '#3cb03a', '#7ade4a', '#dcff9a'], aqua: ['#0e6a8a', '#1ab0d0', '#5ae8f4', '#e0ffff'], lime: ['#3a7a14', '#6ac42a', '#b4f05a', '#f4ffc8'],
-      sky: ['#1a4aa8', '#2a8ae8', '#6ac8ff', '#e0f6ff'], pink: ['#8a2a6a', '#e05aa8', '#ff9ad0', '#fff0fa'], white: ['#6a8aa8', '#b8d0e4', '#eaf6ff', '#ffffff'],
-      gold: ['#7a5410', '#d0a024', '#ffe05a', '#fffbd8'],
+      pink: ['#8a1a5a', '#e0308a', '#ff6ab8', '#ffd6ee'], orange: ['#8a2a0a', '#f05a14', '#ff9a3a', '#ffe6b8'], yellow: ['#7a5a00', '#e0a800', '#ffe02a', '#fffbc8'],
+      purple: ['#3a1478', '#7a3ad8', '#b07aff', '#efe0ff'], red: ['#6a0a1a', '#d82a3a', '#ff5a5a', '#ffd0c8'], aqua: ['#0a5a7a', '#14a8d8', '#4ae8ff', '#e0ffff'],
+      lime: ['#2a6a0a', '#5ac81a', '#a8f03a', '#f4ffc8'], blue: ['#0a2a8a', '#1a5ae8', '#4a9aff', '#d8ecff'], white: ['#5a7a98', '#a8c8e4', '#e8f6ff', '#ffffff'],
+      magenta: ['#5a0a6a', '#b81ac8', '#f05aff', '#ffd8ff'],
     },
-    rock: ['#8aa0b8', '#b0c4d8', '#dce8f4'], coralline: ['#5ad0e8', '#a8f0ff'], algae: ['#3cb03a', '#7ade4a'], sand: ['#8ad860', '#b4ec7a'],
-    weights: { staghorn: 2, fan: 2, brain: 1, tube: 2, bubble: 3, pillar: 1, whip: 1 },
-    schemes: [['aqua', 'sky', 'white'], ['lime', 'grass', 'gold'], ['pink', 'aqua', 'white'], ['sky', 'lime', 'aqua']],
+    rock: ['#7aa8c8', '#a8d0e8', '#dcf2ff'], coralline: ['#ff6ab8', '#ffb0dc'], algae: ['#3cc83a', '#8af05a'], sand: ['#7ad85a', '#b4f07a'],
+    weights: { staghorn: 4, table: 2, fan: 3, brain: 3, tube: 3, bubble: 2, pillar: 1, whip: 2 },
+    schemes: [['pink', 'orange', 'yellow', 'white'], ['purple', 'blue', 'aqua', 'white'], ['lime', 'yellow', 'aqua', 'orange'], ['red', 'pink', 'magenta', 'yellow'],
+      ['blue', 'aqua', 'purple', 'lime'], ['orange', 'yellow', 'purple', 'aqua']],
     glow: 0.45,
   },
 };
@@ -744,7 +746,12 @@ export function voxCrab(body = '#e0502e', scale = 1) {
       L(10 + side * 5, cy - 0.8, 12.6, 10 + side * 5.6, cy - 0.6, 12.9, tipC, 0.3);
     }
     // eye stalks
-    for (const side of [-1, 1]) { L(10 + side * 1.4, 5, 9, 10 + side * 1.6, 6.6, 9.4, shell, 0.35); m.sphere((10 + side * 1.6) * K, 7.1 * K, 9.4 * K, 0.7 * K, eye); }
+    const shine = C('#ffffff', { spec: 1 });
+    for (const side of [-1, 1]) {
+      L(10 + side * 1.4, 5, 9, 10 + side * 1.6, 6.6, 9.4, shell, 0.35);
+      m.sphere((10 + side * 1.6) * K, 7.3 * K, 9.4 * K, 1 * K, eye);
+      m.set(Math.round((10 + side * 1.6 - 0.3) * K), Math.round(7.7 * K), Math.round(10.3 * K), shine); // cartoon shine
+    }
     const r = renderModel(m, { scale, outline: true, jitter: 0.06, ao: 1.1, edges: 0.6 });
     const p = r.project(cx, 0, cz + 2 * K);
     return { canvas: r.canvas, ox: Math.round(p[0]), oy: Math.round(p[1]) };

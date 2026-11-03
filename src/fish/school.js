@@ -1,8 +1,7 @@
 // Ocean population manager: weighted spawning per biome/time/weather/bait, despawning, depth-sorted drawing.
 // Presence: ocean fish are scaled up (small species most), schools are larger, giant individuals are more
 // common, and every so often a huge "hero" fish (or a whole school of them) cruises through the mid/far
-// layers as scenery (not catchable). Some fish carry a package crate (build/items.js rollPackage):
-// fish.package and fish.rec.package, so the catch record carries it to game.onFishCaught.
+// layers as scenery (not catchable). Fish carry no packages: floating boxes live in world/floaters.js.
 
 import { rng } from '../core/rng.js';
 import { clamp, lerp } from '../core/math.js';
@@ -10,7 +9,6 @@ import { RARITY } from '../core/color.js';
 import { SPECIES } from './species.js';
 import { Fish, baitInterest } from './fish.js';
 import { rollIndividual } from './traits.js';
-import { rollPackage } from '../build/items.js';
 
 // On-screen size multiplier for ocean fish by look length (look px): small fish grow most.
 export function presenceOf(sp) {
@@ -100,10 +98,6 @@ export class School {
       fish.enterTarget = { x: left ? rng.float(80, w.W * 0.6) : rng.float(w.W * 0.4, w.W - 80), y: fish.y };
     }
     fish.life = rng.float(70, 200);
-    if (!opts.noPackage) {
-      const pkg = rollPackage(sp, w.biome);
-      if (pkg) { fish.package = pkg; fish.rec.package = pkg; }
-    }
     this.fishes.push(fish);
     return fish;
   }

@@ -50,8 +50,9 @@ export const TINTS = {
   chrome: { tint: '#dfe8f2', hue: 200, span: 60, irid: 0.25, alpha: 1, deep: '#3a4a64', special: 'chrome' },
   gold: { tint: '#ffd23a', hue: 40, span: 30, irid: 0.25, alpha: 1, deep: '#8a5a0a', special: 'gold' },
   galaxy: { tint: '#3a2a7a', hue: 260, span: 120, irid: 0.6, alpha: 0.86, deep: '#120a3a', special: 'stars' },
+  globe: { tint: '#4cd83a', hue: 90, span: 120, irid: 0.3, alpha: 0.62, deep: '#16722a', special: 'globe' },
 };
-const skinOfTint = (T) => (T.special === 'gold' ? '#ffd84a' : T.special === 'chrome' ? '#cfd8e4' : T.special === 'stars' ? '#7a68d8' : mix(T.tint, '#ffffff', 0.4));
+const skinOfTint = (T) => (T.special === 'globe' ? '#c8f5a8' : T.special === 'gold' ? '#ffd84a' : T.special === 'chrome' ? '#cfd8e4' : T.special === 'stars' ? '#7a68d8' : mix(T.tint, '#ffffff', 0.18));
 
 // Eye styles (cartoon): drawn live on the bubble. See eyePixel().
 export const EYE_STYLES = ['bean', 'sparkle', 'anime', 'happy', 'sleepy', 'star', 'heart', 'swirl', 'led', 'wink', 'dot', 'teary', 'derp'];
@@ -90,6 +91,7 @@ export const WARDROBE = [
   it('tint', 'pearl', 'Pearl Gloss', 'rare', 560, 'Clear as glass, all rainbow.'),
   it('tint', 'oil', 'Oil Slick', 'epic', null, 'Every colour at once. From crates.', pkg),
   it('tint', 'aurora', 'Aurora Film', 'epic', 1400, 'Northern lights swirl inside.'),
+  it('tint', 'globe', 'Eco Globe', 'epic', 1600, 'A green glass planet. Think globally, fish locally.'),
   it('tint', 'chrome', 'Chrome Orb', 'epic', null, 'A mirror-polished head. Reflects the whole sky.', lab('rod_chrome')),
   it('tint', 'gold', 'Golden Orb', 'legendary', null, 'Solid shine. Legendary crates only.', pkg),
   it('tint', 'galaxy', 'Galaxy Bubble', 'legendary', null, 'A tiny universe on your shoulders.', pkg),
@@ -128,6 +130,7 @@ export const WARDROBE = [
   it('hat', 'propeller', 'Propeller Cap', 'uncommon', 240, 'Spins when you get excited.'),
   it('hat', 'flower', 'Flower Crown', 'rare', 420, 'Fresh from the hillside.'),
   it('hat', 'sunhat', 'Straw Sunhat', 'rare', 380, 'For long lazy days at the pier.'),
+  it('hat', 'leafcrown', 'Leaf Crown', 'uncommon', 260, 'Glossy green leaves, fresh from the hill.'),
   it('hat', 'captain', 'Captain Hat', 'rare', null, 'Earned by owning a real yacht.', lab('boat_yacht')),
   it('hat', 'tophat', 'Aqua Top Hat', 'epic', 1300, 'Very fancy. Very tall.'),
   it('hat', 'crown', 'Crystal Crown', 'legendary', null, 'For the ruler of the bubbles. Crates only.', pkg),
@@ -153,6 +156,7 @@ export const WARDROBE = [
   it('face', 'goggles', 'Dive Goggles', 'rare', 420, 'Ready for the deep end.'),
   it('face', 'monocle', 'Monocle', 'rare', 480, 'Indubitably.'),
   it('face', 'visor', 'Hydro Visor', 'epic', null, 'Glass visor with a sonar HUD. Lab tech.', lab('boat_sonar')),
+  it('face', 'flare', 'Sun-Flare Shades', 'rare', 560, 'Mirrored lenses that catch the sun. *ting*'),
   it('face', 'heart', 'Heart Shades', 'epic', 1200, 'Love at first cast.'),
   it('face', 'star', 'Star Shades', 'epic', null, 'Pop-star sparkle. From crates.', pkg),
   // tops
@@ -164,6 +168,7 @@ export const WARDROBE = [
   it('top', 'puffer', 'Bubble Puffer', 'rare', 520, 'Puffy as a pufferfish.'),
   it('top', 'labcoat', 'Lab Coat', 'rare', null, 'Science! Unlocked in the Lab.', lab('lab_slot2')),
   it('top', 'leafy', 'Leaf Poncho', 'rare', 480, 'Woven from a hundred leaves.'),
+  it('top', 'aquasuit', 'Water-Bubble Suit', 'epic', 1200, 'A wobbly suit of clear water. Bubbles included.'),
   it('top', 'tux', 'Aqua Tux', 'epic', 1500, 'For very formal splashes.'),
   it('top', 'astro', 'Astro Suit', 'legendary', null, 'One small cast for a bubble. Crates only.', pkg),
   // bottoms
@@ -173,6 +178,7 @@ export const WARDROBE = [
   it('bottom', 'cargo', 'Cargo Shorts', 'uncommon', 150, 'Pockets for every lure.'),
   it('bottom', 'leggings', 'Lime Leggings', 'uncommon', 180, 'Sporty stripes.'),
   it('bottom', 'swim', 'Hibiscus Trunks', 'rare', 360, 'Vacation mode: on.'),
+  it('bottom', 'aquasuit', 'Water-Bubble Legs', 'epic', 900, 'The wobbly bottom half.'),
   it('bottom', 'astro', 'Astro Pants', 'legendary', null, 'Matches the Astro Suit. Crates only.', pkg),
   // gloves
   it('gloves', 'none', 'Bare Hands', 'common', 0, 'Soft and squishy.'),
@@ -184,6 +190,7 @@ export const WARDROBE = [
   it('gloves', 'gold', 'Golden Gloves', 'legendary', null, 'Grip of a champion. Crates only.', pkg),
   // shoes
   it('shoes', 'sneakers', 'Aero Sneakers', 'common', 0, 'White with aqua swooshes.'),
+  it('shoes', 'hightops', 'Classic High-Tops', 'uncommon', 200, 'White canvas high-tops. A fish once wore these. Legend.'),
   it('shoes', 'boots', 'Rain Boots', 'common', 60, 'Squeaky and puddle-proof.'),
   it('shoes', 'sandals', 'Beach Sandals', 'common', 70, 'Flip, flop.'),
   it('shoes', 'flippers', 'Lime Flippers', 'uncommon', 220, 'Flap flap flap.'),
@@ -197,6 +204,7 @@ export const WARDROBE = [
   it('back', 'wings', 'Leaf Wings', 'rare', 520, 'Glide like a falling leaf.'),
   it('back', 'turbine', 'Turbine Pack', 'rare', 600, 'A tiny wind turbine. Clean energy!'),
   it('back', 'solar', 'Solar Wings', 'epic', 1400, 'Charged by sunshine.'),
+  it('back', 'globe', 'Glass Globe Pack', 'epic', 1500, 'Carry the whole green planet.'),
   it('back', 'tank', 'Fish Tank Pack', 'epic', null, 'Your buddy comes along. Lab aquarium tech.', lab('tank_reef')),
   it('back', 'jetpack', 'Bubble Jetpack', 'legendary', null, 'Twin bubble tanks. Whoosh! Crates only.', pkg),
   // trails
@@ -453,7 +461,7 @@ function makeKit(L, key, rl) {
       if (i === undefined) { i = holder.color(hex, { jitter: 0.05, ...opts }); memo.set(k, i); }
       return i;
     },
-    glass(hex, opts = {}) { const i = this.col(hex, { smooth: 1, jitter: 0, spec: 1.3, specPow: 12, light: 0.25, glass: 1, ...opts }); this.isGlass[i] = 1; return i; },
+    glass(hex, opts = {}) { const { ga = 170, ...o2 } = opts; const i = this.col(hex, { smooth: 1, jitter: 0, spec: 1.3, specPow: 12, light: 0.25, glass: 1, ...o2 }); this.isGlass[i] = ga; return i; },
     part(name, build) {
       let p = this.parts.get(name);
       if (!p) { p = build(); p.b = p.m.bounds(); this.parts.set(name, p); }
@@ -504,7 +512,7 @@ function buildHair(m, kit, id, hatOn) {
   const { cx, cy, cz, R } = HEAD;
   const top = cy + R - 0.5;
   if (id === 'none') return;
-  if (hatOn && !['ears', 'halo', 'fluff'].includes(id)) return;
+  if (hatOn && !['ears', 'halo', 'fluff', 'pony'].includes(id)) return;
   if (id === 'sprout') {
     const stem = K(kit, '#3fae2a'), leaf = KG(kit, '#7ee04a'), leafD = KG(kit, '#4cb82e'), vein = K(kit, '#c8f56a', { jitter: 0 });
     m.line(cx, top, cz, cx, top + 4, cz, stem, 0.55);
@@ -576,7 +584,7 @@ function buildHair(m, kit, id, hatOn) {
 
 // ---------------------------------------------------------------------- hats (pivot = brim centre, sits on HAT_SEAT)
 
-const HAT_TILT = { cap: -8, beanie: -6, bucket: -8, headphones: 0, propeller: -6, flower: -10, sunhat: -10, captain: -10, tophat: -8, crown: -6, sailor: -10 };
+const HAT_TILT = { leafcrown: -8, cap: -8, beanie: -6, bucket: -8, headphones: 0, propeller: -6, flower: -10, sunhat: -10, captain: -10, tophat: -8, crown: -6, sailor: -10 };
 function buildHat(kit, spin) {
   const id = kit.look.hat;
   const m = kit.model(40, 28, 40);
@@ -626,6 +634,18 @@ function buildHat(kit, spin) {
       const c = cols[i % cols.length];
       for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) m.sphere(fx + ox * 1.3 * Math.sin(a + 1.57) , fy + oy * 1.3, fz + ox * 1.3 * Math.cos(a + 1.57) * -1, 1.15, c);
       m.sphere(fx + Math.cos(a) * 0.6, fy, fz + Math.sin(a) * 0.6, 0.9, mid);
+    }
+  } else if (id === 'leafcrown') {
+    const l1 = KG(kit, '#7ee04a'), l2 = KG(kit, '#3fae2a'), vein = K(kit, '#c8f56a', { jitter: 0 }), band = KG(kit, '#5cc832'), dew = kit.glass('#e8ffff', { ga: 220 });
+    torus(m, cx, by + 0.6, cz, 8.6, 0.9, band, 'y');
+    for (let i = 0; i < 11; i++) {
+      const a = (i / 11) * TAU + 0.15, ox = Math.cos(a), oz = Math.sin(a);
+      const h = 3.2 + (i % 2) * 1.6, c = i % 2 ? l1 : l2;
+      for (let k = 0; k <= h; k += 0.5) {
+        const w = Math.sin((k / h) * Math.PI) * 1.5 + 0.3, r = 8.7 + k * 0.45;
+        for (let s2 = -w; s2 <= w; s2 += 0.5) m.set(cx + ox * r - oz * s2, by + 1 + k, cz + oz * r + ox * s2, Math.abs(s2) < 0.4 ? vein : c);
+      }
+      if (i === 4) m.set(cx + ox * 9.6, by + 4, cz + oz * 9.6 + 0.6, dew);
     }
   } else if (id === 'sunhat') {
     const straw = K(kit, '#f2d28a', { jitter: 0.1 }), strawD = K(kit, '#d8b060', { jitter: 0.08 }), rib = KG(kit, '#ff7ab0'), fl = KG(kit, '#ffffff'), flc = KG(kit, '#ffd23a');
@@ -677,11 +697,11 @@ const TOPS = {
   tee: { col: '#ffffff', sleeve: 'short' }, hoodie: { col: '#59c3ff', sleeve: 'long' }, raincoat: { col: '#9be84a', sleeve: 'long', gloss: true },
   sailor: { col: '#ffffff', sleeve: 'short' }, jersey: { col: '#2fd3e8', sleeve: 'short' }, puffer: { col: '#e8f6ff', sleeve: 'long' },
   labcoat: { col: '#ffffff', sleeve: 'long' }, leafy: { col: '#5cc832', sleeve: 'none' }, tux: { col: '#1a3a6a', sleeve: 'long' },
-  astro: { col: '#f2f6fa', sleeve: 'long' }, coat: { col: '#2a6ab0', sleeve: 'long' },
+  astro: { col: '#f2f6fa', sleeve: 'long' }, aquasuit: { col: '#5ad0ff', sleeve: 'long', glass: true }, coat: { col: '#2a6ab0', sleeve: 'long' },
 };
 const BOTTOMS = {
   shorts: { col: '#2fb8e8', len: 'short' }, jeans: { col: '#4a7ac8', len: 'long' }, skirt: { col: '#8fd0ff', len: 'skirt' }, cargo: { col: '#c8b48a', len: 'short' },
-  leggings: { col: '#8be04a', len: 'long' }, swim: { col: '#ff8a4a', len: 'short' }, astro: { col: '#f2f6fa', len: 'long' }, navy: { col: '#1a3a6a', len: 'long' },
+  leggings: { col: '#8be04a', len: 'long' }, aquasuit: { col: '#5ad0ff', len: 'long', glass: true }, swim: { col: '#ff8a4a', len: 'short' }, astro: { col: '#f2f6fa', len: 'long' }, navy: { col: '#1a3a6a', len: 'long' },
 };
 const topCol = (kit) => TOPS[kit.look.top] || TOPS.tee;
 const botCol = (kit) => BOTTOMS[kit.look.bottom] || BOTTOMS.shorts;
@@ -691,9 +711,9 @@ function buildTorso(kit, spin) {
   const m = kit.model(TORSO.nx, TORSO.ny, TORSO.nz);
   const { cx, cz, hy } = TORSO;
   const tp = topCol(kit), bt = botCol(kit);
-  const top = tp.gloss ? KG(kit, tp.col) : K(kit, tp.col);
-  const topD = tp.gloss ? KG(kit, shade(tp.col, -0.15)) : K(kit, shade(tp.col, -0.14));
-  const pants = K(kit, bt.col), pantsD = K(kit, shade(bt.col, -0.18));
+  const top = tp.glass ? kit.glass(tp.col, { ga: 205 }) : tp.gloss ? KG(kit, tp.col) : K(kit, tp.col);
+  const topD = tp.glass ? kit.glass('#9ae8ff', { ga: 215 }) : tp.gloss ? KG(kit, shade(tp.col, -0.15)) : K(kit, shade(tp.col, -0.14));
+  const pants = bt.glass ? kit.glass(bt.col, { ga: 205 }) : K(kit, bt.col), pantsD = bt.glass ? kit.glass('#2fa8e8', { ga: 215 }) : K(kit, shade(bt.col, -0.18));
   shape(m, 0, 0, 0, TORSO.nx - 1, TORSO.ny - 1, TORSO.nz - 1, torsoInside, (x, y) => (y - hy < WAIST ? pants : top));
   // the neck ring the bubble sits in (a little bubble-wand hoop)
   torus(m, cx, hy + 9.6, cz, 2.6, 0.9, C.ring, 'y');
@@ -709,6 +729,9 @@ function buildTorso(kit, spin) {
   if (b === 'leggings') { const w = K(kit, '#ffffff', { jitter: 0 }); R((dx, yy) => (Math.abs(Math.abs(dx) - 4.1) < 0.6 && yy < WAIST - 0.6 ? w : null)); }
   if (b === 'skirt') shape(m, 0, 0, 0, TORSO.nx - 1, hy + WAIST, TORSO.nz - 1, (x, y, z) => { const yy = y - hy, dx = x - cx, dz = z - cz; const f = 5.2 + (WAIST - yy) * 0.55; return yy >= -3.4 && yy < WAIST && (Math.abs(dx) / f) ** 2.2 + (Math.abs(dz) / (f * 0.78)) ** 2.2 <= 1; }, (x, y, z) => ((Math.floor(Math.atan2(z - cz, x - cx) * 4)) & 1 ? pants : pantsD));
   if (b === 'astro') R((dx, yy) => (Math.abs(yy - 0.4) < 0.5 ? K(kit, '#ff8a2a') : null));
+  const bubbles = (test) => { const w = KG(kit, '#ffffff', { spec: 1.6 }); surf((dx, yy, dz, x, y, z) => (test(yy) && hsh(x, y, z, 17) < 0.07 ? w : null)); };
+  if (bt.glass) bubbles((yy) => yy < WAIST);
+  if (tp.glass) { bubbles((yy) => yy >= WAIST); R((dx, yy, dz) => (yy >= WAIST && Math.abs(yy - 4 - Math.sin(dx * 0.9 + dz * 0.5) * 0.8) < 0.45 ? topD : null)); }
   // ---- tops
   const t = L.top;
   if (t === 'tee') {
@@ -827,6 +850,15 @@ function buildBack(m, kit, spin) {
     m.ellipsoid(cx, hy + 6, z0, 2.4, 1.6, 0.8, fish); m.set(cx + 3, hy + 6, z0, fish); m.set(cx - 1, hy + 6.6, z0 - 0.4, fishW);
     m.line(x0 + 1.5, y0 + 1, z0 + 1, x0 + 1.5, y0 + 5, z0, weed, 0.5);
     straps(KG(kit, '#2fb8e8'));
+  } else if (id === 'globe') {
+    const sea = kit.glass('#4cd83a', { ga: 215 }), land = KG(kit, '#f4fff0'), ring = KG(kit, '#ffffff', { spec: 1.6 }), base = KG(kit, '#2fb8e8');
+    const gx = cx, gy = hy + 7.4, gz = bz - 6.4, r = 5.4;
+    m.sphere(gx, gy, gz, r, (x, y, z) => { const nx = (x - gx) / r, ny = (y - gy) / r, nz = (z - gz) / r; const s = Math.sin(nx * 3.1 + 1.2) * Math.sin(ny * 4.3 + 0.4) + 0.8 * Math.sin(nz * 3.7 + nx * 2.1); return s > 0.42 ? land : sea; });
+    for (let a = -0.4; a < Math.PI + 0.4; a += 0.08) m.set(gx + Math.cos(a) * (r + 1.2), gy + Math.sin(a) * (r + 1.2), gz, ring);
+    m.box(gx - 2, hy + 0.6, gz - 1.5, gx + 2, hy + 1.6, gz + 1.5, base);
+    m.line(gx, hy + 1.6, gz, gx, gy - r - 1, gz, ring, 0.5);
+    m.box(cx - 2.5, hy + 2, bz - 1.4, cx + 2.5, hy + 7, bz - 0.4, base);
+    straps(KG(kit, '#2fb8e8'));
   } else if (id === 'cape') {
     const sky = K(kit, '#59c3ff'), cloud = K(kit, '#ffffff', { jitter: 0 }), clasp = KG(kit, '#ffd23a');
     shape(m, cx - 8, hy - 6, bz - 4, cx + 8, hy + 9.4, bz, (x, y, z) => {
@@ -846,7 +878,7 @@ const LEG = { thigh: 4.0 };
 function buildUpper(kit) {
   const tp = topCol(kit), C = kit.c;
   const m = kit.model(8, 8, 8);
-  const sleeve = tp.sleeve === 'none' ? C.skin : tp.gloss ? KG(kit, tp.col) : K(kit, tp.col);
+  const sleeve = tp.sleeve === 'none' ? C.skin : tp.glass ? kit.glass(tp.col, { ga: 205 }) : tp.gloss ? KG(kit, tp.col) : K(kit, tp.col);
   m.line(4, 5.6, 4, 4, 2.6, 4, sleeve, 1.55);
   if (tp.sleeve === 'short') { m.paint(() => m.box(0, 0, 0, 7, 3.4, 7, C.skin)); m.paint(() => m.box(0, 3.4, 0, 7, 4.0, 7, K(kit, shade(tp.col, -0.14)))); }
   if (kit.look.top === 'puffer') m.line(4, 5.4, 4, 4, 3, 4, sleeve, 1.9);
@@ -860,9 +892,9 @@ function buildFore(kit) {
   const m = kit.model(10, 11, 10);
   const px = 5, py = 8.4, pz = 5;
   const long = tp.sleeve === 'long';
-  const sleeve = long ? (tp.gloss ? KG(kit, tp.col) : K(kit, tp.col)) : C.skin;
+  const sleeve = long ? (tp.glass ? kit.glass(tp.col, { ga: 205 }) : tp.gloss ? KG(kit, tp.col) : K(kit, tp.col)) : C.skin;
   m.line(px, py, pz, px, py - 2.2, pz, sleeve, long && kit.look.top === 'puffer' ? 1.8 : 1.4);
-  if (long) m.paint(() => m.box(0, py - 2.8, 0, 9, py - 2.0, 9, K(kit, shade(tp.col, -0.18))));
+  if (long) m.paint(() => m.box(0, py - 2.8, 0, 9, py - 2.0, 9, tp.glass ? kit.glass('#9ae8ff', { ga: 215 }) : K(kit, shade(tp.col, -0.18))));
   const hy = py - ARM.fore; // hand centre
   const H = (hex, o) => handCol(kit, hex, o);
   if (g === 'boxing') {
@@ -886,7 +918,7 @@ function buildFore(kit) {
 function buildThigh(kit) {
   const bt = botCol(kit), C = kit.c;
   const m = kit.model(8, 8, 8);
-  const pants = K(kit, bt.col);
+  const pants = bt.glass ? kit.glass(bt.col, { ga: 205 }) : K(kit, bt.col);
   m.line(4, 5.6, 4, 4, 2.0, 4, pants, 1.75);
   if (bt.len === 'short' || bt.len === 'skirt') m.paint(() => m.box(0, 0, 0, 7, bt.len === 'skirt' ? 5 : 3.4, 7, C.skin));
   if (kit.look.bottom === 'leggings') m.paint(() => m.box(0, 0, 0, 1 + 3.2, 7, 7, (x, y, z) => (x === 2 ? K(kit, '#ffffff', { jitter: 0 }) : null)));
@@ -897,7 +929,7 @@ function buildShin(kit) {
   const bt = botCol(kit), C = kit.c, s = kit.look.shoes;
   const m = kit.model(12, 9, 16);
   const px = 6, py = 4.6, pz = 5; // knee (ground = local y 0 when standing)
-  const leg = bt.len === 'long' ? K(kit, bt.col) : C.skin;
+  const leg = bt.len === 'long' ? (bt.glass ? kit.glass(bt.col, { ga: 205 }) : K(kit, bt.col)) : C.skin;
   m.line(px, py + 0.4, pz, px, 1.8, pz, leg, 1.55);
   if (kit.look.bottom === 'jeans') m.paint(() => m.box(0, 1.8, 0, 11, 2.6, 15, K(kit, '#8ab0e8')));
   const foot = (c, len = 3.6, w = 2.1, h = 2.2, sole = null) => {
@@ -908,6 +940,14 @@ function buildShin(kit) {
     const w = KG(kit, '#ffffff'), a = KG(kit, '#2fd3e8'), sole = K(kit, '#8be04a');
     foot(w, 3.8, 2.2, 2.3, sole);
     m.recolor((x, y, z, p) => (p === w && y === 1 && m.exposed(x, y, z) && Math.abs(x + 0.5 - px) > 1.4 && z < pz + 3 ? a : null));
+  } else if (s === 'hightops') {
+    const canvas = K(kit, '#f8f8f4', { jitter: 0.04 }), rub = KG(kit, '#ffffff'), stripe = K(kit, '#e8483a', { jitter: 0 }), stripe2 = K(kit, '#2a4a8a', { jitter: 0 }), lace = K(kit, '#ffffff', { jitter: 0 }), eyelet = KG(kit, '#9aa8b8', { spec: 1.4 });
+    m.cylinder(px, pz, 1, 5.0, 2.05, canvas);
+    m.cylinder(px, pz, 4.6, 5.2, 2.2, rub);
+    foot(canvas, 3.9, 2.25, 2.3);
+    m.recolor((x, y, z, p) => (y === 0 ? rub : y === 1 && m.exposed(x, y, z) ? (z > pz + 2.6 ? rub : (x + z) % 9 === 0 ? stripe2 : stripe) : null));
+    for (let y = 2; y <= 4; y++) { const z = frontZ(m, px, y); if (z > 0) { m.set(px, y, z, lace); m.set(px - 1, y, z, y % 2 ? eyelet : lace); m.set(px + 1, y, z, y % 2 ? lace : eyelet); } }
+    for (let z = pz + 1; z <= pz + 2; z++) { const yy = 3 - (z - pz - 1); m.set(px, yy, z + 1, lace); }
   } else if (s === 'boots') {
     const y = KG(kit, '#ffd23a'), cuff = KG(kit, '#ffe88a'), sole = K(kit, '#5a7aa0');
     m.cylinder(px, pz, 1, 3.8, 1.95, y); m.cylinder(px, pz, 3.6, 4.2, 2.15, cuff);
@@ -958,8 +998,8 @@ function buildRod(kit, bend, crank) {
   m.line(ax, gy + 5.6, az, ax, gy + 7.4, az, grip, 0.95);
   m.line(ax, gy + 2.6, az, ax, gy + 5.6, az, reelC, 0.8);
   m.line(ax, gy + 4, az, ax, gy + 4, az + 2, reelC, 0.55);
-  m.cylinder(gy + 4, az + 3.2, ax - 1.8, ax + 1.4, 2.1, reelC, 'x');
-  m.cylinder(gy + 4, az + 3.2, ax - 1.2, ax + 0.8, 1.3, K(kit, '#ffffff', { jitter: 0 }), 'x');
+  m.cylinder(gy + 4, az + 3.2, ax - 1.4, ax + 1.2, 1.7, reelC, 'x');
+  m.cylinder(gy + 4, az + 3.2, ax - 0.9, ax + 0.7, 1.0, K(kit, '#ffffff', { jitter: 0 }), 'x');
   const ca = (crank / 8) * TAU;
   const kx = ax + 2.4, ky = gy + 4 + Math.sin(ca) * 2.1, kz = az + 3.2 + Math.cos(ca) * 2.1;
   m.line(ax + 1.8, gy + 4, az + 3.2, kx, ky, kz, reelC, 0.45);
@@ -993,3 +1033,1066 @@ function buildRod(kit, bend, crank) {
   } else { m.set(Math.floor(tp[0]), Math.floor(tp[1]), Math.floor(tp[2]), tip); m.set(Math.floor(tp[0]), Math.floor(tp[1]) - 1, Math.floor(tp[2]), tip); }
   return { m, pivot: [ax, gy, az], anchors: { tip: tipA, knob: [kx + 0.9, ky, kz], fore: [ax, gy + 6.4, az] } };
 }
+
+// ====================================================================== poses
+
+const HIP_Y = 8.9;
+const J = { hipL: [2.2, -0.3, 0], hipR: [-2.2, -0.3, 0], knee: [0, -LEG.thigh, 0], shL: [4.9, 6.9, 0], shR: [-4.9, 6.9, 0], elbow: [0, -ARM.upper, 0], neck: [0, 9.3, 0] };
+// Pose hand targets are authored in the old (taller) rig's units; map them onto the bubble person's short arms.
+const OLD_SH = { shL: [7.3, 11.4, -0.2], shR: [-7.3, 11.4, -0.2] };
+const AK = 0.7;
+const conv = (tg, side) => add(J[side], scl(sub(tg, OLD_SH[side]), AK));
+
+const BASE_POSE = {
+  off: [0, 0, 0], hips: [0, 0, 0], spine: [0, 0, 0], neck: [0, 0, 0],
+  hipL: [0, 0, 2], knL: [0, 0, 0], hipR: [0, 0, -2], knR: [0, 0, 0],
+  shL: [4, 0, 14], elL: [-14, 0, 0], shR: [4, 0, -14], elR: [-14, 0, 0],
+  handL: null, handR: null, rod: { pitch: 55, yaw: -40, bend: 0, crank: 0 }, noRod: false,
+  mouth: 'rest', lid: 0, squint: 0, gaze: [0, 0], wobble: 0, eyeMode: null,
+};
+const P = (o) => ({ ...BASE_POSE, ...o, rod: { ...BASE_POSE.rod, ...(o.rod || {}) } });
+const S = Math.sin;
+
+const POSES = {
+  idle: { n: 12, dur: 4.2, loop: true, fn: (u) => {
+    const b = S(u * TAU * 2), look = S(u * TAU);
+    return P({ off: [0, -0.15 + 0.15 * b, 0], spine: [1.5 * b, 0, 0], neck: [-2 + 2.5 * b, 18 * look, 4 * S(u * TAU + 1)],
+      handR: [-5.8, 8 + 0.3 * b, 6.2], rod: { pitch: 58 + 3 * b, yaw: -40 }, shL: [5, 0, 12 + 3 * b], elL: [-14, 0, 0], knL: [3 + 2 * b, 0, 0], knR: [3 + 2 * b, 0, 0], gaze: [0.5 * look, 0] });
+  } },
+  cast: { n: 8, dur: 0.75, loop: false, fn: (u, i) => {
+    const K2 = [
+      { r: 56, h: [-5.8, 8, 6.2], sp: 0, l: 10, m: 'rest' }, { r: 92, h: [-5.4, 13, 3.4], sp: -4, l: 30, m: 'rest' },
+      { r: 128, h: [-5.2, 16.5, 0.4], sp: -7, l: 45, m: 'grit' }, { r: 150, h: [-5.2, 17.5, -1.4], sp: -9, l: 55, m: 'grit' },
+      { r: 62, h: [-5.4, 15, 6.6], sp: 6, l: 20, m: 'open' }, { r: 24, h: [-5.6, 11, 8.4], sp: 11, l: 5, m: 'open' },
+      { r: 20, h: [-5.8, 10, 7.8], sp: 9, l: 8, m: 'rest' }, { r: 26, h: [-5.8, 9, 7], sp: 6, l: 10, m: 'rest' },
+    ][i];
+    return P({ spine: [K2.sp, -K2.sp * 0.8, 0], hips: [0, -K2.sp * 0.6, 0], handR: K2.h, rod: { pitch: K2.r, yaw: -30, bend: i === 4 ? -0.35 : i === 5 ? 0.25 : 0 }, shL: [-K2.sp * 3, 0, K2.l + 8], elL: [-20, 0, 0], neck: [-K2.sp * 0.6, 0, 0],
+      hipL: [i >= 4 ? -12 : 4, 0, 2], hipR: [i >= 4 ? 8 : -6, 0, -2], knL: [i >= 4 ? 10 : 2, 0, 0], knR: [i >= 4 ? 6 : 12, 0, 0], mouth: K2.m, squint: i === 2 || i === 3 ? 0.3 : 0 });
+  } },
+  reel: { n: 8, dur: 0.55, loop: true, fn: (u, i) => {
+    const c = S(u * TAU);
+    return P({ off: [0, -0.2 + 0.2 * c, 0], spine: [5, 0, 0], neck: [-4 + 2 * c, -6, 0], handR: [-5.6, 9.4, 6.8], handL: 'knob', rod: { pitch: 38, yaw: -38, crank: i }, knL: [6, 0, 0], knR: [6, 0, 0], squint: 0.15, gaze: [0.6, 0.35] });
+  } },
+  pull: { n: 6, dur: 0.9, loop: true, fn: (u) => {
+    const w = S(u * TAU), w2 = S(u * TAU * 2);
+    return P({ off: [0, -0.9, -1.2], spine: [-15 - 3 * w, 0, 2 * w2], neck: [8, 0, 3 * w2], hipL: [-26, 0, 4], knL: [18, 0, 0], hipR: [12, 0, -4], knR: [14, 0, 0],
+      handR: [-4.8, 12.4, 5.4], handL: 'fore', rod: { pitch: 72 + 4 * w, yaw: -40, bend: 0.65 + 0.2 * w }, mouth: 'grit', squint: 0.35, wobble: 1, gaze: [0.7, -0.2] });
+  } },
+  yank: { n: 8, dur: 0.6, loop: false, fn: (u, i) => {
+    const K2 = [
+      { sp: 10, off: [0, -1.4, 0.4], hl: -30, kl: 40, hr: -24, kr: 38, r: 30, b: 0.5, h: [-5, 9, 7.2], m: 'grit' },
+      { sp: 14, off: [0, -2, 0.8], hl: -36, kl: 52, hr: -30, kr: 48, r: 24, b: 0.7, h: [-5, 8.6, 7.4], m: 'grit' },
+      { sp: -8, off: [0, 0.2, -0.4], hl: -20, kl: 16, hr: 6, kr: 10, r: 72, b: 0.9, h: [-4.6, 14.4, 4.6], m: 'open' },
+      { sp: -28, off: [0, 1.6, -1.6], hl: -48, kl: 22, hr: 14, kr: 6, r: 90, b: 1.0, h: [-4.4, 17, 2.6], m: 'open' },
+      { sp: -25, off: [0, 1.0, -1.5], hl: -40, kl: 18, hr: 12, kr: 6, r: 88, b: 0.9, h: [-4.4, 16.6, 3], m: 'open' },
+      { sp: -16, off: [0, -0.2, -1.1], hl: -28, kl: 16, hr: 12, kr: 12, r: 80, b: 0.75, h: [-4.6, 14, 4.4], m: 'grit' },
+      { sp: -14, off: [0, -0.7, -1.1], hl: -26, kl: 18, hr: 12, kr: 14, r: 76, b: 0.65, h: [-4.8, 12.8, 5.2], m: 'grit' },
+      { sp: -15, off: [0, -0.9, -1.2], hl: -26, kl: 18, hr: 12, kr: 14, r: 72, b: 0.65, h: [-4.8, 12.4, 5.4], m: 'grit' },
+    ][i];
+    return P({ off: K2.off, spine: [K2.sp, 0, 0], neck: [i === 3 || i === 4 ? -10 : 4, 0, 0], hipL: [K2.hl, 0, 4], knL: [K2.kl, 0, 0], hipR: [K2.hr, 0, -4], knR: [K2.kr, 0, 0],
+      handR: K2.h, handL: 'fore', rod: { pitch: K2.r, yaw: -40, bend: K2.b }, mouth: K2.m, squint: i >= 2 && i <= 4 ? 0.7 : 0.3, gaze: [0.6, -0.3] });
+  } },
+  hold: { n: 8, dur: 1.6, loop: true, fn: (u) => {
+    const b = Math.abs(S(u * TAU)), sw = S(u * TAU);
+    return P({ off: [0, 0.5 * b, 0], spine: [-5, 0, 2 * sw], neck: [-8, 8 * sw, 3 * sw], handL: [4.8, 9.6 + 0.6 * b, 8.8], handR: [-4.8, 9.6 + 0.6 * b, 8.8], noRod: true,
+      mouth: 'grin', knL: [4 * b, 0, 0], knR: [4 * b, 0, 0], gaze: [0, 0.3] });
+  } },
+  cheer: { n: 8, dur: 0.72, loop: true, fn: (u, i) => {
+    const j = S(u * Math.PI), f = S(u * TAU * 2), g = S(u * TAU * 2 + 2);
+    return P({ off: [0, 6 * j, 0], spine: [-6 * j, 0, 4 * f], neck: [-10, 10 * g, 8 * f], hipL: [-40 * j, 0, 10], knL: [80 * j, 0, 0], hipR: [-15 * j, 0, -14 * j], knR: [55 * j, 0, 0],
+      shL: [0, -28, 140 + 20 * f], elL: [0, 0, 20 + 30 * g], shR: [0, 24, -140 - 20 * g], elR: [0, 0, -20 - 30 * f], rod: { pitch: 96 + 14 * f, yaw: -60, bend: -0.3 * f },
+      mouth: 'open', gaze: [0.4 * f, -0.4], wobble: 1, eyeMode: i % 4 < 2 ? 'happy' : null });
+  } },
+  sad: { n: 8, dur: 3.2, loop: true, fn: (u) => {
+    const s = S(u * TAU);
+    return P({ off: [0, -0.6, 0], spine: [13, 3 * s, 0], neck: [18, 4 * s, 5 * s], shL: [10, 0, 6], elL: [-4, 0, 0], handR: [-6.4, 4.4, 3.4], rod: { pitch: -18, yaw: -48 },
+      knL: [8, 0, 0], knR: [8, 0, 0], mouth: 'frown', lid: 0.4, gaze: [0.2, 0.75] });
+  } },
+  sit: { n: 8, dur: 2.8, loop: true, fn: (u) => {
+    const s = S(u * TAU), h = S(u * TAU * 0.5 + 0.4);
+    return P({ off: [0, -HIP_Y + 2.0, 0], offAbs: true, hipL: [-88, 0, 6], knL: [84 + 22 * s, 0, 0], hipR: [-86, 0, -6], knR: [84 - 22 * s, 0, 0], spine: [-4 + s, 0, 0], neck: [-3, 14 * h, 3 * s],
+      handR: [-5.8, 7.6, 6.4], rod: { pitch: 34, yaw: -40 }, handL: [4.8, 2, 6.8], gaze: [0.4 * h, 0.1] });
+  } },
+  show: { n: 12, dur: 4.4, loop: true, fn: (u) => {
+    const b = S(u * TAU * 2), look = S(u * TAU);
+    return P({ off: [0, -0.15 + 0.15 * b, 0], spine: [1.2 * b, 0, 0], neck: [-3 + 2 * b, 12 * look, 3 * S(u * TAU + 1)],
+      handR: [-9.4, 6.4 + 0.3 * b, 2.2], rod: { pitch: 66, yaw: -96 }, shL: [2, -8, 18 + 4 * b], elL: [-10, 0, 0], knL: [2 + 2 * b, 0, 0], knR: [2 + 2 * b, 0, 0], gaze: [0.4 * look, 0.1] });
+  } },
+  stand: { n: 8, dur: 3.6, loop: true, fn: (u) => {
+    const b = S(u * TAU);
+    return P({ noRod: true, off: [0, -0.12 + 0.12 * b, 0], shL: [2, -10, 18 + 3 * b], elL: [-12, 0, 0], shR: [2, 10, -18 - 3 * b], elR: [-12, 0, 0], neck: [-3 + 1.5 * b, 6 * S(u * TAU + 1), 0], gaze: [0.2, 0] });
+  } },
+  wave: { n: 8, dur: 0.9, loop: true, fn: (u) => {
+    const w = S(u * TAU), b = Math.abs(S(u * TAU));
+    return P({ off: [0, 0.4 * b, 0], spine: [-2, -6, -3 * w], neck: [-6, -10, 8 * w], shL: [0, -34, 150 + 5 * w], elL: [0, 0, 40 + 38 * w], handR: [-5.8, 8.2, 6.2], rod: { pitch: 62, yaw: -40 },
+      mouth: 'grin', gaze: [-0.2, -0.1] });
+  } },
+  chat: { n: 8, dur: 2.4, loop: true, fn: (u) => {
+    const a = S(u * TAU), b = S(u * TAU * 2 + 1);
+    return P({ noRod: true, off: [0, 0.1 * b, 0], spine: [-1, 6 * a, 0], neck: [-4, 10 * a, 5 * b],
+      handL: [7.6 + 1.2 * a, 8.2 + 1.4 * b, 7], handR: [-8 - 0.8 * b, 7 + 1.6 * a, 6.4], gaze: [0.3 * a, 0] });
+  } },
+  think: { n: 8, dur: 3, loop: true, fn: (u) => {
+    const a = S(u * TAU);
+    return P({ noRod: true, spine: [-2, 0, 2 * a], neck: [-10, 14, 8 + 3 * a], handL: [2.6, 12.6, 7.8], shR: [6, 0, -18], elR: [-80, 0, 0], gaze: [0.5, -0.7], lid: 0.15, mouth: 'smirk' });
+  } },
+  dance: { n: 8, dur: 0.9, loop: true, fn: (u, i) => {
+    const s = S(u * TAU), c = Math.cos(u * TAU), j = Math.abs(S(u * TAU * 2));
+    return P({ noRod: true, off: [s * 1.6, 1.4 * j, 0], hips: [0, 20 * s, 8 * s], spine: [0, -10 * s, -10 * s], neck: [-4, 16 * s, -12 * s],
+      shL: [0, -20, 120 + 40 * c], elL: [0, 0, 60 * s], shR: [0, 20, -60 + 40 * s], elR: [0, 0, -70 * c], hipL: [-24 * Math.max(0, s), 0, 6], knL: [40 * Math.max(0, s), 0, 0], hipR: [-24 * Math.max(0, -s), 0, -6], knR: [40 * Math.max(0, -s), 0, 0],
+      mouth: 'open', eyeMode: i % 2 ? 'happy' : null });
+  } },
+  flex: { n: 8, dur: 1.4, loop: true, fn: (u) => {
+    const s = 0.5 + 0.5 * S(u * TAU);
+    return P({ noRod: true, off: [0, 0.3 * s, 0], spine: [-4, 0, 0], neck: [-8, 0, 0], shL: [0, 0, 80], elL: [0, 0, 70 + 30 * s], shR: [0, 0, -80], elR: [0, 0, -70 - 30 * s], hipL: [0, 0, 10], hipR: [0, 0, -10],
+      mouth: 'grin', squint: 0.25 * s, eyeMode: s > 0.6 ? 'happy' : null });
+  } },
+  laugh: { n: 8, dur: 0.6, loop: true, fn: (u) => {
+    const s = Math.abs(S(u * TAU));
+    return P({ noRod: true, off: [0, 0.6 * s, 0], spine: [8 * s - 4, 0, 0], neck: [-14 + 10 * s, 0, 4 * S(u * TAU * 2)], handL: [3.6, 6, 7.4], handR: [-3.6, 6.2, 7.4],
+      knL: [8 * s, 0, 0], knR: [8 * s, 0, 0], mouth: 'open', eyeMode: 'happy' });
+  } },
+};
+export const POSE_NAMES = ['idle', 'cast', 'reel', 'pull', 'yank', 'hold', 'cheer', 'sad', 'sit', 'wave', 'dance', 'flex', 'laugh', 'chat', 'think'];
+
+function poseFrame(pose, t) {
+  const pd = POSES[pose] || POSES.idle;
+  const k = (t || 0) / pd.dur;
+  return pd.loop ? Math.floor((k - Math.floor(k)) * pd.n) % pd.n : clamp(Math.floor(k * pd.n), 0, pd.n - 1);
+}
+
+function ik2(Sh, Tg, a, b, hint) {
+  let d = sub(Tg, Sh);
+  let L = Math.hypot(...d);
+  const maxL = a + b - 0.08, minL = Math.abs(a - b) + 0.3;
+  if (L > maxL) { d = scl(d, maxL / L); L = maxL; } else if (L < minL) { d = scl(norm(d), minL); L = minL; }
+  const dn = scl(d, 1 / L);
+  const x = (a * a - b * b + L * L) / (2 * L), h = Math.sqrt(Math.max(0, a * a - x * x));
+  let hp = sub(hint, scl(dn, dot(hint, dn)));
+  hp = Math.hypot(...hp) < 1e-4 ? [1, 0, 0] : norm(hp);
+  return { E: add(Sh, add(scl(dn, x), scl(hp, h))), T: add(Sh, d) };
+}
+
+function solve(kit, p, fi, hideRod) {
+  const items = [];
+  const at = (name, part, W) => { if (part) items.push({ name, part, W }); };
+  const place = (part, Mw) => mul(Mw, Tr(-part.pivot[0], -part.pivot[1], -part.pivot[2]));
+  const off = p.offAbs ? p.off : scl(p.off, 0.75);
+  const hips = mul(Tr(off[0], HIP_Y + off[1], off[2]), Ro(p.hips));
+  const spine = mul(hips, Ro(p.spine));
+  const bodyR = hips.R;
+  const toWorld = (v) => ap(spine, v);
+  const thigh = kit.part('thigh', () => buildThigh(kit)), shin = kit.part('shin', () => buildShin(kit));
+  for (const [hipJ, hr, kr] of [[J.hipL, p.hipL, p.knL], [J.hipR, p.hipR, p.knR]]) {
+    const Mt = mul(hips, mul(Tr(...hipJ), Ro(hr)));
+    const Mk = mul(Mt, mul(Tr(...J.knee), Ro(kr)));
+    at('thigh', thigh, place(thigh, Mt));
+    at('shin', shin, place(shin, Mk));
+  }
+  const spin = kit.look.back === 'turbine' ? fi % 3 : 0;
+  const torso = kit.part('torso:' + spin, () => buildTorso(kit, spin));
+  at('torso', torso, place(torso, spine));
+  const head = kit.part('head', () => buildHead(kit));
+  const Mh = mul(spine, mul(Tr(...J.neck), Ro(p.neck)));
+  const Wh = place(head, Mh);
+  at('head', head, Wh);
+  const hspin = kit.look.hat === 'propeller' ? fi % 2 : 0;
+  const hat = kit.look.hat === 'none' ? null : kit.part('hat:' + hspin, () => buildHat(kit, hspin));
+  let hatTop = null;
+  if (hat && hat.b) {
+    const seat = mul(Wh, mul(Tr(...HAT_SEAT), Ro([HAT_TILT[kit.look.hat] || 0, 0, 0])));
+    at('hat', hat, mul(seat, Tr(-hat.pivot[0], -hat.pivot[1], -hat.pivot[2])));
+    hatTop = ap(seat, [0, hat.b.y1 + 1 - hat.pivot[1], 0]);
+  }
+  const upper = kit.part('upper', () => buildUpper(kit)), fore = kit.part('fore', () => buildFore(kit));
+  const gripLocal = sub(fore.anchors.grip, fore.pivot);
+  const armFK = (shJ, sr, er) => { const Mu = mul(spine, mul(Tr(...shJ), Ro(sr))); return { Mu, Mf: mul(Mu, mul(Tr(...J.elbow), Ro(er))) }; };
+  const armIK = (shJ, target, side) => {
+    const Sw = toWorld(shJ);
+    const hint = mv(spine.R, [side * 0.9, -0.5, -0.65]);
+    const { E, T } = ik2(Sw, target, ARM.upper, Math.hypot(...gripLocal), hint);
+    const fwd = mv(spine.R, [0, 0, 1]);
+    return { Mu: M(alignY(sub(Sw, E), fwd), Sw), Mf: M(alignY(sub(E, T), fwd), E) };
+  };
+  const R = p.handR ? armIK(J.shR, toWorld(conv(p.handR, 'shR')), -1) : armFK(J.shR, p.shR, p.elR);
+  at('upper', upper, place(upper, R.Mu));
+  at('fore', fore, place(fore, R.Mf));
+  const gripR = ap(R.Mf, gripLocal);
+  let rod = null, Wr = null, rodTip = gripR;
+  const noRod = p.noRod || hideRod || kit.look.rod === 'none';
+  if (!noRod) {
+    const rp = p.rod;
+    const pr = rp.pitch * DEG, yr = rp.yaw * DEG;
+    const dir = mv(bodyR, [Math.sin(yr) * Math.cos(pr), Math.sin(pr), Math.cos(yr) * Math.cos(pr)]);
+    const bendB = Math.round(clamp(rp.bend, -1, 1) * 4) / 4;
+    rod = kit.part(`rod:${bendB}:${rp.crank % 8}`, () => buildRod(kit, bendB, rp.crank % 8));
+    Wr = place(rod, M(alignY(dir, mv(bodyR, [0, -1, 0.2])), gripR));
+    at('rod', rod, Wr);
+    rodTip = ap(Wr, rod.anchors.tip);
+  }
+  let target = p.handL;
+  if (target === 'knob') target = rod ? ap(Wr, rod.anchors.knob) : toWorld(conv([2, 8.6, 7.4], 'shL'));
+  else if (target === 'fore') target = rod ? ap(Wr, rod.anchors.fore) : toWorld(conv([2, 10.6, 7], 'shL'));
+  else if (Array.isArray(target)) target = toWorld(conv(target, 'shL'));
+  else target = null;
+  const Lh = target ? armIK(J.shL, target, 1) : armFK(J.shL, p.shL, p.elL);
+  at('upper', upper, place(upper, Lh.Mu));
+  at('fore', fore, place(fore, Lh.Mf));
+  const gripL = ap(Lh.Mf, gripLocal);
+  const center = ap(Wh, head.anchors.center);
+  const top = hatTop || ap(Wh, head.anchors.top);
+  return {
+    items, head: { C: center, R: head.R, Rm: Wh.R },
+    anchors: { rodTip, handR: gripR, handL: gripL, hands: noRod ? scl(add(gripR, gripL), 0.5) : gripR, head: top, mouth: ap(Wh, add(head.anchors.center, [0, -0.3 * HEAD.R, 0.95 * HEAD.R])) },
+  };
+}
+
+// ====================================================================== composing
+
+function stamp(dst, part, W, gmin, mx) {
+  const src = part.m, b = part.b;
+  if (!b) return;
+  const R = W.R, t = W.t;
+  const toGrid = (w) => [mx * w[0] - gmin[0], w[1] - gmin[1], w[2] - gmin[2]];
+  let lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < 8; i++) {
+    const g = toGrid(ap(W, [i & 1 ? b.x1 + 1 : b.x0, i & 2 ? b.y1 + 1 : b.y0, i & 4 ? b.z1 + 1 : b.z0]));
+    for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], g[k]); hi[k] = Math.max(hi[k], g[k]); }
+  }
+  const { nx: snx, ny: sny, nz: snz, data: sd } = src;
+  const x0 = Math.floor(lo[0]), x1 = Math.ceil(hi[0]);
+  const ix = R[0] * mx, iy = R[1] * mx, iz = R[2] * mx;
+  for (let y = Math.floor(lo[1]); y <= Math.ceil(hi[1]); y++) for (let z = Math.floor(lo[2]); z <= Math.ceil(hi[2]); z++) {
+    const wx = mx * (x0 + 0.5 + gmin[0]) - t[0], wy = y + 0.5 + gmin[1] - t[1], wz = z + 0.5 + gmin[2] - t[2];
+    let qx = R[0] * wx + R[3] * wy + R[6] * wz, qy = R[1] * wx + R[4] * wy + R[7] * wz, qz = R[2] * wx + R[5] * wy + R[8] * wz;
+    for (let x = x0; x <= x1; x++, qx += ix, qy += iy, qz += iz) {
+      if (qx < 0 || qy < 0 || qz < 0 || qx >= snx || qy >= sny || qz >= snz) continue;
+      const v = sd[(qx | 0) + snx * ((qy | 0) + sny * (qz | 0))];
+      if (v) dst.set(x, y, z, v);
+    }
+  }
+  for (let z = b.z0; z <= b.z1; z++) for (let y = b.y0; y <= b.y1; y++) for (let x = b.x0; x <= b.x1; x++) {
+    const v = sd[x + snx * (y + sny * z)];
+    if (!v) continue;
+    const g = toGrid(ap(W, [x + 0.5, y + 0.5, z + 0.5]));
+    const gx = Math.floor(g[0]), gy = Math.floor(g[1]), gz = Math.floor(g[2]);
+    if (!dst.get(gx, gy, gz)) dst.set(gx, gy, gz, v);
+  }
+}
+
+function compose(kit, items, mx) {
+  let lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  for (const { part, W } of items) {
+    const b = part.b;
+    if (!b) continue;
+    for (let i = 0; i < 8; i++) {
+      const w = ap(W, [i & 1 ? b.x1 + 1 : b.x0, i & 2 ? b.y1 + 1 : b.y0, i & 4 ? b.z1 + 1 : b.z0]);
+      const g = [mx * w[0], w[1], w[2]];
+      for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], g[k]); hi[k] = Math.max(hi[k], g[k]); }
+    }
+  }
+  const gmin = lo.map((v) => Math.floor(v) - 1);
+  const m = new VoxelModel(Math.ceil(hi[0]) - gmin[0] + 2, Math.ceil(hi[1]) - gmin[1] + 2, Math.ceil(hi[2]) - gmin[2] + 2);
+  m.palette = kit.pal;
+  for (const { part, W } of items) stamp(m, part, W, gmin, mx);
+  return { m, gmin };
+}
+
+// ====================================================================== bubble shading + face mapping (shared with npcs.js)
+
+// Camera basis used by renderVoxels for (yaw, pitch) in degrees: screen-right R, screen-up U, toward-camera C (grid space).
+export function cameraBasis(yawDeg, pitchDeg) {
+  const y = yawDeg * DEG, p = pitchDeg * DEG, cy = Math.cos(y), sy = Math.sin(y), cp = Math.cos(p), sp = Math.sin(p);
+  return { R: [cy, 0, -sy], U: [-sp * sy, cp, -sp * cy], C: [sy * cp, sp, cy * cp] };
+}
+
+// Face features on a sphere: centre C (world), radius R, rotation Rm (world from head-local), feats {name: {d, size}}.
+// toGrid(world point) -> grid point; proj(grid point) -> screen. Returns {name: {x, y, ax, ay, bx, by, z}} where
+// (a, b) are the screen vectors of the feature's local right/down tangents (length = size voxels), z = facing (+ toward us).
+export function faceFeatures(toGrid, proj, C, R, Rm, feats, cam) {
+  const out = {};
+  const right = mv(Rm, [1, 0, 0]), up = mv(Rm, [0, 1, 0]);
+  for (const [k, f] of Object.entries(feats)) {
+    const dw = norm(mv(Rm, f.d));
+    const P0 = add(C, scl(dw, R * (f.lift ?? 1)));
+    const t1 = norm(sub(right, scl(dw, dot(right, dw))));
+    const t2 = norm(sub(scl(dw, dot(up, dw)), up));
+    const g0 = toGrid(P0), s0 = proj(g0);
+    const s1 = proj(toGrid(add(P0, scl(t1, f.size)))), s2 = proj(toGrid(add(P0, scl(t2, f.size))));
+    const gd = sub(toGrid(add(P0, dw)), g0);
+    out[k] = { x: s0[0], y: s0[1], ax: s1[0] - s0[0], ay: s1[1] - s0[1], bx: s2[0] - s0[0], by: s2[1] - s0[1], z: dot(gd, cam.C) };
+  }
+  return out;
+}
+
+const FEATS = {
+  eyeL: { d: [0.37, 0.1, 0.92], size: 3.3 }, eyeR: { d: [-0.37, 0.1, 0.92], size: 3.3 },
+  mouth: { d: [0, -0.33, 0.94], size: 2.5 }, cheekL: { d: [0.6, -0.16, 0.78], size: 1.9 }, cheekR: { d: [-0.6, -0.16, 0.78], size: 1.9 },
+  mid: { d: [0, 0.1, 1], size: 1 },
+};
+
+const fract = (v) => v - Math.floor(v);
+// Re-shade bubble pixels (palette entries flagged bub) and glass pixels in place; returns the bubble mask.
+// head = {hc:[x,y], hr, Rinv (head-local from world), mx, cam} for the bubble's own patterns.
+export function shadeBubble(r, isBub, isGlass, T, head) {
+  const W = r.w, H = r.h, ids = r.ids;
+  const g = ctxOf(r.canvas);
+  const img = g.getImageData(0, 0, W, H), d = img.data;
+  const mask = new Uint8Array(W * H);
+  const [tr, tg, tb] = hexToRgb(T.tint), [dr, dg, db] = hexToRgb(T.deep);
+  const { hc, hr, Rinv, mx, cam } = head;
+  const sp = T.special;
+  const c30 = Math.cos(-0.62), s30 = Math.sin(-0.62);
+  let n = 0;
+  for (let p = 0; p < W * H; p++) {
+    const id = ids[p];
+    const i = p * 4;
+    const ga = isGlass[id];
+    if (ga) {
+      d[i] = lerp(d[i], 235, 0.18); d[i + 1] = lerp(d[i + 1], 252, 0.18); d[i + 2] = lerp(d[i + 2], 255, 0.18);
+      d[i + 3] = ga;
+      continue;
+    }
+    if (!isBub[id]) continue;
+    mask[p] = 1; n++;
+    const x = p % W, y = (p / W) | 0;
+    const u = (x + 0.5 - hc[0]) / hr, v = (y + 0.5 - hc[1]) / hr;
+    const dd = Math.min(1, Math.sqrt(u * u + v * v));
+    const L = (d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11) / 255;
+    const rim = smoothstep(0.42, 1.0, dd);
+    const nz = Math.sqrt(Math.max(0, 1 - dd * dd));
+    // surface normal in head-local space (for patterns that stick to the head)
+    const gx = cam.R[0] * u - cam.U[0] * v + cam.C[0] * nz, gy = cam.R[1] * u - cam.U[1] * v + cam.C[1] * nz, gz = cam.R[2] * u - cam.U[2] * v + cam.C[2] * nz;
+    const wn = [mx * gx, gy, gz];
+    let cr, cg, cb, al;
+    const k = 0.8 + 0.55 * (L - 0.55);
+    if (sp === 'chrome') {
+      const up = wn[1];
+      if (up > 0.04) { const t = clamp01(up * 1.3); cr = lerp(190, 40, t); cg = lerp(236, 140, t); cb = lerp(255, 230, t); }
+      else if (up > -0.06) { cr = 250; cg = 255; cb = 255; }
+      else { const t = clamp01(-up * 1.6); cr = lerp(120, 40, t); cg = lerp(220, 130, t); cb = lerp(70, 40, t); }
+      cr *= 0.75 + 0.45 * L; cg *= 0.75 + 0.45 * L; cb *= 0.75 + 0.45 * L;
+      al = 1;
+    } else if (sp === 'gold') {
+      const t = clamp01(L * 1.1 - rim * 0.35);
+      cr = lerp(170, 255, t); cg = lerp(110, 226, t); cb = lerp(10, 120, t); al = 1;
+    } else {
+      cr = tr * k; cg = tg * k; cb = tb * k;
+      let hue = T.hue + T.span * dd * dd + 35 * Math.sin(Math.atan2(v, u) * 2 + 1.3);
+      let mixI = T.irid * (0.1 + 0.9 * rim);
+      if (sp === 'aurora') { hue = 130 + 140 * (0.5 + 0.5 * Math.sin(u * 3 + v * 6)); mixI = Math.max(mixI, 0.45); }
+      const [ir, ig, ib] = hslToRgb(hue, 0.95, 0.64);
+      cr = cr * (1 - mixI) + ir * mixI; cg = cg * (1 - mixI) + ig * mixI; cb = cb * (1 - mixI) + ib * mixI;
+      al = T.alpha + (1 - T.alpha) * Math.pow(rim, 1.3) * 0.88;
+      if (sp === 'stars') {
+        const hs = hash3(Math.floor(wn[0] * 26 + 40), Math.floor(wn[1] * 26 + 40), Math.floor(wn[2] * 26 + 40), 11);
+        const neb = 0.5 + 0.5 * Math.sin(wn[0] * 4 + wn[1] * 3);
+        cr = lerp(cr, 150, neb * 0.3); cb = lerp(cb, 200, neb * 0.3);
+        if (hs < 0.05) { cr = 255; cg = 255; cb = 240; al = 1; }
+      } else if (sp === 'globe') {
+        const ln = Rinv ? mv(Rinv, wn) : wn;
+        const lat = Math.asin(clamp(ln[1], -1, 1)), lon = Math.atan2(ln[0], ln[2]);
+        const s = Math.sin(ln[0] * 3.1 + 1.2) * Math.sin(ln[1] * 4.3 + 0.4) + 0.8 * Math.sin(ln[2] * 3.7 + ln[0] * 2.1) + 0.3 * Math.sin(ln[1] * 9 + ln[2] * 6);
+        const grid = Math.abs(fract(lat / 0.35) - 0.5) > 0.44 || Math.abs(fract(lon / 0.42) - 0.5) > 0.45;
+        if (s > 0.42) { cr = 240 * k + 20; cg = 255 * k; cb = 236 * k; al = Math.max(al, 0.95); }
+        else if (grid) { cr = lerp(cr, 255, 0.5); cg = lerp(cg, 255, 0.5); cb = lerp(cb, 255, 0.5); al = Math.max(al, 0.75); }
+      }
+    }
+    // screen-fixed highlights: the glossy "window" up-left, a pin glint, rim light and bounce light
+    const hu = u + 0.4, hv = v + 0.47;
+    const ru = hu * c30 - hv * s30, rv = hu * s30 + hv * c30;
+    const win = (ru / 0.3) ** 2 + (rv / 0.165) ** 2;
+    let spec = win < 1 ? (win < 0.55 ? 0.96 : 0.7) : 0;
+    if ((u - 0.02) ** 2 + (v + 0.76) ** 2 < 0.0045) spec = Math.max(spec, 0.85);
+    if (dd > 0.8 && dd < 0.93 && v > 0.22 && u > -0.4) { spec = Math.max(spec, 0.42); al = Math.max(al, 0.75); }
+    if (dd > 0.87 && u < -0.15 && v < 0.2) spec = Math.max(spec, 0.32);
+    cr += (255 - cr) * spec; cg += (255 - cg) * spec; cb += (255 - cb) * spec;
+    al = Math.max(al, spec);
+    d[i] = cr; d[i + 1] = cg; d[i + 2] = cb; d[i + 3] = al * 255;
+  }
+  if (n) {
+    // the outline around the bubble becomes a coloured rim (deep tint) instead of near-black
+    for (let p = 0; p < W * H; p++) {
+      if (ids[p] || !d[p * 4 + 3]) continue;
+      const x = p % W;
+      if ((x > 0 && mask[p - 1]) || (x < W - 1 && mask[p + 1]) || (p >= W && mask[p - W]) || (p + W < W * H && mask[p + W])) {
+        const i = p * 4;
+        d[i] = dr; d[i + 1] = dg; d[i + 2] = db; d[i + 3] = 225;
+      }
+    }
+  }
+  g.putImageData(img, 0, 0);
+  return mask;
+}
+
+// ====================================================================== frame cache
+
+const BASE_VS = 1.6;      // px per voxel at scale 1
+const PITCH = 14;
+const FACE_YAW = 38;
+const YAW_STEP = 10;
+const MAX_FRAMES = 1400;
+const MAX_PIXELS = 9e6;
+let framePx = 0;
+const FRAMES = new Map();
+const FAMS = new Map();
+let budgetMs = 9, spent = 0, windowStart = 0, statBuilt = 0, statFallback = 0, statMs = 0;
+const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+function overBudget() {
+  const t = now();
+  if (t - windowStart > 30) { windowStart = t; spent = 0; }
+  return spent >= budgetMs;
+}
+export function setCharacterBudget(ms) { budgetMs = ms; }
+export const PROF = { solve: 0, compose: 0, render: 0, n: 0 };
+export function characterStats() { return { prof: PROF, frames: FRAMES.size, kits: KITS.size, built: statBuilt, fallbacks: statFallback, avgMs: statBuilt ? +(statMs / statBuilt).toFixed(2) : 0 }; }
+
+const RENDER = { ao: 1.0, edges: 0.7, sideEdges: 0.5, jitter: 0.08, depthThreshold: 2.4, glowRadius: 2 };
+
+// Render composed items, shade the bubble and map the face. Shared by poses and thumbnails.
+function renderComposite(kit, items, headSol, mx, yaw, pitch, vs) {
+  const { m, gmin } = compose(kit, items, mx);
+  const r = renderVoxels(m, { scale: vs, yaw, pitch, ...RENDER });
+  const toGrid = (w) => [mx * w[0] - gmin[0], w[1] - gmin[1], w[2] - gmin[2]];
+  const proj = (g) => r.project(g[0], g[1], g[2]);
+  const cam = cameraBasis(yaw, pitch);
+  let face = null;
+  if (headSol) {
+    const hc = proj(toGrid(headSol.C));
+    const Rm = headSol.Rm;
+    const Rinv = [Rm[0], Rm[3], Rm[6], Rm[1], Rm[4], Rm[7], Rm[2], Rm[5], Rm[8]];
+    const mask = shadeBubble(r, kit.isBub, kit.isGlass, kit.T, { hc, hr: headSol.R * vs, Rinv, mx, cam });
+    face = { feats: faceFeatures(toGrid, proj, headSol.C, headSol.R, Rm, FEATS, cam), mask: { d: mask, w: r.w, h: r.h }, hc, hr: headSol.R * vs };
+  } else if (kit.isGlass.some((v) => v)) shadeBubble(r, kit.isBub, kit.isGlass, kit.T, { hc: [0, 0], hr: 1, mx, cam });
+  return { r, m, toGrid, proj, face };
+}
+
+function buildFrame(kit, pose, fi, yaw, vs, mx, hideRod) {
+  const t0 = now();
+  const pd = POSES[pose];
+  const u = pd.loop ? fi / pd.n : fi / Math.max(1, pd.n - 1);
+  const p = pd.fn(u, fi);
+  const ta = now();
+  const sol = solve(kit, p, fi, hideRod);
+  const tb = now();
+  const { r, m, toGrid, proj, face } = renderComposite(kit, sol.items, sol.head, mx, yaw, PITCH, vs);
+  const td = now();
+  PROF.solve += tb - ta; PROF.render += td - tb; PROF.n++; PROF.px = r.w * r.h;
+  const [fx, fy] = proj(toGrid([0, 0, 0]));
+  const rel = (w) => { const q = proj(toGrid(w)); return [q[0] - fx, q[1] - fy]; };
+  const A = sol.anchors;
+  const anchors = { rodTip: rel(A.rodTip), hands: rel(A.hands), handL: rel(A.handL), handR: rel(A.handR), head: rel(A.head), mouth: rel(A.mouth) };
+  let front = null;
+  if (pose === 'hold') {
+    const hs = kit.handSet;
+    front = renderVoxels(m, { scale: vs, yaw, pitch: PITCH, ...RENDER, keepVoxel: (x, y, z) => hs.has(m.get(x, y, z)) }).canvas;
+  }
+  const dt = now() - t0;
+  spent += dt; statBuilt++; statMs += dt;
+  return { canvas: r.canvas, glow: r.glow, front, fx, fy, anchors, face, p, vs };
+}
+
+function yawFor(o) {
+  if (o.yaw != null) return { yaw: Math.round(o.yaw / YAW_STEP) * YAW_STEP, mx: 1 };
+  const f = (o.facing ?? 1) < 0 ? -1 : 1;
+  return { yaw: f > 0 ? -FACE_YAW : FACE_YAW, mx: -f };
+}
+
+function getFrame(kit, pose, fi, yaw, vs, mx, force, hideRod = false) {
+  const fam = `${kit.key}#${pose}#${yaw}#${vs}#${mx}#${hideRod ? 1 : 0}`;
+  const key = fam + '#' + fi;
+  let fr = FRAMES.get(key);
+  if (fr) { FRAMES.delete(key); FRAMES.set(key, fr); return fr; }
+  const set = FAMS.get(fam);
+  if (!force && overBudget()) {
+    if (set && set.size) {
+      let best = -1, bd = 1e9;
+      for (const f of set) { const d = Math.abs(f - fi); if (d < bd) { bd = d; best = f; } }
+      statFallback++;
+      return FRAMES.get(fam + '#' + best);
+    }
+    for (let d = YAW_STEP; d <= 180; d += YAW_STEP) {
+      for (const yy of [yaw - d, yaw + d]) {
+        const f2 = `${kit.key}#${pose}#${yy}#${vs}#${mx}#${hideRod ? 1 : 0}`;
+        const s2 = FAMS.get(f2);
+        if (s2 && s2.size) { statFallback++; const f0 = s2.has(fi) ? fi : s2.values().next().value; return FRAMES.get(f2 + '#' + f0); }
+      }
+    }
+  }
+  fr = buildFrame(kit, pose, fi, yaw, vs, mx, hideRod);
+  fr.px = fr.canvas.width * fr.canvas.height * (fr.front ? 2.2 : 1.2) * (fr.glow ? 1.5 : 1);
+  framePx += fr.px;
+  FRAMES.set(key, fr);
+  let s = set;
+  if (!s) FAMS.set(fam, (s = new Set()));
+  s.add(fi);
+  fr.fam = fam; fr.fi = fi;
+  if (FRAMES.size > MAX_FRAMES || framePx > MAX_PIXELS) {
+    for (const [k, v] of FRAMES) {
+      if (v === fr) continue;
+      FRAMES.delete(k);
+      framePx -= v.px;
+      FAMS.get(v.fam)?.delete(v.fi);
+      if (FRAMES.size <= MAX_FRAMES * 0.85 && framePx <= MAX_PIXELS * 0.85) break;
+    }
+  }
+  return fr;
+}
+
+const vsFor = (scale) => Math.max(0.5, Math.round(BASE_VS * (scale ?? 1) * 4) / 4);
+
+// Pre-build frames for the given poses (spends at most `ms` per call). Returns true when all are cached.
+export function warmCharacter(look, { poses = POSE_NAMES, scale = 1, facing = 1, yaw = null, ms = 6, rodLook = null } = {}) {
+  const L = normalizeLook(look), kit = kitFor(L, rodLookOf(L, { rodLook }));
+  const { yaw: yw, mx } = yawFor({ facing, yaw });
+  const vs = vsFor(scale);
+  const t0 = now();
+  for (const pose of poses) {
+    if (!POSES[pose]) continue;
+    for (let fi = 0; fi < POSES[pose].n; fi++) {
+      if (FRAMES.has(`${kit.key}#${pose}#${yw}#${vs}#${mx}#0#${fi}`)) continue;
+      if (now() - t0 > ms) return false;
+      getFrame(kit, pose, fi, yw, vs, mx, true);
+    }
+  }
+  return true;
+}
+
+// ====================================================================== live cartoon face (crisp pixel art on the bubble)
+
+const INK = '#13234a';
+// Rasterise a shape given in a feature's local frame: (u, v) in units of `size` (u right, v down along the surface).
+// fn(u, v) -> css colour | null. mask = {d, w, h} (frame-canvas pixels allowed), X/Y = frame canvas origin on ctx.
+export function rasterFeature(ctx, X, Y, f, k, ext, mask, fn) {
+  const ax = f.ax * k, ay = f.ay * k, bx = f.bx * k, by = f.by * k;
+  const det = ax * by - ay * bx;
+  if (Math.abs(det) < 0.02) return;
+  const hw = (Math.abs(ax) + Math.abs(bx)) * ext + 1, hh = (Math.abs(ay) + Math.abs(by)) * ext + 1;
+  const x0 = Math.floor(f.x - hw), x1 = Math.ceil(f.x + hw), y0 = Math.floor(f.y - hh), y1 = Math.ceil(f.y + hh);
+  for (let y = y0; y <= y1; y++) {
+    let run = null, rs = 0;
+    const dy = y + 0.5 - f.y;
+    for (let x = x0; x <= x1 + 1; x++) {
+      let c = null;
+      if (x <= x1 && (!mask || (x >= 0 && y >= 0 && x < mask.w && y < mask.h && mask.d[y * mask.w + x]))) {
+        const dx = x + 0.5 - f.x;
+        const u = (dx * by - dy * bx) / det, v = (ax * dy - ay * dx) / det;
+        if (u > -ext && u < ext && v > -ext && v < ext) c = fn(u, v);
+      }
+      if (c !== run) {
+        if (run) { ctx.fillStyle = run; ctx.fillRect(X + rs, Y + y, x - rs, 1); }
+        run = c; rs = x;
+      }
+    }
+  }
+}
+// Screen direction (sx, sy) expressed in a feature's local (u, v) frame, normalised.
+function localDir(f, sx, sy) {
+  const det = f.ax * f.by - f.ay * f.bx;
+  if (Math.abs(det) < 1e-4) return [sx, sy];
+  const u = (sx * f.by - sy * f.bx) / det, v = (f.ax * sy - f.ay * sx) / det;
+  const l = Math.hypot(u, v) || 1;
+  return [u / l, v / l];
+}
+
+const inE = (u, v, rx, ry) => (u / rx) ** 2 + (v / ry) ** 2 <= 1;
+function starR(u, v) { const a = Math.atan2(v, u) + Math.PI / 2; const k = (Math.cos(a * 5) + 1) / 2; return 0.3 + 0.44 * k * k; }
+function heartIn(u, v, s = 1) { const x = (u / s) * 1.12, y = (-v / s) * 1.12 + 0.2; const a = x * x + y * y - 1; return a * a * a - x * x * y * y * y <= 0; }
+
+// One cartoon eye. E: {style, gu, gv (gaze, local), su, sv (light dir, local), lid 0..1, t, side (+1 left eye / -1 right), px (pixels per unit)}
+export function eyePixel(E, u, v) {
+  const { style, gu, gv, su, sv, lid, px } = E;
+  const th = Math.max(0.17, 1.15 / px); // line thickness in units, never thinner than ~1 px
+  let st = style;
+  if (st === 'wink') st = E.side < 0 ? 'happy' : 'bean';
+  if (E.mode === 'happy' && st !== 'led' && st !== 'heart' && st !== 'star') st = 'happy';
+  if (st === 'happy') { const c = -0.42 + 0.78 * u * u; return Math.abs(u) < 0.86 && Math.abs(v - c) < th * 1.05 ? INK : null; }
+  if (lid >= 0.82 && st !== 'led') { const c = 0.18 - 0.4 * u * u; return Math.abs(u) < 0.82 && Math.abs(v - c) < th ? INK : null; }
+  const lidY = -1.05 + 2.1 * lid;
+  if (st === 'led') {
+    const ry = 0.48 * (1 - lid * 0.9) + 0.04;
+    if (Math.abs(u) > 0.82 || Math.abs(v) > ry) return null;
+    if ((Math.abs(u) > 0.62 && Math.abs(v) > ry - 0.2) && (Math.abs(u) - 0.62) ** 2 + (Math.abs(v) - (ry - 0.2)) ** 2 > 0.04) return null;
+    return Math.floor((v + 2) * px * 0.5) % 2 ? '#3fe0ff' : '#b8fbff';
+  }
+  if (st === 'dot') {
+    const uu = u - gu * 0.4, vv = v - gv * 0.4;
+    if (!inE(uu, vv, 0.42, 0.48) || v < lidY) return null;
+    return (uu + 0.16) ** 2 + (vv + 0.18) ** 2 < Math.max(0.02, (0.55 / px) ** 2) ? '#ffffff' : INK;
+  }
+  const scale = st === 'derp' ? (E.side > 0 ? 1.08 : 0.82) : 1;
+  u /= scale; v /= scale;
+  const tall = st === 'anime' ? 0.82 : st === 'bean' || st === 'sleepy' || st === 'teary' ? 0.86 : 1;
+  if (st === 'teary' && inE(u - 0.5, v - 1.12, 0.2, 0.28) && v > 0.95) return '#7fd8ff';
+  if (!inE(u, v, tall, 1)) return null;
+  if (v < lidY) return null;
+  if (lid > 0.02 && v < lidY + th) return INK;
+  const shine = (cx, cy, r) => (u - cx) ** 2 + (v - cy) ** 2 < Math.max(r * r, (0.7 / px) ** 2);
+  if (st === 'bean' || st === 'sleepy' || st === 'teary') {
+    const ou = gu * 0.18, ov = gv * 0.18;
+    if (shine(su * 0.36 + ou, sv * 0.4 + ov, st === 'teary' ? 0.34 : 0.3)) return '#ffffff';
+    if (shine(-su * 0.34 + ou, -sv * 0.4 + ov, 0.13)) return '#cfeaff';
+    if (st === 'teary' && shine(su * 0.05 + ou, 0.52, 0.12)) return '#ffffff';
+    const rr = (u / tall) ** 2 + v * v;
+    if (rr > (1 - th * 1.1) ** 2) return INK;
+    return v < -0.15 ? '#16245a' : v < 0.4 ? '#1f3f88' : '#3f86e8';
+  }
+  // sclera styles
+  const rr = (u / tall) ** 2 + v * v;
+  if (rr > (1 - th) ** 2) return INK;
+  if (st === 'swirl') {
+    const r = Math.sqrt(rr), a = Math.atan2(v, u);
+    return r < 0.86 && fract(a / TAU + r * 2.1 - E.t * 1.4) < 0.36 ? INK : '#ffffff';
+  }
+  const gx = gu * 0.3, gy = gv * 0.3 + (st === 'derp' ? 0 : 0);
+  const dgx = st === 'derp' ? (E.side > 0 ? -0.32 : 0.34) + gu * 0.1 : gx, dgy = st === 'derp' ? (E.side > 0 ? -0.3 : 0.32) : gy;
+  const iu = u - dgx, iv = v - dgy;
+  if (st === 'heart') {
+    if (heartIn(iu, iv + 0.05, 0.78)) {
+      if (shine(su * 0.3 + dgx, sv * 0.32 + dgy, 0.16)) return '#ffffff';
+      return iv < -0.1 ? '#ff7ab0' : '#ff3a7a';
+    }
+    return '#ffffff';
+  }
+  if (st === 'star') {
+    const r = Math.hypot(iu, iv);
+    if (r < starR(iu, iv) * 1.05) return r < 0.18 ? '#fff6c0' : iv < 0 ? '#ffe04a' : '#ffb81a';
+    return '#ffffff';
+  }
+  const irisR = st === 'anime' ? 0.74 : st === 'derp' ? 0.4 : 0.66;
+  const ir = (iu / (st === 'anime' ? 0.82 : 1)) ** 2 + iv * iv;
+  if (shine(su * 0.38 + dgx, sv * 0.4 + dgy, st === 'anime' ? 0.24 : 0.21)) return '#ffffff';
+  if (shine(-su * 0.3 + dgx, -sv * 0.34 + dgy, 0.1)) return '#ffffff';
+  if (st === 'anime' && shine(su * 0.05 + dgx, sv * 0.5 + dgy, 0.08)) return '#ffffff';
+  if (ir < irisR * irisR) {
+    if (st === 'derp' || ir < (irisR * 0.5) ** 2) return INK;
+    if (st === 'anime') return iv < -0.2 ? '#127a58' : iv < 0.25 ? '#2bb878' : '#9cf0b8';
+    return iv < -0.2 ? '#0f78c8' : iv < 0.25 ? '#22b8e8' : '#8ff2ff';
+  }
+  if (st === 'anime' && v < -0.72) return INK;
+  return '#ffffff';
+}
+
+// Mouth. Mo: {style, state ('rest'|'open'|'grit'|'frown'|'grin'|'o'|'smirk'), open 0..1, px}
+export function mouthPixel(Mo, u, v) {
+  const th = Math.max(0.17, 1.1 / Mo.px);
+  let st = Mo.style, open = Mo.open;
+  if (Mo.state === 'open') open = Math.max(open, 0.8);
+  if (Mo.state === 'grin') st = 'grin';
+  if (Mo.state === 'o') st = 'o';
+  if (Mo.state === 'smirk') st = 'smirk';
+  if (st === 'beam') open = Math.max(open, 0.85);
+  if (st === 'led') {
+    const h = 0.12 + open * 0.45;
+    if (open > 0.08) return Math.abs(u) < 0.7 && Math.abs(v - 0.05) < h ? (Math.floor((v + 2) * Mo.px * 0.5) % 2 ? '#3fe0ff' : '#b8fbff') : null;
+    const c = -0.05 + 0.35 * (1 - u * u);
+    return Math.abs(u) < 0.8 && Math.abs(v - c) < th * 1.3 ? '#7ff4ff' : null;
+  }
+  if (Mo.state === 'grit') {
+    if (Math.abs(u) > 0.78 || Math.abs(v - 0.05) > 0.3) return null;
+    if (Math.abs(u) > 0.78 - th || Math.abs(v - 0.05) > 0.3 - th) return INK;
+    return Math.abs(v - 0.05) < th * 0.5 || Math.abs(fract(u * 2.2) - 0.5) < 0.08 ? '#9ab8d8' : '#ffffff';
+  }
+  if (Mo.state === 'frown') { const c = 0.32 - 0.42 * (1 - u * u); return Math.abs(u) < 0.8 && Math.abs(v - c) < th ? INK : null; }
+  if (st === 'o') {
+    const s = 0.75 + open * 0.5, r = (u / (0.38 * s)) ** 2 + ((v - 0.1) / (0.46 * s)) ** 2;
+    return r > 1 ? null : r > (1 - th / (0.4 * s)) ** 2 ? INK : v > 0.25 ? '#ff7aa8' : '#6a1a3a';
+  }
+  if (open > 0.08 || st === 'grin') {
+    // D-shaped open mouth
+    const o = st === 'grin' ? Math.max(open, 0.55) : open;
+    const w = 0.92, top = -0.18 - (st === 'grin' ? 0.04 : 0), bot = top + (0.25 + 0.85 * o) * (1 - (u / w) ** 2);
+    if (Math.abs(u) > w || v < top - th * 0.6 || v > bot + th * 0.6) return null;
+    if (v < top + th * 0.5 || v > bot - th * 0.5 || Math.abs(u) > w - th * 0.5) return INK;
+    if (st === 'grin' && v < top + 0.3) return '#ffffff';
+    if (v > bot - 0.12 - 0.3 * o && Math.abs(u) < 0.55) return '#ff6a9a';
+    return '#6a1a3a';
+  }
+  if (st === 'cat') { const c = 0.3 * Math.abs(Math.sin((u * Math.PI) / 0.82)) - 0.04; return Math.abs(u) < 0.86 && Math.abs(v - c) < th ? INK : null; }
+  if (st === 'smirk') { const c = 0.16 - 0.26 * u - 0.12 * u * u; return u > -0.7 && u < 0.85 && Math.abs(v - c) < th ? INK : null; }
+  if (st === 'wobbly') { const c = 0.12 + 0.12 * Math.sin(u * 8.5); return Math.abs(u) < 0.85 && Math.abs(v - c) < th ? INK : null; }
+  if (st === 'kiss') {
+    const a = (u - 0.08) ** 2 + (v + 0.02) ** 2 < 0.06, b = (u - 0.08) ** 2 + (v - 0.4) ** 2 < 0.06;
+    if (a || b) return (u - 0.02) ** 2 + (v + 0.1) ** 2 < 0.01 ? '#ffd0e0' : '#ff4a8a';
+    return null;
+  }
+  // smile family
+  const c = -0.12 + 0.42 * (1 - u * u);
+  const line = Math.abs(u) < 0.86 && Math.abs(v - c) < th;
+  if (line) return INK;
+  if (st === 'tongue' && inE(u - 0.18, v - c - 0.26, 0.26, 0.3) && v > c) return Math.abs(u - 0.18) < 0.05 ? '#e8407a' : '#ff7aa8';
+  if (st === 'fang' && u > 0.22 && u < 0.46 && v > c && v < c + 0.34 * (1 - Math.abs(u - 0.34) / 0.12)) return '#ffffff';
+  if (st === 'toothy' && Math.abs(u) < 0.3 && v > c && v < c + 0.36) return Math.abs(u) < 0.04 ? '#c8d8e8' : '#ffffff';
+  return null;
+}
+
+// Face accessory in a feature frame (which = 'eyeL'|'eyeR'|'mid'|'cheekL'|'cheekR'|'mouth').
+function accPixel(id, which, u, v, A) {
+  const th = Math.max(0.12, 1 / A.px);
+  const eye = which === 'eyeL' || which === 'eyeR';
+  const glint = (u + v > -0.95 && u + v < -0.55);
+  if (id === 'shades' || id === 'flare') {
+    if (eye) {
+      const inL = Math.abs(u) < 1.32 && v > -0.95 && v < 0.85 && !(Math.abs(u) > 0.9 && v > 0.35 && (Math.abs(u) - 0.9) ** 2 + (v - 0.35) ** 2 > 0.2);
+      if (!inL) return null;
+      const edge = Math.abs(u) > 1.32 - th || v < -0.95 + th;
+      if (edge) return id === 'flare' ? '#e8eef4' : INK;
+      if (id === 'flare') {
+        const sx = u - 0.45, sy = v + 0.35, pulse = 0.6 + 0.4 * Math.sin(A.t * 4 + (which === 'eyeL' ? 0 : 2));
+        if (which === 'eyeL' && ((Math.abs(sx) < th * 0.8 && Math.abs(sy) < 0.75 * pulse) || (Math.abs(sy) < th * 0.8 && Math.abs(sx) < 0.75 * pulse))) return '#ffffff';
+        if (glint) return '#fff6c0';
+        return v < -0.2 ? '#ff7a1a' : v < 0.3 ? '#ffb02a' : '#ffe27a';
+      }
+      if (glint) return 'rgba(190,230,255,0.85)';
+      return v < -0.1 ? '#0c1838' : '#1f3f7a';
+    }
+    if (which === 'mid') return Math.abs(v + 1.2) < 0.45 && Math.abs(u) < 2.4 ? (id === 'flare' ? '#e8eef4' : INK) : null;
+    return null;
+  }
+  if (id === 'round' || id === 'goggles' || id === 'monocle') {
+    if (eye) {
+      if (id === 'monocle' && which !== 'eyeL') return null;
+      const r = Math.hypot(u, v);
+      const R0 = id === 'goggles' ? 1.32 : 1.24, w = id === 'goggles' ? 0.32 : th;
+      if (Math.abs(r - R0) < w) return id === 'goggles' ? (v < 0 ? '#5ae0ff' : '#1fa8d8') : id === 'monocle' ? '#ffcf3a' : INK;
+      if (r < R0) return glint ? 'rgba(255,255,255,0.75)' : id === 'goggles' ? 'rgba(120,220,255,0.28)' : null;
+      if (id === 'monocle' && u > 0.6 && Math.abs(v - (1.2 + (u - 0.6) * 1.4)) < th && u < 1.6) return '#ffcf3a';
+      return null;
+    }
+    if (which === 'mid' && id !== 'monocle') return Math.abs(v + 1.0) < (id === 'goggles' ? 0.6 : 0.35) && Math.abs(u) < 2.2 ? (id === 'goggles' ? '#1fa8d8' : INK) : null;
+    return null;
+  }
+  if (id === 'heart' || id === 'star') {
+    if (!eye) return which === 'mid' && Math.abs(v + 1.0) < 0.35 && Math.abs(u) < 2.4 ? '#ff4a8a' : null;
+    const inside = id === 'heart' ? heartIn(u, v, 1.45) : Math.hypot(u, v) < starR(u, v) * 1.9;
+    const inner = id === 'heart' ? heartIn(u, v, 1.2) : Math.hypot(u, v) < starR(u, v) * 1.6;
+    if (!inside) return null;
+    if (!inner) return id === 'heart' ? '#ff3a7a' : '#ffcf3a';
+    if (glint) return 'rgba(255,255,255,0.85)';
+    return id === 'heart' ? 'rgba(255,60,130,0.72)' : 'rgba(255,170,40,0.72)';
+  }
+  if (id === 'visor' && which === 'mid') {
+    if (Math.abs(u) > 10.2 || v < -4.4 || v > 2.4) return null;
+    if (Math.abs(u) > 10.2 - 0.6 || v < -4.4 + 0.5 || v > 2.4 - 0.5) return '#e8fbff';
+    if (Math.abs(fract(v * 0.7 + A.t * 0.8) - 0.5) < 0.06) return 'rgba(220,255,255,0.7)';
+    return 'rgba(80,230,255,0.42)';
+  }
+  if (id === 'blush' && (which === 'cheekL' || which === 'cheekR')) return heartIn(u, v, 0.85) ? (u + v < -0.5 ? '#ffb0d0' : '#ff5a9a') : null;
+  if (id === 'freckles' && (which === 'cheekL' || which === 'cheekR')) {
+    for (const [fx, fy] of [[-0.5, -0.2], [0.1, -0.45], [0.5, 0.05], [-0.1, 0.35]]) if ((u - fx) ** 2 + (v - fy) ** 2 < Math.max(0.025, (0.7 / A.px) ** 2)) return '#c86a4a';
+    return null;
+  }
+  if (id === 'bandaid' && which === 'cheekR') {
+    const ru = u * 0.8 + v * 0.6, rv = -u * 0.6 + v * 0.8;
+    if (Math.abs(ru) > 1.1 || Math.abs(rv) > 0.42) return null;
+    return Math.abs(ru) < 0.35 ? '#ffe2c0' : (Math.round(ru * 6) + Math.round(rv * 6)) % 2 ? '#ffc890' : '#f2b070';
+  }
+  if (id === 'mustache' && which === 'mouth') {
+    const lobe = ((Math.abs(u) - 0.42) / 0.5) ** 2 + ((v + 0.48) / 0.26) ** 2 < 1;
+    const curl = (Math.abs(u) - 0.98) ** 2 + (v + 0.62) ** 2 < 0.03 && Math.abs(u) > 0.9;
+    if (lobe || curl) return v < -0.55 ? '#7a5a3a' : '#5a3a22';
+    return null;
+  }
+  if (id === 'lashes' && eye) {
+    const s = which === 'eyeL' ? 1 : -1;
+    for (const [lx, ly, dx, dy] of [[0.55, -0.85, 0.45, -0.35], [0.85, -0.55, 0.5, -0.15]]) {
+      const t = ((u * s - lx) * dx + (v - ly) * dy) / (dx * dx + dy * dy);
+      if (t > 0 && t < 1 && Math.hypot(u * s - lx - dx * t, v - ly - dy * t) < th) return INK;
+    }
+  }
+  return null;
+}
+
+const MOOD_FACE = { happy: { mouth: 'open' }, sad: { mouth: 'frown', lid: 0.35, eyes: 'teary' }, surprised: { mouth: 'o', wide: 1 }, angry: { mouth: 'grit', lid: 0.25 }, love: { eyes: 'heart', mouth: 'grin' }, excited: { eyes: 'star', mouth: 'open' } };
+
+const EYESTATE = new Map();
+function eyeState(id) {
+  let st = EYESTATE.get(id);
+  const tn = now();
+  if (!st) { st = { blinkT: 0, nextBlink: 1.5 + Math.random() * 3, gx: 0, gy: 0, vx: 0, vy: 0, wander: [0, 0], wanderT: 0, last: tn, px: null, py: null }; EYESTATE.set(id, st); if (EYESTATE.size > 400) EYESTATE.delete(EYESTATE.keys().next().value); }
+  const dt = clamp((tn - st.last) / 1000, 0, 0.05);
+  st.last = tn;
+  st.dt = dt;
+  st.nextBlink -= dt;
+  if (st.nextBlink <= 0) { st.blinkT = 0.13; st.nextBlink = 2 + Math.random() * 3.5; if (Math.random() < 0.18) st.nextBlink = 0.25; }
+  st.blinkT = Math.max(0, st.blinkT - dt);
+  st.wanderT -= dt;
+  if (st.wanderT <= 0) { st.wanderT = 0.8 + Math.random() * 1.8; st.wander = [Math.random() * 1.4 - 0.7, Math.random() * 0.8 - 0.4]; }
+  return st;
+}
+
+// Draw the face layer of a frame. face = {feats, mask, hc}; X, Y = frame canvas origin on ctx.
+// o: {id, look (eyes/mouth/face styles), pose params p, lookAt, talk, mood, t, facing sign sx, px (pixels per voxel)}
+export function drawFaceLayer(ctx, face, X, Y, o) {
+  if (!face) return;
+  const st = eyeState(o.id ?? 'main');
+  const p = o.p || BASE_POSE;
+  const md = MOOD_FACE[o.mood] || {};
+  const eyes = md.eyes && o.mood !== 'happy' ? md.eyes : o.eyes || 'bean';
+  const F = face.feats;
+  // gaze target in screen space
+  let tx = (p.gaze[0] * (o.sx || 1) + st.wander[0] * 0.5) * 0.8, ty = (p.gaze[1] + st.wander[1] * 0.4) * 0.8;
+  if (o.lookAt) {
+    const dx = o.lookAt[0] - (X + face.hc[0]), dy = o.lookAt[1] - (Y + face.hc[1]);
+    const dl = Math.hypot(dx, dy) || 1, k = Math.min(1, dl / 50);
+    tx = (dx / dl) * k; ty = (dy / dl) * k;
+  }
+  const dt = st.dt || 0.016;
+  st.vx += ((tx - st.gx) * 120 - st.vx * 12) * dt; st.vy += ((ty - st.gy) * 120 - st.vy * 12) * dt;
+  if (p.wobble) { st.vx += (Math.random() - 0.5) * 40 * dt; st.vy += (Math.random() - 0.5) * 40 * dt; }
+  st.gx = clamp(st.gx + st.vx * dt, -1, 1); st.gy = clamp(st.gy + st.vy * dt, -1, 1);
+  const blink = st.blinkT > 0 ? 1 : 0;
+  const lidBase = Math.max(p.lid || 0, (p.squint || 0) * 0.55, md.lid || 0, eyes === 'sleepy' ? 0.48 : 0);
+  const lid = blink ? 1 : md.wide ? 0 : lidBase;
+  const mstate = o.talk > 0.05 ? 'rest' : md.mouth && (p.mouth === 'rest') ? md.mouth : p.mouth;
+  const px = Math.max(1, Math.hypot(F.eyeL.ax, F.eyeL.ay, F.eyeL.bx, F.eyeL.by) / Math.SQRT2);
+  const acc = o.faceAcc || 'none';
+  const order = Object.keys(F).filter((k) => k !== 'mid' || acc !== 'none').sort((a, b) => F[a].z - F[b].z);
+  const a0 = ctx.globalAlpha;
+  for (const k of order) {
+    const f = F[k];
+    const vis = o.opaque ? (f.z < 0.02 ? 0 : f.z < 0.15 ? f.z / 0.15 : 1) : f.z < 0 ? 0.28 : f.z < 0.12 ? lerp(0.28, 1, f.z / 0.12) : 1;
+    if (vis <= 0) continue;
+    ctx.globalAlpha = a0 * vis;
+    const [su, sv] = localDir(f, -0.7, -0.7);
+    if (k === 'eyeL' || k === 'eyeR') {
+      const [gu, gv] = localDir(f, st.gx, st.gy);
+      const gl = Math.min(1, Math.hypot(st.gx, st.gy));
+      const E = { style: eyes, gu: gu * gl, gv: gv * gl, su, sv, lid, t: o.t || 0, side: k === 'eyeL' ? 1 : -1, px: px, mode: blink ? null : p.eyeMode };
+      if (md.wide) E.lid = blink ? 1 : 0;
+      rasterFeature(ctx, X, Y, f, 1, 1.5, face.mask, (u, v) => eyePixel(E, u, v));
+    } else if (k === 'mouth') {
+      const mpx = Math.hypot(f.ax, f.ay);
+      const Mo = { style: o.mouth || 'smile', state: mstate, open: clamp01(o.talk || 0), px: mpx };
+      rasterFeature(ctx, X, Y, f, 1, 1.3, face.mask, (u, v) => mouthPixel(Mo, u, v));
+    } else if ((k === 'cheekL' || k === 'cheekR') && acc !== 'blush') {
+      if (vis > 0.5) { ctx.globalAlpha = a0 * vis * 0.42; rasterFeature(ctx, X, Y, f, 1, 1.1, face.mask, (u, v) => (inE(u, v, 0.9, 0.55) ? '#ff6aa8' : null)); }
+    }
+    if (acc !== 'none') {
+      ctx.globalAlpha = a0 * vis;
+      const A = { px: k === 'mid' ? Math.hypot(f.ax, f.ay) : Math.hypot(f.ax, f.ay), t: o.t || 0 };
+      const ext = k === 'mid' ? 11 : 1.7;
+      rasterFeature(ctx, X, Y, f, 1, ext, face.mask, (u, v) => accPixel(acc, k, u, v, A));
+    }
+  }
+  ctx.globalAlpha = a0;
+}
+
+// ====================================================================== trails + emote effects (2D sparkle bits)
+
+const TRAILS = new Map();
+function drawSpark(ctx, x, y, s, c) { ctx.fillStyle = c; ctx.fillRect(x - s, y, s * 2 + 1, 1); ctx.fillRect(x, y - s, 1, s * 2 + 1); }
+function drawBit(ctx, kind, x, y, s, a, t, seed) {
+  x = Math.round(x); y = Math.round(y);
+  const A = ctx.globalAlpha;
+  ctx.globalAlpha = A * a;
+  if (kind === 'bubbles') {
+    const r = 1 + s;
+    ctx.fillStyle = 'rgba(200,245,255,0.35)'; ctx.fillRect(x - r + 1, y - r + 1, r * 2 - 1, r * 2 - 1);
+    ctx.fillStyle = '#eaffff';
+    ctx.fillRect(x - r + 1, y - r, r * 2 - 1, 1); ctx.fillRect(x - r + 1, y + r, r * 2 - 1, 1); ctx.fillRect(x - r, y - r + 1, 1, r * 2 - 1); ctx.fillRect(x + r, y - r + 1, 1, r * 2 - 1);
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(x - r + 1, y - r + 1, 1, 1);
+  } else if (kind === 'sparkle') drawSpark(ctx, x, y, 1 + s, seed % 3 ? '#ffffff' : '#fff6a0');
+  else if (kind === 'leaves') {
+    ctx.fillStyle = seed % 2 ? '#7ee04a' : '#4cb82e';
+    const f = Math.sin(t * 3 + seed) > 0 ? 1 : -1;
+    ctx.fillRect(x - 1, y, 3, 1); ctx.fillRect(x - (f > 0 ? 0 : 1), y - 1, 2, 1); ctx.fillRect(x + (f > 0 ? -1 : 0), y + 1, 2, 1);
+    if (s > 0) { ctx.fillStyle = '#c8f56a'; ctx.fillRect(x, y, 1, 1); }
+  } else if (kind === 'notes') {
+    ctx.fillStyle = seed % 2 ? '#2fb8e8' : '#ff7ab0';
+    ctx.fillRect(x - 1, y + 1, 2, 2); ctx.fillRect(x, y - 3, 1, 4); ctx.fillRect(x + 1, y - 3, 1 + (seed % 2), 1);
+  } else if (kind === 'hearts') {
+    ctx.fillStyle = '#ff4a8a';
+    ctx.fillRect(x - 2, y - 1, 2, 2); ctx.fillRect(x + 1, y - 1, 2, 2); ctx.fillRect(x - 1, y, 3, 2); ctx.fillRect(x, y + 2, 1, 1);
+    ctx.fillStyle = '#ffc0d8'; ctx.fillRect(x - 2, y - 1, 1, 1);
+  } else if (kind === 'rainbow') {
+    const cols = ['#ff5a6a', '#ffb02a', '#ffe24a', '#5cd84a', '#3fa8ff', '#a070ff'];
+    for (let i = 0; i < 6; i++) { ctx.fillStyle = cols[i]; ctx.fillRect(x - 1, y + i - 3, 3, 1); }
+  } else if (kind === 'drops') {
+    ctx.fillStyle = '#59c3ff'; ctx.fillRect(x, y - 2, 1, 1); ctx.fillRect(x - 1, y - 1, 3, 2); ctx.fillRect(x, y + 1, 1, 1);
+    ctx.fillStyle = '#e8fbff'; ctx.fillRect(x - 1, y - 1, 1, 1);
+  } else if (kind === 'confetti') {
+    ctx.fillStyle = ['#ff5a6a', '#ffe24a', '#5cd84a', '#3fa8ff', '#ff9ad0'][seed % 5]; ctx.fillRect(x, y, 2, 1 + (seed % 2));
+  } else if (kind === 'haha') {
+    ctx.fillStyle = '#ffe24a'; ctx.fillRect(x - 2, y - 2, 1, 5); ctx.fillRect(x + 1, y - 2, 1, 5); ctx.fillRect(x - 1, y, 2, 1);
+  }
+  ctx.globalAlpha = A;
+}
+
+// Ambient trail bits that follow the character (local to (x, y), lagging behind real motion).
+function drawTrail(ctx, kind, x, y, o, scale, id) {
+  let T = TRAILS.get(id);
+  const tn = now();
+  if (!T) { T = { bits: [], x, y, last: tn, acc: 0 }; TRAILS.set(id, T); if (TRAILS.size > 120) TRAILS.delete(TRAILS.keys().next().value); }
+  const dt = clamp((tn - T.last) / 1000, 0, 0.05);
+  T.last = tn;
+  const mvx = x - T.x, mvy = y - T.y;
+  const jump = Math.abs(mvx) > 60 || Math.abs(mvy) > 60;
+  T.x = x; T.y = y;
+  const moving = !jump && Math.hypot(mvx, mvy) > 0.3;
+  T.acc += dt * (moving ? 22 : 5);
+  const h = 60 * scale;
+  while (T.acc > 1) {
+    T.acc -= 1;
+    const seed = (Math.random() * 1000) | 0;
+    const fall = kind === 'leaves' || kind === 'drops';
+    T.bits.push({ x: (Math.random() - 0.5) * 22 * scale, y: fall ? -h * (0.5 + Math.random() * 0.5) : -Math.random() * h * 0.6, vx: (Math.random() - 0.5) * 8, vy: fall ? 10 + Math.random() * 8 : -(8 + Math.random() * 14), life: 1.2 + Math.random() * 0.8, t: 0, seed, s: Math.random() < 0.4 ? 1 : 0 });
+  }
+  if (T.bits.length > 40) T.bits.splice(0, T.bits.length - 40);
+  for (let i = T.bits.length - 1; i >= 0; i--) {
+    const b = T.bits[i];
+    b.t += dt;
+    if (b.t > b.life) { T.bits.splice(i, 1); continue; }
+    if (!jump) { b.x -= mvx; b.y -= mvy; }
+    b.x += (b.vx + (kind === 'leaves' ? Math.sin(b.t * 4 + b.seed) * 12 : 0)) * dt; b.y += b.vy * dt;
+    const a = Math.min(1, b.t * 5) * (1 - b.t / b.life);
+    drawBit(ctx, kind, x + b.x, y + b.y, b.s, a, b.t, b.seed);
+  }
+}
+
+function drawEmoteFx(ctx, fx, hx, hy, t, scale) {
+  const n = fx === 'confetti' ? 10 : 6;
+  for (let i = 0; i < n; i++) {
+    const ph = fract(t * 0.7 + i / n);
+    const a = (i * 2.4) % TAU;
+    const r = (10 + 22 * ph) * scale;
+    let kind = fx;
+    if (fx === 'sparkle') kind = 'sparkle';
+    const x = hx + Math.cos(a) * r, y = hy - 6 * scale + Math.sin(a) * r * 0.6 - (fx === 'hearts' || fx === 'notes' || fx === 'bubbles' ? ph * 16 * scale : 0);
+    drawBit(ctx, kind, x, y, ph < 0.5 ? 1 : 0, Math.sin(ph * Math.PI), t, i);
+  }
+}
+
+// ====================================================================== draw
+
+export function drawCharacter(ctx, x, y, o = {}) {
+  const look = normalizeLook(o.look);
+  const rl = rodLookOf(look, o);
+  const kit = kitFor(look, rl);
+  let pose = o.pose === 'emote' ? emotePose(look) : o.pose;
+  if (!POSES[pose]) pose = 'idle';
+  const t = o.t ?? 0;
+  const scale = o.scale ?? 1;
+  const vs = vsFor(scale);
+  const { yaw, mx } = yawFor(o);
+  const fi = poseFrame(pose, t);
+  const fr = getFrame(kit, pose, fi, yaw, vs, mx, false, o.rod === false);
+  const X = Math.round(x - fr.fx), Y = Math.round(y - fr.fy);
+  const sx = o.yaw != null ? -Math.sign(Math.sin(yaw * DEG)) || 1 : (o.facing ?? 1) < 0 ? -1 : 1;
+  if (o.shadow !== false && pose !== 'sit') {
+    const lift = fr.p.off[1] > 1 ? clamp01(1 - fr.p.off[1] / 10) : 1;
+    const w = Math.round(9 * vs * lift), h = Math.max(1, Math.round(1.4 * vs * lift));
+    ctx.fillStyle = 'rgba(10,40,80,0.2)';
+    for (let i = -h; i <= h; i++) { const hw = Math.round(w * Math.sqrt(1 - (i / (h + 0.5)) ** 2)); ctx.fillRect(Math.round(x) - hw, Math.round(y) + i, hw * 2, 1); }
+  }
+  if (look.shoes === 'jet' && o.shadow !== false) {
+    ctx.fillStyle = 'rgba(120,255,255,0.25)';
+    ctx.fillRect(Math.round(x) - Math.round(6 * vs), Math.round(y) - 1, Math.round(12 * vs), 2);
+  }
+  ctx.drawImage(fr.canvas, X, Y);
+  if (fr.glow) {
+    const prev = ctx.globalCompositeOperation, pa = ctx.globalAlpha;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = pa * 0.55;
+    ctx.drawImage(fr.glow, X, Y);
+    ctx.globalCompositeOperation = prev; ctx.globalAlpha = pa;
+  }
+  drawFaceLayer(ctx, fr.face, X, Y, { id: o.id ?? 'main', eyes: look.eyes, mouth: look.mouth, faceAcc: look.face, p: fr.p, lookAt: o.lookAt, talk: o.talk, mood: o.mood, t, sx });
+  const A = fr.anchors;
+  const ax = (a) => [Math.round(x + a[0]), Math.round(y + a[1])];
+  if (pose === 'hold' && o.fish?.compiled) {
+    try {
+      const c = o.fish.compiled;
+      const len = (c.L || 16) * 1.45;
+      const fs = clamp((o.fishScale ?? 1) * (30 * vs) / len, 0.25, 1.6 * vs / BASE_VS);
+      const hx = x + A.hands[0], hy = y + A.hands[1] - 1;
+      const wig = S(t * 7) * 0.12;
+      drawFishRig(ctx, c, {
+        x: hx, y: hy, facing: -sx, turn: 1, angle: wig, scale: fs, squash: S(t * 9) * 0.08,
+        swimPhase: (t * 1.3) % 1, tailPhase: (t * 2.6) % 1, finPhase: (t * 2) % 1, speed01: 0.5,
+        lookX: hx + sx * 30, lookY: hy - 20, blink: 0, emotion: o.fish.emotion || 'surprised', mouth: 0.4 + 0.4 * Math.abs(S(t * 6)), time: t,
+      });
+    } catch { /* fish art in flux */ }
+    if (fr.front) ctx.drawImage(fr.front, X, Y);
+  }
+  const k = vs / BASE_VS;
+  if (o.trail !== false && look.trail !== 'none') drawTrail(ctx, look.trail, Math.round(x), Math.round(y), o, k, 'tr:' + (o.id ?? 'main'));
+  if (o.pose === 'emote') { const fx = EMOTES[look.emote]?.fx; if (fx) drawEmoteFx(ctx, fx, x + A.head[0], y + A.head[1], t, k); }
+  return { rodTip: ax(A.rodTip), hands: ax(A.hands), head: ax(A.head), handL: ax(A.handL), handR: ax(A.handR), mouth: ax(A.mouth) };
+}
+
+// ====================================================================== wardrobe thumbnails
+
+const PREVIEWS = new Map();
+const HEAD_SLOTS = new Set(['tint', 'eyes', 'mouth', 'hat', 'hair', 'face']);
+// Cached thumbnail for an item worn by `look` (built under the frame budget; null until ready).
+// -> {canvas, glow, ox, oy, w, h, face?, look, fx?} drawn by drawItemPreview at its bottom centre.
+export function itemPreview(look, item, size = 1, force = false) {
+  if (!item || item.slot === 'boat') return null;
+  const L = equipItem(normalizeLook(look), item);
+  const rl = rodLookOf(L);
+  const key = lookKey(L, rl) + '|' + item.slot + '|' + size;
+  let pv = PREVIEWS.get(key);
+  if (pv) return pv;
+  if (!force && overBudget()) return null;
+  const t0 = now();
+  const vs = Math.max(0.6, Math.round(BASE_VS * size * 20) / 20);
+  const slot = item.slot;
+  if (HEAD_SLOTS.has(slot)) {
+    const L2 = slot === 'hair' ? { ...L, hat: 'none' } : L;
+    const kit = kitFor(L2, rl);
+    const head = kit.part('head', () => buildHead(kit));
+    const Wh = Tr(-head.pivot[0], -head.pivot[1], -head.pivot[2]);
+    const items = [{ part: head, W: Wh }];
+    if (L2.hat !== 'none') {
+      const hat = kit.part('hat:0', () => buildHat(kit, 0));
+      const seat = mul(Wh, mul(Tr(...HAT_SEAT), Ro([HAT_TILT[L2.hat] || 0, 0, 0])));
+      items.push({ part: hat, W: mul(seat, Tr(-hat.pivot[0], -hat.pivot[1], -hat.pivot[2])) });
+    }
+    const yw = slot === 'eyes' || slot === 'mouth' || slot === 'face' ? -12 : -24;
+    const res = renderComposite(kit, items, { C: ap(Wh, head.anchors.center), R: head.R, Rm: I3 }, 1, yw, 10, vs);
+    pv = { canvas: res.r.canvas, glow: res.r.glow, ox: res.r.w / 2, oy: res.r.h, w: res.r.w, h: res.r.h, face: res.face, vs, p: P({}) };
+  } else if (slot === 'rod') {
+    const kit = kitFor(L, rl);
+    const rod = kit.part('rod:0:1', () => buildRod(kit, 0, 1));
+    const W = mul(M(rot(0, 0, -42), [0, 0, 0]), Tr(-rod.pivot[0], -rod.pivot[1], -rod.pivot[2]));
+    const res = renderComposite(kit, [{ part: rod, W }], null, 1, -20, 18, vs);
+    pv = { canvas: res.r.canvas, glow: res.r.glow, ox: res.r.w / 2, oy: res.r.h, w: res.r.w, h: res.r.h };
+  } else if (slot === 'shoes' || slot === 'gloves') {
+    const kit = kitFor(L, rl);
+    let items;
+    if (slot === 'shoes') { const shin = kit.part('shin', () => buildShin(kit)); items = [-3.4, 3.4].map((dx) => ({ part: shin, W: mul(Tr(dx, 0, dx * 0.3), Tr(-shin.pivot[0], -shin.pivot[1], -shin.pivot[2])) })); }
+    else { const fore = kit.part('fore', () => buildFore(kit)); items = [[-3, 18], [3, -18]].map(([dx, rz]) => ({ part: fore, W: mul(mul(Tr(dx, 0, 0), Ro([0, 0, rz + 180])), Tr(-fore.pivot[0], -fore.pivot[1], -fore.pivot[2])) })); }
+    const res = renderComposite(kit, items, null, 1, -34, 20, vs * 1.3);
+    pv = { canvas: res.r.canvas, glow: res.r.glow, ox: res.r.w / 2, oy: res.r.h, w: res.r.w, h: res.r.h };
+  } else {
+    const L2 = { ...L, hat: slot === 'top' || slot === 'back' ? L.hat : 'none' };
+    const kit = kitFor(L2, rl);
+    const pose = slot === 'emote' ? EMOTES[L2.emote]?.pose || 'wave' : 'stand';
+    const fr = getFrame(kit, pose, slot === 'emote' ? 2 : 0, slot === 'back' ? 150 : -30, vs, 1, true, true);
+    pv = { canvas: fr.canvas, glow: fr.glow, ox: fr.fx, oy: fr.fy, w: fr.canvas.width, h: fr.canvas.height, face: fr.face, vs, p: fr.p, fx: slot === 'trail' ? L2.trail : slot === 'emote' ? EMOTES[L2.emote]?.fx : null, head: fr.anchors.head };
+    L.hat = L2.hat;
+  }
+  pv.look = L;
+  spent += now() - t0;
+  PREVIEWS.set(key, pv);
+  if (PREVIEWS.size > 400) PREVIEWS.delete(PREVIEWS.keys().next().value);
+  return pv;
+}
+
+// Draw a thumbnail at (x, y) = its bottom centre, including the live face and trail / emote sparkles.
+export function drawItemPreview(ctx, pv, x, y, t = 0, id = 'thumb') {
+  const X = Math.round(x - pv.ox), Y = Math.round(y - pv.oy);
+  ctx.drawImage(pv.canvas, X, Y);
+  if (pv.glow) { const g = ctx.globalCompositeOperation, a = ctx.globalAlpha; ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a * 0.5; ctx.drawImage(pv.glow, X, Y); ctx.globalAlpha = a; ctx.globalCompositeOperation = g; }
+  if (pv.face) drawFaceLayer(ctx, pv.face, X, Y, { id, eyes: pv.look.eyes, mouth: pv.look.mouth, faceAcc: pv.look.face, p: pv.p, t, sx: 1 });
+  if (pv.fx && pv.fx !== 'none') {
+    const k = (pv.vs || BASE_VS) / BASE_VS;
+    if (TRAIL_IDS.has(pv.fx)) for (let i = 0; i < 7; i++) { const ph = fract(t * 0.5 + i / 7); drawBit(ctx, pv.fx, x + Math.sin(i * 2.3) * 14 * k, y - 8 * k - ph * 40 * k, i % 2, Math.sin(ph * Math.PI), t, i); }
+    else drawEmoteFx(ctx, pv.fx, x + (pv.head?.[0] || 0), y + (pv.head?.[1] || -50), t, k);
+  }
+}
+const TRAIL_IDS = new Set(['bubbles', 'sparkle', 'leaves', 'notes', 'hearts', 'rainbow', 'drops']);
+
+// Face sizes in px for a scale (for UI layout).
+export function characterHeight(scale = 1) { return Math.round(48 * vsFor(scale)); }

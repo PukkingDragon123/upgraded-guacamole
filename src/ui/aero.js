@@ -22,9 +22,17 @@
 //   drawAeroLabel(ctx, text, x, y, {align, tone, font}) -> rect   small glass pill with text (hover labels)
 //   drawAeroGlow(ctx, cx, cy, r, color, alpha)  soft round light (cached radial)
 //   aeroText(ctx, text, x, y, o)            drawText with a soft Aero glow halo (o.glow color, default white)
-//   drawAeroFrame(ctx, x, y, w, h, {title, icon (canvas), tone='sky', closeHover}) -> {content, close, header}
+//   drawAeroFrame(ctx, x, y, w, h, {title, icon (canvas), leaves=true, seed}) -> {content, close, header, finish(ctx)}
+//                                           (call finish(ctx) after the content: lower leaves + splash go on top)
 //                                           the shared panel window: glass body, big icon + title, red close orb
 //   drawAeroCard(ctx, x, y, w, h, {tone='frost', inset})   frosted inner card
+// Eco accents (reference look: 2000s eco wallpapers):
+//   drawAeroLeaf(ctx, x, y, len, wid, angleDeg, {flip, tone})   one glossy pixel leaf, base at (x, y)
+//   drawLeafSprig(ctx, x, y, corner 'tl'|'tr'|'bl'|'br', scale=1)  a twig of 4-5 glossy leaves spilling from a corner
+//   drawSunFlare(ctx, cx, cy, r, alpha=1)       sun bloom with rays, a star glint and lens rings
+//   drawArcLines(ctx, cx, cy, r0, n, {gap, a0, a1, alpha, w, h})   thin white arcs (clipped to w x h from 0,0 of ctx)
+//   drawSplash(ctx, x, y, w, {flip})            a curling water splash with droplets (base line at y)
+//   ecoBackdrop(w, h, o) -> cached canvas      sky gradient + sun + white arcs + curved grass horizon + bubbles
 
 import { rgba, shade, mix, pack, packRGB, hexToRgb } from '../core/color.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
@@ -567,7 +575,10 @@ export function drawAeroFrame(ctx, x, y, w, h, o = {}) {
   ctx.fillStyle = rgba('#bff4ff', 0.16);
   ctx.fillRect(x - 2, y + 4, w + 4, h - 8);
   ctx.fillRect(x + 4, y - 2, w - 8, h + 4);
-  drawAeroSurface(ctx, x, y, w, h, { tone: o.tone || 'sky', r: 10, gloss: 0.45, glossH: 26, curve: 5, rim: 0.85, glow: 0.55, streak: true, bubbles: w * h > 40000 ? 5 : 2, sparkle: 3, seed: o.seed ?? 7 });
+  // the body is a little eco wallpaper: deep sky, sun bloom, white arcs, a curved grass horizon
+  ctx.drawImage(ecoBackdrop(w, h, { seed: o.seed ?? 7, r: 10 }), x, y);
+  const k = w > 360 ? 1 : 0.8;
+  if (o.leaves !== false) drawLeafSprig(ctx, x + w - 6, y + 5, 'tr', k);
   let tx = x + 12;
   if (o.icon) {
     const ic = o.icon;
@@ -576,9 +587,242 @@ export function drawAeroFrame(ctx, x, y, w, h, o = {}) {
   }
   if (o.title) drawText(ctx, o.title, tx, y + 8, { scale: 2, color: '#ffffff', shadow: '#0a3e74' });
   const close = { x: x + w - 25, y: y + 6, w: 18, h: 18 };
-  return { content: { x: x + 8, y: y + 32, w: w - 16, h: h - 40 }, close, header: { x, y, w, h: 30 } };
+  // finish(ctx): call after drawing the panel's content so the lower leaves and the splash sit on top
+  const finish = (c2 = ctx) => {
+    if (o.leaves === false) return;
+    drawSplash(c2, x + w - 96 * k, y + h + 9, Math.round(84 * k), { flip: true });
+    drawLeafSprig(c2, x + 5, y + h - 6, 'bl', k);
+  };
+  return { content: { x: x + 8, y: y + 32, w: w - 16, h: h - 40 }, close, header: { x, y, w, h: 30 }, finish };
 }
 
 export function drawAeroCard(ctx, x, y, w, h, o = {}) {
-  drawAeroSurface(ctx, x, y, w, h, { tone: o.tone || 'frost', r: o.r ?? 7, gloss: o.gloss ?? 0.3, glossH: Math.min(18, Math.round(h * 0.3)), curve: 2, rim: 0.9, glow: 0.35, glowColor: '#bfeaff', inset: o.inset, bubbles: o.bubbles || 0, seed: o.seed });
+  const tone = o.tone || 'frost';
+  drawAeroSurface(ctx, x, y, w, h, { tone, a: tone === 'frost' ? [0.9, 0.84] : undefined, r: o.r ?? 7, gloss: o.gloss ?? 0.3, glossH: Math.min(18, Math.round(h * 0.3)), curve: 2, rim: 0.9, glow: 0.35, glowColor: '#bfeaff', inset: o.inset, bubbles: o.bubbles || 0, seed: o.seed });
+}
+
+// ---------------------------------------------------------------- eco accents
+
+const LEAF_TONES = {
+  leaf: ['#13561a', '#2a8c22', '#52bf2c', '#8fe03a', '#d4ff7a'],
+  lime: ['#2a6a12', '#4aa61e', '#7fd636', '#b8f05a', '#ecffa8'],
+  deep: ['#0c4416', '#1c7024', '#36a034', '#68cc48', '#b4f080'],
+};
+
+function leafTex(len, wid, ang, flip, tone) {
+  const R = LEAF_TONES[tone] || LEAF_TONES.leaf;
+  const P = R.map((h) => rgbOf(h));
+  const a = (ang * Math.PI) / 180, ca = Math.cos(a), sa = Math.sin(a);
+  const hw = wid / 2;
+  const pts = [[0, 0], [ca * len, sa * len], [ca * len * 0.5 - sa * hw, sa * len * 0.5 + ca * hw], [ca * len * 0.5 + sa * hw, sa * len * 0.5 - ca * hw]];
+  const minX = Math.floor(Math.min(...pts.map((q) => q[0]))) - 2, minY = Math.floor(Math.min(...pts.map((q) => q[1]))) - 2;
+  const maxX = Math.ceil(Math.max(...pts.map((q) => q[0]))) + 2, maxY = Math.ceil(Math.max(...pts.map((q) => q[1]))) + 2;
+  const W = maxX - minX, H = maxY - minY, ox = -minX, oy = -minY;
+  const b = new PixelBuffer(W, H);
+  const fs = flip ? -1 : 1;
+  const shape = (x, y) => {
+    const px = x + 0.5 - ox, py = y + 0.5 - oy;
+    const u = (px * ca + py * sa) / len, v = ((-px * sa + py * ca) / hw) * fs;
+    if (u < 0.02 || u > 1) return null;
+    let half = Math.pow(Math.sin(Math.PI * Math.min(1, Math.pow(u, 0.85) * 1.02)), 0.6) * (1 - 0.12 * u);
+    if (len > 18) half *= 1 - 0.07 * (0.5 + 0.5 * Math.sin(u * len * 1.1));
+    if (Math.abs(v) > half) return null;
+    return [u, v, half];
+  };
+  const inside = new Uint8Array(W * H);
+  const info = new Array(W * H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const q = shape(x, y); if (q) { inside[y * W + x] = 1; info[y * W + x] = q; } }
+  const m = (x, y) => x >= 0 && y >= 0 && x < W && y < H && inside[y * W + x];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (!inside[y * W + x]) continue;
+    const [u, v, half] = info[y * W + x];
+    let c;
+    if (!m(x - 1, y) || !m(x + 1, y) || !m(x, y - 1) || !m(x, y + 1)) c = P[0];
+    else if (Math.abs(v) < 0.09 + 0.05 * (1 - u)) c = P[4];
+    else {
+      const lit = v < 0 ? 1 : 0;
+      let k = 1.6 + lit * 1.0 - u * 0.5 + (1 - Math.abs(v) / half) * 0.35;
+      // side veins
+      const vein = (u * len * 0.42 - Math.abs(v) * hw * 0.32) % 4;
+      if (vein > 0 && vein < 0.7 && Math.abs(v) < half * 0.85) k += 0.55;
+      k = Math.max(0, Math.min(3.99, k));
+      const i = Math.floor(k), f = k - i, A = P[i], B = P[Math.min(4, i + 1)];
+      c = [A[0] + (B[0] - A[0]) * f, A[1] + (B[1] - A[1]) * f, A[2] + (B[2] - A[2]) * f];
+      // glossy specular streak on the lit half
+      if (v < -0.18 && v > -0.62 && u > 0.18 && u < 0.72) {
+        const s = 0.42 * Math.sin(((u - 0.18) / 0.54) * Math.PI);
+        c = [c[0] + (255 - c[0]) * s, c[1] + (255 - c[1]) * s, c[2] + (255 - c[2]) * s];
+      }
+    }
+    b.set(x, y, packRGB(c[0], c[1], c[2]));
+  }
+  // stalk
+  for (let i = 0; i < 3; i++) { const sx = Math.round(ox - ca * i), sy = Math.round(oy - sa * i); if (sx >= 0 && sy >= 0 && sx < W && sy < H) b.set(sx, sy, packRGB(P[1][0], P[1][1], P[1][2])); }
+  const cv = b.toCanvas();
+  cv.ox = ox; cv.oy = oy;
+  return cv;
+}
+
+export function drawAeroLeaf(ctx, x, y, len, wid, angleDeg, o = {}) {
+  len = Math.max(4, Math.round(len)); wid = Math.max(3, Math.round(wid));
+  const ang = Math.round(angleDeg / 10) * 10;
+  const c = aeroCached(`leaf|${len}|${wid}|${ang}|${o.flip ? 1 : 0}|${o.tone || 'leaf'}`, () => leafTex(len, wid, ang, !!o.flip, o.tone || 'leaf'));
+  ctx.drawImage(c, Math.round(x - c.ox), Math.round(y - c.oy));
+}
+
+// Sprig layout for the top-left corner (leaves spill up and to the left); other corners mirror it.
+const SPRIG = [
+  { x: 28, y: -3, len: 22, wid: 14, ang: -28, flip: true, tone: 'lime' },
+  { x: 2, y: 12, len: 26, wid: 16, ang: 128, flip: false, tone: 'lime' },
+  { x: 3, y: 3, len: 34, wid: 20, ang: 174, flip: true, tone: 'deep' },
+  { x: 16, y: -4, len: 32, wid: 19, ang: -70, flip: true, tone: 'leaf' },
+  { x: 0, y: 0, len: 42, wid: 24, ang: -132, flip: false, tone: 'lime' },
+]
+
+function sprigTex(corner, scale) {
+  const fx = corner === 'tr' || corner === 'br' ? -1 : 1, fy = corner === 'bl' || corner === 'br' ? -1 : 1;
+  const S = Math.ceil(110 * scale), O = Math.ceil(52 * scale);
+  const c = makeCanvas(S, S);
+  const g = ctxOf(c);
+  // twig
+  for (let i = 0; i <= 40; i++) {
+    const k = i / 40, px = O + fx * (38 * k) * scale, py = O + fy * (-5 * Math.sin(k * Math.PI)) * scale;
+    g.fillStyle = '#1f6a18'; g.fillRect(Math.round(px), Math.round(py), 2, 2);
+    g.fillStyle = '#7ed43a'; g.fillRect(Math.round(px), Math.round(py), 1, 1);
+  }
+  for (const L of SPRIG) {
+    let a = L.ang;
+    if (fx < 0) a = 180 - a;
+    if (fy < 0) a = -a;
+    const flip = (fx * fy < 0) ? !L.flip : L.flip;
+    drawAeroLeaf(g, O + fx * L.x * scale, O + fy * L.y * scale, L.len * scale, L.wid * scale, a, { flip, tone: L.tone });
+  }
+  c.ox = O; c.oy = O;
+  return c;
+}
+
+export function drawLeafSprig(ctx, x, y, corner = 'tl', scale = 1) {
+  scale = Math.round(scale * 10) / 10;
+  const c = aeroCached(`sprig|${corner}|${scale}`, () => sprigTex(corner, scale));
+  ctx.drawImage(c, Math.round(x - c.ox), Math.round(y - c.oy));
+}
+
+function flareTex(r) {
+  const S = r * 2, c = makeCanvas(S, S), g = ctxOf(c);
+  const gr = g.createRadialGradient(r, r, 0, r, r, r);
+  gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.12, 'rgba(255,255,250,0.95)'); gr.addColorStop(0.3, 'rgba(220,250,255,0.45)'); gr.addColorStop(1, 'rgba(200,240,255,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, S, S);
+  // rays (crisp 1 px spokes of varying length)
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2 + 0.2, L = r * (i % 2 ? 0.55 : 0.95) * (0.8 + hash1(i, 3) * 0.3);
+    for (let d = r * 0.12; d < L; d += 0.7) {
+      const k = 1 - d / L;
+      g.fillStyle = `rgba(255,255,255,${(0.55 * k).toFixed(3)})`;
+      g.fillRect(Math.round(r + Math.cos(a) * d), Math.round(r + Math.sin(a) * d), 1, 1);
+    }
+  }
+  return c;
+}
+
+export function drawSunFlare(ctx, cx, cy, r = 24, alpha = 1) {
+  r = Math.max(6, Math.round(r));
+  const c = aeroCached(`flare|${r}`, () => flareTex(r));
+  const ga = ctx.globalAlpha;
+  ctx.globalAlpha = ga * alpha;
+  ctx.drawImage(c, Math.round(cx - r), Math.round(cy - r));
+  ctx.globalAlpha = ga;
+  drawSparkle(ctx, cx, cy, Math.max(2, Math.round(r / 8)), alpha);
+}
+
+export function drawArcLines(ctx, cx, cy, r0, n = 5, o = {}) {
+  const gap = o.gap ?? 6, a0 = o.a0 ?? -0.2, a1 = o.a1 ?? 1.4, alpha = o.alpha ?? 0.35;
+  const W = o.w ?? Infinity, H = o.h ?? Infinity;
+  ctx.fillStyle = '#ffffff';
+  const ga = ctx.globalAlpha;
+  for (let i = 0; i < n; i++) {
+    const R = r0 + i * gap;
+    ctx.globalAlpha = ga * alpha * (1 - i / (n + 1));
+    let px = null, py = null;
+    const step = 0.8 / R;
+    for (let a = a0; a <= a1; a += step) {
+      const x = Math.round(cx + Math.cos(a) * R), y = Math.round(cy + Math.sin(a) * R);
+      if (x === px && y === py) continue;
+      px = x; py = y;
+      if (x >= 0 && y >= 0 && x < W && y < H) ctx.fillRect(x, y, 1, 1);
+    }
+  }
+  ctx.globalAlpha = ga;
+}
+
+function splashTex(w, flip) {
+  const h = Math.round(w * 0.5);
+  const b = new PixelBuffer(w, h + 3);
+  const put = (x, y, hex, a = 255) => { x = flip ? w - 1 - x : x; if (x >= 0 && y >= 0 && x < w && y < h + 3) b.set(x, y, pack(hex, a)); };
+  // a curling wave crest: a thick aqua body thinning as it curls up, a white lip on top
+  for (let x = 0; x < w; x++) {
+    const k = x / (w - 1);
+    if (k > 0.92) break;
+    const top = Math.round(h + 1 - Math.sin(Math.min(1, k / 0.92) * Math.PI * 0.62) * h * 0.92 * (0.35 + 0.65 * k));
+    const th = Math.max(2, Math.round((1 - k) * 9 + 2));
+    for (let t = 0; t < th; t++) {
+      const y = top + t;
+      if (y > h + 2) break;
+      const col = t === 0 ? '#ffffff' : t === 1 ? '#d8faff' : t < th * 0.5 ? '#7fdcfa' : '#2fa8e8';
+      put(x, y, col, t === 0 ? 245 : 225);
+    }
+    if (k > 0.25 && hash1(x, 14) > 0.6) put(x, top + 2 + Math.floor(hash1(x, 15) * 3), '#ffffff', 200);
+  }
+  // spray droplets flung off the crest
+  for (let i = 0; i < 12; i++) {
+    const x = Math.round(w * (0.62 + hash1(i, 11) * 0.36)), y = Math.round(h * (0.02 + hash1(i, 12) * 0.55));
+    put(x, y, '#ffffff', 235);
+    if (i % 2 === 0) { put(x + 1, y, '#c8f6ff', 210); put(x, y + 1, '#5ccaf0', 210); put(x + 1, y + 1, '#2fa8e8', 160); }
+  }
+  for (let x = 0; x < w; x++) if (hash1(x, 13) > 0.3) put(x, h + 2, x % 3 ? '#e8fbff' : '#9fe6ff', 210);
+  return b.toCanvas();
+}
+
+export function drawSplash(ctx, x, y, w = 48, o = {}) {
+  w = Math.max(12, Math.round(w));
+  const c = aeroCached(`splash|${w}|${o.flip ? 1 : 0}`, () => splashTex(w, !!o.flip));
+  ctx.drawImage(c, Math.round(x), Math.round(y - c.height));
+}
+
+function ecoTex(w, h, o) {
+  const R = o.r ?? 10;
+  const body = surfaceTex(w, h, { top: '#1470d8', mid: '#4cb4f8', bot: '#c8f0ff', edge: '#073c80', r: R, gloss: 0.38, glossH: Math.min(28, Math.round(h * 0.3)), curve: 6, rim: 0.85, glow: 0.2, streak: true, seed: o.seed });
+  const c = makeCanvas(w, h);
+  const g = ctxOf(c);
+  g.drawImage(body, 0, 0);
+  g.globalCompositeOperation = 'source-atop';
+  // sun bloom + arcs from it (upper right, left of the close orb)
+  const sx = Math.round(w * 0.78), sy = -4;
+  drawArcLines(g, sx, sy, Math.round(h * 0.35), 6, { gap: 7, a0: 1.75, a1: 3.0, alpha: 0.4, w, h });
+  drawSunFlare(g, sx, sy + 6, Math.min(46, Math.round(h * 0.18)), 0.85);
+  // curved grass horizon along the bottom
+  const base = h - 4;
+  for (let x = 0; x < w; x++) {
+    const n = (x - w / 2) / (w / 2);
+    const top = Math.round(base - 16 - (1 - n * n) * Math.min(18, h * 0.06));
+    for (let y = top; y < h; y++) {
+      const k = (y - top) / Math.max(1, h - top);
+      const col = y === top ? '#e8ffb0' : y === top + 1 ? '#a8ec5a' : mix('#6cd23c', '#2a8a1c', Math.min(1, k * 1.4));
+      g.fillStyle = col;
+      g.fillRect(x, y, 1, 1);
+    }
+    if (hash1(x, 21) > 0.82) { g.fillStyle = '#c8f878'; g.fillRect(x, top - 1, 1, 1); }
+  }
+  // bubbles drifting up the sides
+  for (let i = 0; i < Math.round(w / 60); i++) {
+    const bx = hash1(i, o.seed + 31) < 0.5 ? 6 + hash1(i, 32) * 30 : w - 36 + hash1(i, 33) * 30;
+    const by = h * (0.25 + hash1(i, 34) * 0.55), br = 2 + Math.floor(hash1(i, 35) * 4);
+    g.drawImage(aeroCached(`bub|${br}`, () => bubbleTex(br)), Math.round(bx - br - 1), Math.round(by - br - 1));
+  }
+  g.globalCompositeOperation = 'source-over';
+  return c;
+}
+
+export function ecoBackdrop(w, h, o = {}) {
+  w = Math.max(16, Math.round(w)); h = Math.max(16, Math.round(h));
+  return aeroCached(`eco|${w}|${h}|${o.seed ?? 7}|${o.r ?? 10}`, () => ecoTex(w, h, { seed: o.seed ?? 7, r: o.r }));
 }

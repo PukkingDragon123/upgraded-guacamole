@@ -22,9 +22,9 @@ import {
 } from '../scenery.js';
 import { worldStrip, vshape, vblob, voxSprite, placeSprite, px, skyward, qmix } from './fjord.js';
 
-const WATER = [[0, '#5a7a9a'], [0.12, '#34507a'], [0.32, '#202e5a'], [0.6, '#161c44'], [1, '#100f30']];
+const WATER = [[0, '#5a8ac8'], [0.12, '#30589a'], [0.32, '#1e3070'], [0.6, '#181e50'], [1, '#120f38']];
 const SKY = {
-  day: [[0, '#5a7aa8'], [0.6, '#98b0cc'], [1, '#d4dce4']],
+  day: [[0, '#2a5ac8'], [0.6, '#7aaaf0'], [1, '#e0ecff']],
   dusk: [[0, '#1e1a4a'], [0.5, '#6a3a7a'], [0.85, '#e0708a'], [1, '#ffb08a']],
   night: [[0, '#03040e'], [0.6, '#0a1030'], [1, '#1a2048']],
 };

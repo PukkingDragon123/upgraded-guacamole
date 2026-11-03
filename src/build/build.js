@@ -440,7 +440,9 @@ export class Build {
     this.labSeen = g.state;
     const ui = g.ui;
     const busy = ensureLab(g.state).slots.length > 0;
-    if (ui?.panels?.labwidget && (busy || done.length) && !ui.isOpen('labwidget')) ui.open('labwidget');
+    // the widget goes to the bottom of the UI stack so it never steals input from an open panel
+    const w = ui?.panels?.labwidget;
+    if (w && (busy || done.length) && !ui.stack.includes(w)) { ui.stack.unshift(w); w.open?.(); }
     if (done.length) ui?.panels?.labwidget?.celebrate?.(done[done.length - 1]);
   }
 

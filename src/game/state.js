@@ -11,8 +11,8 @@ export function defaultState() {
     totalCoins: 0,
     tutorialDone: false,
     tutorialStep: 0,
-    biome: 'shallows',
-    unlockedBiomes: ['shallows'],
+    biome: 'oscean', // [phase3:world] the (OS)cean is the first ocean
+    unlockedBiomes: ['oscean', 'shallows'], // [phase3:world]
     skills: {},
     baits: { bread: 3 },
     equipped: null, // { kind: 'icon', id } | { kind: 'special', id }

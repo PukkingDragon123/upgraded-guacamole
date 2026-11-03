@@ -18,7 +18,28 @@ import { rng } from '../core/rng.js';
 import { rollModel, mirrorModel, idOverlay, idPaint, renderModel, WORLD_YAW, WORLD_PITCH } from './voxkit.js';
 import { glowSprite } from './scenery.js';
 import { puffSprites } from './sky.js';
-import { buildBoatModel, BOAT_TIERS } from './boatmodels.js';
+import * as BM from './boatmodels.js';
+
+// boatmodels.js is being reworked (phase 3: tiers + parts). Everything it hands us is validated, and a tiny built-in
+// raft keeps the fisherman afloat if a tier fails to build or the API shifts.
+const tierCount = () => (Array.isArray(BM.BOAT_TIERS) && BM.BOAT_TIERS.length ? BM.BOAT_TIERS.length : 1);
+const validModel = (T) => !!(T && T.m && T.m.nx && T.m.data && Array.isArray(T.pivot) && T.A && Array.isArray(T.A.stand) && Array.isArray(T.A.bow) && Array.isArray(T.A.stern));
+function fallbackRaft(paint) {
+  const m = new VoxelModel(40, 10, 14);
+  const wood = m.color(paint || '#c8583a', { jitter: 0.08 }), deck = m.color('#e8d2a4', { jitter: 0.06 });
+  m.box(0, 0, 0, 39, 3, 13, wood);
+  m.box(1, 4, 1, 38, 4, 12, deck);
+  return { m, pivot: [20, 3], zc: 7, A: { stand: [20, 5, 8], bow: [40, 3, 7], stern: [0, 3, 7], flag: null }, front: new Set(), night: new Map(), lights: [] };
+}
+function buildModel(tier, hull, trim, parts) {
+  for (const t of [tier, 0]) {
+    try {
+      const T = BM.buildBoatModel?.(t, hull, trim, parts);
+      if (validModel(T)) return { T, tier: t };
+    } catch (e) { if (!buildModel.warned) { buildModel.warned = true; console.warn('boat model', e); } }
+  }
+  return { T: fallbackRaft(hull), tier: 0 };
+}
 
 const VS = 2;            // px per voxel
 const YAW = WORLD_YAW, PITCH = WORLD_PITCH;
@@ -76,7 +97,7 @@ export class Boat {
 
   readTier() {
     const t = Number(this.game.state?.boat?.tier ?? 0);
-    return Number.isFinite(t) ? clamp(Math.round(t), 0, BOAT_TIERS.length - 1) : 0;
+    return Number.isFinite(t) ? clamp(Math.round(t), 0, tierCount() - 1) : 0;
   }
 
   paint() {
@@ -93,12 +114,16 @@ export class Boat {
   model() {
     const tier = this.readTier();
     const { hull, trim } = this.paint();
-    const key = tier + '|' + hull + '|' + trim;
+    const parts = this.game.state?.boat?.parts || null;
+    let pk = '';
+    try { pk = parts ? JSON.stringify(parts) : ''; } catch { pk = ''; }
+    const key = tier + '|' + hull + '|' + trim + '|' + pk;
     if (this.modelKey !== key) {
       this.modelKey = key;
       let M = this.models.get(key);
       if (!M) {
-        const T = buildBoatModel(tier, hull, trim);
+        const { T } = buildModel(tier, hull, trim, parts);
+        T.front = T.front instanceof Set ? T.front : new Set(T.front || []); T.night = T.night instanceof Map ? T.night : new Map(Object.entries(T.night || {}).map(([k, v]) => [Number(k), v])); T.zc ??= T.m.nz / 2;
         M = { T, mirror: mirrorModel(T.m), flag: buildFlag(hull, tier === 0), tier };
         this.models.set(key, M);
         if (this.models.size > 4) this.models.delete(this.models.keys().next().value);

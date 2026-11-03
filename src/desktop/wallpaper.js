@@ -3,6 +3,7 @@
 // Also owns the rising-water reveal used by the opening (waterline, clip, glossy surface line).
 //
 //   renderLandscape(W, H, {seed, sun}) -> canvas   cached per size; reused by the intro (window view, monitor)
+//   cumulus(seed, w, s) -> renderVoxels result     one glossy voxel cloud
 //   new Wallpaper(game): draw(ctx, dt, dim), waterline(x), clipOcean(ctx), drawWaterline(ctx), layer.canvas
 
 import { makeCanvas, ctxOf, makeLayer, resizeLayer } from '../core/canvas.js';
@@ -41,7 +42,8 @@ function drawSky(g, W, H, horizon, sun) {
 }
 
 // --------------------------------------------------------------------------------------------- clouds
-function cumulus(seed, w, s) {
+// A voxel cumulus sprite (w = width in voxels, s = px per voxel); also used by the opening's eco scene.
+export function cumulus(seed, w, s) {
   const r = new RNG(seed);
   const h = Math.round(w * 0.55), d = Math.round(w * 0.42);
   const m = new VoxelModel(w + 4, h + 4, d + 4);

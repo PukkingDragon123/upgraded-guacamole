@@ -1,5 +1,5 @@
 // Dev preview of the voxel fisherman: dist/dev/character.html
-//   ?view=all|poses|outfits|big|wardrobe  &t=seconds (freeze time)  &yaw=deg (big turntable)  &scale=N (big)
+//   ?view=all|poses|outfits|big|wardrobe|npcs|small|boats (&tier=N &parts=json)  &t=seconds (freeze time)  &yaw=deg (big turntable)  &scale=N (big)
 //   &pose=idle (big)  &look=json  &budget=ms (frame build budget; default unlimited here)
 import { ctxOf } from '../core/canvas.js';
 import { drawText } from '../gfx/font.js';
@@ -14,18 +14,20 @@ import { computeStats } from '../game/skills.js';
 import { UI } from '../ui/ui.js';
 import { WardrobePanel, drawWardrobeIcon } from '../ui/wardrobe.js';
 import { SPECIES } from '../fish/species.js';
+import { NPCS, drawNPC } from '../gfx/npcs.js';
+import { BOAT_TIERS, renderBoatPreview, BOAT_PARTS } from '../world/boatmodels.js';
 
 const LOOKS = [
   { ...DEFAULT_CHARACTER },
-  { skin: 'lime', eyes: 'googly', mouth: 'grin', hat: 'propeller', outfit: 'hawaiian', boots: 'flippers', gloves: 'none', acc: ['sunglasses'], rod: 'candy' },
-  { skin: 'forest', eyes: 'sleepy', mouth: 'buck', hat: 'captain', outfit: 'raincoat', boots: 'red', gloves: 'rubber', acc: ['mustache'], rod: 'carbon' },
-  { skin: 'blue', eyes: 'starry', mouth: 'smooch', hat: 'crown', outfit: 'tuxedo', boots: 'cowboy', gloves: 'gold', acc: ['monocle', 'bowtie'], rod: 'golden' },
-  { skin: 'orange', eyes: 'angry', mouth: 'grit', hat: 'viking', outfit: 'wetsuit', boots: 'sneakers', gloves: 'boxing', acc: ['earring'], rod: 'laser' },
-  { skin: 'pink', eyes: 'hearts', mouth: 'tongue', hat: 'chef', outfit: 'pajamas', boots: 'slippers', gloves: 'mittens', acc: ['scarf'], rod: 'neon' },
-  { skin: 'mint', eyes: 'dizzy', mouth: 'whistle', hat: 'cone', outfit: 'astronaut', boots: 'bare', gloves: 'oven', acc: ['backpack', 'snorkel'], rod: 'bamboo' },
-  { skin: 'gold', eyes: 'goofy', mouth: 'pout', hat: 'cowboy', outfit: 'hoodie', boots: 'yellow', gloves: 'fingerless', acc: ['bandana'], rod: 'golden' },
-  { skin: 'swamp', eyes: 'goofy', mouth: 'grin', hat: 'souwester', outfit: 'overalls', boots: 'yellow', gloves: 'none', acc: [], rod: 'bamboo' },
-  { skin: 'purple', eyes: 'googly', mouth: 'pout', hat: 'party', outfit: 'hoodie', boots: 'sneakers', gloves: 'none', acc: ['scarf'], rod: 'neon' },
+  { tint: 'mint', eyes: 'sparkle', mouth: 'grin', hat: 'headphones', hair: 'none', face: 'none', top: 'hoodie', bottom: 'jeans', gloves: 'none', shoes: 'hightops', back: 'satchel', rod: 'wand' },
+  { tint: 'rose', eyes: 'anime', mouth: 'cat', hat: 'flower', hair: 'none', face: 'blush', top: 'sailor', bottom: 'skirt', gloves: 'mitts', shoes: 'slippers', back: 'wings', rod: 'coral', trail: 'hearts' },
+  { tint: 'chrome', eyes: 'led', mouth: 'smirk', hat: 'none', hair: 'antenna', face: 'visor', top: 'astro', bottom: 'astro', gloves: 'chrome', shoes: 'moon', back: 'jetpack', rod: 'neon' },
+  { tint: 'globe', eyes: 'bean', mouth: 'smile', hat: 'leafcrown', hair: 'none', face: 'flare', top: 'leafy', bottom: 'cargo', gloves: 'garden', shoes: 'sandals', back: 'globe', rod: 'leafy', trail: 'leaves' },
+  { tint: 'lemon', eyes: 'star', mouth: 'beam', hat: 'propeller', hair: 'none', face: 'freckles', top: 'jersey', bottom: 'shorts', gloves: 'rubber', shoes: 'boots', back: 'turbine', rod: 'candy', trail: 'sparkle' },
+  { tint: 'pearl', eyes: 'teary', mouth: 'o', hat: 'none', hair: 'bun', face: 'round', top: 'aquasuit', bottom: 'aquasuit', gloves: 'none', shoes: 'flippers', back: 'tank', rod: 'prism', trail: 'bubbles' },
+  { tint: 'gold', eyes: 'heart', mouth: 'kiss', hat: 'crown', hair: 'none', face: 'heart', top: 'tux', bottom: 'jeans', gloves: 'gold', shoes: 'hightops', back: 'solar', rod: 'golden' },
+  { tint: 'galaxy', eyes: 'swirl', mouth: 'wobbly', hat: 'none', hair: 'halo', face: 'none', top: 'puffer', bottom: 'leggings', gloves: 'boxing', shoes: 'jet', back: 'cape', rod: 'chrome', trail: 'rainbow' },
+  { tint: 'lilac', eyes: 'derp', mouth: 'tongue', hat: 'none', hair: 'ears', face: 'mustache', top: 'raincoat', bottom: 'swim', gloves: 'none', shoes: 'sneakers', back: 'none', rod: 'auto', trail: 'notes' },
 ];
 
 // Stub game hosting the wardrobe panel (&coins=N &slot=hat &rich: owns lots).
@@ -164,7 +166,7 @@ export function run(params) {
         const x = 50 + i * 90;
         const pose = ['idle', 'wave', 'cheer', 'reel', 'hold', 'sad', 'pull', 'idle', 'wave', 'cast'][i];
         drawCharacter(g, x, y0, { pose, t: t + i * 0.3, facing: i % 2 ? -1 : 1, look: L, fish, id: 'o' + i });
-        label(normalizeLook(L).outfit, x, y0 + 12);
+        label(normalizeLook(L).tint, x, y0 + 12);
       });
     }
     if (view === 'all' || view === 'big') {
@@ -187,6 +189,40 @@ export function run(params) {
         label('yaw ' + yw, 100 + i * 190, 306);
       });
       LOOKS.slice(1, 6).forEach((L, i) => drawCharacter(g, 100 + i * 190, 520, { pose, t: fixedT ?? 0, yaw: -30, scale: 2, look: L, id: 'tu' + i }));
+    }
+    if (view === 'npcs') {
+      label('NPCS (scale 1, then scale 2 talking)', 480, 4, '#fff6c8');
+      deck(170, 8, 952);
+      deck(470, 8, 952);
+      Object.keys(NPCS).forEach((id, i) => {
+        const x = 80 + i * 160;
+        drawNPC(g, id, { x, y: 170, t: t + i * 0.7, scale: 1, facing: i % 2 ? -1 : 1, pose: 'idle', mood: 'happy', id: 'a' + i, lookAt: mouse });
+        label(NPCS[id].name, x, 182);
+        const talk = Math.abs(Math.sin(t * 11 + i)) * (Math.sin(t * 1.3 + i) > 0 ? 1 : 0);
+        drawNPC(g, id, { x, y: 470, t: t + i * 0.7, scale: 2, facing: i % 2 ? 1 : -1, pose: i === 2 ? 'wave' : 'talk', talk: params.has('talk') ? 0.8 : talk, mood: ['happy', 'surprised', 'happy', 'excited', 'happy', 'surprised'][i], id: 'b' + i });
+      });
+    }
+    if (view === 'small') {
+      label('SMALL (boat scale 0.62, then 0.45)', 480, 4, '#fff6c8');
+      deck(120, 8, 952); deck(240, 8, 952);
+      LOOKS.forEach((L, i) => {
+        drawCharacter(g, 50 + i * 92, 120, { pose: ['idle', 'reel', 'cheer', 'hold', 'pull', 'wave', 'idle', 'sad', 'cast', 'sit'][i], t: t + i * 0.3, facing: i % 2 ? -1 : 1, scale: 0.62, look: L, fish, id: 's' + i });
+        drawCharacter(g, 50 + i * 92, 240, { pose: 'idle', t: t + i * 0.3, facing: 1, scale: 0.45, look: L, id: 'q' + i });
+      });
+    }
+    if (view === 'boats') {
+      const tierSel = params.has('tier') ? Number(params.get('tier')) : null;
+      let parts = null;
+      try { if (params.get('parts')) parts = JSON.parse(params.get('parts')); } catch { /* ignore */ }
+      const tiers = tierSel != null ? [tierSel] : BOAT_TIERS.map((_, i) => i);
+      tiers.forEach((ti, k) => {
+        const col = tierSel != null ? 0 : k % 3, row = tierSel != null ? 0 : Math.floor(k / 3);
+        const bx = tierSel != null ? 480 : 170 + col * 310, by = tierSel != null ? 360 : 150 + row * 170;
+        const pv = renderBoatPreview(ti, parts, { scale: tierSel != null ? 2 : 1, t, look });
+        if (pv) { g.drawImage(pv.canvas, Math.round(bx - pv.px), Math.round(by - pv.py)); if (pv.stand) drawCharacter(g, bx + pv.stand[0], by + pv.stand[1], { pose: 'idle', t, facing: 1, scale: tierSel != null ? 1 : 0.62, look, id: 'boat' + k }); if (pv.drawFront) pv.drawFront(g, bx, by, t); }
+        g.fillStyle = 'rgba(30,120,200,0.35)'; g.fillRect(bx - 150, by, 300, 2);
+        label(`${ti} ${BOAT_TIERS[ti].name}`, bx, by + 40);
+      });
     }
     if (view === 'all') {
       const pb = boatPaint(look);

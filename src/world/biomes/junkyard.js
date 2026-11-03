@@ -24,13 +24,13 @@ import {
 } from '../scenery.js';
 
 const SKY = {
-  day: [[0, '#4e6058'], [0.45, '#6a7c66'], [0.8, '#98a27e'], [0.94, '#b8b88e'], [1, '#d2cca2']],
+  day: [[0, '#2a7ab0'], [0.45, '#4aa4c8'], [0.8, '#8ad0cc'], [0.94, '#c4ecd0'], [1, '#e8fae0']],
   dusk: [[0, '#1c1828'], [0.45, '#3c2a40'], [0.78, '#7a4048'], [0.93, '#c2704e'], [1, '#e8965c']],
   night: [[0, '#010203'], [0.6, '#05080a'], [1, '#121a1c']],
 };
-const SKYHZ = { day: '#b8b88e', dusk: '#c2704e', night: '#0c1214' };
+const SKYHZ = { day: '#c4ecd0', dusk: '#c2704e', night: '#0c1214' };
 const WATER = {
-  day: [[0, '#86c0a4'], [0.05, '#52a08a'], [0.3, '#357a6e'], [0.65, '#225a56'], [1, '#143e40']],
+  day: [[0, '#9ae8cc'], [0.05, '#4ac0a8'], [0.3, '#26948a'], [0.65, '#1a6a6a'], [1, '#104a50']],
   dusk: [[0, '#d0a874'], [0.05, '#82907a'], [0.35, '#40645e'], [1, '#18343a']],
   night: [[0, '#447672'], [0.08, '#326664'], [0.5, '#204c4e'], [1, '#123236']],
 };
@@ -203,8 +203,8 @@ export class JunkyardBiome extends Biome {
 
   buildSky() {
     const W = this.W, base = this.base, top = this.top;
-    this.sky = new SkyDome({ W, top, base, seed: 17, stops: SKY, stars: 24, haze: 0.12, clouds: { n: 11, size: [26, 64], y: [top + 30, base - 26], scale: 2, speed: 0.8, pals: ['smog', 'dusk', 'night', 'rain'] } });
-    this.sky.clouds.forEach((c) => { c.spr.day = c.spr.smog; });
+    this.sky = new SkyDome({ W, top, base, seed: 17, stops: SKY, stars: 24, haze: 0.12, clouds: { n: 11, size: [26, 64], y: [top + 30, base - 26], scale: 2, speed: 0.8, pals: ['day', 'dusk', 'night', 'rain'] } });
+    // (phase 3: the smog has cleared - eco tech reclaimed the scrapyard, so the clouds are plain white again)
     const hz = (k) => ({ day: [SKYHZ.day, k], dusk: [SKYHZ.dusk, k + 0.08], night: [SKYHZ.night, Math.min(0.85, k + 0.32)] });
     this.horizon = [
       { spr: junkRidge(W, 27, hz(0.34)), x: -12, y: base + 3, full: true },

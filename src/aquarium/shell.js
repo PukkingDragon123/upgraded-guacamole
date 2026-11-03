@@ -5,6 +5,8 @@
 //                glass edges, glare and streaks
 //   reef         as above with a deep blue LED hood
 //   wall         a wide glossy white bezel set into the wall
+//   lamp         the moving-picture aquarium lamp: brushed silver hood and base, curved clear acrylic
+//                sides, screws, a recessed rocker switch (drawn live by the aquarium: .switch rect)
 //
 //   shellArt(L, ell) -> {under, back, front: {canvas, x, y} | null}   (scene coordinates; ell = round glass
 //                       ellipse in tank-local coordinates from tankOpts)
@@ -28,6 +30,7 @@ export function shellArt(L, ell) {
   if (a) return a;
   if (L.shape === 'round') a = roundShell(L, ell);
   else if (L.shape === 'wall') a = wallShell(L);
+  else if (L.shape === 'lamp') a = lampShell(L);
   else a = boxShell(L);
   cache.set(key, a);
   if (cache.size > 12) cache.delete(cache.keys().next().value);
@@ -264,6 +267,110 @@ function boxShell(L) {
     });
   }
   return { under: out(U, ox, oy), back: null, front: out(F, ox, oy) };
+}
+
+// ------------------------------------------------------------------ the moving-picture lamp
+
+const SILVER = [C('#ffffff'), C('#dfe5eb'), C('#b9c3cd'), C('#919dab'), C('#6a7684'), C('#3e4854')];
+
+function lampShell(L) {
+  const { tank, u, lid, base } = L;
+  const side = Math.max(3, Math.round(6 * u));
+  const pad = side + 4;
+  const ox = tank.x - pad, oy = tank.y - lid - pad;
+  const W = tank.w + pad * 2, H = tank.h + lid + base + pad * 2 + Math.round(6 * u);
+  const x0 = pad, y0 = pad + lid, x1 = x0 + tank.w, y1 = y0 + tank.h;
+  const F = new Paint(W, H);
+  const c = F.c;
+  // curved clear acrylic sides (left and right ends of the cylinder-ish front)
+  for (const left of [true, false]) {
+    const a = left ? x0 - side : x1, b = left ? x0 + Math.round(side * 1.2) : x1 + side;
+    F.each(a, y0, b, y1, (x, y) => {
+      const t = left ? (x - a) / (b - a) : 1 - (x - a) / (b - a); // 0 = outer edge
+      const v = (y - y0) / tank.h;
+      if (t < 0.12) { setMix(c, C('#c8e4f4'), COL.white, 0.4); return 0.85; }
+      setMix(c, C('#e8f8ff'), COL.white, 0.5);
+      const hl = Math.max(0, 1 - Math.abs(t - 0.3) / 0.14);
+      return 0.12 + 0.55 * hl * (0.7 + 0.3 * Math.sin(v * 9)) + (x > x0 && x < x1 ? -0.05 : 0.18);
+    });
+  }
+  // front acrylic: diagonal glare, a soft vertical highlight
+  F.each(x0, y0, x1, y1, (x, y) => {
+    const lx = x - x0, ly = y - y0;
+    c[0] = 255; c[1] = 255; c[2] = 255;
+    let a = 0;
+    const g = 1 - (lx / (tank.w * 0.28) + ly / (tank.h * 0.6));
+    if (g > 0) a = 0.14 * g * g;
+    const f = (((lx * 0.9 + ly * 0.5) / Math.max(40, tank.w * 0.55)) % 1 + 1) % 1;
+    if (f > 0.66 && f < 0.72) a = Math.max(a, 0.08);
+    if (Math.abs(lx - tank.w * 0.83) < 1.5 * u + 0.5) a = Math.max(a, 0.1 * (1 - ly / tank.h));
+    return a;
+  });
+  const silver = (t, sheen) => { grad(c, [[0, SILVER[0]], [0.25, SILVER[1]], [0.55, SILVER[2]], [0.85, SILVER[3]], [1, SILVER[4]]], t); if (sheen) setMix(c, c, COL.white, sheen); };
+  // hood
+  {
+    const hx0 = x0 - side - 2, hx1 = x1 + side + 2, hy0 = y0 - lid, hy1 = y0 + Math.max(1, Math.round(u));
+    const r = Math.min(lid * 0.55, 10 * u + 2);
+    F.each(hx0, hy0, hx1, hy1, (x, y) => {
+      const d = sdRR(x, y, (hx0 + hx1) / 2, (hy0 + hy1) / 2 + r / 2, (hx1 - hx0) / 2, (hy1 - hy0) / 2 + r / 2, r);
+      if (d > 0 || y >= hy1) return 0;
+      const t = (y - hy0) / (hy1 - hy0);
+      // brushed metal: a top face, a bright bevel, the front band, a dark lower lip
+      if (t < 0.24) silver(0.3 + t * 1.4, 0);
+      else if (t < 0.34) silver(0.02, 0.35);
+      else if (t < 0.84) silver(0.22 + (t - 0.34) * 1.2, Math.sin(x * 0.9) > 0.92 ? 0.08 : 0);
+      else { setMix(c, SILVER[4], SILVER[5], (t - 0.84) / 0.16); }
+      if (d > -1) setMix(c, c, SILVER[5], 0.6);
+      const ex = Math.min(x - hx0, hx1 - x) / (hx1 - hx0);
+      if (ex < 0.06) setMix(c, c, SILVER[4], 0.25 * (1 - ex / 0.06));
+      return 1;
+    });
+  }
+  // base
+  let sw = null;
+  {
+    const bx0 = x0 - side - 2, bx1 = x1 + side + 2, by0 = y1 - Math.max(1, Math.round(u)), by1 = y1 + base;
+    const foot = Math.max(2, Math.round(base * 0.18));
+    const r = Math.min(base * 0.3, 8 * u + 2);
+    F.each(bx0, by0, bx1, by1, (x, y) => {
+      const isFoot = y > by1 - foot;
+      const inset = isFoot ? Math.round(10 * u) + 2 : 0;
+      const d = sdRR(x, y, (bx0 + bx1) / 2, (by0 + by1 - foot) / 2 + (isFoot ? foot / 2 : 0), (bx1 - bx0) / 2 - inset, isFoot ? foot / 2 + 1 : (by1 - foot - by0) / 2, isFoot ? foot / 2 : r);
+      if (d > 0) return 0;
+      const t = (y - by0) / (by1 - foot - by0);
+      if (isFoot) { const tf = (y - (by1 - foot)) / foot; silver(0.45 + tf * 0.5, 0); }
+      else if (t < 0.14) silver(0.05 + t, 0.3);          // top bevel catching the light
+      else if (t < 0.2) silver(0.85, 0);                  // groove
+      else silver(0.15 + (t - 0.2) * 0.65, Math.sin(x * 0.9) > 0.92 ? 0.06 : 0);
+      if (d > -1) setMix(c, c, SILVER[5], 0.6);
+      return 1;
+    });
+    // screws
+    for (const sx of [bx0 + Math.round(12 * u) + 3, bx1 - Math.round(12 * u) - 4]) {
+      const sy = by0 + Math.round((by1 - foot - by0) * 0.3);
+      F.over(sx, sy, SILVER[4], 1); F.over(sx + 1, sy, SILVER[3], 1); F.over(sx, sy + 1, SILVER[5], 1); F.over(sx + 1, sy + 1, SILVER[4], 1);
+    }
+    // recessed switch well (the rocker itself is drawn live)
+    const sww = Math.max(6, Math.round(22 * u)), swh = Math.max(4, Math.round(13 * u));
+    const swx = Math.round(bx1 - (bx1 - bx0) * 0.2 - sww / 2), swy = Math.round(by0 + (by1 - foot - by0) * 0.56 - swh / 2);
+    F.each(swx - 1, swy - 1, swx + sww + 1, swy + swh + 1, (x, y) => {
+      setMix(c, SILVER[5], C('#2a323c'), x < swx || y < swy ? 0.2 : 0.6);
+      return 1;
+    });
+    sw = { x: ox + swx, y: oy + swy, w: sww, h: swh };
+  }
+  // under: soft shadow on the desk
+  const U = new Paint(W + Math.round(12 * u), H + Math.round(10 * u));
+  {
+    const cu = U.c;
+    const sy = y1 + base, sx0 = x0 - side, sx1 = x1 + side + Math.round(6 * u);
+    U.each(sx0, sy - 1, sx1, sy + Math.max(3, 6 * u), (x, y) => {
+      const k = 1 - (y - sy + 1) / Math.max(3, 6 * u);
+      cu[0] = 40; cu[1] = 80; cu[2] = 110;
+      return 0.3 * k * Math.min(1, (x - sx0) / 6, (sx1 - x) / 6);
+    });
+  }
+  return { under: out(U, ox, oy), back: null, front: out(F, ox, oy), switch: sw, hood: { x: ox + x0 - side - 2, y: oy + y0 - lid, w: tank.w + side * 2 + 4, h: lid } };
 }
 
 // ------------------------------------------------------------------ wall aquarium

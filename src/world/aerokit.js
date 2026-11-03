@@ -17,6 +17,7 @@ import { hexToRgb, packRGB, mix, shade, hslToRgb } from '../core/color.js';
 import { renderModel } from './voxkit.js';
 import { paint, todWeights, quality } from './scenery.js';
 import { skyBodies } from './sky.js';
+import { flipCanvas } from '../gfx/pixel.js';
 
 const cache = new Map();
 const memo = (key, fn) => { let v = cache.get(key); if (!v) { v = fn(); cache.set(key, v); } return v; };
@@ -643,15 +644,339 @@ export function pierModel(len = 90, deep = 30, scale = 2) {
   });
 }
 
+// ------------------------------------------------------------------ eco Aero wallpaper set pieces (reference 8.jpg)
+
+// White arc lines sweeping across the sky (concentric, fading toward both ends). Centre lies below-left.
+export function skyArcs(w, h, n = 9, gap = 7) {
+  return memo('arcs|' + w + '|' + h + '|' + n + '|' + gap, () => {
+    const cx = w * 0.08, cy = h * 1.9, R0 = Math.hypot(w * 0.55 - cx, h * 0.62 - cy);
+    return paint(w, h, (x, y) => {
+      const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy) - R0;
+      const k = d / gap;
+      const i = Math.round(k);
+      if (i < 0 || i >= n || Math.abs(k - i) * gap > 0.55) return 0;
+      const u = x / w;
+      const a = Math.sin(clamp01((u - 0.05) / 0.9) * Math.PI) * (0.75 - i * 0.045);
+      const q = qa(a, x, y, 5);
+      return q <= 0 ? 0 : packRGB(255, 255, 255, Math.round(q * 255));
+    });
+  });
+}
+
+// Radial sun rays (draw additively at the sun). Two seeds crossfaded read as slowly turning rays.
+export function sunRays(R, seed = 1, n = 22) {
+  return memo('rays|' + R + '|' + seed + '|' + n, () => {
+    const r = new RNG(seed);
+    const rays = Array.from({ length: n }, () => [r.float(0, TAU), r.float(0.012, 0.05), r.float(0.4, 1)]);
+    const NB = 1440, lut = new Float32Array(NB);
+    for (let i = 0; i < NB; i++) {
+      const ang = (i / NB) * TAU - Math.PI;
+      let a = 0;
+      for (const [th, wdt, k] of rays) {
+        let da = Math.abs(ang - th) % TAU;
+        if (da > Math.PI) da = TAU - da;
+        if (da < wdt * 3) a = Math.max(a, Math.exp(-(da * da) / (wdt * wdt)) * k);
+      }
+      lut[i] = a;
+    }
+    const s = R * 2 + 1;
+    return paint(s, s, (x, y) => {
+      const dx = x - R, dy = y - R, d = Math.hypot(dx, dy) / R;
+      if (d >= 1 || d < 0.04) return 0;
+      let a = lut[Math.min(NB - 1, Math.floor(((Math.atan2(dy, dx) + Math.PI) / TAU) * NB))];
+      if (a < 0.02) return 0;
+      a *= Math.pow(1 - d, 1.6) * 0.8;
+      const q = qa(a, x, y, 6);
+      return q <= 0 ? 0 : packRGB(255, 252, 236, Math.round(q * 255));
+    });
+  });
+}
+
+// Green glass globe (original land shapes from 3D noise, no real map): n frames of one full turn, built lazily.
+export class GlassGlobe {
+  constructor(r = 56, n = 24, seed = 4) {
+    this.r = r; this.n = n; this.frames = new Array(n).fill(null);
+    const W = 160, Hh = 80;
+    this.map = new Uint8Array(W * Hh);
+    this.mw = W; this.mh = Hh;
+    for (let j = 0; j < Hh; j++) {
+      const lat = (j / (Hh - 1) - 0.5) * Math.PI;
+      for (let i = 0; i < W; i++) {
+        const lon = (i / W) * TAU;
+        const px = Math.cos(lat) * Math.cos(lon), py = Math.sin(lat), pz = Math.cos(lat) * Math.sin(lon);
+        const v = fbm3n(px * 1.6 + 3, py * 1.9, pz * 1.6, seed);
+        this.map[j * W + i] = v > 0.56 ? 2 : v > 0.52 ? 1 : 0;
+      }
+    }
+  }
+
+  frame(i) {
+    i = ((i % this.n) + this.n) % this.n;
+    if (!this.frames[i]) this.frames[i] = this.build(i);
+    return this.frames[i];
+  }
+
+  // nearest built frame (warm() builds one more per call)
+  get(i) {
+    i = ((i % this.n) + this.n) % this.n;
+    if (this.frames[i]) return this.frames[i];
+    for (let d = 1; d < this.n; d++) { const f = this.frames[(i + d) % this.n] || this.frames[(i - d + this.n) % this.n]; if (f) return f; }
+    return this.frame(i);
+  }
+
+  warm() { const k = this.frames.indexOf(null); if (k >= 0) this.frames[k] = this.build(k); }
+
+  build(fi) {
+    const r = this.r, s = r * 2 + 2, c0 = r + 1, rot = (fi / this.n) * TAU;
+    const sea = hexToRgb('#2fbf3a'), seaD = hexToRgb('#13802a'), land = hexToRgb('#c8f8a0'), landL = hexToRgb('#f4fff0'), coast = hexToRgb('#8ae46a'), rimC = hexToRgb('#0e6a24');
+    const { map, mw, mh } = this;
+    return paint(s, s, (x, y) => {
+      const nx = (x + 0.5 - c0) / r, ny = (y + 0.5 - c0) / r;
+      const d2 = nx * nx + ny * ny;
+      if (d2 > 1) return 0;
+      const nz = Math.sqrt(1 - d2);
+      // tilted axis (23 deg) for the classic globe look
+      const ca = 0.92, sa = 0.39;
+      const ty = -ny * ca + nx * sa, tx = nx * ca + ny * sa;
+      const lat = Math.asin(clamp(ty, -1, 1));
+      const lon = Math.atan2(tx, nz) + rot;
+      const mi = Math.floor((((lon / TAU) % 1) + 1) % 1 * mw), mj = clamp(Math.floor((lat / Math.PI + 0.5) * (mh - 1) + 0.5), 0, mh - 1);
+      const t = map[mj * mw + mi];
+      const lam = clamp01(-nx * 0.5 - ny * 0.62 + nz * 0.6);
+      let col = t === 2 ? L3(land, landL, lam * 0.7) : t === 1 ? coast : L3(seaD, sea, 0.35 + lam * 0.65);
+      // grid lines (every 30 degrees)
+      const gl = Math.abs(((lat / (Math.PI / 6)) % 1 + 1) % 1 - 0.5), gm = Math.abs(((lon / (Math.PI / 6)) % 1 + 1) % 1 - 0.5);
+      const pxw = 1.2 / (r * Math.max(0.25, nz));
+      if (gl > 0.5 - pxw * 2.6 || gm > 0.5 - pxw * 2.2 * Math.max(0.3, Math.cos(lat))) col = L3(col, WHITE, 0.55 * nz);
+      // glass: fresnel rim, inner caustic crescent, big gloss cap, a sharp highlight
+      const d = Math.sqrt(d2);
+      col = L3(col, rimC, smoothstep(0.82, 1, d) * 0.55);
+      const cres = smoothstep(0.2, 0.7, ny) * smoothstep(0.55, 0.8, d) * (1 - smoothstep(0.9, 0.99, d));
+      col = L3(col, [210, 255, 170], cres * 0.6);
+      const gx = (nx + 0.18) / 0.62, gy = (ny + 0.5) / 0.4;
+      const g = gx * gx + gy * gy;
+      if (g < 1) col = L3(col, WHITE, (1 - g) * 0.75 + 0.15);
+      if (Math.hypot(nx + 0.42, ny + 0.36) < 0.08) col = WHITE;
+      if (d > 1 - 1.2 / r) col = nx + ny < -0.2 ? L3(col, WHITE, 0.7) : L3(col, rimC, 0.5);
+      const q = qa(d > 1 - 1.2 / r ? 0.95 : 0.9 + lam * 0.1, x, y, 7);
+      return packRGB(col[0], col[1], col[2], Math.round(q * 255));
+    });
+  }
+}
+
+function fbm3n(x, y, z, seed) {
+  let v = 0, a = 0.5, f = 1, n = 0;
+  for (let i = 0; i < 4; i++) { v += vnoise3(x * f, y * f, z * f, seed + i * 7) * a; n += a; a *= 0.5; f *= 2.1; }
+  return v / n;
+}
+function vnoise3(x, y, z, seed) {
+  const x0 = Math.floor(x), y0 = Math.floor(y), z0 = Math.floor(z);
+  const fx = x - x0, fy = y - y0, fz = z - z0;
+  const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy), sz = fz * fz * (3 - 2 * fz);
+  const h = (i, j, k) => hash2(x0 + i + (z0 + k) * 157, y0 + j, seed);
+  const l = (a, b, t) => a + (b - a) * t;
+  return l(l(l(h(0, 0, 0), h(1, 0, 0), sx), l(h(0, 1, 0), h(1, 1, 0), sx), sy), l(l(h(0, 0, 1), h(1, 0, 1), sx), l(h(0, 1, 1), h(1, 1, 1), sx), sy), sz);
+}
+
+// A giant water bubble (draw over a voxel city): clear aqua body, splashing rim swirl, gloss window and sparkles.
+export function waterBubble(r) {
+  r = Math.round(r);
+  return memo('wbub|' + r, () => {
+    const s = r * 2 + 8, c0 = s / 2;
+    const rim = hexToRgb('#bff4ff'), body = hexToRgb('#9ae6ff');
+    return paint(s, s, (x, y) => {
+      const dx = (x + 0.5 - c0) / r, dy = (y + 0.5 - c0) / r;
+      const d = Math.hypot(dx, dy), ang = Math.atan2(dy, dx);
+      // swirl ribbon spiralling around the upper-left rim (the splash)
+      const sw = 1 + 0.06 * Math.sin(ang * 3 + 1) + 0.035 * Math.sin(ang * 7);
+      const onSwirl = ang < 0.2 && ang > -2.9 && Math.abs(d - sw) < 0.05 + 0.04 * Math.sin(ang * 5 + 2) ** 2;
+      if (d > 1.12) return 0;
+      if (onSwirl) return packRGB(...L3(rim, WHITE, 0.5 + 0.5 * Math.sin(ang * 4) ** 2), Math.round(qa(0.85, x, y) * 255));
+      if (d > 1) return 0;
+      const lit = clamp01(0.5 - (dx + dy) * 0.45);
+      if (d > 1 - 1.6 / r) return packRGB(...L3(rim, WHITE, lit), Math.round(qa(0.55 + lit * 0.4, x, y) * 255));
+      // gloss window top-left, soft reflection bottom-right
+      const gx = (dx + 0.38) / 0.36, gy = (dy + 0.5) / 0.2;
+      if (gx * gx + gy * gy < 1) return packRGB(255, 255, 255, Math.round(qa(0.55 - gy * 0.2, x, y) * 255));
+      if (d > 0.72 && d < 0.86 && ang > 0.15 && ang < 1.4) return packRGB(255, 255, 255, Math.round(qa(0.4, x, y) * 255));
+      const a = 0.08 + Math.pow(d, 3) * 0.28;
+      const q = qa(a, x, y, 8);
+      return q <= 0 ? 0 : packRGB(...L3(body, WHITE, 0.3 * (1 - d)), Math.round(q * 255));
+    });
+  });
+}
+
+// Voxel glass skyscrapers (a little eco city). Returns {canvas, ox (centre), oy (ground), w, h}.
+export function glassCity(seed = 3, scale = 2) {
+  return memo('city|' + seed + '|' + scale, () => {
+    const r = new RNG(seed);
+    const m = new VoxelModel(58, 64, 22);
+    const glass = [m.color('#3a7ad0', { jitter: 0.03, spec: 0.9, specPow: 8, smooth: 0.4 }), m.color('#5aa8f0', { jitter: 0.03, spec: 0.9, specPow: 8 }), m.color('#2a5aa8', { jitter: 0.03, spec: 0.8 })];
+    const lite = m.color('#c8ecff', { jitter: 0.02, spec: 0.9 }), frame = m.color('#eaf4ff', { jitter: 0.02, spec: 0.5 }), green = m.color('#5ad24a', { jitter: 0.05 });
+    const towers = [[2, 9, 30, 8], [11, 8, 46, 9], [20, 10, 60, 10], [31, 8, 38, 8], [40, 9, 52, 9], [50, 7, 26, 7]];
+    for (const [x0, w, h, d] of towers) {
+      const z0 = r.int(2, 22 - d - 1), gi = r.int(0, 2);
+      m.box(x0, 0, z0, x0 + w - 1, h - 1, z0 + d - 1, (x, y, z) => {
+        if (y === h - 1) return frame;
+        if ((x === x0 || x === x0 + w - 1) && (z === z0 || z === z0 + d - 1)) return frame;
+        if (y % 4 === 3) return lite;
+        return (x - x0 + y) % 9 < 2 ? lite : glass[gi];
+      });
+      if (h > 50) m.box(x0 + (w >> 1), h, z0 + (d >> 1), x0 + (w >> 1), h + 6, z0 + (d >> 1), frame);
+      // roof garden
+      if (r.chance(0.6)) m.box(x0 + 1, h, z0 + 1, x0 + w - 2, h, z0 + d - 2, green);
+    }
+    const o = renderModel(m, { scale, outline: true, jitter: 0.04, ao: 0.6, edges: 0.5, light: { top: 5.2, lit: 4.2, dark: 2.6, bottom: 1.6 } });
+    return { canvas: o.canvas, w: o.w, h: o.h, ox: o.ox, oy: o.oy };
+  });
+}
+
+// Round glossy voxel tree (the lone tree on the wallpaper hill).
+export function roundTree(scale = 2, seed = 5) {
+  return memo('tree|' + scale + '|' + seed, () => {
+    const r = new RNG(seed);
+    const m = new VoxelModel(30, 34, 24);
+    const bark = m.color('#8a5a32', { jitter: 0.08 }), leaf = m.color('#3cbf3a', { jitter: 0.06, spec: 0.5 }), leafL = m.color('#8ef05a', { jitter: 0.05, spec: 0.7 }), leafD = m.color('#1f8a32', { jitter: 0.05 });
+    m.cylinder(15, 12, 0, 12, 1.6, bark, 'y');
+    for (let i = 0; i < 9; i++) {
+      const cx = 15 + r.float(-7, 7), cy = 21 + r.float(-5, 7), cz = 12 + r.float(-5, 5), rr = r.float(5, 8);
+      m.sphere(cx, cy, cz, rr, (x, y, z) => (y > cy + rr * 0.35 && x < cx + 2 ? leafL : y < cy - rr * 0.4 ? leafD : leaf));
+    }
+    const o = renderModel(m, { scale, outline: true, jitter: 0.05, ao: 1, edges: 0.6, light: { top: 5.2, lit: 4, dark: 2.4, bottom: 1.4 } });
+    return { canvas: o.canvas, w: o.w, h: o.h, ox: o.ox, oy: o.oy };
+  });
+}
+
+// Crown splash at the waterline: n frames {canvas, ox (centre), oy (waterline)}.
+export function splashFrames(size = 12, n = 6, seed = 2) {
+  return memo('spl|' + size + '|' + n + '|' + seed, () => {
+    const r = new RNG(seed);
+    const drops = Array.from({ length: 9 }, () => ({ a: r.float(-1.25, 1.25), v: r.float(0.6, 1.1), s: r.pick([1, 1, 2]) }));
+    const w = size * 4 + 4, h = size * 3 + 4, cx = w / 2, by = h - 3;
+    const out = [];
+    for (let f = 0; f < n; f++) {
+      const k = (f + 0.5) / n;
+      const c = makeCanvas(w, h);
+      const g = ctxOf(c);
+      // crown sheet
+      const ch = Math.round(size * 1.2 * Math.sin(Math.min(1, k * 1.6) * Math.PI) + 1), cw = Math.round(size * (0.5 + k * 0.9));
+      for (let x = -cw; x <= cw; x++) {
+        const u = Math.abs(x) / cw;
+        const hh = Math.round(ch * (0.35 + 0.65 * u * u) * (1 - k * 0.5));
+        for (let y = 0; y < hh; y++) {
+          const edge = y === hh - 1 || Math.abs(x) >= cw - 1;
+          g.fillStyle = edge ? '#ffffff' : (x + y) % 3 === 0 ? '#e8fdff' : '#9ae8ff';
+          g.globalAlpha = edge ? 0.95 : 0.55 * (1 - k * 0.6);
+          g.fillRect(Math.round(cx + x), by - y, 1, 1);
+        }
+      }
+      // droplets on ballistic arcs
+      for (const d of drops) {
+        const t = k * 1.4;
+        const dx = Math.sin(d.a) * d.v * size * 1.7 * t, dy = Math.cos(d.a) * d.v * size * 2.4 * t - 2.8 * size * t * t;
+        if (dy < -1) continue;
+        g.globalAlpha = 1 - k * 0.5;
+        g.fillStyle = '#ffffff';
+        g.fillRect(Math.round(cx + dx), Math.round(by - ch * 0.6 - dy), d.s, d.s);
+        if (d.s > 1) { g.fillStyle = '#5ad0ff'; g.fillRect(Math.round(cx + dx) + 1, Math.round(by - ch * 0.6 - dy) + 1, 1, 1); }
+      }
+      out.push({ canvas: c, ox: Math.round(cx), oy: by + 1 });
+    }
+    return out;
+  });
+}
+
+// Leafy branch with big glossy leaves (framing the corners). dir 1 = enters from the right edge hanging left.
+export function leafBranch(seed = 1, len = 70, scale = 2, hue = '#46d24a') {
+  return memo('lbr|' + seed + '|' + len + '|' + scale + hue, () => {
+    const r = new RNG(seed);
+    const m = new VoxelModel(len + 24, Math.round(len * 0.75) + 20, 14);
+    const P = leafCol(m, hue);
+    const stem = m.color('#5a9a3a', { jitter: 0.05 });
+    // stem: from the right edge, arcing down-left
+    const pts = [];
+    for (let s = 0; s <= 1; s += 0.01) {
+      const x = len + 20 - s * len, y = m.ny - 6 - Math.pow(s, 1.6) * len * 0.5;
+      pts.push([x, y]);
+      m.set(x, y, 7, stem); m.set(x, y - 1, 7, stem);
+    }
+    // leaves alternate along the stem, drooping, big near the tip
+    const n = 9;
+    for (let i = 1; i <= n; i++) {
+      const s = i / (n + 0.6);
+      const [bx, by] = pts[Math.min(pts.length - 1, Math.round(s * 100))];
+      const side = i % 2 ? 1 : -1;
+      const L = lerp(9, 18, s) * r.float(0.85, 1.1), Wd = L * 0.42;
+      const a = side > 0 ? r.float(-0.9, -0.4) : r.float(-2.6, -2.1); // pointing down-left/down-right
+      const ux = Math.cos(a), uy = Math.sin(a);
+      const z = 7 + side * 2;
+      for (let t = 0; t <= L; t += 0.4) {
+        const u = t / L;
+        const wd = Math.pow(Math.sin(Math.PI * Math.min(1, u * 1.08)), 0.7) * Wd * (1 - u * 0.25);
+        const cx = bx + ux * t, cy = by + uy * t - u * u * 2;
+        for (let q = -wd; q <= wd; q += 0.45) {
+          const px = cx - uy * q, py = cy + ux * q;
+          const col = Math.abs(q) < 0.5 ? P.rib : q * side < -wd * 0.3 ? P.light : q * side > wd * 0.6 ? P.dark : P.mid;
+          m.set(px, py, z + Math.abs(q) * 0.25, col);
+        }
+      }
+    }
+    const o = renderModel(m, { scale, outline: true, jitter: 0.04, ao: 0.8, edges: 0.6, light: { top: 5.3, lit: 4.4, dark: 2.6, bottom: 1.6 } });
+    return { canvas: o.canvas, w: o.w, h: o.h };
+  });
+}
+
+// The curved grass horizon (a planet's edge) with the eco set pieces standing on it. Returns {canvas, w, h, ox, oy
+// (waterline left end), top(x) crest height table, anchor(xf) -> [x, y] crest point}.
+export function planetEdge(W, o = {}) {
+  const peak = o.peak ?? 0.38, Hc = o.height ?? 46, chord = o.chord ?? 0.58, scale = 2;
+  return memo('edge|' + W + '|' + peak + '|' + Hc + '|' + chord, () => {
+    const nx = Math.ceil(W / scale) + 8, nz = 28, ny = Hc + 4;
+    const m = new VoxelModel(nx, ny, nz);
+    const C = (c, op = {}) => m.color(c, { jitter: 0.04, ...op });
+    const grass = C('#4ccf3c', { spec: 0.45, specPow: 14, smooth: 0.6 }), grassL = C('#8cf05a', { spec: 0.6, specPow: 12, smooth: 0.6 }), grassD = C('#2a9e36', { smooth: 0.4 });
+    const sheen = C('#d8ffb0', { spec: 0.8, smooth: 0.7 }), wet = C('#2a8a6a'), flower = C('#ffffff'), flowerY = C('#ffe23a'), flowerP = C('#ff8ad0');
+    const px0 = nx * peak, R = ((nx * chord) ** 2 + Hc * Hc) / (2 * Hc);
+    const tops = new Float32Array(nx);
+    for (let x = 0; x < nx; x++) {
+      const dx = x + 0.5 - px0;
+      tops[x] = Math.sqrt(Math.max(0, R * R - dx * dx)) - (R - Hc) + Math.sin(x * 0.07) * 0.8;
+    }
+    for (let z = 0; z < nz; z++) for (let x = 0; x < nx; x++) {
+      // the surface falls away toward the viewer (front rows lower) so it reads as a curved slope, not a wall
+      const zf = z / (nz - 1);
+      const fall = Math.pow(smoothstep(0.15, 1, zf), 1.25) * 0.72;
+      const h = Math.round(tops[x] * (1 - fall) + (tops[x] > 2 ? 1 : 0));
+      const crestK = 1 - fall;
+      for (let y = 0; y < h; y++) {
+        let c = y < 2 ? wet : y >= h - 1 ? (hash2(x >> 2, z, 3) < 0.5 - (x - px0) / nx ? grassL : grass) : grassD;
+        if (y === h - 1 && crestK > 0.8 && crestK < 0.95 && Math.abs(x - px0 + 18) < nx * 0.16) c = sheen;
+        if (y === h - 1 && hash2(x, z, 9) < 0.035) c = [flower, flowerY, flowerP][Math.floor(hash2(z, x, 4) * 3)];
+        m.set(x, y, z, c);
+      }
+    }
+    const r = renderModel(m, { scale, outline: true, jitter: 0.03, ao: 0.9, edges: 0.4, light: { top: 5.2, lit: 3.9, dark: 2.3, bottom: 1.2 } });
+    const water = r.project(0, 1, nz);
+    const crest = (xf, zf = 0.3) => {
+      const vx = clamp(Math.round(xf * nx), 0, nx - 1), vz = Math.round(zf * (nz - 1));
+      const fall = Math.pow(smoothstep(0.15, 1, vz / (nz - 1)), 1.25) * 0.72;
+      const p = r.project(vx + 0.5, Math.max(1, Math.round(tops[vx] * (1 - fall))), vz + 0.5);
+      return [Math.round(p[0]), Math.round(p[1])];
+    };
+    return { canvas: r.canvas, w: r.w, h: r.h, ox: Math.round(water[0]), oy: Math.round(water[1]), crest };
+  });
+}
+
 // ------------------------------------------------------------------ the glossy layer for every ocean
 
-// look: {bloom, bloomColor, bubbles, bubbleRim, sparkle, sparkleColor, bokeh: [colors], bokehA, flare, deepGlow}
+// look: {bloom, bloomColor, bubbles, bubbleRim, sparkle, sparkleColor, bokeh: [colors], bokehA, flare, deep,
+//        rays (sun rays in the sky), arcs (white arc lines), leaves (glossy branches framing the top corners)}
 export const AERO_LOOKS = {
-  shallows: { bloom: 0.42, bloomColor: '#e8fffc', bubbles: 1, bubbleRim: '#c8fbff', sparkle: 1, bokeh: ['#ffffff', '#c8f6ff', '#e0ffd8'], bokehA: 0.1, flare: 1 },
-  fjord: { bloom: 0.4, bloomColor: '#f0fdff', bubbles: 0.7, bubbleRim: '#dff8ff', sparkle: 1.3, sparkleColor: '#e8fbff', bokeh: ['#ffffff', '#c8ecff'], bokehA: 0.1, flare: 0.95 },
-  junkyard: { bloom: 0.3, bloomColor: '#d8ffe8', bubbles: 0.9, bubbleRim: '#c8ffe4', sparkle: 0.6, sparkleColor: '#d8ffe8', bokeh: ['#b8ffd8', '#8affd0', '#e8ffd0'], bokehA: 0.09, flare: 0.7 },
-  metropolis: { bloom: 0.22, bloomColor: '#c8d8ff', bubbles: 0.7, bubbleRim: '#c8e0ff', sparkle: 0.7, sparkleColor: '#e8e0ff', bokeh: ['#ff7ae8', '#7ae8ff', '#b48aff', '#ffd27a'], bokehA: 0.14, flare: 0.6, deep: true },
-  volcano: { bloom: 0.18, bloomColor: '#ffd8b8', bubbles: 1, bubbleRim: '#ffe0c8', sparkle: 0.6, sparkleColor: '#ffd890', bokeh: ['#ffb070', '#ff8a4a', '#ffe08a'], bokehA: 0.12, flare: 0.5, deep: true },
+  shallows: { bloom: 0.42, bloomColor: '#e8fffc', bubbles: 1.2, bubbleRim: '#c8fbff', sparkle: 1, bokeh: ['#ffffff', '#c8f6ff', '#e0ffd8'], bokehA: 0.1, flare: 1.1, rays: 0.8, arcs: 0.7, leaves: true },
+  fjord: { bloom: 0.4, bloomColor: '#f0fdff', bubbles: 0.8, bubbleRim: '#dff8ff', sparkle: 1.3, sparkleColor: '#e8fbff', bokeh: ['#ffffff', '#c8ecff'], bokehA: 0.1, flare: 1, rays: 0.7, arcs: 0.5 },
+  junkyard: { bloom: 0.34, bloomColor: '#d8ffe8', bubbles: 1, bubbleRim: '#c8ffe4', sparkle: 0.8, sparkleColor: '#d8ffe8', bokeh: ['#b8ffd8', '#8affd0', '#e8ffd0'], bokehA: 0.1, flare: 0.85, rays: 0.6, arcs: 0.5, leaves: true },
+  metropolis: { bloom: 0.22, bloomColor: '#c8d8ff', bubbles: 0.8, bubbleRim: '#c8e0ff', sparkle: 0.8, sparkleColor: '#e8e0ff', bokeh: ['#ff7ae8', '#7ae8ff', '#b48aff', '#ffd27a'], bokehA: 0.14, flare: 0.7, deep: true, rays: 0.35, arcs: 0.45 },
+  volcano: { bloom: 0.18, bloomColor: '#ffd8b8', bubbles: 1, bubbleRim: '#ffe0c8', sparkle: 0.6, sparkleColor: '#ffd890', bokeh: ['#ffb070', '#ff8a4a', '#ffe08a'], bokehA: 0.12, flare: 0.6, deep: true, rays: 0.5 },
   abyss: { bloom: 0, bubbles: 0.6, bubbleRim: '#9adfff', sparkle: 0.8, sparkleColor: '#9affea', bokeh: ['#7affea', '#9a7aff', '#ff7ae0', '#7ab8ff'], bokehA: 0.16, flare: 0.25, deep: true },
   oscean: { bloom: 0.5, bloomColor: '#ffffff', bubbles: 1.1, bubbleRim: '#d8fcff', sparkle: 1.2, bokeh: ['#ffffff', '#c8f6ff', '#e8ffd0', '#fff2c8'], bokehA: 0.11, flare: 1.15 },
 };
@@ -686,10 +1011,67 @@ export class AeroOverlay {
     for (let i = 0; i < nb; i++) this.bokeh.push({ x: r.float(0, W), y: r.float(H * 0.15, H * 0.9), r: r.int(6, 22), c: r.pick(look.bokeh), vx: r.float(-3, 3), vy: r.float(-2.5, -0.5), ph: r.float(0, TAU), far: r.chance(0.5) });
   }
 
+  // Sun rays and white arc lines go into the biome's sky dome (behind clouds and horizon features).
+  patchSky() {
+    const sky = this.b.sky;
+    if (!sky || sky.__aero || typeof sky.drawBodies !== 'function' || !(this.look.rays || this.look.arcs)) return;
+    sky.__aero = true;
+    const orig = sky.drawBodies.bind(sky);
+    sky.drawBodies = (ctx, env, tod, clear, scroll, ref) => {
+      orig(ctx, env, tod, clear, scroll, ref);
+      try { this.drawSkyDressing(ctx, sky, env, tod, clear ?? 1, scroll ?? 0, ref ?? 0); } catch { /* cosmetic */ }
+    };
+  }
+
+  drawSkyDressing(ctx, sky, env, tod, clear, scroll, ref) {
+    const look = this.look, W = sky.W || this.b.W, t = this.t;
+    const pa = ctx.globalAlpha, po = ctx.globalCompositeOperation;
+    const B = skyBodies(env.hour ?? 12, W, sky.top ?? this.b.top ?? -400, sky.base ?? 0);
+    if (look.rays && B.sun.up && tod.night < 0.9) {
+      const a = look.rays * clamp01(clear) * (tod.day + tod.dusk * 0.7);
+      if (a > 0.02) {
+        ctx.globalCompositeOperation = 'lighter';
+        const y = Math.round(B.sun.y + 0.28 * (scroll - ref));
+        [sunRays(150, 3), sunRays(150, 7, 18)].forEach((spr, i) => {
+          ctx.globalAlpha = a * (i ? 0.5 + 0.5 * Math.sin(t * 0.21) : 0.5 - 0.5 * Math.sin(t * 0.21)) * 0.7;
+          ctx.drawImage(spr, Math.round(B.sun.x - (spr.width >> 1)), y - (spr.height >> 1));
+        });
+      }
+    }
+    if (look.arcs) {
+      const a = look.arcs * (0.55 + tod.day * 0.35) * (1 - tod.night * 0.6) * clamp01(clear);
+      if (a > 0.03) {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = a * (0.85 + 0.15 * Math.sin(t * 0.5));
+        ctx.drawImage(skyArcs(Math.round(W * 0.66), 210), Math.round(W * 0.2), Math.round((sky.base ?? 0) - 250 + 0.2 * (scroll - ref)));
+      }
+    }
+    ctx.globalAlpha = pa;
+    ctx.globalCompositeOperation = po;
+  }
+
+  // Glossy leafy branches hanging into the top corners of the surface view.
+  drawLeaves(ctx, env, s) {
+    const b = this.b, view = env.view;
+    if (!this.look.leaves || s === null || (view && view.y0 > s - 120)) return;
+    if (!this.branches) {
+      const br = leafBranch(2, 70, 2), bl = leafBranch(5, 50, 2, '#3cc84a');
+      this.branches = [{ c: br.canvas, right: true, ph: 0 }, { c: flipCanvas(bl.canvas), right: false, ph: 2 }];
+    }
+    const top = b.top ?? -400, pv = 0.35 * ((env.scroll ?? 0) - (env.ref ?? 0)), tod = todWeights(env);
+    ctx.globalAlpha = 1 - tod.night * 0.35;
+    for (const L of this.branches) {
+      const x = L.right ? b.W - L.c.width + 6 : -6;
+      ctx.drawImage(L.c, x + Math.round(Math.sin(this.t * 0.7 + L.ph) * 1.5), Math.round(top + 52 + pv + Math.sin(this.t * 0.5 + L.ph)));
+    }
+    ctx.globalAlpha = 1;
+  }
+
   update(dt, env) {
     const b = this.b, look = this.look;
     if (!b.W) return;
     if (b.W !== this.W || b.H !== this.H) this.seed();
+    this.patchSky();
     dt = Math.min(dt, 0.1);
     this.t += dt;
     const W = this.W, H = this.H;
@@ -759,6 +1141,7 @@ export class AeroOverlay {
       }
     }
     this.drawBokeh(ctx, env, true);
+    this.drawLeaves(ctx, env, s);
   }
 
   drawBokeh(ctx, env, far) {
@@ -833,15 +1216,15 @@ export class AeroOverlay {
     const cx = (vx0 + vx1) / 2, cy = (vy0 + vy1) / 2;
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    const st = flareStar(46, dusk ? '#ffd0a0' : '#fff8e0');
-    ctx.globalAlpha = 0.55 * k * (0.9 + 0.1 * Math.sin(this.t * 1.7));
-    ctx.drawImage(st, Math.round(sx - 46), Math.round(sy - 46));
-    const sk = flareStreak(150, dusk ? '#ffc890' : '#bfeaff');
-    ctx.globalAlpha = 0.45 * k;
-    ctx.drawImage(sk, Math.round(sx - 150), Math.round(sy - 2));
+    const st = flareStar(64, dusk ? '#ffd0a0' : '#fff8e0');
+    ctx.globalAlpha = 0.6 * k * (0.9 + 0.1 * Math.sin(this.t * 1.7));
+    ctx.drawImage(st, Math.round(sx - 64), Math.round(sy - 64));
+    const sk = flareStreak(220, dusk ? '#ffc890' : '#bfeaff');
+    ctx.globalAlpha = 0.5 * k;
+    ctx.drawImage(sk, Math.round(sx - 220), Math.round(sy - 2));
     const ghosts = [
-      [0.32, flareHex(9, '#a8ffe0'), 0.35], [0.52, flareDisc(5, '#fff0b0'), 0.5], [0.74, flareRing(16, '#9ad8ff'), 0.45],
-      [1.0, flareHex(13, '#d0b0ff'), 0.28], [1.22, flareDisc(3, '#ffffff'), 0.6], [1.45, flareRing(26, '#b8ffe8'), 0.32], [1.8, flareHex(19, '#9ae8ff'), 0.2],
+      [0.32, flareHex(11, '#a8ffe0'), 0.35], [0.52, flareDisc(6, '#fff0b0'), 0.5], [0.74, flareRing(20, '#9ad8ff'), 0.45], [0.88, flareDisc(10, '#c8ffb0'), 0.22],
+      [1.0, flareHex(16, '#d0b0ff'), 0.28], [1.22, flareDisc(4, '#ffffff'), 0.6], [1.45, flareRing(32, '#b8ffe8'), 0.32], [1.8, flareHex(24, '#9ae8ff'), 0.2],
     ];
     for (const [f, spr, a] of ghosts) {
       const x = sx + (cx - sx) * f, y = sy + (cy - sy) * f;

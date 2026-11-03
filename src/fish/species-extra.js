@@ -16,11 +16,11 @@ const spawn = (o = {}) => ({ weight: 1, weather: null, time: null, requires: nul
 // FROSTY FJORD
 
 add({
-  id: 'icebabycod', name: 'Ice Ice Baby Cod', biome: 'fjord', rarity: 'common',
+  id: 'icebabycod', name: 'Vibe Check Cod', biome: 'fjord', rarity: 'common',
   size: [12, 25], weight: [0.1, 0.4],
   look: {
     body: { len: 40, h: 13, shape: 'torpedo', hump: 0.08, nose: 1.6, tip: 0.2 },
-    col: { body: '#a8bccc', belly: '#eef6fa', back: '#4a6278', fin: '#8aa0b4' },
+    col: { body: '#5ad8ff', belly: '#f0fdff', back: '#1a8aff', fin: '#bff6ff' },
     shade: { back: -0.4, belly: 0.35 }, spec: 1.2,
     pattern: [{ type: 'spots', size: 0.8, density: 0.4, tone: -1.6, vmax: 0.1, seed: 3 }],
     tail: { type: 'truncate', len: 9, spread: 8 },
@@ -42,8 +42,8 @@ add({
   fight: fight(['tension'], 0.15, 2.5, ['dash'], { biteWindow: 1.1 }),
   spawn: spawn({ weight: 1.4 }),
   sound: 'chirp',
-  desc: 'The polar cod that keeps the whole fjord fed. Stop, collaborate and swim: the school drops a fresh beat every time it turns.',
-  behavior: 'Raps along in tight silver schools under the ice. Cannot resist a music icon.',
+  desc: 'Swims up, looks you dead in the eye and checks your vibe. You passed. Probably.',
+  behavior: 'Schools under the ice. Music bait passes the vibe check.',
   shinyHue: 210,
 });
 
@@ -73,8 +73,8 @@ add({
   fight: fight(['mash'], 0.1, 2, [], { biteWindow: 1.3, nibbles: [0, 1] }),
   spawn: spawn({ weight: 1.5 }),
   sound: 'squeak',
-  desc: 'Escaped from a freezer aisle and decided to let it go. Breaded on the outside, perfectly cold on the inside. The cold never bothered them anyway.',
-  behavior: 'Drifts in neat rows of ten, like a family pack. Easily lured by bread crumbs, which is a bit awkward.',
+  desc: 'Breaded, frozen and somehow still swimming in a perfect little school. Nobody asks questions.',
+  behavior: 'Schools in neat rows. Loves bread.',
   shinyHue: 190,
 });
 
@@ -104,17 +104,17 @@ add({
   fight: fight(['timing', 'tension'], 0.2, 3, ['hop', 'jump'], { fakeBite: 0.2 }),
   spawn: spawn({ weight: 1.2 }),
   sound: 'honk',
-  desc: 'A fish that badly wants to be a penguin. Waddles on its pectorals, wears a little tuxedo, and honks "noot noot" at anything that will listen.',
-  behavior: 'Hops along the surface between ice floes, copying the real penguins. They are not impressed.',
+  desc: 'Black and white, very formal, and capable of one sound only. NOOT NOOT.',
+  behavior: 'Hops along the ice floes and poses as a penguin.',
   shinyHue: 40,
 });
 
 add({
-  id: 'chillsculpin', name: 'Binge-and-Chill Sculpin', biome: 'fjord', rarity: 'common',
+  id: 'chillsculpin', name: 'Chill Guy Sculpin', biome: 'fjord', rarity: 'common',
   size: [8, 20], weight: [0.05, 0.3],
   look: {
     body: { len: 36, h: 16, shape: 'blunt', hump: 0.1, tip: 0.48, tailW: 0.3, taper: 0.8 },
-    col: { body: '#8a7a6a', belly: '#e8dcc8', back: '#4a3e36', fin: '#a08a72' },
+    col: { body: '#4ab8ff', belly: '#e6f6ff', back: '#1a6ad8', fin: '#8ad8ff' },
     shade: { back: -0.2, belly: 0.35 },
     pattern: [{ type: 'patches', threshold: 0.55, freq: 0.5, tone: -1.6 }, { type: 'speckle', density: 0.1, tone: 1.4 }],
     tail: { type: 'round', len: 8, spread: 7, spots: '#4a3e36' },
@@ -135,8 +135,8 @@ add({
   fight: fight(['tension', 'mash'], 0.22, 3, ['dive'], { biteWindow: 1 }),
   spawn: spawn({ weight: 1.1 }),
   sound: 'grunt',
-  desc: 'A spiky little couch potato of the seabed. Has watched every season of everything, twice, and still asks "are you still watching?"',
-  behavior: 'Sits perfectly still on rocks in its beanie and lunges at anything that streams past. Loves video icons.',
+  desc: 'Hands in pockets (fins in pockets?), beanie on, absolutely unbothered by the freezing water. Just a chill guy.',
+  behavior: 'Lounges on the seabed. Camouflaged.',
   shinyHue: 160,
 });
 
@@ -159,18 +159,18 @@ add({
   fight: fight(['mash', 'timing'], 0.25, 3.5, ['hop'], { biteWindow: 0.9 }),
   spawn: spawn({ weight: 1 }),
   sound: 'click',
-  desc: 'A jolly, happy soul with orange claws and two eyes made out of... well, eyes. Comes to life every winter, which in the fjord is always.',
-  behavior: 'Scuttles over icons in little sideways dances. Gets very excited near calendars in December.',
+  desc: 'A jolly snow crab with a carrot-orange pair of claws. Thumpety-thump-thump, look at Frosty scuttle.',
+  behavior: 'Crawls along the icy seabed.',
   shinyHue: 330,
 });
 
 add({
-  id: 'letitgo', name: 'Let-It-Go Snow Puffer', biome: 'fjord', rarity: 'uncommon',
+  id: 'letitgo', name: 'Special Snowflake Puffer', biome: 'fjord', rarity: 'uncommon',
   size: [14, 30], weight: [0.4, 1.8],
   look: {
     toon: true,
     body: { len: 38, h: 28, shape: 'round', tip: 0.3 },
-    col: { body: '#b8e8fa', belly: '#f4fcff', back: '#5aa8d8', fin: '#d8f4ff' },
+    col: { body: '#bff4ff', belly: '#ffffff', back: '#5ac8ff', fin: '#e0fbff' },
     shade: { back: -0.3, belly: 0.25 }, spec: 1.4,
     pattern: [{ type: 'spots', color: '#ffffff', size: 1.4, density: 0.45, only: 'top', hl: true, seed: 8 }],
     tail: { type: 'fan', len: 9, spread: 9, color: '#e0f8ff' },
@@ -192,17 +192,17 @@ add({
   fight: fight(['mash', 'tension', 'net'], 0.42, 5, ['dash', 'fake'], { biteWindow: 0.6, nibbles: [1, 3], fakeBite: 0.25 }),
   spawn: spawn({ weight: 1 }),
   sound: 'puff',
-  desc: 'When upset it does not inflate so much as build an ice palace around itself and refuse to come out. Sings about it. Constantly. At full volume.',
-  behavior: 'Puffs up into a frosty spiked ball when hooked. Drawn to music, especially power ballads.',
+  desc: 'Utterly unique, just like every other snowflake. Puffs up in a glittering huff if you disagree.',
+  behavior: 'Inflates in a burst of sparkle when startled.',
   shinyHue: 300,
 });
 
 add({
-  id: 'unicod', name: 'Narwhal-ish Unicod', biome: 'fjord', rarity: 'uncommon',
+  id: 'unicod', name: 'Unicode Unicod', biome: 'fjord', rarity: 'uncommon',
   size: [40, 90], weight: [3, 12],
   look: {
     body: { len: 58, h: 18, shape: 'torpedo', hump: 0.1, nose: 2.4, tip: 0.3, tailW: 0.25 },
-    col: { body: '#c8ccd8', belly: '#f2f4f8', back: '#5a6274', fin: '#8a92a4' },
+    col: { body: '#d8f0ff', belly: '#ffffff', back: '#7a9aff', fin: '#ffb0e8' },
     shade: { back: -0.35, belly: 0.3 },
     pattern: [{ type: 'spots', size: 1.2, density: 0.45, tone: -1.8, vmax: 0.2, seed: 12 }],
     tail: { type: 'moon', len: 14, spread: 14 },
@@ -222,8 +222,8 @@ add({
   fight: fight(['trace', 'tension', 'net'], 0.45, 6, ['dash', 'jump'], { biteWindow: 0.55 }),
   spawn: spawn({ weight: 1 }),
   sound: 'bell',
-  desc: 'Narwhal, narwhal, swimming in the fjord, causing a commotion, cause it is a cod. Its spiral tusk is 90% fashion and 10% jousting.',
-  behavior: 'Jousts with other fish for fun and pokes icons with its tusk. Loves pretty pictures.',
+  desc: 'A narwhal-ish cod whose horn renders as a little box with a question mark on some systems.',
+  behavior: 'Swims in slow arcs, sparkling.',
   shinyHue: 260,
 });
 
@@ -253,13 +253,13 @@ add({
   fight: fight(['timing', 'trace', 'net'], 0.35, 5, ['jump', 'fake'], { biteWindow: 0.7, fakeBite: 0.2 }),
   spawn: spawn({ weight: 1 }),
   sound: 'honk',
-  desc: 'Part fish, part seal, fully a fan. Inspects your files and stamps the good ones with a little green check. Your tax return did not pass.',
-  behavior: 'Follows the cursor with huge wet eyes and claps its fins at anything it likes.',
+  desc: 'Inspects every catch and stamps it with an official seal of approval. Approved. Approved. Approved.',
+  behavior: 'Forgets what it was approving and turns around.',
   shinyHue: 120,
 });
 
 add({
-  id: 'icekingfish', name: 'Ice-King Icefish', biome: 'fjord', rarity: 'rare',
+  id: 'icekingfish', name: 'Brain Freeze Icefish', biome: 'fjord', rarity: 'rare',
   size: [30, 55], weight: [0.8, 2.5],
   look: {
     body: { len: 54, h: 15, shape: 'long', nose: 1.4, tip: 0.2, tailW: 0.35 },
@@ -284,17 +284,17 @@ add({
   fight: fight(['trace', 'dodge', 'tension', 'net'], 0.52, 7, ['ink', 'fake', 'dash'], { biteWindow: 0.45, nibbles: [1, 3], fakeBite: 0.3 }),
   spawn: spawn({ weight: 1 }),
   sound: 'bell',
-  desc: 'A see-through icefish with no red blood, a big crown and an even bigger beard. Keeps trying to kidnap princess-shaped icons. Means well. Mostly.',
-  behavior: 'Glides invisibly at night and spits freezing bursts when hooked. Desperately wants a friend; check your chat icons.',
+  desc: 'Wears a crown of ice and has a permanent brain freeze. Thinks very slowly and very majestically.',
+  behavior: 'Camouflaged among the ice, sparkling.',
   shinyHue: 200,
 });
 
 add({
-  id: 'badwolffish', name: 'Big Bad Wolffish', biome: 'fjord', rarity: 'rare',
+  id: 'badwolffish', name: 'Alpha Wolffish', biome: 'fjord', rarity: 'rare',
   size: [60, 140], weight: [5, 18],
   look: {
     body: { len: 70, h: 22, shape: 'blunt', hump: 0.16, nose: 2.6, tip: 0.5, tailW: 0.3, taper: 0.7 },
-    col: { body: '#7a8494', belly: '#b8c0cc', back: '#3a4252', fin: '#5a6474' },
+    col: { body: '#7a9aff', belly: '#e6eeff', back: '#3a4ad8', fin: '#5ac8ff' },
     shade: { back: -0.3, belly: 0.35 },
     pattern: [{ type: 'bars', at: [0.3, 0.42, 0.54, 0.66, 0.78], width: 0.03, tone: -1.6, bottom: 0.3, slant: 0.06 }],
     tail: { type: 'round', len: 12, spread: 11 },
@@ -315,8 +315,8 @@ add({
   fight: fight(['mash', 'tension', 'dodge', 'net'], 0.6, 8, ['dash', 'spit', 'dive'], { biteWindow: 0.5, nibbles: [0, 1], fakeBite: 0.1 }),
   spawn: spawn({ weight: 1 }),
   sound: 'roar',
-  desc: 'Huffs and puffs and crunches sea urchins like crackers. Hangs around folder icons because it heard three little houses are in there somewhere.',
-  behavior: 'Prowls the bottom of the fjord at night. Bites hard and spits urchin spines when hooked.',
+  desc: 'Posts motivational quotes on the ice at dawn. Howls at the aurora. Surprisingly soft ears.',
+  behavior: 'Hunts in the cold mid-water. A tough fight.',
   shinyHue: 30,
 });
 
@@ -340,17 +340,17 @@ add({
   fight: fight(['trace', 'timing', 'dodge', 'net'], 0.7, 11, ['jump', 'fake', 'glitch'], { biteWindow: 0.45, nibbles: [2, 4], fakeBite: 0.3 }),
   spawn: spawn({ weight: 1, weather: 'aurora' }),
   sound: 'bell',
-  desc: 'Aurora borealis? At this time of year, at this time of day, in this part of the desktop, localised entirely within your fishing line? Yes. May I see it? No.',
-  behavior: 'Only rises on aurora nights, its wings shimmering green and violet. Very hard to land, very easy to stare at.',
+  desc: 'Aurora borealis? At this time of year, at this time of day, in this part of the ocean, localised entirely within this ray?',
+  behavior: 'Glides beneath the northern lights, glowing.',
   shinyHue: 290,
 });
 
 add({
-  id: 'eldershark', name: 'The Elder Greenland Shark', biome: 'fjord', rarity: 'legendary',
+  id: 'eldershark', name: 'Ok Boomer Shark', biome: 'fjord', rarity: 'legendary',
   size: [400, 640], weight: [400, 1100],
   look: {
     body: { len: 150, h: 40, shape: 'blunt', hump: 0.08, nose: 2.4, tip: 0.45, tailW: 0.22, taper: 0.8 },
-    col: { body: '#5e6672', belly: '#8e96a2', back: '#363c48', fin: '#4a5260' },
+    col: { body: '#7a9ab8', belly: '#e0eaf4', back: '#3a5a7a', fin: '#5a7a98' },
     shade: { back: -0.3, belly: 0.35 },
     pattern: [{ type: 'speckle', density: 0.08, tone: -1.4 }, { type: 'patches', threshold: 0.62, freq: 0.12, tone: 1.1 }],
     tail: { type: 'lyre', len: 34, spread: 30 },
@@ -371,8 +371,8 @@ add({
   fight: fight(['tension', 'trace', 'timing', 'mash', 'net'], 0.95, 22, ['dive', 'fake', 'dash'], { biteWindow: 0.6, nibbles: [2, 5], fakeBite: 0.2 }),
   spawn: spawn({ weight: 1, time: 'night', hidden: 'fjord_song' }),
   sound: 'roar',
-  desc: 'Four hundred years old and still swimming at a brisk 1 km per hour. Remembers when the fjord was a glacier and will tell you about it, slowly, for several centuries.',
-  behavior: 'Wakes only on nights after the singing crystals have been played. Drifts out of the deep blue like a grumpy submarine.',
+  desc: 'Four hundred years old, monocle, mustache, and opinions about how the ocean was better back in its day.',
+  behavior: 'Lurks in the deepest, coldest water. Legendary.',
   shinyHue: 180,
 });
 
@@ -380,11 +380,11 @@ add({
 // LAVA RIFT
 
 add({
-  id: 'fireflower', name: 'Fire-Flower Tetra', biome: 'volcano', rarity: 'common',
+  id: 'fireflower', name: 'This-Is-Fine Fish', biome: 'volcano', rarity: 'common',
   size: [3, 5], weight: [0.005, 0.02],
   look: {
     body: { len: 26, h: 10, shape: 'torpedo', tip: 0.2 },
-    col: { body: '#ff7a2a', belly: '#ffe0a0', back: '#c83a1a', fin: '#ffb04a' },
+    col: { body: '#ff6a10', belly: '#ffe8a0', back: '#ff3a00', fin: '#ffd21a' },
     shade: { back: -0.3, belly: 0.4 },
     pattern: [{ type: 'stripes', color: '#fff06a', at: [-0.1], width: 0.12, from: 0.15, to: 0.85, glow: true }],
     tail: { type: 'fork', len: 8, spread: 7, color: '#ff5a1a' },
@@ -405,18 +405,18 @@ add({
   fight: fight(['tension'], 0.1, 2, ['dash'], { biteWindow: 1 }),
   spawn: spawn({ weight: 1.5 }),
   sound: 'chirp',
-  desc: 'Eat one and you can throw little fireballs for exactly ten seconds. Please do not eat one. They come in glowing swarms that bounce off the rift walls.',
-  behavior: 'Swarms in glittering ember clouds over the magma cracks. Loves game icons.',
+  desc: 'Sits calmly in the burning reef sipping its coffee. This is fine. Everything is fine.',
+  behavior: 'Schools near the lava vents, glowing.',
   shinyHue: 120,
 });
 
 add({
-  id: 'floorlava', name: 'Floor-is-Lava Goby', biome: 'volcano', rarity: 'common',
+  id: 'floorlava', name: 'Floor-Is-Lava Goby', biome: 'volcano', rarity: 'common',
   size: [5, 9], weight: [0.02, 0.06],
   look: {
     toon: true,
     body: { len: 30, h: 13, shape: 'blunt', tip: 0.42, tailW: 0.4 },
-    col: { body: '#5a4a46', belly: '#d8c0a8', back: '#2e2422', fin: '#ff8a4a' },
+    col: { body: '#ff8a3a', belly: '#fff0d0', back: '#d84a1a', fin: '#ffd21a' },
     shade: { back: -0.25, belly: 0.35 },
     pattern: [{ type: 'spots', color: '#ff7a2a', size: 1, density: 0.5, seed: 7 }],
     tail: { type: 'round', len: 7, spread: 6 },
@@ -436,17 +436,17 @@ add({
   fight: fight(['timing', 'mash'], 0.18, 3, ['hop'], { biteWindow: 0.9 }),
   spawn: spawn({ weight: 1.3 }),
   sound: 'boing',
-  desc: 'Has been playing "the floor is lava" since birth. In the Lava Rift the floor genuinely is lava, so it is the only fish that has ever been right about anything.',
-  behavior: 'Hops nervously from rock to icon to rock, never touching the seabed. Screams a tiny scream if it does.',
+  desc: 'Has been playing the floor-is-lava game for years. The floor is, in fact, lava. It is winning.',
+  behavior: 'Hops from rock to rock, never touching the floor.',
   shinyHue: 200,
 });
 
 add({
-  id: 'ashsnapper', name: "Ash Catch-'em Snapper", biome: 'volcano', rarity: 'common',
+  id: 'ashsnapper', name: 'Hot Take Snapper', biome: 'volcano', rarity: 'common',
   size: [20, 50], weight: [0.8, 4],
   look: {
     body: { len: 46, h: 20, shape: 'oval', hump: 0.14, nose: 1.8, tip: 0.22 },
-    col: { body: '#8a8488', belly: '#d8d0cc', back: '#4a4448', fin: '#c84a3a' },
+    col: { body: '#ff5a5a', belly: '#ffe0d8', back: '#d81a2a', fin: '#ffb03a' },
     shade: { back: -0.35, belly: 0.35 },
     pattern: [{ type: 'speckle', density: 0.12, tone: -1.4 }],
     tail: { type: 'fork', len: 12, spread: 11, color: '#c84a3a' },
@@ -468,13 +468,13 @@ add({
   fight: fight(['tension', 'mash'], 0.25, 3.5, ['dash', 'fake'], { biteWindow: 0.8, fakeBite: 0.15 }),
   spawn: spawn({ weight: 1.1 }),
   sound: 'grunt',
-  desc: 'Ash-grey, cap on backwards, ten years old for the last twenty-five years. It wants to be the very best, like no fish ever was. It has caught zero things.',
-  behavior: 'Tries to catch every other fish in the rift. Rushes at game icons yelling something about a choice.',
+  desc: 'Pineapple belongs on everything. Sharks are just wet dogs. It has a hot take for every occasion.',
+  behavior: 'Snaps at anything near the vents.',
   shinyHue: 50,
 });
 
 add({
-  id: 'steamcrab', name: 'Steampunk Steam Crab', biome: 'volcano', rarity: 'common',
+  id: 'steamcrab', name: 'Sweaty Tryhard Crab', biome: 'volcano', rarity: 'common',
   size: [12, 25], weight: [0.5, 2],
   look: {
     kind: 'crab', shell: 'mech', toon: true,
@@ -493,18 +493,18 @@ add({
   fight: fight(['mash', 'dodge'], 0.28, 4, ['spit', 'hop'], { biteWindow: 0.8 }),
   spawn: spawn({ weight: 1 }),
   sound: 'click',
-  desc: 'Brass shell, copper claws and a little boiler where its heart should be. Whistles like a kettle when it is happy and like a bigger kettle when it is angry.',
-  behavior: 'Clanks across icons venting jets of steam. Fires hot pellets when cornered.',
+  desc: 'Sweats over every single decision, especially the easy ones. Two buttons, endless agony.',
+  behavior: 'Crawls along the hot seabed, steaming.',
   shinyHue: 160,
 });
 
 add({
-  id: 'pumicepuffer', name: 'Floaty Pumice Puffer', biome: 'volcano', rarity: 'common',
+  id: 'pumicepuffer', name: 'Lag Spike Puffer', biome: 'volcano', rarity: 'common',
   size: [10, 22], weight: [0.1, 0.4],
   look: {
     toon: true,
     body: { len: 34, h: 26, shape: 'round', tip: 0.3 },
-    col: { body: '#b8aca0', belly: '#e8e0d4', back: '#7a7068', fin: '#d0c4b4' },
+    col: { body: '#ff8a5a', belly: '#fff0e0', back: '#d8501a', fin: '#ffc07a' },
     shade: { back: -0.25, belly: 0.25 },
     pattern: [{ type: 'speckle', density: 0.18, tone: -2, seed: 3 }, { type: 'spots', size: 0.9, density: 0.4, tone: -2.4, seed: 6 }],
     tail: { type: 'fan', len: 8, spread: 8 },
@@ -526,18 +526,18 @@ add({
   fight: fight(['mash', 'tension'], 0.18, 3, ['jump'], { biteWindow: 1 }),
   spawn: spawn({ weight: 1.1 }),
   sound: 'puff',
-  desc: 'Made of volcanic foam, so it floats whether it wants to or not. Inflating makes it float harder. It has never once reached the seabed and would like to talk to the manager.',
-  behavior: 'Bobs helplessly upwards through the rift. Puffs into a crunchy ball when hooked.',
+  desc: 'Freezes mid-swim, then teleports half a screen away and puffs into spikes. Classic lag spike.',
+  behavior: 'Inflates when startled and floats like pumice.',
   shinyHue: 280,
 });
 
 add({
-  id: 'jalapeno', name: 'Jalapeno Popper Fish', biome: 'volcano', rarity: 'uncommon',
+  id: 'jalapeno', name: 'Spicy Meme Pepperfish', biome: 'volcano', rarity: 'uncommon',
   size: [8, 14], weight: [0.05, 0.15],
   look: {
     toon: true,
     body: { len: 40, h: 14, shape: 'long', hump: 0.3, belly: -0.1, tip: 0.15, nose: 1.4, tailW: 0.2, taper: 0.7 },
-    col: { body: '#3aa83a', belly: '#8ae06a', back: '#1e6a24', fin: '#5ac84a' },
+    col: { body: '#3ae83a', belly: '#c8ff9a', back: '#0aa82a', fin: '#ff3a1a' },
     shade: { back: -0.3, belly: 0.3 }, spec: 1.6,
     pattern: [{ type: 'tailend', from: 0.9, color: '#c83a1a' }],
     tail: { type: 'pointed', len: 6, spread: 3, color: '#c83a1a' },
@@ -558,18 +558,18 @@ add({
   fight: fight(['dodge', 'mash', 'net'], 0.4, 5, ['spit', 'dash'], { biteWindow: 0.6, fakeBite: 0.2 }),
   spawn: spawn({ weight: 1 }),
   sound: 'squeak',
-  desc: '3,000 on the Scoville scale and every unit of it is attitude. Turns red when angry, which is always, then spits little sparks at your hook.',
-  behavior: 'Darts between vents and pelts hooks with spicy embers. Weirdly fond of sugar.',
+  desc: 'Too spicy for the normies. Turns red-hot and glows when it gets excited.',
+  behavior: 'Glows in the dark near the vents.',
   shinyHue: 300,
 });
 
 add({
-  id: 'blockcrafter', name: 'Block-Crafter Boxfish', biome: 'volcano', rarity: 'uncommon',
+  id: 'blockcrafter', name: 'Lava Bucket Boxfish', biome: 'volcano', rarity: 'uncommon',
   size: [10, 20], weight: [0.2, 0.7],
   look: {
     toon: true,
     body: { len: 34, h: 26, shape: 'box', tip: 0.7, tailW: 0.4 },
-    col: { body: '#3a3236', belly: '#5a4a44', back: '#241e22', fin: '#ff8a2a' },
+    col: { body: '#5a4aff', belly: '#d0c8ff', back: '#2a1aa8', fin: '#ff8a1a' },
     shade: { back: -0.4, belly: 0.4 },
     pattern: [{ type: 'checker', size: 4, color: '#ff6a1a', umin: 0.15, glow: true }, { type: 'plates', size: 8, tone: -1 }],
     tail: { type: 'truncate', len: 7, spread: 7, color: '#ff8a2a' },
@@ -589,18 +589,18 @@ add({
   fight: fight(['timing', 'trace', 'net'], 0.36, 5, ['hop', 'fake'], { biteWindow: 0.6, fakeBite: 0.25 }),
   spawn: spawn({ weight: 1 }),
   sound: 'click',
-  desc: 'A perfectly cubic boxfish of magma blocks. Punch it nine times and it drops a smaller version of itself. Do not dig straight down near it.',
-  behavior: 'Hovers in square little paths at exact right angles. Loves game and folder icons.',
+  desc: 'Made entirely of cubes and carries a bucket of lava wherever it goes. Builds tiny houses at night.',
+  behavior: 'Glows softly. Loves game bait.',
   shinyHue: 140,
 });
 
 add({
-  id: 'chefsnapper', name: "Hell's Kitchen Chef-fish", biome: 'volcano', rarity: 'uncommon',
+  id: 'chefsnapper', name: 'Let-Him-Cook Chef-fish', biome: 'volcano', rarity: 'uncommon',
   size: [30, 60], weight: [1.5, 6],
   look: {
     toon: true,
     body: { len: 50, h: 24, shape: 'oval', hump: 0.16, nose: 1.8, tip: 0.24 },
-    col: { body: '#e84a3a', belly: '#ffd0b8', back: '#a82a22', fin: '#ff8a6a' },
+    col: { body: '#ff3a3a', belly: '#ffe8e0', back: '#c8101a', fin: '#ffffff' },
     shade: { back: -0.35, belly: 0.35 },
     pattern: [{ type: 'speckle', density: 0.06, tone: 1.4 }],
     tail: { type: 'fork', len: 12, spread: 11 },
@@ -621,13 +621,13 @@ add({
   fight: fight(['mash', 'tension', 'net'], 0.42, 6, ['dash', 'spit'], { biteWindow: 0.55, fakeBite: 0.1 }),
   spawn: spawn({ weight: 1 }),
   sound: 'grunt',
-  desc: 'Runs the hottest kitchen on the planet, directly on top of an active magma vent. Inspects every bait you lower and shouts that it is RAW. It is a worm. It is supposed to be raw.',
-  behavior: 'Yells at other fish until they swim away. Turns its nose up at most bait, then eats it anyway.',
+  desc: 'Tall hat, big mustache, terrifying confidence. Nobody knows what it is cooking. Let him cook.',
+  behavior: 'Honks orders at the other fish.',
   shinyHue: 200,
 });
 
 add({
-  id: 'preciouseel', name: 'My-Precious Magma Eel', biome: 'volcano', rarity: 'rare',
+  id: 'preciouseel', name: 'Gaslight Magma Eel', biome: 'volcano', rarity: 'rare',
   size: [80, 180], weight: [2, 8],
   look: {
     kind: 'chain', toon: true,
@@ -646,17 +646,17 @@ add({
   fight: fight(['unwrap', 'trace', 'tension', 'net'], 0.55, 8, ['wrap', 'fake', 'dash'], { biteWindow: 0.5, nibbles: [1, 3], fakeBite: 0.35 }),
   spawn: spawn({ weight: 1, time: 'night' }),
   sound: 'squeak',
-  desc: 'Found a golden ring in the magma once and has not been the same since. Whispers "my precioussss" to every golden bait and coils around it, glowing like the inside of a forge.',
-  behavior: 'Slithers out at night and steals shiny things. Wraps your line around icons when hooked.',
+  desc: 'Steals your shiny things, then insists you never had them. Glows a suspicious orange.',
+  behavior: 'Steals icons and slithers away through the magma.',
   shinyHue: 60,
 });
 
 add({
-  id: 'infernalangler', name: 'Infernal Lantern Angler', biome: 'volcano', rarity: 'rare',
+  id: 'infernalangler', name: 'Ring Light Angler', biome: 'volcano', rarity: 'rare',
   size: [20, 60], weight: [2, 10],
   look: {
     body: { len: 50, h: 36, shape: 'blunt', tip: 0.55 },
-    col: { body: '#4a1e1e', belly: '#7a3a2a', back: '#2a0e0e', fin: '#6a2a1e' },
+    col: { body: '#ff4a6a', belly: '#ffd0e0', back: '#c81a4a', fin: '#ffb03a' },
     shade: { back: -0.2, belly: 0.4 },
     pattern: [{ type: 'circuit', color: '#ff6a1a', glow: true, vmax: 0.3 }],
     mouth: { type: 'fangs', v: 0.35, w: 16, sag: -0.1, rest: 0.3 },
@@ -678,17 +678,17 @@ add({
   fight: fight(['timing', 'dodge', 'tension', 'net'], 0.6, 8, ['spit', 'fake', 'dive'], { biteWindow: 0.45, nibbles: [2, 4], fakeBite: 0.35 }),
   spawn: spawn({ weight: 1 }),
   sound: 'roar',
-  desc: 'Abandon all hope, ye who bite here. Its lure is a real ember from the ninth circle of the rift, and its little horn is real too. It is very proud of the horn.',
-  behavior: 'Hangs in the dark above the cracks with its ember bobbing. Lobs hot coals when hooked.',
+  desc: 'Its lure is a perfect ring light. Every fish it eats gets a flattering final photo.',
+  behavior: 'Dangles a glowing ring light in the dark.',
   shinyHue: 230,
 });
 
 add({
-  id: 'ripandtear', name: 'Rip-and-Tear Grouper', biome: 'volcano', rarity: 'epic',
+  id: 'ripandtear', name: 'Gigachad Grouper', biome: 'volcano', rarity: 'epic',
   size: [80, 180], weight: [30, 120],
   look: {
     body: { len: 76, h: 36, shape: 'oval', belly: 0.12, hump: 0.12, nose: 1.7, tip: 0.3 },
-    col: { body: '#26222a', belly: '#4a4250', back: '#100c14', fin: '#1e1a22' },
+    col: { body: '#ff5a2a', belly: '#ffe0c8', back: '#c8200a', fin: '#ffb03a' },
     shade: { back: -0.25, belly: 0.4 }, spec: 2,
     pattern: [{ type: 'facets', color: '#6a5a9a', size: 7, tone: 0.6 }, { type: 'rust', color: '#ff5a1a', threshold: 0.72 }],
     mouth: { type: 'big', v: 0.35, sag: 0.15, teeth: true },
@@ -711,13 +711,13 @@ add({
   fight: fight(['dodge', 'mash', 'tension', 'net'], 0.8, 13, ['dash', 'spit', 'dive'], { biteWindow: 0.4, nibbles: [0, 1], fakeBite: 0.05 }),
   spawn: spawn({ weight: 1, weather: 'magma' }),
   sound: 'roar',
-  desc: 'An obsidian grouper in a dented green helmet who has never said a single word. Swims through the rift one demon at a time, to an extremely loud soundtrack only it can hear.',
-  behavior: 'Charges anything that moves during magma blooms. Does not do fake bites. Does not do anything halfway.',
+  desc: 'Jawline carved from volcanic rock. Never skips fin day. Simply built different.',
+  behavior: 'Charges through the rift. A brutal fight.',
   shinyHue: 100,
 });
 
 add({
-  id: 'moltenleviathan', name: 'The Molten Leviathan', biome: 'volcano', rarity: 'legendary',
+  id: 'moltenleviathan', name: 'The Final Boss Leviathan', biome: 'volcano', rarity: 'legendary',
   size: [700, 1400], weight: [3000, 9000],
   look: {
     body: { len: 176, h: 44, shape: 'long', hump: 0.1, nose: 1.6, tip: 0.38, tailW: 0.3, taper: 0.6 },
@@ -743,8 +743,8 @@ add({
   fight: fight(['dodge', 'timing', 'trace', 'tension', 'net'], 1, 26, ['spit', 'dive', 'dash', 'fake'], { biteWindow: 0.45, nibbles: [3, 5], fakeBite: 0.25 }),
   spawn: spawn({ weight: 1, weather: 'eruption' }),
   sound: 'roar',
-  desc: 'Born in the fires of the mountain where the One Bait was forged. Its veins run with magma and its patience runs out at roughly 1,200 degrees. Eruptions are just it rolling over in bed.',
-  behavior: 'Surfaces from the rift floor only during eruptions, lighting the canyon like a sunrise. Spits magma; bring the good bait.',
+  desc: 'The last thing between you and the credits. Multiple health bars, glowing weak spots and very dramatic music.',
+  behavior: 'Rises from the deepest lava very rarely. Legendary.',
   shinyHue: 190,
 });
 
@@ -752,11 +752,11 @@ add({
 // SUNKEN METROPOLIS
 
 add({
-  id: 'neonpunk', name: 'Neon Tetra Punk', biome: 'metropolis', rarity: 'common',
+  id: 'neonpunk', name: 'Lo-Fi Beats Tetra', biome: 'metropolis', rarity: 'common',
   size: [3, 5], weight: [0.005, 0.02],
   look: {
     body: { len: 26, h: 10, shape: 'torpedo', tip: 0.2 },
-    col: { body: '#c8d0e8', belly: '#f4f6ff', back: '#2a3a7a', fin: '#d8e0f4' },
+    col: { body: '#e8f4ff', belly: '#ffffff', back: '#3a3aff', fin: '#d8e8ff' },
     shade: { back: -0.25, belly: 0.4 },
     pattern: [{ type: 'stripes', color: '#3af0ff', at: [-0.2], width: 0.14, from: 0.12, to: 0.82, glow: true }, { type: 'stripes', color: '#ff2a5a', at: [0.35], width: 0.22, from: 0.45, to: 0.95 }],
     tail: { type: 'fork', len: 8, spread: 7 },
@@ -777,17 +777,17 @@ add({
   fight: fight(['tension'], 0.12, 2, ['dash'], { biteWindow: 1 }),
   spawn: spawn({ weight: 1.5 }),
   sound: 'chirp',
-  desc: 'Glows in the dark, refuses to sell out, and has a hand-drawn band logo on every scale. The entire school is the band. None of them can play anything.',
-  behavior: 'Moshes around the neon signs at night in electric blue gangs. Loves loud music icons.',
+  desc: 'Neon stripes, headphones-shaped fins and a permanent chill-beats-to-study-to soundtrack.',
+  behavior: 'Schools through the neon streets. Loves music.',
   shinyHue: 160,
 });
 
 add({
-  id: 'surfermullet', name: 'Subway Surfer Mullet', biome: 'metropolis', rarity: 'common',
+  id: 'surfermullet', name: 'Brain Rot Mullet', biome: 'metropolis', rarity: 'common',
   size: [20, 45], weight: [0.5, 2.5],
   look: {
     body: { len: 46, h: 16, shape: 'torpedo', hump: 0.08, nose: 2.2, tip: 0.3 },
-    col: { body: '#9aa4b4', belly: '#e8ecf2', back: '#4a5468', fin: '#7a8496' },
+    col: { body: '#5ad8ff', belly: '#f0fbff', back: '#1a8aff', fin: '#ffd21a' },
     shade: { back: -0.35, belly: 0.35 },
     pattern: [{ type: 'lines', count: 6, width: 0.08, tone: -1.4, vmax: 0.2 }],
     tail: { type: 'fork', len: 11, spread: 10 },
@@ -808,13 +808,13 @@ add({
   fight: fight(['trace', 'tension'], 0.24, 3, ['dash', 'hop'], { biteWindow: 0.8 }),
   spawn: spawn({ weight: 1.2, weather: 'rushhour' }),
   sound: 'grunt',
-  desc: 'Business in the front, party in the back. Surfs the old subway tunnels at full speed, dodging trains that stopped running decades ago. Has never once been caught by the inspector.',
-  behavior: 'Streams down the avenue in packs at rush hour, weaving between lanes. Collects every coin it sees.',
+  desc: 'Watches six videos at once on a split screen while surfing the subway rails. Attention span: yes.',
+  behavior: 'Commutes in schools along the old subway lines.',
   shinyHue: 20,
 });
 
 add({
-  id: 'conefish', name: 'Traffic-Cone Fish', biome: 'metropolis', rarity: 'common',
+  id: 'conefish', name: 'Under Construction Conefish', biome: 'metropolis', rarity: 'common',
   size: [10, 20], weight: [0.1, 0.4],
   look: {
     toon: true,
@@ -838,17 +838,17 @@ add({
   fight: fight(['mash', 'tension'], 0.16, 2.5, ['fake'], { biteWindow: 1 }),
   spawn: spawn({ weight: 1.2 }),
   sound: 'honk',
-  desc: 'Stands in the middle of the road for no reason, forever. Nobody remembers who put it there. It does not remember either, but it is committed now.',
-  behavior: 'Hovers perfectly still and freezes into a cone when watched. Blocks lanes of rush-hour fish.',
+  desc: 'An orange-and-white traffic cone fish straight from a 1999 homepage. This fish is under construction. Please come back later.',
+  behavior: 'Pretends to be a traffic cone on the street.',
   shinyHue: 210,
 });
 
 add({
-  id: 'pigeonfish', name: 'City Pigeonfish', biome: 'metropolis', rarity: 'common',
+  id: 'pigeonfish', name: 'Is-This-a-Pigeonfish?', biome: 'metropolis', rarity: 'common',
   size: [15, 30], weight: [0.3, 1],
   look: {
     body: { len: 40, h: 22, shape: 'oval', hump: 0.2, nose: 2, tip: 0.24 },
-    col: { body: '#8a90a0', belly: '#c8ccd8', back: '#4a5060', fin: '#6a7080' },
+    col: { body: '#a0b8ff', belly: '#eef2ff', back: '#5a6aff', fin: '#7ae8c8' },
     shade: { back: -0.3, belly: 0.3 },
     pattern: [{ type: 'face', color: '#5a6a8a', to: 0.3 }, { type: 'gradient', color: '#5aa88a', from: 0.22, dir: 'h', umax: 0.38 }, { type: 'bars', at: [0.62, 0.7], width: 0.025, tone: -2, bottom: 0.4 }],
     tail: { type: 'truncate', len: 10, spread: 10, color: '#3a3e4a' },
@@ -868,8 +868,8 @@ add({
   fight: fight(['mash', 'timing'], 0.18, 2.5, ['hop'], { biteWindow: 1.1, nibbles: [0, 2] }),
   spawn: spawn({ weight: 1.3 }),
   sound: 'blub',
-  desc: 'Has the same iridescent neck, the same head-bob and the same total lack of fear as the city birds it copied. Will steal your sandwich-shaped icons.',
-  behavior: 'Bobs its head while hopping along the sidewalk and mobs anyone holding bread.',
+  desc: 'Is this a pigeon? No. Is this a fish? Also unclear. Struts about the sunken plazas stealing chips.',
+  behavior: 'Steals icons in little gangs.',
   shinyHue: 300,
 });
 
@@ -892,18 +892,18 @@ add({
   fight: fight(['mash', 'tension'], 0.24, 3.5, ['hop', 'dash'], { biteWindow: 0.9 }),
   spawn: spawn({ weight: 1.1 }),
   sound: 'honk',
-  desc: 'Yellow, fast, rude, and always somehow going the long way round. Honks at anything that moves and charges you extra for luggage.',
-  behavior: 'Scuttles sideways down the lanes, honking. Picks up mail icons and delivers them nowhere.',
+  desc: 'A bright yellow crab with a light on its shell. Honks at everything. Accepts tips in pellets.',
+  behavior: 'Crawls the drowned streets and honks.',
   shinyHue: 180,
 });
 
 add({
-  id: 'bettercallsole', name: 'Better-Call-Sole', biome: 'metropolis', rarity: 'uncommon',
+  id: 'bettercallsole', name: 'Rise-and-Grind Sole', biome: 'metropolis', rarity: 'uncommon',
   size: [20, 45], weight: [0.5, 2],
   look: {
     toon: true,
     body: { len: 50, h: 15, shape: 'disc', hump: 0.25, belly: -0.35, nose: 1.8, tip: 0.2 },
-    col: { body: '#7a6a5a', belly: '#d8ccb8', back: '#4a3e34', fin: '#9a8a74' },
+    col: { body: '#ff9a3a', belly: '#fff0d8', back: '#d85a1a', fin: '#ffc07a' },
     shade: { back: -0.1, belly: 0.55 },
     pattern: [{ type: 'suit', color: '#f6f6f2' }, { type: 'spots', color: '#5a4a3e', size: 1.6, density: 0.4, ring: true, umin: 0.45 }],
     dorsal: { type: 'long', from: 0.08, to: 0.92, h: 5, lean: 0.25 },
@@ -925,17 +925,17 @@ add({
   fight: fight(['tension', 'trace', 'net'], 0.4, 6, ['dive', 'fake'], { biteWindow: 0.5, nibbles: [1, 3], fakeBite: 0.35 }),
   spawn: spawn({ weight: 1 }),
   sound: 'squeak',
-  desc: "Did you know you have rights? This flatfish does, and it bills by the minute. Lies flat on the pavement outside the courthouse handing out business cards that dissolve immediately.",
-  behavior: 'Hides flat on the street until a document floats by, then pounces. Fakes bites to argue technicalities.',
+  desc: 'Up at 5 a.m., three coffees, two side hustles and a briefcase. Sigma grindset, flatfish edition.',
+  behavior: 'Commutes by the real clock. Camouflaged on the pavement.',
   shinyHue: 160,
 });
 
 add({
-  id: 'mindthegap', name: 'Mind-the-Gap Catfish', biome: 'metropolis', rarity: 'uncommon',
+  id: 'mindthegap', name: 'NPC Catfish', biome: 'metropolis', rarity: 'uncommon',
   size: [40, 110], weight: [3, 20],
   look: {
     body: { len: 64, h: 20, shape: 'blunt', nose: 2.6, peak: 0.34, tailW: 0.42, taper: 0.8, tip: 0.5 },
-    col: { body: '#4a4e5a', back: '#22242c', belly: '#d8d0c0', fin: '#3a3e48' },
+    col: { body: '#7a8aff', belly: '#e6eaff', back: '#3a3ad8', fin: '#9aa8ff' },
     shade: { back: -0.1, belly: 0.3 },
     pattern: [{ type: 'patches', threshold: 0.55, freq: 0.45, vmax: 0.4, tone: -1.6, body: true }, { type: 'stripes', color: '#d83a4a', at: [0.1], width: 0.07, from: 0.3, to: 0.9 }],
     tail: { type: 'truncate', len: 11, spread: 10 },
@@ -957,13 +957,13 @@ add({
   fight: fight(['tension', 'mash', 'net'], 0.45, 7, ['dive', 'dash'], { biteWindow: 0.6 }),
   spawn: spawn({ weight: 1 }),
   sound: 'grunt',
-  desc: 'Conducted the 6:15 underwater express for forty years after the city flooded and nobody told it to stop. Still punches every ticket. Still reminds you to mind the gap.',
-  behavior: 'Patrols the old subway car on a strict timetable. Bites calendars because they are schedules.',
+  desc: 'Walks the exact same route every day and says the same line every time. "Nice weather for a swim."',
+  behavior: 'Commutes on a fixed loop through the subway.',
   shinyHue: 40,
 });
 
 add({
-  id: 'adbreakray', name: 'Ad-Break Billboard Ray', biome: 'metropolis', rarity: 'uncommon',
+  id: 'adbreakray', name: 'Ratio Ray', biome: 'metropolis', rarity: 'uncommon',
   size: [40, 80], weight: [2, 8],
   look: {
     kind: 'ray', manta: true, toon: true,
@@ -982,17 +982,17 @@ add({
   fight: fight(['timing', 'trace', 'net'], 0.38, 6, ['glitch', 'fake'], { biteWindow: 0.55, fakeBite: 0.3 }),
   spawn: spawn({ weight: 1 }),
   sound: 'glitch',
-  desc: 'A flat, glowing ray that plays ads on its back. You cannot skip them. The fish in the next five seconds will be: this one.',
-  behavior: 'Glides slowly past the windows, flashing slogans. Pop-up bait is irresistible to it.',
+  desc: 'A billboard ray that shows likes versus replies. Swims past your fish and ratios it. Brutal.',
+  behavior: 'Glides overhead flashing its screen.',
   shinyHue: 120,
 });
 
 add({
-  id: 'gottagofast', name: 'Gotta-Go-Fast Bluefin', biome: 'metropolis', rarity: 'rare',
+  id: 'gottagofast', name: 'Speedrun Swordfish', biome: 'metropolis', rarity: 'rare',
   size: [80, 200], weight: [40, 200],
   look: {
     body: { len: 68, h: 22, shape: 'torpedo', nose: 1.7, tip: 0.26, tailW: 0.16 },
-    col: { body: '#2a5ae8', belly: '#f0f4ff', back: '#14288a', fin: '#ffd23a' },
+    col: { body: '#1a7aff', belly: '#f0f8ff', back: '#0a2aa8', fin: '#ffd21a' },
     shade: { back: -0.3, belly: 0.3 }, spec: 1.6,
     pattern: [{ type: 'face', color: '#f8e8c8', to: 0.12, vmin: 0 }],
     tail: { type: 'moon', len: 20, spread: 18 },
@@ -1001,7 +1001,7 @@ add({
     pectoral: { len: 9, w: 0.3, angle: 0.8 },
     eye: { r: 3.6, u: 0.11, v: -0.25, iris: '#3ad84a' },
     mouth: { type: 'small', v: 0.4 },
-    extras: [{ type: 'coin', color: '#ffd23a' }],
+    extras: [{ type: 'sword', len: 18, color: '#e8f4ff', color2: '#9ab8d8' }, { type: 'coin' }],
     scales: false, lateral: true,
   },
   scale: 1,
@@ -1013,17 +1013,17 @@ add({
   fight: fight(['trace', 'timing', 'tension', 'net'], 0.6, 9, ['dash', 'jump', 'fake'], { biteWindow: 0.35, nibbles: [1, 2], fakeBite: 0.25 }),
   spawn: spawn({ weight: 1, weather: 'rushhour' }),
   sound: 'boing',
-  desc: 'Spiky, blue, impatient and absolutely sure it can outrun anything. Collects golden rings, taps its fin when you take too long, and drops every coin the moment it gets bumped.',
-  behavior: 'Blasts down the avenue at rush hour faster than any other fish. Sometimes drops a coin when it dashes.',
+  desc: 'Any-percent, no glitches, world record pace. Clips through walls when nobody is watching.',
+  behavior: 'Bursts across the city at incredible speed.',
   shinyHue: 330,
 });
 
 add({
-  id: 'hadouken', name: 'Hadouken Haddock', biome: 'metropolis', rarity: 'rare',
+  id: 'hadouken', name: 'Combo Breaker Haddock', biome: 'metropolis', rarity: 'rare',
   size: [30, 70], weight: [1, 4],
   look: {
     body: { len: 50, h: 18, shape: 'torpedo', hump: 0.12, nose: 1.8, tip: 0.22 },
-    col: { body: '#b4b8c4', belly: '#f0f2f6', back: '#3a3e4c', fin: '#6a7080' },
+    col: { body: '#5ac8ff', belly: '#f0faff', back: '#1a5aff', fin: '#ff4a3a' },
     shade: { back: -0.35, belly: 0.3 },
     pattern: [{ type: 'stripes', color: '#1a1e28', at: [-0.1], width: 0.05, from: 0.15, to: 0.95 }, { type: 'ocellus', at: [[0.24, -0.1]], color: '#1a1e28', r: 2.6 }],
     tail: { type: 'truncate', len: 12, spread: 11 },
@@ -1045,13 +1045,13 @@ add({
   fight: fight(['dodge', 'timing', 'mash', 'net'], 0.58, 8, ['spit', 'dash', 'fake'], { biteWindow: 0.45, nibbles: [1, 2], fakeBite: 0.2 }),
   spawn: spawn({ weight: 1 }),
   sound: 'roar',
-  desc: 'Trained for years in a flooded arcade, between the claw machine and a broken dance mat. Down, down-forward, forward, fin. Its fireballs are mostly bubbles, but very confident bubbles.',
-  behavior: 'Squares up to bigger fish and launches bubble-fireballs at your hook. Wins most fights by perfect timing.',
+  desc: 'Trained in a flooded arcade. Down, down-forward, forward, fin. C-C-C-COMBO BREAKER!',
+  behavior: 'Squares up to bigger fish and launches bubble fireballs at your hook.',
   shinyHue: 210,
 });
 
 add({
-  id: 'kingconger', name: 'King Conger', biome: 'metropolis', rarity: 'epic',
+  id: 'kingconger', name: 'Doomscroll Eel', biome: 'metropolis', rarity: 'epic',
   size: [150, 300], weight: [20, 70],
   look: {
     kind: 'chain', toon: true,
@@ -1069,18 +1069,18 @@ add({
   fight: fight(['unwrap', 'tension', 'dodge', 'net'], 0.75, 12, ['wrap', 'dash', 'spit'], { biteWindow: 0.5, nibbles: [1, 3], fakeBite: 0.15 }),
   spawn: spawn({ weight: 1, weather: 'neonstorm' }),
   sound: 'roar',
-  desc: 'A conger eel the length of a city bus that coils up the tallest tower during neon storms and swats at the lightning. Secretly very gentle with small fish. Loves pictures of blondes, for some reason.',
-  behavior: 'Climbs the skyscrapers in neon storms and wraps your line around half the skyline when hooked.',
+  desc: 'An endless eel that never stops scrolling. Just one more segment. Just one more. It is 4 a.m.',
+  behavior: 'Coils through the drowned towers, scrolling forever.',
   shinyHue: 30,
 });
 
 add({
-  id: 'mayorgrouper', name: 'The Mayor Grouper', biome: 'metropolis', rarity: 'legendary',
+  id: 'mayorgrouper', name: 'Main Character Marlin', biome: 'metropolis', rarity: 'legendary',
   size: [200, 270], weight: [250, 400],
   look: {
     toon: true,
     body: { len: 120, h: 58, shape: 'oval', belly: 0.18, hump: 0.12, nose: 1.8, tip: 0.3 },
-    col: { body: '#6a5a4e', belly: '#c8b49a', back: '#3a2e28', fin: '#5a4a3e' },
+    col: { body: '#2a8aff', belly: '#f0f8ff', back: '#0a3ad8', fin: '#ffd21a' },
     shade: { back: -0.3, belly: 0.35 },
     pattern: [{ type: 'suit', color: '#f6f6f2' }, { type: 'spots', size: 2.4, density: 0.35, tone: -1.6, seed: 9, umin: 0.45 }],
     mouth: { type: 'big', v: 0.35, sag: 0.18, teeth: false },
@@ -1102,8 +1102,8 @@ add({
   fight: fight(['tension', 'timing', 'trace', 'mash', 'net'], 0.92, 20, ['dash', 'fake', 'dive'], { biteWindow: 0.6, nibbles: [2, 5], fakeBite: 0.3 }),
   spawn: spawn({ weight: 1, time: 'day', hidden: 'metro_key' }),
   sound: 'roar',
-  desc: 'Has been re-elected every term since the city sank, mostly because nobody else showed up. Cuts ribbons, kisses baby fish and holds a press conference about every single bubble.',
-  behavior: 'Will only grant an audience to whoever holds the Key to the City. Shows up by day to shake fins with the public.',
+  desc: 'Top hat, sash, spotlight. The whole sunken city is just the backdrop to its personal coming-of-age story.',
+  behavior: 'Holds court in the city plaza. Legendary.',
   shinyHue: 280,
 });
 

@@ -1,15 +1,21 @@
-// FISHTOP species collection (Sunny Shallows, Junkyard Reef, The Deep Ocean - biome id 'abyss'; plus
-// Frosty Fjord / Lava Rift / Sunken Metropolis from species-extra.js: 'fjord', 'volcano', 'metropolis').
-// Theme: affectionate pop-culture parodies (pun names, original designs) and literal pun fish.
-// Schema: docs/ARCHITECTURE.md "Species schema". Looks are authored at the 960x540 logical scale
-// (body len in px; tails/fins add to that). Bait interest 0..3 (unspecified = 0.25).
+// FISHTOP species collection, phase 3: an internet-culture / meme roster (pun names, original designs,
+// affectionate parodies, no real logos) across seven oceans: (OS)cean 'oscean' (the flooded wallpaper,
+// plus the arrivals in species-oscean.js), Sunny Shallows, Frosty Fjord, Junkyard Reef, Sunken Metropolis,
+// Lava Rift 'volcano' and the Midnight Abyss (species-extra.js holds fjord / volcano / metropolis).
+// About 15 per ocean: ~6 common, 4 uncommon, 3 rare, 1-2 epic, 1 legendary. Ids are the save keys: keep them.
+// Fish render as 3D voxel models (gfx/voxelfish.js) with cartoon voxel eyes; the Wakka Fish (kind 'chomper')
+// is the one pixel-art sprite. Schema: docs/ARCHITECTURE.md "Species schema". Looks are authored at the
+// 960x540 logical scale (body len in px; tails/fins add to that). Bait interest 0..3 (unspecified = 0.25).
+// Phase 3 look keys: look.vox {glass, iri, gloss, finGlass, finTint} (voxel material), look.rotor (spinning
+// wind turbine), look.sneakers (white high-tops that walk), look.orb (a water bubble around the fish),
+// extras 'paperclip'.
 //
-// Original 17 per biome (5 common, 5 uncommon, 4 rare, 2 epic, 1 legendary) plus the new arrivals below.
-// evolve: {into, afterMinutes} on a species = it evolves in the aquarium (Flopikarp -> Rage Dragon-Karp);
+// evolve: {into, afterMinutes} on a species = it evolves in the aquarium (Noobikarp -> Rage-Quit Dragon-Karp);
 // evolution-only species carry spawn.never and evolvedFrom.
 // Fight phases grow with rarity and depth; legendaries run 5 phases.
 
 import { EXTRA_SPECIES } from './species-extra.js';
+import { OSCEAN_SPECIES } from './species-oscean.js';
 
 const S = [];
 const add = (o) => S.push(o);
@@ -19,12 +25,12 @@ const SPEC_EXTRA = {}; // extra per-species fields (e.g. evolve) merged in after
 // SUNNY SHALLOWS
 
 add({
-  id: 'pixel', name: 'Flopikarp', biome: 'shallows', rarity: 'common',
+  id: 'pixel', name: 'Noobikarp', biome: 'oscean', rarity: 'common',
   size: [18, 32], weight: [0.3, 1.1],
   look: {
     toon: true,
     body: { len: 18, h: 14, shape: 'box', hump: 0.06, tip: 0.45 },
-    col: { body: '#5ee8d0', belly: '#d8fff4', back: '#2fa8c0', fin: '#a6f4ff' },
+    col: { body: '#ff6a2a', belly: '#fff4c8', back: '#ff3a1a', fin: '#ffd23a' },
     shade: { back: -0.4, belly: 0.35 },
     pattern: [{ type: 'checker', size: 3, umin: 0.5, vmax: 0.2, tone: 1 }],
     tail: { type: 'truncate', len: 6, spread: 6 },
@@ -43,19 +49,19 @@ add({
   fight: { phases: ['tension'], power: 0.08, stamina: 2, tricks: [], biteWindow: 1.4, nibbles: [0, 1], fakeBite: 0 },
   spawn: { weight: 1.2, weather: null, time: null, requires: null, hidden: null },
   sound: 'chirp',
-  desc: 'The most famously useless fish in any ocean. It uses Splash. Nothing happens. Raise one in your aquarium long enough, though, and it might just become something terrifying.',
-  behavior: 'Flops right up to anything new and bites almost everything. Evolves in the aquarium after a while.',
+  desc: 'Brand new to the internet and absolutely convinced it is the main character. It uses Splash. Nothing happens. Raise one in your aquarium and it might rage-quit into something huge.',
+  behavior: 'Flops up to anything new and bites almost everything. Evolves in the aquarium.',
   shinyHue: 200,
 });
 
 add({
-  id: 'loafer', name: 'Tetromino Tetra', biome: 'shallows', rarity: 'common',
+  id: 'loafer', name: 'Wi-Fish', biome: 'oscean', rarity: 'common',
   size: [6, 11], weight: [0.04, 0.15],
   look: {
     body: { len: 24, h: 13, shape: 'box', hump: 0.12, belly: -0.12, nose: 3, tip: 0.35 },
-    col: { body: '#e8b468', belly: '#fff0d4', back: '#9a5626', fin: '#f4d098' },
+    col: { body: '#2ad8ff', belly: '#e6fdff', back: '#0a8cff', fin: '#7ff0ff' },
     shade: { back: -0.25, belly: 0.3 },
-    pattern: [{ type: 'lines', count: 4, width: 0.1, vmax: -0.45, umin: 0.25, umax: 0.86, tone: 1.6 }],
+    pattern: [{ type: 'stripes', color: '#ffffff', at: [-0.05], width: 0.1, from: 0.15, to: 0.85 }],
     tail: { type: 'round', len: 8, spread: 7 },
     dorsal: { type: 'round', from: 0.42, to: 0.62, h: 3 }, anal: { type: 'tri', from: 0.62, to: 0.8, h: 3 },
     pelvic: { from: 0.4, to: 0.5, h: 3 },
@@ -67,22 +73,22 @@ add({
   move: { style: 'swim', speed: 12, burst: 45, agility: 2, depth: [0.05, 0.4], school: 4 },
   activity: 'day',
   traits: { curiosity: 0.5, shyness: 0.3, greed: 0.95, aggression: 0.05 },
-  bait: { bread: 3, sugar: 2, docs: 1, folder: 1 },
+  bait: { browser: 3, bread: 3, chat: 2, docs: 1, folder: 1 },
   quirks: ['school'],
   fight: { phases: ['tension'], power: 0.15, stamina: 2.5, tricks: ['dash'], biteWindow: 1.1, nibbles: [1, 2], fakeBite: 0.05 },
   spawn: { weight: 1.4, weather: null, time: null, requires: null, hidden: null },
   sound: 'blub',
-  desc: 'Blocky little schoolers that fall into place in perfectly straight rows. When four of them line up exactly, they vanish in a flash and a satisfying chime. Nobody knows where they go.',
-  behavior: 'Schools in tidy lines near the surface. Loves bread and sugar.',
+  desc: 'Broadcasts a tiny signal from its fin bars. Full bars near the surface, one bar by the seabed. Schools reconnect automatically.',
+  behavior: 'Schools in tidy rows near the surface. Loves browser bait.',
   shinyHue: 300,
 });
 
 add({
-  id: 'honk', name: 'Honk-Honk Clownfish', biome: 'shallows', rarity: 'common',
+  id: 'honk', name: 'Clown-to-Clown Fish', biome: 'shallows', rarity: 'common',
   size: [7, 12], weight: [0.08, 0.25],
   look: {
     body: { len: 40, h: 22, shape: 'oval', nose: 2.2, tip: 0.22 },
-    col: { body: '#ff7a1a', belly: '#ffae5a', back: '#e2520e', fin: '#ff8a2a' },
+    col: { body: '#ff7a10', belly: '#ffb04a', back: '#ff5a00', fin: '#ff8a1a' },
     shade: { back: -0.35, belly: 0.4 },
     pattern: [
       { type: 'bands', color: '#1a1424', at: [0.2, 0.52, 0.86], width: 0.085, wavy: 0.03 },
@@ -108,48 +114,44 @@ add({
   fight: { phases: ['mash', 'tension'], power: 0.22, stamina: 3, tricks: ['dash', 'fake'], biteWindow: 0.9, nibbles: [1, 2], fakeBite: 0.15 },
   spawn: { weight: 1.2, weather: null, time: null, requires: null, hidden: null },
   sound: 'honk',
-  desc: 'An actual clown. Red nose, juggling act, terrible jokes. Honks the nose when startled and takes a little bow when you laugh. Nobody laughs.',
-  behavior: 'Juggles in mid-water and honks when spooked. Can\'t resist music and games.',
+  desc: 'Honks its red nose in a secret code only other clownfish understand. It is always the same message: honk.',
+  behavior: 'Juggles in mid-water and honks when spooked. Loves music and games.',
   shinyHue: 160,
 });
 
 add({
-  id: 'guppy', name: 'Wakka Fish', biome: 'shallows', rarity: 'common',
+  id: 'guppy', name: 'Wakka Fish', biome: 'oscean', rarity: 'uncommon',
   size: [3, 6], weight: [0.01, 0.04],
   look: {
-    body: { len: 26, h: 12, shape: 'torpedo', tip: 0.2 },
-    col: { body: '#9ac8e0', belly: '#eef8ff', back: '#4a7aa0', fin: '#ff5aa8' },
-    shade: { back: -0.3, belly: 0.35 },
-    pattern: [{ type: 'spots', color: '#2a3a7a', size: 1.2, density: 0.4, umin: 0.45 }],
-    tail: { type: 'fan', len: 20, spread: 14, color: '#ff4a9a', flap: 0.36, spots: '#2a1a4a' },
-    dorsal: { type: 'sail', from: 0.52, to: 0.84, h: 7, color: '#ff8ac8' },
-    anal: { type: 'tri', from: 0.62, to: 0.82, h: 3 },
-    pelvic: { from: 0.42, to: 0.5, h: 3 },
-    pectoral: { len: 3.5 },
-    eye: { r: 2.3, u: 0.13, iris: '#e8c040' },
-    scales: false,
+    kind: 'chomper',
+    body: { len: 22, h: 22 },
+    col: { body: '#3ae0ff', belly: '#d8fdff', back: '#14a8ff', fin: '#ff4ab0' },
+    tail: { color: '#ff4ab0' },
+    dorsal: { type: 'tri', color: '#ffd23a' },
+    eye: { r: 3.4, u: 0.2, v: -0.4 },
+    mouth: { type: 'none' },
   },
   scale: 1,
-  move: { style: 'swim', speed: 18, burst: 70, agility: 6, depth: [0.1, 0.5], school: 3 },
+  move: { style: 'swim', speed: 18, burst: 60, agility: 6, depth: [0.15, 0.85], school: 0 },
   activity: 'any',
   traits: { curiosity: 0.6, shyness: 0.5, greed: 0.4, aggression: 0.05 },
-  bait: { image: 3, paint: 3, video: 1, worm: 2, bread: 1 },
-  quirks: ['school'],
+  bait: { game: 3, bread: 2, sugar: 2, worm: 1 },
+  quirks: ['wakka'],
   fight: { phases: ['tension', 'net'], power: 0.12, stamina: 2, tricks: ['dash'], biteWindow: 0.8, nibbles: [1, 3], fakeBite: 0.1 },
   spawn: { weight: 1.3, weather: null, time: null, requires: null, hidden: null },
-  sound: 'squeak',
-  desc: 'A round yellow fish with one enormous appetite. Eats dots, power pellets and, occasionally, your bait. Turns and flees whenever anything ghostly swims past.',
-  behavior: 'Schools through the shallows chomping constantly. Loves images and paint.',
+  sound: 'chirp',
+  desc: 'A retro pixel chomper that only knows one route: straight lines and sharp corners. It lays a trail of glowing bubble pellets and eats every one. Wakka wakka.',
+  behavior: 'Runs an invisible grid, gobbling pellet bubbles. Power bubbles make it zoom.',
   shinyHue: 120,
 });
 
 add({
-  id: 'googly', name: 'Mike Wazowfish', biome: 'shallows', rarity: 'common',
+  id: 'googly', name: 'Side-Eye Fish', biome: 'oscean', rarity: 'common',
   size: [8, 14], weight: [0.1, 0.35],
   look: {
     toon: true,
     body: { len: 34, h: 26, shape: 'round', tip: 0.25 },
-    col: { body: '#6ed880', belly: '#e0ffd0', back: '#2e9a52', fin: '#b0f4a0' },
+    col: { body: '#7cf03a', belly: '#eaffc8', back: '#2ab82a', fin: '#c8ff5a' },
     shade: { back: -0.35, belly: 0.3 },
     pattern: [{ type: 'spots', size: 1.8, density: 0.3, only: 'top', tone: 1.5 }],
     tail: { type: 'fork', len: 11, spread: 9 },
@@ -170,20 +172,20 @@ add({
   fight: { phases: ['timing', 'tension'], power: 0.2, stamina: 3, tricks: ['fake'], biteWindow: 1, nibbles: [1, 2], fakeBite: 0.25 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'boing',
-  desc: 'One gigantic eye, two tiny horns, zero chill. A small green worrier who insists he is the scariest fish on the reef and will absolutely not stop staring at your cursor.',
-  behavior: 'Follows the cursor with its single huge eye. Loves images and videos.',
+  desc: 'One enormous eye, permanently unimpressed. It follows your cursor across the screen and judges every single click.',
+  behavior: 'Watches the cursor wherever it goes. Very curious, very judgy.',
   shinyHue: 270,
 });
 
 add({
-  id: 'puffer', name: 'Cacopuff', biome: 'shallows', rarity: 'uncommon',
+  id: 'puffer', name: 'Buffering Blowfish', biome: 'shallows', rarity: 'common',
   size: [12, 30], weight: [0.4, 2.1],
   look: {
     toon: true,
     body: { len: 38, h: 28, shape: 'round', tip: 0.3 },
-    col: { body: '#d8bc56', belly: '#fff3c4', back: '#8a7a32', fin: '#f0d47a' },
+    col: { body: '#ffd21a', belly: '#fff4a0', back: '#ff9a00', fin: '#ffb03a' },
     shade: { back: -0.25, belly: 0.25 },
-    pattern: [{ type: 'spots', color: '#5a4a1e', size: 1.5, density: 0.45, only: 'top' }],
+    pattern: [{ type: 'spots', color: '#ff7a00', size: 1.2, density: 0.45, vmax: 0.35 }],
     tail: { type: 'fan', len: 9, spread: 8 },
     dorsal: { type: 'round', from: 0.62, to: 0.82, h: 6 },
     anal: { type: 'round', from: 0.62, to: 0.8, h: 5 },
@@ -199,22 +201,22 @@ add({
   activity: 'day',
   traits: { curiosity: 0.5, shyness: 0.4, greed: 0.5, aggression: 0.2 },
   bait: { docs: 3, mail: 2, calendar: 2, folder: 1, sugar: 2, golden: 1 },
-  quirks: ['inflate'],
+  quirks: ['inflate', 'buffering'],
   fight: { phases: ['mash', 'tension', 'net'], power: 0.45, stamina: 5, tricks: ['dash', 'fake'], biteWindow: 0.55, nibbles: [1, 3], fakeBite: 0.2 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'puff',
-  desc: 'A floating red demon-puffer with one huge green eye and a mouth full of bad intentions. Puffs up into a spiky meatball when cornered. Do not feed after midnight. Do not feed ever.',
-  behavior: 'Inflates into a spiky ball when startled. Weirdly fond of documents and mail.',
+  desc: 'Startle it and it inflates while a little loading wheel spins in its eyes. Please wait. Still buffering.',
+  behavior: 'Puffs up when startled and drifts upward until it finishes loading.',
   shinyHue: 150,
 });
 
 add({
-  id: 'briefcase', name: 'Regional Manager Fish', biome: 'shallows', rarity: 'uncommon',
+  id: 'briefcase', name: 'Stonks Salmon', biome: 'shallows', rarity: 'uncommon',
   size: [6, 10], weight: [0.06, 0.2],
   look: {
     toon: true,
     body: { len: 36, h: 18, shape: 'torpedo', tip: 0.22 },
-    col: { body: '#6a7890', belly: '#9aa6bc', back: '#465268', fin: '#56637a' },
+    col: { body: '#ff6a5a', belly: '#ffe0d8', back: '#e8384a', fin: '#ff9a8a' },
     shade: { back: -0.35, belly: 0.3 },
     pattern: [{ type: 'suit', color: '#f6f6f2' }],
     tail: { type: 'truncate', len: 10, spread: 8 },
@@ -235,13 +237,13 @@ add({
   fight: { phases: ['tension', 'trace'], power: 0.32, stamina: 4, tricks: ['dash', 'hop'], biteWindow: 0.5, nibbles: [0, 1], fakeBite: 0.1 },
   spawn: { weight: 1, weather: null, time: 'day', requires: null, hidden: null },
   sound: 'grunt',
-  desc: 'Commutes at 9, eats lunch at 12, leaves at 5 sharp - unless there\'s a meeting, and there is always a meeting. Owns a mug that says World\'s Best Boss. He bought it himself.',
-  behavior: 'Keeps real office hours by your clock. Loves mail, calendars and documents.',
+  desc: 'Suit, tie, briefcase and an arrow that only goes up. Keeps strict office hours by your real clock. Number go up.',
+  behavior: 'Commutes 9 to 5 by the real clock and takes a lunch break at noon.',
   shinyHue: 40,
 });
 
 add({
-  id: 'clickcrab', name: 'Mister Clicks', biome: 'shallows', rarity: 'uncommon',
+  id: 'clickcrab', name: 'Double-Click Crab', biome: 'oscean', rarity: 'common',
   size: [5, 9], weight: [0.08, 0.3],
   look: {
     kind: 'crab', shell: 'mouse', toon: true,
@@ -259,18 +261,18 @@ add({
   fight: { phases: ['timing', 'mash'], power: 0.3, stamina: 4, tricks: ['hop', 'fake'], biteWindow: 0.7, nibbles: [1, 2], fakeBite: 0.2 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'click',
-  desc: 'A hermit crab who moved into an old computer mouse and now charges the reef rent. Double-clicks his claws whenever money is mentioned. Money! I mean... mouse!',
-  behavior: 'Scuttles along the seabed and perches on icons. Loves computers and chips.',
+  desc: 'A glossy computer-mouse crab that clicks its claws twice for everything. Its cable tail is purely decorative. Probably.',
+  behavior: 'Scuttles along the seabed and perches on desktop icons.',
   shinyHue: 190,
 });
 
 add({
-  id: 'seahorse', name: 'Old Town Seahorse', biome: 'shallows', rarity: 'uncommon',
+  id: 'seahorse', name: 'Old Town Sea-Horse', biome: 'shallows', rarity: 'uncommon',
   size: [8, 17], weight: [0.02, 0.08],
   look: {
     kind: 'seahorse',
     body: { len: 22, h: 56 },
-    col: { body: '#e88a32', belly: '#ffd08a', fin: '#fff0c8' },
+    col: { body: '#ffa21a', belly: '#fff0a0', back: '#ff6a00', fin: '#ffe07a' },
     eye: { r: 2.6, iris: '#c88a2a' },
     mouth: { type: 'small' },
   },
@@ -283,17 +285,17 @@ add({
   fight: { phases: ['trace', 'net'], power: 0.2, stamina: 4, tricks: ['hop'], biteWindow: 0.8, nibbles: [2, 4], fakeBite: 0.1 },
   spawn: { weight: 0.9, weather: null, time: null, requires: null, hidden: null },
   sound: 'chirp',
-  desc: 'Gonna take its horse to the old reef road and ride till it can\'t no more. Hops along like it\'s at a rodeo, yee-hawing in tiny bubbles.',
-  behavior: 'Hovers upright and hops between perches. Loves games and music.',
+  desc: 'Gonna take its horse to the old reef road and ride till it cannot no more. Yee-haws in tiny bubbles.',
+  behavior: 'Hops along the reef like a rodeo pony.',
   shinyHue: 230,
 });
 
 add({
-  id: 'flounder', name: 'Where\'s Walleye?', biome: 'shallows', rarity: 'uncommon',
+  id: 'flounder', name: 'Hide-the-Pain Halibut', biome: 'shallows', rarity: 'common',
   size: [15, 40], weight: [0.3, 2.5],
   look: {
     body: { len: 50, h: 15, shape: 'disc', hump: 0.25, belly: -0.35, nose: 1.8, tip: 0.2 },
-    col: { body: '#c0a072', belly: '#e0d0b0', back: '#8e7050', fin: '#b09060' },
+    col: { body: '#ffc86a', belly: '#fff0d0', back: '#ff9a3a', fin: '#ffd88a' },
     shade: { back: -0.1, belly: 0.55 },
     pattern: [
       { type: 'spots', color: '#6e5238', size: 2.2, density: 0.5, ring: true },
@@ -317,13 +319,13 @@ add({
   fight: { phases: ['tension', 'trace', 'net'], power: 0.38, stamina: 5, tricks: ['dive', 'fake'], biteWindow: 0.45, nibbles: [1, 3], fakeBite: 0.3 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'blub',
-  desc: 'Lies flat on the sand in a red-and-white striped hat and round glasses, utterly convinced it is perfectly hidden. It is, somehow. Every single time.',
-  behavior: 'Camouflaged on the seabed until your cursor comes close. Loves worms.',
+  desc: 'Smiles politely through everything. Lies flat on the sand pretending all is fine. It is not fine.',
+  behavior: 'Camouflaged on the seabed until your cursor gets close.',
   shinyHue: 180,
 });
 
 add({
-  id: 'purin', name: 'The Pudding is a Lie', biome: 'shallows', rarity: 'rare',
+  id: 'purin', name: 'The Pudding Is a Lie', biome: 'shallows', rarity: 'uncommon',
   size: [6, 10], weight: [0.1, 0.25],
   look: {
     kind: 'pudding', toon: true,
@@ -341,19 +343,19 @@ add({
   fight: { phases: ['timing', 'mash', 'net'], power: 0.25, stamina: 4, tricks: ['hop', 'fake'], biteWindow: 0.7, nibbles: [1, 3], fakeBite: 0.2 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'boing',
-  desc: 'You were promised cake. You received a wobbly, sentient pudding with a cherry on top that insists it is cake. It is not cake. The cake was never real.',
-  behavior: 'Hops along the bottom and wobbles when poked. Can\'t resist sugar.',
+  desc: 'A wobbly caramel pudding with a cherry on top. You were promised pudding. The pudding was a fish all along.',
+  behavior: 'Wobbles about near the bottom. Adores sugar.',
   shinyHue: 290,
 });
 
 add({
-  id: 'angel', name: 'Master Chef Angelfish', biome: 'shallows', rarity: 'rare',
+  id: 'angel', name: 'Vaporwave Angelfish', biome: 'shallows', rarity: 'rare',
   size: [10, 20], weight: [0.1, 0.4],
   look: {
     body: { len: 32, h: 34, shape: 'disc', nose: 1.5, tip: 0.14, peak: 0.42, tailW: 0.24 },
-    col: { body: '#e6e8f2', belly: '#fbfbff', back: '#a8aed0', fin: '#cfd4ea' },
+    col: { body: '#ff7ad8', belly: '#ffe0fa', back: '#b84aff', fin: '#5af0ff' },
     shade: { back: -0.5, belly: 0.35 },
-    pattern: [{ type: 'bars', at: [0.2, 0.5, 0.8], width: 0.045, tone: -3.4, bottom: 1, slant: 0 }, { type: 'stripes', color: '#e8c050', at: [-0.82], width: 0.12, from: 0.05, to: 0.4 }],
+    pattern: [{ type: 'stripes', color: '#5af0ff', at: [-0.3, 0.15], width: 0.09 }, { type: 'stripes', color: '#fff27a', at: [-0.08], width: 0.06 }],
     dorsal: { type: 'trail', from: 0.16, to: 0.66, h: 30, lean: 1.35, color: '#c8cce4' },
     anal: { type: 'trail', from: 0.24, to: 0.7, h: 28, lean: 1.3, color: '#c8cce4' },
     pelvic: { type: 'trail', from: 0.2, to: 0.27, h: 26, lean: 0.75, rays: false, color: '#e8e8f4' },
@@ -373,17 +375,17 @@ add({
   fight: { phases: ['trace', 'timing', 'net'], power: 0.35, stamina: 6, tricks: ['jump', 'fake'], biteWindow: 0.55, nibbles: [1, 2], fakeBite: 0.15 },
   spawn: { weight: 0.8, weather: 'clear', time: 'day', requires: null, hidden: null },
   sound: 'bell',
-  desc: 'A legendary super-soldier of the reef in green armour and a golden visor, still wearing the halo from its last tour. Finishes every fight, and every meal, with perfect plating.',
-  behavior: 'Patrols the sunny upper water on clear days. Loves music and golden bait.',
+  desc: 'A E S T H E T I C. Pastel pink and cyan, sunset stripes and a halo that hums elevator music.',
+  behavior: 'Glides slowly through the sunbeams, sparkling.',
   shinyHue: 45,
 });
 
 add({
-  id: 'parrot', name: 'Captain Jack Parrotfish', biome: 'shallows', rarity: 'rare',
+  id: 'parrot', name: 'Yoink Parrotfish', biome: 'shallows', rarity: 'rare',
   size: [25, 60], weight: [1.5, 6],
   look: {
     body: { len: 58, h: 28, shape: 'oval', hump: 0.12, nose: 2.4, tip: 0.3 },
-    col: { body: '#36c0a8', belly: '#a8f0d8', back: '#2280a0', fin: '#ff7ab8' },
+    col: { body: '#2af0c8', belly: '#c8fff0', back: '#00b0ff', fin: '#ff4ab8' },
     shade: { back: -0.35, belly: 0.35 },
     pattern: [{ type: 'chevron', color: '#ff8ac8', count: 5, width: 0.1, body: true }, { type: 'face', color: '#5ad8f0', to: 0.15 }],
     mouth: { type: 'beak', color: '#f0f4e8' },
@@ -404,17 +406,17 @@ add({
   fight: { phases: ['mash', 'tension', 'net'], power: 0.55, stamina: 7, tricks: ['dash', 'dive'], biteWindow: 0.5, nibbles: [1, 2], fakeBite: 0.1 },
   spawn: { weight: 0.9, weather: null, time: null, requires: null, hidden: null },
   sound: 'grunt',
-  desc: 'A swaggering pirate parrotfish in a battered tricorn and an eye patch, forever borrowing things that aren\'t nailed down. Why is the rum always gone? Why are your icons always gone?',
-  behavior: 'Steals desktop icons and swims off with them. Loves paint and calculators.',
+  desc: 'Pirate hat, eye patch, sticky fins. Swims up, grabs a desktop icon, yells YOINK and swims off with it.',
+  behavior: 'Steals icons off your desktop. Loves image and paint bait.',
   shinyHue: 100,
 });
 
 add({
-  id: 'gourami', name: 'Just-Keep-Swimming Tang', biome: 'shallows', rarity: 'rare',
+  id: 'gourami', name: '404 Fish Not Found', biome: 'shallows', rarity: 'rare',
   size: [8, 16], weight: [0.08, 0.3],
   look: {
     body: { len: 40, h: 26, shape: 'oval', nose: 2, tip: 0.26 },
-    col: { body: '#f4b0c0', belly: '#fff0f4', back: '#d880a0', fin: '#ffd0dc' },
+    col: { body: '#1a6aff', belly: '#5ab8ff', back: '#0a2aa8', fin: '#ffd21a' },
     shade: { back: -0.3, belly: 0.3 },
     mouth: { type: 'lips', color: '#ff5a86' },
     tail: { type: 'round', len: 11, spread: 10 },
@@ -434,8 +436,8 @@ add({
   fight: { phases: ['timing', 'trace', 'net'], power: 0.3, stamina: 5, tricks: ['fake'], biteWindow: 0.75, nibbles: [2, 4], fakeBite: 0.35 },
   spawn: { weight: 0.9, weather: null, time: null, requires: null, hidden: null },
   sound: 'squeak',
-  desc: 'A cheerful blue tang with the memory of a goldfish. Will happily help you find something, then forget what it was, then introduce itself again. Claims to speak whale.',
-  behavior: 'Forgets where it was going and turns around mid-swim. Loves chat and mail.',
+  desc: 'The page you are looking for has swum away. Forgets where it is going every few seconds and reloads in a new direction.',
+  behavior: 'Turns around at random. Hard to pin down.',
   shinyHue: 210,
 });
 
@@ -444,7 +446,7 @@ add({
   size: [35, 80], weight: [2, 9],
   look: {
     body: { len: 68, h: 22, shape: 'torpedo', nose: 2, tip: 0.24, hump: 0.08 },
-    col: { body: '#ffc232', belly: '#fff0a0', back: '#e08a14', fin: '#ffe070' },
+    col: { body: '#ff8a1a', belly: '#fffaf0', back: '#ff4a10', fin: '#ffd23a' },
     shade: { back: -0.35, belly: 0.4 }, spec: 1.3,
     pattern: [{ type: 'patches', color: '#fff8e8', threshold: 0.66, freq: 0.12 }],
     tail: { type: 'fork', len: 20, spread: 14 },
@@ -465,13 +467,13 @@ add({
   fight: { phases: ['trace', 'tension', 'timing', 'net'], power: 0.6, stamina: 9, tricks: ['dash', 'jump', 'fake'], biteWindow: 0.4, nibbles: [2, 4], fakeBite: 0.3 },
   spawn: { weight: 1, weather: null, time: 'day', requires: 'golden', hidden: true },
   sound: 'bell',
-  desc: 'It used to be an adventurer like you. Then it took an arrow to the knee. Now it guards the golden shallows and tells every passing fish about it. Every. Single. One.',
-  behavior: 'Only shows up for golden bait on sunny days. Calm, proud, slightly limping.',
+  desc: 'Used to be an adventurer like you. Then it took an arrow in the knee. Fish do not have knees. It is still upset.',
+  behavior: 'Swims in slow, dignified circles, sparkling.',
   shinyHue: 320,
 });
 
 add({
-  id: 'betta', name: 'Rainbow Road Betta', biome: 'shallows', rarity: 'epic',
+  id: 'betta', name: 'RGB Gamer Betta', biome: 'shallows', rarity: 'epic',
   size: [6, 9], weight: [0.02, 0.06],
   look: {
     body: { len: 32, h: 13, shape: 'torpedo', tip: 0.2 },
@@ -496,8 +498,8 @@ add({
   fight: { phases: ['timing', 'dodge', 'trace', 'net'], power: 0.5, stamina: 7, tricks: ['dash', 'fake', 'jump'], biteWindow: 0.4, nibbles: [1, 2], fakeBite: 0.25 },
   spawn: { weight: 0.9, weather: null, time: 'night', requires: null, hidden: null },
   sound: 'bell',
-  desc: 'Its fins shimmer in every colour of the rainbow and it drifts as if it\'s on the final lap of the hardest track in the galaxy. Falls off the edge constantly. Respawns looking fabulous.',
-  behavior: 'Night-time show-off near the surface. Loves music and videos.',
+  desc: 'Its fins cycle through every colour like a gaming keyboard at 3 a.m. More RGB means more speed. Probably.',
+  behavior: 'Shows off its rainbow fins. Loves game bait.',
   shinyHue: 140,
 });
 
@@ -506,7 +508,7 @@ add({
   size: [180, 330], weight: [250, 1000],
   look: {
     body: { len: 96, h: 86, shape: 'disc', tailW: 0.62, taper: 0.7, nose: 2.4, peak: 0.42, tip: 0.3 },
-    col: { body: '#a8b8cc', belly: '#eef4fa', back: '#5a6a88', fin: '#7a8aa8' },
+    col: { body: '#ffd23a', belly: '#fffbe0', back: '#ff9a1a', fin: '#ffe87a' },
     shade: { back: -0.4, belly: 0.25 },
     pattern: [
       { type: 'patches', threshold: 0.6, freq: 0.5, tone: -0.8 },
@@ -530,8 +532,8 @@ add({
   fight: { phases: ['tension', 'timing', 'trace', 'mash', 'net'], power: 0.85, stamina: 16, tricks: ['dive', 'jump', 'fake'], biteWindow: 0.6, nibbles: [2, 5], fakeBite: 0.2 },
   spawn: { weight: 1, weather: 'clear', time: 'day', requires: null, hidden: true },
   sound: 'roar',
-  desc: 'A colossal, jolly sunfish that rises to the surface on clear days, raises both fins high and praises the sun. If only it could be so grossly incandescent!',
-  behavior: 'Basks at the surface on clear sunny days. Only bites golden or flood bait.',
+  desc: 'A gigantic, radiant ocean sunfish that floats on its side and raises both fins to the sky in jolly cooperation.',
+  behavior: 'Basks at the surface on sunny days. Very rare.',
   shinyHue: 30,
 });
 
@@ -543,7 +545,7 @@ add({
   size: [8, 15], weight: [0.03, 0.1],
   look: {
     body: { len: 26, h: 8, shape: 'torpedo', tip: 0.18 },
-    col: { body: '#c4d0dc', belly: '#f4f8fc', back: '#3a5a8a', fin: '#a8b8c8' },
+    col: { body: '#e8f4ff', belly: '#ffffff', back: '#1a6aff', fin: '#a0d8ff' },
     shade: { back: -0.2, belly: 0.35 },
     pattern: [{ type: 'stripes', color: '#ff7a9a', at: [-0.08], width: 0.12, from: 0.2, to: 0.95 }, { type: 'dots', rows: [-0.45], spacing: 3, size: 0.6, tone: -2.5, from: 0.3 }],
     tail: { type: 'fork', len: 8, spread: 6 },
@@ -564,18 +566,18 @@ add({
   fight: { phases: ['mash', 'tension'], power: 0.15, stamina: 2, tricks: ['dash'], biteWindow: 1, nibbles: [0, 1], fakeBite: 0.05 },
   spawn: { weight: 1.5, weather: null, time: null, requires: null, hidden: null },
   sound: 'squeak',
-  desc: 'Doctors HATE this one weird sardine! You won\'t BELIEVE what it does next (it swims slightly to the left). Travels in enormous schools with a permanent notification badge.',
-  behavior: 'Huge schools that swarm pop-up bait and mail.',
+  desc: 'YOU WON\'T BELIEVE WHAT THIS SARDINE DID NEXT! (It swam a bit.) Number 7 will shock you.',
+  behavior: 'Schools in shiny flocks. Pop-up bait drives them wild.',
   shinyHue: 60,
 });
 
 add({
-  id: 'bitfish', name: 'Boomfish', biome: 'junkyard', rarity: 'common',
+  id: 'bitfish', name: 'Vine Boom Fish', biome: 'junkyard', rarity: 'common',
   size: [5, 9], weight: [0.04, 0.12],
   look: {
     toon: true,
     body: { len: 28, h: 17, shape: 'box', tip: 0.6 },
-    col: { body: '#48e070', belly: '#a8ffb8', back: '#208a48', fin: '#7af090' },
+    col: { body: '#5af04a', belly: '#d8ffb8', back: '#1aa83a', fin: '#3aff8a' },
     shade: { back: -0.4, belly: 0.4 },
     pattern: [{ type: 'checker', size: 4, tone: -1.2 }],
     tail: { type: 'truncate', len: 8, spread: 8 },
@@ -595,8 +597,8 @@ add({
   fight: { phases: ['timing', 'tension'], power: 0.2, stamina: 3, tricks: ['hop'], biteWindow: 0.8, nibbles: [1, 1], fakeBite: 0.1 },
   spawn: { weight: 1.3, weather: null, time: null, requires: null, hidden: null },
   sound: 'chirp',
-  desc: 'A blocky green fish with a permanently disappointed face. Sneaks up behind other fish, goes sssss... and then pops. Completely harmless, deeply unsettling.',
-  behavior: 'Hops in small groups and hisses at anything nearby. Loves games.',
+  desc: 'Every time it lands from a hop the whole reef goes BOOM. Nobody knows where the sound comes from.',
+  behavior: 'Hops along the reef in little schools.',
   shinyHue: 260,
 });
 
@@ -605,7 +607,7 @@ add({
   size: [4, 8], weight: [0.01, 0.05],
   look: {
     body: { len: 28, h: 10, shape: 'torpedo', tip: 0.18 },
-    col: { body: '#a86aff', belly: '#e8d0ff', back: '#5a2ac8', fin: '#ff5ad8' },
+    col: { body: '#ff2a3a', belly: '#ff8a8a', back: '#c8101a', fin: '#ff5a5a' },
     shade: { back: -0.3, belly: 0.4 },
     pattern: [{ type: 'stripes', color: '#3affe8', at: [0.02], width: 0.1, from: 0.12 }],
     glitch: 0.9,
@@ -626,19 +628,19 @@ add({
   fight: { phases: ['trace', 'tension'], power: 0.18, stamina: 3, tricks: ['glitch', 'dash'], biteWindow: 0.6, nibbles: [1, 2], fakeBite: 0.15 },
   spawn: { weight: 1.2, weather: null, time: null, requires: null, hidden: null },
   sound: 'glitch',
-  desc: 'A small red bean-shaped fish with a big glass visor and a tiny backpack. Swims very normally. Too normally. Vanishes into seabed vents and pops out somewhere else. Emergency meeting!',
-  behavior: 'Teleports through vents when spooked. Loves chips and terminals.',
+  desc: 'Wears a little visor and acts very normal. Vents between reefs. Kind of sus, honestly.',
+  behavior: 'Glitches out of sight when it thinks nobody is looking.',
   shinyHue: 90,
 });
 
 add({
-  id: 'grouper', name: 'It\'s-a-Trap Snapper', biome: 'junkyard', rarity: 'common',
+  id: 'grouper', name: 'Touch Grass Grouper', biome: 'oscean', rarity: 'common',
   size: [40, 110], weight: [3, 25],
   look: {
     body: { len: 70, h: 32, shape: 'oval', belly: 0.12, hump: 0.08, nose: 1.7, tip: 0.3 },
-    col: { body: '#7a6a58', belly: '#b8a890', back: '#46392e', fin: '#5e4e3e' },
+    col: { body: '#3ad84a', belly: '#e6ffc0', back: '#1a9a3a', fin: '#9aff5a' },
     shade: { back: -0.3, belly: 0.35 },
-    pattern: [{ type: 'rust', color: '#c8642a', threshold: 0.58 }, { type: 'spots', size: 1.6, density: 0.3, tone: -1.6, seed: 3 }],
+    pattern: [{ type: 'spots', color: '#c8ff7a', size: 1.2, density: 0.4, vmax: 0.2 }],
     mouth: { type: 'big', v: 0.35, sag: 0.18, teeth: true },
     tail: { type: 'round', len: 16, spread: 14 },
     dorsal: { type: 'spiky', from: 0.26, to: 0.52, h: 9, count: 6 },
@@ -647,7 +649,7 @@ add({
     pelvic: { from: 0.3, to: 0.4, h: 8 },
     pectoral: { len: 12 },
     eye: { r: 3.4, u: 0.15, v: -0.35, iris: '#c87a2a' },
-    extras: [{ type: 'bolts', color: '#c8ccd4' }, { type: 'scar', u: 0.56 }],
+    extras: [{ type: 'cap', style: 'mohawk', color: '#5aff3a', color2: '#2ab82a' }],
     scales: true, scaleSize: 4,
   },
   scale: 1,
@@ -659,13 +661,13 @@ add({
   fight: { phases: ['tension', 'mash'], power: 0.5, stamina: 6, tricks: ['dive'], biteWindow: 0.7, nibbles: [1, 2], fakeBite: 0.05 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'grunt',
-  desc: 'A lumpy, wise old snapper with huge eyes and a white admiral\'s collar. Spots every trap on the reef instantly and announces it at full volume. Gets caught anyway.',
-  behavior: 'Lurks near the bottom. Bites on settings icons and trash.',
+  desc: 'Grew a fresh tuft of wallpaper grass on its head after one too many hours online. Chill, green and smells faintly of meadow.',
+  behavior: 'Cruises over the flooded hills. Bites on almost anything.',
   shinyHue: 200,
 });
 
 add({
-  id: 'binblob', name: 'Grumpy Bin Grouch', biome: 'junkyard', rarity: 'common',
+  id: 'binblob', name: 'Recycle Bin Blob', biome: 'junkyard', rarity: 'common',
   size: [15, 35], weight: [0.8, 4],
   look: {
     kind: 'blob', toon: true,
@@ -683,13 +685,13 @@ add({
   fight: { phases: ['mash', 'tension', 'net'], power: 0.3, stamina: 5, tricks: [], biteWindow: 1.2, nibbles: [0, 1], fakeBite: 0 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'blub',
-  desc: 'Lives in a trash heap and loves it there. Scowls at everyone, hoards garbage and tells you to scram. Secretly loves it when you visit. Do not tell anyone.',
-  behavior: 'Oozes along the seabed eating trash. Loves trash and pop-ups.',
+  desc: 'Everything you ever deleted ends up in here, including your dignity. Squishy, green and surprisingly cheerful.',
+  behavior: 'Crawls about the scrap reef eating crumbs.',
   shinyHue: 300,
 });
 
 add({
-  id: 'shortcut', name: 'Spy Fish', biome: 'junkyard', rarity: 'uncommon',
+  id: 'shortcut', name: 'Not-a-Virus.exe Fish', biome: 'oscean', rarity: 'rare',
   size: [6, 9], weight: [0.05, 0.12],
   look: {
     kind: 'iconfish', toon: true,
@@ -707,13 +709,13 @@ add({
   fight: { phases: ['timing', 'trace', 'net'], power: 0.3, stamina: 4, tricks: ['fake', 'hop'], biteWindow: 0.5, nibbles: [1, 2], fakeBite: 0.4 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'click',
-  desc: 'A master of disguise who poses as a desktop icon so convincingly that you double-click it. Right behind you! Its catchphrase is a gentlemanly \'Gotcha\'.',
-  behavior: 'Hides among your desktop icons. Double-click it to unmask it.',
+  desc: 'Disguises itself as a perfectly normal desktop icon. Totally safe. Definitely not a fish. Double-click to find out.',
+  behavior: 'Hides in empty icon slots and poses as a shortcut until you poke it.',
   shinyHue: 120,
 });
 
 add({
-  id: 'mechacrab', name: 'Crabformer', biome: 'junkyard', rarity: 'uncommon',
+  id: 'mechacrab', name: 'Crab Rave Crab', biome: 'junkyard', rarity: 'uncommon',
   size: [12, 25], weight: [1, 4],
   look: {
     kind: 'crab', shell: 'mech', toon: true,
@@ -731,13 +733,13 @@ add({
   fight: { phases: ['mash', 'dodge', 'net'], power: 0.5, stamina: 6, tricks: ['spit', 'hop'], biteWindow: 0.6, nibbles: [1, 2], fakeBite: 0.1 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'click',
-  desc: 'More than meets the eye: a crab disguised as a robot disguised as a crab. Transforms with a tremendous whirring noise into... a slightly different crab.',
-  behavior: 'Scuttles on the seabed and fires sparks. Loves chips and settings.',
+  desc: 'A chrome mecha-crab that never stops dancing. Every claw snap is on the beat. The reef has been raving for days.',
+  behavior: 'Scuttles and dances along the seabed.',
   shinyHue: 160,
 });
 
 add({
-  id: 'cableeel', name: 'Cardboard Snake-Eel', biome: 'junkyard', rarity: 'uncommon',
+  id: 'cableeel', name: 'Cable Management Eel', biome: 'junkyard', rarity: 'uncommon',
   size: [60, 160], weight: [0.5, 3],
   look: {
     kind: 'chain', toon: true,
@@ -755,13 +757,13 @@ add({
   fight: { phases: ['unwrap', 'tension', 'net'], power: 0.45, stamina: 6, tricks: ['wrap', 'dash'], biteWindow: 0.6, nibbles: [1, 2], fakeBite: 0.15 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'click',
-  desc: 'A tactical espionage eel that hides under a cardboard box and believes this makes it invisible. An exclamation mark pops over the box when it spots you. Kept you waiting, huh?',
-  behavior: 'Wraps its long body around icons and your line. Loves computers.',
+  desc: 'A tangled ethernet cable that came alive out of pure spite. It will never be untangled. Do not try.',
+  behavior: 'Snakes through the scrap in long coils.',
   shinyHue: 30,
 });
 
 add({
-  id: 'floppyray', name: 'Save Point Skate', biome: 'junkyard', rarity: 'uncommon',
+  id: 'floppyray', name: 'Ctrl+S Skate', biome: 'junkyard', rarity: 'uncommon',
   size: [9, 9], weight: [0.02, 0.03],
   look: {
     kind: 'ray', square: true, toon: true,
@@ -779,18 +781,18 @@ add({
   fight: { phases: ['trace', 'timing', 'net'], power: 0.3, stamina: 5, tricks: ['jump', 'fake'], biteWindow: 0.55, nibbles: [1, 3], fakeBite: 0.2 },
   spawn: { weight: 0.9, weather: null, time: null, requires: null, hidden: null },
   sound: 'click',
-  desc: 'A floppy-disk-shaped skate that glows softly when you\'re near, like every save point ever. Your progress is safe with it. Probably. Do not turn off the power.',
-  behavior: 'Glides through mid-water. Loves documents and folders.',
+  desc: 'Shaped like the save icon, which is shaped like a thing nobody has seen since 1998. Saves often. Always.',
+  behavior: 'Glides low over the reef.',
   shinyHue: 330,
 });
 
 add({
-  id: 'cookie', name: 'Om-Nom Cookiefish', biome: 'junkyard', rarity: 'uncommon',
+  id: 'cookie', name: 'Accept-All-Cookies Fish', biome: 'oscean', rarity: 'uncommon',
   size: [6, 12], weight: [0.05, 0.2],
   look: {
     toon: true,
     body: { len: 32, h: 30, shape: 'round', tip: 0.35, nose: 3 },
-    col: { body: '#d49a58', belly: '#e8bc84', back: '#a8702e', fin: '#c08848' },
+    col: { body: '#e8a050', belly: '#ffe0a8', back: '#c06a1e', fin: '#ffd07a' },
     shade: { back: -0.5, belly: 0.4 },
     pattern: [{ type: 'spots', color: '#4a2a14', size: 2, density: 0.36, seed: 11 }],
     extras: [{ type: 'bite', u: 0.58, r: 6 }],
@@ -805,22 +807,22 @@ add({
   move: { style: 'swim', speed: 13, burst: 50, agility: 4, depth: [0.2, 0.8], school: 0 },
   activity: 'any',
   traits: { curiosity: 1, shyness: 0.05, greed: 0.6, aggression: 0 },
-  bait: { browser: 3, sugar: 3, chat: 1, mail: 1, popup: 1 },
+  bait: { browser: 3, sugar: 3, bread: 2, popup: 2 },
   quirks: ['forgetful'],
   fight: { phases: ['mash', 'trace', 'net'], power: 0.3, stamina: 4, tricks: ['fake', 'dash'], biteWindow: 0.7, nibbles: [1, 3], fakeBite: 0.25 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'chirp',
-  desc: 'A chocolate chip cookie that has already taken a bite out of itself. Follows you around the internet, remembers everything you clicked and says om nom nom a lot.',
-  behavior: 'Forgets what it was doing and doubles back. Loves browsers and sugar.',
+  desc: 'A crunchy cookie fish that pops up a consent banner every time you look at it. Clicking "accept" only encourages it.',
+  behavior: 'Forgets what it was doing and turns around. Loves browser bait and sugar.',
   shinyHue: 250,
 });
 
 add({
-  id: 'loadingangler', name: 'Loading Screen Angler', biome: 'junkyard', rarity: 'rare',
+  id: 'loadingangler', name: 'Spinning-Wheel Angler', biome: 'junkyard', rarity: 'rare',
   size: [20, 45], weight: [2, 8],
   look: {
     body: { len: 50, h: 36, shape: 'blunt', tip: 0.55 },
-    col: { body: '#7a828e', belly: '#a8b0bc', back: '#4a525e', fin: '#5a626e' },
+    col: { body: '#5a8aff', belly: '#d8e8ff', back: '#2a4ad8', fin: '#8ab8ff' },
     shade: { back: -0.3, belly: 0.35 },
     pattern: [{ type: 'plates', color: '#4a525e', size: 9 }, { type: 'rust', color: '#b0703a', threshold: 0.7 }],
     mouth: { type: 'fangs', v: 0.35, w: 16, sag: -0.1, rest: 0.25 },
@@ -842,18 +844,18 @@ add({
   fight: { phases: ['timing', 'dodge', 'tension', 'net'], power: 0.55, stamina: 8, tricks: ['fake', 'spit', 'dive'], biteWindow: 0.45, nibbles: [2, 4], fakeBite: 0.35 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'glitch',
-  desc: 'Its lure is a spinning loading wheel that never quite finishes. Fish gather around it, waiting patiently. TIP: fish are attracted to bait. TIP: did you know you can catch fish?',
-  behavior: 'Hovers deep with its spinner lure. Loves chips and videos.',
+  desc: 'Its lure is a spinning loading wheel. Smaller fish wait forever for it to finish. It never finishes.',
+  behavior: 'Dangles a spinning lure in the dark. Strikes fast.',
   shinyHue: 180,
 });
 
 add({
-  id: 'thief', name: 'Grand Theft Tuna', biome: 'junkyard', rarity: 'rare',
+  id: 'thief', name: 'Free-Real-Estate Tuna', biome: 'junkyard', rarity: 'rare',
   size: [12, 22], weight: [0.2, 0.7],
   look: {
     toon: true,
     body: { len: 40, h: 16, shape: 'pointy', nose: 1.5, tip: 0.18 },
-    col: { body: '#5a6a8a', belly: '#c8d0e0', back: '#2a3248', fin: '#3a4458' },
+    col: { body: '#2a6aff', belly: '#f0f6ff', back: '#0a2a8a', fin: '#ffd21a' },
     shade: { back: -0.3, belly: 0.45 },
     pattern: [
       { type: 'stripes', color: '#eef0f4', at: [-0.3, 0.14, 0.54], width: 0.12, from: 0.27 },
@@ -878,13 +880,13 @@ add({
   fight: { phases: ['trace', 'mash', 'tension', 'net'], power: 0.45, stamina: 7, tricks: ['dash', 'hop', 'fake'], biteWindow: 0.35, nibbles: [0, 1], fakeBite: 0.3 },
   spawn: { weight: 1, weather: null, time: 'night', requires: null, hidden: null },
   sound: 'squeak',
-  desc: 'Sunglasses on, wanted level rising. This tuna steals your desktop icons and speeds off with them without signalling. Five stars on the reef. None of them good.',
-  behavior: 'Night-time icon thief, fast and slippery. Loves folders, images and gold.',
+  desc: 'Sees an icon you are not using and goes "it\'s free real estate". Sunglasses on, icon gone.',
+  behavior: 'Steals desktop icons and swims off with them.',
   shinyHue: 20,
 });
 
 add({
-  id: 'screendweller', name: 'Seven-Days Screenfish', biome: 'junkyard', rarity: 'rare',
+  id: 'screendweller', name: 'Jumpscare Screenfish', biome: 'junkyard', rarity: 'rare',
   size: [14, 30], weight: [1, 5],
   look: {
     toon: true,
@@ -909,17 +911,17 @@ add({
   fight: { phases: ['dodge', 'trace', 'timing', 'net'], power: 0.45, stamina: 7, tricks: ['glitch', 'hop', 'spit'], biteWindow: 0.5, nibbles: [1, 3], fakeBite: 0.2 },
   spawn: { weight: 0.9, weather: 'storm', time: null, requires: null, hidden: null },
   sound: 'glitch',
-  desc: 'A creepy old TV-fish whose screen shows nothing but static and a distant well. Watch it too long and it crawls a little closer. Seven days later it\'s still here, humming.',
-  behavior: 'Appears in storms, hovering with its screen aglow. Loves videos.',
+  desc: 'A fish with an old screen for a face. Seven days after you see it, it will... show you a cute emoji. Gotcha.',
+  behavior: 'Lurks near screens and glows in the dark.',
   shinyHue: 280,
 });
 
 add({
-  id: 'trieye', name: 'Three-Eyed Blinky', biome: 'junkyard', rarity: 'rare',
+  id: 'trieye', name: 'Multitasking Blinky', biome: 'volcano', rarity: 'uncommon',
   size: [15, 35], weight: [0.5, 2.5],
   look: {
     body: { len: 44, h: 24, shape: 'oval', hump: 0.18, nose: 1.8 },
-    col: { body: '#94c04a', belly: '#d8f0a0', back: '#4e7e26', fin: '#c0a0d0' },
+    col: { body: '#ff9a1a', belly: '#fff0b8', back: '#ff5a00', fin: '#ffd21a' },
     shade: { back: -0.3, belly: 0.35 },
     pattern: [{ type: 'patches', color: '#b85a98', threshold: 0.6, freq: 0.2 }],
     mouth: { type: 'fangs', v: 0.3 },
@@ -942,17 +944,17 @@ add({
   fight: { phases: ['dodge', 'mash', 'tension', 'net'], power: 0.5, stamina: 7, tricks: ['spit', 'dash'], biteWindow: 0.5, nibbles: [1, 2], fakeBite: 0.15 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'grunt',
-  desc: 'A cheerful orange fish with three eyes, found swimming right next to a certain glowing power plant. The plant\'s owner insists it\'s an evolutionary improvement. Excellent.',
-  behavior: 'Bottom-feeder near the junk piles. Loves trash and black holes.',
+  desc: 'Three eyes: one on the stream, one on the chat and one on you. Somehow still misses the bait.',
+  behavior: 'Keeps an eye on everything at once.',
   shinyHue: 210,
 });
 
 add({
-  id: 'usbfish', name: 'Excalibur Swordfish', biome: 'junkyard', rarity: 'epic',
+  id: 'usbfish', name: 'Wrong-Way-Up USB Fish', biome: 'junkyard', rarity: 'epic',
   size: [80, 180], weight: [20, 90],
   look: {
     body: { len: 72, h: 20, shape: 'torpedo', nose: 1.6, tip: 0.3, tailW: 0.2 },
-    col: { body: '#3a4a6a', belly: '#c8d4e4', back: '#1a2440', fin: '#2a3a5a' },
+    col: { body: '#3a8aff', belly: '#e0f0ff', back: '#1a3ad8', fin: '#5ad8ff' },
     shade: { back: -0.1, belly: 0.25 },
     pattern: [{ type: 'circuit', color: '#5ac8ff', glow: true, vmax: 0.0 }],
     extras: [{ type: 'usb', len: 30, color: '#22252e', color2: '#c4ccd8' }],
@@ -974,19 +976,19 @@ add({
   fight: { phases: ['timing', 'tension', 'dodge', 'net'], power: 0.75, stamina: 11, tricks: ['dash', 'fake', 'jump'], biteWindow: 0.35, nibbles: [2, 3], fakeBite: 0.4 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'click',
-  desc: 'A swordfish that pulled a real sword out of a sunken stone and refuses to put it down. Rightful ruler of the junkyard reef, by its own decree.',
-  behavior: 'Blazing-fast charger. Loves computers and chips.',
+  desc: 'Its snout is a USB plug. It tried to plug in the wrong way up. Then the other way. Then the first way again, which worked.',
+  behavior: 'Darts about, sparking. Loves terminal bait.',
   shinyHue: 300,
 });
 
 add({
-  id: 'lionfish', name: 'Circle-of-Life Lionfish', biome: 'junkyard', rarity: 'epic',
+  id: 'lionfish', name: 'Mane Character Lionfish', biome: 'junkyard', rarity: 'epic',
   size: [20, 40], weight: [0.5, 1.4],
   look: {
     body: { len: 44, h: 22, shape: 'oval', nose: 1.8, tip: 0.24 },
-    col: { body: '#f2e2d8', belly: '#fff8f4', back: '#c8a89e', fin: '#ff5a4a' },
+    col: { body: '#ffffff', belly: '#ffffff', back: '#ffd0c0', fin: '#ff3a2a' },
     shade: { back: -0.4, belly: 0.35 },
-    pattern: [{ type: 'bands', color: '#b8241e', at: [0.1, 0.24, 0.38, 0.52, 0.66, 0.8, 0.93], width: 0.045, wavy: 0.05 }],
+    pattern: [{ type: 'bands', color: '#e8101a', at: [0.14, 0.3, 0.46, 0.62, 0.78], width: 0.06, wavy: 0.03 }],
     dorsal: { type: 'spiky', from: 0.14, to: 0.62, h: 28, count: 9, color: '#ff5a4a', lean: 0.8 },
     dorsal2: { type: 'round', from: 0.64, to: 0.86, h: 10, color: '#ffb0a0' },
     anal: { type: 'round', from: 0.62, to: 0.86, h: 10, color: '#ffb0a0' },
@@ -1007,8 +1009,8 @@ add({
   fight: { phases: ['dodge', 'tension', 'trace', 'net'], power: 0.65, stamina: 10, tricks: ['spit', 'fake', 'glitch'], biteWindow: 0.4, nibbles: [1, 3], fakeBite: 0.3 },
   spawn: { weight: 1, weather: 'storm', time: null, requires: null, hidden: null },
   sound: 'glitch',
-  desc: 'A lionfish with an actual lion\'s mane who believes everything the light touches is its kingdom. Roars at sunrise, glitches out at sunset and will not stop singing about it.',
-  behavior: 'Hovers among the junk in storms, roaring and glitching. Loves pop-ups.',
+  desc: 'Bold red and white stripes, a magnificent mane and the unshakeable belief that the whole reef is its story.',
+  behavior: 'Fans its spines and poses. Glitches when startled.',
   shinyHue: 190,
 });
 
@@ -1031,8 +1033,8 @@ add({
   fight: { phases: ['dodge', 'timing', 'trace', 'mash', 'net'], power: 0.95, stamina: 18, tricks: ['glitch', 'spit', 'dive', 'fake'], biteWindow: 0.4, nibbles: [2, 4], fakeBite: 0.3 },
   spawn: { weight: 1, weather: 'storm', time: 'night', requires: null, hidden: true },
   sound: 'roar',
-  desc: 'A colossal blue manta whose body reads \':( Your reef ran into a problem and needs to restart.\' Collecting error info: 0%... 0%... 0%...',
-  behavior: 'Glides through storms at night and glitches everything near it.',
+  desc: 'A huge blue manta with a sad face where its screen should be. Your reef ran into a problem and needs to restart.',
+  behavior: 'Glides through the scrap reef very rarely. Legendary.',
   shinyHue: 120,
 });
 
@@ -1047,11 +1049,11 @@ const GLOW_EYES = [
 ];
 
 add({
-  id: 'lanternfish', name: 'In-Brightest-Day Lanternfish', biome: 'abyss', rarity: 'common',
+  id: 'lanternfish', name: 'Low Battery Lanternfish', biome: 'abyss', rarity: 'common',
   size: [3, 10], weight: [0.01, 0.06],
   look: {
     body: { len: 26, h: 10, shape: 'blunt', tip: 0.4, nose: 2.6 },
-    col: { body: '#3a4a6a', belly: '#8a9ab8', back: '#18203a', fin: '#2a3448' },
+    col: { body: '#2a5aff', belly: '#a0c8ff', back: '#0a1a8a', fin: '#5a8aff' },
     shade: { back: -0.2, belly: 0.4 },
     pattern: [{ type: 'dots', color: '#8affff', rows: [0.62, 0.2], glow: true, spacing: 3.2, size: 0.8 }],
     tail: { type: 'fork', len: 8, spread: 6 },
@@ -1071,17 +1073,17 @@ add({
   fight: { phases: ['trace', 'tension'], power: 0.15, stamina: 2.5, tricks: ['dash'], biteWindow: 0.8, nibbles: [1, 2], fakeBite: 0.1 },
   spawn: { weight: 1.5, weather: null, time: null, requires: null, hidden: null },
   sound: 'chirp',
-  desc: 'Small schooling fish that each glow with a green ring. In brightest day, in blackest deep, no bait shall escape their sight. They take the oath very seriously.',
-  behavior: 'Glowing schools in the upper deep. Love lantern bait.',
+  desc: 'Its glow flickers at 1% at all times. Constantly looking for a charger. Panics politely.',
+  behavior: 'Schools in the dark, glowing dimly.',
   shinyHue: 60,
 });
 
 add({
-  id: 'hatchet', name: 'Here\'s-Johnny Hatchetfish', biome: 'abyss', rarity: 'common',
+  id: 'hatchet', name: 'Edgelord Hatchetfish', biome: 'abyss', rarity: 'common',
   size: [3, 8], weight: [0.01, 0.04],
   look: {
     body: { len: 22, h: 24, shape: 'pointy', belly: 0.5, hump: -0.12, peak: 0.32, tailW: 0.16, tip: 0.2 },
-    col: { body: '#c8d4e8', belly: '#f0f8ff', back: '#4a5a7a', fin: '#9aa8c0' },
+    col: { body: '#c8e0ff', belly: '#ffffff', back: '#5a6aff', fin: '#a0b8ff' },
     shade: { back: -0.55, belly: 0.1 }, spec: 1.4,
     pattern: [
       { type: 'dots', color: '#7affd8', rows: [0.82], glow: true, spacing: 2.6, from: 0.18, to: 0.75, size: 0.8 },
@@ -1103,13 +1105,13 @@ add({
   fight: { phases: ['timing', 'tension'], power: 0.14, stamina: 2.5, tricks: ['dash', 'jump'], biteWindow: 0.7, nibbles: [1, 2], fakeBite: 0.1 },
   spawn: { weight: 1.3, weather: null, time: null, requires: null, hidden: null },
   sound: 'squeak',
-  desc: 'A thin silver fish shaped exactly like a hatchet, with wide, unblinking eyes. Pokes its face through gaps in the rocks to announce itself. All work and no play makes it a dull fish.',
-  behavior: 'Darting schools that peek out of cracks. Loves lantern bait and worms.',
+  desc: 'Silver, sharp and deeply misunderstood. Writes poetry about the darkness. Lives in the darkness. Complains about the darkness.',
+  behavior: 'Schools in silver flashes.',
   shinyHue: 30,
 });
 
 add({
-  id: 'isopod', name: 'Hollow Isopod', biome: 'abyss', rarity: 'common',
+  id: 'isopod', name: 'Do-a-Barrel-Roll Isopod', biome: 'abyss', rarity: 'common',
   size: [20, 45], weight: [0.8, 1.7],
   look: {
     kind: 'isopod',
@@ -1127,13 +1129,13 @@ add({
   fight: { phases: ['mash', 'tension'], power: 0.3, stamina: 4, tricks: [], biteWindow: 1, nibbles: [0, 1], fakeBite: 0 },
   spawn: { weight: 1.2, weather: null, time: null, requires: null, hidden: null },
   sound: 'click',
-  desc: 'A tiny armoured knight of the deep that wanders endless caverns in silence, bonks things with its nail and sits on benches to rest. Surprisingly hard to beat.',
-  behavior: 'Crawls along the seabed. Will eat almost any worm.',
+  desc: 'Curls into a ball and rolls whenever anyone shouts. Do a barrel roll! It always does.',
+  behavior: 'Crawls along the deep seabed.',
   shinyHue: 160,
 });
 
 add({
-  id: 'glowjelly', name: 'Jelly-on-Toast Jellyfish', biome: 'abyss', rarity: 'common',
+  id: 'glowjelly', name: 'Glow-Up Jellyfish', biome: 'abyss', rarity: 'common',
   size: [8, 25], weight: [0.05, 0.4],
   look: {
     kind: 'jelly', glow: true, noFace: true,
@@ -1151,13 +1153,13 @@ add({
   fight: { phases: ['trace', 'net'], power: 0.12, stamina: 3, tricks: [], biteWindow: 1.2, nibbles: [2, 4], fakeBite: 0 },
   spawn: { weight: 1.2, weather: null, time: null, requires: null, hidden: null },
   sound: 'bell',
-  desc: 'A jellyfish made of exactly what you think: a slice of golden toast with a thick layer of glowing grape jelly. Pulses gently. Smells like breakfast.',
-  behavior: 'Drifts and pulses through the dark. Loves lantern bait.',
+  desc: 'Went from plain jelly to glowing icon in one season. Before and after photos available on request.',
+  behavior: 'Pulses through the dark, glowing.',
   shinyHue: 110,
 });
 
 add({
-  id: 'blobfish', name: 'Inside-Out Blobfish', biome: 'abyss', rarity: 'common',
+  id: 'blobfish', name: 'It\'s-Monday Blobfish', biome: 'abyss', rarity: 'common',
   size: [15, 30], weight: [0.5, 2],
   look: {
     kind: 'blob', blobfish: true,
@@ -1176,17 +1178,17 @@ add({
   fight: { phases: ['tension', 'mash'], power: 0.2, stamina: 3, tricks: [], biteWindow: 1.4, nibbles: [0, 2], fakeBite: 0 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'blub',
-  desc: 'A droopy blue blobfish who is in charge of all of the ocean\'s sadness, and is very good at it. Crying helps it slow down and obsess over the weight of life\'s problems.',
-  behavior: 'Drifts sadly near the bottom. Bites slowly and reluctantly.',
+  desc: 'The face of every Monday morning. Tired, droopy and in no hurry. Same, honestly.',
+  behavior: 'Drifts about very slowly.',
   shinyHue: 180,
 });
 
 add({
-  id: 'angler', name: 'Upside-Down Angler', biome: 'abyss', rarity: 'uncommon',
+  id: 'angler', name: 'Light Mode Angler', biome: 'abyss', rarity: 'uncommon',
   size: [10, 40], weight: [0.5, 5],
   look: {
     body: { len: 46, h: 34, shape: 'blunt', tip: 0.55 },
-    col: { body: '#4a3f5a', belly: '#6a5a72', back: '#2a2234', fin: '#3a3048' },
+    col: { body: '#7a5aff', belly: '#d8c8ff', back: '#3a1ad8', fin: '#5ac8ff' },
     shade: { back: -0.2, belly: 0.4 },
     pattern: [{ type: 'speckle', density: 0.1, tone: 1.2 }],
     mouth: { type: 'fangs', v: 0.3, w: 15, sag: -0.15, rest: 0.3 },
@@ -1207,17 +1209,17 @@ add({
   fight: { phases: ['tension', 'dodge', 'net'], power: 0.45, stamina: 6, tricks: ['fake', 'dive'], biteWindow: 0.5, nibbles: [1, 3], fakeBite: 0.25 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'grunt',
-  desc: 'An angler from the other side of the deep whose lure blinks like a string of fairy lights to spell out messages. R-U-N. It is mostly just trying to say hi.',
-  behavior: 'Hovers in the dark with a flickering lure. Loves lantern bait.',
+  desc: 'Switched the abyss to light mode with its blinding lure. Every fish within a mile is squinting.',
+  behavior: 'Dangles a dazzling lure in the dark.',
   shinyHue: 140,
 });
 
 add({
-  id: 'dragonfish', name: 'Mother of Dragonfish', biome: 'abyss', rarity: 'uncommon',
+  id: 'dragonfish', name: 'Rawr XD Dragonfish', biome: 'abyss', rarity: 'uncommon',
   size: [15, 40], weight: [0.1, 0.6],
   look: {
     body: { len: 72, h: 13, shape: 'long', tip: 0.35 },
-    col: { body: '#1e1a2a', belly: '#2e2a3a', back: '#100c18', fin: '#2a2238' },
+    col: { body: '#3a2aa8', belly: '#7a6aff', back: '#1a0a5a', fin: '#5ac8ff' },
     shade: { back: -0.2, belly: 0.4 },
     pattern: [{ type: 'dots', color: '#7ac8ff', glow: true, rows: [0.62], spacing: 4.2, size: 0.9 }],
     mouth: { type: 'fangs', v: 0.2, w: 9, rest: 0.2 },
@@ -1238,17 +1240,17 @@ add({
   fight: { phases: ['trace', 'dodge', 'net'], power: 0.45, stamina: 6, tricks: ['dash', 'fake'], biteWindow: 0.45, nibbles: [1, 2], fakeBite: 0.25 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'roar',
-  desc: 'A sleek black dragonfish with a glowing chin barbel, three small photophores it calls its children and a list of titles longer than its body. Unburnt. Mostly unbothered.',
-  behavior: 'Hunts in the deep with its glowing barbel. Loves lantern bait.',
+  desc: 'Rawr means "I love you" in dragonfish. It says it a lot. Glows in the dark like a 2006 profile page.',
+  behavior: 'Hunts with its glowing chin lure.',
   shinyHue: 200,
 });
 
 add({
-  id: 'gulper', name: 'Hungry Hungry Gulper', biome: 'abyss', rarity: 'uncommon',
+  id: 'gulper', name: 'Big Snacc Gulper', biome: 'abyss', rarity: 'uncommon',
   size: [40, 100], weight: [0.5, 1.5],
   look: {
     body: { len: 80, h: 18, shape: 'blunt', peak: 0.14, tailW: 0.06, taper: 0.45, tip: 0.6 },
-    col: { body: '#2a2a3a', belly: '#3a3a4e', back: '#1a1a26', fin: '#2a2a3a' },
+    col: { body: '#5a3aff', belly: '#c0b0ff', back: '#2a0aa8', fin: '#ff5ab0' },
     shade: { back: -0.2, belly: 0.5 },
     mouth: { type: 'gulper', w: 26, v: 0.15, rest: 0.18 },
     tail: { type: 'whip', len: 32, spread: 2, color: '#ff6ab0' },
@@ -1268,17 +1270,17 @@ add({
   fight: { phases: ['mash', 'tension', 'net'], power: 0.4, stamina: 6, tricks: ['dive', 'wrap'], biteWindow: 0.6, nibbles: [1, 2], fakeBite: 0.1 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'blub',
-  desc: 'Nothing but an enormous mouth attached to a very long tail. Snaps at anything that moves, especially marbles. Has never once been full. Never will be.',
-  behavior: 'Swallows bait whole from far away. Loves black holes and trash.',
+  desc: 'Mouth bigger than its whole body, appetite bigger than its mouth. Just a big snacc for a big boi.',
+  behavior: 'Swallows things nearly its own size.',
   shinyHue: 100,
 });
 
 add({
-  id: 'fangtooth', name: 'Count Fangula', biome: 'abyss', rarity: 'uncommon',
+  id: 'fangtooth', name: 'Jawline Fangtooth', biome: 'abyss', rarity: 'uncommon',
   size: [8, 18], weight: [0.1, 0.4],
   look: {
     body: { len: 40, h: 28, shape: 'blunt', hump: 0.1, tip: 0.5 },
-    col: { body: '#3a2a3a', belly: '#5a4a52', back: '#22161e', fin: '#4a3a42' },
+    col: { body: '#ff4a8a', belly: '#ffd0e0', back: '#c81a5a', fin: '#ff8ab0' },
     shade: { back: -0.2, belly: 0.45 },
     pattern: [{ type: 'speckle', density: 0.12, tone: -1.4 }],
     mouth: { type: 'fangs', v: 0.25, w: 14, sag: 0, rest: 0.4 },
@@ -1298,17 +1300,17 @@ add({
   fight: { phases: ['mash', 'dodge', 'tension'], power: 0.5, stamina: 6, tricks: ['dash', 'spit'], biteWindow: 0.45, nibbles: [0, 1], fakeBite: 0.05 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'roar',
-  desc: 'An aristocratic fangtooth in a high-collared cape who only comes out in the dark - which, down here, is always. Does not drink... worms. Vants to bite your bait.',
-  behavior: 'Lurks in the deepest water. Bites fast and fights hard.',
+  desc: 'Has been practising its jawline for centuries. The fangs are a bit much, but the jawline is immaculate.',
+  behavior: 'Lurks in the dark with its mouth open.',
   shinyHue: 60,
 });
 
 add({
-  id: 'ghostshark', name: 'Who-You-Gonna-Call Ghost Shark', biome: 'abyss', rarity: 'uncommon',
+  id: 'ghostshark', name: 'Ghosted Shark', biome: 'fjord', rarity: 'uncommon',
   size: [40, 100], weight: [1, 6],
   look: {
     body: { len: 50, h: 19, shape: 'torpedo', peak: 0.25, tailW: 0.1, taper: 0.7, tip: 0.3, nose: 2.2 },
-    col: { body: '#b8b0d8', belly: '#e8e4f8', back: '#6a60a0', fin: '#a8a0d0' },
+    col: { body: '#c8fff0', belly: '#ffffff', back: '#5ad8c8', fin: '#a0fff0' },
     shade: { back: -0.3, belly: 0.4 },
     pattern: [{ type: 'stripes', color: '#8a80b8', at: [-0.3, 0.2], width: 0.04, from: 0.18, to: 0.95 }],
     tail: { type: 'whip', len: 36, spread: 3 },
@@ -1329,17 +1331,17 @@ add({
   fight: { phases: ['trace', 'tension', 'net'], power: 0.4, stamina: 6, tricks: ['dive', 'fake'], biteWindow: 0.55, nibbles: [1, 2], fakeBite: 0.2 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'squeak',
-  desc: 'A pale green, translucent ghost shark that slimes everything it touches and hides by fading away. Nobody has the right equipment to catch it. Except you, apparently.',
-  behavior: 'Fades from view unless your cursor gets close. Loves worms.',
+  desc: 'Was right here a second ago. Left you on read. Will reappear in three to five business days.',
+  behavior: 'Turns translucent and vanishes until your cursor gets close.',
   shinyHue: 300,
 });
 
 add({
-  id: 'glassghost', name: 'Cloaking Glassfish', biome: 'abyss', rarity: 'rare',
+  id: 'glassghost', name: 'Glassmorphism Glassfish', biome: 'oscean', rarity: 'rare',
   size: [6, 14], weight: [0.02, 0.08],
   look: {
     body: { len: 46, h: 20, shape: 'oval', nose: 1.7 },
-    col: { body: '#bfe8ff', belly: '#e6f8ff', back: '#8fc4e0', fin: '#cdeeff' },
+    col: { body: '#bff6ff', belly: '#ffffff', back: '#7ae0ff', fin: '#d8fbff' },
     shade: { back: -0.35, belly: 0.4 },
     translucent: 0.42, organs: { bone: '#ffffff', stomach: '#9ad66b' },
     tail: { type: 'fork', len: 15, spread: 11 },
@@ -1359,8 +1361,8 @@ add({
   fight: { phases: ['trace', 'timing', 'tension', 'net'], power: 0.35, stamina: 6, tricks: ['fake', 'glitch'], biteWindow: 0.45, nibbles: [1, 3], fakeBite: 0.3 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'bell',
-  desc: 'Fully transparent apart from its organs, which makes its active camouflage about 60% effective. You can see its lunch. It knows you can see its lunch.',
-  behavior: 'Nearly invisible unless your cursor is close. Loves images.',
+  desc: 'Frosted, translucent and very on-trend. You can see right through it, which it considers a design choice.',
+  behavior: 'Turns almost invisible until your cursor gets close.',
   shinyHue: 280,
 });
 
@@ -1384,17 +1386,17 @@ add({
   fight: { phases: ['dodge', 'trace', 'unwrap', 'net'], power: 0.5, stamina: 7, tricks: ['ink', 'wrap', 'fake'], biteWindow: 0.5, nibbles: [1, 3], fakeBite: 0.2 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'squeak',
-  desc: 'A deep-sea squid in a hot-pink outfit that challenges everything it meets to children\'s games with unreasonably high stakes. Red light, green light! It inks whoever moves.',
-  behavior: 'Hovers and squirts ink when threatened. Loves lantern bait and videos.',
+  desc: 'Ranked first on every leaderboard in the deep sea. Inks the controller when it loses. Never loses.',
+  behavior: 'Squirts glowing ink when startled.',
   shinyHue: 170,
 });
 
 add({
-  id: 'barreleye', name: 'Major Tom Barreleye', biome: 'abyss', rarity: 'rare',
+  id: 'barreleye', name: 'Galaxy Brain Barreleye', biome: 'abyss', rarity: 'rare',
   size: [10, 16], weight: [0.05, 0.2],
   look: {
     body: { len: 44, h: 17, shape: 'torpedo', tip: 0.3 },
-    col: { body: '#5a6a7a', belly: '#9aa8b8', back: '#34404e', fin: '#7a8a9a' },
+    col: { body: '#3ac8ff', belly: '#e0f8ff', back: '#1a5aff', fin: '#7ae0ff' },
     shade: { back: -0.3, belly: 0.35 },
     pattern: [{ type: 'spots', size: 1.4, density: 0.3, seed: 4, tone: -1.4 }],
     extras: [{ type: 'dome', u: 0.24, color: '#62f07a' }],
@@ -1415,13 +1417,13 @@ add({
   fight: { phases: ['timing', 'trace', 'tension', 'net'], power: 0.35, stamina: 6, tricks: ['fake', 'jump'], biteWindow: 0.6, nibbles: [1, 3], fakeBite: 0.25 },
   spawn: { weight: 0.9, weather: null, time: null, requires: null, hidden: null },
   sound: 'chirp',
-  desc: 'Ground control to Major Fish: this barreleye has a transparent space helmet for a head and floats in a most peculiar way, green eyes fixed on the distant stars.',
-  behavior: 'Hovers motionless, gazing up through its dome. Loves lantern bait.',
+  desc: 'Its see-through head shows a brain that glows brighter with every bad idea. Galaxy brain moment.',
+  behavior: 'Hovers in the dark, its glass head glowing.',
   shinyHue: 260,
 });
 
 add({
-  id: 'dumbo', name: 'Baby Cthulhu', biome: 'abyss', rarity: 'rare',
+  id: 'dumbo', name: 'Smol Bean Dumbo', biome: 'abyss', rarity: 'rare',
   size: [8, 20], weight: [0.1, 0.6],
   look: {
     kind: 'octopus',
@@ -1440,17 +1442,17 @@ add({
   fight: { phases: ['trace', 'timing', 'net'], power: 0.25, stamina: 5, tricks: ['hop', 'ink'], biteWindow: 0.75, nibbles: [1, 3], fakeBite: 0.15 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'boing',
-  desc: 'A small, adorable green octopus with stubby little wings who will one day awaken and devour the world. For now it flaps around saying \'ph\'nglui\' and wants a hug.',
-  behavior: 'Pulses gently through the deep. Loves sugar and music.',
+  desc: 'A tiny octopus with big ear-fins. Smol. Precious. Must be protected at all costs.',
+  behavior: 'Flaps gently through the deep.',
   shinyHue: 150,
 });
 
 add({
-  id: 'crystalcarp', name: 'Toss-a-Coin Carp', biome: 'abyss', rarity: 'epic',
+  id: 'crystalcarp', name: 'Toss-a-Coin Carp', biome: 'fjord', rarity: 'epic',
   size: [30, 70], weight: [3, 12],
   look: {
     body: { len: 58, h: 26, shape: 'oval', hump: 0.14, nose: 1.9, tip: 0.24 },
-    col: { body: '#8ae8ff', belly: '#e0faff', back: '#3a9ad8', fin: '#c8a8ff' },
+    col: { body: '#7ae8ff', belly: '#e6fdff', back: '#3a8aff', fin: '#d0b0ff' },
     shade: { back: -0.3, belly: 0.35 }, spec: 1.4,
     pattern: [{ type: 'facets', color: '#e8fbff', size: 7, glow: true, tone: 0.9 }],
     tail: { type: 'fork', len: 18, spread: 14, color: '#d8c8ff' },
@@ -1471,13 +1473,13 @@ add({
   fight: { phases: ['timing', 'dodge', 'trace', 'tension', 'net'], power: 0.65, stamina: 11, tricks: ['jump', 'fake', 'glitch'], biteWindow: 0.4, nibbles: [2, 4], fakeBite: 0.3 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: true },
   sound: 'bell',
-  desc: 'A glittering crystal carp that carries a gold coin in its mouth for the next wandering monster hunter. Hums the same catchy tune all day. O\' valley of plenty...',
-  behavior: 'Hidden deep; appears for golden or lantern bait. Sparkles constantly.',
+  desc: 'Toss a coin to this crystal carp, oh valley of plenty. It hums the tune for days afterwards.',
+  behavior: 'Sparkles in the cold light. Loves golden bait.',
   shinyHue: 90,
 });
 
 add({
-  id: 'noodle', name: 'Believe-It Ramen Eel', biome: 'abyss', rarity: 'epic',
+  id: 'noodle', name: 'Copypasta Pastafish', biome: 'abyss', rarity: 'epic',
   size: [80, 200], weight: [0.4, 1.5],
   look: {
     kind: 'chain', toon: true,
@@ -1495,13 +1497,13 @@ add({
   fight: { phases: ['unwrap', 'tension', 'unwrap', 'trace', 'net'], power: 0.55, stamina: 10, tricks: ['wrap', 'fake', 'dash'], biteWindow: 0.6, nibbles: [1, 3], fakeBite: 0.2 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'boing',
-  desc: 'A long, slurpy ramen noodle with a fishcake swirl hat and endless enthusiasm. Never gives up, never goes back on its word, always wraps around your cursor. Believe it!',
-  behavior: 'Wraps itself around the cursor and your line. Loves chat and sugar.',
+  desc: 'An endless strand of spaghetti that repeats the same story to everyone it meets, word for word.',
+  behavior: 'Coils through the deep, telling its story.',
   shinyHue: 20,
 });
 
 add({
-  id: 'manyeyes', name: 'The Great Old One of Many Eyes', biome: 'abyss', rarity: 'legendary',
+  id: 'manyeyes', name: 'The Algorithm', biome: 'abyss', rarity: 'legendary',
   size: [600, 1200], weight: [2000, 9000],
   look: {
     body: { len: 170, h: 70, shape: 'blunt', hump: 0.12, belly: 0.1, tip: 0.45, nose: 2.6 },
@@ -1529,8 +1531,8 @@ add({
   fight: { phases: ['dodge', 'timing', 'trace', 'tension', 'net'], power: 1, stamina: 24, tricks: ['spit', 'ink', 'dive', 'glitch'], biteWindow: 0.5, nibbles: [3, 5], fakeBite: 0.2 },
   spawn: { weight: 1, weather: null, time: null, requires: 'relic', hidden: true },
   sound: 'roar',
-  desc: 'An impossibly ancient leviathan covered in eyes that each see a different century. Hunters speak of it in whispers: fear the old depths. Every eye has seen your browser history.',
-  behavior: 'The guardian of the deep. Rises only when an Ancient Relic is offered here.',
+  desc: 'Sees everything you do and recommends a fish based on it. Covered in eyes. Somehow knows you were thinking about it.',
+  behavior: 'Lurks in the deepest dark. Legendary.',
   shinyHue: 240,
 });
 
@@ -1542,7 +1544,7 @@ const COSTUME = {
   pixel: (l) => ({
     toon: true,
     body: { len: 22, h: 15, shape: 'oval', hump: 0.12, tip: 0.32, nose: 2.2 },
-    col: { body: '#f4643a', belly: '#fff2d0', back: '#c43a20', fin: '#ffe27a' },
+    col: { body: '#ff6a2a', belly: '#fff4c8', back: '#ff3a1a', fin: '#ffd23a' },
     shade: { back: -0.35, belly: 0.35 },
     tail: { type: 'fork', len: 8, spread: 7, color: '#ffe27a' },
     dorsal: { type: 'spiky', from: 0.28, to: 0.62, h: 6, count: 4, color: '#ffe27a' }, anal: null,
@@ -1554,46 +1556,37 @@ const COSTUME = {
   }),
   loafer: (l) => ({ ...l,
     body: { len: 24, h: 13, shape: 'box', hump: 0, belly: 0, nose: 6, tip: 0.55, tailW: 0.55 },
-    col: { body: '#3ad0f0', belly: '#c8f8ff', back: '#1a88b8', fin: '#a8ecff' },
-    pattern: [{ type: 'checker', size: 3.4, umin: 0.04, tone: -0.9 }],
-    tail: { type: 'truncate', len: 6, spread: 6 }, dorsal: { type: 'round', from: 0.42, to: 0.62, h: 3 },
+    col: { body: '#2ad8ff', belly: '#e6fdff', back: '#0a8cff', fin: '#7ff0ff' },
+    pattern: [{ type: 'stripes', color: '#ffffff', at: [-0.05], width: 0.12, from: 0.12, to: 0.88 }],
+    tail: { type: 'truncate', len: 6, spread: 6, color: '#ffffff' },
+    dorsal: { type: 'spiky', from: 0.36, to: 0.7, h: 6, count: 3, color: '#ffffff' },
     scales: false, lateral: false,
   }),
   honk: (l) => ({ ...l, extras: [...(l.extras || []), { type: 'juggle' }] }),
-  guppy: (l) => ({
-    toon: true,
-    body: { len: 22, h: 20, shape: 'round', tip: 0.5, nose: 3.5 },
-    col: { body: '#ffd820', belly: '#fff07a', back: '#e8a800', fin: '#ffe45a' },
-    shade: { back: -0.25, belly: 0.3 },
-    tail: { type: 'round', len: 5, spread: 5 }, dorsal: null, anal: null,
-    pectoral: { len: 3 },
-    eye: { u: 0.3, v: -0.45, r: 2.2, iris: '#2a2a3a' },
-    mouth: { type: 'big', v: 0.05, w: 9, rest: 0.75, color: '#3a0a0a' },
-    scales: false, gills: false, nostril: false, lateral: false,
-  }),
   googly: (l) => ({ ...l,
-    col: { body: '#7ed848', belly: '#d8ffb0', back: '#3a9a2a', fin: '#b0f070' },
+    col: { body: '#7cf03a', belly: '#eaffc8', back: '#2ab82a', fin: '#c8ff5a' },
     eye: { ...l.eye, r: (l.eye?.r || 8) * 1.3, u: 0.3, v: -0.35 }, moreEyes: [],
     extras: [...(l.extras || []), { type: 'ears', style: 'cat', u: 0.22, gap: 0.32, w: 2, len: 3.2, color: '#ece8dc', color2: '#dcd6c6' }],
   }),
-  puffer: (l) => ({ ...l, toon: true,
-    col: { body: '#d8303a', belly: '#ff8a6a', back: '#8a1424', fin: '#ff6a4a' },
-    pattern: [{ type: 'spots', color: '#8a1424', size: 1.4, density: 0.35, only: 'top' }],
-    eye: { ...l.eye, r: (l.eye?.r || 4.6) * 1.3, iris: '#5ae83a' },
-    mouth: { type: 'fangs', v: 0.42, color: '#5a0a14' },
-    extras: [{ type: 'ears', style: 'cat', u: 0.26, gap: 0.3, w: 2.2, len: 3.6, color: '#f0e8d0', color2: '#d8cfb8' }],
+  puffer: (l) => ({ ...l,
+    col: { body: '#ffd21a', belly: '#fff4a0', back: '#ff9a00', fin: '#ffb03a' },
+    pattern: [{ type: 'spots', color: '#ff7a00', size: 1.4, density: 0.4, only: 'top' }],
+    eye: { ...l.eye, r: (l.eye?.r || 4.6) * 1.2 },
+    mouth: { type: 'small', v: 0.42 },
+    extras: [],
   }),
   flounder: (l) => ({ ...l, extras: [...(l.extras || []), { type: 'cap', style: 'beanie', stripes: true, color: '#d8202a', color2: '#f8f4ee', u: 0.2 }, { type: 'glasses', style: 'round' }] }),
   angel: (l) => ({ ...l,
-    col: { body: '#6a8a44', belly: '#a8c088', back: '#3a5222', fin: '#7a9a56' },
-    eye: { ...l.eye, type: 'dot', color: '#3a2a08' },
-    extras: [...(l.extras || []), { type: 'cap', style: 'helmet', color: '#4e6e2c', color2: '#f0a828' }],
+    col: { body: '#ff7ad8', belly: '#ffe0fa', back: '#b84aff', fin: '#5af0ff' },
+    pattern: [{ type: 'stripes', color: '#5af0ff', at: [-0.3, 0.15], width: 0.09 }, { type: 'stripes', color: '#fff27a', at: [-0.08], width: 0.06 }],
+    eye: { ...l.eye, type: 'normal' },
+    extras: (l.extras || []).filter((e) => e.type === 'halo'),
   }),
   parrot: (l) => ({ ...l, extras: [...(l.extras || []), { type: 'cap', style: 'pirate', u: 0.3 }, { type: 'glasses', style: 'patch' }] }),
   gourami: (l) => ({
     toon: true,
     body: { len: 40, h: 25, shape: 'disc', tip: 0.3, hump: 0.08 },
-    col: { body: '#2a62e8', belly: '#5a9aff', back: '#0c1440', fin: '#2a52c8' },
+    col: { body: '#1a6aff', belly: '#5ab8ff', back: '#0a2aa8', fin: '#ffd21a' },
     shade: { back: -0.3, belly: 0.4 },
     pattern: [{ type: 'stripes', color: '#0a1030', at: [-0.2], width: 0.3, from: 0.22, to: 0.86 }],
     tail: { type: 'truncate', len: 8, spread: 9, color: '#ffd23a' },
@@ -1610,15 +1603,15 @@ const COSTUME = {
     pattern: [...(l.pattern || []), { type: 'stripes', color: '#ffe23a', at: [0.3], width: 0.1 }, { type: 'stripes', color: '#3affb0', at: [0.55], width: 0.08 }],
   }),
   sunfish: (l) => ({ ...l,
-    col: { body: '#e8c87a', belly: '#fff4d0', back: '#b07a3a', fin: '#ffd060' },
+    col: { body: '#ffd23a', belly: '#fffbe0', back: '#ff9a1a', fin: '#ffe87a' },
     pectoral: { ...(l.pectoral || {}), angle: -0.9 },
     extras: [{ type: 'halo', color: '#ffd23a', u: 0.3 }],
   }),
-  bitfish: (l) => ({ ...l, col: { body: '#4ec03a', belly: '#8ae070', back: '#2a7a22', fin: '#3a9a2e' }, mouth: { type: 'small', v: 0.45, w: 4, color: '#0a140a' } }),
+  bitfish: (l) => ({ ...l, col: { body: '#5af04a', belly: '#d8ffb8', back: '#1aa83a', fin: '#3aff8a' }, mouth: { type: 'small', v: 0.45, w: 4, color: '#0a140a' } }),
   glitchminnow: (l) => ({
     toon: true, glitch: l.glitch,
     body: { len: 22, h: 20, shape: 'box', tip: 0.62, nose: 4, peak: 0.5, tailW: 0.6 },
-    col: { body: '#e0302a', belly: '#b81a1a', back: '#a01416', fin: '#c0201e' },
+    col: { body: '#ff2a3a', belly: '#ff8a8a', back: '#c8101a', fin: '#ff5a5a' },
     shade: { back: -0.2, belly: 0.4 },
     tail: { type: 'round', len: 4, spread: 4 }, dorsal: { type: 'round', from: 0.58, to: 0.9, h: 5, rays: false }, anal: null, pectoral: null,
     eye: { u: 0.2, v: -0.32, r: 1.5, type: 'dot', color: '#0a2030' },
@@ -1627,27 +1620,28 @@ const COSTUME = {
     scales: false, gills: false, nostril: false, lateral: false,
   }),
   grouper: (l) => ({ ...l,
-    col: { body: '#d0784a', belly: '#f0c0a0', back: '#9a4a2a', fin: '#b85a3a' },
-    eye: { ...l.eye, r: (l.eye?.r || 3) * 1.45, iris: '#e8b020' },
-    extras: [{ type: 'collar', style: 'fur', color: '#f0ece0' }],
+    col: { body: '#3ad84a', belly: '#e6ffc0', back: '#1a9a3a', fin: '#9aff5a' },
+    pattern: [{ type: 'spots', color: '#c8ff7a', size: 1.2, density: 0.4, vmax: 0.2 }],
+    eye: { ...l.eye, r: (l.eye?.r || 3) * 1.3 },
+    extras: [{ type: 'cap', style: 'mohawk', color: '#5aff3a', color2: '#2ab82a' }],
   }),
   cableeel: (l) => ({ ...l, chain: { ...l.chain, head: 'box', box: '#c89a5a' } }),
   thief: (l) => ({ ...l,
     body: { ...(l.body || {}), shape: 'torpedo' },
-    col: { body: '#3a5aa0', belly: '#e8eef8', back: '#14204a', fin: '#ffd23a' },
+    col: { body: '#2a6aff', belly: '#f0f6ff', back: '#0a2a8a', fin: '#ffd21a' },
     extras: [{ type: 'glasses', style: 'shades' }],
   }),
-  trieye: (l) => ({ ...l, col: { body: '#f0a03a', belly: '#ffe0a0', back: '#b0601a', fin: '#e0803a' }, extras: [] }),
+  trieye: (l) => ({ ...l, col: { body: '#ff9a1a', belly: '#fff0b8', back: '#ff5a00', fin: '#ffd21a' }, pattern: [{ type: 'patches', color: '#ff3aa8' }], extras: [] }),
   usbfish: (l) => ({ ...l, extras: [{ type: 'sword', len: (l.body?.len || 60) * 0.7 }] }),
-  lionfish: (l) => ({ ...l, extras: [{ type: 'mane', color: '#d8842a' }] }),
+  lionfish: (l) => ({ ...l, extras: [{ type: 'mane', color: '#ff8a1a' }] }),
   lanternfish: (l) => ({ ...l, pattern: (l.pattern || []).map((p) => (p.glow ? { ...p, color: '#7aff6a' } : p)) }),
-  glowjelly: (l) => ({ ...l, col: { body: '#d8a050', fin: '#b05ad8' } }),
-  blobfish: (l) => ({ ...l, col: { body: '#7aa0e8', fin: '#6a8ad8' }, nose: '#5a7ad0' }),
+  glowjelly: (l) => ({ ...l, col: { body: '#ff7ad8', fin: '#7af0ff' } }),
+  blobfish: (l) => ({ ...l, col: { body: '#ff9ab8', fin: '#ff7aa0' }, nose: '#ff6a90' }),
   angler: (l) => ({ ...l, extras: (l.extras || []).map((e) => (e.type === 'lure' ? { ...e, color2: '#ff5a3a' } : e)) }),
   fangtooth: (l) => ({ ...l, extras: [...(l.extras || []), { type: 'collar', style: 'vampire' }] }),
-  ghostshark: (l) => ({ ...l, col: { body: '#b8f0b0', belly: '#e8ffe0', back: '#5aa860', fin: '#a0e098' } }),
+  ghostshark: (l) => ({ ...l, col: { body: '#c8fff0', belly: '#ffffff', back: '#5ad8c8', fin: '#a0fff0' } }),
   vampsquid: (l) => ({ ...l, col: { body: '#e8306a', fin: '#2ab8a0' } }),
-  dumbo: (l) => ({ ...l, col: { body: '#7ac87a', fin: '#a8e8a0' } }),
+  dumbo: (l) => ({ ...l, col: { body: '#ff9ad8', fin: '#ffc8ec' } }),
   crystalcarp: (l) => ({ ...l, extras: [...(l.extras || []), { type: 'coin' }] }),
 };
 for (const sp of S) if (COSTUME[sp.id]) sp.look = COSTUME[sp.id](sp.look);
@@ -1661,7 +1655,7 @@ const NOSPAWN = { weight: 1, weather: null, time: null, requires: null, hidden: 
 
 // SUNNY SHALLOWS
 add({
-  id: 'dragonkarp', name: 'Rage Dragon-Karp', biome: 'shallows', rarity: 'epic',
+  id: 'dragonkarp', name: 'Rage-Quit Dragon-Karp', biome: 'shallows', rarity: 'epic',
   size: [120, 260], weight: [40, 120],
   look: {
     body: { len: 92, h: 20, shape: 'long', hump: 0.18, tip: 0.36, nose: 1.8, tailW: 0.4 },
@@ -1686,8 +1680,8 @@ add({
   fight: { phases: ['dodge', 'tension', 'mash', 'net'], power: 0.8, stamina: 12, tricks: ['dash', 'jump', 'spit'], biteWindow: 0.4, nibbles: [1, 2], fakeBite: 0.2 },
   spawn: { weight: 0, never: true, weather: null, time: null, requires: null, hidden: null },
   sound: 'roar',
-  desc: 'What a Flopikarp becomes after enough patience in your aquarium: a furious sea dragon that remembers every single Splash. It is not grateful. It is just angry, and now it is big.',
-  behavior: 'Never found in the wild. Evolves from a Flopikarp kept in the aquarium.',
+  desc: 'What a Noobikarp becomes after one lost match too many. Furious, magnificent and typing in all caps.',
+  behavior: 'Only found by raising a Noobikarp in your aquarium.',
   evolvedFrom: 'pixel',
   shinyHue: 15,
 });
@@ -1698,7 +1692,7 @@ add({
   look: {
     toon: true,
     body: { len: 46, h: 11, shape: 'long', hump: 1.25, belly: -0.85, tip: 0.16, nose: 1.3, tailW: 0.16, taper: 0.6 },
-    col: { body: '#ffe14a', belly: '#fff2a0', back: '#e8b820', fin: '#fff0a0' },
+    col: { body: '#ffe81a', belly: '#fff6a0', back: '#ffc800', fin: '#fff08a' },
     shade: { back: -0.3, belly: 0.25 },
     pattern: [{ type: 'spots', color: '#8a5a1e', size: 0.9, density: 0.22, seed: 4, umin: 0.15 }, { type: 'tailend', from: 0.92, color: '#4a3016' }],
     tail: { type: 'pointed', len: 5, spread: 3, color: '#4a3016' },
@@ -1718,18 +1712,18 @@ add({
   fight: COMMON_FIGHT(0.14, ['tension', 'net']),
   spawn: { ...NOSPAWN, weight: 1.2 },
   sound: 'boing',
-  desc: "It's a banana. With fins. Ripe ones swim near the surface, overripe ones get spotty and sink. Extremely slippery when landed - mind your step.",
-  behavior: 'Bobs about the sunny shallows. Loves bread and sugar.',
+  desc: 'A perfectly ripe banana that learned to swim. Excellent for scale. Slightly bruised on one side.',
+  behavior: 'Bobs about in the sun. Loves sugar.',
   shinyHue: 60,
 });
 
 add({
-  id: 'catfish', name: 'Literal Catfish', biome: 'shallows', rarity: 'uncommon',
+  id: 'catfish', name: 'Literal Catfish', biome: 'shallows', rarity: 'common',
   size: [25, 45], weight: [2, 5],
   look: {
     toon: true,
     body: { len: 40, h: 24, shape: 'blunt', hump: 0.14, tip: 0.5, tailW: 0.35 },
-    col: { body: '#f0a050', belly: '#fff0dc', back: '#c06a28', fin: '#f0a050' },
+    col: { body: '#ff9a3a', belly: '#fff2dc', back: '#ff6a10', fin: '#ffb05a' },
     shade: { back: -0.25, belly: 0.35 },
     pattern: [{ type: 'bars', at: [0.38, 0.5, 0.62, 0.74], width: 0.035, tone: -1.6, vmax: 0.25 }],
     tail: { type: 'round', len: 11, spread: 7 },
@@ -1749,18 +1743,18 @@ add({
   fight: { phases: ['timing', 'tension', 'net'], power: 0.32, stamina: 4.5, tricks: ['dash', 'fake', 'jump'], biteWindow: 0.6, nibbles: [1, 3], fakeBite: 0.3 },
   spawn: NOSPAWN,
   sound: 'squeak',
-  desc: 'An actual cat with an actual fish tail. Meows underwater, knocks your bait off the hook just to watch it sink, and sits in any icon that is even vaguely box-shaped.',
-  behavior: 'Wanders off mid-chase, then comes back. Loves cat pictures and videos.',
+  desc: 'Pointy ears, whiskers, a striped tail and zero interest in you. Knocks your bait off the screen just to watch it fall.',
+  behavior: 'Forgets what it was doing every few seconds. Loves image bait.',
   shinyHue: 30,
 });
 
 add({
-  id: 'starfish', name: 'Too-Cool Starfish', biome: 'shallows', rarity: 'uncommon',
+  id: 'starfish', name: 'Deal-With-It Starfish', biome: 'shallows', rarity: 'common',
   size: [12, 30], weight: [0.2, 0.9],
   look: {
     kind: 'star', toon: true,
     body: { len: 34, h: 34 },
-    col: { body: '#ff8a5a', back: '#c8503a', fin: '#ffb08a' },
+    col: { body: '#ff5a8a', belly: '#ffd0e0', back: '#e02a6a', fin: '#ffa0c0' },
     eye: { r: 2.4 },
     mouth: { type: 'small', v: 0.4 },
     extras: [{ type: 'glasses', style: 'shades', both: true }],
@@ -1774,19 +1768,19 @@ add({
   fight: { phases: ['mash', 'timing'], power: 0.25, stamina: 4, tricks: ['fake'], biteWindow: 1, nibbles: [0, 1], fakeBite: 0.1 },
   spawn: NOSPAWN,
   sound: 'boing',
-  desc: 'Never takes its sunglasses off - not at night, not underwater, not ever. Lies on the sand being cool. Is it a fish? No. Does it care? Also no.',
-  behavior: 'Crawls along the sunny seabed. Loves music.',
+  desc: 'A five-armed star in pixel sunglasses that slowly slide down when it is being cool. It is always being cool.',
+  behavior: 'Crawls along the seabed, absolutely dealing with it.',
   shinyHue: 280,
 });
 
 add({
-  id: 'zebrafish', name: 'Zebrafish', biome: 'shallows', rarity: 'common',
+  id: 'zebrafish', name: 'Ctrl+Z Zebrafish', biome: 'oscean', rarity: 'common',
   size: [3, 5], weight: [0.01, 0.03],
   look: {
     body: { len: 30, h: 11, shape: 'torpedo', tip: 0.25 },
-    col: { body: '#f4f4f0', belly: '#ffffff', back: '#dcdcd8', fin: '#f0f0ec' },
+    col: { body: '#ffffff', belly: '#ffffff', back: '#e8f4ff', fin: '#bff0ff' },
     shade: { back: -0.15, belly: 0.3 },
-    pattern: [{ type: 'stripes', color: '#1a1a22', at: [-0.5, -0.12, 0.25, 0.62], width: 0.12, from: 0.12, to: 0.98 }],
+    pattern: [{ type: 'stripes', color: '#10141e', at: [-0.42, -0.02, 0.4], width: 0.13 }],
     tail: { type: 'fork', len: 9, spread: 7, color: '#e8e8e4' },
     dorsal: { type: 'tri', from: 0.42, to: 0.58, h: 4 }, anal: { type: 'long', from: 0.55, to: 0.85, h: 3 },
     eye: { r: 2.2, u: 0.12, iris: '#c8c0a0' },
@@ -1798,22 +1792,22 @@ add({
   move: { style: 'swim', speed: 20, burst: 75, agility: 6, depth: [0.15, 0.6], school: 4 },
   activity: 'any',
   traits: { curiosity: 0.5, shyness: 0.5, greed: 0.5, aggression: 0 },
-  bait: { bread: 3, image: 2, worm: 2 },
-  quirks: ['school'],
+  bait: { docs: 3, folder: 2, bread: 2, worm: 1 },
+  quirks: ['school', 'forgetful'],
   fight: COMMON_FIGHT(0.12, ['tension']),
   spawn: { ...NOSPAWN, weight: 1.2 },
   sound: 'chirp',
-  desc: 'Striped like a tiny zebra, right down to the little mohawk mane. Gallops through the shallows in herds. Scientists adore them; lions do not know they exist.',
-  behavior: 'Fast-moving herds near the surface. Loves bread.',
+  desc: 'Bold black-and-white stripes and a habit of undoing its last move. Swims forward, thinks better of it, swims backward. Repeat.',
+  behavior: 'Schools in zig-zags and reverses at random. Loves docs and folders.',
   shinyHue: 300,
 });
 
 add({
-  id: 'unicornfish', name: 'Unicornfish', biome: 'shallows', rarity: 'rare',
+  id: 'unicornfish', name: 'Unspoken Rizz Unicornfish', biome: 'metropolis', rarity: 'uncommon',
   size: [30, 60], weight: [1, 4],
   look: {
     body: { len: 48, h: 21, shape: 'oval', hump: 0.22, tip: 0.25 },
-    col: { body: '#e8d8ff', belly: '#fff8ff', back: '#b89ae8', fin: '#ff9ad8' },
+    col: { body: '#f0e0ff', belly: '#ffffff', back: '#c08aff', fin: '#ff7ad8' },
     shade: { back: -0.3, belly: 0.4 },
     pattern: [{ type: 'stripes', color: '#7ad8ff', at: [0.05], width: 0.12, from: 0.2, to: 0.9 }, { type: 'stripes', color: '#ffe27a', at: [0.32], width: 0.1, from: 0.25, to: 0.88 }],
     tail: { type: 'lyre', len: 14, spread: 12, color: '#ff9ad8' },
@@ -1832,18 +1826,18 @@ add({
   fight: { phases: ['trace', 'timing', 'net'], power: 0.38, stamina: 6, tricks: ['jump', 'fake'], biteWindow: 0.55, nibbles: [1, 2], fakeBite: 0.2 },
   spawn: { ...NOSPAWN, weight: 0.8, weather: 'clear' },
   sound: 'bell',
-  desc: 'A real unicornfish with a real spiral horn and a rainbow streak down its side. Leaves a trail of sparkles and believes in you. Feeds exclusively on dreams and sugar.',
-  behavior: 'Shimmers through the sunny shallows on clear days. Loves sugar and paint.',
+  desc: 'Says nothing, does nothing, and still every fish in the city wants to be its friend. Unspoken rizz.',
+  behavior: 'Glides through the plazas, sparkling.',
   shinyHue: 330,
 });
 
 add({
-  id: 'companioncube', name: 'Companion Cube-fish', biome: 'shallows', rarity: 'rare',
+  id: 'companioncube', name: 'Absolute Unit Boxfish', biome: 'shallows', rarity: 'uncommon',
   size: [15, 25], weight: [1, 2.5],
   look: {
     toon: true,
     body: { len: 30, h: 28, shape: 'box', nose: 8, tip: 0.85, tailW: 0.72, peak: 0.5, taper: 2 },
-    col: { body: '#c8ccd4', belly: '#dfe2e8', back: '#8a909c', fin: '#a8aeb8' },
+    col: { body: '#7ad8ff', belly: '#e6faff', back: '#3a9aff', fin: '#ff7ab8' },
     shade: { back: -0.25, belly: 0.25 },
     pattern: [{ type: 'bars', at: [0.12, 0.88], width: 0.03, tone: -1.2 }],
     tail: { type: 'truncate', len: 6, spread: 6 }, dorsal: null, anal: null,
@@ -1862,18 +1856,20 @@ add({
   fight: { phases: ['timing', 'tension', 'net'], power: 0.3, stamina: 5, tricks: ['fake'], biteWindow: 0.8, nibbles: [1, 2], fakeBite: 0.1 },
   spawn: NOSPAWN,
   sound: 'boing',
-  desc: 'A loyal little boxfish with a pink heart on each side. It will never threaten to stab you and, in fact, cannot speak. Please do not put it in the incinerator.',
-  behavior: 'Follows you around faithfully. Loves games.',
+  desc: 'In awe at the size of this lad. A perfectly square, perfectly glossy boxfish with a pink heart on each side.',
+  behavior: 'Floats about like a loyal little cube.',
   shinyHue: 320,
 });
 
 add({
-  id: 'bruce', name: 'Fish-Are-Friends Shark', biome: 'shallows', rarity: 'legendary',
+  id: 'bruce', name: 'Turbine Shark', biome: 'oscean', rarity: 'epic',
   size: [400, 600], weight: [600, 1100],
   look: {
+    rotor: { u: 0.38, h: 18, r: 19, blades: 3, speed: 0.9, hub: '#3ad0ff', tip: '#3ad0ff', chord: 0.16 },
+    pattern: [{ type: 'stripes', color: '#3ad0ff', at: [0.08], width: 0.07, from: 0.12, to: 0.9 }],
     toon: true,
     body: { len: 110, h: 30, shape: 'torpedo', hump: 0.25, tip: 0.3, nose: 1.4, tailW: 0.3 },
-    col: { body: '#7a8ca0', belly: '#f4f6f8', back: '#4a5a70', fin: '#6a7c90' },
+    col: { body: '#f4fbff', belly: '#ffffff', back: '#3ab8ff', fin: '#bff0ff' },
     shade: { back: -0.15, belly: 0.05 },
     tail: { type: 'moon', len: 24, spread: 20 },
     dorsal: { type: 'tri', from: 0.38, to: 0.55, h: 20, lean: 0.9 }, anal: { type: 'tri', from: 0.75, to: 0.82, h: 5 },
@@ -1887,23 +1883,23 @@ add({
   move: { style: 'swim', speed: 14, burst: 90, agility: 1, depth: [0.2, 0.7], school: 0 },
   activity: 'any',
   traits: { curiosity: 0.8, shyness: 0, greed: 0.9, aggression: 0.3 },
-  bait: { golden: 3, flood: 2, worm: 2, music: 1 },
+  bait: { computer: 3, browser: 2, worm: 2, golden: 2 },
   quirks: ['sparkle'],
   fight: { phases: ['tension', 'mash', 'dodge', 'trace', 'net'], power: 0.95, stamina: 18, tricks: ['dash', 'dive', 'fake'], biteWindow: 0.5, nibbles: [2, 4], fakeBite: 0.3 },
   spawn: { weight: 0.5, weather: null, time: null, requires: 'golden', hidden: null },
   sound: 'roar',
-  desc: "A huge, grinning great white who has sworn off eating fish. 'Fish are friends, not food!' he insists, a little too enthusiastically. Attends meetings. Has a lovely smile. Too many teeth.",
-  behavior: 'Cruises the shallows when golden bait is in the water.',
+  desc: 'A clean-energy shark with a real wind turbine on its back. The faster it swims, the faster it spins. Powers a small village of shrimp.',
+  behavior: 'Patrols the flooded hills with its rotor whirring. Strong and steady on the line.',
   shinyHue: 200,
 });
 
 // JUNKYARD REEF
 add({
-  id: 'heisenbass', name: 'Heisenbass', biome: 'junkyard', rarity: 'rare',
+  id: 'heisenbass', name: 'Say-My-Name Bass', biome: 'volcano', rarity: 'rare',
   size: [30, 55], weight: [1.5, 4],
   look: {
     body: { len: 50, h: 21, shape: 'oval', hump: 0.12, tip: 0.22 },
-    col: { body: '#6a8a5a', belly: '#e0e8d0', back: '#2e4a2a', fin: '#4a6a3e' },
+    col: { body: '#3ae8a0', belly: '#e0fff0', back: '#0aa86a', fin: '#5ad8ff' },
     shade: { back: -0.35, belly: 0.35 },
     pattern: [{ type: 'patches', color: '#2e4a2a', threshold: 0.6, freq: 0.4, vmax: 0.1 }],
     tail: { type: 'fork', len: 11, spread: 9 },
@@ -1922,17 +1918,17 @@ add({
   fight: { phases: ['tension', 'timing', 'dodge', 'net'], power: 0.55, stamina: 8, tricks: ['dash', 'fake', 'spit'], biteWindow: 0.45, nibbles: [1, 3], fakeBite: 0.35 },
   spawn: NOSPAWN,
   sound: 'grunt',
-  desc: "A mild-mannered largemouth bass who went into the chemistry business and now wears a black pork-pie hat. 'I am not in danger. I am the one who nibbles.' Say its name.",
-  behavior: 'Comes out at night. Can only be tempted by calculators and chips.',
+  desc: 'Pork-pie hat, square glasses, crystal-clear water. You know its name. Say it.',
+  behavior: 'Lurks near the hottest vents. A clever fighter.',
   shinyHue: 110,
 });
 
 add({
-  id: 'rockfish', name: 'Rockfish', biome: 'junkyard', rarity: 'uncommon',
+  id: 'rockfish', name: 'Rickroll Rockfish', biome: 'junkyard', rarity: 'uncommon',
   size: [25, 50], weight: [1, 3],
   look: {
     body: { len: 42, h: 20, shape: 'oval', tip: 0.25 },
-    col: { body: '#8a7a9a', belly: '#d8d0e0', back: '#4a3a5a', fin: '#a85aff' },
+    col: { body: '#b05aff', belly: '#f0e0ff', back: '#6a2ad8', fin: '#ff5ad8' },
     shade: { back: -0.3, belly: 0.35 },
     pattern: [{ type: 'spots', color: '#4a3a5a', size: 1.2, density: 0.3, vmax: 0.2 }],
     tail: { type: 'truncate', len: 9, spread: 8 },
@@ -1951,17 +1947,17 @@ add({
   fight: { phases: ['timing', 'mash', 'net'], power: 0.35, stamina: 5, tricks: ['dash', 'jump'], biteWindow: 0.7, nibbles: [1, 2], fakeBite: 0.15 },
   spawn: { ...NOSPAWN, weight: 1.1 },
   sound: 'grunt',
-  desc: "A rock-and-roll rockfish with a pink mohawk and a tiny electric guitar it can't actually play. Shreds one power chord on repeat. Rocks out hardest during thunderstorms.",
-  behavior: 'Headbangs in mid-water. Cannot resist music.',
+  desc: 'Never gonna give you up. Never gonna let you down. Never gonna swim around and desert you.',
+  behavior: 'Plays its little guitar near anything musical.',
   shinyHue: 270,
 });
 
 add({
-  id: 'hammerhead', name: 'Hammer-Head Shark', biome: 'junkyard', rarity: 'rare',
+  id: 'hammerhead', name: 'Ban Hammerhead', biome: 'metropolis', rarity: 'uncommon',
   size: [120, 250], weight: [40, 120],
   look: {
     body: { len: 66, h: 17, shape: 'torpedo', tip: 0.4, nose: 2, tailW: 0.3 },
-    col: { body: '#8a94a0', belly: '#eef0f4', back: '#4e5866', fin: '#6a7480' },
+    col: { body: '#7ac8ff', belly: '#f0faff', back: '#2a7aff', fin: '#a0e0ff' },
     shade: { back: -0.2, belly: 0.1 },
     tail: { type: 'moon', len: 15, spread: 13 },
     dorsal: { type: 'tri', from: 0.33, to: 0.5, h: 12, lean: 0.8 }, anal: { type: 'tri', from: 0.75, to: 0.82, h: 4 },
@@ -1980,18 +1976,18 @@ add({
   fight: { phases: ['mash', 'tension', 'dodge', 'net'], power: 0.6, stamina: 8, tricks: ['dash', 'dive', 'spit'], biteWindow: 0.45, nibbles: [1, 2], fakeBite: 0.1 },
   spawn: NOSPAWN,
   sound: 'grunt',
-  desc: 'A shark who heard it was called a hammerhead and took it personally. Now carries an actual hammer everywhere. Every problem looks like a nail. Every nail is nervous.',
-  behavior: 'Patrols the junk heaps hammering things. Loves settings icons.',
+  desc: 'The forum moderator of the sea. One swing of its hammer and you are banned from the reef for 24 hours.',
+  behavior: 'Patrols the streets keeping order.',
   shinyHue: 190,
 });
 
 add({
-  id: 'pizzafish', name: 'Pizza Fish', biome: 'junkyard', rarity: 'common',
+  id: 'pizzafish', name: 'Pineapple Pizza Fish', biome: 'volcano', rarity: 'common',
   size: [20, 35], weight: [0.2, 0.5],
   look: {
     toon: true,
     body: { len: 38, h: 26, shape: 'pointy', nose: 1.05, tip: 0.06, peak: 0.86, tailW: 0.95, taper: 0.4 },
-    col: { body: '#ffc84a', belly: '#ffd870', back: '#e09a2a', fin: '#c8782a' },
+    col: { body: '#ffc83a', belly: '#ffe48a', back: '#ff9a1a', fin: '#ff6a2a' },
     shade: { back: -0.2, belly: 0.2 },
     pattern: [{ type: 'spots', color: '#c8281e', size: 2, density: 0.32, seed: 11, umax: 0.86 }, { type: 'tailend', from: 0.87, color: '#c8843a' }],
     tail: { type: 'truncate', len: 4, spread: 12, color: '#b8742a', rays: false },
@@ -2010,17 +2006,17 @@ add({
   fight: COMMON_FIGHT(0.18, ['mash', 'tension']),
   spawn: { ...NOSPAWN, weight: 1.2 },
   sound: 'blub',
-  desc: 'A triangular slice of pepperoni pizza that learned to swim. Strings of cheese trail behind it like a comet. Somewhere a pizzeria owner is very confused. Pairs well with any bait.',
-  behavior: 'Drifts around the junk piles looking for crusts. Loves bread.',
+  desc: 'A slice of pizza with pineapple on top, baked fresh in the lava oven. The reef is divided.',
+  behavior: 'Bobs over the hot vents. Loves bread.',
   shinyHue: 40,
 });
 
 add({
-  id: 'goldbar', name: 'Gold-Bar Goldfish', biome: 'junkyard', rarity: 'epic',
+  id: 'goldbar', name: 'Diamond Hands Goldfish', biome: 'metropolis', rarity: 'epic',
   size: [15, 25], weight: [12, 12.5],
   look: {
     body: { len: 38, h: 21, shape: 'box', nose: 5, tip: 0.6, tailW: 0.6 },
-    col: { body: '#ffcc33', belly: '#fff0a0', back: '#c8901a', fin: '#ffe070' },
+    col: { body: '#ffd21a', belly: '#fff8c0', back: '#ffa000', fin: '#7ae8ff' },
     shade: { back: -0.3, belly: 0.35 }, spec: 1.6,
     pattern: [{ type: 'bars', at: [0.36, 0.68], width: 0.02, tone: -2.2 }, { type: 'lines', count: 1, width: 0.06, vmax: -0.5, umin: 0.4, umax: 0.6, tone: 1.4 }],
     tail: { type: 'fan', len: 13, spread: 11, color: '#ffe070' },
@@ -2038,18 +2034,18 @@ add({
   fight: { phases: ['tension', 'mash', 'trace', 'net'], power: 0.7, stamina: 10, tricks: ['dive', 'fake'], biteWindow: 0.4, nibbles: [1, 3], fakeBite: 0.3 },
   spawn: { ...NOSPAWN, weight: 0.8 },
   sound: 'bell',
-  desc: 'A goldfish made of solid gold bars, stamped 999.9 on one side. Worth an absolute fortune, sinks like a brick and clinks when it swims. Several banks have expressed interest.',
-  behavior: 'Swims low and heavy. Bites best on golden bait and calculators.',
+  desc: 'A solid gold fish that refuses to sell, no matter what. HODL. Its fins are literally diamonds.',
+  behavior: 'Glitters through the financial district. Loves golden bait.',
   shinyHue: 50,
 });
 
 add({
-  id: 'dogfish', name: 'Good-Boy Dogfish', biome: 'junkyard', rarity: 'uncommon',
+  id: 'dogfish', name: 'Much Wow Dogfish', biome: 'junkyard', rarity: 'common',
   size: [40, 80], weight: [2, 6],
   look: {
     toon: true,
     body: { len: 46, h: 21, shape: 'blunt', tip: 0.42, tailW: 0.35 },
-    col: { body: '#c8904a', belly: '#f8e8d0', back: '#8a5a2a', fin: '#c8904a' },
+    col: { body: '#ffb04a', belly: '#fff4dc', back: '#ff8a1a', fin: '#ffd07a' },
     shade: { back: -0.25, belly: 0.35 },
     pattern: [{ type: 'patches', color: '#f8f0e0', threshold: 0.62, freq: 0.45 }],
     tail: { type: 'round', len: 11, spread: 7 },
@@ -2069,17 +2065,17 @@ add({
   fight: { phases: ['mash', 'trace', 'net'], power: 0.3, stamina: 5, tricks: ['dash', 'jump'], biteWindow: 0.9, nibbles: [0, 1], fakeBite: 0 },
   spawn: NOSPAWN,
   sound: 'grunt',
-  desc: "Who's a good fish? This one is! Floppy ears, a wagging tail and a little black nose. Barks at the mail, fetches sinking bait and is genuinely the best boy in the junkyard.",
-  behavior: 'Rushes over to anything you do. Barks at mail icons.',
+  desc: 'Such fish. Very swim. Much wow. Wags its tail fin so hard it goes in circles.',
+  behavior: 'Friendly and curious. Fetches your bait.',
   shinyHue: 25,
 });
 
 add({
-  id: 'seabass', name: 'Sea Bass', biome: 'junkyard', rarity: 'common',
+  id: 'seabass', name: 'At-Least-a-C+ Sea Bass', biome: 'junkyard', rarity: 'common',
   size: [30, 70], weight: [1, 5],
   look: {
     body: { len: 48, h: 19, shape: 'oval', hump: 0.12, tip: 0.2 },
-    col: { body: '#8a98a8', belly: '#eef0f2', back: '#3a4a5e', fin: '#6a7888' },
+    col: { body: '#5ac8ff', belly: '#f0fbff', back: '#1a6ad8', fin: '#8ae0ff' },
     shade: { back: -0.35, belly: 0.4 },
     tail: { type: 'fork', len: 11, spread: 9 },
     dorsal: { type: 'spiky', from: 0.28, to: 0.5, h: 8, count: 6 }, dorsal2: { type: 'tri', from: 0.55, to: 0.72, h: 6 },
@@ -2097,18 +2093,18 @@ add({
   fight: COMMON_FIGHT(0.25, ['tension', 'mash']),
   spawn: { ...NOSPAWN, weight: 1.6 },
   sound: 'blub',
-  desc: "'I caught a sea bass! No, wait - it's at least a C+.' The most ordinary fish in any ocean, which it is extremely tired of hearing. Shows up constantly. Constantly.",
-  behavior: 'Everywhere, all the time. Bites on worms.',
+  desc: 'No, it is a sea bass. It is at least a C+. Grins whenever someone gets its name wrong, which is always.',
+  behavior: 'A reliable everyday bite.',
   shinyHue: 210,
 });
 
 // THE DEEP OCEAN
 add({
-  id: 'moonfish', name: 'Moonfish', biome: 'abyss', rarity: 'epic',
+  id: 'moonfish', name: 'Big Mood Moonfish', biome: 'abyss', rarity: 'epic',
   size: [100, 200], weight: [200, 600],
   look: {
     body: { len: 62, h: 56, shape: 'disc', tailW: 0.62, taper: 0.7, nose: 2.4, peak: 0.42, tip: 0.3 },
-    col: { body: '#b8c0e0', belly: '#e8ecff', back: '#5a6aa8', fin: '#8a9ad8' },
+    col: { body: '#c8d8ff', belly: '#f4f8ff', back: '#7a8aff', fin: '#a0b8ff' },
     shade: { back: -0.3, belly: 0.4 },
     pattern: [{ type: 'spots', color: '#8a98c8', size: 2.6, density: 0.3, seed: 21 }],
     tail: { type: 'round', len: 7, spread: 20 },
@@ -2128,17 +2124,17 @@ add({
   fight: { phases: ['tension', 'timing', 'trace', 'net'], power: 0.7, stamina: 12, tricks: ['dive', 'fake'], biteWindow: 0.55, nibbles: [2, 4], fakeBite: 0.2 },
   spawn: { weight: 0.8, weather: null, time: 'night', requires: null, hidden: null },
   sound: 'bell',
-  desc: 'The Praise-the-Sun-fish\'s sleepy night-time twin, pale and cratered like the moon and wearing a little starry nightcap. Rises only when the real moon is out. Snores in bubbles.',
-  behavior: 'Drifts up from the deep at night. Loves lantern bait and lullabies.',
+  desc: 'Pale, cratered and lying on its side under the moon. Not sad, just a big mood. Snores in bubbles.',
+  behavior: 'Only rises when the real moon is out.',
   shinyHue: 230,
 });
 
 add({
-  id: 'monkfish', name: 'Monkfish', biome: 'abyss', rarity: 'uncommon',
+  id: 'monkfish', name: 'Monk Mode Monkfish', biome: 'fjord', rarity: 'uncommon',
   size: [50, 100], weight: [5, 20],
   look: {
     body: { len: 54, h: 29, shape: 'blunt', hump: 0.1, tip: 0.45 },
-    col: { body: '#8a6a4a', belly: '#c8a880', back: '#5a3e26', fin: '#7a5a3a' },
+    col: { body: '#ffa04a', belly: '#ffe8c8', back: '#d8601a', fin: '#ffc07a' },
     shade: { back: -0.25, belly: 0.35 },
     tail: { type: 'round', len: 10, spread: 8 },
     dorsal: { type: 'tri', from: 0.55, to: 0.7, h: 5 }, anal: { type: 'tri', from: 0.6, to: 0.78, h: 4 },
@@ -2157,18 +2153,18 @@ add({
   fight: { phases: ['tension', 'mash', 'net'], power: 0.45, stamina: 6, tricks: ['dive', 'fake'], biteWindow: 0.5, nibbles: [0, 1], fakeBite: 0.05 },
   spawn: NOSPAWN,
   sound: 'grunt',
-  desc: 'A deep-sea monk in a hooded brown robe who has taken a vow of silence and a vow of eating anything that swims past its face. Meditates for weeks. Bites instantly.',
-  behavior: 'Sits perfectly still near the bottom, then strikes. Loves worms.',
+  desc: 'Deleted every app, wakes at 4 a.m., meditates for weeks under its little hood. Strikes instantly. Monk mode.',
+  behavior: 'Sits perfectly still near the bottom, then strikes.',
   shinyHue: 35,
 });
 
 add({
-  id: 'batfish', name: 'The Dark Batfish', biome: 'abyss', rarity: 'rare',
+  id: 'batfish', name: 'Dark Mode Batfish', biome: 'metropolis', rarity: 'rare',
   size: [20, 35], weight: [0.5, 1.5],
   look: {
     toon: true,
     body: { len: 36, h: 24, shape: 'round', tip: 0.4 },
-    col: { body: '#3a3448', belly: '#6a6080', back: '#1e1a28', fin: '#2a2438' },
+    col: { body: '#3a3aa8', belly: '#8a8aff', back: '#1a1a5a', fin: '#5a5ad8' },
     shade: { back: -0.2, belly: 0.4 },
     tail: { type: 'pointed', len: 8, spread: 4 },
     dorsal: null, anal: null, pectoral: { len: 5 },
@@ -2186,18 +2182,18 @@ add({
   fight: { phases: ['dodge', 'trace', 'tension', 'net'], power: 0.5, stamina: 7, tricks: ['dash', 'jump', 'fake'], biteWindow: 0.45, nibbles: [1, 2], fakeBite: 0.3 },
   spawn: NOSPAWN,
   sound: 'squeak',
-  desc: "A brooding, caped crusader of the deep with leathery bat wings and pointy ears. Only comes out at night. It's not the fish this ocean deserves, but it's the one it needs.",
-  behavior: 'Swoops through the dark at night. Loves lantern bait.',
+  desc: 'Switched the whole ocean to dark mode. Easier on the eyes, harder to find. Only comes out at night.',
+  behavior: 'Swoops through the city at night. Loves lantern bait.',
   shinyHue: 260,
 });
 
 add({
-  id: 'toadfish', name: 'Toadfish', biome: 'abyss', rarity: 'common',
+  id: 'toadfish', name: 'Hop-On Toadfish', biome: 'abyss', rarity: 'common',
   size: [20, 40], weight: [0.5, 2],
   look: {
     toon: true,
     body: { len: 38, h: 22, shape: 'blunt', tip: 0.55, tailW: 0.35 },
-    col: { body: '#6a9a3a', belly: '#e8f0b0', back: '#3a5a1e', fin: '#5a8a32' },
+    col: { body: '#5ae83a', belly: '#eaffc0', back: '#1aa82a', fin: '#8aff5a' },
     shade: { back: -0.25, belly: 0.4 },
     pattern: [{ type: 'spots', color: '#3a5a1e', size: 1.4, density: 0.4, vmax: 0.3 }],
     tail: { type: 'round', len: 9, spread: 7 },
@@ -2216,17 +2212,17 @@ add({
   fight: COMMON_FIGHT(0.2, ['tension', 'mash']),
   spawn: { ...NOSPAWN, weight: 1.2 },
   sound: 'grunt',
-  desc: "Half toad, half fish, all croak. Sits on the seabed puffing its throat and making a noise like a ship's horn with a cold. Kiss it and it might turn into a prince. It won't.",
+  desc: 'Croaks one message at everyone it meets: "hop on". Nobody knows what to hop on. They hop on anyway.',
   behavior: 'Croaks from the seabed. Bites on worms.',
   shinyHue: 90,
 });
 
 add({
-  id: 'wintercod', name: 'Winter-is-Coming Cod', biome: 'abyss', rarity: 'rare',
+  id: 'wintercod', name: 'Winter Arc Cod', biome: 'fjord', rarity: 'rare',
   size: [50, 120], weight: [5, 25],
   look: {
     body: { len: 58, h: 21, shape: 'torpedo', tip: 0.25 },
-    col: { body: '#9aa8b8', belly: '#eef2f8', back: '#4a5868', fin: '#7a8898' },
+    col: { body: '#5ab8ff', belly: '#f0f8ff', back: '#1a5ad8', fin: '#9ad8ff' },
     shade: { back: -0.35, belly: 0.4 },
     pattern: [{ type: 'spots', color: '#5a6878', size: 1.1, density: 0.35, vmax: 0.1 }],
     tail: { type: 'truncate', len: 11, spread: 9 },
@@ -2245,8 +2241,8 @@ add({
   fight: { phases: ['tension', 'trace', 'dodge', 'net'], power: 0.5, stamina: 8, tricks: ['dive', 'fake'], biteWindow: 0.5, nibbles: [1, 3], fakeBite: 0.25 },
   spawn: NOSPAWN,
   sound: 'grunt',
-  desc: 'A brooding cod in a heavy fur cloak who keeps warning everyone that winter is coming. It is the deep ocean. It is always winter. Knows nothing, but knows it with great conviction.',
-  behavior: 'Patrols the cold deep. Strangely drawn to calendars.',
+  desc: 'Entered its winter arc. Fur cloak, cold showers, no distractions. Comes back in spring a completely new fish.',
+  behavior: 'Patrols the deep cold water. Drawn to calendars.',
   shinyHue: 205,
 });
 
@@ -2281,19 +2277,15 @@ for (const sp of S) {
 
 for (const sp of S) if (SPEC_EXTRA[sp.id]) Object.assign(sp, SPEC_EXTRA[sp.id]);
 
-// The three newer oceans (Frosty Fjord, Lava Rift, Sunken Metropolis) ship at final size from
-// species-extra.js, so they join after the GROW pass above.
-// (Two names there are nudged from exact show / game titles to puns.)
-const EXTRA_RENAME = { chefsnapper: "Heck's Kitchen Chef-fish", surfermullet: "Subway Surfin' Mullet" };
-for (const sp of EXTRA_SPECIES) {
+// The newer oceans (Frosty Fjord, Lava Rift, Sunken Metropolis) and the (OS)cean arrivals ship at final
+// size, so they join after the GROW pass above.
+for (const sp of [...EXTRA_SPECIES, ...OSCEAN_SPECIES]) {
   if (S.some((o) => o.id === sp.id)) continue;
-  if (EXTRA_RENAME[sp.id]) sp.name = EXTRA_RENAME[sp.id];
   S.push(sp);
 }
 
 export { grow as growLook };
 export const SPECIES = S;
 export const SPECIES_BY_ID = Object.fromEntries(S.map((s) => [s.id, s]));
-export const SPECIES_BY_BIOME = Object.fromEntries(
-  ['shallows', 'junkyard', 'abyss', 'fjord', 'volcano', 'metropolis'].map((b) => [b, S.filter((s) => s.biome === b)]),
-);
+export const OCEAN_ORDER = ['oscean', 'shallows', 'fjord', 'junkyard', 'metropolis', 'volcano', 'abyss'];
+export const SPECIES_BY_BIOME = Object.fromEntries(OCEAN_ORDER.map((b) => [b, S.filter((s) => s.biome === b)]));
