@@ -142,6 +142,21 @@ function placeholderAnchors(c, st) {
   return out;
 }
 
+// Reusable scratch canvas for tinted compositions (wash / silhouette / flush of chain creatures).
+let scratch = null;
+function scratchFor(w, h) {
+  w = Math.max(1, Math.ceil(w)); h = Math.max(1, Math.ceil(h));
+  if (!scratch || scratch.width < w || scratch.height < h) {
+    scratch = makeCanvas(Math.max(w, scratch?.width || 0), Math.max(h, scratch?.height || 0));
+    scratch._g = ctxOf(scratch);
+  }
+  scratch._g.setTransform(1, 0, 0, 1, 0, 0);
+  scratch._g.globalCompositeOperation = 'source-over';
+  scratch._g.globalAlpha = 1;
+  scratch._g.clearRect(0, 0, w, h);
+  return scratch;
+}
+
 function compose(ctx, items, glows, X, Y, scx, scy, st, c, bw, bh) {
   const wash = st.wash && st.wash.alpha > 0.01 ? st.wash : null;
   const sil = st.silhouette;

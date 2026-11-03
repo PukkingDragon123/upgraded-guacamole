@@ -33,7 +33,7 @@ add({
   fight: fight(['tension', 'net'], 0.16, 2.6, ['jump']),
   spawn: spawn({ weight: 1.2 }),
   sound: 'bubble',
-  desc: 'A perfectly round soap bubble that grew fins. Startle it and it swells up, shimmering every colour of the rainbow. Please do not poke.',
+  desc: 'A pufferfish with skin like a soap bubble. Startle it and it swells up, shimmering every colour of the rainbow. Please do not poke.',
   behavior: 'Drifts in the light. Inflates into a huge shiny bubble when startled.',
   shinyHue: 300,
 });
@@ -62,8 +62,8 @@ add({
   fight: fight(['timing', 'tension'], 0.26, 3.6, ['hop', 'dash']),
   spawn: spawn({ weight: 1 }),
   sound: 'squeak',
-  desc: 'Owns forty pairs of box-fresh white high-tops and wears its favourite pair everywhere, even underwater. Has never once creased them.',
-  behavior: 'Walks along the seabed in its sneakers and does little hops. Loves image bait.',
+  desc: 'A rainbow snakehead that can walk on land and owns forty pairs of box-fresh high-tops. Has never once been seen wearing them.',
+  behavior: 'Wriggles along the seabed and does little hops. Loves image bait.',
   shinyHue: 30,
 });
 
@@ -90,8 +90,8 @@ add({
   fight: fight(['tension', 'timing', 'net'], 0.3, 4.5, ['dash', 'fake'], { biteWindow: 0.6 }),
   spawn: spawn({ weight: 1 }),
   sound: 'bubble',
-  desc: 'Takes "stay hydrated" extremely seriously and never leaves home without its personal water bubble. It lives in the sea.',
-  behavior: 'Floats about safely inside its own bubble of water.',
+  desc: 'Takes "stay hydrated" extremely seriously and trails bubbles everywhere it goes. It lives in the sea.',
+  behavior: 'Drifts about in a constant stream of its own bubbles.',
   shinyHue: 180,
 });
 
@@ -119,7 +119,7 @@ add({
   fight: { phases: ['tension', 'timing', 'dodge', 'mash', 'net'], power: 0.85, stamina: 14, tricks: ['dash', 'jump', 'fake'], biteWindow: 0.4, nibbles: [1, 2], fakeBite: 0.25 },
   spawn: spawn({ weight: 1 }),
   sound: 'chirp',
-  desc: 'It looks like you are trying to fish! Would you like help? A glossy aqua porpoise with a bent-paperclip fin that pops up whenever you least expect it.',
+  desc: 'It looks like you are trying to fish! Would you like help? A glossy harbour porpoise that pops up whenever you least expect it.',
   behavior: 'Leaps through the flooded hills offering unsolicited help. Legendary.',
   shinyHue: 50,
 });

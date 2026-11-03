@@ -105,7 +105,7 @@ add({
   spawn: spawn({ weight: 1.2 }),
   sound: 'honk',
   desc: 'Black and white, very formal, and capable of one sound only. NOOT NOOT.',
-  behavior: 'Hops along the ice floes and poses as a penguin.',
+  behavior: 'Hops along the ice floes and stands very still, like a little penguin.',
   shinyHue: 40,
 });
 
@@ -135,7 +135,7 @@ add({
   fight: fight(['tension', 'mash'], 0.22, 3, ['dive'], { biteWindow: 1 }),
   spawn: spawn({ weight: 1.1 }),
   sound: 'grunt',
-  desc: 'Hands in pockets (fins in pockets?), beanie on, absolutely unbothered by the freezing water. Just a chill guy.',
+  desc: 'Fins in pockets, eyes half closed, absolutely unbothered by the freezing water. Just a chill guy.',
   behavior: 'Lounges on the seabed. Camouflaged.',
   shinyHue: 160,
 });
@@ -159,7 +159,7 @@ add({
   fight: fight(['mash', 'timing'], 0.25, 3.5, ['hop'], { biteWindow: 0.9 }),
   spawn: spawn({ weight: 1 }),
   sound: 'click',
-  desc: 'A jolly snow crab with a carrot-orange pair of claws. Thumpety-thump-thump, look at Frosty scuttle.',
+  desc: 'A long-legged snow crab with tough orange claws. Thumpety-thump-thump, look at Frosty scuttle.',
   behavior: 'Crawls along the icy seabed.',
   shinyHue: 330,
 });
@@ -222,7 +222,7 @@ add({
   fight: fight(['trace', 'tension', 'net'], 0.45, 6, ['dash', 'jump'], { biteWindow: 0.55 }),
   spawn: spawn({ weight: 1 }),
   sound: 'bell',
-  desc: 'A narwhal-ish cod whose horn renders as a little box with a question mark on some systems.',
+  desc: 'A lingcod that insists it has a unicorn horn, which renders as a little box with a question mark on some systems.',
   behavior: 'Swims in slow arcs, sparkling.',
   shinyHue: 260,
 });
@@ -284,7 +284,7 @@ add({
   fight: fight(['trace', 'dodge', 'tension', 'net'], 0.52, 7, ['ink', 'fake', 'dash'], { biteWindow: 0.45, nibbles: [1, 3], fakeBite: 0.3 }),
   spawn: spawn({ weight: 1 }),
   sound: 'bell',
-  desc: 'Wears a crown of ice and has a permanent brain freeze. Thinks very slowly and very majestically.',
+  desc: 'An icefish so cold its blood runs clear. Permanent brain freeze. Thinks very slowly and very majestically.',
   behavior: 'Camouflaged among the ice, sparkling.',
   shinyHue: 200,
 });
@@ -315,7 +315,7 @@ add({
   fight: fight(['mash', 'tension', 'dodge', 'net'], 0.6, 8, ['dash', 'spit', 'dive'], { biteWindow: 0.5, nibbles: [0, 1], fakeBite: 0.1 }),
   spawn: spawn({ weight: 1 }),
   sound: 'roar',
-  desc: 'Posts motivational quotes on the ice at dawn. Howls at the aurora. Surprisingly soft ears.',
+  desc: 'Posts motivational quotes on the ice at dawn. Howls at the aurora. Teeth like a wolf, heart of gold.',
   behavior: 'Hunts in the cold mid-water. A tough fight.',
   shinyHue: 30,
 });
@@ -371,7 +371,7 @@ add({
   fight: fight(['tension', 'trace', 'timing', 'mash', 'net'], 0.95, 22, ['dive', 'fake', 'dash'], { biteWindow: 0.6, nibbles: [2, 5], fakeBite: 0.2 }),
   spawn: spawn({ weight: 1, time: 'night', hidden: 'fjord_song' }),
   sound: 'roar',
-  desc: 'Four hundred years old, monocle, mustache, and opinions about how the ocean was better back in its day.',
+  desc: 'A Greenland shark four hundred years old, with opinions about how the ocean was better back in its day.',
   behavior: 'Lurks in the deepest, coldest water. Legendary.',
   shinyHue: 180,
 });
@@ -526,7 +526,7 @@ add({
   fight: fight(['mash', 'tension'], 0.18, 3, ['jump'], { biteWindow: 1 }),
   spawn: spawn({ weight: 1.1 }),
   sound: 'puff',
-  desc: 'Freezes mid-swim, then teleports half a screen away and puffs into spikes. Classic lag spike.',
+  desc: 'Freezes mid-swim, then teleports half a reef away and puffs into spikes. Classic lag spike.',
   behavior: 'Inflates when startled and floats like pumice.',
   shinyHue: 280,
 });
@@ -589,7 +589,7 @@ add({
   fight: fight(['timing', 'trace', 'net'], 0.36, 5, ['hop', 'fake'], { biteWindow: 0.6, fakeBite: 0.25 }),
   spawn: spawn({ weight: 1 }),
   sound: 'click',
-  desc: 'Made entirely of cubes and carries a bucket of lava wherever it goes. Builds tiny houses at night.',
+  desc: 'A boxy cowfish built from armour cubes, horns and all. Builds tiny houses at night.',
   behavior: 'Glows softly. Loves game bait.',
   shinyHue: 140,
 });
@@ -621,7 +621,7 @@ add({
   fight: fight(['mash', 'tension', 'net'], 0.42, 6, ['dash', 'spit'], { biteWindow: 0.55, fakeBite: 0.1 }),
   spawn: spawn({ weight: 1 }),
   sound: 'grunt',
-  desc: 'Tall hat, big mustache, terrifying confidence. Nobody knows what it is cooking. Let him cook.',
+  desc: 'Red-and-white bands like a chef\'s apron and terrifying confidence. Nobody knows what it is cooking. Let him cook.',
   behavior: 'Honks orders at the other fish.',
   shinyHue: 200,
 });
@@ -647,7 +647,7 @@ add({
   spawn: spawn({ weight: 1, time: 'night' }),
   sound: 'squeak',
   desc: 'Steals your shiny things, then insists you never had them. Glows a suspicious orange.',
-  behavior: 'Steals icons and slithers away through the magma.',
+  behavior: 'Snatches shiny things and slithers away through the magma.',
   shinyHue: 60,
 });
 
@@ -743,7 +743,7 @@ add({
   fight: fight(['dodge', 'timing', 'trace', 'tension', 'net'], 1, 26, ['spit', 'dive', 'dash', 'fake'], { biteWindow: 0.45, nibbles: [3, 5], fakeBite: 0.25 }),
   spawn: spawn({ weight: 1, weather: 'eruption' }),
   sound: 'roar',
-  desc: 'The last thing between you and the credits. Multiple health bars, glowing weak spots and very dramatic music.',
+  desc: 'A frilled shark from before the dinosaurs. The last thing between you and the credits: multiple health bars and very dramatic music.',
   behavior: 'Rises from the deepest lava very rarely. Legendary.',
   shinyHue: 190,
 });
@@ -777,7 +777,7 @@ add({
   fight: fight(['tension'], 0.12, 2, ['dash'], { biteWindow: 1 }),
   spawn: spawn({ weight: 1.5 }),
   sound: 'chirp',
-  desc: 'Neon stripes, headphones-shaped fins and a permanent chill-beats-to-study-to soundtrack.',
+  desc: 'Neon stripes, a red tail light and a permanent chill-beats-to-study-to soundtrack.',
   behavior: 'Schools through the neon streets. Loves music.',
   shinyHue: 160,
 });
@@ -808,7 +808,7 @@ add({
   fight: fight(['trace', 'tension'], 0.24, 3, ['dash', 'hop'], { biteWindow: 0.8 }),
   spawn: spawn({ weight: 1.2, weather: 'rushhour' }),
   sound: 'grunt',
-  desc: 'Watches six videos at once on a split screen while surfing the subway rails. Attention span: yes.',
+  desc: 'Leaps out of the water six times in a row for no reason while surfing the subway rails. Attention span: yes.',
   behavior: 'Commutes in schools along the old subway lines.',
   shinyHue: 20,
 });
@@ -838,8 +838,8 @@ add({
   fight: fight(['mash', 'tension'], 0.16, 2.5, ['fake'], { biteWindow: 1 }),
   spawn: spawn({ weight: 1.2 }),
   sound: 'honk',
-  desc: 'An orange-and-white traffic cone fish straight from a 1999 homepage. This fish is under construction. Please come back later.',
-  behavior: 'Pretends to be a traffic cone on the street.',
+  desc: 'An orange-and-white copperband straight from a 1999 homepage. This fish is under construction. Please come back later.',
+  behavior: 'Pretends to be a traffic cone among the street rubble.',
   shinyHue: 210,
 });
 
@@ -869,7 +869,7 @@ add({
   spawn: spawn({ weight: 1.3 }),
   sound: 'blub',
   desc: 'Is this a pigeon? No. Is this a fish? Also unclear. Struts about the sunken plazas stealing chips.',
-  behavior: 'Steals icons in little gangs.',
+  behavior: 'Snatches chips from other fish in little gangs.',
   shinyHue: 300,
 });
 
@@ -892,7 +892,7 @@ add({
   fight: fight(['mash', 'tension'], 0.24, 3.5, ['hop', 'dash'], { biteWindow: 0.9 }),
   spawn: spawn({ weight: 1.1 }),
   sound: 'honk',
-  desc: 'A bright yellow crab with a light on its shell. Honks at everything. Accepts tips in pellets.',
+  desc: 'A bright yellow rock crab that honks at everything. Accepts tips in pellets.',
   behavior: 'Crawls the drowned streets and honks.',
   shinyHue: 180,
 });
@@ -925,7 +925,7 @@ add({
   fight: fight(['tension', 'trace', 'net'], 0.4, 6, ['dive', 'fake'], { biteWindow: 0.5, nibbles: [1, 3], fakeBite: 0.35 }),
   spawn: spawn({ weight: 1 }),
   sound: 'squeak',
-  desc: 'Up at 5 a.m., three coffees, two side hustles and a briefcase. Sigma grindset, flatfish edition.',
+  desc: 'Up at 5 a.m., three coffees, two side hustles. Sigma grindset, flatfish edition.',
   behavior: 'Commutes by the real clock. Camouflaged on the pavement.',
   shinyHue: 160,
 });
@@ -982,8 +982,8 @@ add({
   fight: fight(['timing', 'trace', 'net'], 0.38, 6, ['glitch', 'fake'], { biteWindow: 0.55, fakeBite: 0.3 }),
   spawn: spawn({ weight: 1 }),
   sound: 'glitch',
-  desc: 'A billboard ray that shows likes versus replies. Swims past your fish and ratios it. Brutal.',
-  behavior: 'Glides overhead flashing its screen.',
+  desc: 'A stingray covered in electric-blue spots like a billboard. Swims past your fish and ratios it. Brutal.',
+  behavior: 'Glides overhead, flashing its spots.',
   shinyHue: 120,
 });
 
@@ -1069,7 +1069,7 @@ add({
   fight: fight(['unwrap', 'tension', 'dodge', 'net'], 0.75, 12, ['wrap', 'dash', 'spit'], { biteWindow: 0.5, nibbles: [1, 3], fakeBite: 0.15 }),
   spawn: spawn({ weight: 1, weather: 'neonstorm' }),
   sound: 'roar',
-  desc: 'An endless eel that never stops scrolling. Just one more segment. Just one more. It is 4 a.m.',
+  desc: 'A dragon moray that never stops scrolling through the ruins. Just one more segment. Just one more. It is 4 a.m.',
   behavior: 'Coils through the drowned towers, scrolling forever.',
   shinyHue: 30,
 });
@@ -1102,7 +1102,7 @@ add({
   fight: fight(['tension', 'timing', 'trace', 'mash', 'net'], 0.92, 20, ['dash', 'fake', 'dive'], { biteWindow: 0.6, nibbles: [2, 5], fakeBite: 0.3 }),
   spawn: spawn({ weight: 1, time: 'day', hidden: 'metro_key' }),
   sound: 'roar',
-  desc: 'Top hat, sash, spotlight. The whole sunken city is just the backdrop to its personal coming-of-age story.',
+  desc: 'A blue marlin with a spotlight on it at all times. The whole sunken city is just the backdrop to its personal coming-of-age story.',
   behavior: 'Holds court in the city plaza. Legendary.',
   shinyHue: 280,
 });

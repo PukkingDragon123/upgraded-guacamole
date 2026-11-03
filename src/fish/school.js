@@ -181,7 +181,6 @@ export class School {
     for (let i = this.fishes.length - 1; i >= 0; i--) {
       const f = this.fishes[i];
       if (f.dead) {
-        if (f.carry) w.desktop?.returnIcon?.(f.carry, true);
         this.fishes.splice(i, 1);
       }
     }

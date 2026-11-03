@@ -1,7 +1,10 @@
 // A living fish: steering-based AI with states, personality, quirks and emotions.
-// Rendering is delegated to gfx/fishrig.js (3D voxel fish; the Wakka chomper is the one pixel-art sprite).
+// Rendering is delegated to gfx/fishrig.js (realistic 3D voxel animals; the Wakka chomper is the round one).
 // Ocean extras: hero fish ('pass' state, scenery only). Fish no longer carry packages (floating boxes
 // live in world/floaters.js). Quirk 'wakka' (wakka.js): arcade grid runs, pellet bubbles, chomping.
+// Phase 4 (standalone ocean game, no desktop): 'mimic' = settles on the seabed in disguise until the hook or
+// cursor comes close; 'thief' = snatches a snack from a nearby fish and bolts; shy fish hide near the seabed
+// after fleeing; 'commuter' swims to the far reef in work hours. Fish exhale glossy bubbles (breathe()).
 
 import { TAU, clamp, clamp01, lerp, dist, angleDiff, damp, rectContains } from '../core/math.js';
 import { rng } from '../core/rng.js';
@@ -66,7 +69,6 @@ export class Fish {
     this.controlled = false; // driven by fishing controller
     this.camo = this.quirks.has('camouflage') ? 1 : 0;
     this.posing = false;
-    this.carry = null; // stolen icon
     this.age = 0;
     this.hiddenUntil = 0;
     this.hopT = rng.float(0.5, 2);
@@ -206,7 +208,7 @@ export class Fish {
   }
 
   updateCrawl(dt, desired) {
-    // crawlers walk along the seabed (or perch on icons)
+    // crawlers walk along the seabed
     const sc = this.scale * (1 - this.z * 0.5);
     let groundY = this.perch ? this.perch.y - 4 * this.scale : this.world.floorAt(this.x, this.z) - 5 * sc;
     if (this.legs) groundY -= this.legs * sc;
@@ -502,8 +504,8 @@ export class Fish {
     }
     // quirk hooks
     if (this.quirks.has('commuter') && !w.isTank && this.stateT > 2 && rng.chance(dt * 0.12)) { this.setState('commute'); return [0, 0]; }
-    if (this.quirks.has('mimic') && w.desktop && this.stateT > 3 && rng.chance(dt * 0.15)) { this.setState('mimic'); return [0, 0]; }
-    if (this.quirks.has('thief') && w.desktop && this.stateT > 4 && rng.chance(dt * 0.06)) { this.setState('steal'); return [0, 0]; }
+    if (this.quirks.has('mimic') && !w.isTank && this.stateT > 3 && rng.chance(dt * 0.05)) { this.setState('mimic'); return [0, 0]; }
+    if (this.quirks.has('thief') && !w.isTank && this.stateT > 4 && rng.chance(dt * 0.06)) { this.setState('steal'); return [0, 0]; }
     if (this.quirks.has('forgetful') && rng.chance(dt * 0.15)) {
       this.say('?'); this.feel('surprised', 1); this.facing *= -1; this.vx = -this.vx; this.pickWanderTarget();
     }
@@ -624,7 +626,7 @@ export class Fish {
     const d = Math.hypot(dx, dy) || 1;
     dx /= d; dy /= d;
     if (this.stateT > 1.4 + this.shyness) {
-      if (this.world.windows?.length && rng.chance(0.5) && !this.world.isTank) this.goHide();
+      if (!this.world.isTank && this.style !== 'crawl' && rng.chance(0.35 + this.shyness * 0.3)) this.goHide();
       else this.setState('wander');
       return [0, 0];
     }
@@ -632,17 +634,13 @@ export class Fish {
     return [dx * this.burst, dy * this.burst * 0.6];
   }
 
+  // Shy fish dart down to the seabed and hide close to the bottom for a few seconds, then peek out.
   goHide() {
-    const wins = this.world.windows;
-    let best = null, bd = Infinity;
-    for (const r of wins) {
-      const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
-      const d = dist(cx, cy, this.x, this.y);
-      if (d < bd) { bd = d; best = r; }
-    }
-    if (!best || bd > 400) { this.setState('wander'); return; }
+    const x = clamp(this.x + rng.float(-90, 90), 40, (this.world.W ?? 960) - 40);
+    const fl = this.floor(x);
+    if (!Number.isFinite(fl)) { this.setState('wander'); return; }
     this.setState('hide');
-    this.hideRect = best;
+    this.hideRect = { x: x - 40, y: fl - 34 * this.scale, w: 80, h: 26 * this.scale };
     this.hideT = rng.float(3, 7);
   }
 
@@ -653,8 +651,8 @@ export class Fish {
     // peek: drift toward edge after a while
     const peek = this.hideT < 1.6;
     const tx = peek ? (this.x < r.x + r.w / 2 ? r.x + 4 : r.x + r.w - 4) : r.x + r.w / 2;
-    const ty = clamp(this.y, r.y + 8, r.y + r.h - 8);
-    if (peek) this.lookAt(this.world.cursor.x, this.world.cursor.y);
+    const ty = clamp(this.y, r.y + 4, r.y + r.h - 4);
+    if (peek && this.world.cursor) this.lookAt(this.world.cursor.x, this.world.cursor.y);
     return this.steer(tx, ty, this.cruise * 1.2, 20);
   }
 
@@ -685,9 +683,9 @@ export class Fish {
       return [Math.sin(this.age * 2) * 4, 0];
     }
     const workHours = hour >= 9 && hour < 17;
-    const win = workHours ? w.windows?.[0] : null;
-    const tx = win ? win.x + win.w + 8 : w.W - 40;
-    const ty = win ? win.y + 20 : this.bandY(0.85);
+    // "the office": the far end of the reef during work hours, home near the bottom after five
+    const tx = workHours ? w.W - 40 : 40;
+    const ty = this.bandY(workHours ? 0.55 : 0.85);
     if (!this.saidCommute) {
       this.saidCommute = true;
       this.say(workHours ? 'clock' : 'moon');
@@ -695,38 +693,40 @@ export class Fish {
     }
     if (dist(this.x, this.y, tx, ty) < 10) {
       // "typing"
-      if (rng.chance(dt * 2)) w.particles?.text(this.x, this.y - 12 * this.scale, rng.pick(['tap', 'clack', '...', 'email?', 'meeting!']), { font: 'small', color: '#d8f4ff', life: 1, vy: -10 });
-      this.facing = -1;
+      if (rng.chance(dt * 1.2)) w.particles?.text(this.x, this.y - 12 * this.scale, rng.pick(['blub', '...', 'meeting!', 'grind']), { font: 'small', color: '#d8f4ff', life: 1, vy: -10 });
+      this.facing = workHours ? -1 : 1;
       return [0, 0];
     }
     return this.steer(tx, ty, this.burst * 0.7, 20);
   }
 
   thinkMimic(dt) {
-    // Shortcut Fish: occupy an empty desktop grid slot and pose as an icon.
-    const d = this.world.desktop;
+    // Disguise: settle on the seabed and hold perfectly still (a rock, a cone, a little penguin...) until
+    // the hook or the cursor comes close, then bolt.
     if (!this.mimicSlot) {
-      this.mimicSlot = d?.freeSlot?.();
-      if (!this.mimicSlot) { this.setState('wander'); return [0, 0]; }
+      const x = clamp(this.x + rng.float(-60, 60), 40, (this.world.W ?? 960) - 40);
+      const fl = this.floor(x);
+      if (!Number.isFinite(fl)) { this.setState('wander'); return [0, 0]; }
+      this.mimicSlot = { x, y: fl - 4 * this.scale };
     }
     const s = this.mimicSlot;
-    const at = dist(this.x, this.y, s.x, s.y) < 3;
+    const at = dist(this.x, this.y, s.x, s.y) < 4;
     if (at) {
       this.posing = true;
-      this.z = 0;
-      this.facing = 1;
-      const c = this.world.cursor;
-      const near = c.inWorld && dist(c.x, c.y, this.x, this.y) < 70;
-      if (!near && rng.chance(dt * 0.3)) this.wiggle = 0.4;
-      if (this.stateT > 40 && !near) { this.posing = false; this.mimicSlot = null; this.setState('wander'); }
+      const c = this.world.cursor, h = this.world.hook;
+      const near = (c?.inWorld && dist(c.x, c.y, this.x, this.y) < 50) || (h?.active && h.inWater && dist(h.x, h.y, this.x, this.y) < 60);
+      if (near && this.stateT > 1.5) { this.unmask(); return [0, 0]; }
+      if (rng.chance(dt * 0.2)) this.wiggle = 0.3;
+      if (this.stateT > 30) { this.posing = false; this.mimicSlot = null; this.setState('wander'); }
       return [0, 0];
     }
     this.posing = false;
-    return this.steer(s.x, s.y, this.cruise * 1.2, 30);
+    if (this.stateT > 10) { this.mimicSlot = null; this.setState('wander'); return [0, 0]; }
+    return this.steer(s.x, s.y, this.cruise * 1.1, 30);
   }
 
   unmask() {
-    // double-clicked while posing
+    // the disguise is blown (the hook or cursor came close, or it was clicked): burst away
     this.posing = false;
     this.mimicSlot = null;
     this.feel('surprised', 1.5);
@@ -736,32 +736,30 @@ export class Fish {
     this.setState('flee');
     this.fleeFrom = { x: this.x - 10, y: this.y };
     this.cooldown = 1;
+    this.world.particles?.aeroBubbles?.(this.x, this.y, 5, { w: 6, h: 4, sizes: [1, 2, 2, 3] });
   }
 
   thinkSteal(dt) {
-    const d = this.world.desktop;
-    if (!this.carry) {
-      if (!this.stealTarget) {
-        this.stealTarget = d?.randomStealable?.();
-        if (!this.stealTarget) { this.setState('wander'); return [0, 0]; }
-        this.feel('smug', 3);
-      }
-      const ic = this.stealTarget;
-      const tx = ic.x + ic.w / 2, ty = ic.y + ic.h / 2;
-      if (dist(this.x, this.y, tx, ty) < 8) {
-        if (d.stealIcon(ic, this)) {
-          this.carry = ic;
-          this.say('$');
-          this.world.audio?.play('squeak', { pitch: 1.3 });
-        }
-        this.stealTarget = null;
-        this.setState('leave');
-        return [0, 0];
-      }
-      if (this.stateT > 12) { this.stealTarget = null; this.setState('wander'); }
-      return this.steer(tx, ty, this.cruise * 1.1, 20);
+    // Snatch: dart at a nearby fish, nip its snack ('$'), then bolt off with the loot.
+    if (!this.stealTarget || this.stealTarget.dead) {
+      const others = (this.world.fishes || []).filter((o) => o !== this && !o.controlled && !o.hero && Math.abs(o.z - this.z) < 0.3 && dist(o.x, o.y, this.x, this.y) < 260);
+      if (!others.length) { this.setState('wander'); return [0, 0]; }
+      this.stealTarget = rng.pick(others);
+      this.feel('smug', 3);
     }
-    return [0, 0];
+    const o = this.stealTarget;
+    if (dist(this.x, this.y, o.x, o.y) < 10 + 8 * this.scale) {
+      this.say('$');
+      this.chompT = 0.3;
+      this.world.audio?.play('squeak', { pitch: 1.3 });
+      o.startle?.(this.x, this.y);
+      this.stealTarget = null;
+      this.setState('flee');
+      this.fleeFrom = { x: o.x, y: o.y };
+      return [0, 0];
+    }
+    if (this.stateT > 8) { this.stealTarget = null; this.setState('wander'); return [0, 0]; }
+    return this.steer(o.x, o.y, this.burst * 0.8, 10);
   }
 
   lookAt(x, y) { this.lookX = x; this.lookY = y; this.lookHold = 0.3; }
@@ -854,7 +852,7 @@ export class Fish {
   }
 }
 
-// Interest of a species in a bait {kind:'icon'|'special', type}.
+// Interest of a species in a bait {kind, type} (type matches the species' bait preferences).
 export function baitInterest(sp, bait) {
   if (!bait) return 0;
   const prefs = sp.bait || {};

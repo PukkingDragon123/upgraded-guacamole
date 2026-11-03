@@ -1,5 +1,5 @@
 // FISHTOP species collection, phase 3: an internet-culture / meme roster (pun names, original designs,
-// affectionate parodies, no real logos) across seven oceans: (OS)cean 'oscean' (the flooded wallpaper,
+// affectionate parodies, no real logos) across seven oceans: (OS)cean 'oscean' (the flooded green hills,
 // plus the arrivals in species-oscean.js), Sunny Shallows, Frosty Fjord, Junkyard Reef, Sunken Metropolis,
 // Lava Rift 'volcano' and The Deep Ocean (species-extra.js holds fjord / volcano / metropolis).
 // About 15 per ocean: ~6 common, 4 uncommon, 3 rare, 1-2 epic, 1 legendary. Ids are the save keys: keep them.
@@ -80,7 +80,7 @@ add({
   spawn: { weight: 1.4, weather: null, time: null, requires: null, hidden: null },
   sound: 'blub',
   desc: 'Broadcasts a tiny signal from its fin bars. Full bars near the surface, one bar by the seabed. Schools reconnect automatically.',
-  behavior: 'Schools in tidy rows near the surface. Loves browser bait.',
+  behavior: 'Schools in tidy rows near the surface and reconnects to the school when scattered.',
   shinyHue: 300,
 });
 
@@ -116,7 +116,7 @@ add({
   spawn: { weight: 1.2, weather: null, time: null, requires: null, hidden: null },
   sound: 'honk',
   desc: 'Honks its red nose in a secret code only other clownfish understand. It is always the same message: honk.',
-  behavior: 'Juggles in mid-water and honks when spooked. Loves music and games.',
+  behavior: 'Darts in and out of the anemones and honks when spooked. Loves music and games.',
   shinyHue: 160,
 });
 
@@ -142,7 +142,7 @@ add({
   fight: { phases: ['tension', 'net'], power: 0.12, stamina: 2, tricks: ['dash'], biteWindow: 0.8, nibbles: [1, 3], fakeBite: 0.1 },
   spawn: { weight: 1.3, weather: null, time: null, requires: null, hidden: null },
   sound: 'chirp',
-  desc: 'A chunky retro voxel chomper that only knows one route: straight lines and sharp corners. It lays a trail of glowing bubble pellets and eats every one. Wakka wakka.',
+  desc: 'A round little chomper that only knows one route: straight lines and sharp corners. It lays a trail of glowing bubble pellets and eats every one. Wakka wakka.',
   behavior: 'Runs an invisible grid, gobbling pellet bubbles. Power bubbles make it zoom.',
   shinyHue: 120,
 });
@@ -174,8 +174,8 @@ add({
   fight: { phases: ['timing', 'tension'], power: 0.2, stamina: 3, tricks: ['fake'], biteWindow: 1, nibbles: [1, 2], fakeBite: 0.25 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'boing',
-  desc: 'One enormous eye, permanently unimpressed. It follows your cursor across the screen and judges every single click.',
-  behavior: 'Watches the cursor wherever it goes. Very curious, very judgy.',
+  desc: 'One enormous golden eye, permanently unimpressed. It watches your hook from across the reef and judges every single cast.',
+  behavior: 'Keeps its huge eye on the hook wherever it goes. Very curious, very judgy.',
   shinyHue: 270,
 });
 
@@ -207,7 +207,7 @@ add({
   fight: { phases: ['mash', 'tension', 'net'], power: 0.45, stamina: 5, tricks: ['dash', 'fake'], biteWindow: 0.55, nibbles: [1, 3], fakeBite: 0.2 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'puff',
-  desc: 'Startle it and it inflates while a little loading wheel spins in its eyes. Please wait. Still buffering.',
+  desc: 'Startle it and it gulps water until it is a perfect spiky ball. Please wait. Still buffering.',
   behavior: 'Puffs up when startled and drifts upward until it finishes loading.',
   shinyHue: 150,
 });
@@ -239,7 +239,7 @@ add({
   fight: { phases: ['tension', 'trace'], power: 0.32, stamina: 4, tricks: ['dash', 'hop'], biteWindow: 0.5, nibbles: [0, 1], fakeBite: 0.1 },
   spawn: { weight: 1, weather: null, time: 'day', requires: null, hidden: null },
   sound: 'grunt',
-  desc: 'Suit, tie, briefcase and an arrow that only goes up. Keeps strict office hours by your real clock. Number go up.',
+  desc: 'A sockeye in full spawning red that only ever swims upstream. Keeps strict office hours by your real clock. Number go up.',
   behavior: 'Commutes 9 to 5 by the real clock and takes a lunch break at noon.',
   shinyHue: 40,
 });
@@ -263,8 +263,8 @@ add({
   fight: { phases: ['timing', 'mash'], power: 0.3, stamina: 4, tricks: ['hop', 'fake'], biteWindow: 0.7, nibbles: [1, 2], fakeBite: 0.2 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'click',
-  desc: 'A glossy computer-mouse crab that clicks its claws twice for everything. Its cable tail is purely decorative. Probably.',
-  behavior: 'Scuttles along the seabed and perches on desktop icons.',
+  desc: 'A pale ghost crab that snaps its claws twice for everything. Click click. Its eyes stand up on stalks to see who is watching.',
+  behavior: 'Scuttles sideways along the seabed, clicking.',
   shinyHue: 190,
 });
 
@@ -322,7 +322,7 @@ add({
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'blub',
   desc: 'Smiles politely through everything. Lies flat on the sand pretending all is fine. It is not fine.',
-  behavior: 'Camouflaged on the seabed until your cursor gets close.',
+  behavior: 'Lies camouflaged on the sand until your hook gets close.',
   shinyHue: 180,
 });
 
@@ -345,7 +345,7 @@ add({
   fight: { phases: ['timing', 'mash', 'net'], power: 0.25, stamina: 4, tricks: ['hop', 'fake'], biteWindow: 0.7, nibbles: [1, 3], fakeBite: 0.2 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'boing',
-  desc: 'A wobbly caramel pudding with a cherry on top. You were promised pudding. The pudding was a fish all along.',
+  desc: 'A caramel jellyfish with a cherry-orange dome that wobbles like a fresh pudding. You were promised pudding. The pudding was a jelly all along.',
   behavior: 'Wobbles about near the bottom. Adores sugar.',
   shinyHue: 290,
 });
@@ -377,7 +377,7 @@ add({
   fight: { phases: ['trace', 'timing', 'net'], power: 0.35, stamina: 6, tricks: ['jump', 'fake'], biteWindow: 0.55, nibbles: [1, 2], fakeBite: 0.15 },
   spawn: { weight: 0.8, weather: 'clear', time: 'day', requires: null, hidden: null },
   sound: 'bell',
-  desc: 'A E S T H E T I C. Pastel pink and cyan, sunset stripes and a halo that hums elevator music.',
+  desc: 'A E S T H E T I C. Pastel pink and cyan, long trailing fins and a sunset shimmer straight out of 1997.',
   behavior: 'Glides slowly through the sunbeams, sparkling.',
   shinyHue: 45,
 });
@@ -408,8 +408,8 @@ add({
   fight: { phases: ['mash', 'tension', 'net'], power: 0.55, stamina: 7, tricks: ['dash', 'dive'], biteWindow: 0.5, nibbles: [1, 2], fakeBite: 0.1 },
   spawn: { weight: 0.9, weather: null, time: null, requires: null, hidden: null },
   sound: 'grunt',
-  desc: 'Pirate hat, eye patch, sticky fins. Swims up, grabs a desktop icon, yells YOINK and swims off with it.',
-  behavior: 'Steals icons off your desktop. Loves image and paint bait.',
+  desc: 'Beak first, manners later. Swims up, crunches a chunk of coral, yells YOINK and is gone before anyone can complain.',
+  behavior: 'Snatches snacks from other fish, then dashes away. Loves image and paint bait.',
   shinyHue: 100,
 });
 
@@ -599,7 +599,7 @@ add({
   fight: { phases: ['timing', 'tension'], power: 0.2, stamina: 3, tricks: ['hop'], biteWindow: 0.8, nibbles: [1, 1], fakeBite: 0.1 },
   spawn: { weight: 1.3, weather: null, time: null, requires: null, hidden: null },
   sound: 'chirp',
-  desc: 'Every time it lands from a hop the whole reef goes BOOM. Nobody knows where the sound comes from.',
+  desc: 'A mudskipper that hops instead of swimming. Every time it lands the whole reef goes BOOM. Nobody knows where the sound comes from.',
   behavior: 'Hops along the reef in little schools.',
   shinyHue: 260,
 });
@@ -630,7 +630,7 @@ add({
   fight: { phases: ['trace', 'tension'], power: 0.18, stamina: 3, tricks: ['glitch', 'dash'], biteWindow: 0.6, nibbles: [1, 2], fakeBite: 0.15 },
   spawn: { weight: 1.2, weather: null, time: null, requires: null, hidden: null },
   sound: 'glitch',
-  desc: 'Wears a little visor and acts very normal. Vents between reefs. Kind of sus, honestly.',
+  desc: 'A little red hawkfish that perches very still and acts very normal. Vents between reefs. Kind of sus, honestly.',
   behavior: 'Glitches out of sight when it thinks nobody is looking.',
   shinyHue: 90,
 });
@@ -663,7 +663,7 @@ add({
   fight: { phases: ['tension', 'mash'], power: 0.5, stamina: 6, tricks: ['dive'], biteWindow: 0.7, nibbles: [1, 2], fakeBite: 0.05 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'grunt',
-  desc: 'Grew a fresh tuft of wallpaper grass on its head after one too many hours online. Chill, green and smells faintly of meadow.',
+  desc: 'Spent so long lounging in the green-meadow shallows that it turned the colour of fresh grass. Chill, green and smells faintly of meadow.',
   behavior: 'Cruises over the flooded hills. Bites on almost anything.',
   shinyHue: 200,
 });
@@ -687,8 +687,8 @@ add({
   fight: { phases: ['mash', 'tension', 'net'], power: 0.3, stamina: 5, tricks: [], biteWindow: 1.2, nibbles: [0, 1], fakeBite: 0 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'blub',
-  desc: 'Everything you ever deleted ends up in here, including your dignity. Squishy, green and surprisingly cheerful.',
-  behavior: 'Crawls about the scrap reef eating crumbs.',
+  desc: 'A round green lumpsucker that sticks to anything, including your dignity. Squishy, warty and surprisingly cheerful.',
+  behavior: 'Clings to the scrap reef and nibbles crumbs.',
   shinyHue: 300,
 });
 
@@ -711,8 +711,8 @@ add({
   fight: { phases: ['timing', 'trace', 'net'], power: 0.3, stamina: 4, tricks: ['fake', 'hop'], biteWindow: 0.5, nibbles: [1, 2], fakeBite: 0.4 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'click',
-  desc: 'Disguises itself as a perfectly normal desktop icon. Totally safe. Definitely not a fish. Double-click to find out.',
-  behavior: 'Hides in empty icon slots and poses as a shortcut until you poke it.',
+  desc: 'A spotted boxfish that parks itself on the seabed and pretends to be a perfectly normal rock. Totally safe. Definitely not a fish. Swim closer to find out.',
+  behavior: 'Settles on the seabed in disguise until your hook comes close.',
   shinyHue: 120,
 });
 
@@ -735,7 +735,7 @@ add({
   fight: { phases: ['mash', 'dodge', 'net'], power: 0.5, stamina: 6, tricks: ['spit', 'hop'], biteWindow: 0.6, nibbles: [1, 2], fakeBite: 0.1 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'click',
-  desc: 'A chrome mecha-crab that never stops dancing. Every claw snap is on the beat. The reef has been raving for days.',
+  desc: 'A Sally Lightfoot crab in rave colours that never stops dancing. Every claw snap is on the beat. The reef has been raving for days.',
   behavior: 'Scuttles and dances along the seabed.',
   shinyHue: 160,
 });
@@ -759,7 +759,7 @@ add({
   fight: { phases: ['unwrap', 'tension', 'net'], power: 0.45, stamina: 6, tricks: ['wrap', 'dash'], biteWindow: 0.6, nibbles: [1, 2], fakeBite: 0.15 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'click',
-  desc: 'A tangled ethernet cable that came alive out of pure spite. It will never be untangled. Do not try.',
+  desc: 'An electric-blue ribbon eel that ties itself into knots out of pure spite. It will never be untangled. Do not try.',
   behavior: 'Snakes through the scrap in long coils.',
   shinyHue: 30,
 });
@@ -783,7 +783,7 @@ add({
   fight: { phases: ['trace', 'timing', 'net'], power: 0.3, stamina: 5, tricks: ['jump', 'fake'], biteWindow: 0.55, nibbles: [1, 3], fakeBite: 0.2 },
   spawn: { weight: 0.9, weather: null, time: null, requires: null, hidden: null },
   sound: 'click',
-  desc: 'Shaped like the save icon, which is shaped like a thing nobody has seen since 1998. Saves often. Always.',
+  desc: 'A skate shaped like the save symbol, which is shaped like a thing nobody has seen since 1998. Saves often. Always.',
   behavior: 'Glides low over the reef.',
   shinyHue: 330,
 });
@@ -814,8 +814,8 @@ add({
   fight: { phases: ['mash', 'trace', 'net'], power: 0.3, stamina: 4, tricks: ['fake', 'dash'], biteWindow: 0.7, nibbles: [1, 3], fakeBite: 0.25 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'chirp',
-  desc: 'A crunchy cookie fish that pops up a consent banner every time you look at it. Clicking "accept" only encourages it.',
-  behavior: 'Forgets what it was doing and turns around. Loves browser bait and sugar.',
+  desc: 'A crunchy-looking porcupinefish with chocolate-chip spots. Pops up every time you look at it. Accepting it only encourages it.',
+  behavior: 'Forgets what it was doing and turns around. Loves sugar.',
   shinyHue: 250,
 });
 
@@ -846,7 +846,7 @@ add({
   fight: { phases: ['timing', 'dodge', 'tension', 'net'], power: 0.55, stamina: 8, tricks: ['fake', 'spit', 'dive'], biteWindow: 0.45, nibbles: [2, 4], fakeBite: 0.35 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'glitch',
-  desc: 'Its lure is a spinning loading wheel. Smaller fish wait forever for it to finish. It never finishes.',
+  desc: 'A frogfish whose lure twirls like a loading wheel. Smaller fish wait forever for it to finish. It never finishes.',
   behavior: 'Dangles a spinning lure in the dark. Strikes fast.',
   shinyHue: 180,
 });
@@ -882,8 +882,8 @@ add({
   fight: { phases: ['trace', 'mash', 'tension', 'net'], power: 0.45, stamina: 7, tricks: ['dash', 'hop', 'fake'], biteWindow: 0.35, nibbles: [0, 1], fakeBite: 0.3 },
   spawn: { weight: 1, weather: null, time: 'night', requires: null, hidden: null },
   sound: 'squeak',
-  desc: 'Sees an icon you are not using and goes "it\'s free real estate". Sunglasses on, icon gone.',
-  behavior: 'Steals desktop icons and swims off with them.',
+  desc: 'Sees open water nobody is using and goes "it\'s free real estate". Then takes all of it at forty knots.',
+  behavior: 'Snatches snacks from other fish, then bolts.',
   shinyHue: 20,
 });
 
@@ -913,8 +913,8 @@ add({
   fight: { phases: ['dodge', 'trace', 'timing', 'net'], power: 0.45, stamina: 7, tricks: ['glitch', 'hop', 'spit'], biteWindow: 0.5, nibbles: [1, 3], fakeBite: 0.2 },
   spawn: { weight: 0.9, weather: 'storm', time: null, requires: null, hidden: null },
   sound: 'glitch',
-  desc: 'A fish with an old screen for a face. Seven days after you see it, it will... show you a cute emoji. Gotcha.',
-  behavior: 'Lurks near screens and glows in the dark.',
+  desc: 'A stargazer that buries itself in the sand with only its eyes showing. Seven days after you see it, it will... jump out and say hi. Gotcha.',
+  behavior: 'Hides in the sand and ambushes from below. Glows in the dark.',
   shinyHue: 280,
 });
 
@@ -946,7 +946,7 @@ add({
   fight: { phases: ['dodge', 'mash', 'tension', 'net'], power: 0.5, stamina: 7, tricks: ['spit', 'dash'], biteWindow: 0.5, nibbles: [1, 2], fakeBite: 0.15 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'grunt',
-  desc: 'Three eyes: one on the stream, one on the chat and one on you. Somehow still misses the bait.',
+  desc: 'A butterflyfish with a fake eye on its tail: one eye on the stream, one on the chat and one on you. Somehow still misses the bait.',
   behavior: 'Keeps an eye on everything at once.',
   shinyHue: 210,
 });
@@ -978,8 +978,8 @@ add({
   fight: { phases: ['timing', 'tension', 'dodge', 'net'], power: 0.75, stamina: 11, tricks: ['dash', 'fake', 'jump'], biteWindow: 0.35, nibbles: [2, 3], fakeBite: 0.4 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'click',
-  desc: 'Its snout is a USB plug. It tried to plug in the wrong way up. Then the other way. Then the first way again, which worked.',
-  behavior: 'Darts about, sparking. Loves terminal bait.',
+  desc: 'A needlefish with a snout like a plug. It tried to plug in the wrong way up. Then the other way. Then the first way again, which worked.',
+  behavior: 'Darts about just under the surface.',
   shinyHue: 300,
 });
 
@@ -1035,7 +1035,7 @@ add({
   fight: { phases: ['dodge', 'timing', 'trace', 'mash', 'net'], power: 0.95, stamina: 18, tricks: ['glitch', 'spit', 'dive', 'fake'], biteWindow: 0.4, nibbles: [2, 4], fakeBite: 0.3 },
   spawn: { weight: 1, weather: 'storm', time: 'night', requires: null, hidden: true },
   sound: 'roar',
-  desc: 'A huge blue manta with a sad face where its screen should be. Your reef ran into a problem and needs to restart.',
+  desc: 'A huge deep-blue manta that glides past like a system crash. Your reef ran into a problem and needs to restart.',
   behavior: 'Glides through the scrap reef very rarely. Legendary.',
   shinyHue: 120,
 });
@@ -1155,7 +1155,7 @@ add({
   fight: { phases: ['trace', 'net'], power: 0.12, stamina: 3, tricks: [], biteWindow: 1.2, nibbles: [2, 4], fakeBite: 0 },
   spawn: { weight: 1.2, weather: null, time: null, requires: null, hidden: null },
   sound: 'bell',
-  desc: 'Went from plain jelly to glowing icon in one season. Before and after photos available on request.',
+  desc: 'Went from plain jelly to glowing star of the deep in one season. Before and after photos available on request.',
   behavior: 'Pulses through the dark, glowing.',
   shinyHue: 110,
 });
@@ -1334,7 +1334,7 @@ add({
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'squeak',
   desc: 'Was right here a second ago. Left you on read. Will reappear in three to five business days.',
-  behavior: 'Turns translucent and vanishes until your cursor gets close.',
+  behavior: 'Turns translucent and vanishes until your hook gets close.',
   shinyHue: 300,
 });
 
@@ -1364,7 +1364,7 @@ add({
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'bell',
   desc: 'Frosted, translucent and very on-trend. You can see right through it, which it considers a design choice.',
-  behavior: 'Turns almost invisible until your cursor gets close.',
+  behavior: 'Turns almost invisible until your hook gets close.',
   shinyHue: 280,
 });
 
@@ -1499,7 +1499,7 @@ add({
   fight: { phases: ['unwrap', 'tension', 'unwrap', 'trace', 'net'], power: 0.55, stamina: 10, tricks: ['wrap', 'fake', 'dash'], biteWindow: 0.6, nibbles: [1, 3], fakeBite: 0.2 },
   spawn: { weight: 1, weather: null, time: null, requires: null, hidden: null },
   sound: 'boing',
-  desc: 'An endless strand of spaghetti that repeats the same story to everyone it meets, word for word.',
+  desc: 'An oarfish as long and pale as an endless strand of spaghetti. Repeats the same story to everyone it meets, word for word.',
   behavior: 'Coils through the deep, telling its story.',
   shinyHue: 20,
 });
@@ -1533,7 +1533,7 @@ add({
   fight: { phases: ['dodge', 'timing', 'trace', 'tension', 'net'], power: 1, stamina: 24, tricks: ['spit', 'ink', 'dive', 'glitch'], biteWindow: 0.5, nibbles: [3, 5], fakeBite: 0.2 },
   spawn: { weight: 1, weather: null, time: null, requires: 'relic', hidden: true },
   sound: 'roar',
-  desc: 'Sees everything you do and recommends a fish based on it. Covered in eyes. Somehow knows you were thinking about it.',
+  desc: 'An ancient coelacanth covered in pale spots, every one of them watching. Sees everything you do and recommends a fish based on it. Somehow knows you were thinking about it.',
   behavior: 'Lurks in the deepest dark. Legendary.',
   shinyHue: 240,
 });
@@ -1714,7 +1714,7 @@ add({
   fight: COMMON_FIGHT(0.14, ['tension', 'net']),
   spawn: { ...NOSPAWN, weight: 1.2 },
   sound: 'boing',
-  desc: 'A perfectly ripe banana that learned to swim. Excellent for scale. Slightly bruised on one side.',
+  desc: 'A trumpetfish exactly as yellow as a ripe banana. Excellent for scale. Slightly bruised on one side.',
   behavior: 'Bobs about in the sun. Loves sugar.',
   shinyHue: 60,
 });
@@ -1745,7 +1745,7 @@ add({
   fight: { phases: ['timing', 'tension', 'net'], power: 0.32, stamina: 4.5, tricks: ['dash', 'fake', 'jump'], biteWindow: 0.6, nibbles: [1, 3], fakeBite: 0.3 },
   spawn: NOSPAWN,
   sound: 'squeak',
-  desc: 'Pointy ears, whiskers, a striped tail and zero interest in you. Knocks your bait off the screen just to watch it fall.',
+  desc: 'Long whiskers, a fire-red tail and zero interest in you. Knocks your bait off the hook just to watch it sink.',
   behavior: 'Forgets what it was doing every few seconds. Loves image bait.',
   shinyHue: 30,
 });
@@ -1770,7 +1770,7 @@ add({
   fight: { phases: ['mash', 'timing'], power: 0.25, stamina: 4, tricks: ['fake'], biteWindow: 1, nibbles: [0, 1], fakeBite: 0.1 },
   spawn: NOSPAWN,
   sound: 'boing',
-  desc: 'A five-armed star in pixel sunglasses that slowly slide down when it is being cool. It is always being cool.',
+  desc: 'A five-armed sea star that lounges on the seabed being cool. It is always being cool. Deal with it.',
   behavior: 'Crawls along the seabed, absolutely dealing with it.',
   shinyHue: 280,
 });
@@ -1858,7 +1858,7 @@ add({
   fight: { phases: ['timing', 'tension', 'net'], power: 0.3, stamina: 5, tricks: ['fake'], biteWindow: 0.8, nibbles: [1, 2], fakeBite: 0.1 },
   spawn: NOSPAWN,
   sound: 'boing',
-  desc: 'In awe at the size of this lad. A perfectly square, perfectly glossy boxfish with a pink heart on each side.',
+  desc: 'In awe at the size of this lad. A perfectly square, perfectly glossy yellow boxfish with polka dots.',
   behavior: 'Floats about like a loyal little cube.',
   shinyHue: 320,
 });
@@ -1890,8 +1890,8 @@ add({
   fight: { phases: ['tension', 'mash', 'dodge', 'trace', 'net'], power: 0.95, stamina: 18, tricks: ['dash', 'dive', 'fake'], biteWindow: 0.5, nibbles: [2, 4], fakeBite: 0.3 },
   spawn: { weight: 0.5, weather: null, time: null, requires: 'golden', hidden: null },
   sound: 'roar',
-  desc: 'A clean-energy shark with a real wind turbine on its back. The faster it swims, the faster it spins. Powers a small village of shrimp.',
-  behavior: 'Patrols the flooded hills with its rotor whirring. Strong and steady on the line.',
+  desc: 'A sleek blue shark built for clean, efficient cruising. The faster it swims, the more it hums like a wind turbine. Powers a small village of shrimp.',
+  behavior: 'Patrols the flooded hills in long, steady loops. Strong and steady on the line.',
   shinyHue: 200,
 });
 
@@ -1920,7 +1920,7 @@ add({
   fight: { phases: ['tension', 'timing', 'dodge', 'net'], power: 0.55, stamina: 8, tricks: ['dash', 'fake', 'spit'], biteWindow: 0.45, nibbles: [1, 3], fakeBite: 0.35 },
   spawn: NOSPAWN,
   sound: 'grunt',
-  desc: 'Pork-pie hat, square glasses, crystal-clear water. You know its name. Say it.',
+  desc: 'A largemouth bass with a cool head and crystal-clear water. You know its name. Say it.',
   behavior: 'Lurks near the hottest vents. A clever fighter.',
   shinyHue: 110,
 });
@@ -1950,7 +1950,7 @@ add({
   spawn: { ...NOSPAWN, weight: 1.1 },
   sound: 'grunt',
   desc: 'Never gonna give you up. Never gonna let you down. Never gonna swim around and desert you.',
-  behavior: 'Plays its little guitar near anything musical.',
+  behavior: 'Hangs around anything musical.',
   shinyHue: 270,
 });
 
@@ -2008,7 +2008,7 @@ add({
   fight: COMMON_FIGHT(0.18, ['mash', 'tension']),
   spawn: { ...NOSPAWN, weight: 1.2 },
   sound: 'blub',
-  desc: 'A slice of pizza with pineapple on top, baked fresh in the lava oven. The reef is divided.',
+  desc: 'A pineapplefish: yellow armour plates and a glowing lantern on its jaw, fresh out of the lava oven. The reef is divided.',
   behavior: 'Bobs over the hot vents. Loves bread.',
   shinyHue: 40,
 });
@@ -2036,7 +2036,7 @@ add({
   fight: { phases: ['tension', 'mash', 'trace', 'net'], power: 0.7, stamina: 10, tricks: ['dive', 'fake'], biteWindow: 0.4, nibbles: [1, 3], fakeBite: 0.3 },
   spawn: { ...NOSPAWN, weight: 0.8 },
   sound: 'bell',
-  desc: 'A solid gold fish that refuses to sell, no matter what. HODL. Its fins are literally diamonds.',
+  desc: 'A solid-gold fancy goldfish that refuses to sell, no matter what. HODL. Its fins are clear as diamonds.',
   behavior: 'Glitters through the financial district. Loves golden bait.',
   shinyHue: 50,
 });
@@ -2126,7 +2126,7 @@ add({
   fight: { phases: ['tension', 'timing', 'trace', 'net'], power: 0.7, stamina: 12, tricks: ['dive', 'fake'], biteWindow: 0.55, nibbles: [2, 4], fakeBite: 0.2 },
   spawn: { weight: 0.8, weather: null, time: 'night', requires: null, hidden: null },
   sound: 'bell',
-  desc: 'Pale, cratered and lying on its side under the moon. Not sad, just a big mood. Snores in bubbles.',
+  desc: 'An opah, round as a full moon with fins of red. Not sad, just a big mood. Snores in bubbles.',
   behavior: 'Only rises when the real moon is out.',
   shinyHue: 230,
 });
@@ -2155,7 +2155,7 @@ add({
   fight: { phases: ['tension', 'mash', 'net'], power: 0.45, stamina: 6, tricks: ['dive', 'fake'], biteWindow: 0.5, nibbles: [0, 1], fakeBite: 0.05 },
   spawn: NOSPAWN,
   sound: 'grunt',
-  desc: 'Deleted every app, wakes at 4 a.m., meditates for weeks under its little hood. Strikes instantly. Monk mode.',
+  desc: 'Deleted every app, wakes at 4 a.m. and meditates on the seabed for weeks with its lure out. Strikes instantly. Monk mode.',
   behavior: 'Sits perfectly still near the bottom, then strikes.',
   shinyHue: 35,
 });
@@ -2243,13 +2243,13 @@ add({
   fight: { phases: ['tension', 'trace', 'dodge', 'net'], power: 0.5, stamina: 8, tricks: ['dive', 'fake'], biteWindow: 0.5, nibbles: [1, 3], fakeBite: 0.25 },
   spawn: NOSPAWN,
   sound: 'grunt',
-  desc: 'Entered its winter arc. Fur cloak, cold showers, no distractions. Comes back in spring a completely new fish.',
+  desc: 'Entered its winter arc. Cold showers, no distractions, a serious chin barbel. Comes back in spring a completely new fish.',
   behavior: 'Patrols the deep cold water. Drawn to calendars.',
   shinyHue: 205,
 });
 
 // Native size pass: looks above are authored compact; grow them (more pixels, not upscaled pixels).
-// Typical fish ~1.3x (60-90 px), tiny ones more, big fish/bosses less, desktop-icon mimics unchanged.
+// Typical fish ~1.3x (60-90 px), tiny ones more, big fish/bosses less, the boxfish mimic unchanged.
 const GROW = {
   pixel: 1.75, loafer: 1.4, guppy: 1.3, briefcase: 1.2, spam: 1.2, lanternfish: 1.2, hatchet: 1.25, glitchminnow: 1.25, bitfish: 1.3,
   koi: 1.12, grouper: 1.12, usbfish: 1.08, gulper: 1.08, dragonfish: 1.1, ghostshark: 1.15, parrot: 1.15, betta: 1.2,
