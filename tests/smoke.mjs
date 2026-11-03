@@ -118,7 +118,7 @@ async function fishOnce(attempt) {
   const t0 = Date.now();
   for (let i = 0; !bit && Date.now() - t0 < 60000; i++) {
     await wait(120);
-    bit = (await G('g.fishing.state')) === 'bite';
+    bit = ['bite', 'fight'].includes(await G('g.fishing.state')); // (the rod may set the hook by itself)
     if (!bit && i % 25 === 24) {
       const near = await G(`(() => { const h = g.fishing.hook, s = g.world.surfaceY ?? 0; let best = null, bd = 1e9; for (const f of g.school.fishes) { if (f.z > 0.6 || f.y < s + 12) continue; const d = Math.hypot(f.x - h.x, f.y - h.y); if (d < bd) { bd = d; best = f; } } return best ? [best.x + (best.facing || 1) * 26, best.y] : null; })()`);
       if (near) await moveL(Math.max(30, Math.min(W - 30, near[0])), Math.max(60, Math.min(H - 60, near[1])), 10);
@@ -127,9 +127,7 @@ async function fishOnce(attempt) {
   }
   if (!bit) return 'nobite';
   await shot('08_bite.png');
-  await page.mouse.down();
-  await page.mouse.up();
-  await wait(120);
+  if ((await G('g.fishing.state')) === 'bite') { await page.mouse.down(); await page.mouse.up(); await wait(120); }
   if (!['fight', 'landing'].includes(await G('g.fishing.state'))) return 'nohook';
   // crank the reel by circling the mouse, keeping the loop on the side opposite to the fish's pull
   // (fishing.crankHint()); ease off when the line gets too tight. One small step per mouse event.
