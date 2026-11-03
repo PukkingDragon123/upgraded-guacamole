@@ -182,15 +182,17 @@ seabed, world space), `drawUi(ctx)`, `hit(wx, wy)`, `active` (build mode), `togg
 - **100% Frutiger Aero**: glossy glass, aqua/sky-blue + grass-green + white, soft gradients, specular highlights,
   bubbles, lens flares, bokeh, light shafts, chrome and translucent plastic, optimistic eco-tech (wind turbines,
   leaves, water drops, dolphins, orbs). Bright and clean, never grungy. UI = glossy glass panels and pill buttons.
-- **Fish are polished PIXEL ART** (user decision, supersedes voxel fish): bold readable silhouettes, clean
-  outlines, cel shading plus a glossy Frutiger Aero specular band, aqua/sky/lime palettes, bubbles and sparkle.
-  **No realistic eyes anywhere**: cute, glossy cartoon eyes (big dark pupil + white shine) drawn as part of the
-  sprite, expressive (blink, squint, wide, hearts...). Not the old realistic "fish pack" style.
+- **Fish are 100% detailed 3D VOXEL models** (the whole game is voxel art). Frutiger Aero styling: glossy specular,
+  translucent aqua-tinted fins, vivid saturated palettes (like the moving-picture aquarium lamp), sparkle and bubbles.
+  **No realistic eyes anywhere**: eyes are cute glossy CARTOON eyes built from voxels (big dark pupil + white shine
+  voxel, simple and expressive: blink, squint, wide, hearts...), never realistic irises/sclera, never 2D overlays.
+  Not the old realistic "fish pack" style.
 - **Fish roster = internet culture and memes**, built on puns and similar-sounding words (e.g. Wi-Fish, Stonks
   Salmon, Rickroll Rockfish, 404 Fish Not Found, Buffering Blowfish), plus fun Frutiger Aero things. Affectionate
   parody names and ORIGINAL designs only: no copied meme images, characters, logos or exact trademarks.
-- **The Pac-Man-style fish** is a unique, polished pixel-art chomper of our own design (not a 1:1 copy): it
-  moves like the arcade classic (straight runs, crisp 90-degree turns, chomping mouth, gobbling pellet bubbles).
+- **The Pac-Man-style fish is the ONE pixel-art fish** (a deliberate retro sprite among the voxel fish): a unique,
+  polished chomper of our own design (not a 1:1 copy) that moves like the arcade classic (straight runs, crisp
+  90-degree turns, chomping mouth, gobbling pellet bubbles).
 - **Reference look (user images, view with Read):** `/tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/images/6.jpg`
   (absurd meme collage: a fish standing in white high-top sneakers on a glossy eco background of big green leaves, sun
   flare, bubbles, water splashes), `7.jpg` (the classic moving-picture aquarium lamp: silver plastic frame, scrolling
