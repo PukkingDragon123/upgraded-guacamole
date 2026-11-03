@@ -131,9 +131,18 @@ export class Camera {
     if (this.bars < 0.01) return;
     const W = this.game.screen.W, H = this.game.screen.H;
     const h = Math.round(H * 0.11 * this.bars);
-    ctx.fillStyle = '#05080c';
-    ctx.fillRect(0, 0, W, h);
-    ctx.fillRect(0, H - h, W, h);
+    if (h < 1) return;
+    // glossy Frutiger Aero cinema bars: deep sky glass with a bright specular edge facing the action
+    for (const [y0, edge] of [[0, h - 1], [H - h, H - h]]) {
+      const g = ctx.createLinearGradient(0, y0, 0, y0 + h);
+      g.addColorStop(0, y0 ? '#1c7fc4' : '#0a3f6e'); g.addColorStop(1, y0 ? '#0a3f6e' : '#1c7fc4');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, y0, W, h);
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.fillRect(0, y0 + Math.round(h * (y0 ? 0.08 : 0.5)), W, Math.max(1, Math.round(h * 0.35)));
+      ctx.fillStyle = 'rgba(190,240,255,0.85)';
+      ctx.fillRect(0, edge, W, 1);
+    }
   }
 
   drawFlash(ctx) {

@@ -1,7 +1,7 @@
 // FISHTOP species collection, phase 3: an internet-culture / meme roster (pun names, original designs,
 // affectionate parodies, no real logos) across seven oceans: (OS)cean 'oscean' (the flooded wallpaper,
 // plus the arrivals in species-oscean.js), Sunny Shallows, Frosty Fjord, Junkyard Reef, Sunken Metropolis,
-// Lava Rift 'volcano' and the Midnight Abyss (species-extra.js holds fjord / volcano / metropolis).
+// Lava Rift 'volcano' and The Deep Ocean (species-extra.js holds fjord / volcano / metropolis).
 // About 15 per ocean: ~6 common, 4 uncommon, 3 rare, 1-2 epic, 1 legendary. Ids are the save keys: keep them.
 // Fish render as 3D voxel models (gfx/voxelfish.js) with cartoon voxel eyes; the Wakka Fish (kind 'chomper')
 // is the one pixel-art sprite. Schema: docs/ARCHITECTURE.md "Species schema". Looks are authored at the

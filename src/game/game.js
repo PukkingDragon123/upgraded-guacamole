@@ -379,7 +379,7 @@ export class Game {
   command(id) {
     const ui = this.ui;
     switch (id) {
-      case 'journal': case 'skills': case 'shop': case 'map': case 'bait': case 'settings':
+      case 'journal': case 'skills': case 'shop': case 'map': case 'bait': case 'settings': case 'lab': case 'wardrobe': case 'multiplayer': case 'inventory':
         if (ui.panels[id]) ui.toggle(id); else this.toast('Coming soon!', 'info');
         break;
       case 'tank':
@@ -427,7 +427,7 @@ export class Game {
 
   musicTrackName() {
     const t = this.musicFor();
-    return { desktop: 'Desktop Lullaby', shallows: 'Sunny Shallows Groove', junkyard: 'Junkyard Glitch-Hop', abyss: 'Deep Ocean Drone', aquarium: 'Aquarium Dreams' }[t] || 'Silence';
+    return { desktop: 'Desktop Lullaby', oscean: '(OS)cean Startup Chime', shallows: 'Sunny Shallows Groove', fjord: 'Frosty Fjord Aurora', junkyard: 'Junkyard Glitch-Hop', metropolis: 'Metropolis Neon Nights', volcano: 'Lava Rift Rumble', abyss: 'Deep Ocean Drone', aquarium: 'Aquarium Dreams' }[t] || 'Silence';
   }
 
   setMini(on) {
@@ -661,7 +661,7 @@ export class Game {
   handleKeys() {
     const inp = this.input;
     if (this.input.lastKeyEvent && this.desktop.windows.length && this.desktop.windows[this.desktop.windows.length - 1].app === 'terminal') return;
-    const map = { j: 'journal', k: 'skills', s: 'shop', t: 'map', b: 'bait', p: 'pause', m: 'mini', a: 'tank' };
+    const map = { j: 'journal', l: 'lab', k: 'lab', t: 'map', b: 'bait', w: 'wardrobe', o: 'multiplayer', p: 'pause', m: 'mini', a: 'tank' };
     for (const [k, cmd] of Object.entries(map)) {
       if (inp.keyPressed(k)) {
         if (this.tutorial.active && cmd !== 'pause') continue;

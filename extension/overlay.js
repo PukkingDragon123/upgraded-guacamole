@@ -34131,7 +34131,7 @@ kmlmk..
   n("sea_forecast", "oceans", 4, 1, "Weather Radio", "cloud", ["sea_compass"], { effect: { forecast: 1, rarityBoost: 1.03 }, desc: "Know when rare weather hits." });
   n("sea_volcano", "oceans", 5, 0, "Lava Rift", "biome:volcano", ["sea_metropolis"], { unlock: [U("biome", "volcano")], desc: "Brave the volcanic vents.", fish: { "biome:metropolis": 2, "rarity:rare": 1 } });
   n("sea_sonar", "oceans", 5, 1, "Sonar Ping", "sonar", ["sea_metropolis", "sea_forecast"], { effect: { sonar: 1, rarityBoost: 1.05 }, desc: "Rare fish ping back." });
-  n("sea_abyss", "oceans", 6, 0, "Midnight Abyss", "biome:abyss", ["sea_volcano", "sea_lantern"], { unlock: [U("biome", "abyss")], desc: "Into the deep dark.", fish: { "biome:volcano": 2, "rarity:rare": 1 } });
+  n("sea_abyss", "oceans", 6, 0, "The Deep Ocean", "biome:abyss", ["sea_volcano", "sea_lantern"], { unlock: [U("biome", "abyss")], desc: "Into the deep dark.", fish: { "biome:volcano": 2, "rarity:rare": 1 } });
   n("sea_pressure", "oceans", 7, -1, "Pressure Suit", "heart", ["sea_abyss"], { effect: { rodResilience: 0.08, calm: 1.1 }, desc: "Deep fish fight less dirty." });
   n("sea_legend", "oceans", 8, 0, "Legend Hunter", "crown", ["sea_abyss", "sea_sonar"], { effect: { rarityBoost: 1.12, shinyChance: 1.25 }, desc: "Legends sense a worthy angler.", fish: { "biome:abyss": 2, "rarity:epic": 1 } });
   n("tank_bowl", "aquarium", 1, 0, "Fishbowl", "tank:bowl", [ROOT_ID], { unlock: [U("tank", "bowl")], effect: { tankCap: 1 }, desc: "Upgrade the jar to a proper bowl." });

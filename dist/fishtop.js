@@ -18555,7 +18555,7 @@
   // src/game/state.js
   function defaultState() {
     return {
-      v: 1,
+      v: 3,
       created: Date.now(),
       lastSeen: Date.now(),
       coins: 0,
@@ -18564,8 +18564,8 @@
       tutorialStep: 0,
       biome: "oscean",
       // [phase3:world] the (OS)cean is the first ocean
-      unlockedBiomes: ["oscean", "shallows"],
-      // [phase3:world]
+      unlockedBiomes: ["oscean"],
+      // the rest are charted in The Lab
       skills: {},
       baits: { bread: 3 },
       equipped: null,
@@ -18615,7 +18615,19 @@
   function loadState() {
     try {
       const raw = localStorage.getItem(KEY);
-      if (!raw) return defaultState();
+      if (!raw) {
+        const st = defaultState();
+        for (const k of LEGACY_KEYS) {
+          const old = localStorage.getItem(k);
+          if (!old) continue;
+          try {
+            st.settings = merge(st.settings, JSON.parse(old).settings);
+          } catch {
+          }
+          break;
+        }
+        return st;
+      }
       return merge(defaultState(), JSON.parse(raw));
     } catch {
       return defaultState();
@@ -18643,10 +18655,11 @@
   function importState(code) {
     return merge(defaultState(), JSON.parse(decodeURIComponent(escape(atob(code.trim())))));
   }
-  var KEY;
+  var KEY, LEGACY_KEYS;
   var init_state = __esm({
     "src/game/state.js"() {
-      KEY = "fishtop.save.v1";
+      KEY = "fishtop.save.v3";
+      LEGACY_KEYS = ["fishtop.save.v1"];
     }
   });
 
@@ -22792,7 +22805,7 @@ Your files are never touched.`;
       };
       BOAT_NAMES = { raft: "Bubble Raft", dinghy: "Dinghy", skiff: "Skiff", hydrofoil: "Hydrofoil", yacht: "Aero Yacht", catamaran: "Catamaran", submarine: "Submarine" };
       TANK_NAMES = { jar: "Goldfish Jar", bowl: "Fishbowl", smalltank: "Small Tank", bigtank: "Big Tank", reeftank: "Reef Tank", wallaquarium: "Wall Aquarium" };
-      OCEAN_NAMES = { oscean: "(OS)cean", shallows: "Sunny Shallows", fjord: "Frosty Fjord", junkyard: "Junkyard Reef", metropolis: "Sunken Metropolis", volcano: "Lava Rift", abyss: "Midnight Abyss" };
+      OCEAN_NAMES = { oscean: "(OS)cean", shallows: "Sunny Shallows", fjord: "Frosty Fjord", junkyard: "Junkyard Reef", metropolis: "Sunken Metropolis", volcano: "Lava Rift", abyss: "The Deep Ocean" };
       BRANCHES = {
         rods: { name: "Rods", color: "#35c8ff", angle: -90, icon: "rod:glass" },
         reel: { name: "Reel & Shock", color: "#ffc23a", angle: -45, icon: "bolt" },
@@ -22987,7 +23000,7 @@ Your files are never touched.`;
       n("sea_forecast", "oceans", 4, 1, "Weather Radio", "cloud", ["sea_compass"], { effect: { forecast: 1, rarityBoost: 1.03 }, desc: "Know when rare weather hits." });
       n("sea_volcano", "oceans", 5, 0, "Lava Rift", "biome:volcano", ["sea_metropolis"], { unlock: [U("biome", "volcano")], desc: "Brave the volcanic vents.", fish: { "biome:metropolis": 2, "rarity:rare": 1 } });
       n("sea_sonar", "oceans", 5, 1, "Sonar Ping", "sonar", ["sea_metropolis", "sea_forecast"], { effect: { sonar: 1, rarityBoost: 1.05 }, desc: "Rare fish ping back." });
-      n("sea_abyss", "oceans", 6, 0, "Midnight Abyss", "biome:abyss", ["sea_volcano", "sea_lantern"], { unlock: [U("biome", "abyss")], desc: "Into the deep dark.", fish: { "biome:volcano": 2, "rarity:rare": 1 } });
+      n("sea_abyss", "oceans", 6, 0, "The Deep Ocean", "biome:abyss", ["sea_volcano", "sea_lantern"], { unlock: [U("biome", "abyss")], desc: "Into the deep dark.", fish: { "biome:volcano": 2, "rarity:rare": 1 } });
       n("sea_pressure", "oceans", 7, -1, "Pressure Suit", "heart", ["sea_abyss"], { effect: { rodResilience: 0.08, calm: 1.1 }, desc: "Deep fish fight less dirty." });
       n("sea_legend", "oceans", 8, 0, "Legend Hunter", "crown", ["sea_abyss", "sea_sonar"], { effect: { rarityBoost: 1.12, shinyChance: 1.25 }, desc: "Legends sense a worthy angler.", fish: { "biome:abyss": 2, "rarity:epic": 1 } });
       n("tank_bowl", "aquarium", 1, 0, "Fishbowl", "tank:bowl", [ROOT_ID], { unlock: [U("tank", "bowl")], effect: { tankCap: 1 }, desc: "Upgrade the jar to a proper bowl." });
@@ -60567,9 +60580,18 @@ ${hearts} ${status}
           if (this.bars < 0.01) return;
           const W10 = this.game.screen.W, H10 = this.game.screen.H;
           const h = Math.round(H10 * 0.11 * this.bars);
-          ctx3.fillStyle = "#05080c";
-          ctx3.fillRect(0, 0, W10, h);
-          ctx3.fillRect(0, H10 - h, W10, h);
+          if (h < 1) return;
+          for (const [y0, edge] of [[0, h - 1], [H10 - h, H10 - h]]) {
+            const g = ctx3.createLinearGradient(0, y0, 0, y0 + h);
+            g.addColorStop(0, y0 ? "#1c7fc4" : "#0a3f6e");
+            g.addColorStop(1, y0 ? "#0a3f6e" : "#1c7fc4");
+            ctx3.fillStyle = g;
+            ctx3.fillRect(0, y0, W10, h);
+            ctx3.fillStyle = "rgba(255,255,255,0.18)";
+            ctx3.fillRect(0, y0 + Math.round(h * (y0 ? 0.08 : 0.5)), W10, Math.max(1, Math.round(h * 0.35)));
+            ctx3.fillStyle = "rgba(190,240,255,0.85)";
+            ctx3.fillRect(0, edge, W10, 1);
+          }
         }
         drawFlash(ctx3) {
           if (this.flashA > 0.01) {
@@ -81140,7 +81162,7 @@ ${hearts} ${status}
         }
         partyLuck() {
           if (!this.online) return 1;
-          const n2 = this.peersHere().filter((p) => !p.isMe).length;
+          const n2 = this.peersHere().filter((p) => !p.isMe && p.src !== "local").length;
           return 1 + 0.1 * Math.min(3, n2);
         }
         // ---------------------------------------------------------------- frame
@@ -84123,6 +84145,10 @@ void main() {
             case "map":
             case "bait":
             case "settings":
+            case "lab":
+            case "wardrobe":
+            case "multiplayer":
+            case "inventory":
               if (ui.panels[id2]) ui.toggle(id2);
               else this.toast("Coming soon!", "info");
               break;
@@ -84171,7 +84197,7 @@ void main() {
         }
         musicTrackName() {
           const t = this.musicFor();
-          return { desktop: "Desktop Lullaby", shallows: "Sunny Shallows Groove", junkyard: "Junkyard Glitch-Hop", abyss: "Deep Ocean Drone", aquarium: "Aquarium Dreams" }[t] || "Silence";
+          return { desktop: "Desktop Lullaby", oscean: "(OS)cean Startup Chime", shallows: "Sunny Shallows Groove", fjord: "Frosty Fjord Aurora", junkyard: "Junkyard Glitch-Hop", metropolis: "Metropolis Neon Nights", volcano: "Lava Rift Rumble", abyss: "Deep Ocean Drone", aquarium: "Aquarium Dreams" }[t] || "Silence";
         }
         setMini(on) {
           this.mini = on;
@@ -84415,7 +84441,7 @@ void main() {
         handleKeys() {
           const inp = this.input;
           if (this.input.lastKeyEvent && this.desktop.windows.length && this.desktop.windows[this.desktop.windows.length - 1].app === "terminal") return;
-          const map = { j: "journal", k: "skills", s: "shop", t: "map", b: "bait", p: "pause", m: "mini", a: "tank" };
+          const map = { j: "journal", l: "lab", k: "lab", t: "map", b: "bait", w: "wardrobe", o: "multiplayer", p: "pause", m: "mini", a: "tank" };
           for (const [k, cmd] of Object.entries(map)) {
             if (inp.keyPressed(k)) {
               if (this.tutorial.active && cmd !== "pause") continue;

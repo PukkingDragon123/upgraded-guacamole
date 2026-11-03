@@ -327,7 +327,8 @@ export class Net {
 
   partyLuck() {
     if (!this.online) return 1;
-    const n = this.peersHere().filter((p) => !p.isMe).length;
+    // only other people count: windows on this machine (local channel) and your own other tabs share one save
+    const n = this.peersHere().filter((p) => !p.isMe && p.src !== 'local').length;
     return 1 + 0.1 * Math.min(3, n);
   }
 

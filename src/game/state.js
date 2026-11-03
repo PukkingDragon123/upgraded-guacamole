@@ -1,10 +1,11 @@
 // Persistent game state (localStorage) with defaults and light migration.
 
-const KEY = 'fishtop.save.v1';
+const KEY = 'fishtop.save.v3';
+const LEGACY_KEYS = ['fishtop.save.v1']; // phase 1-2 saves: the Lab/Aero progression starts fresh, settings carry over
 
 export function defaultState() {
   return {
-    v: 1,
+    v: 3,
     created: Date.now(),
     lastSeen: Date.now(),
     coins: 0,
@@ -12,7 +13,7 @@ export function defaultState() {
     tutorialDone: false,
     tutorialStep: 0,
     biome: 'oscean', // [phase3:world] the (OS)cean is the first ocean
-    unlockedBiomes: ['oscean', 'shallows'], // [phase3:world]
+    unlockedBiomes: ['oscean'], // the rest are charted in The Lab
     skills: {},
     baits: { bread: 3 },
     equipped: null, // { kind: 'icon', id } | { kind: 'special', id }
@@ -47,7 +48,16 @@ function merge(base, saved) {
 export function loadState() {
   try {
     const raw = localStorage.getItem(KEY);
-    if (!raw) return defaultState();
+    if (!raw) {
+      const st = defaultState();
+      for (const k of LEGACY_KEYS) {
+        const old = localStorage.getItem(k);
+        if (!old) continue;
+        try { st.settings = merge(st.settings, JSON.parse(old).settings); } catch { /* ignore */ }
+        break;
+      }
+      return st;
+    }
     return merge(defaultState(), JSON.parse(raw));
   } catch {
     return defaultState();
