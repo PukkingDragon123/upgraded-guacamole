@@ -1251,7 +1251,7 @@ S('hammerhead', 'hammerhead');
 S('goldbar', 'goldfish', { col: C('#f09010', '#ffb020', '#ffe080', '#ffd070'), mat: { iri: 0.35, gloss: 0.95, finGlass: 0.42 }, fins: [fin('top', 0.32, 0.7, 0.22, 'trail', 0.6, 14, { col: '#e8f8ff' }), fin('bot', 0.72, 0.82, 0.14, 'trail', 0.6, 7, { col: '#e8f8ff' })], tail: { col: '#e8f8ff', base: '#ffb020' }, pec: { col: '#e8f8ff' }, pel: { col: '#e8f8ff' } });
 S('batfish', 'platax', { pat: [{ type: 'vgrad', v0: 0.95, v1: 1.0, color: '#ff6a10' }, { type: 'vgrad', v0: 0.05, v1: 0.0, color: '#ff6a10' }], fins: [fin('top', 0.32, 0.86, 0.72, 'rise', 0.9, 20, { edge: '#ff6a10', edgeW: 0.1 }), fin('bot', 0.38, 0.86, 0.7, 'rise', 0.9, 18, { edge: '#ff6a10', edgeW: 0.1 })], tail: { edge: '#ff6a10', edgeW: 0.15 }, pel: { col: '#1a1a22', edge: '#ff6a10' } });
 // ---- solid creatures (realvox SOLIDS) and eel heads for chain creatures
-const solid = (kind, col, o = {}) => ({ plan: 'solid', kind, col, ...o });
+const solid = (kind, col, o = {}) => ({ plan: 'solid', kind, col, chunk: kind === 'jelly' ? 1.35 : 1.15, ...o });
 SPEC_IN.clickcrab = solid('crab', { back: '#e6dccb', flank: '#f0e8da', belly: '#faf6ee', leg: '#ece2d0', claw: '#f2e8d8', tip: '#c87a50', eye: '#141414' }, { stalk: 1.7, eyeR: 0.03, yawBase: 58 });
 SPEC_IN.mechacrab = solid('crab', { back: '#e0300e', flank: '#ff5a22', belly: '#ffd2a8', leg: '#e8481a', claw: '#d4260c', tip: '#ffd040', spots: '#ffd040', eye: '#1a1418' }, { stalk: 1.4 });
 SPEC_IN.snowcrab = solid('crab', { back: '#e07a3e', flank: '#eea062', belly: '#f8e8d2', leg: '#e88a50', claw: '#da7038', tip: '#3a2a20' }, { legLen: 0.85, wide: 0.42, claw: 0.7, stalk: 0.9 });
@@ -1294,7 +1294,7 @@ function autoReal(look, kind) {
   const col = look.col || look.chain?.col || {};
   const c = { back: col.back || col.body || '#4a6a8a', flank: col.body || '#8aa0b8', belly: col.belly || '#f0f4f8', fin: col.fin || col.body || '#8aa0b8' };
   const k = kind || look.kind;
-  if (SOLID_KIND[k]) return { plan: 'solid', kind: SOLID_KIND[k], col: { ...c, leg: c.flank, claw: c.back } };
+  if (SOLID_KIND[k]) return { plan: 'solid', kind: SOLID_KIND[k], col: { ...c, leg: c.flank, claw: c.back }, chunk: 1.2 };
   if (k === 'chain') return eelHead({ col: c, seg: { top: c.back, side: c.flank, belly: c.belly, fin: c.fin } });
   const base = FISH_KIND[k] || SHAPE_BASE[look.body?.shape || 'oval'] || 'perch';
   return { base, col: c };

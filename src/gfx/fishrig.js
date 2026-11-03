@@ -233,7 +233,10 @@ function drawVoxelRig(ctx, c, st) {
   if (yaw < -90) yaw = -90;
   // render at the device resolution of the zoomed camera: finer voxels up close, drawn back at world scale
   const zk = ctxScale(ctx);
-  const S = (st.scale ?? 1) * zk;
+  // background scenery fish (pri < 0.5, e.g. giant hero fish behind the fog) render at half resolution:
+  // a stable soft look at a quarter of the cost instead of starving behind the swimmers up front
+  const lowK = (st.pri ?? 1) < 0.5 && (st.scale ?? 1) * zk > 1.5 ? 0.5 : 1;
+  const S = (st.scale ?? 1) * zk * lowK;
   const ang = kind ? 0 : st.angle || 0;
   const t = st.time || 0;
   const lod = st.lod || 0;
@@ -244,7 +247,7 @@ function drawVoxelRig(ctx, c, st) {
   const pose = !!(st.pose || st.emotion === 'pose');
   const res = voxelFrame(c, { S, yaw, pitch: ang / DEG, sw, infl, pose, lod, pri: st.pri ?? 1 });
   if (!res) return null; // first frame still building: the pixel rig stands in this once
-  const f = res.f, k = res.k / zk;
+  const f = res.f, k = res.k / zk / lowK;
   const sq = clamp(st.squash || 0, -1, 1);
   const kx = k * (1 + 0.22 * sq), ky = k * (1 - 0.2 * sq);
   const fang = f.pitch * DEG; // bucketed pitch of the frame (stable face sprite keys)

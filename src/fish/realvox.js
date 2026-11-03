@@ -1382,7 +1382,7 @@ function voxelise(sol, r, pal, meta) {
   const zmin = new Int16Array(NXY).fill(32767), zmax = new Int16Array(NXY).fill(-1);
   const toV = (x, y, z) => [(x - B.x0) * r + PADV, (y - B.y0) * r + PADV, (z - B.z0) * r + PADV];
   const pv = palCache(pal);
-  sol.prims.forEach((p, pi) => {
+  const stampPrim = (p, pi) => {
     let x0, x1, y0, y1, z0, z1;
     if (p.t === 0) { const h = ellExt(p); [x0, y0, z0] = toV(p.c[0] - h[0], p.c[1] - h[1], p.c[2] - h[2]); [x1, y1, z1] = toV(p.c[0] + h[0], p.c[1] + h[1], p.c[2] + h[2]); }
     else { const m = Math.max(p.ra, p.rb); [x0, y0, z0] = toV(Math.min(p.a[0], p.b[0]) - m, Math.min(p.a[1], p.b[1]) - m, Math.min(p.a[2], p.b[2]) - m); [x1, y1, z1] = toV(Math.max(p.a[0], p.b[0]) + m, Math.max(p.a[1], p.b[1]) + m, Math.max(p.a[2], p.b[2]) + m); }
@@ -1457,7 +1457,10 @@ function voxelise(sol, r, pal, meta) {
         }
       }
     }
-  });
+  };
+  // resumable: primitives are stamped in slices under the caller's deadline (big creatures span frames)
+  let next = 0;
+  const finish = () => {
   let x0 = NX, x1 = -1, y0 = NY, y1 = -1, z0 = NZ, z1 = -1;
   for (let y = 0; y < NY; y++) for (let x = 0; x < NX; x++) {
     const cc = x + y * NX;
@@ -1485,6 +1488,18 @@ function voxelise(sol, r, pal, meta) {
     srcOf: null, zOf: new Int16Array(NX), zc: center[2], mat: meta.mat, nf, roll: meta.roll || 0,
     center, eyes: (meta.eyes || []).map((e) => ({ x: 0, y: 0, r: e[3] || 1, rLook: e[3] || 1, e: { type: 'real' }, p: P3(e) })), eyes3: [], mouth: null, anchors,
     bytes: data.byteLength * 1.5 + NXY * 4,
+  };
+  };
+  return {
+    step(deadline = Infinity) {
+      const tn = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+      while (next < sol.prims.length) {
+        stampPrim(sol.prims[next], next);
+        next++;
+        if ((next & 3) === 0 && tn() > deadline) return null;
+      }
+      return finish();
+    },
   };
 }
 
@@ -1924,6 +1939,11 @@ export function solidExtents(c) {
 
 /** Build the voxel grid of a solid creature for animation frame kf (0..SWIM_FRAMES-1). */
 export function solidGrid(Lo, kf) {
+  return solidGridJob(Lo, kf).step(Infinity);
+}
+
+/** Resumable build of a solid creature's grid: job.step(deadline) -> grid, or null while unfinished. */
+export function solidGridJob(Lo, kf) {
   const c = Lo.c;
   const sp = solidSpec(c, kf / SWIM_FRAMES);
   return voxelise(sp.sol, Lo.r, Lo.pal, { c, mat: Lo.mat, anchors: sp.anchors, eyes: sp.eyes, roll: sp.roll });

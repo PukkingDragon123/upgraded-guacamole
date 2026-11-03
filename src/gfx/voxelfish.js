@@ -28,7 +28,7 @@ import { PixelBuffer } from './pixel.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { drawFishRig } from './fishrig.js';
 import { drawPellets, wakkaRig } from '../fish/wakka.js';
-import { realLayout, realGrid, realEyeColor, solidGrid, realSegColor, palCache } from '../fish/realvox.js';
+import { realLayout, realGrid, realEyeColor, solidGrid, solidGridJob, realSegColor, palCache } from '../fish/realvox.js';
 
 export const VP = 1.4;             // target on-screen pixels per voxel (phase 4: finer voxels for the zoomed camera)
 const SCALE_STEP = 1.12;           // on-screen scale buckets (drawn scaled to the exact size)
@@ -1510,6 +1510,7 @@ let gridBytes = 0;
 function touch(map, k, v) { map.delete(k); map.set(k, v); }
 
 const rasters = new Map();   // source rasters (RasterJob, done or in progress)
+const solidJobs = new Map(); // gkey -> resumable solid voxelisation
 function rasterFor(c, srcK, infl, pose, kf, deadline) {
   const key = vidOf(c) + '|' + srcK + '|' + infl + '|' + (pose ? 1 : 0) + '|' + kf;
   let R = rasters.get(key);
@@ -1575,10 +1576,19 @@ function gridFor(c, rk, infl, pose, sw, deadline) {
   const Lo = layoutFor(c, rk, infl, pose, kf, deadline);
   if (!Lo) return null;
   const t0 = now();
-  if (Lo.solid) G = solidGrid(Lo, kf);
-  else if (Lo.real) G = realGrid(Lo, sw);
-  else G = buildGrid(Lo, kind ? 0 : sw);
-  spent += now() - t0; workTotal += now() - t0;
+  if (Lo.solid) {
+    // solid creatures voxelise progressively (primitive by primitive) under the frame budget
+    let J = solidJobs.get(gkey);
+    if (!J) { J = solidGridJob(Lo, kf); solidJobs.set(gkey, J); if (solidJobs.size > 64) solidJobs.delete(solidJobs.keys().next().value); }
+    G = J.step(deadline);
+    spent += now() - t0; workTotal += now() - t0;
+    if (!G) return null;
+    solidJobs.delete(gkey);
+  } else {
+    if (Lo.real) G = realGrid(Lo, sw);
+    else G = buildGrid(Lo, kind ? 0 : sw);
+    spent += now() - t0; workTotal += now() - t0;
+  }
   grids.set(gkey, G);
   gridBytes += G.bytes;
   while (gridBytes > GRID_BYTES_MAX && grids.size > 4) {
@@ -1798,7 +1808,7 @@ export function benchVoxel(c, S, yaw = 15, pitch = 0) {
 }
 
 export function clearVoxelFishCache() {
-  rasters.clear(); layouts.clear(); grids.clear(); frames.clear(); jobs.clear(); byCreature.clear(); warmQ.length = 0; warmed.clear();
+  rasters.clear(); layouts.clear(); grids.clear(); frames.clear(); jobs.clear(); byCreature.clear(); warmQ.length = 0; warmed.clear(); solidJobs.clear();
   gridBytes = 0; framePx = 0;
 }
 

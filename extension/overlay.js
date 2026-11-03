@@ -2533,7 +2533,7 @@
     const col = look.col || look.chain?.col || {};
     const c = { back: col.back || col.body || "#4a6a8a", flank: col.body || "#8aa0b8", belly: col.belly || "#f0f4f8", fin: col.fin || col.body || "#8aa0b8" };
     const k = kind || look.kind;
-    if (SOLID_KIND[k]) return { plan: "solid", kind: SOLID_KIND[k], col: { ...c, leg: c.flank, claw: c.back } };
+    if (SOLID_KIND[k]) return { plan: "solid", kind: SOLID_KIND[k], col: { ...c, leg: c.flank, claw: c.back }, chunk: 1.2 };
     if (k === "chain") return eelHead({ col: c, seg: { top: c.back, side: c.flank, belly: c.belly, fin: c.fin } });
     const base = FISH_KIND[k] || SHAPE_BASE[look.body?.shape || "oval"] || "perch";
     return { base, col: c };
@@ -3756,7 +3756,7 @@
       S4("hammerhead", "hammerhead");
       S4("goldbar", "goldfish", { col: C("#f09010", "#ffb020", "#ffe080", "#ffd070"), mat: { iri: 0.35, gloss: 0.95, finGlass: 0.42 }, fins: [fin("top", 0.32, 0.7, 0.22, "trail", 0.6, 14, { col: "#e8f8ff" }), fin("bot", 0.72, 0.82, 0.14, "trail", 0.6, 7, { col: "#e8f8ff" })], tail: { col: "#e8f8ff", base: "#ffb020" }, pec: { col: "#e8f8ff" }, pel: { col: "#e8f8ff" } });
       S4("batfish", "platax", { pat: [{ type: "vgrad", v0: 0.95, v1: 1, color: "#ff6a10" }, { type: "vgrad", v0: 0.05, v1: 0, color: "#ff6a10" }], fins: [fin("top", 0.32, 0.86, 0.72, "rise", 0.9, 20, { edge: "#ff6a10", edgeW: 0.1 }), fin("bot", 0.38, 0.86, 0.7, "rise", 0.9, 18, { edge: "#ff6a10", edgeW: 0.1 })], tail: { edge: "#ff6a10", edgeW: 0.15 }, pel: { col: "#1a1a22", edge: "#ff6a10" } });
-      solid = (kind, col, o = {}) => ({ plan: "solid", kind, col, ...o });
+      solid = (kind, col, o = {}) => ({ plan: "solid", kind, col, chunk: kind === "jelly" ? 1.35 : 1.15, ...o });
       SPEC_IN.clickcrab = solid("crab", { back: "#e6dccb", flank: "#f0e8da", belly: "#faf6ee", leg: "#ece2d0", claw: "#f2e8d8", tip: "#c87a50", eye: "#141414" }, { stalk: 1.7, eyeR: 0.03, yawBase: 58 });
       SPEC_IN.mechacrab = solid("crab", { back: "#e0300e", flank: "#ff5a22", belly: "#ffd2a8", leg: "#e8481a", claw: "#d4260c", tip: "#ffd040", spots: "#ffd040", eye: "#1a1418" }, { stalk: 1.4 });
       SPEC_IN.snowcrab = solid("crab", { back: "#e07a3e", flank: "#eea062", belly: "#f8e8d2", leg: "#e88a50", claw: "#da7038", tip: "#3a2a20" }, { legLen: 0.85, wide: 0.42, claw: 0.7, stalk: 0.9 });
@@ -7933,23 +7933,23 @@
     const zmin = new Int16Array(NXY).fill(32767), zmax = new Int16Array(NXY).fill(-1);
     const toV = (x, y, z) => [(x - B2.x0) * r + PADV, (y - B2.y0) * r + PADV, (z - B2.z0) * r + PADV];
     const pv = palCache(pal2);
-    sol.prims.forEach((p, pi) => {
-      let x02, x12, y02, y12, z02, z12;
+    const stampPrim = (p, pi) => {
+      let x0, x1, y0, y1, z0, z1;
       if (p.t === 0) {
         const h = ellExt(p);
-        [x02, y02, z02] = toV(p.c[0] - h[0], p.c[1] - h[1], p.c[2] - h[2]);
-        [x12, y12, z12] = toV(p.c[0] + h[0], p.c[1] + h[1], p.c[2] + h[2]);
+        [x0, y0, z0] = toV(p.c[0] - h[0], p.c[1] - h[1], p.c[2] - h[2]);
+        [x1, y1, z1] = toV(p.c[0] + h[0], p.c[1] + h[1], p.c[2] + h[2]);
       } else {
         const m = Math.max(p.ra, p.rb);
-        [x02, y02, z02] = toV(Math.min(p.a[0], p.b[0]) - m, Math.min(p.a[1], p.b[1]) - m, Math.min(p.a[2], p.b[2]) - m);
-        [x12, y12, z12] = toV(Math.max(p.a[0], p.b[0]) + m, Math.max(p.a[1], p.b[1]) + m, Math.max(p.a[2], p.b[2]) + m);
+        [x0, y0, z0] = toV(Math.min(p.a[0], p.b[0]) - m, Math.min(p.a[1], p.b[1]) - m, Math.min(p.a[2], p.b[2]) - m);
+        [x1, y1, z1] = toV(Math.max(p.a[0], p.b[0]) + m, Math.max(p.a[1], p.b[1]) + m, Math.max(p.a[2], p.b[2]) + m);
       }
-      x02 = Math.max(0, Math.floor(x02));
-      y02 = Math.max(0, Math.floor(y02));
-      z02 = Math.max(0, Math.floor(z02));
-      x12 = Math.min(NX - 1, Math.ceil(x12));
-      y12 = Math.min(NY - 1, Math.ceil(y12));
-      z12 = Math.min(NZ - 1, Math.ceil(z12));
+      x0 = Math.max(0, Math.floor(x0));
+      y0 = Math.max(0, Math.floor(y0));
+      z0 = Math.max(0, Math.floor(z0));
+      x1 = Math.min(NX - 1, Math.ceil(x1));
+      y1 = Math.min(NY - 1, Math.ceil(y1));
+      z1 = Math.min(NZ - 1, Math.ceil(z1));
       const q = p.t === 1 && Math.max(p.ra, p.rb) * r < 0.75 ? { ...p, ra: Math.max(p.ra, 0.62 / r), rb: Math.max(p.rb, 0.62 / r) } : p;
       p._n = p.t === 1 ? { ...p, ra: p.ra + 2 / r, rb: p.rb + 2 / r } : { ...p, shell: 0, cut: null, r: p.r.map((v) => v + 1.5 / r), _ext: null };
       const role = p.role ?? R_BODY;
@@ -7967,18 +7967,18 @@
       const e0 = isCap ? 1 : p.r[0], e1 = isCap ? 1 : p.r[1], e2 = isCap ? 1 : p.r[2];
       const aligned = p.t === 0 && !p.axes;
       const innerK = aligned && inner > 0 ? inner * inner : -1;
-      for (let iz = z02; iz <= z12; iz++) {
+      for (let iz = z0; iz <= z1; iz++) {
         const z = B2.z0 + (iz - PADV + 0.5) / r;
-        for (let iy = y02; iy <= y12; iy++) {
+        for (let iy = y0; iy <= y1; iy++) {
           const y = B2.y0 + (iy - PADV + 0.5) / r;
-          let xa = x02, xb = x12, ha = 1, hb = 0;
+          let xa = x0, xb = x1, ha = 1, hb = 0;
           if (aligned) {
             const qy = (y - p.c[1]) / p.r[1], qz = (z - p.c[2]) / p.r[2];
             const rem = 1 - qy * qy - qz * qz;
             if (rem < 0) continue;
             const hw = Math.sqrt(rem) * p.r[0];
-            xa = Math.max(x02, Math.floor((p.c[0] - hw - B2.x0) * r + PADV - 0.5));
-            xb = Math.min(x12, Math.ceil((p.c[0] + hw - B2.x0) * r + PADV - 0.5));
+            xa = Math.max(x0, Math.floor((p.c[0] - hw - B2.x0) * r + PADV - 0.5));
+            xb = Math.min(x1, Math.ceil((p.c[0] + hw - B2.x0) * r + PADV - 0.5));
             if (innerK > 0 && innerK - qy * qy - qz * qz > 0) {
               const hi = Math.sqrt(innerK - qy * qy - qz * qz) * p.r[0];
               ha = Math.ceil((p.c[0] - hi - B2.x0) * r + PADV - 0.5) + 1;
@@ -8017,64 +8017,78 @@
           }
         }
       }
-    });
-    let x0 = NX, x1 = -1, y0 = NY, y1 = -1, z0 = NZ, z1 = -1;
-    for (let y = 0; y < NY; y++) for (let x = 0; x < NX; x++) {
-      const cc = x + y * NX;
-      if (zmax[cc] < 0) continue;
-      if (x < x0) x0 = x;
-      if (x > x1) x1 = x;
-      if (y < y0) y0 = y;
-      if (y > y1) y1 = y;
-      if (zmin[cc] < z0) z0 = zmin[cc];
-      if (zmax[cc] > z1) z1 = zmax[cc];
-    }
-    if (x1 < 0) {
-      x0 = y0 = z0 = 0;
-      x1 = y1 = z1 = 0;
-    }
-    const N = [0, 0, 0];
-    const nf = (ix, iy, iz) => {
-      const k = pid[ix + iy * NX + iz * NXY];
-      if (!k) return null;
-      const p = sol.prims[k - 1];
-      if (p.flatN) return null;
-      const x = B2.x0 + (ix - PADV + 0.5) / r, y = B2.y0 + (iy - PADV + 0.5) / r, z = B2.z0 + (iz - PADV + 0.5) / r;
-      primHit(p._n, x, y, z, N);
-      return [N[0], N[1], N[2]];
     };
-    const center = toV(0, 0, 0);
-    const P32 = (q) => toV(q[0], q[1], q[2] ?? 0);
-    const anchors = {};
-    for (const [k, v] of Object.entries(meta.anchors || {})) anchors[k] = P32(v);
+    let next = 0;
+    const finish2 = () => {
+      let x0 = NX, x1 = -1, y0 = NY, y1 = -1, z0 = NZ, z1 = -1;
+      for (let y = 0; y < NY; y++) for (let x = 0; x < NX; x++) {
+        const cc = x + y * NX;
+        if (zmax[cc] < 0) continue;
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+        if (zmin[cc] < z0) z0 = zmin[cc];
+        if (zmax[cc] > z1) z1 = zmax[cc];
+      }
+      if (x1 < 0) {
+        x0 = y0 = z0 = 0;
+        x1 = y1 = z1 = 0;
+      }
+      const N = [0, 0, 0];
+      const nf = (ix, iy, iz) => {
+        const k = pid[ix + iy * NX + iz * NXY];
+        if (!k) return null;
+        const p = sol.prims[k - 1];
+        if (p.flatN) return null;
+        const x = B2.x0 + (ix - PADV + 0.5) / r, y = B2.y0 + (iy - PADV + 0.5) / r, z = B2.z0 + (iz - PADV + 0.5) / r;
+        primHit(p._n, x, y, z, N);
+        return [N[0], N[1], N[2]];
+      };
+      const center = toV(0, 0, 0);
+      const P32 = (q) => toV(q[0], q[1], q[2] ?? 0);
+      const anchors = {};
+      for (const [k, v] of Object.entries(meta.anchors || {})) anchors[k] = P32(v);
+      return {
+        Lo: { r, c: meta.c, real: true, solid: true, mat: meta.mat, M: null },
+        data,
+        NX,
+        NY,
+        NZ,
+        NXY,
+        zmin,
+        zmax,
+        pal: pal2,
+        x0,
+        x1,
+        y0,
+        y1,
+        z0,
+        z1,
+        srcOf: null,
+        zOf: new Int16Array(NX),
+        zc: center[2],
+        mat: meta.mat,
+        nf,
+        roll: meta.roll || 0,
+        center,
+        eyes: (meta.eyes || []).map((e) => ({ x: 0, y: 0, r: e[3] || 1, rLook: e[3] || 1, e: { type: "real" }, p: P32(e) })),
+        eyes3: [],
+        mouth: null,
+        anchors,
+        bytes: data.byteLength * 1.5 + NXY * 4
+      };
+    };
     return {
-      Lo: { r, c: meta.c, real: true, solid: true, mat: meta.mat, M: null },
-      data,
-      NX,
-      NY,
-      NZ,
-      NXY,
-      zmin,
-      zmax,
-      pal: pal2,
-      x0,
-      x1,
-      y0,
-      y1,
-      z0,
-      z1,
-      srcOf: null,
-      zOf: new Int16Array(NX),
-      zc: center[2],
-      mat: meta.mat,
-      nf,
-      roll: meta.roll || 0,
-      center,
-      eyes: (meta.eyes || []).map((e) => ({ x: 0, y: 0, r: e[3] || 1, rLook: e[3] || 1, e: { type: "real" }, p: P32(e) })),
-      eyes3: [],
-      mouth: null,
-      anchors,
-      bytes: data.byteLength * 1.5 + NXY * 4
+      step(deadline = Infinity) {
+        const tn = () => typeof performance !== "undefined" ? performance.now() : Date.now();
+        while (next < sol.prims.length) {
+          stampPrim(sol.prims[next], next);
+          next++;
+          if ((next & 3) === 0 && tn() > deadline) return null;
+        }
+        return finish2();
+      }
     };
   }
   function eyePrim(sol, c, rad, n2, iris = "#c8a050", o = {}) {
@@ -8142,7 +8156,7 @@
     if (solidCache.size > 400) solidCache.delete(solidCache.keys().next().value);
     return E;
   }
-  function solidGrid(Lo, kf) {
+  function solidGridJob(Lo, kf) {
     const c = Lo.c;
     const sp = solidSpec(c, kf / SWIM_FRAMES);
     return voxelise(sp.sol, Lo.r, Lo.pal, { c, mat: Lo.mat, anchors: sp.anchors, eyes: sp.eyes, roll: sp.roll });
@@ -12701,7 +12715,8 @@
     yaw = base + (90 - base) * (yaw / 90) - (st.heading || 0);
     if (yaw < -90) yaw = -90;
     const zk = ctxScale(ctx2);
-    const S8 = (st.scale ?? 1) * zk;
+    const lowK = (st.pri ?? 1) < 0.5 && (st.scale ?? 1) * zk > 1.5 ? 0.5 : 1;
+    const S8 = (st.scale ?? 1) * zk * lowK;
     const ang = kind ? 0 : st.angle || 0;
     const t = st.time || 0;
     const lod = st.lod || 0;
@@ -12712,7 +12727,7 @@
     const pose = !!(st.pose || st.emotion === "pose");
     const res = voxelFrame(c, { S: S8, yaw, pitch: ang / DEG2, sw, infl, pose, lod, pri: st.pri ?? 1 });
     if (!res) return null;
-    const f = res.f, k = res.k / zk;
+    const f = res.f, k = res.k / zk / lowK;
     const sq = clamp2(st.squash || 0, -1, 1);
     const kx = k * (1 + 0.22 * sq), ky = k * (1 - 0.2 * sq);
     const fang = f.pitch * DEG2;
@@ -14271,11 +14286,24 @@
     const Lo = layoutFor(c, rk, infl, pose, kf, deadline);
     if (!Lo) return null;
     const t0 = now2();
-    if (Lo.solid) G = solidGrid(Lo, kf);
-    else if (Lo.real) G = realGrid(Lo, sw);
-    else G = buildGrid(Lo, kind ? 0 : sw);
-    spent += now2() - t0;
-    workTotal += now2() - t0;
+    if (Lo.solid) {
+      let J2 = solidJobs.get(gkey);
+      if (!J2) {
+        J2 = solidGridJob(Lo, kf);
+        solidJobs.set(gkey, J2);
+        if (solidJobs.size > 64) solidJobs.delete(solidJobs.keys().next().value);
+      }
+      G = J2.step(deadline);
+      spent += now2() - t0;
+      workTotal += now2() - t0;
+      if (!G) return null;
+      solidJobs.delete(gkey);
+    } else {
+      if (Lo.real) G = realGrid(Lo, sw);
+      else G = buildGrid(Lo, kind ? 0 : sw);
+      spent += now2() - t0;
+      workTotal += now2() - t0;
+    }
     grids.set(gkey, G);
     gridBytes += G.bytes;
     while (gridBytes > GRID_BYTES_MAX && grids.size > 4) {
@@ -14994,7 +15022,7 @@
       if (p && p.canvas) push(p);
     }
   }
-  var VP, SCALE_STEP, YAW_STEP, PITCH_STEP, PITCH_MAX, CHAIN_PITCH_STEP, CHAIN_PITCH_MAX, CAM_TILT, SWIM_N, KIND_N, INFL_N, MAX_VOX_LEN, FRAME_PX_MAX, GRID_BYTES_MAX, LAYOUT_MAX, TAIL_NEUTRAL, TAU3, DEG3, clamp3, clamp013, fract3, now2, SHAPE_K, KIND_K, REVOLVE, FRONT_KINDS, budgetMs, budgetCap, spent, forceSpent, rafOn, lastReset, lastTick, statBuilt, statFallback, statJobs, statPx, workTotal, FORCE_MS, syncAll, WARM_MS, nextVid, vidOf, scaleBucket, bucketScale, R_BODY2, R_FIN2, R_EYE2, R_MOUTH2, R_THIN, R_LIMB2, R_SPEC2, R_GLASS2, R_PUPIL2, R_CHROME, Pal, DEF_MAT, VIVID, RasterJob, norm32, SCLERA_P, PUPIL_P, GOOGLY_P, HEART_P, HEART_HI, KX, KY, KZ, KW, KN, FACET, FN, LIGHT, HALF, ENV_OUT, Job, layouts, grids, frames, jobs, byCreature, gridBytes, rasters, framePx, warmQ, warmed, wants, balls, orbs, parts, partPx, PART_PX_MAX, rotCache, PartGrid, LIDS, q6;
+  var VP, SCALE_STEP, YAW_STEP, PITCH_STEP, PITCH_MAX, CHAIN_PITCH_STEP, CHAIN_PITCH_MAX, CAM_TILT, SWIM_N, KIND_N, INFL_N, MAX_VOX_LEN, FRAME_PX_MAX, GRID_BYTES_MAX, LAYOUT_MAX, TAIL_NEUTRAL, TAU3, DEG3, clamp3, clamp013, fract3, now2, SHAPE_K, KIND_K, REVOLVE, FRONT_KINDS, budgetMs, budgetCap, spent, forceSpent, rafOn, lastReset, lastTick, statBuilt, statFallback, statJobs, statPx, workTotal, FORCE_MS, syncAll, WARM_MS, nextVid, vidOf, scaleBucket, bucketScale, R_BODY2, R_FIN2, R_EYE2, R_MOUTH2, R_THIN, R_LIMB2, R_SPEC2, R_GLASS2, R_PUPIL2, R_CHROME, Pal, DEF_MAT, VIVID, RasterJob, norm32, SCLERA_P, PUPIL_P, GOOGLY_P, HEART_P, HEART_HI, KX, KY, KZ, KW, KN, FACET, FN, LIGHT, HALF, ENV_OUT, Job, layouts, grids, frames, jobs, byCreature, gridBytes, rasters, solidJobs, framePx, warmQ, warmed, wants, balls, orbs, parts, partPx, PART_PX_MAX, rotCache, PartGrid, LIDS, q6;
   var init_voxelfish = __esm({
     "src/gfx/voxelfish.js"() {
       init_fishart();
@@ -15647,6 +15675,7 @@
       byCreature = /* @__PURE__ */ new Map();
       gridBytes = 0;
       rasters = /* @__PURE__ */ new Map();
+      solidJobs = /* @__PURE__ */ new Map();
       framePx = 0;
       warmQ = [];
       warmed = /* @__PURE__ */ new Set();
