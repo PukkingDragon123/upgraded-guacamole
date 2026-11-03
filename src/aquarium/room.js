@@ -1,8 +1,10 @@
-// The Frutiger Aero room around the tank: a bright wall with a big window onto rolling green hills under
-// a blue sky (clouds drift, hills shift with the mouse for a little parallax, wind turbines turn), a glass
-// desk on chrome legs, a sleek white desk lamp, glossy potted plants, sun shafts, bloom, dust sparkles and
-// soap bubbles. Everything static is painted once per (view, tier, size) and cached; per frame the room
-// costs a handful of drawImage calls.
+// The Frutiger Aero room around the tank, built from VOXEL models (roomvox.js, plus the World agent's voxel
+// glass city, wind turbines, round tree and leafy vines from world/aerokit.js), front-facing like the world
+// camera: a paneled wall with a big voxel window frame, a plank floor, a glass desk on chrome legs (or a
+// cabinet / floating console), a desk lamp, potted plants and hanging vines. Outside: voxel clouds, voxel
+// rolling hills and the curved green horizon, the glass city in a water bubble and a rotating voxel green
+// glass globe. Only light is 2D: the sky gradient, sun, rays and arcs, bloom, sun shafts, sparkles, bubbles.
+// Everything static is built once per (view, tier, size) and cached; per frame it is a handful of drawImages.
 //
 //   roomArt(L)                          -> cached art for a scene layout (tanks.js sceneLayout)
 //   drawRoomBack(ctx, art, ox, oy, t, par)   sky, clouds, hills, turbines, wall/window/desk, sun shafts

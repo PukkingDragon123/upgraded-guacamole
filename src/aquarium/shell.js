@@ -1,4 +1,6 @@
-// Glossy glass shells for every tank tier, painted once per scene layout and cached:
+// Glass shells for every tank tier, built once per scene layout and cached. The solid parts (hoods, plinths, the
+// lamp's silver frame, the wall bezel, the jar's rolled lip) are voxel models (tankvox.js); only the glass
+// itself (rim refraction, glare, streaks, highlights) is painted light:
 //   jar / bowl   a round glass globe: thick refracting rim, rolled lip, big curved window highlight,
 //                thick glass bottom, a caustic light pool and a soft shadow on the desk
 //   small / big  a glass box with a glossy white hood (aqua LED strip), chrome-trimmed plinth, bright

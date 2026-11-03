@@ -1,6 +1,7 @@
 // The aquarium (phase 3, Frutiger Aero): a glass tank of the current tier (goldfish jar -> bowl -> glass
-// tanks -> reef -> wall aquarium, see tanks.js) standing in a bright Aero room (room.js: big window onto
-// rolling green hills, glass desk, lamp, plants, sun shafts). Inside: the player's fish, voxel decor,
+// tanks -> reef -> wall aquarium, see tanks.js) standing in a bright Aero room built from voxel models (room.js).
+// Behind the fish: a voxel coral reef (reefvox.js; the Aqua Lamp's is a slowly rotating voxel reef drum) and a
+// small school of real voxel fish. Inside: the player's fish, voxel decor,
 // swaying plants, a gravel / sand floor and glossy Aero drops (drops.js) that fish puff out; they float up
 // and pop into Aero when hovered, clicked, swept or auto-collected. Shown as the full-screen scene
 // (state.view === 'aquarium'), as a floating Aero glass window on the desktop and as a tiny mini window.
