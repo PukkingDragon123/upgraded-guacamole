@@ -1102,7 +1102,7 @@ export class Aquarium {
       this.lampOn = !this.lampOn;
       this.sfx('click', { vol: 0.5, pitch: this.lampOn ? 1.2 : 0.9 });
     } else {
-      this.sfx('pop', { vol: 0.4, pitch: 1.3 });
+      this.sfx('puff', { vol: 0.4, pitch: 1.3 });
       this.sceneFx = this.sceneFx || [];
       for (let i = 0; i < 5; i++) this.sceneFx.push({ x: x + rng.float(-6, 6), y: y + rng.float(-6, 2), vx: rng.float(-20, 20), vy: -rng.float(20, 45), t: 0, life: rng.float(0.7, 1.2), c: rng.pick(['#8be04a', '#3fae2a', '#c8f56a']) });
     }

@@ -46029,7 +46029,7 @@ kmlmk..
             this.lampOn = !this.lampOn;
             this.sfx("click", { vol: 0.5, pitch: this.lampOn ? 1.2 : 0.9 });
           } else {
-            this.sfx("pop", { vol: 0.4, pitch: 1.3 });
+            this.sfx("puff", { vol: 0.4, pitch: 1.3 });
             this.sceneFx = this.sceneFx || [];
             for (let i = 0; i < 5; i++) this.sceneFx.push({ x: x + rng.float(-6, 6), y: y + rng.float(-6, 2), vx: rng.float(-20, 20), vy: -rng.float(20, 45), t: 0, life: rng.float(0.7, 1.2), c: rng.pick(["#8be04a", "#3fae2a", "#c8f56a"]) });
           }
@@ -72700,7 +72700,7 @@ ${hearts} ${status}
             ctx3.globalCompositeOperation = "lighter";
             ctx3.globalAlpha = 0.35 * a;
             ctx3.fillStyle = "#ffffff";
-            for (let i = 0; i < 6; i++) ctx3.fillRect(Math.round(x0 + i - (cy - H10 * 0.22)), Math.round(cy + 14 - g2.h / 2) + i * 0, 3, g2.h);
+            ctx3.fillRect(Math.round(x0), Math.round(cy + 14 - g2.h / 2), 6, g2.h);
             ctx3.restore();
           }
         }
@@ -76018,10 +76018,10 @@ ${hearts} ${status}
           ctx3.restore();
           drawLeaves(ctx3, r, t, true);
           const pal2 = glossFor(d.sp.rarity);
-          const nameScale = measureText(d.sp.name, "normal", 2) <= W11 - 70 ? 2 : 1;
+          const nameScale = measureText(d.sp.name, "normal", 3) <= W11 - 150 ? 3 : measureText(d.sp.name, "normal", 2) <= W11 - 70 ? 2 : 1;
           const ny = r.y + 12;
-          if (nameScale === 2) {
-            const gname = glossText(d.sp.name, 2, pal2);
+          if (nameScale >= 2) {
+            const gname = glossText(d.sp.name, nameScale, pal2);
             ctx3.drawImage(gname.c, Math.round(pcx - gname.w / 2 - gname.ox), Math.round(ny - gname.oy));
           } else drawText(ctx3, d.sp.name, pcx, ny + 3, { align: "center", color: "#ffffff", outline: INK9 });
           const star = getUiIcon("star"), starE = getUiIcon("star_empty");
@@ -76030,7 +76030,7 @@ ${hearts} ${status}
               const k = ease.outBack(clamp012((t - 0.35 - i * 0.08) * 4));
               if (k <= 0) continue;
               const ic = i < rar.stars ? star : starE;
-              const sx = Math.round(pcx - 31 + i * 13), sy = ny + 22;
+              const sx = Math.round(pcx - 31 + i * 13), sy = ny + 8 + nameScale * 8;
               ctx3.save();
               ctx3.translate(sx + ic.width / 2, sy + ic.height / 2);
               ctx3.scale(k, k);
@@ -76119,7 +76119,7 @@ ${hearts} ${status}
           const sc = Math.min(7, Math.max(0.6, Math.min(bw / Math.max(12, L2), bh / Math.max(8, L2 * 0.6))));
           const k = ease.outBack(clamp012((t - 0.15) * 2.2));
           const ph = t * 0.55;
-          const turn = Math.cos(Math.sin(ph) * 1.25 + (Math.sin(ph) > 0 ? 0 : 0));
+          const turn = Math.cos(Math.sin(ph) * 0.95);
           const fy = y + Math.sin(t * 1.6) * 3;
           ctx3.save();
           ctx3.globalCompositeOperation = "lighter";

@@ -31576,7 +31576,7 @@ kmlmk..
         ctx2.globalCompositeOperation = "lighter";
         ctx2.globalAlpha = 0.35 * a;
         ctx2.fillStyle = "#ffffff";
-        for (let i = 0; i < 6; i++) ctx2.fillRect(Math.round(x0 + i - (cy - H * 0.22)), Math.round(cy + 14 - g2.h / 2) + i * 0, 3, g2.h);
+        ctx2.fillRect(Math.round(x0), Math.round(cy + 14 - g2.h / 2), 6, g2.h);
         ctx2.restore();
       }
     }

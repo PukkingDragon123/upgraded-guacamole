@@ -285,10 +285,10 @@ export class RevealPanel {
     drawLeaves(ctx, r, t, true);
     // ---- name + stars
     const pal = glossFor(d.sp.rarity);
-    const nameScale = measureText(d.sp.name, 'normal', 2) <= W - 70 ? 2 : 1;
+    const nameScale = measureText(d.sp.name, 'normal', 3) <= W - 150 ? 3 : measureText(d.sp.name, 'normal', 2) <= W - 70 ? 2 : 1;
     const ny = r.y + 12;
-    if (nameScale === 2) {
-      const gname = glossText(d.sp.name, 2, pal);
+    if (nameScale >= 2) {
+      const gname = glossText(d.sp.name, nameScale, pal);
       ctx.drawImage(gname.c, Math.round(pcx - gname.w / 2 - gname.ox), Math.round(ny - gname.oy));
     } else drawText(ctx, d.sp.name, pcx, ny + 3, { align: 'center', color: '#ffffff', outline: INK });
     const star = getUiIcon('star'), starE = getUiIcon('star_empty');
@@ -297,7 +297,7 @@ export class RevealPanel {
         const k = ease.outBack(clamp01((t - 0.35 - i * 0.08) * 4));
         if (k <= 0) continue;
         const ic = i < rar.stars ? star : starE;
-        const sx = Math.round(pcx - 31 + i * 13), sy = ny + 22;
+        const sx = Math.round(pcx - 31 + i * 13), sy = ny + 8 + nameScale * 8;
         ctx.save();
         ctx.translate(sx + ic.width / 2, sy + ic.height / 2);
         ctx.scale(k, k);
@@ -390,7 +390,7 @@ export class RevealPanel {
     const k = ease.outBack(clamp01((t - 0.15) * 2.2));
     // slow swivel through the front view (voxel turntable), settling side-on between turns
     const ph = t * 0.55;
-    const turn = Math.cos(Math.sin(ph) * 1.25 + (Math.sin(ph) > 0 ? 0 : 0));
+    const turn = Math.cos(Math.sin(ph) * 0.95);
     const fy = y + Math.sin(t * 1.6) * 3;
     // soft shadow glow under the fish
     ctx.save();

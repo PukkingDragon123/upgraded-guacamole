@@ -251,7 +251,7 @@ export class Titles {
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = 0.35 * a;
       ctx.fillStyle = '#ffffff';
-      for (let i = 0; i < 6; i++) ctx.fillRect(Math.round(x0 + i - (cy - H * 0.22)), Math.round(cy + 14 - g.h / 2) + i * 0, 3, g.h);
+      ctx.fillRect(Math.round(x0), Math.round(cy + 14 - g.h / 2), 6, g.h);
       ctx.restore();
     }
   }
