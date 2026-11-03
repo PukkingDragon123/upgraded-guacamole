@@ -18,9 +18,9 @@ import { MapPanel, MAP_YAWS, __mapDev } from '../ui/mappanel.js';
 let W = 960, H = 540;
 
 const PRESETS = {
-  fresh: { biomes: ['shallows'], skills: ['hook1'] },
-  mid: { biomes: ['shallows', 'junkyard', 'fjord'], skills: ['hook1', 'hook2', 'hook3', 'hook5', 'exp1', 'exp7'] },
-  all: { biomes: ['shallows', 'junkyard', 'abyss', 'fjord', 'volcano', 'metropolis'], skills: ['hook1', 'hook2', 'hook3', 'hook5', 'hook7', 'exp1', 'exp3', 'exp5'] },
+  fresh: { biomes: ['oscean'], skills: ['hook1'] },
+  mid: { biomes: ['oscean', 'shallows', 'junkyard', 'fjord'], skills: ['hook1', 'hook2', 'hook3', 'hook5', 'exp1', 'exp7'] },
+  all: { biomes: ['oscean', 'shallows', 'junkyard', 'abyss', 'fjord', 'volcano', 'metropolis'], skills: ['hook1', 'hook2', 'hook3', 'hook5', 'hook7', 'exp1', 'exp3', 'exp5'] },
 };
 
 function makeGame(params) {
@@ -28,7 +28,7 @@ function makeGame(params) {
   const pre = PRESETS[params.get('state') || 'mid'] || PRESETS.mid;
   st.unlockedBiomes = [...pre.biomes];
   for (const s of pre.skills) st.skills[s] = true;
-  st.biome = params.get('biome') || 'shallows';
+  st.biome = params.get('biome') || 'oscean';
   SPECIES.forEach((sp, i) => {
     if (sp.biome === 'shallows' ? i % 4 !== 3 : i % 3 === 0) st.journal[sp.id] = { seen: true, caught: 1 + (i % 5), maxSize: 0, minSize: 9999, first: Date.now(), variants: {} };
   });

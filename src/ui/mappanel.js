@@ -24,7 +24,9 @@ import { SPECIES } from '../fish/species.js';
 const DEG = Math.PI / 180;
 
 // ---------------------------------------------------------------- diorama geometry (voxels)
-const M = 4, BX = 168, BZ = 100, NX = BX + 2 * M, NZ = BZ + 2 * M, NY = 100;
+// Location coordinates are 'map units' u in [-UO, 168): the (OS)cean strip occupies u < 0, model x = u + MX.
+const UO = 36, M = 4, BX = 168 + UO, BZ = 100, NX = BX + 2 * M, NZ = BZ + 2 * M, NY = 100;
+const MX = M + UO;
 const XR = M + BX, ZF = M + BZ;             // water block x / z end (exclusive)
 const Y0 = 6, SEA = 68;                     // plinth top, water surface plane (water fills y < SEA)
 const PITCH = 32;
@@ -46,6 +48,12 @@ const ZONE1 = SEA - depthY(200), ZONE2 = SEA - depthY(1000); // sunlight / twili
 // pin / focus / sea: block-local [u, y, w] anchors (pin floats above, focus = what the leader line points at,
 // sea = where the boat moors on the surface)
 export const MAP_LOCATIONS = [
+  {
+    id: 'oscean', name: '(OS)cean', sub: 'The desktop wallpaper, flooded', depth: 4, color: '#38b6ff', skill: null,
+    geo: { u: -18, w: 50, h: SEA - 8, s: 14, rad: 30 }, pin: [-19, SEA + 21, 49], focus: [-19, SEA + 9, 49], sea: [-3, 30],
+    desc: 'Rolling green hills, wind turbines and bubbles under a glossy sky. Home sweet home.',
+    weathers: ['sunny', 'bubbles', 'glossyrain', 'aurora'],
+  },
   {
     id: 'shallows', name: 'Sunny Shallows', sub: 'Crystal-clear tropical lagoon', depth: 8, color: '#ffc24a', skill: null,
     geo: { u: 24, w: 26, h: SEA - 6, s: 17, rad: 34 }, pin: [19, SEA + 17, 21], focus: [19, SEA + 6, 21], sea: [40, 22],
@@ -90,6 +98,7 @@ const WEATHER = {
   sunny: ['sun', 'Sunny'], clear: ['sun', 'Clear'], cloudy: ['cloud', 'Cloudy'], rain: ['rain', 'Rain'], storm: ['storm', 'Storm'], calm: ['sun', 'Calm'],
   murky: ['cloud', 'Murky'], static: ['storm', 'Static Storm'], oil: ['cloud', 'Oil Slick'], datarain: ['rain', 'Data Rain'],
   still: ['moon', 'Still Water'], snow: ['cloud', 'Marine Snow'], current: ['arrow_r', 'Deep Current'], glowtide: ['sparkle', 'Glow Tide'],
+  bubbles: ['bubble', 'Bubble Breeze'], glossyrain: ['rain', 'Glossy Rain'],
   snowfall: ['cloud', 'Snowfall'], aurora: ['sparkle', 'Aurora'], seafog: ['cloud', 'Sea Fog'], blizzard: ['storm', 'Blizzard'],
   neonrain: ['rain', 'Neon Rain'], blackout: ['moon', 'Blackout'], rushhour: ['clock', 'Rush Hour'],
   ashfall: ['cloud', 'Ash Fall'], eruption: ['storm', 'Eruption'], heathaze: ['sun', 'Heat Haze'], embers: ['sparkle', 'Ember Storm'],
@@ -144,6 +153,9 @@ function torus(m, cx, cy, cz, R, r, c, axis = 'y', arc = null) {
 
 // ---------------------------------------------------------------- the diorama model
 const AUTO = 0, SAND = 1, GRASS = 2, ROCK = 3, SNOW = 4, ICE = 5, CREV = 6, BASALT = 7, LAVA = 8, LAVAHOT = 9, CRUST = 10, RIFT = 11, PLAZA = 12, ROAD = 13, ROADLINE = 14;
+const OSAND = 15, HILL = 16, PATH = 17;
+const OC = [-19, 50];                                   // (OS)cean island centre
+const TURBINES = [[-25, 40, 16], [-14, 58, 14], [-27, 62, 13]]; // [u, w, tower height]
 const CRACKS = [
   [[92, 40], [99, 45], [106, 43], [113, 49], [120, 47], [127, 53], [134, 51], [140, 57]],
   [[106, 43], [109, 36], [106, 29], [110, 22]],
@@ -163,6 +175,23 @@ function landAt(u, w) {
   let h = Math.round((hs / ws + (fbm2(u * 0.05, w * 0.05, 3, 5) - 0.5) * 7) / 2) * 2;
   const base = h;
   let mt = AUTO;
+  // --- (OS)cean: the wallpaper hill, smooth and rolling, on a white sand shelf in bright clear water
+  {
+    const du = u - OC[0], dw = w - OC[1], a = Math.atan2(dw, du);
+    const R = 1 + (noise2(Math.cos(a) * 1.4 + 3, Math.sin(a) * 1.4 + 3, 41) - 0.5) * 0.22;
+    const rr = Math.hypot(du / 15, dw / 27) / R;
+    if (rr < 1.6) {
+      const shelf = Math.round(lerp(SEA - 2, h, smoothstep(1.0, 1.6, rr)));
+      if (shelf > h) h = shelf;
+      if (rr < 1.3) mt = OSAND;
+      if (rr < 1.04) {
+        const dome = Math.sqrt(Math.max(0, 1 - rr * rr));
+        const roll = 0.62 + 0.38 * Math.sin(dw * 0.15 + 0.9) * Math.cos(du * 0.11 - 0.3);
+        h = Math.max(h, SEA + Math.round(dome * (2 + 9 * roll)));
+        if (rr < 0.94) mt = Math.abs(du - Math.sin(dw * 0.18) * 4 - 2) < 0.9 && dw > -6 ? PATH : HILL;
+      }
+    }
+  }
   // --- shallows: sandy island with a grassy hill, sand shelf around it
   {
     const du = u - 20, dw = w - 22, r = Math.hypot(du, dw), a = Math.atan2(dw, du);
@@ -279,8 +308,8 @@ function buildDiorama() {
   const ci = (x, z) => x + NX * z;
 
   // ------------------------------------------------ heightfield + territory
-  for (let w = 0; w < BZ; w++) for (let u = 0; u < BX; u++) {
-    const i = ci(u + M, w + M);
+  for (let w = 0; w < BZ; w++) for (let u = -UO; u < BX - UO; u++) {
+    const i = ci(u + MX, w + M);
     const [h, mt, b] = landAt(u, w);
     hm[i] = clamp(h, Y0 + 1, NY - 2); mat[i] = mt; base[i] = b;
     let best = 1, bd = 1e9;
@@ -294,7 +323,7 @@ function buildDiorama() {
 
   // ------------------------------------------------ palettes
   const SURF = {
-    shallows: ['#ecd49a', '#dcc28a'], fjord: ['#7e889c', '#6a7488'], junkyard: ['#8c8270', '#7a705e'],
+    oscean: ['#f6ecc8', '#e6dab4'], shallows: ['#ecd49a', '#dcc28a'], fjord: ['#7e889c', '#6a7488'], junkyard: ['#8c8270', '#7a705e'],
     metropolis: ['#566c78', '#4a5e6a'], volcano: ['#4c4250', '#3c3442'], abyss: ['#45427a', '#38356a'],
   };
   const TP = {};
@@ -311,6 +340,9 @@ function buildDiorama() {
     basalt: P('#3c3446', { jitter: 0.2 }, o.volcano), ash: P('#5c5262', { jitter: 0.2 }, o.volcano), basaltD: P('#2a2432', { jitter: 0.15 }, o.volcano),
     lava: P('#ff6a1c', { emissive: 1, jitter: 0.1 }, o.volcano), lavaHot: P('#ffc63a', { emissive: 1, jitter: 0.1 }, o.volcano),
     crust: P('#6a2c24', { emissive: 0.25, jitter: 0.2 }, o.volcano), rift: P('#ff8a2c', { emissive: 1, jitter: 0.1 }, o.volcano),
+    hill: P('#74d83e', { jitter: 0.1, smooth: 0.4 }, o.oscean), hill2: P('#5cc432', { jitter: 0.1, smooth: 0.4 }, o.oscean),
+    osand: P('#fff2d0', { jitter: 0.1 }, o.oscean), dirt: P('#a8743e', { jitter: 0.14 }, o.oscean), path: P('#f0dca0', { jitter: 0.1 }, o.oscean),
+    flower: [P('#ffffff', {}, o.oscean), P('#ffe24a', {}, o.oscean), P('#ff8ad0', {}, o.oscean)],
     plaza: P('#5e6e78', { jitter: 0.12 }, o.metropolis), road: P('#2e3440', { jitter: 0.08 }, o.metropolis),
     roadLine: P('#ffd25a', { emissive: 0.7 }, o.metropolis), metroD: P('#3e4a54', { jitter: 0.1 }, o.metropolis),
   };
@@ -330,6 +362,13 @@ function buildDiorama() {
   const surfColor = (mt, tr, u, w, y) => {
     const patch = noise2(u * 0.16, w * 0.16, 12) > 0.56;
     switch (mt) {
+      case HILL: {
+        const fl = hash2(u, w, 61);
+        if (fl < 0.035) return LF.flower[Math.floor(fl * 85) % 3];
+        return ((u * 0.5 + w * 0.8) % 7 + 7) % 7 < 3.5 ? LF.hill : LF.hill2;
+      }
+      case OSAND: return LF.osand;
+      case PATH: return LF.path;
       case SAND: return patch ? LF.sand2 : LF.sand;
       case GRASS: return hash2(u, w, 4) < 0.35 ? LF.grass2 : LF.grass;
       case ROCK: return patch || hash2(u, w, 2) < 0.25 ? LF.rock2 : LF.rock;
@@ -348,6 +387,8 @@ function buildDiorama() {
     }
   };
   const subColor = (mt, tr, u, w, y) => {
+    if (mt === HILL || mt === PATH) return LF.dirt;
+    if (mt === OSAND) return LF.osand;
     if (mt === SAND || mt === GRASS) return LF.sandD;
     if (mt === ROCK || mt === SNOW || mt === ICE || mt === CREV) return mt === ICE || mt === CREV ? LF.ice : LF.rockD;
     if (mt >= BASALT && mt <= RIFT) return (y + hash2(u, w, 1) * 2) % 4 < 1 ? LF.ash : LF.basaltD;
@@ -356,43 +397,46 @@ function buildDiorama() {
   };
 
   // ------------------------------------------------ plinth (dark wood + brass trim)
-  const wood = P('#6e4428', { jitter: 0.1 }), woodD = P('#4c2c1a', { jitter: 0.1 }), woodL = P('#94603a', { jitter: 0.1 });
-  const brass = P('#e2b250', { spec: 0.9, jitter: 0.04 }), brassD = P('#a8762a', { jitter: 0.04 });
+  const wood = P('#eaf4fa', { jitter: 0.03, spec: 0.3 }), woodD = P('#cfe0ec', { jitter: 0.03 }), woodL = P('#f8fcff', { jitter: 0.02, spec: 0.5 });
+  const brass = P('#c4d6e6', { spec: 1, jitter: 0.03 }), brassD = P('#38c8f0', { emissive: 0.55 });
   for (let z = 0; z < NZ; z++) for (let x = 0; x < NX; x++) {
     const edge = x === 0 || z === 0 || x === NX - 1 || z === NZ - 1;
     for (let y = 0; y < Y0; y++) {
-      let c = (x * 0.9 + z * 0.35 + noise2(x * 0.15, z * 0.6, 3) * 6) % 7 < 2 ? woodD : wood;
+      let c = wood;
       if (y === Y0 - 1) c = edge ? brass : woodL;
-      else if (y === 0) c = edge ? brassD : woodD;
-      else if (y === 2 && edge) c = woodD;
+      else if (y === 0) c = woodD;
+      else if (y === 2 && edge) c = brassD;
       m.set(x, y, z, c);
     }
   }
-  // brass name plate on the front of the plinth
+  // aqua glass name plate on the front of the plinth
+  const plate = P('#38b6ff', { spec: 0.9, jitter: 0.03 }), plateHi = P('#bff0ff', { spec: 0.9 });
   for (let x = NX / 2 - 16; x <= NX / 2 + 15; x++) for (let y = 1; y <= 4; y++) {
     const border = x === NX / 2 - 16 || x === NX / 2 + 15 || y === 1 || y === 4;
-    m.set(x, y, NZ - 1, border ? brassD : brass);
+    m.set(x, y, NZ - 1, border ? brass : y === 3 ? plateHi : plate);
   }
 
   // ------------------------------------------------ terrain fill
-  for (let w = 0; w < BZ; w++) for (let u = 0; u < BX; u++) {
-    const i = ci(u + M, w + M), top = hm[i], mt = mat[i], tr = LOCS[terr[i] - 1].id, b0 = base[i];
+  for (let w = 0; w < BZ; w++) for (let u = -UO; u < BX - UO; u++) {
+    const i = ci(u + MX, w + M), top = hm[i], mt = mat[i], tr = LOCS[terr[i] - 1].id, b0 = base[i];
     for (let y = Y0; y <= top; y++) {
       const d = top - y;
       let c;
       if (d === 0) c = surfColor(mt, tr, u, w, y);
       else if (d <= 2 + (hash2(u, w, 3) < 0.5 ? 1 : 0) || (mt !== AUTO && y > b0 - 2)) c = subColor(mt, tr, u, w, y);
       else c = strata(u, w, y);
-      m.set(u + M, y, w + M, c);
+      m.set(u + MX, y, w + M, c);
     }
   }
 
   const ground = (u, w) => {
-    const x = Math.round(u) + M, z = Math.round(w) + M;
+    const x = Math.round(u) + MX, z = Math.round(w) + M;
     for (let y = NY - 1; y >= 0; y--) if (m.get(x, y, z)) return y;
     return Y0;
   };
-  const ctx = { m, P, LI, hm, mat, ground, ci };
+  const ctx = { m, P, LI, hm, mat, ground, ci, LF };
+  ctx.turbines = [];
+  buildOscean(ctx, o.oscean);
   buildShallows(ctx, o.shallows);
   buildFjord(ctx, o.fjord);
   buildVolcano(ctx, o.volcano);
@@ -408,7 +452,7 @@ function buildDiorama() {
       if (!far.length) break;
       const [bx, , bz] = far[Math.floor(far.length / 2)];
       const x = clamp(bx * 4 + 2, M + 3, XR - 4), z = clamp(bz * 4 + 2, M + 3, ZF - 4);
-      m.line(x + 0.5, SEA - 1, z + 0.5, x + 0.5, ground(x - M, z - M), z + 0.5, chainC);
+      m.line(x + 0.5, SEA - 1, z + 0.5, x + 0.5, ground(x - MX, z - M), z + 0.5, chainC);
       m.cylinder(x + 0.5, z + 0.5, SEA - 1, SEA + 2, 1.2, (xx, y) => (y === SEA ? white : red));
       m.set(x, SEA + 3, z, white);
     }
@@ -437,13 +481,76 @@ function buildDiorama() {
   // 'plain' = unowned palette entries that are not seabed surface (strata, plinth, buried treasures)
   const plain = new Uint8Array(256), surfSet = new Set(Object.values(TP).flatMap((q) => [q.a, q.b]));
   for (let i = 1; i < m.palette.length; i++) plain[i] = own[i] === 0 && !surfSet.has(i) ? 1 : 0;
-  return { model: m, own, plain, terr, LI, ext, C, ms: Math.round(performance.now() - t0) };
+  return { model: m, own, plain, terr, LI, ext, C, turbines: ctx.turbines, bubbleCity: ctx.bubbleCity, ms: Math.round(performance.now() - t0) };
 }
 
 // ---------------------------------------------------------------- location models
+function buildOscean(ctx, o) {
+  const { m, P, ground } = ctx;
+  const X = (u) => u + MX, Z = (w) => w + M;
+  const white = P('#f6fbff', { jitter: 0.03, spec: 0.5 }, o), whiteS = P('#d4e6f2', { jitter: 0.03 }, o), chrome = P('#c8d8e6', { spec: 0.9, jitter: 0.03 }, o);
+  // wind turbine towers + nacelles (the rotors spin at runtime, see rotorSprite)
+  for (const [u, w, ht] of TURBINES) {
+    const x = X(u) + 0.5, z = Z(w) + 0.5, y = ground(u, w);
+    m.cone(x, z, y - 1, y + ht, 1.15, 0.6, (xx, yy) => (yy < y + 1 ? whiteS : white));
+    m.box(Math.floor(x) - 1, y + ht, Math.floor(z) - 1, Math.floor(x) + 1, y + ht + 1, Math.floor(z) + 1, white);
+    m.set(Math.floor(x), y + ht + 1, Math.floor(z) + 2, chrome);
+    ctx.turbines.push([x, y + ht + 1.5, z + 2.6]);
+  }
+  // lollipop tree on the crest
+  {
+    const trunk = P('#9a6a3c', { jitter: 0.08 }, o), leaf = P('#4cc83a', { jitter: 0.12, smooth: 0.5 }, o), leafL = P('#9cf05a', { jitter: 0.1, smooth: 0.5 }, o);
+    const u = -12, w = 44, y = ground(u, w);
+    const x = X(u) + 0.5, z = Z(w) + 0.5;
+    m.line(x, y, z, x + 0.3, y + 5, z, trunk, 0.7);
+    shape(m, x - 4, y + 4, z - 4, x + 4, y + 11, z + 4, (xx, yy, zz) => {
+      const d = Math.hypot(xx - x, (yy - y - 7.5) * 1.1, zz - z);
+      return d < 3.6 + (fbm2(xx * 0.5, zz * 0.5 + yy * 0.3, 2, 9) - 0.5) * 1.2;
+    }, (xx, yy, zz) => (yy > y + 8 && (xx + zz) % 3 ? leafL : leaf));
+  }
+  // green glass globe on a chrome stand
+  {
+    const g1 = P('#58d84a', { spec: 1, specPow: 10, smooth: 0.85, jitter: 0.04 }, o), g2 = P('#2fb43a', { spec: 1, specPow: 10, smooth: 0.85, jitter: 0.04 }, o);
+    const land = P('#e8ffd8', { spec: 0.8, smooth: 0.85, jitter: 0.03 }, o), grid = P('#ffffff', { smooth: 0.85 }, o);
+    const u = -28, w = 48, y = ground(u, w);
+    const x = X(u) + 0.5, z = Z(w) + 0.5, cy = y + 9.5, R = 5.6;
+    m.cylinder(x, z, y, y + 1, 2.2, chrome);
+    m.cylinder(x, z, y + 2, y + 3, 0.8, chrome);
+    torus(m, x, cy, z, R + 0.6, 0.55, chrome, 'z', (a) => a < -0.2 || a > Math.PI + 0.2);
+    shape(m, x - R, cy - R, z - R, x + R, cy + R, z + R, (xx, yy, zz) => Math.hypot(xx - x, yy - cy, zz - z) < R, (xx, yy, zz) => {
+      const dx = xx + 0.5 - x, dy = yy + 0.5 - cy, dz = zz + 0.5 - z;
+      const lat = Math.asin(clamp(dy / R, -1, 1)), lon = Math.atan2(dz, dx);
+      if (Math.abs(Math.sin(lat * 4)) < 0.12 || Math.abs(Math.sin(lon * 3)) < 0.1) return grid;
+      if (noise2(lon * 1.6 + 4, lat * 2.2 + 2, 51) > 0.6) return land;
+      return dy > 1.5 ? g1 : g2;
+    });
+  }
+  // tiny glass city inside a bubble, on a sand bar in the shallows
+  {
+    const glass = P('#4ab0f0', { spec: 0.9, jitter: 0.04 }, o), glass2 = P('#7ad0ff', { spec: 0.9, jitter: 0.04 }, o), win = P('#eaf8ff', {}, o);
+    const rib = P('#d4f6ff', { spec: 0.9, smooth: 0.6 }, o);
+    const u = -9, w = 82;
+    const cx = X(u) + 0.5, cz = Z(w) + 0.5, gy = ground(u, w) + 1, R = 8;
+    m.cylinder(cx, cz, gy - 1, gy, R - 0.5, ctx.LF.osand);
+    const towers = [[-3, -2, 2, 11], [1, -3, 2, 8], [3, 1, 1, 9], [-2, 2, 1, 6], [0, 0, 1, 13], [-5, 1, 1, 5], [4, -2, 1, 6]];
+    for (const [dx, dz, r, hgt] of towers) {
+      const x0 = Math.floor(cx + dx), z0 = Math.floor(cz + dz);
+      m.box(x0 - r + 1, gy, z0 - r + 1, x0 + r, gy + hgt, z0 + r, (xx, yy, zz) => ((yy - gy) % 3 === 1 ? win : (xx + zz) % 2 ? glass : glass2));
+    }
+    // bubble: sparse glass ribs so the city stays visible
+    shape(m, cx - R - 1, gy - 1, cz - R - 1, cx + R + 1, gy + R + 1, cz + R + 1, (xx, yy, zz) => {
+      const dx = xx - cx, dy = yy - gy + 1, dz = zz - cz, d = Math.hypot(dx, dy, dz);
+      if (Math.abs(d - R) > 0.55 || dy < 0) return false;
+      const lon = Math.atan2(dz, dx), lat = Math.asin(clamp(dy / R, -1, 1));
+      return Math.abs(Math.sin(lon * 3)) < 0.16 || Math.abs(lat - 0.55) < 0.06 || dy < 1;
+    }, rib);
+    ctx.bubbleCity = [cx, gy + R * 0.45, cz, R];
+  }
+}
+
 function buildShallows({ m, P, ground }, o) {
   const rng = new RNG(4101);
-  const X = (u) => u + M, Z = (w) => w + M;
+  const X = (u) => u + MX, Z = (w) => w + M;
   const trunk = P('#b8844a', { jitter: 0.1 }, o), trunk2 = P('#8e5e30', { jitter: 0.1 }, o);
   const leaf = P('#5ed052', { jitter: 0.14 }, o), leaf2 = P('#3a9e48', { jitter: 0.12 }, o), nut = P('#6a4626', {}, o);
   // palms
@@ -549,7 +656,7 @@ function buildShallows({ m, P, ground }, o) {
 
 function buildFjord({ m, P, ground, hm, mat, ci }, o) {
   const rng = new RNG(5202);
-  const X = (u) => u + M, Z = (w) => w + M;
+  const X = (u) => u + MX, Z = (w) => w + M;
   const pine = P('#2e6c50', { jitter: 0.12 }, o), pine2 = P('#22583e', { jitter: 0.12 }, o), snow = P('#f2f8fc', { jitter: 0.08 }, o), bark = P('#5a3e2a', {}, o);
   // pines on the lower slopes
   const trees = [];
@@ -609,7 +716,7 @@ function buildFjord({ m, P, ground, hm, mat, ci }, o) {
 
 function buildVolcano({ m, P, ground }, o) {
   const rng = new RNG(6303);
-  const X = (u) => u + M, Z = (w) => w + M;
+  const X = (u) => u + MX, Z = (w) => w + M;
   const smoker = P('#2c2632', { jitter: 0.15 }, o), smokerT = P('#ffa640', { emissive: 0.95 }, o), obsidian = P('#1e1a2c', { spec: 0.9, specPow: 12, jitter: 0.06 }, o);
   const chamber = P('#ff5a14', { emissive: 1, jitter: 0.15 }, o), conduit = P('#ffb43a', { emissive: 1, jitter: 0.1 }, o);
   // black smokers around the base
@@ -638,7 +745,7 @@ function buildVolcano({ m, P, ground }, o) {
 
 function buildJunkyard({ m, P, ground }, o) {
   const rng = new RNG(7404);
-  const X = (u) => u + M, Z = (w) => w + M;
+  const X = (u) => u + MX, Z = (w) => w + M;
   const soil = P('#6a6050', { jitter: 0.2 }, o);
   const beige = P('#dccfb0', { jitter: 0.08 }, o), beige2 = P('#b4a686', { jitter: 0.08 }, o), screen = P('#1c2c2a', {}, o);
   const glowG = P('#5affa0', { emissive: 0.75 }, o), glowB = P('#6ac8ff', { emissive: 0.75 }, o), gun = P('#5a6072', { jitter: 0.08 }, o);
@@ -758,7 +865,7 @@ function buildJunkyard({ m, P, ground }, o) {
 
 function buildMetropolis({ m, P, ground }, o) {
   const rng = new RNG(8505);
-  const X = (u) => u + M, Z = (w) => w + M;
+  const X = (u) => u + MX, Z = (w) => w + M;
   const walls = [P('#6a8698', { jitter: 0.08 }, o), P('#4c5c78', { jitter: 0.08 }, o), P('#8c806c', { jitter: 0.08 }, o), P('#5c4c70', { jitter: 0.08 }, o)];
   const win = P('#1a2638', {}, o), lit = P('#ffd98a', { emissive: 0.85 }, o), litC = P('#86f2ff', { emissive: 0.85 }, o), roof = P('#3a4452', { jitter: 0.08 }, o);
   const neon = [P('#ff4ad2', { emissive: 1 }, o), P('#3af2ff', { emissive: 1 }, o), P('#a86aff', { emissive: 1 }, o)];
@@ -859,7 +966,7 @@ function buildMetropolis({ m, P, ground }, o) {
 
 function buildAbyss({ m, P, ground }, o) {
   const rng = new RNG(9606);
-  const X = (u) => u + M, Z = (w) => w + M;
+  const X = (u) => u + MX, Z = (w) => w + M;
   const stone = P('#6a68a4', { jitter: 0.14 }, o), stone2 = P('#504e88', { jitter: 0.14 }, o), rune = P('#5ff4ff', { emissive: 1 }, o);
   const bone = P('#e4dccc', { jitter: 0.08 }, o), bone2 = P('#bcb2a0', { jitter: 0.08 }, o);
   const capT = P('#3af0d0', { emissive: 0.9 }, o), capP = P('#c46aff', { emissive: 0.9 }, o), stem = P('#c8c0e0', {}, o), crystal = P('#b48aff', { emissive: 0.8, spec: 0.5 }, o);
@@ -926,7 +1033,7 @@ function buildAbyss({ m, P, ground }, o) {
 
 // Little stories hidden in the strata of the front cut face.
 function buildFaceArt({ m, P }) {
-  const zf = ZF - 1, X = (u) => u + M;
+  const zf = ZF - 1, X = (u) => u + MX;
   const fossil = P('#ece0c6', { jitter: 0.05 }), shell = P('#d8b48a', { jitter: 0.06 });
   const coin = P('#ffd84a', { emissive: 0.45, spec: 0.6 }), chestW = P('#7a4a26', {}), chestB = P('#e2b250', { spec: 0.7 });
   const gem = P('#c48aff', { emissive: 0.7 }), gem2 = P('#5af0ff', { emissive: 0.7 });
@@ -997,7 +1104,7 @@ function slab(ox, oy, oz, ix, iy, iz, x0, x1, y0, y1, z0, z1) {
 }
 
 const RGB = (h) => hexToRgb(h);
-const TOPG = [[0, RGB('#86f2e2')], [5, RGB('#3ad2da')], [12, RGB('#28a6d6')], [24, RGB('#1e78c4')], [40, RGB('#1a58aa')], [62, RGB('#16408e')]];
+const TOPG = [[0, RGB('#5ef0f0')], [5, RGB('#2fd3e8')], [12, RGB('#22a8e6')], [24, RGB('#1a7ed4')], [40, RGB('#1a5cb4')], [62, RGB('#164494')]];
 function grad(G, v, out) {
   let i = 0;
   while (i < G.length - 2 && v > G[i + 1][0]) i++;
@@ -1060,7 +1167,7 @@ function bakeView(dio, yaw, scale) {
         if (exi >= M && exi < XR && ezi >= M && ezi < ZF) terr[p] = dio.terr[exi + NX * ezi];
         const dh = ids[p] ? SEA - hy - 1 : 62;
         grad(TOPG, dh, wc);
-        a = Math.min(0.64, 0.14 + thick * 0.0095);
+        a = Math.min(0.66, 0.26 + thick * 0.0085);
         const wv = Math.sin(ex * 0.45 + Math.sin(ez * 0.23) * 2.2) + Math.sin(ez * 0.38 - ex * 0.12 + 1.3);
         if (wv + bq * 0.4 > 1.8) { wc[0] = lerp(wc[0], 236, 0.24); wc[1] = lerp(wc[1], 252, 0.24); wc[2] = lerp(wc[2], 255, 0.24); a = Math.max(a, 0.32); }
         else if (wv - bq * 0.5 < -1.7) { wc[0] *= 0.9; wc[1] *= 0.92; wc[2] *= 0.95; a += 0.04; }
@@ -1115,7 +1222,7 @@ function bakeView(dio, yaw, scale) {
 
   // glow: baked at half strength, plus per-location crops pulsed at runtime
   const anchors = LOCS.map((L) => {
-    const f = L.focus, x = f[0] + M, y = f[1], z = f[2] + M;
+    const f = L.focus, x = f[0] + MX, y = f[1], z = f[2] + M;
     return [(x * R[0] + y * R[1] + z * R[2]) * scale + p0x, -(x * U[0] + y * U[1] + z * U[2]) * scale + p0y];
   });
   const glows = [];
@@ -1423,8 +1530,8 @@ export class MapPanel {
 
   close() { this.sail = null; this.drag = null; }
 
-  unlocked(id) { return this.game.state.unlockedBiomes?.includes(id) ?? id === 'shallows'; }
-  current() { const id = this.game.ocean?.biome?.id || this.game.state.biome; return LOC_BY_ID[id] ? id : 'shallows'; }
+  unlocked(id) { return id === 'oscean' || !!this.game.state.unlockedBiomes?.includes(id); }
+  current() { const id = this.game.ocean?.biome?.id || this.game.state.biome; return LOC_BY_ID[id] ? id : 'oscean'; }
 
   skillFor(L) { return SKILLS.find((s) => s.effect?.unlockBiome === L.id) || (L.skill && SKILL_BY_ID[L.skill]) || null; }
 
@@ -1618,7 +1725,7 @@ export class MapPanel {
       ctx.drawImage(discSprite(10, '#fff4c0'), sx - 11, sy - 11);
     }
     // aurora curtains above the fjord
-    const fj = LOC_BY_ID.fjord, [ax, ay] = bk.proj(fj.pin[0] + M, SEA + 26, fj.pin[2] + M - 6);
+    const fj = LOC_BY_ID.fjord, [ax, ay] = bk.proj(fj.pin[0] + MX, SEA + 26, fj.pin[2] + M - 6);
     for (let i = 0; i < 60; i++) {
       const x = Math.round(ox + ax - 90 + i * 3);
       const wave = Math.sin(i * 0.22 + tt * 0.9) * 8 + Math.sin(i * 0.07 - tt * 0.5) * 6;
@@ -1658,7 +1765,7 @@ export class MapPanel {
     LOCS.forEach((L, i) => {
       const gl = bk.glows[i];
       if (!gl || !this.unlocked(L.id)) return;
-      ctx.globalAlpha = clamp01(pulse[L.id]);
+      ctx.globalAlpha = clamp01(pulse[L.id] || 0);
       if (ctx.globalAlpha > 0.01) ctx.drawImage(gl.canvas, ox + gl.x, oy + gl.y);
     });
     ctx.globalCompositeOperation = 'source-over';
@@ -1689,7 +1796,7 @@ export class MapPanel {
       const cyY = Math.min(SEA - 4, f[1] + 7);
       for (let k = 0; k < 5; k++) {
         const a = tt * (0.35 + (k % 2) * 0.1) + k * 0.5 + li;
-        const x = f[0] + M + Math.cos(a) * (9 + (k % 3)), z = f[2] + M + Math.sin(a) * 6, y = cyY + Math.sin(a * 2 + k) * 1.5;
+        const x = f[0] + MX + Math.cos(a) * (9 + (k % 3)), z = f[2] + M + Math.sin(a) * 6, y = cyY + Math.sin(a * 2 + k) * 1.5;
         const pt = bk.vis(x, y, z);
         if (!pt) continue;
         const dir = -Math.sin(a) * bk.cam.R[0] + Math.cos(a) * bk.cam.R[2] < 0 ? -1 : 1;
@@ -1705,13 +1812,13 @@ export class MapPanel {
     ctx.fillStyle = '#c8f4ff';
     const vents = [[SMOKERS[0][0], SMOKERS[0][1], 0.5], [SMOKERS[2][0], SMOKERS[2][1], 0.6], [SMOKERS[1][0], SMOKERS[1][1], 0.4], [149, 92, 0.7], [30, 76, 0.4], [87, 78, 0.5]];
     vents.forEach(([u, w, sp], vi) => {
-      const L = LOCS[[4, 4, 4, 5, 2, 3][vi]];
+      const L = LOC_BY_ID[['volcano', 'volcano', 'volcano', 'abyss', 'junkyard', 'metropolis'][vi]];
       if (!this.unlocked(L.id)) return;
       const gy = vi === 3 ? 12 : vi === 4 ? SEA - 16 : vi === 5 ? SEA - 2 : SEA - 38;
       for (let k = 0; k < 4; k++) {
         const ph = (tt * sp * 0.25 + k / 4 + vi * 0.13) % 1;
         const y = gy + ph * (SEA - gy);
-        const pt = bk.vis(u + M + Math.sin(ph * 12 + k) * 0.8, y, w + M);
+        const pt = bk.vis(u + MX + Math.sin(ph * 12 + k) * 0.8, y, w + M);
         if (!pt) continue;
         ctx.globalAlpha = 0.8;
         if (k % 2) ctx.fillRect(Math.round(ox + pt[0]), Math.round(oy + pt[1]), 1, 1);
@@ -1721,7 +1828,7 @@ export class MapPanel {
     ctx.globalAlpha = 1;
     // volcano smoke + embers
     {
-      const [vx, vy] = bk.proj(VC[0] + M, SEA + 22, VC[1] + M);
+      const [vx, vy] = bk.proj(VC[0] + MX, SEA + 22, VC[1] + M);
       for (let k = 0; k < 9; k++) {
         const ph = (tt * 0.18 + k / 9) % 1;
         const rr = Math.round(2 + ph * 6);
@@ -1740,7 +1847,7 @@ export class MapPanel {
     }
     // blinking warning lights (crane top, spire tip)
     if (Math.floor(tt * 1.6) % 2 === 0) {
-      for (const [x, y, z] of [[M + 11, SEA + 20, M + 89], [M + 87, SEA + 8, M + 78]]) {
+      for (const [x, y, z] of [[MX + 11, SEA + 20, M + 89], [MX + 87, SEA + 8, M + 78]]) {
         const pt = bk.vis(x + 0.5, y + 0.5, z + 0.5);
         if (!pt) continue;
         ctx.globalAlpha = 0.6;
@@ -1752,7 +1859,7 @@ export class MapPanel {
     ctx.fillStyle = '#ffffff';
     for (let k = 0; k < 2; k++) {
       const a = tt * 0.5 + k * 3;
-      const [gx, gy] = bk.proj(20 + M + Math.cos(a) * 14, SEA + 22 + k * 4, 22 + M + Math.sin(a) * 9);
+      const [gx, gy] = bk.proj(20 + MX + Math.cos(a) * 14, SEA + 22 + k * 4, 22 + M + Math.sin(a) * 9);
       const flap = Math.floor(tt * 6 + k) % 2;
       const x = Math.round(ox + gx), y = Math.round(oy + gy);
       ctx.fillRect(x - 2, y - flap, 2, 1); ctx.fillRect(x + 1, y - flap, 2, 1); ctx.fillRect(x, y, 1, 1);
@@ -1772,7 +1879,7 @@ export class MapPanel {
   }
 
   drawBoat(ctx, bk, ox, oy, t, dt, reduced) {
-    const at = (id) => { const s = LOC_BY_ID[id].sea; return [s[0] + M, s[1] + M]; };
+    const at = (id) => { const s = LOC_BY_ID[id].sea; return [s[0] + MX, s[1] + M]; };
     let [x, z] = at(this.current()), heading = 200;
     let moving = false;
     if (this.sail) {
@@ -1831,12 +1938,12 @@ export class MapPanel {
 
   drawPins(ctx, bk, ox, oy, t, reduced, cur) {
     const hits = [];
-    const rank = (L) => (L.id === this.hover ? 1e4 : L.id === this.sel ? 5e3 : 0) + bk.proj(L.pin[0] + M, L.pin[1], L.pin[2] + M)[1];
+    const rank = (L) => (L.id === this.hover ? 1e4 : L.id === this.sel ? 5e3 : 0) + bk.proj(L.pin[0] + MX, L.pin[1], L.pin[2] + M)[1];
     const order = LOCS.map((L, i) => [L, i]).sort((a, b) => rank(a[0]) - rank(b[0]));
     for (const [L, i] of order) {
       const open = this.unlocked(L.id), isH = this.hover === L.id, isS = this.sel === L.id;
-      const [px, py] = bk.proj(L.pin[0] + M, L.pin[1], L.pin[2] + M);
-      const [fx, fy] = bk.proj(L.focus[0] + M, L.focus[1], L.focus[2] + M);
+      const [px, py] = bk.proj(L.pin[0] + MX, L.pin[1], L.pin[2] + M);
+      const [fx, fy] = bk.proj(L.focus[0] + MX, L.focus[1], L.focus[2] + M);
       const bob = reduced ? 0 : Math.round(Math.sin(t * 2.2 + i * 1.3) * 1.5);
       const x = Math.round(ox + px), y = Math.round(oy + py) + bob - (isH ? 2 : 0);
       // leader line down to the location
