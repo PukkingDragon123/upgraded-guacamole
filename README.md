@@ -1,59 +1,59 @@
 # FISHTOP
 
-Your desktop is secretly an ocean. FISHTOP floods your desktop with a glossy, sunny Frutiger Aero sea, built
-entirely from voxels. The floating app icons are the game menu, AppSea downloads become bait, and you play as a
-bubble person fishing up internet-meme fish. Start with a goldfish jar on a glass desk, earn Aero, and research
-your way through The Lab to better rods, boats, tanks and seven oceans.
+FISHTOP is a zoomed-in, skill-based Frutiger Aero fishing game built entirely from voxels. You play as a bubble
+person in a little boat on a glossy, sunlit sea:
+- Cast with the mouse.
+- Crank a big glossy reel.
+- Zap fish with your rod's shock.
+- Fight surges by pulling against them.
 
-All art (voxel world, voxel fish, voxel characters and rooms), all music and all sound effects are generated in
-code. There are no asset files. Multiplayer is opt-in, and the game is fully playable offline.
+Then fill your goldfish jar with realistic voxel fish that earn Aero, and research better rods, boats, tanks and
+seven oceans in The Lab.
+
+All art (voxel world, fish, characters and rooms), all music and all sound effects are generated in code. There
+are no asset files. Multiplayer is opt-in, and the game is fully playable offline.
 
 ## Play
 
 | How | Command |
 | --- | --- |
-| In a browser (simulated desktop) | open `dist/index.html`, or `npm run serve` and visit http://localhost:5173 |
-| On your real desktop (Electron) | `npm install` then `npm run desktop` (see [docs/DESKTOP.md](docs/DESKTOP.md)) |
-| Fish in your web browser | load `extension/` as an unpacked extension (see [extension/README.md](extension/README.md)) |
+| In a browser | open `dist/index.html`, or `npm run serve` and visit http://localhost:5173 |
+| As a desktop game window (Electron) | `npm install` then `npm run desktop` (window or fullscreen; see [docs/DESKTOP.md](docs/DESKTOP.md)) |
 
-To build from source, run `npm install && npm run build`. That bundles `src/` into `dist/fishtop.js`
-and `extension/overlay.js` with esbuild.
+To build from source, run `npm install && npm run build`, which bundles `src/` into `dist/fishtop.js` with esbuild.
 
 ### Controls
 
-- **Menu**: click the glossy app bubbles floating in the water. They open:
+- **Menu**: the glossy hotbar at the bottom opens:
   - The Lab
   - Aquarium
   - FishDex
   - Satchel
   - Wardrobe
   - Map
-  - AppSea
+  - Bait Shop
   - Bait
   - Multiplayer
   - Settings
 
-  While a panel is open, the bubbles work as tabs.
-- **Bait**: open **AppSea** and download bait packs. Downloads take real time on your dial-up, and the Lab
-  unlocks faster internet. Each bait is used up when a fish bites. Mix your own custom bait in the Bait panel
-  once the Lab unlocks the recipe. You can also fish without bait, but fewer fish will bite.
-- **Fishing**: click the water to cast. When the `!` pops, click to set the hook. Then:
-  - **Crank**: circle your mouse. The big glossy reel's handle follows your cursor, and the spool fills
-    as you win.
-  - **Shock**: right-click, press Space, or hit the reel's gold button to zap the fish. A stunned fish
-    reels in fast. Your rod sets the number of charges and the cooldown.
+  Your rod and bait are shown bottom left.
+- **Bait**: buy bait packs from Dot at the **Bait Shop** with Aero. The Lab unlocks better shelves, discounts and
+  faster restocks. Each bait is used up when a fish bites. Mix custom bait in the Bait panel once the Lab unlocks
+  the recipe.
+- **Fishing**:
+  - **Cast**: click the water. When the `!` pops, click to set the hook.
+  - **Crank**: circle your mouse to turn the big reel.
+  - **Shock**: right-click, press Space, or hit the reel's gold button to stun the fish.
   - **Surge**: when the fish bolts, hold the button and drag against the glossy arrow.
-  - **Floating boxes**: hover the hook over a drifting crate, capsule, bottle or orb, click, and crank it in
+  - **Floating boxes**: hover the hook over a drifting crate, capsule, bottle or orb, then click and crank it in
     for loot.
-- **Boat**: scroll up (or press `Home`) to the surface and your boat. Drag it around with the mouse. Press `End` to go
-  back down.
+- **Camera**: it follows your hook, boat and catch. Scroll (or press `Home`/`End`) to move between the surface and
+  the seabed. Ctrl/Alt + wheel or `+`/`-` changes the zoom.
 - **Keys**:
-  - **Panels**: `L` The Lab, `J` FishDex, `I` Satchel, `W` Wardrobe, `T` map, `B` bait, `O` multiplayer,
-    `A` aquarium.
-  - **Building**: `U` blueprint/build mode.
-  - **Game**: `P` pause fishing, `M` mini mode, `Esc` close.
-  - **Desktop app**: `Ctrl+Alt+F` toggles fishing, `Ctrl+Alt+P` pauses, `Ctrl+Alt+M` switches to mini mode and
-    `Ctrl+Alt+O` switches to overlay.
+  - **Panels**: `L` The Lab, `J` FishDex, `I` Satchel, `W` Wardrobe, `T` map, `B` bait, `S` Bait Shop,
+    `O` multiplayer, `A` aquarium.
+  - **Building**: `U` build mode.
+  - **Game**: `P` pause, `Esc` settings/close.
 
 ### The loop
 
@@ -74,20 +74,21 @@ Research takes real time, and a floating beaker shows its progress.
 
 ## What's inside
 
-- **The opening**: a 24-second voxel film. The camera pushes from a sunny Aero room into the monitor. The hill
-  wallpaper floods, and bubbles from your goldfish jar become you.
+- **The opening**: a 19-second voxel film. The camera flies over the (OS)cean island and swoops to you casting from
+  your boat. It plunges underwater past schools of fish, then a swordfish strikes at the lens.
 - **Goldie the goldfish** guides a short tutorial with icons and arrows.
 - **Seven voxel oceans**, each with a glossy water shader, day and night following your real clock, weather,
   secrets and its own music:
-  - **(OS)cean**: the classic green-hill wallpaper, flooded, with wind turbines, a green glass globe and a
-    glass city in a water bubble.
+  - **(OS)cean**: a flooded green-hill landscape with wind turbines, a green glass globe and a glass city in a
+    water bubble.
   - **Sunny Shallows**
   - **Frosty Fjord**
   - **Junkyard Reef**
   - **Sunken Metropolis**
   - **Lava Rift**
   - **The Deep Ocean**
-- **111 voxel fish** with cute cartoon eyes. Most are internet and meme puns with original designs:
+- **111 realistic voxel fish** with glossy Aero shine and translucent fins. Their names are internet and meme
+  puns:
   - Wi-Fish
   - Stonks Salmon
   - Rickroll Rockfish
@@ -120,32 +121,33 @@ Research takes real time, and a floating beaker shows its progress.
 
 ## Safety and privacy
 
-- FISHTOP never modifies, moves or deletes your files. Icons in the bait box are virtual copies,
-  and stolen icons always come back; **Restore All Icons** resets everything instantly.
-- Dropped files are only read for their name and type, never their contents.
-- The desktop app asks before listing your Desktop folder. That listing is read-only and stays on
-  your machine.
-- The browser extension reads only element positions, never page text, and sends nothing anywhere.
+- FISHTOP never reads, modifies or uploads your files. Saves stay in your browser's local storage.
 - Multiplayer is off until you turn it on. It shares only the display name you choose and your in-game state
   (look, boat, ocean, catches, emotes). Everything received from other players is validated and treated as
   untrusted.
-- In the desktop app's overlay mode, clicks pass through to your real desktop unless you are
-  fishing or pointing at game UI. `P` / `Ctrl+Alt+P` pauses fishing at any time.
+- The optional browser extension in `extension/` reads only element positions, never page text, and sends
+  nothing anywhere.
 
 ## Development
 
 ```
-src/core      math, colour, input, audio            src/gfx      fonts, pixel tools, fish rasteriser + rig, voxels, props, particles
-src/world     ocean manager, clock, 3D voxel biomes  src/fish     species, AI, spawner, traits
-src/fishing   controller, minigames, bait effects     src/desktop  simulated desktop, icons, apps, wallpaper
-src/aquarium  tank, coins, decor                      src/ui       panels, dock, HUD
-src/game      game loop, camera, save, skills, tutorial src/overlay  browser-extension content script
-src/store     AppSea downloads, ISP, boat tiers        src/build    buildings, research, packages, inventory
+src/core      math, colour, input, audio               src/gfx      fonts, voxel renderer, fish rig, props, particles, character, NPCs
+src/world     ocean manager, camera follow, voxel biomes, floating boxes   src/fish     species, AI, spawner, traits
+src/fishing   controller, reel, shock, events, catch flow  src/desktop  icon art library only
+src/aquarium  tanks, Aero room, drops, decor             src/ui       Aero kit, HUD, panels, Lab
+src/game      game loop, camera, save, Lab, rods, tutorial, intro   src/net      opt-in multiplayer
+src/store     Bait Shop, bait, custom bait               src/build    buildings, crafting, crates, inventory
 ```
 
-- `npm test` builds and plays the whole game headlessly in Chromium (Playwright). It drags an icon
-  into the bait box, hooks and reels in the first fish, checks the flood, reveal, coin and skill,
-  opens every panel, travels to every ocean and fails on any console error.
-- `node tools/build.mjs --dev <name>` + `node tools/shot.mjs "dev/<name>.html" out.png` render the
-  art preview pages in `src/dev/` (species, voxfish, props, biomes, newbiomes, mapview, tabbar, store, panels, aquarium, audio).
+- `npm test` builds and plays the whole game headlessly in Chromium (Playwright). It covers:
+  - skipping the opening
+  - buying bait
+  - fighting and landing the first fish, then the catch card
+  - the jar and collecting Aero
+  - starting the first Lab research
+  - opening every panel
+  - travelling to all seven oceans
+  The test fails on any console error.
+- `node tools/build.mjs --dev <name>` + `node tools/shot.mjs "dev/<name>.html" out.png` render the art preview
+  pages in `src/dev/`.
 - Module contracts live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

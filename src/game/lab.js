@@ -14,7 +14,7 @@
 //   BOAT_NAMES, TANK_NAMES, OCEAN_NAMES, STARTER_UNLOCKS, DECOR_SETS (decor recipes per crafting node), EFFECT_INFO, MULT_KEYS
 //   Unlock ids: rod:<rods.js id>, boat:<BOAT_ORDER> (sets state.boat.tier), tank:<TANK_ORDER> (sets state.tank.tier),
 //   biome:<OCEAN_ORDER> (pushed to state.unlockedBiomes), recipe:<src/build/crafting.js id>, bait:<store bait id>
-//   (allows its AppSea download), feature:isp2..isp6 | multiplayer | autocollect | eng1 | eng2 | aquarium.
+//   (sold at the Bait Shop), feature:isp2..isp6 (Bait Shop shelves/discounts) | multiplayer | autocollect | eng1 | eng2 | aquarium.
 //   ensureLab(state) -> state.lab = {done:{id:ts}, active:{id,start,end}|null, slots:[{id,start,end,paid}], unlocks:{'kind:id':true}}
 //   labHas(state, nodeId) -> bool
 //   labStatus(state, nodeId) -> 'done'|'researching'|'available'|'locked'
@@ -209,18 +209,18 @@ n('tank_wall', 'aquarium', 8, 0, 'Wall Aquarium', 'tank:wallaquarium', ['tank_cu
 n('luck1', 'luck', 1, 0, 'Four-Leaf Kelp', 'clover', [ROOT_ID], { effect: { rarityBoost: 1.05 }, desc: 'A little luck for every cast.' });
 n('offline1', 'luck', 2, -1, 'Night Shift', 'moon', ['luck1'], { effect: { offlineMul: 0.1 }, desc: 'More Aero while you\'re away.' });
 n('lab_slot2', 'luck', 2, 0, 'Second Bench', 'beaker', ['luck1'], { effect: { labSlots: 1 }, desc: 'Research two things at once.', cost: { aero: 120, items: { driftwood: 4, sea_glass: 2 } }, time: 30 });
-n('isp2', 'luck', 2, 1, 'ISDN Buoy', 'wifi', ['luck1'], { unlock: [U('feature', 'isp2')], desc: 'Faster AppSea downloads.' });
+n('isp2', 'luck', 2, 1, 'Pro Shelf', 'box', ['luck1'], { unlock: [U('feature', 'isp2')], desc: 'Dot stocks better bait at the Bait Shop.' });
 n('autocollect', 'luck', 3, -1, 'Auto-Collect', 'magnet', ['offline1'], { unlock: [U('feature', 'autocollect')], effect: { autoCollect: 1, collectRadius: 6 }, desc: 'Aero drops collect themselves.' });
 n('luck2', 'luck', 3, 0, 'Lucky Charm', 'horseshoe', ['lab_slot2'], { effect: { rarityBoost: 1.06, crateLuck: 0.1 }, desc: 'Luckier fish and crates.' });
-n('isp3', 'luck', 3, 1, 'DSL Kelp Cable', 'wifi', ['isp2'], { unlock: [U('feature', 'isp3')], desc: 'Even faster downloads.' });
+n('isp3', 'luck', 3, 1, 'Ultra Shelf', 'box', ['isp2'], { unlock: [U('feature', 'isp3')], desc: 'Ultra-grade bait on the shelf.' });
 n('offline2', 'luck', 4, -1, 'Dream Engine', 'moon', ['autocollect'], { effect: { offlineMul: 0.2, coinMul: 1.1 }, desc: 'Sleep is profitable.' });
 n('lab_speed1', 'luck', 4, 0, 'Lab Assistant', 'clock', ['luck2'], { effect: { labSpeed: 1.25 }, desc: 'Research runs faster.' });
-n('isp4', 'luck', 4, 1, 'Cable Modem', 'wifi', ['isp3'], { unlock: [U('feature', 'isp4')], desc: 'Big downloads, fast.' });
+n('isp4', 'luck', 4, 1, 'Mega Shelf', 'box', ['isp3'], { unlock: [U('feature', 'isp4')], desc: 'Mega bait for mega fish.' });
 n('shiny1', 'luck', 5, 0, 'Sparkle Lens', 'sparkle', ['lab_speed1'], { effect: { shinyChance: 1.4 }, desc: 'Shiny fish more often.' });
-n('isp5', 'luck', 5, 1, 'Fibre Optics', 'wifi', ['isp4'], { unlock: [U('feature', 'isp5')], desc: 'Light-speed downloads.' });
+n('isp5', 'luck', 5, 1, 'Loyalty Card', 'coin', ['isp4'], { unlock: [U('feature', 'isp5')], desc: 'Bait Shop discounts for regulars.' });
 n('lab_slot3', 'luck', 6, -1, 'Third Bench', 'beaker', ['lab_speed1', 'offline2'], { effect: { labSlots: 1, labSpeed: 1.2 }, desc: 'Three experiments at once.' });
 n('luck3', 'luck', 6, 0, 'Golden Horseshoe', 'horseshoe', ['shiny1'], { effect: { rarityBoost: 1.1, crateLuck: 0.15 }, desc: 'Rare fish come running.' });
-n('isp6', 'luck', 7, 1, 'Quantum Kelp-Link', 'wifi', ['isp5', 'luck3'], { unlock: [U('feature', 'isp6')], desc: 'Downloads before you click.' });
+n('isp6', 'luck', 7, 1, 'Express Restock', 'clock', ['isp5', 'luck3'], { unlock: [U('feature', 'isp6')], desc: 'The Bait Shop restocks much faster.' });
 n('luck4', 'luck', 9, 0, 'Rainbow Clover', 'rainbow', ['lab_slot3', 'luck3'], { effect: { rarityBoost: 1.15, shinyChance: 1.5, crateLuck: 0.2 }, desc: 'Luck itself, distilled.' });
 
 // ---- Bait (left): bait recipes (crafted on the Lab's crafting bench) + the custom Bait Mixer (store/bait.js)
