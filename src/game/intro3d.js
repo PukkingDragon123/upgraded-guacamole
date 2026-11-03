@@ -1419,11 +1419,13 @@ export class Intro3D {
     this.quad(ctx, [[-hw, y, MON.z + 3], [hw, y, MON.z + 3], [hw * 0.9, y, z0], [-hw * 0.9, y, z0]]); ctx.fill();
     ctx.restore();
     // light focused through the bowl onto the desk
+    if (JAR.z - 22 - this.cam.z < 12) return;
     const [cx, cy, s] = this.proj(JAR.x + 30, y, JAR.z - 22);
+    if (cx - 42 * s > this.W) return;
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     ctx.translate(cx, cy); ctx.scale(1, 0.28);
-    drawAeroGlow(ctx, 0, 0, Math.round(42 * s), '#c8fbff', 0.5 + 0.1 * Math.sin(t * 2));
+    drawAeroGlow(ctx, 0, 0, Math.min(160, Math.round(42 * s)), '#c8fbff', 0.5 + 0.1 * Math.sin(t * 2));
     ctx.restore();
   }
 
@@ -1481,7 +1483,7 @@ export class Intro3D {
       ctx.fillRect(x0 + R, y0 + s, x1 - x0 - R * 2, Math.max(1, (qy0 - y0) * 0.5));
     }
     const [lx, ly, ls] = this.proj(hw - 6, MON.cy + hh + MON.chin * 0.55, z0);
-    drawAeroGlow(ctx, lx, ly, Math.max(3, Math.round(7 * ls)), '#5fe6ff', 0.7);
+    drawAeroGlow(ctx, lx, ly, clamp(Math.round(7 * ls), 3, 40), '#5fe6ff', 0.7);
     ctx.fillStyle = '#d8fbff'; ctx.fillRect(Math.round(lx - ls), Math.round(ly - ls * 0.5), Math.max(1, Math.round(2 * ls)), Math.max(1, Math.round(ls)));
     void t;
   }

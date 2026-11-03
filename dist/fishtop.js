@@ -67838,12 +67838,14 @@ ${hearts} ${status}
           this.quad(ctx3, [[-hw, y, MON.z + 3], [hw, y, MON.z + 3], [hw * 0.9, y, z0], [-hw * 0.9, y, z0]]);
           ctx3.fill();
           ctx3.restore();
+          if (JAR.z - 22 - this.cam.z < 12) return;
           const [cx, cy, s] = this.proj(JAR.x + 30, y, JAR.z - 22);
+          if (cx - 42 * s > this.W) return;
           ctx3.save();
           ctx3.globalCompositeOperation = "lighter";
           ctx3.translate(cx, cy);
           ctx3.scale(1, 0.28);
-          drawAeroGlow(ctx3, 0, 0, Math.round(42 * s), "#c8fbff", 0.5 + 0.1 * Math.sin(t * 2));
+          drawAeroGlow(ctx3, 0, 0, Math.min(160, Math.round(42 * s)), "#c8fbff", 0.5 + 0.1 * Math.sin(t * 2));
           ctx3.restore();
         }
         drawDeskEdge(ctx3) {
@@ -67928,7 +67930,7 @@ ${hearts} ${status}
             ctx3.fillRect(x0 + R3, y0 + s, x1 - x0 - R3 * 2, Math.max(1, (qy0 - y0) * 0.5));
           }
           const [lx, ly, ls] = this.proj(hw - 6, MON.cy + hh + MON.chin * 0.55, z0);
-          drawAeroGlow(ctx3, lx, ly, Math.max(3, Math.round(7 * ls)), "#5fe6ff", 0.7);
+          drawAeroGlow(ctx3, lx, ly, clamp(Math.round(7 * ls), 3, 40), "#5fe6ff", 0.7);
           ctx3.fillStyle = "#d8fbff";
           ctx3.fillRect(Math.round(lx - ls), Math.round(ly - ls * 0.5), Math.max(1, Math.round(2 * ls)), Math.max(1, Math.round(ls)));
           void t;
