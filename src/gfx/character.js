@@ -2039,7 +2039,7 @@ export function itemPreview(look, item, size = 1, force = false) {
   const vs = Math.max(0.6, Math.round(BASE_VS * size * 20) / 20);
   const slot = item.slot;
   if (HEAD_SLOTS.has(slot)) {
-    const L2 = slot === 'hair' ? { ...L, hat: 'none' } : L;
+    const L2 = slot === 'hair' ? { ...L, hat: 'none' } : slot === 'tint' || slot === 'eyes' || slot === 'mouth' || slot === 'face' ? { ...L, hat: 'none', hair: 'none' } : L;
     const kit = kitFor(L2, rl);
     const head = kit.part('head', () => buildHead(kit));
     const Wh = Tr(-head.pivot[0], -head.pivot[1], -head.pivot[2]);
@@ -2065,8 +2065,16 @@ export function itemPreview(look, item, size = 1, force = false) {
     else { const fore = kit.part('fore', () => buildFore(kit)); items = [[-3, 18], [3, -18]].map(([dx, rz]) => ({ part: fore, W: mul(mul(Tr(dx, 0, 0), Ro([0, 0, rz + 180])), Tr(-fore.pivot[0], -fore.pivot[1], -fore.pivot[2])) })); }
     const res = renderComposite(kit, items, null, 1, -34, 20, vs * 1.3);
     pv = { canvas: res.r.canvas, glow: res.r.glow, ox: res.r.w / 2, oy: res.r.h, w: res.r.w, h: res.r.h };
+  } else if (slot === 'top' || slot === 'bottom' || slot === 'back') {
+    // body only (no bubble): torso + arms (+ legs for bottoms), from behind for packs
+    const kit = kitFor({ ...L, hat: 'none' }, rl);
+    const sol = solve(kit, POSES.stand.fn(0, 0), 0, true);
+    const keep = slot === 'bottom' ? new Set(['torso', 'thigh', 'shin']) : new Set(['torso', 'upper', 'fore']);
+    const items = sol.items.filter((q) => keep.has(q.name));
+    const res = renderComposite(kit, items, null, 1, slot === 'back' ? 150 : -28, 12, vs);
+    pv = { canvas: res.r.canvas, glow: res.r.glow, ox: res.r.w / 2, oy: res.r.h, w: res.r.w, h: res.r.h };
   } else {
-    const L2 = { ...L, hat: slot === 'top' || slot === 'back' ? L.hat : 'none' };
+    const L2 = { ...L, hat: 'none' };
     const kit = kitFor(L2, rl);
     const pose = slot === 'emote' ? EMOTES[L2.emote]?.pose || 'wave' : 'stand';
     const fr = getFrame(kit, pose, slot === 'emote' ? 2 : 0, slot === 'back' ? 150 : -30, vs, 1, true, true);

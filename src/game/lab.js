@@ -114,7 +114,7 @@ const U = (kind, id) => ({ kind, id });
 RAW.push({ id: ROOT_ID, branch: null, tier: 0, lane: 0, name: 'The Lab', icon: 'beaker', req: [], desc: 'Professor Fizz\'s lab. Every discovery grows from here.' });
 
 // ---- Rods (up)
-n('hook1', 'rods', 1, 0, 'Sharper Hook', 'hook', [ROOT_ID], { effect: { biteWindow: 1.2 }, desc: 'Bites stay hookable longer.', cost: { aero: 5, items: { driftwood: 1 } }, time: 3 });
+n('hook1', 'rods', 1, 0, 'Sharper Hook', 'hook', [ROOT_ID], { effect: { biteWindow: 1.2 }, desc: 'Bites stay hookable longer.', cost: { aero: 2, items: { driftwood: 1 } }, time: 3 });
 n('rod_bubble', 'rods', 2, 0, 'Bubble Wand', 'rod:bubble', ['hook1'], { unlock: [U('rod', 'bubble')], desc: 'A rod that blows bubbles. Faster bites.' });
 n('line1', 'rods', 2, 1, 'Braided Line', 'line', ['hook1'], { effect: { lineStrength: 0.15 }, desc: 'Line takes more tension.' });
 n('rod_glass', 'rods', 3, 0, 'Glass Rod', 'rod:glass', ['rod_bubble'], { unlock: [U('rod', 'glass')], desc: 'Clear, glossy, bendy. Two shocks.' });

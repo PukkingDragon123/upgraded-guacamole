@@ -16637,7 +16637,7 @@ kmlmk..
     const vs = Math.max(0.6, Math.round(BASE_VS * size * 20) / 20);
     const slot = item.slot;
     if (HEAD_SLOTS.has(slot)) {
-      const L2 = slot === "hair" ? { ...L, hat: "none" } : L;
+      const L2 = slot === "hair" ? { ...L, hat: "none" } : slot === "tint" || slot === "eyes" || slot === "mouth" || slot === "face" ? { ...L, hat: "none", hair: "none" } : L;
       const kit = kitFor(L2, rl);
       const head = kit.part("head", () => buildHead(kit));
       const Wh = Tr(-head.pivot[0], -head.pivot[1], -head.pivot[2]);
@@ -16668,8 +16668,15 @@ kmlmk..
       }
       const res = renderComposite(kit, items, null, 1, -34, 20, vs * 1.3);
       pv = { canvas: res.r.canvas, glow: res.r.glow, ox: res.r.w / 2, oy: res.r.h, w: res.r.w, h: res.r.h };
+    } else if (slot === "top" || slot === "bottom" || slot === "back") {
+      const kit = kitFor({ ...L, hat: "none" }, rl);
+      const sol = solve(kit, POSES.stand.fn(0, 0), 0, true);
+      const keep = slot === "bottom" ? /* @__PURE__ */ new Set(["torso", "thigh", "shin"]) : /* @__PURE__ */ new Set(["torso", "upper", "fore"]);
+      const items = sol.items.filter((q) => keep.has(q.name));
+      const res = renderComposite(kit, items, null, 1, slot === "back" ? 150 : -28, 12, vs);
+      pv = { canvas: res.r.canvas, glow: res.r.glow, ox: res.r.w / 2, oy: res.r.h, w: res.r.w, h: res.r.h };
     } else {
-      const L2 = { ...L, hat: slot === "top" || slot === "back" ? L.hat : "none" };
+      const L2 = { ...L, hat: "none" };
       const kit = kitFor(L2, rl);
       const pose = slot === "emote" ? EMOTES[L2.emote]?.pose || "wave" : "stand";
       const fr = getFrame(kit, pose, slot === "emote" ? 2 : 0, slot === "back" ? 150 : -30, vs, 1, true, true);
@@ -34499,7 +34506,7 @@ kmlmk..
   }
   var U = (kind, id) => ({ kind, id });
   RAW.push({ id: ROOT_ID, branch: null, tier: 0, lane: 0, name: "The Lab", icon: "beaker", req: [], desc: "Professor Fizz's lab. Every discovery grows from here." });
-  n("hook1", "rods", 1, 0, "Sharper Hook", "hook", [ROOT_ID], { effect: { biteWindow: 1.2 }, desc: "Bites stay hookable longer.", cost: { aero: 5, items: { driftwood: 1 } }, time: 3 });
+  n("hook1", "rods", 1, 0, "Sharper Hook", "hook", [ROOT_ID], { effect: { biteWindow: 1.2 }, desc: "Bites stay hookable longer.", cost: { aero: 2, items: { driftwood: 1 } }, time: 3 });
   n("rod_bubble", "rods", 2, 0, "Bubble Wand", "rod:bubble", ["hook1"], { unlock: [U("rod", "bubble")], desc: "A rod that blows bubbles. Faster bites." });
   n("line1", "rods", 2, 1, "Braided Line", "line", ["hook1"], { effect: { lineStrength: 0.15 }, desc: "Line takes more tension." });
   n("rod_glass", "rods", 3, 0, "Glass Rod", "rod:glass", ["rod_bubble"], { unlock: [U("rod", "glass")], desc: "Clear, glossy, bendy. Two shocks." });

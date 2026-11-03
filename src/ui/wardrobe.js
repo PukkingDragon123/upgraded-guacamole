@@ -33,7 +33,7 @@ const SAY = {
   random: ['Surprise!', 'Shuffle!'],
 };
 const SLOT_SOUND = { tint: 'blub', eyes: 'boing', mouth: 'honk', hat: 'boing', hair: 'boing', face: 'bell', top: 'puff', bottom: 'puff', gloves: 'squeak', shoes: 'squeak', back: 'puff', trail: 'bell', emote: 'chirp', rod: 'reel_tick', boat: 'splash_small' };
-const THUMB = { tint: 0.95, eyes: 0.95, mouth: 0.95, face: 0.95, hat: 0.78, hair: 0.78, top: 0.62, bottom: 0.62, back: 0.62, trail: 0.62, emote: 0.62, gloves: 1.1, shoes: 1.0, rod: 0.62 };
+const THUMB = { tint: 1.05, eyes: 1.05, mouth: 1.05, face: 1.05, hat: 0.85, hair: 0.85, top: 1.7, bottom: 1.4, back: 1.6, trail: 0.62, emote: 0.62, gloves: 1.3, shoes: 1.2, rod: 0.62 };
 const PART_PRICE = { common: 0, uncommon: 150, rare: 400, epic: 1000, legendary: null };
 const TABS = [...WARDROBE_SLOTS.map((s) => s.id), 'boat'];
 const NONE_FIRST = new Set(['hat', 'hair', 'face', 'back', 'trail', 'gloves']);
@@ -133,6 +133,7 @@ export class WardrobePanel {
     this.line = null;
     this.lineT = 0;
     this.pops = [];
+    this.tsz = {};
   }
 
   open(data) {
@@ -517,16 +518,18 @@ export class WardrobePanel {
     ctx.fillStyle = rg; ctx.fillRect(c.x + 3, c.y + c.h - 18 + lift, c.w - 6, 16);
     if (it.rarity === 'legendary' || it.rarity === 'epic') drawSparkle(ctx, c.x + c.w - 9, c.y + 7 + lift, 2, 0.6 + 0.4 * Math.sin(t * 4 + c.x), it.rarity === 'legendary' ? '#fff2a0' : '#ffe0ff');
     // thumbnail
-    const pv = itemPreview(base, it, THUMB[it.slot] || 0.7);
-    const cx = c.x + c.w / 2, by = c.y + c.h - 8 + lift;
+    const sz = this.tsz[it.slot] ?? THUMB[it.slot] ?? 0.7;
+    let pv = itemPreview(base, it, sz);
+    if (pv && (pv.w > c.w - 4 || pv.h > c.h - 8) && sz > 0.3) {
+      // too big for the card: shrink this slot's thumbnails (rebuilt at the new size)
+      this.tsz[it.slot] = Math.max(0.3, Math.floor(sz * Math.min((c.w - 4) / pv.w, (c.h - 8) / pv.h) * 20) / 20);
+      pv = null;
+    }
+    const cx = c.x + c.w / 2, by = c.y + c.h - 6 + lift - (pv && pv.h < c.h - 20 ? Math.round((c.h - 12 - pv.h) / 2) : 0);
     if (pv) {
       const a = ctx.globalAlpha;
       if (!own) ctx.globalAlpha = a * 0.5;
-      const fit = Math.min(1, (c.w - 6) / pv.w, (c.h - 10) / pv.h);
-      if (fit < 0.999) {
-        const w = Math.round(pv.w * fit), h = Math.round(pv.h * fit);
-        ctx.drawImage(pv.canvas, Math.round(cx - (pv.ox / pv.w) * w), Math.round(by - (pv.oy / pv.h) * h), w, h);
-      } else drawItemPreview(ctx, pv, cx, by, t + c.x * 0.01, 'wd:' + it.id);
+      drawItemPreview(ctx, pv, cx, by, t + c.x * 0.01, 'wd:' + it.id);
       ctx.globalAlpha = a;
     } else {
       drawGlossOrb(ctx, cx, c.y + c.h / 2, 8, '#bfeaff', t);
@@ -587,7 +590,8 @@ export class WardrobePanel {
     const tier = clamp(b.tier | 0, 0, BOAT_TIERS.length - 1);
     const hovPart = this.hoverPart;
     const parts = hovPart ? { ...b.parts, [hovPart.slot]: hovPart.id } : b.parts;
-    const scale = tier >= 4 ? 1 : 1.25;
+    const base = renderBoatPreview(tier, null, { scale: 1 });
+    const scale = clamp(Math.floor(((s.w * 0.9) / base.canvas.width) * 4) / 4, 0.75, 2);
     const pv = renderBoatPreview(tier, parts, { scale });
     // water strip
     const wy = s.y + Math.round(s.h * 0.66);
@@ -612,11 +616,19 @@ export class WardrobePanel {
     const g = this.game, inp = g.input, st = g.state;
     const bs = this.boatState();
     // tier strip
-    const th = 22, tw = Math.floor(b.w / BOAT_TIERS.length);
+    const th = 30, tw = Math.floor(b.w / BOAT_TIERS.length);
     BOAT_TIERS.forEach((T, i) => {
       const r = { x: b.x + i * tw, y: b.y, w: tw - 2, h: th };
       const own = this.tierOwned(i), cur = (bs.tier | 0) === i, hov = ui.hover(r);
-      drawAeroButton(ctx, r.x, r.y, r.w, r.h, { tone: cur ? 'aqua' : own ? 'white' : 'grey', state: hov && own ? 'hover' : 'normal', label: own ? String(i + 1) : '', icon: own ? null : getUiIcon('lock'), font: 'small', radius: 6 });
+      drawAeroButton(ctx, r.x, r.y, r.w, r.h, { tone: cur ? 'aqua' : own ? 'white' : 'grey', state: hov && own ? 'hover' : 'normal', radius: 6 });
+      const mini = renderBoatPreview(i, bs.parts, { scale: 0.25 });
+      const k = Math.min(1, (r.w - 6) / mini.canvas.width, (r.h - 4) / mini.canvas.height);
+      const mw = Math.round(mini.canvas.width * k), mh = Math.round(mini.canvas.height * k);
+      const a0 = ctx.globalAlpha;
+      if (!own) ctx.globalAlpha = a0 * 0.4;
+      ctx.drawImage(mini.canvas, Math.round(r.x + (r.w - mw) / 2), Math.round(r.y + r.h - 3 - mh), mw, mh);
+      ctx.globalAlpha = a0;
+      if (!own) { const lk = getUiIcon('lock'); if (lk) ctx.drawImage(lk, r.x + 3, r.y + 3); }
       if (hov) ui.tip = own ? T.name : `${T.name} (unlock in The Lab)`;
       if (own && !cur && ui.clicked(r)) { bs.maxTier = Math.max(bs.maxTier ?? bs.tier ?? 0, bs.tier | 0); bs.tier = i; g.audio?.play?.('splash_small'); this.changed(); }
     });

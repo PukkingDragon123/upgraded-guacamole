@@ -23441,7 +23441,7 @@ Your files are never touched.`;
       RAW = [];
       U = (kind2, id2) => ({ kind: kind2, id: id2 });
       RAW.push({ id: ROOT_ID, branch: null, tier: 0, lane: 0, name: "The Lab", icon: "beaker", req: [], desc: "Professor Fizz's lab. Every discovery grows from here." });
-      n("hook1", "rods", 1, 0, "Sharper Hook", "hook", [ROOT_ID], { effect: { biteWindow: 1.2 }, desc: "Bites stay hookable longer.", cost: { aero: 5, items: { driftwood: 1 } }, time: 3 });
+      n("hook1", "rods", 1, 0, "Sharper Hook", "hook", [ROOT_ID], { effect: { biteWindow: 1.2 }, desc: "Bites stay hookable longer.", cost: { aero: 2, items: { driftwood: 1 } }, time: 3 });
       n("rod_bubble", "rods", 2, 0, "Bubble Wand", "rod:bubble", ["hook1"], { unlock: [U("rod", "bubble")], desc: "A rod that blows bubbles. Faster bites." });
       n("line1", "rods", 2, 1, "Braided Line", "line", ["hook1"], { effect: { lineStrength: 0.15 }, desc: "Line takes more tension." });
       n("rod_glass", "rods", 3, 0, "Glass Rod", "rod:glass", ["rod_bubble"], { unlock: [U("rod", "glass")], desc: "Clear, glossy, bendy. Two shocks." });
@@ -30927,7 +30927,7 @@ kmlmk..
     const vs = Math.max(0.6, Math.round(BASE_VS * size * 20) / 20);
     const slot = item.slot;
     if (HEAD_SLOTS.has(slot)) {
-      const L22 = slot === "hair" ? { ...L2, hat: "none" } : L2;
+      const L22 = slot === "hair" ? { ...L2, hat: "none" } : slot === "tint" || slot === "eyes" || slot === "mouth" || slot === "face" ? { ...L2, hat: "none", hair: "none" } : L2;
       const kit2 = kitFor(L22, rl);
       const head = kit2.part("head", () => buildHead(kit2));
       const Wh = Tr(-head.pivot[0], -head.pivot[1], -head.pivot[2]);
@@ -30958,8 +30958,15 @@ kmlmk..
       }
       const res = renderComposite(kit2, items, null, 1, -34, 20, vs * 1.3);
       pv = { canvas: res.r.canvas, glow: res.r.glow, ox: res.r.w / 2, oy: res.r.h, w: res.r.w, h: res.r.h };
+    } else if (slot === "top" || slot === "bottom" || slot === "back") {
+      const kit2 = kitFor({ ...L2, hat: "none" }, rl);
+      const sol = solve(kit2, POSES.stand.fn(0, 0), 0, true);
+      const keep = slot === "bottom" ? /* @__PURE__ */ new Set(["torso", "thigh", "shin"]) : /* @__PURE__ */ new Set(["torso", "upper", "fore"]);
+      const items = sol.items.filter((q) => keep.has(q.name));
+      const res = renderComposite(kit2, items, null, 1, slot === "back" ? 150 : -28, 12, vs);
+      pv = { canvas: res.r.canvas, glow: res.r.glow, ox: res.r.w / 2, oy: res.r.h, w: res.r.w, h: res.r.h };
     } else {
-      const L22 = { ...L2, hat: slot === "top" || slot === "back" ? L2.hat : "none" };
+      const L22 = { ...L2, hat: "none" };
       const kit2 = kitFor(L22, rl);
       const pose2 = slot === "emote" ? EMOTES[L22.emote]?.pose || "wave" : "stand";
       const fr = getFrame(kit2, pose2, slot === "emote" ? 2 : 0, slot === "back" ? 150 : -30, vs, 1, true, true);
@@ -78209,7 +78216,8 @@ ${hearts} ${status}
           const t = this.t;
           const W11 = g.screen.W;
           const R3 = 15;
-          const x = Math.round(W11 - 30), y = Math.round(58 + Math.sin(t * 1.8) * 2.5);
+          const cr = ui.coinRect;
+          const x = Math.round(cr ? cr.x - 26 : W11 - 100), y = Math.round((cr ? cr.y + cr.h / 2 + 4 : 20) + Math.sin(t * 1.8) * 2);
           this.rect = { x: x - R3 - 3, y: y - R3 - 3, w: R3 * 2 + 6, h: R3 * 2 + 6 };
           const hov = ui.hover(this.rect);
           const s = L2.slots[0];
@@ -78261,7 +78269,7 @@ ${hearts} ${status}
             drawSparkle(ctx3, x + Math.cos(a) * d, y + Math.sin(a) * d, 2, 1 - clamp012((this.done.t - 1) / 2));
           }
           if (hov && s && nd) {
-            drawAeroLabel(ctx3, `${nd.name}  ${fmtTime(labRemaining(st, s.id))}`, x - R3 - 8, y + R3 + 6, { align: "right", tone: "white" });
+            drawAeroLabel(ctx3, `${nd.name}  ${fmtTime(labRemaining(st, s.id))}`, x, y + R3 + 8, { align: "center", tone: "white" });
             ui.markHot?.("labwidget");
           }
           ctx3.restore();

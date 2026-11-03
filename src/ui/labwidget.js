@@ -48,7 +48,9 @@ export class LabWidget {
     const t = this.t;
     const W = g.screen.W;
     const R = 15;
-    const x = Math.round(W - 30), y = Math.round(58 + Math.sin(t * 1.8) * 2.5);
+    // floats just left of the Aero counter (toasts stack below the counter on the right)
+    const cr = ui.coinRect;
+    const x = Math.round(cr ? cr.x - 26 : W - 100), y = Math.round((cr ? cr.y + cr.h / 2 + 4 : 20) + Math.sin(t * 1.8) * 2);
     this.rect = { x: x - R - 3, y: y - R - 3, w: R * 2 + 6, h: R * 2 + 6 };
     const hov = ui.hover(this.rect);
     const s = L.slots[0];
@@ -82,7 +84,7 @@ export class LabWidget {
     if (L.slots.length > 1) drawAeroBadge(ctx, x + R + 5, y - R - 4, L.slots.length, t);
     if (this.done) for (let i = 0; i < 8; i++) { const a = (i / 8) * TAU + t, d = R + 4 + doneK * 10; drawSparkle(ctx, x + Math.cos(a) * d, y + Math.sin(a) * d, 2, 1 - clamp01((this.done.t - 1) / 2)); }
     if (hov && s && nd) {
-      drawAeroLabel(ctx, `${nd.name}  ${fmtTime(labRemaining(st, s.id))}`, x - R - 8, y + R + 6, { align: 'right', tone: 'white' });
+      drawAeroLabel(ctx, `${nd.name}  ${fmtTime(labRemaining(st, s.id))}`, x, y + R + 8, { align: 'center', tone: 'white' });
       ui.markHot?.('labwidget');
     }
     ctx.restore();
