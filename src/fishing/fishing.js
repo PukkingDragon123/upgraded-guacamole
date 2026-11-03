@@ -32,7 +32,7 @@ import { Titles, Finale, EscapeCine, Outro } from './cinematics.js';
 import { drawFightScene, drawFightBands, drawBiteCue, drawMessage } from './hud.js';
 import { Reel } from './reel.js';
 import { BoxReel, landBoxLoot, drawBoxHover } from './boxreel.js';
-import { rodStats } from '../game/rods.js';
+import { rodStats, equippedRod } from '../game/rods.js';
 
 // A bare hook: no bait equipped. Fish still notice it, just much less eagerly.
 const BARE = { kind: 'bare', type: 'bare', id: null, label: 'Bare hook', mods: { attract: 0.55, rarity: 1, sizeBonus: 0, giantMul: 1, luck: 0 } };
@@ -91,7 +91,12 @@ export class Fishing {
 
   rodNow() {
     const g = this.game;
-    try { if (g.state) return rodStats(g.state, g.stats) || DEFAULT_ROD; } catch (e) { /* mock hosts */ }
+    try {
+      if (g.state) {
+        this.rodLook = equippedRod(g.state)?.look || null;
+        return rodStats(g.state, g.stats) || DEFAULT_ROD;
+      }
+    } catch (e) { /* mock hosts */ }
     return DEFAULT_ROD;
   }
 
@@ -387,6 +392,7 @@ export class Fishing {
     if (this.state === 'fight' || this.state === 'box') this.reel.update(rdt, this.battle || this.box);
     else this.reel.idle(rdt);
     if (this.cine && this.cine.update(dt, rdt) === 'done') this.cine = null;
+    if (this.lootPop && this.lootPop.update(rdt) === 'done') this.lootPop = null;
     this.updateLoops();
   }
 
@@ -1033,7 +1039,6 @@ export class Fishing {
     this.drawLostBait(ctx);
     this.fx.draw(ctx, 'fg', this.t);
     this.titles.draw(ctx);
-    this.box?.drawLoot?.(ctx);
     this.lootPop?.draw(ctx);
   }
 

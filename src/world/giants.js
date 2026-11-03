@@ -98,7 +98,13 @@ function dolphinModel(ph) {
   const fy = Math.round(cy + flex(0));
   for (let x = 0; x < 5; x++) { const span = 7 * (1 - Math.abs(x / 5 - 0.4)); for (let z = Math.floor(cz - span); z <= Math.ceil(cz + span); z++) m.set(x, fy, z, fin); }
   for (const s of [-1, 1]) m.line(L * 0.7, cy - 2, cz + s * R * 0.6, L * 0.6, cy - 5, cz + s * (R + 3), fin, 0.9);
-  m.set(Math.round(L * 0.86), Math.round(cy + 1), Math.round(cz + R * 0.75), eye);
+  // cute cartoon eye: a big glossy pupil with a white shine (no realistic eyes)
+  const ex = Math.round(L * 0.84), ey = Math.round(cy + 1), ez = Math.round(cz + R * 0.72);
+  const shine = C('#ffffff', { spec: 1, emissive: 0.3 });
+  for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1], [0, -1], [1, -1]]) m.set(ex + dx, ey + dy, ez + 1, eye);
+  m.set(ex + 1, ey + 1, ez + 2, shine);
+  // a little smile
+  m.set(ex + 3, ey - 2, ez, eye); m.set(ex + 4, ey - 2, ez - 1, eye);
   return m;
 }
 

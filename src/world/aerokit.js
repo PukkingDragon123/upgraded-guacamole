@@ -621,10 +621,16 @@ export function pierModel(len = 90, deep = 30, scale = 2) {
     // deck
     m.box(0, deckY, 0, len - 1, deckY + 1, D - 1, (x) => (x % 6 === 5 ? gap : plank[Math.floor(x / 6) % 2]));
     m.box(0, deckY - 1, D - 1, len - 1, deckY, D - 1, (x) => (x % 10 < 5 ? trim : trimL));
-    // back rail
-    for (let x = 2; x < len; x += 10) m.box(x, deckY + 2, 1, x, deckY + 8, 1, chrome);
-    m.box(0, deckY + 8, 1, len - 1, deckY + 8, 1, chrome);
-    m.box(0, deckY + 5, 1, len - 1, deckY + 5, 1, chromeD);
+    // back rail: white posts and handrail with aqua glass panels (Aero balcony)
+    const railW = m.color('#f8fbff', { jitter: 0.02, spec: 0.6, smooth: 0.6 });
+    const pane = m.color('#9ee8fa', { jitter: 0.02, spec: 0.9, specPow: 8, smooth: 0.7 }), paneL = m.color('#e6fcff', { jitter: 0.01, spec: 0.9 });
+    for (let x = 0; x < len; x++) for (let y = deckY + 2; y <= deckY + 7; y++) {
+      const u = (x + (y - deckY) * 1.5) % 13;
+      m.set(x, y, 1, u < 1.6 || (u > 3 && u < 3.8) ? paneL : pane);
+    }
+    for (let x = 2; x < len; x += 10) m.box(x, deckY + 2, 1, x, deckY + 8, 2, railW);
+    m.box(0, deckY + 8, 1, len - 1, deckY + 9, 2, railW);
+    m.box(0, deckY + 8, 3, len - 1, deckY + 8, 3, trim);
     // orb lamp at the pier end
     m.cylinder(3, 3, deckY + 2, deckY + 20, 0.8, chrome, 'y');
     m.sphere(3.5, deckY + 23, 3.5, 2.9, lampG);
