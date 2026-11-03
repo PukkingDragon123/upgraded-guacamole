@@ -14,7 +14,8 @@ import { RNG } from '../../core/rng.js';
 import { mix, rgba, pack } from '../../core/color.js';
 import { ctxOf } from '../../core/canvas.js';
 import { PROPS } from '../../gfx/props.js';
-import { worldProp } from '../voxkit.js';
+import { worldProp, voxRelief } from '../voxkit.js';
+import { gullFrames } from '../voxcritters.js';
 import {
   paint, dpack, lerpStops, gradientStrip, stopPalette, ditherPick, Blend, FogLayer, fillWith, drawWobble, makeRays,
   drawGlow, twinkle, Caustics, lumaMask, waveLine, waveRuns, Motes, Bubbles, Mask, ridge, todWeights,
@@ -239,7 +240,7 @@ export class ShallowsBiome extends Biome {
     const cy = Math.round(D.floorAt(cxp, cz)) + 1, cp = this.castleProp;
     this.castle = { x: cxp, y: cy, z: cz, rect: { x: cxp - cp.ox + 8, y: cy - cp.oy + 4, w: cp.w - 16, h: cp.oy - 6 }, clicks: 0, shake: 0, state: 'intact', t: 0 };
     this.chest = worldProp('treasure_chest', { scale: 0.6, frame: 1 });
-    this.heap = this.makeHeap();
+    this.heap = voxRelief(this.makeHeap(), { cell: 1, maxD: 5, depth: () => 5 });
     D.render([{ key: 'day', strip: this.water.day }, { key: 'dusk', strip: this.water.dusk }, { key: 'night', strip: this.water.night }]);
     this.bands = new BandSet(D);
     this.hazeY = Math.round(D.hz - 26);
@@ -526,16 +527,16 @@ export class ShallowsBiome extends Biome {
     // gulls
     const gullA = (tod.day + tod.dusk) * (1 - wx.storm) * (1 - wx.rain * 0.7);
     if (gullA > 0.05) {
-      g.fillStyle = tod.dusk > 0.5 ? '#3a2438' : '#3c4658';
+      // little voxel gulls (cute eyes), the near pair drawn twice the size
       g.globalAlpha = gullA;
+      const GF = gullFrames(tod.dusk > 0.5 ? '#ffe0d0' : '#ffffff');
       for (const gl of this.gulls) {
         const x = Math.round(gl.x), y = Math.round(gl.y + Math.sin(gl.ph * 0.2) * 3 + 0.12 * (scroll - ref));
-        const f = Math.sin(gl.ph) > 0.3 ? 0 : Math.sin(gl.ph) > -0.4 ? 1 : 2;
-        const s = gl.s;
-        const R = (dx, dy, w) => g.fillRect(x + dx * s, y + dy * s, w * s, s);
-        if (f === 0) { R(-3, -2, 1); R(-2, -1, 2); R(0, 0, 1); R(1, -1, 2); R(3, -2, 1); }
-        else if (f === 1) { R(-3, 0, 3); R(0, 0, 1); R(1, 0, 3); }
-        else { R(-3, 1, 1); R(-2, 0, 2); R(0, 0, 1); R(1, 0, 2); R(3, 1, 1); }
+        const fr = GF[Math.sin(gl.ph) > 0.3 ? 0 : Math.sin(gl.ph) > -0.4 ? 1 : 2];
+        const w = fr.width * gl.s, h = fr.height * gl.s;
+        g.save(); g.translate(x, y); if (gl.v < 0) g.scale(-1, 1);
+        g.drawImage(fr, -(w >> 1), -(h >> 1), w, h);
+        g.restore();
       }
       g.globalAlpha = 1;
     }

@@ -13,6 +13,7 @@ import { ROD_BY_ID } from '../game/rods.js';
 import { buildingSprite } from '../build/buildingmodels.js';
 import { itemIcon } from '../build/itemdraw.js';
 import { baitIcon } from '../fishing/baitart.js';
+import { voxelFishIcon } from '../fish/fishicon.js'; // [phase3:fish]
 
 // ---------------------------------------------------------------- pixel glyphs
 const PAL = {
@@ -64,7 +65,6 @@ const GLYPH_ART = {
   hammer: ['.SSSSS...', 'SWWWWWS..', 'SSSSSSS..', '...nn....', '...nn....', '...nn....', '...nn....', '...nN....', '...NN....'],
   globe: ['...bbbb...', '.bbeebbbb.', 'bbeeeebbbb', 'bbbeebbeeb', 'bbbbbbeeeb', 'beebbbbeeb', 'beeebbbbbb', '.beebbbbb.', '...bbbb...'],
   bubble: ['...aaa...', '.aa...aa.', 'a.w.....a', 'a.w.....a', 'a.......a', 'a.......a', '.aa...aa.', '...aaa...'],
-  fish: ['.....ww....', '...wwbbw..w', '.wwbbbbbw.ww', 'wbkbbbbbbwbw', 'wbbbbbbbbbbw', '.wbbBbbbBw.w', '...wBBBBw..w', '.....ww....'],
   trophy: ['yyyyyyyyy', 'yYyyyyyYy', '.yyyyyyy.', '..yyyyy..', '...yyy...', '....y....', '...yyy...', '..YYYYY..'],
 };
 export const GLYPHS = Object.keys(GLYPH_ART);
@@ -231,6 +231,26 @@ function globeModel(id) {
   return { m, yaw: 30, pitch: 22 };
 }
 
+// creatures are voxel too (no flat creature sprites): a little crab and a snail for the aquarium helpers
+function critterModel(kind) {
+  const m = new VoxelModel(20, 16, 12);
+  if (kind === 'crab') {
+    const shell = m.color('#ff5a3a', { jitter: 0.05, spec: 1.3 }), light = m.color('#ff9a6a', {}), eye = m.color('#ffffff', {}), pupil = m.color('#1c2c44', {});
+    m.ellipsoid(10, 5, 6, 5.5, 3.2, 4, shell); m.ellipsoid(10, 6.5, 7, 3.5, 1.4, 2.5, light);
+    for (const s of [-1, 1]) {
+      m.line(10 + s * 4, 4, 6, 10 + s * 7, 7, 6, shell, 0.7); m.ellipsoid(10 + s * 7.5, 8.5, 6, 2, 1.6, 1.6, shell);
+      for (let i = 0; i < 3; i++) m.line(10 + s * 3, 3, 4 + i * 2, 10 + s * 6, 0, 4 + i * 2, shell, 0.4);
+      m.line(10 + s * 1.5, 7, 7, 10 + s * 2, 10, 7, shell, 0.4); m.set(10 + s * 2, 11, 7, eye); m.set(10 + s * 2, 11, 8, pupil);
+    }
+  } else {
+    const shellA = m.color('#ff9ed2', { spec: 1.4 }), shellB = m.color('#e0549c', {}), body = m.color('#7ef0ff', { spec: 1.2 }), eye = m.color('#1c2c44', {});
+    m.ellipsoid(10, 2, 6, 7, 1.6, 3, body); m.line(15, 2, 6, 17, 6, 6, body, 0.9);
+    m.line(17, 6, 6, 18, 9, 5, body, 0.3); m.line(16.5, 6, 6, 16.5, 9, 7, body, 0.3); m.set(18, 9, 5, eye); m.set(16, 9, 7, eye);
+    m.sphere(9, 7, 6, 4.6, (x, y, z) => ((Math.floor(Math.hypot(x - 9, y - 7) * 1.2) % 2) ? shellA : shellB));
+  }
+  return { m, yaw: 18, pitch: 16 };
+}
+
 // ---------------------------------------------------------------- render + cache
 const cache = new Map();
 function fitVoxel(build, px) {
@@ -274,6 +294,8 @@ export function labIcon(key, px = 18) {
       }
     } else if (kind === 'mat') c = itemIcon(id, px);
     else if (key === 'globe') c = fitVoxel(() => globeModel('oscean'), px);
+    else if (key === 'crab' || key === 'snail') c = fitVoxel(() => critterModel(key), px);
+    else if (key === 'fish' || kind === 'fish') c = voxelFishIcon(id || 'pixel', px, px); // [phase3:fish] voxel, never a 2D glyph
     else if (GLYPH_ART[key]) {
       const g = glyphCanvas(key);
       const k = Math.max(1, Math.floor(px / Math.max(g.width, g.height)));

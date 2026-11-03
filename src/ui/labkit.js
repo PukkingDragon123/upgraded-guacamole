@@ -16,6 +16,9 @@ import { labIcon, labIconCached, GLYPHS } from './labicons.js';
 import { ecoOrb, roundRectPath } from './labart.js';
 import { ITEMS } from '../build/items.js';
 import { fishKeyInfo, fishLabel } from '../game/lab.js';
+import * as FISH from '../fish/species.js';
+import { compiled } from '../gfx/spritecache.js';
+import { drawFishRig } from '../gfx/fishrig.js';
 
 export const INK = '#0c3a52', INK_SOFT = '#3c6f88', OK = '#1f9a3a', BAD = '#e0384a';
 
@@ -94,10 +97,9 @@ export function costTiles(ctx, ui, rows, x, y, w, o = {}) {
       tip = ITEMS[c.id]?.name || c.id;
     } else if (c.kind === 'fish') {
       const k = fishKeyInfo(c.id);
-      const ic = k.kind === 'biome' ? icon('biome:' + k.id, 14) : icon('fish', 12);
-      if (ic) ctx.drawImage(ic, Math.round(tx + 9 - ic.width / 2), Math.round(ty + 10 - ic.height / 2));
-      if (k.kind === 'rarity') { ctx.fillStyle = RARITY[k.id]?.color || '#ffffff'; ctx.fillRect(tx + 12, ty + 13, 4, 4); ctx.fillStyle = '#ffffff'; ctx.fillRect(tx + 12, ty + 13, 4, 1); }
-      else if (k.kind === 'biome') { const f = icon('fish', 10); if (f) ctx.drawImage(f, tx + 9, ty + 9); }
+      if (k.kind === 'biome') { const ic = icon('biome:' + k.id, 10); if (ic) ctx.drawImage(ic, tx + 2, ty + 2); }
+      drawFishThumb(ctx, c.id, tx + 10, ty + 11, 15, ui.time);
+      if (k.kind === 'rarity') { ctx.fillStyle = RARITY[k.id]?.color || '#ffffff'; ctx.beginPath(); ctx.arc(tx + 15, ty + 15, 2.5, 0, Math.PI * 2); ctx.fill(); }
       tip = fishLabel(c.id) + ' (kept, not in the tank)';
     }
     const txt = c.kind === 'aero' ? fmtAero(c.need) : `${Math.min(c.have, 999)}/${c.need}`;
@@ -178,4 +180,36 @@ export function warmLabIcons(keys) {
   const [k, px] = warmList[warmI++];
   if (labIconCached(k, bucket(px)) === undefined) labIcon(k, bucket(px));
   return true;
+}
+
+// A little voxel fish (the game's own fish renderer) standing for a fish cost key: a species, a species of that
+// rarity, or one from that ocean. Guarded: the roster can change under us.
+const thumbSp = new Map();
+function speciesFor(key) {
+  if (thumbSp.has(key)) return thumbSp.get(key);
+  let sp = null;
+  try {
+    const all = (FISH.SPECIES || []).filter((s) => s?.look && s.look.kind !== 'chain' && !s.spawn?.hidden);
+    const k = fishKeyInfo(key);
+    if (k.kind === 'species') sp = k.sp;
+    else if (k.kind === 'biome') sp = all.find((s) => s.biome === k.id && s.rarity === 'common') || all.find((s) => s.biome === k.id) || null;
+    else sp = all.find((s) => s.rarity === k.id && s.biome === 'oscean') || all.find((s) => s.rarity === k.id) || null;
+    sp ||= all[0] || null;
+  } catch { sp = null; }
+  thumbSp.set(key, sp);
+  return sp;
+}
+export function drawFishThumb(ctx, key, cx, cy, size, t = 0) {
+  const sp = speciesFor(key);
+  if (!sp) return false;
+  try {
+    const c = compiled(sp.look, null, sp.id);
+    const len = (c.L || 16) * 1.45;
+    const s = Math.max(0.12, size / len);
+    drawFishRig(ctx, c, {
+      x: cx, y: cy, facing: 1, turn: 1, angle: 0, scale: s, squash: 0, bob: 0, swimPhase: (t * 0.8) % 1, tailPhase: (t * 1.5) % 1,
+      finPhase: (t * 2) % 1, speed01: 0.3, inflate: 0, lookX: null, lookY: null, blink: 0, emotion: 'happy', mouth: 0, time: t, pri: 2,
+    });
+    return true;
+  } catch { return false; }
 }

@@ -15,7 +15,10 @@ import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { hash2, fbm1, clamp01, smoothstep, TAU } from '../core/math.js';
 import { VoxelModel, renderVoxels } from '../gfx/voxel.js';
 import { Paint, C, setMix, grad, sdRR } from './paint.js';
-import { cityBubble, glassGlobe, paintArcs, paintLeafBranch } from './scenery.js';
+import { paintArcs } from './scenery.js';
+import { wallTile, floorStrip, windowFrame, glassDesk, cabinetVox, consoleVox, cloudVox, hillVox, GlobeVox, broadPlant } from './roomvox.js';
+import { glassCity, waterBubble, turbineTower, rotorFrames, roundTree, leafBranch } from '../world/aerokit.js';
+import { flipCanvas } from '../gfx/pixel.js';
 
 // ------------------------------------------------------------------ palette
 
@@ -55,7 +58,7 @@ export function roomPlan(L) {
   } else {
     const y = Math.round(sh * (full ? 0.055 : 0.05));
     const x = Math.round(sw * (full ? 0.085 : 0.035));
-    const bottom = Math.round(full ? deskY - sh * 0.13 : deskY - sh * 0.12);
+    const bottom = Math.round(sh * (full ? 0.67 : 0.76)); // the same window for every desk tier (shared outside art)
     plan.wins.push({ x, y, w: sw - x * 2, h: bottom - y, panes: full ? 3 : 2 });
   }
   // sky rect = union of the panes
@@ -76,6 +79,7 @@ export function roomPlan(L) {
   if (plan.desk && rightGap > 44 * u) plan.items.push({ kind: 'plant', x: Math.round(tank.x + tank.w + Math.min(rightGap * 0.5, 84 * u)), y: deskTop, seed: 3 });
   if (full && sw - (tank.x + tank.w) > 64 * u) plan.items.push({ kind: 'fplant', x: Math.round(sw - Math.max(34 * u, (sw - tank.x - tank.w) * 0.32)), y: Math.round(sh + 2 * u), seed: 11, front: true });
   if (full && wall && tank.x > 64 * u) plan.items.push({ kind: 'fplant', x: Math.round(Math.max(34 * u, tank.x * 0.32)), y: Math.round(sh + 2 * u), seed: 5, front: true, flip: true });
+  else if (full && tank.x > 90 * u) plan.items.push({ kind: 'bplant', x: Math.round(46 * u), y: Math.round(sh + 2 * u), seed: 4, front: true });
   return plan;
 }
 
@@ -101,313 +105,6 @@ function paintSky(w, h, u) {
   return { canvas: P.toCanvas(4), sun: [sx, sy] };
 }
 
-function paintCloud(w, h, seed) {
-  const P = new Paint(w, h);
-  const c = P.c;
-  const n = 5 + Math.floor(hash2(seed, 1, 9) * 4);
-  const puffs = [];
-  const base = h * 0.78;
-  for (let i = 0; i < n; i++) {
-    const t = (i + 0.5) / n;
-    const r = h * (0.22 + 0.3 * Math.sin(t * Math.PI) * (0.7 + 0.5 * hash2(seed, i, 3)));
-    puffs.push([w * (0.12 + 0.76 * t) + (hash2(seed, i, 5) - 0.5) * w * 0.08, base - r * (0.45 + 0.4 * hash2(seed, i, 7)), r]);
-  }
-  P.each(0, 0, w, h, (x, y) => {
-    if (y > base + h * 0.06) return 0;
-    let best = -1, nx = 0, ny = 0;
-    for (const [px, py, r] of puffs) {
-      const d = Math.hypot(x - px, y - py);
-      const v = 1 - d / r;
-      if (v > best) { best = v; nx = (x - px) / r; ny = (y - py) / r; }
-    }
-    if (best < 0) return 0;
-    // flat underside, lit from the upper left
-    const lit = clamp01(0.62 - nx * 0.35 - ny * 0.75 + best * 0.25);
-    const under = smoothstep(base - h * 0.12, base + h * 0.04, y);
-    const tone = lit * (1 - under * 0.55);
-    grad(c, [[0, COL.cloudD], [0.3, COL.cloudS], [0.62, COL.cloudM], [0.85, COL.cloudH]], tone);
-    return best < 0.06 ? 0.85 : 1;
-  });
-  return P.toCanvas(4);
-}
-
-// layer: 0 far (hazy blue-green), 1 mid, 2 near (bright grass)
-function paintHills(w, h, layer, seed, u, skyH) {
-  const P = new Paint(w, h);
-  const c = P.c;
-  const amp = [0.12, 0.17, 0.2][layer] * h, base = [0.5, 0.62, 0.78][layer] * h;
-  const f1 = [0.006, 0.008, 0.005][layer] / Math.max(0.5, u), f2 = f1 * 2.7;
-  // the near layer is the curved green horizon of a little planet (a wide dome), the others roll
-  const dcx = w * 0.4, dw = w * 0.62;
-  const crest = layer === 2
-    ? (x) => { const q = (x - dcx) / dw; return h * 0.99 - h * 0.6 * (1 - q * q) + Math.sin(x * f1 * 2 + seed) * h * 0.012; }
-    : (x) => base - amp * (0.55 * Math.sin(x * f1 + seed) + 0.3 * Math.sin(x * f2 + seed * 2.3) + 0.4 * (fbm1(x * f1 * 0.7 + seed, 3, seed) - 0.5));
-  const cols = [
-    [C('#a9d9c6'), C('#8cc9b0'), C('#6fb69c')],
-    [C('#b8ef7a'), C('#6fcf3c'), C('#3f9f2c')],
-    [C('#d8ff8a'), C('#8ee04a'), C('#47b02e')],
-  ][layer];
-  const haze = C('#d6f0ff');
-  P.each(0, 0, w, h, (x, y) => {
-    const cy = crest(x);
-    if (y < cy) return 0;
-    const dy = y - cy;
-    const sl = (crest(x + 2) - crest(x - 2)) / 4; // + = going down to the right: faces the sun
-    const lit = clamp01(0.62 + sl * 1.6 - dy / (h * 0.9) * 0.6);
-    grad(c, [[0, cols[2]], [0.5, cols[1]], [1, cols[0]]], lit);
-    // glossy crest sheen
-    if (dy < 2.2 * u + 1 && layer > 0) setMix(c, c, C('#f4ffd0'), 0.55 * (1 - dy / (2.2 * u + 1)));
-    if (layer === 2) {
-      // curved mowing stripes following the dome and a little winding path to the top
-      const dd = Math.hypot((x - dcx) / dw, (y - h * 1.6) / (h * 1.4));
-      if (Math.sin(dd * 60) > 0.6) setMix(c, c, C('#ffffff'), 0.07);
-      const top = crest(dcx - w * 0.1);
-      const px = dcx - w * 0.1 + (y - top) * 0.55 + Math.sin((y - top) * 0.09 / Math.max(0.5, u)) * 6 * u;
-      const pw = (0.6 + (y - top) / h * 6) * u;
-      if (y > top && Math.abs(x - px) < pw) setMix(c, c, C('#eaf8b0'), 0.75);
-      return 1;
-    }
-    // mowing stripes on the near hills
-    if (layer > 0) {
-      const s = Math.sin((x * 0.05 / Math.max(0.5, u)) + dy * 0.09 + seed);
-      if (s > 0.75) setMix(c, c, C('#ffffff'), 0.07);
-    }
-    if (layer === 0) setMix(c, c, haze, 0.35 - dy / h * 0.2);
-    // tiny flowers on the near hill
-    if (layer === 2 && dy > 4 && hash2(Math.floor(x / 2), Math.floor(y / 2), seed) > 0.992) setMix(c, c, hash2(x, y, 3) > 0.5 ? C('#ffffff') : C('#fff27a'), 0.9);
-    return 1;
-  });
-  void skyH;
-  return { canvas: P.toCanvas(4), crest };
-}
-
-// Turbine rotor frames (3 blades, 120-degree symmetry).
-const rotorCache = new Map();
-function rotorFrames(L) {
-  L = Math.max(4, Math.round(L));
-  let fr = rotorCache.get(L);
-  if (fr) return fr;
-  fr = [];
-  const N = 12, s = L * 2 + 3;
-  for (let f = 0; f < N; f++) {
-    const P = new Paint(s, s);
-    const a0 = (f / N) * (TAU / 3);
-    for (let b = 0; b < 3; b++) {
-      const a = a0 + (b * TAU) / 3;
-      for (let r = 1; r <= L; r += 0.5) {
-        const x = Math.round(s / 2 + Math.cos(a) * r - 0.5), y = Math.round(s / 2 + Math.sin(a) * r - 0.5);
-        P.over(x, y, COL.white, 1);
-        if (r < L * 0.55) P.over(x + (Math.sin(a) > 0 ? 1 : 0), y + (Math.cos(a) > 0 ? 0 : 1), C('#e2eef6'), 1);
-      }
-    }
-    P.over(Math.floor(s / 2), Math.floor(s / 2), C('#cfdde8'), 1);
-    fr.push(P.toCanvas(2));
-  }
-  rotorCache.set(L, fr);
-  return fr;
-}
-
-// ------------------------------------------------------------------ the room (wall, window, floor, desk)
-
-function paintRoom(plan) {
-  const { sw, sh, u, deskY, fw } = plan;
-  const P = new Paint(sw, sh);
-  const c = P.c;
-  const floorY = plan.floorY;
-  // wall: pale aqua-white, lighter around the window
-  const sky = plan.sky;
-  const wcx = sky ? sky.x + sky.w / 2 : sw / 2, wcy = sky ? sky.y + sky.h * 0.45 : sh * 0.3;
-  P.each(0, 0, sw, Math.min(sh, floorY), (x, y) => {
-    grad(c, [[0, COL.wallT], [0.55, COL.wallM], [1, COL.wallB]], y / Math.max(1, floorY));
-    const d = Math.hypot((x - wcx) / (sw * 0.55), (y - wcy) / (sh * 0.6));
-    setMix(c, c, COL.white, clamp01(0.5 - d * 0.5));
-    // faint glossy wall panels
-    const px = (x / (150 * u)) % 1;
-    if (px < 0.006 + 1 / (150 * u)) setMix(c, c, COL.wallShade, 0.12);
-    return 1;
-  });
-  // under-desk shade
-  if (plan.desk) {
-    const d = plan.desk;
-    P.each(d.x0, d.y, d.x1, floorY, (x, y) => {
-      const k = 1 - (y - d.y) / Math.max(1, floorY - d.y);
-      c[0] = 70; c[1] = 120; c[2] = 150;
-      return 0.18 * k + 0.05;
-    });
-  }
-  // windows
-  for (const w of plan.wins) paintWindow(P, w, plan);
-  // floor + baseboard
-  if (floorY < sh) {
-    P.each(0, floorY, sw, sh, (x, y) => {
-      const t = (y - floorY) / Math.max(1, sh - floorY);
-      grad(c, [[0, COL.floorS], [0.25, COL.floorB], [1, COL.floorA]], t);
-      // planks (perspective: seams fan out from the centre)
-      const fx = (x - sw / 2) / (0.4 + t * 0.9);
-      const seam = Math.abs(((fx / (46 * u)) % 1 + 1) % 1 - 0.5);
-      if (seam > 0.485) setMix(c, c, COL.floorS, 0.5);
-      // glossy reflection of the window
-      if (sky && x > sky.x && x < sky.x + sky.w) setMix(c, c, COL.floorR, 0.35 * (1 - t) * (0.6 + 0.4 * Math.sin(x * 0.02)));
-      return 1;
-    });
-    const bb = Math.max(2, Math.round(5 * u));
-    P.each(0, floorY - bb, sw, floorY + 1, (x, y) => {
-      setMix(c, COL.white, COL.frameS, (y - (floorY - bb)) / bb);
-      return 1;
-    });
-  }
-  if (plan.desk) paintDesk(P, plan);
-  if (plan.cabinet) paintCabinet(P, plan);
-  if (plan.console) paintConsole(P, plan);
-  void deskY; void fw;
-  return P;
-}
-
-function paintWindow(P, w, plan) {
-  const { u, fw } = plan;
-  const c = P.c;
-  const r = Math.round(9 * u);
-  const ox = w.x - fw, oy = w.y - fw, ow = w.w + fw * 2, oh = w.h + fw * 2;
-  // soft shadow of the frame on the wall
-  P.each(ox - 4 * u, oy - 2 * u, ox + ow + 6 * u, oy + oh + 8 * u, (x, y) => {
-    const d = sdRR(x, y, ox + ow / 2 + 2 * u, oy + oh / 2 + 3 * u, ow / 2, oh / 2, r);
-    if (d < 0 || d > 6 * u) return 0;
-    c[0] = 90; c[1] = 140; c[2] = 170;
-    return 0.16 * (1 - d / (6 * u));
-  });
-  // glossy white frame
-  P.each(ox, oy, ox + ow, oy + oh, (x, y) => {
-    const d = sdRR(x, y, ox + ow / 2, oy + oh / 2, ow / 2, oh / 2, r);
-    if (d > 0) return 0;
-    const t = (y - oy) / oh;
-    grad(c, [[0, COL.frame], [0.5, COL.frame], [1, COL.frameS]], t);
-    if (d > -1) setMix(c, c, COL.frameEdge, 0.5);
-    else if (d > -2 && y < oy + oh / 2) setMix(c, c, COL.white, 0.9);
-    return 1;
-  });
-  // panes (holes) and mullions
-  const mull = Math.max(2, Math.round(5 * u));
-  const pw = (w.w - mull * (w.panes - 1)) / w.panes;
-  const pr = Math.max(1, Math.round(5 * u));
-  for (let i = 0; i < w.panes; i++) {
-    const px = w.x + i * (pw + mull), py = w.y;
-    const cx = px + pw / 2, cy = py + w.h / 2;
-    P.each(px - 2, py - 2, px + pw + 2, py + w.h + 2, (x, y) => {
-      const d = sdRR(x, y, cx, cy, pw / 2, w.h / 2, pr);
-      if (d > 1.2) return 0;
-      if (d > 0) { // inner bevel: shaded top-left, lit bottom-right
-        const tl = (x - cx) / pw + (y - cy) / w.h < 0;
-        setMix(c, tl ? COL.frameD : COL.white, COL.frameS, 0.3);
-        return 1;
-      }
-      return 1;
-    });
-    P.each(px, py, px + pw, py + w.h, (x, y) => (sdRR(x, y, cx, cy, pw / 2, w.h / 2, pr) <= 0 ? 1 : 0), 'erase');
-    // reflections on the glass: two diagonal streaks
-    P.each(px, py, px + pw, py + w.h, (x, y) => {
-      if (sdRR(x, y, cx, cy, pw / 2, w.h / 2, pr) > 0) return 0;
-      const s = (x - px) + (y - py) * 0.6;
-      const k = ((s / (pw * 0.9)) % 1 + 1) % 1;
-      c[0] = 255; c[1] = 255; c[2] = 255;
-      if (k > 0.1 && k < 0.16) return 0.13;
-      if (k > 0.19 && k < 0.21) return 0.1;
-      return 0;
-    });
-  }
-  // sill
-  if (plan.shape !== 'wall') {
-    const sy = w.y + w.h + fw, sx0 = w.x - fw - 6 * u, sx1 = w.x + w.w + fw + 6 * u, h = Math.max(2, Math.round(6 * u));
-    P.each(sx0, sy - 1, sx1, sy + h + 3 * u, (x, y) => {
-      if (y < sy + h) {
-        const t = (y - sy) / h;
-        grad(c, [[0, COL.white], [0.35, COL.frame], [1, COL.frameS]], t);
-        if (y < sy + 1) setMix(c, c, COL.frameEdge, 0.3);
-        if (x < sx0 + 1 || x > sx1 - 1) setMix(c, c, COL.frameD, 0.5);
-        return 1;
-      }
-      c[0] = 80; c[1] = 130; c[2] = 160;
-      return 0.18 * (1 - (y - sy - h) / (3 * u));
-    });
-  }
-}
-
-function paintDesk(P, plan) {
-  const { u, floorY, sh } = plan;
-  const d = plan.desk;
-  const c = P.c;
-  const topY = d.y - d.top, fy = d.y, by = d.y + d.th;
-  // chrome legs (behind the glass top) with a crossbar
-  const legW = Math.max(2, Math.round(6 * u));
-  const legBottom = Math.min(sh + 2, floorY + Math.round(16 * u));
-  for (const lx of [d.x0 + Math.round(20 * u), d.x1 - Math.round(20 * u) - legW]) {
-    P.each(lx, by, lx + legW, legBottom, (x) => {
-      const t = (x - lx) / legW;
-      grad(c, [[0, COL.chrome1], [0.3, COL.chrome3], [0.55, COL.chrome2], [1, COL.chrome0]], t);
-      return 1;
-    });
-    // foot pad
-    P.each(lx - 2 * u, legBottom - 3 * u, lx + legW + 2 * u, legBottom, () => { setMix(c, COL.chrome1, COL.chrome0, 0.4); return 1; });
-  }
-  // glass top: the top face seen from above (translucent, catches the window light)
-  P.each(d.x0, topY, d.x1, fy, (x, y) => {
-    const t = (y - topY) / d.top;
-    setMix(c, COL.white, COL.glassTop, t);
-    const edge = x < d.x0 + 2 || x > d.x1 - 3;
-    if (y < topY + 1) { setMix(c, c, COL.white, 0.8); return 0.95; }
-    return edge ? 0.9 : 0.55 + 0.15 * t;
-  });
-  // front edge: green glass seen edge-on
-  P.each(d.x0, fy, d.x1, by, (x, y) => {
-    const t = (y - fy) / Math.max(1, d.th);
-    grad(c, [[0, COL.white], [0.2, COL.glassEdge], [1, COL.glassEdgeD]], t);
-    const sheen = Math.sin(x * 0.03) * 0.5 + 0.5;
-    if (t > 0.3 && t < 0.55) setMix(c, c, COL.white, 0.25 * sheen);
-    return 0.92;
-  });
-  // shadow under the slab
-  P.each(d.x0, by, d.x1, by + Math.max(2, 4 * u), (x, y) => { c[0] = 40; c[1] = 90; c[2] = 120; return 0.22 * (1 - (y - by) / Math.max(2, 4 * u)); });
-}
-
-function paintCabinet(P, plan) {
-  const { u } = plan;
-  const k = plan.cabinet;
-  const c = P.c;
-  const r = Math.round(4 * u);
-  const cx = (k.x0 + k.x1) / 2, cy = (k.y + k.bottom) / 2, hw = (k.x1 - k.x0) / 2, hh = (k.bottom - k.y) / 2;
-  P.each(k.x0, k.y, k.x1, k.bottom, (x, y) => {
-    const d = sdRR(x, y, cx, cy, hw, hh, r);
-    if (d > 0) return 0;
-    const t = (y - k.y) / (k.bottom - k.y);
-    grad(c, [[0, C('#ffffff')], [0.06, C('#eef6fb')], [0.5, C('#dbeaf2')], [1, C('#b4cfde')]], t);
-    if (d > -1) setMix(c, c, COL.frameEdge, 0.6);
-    // doors + chrome handles
-    const dx = (x - k.x0) / (k.x1 - k.x0);
-    if (Math.abs(dx - 0.5) < 0.002 + 0.5 / (k.x1 - k.x0)) setMix(c, c, COL.frameD, 0.7);
-    if (t > 0.12 && Math.abs(Math.abs(dx - 0.5) - 0.04) < 0.004 && t < 0.4) setMix(c, c, COL.chrome1, 1);
-    // aqua accent strip
-    if (t > 0.05 && t < 0.07) setMix(c, c, COL.aqua, 0.8);
-    return 1;
-  });
-}
-
-function paintConsole(P, plan) {
-  const { u } = plan;
-  const k = plan.console;
-  const c = P.c;
-  const cx = (k.x0 + k.x1) / 2, cy = k.y + k.h / 2;
-  P.each(k.x0 - 2, k.y - 2, k.x1 + 2, k.y + k.h + 6 * u, (x, y) => {
-    const d = sdRR(x, y, cx, cy, (k.x1 - k.x0) / 2, k.h / 2, k.h / 2);
-    if (d > 0) {
-      if (y > k.y + k.h * 0.5 && d < 5 * u) { c[0] = 70; c[1] = 120; c[2] = 150; return 0.2 * (1 - d / (5 * u)); }
-      return 0;
-    }
-    const t = (y - k.y) / k.h;
-    grad(c, [[0, COL.white], [0.4, COL.frame], [1, COL.frameS]], t);
-    if (d > -1) setMix(c, c, COL.frameEdge, 0.5);
-    return 1;
-  });
-}
-
 // ------------------------------------------------------------------ voxel props
 
 function deskLamp(vs) {
@@ -428,7 +125,7 @@ function deskLamp(vs) {
   m.sub(() => m.ellipsoid(19.5, 31, cz, 4.6, 4, 4.6, white));
   m.sub(() => m.box(13, 26, 0, 26, 30, 17, white));
   m.ellipsoid(19.5, 31, cz, 2.6, 2.2, 2.6, bulb);
-  const r = renderVoxels(m, { scale: vs, yaw: 18, pitch: 16, ao: 1, edges: 0.7, groundAO: true, glowRadius: 3 });
+  const r = renderVoxels(m, { scale: vs, yaw: 0, pitch: 24, ao: 1, edges: 0.7, groundAO: true, glowRadius: 3 });
   return { ...r, bulb: r.regions?.[bulb] || null };
 }
 
@@ -445,7 +142,7 @@ function floorLamp(vs) {
   m.sphere(12, 78, cz, 8.4, white);
   m.sub(() => m.box(0, 70, 0, 23, 77, 15, white));
   m.sphere(12, 77, cz, 7.2, glow);
-  const r = renderVoxels(m, { scale: vs, yaw: 10, pitch: 12, ao: 1, edges: 0.7, groundAO: true, glowRadius: 4 });
+  const r = renderVoxels(m, { scale: vs, yaw: 0, pitch: 24, ao: 1, edges: 0.7, groundAO: true, glowRadius: 4 });
   return { ...r, bulb: r.regions?.[glow] || null };
 }
 
@@ -496,22 +193,125 @@ function pottedPlant(vs, seed, tall = false) {
       m.ellipsoid(lx + Math.cos(a) * 3.2, ly - 1.4, lz + Math.sin(a) * 2.2, 1.6, 1, 1.4, leafC);
     }
   }
-  return renderVoxels(m, { scale: vs, yaw: 24, pitch: 18, ao: 1.1, edges: 0.7, groundAO: true });
+  return renderVoxels(m, { scale: vs, yaw: 0, pitch: 24, ao: 1.1, edges: 0.7, groundAO: true });
 }
+
 
 // ------------------------------------------------------------------ art cache
 
 const artCache = new Map();
+const pieceCache = new Map();
+const piece = (key, fn) => { let v = pieceCache.get(key); if (!v) { v = fn(); pieceCache.set(key, v); if (pieceCache.size > 40) pieceCache.delete(pieceCache.keys().next().value); } return v; };
+
+// The view out of the window (shared by every tier with the same window): sky gradient + sun + arcs (2D light),
+// voxel clouds, voxel hills, voxel wind turbines, the voxel glass city in a water bubble, a voxel tree and the
+// rotating voxel glass globe.
+function outsideArt(s, u, vs, wide) {
+  return piece(['out', s.x, s.y, s.w, s.h, vs, wide ? 1 : 0].join('|'), () => {
+    const m = Math.round(18 * u) + 4;
+    const skyArt = paintSky(s.w, s.h, u);
+    const hills = [0, 1, 2].map((i) => {
+      const hh = Math.round(s.h * [0.6, 0.48, 0.44][i]);
+      const hl = hillVox(s.w + m * 2, hh, i, 3 + i * 2, vs);
+      return { canvas: hl.canvas, crest: hl.crest, y: s.y + s.h - hl.canvas.height + Math.round(hh * 0.04), depth: [0.25, 0.55, 1][i] };
+    });
+    const clouds = [];
+    const nc = Math.max(2, Math.round(s.w / (150 * u)));
+    for (let i = 0; i < nc; i++) {
+      const cw = Math.round((70 + 70 * hash2(i, 2, 5)) * u), ch = Math.round(cw * 0.42);
+      clouds.push({ canvas: cloudVox(i * 3 + 1, cw, ch, vs), x: hash2(i, 3, 5) * (s.w + cw), y: s.y + s.h * (0.06 + 0.3 * hash2(i, 4, 5)), speed: (2 + 3 * hash2(i, 5, 5)) * u, depth: 0.15 + 0.2 * hash2(i, 6, 5) });
+    }
+    // wind turbines on the far hills
+    const far = hills[0];
+    const turbines = [];
+    const nt = s.w > 220 * u ? 3 : 1;
+    const tvs = Math.max(1, vs - 1);
+    for (let i = 0; i < nt; i++) {
+      const fx = s.w * (0.58 + i * 0.12) + m;
+      const th = Math.max(10, Math.round(((26 - i * 4) * u + 6) / tvs));
+      const tower = turbineTower(th, tvs);
+      const rot = rotorFrames(Math.max(5, th * 0.5), tvs, 12);
+      turbines.push({ x: fx, base: far.y + far.crest(fx) + 1, tower, rot, ph: i * 0.7 });
+    }
+    // glass city in a water bubble on the horizon, a round tree, the globe
+    const near = hills[2];
+    // the city keeps whole voxels: full scale where it fits, else shrunk; the bubble wraps it
+    const cityV = glassCity(3, 1);
+    const ck = Math.min(1, (s.h * 0.34) / cityV.h, (s.w * 0.16) / cityV.w);
+    const cityR = Math.round(Math.max(cityV.w, cityV.h) * ck * 0.66);
+    const cityX = s.w * (wide ? 0.12 : 0.17) + m;
+    const city = { v: cityV, k: ck, bubble: waterBubble(cityR), r: cityR, x: cityX, base: near.y + near.crest(cityX) + Math.round(cityR * 0.1) };
+    const tree = { v: roundTree(Math.max(1, vs - 1), 5), x: s.w * 0.44 + m };
+    tree.base = near.y + near.crest(tree.x) + 2;
+    const globeR = Math.round(Math.min(s.h * 0.2, s.w * 0.085));
+    const globe = { vox: new GlobeVox(globeR, Math.max(1, vs), 36), x: s.x + s.w * 0.8, y: s.y + s.h * 0.4, r: globeR };
+    return { rect: s, canvas: skyArt.canvas, sun: [s.x + skyArt.sun[0], s.y + skyArt.sun[1]], hills, clouds, turbines, m, city, tree, globe };
+  });
+}
 
 export function roomArt(L) {
   const key = [L.key, L.tier, L.sw, L.sh].join('|');
   let art = artCache.get(key);
   if (art) return art;
   const plan = roomPlan(L);
-  const { sw, sh, u } = plan;
-  const P = paintRoom(plan);
-  const room = P.toCanvas(4);
+  const { sw, sh, u, vs } = plan;
+  const floorY = plan.floorY;
+  const room = makeCanvas(sw, sh);
   const g = ctxOf(room);
+  // ---- the wall: voxel panels, lit by the window (2D light), with the windows cut out
+  g.fillStyle = g.createPattern(wallTile(vs), 'repeat');
+  g.fillRect(0, 0, sw, Math.min(sh, floorY));
+  const sky = plan.sky;
+  if (sky) {
+    const gr = g.createRadialGradient(sky.x + sky.w / 2, sky.y + sky.h * 0.5, 10, sky.x + sky.w / 2, sky.y + sky.h * 0.5, Math.max(sw, sh) * 0.7);
+    gr.addColorStop(0, 'rgba(255,255,255,0.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, sw, floorY);
+  }
+  const shade = g.createLinearGradient(0, 0, 0, floorY);
+  shade.addColorStop(0, 'rgba(120,180,210,0)'); shade.addColorStop(1, 'rgba(90,150,190,0.18)');
+  g.fillStyle = shade; g.fillRect(0, 0, sw, floorY);
+  for (const w of plan.wins) {
+    g.globalCompositeOperation = 'destination-out';
+    g.fillStyle = '#000';
+    g.fillRect(w.x, w.y, w.w, w.h);
+    g.globalCompositeOperation = 'source-over';
+    // soft shadow of the frame on the wall
+    g.fillStyle = 'rgba(70,120,150,0.12)';
+    g.fillRect(w.x - plan.fw + 3 * u, w.y + w.h + plan.fw, w.w + plan.fw * 2, Math.max(2, 5 * u));
+  }
+  // ---- floor (voxel planks) and a contact shade along the wall
+  if (floorY < sh) {
+    g.drawImage(floorStrip(vs, sw, sh - floorY), 0, floorY);
+    g.fillStyle = 'rgba(60,110,140,0.18)'; g.fillRect(0, floorY, sw, Math.max(1, Math.round(2 * u)));
+  }
+  // under-desk shade
+  if (plan.desk && floorY < sh) {
+    g.fillStyle = 'rgba(60,110,140,0.12)';
+    g.fillRect(plan.desk.x0, floorY, plan.desk.x1 - plan.desk.x0, Math.max(2, Math.round(10 * u)));
+  }
+  // ---- window frames (voxel)
+  for (const w of plan.wins) {
+    const f = windowFrame(w.w, w.h, w.panes, plan.fw, vs);
+    g.drawImage(f.canvas, Math.round(w.x - plan.fw - f.ox), Math.round(w.y - plan.fw - f.oy));
+  }
+  // ---- furniture (voxel)
+  if (plan.desk) {
+    const d = plan.desk;
+    const legPx = Math.max(4, Math.min(sh + 4, floorY + Math.round(12 * u)) - (d.y + d.th));
+    const f = glassDesk(d.x1 - d.x0, d.top, d.th, legPx, vs);
+    g.drawImage(f.canvas, Math.round(d.x0 - f.ox), Math.round(d.y - f.oy));
+  }
+  if (plan.cabinet) {
+    const k = plan.cabinet;
+    const f = cabinetVox(k.x1 - k.x0, k.bottom - k.y, vs);
+    g.drawImage(f.canvas, Math.round(k.x0 - f.ox), Math.round(k.y - f.oy));
+  }
+  if (plan.console) {
+    const k = plan.console;
+    const f = consoleVox(k.x1 - k.x0, k.h, vs);
+    g.drawImage(f.canvas, Math.round(k.x0 - f.ox), Math.round(k.y - f.oy));
+  }
+  // ---- props (voxel, world camera); the front ones go on the front layer
   const front = makeCanvas(sw, sh);
   const fg = ctxOf(front);
   const props = [];
@@ -520,73 +320,36 @@ export function roomArt(L) {
     if (it.kind === 'lamp') r = deskLamp(plan.vs);
     else if (it.kind === 'floorlamp') r = floorLamp(plan.vs);
     else if (it.kind === 'plant') r = pottedPlant(plan.vs, it.seed, false);
+    else if (it.kind === 'bplant') r = broadPlant(Math.max(1, Math.round(plan.vs * 1.1)), it.seed);
     else r = pottedPlant(Math.max(1, Math.round(plan.vs * 1.15)), it.seed, true);
     const x = Math.round(it.x - r.ox), y = Math.round(it.y - r.oy);
     const tgt = it.front ? fg : g;
     if (it.flip) { tgt.save(); tgt.translate(x + r.canvas.width, y); tgt.scale(-1, 1); tgt.drawImage(r.canvas, 0, 0); tgt.restore(); }
     else tgt.drawImage(r.canvas, x, y);
-    // soft contact shadow on the desk / floor
-    const sh0 = { x: it.x, y: it.y, w: r.canvas.width * 0.42 };
-    props.push({ ...it, rect: { x, y, w: r.canvas.width, h: r.canvas.height }, glow: r.glow, bulb: r.bulb, sh0 });
+    props.push({ ...it, rect: { x, y, w: r.canvas.width, h: r.canvas.height }, glow: r.glow, bulb: r.bulb });
     if (r.bulb && r.glow) props[props.length - 1].glowAt = { x, y };
   }
-  // glossy leafy branches framing the view (front layer)
+  // glossy hanging vines framing the view (voxel)
   if (plan.key !== 'mini') {
-    const LP = new Paint(sw, sh);
+    const lb = leafBranch(1, plan.key === 'full' ? 100 : 70, plan.key === 'full' ? 2 : 1);
+    fg.drawImage(lb.canvas, Math.round(sw - lb.canvas.width + 6 * u), Math.round(-14 * u));
     if (plan.key === 'full') {
-      paintLeafBranch(LP, sw + 6 * u, -10 * u, 2.45, 210 * u, u, 3, { leaves: 8, bend: 0.5 });
-      paintLeafBranch(LP, sw + 4 * u, 70 * u, 2.9, 120 * u, u, 8, { leaves: 5, bend: -0.4 });
-      paintLeafBranch(LP, -8 * u, sh * 0.93, -0.55, 170 * u, u, 5, { leaves: 7, bend: -0.35 });
-    } else {
-      paintLeafBranch(LP, sw + 4 * u, -6 * u, 2.5, 150 * u, u, 3, { leaves: 6, bend: 0.5 });
+      const lb2 = leafBranch(4, 72, 2);
+      fg.drawImage(flipCanvas(lb2.canvas), Math.round(-8 * u), Math.round(-20 * u));
     }
-    fg.drawImage(LP.toCanvas(4), 0, 0);
   }
-  // sky + parallax layers
-  let sky = null;
-  if (plan.sky) {
-    const s = plan.sky;
-    const m = Math.round(18 * u) + 4;
-    const skyArt = paintSky(s.w, s.h, u);
-    const hills = [0, 1, 2].map((i) => {
-      const hh = Math.round(s.h * [0.62, 0.5, 0.42][i]);
-      const hl = paintHills(s.w + m * 2, hh, i, 3.1 + i * 1.7 + L.tier * 0.37, u, s.h);
-      return { canvas: hl.canvas, crest: hl.crest, y: s.y + s.h - hh, depth: [0.25, 0.55, 1][i] };
-    });
-    const clouds = [];
-    const nc = Math.max(2, Math.round(s.w / (150 * u)));
-    for (let i = 0; i < nc; i++) {
-      const cw = Math.round((70 + 70 * hash2(i, 2, 5)) * u), ch = Math.round(cw * 0.42);
-      clouds.push({ canvas: paintCloud(cw, ch, i * 3 + 1), x: hash2(i, 3, 5) * (s.w + cw), y: s.y + s.h * (0.08 + 0.32 * hash2(i, 4, 5)), speed: (2 + 3 * hash2(i, 5, 5)) * u, depth: 0.15 + 0.2 * hash2(i, 6, 5) });
-    }
-    // wind turbines on the far hills
-    const turbines = [];
-    const far = hills[0];
-    const nt = s.w > 220 * u ? 3 : 1;
-    for (let i = 0; i < nt; i++) {
-      const fx = s.w * (0.58 + i * 0.12) + m;
-      const th = Math.round((22 - i * 3) * u + 6);
-      turbines.push({ x: fx, base: far.y + far.crest(fx) + 2, h: th, ph: i * 0.7, layer: far });
-    }
-    // a glass city in a water bubble on the horizon (left) and a green glass globe floating on the right
-    const near = hills[2];
-    const cityR = Math.round(Math.min(s.h * 0.17, s.w * 0.075));
-    const cityX = s.w * (plan.wins.length > 1 ? 0.12 : 0.17) + m;
-    const city = { canvas: cityBubble(cityR), x: cityX, base: near.y + near.crest(cityX) + cityR * 0.35 };
-    const globeR = Math.round(Math.min(s.h * 0.2, s.w * 0.085));
-    const globe = { canvas: glassGlobe(globeR), x: s.x + s.w * 0.8, y: s.y + s.h * 0.42, r: globeR };
-    sky = { rect: s, canvas: skyArt.canvas, sun: [s.x + skyArt.sun[0], s.y + skyArt.sun[1]], hills, clouds, turbines, m, city, globe };
-  }
-  // sun shafts radiating from the window into the room (additive)
+  // ---- the view outside
+  const outside = sky ? outsideArt(sky, u, vs, plan.wins.length > 1 || (plan.wins[0]?.panes ?? 1) > 2) : null;
+  // ---- sun shafts radiating from the window into the room (2D light)
   let shafts = null;
-  if (plan.sky) {
+  if (sky) {
     const S = new Paint(sw, sh);
     const c = S.c;
-    const src = [plan.sky.x + plan.sky.w * 0.25, plan.sky.y - plan.sky.h * 0.6];
-    S.each(0, plan.sky.y, sw, sh, (x, y) => {
+    const src = [sky.x + sky.w * 0.25, sky.y - sky.h * 0.6];
+    S.each(0, sky.y, sw, sh, (x, y) => {
       const ang = Math.atan2(y - src[1], x - src[0]);
       const k = Math.pow(Math.max(0, Math.sin(ang * 9 + 1.1)), 6) * 0.5 + Math.pow(Math.max(0, Math.sin(ang * 4.5 + 0.2)), 10) * 0.6;
-      const fall = clamp01(1 - (y - plan.sky.y) / (sh * 1.1));
+      const fall = clamp01(1 - (y - sky.y) / (sh * 1.1));
       const a = k * fall * 0.16;
       if (a < 0.01) return 0;
       c[0] = 255; c[1] = 250; c[2] = 222;
@@ -594,8 +357,7 @@ export function roomArt(L) {
     });
     shafts = cropAlpha(S.toCanvas(8));
   }
-  // window bloom (soft glow spilling over the frame)
-  let bloom = null;
+  // ---- window bloom (2D light, baked into the room)
   if (plan.wins.length) {
     const B = new Paint(sw, sh);
     const c = B.c;
@@ -608,14 +370,11 @@ export function roomArt(L) {
         return 0.3 * Math.pow(1 - clamp01(d / R), 2);
       });
     }
-    bloom = B.toCanvas(8);
-    // static: bake it into the room once (one less full-scene additive blit per frame)
     g.globalCompositeOperation = 'lighter';
     g.globalAlpha = 0.85;
-    g.drawImage(bloom, 0, 0);
+    g.drawImage(B.toCanvas(8), 0, 0);
     g.globalAlpha = 1;
     g.globalCompositeOperation = 'source-over';
-    bloom = null;
   }
   // the front layer is mostly empty: keep only the cropped quadrants that hold something
   const frontParts = [];
@@ -626,7 +385,7 @@ export function roomArt(L) {
     const cp = cropAlpha(q);
     if (cp) frontParts.push({ canvas: cp.canvas, x: qx + cp.x, y: qy + cp.y });
   }
-  art = { key, plan, room, front: frontParts, props, sky, shafts, bloom, sw, sh, u };
+  art = { key, plan, room, front: frontParts, props, sky: outside, shafts, sw, sh, u };
   artCache.set(key, art);
   if (artCache.size > 12) artCache.delete(artCache.keys().next().value);
   return art;
@@ -651,26 +410,37 @@ export function drawRoomBack(ctx, art, ox, oy, t, par = { x: 0, y: 0 }) {
     for (let i = 0; i < s.hills.length; i++) {
       const h = s.hills[i];
       const dx = Math.round(-s.m - par.x * 10 * art.u * h.depth), dy = Math.round(-par.y * 3 * art.u * h.depth);
-      if (i === 2 && s.city) {
-        const cv = s.city.canvas;
-        ctx.drawImage(cv, Math.round(ox + r.x + dx + s.city.x - cv.width / 2), Math.round(oy + s.city.base + dy - cv.height + cv.pad));
+      if (i === 2) {
+        // the city in its bubble and the tree stand on the near hill (drawn behind its crest)
+        const c = s.city, cw = Math.round(c.v.w * c.k), ch = Math.round(c.v.h * c.k);
+        const cx = Math.round(ox + r.x + dx + c.x), cb = Math.round(oy + c.base + dy);
+        ctx.drawImage(c.v.canvas, cx - Math.round(c.v.ox * c.k), cb - Math.round(c.v.oy * c.k), cw, ch);
+        ctx.drawImage(c.bubble, cx - (c.bubble.width >> 1), cb - c.r * 1.75 - (c.bubble.height >> 1) + c.r * 0.75);
       }
       ctx.drawImage(h.canvas, ox + r.x + dx, oy + h.y + dy);
+      if (i === 2) {
+        const tr = s.tree;
+        ctx.drawImage(tr.v.canvas, Math.round(ox + r.x + dx + tr.x - tr.v.ox), Math.round(oy + tr.base + dy - tr.v.oy));
+      }
       if (i === 0) {
         for (const tb of s.turbines) {
           const x = Math.round(ox + r.x + dx + tb.x), y0 = Math.round(oy + tb.base + dy);
-          ctx.fillStyle = '#ffffff'; ctx.fillRect(x, y0 - tb.h, 1, tb.h);
-          ctx.fillStyle = '#d6e6f0'; ctx.fillRect(x + 1, y0 - tb.h + 2, 1, tb.h - 2);
-          const fr = rotorFrames(tb.h * 0.48);
-          const f = fr[Math.floor((t * 1.4 + tb.ph) * fr.length / 2) % fr.length];
-          ctx.drawImage(f, x - (f.width >> 1), y0 - tb.h - (f.height >> 1));
+          const tw = tb.tower;
+          const tx = x - tw.ox, ty = y0 - tw.oy;
+          ctx.drawImage(tw.canvas, tx, ty);
+          const f = tb.rot.frames[Math.floor((t * 1.4 + tb.ph) * tb.rot.n / 2) % tb.rot.n];
+          ctx.drawImage(f, Math.round(tx + tw.hub[0] - tb.rot.cx), Math.round(ty + tw.hub[1] - tb.rot.cy));
         }
       }
     }
     if (s.globe) {
-      const gl = s.globe, cv = gl.canvas;
+      const gl = s.globe, cv = gl.vox.frame(t);
       const gx = ox + gl.x - par.x * 7 * art.u, gy = oy + gl.y + Math.sin(t * 0.6) * 2 * art.u - par.y * 2 * art.u;
       ctx.drawImage(cv, Math.round(gx - cv.width / 2), Math.round(gy - cv.height / 2));
+      // glass: a gloss cap and a sparkle (2D light)
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.drawImage(glossCap(gl.r), Math.round(gx - gl.r * 0.62), Math.round(gy - gl.r * 0.86));
+      ctx.globalCompositeOperation = 'source-over';
     }
     // lens flare from the sun (very soft)
     const sx = ox + s.sun[0], sy = oy + s.sun[1];
@@ -687,13 +457,25 @@ export function drawRoomBack(ctx, art, ox, oy, t, par = { x: 0, y: 0 }) {
     ctx.restore();
   }
   ctx.drawImage(art.room, ox, oy);
-  if (art.bloom) {
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = 0.85;
-    ctx.drawImage(art.bloom, ox, oy);
-    ctx.globalAlpha = 1;
-    ctx.globalCompositeOperation = 'source-over';
-  }
+}
+
+// Soft white gloss cap for the glass globe (additive light).
+const capCache = new Map();
+function glossCap(r) {
+  let c = capCache.get(r);
+  if (c) return c;
+  const w = Math.max(4, Math.round(r * 1.1)), h = Math.max(3, Math.round(r * 0.6));
+  const P = new Paint(w, h);
+  const cc = P.c;
+  P.each(0, 0, w, h, (x, y) => {
+    const d = Math.hypot((x - w / 2) / (w / 2), (y - h / 2) / (h / 2));
+    if (d > 1) return 0;
+    cc[0] = 255; cc[1] = 255; cc[2] = 255;
+    return 0.45 * (1 - d * d) * (1 - y / h * 0.5);
+  });
+  c = P.toCanvas(8);
+  capCache.set(r, c);
+  return c;
 }
 
 // After the tank: sun shafts over everything, foreground plant, lamp glow.
@@ -833,6 +615,9 @@ export class RoomAmbient {
 
   update(dt, art) {
     this.t += dt;
+    // build the rotating globe's ring of frames a little at a time
+    this.gw = (this.gw || 0) + 1;
+    if (this.gw % 4 === 0) art.sky?.globe?.vox.warm();
     const { sw, sh, u } = art;
     if (this.key !== art.key) {
       this.key = art.key;

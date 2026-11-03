@@ -3688,7 +3688,7 @@ KINDS.chomper = {
     const ang = q.angle || 0, ca = Math.cos(ang), sa = Math.sin(ang);
     const r = c.L / 2;
     const body = part === 'body' || part === 'all', back = part === 'back' || part === 'all';
-    const half = 0.05 + 0.68 * (body ? this.open(ph) : 0.3);
+    const half = 0.05 + 0.74 * (body ? this.open(ph) : 0.3);
     const T = c.T, F = c.tail.R7, D = c.fins[0]?.R7 || F;
     const inner = P('#152448'), tongue = P('#ff6f9a'), tongueH = P('#ffb4cc'), blush = P('#ff8ab8');
     const flap = back ? Math.sin(TAU * ph) * 0.22 : 0;
@@ -3703,7 +3703,7 @@ KINDS.chomper = {
         const a = Math.atan2(ly, lx);
         if (Math.abs(a - 0.06) < half) {
           // inside the wedge: the throat near the centre, open water beyond
-          if (d < r * 0.5 && half > 0.16) col = ly > r * 0.05 && d > r * 0.16 ? (ly > r * 0.2 && lx < r * 0.25 ? tongueH : tongue) : inner;
+          if (d < r * 0.36 && half > 0.16) col = ly > r * 0.05 && d > r * 0.12 ? (ly > r * 0.16 && lx < r * 0.2 ? tongueH : tongue) : inner;
         } else {
           const belly = ly > r * (0.38 + 0.06 * Math.sin(lx / r * 5));
           col = tone(belly ? T.belly : ly < -r * 0.62 + 0.05 * lx ? T.back : T.body, 3, x, y);

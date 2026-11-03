@@ -17,7 +17,10 @@ import { makeCanvas, ctxOf, makeLayer, tinted } from '../../core/canvas.js';
 import { flipCanvas } from '../../gfx/pixel.js';
 import { VoxelModel, renderVoxels } from '../../gfx/voxel.js';
 import { noise3, fbm3 } from '../../gfx/props.js';
-import { worldProp, WORLD_YAW, WORLD_PITCH } from '../voxkit.js';
+import { worldProp, WORLD_YAW, WORLD_PITCH, voxelize, voxRelief } from '../voxkit.js';
+import { voxAnim, placeAnim } from '../coral.js';
+import { gullFrames, voxPixelSprite, voxCloudSprite } from '../voxcritters.js';
+import { VoxelGiant } from '../giants.js';
 import {
   paint, dpack, lerpStops, stopPalette, ditherPick, Blend, FogLayer, fillWith, drawWobble, makeRays, drawGlow, twinkle,
   Caustics, lumaMask, waveLine, waveRuns, Strands, Motes, Bubbles, Mask, ridge, todWeights, quality, inRect, bladeSprites,
@@ -25,6 +28,8 @@ import {
 } from '../scenery.js';
 
 // ====================================================================== shared helpers
+
+const tinted2 = (src, color, a) => { const c = makeCanvas(src.width, src.height), g = ctxOf(c); g.drawImage(src, 0, 0); g.globalCompositeOperation = 'source-atop'; g.globalAlpha = a; g.fillStyle = color; g.fillRect(0, 0, c.width, c.height); return c; };
 
 export const qmix = (a, b, t) => mix(a, b, Math.round(clamp01(t) * 32) / 32);
 export const tri = (a, b, c, w) => qmix(qmix(a, b, w.dusk / Math.max(0.001, w.day + w.dusk)), c, w.night);
@@ -678,7 +683,17 @@ export class FjordBiome extends Biome {
       });
     };
     this.sky = { day: skyOf('day'), dusk: skyOf('dusk'), night: skyOf('night') };
-    this.mtn = { day: mtnOf('day'), dusk: mtnOf('dusk'), night: mtnOf('night') };
+    // voxel relief: the painted material map is extruded into voxels (near walls deepest, the far range shallow)
+    const DEPTH = [0, 2, 6, 7, 5, 6, 11, 12, 7, 8, 3, 9];
+    const voxOf = (kind) => {
+      const v = voxelize(mtnOf(kind), { cell: 2, maxD: 14, alignZ: 6, depth: (r, g, b, x, y) => { const i = y * W + x, mm = mat[i]; return mm ? DEPTH[mm] + Math.round(tone[i] * 3) : 0; } });
+      const c = makeCanvas(W, h);
+      ctxOf(c).drawImage(v.canvas, -v.ox, -v.oy);
+      return c;
+    };
+    // one voxel render (day palette); dusk and night are tinted copies of it (the relief is the same)
+    const mday = voxOf('day');
+    this.mtn = { day: mday, dusk: tinted2(mday, '#b0587a', 0.3), night: tinted2(mday, '#0a1638', 0.6) };
     this.mtnBlend = new Blend();
     this.overcast = {};
     for (const k of ['day', 'dusk', 'night']) { const pal = stopPalette(OVERCAST[k], 10); this.overcast[k] = paint(8, h, (x, y) => ditherPick(pal, y / h, x, y)); }
@@ -690,7 +705,7 @@ export class FjordBiome extends Biome {
     }
     this.aurora = [this.auroraTex(Math.round(W * 1.7), 170, 3, ['#5affa8', '#2ae0c8', '#a66aff']), this.auroraTex(Math.round(W * 1.7), 120, 9, ['#8aff7a', '#3ac8ff', '#ff6ad0'])];
     this.clouds = [];
-    for (let i = 0; i < 6; i++) this.clouds.push({ x: r.float(0, W), y: r.int(top + 30, base - 170), v: r.float(1.5, 4), tile: softCloud(r.int(110, 190), r.int(22, 34), 40 + i) });
+    for (let i = 0; i < 6; i++) this.clouds.push({ x: r.float(0, W), y: r.int(top + 30, base - 170), v: r.float(1.5, 4), tile: voxCloudSprite(40 + i, r.int(110, 190), r.int(26, 38), 'day') });
     this.blizTile = streakTile(160, 96, 46, '#f4faff', { seed: 9, len: [4, 9], slant: 1, alpha: 0.75 });
   }
 
@@ -892,11 +907,11 @@ export class FjordBiome extends Biome {
     for (let i = 0; i < 5; i++) { const px0 = r.float(0.08, 0.92) * LW, top0 = r.float(baseA - 120, baseA - 60); mA.poly([[px0 - 26, baseA], [px0 - 4, top0], [px0 + 6, top0 + 6], [px0 + 30, baseA]]); }
     const palA = stopPalette([[0, '#0c4a6a'], [1, '#3a9ab8']], 6);
     const palG = stopPalette([[0, '#2a7aa0'], [1, '#a8eef8']], 6);
-    this.farA = new FogLayer(mA.toCanvas((x, y, v, up) => {
+    this.farA = new FogLayer(voxRelief(mA.toCanvas((x, y, v, up) => {
       if (v === 2) return ditherPick(palG, 0.85 - y / 160 + (fbm2(x * 0.4, y * 0.03, 2, 7) - 0.5) * 0.7, x, y);
       if (up <= 1) return pack('#8ae0ee');
       return ditherPick(palA, 0.72 - Math.min(1, up / 70) * 0.55 + (fbm2(x * 0.05, y * 0.05, 2, 2) - 0.5) * 0.35, x, y);
-    }), -pad, yA);
+    })), -pad, yA);
     this.farAY = yA;
     // --- far B: iceberg keels hanging from the surface + seabed boulders on the horizon
     const yB = this.base, hB = H - yB;
@@ -911,16 +926,16 @@ export class FjordBiome extends Biome {
     }
     const palB = stopPalette([[0, '#0a3c56'], [1, '#2e8aa6']], 6);
     const palK = stopPalette([[0, '#4ab2d0'], [1, '#c8f6ff']], 6);
-    this.farB = new FogLayer(mB.toCanvas((x, y, v, up, left, right) => {
+    this.farB = new FogLayer(voxRelief(mB.toCanvas((x, y, v, up, left, right) => {
       if (v === 3) return ditherPick(palK, 0.9 - y / 140 + (left ? 0.2 : right ? -0.25 : 0) + (fbm2(x * 0.2, y * 0.05, 2, 9) - 0.5) * 0.5, x, y);
       if (up <= 1) return pack('#9ae4ee');
       if (up === 2) return pack('#4aa0b8');
       return ditherPick(palB, 0.7 - Math.min(1, up / 40) * 0.5 + (fbm2(x * 0.08, y * 0.08, 2, 6) - 0.5) * 0.4, x, y);
-    }), -pad, yB);
+    })), -pad, yB);
     this.farBY = yB;
     // giants
-    this.beluga = belugaFrames(120); this.belugaL = this.beluga.map(flipCanvas);
-    this.sealS = sealSwimFrames(58); this.sealSL = this.sealS.map(flipCanvas);
+    this.belugaV = new VoxelGiant('beluga'); this.sealV = new VoxelGiant('seal');
+    this.giantFog = new Map();
     this.giant = { kind: 'seal', x: W * 0.3, y: H * 0.4, dir: 1, v: 16, ph: 0, s: 0.8 };
     this.giantT = 0;
   }
@@ -929,66 +944,28 @@ export class FjordBiome extends Biome {
     const W = this.W, H = this.H, D = this.D;
     const r = new RNG(29);
     this.decor = new DepthDecor(D);
-    // kelp under the ice: tall brown-olive stipes with big blades at many depths
-    const blades = bladeSprites({ len: 14, w: 3, cols: ['#3a3418', '#54501e', '#727024', '#949034', '#b8b04a'], curl: 0.5, outline: 0.5 });
-    const bladesS = bladeSprites({ len: 9, w: 2, cols: ['#3a3418', '#54501e', '#727024', '#949034'], curl: 0.5, outline: 0.4 });
+    // kelp under the ice, red & green seaweed tufts and plumose anemones: animated voxel models (coral.js)
+    const kq = (z) => qscale(D.s(z), 0.2, 0.4);
+    const put = (A, x, z) => this.decor.add({ anim: placeAnim(A, x, Math.round(D.floorAt(x, z)) + 2), z, off: r.int(0, A.n - 1) });
     for (const [xf, z, n] of [[0.17, 0.62, 40], [0.215, 0.74, 34], [0.85, 0.66, 38], [0.8, 0.8, 30], [0.52, 1.0, 30], [0.375, 0.92, 28], [0.68, 0.88, 26], [0.12, 0.3, 46], [0.88, 0.32, 42], [0.46, 1.2, 30], [0.27, 1.1, 26], [0.7, 1.25, 26]]) {
-      const s = D.s(z), x = Math.round(xf * W);
-      const st = new Strands();
-      st.add({ x, y: Math.round(D.floorAt(x, z)) + 3, n, seg: Math.max(2, Math.round(4 * s)), w: s > 0.6 ? 2 : 1, amp: 0.13, speed: 0.6, sec: 1, phase: r.float(0, TAU), wave: 0.18, lean: r.float(-0.06, 0.06),
-        cols: ['#2e2a14', '#46421a', '#5e5a22'], out: '#141208', blades: s > 0.62 ? blades : bladesS, leafEvery: 2, bulb: s > 0.6 ? '#a89a3a' : null, bulbEvery: 7, hl: false });
-      this.decor.add({ anim: new SwayAnim(st, { frames: 20 }), z, off: r.int(0, 19) });
+      const x = Math.round(xf * W);
+      put(voxAnim('kelp', 1 + (n % 3), 'fjord', n > 36 ? 20 : 15, kq(z), 8), x, z);
     }
-    // red & green seaweed tufts
-    const sets = [['#5a1a2a', '#8a2a3a', '#b8404e', '#e0687a'], ['#24503a', '#2e6a46', '#448a58', '#6aae74'], ['#6a4a1e', '#8a6a2a', '#b08a3a', '#d8b05a']];
     for (const [xf, z] of [[0.08, -0.1], [0.16, 0.05], [0.32, 0.16], [0.37, -0.12], [0.45, 0.12], [0.55, -0.15], [0.62, 0.0], [0.7, 0.14], [0.78, -0.1], [0.9, 0.08], [0.97, -0.05],
       [0.22, 0.5], [0.35, 0.44], [0.52, 0.56], [0.66, 0.5], [0.8, 0.46], [0.3, 0.8], [0.5, 0.7], [0.62, 0.8]]) {
-      const s = D.s(z), x0 = Math.round(xf * W), y0 = Math.round(D.floorAt(x0, z)) + 1;
-      const set = sets[r.chance(0.6) ? r.int(0, 1) : 2];
-      const st = new Strands();
-      const k = r.int(3, 6), tall = r.chance(0.4);
-      for (let i = 0; i < k; i++) {
-        const lean = (i / Math.max(1, k - 1) - 0.5) * 0.9 + r.float(-0.15, 0.15);
-        st.add({ x: x0 + Math.round(lean * 7 * s), y: y0, n: Math.max(3, Math.round((tall ? r.int(8, 12) : r.int(4, 7)) * Math.min(1.1, s))), seg: 2, w: tall && s > 0.7 ? 2 : 1, amp: 0.25, speed: 1.3, sec: 2, phase: r.float(0, TAU), wave: 0.45, lean, curl: lean * 0.4, cols: set, out: tall && s > 0.7 ? '#140c14' : null, hl: false, taper: 0.3 });
-      }
-      this.decor.add({ anim: new SwayAnim(st, { frames: 16 }), z, off: r.int(0, 15) });
+      const x0 = Math.round(xf * W);
+      put(voxAnim('seagrass', 1 + r.int(0, 2), r.chance(0.6) ? 'fjord' : 'shallows', 9, kq(z) * 1.3, 8), x0, z);
     }
-    // plumose anemones (tall white Metridium) with feathery crowns
     this.anemones = [];
-    for (const [xf, z, cols, tip, stalk] of [
-      [0.13, 0.04, ['#c8b8b0', '#e8dcd4', '#fff4ee', '#ffffff'], '#ffffff', ['#a88a80', '#c8aaa0', '#e8d0c4']],
-      [0.88, 0.16, ['#e8905a', '#ffb07a', '#ffd0a8', '#fff0dc'], '#fff6e8', ['#a8583a', '#c8784a', '#e8a070']],
-      [0.33, 0.56, ['#c8b8b0', '#e8dcd4', '#fff4ee', '#ffffff'], '#ffffff', ['#a88a80', '#c8aaa0', '#e8d0c4']],
-      [0.7, 0.3, ['#e8905a', '#ffb07a', '#ffd0a8', '#fff0dc'], '#fff6e8', ['#a8583a', '#c8784a', '#e8a070']]]) {
+    for (const [xf, z, pk] of [[0.13, 0.04, 'cream'], [0.88, 0.16, 'orange'], [0.33, 0.56, 'cream'], [0.7, 0.3, 'orange']]) {
       const x = Math.round(xf * W), y = Math.round(D.floorAt(x, z)) + 1, s = D.s(z);
-      const sh = Math.round(16 * s);
-      const st = new Strands();
-      const N = 15;
-      for (let i = 0; i < N; i++) {
-        const u = i / (N - 1) - 0.5;
-        const lean = u * 2.6 + r.float(-0.1, 0.1);
-        st.add({ x: x + Math.round(u * 8 * s), y: y - sh - 1 + Math.round(Math.abs(u) * 3 * s), n: Math.max(3, Math.round((4 + ((i * 5) % 3)) * Math.min(1.1, s))), seg: 2, w: s > 0.8 ? 2 : 1, amp: 0.3, speed: 1.2, sec: 2, phase: i * 0.4, wave: 0.6, lean, curl: lean * 0.5, cols, out: null, hl: false, tip, tipR: 1 });
-      }
-      const under = (gg) => {
-        for (let yy = -sh; yy <= 0; yy++) {
-          const k = (yy + sh) / sh;
-          const hw = Math.round((2.5 + (1 - k) * 3 + (k > 0.85 ? 2 : 0)) * s);
-          gg.fillStyle = stalk[k < 0.3 ? 2 : k < 0.7 ? 1 : 0];
-          gg.fillRect(x - hw, y + yy, hw * 2 + 1, 1);
-          gg.fillStyle = stalk[2];
-          gg.fillRect(x - hw, y + yy, 1, 1);
-        }
-        gg.fillStyle = '#2a1e24';
-        gg.fillRect(x - Math.round(6 * s), y + 1, Math.round(12 * s) + 1, 1);
-      };
-      const anim = new SwayAnim(st, { frames: 16, under, bounds: { x0: x - 9, y0: y - sh - 12, x1: x + 9, y1: y + 2 } });
-      this.decor.add({ anim, z, off: r.int(0, 15) });
-      this.anemones.push({ x, y: y - sh, z });
+      put(voxAnim('anemone', 7 + Math.round(xf * 10), 'shallows', 14, kq(z) * 1.3, 8, pk), x, z);
+      this.anemones.push({ x, y: y - Math.round(16 * s), z });
     }
     // life above water
-    this.penguin = penguinFrames();
+    this.penguin = penguinFrames().map((c) => voxPixelSprite(c, 4));
     this.penguinL = this.penguin.map(flipCanvas);
-    this.seal = sealFrames();
+    this.seal = sealFrames().map((c) => voxPixelSprite(c, 5));
     // ice floes drifting on the surface
     this.floes = [];
     const fr = new RNG(71);
@@ -1220,12 +1197,13 @@ export class FjordBiome extends Biome {
       ctx.globalAlpha = 1;
       const ba = (tod.day + tod.dusk) * (1 - wx.bliz) * clear;
       if (ba > 0.05) {
-        ctx.fillStyle = tod.dusk > 0.5 ? '#3a2438' : '#2c3448';
         ctx.globalAlpha = ba;
+        const GF = gullFrames('#f4f8ff');
         for (const b of this.birds) {
           const x = Math.round(b.x), y = Math.round(b.y + Math.sin(b.ph * 0.3) * 4);
-          if (Math.sin(b.ph) > 0) { ctx.fillRect(x - 3, y - 2, 1, 1); ctx.fillRect(x - 2, y - 1, 2, 1); ctx.fillRect(x, y, 1, 1); ctx.fillRect(x + 1, y - 1, 2, 1); ctx.fillRect(x + 3, y - 2, 1, 1); }
-          else { ctx.fillRect(x - 3, y, 3, 1); ctx.fillRect(x, y, 1, 1); ctx.fillRect(x + 1, y, 3, 1); }
+          const fr = GF[Math.sin(b.ph) > 0.3 ? 0 : Math.sin(b.ph) > -0.4 ? 1 : 2];
+          if (b.v < 0) { ctx.save(); ctx.translate(x, 0); ctx.scale(-1, 1); ctx.drawImage(fr, -(fr.width >> 1), y - (fr.height >> 1)); ctx.restore(); }
+          else ctx.drawImage(fr, x - (fr.width >> 1), y - (fr.height >> 1));
         }
         ctx.globalAlpha = 1;
       }
@@ -1280,12 +1258,17 @@ export class FjordBiome extends Biome {
   drawGiant(ctx) {
     const gi = this.giant;
     if (!gi) return;
-    const fr = gi.kind === 'beluga' ? (gi.dir > 0 ? this.beluga : this.belugaL) : gi.dir > 0 ? this.sealS : this.sealSL;
-    const spr = fr[Math.floor((((gi.ph / TAU) * fr.length) % fr.length + fr.length) % fr.length)];
-    const c = tinted(spr, gi.kind === 'beluga' ? '#7ab8d0' : '#0e3a56');
-    ctx.globalAlpha = gi.kind === 'beluga' ? 0.32 : 0.36;
-    const s = gi.s || 1, w = Math.round(spr.width * s), h = Math.round(spr.height * s);
-    ctx.drawImage(c, Math.round(gi.x - w / 2 + this.par.x * 1.1), Math.round(gi.y - h / 2 + this.par.y * 0.5), w, h);
+    // voxel beluga / seal far in the blue (fogged toward the water)
+    const G = gi.kind === 'beluga' ? this.belugaV : this.sealV;
+    G.warm();
+    const f = G.frame(gi.ph, gi.dir);
+    const key = f.canvas;
+    let c = this.giantFog.get(key);
+    if (!c) { c = tinted(f.canvas, '#5aa8c8'); this.giantFog.set(key, c); if (this.giantFog.size > 40) this.giantFog.clear(); }
+    ctx.globalAlpha = 0.75;
+    ctx.drawImage(f.canvas, Math.round(gi.x - f.ox + this.par.x * 1.1), Math.round(gi.y - f.oy + this.par.y * 0.5));
+    ctx.globalAlpha = 0.5;
+    ctx.drawImage(c, Math.round(gi.x - f.ox + this.par.x * 1.1), Math.round(gi.y - f.oy + this.par.y * 0.5));
     ctx.globalAlpha = 1;
   }
 
@@ -1501,7 +1484,7 @@ export class FjordBiome extends Biome {
     // the ice block around the chest
     const r = c.rect;
     const x0 = r.x + sx, y0 = r.y, w = r.w, h = r.h;
-    if (!this.iceBlock || this.iceBlock.width !== w) this.iceBlock = iceBlockSprite(w, h, 7);
+    if (!this.iceBlock || this.iceBlock.width !== w) this.iceBlock = voxRelief(iceBlockSprite(w, h, 7), { cell: 1, maxD: 4, depth: () => 4 });
     ctx.drawImage(this.iceBlock, x0, y0);
     // cracks spread with each knock
     ctx.fillStyle = '#ffffff';

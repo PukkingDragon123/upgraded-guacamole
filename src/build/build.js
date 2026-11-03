@@ -443,7 +443,8 @@ export class Build {
     // build the Lab's icons a few at a time while the game idles, so the Lab opens instantly
     if (this.t > 4 && !g.ui?.isOpen?.('lab') && !this.warmDone) {
       try {
-        this.warmDone = !warmLabIcons([...LAB_NODES.flatMap((n) => [[n.icon, 12], [n.icon, 14]]), ...['beaker', 'rod:glass', 'hammer', 'boat:skiff'].map((k) => [k, 16]), ...RODS.map((r) => ['rod:' + r.id, 60])]);
+        if (!this.roomWarm) this.roomWarm = !g.ui?.panels?.lab?.warm?.(3);
+        else this.warmDone = !warmLabIcons([...LAB_NODES.flatMap((n) => [[n.icon, 12], [n.icon, 14]]), ...['beaker', 'rod:glass', 'hammer', 'boat:skiff'].map((k) => [k, 16]), ...RODS.map((r) => ['rod:' + r.id, 60])]);
       } catch { this.warmDone = true; }
     }
     const ui = g.ui;

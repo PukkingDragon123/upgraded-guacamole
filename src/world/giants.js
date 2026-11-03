@@ -113,10 +113,45 @@ function dolphinModel(ph) {
   return m;
 }
 
+// Beluga (white, round melon head) and harbour seal (grey, dappled, fore flippers): simple swimmers with cute eyes.
+function swimmerModel(ph, o) {
+  const L = o.L, R = o.R;
+  const m = new VoxelModel(L + 6, 2 * R + 20, 2 * R + 16);
+  const C = (c, op = {}) => m.color(c, { jitter: 0.05, spec: 0.4, specPow: 12, ...op });
+  const back = C(o.back), side = C(o.side), belly = C(o.belly), fin = C(o.fin), spot = o.spot ? C(o.spot) : null;
+  const eye = C('#0a1020', { spec: 0.9 }), shine = C('#ffffff');
+  const cy = m.ny / 2, cz = m.nz / 2;
+  const flex = (u) => Math.sin(ph) * Math.pow(Math.max(0, 0.55 - u), 1.4) * o.flex;
+  for (let x = 0; x < L; x++) {
+    const u = x / L;
+    let r = R * (0.25 + 0.75 * sm(0.0, 0.5, u)) * (1 - sm(0.82, 1.0, u) * o.nose);
+    if (o.melon && u > 0.8) r = Math.max(r, R * 0.82);
+    const yc = cy + flex(u);
+    for (let y = Math.floor(yc - r); y <= Math.ceil(yc + r); y++) for (let z = Math.floor(cz - r); z <= Math.ceil(cz + r); z++) {
+      const dy = (y + 0.5 - yc) / r, dz = (z + 0.5 - cz) / (r * 0.9);
+      if (dy * dy + dz * dz > 1) continue;
+      let c = dy > 0.3 ? back : dy > -0.35 ? side : belly;
+      if (spot && hash3(x, y, z, 5) < 0.12 && dy > -0.2) c = spot;
+      m.set(x, y, z, c);
+    }
+  }
+  const fy = Math.round(cy + flex(0));
+  for (let x = 0; x < 5; x++) { const span = o.fluke * (1 - Math.abs(x / 5 - 0.4)); for (let z = Math.floor(cz - span); z <= Math.ceil(cz + span); z++) m.set(x, fy, z, fin); }
+  for (const sd of [-1, 1]) m.line(L * 0.68, cy - 2, cz + sd * R * 0.6, L * 0.58, cy - 6 + Math.sin(ph + 1) * 2, cz + sd * (R + 3), fin, 0.9);
+  const ex = Math.round(L * 0.86), ey = Math.round(cy + 1), ez = Math.round(cz + R * 0.66);
+  for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) m.set(ex + dx, ey + dy, ez + 1, eye);
+  m.set(ex + 1, ey + 1, ez + 2, shine);
+  return m;
+}
+const belugaModel = (ph) => swimmerModel(ph, { L: 54, R: 7, back: '#e8f2f6', side: '#f4fbff', belly: '#ffffff', fin: '#cfe0ea', flex: 12, nose: 0.3, melon: true, fluke: 8 });
+const sealModel = (ph) => swimmerModel(ph, { L: 34, R: 5.4, back: '#56606e', side: '#76808e', belly: '#b8c0ca', fin: '#3e4652', spot: '#3a424e', flex: 9, nose: 0.4, melon: false, fluke: 5 });
+
 const BUILD = {
   whale: { n: 8, model: whaleModel, render: { scale: 2, yaw: 22, pitch: 10, jitter: 0.1 } },
   turtle: { n: 10, model: turtleModel, render: { scale: 2, yaw: 18, pitch: 20, jitter: 0.12 } },
   dolphin: { n: 8, model: dolphinModel, render: { scale: 2, yaw: 14, pitch: 12, jitter: 0.05 } },
+  beluga: { n: 8, model: belugaModel, render: { scale: 2, jitter: 0.05 } },
+  seal: { n: 8, model: sealModel, render: { scale: 2, jitter: 0.06 } },
 };
 
 export class VoxelGiant {

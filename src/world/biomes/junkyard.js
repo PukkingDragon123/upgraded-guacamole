@@ -13,6 +13,9 @@ import { mix, rgba, pack, hslToHex } from '../../core/color.js';
 import { makeCanvas, ctxOf, makeLayer } from '../../core/canvas.js';
 import { PROPS } from '../../gfx/props.js';
 import { worldProp } from '../voxkit.js';
+import { voxPixelSprite, voxCableAnim } from '../voxcritters.js';
+import { voxelFishIcon } from '../../fish/fishicon.js';
+import { SPECIES } from '../../fish/species.js';
 import { reefSprite, coralSprite, voxAnim, placeAnim, drawCoralGlow } from '../coral.js';
 import { drawText } from '../../gfx/font.js';
 import { BAITS } from '../../game/shopdata.js';
@@ -94,11 +97,13 @@ class ScreenFX {
     const g = ctxOf(this.text);
     for (let k = 0; k < 2; k++) SCREEN_TEXT.forEach((l, i) => drawText(g, l, 2, k * this.textH + i * 7 + 1, { font: 'small', color: i % 5 === 0 ? '#d8ffe0' : '#6cff9a' }));
     this.scan = paint(4, 2, (x, y) => (y ? pack('#000000', 70) : 0));
-    this.fish = paint(7, 4, (x, y) => {
-      const rows = ['..###.#', '.#####.', '.####.#', '..##...'];
-      if (rows[y][x] !== '#') return 0;
-      return pack(y === 0 ? '#ffd27a' : x === 5 && y === 1 ? '#1a1010' : '#ff8a3a');
-    });
+    // screensaver fish are real voxel fish (voxel fish renderer icons), built on first use
+    this.fishIcon = () => {
+      if (this._fishIcon === undefined) {
+        try { const sp = SPECIES.find((q) => q.biome === 'junkyard' && q.look?.kind !== 'chain') || SPECIES[0]; this._fishIcon = voxelFishIcon(sp, 12, 7) || null; } catch { this._fishIcon = null; }
+      }
+      return this._fishIcon;
+    };
   }
   noiseFrame(w, h, f) {
     const key = w + 'x' + h;
@@ -138,14 +143,16 @@ class ScreenFX {
       ctx.fillStyle = '#123a74'; ctx.fillRect(x, y + Math.floor(h / 2), w, Math.ceil(h / 2));
       ctx.fillStyle = '#2a5a3a'; ctx.fillRect(x, y + h - 2, w, 2);
       const fx = x + ((t * 9) % (w + 10)) - 8, fy = y + Math.round(h * 0.4 + Math.sin(t * 2) * 2);
-      ctx.drawImage(this.fish, Math.round(fx) + jx, fy);
+      const fi = this.fishIcon();
+      if (fi) ctx.drawImage(fi, Math.round(fx) + jx, fy - 1);
       ctx.fillStyle = '#8ad8ff';
       for (let i = 0; i < 3; i++) { const by = y + h - 3 - ((t * 6 + i * 5) % (h - 3)); ctx.fillRect(x + 4 + i * 7, Math.round(by), 1, 1); }
     } else if (m === 'hello') {
       ctx.fillStyle = '#10204a'; ctx.fillRect(x, y, w, h);
       const k = Math.floor(t * 2) % 2;
       drawText(ctx, k ? 'HI!' : 'HELLO', x + w / 2, y + 2, { font: 'small', align: 'center', color: '#ffe27a' });
-      ctx.drawImage(this.fish, Math.round(x + w / 2 - 3), y + h - 7);
+      const fi = this.fishIcon();
+      if (fi) ctx.drawImage(fi, Math.round(x + w / 2 - 6), y + h - 8);
     }
     // scanlines + glass sheen
     ctx.fillStyle = ctx.createPattern(this.scan, 'repeat');
@@ -461,18 +468,17 @@ export class JunkyardBiome extends Biome {
     for (const [xf, z, pal] of [[0.335, 0.06, 'rust'], [0.68, 0.22, 'oxide'], [0.2, 0.46, 'copper'], [0.88, 0.7, 'wire']]) life('soft', 31 + Math.round(xf * 20), 11, z, Math.round(xf * W), pal);
     // long cables dangling from the surface with plugs
     const s0 = this.base;
+    // voxel cables hanging from the surface buoys
     for (const [xf, n, col, z] of [[0.18, 30, '#2a2a34', 0.5], [0.585, 22, '#3a3a48', 0.85], [0.79, 13, '#b83a3a', 0.6], [0.36, 26, '#2a2a34', 1.1]]) {
-      const st = new Strands();
       const sc = D.s(z);
-      st.add({ x: Math.round(xf * W), y: s0 + 1, n, seg: Math.max(2, Math.round(4 * sc + 1)), down: true, w: sc > 0.7 ? 2 : 1, amp: 0.12, speed: 0.6, sec: 1, phase: xf * 9, wave: 0.15, cols: [col, mix(col, '#ffffff', 0.15)], out: '#0a0c10', hl: false, tip: '#c8c8d0', tipR: sc > 0.7 ? 2 : 1 });
-      this.decor.add({ anim: new SwayAnim(st, { frames: 24 }), z, off: Math.round(xf * 30), fy: s0 + 60 });
+      this.decor.add({ anim: voxCableAnim(Math.round(n * Math.max(2, Math.round(4 * sc + 1))), col, '#c8c8d0', Math.round(xf * W), s0 + 1, 8, sc > 0.7 ? 2 : 1), z, off: Math.round(xf * 30), fy: s0 + 60 });
     }
     this.murk = cloudTile(480, 240, '#a8c8b0', { seed: 3, alpha: 0.13, scale: 0.016, bias: 0.5, levels: 3 });
     this.murk2 = cloudTile(400, 200, '#0e2420', { seed: 9, alpha: 0.16, scale: 0.02, bias: 0.5, levels: 3 });
     // floating trash at the surface
     this.duck = worldProp('rubber_duck', { scale: 0.45 });
-    this.bottle = bottleSprite();
-    this.can = canSprite();
+    this.bottle = voxPixelSprite(bottleSprite(), 4);
+    this.can = voxPixelSprite(canSprite(), 4);
     this.floaters = [[0.3, 'duck'], [0.52, 'bottle'], [0.68, 'can'], [0.9, 'bottle']].map(([xf, k], i) => ({ x: xf * W, k, v: 2 + i, ph: i * 1.7 }));
     // particles
     const s = this.base;
@@ -881,7 +887,7 @@ export class JunkyardBiome extends Biome {
       st.baits ||= {};
       st.baits[pick] = (st.baits[pick] || 0) + 1;
       v.t = 0;
-      v.item = canSprite({ bread: '#e0b060', worm: '#ff7ab0', sugar: '#f0f0ff', chip: '#3ad08a', popup: '#ff4a6a', golden: '#ffd040' }[pick] || '#d8343a');
+      v.item = voxPixelSprite(canSprite({ bread: '#e0b060', worm: '#ff7ab0', sugar: '#f0f0ff', chip: '#3ad08a', popup: '#ff4a6a', golden: '#ffd040' }[pick] || '#d8343a'), 4);
       audio?.play?.('vending');
       if (pick === 'golden') setTimeout(() => audio?.play?.('sparkle'), 400);
       game.toast?.(`*clunk* The vending machine drops 1 ${BAITS[pick]?.name || pick}!`, 'bait');

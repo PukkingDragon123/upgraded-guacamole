@@ -1,13 +1,15 @@
-// LRU cache for rasterised creature frames.
+// Compiled creature looks (memoised) and an LRU cache of baked whole-creature voxel frames.
 
-import { compileLook, rasterFish } from './fishart.js';
+import { compileLook } from './fishart.js';
+import { voxelFrame, SWIM_N } from './voxelfish.js';
+import { voxelWash } from './fishrig.js';
+import { makeCanvas, ctxOf } from '../core/canvas.js';
 
 const MAX = 5000;
 const cache = new Map();
 let nextId = 1;
 
 export const FRAMES = 8;
-export const ANGLE_STEP = Math.PI / 12;
 
 const compiledCache = new Map();
 
@@ -27,33 +29,31 @@ export function variantKey(v) {
 }
 
 /**
- * opts: phase (0..1), angle (rad), scale, blink, mouth, inflate, expr, silhouette, squash, still
+ * Baked whole-creature voxel frame (FULL VOXEL ART: there is no 2D fish sprite any more).
+ * opts: phase (0..1 swim), angle (rad, pitch), scale, inflate, silhouette (true | colour), still, yaw (deg).
+ * Returns {canvas, glowCanvas, ox, oy, anchors, w, h} like before (canvas drawn at x - ox, y - oy), or null.
  */
 export function frame(c, opts = {}) {
-  const f = Math.floor(((opts.phase || 0) % 1 + 1) % 1 * FRAMES) % FRAMES;
-  const a = Math.max(-6, Math.min(6, Math.round((opts.angle || 0) / ANGLE_STEP)));
-  const s = Math.max(1, Math.round((opts.scale || 1) * 8));
-  const inf = Math.round((opts.inflate || 0) * 4);
-  const sq = Math.round((opts.squash || 0) * 3);
-  const key = `${c.id}|${f}|${a}|${s}|${opts.blink ? 1 : 0}${opts.mouth ? 1 : 0}${opts.silhouette ? 1 : 0}${opts.still ? 1 : 0}|${opts.expr || ''}|${inf}|${sq}`;
+  const f8 = Math.floor((((opts.phase || 0) % 1) + 1) % 1 * FRAMES) % FRAMES;
+  const S = Math.max(0.1, Math.round((opts.scale || 1) * 8) / 8);
+  const pitch = Math.max(-30, Math.min(30, ((opts.angle || 0) * 180) / Math.PI));
+  const sil = opts.silhouette ? (typeof opts.silhouette === 'string' ? opts.silhouette : '#102033') : '';
+  const key = `${c.id}|${f8}|${S}|${Math.round(pitch / 10)}|${Math.round((opts.inflate || 0) * 3)}|${sil}|${opts.yaw ?? 15}`;
   let r = cache.get(key);
-  if (r) {
-    cache.delete(key);
-    cache.set(key, r);
-    return r;
+  if (r) { cache.delete(key); cache.set(key, r); return r; }
+  const res = voxelFrame(c, { S, yaw: opts.yaw ?? 15, pitch, sw: Math.floor((f8 / FRAMES) * SWIM_N), infl: Math.round((opts.inflate || 0) * 3), pose: false, lod: 0, pri: 2, force: true });
+  if (!res) return null;
+  const { f, k } = res;
+  let cv = f.canvas;
+  if (Math.abs(k - 1) > 0.02) {
+    cv = makeCanvas(Math.max(1, Math.round(f.W * k)), Math.max(1, Math.round(f.H * k)));
+    ctxOf(cv).drawImage(f.canvas, 0, 0, cv.width, cv.height);
   }
-  r = rasterFish(c, {
-    phase: f / FRAMES,
-    angle: a * ANGLE_STEP,
-    scale: s / 8,
-    blink: !!opts.blink,
-    mouth: opts.mouth ? 1 : 0,
-    inflate: inf / 4,
-    squash: sq / 3,
-    expr: opts.expr,
-    silhouette: !!opts.silhouette,
-    still: !!opts.still,
-  });
+  if (sil) cv = voxelWash(cv, sil, 0.8);
+  const anchors = {};
+  for (const [n, v] of Object.entries(f.anchors || {})) anchors[n] = [v[0] * k + f.ax * k, v[1] * k + f.ay * k];
+  anchors.eyes = (f.eyes || []).map((e) => ({ x: (e.x + f.ax) * k, y: (e.y + f.ay) * k, r: e.r * k, type: e.e?.type }));
+  r = { canvas: cv, glowCanvas: sil ? null : f.glow || null, ox: f.ax * k, oy: f.ay * k, anchors, w: cv.width, h: cv.height };
   cache.set(key, r);
   if (cache.size > MAX) {
     const it = cache.keys();

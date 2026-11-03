@@ -16,13 +16,13 @@
 //
 //   const intro = new Intro3D({W, H, input, audio, look, onHandoff, onDone});
 //   intro.update(dt); intro.draw(ctx);    intro.skip(); intro.seek(t); intro.resize(W, H)
-//   intro.active (false once done), intro.t (timeline seconds), intro.ready (assets built)
+//   intro.active (false once done), intro.t (timeline seconds), intro.ready (assets built), intro.opaque (covers all)
 //   drawGoldie(ctx, x, y, {scale, facing, blink, mood, t})   Goldie (npcs.js 'goldie' when present, else voxel)
 
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { PixelBuffer } from '../gfx/pixel.js';
 import { pack, mix, rgba } from '../core/color.js';
-import { clamp, clamp01, lerp, smoothstep, ease, hash2, fbm2, TAU } from '../core/math.js';
+import { clamp, clamp01, lerp, smoothstep, ease, hash2, fbm2, bayer, TAU } from '../core/math.js';
 import { RNG } from '../core/rng.js';
 import { VoxelModel, renderVoxels } from '../gfx/voxel.js';
 import { Particles } from '../gfx/particles.js';
@@ -527,52 +527,222 @@ function caustics() {
   return causticTile;
 }
 
-// The moving-picture aquarium lamp's illustrated reef panorama (a seamless strip that scrolls).
-let reefStrip = null;
-function reefPanorama() {
-  if (reefStrip) return reefStrip;
-  const W = 192, H = 44;
-  const b = new PixelBuffer(W, H);
+// ------------------------------------------------------------------------------------------ voxel room
+// World units per voxel for the big room pieces.
+const WV = 8, DV = 4, MV = 2, JV = 1.25, LV = 2, LAMP_FRAMES = 12;
+const WALL_FZ = 34;           // floor depth (voxels) in front of the wall
+
+// The back wall with its window (the panes are holes: the landscape outside shows through), sill, glossy clock,
+// a lime/aqua Aero swoosh with glass bubbles, the baseboard and a strip of glossy floor tiles.
+function wallModel() {
+  const nx = Math.round((WALL.x1 - WALL.x0) / WV), ny = Math.round((WALL.y1 - WALL.y0) / WV);
+  const m = new VoxelModel(nx, ny + 1, WALL_FZ + 1);
+  const X = (x) => (x - WALL.x0) / WV, Y = (y) => (WALL.y1 - y) / WV;
+  const shades = ['#b4d8ea', '#badcec', '#c0e0ef', '#c7e4f2', '#cee9f5', '#d5edf8', '#dcf1fa', '#e3f4fb', '#eaf7fd', '#f2fbfe'].map((c) => m.color(c, { jitter: 0.012, smooth: 0.2, aoMul: 0.8 }));
+  const white = m.color('#ffffff', { spec: 0.5, specPow: 16, smooth: 0.4 }), whiteS = m.color('#e4f0f6', { smooth: 0.3 });
+  const tiles = [m.color('#f2f7f8', { spec: 0.45, specPow: 20 }), m.color('#e2edf1', { spec: 0.45, specPow: 20 }), m.color('#fffbea', { spec: 0.5, specPow: 20 })];
+  const lx = X(60), ly = Y(-160);
+  // the wall: soft vertical gradient, brighter where the sun pools to the right of the window
+  m.box(0, 0, 0, nx - 1, ny, 1, (x, y) => {
+    const k = 3 + (y / ny) * 4 + Math.max(0, 1 - Math.hypot(x - lx, (y - ly) * 1.3) / 70) * 3.5;
+    return shades[clamp(Math.round(k), 0, shades.length - 1)];
+  });
+  // window: frame, mullions, panes cut out, sill
+  const wx0 = Math.round(X(WIN.x0)), wx1 = Math.round(X(WIN.x1)), wy0 = Math.round(Y(WIN.y1)), wy1 = Math.round(Y(WIN.y0));
+  m.box(wx0, wy0, 0, wx1, wy1, 3, white);
+  const my = Math.round(wy1 - (wy1 - wy0) * 0.42), mx = Math.round((wx0 + wx1) / 2);
+  m.sub(() => { m.box(wx0 + 2, wy0 + 2, 0, mx - 1, my - 1, 3); m.box(mx + 1, wy0 + 2, 0, wx1 - 2, my - 1, 3); m.box(wx0 + 2, my + 1, 0, mx - 1, wy1 - 2, 3); m.box(mx + 1, my + 1, 0, wx1 - 2, wy1 - 2, 3); });
+  m.box(wx0 + 1, wy0 + 1, 3, wx1 - 1, wy0 + 1, 3, whiteS);
+  m.box(wx0 - 3, wy0 - 2, 0, wx1 + 3, wy0 - 1, 6, white);
+  // baseboard and the floor tiles (with the window's light falling on them)
+  m.box(0, 1, 0, nx - 1, 3, 2, white);
+  m.box(0, 0, 0, nx - 1, 0, WALL_FZ, (x, y, z) => {
+    const lit = x > X(-700) + z * 0.6 && x < X(-260) + z * 0.9 && z > 4;
+    return lit ? tiles[2] : tiles[((x >> 2) + (z >> 2)) & 1];
+  });
+  return { m, anchor: [0, ny, 2] };
+}
+
+// A glossy wall clock (2 units per voxel). Anchor: its centre on the wall.
+function clockModel() {
+  const m = new VoxelModel(52, 52, 8);
+  const chrome = m.color('#c8d6e0', { spec: 1.1, specPow: 26, smooth: 0.9 }), face = m.color('#fbfeff', { spec: 0.4, specPow: 18, smooth: 0.6 });
+  const ink = m.color('#0c3a52'), tick = m.color('#3f8fc4'), dot = m.color('#ff9d2e', { spec: 0.6 });
+  const c = 26;
+  m.cylinder(c, c, 0, 3, 23, chrome, 'z');
+  m.cylinder(c, c, 4, 4, 20, face, 'z');
+  m.sub(() => m.cylinder(c, c, 4, 4, 0.1, 0, 'z'));
+  for (let i = 0; i < 12; i++) { const a = (i / 12) * TAU, r = i % 3 ? 0.6 : 1.2; m.sphere(c + Math.cos(a) * 16, c + Math.sin(a) * 16, 5, r, tick); }
+  m.line(c, c, 5, c - 8, c + 8, 5, ink, 1.2);
+  m.line(c, c, 6, c + 11, c + 8, 6, ink, 0.8);
+  m.sphere(c, c, 6.5, 1.6, dot);
+  return { m, anchor: [c, c, 0] };
+}
+
+// The Aero wall decal: lime / aqua / white swoosh strands and glossy glass orbs (4 units per voxel).
+// Anchor: the decal's world origin (X 300, Y 200) on the wall.
+function decalModel() {
+  const D = 4, nx = Math.round(680 / D), ny = Math.round(330 / D);
+  const m = new VoxelModel(nx, ny, 12);
+  const X = (x) => (x - 300) / D, Y = (y) => (200 - y) / D;
+  const lime = m.color('#8be04a', { spec: 0.6, specPow: 18, smooth: 0.8 }), aqua = m.color('#46c8f0', { spec: 0.6, specPow: 18, smooth: 0.8 }), white = m.color('#ffffff', { spec: 0.6, smooth: 0.8 });
+  const glass = ['#4cc8f4', '#8fe0ff', '#d8f8ff'].map((c) => m.color(c, { spec: 1.2, specPow: 28, smooth: 1 }));
+  const P = [[300, 170], [470, -20], [700, 140], [960, -60]];
+  const bz = (t, i) => (1 - t) ** 3 * P[0][i] + 3 * (1 - t) ** 2 * t * P[1][i] + 3 * (1 - t) * t * t * P[2][i] + t ** 3 * P[3][i];
+  for (const [off, c, r] of [[0, lime, 2.2], [30, aqua, 1.4], [52, white, 0.7]]) for (let k = 0; k <= 120; k++) { const t = k / 120; m.line(X(bz(t, 0)), Y(bz(t, 1) - off), 1, X(bz(t, 0)), Y(bz(t, 1) - off), 2, c, r); }
+  for (const [bx, by, br] of [[380, 20, 26], [450, -40, 14], [620, 60, 34], [700, -30, 12], [820, 20, 22], [540, -90, 9]]) {
+    const r = br / D, cx = X(bx), cy = Y(by);
+    m.sphere(cx, cy, 1 + r, r, (x, y) => glass[clamp(Math.round(1 + (y - cy) / r * 1.2 - (x - cx) / r * 0.4), 0, 2)]);
+  }
+  return { m, anchor: [0, ny, 0] };
+}
+
+// The glass desk on chrome legs. Anchor: the top surface at the monitor's depth.
+function deskModel() {
+  const nx = Math.round((DESK.x1 - DESK.x0) / DV), nz = Math.round((DESK.z1 - DESK.z0) / DV) + 1;
+  const legH = Math.round((FLOOR_Y - DESK.y - DESK.th) / DV), ny = legH + 3;
+  const m = new VoxelModel(nx, ny, nz);
+  const glass = m.color('#c4f2ee', { spec: 0.9, specPow: 24, smooth: 0.3, jitter: 0.02 }), glassD = m.color('#9ee4dc', { spec: 0.7, specPow: 20 });
+  const edge = m.color('#5fd0b8', { spec: 0.8, specPow: 20, smooth: 0.5 }), rim = m.color('#e8fffa', { spec: 1, specPow: 30 });
+  const chrome = m.color('#d4e2ea', { spec: 1.1, specPow: 26, smooth: 0.9 }), foot = m.color('#9fb4c4', { smooth: 0.8 });
+  m.box(0, legH + 1, 0, nx - 1, legH + 2, nz - 1, (x, y, z) => (z === nz - 1 ? (y === legH + 2 ? rim : edge) : y === legH + 2 ? glass : glassD));
+  for (const lx of [6, nx - 7]) for (const lz of [2, nz - 3]) {
+    m.cylinder(lx, lz, 1, legH, 1.3, chrome);
+    m.cylinder(lx, lz, 0, 0, 2.2, foot);
+  }
+  return { m, anchor: [nx / 2, legH + 3, (DESK.z1 - 100) / DV] };
+}
+
+// The glossy monitor: a piano-black bezel around a recessed screen (the live desktop is drawn into the hole), a
+// glowing power LED, a chrome neck and a glass foot. Anchor: the screen centre on the front plane.
+function monitorModel(SW) {
+  const hw = Math.round(SW / MV), hh = Math.round(SCREEN_H / MV);
+  const side = Math.round(MON.side / MV), top = Math.round(MON.top / MV), chin = Math.round(MON.chin / MV);
+  const neck = Math.round((DESK.y - (MON.cy + SCREEN_H / 2 + MON.chin)) / MV);
+  const W = hw + side * 2, H = hh + top + chin;
+  const nz = 19, zf = nz - 1;
+  const m = new VoxelModel(W + 2, neck + H + 2, nz);
+  const bez = ['#3a4756', '#232d38', '#151c24', '#0b0f14'].map((c) => m.color(c, { spec: 0.9, specPow: 24, smooth: 0.6, jitter: 0.01 }));
+  const back = m.color('#05070a'), trim = m.color('#9fb4c4', { spec: 1, specPow: 26 });
+  const led = m.color('#5fe6ff', { emissive: 1 });
+  const chrome = m.color('#d4e2ea', { spec: 1.1, specPow: 26, smooth: 0.9 }), footC = m.color('#e8f6fa', { spec: 1, specPow: 26, smooth: 1 });
+  const x0 = 1, y0 = neck + 1;
+  const R = 3;
+  m.box(x0, y0, zf - 4, x0 + W - 1, y0 + H - 1, zf, (x, y) => {
+    const dx = Math.max(0, Math.max(x0 + R - x, x - (x0 + W - 1 - R))), dy = Math.max(0, Math.max(y0 + R - y, y - (y0 + H - 1 - R)));
+    if (dx * dx + dy * dy > R * R) return null;
+    const k = (y - y0) / H;
+    return bez[clamp(3 - Math.round(k * 3.4 - 0.2), 0, 3)];
+  });
+  // the screen hole (recessed) with a dark back plate
+  const sx0 = x0 + side, sy0 = y0 + chin;
+  m.sub(() => m.box(sx0, sy0, zf - 2, sx0 + hw - 1, sy0 + hh - 1, zf));
+  m.box(sx0, sy0, zf - 3, sx0 + hw - 1, sy0 + hh - 1, zf - 3, back);
+  m.box(x0 + 3, y0, zf, x0 + W - 4, y0, zf, trim);
+  m.box(x0 + W - side - 4, y0 + Math.round(chin * 0.45), zf, x0 + W - side - 3, y0 + Math.round(chin * 0.45), zf, led);
+  // neck + foot
+  const cx = x0 + W / 2;
+  m.box(cx - 6, 2, zf - 9, cx + 6, y0 + 4, zf - 6, chrome);
+  m.ellipsoid(cx, 1, zf - 8, 34, 1.6, 8, footC);
+  return { m, anchor: [sx0 + hw / 2, sy0 + hh / 2, nz], hole: [hw * MV, hh * MV] };
+}
+
+// The goldfish jar, in layers so Goldie can swim between them: 'back' glass, 'water', 'front' glass, 'lip'.
+function jarModel(part) {
+  const R = Math.round(JAR.r / JV), n = R * 2 + 4, c = n / 2;
+  const cy = R - JAR.cut / JV, lipY = cy + Math.sqrt(R * R - (34 / JV) ** 2), wl = -JAR.water / JV;
+  const m = new VoxelModel(n, Math.ceil(lipY) + 3, n);
+  if (part === 'base') { m.set(c, 0, c, m.color('#ffffff')); return { m, anchor: [c, 0, c] }; }
+  const glassB = m.color('#bdeff8', { spec: 1, specPow: 28, smooth: 1 }), glassF = m.color('#e6fbff', { spec: 1.2, specPow: 30, smooth: 1 });
+  const water = ['#2a9ad8', '#3cb4e6', '#5fd0f0', '#8ce6f8'].map((h) => m.color(h, { spec: 0.6, specPow: 18, smooth: 1, jitter: 0.02 }));
+  const lip = m.color('#ffffff', { spec: 1.2, specPow: 30, smooth: 1 });
+  for (let z = 0; z < n; z++) for (let y = 0; y < m.ny; y++) for (let x = 0; x < n; x++) {
+    const dx = x + 0.5 - c, dy = y + 0.5 - cy, dz = z + 0.5 - c;
+    const d = Math.hypot(dx, dy, dz);
+    if (part === 'lip') {
+      const rr = Math.hypot(dx, dz);
+      if (y >= lipY - 1.2 && y <= lipY + 1.2 && rr > 34 / JV - 1.6 && rr < 34 / JV + 1.2) m.set(x, y, z, lip);
+      continue;
+    }
+    if (y > lipY) continue;
+    if (part === 'water') {
+      if (d < R - 1.4 && y < wl) m.set(x, y, z, water[clamp(Math.round((y / wl) * 3 + (y > wl - 1.5 ? 1 : 0)), 0, 3)]);
+    } else if (d <= R && d > R - 1.4) {
+      if (part === 'back' && dz <= 0) m.set(x, y, z, glassB);
+      if (part === 'front' && dz > 0) m.set(x, y, z, glassF);
+    }
+  }
+  return { m, anchor: [c, 0, c] };
+}
+
+// The moving-picture aquarium lamp as a voxel model: a silver base and cap, clear corner posts, and inside a
+// rotating reef drum (blue cylinder with corals and little voxel fish around it). frame = rotation step.
+function lampModel(frame, frames) {
+  const w = Math.round(LAMP.w / LV), h = Math.round(LAMP.h / LV), d = 22;
+  const m = new VoxelModel(w, h, d);
+  const silver = ['#f2f6f9', '#c8d2da', '#9aa8b4'].map((c) => m.color(c, { spec: 1, specPow: 24, smooth: 0.7 }));
+  const post = m.color('#e8f6ff', { spec: 1, specPow: 28, smooth: 0.8 });
+  const sea = ['#0a3a9a', '#1660c8', '#2a8ae8', '#5ab8f6'].map((c) => m.color(c, { emissive: 0.35, smooth: 0.6 }));
+  const coral = ['#ff5a8a', '#ffb02e', '#b05aff', '#ff7a3a', '#3fe0c8', '#ffe05a'].map((c) => m.color(c, { emissive: 0.3, smooth: 0.5 }));
+  const fishC = [['#ff7a1a', '#ffffff'], ['#ffe02a', '#ffe02a'], ['#2a6aff', '#ffe02a'], ['#ff4a8a', '#ffffff']].map(([a, b]) => [m.color(a, { emissive: 0.35, smooth: 0.8 }), m.color(b, { emissive: 0.35 })]);
+  const eye = m.color('#141a2e'), sw = m.color('#1a2230'), red = m.color('#ff4040', { emissive: 1 });
+  const bh = Math.round(h * 0.2), th = Math.round(h * 0.1), cx = w / 2, cz = d / 2, R = Math.min(w / 2 - 4, d / 2 - 1);
+  m.box(0, 0, 0, w - 1, bh - 1, d - 1, (x, y) => silver[y === bh - 1 ? 0 : y > 1 ? 1 : 2]);
+  m.box(0, h - th, 0, w - 1, h - 1, d - 1, (x, y) => silver[y === h - 1 ? 0 : 1]);
+  for (const [px, pz] of [[0, 0], [w - 1, 0], [0, d - 1], [w - 1, d - 1]]) m.box(px, bh, pz, px, h - th - 1, pz, post);
+  m.box(w - 9, 2, d - 1, w - 7, 4, d - 1, sw); m.set(w - 8, 3, d - 1, red);
+  // the drum (an elliptical cylinder filling the lamp) with its picture rotating around the axis
+  const rot = (frame / frames) * TAU;
+  const rx = w / 2 - 2, rz = d / 2 - 1.5;
+  const at = (a, r = 1) => [cx + Math.cos(a) * rx * r, cz + Math.sin(a) * rz * r];
+  for (let y = bh; y < h - th; y++) {
+    const k = (y - bh) / (h - th - bh);
+    for (let z = 0; z < d; z++) for (let x = 0; x < w; x++) {
+      const e = ((x + 0.5 - cx) / rx) ** 2 + ((z + 0.5 - cz) / rz) ** 2;
+      if (e <= 1 && e > 0.72) m.set(x, y, z, sea[clamp(Math.round(k * 3.4), 0, 3)]);
+    }
+  }
   const r = new RNG(77);
-  for (let y = 0; y < H; y++) {
-    const k = y / H;
-    const col = pack(mix('#2a9cf0', '#0a3a9a', k));
-    for (let x = 0; x < W; x++) b.set(x, y, col);
+  for (let i = 0; i < 14; i++) {
+    const a = r.float(0, TAU) + rot, [x, z] = at(a, 1.04), hgt = r.int(3, 8);
+    m.line(x, bh, z, x + r.float(-1, 1), bh + hgt, z, coral[i % coral.length], r.float(0.6, 1.2));
   }
-  // light rays
-  for (let i = 0; i < 6; i++) { const x0 = r.int(0, W); for (let y = 0; y < H * 0.7; y++) for (let w = 0; w < 3; w++) b.set((x0 + w + Math.floor(y * 0.3)) % W, y, pack(mix('#2a9cf0', '#9fe0ff', 0.35 * (1 - y / H)))); }
-  // corals along the bottom
-  const coral = ['#ff5a8a', '#ffb02e', '#b05aff', '#ff7a3a', '#3fe0c8', '#ffe05a', '#ff4a6a'];
-  for (let i = 0; i < 26; i++) {
-    const x = r.int(0, W - 1), h = r.int(6, 16), c = pack(r.pick(coral));
-    const kind = r.int(0, 2);
-    for (let y = 0; y < h; y++) {
-      const w = kind === 0 ? Math.max(1, Math.round(3 * Math.sin(Math.PI * y / h) + 1)) : kind === 1 ? 2 : 1 + (y % 4 === 0 ? 2 : 0);
-      for (let dx = -w; dx <= w; dx++) b.set(((x + dx + (kind === 2 ? Math.round(Math.sin(y * 0.6) * 2) : 0)) % W + W) % W, H - 1 - y, c);
+  for (let i = 0; i < 9; i++) {
+    const a = (i / 9) * TAU + rot * (1 + (i % 3) * 0.15), y = bh + 6 + (i * 5) % (h - th - bh - 9);
+    const [x, z] = at(a, 1.06);
+    const [c1, c2] = fishC[i % 4];
+    const dir = Math.sign(Math.cos(a + Math.PI / 2)) || 1;
+    m.ellipsoid(x, y, z, 2.6, 1.6, 1.2, (xx) => ((Math.round(xx - x) & 1) && i % 4 === 0 ? c2 : c1));
+    m.set(x - dir * 3, y, z, c1); m.set(x - dir * 3, y + 1, z, c2); m.set(x - dir * 3, y - 1, z, c2);
+    m.set(x + dir * 1.6, y + 0.6, z + 1, eye);
+  }
+  return m;
+}
+
+// The eco wallpaper's land: a huge curved grass horizon (an ellipsoid cap) with a band of glossy water in front.
+function ecoLandModel(W, H, s) {
+  const nx = Math.ceil(W / s) + 2, rx = (1.9 * H) / s, ry = rx, nz = 64;
+  // the cap's crest runs along the back (z = 0) and its slope comes down toward the viewer into the water
+  const cx = nx * 0.42, cz = 0, rz = (nz - 16) * 1.04, topY = (0.36 * H) / s, cy = topY - ry, ny = Math.ceil(topY) + 3;
+  const m = new VoxelModel(nx, ny, nz);
+  const GR = ['#1f6a14', '#2a7e1a', '#358f20', '#43a126', '#52b32c', '#64c432', '#7ad23a', '#94de48', '#b2ea5a', '#d2f68a'];
+  const P = GR.map((c, i) => m.color(c, { spec: i > 5 ? 0.3 : 0.15, specPow: 14, smooth: 0.8, jitter: 0.04 }));
+  const water = ['#1878c8', '#2a9ae0', '#46bcf0', '#9ae6fc'].map((c) => m.color(c, { spec: 1, specPow: 26, smooth: 0.6, jitter: 0.02 }));
+  const hAt = (x, z) => { const e = 1 - ((x - cx) / rx) ** 2 - ((z - cz) / rz) ** 2 * 0.35; return e > 0 ? Math.max(0, cy + ry * Math.sqrt(e) - (z / rz) ** 2 * topY * 0.9) : -1; };
+  const wz = nz - 16;
+  for (let z = 0; z < wz; z++) for (let x = 0; x < nx; x++) {
+    const top = Math.min(ny - 1, Math.round(hAt(x + 0.5, z + 0.5)));
+    if (top < 0) continue;
+    const front = Math.max(0, Math.round(hAt(x + 0.5, z + 1.5)));
+    const lo = z === wz - 1 ? 0 : Math.max(0, Math.min(top, front) - 3);
+    const rim = top - Math.max(0, Math.round(hAt(x + 0.5, z - 0.5)));
+    for (let y = top; y >= lo; y--) {
+      const k = 3.5 + (y / ny) * 4.2 + (fbm2(x * 0.05, z * 0.08, 3, 4) - 0.5) * 2.4 - (x / nx) * 0.8 + (rim > 0 && y === top ? 1.6 : 0) - (top - y) * 0.6;
+      m.set(x, y, z, P[clamp(Math.round(k + bayer(x, z) - 0.5), 0, P.length - 1)]);
     }
   }
-  for (let x = 0; x < W; x++) for (let y = H - 3; y < H; y++) if (hash2(x, y, 5) > 0.3) b.set(x, y, pack(r.pick(['#ffe0a0', '#f0c890', '#ff9ab8'])));
-  // vivid tropical fish (clown, yellow tang, blue tang, angel)
-  const fish = [['#ff7a1a', '#ffffff', 'clown'], ['#ffe02a', '#ffe02a', 'tang'], ['#2a6aff', '#ffe02a', 'blue'], ['#ffd02a', '#1a1a2a', 'angel']];
-  for (let i = 0; i < 16; i++) {
-    const [c1, c2, kind] = fish[i % 4];
-    const x = (i * 37 + r.int(0, 10)) % W, y = r.int(5, H - 18);
-    const len = kind === 'angel' ? 7 : r.int(6, 9), h = kind === 'angel' ? 7 : 4;
-    for (let dx = 0; dx < len; dx++) {
-      const hh = Math.round(h * Math.sin(Math.PI * (dx + 0.5) / len));
-      for (let dy = -hh; dy <= hh; dy++) {
-        let c = c1;
-        if (kind === 'clown' && (dx === 2 || dx === 5)) c = c2;
-        if (kind === 'angel' && dx % 3 === 1) c = c2;
-        if (kind === 'blue' && dy === hh && dx > 1) c = c2;
-        b.set((x + dx) % W, y + dy, pack(c));
-      }
-    }
-    b.set((x + len) % W, y - 1, pack('#ffffff')); b.set((x + len - 1) % W, y - 1, pack('#141a2e'));
-    for (let dy = -2; dy <= 2; dy++) b.set((x - 1 + W) % W, y + dy, pack(kind === 'blue' ? '#ffe02a' : c1));
-  }
-  reefStrip = b.toCanvas();
-  return reefStrip;
+  m.box(0, 0, wz, nx - 1, 3, nz - 1, (x, y, z) => water[clamp(y - 1 + (z > nz - 3 ? 1 : 0) + Math.round(hash2(x, z, 5) * 0.8 + Math.sin(x * 0.2 + z * 0.5) * 0.4), 0, 3)]);
+  return m;
 }
 
 // ===================================================================================================== Intro3D
@@ -598,6 +768,9 @@ export class Intro3D {
     this.A = {};
     this.resize(o.W || 960, o.H || 540);
   }
+
+  // True while the opening fully covers the frame (the host may skip drawing the world underneath).
+  get opaque() { return this.active && this.skipT < 0 && (!this.ready || this.t < T.out0 - 1); }
 
   resize(W, H) {
     W = Math.max(64, Math.round(W)); H = Math.max(64, Math.round(H));
@@ -626,6 +799,14 @@ export class Intro3D {
       const r = renderVoxels(make(), { scale, yaw: 0, pitch: 16, outline: true, ao: 0.9, ...ro });
       A[key] = { canvas: r.canvas, ox: r.ox, oy: r.oy, res: scale / worldPerVoxel, r };
     };
+    // a room piece: build() -> {m, anchor: model point that maps onto the piece's world anchor}
+    const room = (key, build, wpv, maxScale, ro = {}) => () => {
+      const { m, anchor, hole } = build();
+      const scale = Math.max(1, Math.round(wpv * maxScale * u * 4) / 4);
+      const r = renderVoxels(m, { scale, yaw: 0, pitch: 16, outline: true, ao: 0.9, ...ro });
+      const [ax, ay] = r.project(...anchor);
+      A[key] = { canvas: r.canvas, ox: ax, oy: ay, res: scale / wpv, hole };
+    };
     const px = (key, make, scale, ro = {}) => () => {
       const ss = ro.ss || 1;
       const sc = Math.max(1, Math.round(scale * ss * 4) / 4);
@@ -638,7 +819,13 @@ export class Intro3D {
     else for (const mood of ['n', 'b', 'o', 'h']) for (let f = 0; f < 4; f++) goldieJobs.push(() => { goldieFrame(Math.max(1, Math.round(this.goldieBase * 1.4 * 4) / 4), f, mood); });
     return [
       () => { this.land = renderLandscape(this.W, this.H); },
-      () => this.paintWall(),
+      room('wall', wallModel, WV, 0.55, { pitch: 12, outline: false, ao: 0.8, edges: 0.4 }),
+      room('clock', clockModel, 2, 1.0, { pitch: 4, ao: 0.6 }),
+      room('decal', decalModel, 4, 1.0, { pitch: 4, outline: false, ao: 0.5 }),
+      room('desk', deskModel, DV, 1.3, { pitch: 24, ao: 0.7 }),
+      room('monitor', () => monitorModel(this.SW), MV, 2.6, { pitch: 3, ao: 0.7 }),
+      ...['back', 'water', 'front', 'lip'].map((part) => room('jar_' + part, () => jarModel(part), JV, 2.1, { pitch: 20, outline: false, ao: 0.4, depthLines: false })),
+      ...Array.from({ length: LAMP_FRAMES }, (_, f) => room('lamp' + f, () => ({ m: lampModel(f, LAMP_FRAMES), anchor: [LAMP.w / LV / 2, 0, 11] }), LV, 1.0, { pitch: 10, ao: 0.6 })),
       vox('plant', () => plantModel(5), 2.3, 1.7, { yaw: -14, pitch: 14 }),
       vox('gravel', () => gravelModel(3), 1.25, 2.2, { pitch: 26, outline: false }),
       vox('keyboard', keyboardModel, 2.0, 1.8, { pitch: 62, outline: false, ao: 0.6 }),
@@ -687,79 +874,6 @@ export class Intro3D {
   charScale() { return Math.max(1, Math.round(1.6 * this.u * 4) / 4); }
 
   // The back wall: gradient, sunlight patch, a big white window (panes cut out), a glossy clock, baseboard.
-  paintWall() {
-    const rw = Math.max(0.5, 0.96 * this.u);
-    const w = Math.ceil((WALL.x1 - WALL.x0) * rw), h = Math.ceil((WALL.y1 - WALL.y0) * rw);
-    const c = makeCanvas(w, h), g = ctxOf(c);
-    const X = (x) => (x - WALL.x0) * rw, Y = (y) => (y - WALL.y0) * rw;
-    g.fillStyle = vgrad(g, 0, h, [[0, '#cfeaf9'], [0.45, '#e2f4fc'], [0.8, '#d4ecf7'], [1, '#bcdfef']]);
-    g.fillRect(0, 0, w, h);
-    const pool = g.createRadialGradient(X(60), Y(-160), 0, X(60), Y(-160), 520 * rw);
-    pool.addColorStop(0, 'rgba(255,253,236,0.55)'); pool.addColorStop(0.5, 'rgba(255,253,236,0.18)'); pool.addColorStop(1, 'rgba(255,253,236,0)');
-    g.fillStyle = pool; g.fillRect(0, 0, w, h);
-    // Aero wall decal: a lime and aqua swoosh with glossy bubbles
-    g.lineCap = 'round';
-    for (const [col, off, lw] of [['rgba(140,224,90,0.55)', 0, 16], ['rgba(70,200,240,0.45)', 34, 10], ['rgba(255,255,255,0.8)', 56, 4]]) {
-      g.strokeStyle = col; g.lineWidth = lw * rw;
-      g.beginPath(); g.moveTo(X(300), Y(170 - off)); g.bezierCurveTo(X(470), Y(-20 - off), X(700), Y(140 - off), X(960), Y(-60 - off)); g.stroke();
-    }
-    for (const [bx, by, br] of [[380, 20, 26], [450, -40, 14], [620, 60, 34], [700, -30, 12], [820, 20, 22], [540, -90, 9]]) {
-      const cx = X(bx), cy = Y(by), r = br * rw;
-      const bg = g.createRadialGradient(cx - r * 0.3, cy - r * 0.35, r * 0.1, cx, cy, r);
-      bg.addColorStop(0, 'rgba(255,255,255,0.85)'); bg.addColorStop(0.5, 'rgba(150,230,255,0.35)'); bg.addColorStop(1, 'rgba(60,180,230,0.55)');
-      g.fillStyle = bg; g.beginPath(); g.arc(cx, cy, r, 0, TAU); g.fill();
-      g.strokeStyle = 'rgba(255,255,255,0.9)'; g.lineWidth = Math.max(1, 1.5 * rw); g.beginPath(); g.arc(cx, cy, r, Math.PI * 1.05, Math.PI * 1.6); g.stroke();
-    }
-    g.fillStyle = vgrad(g, Y(FLOOR_Y - 22), Y(FLOOR_Y), [[0, '#ffffff'], [0.7, '#e2f0f6'], [1, '#b8d2de']]);
-    g.fillRect(0, Y(FLOOR_Y - 22), w, Y(FLOOR_Y) - Y(FLOOR_Y - 22));
-    const f = WIN.frame;
-    g.fillStyle = 'rgba(60,110,140,0.16)';
-    rrect(g, X(WIN.x0 - 6), Y(WIN.y0 - 2), X(WIN.x1 + 10) - X(WIN.x0 - 6), Y(WIN.y1 + 14) - Y(WIN.y0 - 2), 10 * rw); g.fill();
-    g.fillStyle = vgrad(g, Y(WIN.y0), Y(WIN.y1), [[0, '#ffffff'], [1, '#e4f1f7']]);
-    rrect(g, X(WIN.x0), Y(WIN.y0), X(WIN.x1) - X(WIN.x0), Y(WIN.y1) - Y(WIN.y0), 8 * rw); g.fill();
-    g.save();
-    g.globalCompositeOperation = 'destination-out';
-    const mx = (WIN.x0 + WIN.x1) / 2, my = WIN.y0 + (WIN.y1 - WIN.y0) * 0.42;
-    const panes = [[WIN.x0 + f, WIN.y0 + f, mx - 5, my - 5], [mx + 5, WIN.y0 + f, WIN.x1 - f, my - 5], [WIN.x0 + f, my + 5, mx - 5, WIN.y1 - f], [mx + 5, my + 5, WIN.x1 - f, WIN.y1 - f]];
-    for (const [a, b, cc, d] of panes) { rrect(g, X(a), Y(b), X(cc) - X(a), Y(d) - Y(b), 3 * rw); g.fill(); }
-    g.restore();
-    for (const [a, b, cc, d] of panes) {
-      g.strokeStyle = 'rgba(110,160,190,0.55)'; g.lineWidth = Math.max(1, 2 * rw);
-      rrect(g, X(a), Y(b), X(cc) - X(a), Y(d) - Y(b), 3 * rw); g.stroke();
-      g.save();
-      rrect(g, X(a), Y(b), X(cc) - X(a), Y(d) - Y(b), 3 * rw); g.clip();
-      const pw = X(cc) - X(a), ph = Y(d) - Y(b);
-      g.fillStyle = 'rgba(255,255,255,0.16)';
-      g.beginPath(); g.moveTo(X(a) + pw * 0.15, Y(b)); g.lineTo(X(a) + pw * 0.42, Y(b)); g.lineTo(X(a) + pw * 0.05, Y(b) + ph); g.lineTo(X(a) - pw * 0.22, Y(b) + ph); g.fill();
-      g.fillStyle = 'rgba(255,255,255,0.09)';
-      g.beginPath(); g.moveTo(X(a) + pw * 0.55, Y(b)); g.lineTo(X(a) + pw * 0.62, Y(b)); g.lineTo(X(a) + pw * 0.25, Y(b) + ph); g.lineTo(X(a) + pw * 0.18, Y(b) + ph); g.fill();
-      g.restore();
-    }
-    g.fillStyle = 'rgba(255,255,255,0.9)';
-    g.fillRect(X(WIN.x0 + 3), Y(WIN.y0 + 2), X(WIN.x1 - 3) - X(WIN.x0 + 3), Math.max(1, 2 * rw));
-    g.fillStyle = vgrad(g, Y(WIN.y1 - 4), Y(WIN.y1 + 16), [[0, '#ffffff'], [0.45, '#f2f9fc'], [1, '#bcd6e2']]);
-    rrect(g, X(WIN.x0 - 22), Y(WIN.y1 - 4), X(WIN.x1 + 22) - X(WIN.x0 - 22), Y(WIN.y1 + 16) - Y(WIN.y1 - 4), 4 * rw); g.fill();
-    g.fillStyle = 'rgba(60,110,140,0.18)';
-    g.fillRect(X(WIN.x0 - 18), Y(WIN.y1 + 16), X(WIN.x1 + 18) - X(WIN.x0 - 18), Math.max(2, 6 * rw));
-    // glossy wall clock
-    const ccx = X(470), ccy = Y(-390), cr = 46 * rw;
-    g.fillStyle = 'rgba(60,110,140,0.18)'; g.beginPath(); g.arc(ccx + 4 * rw, ccy + 6 * rw, cr, 0, TAU); g.fill();
-    g.fillStyle = hgrad(g, ccx - cr, ccx + cr, [[0, '#9fb4c4'], [0.3, '#ffffff'], [0.7, '#dbe8f0'], [1, '#8aa2b4']]);
-    g.beginPath(); g.arc(ccx, ccy, cr, 0, TAU); g.fill();
-    g.fillStyle = vgrad(g, ccy - cr, ccy + cr, [[0, '#ffffff'], [1, '#e2f4fb']]);
-    g.beginPath(); g.arc(ccx, ccy, cr * 0.86, 0, TAU); g.fill();
-    g.fillStyle = '#3f8fc4';
-    for (let i = 0; i < 12; i++) { const a = (i / 12) * TAU; g.beginPath(); g.arc(ccx + Math.cos(a) * cr * 0.72, ccy + Math.sin(a) * cr * 0.72, (i % 3 ? 1.2 : 2.2) * rw, 0, TAU); g.fill(); }
-    g.strokeStyle = '#0c3a52'; g.lineCap = 'round';
-    g.lineWidth = 3.5 * rw; g.beginPath(); g.moveTo(ccx, ccy); g.lineTo(ccx + Math.cos(-2.4) * cr * 0.45, ccy + Math.sin(-2.4) * cr * 0.45); g.stroke();
-    g.lineWidth = 2.5 * rw; g.beginPath(); g.moveTo(ccx, ccy); g.lineTo(ccx + Math.cos(-0.75) * cr * 0.66, ccy + Math.sin(-0.75) * cr * 0.66); g.stroke();
-    g.fillStyle = '#ff9d2e'; g.beginPath(); g.arc(ccx, ccy, 3 * rw, 0, TAU); g.fill();
-    g.fillStyle = 'rgba(255,255,255,0.55)'; g.beginPath(); g.ellipse(ccx - cr * 0.25, ccy - cr * 0.45, cr * 0.5, cr * 0.22, -0.3, 0, TAU); g.fill();
-    this.A.wall = { canvas: c, rw };
-  }
-
-  // The 2000s eco wallpaper behind the logo (static part, W x H): saturated sky, white arcs, wisps,
-  // the curved grass horizon, the glass city in its water bubble and a round tree.
   paintEco() {
     const { W, H } = this;
     const c = makeCanvas(W, H), g = ctxOf(c);
@@ -785,20 +899,17 @@ export class Intro3D {
     // the land layer: the curved grass horizon (a huge glossy dome), the tree, the glass city in its bubble
     const c2 = makeCanvas(W, H);
     const g2 = ctxOf(c2);
-    const D = this.dome();
-    const b = new PixelBuffer(W, H);
-    const GR = ['#1f6a14', '#2a7e1a', '#358f20', '#43a126', '#52b32c', '#64c432', '#7ad23a', '#94de48', '#b2ea5a', '#d2f68a'].map((h) => pack(h));
-    for (let y = Math.floor(D.top); y < H; y++) for (let x = 0; x < W; x++) {
-      const d = D.r - Math.hypot(x - D.cx, y - D.cy);
-      if (d < 0) continue;
-      const rim = d < 3 * this.u ? 2.5 : d < 9 * this.u ? 1.2 : 0;
-      const k = 6.2 - (d / (H * 0.55)) * 5 + rim + fbm2(x * 0.03, y * 0.05, 3, 4) * 1.6 - (x / W) * 0.6 + (hash2(x, y >> 1, 9) - 0.5) * 1.1;
-      b.set(x, y, GR[clamp(Math.round(k + (((x + y) & 1) ? 0.25 : -0.25)), 0, GR.length - 1)]);
-    }
-    g2.drawImage(b.toCanvas(), 0, 0);
-    // a winding path of light down the hill
-    g2.strokeStyle = 'rgba(230,255,200,0.35)'; g2.lineWidth = 2 * this.u;
-    g2.beginPath(); g2.moveTo(W * 0.3, D.y(W * 0.3) + 3); g2.bezierCurveTo(W * 0.32, H * 0.82, W * 0.24, H * 0.9, W * 0.28, H); g2.stroke();
+    // the voxel land: a huge curved grass horizon with glossy water in front; the horizon line is read back
+    // from the render so everything placed on the hill sits exactly on it
+    const ls = Math.max(2, Math.round(3 * this.u));
+    const lr = renderVoxels(ecoLandModel(W, H, ls), { scale: ls, yaw: 0, pitch: 16, outline: false, ao: 0.6, edges: 0.3, depthLines: false });
+    const lx = Math.round((W - lr.w) / 2), lyy = H - lr.h + 2;
+    g2.drawImage(lr.canvas, lx, lyy);
+    const img = g2.getImageData(0, 0, W, H).data;
+    const top = new Float32Array(W);
+    for (let x = 0; x < W; x++) { let y = 0; while (y < H - 1 && img[(y * W + x) * 4 + 3] < 128) y++; top[x] = y; }
+    const D = { top, y: (x) => top[clamp(Math.round(x), 0, W - 1)] };
+    this.ecoDome = D;
     // the round tree on the horizon
     const tr = this.A.tree;
     if (tr) g2.drawImage(tr.canvas, Math.round(W * 0.56 - tr.ox), Math.round(D.y(W * 0.56) + 3 * this.u - tr.oy));
@@ -821,7 +932,6 @@ export class Intro3D {
     g2.fillStyle = 'rgba(220,250,255,0.6)';
     for (let i = 0; i < 9; i++) { const a = Math.PI * (0.05 + i * 0.11); g2.beginPath(); g2.ellipse(bx + Math.cos(a) * br * 1.02, by + Math.sin(a) * br * 0.98, 3 * this.u, 9 * this.u, a + 1.2, 0, TAU); g2.fill(); }
     this.eco = c2;
-    this.ecoDome = D;
   }
 
   ecoSun() { return [this.W * 0.4, this.H * 0.47]; }
@@ -1260,7 +1370,7 @@ export class Intro3D {
 
   prop(ctx, key, X, Y, Z, alpha = 1) {
     const a = this.A[key];
-    if (a) this.card(ctx, a.canvas, X, Y, Z, a.res, a.ox, a.oy, alpha);
+    if (a && alpha > 0.01) this.card(ctx, a.canvas, X, Y, Z, a.res, a.ox, a.oy, alpha);
   }
 
   quad(ctx, pts) {
@@ -1271,28 +1381,45 @@ export class Intro3D {
 
   drawRoom(ctx, t) {
     const { W, H } = this;
-    ctx.fillStyle = COL.wallM;
+    ctx.fillStyle = '#cfe8f4';
     ctx.fillRect(0, 0, W, H);
     this.drawOutside(ctx, t);
-    const wa = this.A.wall;
-    if (wa) this.card(ctx, wa.canvas, WALL.x0, WALL.y0, ZW, wa.rw, 0, 0);
-    this.drawFloor(ctx);
+    this.prop(ctx, 'wall', WALL.x0, WALL.y0, ZW);
+    this.prop(ctx, 'clock', 470, -390, ZW - 1);
+    this.prop(ctx, 'decal', 300, -130, ZW - 1);
     this.prop(ctx, 'shelf', SHELF.x, SHELF.y, SHELF.z);
     this.drawLamp(ctx, t);
     this.drawBeams(ctx, t);
-    this.drawLegs(ctx, DESK.z1 - 8);
-    this.drawDeskTop(ctx, t);
+    this.prop(ctx, 'desk', 0, DESK.y, 100);
+    this.drawDeskFx(ctx, t);
     this.drawMonitor(ctx, t);
     this.prop(ctx, 'keyboard', -18, DESK.y, 86);
     this.prop(ctx, 'mouse', 150, DESK.y, 88);
     this.drawJar(ctx, t);
     this.prop(ctx, 'plant', -330, DESK.y, 98);
-    this.drawDeskEdge(ctx);
-    this.drawLegs(ctx, DESK.z0 + 8);
     this.draw3D(ctx, t);
     const fr = this.A.frond;
     if (fr && this.cam.z < 30) this.card(ctx, fr.canvas, -300, -250, 46, fr.res, fr.canvas.width * 0.95, fr.canvas.height * 0.6, clamp01((30 - this.cam.z) / 16) * 0.92);
     this.drawSunFlare(ctx, t);
+  }
+
+  // Light on the glass desk (effects only): window glare and the jar's focused caustic.
+  drawDeskFx(ctx, t) {
+    if (DESK.z0 - this.cam.z < 6) return;
+    const [x0, y0] = this.proj(-520, DESK.y, DESK.z1), [x1, y1] = this.proj(-200, DESK.y, DESK.z0);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = 'rgba(255,255,255,0.10)';
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0 + (x1 - x0) * 0.6, y0); ctx.lineTo(x1, y1); ctx.lineTo(x1 - (x1 - x0) * 0.6, y1); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    if (JAR.z - 22 - this.cam.z < 12) return;
+    const [cx, cy, s] = this.proj(JAR.x + 30, DESK.y, JAR.z - 22);
+    if (cx - 42 * s > this.W) return;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.translate(cx, cy); ctx.scale(1, 0.28);
+    drawAeroGlow(ctx, 0, 0, Math.min(160, Math.round(42 * s)), '#c8fbff', 0.45 + 0.1 * Math.sin(t * 2));
+    ctx.restore();
   }
 
   drawOutside(ctx, t) {
@@ -1338,47 +1465,13 @@ export class Intro3D {
     ctx.restore();
   }
 
-  drawFloor(ctx) {
-    this.quad(ctx, [[-1600, FLOOR_Y, ZW], [1600, FLOOR_Y, ZW], [1600, FLOOR_Y, 10], [-1600, FLOOR_Y, 10]]);
-    const [, ya] = this.proj(0, FLOOR_Y, ZW), [, yb] = this.proj(0, FLOOR_Y, 40);
-    ctx.fillStyle = vgrad(ctx, ya, yb, [[0, '#c8e0ea'], [0.4, '#dcecf0'], [1, '#eef2f0']]);
-    ctx.fill();
-    ctx.fillStyle = 'rgba(255,252,236,0.35)';
-    this.quad(ctx, [[-700, FLOOR_Y, ZW - 10], [-260, FLOOR_Y, ZW - 10], [80, FLOOR_Y, 110], [-360, FLOOR_Y, 110]]);
-    ctx.fill();
-  }
-
-  // Easter egg: the moving-picture aquarium lamp (silver frame, a scrolling reef panorama, a blue glow).
+  // Easter egg: the moving-picture aquarium lamp, a voxel model whose reef drum turns (pre-rendered steps).
   drawLamp(ctx, t) {
-    const z = SHELF.z - 4;
-    const [x0, y0, s] = this.proj(LAMP.x - LAMP.w / 2, LAMP.y - LAMP.h, z), [x1, y1] = this.proj(LAMP.x + LAMP.w / 2, LAMP.y, z);
-    if (x0 > this.W || x1 < 0) return;
-    const w = x1 - x0, h = y1 - y0;
-    drawAeroGlow(ctx, (x0 + x1) / 2, (y0 + y1) / 2, Math.round(w * 0.75), '#5fc8ff', 0.35 + 0.05 * Math.sin(t * 3));
-    // base and top: silver plastic
-    const bar = (yy, hh) => { ctx.fillStyle = vgrad(ctx, yy, yy + hh, [[0, '#f4f8fb'], [0.4, '#c8d2da'], [0.7, '#9aa8b4'], [1, '#d8e0e6']]); rrect(ctx, x0, yy, w, hh, Math.min(3 * s, hh / 2)); ctx.fill(); };
-    const bh = h * 0.2, th = h * 0.1;
-    // the scrolling panorama (behind the clear front)
-    const py0 = y0 + th, ph = h - bh - th;
-    const strip = reefPanorama();
-    ctx.save();
-    ctx.beginPath(); ctx.rect(x0 + 2 * s, py0, w - 4 * s, ph); ctx.clip();
-    const k = ph / strip.height;
-    const sw = strip.width * k;
-    const off = ((t * 14 * s) % sw);
-    ctx.imageSmoothingEnabled = k < 0.98;
-    for (let x = x0 - off; x < x1; x += sw) ctx.drawImage(strip, x, py0, sw, ph);
-    ctx.imageSmoothingEnabled = false;
-    ctx.fillStyle = 'rgba(120,200,255,0.18)'; ctx.fillRect(x0, py0, w, ph * 0.3);
-    ctx.fillStyle = 'rgba(255,255,255,0.22)'; ctx.fillRect(x0 + w * 0.08, py0, Math.max(1, w * 0.05), ph);
-    ctx.restore();
-    // side columns (curved clear plastic)
-    ctx.fillStyle = 'rgba(230,245,255,0.35)';
-    ctx.fillRect(x0, py0, w * 0.06, ph); ctx.fillRect(x1 - w * 0.06, py0, w * 0.06, ph);
-    bar(y0, th);
-    bar(y1 - bh, bh);
-    ctx.fillStyle = '#1a2230'; ctx.fillRect(x0 + w * 0.72, y1 - bh * 0.62, w * 0.09, bh * 0.4);
-    ctx.fillStyle = '#ff5a5a'; ctx.fillRect(x0 + w * 0.735, y1 - bh * 0.55, Math.max(1, w * 0.03), bh * 0.26);
+    const z = SHELF.z - 2, y = -183;
+    const [x, gy, s] = this.proj(LAMP.x, y - LAMP.h * 0.5, z);
+    if (x + LAMP.w * s < 0 || x - LAMP.w * s > this.W) return;
+    drawAeroGlow(ctx, x, gy, Math.round(LAMP.w * s * 0.75), '#5fc8ff', 0.35 + 0.05 * Math.sin(t * 3));
+    this.prop(ctx, 'lamp' + (Math.floor(t * 4) % LAMP_FRAMES), LAMP.x, y, z);
   }
 
   drawBeams(ctx, t) {
@@ -1399,82 +1492,11 @@ export class Intro3D {
     ctx.restore();
   }
 
-  drawLegs(ctx, z) {
-    for (const x of [DESK.x0 + 26, DESK.x1 - 26]) {
-      const [a, b, s] = this.proj(x, DESK.y + DESK.th, z), [, c] = this.proj(x, FLOOR_Y, z);
-      const w = 9 * s;
-      if (a + w < 0 || a - w > this.W) continue;
-      ctx.fillStyle = hgrad(ctx, a - w / 2, a + w / 2, [[0, COL.chrome[0]], [0.3, COL.chrome[2]], [0.45, COL.chrome[3]], [0.7, COL.chrome[1]], [1, COL.chrome[0]]]);
-      ctx.fillRect(a - w / 2, b, w, c - b);
-      ctx.fillStyle = 'rgba(40,70,90,0.18)';
-      ctx.beginPath(); ctx.ellipse(a, c, w * 1.4, w * 0.3, 0, 0, TAU); ctx.fill();
-    }
-  }
-
-  drawDeskTop(ctx, t) {
-    const { y, z0, z1, x0, x1 } = DESK;
-    this.quad(ctx, [[x0, y, z1], [x1, y, z1], [x1, y, z0], [x0, y, z0]]);
-    const [, ya] = this.proj(0, y, z1), [, yb] = this.proj(0, y, z0);
-    ctx.fillStyle = vgrad(ctx, ya, yb, [[0, 'rgba(150,222,236,0.6)'], [1, 'rgba(206,248,248,0.78)']]);
-    ctx.fill();
-    ctx.save();
-    this.quad(ctx, [[x0, y, z1], [x1, y, z1], [x1, y, z0], [x0, y, z0]]);
-    ctx.clip();
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    this.quad(ctx, [[-520, y, z1], [-300, y, z1], [-200, y, z0], [-420, y, z0]]); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.18)';
-    this.quad(ctx, [[-260, y, z1], [-220, y, z1], [-120, y, z0], [-160, y, z0]]); ctx.fill();
-    const hw = this.SW / 2 + MON.side;
-    ctx.fillStyle = 'rgba(10,30,50,0.10)';
-    this.quad(ctx, [[-hw, y, MON.z + 3], [hw, y, MON.z + 3], [hw * 0.9, y, z0], [-hw * 0.9, y, z0]]); ctx.fill();
-    ctx.restore();
-    // light focused through the bowl onto the desk
-    if (JAR.z - 22 - this.cam.z < 12) return;
-    const [cx, cy, s] = this.proj(JAR.x + 30, y, JAR.z - 22);
-    if (cx - 42 * s > this.W) return;
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.translate(cx, cy); ctx.scale(1, 0.28);
-    drawAeroGlow(ctx, 0, 0, Math.min(160, Math.round(42 * s)), '#c8fbff', 0.5 + 0.1 * Math.sin(t * 2));
-    ctx.restore();
-  }
-
-  drawDeskEdge(ctx) {
-    const { y, z0, x0, x1, th } = DESK;
-    this.quad(ctx, [[x0, y, z0], [x1, y, z0], [x1, y + th, z0], [x0, y + th, z0]]);
-    const [, ya] = this.proj(0, y, z0), [, yb] = this.proj(0, y + th, z0);
-    ctx.fillStyle = vgrad(ctx, ya, yb, [[0, '#d8fff4'], [0.25, COL.glassEdge], [1, COL.glassEdgeD]]);
-    ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.95)';
-    const [a] = this.proj(x0, y, z0), [b] = this.proj(x1, y, z0);
-    ctx.fillRect(a, ya, b - a, Math.max(1, (yb - ya) * 0.18));
-  }
-
+  // The voxel monitor with the live desktop drawn into its screen, a glass sheen and the LED's glow (effects).
   drawMonitor(ctx, t) {
     const hw = this.SW / 2, hh = SCREEN_H / 2;
-    const bx0 = -hw - MON.side, bx1 = hw + MON.side, by0 = MON.cy - hh - MON.top, by1 = MON.cy + hh + MON.chin;
-    const z0 = MON.z, z1 = MON.z + MON.depth;
-    const [nx, ny0, ns] = this.proj(0, by1 - 4, z1 - 2), [, ny1] = this.proj(0, DESK.y, z1 - 2);
-    const nw = 26 * ns;
-    ctx.fillStyle = hgrad(ctx, nx - nw / 2, nx + nw / 2, [[0, COL.chrome[0]], [0.25, COL.chrome[2]], [0.4, COL.chrome[3]], [0.75, COL.chrome[1]], [1, COL.chrome[0]]]);
-    ctx.fillRect(nx - nw / 2, ny0, nw, ny1 - ny0);
-    const [fx, fy, fs] = this.proj(0, DESK.y, z1);
-    ctx.fillStyle = 'rgba(20,40,60,0.18)';
-    ctx.beginPath(); ctx.ellipse(fx, fy + 1, 74 * fs, 9 * fs, 0, 0, TAU); ctx.fill();
-    ctx.fillStyle = vgrad(ctx, fy - 8 * fs, fy + 3 * fs, [[0, '#ffffff'], [0.5, '#cfe6ee'], [1, '#7f9cb0']]);
-    ctx.beginPath(); ctx.ellipse(fx, fy - 2 * fs, 64 * fs, 8 * fs, 0, 0, TAU); ctx.fill();
-    const c = this.cam;
-    ctx.fillStyle = '#1a222c';
-    if (c.x < bx0) { this.quad(ctx, [[bx0, by0, z0], [bx0, by0, z1], [bx0, by1, z1], [bx0, by1, z0]]); ctx.fill(); }
-    if (c.x > bx1) { this.quad(ctx, [[bx1, by0, z0], [bx1, by0, z1], [bx1, by1, z1], [bx1, by1, z0]]); ctx.fill(); }
-    if (c.y < by0) { ctx.fillStyle = '#2c3846'; this.quad(ctx, [[bx0, by0, z0], [bx1, by0, z0], [bx1, by0, z1], [bx0, by0, z1]]); ctx.fill(); }
-    const [x0, y0, s] = this.proj(bx0, by0, z0), [x1, y1] = this.proj(bx1, by1, z0);
-    const R = 7 * s;
-    ctx.fillStyle = vgrad(ctx, y0, y1, [[0, COL.bezel[0]], [0.12, COL.bezel[1]], [0.75, COL.bezel[2]], [1, COL.bezel[3]]]);
-    rrect(ctx, x0, y0, x1 - x0, y1 - y0, R); ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.22)'; ctx.lineWidth = Math.max(1, s * 0.8);
-    rrect(ctx, x0 + 0.5, y0 + 0.5, x1 - x0 - 1, y1 - y0 - 1, R); ctx.stroke();
-    const [qx0, qy0] = this.proj(-hw, MON.cy - hh, z0), [qx1, qy1] = this.proj(hw, MON.cy + hh, z0);
+    this.prop(ctx, 'monitor', 0, MON.cy, MON.z);
+    const [qx0, qy0] = this.proj(-hw, MON.cy - hh, MON.z), [qx1, qy1] = this.proj(hw, MON.cy + hh, MON.z);
     const sw = qx1 - qx0, sh = qy1 - qy0;
     ctx.imageSmoothingEnabled = sw < this.W - 0.5;
     ctx.imageSmoothingQuality = 'high';
@@ -1489,79 +1511,54 @@ export class Intro3D {
       ctx.fillStyle = rgba('#ffffff', 0.06 * sheen);
       ctx.beginPath(); ctx.moveTo(qx0 + sw * 0.62, qy0); ctx.lineTo(qx0 + sw * 0.7, qy0); ctx.lineTo(qx0 + sw * 0.4, qy1); ctx.lineTo(qx0 + sw * 0.32, qy1); ctx.fill();
       ctx.restore();
-      ctx.fillStyle = rgba('#ffffff', 0.1 * sheen);
-      ctx.fillRect(x0 + R, y0 + s, x1 - x0 - R * 2, Math.max(1, (qy0 - y0) * 0.5));
     }
-    const [lx, ly, ls] = this.proj(hw - 6, MON.cy + hh + MON.chin * 0.55, z0);
-    drawAeroGlow(ctx, lx, ly, clamp(Math.round(7 * ls), 3, 40), '#5fe6ff', 0.7);
-    ctx.fillStyle = '#d8fbff'; ctx.fillRect(Math.round(lx - ls), Math.round(ly - ls * 0.5), Math.max(1, Math.round(2 * ls)), Math.max(1, Math.round(ls)));
+    const [lx, ly, ls] = this.proj(hw - 7, MON.cy + hh + MON.chin - 11, MON.z);
+    drawAeroGlow(ctx, lx, ly, clamp(Math.round(7 * ls), 3, 40), '#5fe6ff', 0.6);
     void t;
   }
 
-  // The goldfish jar: water body with gravel, Goldie, bubbles; glass rim, lip, highlights. Local units = world.
+  // The goldfish jar: voxel layers (back glass, water, gravel, Goldie, a water tint, front glass, the lip) plus
+  // painted light (shadow, glints) as effects. Local units = world units, origin = the jar's base centre.
   drawJar(ctx, t) {
+    if (JAR.z - this.cam.z < 6) return;
     const [sx, sy, s] = this.proj(JAR.x, DESK.y, JAR.z);
     const R = JAR.r, cy = -R + JAR.cut;
-    if (sx - R * s > this.W || sx + R * s < 0 || JAR.z - this.cam.z < 6) return;
+    if (sx - R * 1.3 * s > this.W || sx + R * 1.3 * s < 0) return;
+    ctx.fillStyle = 'rgba(20,60,80,0.2)';
+    ctx.beginPath(); ctx.ellipse(sx + 4 * s, sy + s, R * 0.72 * s, 5 * s, 0, 0, TAU); ctx.fill();
+    const L = (key, a) => this.prop(ctx, key, JAR.x, DESK.y, JAR.z, a);
+    L('jar_back', 0.55);
+    L('jar_water', 0.92);
+    ctx.save();
+    ctx.beginPath(); ctx.arc(sx, sy + cy * s, (R - 2.5) * s, 0, TAU); ctx.clip();
+    this.prop(ctx, 'gravel', JAR.x, DESK.y - 1, JAR.z - 2);
+    ctx.restore();
     ctx.save();
     ctx.translate(sx, sy);
     ctx.scale(s, s);
-    ctx.fillStyle = 'rgba(20,60,80,0.2)';
-    ctx.beginPath(); ctx.ellipse(4, 1, R * 0.72, 5, 0, 0, TAU); ctx.fill();
-    const bowl = () => { ctx.beginPath(); ctx.arc(0, cy, R, 0, TAU); };
-    bowl();
-    ctx.fillStyle = 'rgba(210,245,255,0.22)'; ctx.fill();
-    ctx.save();
-    bowl(); ctx.clip();
-    ctx.beginPath(); ctx.rect(-R, JAR.water, R * 2, -JAR.water + 2); ctx.clip();
-    ctx.fillStyle = vgrad(ctx, JAR.water, 0, [[0, 'rgba(140,232,255,0.72)'], [0.6, 'rgba(60,190,236,0.78)'], [1, 'rgba(26,140,210,0.85)']]);
-    ctx.fillRect(-R, JAR.water, R * 2, -JAR.water);
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = 0.18;
-    const ct = caustics();
-    ctx.drawImage(ct, -R + ((t * 6) % 24) - 24, JAR.water, ct.width * 0.9, ct.height * 0.9);
-    ctx.globalAlpha = 1;
-    ctx.globalCompositeOperation = 'source-over';
-    const gv = this.A.gravel;
-    if (gv) {
-      const k = 1 / gv.res;
-      ctx.imageSmoothingEnabled = s * k < 0.98;
-      ctx.drawImage(gv.canvas, -gv.ox * k, -gv.oy * k + 1, gv.canvas.width * k, gv.canvas.height * k);
-      ctx.imageSmoothingEnabled = false;
-    }
     this.drawJarBubbles(ctx, s, false);
     const G = this.goldie;
     if (G) {
       const ds = 0.86 + G.d * 0.14;
       ctx.save();
       ctx.translate(G.x, G.y);
-      ctx.scale(1 / s, 1 / s); // screen pixels from here
-      if (G.d < 0) ctx.globalAlpha = 0.85;
+      ctx.scale(1 / s, 1 / s);
       drawGoldie(ctx, 0, 0, { scale: 0.8 * ds * s, base: this.goldieBase, facing: G.facing, blink: G.blink, mood: G.mood, t, id: 'intro-goldie' });
       ctx.restore();
     }
     this.drawJarBubbles(ctx, s, true);
     ctx.restore();
-    const ws = Math.sqrt(R * R - (JAR.water - cy) ** 2);
-    ctx.fillStyle = 'rgba(200,250,255,0.55)';
-    ctx.beginPath(); ctx.ellipse(0, JAR.water, ws, 4.5, 0, 0, TAU); ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.ellipse(0, JAR.water, ws, 4.5, 0, 0.1, Math.PI - 0.1); ctx.stroke();
-    ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = 1.6;
-    bowl(); ctx.stroke();
-    ctx.strokeStyle = 'rgba(120,210,230,0.5)'; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.arc(0, cy, R - 2, 0.35, Math.PI - 0.35); ctx.stroke();
-    const lipY = cy - Math.sqrt(R * R - 34 * 34);
-    ctx.fillStyle = 'rgba(230,252,255,0.55)';
-    ctx.beginPath(); ctx.ellipse(0, lipY, 36, 5, 0, 0, TAU); ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineWidth = 1.8;
-    ctx.beginPath(); ctx.ellipse(0, lipY, 36, 5, 0, 0, TAU); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.6)';
-    ctx.beginPath(); ctx.ellipse(-R * 0.48, cy - R * 0.3, R * 0.14, R * 0.36, 0.45, 0, TAU); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    ctx.beginPath(); ctx.ellipse(-R * 0.36, cy - R * 0.58, R * 0.06, R * 0.1, 0.6, 0, TAU); ctx.fill();
-    ctx.fillStyle = 'rgba(190,250,255,0.35)';
-    ctx.beginPath(); ctx.ellipse(R * 0.45, cy + R * 0.5, R * 0.3, R * 0.12, -0.6, 0, TAU); ctx.fill();
+    L('jar_water', 0.2);
+    L('jar_front', 0.32);
+    L('jar_lip', 0.95);
+    // glints on the glass (effects)
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.scale(s, s);
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.beginPath(); ctx.ellipse(-R * 0.48, cy - R * 0.3, R * 0.12, R * 0.32, 0.45, 0, TAU); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.beginPath(); ctx.ellipse(-R * 0.36, cy - R * 0.58, R * 0.05, R * 0.09, 0.6, 0, TAU); ctx.fill();
     ctx.restore();
   }
 
@@ -1757,16 +1754,9 @@ export class Intro3D {
     }
     // sneaker fish hopping across the hill (meme gag)
     this.drawSneaker(ctx, t, dy);
-    // water along the bottom with a glossy crest
-    const wy = H * 0.9 + dy;
-    ctx.fillStyle = vgrad(ctx, wy - 6, H + dy, [[0, 'rgba(170,240,255,0.85)'], [0.3, 'rgba(60,190,240,0.85)'], [1, 'rgba(20,120,210,0.95)']]);
-    ctx.beginPath(); ctx.moveTo(0, H + dy);
-    for (let x = 0; x <= W; x += 6) ctx.lineTo(x, wy + Math.sin(x * 0.02 + t * 2) * 4 * this.u + Math.sin(x * 0.007 - t) * 7 * this.u);
-    ctx.lineTo(W, H + dy); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    for (let x = 0; x <= W; x += 6) { const y = wy + Math.sin(x * 0.02 + t * 2) * 4 * this.u + Math.sin(x * 0.007 - t) * 7 * this.u; if (x) ctx.lineTo(x, y); else ctx.moveTo(x, y); }
-    ctx.stroke();
+    // a glossy crest twinkling along the voxel water (effect)
+    const wy = H * 0.93 + dy;
+    for (let x = (t * 40) % 24; x < W; x += 24) if (Math.sin(x * 0.13 + t * 3) > 0.6) drawSparkle(ctx, x, wy + Math.sin(x * 0.05 + t * 2) * 3, 1, 0.8);
     // glossy leaves framing the shot (sway)
     const br = this.A.branch, b2 = this.A.branch2;
     ctx.imageSmoothingEnabled = true;

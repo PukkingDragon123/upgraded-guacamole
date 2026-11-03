@@ -10,6 +10,7 @@ import { PixelBuffer } from './pixel.js';
 import { pack, unpack, shade, mix, rgbToHex } from '../core/color.js';
 import { registerInlineIcon } from './font.js';
 import { drawAeroCoin } from '../ui/aero.js';
+import { voxelFishIcon } from '../fish/fishicon.js'; // [phase3:fish]
 
 const PAL = {
   h: '#ffffff', w: '#fff8ea', l: '#d3dae6', g: '#97a2b8', d: '#5d6781', x: '#2b2940',
@@ -760,7 +761,8 @@ export const CURSOR_NAMES = [...Object.keys(CURSORS), 'cursor_reel'];
 export function getUiIcon(name) {
   let c = cache.get(name);
   if (!c) {
-    if (AERO_ICONS[name]) c = buildAero(AERO_ICONS[name]);
+    if (name === 'fish') c = voxelFishIcon('pixel', 12, 9) || makeCanvas(9, 9); // [phase3:fish] voxel, never a 2D glyph
+    else if (AERO_ICONS[name]) c = buildAero(AERO_ICONS[name]);
     else if (ICONS[name]) c = build(ICONS[name]);
     else if (CURSORS[name]) c = build(CURSORS[name], false);
     else if (name === 'cursor_reel') c = buildReelCursor();

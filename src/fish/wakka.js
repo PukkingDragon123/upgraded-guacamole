@@ -1,4 +1,4 @@
-// Wakka quirk: the one pixel-art fish moves like the arcade classic. It runs straight along an invisible
+// Wakka quirk: the chunky retro voxel chomper moves like the arcade classic. It runs straight along an invisible
 // grid at constant speed, turns in crisp 90-degree steps at grid nodes, never reverses unless boxed in,
 // lays a line of glowing pellet bubbles ahead of each run and gobbles them, chomping in sync with the
 // distance travelled ("wakka" on every pellet). Every so often a big power bubble makes it sparkle and
@@ -9,6 +9,7 @@
 import { rng } from '../core/rng.js';
 import { clamp } from '../core/math.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
+import { voxelOrb } from '../gfx/voxelfish.js';
 
 const GRID = 24;        // grid cell (logical px)
 const SPEED = 62;       // px/s along the grid
@@ -143,26 +144,17 @@ export function wakkaRig(f) {
   return f.wk && f.wk.power > 0 ? { glow: 0.6 + 0.4 * Math.sin(f.age * 18) } : null;
 }
 
-// ---- pellet bubbles: tiny glowing pixel orbs (cached sprites)
+// ---- pellet bubbles: small glossy voxel orbs (voxelfish.voxelOrb) inside a soft additive glow
 let SPR = null;
 function sprites() {
   if (SPR) return SPR;
   const mk = (n, draw) => { const c = makeCanvas(n, n); draw(ctxOf(c), n); return c; };
-  const orb = (g, n, r, rim, body, hi) => {
-    const m = n / 2;
-    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
-      const d = Math.hypot(x + 0.5 - m, y + 0.5 - m);
-      if (d > r) continue;
-      g.fillStyle = d > r - 1 ? rim : body;
-      g.fillRect(x, y, 1, 1);
-    }
-    g.fillStyle = hi; g.fillRect(Math.floor(m - r * 0.45), Math.floor(m - r * 0.45), 1, 1);
-  };
+  const halo = (n, R, a) => mk(n, (g) => { for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { const d = Math.hypot(x + 0.5 - n / 2, y + 0.5 - n / 2); if (d < R) { g.fillStyle = `rgba(150,245,255,${(a * (1 - d / R)).toFixed(3)})`; g.fillRect(x, y, 1, 1); } } });
   SPR = {
-    pellet: mk(7, (g, n) => orb(g, n, 2.6, '#3ab8e8', '#e6fdff', '#ffffff')),
-    halo: mk(11, (g, n) => { g.fillStyle = 'rgba(160,250,255,0.35)'; for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (Math.hypot(x + 0.5 - n / 2, y + 0.5 - n / 2) < 4.6) g.fillRect(x, y, 1, 1); }),
-    power: mk(13, (g, n) => orb(g, n, 5.2, '#2a9ad8', '#bff4ff', '#ffffff')),
-    powerHalo: mk(21, (g, n) => { for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { const d = Math.hypot(x + 0.5 - n / 2, y + 0.5 - n / 2); if (d < 9.5) { g.fillStyle = `rgba(150,245,255,${(0.42 * (1 - d / 9.5)).toFixed(3)})`; g.fillRect(x, y, 1, 1); } } }),
+    pellet: voxelOrb(2.6, '#d8fcff', true),
+    power: voxelOrb(5, '#7ff0ff', true),
+    halo: halo(13, 6, 0.45),
+    powerHalo: halo(23, 10.5, 0.5),
   };
   return SPR;
 }
@@ -188,7 +180,7 @@ export function drawPellets(ctx, f, alpha = 1) {
     ctx.globalCompositeOperation = prevOp;
     ctx.globalAlpha = prevA * alpha * pop;
     const s = p.power ? S.power : S.pellet;
-    ctx.drawImage(s, x - (s.width >> 1), y - (s.height >> 1));
+    ctx.drawImage(s.canvas, Math.round(x - s.ax), Math.round(y - s.ay));
   }
   ctx.globalAlpha = prevA;
   ctx.globalCompositeOperation = prevOp;

@@ -7,7 +7,7 @@ import { rgba, mix } from '../core/color.js';
 import { drawText } from '../gfx/font.js';
 import { drawAeroGlow, drawAeroBubble, drawSparkle, drawAeroBadge, drawAeroLabel } from './aero.js';
 import { LAB_BY_ID, BRANCHES, ensureLab, labProgress, labRemaining, fmtTime } from '../game/lab.js';
-import { drawFlask } from './labart.js';
+import { flask, drawPiece, voxBudget } from './labvox.js';
 import { icon } from './labkit.js';
 
 const LAB_IDS = ['lab', 'skills', 'research', 'shop', 'crafting', 'boatyard'];
@@ -47,6 +47,7 @@ export class LabWidget {
     if (this.k <= 0) { this.rect = null; return; }
     const t = this.t;
     const W = g.screen.W;
+    if (!ui.isOpen('lab')) voxBudget(4);
     const R = 15;
     // floats just left of the Aero counter (toasts stack below the counter on the right)
     const cr = ui.coinRect;
@@ -66,7 +67,8 @@ export class LabWidget {
     gb.addColorStop(0, rgba('#ffffff', 0.95)); gb.addColorStop(0.6, rgba('#e4f8ff', 0.85)); gb.addColorStop(1, rgba('#8fd8f4', 0.9));
     ctx.fillStyle = gb; ctx.beginPath(); ctx.arc(x, y, R, 0, TAU); ctx.fill();
     // the beaker
-    drawFlask(ctx, x, y + 9, { t, level: 0.3 + 0.6 * k, color: this.done ? '#7ee85a' : col, w: 16, h: 20, active: true });
+    const fl = flask('sm', 0.3 + 0.6 * k, this.done ? '#7ee85a' : col);
+    if (fl?.canvas) drawPiece(ctx, fl, x, y + 9, fl.c, 0, fl.c);
     // progress ring
     ctx.lineCap = 'round';
     ctx.strokeStyle = rgba('#ffffff', 0.95); ctx.lineWidth = 3.5;

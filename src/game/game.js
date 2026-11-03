@@ -686,6 +686,7 @@ export class Game {
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
     if (this.mini) { this.drawMini(ctx, dt); return; }
+    if (this.tutorial.intro?.opaque) { this.tutorial.drawUi(ctx); this.drawCursor(ctx); return; } // [phase3:intro] the opening covers the frame
     const realDesktop = this.overlay; // Electron overlay / wallpaper: the real desktop replaces the simulated one
     if (realDesktop) ctx.clearRect(0, 0, W, H);
 

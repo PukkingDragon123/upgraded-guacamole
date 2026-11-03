@@ -22,7 +22,8 @@ import { mix, shade } from '../core/color.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { renderModel, rollModel } from './voxkit.js';
 import { CANON_ORDER } from './biomes/index.js';
-import { glassOrb, sparkleStar, glassBubble } from './aerokit.js';
+import { sparkleStar, glassBubble } from './aerokit.js';
+import { voxBall } from './voxcritters.js';
 import { drawGlow } from './scenery.js';
 
 const TIERS_FALLBACK = ['crate', 'iron', 'golden', 'orb'];
@@ -120,9 +121,8 @@ function boxSprite(kind, tier, roll, scale) {
   if (s) return s;
   const F = finishOf(tier);
   if (kind === 'orb') {
-    const r = Math.max(3, Math.round(6 * scale));
-    const c = glassOrb(r, F.body, { core: F.core || F.strap, glow: 0.6 });
-    s = { canvas: c, ox: c.width / 2, oy: c.height / 2, w: c.width, h: c.height };
+    const b = voxBall(Math.max(3, Math.round(6 * scale)), F.body, { emissive: 0.35, spec: 0.95 });
+    s = { canvas: b.canvas, ox: b.ox, oy: b.oy, w: b.w, h: b.h };
   } else {
     const M = (cache.get('model|' + kind + '|' + tier) || (() => { const mm = (MODELS[kind] || crateModel)(F); cache.set('model|' + kind + '|' + tier, mm); return mm; })());
     const { model } = rollModel(M, roll, M.nx / 2, M.ny / 2);

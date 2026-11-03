@@ -1,14 +1,13 @@
-// Dev preview of the species collection and the layered fish rig.
-// dist/dev/species.html?page=N  (&frozen for a deterministic still frame, &style=pixel for the 2D rig;
-// the default is the voxel style)
+// Dev preview of the species collection (voxel fish; full voxel art, no 2D fish).
+// dist/dev/species.html?page=N  (&frozen for a deterministic still frame)
 //  0-2  biomes (rig, animated, eyes follow the mouse)      3-5  same biomes at angle -0.4, blinking, mirrored cells
 //  6    every emotion on several kinds                      7    rig features: layers, talk, look, turn, squash, wash, inflate
 //  8    random mutations / shiny per species                9    baked frame() API for every species
 
 import { compiled, frame } from '../gfx/spritecache.js';
-import { drawFishRig, rigStats, beginRigFrame, setFishStyle } from '../gfx/fishrig.js';
+import { drawFishRig, rigStats, beginRigFrame } from '../gfx/fishrig.js';
 import { setVoxelSync } from '../gfx/voxelfish.js';
-import { rasterLayer, rigGeom, rigLayers } from '../gfx/fishart.js';
+import { rigGeom, rigLayers } from '../gfx/fishart.js';
 import { ctxOf } from '../core/canvas.js';
 import { drawText } from '../gfx/font.js';
 import { RARITY } from '../core/color.js';
@@ -183,7 +182,7 @@ export function run(params) {
   cv.style.width = W * 2 + 'px'; cv.style.height = H * 2 + 'px';
   const g = ctxOf(cv);
   const frozen = params.has('frozen');
-  if (params.get('style') === 'pixel') setFishStyle('pixel');
+  // [phase3:fish] full voxel art: there is no 2D 'pixel' fish style any more
   if (frozen) setVoxelSync(true);
   const page = Number(params.get('page') || 0);
   let mouse = null;
@@ -265,14 +264,9 @@ function drawFeatures(g, t, frozen) {
     const y = 70 + r * 92;
     const layers = rigLayers(c);
     const geo = rigGeom(c, { sw: 0, angle: 0, scale: 1 });
-    layers.forEach((L, i) => {
-      const ph = L.phase === 'tail' ? ft * 1.6 : L.phase === 'fin' ? ft * 1.1 : ft * 0.9;
-      const fr = Math.floor((ph % 1) * L.frames) / L.frames;
-      const lr = rasterLayer(c, L.id, { ph: fr, angle: 0, scale: 1 });
-      const x = 50 + i * 82;
-      if (lr.canvas) g.drawImage(lr.canvas, Math.round(x - geo.ox + lr.x), Math.round(y - geo.oy + lr.y));
-      drawText(g, `${L.id} (${L.phase})`, x, y + 36, { font: 'small', align: 'center', color: '#cfe6ff', shadow: '#000' });
-    });
+    // [phase3:fish] full voxel art: no 2D layer breakdown; the layers feed the voxel model
+    void geo;
+    layers.forEach((L, i) => drawText(g, `${L.id} (${L.phase})`, 50 + i * 82, y + 36, { font: 'small', align: 'center', color: '#cfe6ff', shadow: '#000' }));
     const x = 50 + layers.length * 82 + 30;
     drawFishRig(g, c, { x, y, time: ft, swimPhase: ft * 0.9, tailPhase: ft * 1.6, finPhase: ft * 1.1, emotion: 'happy', mouth: 0 });
     drawText(g, 'composite', x, y + 36, { font: 'small', align: 'center', color: '#ffe9a8', shadow: '#000' });

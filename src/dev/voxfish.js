@@ -10,7 +10,7 @@ import { ctxOf } from '../core/canvas.js';
 import { drawText } from '../gfx/font.js';
 import { RARITY } from '../core/color.js';
 import { compiled } from '../gfx/spritecache.js';
-import { drawFishRig, setFishStyle } from '../gfx/fishrig.js';
+import { drawFishRig } from '../gfx/fishrig.js';
 import { voxelFishStats, setVoxelFishBudget, benchVoxel, setVoxelSync } from '../gfx/voxelfish.js';
 import { rigGeom } from '../gfx/fishart.js';
 import { SPECIES, SPECIES_BY_ID } from '../fish/species.js';
@@ -53,7 +53,6 @@ export function run(params) {
   cv.width = W; cv.height = H;
   cv.style.width = W * 2 + 'px'; cv.style.height = H * 2 + 'px';
   const g = ctxOf(cv);
-  if (params.get('style') === 'pixel') setFishStyle('pixel');
   if (params.has('budget')) setVoxelFishBudget(Number(params.get('budget')));
   const page = params.get('page') || 'all';
   const perf = { frame: 0, fish: 0, n: 0, max: 0, hist: [] };

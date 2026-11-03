@@ -726,42 +726,85 @@ export class GlassGlobe {
 
   warm() { const k = this.frames.indexOf(null); if (k >= 0) this.frames[k] = this.build(k); }
 
+  // One frame = a voxel sphere (2 px voxels): green glass sea, pale lime land, white grid lines, a darker rim.
   build(fi) {
-    const r = this.r, s = r * 2 + 2, c0 = r + 1, rot = (fi / this.n) * TAU;
-    const sea = hexToRgb('#2fbf3a'), seaD = hexToRgb('#13802a'), land = hexToRgb('#c8f8a0'), landL = hexToRgb('#f4fff0'), coast = hexToRgb('#8ae46a'), rimC = hexToRgb('#0e6a24');
+    const rv = Math.round(this.r / 2), s = rv * 2 + 3, c0 = rv + 1.5, rot = (fi / this.n) * TAU;
+    const m = new VoxelModel(s, s, s);
+    const sea = m.color('#2fbf3a', { jitter: 0.02, spec: 0.9, specPow: 9, smooth: 0.9 }), seaD = m.color('#16902e', { jitter: 0.02, spec: 0.8, smooth: 0.9 });
+    const land = m.color('#c8f8a0', { jitter: 0.03, spec: 0.7, smooth: 0.8 }), coast = m.color('#8ae46a', { jitter: 0.03, spec: 0.7, smooth: 0.8 });
+    const grid = m.color('#f4fff0', { jitter: 0.01, spec: 0.9, smooth: 0.9, emissive: 0.15 });
     const { map, mw, mh } = this;
-    return paint(s, s, (x, y) => {
-      const nx = (x + 0.5 - c0) / r, ny = (y + 0.5 - c0) / r;
-      const d2 = nx * nx + ny * ny;
-      if (d2 > 1) return 0;
-      const nz = Math.sqrt(1 - d2);
-      // tilted axis (23 deg) for the classic globe look
-      const ca = 0.92, sa = 0.39;
-      const ty = -ny * ca + nx * sa, tx = nx * ca + ny * sa;
-      const lat = Math.asin(clamp(ty, -1, 1));
+    const ca = 0.92, sa = 0.39;
+    for (let z = 0; z < s; z++) for (let y = 0; y < s; y++) for (let x = 0; x < s; x++) {
+      const nx = (x + 0.5 - c0) / rv, ny = (y + 0.5 - c0) / rv, nz = (z + 0.5 - c0) / rv;
+      const d2 = nx * nx + ny * ny + nz * nz;
+      if (d2 > 1 || d2 < 0.62) continue; // hollow shell
+      // tilted axis; ny is up in model space
+      const ty = ny * ca - nx * sa, tx = nx * ca + ny * sa;
+      const dd = Math.sqrt(d2);
+      const lat = Math.asin(clamp(ty / dd, -1, 1));
       const lon = Math.atan2(tx, nz) + rot;
-      const mi = Math.floor((((lon / TAU) % 1) + 1) % 1 * mw), mj = clamp(Math.floor((lat / Math.PI + 0.5) * (mh - 1) + 0.5), 0, mh - 1);
-      const t = map[mj * mw + mi];
-      const lam = clamp01(-nx * 0.5 - ny * 0.62 + nz * 0.6);
-      let col = t === 2 ? L3(land, landL, lam * 0.7) : t === 1 ? coast : L3(seaD, sea, 0.35 + lam * 0.65);
-      // grid lines (every 30 degrees)
       const gl = Math.abs(((lat / (Math.PI / 6)) % 1 + 1) % 1 - 0.5), gm = Math.abs(((lon / (Math.PI / 6)) % 1 + 1) % 1 - 0.5);
-      const pxw = 1.2 / (r * Math.max(0.25, nz));
-      if (gl > 0.5 - pxw * 2.6 || gm > 0.5 - pxw * 2.2 * Math.max(0.3, Math.cos(lat))) col = L3(col, WHITE, 0.55 * nz);
-      // glass: fresnel rim, inner caustic crescent, big gloss cap, a sharp highlight
-      const d = Math.sqrt(d2);
-      col = L3(col, rimC, smoothstep(0.82, 1, d) * 0.55);
-      const cres = smoothstep(0.2, 0.7, ny) * smoothstep(0.55, 0.8, d) * (1 - smoothstep(0.9, 0.99, d));
-      col = L3(col, [210, 255, 170], cres * 0.6);
-      const gx = (nx + 0.18) / 0.62, gy = (ny + 0.5) / 0.4;
-      const g = gx * gx + gy * gy;
-      if (g < 1) col = L3(col, WHITE, (1 - g) * 0.75 + 0.15);
-      if (Math.hypot(nx + 0.42, ny + 0.36) < 0.08) col = WHITE;
-      if (d > 1 - 1.2 / r) col = nx + ny < -0.2 ? L3(col, WHITE, 0.7) : L3(col, rimC, 0.5);
-      const q = qa(d > 1 - 1.2 / r ? 0.95 : 0.9 + lam * 0.1, x, y, 7);
-      return packRGB(col[0], col[1], col[2], Math.round(q * 255));
-    });
+      let c;
+      if (gl > 0.47 || gm > 0.5 - 0.03 / Math.max(0.3, Math.cos(lat))) c = grid;
+      else {
+        const mi = Math.floor((((lon / TAU) % 1) + 1) % 1 * mw), mj = clamp(Math.floor((lat / Math.PI + 0.5) * (mh - 1) + 0.5), 0, mh - 1);
+        const t = map[mj * mw + mi];
+        c = t === 2 ? land : t === 1 ? coast : ny < -0.3 ? seaD : sea;
+      }
+      m.set(x, y, z, c);
+    }
+    const r = renderModel(m, { scale: 2, outline: true, jitter: 0.02, ao: 0.3, edges: 0.3, light: { top: 5, lit: 4.2, dark: 2.8, bottom: 2.2 } });
+    return r.canvas;
   }
+}
+
+// Voxel glass shell (draw at low alpha over what it encloses) + an opaque splashing water ribbon around its rim.
+export function voxWaterBubble(R) {
+  R = Math.round(R);
+  return memo('vwb|' + R, () => {
+    const rv = Math.round(R / 2), s = rv * 2 + 5, c0 = s / 2;
+    const m = new VoxelModel(s, s, s);
+    const glass = m.color('#9ae6ff', { jitter: 0.02, spec: 1, specPow: 8, smooth: 0.95 });
+    for (let z = 0; z < s; z++) for (let y = 0; y < s; y++) for (let x = 0; x < s; x++) {
+      const d = Math.hypot(x + 0.5 - c0, y + 0.5 - c0, z + 0.5 - c0);
+      if (d <= rv && d > rv - 1.4 && z + 0.5 >= c0) m.set(x, y, z, glass);
+    }
+    const shell = renderModel(m, { scale: 2, outline: false, jitter: 0.02, ao: 0.2, edges: 0.6, light: { top: 5.6, lit: 4.8, dark: 3.4, bottom: 2.6 } });
+    const rm = new VoxelModel(s, s, s);
+    const foam = rm.color('#ffffff', { jitter: 0.02, spec: 0.8 }), aqua = rm.color('#bff4ff', { jitter: 0.02, spec: 0.9 });
+    for (let i = 0; i < 160; i++) {
+      const a = Math.PI * 0.95 + (i / 160) * Math.PI * 0.95;
+      const rr = rv + 0.6 + Math.sin(a * 3 + 1) * 1.1;
+      const x = c0 + Math.cos(a) * rr, y = c0 - Math.sin(a) * rr * -1, z = c0 + rv * 0.45 + Math.sin(a * 2) * 1.5;
+      rm.set(x, s - 1 - y, z, i % 7 < 3 ? foam : aqua);
+      if (i % 3 === 0) rm.set(x + 0.6, s - 1 - y, z + 0.6, aqua);
+    }
+    const ribbon = renderModel(rm, { scale: 2, outline: true, jitter: 0.02, ao: 0.2, edges: 0.4 });
+    const sp = shell.project(c0, c0, c0), rp = ribbon.project(c0, c0, c0);
+    return { shell: shell.canvas, ribbon: ribbon.canvas, sx: Math.round(sp[0]), sy: Math.round(sp[1]), rx: Math.round(rp[0]), ry: Math.round(rp[1]) };
+  });
+}
+
+// Liquid-chrome voxel droplet (sky blue top, white horizon band, green bottom). {canvas, w, h} (tip up).
+export function voxDrop(h, tint = '#5ac8ff') {
+  h = Math.max(6, Math.round(h));
+  return memo('vdrop|' + h + tint, () => {
+    const R = h * 0.36, n = Math.ceil(R * 2) + 3, c0 = n / 2;
+    const m = new VoxelModel(n, h + 2, n);
+    const sky = m.color(mix(tint, '#ffffff', 0.4), { jitter: 0.02, spec: 1, specPow: 8, smooth: 0.9 }), band = m.color('#ffffff', { spec: 1, smooth: 0.9 });
+    const dark = m.color(shade(tint, -0.55), { jitter: 0.02, spec: 0.9, smooth: 0.9 }), grass = m.color('#4cc85a', { jitter: 0.02, spec: 0.9, smooth: 0.9 });
+    const cy = R + 0.5;
+    for (let y = 0; y < h + 1; y++) for (let z = 0; z < n; z++) for (let x = 0; x < n; x++) {
+      const dx = x + 0.5 - c0, dz = z + 0.5 - c0;
+      const rr = y + 0.5 <= cy ? Math.sqrt(Math.max(0, R * R - (cy - y - 0.5) ** 2)) : R * Math.pow(Math.max(0, 1 - (y + 0.5 - cy) / (h - cy)), 1.35);
+      if (dx * dx + dz * dz > rr * rr) continue;
+      const u = (y + 0.5) / h;
+      m.set(x, y, z, u > 0.5 ? sky : u > 0.42 ? band : u > 0.3 ? dark : grass);
+    }
+    const r = renderModel(m, { scale: 1, outline: true, jitter: 0.02, ao: 0.3, edges: 0.5 });
+    return { canvas: r.canvas, w: r.w, h: r.h };
+  });
 }
 
 function fbm3n(x, y, z, seed) {

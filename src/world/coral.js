@@ -625,6 +625,8 @@ export function voxAnim(kind, seed, themeId, size0, k, frames = 8, palKey = null
   const FIXED = { kelp: { shallows: ['#2e3010', '#5e5e1c', '#9a922c', '#dcca5a'], junkyard: ['#2a2a1a', '#4a4a2a', '#7a7a3a', '#b8b060'], abyss: ['#1a2a3a', '#2a4a5a', '#4a8a9a', '#a8f0ff'] },
     seagrass: { shallows: ['#1e4a24', '#2e7a36', '#5ab04e', '#b8e88a'], junkyard: ['#2a3a1e', '#3e5a2a', '#6a8a3a', '#b0c870'], abyss: ['#1a2e44', '#2a4e6a', '#4a8aaa', '#bfffff'], oscean: ['#1e7a2a', '#3cb43a', '#7ae24a', '#e0ffa0'] } };
   FIXED.kelp.oscean = ['#0e6a6a', '#1aa8a0', '#4ae0d0', '#c8fff4'];
+  Object.assign(FIXED.kelp, { fjord: ['#2e2a14', '#54501e', '#8a8630', '#c8c068'], metropolis: ['#1a2440', '#2a3e6a', '#4a6aa8', '#9ac8ff'], volcano: ['#2a1a14', '#4a2a1a', '#7a4a2a', '#e8904a'] });
+  Object.assign(FIXED.seagrass, { fjord: ['#3a1420', '#6a2232', '#a8404e', '#e0687a'], metropolis: ['#14203a', '#22385e', '#3a6a9a', '#8ac8ff'], volcano: ['#2a140e', '#4a2416', '#8a3a1e', '#ff8a3a'] });
   const cols = palKey && theme.pals[palKey] ? theme.pals[palKey] : FIXED[kind]?.[themeId] || pickPal(theme, r0);
   const h = Math.ceil(kind === 'kelp' ? size * 6 + 10 : size * 2.2 + 8), wd = Math.ceil(size * 2.4 + 12);
   const out = [], nights = [];

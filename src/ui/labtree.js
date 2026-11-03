@@ -13,7 +13,8 @@ import {
 } from '../game/lab.js';
 import { ROD_BY_ID } from '../game/rods.js';
 import { RECIPE_BY_ID } from '../build/crafting.js';
-import { ecoOrb, drawTube, drawSplash, drawRays, drawFlask, roundRectPath } from './labart.js';
+import { ecoOrb, drawTube, drawSplash, drawRays, roundRectPath } from './labart.js';
+import { flask, drawPiece } from './labvox.js';
 import { icon, anyIcon, glassCard, pill, costTiles, costTilesHeight, pedestal, chip, orbIcon, INK, INK_SOFT, OK, BAD } from './labkit.js';
 
 const MAX_R = LAB_RING(9) + 40;
@@ -180,16 +181,6 @@ export class LabTree {
     // sun glow around the root + slow rays
     drawAeroGlow(ctx, rx, ry, Math.max(60, 150 * z), '#ffffff', 0.55);
     drawRays(ctx, rx, ry, Math.max(view.w, view.h) * 0.9, t, 0.14, 18);
-    // clouds (gentle parallax)
-    ctx.save();
-    for (let i = 0; i < 7; i++) {
-      const px = view.x + ((hash1(i, 1) * view.w * 1.6 + t * (4 + hash1(i, 2) * 5) - (this.cam.x * z) * 0.25) % (view.w * 1.6) + view.w * 1.6) % (view.w * 1.6) - view.w * 0.3;
-      const py = view.y + hash1(i, 3) * view.h * 0.8 - this.cam.y * z * 0.25 % view.h;
-      const s = 10 + hash1(i, 4) * 16;
-      ctx.fillStyle = rgba('#ffffff', 0.35);
-      for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.ellipse(px + (k - 1.5) * s * 0.7, py + Math.abs(k - 1.5) * s * 0.15, s * (0.6 - Math.abs(k - 1.5) * 0.08), s * 0.36, 0, 0, TAU); ctx.fill(); }
-    }
-    ctx.restore();
     // white arcs: the tier rings
     ctx.save();
     ctx.strokeStyle = rgba('#ffffff', 0.45);
@@ -200,15 +191,6 @@ export class LabTree {
       ctx.beginPath(); ctx.arc(rx, ry, R, 0, TAU); ctx.stroke();
     }
     ctx.setLineDash([]);
-    ctx.restore();
-    // curved green horizon at the bottom of the dome
-    const gy = view.y + view.h - 26, R = view.w * 2.2;
-    ctx.save();
-    const gg = ctx.createLinearGradient(0, gy - 6, 0, view.y + view.h);
-    gg.addColorStop(0, rgba('#b8f25a', 0.85)); gg.addColorStop(0.3, rgba('#6fd236', 0.8)); gg.addColorStop(1, rgba('#2f9a1e', 0.85));
-    ctx.fillStyle = gg;
-    ctx.beginPath(); ctx.arc(view.x + view.w * 0.45, gy + R, R, 0, TAU); ctx.fill();
-    ctx.strokeStyle = rgba('#efffc0', 0.9); ctx.beginPath(); ctx.arc(view.x + view.w * 0.45, gy + R, R - 0.5, -Math.PI / 2 - 0.3, -Math.PI / 2 + 0.3); ctx.stroke();
     ctx.restore();
     // rising bubbles
     for (let i = 0; i < 14; i++) {
@@ -486,7 +468,9 @@ export function drawNodeCard(ctx, ui, panel, r, id) {
     if (room > 40) {
       const fh = Math.min(70, room), fw = Math.round(fh * 0.8);
       drawAeroGlow(ctx, cx, fy - fh * 0.35, fw * 1.1, mix(col, '#ffffff', 0.3), 0.5 + 0.15 * Math.sin(t * 4));
-      drawFlask(ctx, cx, fy, { t, level: 0.2 + 0.75 * k, color: mix(col, '#4fd2ff', 0.3), w: fw, h: fh, glow: 1, active: true });
+      const fl = flask('lg', 0.2 + 0.75 * k, mix(col, '#4fd2ff', 0.3));
+      if (fl?.canvas) drawPiece(ctx, fl, cx, fy, fl.c, 0, fl.c);
+      for (let j = 0; j < 4; j++) { const q = (t * 0.6 + j / 4) % 1; drawAeroBubble(ctx, cx + Math.sin(t * 2 + j * 2) * 5 * q, fy - fh * 0.9 - q * 18, 1.2 + q * 1.6, 1 - q); }
       const ic = icon(nd.icon, 20);
       if (ic) ctx.drawImage(ic, Math.round(cx - ic.width / 2), Math.round(fy - fh * 0.32 - ic.height / 2 + Math.sin(t * 3) * 2));
     }

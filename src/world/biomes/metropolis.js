@@ -13,8 +13,11 @@ import { RNG } from '../../core/rng.js';
 import { mix, rgba, pack } from '../../core/color.js';
 import { makeCanvas, ctxOf, makeLayer } from '../../core/canvas.js';
 import { VoxelModel } from '../../gfx/voxel.js';
-import { worldProp } from '../voxkit.js';
+import { worldProp, voxRelief, lumDepth } from '../voxkit.js';
+import { voxAnim, placeAnim } from '../coral.js';
+import { gullFrames } from '../voxcritters.js';
 import { drawText, measureText } from '../../gfx/font.js';
+import { voxelFishIcon } from '../../fish/fishicon.js'; // [phase3:fish]
 import {
   paint, dpack, lerpStops, stopPalette, ditherPick, Blend, FogLayer, fillWith, drawWobble, makeRays, drawGlow, twinkle,
   waveLine, waveRuns, Strands, Motes, Bubbles, Mask, ridge, todWeights, quality, inRect, SwayAnim, DepthScene, BandSet,
@@ -180,12 +183,10 @@ function signSprites(text, color, small, vertical) {
   return { on, off, broken, w, h };
 }
 
-function fishSprite(c) {
-  return paint(7, 4, (x, y) => {
-    const rows = ['..###.#', '.######', '.#####.', '..##..#'];
-    if (rows[y][x] !== '#') return 0;
-    return pack(x === 5 && y === 1 ? '#0a0a14' : y === 0 ? mix(c, '#ffffff', 0.4) : c);
-  });
+// [phase3:fish] full voxel art: rush-hour fish are tiny voxel fish renders (fish/fishicon.js), washed toward a colour.
+const TRAFFIC_FISH = ['neonpunk', 'surfermullet', 'pigeonfish', 'gottagofast', 'unicornfish', 'conefish'];
+function fishSprite(c, i = 0) {
+  return voxelFishIcon(TRAFFIC_FISH[i % TRAFFIC_FISH.length], 14, 8, { tint: c, tintA: 0.3 }) || makeCanvas(14, 8);
 }
 
 // ====================================================================== the biome
@@ -266,7 +267,7 @@ export class MetropolisBiome extends Biome {
       if (winAt(x, y)) return hash2(x >> 2, Math.floor(y / 5), 9) < 0.18 ? pack('#ffe0a0') : pack('#1a2240');
       return pack(v === 2 ? '#4a5478' : (x % 9 === 0 ? '#1e2440' : '#2a3254'));
     });
-    this.towerFar = new FogLayer(under, 0, yU);
+    this.towerFar = new FogLayer(voxRelief(under, { depth: lumDepth(3, 7), maxD: 7 }), 0, yU);
     this.towerY = yU;
     // sky + crowns above water per time of day
     const skyOf = (kind) => paint(W, sh, (x, row) => {
@@ -292,7 +293,9 @@ export class MetropolisBiome extends Biome {
       });
     };
     this.sky = { day: skyOf('day'), dusk: skyOf('dusk'), night: skyOf('night') };
-    this.mtn = { day: crownOf('day'), dusk: crownOf('dusk'), night: crownOf('night') };
+    // the tower crowns above the water as voxel relief (lit windows stand out at night)
+    const vc = (k) => voxRelief(crownOf(k), { depth: lumDepth(4, 8), maxD: 8 });
+    this.mtn = { day: vc('day'), dusk: vc('dusk'), night: vc('night') };
     this.beacons = this.towers.filter((tw) => tw.ant).map((tw) => ({ x: tw.x, y: tw.top - tw.ant, ph: r.float(0, TAU) }));
   }
 
@@ -433,7 +436,7 @@ export class MetropolisBiome extends Biome {
     const cA = mA.toCanvas((x, y, v, up) => (up <= 1 ? pack('#4a5288') : ditherPick(palA, 0.6 - Math.min(1, up / 80) * 0.4 + (x % 7 === 0 ? -0.15 : 0), x, y)));
     const gA = ctxOf(cA);
     for (const [x, y] of lit) { gA.fillStyle = r.pick(['#ffd890', '#9ae8ff', '#ffd890', '#ff9ad8']); gA.fillRect(Math.round(x), Math.round(y), 1, 2); }
-    this.farA = new FogLayer(cA, -pad, yA);
+    this.farA = new FogLayer(voxRelief(cA, { depth: lumDepth(2, 6) }), -pad, yA);
     this.farAY = yA;
     // far B: an elevated railway across the avenue + low buildings
     const yB = Math.round(hz - 120), hB = H - yB;
@@ -448,7 +451,7 @@ export class MetropolisBiome extends Biome {
     for (let x = 20; x < LW; x += 70) { mB.rect(x, trackY + 4, 4, baseB - trackY); mB.rect(x - 6, trackY + 4, 16, 2); }
     for (let i = 0; i < 16; i++) { const x = r.float(0, LW), w = r.float(16, 40), hh = r.float(14, 50); mB.rect(x, baseB - hh, w, hh); }
     const palB = stopPalette([[0, '#0a0a1e'], [1, '#262c50']], 5);
-    this.farB = new FogLayer(mB.toCanvas((x, y, v, up) => (up <= 1 ? pack('#5a62a0') : ditherPick(palB, 0.6 - Math.min(1, up / 40) * 0.4, x, y))), -pad, yB);
+    this.farB = new FogLayer(voxRelief(mB.toCanvas((x, y, v, up) => (up <= 1 ? pack('#5a62a0') : ditherPick(palB, 0.6 - Math.min(1, up / 40) * 0.4, x, y))), { depth: lumDepth(2, 5) }), -pad, yB);
     this.farBY = yB;
     this.train = null; this.trainT = 4;
   }
@@ -459,20 +462,15 @@ export class MetropolisBiome extends Biome {
     this.decor = new DepthDecor(D);
     // seagrass in the cracks and kelp growing out of the sidewalks
     for (const [xf, z, tall] of [[0.33, 0.02, 0], [0.48, 0.16, 0], [0.56, -0.08, 0], [0.4, 0.3, 0], [0.64, 0.24, 0], [0.5, 0.5, 0], [0.43, 0.8, 0], [0.57, 0.95, 0], [0.24, 0.24, 1], [0.79, 0.12, 1], [0.27, 0.86, 1], [0.73, 0.7, 1], [0.21, 0.5, 1]]) {
-      const s = D.s(z), x0 = Math.round(xf * W), y0 = Math.round(D.floorAt(x0, z)) + 1;
-      const st = new Strands();
-      const k = tall ? 1 : r.int(3, 6);
-      for (let i = 0; i < k; i++) {
-        const lean = (i / Math.max(1, k - 1) - 0.5) * 0.8;
-        st.add({ x: x0 + Math.round(lean * 6 * s), y: y0, n: Math.max(3, Math.round((tall ? r.int(22, 34) : r.int(4, 8)) * Math.min(1.1, s))), seg: tall ? Math.max(2, Math.round(3 * s)) : 2, w: tall && s > 0.7 ? 2 : 1, amp: tall ? 0.14 : 0.25, speed: tall ? 0.7 : 1.3, sec: tall ? 1 : 2, phase: r.float(0, TAU), wave: tall ? 0.2 : 0.5, lean: tall ? r.float(-0.05, 0.05) : lean, curl: lean * 0.3,
-          cols: tall ? ['#1e3a2a', '#2a5236', '#3a6a42', '#5a8a52'] : ['#24503a', '#2e6a46', '#448a58', '#6aae74'], out: tall && s > 0.7 ? '#0c1a14' : null, hl: false, taper: 0.3, leaf: tall ? 'kelp' : null, leafEvery: 3, leafLen: 4 });
-      }
-      this.decor.add({ anim: new SwayAnim(st, { frames: 16 }), z, off: r.int(0, 15) });
+      // voxel seagrass in the cracks and voxel kelp growing out of the sidewalks
+      const x0 = Math.round(xf * W), k = qscale(D.s(z), 0.2, 0.4);
+      const A = tall ? voxAnim('kelp', 2 + (r.int(0, 1)), 'metropolis', 16, k, 8) : voxAnim('seagrass', 1 + r.int(0, 2), 'metropolis', 8, k * 1.3, 8);
+      this.decor.add({ anim: placeAnim(A, x0, Math.round(D.floorAt(x0, z)) + 2), z, off: r.int(0, A.n - 1) });
     }
     this.decor.refog(() => '#1e2450', 'k');
     // rush-hour fish traffic lanes
     const cols = ['#ff9a5a', '#5ad8ff', '#ffd25a', '#c88aff', '#7aff9a', '#ff6a8a'];
-    this.fishSpr = cols.map((c) => fishSprite(c));
+    this.fishSpr = cols.map((c, i) => fishSprite(c, i)); // [phase3:fish]
     this.fishSprL = this.fishSpr.map((c) => { const o = makeCanvas(c.width, c.height), g = ctxOf(o); g.translate(c.width, 0); g.scale(-1, 1); g.drawImage(c, 0, 0); return o; });
     this.lanes = [[0.18, 1, 46], [0.3, -1, 40], [0.5, 1, 34], [0.62, -1, 30], [0.85, 1, 24], [1.05, -1, 20]].map(([z, dir, sp], i) => {
       const s = D.s(z);
@@ -608,8 +606,8 @@ export class MetropolisBiome extends Biome {
     this.drawBeacons(ctx, false);
     // gulls perched on the antennas by day
     if (tod.day > 0.3) {
-      ctx.fillStyle = '#e8ecf0';
-      for (const b of this.beacons.slice(0, 2)) { ctx.fillRect(b.x - 2, b.y + 4, 4, 2); ctx.fillStyle = '#ff9a3a'; ctx.fillRect(b.x + 2, b.y + 4, 1, 1); ctx.fillStyle = '#e8ecf0'; }
+      const gf = gullFrames('#f4f6fa')[1];
+      for (const b of this.beacons.slice(0, 2)) ctx.drawImage(gf, Math.round(b.x - gf.width / 2), Math.round(b.y + 6 - gf.height));
     }
     // surface line
     const ys = this.ys;

@@ -14,7 +14,8 @@ import * as NPC from '../gfx/npcs.js';
 import { LAB_BY_ID, BRANCHES, ensureLab, labSlots, labProgress, labRemaining, labFocus, startResearch, instantFinish, labTick, labReadyCount, fmtTime } from '../game/lab.js';
 import { ensureRods } from '../game/rods.js';
 import { RECIPE_BY_ID, craft } from '../build/crafting.js';
-import { labRoom, leafSprig, drawTube, drawFlask, ecoOrb, roundRectPath } from './labart.js';
+import { ecoOrb, drawRays, roundRectPath } from './labart.js';
+import { voxBudget, roomChunk, floorChunk, ROOM_CHUNK, windowView, windowFrame, bench, flask, pipe, shelf, clock, plant, sprig, drawPiece } from './labvox.js';
 import { iconBudget, icon, pill, INK } from './labkit.js';
 import { LabTree, drawNodeCard } from './labtree.js';
 import { drawRodsView, drawRodCard, drawCraftView, drawCraftCard, drawBoatsView, drawBoatCard } from './labviews.js';
@@ -131,7 +132,8 @@ export class LabPanel {
     ctx.save();
     ctx.fillStyle = rgba('#04304e', 0.28); roundRectPath(ctx, P.x + 2, P.y + 4, P.w, P.h, 14); ctx.fill();
     roundRectPath(ctx, P.x, P.y, P.w, P.h, 14); ctx.clip();
-    ctx.drawImage(labRoom(P.w, P.h, win), P.x, P.y);
+    voxBudget(14);
+    this.drawRoom(ctx, Lo);
     this.drawWallPipes(ctx, Lo);
     this.drawShelf(ctx, Lo);
     this.drawBench(ctx, ui, Lo, dt);
@@ -203,7 +205,70 @@ export class LabPanel {
     if (pill(ui, ctx, cx, P.y + 5, cw, 22, '', { tone: 'red', icon: getUiIcon('cross'), tip: 'Close (Esc)' })) ui.close(this.openId);
   }
 
-  // ------------------------------------------------------------------ room pieces
+  // ------------------------------------------------------------------ room pieces (voxel models, src/ui/labvox.js)
+  roomOpts(Lo) {
+    const bodyH = Lo.P.h - Lo.HEAD;
+    return { h: bodyH, tileY: Math.round(bodyH * 0.6), floorY: Math.round(bodyH * 0.88) };
+  }
+
+  // Builds missing scenery a piece at a time (called while idle so the Lab opens with everything ready).
+  warm(ms = 4) {
+    voxBudget(ms);
+    const Lo = this.layout(), ro = this.roomOpts(Lo);
+    const reqs = [
+      () => roomChunk(ro.h, ro), () => floorChunk(ro.h - ro.floorY), () => windowView(Lo.win.w, Lo.win.h), () => windowFrame(Lo.win.w, Lo.win.h),
+      () => bench(Lo.lw - 16), () => pipe(this.pipeGeom(Lo).h, this.pipeGeom(Lo).len), () => shelf(Math.round(Lo.win.w * 0.62)), () => clock(), () => plant(),
+      ...LEAVES.map((l) => () => sprig(l.len, l.ang, l.seed)), () => flask('md', 0.15, '#9fe0f8'),
+    ];
+    for (const r of reqs) if (!r()) return true;
+    return false;
+  }
+
+  // the glass pipe rises from behind the bench up to just under the window shelf, then runs into the dome
+  pipeGeom(Lo) {
+    const { P, win, lw, dome } = Lo;
+    const x0 = P.x + lw - 24, y0 = P.y + win.y + win.h + 24;
+    return { x0, y0, h: P.y + P.h - 64 - y0 + 4, len: dome.x - x0 + 6 };
+  }
+  pipeH(Lo) { return this.pipeGeom(Lo).h; }
+
+  drawRoom(ctx, Lo) {
+    const { P, HEAD, win } = Lo;
+    const ro = this.roomOpts(Lo);
+    const top = P.y + HEAD;
+    const ch = roomChunk(ro.h, ro);
+    if (ch?.canvas) for (let x = P.x; x < P.x + P.w; x += ROOM_CHUNK) ctx.drawImage(ch.canvas, x - 1, top - 1);
+    else { ctx.fillStyle = '#eef9ff'; ctx.fillRect(P.x, top, P.w, ro.floorY); }
+    const fl = floorChunk(ro.h - ro.floorY);
+    if (fl?.canvas) for (let x = P.x; x < P.x + P.w; x += ROOM_CHUNK) ctx.drawImage(fl.canvas, x - 1, top + ro.floorY - 2);
+    else { ctx.fillStyle = '#c8ecf8'; ctx.fillRect(P.x, top + ro.floorY, P.w, ro.h - ro.floorY); }
+    // the window: eco world outside, sun rays + glass glints (2D light), voxel frame
+    const wx = P.x + win.x, wy = P.y + win.y;
+    const v = windowView(win.w, win.h);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(wx, wy, win.w, win.h); ctx.clip();
+    if (v?.canvas) {
+      drawPiece(ctx, v, wx, wy, 0, v.ny, 0);
+      if (v.sun) {
+        const [sx, sy] = v.project(...v.sun), [ox, oy] = v.project(0, v.ny, 0);
+        drawRays(ctx, wx + sx - ox, wy + sy - oy, win.w * 1.1, this.t, 0.22, 16);
+      }
+    } else { ctx.fillStyle = '#5cb8fa'; ctx.fillRect(wx, wy, win.w, win.h); }
+    ctx.fillStyle = rgba('#ffffff', 0.16);
+    ctx.beginPath(); ctx.moveTo(wx, wy); ctx.lineTo(wx + win.w * 0.35, wy); ctx.lineTo(wx, wy + win.h * 0.55); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    const f = windowFrame(win.w, win.h);
+    if (f?.canvas) drawPiece(ctx, f, wx, wy, f.inner.x0, f.inner.y1 + 1, 0);
+    // sunlight falling into the room (2D light)
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const lg = ctx.createLinearGradient(wx, wy + win.h, wx + win.w * 1.2, P.y + P.h);
+    lg.addColorStop(0, rgba('#fffbe0', 0.2)); lg.addColorStop(1, rgba('#fffbe0', 0));
+    ctx.fillStyle = lg;
+    ctx.beginPath(); ctx.moveTo(wx + win.w * 0.1, wy + win.h + 6); ctx.lineTo(wx + win.w * 0.95, wy + win.h + 6); ctx.lineTo(wx + win.w * 1.9, P.y + P.h); ctx.lineTo(wx + win.w * 0.55, P.y + P.h); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+
   drawDomeFrame(ctx, d) {
     ctx.save();
     ctx.fillStyle = rgba('#0a4a7a', 0.18); roundRectPath(ctx, d.x + 2, d.y + 4, d.w, d.h, 16); ctx.fill();
@@ -212,25 +277,26 @@ export class LabPanel {
     ctx.fillStyle = fg; roundRectPath(ctx, d.x, d.y, d.w, d.h, 16); ctx.fill();
     ctx.strokeStyle = '#6fb4d8'; ctx.lineWidth = 1; roundRectPath(ctx, d.x + 0.5, d.y + 0.5, d.w - 1, d.h - 1, 16); ctx.stroke();
     ctx.strokeStyle = rgba('#ffffff', 1); roundRectPath(ctx, d.x + 1.5, d.y + 1.5, d.w - 3, d.h - 3, 15); ctx.stroke();
-    // chrome screws
-    for (const [sx, sy] of [[d.x + 8, d.y + d.h - 5], [d.x + d.w - 8, d.y + d.h - 5]]) { ctx.fillStyle = '#9fc8dc'; ctx.beginPath(); ctx.arc(sx, sy, 1.6, 0, TAU); ctx.fill(); }
     ctx.restore();
   }
 
   drawWallPipes(ctx, Lo) {
-    const { P, win, dome } = Lo;
-    const L = ensureLab(this.game.state);
-    const busy = L.slots.length > 0;
+    const busy = ensureLab(this.game.state).slots.length > 0;
     const t = this.t;
-    const x0 = P.x + win.x + win.w + 4;
-    const top = P.y + win.y - 6;
-    const benchTop = P.y + P.h - 64;
-    // a tall column on the right wall of the bench zone feeding the dome
-    const pts = [[x0, benchTop - 6], [x0, top + 20], [x0 + 3, top + 8], [dome.x - 2, top + 8]];
-    drawTube(ctx, pts, { t, water: busy ? 1 : 0.35, color: '#4fd2ff', width: 8, flow: busy ? 40 : 10, bubbles: busy ? 9 : 3 });
-    // a second slim line along the floor of the window
-    const y2 = P.y + win.y + win.h + 30;
-    drawTube(ctx, [[P.x + 10, y2], [x0 - 4, y2]], { t: t * 0.8, water: busy ? 1 : 0.6, color: '#7ee85a', width: 5, flow: 22 });
+    const { x0, y0, h, len } = this.pipeGeom(Lo);
+    const p = pipe(h, len);
+    if (!p?.canvas) return;
+    drawPiece(ctx, p, x0, y0, 0, p.ny, 3);
+    // bubbles rising up the column and racing along the top into the dome (2D effect)
+    const n = busy ? 7 : 2;
+    for (let i = 0; i < n; i++) {
+      const k = (t * (busy ? 0.35 : 0.12) + i / n) % 1;
+      const up = h * 0.86;
+      const along = k < 0.8 ? null : (k - 0.8) / 0.2;
+      const bx = along === null ? x0 + 7 + Math.sin(t * 4 + i) * 1.2 : x0 + 7 + along * (len - 4);
+      const by = along === null ? y0 + h - 12 - (k / 0.8) * (up - 6) : y0 + 7;
+      drawAeroBubble(ctx, bx, by, busy ? 1.8 : 1.4, 0.9);
+    }
   }
 
   drawShelf(ctx, Lo) {
@@ -238,55 +304,14 @@ export class LabPanel {
     const t = this.t;
     const sy = P.y + win.y + win.h + 52;
     const sx = P.x + 12, sw = win.w;
-    ctx.fillStyle = rgba('#5aa8cc', 0.25); ctx.fillRect(sx + 2, sy + 4, sw, 3);
-    const sg = ctx.createLinearGradient(0, sy, 0, sy + 5);
-    sg.addColorStop(0, '#ffffff'); sg.addColorStop(1, '#bfe4f4');
-    ctx.fillStyle = sg; roundRectPath(ctx, sx, sy, sw, 5, 2); ctx.fill();
-    ctx.strokeStyle = '#7fb8d6'; ctx.lineWidth = 1; roundRectPath(ctx, sx + 0.5, sy + 0.5, sw - 1, 4, 2); ctx.stroke();
-    const cols = ['#ff74b4', '#ffd23a', '#6fd23f', '#35c8ff', '#a98aff'];
-    const n = Math.max(3, Math.floor(sw / 34));
-    for (let i = 0; i < n; i++) drawFlask(ctx, sx + 14 + i * ((sw - 28) / Math.max(1, n - 1)), sy, { t: t + i, level: 0.4 + hash1(i, 3) * 0.4, color: cols[i % cols.length], w: 12 + (i % 2) * 4, h: 16 + (i % 3) * 3 });
-    // wall clock (real time) and a fish blueprint poster
-    const benchTop = P.y + P.h - 64;
-    const room = benchTop - 84 - (sy + 10);
-    if (room > 40) {
-      const ccx = sx + 22, ccy = sy + 12 + Math.min(34, room / 2);
-      const cr = 15;
-      ctx.fillStyle = rgba('#0a4a7a', 0.15); ctx.beginPath(); ctx.arc(ccx + 1, ccy + 2, cr, 0, TAU); ctx.fill();
-      const cg = ctx.createRadialGradient(ccx - 4, ccy - 5, 1, ccx, ccy, cr);
-      cg.addColorStop(0, '#ffffff'); cg.addColorStop(1, '#d4eef8');
-      ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(ccx, ccy, cr, 0, TAU); ctx.fill();
-      ctx.strokeStyle = '#35b4e8'; ctx.lineWidth = 2; ctx.stroke();
-      ctx.fillStyle = '#7fb8d6';
-      for (let i = 0; i < 12; i++) { const a = (i / 12) * TAU; ctx.fillRect(Math.round(ccx + Math.cos(a) * (cr - 3)), Math.round(ccy + Math.sin(a) * (cr - 3)), 1, 1); }
-      const d = new Date(), hr = (d.getHours() % 12 + d.getMinutes() / 60) / 12, mn = d.getMinutes() / 60;
-      ctx.strokeStyle = '#0c3a52'; ctx.lineCap = 'round';
-      ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(ccx, ccy); ctx.lineTo(ccx + Math.sin(hr * TAU) * 7, ccy - Math.cos(hr * TAU) * 7); ctx.stroke();
-      ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(ccx, ccy); ctx.lineTo(ccx + Math.sin(mn * TAU) * 11, ccy - Math.cos(mn * TAU) * 11); ctx.stroke();
-      ctx.fillStyle = '#ff74b4'; ctx.beginPath(); ctx.arc(ccx, ccy, 1.5, 0, TAU); ctx.fill();
-      ctx.fillStyle = rgba('#ffffff', 0.8); ctx.beginPath(); ctx.ellipse(ccx - 5, ccy - 8, 5, 2, -0.5, 0, TAU); ctx.fill();
-      // poster
-      const pw = Math.min(86, sw - 60), ph = Math.min(56, room - 6), px = sx + sw - pw - 4, py = sy + 14;
-      ctx.fillStyle = rgba('#0a4a7a', 0.15); ctx.fillRect(px + 2, py + 3, pw, ph);
-      ctx.fillStyle = '#ffffff'; ctx.fillRect(px - 2, py - 2, pw + 4, ph + 4);
-      const pg = ctx.createLinearGradient(0, py, 0, py + ph);
-      pg.addColorStop(0, '#3aa8f4'); pg.addColorStop(1, '#1f78d8');
-      ctx.fillStyle = pg; ctx.fillRect(px, py, pw, ph);
-      ctx.fillStyle = rgba('#ffffff', 0.15);
-      for (let gx = px + 4; gx < px + pw; gx += 6) ctx.fillRect(gx, py, 1, ph);
-      for (let gy = py + 4; gy < py + ph; gy += 6) ctx.fillRect(px, gy, pw, 1);
-      // a chalk fish with dimension lines
-      const fx = px + pw * 0.46, fy = py + ph * 0.5, fl = pw * 0.3, fh = ph * 0.26;
-      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.ellipse(fx, fy, fl, fh, 0, 0, TAU); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(fx - fl, fy); ctx.lineTo(fx - fl - 10, fy - 8); ctx.lineTo(fx - fl - 10, fy + 8); ctx.closePath(); ctx.stroke();
-      ctx.beginPath(); ctx.arc(fx + fl * 0.55, fy - 2, 2, 0, TAU); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(fx - fl, py + ph - 6); ctx.lineTo(fx + fl, py + ph - 6); ctx.moveTo(fx - fl, py + ph - 8); ctx.lineTo(fx - fl, py + ph - 4); ctx.moveTo(fx + fl, py + ph - 8); ctx.lineTo(fx + fl, py + ph - 4); ctx.stroke();
-      ctx.fillStyle = '#ffe27a'; ctx.fillRect(px + 4, py + 4, 10, 2); ctx.fillRect(px + 4, py + 8, 6, 1);
-      ctx.fillStyle = rgba('#ffffff', 0.25); ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px + pw * 0.4, py); ctx.lineTo(px, py + ph * 0.6); ctx.closePath(); ctx.fill();
-      // pin
-      ctx.fillStyle = '#ff5a6a'; ctx.beginPath(); ctx.arc(px + pw / 2, py - 1, 2, 0, TAU); ctx.fill();
-    }
+    const s = shelf(Math.round(sw * 0.62));
+    if (s?.canvas) drawPiece(ctx, s, sx, sy, 0, 2, 7);
+    for (let i = 0; i < 3; i++) { const k = (t * 0.4 + i / 3) % 1; drawAeroBubble(ctx, sx + 12 + i * 34 + Math.sin(t * 2 + i) * 2, sy - 22 - k * 16, 1 + k, 1 - k); }
+    const pl = plant();
+    if (pl?.canvas) drawPiece(ctx, pl, sx + sw - 26, sy + 2, 15, 0, 10);
+    const room = P.y + P.h - 64 - 84 - (sy + 10);
+    const ck = clock();
+    if (ck?.canvas && room > 30) drawPiece(ctx, ck, sx + sw * 0.3, sy + 16 + Math.min(30, room / 2), 8.5, 8.5, 2);
   }
 
   drawBench(ctx, ui, Lo, dt) {
@@ -304,33 +329,11 @@ export class LabPanel {
     const pose = this.cheer > 0 ? 'cheer' : busy ? ((t % 6) < 4 ? 'reel' : 'idle') : 'idle';
     this.drawPlayer(ctx, plX, feet, pose, lookAt);
     this.drawFizz(ctx, fizzX, feet, busy, lookAt);
-    // bench
-    ctx.save();
-    ctx.fillStyle = rgba('#0a4a7a', 0.15); ctx.fillRect(bx + 2, benchTop + 4, bw, 50);
-    const fg = ctx.createLinearGradient(0, benchTop, 0, benchTop + 50);
-    fg.addColorStop(0, '#ffffff'); fg.addColorStop(1, '#d4eef8');
-    ctx.fillStyle = fg; roundRectPath(ctx, bx, benchTop + 3, bw, 50, 6); ctx.fill();
-    ctx.strokeStyle = '#7fb8d6'; ctx.lineWidth = 1; roundRectPath(ctx, bx + 0.5, benchTop + 3.5, bw - 1, 49, 6); ctx.stroke();
-    const tg = ctx.createLinearGradient(0, benchTop - 2, 0, benchTop + 5);
-    tg.addColorStop(0, '#bff6ff'); tg.addColorStop(0.5, '#38c0f0'); tg.addColorStop(1, '#1f8ad0');
-    ctx.fillStyle = tg; roundRectPath(ctx, bx - 4, benchTop - 2, bw + 8, 7, 3); ctx.fill();
-    ctx.fillStyle = rgba('#ffffff', 0.85); ctx.fillRect(bx, benchTop - 1, bw, 1);
-    ctx.fillStyle = '#7ee85a'; ctx.fillRect(bx + 6, benchTop + 14, bw - 12, 2);
-    for (const hx of [bx + bw * 0.2, bx + bw * 0.8]) { ctx.fillStyle = '#9fc8dc'; roundRectPath(ctx, hx - 8, benchTop + 28, 16, 3, 1.5); ctx.fill(); }
-    // control panel: status lights + a bubble gauge
-    const cpx = bx + bw / 2 - 26, cpy = benchTop + 21;
-    ctx.fillStyle = '#e4f6fc'; roundRectPath(ctx, cpx, cpy, 52, 16, 5); ctx.fill();
-    ctx.strokeStyle = '#7fb8d6'; ctx.lineWidth = 1; roundRectPath(ctx, cpx + 0.5, cpy + 0.5, 51, 15, 5); ctx.stroke();
-    for (let i = 0; i < 3; i++) {
-      const on = busy ? ((this.t * 3 + i) % 3) < 1.5 : i === 0;
-      ctx.fillStyle = on ? ['#5fd23a', '#ffd23a', '#35c8ff'][i] : '#b8d0dc';
-      ctx.beginPath(); ctx.arc(cpx + 9 + i * 9, cpy + 8, 3, 0, TAU); ctx.fill();
-      if (on) { ctx.fillStyle = rgba('#ffffff', 0.9); ctx.fillRect(cpx + 8 + i * 9, cpy + 6, 1, 1); }
-    }
-    ctx.fillStyle = '#ffffff'; roundRectPath(ctx, cpx + 34, cpy + 3, 14, 10, 3); ctx.fill();
-    ctx.fillStyle = busy ? '#4fd2ff' : '#bfe8f4'; roundRectPath(ctx, cpx + 35, cpy + 4 + (busy ? 0 : 5), 12, busy ? 8 : 3, 2); ctx.fill();
-    ctx.restore();
-    // research benches = flasks on the counter
+    // bench (voxel): its worktop surface sits at benchTop
+    const b = bench(bw);
+    if (b?.canvas) drawPiece(ctx, b, bx - 4, benchTop, 0, b.top, b.front * 0.5);
+    else { ctx.fillStyle = '#f4fbff'; ctx.fillRect(bx, benchTop, bw, 54); }
+    // research benches = voxel flasks on the counter (+ 2D bubbles and steam)
     const slots = labSlots(st, g.stats);
     const sp = (bw - 24) / Math.max(1, slots);
     for (let i = 0; i < slots; i++) {
@@ -339,21 +342,17 @@ export class LabPanel {
       const fx = bx + 12 + sp * (i + 0.5);
       const col = nd ? mix(BRANCHES[nd.branch]?.color || '#35c8ff', '#4fd2ff', 0.25) : '#9fe0f8';
       const k = nd ? labProgress(st, s.id) : 0;
-      drawFlask(ctx, fx, flaskY, { t: t + i * 1.3, level: nd ? 0.25 + 0.7 * k : 0.12, color: col, w: 24, h: 30, glow: nd ? 1 : 0, active: !!nd });
+      if (nd) drawAeroGlow(ctx, fx, flaskY - 12, 22, col, 0.45 + 0.15 * Math.sin(t * 4 + i));
+      const fl = flask('md', nd ? 0.25 + 0.7 * k : 0.15, col);
+      if (fl?.canvas) drawPiece(ctx, fl, fx, flaskY + 1, fl.c, 0, fl.c);
       if (nd) {
+        for (let j = 0; j < 3; j++) { const q = (t * 0.7 + j / 3) % 1; drawAeroBubble(ctx, fx + Math.sin(t * 2 + j * 2) * 3 * q, flaskY - 34 - q * 14, 1 + q * 1.4, 1 - q); }
         const ic = icon(nd.icon, 14);
-        if (ic) ctx.drawImage(ic, Math.round(fx - ic.width / 2), Math.round(flaskY - 46 + Math.sin(t * 2 + i) * 2));
+        if (ic) ctx.drawImage(ic, Math.round(fx - ic.width / 2), Math.round(flaskY - 52 + Math.sin(t * 2 + i) * 2));
       }
       const rr = { x: fx - 14, y: flaskY - 50, w: 28, h: 52 };
       if (ui.hover(rr)) ui.tip = nd ? `${nd.name}: ${fmtTime(labRemaining(st, s.id))}` : 'Free bench';
       if (ui.clicked(rr)) { this.setTab('tree'); if (nd) this.tree.focus(nd.id); else this.tree.sel = 'core'; }
-    }
-    // a tiny test-tube rack at the end of the bench
-    const rx = bx + bw - 14;
-    for (let i = 0; i < 3; i++) {
-      const tx = rx - i * 5, col = ['#ff74b4', '#ffd23a', '#6fd23f'][i];
-      ctx.fillStyle = rgba('#ffffff', 0.7); ctx.fillRect(tx - 1, flaskY - 16, 3, 14);
-      ctx.fillStyle = col; ctx.fillRect(tx - 1, flaskY - 9 + Math.round(Math.sin(t * 2 + i)), 3, 7);
     }
     void dt;
   }
@@ -378,19 +377,24 @@ export class LabPanel {
     drawBubblePerson(ctx, x, feet, t, { body: '#ffffff', head: '#9effd2', coat: true, goggles: true, cheer: this.cheer > 0, look: lookAt, facing: -1 });
   }
 
+  // glossy voxel leaf sprigs framing the panel (they grow from just outside its edges)
   drawLeaves(ctx, P) {
-    const put = (s, x, y, ang) => {
-      ctx.save(); ctx.translate(Math.round(x), Math.round(y)); ctx.rotate(ang);
-      ctx.drawImage(s.canvas, -s.ox, -s.oy);
-      ctx.restore();
-    };
-    const sway = Math.sin(this.t * 0.9) * 0.03;
-    put(leafSprig(118, 3, false, 0.5), P.x - 10, P.y + P.h * 0.62, -1.42 + sway);
-    put(leafSprig(84, 5, false, 0.3), P.x - 6, P.y + P.h - 10, -0.2 - sway);
-    put(leafSprig(96, 7, false, 0.45), P.x + P.w - 6, P.y + P.h * 0.6, 0.45 + sway);
-    put(leafSprig(76, 9, true, 0.3), P.x + P.w + 10, P.y + 70, -0.62 - sway);
+    for (const l of LEAVES) {
+      const sp = sprig(l.len, l.ang, l.seed);
+      if (!sp?.canvas) continue;
+      const y = P.y + P.h * l.ay + Math.sin(this.t * 0.9 + l.seed) * 1;
+      drawPiece(ctx, sp, Math.round(l.right ? P.x + P.w + l.dx : P.x + l.dx), Math.round(y), ...sp.anchor);
+    }
   }
 }
+
+// leaf sprigs: len px, growth angle (deg, 0 = right, 90 = down), anchor (dx from the left or right edge, ay of height)
+const LEAVES = [
+  { len: 104, ang: -84, seed: 3, dx: 2, ay: 0.72 },
+  { len: 80, ang: -14, seed: 5, dx: -4, ay: 0.99 },
+  { len: 84, ang: 100, seed: 7, dx: -2, ay: 0.52, right: true },
+  { len: 70, ang: 150, seed: 9, dx: 2, ay: 0.12, right: true },
+];
 
 // A simple glossy bubble person (fallback while the character / NPC art is not available).
 export function drawBubblePerson(ctx, x, feet, t, o = {}) {

@@ -337,7 +337,7 @@ export class JournalPanel {
     if (k === 'caught') {
       drawFishFit(ctx, sp, x + w / 2, y + h / 2, s, t, { lookX: hov ? g.input.x : null, lookY: hov ? g.input.y : null, emotion: hov ? 'happy' : 'neutral', blink: (t % 4) < 0.12 ? 1 : 0 });
     } else {
-      ctx.globalAlpha *= k === 'seen' ? 0.8 : 0.3;
+      ctx.globalAlpha *= k === 'seen' ? 0.85 : 0.6; // [phase3:fish] dark voxel silhouettes stay readable (not pale blobs)
       drawFishFit(ctx, sp, x + w / 2, y + h / 2, s, k === 'seen' ? t : 0.3, { silhouette: SIL, speed01: 0.1 });
       ctx.globalAlpha = 1;
       drawText(ctx, '?', x + w / 2, y + h / 2 - 4, { align: 'center', color: '#ffffff', outline: SIL });

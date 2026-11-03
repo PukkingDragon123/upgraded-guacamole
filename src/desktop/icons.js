@@ -14,6 +14,7 @@ import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { PixelBuffer } from '../gfx/pixel.js';
 import { pack, unpack, shade, mix, rgbToHex } from '../core/color.js';
 import { bayer, hash2, clamp } from '../core/math.js';
+import { voxelFishIcon } from '../fish/fishicon.js'; // [phase3:fish]
 
 export const ICON_SIZE = 32;
 export const MINI_SIZE = 14;
@@ -238,28 +239,17 @@ function bevelPaint(p, x, y, w, h, R, base = 0.5, edge = 0.28) {
   });
 }
 
-function shadedFish(q, cx, cy, rx, ry, ang, F, { stripe = null, eye = 1 } = {}) {
-  const ca = Math.cos(ang), sa = Math.sin(ang);
-  const bx = cx - ca * rx * 0.82, by = cy - sa * rx * 0.82;
-  const bk = (a, b) => [bx - ca * rx * a - sa * ry * b, by - sa * rx * a + ca * ry * b];
-  q.poly([bk(-0.1, -0.35), bk(0.62, -1.15), bk(0.42, 0), bk(0.62, 1.15), bk(-0.1, 0.35)], F[1]);
-  q.poly([bk(-0.05, -0.2), bk(0.5, -0.95), bk(0.3, 0)], F[2]);
-  const fin = (a, b) => [cx + ca * rx * a - sa * ry * b, cy + sa * rx * a + ca * ry * b];
-  q.poly([fin(-0.35, -0.7), fin(-0.05, -1.45), fin(0.25, -0.75)], F[1]);
-  q.rell(cx, cy, rx, ry, ang, (u, v, x, y) => {
-    if (stripe !== null && Math.abs(u - stripe) < 0.12 + 0.04 * Math.abs(v)) return v > 0.45 ? '#d9dceb' : '#ffffff';
-    let l = 0.66 - 0.4 * v + 0.06 * u;
-    if (v > 0.45 && u > -0.4) l = Math.max(l, 0.5);
-    return dith(l, F, x, y);
-  });
-  const ex = Math.floor(cx + ca * rx * 0.52 + sa * ry * 0.28), ey = Math.floor(cy + sa * rx * 0.52 - ca * ry * 0.28);
-  if (eye === 2) {
-    q.rect(ex - 1, ey - 1, 3, 3, '#1a1226');
-    q.px(ex - 1, ey - 1, '#ffffff');
-    q.px(ex, ey - 1, '#cfe0ff');
-  } else {
-    q.rect(ex, ey, 2, 2, '#1a1226');
-    q.px(ex, ey, '#ffffff');
+// [phase3:fish] full voxel art: the little fish is a real voxel fish render (fish/fishicon.js) blitted in,
+// never a flat 2D fish shape.
+function shadedFish(q, cx, cy, rx, ry, ang) {
+  const w = Math.max(6, Math.ceil(rx * 3)), h = Math.max(4, Math.ceil(ry * 3));
+  const cv = voxelFishIcon('honk', w, h, { dir: Math.cos(ang) < 0 ? -1 : 1 });
+  if (!cv) return;
+  const d = ctxOf(cv).getImageData(0, 0, w, h).data;
+  const x0 = Math.round(cx - w / 2), y0 = Math.round(cy - h / 2);
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+    const k = (j * w + i) * 4;
+    if (d[k + 3] > 110) q.b.set(x0 + i, y0 + j, ((255 << 24) | (d[k + 2] << 16) | (d[k + 1] << 8) | d[k]) >>> 0);
   }
 }
 

@@ -1,6 +1,8 @@
-// Dev preview: the Lab's procedural art (src/ui/labart.js).  node tools/build.mjs --dev labart
+// Dev preview: the Lab's voxel scenery (src/ui/labvox.js) and 2D effects.  node tools/build.mjs --dev labart
 import { ctxOf } from '../core/canvas.js';
-import { ecoScene, ecoOrb, leafSprig, labRoom, drawTube, drawFlask, drawSplash, drawRays } from '../ui/labart.js';
+import { drawText } from '../gfx/font.js';
+import { voxBudget, roomChunk, floorChunk, ROOM_CHUNK, windowFrame, windowView, bench, flask, pipe, shelf, clock, plant, sprig, seaScene, drawPiece } from '../ui/labvox.js';
+import { drawRays } from '../ui/labart.js';
 
 export function run() {
   const W = 960, H = 540;
@@ -8,21 +10,33 @@ export function run() {
   cv.width = W; cv.height = H;
   cv.style.width = W * 2 + 'px'; cv.style.height = H * 2 + 'px';
   const g = ctxOf(cv);
-  g.drawImage(labRoom(W, H, { x: 20, y: 20, w: 220, h: 150 }), 0, 0);
-  g.drawImage(ecoScene(400, 225), 540, 10);
-  const cols = ['#35c8ff', '#ffc23a', '#3f8cff', '#19c7a2', '#ff74b4', '#6fd23f', '#ff9330', '#a98aff'];
-  cols.forEach((c, i) => {
-    for (const [j, look] of ['done', 'open', 'locked'].entries()) { const o = ecoOrb(12, c, look); g.drawImage(o, 270 + i * 32 - o.width / 2, 260 + j * 32 - o.height / 2); }
-  });
-  const sun = ecoOrb(20, '#ffffff', 'sun'); g.drawImage(sun, 300 - sun.width / 2, 400 - sun.height / 2);
-  drawRays(g, 300, 400, 80, 0, 0.3);
-  const s1 = leafSprig(110, 1, false); g.drawImage(s1.canvas, 20 - s1.ox, 470 - s1.oy);
-  const s2 = leafSprig(90, 2, true); g.drawImage(s2.canvas, 940 - s2.ox, 300 - s2.oy);
-  drawTube(g, [[560, 300], [620, 280], [700, 300], [760, 360]], { t: 1.3, water: 1, color: '#35c8ff' });
-  drawTube(g, [[560, 340], [620, 320], [700, 340], [760, 400]], { t: 1.3, water: 0.5, color: '#6fd23f' });
-  drawTube(g, [[560, 380], [620, 360], [700, 380], [760, 440]], { t: 1.3, water: 0 });
-  drawFlask(g, 820, 460, { t: 2, level: 0.6, color: '#35c8ff', active: true, glow: 1 });
-  drawFlask(g, 860, 460, { t: 2, level: 0.3, color: '#ff74b4' });
-  drawSplash(g, 900, 420, 0.35);
+  g.fillStyle = '#334'; g.fillRect(0, 0, W, H);
+  voxBudget(1e9);
+  const times = [];
+  const T = (name, f) => { const t0 = performance.now(); const r = f(); times.push(`${name} ${(performance.now() - t0).toFixed(0)}ms`); return r; };
+  const rm = T('room', () => roomChunk(300, { tileY: 190, floorY: 260 }));
+  const fl = T('floor', () => floorChunk(40));
+  for (let x = 10; x < 470; x += ROOM_CHUNK) { if (rm?.canvas) g.drawImage(rm.canvas, x, 10); if (fl?.canvas) g.drawImage(fl.canvas, x, 10 + 258); }
+  const wv = T('view', () => windowView(220, 150));
+  if (wv?.canvas) g.drawImage(wv.canvas, 500, 10);
+  if (wv?.glow) { g.globalCompositeOperation = 'lighter'; g.drawImage(wv.glow, 500, 10); g.globalCompositeOperation = 'source-over'; }
+  if (wv?.sun) { const [sx, sy] = wv.project(...wv.sun); drawRays(g, 500 + sx, 10 + sy, 160, 0, 0.25, 16); }
+  const wf = T('frame', () => windowFrame(220, 150));
+  if (wf?.canvas) g.drawImage(wf.canvas, 740, 10);
+  const b = T('bench', () => bench(200));
+  if (b?.canvas) g.drawImage(b.canvas, 500, 220);
+  ['#35c8ff', '#ff74b4', '#6fd23f'].forEach((c, i) => { const f = T('flask' + i, () => flask(i === 2 ? 'lg' : 'md', 0.3 + i * 0.3, c)); if (f?.canvas) g.drawImage(f.canvas, 720 + i * 40, 220); });
+  const p = T('pipe', () => pipe(120, 60));
+  if (p?.canvas) g.drawImage(p.canvas, 860, 220);
+  const sh = T('shelf', () => shelf(180));
+  if (sh?.canvas) g.drawImage(sh.canvas, 500, 300);
+  const ck = T('clock', () => clock());
+  if (ck?.canvas) g.drawImage(ck.canvas, 700, 300);
+  const pl = T('plant', () => plant());
+  if (pl?.canvas) g.drawImage(pl.canvas, 760, 300);
+  [[110, -60, 3], [90, 200, 5], [100, -20, 7]].forEach(([l, a, s], i) => { const sp = T('sprig' + i, () => sprig(l, a, s)); if (sp?.canvas) g.drawImage(sp.canvas, 10 + i * 160, 330); });
+  const sea = T('sea', () => seaScene(300, 180));
+  if (sea?.canvas) g.drawImage(sea.canvas, 640, 360);
+  times.forEach((s, i) => drawText(g, s, 520, 380 + i * 9, { font: 'small', color: '#ffffff' }));
   window.__ready = true;
 }

@@ -1,10 +1,14 @@
-// Dev preview for the Frutiger Aero fish (phase 3): voxel fish by default, &style=pixel for the 2D rig.
+// Dev preview for the Frutiger Aero voxel fish (phase 3; full voxel art, no 2D fish).
 // dist/dev/fishpix.html?mode=grid&biome=oscean&scale=1.6   roster grid of one ocean (or ids=a,b,c)
 //   mode=emo&ids=a,b     every expression on a few species (big)
 //   mode=swim&biome=x    a live ocean-like tank: real Fish AI (incl. the Wakka quirk), n=<count>
 //   &frozen for a still frame
-import { compiled } from '../gfx/spritecache.js';
-import { drawFishRig, beginRigFrame, rigStats, setFishStyle } from '../gfx/fishrig.js';
+import { compiled, frame } from '../gfx/spritecache.js';
+import { getAppIcon } from '../desktop/icons.js';
+import { getUiIcon } from '../gfx/uiicons.js';
+import { labIcon } from '../ui/labicons.js';
+import { voxelFishIcon } from '../fish/fishicon.js';
+import { drawFishRig, beginRigFrame, rigStats } from '../gfx/fishrig.js';
 import { setVoxelSync, beginVoxelFishFrame } from '../gfx/voxelfish.js';
 import { rigGeom } from '../gfx/fishart.js';
 import { ctxOf } from '../core/canvas.js';
@@ -43,7 +47,6 @@ export function run(params) {
   const g = ctxOf(cv);
   const mode = params.get('mode') || 'grid';
   MAXS = Number(params.get('maxs') || 3);
-  if (params.get('style') === 'pixel') setFishStyle('pixel');
   const frozen = params.has('frozen');
   if (frozen) setVoxelSync(true);
   const ids = params.get('ids')?.split(',').filter((id) => SPECIES_BY_ID[id]);
@@ -69,6 +72,7 @@ export function run(params) {
     if (mode === 'grid') drawGrid(g, list, cols, t, frozen, mouse);
     else if (mode === 'emo') drawEmo(g, list, t, frozen);
     else if (mode === 'wakka') drawWakkaSheet(g, t);
+    else if (mode === 'icons') drawIcons(g, t);
     else drawSwim(g, world, dt, t);
     drawText(g, `${mode} ${biome} ${list.length} species  ${fps ? fps.toFixed(0) + ' fps' : ''}`, 6, 4, { font: 'small', color: '#ffffff', shadow: '#0a2a4a' });
     if (!frozen || !window.__warm) { if (frozen) window.__warm = (window.__warm || 0) + 1; if (!frozen || window.__warm < 3) requestAnimationFrame(frame); }
@@ -118,9 +122,26 @@ function drawWakkaSheet(g, t) {
   const dirs = [[1, 0], [-1, 0], [1, -Math.PI / 2], [1, Math.PI / 2]];
   dirs.forEach(([facing, angle], r) => {
     for (let k = 0; k < 6; k++) {
-      drawFishRig(g, c, { x: 90 + k * 150, y: 70 + r * 128, scale: 3, facing, turn: facing, angle, swimPhase: k / 6, tailPhase: k / 6, finPhase: k / 6, time: 0.3, emotion: k === 5 ? 'happy' : 'neutral', blink: 0 });
+      drawFishRig(g, c, { x: 90 + k * 150, y: 70 + r * 132, scale: 2.6, facing, turn: facing, angle, swimPhase: k / 6, tailPhase: k / 6, finPhase: k / 6, time: 0.3, emotion: k === 5 ? 'happy' : 'neutral', blink: 0 });
     }
   });
+}
+
+// Every place that used to draw a flat 2D fish, now voxel: desktop app icons, glyphs,
+// dark-voxel silhouettes (journal) and the baked frame() API.
+function drawIcons(g) {
+  bg(g, '#dff6ff', '#9ad8ff');
+  ['fishtop', 'browser'].forEach((id, i) => { const ic = getAppIcon(id); if (ic) g.drawImage(ic.canvas || ic, 20 + i * 90, 200, 64, 64); });
+  const ui = getUiIcon('fish'); if (ui) g.drawImage(ui, 220, 210, ui.width * 4, ui.height * 4);
+  const li = labIcon('fish', 32); if (li) g.drawImage(li, 300, 200, 64, 64);
+  ['honk', 'gourami', 'sneakerhead', 'guppy', 'porpoise'].forEach((id, i) => g.drawImage(voxelFishIcon(id, 80, 50), 400 + i * 100, 205));
+  ['honk', 'bruce', 'clickcrab', 'glowjelly'].forEach((id, i) => {
+    const sp = SPECIES_BY_ID[id];
+    drawFishRig(g, compiled(sp.look, null, sp.id), { x: 90 + i * 150, y: 380, scale: fitScale(sp, 130, 90), silhouette: '#0e2a3e', time: 0.3, swimPhase: 0.2 });
+    const f = frame(compiled(sp.look, null, sp.id), { phase: 0.2, scale: fitScale(sp, 130, 90) });
+    if (f) g.drawImage(f.canvas, Math.round(640 + i * 80 - f.ox * 0.5), Math.round(380 - f.oy * 0.5), f.w * 0.5, f.h * 0.5);
+  });
+  drawText(g, 'app icons / ui + lab fish glyph / voxelFishIcon / dark voxel silhouettes / frame()', 8, 500, { font: 'small', color: '#0a2a4a' });
 }
 
 function makeWorld(list, n) {
@@ -145,5 +166,5 @@ function drawSwim(g, world, dt, t) {
   for (const f of list) f.draw(g, f.z > 0.3 ? { color: '#bfefff', alpha: f.z * 0.4 } : null, t);
   world.drawMs = performance.now() - t0;
   const st = rigStats();
-  drawText(g, `draw ${world.drawMs.toFixed(1)}ms  cache ${st.items}`, W - 6, 4, { font: 'small', align: 'right', color: '#ffffff', shadow: '#0a2a4a' });
+  drawText(g, `draw ${world.drawMs.toFixed(1)}ms  pending ${st.pending}`, W - 6, 4, { font: 'small', align: 'right', color: '#ffffff', shadow: '#0a2a4a' });
 }

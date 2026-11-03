@@ -124,6 +124,7 @@ add({
   size: [3, 6], weight: [0.01, 0.04],
   look: {
     kind: 'chomper',
+    vox: { chunk: 2.2, gloss: 1, iri: 0.2 },
     body: { len: 22, h: 22 },
     col: { body: '#3ae0ff', belly: '#d8fdff', back: '#14a8ff', fin: '#ff4ab0' },
     tail: { color: '#ff4ab0' },
@@ -140,7 +141,7 @@ add({
   fight: { phases: ['tension', 'net'], power: 0.12, stamina: 2, tricks: ['dash'], biteWindow: 0.8, nibbles: [1, 3], fakeBite: 0.1 },
   spawn: { weight: 1.3, weather: null, time: null, requires: null, hidden: null },
   sound: 'chirp',
-  desc: 'A retro pixel chomper that only knows one route: straight lines and sharp corners. It lays a trail of glowing bubble pellets and eats every one. Wakka wakka.',
+  desc: 'A chunky retro voxel chomper that only knows one route: straight lines and sharp corners. It lays a trail of glowing bubble pellets and eats every one. Wakka wakka.',
   behavior: 'Runs an invisible grid, gobbling pellet bubbles. Power bubbles make it zoom.',
   shinyHue: 120,
 });

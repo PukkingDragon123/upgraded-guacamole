@@ -24,7 +24,7 @@ import { drawText, measureText } from '../gfx/font.js';
 import { getUiIcon, UI_ICON_NAMES } from '../gfx/uiicons.js';
 import { getProp, PROPS } from '../gfx/props.js';
 import { Fish } from '../fish/fish.js';
-import { SPECIES_BY_ID } from '../fish/species.js';
+import { SPECIES, SPECIES_BY_ID } from '../fish/species.js';
 import { rollIndividual } from '../fish/traits.js';
 import { TASKBAR_H } from '../desktop/desktop.js';
 import { AERO, fmtAero, drawAeroCoin, drawAeroBubble, drawAeroSurface, drawAeroButton, drawSparkle, drawAeroGlow } from '../ui/aero.js';
@@ -33,7 +33,7 @@ import { TankSpace, renderBackdrop, renderGlass, shaftSprite, causticFrames, FOG
 import { TANK_TIERS, tankTier, aeroRate, sceneSize, sceneLayout, tankOpts, FRAME } from './tanks.js';
 import { roomArt, drawRoomBack, drawRoomFront, RoomAmbient, roomHit } from './room.js';
 import { shellArt } from './shell.js';
-import { reefPanorama, drawReef } from './reef.js';
+import { reefDiorama, reefDrum } from './reefvox.js';
 import { startUpgrade, updateUpgrade, drawUpgradeBack, drawUpgradeFront, upgradeHidesFish, upgradeFill, upgradeScale } from './upgrade.js';
 import { VoxelModel, renderVoxels } from '../gfx/voxel.js';
 import { voxPlant, plantFrame, pumpVoxPlants, PLANT_FRAMES } from './voxplants.js';
@@ -253,7 +253,7 @@ export class Aquarium {
     }
     const back = bd.back;
     v.art = {
-      backdrop: bd.canvas, floor: bd.floor, back, reef: reefPanorama(back.y1 - back.y0, 3 + v.tier, T.round ? 0.45 : 1), glass: renderGlass(T), fog,
+      backdrop: bd.canvas, floor: bd.floor, back, dio: v.L.shape === 'lamp' ? null : reefDiorama(back.x1 - back.x0, back.y1 - back.y0, 3 + v.tier, T.round ? 0.8 : 1), glass: renderGlass(T), fog,
       floorPoly: bd.floorPoly, ceilPoly: bd.ceilPoly, floorTopY: Math.min(...bd.floorTop),
       layer: makeCanvas(T.W, T.H), caustics: v.cfg.caustics,
     };
@@ -865,7 +865,16 @@ export class Aquarium {
     // the back-glass reef picture turns slowly (stops when the lamp tank is switched off)
     this.reefSpeed = lerp(this.reefSpeed ?? 1, this.st.tank.lampOff ? 0 : 1, Math.min(1, dt * 2));
     this.reefOff = (this.reefOff || 0) + dt * 5 * this.reefSpeed;
-    if (this.visibleKey) this.room.update(dt, roomArt(this.view.L));
+    if (this.visibleKey) {
+      this.room.update(dt, roomArt(this.view.L));
+      this.updateBgFish(dt);
+      // the Aqua Lamp's drum: render one more frame of its ring per tick until all are cached
+      const vv = this.view;
+      if (vv.L.shape === 'lamp') {
+        if (!vv.drum && vv.art) { const b = vv.art.back; vv.drum = reefDrum((b.x1 - b.x0) * 1.04, (b.y1 - b.y0) * 1.3, 5, vv.key === 'full' ? 2 : 1, vv.key === 'mini' ? 32 : 48); }
+        if (vv.drum && !vv.drum.ready) vv.drum.warm();
+      }
+    }
 
     this.saveT -= dt;
     if (this.saveT <= 0 && this.coinsDirty) { this.saveT = 1; this.saveCoins(); }
@@ -1783,28 +1792,67 @@ export class Aquarium {
     ctx.restore();
   }
 
-  // The illustrated reef on the back glass, scrolling like a moving-picture lamp; the floor goes back on top.
+  // Voxel reef behind the fish: a coral diorama on the back glass, or (Aqua Lamp) the rotating voxel reef
+  // drum; the floor is drawn again on top so the reef stands behind it.
   drawPanorama(ctx, v, art, night) {
     const b = art.back, T = v.T;
-    if (!art.reef || b.x1 <= b.x0) return;
+    if (b.x1 <= b.x0) return;
     ctx.save();
     ctx.beginPath();
     ctx.rect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
     ctx.clip();
-    if (T.round) ctx.globalAlpha = 0.7;
-    drawReef(ctx, art.reef, b.x0, b.y0, b.x1, b.y1, this.reefOff * (art.reef.h / 120));
-    ctx.globalAlpha = 1;
-    // a veil of water in front of the picture (more through the curved globe)
-    ctx.fillStyle = rgba(T.water[9], T.round ? 0.3 : 0.14);
-    ctx.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
-    if (!T.round) {
-      // the picture sits on the back glass: it shades toward the top where the hood light does not reach
-      ctx.fillStyle = rgba(T.water[2], 0.12);
-      ctx.fillRect(b.x0, b.y0, b.x1 - b.x0, Math.max(1, Math.round((b.y1 - b.y0) * 0.08)));
+    if (art.dio) ctx.drawImage(art.dio.canvas, Math.round(b.x0), Math.round(b.y1 - art.dio.h));
+    else if (v.drum) {
+      const q = v.drum.get(this.reefOff * 1.2);
+      if (q) {
+        const cx = Math.round((b.x0 + b.x1) / 2), by = Math.round(b.y1 + 2);
+        ctx.drawImage(q.a.canvas, cx - q.a.ax, by - q.a.by);
+        if (q.b && q.k > 0.02) { ctx.globalAlpha = q.k; ctx.drawImage(q.b.canvas, cx - q.b.ax, by - q.b.by); ctx.globalAlpha = 1; }
+      }
     }
+    // water between the glass and the reef: depth haze, darker toward the top
+    ctx.fillStyle = rgba(T.water[8], T.round ? 0.3 : 0.2);
+    ctx.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
     ctx.restore();
     ctx.drawImage(art.floor, 0, 0);
     void night;
+  }
+
+  // A small school of real voxel fish drifting slowly across the back of the tank (not interactive).
+  updateBgFish(dt) {
+    const T = this.T, v = this.view;
+    if (!this.bgFish) {
+      this.bgFish = [];
+      const pool = SPECIES.filter((s) => s.look && s.look.kind !== 'chain' && !(s.quirks || []).includes('intro') && (s.move?.style ?? 'swim') === 'swim' && !s.spawn?.never && (s.rarity === 'common' || s.rarity === 'uncommon'));
+      const r = new RNG(77);
+      for (let i = 0; i < 8 && pool.length; i++) {
+        const sp = pool[r.int(0, pool.length - 1)];
+        try {
+          const rec = rollIndividual(sp, { mutationChance: 0, shinyChance: 0 });
+          const f = new Fish(rec, sp, this.world, { z: 0.96 });
+          f.baseScale = f.scale;
+          f.bg = { u: r.next(), yk: r.float(0.12, 0.62), sp: r.float(0.012, 0.024) * (r.chance(0.5) ? 1 : -1), ph: r.float(0, TAU) };
+          this.bgFish.push(f);
+        } catch { /* species without a voxel look */ }
+      }
+    }
+    const n = Math.min(this.bgFish.length, [2, 3, 3, 4, 5, 6][this.tier] ?? 3);
+    this.bgN = n;
+    const z = T.round ? 0.88 : 0.97;
+    for (let i = 0; i < n; i++) {
+      const f = this.bgFish[i], b = f.bg;
+      b.u += b.sp * dt * (520 / Math.max(200, T.W));
+      if (b.u > 1.15) b.u = -0.15; else if (b.u < -0.15) b.u = 1.15;
+      b.ph += dt;
+      const L = T.left(z), R = T.right(z);
+      f.z = z;
+      f.scale = f.baseScale * v.fishScale * 0.55;
+      f.x = lerp(L - 20 * f.scale, R + 20 * f.scale, b.u);
+      f.y = lerp(T.top(z) + 8, T.floorAt(clamp(f.x, 0, T.W - 1), z) - 10, b.yk) + Math.sin(b.ph * 0.7) * 3;
+      f.facing = b.sp > 0 ? 1 : -1; f.turn = f.facing; f.vx = b.sp * 400; f.vz = 0; f.angle = Math.sin(b.ph * 0.7) * 0.06;
+      f.tailPhase = ((f.tailPhase || 0) + dt * 1.1) % 1; f.swimPhase = f.tailPhase; f.finPhase = f.tailPhase;
+      f.speed01 = 0.4; f.emotion = 'happy'; f.age = (f.age || 0) + dt;
+    }
   }
 
   // Soft contact shadows on the floor under fish (fainter the higher they swim).
@@ -1865,6 +1913,7 @@ export class Aquarium {
     for (const p of this.food) push(p.z, 'food', p);
     for (const e of this.st.tank.eggs) push(e.z, 'egg', e);
     if (this.view.stone) push(this.view.stone.z, 'stone', this.view.stone);
+    for (let i = 0; i < (this.bgN || 0); i++) push(this.bgFish[i].z + 0.02, 'bgfish', this.bgFish[i], this.bgFish[i].y);
     for (const b of this.bubbles) push(b.z - 0.001, 'bubble', b);
     items.length = n;
     items.sort((a, b) => b.z - a.z || a.y - b.y);
@@ -1943,6 +1992,12 @@ export class Aquarium {
         const aw = a?.w ?? 30 * o.scale, ah = a?.h ?? 20 * o.scale;
         this.grow(o.x - aw * 0.6 - 4, o.y - ah * 0.6 - 4, o.x + aw * 0.6 + 4, o.y + ah * 0.6 + 4);
         if (o.rec.variant?.shiny && rng.chance(0.05)) this.particles.sparkle(o.x + rng.float(-8, 8) * o.scale, o.y + rng.float(-5, 5) * o.scale, '#fff6b0');
+        break;
+      }
+      case 'bgfish': {
+        const a = drawVoxelFish(g, o, { scale: o.scale * T.s(o.z), glow: 0, alpha: 1 });
+        const aw = a?.w ?? 30 * o.scale, ah = a?.h ?? 20 * o.scale;
+        this.grow(o.x - aw * 0.6 - 2, o.y - ah * 0.6 - 2, o.x + aw * 0.6 + 2, o.y + ah * 0.6 + 2);
         break;
       }
       case 'coin': {

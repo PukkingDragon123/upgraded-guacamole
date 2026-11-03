@@ -113,3 +113,64 @@ export function composeStrip(w, h, items) {
   }
   return c;
 }
+
+// Relief-voxelize a pixel image: every `cell` x `cell` block becomes a voxel column extruded toward the viewer by
+// depth(r, g, b, x, y) voxels (1..maxD; 0 = empty), then rendered with the world camera, so painted panoramas and
+// tiny pixel sprites become real voxel relief (outlines, AO, lit top faces on every ledge). Colours are quantised
+// into the model palette (<= 250 entries). Returns {canvas, w, h, ox, oy} where (ox, oy) is where the source
+// image's top-left corner lands (draw at x - ox, y - oy to line it up with the original).
+export function voxelize(src, { cell = 2, depth = () => 3, maxD = 8, alignZ = null, render = {} } = {}) {
+  const w = src.width, h = src.height;
+  const d = src.getContext ? src.getContext('2d').getImageData(0, 0, w, h).data : src.data;
+  // the world camera's pitch foreshortens heights by cos(pitch): sample rows a little closer so the voxel relief
+  // keeps the source's proportions on screen
+  const rowStep = cell * Math.cos((WORLD_PITCH * Math.PI) / 180);
+  const nx = Math.ceil(w / cell), ny = Math.ceil(h / rowStep);
+  const rowY = (cy) => Math.min(h - 1, Math.floor((cy + 0.5) * rowStep));
+  const m = new VoxelModel(nx, ny, maxD);
+  const pal = new Map();
+  let shift = 3;
+  const keyOf = (r, g, b) => ((r >> shift) << 16) | ((g >> shift) << 8) | (b >> shift);
+  // pass 1: count colours, coarsen until they fit the palette
+  for (let tries = 0; tries < 3; tries++) {
+    const seen = new Set();
+    for (let cy = 0; cy < ny; cy++) for (let cx = 0; cx < nx; cx++) {
+      const i = (rowY(cy) * w + Math.min(w - 1, cx * cell + (cell >> 1))) * 4;
+      if (d[i + 3] > 110) seen.add(keyOf(d[i], d[i + 1], d[i + 2]));
+    }
+    if (seen.size <= 240) break;
+    shift++;
+  }
+  for (let cy = 0; cy < ny; cy++) for (let cx = 0; cx < nx; cx++) {
+    const px = Math.min(w - 1, cx * cell + (cell >> 1)), py = rowY(cy);
+    const i = (py * w + px) * 4;
+    if (d[i + 3] <= 110) continue;
+    const r = d[i], g = d[i + 1], b = d[i + 2];
+    const k = keyOf(r, g, b);
+    let id = pal.get(k);
+    if (id === undefined) {
+      if (pal.size >= 250) { id = pal.values().next().value; } else {
+        const q = (v) => Math.min(255, (v >> shift << shift) + (1 << (shift - 1)));
+        const hex = '#' + [q(r), q(g), q(b)].map((v) => v.toString(16).padStart(2, '0')).join('');
+        id = m.color(hex, { jitter: 0.03 });
+        pal.set(k, id);
+      }
+    }
+    const dz = Math.max(0, Math.min(maxD, Math.round(depth(r, g, b, px, py))));
+    const y = ny - 1 - cy;
+    for (let z = 0; z < dz; z++) m.set(cx, y, z, id);
+  }
+  const rr = renderVoxels(m, { scale: cell, outline: true, jitter: 0.03, ao: 0.7, edges: 0.45, light: { top: 4.6, lit: 3.4, dark: 2.6, bottom: 1.6 }, ...render, yaw: WORLD_YAW, pitch: WORLD_PITCH });
+  const az = alignZ ?? Math.ceil(maxD / 2);
+  const p = rr.project(0, ny, az);
+  return { canvas: rr.canvas, w: rr.w, h: rr.h, ox: Math.round(p[0]), oy: Math.round(p[1]) };
+}
+
+// voxelize() composited back onto a canvas of the source size (drop-in replacement for a painted layer).
+export const lumDepth = (lo = 2, hi = 5) => (r, g, b) => lo + Math.round(((r * 0.3 + g * 0.55 + b * 0.15) / 255) * (hi - lo));
+export function voxRelief(src, opts = {}) {
+  const v = voxelize(src, { cell: 2, maxD: 6, depth: lumDepth(2, 5), ...opts });
+  const c = makeCanvas(src.width, src.height);
+  ctxOf(c).drawImage(v.canvas, -v.ox, -v.oy);
+  return c;
+}

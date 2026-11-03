@@ -13,7 +13,9 @@ import { rgba, pack } from '../../core/color.js';
 import { makeCanvas, ctxOf, makeLayer, tinted } from '../../core/canvas.js';
 import { VoxelModel } from '../../gfx/voxel.js';
 import { fbm3 } from '../../gfx/props.js';
-import { worldProp } from '../voxkit.js';
+import { worldProp, voxelize, voxRelief, lumDepth } from '../voxkit.js';
+import { voxAnim, placeAnim } from '../coral.js';
+import { voxBall } from '../voxcritters.js';
 import {
   paint, dpack, lerpStops, stopPalette, ditherPick, Blend, FogLayer, fillWith, drawWobble, makeRays, drawGlow, twinkle,
   waveLine, waveRuns, Strands, Motes, Bubbles, Mask, ridge, todWeights, quality, inRect, SwayAnim, cloudTile, DepthScene,
@@ -295,7 +297,14 @@ export class VolcanoBiome extends Biome {
       });
     };
     this.sky = { day: skyOf('day'), dusk: skyOf('dusk'), night: skyOf('night') };
-    this.mtn = { day: mtnOf('day'), dusk: mtnOf('dusk'), night: mtnOf('night') };
+    // the volcano, its lava rivers, the sea stacks and the far range as voxel relief (one render, tinted per time)
+    const MD = [0, 6, 7, 8, 2];
+    const vday = (() => {
+      const v = voxelize(mtnOf('day'), { cell: 2, maxD: 10, alignZ: 5, depth: (r, g, b, x, y) => { const i = y * W + x; return mat[i] ? MD[mat[i]] + Math.round(tone[i] * 2) : 0; } });
+      const c = makeCanvas(W, h); ctxOf(c).drawImage(v.canvas, -v.ox, -v.oy); return c;
+    })();
+    const tint = (src, col, a) => { const c = makeCanvas(src.width, src.height), g = ctxOf(c); g.drawImage(src, 0, 0); g.globalCompositeOperation = 'source-atop'; g.globalAlpha = a; g.fillStyle = col; g.fillRect(0, 0, c.width, c.height); return c; };
+    this.mtn = { day: vday, dusk: tint(vday, '#6a1a3a', 0.35), night: tint(vday, '#0a0410', 0.6) };
     this.lavaMask = paint(W, h, (x, row) => (mat[row * W + x] === 2 ? pack('#ffffff') : 0));
     // ash plume puffs and lava bombs above the crater
     this.plume = [];
@@ -482,7 +491,7 @@ export class VolcanoBiome extends Biome {
       for (let y = 0; y < baseA; y++) if (mA.get(fx, y)) { this.falls.push({ x: fx - pad, y0: yA + y, y1: yA + baseA - 6, w: 2 + (fxf * 10 % 2 > 1 ? 1 : 0) }); break; }
     }
     const palA = stopPalette([[0, '#0a0608'], [1, '#2a1a1e']], 5);
-    this.farA = new FogLayer(mA.toCanvas((x, y, v, up) => (up <= 1 ? pack('#6a3a30') : ditherPick(palA, 0.6 - Math.min(1, up / 70) * 0.45 + (fbm2(x * 0.05, y * 0.05, 2, 2) - 0.5) * 0.3, x, y))), -pad, yA);
+    this.farA = new FogLayer(voxRelief(mA.toCanvas((x, y, v, up) => (up <= 1 ? pack('#6a3a30') : ditherPick(palA, 0.6 - Math.min(1, up / 70) * 0.45 + (fbm2(x * 0.05, y * 0.05, 2, 2) - 0.5) * 0.3, x, y))), { depth: lumDepth(3, 7), maxD: 7 }), -pad, yA);
     this.farAY = yA;
     // far B: the rift horizon dotted with distant vents and spires
     const yB = Math.round(hz - 110), hB = H - yB;
@@ -497,11 +506,11 @@ export class VolcanoBiome extends Biome {
       else { const hh = r.float(24, 60); mB.poly([[px0 - 5, b], [px0, b - hh], [px0 + 4, b]]); }
     }
     const palB = stopPalette([[0, '#0e0808'], [1, '#2e1a1a']], 5);
-    this.farB = new FogLayer(mB.toCanvas((x, y, v, up) => (up <= 1 ? pack('#8a4030') : up === 2 ? pack('#4a2420') : ditherPick(palB, 0.6 - Math.min(1, up / 40) * 0.45 + (fbm2(x * 0.08, y * 0.08, 2, 5) - 0.5) * 0.35, x, y))), -pad, yB);
+    this.farB = new FogLayer(voxRelief(mB.toCanvas((x, y, v, up) => (up <= 1 ? pack('#8a4030') : up === 2 ? pack('#4a2420') : ditherPick(palB, 0.6 - Math.min(1, up / 40) * 0.45 + (fbm2(x * 0.08, y * 0.08, 2, 5) - 0.5) * 0.35, x, y))), { depth: lumDepth(2, 6) }), -pad, yB);
     this.farBY = yB;
     // the molten leviathan's silhouette in the far haze
-    this.disc = [];
-    for (let rr = 1; rr <= 26; rr++) this.disc.push(paint(rr * 2 + 1, rr * 2 + 1, (x, y) => (Math.hypot(x - rr, y - rr) <= rr + 0.2 ? pack('#ffffff') : 0)));
+    // (its body segments are voxel spheres of dark magma rock, built on first sighting)
+    this.disc = null;
     this.levi = null; this.leviT = 12;
   }
 
@@ -512,13 +521,8 @@ export class VolcanoBiome extends Biome {
     // heat-loving bacterial mats & red "tube" filaments swaying near vents
     for (const [xf, z, cols] of [[0.36, 0.05, ['#4a1a14', '#7a2a1a', '#b84a2a', '#ff8a4a']], [0.58, 0.2, ['#3a2a14', '#6a4a1a', '#a87a2a', '#e8c04a']], [0.71, -0.05, ['#4a1a14', '#7a2a1a', '#b84a2a', '#ff8a4a']], [0.27, 0.55, ['#3a2a14', '#6a4a1a', '#a87a2a', '#e8c04a']], [0.5, 0.7, ['#4a1a14', '#7a2a1a', '#b84a2a', '#ff8a4a']], [0.8, 0.45, ['#3a2a14', '#6a4a1a', '#a87a2a', '#e8c04a']], [0.13, 0.12, ['#4a1a14', '#7a2a1a', '#b84a2a', '#ff8a4a']]]) {
       const s = D.s(z), x0 = Math.round(xf * W), y0 = Math.round(D.floorAt(x0, z)) + 1;
-      const st = new Strands();
-      const k = r.int(5, 8);
-      for (let i = 0; i < k; i++) {
-        const lean = (i / (k - 1) - 0.5) * 0.7 + r.float(-0.1, 0.1);
-        st.add({ x: x0 + Math.round(lean * 9 * s), y: y0, n: Math.max(3, Math.round(r.int(4, 9) * Math.min(1.1, s))), seg: 2, w: 1, amp: 0.22, speed: 1.8, sec: 2, phase: r.float(0, TAU), wave: 0.6, lean, curl: lean * 0.3, cols, out: null, hl: false, tip: '#ffe0a0', tipR: 1 });
-      }
-      this.decor.add({ anim: new SwayAnim(st, { frames: 16 }), z, off: r.int(0, 15) });
+      const A = voxAnim('seagrass', 1 + r.int(0, 2), 'volcano', 8, qscale(s, 0.2, 0.4) * 1.3, 8);
+      this.decor.add({ anim: placeAnim(A, x0, y0 + 1), z, off: r.int(0, A.n - 1) });
     }
     this.decor.refog(() => '#2a1a1e', 'k');
     this.sal = salamanderFrames();
@@ -766,12 +770,15 @@ export class VolcanoBiome extends Biome {
       const rr = Math.max(1, Math.round(L.rmax * (u < 0.08 ? 0.8 + u * 2.5 : 1 - Math.pow((u - 0.08) / 0.92, 1.2) * 0.9)));
       pts.push([x, y, rr]);
     }
-    for (let i = n - 1; i >= 0; i--) { const [x, y, rr] = pts[i]; if (x < -40 || x > W + 40) continue; g.drawImage(this.disc[Math.min(25, rr - 1)], Math.round(x - rr), Math.round(y - rr)); }
-    g.globalCompositeOperation = 'source-in';
-    g.fillStyle = '#120808';
-    g.fillRect(0, 0, W, 110);
-    g.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = 0.55;
+    for (let i = n - 1; i >= 0; i--) {
+      const [x, y, rr] = pts[i];
+      if (x < -40 || x > W + 40) continue;
+      const b = voxBall(Math.min(26, rr), i % 5 === 2 ? '#5a2416' : '#3a1a14', { spec: 0.35, emissive: i % 5 === 2 ? 0.25 : 0 });
+      g.drawImage(b.canvas, Math.round(x - b.ox), Math.round(y - b.oy));
+    }
+    // a cute glowing eye on the head
+    { const [hx, hy, hr] = pts[0]; const e = voxBall(Math.max(2, Math.round(hr * 0.28)), '#ffd27a', { emissive: 0.8 }), p = voxBall(Math.max(1, Math.round(hr * 0.16)), '#1a0a08'); g.drawImage(e.canvas, Math.round(hx + L.dir * hr * 0.35 - e.ox), Math.round(hy - hr * 0.25 - e.oy)); g.drawImage(p.canvas, Math.round(hx + L.dir * hr * 0.42 - p.ox), Math.round(hy - hr * 0.25 - p.oy)); }
+    ctx.globalAlpha = 0.6;
     ctx.drawImage(this.leviLayer.canvas, 0, oy);
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'lighter';

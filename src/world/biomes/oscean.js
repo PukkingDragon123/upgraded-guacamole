@@ -22,6 +22,7 @@ import { RNG } from '../../core/rng.js';
 import { mix, rgba, pack } from '../../core/color.js';
 import { flipCanvas } from '../../gfx/pixel.js';
 import { reefSprite, coralSprite } from '../coral.js';
+import { voxBall, voxCloudSprite } from '../voxcritters.js';
 import { makeCanvas, ctxOf } from '../../core/canvas.js';
 import { VoxelModel } from '../../gfx/voxel.js';
 import * as NPC from '../../gfx/npcs.js';
@@ -34,7 +35,7 @@ import {
 import {
   AeroOverlay, AERO_LOOKS, glassOrb, chromeDrop, soapBubble, bubbleCloud, rainbowArc, auroraRibbon, turbineTower, rotorFrames,
   swayAnim, buildLeaves, buildFlowers, buildCrystalApps, buildBubblePlant, pierModel, sparkleStar, bloomStrip, waterGloss,
-  skyArcs, sunRays, GlassGlobe, waterBubble, glassCity, roundTree, splashFrames, leafBranch, planetEdge,
+  skyArcs, sunRays, GlassGlobe, voxWaterBubble, voxDrop, glassCity, roundTree, splashFrames, leafBranch, planetEdge,
 } from '../aerokit.js';
 
 const SKY = {
@@ -195,18 +196,18 @@ export class OsceanBiome extends Biome {
     const treeIt = put(tree, 0.5, 3);
     const tw = towers.map((t) => ({ ...t, it: put({ canvas: t.T.canvas, ox: t.T.ox, oy: t.T.oy, w: t.T.w, h: t.T.h }, t.xf, 2) }));
     const bubR = Math.round(city.w * 0.62);
-    const bub = waterBubble(bubR);
+    const bub = voxWaterBubble(bubR);
     const [bcx, bcy0] = E.crest(0.13, 0.3);
-    const bub0 = { x: bcx - (bub.width >> 1), y: Math.round(bcy0 - bubR * 0.62 - (bub.height >> 1)) };
-    minY = Math.min(minY, bub0.y - 4); minX = Math.min(minX, bub0.x);
+    const bc = { x: bcx, y: Math.round(bcy0 - bubR * 0.62) };
+    minY = Math.min(minY, bc.y - bub.sy - 4, bc.y - bub.ry - 4); minX = Math.min(minX, bc.x - bub.sx, bc.x - bub.rx);
     const L = 18;
     minY -= L + 2;
     const w = maxX - minX, h = maxY - minY;
     const comp = makeCanvas(w, h);
     const g = ctxOf(comp);
-    // the bubble's back half, the city seen through water, then the edge, then the bubble's glossy front
-    g.globalAlpha = 0.35;
-    g.drawImage(bub, bub0.x - minX, bub0.y - minY);
+    // the voxel glass shell (faint, behind), the city seen through water, then the edge, then the shell again + its ribbon
+    g.globalAlpha = 0.22;
+    g.drawImage(bub.shell, bc.x - bub.sx - minX, bc.y - bub.sy - minY);
     g.globalAlpha = 1;
     g.drawImage(city.canvas, cityIt.x - minX, cityIt.y - minY);
     g.globalCompositeOperation = 'source-atop';
@@ -223,7 +224,10 @@ export class OsceanBiome extends Biome {
       g.drawImage(t.T.canvas, t.it.x - minX, t.it.y - minY);
       hubs.push({ x: t.it.x - minX + t.T.hub[0], y: t.it.y - minY + t.T.hub[1], L: Math.max(5, Math.round(t.T.h * 0.36)), ph: r.float(0, TAU), v: r.float(1.6, 2.4) });
     }
-    g.drawImage(bub, bub0.x - minX, bub0.y - minY);
+    g.globalAlpha = 0.3;
+    g.drawImage(bub.shell, bc.x - bub.sx - minX, bc.y - bub.sy - minY);
+    g.globalAlpha = 1;
+    g.drawImage(bub.ribbon, bc.x - bub.rx - minX, bc.y - bub.ry - minY);
     const out = { w, h, ox: E.ox - minX, oy: E.oy - minY, hubs };
     for (const [k, [col, a]] of Object.entries(haze)) out[k] = hazed(comp, col, a);
     out.blend = new Blend();
@@ -312,7 +316,8 @@ export class OsceanBiome extends Biome {
     // glass orbs resting in the grass
     this.restOrbs = [];
     for (const [xf, z, r, ti] of [[0.47, 0.12, 9, 0], [0.505, 0.06, 5, 1], [0.27, 0.42, 7, 2], [0.86, 0.22, 8, 3], [0.68, 0.6, 6, 4], [0.215, 0.05, 4, 0]]) {
-      const spr = { canvas: glassOrb(r, ORB_TINTS[ti]), ox: r + 1, oy: 2 * r + 1 };
+      const b = voxBall(r, ORB_TINTS[ti], { spec: 0.95 });
+      const spr = { canvas: b.canvas, ox: b.ox, oy: b.h - 1 };
       const it = D.add({ sprite: spr, x: Math.round(xf * W), z, dy: 2 });
       this.restOrbs.push({ x: it.x, y: it.y - r - 1, r, z, band: it.band, tint: ORB_TINTS[ti] });
     }
@@ -366,7 +371,7 @@ export class OsceanBiome extends Biome {
     this.bclouds = [];
     for (let i = 0; i < 5; i++) {
       const w = r.int(70, 140), h = Math.round(w * r.float(0.34, 0.42));
-      this.bclouds.push({ spr: bubbleCloud(40 + i, w, h), x: r.float(-40, W), y: Math.round(lerp(sy + 24, sy + 170, i / 4)) + r.int(-10, 10), v: r.float(1.5, 3.2) });
+      this.bclouds.push({ spr: voxCloudSprite(40 + i, w, h, 'day'), x: r.float(-40, W), y: Math.round(lerp(sy + 24, sy + 170, i / 4)) + r.int(-10, 10), v: r.float(1.5, 3.2) });
     }
     // particles
     this.plankton = new Motes(90, { x0: 0, y0: sy + 4, x1: W, y1: H - 60 }, { seed: 3, vx: [-3, 3], vy: [-2.5, 1.5], sizes: [1, 1, 1, 2], colors: ['#ffffff', '#e0fbff', '#d8ffd0', '#fff6c8'], alpha: [0.25, 0.8], wob: 5 });
@@ -686,7 +691,7 @@ export class OsceanBiome extends Biome {
     const wob = quality(env) >= 1 ? 1 : 0;
     const key = this.waterBlend.key;
     // clouds made of bubbles in the open "sky" water
-    const ca = 0.85 - tod.night * 0.5;
+    const ca = 0.55 - tod.night * 0.3;
     ctx.globalAlpha = ca;
     for (const cl of this.bclouds) drawWobble(ctx, cl.spr, cl.x + px * 0.6, cl.y + py * 0.3, t + cl.x * 0.01, wob, 3, 1, 0.08);
     ctx.globalAlpha = 1;
@@ -704,10 +709,10 @@ export class OsceanBiome extends Biome {
   }
 
   drawOrb(ctx, o, fogA, dx, dy) {
-    const spr = glassOrb(o.r, o.tint);
+    const b = voxBall(o.r, o.tint, { spec: 0.95 });
     const y = o.y + Math.sin(this.t * 0.8 + o.ph) * 4;
     const col = waterColorAt(WATER, this.tod, y, this.base - 2, this.H);
-    ctx.drawImage(this.fog.get(spr, col, fogA), Math.round(o.x + dx - o.r - 1), Math.round(y + dy - o.r - 1));
+    ctx.drawImage(this.fog.get(b.canvas, col, fogA), Math.round(o.x + dx - b.ox), Math.round(y + dy - b.oy));
   }
 
   drawPod(ctx) {
@@ -868,9 +873,9 @@ export class OsceanBiome extends Biome {
     this.decor.draw(ctx, 1, t, dx, dy, 1 + wx.bubbles * 0.6);
     for (const o of this.orbs) if (!o.far) this.drawOrb(ctx, o, 0.15, px * 1.6, py * 0.6);
     for (const d of this.drops) {
-      const spr = chromeDrop(d.h);
+      const spr = voxDrop(d.h).canvas;
       const y = d.y + Math.sin(t * 1.1 + d.ph) * 5;
-      ctx.drawImage(spr, Math.round(d.x + px * 1.6 - spr.width / 2), Math.round(y + py * 0.6 - d.h / 2));
+      ctx.drawImage(spr, Math.round(d.x + px * 1.6 - spr.width / 2), Math.round(y + py * 0.6 - spr.height / 2));
       const k = Math.sin(t * 1.7 + d.ph * 3);
       if (k > 0.85) twinkle(ctx, d.x + px * 1.6 - d.h * 0.18, y + py * 0.6 - d.h * 0.25, (k - 0.85) / 0.15, '#ffffff');
     }

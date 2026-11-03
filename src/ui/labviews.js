@@ -10,6 +10,7 @@ import { BOAT_ORDER, BOAT_NAMES, BRANCHES, EFFECT_INFO, fmtEffect, unlocked, nod
 import { RECIPES, RECIPE_BY_ID, CRAFT_CATS, recipeUnlocked, recipeNode, craftCheck, craft } from '../build/crafting.js';
 import { ITEMS, countItem } from '../build/items.js';
 import { drawRays, drawSplash, roundRectPath } from './labart.js';
+import { seaScene, drawPiece } from './labvox.js';
 import { icon, anyIcon, glassCard, pill, costTiles, costTilesHeight, pedestal, chip, statBar, orbIcon, INK, INK_SOFT } from './labkit.js';
 
 const rarityCol = (r) => RARITY[r]?.color || '#9fb4c8';
@@ -232,28 +233,27 @@ export function drawCraftCard(ctx, ui, panel, r) {
 export function drawBoatsView(ctx, ui, panel, view) {
   const g = panel.game, st = g.state, t = panel.t;
   ctx.save(); roundRectPath(ctx, view.x, view.y, view.w, view.h, 10); ctx.clip();
-  const sky = ctx.createLinearGradient(0, view.y, 0, view.y + view.h);
-  sky.addColorStop(0, '#1468dc'); sky.addColorStop(0.55, '#7fd0ff'); sky.addColorStop(0.56, '#38c0f0'); sky.addColorStop(1, '#0f78c8');
-  ctx.fillStyle = sky; ctx.fillRect(view.x, view.y, view.w, view.h);
-  drawRays(ctx, view.x + view.w * 0.2, view.y + view.h * 0.2, view.h, t, 0.25, 16);
-  const wl = view.y + Math.round(view.h * 0.56);
-  // distant green hill
-  ctx.fillStyle = '#6fd236'; ctx.beginPath(); ctx.ellipse(view.x + view.w * 0.8, wl + 4, view.w * 0.35, 26, 0, Math.PI, TAU); ctx.fill();
-  ctx.fillStyle = rgba('#e8ffb0', 0.8); ctx.fillRect(view.x + view.w * 0.62, wl - 20, view.w * 0.3, 1);
-  // waves
-  ctx.strokeStyle = rgba('#ffffff', 0.7); ctx.lineWidth = 1;
-  for (let row = 0; row < 6; row++) {
-    const yy = wl + 6 + row * 22;
-    ctx.beginPath();
-    for (let x = view.x; x <= view.x + view.w; x += 6) { const y = yy + Math.sin(x * 0.05 + t * 1.5 + row) * 1.5; if (x === view.x) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
-    ctx.stroke();
+  // the voxel dock: sky, sun, clouds, an island and the open sea (built once per size)
+  const sea = seaScene(view.w, view.h);
+  let wl = view.y + Math.round(view.h * 0.5), near = view.y + view.h;
+  if (sea?.canvas) {
+    drawPiece(ctx, sea, view.x, view.y, 0, sea.ny, 0);
+    const [, oy] = sea.project(0, sea.ny, 0);
+    wl = view.y + sea.project(0, sea.horizon, 6)[1] - oy;
+    near = Math.min(view.y + view.h, view.y + sea.project(0, sea.horizon, sea.nz)[1] - oy);
+    const [sx, sy] = sea.project(...sea.sun);
+    drawRays(ctx, view.x + sx, view.y + sy - oy, view.h, t, 0.2, 16);
+  } else {
+    const sky = ctx.createLinearGradient(0, view.y, 0, view.y + view.h);
+    sky.addColorStop(0, '#1468dc'); sky.addColorStop(0.5, '#7fd0ff'); sky.addColorStop(1, '#2fb8ee');
+    ctx.fillStyle = sky; ctx.fillRect(view.x, view.y, view.w, view.h);
   }
   const cur = st.boat?.tier | 0;
   const n = BOAT_ORDER.length, sp = view.w / n;
   BOAT_ORDER.forEach((id, i) => {
     const has = i === 0 || unlocked(st, 'boat', id);
     const x = view.x + sp * (i + 0.5), bob = Math.sin(t * 1.6 + i) * 2;
-    const y = wl + 34 + (i % 2) * 70 + bob;
+    const y = wl + (near - wl) * (i % 2 ? 0.66 : 0.34) + bob;
     const sel = (panel.boatSel ?? cur) === i;
     if (i === cur) drawAeroGlow(ctx, x, y - 8, 34, '#fff6a0', 0.6);
     if (sel) { ctx.fillStyle = rgba('#ffffff', 0.35); ctx.beginPath(); ctx.ellipse(x, y + 6, sp * 0.42, 7, 0, 0, TAU); ctx.fill(); }

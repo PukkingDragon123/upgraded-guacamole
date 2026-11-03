@@ -58,7 +58,7 @@ const fract = (v) => v - Math.floor(v);
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
 const SHAPE_K = { oval: 0.52, torpedo: 0.6, round: 0.8, disc: 0.3, long: 0.62, box: 0.72, blunt: 0.62, pointy: 0.48 };
-const KIND_K = { star: 0.34, crab: 0.72, seahorse: 0.55, ray: 0.16, squid: 0.62, isopod: 0.78, iconfish: 0.42, octopus: 1, jelly: 1, pudding: 1, blob: 0.9, chain: 0.85 };
+const KIND_K = { chomper: 0.98, star: 0.34, crab: 0.72, seahorse: 0.55, ray: 0.16, squid: 0.62, isopod: 0.78, iconfish: 0.42, octopus: 1, jelly: 1, pudding: 1, blob: 0.9, chain: 0.85 };
 const REVOLVE = new Set(['jelly', 'pudding', 'octopus']);
 const FRONT_KINDS = new Set(['crab', 'jelly', 'pudding', 'octopus', 'star', 'ray']);
 
@@ -105,7 +105,8 @@ function lookLen(c) {
 
 // Model resolution level (voxels per look px = 2^(rk/2)) for a scale bucket.
 function resLevel(c, Sb) {
-  let rk = Math.round(2 * Math.log2(Sb / VP));
+  // look.vox.chunk > 1: deliberately chunkier voxels (the retro Wakka chomper)
+  let rk = Math.round(2 * Math.log2(Sb / (VP * (c.look.vox?.chunk || 1))));
   const cap = Math.floor(2 * Math.log2(MAX_VOX_LEN / lookLen(c)));
   return clamp(Math.min(rk, cap), -6, 4);
 }
@@ -1797,6 +1798,42 @@ export function chainBall(c, rScreen) {
   b = { canvas: job.canvas, ax: C[0], ay: C[1] };
   balls.set(key, b);
   if (balls.size > 400) balls.delete(balls.keys().next().value);
+  return b;
+}
+
+/**
+ * A small glossy voxel orb (a sphere of voxels rendered by the fish renderer, cached): {canvas, ax, ay}.
+ * Used for the Wakka fish's pellet bubbles. r = on-screen radius (px), hex = colour, glow = emissive.
+ */
+const orbs = new Map();
+export function voxelOrb(r, hex = '#e6fdff', glow = false) {
+  const rq = Math.max(1, Math.round(r * 2) / 2);
+  const key = rq + hex + (glow ? 'g' : '');
+  let b = orbs.get(key);
+  if (b) return b;
+  const Rv = Math.max(1.5, rq / 1.5);
+  const n = Math.ceil(Rv * 2) + 2;
+  const NXY = n * n;
+  const data = new Uint16Array(NXY * n);
+  const zmin = new Int16Array(NXY).fill(32767), zmax = new Int16Array(NXY).fill(-1);
+  const pal = new Pal({ ...DEF_MAT, gloss: 1, iri: 0.3 });
+  const v = pal.idx(hexP(hex), R_BODY, glow), vS = pal.idx(0xffffffff, R_SPEC, glow);
+  const m = n / 2;
+  for (let z = 0; z < n; z++) for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const dx = x + 0.5 - m, dy = y + 0.5 - m, dz = z + 0.5 - m;
+    if (dx * dx + dy * dy + dz * dz > Rv * Rv) continue;
+    const cc = x + y * n;
+    // shine voxel: upper-left, toward the viewer
+    data[cc + z * NXY] = dx < -Rv * 0.2 && dy > Rv * 0.2 && dz > Rv * 0.4 && dx > -Rv * 0.75 && dy < Rv * 0.75 ? vS : v;
+    if (z < zmin[cc]) zmin[cc] = z;
+    if (z > zmax[cc]) zmax[cc] = z;
+  }
+  const G = { Lo: { r: 1 }, data, NX: n, NY: n, NZ: n, NXY, zmin, zmax, pal, mat: pal.mat, x0: 0, y0: 0, z0: 0, x1: n - 1, y1: n - 1, z1: n - 1, center: [m, m, m], eyes: [], mouth: null, anchors: {} };
+  const job = new Job(G, 0, 0, rq / Rv, { outline: true });
+  job.step(Infinity);
+  const C = job.cam.project(G.center);
+  b = { canvas: job.canvas, glow: job.glowCanvas || null, ax: C[0], ay: C[1] };
+  orbs.set(key, b);
   return b;
 }
 
