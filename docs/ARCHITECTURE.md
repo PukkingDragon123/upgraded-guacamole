@@ -259,3 +259,25 @@ rejects stale reads). Never revert someone else's change.
   validate, clamp and length-limit it. The game must work fully offline.
 - Panel ids after phase 3: `lab` (replaces `skills`, `shop`, `research`, `boatyard`), `crafting`, `journal`, `inventory`,
   `wardrobe`, `map`, `settings`, `bait`, `multiplayer`, `reveal`, `welcome`, `building`, `buildtray`, `package`→`crate`.
+
+## Phase 4 contracts (standalone zoomed-in Aero fishing game)
+
+User direction (supersedes earlier phases where they conflict):
+- **No desktop theme.** FISHTOP is a standalone Frutiger Aero, skill-based fishing game, about fishing. Remove the
+  simulated desktop: desktop icons as menu, My Computer / Recycle Bin, taskbar, start orb and start menu, app windows,
+  the "ordinary wallpaper floods" premise, AppSea as a desktop download app, icon stealing and hiding behind windows,
+  overlay/wallpaper/mini desktop modes in the UI. The game menu is a polished Aero game HUD.
+- **Zoomed in.** The world camera sits much closer (base zoom about 1.75-2x of the old view) and smoothly follows
+  the action (boat, hook, fish), so fish and scenery read big and detailed. UI stays on the 960x540 logical canvas.
+- **Fish: realistic voxel models, very cool.** Replace ALL old fish models. Realistic anatomy and proportions,
+  natural small realistic eyes (no cartoon/googly eyes), glossy Frutiger Aero shine, translucent fins, bubbles.
+  Meme names stay; models are realistic. Full voxel rule still applies everywhere.
+- (OS)cean stays as the first ocean (a flooded green-hill landscape), now just a beautiful place, not a desktop.
+
+| Agent | Owns |
+| --- | --- |
+| Shell | `src/game/game.js`, `src/desktop/*`, `src/ui/ui.js`, `panels.js`, `aero.js`, new `src/ui/hud.js`, `settings.js`, `welcome.js`, `src/store/*` (AppSea becomes an in-game Aero bait shop), `electron/`, `docs/DESKTOP.md` |
+| Zoom | `src/game/camera.js`, `src/world/*`, `src/gfx/watergl.js`, `props.js`, `src/fishing/*` positioning only (tagged edits), `src/net/*` drawing positions |
+| Fish | `src/fish/*`, `src/gfx/voxelfish.js`, `fishrig.js`, `fishart.js`, `spritecache.js`, `src/fish/fishicon.js` |
+| Intro | `src/game/tutorial.js`, `src/game/intro3d.js`, `src/desktop/wallpaper.js` (retire), `tests/smoke.mjs`, `src/dev/intro.js` |
+Other agents: tiny tagged edits (`// [phase4:<agent>]`) only. Never revert others' work.
