@@ -15,7 +15,7 @@
 import { rigLayers, rigGeom, rasterLayer, paintEye, paintMouth, eyeBox, mouthBox, isKind, chainSegment, chainHeadSprite, chainRadius, defaultChainPoints, realCues } from './fishart.js';
 import { PixelBuffer } from './pixel.js';
 import { makeCanvas, ctxOf, tinted } from '../core/canvas.js';
-import { voxelFrame, chainBall, setVoxelFishBudget, SWIM_N } from './voxelfish.js';
+import { voxelFrame, chainBall, setVoxelFishBudget, SWIM_N, voxelParts } from './voxelfish.js';
 
 let fishStyle = 'voxel';
 export function setFishStyle(style) { fishStyle = style === 'pixel' ? 'pixel' : 'voxel'; }
@@ -491,22 +491,8 @@ function drawVoxelRig(ctx, c, st) {
   const X = Math.round(st.x) + twitch, Y = Math.round(st.y + (st.bob || 0));
   const items = [[f.canvas, -f.ax, -f.ay]];
   const glows = f.glow ? [[f.glow, -f.ax, -f.ay, undefined, undefined, true]] : [];
-  // face overlays on the flank facing the camera (foreshortened with the yaw)
-  const cy = Math.cos(f.yaw * YAW_DEG);
-  if (!st.silhouette && lod < 2 && cy > 0.42) {
-    for (const ev of f.eyes) {
-      if (ev.r < 0.9) continue;
-      const sp = eyeSprite(c, ev, fs, fang);
-      const w = sp.canvas.width * cy;
-      const dx = ev.x - sp.o * cy, dy = Math.round(ev.y - sp.o);
-      items.push([sp.canvas, dx, dy, w, sp.canvas.height]);
-      if (sp.glowCanvas) glows.push([sp.glowCanvas, dx, dy, w, sp.canvas.height]);
-    }
-    if (f.mouth && f.mouth.m && f.mouth.m.type !== 'none' && cy > 0.6 && f.mouth.w >= 1.5) {
-      const sp = mouthSprite(c, { w: f.mouth.w, m: f.mouth.m, front: f.mouth.front, angle: fang }, fs);
-      items.push([sp.canvas, f.mouth.x - sp.o * cy, Math.round(f.mouth.y - sp.o), sp.canvas.width * cy, sp.canvas.height]);
-    }
-  }
+  // real voxel face parts (eyeballs with lids, jaw gape, gill flare, spinning rotors): no 2D overlays
+  if (!st.silhouette) voxelParts(items, glows, c, f, st, fs, lod);
   const scx = (mirror ? -1 : 1) * kx;
   const flush = !c.toon && cue.flush && !st.silhouette ? cue.flush : null;
   const st2 = flush ? { ...st, flush } : st;
@@ -601,16 +587,9 @@ function drawVoxelChain(ctx, c, st) {
   items.push([f.canvas, -f.ax * k, -f.ay * k, f.W * k, f.H * k]);
   const fs = faceState({ ...st, x: X, y: Y }, 0, sx, X, Y, { toon: !!c.toon });
   if (st.lookX == null) { fs.lx = 0.5; fs.ly = 0; }
-  if (!st.silhouette) {
-    for (const ev of f.eyes) {
-      const sp = eyeSprite(c, { ...ev, r: ev.r * k }, fs, f.pitch * DEG);
-      items.push([sp.canvas, Math.round(ev.x * k - sp.o), Math.round(ev.y * k - sp.o)]);
-    }
-    if (f.mouth && f.mouth.m && f.mouth.m.type !== 'none') {
-      const sp = mouthSprite(c, { w: f.mouth.w * k, m: f.mouth.m, front: f.mouth.front, angle: f.pitch * DEG }, fs);
-      items.push([sp.canvas, Math.round(f.mouth.x * k - sp.o), Math.round(f.mouth.y * k - sp.o)]);
-    }
-  }
+  const partItems = [];
+  if (!st.silhouette) voxelParts(partItems, [], c, f, st, fs, st.lod || 0);
+  for (const it of partItems) items.push([it[0], it[1] * k, it[2] * k, it[3] * k, it[4] * k]);
   const glows = f.glow ? [[f.glow, -f.ax * k, -f.ay * k, f.W * k, f.H * k, true]] : [];
   compose(ctx, items, glows, X, Y, sx, 1, st, c, 0, 0);
   const toW = (p) => [X + p[0] * k * sx, Y + p[1] * k];

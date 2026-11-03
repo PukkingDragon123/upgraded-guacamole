@@ -1,6 +1,8 @@
 // Pooled pixel particle system: bubbles, splashes, sparkles, rings, floating text, sprites, plus the
 // "juice" kinds used by the fishing cinematics: trailing droplets, foam, mist, speed lines / light
-// streaks, crank sparks, fish scales, ink clouds, confetti, spinning coins, stars, shockwaves, glows.
+// streaks, crank sparks, fish scales, ink clouds, confetti, spinning coins, stars, shockwaves, glows,
+// and the Frutiger Aero kit: electric arcs (arc/electrify), glossy bubbles (aeroBubbles), glints,
+// bokeh orbs, lens flares (lensFlare), leaves and Aero confetti (aeroConfetti), thick glossy rings.
 //
 // add(p) takes a plain object (kind, x, y, vx, vy, life, size, color, g, drag, layer, add, delay...).
 // `delay` (s) keeps a particle invisible and frozen until it is due. When the pool is full new
@@ -131,6 +133,99 @@ function pixelLine(ctx, x0, y0, x1, y1, w = 1) {
 }
 
 const CONFETTI = ['#ff5a6a', '#ffd23a', '#5ad8ff', '#8aff7a', '#d27bff', '#ffffff', '#ff9a3a'];
+const AERO_CONFETTI = ['#59c3ff', '#2fd3e8', '#bfeaff', '#8be04a', '#c8f56a', '#ffffff', '#ffe27a', '#7ff0c8'];
+
+// ---------------------------------------------------------------- Frutiger Aero sprites
+// Glossy soap bubble: fresnel rim with a faint rainbow film, big specular top-left, small one bottom-right.
+const gbubbleCache = new Map();
+function gbubbleSprite(r) {
+  r = Math.max(2, Math.min(24, Math.round(r)));
+  let c = gbubbleCache.get(r);
+  if (c) return c;
+  const s = r * 2 + 1;
+  c = makeCanvas(s, s);
+  const g = ctxOf(c);
+  const img = g.createImageData(s, s);
+  const d = img.data;
+  for (let y = 0; y < s; y++) for (let x = 0; x < s; x++) {
+    const dx = x - r, dy = y - r, k = Math.hypot(dx, dy) / (r + 0.4);
+    if (k > 1) continue;
+    let R = 200, G = 245, B = 255, A = 0.07 + 0.42 * k * k * k;
+    const rim = k > 1 - 1.3 / r;
+    if (rim) {
+      const ang = Math.atan2(dy, dx);
+      // thin-film rainbow tint around the rim
+      const hue = Math.sin(ang * 2 + 1.2);
+      R = 215 + hue * 35; G = 248 - Math.max(0, -hue) * 30; B = 255 - Math.max(0, hue) * 50;
+      A = dy + dx < 0 ? 0.95 : 0.7;
+    }
+    // specular highlights
+    const hx = (dx + r * 0.38) / (r * 0.34), hy = (dy + r * 0.42) / (r * 0.22);
+    if (hx * hx + hy * hy < 1) { R = 255; G = 255; B = 255; A = 0.95; }
+    const lx = (dx - r * 0.45) / (r * 0.16 + 0.5), ly = (dy - r * 0.42) / (r * 0.12 + 0.5);
+    if (r > 3 && lx * lx + ly * ly < 1) { R = 255; G = 255; B = 255; A = Math.max(A, 0.6); }
+    const i = (y * s + x) * 4;
+    d[i] = R; d[i + 1] = G; d[i + 2] = B; d[i + 3] = Math.round(Math.min(1, A) * 255);
+  }
+  g.putImageData(img, 0, 0);
+  if (gbubbleCache.size > 64) gbubbleCache.clear();
+  gbubbleCache.set(r, c);
+  return c;
+}
+
+// Thick ring (glossy shockwave): w px wide, lighter inner edge.
+const thickRingCache = new Map();
+function thickRingSprite(r, w, color, flat = 1) {
+  r = Math.max(2, Math.round(r));
+  const key = r + '|' + w + '|' + color + '|' + flat;
+  let c = thickRingCache.get(key);
+  if (c) return c;
+  const s = r * 2 + 3, hh = Math.max(3, Math.ceil(r * flat) * 2 + 3);
+  c = makeCanvas(s, hh);
+  const g = ctxOf(c);
+  const cx = s / 2, cy = hh / 2;
+  for (let y = 0; y < hh; y++) for (let x = 0; x < s; x++) {
+    const dx = (x + 0.5 - cx), dy = (y + 0.5 - cy) / Math.max(0.05, flat);
+    const d = Math.hypot(dx, dy);
+    if (d > r + 0.5 || d < r - w + 0.5) continue;
+    const inner = d < r - w + 1.5;
+    g.fillStyle = inner ? '#ffffff' : color;
+    g.fillRect(x, y, 1, 1);
+  }
+  if (thickRingCache.size > 300) thickRingCache.clear();
+  thickRingCache.set(key, c);
+  return c;
+}
+
+// Jagged electric bolt between two points (re-randomised by the caller every few frames).
+function boltPoints(x0, y0, x1, y1, jag, seed) {
+  const dx = x1 - x0, dy = y1 - y0, L = Math.hypot(dx, dy) || 1;
+  const n = Math.max(2, Math.round(L / 5));
+  const px = -dy / L, py = dx / L;
+  const pts = [[x0, y0]];
+  let h = seed;
+  for (let i = 1; i < n; i++) {
+    h = (h * 1103515245 + 12345) >>> 0;
+    const off = ((h / 4294967296) - 0.5) * 2 * jag * Math.sin((i / n) * Math.PI);
+    pts.push([x0 + (dx * i) / n + px * off, y0 + (dy * i) / n + py * off]);
+  }
+  pts.push([x1, y1]);
+  return pts;
+}
+
+// Draws an electric bolt (white core, cyan glow) along a point list. Exported for the fishing HUD.
+export function drawBolt(ctx, pts, a = 1, color = '#7ff4ff', core = '#ffffff') {
+  const prev = ctx.globalCompositeOperation;
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = rgba(color, 0.45 * a);
+  for (let i = 1; i < pts.length; i++) pixelLine(ctx, pts[i - 1][0] - 1, pts[i - 1][1], pts[i][0] - 1, pts[i][1], 3);
+  ctx.fillStyle = rgba(color, 0.9 * a);
+  for (let i = 1; i < pts.length; i++) pixelLine(ctx, pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1], 1);
+  ctx.fillStyle = rgba(core, a);
+  for (let i = 1; i < pts.length; i++) pixelLine(ctx, pts[i - 1][0], pts[i - 1][1] - 0.5, pts[i][0], pts[i][1] - 0.5, 1);
+  ctx.globalCompositeOperation = prev;
+}
+export { boltPoints };
 
 export class Particles {
   constructor(max = 900) {
@@ -370,6 +465,81 @@ export class Particles {
     }
   }
 
+  // ---------------------------------------------------------------- Frutiger Aero kit
+  // Electric arc between two points; flickers (re-jags) every few hundredths of a second.
+  arc(x0, y0, x1, y1, opts = {}) {
+    return this.add({ kind: 'arc', x: x0, y: y0, x1, y1, life: opts.life ?? rng.float(0.08, 0.2), color: opts.color || '#7ff4ff', jag: opts.jag ?? 4, seed: rng.int(1, 1e9), layer: opts.layer || 'fg', fade: false, delay: opts.delay });
+  }
+
+  // A crackle of arcs around a point (stunned fish, shock impacts) plus bright sparks.
+  electrify(x, y, r = 12, n = 4, opts = {}) {
+    for (let i = 0; i < n; i++) {
+      const a0 = rng.float(0, TAU), a1 = a0 + rng.float(0.8, 2.4) * rng.sign();
+      const r0 = r * rng.float(0.5, 1.1), r1 = r * rng.float(0.5, 1.2);
+      this.arc(x + Math.cos(a0) * r0, y + Math.sin(a0) * r0 * (opts.flat ?? 0.7), x + Math.cos(a1) * r1, y + Math.sin(a1) * r1 * (opts.flat ?? 0.7), { jag: opts.jag ?? 3, layer: opts.layer, color: opts.color, life: opts.life });
+    }
+    if (opts.sparks !== 0) this.sparks(x, y, opts.sparks ?? 3, { colors: ['#ffffff', '#bff8ff', '#7ff4ff', '#fff6a0'], speed: [40, 120], g: 80, layer: opts.layer, life: 0.35 });
+  }
+
+  // Glossy Aero soap bubbles that wobble up and pop at the surface.
+  aeroBubbles(x, y, n = 6, opts = {}) {
+    for (let i = 0; i < n; i++) {
+      this.add({
+        kind: 'gbubble', x: x + rng.float(-(opts.w ?? 4), opts.w ?? 4), y: y + rng.float(-(opts.h ?? 4), opts.h ?? 4),
+        vx: rng.float(-12, 12) + (opts.vx ?? 0), vy: -rng.float(opts.speed?.[0] ?? 14, opts.speed?.[1] ?? 46),
+        life: rng.float(opts.life?.[0] ?? 1.2, opts.life?.[1] ?? 2.8), r: rng.pick(opts.sizes || [2, 2, 3, 3, 4, 5, 6]),
+        wob: rng.float(0, TAU), layer: opts.layer || 'fg', delay: opts.delay ? rng.float(0, opts.delay) : 0, rise: opts.rise ?? 1,
+      });
+    }
+  }
+
+  // Four-point star glints with long thin rays (specular sparkle).
+  glint(x, y, opts = {}) {
+    return this.add({ kind: 'glint', x, y, vx: opts.vx ?? 0, vy: opts.vy ?? 0, life: opts.life ?? rng.float(0.35, 0.7), len: opts.len ?? rng.pick([3, 4, 5, 6]), color: opts.color || '#ffffff', layer: opts.layer || 'fg', fade: false, delay: opts.delay, drag: 2 });
+  }
+
+  glints(x, y, n = 4, opts = {}) {
+    for (let i = 0; i < n; i++) this.glint(x + rng.float(-(opts.w ?? 10), opts.w ?? 10), y + rng.float(-(opts.h ?? 8), opts.h ?? 8), { ...opts, delay: opts.delay ? rng.float(0, opts.delay) : 0, len: opts.len ?? rng.pick([3, 4, 5, 7]) });
+  }
+
+  // Soft out-of-focus light orbs drifting in front of the scene.
+  bokeh(x, y, n = 5, opts = {}) {
+    for (let i = 0; i < n; i++) {
+      const a = rng.float(0, TAU), sp = rng.float(4, opts.speed ?? 26);
+      this.add({ kind: 'bokeh', x: x + rng.float(-(opts.w ?? 40), opts.w ?? 40), y: y + rng.float(-(opts.h ?? 30), opts.h ?? 30), vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - (opts.up ?? 4), life: rng.float(1.2, opts.life ?? 2.6), r: rng.int(opts.r?.[0] ?? 4, opts.r?.[1] ?? 12), color: rng.pick(opts.colors || ['#bfeaff', '#ffffff', '#c8f56a', '#7ff0ff']), layer: opts.layer || 'fg', fade: false, drag: 0.8, delay: opts.delay ? rng.float(0, opts.delay) : 0 });
+    }
+  }
+
+  // Lens flare from a light source through the screen centre (cx, cy): glow, anamorphic streak, ghosts.
+  lensFlare(x, y, opts = {}) {
+    return this.add({ kind: 'flare', x, y, cx: opts.cx ?? x, cy: opts.cy ?? y, life: opts.life ?? 1.2, scale: opts.scale ?? 1, layer: opts.layer || 'fg', fade: false, delay: opts.delay, tint: opts.tint || '#fff6d8' });
+  }
+
+  // Fluttering eco leaves (Aero celebration confetti).
+  leaves(x, y, n = 8, opts = {}) {
+    for (let i = 0; i < n; i++) {
+      const a = (opts.dir ?? -Math.PI / 2) + rng.float(-(opts.spread ?? 1.2), opts.spread ?? 1.2);
+      const sp = rng.float(opts.speed?.[0] ?? 60, opts.speed?.[1] ?? 200);
+      this.add({
+        kind: 'leaf', x: x + rng.float(-(opts.w ?? 4), opts.w ?? 4), y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+        life: rng.float(1.8, opts.life ?? 3.4), g: opts.g ?? 70, drag: 2, color: rng.pick(['#8be04a', '#3fae2a', '#c8f56a', '#5ccf3a']),
+        spin: rng.float(0, TAU), spinV: rng.float(3, 9) * rng.sign(), sway: rng.float(0, TAU), layer: opts.layer || 'fg', delay: opts.delay ? rng.float(0, opts.delay) : 0,
+      });
+    }
+  }
+
+  // Celebration mix: Aero-palette confetti, leaves, glossy bubbles and glints.
+  aeroConfetti(x, y, n = 30, opts = {}) {
+    this.confetti(x, y, Math.round(n * 0.7), { colors: AERO_CONFETTI, ...opts });
+    this.leaves(x, y, Math.round(n * 0.2), opts);
+    this.aeroBubbles(x, y, Math.round(n * 0.15), { layer: opts.layer, w: opts.w ?? 20, speed: [30, 90] });
+  }
+
+  // Thick glossy ring wave.
+  ringWave(x, y, r = 30, color = '#bfeaff', opts = {}) {
+    return this.add({ kind: 'ring2', x, y, life: opts.life ?? 0.5, r0: opts.r0 ?? 3, r1: r, w: opts.w ?? 3, color, flat: opts.flat ?? 1, layer: opts.layer || 'fg', delay: opts.delay, fade: false });
+  }
+
   // ---------------------------------------------------------------- simulation
   update(dt) {
     const list = this.list;
@@ -392,6 +562,19 @@ export class Particles {
             continue;
           }
           break;
+        case 'gbubble':
+          p.wob += dt * 4;
+          p.vy = Math.max(p.vy - 10 * dt * p.rise, -60);
+          p.vx *= Math.exp(-1.5 * dt);
+          p.x += (p.vx + Math.sin(p.wob) * 5) * dt;
+          p.y += p.vy * dt * p.rise;
+          if (surf !== null && p.y < surf + 2 && p.layer !== 'ui') {
+            p.t = p.max;
+            if (list.length < this.max) this.add({ kind: 'ring', x: p.x, y: surf + 1, life: 0.3, r0: 1, r1: p.r + 2, color: 'rgba(240,252,255,0.85)', layer: p.layer });
+            continue;
+          }
+          break;
+        case 'leaf':
         case 'confetti':
           p.spin += p.spinV * dt;
           p.sway += dt * 4;
@@ -573,6 +756,98 @@ export class Particles {
           if (cw > 1) { ctx.fillStyle = rgba('#ffffff', a * 0.5); ctx.fillRect(x - (cw >> 1), y, cw, 1); }
           break;
         }
+        case 'arc': {
+          // flicker: re-jag every ~45 ms, blink off now and then
+          const fr = Math.floor(p.t / 0.045);
+          if ((fr * 7 + p.seed) % 5 === 0) break;
+          const pts = boltPoints(p.x, p.y, p.x1, p.y1, p.jag, (p.seed + fr * 7919) >>> 0);
+          drawBolt(ctx, pts, 1 - k * 0.5, p.color);
+          break;
+        }
+        case 'gbubble': {
+          const s = gbubbleSprite(p.r);
+          ctx.globalAlpha = a;
+          ctx.drawImage(s, x - p.r, y - p.r);
+          ctx.globalAlpha = 1;
+          break;
+        }
+        case 'glint': {
+          const tw = Math.sin(Math.min(1, k) * Math.PI);
+          const L = Math.round(p.len * tw);
+          if (L < 1) break;
+          ctx.globalCompositeOperation = 'lighter';
+          for (let i = 1; i <= L; i++) {
+            ctx.fillStyle = rgba(p.color, tw * (1 - i / (L + 1)));
+            ctx.fillRect(x - i, y, 1, 1); ctx.fillRect(x + i, y, 1, 1);
+            ctx.fillRect(x, y - i, 1, 1); ctx.fillRect(x, y + i, 1, 1);
+          }
+          if (L > 2) {
+            ctx.fillStyle = rgba(p.color, tw * 0.45);
+            ctx.fillRect(x - 1, y - 1, 1, 1); ctx.fillRect(x + 1, y - 1, 1, 1);
+            ctx.fillRect(x - 1, y + 1, 1, 1); ctx.fillRect(x + 1, y + 1, 1, 1);
+          }
+          ctx.fillStyle = rgba('#ffffff', tw);
+          ctx.fillRect(x, y, 1, 1);
+          ctx.globalCompositeOperation = 'source-over';
+          break;
+        }
+        case 'bokeh': {
+          const s = glowSprite(p.r, p.color);
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = Math.sin(Math.min(1, k) * Math.PI) * 0.35;
+          ctx.drawImage(s, x - p.r, y - p.r);
+          ctx.globalAlpha = 1;
+          ctx.globalCompositeOperation = 'source-over';
+          break;
+        }
+        case 'flare': {
+          const fa = Math.sin(Math.min(1, k) * Math.PI);
+          const sc = p.scale;
+          const vx = p.cx - p.x, vy = p.cy - p.y;
+          ctx.globalCompositeOperation = 'lighter';
+          // source glow + anamorphic streak
+          const gr = Math.round(16 * sc);
+          ctx.globalAlpha = fa * 0.8;
+          ctx.drawImage(glowSprite(gr, p.tint), x - gr, y - gr);
+          const sl = Math.round(140 * sc * (0.6 + 0.4 * fa));
+          for (let i = 0; i < sl; i += 2) {
+            const f = 1 - i / sl;
+            ctx.globalAlpha = fa * f * f * 0.8;
+            ctx.fillStyle = i < 6 ? '#ffffff' : '#bfeaff';
+            ctx.fillRect(x + i, y, 2, 1); ctx.fillRect(x - i - 2, y, 2, 1);
+          }
+          ctx.globalAlpha = fa * 0.6;
+          ctx.fillStyle = '#ffffff';
+          for (let i = 1; i < Math.round(18 * sc); i++) { ctx.fillRect(x, y - i, 1, 1); ctx.fillRect(x, y + i, 1, 1); }
+          // ghosts along the axis through the screen centre
+          const G = [[0.35, 5, '#9affd8', 0], [0.62, 11, '#7ad8ff', 1], [0.85, 3, '#ffe27a', 0], [1.2, 16, '#c8a8ff', 1], [1.55, 7, '#8aff9a', 0], [1.9, 22, '#7ad8ff', 1]];
+          for (const [t, r, col, ring] of G) {
+            const gx = Math.round(p.x + vx * t), gy = Math.round(p.y + vy * t), rr = Math.max(2, Math.round(r * sc));
+            ctx.globalAlpha = fa * (ring ? 0.35 : 0.3);
+            if (ring) { const rs = thickRingSprite(rr, 2, col, 1); ctx.drawImage(rs, gx - Math.floor(rs.width / 2), gy - Math.floor(rs.height / 2)); }
+            else ctx.drawImage(glowSprite(rr, col), gx - rr, gy - rr);
+          }
+          ctx.globalAlpha = 1;
+          ctx.globalCompositeOperation = 'source-over';
+          break;
+        }
+        case 'leaf': {
+          const cw = Math.cos(p.spin);
+          ctx.fillStyle = rgba(p.color, a);
+          if (Math.abs(cw) > 0.5) { ctx.fillRect(x - 2, y, 4, 2); ctx.fillRect(x - 1, y - 1, 2, 1); }
+          else { ctx.fillRect(x - 1, y - 1, 2, 3); }
+          ctx.fillStyle = rgba('#e8ffd0', a * 0.8);
+          ctx.fillRect(x - 1, y, 1, 1);
+          break;
+        }
+        case 'ring2': {
+          const r = Math.round(p.r0 + (p.r1 - p.r0) * Math.sqrt(k));
+          const s = thickRingSprite(r, Math.max(1, Math.round(p.w * (1 - k * 0.6))), p.color, p.flat ?? 1);
+          ctx.globalAlpha = (1 - k) * 0.95;
+          ctx.drawImage(s, x - Math.floor(s.width / 2), y - Math.floor(s.height / 2));
+          ctx.globalAlpha = 1;
+          break;
+        }
         case 'coin': {
           ctx.globalAlpha = a;
           ctx.drawImage(coinFrame(Math.floor(p.spin)), x - 3, y - 3);
@@ -598,4 +873,4 @@ export class Particles {
   clear() { this.list.length = 0; }
 }
 
-export { coinFrame, discSprite, glowSprite, pixelLine };
+export { coinFrame, discSprite, glowSprite, pixelLine, gbubbleSprite, thickRingSprite, AERO_CONFETTI };

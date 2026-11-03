@@ -20,7 +20,7 @@
 // Composition (face overlays, wash, glow, silhouette) lives in fishrig.js (drawFishRig, style 'voxel').
 // drawVoxelFish(ctx, fish, {scale, glow, alpha}) remains for the aquarium (fish objects in tank space).
 
-import { rigLayers, rigGeom, rasterLayerVox, voxAlbedo, paintEye, eyeBox, paintMouth, mouthBox, isKind, chainHeadVox, chainSegColor } from './fishart.js';
+import { rigLayers, rigGeom, rasterLayerVox, voxAlbedo, paintMouth, mouthBox, isKind, chainHeadVox, chainSegColor, emotionParams } from './fishart.js';
 import { PixelBuffer } from './pixel.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { drawFishRig } from './fishrig.js';
@@ -52,6 +52,7 @@ const now = () => (typeof performance !== 'undefined' ? performance.now() : Date
 const SHAPE_K = { oval: 0.52, torpedo: 0.6, round: 0.8, disc: 0.3, long: 0.62, box: 0.72, blunt: 0.62, pointy: 0.48 };
 const KIND_K = { star: 0.34, crab: 0.72, seahorse: 0.55, ray: 0.16, squid: 0.62, isopod: 0.78, iconfish: 0.42, octopus: 1, jelly: 1, pudding: 1, blob: 0.9, chain: 0.85 };
 const REVOLVE = new Set(['jelly', 'pudding', 'octopus']);
+const FRONT_KINDS = new Set(['crab', 'jelly', 'pudding', 'octopus', 'star', 'ray']);
 
 // ------------------------------------------------------------------ budget
 
@@ -105,29 +106,59 @@ const bucketScale = (sb) => Math.pow(SCALE_STEP, sb);
 
 // ------------------------------------------------------------------ palette
 
+// Voxel roles: shading model per voxel.
+export const R_BODY = 0, R_FIN = 1, R_EYE = 2, R_MOUTH = 3, R_THIN = 4, R_LIMB = 5, R_SPEC = 6, R_GLASS = 7, R_PUPIL = 8, R_CHROME = 9;
+
 class Pal {
-  constructor() {
+  constructor(mat) {
     this.map = new Map();
     this.rgb = [0]; this.alpha = [1]; this.role = [0]; this.em = [0];
     this.ramps = [null];
+    this.mat = mat || DEF_MAT;
   }
-  // role: 0 body, 1 fin, 2 eye, 3 mouth, 4 thin extra
+  // role: see R_* above. Fins become glassy membranes (rays/edges stay solid); glass bodies are see-through.
   idx(col, role, glow) {
     const a = col >>> 24;
-    const aq = a >= 235 ? 4 : a >= 170 ? 3 : a >= 110 ? 2 : 1;
-    const key = (col & 0xffffff) + 16777216 * (role + 8 * aq + (glow ? 64 : 0));
+    let aq = a >= 235 ? 4 : a >= 170 ? 3 : a >= 110 ? 2 : 1;
+    if (role === R_FIN && aq < 4) aq = 2;
+    if (role === R_GLASS) aq = 1;
+    const key = (col & 0xffffff) + 16777216 * (role + 16 * aq + (glow ? 128 : 0));
     let i = this.map.get(key);
     if (i !== undefined) return i;
     if (this.rgb.length >= 65000) return 1;
     i = this.rgb.length;
     this.rgb.push(col & 0xffffff);
-    this.alpha.push(aq === 4 ? 1 : aq === 3 ? 0.86 : aq === 2 ? 0.7 : 0.55);
+    const m = this.mat;
+    this.alpha.push(role === R_GLASS ? 0.5 : role === R_FIN ? (aq === 4 ? 0.9 : m.finGlass) : aq === 4 ? 1 : aq === 3 ? 0.86 : aq === 2 ? 0.7 : 0.55);
     this.role.push(role);
     this.em.push(glow ? 1 : 0);
     this.ramps.push(null);
     this.map.set(key, i);
     return i;
   }
+}
+
+// Creature material (look.vox): Frutiger Aero gloss, iridescent sheen, glassy aqua fins, chrome, glass bodies.
+const DEF_MAT = { gloss: 0.75, iri: 0.16, chrome: 0, glass: 0, finGlass: 0.5, finTint: 0.4, sheen: 1, scales: false, rim: 1 };
+export function matOf(c) {
+  if (c._vmat) return c._vmat;
+  const v = c.look.vox || {};
+  const kind = c.kind;
+  const m = {
+    ...DEF_MAT,
+    gloss: v.gloss ?? (kind === 'isopod' || kind === 'crab' ? 0.9 : kind === 'blob' ? 0.55 : 0.75),
+    iri: v.iri ?? (c.variant?.shiny ? 0.5 : 0.16),
+    chrome: v.chrome ?? 0,
+    glass: v.glass ?? 0,
+    finGlass: v.finGlass ?? 0.5,
+    finTint: v.finTint ?? 0.4,
+    sheen: v.sheen ?? 1,
+    rim: v.rim ?? 1,
+    scales: !!c.scales,
+  };
+  if (c.variant?.mutation === 'ghost') { m.glass = Math.max(m.glass, 0.45); m.iri = Math.max(m.iri, 0.4); }
+  c._vmat = m;
+  return m;
 }
 
 // Hue-shifted tone ramp: shadows drift cool/purple, highlights warm. t in -1..1, 21 steps.
@@ -291,6 +322,7 @@ function resampleRaster(R, f) {
     geo: {
       w: tw, h: th, ox: sc(geo.ox), oy: sc(geo.oy),
       eyes: (geo.eyes || []).map((e) => ({ ...e, x: sc(e.x), y: sc(e.y), r: e.r * f })),
+      gill: geo.gill ? { ...geo.gill, pts: geo.gill.pts.map(([x, y]) => [sc(x), sc(y)]) } : null,
       mouth: geo.mouth ? { ...geo.mouth, x: sc(geo.mouth.x), y: sc(geo.mouth.y), w: geo.mouth.w * f } : null,
       anchors: Object.fromEntries(Object.entries(geo.anchors || {}).map(([k, v]) => [k, Array.isArray(v) ? [sc(v[0]), sc(v[1])] : v])),
     },
@@ -361,25 +393,31 @@ function buildLayout(c, R, infl, kf) {
   let maxT = 0;
   for (let i = 0; i < N; i++) if (T[i] > maxT) maxT = T[i];
   const [Tx, Ty] = thicknessGradient(T, mask, GW, GH);
-  // face: eyes + closed mouth painted at model resolution
-  const eyeCol = new Uint32Array(N), eyeGlow = new Uint8Array(N);
+  // eyes: real voxel eyeballs (no painted faces). The grid bakes a neutral eyeball dome; up close the rig
+  // draws dynamic voxel eye parts (lids, gaze, pupils) over it, see eyePart().
+  const eyeCol = null, eyeGlow = null;
   const eyes = [];
-  for (const ev of geo.eyes || []) {
-    const R = Math.max(0.8, ev.r);
-    const hb = eyeBox(R);
-    const buf = new PixelBuffer(hb * 2, hb * 2);
-    const gb = ev.e.type === 'glow' ? new PixelBuffer(hb * 2, hb * 2) : null;
-    voxAlbedo(() => paintEye(buf, gb, hb, hb, c, ev.e, { emotion: 'neutral', blink: 0, lx: 0.2, ly: 0, gx: 0.15, gy: 0.5, time: 0, mirror: ev.mirror, cheek: false, main: ev.main, pupil: 1, dim: 0 }, 0, R));
-    const ox = Math.round(ev.x) - hb + PAD, oy = Math.round(ev.y) - hb + PAD;
-    for (let y = 0; y < buf.h; y++) for (let x = 0; x < buf.w; x++) {
-      const p = buf.data[y * buf.w + x];
-      if ((p >>> 24) < 100) continue;
-      const gx = x + ox, gy = y + oy;
+  const sampleBody = (x, y) => {
+    const bc = L.body?.col;
+    if (bc) for (let d = 0; d < 6; d++) for (const [ax, ay] of [[0, -d], [0, d], [-d, 0], [d, 0]]) {
+      const gx = Math.round(x + ax), gy = Math.round(y + ay);
       if (gx < 0 || gy < 0 || gx >= GW || gy >= GH) continue;
-      eyeCol[gy * GW + gx] = p | 0xff000000;
-      if (gb && gb.data[y * buf.w + x]) eyeGlow[gy * GW + gx] = 1;
+      const p = bc[gy * GW + gx];
+      if ((p >>> 24) >= 120) return p | 0xff000000;
     }
-    eyes.push({ x: ev.x + PAD, y: ev.y + PAD, rv: R, rLook: R / r, e: ev.e, idx: ev.idx, mirror: ev.mirror, cheek: ev.cheek, main: ev.main });
+    return c.bodyR?.[2] ?? 0xff8899aa;
+  };
+  const frontKind = FRONT_KINDS.has(kind) || (!!kind && (geo.eyes || []).some((e) => e.mirror));
+  for (const ev of geo.eyes || []) {
+    const R = Math.max(0.6, ev.r);
+    const ex = ev.x + PAD, ey = ev.y + PAD;
+    const gi = Math.floor(ey) * GW + Math.floor(ex);
+    const inMask = gi >= 0 && gi < N && !!mask[gi];
+    eyes.push({
+      x: ex, y: ey, rv: R, rLook: R / r, e: ev.e, idx: ev.idx, mirror: ev.mirror, cheek: ev.cheek, main: ev.main,
+      front: frontKind, stalk: !inMask,
+      lidU: sampleBody(ex, ey - R * 1.35), lidL: sampleBody(ex, ey + R * 1.35), skin: sampleBody(ex + R * 1.4, ey),
+    });
   }
   const mouthCol = new Uint32Array(N);
   let mouth = null;
@@ -407,10 +445,28 @@ function buildLayout(c, R, infl, kf) {
   // pectoral hinge (front layer, generic fish): its front-most column
   let pecRoot = -1, pecMin = GW;
   if (!kind && L.front) for (let i = 0; i < N; i++) if (L.front.col[i]) { pecRoot = Math.max(pecRoot, i % GW); pecMin = Math.min(pecMin, i % GW); }
+  const gill = !kind && geo.gill && c.gills && !c.look.noGill ? geo.gill.pts.map(([x, y]) => [x + PAD, y + PAD]) : null;
+  // wind-turbine rotors (look.rotor): mast from the back at u (0 nose .. 1 tail), hub h px above it
+  const rotors = [];
+  for (const q of [].concat(c.look.rotor || [])) {
+    const x = Math.round(nose - (q.u ?? 0.45) * (nose - bodyTail));
+    let top = -1;
+    for (let gy = 0; gy < GH && x >= 0 && x < GW; gy++) if (mask[gy * GW + x]) { top = gy; break; }
+    if (top < 0) continue;
+    const R = (q.r ?? 12) * r, h = (q.h ?? 10) * r;
+    const front = Math.max(2, Math.round(R * 0.16 + 1.5));
+    rotors.push({
+      x, top: top + 1, hy: Math.max(1, top - h), R, rm: Math.max(0.6, (q.mastW ?? 2) * r * 0.5), rn: Math.max(0.9, R * 0.12), front,
+      blades: q.blades ?? 3, speed: q.speed ?? 1.2, chord: q.chord ?? 0.13,
+      mastP: hexP(c.vc(q.mast || '#eef4fa')), hubP: hexP(c.vc(q.hub || '#e2eaf2')), bladeP: hexP(c.vc(q.color || '#f7fafd')), tipP: q.tip ? hexP(c.vc(q.tip)) : 0,
+      zReach: front + 3,
+    });
+  }
+  const mat = matOf(c);
   return {
-    c, kind, revolve, r, GW, GH, PAD, L, mask, T, Tx, Ty, maxT, eyeCol, eyeGlow, mouthCol, eyes, mouth, anchors,
+    c, kind, revolve, r, GW, GH, PAD, L, mask, T, Tx, Ty, maxT, eyeCol, eyeGlow, mouthCol, eyes, mouth, anchors, gill, mat, rotors: rotors.length ? rotors : null,
     origin: [geo.ox + PAD, geo.oy + PAD], nose, bodyTail, tailEnd, pecRoot, pecLen: Math.max(0, pecRoot - pecMin),
-    wave: c.wave ?? 0.5, pal: new Pal(), bytes: N * 40,
+    wave: c.wave ?? 0.5, pal: new Pal(mat), bytes: N * 40,
   };
 }
 
@@ -465,14 +521,15 @@ function buildChainLayout(c, r) {
   }
   const o = hv.o + PAD;
   const [Tx, Ty] = thicknessGradient(T, mask, GW, GH);
-  const eyes = hv.face.eyes.map((ev) => ({ x: ev.x + PAD, y: ev.y + PAD, rv: ev.r, rLook: ev.r / r, e: ev.e, idx: ev.idx, mirror: ev.mirror, cheek: ev.cheek, main: ev.main }));
+  const skin = c.bodyR?.[2] ?? 0xff8899aa;
+  const eyes = hv.face.eyes.map((ev) => ({ x: ev.x + PAD, y: ev.y + PAD, rv: ev.r, rLook: ev.r / r, e: ev.e, idx: ev.idx, mirror: ev.mirror, cheek: ev.cheek, main: ev.main, front: false, stalk: false, lidU: skin, lidL: c.bellyR?.[3] ?? skin, skin }));
   const mo = hv.face.mouth;
   return {
     c, kind: 'chain', revolve: false, r, GW, GH, PAD, L: { body: { col, glow: null } }, mask, T, Tx, Ty, maxT,
     eyeCol: new Uint32Array(N), eyeGlow: new Uint8Array(N), mouthCol: new Uint32Array(N), eyes,
     mouth: mo ? { x: mo.x + PAD, y: mo.y + PAD, wLook: mo.w / r, m: mo.m, front: mo.front } : null,
     anchors: { mouth: [hv.face.nose[0] + PAD, hv.face.nose[1] + PAD], top: [o, o - c.chain.r * r * 1.2], bottom: [o, o + c.chain.r * r * 1.2], tail: [o - c.chain.r * r, o] },
-    origin: [o, o], nose: GW - 1, bodyTail: 0, tailEnd: 0, pecRoot: -1, wave: 0, pal: new Pal(), bytes: N * 30,
+    origin: [o, o], nose: GW - 1, bodyTail: 0, tailEnd: 0, pecRoot: -1, wave: 0, mat: matOf(c), pal: new Pal(matOf(c)), bytes: N * 30,
   };
 }
 
@@ -517,9 +574,13 @@ function buildGrid(Lo, sw) {
   let bendMax = 0;
   for (let gx = 0; gx < GW; gx++) bendMax = Math.max(bendMax, Math.abs(zOf[gx]));
   // pectoral hinge flap (generic fish)
-  const pecA = 0.42 + 0.32 * Math.sin(TAU * ph + 1.1);
+  const pecA = 0.42 + 0.32 * Math.sin(TAU * ph + 1.1) + (Lo.c.look.vox?.pecFlare ?? 0);
   const pecReach = Lo.pecRoot >= 0 && L.front ? Lo.pecLen || 0 : 0;
-  const NZ = 2 * (Math.ceil(maxT) + bendMax + 4 + Math.ceil(pecReach * 0.6)) + 3;
+  let eyeOut = 0;
+  for (const e of Lo.eyes) eyeOut = Math.max(eyeOut, e.rv * (e.stalk ? 1.1 : 0.75) + 1);
+  const rot = Lo.rotors;
+  const rotOut = rot ? Math.max(...rot.map((q) => q.zReach)) : 0;
+  const NZ = 2 * (Math.ceil(Math.max(maxT + eyeOut, rotOut)) + bendMax + 4 + Math.ceil(pecReach * 0.6)) + 3;
   const zc = NZ >> 1;
   const NX = GW, NY = GH, NXY = NX * NY;
   const data = new Uint16Array(NXY * NZ);
@@ -531,6 +592,10 @@ function buildGrid(Lo, sw) {
     data[col + z * NXY] = v;
     if (z < zmin[col]) zmin[col] = z;
     if (z > zmax[col]) zmax[col] = z;
+  };
+  const clear = (x, gy, z) => {
+    if (x < 0 || x >= NX || z < 0 || z >= NZ) return;
+    data[x + (NY - 1 - gy) * NX + z * NXY] = 0;
   };
   const tAt = (gx, gy) => (gx < 0 || gy < 0 || gx >= GW || gy >= GH ? -1 : T[gy * GW + gx]);
   const glowOf = (ly, i) => !!(ly.glow && ly.glow[i]);
@@ -548,33 +613,22 @@ function buildGrid(Lo, sw) {
       const thin = t < 0.9;
       const pv = pal.idx(bcol[i] | 0xff000000, thin && !kind ? 4 : 0, glowOf(L.body, i));
       for (let z = -zr; z <= zr; z++) set(tx, gy, zc + z + zo, pv);
-      // face stamps on both flanks
-      const ec = eyeCol[i];
-      if (ec) {
-        const pe = pal.idx(ec, 2, !!eyeGlow[i]);
-        const ev = nearestEye(Lo, gx, gy);
-        let dome = 1;
-        if (ev && ev.rv >= 2.6) {
-          const d2 = ((gx + 0.5 - ev.x) ** 2 + (gy + 0.5 - ev.y) ** 2) / (ev.rv * ev.rv);
-          dome = 1 + Math.round(Math.max(0, 1 - d2) * Math.min(2, ev.rv * 0.28));
-        }
-        for (let z = zr + 1; z <= zr + dome; z++) { set(tx, gy, zc + z + zo, pe); set(tx, gy, zc - z + zo, pe); }
-        if (dome > 1) { set(tx, gy, zc + zr + zo, pe); set(tx, gy, zc - zr + zo, pe); }
-      }
+      // closed mouth: a groove cut into both flanks
       const mc = mouthCol[i];
       if (mc) {
-        const pm = pal.idx(mc, 3, false);
-        set(tx, gy, zc + zr + zo, pm); set(tx, gy, zc - zr + zo, pm);
+        const pm = pal.idx(mc, R_MOUTH, false);
+        if (zr >= 2 && !kind) {
+          set(tx, gy, zc + zr - 1 + zo, pm); set(tx, gy, zc - zr + 1 + zo, pm);
+          clear(tx, gy, zc + zr + zo); clear(tx, gy, zc - zr + zo);
+        } else { set(tx, gy, zc + zr + zo, pm); set(tx, gy, zc - zr + zo, pm); }
       }
     }
   }
-  // eyes / mouth outside the body mask (eye stalks, faces on thin parts): stamp on the centre plane
+  // mouths outside the body mask (faces on thin parts): stamp on the centre plane
   for (let gy = 0; gy < GH; gy++) for (let gx = 0; gx < GW; gx++) {
     const i = gy * GW + gx;
-    if (mask[i]) continue;
-    const ec = eyeCol[i], mc = mouthCol[i];
-    if (!ec && !mc) continue;
-    const pv = ec ? pal.idx(ec, 2, !!eyeGlow[i]) : pal.idx(mc, 3, false);
+    if (mask[i] || !mouthCol[i]) continue;
+    const pv = pal.idx(mouthCol[i], R_MOUTH, false);
     for (let z = -1; z <= 1; z++) set(gx, gy, zc + z + zOfSrc(srcOf, zOf, gx), pv);
   }
   // fins and limbs
@@ -629,6 +683,40 @@ function buildGrid(Lo, sw) {
       }
     }
   }
+  // wind-turbine masts + nacelles (rotors spin as dynamic parts, see rotorPart)
+  for (const q of Lo.rotors || []) {
+    const tx = clamp(Math.round(q.x), 0, NX - 1), zo = zOf[tx];
+    const pm = pal.idx(q.mastP, R_BODY, false), ph = pal.idx(q.hubP, R_BODY, false);
+    for (let gy = Math.floor(q.top); gy >= Math.floor(q.hy); gy--) {
+      const f = (q.top - gy) / Math.max(1, q.top - q.hy);
+      const rm = q.rm * (1 - 0.4 * f);
+      for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) if (dx * dx + dz * dz <= rm * rm + 0.3) set(tx + dx, gy, zc + zo + dz, pm);
+    }
+    for (let z = -Math.round(q.rn); z <= q.front - 1; z++) {
+      const tip = z < 0 ? Math.sqrt(Math.max(0, 1 - (z / (q.rn + 0.5)) ** 2)) : 1;
+      for (let dx = -3; dx <= 3; dx++) for (let dy = -3; dy <= 3; dy++) if (dx * dx + dy * dy <= (q.rn * tip) ** 2 + 0.3) set(tx + dx, Math.round(q.hy) + dy, zc + zo + z, ph);
+    }
+  }
+  // voxel eyeballs: neutral domes set into the head (dynamic eye parts are drawn over them up close)
+  const eyes3 = [];
+  for (const e of Lo.eyes) {
+    const gx = clamp(Math.floor(e.x), 0, GW - 1), gy = clamp(Math.floor(e.y), 0, GH - 1);
+    let tx = gx;
+    if (fish) { let bd = 1e9; for (let x = 0; x < NX; x++) { const d = Math.abs(srcOf[x] - gx); if (srcOf[x] >= 0 && d < bd) { bd = d; tx = x; } } }
+    const zo = zOf[tx];
+    const T0 = Math.max(0, tAt(gx, gy));
+    const rb = Math.max(0.7, e.rv * 0.95);
+    const flanks = e.stalk ? [0] : e.front ? [1] : [1, -1];
+    const cx = tx + (e.x - gx), cy = NY - e.y;
+    const out = { ...e, rb, flanks: [] };
+    for (const fl of flanks) {
+      const cz = zc + 0.5 + zo + fl * Math.max(0, Math.round(T0) + 0.5 - rb * (e.front ? 0.35 : 0.42));
+      const n = fl === 0 ? norm3(0.35, 0.25, 1) : e.front ? [0, 0, 1] : norm3(0.24, 0.06, fl);
+      out.flanks.push({ fl, c: [cx, cy, cz], n });
+      stampEyeball(e, rb, [cx, cy, cz], n, fl, (x, y, z, v) => { if (y >= 0 && y < NY) set(x, NY - 1 - y, z, v); }, pal, NX, NZ);
+    }
+    eyes3.push(out);
+  }
   // occupied bounds
   let x0 = NX, x1 = -1, y0 = NY, y1 = -1, z0 = NZ, z1 = -1;
   for (let y = 0; y < NY; y++) for (let x = 0; x < NX; x++) {
@@ -657,10 +745,69 @@ function buildGrid(Lo, sw) {
   const anchors = {};
   for (const [k2, v] of Object.entries(Lo.anchors)) anchors[k2] = P3(v);
   return {
-    Lo, data, NX, NY, NZ, NXY, zmin, zmax, pal, x0, x1, y0, y1, z0, z1, srcOf, zOf, zc,
+    Lo, data, NX, NY, NZ, NXY, zmin, zmax, pal, x0, x1, y0, y1, z0, z1, srcOf, zOf, zc, mat: Lo.mat,
     center: [Lo.origin[0], NY - Lo.origin[1], zc + 0.5],
-    eyes, mouth, anchors, bytes: data.byteLength + NXY * 4,
+    eyes, eyes3, mouth, anchors, bytes: data.byteLength + NXY * 4,
   };
+}
+
+const norm3 = (x, y, z) => { const l = Math.hypot(x, y, z) || 1; return [x / l, y / l, z / l]; };
+
+// Eye surface colour for a unit direction (dx, dy, dz) from the eyeball centre, gaze axis g.
+// Returns [packed colour, role, glow]. Fish eyes are mostly iris; toon/googly eyes show more sclera.
+const SCLERA_P = 0xfffaf4ee, SCLERA_D = 0xffe8dcd2, PUPIL_P = 0xff1e0e0a, GOOGLY_P = 0xff1c1014;
+function eyeColor(e, dx, dy, dz, g, pupMul, love) {
+  const t = e.type;
+  const cosA = dx * g[0] + dy * g[1] + dz * g[2];
+  let rho;
+  if (t === 'pixel') {
+    // square pupil on a cube eye: Chebyshev distance in the plane across the gaze
+    const ux = dx - g[0] * cosA, uy = dy - g[1] * cosA, uz = dz - g[2] * cosA;
+    rho = Math.max(Math.abs(uy), Math.hypot(ux, uz));
+  } else rho = Math.sqrt(Math.max(0, 1 - cosA * cosA));
+  const front = cosA > 0;
+  if (t === 'dot') return [front && rho < 0.5 ? (e.pupil | 0xff000000) : 0xff2a2030, R_PUPIL, 0];
+  const toonish = t === 'googly' || t === 'pixel';
+  const pr = clamp((e.pupilSize ?? (toonish ? 0.42 : 0.46)) * pupMul, 0.12, 0.8) * (toonish ? 1 : 0.86);
+  const ir = toonish ? (t === 'pixel' ? 0 : 0) : Math.max(pr + 0.18, e.irisSize ?? 0.84);
+  if (front && rho < pr) return [t === 'googly' ? GOOGLY_P : (e.pupil | 0xff000000) === 0xff000000 ? PUPIL_P : (e.pupil | 0xff000000), R_PUPIL, 0];
+  if (front && rho < ir) {
+    if (t === 'glow') return [hexP(e.glowHex || '#9ffcff'), R_EYE, 1];
+    const RI = love ? LOVE_IRIS : e.realIris;
+    let k = rho < pr + 0.1 ? 3 : rho > ir - 0.12 ? 0 : 2;
+    if (dy > 0.5 && k > 1) k--;
+    if (k === 2 && ((Math.atan2(dy, dx) * 7) & 1)) k = 1.5;
+    return [(k === 1.5 ? mixP(RI[1], RI[2], 0.5) : RI[k]) | 0xff000000, R_EYE, 0];
+  }
+  return [dy < -0.35 ? SCLERA_D : (e.sclera && e.sclera !== 0xffffffff ? e.sclera | 0xff000000 : SCLERA_P), R_EYE, 0];
+}
+const LOVE_IRIS = ['#7a0a2a', '#c81e4a', '#ff4d7a', '#ff9ab4', '#ffd0dc'].map((h) => hexP(h));
+function hexP(hex) {
+  const n = parseInt(hex.slice(1, 7), 16);
+  return (0xff000000 | ((n & 255) << 16) | (n & 0xff00) | (n >> 16)) >>> 0;
+}
+function mixP(a, b, t) {
+  const ar = a & 255, ag = (a >>> 8) & 255, ab = (a >>> 16) & 255;
+  const br = b & 255, bg = (b >>> 8) & 255, bb = (b >>> 16) & 255;
+  return (0xff000000 | (Math.round(ab + (bb - ab) * t) << 16) | (Math.round(ag + (bg - ag) * t) << 8) | Math.round(ar + (br - ar) * t)) >>> 0;
+}
+
+// Baked neutral eyeball (body grid resolution): the outer part of a sphere, gaze along its axis.
+function stampEyeball(e, rb, C, n, fl, put, pal, NX, NZ) {
+  const R = Math.ceil(rb + 1);
+  const g = norm3(n[0] + 0.12, n[1], n[2]);
+  const cube = e.e.type === 'pixel';
+  for (let dz = -R; dz <= R; dz++) for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+    const x = Math.floor(C[0]) + dx, y = Math.floor(C[1]) + dy, z = Math.floor(C[2]) + dz;
+    const qx = (x + 0.5 - C[0]) / rb, qy = (y + 0.5 - C[1]) / rb, qz = (z + 0.5 - C[2]) / rb;
+    const d = cube ? Math.max(Math.abs(qx), Math.abs(qy), Math.abs(qz)) : Math.hypot(qx, qy, qz);
+    if (d > 1) continue;
+    if (fl && qz * fl < -0.35) continue;
+    if (x < 0 || x >= NX || z < 0 || z >= NZ) continue;
+    const dd = Math.hypot(qx, qy, qz) || 1;
+    const [col, role, gl] = eyeColor(e.e, qx / dd, qy / dd, qz / dd, g, 1, false);
+    put(x, y, z, pal.idx(col, role, !!gl));
+  }
 }
 
 function zOfSrc(srcOf, zOf, tx) { return tx >= 0 && tx < zOf.length ? zOf[tx] : 0; }
@@ -689,6 +836,23 @@ const FN = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
 // light (camera space, from the upper left front) and the Blinn half vector
 const LIGHT = (() => { const v = [-0.5, 0.74, 0.46]; const l = Math.hypot(...v); return v.map((a) => a / l); })();
 const HALF = (() => { const v = [LIGHT[0], LIGHT[1], LIGHT[2] + 1]; const l = Math.hypot(...v); return v.map((a) => a / l); })();
+
+// Rainbow thin-film colour channel (0..1) for a phase.
+function irid(ph, ch) { return 0.5 + 0.5 * Math.cos(TAU * (ph - ch * 0.333)); }
+// Bright Aero sky environment for a reflected camera-space direction (y up, z toward the viewer).
+const ENV_OUT = [0, 0, 0];
+function envSky(ry, rz) {
+  if (ry > -0.04) {
+    const t = clamp01(ry);
+    const band = ry > 0.18 && ry < 0.62 ? 0.12 : 0; // a soft window / cloud band (glass reflection)
+    ENV_OUT[0] = 0.72 + 0.26 * t + band; ENV_OUT[1] = 0.9 + 0.1 * t + band; ENV_OUT[2] = 1;
+  } else {
+    const t = clamp01(-ry * 1.6);
+    ENV_OUT[0] = 0.28 - 0.18 * t; ENV_OUT[1] = 0.58 - 0.3 * t; ENV_OUT[2] = 0.7 - 0.32 * t;
+  }
+  void rz;
+  return ENV_OUT;
+}
 
 function hash3(x, y, z) {
   let h = (x * 374761393 + y * 668265263 + z * 2147483647) | 0;
@@ -822,7 +986,7 @@ class Job {
               if (!transA) {
                 transC = this.shade(vi, face, ix, iy, iz);
                 transG = this.lastGlow;
-                transA = a; transT = t;
+                transA = Math.max(0.02, (transC >>> 24) / 255); transT = t;
               }
             }
             if (tmz < tCol) {
@@ -849,14 +1013,17 @@ class Job {
         const g = transA && transG ? transC : hitG ? hitC : 0;
         if (g) (this.glow ||= new Uint32Array(W * cam.H))[p] = g;
       } else if (transA) {
-        out[p] = ((transC & 0xffffff) | (Math.round(transA * 255) << 24)) >>> 0;
+        out[p] = transC;
         depth[p] = transT;
         if (transG) (this.glow ||= new Uint32Array(W * cam.H))[p] = transC;
       }
     }
   }
 
-  // Shade one voxel face (cached): returns a packed colour; sets this.lastGlow.
+  // Shade one voxel face (cached): returns a packed colour (alpha byte = coverage); sets this.lastGlow.
+  // Frutiger Aero look: soft sun + aqua sky ambient, cool blue shadows, glossy coat (sky reflection +
+  // Blinn glints + a glass sheen band on the upper flank), soft aqua rim light, iridescent thin film,
+  // glassy aqua fin membranes, chrome and see-through glass materials, crisp glossy eyes.
   shade(vi, face, ix, iy, iz) {
     const key = vi * 6 + face;
     const hk = this.hk, m = this.hmask;
@@ -871,12 +1038,23 @@ class Job {
     const { data, NX, NY, NZ, NXY } = G;
     const v = data[vi];
     const role = pal.role[v];
+    const em = pal.em[v];
+    const mat = G.mat || pal.mat || DEF_MAT;
     const fn = FN[face];
     let nx = fn[0], ny = fn[1], nz = fn[2];
-    // smoothed normal from the occupancy gradient (opaque voxels)
-    let gx = 0, gy = 0, gz = 0;
+    let gx = NaN, gy = 0, gz = 0;
     const Lo = G.Lo;
-    if ((role === 0 || role === 3) && Lo.Tx && G.srcOf) {
+    if (G.nf) {
+      const an = G.nf(ix, iy, iz, v);
+      if (an) {
+        gx = an[0]; gy = an[1]; gz = an[2];
+        const wf = role === R_LIMB ? 0.3 : 0.12;
+        nx = nx * wf + gx * (1 - wf); ny = ny * wf + gy * (1 - wf); nz = nz * wf + gz * (1 - wf);
+        const l = Math.hypot(nx, ny, nz) || 1;
+        nx /= l; ny /= l; nz /= l;
+      }
+    }
+    if (gx !== gx && (role === R_BODY || role === R_MOUTH || role === R_GLASS || role === R_CHROME) && Lo.Tx && G.srcOf) {
       // analytic flank normal of the extruded body: F = |z - zc| - T(x, y)
       const sxi = G.srcOf[ix];
       const li = (NY - 1 - iy) * Lo.GW + sxi;
@@ -886,13 +1064,13 @@ class Job {
         const al = Math.hypot(ax, ay, az);
         ax /= al; ay /= al; az /= al;
         gx = ax; gy = ay; gz = az;
-        const wf = role === 3 ? 0.3 : FACET;
+        const wf = role === R_MOUTH ? 0.3 : FACET;
         nx = nx * wf + ax * (1 - wf); ny = ny * wf + ay * (1 - wf); nz = nz * wf + az * (1 - wf);
         const l = Math.hypot(nx, ny, nz) || 1;
         nx /= l; ny /= l; nz /= l;
-      } else gx = NaN;
-    } else gx = NaN;
-    if (gx !== gx && role !== 1) {
+      }
+    }
+    if (gx !== gx && role !== R_FIN) {
       gx = 0;
       for (let k = 0; k < KN; k++) {
         const x = ix + KX[k], y = iy + KY[k], z = iz + KZ[k];
@@ -902,17 +1080,19 @@ class Job {
       }
       const gl = Math.hypot(gx, gy, gz);
       if (gl > 0.4) {
-        const wf = role === 2 ? 0.25 : role === 4 ? 0.6 : 0.42;
+        const wf = role === R_EYE || role === R_PUPIL ? 0.25 : role === R_THIN ? 0.6 : 0.4;
         nx = nx * wf + (gx / gl) * (1 - wf); ny = ny * wf + (gy / gl) * (1 - wf); nz = nz * wf + (gz / gl) * (1 - wf);
         const l = Math.hypot(nx, ny, nz) || 1;
         nx /= l; ny /= l; nz /= l;
         gx /= gl; gy /= gl; gz /= gl;
       } else { gx = nx; gy = ny; gz = nz; }
-    } else if (gx !== gx || role === 1) { gx = nx; gy = ny; gz = nz; }
+    } else if (gx !== gx) { gx = nx; gy = ny; gz = nz; }
     const { R0, R1, R2 } = cam;
+    // camera space: blended (faceted) normal c*, smooth normal s*
     const cx = R0[0] * nx + R0[1] * ny + R0[2] * nz;
     const cy = R1[0] * nx + R1[1] * ny + R1[2] * nz;
     const cz = R2[0] * nx + R2[1] * ny + R2[2] * nz;
+    const sx = R0[0] * gx + R0[1] * gy + R0[2] * gz, sy = R1[0] * gx + R1[1] * gy + R1[2] * gz, sz = R2[0] * gx + R2[1] * gy + R2[2] * gz;
     const lam = cx * LIGHT[0] + cy * LIGHT[1] + cz * LIGHT[2];
     // per-face AO: occupancy of the 8 cells around the face, in the layer in front of it
     const ax = face >> 1;
@@ -927,32 +1107,90 @@ class Job {
       if (w && pal.alpha[w] >= 1) occ += a && b ? 0.55 : 1;
     }
     const ao = 1 - Math.min(1, occ / 5.2);
-    let tone;
-    if (role === 1) {
-      // thin membrane: lit through from both sides
+    const c0 = pal.rgb[v];
+    let r = (c0 & 255) / 255, g = ((c0 >>> 8) & 255) / 255, b = ((c0 >>> 16) & 255) / 255;
+    let alpha = 1;
+    const fr = 1 - clamp01(sz);                       // grazing factor (0 facing us .. 1 edge-on)
+    const hd = sx * HALF[0] + sy * HALF[1] + sz * HALF[2];
+    if (role === R_SPEC) {
+      r = 1; g = 1; b = 1;
+      if (c0 !== 0xffffff) { r = 0.9 + r * 0.1; g = 0.96; b = 1; }
+    } else if (em) {
+      const k = 0.9 + 0.25 * clamp01(lam + 0.5);
+      r = Math.min(1, r * k + 0.12); g = Math.min(1, g * k + 0.12); b = Math.min(1, b * k + 0.12);
+    } else if (role === R_FIN) {
+      // glassy aqua membrane: pastel glass tone, lit through from both sides, frosted bright edges
+      const tn = mat.finTint;
+      r = r * 0.72 + 0.26; g = g * 0.72 + 0.26; b = b * 0.72 + 0.28;
+      r += (0.62 - r) * tn; g += (0.95 - g) * tn; b += (1.0 - b) * tn;
       const d = Math.abs(lam);
-      tone = (0.34 + 0.4 * d + 0.18 * (0.5 + 0.5 * cy)) * (0.75 + 0.25 * ao);
-      tone = (tone - 0.6) * 2.1;
+      const lit = (0.7 + 0.34 * d + 0.18 * cy) * (0.85 + 0.15 * ao);
+      r *= lit; g *= lit; b *= lit;
+      const sp = Math.pow(Math.max(0, Math.abs(hd)), 20) * 0.55 * mat.gloss;
+      r += sp; g += sp; b += sp;
+      const rim = Math.pow(fr, 2) * 0.4;
+      r += (0.85 - r) * rim; g += (1 - g) * rim; b += (1 - b) * rim;
+      if (mat.iri) { const ph = cy * 0.6 + cx * 0.3 + (ix + iy) * 0.04; const w = mat.iri * 0.35; r += (irid(ph, 0) - 0.5) * w; g += (irid(ph, 1) - 0.5) * w; b += (irid(ph, 2) - 0.5) * w; }
+    } else if (role === R_GLASS) {
+      // soap-bubble / glass body: mostly reflection + thin-film colour, more opaque toward the rim
+      const ry = 2 * sz * sy, rr = 2 * sz * sz - 1;
+      const env = envSky(ry, rr);
+      const tint = 0.35;
+      r = r * tint + env[0] * 0.45; g = g * tint + env[1] * 0.45; b = b * tint + env[2] * 0.45;
+      const ph = fr * 1.7 + sy * 0.45 + sx * 0.25;
+      const w = 0.25 + 0.6 * mat.iri * (0.3 + fr);
+      r += (irid(ph, 0) - 0.45) * w; g += (irid(ph, 1) - 0.45) * w; b += (irid(ph, 2) - 0.45) * w;
+      const sp = Math.pow(Math.max(0, hd), 60) * 1.4 + Math.pow(Math.max(0, hd), 12) * 0.25;
+      r += sp; g += sp; b += sp;
+      alpha = clamp01(pal.alpha[v] * 0.45 + 0.12 + 0.75 * fr * fr + sp * 0.5);
     } else {
-      const diff = clamp01((lam + 0.22) / 1.22);
+      const diff = clamp01((lam + 0.3) / 1.3);
       const sky = 0.5 + 0.5 * cy;
-      let lit = 0.2 + 0.52 * diff + 0.2 * sky;
-      lit *= 0.52 + 0.48 * ao;
-      tone = (lit - 0.6) * 2.1;
-      if (tone > 0) tone *= 0.72;
-      // glints on the smooth surface, rim light from the water above
-      const scx = R0[0] * gx + R0[1] * gy + R0[2] * gz, scy = R1[0] * gx + R1[1] * gy + R1[2] * gz, scz = R2[0] * gx + R2[1] * gy + R2[2] * gz;
-      const hd = scx * HALF[0] + scy * HALF[1] + scz * HALF[2];
-      const specK = role === 2 ? 1.6 : role === 0 ? 0.75 : 0.4;
-      if (hd > 0.8) tone += Math.pow((hd - 0.8) / 0.2, 3) * specK;
-      const rim = Math.pow(1 - clamp01(scz), 2.6) * clamp01(scy * 1.4 + 0.25);
-      tone += rim * 0.3;
+      const aoF = 0.5 + 0.5 * ao;
+      const chrome = role === R_CHROME ? 1 : mat.chrome;
+      // light colours: warm sun, aqua sky fill, sea-green bounce from below
+      const lr = (0.36 + 0.22 * sky) * 0.62 + (1 - sky) * 0.06 + diff * 0.86;
+      const lg = (0.36 + 0.22 * sky) * 0.84 + (1 - sky) * 0.12 + diff * 0.84;
+      const lb = (0.36 + 0.22 * sky) * 1.05 + (1 - sky) * 0.11 + diff * 0.78;
+      r *= lr * aoF; g *= lg * aoF; b *= lb * aoF;
+      // Frutiger gloss: a glass sheen band on the upper flank (crisp lower edge), sky reflection by fresnel
+      const gloss = role === R_EYE || role === R_PUPIL ? 1 : role === R_LIMB ? mat.gloss * 0.9 : role === R_THIN ? mat.gloss * 0.6 : mat.gloss;
+      if (mat.sheen && role !== R_PUPIL) {
+        const band = sy > 0.42 ? clamp01((sy - 0.42) * 4) * clamp01(0.35 + sz) : 0;
+        const sh = band * 0.26 * gloss * mat.sheen;
+        r += (1 - r) * sh; g += (1 - g) * sh; b += (1 - b) * sh;
+      }
+      const F = 0.05 + 0.95 * Math.pow(fr, 5);
+      const env = envSky(2 * sz * sy, 2 * sz * sz - 1);
+      const kr = chrome ? 0.55 + 0.4 * F : F * 0.4 * gloss;
+      if (chrome) { const lum = 0.3 * r + 0.5 * g + 0.2 * b; r = r * 0.35 + lum * 0.2; g = g * 0.35 + lum * 0.2; b = b * 0.35 + lum * 0.2; }
+      r += (env[0] * (chrome ? (c0 & 255) / 255 * 0.5 + 0.55 : 1) - r) * kr;
+      g += (env[1] * (chrome ? ((c0 >>> 8) & 255) / 255 * 0.5 + 0.55 : 1) - g) * kr;
+      b += (env[2] * (chrome ? ((c0 >>> 16) & 255) / 255 * 0.5 + 0.55 : 1) - b) * kr;
+      // glints
+      const pk = role === R_EYE || role === R_PUPIL ? 1.6 : role === R_MOUTH ? 0.3 : 1;
+      const sp = (Math.pow(Math.max(0, hd), 26) * 0.32 + Math.pow(Math.max(0, hd), 140) * 0.95) * gloss * pk;
+      r += sp; g += sp; b += sp * 0.98;
+      // soft aqua rim light from the bright water above
+      const rim = Math.pow(fr, 2.6) * clamp01(sy * 0.9 + 0.55) * 0.5 * mat.rim;
+      r += (0.72 - r) * rim; g += (0.96 - g) * rim; b += (1 - b) * rim;
+      // iridescent sheen (thin film), strongest at glancing angles
+      if (mat.iri && role !== R_PUPIL && role !== R_MOUTH) {
+        const ph = fr * 1.5 + sy * 0.4 + sx * 0.3 + (role === R_EYE ? 0.3 : 0);
+        const w = mat.iri * (0.12 + 0.5 * fr) * (role === R_EYE ? 0.3 : 1);
+        r += (irid(ph, 0) - 0.5) * w; g += (irid(ph, 1) - 0.5) * w; b += (irid(ph, 2) - 0.5) * w;
+      }
+      // scale texture: staggered scale rows catch the light
+      if (mat.scales && role === R_BODY && Math.abs(sz) > 0.35) {
+        const row = iy >> 1, sc = (ix + (row & 1) * 2) % 4;
+        const k = (iy & 1) === 0 ? (sc === 0 ? 0.07 : sc === 1 ? 0.03 : 0) : sc === 0 ? -0.05 : 0;
+        r *= 1 + k; g *= 1 + k; b *= 1 + k;
+      }
     }
-    tone += (hash3(ix, iy, iz) - 0.5) * 0.045;
-    const em = pal.em[v];
-    if (em) tone = Math.max(tone, 0.3) * 0.5 + 0.32;
-    const ti = clamp(Math.round(tone * 10), -10, 10) + 10;
-    const col = rampOf(pal, v)[ti];
+    const nse = 1 + (hash3(ix, iy, iz) - 0.5) * 0.04;
+    r = clamp01(r * nse); g = clamp01(g * nse); b = clamp01(b * nse);
+    if (pal.alpha[v] < 1 && role !== R_GLASS) alpha = pal.alpha[v];
+    const col = ((Math.round(alpha * 255) << 24) | (Math.round(b * 255) << 16) | (Math.round(g * 255) << 8) | Math.round(r * 255)) >>> 0;
     // store
     hk[h] = key; this.hv[h] = col; this.hg[h] = em;
     this.lastGlow = em;
@@ -972,7 +1210,7 @@ class Job {
       if (!c) continue;
       const d = depth[p] - thr;
       if ((x > 0 && src[p - 1] && depth[p - 1] < d) || (x + 1 < W && src[p + 1] && depth[p + 1] < d) || (y > 0 && src[p - W] && depth[p - W] < d) || (y + 1 < H && src[p + W] && depth[p + W] < d)) {
-        out[p] = darkPacked(c, 0.62);
+        out[p] = darkPacked(c, 0.7);
       }
     }
     // selective outline around opaque silhouettes
@@ -1005,11 +1243,12 @@ function mixPacked(a, b, t) {
 }
 function darkPacked(c, k) {
   const r = c & 255, g = (c >>> 8) & 255, b = (c >>> 16) & 255;
-  return ((c & 0xff000000) | (Math.round(b * k + 10 * (1 - k)) << 16) | (Math.round(g * k * 0.96) << 8) | Math.round(r * k * 0.92)) >>> 0;
+  return ((c & 0xff000000) | (Math.round(b * k + 26 * (1 - k)) << 16) | (Math.round(g * k + 8 * (1 - k)) << 8) | Math.round(r * k * 0.94)) >>> 0;
 }
+// Selective outline: a deep, saturated, slightly blue version of the neighbour (glass edge, never black).
 function outlinePacked(n) {
   const r = n & 255, g = (n >>> 8) & 255, b = (n >>> 16) & 255;
-  return (0xff000000 | (Math.round(b * 0.26 + 22) << 16) | (Math.round(g * 0.2 + 8) << 8) | Math.round(r * 0.22 + 10)) >>> 0;
+  return (0xff000000 | (Math.round(b * 0.42 + 34) << 16) | (Math.round(g * 0.3 + 12) << 8) | Math.round(r * 0.26 + 8)) >>> 0;
 }
 
 function glowHalo(g, W, H, R) {
@@ -1184,6 +1423,12 @@ function makeFrame(job, meta, up = 1) {
     eyes: G.eyes.map((e) => { const q = rel(e.p); return { x: q[0], y: q[1], z: q[2], r: e.rLook * Sf, e: e.e, idx: e.idx, mirror: e.mirror, cheek: e.cheek, main: e.main }; }),
     mouth: G.mouth ? (() => { const q = rel(G.mouth.p); return { x: q[0], y: q[1], w: G.mouth.wLook * Sf, m: G.mouth.m, front: G.mouth.front }; })() : null,
     anchors,
+    // everything the dynamic voxel parts need to line up with this frame (no grid reference kept)
+    pc: {
+      Lo: G.Lo, NY: G.NY, zc: G.zc, zOf: G.zOf, srcOf: G.srcOf, center: G.center, eyes3: G.eyes3 || [], mouth: G.mouth,
+      yaw: job.yaw, pitch: job.pitch, s: job.s, up,
+      pkey: meta.vid + '|' + meta.rk + '|' + meta.infl + '|' + meta.pose + '|' + meta.yawI + '|' + meta.pitchI + '|' + meta.sb,
+    },
   };
 }
 
@@ -1400,6 +1645,421 @@ export function chainBall(c, rScreen) {
   balls.set(key, b);
   if (balls.size > 400) balls.delete(balls.keys().next().value);
   return b;
+}
+
+// ------------------------------------------------------------------ dynamic voxel parts
+// Small voxel models rendered with the frame's own camera (same rotation, scale and centre), so they line
+// up with the cached body frame exactly: eyeballs (sclera, iris, pupil, glossy specular voxel) with lid
+// voxels for blinks / squints / emotions, a dropping jaw, flaring gill covers and spinning turbine rotors.
+
+const parts = new Map();
+let partPx = 0;
+const PART_PX_MAX = 3e6;
+function partGet(key) { const p = parts.get(key); if (p) { parts.delete(key); parts.set(key, p); } return p; }
+function partPut(key, p) {
+  parts.set(key, p);
+  partPx += p.W * p.H;
+  while (partPx > PART_PX_MAX && parts.size > 16) {
+    const k = parts.keys().next().value;
+    partPx -= parts.get(k).W * parts.get(k).H;
+    parts.delete(k);
+  }
+}
+
+const rotCache = new Map();
+function camRot(yaw, pitch) {
+  const key = yaw * 1000 + pitch;
+  let r = rotCache.get(key);
+  if (!r) { const cam = camera({ center: [0, 0, 0], x0: 0, x1: 0, y0: 0, y1: 0, z0: 0, z1: 0 }, yaw, pitch, 1); r = [cam.R0, cam.R1, cam.R2]; rotCache.set(key, r); }
+  return r;
+}
+
+// A part grid in body-grid coordinates: origin o (min corner, body voxels), n cells per axis, fe cells per voxel.
+class PartGrid {
+  constructor(o, n, fe, mat) {
+    this.o = o; this.n = n; this.fe = fe;
+    this.NX = n[0]; this.NY = n[1]; this.NZ = n[2]; this.NXY = n[0] * n[1];
+    this.data = new Uint16Array(this.NXY * n[2]);
+    this.zmin = new Int16Array(this.NXY).fill(32767); this.zmax = new Int16Array(this.NXY).fill(-1);
+    this.pal = new Pal(mat);
+    this.mat = mat;
+    this.count = 0;
+  }
+  // body coords of a cell centre
+  bx(i) { return this.o[0] + (i + 0.5) / this.fe; }
+  by(j) { return this.o[1] + (j + 0.5) / this.fe; }
+  bz(k) { return this.o[2] + (k + 0.5) / this.fe; }
+  put(i, j, k, v) {
+    if (i < 0 || j < 0 || k < 0 || i >= this.NX || j >= this.NY || k >= this.NZ) return;
+    const col = i + j * this.NX;
+    if (!this.data[col + k * this.NXY]) this.count++;
+    this.data[col + k * this.NXY] = v;
+    if (k < this.zmin[col]) this.zmin[col] = k;
+    if (k > this.zmax[col]) this.zmax[col] = k;
+  }
+  // render with the frame camera; returns a draw-ready sprite or null when empty
+  render(F, nf) {
+    if (!this.count) return null;
+    let x0 = this.NX, x1 = -1, y0 = this.NY, y1 = -1, z0 = this.NZ, z1 = -1;
+    for (let y = 0; y < this.NY; y++) for (let x = 0; x < this.NX; x++) {
+      const col = x + y * this.NX;
+      if (this.zmax[col] < 0) continue;
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+      if (this.zmin[col] < z0) z0 = this.zmin[col]; if (this.zmax[col] > z1) z1 = this.zmax[col];
+    }
+    const fe = this.fe, C = F.center;
+    const G = {
+      Lo: { r: 1 }, data: this.data, NX: this.NX, NY: this.NY, NZ: this.NZ, NXY: this.NXY, zmin: this.zmin, zmax: this.zmax,
+      pal: this.pal, mat: this.mat, x0, x1, y0, y1, z0, z1, nf,
+      center: [(C[0] - this.o[0]) * fe, (C[1] - this.o[1]) * fe, (C[2] - this.o[2]) * fe], eyes: [], mouth: null, anchors: {},
+    };
+    const pu = F.up || 1;
+    const job = new Job(G, F.yaw, F.pitch, (F.s * pu) / fe, { outline: false });
+    const t0 = now();
+    job.step(Infinity);
+    const dt = now() - t0;
+    spent += dt; workTotal += dt;
+    const P = job.cam.project(G.center);
+    return { canvas: job.canvas, glow: job.glowCanvas || null, ax: P[0], ay: P[1], pu, W: job.cam.W, H: job.cam.H };
+  }
+}
+
+// Is the body-grid point inside the body (deeper than its outermost voxel layer by `inset`)?
+function inBody(F, bx, by, bz, inset) {
+  const Lo = F.Lo;
+  if (!Lo.T || !Lo.mask) return false;
+  const x = Math.floor(bx);
+  if (x < 0 || x >= F.zOf.length) return false;
+  const gx = F.srcOf ? F.srcOf[x] : x;
+  const gy = F.NY - 1 - Math.floor(by);
+  if (gx < 0 || gy < 0 || gx >= Lo.GW || gy >= Lo.GH) return false;
+  const i = gy * Lo.GW + gx;
+  if (!Lo.mask[i]) return false;
+  return Math.abs(bz - (F.zc + 0.5 + F.zOf[x])) < Math.max(0, Math.round(Lo.T[i])) + 0.5 - inset;
+}
+
+// Lid apertures per emotion: u = upper-lid edge height, l = lower-lid edge (eye-local, -1 bottom .. 1 top),
+// s = slant (+ lowers the lid toward the snout: angry; - lowers it toward the back: sad).
+const LIDS = {
+  open: { u: 1.2, l: -1.2, s: 0 },
+  neutral: { u: 0.72, l: -0.86, s: 0 }, happy: { u: 0.5, l: -0.2, s: 0 }, sad: { u: 0.3, l: -0.82, s: -0.4 },
+  angry: { u: 0.12, l: -0.6, s: 0.5 }, scared: { u: 1.05, l: -1.05, s: 0 }, surprised: { u: 1.1, l: -1.1, s: 0 },
+  love: { u: 0.45, l: -0.35, s: 0 }, sleepy: { u: -0.02, l: -0.62, s: -0.1 }, dizzy: { u: 0.42, l: -0.7, s: 0.15 },
+  smug: { u: 0.1, l: -0.45, s: -0.12 }, determined: { u: 0.22, l: -0.62, s: 0.35 }, tired: { u: 0.05, l: -0.66, s: -0.22 },
+  disgust: { u: 0.15, l: -0.32, s: 0.25 },
+};
+const q6 = (v) => Math.round(v * 6) / 6;
+
+function eyeState(c, fs, st, e) {
+  const toon = !!c.toon || e.type === 'googly' || e.type === 'pixel';
+  const emo = fs.emotion || 'neutral';
+  const L0 = toon ? LIDS.neutral : LIDS.open, L1 = LIDS[emo] || L0;
+  const k = toon ? 1 : 0.75;
+  let u = L0.u + (L1.u - L0.u) * k, l = L0.l + (L1.l - L0.l) * k;
+  if (!toon && emo === 'neutral') { u = L0.u; l = L0.l; }
+  const s = L1.s * k;
+  const bl = clamp01(fs.blink || 0);
+  u = u + (-0.12 - u) * bl;
+  l = l + (-0.16 - l) * bl * bl * 0.6;
+  let lx = fs.lx || 0, ly = fs.ly || 0;
+  if (e.type === 'googly') { lx = fs.gx; ly = fs.gy; }
+  const pup = toon ? (emotionParams(emo).pupil ?? 1) : fs.pupil || 1;
+  return {
+    u: q6(u), l: q6(l), s: Math.round(s * 4) / 4, lx: Math.round(clamp(lx, -1, 1) * 3) / 3, ly: Math.round(clamp(ly, -1, 1) * 3) / 3,
+    pup: Math.round(clamp(pup, 0.4, 1.6) * 6) / 6, love: toon && emo === 'love',
+  };
+}
+
+function buildEyePart(F, e3, fl, S, fe) {
+  const rb = e3.rb, C = fl.c, n = fl.n;
+  const m = rb * 1.42 + 1.5 / fe;
+  const N = Math.ceil(2 * m * fe) + 1;
+  const o = [C[0] - N / (2 * fe), C[1] - N / (2 * fe), C[2] - N / (2 * fe)];
+  const P = new PartGrid(o, [N, N, N], fe, F.Lo.mat || DEF_MAT);
+  // eye frame: n outward, up = world up orthogonalised, fw = forward (toward the snout / screen right)
+  let up = [0, 1, 0];
+  const dn = n[1];
+  up = norm3(up[0] - n[0] * dn, up[1] - n[1] * dn, up[2] - n[2] * dn);
+  const fw = norm3(up[1] * n[2] - up[2] * n[1], up[2] * n[0] - up[0] * n[2], up[0] * n[1] - up[1] * n[0]);
+  const fsg = fl.fl === -1 ? -1 : 1; // forward is +x on both flanks
+  const fwx = fw[0] * fsg >= 0 ? fw : [-fw[0], -fw[1], -fw[2]];
+  const gz = 0.62;
+  const g = norm3(n[0] + (fwx[0] * S.lx - up[0] * S.ly) * gz + 0.1, n[1] + (fwx[1] * S.lx - up[1] * S.ly) * gz, n[2] + (fwx[2] * S.lx - up[2] * S.ly) * gz);
+  const [R0, R1, R2] = camRot(F.yaw, F.pitch);
+  const hM = norm3(HALF[0] * R0[0] + HALF[1] * R1[0] + HALF[2] * R2[0], HALF[0] * R0[1] + HALF[1] * R1[1] + HALF[2] * R2[1], HALF[0] * R0[2] + HALF[1] * R1[2] + HALF[2] * R2[2]);
+  const hn = hM[0] * n[0] + hM[1] * n[1] + hM[2] * n[2];
+  const h2 = norm3(2 * hn * n[0] - hM[0], 2 * hn * n[1] - hM[1], 2 * hn * n[2] - hM[2]);
+  const Re = rb * fe;
+  const cosS = Math.cos(Math.min(0.55, 1.2 / Re)), cosS2 = Math.cos(Math.min(0.32, 0.7 / Re));
+  const lt = Math.max(0.16, 1.25 / Re);
+  const pal = P.pal, e = e3.e;
+  const cube = e.type === 'pixel';
+  const lidU = e3.lidU, lidL = e3.lidL, skin = e3.skin;
+  const lash = (p) => mixP(p, 0xff3a2018, 0.55);
+  const vSkinU = pal.idx(lidU, R_BODY, false), vSkinL = pal.idx(lidL, R_BODY, false);
+  const vLashU = pal.idx(lash(lidU), R_BODY, false), vLashL = pal.idx(lash(lidL), R_BODY, false);
+  const vRim = pal.idx(mixP(skin, 0xff3a1810, 0.55), R_PUPIL, false);
+  const vSpec = pal.idx(0xffffffff, R_SPEC, false), vSpec2 = pal.idx(0xfffff0d8, R_SPEC, false);
+  const stalk = fl.fl === 0;
+  let best = -2, bestAt = -1, best2 = -2, best2At = -1;
+  for (let k = 0; k < N; k++) for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const bx = P.bx(i), by = P.by(j), bz = P.bz(k);
+    const qx = (bx - C[0]) / rb, qy = (by - C[1]) / rb, qz = (bz - C[2]) / rb;
+    const d = cube ? Math.max(Math.abs(qx), Math.abs(qy), Math.abs(qz)) : Math.hypot(qx, qy, qz);
+    if (d > 1 + lt + 0.4) continue;
+    const a = qx * n[0] + qy * n[1] + qz * n[2];
+    if (!stalk && a < -0.2) continue;
+    if (!stalk && inBody(F, bx, by, bz, 0.55)) continue;
+    const dd = Math.hypot(qx, qy, qz) || 1;
+    const ux = qx / dd, uy = qy / dd, uz = qz / dd;
+    const qu = ux * up[0] + uy * up[1] + uz * up[2];
+    const qf = ux * fwx[0] + uy * fwx[1] + uz * fwx[2];
+    const eU = S.u - S.s * qf, eL = S.l + 0.12 * qf * qf;
+    if (d <= 1) {
+      // eyeball (parts under closed lids are hidden by the lid shell in front)
+      const [col, role, gl] = eyeColor(e, ux, uy, uz, g, S.pup, S.love);
+      P.put(i, j, k, pal.idx(col, role, !!gl));
+      if (d > 1 - 1.5 / Re && qu < eU - 0.08 && qu > eL + 0.08) {
+        const h1 = ux * hM[0] + uy * hM[1] + uz * hM[2], h2d = ux * h2[0] + uy * h2[1] + uz * h2[2];
+        if (h1 > best) { best = h1; bestAt = i + j * N + k * N * N; }
+        if (h2d > best2) { best2 = h2d; best2At = i + j * N + k * N * N; }
+      }
+      continue;
+    }
+    if (d <= 1 + lt && a > -0.05 && (qu > eU || qu < eL)) {
+      // lid shell, darker lash line along its edge
+      const upper = qu > eU;
+      const edge = upper ? qu - eU < lt * 1.6 + 0.08 : eL - qu < lt * 1.6 + 0.08;
+      P.put(i, j, k, upper ? (edge ? vLashU : vSkinU) : edge ? vLashL : vSkinL);
+      continue;
+    }
+    if (!stalk) {
+      // socket crease: a thin dark ring where the eyeball meets the skin
+      const rho = Math.sqrt(Math.max(0, dd * dd - a * a));
+      if (rho >= 0.98 && rho <= 1.0 + Math.max(0.12, 1.1 / Re) && !inBody(F, bx, by, bz, 0.2) && inBody(F, bx, by, bz - (fl.fl || 1) * 1.1, -0.1)) P.put(i, j, k, vRim);
+    }
+  }
+  // glossy specular voxel(s): the eyeball surface voxels facing the light's half vector
+  const setAt = (at, v) => { if (at < 0) return; const i = at % N, j = Math.floor(at / N) % N, k = Math.floor(at / (N * N)); P.data[i + j * N + k * N * N] = v; };
+  setAt(bestAt, vSpec);
+  if (Re >= 4.5 && best2At !== bestAt) setAt(best2At, vSpec2);
+  const cx = (C[0] - o[0]) * fe, cy = (C[1] - o[1]) * fe, cz = (C[2] - o[2]) * fe;
+  const nf = (ix, iy, iz, v) => {
+    if (v === vRim) return null;
+    return norm3(ix + 0.5 - cx, iy + 0.5 - cy, iz + 0.5 - cz);
+  };
+  return P.render(F, nf);
+}
+
+// Jaw gape: the lower jaw drops, opening a dark mouth (side view), or a round mouth opens (front faces).
+function buildGapePart(F, open) {
+  const G3 = F.mouth, Lo = F.Lo;
+  if (!G3 || !G3.p) return null;
+  const W = Math.max(1.5, G3.wLook * Lo.r);
+  const mx = G3.p[0], my = G3.p[1];
+  const fe = W < 6 ? 2 : 1;
+  const front = !!G3.front;
+  const drop = open * W * (front ? 0.5 : 0.55);
+  const o = [mx - W * 1.1 - 1, my - drop - W * 0.45 - 2, F.zc - Lo.maxT - 3];
+  const N = [Math.ceil((W * 1.3 + 3) * fe), Math.ceil((drop + W * 0.6 + 4) * fe), Math.ceil((2 * Lo.maxT + 7) * fe)];
+  const P = new PartGrid(o, N, fe, Lo.mat || DEF_MAT);
+  const pal = P.pal;
+  const belly = Lo.eyes?.[0]?.lidL || (Lo.c.bellyR?.[3] ?? 0xffd8e0e8);
+  const vIn0 = pal.idx(hexP('#2a0a16'), R_MOUTH, false), vIn1 = pal.idx(hexP('#6a1e30'), R_MOUTH, false), vTongue = pal.idx(hexP('#d4566a'), R_MOUTH, false);
+  const vJaw = pal.idx(belly | 0xff000000, R_BODY, false), vLip = pal.idx((Lo.c.mouth?.R?.[2] ?? belly) | 0xff000000, R_BODY, false);
+  const vTooth = pal.idx(0xfff8fcff, R_EYE, false);
+  const teeth = Lo.c.mouth?.type === 'fangs' || Lo.c.mouth?.teeth;
+  for (let k = 0; k < N[2]; k++) for (let j = 0; j < N[1]; j++) for (let i = 0; i < N[0]; i++) {
+    const bx = P.bx(i), by = P.by(j), bz = P.bz(k);
+    const x = Math.floor(bx);
+    if (x < 0 || x >= F.zOf.length) continue;
+    const zcm = F.zc + 0.5 + F.zOf[x];
+    if (front) {
+      const ry = Math.max(0.6, drop), rx = W * 0.42;
+      const ex = (bx - mx) / rx, ey = (by - (my - ry * 0.5)) / ry;
+      const e2 = ex * ex + ey * ey;
+      if (e2 > 1.35) continue;
+      const surf = inBody(F, bx, by, bz, 0.4) ? 1 : 0;
+      if (!surf || inBody(F, bx, by, bz, 1.6)) continue;
+      P.put(i, j, k, e2 > 1 ? vLip : ey > 0.45 && Math.abs(ex) < 0.5 ? vTongue : e2 > 0.6 ? vIn1 : vIn0);
+      continue;
+    }
+    const t = (bx - (mx - W)) / W; // 0 at the mouth corner .. 1 at the tip
+    if (t < 0 || t > 1.08) continue;
+    const gy = F.NY - 1 - Math.floor(my);
+    const sx = F.srcOf ? F.srcOf[x] : x;
+    const ti = gy >= 0 && sx >= 0 && gy < Lo.GH && sx < Lo.GW ? Lo.T[gy * Lo.GW + sx] : -1;
+    const Tm = Math.max(0.8, ti * 0.86);
+    if (Math.abs(bz - zcm) > Tm) continue;
+    const dr = drop * Math.pow(clamp01(t), 1.15);
+    const jw = Math.max(1, W * 0.2);
+    if (by <= my && by > my - dr) {
+      const deep = (my - by) / Math.max(0.5, dr);
+      let v = t > 0.75 || deep < 0.25 ? vIn1 : vIn0;
+      if (deep > 0.62 && t > 0.3 && t < 0.85) v = vTongue;
+      if (teeth && (deep < 0.2 || deep > 0.85) && ((Math.floor(bx * 1.2) & 1) === 0) && t > 0.35) v = vTooth;
+      P.put(i, j, k, v);
+    } else if (by <= my - dr && by > my - dr - jw) {
+      P.put(i, j, k, by > my - dr - 0.8 && t > 0.6 ? vLip : vJaw);
+    }
+  }
+  return P.render(F, null);
+}
+
+// Gill flare: the operculum edge lifts off the flank and a crescent of red gill filaments shows under it.
+function buildGillPart(F, w, fl) {
+  const Lo = F.Lo;
+  if (!Lo.gill || Lo.gill.length < 3) return null;
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const [x, y] of Lo.gill) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+  const fe = 2;
+  const o = [x0 - w - 3, F.NY - y1 - 3, F.zc - Lo.maxT - w - 4];
+  const N = [Math.ceil((x1 - x0 + w + 6) * fe), Math.ceil((y1 - y0 + 6) * fe), Math.ceil((2 * Lo.maxT + 2 * w + 9) * fe)];
+  const P = new PartGrid(o, N, fe, Lo.mat || DEF_MAT);
+  const pal = P.pal;
+  const reds = ['#5a0a1a', '#a01c34', '#e0485a'].map((h) => pal.idx(hexP(h), R_MOUTH, false));
+  const skin = pal.idx((Lo.eyes?.[0]?.skin ?? 0xff8899aa) | 0xff000000, R_BODY, false);
+  for (const [gx, gy] of Lo.gill) {
+    const x = Math.round(gx);
+    const sx = F.srcOf ? F.srcOf[clamp(x, 0, F.srcOf.length - 1)] : x;
+    const li = Math.floor(gy) * Lo.GW + sx;
+    if (sx < 0 || li < 0 || li >= Lo.T.length || !Lo.mask[li]) continue;
+    const T0 = Math.max(0, Math.round(Lo.T[li]));
+    const zs = F.zc + 0.5 + (F.zOf[clamp(x, 0, F.zOf.length - 1)] || 0) + fl * (T0 + 0.5);
+    const by = F.NY - gy;
+    // filaments behind the edge, the lifted cover plate on it
+    for (let a = 0; a < Math.max(1, w * fe); a++) {
+      const bx = gx - a / fe;
+      const i = Math.floor((bx - o[0]) * fe), j = Math.floor((by - o[1]) * fe), k = Math.floor((zs + fl * 0.3 - o[2]) * fe);
+      P.put(i, j, k, reds[a === 0 ? 0 : a < w * fe * 0.5 ? 1 : 2]);
+    }
+    for (let a = 0; a <= Math.ceil(w * 0.8 * fe); a++) {
+      const bz = zs + fl * (0.3 + a / fe);
+      const i = Math.floor((gx + 0.4 - o[0]) * fe), j = Math.floor((by - o[1]) * fe), k = Math.floor((bz - o[2]) * fe);
+      P.put(i, j, k, skin); P.put(i + 1, j, k, skin);
+    }
+  }
+  return P.render(F, null);
+}
+
+// Wind-turbine rotor (look.rotor): hub + tapered blades spinning about the axis toward the viewer.
+function buildRotorPart(F, q, step, RS) {
+  const R = q.R, fe = R < 10 ? 2 : 1;
+  const x = clamp(Math.round(q.x), 0, F.zOf.length - 1);
+  const H = [q.x + 0.5, F.NY - q.hy - 0.5, F.zc + 0.5 + F.zOf[x] + q.front];
+  const o = [H[0] - R - 2, H[1] - R - 2, H[2] - q.rn * 1.8 - 2];
+  const N = [Math.ceil((2 * R + 4) * fe), Math.ceil((2 * R + 4) * fe), Math.ceil((q.rn * 3.6 + 5) * fe)];
+  const P = new PartGrid(o, N, fe, { ...(F.Lo.mat || DEF_MAT), iri: 0.08, gloss: 1 });
+  const pal = P.pal;
+  const vB = pal.idx(q.bladeP, R_BODY, false), vB2 = pal.idx(mixP(q.bladeP, 0xff9a8a80, 0.25), R_BODY, false);
+  const vT = q.tipP ? pal.idx(q.tipP, R_BODY, false) : vB, vH = pal.idx(q.hubP, R_BODY, false);
+  const th0 = (step / RS) * (TAU / q.blades);
+  for (let k = 0; k < N[2]; k++) for (let j = 0; j < N[1]; j++) for (let i = 0; i < N[0]; i++) {
+    const dx = P.bx(i) - H[0], dy = P.by(j) - H[1], dz = P.bz(k) - H[2];
+    // hub spinner: an ellipsoid nosecone toward the viewer
+    const hr = q.rn * 1.05;
+    if ((dx * dx + dy * dy) / (hr * hr) + (dz > 0 ? (dz / (hr * 1.5)) ** 2 : (dz / hr) ** 2) <= 1) { P.put(i, j, k, vH); continue; }
+    if (dz < -1.1 || dz > 0.6) continue;
+    const rho = Math.hypot(dx, dy);
+    if (rho < hr * 0.7 || rho > R) continue;
+    const t = rho / R;
+    const ang = Math.atan2(dy, dx);
+    for (let b = 0; b < q.blades; b++) {
+      let da = ang - (th0 + (b * TAU) / q.blades);
+      da = Math.atan2(Math.sin(da), Math.cos(da));
+      if (Math.abs(da) > 1.2) continue;
+      const perp = rho * Math.sin(da);
+      const wdt = R * (q.chord * Math.pow(1 - t, 0.55) * (t < 0.2 ? 0.6 + 2 * t : 1) + 0.02) + 0.35;
+      if (Math.abs(perp) > wdt) continue;
+      // twisted blade: leading edge toward the viewer, trailing edge set back
+      const zt = perp / wdt > 0.2 ? 0 : -0.6;
+      if (dz < zt - 0.5 || dz > zt + 0.6) continue;
+      P.put(i, j, k, t > 0.86 && q.tipP ? vT : perp / wdt < -0.55 ? vB2 : vB);
+      break;
+    }
+  }
+  return P.render(F, null);
+}
+
+/**
+ * Push the dynamic voxel parts of a voxel frame into a draw list (items in frame canvas units, relative to
+ * the body centre): [canvas, dx, dy, w, h]. fs = face state from fishrig (emotion, blink, look, pupil, open).
+ */
+export function voxelParts(items, glows, c, f, st, fs, lod = 0) {
+  const F = f.pc;
+  if (!F) return;
+  const Lo = F.Lo;
+  const [, , R2] = camRot(F.yaw, F.pitch);
+  const scr = F.s * (F.up || 1); // screen px per body voxel
+  const push = (p) => {
+    if (!p) return;
+    items.push([p.canvas, -p.ax / p.pu, -p.ay / p.pu, p.W / p.pu, p.H / p.pu]);
+    if (p.glow) glows.push([p.glow, -p.ax / p.pu, -p.ay / p.pu, p.W / p.pu, p.H / p.pu, true]);
+  };
+  const build = (key, fn, fbKey) => {
+    let p = partGet(key);
+    if (p !== undefined) return p;
+    if (overBudget() && !syncAll) {
+      if (fbKey) { const q = partGet(fbKey); if (q !== undefined) return q; }
+      if (forceSpent > FORCE_MS) return null;
+    }
+    const t0 = now();
+    p = fn();
+    forceSpent += overBudget() ? now() - t0 : 0;
+    partPut(key, p || { canvas: null, W: 0, H: 0 });
+    return p;
+  };
+  const time = st.time || 0;
+  // eyes (skip tiny / far ones: their baked eyeball reads fine)
+  if (lod < 1 || st.pri > 1) {
+    for (const e3 of F.eyes3) {
+      if (e3.rb * scr < 1.6) continue;
+      const S = eyeState(c, fs, st, e3.e);
+      const fe = clamp(Math.min(Math.round(scr), Math.floor(9 / e3.rb)), 1, 3);
+      for (const fl of e3.flanks) {
+        const vis = fl.n[0] * R2[0] + fl.n[1] * R2[1] + fl.n[2] * R2[2];
+        if (fl.fl !== 0 && vis < -0.12) continue;
+        const base = F.pkey + '|e' + e3.idx + '|' + fl.fl + '|' + fe;
+        const key = base + '|' + S.u + ',' + S.l + ',' + S.s + ',' + S.lx + ',' + S.ly + ',' + S.pup + (S.love ? 'L' : '');
+        const nS = eyeState(c, { emotion: 'neutral', blink: 0, lx: 0, ly: 0, pupil: 1, gx: 0, gy: 0.5 }, st, e3.e);
+        const fbKey = base + '|' + nS.u + ',' + nS.l + ',' + nS.s + ',' + nS.lx + ',' + nS.ly + ',' + nS.pup;
+        const p = build(key, () => buildEyePart(F, e3, fl, S, fe), fbKey);
+        if (p && p.canvas) push(p);
+      }
+    }
+  }
+  // jaw gape
+  const open = clamp01(fs.open || 0);
+  if (F.mouth && F.mouth.m && F.mouth.m.type !== 'none' && open > 0.14 && lod < 1 && F.mouth.wLook * Lo.r * scr >= 3) {
+    const oq = Math.max(1, Math.round(open * 3)) / 3;
+    const nm = F.mouth.front ? [0, 0, 1] : [1, 0, 0];
+    if (nm[0] * R2[0] + nm[2] * R2[2] > -0.3 || !F.mouth.front) {
+      const p = build(F.pkey + '|gape|' + oq, () => buildGapePart(F, oq));
+      if (p && p.canvas) push(p);
+    }
+  }
+  // breathing gill flare (faster / wider when stressed)
+  if (Lo.gill && lod < 1 && !c.toon) {
+    const cue = fs.cue || {};
+    const rate = 0.6 * (cue.breath || 1);
+    const b = 0.5 + 0.5 * Math.sin(time * TAU * rate + (c.id || 0));
+    let w = b > 0.82 ? 2 : b > 0.5 ? 1 : 0;
+    if (w && (cue.breath || 1) >= 2) w++;
+    if (w) {
+      for (const fl of [1, -1]) {
+        if (fl * R2[2] < 0.15) continue;
+        const p = build(F.pkey + '|gill|' + fl + '|' + w, () => buildGillPart(F, w * 0.6, fl));
+        if (p && p.canvas) push(p);
+      }
+    }
+  }
+  // spinning turbine rotors
+  for (const [qi, q] of (Lo.rotors || []).entries()) {
+    const RS = 8;
+    const step = Math.floor(fract(time * q.speed * q.blades) * RS) % RS;
+    const p = build(F.pkey + '|rot' + qi + '|' + step + '|' + (st.swimPhase != null ? 0 : 0), () => buildRotorPart(F, q, step, RS));
+    if (p && p.canvas) push(p);
+  }
 }
 
 // ------------------------------------------------------------------ aquarium API

@@ -58,6 +58,18 @@ export const THEMES = {
     schemes: [['ghost', 'cyan', 'bamboo'], ['violet', 'rose', 'ghost'], ['black', 'cyan', 'violet'], ['bamboo', 'ghost', 'rose']],
     glow: 1, alwaysGlow: true,
   },
+  // (OS)cean: glossy Frutiger Aero greens, aquas and candy accents
+  oscean: {
+    pals: {
+      grass: ['#1e7a2a', '#3cb03a', '#7ade4a', '#dcff9a'], aqua: ['#0e6a8a', '#1ab0d0', '#5ae8f4', '#e0ffff'], lime: ['#3a7a14', '#6ac42a', '#b4f05a', '#f4ffc8'],
+      sky: ['#1a4aa8', '#2a8ae8', '#6ac8ff', '#e0f6ff'], pink: ['#8a2a6a', '#e05aa8', '#ff9ad0', '#fff0fa'], white: ['#6a8aa8', '#b8d0e4', '#eaf6ff', '#ffffff'],
+      gold: ['#7a5410', '#d0a024', '#ffe05a', '#fffbd8'],
+    },
+    rock: ['#8aa0b8', '#b0c4d8', '#dce8f4'], coralline: ['#5ad0e8', '#a8f0ff'], algae: ['#3cb03a', '#7ade4a'], sand: ['#8ad860', '#b4ec7a'],
+    weights: { staghorn: 2, fan: 2, brain: 1, tube: 2, bubble: 3, pillar: 1, whip: 1 },
+    schemes: [['aqua', 'sky', 'white'], ['lime', 'grass', 'gold'], ['pink', 'aqua', 'white'], ['sky', 'lime', 'aqua']],
+    glow: 0.45,
+  },
 };
 
 // Palette pick: mostly from the formation's colour scheme (harmonious reefs), with the odd accent.
@@ -609,7 +621,8 @@ export function voxAnim(kind, seed, themeId, size0, k, frames = 8, palKey = null
   const theme = THEMES[themeId] || THEMES.shallows;
   const r0 = new RNG(seed);
   const FIXED = { kelp: { shallows: ['#2e3010', '#5e5e1c', '#9a922c', '#dcca5a'], junkyard: ['#2a2a1a', '#4a4a2a', '#7a7a3a', '#b8b060'], abyss: ['#1a2a3a', '#2a4a5a', '#4a8a9a', '#a8f0ff'] },
-    seagrass: { shallows: ['#1e4a24', '#2e7a36', '#5ab04e', '#b8e88a'], junkyard: ['#2a3a1e', '#3e5a2a', '#6a8a3a', '#b0c870'], abyss: ['#1a2e44', '#2a4e6a', '#4a8aaa', '#bfffff'] } };
+    seagrass: { shallows: ['#1e4a24', '#2e7a36', '#5ab04e', '#b8e88a'], junkyard: ['#2a3a1e', '#3e5a2a', '#6a8a3a', '#b0c870'], abyss: ['#1a2e44', '#2a4e6a', '#4a8aaa', '#bfffff'], oscean: ['#1e7a2a', '#3cb43a', '#7ae24a', '#e0ffa0'] } };
+  FIXED.kelp.oscean = ['#0e6a6a', '#1aa8a0', '#4ae0d0', '#c8fff4'];
   const cols = palKey && theme.pals[palKey] ? theme.pals[palKey] : FIXED[kind]?.[themeId] || pickPal(theme, r0);
   const h = Math.ceil(kind === 'kelp' ? size * 6 + 10 : size * 2.2 + 8), wd = Math.ceil(size * 2.4 + 12);
   const out = [], nights = [];

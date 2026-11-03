@@ -1,22 +1,25 @@
-// Big chunky voxel icons (~44 px) for the floating tab bar, rendered with the voxel ray-caster so they
-// match the world's props. Every icon has 'normal' | 'hover' | 'active' variants (same canvas size and
-// anchor) plus a small re-render for the compact strip.
+// Big chunky glossy voxel icons for the game menu (the desktop's floating app bubbles), rendered with the
+// voxel ray-caster so they match the world. Frutiger Aero look: bright aqua / grass / white, glossy specular.
+// Every icon has 'normal' | 'hover' | 'active' variants (same canvas size and anchor) and three sizes.
 //
-//   BIG_ICON_IDS
-//   getBigIcon(id, {state = 'normal', small = false}) -> {canvas, cx, by}  (cx, by = bottom-centre anchor)
-//   drawBigIcon(ctx, id, x, y, {state, small, badge, t, squash}) draws with the bottom-centre at (x, y);
-//     badge: number | '!' | null (red pill, top-right), squash: -1..1 (press squash / hop stretch)
+//   BIG_ICON_IDS, MENU_ICON_IDS
+//   getBigIcon(id, {state = 'normal', small = false, size}) -> {canvas, cx, by}  (cx, by = bottom-centre anchor)
+//     size: 'big' (44, default) | 'menu' (32, fits a 44 px bubble) | 'small' (24) | a number (target px)
+//   drawBigIcon(ctx, id, x, y, {state, small, size, badge, t, squash}) draws with the bottom-centre at (x, y);
+//     badge: number | '!' | null (glossy pill, top-right), squash: -1..1 (press squash / hop stretch)
 //   drawBadge(ctx, x, y, badge, t) (right edge at x, top at y)
 
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { VoxelModel, renderVoxels } from './voxel.js';
 import { unpack, pack, mix, rgbToHex } from '../core/color.js';
 import { hash2, clamp } from '../core/math.js';
-import { drawText, measureText } from './font.js';
+import { drawAeroBadge } from '../ui/aero.js';
 
-export const BIG_ICON_IDS = ['aquarium', 'journal', 'skills', 'shop', 'map', 'inventory', 'build', 'research', 'wardrobe', 'store', 'boatyard', 'settings'];
+export const MENU_ICON_IDS = ['lab', 'aquarium', 'journal', 'inventory', 'wardrobe', 'map', 'bait', 'appsea', 'multiplayer', 'settings'];
+export const BIG_ICON_IDS = [...MENU_ICON_IDS, 'skills', 'shop', 'build', 'research', 'store', 'boatyard', 'mycomputer', 'recycle'];
 
-const BIG = 44, SMALL = 24, PAD = 3;
+const BIG = 44, SMALL = 24, MENU = 32, PAD = 3;
+const SIZES = { big: BIG, small: SMALL, menu: MENU };
 
 const h3 = (x, y, z, s) => hash2(x * 31 + z * 17, y, s);
 
@@ -317,7 +320,259 @@ function settings() {
   return { m, yaw: 28, pitch: 22 };
 }
 
-const MODELS = { aquarium, journal, skills, shop, map, inventory, build, research, wardrobe, store, boatyard, settings };
+
+// ---------------------------------------------------------------- Aero menu models (phase 3)
+
+// Goldfish bowl: a glossy water sphere with an orange goldfish, pebbles, a weed and a glass rim.
+function aeroAquarium() {
+  const m = new VoxelModel(30, 28, 30);
+  const water = m.color('#38b6f2', { smooth: 0.85, spec: 1.6, specPow: 18, jitter: 0.02 }), waterD = m.color('#1f86d6', { smooth: 0.85, spec: 1.2 });
+  const glass = m.color('#e4fbff', { smooth: 0.9, spec: 2.2, light: 0.3 }), surf = m.color('#b8f4ff', { light: 0.4, spec: 1.5 });
+  const fish = m.color('#ff8a1e', { spec: 1.4, smooth: 0.4 }), fishL = m.color('#ffd060', { spec: 1.4 }), fin = m.color('#ff5a2a');
+  const eyeW = m.color('#ffffff', { light: 0.4 }), eyeK = m.color('#10182a'), peb = [m.color('#ffd08a'), m.color('#ff9ab8'), m.color('#9af08a'), m.color('#fff4c8')];
+  const weed = m.color('#3ed05a', { jitter: 0.08 }), weedD = m.color('#22a040');
+  const cx = 15, cy = 13, cz = 15, R = 13;
+  m.fill((x, y, z) => {
+    const d = Math.hypot(x + 0.5 - cx, (y + 0.5 - cy) * 1.05, z + 0.5 - cz);
+    if (d > R || y > 23) return null;
+    if (y <= 17) return y < 4 ? peb[(x * 3 + z * 7) % 4] : y < 8 ? waterD : water;
+    return d > R - 1.2 ? glass : null;
+  });
+  // water surface + glass rim at the opening
+  for (let x = 0; x < 30; x++) for (let z = 0; z < 30; z++) {
+    const d = Math.hypot(x + 0.5 - cx, z + 0.5 - cz);
+    if (d < 11.5 && m.get(x, 17, z)) m.set(x, 17, z, surf);
+    if (d > 6.2 && d < 8.6) { m.set(x, 23, z, glass); m.set(x, 24, z, glass); }
+  }
+  // goldfish on the front of the water
+  const fx = 14, fy = 11, fz = 27;
+  for (let x = -4; x <= 4; x++) for (let y = -3; y <= 3; y++) if ((x / 4.5) ** 2 + (y / 3.1) ** 2 <= 1) for (let z = -1; z <= 0; z++) m.set(fx + x, fy + y, fz + z, y > 0 ? fishL : fish);
+  for (const [x, y] of [[-5, 0], [-6, 1], [-6, -1], [-7, 2], [-7, -2], [-7, 0]]) m.set(fx + x, fy + y, fz, fin);
+  m.set(fx + 0, fy + 4, fz, fin); m.set(fx - 1, fy + 4, fz, fin);
+  m.set(fx + 2, fy + 1, fz + 1, eyeW); m.set(fx + 3, fy + 1, fz + 1, eyeK);
+  // weed
+  for (let y = 4; y < 15; y++) { m.set(6 + ((y >> 2) & 1), y, 24, y % 3 ? weed : weedD); m.set(23 - ((y >> 2) & 1), y - 1, 25, y % 3 ? weedD : weed); }
+  return { m, yaw: 24, pitch: 18 };
+}
+
+// FishDex: a glossy aqua handheld with a screen showing a fish.
+function aeroFishDex() {
+  const m = new VoxelModel(26, 32, 8);
+  const shell = m.color('#2fb4f0', { smooth: 0.6, spec: 1.8, specPow: 16, jitter: 0.02 }), shellD = m.color('#1a86d0', { smooth: 0.5, spec: 1.2 });
+  const bezel = m.color('#0e3a66', { spec: 0.8 }), screen = m.color('#dcfbff', { emissive: 0.35, light: 0.2 }), sea = m.color('#5cd0ff', { emissive: 0.35 });
+  const fish = m.color('#ff8a2a', { emissive: 0.3 }), fishL = m.color('#ffd06a', { emissive: 0.3 }), eye = m.color('#10182a');
+  const btnG = m.color('#6ee04a', { spec: 2, smooth: 0.8 }), btnW = m.color('#ffffff', { spec: 2, light: 0.2 }), led = m.color('#7dffc8', { emissive: 0.9, spec: 2 });
+  const inShell = (x, y) => {
+    const rx = Math.max(0, Math.abs(x + 0.5 - 13) - 8), ry = Math.max(0, Math.abs(y + 0.5 - 16) - 11);
+    return rx * rx + ry * ry <= 16;
+  };
+  m.fill((x, y, z) => (inShell(x, y) && z >= 1 && z <= 6 ? (z <= 2 ? shellD : shell) : null));
+  // screen
+  for (let x = 4; x <= 21; x++) for (let y = 12; y <= 27; y++) m.set(x, y, 7, x === 4 || x === 21 || y === 12 || y === 27 ? bezel : y < 18 ? sea : screen);
+  const cx = 13, cy = 20;
+  for (let x = -4; x <= 4; x++) for (let y = -2; y <= 2; y++) if ((x / 4.3) ** 2 + (y / 2.6) ** 2 <= 1) m.set(cx + x, cy + y, 7, y < 0 ? fishL : fish);
+  for (const [x, y] of [[-5, 0], [-6, 1], [-6, -1]]) m.set(cx + x, cy + y, 7, fish);
+  m.set(cx + 2, cy + 1, 7, eye);
+  // buttons + status light
+  m.sphere(8.5, 7.5, 7, 2.2, btnG);
+  m.box(14, 6, 7, 18, 7, 7, btnW);
+  m.box(14, 9, 7, 18, 9, 7, btnW);
+  m.sphere(6, 29.5, 6.5, 1.4, led);
+  return { m, yaw: 22, pitch: 16 };
+}
+
+// Satchel: a glossy grass-green bag with a white strap, chrome buckle and a fish tail peeking out.
+function aeroSatchel() {
+  const m = new VoxelModel(28, 28, 14);
+  const lea = m.color('#5cc83a', { jitter: 0.04, smooth: 0.6, spec: 1.4 }), leaD = m.color('#3a9a24', { smooth: 0.5 }), flapC = m.color('#86e04a', { smooth: 0.6, spec: 1.6, specPow: 16 });
+  const stitch = m.color('#ffffff'), chrome = m.color('#e8f4fa', { spec: 2.2, smooth: 0.6 }), hole = m.color('#1a5a2a');
+  const strap = m.color('#f4fbff', { smooth: 0.6, spec: 1.2 }), fish = m.color('#ff8a2a'), fishD = m.color('#e05a1a');
+  const inBody = (x, y, z) => {
+    const dx = Math.max(0, Math.abs(x + 0.5 - 14) - 8), dy = Math.max(0, Math.abs(y + 0.5 - 9) - 6), dz = Math.max(0, Math.abs(z + 0.5 - 7) - 2.5);
+    return dx * dx + dy * dy + dz * dz <= 9;
+  };
+  m.fill((x, y, z) => (inBody(x, y, z) ? (y < 2 ? leaD : lea) : null));
+  m.fill((x, y, z) => {
+    if (!inBody(x, y, z) && !inBody(x, y - 1, z) && !inBody(x, y, z - 1)) return null;
+    const hem = 9 + ((x + 0.5 - 14) / 9) ** 2 * 4;
+    if (y >= 15 || (z >= 10 && y >= hem)) return Math.abs(y - hem) < 1 && z >= 10 ? stitch : flapC;
+    return null;
+  });
+  m.box(12, 8, 12, 15, 11, 12, chrome);
+  m.box(13, 9, 12, 14, 10, 12, hole);
+  m.tube([[5, 15, 7, 0.9], [6, 21, 7, 0.9], [14, 25, 7, 0.9], [22, 21, 7, 0.9], [23, 15, 7, 0.9]], strap);
+  m.box(19, 17, 8, 20, 19, 9, fish);
+  m.box(20, 19, 8, 22, 20, 9, fishD);
+  m.box(17, 19, 8, 18, 20, 9, fishD);
+  return { m, yaw: 28, pitch: 20 };
+}
+
+// Wardrobe: an aqua-and-white sailor shirt on a chrome hanger.
+function aeroWardrobe() {
+  const m = new VoxelModel(30, 30, 10);
+  const chrome = m.color('#e4f2fa', { spec: 2.2, smooth: 0.6 });
+  const shirt = m.color('#2fb0f0', { jitter: 0.03, smooth: 0.4, spec: 1.2 }), stripe = m.color('#ffffff', { light: 0.1 }), collar = m.color('#0e4a8a');
+  const star = m.color('#ffe24a', { spec: 1.6 }), tie = m.color('#ff5a5a', { spec: 1.2 });
+  m.tube([[14.5, 21, 5, 0.6], [14.5, 25, 5, 0.6], [16, 28, 5, 0.6], [18, 27.5, 5, 0.6], [18.5, 26, 5, 0.6]], chrome);
+  m.tube([[3, 18, 5, 0.9], [9, 20.5, 5, 0.9], [14.5, 21.5, 5, 0.9], [20, 20.5, 5, 0.9], [26, 18, 5, 0.9]], chrome);
+  m.fill((x, y, z) => {
+    if (z < 3 || z > 7) return null;
+    const torso = x >= 8 && x <= 21 && y >= 1 && y <= 19;
+    const sl = y >= 12 && y <= 19 && ((x >= 3 && x < 8 && y - 12 >= (8 - x) * 0.9) || (x > 21 && x <= 26 && y - 12 >= (x - 21) * 0.9));
+    if (!torso && !sl) return null;
+    return y % 4 === 1 && y < 11 ? stripe : shirt;
+  });
+  for (let k = 0; k < 5; k++) { m.set(12 + k, 19 - k, 8, collar); m.set(17 - k, 19 - k, 8, collar); }
+  m.box(14, 11, 8, 15, 13, 8, tie);
+  m.set(18, 8, 8, star); m.set(17, 8, 8, star); m.set(19, 8, 8, star); m.set(18, 9, 8, star); m.set(18, 7, 8, star);
+  return { m, yaw: 26, pitch: 18 };
+}
+
+// Map: a glossy globe (blue ocean, green continents) on a chrome stand.
+function aeroGlobe() {
+  const m = new VoxelModel(28, 31, 28);
+  const sea = m.color('#2a90e8', { smooth: 0.9, spec: 1.8, specPow: 20 }), seaL = m.color('#5cc4ff', { smooth: 0.9, spec: 1.6 });
+  const land = m.color('#5cc83a', { smooth: 0.8, spec: 1.2 }), landL = m.color('#a8ec6a', { smooth: 0.8 }), ice = m.color('#ffffff', { smooth: 0.8, light: 0.2 });
+  const chrome = m.color('#dcecf6', { spec: 2.2, smooth: 0.6 }), chromeD = m.color('#8ab0c8', { spec: 1.6 });
+  const cx = 14, cy = 17, cz = 14, R = 11;
+  m.fill((x, y, z) => {
+    const dx = x + 0.5 - cx, dy = y + 0.5 - cy, dz = z + 0.5 - cz;
+    const d = Math.hypot(dx, dy, dz);
+    if (d > R) return null;
+    const lat = dy / R, lon = Math.atan2(dz, dx);
+    if (Math.abs(lat) > 0.86) return ice;
+    const n = Math.sin(lon * 2 + lat * 3.1) + Math.sin(lon * 3.7 - lat * 1.3 + 1.2) * 0.8 + Math.sin(lat * 5.3 + 0.4) * 0.5;
+    if (n > 0.55) return n > 1.45 ? landL : land;
+    return lat > 0.2 && n < -0.6 ? seaL : sea;
+  });
+  // meridian half-ring behind the globe + stand
+  for (let a = -Math.PI / 2 - 0.3; a <= Math.PI / 2 + 0.3; a += 0.02) {
+    const rr = R + 1.6;
+    const x = cx - Math.cos(a) * rr * 0.72, y = cy + Math.sin(a) * rr, z = cz - Math.cos(a) * rr * 0.69;
+    if (y < 4) continue;
+    m.set(Math.floor(x), Math.floor(y), Math.floor(z), chrome);
+    m.set(Math.floor(x), Math.floor(y), Math.floor(z) + 1, chrome);
+  }
+  m.cylinder(14, 14, 2, 5, 1.2, chromeD);
+  m.cylinder(14, 14, 0, 1, 5, chrome);
+  return { m, yaw: 40, pitch: 14 };
+}
+
+// Bait: a glossy fishing lure (crankbait) with a clear lip, a voxel eye and chrome hooks.
+function aeroLure() {
+  const m = new VoxelModel(34, 24, 12);
+  const top = m.color('#ff6a2a', { smooth: 0.8, spec: 2, specPow: 18 }), mid = m.color('#ffc23a', { smooth: 0.8, spec: 1.8 }), belly = m.color('#fff6d8', { smooth: 0.8, spec: 1.4 });
+  const stripe = m.color('#e83a3a', { smooth: 0.8, spec: 1.6 }), lip = m.color('#c8f6ff', { smooth: 0.9, spec: 2.4, light: 0.3 });
+  const eyeW = m.color('#ffffff', { spec: 2, smooth: 0.8 }), eyeK = m.color('#0a1424', { spec: 2.4 }), chrome = m.color('#e4f2fa', { spec: 2.4, smooth: 0.5 });
+  const cy = 14;
+  m.ellipsoid(16, cy, 6, 12, 6.2, 4.6, (x, y) => (y > cy + 2.5 ? top : y > cy - 1.5 ? (((x >> 1) & 3) === 0 && x < 22 ? stripe : mid) : belly));
+  // tail taper
+  m.ellipsoid(4.5, cy + 0.5, 6, 3.5, 3.5, 2.6, top);
+  m.box(1, cy - 2, 5, 2, cy + 3, 7, stripe);
+  // lip
+  m.fill((x, y, z) => (x >= 27 && x <= 31 && y >= cy - 5 + (31 - x) * 0.4 && y <= cy - 1 && z >= 3 && z <= 9 ? lip : null));
+  // eye (front face)
+  m.sphere(23.5, cy + 1.5, 10.2, 2.1, eyeW);
+  m.box(24, cy + 1, 11, 25, cy + 2, 11, eyeK);
+  // split ring + treble hooks
+  m.tube([[31, cy - 3, 6, 0.6], [32.5, cy - 4, 6, 0.6], [32, cy - 6, 6, 0.6]], chrome);
+  m.line(15, cy - 6, 6, 15, cy - 9, 6, chrome);
+  m.tube([[15, cy - 9, 6, 0.5], [13.5, cy - 11.5, 6, 0.5], [12, cy - 10, 6, 0.5]], chrome);
+  m.tube([[15, cy - 9, 6, 0.5], [16.5, cy - 11.5, 6, 0.5], [18, cy - 10, 6, 0.5]], chrome);
+  return { m, yaw: 22, pitch: 16 };
+}
+
+// AppSea: an aqua shopping bag with white handles and a download arrow.
+function aeroAppSea() {
+  const m = new VoxelModel(26, 30, 14);
+  const aqua = m.color('#2fc4f0', { smooth: 0.6, spec: 1.8, specPow: 16 }), aquaD = m.color('#1a8ad8', { smooth: 0.5, spec: 1.2 }), wave = m.color('#0e66c0', { smooth: 0.4 });
+  const crest = m.color('#e4fbff', { light: 0.3 }), white = m.color('#ffffff', { light: 0.3, spec: 1.6 }), handle = m.color('#f4fbff', { smooth: 0.6, spec: 1.6 });
+  m.box(3, 0, 3, 22, 19, 10, (x, y, z) => {
+    const c = 4.5 + Math.sin(x * 0.75 + z * 0.4) * 1.3;
+    if (y < c - 0.6) return wave;
+    if (y < c + 0.6) return crest;
+    return z <= 4 ? aquaD : aqua;
+  });
+  for (const z of [9, 4]) m.tube([[7, 19, z, 0.8], [7.5, 24, z, 0.8], [12.5, 27, z, 0.8], [17.5, 24, z, 0.8], [18, 19, z, 0.8]], handle);
+  for (let y = 9; y <= 15; y++) { m.set(12, y, 11, white); m.set(13, y, 11, white); }
+  for (let k = 0; k < 4; k++) for (let x = 12 - 3 + k; x <= 13 + 3 - k; x++) m.set(x, 9 - k, 11, white);
+  return { m, yaw: 28, pitch: 20 };
+}
+
+// Multiplayer: two bubble people (one aqua, one green) side by side, waving.
+function aeroFriends() {
+  const m = new VoxelModel(32, 28, 16);
+  const aqua = m.color('#4ac8ff', { smooth: 0.9, spec: 2, specPow: 16, light: 0.1 }), aquaD = m.color('#1a8ad8', { smooth: 0.8, spec: 1.2 });
+  const green = m.color('#7ee04a', { smooth: 0.9, spec: 2, specPow: 16, light: 0.1 }), greenD = m.color('#3aa224', { smooth: 0.8, spec: 1.2 });
+  const eyeW = m.color('#ffffff', { spec: 2, light: 0.3 }), eyeK = m.color('#0a1424', { spec: 2.4 }), cheek = m.color('#ff9ab8');
+  const front = (x, y) => { x = Math.floor(x); y = Math.floor(y); for (let z = m.nz - 1; z >= 0; z--) if (m.get(x, y, z)) return z; return 0; };
+  const person = (x, z, head, body, s) => {
+    m.ellipsoid(x, 6, z, 5.5 * s, 6 * s, 4 * s, body);
+    m.sphere(x, 15 * s + 1, z, 6.2 * s, head);
+    const hy = 15 * s + 1;
+    for (const ex of [-2.2, 1.8]) {
+      const X = x + ex, Y = hy + 0.5;
+      const fz = front(X, Y);
+      m.set(X, Y, fz + 1, eyeW); m.set(X, Y - 1, fz + 1, eyeW); m.set(X + (ex < 0 ? 0 : 0), Y - 1, fz + 1, eyeK);
+    }
+    m.set(x - 3.6, hy - 2.5, front(x - 3.6, hy - 2.5) + 1, cheek); m.set(x + 3.2, hy - 2.5, front(x + 3.2, hy - 2.5) + 1, cheek);
+  };
+  person(11, 8, aqua, aquaD, 1);
+  person(22, 6, green, greenD, 0.9);
+  // waving arm
+  m.tube([[26, 8, 6, 1.2], [28.5, 12, 6, 1.1], [29.5, 16, 6, 1.1]], green);
+  return { m, yaw: 18, pitch: 14 };
+}
+
+// The Lab: an Erlenmeyer flask of glowing green liquid with rising bubbles on a chrome stand.
+function aeroLab() {
+  const m = new VoxelModel(30, 30, 30);
+  const glass = m.color('#d8f8ff', { smooth: 0.9, spec: 2.4, specPow: 14, light: 0.3 });
+  const liquid = m.color('#62f05a', { emissive: 0.7, smooth: 0.7 }), liquidL = m.color('#d4ffb0', { emissive: 0.9 });
+  const bub = m.color('#f0fff0', { emissive: 0.5, spec: 2 }), cap = m.color('#2fb4f0', { spec: 1.8, smooth: 0.6 });
+  m.cone(15, 15, 0, 13, 13.5, 4.2, glass);
+  m.cylinder(15, 15, 14, 19, 3.6, glass);
+  m.cylinder(15, 15, 20, 20, 4.4, glass);
+  m.recolor((x, y, z, v) => (v === glass && y <= 8 ? (y === 8 ? liquidL : liquid) : null));
+  m.recolor((x, y, z, v) => (v === liquid && (x * 3 + y + z * 5) % 7 === 0 && y > 2 ? liquidL : null));
+  m.sphere(14, 23.5, 15, 1.7, bub);
+  m.sphere(17.5, 26.5, 16, 1.3, bub);
+  m.sphere(13, 29, 14, 1, bub);
+  m.box(12, 21, 12, 18, 22, 18, cap);
+  return { m, yaw: 30, pitch: 18 };
+}
+
+// Settings: a chrome gear with an aqua gear behind it.
+function aeroSettings() {
+  const m = new VoxelModel(28, 28, 9);
+  const metal = m.color('#d4e6f2', { spec: 2.2, jitter: 0.02, smooth: 0.4 }), metalD = m.color('#7aa0bc'), hub = m.color('#2fb4f0', { spec: 2.2, smooth: 0.8 });
+  const aqua = m.color('#4ad0ff', { spec: 1.8, jitter: 0.03 });
+  const gear = (cx, cy, ro, ri, n, hole, z0, z1, c, rot = 0) => m.fill((x, y, z) => {
+    if (z < z0 || z > z1) return null;
+    const dx = x + 0.5 - cx, dy = y + 0.5 - cy, d = Math.hypot(dx, dy);
+    if (d < hole || d > ro) return null;
+    const a = Math.atan2(dy, dx) + rot;
+    if (d > ri && Math.cos(n * a) < -0.1 + 0.5 * clamp((d - ri) / (ro - ri), 0, 1)) return null;
+    return c;
+  });
+  gear(21, 8, 6.5, 4.8, 7, 1.6, 1, 4, aqua, 0.3);
+  gear(12, 15, 11.5, 8.6, 8, 3.2, 3, 7, metal, 0.2);
+  m.recolor((x, y, z, v) => {
+    if (v !== metal) return null;
+    const d = Math.hypot(x + 0.5 - 12, y + 0.5 - 15);
+    if (z === 7 && d < 5.6) return hub;
+    if (z === 7 && Math.abs(d - 7) < 0.6) return metalD;
+    return null;
+  });
+  return { m, yaw: 26, pitch: 20 };
+}
+
+const MODELS = {
+  lab: aeroLab, aquarium: aeroAquarium, journal: aeroFishDex, inventory: aeroSatchel, wardrobe: aeroWardrobe, map: aeroGlobe,
+  bait: aeroLure, appsea: aeroAppSea, multiplayer: aeroFriends, settings: aeroSettings,
+  skills, shop, build, research: aeroLab, store: aeroAppSea, boatyard,
+  tank: aeroAquarium, fishdex: aeroFishDex, satchel: aeroSatchel,
+};
 
 // ---------------------------------------------------------------- rendering & variants
 
@@ -375,7 +630,7 @@ function fallbackDef() {
 
 export function getBigIcon(id, opts = {}) {
   const state = opts.state === 'hover' || opts.state === 'active' ? opts.state : 'normal';
-  const small = !!opts.small;
+  const small = typeof opts.size === 'number' ? opts.size : SIZES[opts.size] || (opts.small ? SMALL : BIG);
   const key = id + '|' + state + '|' + small;
   let e = cache.get(key);
   if (e) return e;
@@ -383,7 +638,7 @@ export function getBigIcon(id, opts = {}) {
   let base = cache.get(baseKey);
   if (!base) {
     let r;
-    try { r = fitRender((MODELS[id] || fallbackDef)(), small ? SMALL : BIG); } catch (err) { console.error(err); r = fitRender(fallbackDef(), small ? SMALL : BIG); }
+    try { r = fitRender((MODELS[id] || fallbackDef)(), small); } catch (err) { console.error(err); r = fitRender(fallbackDef(), small); }
     base = { canvas: r.canvas };
     cache.set(baseKey, base);
   }
@@ -399,21 +654,7 @@ export function getBigIcon(id, opts = {}) {
 }
 
 export function drawBadge(ctx, x, y, badge, t = 0) {
-  if (badge === null || badge === undefined || badge === 0 || badge === false) return;
-  const txt = badge === '!' ? '!' : badge > 99 ? '99+' : String(badge);
-  const tw = measureText(txt, 'small');
-  const w = Math.max(9, tw + 6), h = 9;
-  const bx = Math.round(x - w), by = Math.round(y + (Math.sin(t * 5) > 0.7 ? -1 : 0));
-  ctx.fillStyle = '#2a0e16';
-  ctx.fillRect(bx + 1, by, w - 2, h);
-  ctx.fillRect(bx, by + 1, w, h - 2);
-  ctx.fillStyle = badge === '!' ? '#ffb02e' : '#e8403a';
-  ctx.fillRect(bx + 1, by + 1, w - 2, h - 2);
-  ctx.fillStyle = badge === '!' ? '#ffe08a' : '#ff8a76';
-  ctx.fillRect(bx + 2, by + 1, w - 4, 1);
-  ctx.fillStyle = badge === '!' ? '#c8701a' : '#a82838';
-  ctx.fillRect(bx + 2, by + h - 2, w - 4, 1);
-  drawText(ctx, txt, bx + Math.round((w - tw) / 2), by + 2, { font: 'small', color: '#ffffff', shadow: badge === '!' ? '#8a4a10' : '#6a1420' });
+  drawAeroBadge(ctx, x, y, badge, t);
 }
 
 export function drawBigIcon(ctx, id, x, y, opts = {}) {

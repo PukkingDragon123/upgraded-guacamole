@@ -1,11 +1,13 @@
-// AppSea catalogue: every downloadable desktop app ("family") comes in five tiers. Each tier is a bigger
-// download; bigger files make stronger bait ("the bigger the file, the hungrier the fish").
-// App ids are the desktop icon ids from APPS (src/desktop/icons.js).
+// AppSea catalogue: every downloadable app ("family") comes in five tiers. Phase 3: a download delivers a PACK
+// of consumable bait (PACK_QTY[tier] x '<appId>_<tierId>', see src/store/bait.js); bigger downloads make stronger
+// bait ("the bigger the file, the hungrier the fish"). Tiers unlock in order (download Lite to unlock Standard ...).
+// App ids are the icon ids from APPS (src/desktop/icons.js), used for icon art and the species bait-pref type.
 //
 //   TIERS[i] = {id, name, short}                  0 Lite, 1 Standard, 2 Pro, 3 Ultra, 4 Enterprise
-//   CATEGORIES = [{id, name, blurb}]
+//   CATEGORIES = [{id, name, blurb}]              ('bait' = Bait & Tackle: special bait, see bait.js SPECIAL_SHOP)
 //   CATALOG = [{id, name, cat, kb, priceMul, publisher, versions[5], desc[5], stars, base, isNew, hot}]
-//   listing(appId, tier) -> {app, tier, tierName, name, version, title, kb, price, power, file, desc}
+//   PACK_QTY[tier], appBaitId(appId, tier) -> bait id
+//   listing(appId, tier) -> {app, tier, tierName, name, version, title, kb, price, power, file, desc, qty, bait}
 //   baitPowerAt(appId, tier) -> 1..~3.8, baitPower(appId, state) (installed tier; 1 for anything else)
 //   baitMods(appId, state) -> {power, attract, sizeBonus, rarity, giantMul}
 //   formatSize(kb), formatSpeed(kbPerSec), formatTime(sec), downloadCount(appId, now)
@@ -24,10 +26,13 @@ export const MAX_TIER = TIERS.length - 1;
 
 // Size multiplier per tier (Lite size x mul) and base coin price per tier (x app priceMul).
 const TIER_SIZE = [1, 10, 160, 2400, 30000];
-const TIER_PRICE = [0, 0, 60, 320, 1400];
+const TIER_PRICE = [0, 0, 25, 90, 260]; // Aero per bait pack (x app priceMul)
+export const PACK_QTY = [5, 5, 4, 3, 3];
+export function appBaitId(app, tier) { return `${app}_${TIERS[tier]?.id || 'lite'}`; }
 const TIER_POWER = [0, 0.05, 0.12, 0.22, 0.35];
 
 export const CATEGORIES = [
+  { id: 'bait', name: 'Bait & Tackle', blurb: 'Special bait. Handle with gloves.' },
   { id: 'productivity', name: 'Productivity', blurb: 'Get things done. Fish love deadlines.' },
   { id: 'media', name: 'Media', blurb: 'Pictures, tunes and moving fish.' },
   { id: 'games', name: 'Games', blurb: 'Fun for the whole school.' },
@@ -142,6 +147,7 @@ export function listing(appId, tier) {
     title: `${a.name} ${tierName} ${version}`,
     kb: sizeKb(appId, tier), price: priceOf(appId, tier), power: baitPowerAt(appId, tier),
     file: fileName(appId, tier), desc: a.desc[tier], type: APP_DEF[appId]?.type || 'docs', icon: APP_DEF[appId]?.icon || 'file',
+    qty: PACK_QTY[tier], bait: appBaitId(appId, tier),
   };
 }
 

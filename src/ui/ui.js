@@ -1,12 +1,14 @@
-// UI manager: modal panel stack, immediate-mode widgets, toasts, coin counter and the seabed dock.
+// UI manager: modal panel stack, immediate-mode widgets, glass toasts and the Aero HUD pill.
 // Panels: { id, open(data), close(), draw(ctx, ui, dt) (immediate mode: draw + handle input), rect, modal }
+// The game menu lives on the desktop (floating app icons, src/desktop/desktop.js); while a modal panel is open
+// those icons are drawn above the dim and stay clickable, so they double as tabs.
 
-import { clamp, clamp01, lerp, damp, ease, rectContains, formatCommas } from '../core/math.js';
+import { clamp01, lerp, ease, rectContains } from '../core/math.js';
 import { rgba } from '../core/color.js';
 import { drawText, measureText, wrapText } from '../gfx/font.js';
-import { drawButton, drawSlider, drawToggle, drawTooltip, drawTab, drawWood, drawPlank } from './panels.js';
+import { drawButton, drawSlider, drawToggle, drawTooltip, drawTab, TOGGLE_W, TOGGLE_H } from './panels.js';
 import { getUiIcon } from '../gfx/uiicons.js';
-import { TabBar } from './tabbar.js';
+import { AERO, CURRENCY, fmtAero, aeroSurface, aeroCached, drawAeroCoin, drawSparkle, drawAeroGlow } from './aero.js';
 
 export class UI {
   constructor(game) {
@@ -23,7 +25,7 @@ export class UI {
     this.coinBump = 0;
     this.dockHover = -1;
     this.dock = [];
-    this.flyers = []; // coins flying to the counter
+    this.flyers = []; // Aero drops flying to the counter
     this.anim = 0;
   }
 
@@ -68,7 +70,6 @@ export class UI {
     for (const p of this.stack) if (p.rect && rectContains(p.rect, x, y)) return true;
     if (this.dockHit(x, y) >= 0) return true;
     if (this.coinRect && rectContains(this.coinRect, x, y)) return true;
-    if (this.tabbar?.hit(x, y)) return true;
     return false;
   }
 
@@ -91,9 +92,6 @@ export class UI {
       return true;
     });
     for (const p of this.stack) p.anim = Math.min(1, (p.anim || 0) + dt * 5);
-    // floating big-icon tab bar: takes its clicks before panels and the world see them
-    if (!this.tabbar && g.state) this.tabbar = new TabBar(g);
-    this.tabbar?.update(dt);
   }
 
   // ---------------------------------------------------------------- immediate-mode widgets
@@ -112,7 +110,7 @@ export class UI {
     const hov = !opts.disabled && this.hover(r);
     const down = hov && this.inp.down;
     if (hov) this.markHot(label + x + y);
-    drawButton(ctx, x, y, w, h, { label, icon: opts.icon ? getUiIcon(opts.icon) : opts.iconCanvas, state: opts.disabled ? 'disabled' : down ? 'down' : hov ? 'hover' : opts.active ? 'down' : 'normal', style: opts.style || 'wood', font: opts.font });
+    drawButton(ctx, x, y, w, h, { label, icon: opts.icon ? getUiIcon(opts.icon) : opts.iconCanvas, state: opts.disabled ? 'disabled' : down ? 'down' : hov ? 'hover' : opts.active ? 'down' : 'normal', style: opts.style || 'wood', font: opts.font, align: opts.align });
     if (hov && opts.tip) this.tip = opts.tip;
     if (!opts.disabled && this.clicked(r)) { this.game.audio.play(opts.sound || 'ui_click'); return true; }
     if (opts.disabled && this.hover(r) && this.inp.pressed) { this.inp.pressed = false; this.game.audio.play('ui_error'); }
@@ -127,14 +125,14 @@ export class UI {
       if (!this.inp.down) this.dragKey = null;
       else value = clamp01((this.inp.x - x) / w);
     }
-    drawSlider(ctx, x, y, w, value, { hover: hov || this.dragKey === key });
+    drawSlider(ctx, x, y, w, value, { hover: hov || this.dragKey === key, down: this.dragKey === key });
     return value;
   }
 
-  // toggle(panelId) opens/closes a panel; toggle(ctx, x, y, on, tip) is the clam toggle widget.
+  // toggle(panelId) opens/closes a panel; toggle(ctx, x, y, on, tip) is the glossy switch widget.
   toggle(ctx, x, y, on, tip) {
     if (typeof ctx === 'string') return this.togglePanel(ctx);
-    const r = { x, y, w: 22, h: 14 };
+    const r = { x, y, w: TOGGLE_W, h: TOGGLE_H };
     const hov = this.hover(r);
     drawToggle(ctx, x, y, on, { hover: hov });
     if (hov && tip) this.tip = tip;
@@ -153,19 +151,19 @@ export class UI {
     this.hot = id;
   }
 
-  // ---------------------------------------------------------------- coins flying to counter
+  // ---------------------------------------------------------------- Aero drops flying to the counter
   coinFly(x, y, value) {
     const c = this.coinTarget();
     this.flyers.push({ x0: x, y0: y, x1: c.x, y1: c.y, t: 0, dur: 0.5 + Math.random() * 0.25, value });
   }
 
   coinTarget() {
-    const r = this.coinRect || { x: this.game.screen.W - 90, y: 6, w: 80, h: 18 };
-    return { x: r.x + 12, y: r.y + 9 };
+    const r = this.coinRect || { x: this.game.screen.W - 90, y: 6, w: 80, h: 20 };
+    return { x: r.x + 11, y: r.y + 10 };
   }
 
-  // ---------------------------------------------------------------- dock: physical objects on the seabed
-  setDock(items) { this.dock = items; }
+  // ---------------------------------------------------------------- legacy dock hooks (no seabed dock any more)
+  setDock(items) { this.dock = items || []; }
 
   dockHit(x, y) {
     for (let i = 0; i < this.dock.length; i++) {
@@ -179,42 +177,51 @@ export class UI {
   drawHud(ctx, dt) {
     const g = this.game;
     this.tip = null;
-    // coin counter: hanging wooden plank top-right
-    const W = g.screen.W;
-    if (!this.tabbar?.ownsCoins) {
-    const txt = formatCommas(this.coinShown);
-    const tw = measureText(txt) + 30;
-    const bump = this.coinBump > 0 ? Math.sin(this.coinBump * 10) * this.coinBump * 2 : 0;
-    const r = { x: W - tw - 12, y: 6 - Math.round(bump), w: tw, h: 20 };
-    this.coinRect = r;
-    drawPlank(ctx, r.x, r.y, r.w, r.h);
-    ctx.drawImage(getUiIcon('coin'), r.x + 6, r.y + 6);
-    drawText(ctx, txt, r.x + r.w - 7, r.y + 7, { align: 'right', color: '#fff3dc', shadow: '#2a160a' });
-    if (this.hover(r)) this.tip = 'Oxidized Coins - your fish make these!';
-    }
-    // dock
+    this.drawAeroPill(ctx);
+    // legacy dock items (dev pages only)
     this.dockHover = this.blocking ? -1 : this.dockHit(this.inp.x, this.inp.y);
     for (let i = 0; i < this.dock.length; i++) {
       const d = this.dock[i];
       d.draw?.(ctx, this.dockHover === i, this.time);
       if (this.dockHover === i) {
         this.tip = d.label;
-        if (this.inp.pressed && !this.game.fishing.fighting) { this.inp.pressed = false; this.game.audio.play('ui_click'); d.action(); }
+        if (this.inp.pressed && !g.fishing?.fighting) { this.inp.pressed = false; g.audio.play('ui_click'); d.action(); }
       }
     }
-    // flying coins
+    // flying drops
     for (const f of this.flyers) {
       const k = ease.inCubic(clamp01(f.t / f.dur));
       const x = lerp(f.x0, f.x1, k), y = lerp(f.y0, f.y1, k) - Math.sin(k * Math.PI) * 30;
-      ctx.drawImage(getUiIcon('coin'), Math.round(x - 4), Math.round(y - 4));
+      drawAeroCoin(ctx, x, y, 3.5, 0);
+      if (k > 0.2 && (f.t * 20 | 0) % 3 === 0) drawSparkle(ctx, x - 3, y + 2, 1, 0.6);
     }
+  }
+
+  // The Aero counter: a glossy frosted pill top-right with the currency drop and the amount.
+  drawAeroPill(ctx) {
+    const W = this.game.screen.W;
+    const txt = fmtAero(this.coinShown);
+    const tw = measureText(txt);
+    const w = tw + 30, h = 20;
+    const bump = this.coinBump > 0 ? Math.sin(this.coinBump * 10) * this.coinBump * 2 : 0;
+    const r = { x: W - w - 8, y: 6 - Math.round(bump), w, h };
+    this.coinRect = r;
+    const hov = this.hover(r) && !this.blocking;
+    if (this.coinBump > 0.05) drawAeroGlow(ctx, r.x + 11, r.y + 10, 16, '#9ff6ff', this.coinBump * 0.8);
+    ctx.drawImage(aeroCached(`hudpill|${w}|${hov}`, () => aeroSurface(w, h, { tone: hov ? { top: '#ffffff', mid: '#f4fcff', bot: '#cdeefc', edge: '#2a86c4', a: [0.97, 0.95], glow: '#ffffff' } : 'frost', r: 'pill', gloss: 0.75, glossH: 9, curve: 2, rim: 0.9, glow: 0.5, glowColor: '#bfeaff', sparkle: 1 })), r.x, r.y);
+    drawAeroCoin(ctx, r.x + 11, r.y + 10, 6.5, this.time);
+    drawText(ctx, txt, r.x + w - 8, r.y + 7, { align: 'right', color: AERO.ink, shadow: '#ffffff' });
+    if (hov) this.tip = CURRENCY;
   }
 
   drawPanels(ctx, dt) {
     const g = this.game;
     if (this.blocking) {
-      ctx.fillStyle = rgba('#06121e', 0.42 * Math.min(1, (this.active?.anim ?? 1) * 2));
+      ctx.fillStyle = rgba('#04304e', 0.36 * Math.min(1, (this.active?.anim ?? 1) * 2));
       ctx.fillRect(0, 0, g.screen.W, g.screen.H);
+      // the floating menu icons stay above the dim and keep working as tabs
+      const over = this.stack.some((p) => p.rect && rectContains(p.rect, this.inp.x, this.inp.y));
+      try { g.desktop?.drawMenuOverlay?.(ctx, this.inp, !over); } catch (e) { if (!this.menuErr) { this.menuErr = true; console.error(e); } }
     }
     for (const p of this.stack.slice()) {
       const top = p === this.active;
@@ -240,22 +247,24 @@ export class UI {
       this.close();
     }
     if (a && this.game.input.keyPressed('Escape')) this.close();
-    this.tabbar?.draw(ctx); // above the modal dim so tabs switch panels
   }
 
   drawToasts(ctx) {
     const g = this.game;
-    let y = Math.max(34, (this.tabbar?.bottom ?? 0) + 4);
+    let y = (this.coinRect ? this.coinRect.y + this.coinRect.h : 26) + 6;
     for (const t of this.toasts) {
       const a = Math.min(1, t.t * 5, (t.max - t.t) * 3);
-      const lines = wrapText(t.text, 230);
-      const h = lines.length * 11 + 8;
-      const w = Math.max(...lines.map((l) => measureText(l))) + 30;
-      const x = g.screen.W - w - 10 + Math.round((1 - Math.min(1, t.t * 5)) * 40);
+      const lines = wrapText(t.text, 220);
+      const h = lines.length * 10 + 9;
+      const w = Math.max(...lines.map((l) => measureText(l))) + 32;
+      const x = g.screen.W - w - 8 + Math.round((1 - ease.outCubic(Math.min(1, t.t * 4))) * 40);
       ctx.globalAlpha = a;
-      drawWood(ctx, x, y, w, h, { tone: 'dark', nails: false });
-      ctx.drawImage(getUiIcon(t.icon) || getUiIcon('info'), x + 6, y + 5);
-      lines.forEach((l, i) => drawText(ctx, l, x + 20, y + 5 + i * 11, { color: '#fff3dc', shadow: '#1a0e06' }));
+      ctx.drawImage(aeroCached(`toast|${w}|${h}`, () => aeroSurface(w, h, { tone: 'frost', r: Math.min(8, Math.floor(h / 2)), gloss: 0.6, glossH: Math.min(9, Math.round(h * 0.45)), curve: 2, rim: 0.9, glow: 0.45, glowColor: '#bfeaff', sparkle: 1 })), x, y);
+      // icon sits in a little aqua bubble
+      ctx.drawImage(aeroCached('toastdot', () => aeroSurface(15, 15, { tone: 'aqua', r: 'pill', gloss: 0.8, glossH: 7, curve: 1, rim: 0.7, glow: 0.6 })), x + 4, y + Math.round((h - 15) / 2));
+      const ic = getUiIcon(t.icon) || getUiIcon('info');
+      ctx.drawImage(ic, x + 4 + Math.round((15 - ic.width) / 2), y + Math.round((h - ic.height) / 2));
+      lines.forEach((l, i) => drawText(ctx, l, x + 24, y + 5 + i * 10, { color: AERO.ink }));
       ctx.globalAlpha = 1;
       y += h + 4;
     }

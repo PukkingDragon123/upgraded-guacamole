@@ -1,41 +1,42 @@
-// Fight HUD (screen space): ornate catch-progress bar, tension dial, fish stamina, name plate,
-// status line, context prompts with mouse icons, the crank ring that follows the player's loop,
-// the pull-zone indicator around the fish, ink splats, and the "angler cam" inset showing the
-// player's character reeling.
+// Fight HUD (screen space), Frutiger Aero and nearly text-free:
+//   scene  fish stamina arc, the directional surge QTE (glossy surge arrow at the fish, a big glossy
+//          PULL arrow at the cursor that fills as you drag, hold-mouse glyph), the crank loop at the
+//          cursor, species event visuals, ink on the lens
+//   frame  soft Aero vignette, surge edge tint (and a green edge when you pull right), the name pill,
+//          the round glass "angler cam" porthole, and the physical reel (reel.js) with its SHOCK button.
 
-import { TAU, clamp, clamp01, lerp } from '../core/math.js';
+import { TAU, clamp, clamp01, lerp, damp } from '../core/math.js';
 import { rgba, RARITY } from '../core/color.js';
 import { drawText, measureText, registerInlineIcon } from '../gfx/font.js';
 import { getUiIcon } from '../gfx/uiicons.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { drawCharacter } from '../gfx/character.js';
-import { discSprite } from '../gfx/particles.js';
+import { discSprite, glowSprite, pixelLine } from '../gfx/particles.js';
 
-const INK = '#0b1622';
+const INK = '#0c3a52';
 
-// ------------------------------------------------------------------ inline icons
+// ------------------------------------------------------------------ inline icons (used by events)
 let iconsReady = false;
 function crankIcon(dir) {
   const c = makeCanvas(11, 11);
   const g = ctxOf(c);
   const pts = [];
   for (let i = 0; i < 26; i++) {
-    const a = (i / 26) * TAU * 0.8 + (dir > 0 ? -Math.PI / 2 : -Math.PI / 2);
+    const a = (i / 26) * TAU * 0.8 - Math.PI / 2;
     const aa = dir > 0 ? a : -a + Math.PI;
     pts.push([Math.round(5 + Math.cos(aa) * 4), Math.round(5 + Math.sin(aa) * 4)]);
   }
   g.fillStyle = INK;
   for (const [x, y] of pts) g.fillRect(x - 1, y - 1, 3, 3);
-  g.fillStyle = '#ffe27a';
+  g.fillStyle = '#8ff0ff';
   for (const [x, y] of pts) g.fillRect(x, y, 1, 1);
-  // arrow head at the end
   const [ex, ey] = pts[pts.length - 1];
   g.fillStyle = INK; g.fillRect(ex - 2, ey - 2, 5, 5);
   g.fillStyle = '#ffffff'; g.fillRect(ex - 1, ey - 1, 3, 3);
   return c;
 }
 
-function ensureIcons() {
+export function ensureIcons() {
   if (iconsReady) return;
   iconsReady = true;
   registerInlineIcon('crank_cw', crankIcon(1));
@@ -43,66 +44,139 @@ function ensureIcons() {
   registerInlineIcon('crank', crankIcon(1));
 }
 
-// ------------------------------------------------------------------ small drawing helpers
-function box(ctx, x, y, w, h, fill, edge = INK) {
-  ctx.fillStyle = edge; ctx.fillRect(x - 1, y, w + 2, h); ctx.fillRect(x, y - 1, w, h + 2);
-  ctx.fillStyle = fill; ctx.fillRect(x, y, w, h);
-}
-
-function brassFrame(ctx, x, y, w, h) {
-  ctx.fillStyle = INK; ctx.fillRect(x - 3, y - 2, w + 6, h + 4); ctx.fillRect(x - 2, y - 3, w + 4, h + 6);
-  ctx.fillStyle = '#8a5a1a'; ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
-  ctx.fillStyle = '#d8a040'; ctx.fillRect(x - 2, y - 2, w + 4, h + 3);
-  ctx.fillStyle = '#ffe08a'; ctx.fillRect(x - 1, y - 2, w + 2, 1);
-  ctx.fillStyle = '#5a3208'; ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
-}
-
 export function inkSplatSprite(r) { return discSprite(r, '#0a0614', 0.35, '#1a1030'); }
 
-// ------------------------------------------------------------------ main fight HUD
-function bands(F) {
-  const H = F.H;
-  const bars = F.cam?.bars ?? 0;
-  const barH = Math.round(H * 0.11 * bars);
-  return { barH, topH: Math.max(barH, 40), botH: Math.max(barH, 50) };
+// ------------------------------------------------------------------ cached art
+const ART = new Map();
+function cached(key, w, h, paint) {
+  let c = ART.get(key);
+  if (!c) { c = makeCanvas(w, h); paint(ctxOf(c), c); ART.set(key, c); }
+  return c;
 }
 
-// In-scene markers (drawn under the letterbox): pull zone, crank ring, event visuals, ink.
+// Pixel mouse glyph, left button lit (hold) - 9x13.
+function mouseHold(lit) {
+  return cached('mouse' + lit, 9, 13, (g) => {
+    const rows = ['..#####..', '.#LL#..#.', '#LLL#...#', '#LLL#...#', '#####...#', '#.......#', '#.......#', '#.......#', '#.......#', '#.......#', '.#.....#.', '..#####..', '.........'];
+    for (let y = 0; y < rows.length; y++) for (let x = 0; x < 9; x++) {
+      const ch = rows[y][x];
+      if (ch === '#') { g.fillStyle = INK; g.fillRect(x, y, 1, 1); }
+      else if (ch === 'L') { g.fillStyle = lit ? '#8be04a' : '#d8eef8'; g.fillRect(x, y, 1, 1); }
+      else if (y > 0 && y < 11 && x > 0 && x < 8 && rows[y].indexOf('#') < x && rows[y].lastIndexOf('#') > x) { g.fillStyle = y < 3 ? '#ffffff' : '#e8f6fc'; g.fillRect(x, y, 1, 1); }
+    }
+    if (lit) { g.fillStyle = '#e2ffb0'; g.fillRect(2, 1, 1, 1); }
+  });
+}
+
+// ------------------------------------------------------------------ glossy arrow (per-pixel, any angle)
+let arrowCanvas = null, arrowCtx = null;
+const ARROW_RAMPS = {
+  pull: { fill: ['#2f7a1e', '#3fae2a', '#6cd03a', '#a6ec5a', '#e2ffb0'], empty: ['#0d8fb5', '#1fb8dc', '#4fd8f0', '#8ff0ff', '#e8fdff'] },
+  surge: { fill: ['#8a1a10', '#d8402a', '#ff6a3a', '#ff9d5a', '#ffe0c0'], empty: ['#8a1a10', '#d8402a', '#ff6a3a', '#ff9d5a', '#ffe0c0'] },
+  ok: { fill: ['#0d6f9a', '#1fb8dc', '#4fe0f0', '#9ff4ff', '#ffffff'], empty: ['#0d6f9a', '#1fb8dc', '#4fe0f0', '#9ff4ff', '#ffffff'] },
+};
+const hexRgb = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+const RAMP_RGB = {};
+for (const [k, v] of Object.entries(ARROW_RAMPS)) RAMP_RGB[k] = { fill: v.fill.map(hexRgb), empty: v.empty.map(hexRgb) };
+
+// Draws an arrow from tail (x, y) pointing along `ang`. o: {len, w, k (fill 0..1), kind, alpha, emptyAlpha}
+export function drawGlossArrow(ctx, x, y, ang, o = {}) {
+  const len = Math.round(o.len ?? 70), w = Math.max(4, Math.round(o.w ?? 14));
+  const headL = Math.round(w * 1.35), headW = w * 1.15;
+  const ca = Math.cos(ang), sa = Math.sin(ang);
+  const pad = Math.ceil(headW) + 3;
+  const S = len + pad * 2 + 2;
+  if (!arrowCanvas || arrowCanvas.width < S) { arrowCanvas = makeCanvas(S, S); arrowCtx = ctxOf(arrowCanvas); }
+  const g = arrowCtx;
+  const img = g.createImageData(S, S);
+  const d = img.data;
+  const ox = S / 2, oy = S / 2; // arrow midpoint at the canvas centre
+  const k = clamp01(o.k ?? 1);
+  const R = RAMP_RGB[o.kind || 'pull'];
+  const upSign = ca >= 0 ? -1 : 1;
+  const half = (u) => (u <= len - headL ? w / 2 : u <= len ? (headW * (len - u)) / headL : -1);
+  for (let py = 0; py < S; py++) for (let px = 0; px < S; px++) {
+    const rx = px + 0.5 - ox, ry = py + 0.5 - oy;
+    const u = rx * ca + ry * sa + len / 2, v = -rx * sa + ry * ca;
+    const hw = half(u);
+    const inside = u >= 0 && hw > 0 && Math.abs(v) <= hw;
+    const hwo = half(Math.min(len, Math.max(0, u)));
+    const outl = !inside && u >= -1.6 && u <= len + 1.6 && Math.abs(v) <= Math.max(hwo, u < 0 ? w / 2 : 0) + 1.6;
+    if (!inside && !outl) continue;
+    const i = (py * S + px) * 4;
+    if (outl) { d[i] = 12; d[i + 1] = 58; d[i + 2] = 82; d[i + 3] = 230; continue; }
+    const n = (v / Math.max(1, hw)) * upSign; // -1 bottom .. 1 top (screen)
+    const filled = u <= k * len;
+    const ramp = filled ? R.fill : R.empty;
+    let l = 0.45 + n * 0.32;
+    if (n > 0.2 && n < 0.75) l = 0.92; // gloss band
+    if (Math.abs(v) > hw - 1.2) l -= 0.25; // edge
+    l = clamp01(l) * (ramp.length - 1);
+    const li = Math.min(ramp.length - 1, Math.floor(l) + ((l % 1) > ((px * 7 + py * 13) % 16) / 16 ? 1 : 0));
+    const c = ramp[li];
+    d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2];
+    d[i + 3] = filled ? 255 : Math.round(255 * (o.emptyAlpha ?? 0.55));
+  }
+  g.clearRect(0, 0, S, S);
+  g.putImageData(img, 0, 0);
+  const mx = x + ca * len / 2, my = y + sa * len / 2;
+  const a0 = ctx.globalAlpha;
+  ctx.globalAlpha = a0 * (o.alpha ?? 1);
+  ctx.drawImage(arrowCanvas, 0, 0, S, S, Math.round(mx - ox), Math.round(my - oy), S, S);
+  ctx.globalAlpha = a0;
+}
+
+// ------------------------------------------------------------------ glossy pill (pixel rows)
+export function drawPill(ctx, x, y, w, h, top = '#ffffff', bot = '#9fe0ff', edge = INK, alpha = 0.9) {
+  x = Math.round(x); y = Math.round(y);
+  const r = Math.floor(h / 2);
+  ctx.save();
+  ctx.globalAlpha *= alpha;
+  for (let i = -1; i <= h; i++) {
+    const dy = i < r ? r - i - 0.5 : i >= h - r ? i - (h - r) + 0.5 : 0;
+    const inset = dy > 0 ? Math.round(r - Math.sqrt(Math.max(0, r * r - dy * dy))) : 0;
+    if (i === -1 || i === h) { ctx.fillStyle = edge; ctx.fillRect(x + r, y + i, w - 2 * r, 1); continue; }
+    const k = i / Math.max(1, h - 1);
+    ctx.fillStyle = edge; ctx.fillRect(x + inset - 1, y + i, w - 2 * inset + 2, 1);
+    ctx.fillStyle = k < 0.45 ? mixHex(top, bot, k * 0.6) : mixHex(top, bot, 0.3 + k * 0.7);
+    ctx.fillRect(x + inset, y + i, w - 2 * inset, 1);
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.75)';
+  ctx.fillRect(x + r, y + 1, w - 2 * r, 1);
+  ctx.restore();
+}
+
+function mixHex(a, b, t) {
+  const A = hexRgb(a), B = hexRgb(b);
+  return `rgb(${Math.round(A[0] + (B[0] - A[0]) * t)},${Math.round(A[1] + (B[1] - A[1]) * t)},${Math.round(A[2] + (B[2] - A[2]) * t)})`;
+}
+
+// ------------------------------------------------------------------ in-scene markers
 export function drawFightScene(ctx, F, B) {
   ensureIcons();
   ctx.save();
   ctx.globalAlpha = B.hudIn;
-  drawPullZone(ctx, F, B);
-  if (!B.event || B.event.usesCrank) drawCrankRing(ctx, F, B);
+  if (!B.event) drawStaminaArc(ctx, F, B);
+  if (!B.event || B.event.usesCrank) drawCrankLoop(ctx, F, B);
+  drawQte(ctx, F, B);
+  if (B.trick?.kind === 'wrap') drawWrapHint(ctx, F, B);
   if (B.event) B.event.drawHud(ctx);
   drawInk(ctx, F);
   ctx.restore();
 }
 
-// Panels living in the letterbox bands: name, stamina, status, catch bar, tension, angler cam, prompt.
+// Overlay frame and the reel (drawn above everything in the scene).
 export function drawFightBands(ctx, F, B) {
   ensureIcons();
-  const W = F.W, H = F.H;
-  const { barH, topH, botH } = bands(F);
   ctx.save();
   ctx.globalAlpha = B.hudIn;
-  if (barH < 30) {
-    // no letterbox: draw our own soft backing strips
-    ctx.fillStyle = rgba('#05080c', 0.55);
-    ctx.fillRect(0, barH, W, topH - barH);
-    ctx.fillRect(0, H - botH, W, botH - barH);
-  }
-  const ty = Math.round(topH / 2);
-  drawNamePlate(ctx, F, 14, ty - 12);
-  drawStamina(ctx, F, B, W - 96, ty - 2);
-  drawStatus(ctx, F, B, W / 2, ty - 6);
-  const by = H - Math.round(botH / 2) - 2;
-  const bw = Math.min(380, Math.round(W * 0.42));
-  drawProgressBar(ctx, F, B, Math.round(W / 2 - bw / 2), by - 6, bw);
-  drawTensionDial(ctx, F, B, W - 64, H - 8);
-  drawAnglerCam(ctx, F, B, 10, H - botH - 112);
-  drawPrompt(ctx, F, B, W / 2, H - botH - 18);
+  drawEdges(ctx, F, B);
+  drawNamePill(ctx, F, B, 10, 10);
+  drawAnglerCam(ctx, F, B);
   ctx.restore();
+  const k = clamp01(B.hudIn * 1.2);
+  const ease = 1 - Math.pow(1 - k, 3);
+  F.reel.draw(ctx, B, ease);
 }
 
 export function drawFightHud(ctx, F, B) {
@@ -110,344 +184,203 @@ export function drawFightHud(ctx, F, B) {
   drawFightBands(ctx, F, B);
 }
 
-// ------------------------------------------------------------------ name plate & stamina
-function drawNamePlate(ctx, F, x, y) {
-  const sp = F.sp, rar = RARITY[sp.rarity] || RARITY.common;
-  const name = sp.name;
-  drawText(ctx, name, x, y, { color: rar.color, outline: INK, scale: 2 });
-  const sx = x + measureText(name, 'normal', 2) + 8;
-  for (let i = 0; i < 5; i++) {
-    const ic = getUiIcon(i < rar.stars ? 'star' : 'star_empty');
-    if (ic) ctx.drawImage(ic, sx + i * 10, y + 2);
-  }
-  drawText(ctx, rar.name.toUpperCase() + (F.fish?.rec?.giant ? '  GIANT!' : ''), sx, y + 14, { font: 'small', color: rar.color, outline: INK });
-}
-
-function drawStamina(ctx, F, B, right, y) {
-  const w = 150, h = 8, x = right - w;
-  drawText(ctx, 'STAMINA', x, y - 9, { font: 'small', color: '#ffd2b0', outline: INK });
-  const pct = Math.round(B.stamina * 100) + '%';
-  drawText(ctx, pct, right, y - 9, { font: 'small', color: '#ffffff', outline: INK, align: 'right' });
-  const shake = B.counter > 0.5 && B.surging ? Math.round(Math.sin(F.t * 60) * 1) : 0;
-  box(ctx, x + shake, y, w, h, '#2a1214');
-  const fw = Math.round(w * clamp01(B.stamina));
-  const col = B.exhausted ? '#ffe27a' : B.stamina < 0.3 ? '#ff5a4a' : '#ff8a3a';
-  ctx.fillStyle = col; ctx.fillRect(x + shake, y, fw, h);
-  ctx.fillStyle = rgba('#ffffff', 0.35); ctx.fillRect(x + shake, y, fw, 2);
-  ctx.fillStyle = rgba('#000000', 0.25); ctx.fillRect(x + shake, y + h - 2, fw, 2);
-  ctx.fillStyle = rgba(INK, 0.6);
-  for (let i = 1; i < 10; i++) ctx.fillRect(x + shake + Math.round((w * i) / 10), y, 1, h);
-  const fic = getUiIcon('fish');
-  if (fic) ctx.drawImage(fic, x - fic.width - 4, y - 1);
-}
-
-function drawStatus(ctx, F, B, cx, y) {
-  let text = 'REEL IT IN!', col = '#9affb8';
-  const tr = B.trick;
-  if (B.event) { text = B.event.title; col = B.event.color || '#ffe27a'; }
-  else if (B.mode === 'hookset') { text = 'FISH ON!'; col = '#ffffff'; }
-  else if (B.exhausted) { text = "IT'S EXHAUSTED!"; col = '#ffe27a'; }
-  else if (tr?.kind === 'jump') { text = 'IT JUMPED!'; col = '#9ad8ff'; }
-  else if (tr?.kind === 'wrap') { text = 'TANGLED!'; col = '#ffe27a'; }
-  else if (tr?.kind === 'spit') { text = 'INCOMING!'; col = '#ff9a8a'; }
-  else if (B.mode === 'tele') { text = Math.floor(F.t * 8) % 2 ? '! GET READY !' : '!  GET READY  !'; col = '#ffd25a'; }
-  else if (B.surging) { text = B.inZone ? 'PULL! PULL!' : "IT'S PULLING!"; col = B.inZone ? '#9affb8' : '#ff8a6a'; }
-  drawText(ctx, text, cx, y, { align: 'center', color: col, outline: INK, scale: 2 });
-}
-
-// ------------------------------------------------------------------ progress bar
-function drawProgressBar(ctx, F, B, x, y, w) {
-  const h = 12, t = F.t;
-  const p = clamp01(B.progress), ghost = clamp01(B.ghost);
-  brassFrame(ctx, x, y, w, h);
-  // trough
-  ctx.fillStyle = '#0e1a28'; ctx.fillRect(x, y, w, h);
-  ctx.fillStyle = '#13263a';
-  for (let i = 0; i < w; i += 6) ctx.fillRect(x + i, y + 2, 3, h - 4);
-  // lost-line ghost
-  if (ghost > p + 0.002) {
-    ctx.fillStyle = Math.floor(t * 12) % 2 ? '#ff5a4a' : '#c83a2a';
-    ctx.fillRect(x + Math.round(w * p), y, Math.max(1, Math.round(w * (ghost - p))), h);
-  }
-  // fill: banded gradient teal -> green -> gold
-  const fw = Math.round(w * p);
-  const ramp = ['#2a9ad8', '#2ab8d8', '#3ad8b8', '#5ae89a', '#8aff7a', '#c8ff6a', '#ffe85a', '#ffd23a'];
-  for (let i = 0; i < fw; i += 4) {
-    const k = i / w;
-    ctx.fillStyle = ramp[Math.min(ramp.length - 1, Math.floor(k * ramp.length))];
-    ctx.fillRect(x + i, y, Math.min(4, fw - i), h);
-  }
-  if (fw > 0) {
-    ctx.fillStyle = rgba('#ffffff', 0.4); ctx.fillRect(x, y + 1, fw, 2);
-    ctx.fillStyle = rgba('#000000', 0.22); ctx.fillRect(x, y + h - 3, fw, 3);
-    // moving shimmer stripes
-    ctx.fillStyle = rgba('#ffffff', 0.18);
-    const off = Math.floor(t * 40) % 14;
-    for (let sx = -14 + off; sx < fw; sx += 14) {
-      for (let r = 0; r < h; r++) {
-        const px = sx + r * 0.5;
-        if (px >= 0 && px + 3 <= fw) ctx.fillRect(x + Math.round(px), y + r, 3, 1);
-      }
-    }
-    // bright head
-    ctx.fillStyle = '#ffffff'; ctx.fillRect(x + fw - 1, y, 2, h);
-    if (B.reelRate > 0.01 && Math.random() < 0.5) F.fx.sparks(x + fw, y + h / 2, 1, { speed: [20, 60], g: 80, life: 0.4 });
-  }
-  // event / net ticks
-  for (const e of B.events) {
-    const ex = x + Math.round(w * e.at);
-    ctx.fillStyle = INK; ctx.fillRect(ex - 2, y - 7, 5, 4);
-    ctx.fillStyle = e.done ? '#ffe27a' : '#9aa8b8'; ctx.fillRect(ex - 1, y - 6, 3, 2);
-  }
-  // end caps: fish medallion (left) and boat/hook medallion (right)
-  medallion(ctx, x - 12, y + h / 2, 'fish');
-  medallion(ctx, x + w + 12, y + h / 2, 'hook');
-  // rider: the fish marker sliding along
-  const fic = getUiIcon('fish');
-  if (fic) {
-    const mx = x + Math.round(w * p) - Math.floor(fic.width / 2);
-    const bob = Math.round(Math.sin(t * 10) * (B.surging ? 1.5 : 0.5));
-    ctx.drawImage(fic, mx, y - fic.height - 3 + bob);
-  }
-  // labels
-  const m = Math.max(0, B.lineLen * (1 - B.progress));
-  drawText(ctx, `${m.toFixed(1)} m`, x, y + h + 4, { font: 'small', color: '#cfe8ff', outline: INK });
-  drawText(ctx, `${Math.round(p * 100)}%`, x + w, y + h + 4, { font: 'small', color: '#ffffff', outline: INK, align: 'right' });
-  drawText(ctx, 'CATCH', x + w / 2, y + h + 4, { font: 'small', color: '#ffe08a', outline: INK, align: 'center' });
-}
-
-// Cached static art (built once, blitted every frame).
-const ART = new Map();
-function cached(key, w, h, paint) {
-  let c = ART.get(key);
-  if (!c) { c = makeCanvas(w, h); paint(ctxOf(c)); ART.set(key, c); }
-  return c;
-}
-
-function medallion(ctx, cx, cy, icon) {
-  cx = Math.round(cx); cy = Math.round(cy);
-  const r = 9;
-  const disc = cached('medal', r * 2 + 1, r * 2 + 1, (g) => {
-    for (let yy = -r; yy <= r; yy++) for (let xx = -r; xx <= r; xx++) {
-      const d = Math.hypot(xx, yy);
-      if (d > r + 0.3) continue;
-      g.fillStyle = d > r - 1 ? INK : d > r - 2.5 ? (yy < 0 ? '#ffe08a' : '#a86a1a') : '#1a3048';
-      g.fillRect(xx + r, yy + r, 1, 1);
-    }
-  });
-  ctx.drawImage(disc, cx - r, cy - r);
-  const ic = getUiIcon(icon);
-  if (ic) ctx.drawImage(ic, cx - Math.floor(ic.width / 2), cy - Math.floor(ic.height / 2));
-}
-
-// ------------------------------------------------------------------ tension dial
-function drawTensionDial(ctx, F, B, cx, cy) {
-  const R = 34, t = F.t;
-  const T = B.tension;
-  const danger = T > 0.88;
-  const shake = danger ? Math.round(Math.sin(t * 70) * 1.5) : 0;
-  cx += shake;
-  // dial face (upper half disc)
-  const red = danger && Math.floor(t * 10) % 2;
-  const face = cached('dial' + (red ? 'r' : ''), R * 2 + 7, R + 4, (g) => {
-    for (let y = -R - 3; y <= 0; y++) for (let x = -R - 3; x <= R + 3; x++) {
-      const d = Math.hypot(x, y);
-      if (d > R + 3.3) continue;
-      let col;
-      if (d > R + 2) col = INK;
-      else if (d > R) col = y < -R * 0.6 ? '#ffe08a' : '#c8903a';
-      else col = red ? '#3a1414' : '#101c2a';
-      g.fillStyle = col;
-      g.fillRect(x + R + 3, y + R + 3, 1, 1);
-    }
-  });
-  ctx.drawImage(face, cx - R - 3, cy - R - 3);
-  // coloured scale
-  const n = 60;
-  for (let i = 0; i <= n; i++) {
-    const k = i / n;
-    const ang = Math.PI + k * Math.PI;
-    const col = k < 0.15 ? '#6ab8ff' : k < 0.7 ? '#7dff9a' : k < 0.88 ? '#ffd25a' : '#ff4a3a';
-    const lit = k <= T;
-    ctx.fillStyle = lit ? col : rgba(col, 0.25);
-    for (let r = R - 6; r <= R - 2; r += 2) ctx.fillRect(Math.round(cx + Math.cos(ang) * r), Math.round(cy + Math.sin(ang) * r), 2, 2);
-  }
-  // ticks
-  ctx.fillStyle = '#d8e8f8';
-  for (let i = 0; i <= 4; i++) {
-    const ang = Math.PI + (i / 4) * Math.PI;
-    ctx.fillRect(Math.round(cx + Math.cos(ang) * (R - 10)), Math.round(cy + Math.sin(ang) * (R - 10)), 1, 1);
-  }
-  // snap timer ring
-  if (B.snapT > 0) {
-    const k = clamp01(B.snapT / B.grace);
-    ctx.fillStyle = '#ff3a2a';
-    for (let i = 0; i <= Math.round(40 * k); i++) {
-      const ang = Math.PI + (i / 40) * Math.PI;
-      ctx.fillRect(Math.round(cx + Math.cos(ang) * (R + 2)), Math.round(cy + Math.sin(ang) * (R + 2)), 2, 2);
-    }
-  }
-  // needle
-  const wob = T > 0.7 ? Math.sin(t * 55) * 0.05 * (T - 0.7) * 4 : 0;
-  const ang = Math.PI + clamp(T, 0, 1.08) * Math.PI + wob;
-  const L = R - 5;
-  for (let i = 0; i <= L; i++) {
-    const x = Math.round(cx + Math.cos(ang) * i), y = Math.round(cy + Math.sin(ang) * i);
-    ctx.fillStyle = INK; ctx.fillRect(x - 1, y - 1, 3, 3);
-  }
-  for (let i = 0; i <= L; i++) {
-    const x = Math.round(cx + Math.cos(ang) * i), y = Math.round(cy + Math.sin(ang) * i);
-    ctx.fillStyle = i > L - 6 ? '#ff5a4a' : '#ffffff'; ctx.fillRect(x, y, 1, 1);
-  }
-  ctx.fillStyle = INK; ctx.fillRect(cx - 3, cy - 3, 7, 4);
-  ctx.fillStyle = '#ffe08a'; ctx.fillRect(cx - 2, cy - 2, 5, 2);
-  drawText(ctx, 'TENSION', cx, cy - 13, { font: 'small', align: 'center', color: danger ? '#ff8a7a' : '#cfe8ff', outline: INK });
-  if (danger && Math.floor(t * 6) % 2) drawText(ctx, '!', cx, cy - R - 16, { align: 'center', color: '#ff5a4a', outline: INK, scale: 2 });
-}
-
-// ------------------------------------------------------------------ pull zone around the fish
-function drawPullZone(ctx, F, B) {
+// ------------------------------------------------------------------ stamina arc above the fish
+function drawStaminaArc(ctx, F, B) {
   const f = F.fish;
-  if (!f || B.event || B.mode === 'hookset' || B.exhausted) return;
-  const tele = B.mode === 'tele';
-  if (!tele && !B.surging) return;
+  if (!f || B.mode === 'hookset') return;
   const [sx, sy] = F.toScreen(f.x, f.y);
+  const R = Math.round(clamp(F.zoneRadius() * 0.72, 30, 120));
+  const a0 = Math.PI * 1.15, a1 = Math.PI * 1.85;
+  const k = clamp01(B.stamina);
+  const n = Math.round(R * (a1 - a0) * 0.9);
   const t = F.t;
-  const R = F.zoneRadius();
-  const za = B.pullDir + Math.PI;
-  const inZ = B.inZone && !tele;
-  const blink = tele && Math.floor(t * 10) % 2;
-  // pull direction arrow (red) from the fish
-  const pa = B.pullDir;
-  const al = R * 0.8;
-  for (let i = 10; i < al; i += 2) {
-    const k = i / al;
-    ctx.fillStyle = rgba(INK, 0.5);
-    ctx.fillRect(Math.round(sx + Math.cos(pa) * i) - 1, Math.round(sy + Math.sin(pa) * i) - 1, 4, 4);
-    ctx.fillStyle = rgba('#ff5a4a', 0.4 + 0.6 * k);
-    ctx.fillRect(Math.round(sx + Math.cos(pa) * i), Math.round(sy + Math.sin(pa) * i), 2, 2);
-  }
-  arrowHead(ctx, sx + Math.cos(pa) * al, sy + Math.sin(pa) * al, pa, '#ff5a4a', 6);
-  // counter zone arc (green) on the opposite side
-  const span = 0.95;
-  const col = inZ ? '#9affb8' : tele ? '#ffe27a' : '#7dffb0';
-  const n = 36;
+  const ex = B.exhausted;
+  const fillCol = ex ? (Math.floor(t * 6) % 2 ? '#ffe27a' : '#fff6c0') : B.stunned ? '#9ff4ff' : k < 0.3 ? '#ff5a4a' : '#ff9d2e';
   for (let i = 0; i <= n; i++) {
-    const a = za - span + (i / n) * span * 2;
-    const pulse = Math.sin(t * 10 - i * 0.4) > 0.3;
-    for (let r = R - 3; r <= R + 3; r += 2) {
-      if (!inZ && !pulse && r !== R - 1) continue;
-      ctx.fillStyle = rgba(col, inZ ? 0.95 : blink ? 0.4 : 0.75);
-      ctx.fillRect(Math.round(sx + Math.cos(a) * r), Math.round(sy + Math.sin(a) * r), 2, 2);
+    const u = i / n;
+    const a = a0 + (a1 - a0) * u;
+    const on = u <= k;
+    for (let r = R - 2; r <= R + 2; r++) {
+      const x = Math.round(sx + Math.cos(a) * r), y = Math.round(sy + Math.sin(a) * r);
+      ctx.fillStyle = r === R - 2 || r === R + 2 ? rgba(INK, 0.55) : on ? (r === R + 1 ? '#fff6e0' : fillCol) : 'rgba(220,245,255,0.35)';
+      ctx.fillRect(x, y, 1, 1);
     }
   }
-  // chevrons pointing into the zone
-  for (let k = 0; k < 3; k++) {
-    const r = R * 0.45 + ((t * 40 + k * 10) % 30);
-    arrowHead(ctx, sx + Math.cos(za) * r, sy + Math.sin(za) * r, za, rgba(col, 0.9 - k * 0.2), 4);
-  }
-  const lx = sx + Math.cos(za) * (R + 18), ly = sy + Math.sin(za) * (R + 18);
-  drawText(ctx, inZ ? 'PULL!' : 'PULL HERE', lx, ly - 4, { align: 'center', color: col, outline: INK, scale: inZ ? 2 : 1 });
-  if (inZ && Math.random() < 0.5) F.fx.sparkle(sx + Math.cos(za) * R + (Math.random() - 0.5) * 30, sy + Math.sin(za) * R + (Math.random() - 0.5) * 30, '#9affb8');
+  // fish icon at the start of the arc
+  const fic = getUiIcon('fish');
+  if (fic) ctx.drawImage(fic, Math.round(sx + Math.cos(a0) * R - fic.width - 1), Math.round(sy + Math.sin(a0) * R - fic.height / 2));
+  if (ex && Math.random() < 0.15) F.fx.glint?.(sx + Math.cos(a0 + Math.random()) * R, sy + Math.sin(a0 + Math.random()) * R, { color: '#ffe27a' });
 }
 
-function arrowHead(ctx, x, y, a, color, s) {
-  ctx.fillStyle = color;
-  for (let i = 0; i < s; i++) {
-    const bx = x - Math.cos(a) * i, by = y - Math.sin(a) * i;
-    const px = -Math.sin(a), py = Math.cos(a);
-    for (let j = -i; j <= i; j++) ctx.fillRect(Math.round(bx + px * j * 0.8), Math.round(by + py * j * 0.8), 2, 2);
-  }
-}
-
-// ------------------------------------------------------------------ crank ring
-function drawCrankRing(ctx, F, B) {
+// ------------------------------------------------------------------ crank loop at the cursor
+function drawCrankLoop(ctx, F, B) {
   const cr = F.crank, t = F.t;
-  const active = cr.active;
-  const cx = active ? cr.cx : F.input.x, cy = active ? cr.cy : F.input.y;
-  const R = Math.round(clamp(cr.radius, 12, 46));
-  const p = cr.power;
-  const good = B.surging && B.inZone;
-  const bad = B.surging && !B.inZone && p > 0.3;
-  const col = cr.stun > 0 ? '#ff8a7a' : good ? '#9affb8' : bad ? '#ffb07a' : p > 0.8 ? '#ffe27a' : p > 0.2 ? '#7ad8ff' : '#cfe8ff';
-  if (!active) {
-    // ghost hint: a rotating arrow loop around the cursor
-    const gr = 18;
-    for (let i = 0; i < 16; i++) {
-      const a = (i / 16) * TAU + t * 5;
-      ctx.fillStyle = rgba('#ffffff', 0.08 + (i / 16) * 0.55);
-      ctx.fillRect(Math.round(cx + Math.cos(a) * gr) - 1, Math.round(cy + Math.sin(a) * gr) - 1, 2, 2);
+  if (B.qte?.active && B.qte.holding) return;
+  if (!cr.active) {
+    // a gentle hint orbit around the cursor
+    const gr = 14;
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * TAU + t * 5;
+      ctx.fillStyle = rgba('#ffffff', 0.08 + (i / 12) * 0.5);
+      ctx.fillRect(Math.round(F.input.x + Math.cos(a) * gr) - 1, Math.round(F.input.y + Math.sin(a) * gr) - 1, 2, 2);
     }
-    const ha = t * 5 + TAU;
-    arrowHead(ctx, cx + Math.cos(ha) * gr, cy + Math.sin(ha) * gr, ha + Math.PI / 2, '#ffffff', 3);
     return;
   }
-  // ring: dark backing + dashed bright track
-  const n = Math.max(24, R * 3);
+  const st = B.crankState();
+  const col = st === 'sweet' ? '#8be04a' : st === 'over' ? '#ff9d2e' : '#8ff0ff';
+  const R = Math.round(clamp(cr.radius, 10, 50));
+  const n = Math.max(20, R * 2);
   for (let i = 0; i < n; i++) {
     const a = (i / n) * TAU;
-    ctx.fillStyle = rgba(INK, 0.45);
-    ctx.fillRect(Math.round(cx + Math.cos(a) * R) - 1, Math.round(cy + Math.sin(a) * R) - 1, 3, 3);
+    ctx.fillStyle = rgba(col, i % 2 ? 0.18 : 0.4);
+    ctx.fillRect(Math.round(cr.cx + Math.cos(a) * R), Math.round(cr.cy + Math.sin(a) * R), 1, 1);
   }
-  for (let i = 0; i < n; i++) {
-    const a = (i / n) * TAU;
-    ctx.fillStyle = rgba(col, i % 3 === 2 ? 0.3 : 0.85);
-    ctx.fillRect(Math.round(cx + Math.cos(a) * R), Math.round(cy + Math.sin(a) * R), 1, 1);
-  }
-  // motion trail behind the knob
-  const ka = cr.spin;
-  const trail = clamp(p * 2.2, 0.2, 2.6) * (cr.dir || 1);
-  for (let i = 0; i < 18; i++) {
-    const a = ka - (i / 18) * trail;
-    ctx.fillStyle = rgba(col, (1 - i / 18) * 0.9);
-    ctx.fillRect(Math.round(cx + Math.cos(a) * R) - 1, Math.round(cy + Math.sin(a) * R) - 1, 3, 3);
-  }
-  // handle arm + knob
-  const kx = cx + Math.cos(ka) * R, ky = cy + Math.sin(ka) * R;
-  const steps = Math.ceil(R);
-  for (let i = 0; i <= steps; i += 2) {
-    ctx.fillStyle = rgba('#e8f4ff', 0.5);
-    ctx.fillRect(Math.round(cx + Math.cos(ka) * i), Math.round(cy + Math.sin(ka) * i), 1, 1);
-  }
-  ctx.fillStyle = INK; ctx.fillRect(Math.round(cx) - 2, Math.round(cy) - 2, 5, 5);
-  ctx.fillStyle = '#c8d8e8'; ctx.fillRect(Math.round(cx) - 1, Math.round(cy) - 1, 3, 3);
-  ctx.fillStyle = INK; ctx.fillRect(Math.round(kx) - 3, Math.round(ky) - 3, 7, 7);
-  ctx.fillStyle = '#e04a3a'; ctx.fillRect(Math.round(kx) - 2, Math.round(ky) - 2, 5, 5);
-  ctx.fillStyle = '#ffa08a'; ctx.fillRect(Math.round(kx) - 2, Math.round(ky) - 2, 2, 1);
-  // spin sparks
-  if (p > 0.55 && Math.random() < p * 0.8) {
-    const tx = -Math.sin(ka) * (cr.dir || 1), ty = Math.cos(ka) * (cr.dir || 1);
-    F.fx.sparks(kx, ky, 1 + Math.floor(p * 2), { dir: Math.atan2(ty, tx), spread: 0.6, speed: [40, 120], g: 160, colors: good ? ['#9affb8', '#ffffff', '#d8ffe0'] : undefined });
-  }
-  // speed readout
-  const rev = cr.speed;
-  drawText(ctx, `x${rev.toFixed(1)}`, cx, cy + R + 6, { align: 'center', font: 'small', color: col, outline: INK });
 }
 
-// ------------------------------------------------------------------ prompt line
-function drawPrompt(ctx, F, B, cx, y) {
-  let text, col = '#ffffff', flash = false;
-  const cr = F.crank, tr = B.trick;
-  if (B.event) text = B.event.prompt;
-  else if (B.tension > 0.88) { text = 'EASE OFF! Stop cranking!'; col = '#ff8a7a'; flash = true; }
-  else if (tr?.kind === 'jump') { text = 'IT JUMPED! Stop reeling until it lands!'; col = '#9ad8ff'; }
-  else if (tr?.kind === 'wrap') { text = `${tr.dir > 0 ? '{crank_cw}' : '{crank_ccw}'} Circle ${tr.dir > 0 ? 'CLOCKWISE' : 'COUNTER-CLOCKWISE'} to untangle!`; col = '#ffe27a'; }
-  else if (tr?.kind === 'spit') text = "Keep reeling - don't get hit!";
-  else if (B.mode === 'hookset') text = '{crank} Circle your mouse to REEL!';
-  else if (B.progress < -0.08) { text = 'Line running out! Pull on the GREEN side!'; col = '#ff8a6a'; flash = true; }
-  else if (B.slackT > 0.6) { text = 'Slack line! Keep reeling!'; col = '#9ad8ff'; flash = true; }
-  else if (B.exhausted) { text = '{crank} Crank FAST - it is exhausted!'; col = '#ffe27a'; }
-  else if (B.mode === 'tele') { text = "It's about to pull - get on the GREEN side!"; col = '#ffd25a'; }
-  else if (B.surging && !B.inZone) { text = '{crank} Circle on the GREEN side to pull against it!'; col = '#9affb8'; }
-  else if (B.surging) { text = '{mouse_hold} Hold to YANK!  {crank} Keep circling!'; col = '#9affb8'; }
-  else if (!cr.active) text = '{crank} Circle your mouse to REEL';
-  else text = '{crank} Reeling! Faster circles = faster reel';
-  if (!text) return;
-  if (flash && Math.floor(F.t * 6) % 2) col = '#ffffff';
-  const w = measureText(text) + 16;
-  ctx.fillStyle = rgba('#05080c', 0.6);
-  ctx.fillRect(Math.round(cx - w / 2), Math.round(y - 3), Math.round(w), 13);
-  drawText(ctx, text, cx, y, { align: 'center', color: col, outline: INK });
+// ------------------------------------------------------------------ directional QTE
+function drawQte(ctx, F, B) {
+  const q = B.qte, f = F.fish;
+  if (!q || !f) return;
+  const t = F.t;
+  const [sx, sy] = F.toScreen(f.x, f.y);
+  if (q.active) {
+    const tele = B.mode === 'tele';
+    const surgeA = q.dir, pullA = q.dir + Math.PI;
+    const appear = clamp01(q.t * 5);
+    const flip = q.flip;
+    // surge arrow out of the fish (where it is going)
+    const R0 = clamp(F.zoneRadius() * 0.55, 22, 90);
+    const blink = tele && Math.floor(t * 10) % 2;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.35 + 0.25 * Math.sin(t * 14);
+    const gx = sx + Math.cos(surgeA) * (R0 + 26), gy = sy + Math.sin(surgeA) * (R0 + 26);
+    ctx.drawImage(glowSprite(26, '#ff6a3a'), Math.round(gx - 26), Math.round(gy - 26));
+    ctx.restore();
+    drawGlossArrow(ctx, sx + Math.cos(surgeA) * R0, sy + Math.sin(surgeA) * R0, surgeA, { len: 46 * appear + 4, w: 12, kind: 'surge', alpha: blink ? 0.6 : 0.95 });
+    // the PULL arrow at the cursor: drag along it while holding the button
+    const L = 92, W = 22;
+    const ax = F.input.x - Math.cos(pullA) * (q.holding ? q.k * 10 : 0), ay = F.input.y - Math.sin(pullA) * (q.holding ? q.k * 10 : 0);
+    const off = 16;
+    const tx = clamp(ax + Math.cos(pullA) * off, 20, F.W - 20), ty = clamp(ay + Math.sin(pullA) * off, 20, F.H - 20);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = (q.holding ? 0.55 : 0.3) + 0.2 * Math.sin(t * 10) + flip * 0.5;
+    const hx = tx + Math.cos(pullA) * L * 0.6, hy = ty + Math.sin(pullA) * L * 0.6;
+    ctx.drawImage(glowSprite(40, q.holding ? '#8be04a' : '#59c3ff'), Math.round(hx - 40), Math.round(hy - 40));
+    ctx.restore();
+    const shake = flip > 0 ? Math.round(Math.sin(t * 60) * flip * 3) : 0;
+    drawGlossArrow(ctx, tx + shake, ty, pullA, { len: L * (0.6 + 0.4 * appear), w: W, k: q.k, kind: 'pull', emptyAlpha: 0.5 });
+    // hold glyph by the tail, nudging along the arrow
+    const nud = (t * 1.6) % 1;
+    const mg = mouseHold(q.holding || Math.floor(t * 4) % 2 === 0);
+    const mxp = tx - Math.cos(pullA) * 14 + Math.cos(pullA) * nud * 14 * (q.holding ? 0 : 1), myp = ty - Math.sin(pullA) * 14 + Math.sin(pullA) * nud * 14 * (q.holding ? 0 : 1);
+    ctx.drawImage(mg, Math.round(mxp - 4), Math.round(myp - 6));
+    if (q.holding && q.k > 0.05 && Math.random() < 0.4) {
+      const u = q.k * L;
+      F.fx.glint?.(tx + Math.cos(pullA) * u, ty + Math.sin(pullA) * u, { color: '#e2ffb0', len: 4 });
+    }
+  } else if (q.win && q.t < 0.6) {
+    // a quick ring burst where the arrow was
+    const k = q.t / 0.6;
+    ctx.save();
+    ctx.globalAlpha = 1 - k;
+    drawGlossArrow(ctx, F.input.x, F.input.y, q.dir + Math.PI, { len: 92 + k * 30, w: 22, k: 1, kind: q.stunned ? 'ok' : 'pull' });
+    ctx.restore();
+  }
+}
+
+function drawWrapHint(ctx, F, B) {
+  const tr = B.trick, L = F.reel.lay;
+  if (!L) return;
+  const cx = L.cx, cy = L.cy, R = L.R + 20, t = F.t;
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * TAU + t * 3 * tr.dir;
+    const x = cx + Math.cos(a) * R, y = cy + Math.sin(a) * R;
+    const ta = a + (Math.PI / 2) * tr.dir;
+    ctx.fillStyle = INK;
+    ctx.fillRect(Math.round(x) - 2, Math.round(y) - 2, 4, 4);
+    ctx.fillStyle = (i / 10) < tr.unwound / tr.need ? '#8be04a' : '#ffe27a';
+    ctx.fillRect(Math.round(x) - 1, Math.round(y) - 1, 2, 2);
+    ctx.fillRect(Math.round(x + Math.cos(ta) * 2), Math.round(y + Math.sin(ta) * 2), 1, 1);
+  }
+}
+
+// ------------------------------------------------------------------ edges: vignette + surge tint
+function drawEdges(ctx, F, B) {
+  const W = F.W, H = F.H, t = F.t;
+  // soft Aero vignette: pale aqua corners
+  const v = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.42, W / 2, H / 2, Math.max(W, H) * 0.72);
+  v.addColorStop(0, 'rgba(190,240,255,0)');
+  v.addColorStop(1, 'rgba(190,240,255,0.32)');
+  ctx.fillStyle = v;
+  ctx.fillRect(0, 0, W, H);
+  const q = B.qte;
+  if (q?.active) {
+    const dx = Math.cos(q.dir), dy = Math.sin(q.dir);
+    const pulse = 0.55 + 0.35 * Math.sin(t * 12);
+    const a = (B.mode === 'surge' ? 0.5 : 0.28) * pulse;
+    edgeTint(ctx, W, H, dx, dy, '255,106,58', a);
+    if (q.holding && q.k > 0.02) edgeTint(ctx, W, H, -dx, -dy, '139,224,74', 0.25 + q.k * 0.35);
+  }
+  if (B.stunned) {
+    const k = clamp01(B.stunT / B.stunMax);
+    edgeTint(ctx, W, H, 1, 0, '127,244,255', 0.18 * k);
+    edgeTint(ctx, W, H, -1, 0, '127,244,255', 0.18 * k);
+  }
+  if (B.tension > 0.92) {
+    const a = (B.tension - 0.92) * 3 * (0.6 + 0.4 * Math.sin(t * 20));
+    edgeTint(ctx, W, H, 0, 1, '255,79,94', a);
+    edgeTint(ctx, W, H, 0, -1, '255,79,94', a);
+  }
+}
+
+function edgeTint(ctx, W, H, dx, dy, rgb, a) {
+  if (a <= 0.01) return;
+  const band = Math.round(Math.min(W, H) * 0.2);
+  const sides = [[dx, 'r'], [-dx, 'l'], [dy, 'b'], [-dy, 't']];
+  for (const [w, s] of sides) {
+    if (w <= 0.15) continue;
+    const al = a * Math.min(1, w * 1.2);
+    let g;
+    if (s === 'r') { g = ctx.createLinearGradient(W, 0, W - band, 0); }
+    else if (s === 'l') { g = ctx.createLinearGradient(0, 0, band, 0); }
+    else if (s === 'b') { g = ctx.createLinearGradient(0, H, 0, H - band); }
+    else { g = ctx.createLinearGradient(0, 0, 0, band); }
+    g.addColorStop(0, `rgba(${rgb},${al})`);
+    g.addColorStop(1, `rgba(${rgb},0)`);
+    ctx.fillStyle = g;
+    if (s === 'r') ctx.fillRect(W - band, 0, band, H);
+    else if (s === 'l') ctx.fillRect(0, 0, band, H);
+    else if (s === 'b') ctx.fillRect(0, H - band, W, band);
+    else ctx.fillRect(0, 0, W, band);
+  }
+}
+
+// ------------------------------------------------------------------ name pill
+function drawNamePill(ctx, F, B, x, y) {
+  const sp = F.sp, rar = RARITY[sp.rarity] || RARITY.common;
+  const name = sp.name;
+  const nw = measureText(name, 'normal', 1);
+  const stars = rar.stars || 1;
+  const w = nw + 30 + stars * 8;
+  const h = 15;
+  drawPill(ctx, x, y, w, h, '#ffffff', '#bfeaff', INK, 0.88);
+  // rarity gem
+  const gx = x + 9, gy = y + 7;
+  ctx.fillStyle = INK; ctx.fillRect(gx - 4, gy - 4, 9, 9);
+  ctx.fillStyle = rar.dark; ctx.fillRect(gx - 3, gy - 3, 7, 7);
+  ctx.fillStyle = rar.color; ctx.fillRect(gx - 3, gy - 3, 6, 5);
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(gx - 2, gy - 2, 2, 1);
+  drawText(ctx, name, x + 17, y + 4, { color: INK });
+  const ic = getUiIcon('star');
+  for (let i = 0; i < stars; i++) if (ic) ctx.drawImage(ic, x + 20 + nw + i * 8, y + 3);
+  if (F.fish?.rec?.giant || B.heavy > 0) {
+    const tag = F.fish?.rec?.giant ? 'GIANT' : `${Math.round(B.kg * 10) / 10} kg`;
+    const tw = measureText(tag, 'small', 1) + 10;
+    drawPill(ctx, x + w + 4, y + 2, tw, 11, B.heavy > 0 ? '#ffd0c8' : '#fff6c0', B.heavy > 0 ? '#ff6a5a' : '#ffd23a', INK, 0.9);
+    drawText(ctx, tag, x + w + 9, y + 5, { font: 'small', color: INK });
+  }
 }
 
 // ------------------------------------------------------------------ ink splats on the "lens"
@@ -467,7 +400,7 @@ function drawInk(ctx, F) {
   }
 }
 
-// ------------------------------------------------------------------ angler cam & character
+// ------------------------------------------------------------------ angler cam porthole
 export function drawAngler(ctx, F, x, y, o = {}) {
   const look = F.game.state?.character;
   try {
@@ -478,59 +411,75 @@ export function drawAngler(ctx, F, x, y, o = {}) {
   }
 }
 
-function drawAnglerCam(ctx, F, B, x, y) {
-  const w = 112, h = 104, t = F.t;
-  x = Math.round(x); y = Math.round(y);
-  brassFrame(ctx, x, y, w, h);
+function portholeRing(r) {
+  return cached('port' + r, r * 2 + 9, r * 2 + 9, (g) => {
+    const C = r + 4;
+    for (let y = 0; y < r * 2 + 9; y++) for (let x = 0; x < r * 2 + 9; x++) {
+      const dx = x - C, dy = y - C, d = Math.hypot(dx, dy);
+      if (d < r - 0.5 || d > r + 4.3) continue;
+      const u = (d - r) / 4.3;
+      const lit = -(dx + dy) / Math.max(1, d);
+      let col;
+      if (u > 0.82 || u < 0.12) col = INK;
+      else if (lit > 0.4 && u < 0.5) col = '#ffffff';
+      else if (lit > -0.2) col = '#b4d0e2';
+      else col = '#7fa4bc';
+      g.fillStyle = col;
+      g.fillRect(x, y, 1, 1);
+    }
+  });
+}
+
+function drawAnglerCam(ctx, F, B) {
+  const t = F.t;
+  const r = Math.round(clamp(F.H * 0.085, 28, 48));
+  const cx = r + 14, cy = F.H - r - 14;
   ctx.save();
-  ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.clip();
   const biome = F.world.biome;
-  const sky = biome === 'abyss' ? ['#0a1028', '#141c3a', '#1e2a50'] : biome === 'junkyard' ? ['#3a2a3a', '#6a4a4a', '#a8785a'] : ['#5ab8f0', '#8ad0f8', '#c8ecff'];
-  const sea = biome === 'abyss' ? '#0a1a3a' : biome === 'junkyard' ? '#2a4a4a' : '#2a7ab8';
-  const wl = y + h - 22;
-  for (let i = 0; i < wl - y; i++) {
-    const k = i / (wl - y);
-    ctx.fillStyle = sky[Math.min(2, Math.floor(k * 3))];
-    ctx.fillRect(x, y + i, w, 1);
+  const dark = biome === 'abyss';
+  const sky = ctx.createLinearGradient(0, cy - r, 0, cy + r);
+  sky.addColorStop(0, dark ? '#0a1028' : '#59c3ff');
+  sky.addColorStop(0.6, dark ? '#1e2a50' : '#bfeaff');
+  sky.addColorStop(0.61, dark ? '#0a1a3a' : '#1fb8dc');
+  sky.addColorStop(1, dark ? '#06101e' : '#0d8fb5');
+  ctx.fillStyle = sky; ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+  // sun + hill
+  if (!dark) {
+    ctx.drawImage(glowSprite(10, '#fffbe0'), cx + r - 26, cy - r + 6);
+    ctx.fillStyle = '#8be04a';
+    for (let x = -r; x <= r; x++) { const h = Math.round(6 + Math.cos((x + t * 3) * 0.05) * 3); ctx.fillRect(cx + x, cy + r * 0.2 - h, 1, h); }
   }
-  // clouds
-  ctx.fillStyle = rgba('#ffffff', biome === 'abyss' ? 0.15 : 0.7);
-  const cxo = (t * 4) % (w + 40);
-  ctx.fillRect(Math.round(x + w - cxo), y + 12, 18, 3); ctx.fillRect(Math.round(x + w - cxo + 4), y + 10, 9, 2);
-  // sea
-  ctx.fillStyle = sea; ctx.fillRect(x, wl, w, h - (wl - y));
-  ctx.fillStyle = rgba('#ffffff', 0.6);
-  for (let i = 0; i < w; i += 7) ctx.fillRect(x + ((i + Math.floor(t * 12)) % w), wl + Math.round(Math.sin(t * 3 + i) * 0.8), 3, 1);
-  // boat hull
-  const hx = x + 14, hy = wl - 4, hw = 64;
-  const bob = Math.round(Math.sin(t * 2.2) * 1);
-  ctx.fillStyle = '#3a1a0e'; ctx.fillRect(hx - 1, hy - 1 + bob, hw + 2, 9);
-  ctx.fillStyle = F.game.state?.character?.boat || '#c8583a'; ctx.fillRect(hx, hy + bob, hw, 7);
-  ctx.fillStyle = rgba('#ffffff', 0.3); ctx.fillRect(hx, hy + bob, hw, 1);
-  ctx.fillStyle = rgba('#000000', 0.25); ctx.fillRect(hx + 4, hy + 4 + bob, hw - 8, 1);
+  const wl = Math.round(cy + r * 0.2);
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  for (let i = -r; i < r; i += 7) ctx.fillRect(cx + ((i + Math.floor(t * 12) + r) % (2 * r)) - r, wl + Math.round(Math.sin(t * 3 + i) * 0.8), 3, 1);
   // pose from what the player is doing
   let pose = 'reel';
   if (B.event?.name === 'mash' || F.poseHold?.pose === 'yank') pose = 'yank';
-  else if (F.input.down || (B.surging && B.inZone)) pose = 'pull';
-  else if (!F.crank.active) pose = B.surging ? 'pull' : 'idle';
-  const anchors = drawAngler(ctx, F, hx + 26, hy + bob, { pose, t, facing: 1 });
-  // the line from the rod tip, taut and coloured by tension
-  const rt = anchors?.rodTip || [hx + 44, hy - 26];
-  const ex = x + w + 2, ey = y + h - 4;
+  else if (B.qte?.holding || B.surging) pose = 'pull';
+  else if (!F.crank.active) pose = 'idle';
+  const bob = Math.round(Math.sin(t * 2.2));
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(cx - r, wl - 2 + bob, r * 2, 3);
+  ctx.fillStyle = '#59c3ff'; ctx.fillRect(cx - r, wl + 1 + bob, r * 2, 2);
+  const anchors = drawAngler(ctx, F, cx - 6, wl - 1 + bob, { pose, t, facing: 1 });
+  const rt = anchors?.rodTip || [cx + 16, wl - 30];
   const T = B.tension;
-  const sag = (1 - clamp01(T)) * 14;
-  const col = T > 0.88 ? '#ff6a5a' : T > 0.7 ? '#ffd25a' : '#e8f4ff';
+  const col = T > 0.88 ? '#ff6a5a' : T > 0.7 ? '#ffd25a' : '#ffffff';
   ctx.fillStyle = col;
-  const n = 40;
+  const ex = cx + r, ey = cy + r * 0.7;
   const vib = T > 0.8 ? Math.sin(t * 60) * 1.2 : 0;
-  for (let i = 0; i <= n; i++) {
-    const k = i / n;
-    const lx = lerp(rt[0], ex, k), ly = lerp(rt[1], ey, k) + Math.sin(k * Math.PI) * (sag + vib);
-    ctx.fillRect(Math.round(lx), Math.round(ly), 1, 1);
+  for (let i = 0; i <= 30; i++) {
+    const k = i / 30;
+    ctx.fillRect(Math.round(lerp(rt[0], ex, k)), Math.round(lerp(rt[1], ey, k) + Math.sin(k * Math.PI) * ((1 - clamp01(T)) * 8 + vib)), 1, 1);
   }
+  // glass gloss
+  ctx.fillStyle = 'rgba(255,255,255,0.22)';
+  ctx.beginPath(); ctx.ellipse(cx - r * 0.25, cy - r * 0.5, r * 0.62, r * 0.3, -0.35, 0, TAU); ctx.fill();
   ctx.restore();
-  // tag
-  drawText(ctx, 'YOU', x + 3, y + 3, { font: 'small', color: '#ffffff', outline: INK });
-  if (Math.floor(t * 2) % 2) { ctx.fillStyle = '#ff3a3a'; ctx.fillRect(x + w - 8, y + 3, 4, 4); }
-  drawText(ctx, 'LIVE', x + w - 11, y + 3, { font: 'small', color: '#ffffff', outline: INK, align: 'right' });
+  const ring = portholeRing(r);
+  ctx.drawImage(ring, cx - r - 4, cy - r - 4);
+  // live dot
+  if (Math.floor(t * 2) % 2) { ctx.fillStyle = INK; ctx.fillRect(cx + r - 9, cy - r + 5, 5, 5); ctx.fillStyle = '#ff4f5e'; ctx.fillRect(cx + r - 8, cy - r + 6, 3, 3); }
 }
+
+export { pixelLine, damp };

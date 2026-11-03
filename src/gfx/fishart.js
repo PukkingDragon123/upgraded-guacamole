@@ -1951,6 +1951,7 @@ function genericExtent(c, G) {
       default: break;
     }
   }
+  for (const q of [].concat(c.look.rotor || [])) exTop = Math.max(exTop, (q.h ?? 10) + Math.max(4, (q.r ?? 12) * 0.25) + 3);
   // accessories with explicit boxes (sword, hammer, guitar, horn, ears, wings, mane, arrow, juggle...)
   const ACC = ACC_TYPES;
   if (c.extras.some((e) => ACC.has(e.type) || (e.type === 'cap' && CAP_WIDE.has(e.style)))) {
@@ -3838,7 +3839,7 @@ export function rigGeom(c, q) {
   const G = geomOf(c, q.inflate || 0);
   const B = boundsFor(genericExtent(c, G), q.angle || 0, s);
   const f = genericFace(c, G, q.sw || 0, q.angle || 0, s, B.ox, B.oy, !!q.still);
-  return { w: B.w, h: B.h, ox: B.ox, oy: B.oy, eyes: f.eyes, mouth: f.mouth, anchors: f.anchors, offsets: f.offsets };
+  return { w: B.w, h: B.h, ox: B.ox, oy: B.oy, eyes: f.eyes, mouth: f.mouth, anchors: f.anchors, offsets: f.offsets, gill: f.gill };
 }
 
 /**

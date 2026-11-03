@@ -1,5 +1,5 @@
-// Distant voxel giants that cruise through the far water: a humpback whale (tail-beat cycle) and a green sea
-// turtle (flipper strokes). Frames are voxel models re-posed per phase and rendered lazily, one per call to
+// Distant voxel giants that cruise through the far water: a humpback whale (tail-beat cycle), a green sea
+// turtle (flipper strokes) and a glossy dolphin (vertical tail beat). Frames are voxel models re-posed per phase and rendered lazily, one per call to
 // warm(), so the first sighting never stalls a frame; drawing falls back to the nearest built frame.
 
 import { VoxelModel } from '../gfx/voxel.js';
@@ -73,9 +73,39 @@ function turtleModel(ph) {
   return m;
 }
 
+// Glossy bottlenose dolphin (Frutiger Aero): vertical tail beat, shiny blue-grey back, pale belly.
+function dolphinModel(ph) {
+  const L = 46, R = 5.6;
+  const m = new VoxelModel(L + 4, 2 * R + 22, 2 * R + 16);
+  const C = (c, o = {}) => m.color(c, { jitter: 0.04, spec: 0.55, specPow: 14, ...o });
+  const back = C('#3a6ea8'), side = C('#6aa6dc'), belly = C('#eaf6ff', { spec: 0.4 }), fin = C('#34629a'), eye = C('#0a1424', { spec: 0.9 });
+  const cy = m.ny / 2, cz = m.nz / 2;
+  const flex = (u) => Math.sin(ph) * Math.pow(Math.max(0, 0.55 - u), 1.4) * 14;
+  for (let x = 0; x < L; x++) {
+    const u = x / L;
+    let r = R * (0.22 + 0.78 * sm(0.0, 0.55, u)) * (1 - sm(0.8, 0.97, u) * 0.55);
+    if (u > 0.93) r = R * 0.28;
+    const yc = cy + flex(u) - (u > 0.92 ? 1 : 0);
+    for (let y = Math.floor(yc - r); y <= Math.ceil(yc + r); y++) for (let z = Math.floor(cz - r); z <= Math.ceil(cz + r); z++) {
+      const dy = (y + 0.5 - yc) / r, dz = (z + 0.5 - cz) / (r * 0.9);
+      if (dy * dy + dz * dz > 1) continue;
+      m.set(x, y, z, dy > 0.25 ? back : dy > -0.35 ? side : belly);
+    }
+  }
+  // dorsal fin, flukes, pectorals, eye
+  const dx = Math.round(L * 0.5), dyb = Math.round(cy + flex(0.5) + R - 1);
+  for (let k = 0; k < 6; k++) for (let j = 0; j < 6 - k; j++) m.set(dx - j + Math.round(k * 0.5), dyb + k, cz, fin);
+  const fy = Math.round(cy + flex(0));
+  for (let x = 0; x < 5; x++) { const span = 7 * (1 - Math.abs(x / 5 - 0.4)); for (let z = Math.floor(cz - span); z <= Math.ceil(cz + span); z++) m.set(x, fy, z, fin); }
+  for (const s of [-1, 1]) m.line(L * 0.7, cy - 2, cz + s * R * 0.6, L * 0.6, cy - 5, cz + s * (R + 3), fin, 0.9);
+  m.set(Math.round(L * 0.86), Math.round(cy + 1), Math.round(cz + R * 0.75), eye);
+  return m;
+}
+
 const BUILD = {
   whale: { n: 8, model: whaleModel, render: { scale: 2, yaw: 22, pitch: 10, jitter: 0.1 } },
   turtle: { n: 10, model: turtleModel, render: { scale: 2, yaw: 18, pitch: 20, jitter: 0.12 } },
+  dolphin: { n: 8, model: dolphinModel, render: { scale: 2, yaw: 14, pitch: 12, jitter: 0.05 } },
 };
 
 export class VoxelGiant {

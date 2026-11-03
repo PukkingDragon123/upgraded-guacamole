@@ -1,96 +1,554 @@
-// Frutiger Aero UI kit (phase 3). OWNER: UI agent (polishes these; signatures are the contract).
-// Everyone draws Aero chrome through these helpers so the whole game shares one glossy look.
+// Frutiger Aero UI kit (phase 3). OWNER: UI agent (signatures below are the contract).
+// Everyone draws Aero chrome through these helpers so the whole game shares one glossy look:
+// pixel-crisp glass (hard rounded edges, no anti-aliasing) with smooth gradients, a specular sheen,
+// an inner white rim, a soft reflected glow at the bottom, bubbles and lens-flare sparkles.
+// Every surface is rasterised once per size/look and cached (LRU), so drawing is a single drawImage.
+//
 //   AERO                         palette tokens (sky, aqua, grass, glass, ink, gloss ...)
+//   AERO_TONES                   named surface tones ('aqua','green','orange','red','purple','glass','white','clear','sky','grass','dark','deep')
 //   CURRENCY = 'Aero'            the one currency (state.coins holds the amount)
 //   fmtAero(n) -> '1,250'        number formatting for Aero amounts
-//   drawAeroPanel(ctx, x, y, w, h, {tone:'glass'|'sky'|'grass'|'dark', radius, title, glow})
-//   drawAeroButton(ctx, x, y, w, h, {label, icon, state:'normal'|'hover'|'down'|'disabled', tone:'aqua'|'green'|'orange'|'glass'})
-//   drawAeroBar(ctx, x, y, w, h, k, {color, back, gloss})   glossy progress bar, k in 0..1
+//   drawAeroPanel(ctx, x, y, w, h, {tone:'glass'|'sky'|'grass'|'dark'|'deep'|any tone, radius, title, glow, bubbles, sparkle})
+//   drawAeroButton(ctx, x, y, w, h, {label, icon, state:'normal'|'hover'|'down'|'disabled', tone:'aqua'|'green'|'orange'|'glass'|..., font, align, radius})
+//   drawAeroBar(ctx, x, y, w, h, k, {color, back, gloss, segments})   glossy progress bar, k in 0..1
 //   drawAeroCoin(ctx, cx, cy, r, t)                           the Aero currency drop (glossy aqua bubble)
 //   drawGlossOrb(ctx, cx, cy, r, color, t)                    generic glossy bubble/orb
-import { rgba, shade } from '../core/color.js';
-import { drawText } from '../gfx/font.js';
+// Extras:
+//   aeroSurface(w, h, o) -> cached canvas   the raw surface rasteriser (see SURFACE OPTIONS below)
+//   drawAeroSurface(ctx, x, y, w, h, o)     blit of the above
+//   drawSparkle(ctx, x, y, size, alpha, color)  4-point lens-flare star (size 1..4)
+//   drawAeroBubble(ctx, cx, cy, r, alpha)   a clear soap/water bubble ring
+//   drawAeroBadge(ctx, right, top, value, t)    red glossy count pill ('!' = orange)
+//   drawAeroLabel(ctx, text, x, y, {align, tone, font}) -> rect   small glass pill with text (hover labels)
+//   drawAeroGlow(ctx, cx, cy, r, color, alpha)  soft round light (cached radial)
+//   aeroText(ctx, text, x, y, o)            drawText with a soft Aero glow halo (o.glow color, default white)
+
+import { rgba, shade, mix, pack, packRGB, hexToRgb } from '../core/color.js';
+import { makeCanvas, ctxOf } from '../core/canvas.js';
+import { PixelBuffer } from '../gfx/pixel.js';
+import { drawText, measureText } from '../gfx/font.js';
+import { hash1 } from '../core/math.js';
 
 export const CURRENCY = 'Aero';
 export const AERO = {
   sky0: '#1e8fe0', sky1: '#59c3ff', sky2: '#bfeaff', aqua: '#2fd3e8', aquaDeep: '#0d8fb5', teal: '#1fb3a6',
   grass0: '#3fae2a', grass1: '#8be04a', lime: '#c8f56a', glass: 'rgba(235,250,255,0.55)', glassEdge: 'rgba(255,255,255,0.85)',
-  ink: '#0c3a52', inkSoft: '#3c6f88', white: '#ffffff', gloss: 'rgba(255,255,255,0.75)', orange: '#ff9d2e', red: '#ff4f5e',
+  ink: '#0c3a52', inkSoft: '#3c6f88', inkFaint: '#7aa6bc', white: '#ffffff', gloss: 'rgba(255,255,255,0.75)', orange: '#ff9d2e', red: '#ff4f5e',
+  navy: '#0a3a6e', deep: '#062a52', edge: '#0b4f8f', frost: '#eef9ff', mint: '#7dffc8', sun: '#ffe27a',
 };
 
 export function fmtAero(n) { return Math.round(n || 0).toLocaleString('en-US'); }
 
-function rrect(ctx, x, y, w, h, r) {
-  r = Math.max(0, Math.min(r, w / 2, h / 2));
-  ctx.beginPath();
-  ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-  ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-  ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-  ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y); ctx.closePath();
+// ---------------------------------------------------------------- tones
+// top/mid/bot: vertical gradient stops (mid at 52%), a: [alpha top, alpha bottom], edge: outer 1 px line,
+// text/shadow: label colours, glow: colour of the reflected light at the bottom.
+export const AERO_TONES = {
+  aqua: { top: '#9eeaff', mid: '#38b8f2', bot: '#1678cc', edge: '#0b4a8a', text: '#ffffff', shadow: '#0a4680', glow: '#8ff6ff', a: [1, 1] },
+  green: { top: '#dcffa4', mid: '#74d43c', bot: '#2c961c', edge: '#1a5e12', text: '#ffffff', shadow: '#1c5a0e', glow: '#eaffb4', a: [1, 1] },
+  orange: { top: '#ffe6a8', mid: '#ffa83c', bot: '#e66c0c', edge: '#8e4206', text: '#ffffff', shadow: '#843a04', glow: '#fff2b8', a: [1, 1] },
+  red: { top: '#ffc0bc', mid: '#f4504e', bot: '#c41c2c', edge: '#740a18', text: '#ffffff', shadow: '#6a0a16', glow: '#ffd0c8', a: [1, 1] },
+  purple: { top: '#ecd4ff', mid: '#a674f4', bot: '#6438cc', edge: '#3a1a7a', text: '#ffffff', shadow: '#341670', glow: '#f0dcff', a: [1, 1] },
+  glass: { top: '#ffffff', mid: '#eaf8ff', bot: '#c4e8fa', edge: '#3f8fc4', text: '#0c3a52', shadow: '#ffffff', glow: '#ffffff', a: [0.95, 0.9] },
+  white: { top: '#ffffff', mid: '#f4fbff', bot: '#d8eef9', edge: '#5aa2cc', text: '#0c3a52', shadow: '#ffffff', glow: '#ffffff', a: [1, 1] },
+  clear: { top: '#f0fcff', mid: '#9ee2f8', bot: '#4ab4e0', edge: '#ffffff', text: '#ffffff', shadow: '#0a4a7e', glow: '#c8f8ff', a: [0.62, 0.5], edgeA: 0.85 },
+  sky: { top: '#b4ecff', mid: '#5cc0f4', bot: '#2a88d8', edge: '#0b4a8a', text: '#ffffff', shadow: '#0a3e74', glow: '#a8f2ff', a: [0.95, 0.97] },
+  grass: { top: '#d8ffa0', mid: '#86da4a', bot: '#3aa224', edge: '#1d6312', text: '#ffffff', shadow: '#1c5a0e', glow: '#eaffb4', a: [0.96, 0.98] },
+  dark: { top: '#3c94d8', mid: '#1a5ea8', bot: '#0b3670', edge: '#04214a', text: '#ffffff', shadow: '#03183a', glow: '#58c8ff', a: [0.95, 0.97] },
+  deep: { top: '#2a6eb0', mid: '#123f7c', bot: '#082650', edge: '#031634', text: '#ffffff', shadow: '#020e24', glow: '#3ab0ff', a: [0.93, 0.96] },
+  frost: { top: '#ffffff', mid: '#f2fbff', bot: '#dff3fc', edge: '#86c4e6', text: '#0c3a52', shadow: '#ffffff', glow: '#ffffff', a: [0.97, 0.96] },
+  grey: { top: '#f0f4f8', mid: '#b8c6d4', bot: '#8496aa', edge: '#4a5a6e', text: '#f4f8fc', shadow: '#3a4a5c', glow: '#e4ecf4', a: [0.92, 0.92] },
+};
+const TONE_ALIAS = { sky: 'sky', grass: 'grass', glass: 'glass' };
+
+export function toneOf(name) { return AERO_TONES[name] || AERO_TONES[TONE_ALIAS[name]] || AERO_TONES.aqua; }
+
+// Build a tone from any base colour (for tabs / coloured chips).
+const customTones = new Map();
+export function toneFrom(hex) {
+  let t = customTones.get(hex);
+  if (!t) {
+    t = { top: mix(hex, '#ffffff', 0.62), mid: shade(hex, 0.08), bot: shade(hex, -0.28), edge: shade(hex, -0.62), text: '#ffffff', shadow: shade(hex, -0.7), glow: mix(hex, '#ffffff', 0.7), a: [1, 1] };
+    customTones.set(hex, t);
+  }
+  return t;
 }
 
-const TONES = {
-  glass: ['rgba(250,254,255,0.72)', 'rgba(190,232,250,0.62)'], sky: ['#9fe0ff', '#2c9fe6'], grass: ['#b9f07a', '#3fae2a'],
-  dark: ['rgba(20,60,90,0.85)', 'rgba(6,26,44,0.9)'], aqua: ['#8ff3ff', '#109ed0'], green: ['#c4f58a', '#3aa52a'], orange: ['#ffd27a', '#f07d12'],
-};
+// ---------------------------------------------------------------- cache
+
+const tex = new Map();
+export function aeroCached(key, build, limit = 600) {
+  let c = tex.get(key);
+  if (c) { tex.delete(key); tex.set(key, c); return c; }
+  c = build();
+  tex.set(key, c);
+  if (tex.size > limit) tex.delete(tex.keys().next().value);
+  return c;
+}
+
+const rgbCache = new Map();
+function rgbOf(hex) {
+  let v = rgbCache.get(hex);
+  if (!v) { v = hexToRgb(hex); rgbCache.set(hex, v); }
+  return v;
+}
+
+// ---------------------------------------------------------------- surface rasteriser
+// SURFACE OPTIONS (o):
+//   tone (name or object) | top, mid, bot, a:[a0,a1], edge, edgeA
+//   r: corner radius px ('pill' = h/2), shape: 'rect' | 'tab' (rounded top only) | 'bottom' (rounded bottom only)
+//   gloss 0..1 (specular sheen over the top), glossH (px; default ~45% of h, max 26), curve (px the sheen edge bows)
+//   rim 0..1 (inner white highlight line), glow 0..1 (reflected light along the bottom), streak (diagonal reflections)
+//   inset (recessed: inner shadow at the top), bubbles (n decorative bubbles), sparkle (lens flare top-left)
+//   seed (decor placement)
+function surfaceTex(w, h, o) {
+  const T = typeof o.tone === 'object' ? o.tone : o.tone ? toneOf(o.tone) : {};
+  const top = rgbOf(o.top || T.top || '#ffffff'), mid = rgbOf(o.mid || T.mid || o.top || '#d8f0ff'), bot = rgbOf(o.bot || T.bot || '#8cc8ec');
+  const A = o.a || T.a || [1, 1];
+  const edge = rgbOf(o.edge || T.edge || '#0b4a8a'), edgeA = o.edgeA ?? T.edgeA ?? 1;
+  const glowC = rgbOf(o.glowColor || T.glow || '#ffffff');
+  const R = o.r === 'pill' ? h / 2 : Math.max(0, Math.min(o.r ?? 6, w / 2, h / 2));
+  const shape = o.shape || 'rect';
+  const gloss = o.gloss ?? 0.6, rim = o.rim ?? 0.8, glow = o.glow ?? 0.5;
+  const glossH = o.glossH ?? Math.min(26, Math.round(h * 0.46));
+  const curve = o.curve ?? Math.min(6, glossH * 0.35);
+  const inside = (x, y) => {
+    if (x < 0 || y < 0 || x >= w || y >= h) return false;
+    if (R <= 0) return true;
+    const roundTop = shape !== 'bottom', roundBot = shape !== 'tab';
+    let cx = null, cy = null;
+    if (x < R) cx = R; else if (x >= w - R) cx = w - R;
+    if (y < R && roundTop) cy = R; else if (y >= h - R && roundBot) cy = h - R;
+    if (cx === null || cy === null) return true;
+    const dx = x + 0.5 - cx, dy = y + 0.5 - cy;
+    return dx * dx + dy * dy <= R * R + R * 0.35;
+  };
+  const b = new PixelBuffer(w, h);
+  const d = b.data;
+  const mask = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (inside(x, y)) mask[y * w + x] = 1;
+  const m = (x, y) => x >= 0 && y >= 0 && x < w && y < h && mask[y * w + x] === 1;
+  const midY = 0.52;
+  const seed = o.seed ?? (w * 7 + h * 13);
+  for (let y = 0; y < h; y++) {
+    const t = h > 1 ? y / (h - 1) : 0;
+    let cr, cg, cb;
+    if (t < midY) { const k = t / midY; cr = top[0] + (mid[0] - top[0]) * k; cg = top[1] + (mid[1] - top[1]) * k; cb = top[2] + (mid[2] - top[2]) * k; }
+    else { const k = (t - midY) / (1 - midY); cr = mid[0] + (bot[0] - mid[0]) * k; cg = mid[1] + (bot[1] - mid[1]) * k; cb = mid[2] + (bot[2] - mid[2]) * k; }
+    const ba = A[0] + (A[1] - A[0]) * t;
+    for (let x = 0; x < w; x++) {
+      if (!mask[y * w + x]) continue;
+      let r = cr, g = cg, bl = cb, a = ba;
+      // overlay helper: source-over of colour (sr,sg,sb) with alpha sa
+      const over = (sr, sg, sb, sa) => {
+        if (sa <= 0) return;
+        const na = sa + a * (1 - sa);
+        r = (sr * sa + r * a * (1 - sa)) / na; g = (sg * sa + g * a * (1 - sa)) / na; bl = (sb * sa + bl * a * (1 - sa)) / na;
+        a = na;
+      };
+      const ring0 = !m(x - 1, y) || !m(x + 1, y) || !m(x, y - 1) || !m(x, y + 1);
+      const ring1 = !ring0 && (!m(x - 2, y) || !m(x + 2, y) || !m(x, y - 2) || !m(x, y + 2) || !m(x - 1, y - 1) || !m(x + 1, y - 1) || !m(x - 1, y + 1) || !m(x + 1, y + 1));
+      // reflected glow along the bottom
+      if (glow > 0 && t > 0.55) {
+        const k = (t - 0.55) / 0.45;
+        const cx = Math.abs(x + 0.5 - w / 2) / (w / 2);
+        over(glowC[0], glowC[1], glowC[2], glow * k * k * 0.55 * (1 - cx * cx * 0.7));
+      }
+      // recessed: soft inner shadow at the top and left
+      if (o.inset) {
+        if (y < 5) over(4, 20, 40, (5 - y) * 0.07);
+        if (x < 3) over(4, 20, 40, (3 - x) * 0.05);
+      }
+      // diagonal glass streaks
+      if (o.streak) {
+        const s = (x + y * 0.75 + seed * 3) % Math.max(60, w * 0.9);
+        if (s > 0 && s < 14) over(255, 255, 255, 0.07);
+        else if (s > 20 && s < 24) over(255, 255, 255, 0.05);
+      }
+      // specular sheen: top region bounded by a gently bowed edge
+      if (gloss > 0) {
+        const nx = (x + 0.5 - w / 2) / (w / 2);
+        const edgeY = glossH - curve * (1 - nx * nx);
+        if (y < edgeY) {
+          const k = y / Math.max(1, edgeY);
+          over(255, 255, 255, gloss * (0.62 - 0.42 * k));
+        }
+      }
+      if (ring1 && rim > 0) {
+        const k = y < h * 0.5 ? 0.9 : 0.45;
+        over(255, 255, 255, rim * k);
+      }
+      if (ring0) {
+        // outer line: tone edge, lighter at the top so the top reads as a lit glass lip
+        const er = y < 2 ? edge[0] + (255 - edge[0]) * 0.25 : edge[0], eg = y < 2 ? edge[1] + (255 - edge[1]) * 0.25 : edge[1], eb = y < 2 ? edge[2] + (255 - edge[2]) * 0.25 : edge[2];
+        r = er; g = eg; bl = eb; a = Math.max(a * 0.5, edgeA);
+      }
+      d[y * w + x] = ((Math.round(a * 255) & 255) << 24 | (Math.round(bl) & 255) << 16 | (Math.round(g) & 255) << 8 | (Math.round(r) & 255)) >>> 0;
+    }
+  }
+  // decorative bubbles (rings with a glint) and a lens-flare sparkle
+  const nb = o.bubbles | 0;
+  for (let k = 0; k < nb; k++) {
+    const rr = 2 + Math.floor(hash1(k, seed) * 4);
+    const bx = Math.round(w * (0.08 + 0.84 * hash1(k + 7, seed + 1))), by = Math.round(h * (0.55 + 0.4 * hash1(k + 3, seed + 2)));
+    ringInto(b, mask, w, h, bx, by, rr);
+  }
+  if (o.sparkle) sparkleInto(b, mask, w, Math.round(Math.min(w * 0.12, R + 6)) + 2, 3, o.sparkle === true ? 2 : o.sparkle);
+  return b.toCanvas();
+}
+
+function blend(d, i, r, g, bl, sa) {
+  const c = d[i], a = (c >>> 24) / 255;
+  const na = sa + a * (1 - sa);
+  if (na <= 0) return;
+  const or = c & 255, og = (c >>> 8) & 255, ob = (c >>> 16) & 255;
+  const nr = (r * sa + or * a * (1 - sa)) / na, ng = (g * sa + og * a * (1 - sa)) / na, nb = (bl * sa + ob * a * (1 - sa)) / na;
+  d[i] = ((Math.round(na * 255) & 255) << 24 | (Math.round(nb) & 255) << 16 | (Math.round(ng) & 255) << 8 | (Math.round(nr) & 255)) >>> 0;
+}
+
+function ringInto(b, mask, w, h, cx, cy, r) {
+  for (let y = cy - r - 1; y <= cy + r + 1; y++) for (let x = cx - r - 1; x <= cx + r + 1; x++) {
+    if (x < 0 || y < 0 || x >= w || y >= h || !mask[y * w + x]) continue;
+    const dd = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
+    if (dd <= r && dd > r - 1) blend(b.data, y * w + x, 255, 255, 255, (x - cx) + (y - cy) < 0 ? 0.5 : 0.22);
+    else if (dd <= r - 1) blend(b.data, y * w + x, 220, 248, 255, 0.08);
+  }
+  const gx = cx - Math.round(r * 0.45), gy = cy - Math.round(r * 0.45);
+  if (gx >= 0 && gy >= 0 && gx < w && gy < h && mask[gy * w + gx]) blend(b.data, gy * w + gx, 255, 255, 255, 0.9);
+}
+
+function sparkleInto(b, mask, w, cx, cy, s) {
+  const pts = [[0, 0, 1]];
+  for (let i = 1; i <= s + 1; i++) { const a = 1 - i / (s + 2); pts.push([i, 0, a], [-i, 0, a], [0, i, a * 0.8], [0, -i, a * 0.8]); }
+  pts.push([1, 1, 0.35], [-1, -1, 0.35], [1, -1, 0.35], [-1, 1, 0.35]);
+  for (const [dx, dy, a] of pts) {
+    const x = cx + dx, y = cy + dy;
+    if (x < 0 || y < 0 || x >= w || y >= b.h || !mask[y * w + x]) continue;
+    blend(b.data, y * w + x, 255, 255, 255, a);
+  }
+}
+
+function surfKey(w, h, o) {
+  const t = typeof o.tone === 'object' ? JSON.stringify(o.tone) : o.tone || '';
+  return `s|${w}|${h}|${t}|${o.top || ''}|${o.mid || ''}|${o.bot || ''}|${o.a || ''}|${o.edge || ''}|${o.edgeA ?? ''}|${o.r ?? ''}|${o.shape || ''}|${o.gloss ?? ''}|${o.glossH ?? ''}|${o.curve ?? ''}|${o.rim ?? ''}|${o.glow ?? ''}|${o.glowColor || ''}|${o.streak ? 1 : 0}|${o.inset ? 1 : 0}|${o.bubbles | 0}|${o.sparkle || 0}|${o.seed ?? ''}`;
+}
+
+export function aeroSurface(w, h, o = {}) {
+  w = Math.max(1, Math.round(w)); h = Math.max(1, Math.round(h));
+  return aeroCached(surfKey(w, h, o), () => surfaceTex(w, h, o));
+}
+
+export function drawAeroSurface(ctx, x, y, w, h, o = {}) {
+  w = Math.round(w); h = Math.round(h);
+  if (w < 2 || h < 2) return;
+  ctx.drawImage(aeroSurface(w, h, o), Math.round(x), Math.round(y));
+}
+
+// ---------------------------------------------------------------- text with a soft glow halo
+
+export function aeroText(ctx, text, x, y, o = {}) {
+  const glow = o.glow || '#ffffff';
+  const scale = o.scale || 1;
+  let ax = x;
+  if (o.align && o.align !== 'left') {
+    const w = measureText(text, o.font || 'normal', scale);
+    ax -= o.align === 'center' ? Math.floor(w / 2) : w;
+  }
+  const base = { ...o, align: 'left', shadow: null, outline: null };
+  ctx.save();
+  ctx.globalAlpha *= o.glowA ?? 0.35;
+  for (const [dx, dy] of [[-2, 0], [2, 0], [0, -2], [0, 2], [-1, -1], [1, -1], [-1, 1], [1, 1]]) drawText(ctx, text, ax + dx * scale, y + dy * scale, { ...base, color: glow });
+  ctx.restore();
+  drawText(ctx, text, ax, y, { ...base, shadow: o.shadow ?? null, outline: o.outline ?? null, color: o.color || AERO.ink });
+}
+
+// ---------------------------------------------------------------- panel
+
+const PANEL_TONE = { glass: 'frost', sky: 'sky', grass: 'grass', dark: 'dark', deep: 'deep' };
 
 export function drawAeroPanel(ctx, x, y, w, h, o = {}) {
-  const [a, b] = TONES[o.tone || 'glass'] || TONES.glass, r = o.radius ?? 8;
-  ctx.save();
-  const g = ctx.createLinearGradient(0, y, 0, y + h);
-  g.addColorStop(0, a); g.addColorStop(1, b);
-  rrect(ctx, x, y, w, h, r); ctx.fillStyle = g; ctx.fill();
-  ctx.clip();
-  const s = ctx.createLinearGradient(0, y, 0, y + h * 0.5);
-  s.addColorStop(0, 'rgba(255,255,255,0.55)'); s.addColorStop(1, 'rgba(255,255,255,0.05)');
-  ctx.fillStyle = s; ctx.fillRect(x, y, w, Math.round(h * 0.45));
-  ctx.restore();
-  rrect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, r); ctx.strokeStyle = AERO.glassEdge; ctx.lineWidth = 1; ctx.stroke();
-  if (o.title) drawText(ctx, o.title, x + 10, y + 6, { color: AERO.ink, shadow: 'rgba(255,255,255,0.8)' });
+  const tone = PANEL_TONE[o.tone || 'glass'] || o.tone || 'frost';
+  const r = o.radius ?? 8;
+  if (o.glow) {
+    ctx.fillStyle = rgba('#bff4ff', 0.18);
+    ctx.fillRect(Math.round(x) - 2, Math.round(y) + 2, Math.round(w) + 4, Math.round(h) - 4);
+    ctx.fillRect(Math.round(x) + 2, Math.round(y) - 2, Math.round(w) - 4, Math.round(h) + 4);
+  }
+  drawAeroSurface(ctx, x, y, w, h, { tone, r, gloss: o.gloss ?? (h > 80 ? 0.42 : 0.6), glossH: o.glossH ?? Math.min(24, Math.round(h * 0.4)), rim: 0.85, glow: 0.45, streak: w > 120, bubbles: o.bubbles ?? (w * h > 30000 ? 4 : 0), sparkle: o.sparkle ?? (w > 60 && h > 40 ? 2 : 0), inset: o.inset });
+  if (o.title) {
+    const T = toneOf(tone);
+    const light = T.text !== '#ffffff';
+    drawText(ctx, o.title, Math.round(x + 10), Math.round(y + 7), { color: light ? AERO.ink : '#ffffff', shadow: light ? 'rgba(255,255,255,0.9)' : T.shadow });
+  }
+}
+
+// ---------------------------------------------------------------- button
+
+function btnLook(tone, state) {
+  const T = typeof tone === 'object' ? tone : toneOf(tone);
+  if (state === 'disabled') return { ...toneOf('grey'), a: [0.8, 0.8] };
+  if (state === 'hover') return { ...T, top: mix(T.top, '#ffffff', 0.35), mid: mix(T.mid, '#ffffff', 0.18), bot: mix(T.bot, T.mid, 0.35), glow: mix(T.glow, '#ffffff', 0.4) };
+  if (state === 'down') return { ...T, top: shade(T.mid, -0.05), mid: shade(T.mid, -0.18), bot: shade(T.bot, -0.1), glow: T.glow };
+  return T;
 }
 
 export function drawAeroButton(ctx, x, y, w, h, o = {}) {
+  x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+  if (w < 4 || h < 4) return;
   const st = o.state || 'normal';
-  const [a, b] = TONES[o.tone || 'aqua'] || TONES.aqua;
-  const lift = st === 'hover' ? 0.08 : st === 'down' ? -0.12 : 0;
-  ctx.save();
-  if (st === 'disabled') ctx.globalAlpha = 0.5;
-  const g = ctx.createLinearGradient(0, y, 0, y + h);
-  g.addColorStop(0, shade(a, lift)); g.addColorStop(1, shade(b, lift));
-  rrect(ctx, x, y, w, h, h / 2); ctx.fillStyle = g; ctx.fill();
-  ctx.save(); ctx.clip();
-  ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fillRect(x, y, w, Math.round(h * 0.45));
-  ctx.restore();
-  rrect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, h / 2); ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.stroke();
-  let tx = x + w / 2;
-  if (o.icon) { ctx.drawImage(o.icon, Math.round(x + 6), Math.round(y + (h - o.icon.height) / 2)); tx += o.icon.width / 2; }
-  if (o.label) drawText(ctx, o.label, Math.round(tx), Math.round(y + (h - 8) / 2), { align: 'center', color: '#ffffff', shadow: rgba(AERO.ink, 0.6) });
-  ctx.restore();
+  const toneName = o.tone || 'aqua';
+  const T = typeof toneName === 'object' ? toneName : toneOf(toneName);
+  const look = btnLook(T, st);
+  const r = o.radius ?? Math.floor(h / 2);
+  const down = st === 'down';
+  // hover halo (soft light around the pill)
+  if (st === 'hover') {
+    ctx.fillStyle = rgba(T.glow || '#bff4ff', 0.28);
+    ctx.fillRect(x + Math.min(r, 4), y - 1, w - Math.min(r, 4) * 2, h + 2);
+    ctx.fillRect(x - 1, y + Math.min(r, 4), w + 2, h - Math.min(r, 4) * 2);
+  }
+  const key = `btn|${w}|${h}|${r}|${typeof toneName === 'object' ? JSON.stringify(toneName) : toneName}|${st}`;
+  const c = aeroCached(key, () => surfaceTex(w, h, { tone: look, r, gloss: down ? 0.35 : 0.8, glossH: Math.max(3, Math.round(h * (down ? 0.38 : 0.46))), curve: Math.min(3, h * 0.12), rim: down ? 0.35 : 0.85, glow: down ? 0.25 : 0.75 }));
+  ctx.drawImage(c, x, y);
+  const font = o.font || 'normal';
+  const ic = o.icon || null;
+  const iw = ic ? ic.width + (o.label ? 4 : 0) : 0;
+  let label = o.label || '';
+  let tw = label ? measureText(label, font) : 0;
+  const pad = Math.max(6, Math.min(10, Math.floor(h / 2)));
+  if (label && tw + iw > w - pad * 2 + 2) {
+    while (label.length > 1 && measureText(label + '..', font) + iw > w - pad * 2 + 2) label = label.slice(0, -1);
+    label = label.replace(/\s+$/, '') + '..';
+    tw = measureText(label, font);
+  }
+  const capH = font === 'small' ? 5 : 7;
+  const dy = down ? 1 : 0;
+  let cx = o.align === 'left' ? x + pad - 1 : x + Math.round((w - tw - iw) / 2);
+  const dis = st === 'disabled';
+  if (ic) {
+    ctx.globalAlpha = dis ? 0.55 : 1;
+    ctx.drawImage(ic, cx, y + Math.round((h - ic.height) / 2) + dy);
+    ctx.globalAlpha = 1;
+    cx += iw;
+  }
+  if (label) {
+    const col = dis ? '#eef2f6' : look.text || T.text;
+    const sh = dis ? '#5a6a7c' : look.shadow || T.shadow;
+    drawText(ctx, label, cx, y + Math.round((h - capH) / 2) + dy, { font, color: col, shadow: sh });
+  }
 }
 
+// ---------------------------------------------------------------- bar
+
 export function drawAeroBar(ctx, x, y, w, h, k, o = {}) {
+  x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.max(3, Math.round(h));
   k = Math.max(0, Math.min(1, k || 0));
-  ctx.save();
-  rrect(ctx, x, y, w, h, h / 2); ctx.fillStyle = o.back || 'rgba(10,50,80,0.35)'; ctx.fill();
-  if (k > 0) {
-    rrect(ctx, x, y, Math.max(h, w * k), h, h / 2);
-    const g = ctx.createLinearGradient(0, y, 0, y + h);
-    g.addColorStop(0, shade(o.color || AERO.aqua, 0.3)); g.addColorStop(1, o.color || AERO.aqua);
-    ctx.fillStyle = g; ctx.fill();
-    if (o.gloss !== false) { ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.fillRect(x + 2, y + 1, Math.max(0, w * k - 4), Math.max(1, Math.floor(h / 3))); }
+  const color = o.color || AERO.aqua;
+  // recessed glass track
+  ctx.drawImage(aeroCached(`bart|${w}|${h}|${o.back || ''}`, () => surfaceTex(w, h, {
+    top: o.back ? shade(o.back, -0.2) : '#0e3e64', mid: o.back || '#1c5a86', bot: o.back ? shade(o.back, 0.15) : '#2e7aa8', a: [0.55, 0.45],
+    edge: '#06243e', edgeA: 0.75, r: 'pill', gloss: 0, rim: 0, glow: 0.35, glowColor: '#9fe6ff', inset: true,
+  })), x, y);
+  const fw = Math.round((w - 2) * k);
+  if (fw > 0) {
+    const fill = aeroCached(`barf|${w - 2}|${h - 2}|${color}|${o.gloss !== false}`, () => surfaceTex(w - 2, h - 2, {
+      top: mix(color, '#ffffff', 0.55), mid: shade(color, 0.05), bot: shade(color, -0.25), edge: shade(color, -0.5), edgeA: 0.9,
+      r: 'pill', gloss: o.gloss === false ? 0 : 0.7, glossH: Math.max(1, Math.round((h - 2) * 0.48)), curve: 0, rim: 0.5, glow: 0.6, glowColor: mix(color, '#ffffff', 0.6),
+    }));
+    const sw = Math.max(Math.min(fw, h - 2), fw);
+    if (sw >= w - 2) ctx.drawImage(fill, x + 1, y + 1);
+    else {
+      // left part from the texture, then a rounded cap from its right end
+      const cap = Math.min(Math.floor((h - 2) / 2), Math.floor(sw / 2));
+      ctx.drawImage(fill, 0, 0, sw - cap, h - 2, x + 1, y + 1, sw - cap, h - 2);
+      ctx.drawImage(fill, w - 2 - cap, 0, cap, h - 2, x + 1 + sw - cap, y + 1, cap, h - 2);
+    }
+    // travelling bubbles inside the fill
+    if (h >= 7 && fw > 10) {
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      for (let i = 0; i < fw / 16; i++) {
+        const bx = x + 4 + Math.floor(hash1(i, 3) * Math.max(1, fw - 8)), by = y + 2 + Math.floor(hash1(i, 4) * (h - 5));
+        if (bx < x + fw - 2) ctx.fillRect(bx, by, 1, 1);
+      }
+    }
   }
-  rrect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, h / 2); ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.stroke();
-  ctx.restore();
+  const seg = o.segments | 0;
+  if (seg > 1 && seg < w / 3) {
+    ctx.fillStyle = 'rgba(6,36,62,0.35)';
+    for (let i = 1; i < seg; i++) ctx.fillRect(x + 1 + Math.round(((w - 2) * i) / seg), y + 2, 1, h - 4);
+  }
+}
+
+// ---------------------------------------------------------------- orbs, bubbles, coin
+
+function orbTex(r, color) {
+  const S = Math.ceil(r * 2) + 2, c = S / 2;
+  const b = new PixelBuffer(S, S);
+  const C = rgbOf(color), Lt = rgbOf(mix(color, '#ffffff', 0.7)), Dk = rgbOf(shade(color, -0.45)), E = rgbOf(shade(color, -0.65));
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const dx = x + 0.5 - c, dy = y + 0.5 - c, d = Math.hypot(dx, dy);
+    if (d > r) continue;
+    const u = d / r;
+    // light from the top-left; a bright rim of refracted light at the bottom-right
+    const lit = (-dx * 0.6 - dy * 0.8) / r;
+    let k = 0.5 + lit * 0.45;
+    let col = k > 0.5 ? [C[0] + (Lt[0] - C[0]) * (k - 0.5) * 2, C[1] + (Lt[1] - C[1]) * (k - 0.5) * 2, C[2] + (Lt[2] - C[2]) * (k - 0.5) * 2] : [Dk[0] + (C[0] - Dk[0]) * k * 2, Dk[1] + (C[1] - Dk[1]) * k * 2, Dk[2] + (C[2] - Dk[2]) * k * 2];
+    // bottom refraction glow
+    const rg = Math.max(0, (dy / r) * 0.9 + (dx / r) * 0.3) * Math.max(0, u - 0.45) * 1.8;
+    if (rg > 0) col = col.map((v, i) => v + (Lt[i] - v) * Math.min(1, rg));
+    if (d > r - 1) col = [E[0], E[1], E[2]];
+    b.set(x, y, packRGB(Math.max(0, Math.min(255, col[0])), Math.max(0, Math.min(255, col[1])), Math.max(0, Math.min(255, col[2]))));
+  }
+  // specular cap: a soft white ellipse at the top-left plus a hard glint
+  const hx = c - r * 0.32, hy = c - r * 0.5, hrx = r * 0.55, hry = r * 0.3;
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const ex = (x + 0.5 - hx) / hrx, ey = (y + 0.5 - hy) / hry;
+    const e = ex * ex + ey * ey;
+    if (e < 1 && Math.hypot(x + 0.5 - c, y + 0.5 - c) < r - 1) blend(b.data, y * S + x, 255, 255, 255, 0.75 * (1 - e * 0.7));
+  }
+  const gx = Math.round(c - r * 0.5), gy = Math.round(c - r * 0.55);
+  if (r >= 3) blend(b.data, gy * S + gx, 255, 255, 255, 1);
+  return b.toCanvas();
 }
 
 export function drawGlossOrb(ctx, cx, cy, r, color = AERO.aqua, t = 0) {
-  ctx.save();
-  const g = ctx.createRadialGradient(cx - r * 0.35, cy - r * 0.4, r * 0.1, cx, cy, r);
-  g.addColorStop(0, '#ffffff'); g.addColorStop(0.35, shade(color, 0.35)); g.addColorStop(1, shade(color, -0.25));
-  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fillStyle = g; ctx.fill();
-  ctx.beginPath(); ctx.ellipse(cx - r * 0.25, cy - r * 0.45, r * 0.45, r * 0.22, -0.3, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.fill();
-  ctx.restore();
+  r = Math.max(1.5, Math.round(r * 2) / 2);
+  const c = aeroCached(`orb|${r}|${color}`, () => orbTex(r, color));
+  ctx.drawImage(c, Math.round(cx - c.width / 2), Math.round(cy - c.height / 2));
+  void t;
 }
 
-export function drawAeroCoin(ctx, cx, cy, r = 5, t = 0) { drawGlossOrb(ctx, cx, cy, r, AERO.aqua, t); }
+function bubbleTex(r) {
+  const S = Math.ceil(r * 2) + 2, c = S / 2;
+  const b = new PixelBuffer(S, S);
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const dx = x + 0.5 - c, dy = y + 0.5 - c, d = Math.hypot(dx, dy);
+    if (d > r) continue;
+    const lit = (-dx - dy) / Math.max(0.01, d * 1.414);
+    if (d > r - 1) b.set(x, y, pack(lit > -0.1 ? '#ffffff' : '#9fe8ff', lit > -0.1 ? 220 : 170));
+    else if (d > r - 2 && lit < -0.3) b.set(x, y, pack('#c8f6ff', 120));
+    else b.set(x, y, pack('#d8f8ff', 34));
+  }
+  const hx = Math.floor(c - r * 0.45), hy = Math.floor(c - r * 0.45);
+  b.set(hx, hy, pack('#ffffff'));
+  if (r >= 4) { b.set(hx + 1, hy, pack('#ffffff', 190)); b.set(hx, hy + 1, pack('#ffffff', 190)); }
+  if (r >= 7) { b.set(hx + 2, hy, pack('#ffffff', 120)); b.set(hx, hy + 2, pack('#ffffff', 120)); }
+  return b.toCanvas();
+}
+
+export function drawAeroBubble(ctx, cx, cy, r, alpha = 1) {
+  r = Math.max(1.5, Math.round(r * 2) / 2);
+  const c = aeroCached(`bub|${r}`, () => bubbleTex(r));
+  if (alpha < 1) { const ga = ctx.globalAlpha; ctx.globalAlpha = ga * alpha; ctx.drawImage(c, Math.round(cx - c.width / 2), Math.round(cy - c.height / 2)); ctx.globalAlpha = ga; }
+  else ctx.drawImage(c, Math.round(cx - c.width / 2), Math.round(cy - c.height / 2));
+}
+
+// The Aero currency: a glossy aqua water drop-bubble with a little leaf-green swirl inside.
+function coinTex(r) {
+  const S = Math.ceil(r * 2) + 2, c = S / 2;
+  const b = new PixelBuffer(S, S);
+  const body = [rgbOf('#0a6fa8'), rgbOf('#17a6d8'), rgbOf('#3fd2ee'), rgbOf('#9cf2ff')];
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const dx = x + 0.5 - c, dy = y + 0.5 - c, d = Math.hypot(dx, dy);
+    if (d > r) continue;
+    if (d > r - 1) { b.set(x, y, pack('#06406e')); continue; }
+    const lit = (-dx * 0.55 - dy * 0.85) / r;
+    const bottom = Math.max(0, dy / r) * Math.max(0, d / r - 0.35);
+    let k = 1.4 + lit * 1.3 + bottom * 2.2;
+    k = Math.max(0, Math.min(3, k));
+    const i = Math.min(2, Math.floor(k)), f = k - i;
+    const A = body[i], B = body[i + 1];
+    b.set(x, y, packRGB(A[0] + (B[0] - A[0]) * f, A[1] + (B[1] - A[1]) * f, A[2] + (B[2] - A[2]) * f));
+  }
+  // inner swirl: a tiny green leaf/wave crescent in the lower half
+  if (r >= 4) {
+    for (let a = 0.3; a < 2.6; a += 0.08) {
+      const rr = r * 0.48;
+      const x = Math.round(c + Math.cos(a) * rr - 0.5), y = Math.round(c + Math.sin(a) * rr * 0.75 - 0.5);
+      if (x > 0 && y > 0 && x < S && y < S) blend(b.data, y * S + x, 160, 255, 120, 0.75);
+    }
+  }
+  // highlight
+  const hx = c - r * 0.3, hy = c - r * 0.48, hrx = r * 0.5, hry = r * 0.26;
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const ex = (x + 0.5 - hx) / hrx, ey = (y + 0.5 - hy) / hry, e = ex * ex + ey * ey;
+    if (e < 1 && Math.hypot(x + 0.5 - c, y + 0.5 - c) < r - 1) blend(b.data, y * S + x, 255, 255, 255, 0.8 * (1 - e * 0.6));
+  }
+  const gx = Math.round(c - r * 0.5), gy = Math.round(c - r * 0.5);
+  if (gx >= 0 && gy >= 0) blend(b.data, gy * S + gx, 255, 255, 255, 1);
+  return b.toCanvas();
+}
+
+export function drawAeroCoin(ctx, cx, cy, r = 5, t = 0) {
+  r = Math.max(2.5, Math.round(r * 2) / 2);
+  const c = aeroCached(`coin|${r}`, () => coinTex(r));
+  const x = Math.round(cx - c.width / 2), y = Math.round(cy - c.height / 2);
+  ctx.drawImage(c, x, y);
+  // a lens-flare twinkle every few seconds
+  const ph = (t * 0.45 + (cx * 0.013 + cy * 0.007)) % 1;
+  if (t && ph < 0.08 && r >= 3.5) drawSparkle(ctx, x + Math.round(c.width * 0.28), y + Math.round(c.height * 0.25), ph < 0.04 ? 2 : 1, 1);
+}
+
+// ---------------------------------------------------------------- sparkles, glows, badges, labels
+
+export function drawSparkle(ctx, x, y, size = 2, alpha = 1, color = '#ffffff') {
+  x = Math.round(x); y = Math.round(y);
+  const ga = ctx.globalAlpha;
+  ctx.fillStyle = color;
+  ctx.globalAlpha = ga * alpha;
+  ctx.fillRect(x, y, 1, 1);
+  for (let i = 1; i <= size; i++) {
+    ctx.globalAlpha = ga * alpha * (1 - (i - 1) / (size + 1));
+    ctx.fillRect(x + i, y, 1, 1); ctx.fillRect(x - i, y, 1, 1);
+    if (i < size || size === 1) { ctx.fillRect(x, y + i, 1, 1); ctx.fillRect(x, y - i, 1, 1); }
+  }
+  if (size >= 2) {
+    ctx.globalAlpha = ga * alpha * 0.35;
+    ctx.fillRect(x + 1, y + 1, 1, 1); ctx.fillRect(x - 1, y - 1, 1, 1); ctx.fillRect(x + 1, y - 1, 1, 1); ctx.fillRect(x - 1, y + 1, 1, 1);
+  }
+  ctx.globalAlpha = ga;
+}
+
+function glowTex(r, color) {
+  const S = Math.ceil(r * 2), c = S / 2;
+  const cv = makeCanvas(S, S);
+  const g = ctxOf(cv);
+  const gr = g.createRadialGradient(c, c, 0, c, c, r);
+  gr.addColorStop(0, rgba(color, 1)); gr.addColorStop(0.4, rgba(color, 0.45)); gr.addColorStop(1, rgba(color, 0));
+  g.fillStyle = gr;
+  g.fillRect(0, 0, S, S);
+  return cv;
+}
+
+export function drawAeroGlow(ctx, cx, cy, r, color = '#bff6ff', alpha = 0.5) {
+  r = Math.max(2, Math.round(r));
+  const c = aeroCached(`glow|${r}|${color}`, () => glowTex(r, color));
+  const ga = ctx.globalAlpha;
+  ctx.globalAlpha = ga * alpha;
+  ctx.drawImage(c, Math.round(cx - r), Math.round(cy - r));
+  ctx.globalAlpha = ga;
+}
+
+export function drawAeroBadge(ctx, right, top, value, t = 0) {
+  if (value === null || value === undefined || value === 0 || value === false) return null;
+  const txt = value === '!' ? '!' : typeof value === 'number' && value > 99 ? '99+' : String(value);
+  const tw = measureText(txt, 'small');
+  const h = 11, w = Math.max(h, tw + 7);
+  const x = Math.round(right - w), y = Math.round(top + (Math.sin(t * 5) > 0.85 ? -1 : 0));
+  const tone = value === '!' ? 'orange' : 'red';
+  ctx.drawImage(aeroCached(`badge|${w}|${tone}`, () => surfaceTex(w, h, { tone, r: 'pill', gloss: 0.85, glossH: 5, curve: 1, rim: 0.7, glow: 0.6, edge: '#ffffff', edgeA: 1 })), x, y);
+  drawText(ctx, txt, x + Math.round((w - tw) / 2), y + 3, { font: 'small', color: '#ffffff', shadow: toneOf(tone).shadow });
+  return { x, y, w, h };
+}
+
+export function drawAeroLabel(ctx, text, x, y, o = {}) {
+  const font = o.font || 'normal';
+  const tw = measureText(text, font);
+  const h = font === 'small' ? 11 : 13, w = tw + 12;
+  let lx = Math.round(o.align === 'center' ? x - w / 2 : o.align === 'right' ? x - w : x);
+  const ly = Math.round(y);
+  const tone = o.tone || 'glass';
+  ctx.drawImage(aeroCached(`label|${w}|${h}|${tone}`, () => surfaceTex(w, h, { tone, r: 'pill', gloss: 0.6, glossH: Math.round(h * 0.45), curve: 1, rim: 0.8, glow: 0.4 })), lx, ly);
+  const T = toneOf(tone);
+  drawText(ctx, text, lx + 6, ly + Math.round((h - (font === 'small' ? 5 : 7)) / 2), { font, color: T.text, shadow: T.text === '#ffffff' ? T.shadow : null });
+  return { x: lx, y: ly, w, h };
+}

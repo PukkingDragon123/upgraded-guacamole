@@ -1,4 +1,5 @@
-// Pinch's bait shop catalogue. Decorations come from PROPS metadata (decor field).
+// Economy tables. The old bait shop is gone (phase 3: bait comes from AppSea or is crafted in The Lab);
+// BAITS stays as the legacy special-bait catalogue other modules still read (names, art ids, flavour).
 
 export const BAITS = {
   bread: { name: 'Breadcrumbs', price: 6, qty: 5, desc: 'Cheap and cheerful. Common fish love it.', effect: null },
@@ -21,3 +22,4 @@ export const RELEASE_VALUE = { common: 4, uncommon: 9, rare: 22, epic: 60, legen
 export const COIN_RATE = { common: 2, uncommon: 3.5, rare: 6, epic: 10, legendary: 20 };
 // Coins awarded immediately on a catch.
 export const CATCH_BONUS = { common: 2, uncommon: 4, rare: 10, epic: 25, legendary: 100 };
+

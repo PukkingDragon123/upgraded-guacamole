@@ -5,8 +5,9 @@ import { rng } from '../core/rng.js';
 import { rgba, mix, hexToRgb } from '../core/color.js';
 import { makeLayer, resizeLayer } from '../core/canvas.js';
 import { drawText } from '../gfx/font.js';
-import { BIOMES } from './biomes/index.js';
+import { BIOMES, BIOME_DEPTH } from './biomes/index.js';
 import { worldTop } from './biomes/base.js';
+import { installAero } from './aerokit.js';
 
 export class Ocean {
   constructor(game) {
@@ -30,13 +31,17 @@ export class Ocean {
   get H() { return this.game.screen.H; }
 
   get(id) {
-    let b = this.cache[id];
-    if (!b) {
-      const Cls = BIOMES[id] || BIOMES.shallows;
-      b = new Cls(this);
-      this.cache[id] = b;
-    }
-    if (b.W !== this.W || b.H !== this.H) b.build(this.W, this.H);
+    const b = this.cache[id] || this.make(id);
+    if (b.W !== this.W || b.H !== this.H || b.ready === false) b.build(this.W, this.H);
+    return b;
+  }
+
+  // Construct (unbuilt) and give it the glossy Frutiger Aero overlay.
+  make(id) {
+    const Cls = BIOMES[id] || BIOMES.oscean || BIOMES.shallows;
+    const b = new Cls(this);
+    try { installAero(b); } catch (e) { console.error(e); }
+    this.cache[id] = b;
     return b;
   }
 
@@ -186,8 +191,14 @@ export class Ocean {
   travel(to, done) {
     if (this.travelState || to === this.biome.id) return;
     const from = this.biome;
-    const target = this.get(to);
-    this.travelState = { from, to: target, t: 0, dur: 4.2, dir: Math.sign(depthOf(to) - depthOf(from.id)) || 1, done, switched: false };
+    // biomes that expose steps(W, H) build over the first frames of the trip instead of stalling it
+    const target = this.cache[to] || this.make(to);
+    let gen = null;
+    if (target.W !== this.W || target.H !== this.H || target.ready === false) {
+      if (typeof target.steps === 'function') gen = target.steps(this.W, this.H);
+      else target.build(this.W, this.H);
+    }
+    this.travelState = { from, to: target, t: 0, dur: 4.2, dir: Math.sign(depthOf(to) - depthOf(from.id)) || 1, done, switched: false, gen };
     this.game.audio.play('travel_whoosh');
     this.game.audio.setMusic(null);
     this.game.school.clear();
@@ -197,6 +208,11 @@ export class Ocean {
     const s = this.travelState;
     s.t += dt;
     const k = s.t / s.dur;
+    if (s.gen) {
+      const t0 = performance.now();
+      const drain = k >= 0.5;
+      while (drain || performance.now() - t0 < 10) if (s.gen.next().done) { s.gen = null; break; }
+    }
     // streaming bubbles for speed feel
     if (rng.chance(0.9)) this.game.particles.bubble(rng.float(0, this.W), s.dir > 0 ? this.H + 5 : -5, { vy: s.dir > 0 ? -rng.float(160, 320) : rng.float(160, 320), life: 2.5, layer: 'ui', size: rng.pick([1, 2, 3]) });
     if (!s.switched && k >= 0.5) {
@@ -228,7 +244,8 @@ export class Ocean {
     ctx.restore();
     ctx.save();
     ctx.translate(0, Math.round(H * 1.15 * s.dir - off));
-    s.to.drawBack(ctx, env); s.to.drawSeabed(ctx, env); s.to.drawNear?.(ctx, env);
+    if (s.gen) { ctx.fillStyle = '#3aa8e0'; ctx.fillRect(0, 0, W, H); }
+    else { s.to.drawBack(ctx, env); s.to.drawSeabed(ctx, env); s.to.drawNear?.(ctx, env); }
     ctx.restore();
     // depth fog in the middle of the trip
     const mid = 1 - Math.abs(k - 0.5) * 2;
@@ -262,5 +279,5 @@ export class Ocean {
 }
 
 function depthOf(id) {
-  return { shallows: 8, fjord: 60, junkyard: 140, metropolis: 450, volcano: 900, abyss: 3200 }[id] ?? 0;
+  return BIOME_DEPTH[id] ?? 0;
 }

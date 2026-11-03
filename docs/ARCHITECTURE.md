@@ -182,8 +182,16 @@ seabed, world space), `drawUi(ctx)`, `hit(wx, wy)`, `active` (build mode), `togg
 - **100% Frutiger Aero**: glossy glass, aqua/sky-blue + grass-green + white, soft gradients, specular highlights,
   bubbles, lens flares, bokeh, light shafts, chrome and translucent plastic, optimistic eco-tech (wind turbines,
   leaves, water drops, dolphins, orbs). Bright and clean, never grungy. UI = glossy glass panels and pill buttons.
-- **Voxel art stays the medium.** Everything alive is voxel, with **voxel eyes** (a real 3D eyeball: sclera,
-  iris, pupil, a glossy specular voxel). **Never draw 2D overlay eyes or faces.** Crustaceans look realistic.
+- **Fish are polished PIXEL ART** (user decision, supersedes voxel fish): bold readable silhouettes, clean
+  outlines, cel shading plus a glossy Frutiger Aero specular band, aqua/sky/lime palettes, bubbles and sparkle.
+  **No realistic eyes anywhere**: cute, glossy cartoon eyes (big dark pupil + white shine) drawn as part of the
+  sprite, expressive (blink, squint, wide, hearts...). Not the old realistic "fish pack" style.
+- **Fish roster = internet culture and memes**, built on puns and similar-sounding words (e.g. Wi-Fish, Stonks
+  Salmon, Rickroll Rockfish, 404 Fish Not Found, Buffering Blowfish), plus fun Frutiger Aero things. Affectionate
+  parody names and ORIGINAL designs only: no copied meme images, characters, logos or exact trademarks.
+- **The Pac-Man-style fish** is a unique, polished pixel-art chomper of our own design (not a 1:1 copy): it
+  moves like the arcade classic (straight runs, crisp 90-degree turns, chomping mouth, gobbling pellet bubbles).
+- World, buildings, boats and characters stay voxel; characters and NPCs also get cute cartoon eyes, never realistic ones.
 - **Less text, more visuals.** Prefer icons, motion, particles and colour over labels and sentences.
 - **Currency** is **Aero** (`CURRENCY` in `src/ui/aero.js`). `state.coins` still holds the amount; every
   label/icon says Aero and uses `drawAeroCoin`/`fmtAero`. "Oxidized Coins" is gone.

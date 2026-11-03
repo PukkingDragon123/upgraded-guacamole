@@ -201,8 +201,12 @@ export class Boat {
       g.water?.splash?.(this.x, 0.5, half * 0.5);
     }
     const margin = half + 16;
+    // biomes may fence off part of the surface (the (OS)cean pier)
+    let lo = margin, hi = W - margin;
+    try { const br = g.ocean?.biome?.boatRange?.(W); if (br) { lo = Math.max(lo, br[0] + half); hi = Math.min(hi, br[1] - half); } } catch { /* optional */ }
+    if (hi < lo) hi = lo;
     if (this.dragging) {
-      const tx = clamp(cur.x + this.grabDX, margin, W - margin);
+      const tx = clamp(cur.x + this.grabDX, lo, hi);
       this.vx += ((tx - this.x) * 38 - this.vx * 11) * dt;
       this.vx = clamp(this.vx, -420, 420);
       this.lift = damp(this.lift, clamp((lvl - 10 - cur.y) * 0.08, -2, 5), 6, dt);
@@ -211,8 +215,8 @@ export class Boat {
       this.lift = damp(this.lift, 0, 4, dt);
     }
     this.x += this.vx * dt;
-    if (this.x < margin) { this.x = margin; this.vx = Math.abs(this.vx) * 0.3; }
-    if (this.x > W - margin) { this.x = W - margin; this.vx = -Math.abs(this.vx) * 0.3; }
+    if (this.x < lo) { this.x = lo; this.vx = Math.abs(this.vx) * 0.3; }
+    if (this.x > hi) { this.x = hi; this.vx = -Math.abs(this.vx) * 0.3; }
     // turn to face the direction of travel
     if (Math.abs(this.vx) > 40 && Math.sign(this.vx) !== this.dir) {
       this.turnT += dt;
