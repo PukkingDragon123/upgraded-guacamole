@@ -82,7 +82,7 @@ function runOcean(params) {
     last = now;
     const T = performance.now();
     game.world.cursor.x = W * (0.5 + 0.3 * Math.sin(now / 3000));
-    ocean.env.view = cam.view(); ocean.env.top = ocean.top; ocean.env.scroll = scroll; ocean.env.ref = scroll;
+    ocean.env.view = cam.view(); ocean.env.top = ocean.top; ocean.env.scroll = scroll; ocean.env.ref = -Math.round(H * 0.62);
     ocean.update(dt);
     game.floaters.update(dt);
     game.boat.update(dt, null);

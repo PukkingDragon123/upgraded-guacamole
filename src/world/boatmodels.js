@@ -83,7 +83,7 @@ const DEFAULTS = [
   { hull: 'white', sail: 'none', flag: 'star', engine: 'none', decal: 'stripes' },
   { hull: 'white', sail: 'none', flag: 'drop', engine: 'solar', decal: 'wave' },
   { hull: 'white', sail: 'leaf', flag: 'leaf', engine: 'none', decal: 'leaves' },
-  { hull: 'aqua', sail: 'none', flag: 'bubble', engine: 'bubble', decal: 'bubbles' },
+  { hull: 'aqua', sail: 'none', flag: 'bubble', engine: 'bubble', decal: 'wave' },
 ];
 const MASTED = [true, true, true, false, true, true, false];
 
@@ -321,11 +321,11 @@ function raft(paint, trim, parts) {
   for (const x of [X0 + 8, X0 + 20, X0 + 32]) for (const s of [-1, 1]) m.set(x, DECK - 1, ZC + s * 5.5, p.rope);
   applyDecal(m, p, parts.decal, ZC, X0, X0 + LEN, 1, 6);
   // mast + sail, cooler, bubble lamp, a little potted sprout (eco!)
-  const mx = X0 + 28;
-  A.flag = mastSail(m, p, parts.sail, mx, DECK + 1, DECK + 30, ZC, 14);
+  const mx = X0 + 31;
+  A.flag = mastSail(m, p, parts.sail, mx, DECK + 1, DECK + 30, ZC, 11);
   A.mast = A.flag;
-  m.box(X0 + 33, DECK + 1, ZC - 3, X0 + 37, DECK + 4, ZC + 1, p.white);
-  m.box(X0 + 33, DECK + 5, ZC - 3, X0 + 37, DECK + 5, ZC + 1, p.aqua);
+  m.box(X0 + 34, DECK + 1, ZC - 4, X0 + 37, DECK + 4, ZC, p.white);
+  m.box(X0 + 34, DECK + 5, ZC - 4, X0 + 37, DECK + 5, ZC, p.aqua);
   bubbleLamp(m, p, X0 + 3, DECK + 1, ZC - 6, 8);
   A.lantern = [X0 + 3.5, DECK + 10.5, ZC - 5.5];
   m.cylinder(X0 + 6, ZC + 5, DECK + 1, DECK + 3, 1.4, p.white);
@@ -334,7 +334,7 @@ function raft(paint, trim, parts) {
   engine(m, p, parts.engine, X0 + 1, DECK + 1, ZC, A, spin, bubbles, { x0: X0 + 4, x1: X0 + 20, h: 22 });
   return finish({
     m, front: new Set(), wl: WL, zc: ZC, spin, bubbles,
-    A: { ...A, stand: [X0 + 15, DECK + 1, ZC], bow: [X0 + LEN + 2, WL, ZC], stern: [X0 - 2, WL, ZC], top: [X0 + 20, DECK + 30, ZC], keel: [X0 + 20, 0, ZC] },
+    A: { ...A, stand: [X0 + 13, DECK + 1, ZC], bow: [X0 + LEN + 2, WL, ZC], stern: [X0 - 2, WL, ZC], top: [X0 + 20, DECK + 30, ZC], keel: [X0 + 20, 0, ZC] },
     pivot: [X0 + LEN / 2, WL], flagScale: 0.6, night: new Map([[p.lamp, '#fff2b0']]), lights: [['lantern', 70, '#fff2b0', 0.9]],
   });
 }
@@ -545,13 +545,13 @@ function catamaran(paint, trim, parts) {
   m.box(cx0 - 1, DECK + 11, ZC - 8, cx1 + 1, DECK + 11, ZC + 8, (x, y, z) => ((x + z) % 4 === 0 ? p.solarL : p.solar));
   // two wind turbines on the stern corners (blades spin as an overlay)
   for (const [k, sd] of [[0, -1], [1, 1]]) {
-    const tx = X0 + 6, tz = ZC + sd * 8, top = DECK + 30 + k * 2;
+    const tx = X0 + 2 + k * 3, tz = ZC + sd * 8, top = DECK + 40 + k * 3;
     m.line(tx, DECK + 1, tz, tx, top, tz, p.white, 0.7);
     m.ellipsoid(tx + 1, top, tz, 2.6, 1.5, 1.5, p.white);
     m.set(tx + 3, top, tz, p.aqua);
     m.set(tx, top + 1, tz + 1, p.lime);
     A['turbine' + k] = [tx + 3.5, top + 0.5, tz + 2.5];
-    spin.push({ at: 'turbine' + k, r: 10, n: 3, speed: 4 + k * 0.7 });
+    spin.push({ at: 'turbine' + k, r: 9, n: 3, speed: 4 + k * 0.7 });
   }
   // mast + sail forward
   A.flag = mastSail(m, p, parts.sail, X0 + 50, DECK + 1, DECK + 40, ZC, 18);
@@ -563,7 +563,7 @@ function catamaran(paint, trim, parts) {
   const front = twinFront(m, [p.white, p.trim, p.leafL], (x, y, z) => z >= ZC + 7 && y > DECK && x >= cx0 - 1);
   return finish({
     m, front, wl: WL, zc: ZC, spin, bubbles,
-    A: { ...A, stand: [X0 + 13, DECK + 1, ZC + 1], bow: [X0 + LEN, WL, ZC], stern: [X0 - 2, WL, ZC], top: [X0 + 40, DECK + 40, ZC], keel: [X0 + 40, 0, ZC], cabin: [(cx0 + cx1) / 2, DECK + 5, ZC + 8], lantern: [X0 + LEN - 5.5, DECK + 0.5, ZC + 14.5] },
+    A: { ...A, stand: [X0 + 15, DECK + 1, ZC + 1], bow: [X0 + LEN, WL, ZC], stern: [X0 - 2, WL, ZC], top: [X0 + 40, DECK + 46, ZC], keel: [X0 + 40, 0, ZC], cabin: [(cx0 + cx1) / 2, DECK + 5, ZC + 8], lantern: [X0 + LEN - 5.5, DECK + 0.5, ZC + 14.5] },
     pivot: [X0 + LEN / 2, WL], flagScale: 0.9, night: new Map([[p.glass, '#ffe2a0'], [p.ledG, '#a8ff6a'], [p.ledR, '#ff6a6a']]), lights: [['cabin', 70, '#ffe2a0', 0.5], ['lantern', 40, '#a8ff6a', 0.6]],
   });
 }
@@ -571,9 +571,9 @@ function catamaran(paint, trim, parts) {
 // ------------------------------------------------------------------ 6 bubble submarine
 
 function submarine(paint, trim, parts) {
-  const m = new VoxelModel(112, 64, 32);
+  const m = new VoxelModel(112, 64, 36);
   const p = aeroPal(m, paint, trim);
-  const X0 = 14, LEN = 84, ZC = 16, WL = 9, CY = 7, R = 8.6;
+  const X0 = 14, LEN = 84, ZC = 18, WL = 9, CY = 7, R = 8.6;
   const A = {}, spin = [], bubbles = [];
   // cigar body: paint below, white top band, aqua stripe
   shapeIn(m, X0 - 2, 0, ZC - 10, X0 + LEN + 2, CY + R + 1, ZC + 10, (x, y, z) => {
@@ -588,26 +588,27 @@ function submarine(paint, trim, parts) {
   // glass bubble dome cockpit (open ribs at the front so the pilot shows), flat deck inside
   const dx = X0 + 30, dTop = CY + R - 1;
   for (let x = dx - 9; x <= dx + 9; x++) for (let z = ZC - 6; z <= ZC + 6; z++) m.set(x, dTop, z, p.white);
-  shapeIn(m, dx - 11, dTop, ZC - 11, dx + 11, dTop + 12, ZC + 11, (x, y, z) => { const d = Math.hypot(x - dx, y - dTop, z - ZC); return d <= 10.6 && d > 9.6 && y > dTop; }, (x, y, z) => {
+  const DR = 13.6;
+  shapeIn(m, dx - DR - 1, dTop, ZC - DR - 1, dx + DR + 1, dTop + DR + 1, ZC + DR + 1, (x, y, z) => { const d = Math.hypot(x - dx, (y - dTop) * 0.92, z - ZC); return d <= DR && d > DR - 1 && y > dTop; }, (x, y, z) => {
     const front = z > ZC + 1.5;
     const rib = Math.abs(Math.round((x - dx) / 4) * 4 - (x - dx)) < 0.6 || Math.abs(y - dTop - 1) < 0.6;
-    if (front) return rib ? p.chrome : null;
+    if (front) return Math.abs(y - dTop - 1) < 0.8 || Math.abs(x - dx) < 0.6 || y > dTop + DR - 2.2 ? p.chrome : null;
     return rib ? p.chrome : (x + y) % 7 === 0 ? p.glassHi : p.glass;
   });
   // periscope, dive fins, tail fin + propeller shroud, nose light
-  m.line(dx + 14, dTop, ZC - 2, dx + 14, dTop + 8, ZC - 2, p.chrome, 0.6);
-  m.line(dx + 14, dTop + 8, ZC - 2, dx + 17, dTop + 8, ZC - 2, p.chrome, 0.6);
+  m.line(dx + 17, dTop, ZC - 2, dx + 17, dTop + 8, ZC - 2, p.chrome, 0.6);
+  m.line(dx + 17, dTop + 8, ZC - 2, dx + 20, dTop + 8, ZC - 2, p.chrome, 0.6);
   for (const [u, w] of [[64, 6], [10, 5]]) for (const sd of [-1, 1]) m.box(X0 + u - 3, CY, ZC + sd * (R - 1), X0 + u + 2, CY, ZC + sd * (R + w), p.aqua);
   m.box(X0 + 2, CY, ZC, X0 + 7, CY + R + 4, ZC, p.aqua);
   for (let a = 0; a < TAU; a += 0.2) m.set(X0 - 2, CY + Math.sin(a) * 3.6, ZC + Math.cos(a) * 3.6, p.chrome);
   m.sphere(X0 + LEN, CY + 1, ZC, 1.6, p.lamp);
-  A.flag = [dx + 14.5, dTop + 8.5, ZC - 1.5];
+  A.flag = [dx + 17.5, dTop + 8.5, ZC - 1.5];
   if (parts.engine !== 'none') engine(m, p, parts.engine === 'outboard' ? 'bubble' : parts.engine, X0 + 1, CY + R - 2, ZC, A, spin, bubbles, { x0: X0 + 10, x1: X0 + 22, h: 12, poleH: 14 });
   if (!A.bubbles0) { A.bubbles0 = [X0 - 3, CY, ZC + 0.5]; bubbles.push('bubbles0'); }
   const front = twinFront(m, [p.chrome], (x, y, z) => z > ZC + 1.5 && y > dTop);
   return finish({
     m, front, wl: WL, zc: ZC, spin, bubbles,
-    A: { ...A, stand: [dx, dTop + 1, ZC], bow: [X0 + LEN, WL, ZC], stern: [X0 - 3, WL, ZC], top: [dx, dTop + 12, ZC], keel: [X0 + 40, 0, ZC], sub: [X0 + LEN, CY + 1, ZC + 2], under: [X0 + 40, CY, ZC + 10], lantern: [X0 + LEN + 0.5, CY + 1.5, ZC + 1.5] },
+    A: { ...A, stand: [dx, dTop + 1, ZC], bow: [X0 + LEN, WL, ZC], stern: [X0 - 3, WL, ZC], top: [dx, dTop + 15, ZC], keel: [X0 + 40, 0, ZC], sub: [X0 + LEN, CY + 1, ZC + 2], under: [X0 + 40, CY, ZC + 10], lantern: [X0 + LEN + 0.5, CY + 1.5, ZC + 1.5] },
     pivot: [X0 + LEN / 2, WL], flagScale: 0.8, night: new Map([[p.led, '#9affff'], [p.lamp, '#ffffff'], [p.glass, '#bff6ff']]), lights: [['sub', 60, '#ffffff', 0.6], ['under', 90, '#7affff', 0.5]],
   });
 }
@@ -626,7 +627,9 @@ export const BOAT_TIER_BY_ID = Object.fromEntries(BOAT_TIERS.map((b, i) => [b.id
 export function buildBoatModel(tier, paint, trim = '#ffffff', parts = null) {
   const i = Math.max(0, Math.min(BOAT_TIERS.length - 1, tier | 0));
   const P2 = resolveParts(i, parts);
-  if (parts?.hull && PART_BY.hull[parts.hull]) { paint = PART_BY.hull[parts.hull].color; trim = PART_BY.hull[parts.hull].trim; }
+  // explicit hull part > a custom legacy paint (look.boat) > the tier's default paint
+  const legacyDefault = !paint || ['#2fb8e8', '#c8583a'].includes(String(paint).toLowerCase());
+  if ((parts?.hull && PART_BY.hull[parts.hull]) || legacyDefault) { const H = PART_BY.hull[P2.hull]; paint = H.color; trim = H.trim; }
   const T = BOAT_TIERS[i].build(paint || '#2fb8e8', trim || '#ffffff', P2);
   T.flag = P2.flag; T.parts = P2; T.tier = i;
   return T;

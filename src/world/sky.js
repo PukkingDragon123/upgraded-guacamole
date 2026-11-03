@@ -165,7 +165,7 @@ export class SkyDome {
         const ch = Math.round(cw * r.float(0.32, 0.42));
         const spr = cloudSprites((o.seed ?? 3) * 100 + i, cw, ch, Math.max(8, Math.round(ch * 0.9)), co.scale ?? 2, co.pals || ['day', 'dusk', 'night', 'rain']);
         const y = Math.round(lerp(co.y[0], co.y[1], Math.pow(r.next(), 0.8)));
-        this.clouds.push({ x: r.float(-60, W), y, v: r.float(1.2, 3.6) * (co.speed ?? 1), p: r.float(0.06, 0.22), spr, k });
+        this.clouds.push({ x: r.float(-60, W), y, v: r.float(1.2, 3.6) * (co.speed ?? 1), p: r.float(...(co.par || [0.06, 0.22])), spr, k });
       }
       this.clouds.sort((a, b) => a.spr.w - b.spr.w);
     }
@@ -187,12 +187,14 @@ export class SkyDome {
     return y1 > y0 ? [y0, y1] : null;
   }
 
-  drawGradient(ctx, tod, view) {
+  // shift > 0 samples the gradient from higher up (parallax: the deep blue slides down into a low sky strip)
+  drawGradient(ctx, tod, view, shift = 0) {
     const sp = this.span(view);
     if (!sp) return null;
     const c = this.kinds.length === 1 ? this.canvas.night : this.blend.get([[this.canvas.day, tod.day], [this.canvas.dusk, tod.dusk], [this.canvas.night, tod.night]]);
     const [y0, y1] = sp;
-    ctx.drawImage(c, 0, y0 - this.top, this.W, y1 - y0, 0, y0, this.W, y1 - y0);
+    const sy = Math.max(0, Math.round(y0 - this.top - Math.max(0, shift)));
+    ctx.drawImage(c, 0, sy, this.W, Math.min(y1 - y0, c.height - sy), 0, y0, this.W, Math.min(y1 - y0, c.height - sy));
     return sp;
   }
 
@@ -200,7 +202,7 @@ export class SkyDome {
   drawBodies(ctx, env, tod, clear, scroll, ref) {
     const hour = env.hour ?? 12;
     const B = skyBodies(hour, this.W, this.top, this.base);
-    const pv = 0.28 * (scroll - ref);
+    const pv = (this.o.par ?? 0.28) * (scroll - ref);
     const t = this.t;
     if (tod.night > 0.12) {
       const ka = tod.night * clear;

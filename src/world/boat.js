@@ -125,6 +125,7 @@ export class Boat {
         const { T } = buildModel(tier, hull, trim, parts);
         T.front = T.front instanceof Set ? T.front : new Set(T.front || []); T.night = T.night instanceof Map ? T.night : new Map(Object.entries(T.night || {}).map(([k, v]) => [Number(k), v])); T.zc ??= T.m.nz / 2;
         M = { T, mirror: mirrorModel(T.m), flag: buildFlag(hull, tier === 0), tier };
+        try { if (T.flag && BM.buildFlagModel) M.flag = renderModel(BM.buildFlagModel(T.flag, hull), { scale: VS * (T.flagScale ?? 1) >= 1.5 ? VS : 1, flat: true, outline: true, edges: 0, sideEdges: 0 }); } catch { /* keep the fish flag */ } // [phase3:char]
         this.models.set(key, M);
         if (this.models.size > 4) this.models.delete(this.models.keys().next().value);
       }
@@ -382,6 +383,7 @@ export class Boat {
     this.drawSmoke(ctx);
     ctx.drawImage(L.canvas, ox, oy);
     if (s.A.flag) this.drawFlag(ctx, bx + s.A.flag[0], by + s.A.flag[1]);
+    try { BM.drawBoatAnim?.(ctx, this.M?.T, s.A, bx, by, this.t, this.dir, VS); } catch { /* spinning turbines + bubble jets */ } // [phase3:char]
     this.drawFoam(ctx, s, bx);
     const A = {};
     for (const [k, p] of Object.entries(s.A)) if (p) A[k] = [bx + p[0], by + p[1]];

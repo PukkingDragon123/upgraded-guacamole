@@ -103,7 +103,7 @@ export class LabTree {
     this.hover = inside && !this.drag?.moved ? this.pick(view, inp.x, inp.y) : null;
     // drag to pan, click to select
     const zr = this.zoomRect(view);
-    const onButtons = inp.x >= zr.x && inp.y >= zr.y && inp.x < zr.x + zr.w && inp.y < zr.y + zr.h;
+    const onButtons = (inp.x >= zr.x && inp.y >= zr.y && inp.x < zr.x + zr.w && inp.y < zr.y + zr.h) || this.overLabel(view, inp.x, inp.y);
     if (inside && inp.pressed && !onButtons) {
       inp.pressed = false;
       this.drag = { x: inp.x, y: inp.y, cx: this.camT.x, cy: this.camT.y, moved: false, vx: 0, vy: 0, lx: inp.x, ly: inp.y };
@@ -219,22 +219,36 @@ export class LabTree {
     }
   }
 
+  // Branch name pills at the tips of the star; when a tip is off screen the pill waits at the edge of the dome
+  // (pointing the way) and a click glides the camera there.
   drawBranchLabels(ctx, ui, view) {
-    const z = this.cam.z;
     for (const b of BRANCH_ORDER) {
       const B = BRANCHES[b];
       const a = (B.angle * Math.PI) / 180;
-      const R = (LAB_RING(9) + 34) * Math.max(1, 0.7 / z);
-      const [x, y] = this.toScreen(view, Math.cos(a) * R, Math.sin(a) * R);
-      if (x < view.x - 40 || y < view.y - 20 || x > view.x + view.w + 40 || y > view.y + view.h + 20) continue;
+      const R = LAB_RING(9) + 30;
+      let [x, y] = this.toScreen(view, Math.cos(a) * R, Math.sin(a) * R);
       const ic = icon(B.icon, 14);
       const tw = measureText(B.name);
       const w = tw + (ic ? ic.width + 14 : 12), h = 16;
+      const mx = w / 2 + 6, my = h / 2 + 6;
+      const off = x < view.x + mx || x > view.x + view.w - mx || y < view.y + my || y > view.y + view.h - my - 30;
+      x = clamp(x, view.x + mx, view.x + view.w - mx);
+      y = clamp(y, view.y + my, view.y + view.h - my - 30);
       const lx = Math.round(x - w / 2), ly = Math.round(y - h / 2);
-      ctx.fillStyle = rgba('#ffffff', 0.9); roundRectPath(ctx, lx, ly, w, h, 8); ctx.fill();
-      ctx.strokeStyle = B.color; ctx.lineWidth = 1.5; roundRectPath(ctx, lx + 0.5, ly + 0.5, w - 1, h - 1, 8); ctx.stroke();
+      const rr = { x: lx, y: ly, w, h };
+      const hov = ui.hover(rr);
+      ctx.globalAlpha = off && !hov ? 0.8 : 1;
+      ctx.fillStyle = rgba('#ffffff', 0.92); roundRectPath(ctx, lx, ly, w, h, 8); ctx.fill();
+      ctx.strokeStyle = B.color; ctx.lineWidth = hov ? 2 : 1.5; roundRectPath(ctx, lx + 0.5, ly + 0.5, w - 1, h - 1, 8); ctx.stroke();
       if (ic) ctx.drawImage(ic, lx + 4, Math.round(ly + (h - ic.height) / 2));
       drawText(ctx, B.name, lx + (ic ? ic.width + 8 : 6), ly + 5, { color: shade(B.color, -0.45) });
+      ctx.globalAlpha = 1;
+      if (ui.clicked(rr)) {
+        const k = LAB_RING(4);
+        this.camT.x = Math.cos(a) * k; this.camT.y = Math.sin(a) * k;
+        this.camT.z = Math.max(this.camT.z, 0.8);
+        this.game.audio.play('ui_click');
+      }
     }
   }
 
@@ -258,7 +272,7 @@ export class LabTree {
       if (!inView(ax, ay, 80) && !inView(bx, by, 80)) continue;
       const sa = status[e.from], sb = status[e.to];
       const pts = e.pts.map(([x, y]) => this.toScreen(view, x, y));
-      const col = mix(BRANCHES[e.branch]?.color || '#35c8ff', '#4fd2ff', 0.55);
+      const col = mix(BRANCHES[e.branch]?.color || '#35c8ff', '#1fb8ff', 0.45);
       let water = 0, alpha = 0.7;
       if (sa === 'done' && sb === 'done') { water = 1; alpha = 1; }
       else if (sa === 'done' && sb === 'researching') { water = 0.15 + 0.85 * labProgress(st, e.to); alpha = 1; }
@@ -347,6 +361,18 @@ export class LabTree {
     ctx.restore();
     this.drawZoomButtons(ctx, ui, view);
     void L; void dt;
+  }
+
+  overLabel(view, sx, sy) {
+    for (const b of BRANCH_ORDER) {
+      const B = BRANCHES[b], a = (B.angle * Math.PI) / 180, R = LAB_RING(9) + 30;
+      let [x, y] = this.toScreen(view, Math.cos(a) * R, Math.sin(a) * R);
+      const w = measureText(B.name) + 30, h = 16;
+      x = clamp(x, view.x + w / 2 + 6, view.x + view.w - w / 2 - 6);
+      y = clamp(y, view.y + h / 2 + 6, view.y + view.h - h / 2 - 36);
+      if (Math.abs(sx - x) < w / 2 && Math.abs(sy - y) < h / 2) return true;
+    }
+    return false;
   }
 
   zoomRect(view) { return { x: view.x + 8, y: view.y + view.h - 30, w: 72, h: 22 }; }

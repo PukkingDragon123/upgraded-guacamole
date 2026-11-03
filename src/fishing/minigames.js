@@ -97,8 +97,15 @@ class MashEvent extends Event {
     }
     const pulse = 1 + (Math.sin(this.t * 22) > 0 ? 1 : 0);
     drawText(ctx, '{mouse_l}', sx - 6 * pulse, sy + R + 6, { scale: pulse + 1 });
-    const left = Math.max(0, this.dur - this.t);
-    drawText(ctx, left.toFixed(1) + 's', sx, sy - R - 14, { align: 'center', color: '#ffffff', outline: '#0b1622' });
+    // time left: a thin glossy arc shrinking above the ring (no numbers)
+    const left = clamp01(1 - this.t / this.dur);
+    for (let i = 0; i < 40; i++) {
+      const u = i / 39;
+      if (u > left) break;
+      const a = -Math.PI * 0.8 + u * Math.PI * 0.6;
+      ctx.fillStyle = left < 0.3 ? '#ff8a7a' : '#ffffff';
+      ctx.fillRect(Math.round(sx + Math.cos(a) * (R + 9)), Math.round(sy + Math.sin(a) * (R + 9)), 2, 2);
+    }
   }
 }
 
@@ -410,7 +417,14 @@ class UnwrapEvent extends Event {
       ctx.fillStyle = rgba('#ffe27a', 0.2 + (i / 14) * 0.8);
       ctx.fillRect(Math.round(cx + Math.cos(a) * 30) - 1, Math.round(cy + Math.sin(a) * 30) - 1, 3, 3);
     }
-    drawText(ctx, `${Math.min(this.turns, this.need).toFixed(1)} / ${this.need.toFixed(1)}`, cx, cy + 38, { align: 'center', color: '#ffe27a', outline: '#0b1622' });
+    // progress: a green ring filling around the crank loop (no numbers)
+    const k = clamp01(this.turns / this.need);
+    for (let i = 0; i < 48; i++) {
+      const u = i / 48;
+      const a = -Math.PI / 2 + u * TAU * this.dir;
+      ctx.fillStyle = u < k ? '#8be04a' : 'rgba(12,58,82,0.35)';
+      ctx.fillRect(Math.round(cx + Math.cos(a) * 38) - 1, Math.round(cy + Math.sin(a) * 38) - 1, 3, 3);
+    }
   }
 }
 
@@ -488,8 +502,10 @@ class NetEvent extends Event {
   drawHud(ctx) {
     const F = this.F;
     if (this.fail) {
+      // missed: the target ring flashes red and swells (circle the whole fish)
       const [sx, sy] = F.toScreen(this.fish.x, this.fish.y);
-      drawText(ctx, 'Missed! Circle the WHOLE fish!', sx, sy + F.zoneRadius() + 4, { align: 'center', color: '#ff8a7a', outline: '#0b1622' });
+      const k = this.fail.t / 0.8;
+      if (Math.floor(this.fail.t * 10) % 2 === 0) drawCircle(ctx, sx, sy, F.zoneRadius() * (0.7 + k * 0.3), '#ff6a5a', 1 - k, 2, 10, this.t);
     }
   }
 }

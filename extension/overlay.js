@@ -2253,7 +2253,7 @@
     }
     let sx = -1, sy = -1, sBest = -1;
     for (let x = 0; x < w; x++) {
-      let y = 0;
+      let y = 0, run = 0;
       while (y < h) {
         if (!on(y * w + x)) {
           y++;
@@ -2271,7 +2271,7 @@
               data[i] = db === 0 && n2 >= 12 && x > 0 && on(i - 1) && on(i + 1) ? celBounce(data[i]) : celShadow(data[i]);
               continue;
             }
-            if (!gloss || dt < g0 || dt >= g1) continue;
+            if (!gloss || run > 0 || dt < g0 || dt >= g1) continue;
             const xl = RL[i], xr = RR[i], hw = xr - xl + 1;
             const inset = Math.max(1, Math.round(hw * 0.08));
             if (x - xl < inset || xr - x < inset || hw < 5) continue;
@@ -2288,6 +2288,7 @@
           }
         }
         y = e + 1;
+        run++;
       }
     }
     if (sx >= 0) {
@@ -4286,7 +4287,7 @@
             const bt = Math.max(1.2, R2 * 0.24) / R2 * (1 - 0.35 * Math.abs(mx));
             if (Math.abs(ey - by) < bt) col = lidR[0];
           }
-          if (f.cheek && (em.blush || toon && e.blush) && Math.hypot((mx + 0.35) / 0.9, (ey - 1.5) / 0.4) < 1 && bayer(x, y) < 0.62) col = col || BLUSH;
+          if (f.cheek && (em.blush || toon && e.blush) && Math.hypot((mx + 0.35) / 0.9, (ey - 1.5) / 0.4) < 1) col = col || BLUSH;
           if (f.cheek && em.green) {
             for (const gx of [-0.6, -0.15, 0.3]) if (Math.abs(mx - gx) < 0.5 / R2 + 0.05 && ey > 1.25 && ey < 1.8) col = col || GREEN;
           }
@@ -8961,7 +8962,7 @@
     const id = idOf(c);
     const layers = rigLayers(c);
     const fam = (L, aa) => `${id}|${L}|${aa}|${s}|${inf}|${pose ? 1 : 0}`;
-    if (rot2 && !families.get(fam("body", a))?.size && overBudget2()) {
+    if (!kind && !families.get(fam("body", a))?.size && overBudget2()) {
       for (let d = 1; d <= 12; d++) {
         const cand = [a - d, a + d].find((v) => v >= -6 && v <= 6 && families.get(fam("body", v))?.size);
         if (cand !== void 0) {
@@ -10711,7 +10712,7 @@
           kind: "chain",
           toon: true,
           chain: { segs: 30, r: 7, head: "eel" },
-          col: { body: "#3a3436", belly: "#7a6a62", fin: "#2a2426" },
+          col: { body: "#2a6aff", belly: "#9ae8ff", fin: "#ff3aa8" },
           eye: { r: 3.2, iris: "#ffd23a" },
           mouth: { type: "small" }
         },
@@ -11778,7 +11779,7 @@
           kind: "chain",
           toon: true,
           chain: { segs: 18, r: 6, head: "plug", housing: "#e8e8ec" },
-          col: { body: "#3a3d48", belly: "#5a5e6a", fin: "#2a2c34" },
+          col: { body: "#ffd21a", belly: "#fff6a8", fin: "#2a8aff" },
           eye: { r: 2.4, iris: "#2a2a34" },
           mouth: { type: "small" }
         },
@@ -23607,7 +23608,7 @@ kmlmk..
         aero += rng.int(T.coins[0], T.coins[1]);
         continue;
       }
-      const it2 = pickOf(cat, pickRarity(lucky(T.rar)), biome) || (cat === "cosmetic" ? pickOf("decor", pickRarity(lucky(T.rar)), biome) : null);
+      const it2 = pickOf(cat, pickRarity(lucky(T.rar)), biome, true) || (cat === "cosmetic" ? pickOf("decor", pickRarity(lucky(T.rar)), biome) : null);
       if (!it2 || it2.kind === "package") {
         aero += rng.int(T.coins[0], T.coins[1]);
         continue;
@@ -23621,10 +23622,10 @@ kmlmk..
   function pickRarity(table) {
     return rng.weighted(Object.entries(table), (e) => e[1])[0];
   }
-  function pickOf(cat, rarity, biome) {
+  function pickOf(cat, rarity, biome, decorPlansOnly = false) {
     const pool = Object.values(ITEMS).filter((it2) => {
       if (cat === "material") return it2.kind === "material" || it2.kind === "egg";
-      if (cat === "blueprint") return it2.kind === "blueprint" && it2.builds !== "research_lab";
+      if (cat === "blueprint") return it2.kind === "blueprint" && it2.builds !== "research_lab" && (!decorPlansOnly || !it2.building);
       return it2.kind === cat;
     });
     if (!pool.length) return null;
@@ -29498,8 +29499,14 @@ kmlmk..
       }
       const pulse = 1 + (Math.sin(this.t * 22) > 0 ? 1 : 0);
       drawText(ctx2, "{mouse_l}", sx - 6 * pulse, sy + R2 + 6, { scale: pulse + 1 });
-      const left = Math.max(0, this.dur - this.t);
-      drawText(ctx2, left.toFixed(1) + "s", sx, sy - R2 - 14, { align: "center", color: "#ffffff", outline: "#0b1622" });
+      const left = clamp01(1 - this.t / this.dur);
+      for (let i = 0; i < 40; i++) {
+        const u = i / 39;
+        if (u > left) break;
+        const a = -Math.PI * 0.8 + u * Math.PI * 0.6;
+        ctx2.fillStyle = left < 0.3 ? "#ff8a7a" : "#ffffff";
+        ctx2.fillRect(Math.round(sx + Math.cos(a) * (R2 + 9)), Math.round(sy + Math.sin(a) * (R2 + 9)), 2, 2);
+      }
     }
   };
   var TimingEvent = class extends Event {
@@ -29826,7 +29833,13 @@ kmlmk..
         ctx2.fillStyle = rgba("#ffe27a", 0.2 + i / 14 * 0.8);
         ctx2.fillRect(Math.round(cx + Math.cos(a) * 30) - 1, Math.round(cy + Math.sin(a) * 30) - 1, 3, 3);
       }
-      drawText(ctx2, `${Math.min(this.turns, this.need).toFixed(1)} / ${this.need.toFixed(1)}`, cx, cy + 38, { align: "center", color: "#ffe27a", outline: "#0b1622" });
+      const k = clamp01(this.turns / this.need);
+      for (let i = 0; i < 48; i++) {
+        const u = i / 48;
+        const a = -Math.PI / 2 + u * TAU * this.dir;
+        ctx2.fillStyle = u < k ? "#8be04a" : "rgba(12,58,82,0.35)";
+        ctx2.fillRect(Math.round(cx + Math.cos(a) * 38) - 1, Math.round(cy + Math.sin(a) * 38) - 1, 3, 3);
+      }
     }
   };
   var NetEvent = class extends Event {
@@ -29916,7 +29929,8 @@ kmlmk..
       const F = this.F;
       if (this.fail) {
         const [sx, sy] = F.toScreen(this.fish.x, this.fish.y);
-        drawText(ctx2, "Missed! Circle the WHOLE fish!", sx, sy + F.zoneRadius() + 4, { align: "center", color: "#ff8a7a", outline: "#0b1622" });
+        const k = this.fail.t / 0.8;
+        if (Math.floor(this.fail.t * 10) % 2 === 0) drawCircle(ctx2, sx, sy, F.zoneRadius() * (0.7 + k * 0.3), "#ff6a5a", 1 - k, 2, 10, this.t);
       }
     }
   };
@@ -30960,24 +30974,24 @@ kmlmk..
     const [sx, sy] = F.toScreen(f.x, f.y);
     const z = F.zoom();
     const t = F.t;
-    const cx = Math.round(sx), cy = Math.round(sy - 22 * f.scale * z - 22);
-    const pop = 1 + Math.max(0, 0.25 - (1 - k) * 2) + Math.sin(t * 30) * 0.04;
+    const cx = Math.round(sx), cy = Math.round(sy - 22 * f.scale * z - 30);
+    const pop = 1 + Math.max(0, 0.35 - (1 - k) * 2.5) + Math.sin(t * 30) * 0.05;
     ctx2.save();
     ctx2.globalCompositeOperation = "lighter";
-    ctx2.globalAlpha = 0.5 + 0.3 * Math.sin(t * 20);
-    ctx2.drawImage(glowSprite(26, "#ffe27a"), cx - 26, cy - 26);
+    ctx2.globalAlpha = 0.55 + 0.3 * Math.sin(t * 20);
+    ctx2.drawImage(glowSprite(34, "#ffe27a"), cx - 34, cy - 34);
     ctx2.restore();
-    const R2 = 17, n2 = 48;
+    const R2 = 22, n2 = 64;
     for (let i = 0; i < n2; i++) {
       const u = i / n2;
       const a = -Math.PI / 2 + u * TAU;
       const on = u <= k;
       ctx2.fillStyle = on ? k < 0.35 ? "#ff6a5a" : "#ffe27a" : "rgba(12,58,82,0.35)";
-      ctx2.fillRect(Math.round(cx + Math.cos(a) * R2) - 1, Math.round(cy + Math.sin(a) * R2) - 1, 2, 2);
+      ctx2.fillRect(Math.round(cx + Math.cos(a) * R2) - 1, Math.round(cy + Math.sin(a) * R2) - 1, 3, 3);
     }
-    const b = gbubbleSprite(14);
-    ctx2.drawImage(b, cx - 14, cy - 14);
-    const g = glossText("!", 4, "sun");
+    const b = gbubbleSprite(18);
+    ctx2.drawImage(b, cx - 18, cy - 18);
+    const g = glossText("!", 5, "sun");
     ctx2.save();
     ctx2.translate(cx, cy);
     ctx2.scale(pop, pop);
@@ -33797,7 +33811,6 @@ kmlmk..
           this.biteT = (f.sp.fight?.biteWindow ?? 0.6) * (this.stats?.biteWindow ?? 1) * (g.tutorialActive ? 2.5 : 1);
           this.biteMax = this.biteT;
           h.dip = 10;
-          f.say("!", this.biteT + 0.2);
           f.feel("determined", 1);
           f.chompT = 0.3;
           this.sfx("bite");
@@ -34454,7 +34467,7 @@ kmlmk..
   ];
   var FLAVOUR = {
     rods: ["driftwood", "sea_glass", "abyss_crystal"],
-    reel: ["scrap_metal", "gear", "circuit_board"],
+    reel: ["kelp_fibre", "gear", "circuit_board"],
     boats: ["driftwood", "scrap_metal", "gear"],
     oceans: ["fish_sample", "fish_sample", "rare_specimen"],
     aquarium: ["shell", "coral_chunk", "pearl"],
@@ -34494,8 +34507,8 @@ kmlmk..
   function autoCost(branch, tier, wantFish) {
     const items = {};
     const band = tier <= 3 ? 0 : tier <= 6 ? 1 : 2;
-    const fl = FLAVOUR[branch]?.[band];
-    if (fl) items[fl] = FLAVOUR_Q[MAT_RARITY[fl] || "common"][band] + (tier % 3 === 0 ? 1 : 0);
+    const fl = tier > 1 ? FLAVOUR[branch]?.[band] : null;
+    if (fl) items[fl] = FLAVOUR_Q[MAT_RARITY[fl] || "common"][band] + (tier % 3 === 0 ? 1 : 0) - (tier === 2 ? 1 : 0);
     for (const [k, v] of Object.entries(MAT_T[tier] || {})) items[k] = (items[k] || 0) + v;
     const fish = wantFish && FISH_T[tier] ? { ...FISH_T[tier] } : {};
     return { aero: AERO_T[tier] || 0, items, fish };

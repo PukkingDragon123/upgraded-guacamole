@@ -1,10 +1,9 @@
-// Layered fish rig: cached raster layers (tail / back fins / body / front fins) that animate on
-// independent phases, composited with plain integer offsets, plus a dynamic expressive face (eyes that
-// look, blink and emote; a mouth that talks) drawn on top every frame from small cached sprites.
-//
-// drawFishRig(ctx, compiled, st) -> anchors in world coords. See docs/ARCHITECTURE.md "Fish rig".
-// Two styles share this entry point: 'voxel' (default; 3D voxel sculptures from voxelfish.js that turn
-// through yaw, with the same dynamic face sprites as overlays) and 'pixel' (the layered 2D rig).
+// Fish rig entry point: drawFishRig(ctx, compiled, st) -> anchors in world coords (+ w, h of the drawn box).
+// Two styles: 'voxel' (default; detailed 3D voxel fish from voxelfish.js with cartoon voxel eyes, Frutiger
+// Aero gloss and spinning parts) and 'pixel' (the layered 2D rig: cached raster layers - tail / back fins /
+// body / front fins - on independent phases plus cartoon eye / mouth sprites). The Wakka chomper (kind
+// 'chomper', kindRotates) is the one deliberate pixel-art fish and always uses the 2D rig; the 2D rig also
+// stands in for a voxel frame on the very first frame while it builds.
 // setFishStyle(style) switches globally; st.style overrides per call.
 // Extra st fields: pose (iconfish mimic pose), chain ([{x,y}] head-first for chain kinds), heading (deg,
 // + = swimming away from the viewer: the voxel fish turns its head into the scene), lod (0 near, 1 far:
@@ -255,7 +254,7 @@ function drawFishRigInner(ctx, c, st) {
   const layers = rigLayers(c);
   const fam = (L, aa) => `${id}|${L}|${aa}|${s}|${inf}|${pose ? 1 : 0}`;
   // over budget and this angle bucket not ready: snap to the nearest bucket whose body exists
-  if (rot && !families.get(fam('body', a))?.size && overBudget()) {
+  if (!kind && !families.get(fam('body', a))?.size && overBudget()) {
     for (let d = 1; d <= 12; d++) {
       const cand = [a - d, a + d].find((v) => v >= -6 && v <= 6 && families.get(fam('body', v))?.size);
       if (cand !== undefined) { a = cand; statFallback++; break; }

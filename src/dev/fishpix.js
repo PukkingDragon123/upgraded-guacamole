@@ -68,6 +68,7 @@ export function run(params) {
     beginVoxelFishFrame();
     if (mode === 'grid') drawGrid(g, list, cols, t, frozen, mouse);
     else if (mode === 'emo') drawEmo(g, list, t, frozen);
+    else if (mode === 'wakka') drawWakkaSheet(g, t);
     else drawSwim(g, world, dt, t);
     drawText(g, `${mode} ${biome} ${list.length} species  ${fps ? fps.toFixed(0) + ' fps' : ''}`, 6, 4, { font: 'small', color: '#ffffff', shadow: '#0a2a4a' });
     if (!frozen || !window.__warm) { if (frozen) window.__warm = (window.__warm || 0) + 1; if (!frozen || window.__warm < 3) requestAnimationFrame(frame); }
@@ -109,6 +110,17 @@ function drawEmo(g, list, t, frozen) {
       drawText(g, e, x, y + rh * 0.42, { font: 'small', align: 'center', color: '#ffffff', shadow: '#0a2a4a' });
     });
   }
+}
+
+function drawWakkaSheet(g, t) {
+  bg(g);
+  const sp = SPECIES_BY_ID.guppy, c = compiled(sp.look, null, sp.id);
+  const dirs = [[1, 0], [-1, 0], [1, -Math.PI / 2], [1, Math.PI / 2]];
+  dirs.forEach(([facing, angle], r) => {
+    for (let k = 0; k < 6; k++) {
+      drawFishRig(g, c, { x: 90 + k * 150, y: 70 + r * 128, scale: 3, facing, turn: facing, angle, swimPhase: k / 6, tailPhase: k / 6, finPhase: k / 6, time: 0.3, emotion: k === 5 ? 'happy' : 'neutral', blink: 0 });
+    }
+  });
 }
 
 function makeWorld(list, n) {

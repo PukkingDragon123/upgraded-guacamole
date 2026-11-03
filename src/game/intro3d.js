@@ -326,23 +326,34 @@ function goldieFrame(vs, frame, mood) {
   return f;
 }
 
-// Goldie through the Character agent's NPC when it exists, else the built-in voxel Goldie. (x, y) = body centre;
-// scale = screen px per voxel (she is about 30 voxels long), vs = the voxel render scale to use.
+// Goldie: the Character agent's voxel NPC (gfx/npcs.js 'goldie') when it exists, else the built-in voxel Goldie.
+// (x, y) = body centre; scale 1 ~ 40 px tall (the NPC's scale); base = the scale her frames are rendered at (she
+// is drawn at base and transformed, so a continuously changing scale never re-renders voxels).
+// o: {scale, base, facing, blink, mood: 'happy'|'surprised'|'o' (blowing)|..., t, lookAt}
 export function drawGoldie(ctx, x, y, o = {}) {
-  const k = o.scale ?? 1;
-  if (NPC.NPCS && NPC.NPCS.goldie && typeof NPC.drawNPC === 'function') {
-    try { NPC.drawNPC(ctx, 'goldie', { x, y: y + 9 * k, t: o.t || 0, scale: k, facing: o.facing ?? 1, talk: o.mood === 'o' ? 1 : 0, mood: o.mood || 'happy', blink: o.blink ? 1 : 0, pose: 'swim' }); return; } catch (e) { /* fall through */ }
-  }
-  const vs = o.vs || 1;
-  const mood = o.blink ? 'b' : o.mood === 'o' ? 'o' : o.mood === 'happy' ? 'h' : 'n';
-  const f = goldieFrame(vs, Math.floor((o.t || 0) * 8) % 4, mood);
-  const s = k / vs;
+  const k = o.scale ?? 1, base = o.base ?? Math.max(0.5, Math.round(k * 4) / 4);
+  const m = k / base;
   ctx.save();
   ctx.translate(x, y);
-  if ((o.facing ?? 1) < 0) ctx.scale(-1, 1);
-  if (o.angle) ctx.rotate(o.angle);
-  ctx.imageSmoothingEnabled = s < 0.98;
-  ctx.drawImage(f.canvas, -f.ax * s, -f.ay * s, f.canvas.width * s, f.canvas.height * s);
+  ctx.scale(m, m);
+  ctx.imageSmoothingEnabled = m < 0.98;
+  ctx.imageSmoothingQuality = 'high';
+  let done = false;
+  if (NPC.NPCS && NPC.NPCS.goldie && typeof NPC.drawNPC === 'function') {
+    try {
+      const mood = o.mood === 'o' ? 'excited' : o.mood === 'wide' ? 'surprised' : o.mood || 'happy';
+      NPC.drawNPC(ctx, 'goldie', { x: 0, y: 14 * base, t: o.t || 0, scale: base, facing: o.facing ?? 1, talk: o.mood === 'o' ? 0.9 : o.talk || 0, mood, pose: o.pose || (o.mood === 'o' ? 'talk' : 'idle'), shadow: false, lookAt: o.lookAt, id: o.id || 'goldie' });
+      done = true;
+    } catch (e) { done = false; }
+  }
+  if (!done) {
+    const vs = Math.max(1, Math.round(base * 1.4 * 4) / 4);
+    const mood = o.blink ? 'b' : o.mood === 'o' ? 'o' : o.mood === 'happy' ? 'h' : 'n';
+    const f = goldieFrame(vs, Math.floor((o.t || 0) * 8) % 4, mood);
+    const s = (base * 1.4) / vs;
+    if ((o.facing ?? 1) < 0) ctx.scale(-1, 1);
+    ctx.drawImage(f.canvas, -f.ax * s, -f.ay * s, f.canvas.width * s, f.canvas.height * s);
+  }
   ctx.restore();
   ctx.imageSmoothingEnabled = false;
 }
@@ -621,9 +632,10 @@ export class Intro3D {
       const r = renderVoxels(make(), { scale: sc, outline: true, ao: 0.8, ...ro });
       A[key] = { canvas: r.canvas, ox: r.ox, oy: r.oy, r, scale: sc, ss };
     };
-    this.goldieVs = Math.max(1, Math.round(2.6 * u * 4) / 4);
+    this.goldieBase = Math.max(1, Math.round(1.6 * u * 4) / 4);
     const goldieJobs = [];
-    for (const mood of ['n', 'b', 'o', 'h']) for (let f = 0; f < 4; f++) goldieJobs.push(() => { goldieFrame(this.goldieVs, f, mood); });
+    if (NPC.NPCS?.goldie && typeof NPC.warmNPC === 'function') for (const f of [1, -1]) goldieJobs.push(() => { NPC.warmNPC('goldie', { scale: this.goldieBase, facing: f }); });
+    else for (const mood of ['n', 'b', 'o', 'h']) for (let f = 0; f < 4; f++) goldieJobs.push(() => { goldieFrame(Math.max(1, Math.round(this.goldieBase * 1.4 * 4) / 4), f, mood); });
     return [
       () => { this.land = renderLandscape(this.W, this.H); },
       () => this.paintWall(),
@@ -992,7 +1004,7 @@ export class Intro3D {
     if (t >= T.notice && t < T.blow - 0.2) G.facing = 1;
     if (t > T.blow - 0.2 && t < T.blow + 1.4) G.facing = -1; // turn toward the monitor and blow
     G.blink = (t % 3.1 < 0.12) || (t > T.notice + 0.25 && t < T.notice + 0.37) || (t > T.notice + 0.55 && t < T.notice + 0.65) ? 1 : 0;
-    G.mood = t > T.blow - 0.2 && t < T.blow + 1.6 ? 'o' : t >= T.notice + 0.8 && t < T.blow - 0.3 ? 'happy' : 'neutral';
+    G.mood = t > T.blow - 0.2 && t < T.blow + 1.6 ? 'o' : t >= T.notice && t < T.notice + 0.6 ? 'wide' : 'happy';
   }
 
   // ----------------------------------------------------------------------------------- 3D particles
@@ -1329,13 +1341,11 @@ export class Intro3D {
   drawFloor(ctx) {
     this.quad(ctx, [[-1600, FLOOR_Y, ZW], [1600, FLOOR_Y, ZW], [1600, FLOOR_Y, 10], [-1600, FLOOR_Y, 10]]);
     const [, ya] = this.proj(0, FLOOR_Y, ZW), [, yb] = this.proj(0, FLOOR_Y, 40);
-    ctx.fillStyle = vgrad(ctx, ya, yb, [[0, '#dcecf2'], [0.4, '#eef5f4'], [1, '#f8f3ea']]);
+    ctx.fillStyle = vgrad(ctx, ya, yb, [[0, '#c8e0ea'], [0.4, '#dcecf0'], [1, '#eef2f0']]);
     ctx.fill();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.fillStyle = 'rgba(255,250,230,0.18)';
+    ctx.fillStyle = 'rgba(255,252,236,0.35)';
     this.quad(ctx, [[-700, FLOOR_Y, ZW - 10], [-260, FLOOR_Y, ZW - 10], [80, FLOOR_Y, 110], [-360, FLOOR_Y, 110]]);
     ctx.fill();
-    ctx.globalCompositeOperation = 'source-over';
   }
 
   // Easter egg: the moving-picture aquarium lamp (silver frame, a scrolling reef panorama, a blue glow).
@@ -1527,7 +1537,7 @@ export class Intro3D {
       ctx.translate(G.x, G.y);
       ctx.scale(1 / s, 1 / s); // screen pixels from here
       if (G.d < 0) ctx.globalAlpha = 0.85;
-      drawGoldie(ctx, 0, 0, { scale: 1.3 * ds * s, vs: this.goldieVs, facing: G.facing, blink: G.blink, mood: G.mood, t });
+      drawGoldie(ctx, 0, 0, { scale: 0.8 * ds * s, base: this.goldieBase, facing: G.facing, blink: G.blink, mood: G.mood, t, id: 'intro-goldie' });
       ctx.restore();
     }
     this.drawJarBubbles(ctx, s, true);

@@ -1,4 +1,4 @@
-// Procedural pixel-art creature rasteriser: high-res, layered, with expressive dynamic faces.
+// Procedural creature rasteriser: high-res, layered 2D sprites with expressive cartoon faces.
 //
 // Every output pixel is inverse-mapped into the creature's local space (faces +x, y down, origin =
 // body centre, 1 unit = 1 logical px at scale 1) and tested against body, fins, tail and extras, so
@@ -11,15 +11,17 @@
 //    bucket plus face/anchor positions; rasterLayer(c, layer, q) paints 'tail' | 'back' | 'body' | 'front'
 //    on their own phases; eyeSprite / mouthSprite paint the dynamic face (look, blink, emotions, talking).
 //
-// Style: realistic anatomy, 7-tone hue-shifted ramps quantised with a 2x2 checker only between tones,
-// countershading (dark back -> pale belly), specular strip along the upper flank, operculum and
-// pre-operculum curves, nostril, staggered scale arcs, lateral line, rayed translucent fins with darker
-// edges, near-black selective outline, realistic eyes (iris ring, pupil, glint).
+// It also feeds the voxel engine (voxelfish.js): rasterLayerVox() paints flat albedo layers that are
+// extruded into 3D. Every creature is a cartoon now (phase 3, Frutiger Aero): no scales, gills, nostrils or
+// lateral lines; flat countershaded colour zones and bold patterns; cute glossy cartoon eyes (white, big dark
+// pupil, one or two white shine pixels; lids / brows / hearts / swirls for expressions) and cartoon mouths.
+// The 2D pixel style (the Wakka chomper and the first-frame fallback) adds cel shading: toonFinish() puts a
+// cel shadow along the underside, an aqua bounce light, a glossy white specular band following the top
+// contour and a sparkle pixel; outlines are an even, hue-tinted ink (toonInk).
 //
 // Look schema additions (all optional, backwards compatible):
-//  toon: true -> cartoon face overlays (lids, brows, blush, sweat, hearts...) for comedic species only;
-//    other creatures express emotions realistically (pupil size, look bias, gape, gill flare, dorsal
-//    raise, colour flush, twitch) via fishrig.js / realCues().
+//  toon: legacy flag (all creatures are cartoon now). bubble: soap-bubble body (2D: bubblePix; voxel: glass).
+//  rotor / sneakers / orb: see voxelfish.js. extras 'paperclip'. kind 'chomper' (pixel-art Wakka Fish).
 //  body.tip (snout half-height fraction; profile nose = front roundness exponent, 1 = wedge).
 //  shade {back, belly}: countershading band boundaries in v (-1 top .. 1 bottom). spec: specular strength.
 //  col.head: separate head colour (e.g. sockeye). head {u (operculum), nostril, preop}. eyeIris default.
@@ -468,7 +470,7 @@ function toonFinish(buf, mask, front, gloss = true) {
   }
   let sx = -1, sy = -1, sBest = -1;
   for (let x = 0; x < w; x++) {
-    let y = 0;
+    let y = 0, run = 0;
     while (y < h) {
       if (!on(y * w + x)) { y++; continue; }
       let e = y;
@@ -480,7 +482,7 @@ function toonFinish(buf, mask, front, gloss = true) {
         for (let yy = y; yy <= e; yy++) {
           const i = yy * w + x, dt = yy - y, db = e - yy;
           if (db < shN) { data[i] = db === 0 && n >= 12 && x > 0 && on(i - 1) && on(i + 1) ? celBounce(data[i]) : celShadow(data[i]); continue; }
-          if (!gloss || dt < g0 || dt >= g1) continue;
+          if (!gloss || run > 0 || dt < g0 || dt >= g1) continue; // gloss on the topmost run only
           const xl = RL[i], xr = RR[i], hw = xr - xl + 1;
           const inset = Math.max(1, Math.round(hw * 0.08));
           if (x - xl < inset || xr - x < inset || hw < 5) continue;
@@ -493,6 +495,7 @@ function toonFinish(buf, mask, front, gloss = true) {
         }
       }
       y = e + 1;
+      run++;
     }
   }
   // sparkle: pure white glint at the front end of the gloss band (a 2nd pixel on big sprites)
@@ -2473,7 +2476,7 @@ export function paintEye(buf, glow, cx, cy, c, e, f, ang, R) {
           const bt = Math.max(1.2, R * 0.24) / R * (1 - 0.35 * Math.abs(mx));
           if (Math.abs(ey - by) < bt) col = lidR[0];
         }
-        if (f.cheek && (em.blush || (toon && e.blush)) && Math.hypot((mx + 0.35) / 0.9, (ey - 1.5) / 0.4) < 1 && bayer(x, y) < 0.62) col = col || BLUSH;
+        if (f.cheek && (em.blush || (toon && e.blush)) && Math.hypot((mx + 0.35) / 0.9, (ey - 1.5) / 0.4) < 1) col = col || BLUSH;
         if (f.cheek && em.green) for (const gx of [-0.6, -0.15, 0.3]) if (Math.abs(mx - gx) < 0.5 / R + 0.05 && ey > 1.25 && ey < 1.8) col = col || GREEN;
         if (em.bags && ey > 0.95 && ey < 1.4 && Math.abs(Math.hypot(ex, (ey - 0.1) / 1.1) - 1.12) < th * 0.8) col = col || lidR[0];
         if (em.tears && f.cheek) {

@@ -13,7 +13,6 @@
 // renders the static backdrop: water body, receding walls (box) or the curved water volume (round), the
 // water surface and the ray-marched voxel floor, with depth fog baked in per pixel.
 
-import { drawGlossOrb } from '../ui/aero.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { PixelBuffer } from '../gfx/pixel.js';
 import { pack, mix, rgba } from '../core/color.js';
@@ -523,17 +522,4 @@ export function renderGlass(T) {
   g.fillStyle = rgba('#0e4a72', 0.16); g.fillRect(0, surf + 2, W, 1);
   void H;
   return cv;
-}
-
-// Round glossy Aero button sprite (kept under its old name for aquarium.js callers).
-const btnCache = new Map();
-export function brassButton(size, hover) {
-  const key = size + '|' + hover;
-  let c = btnCache.get(key);
-  if (c) return c;
-  c = document.createElement('canvas');
-  c.width = c.height = size;
-  drawGlossOrb(c.getContext('2d'), size / 2, size / 2, size / 2 - 0.5, hover ? '#5fe6ff' : '#2fc3e0');
-  btnCache.set(key, c);
-  return c;
 }

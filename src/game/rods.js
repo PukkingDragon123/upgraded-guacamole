@@ -78,6 +78,7 @@ export function equipRod(state, id) {
   const r = ensureRods(state);
   if (!r.owned.includes(id) || !ROD_BY_ID[id]) return false;
   r.equipped = id;
+  if (state.character && typeof state.character === 'object') state.character.labRod = id; // [phase3:char] the 'auto' rod skin draws the Lab rod
   return true;
 }
 export function equippedRod(state) { return ROD_BY_ID[ensureRods(state).equipped] || RODS[0]; }

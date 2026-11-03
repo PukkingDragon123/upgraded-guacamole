@@ -55,35 +55,36 @@ const rotY = (deg) => { const a = (deg * Math.PI) / 180, c = Math.cos(a), s = Ma
 const GOLDIE_K = kit();
 function buildGoldie(fi) {
   const K = GOLDIE_K;
-  const m = K.model(40, 30, 24);
-  const or = K.g('#ff8a1a'), orL = K.g('#ffb83a'), belly = K.g('#fff0b0'), fin = K.g('#ffcf6a', { light: 0.1 }), finW = K.g('#fff6e0'), cheek = K.g('#ff9ab0');
-  const cx = 20, cy = 14, cz = 12;
+  const m = K.model(48, 36, 26);
+  const or = K.g('#ff8a1a'), orL = K.g('#ffb03a'), belly = K.g('#fff0b0'), fin = K.g('#ffb860', { light: 0.1 }), finL = K.g('#ffd8a0', { light: 0.15 }), finW = K.g('#fff8ec', { light: 0.2 }), cheek = K.g('#ff9ab0'), lip = K.g('#ff6a5a');
+  const cx = 26, cy = 17, cz = 13;
   const sw = Math.sin((fi / 6) * TAU);
-  // body: chubby egg, bigger at the head
-  shapeIn(m, 4, 2, 2, 36, 27, 22, (x, y, z) => {
-    const dx = x - cx;
-    const rx = dx > 0 ? 9.5 : 11, ry = 8.4 + (dx > 0 ? 0 : -dx * 0.05), rz = 6.6;
-    return (dx / rx) ** 2 + ((y - cy) / ry) ** 2 + ((z - cz) / rz) ** 2 <= 1;
-  }, (x, y, z) => (y < cy - 3 + (x - cx) * 0.1 ? belly : (Math.floor(x + y * 0.5) % 4 === 0 && x < cx + 4 ? orL : or)));
-  // big flowing fan tail (sways)
-  for (let k = 0; k <= 12; k += 0.5) {
-    const x = cx - 10 - k, sway = sw * k * 0.35;
-    const h = 2 + k * 0.85 + Math.sin(k * 0.7) * 0.8;
-    for (let y = -h; y <= h; y += 0.5) {
-      const zz = cz + sway + Math.sin(y * 0.4) * 0.6;
-      const edge = k > 9.5 || Math.abs(y) > h - 1;
-      m.set(x, cy + y + 1, zz, edge ? finW : Math.floor(y + k) % 3 === 0 ? orL : fin);
+  // chubby round body, bigger head end
+  shapeIn(m, 10, 6, 3, 40, 28, 23, (x, y, z) => {
+    const dx = x - cx, rx = dx > 0 ? 9.6 : 10.2;
+    return (dx / rx) ** 2 + ((y - cy) / 8.2) ** 2 + ((z - cz) / 6.8) ** 2 <= 1;
+  }, (x, y) => (y < cy - 3.4 + (x - cx) * 0.12 ? belly : (Math.floor(x * 0.5) + Math.floor(y * 0.5)) % 3 === 0 && x < cx + 5 ? orL : or));
+  // fancy double fan tail: two rounded lobes sweeping back (sways)
+  for (const s2 of [-1, 1]) {
+    const ang = Math.PI + s2 * 0.62, dx = Math.cos(ang), dy = Math.sin(ang);
+    for (let k = 0; k <= 12; k += 0.5) {
+      const w = 1 + k * 0.35 + Math.sin((k / 12) * Math.PI) * 1.8;
+      for (let j = -w; j <= w; j += 0.5) {
+        const x = cx - 9 + dx * k - dy * j * 0.6, y = cy + dy * k + dx * j * 0.6 * -1;
+        const z = cz + sw * k * 0.32 + Math.sin(j * 0.6) * 0.4;
+        const edge = k > 11 - Math.abs(j) * 0.25 || Math.abs(j) > w - 0.7;
+        m.set(x, y, z, edge ? finW : Math.round(j) % 2 ? fin : finL);
+      }
     }
   }
-  // dorsal fin, pectorals (flap), little ventral fins
-  for (let k = 0; k < 9; k++) { const h = 3 + Math.sin((k / 9) * Math.PI) * 3.2; for (let y = 0; y < h; y++) m.set(cx + 3 - k, cy + 8 + y - k * 0.15, cz, y > h - 1.4 ? finW : fin); }
-  const fl = Math.sin((fi / 6) * TAU * 2) * 1.6;
-  for (const s of [-1, 1]) for (let k = 0; k < 5; k++) for (let j = 0; j < 4 - k * 0.5; j++) m.set(cx + 1 - k, cy - 3 - j + fl * 0.3 * k, cz + s * (6.6 + k * 0.6 + fl * 0.25), j > 2 ? finW : fin);
-  for (const s of [-1, 1]) m.set(cx + 6.6, cy - 2.4, cz + s * 5.4, cheek);
-  // lips
-  m.sphere(cx + 9.8, cy - 1.2, cz, 1.4, K.g('#ff6a5a'));
-  const head = { C: [cx + 3.6, cy + 1, cz], R: 7.6, Rm: I3, feats: { eyeL: { d: n3([0.45, 0.42, 0.78]), size: 2.7 }, eyeR: { d: n3([0.45, 0.42, -0.78]), size: 2.7 }, mouth: { d: n3([0.98, -0.32, 0]), size: 1.7, lift: 1.04 } } };
-  return { m, head, faceIds: new Set([or, orL, belly, cheek]), anchors: { top: [cx, cy + 14, cz], head: [cx + 4, cy + 6, cz], mouth: [cx + 10, cy - 1, cz] }, ground: [cx, cy, cz], n: 6 };
+  // rounded dorsal fin, flapping pectorals, little lips
+  for (let k = 0; k <= 9; k += 0.5) { const h = 2 + Math.sin((k / 9) * Math.PI) * 2.6; for (let y = 0; y <= h; y += 0.5) m.set(cx + 4 - k, cy + 7.4 + y - k * 0.12, cz, y > h - 0.8 ? finW : fin); }
+  const fl = Math.sin((fi / 6) * TAU * 2);
+  for (const s2 of [-1, 1]) for (let k = 0; k < 4; k += 0.5) for (let j = 0; j < 3 - k * 0.4; j += 0.5) m.set(cx + 1 - k, cy - 3 - j - fl * 0.3 * k, cz + s2 * (6.8 + k * 0.5 + fl * 0.3), j > 2 - k * 0.4 ? finW : finL);
+  for (const s2 of [-1, 1]) m.set(cx + 6.4, cy - 2.4, cz + s2 * 5.2, cheek);
+  m.sphere(cx + 9.8, cy - 1.4, cz, 1.5, lip);
+  const head = { C: [cx + 4.4, cy + 1, cz], R: 7.4, Rm: I3, feats: { eyeL: { d: n3([0.55, 0.4, 0.72]), size: 2.9 }, eyeR: { d: n3([0.55, 0.4, -0.72]), size: 2.9 }, mouth: { d: n3([1, -0.3, 0]), size: 1.6, lift: 1.06 } } };
+  return { m, head, faceIds: new Set([or, orL, belly, cheek]), anchors: { top: [cx, cy + 14, cz], head: [cx + 4, cy + 7, cz], mouth: [cx + 10, cy - 1, cz] }, ground: [cx, cy - 2, cz], n: 6 };
 }
 
 // ------------------------------------------------------------------ Pinch: crab with eyes on stalks (faces +z)
@@ -128,9 +129,6 @@ function buildPinch(fi, variant) {
     m.sphere(ex, ey, ez, 2.9, eyeW);
     eyes[k] = { C: [ex, ey, ez], R: 2.9 };
   }
-  // tiny aqua neckerchief
-  for (let x = -3; x <= 3; x++) m.set(cx + x, cy - 2, cz + 8 - Math.abs(x) * 0.2, K.g('#2fd3e8'));
-  m.set(cx, cy - 3, cz + 8, K.g('#2fd3e8'));
   const head = { C: [cx, cy + 1, cz], R: 8, Rm: I3, feats: { mouth: { d: n3([0, -0.25, 1]), size: 1.8 }, cheekL: { d: n3([0.55, -0.2, 0.8]), size: 1.6 }, cheekR: { d: n3([-0.55, -0.2, 0.8]), size: 1.6 } }, eyes };
   return { m, head, faceIds: new Set([shell, shellL, belly, spot, eyeW]), anchors: { top: [cx, cy + 19, cz], head: [cx, cy + 15, cz], mouth: [cx, cy, cz + 8] }, ground: [cx, 0, cz], n: 4 };
 }
@@ -202,7 +200,7 @@ function buildBloat(fi, variant) {
 }
 
 const VOX = {
-  goldie: { build: buildGoldie, kit: GOLDIE_K, yaw: 52, n: 6, dur: 0.9, float: 3, eyes: 'bean', mouth: 'smile', side: true },
+  goldie: { build: buildGoldie, kit: GOLDIE_K, yaw: 45, n: 6, dur: 0.9, float: 3, eyes: 'bean', mouth: 'smile', side: true },
   pinch: { build: buildPinch, kit: PINCH_K, yaw: 28, n: 4, dur: 0.8, float: 0, eyes: 'bean', mouth: 'cat' },
   dot: { build: buildDot, kit: DOT_K, yaw: 26, n: 6, dur: 1.2, float: 4, eyes: 'led', mouth: 'led' },
   bloat: { build: buildBloat, kit: BLOAT_K, yaw: 28, n: 6, dur: 1.6, float: 3, eyes: 'bean', mouth: 'o' },

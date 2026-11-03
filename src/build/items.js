@@ -229,7 +229,8 @@ export function rollCrate(tier = 'crate', biome = null, luck = 0) {
   const out = new Map();
   for (const cat of cats) {
     if (cat === 'coins') { aero += rng.int(T.coins[0], T.coins[1]); continue; }
-    const it = pickOf(cat, pickRarity(lucky(T.rar)), biome) || (cat === 'cosmetic' ? pickOf('decor', pickRarity(lucky(T.rar)), biome) : null);
+    // building blueprints are Lab research + crafting only; crates can hold seabed decor plans
+    const it = pickOf(cat, pickRarity(lucky(T.rar)), biome, true) || (cat === 'cosmetic' ? pickOf('decor', pickRarity(lucky(T.rar)), biome) : null);
     if (!it || it.kind === 'package') { aero += rng.int(T.coins[0], T.coins[1]); continue; }
     out.set(it.id, (out.get(it.id) || 0) + qtyFor(it, t));
   }
@@ -243,10 +244,10 @@ function pickRarity(table) {
 }
 
 // Picks an item of a category close to the wanted rarity.
-function pickOf(cat, rarity, biome) {
+function pickOf(cat, rarity, biome, decorPlansOnly = false) {
   const pool = Object.values(ITEMS).filter((it) => {
     if (cat === 'material') return it.kind === 'material' || it.kind === 'egg';
-    if (cat === 'blueprint') return it.kind === 'blueprint' && it.builds !== 'research_lab';
+    if (cat === 'blueprint') return it.kind === 'blueprint' && it.builds !== 'research_lab' && (!decorPlansOnly || !it.building);
     return it.kind === cat;
   });
   if (!pool.length) return null;

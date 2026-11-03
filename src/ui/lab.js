@@ -11,9 +11,9 @@ import { getUiIcon } from '../gfx/uiicons.js';
 import { drawAeroCoin, fmtAero, drawAeroGlow, drawAeroBubble, drawAeroBadge, drawSparkle } from './aero.js';
 import * as CHAR from '../gfx/character.js';
 import * as NPC from '../gfx/npcs.js';
-import { LAB_BY_ID, BRANCHES, ensureLab, labSlots, labProgress, labRemaining, labFocus, startResearch, labTick, labReadyCount, fmtTime } from '../game/lab.js';
+import { LAB_BY_ID, BRANCHES, ensureLab, labSlots, labProgress, labRemaining, labFocus, startResearch, instantFinish, labTick, labReadyCount, fmtTime } from '../game/lab.js';
 import { ensureRods } from '../game/rods.js';
-import { RECIPE_BY_ID } from '../build/crafting.js';
+import { RECIPE_BY_ID, craft } from '../build/crafting.js';
 import { labRoom, leafSprig, drawTube, drawFlask, ecoOrb, roundRectPath } from './labart.js';
 import { iconBudget, icon, pill, INK } from './labkit.js';
 import { LabTree, drawNodeCard } from './labtree.js';
@@ -83,6 +83,10 @@ export class LabPanel {
     this.cheer = 1.6;
     return true;
   }
+
+  // scripting / test hooks (the card buttons call the same functions)
+  finishNow(id) { return instantFinish(this.game, id); }
+  craft(id, n = 1) { return craft(this.game, id, n); }
 
   layout() {
     const g = this.game, W = g.screen.W, H = g.screen.H;
@@ -430,6 +434,7 @@ export class LabAlias {
     const d = { ...this.defaults, ...(data || {}) };
     if (d.focus || d.highlight) delete d.tab;
     this.lab.open(d);
+    this.lab.game?.emit?.('panelOpen', 'lab'); // listeners (desktop badge) know the Lab itself is open
   }
   close() { this.lab.close(); this.lab.openId = 'lab'; }
   draw(ctx, ui, dt) { this.lab.anim = this.anim; this.lab.draw(ctx, ui, dt); }

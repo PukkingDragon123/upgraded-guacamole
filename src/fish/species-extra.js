@@ -1056,7 +1056,7 @@ add({
   look: {
     kind: 'chain', toon: true,
     chain: { segs: 30, r: 7, head: 'eel' },
-    col: { body: '#3a3436', belly: '#7a6a62', fin: '#2a2426' },
+    col: { body: '#2a6aff', belly: '#9ae8ff', fin: '#ff3aa8' },
     eye: { r: 3.2, iris: '#ffd23a' },
     mouth: { type: 'small' },
   },

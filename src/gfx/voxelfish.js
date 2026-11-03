@@ -16,9 +16,16 @@
 //     depth lines, a selective dark outline and an emissive glow halo. Frames render progressively
 //     (row slices) under a per-frame time budget, with nearest-frame fallback, LRU caches and warm-up.
 //
+// Phase 3 Frutiger Aero styling: vivid tropical saturation, translucent aqua-tinted fins that keep their hue,
+// glossy sheen and glints, and CARTOON voxel eyes (white ball, big dark pupil, a white shine voxel; lids for
+// blink / squint / sad / angry, a pink heart pupil for love, a swirl for dizzy). Outfits and gadgets:
+// look.rotor (spinning wind turbine), look.sneakers {u, h, len, accent} (white high-tops that walk with the
+// swim cycle), look.orb {r, color} (a glass water bubble around the fish), glasses extras (lenses / patch
+// stamped over the eye), look.vox.glass >= 0.5 (see-through iridescent soap-bubble body).
 // Canonical yaw is -90..90 (0 = facing right, 90 = toward the viewer); left-facing fish are mirrored.
 // Composition (face overlays, wash, glow, silhouette) lives in fishrig.js (drawFishRig, style 'voxel').
-// drawVoxelFish(ctx, fish, {scale, glow, alpha}) remains for the aquarium (fish objects in tank space).
+// drawVoxelFish(ctx, fish, {scale, glow, alpha}) remains for the aquarium (fish objects in tank space; it also
+// draws a Wakka fish's pellet bubbles).
 
 import { rigLayers, rigGeom, rasterLayerVox, voxAlbedo, paintMouth, mouthBox, isKind, chainHeadVox, chainSegColor, emotionParams } from './fishart.js';
 import { PixelBuffer } from './pixel.js';

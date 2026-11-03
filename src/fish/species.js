@@ -744,7 +744,7 @@ add({
   look: {
     kind: 'chain', toon: true,
     chain: { segs: 18, r: 6, head: 'plug', housing: '#e8e8ec' },
-    col: { body: '#3a3d48', belly: '#5a5e6a', fin: '#2a2c34' },
+    col: { body: '#ffd21a', belly: '#fff6a8', fin: '#2a8aff' },
     eye: { r: 2.4, iris: '#2a2a34' },
     mouth: { type: 'small' },
   },

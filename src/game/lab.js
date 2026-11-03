@@ -83,8 +83,9 @@ const TIME_T = [0, 5, 15, 40, 90, 180, 360, 720, 1500, 3000];
 // generic tier materials + branch flavour materials (tier bands 1-3, 4-6, 7-9)
 const MAT_T = [null, { driftwood: 2 }, { kelp_fibre: 2 }, { sea_glass: 2 }, { coral_chunk: 3 }, { gear: 2 }, { pearl: 2 },
   { circuit_board: 3 }, { ancient_stone: 3 }, { abyss_crystal: 3 }];
+// band 0 (tiers 2-3) only asks for common things every ocean's crates and catches give; tier 1 is Aero + driftwood
 const FLAVOUR = {
-  rods: ['driftwood', 'sea_glass', 'abyss_crystal'], reel: ['scrap_metal', 'gear', 'circuit_board'], boats: ['driftwood', 'scrap_metal', 'gear'],
+  rods: ['driftwood', 'sea_glass', 'abyss_crystal'], reel: ['kelp_fibre', 'gear', 'circuit_board'], boats: ['driftwood', 'scrap_metal', 'gear'],
   oceans: ['fish_sample', 'fish_sample', 'rare_specimen'], aquarium: ['shell', 'coral_chunk', 'pearl'], luck: ['shell', 'pearl', 'golden_scale'],
   bait: ['kelp_fibre', 'fish_sample', 'rare_specimen'], crafting: ['driftwood', 'scrap_metal', 'ancient_stone'],
 };
@@ -97,8 +98,8 @@ const FISH_T = [null, null, null, { 'rarity:common': 1 }, { 'rarity:common': 2 }
 function autoCost(branch, tier, wantFish) {
   const items = {};
   const band = tier <= 3 ? 0 : tier <= 6 ? 1 : 2;
-  const fl = FLAVOUR[branch]?.[band];
-  if (fl) items[fl] = FLAVOUR_Q[MAT_RARITY[fl] || 'common'][band] + (tier % 3 === 0 ? 1 : 0);
+  const fl = tier > 1 ? FLAVOUR[branch]?.[band] : null;
+  if (fl) items[fl] = FLAVOUR_Q[MAT_RARITY[fl] || 'common'][band] + (tier % 3 === 0 ? 1 : 0) - (tier === 2 ? 1 : 0);
   for (const [k, v] of Object.entries(MAT_T[tier] || {})) items[k] = (items[k] || 0) + v;
   const fish = wantFish && FISH_T[tier] ? { ...FISH_T[tier] } : {};
   return { aero: AERO_T[tier] || 0, items, fish };

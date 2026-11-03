@@ -473,7 +473,6 @@ export class Fishing {
         this.biteT = (f.sp.fight?.biteWindow ?? 0.6) * (this.stats?.biteWindow ?? 1) * (g.tutorialActive ? 2.5 : 1);
         this.biteMax = this.biteT;
         h.dip = 10;
-        f.say('!', this.biteT + 0.2);
         f.feel('determined', 1);
         f.chompT = 0.3;
         this.sfx('bite');

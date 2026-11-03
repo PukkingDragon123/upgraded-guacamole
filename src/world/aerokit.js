@@ -1205,7 +1205,7 @@ export class AeroOverlay {
     if (view && view.y0 > s - 30) return;
     const B = skyBodies(env.hour ?? 12, b.W, b.top ?? -400, s);
     if (!B.sun.up) return;
-    const pv = 0.28 * ((env.scroll ?? 0) - (env.ref ?? 0));
+    const pv = (b.sunPar ?? 0.28) * ((env.scroll ?? 0) - (env.ref ?? 0));
     const sx = B.sun.x, sy = B.sun.y + pv;
     const vx0 = view ? view.x0 : 0, vy0 = view ? view.y0 : 0, vx1 = view ? view.x1 : b.W, vy1 = view ? view.y1 : b.H;
     if (sy < vy0 - 30 || sy > s) return;

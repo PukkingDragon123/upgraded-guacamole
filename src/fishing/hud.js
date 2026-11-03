@@ -160,25 +160,25 @@ export function drawBiteCue(ctx, F) {
   const [sx, sy] = F.toScreen(f.x, f.y);
   const z = F.zoom();
   const t = F.t;
-  const cx = Math.round(sx), cy = Math.round(sy - 22 * f.scale * z - 22);
-  const pop = 1 + Math.max(0, 0.25 - (1 - k) * 2) + Math.sin(t * 30) * 0.04;
+  const cx = Math.round(sx), cy = Math.round(sy - 22 * f.scale * z - 30);
+  const pop = 1 + Math.max(0, 0.35 - (1 - k) * 2.5) + Math.sin(t * 30) * 0.05;
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
-  ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 20);
-  ctx.drawImage(glowSprite(26, '#ffe27a'), cx - 26, cy - 26);
+  ctx.globalAlpha = 0.55 + 0.3 * Math.sin(t * 20);
+  ctx.drawImage(glowSprite(34, '#ffe27a'), cx - 34, cy - 34);
   ctx.restore();
   // timer ring
-  const R = 17, n = 48;
+  const R = 22, n = 64;
   for (let i = 0; i < n; i++) {
     const u = i / n;
     const a = -Math.PI / 2 + u * TAU;
     const on = u <= k;
     ctx.fillStyle = on ? (k < 0.35 ? '#ff6a5a' : '#ffe27a') : 'rgba(12,58,82,0.35)';
-    ctx.fillRect(Math.round(cx + Math.cos(a) * R) - 1, Math.round(cy + Math.sin(a) * R) - 1, 2, 2);
+    ctx.fillRect(Math.round(cx + Math.cos(a) * R) - 1, Math.round(cy + Math.sin(a) * R) - 1, 3, 3);
   }
-  const b = gbubbleSprite(14);
-  ctx.drawImage(b, cx - 14, cy - 14);
-  const g = glossText('!', 4, 'sun');
+  const b = gbubbleSprite(18);
+  ctx.drawImage(b, cx - 18, cy - 18);
+  const g = glossText('!', 5, 'sun');
   ctx.save();
   ctx.translate(cx, cy);
   ctx.scale(pop, pop);

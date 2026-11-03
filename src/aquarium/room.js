@@ -697,7 +697,25 @@ export function drawRoomBack(ctx, art, ox, oy, t, par = { x: 0, y: 0 }) {
 }
 
 // After the tank: sun shafts over everything, foreground plant, lamp glow.
-export function drawRoomFront(ctx, art, ox, oy, t, par = { x: 0, y: 0 }, lampOn = true) {
+// A darkened copy of a front-layer part for the evening (cached per part and darkness step).
+const nightCache = new WeakMap();
+function nightPart(cv, k) {
+  let m = nightCache.get(cv);
+  if (!m) nightCache.set(cv, (m = new Map()));
+  let c = m.get(k);
+  if (!c) {
+    c = makeCanvas(cv.width, cv.height);
+    const g = ctxOf(c);
+    g.drawImage(cv, 0, 0);
+    g.globalCompositeOperation = 'source-atop';
+    g.fillStyle = `rgba(30,40,100,${(k * 0.12).toFixed(2)})`;
+    g.fillRect(0, 0, c.width, c.height);
+    m.set(k, c);
+  }
+  return c;
+}
+
+export function drawRoomFront(ctx, art, ox, oy, t, par = { x: 0, y: 0 }, lampOn = true, night = 0) {
   if (art.shafts) {
     ctx.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = 0.75 + 0.25 * Math.sin(t * 0.35);
@@ -706,7 +724,8 @@ export function drawRoomFront(ctx, art, ox, oy, t, par = { x: 0, y: 0 }, lampOn 
     ctx.globalCompositeOperation = 'source-over';
   }
   const fx = Math.round(ox + par.x * 4 * art.u);
-  for (const f of art.front) ctx.drawImage(f.canvas, fx + f.x, oy + f.y);
+  const nk = Math.round(night * 4);
+  for (const f of art.front) ctx.drawImage(nk ? nightPart(f.canvas, nk) : f.canvas, fx + f.x, oy + f.y);
   if (lampOn) {
     ctx.globalCompositeOperation = 'lighter';
     for (const p of art.props) {

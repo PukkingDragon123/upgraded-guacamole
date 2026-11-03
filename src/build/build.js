@@ -28,7 +28,9 @@ import { BUILDINGS, BUILDING_ORDER, DECOR_BUILDS, buildingDef, buildingBonus, pr
 import { registerBuildPanels } from './panels.js';
 import { buildingSprite, WORLD_SCALE, MODEL_IDS } from './buildingmodels.js';
 import { researchState } from './research.js';
-import { ensureLab, labTick, labProgress, LAB_BY_ID } from '../game/lab.js';
+import { ensureLab, labTick, labProgress, LAB_BY_ID, LAB_NODES } from '../game/lab.js';
+import { warmLabIcons } from '../ui/labkit.js';
+import { RODS } from '../game/rods.js';
 import { itemSprite } from './itemart.js';
 import { SPECIES } from '../fish/species.js';
 import { rollIndividual } from '../fish/traits.js';
@@ -438,6 +440,12 @@ export class Build {
       g.audio?.play('ui_unlock');
     }
     this.labSeen = g.state;
+    // build the Lab's icons a few at a time while the game idles, so the Lab opens instantly
+    if (this.t > 4 && !g.ui?.isOpen?.('lab') && !this.warmDone) {
+      try {
+        this.warmDone = !warmLabIcons([...LAB_NODES.flatMap((n) => [[n.icon, 12], [n.icon, 14]]), ...['beaker', 'rod:glass', 'hammer', 'boat:skiff'].map((k) => [k, 16]), ...RODS.map((r) => ['rod:' + r.id, 60])]);
+      } catch { this.warmDone = true; }
+    }
     const ui = g.ui;
     const busy = ensureLab(g.state).slots.length > 0;
     // the widget goes to the bottom of the UI stack so it never steals input from an open panel

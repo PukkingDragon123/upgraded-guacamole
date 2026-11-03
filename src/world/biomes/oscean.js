@@ -54,6 +54,10 @@ const WATER = {
   night: [[0, '#4a8ed0'], [0.1, '#2e6eb0'], [0.5, '#1e5094'], [1, '#133676']],
 };
 const ORB_TINTS = ['#7fdcff', '#8af0a8', '#ffffff', '#ffd27a', '#c8a8ff'];
+// Parallax (fraction of the camera scroll away from the surface view): distant sky things follow the camera so the
+// default underwater view still shows a slice of Aero sky (sun, flare, arcs, clouds, the globe) above a thin curved
+// grass horizon; scrolled up to the boat everything sits at its full layout.
+const PAR = { sun: 0.92, sky: 0.5, clouds: [0.5, 0.92], arcs: 0.62, globe: 0.46, sink: 0.25, aurora: 0.6 };
 
 const qmix = (a, b, t) => mix(a, b, Math.round(clamp01(t) * 32) / 32);
 const tri = (a, b, c, w) => qmix(qmix(a, b, w.dusk / Math.max(0.001, w.day + w.dusk)), c, w.night);
@@ -82,6 +86,7 @@ export class OsceanBiome extends Biome {
     this.aero = new AeroOverlay(this, AERO_LOOKS.oscean);
     this.fog = new FogCache();
     this.depthM = 4;
+    this.sunPar = PAR.sun;
   }
 
   baseSurface(H) { return Math.round(H * 0.12); }
@@ -138,7 +143,7 @@ export class OsceanBiome extends Biome {
     const P = (this.skyMs = {});
     let t0 = performance.now();
     const lap = (k) => { const t1 = performance.now(); P[k] = Math.round(t1 - t0); t0 = t1; };
-    this.sky = new SkyDome({ W, top, base, seed: 31, stops: SKY, stars: 80, haze: 0.2, clouds: { n: 8, size: [26, 60], y: [top + 30, base - 60], scale: 2 } });
+    this.sky = new SkyDome({ W, top, base, seed: 31, stops: SKY, stars: 80, haze: 0.2, par: PAR.sun, clouds: { n: 8, size: [26, 60], y: [top + 30, base - 60], scale: 2, par: PAR.clouds } });
     const so = { levels: 10, y0: 0, y1: base + 4 - top };
     const oh = this.sky.h;
     this.overcast = { day: gradientStrip(oh, OVERCAST.day, so), dusk: gradientStrip(oh, OVERCAST.dusk, so), night: gradientStrip(oh, OVERCAST.night, so) };
@@ -157,7 +162,7 @@ export class OsceanBiome extends Biome {
     this.globe = new GlassGlobe(54, 24, 4);
     this.globe.frame(0);
     lap('globe');
-    this.globePos = { x: Math.round(W * 0.8), y: Math.round(base - 182) };
+    this.globePos = { x: Math.round(W * 0.72), y: Math.round(base - 196) };
     const br = leafBranch(2, 78, 2), bl = leafBranch(5, 56, 2, '#3cc84a');
     this.branches = [{ c: br.canvas, x: W - br.w + 6, y: top + 52, ph: 0 }, { c: flipCanvas(bl.canvas), x: -6, y: top + 50, ph: 2 }];
     lap('branches');
@@ -485,8 +490,15 @@ export class OsceanBiome extends Biome {
     for (const h of this.edge.hubs) h.ph += dt * h.v * (1 + wx.bubbles * 1.2 + wx.rain * 0.4);
     this.globe.warm();
     // the globe drips into the sea; splashes pop up along the surface
-    const gp = this.globePos;
-    if (Math.random() < dt * 0.9 && this.globeDrops.length < 4) this.globeDrops.push({ x: gp.x + (Math.random() - 0.5) * 50, y: gp.y + 40, vy: 20, h: Math.random() < 0.5 ? 7 : 9 });
+    const gp = this.globePos, gr = this.globe.r;
+    this.globeY = gp.y + Math.sin(t * 0.6) * 4 + PAR.globe * ((env.scroll ?? 0) - (env.ref ?? 0));
+    const dip = this.globeY + gr - this.waveAt(gp.x);
+    if (dip < -6) { if (Math.random() < dt * 0.9 && this.globeDrops.length < 4) this.globeDrops.push({ x: gp.x + (Math.random() - 0.5) * 50, y: this.globeY + gr * 0.7, vy: 20, h: Math.random() < 0.5 ? 7 : 9 }); }
+    else if (Math.random() < dt * 3 * q) {
+      // dipping into the sea: splashes where the glass meets the water
+      const hw = Math.sqrt(Math.max(0, gr * gr - (gr - dip) ** 2));
+      this.addSplash(gp.x + (Math.random() < 0.5 ? -1 : 1) * (hw + Math.random() * 4), 0.6 + Math.random() * 0.5);
+    }
     for (const d of this.globeDrops) {
       d.vy += 240 * dt; d.y += d.vy * dt;
       if (d.y >= this.waveAt(d.x) - 1) { d.done = true; this.addSplash(d.x, 0.7); water?.splash?.(d.x, 0.35, 5); }
@@ -534,7 +546,7 @@ export class OsceanBiome extends Biome {
     g.beginPath();
     g.rect(0, y0, W, y1 - y0);
     g.clip();
-    sky.drawGradient(g, tod, view);
+    sky.drawGradient(g, tod, view, PAR.sky * (scroll - ref));
     // aurora / Aero light ribbons
     const au = wx.aurora * (0.28 + 0.72 * tod.night) + tod.night * 0.08;
     if (au > 0.02) {
@@ -543,7 +555,7 @@ export class OsceanBiome extends Biome {
       this.aurora.forEach((spr, i) => {
         const pat = g.createPattern(spr, 'repeat-x');
         const ox = (t * (i ? -7 : 5)) % spr.width;
-        const yy = this.top + 40 + i * 50 + Math.round(0.18 * (scroll - ref));
+        const yy = this.top + 40 + i * 50 + Math.round(PAR.aurora * (scroll - ref));
         pat.setTransform(new DOMMatrix([1, 0, 0, 1, ox, yy]));
         g.globalAlpha = au * (0.75 + 0.25 * Math.sin(t * 0.6 + i * 2)) * (i ? 0.7 : 1);
         g.fillStyle = pat;
@@ -555,7 +567,7 @@ export class OsceanBiome extends Biome {
     const clear = wx.clear;
     // sun rays fanning out behind everything
     const B = skyBodies(env.hour ?? 12, W, this.top, this.base);
-    const pv = Math.round(0.28 * (scroll - ref));
+    const pv = Math.round(PAR.sun * (scroll - ref));
     const ra = clear * (tod.day + tod.dusk * 0.7) * (B.sun.up ? 1 : 0);
     if (ra > 0.02) {
       g.globalCompositeOperation = 'lighter';
@@ -571,7 +583,7 @@ export class OsceanBiome extends Biome {
     const aa = (0.55 + tod.day * 0.35) * (1 - tod.night * 0.6) * (1 - wx.rain * 0.4);
     if (aa > 0.03) {
       g.globalAlpha = aa * (0.85 + 0.15 * Math.sin(t * 0.5));
-      g.drawImage(this.arcs, Math.round(W * 0.2), this.base - 250 + Math.round(0.2 * (scroll - ref)));
+      g.drawImage(this.arcs, Math.round(W * 0.2), this.base - 250 + Math.round(PAR.arcs * (scroll - ref)));
       g.globalAlpha = 1;
     }
     // rainbow after the glossy rain
@@ -599,7 +611,8 @@ export class OsceanBiome extends Biome {
     const E = this.edge;
     {
       const c = E.blend.get([[E.day, tod.day], [E.dusk, tod.dusk], [E.night, tod.night]]);
-      const x = -E.ox, y = this.base + 2 - E.oy;
+      // the planet sinks behind the horizon as the camera dives (a thin curved band in the default view)
+      const x = -E.ox, y = this.base + 2 - E.oy + Math.round(clamp(PAR.sink * (scroll - ref), 0, 86));
       g.drawImage(c, x, y);
       g.globalAlpha = 1 - tod.night * 0.35;
       for (const h of E.hubs) {
@@ -639,7 +652,7 @@ export class OsceanBiome extends Biome {
   drawGlobe(g, scroll, ref) {
     const G = this.globe, P = this.globePos, tod = this.tod;
     const spr = G.get(Math.floor(this.t / 0.42));
-    const x = P.x - (spr.width >> 1), y = Math.round(P.y + Math.sin(this.t * 0.6) * 4 + 0.22 * (scroll - ref)) - (spr.height >> 1);
+    const x = P.x - (spr.width >> 1), y = Math.round(this.globeY ?? P.y) - (spr.height >> 1);
     drawGlow(g, P.x, y + (spr.height >> 1), 70, '#c8ffb0', (0.25 + tod.day * 0.15) * (1 - tod.night * 0.5));
     g.globalAlpha = 1 - tod.night * 0.3;
     g.drawImage(spr, x, y);

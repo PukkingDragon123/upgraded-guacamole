@@ -38,6 +38,7 @@ import { startUpgrade, updateUpgrade, drawUpgradeBack, drawUpgradeFront, upgrade
 import { VoxelModel, renderVoxels } from '../gfx/voxel.js';
 import { voxPlant, plantFrame, pumpVoxPlants, PLANT_FRAMES } from './voxplants.js';
 import { drawEggs, eggColor } from './critters.js';
+import { GlassSnail } from './helpers.js';
 import { drawVoxelFish, beginVoxelFishFrame, warmVoxelFish, voxelFishStats, setVoxelFishBudget } from '../gfx/voxelfish.js';
 import { playDecor, updateDecor, decorDrawState, queueDecorFrames, cleanupFish, specOf, forceUse } from './decoranim.js';
 
@@ -303,6 +304,7 @@ export class Aquarium {
       const sd = T.DEPTH / O.DEPTH;
       for (const c of this.coins.list) { c.X *= sx; c.D *= sd; c.Y = T.surf + (c.Y - O.surf) * sy; c.hintY = undefined; }
       for (const f of this.food) { f.X *= sx; f.Y = T.surf + (f.Y - O.surf) * sy; }
+      if (this.snail) this.snail.x *= sx;
       this.bubbles.length = 0;
       this.particles.clear?.();
       for (const f of this.fish) if (f.use || f.state === 'script') { cleanupFish(f); f.setState('wander'); }
@@ -850,6 +852,7 @@ export class Aquarium {
     updateDecor(this, dt);
     this.updateEconomy(dt);
     this.coins.step(dt);
+    this.updateHelpers(dt);
     this.autoCollect(dt);
     this.updateEggs(dt);
     this.updateBubbles(dt);
@@ -1352,6 +1355,14 @@ export class Aquarium {
     this.feederFlash = Math.max(0, (this.feederFlash || 0) - dt);
   }
 
+  // The snail janitor (any auto-collect level) slurps drops along the waterline.
+  updateHelpers(dt) {
+    const ac = this.stats.autoCollect || 0;
+    if (ac >= 1 && !this.snail) this.snail = new GlassSnail(this);
+    if (ac < 1) this.snail = null;
+    this.snail?.update(this, dt);
+  }
+
   // stats.autoCollect: drops resting at the surface pop by themselves after a while.
   autoCollect(dt) {
     const ac = Math.min(AUTO_POP.length - 1, Math.max(0, Math.floor(this.stats.autoCollect || 0)));
@@ -1568,7 +1579,7 @@ export class Aquarium {
     if (sh.switch) this.drawLampParts(ctx, sx, sy, sh);
     if (this.stats.feeder) this.drawFeeder(ctx, sx, sy);
     if (gs !== 1) ctx.restore();
-    drawRoomFront(ctx, art, sx, sy, t, this.par, this.lampOn);
+    drawRoomFront(ctx, art, sx, sy, t, this.par, this.lampOn, night);
     this.room.draw(ctx, art, sx, sy);
     if (up) drawUpgradeFront(this, ctx, sx, sy);
     this.drawSceneFx(ctx, sx, sy);
@@ -1699,6 +1710,7 @@ export class Aquarium {
     } else art.dirty = null;
 
     this.drawShafts(ctx, v, night, 0, 0.3);
+    if (this.snail) this.snail.draw(ctx, this);
     this.particles.draw(ctx, 'fg', t);
     this.drawEmotes(ctx);
     // a bobbing arrow points at the tutorial drop

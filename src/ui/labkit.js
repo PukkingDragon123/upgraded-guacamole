@@ -1,5 +1,6 @@
 // Small drawing/input helpers shared by the Lab panel views (OWNER: Lab agent).
 //   iconBudget(n)                 per-frame budget for rendering new icons (voxel icons are slow to build)
+//   warmLabIcons()                builds one not-yet-cached Lab icon (call while idle so the Lab opens instantly)
 //   icon(key, px) -> canvas|null  labIcon with size buckets + the budget (null while not built yet)
 //   anyIcon(name, px)             getUiIcon(name) or a Lab glyph
 //   glassCard(ctx, x, y, w, h, o)  frosted white glass card
@@ -20,14 +21,16 @@ export const INK = '#0c3a52', INK_SOFT = '#3c6f88', OK = '#1f9a3a', BAD = '#e038
 
 const BUCKETS = [8, 10, 12, 14, 16, 18, 20, 24, 28, 32, 40, 48, 56, 64];
 export const bucket = (px) => { let b = BUCKETS[0]; for (const q of BUCKETS) if (q <= px) b = q; return b; };
-let budget = 6;
-export function iconBudget(n = 6) { budget = n; }
+let budget = 6, frameStart = 0;
+const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+// n new icons per frame at most, and no more than ~7 ms of icon building per frame (voxel icons are slow)
+export function iconBudget(n = 6) { budget = n; frameStart = now(); }
 export function icon(key, px) {
   if (!key) return null;
   const b = bucket(px);
   const c = labIconCached(key, b);
   if (c !== undefined) return c;
-  if (budget <= 0) {
+  if (budget <= 0 || now() - frameStart > 7) {
     // a smaller one that is ready is better than nothing
     for (let i = BUCKETS.indexOf(b) - 1; i >= 0; i--) { const s = labIconCached(key, BUCKETS[i]); if (s) return s; }
     return null;
@@ -165,4 +168,14 @@ export function pedestal(ctx, cx, cy, w, t = 0, color = '#bff6ff') {
   ctx.beginPath(); ctx.moveTo(cx - w * 0.36, py); ctx.lineTo(cx + w * 0.36, py); ctx.lineTo(cx + w * 0.22, cy - w * 0.6); ctx.lineTo(cx - w * 0.22, cy - w * 0.6); ctx.closePath(); ctx.fill();
   ctx.restore();
   void t;
+}
+
+// Idle pre-warming: the tree's node icons at the default zoom buckets, the tab icons and the rod rack.
+let warmList = null, warmI = 0;
+export function warmLabIcons(keys) {
+  if (!warmList) warmList = keys || [];
+  if (warmI >= warmList.length) return false;
+  const [k, px] = warmList[warmI++];
+  if (labIconCached(k, bucket(px)) === undefined) labIcon(k, bucket(px));
+  return true;
 }

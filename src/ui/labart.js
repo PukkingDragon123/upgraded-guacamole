@@ -370,8 +370,8 @@ export function drawTube(ctx, pts, o = {}) {
     // water core (partially filled when water < 1)
     const fillPts = water >= 1 ? pts : (() => { const out = [pts[0]]; let d = 0; const lim = L * water; for (let i = 1; i < pts.length; i++) { const l = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); if (d + l >= lim) { out.push(pointAt(pts, lim)); break; } d += l; out.push(pts[i]); } return out; })();
     if (fillPts.length >= 2) {
-      ctx.strokeStyle = shade(col, -0.15); ctx.lineWidth = Math.max(1, w - 2); strokePath(ctx, fillPts);
-      ctx.strokeStyle = mix(col, '#ffffff', 0.35); ctx.lineWidth = Math.max(1, w - 4); strokePath(ctx, fillPts);
+      ctx.strokeStyle = shade(col, -0.2); ctx.lineWidth = Math.max(1, w - 2); strokePath(ctx, fillPts);
+      ctx.strokeStyle = mix(col, '#ffffff', 0.15); ctx.lineWidth = Math.max(1, w - 4); strokePath(ctx, fillPts);
     }
     // bubbles riding the flow
     const n = o.bubbles ?? Math.max(1, Math.floor(L / 26));
