@@ -1,5 +1,5 @@
 // Hand-authored bitmap fonts. Glyph rows are separated by '|', '#' = ink.
-// Inline sprite tokens like {coin} are supported by drawText via registerInlineIcon.
+// Inline sprite tokens like {aero} / {coin} (the Aero drop) are supported by drawText via registerInlineIcon.
 
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 
@@ -221,7 +221,8 @@ export function lineHeight(fontName = 'normal', scale = 1) {
 }
 
 // Core glyph blitter. (x, y) = top-left of the cap height box.
-function blit(ctx, text, x, y, font, color, scale, wave, time) {
+// icons = false for shadow / outline passes: inline sprites only advance the pen there (no smeared copies).
+function blit(ctx, text, x, y, font, color, scale, wave, time, icons = true) {
   const atlas = tintAtlas(font, color);
   let cx = x, cy = y, i = 0;
   for (const t of tokenize(text)) {
@@ -229,7 +230,7 @@ function blit(ctx, text, x, y, font, color, scale, wave, time) {
       const ic = inlineIcons.get(t.icon);
       const ih = ic.canvas.height;
       const oy = Math.round((font.height - ih) / 2) + ic.dy;
-      ctx.drawImage(ic.canvas, Math.round(cx), Math.round(cy + oy * scale), ic.canvas.width * scale, ih * scale);
+      if (icons) ctx.drawImage(ic.canvas, Math.round(cx), Math.round(cy + oy * scale), ic.canvas.width * scale, ih * scale);
       cx += (ic.canvas.width + font.spacing) * scale;
       continue;
     }
@@ -262,10 +263,10 @@ export function drawText(ctx, text, x, y, opts = {}) {
   const time = opts.time || 0;
   if (opts.outline) {
     for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-      blit(ctx, text, x + dx * scale, y + dy * scale, font, opts.outline, scale, opts.wave, time);
+      blit(ctx, text, x + dx * scale, y + dy * scale, font, opts.outline, scale, opts.wave, time, false);
     }
   }
-  if (opts.shadow) blit(ctx, text, x + scale, y + scale, font, opts.shadow, scale, opts.wave, time);
+  if (opts.shadow) blit(ctx, text, x + scale, y + scale, font, opts.shadow, scale, opts.wave, time, false);
   blit(ctx, text, x, y, font, color, scale, opts.wave, time);
 }
 

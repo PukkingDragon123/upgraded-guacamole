@@ -22,6 +22,9 @@
 //   drawAeroLabel(ctx, text, x, y, {align, tone, font}) -> rect   small glass pill with text (hover labels)
 //   drawAeroGlow(ctx, cx, cy, r, color, alpha)  soft round light (cached radial)
 //   aeroText(ctx, text, x, y, o)            drawText with a soft Aero glow halo (o.glow color, default white)
+//   drawAeroFrame(ctx, x, y, w, h, {title, icon (canvas), tone='sky', closeHover}) -> {content, close, header}
+//                                           the shared panel window: glass body, big icon + title, red close orb
+//   drawAeroCard(ctx, x, y, w, h, {tone='frost', inset})   frosted inner card
 
 import { rgba, shade, mix, pack, packRGB, hexToRgb } from '../core/color.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
@@ -551,4 +554,31 @@ export function drawAeroLabel(ctx, text, x, y, o = {}) {
   const T = toneOf(tone);
   drawText(ctx, text, lx + 6, ly + Math.round((h - (font === 'small' ? 5 : 7)) / 2), { font, color: T.text, shadow: T.text === '#ffffff' ? T.shadow : null });
   return { x: lx, y: ly, w, h };
+}
+
+// ---------------------------------------------------------------- shared panel frame & cards
+
+export function drawAeroFrame(ctx, x, y, w, h, o = {}) {
+  x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+  // soft shadow + outer halo
+  ctx.fillStyle = rgba('#03183a', 0.2);
+  ctx.fillRect(x + 6, y + h, w - 10, 3);
+  ctx.fillRect(x + w, y + 6, 3, h - 10);
+  ctx.fillStyle = rgba('#bff4ff', 0.16);
+  ctx.fillRect(x - 2, y + 4, w + 4, h - 8);
+  ctx.fillRect(x + 4, y - 2, w - 8, h + 4);
+  drawAeroSurface(ctx, x, y, w, h, { tone: o.tone || 'sky', r: 10, gloss: 0.45, glossH: 26, curve: 5, rim: 0.85, glow: 0.55, streak: true, bubbles: w * h > 40000 ? 5 : 2, sparkle: 3, seed: o.seed ?? 7 });
+  let tx = x + 12;
+  if (o.icon) {
+    const ic = o.icon;
+    ctx.drawImage(ic, Math.round(x + 6), Math.round(y + 15 - ic.height / 2));
+    tx = x + 8 + ic.width + 2;
+  }
+  if (o.title) drawText(ctx, o.title, tx, y + 8, { scale: 2, color: '#ffffff', shadow: '#0a3e74' });
+  const close = { x: x + w - 25, y: y + 6, w: 18, h: 18 };
+  return { content: { x: x + 8, y: y + 32, w: w - 16, h: h - 40 }, close, header: { x, y, w, h: 30 } };
+}
+
+export function drawAeroCard(ctx, x, y, w, h, o = {}) {
+  drawAeroSurface(ctx, x, y, w, h, { tone: o.tone || 'frost', r: o.r ?? 7, gloss: o.gloss ?? 0.3, glossH: Math.min(18, Math.round(h * 0.3)), curve: 2, rim: 0.9, glow: 0.35, glowColor: '#bfeaff', inset: o.inset, bubbles: o.bubbles || 0, seed: o.seed });
 }

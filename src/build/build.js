@@ -9,9 +9,9 @@
 //   addLights(L)               push window / lighthouse lights into the ocean lighting list (world coords).
 //   hit(wx, wy) -> building record | null (pixel-accurate)
 //   toggle(on?) / active       blueprint mode (opens the 'buildtray' panel)
-//   onCatch(fish, sp, rec) -> {pkg, items}   samples, eggs and the package the fish carried
-//   decorateFish(fishes)       rolls a package for new wild fish (fish.pkg) so they visibly carry crates
-//   drawFishPackage(ctx, fish, t)   draws the crate hanging under a fish (world space)
+//   onCatch(fish, sp, rec) -> {pkg: null, items}   samples and eggs from a catch (fish no longer carry packages)
+//   onBoxCaught(f) -> {aero, items}   opens a fished-up floating box (src/world/floaters.js) via items.rollCrate
+//   The Lab ticks here too: update() finishes due research (src/game/lab.js labTick) and shows the waiting widget.
 //   dockItems() -> [{id, label, w, action, draw}]  Blueprint + Inventory buttons for the seabed dock
 //   bonus(key) -> buildingBonus(state, key)
 // state.buildings = [{uid, id, x, z, flip, lvl, built, prod, on}] (x = screen-space x at depth z, z = seabed depth).
@@ -23,11 +23,12 @@ import { tinted, drawWashed, makeCanvas, ctxOf } from '../core/canvas.js';
 import { drawText, measureText } from '../gfx/font.js';
 import { getUiIcon } from '../gfx/uiicons.js';
 import { drawTooltip } from '../ui/panels.js';
-import { ITEMS, addItem, removeItem, countItem, hasItems, takeItems, addPackage, rollPackage, drawPackage, TIERS, inventory, setPackageLuck } from './items.js';
+import { ITEMS, addItem, removeItem, countItem, hasItems, takeItems, addPackage, TIERS, inventory, setPackageLuck, rollCrate, grantLoot } from './items.js';
 import { BUILDINGS, BUILDING_ORDER, DECOR_BUILDS, buildingDef, buildingBonus, produceInfo, rollProduce, markCollected, levelOf, maxLevelFor, upgradeCost, vaultAccrue, MAX_LEVEL, ZMIN, ZMAX } from './buildings.js';
 import { registerBuildPanels } from './panels.js';
 import { buildingSprite, WORLD_SCALE, MODEL_IDS } from './buildingmodels.js';
-import { researchState, researchStatus, readyCount, PROJECT_BY_ID } from './research.js';
+import { researchState } from './research.js';
+import { ensureLab, labTick, labProgress, LAB_BY_ID } from '../game/lab.js';
 import { itemSprite } from './itemart.js';
 import { SPECIES } from '../fish/species.js';
 import { rollIndividual } from '../fish/traits.js';
@@ -250,9 +251,6 @@ export class Build {
     if (newBuild) {
       const def = buildingDef(id);
       if (def?.unique && this.state.buildings.some((b) => b.id === id)) return `You already have a ${def.name}`;
-      const cost = def?.cost || {};
-      if (this.state.coins < (cost.coins || 0)) return `Needs ${cost.coins} coins`;
-      for (const [iid, q] of Object.entries(cost.items || {})) if (countItem(this.state, iid) < q) return `Needs ${q} ${ITEMS[iid]?.name || iid}`;
     }
     return null;
   }
@@ -264,8 +262,7 @@ export class Build {
     if (!def) return false;
     const reason = this.invalidReason(id, x, z, null, true);
     if (reason) { g.audio?.play('ui_error'); g.toast?.(reason + '.', 'cross'); return false; }
-    if (def.cost.coins && !g.spendCoins(def.cost.coins)) return false;
-    takeItems(st, def.cost.items);
+    // phase 3: the blueprint was crafted in the Lab (Aero + materials); placing it is free
     removeItem(st, itemId, 1);
     const now = Date.now();
     const b = { uid: uid(), id, x: Math.round(x), z: Math.round(z * 1000) / 1000, flip: this.flip, lvl: 1, built: now, prod: now, on: true };
@@ -295,13 +292,8 @@ export class Build {
     return true;
   }
 
-  // Refund: the blueprint plus half the coins and materials.
-  refundOf(b) {
-    const def = buildingDef(b.id);
-    const out = { coins: Math.floor((def?.cost?.coins || 0) * 0.5), items: {} };
-    for (const [iid, q] of Object.entries(def?.cost?.items || {})) { const r = Math.floor(q * 0.5); if (r > 0) out.items[iid] = r; }
-    return out;
-  }
+  // Refund: the blueprint comes back (so it can be placed again).
+  refundOf() { return { coins: 0, items: {} }; }
 
   demolish(b) {
     const g = this.game, st = this.state;
@@ -316,7 +308,7 @@ export class Build {
     g.audio?.play('splash_big', { vol: 0.5, pitch: 0.6 });
     g.camera?.shake?.(4);
     if (L) for (let i = 0; i < 24; i++) g.particles?.bubble(L.gx + rng.float(-L.hw, L.hw), L.gy - rng.float(0, L.h * 0.7), { layer: 'fg', size: rng.pick([1, 2, 3]) });
-    g.toast?.(`${buildingDef(b.id)?.name} demolished. Blueprint and half the materials returned.`, 'trash');
+    g.toast?.(`${buildingDef(b.id)?.name} packed up. Blueprint returned.`, 'trash');
     g.save?.();
   }
 
@@ -327,7 +319,7 @@ export class Build {
     if (levelOf(b) >= MAX_LEVEL) return false;
     if (levelOf(b) >= maxLevelFor(st)) { g.audio?.play('ui_error'); g.toast?.('Research better engineering in the Lab to upgrade further.', 'lock'); return false; }
     const cost = upgradeCost(b);
-    if (!cost || !this.canPay(cost)) { g.audio?.play('ui_error'); g.toast?.('Not enough coins or materials.', 'coin'); return false; }
+    if (!cost || !this.canPay(cost)) { g.audio?.play('ui_error'); g.toast?.('Not enough Aero or materials.', 'coin'); return false; }
     if (cost.coins && !g.spendCoins(cost.coins)) return false;
     takeItems(st, cost.items);
     b.lvl = levelOf(b) + 1;
@@ -342,12 +334,8 @@ export class Build {
     const g = this.game;
     const P = produceInfo(b);
     if (P && P.ready > 0) { this.collect(b); return; }
-    if (b.id === 'research_lab') {
-      const rd = readyCount(this.state);
-      g.ui?.open?.('research');
-      if (rd) g.audio?.play('notify');
-      return;
-    }
+    if (b.id === 'research_lab') { g.ui?.open?.('lab'); return; }
+    if (b.id === 'bait_workshop') { g.ui?.open?.('lab', { tab: 'craft', cat: 'bait' }); return; }
     g.ui?.open?.('building', { uid: b.uid });
   }
 
@@ -397,21 +385,23 @@ export class Build {
   toScreen(wx, wy) { return this.game.camera?.worldToScreen ? this.game.camera.worldToScreen(wx, wy) : [wx, wy]; }
   toWorld(sx, sy) { return this.game.camera?.screenToWorld ? this.game.camera.screenToWorld(sx, sy) : [sx, sy]; }
 
-  // ------------------------------------------------------------------ catches & packages
-  decorateFish(fishes) {
-    if (!fishes) return;
-    const biome = this.game.ocean?.biome?.id;
-    for (const f of fishes) {
-      if (f._pkgRolled || !f.sp) continue;
-      f._pkgRolled = true;
-      if (!('package' in f)) f.pkg = rollPackage(f.sp, biome);
+  // ------------------------------------------------------------------ catches & floating boxes
+  // A floating box was reeled in: roll its loot (tier/biome from the floater, luck from the Lab) and grant it.
+  onBoxCaught(f) {
+    const g = this.game, st = this.state;
+    this.ensure();
+    const loot = rollCrate(f?.tier ?? 'crate', f?.biome || g.ocean?.biome?.id || null, (g.stats?.crateLuck || 0) + this.bonus('luck'));
+    const [sx, sy] = f && Number.isFinite(f.x) ? this.toScreen(f.x, f.y) : [g.screen.W / 2, g.screen.H / 2];
+    grantLoot(g, loot, sx, sy);
+    for (const it of loot.items) {
+      const spr = itemSprite(ITEMS[it.id]?.art || it.id, { frame: 0, force: true });
+      if (spr) g.particles?.sprite?.(sx + rng.float(-12, 12), sy, spr.canvas, { layer: 'ui', vy: -30, life: 1.4 });
     }
-  }
-
-  drawFishPackage(ctx, f, t = this.t) {
-    if (!f?.pkg || f.package) return;
-    const a = f.anchors?.bottom || [f.x, f.y + 6 * (f.scale || 1)];
-    drawPackage(ctx, a[0] - (f.facing || 1) * 2, a[1] - 1, f.pkg.tier, t + (f.x || 0) * 0.013, { scale: clamp(0.42 * (f.scale || 1) * (1 - (f.z || 0) * 0.4), 0.32, 0.6) });
+    g.audio?.play(loot.tier === 'orb' || loot.tier === 'golden' ? 'golden_shimmer' : 'treasure_open', { vol: 0.6 });
+    g.emit?.('boxOpened', loot);
+    g.save?.();
+    void st;
+    return loot;
   }
 
   onCatch(fish, sp, rec) {
@@ -426,24 +416,32 @@ export class Build {
     if ((r === 'rare' && rng.chance(0.35)) || (r === 'epic' && rng.chance(0.65)) || r === 'legendary') give('rare_specimen', 1);
     if (r === 'legendary' && rng.chance(0.4)) give('golden_scale', 1);
     if (rng.chance(this.bonus('eggChance'))) give('fish_egg', 1);
-    // the crate the fish carried (school.js rolls fish.package at spawn; rec.package survives in the record)
-    let pkg = fish?.package || fish?.pkg || rec?.package || null;
-    if (!pkg && fish && !('package' in fish) && !fish._pkgRolled && !rec?.package) pkg = rollPackage(sp, biome);
-    if (pkg) {
-      const p = addPackage(st, pkg.tier, { species: sp?.id || null, biome });
-      items.push({ id: 'pkg_' + p.tier, qty: 1, uid: p.uid });
-      if (fish) { fish.package = null; fish.pkg = null; }
-      if (rec) rec.package = null;
-      setTimeout(() => g.toast?.(`${sp?.name || 'The fish'} was carrying a ${TIERS[p.tier].name}! Open it in your Inventory.`, 'star', 5), 900);
-      setTimeout(() => g.audio?.play(p.tier === 'orb' || p.tier === 'golden' ? 'golden_shimmer' : 'treasure_open', { vol: 0.6 }), 700);
-    }
     // Bait Workshop: sometimes the special bait survives the catch
     const bait = g.currentBait?.();
-    if (bait?.kind === 'special' && rng.chance(this.bonus('baitSave'))) {
-      st.baits[bait.type] = (st.baits[bait.type] || 0) + 1;
+    if (bait?.id && rng.chance(this.bonus('baitSave'))) {
+      addItem(st, bait.id, 1);
       setTimeout(() => g.toast?.('The Bait Workshop saved your bait!', 'bait'), 1400);
     }
-    return { pkg: pkg || null, items };
+    return { pkg: null, items };
+  }
+
+  // ------------------------------------------------------------------ the Lab (src/game/lab.js) runs on wall-clock time
+  // Finishes due research (also research that finished while the game was closed) and shows the waiting widget.
+  tickLab() {
+    const g = this.game;
+    let done = [];
+    try { done = labTick(g); } catch (e) { if (!this.labErr) { this.labErr = true; console.error(e); } }
+    if (done.length) {
+      const names = done.map((id) => LAB_BY_ID[id]?.name).filter(Boolean);
+      const away = this.labSeen !== g.state;
+      setTimeout(() => g.toast?.(away ? `Professor Fizz finished ${names.join(', ')} while you were away!` : `Research done: ${names.join(', ')}!`, 'star', 4.5), away ? 3000 : 0);
+      g.audio?.play('ui_unlock');
+    }
+    this.labSeen = g.state;
+    const ui = g.ui;
+    const busy = ensureLab(g.state).slots.length > 0;
+    if (ui?.panels?.labwidget && (busy || done.length) && !ui.isOpen('labwidget')) ui.open('labwidget');
+    if (done.length) ui?.panels?.labwidget?.celebrate?.(done[done.length - 1]);
   }
 
   // ------------------------------------------------------------------ update
@@ -453,11 +451,7 @@ export class Build {
     this.ensure();
     this.registerPanels();
     setPackageLuck(this.bonus('luck'));
-    if (this.welcomed !== this.state) {
-      this.welcomed = this.state;
-      const n = readyCount(this.state);
-      if (n) setTimeout(() => this.game.toast?.(`Professor Bubbles finished ${n} research project${n > 1 ? 's' : ''} while you were away!`, 'book', 5), 3500);
-    }
+    this.tickLab();
     for (const [u, a] of this.anims) {
       a.t += dt;
       if (a.kind === 'build') this.buildFx(u, a, dt);
@@ -749,11 +743,9 @@ export class Build {
     let icon = null;
     if (P?.ready > 0) icon = b.id === 'bubble_tower' ? 'coin' : b.id === 'hatchery' ? 'heart' : 'star';
     if (b.id === 'research_lab') {
-      const R = researchState(this.state);
-      if (R.active.some((a) => Date.now() >= a.end)) icon = 'exclaim';
-      else if (R.active.length) {
-        const a = R.active[0];
-        const k = clamp01((Date.now() - a.start) / Math.max(1, a.end - a.start));
+      const a = ensureLab(this.state).slots[0];
+      if (a && LAB_BY_ID[a.id]) {
+        const k = clamp01(labProgress(this.state, a.id));
         const bx = Math.round(top[0] - 12), by = Math.round(top[1] - 10 + bob);
         ctx.fillStyle = '#0a1a2a'; ctx.fillRect(bx - 1, by - 1, 26, 5);
         ctx.fillStyle = '#2a4a6a'; ctx.fillRect(bx, by, 24, 3);
@@ -834,8 +826,7 @@ export class Build {
       const name = buildingDef(b.id)?.name || '';
       drawText(ctx, name.toUpperCase(), L.gx, L.gy + 4, { font: 'small', align: 'center', color: col, outline: '#0a2a5a' });
       if (hot && this.mode === 'demolish') {
-        const ref = this.refundOf(b);
-        drawText(ctx, this.confirm?.uid === b.uid ? 'CLICK AGAIN TO DEMOLISH' : `DEMOLISH? REFUND ${ref.coins}c + BLUEPRINT`, L.gx, L.dy - 10, { font: 'small', align: 'center', color: '#ffb0a0', outline: '#3a0a0a' });
+        drawText(ctx, this.confirm?.uid === b.uid ? 'CLICK AGAIN TO PACK UP' : 'PACK UP? BLUEPRINT RETURNS', L.gx, L.dy - 10, { font: 'small', align: 'center', color: '#ffb0a0', outline: '#3a0a0a' });
       }
       if (hot && this.mode === 'move') drawText(ctx, 'CLICK TO PICK UP', L.gx, L.dy - 10, { font: 'small', align: 'center', color: '#ffe27a', outline: '#3a2a0a' });
     }

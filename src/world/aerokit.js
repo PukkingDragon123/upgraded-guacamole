@@ -846,6 +846,19 @@ export class AeroOverlay {
   }
 }
 
+// Water-shader gloss for a look (see watergl.js): sparkles, bloom, procedural caustics, the glassy band.
+export function waterGloss(look, env) {
+  const tod = todWeights(env || {});
+  const lit = tod.day + tod.dusk * 0.6 + tod.night * 0.2;
+  return {
+    sparkle: (look.sparkle ?? 1) * (look.deep ? 0.45 : 0.6 + 0.4 * lit),
+    bloom: look.deep ? 0.32 : 0.18 + (look.bloom ?? 0.3) * 0.5,
+    pattern: look.pattern ?? (look.deep ? 0.12 : 0.55 * lit),
+    gloss: look.deep ? 0.25 : 0.7 * lit,
+    glossColor: look.sparkleColor || look.bloomColor || '#ffffff',
+  };
+}
+
 // Wrap a biome's update / drawBack / drawFront with its glossy overlay (idempotent; biomes that manage their own
 // overlay set `ownAero`).
 export function installAero(biome) {
@@ -859,6 +872,9 @@ export function installAero(biome) {
   biome.update = (dt, env) => { up(dt, env); ov.update(dt, env); };
   biome.drawBack = (ctx, env) => { back(ctx, env); ov.drawBack(ctx, env); };
   biome.drawFront = (ctx, env) => { front(ctx, env); ov.drawFront(ctx, env); };
+  // glossy water-shader defaults (the biome's own look wins)
+  const wl = typeof biome.waterLook === 'function' ? biome.waterLook.bind(biome) : () => ({});
+  biome.waterLook = (env) => ({ ...waterGloss(look, env), ...(wl(env) || {}) });
   return ov;
 }
 

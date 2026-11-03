@@ -17,7 +17,7 @@ import { STORE_RENDERERS } from './storeapp.js';
 
 export { Store, ensureStoreState, defaultAppsState, installStore, WARNINGS, specialAvailable, dlInfo } from './downloads.js';
 export { CATALOG, CATALOG_BY_ID, CATEGORIES, TIERS, MAX_TIER, PACK_QTY, appBaitId, listing, baitPower, baitPowerAt, baitMods, installedTier, formatSize, formatSpeed, formatTime } from './catalog.js';
-export { ISP_TIERS, ispSpeed, ispTier, ispUnlocked } from './isp.js';
+export { ISP_TIERS, ispSpeed, ispTier, ispUnlocked, nextIsp } from './isp.js';
 export { BOAT_TIERS, BOAT_PERKS, boatBonus, boatTier, buyBoat } from './boats.js';
 export { STORE_RENDERERS } from './storeapp.js';
 export { storeSfx } from './sfx.js';

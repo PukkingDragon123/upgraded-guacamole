@@ -3,8 +3,11 @@
 // rods, boat upgrades, aquarium tiers, crafting recipes (buildings, bait, decor), oceans, features, stat boosts.
 // Research costs Aero + materials + fish, takes real time, and shows a waiting widget (src/ui/labwidget.js).
 //
-//   LAB_NODES: [{id, name, branch, tier, lane, pos:[x,y], req:[ids], cost:{aero, items:{matId:n}, fish:{speciesId|'rarity:<r>':n}},
+//   LAB_NODES: [{id, name, branch, tier, lane, pos:[x,y], ang, rad, req:[ids], cost:{aero, items:{matId:n}, fish:{key:n}},
 //               time /*seconds*/, effect:{statKey:value}, unlock:[{kind, id}], desc, icon}]
+//     fish cost keys: 'rarity:<r>' (that rarity or better), 'biome:<oceanId>' (caught in that ocean), or a species id
+//     (a species that no longer exists falls back to 'rarity:common'). Paid with kept fish NOT in the tank.
+//     pos is in tree units around the root (0,0); ang (radians) / rad (units) are the same point in polar form.
 //   BRANCHES {id: {name, color, angle, icon}}, LAB_BY_ID, ROOT_ID, BOAT_ORDER, TANK_ORDER, OCEAN_ORDER
 //   ensureLab(state) -> state.lab = {done:{id:ts}, active:{id,start,end}|null, slots:[{id,start,end,paid}], unlocks:{'kind:id':true}}
 //   labHas(state, nodeId) -> bool
@@ -19,17 +22,20 @@
 //   instantCost(state, slotOrId) -> Aero        instantFinish(game, id) -> bool
 //   labTick(game) -> [finished ids]  (call every frame; finishes due research, also after being away)
 //   labSlots(state), labTime(state, node), labProgress(state, id) -> 0..1, labRemaining(state, id) -> s
-//   fishHave(state, key) -> count of kept fish (inTank false) matching a fish cost key
+//   fishHave(state, key) -> count of kept fish (inTank false) matching a fish cost key; fishLabel(key), fishKeyInfo(key)
+//   labFocus(state, key) -> node id for ui.open('lab', {focus}) keys ('custombait', 'isp', 'rod:<id>', 'biome:<id>', node id)
+//   nodeFor(kind, id) -> the node that unlocks it (or null)
 // Events (game.emit): 'labStarted' {id}, 'labDone' {id}, 'unlocked' {kind, id}; also 'skill' (id) for old listeners.
-import { SPECIES_BY_ID } from '../fish/species.js';
+import * as SPECIES_MOD from '../fish/species.js';
 import { giveRod } from './rods.js';
 
-export const STARTER_UNLOCKS = ['rod:twig', 'tank:jar', 'boat:raft', 'biome:oscean', 'bait:crumbs', 'feature:aquarium'];
+export const STARTER_UNLOCKS = ['rod:twig', 'tank:jar', 'boat:raft', 'biome:oscean', 'bait:crumbs', 'feature:aquarium', 'recipe:bp_research_lab', 'recipe:decor_rubber_duck'];
 export const ROOT_ID = 'core';
 export const BOAT_ORDER = ['raft', 'dinghy', 'skiff', 'hydrofoil', 'yacht', 'catamaran', 'submarine'];
 export const TANK_ORDER = ['jar', 'bowl', 'smalltank', 'bigtank', 'reeftank', 'wallaquarium'];
 export const OCEAN_ORDER = ['oscean', 'shallows', 'fjord', 'junkyard', 'metropolis', 'volcano', 'abyss'];
-const RARITIES = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
+export const RARITIES = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
+const speciesById = (id) => { try { return SPECIES_MOD.SPECIES_BY_ID?.[id] || null; } catch { return null; } };
 
 export const BOAT_NAMES = { raft: 'Bubble Raft', dinghy: 'Dinghy', skiff: 'Skiff', hydrofoil: 'Hydrofoil', yacht: 'Aero Yacht', catamaran: 'Catamaran', submarine: 'Submarine' };
 export const TANK_NAMES = { jar: 'Goldfish Jar', bowl: 'Fishbowl', smalltank: 'Small Tank', bigtank: 'Big Tank', reeftank: 'Reef Tank', wallaquarium: 'Wall Aquarium' };
@@ -73,7 +79,7 @@ export const EFFECT_INFO = {
 
 // ---------------------------------------------------------------- costs by tier
 const AERO_T = [0, 10, 30, 80, 200, 480, 1100, 2400, 5200, 11000];
-const TIME_T = [0, 4, 10, 25, 50, 100, 200, 420, 900, 1800];
+const TIME_T = [0, 5, 15, 40, 90, 180, 360, 720, 1500, 3000];
 // generic tier materials + branch flavour materials (tier bands 1-3, 4-6, 7-9)
 const MAT_T = [null, { driftwood: 2 }, { kelp_fibre: 2 }, { sea_glass: 2 }, { coral_chunk: 3 }, { gear: 2 }, { pearl: 2 },
   { circuit_board: 3 }, { ancient_stone: 3 }, { abyss_crystal: 3 }];
@@ -85,7 +91,7 @@ const FLAVOUR = {
 const FLAVOUR_Q = { common: [3, 5, 8], uncommon: [2, 3, 5], rare: [1, 2, 3], epic: [1, 1, 2], legendary: [1, 1, 1] };
 const MAT_RARITY = { driftwood: 'common', kelp_fibre: 'common', shell: 'common', scrap_metal: 'common', fish_sample: 'common', sea_glass: 'uncommon',
   coral_chunk: 'uncommon', gear: 'uncommon', pearl: 'rare', circuit_board: 'rare', ancient_stone: 'rare', rare_specimen: 'rare', abyss_crystal: 'epic', golden_scale: 'legendary' };
-const FISH_T = [null, null, null, { 'rarity:common': 2 }, { 'rarity:common': 3 }, { 'rarity:uncommon': 2 }, { 'rarity:rare': 1 },
+const FISH_T = [null, null, null, { 'rarity:common': 1 }, { 'rarity:common': 2 }, { 'rarity:uncommon': 2 }, { 'rarity:rare': 1 },
   { 'rarity:rare': 2 }, { 'rarity:epic': 1 }, { 'rarity:epic': 2 }];
 
 function autoCost(branch, tier, wantFish) {
@@ -161,20 +167,20 @@ n('boat_lights', 'boats', 7, -1, 'Deck Lights', 'lantern', ['boat_catamaran'], {
 n('boat_sub', 'boats', 8, 0, 'Submarine', 'boat:submarine', ['boat_catamaran'], { unlock: [U('boat', 'submarine')], desc: 'Dive with the fish. Bubble windows!' });
 n('boat_engine', 'boats', 9, 0, 'Fusion Engine', 'engine', ['boat_sub', 'boat_lights'], { effect: { reelSpeed: 10, boxSlots: 1, collectRadius: 6 }, desc: 'Clean, green, very fast.' });
 
-// ---- Oceans (down-right)
-n('sea_shallows', 'oceans', 1, 0, 'Sunny Shallows', 'biome:shallows', [ROOT_ID], { unlock: [U('biome', 'shallows')], desc: 'Chart a course to the shallows.', fish: { 'rarity:common': 1 } });
-n('sea_fjord', 'oceans', 2, 0, 'Frosty Fjord', 'biome:fjord', ['sea_shallows'], { unlock: [U('biome', 'fjord')], desc: 'Sail north to the ice.', fish: { puffer: 1 } });
+// ---- Oceans (down-right). Each new ocean wants a few fish caught in the one before it (kept, not in the tank).
+n('sea_shallows', 'oceans', 1, 0, 'Sunny Shallows', 'biome:shallows', [ROOT_ID], { unlock: [U('biome', 'shallows')], desc: 'Chart a course to the shallows.', fish: {} });
+n('sea_fjord', 'oceans', 2, 0, 'Frosty Fjord', 'biome:fjord', ['sea_shallows'], { unlock: [U('biome', 'fjord')], desc: 'Sail north to the ice.', fish: { 'biome:shallows': 2 } });
 n('sea_compass', 'oceans', 2, 1, 'Chrome Compass', 'compass', ['sea_shallows'], { effect: { rarityBoost: 1.04 }, desc: 'Points toward rare fish. Mostly.' });
-n('sea_junkyard', 'oceans', 3, 0, 'Junkyard Reef', 'biome:junkyard', ['sea_fjord'], { unlock: [U('biome', 'junkyard')], desc: 'Dive the glitchy scrap reef.', fish: { snowcrab: 1 } });
-n('sea_multi', 'oceans', 3, -1, 'Friendly Seas', 'people', ['sea_fjord'], { unlock: [U('feature', 'multiplayer')], desc: 'Fish together with friends.' });
-n('sea_forecast', 'oceans', 3, 1, 'Weather Radio', 'cloud', ['sea_compass'], { effect: { forecast: 1 }, desc: 'Know when rare weather hits.' });
-n('sea_metropolis', 'oceans', 4, 0, 'Sunken Metropolis', 'biome:metropolis', ['sea_junkyard'], { unlock: [U('biome', 'metropolis')], desc: 'A drowned neon city.', fish: { mechacrab: 1 } });
+n('sea_junkyard', 'oceans', 3, 0, 'Junkyard Reef', 'biome:junkyard', ['sea_fjord'], { unlock: [U('biome', 'junkyard')], desc: 'Dive the glitchy scrap reef.', fish: { 'biome:fjord': 2 } });
+n('sea_multi', 'oceans', 3, -1, 'Friendly Seas', 'people', ['sea_fjord'], { unlock: [U('feature', 'multiplayer')], desc: 'Fish together with friends.', fish: {} });
+n('sea_metropolis', 'oceans', 4, 0, 'Sunken Metropolis', 'biome:metropolis', ['sea_junkyard'], { unlock: [U('biome', 'metropolis')], desc: 'A drowned neon city.', fish: { 'biome:junkyard': 2, 'rarity:uncommon': 1 } });
 n('sea_lantern', 'oceans', 4, -1, 'Lantern Hook', 'lantern', ['sea_junkyard'], { effect: { lantern: 1 }, desc: 'Your hook glows in the dark.' });
-n('sea_volcano', 'oceans', 5, 0, 'Lava Rift', 'biome:volcano', ['sea_metropolis'], { unlock: [U('biome', 'volcano')], desc: 'Brave the volcanic vents.', fish: { taxicrab: 1 } });
-n('sea_sonar', 'oceans', 5, 1, 'Sonar Ping', 'sonar', ['sea_metropolis'], { effect: { sonar: 1, rarityBoost: 1.05 }, desc: 'Rare fish ping back.' });
-n('sea_abyss', 'oceans', 6, 0, 'Midnight Abyss', 'biome:abyss', ['sea_volcano', 'sea_lantern'], { unlock: [U('biome', 'abyss')], desc: 'Into the deep dark.', fish: { steamcrab: 1, 'rarity:rare': 1 } });
+n('sea_forecast', 'oceans', 4, 1, 'Weather Radio', 'cloud', ['sea_compass'], { effect: { forecast: 1, rarityBoost: 1.03 }, desc: 'Know when rare weather hits.' });
+n('sea_volcano', 'oceans', 5, 0, 'Lava Rift', 'biome:volcano', ['sea_metropolis'], { unlock: [U('biome', 'volcano')], desc: 'Brave the volcanic vents.', fish: { 'biome:metropolis': 2, 'rarity:rare': 1 } });
+n('sea_sonar', 'oceans', 5, 1, 'Sonar Ping', 'sonar', ['sea_metropolis', 'sea_forecast'], { effect: { sonar: 1, rarityBoost: 1.05 }, desc: 'Rare fish ping back.' });
+n('sea_abyss', 'oceans', 6, 0, 'Midnight Abyss', 'biome:abyss', ['sea_volcano', 'sea_lantern'], { unlock: [U('biome', 'abyss')], desc: 'Into the deep dark.', fish: { 'biome:volcano': 2, 'rarity:rare': 1 } });
 n('sea_pressure', 'oceans', 7, -1, 'Pressure Suit', 'heart', ['sea_abyss'], { effect: { rodResilience: 0.08, calm: 1.1 }, desc: 'Deep fish fight less dirty.' });
-n('sea_legend', 'oceans', 8, 0, 'Legend Hunter', 'crown', ['sea_abyss', 'sea_sonar'], { effect: { rarityBoost: 1.12, shinyChance: 1.25 }, desc: 'Legends sense a worthy angler.' });
+n('sea_legend', 'oceans', 8, 0, 'Legend Hunter', 'crown', ['sea_abyss', 'sea_sonar'], { effect: { rarityBoost: 1.12, shinyChance: 1.25 }, desc: 'Legends sense a worthy angler.', fish: { 'biome:abyss': 2, 'rarity:epic': 1 } });
 
 // ---- Aquarium (down)
 n('tank_bowl', 'aquarium', 1, 0, 'Fishbowl', 'tank:bowl', [ROOT_ID], { unlock: [U('tank', 'bowl')], effect: { tankCap: 1 }, desc: 'Upgrade the jar to a proper bowl.' });
@@ -192,22 +198,22 @@ n('tank_currents', 'aquarium', 7, -1, 'Treasure Currents', 'coin', ['tank_reef']
 n('tank_sparkle', 'aquarium', 7, 1, 'Sparkle Genes', 'star', ['tank_mutation', 'tank_reef'], { effect: { shinyChance: 1.6 }, desc: 'Shiny fish more often.' });
 n('tank_wall', 'aquarium', 8, 0, 'Wall Aquarium', 'tank:wallaquarium', ['tank_currents'], { unlock: [U('tank', 'wallaquarium')], effect: { tankCap: 6, coinMul: 1.15 }, desc: 'A whole wall of ocean.' });
 
-// ---- Luck & Idle (down-left)
+// ---- Luck & Idle (down-left): luck, idle Aero, lab benches, AppSea internet speed (store/isp.js features)
 n('luck1', 'luck', 1, 0, 'Four-Leaf Kelp', 'clover', [ROOT_ID], { effect: { rarityBoost: 1.05 }, desc: 'A little luck for every cast.' });
-n('magnet1', 'luck', 2, 0, 'Aero Magnet', 'magnet', ['luck1'], { effect: { collectRadius: 6 }, desc: 'Collect Aero from further.' });
-n('isp2', 'luck', 2, 1, 'Broadband Buoy', 'wifi', ['luck1'], { unlock: [U('feature', 'isp2')], desc: 'Faster AppSea downloads.' });
-n('lab_slot2', 'luck', 3, 0, 'Second Bench', 'beaker', ['magnet1'], { effect: { labSlots: 1 }, desc: 'Research two things at once.' });
-n('offline1', 'luck', 3, -1, 'Night Shift', 'moon', ['magnet1'], { effect: { offlineMul: 0.1 }, desc: 'More Aero while you\'re away.' });
-n('luck2', 'luck', 3, 1, 'Lucky Charm', 'horseshoe', ['isp2'], { effect: { rarityBoost: 1.06, crateLuck: 0.1 }, desc: 'Luckier fish and crates.' });
-n('autocollect', 'luck', 4, -1, 'Auto-Collect', 'magnet', ['offline1'], { unlock: [U('feature', 'autocollect')], effect: { autoCollect: 1, crateLuck: 0.1 }, desc: 'Aero drops collect themselves.' });
-n('lab_speed1', 'luck', 4, 0, 'Lab Assistant', 'clock', ['lab_slot2'], { effect: { labSpeed: 1.25 }, desc: 'Research runs faster.' });
-n('isp3', 'luck', 4, 1, 'Fibre Cable', 'wifi', ['luck2'], { unlock: [U('feature', 'isp3')], desc: 'Even faster downloads.' });
+n('offline1', 'luck', 2, -1, 'Night Shift', 'moon', ['luck1'], { effect: { offlineMul: 0.1 }, desc: 'More Aero while you\'re away.' });
+n('lab_slot2', 'luck', 2, 0, 'Second Bench', 'beaker', ['luck1'], { effect: { labSlots: 1 }, desc: 'Research two things at once.', cost: { aero: 120, items: { driftwood: 4, sea_glass: 2 } }, time: 30 });
+n('isp2', 'luck', 2, 1, 'ISDN Buoy', 'wifi', ['luck1'], { unlock: [U('feature', 'isp2')], desc: 'Faster AppSea downloads.' });
+n('autocollect', 'luck', 3, -1, 'Auto-Collect', 'magnet', ['offline1'], { unlock: [U('feature', 'autocollect')], effect: { autoCollect: 1, collectRadius: 6 }, desc: 'Aero drops collect themselves.' });
+n('luck2', 'luck', 3, 0, 'Lucky Charm', 'horseshoe', ['lab_slot2'], { effect: { rarityBoost: 1.06, crateLuck: 0.1 }, desc: 'Luckier fish and crates.' });
+n('isp3', 'luck', 3, 1, 'DSL Kelp Cable', 'wifi', ['isp2'], { unlock: [U('feature', 'isp3')], desc: 'Even faster downloads.' });
+n('offline2', 'luck', 4, -1, 'Dream Engine', 'moon', ['autocollect'], { effect: { offlineMul: 0.2, coinMul: 1.1 }, desc: 'Sleep is profitable.' });
+n('lab_speed1', 'luck', 4, 0, 'Lab Assistant', 'clock', ['luck2'], { effect: { labSpeed: 1.25 }, desc: 'Research runs faster.' });
+n('isp4', 'luck', 4, 1, 'Cable Modem', 'wifi', ['isp3'], { unlock: [U('feature', 'isp4')], desc: 'Big downloads, fast.' });
 n('shiny1', 'luck', 5, 0, 'Sparkle Lens', 'sparkle', ['lab_speed1'], { effect: { shinyChance: 1.4 }, desc: 'Shiny fish more often.' });
-n('offline2', 'luck', 5, -1, 'Dream Engine', 'moon', ['autocollect'], { effect: { offlineMul: 0.2, coinMul: 1.1 }, desc: 'Sleep is profitable.' });
-n('luck3', 'luck', 6, 1, 'Golden Horseshoe', 'horseshoe', ['isp3', 'shiny1'], { effect: { rarityBoost: 1.1, crateLuck: 0.15 }, desc: 'Rare fish come running.' });
-n('isp4', 'luck', 6, 2, 'Satellite Dish', 'wifi', ['isp3'], { unlock: [U('feature', 'isp4')], desc: 'Downloads from space.' });
-n('lab_slot3', 'luck', 7, 0, 'Third Bench', 'beaker', ['shiny1'], { effect: { labSlots: 1, labSpeed: 1.2 }, desc: 'Three experiments at once.' });
-n('isp5', 'luck', 8, 1, 'Quantum Link', 'wifi', ['isp4', 'lab_slot3'], { unlock: [U('feature', 'isp5')], desc: 'Instant-ish downloads.' });
+n('isp5', 'luck', 5, 1, 'Fibre Optics', 'wifi', ['isp4'], { unlock: [U('feature', 'isp5')], desc: 'Light-speed downloads.' });
+n('lab_slot3', 'luck', 6, -1, 'Third Bench', 'beaker', ['lab_speed1', 'offline2'], { effect: { labSlots: 1, labSpeed: 1.2 }, desc: 'Three experiments at once.' });
+n('luck3', 'luck', 6, 0, 'Golden Horseshoe', 'horseshoe', ['shiny1'], { effect: { rarityBoost: 1.1, crateLuck: 0.15 }, desc: 'Rare fish come running.' });
+n('isp6', 'luck', 7, 1, 'Quantum Kelp-Link', 'wifi', ['isp5', 'luck3'], { unlock: [U('feature', 'isp6')], desc: 'Downloads before you click.' });
 n('luck4', 'luck', 9, 0, 'Rainbow Clover', 'rainbow', ['lab_slot3', 'luck3'], { effect: { rarityBoost: 1.15, shinyChance: 1.5, crateLuck: 0.2 }, desc: 'Luck itself, distilled.' });
 
 // ---- Bait (left): bait recipes (crafted on the Lab's crafting bench) + the custom Bait Mixer (store/bait.js)
@@ -227,31 +233,39 @@ n('bait_blackhole', 'bait', 6, 0, 'Black Hole Bait', 'bait:blackhole', ['bait_la
 n('bait_relic', 'bait', 7, 0, 'Relic Lore', 'bait:relic', ['bait_blackhole'], { unlock: BU('relic'), desc: 'Summon something ancient.' });
 n('bait_master', 'bait', 8, 0, 'Bait Alchemy', 'beaker', ['bait_relic', 'bait_slots2'], { effect: { baitRadius: 1.3, rarityBoost: 1.06, boxSlots: 1 }, desc: 'Bait so good fish write songs.' });
 
-// ---- Crafting (up-left): buildings, decor, engineering
+// ---- Crafting (up-left): building blueprints, aquarium decor ('decor_<propId>') and seabed decor plans ('plans_<propId>').
+// The recipes themselves (costs, outputs) live in src/build/crafting.js.
+export const DECOR_SETS = {
+  craft_decor1: { decor: ['rock_small', 'coral_brain', 'coral_branch', 'message_bottle', 'starfish_rock', 'barrel'], plans: ['anchor', 'treasure_chest', 'diver_helmet'] },
+  craft_decor2: { decor: ['castle', 'mushroom_house', 'pagoda_lantern', 'tiki_head', 'lava_lamp', 'sandcastle', 'anemone_base', 'coral_fan'], plans: ['castle', 'mushroom_house', 'pagoda_lantern', 'tiki_head'] },
+  craft_decor3: { decor: ['pirate_ship', 'moai_head', 'sunken_pc', 'bridge', 'crystal_cluster', 'lava_lamp_galaxy', 'lava_lamp_giant', 'glow_mushroom'], plans: ['pirate_ship', 'moai_head', 'sunken_pc', 'bridge', 'arch_ruin', 'crystal_cluster', 'giant_skull'] },
+};
+const DU = (set) => [...DECOR_SETS[set].decor.map((d) => U('recipe', 'decor_' + d)), ...DECOR_SETS[set].plans.map((d) => U('recipe', 'plans_' + d))];
 n('craft_coral', 'crafting', 1, 0, 'Coral Garden', 'bp:coral_garden', [ROOT_ID], { unlock: [U('recipe', 'bp_coral_garden')], desc: 'Craft a garden that grows materials.' });
-n('craft_decor1', 'crafting', 2, 0, 'Seabed Decor', 'decor', ['craft_coral'], { unlock: [U('recipe', 'decor_anchor'), U('recipe', 'decor_treasure_chest'), U('recipe', 'decor_diver_helmet')], desc: 'Craft cute seabed decorations.' });
+n('craft_decor1', 'crafting', 2, -1, 'Cute Decor', 'decor', ['craft_coral'], { unlock: DU('craft_decor1'), desc: 'Craft rocks, corals and treasure.' });
 n('craft_shell', 'crafting', 2, 1, 'Shell Shack', 'bp:shell_shack', ['craft_coral'], { unlock: [U('recipe', 'bp_shell_shack')], desc: 'A crab trading post.' });
-n('craft_bubble', 'crafting', 3, 0, 'Bubble Tower', 'bp:bubble_tower', ['craft_decor1'], { unlock: [U('recipe', 'bp_bubble_tower')], desc: 'Blows Aero bubbles.' });
-n('craft_eng1', 'crafting', 3, -1, 'Reinforced Rafters', 'gear', ['craft_decor1'], { unlock: [U('feature', 'eng1')], desc: 'Buildings upgrade to level 2.' });
+n('craft_bubble', 'crafting', 3, 0, 'Bubble Tower', 'bp:bubble_tower', ['craft_coral'], { unlock: [U('recipe', 'bp_bubble_tower')], desc: 'Blows Aero bubbles.' });
+n('craft_eng1', 'crafting', 3, -2, 'Reinforced Rafters', 'gear', ['craft_decor1'], { unlock: [U('feature', 'eng1')], desc: 'Buildings upgrade to level 2.' });
 n('craft_workshop', 'crafting', 4, 1, 'Bait Workshop', 'bp:bait_workshop', ['craft_bubble', 'craft_shell'], { unlock: [U('recipe', 'bp_bait_workshop')], desc: 'Sometimes saves your bait.' });
 n('craft_hatchery', 'crafting', 4, 0, 'Fish Hatchery', 'bp:hatchery', ['craft_bubble'], { unlock: [U('recipe', 'bp_hatchery')], desc: 'Lays fish eggs over time.' });
-n('craft_decor2', 'crafting', 4, -1, 'Fancy Decor', 'decor', ['craft_eng1'], { unlock: [U('recipe', 'decor_castle'), U('recipe', 'decor_mushroom_house'), U('recipe', 'decor_pagoda_lantern'), U('recipe', 'decor_tiki_head')], desc: 'Castles, lanterns and more.' });
+n('craft_decor2', 'crafting', 4, -1, 'Fancy Decor', 'decor', ['craft_decor1'], { unlock: DU('craft_decor2'), desc: 'Castles, lanterns and lava lamps.' });
 n('craft_arcade', 'crafting', 5, 0, 'Sunken Arcade', 'bp:arcade', ['craft_hatchery'], { unlock: [U('recipe', 'bp_arcade')], desc: 'Claw machines and luck.' });
-n('craft_eng2', 'crafting', 5, -1, 'Titanium Trusses', 'gear', ['craft_decor2'], { unlock: [U('feature', 'eng2')], desc: 'Buildings upgrade to level 3.' });
+n('craft_eng2', 'crafting', 5, -2, 'Titanium Trusses', 'gear', ['craft_eng1', 'craft_decor2'], { unlock: [U('feature', 'eng2')], desc: 'Buildings upgrade to level 3.' });
 n('craft_lighthouse', 'crafting', 6, 0, 'Lighthouse', 'bp:lighthouse', ['craft_arcade'], { unlock: [U('recipe', 'bp_lighthouse')], desc: 'Lights the dark, draws night fish.' });
-n('craft_decor3', 'crafting', 6, -2, 'Grand Decor', 'decor', ['craft_eng2'], { unlock: [U('recipe', 'decor_pirate_ship'), U('recipe', 'decor_moai_head'), U('recipe', 'decor_sunken_pc'), U('recipe', 'decor_bridge'), U('recipe', 'decor_arch_ruin'), U('recipe', 'decor_crystal_cluster'), U('recipe', 'decor_giant_skull')], desc: 'Ships, statues, ruins, crystals.' });
+n('craft_decor3', 'crafting', 6, -1, 'Grand Decor', 'decor', ['craft_decor2'], { unlock: DU('craft_decor3'), desc: 'Ships, statues, ruins, crystals.' });
 n('craft_vault', 'crafting', 7, -1, 'Treasure Vault', 'bp:vault', ['craft_lighthouse', 'craft_eng2'], { unlock: [U('recipe', 'bp_vault')], desc: 'Aero earns interest.' });
 n('craft_totem', 'crafting', 8, 0, 'Totem of Luck', 'bp:totem', ['craft_vault'], { unlock: [U('recipe', 'bp_totem')], desc: 'Rare and shiny odds up.' });
 
 // ---------------------------------------------------------------- finalize: positions, costs, times
-const R0 = 74, STEP = 46, LANE = 46;
-function nodePos(branch, tier, lane) {
+// Polar layout: tier t sits on ring LAB_RING(t); lanes fan out sideways inside the branch's 45 degree wedge with a
+// roughly constant spacing (LANE units), capped so neighbouring branches never touch.
+export const LAB_R0 = 72, LAB_STEP = 54, LANE = 33, LANE_MAX = 0.165;
+export const LAB_RING = (t) => (t <= 0 ? 0 : LAB_R0 + (t - 1) * LAB_STEP);
+function nodePolar(branch, tier, lane) {
   if (!branch) return [0, 0];
-  const a = (BRANCHES[branch].angle * Math.PI) / 180;
-  const r = R0 + (tier - 1) * STEP + Math.abs(lane) * 3;
-  const lim = 0.3;
-  const da = Math.max(-lim, Math.min(lim, (lane * LANE) / Math.max(r, 60)));
-  return [Math.round(Math.cos(a + da) * r), Math.round(Math.sin(a + da) * r)];
+  const r = LAB_RING(tier) + Math.abs(lane) * 2;
+  const a = (BRANCHES[branch].angle * Math.PI) / 180 + lane * Math.min(LANE_MAX, LANE / Math.max(r, 40));
+  return [a, r];
 }
 
 export const LAB_NODES = RAW.map((o) => {
@@ -259,8 +273,9 @@ export const LAB_NODES = RAW.map((o) => {
   const unlockNode = !!o.unlock?.some((u) => u.kind !== 'recipe' || tier >= 3);
   const auto = o.branch ? autoCost(o.branch, tier, unlockNode ? tier >= 3 : tier >= 5) : { aero: 0, items: {}, fish: {} };
   const cost = { aero: o.cost?.aero ?? auto.aero, items: { ...(o.cost?.items || auto.items) }, fish: { ...(o.fish || auto.fish) } };
+  const [ang, rad] = nodePolar(o.branch, tier, o.lane);
   return {
-    id: o.id, name: o.name, branch: o.branch, tier, lane: o.lane, pos: nodePos(o.branch, tier, o.lane), req: o.req || [],
+    id: o.id, name: o.name, branch: o.branch, tier, lane: o.lane, ang, rad, pos: [Math.round(Math.cos(ang) * rad), Math.round(Math.sin(ang) * rad)], req: o.req || [],
     cost, time: o.time ?? (TIME_T[tier] || 0), effect: o.effect || {}, unlock: o.unlock || [], desc: o.desc || '', icon: o.icon || 'beaker',
   };
 });
@@ -270,16 +285,32 @@ export const LAB_CHILDREN = {};
 for (const nd of LAB_NODES) for (const r of nd.req) (LAB_CHILDREN[r] ||= []).push(nd.id);
 
 // ---------------------------------------------------------------- state
+// Marks a node (and everything it needs) researched without paying; applies its unlocks. Used by save migration.
+function grantNode(state, id, seen = new Set()) {
+  const nd = LAB_BY_ID[id];
+  if (!nd || seen.has(id)) return;
+  seen.add(id);
+  for (const r of nd.req) grantNode(state, r, seen);
+  if (state.lab.done[id]) return;
+  state.lab.done[id] = Date.now();
+  for (const u of nd.unlock) applyUnlock(state, u.kind, u.id);
+}
+
 export function ensureLab(state) {
+  if (!state || typeof state !== 'object') return { done: {}, unlocks: {}, slots: [], seen: {} };
   const L = (state.lab ||= { done: {}, active: null, unlocks: {} });
   L.done ||= {};
   L.unlocks ||= {};
-  L.slots ||= L.active ? [L.active] : [];
+  if (!Array.isArray(L.slots)) L.slots = L.active ? [L.active] : [];
   L.seen ||= {};
   if (!L.done[ROOT_ID]) L.done[ROOT_ID] = 1;
   if (!L.v) {
     L.v = 1;
     for (const k of STARTER_UNLOCKS) { const [kind, id] = k.split(':'); applyUnlock(state, kind, id); }
+    // an existing player keeps the oceans they already reached (fresh saves start in the (OS)cean only)
+    if ((state.stats?.caught || 0) > 0) {
+      for (const b of state.unlockedBiomes || []) { const nd = nodeFor('biome', b); if (nd && b !== 'shallows') grantNode(state, nd.id); }
+    }
   }
   // old skill-tree saves / game.unlockSkill(): ids that match Lab nodes count as researched
   const sk = state.skills;
@@ -290,6 +321,7 @@ export function ensureLab(state) {
       for (const u of LAB_BY_ID[id].unlock) applyUnlock(state, u.kind, u.id);
     }
   }
+  L.slots = L.slots.filter((s) => s && LAB_BY_ID[s.id] && !L.done[s.id]);
   L.active = L.slots[0] || null;
   return L;
 }
@@ -306,6 +338,13 @@ export function labStatus(state, id) {
 }
 
 export function unlocked(state, kind, id) { return !!ensureLab(state).unlocks[kind + ':' + id]; }
+
+// The node that unlocks kind:id (first match), or null.
+const UNLOCK_INDEX = {};
+export function nodeFor(kind, id) {
+  if (!Object.keys(UNLOCK_INDEX).length) for (const nd of LAB_NODES) for (const u of nd.unlock) UNLOCK_INDEX[u.kind + ':' + u.id] ||= nd;
+  return UNLOCK_INDEX[kind + ':' + id] || null;
+}
 
 function applyUnlock(state, kind, id) {
   const L = state.lab;
@@ -345,20 +384,44 @@ export function computeLabStats(state) {
   return out;
 }
 
+// For ui.open('lab', {focus}): which node to centre on.
+export function labFocus(state, key) {
+  if (!key) return null;
+  if (LAB_BY_ID[key]) return key;
+  if (key === 'custombait') return nodeFor('recipe', 'custombait')?.id || null;
+  if (key === 'isp') {
+    for (const f of ['isp2', 'isp3', 'isp4', 'isp5', 'isp6']) if (!unlocked(state, 'feature', f)) return nodeFor('feature', f)?.id || null;
+    return nodeFor('feature', 'isp6')?.id || null;
+  }
+  if (key.includes(':')) { const [k, id] = key.split(':'); return nodeFor(k, id)?.id || null; }
+  return null;
+}
+
 // ---------------------------------------------------------------- costs: materials + fish
 const matCount = (state, id) => state.inventory?.items?.[id] || 0;
 
-function fishRarity(rec) { return rec.rarity || SPECIES_BY_ID[rec.species]?.rarity || 'common'; }
+function fishRarity(rec) { return rec.rarity || speciesById(rec.species)?.rarity || 'common'; }
+// Normalises a fish cost key; species that no longer exist (the roster gets re-themed) become 'rarity:common'.
+export function fishKeyInfo(key) {
+  if (key.startsWith('rarity:')) return { kind: 'rarity', id: RARITIES.includes(key.slice(7)) ? key.slice(7) : 'common' };
+  if (key.startsWith('biome:')) return { kind: 'biome', id: key.slice(6) };
+  const sp = speciesById(key);
+  return sp ? { kind: 'species', id: key, sp } : { kind: 'rarity', id: 'common' };
+}
 function fishMatches(rec, key) {
-  if (key.startsWith('rarity:')) return RARITIES.indexOf(fishRarity(rec)) >= RARITIES.indexOf(key.slice(7));
-  return rec.species === key;
+  const k = fishKeyInfo(key);
+  if (k.kind === 'rarity') return RARITIES.indexOf(fishRarity(rec)) >= RARITIES.indexOf(k.id);
+  if (k.kind === 'biome') return rec.biome === k.id || (!rec.biome && speciesById(rec.species)?.biome === k.id);
+  return rec.species === k.id;
 }
 // kept fish in the holding bucket (not in the tank)
-export function spareFish(state) { return (state.fish || []).filter((f) => !f.inTank); }
+export function spareFish(state) { return (state.fish || []).filter((f) => f && !f.inTank); }
 export function fishHave(state, key) { return spareFish(state).filter((f) => fishMatches(f, key)).length; }
 export function fishLabel(key) {
-  if (key.startsWith('rarity:')) { const r = key.slice(7); return r[0].toUpperCase() + r.slice(1) + ' fish'; }
-  return SPECIES_BY_ID[key]?.name || key;
+  const k = fishKeyInfo(key);
+  if (k.kind === 'rarity') return k.id[0].toUpperCase() + k.id.slice(1) + '+ fish';
+  if (k.kind === 'biome') return 'Fish from ' + (OCEAN_NAMES[k.id] || k.id);
+  return k.sp?.name || key;
 }
 
 export function labSlots(state, stats = null) { return 1 + Math.round(stats?.labSlots ?? computeLabStats(state).labSlots ?? 0); }
@@ -375,8 +438,9 @@ export function labCheck(state, nd, stats = null) {
   const fish = Object.entries(nd.cost.fish || {}).map(([key, need]) => { const have = fishHave(state, key); return { key, have, need, ok: have >= need }; });
   const reqOk = nd.req.every((r) => L.done[r]);
   const slots = labSlots(state, stats) - L.slots.length;
-  const ok = reqOk && aero.ok && items.every((x) => x.ok) && fish.every((x) => x.ok) && slots > 0 && !L.done[nd.id] && !L.slots.some((s) => s.id === nd.id);
-  return { ok, aero, items, fish, slots, reqOk };
+  const paid = aero.ok && items.every((x) => x.ok) && fish.every((x) => x.ok);
+  const ok = reqOk && paid && slots > 0 && !L.done[nd.id] && !L.slots.some((s) => s.id === nd.id);
+  return { ok, paid, aero, items, fish, slots, reqOk };
 }
 
 // Removes the cheapest matching fish (plain before shiny/mutated, smaller first). Returns the removed records.
@@ -395,11 +459,14 @@ export function startResearch(game, id) {
   if (!nd) return { ok: false, reason: 'Unknown research.' };
   const c = labCheck(st, nd, game.stats);
   if (L.done[id]) return { ok: false, reason: 'Already researched.' };
+  if (L.slots.some((s) => s.id === id)) return { ok: false, reason: 'Already brewing.' };
   if (!c.reqOk) return { ok: false, reason: 'Research the earlier nodes first.' };
   if (c.slots <= 0) return { ok: false, reason: 'All lab benches are busy.' };
   if (!c.ok) return { ok: false, reason: 'Missing ingredients.' };
   st.coins -= c.aero.need;
   const paid = { aero: c.aero.need, items: { ...nd.cost.items }, fish: [] };
+  st.inventory ||= { items: {}, packages: [] };
+  st.inventory.items ||= {};
   for (const [mid, q] of Object.entries(nd.cost.items || {})) {
     const inv = st.inventory.items;
     inv[mid] -= q;
@@ -489,6 +556,7 @@ export function labTick(game, now = Date.now()) {
 // Which nodes can be researched right now (for badges).
 export function labReadyCount(state) {
   const L = ensureLab(state);
+  if (labSlots(state) - L.slots.length <= 0) return 0;
   let n = 0;
   for (const nd of LAB_NODES) if (!L.done[nd.id] && labStatus(state, nd.id) === 'available' && labCheck(state, nd).ok) n++;
   return n;

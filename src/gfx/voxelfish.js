@@ -2080,7 +2080,7 @@ export function drawVoxelFish(ctx, f, opts = {}) {
     squash: f.squash || 0, swimPhase: f.swimPhase ?? f.tailPhase ?? 0, tailPhase: f.tailPhase ?? 0, finPhase: f.finPhase ?? 0,
     speed01: f.speed01 ?? 0.4, inflate: f.quirks?.has?.('inflate') ? f.inflate || 0 : 0,
     lookX: f.lookX ?? null, lookY: f.lookY ?? null, blink: f.blink || 0, emotion: f.emotion || 'neutral', mouth: f.mouth || 0,
-    time: f.age ?? 0, glow: opts.glow ?? 0, heading, chain: f.chain, style: 'voxel', voxAlpha: alpha,
+    time: f.age ?? 0, glow: opts.glow ?? 0, heading, chain: f.chain, voxAlpha: alpha,
   });
   ctx.globalAlpha = 1;
   return a;

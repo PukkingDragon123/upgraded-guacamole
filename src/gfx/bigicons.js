@@ -567,11 +567,66 @@ function aeroSettings() {
   return { m, yaw: 26, pitch: 20 };
 }
 
+// My Computer: a glossy white flat screen showing the (OS)cean hills wallpaper, on a chrome stand.
+function aeroComputer() {
+  const m = new VoxelModel(30, 28, 10);
+  const shell = m.color('#f6fcff', { smooth: 0.75, spec: 2, specPow: 16, light: 0.12 }), shellD = m.color('#b4d2e6', { smooth: 0.6, spec: 1.2 });
+  const bezel = m.color('#123a62', { spec: 1.4 });
+  const sky = m.color('#3aa8f0', { emissive: 0.45 }), skyL = m.color('#a8e4ff', { emissive: 0.5 }), cloud = m.color('#ffffff', { emissive: 0.6 });
+  const hill = m.color('#4cbc34', { emissive: 0.4 }), hillL = m.color('#a4ec5a', { emissive: 0.45 });
+  const chrome = m.color('#e0eef8', { spec: 2.4, smooth: 0.6 }), chromeD = m.color('#8ab0c8', { spec: 1.6 }), led = m.color('#7dff9a', { emissive: 1 });
+  m.box(10, 0, 2, 19, 1, 8, chromeD);
+  m.box(11, 1, 3, 18, 1, 7, chrome);
+  m.box(13, 2, 4, 16, 6, 5, chrome);
+  const inBody = (x, y) => {
+    const rx = Math.max(0, Math.abs(x + 0.5 - 14.5) - 11.5), ry = Math.max(0, Math.abs(y + 0.5 - 16.5) - 8.5);
+    return rx * rx + ry * ry <= 6.5;
+  };
+  m.fill((x, y, z) => (inBody(x, y) && z >= 3 && z <= 7 ? (z <= 4 ? shellD : shell) : null));
+  for (let x = 4; x <= 25; x++) for (let y = 10; y <= 24; y++) {
+    const edge = x === 4 || x === 25 || y === 10 || y === 24;
+    const h1 = 14 + Math.sin((x - 4) * 0.28) * 2.2, h2 = 12.5 + Math.sin((x - 4) * 0.2 + 2.2) * 1.6;
+    let c = y > 19 ? skyL : sky;
+    if (y <= h1) c = y >= h1 - 1 ? hillL : hill;
+    if (y <= h2) c = hill;
+    if ((y === 21 && x >= 8 && x <= 12) || (y === 22 && x >= 9 && x <= 11) || (y === 19 && x >= 18 && x <= 21) || (y === 20 && x >= 19 && x <= 20)) c = cloud;
+    m.set(x, y, 8, edge ? bezel : c);
+  }
+  m.set(14, 8, 8, led); m.set(15, 8, 8, led);
+  return { m, yaw: 24, pitch: 14 };
+}
+
+// Recycle Bin: a clear aqua glass bin with a grass-green rim and crumpled paper peeking out.
+function aeroRecycle() {
+  const m = new VoxelModel(26, 30, 26);
+  const glass = m.color('#bff0ff', { smooth: 0.9, spec: 2.4, specPow: 14, light: 0.25 }), glassD = m.color('#6cc8ee', { smooth: 0.9, spec: 1.6 });
+  const rim = m.color('#5cc83a', { smooth: 0.7, spec: 1.8 }), rimL = m.color('#a8ec6a', { smooth: 0.7, spec: 1.6 });
+  const paper = m.color('#ffffff', { light: 0.2, jitter: 0.05 }), paperD = m.color('#d8e8f2', { jitter: 0.05 }), arrow = m.color('#3aa82a', { spec: 1.2 });
+  const cx = 13, cz = 13;
+  m.fill((x, y, z) => {
+    if (y > 21) return null;
+    const r = 8.2 + y * 0.14, d = Math.hypot(x + 0.5 - cx, z + 0.5 - cz);
+    if (d > r) return null;
+    return (x + y) % 5 === 0 ? glassD : glass;
+  });
+  for (let x = 0; x < 26; x++) for (let z = 0; z < 26; z++) {
+    const d = Math.hypot(x + 0.5 - cx, z + 0.5 - cz);
+    if (d <= 11.6 && d > 9.6) { m.set(x, 22, z, rim); m.set(x, 23, z, d > 10.6 ? rim : rimL); }
+  }
+  m.sphere(10.5, 23.5, 12, 3.2, paper);
+  m.sphere(15.5, 24.5, 14, 3, paperD);
+  m.sphere(13, 26, 11, 2.6, paper);
+  // recycle chevrons on the front
+  const fz = (x, y) => { for (let z = 25; z >= 0; z--) if (m.get(x, y, z)) return z + 1; return 0; };
+  for (const [x, y] of [[12, 15], [13, 15], [11, 14], [14, 14], [10, 13], [15, 13], [9, 11], [16, 11], [9, 10], [10, 10], [15, 10], [16, 10], [11, 9], [12, 9], [13, 9], [14, 9], [10, 12], [15, 12]]) m.set(x, y, fz(x, y), arrow);
+  return { m, yaw: 22, pitch: 18 };
+}
+
 const MODELS = {
   lab: aeroLab, aquarium: aeroAquarium, journal: aeroFishDex, inventory: aeroSatchel, wardrobe: aeroWardrobe, map: aeroGlobe,
   bait: aeroLure, appsea: aeroAppSea, multiplayer: aeroFriends, settings: aeroSettings,
   skills, shop, build, research: aeroLab, store: aeroAppSea, boatyard,
-  tank: aeroAquarium, fishdex: aeroFishDex, satchel: aeroSatchel,
+  tank: aeroAquarium, fishdex: aeroFishDex, satchel: aeroSatchel, mycomputer: aeroComputer, recycle: aeroRecycle,
 };
 
 // ---------------------------------------------------------------- rendering & variants

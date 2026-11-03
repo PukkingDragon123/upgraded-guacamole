@@ -17,8 +17,8 @@ import { PixelBuffer } from './pixel.js';
 import { makeCanvas, ctxOf, tinted } from '../core/canvas.js';
 import { voxelFrame, chainBall, setVoxelFishBudget, SWIM_N, voxelParts } from './voxelfish.js';
 
-let fishStyle = 'voxel';
-export function setFishStyle(style) { fishStyle = style === 'pixel' ? 'pixel' : 'voxel'; }
+let fishStyle = 'pixel';
+export function setFishStyle(style) { fishStyle = style === 'voxel' ? 'voxel' : 'pixel'; }
 export function getFishStyle() { return fishStyle; }
 if (typeof window !== 'undefined') { window.__fishStyle = setFishStyle; window.__rigStats = () => rigStats(); } // debug / perf
 
@@ -318,6 +318,8 @@ function drawFishRigInner(ctx, c, st) {
   const out = {};
   for (const [k, v] of Object.entries(geo.anchors)) if (Array.isArray(v)) out[k] = toW(v);
   out.eyes = geo.eyes.map((e) => { const [x, y] = toW([e.x, e.y]); return { x, y, r: e.r * Math.abs(sx * kx), type: e.e.type }; });
+  out.w = geo.w * Math.abs(kx); out.h = geo.h * ky;
+  if (c.variant?.shiny) out.shiny = true;
   return out;
 }
 

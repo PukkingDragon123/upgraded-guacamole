@@ -21,7 +21,7 @@
 // drawTooltip(ctx,x,y,text,{maxW, font}) auto-placed near (x,y) inside the canvas          -> rect
 // drawTab(ctx,x,y,w,h,{label, icon, active, hover, color})
 // drawWindowChrome(ctx,{x,y,w,h},{title, iconCanvas, active=true, hover:'close'|'min'|null, down, fill, shadow=true})
-//   -> {content, close, min, titleBar}
+//   -> {content, close, min, titleBar};  windowRects({x,y,w,h}) -> the same rects without drawing
 // drawTaskbar(ctx,x,y,w,h)
 // drawPlank(ctx,x,y,w,h,{rope, tone, label})  glossy title pill                          -> inner rect
 // drawStamp(ctx,x,y,text,{color, angle (radians; |a|>π is read as degrees), font, scale})   glossy sticker centred on x,y
@@ -496,6 +496,18 @@ function chromeButton(ctx, x, y, kind, state) {
   for (const [gx, gy] of pts) ctx.fillRect(cx + gx + o + 1, y + gy + o - 1, 1, 1);
 }
 
+// The chrome's hit rects for a window rect (same numbers drawWindowChrome returns).
+export function windowRects(r) {
+  const x = Math.round(r.x), y = Math.round(r.y), w = Math.round(r.w), h = Math.round(r.h);
+  const close = { x: x + w - FRAME - 13, y: y + FRAME + 1, w: 11, h: 11 };
+  return {
+    titleBar: { x: x + FRAME, y: y + FRAME, w: w - FRAME * 2, h: TITLE_H },
+    close,
+    min: { x: close.x - 13, y: close.y, w: 11, h: 11 },
+    content: { x: x + FRAME + 1, y: y + FRAME + TITLE_H + 2, w: w - FRAME * 2 - 2, h: h - FRAME * 2 - TITLE_H - 3 },
+  };
+}
+
 export function drawWindowChrome(ctx, r, opts = {}) {
   const x = Math.round(r.x), y = Math.round(r.y), w = Math.round(r.w), h = Math.round(r.h);
   const active = opts.active !== false;
@@ -508,10 +520,7 @@ export function drawWindowChrome(ctx, r, opts = {}) {
     ctx.fillRect(x + w + 2, y + 6, 2, h - 4);
   }
   ctx.drawImage(aeroCached(`win|${w}|${h}|${active}`, () => windowTex(w, h, active)), x, y);
-  const titleBar = { x: x + FRAME, y: y + FRAME, w: w - FRAME * 2, h: TITLE_H };
-  const close = { x: x + w - FRAME - 13, y: y + FRAME + 1, w: 11, h: 11 };
-  const min = { x: close.x - 13, y: close.y, w: 11, h: 11 };
-  const content = { x: x + FRAME + 1, y: y + FRAME + TITLE_H + 2, w: w - FRAME * 2 - 2, h: h - FRAME * 2 - TITLE_H - 3 };
+  const { titleBar, close, min, content } = windowRects(r);
   if (opts.fill !== false) {
     ctx.fillStyle = typeof opts.fill === 'string' ? opts.fill : '#f4fbff';
     ctx.fillRect(content.x, content.y, content.w, content.h);
@@ -539,17 +548,25 @@ export function drawWindowChrome(ctx, r, opts = {}) {
 // ---------------------------------------------------------------- taskbar (dark Aero glass)
 
 function taskbarTex(w, h) {
-  const base = aeroSurface(w, h, { top: '#3a7cb4', mid: '#123e6e', bot: '#06213e', a: [0.82, 0.92], edge: '#021226', edgeA: 0.9, r: 0, gloss: 0.32, glossH: Math.round(h * 0.5), curve: 0, rim: 0.35, glow: 0.45, glowColor: '#3ab8ff' });
+  // deep ocean glass: a bright glossy upper half, an aqua light line, a teal-green aurora along the bottom
+  const base = aeroSurface(w, h, { top: '#6cc4f4', mid: '#16569c', bot: '#062a58', a: [0.86, 0.94], edge: '#021a3a', edgeA: 0.95, r: 0, gloss: 0.5, glossH: Math.round(h * 0.48), curve: 0, rim: 0.4, glow: 0.6, glowColor: '#2ad8ff' });
   const c = makeCanvas(w, h);
   const g = ctxOf(c);
   g.drawImage(base, 0, 0);
-  // bright lip + a faint aurora sweep
-  g.fillStyle = 'rgba(190,240,255,0.75)';
+  g.fillStyle = 'rgba(214,248,255,0.9)';
   g.fillRect(0, 1, w, 1);
+  g.fillStyle = 'rgba(255,255,255,0.18)';
+  g.fillRect(0, 2, w, 1);
   for (let x = 0; x < w; x++) {
-    const k = Math.sin(x * 0.012) * 0.5 + 0.5;
-    g.fillStyle = `rgba(120,255,200,${(0.06 * k).toFixed(3)})`;
-    g.fillRect(x, h - 5, 1, 3);
+    const k = Math.sin(x * 0.011) * 0.5 + 0.5, k2 = Math.sin(x * 0.027 + 1.7) * 0.5 + 0.5;
+    g.fillStyle = `rgba(110,255,200,${(0.05 + 0.08 * k * k2).toFixed(3)})`;
+    g.fillRect(x, h - 6, 1, 4);
+  }
+  // a few soft light bubbles in the glass
+  for (let i = 0; i < w / 90; i++) {
+    const bx = Math.round(hash2(i, 3, 7) * w), by = Math.round(h * 0.55 + hash2(i, 5, 7) * h * 0.3);
+    g.fillStyle = 'rgba(200,250,255,0.22)';
+    g.fillRect(bx, by, 1, 1);
   }
   return c;
 }

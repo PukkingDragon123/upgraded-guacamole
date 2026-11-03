@@ -17,7 +17,12 @@
 //    height packed as 16-bit pairs so it works on every WebGL1/2 device), driven by queued impulses.
 // The composite pass refracts the underwater scene along the ripple gradient, lifts the waterline by the surface
 // sim, adds foam and a crest, caustics where ripples focus light, and a 1 px chromatic fringe on strong fronts.
-// Every offset is rounded to whole logical pixels so the result stays crisp pixel art.
+// Frutiger Aero gloss (phase 3): a drifting procedural caustic web in the sunlit water, twinkling specular
+// sparkles under the surface and on bright ripple faces, a glassy highlight band below the waterline and a cheap
+// 12-tap bloom that makes bright things (sun, foam, light shafts, glints) glow.
+// look extras: sparkle (0..2), bloom (0..1), pattern (procedural caustics 0..1), gloss (surface band 0..1),
+// glossColor (sparkle / band tint). Every offset is rounded to whole logical pixels and every added light is
+// quantised + dithered, so the result stays crisp pixel art.
 
 const SURF_RANGE = 32; // packed surface lift range (+-px)
 const SURF_MAX = 11;   // physical clamp of the simulated lift (px)
@@ -79,6 +84,26 @@ uniform float u_shine;   // ripple light/shadow banding
 uniform vec3 u_foamCol;
 uniform vec3 u_causCol;
 uniform vec3 u_crestCol;
+uniform float u_time;
+uniform vec4 u_fx;       // sparkle, bloom, procedural caustics, gloss band
+uniform vec3 u_glossCol;
+
+float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+float q4(float v, vec2 sp) { return floor(clamp(v, 0.0, 1.0) * 4.0 + bayer4(sp)) / 4.0; }
+// Tileable 'light web' caustics (iterated warp), thin bright lines on dark.
+float causticWeb(vec2 p, float t) {
+  vec2 i = p;
+  float c = 1.0;
+  for (int n = 0; n < 3; n++) {
+    float tt = t * (1.0 - 3.5 / float(n + 1));
+    i = p + vec2(cos(tt - i.x) + sin(tt + i.y), sin(tt - i.y) + cos(tt + i.x));
+    c += 1.0 / length(vec2(p.x / (sin(i.x + tt) / 0.006), p.y / (cos(i.y + tt) / 0.006)));
+  }
+  c /= 3.0;
+  c = 1.17 - pow(c, 1.4);
+  return pow(abs(c), 7.0);
+}
+float lum(vec3 c) { return dot(c, vec3(0.3, 0.55, 0.15)); }
 
 float simH(vec2 c) { return dec(texture2D(u_sim, (clamp(c, vec2(0.0), u_dom.zw - 1.0) + 0.5) / u_dom.zw).rg); }
 vec4 surfAt(float wx) {
@@ -86,6 +111,7 @@ vec4 surfAt(float wx) {
   return texture2D(u_surfTex, vec2((i + 0.5) / u_surf.y, 0.5));
 }
 vec4 scene(vec2 sp) { return texture2D(u_scene, (clamp(sp, vec2(0.0), u_screen - 1.0) + 0.5) / u_screen); }
+vec3 bright(vec2 sp) { vec4 c = scene(sp); return c.rgb * smoothstep(0.8, 1.0, lum(c.rgb)); }
 
 void main() {
   vec2 sp = vec2(floor(gl_FragCoord.x), u_screen.y - 1.0 - floor(gl_FragCoord.y));
@@ -135,6 +161,46 @@ void main() {
   }
   col.rgb += add * col.a;
   col.rgb *= 1.0 + (lit > 0.0 ? lit * 0.16 : lit * 0.12);
+  // ---- Frutiger Aero gloss
+  if (water) {
+    float dd = hasSurf ? wp.y - line : 140.0;          // world px below the waterline
+    float sun = hasSurf ? clamp(1.0 - dd / 360.0, 0.0, 1.0) : 0.35;
+    // drifting caustic web, brightest on lit pixels in the upper water
+    if (u_fx.z > 0.01) {
+      vec2 cp = vec2(wp.x * 0.0085, wp.y * 0.015 - u_time * 0.02);
+      float web = causticWeb(mod(cp * 6.2831, 6.2831) - 250.0, u_time * 0.35 + 23.0);
+      float k = web * u_fx.z * sun * (0.35 + lum(col.rgb));
+      col.rgb += u_glossCol * q4(k * 0.55, sp) * 0.32 * col.a;
+    }
+    // glassy band just under the surface
+    if (hasSurf && u_fx.w > 0.01 && dd >= 1.0 && dd < 7.0) col.rgb += u_glossCol * q4((1.0 - dd / 7.0) * u_fx.w, sp) * 0.22 * col.a;
+    // specular sparkles: twinkling crosses in the sunlit layer + glints on bright ripple faces
+    if (u_fx.x > 0.01) {
+      vec2 wpi = floor(wp);
+      vec2 cell = floor(wpi / vec2(7.0, 4.0));
+      float hs = hash(cell);
+      float ph = fract(u_time * (0.45 + hs * 0.5) + hs * 7.13);
+      float chance = u_fx.x * (hasSurf ? 0.004 + 0.16 * exp(-dd / 18.0) : 0.006);
+      if (hash(cell + floor(u_time * (0.45 + hs * 0.5) + hs * 7.13) * 3.1) < chance) {
+        vec2 lp = wpi - cell * vec2(7.0, 4.0) - vec2(1.0 + floor(hs * 5.0), 1.0 + floor(fract(hs * 13.0) * 2.0));
+        float tw = sin(ph * 3.14159);
+        float cr = (abs(lp.x) < 0.5 && abs(lp.y) < 0.5) ? 1.0 : ((abs(lp.x) < 0.5 && abs(lp.y) < 1.5) || (abs(lp.y) < 0.5 && abs(lp.x) < 1.5)) ? (tw > 0.55 ? 0.6 : 0.0) : 0.0;
+        col.rgb += u_glossCol * cr * tw * col.a;
+      }
+      if (lit > 0.6) col.rgb += u_glossCol * 0.25 * u_fx.x * sun * col.a;
+    }
+  }
+  // cheap bloom: 12 taps of the bright parts of the scene
+  if (u_fx.y > 0.01) {
+    vec2 q = sp + o;
+    vec3 b = bright(q + vec2(3.0, 0.0)) + bright(q - vec2(3.0, 0.0)) + bright(q + vec2(0.0, 3.0)) + bright(q - vec2(0.0, 3.0));
+    b += bright(q + vec2(2.0, 2.0)) + bright(q - vec2(2.0, 2.0)) + bright(q + vec2(2.0, -2.0)) + bright(q - vec2(2.0, -2.0));
+    b += (bright(q + vec2(6.0, 0.0)) + bright(q - vec2(6.0, 0.0)) + bright(q + vec2(0.0, 5.0)) + bright(q - vec2(0.0, 5.0))) * 0.6;
+    b /= 10.4;
+    float bl = q4(lum(b) * u_fx.y * 1.4 * (1.0 - lum(col.rgb) * 0.6), sp);
+    col.rgb += mix(b, vec3(1.0), 0.3) * bl * 0.35 * col.a;
+  }
+  col.rgb = min(col.rgb, vec3(col.a));
   if (hasSurf) {
     float ls = floor(line * z + u_cam.z);
     float d = sp.y - ls;
@@ -441,7 +507,7 @@ export class WaterFX {
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, n, 1, gl.RGBA, gl.UNSIGNED_BYTE, b);
   }
 
-  // look: {refract, caustic, chroma, foam, foamColor, causticColor, crestColor}
+  // look: {refract, caustic, chroma, foam, foamColor, causticColor, crestColor, sparkle, bloom, pattern, gloss, glossColor}
   render(src, camera, look = {}) {
     this.active = false;
     if (!this.available || !this.simTex) { this.queue.length = 0; return null; }
@@ -482,6 +548,10 @@ export class WaterFX {
       gl.uniform3fv(P.u.u_foamCol, hex3(look.foamColor || '#f4fffc'));
       gl.uniform3fv(P.u.u_causCol, hex3(look.causticColor || '#2a3a30'));
       gl.uniform3fv(P.u.u_crestCol, hex3(look.crestColor || '#ffffff'));
+      this.time = ((this.time || 0) + (this.dt || 1 / 60)) % 3600;
+      gl.uniform1f(P.u.u_time, this.time);
+      gl.uniform4f(P.u.u_fx, look.sparkle ?? 0.8, look.bloom ?? 0.3, look.pattern ?? 0.4, look.gloss ?? 0.6);
+      gl.uniform3fv(P.u.u_glossCol, hex3(look.glossColor || '#ffffff'));
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       gl.activeTexture(gl.TEXTURE0);
       this.active = true;

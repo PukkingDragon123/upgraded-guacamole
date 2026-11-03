@@ -28,7 +28,7 @@ import {
 } from '../scenery.js';
 import {
   AeroOverlay, AERO_LOOKS, glassOrb, chromeDrop, soapBubble, bubbleCloud, rainbowArc, auroraRibbon, turbineTower, rotorFrames,
-  swayAnim, buildLeaves, buildFlowers, buildCrystalApps, buildBubblePlant, pierModel, sparkleStar, bloomStrip,
+  swayAnim, buildLeaves, buildFlowers, buildCrystalApps, buildBubblePlant, pierModel, sparkleStar, bloomStrip, waterGloss,
 } from '../aerokit.js';
 
 const SKY = {
@@ -226,7 +226,7 @@ export class OsceanBiome extends Biome {
     { const l = Math.hypot(Hx, Hy, Hz); Hx /= l; Hy /= l; Hz /= l; }
     const G0 = [38, 150, 46], G1 = [74, 196, 58], G2 = [148, 228, 80], GL = [190, 244, 110];
     D.terrain({
-      cell: 2, dz: 0.02, hstep: 2, ambient: 0.72, diffuse: 0.4, ao: 0.05, jitter: 0.025, wall: 0.9, side: 0.95, crest: 1.08, fullHeight: true,
+      cell: 2, dz: 0.02, hstep: 2, ambient: 0.72, diffuse: 0.4, ao: 0.05, jitter: 0.02, wall: 0.95, side: 0.97, crest: 1.045, fullHeight: true,
       height,
       color: (X, z, h) => {
         const k = clamp01(h / 300);
@@ -353,7 +353,7 @@ export class OsceanBiome extends Biome {
     const rh = H - this.base;
     this.raysA = new FogLayer(makeRays(W, rh, { seed: 14, count: 9, sunX: W * 0.72, sunY: -H * 0.8, minW: 12, maxW: 40, len: 1, color: '#ffffff', alpha: 0.55, levels: 6 }));
     this.raysB = new FogLayer(makeRays(W, rh, { seed: 19, count: 16, sunX: W * 0.7, sunY: -H * 0.7, minW: 3, maxW: 10, len: 0.8, color: '#ffffff', alpha: 0.65, levels: 4 }));
-    this.caustics = new Caustics({ tw: 150, th: 44, cx: 11, cy: 5, seed: 17, color: '#ffffff', thick: 0.7, core: 0.8, rim: 0.25 });
+    this.caustics = new Caustics({ tw: 240, th: 64, cx: 9, cy: 4, seed: 17, color: '#ffffff', thick: 0.55, core: 0.7, rim: 0.2 });
     this.shimmer = makeShimmer(W);
   }
 
@@ -640,8 +640,10 @@ export class OsceanBiome extends Biome {
   waterLook() {
     const tod = this.tod, wx = this.wx;
     return {
-      refract: 13 + wx.rain * 4, caustic: 11 * (0.35 + tod.day * 0.65) * (0.5 + wx.clear * 0.5), chroma: true, foam: 1, bloom: 0.55, sparkle: 1.2,
-      causticColor: tri('#3a5a50', '#463a30', '#102040', tod), foamColor: this.cols.crest, crestColor: tri('#ffffff', '#ffecd0', '#c0d8ff', tod), glossColor: '#ffffff',
+      refract: 13 + wx.rain * 4, caustic: 11 * (0.35 + tod.day * 0.65) * (0.5 + wx.clear * 0.5), chroma: true, foam: 1,
+      causticColor: tri('#3a5a50', '#463a30', '#102040', tod), foamColor: this.cols.crest, crestColor: tri('#ffffff', '#ffecd0', '#c0d8ff', tod),
+      ...waterGloss(AERO_LOOKS.oscean, { daylight: tod.day + tod.dusk * 0.5, dusk: tod.dusk }),
+      glossColor: tri('#ffffff', '#fff0d8', '#c8e0ff', tod), pattern: (0.35 + tod.day * 0.4) * wx.clear,
     };
   }
 
@@ -751,7 +753,7 @@ export class OsceanBiome extends Biome {
   causticA(q) {
     if (q < 0.75) return 0;
     const tod = this.tod;
-    return (tod.day * 0.6 + tod.dusk * 0.35 + tod.night * 0.15) * (0.3 + this.wx.clear * 0.7);
+    return (tod.day * 0.42 + tod.dusk * 0.25 + tod.night * 0.1) * (0.3 + this.wx.clear * 0.7);
   }
 
   drawNear(ctx, env) {

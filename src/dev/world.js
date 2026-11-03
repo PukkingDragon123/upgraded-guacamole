@@ -11,6 +11,13 @@ import { Boat } from '../world/boat.js';
 import { BOAT_TIERS } from '../world/boatmodels.js';
 import { THEMES, coralModel, reefFormation, renderCoral, voxAnim, placeAnim } from '../world/coral.js';
 import { palmIsland, lighthouseIslet, sailboat, seaStacks, markerBuoy, factory, gantryCrane, containerStack, rockSpires } from '../world/horizon.js';
+import { lerp } from '../core/math.js';
+import { makeLayer } from '../core/canvas.js';
+import { Clock } from '../world/clock.js';
+import { Ocean } from '../world/ocean.js';
+import { biomesReady } from '../world/biomes/index.js';
+import { Floaters } from '../world/floaters.js';
+import { WaterFX } from '../gfx/watergl.js';
 
 function fakeGame(W, H, params, tier) {
   const g = {
@@ -25,7 +32,100 @@ function fakeGame(W, H, params, tier) {
   return g;
 }
 
+// ?view=ocean&b=oscean&hour=12&weather=sunny&scroll=-335&watergl=force&floaters=4&stats=1
+// Full world pipeline as in game.draw: water shader (forced, works on software GL), real boat, floating boxes.
+function runOcean(params) {
+  const W = Number(params.get('w') || 960), H = Number(params.get('h') || 540);
+  const cv = document.getElementById('screen');
+  cv.width = W; cv.height = H;
+  cv.style.width = W * 2 + 'px'; cv.style.height = H * 2 + 'px';
+  const ctx = ctxOf(cv);
+  const scroll = Number(params.get('scroll') || 0);
+  const cam = { xform: () => [1, 0, -scroll], view: () => ({ x0: 0, y0: scroll, x1: W, y1: scroll + H, z: 1 }), shake() {}, screenToWorld: (x, y) => [x, y + scroll], apply: (g) => g.setTransform(1, 0, 0, 1, 0, -scroll), reset: (g) => g.setTransform(1, 0, 0, 1, 0, 0) };
+  const noop = () => {};
+  const game = {
+    screen: { W, H }, camera: cam, lowPower: false, mini: false, stats: { crateLuck: Number(params.get('luck') || 0) },
+    world: { cursor: { x: W * 0.55, y: H * 0.45, vx: 0, vy: 0, speed: 0, inWorld: true } },
+    audio: new Proxy({}, { get: (_, k) => (k === 'loop' ? () => ({ set: noop, stop: noop }) : noop) }),
+    state: { view: 'ocean', secrets: {}, boat: { tier: Number(params.get('tier') || 0) }, settings: { dayCycle: 'real' }, character: undefined },
+    fishing: { hook: { visible: false, x: 0, y: 0 }, busy: false },
+    school: { fishes: [] },
+    particles: new Proxy({}, { get: () => noop }),
+    toast: noop, addCoins: noop, save: noop, musicFor: () => null,
+  };
+  game.clock = new Clock(game);
+  game.clock.override = Number(params.get('hour') ?? 12);
+  const ocean = new Ocean(game);
+  game.ocean = ocean;
+  const t0 = performance.now();
+  ocean.onResize();
+  ocean.setBiome(params.get('b') || 'oscean');
+  const buildMs = performance.now() - t0;
+  if (params.get('weather')) ocean.weather = params.get('weather');
+  ocean.weatherT = 1e9;
+  const wgl = params.get('watergl') || 'force';
+  game.water = new WaterFX(game, { force: wgl === 'force', disabled: wgl === '0' });
+  game.boat = new Boat(game);
+  game.floaters = new Floaters(game);
+  const layer = makeLayer(W, H);
+  window.__game = game; window.__ocean = ocean;
+  const perf = { ms: 0, n: 0 };
+  window.__perf = perf;
+  // pre-roll so boxes are already out
+  const warm = Number(params.get('warm') ?? 20);
+  if (params.has('floaters')) { game.floaters.update(0.01); game.floaters.want = Number(params.get('floaters')); }
+  for (let i = 0; i < warm * 30; i++) { ocean.update(1 / 30); game.floaters.update(1 / 30); }
+  let last = performance.now();
+  function frame(now) {
+    requestAnimationFrame(frame);
+    const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));
+    last = now;
+    const T = performance.now();
+    game.world.cursor.x = W * (0.5 + 0.3 * Math.sin(now / 3000));
+    ocean.env.view = cam.view(); ocean.env.top = ocean.top; ocean.env.scroll = scroll; ocean.env.ref = scroll;
+    ocean.update(dt);
+    game.floaters.update(dt);
+    game.boat.update(dt, null);
+    const water = game.water;
+    water.update(dt, { surfaceY: ocean.waterLevel(), top: ocean.top, W, H, waveAt: (x) => ocean.waveAt(x) });
+    if (Math.random() < dt * 2) water.disturb(Math.random() * W, ocean.waterLevel() + 40 + Math.random() * 200, 0.6, 8);
+    const env = ocean.env, b = ocean.biome;
+    const shader = water.available;
+    const g = shader ? layer.ctx : ctx;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, W, H);
+    cam.apply(g);
+    b.drawBack(g, env);
+    game.floaters.draw(g, 'far');
+    let L = ocean.lighting();
+    b.drawSeabed(g, env);
+    game.floaters.draw(g, 'mid');
+    b.drawNear?.(g, env);
+    game.floaters.draw(g, 'near');
+    cam.reset(g);
+    if (shader) {
+      const out = water.render(layer.canvas, cam, b.waterLook?.(env) || {});
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(out || layer.canvas, 0, 0);
+    }
+    cam.apply(ctx);
+    try { game.boat.draw(ctx, env); } catch (e) { if (!game.boatErr) { game.boatErr = true; console.warn('boat', e.message); } }
+    cam.reset(ctx);
+    if (L.dark > 0.02) L.lights.push(...(game.boat.lights?.() || []));
+    ocean.applyLighting(ctx, L);
+    cam.apply(ctx);
+    game.boat.drawLights?.(ctx, L.dark);
+    b.drawFront(ctx, env);
+    cam.reset(ctx);
+    perf.n++;
+    perf.ms = lerp(perf.ms, performance.now() - T, perf.n < 10 ? 1 : 0.05);
+    if (params.has('stats')) drawText(ctx, `build ${buildMs.toFixed(0)}ms frame ${perf.ms.toFixed(2)}ms water:${water.active ? water.kind : '2d'} boxes ${game.floaters.list.length}`, 250, 4, { font: 'small', color: '#ffffff', outline: '#000000' });
+  }
+  requestAnimationFrame(frame);
+}
+
 export function run(params) {
+  if (params.get('view') === 'ocean') { biomesReady.then(() => runOcean(params)); return; }
   const W = Number(params.get('w') || 960), H = Number(params.get('h') || 540);
   const cv = document.getElementById('screen');
   cv.width = W; cv.height = H;

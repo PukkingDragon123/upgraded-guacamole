@@ -1,57 +1,108 @@
-// Fishing cinematics: animated titles (FISH ON!, banners, pops, I GOT IT!, SNAP!), the slow-motion
-// landing finale (surface eruption -> arc into the angler's hands -> photo moment), the escape
-// cutscene (line whip, comedic taunt) and the outro that hands control back to the game.
-// World-space drawing goes through drawWorld(ctx); screen-space through drawHud(ctx).
+// Fishing cinematics, Frutiger Aero: glossy jelly titles (FISH ON!, event banners, pops, I GOT IT!,
+// SNAP!), the slow-motion landing finale (surface eruption -> arc into the angler's hands -> lens flare,
+// bubbles and confetti), the escape cutscene (line whip, comedic taunt) and the outro that hands
+// control back to the game. World-space drawing goes through drawWorld(ctx); screen-space through drawHud(ctx).
 
-import { TAU, clamp, clamp01, lerp, dist, damp, ease } from '../core/math.js';
+import { TAU, clamp, clamp01, lerp, damp, ease } from '../core/math.js';
 import { rng } from '../core/rng.js';
 import { rgba, RARITY } from '../core/color.js';
 import { drawText, measureText } from '../gfx/font.js';
-import { glowSprite } from '../gfx/particles.js';
+import { makeCanvas, ctxOf } from '../core/canvas.js';
+import { glowSprite, gbubbleSprite } from '../gfx/particles.js';
+import { getUiIcon } from '../gfx/uiicons.js';
 import { HOOK } from './baitart.js';
 import { drawAngler } from './hud.js';
 
-// ------------------------------------------------------------------ text art helpers
-const OUT8 = [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]];
+// ------------------------------------------------------------------ glossy jelly text
+// Palettes: vertical gradient stops (top -> bottom), outline, outer glow.
+export const GLOSS = {
+  aqua: { stops: ['#ffffff', '#c8f8ff', '#59c3ff', '#1e8fe0', '#0d6fb8'], outline: '#0c3a52', glow: '#bff8ff' },
+  lime: { stops: ['#ffffff', '#ecffc0', '#a6ec5a', '#4fbe2a', '#2a8a1a'], outline: '#0c3a52', glow: '#e2ffb0' },
+  sun: { stops: ['#ffffff', '#fff6c0', '#ffd23a', '#ff9d2e', '#e0701a'], outline: '#3a1e06', glow: '#fff2b8' },
+  red: { stops: ['#ffffff', '#ffd0c8', '#ff6a5a', '#e0303a', '#a81a2a'], outline: '#2a0610', glow: '#ffb0a8' },
+  frost: { stops: ['#ffffff', '#f0f8ff', '#c8dcf0', '#8aa8c8', '#5a7898'], outline: '#0c2a3e', glow: '#e8f4ff' },
+  violet: { stops: ['#ffffff', '#f0dcff', '#c89aff', '#8a5ae0', '#5a2ab0'], outline: '#1e0a3a', glow: '#ecd8ff' },
+};
+const RARITY_GLOSS = { common: 'aqua', uncommon: 'lime', rare: 'aqua', epic: 'violet', legendary: 'sun' };
+export function glossFor(rarity) { return RARITY_GLOSS[rarity] || 'aqua'; }
 
-// Chunky title text: thick outline, drop shadow, fill with a lit top band and a shaded bottom band.
-export function drawFancyText(ctx, text, x, y, scale, o = {}) {
-  const fill = o.fill || '#ffe27a', light = o.light || '#fffbe0', dark = o.dark || '#c8781a';
-  const outline = o.outline || '#2a0e04', ow = o.ow ?? Math.max(1, Math.round(scale * 0.5));
-  const h = 7 * scale;
-  if (o.align === 'center') x -= Math.floor(measureText(text, 'normal', scale) / 2);
-  x = Math.round(x); y = Math.round(y);
-  drawText(ctx, text, x + ow + 1, y + ow + 2, { scale, color: o.shadow || 'rgba(10,6,20,0.55)' });
-  for (const [dx, dy] of OUT8) drawText(ctx, text, x + dx * ow, y + dy * ow, { scale, color: outline });
-  drawText(ctx, text, x, y, { scale, color: fill });
-  ctx.save();
-  ctx.beginPath(); ctx.rect(x - 4, y - 4, 4000, Math.round(h * 0.42) + 4); ctx.clip();
-  drawText(ctx, text, x, y, { scale, color: light });
-  ctx.restore();
-  ctx.save();
-  ctx.beginPath(); ctx.rect(x - 4, y + Math.round(h * 0.72), 4000, h); ctx.clip();
-  drawText(ctx, text, x, y, { scale, color: dark });
-  ctx.restore();
+const glossCache = new Map();
+// Cached glossy text sprite: gradient fill, specular band, chunky outline, soft glow. Returns {c, ox, oy, w, h}.
+export function glossText(text, scale, pal = 'aqua') {
+  const key = text + '|' + scale + '|' + pal;
+  let s = glossCache.get(key);
+  if (s) return s;
+  const P = GLOSS[pal] || GLOSS.aqua;
+  const ow = Math.max(1, Math.round(scale * 0.55));
+  const gw = Math.max(2, Math.round(scale * 1.2));
+  const pad = ow + gw + 2;
+  const tw = Math.max(1, measureText(text, 'normal', scale)), th = 7 * scale;
+  const W = tw + pad * 2, H = th + pad * 2 + 2 * scale;
+  // mask
+  const m = makeCanvas(W, H), mg = ctxOf(m);
+  drawText(mg, text, pad, pad, { scale, color: '#ffffff' });
+  // fill: gradient + gloss band + bottom bounce
+  const f = makeCanvas(W, H), fg = ctxOf(f);
+  fg.drawImage(m, 0, 0);
+  fg.globalCompositeOperation = 'source-in';
+  const gr = fg.createLinearGradient(0, pad, 0, pad + th);
+  P.stops.forEach((c, i) => gr.addColorStop(i / (P.stops.length - 1), c));
+  fg.fillStyle = gr;
+  fg.fillRect(0, 0, W, H);
+  fg.globalCompositeOperation = 'source-atop';
+  fg.fillStyle = 'rgba(255,255,255,0.55)';
+  fg.fillRect(0, pad, W, Math.round(th * 0.42));
+  fg.fillStyle = 'rgba(255,255,255,0.9)';
+  fg.fillRect(0, pad + Math.max(1, Math.round(scale * 0.5)), W, Math.max(1, Math.round(scale * 0.5)));
+  fg.fillStyle = rgba(P.glow, 0.45);
+  fg.fillRect(0, pad + Math.round(th * 0.82), W, Math.round(th * 0.18));
+  // outline + glow composite
+  const c = makeCanvas(W, H), g = ctxOf(c);
+  const tint = (col) => { const t = makeCanvas(W, H), tg = ctxOf(t); tg.drawImage(m, 0, 0); tg.globalCompositeOperation = 'source-in'; tg.fillStyle = col; tg.fillRect(0, 0, W, H); return t; };
+  const glowC = tint(P.glow), outC = tint(P.outline), shadow = tint('rgba(6,30,50,0.45)');
+  g.globalAlpha = 0.35;
+  for (let r = gw + ow; r > ow; r--) for (let a = 0; a < 8; a++) g.drawImage(glowC, Math.round(Math.cos((a / 8) * TAU) * r), Math.round(Math.sin((a / 8) * TAU) * r));
+  g.globalAlpha = 1;
+  g.drawImage(shadow, ow, ow + Math.max(2, scale));
+  for (let dy = -ow; dy <= ow; dy++) for (let dx = -ow; dx <= ow; dx++) if (dx * dx + dy * dy <= ow * ow + 1) g.drawImage(outC, dx, dy);
+  g.drawImage(f, 0, 0);
+  s = { c, ox: pad, oy: pad, w: tw, h: th };
+  if (glossCache.size > 160) glossCache.clear();
+  glossCache.set(key, s);
+  return s;
 }
 
-export function drawRibbon(ctx, cx, y, text, color = '#c8283a', o = {}) {
-  const w = Math.round(measureText(text, 'normal', o.scale || 1) + 28), h = o.h || 15;
-  const x = Math.round(cx - w / 2);
-  y = Math.round(y);
-  const dark = o.dark || '#7a1020', light = o.light || '#ff6a6a';
-  // tails
-  ctx.fillStyle = dark;
+// Draws glossy text with its top-left (or centre with align) at x, y.
+export function drawGlossText(ctx, text, x, y, scale, pal = 'aqua', o = {}) {
+  const s = glossText(text, scale, pal);
+  if (o.align === 'center') x -= s.w / 2;
+  ctx.drawImage(s.c, Math.round(x - s.ox), Math.round(y - s.oy));
+  return s;
+}
+
+// Old name kept for other modules: chunky title text, now glossy.
+export function drawFancyText(ctx, text, x, y, scale, o = {}) {
+  drawGlossText(ctx, text, x, y, scale, o.pal || 'aqua', { align: o.align });
+}
+
+// Glossy Aero pill with optional rarity stars / icon.
+export function drawGlassPill(ctx, cx, y, w, h, col = '#59c3ff', a = 0.92) {
+  const x = Math.round(cx - w / 2); y = Math.round(y);
+  const r = Math.floor(h / 2);
+  ctx.save();
+  ctx.globalAlpha *= a;
   for (let i = 0; i < h; i++) {
-    const notch = Math.abs(i - (h >> 1));
-    ctx.fillRect(x - 10 + notch * 0.5, y + 3 + i, 12 - notch * 0.5, 1);
-    ctx.fillRect(x + w - 2, y + 3 + i, 12 - notch * 0.5, 1);
+    const dy = i < r ? r - i - 0.5 : i >= h - r ? i - (h - r) + 0.5 : 0;
+    const inset = dy > 0 ? Math.round(r - Math.sqrt(Math.max(0, r * r - dy * dy))) : 0;
+    const k = i / Math.max(1, h - 1);
+    ctx.fillStyle = '#0c3a52'; ctx.fillRect(x + inset - 1, y + i, w - inset * 2 + 2, 1);
+    ctx.fillStyle = k < 0.5 ? rgba('#ffffff', 0.92 - k * 0.6) : rgba(col, 0.55 + k * 0.4);
+    ctx.fillRect(x + inset, y + i, w - inset * 2, 1);
+    if (k >= 0.5) { ctx.fillStyle = rgba(col, 0.9); ctx.fillRect(x + inset, y + i, w - inset * 2, 1); }
   }
-  ctx.fillStyle = '#1a0608'; ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
-  ctx.fillStyle = color; ctx.fillRect(x, y, w, h);
-  ctx.fillStyle = light; ctx.fillRect(x, y, w, 1);
-  ctx.fillStyle = dark; ctx.fillRect(x, y + h - 2, w, 2);
-  ctx.fillStyle = rgba('#ffffff', 0.25); ctx.fillRect(x + 2, y + 2, w - 4, 1);
-  drawText(ctx, text, cx, y + Math.round((h - 7 * (o.scale || 1)) / 2), { align: 'center', color: o.color || '#fff6e0', outline: dark, scale: o.scale || 1 });
+  ctx.fillStyle = '#0c3a52'; ctx.fillRect(x + r, y - 1, w - 2 * r, 1); ctx.fillRect(x + r, y + h, w - 2 * r, 1);
+  ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.fillRect(x + r, y + 1, w - 2 * r, 1);
+  ctx.restore();
 }
 
 // Rotating burst of light wedges.
@@ -83,8 +134,24 @@ function drawGlow(ctx, x, y, r, color, a) {
   ctx.restore();
 }
 
+function drawStars(ctx, cx, y, n, t, k = 1) {
+  const on = getUiIcon('star');
+  if (!on) return;
+  const sw = on.width + 3;
+  for (let i = 0; i < n; i++) {
+    const kk = ease.outBack(clamp01((k - i * 0.12) * 3));
+    if (kk <= 0) continue;
+    const x = Math.round(cx - (n * sw) / 2 + i * sw), yy = Math.round(y + Math.sin(t * 5 + i) * 1.5);
+    ctx.save();
+    ctx.translate(x + on.width / 2, yy + on.height / 2);
+    ctx.scale(kk, kk);
+    ctx.drawImage(on, -on.width / 2, -on.height / 2);
+    ctx.restore();
+  }
+}
+
 // ------------------------------------------------------------------ titles
-const DUR = { fishon: 1.5, banner: 1.25, pop: 0.85, igotit: 2.7, snap: 1.9, escape: 2.0 };
+const DUR = { fishon: 1.4, banner: 1.35, pop: 0.85, igotit: 2.7, snap: 1.9, escape: 2.0 };
 
 export class Titles {
   constructor(F) { this.F = F; this.list = []; }
@@ -98,7 +165,7 @@ export class Titles {
     return it;
   }
 
-  banner(text, color = '#ffe27a', sub = '') { return this.add('banner', text, { color, sub }); }
+  banner(text, color = '#8ff0ff', sub = '', opts = {}) { return this.add('banner', text, { color, sub, ...opts }); }
   pop(text, x, y, color = '#ffffff', opts = {}) {
     if (this.list.filter((o) => o.kind === 'pop').length > 5) this.list.splice(this.list.findIndex((o) => o.kind === 'pop'), 1);
     return this.add('pop', text, { x, y, color, scale: opts.scale || 1, ...opts });
@@ -111,6 +178,12 @@ export class Titles {
     for (const it of this.list) {
       it.t += rdt;
       if (it.kind === 'igotit') this.igotitFx(it);
+      if (it.kind === 'fishon' && !it.fx) {
+        it.fx = true;
+        const F = this.F, W = F.W, H = F.H;
+        F.fx.aeroBubbles(W / 2, H * 0.24 + 30, 10, { w: 90, h: 6, speed: [30, 80], sizes: [2, 3, 3, 4, 5] });
+        F.fx.glints(W / 2, H * 0.24, 6, { w: 80, h: 12 });
+      }
     }
     this.list = this.list.filter((it) => it.t < it.dur);
   }
@@ -120,16 +193,20 @@ export class Titles {
     const cy = H * 0.3;
     if (!it.burst && it.t > 0.12) {
       it.burst = true;
-      fx.confetti(W * 0.5, cy, 70, { spread: Math.PI, speed: [120, 320], life: 3.2, w: 60 });
-      fx.confetti(-4, H * 0.55, 30, { dir: -1.0, spread: 0.35, speed: [220, 380] });
+      fx.aeroConfetti(W * 0.5, cy, 80, { spread: Math.PI, speed: [120, 320], life: 3.2, w: 60 });
+      fx.confetti(-4, H * 0.55, 30, { dir: -1.0, spread: 0.35, speed: [220, 380], colors: undefined });
       fx.confetti(W + 4, H * 0.55, 30, { dir: -Math.PI + 1.0, spread: 0.35, speed: [220, 380] });
-      fx.lightStreaks(W * 0.5, cy, 22);
+      fx.lightStreaks(W * 0.5, cy, 22, { colors: ['#ffffff', '#bff8ff', '#e2ffb0'] });
       fx.stars(W * 0.5, cy, 24, { speed: [80, 220], g: 40, w: 90, h: 10 });
-      fx.shockwave(W * 0.5, cy + 10, 160, '#fff6c0', { life: 0.6 });
-      F.cam?.flash?.('#fff8e0', 0.6);
+      fx.ringWave(W * 0.5, cy + 10, 170, '#bff8ff', { life: 0.7, w: 5 });
+      fx.ringWave(W * 0.5, cy + 10, 120, '#ffffff', { life: 0.5, w: 3, delay: 0.08 });
+      fx.lensFlare(W * 0.28, cy - 40, { cx: W / 2, cy: H / 2, life: 1.8, scale: 1.3 });
+      fx.aeroBubbles(W * 0.5, H + 10, 26, { w: W * 0.45, speed: [60, 160], sizes: [3, 4, 5, 6, 8, 10], life: [2, 3.5] });
+      F.cam?.flash?.('#f0fcff', 0.6);
     }
-    if (it.t > 0.6 && it.t < 2.2 && rng.chance(0.4)) fx.stars(W * 0.5 + rng.float(-150, 150), cy + rng.float(-20, 30), 1, { speed: [5, 20], g: 0 });
-    if (!it.rain && it.t > 0.9) { it.rain = true; fx.confetti(W * 0.5, -10, 40, { dir: Math.PI / 2, spread: 1.3, speed: [20, 90], w: W * 0.45, g: 60, life: 2.4 }); }
+    if (it.t > 0.6 && it.t < 2.2 && rng.chance(0.4)) fx.glint(W * 0.5 + rng.float(-150, 150), cy + rng.float(-20, 30), { len: rng.pick([3, 4, 6]) });
+    if (it.t > 0.4 && it.t < 2.3 && rng.chance(0.25)) fx.aeroBubbles(rng.float(0, W), H + 8, 1, { speed: [50, 120], sizes: [3, 5, 7, 9] });
+    if (!it.rain && it.t > 0.9) { it.rain = true; fx.confetti(W * 0.5, -10, 40, { dir: Math.PI / 2, spread: 1.3, speed: [20, 90], w: W * 0.45, g: 60, life: 2.4, colors: ['#59c3ff', '#2fd3e8', '#bfeaff', '#8be04a', '#c8f56a', '#ffffff', '#ffe27a'] }); }
   }
 
   draw(ctx) {
@@ -149,61 +226,88 @@ export class Titles {
   drawFishOn(ctx, it) {
     const W = this.F.W, H = this.F.H, t = it.t;
     const a = clamp01((it.dur - t) * 4);
-    const s = Math.max(1, Math.round(lerp(7, 4, ease.outBack(clamp01(t * 5)))));
-    const cy = Math.round(H * 0.24);
+    const s = W < 700 ? 4 : 5;
+    const k = ease.outBack(clamp01(t * 5));
+    const cy = Math.round(H * 0.22);
+    ctx.save();
     ctx.globalAlpha = a;
-    drawRays(ctx, W / 2, cy + 14, 220, 14, t * 0.8, '#ffffff', 0.08 * a);
+    drawRays(ctx, W / 2, cy + 14, 240, 16, t * 0.8, '#bff8ff', 0.09 * a);
+    drawGlow(ctx, W / 2, cy + 12, 80, '#bff8ff', 0.35 * a);
     const jx = t < 0.25 ? rng.int(-2, 2) : 0;
-    drawFancyText(ctx, it.text, W / 2 + jx, cy - (7 * s) / 2, s, { align: 'center', fill: '#ffffff', light: '#ffffff', dark: '#b8d8f0', outline: '#0b1622' });
-    if (it.sub) {
-      const k = ease.outCubic(clamp01((t - 0.2) * 4));
-      const sx = lerp(-200, W / 2, k);
-      drawRibbon(ctx, sx, cy + 26, it.sub, it.subColor || '#2a5aa8', { dark: '#0b1a3a', light: '#6aa8ff' });
+    ctx.translate(W / 2 + jx, cy + 14);
+    ctx.scale(lerp(2.2, 1, k), lerp(2.2, 1, k));
+    const pal = glossFor(it.rarity);
+    const g = glossText(it.text, s, pal);
+    ctx.drawImage(g.c, Math.round(-g.w / 2 - g.ox), Math.round(-g.h / 2 - g.oy));
+    ctx.restore();
+    // a sweep of light across the letters
+    const sweep = (t * 1.6) % 1.6;
+    if (sweep < 1 && a > 0.5) {
+      const g = glossText(it.text, s, pal);
+      const x0 = W / 2 - g.w / 2 + sweep * (g.w + 40) - 20;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.35 * a;
+      ctx.fillStyle = '#ffffff';
+      for (let i = 0; i < 6; i++) ctx.fillRect(Math.round(x0 + i - (cy - H * 0.22)), Math.round(cy + 14 - g.h / 2) + i * 0, 3, g.h);
+      ctx.restore();
     }
-    ctx.globalAlpha = 1;
   }
 
   drawBanner(ctx, it) {
     const W = this.F.W, H = this.F.H, t = it.t;
     const a = clamp01((it.dur - t) * 5);
     const k = ease.outBack(clamp01(t * 6));
-    const cy = Math.round(H * 0.2);
+    const cy = Math.round(H * 0.18);
     const x = lerp(W + 200, W / 2, k);
+    const pal = it.pal || (it.color === '#ffe27a' ? 'sun' : it.color === '#ff9a8a' ? 'red' : it.color === '#7dff9a' ? 'lime' : 'aqua');
+    const g = glossText(it.text, 3, pal);
+    ctx.save();
     ctx.globalAlpha = a;
-    // backing slash
-    const bw = Math.round(measureText(it.text, 'normal', 3) + 40);
-    ctx.fillStyle = rgba('#0b1622', 0.75);
-    for (let i = 0; i < 30; i++) ctx.fillRect(Math.round(x - bw / 2 + (30 - i) * 0.4), cy - 6 + i, bw, 1);
-    ctx.fillStyle = it.color; ctx.fillRect(Math.round(x - bw / 2), cy - 7, bw, 1); ctx.fillRect(Math.round(x - bw / 2 - 12), cy + 24, bw, 1);
-    drawFancyText(ctx, it.text, x, cy, 3, { align: 'center', fill: it.color, light: '#ffffff', dark: shadeOf(it.color), outline: '#0b1622', ow: 1 });
-    if (it.sub) drawText(ctx, it.sub, x, cy + 28, { align: 'center', color: '#ffffff', outline: '#0b1622' });
-    ctx.globalAlpha = 1;
+    drawGlassPill(ctx, x, cy - 6, g.w + 46, 7 * 3 + 12, it.color || '#59c3ff', 0.75);
+    ctx.drawImage(g.c, Math.round(x - g.w / 2 - g.ox), Math.round(cy - g.oy));
+    // bubbles riding the pill
+    for (let i = 0; i < 3; i++) {
+      const bx = x - g.w / 2 - 14 + i * 5, by = cy + 4 + Math.sin(t * 5 + i) * 2;
+      const b = gbubbleSprite(2 + (i % 2));
+      ctx.drawImage(b, Math.round(bx - b.width / 2), Math.round(by - b.height / 2));
+    }
+    ctx.restore();
   }
 
   drawPop(ctx, it) {
     const t = it.t, k = t / it.dur;
-    const s = it.scale;
+    const s = Math.max(1, it.scale);
     const pop = t < 0.1 ? 1 + (0.1 - t) * 6 : 1;
+    ctx.save();
     ctx.globalAlpha = clamp01((1 - k) * 3);
     const y = it.y - ease.outCubic(clamp01(t * 2)) * 14;
-    drawText(ctx, it.text, it.x, y, { align: 'center', color: it.color, outline: '#0b1622', scale: Math.max(1, Math.round(s * pop)) });
-    ctx.globalAlpha = 1;
+    const pal = it.color === '#c8f56a' || it.color === '#7dff9a' ? 'lime' : it.color === '#ff8a7a' ? 'red' : it.color === '#ffe27a' || it.color === '#ffd0b0' ? 'sun' : 'aqua';
+    if (s >= 2) {
+      const g = glossText(it.text, s, pal);
+      ctx.translate(it.x, y);
+      ctx.scale(pop, pop);
+      ctx.drawImage(g.c, Math.round(-g.w / 2 - g.ox), Math.round(-g.h / 2 - g.oy));
+    } else drawText(ctx, it.text, it.x, y, { align: 'center', color: it.color, outline: '#0c3a52', scale: 1 });
+    ctx.restore();
   }
 
   drawIGotIt(ctx, it) {
     const F = this.F, W = F.W, H = F.H, t = it.t;
     const aIn = clamp01(t * 5) * clamp01((it.dur - t) * 2.2);
     const cx = W / 2, cy = Math.round(H * 0.3);
-    const scale = W < 700 ? 4 : 6;
-    // backdrop rays + glow
-    drawRays(ctx, cx, cy, Math.max(W, H) * 0.7, 18, t * 0.45, '#ffe27a', 0.08 * aIn, 0.09);
-    drawRays(ctx, cx, cy, Math.max(W, H) * 0.5, 12, -t * 0.3, '#ffffff', 0.06 * aIn, 0.05);
-    drawGlow(ctx, cx, cy, 90, '#fff2a8', 0.55 * aIn);
-    // bouncy letters
+    const scale = W < 700 ? 5 : 7;
+    // backdrop: Aero sky rays, a big soft halo and floating bubbles
+    drawRays(ctx, cx, cy, Math.max(W, H) * 0.75, 20, t * 0.4, '#bff8ff', 0.09 * aIn, 0.08);
+    drawRays(ctx, cx, cy, Math.max(W, H) * 0.5, 12, -t * 0.3, '#e2ffb0', 0.06 * aIn, 0.05);
+    drawGlow(ctx, cx, cy, 120, '#bff8ff', 0.5 * aIn);
+    drawGlow(ctx, cx, cy, 60, '#ffffff', 0.35 * aIn);
+    // bouncy jelly letters
     const text = it.text;
+    const pal = it.pal || 'lime';
     let total = 0;
     const widths = [];
-    for (const ch of text) { const w = measureText(ch, 'normal', scale) + scale; widths.push(w); total += w; }
+    for (const ch of text) { const w = ch === ' ' ? scale * 4 : measureText(ch, 'normal', scale) + scale * 1.5; widths.push(w); total += w; }
     let x = cx - total / 2;
     const h = 7 * scale;
     const out = clamp01((it.dur - t) * 3);
@@ -222,31 +326,32 @@ export class Titles {
           }
           const wave = k >= 1 ? Math.sin(t * 6 + i * 0.8) * 3 : 0;
           const ly = cy - h / 2 - drop + wave - (1 - out) * 30;
+          const g = glossText(ch, scale, pal);
           ctx.save();
           ctx.globalAlpha = out;
           ctx.translate(Math.round(x + w / 2), Math.round(ly + h));
           ctx.scale(sx, sy);
-          drawFancyText(ctx, ch, -Math.round(w / 2), -h, scale, { fill: '#ffd23a', light: '#fff6b8', dark: '#e08a1a', outline: '#3a1206', ow: 3 });
+          ctx.drawImage(g.c, Math.round(-g.w / 2 - g.ox), Math.round(-h - g.oy));
           ctx.restore();
           if (Math.abs(lt - 0.42) < 0.02 && !it['land' + i]) {
             it['land' + i] = true;
             F.fx.stars(x + w / 2, cy + h / 2, 3, { speed: [30, 80], g: 60 });
+            F.fx.aeroBubbles(x + w / 2, cy + h / 2, 2, { w: 4, speed: [30, 60] });
             F.sfx('mash_pop', { pitch: 1 + i * 0.08, vol: 0.5 });
           }
         }
       }
       x += w;
     }
-    // ribbon with the catch
-    if (it.sub && t > 0.75) {
-      const k = ease.outBack(clamp01((t - 0.75) * 4));
+    // rarity stars + size chip under the title (no names: the reveal card has those)
+    if (t > 0.75) {
+      const k = clamp01((t - 0.75) * 3);
       ctx.save();
       ctx.globalAlpha = out;
-      ctx.translate(cx, cy + h / 2 + 22);
-      ctx.scale(k, k);
-      drawRibbon(ctx, 0, 0, it.sub, it.color || '#c8283a', { dark: it.dark || '#7a1020', light: it.light || '#ff6a6a' });
+      const stars = RARITY[it.rarity]?.stars || 1;
+      drawGlassPill(ctx, cx, cy + h / 2 + 14, stars * 12 + 22, 15, RARITY[it.rarity]?.color || '#59c3ff', 0.9 * k);
+      drawStars(ctx, cx, cy + h / 2 + 17, stars, t, k);
       ctx.restore();
-      if (it.size) drawText(ctx, it.size, cx, cy + h / 2 + 44, { align: 'center', color: '#ffffff', outline: '#0b1622', time: t });
     }
   }
 
@@ -254,57 +359,60 @@ export class Titles {
     const W = this.F.W, H = this.F.H, t = it.t;
     const a = clamp01((it.dur - t) * 3);
     const cy = Math.round(H * 0.28);
-    const s = W < 700 ? 4 : 6;
+    const s = W < 700 ? 5 : 7;
     const j = t < 0.5 ? (0.5 - t) * 10 : 0;
+    const g = glossText(it.text, s, 'red');
+    ctx.save();
     ctx.globalAlpha = a;
-    drawFancyText(ctx, it.text, W / 2 + rng.float(-j, j), cy - (7 * s) / 2 + rng.float(-j, j), s, { align: 'center', fill: '#ff5a4a', light: '#ffc8b8', dark: '#a81a1a', outline: '#2a0404', ow: 3 });
+    // the word splits in two along a crack
+    const split = ease.outCubic(clamp01((t - 0.15) * 3)) * 6;
+    const x0 = Math.round(W / 2 - g.w / 2 - g.ox + rng.float(-j, j)), y0 = Math.round(cy - g.h / 2 - g.oy + rng.float(-j, j));
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W / 2, H); ctx.clip();
+    ctx.drawImage(g.c, x0 - split, y0 + split * 0.5);
+    ctx.restore();
+    ctx.save(); ctx.beginPath(); ctx.rect(W / 2, 0, W / 2, H); ctx.clip();
+    ctx.drawImage(g.c, x0 + split, y0 - split * 0.5);
+    ctx.restore();
     // crack zig-zag through the word
     if (t > 0.05) {
       const r = new SeedRng(it.seed || 7);
       ctx.fillStyle = rgba('#ffffff', 0.9 * a);
-      let x = W / 2 - 70, y = cy - 4;
-      for (let i = 0; i < 14; i++) {
-        const nx = x + 10, ny = cy - 4 + (r.next() - 0.5) * 22;
-        const n = 10;
-        for (let k = 0; k <= n; k++) ctx.fillRect(Math.round(lerp(x, nx, k / n)), Math.round(lerp(y, ny, k / n)), 2, 2);
+      let y = cy - g.h / 2 - 6, x = W / 2;
+      for (let i = 0; i < 8; i++) {
+        const ny = y + g.h / 6, nx = W / 2 + (r.next() - 0.5) * 10;
+        for (let k = 0; k <= 6; k++) ctx.fillRect(Math.round(lerp(x, nx, k / 6)), Math.round(lerp(y, ny, k / 6)), 2, 2);
         x = nx; y = ny;
       }
     }
-    if (it.sub) drawText(ctx, it.sub, W / 2, cy + 30, { align: 'center', color: '#ffd8d0', outline: '#2a0404' });
-    ctx.globalAlpha = 1;
+    ctx.restore();
   }
 
   drawEscape(ctx, it) {
     const W = this.F.W, H = this.F.H, t = it.t;
     const a = clamp01((it.dur - t) * 3) * clamp01(t * 6);
-    const s = W < 700 ? 3 : 4;
+    const s = W < 700 ? 4 : 5;
     const cy = Math.round(H * 0.26);
     const text = it.text;
     let total = 0;
     const ws = [];
-    for (const ch of text) { const w = measureText(ch, 'normal', s) + s; ws.push(w); total += w; }
+    for (const ch of text) { const w = ch === ' ' ? s * 4 : measureText(ch, 'normal', s) + s * 1.4; ws.push(w); total += w; }
     let x = W / 2 - total / 2;
+    ctx.save();
     ctx.globalAlpha = a;
     for (let i = 0; i < text.length; i++) {
       const droop = Math.max(0, t - 0.5 - i * 0.05);
       const y = cy + Math.min(14, droop * droop * 40) + Math.sin(t * 3 + i) * 1.5;
-      if (text[i] !== ' ') drawFancyText(ctx, text[i], x, y, s, { fill: '#a8c8e8', light: '#e8f4ff', dark: '#5a7898', outline: '#0b1622', ow: 2 });
+      if (text[i] !== ' ') { const g = glossText(text[i], s, 'frost'); ctx.drawImage(g.c, Math.round(x + ws[i] / 2 - g.w / 2 - g.ox), Math.round(y - g.oy)); }
       x += ws[i];
     }
-    if (it.sub) drawText(ctx, it.sub, W / 2, cy + 7 * s + 14, { align: 'center', color: '#d8e8f8', outline: '#0b1622' });
-    ctx.globalAlpha = 1;
+    if (it.icon) drawText(ctx, it.icon, W / 2, cy + 7 * s + 12, { align: 'center', scale: 2 });
+    ctx.restore();
   }
 }
 
 class SeedRng {
   constructor(s) { this.s = s >>> 0 || 1; }
   next() { this.s = (this.s * 1664525 + 1013904223) >>> 0; return this.s / 4294967296; }
-}
-
-function shadeOf(hex) {
-  const n = parseInt(hex.slice(1), 16);
-  const r = ((n >> 16) & 255) * 0.6, g = ((n >> 8) & 255) * 0.6, b = (n & 255) * 0.6;
-  return '#' + [r, g, b].map((v) => Math.round(v).toString(16).padStart(2, '0')).join('');
 }
 
 // ------------------------------------------------------------------ landing finale
@@ -331,6 +439,7 @@ export class Finale {
     F.setPose('pull');
     F.sfx('reel', { pitch: 1.3 });
     F.particles.speedLines(fish.x, fish.y, 14, { r0: 10, r1: 34, inward: true, color: '#ffffff' });
+    F.particles.aeroBubbles?.(fish.x, fish.y, 8, { w: 8 });
   }
 
   hands() {
@@ -360,10 +469,13 @@ export class Finale {
           F.particles.eruption(f.x, sy, 1.6);
           F.particles.foam(f.x, sy, 14, { spread: 24, scale: 1.3 });
         } else {
-          F.particles.shockwave(f.x, f.y, 40, '#ffffff');
+          F.particles.ringWave?.(f.x, f.y, 40, '#ffffff', { w: 3 });
           F.particles.bubbles(f.x, f.y, 16);
         }
-        F.particles.lightStreaks(f.x, sy - 4, 12, { dir: -Math.PI / 2, spread: 1.1 });
+        F.particles.aeroBubbles?.(f.x, sy, 14, { w: 12, speed: [40, 120], sizes: [2, 3, 4, 5, 6] });
+        F.particles.lightStreaks(f.x, sy - 4, 12, { dir: -Math.PI / 2, spread: 1.1, colors: ['#ffffff', '#bff8ff', '#e2ffb0'] });
+        const [sx, sy2] = F.toScreen(f.x, sy);
+        F.fx.lensFlare(sx, sy2 - 10, { cx: F.W / 2, cy: F.H / 2, life: 1.4, scale: 1 });
         F.sfx('splash_big');
         F.sfx('jump_out', { pitch: 0.9 });
         f.feel('surprised', 4);
@@ -386,7 +498,8 @@ export class Finale {
         F.setPose('hold');
         F.particles.droplets(hx, hy, 18, { spread: Math.PI, speed: [30, 110], g: 260 });
         F.particles.stars(hx, hy, 12, { speed: [30, 100] });
-        F.particles.shockwave(hx, hy, 26, '#fff6c0');
+        F.particles.ringWave?.(hx, hy, 26, '#bff8ff', { w: 3 });
+        F.particles.glints?.(hx, hy, 5, { w: 14, h: 10 });
         F.shake(4);
         F.sfx('splash_small');
         F.sfx('magic');
@@ -394,16 +507,13 @@ export class Finale {
         break;
       }
       case 'igotit': {
-        const sp = f.sp, rar = RARITY[sp.rarity] || RARITY.common;
-        F.titles.add('igotit', 'I GOT IT!', {
-          sub: sp.name, color: rar.dark, light: rar.color, dark: '#1a0a10',
-          size: f.rec?.sizeCm ? `${f.rec.sizeCm} cm  -  ${f.rec.weightKg} kg` : '',
-        });
+        const sp = f.sp;
+        F.titles.add('igotit', 'I GOT IT!', { rarity: sp.rarity, pal: sp.rarity === 'legendary' ? 'sun' : sp.rarity === 'epic' ? 'violet' : 'lime' });
         F.setPose('hold');
         const [hx, hy] = this.hands();
         F.particles.coins(hx, hy - 6, 10, { speed: [100, 200], floor: this.surface !== null ? this.surface - 1 : null });
-        F.particles.confetti(hx, hy - 10, 26, { speed: [80, 200] });
-        F.particles.lightStreaks(hx, hy, 14);
+        F.particles.aeroConfetti?.(hx, hy - 10, 30, { speed: [80, 200] });
+        F.particles.lightStreaks(hx, hy, 14, { colors: ['#ffffff', '#bff8ff', '#ffe27a'] });
         F.sfx('timing_perfect');
         break;
       }
@@ -448,8 +558,8 @@ export class Finale {
         f.z = 0;
         this.rays = Math.min(1, this.rays + rdt * 2);
         if (rng.chance(rdt * 40)) F.particles.droplets(f.x, f.y, 2, { dir: Math.PI / 2, spread: 1.2, speed: [10, 50], g: 260, w: 6 });
-        if (rng.chance(rdt * 18)) F.particles.sparkle(f.x + rng.float(-10, 10) * f.scale, f.y + rng.float(-6, 6), '#ffffff');
-        if (rng.chance(rdt * 8)) F.particles.stars(f.x, f.y, 1, { speed: [10, 30], g: 0 });
+        if (rng.chance(rdt * 18)) F.particles.glint?.(f.x + rng.float(-10, 10) * f.scale, f.y + rng.float(-6, 6), { len: rng.pick([3, 4, 5]) });
+        if (rng.chance(rdt * 14)) F.particles.aeroBubbles?.(f.x, f.y, 1, { w: 6, speed: [10, 30], sizes: [2, 3, 4] });
         const mxp = lerp(f.x, hx, 0.4), myp = lerp(f.y, hy, 0.4);
         if (this.hasBoat) F.focusCam(mxp, myp - 10, 1.35, 3.5);
         if (u >= 1) this.go('catch');
@@ -474,8 +584,8 @@ export class Finale {
     const f = this.fish;
     if (this.rays > 0.01 && (this.stage === 'erupt' || this.stage === 'catch' || this.stage === 'igotit')) {
       const [x, y] = this.stage === 'erupt' ? [f.x, f.y] : this.hands();
-      drawRays(ctx, x, y, 130, 12, this.rt * 0.9, '#fff6c0', 0.09 * this.rays, 0.08);
-      drawGlow(ctx, x, y, 26, '#fff6c0', 0.4 * this.rays);
+      drawRays(ctx, x, y, 130, 12, this.rt * 0.9, '#e8fbff', 0.1 * this.rays, 0.08);
+      drawGlow(ctx, x, y, 26, '#bff8ff', 0.45 * this.rays);
     }
   }
 
@@ -489,7 +599,7 @@ function drawPortrait(ctx, F, fish, k, pose, t) {
   const W = F.W, H = F.H;
   const cx = W / 2, by = H * 0.86;
   const a = ease.outBack(clamp01(k));
-  drawGlow(ctx, cx, by - 40, 70, '#fff2a8', 0.45 * k);
+  drawGlow(ctx, cx, by - 40, 70, '#bff8ff', 0.45 * k);
   ctx.save();
   ctx.globalAlpha = clamp01(k * 2);
   ctx.translate(cx, by + (1 - a) * 80);
@@ -498,7 +608,7 @@ function drawPortrait(ctx, F, fish, k, pose, t) {
 }
 
 // ------------------------------------------------------------------ escape cutscene
-const TAUNTS = ['nyeh~!', 'too slow!', 'bye bye!', 'lol', 'blub blub ha!', 'catch me never!', 'later, loser!', ':P', 'nice try!', 'smell ya later!'];
+const TAUNTS = ['nyeh~!', 'lol', 'bye!', ':P', 'blub ha!', 'nope!', 'later!', 'ez'];
 
 export class EscapeCine {
   constructor(F, fish, reason, line) {
@@ -515,14 +625,15 @@ export class EscapeCine {
     fish.alpha = 1;
     fish.feel('smug', 3);
     F.setPose('sad');
+    F.reel.snapped = reason === 'snap' ? 1 : 0;
     if (reason === 'snap') {
-      F.titles.add('snap', 'SNAP!', { sub: 'The line snapped...', seed: rng.int(1, 9999) });
+      F.titles.add('snap', 'SNAP!', { seed: rng.int(1, 9999) });
       F.shake(9);
       F.cam?.flash?.('#ff8a7a', 0.25);
       F.particles.sparks(line.x1, line.y1, 14, { speed: [40, 140], colors: ['#ffffff', '#e8f4ff', '#ffd25a'] });
     } else {
-      const text = reason === 'throw' ? 'IT SPAT THE HOOK!' : reason === 'run' ? 'IT RAN OFF!' : 'IT GOT AWAY...';
-      F.titles.add('escape', text, { sub: reason === 'throw' ? 'Keep the line tight!' : reason === 'run' ? 'Pull against it to stop it running!' : '' });
+      const text = reason === 'throw' ? 'SPAT IT!' : reason === 'run' ? 'GONE!' : 'BYE...';
+      F.titles.add('escape', text, { icon: reason === 'throw' ? '{crank}' : '' });
       F.shake(3);
     }
     F.cam?.slowmo?.(0.5, 0.7);
@@ -561,6 +672,7 @@ export class EscapeCine {
         F.cam?.setLetterbox?.(false);
         F.restoreScroll();
         F.particles.speedLines(f.x, f.y, 10, { r0: 6, r1: 24, color: '#ffffff', add: false, len: [6, 14] });
+        F.particles.aeroBubbles?.(f.x, f.y, 6, { w: 6 });
         F.sfx('splash_small', { pitch: 1.4 });
       }
       f.vx = this.dirAway * 260; f.vy = -20;
@@ -576,7 +688,6 @@ export class EscapeCine {
   }
 
   drawWorld(ctx) {
-    const F = this.F;
     const L = this.line;
     if (this.reason === 'snap' && this.t < 0.9) {
       // the broken line whips back toward the rod
@@ -601,7 +712,6 @@ export class EscapeCine {
       ctx.drawImage(HOOK, -3, -5);
       ctx.restore();
     }
-    void F;
   }
 
   drawHud(ctx) {
@@ -610,15 +720,13 @@ export class EscapeCine {
       const [sx, sy] = F.toScreen(f.x, f.y);
       const k = ease.outBack(clamp01((t - 0.4) * 5));
       const text = this.taunt;
-      const w = measureText(text, 'normal', 1) + 12, h = 15;
+      const w = measureText(text, 'normal', 1) + 14, h = 15;
       const bx = Math.round(sx + 16), by = Math.round(sy - 46 - (1 - k) * 8);
       ctx.save();
       ctx.globalAlpha = clamp01((1.6 - t) * 5) * clamp01(k);
-      ctx.fillStyle = '#0b1622'; ctx.fillRect(bx - 1, by - 1, w + 2, h + 2);
-      ctx.fillStyle = '#ffffff'; ctx.fillRect(bx, by, w, h);
-      ctx.fillStyle = '#d8e8f4'; ctx.fillRect(bx, by + h - 2, w, 2);
-      for (let i = 0; i < 5; i++) { ctx.fillStyle = '#0b1622'; ctx.fillRect(bx + 4 - i, by + h + i, 2 + (i > 0 ? 1 : 0), 1); ctx.fillStyle = '#ffffff'; if (i < 4) ctx.fillRect(bx + 5 - i, by + h + i, 1, 1); }
-      drawText(ctx, text, bx + 6, by + 4 + Math.round(Math.sin(t * 20) * 0.6), { color: '#1e2a38' });
+      drawGlassPill(ctx, bx + w / 2, by, w, h, '#bfeaff', 0.95);
+      for (let i = 0; i < 3; i++) { const b = gbubbleSprite(2 - (i > 1 ? 1 : 0)); ctx.drawImage(b, bx + 2 - i * 4, by + h + 1 + i * 3); }
+      drawText(ctx, text, bx + 7, by + 4 + Math.round(Math.sin(t * 20) * 0.6), { color: '#0c3a52' });
       ctx.restore();
     }
   }
@@ -665,4 +773,3 @@ export class Outro {
 }
 
 export { drawGlow };
-void dist;

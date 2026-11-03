@@ -36,6 +36,9 @@ import { Build } from '../build/build.js';
 import { boatBonus, baitMods, CATALOG_BY_ID } from '../store/index.js';
 import { WaterFX } from '../gfx/watergl.js';
 import { makeLayer, resizeLayer } from '../core/canvas.js';
+import { Floaters } from '../world/floaters.js'; // [phase3:world]
+import { installNet } from '../net/index.js'; // [phase3:online] multiplayer (opt-in)
+import { currentBait as currentBait3 } from '../store/bait.js'; // [phase3:online] consumable bait
 
 export class Game {
   constructor(canvas, params) {
@@ -79,6 +82,7 @@ export class Game {
     this.water = new WaterFX(this, { force: wgl === 'force' || wgl === '1', disabled: wgl === '0' || this.state.settings.waterFx === false });
     this.worldLayer = makeLayer(8, 8);
     this.boat = new Boat(this);
+    this.floaters = new Floaters(this); // [phase3:world] floating boxes to fish up
     this.wireSplashes();
     this.desktop = new Desktop(this);
     this.world.desktop = this.desktop;
@@ -93,6 +97,7 @@ export class Game {
     registerPanels(this.ui);
     this.tutorial = new Tutorial(this);
     try { this.build = new Build(this); } catch (e) { console.error(e); this.build = null; }
+    installNet(this); // [phase3:online] game.net: multiplayer, opt-in (Multiplayer panel)
     this.ocean.setBiome(this.state.biome);
     // optional biomes register asynchronously; switch once the saved one is available
     biomesReady.then(() => { if (this.ocean.biome?.id !== this.state.biome && BIOMES[this.state.biome] && !this.ocean.travelState) this.ocean.setBiome(this.state.biome); });
@@ -137,7 +142,7 @@ export class Game {
   }
 
   recomputeStats() {
-    const s = this.stats = computeStats(this.state.skills);
+    const s = this.stats = computeStats(this.state); // [phase3:lab] whole save: Lab effects + aquarium tier space
     // boat perks (Barnaby's Boatyard)
     const b = (k) => boatBonus(this.state, k);
     s.boxSlots += b('baitSlots');
@@ -233,6 +238,8 @@ export class Game {
 
   // ------------------------------------------------------------------ bait
   currentBait() {
+    const b3 = currentBait3(this.state); // [phase3:online] consumable bait inventory (src/store/bait.js)
+    if (b3) return b3; // [phase3:online]
     const e = this.state.equipped;
     if (!e) return null;
     if (e.kind === 'icon') {
@@ -487,6 +494,7 @@ export class Game {
     w.weather = ocean.weather; w.biome = ocean.biome.id;
     const bm = this.currentBait()?.mods; // AppSea bait power (bigger downloads = better fish)
     w.rarityBoost = this.stats.rarityBoost * this.baitFx.rarityMul() * (bm?.rarity || 1) * (1 + this.bonus('rarity') + (w.night ? this.bonus('nightRarity') : 0));
+    w.rarityBoost *= this.net?.partyLuck?.() || 1; // [phase3:online] party buff: +10% per player in this ocean (max +30%)
     w.calmMul = this.stats.calm;
     w.lowPower = this.lowPower;
     w.populationMul = this.baitFx.populationMul();
@@ -507,7 +515,9 @@ export class Game {
 
     this.ui.update(dtReal);
     ocean.update(dt);
+    this.floaters?.update(dt); // [phase3:world]
     this.baitFx.update(dt);
+    this.net?.update(dtReal); // [phase3:online]
 
     // ---- input routing (top-most first)
     const fighting = this.fishing.fighting;
@@ -705,15 +715,18 @@ export class Game {
         L = ocean.lighting();
         try { this.build?.addLights?.(L); } catch (e) { if (!this.buildLightErr) { this.buildLightErr = true; console.error(e); } }
         wctx.globalAlpha = 1;
+        this.floaters?.draw(wctx, 'far'); // [phase3:world]
         this.drawFishRange(wctx, sorted, 0.66, 2, L);
         wctx.globalAlpha = opacity;
         ocean.biome.drawSeabed(wctx, env);
         wctx.globalAlpha = 1;
+        this.floaters?.draw(wctx, 'mid'); // [phase3:world]
         this.drawBuildings(wctx, env, 'far');
         this.drawFishRange(wctx, sorted, 0.33, 0.66, L);
         wctx.globalAlpha = opacity;
         ocean.biome.drawNear?.(wctx, env);
         wctx.globalAlpha = 1;
+        this.floaters?.draw(wctx, 'near'); // [phase3:world]
         this.drawBuildings(wctx, env, 0);
         this.particles.draw(wctx, 'bg', this.time);
         if (ocean.reveal < 1) { wctx.restore(); this.wallpaper.drawWaterline(wctx); }
@@ -729,6 +742,7 @@ export class Game {
     // the boat rides the processed waterline; then the darkness pass and the boat's own lights
     if (liveOcean) {
       cam.apply(ctx);
+      this.net?.draw(ctx, 'boats'); // [phase3:online] other players' boats (world space)
       this.boat.draw(ctx, env);
       cam.reset(ctx);
       if (L.dark > 0.02) L.lights.push(...this.boat.lights());
@@ -738,6 +752,7 @@ export class Game {
       cam.apply(ctx);
       this.boat.drawLights(ctx, L.dark);
       cam.reset(ctx);
+      this.net?.draw(ctx, 'tags'); // [phase3:online] name tags, emotes, catch pop-ups (screen space call)
     }
 
     // desktop icons sit above the ocean (kept readable)

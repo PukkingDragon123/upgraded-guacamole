@@ -64,6 +64,13 @@ const SHAPES = {
 const withA = (c, a) => ((c & 0x00ffffff) | ((a & 255) << 24)) >>> 0;
 const P = (hex, a = 255) => pack(hex, a) >>> 0;
 
+// Cartoon ink: a deep, saturated, slightly blue-shifted version of a colour (outlines, eye rims).
+function toonInk(hex) {
+  const [h, s, l] = hexToHsl(hex);
+  const hh = l > 0.92 || s < 0.08 ? 215 : h;
+  return hslToHex(hh + (hh > 60 && hh < 200 ? 12 : 0), clamp(0.55 + s * 0.35, 0.45, 0.85), clamp(0.1 + l * 0.08, 0.1, 0.19));
+}
+
 // ---------------------------------------------------------------------------
 // Variants (mutations / shiny) transform colours before ramps are built.
 
@@ -159,13 +166,19 @@ export function compileLook(look, variant = null) {
     glow: false,
     toRamp,
   };
-  c.outlineP = P(col.outline ? c.outlineHex : mix(shade(backHex, -0.9), '#0b0910', 0.55));
+  // cartoon outline: a deep, saturated version of the back colour (never flat black)
+  c.outlineP = P(col.outline ? c.outlineHex : toonInk(backHex));
   const R7 = (hex) => TONES7.map((a) => P(shade(satd(hex), a * contrast)));
   c.R7 = R7;
   c.T = { back: R7(backHex), body: R7(bodyHex), belly: R7(bellyHex), head: col.head ? R7(vc(col.head)) : null };
   c.vb = look.shade?.back ?? -0.3;
   c.vbel = look.shade?.belly ?? 0.3;
-  c.toon = !!look.toon;
+  // Frutiger Aero cartoon style for every creature: no realistic anatomy marks; gloss + cel shading are
+  // added by toonFinish() on the body layer, faces are cartoon (see paintEye / paintMouth).
+  c.toon = true;
+  c.scales = false; c.gills = false; c.lateral = false; c.nostril = false; c.preop = false; c.shine = false;
+  c.bubble = !!look.bubble;
+  c.finA = look.bubble ? 175 : 255;
   c.spec = look.spec ?? 1;
   c.tail.R = toRamp(vc(look.tail?.color || finHex));
   c.tail.R7 = TONES7.map((a) => P(shade(satd(vc(look.tail?.color || finHex)), a * contrast)));
@@ -207,7 +220,13 @@ export function compileLook(look, variant = null) {
   const lidHex = (e) => vc(e.lid || bodyHex);
   const mkEye = (e, def) => {
     const o = { type: 'normal', ...def, ...e };
-    o.pupil = P(vc(o.color || '#0c0a12', 'eye'));
+    // big cartoon eyes: generic fish get a cute minimum size (relative to body height)
+    if (kind === 'fish' && o.type !== 'dot' && !e.keepSize) o.r = clamp(Math.max(o.r * 1.3, H * 0.17), 1, Math.max(o.r, H * 0.3));
+    else if (o.type !== 'dot' && !e.keepSize) o.r *= 1.18;
+    o.pupilSize = e.pupilSize ? Math.max(0.5, e.pupilSize) : 0.6;
+    o.pupil = P(vc(o.color || '#101a33', 'eye'));
+    o.pupil2 = P(mix(vc(o.color || '#101a33', 'eye'), '#3a7ad8', 0.4));
+    o.ringP = P(toonInk(vc(o.lid || bodyHex)));
     o.irisR = o.iris ? toRamp(vc(o.iris, 'eye')) : null;
     o.realIris = ramp(adjust(vc(o.iris || look.eyeIris || '#e8bc4a', 'eye'), { l: 0.06, sMul: 1.1 })).map((h) => P(h));
     o.sclera = P(o.sclera || '#ffffff');
@@ -314,17 +333,16 @@ function geomOf(c, inflate = 0) {
 
 const spineAt = (c, u, phase) => c.bend * Math.sin(TAU * phase - u * 3.2) * u * u;
 
-// Clean pixel-art quantisation: a 2x2 checker only where a value sits between two tones.
+// Cel quantisation (cartoon style): crisp bands, no dithering. 5-tone ramps [deep, shadow, base, light, hi].
 function rampPick(R, b, x, y, dither = 0.85) {
   const n = R.length - 1;
-  const chk = VOXM ? 0 : ((x + y) & 1) ? 0.5 : -0.5;
-  const idx = clamp(Math.round(b * n + chk * Math.min(0.3, dither * 0.3)), 0, n);
-  return R[idx];
+  if (n !== 4) return R[clamp(Math.round(b * n), 0, n)];
+  return R[b < 0.14 ? 0 : b < 0.4 ? 1 : b < 0.74 ? 2 : b < 0.93 ? 3 : 4];
 }
-// 7-tone index pick with checker transitions; idx in tone units (0 darkest .. 6 lightest).
+// 10-tone pick; idx in authoring tone units (0 darkest .. 6 lightest) snapped to 5 cel bands.
 function tone(R, idx, x, y) {
-  const chk = VOXM ? 0 : ((x + y) & 1) ? 0.2 : -0.2;
-  return R[clamp(Math.round(5 + (idx - 3) * 1.5 + chk), 0, R.length - 1)];
+  if (VOXM) return R[clamp(Math.round(5 + (idx - 3) * 1.5), 0, R.length - 1)];
+  return R[idx < 1.6 ? 2 : idx < 2.55 ? 4 : idx < 3.85 ? 5 : idx < 4.7 ? 7 : 8];
 }
 // 10 hue-shifted tones per colour (index 5 = base); tone() maps the 0..6 authoring scale onto them.
 const TONES7 = [-0.9, -0.75, -0.58, -0.4, -0.21, 0, 0.17, 0.35, 0.54, 0.74];
@@ -351,7 +369,7 @@ function outlineFnFor(c) {
       if (a === 253) { cache.set(n, 0); return 0; }
       const hex = '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('');
       const [dr, dg, db] = unpack(P(shade(hex, -0.86)));
-      const t = 0.6;
+      const t = VOXM ? 0.6 : 0.8; // cartoon: an even ink line, hinting at the neighbour's hue
       const oa = a >= 200 ? 255 : Math.min(255, a + 120);
       o = ((oa << 24) | (Math.round(db + (ob - db) * t) << 16) | (Math.round(dg + (og - dg) * t) << 8) | Math.round(dr + (or - dr) * t)) >>> 0;
       cache.set(n, o);
@@ -395,6 +413,96 @@ function rectFor(box, angle, scale, ox, oy, w, h) {
 
 let gOut = 0;
 let patLight = 0;
+// Body-pixel mask of the layer being painted (toonFinish shades only the body, not hats / props).
+let MASK = null;
+
+// ---- Frutiger Aero cartoon finish: cel shadow along the underside, a glossy white specular band that
+// follows the top contour (light from above, in screen space), and a sparkle pixel near the front.
+const _shadow = new Map(), _light = new Map();
+function celShadow(p) {
+  let o = _shadow.get(p);
+  if (o === undefined) {
+    const r = p & 255, g = (p >>> 8) & 255, b = (p >>> 16) & 255;
+    o = ((p & 0xff000000) | (Math.round(Math.min(255, b * 0.8 + 14)) << 16) | (Math.round(g * 0.74) << 8) | Math.round(r * 0.66)) >>> 0;
+    _shadow.set(p, o);
+  }
+  return o;
+}
+function celLight(p, t) {
+  const k = p * 4 + Math.round(t * 3);
+  let o = _light.get(k);
+  if (o === undefined) {
+    const r = p & 255, g = (p >>> 8) & 255, b = (p >>> 16) & 255;
+    const a = Math.max(p >>> 24, Math.round(160 + 95 * t));
+    o = ((a << 24) | (Math.round(b + (255 - b) * t) << 16) | (Math.round(g + (255 - g) * t) << 8) | Math.round(r + (246 - r) * t)) >>> 0;
+    _light.set(k, o);
+  }
+  return o;
+}
+// underside bounce light: the shadow tone pulled toward a bright aqua (glassy Aero reflection)
+const _bounce = new Map();
+function celBounce(p) {
+  let o = _bounce.get(p);
+  if (o === undefined) {
+    const s = celShadow(p);
+    const r = s & 255, g = (s >>> 8) & 255, b = (s >>> 16) & 255;
+    o = ((s & 0xff000000) | (Math.round(b + (255 - b) * 0.45) << 16) | (Math.round(g + (240 - g) * 0.4) << 8) | Math.round(r + (170 - r) * 0.25)) >>> 0;
+    _bounce.set(p, o);
+  }
+  return o;
+}
+const SPARK = P('#ffffff');
+function toonFinish(buf, mask, front, gloss = true) {
+  const { w, h, data } = buf;
+  const on = mask ? (i) => mask[i] === 1 : (i) => (data[i] >>> 24) > 70;
+  const RL = new Int16Array(w * h), RR = new Int16Array(w * h);
+  for (let y = 0; y < h; y++) {
+    let x = 0;
+    while (x < w) {
+      if (!on(y * w + x)) { x++; continue; }
+      let e = x;
+      while (e + 1 < w && on(y * w + e + 1)) e++;
+      for (let k = x; k <= e; k++) { RL[y * w + k] = x; RR[y * w + k] = e; }
+      x = e + 1;
+    }
+  }
+  let sx = -1, sy = -1, sBest = -1;
+  for (let x = 0; x < w; x++) {
+    let y = 0;
+    while (y < h) {
+      if (!on(y * w + x)) { y++; continue; }
+      let e = y;
+      while (e + 1 < h && on((e + 1) * w + x)) e++;
+      const n = e - y + 1;
+      if (n >= 3) {
+        const shN = n >= 7 ? Math.max(1, Math.round(n * 0.2)) : n >= 4 ? 1 : 0;
+        const g0 = Math.max(1, Math.round(n * 0.08)), gc = g0 + Math.max(1, Math.round(n * 0.07)), g1 = gc + Math.max(1, Math.round(n * 0.11));
+        for (let yy = y; yy <= e; yy++) {
+          const i = yy * w + x, dt = yy - y, db = e - yy;
+          if (db < shN) { data[i] = db === 0 && n >= 12 && x > 0 && on(i - 1) && on(i + 1) ? celBounce(data[i]) : celShadow(data[i]); continue; }
+          if (!gloss || dt < g0 || dt >= g1) continue;
+          const xl = RL[i], xr = RR[i], hw = xr - xl + 1;
+          const inset = Math.max(1, Math.round(hw * 0.08));
+          if (x - xl < inset || xr - x < inset || hw < 5) continue;
+          const fp = (x - xl) / hw;
+          if (front && fp < 0.22) continue;
+          const core = dt < gc && (front ? fp > 0.34 && fp < 0.9 : Math.abs(fp - 0.42) < 0.28);
+          data[i] = celLight(data[i], core ? 0.82 : 0.42);
+          const score = (front ? fp : 1 - Math.abs(fp - 0.3)) * 2 - dt * 0.05 + (core ? 0.1 : 0);
+          if (core && n >= 9 && score > sBest) { sBest = score; sx = x; sy = yy; }
+        }
+      }
+      y = e + 1;
+    }
+  }
+  // sparkle: pure white glint at the front end of the gloss band (a 2nd pixel on big sprites)
+  if (sx >= 0) {
+    const fx = front ? sx - 1 : sx;
+    data[sy * w + fx] = SPARK;
+    if (sBest > 1.4 && sy + 1 < h && on((sy + 1) * w + fx + 1) && h > 26) data[(sy + 1) * w + fx + 1] = celLight(data[(sy + 1) * w + fx + 1], 0.85);
+  }
+}
+const FRONT_KINDS_2D = new Set(['crab', 'jelly', 'pudding', 'octopus', 'star', 'blob', 'iconfish']);
 // Voxel albedo mode (voxelfish.js): no checker dither, no 2D form shading / outline, raw buffers out.
 let VOXM = false;
 
@@ -529,6 +637,16 @@ function tailPix(c, G, lx, ly, px, py, s, tp, baseY) {
   const da = ((VOXM ? Math.max(c.raySp, 2.6 / s) : c.raySp) * 1.15) / (G.TL * 1.4);
   const onRay = c.tail.rays !== false && Math.abs(fract(ang / da + 0.5) - 0.5) * da * rr * s < 0.55;
   const e1 = 1 / s;
+  if (!VOXM) {
+    // cartoon tail: flat colour, a lighter outer half, root shadow and two or three soft fold lines
+    if (c.tail.spotP && st > 0.15 && hash2(Math.floor(lx * s / 3), Math.floor(ly * s / 3), 13) < 0.16) return c.tail.spotP;
+    const dF = da * 3.2;
+    const fold = c.tail.rays !== false && st > 0.22 && st < 0.9 && Math.abs(fract(ang / dF + 0.5) - 0.5) * dF * rr * s < 0.5;
+    let i2 = st > 0.6 ? 4.2 : 3;
+    if (st < 0.14) i2 = 2.2;
+    else if (fold) i2 = st > 0.6 ? 3 : 2.2;
+    return withA(tone(R, i2, px, py), c.finA ?? 255);
+  }
   const edge = !tailHit(type, a + 0.6 + e1, bb, G.TL, G.TS, G.tailBase, tp) || !tailHit(type, a + 0.6, bb + e1, G.TL, G.TS, G.tailBase, tp) || !tailHit(type, a + 0.6, bb - e1, G.TL, G.TS, G.tailBase, tp);
   let idx = onRay ? 1.7 : 4;
   if (st < 0.14) idx = st < 0.07 ? 1.8 : 2.8;
@@ -565,6 +683,17 @@ function finPix(c, G, lx, ly, px, py, s, fp, sw, still, raise = 0) {
     const rf = fract(along / sp + 0.5) - 0.5;
     const onRay = f.rays && Math.abs(rf) * sp * s < 0.6;
     const R = f.R7;
+    if (!VOXM && !f.spines) {
+      // cartoon fin: flat, lighter tip half, root shadow, sparse fold lines
+      if (dist > fh) continue;
+      if (f.spotP && hash2(Math.floor(lx * s / 3), Math.floor(ly * s / 3), 17) < 0.16) return f.spotP;
+      const sp2 = sp * 2.4, rf2 = fract(along / sp2 + 0.5) - 0.5;
+      const fold = f.rays && dist > fh * 0.2 && Math.abs(rf2) * sp2 * s < 0.5;
+      let i2 = dist > fh * 0.55 ? 4.2 : 3;
+      if (dist < e1 * 1.3) i2 = 2.2;
+      else if (fold) i2 = dist > fh * 0.55 ? 3 : 2.2;
+      return withA(tone(R, i2, px, py), c.finA ?? 255);
+    }
     if (f.spines) {
       const memb = fh * (1 - 0.42 * Math.pow(Math.abs(rf) * 2, 0.9));
       if (dist > memb && !(onRay && dist <= fh * 1.1)) continue;
@@ -612,6 +741,11 @@ function pecPix(c, G, lx, ly, px, py, s, fp, baseY, still) {
   const onRay = Math.abs(rf) * da * rr * s < 0.6;
   if (pec.spines && !onRay && st > 1 - 0.45 * Math.abs(rf) * 2) return 0;
   const R = pec.R7;
+  if (!VOXM) {
+    // cartoon pectoral: a little paddle, lighter at the tip
+    const fold = Math.abs(rf) * da * rr * s < 0.45 && st > 0.3 && Math.abs(b) < wdt * 0.6;
+    return tone(R, st < 0.2 ? 2.2 : st > 0.62 ? 4.2 : fold ? 2.2 : 3, px, py);
+  }
   const edge = !pec.spines && (Math.abs(b) > wdt - 1 / s || st > 0.97 - 0.04 * Math.abs(b) / Math.max(1, wdt));
   let idx = onRay ? 2.2 : 4.6;
   if (edge) idx = 1.1;
@@ -1239,6 +1373,27 @@ function biteCut(xp, lx, ly) {
   return edge;
 }
 
+// Soap-bubble body (look.bubble): a see-through film with an iridescent rim, a swirl of rainbow sheen
+// and big white window reflections. u 0 nose .. 1 tail, v -1 top .. 1 bottom, dT / dB edge distances (px).
+const IRI = Array.from({ length: 12 }, (_, i) => P(hslToHex(i * 30 + 180, 0.9, 0.7)));
+const IRI_SOFT = Array.from({ length: 12 }, (_, i) => P(hslToHex(i * 30 + 180, 0.85, 0.82), 120));
+function bubblePix(c, u, v, dT, dB, top, bot, s, px, py) {
+  const x = (u - 0.5) * 2, rr = Math.sqrt(x * x * 0.85 + v * v);
+  const edgePx = Math.min(dT, dB, u * c.L * s * 0.9, (1 - u) * c.L * s * 0.9);
+  const ang = Math.atan2(v, x);
+  const hi = Math.floor(((ang / TAU + 1) * 12 + u * 4) % 12);
+  // white window reflections: a curved pane at the upper front and a small one at the lower back
+  const wx = (u - 0.3) / 0.2, wy = (v + 0.5) / 0.22;
+  if (wx * wx + wy * wy < 1 && wy < 0.6 - wx * 0.2) return P('#ffffff', 250);
+  if (Math.hypot((u - 0.72) / 0.07, (v - 0.55) / 0.13) < 1) return P('#ffffff', 220);
+  if (edgePx < 1.2) return IRI[hi];
+  if (edgePx < 2.4) return withA(IRI[(hi + 1) % 12], 200);
+  // faint rainbow swirl inside the film
+  const sw = fract(rr * 1.6 + ang * 0.25 + u * 0.8);
+  if (sw < 0.12 && rr > 0.35) return IRI_SOFT[(hi + 3) % 12];
+  return P(c.bodyHex, Math.round(c.alpha < 255 ? c.alpha : 70));
+}
+
 function bodyPix(c, G, xp, lx, ly, px, py, s, sw, still) {
   const u = (G.halfL - lx) / G.L;
   if (u < 0 || u > 1) return 0;
@@ -1254,30 +1409,28 @@ function bodyPix(c, G, xp, lx, ly, px, py, s, sw, still) {
   const L = G.L, H = G.H;
   const v = ry < 0 ? ry / Math.max(0.5, top) : ry / Math.max(0.5, bot);
   const dT = (ry + top) * s, dB = (bot - ry) * s;
-  const chk = ((px + py) & 1) ? 1 : -1;
+  const chk = VOXM ? ((px + py) & 1) ? 1 : -1 : 0;
   const T = c.T;
-  // countershading: dark back -> body -> pale belly
+  if (c.bubble && !VOXM) return bubblePix(c, u, v, dT, dB, top, bot, s, px, py);
+  // cartoon countershading: flat back -> body -> belly zones with crisp curved boundaries
   const vb = c.vb, vbel = c.vbel;
+  const wav = VOXM ? 0 : 0.06 * Math.sin(u * 7.5);
   let R, idx;
-  if (v < vb + chk * 0.035) { R = T.back; idx = 1.5 + 1.8 * clamp01((v + 1) / (vb + 1)); }
-  else if (v < vbel + chk * 0.035) { R = T.body; idx = 2.9 + 0.75 * clamp01((v - vb) / (vbel - vb)); }
-  else { R = T.belly; idx = 3.7 + 1.05 * clamp01((v - vbel) / (1 - vbel)); }
+  if (v < vb + chk * 0.035 + wav) { R = T.back; idx = VOXM ? 1.5 + 1.8 * clamp01((v + 1) / (vb + 1)) : 3; }
+  else if (v < vbel + chk * 0.035 - wav * 0.5) { R = T.body; idx = VOXM ? 2.9 + 0.75 * clamp01((v - vb) / (vbel - vb)) : 3; }
+  else { R = T.belly; idx = VOXM ? 3.7 + 1.05 * clamp01((v - vbel) / (1 - vbel)) : 3; }
   // head: operculum edge curves forward at top and bottom
   const opU = c.opU - 0.11 * v * v + 0.02;
   const inHead = u < opU;
   if (inHead) {
     if (T.head && R !== T.belly) R = T.head;
-    if (v > -0.1 && v < 0.75) idx += 0.45;
-    if (v < -0.5) idx -= 0.25;
-    idx += (opU - u) * 0.8;
+    if (VOXM) {
+      if (v > -0.1 && v < 0.75) idx += 0.45;
+      if (v < -0.5) idx -= 0.25;
+      idx += (opU - u) * 0.8;
+    }
   }
-  // form shading: dark dorsal ridge, belly core shadow, darker peduncle
-  if (!VOXM) {
-    if (dT < 1.05) idx -= 1;
-    if (dB < 1.2) idx -= 1.9;
-    else if (dB < 2.3) idx -= 0.8;
-    if (u > 0.82) idx -= (u - 0.82) * 3.5;
-  }
+  // (form shading, gloss and cel shadow come from toonFinish() on the finished layer)
   patLight = 0;
   let patHit = false;
   for (const pat of c.patterns) {
@@ -2027,13 +2180,16 @@ function paintGeneric(c, buf, glow, bx, by, ox, oy, angle, s, mode, prm, G, rect
       gOut = 0;
       let col = 0;
       if (all) {
-        const body = overlayPix(c, xp, lx, ly, px, py, s, G) || bodyPix(c, G, xp, lx, ly, px, py, s, sw, still);
+        let body = overlayPix(c, xp, lx, ly, px, py, s, G);
+        if (!body) { body = bodyPix(c, G, xp, lx, ly, px, py, s, sw, still); if (body && MASK) MASK[(py - by) * W + (px - bx)] = 1; }
         col = body;
         const pc = pecPix(c, G, lx, ly, px, py, s, fp, pecBaseY, still);
         if (pc) col = body ? blendPacked(body, pc, c.finAlpha) : pc;
         if (!col) col = finPix(c, G, lx, ly, px, py, s, fp, finSw, still, prm.raise || 0) || tailPix(c, G, lx, ly, px, py, s, tp, tailBaseY) || freePix(c, G, xp, lx, ly, px, py, s, sw, still);
       } else if (mode === 'body') {
-        col = overlayPix(c, xp, lx, ly, px, py, s, G) || bodyPix(c, G, xp, lx, ly, px, py, s, sw, still) || freePix(c, G, xp, lx, ly, px, py, s, sw, still);
+        col = overlayPix(c, xp, lx, ly, px, py, s, G);
+        if (!col) { col = bodyPix(c, G, xp, lx, ly, px, py, s, sw, still); if (col && MASK) MASK[(py - by) * W + (px - bx)] = 1; }
+        if (!col) col = freePix(c, G, xp, lx, ly, px, py, s, sw, still);
       } else if (mode === 'back') col = finPix(c, G, lx, ly, px, py, s, fp, null, still, prm.raise || 0);
       else if (mode === 'tail') col = tailPix(c, G, lx, ly, px, py, s, tp, 0);
       else if (mode === 'front') col = pecPix(c, G, lx, ly, px, py, s, fp, 0, still);
@@ -2107,13 +2263,13 @@ function genericFace(c, G, sw, angle, s, ox, oy, still) {
 // lid: upper-lid line y at x=0, slant: dy per x (+ = lower toward the nose), low: lower lid line,
 // pupil: pupil scale, wide: eye scale, brow: [y, slant, style], plus mark flags.
 const EMO = {
-  neutral: { lid: -0.95, slant: 0, low: 1.2, pupil: 1, wide: 1, brow: null, mouth: { smile: 0.24 } },
+  neutral: { lid: -1.2, slant: 0, low: 1.2, pupil: 1, wide: 1, brow: null, mouth: { smile: 0.3 } },
   happy: { closed: 'arc', blush: true, brow: [-1.6, 0, 'arch'], mouth: { smile: 0.55, openBias: 0.15, laugh: true } },
   sad: { lid: -0.4, slant: -0.42, low: 1.2, pupil: 1.05, lookY: 0.35, brow: [-1.42, -0.5], tears: true, mouth: { smile: -0.4 } },
   angry: { lid: -0.28, slant: 0.55, low: 0.85, pupil: 0.8, brow: [-1.22, 0.62], vein: true, mouth: { smile: -0.22, teeth: true } },
   scared: { lid: -1.1, slant: 0, low: 1.2, pupil: 0.42, wide: 1.1, brow: [-1.75, -0.35, 'arch'], sweat: true, shake: true, mouth: { wave: 0.11, openBias: 0.1, teeth: true } },
   surprised: { lid: -1.1, slant: 0, low: 1.2, pupil: 0.45, wide: 1.14, brow: [-1.9, 0, 'arch'], mouth: { O: 0.6 } },
-  love: { heart: true, blush: true, lid: -0.95, slant: 0, low: 1.2, brow: null, mouth: { smile: 0.4 } },
+  love: { heart: true, blush: true, lid: -1.2, slant: 0, low: 1.2, brow: null, mouth: { smile: 0.45 } },
   sleepy: { lid: 0.05, slant: -0.1, low: 0.9, pupil: 0.9, lookY: 0.45, brow: null, mouth: { O: 0.2 } },
   dizzy: { spiral: true, brow: [-1.5, -0.2, 'wavy'], mouth: { wave: 0.14 } },
   smug: { lid: -0.18, slant: -0.12, low: 0.55, lowCurve: 0.25, pupil: 0.95, lookX: -0.55, brow: [-1.55, -0.28], mouth: { smirk: 0.55 } },
@@ -2146,6 +2302,7 @@ const EYE_RING = P('#120c14'), PUPIL_EDGE = P('#2a2234');
 const EXPR_MAP = { sleep: 'sleepy', shock: 'surprised', happy: 'happy', dizzy: 'dizzy', angry: 'angry' };
 
 const SCLERA = [P('#a8b4cc'), P('#c8d2e2'), P('#e6ecf6'), P('#ffffff'), P('#ffffff')];
+const SCLERA_TOP = P('#dcefff');
 const HEART = ramp('#ff4d7a').map((h) => P(h));
 const TEAR = P('#8fd8ff'), TEAR_D = P('#3a8ad0'), WHITE = P('#ffffff');
 const VEIN = P('#ff3a3a'), VEIN_D = P('#8a1020');
@@ -2160,15 +2317,21 @@ export const eyeBox = (R) => Math.ceil(R * 2.7 + 5);
  * gx, gy (googly pupil offset), time, mirror, cheek, main}. ang: fish rotation, R: canvas radius.
  */
 function eyeCore(ex, ey, d, R, e, pxo, pyo, pupR, f, x, y) {
-  if (d > 1 - (R < 3.2 ? 0.75 : 1) / R) return EYE_RING;
-  const dp = Math.hypot(ex - pxo, ey - pyo);
-  const hr = Math.max(0.55 / R, R >= 3.4 ? 0.3 : 0.32);
-  const hx = -0.3 + pxo * 0.3, hy = -0.34 + pyo * 0.3;
-  if (!f.noGlint && Math.hypot(ex - hx, ey - hy) < hr) return WHITE;
-  if (R >= 4 && !f.noGlint && Math.hypot(ex - 0.3 - pxo * 0.3, ey - 0.32 - pyo * 0.3) < 0.55 / R) return P('#e8eef8');
-  if (dp < pupR) return dp > pupR - 0.9 / R && R >= 3.2 ? PUPIL_EDGE : e.pupil;
-  const b = 0.72 + ey * 0.28 - (dp < pupR + 0.95 / R ? 0.22 : 0) - (f.dim || 0) - (ey < -0.48 ? 0.25 : 0);
-  return rampPick(e.realIris, clamp01(b), x, y);
+  // big glossy cartoon eye: ink rim, flat white, a big dark pupil with one or two white shine pixels
+  if (d > 1 - Math.max(1, R * 0.14) / R) return e.ringP || EYE_RING;
+  const qx = ex - pxo, qy = ey - pyo;
+  const dp = Math.hypot(qx, qy);
+  if (dp < pupR) {
+    if (!f.noGlint) {
+      const sr = Math.max(0.6 / R, pupR * 0.33);
+      if (Math.hypot(qx + pupR * 0.34, qy + pupR * 0.36) < sr) return WHITE;
+      if (R >= 4.5 && Math.hypot(qx - pupR * 0.4, qy - pupR * 0.42) < Math.max(0.55 / R, pupR * 0.13)) return WHITE;
+    }
+    if (R >= 5 && qy > pupR * 0.5 && dp > pupR * 0.5) return e.pupil2 || e.pupil;
+    return e.pupil;
+  }
+  if (R >= 5 && ey < -0.78 + 0.4 / R) return SCLERA_TOP;
+  return WHITE;
 }
 
 export function paintEye(buf, glow, cx, cy, c, e, f, ang, R) {
@@ -2363,37 +2526,6 @@ export const mouthBox = (W) => Math.ceil(W * 1.25 + 5);
  * Paint a mouth. Side view: tip at (mx, my), extends backwards (-x local). Front view: centred.
  * m: compiled mouth {type, w, lineP, R}, f: {emotion, open 0..1, time}, ang: rotation, W: canvas length.
  */
-// Realistic side-view jaw: closed = jaw line + lip highlight; open = dropped lower jaw, dark gape.
-function realJaw(c, m, t, ux, uy, W, open, sm, x, y) {
-  if (t < -0.02 || t > 1.04) return 0;
-  const tc = clamp01(t);
-  const jaw = W * (m.sag ?? 0.1) * Math.pow(tc, 1.4) - sm * W * 0.3 * tc * tc;
-  const line = m.lineP;
-  const lips = m.type === 'lips';
-  const lipT = lips ? Math.max(1.5, W * 0.22) : 0;
-  if (open > 0.06) {
-    const low = jaw + open * W * 0.55 * Math.pow(1 - tc, 1.1) + 0.5;
-    if (uy > jaw + 0.5 && uy < low) {
-      if ((m.type === 'fangs' || m.teeth) && (uy - jaw < 1.6 || low - uy < 1.4) && (Math.floor(-ux / Math.max(1.5, W * 0.12)) & 1) === 0) return WHITE;
-      return rampPick(MOUTH_IN, clamp01(0.12 + (uy - jaw) / Math.max(1, low - jaw) * 0.3 + (1 - tc) * 0.25), x, y);
-    }
-    if (uy >= low && uy < low + 1.2 + lipT * 0.6 && tc < 0.96) return lips ? rampPick(m.R, 0.5, x, y) : c.bellyR[2];
-    if (Math.abs(uy - jaw) < 0.6) return line;
-    if (lips && uy < jaw && uy > jaw - lipT && tc < 0.55) return rampPick(m.R, 0.7, x, y);
-    return 0;
-  }
-  if (Math.abs(uy - jaw) < 0.6 && t > 0.03) return line;
-  if (lips && tc < 0.5 && Math.abs(uy - jaw) < lipT) return rampPick(m.R, uy < jaw ? 0.75 : 0.45, x, y);
-  if (m.type === 'fangs') {
-    for (const ft of [0.2, 0.55]) {
-      const fl = Math.max(1.5, W * 0.2) * (ft < 0.3 ? 1 : 0.8);
-      if (Math.abs(t - ft) * W < Math.max(0.6, W * 0.05) * (1 - (uy - jaw) / fl) && uy > jaw && uy < jaw + fl) return WHITE;
-    }
-  }
-  if (uy < jaw - 0.6 && uy > jaw - 1.6 && t > 0.08 && t < 0.7) return c.bodyR[4];
-  return 0;
-}
-
 export function paintMouth(buf, mx, my, c, m, f, ang, W, front = false) {
   if (!m || m.type === 'none' || W < 1) return;
   const em = (c.toon ? EMO[f.emotion] || EMO.neutral : EMO.neutral).mouth || {};
@@ -2428,9 +2560,7 @@ export function paintMouth(buf, mx, my, c, m, f, ang, W, front = false) {
         return yy;
       };
       const type = m.type;
-      if (!front && (type === 'small' || type === 'big' || type === 'fangs' || type === 'lips')) {
-        col = realJaw(c, m, t, ux, uy, W, open, c.toon ? sm * 0.6 : (m.smile || 0) * 0.6, x, y);
-      } else if (type === 'lips') {
+      if (type === 'lips') {
         // pucker / ring lips
         const lx0 = front ? ux : ux + W * 0.05;
         if (open > 0.12 || O) {
@@ -3855,6 +3985,7 @@ export function rasterLayer(c, layer, q) {
     const glow = c.glow ? new PixelBuffer(B.w, B.h) : null;
     K.paint(c, layer, buf, glow, B.ox, B.oy, s, q.ph || 0, q);
     if (VOXM) return rawOut(buf, glow);
+    if (layer === 'body' && !K.noGloss) toonFinish(buf, null, !FRONT_KINDS_2D.has(c.kind));
     finishBuf(c, buf, glow, false);
     return cropOut(buf, glow);
   }
@@ -3869,14 +4000,18 @@ export function rasterLayer(c, layer, q) {
   const glow = c.glow && layer === 'body' ? new PixelBuffer(w, h) : null;
   const ph = q.ph || 0;
   const prm = { still: q.still, inflate: q.inflate, sw: layer === 'body' ? ph : 0, tp: ph, fp: ph, raise: q.raise || 0 };
+  MASK = layer === 'body' && !VOXM ? new Uint8Array(w * h) : null;
   paintGeneric(c, buf, glow, rect.x0, rect.y0, B.ox, B.oy, angle, s, layer, prm, G, rect);
+  const mask = MASK;
+  MASK = null;
   if (VOXM) {
     const raw = rawOut(buf, glow);
     raw.x += rect.x0;
     raw.y += rect.y0;
     return raw;
   }
-  finishBuf(c, buf, glow, false, layer === 'front');
+  if (mask && !c.bubble) toonFinish(buf, mask, true);
+  finishBuf(c, buf, glow, false);
   const out = cropOut(buf, glow);
   out.x += rect.x0;
   out.y += rect.y0;
@@ -3896,13 +4031,17 @@ export function rasterFish(c, p = {}) {
     glow = c.glow ? new PixelBuffer(B.w, B.h) : null;
     const q = { mouth: p.mouth ? 1 : 0, pose: p.expr === 'pose', squash: p.squash || 0, sw: phase };
     K.paint(c, 'all', buf, glow, B.ox, B.oy, s, phase, q);
+    if (!sil && !K.noGloss) toonFinish(buf, null, !FRONT_KINDS_2D.has(c.kind));
     face = K.face(c, phase, s, B.ox, B.oy, q);
   } else {
     const G = geomOf(c, p.inflate || 0);
     B = boundsFor(genericExtent(c, G), angle, s);
     buf = new PixelBuffer(B.w, B.h);
     glow = c.glow ? new PixelBuffer(B.w, B.h) : null;
+    MASK = sil ? null : new Uint8Array(B.w * B.h);
     paintGeneric(c, buf, glow, 0, 0, B.ox, B.oy, angle, s, 'all', { sw: phase, tp: phase, fp: phase, still: p.still, inflate: p.inflate, raise: p.raise || 0 }, G, { x0: 0, y0: 0, x1: B.w, y1: B.h });
+    if (MASK && !c.bubble) toonFinish(buf, MASK, true);
+    MASK = null;
     face = genericFace(c, G, phase, angle, s, B.ox, B.oy, !!p.still);
   }
   if (!sil) paintFaceInto(buf, glow, { ...face, c }, f);

@@ -3,10 +3,13 @@
 //   SKILLS / SKILL_BY_ID   Lab nodes in the old shape ({id, branch, name, cost: aeroNumber, req, pos, effect, desc, icon})
 //   BRANCHES               Lab branches {id: {name, color}}
 //   BASE_STATS             every stat key the game reads (fishing, aquarium, desktop, rods, lab)
-//   computeStats(stateOrOwned) -> stats: BASE_STATS merged with finished Lab nodes. Accepts the whole save
-//                          (preferred: game.recomputeStats passes this.state) or an old {skillId: true} map.
+//   computeStats(stateOrOwned) -> stats: BASE_STATS merged with finished Lab nodes (+ the aquarium tier's extra tank
+//                          space, aquarium/tanks.js tierCapBonus). Accepts the whole save (preferred:
+//                          game.recomputeStats passes this.state) or an old {skillId: true} map.
 //   skillStatus(sk, state, speciesFound) -> {status: 'owned'|'available'|'locked', reason}
 import { LAB_NODES, LAB_BY_ID, BRANCHES as LAB_BRANCHES, MULT_KEYS, ensureLab, computeLabStats, labStatus, unlocked, ROOT_ID } from './lab.js';
+import { tierCapBonus } from '../aquarium/tanks.js';
+import { buildingBonus } from '../build/buildings.js';
 
 export const BRANCHES = Object.fromEntries(Object.entries(LAB_BRANCHES).map(([id, b]) => [id, { name: b.name, color: b.color }]));
 
@@ -14,7 +17,8 @@ export const SKILLS = LAB_NODES.filter((nd) => nd.id !== ROOT_ID).map((nd) => {
   const biome = nd.unlock.find((u) => u.kind === 'biome')?.id;
   return { ...nd, cost: nd.cost.aero || 0, labCost: nd.cost, effect: biome ? { ...nd.effect, unlockBiome: biome } : nd.effect };
 });
-export const SKILL_BY_ID = Object.fromEntries(SKILLS.map((s) => [s.id, s]));
+// the root is not a skill, but old graph walkers look requirements up by id
+export const SKILL_BY_ID = Object.fromEntries([...SKILLS, { ...LAB_BY_ID[ROOT_ID], cost: 0 }].map((s) => [s.id, s]));
 
 export const BASE_STATS = {
   biteWindow: 1, lineStrength: 1, snapGrace: 0.35, slackGrace: 1.6, reelSpeed: 34, staminaDrain: 1,
@@ -37,9 +41,13 @@ export function computeStats(arg = {}) {
     if (MULT_KEYS.has(k)) s[k] = (s[k] ?? 1) * v;
     else s[k] = (s[k] || 0) + v;
   }
+  if (isState(arg)) {
+    try { s.tankCap += tierCapBonus(st) || 0; } catch { /* aquarium tiers not ready */ }
+    try { s.labSpeed *= 1 + (buildingBonus(st, 'researchSpeed') || 0); } catch { /* no buildings */ }
+  }
   // bait / biome unlock sets (old shop + map callers)
-  s.unlockBait = new Set(['bread']);
-  s.unlockBiome = new Set(['shallows']);
+  s.unlockBait = new Set(['bread', 'crumbs']);
+  s.unlockBiome = new Set([...(st.unlockedBiomes || []), 'oscean']);
   const L = ensureLab(st);
   for (const k in L.unlocks) {
     const [kind, id] = k.split(':');

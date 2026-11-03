@@ -8,9 +8,12 @@
 //   state.baits). Decor ids are PROPS ids with a decor field. Cosmetics: cos_<slot>_<id> from WARDROBE.
 //   Packages: pkg_crate, pkg_iron, pkg_golden, pkg_orb (the package objects live in state.inventory.packages).
 // addItem(state, id, qty) / removeItem(state, id, qty) -> bool / countItem(state, id)
-// rollPackage(species, biome, luck = 0) -> null | {tier}      ~8-15% per fish, rarer fish -> better tiers
-// openPackage(pkg) -> [{id, qty}]                              loot ('coins' = coin amount)
-// grantLoot(game, loot) applies loot to the save (coins via game.addCoins).
+// rollPackage(...) -> null       (phase 3: fish no longer carry packages; kept for old callers)
+// rollCrate(tier, biome, luck = 0) -> {aero, items:[{id, qty}]}   loot of a floating box (src/world/floaters.js);
+//                                 tier is a TIER_ORDER id ('crate'|'iron'|'golden'|'orb') or 0..3; luck 0..1 (stats.crateLuck)
+// openPackage(pkg) -> [{id, qty}]                              loot ('coins' = Aero amount) for old inventory packages
+// grantLoot(game, loot, x, y) applies loot to the save: [{id, qty}] ('coins' = Aero) or a rollCrate result.
+// Bait items go to the phase 3 bait store (store/bait.js addBait).
 // drawPackage(ctx, x, y, tier, t, opts) draws the crate hanging under the rope point (x, y).
 // sellValue(state, id) coins for one item (Shell Shack bonus applied).
 
@@ -21,6 +24,7 @@ import { PROPS } from '../gfx/props.js';
 import * as CHAR from '../gfx/character.js';
 import { BUILDINGS, BUILDING_ORDER, DECOR_BUILDS, buildingBonus } from './buildings.js';
 import { packageParts } from './itemart.js';
+import { addBait, ensureBait, BAITS as STORE_BAITS } from '../store/bait.js';
 
 const RVAL = { common: 1, uncommon: 2.5, rare: 6, epic: 18, legendary: 60 };
 
@@ -114,7 +118,7 @@ export const TIERS = {
 };
 export const TIER_ORDER = ['crate', 'iron', 'golden', 'orb'];
 for (const t of TIER_ORDER) add('pkg_' + t, { name: TIERS[t].name, kind: 'package', rarity: TIERS[t].rarity, tier: t, art: 'pkg_' + t, desc: TIERS[t].desc, lore: 'Open it from your inventory.', value: 0 });
-add('coins', { name: 'Coins', kind: 'coins', rarity: 'common', art: 'coins', desc: 'Oxidized Coins.', value: 1 });
+add('coins', { name: 'Aero', kind: 'coins', rarity: 'common', art: 'coins', desc: 'Aero, the bubbly currency.', value: 1 });
 
 // ---------------------------------------------------------------- inventory ops
 
@@ -128,7 +132,11 @@ export function inventory(state) {
 export function addItem(state, id, qty = 1) {
   if (!id || qty <= 0) return;
   const it = ITEMS[id];
-  if (it?.kind === 'bait') { state.baits[id] = (state.baits[id] || 0) + qty; return; }
+  if (it?.kind === 'bait') {
+    if (STORE_BAITS?.[id]) { try { addBait(state, id, qty); return; } catch { /* fall through to the legacy store */ } }
+    (state.baits ||= {})[id] = (state.baits[id] || 0) + qty;
+    return;
+  }
   if (it?.kind === 'package') { for (let i = 0; i < qty; i++) addPackage(state, it.tier); return; }
   if (it?.kind === 'cosmetic' && !ownsWardrobe(state, id)) {
     if (typeof CHAR.grantCosmetic === 'function') CHAR.grantCosmetic(state, it.wardrobe);
@@ -144,9 +152,10 @@ export function addItem(state, id, qty = 1) {
 export function removeItem(state, id, qty = 1) {
   const it = ITEMS[id];
   if (it?.kind === 'bait') {
-    if ((state.baits[id] || 0) < qty) return false;
-    state.baits[id] -= qty;
-    if (state.baits[id] <= 0) delete state.baits[id];
+    const inv = baitInv(state, id);
+    if ((inv[id] || 0) < qty) return false;
+    inv[id] -= qty;
+    if (inv[id] <= 0) delete inv[id];
     return true;
   }
   const inv = inventory(state);
@@ -156,9 +165,15 @@ export function removeItem(state, id, qty = 1) {
   return true;
 }
 
+// the store that holds a bait: phase 3 bait inventory (state.bait.inv) for known bait ids, else legacy state.baits
+function baitInv(state, id) {
+  if (STORE_BAITS?.[id]) { try { return ensureBait(state).inv; } catch { /* legacy */ } }
+  return (state.baits ||= {});
+}
+
 export function countItem(state, id) {
   const it = ITEMS[id];
-  if (it?.kind === 'bait') return state.baits?.[id] || 0;
+  if (it?.kind === 'bait') return baitInv(state, id)[id] || 0;
   if (it?.kind === 'package') return (state.inventory?.packages || []).filter((p) => p.tier === it.tier).length;
   if (it?.kind === 'cosmetic') return (ownsWardrobe(state, id) ? 1 : 0) + (state.inventory?.items?.[id] || 0);
   return state.inventory?.items?.[id] || 0;
@@ -197,15 +212,30 @@ const FISH_TIERS = {
 let packageLuck = 0;
 export function setPackageLuck(v) { packageLuck = Number.isFinite(v) ? Math.max(0, v) : 0; }
 
-export function rollPackage(species, biome, luck = packageLuck) {
-  const r = species?.rarity || 'common';
-  const deep = biome === 'abyss' ? 1.15 : biome === 'junkyard' ? 1.05 : 1;
-  if (!rng.chance((FISH_CHANCE[r] ?? 0.08) * deep * (1 + luck))) return null;
-  const w = FISH_TIERS[r] || FISH_TIERS.common;
-  const shift = biome === 'abyss' ? 1 : 0;
-  const tiers = TIER_ORDER.map((t, i) => [t, w[i] * (i >= 2 ? 1 + shift * 0.5 + luck : 1)]);
-  const tier = rng.weighted(tiers, (x) => x[1])[0];
-  return { tier, species: species?.id || null, biome: biome || null };
+// Fish no longer carry packages (phase 3: floating boxes drift in the water instead, see rollCrate).
+export function rollPackage() { return null; }
+
+const CRATE_DEEP = { oscean: 0, shallows: 0, fjord: 0.04, junkyard: 0.06, metropolis: 0.09, volcano: 0.12, abyss: 0.16 };
+// Loot of a fished-up floating box: Aero plus 1-6 item stacks (materials, bait, decor, blueprints, cosmetics).
+export function rollCrate(tier = 'crate', biome = null, luck = 0) {
+  const t = typeof tier === 'number' ? TIER_ORDER[Math.max(0, Math.min(TIER_ORDER.length - 1, tier | 0))] : TIERS[tier] ? tier : 'crate';
+  luck = Math.max(0, Math.min(1, (Number(luck) || 0) + (CRATE_DEEP[biome] || 0)));
+  const T = TIERS[t];
+  const lucky = (tbl) => Object.fromEntries(Object.entries(tbl).map(([r, w], i, arr) => [r, w * (1 + luck * 1.5 * (i / Math.max(1, arr.length - 1)))]));
+  const n = rng.int(T.rolls[0], T.rolls[1]) + (rng.chance(luck * 0.5) ? 1 : 0);
+  const cats = [...(T.guarantee || [])];
+  while (cats.length < n) cats.push(rng.weighted(Object.entries(T.cat), (e) => e[1])[0]);
+  let aero = Math.round(rng.int(T.coins[0], T.coins[1]) * (1 + luck));
+  const out = new Map();
+  for (const cat of cats) {
+    if (cat === 'coins') { aero += rng.int(T.coins[0], T.coins[1]); continue; }
+    const it = pickOf(cat, pickRarity(lucky(T.rar)), biome) || (cat === 'cosmetic' ? pickOf('decor', pickRarity(lucky(T.rar)), biome) : null);
+    if (!it || it.kind === 'package') { aero += rng.int(T.coins[0], T.coins[1]); continue; }
+    out.set(it.id, (out.get(it.id) || 0) + qtyFor(it, t));
+  }
+  const items = [...out.entries()].map(([id, qty]) => ({ id, qty }));
+  items.sort((a, b) => RARITY_ORDER.indexOf(ITEMS[a.id]?.rarity || 'common') - RARITY_ORDER.indexOf(ITEMS[b.id]?.rarity || 'common'));
+  return { tier: t, aero, items };
 }
 
 function pickRarity(table) {
@@ -260,8 +290,13 @@ export function openPackage(pkg) {
 }
 
 export function grantLoot(game, loot, x, y) {
+  if (!loot) return;
+  if (!Array.isArray(loot)) {
+    if (loot.aero) game.addCoins?.(loot.aero, x, y);
+    loot = loot.items || [];
+  }
   for (const { id, qty } of loot) {
-    if (id === 'coins') game.addCoins?.(qty, x, y);
+    if (id === 'coins' || id === 'aero') game.addCoins?.(qty, x, y);
     else addItem(game.state, id, qty);
   }
 }

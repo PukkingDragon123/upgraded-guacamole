@@ -29160,7 +29160,7 @@ kmlmk..
     const biome = nd.unlock.find((u) => u.kind === "biome")?.id;
     return { ...nd, cost: nd.cost.aero || 0, labCost: nd.cost, effect: biome ? { ...nd.effect, unlockBiome: biome } : nd.effect };
   });
-  var SKILL_BY_ID = Object.fromEntries(SKILLS.map((s) => [s.id, s]));
+  var SKILL_BY_ID = Object.fromEntries([...SKILLS, { ...LAB_BY_ID[ROOT_ID], cost: 0 }].map((s) => [s.id, s]));
   var BASE_STATS = {
     biteWindow: 1,
     lineStrength: 1,

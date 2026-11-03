@@ -1,11 +1,10 @@
 // Registers the building-system panels with the UI manager (only ids not registered yet):
-// 'inventory', 'research', 'package', 'building', 'buildtray'.
+// 'inventory', 'package', 'building', 'buildtray'. (Research moved into The Lab, src/ui/lab.js.)
 import { InventoryPanel } from '../ui/inventory.js';
-import { ResearchPanel } from '../ui/research.js';
 import { PackagePanel } from '../ui/package.js';
 import { BuildTrayPanel, BuildingPanel } from '../ui/buildpanel.js';
 
-export const BUILD_PANELS = [InventoryPanel, ResearchPanel, PackagePanel, BuildingPanel, BuildTrayPanel];
+export const BUILD_PANELS = [InventoryPanel, PackagePanel, BuildingPanel, BuildTrayPanel];
 
 export function registerBuildPanels(ui, force = false) {
   for (const P of BUILD_PANELS) {

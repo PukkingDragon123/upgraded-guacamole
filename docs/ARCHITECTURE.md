@@ -191,6 +191,13 @@ seabed, world space), `drawUi(ctx)`, `hit(wx, wy)`, `active` (build mode), `togg
   parody names and ORIGINAL designs only: no copied meme images, characters, logos or exact trademarks.
 - **The Pac-Man-style fish** is a unique, polished pixel-art chomper of our own design (not a 1:1 copy): it
   moves like the arcade classic (straight runs, crisp 90-degree turns, chomping mouth, gobbling pellet bubbles).
+- **Reference look (user images, view with Read):** `/tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/images/6.jpg`
+  (absurd meme collage: a fish standing in white high-top sneakers on a glossy eco background of big green leaves, sun
+  flare, bubbles, water splashes), `7.jpg` (the classic moving-picture aquarium lamp: silver plastic frame, scrolling
+  illustrated reef panorama, vivid tropical fish), `8.jpg` (eco Aero wallpaper: curved grass horizon, glass city inside
+  a water bubble, a green glass globe, sun rays, white arcs, leaves, splash). Saturated sky blue + leaf green + white,
+  bloom and lens flare, glossy leaves framing the screen, bubbles everywhere, playful meme absurdity. No cigarettes or
+  real brand logos (the sneakers are generic white high-tops).
 - World, buildings, boats and characters stay voxel; characters and NPCs also get cute cartoon eyes, never realistic ones.
 - **Less text, more visuals.** Prefer icons, motion, particles and colour over labels and sentences.
 - **Currency** is **Aero** (`CURRENCY` in `src/ui/aero.js`). `state.coins` still holds the amount; every

@@ -92,6 +92,18 @@ function terrain(W, H, s, seed) {
     hgt[z * nx + x] = h + fbm2(x * 0.05, z * 0.07, 3, seed + 3) * 1.6;
   }
   const at = (x, z) => hgt[clamp(z, 0, nz - 1) * nx + clamp(x, 0, nx - 1)];
+  // lowest neighbour top (x +-2, z -2..+3) per column: how deep each column must be filled
+  const lowX = new Int16Array(nx * nz), low = new Int16Array(nx * nz);
+  for (let z = 0; z < nz; z++) for (let x = 0; x < nx; x++) {
+    let v = 1e4;
+    for (let i = -2; i <= 2; i++) v = Math.min(v, Math.round(at(x + i, z)));
+    lowX[z * nx + x] = v;
+  }
+  for (let z = 0; z < nz; z++) for (let x = 0; x < nx; x++) {
+    let v = 1e4;
+    for (let k = -2; k <= 3; k++) v = Math.min(v, lowX[clamp(z + k, 0, nz - 1) * nx + x]);
+    low[z * nx + x] = v;
+  }
   // palette: grass shades x haze levels (aerial perspective toward the back)
   const HZ = 4;
   const pal = [];
@@ -109,9 +121,11 @@ function terrain(W, H, s, seed) {
     b += (h / 56) * 0.32 + fbm2(x * 0.06, z * 0.09, 2, seed + 9) * 0.18 - 0.12; // sunlit crowns, soft patches
     const shadeI = clamp(Math.round(b * (GRASS.length - 1) + (bayer(x, z) - 0.5) * 1.1), 0, GRASS.length - 1);
     const hz = clamp(Math.round((1 - z / 34) * (HZ - 1) + (bayer(x + 2, z) - 0.5) * 0.8), 0, HZ - 1);
-    const c = pal[hz][shadeI];
-    for (let y = Math.max(0, top - 3); y < top && y < ny; y++) m.set(x, y, z, c);
-    for (let y = 0; y < top - 3 && y < ny; y++) m.set(x, y, z, pal[hz][Math.max(0, shadeI - 2)]);
+    const c = pal[hz][shadeI], cd = pal[hz][Math.max(0, shadeI - 2)];
+    // only a thick visible shell (tops + front faces, plus the renderer's radius-2 normal kernel): the camera
+    // looks from the front and above, so interiors deeper than that are never seen (much faster to build)
+    const lo = z >= nz - 2 ? 0 : Math.max(0, low[z * nx + x] - 3);
+    for (let y = Math.min(top, ny) - 1; y >= lo; y--) m.set(x, y, z, y >= top - 3 ? c : cd);
     if (z > nz * 0.62 && top + 1 < ny && hash2(x, z, seed) < 0.0018) m.set(x, top, z, flowers[Math.floor(hash2(z, x, 3) * 3)]);
   }
   const rr = renderVoxels(m, { scale: s, yaw: 0, pitch: 27, outline: false, depthLines: false, edges: 0.35, sideEdges: 0, ao: 0.55, jitter: 0.04, light: { top: 3.15, lit: 2.7, dark: 2.2, bottom: 1.5 } });

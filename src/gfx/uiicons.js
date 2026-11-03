@@ -9,6 +9,7 @@ import { makeCanvas } from '../core/canvas.js';
 import { PixelBuffer } from './pixel.js';
 import { pack, unpack, shade, mix, rgbToHex } from '../core/color.js';
 import { registerInlineIcon } from './font.js';
+import { drawAeroCoin } from '../ui/aero.js';
 
 const PAL = {
   h: '#ffffff', w: '#fff8ea', l: '#d3dae6', g: '#97a2b8', d: '#5d6781', x: '#2b2940',
@@ -26,7 +27,7 @@ const PAL = {
 // translucent fills (alpha 0-255)
 const PAL_A = { q: ['#c8f4ff', 70], Q: ['#e8fcff', 150] };
 
-const OUTLINE = '#1a1224';
+const OUTLINE = '#0a2240';
 
 const ICONS = {
   coin: [
@@ -743,14 +744,24 @@ function buildReelCursor() {
   return buf.toCanvas();
 }
 
+// The currency icon is the glossy Aero drop ({coin} / {aero} inline, coin_big / aero_big for headlines).
+const AERO_ICONS = { coin: 3.5, aero: 3.5, coin_big: 4.5, aero_big: 4.5 };
+function buildAero(r) {
+  const S = Math.ceil(r * 2) + 2;
+  const c = makeCanvas(S, S);
+  drawAeroCoin(c.getContext('2d'), S / 2, S / 2, r, 0);
+  return c;
+}
+
 const cache = new Map();
-export const UI_ICON_NAMES = Object.keys(ICONS);
+export const UI_ICON_NAMES = [...new Set([...Object.keys(ICONS), 'aero', 'aero_big'])];
 export const CURSOR_NAMES = [...Object.keys(CURSORS), 'cursor_reel'];
 
 export function getUiIcon(name) {
   let c = cache.get(name);
   if (!c) {
-    if (ICONS[name]) c = build(ICONS[name]);
+    if (AERO_ICONS[name]) c = buildAero(AERO_ICONS[name]);
+    else if (ICONS[name]) c = build(ICONS[name]);
     else if (CURSORS[name]) c = build(CURSORS[name], false);
     else if (name === 'cursor_reel') c = buildReelCursor();
     else c = makeCanvas(9, 9);

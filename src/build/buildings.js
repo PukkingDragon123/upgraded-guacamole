@@ -1,11 +1,12 @@
 // Seabed buildings: definitions, upgrade levels, production timers, the Treasure Vault, Bait Workshop
 // recipes and the bonus hook the orchestrator reads.
 //
-// BUILDINGS[id] = {name, rarity, unique, desc, lore, cost: {coins, items}, action, bonus: {key: [lv1, lv2, lv3]},
+// BUILDINGS[id] = {name, rarity, unique, desc, lore, cost: {coins (Aero), items} (crafting cost of its blueprint in the Lab),
+//                  action, bonus: {key: [lv1, lv2, lv3]},
 //                  produce?: {every (s), cap: [..], give: [{id, qty, w}] | coins: [min, max]}, upgrades: [cost lv2, cost lv3]}
 // DECOR_BUILDS[id] = seabed decor (a PROPS id) placed from a decor blueprint.
 // buildingBonus(state, key) -> number (sum over placed buildings at their level + research perks; 0 when none).
-//   Keys: rarity, nightRarity, coinMul, baitRadius, luck (package chance), shiny, mutation, sellMul,
+//   Keys: rarity, nightRarity, coinMul, baitRadius, luck (crate luck), shiny, mutation, sellMul,
 //         eggChance, baitSave, researchSpeed, light (lighthouse beam strength). Multiplicative keys are
 //         read as (1 + value).
 // Placed record (state.buildings[]): {uid, id, x, z, flip, lvl, built, prod, on}.
@@ -19,8 +20,8 @@ export const ZMIN = 0.04, ZMAX = 1.3;
 export const BUILDINGS = {
   research_lab: {
     name: 'Research Lab', rarity: 'common', unique: true, size: 1,
-    desc: 'A cosy house of science with a rooftop antenna. Enter to research blueprints, baits, upgrades and perks.',
-    lore: 'Home of Professor Bubbles, who once proved fish can count (to three).',
+    desc: 'A cosy house of science with a rooftop antenna. A door into The Lab, and research runs faster.',
+    lore: 'Professor Fizz\'s seaside office. He once proved fish can count (to three).',
     cost: { coins: 30, items: { driftwood: 6, kelp_fibre: 4, sea_glass: 2 } },
     action: 'research', bonus: { researchSpeed: [0, 0.15, 0.3] },
     upgrades: [{ coins: 400, items: { driftwood: 8, gear: 3, sea_glass: 4 } }, { coins: 1400, items: { circuit_board: 3, ancient_stone: 3, pearl: 2 } }],
@@ -123,10 +124,10 @@ export function buildingDef(id) {
 
 export function levelOf(b) { return Math.max(1, Math.min(MAX_LEVEL, b.lvl || 1)); }
 
-// Max level the research unlocks allow (eng1 -> 2, eng2 -> 3).
+// Max level the Lab unlocks allow (features eng1 -> 2, eng2 -> 3; old research saves count too).
 export function maxLevelFor(state) {
-  const d = state.research?.done || {};
-  return d.eng2 ? 3 : d.eng1 ? 2 : 1;
+  const d = state.research?.done || {}, u = state.lab?.unlocks || {};
+  return d.eng2 || u['feature:eng2'] ? 3 : d.eng1 || u['feature:eng1'] ? 2 : 1;
 }
 
 export function upgradeCost(b) {
