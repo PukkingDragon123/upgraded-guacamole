@@ -16,7 +16,7 @@
 import { TAU, clamp, clamp01, damp, lerp, bayer } from '../core/math.js';
 import { rgba } from '../core/color.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
-import { glowSprite, pixelLine, drawBolt, boltPoints } from '../gfx/particles.js';
+import { glowSprite, pixelLine, drawBolt, boltPoints, thickRingSprite } from '../gfx/particles.js';
 
 // ------------------------------------------------------------------ pixel painting helpers
 function paint(w, h, fn) {
@@ -447,6 +447,13 @@ export class Reel {
     ctx.drawImage(glowSprite(gr, glowCol), cx - gr, cy - gr);
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
+    // a solid coloured halo ring too, so the state reads on bright skies
+    if (gA > 0.3) {
+      const hr = thickRingSprite(R + 17, 4, glowCol, 1);
+      ctx.globalAlpha = Math.min(0.85, gA);
+      ctx.drawImage(hr, cx - Math.floor(hr.width / 2), cy - Math.floor(hr.height / 2));
+      ctx.globalAlpha = 1;
+    }
     // ---- foot (reel seat) connecting to the rod
     this.drawFoot(ctx, cx, cy, R);
     // ---- bail, back half (open: flipped behind the reel)

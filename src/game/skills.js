@@ -17,8 +17,7 @@ export const SKILLS = LAB_NODES.filter((nd) => nd.id !== ROOT_ID).map((nd) => {
   const biome = nd.unlock.find((u) => u.kind === 'biome')?.id;
   return { ...nd, cost: nd.cost.aero || 0, labCost: nd.cost, effect: biome ? { ...nd.effect, unlockBiome: biome } : nd.effect };
 });
-// the root is not a skill, but old graph walkers look requirements up by id
-export const SKILL_BY_ID = Object.fromEntries([...SKILLS, { ...LAB_BY_ID[ROOT_ID], cost: 0 }].map((s) => [s.id, s]));
+export const SKILL_BY_ID = Object.fromEntries(SKILLS.map((s) => [s.id, s]));
 
 export const BASE_STATS = {
   biteWindow: 1, lineStrength: 1, snapGrace: 0.35, slackGrace: 1.6, reelSpeed: 34, staminaDrain: 1,

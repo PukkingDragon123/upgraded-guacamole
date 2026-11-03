@@ -1427,6 +1427,7 @@ export class Aquarium {
     if (this.visibleKey !== 'window' || this.view?.key !== 'window') return;
     if (this.zoom) { this.drawZoom(ctx); return; }
     const r = this.windowRect();
+    if (!r) return; // closed / switched view since the last update
     const off = this.slideOff();
     const a = clamp01(this.winAnim * 1.6);
     if (a < 1) ctx.globalAlpha = a;

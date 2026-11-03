@@ -19,6 +19,7 @@ import * as BAIT from '../store/bait.js';
 import * as LAB from './lab.js';
 import * as ITEMS from '../build/items.js';
 import * as WORLD from '../world/biomes/index.js';
+import * as STORE from '../store/index.js';
 
 const START_BIOME = 'oscean';
 const ALIAS = { skills: 'lab', tank: 'aquarium', store: 'appsea', shop: 'appsea' };
@@ -34,7 +35,8 @@ const SHOWN = {
 // Bubble contents: very short, icon-led ({name} = inline UI icon).
 const SAY = {
   appsea: ['{mouse_l} AppSea'],
-  download: ['Free bait!', '{mouse_l} Lite = 0'],
+  download: ['Free bait!', '{mouse_l} Lite'],
+  downloading: ['{clock} 56k...', 'hehe'],
   cast: ['{hook} into the water', '{mouse_l} jiggle'],
   wait: ['Wait for {exclaim}'],
   bite: ['{mouse_l} NOW!'],
@@ -155,6 +157,8 @@ export class Tutorial {
       case 'download':
         this.say('download');
         this.baitBase = this.baitCount();
+        // focus the store on a tiny free app (its Lite pack is free bait)
+        try { if (STORE.TUTORIAL_APP && typeof STORE.openStore === 'function') STORE.openStore(g, { highlight: STORE.TUTORIAL_APP }); } catch (e) { /* the store draws its own highlight */ }
         break;
       case 'cast':
         this.castBase = st.stats?.casts || 0;
@@ -270,10 +274,13 @@ export class Tutorial {
         if (this.storeOpen()) this.go('download');
         else if (this.baitCount() > this.baitBase) this.go('cast');
         break;
-      case 'download':
+      case 'download': {
+        const busy = (g.state.apps?.downloads || []).length > 0;
         if (this.baitCount() > this.baitBase) this.go('cast');
+        else if (busy) this.say('downloading', { silent: true });
         else if (this.t > 1.5 && !this.storeOpen()) this.go('appsea');
         break;
+      }
       case 'cast':
         if ((g.state.stats?.casts || 0) > this.castBase || (f && f.state !== 'idle')) this.go('wait');
         break;
@@ -343,8 +350,8 @@ export class Tutorial {
     const { W, H } = this.game.screen;
     if (tg.rect) {
       const r = tg.rect;
-      const right = tg.side !== 'left' && r.x + r.w + 120 < W;
-      return [right ? r.x + r.w + 44 : r.x - 40, clamp(r.y + r.h * 0.55, 70, H - 60)];
+      const right = tg.side !== 'left' && r.x + r.w + 140 < W;
+      return [right ? r.x + r.w + 62 : r.x - 44, clamp(r.y + r.h * 0.6, 84, H - 60)];
     }
     if (tg.point) return [clamp(tg.point[0] - 120, 50, W - 50), clamp(tg.point[1] - 70, 80, H - 60)];
     if (tg.top) return [W * 0.5 - 150, 86];
@@ -361,7 +368,7 @@ export class Tutorial {
     const tg = this.target();
     if (this.step === 'reveal') return;
     // pointer: a pulsing glossy ring and a bobbing arrow
-    if (tg.rect && !tg.noArrow) this.drawPointer(ctx, tg.rect.x + tg.rect.w / 2, tg.rect.y + tg.rect.h / 2, Math.max(tg.rect.w, tg.rect.h) * 0.6, true);
+    if (tg.rect && !tg.noArrow) this.drawPointer(ctx, tg.rect.x + tg.rect.w / 2, tg.rect.y + tg.rect.h / 2, Math.max(tg.rect.w, tg.rect.h) * 0.6, tg.rect.y < 50 ? 'side' : true);
     else if (tg.point) this.drawPointer(ctx, tg.point[0], tg.point[1], tg.small ? 10 : 18, !tg.small);
     // Goldie swims to her spot
     const [sx, sy] = this.guideSpot(tg);
@@ -376,12 +383,12 @@ export class Tutorial {
     if (a <= 0.01) return;
     ctx.save();
     ctx.globalAlpha = a;
-    drawAeroGlow(ctx, G.x, G.y, 26, '#bff4ff', 0.35);
-    drawAeroBubble(ctx, G.x, G.y, 21, 0.85);
+    drawAeroGlow(ctx, G.x, G.y, 32, '#bff4ff', 0.4);
+    drawAeroBubble(ctx, G.x, G.y, 26, 0.9);
     try {
-      drawGoldie(ctx, G.x, G.y + 2, { scale: 0.8, base: 1, facing: G.facing, t: g.time, mood: this.step === 'done' || this.step === 'tank' ? 'excited' : 'happy', talk: G.talk > 0 ? 0.5 + 0.5 * Math.sin(g.time * 18) : 0, lookAt: tg.rect ? [tg.rect.x + tg.rect.w / 2, tg.rect.y + tg.rect.h / 2] : tg.point || null, id: 'guide' });
+      drawGoldie(ctx, G.x, G.y + 2, { scale: 1, base: 1, facing: G.facing, t: g.time, mood: this.step === 'done' || this.step === 'tank' ? 'excited' : 'happy', talk: G.talk > 0 ? 0.5 + 0.5 * Math.sin(g.time * 18) : 0, lookAt: tg.rect ? [tg.rect.x + tg.rect.w / 2, tg.rect.y + tg.rect.h / 2] : tg.point || null, id: 'guide' });
     } catch (e) { /* optional */ }
-    if (G.say) this.drawSay(ctx, G.x, G.y - 26, G.say);
+    if (G.say) this.drawSay(ctx, G.x, G.y - 30, G.say);
     ctx.restore();
     if (Math.random() < 0.04) g.particles?.aeroBubbles?.(G.x + 8, G.y - 16, 1, { sizes: [2, 2, 3], speed: [12, 30], layer: 'ui' });
   }
@@ -397,7 +404,10 @@ export class Tutorial {
     ctx.strokeStyle = '#7ff0ff'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.arc(Math.round(x), Math.round(y), r + k * 14 + 2, 0, TAU); ctx.stroke();
     ctx.restore();
-    if (arrow) {
+    if (arrow === 'side') {
+      const a = getUiIcon('arrow_l');
+      if (a) ctx.drawImage(a, Math.round(x + r + 8 + Math.sin(t * 6) * 3), Math.round(y - a.height / 2));
+    } else if (arrow) {
       const a = getUiIcon('arrow_d');
       if (a) ctx.drawImage(a, Math.round(x - a.width / 2), Math.round(y - r - 14 - a.height + Math.sin(t * 6) * 3));
     }

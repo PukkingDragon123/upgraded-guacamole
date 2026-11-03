@@ -13,7 +13,7 @@ import {
 } from '../game/lab.js';
 import { ROD_BY_ID } from '../game/rods.js';
 import { RECIPE_BY_ID } from '../build/crafting.js';
-import { ecoOrb, drawTube, drawSplash, drawRays, roundRectPath } from './labart.js';
+import { ecoOrb, drawTube, drawSplash, drawRays, drawFlask, roundRectPath } from './labart.js';
 import { icon, anyIcon, glassCard, pill, costTiles, costTilesHeight, pedestal, chip, orbIcon, INK, INK_SOFT, OK, BAD } from './labkit.js';
 
 const MAX_R = LAB_RING(9) + 40;
@@ -222,6 +222,7 @@ export class LabTree {
   // Branch name pills at the tips of the star; when a tip is off screen the pill waits at the edge of the dome
   // (pointing the way) and a click glides the camera there.
   drawBranchLabels(ctx, ui, view) {
+    const placed = [];
     for (const b of BRANCH_ORDER) {
       const B = BRANCHES[b];
       const a = (B.angle * Math.PI) / 180;
@@ -234,6 +235,9 @@ export class LabTree {
       const off = x < view.x + mx || x > view.x + view.w - mx || y < view.y + my || y > view.y + view.h - my - 30;
       x = clamp(x, view.x + mx, view.x + view.w - mx);
       y = clamp(y, view.y + my, view.y + view.h - my - 30);
+      // two pills parked in the same corner stack instead of overlapping
+      for (let k = 0; k < 4 && placed.some((p) => Math.abs(p.x - x) < (p.w + w) / 2 + 2 && Math.abs(p.y - y) < h + 2); k++) y += y > view.y + view.h / 2 ? -(h + 3) : h + 3;
+      placed.push({ x, y, w });
       const lx = Math.round(x - w / 2), ly = Math.round(y - h / 2);
       const rr = { x: lx, y: ly, w, h };
       const hov = ui.hover(rr);
@@ -402,7 +406,7 @@ export function drawNodeCard(ctx, ui, panel, r, id) {
   if (status === 'done') drawRays(ctx, cx, oy, 54, t, 0.45, 12);
   drawAeroGlow(ctx, cx, oy, 40, mix(col, '#ffffff', 0.5), 0.5);
   orbIcon(ctx, nd.icon, cx, oy + Math.sin(t * 2) * 1.5, 24, col, status === 'locked' ? 'locked' : status === 'done' ? 'done' : 'open', status === 'locked' ? 0.6 : 1);
-  let y = oy + 36;
+  let y = oy + 40;
   for (const l of wrapText(nd.name, r.w - 16).slice(0, 2)) { drawText(ctx, l, cx, y, { align: 'center', color: INK, shadow: '#ffffff' }); y += 11; }
   drawText(ctx, (BRANCHES[nd.branch]?.name || '').toUpperCase() + '  ' + 'I'.repeat(Math.min(9, nd.tier)), cx, y, { font: 'small', align: 'center', color: shade(col, -0.35) });
   y += 10;
@@ -477,6 +481,15 @@ export function drawNodeCard(ctx, ui, panel, r, id) {
   }
   if (status === 'researching') {
     const rem = labRemaining(st, id), k = labProgress(st, id);
+    // a big bubbling flask brewing the research
+    const fy = bottom - 46, room = fy - (y + 40);
+    if (room > 40) {
+      const fh = Math.min(70, room), fw = Math.round(fh * 0.8);
+      drawAeroGlow(ctx, cx, fy - fh * 0.35, fw * 1.1, mix(col, '#ffffff', 0.3), 0.5 + 0.15 * Math.sin(t * 4));
+      drawFlask(ctx, cx, fy, { t, level: 0.2 + 0.75 * k, color: mix(col, '#4fd2ff', 0.3), w: fw, h: fh, glow: 1, active: true });
+      const ic = icon(nd.icon, 20);
+      if (ic) ctx.drawImage(ic, Math.round(cx - ic.width / 2), Math.round(fy - fh * 0.32 - ic.height / 2 + Math.sin(t * 3) * 2));
+    }
     const ci = getUiIcon('clock');
     if (ci) ctx.drawImage(ci, r.x + 10, bottom - 34);
     drawText(ctx, fmtTime(rem), r.x + 24, bottom - 32, { color: INK });

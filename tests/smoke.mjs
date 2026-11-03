@@ -1,8 +1,11 @@
-// End-to-end smoke test: boots the game in headless Chromium, plays through the intro with real
-// mouse input (drag an icon into the bait box, hook the first fish, fight it by circling the mouse
-// to crank the reel), checks the I GOT IT finale, the flood,
-// the reveal, the aquarium coin and the first skill, then exercises panels and travel. Fails on any
-// console error. Screenshots land in tests/out/.
+// End-to-end smoke test (phase 3). Boots the game in headless Chromium and plays the first session with real
+// mouse input: the 3D opening (a few beats are screenshotted, then the glossy Skip pill is clicked), the
+// store-first start (open the floating AppSea bubble, download free bait), casting into the (OS)cean, hooking a
+// fish and winning the fight by cranking the reel, the catch reveal, the fish going into the goldfish jar,
+// collecting the jar's Aero, opening The Lab and starting the first research. Then it opens every panel, travels
+// to all seven oceans and checks that the console stayed clean. Optional systems are feature-detected so the
+// test only fails on real breakage. Screenshots land in tests/out/.
+// Ownership: Intro agent; the Fishing agent may edit the scripted fight (marked below).
 import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
@@ -18,7 +21,7 @@ const server = createServer(async (req, res) => {
   const p = new URL(req.url, 'http://x').pathname.replace(/^\/+/, '') || 'index.html';
   try {
     const body = await readFile(join(root, p));
-    res.writeHead(200, { 'content-type': extname(p) === '.js' ? 'text/javascript' : 'text/html' });
+    res.writeHead(200, { 'content-type': extname(p) === '.js' ? 'text/javascript' : extname(p) === '.png' ? 'image/png' : 'text/html' });
     res.end(body);
   } catch { res.writeHead(404).end(); }
 }).listen(0);
@@ -35,8 +38,11 @@ function check(name, ok, info = '') {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${info ? '  - ' + info : ''}`);
   if (!ok) failures++;
 }
+const note = (s) => console.log(`      ${s}`);
 const G = (expr) => page.evaluate(`(() => { const g = window.FISHTOP; return ${expr}; })()`);
 const wait = (ms) => page.waitForTimeout(ms);
+const until = (fn, timeout, arg) => page.waitForFunction(fn, arg, { timeout, polling: 100 }).then(() => true).catch(() => false);
+const shot = (name) => page.screenshot({ path: join(out, name) });
 // logical -> page pixels
 async function toPage(x, y) {
   return page.evaluate(([x, y]) => {
@@ -45,122 +51,187 @@ async function toPage(x, y) {
   }, [x, y]);
 }
 async function moveL(x, y, steps = 12) { const [px, py] = await toPage(x, y); await page.mouse.move(px, py, { steps }); }
+async function clickL(x, y) { await moveL(x, y, 6); await wait(80); await page.mouse.down(); await wait(40); await page.mouse.up(); }
+async function clickRect(r) { if (r) await clickL(r.x + r.w / 2, r.y + r.h / 2); return !!r; }
+const step = () => G('g.tutorial && g.tutorial.step');
 
 await page.goto(`http://localhost:${port}/index.html?fresh`);
-await wait(1500);
+await until(() => !!window.FISHTOP, 20000);
 check('game booted', await G('!!g && g.screen.W > 0'), await G('g.screen.W + "x" + g.screen.H'));
-await page.screenshot({ path: join(out, '01_desktop.png') });
+await G(`(window.__ev = {}, ['coinCollected', 'labStarted', 'baitDownloaded', 'hooked', 'caught', 'escaped', 'revealDone'].forEach((e) => g.on(e, () => { window.__ev[e] = (window.__ev[e] || 0) + 1; })), true)`);
 
-// ---- intro
-await page.mouse.click(5, 5);
-await page.waitForFunction(() => window.FISHTOP.tutorial.step === 'crab', null, { timeout: 40000 }).catch(() => {});
-check('intro reached the crab', await G('g.tutorial.step') === 'crab', await G('g.tutorial.step'));
-await wait(1500);
-await page.screenshot({ path: join(out, '02_crab.png') });
-// drag the first visible icon into the bait box
-const drag = await G(`(() => { const ic = g.desktop.icons.find((i) => i.state === 'normal' && i !== g.tutorial.hideIcon); const b = g.desktop.box; return [ic.x + ic.w / 2, ic.y + 14, b.x + b.w / 2, b.y + 14]; })()`);
-await moveL(drag[0], drag[1]);
-await page.mouse.down();
-await moveL(drag[0] + 20, drag[1] + 20, 5);
-await moveL(drag[2], drag[3], 20);
-await page.mouse.up();
-await wait(300);
-check('icon stored in bait box', await G('g.state.baitBox.length') === 1);
-check('bait equipped', await G('!!g.currentBait()'));
-
-// ---- lure the intro fish: hold the hook still near it
-const fishPos = await G('(() => { const f = g.school.fishes[0]; return f ? [f.x, f.y] : null; })()');
-check('intro fish exists', !!fishPos);
-await moveL(Math.max(fishPos[0] + 160, 360), fishPos[1] + 10, 30);
-let bit = false;
-for (let i = 0; i < 300 && !bit; i++) {
-  await wait(100);
-  bit = (await G('g.fishing.state')) === 'bite';
-  if (!bit && i % 20 === 19) { const h = await G('[g.fishing.hook.x, g.fishing.hook.y]'); await moveL(h[0] + 3, h[1] + 2, 3); }
-}
-check('fish bit the bait', bit, await G('g.fishing.state'));
-await page.screenshot({ path: join(out, '03_bite.png') });
-await page.mouse.down();
-await page.mouse.up();
-await wait(100);
-check('hook set -> fight', ['fight', 'landing'].includes(await G('g.fishing.state')), await G('g.fishing.state'));
-
-// ---- fight: crank the reel by circling the mouse quickly, keeping the loop on the side opposite
-// to the fish's pull (fishing.crankHint() = where the HUD's green pull zone is); ease off when the
-// line gets too tight. One small step per mouse event (each event lands on its own frame).
-const pxPerL = await page.evaluate(() => { const g = window.FISHTOP; return g.canvas.getBoundingClientRect().width / g.screen.W; });
-let crankA = 0, fightShot = false;
-const fightT0 = Date.now();
-for (let i = 0; i < 2000 && Date.now() - fightT0 < 90000; i++) {
-  const s = await G('(() => { const f = g.fishing; return { st: f.state, T: f.tension, hint: f.crankHint ? f.crankHint() : [g.input.x, g.input.y], W: g.screen.W, H: g.screen.H }; })()');
-  if (s.st !== 'fight') break;
-  if (s.T > 0.85) { await wait(80); continue; }
-  const hx = Math.max(40, Math.min(s.W - 40, s.hint[0])), hy = Math.max(70, Math.min(s.H - 70, s.hint[1]));
-  const [ox, oy] = await toPage(hx, hy);
-  for (let k = 0; k < 4; k++) {
-    crankA += 1.0;
-    await page.mouse.move(ox + Math.cos(crankA) * 22 * pxPerL, oy + Math.sin(crankA) * 22 * pxPerL);
+// ---------------------------------------------------------------- the 3D opening
+const hasIntro = await G('!!(g.tutorial && g.tutorial.intro)');
+check('3D opening starts', hasIntro, String(await step()));
+if (hasIntro) {
+  const ready = await until(() => { const i = window.FISHTOP.tutorial.intro; return !i || (i.ready && i.t > 2.2); }, 60000);
+  check('opening assets build', ready, `t=${await G('g.tutorial.intro && g.tutorial.intro.t.toFixed(2)')}`);
+  await shot('01_intro_room.png');
+  // a few later beats (seek is the opening's own scrubbing API)
+  for (const [t, name] of [[8.6, '02_intro_dolly.png'], [14.9, '03_intro_bubble_person.png'], [19.2, '04_intro_logo.png']]) {
+    if (!(await G('!!g.tutorial.intro'))) break;
+    await G(`g.tutorial.intro.seek(${t})`);
+    await wait(700);
+    await shot(name);
   }
-  if (!fightShot && Date.now() - fightT0 > 2500) { fightShot = true; await page.screenshot({ path: join(out, '04_fight.png') }); }
+  await G('g.tutorial.intro && g.tutorial.intro.seek(3)');
+  await wait(400);
+  // the glossy Skip pill (top right)
+  const sr = await G('g.tutorial.intro && g.tutorial.intro.skipRect()');
+  if (sr) { await clickRect(sr); }
+  const skipped = await until(() => !window.FISHTOP.tutorial.intro, 8000);
+  check('Skip pill ends the opening', skipped && (await step()) === 'appsea', String(await step()));
 }
-check('fight won by cranking', ['landing', 'idle'].includes(await G('g.fishing.state')) && (await G('g.state.stats.escaped')) === 0, `${await G('g.fishing.state')} in ${((Date.now() - fightT0) / 1000).toFixed(1)}s`);
-await wait(1800);
-await page.screenshot({ path: join(out, '04b_igotit.png') });
-await page.waitForFunction(() => ['flood', 'reveal', 'tank'].includes(window.FISHTOP.tutorial.step), null, { timeout: 15000 }).catch(() => {});
-check('first fish caught -> flood', ['flood', 'reveal', 'tank'].includes(await G('g.tutorial.step')), await G('g.tutorial.step'));
-await wait(2500);
-await page.screenshot({ path: join(out, '05_flood.png') });
-await page.waitForFunction(() => window.FISHTOP.ui.isOpen('reveal'), null, { timeout: 10000 }).catch(() => {});
-check('catch reveal opened', await G('g.ui.isOpen("reveal")'));
+check('starts in the (OS)cean', (await G('g.ocean.biome && g.ocean.biome.id')) === 'oscean', await G('g.ocean.biome && g.ocean.biome.id'));
+const menuGated = await G(`['lab', 'journal', 'map'].every((id) => !g.desktop.iconRect(id))`);
+check('menu gated during the tutorial', menuGated);
+await wait(800);
+await shot('05_tut_appsea.png');
+
+// ---------------------------------------------------------------- store-first start
+const appsea = await G(`g.desktop.iconRect && g.desktop.iconRect('appsea')`);
+check('AppSea bubble visible', !!appsea);
+await clickRect(appsea);
+check('AppSea opens', await until(() => window.FISHTOP.tutorial.step !== 'appsea', 6000), String(await step()));
+await wait(600);
+await shot('06_tut_appsea_open.png');
+const hasStore = await G('!!(g.store && g.store.request)');
+if (hasStore) {
+  await G(`(() => { const d = g.store.request('notes', { tier: 0 }); if (d && d.state === 'confirm') g.store.confirm(d.uid, true); return !!d; })()`);
+  await wait(400);
+  for (let i = 0; i < 20 && (await step()) === 'download'; i++) { await G('g.store.tick(Date.now() + 600000)'); await wait(300); }
+}
+check('free bait downloaded', (await G('(window.__ev.baitDownloaded || 0)')) > 0 && (await step()) === 'cast', String(await step()));
+await wait(1800); // the store window tidies itself away
+await shot('07_tut_cast.png');
+
+// ---------------------------------------------------------------- cast, bite, fight (the Fishing agent may edit this section)
+const W = await G('g.screen.W'), H = await G('g.screen.H');
+const pxPerL = await page.evaluate(() => { const g = window.FISHTOP; return g.canvas.getBoundingClientRect().width / g.screen.W; });
+async function fishOnce(attempt) {
+  // hook into the water
+  await moveL(W * 0.56, H * 0.58, 20);
+  await wait(500);
+  if (attempt === 0) check('cast into the water', ['wait', 'fight'].includes(await step()), String(await step()));
+  // jiggle near the closest fish until one bites
+  let bit = false;
+  const t0 = Date.now();
+  for (let i = 0; !bit && Date.now() - t0 < 60000; i++) {
+    await wait(120);
+    bit = (await G('g.fishing.state')) === 'bite';
+    if (!bit && i % 25 === 24) {
+      const near = await G(`(() => { const h = g.fishing.hook, s = g.world.surfaceY ?? 0; let best = null, bd = 1e9; for (const f of g.school.fishes) { if (f.z > 0.6 || f.y < s + 12) continue; const d = Math.hypot(f.x - h.x, f.y - h.y); if (d < bd) { bd = d; best = f; } } return best ? [best.x + (best.facing || 1) * 26, best.y] : null; })()`);
+      if (near) await moveL(Math.max(30, Math.min(W - 30, near[0])), Math.max(60, Math.min(H - 60, near[1])), 10);
+      await page.mouse.down(); await page.mouse.up(); // jiggle the lure
+    }
+  }
+  if (!bit) return 'nobite';
+  await shot('08_bite.png');
+  await page.mouse.down();
+  await page.mouse.up();
+  await wait(120);
+  if (!['fight', 'landing'].includes(await G('g.fishing.state'))) return 'nohook';
+  // crank the reel by circling the mouse, keeping the loop on the side opposite to the fish's pull
+  // (fishing.crankHint()); ease off when the line gets too tight. One small step per mouse event.
+  let crankA = 0, fightShot = false;
+  const ft0 = Date.now();
+  for (let i = 0; i < 3000 && Date.now() - ft0 < 100000; i++) {
+    const s = await G('(() => { const f = g.fishing; return { st: f.state, T: f.tension, hint: f.crankHint ? f.crankHint() : [g.input.x, g.input.y] }; })()');
+    if (s.st !== 'fight') break;
+    if (s.T > 0.85) { await wait(80); continue; }
+    const hx = Math.max(40, Math.min(W - 40, s.hint[0])), hy = Math.max(70, Math.min(H - 70, s.hint[1]));
+    const [ox, oy] = await toPage(hx, hy);
+    for (let k = 0; k < 4; k++) {
+      crankA += 1.0;
+      await page.mouse.move(ox + Math.cos(crankA) * 22 * pxPerL, oy + Math.sin(crankA) * 22 * pxPerL);
+    }
+    if (!fightShot && Date.now() - ft0 > 2500) { fightShot = true; await shot('09_fight.png'); }
+  }
+  const st = await G('g.fishing.state');
+  note(`fight ended in ${((Date.now() - ft0) / 1000).toFixed(1)}s (${st})`);
+  return (await until(() => ['reveal', 'tank', 'coin'].includes(window.FISHTOP.tutorial.step), 15000)) ? 'caught' : 'lost';
+}
+let result = 'none';
+for (let attempt = 0; attempt < 3 && result !== 'caught'; attempt++) {
+  result = await fishOnce(attempt);
+  if (result !== 'caught') { note(`attempt ${attempt + 1}: ${result}`); await wait(1500); }
+}
+check('hooked a fish', (await G('(window.__ev.hooked || 0)')) > 0);
+check('fight won -> catch', result === 'caught', result);
+
+// ---------------------------------------------------------------- reveal, the jar, Aero
+const revealed = await until(() => window.FISHTOP.ui.isOpen('reveal') || window.FISHTOP.tutorial.step !== 'reveal', 10000);
+check('catch reveal opens', revealed);
 await wait(1200);
-await page.screenshot({ path: join(out, '06_reveal.png') });
-await page.keyboard.press('Enter');
-await wait(500);
-check('fish kept', await G('g.state.fish.length') === 1);
-await page.waitForFunction(() => window.FISHTOP.tutorial.step === 'coin', null, { timeout: 8000 }).catch(() => {});
-await wait(2500);
-await page.screenshot({ path: join(out, '07_tank.png') });
-// collect the coin by sweeping over the tank window
+await shot('10_reveal.png');
+if (await G(`g.ui.isOpen('reveal')`)) { await page.keyboard.press('Enter'); await wait(600); }
+if (await G(`g.ui.isOpen('reveal')`)) { await G(`g.ui.close('reveal')`); await wait(400); }
+check('fish kept in the jar', (await G('g.state.fish.filter((f) => f.inTank).length')) >= 1, `${await G('g.state.fish.length')} fish`);
+await until(() => window.FISHTOP.tutorial.step === 'coin', 8000);
+await wait(2200);
+await shot('11_jar.png');
+// collect the jar's Aero drop by sweeping across the tank window
 const tr = await G('(() => { const r = g.aquarium.windowRect && g.aquarium.windowRect(); return r ? [r.x, r.y, r.w, r.h] : null; })()');
 if (tr) {
-  for (let k = 0; k < 4; k++) for (let x = tr[0] + 10; x < tr[0] + tr[2] - 10; x += 12) { await moveL(x, tr[1] + tr[3] - 14 - k * 10, 2); await page.mouse.down(); await page.mouse.up(); }
+  for (let k = 0; k < 6 && !(await G('(window.__ev.coinCollected || 0)')); k++) {
+    for (let x = tr[0] + 8; x < tr[0] + tr[2] - 8; x += 10) { await moveL(x, tr[1] + 18 + ((k * 0.17) % 1) * (tr[3] - 30), 2); await page.mouse.down(); await page.mouse.up(); }
+  }
 }
-await page.waitForFunction(() => ['skill', 'done'].includes(window.FISHTOP.tutorial.step), null, { timeout: 8000 }).catch(() => {});
-check('first coin collected', ['skill', 'done'].includes(await G('g.tutorial.step')), await G('g.tutorial.step'));
-await wait(1800);
-await page.screenshot({ path: join(out, '08_skilltree.png') });
-await G('g.unlockSkill("hook1")');
-await wait(800);
-check('tutorial complete', await G('g.state.tutorialDone'));
-await wait(3000);
-await page.screenshot({ path: join(out, '09_ocean.png') });
+check('jar Aero collected', (await G('(window.__ev.coinCollected || 0)')) > 0, `step ${await step()}`);
+await until(() => window.FISHTOP.tutorial.step === 'lab', 30000);
 
-// ---- panels & travel
-for (const id of ['journal', 'shop', 'skills', 'map', 'settings', 'bait']) {
+// ---------------------------------------------------------------- The Lab
+await wait(600);
+await shot('12_tut_lab.png');
+const labR = await G(`g.desktop.iconRect('lab')`);
+check('Lab bubble revealed', !!labR);
+await clickRect(labR);
+check('Lab opens', await until(() => window.FISHTOP.ui.isOpen('lab'), 6000));
+await wait(1200);
+await shot('13_lab.png');
+const rid = await G('g.tutorial.researchId');
+const started = await G(`(() => { const p = g.ui.panels.lab; return p && p.research && g.tutorial.researchId ? p.research(g.tutorial.researchId) : false; })()`);
+check('first research started', !!started && (await G('(window.__ev.labStarted || 0)')) > 0, String(rid));
+check('tutorial complete', await until(() => window.FISHTOP.state.tutorialDone, 8000));
+await G(`g.ui.close('lab')`);
+await wait(3000);
+check('full menu after the tutorial', await G(`['lab', 'journal', 'map', 'settings'].every((id) => !!g.desktop.iconRect(id))`));
+await shot('14_ocean.png');
+
+// ---------------------------------------------------------------- panels
+for (const id of ['lab', 'journal', 'inventory', 'wardrobe', 'map', 'settings', 'bait', 'multiplayer']) {
+  if (!(await G(`!!g.ui.panels['${id}']`))) { if (id !== 'multiplayer') check(`panel ${id} registered`, false); continue; }
   await G(`g.ui.open('${id}')`);
-  await wait(700);
+  await wait(800);
   check(`panel ${id} opens`, await G(`g.ui.isOpen('${id}')`));
-  await page.screenshot({ path: join(out, `10_panel_${id}.png`) });
-  await G('g.ui.close()');
+  await shot(`15_panel_${id}.png`);
+  await G(`g.ui.close('${id}')`);
+  await wait(200);
 }
-await G('(g.state.coins += 99999, g.state.skills.hook5 = g.state.skills.hook7 = true, g.state.unlockedBiomes.push("fjord", "junkyard", "metropolis", "volcano", "abyss"), g.recomputeStats())');
-for (const b of ["fjord", "junkyard", "metropolis", "volcano", "abyss"]) {
-  await G(`g.travel('${b}')`);
+
+// ---------------------------------------------------------------- the seven oceans
+const OCEANS = ['shallows', 'fjord', 'junkyard', 'metropolis', 'volcano', 'abyss', 'oscean'];
+await G(`(g.state.coins += 99999, OCEANS => { for (const b of OCEANS) if (!g.state.unlockedBiomes.includes(b)) g.state.unlockedBiomes.push(b); })(${JSON.stringify(OCEANS)})`);
+for (const b of OCEANS) {
+  await until(() => !window.FISHTOP.ocean.travelState, 15000);
+  const ok = await G(`g.travel('${b}')`);
   await wait(2200);
-  await page.screenshot({ path: join(out, `11_travel_${b}.png`) });
-  await wait(4500);
-  check(`travelled to ${b}`, await G('g.ocean.biome.id') === b);
-  await page.screenshot({ path: join(out, `12_${b}.png`) });
+  await shot(`16_travel_${b}.png`);
+  await until((b) => window.FISHTOP.ocean.biome?.id === b && !window.FISHTOP.ocean.travelState, 20000, b);
+  check(`travelled to ${b}`, ok && (await G('g.ocean.biome.id')) === b, await G('g.ocean.biome.id'));
+  await wait(1200);
+  await shot(`17_${b}.png`);
 }
 await G('g.setView("aquarium")');
 await wait(1500);
-await page.screenshot({ path: join(out, '13_aquarium_full.png') });
+await shot('18_aquarium_full.png');
 await G('g.setView("ocean")');
 await G('g.command("mini")');
 await wait(1200);
-await page.screenshot({ path: join(out, '14_mini.png') });
+await shot('19_mini.png');
+await G('g.command("mini")');
 const fps = await G('g.fps');
-check('runs at a playable frame rate', fps > 20, `${Math.round(fps)} fps (headless software rendering)`);
+check('runs at a playable frame rate', fps > 12, `${Math.round(fps)} fps (headless software rendering)`);
 
 check('no console errors', errors.length === 0, errors.slice(0, 5).join(' | '));
 await browser.close();

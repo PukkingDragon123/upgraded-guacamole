@@ -104,7 +104,7 @@ export function drawRodCard(ctx, ui, panel, r) {
   drawAeroGlow(ctx, cx, hy, 44, mix(rarityCol(rod.rarity), '#ffffff', 0.4), 0.6);
   const ic = icon('rod:' + rod.id, 64);
   if (ic) { ctx.globalAlpha = owned ? 1 : 0.5; ctx.drawImage(ic, Math.round(cx - ic.width / 2), Math.round(hy - ic.height / 2 + Math.sin(t * 2) * 2)); ctx.globalAlpha = 1; }
-  let y = hy + 40;
+  let y = hy + 50;
   drawText(ctx, rod.name, cx, y, { align: 'center', color: INK, shadow: '#ffffff' });
   y += 12;
   drawAeroLabel(ctx, rod.rarity.toUpperCase(), cx, y, { align: 'center', font: 'small', tone: { common: 'grey', uncommon: 'green', rare: 'aqua', epic: 'purple', legendary: 'orange' }[rod.rarity] || 'glass' });
@@ -182,7 +182,7 @@ export function drawCraftCard(ctx, ui, panel, r) {
   drawRays(ctx, cx, hy, 56, t, open ? 0.35 : 0.1, 12);
   const ic = icon(rc.icon, 64);
   if (ic) { ctx.globalAlpha = open ? 1 : 0.45; ctx.drawImage(ic, Math.round(cx - ic.width / 2), Math.round(hy - ic.height / 2 + Math.sin(t * 2) * 1.5)); ctx.globalAlpha = 1; }
-  let y = hy + 40;
+  let y = hy + 50;
   drawText(ctx, rc.name + (rc.out?.qty > 1 ? ` x${rc.out.qty}` : ''), cx, y, { align: 'center', color: INK, shadow: '#ffffff' });
   y += 12;
   const tag = { building: 'Blueprint', decor: 'Aquarium decor', plans: 'Seabed decor', bait: 'Bait', special: 'Bait mixer' }[rc.cat];
@@ -284,7 +284,7 @@ export function drawBoatCard(ctx, ui, panel, r) {
   drawAeroGlow(ctx, cx, hy, 46, '#bff6ff', 0.6);
   const ic = icon('boat:' + id, 80);
   if (ic) { ctx.globalAlpha = has ? 1 : 0.45; ctx.drawImage(ic, Math.round(cx - ic.width / 2), Math.round(hy - ic.height / 2 + Math.sin(t * 1.6) * 1.5)); ctx.globalAlpha = 1; }
-  let y = hy + 44;
+  let y = hy + 56;
   drawText(ctx, BOAT_NAMES[id], cx, y, { align: 'center', color: INK, shadow: '#ffffff' });
   y += 12;
   drawText(ctx, `TIER ${i + 1}`, cx, y, { font: 'small', align: 'center', color: INK_SOFT });

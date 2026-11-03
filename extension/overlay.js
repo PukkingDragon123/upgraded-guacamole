@@ -15897,7 +15897,7 @@ kmlmk..
           hue = 130 + 140 * (0.5 + 0.5 * Math.sin(u * 3 + v * 6));
           mixI = Math.max(mixI, 0.45);
         }
-        const [ir, ig, ib] = hslToRgb(hue, 0.95, 0.64);
+        const hi = (Math.round(hue) % 360 + 360) % 360 * 3, ir = HUE[hi], ig = HUE[hi + 1], ib = HUE[hi + 2];
         cr = cr * (1 - mixI) + ir * mixI;
         cg = cg * (1 - mixI) + ig * mixI;
         cb = cb * (1 - mixI) + ib * mixI;
@@ -16690,7 +16690,7 @@ kmlmk..
     if (PREVIEWS.size > 400) PREVIEWS.delete(PREVIEWS.keys().next().value);
     return pv;
   }
-  var TINTS, skinOfTint, it, pkg, lab, WARDROBE, WARDROBE_BY_ID, EMOTES, DEFAULT_CHARACTER, SLOT_KEYS, VALID, _a, LEGACY, ROD_SKINS, TWIG, lookKey, DEG4, I3, M, mv, mul, ap, add4, sub, scl, dot, cross, norm, Tr, Ro, hsh, KITS, K, KG, HEAD, HAT_SEAT, HAT_TILT, TORSO, WAIST, TOPS, BOTTOMS, topCol, botCol, ARM, LEG, ROD, HIP_Y, J, OLD_SH, AK, conv, BASE_POSE, P3, S6, POSES, FEATS, fract4, BASE_VS, PITCH, FACE_YAW, YAW_STEP2, MAX_FRAMES, MAX_PIXELS, framePx2, FRAMES, FAMS, budgetMs3, spent3, windowStart2, statBuilt2, statFallback3, statMs, now3, PROF, RENDER, vsFor, INK, inE, MOOD_FACE, EYESTATE, TRAILS, PREVIEWS, HEAD_SLOTS;
+  var TINTS, skinOfTint, it, pkg, lab, WARDROBE, WARDROBE_BY_ID, EMOTES, DEFAULT_CHARACTER, SLOT_KEYS, VALID, _a, LEGACY, ROD_SKINS, TWIG, lookKey, DEG4, I3, M, mv, mul, ap, add4, sub, scl, dot, cross, norm, Tr, Ro, hsh, KITS, K, KG, HEAD, HAT_SEAT, HAT_TILT, TORSO, WAIST, TOPS, BOTTOMS, topCol, botCol, ARM, LEG, ROD, HIP_Y, J, OLD_SH, AK, conv, BASE_POSE, P3, S6, POSES, FEATS, fract4, HUE, BASE_VS, PITCH, FACE_YAW, YAW_STEP2, MAX_FRAMES, MAX_PIXELS, framePx2, FRAMES, FAMS, budgetMs3, spent3, windowStart2, statBuilt2, statFallback3, statMs, now3, PROF, RENDER, vsFor, INK, inE, MOOD_FACE, EYESTATE, TRAILS, PREVIEWS, HEAD_SLOTS;
   var init_character = __esm({
     "src/gfx/character.js"() {
       init_voxel();
@@ -17291,6 +17291,13 @@ kmlmk..
         mid: { d: [0, 0.1, 1], size: 1 }
       };
       fract4 = (v) => v - Math.floor(v);
+      HUE = new Float32Array(360 * 3);
+      for (let h = 0; h < 360; h++) {
+        const c = hslToRgb(h, 0.95, 0.64);
+        HUE[h * 3] = c[0];
+        HUE[h * 3 + 1] = c[1];
+        HUE[h * 3 + 2] = c[2];
+      }
       BASE_VS = 1.6;
       PITCH = 14;
       FACE_YAW = 38;
@@ -32537,6 +32544,12 @@ kmlmk..
       ctx2.drawImage(glowSprite(gr, glowCol), cx - gr, cy - gr);
       ctx2.globalAlpha = 1;
       ctx2.globalCompositeOperation = "source-over";
+      if (gA > 0.3) {
+        const hr = thickRingSprite(R2 + 17, 4, glowCol, 1);
+        ctx2.globalAlpha = Math.min(0.85, gA);
+        ctx2.drawImage(hr, cx - Math.floor(hr.width / 2), cy - Math.floor(hr.height / 2));
+        ctx2.globalAlpha = 1;
+      }
       this.drawFoot(ctx2, cx, cy, R2);
       if (this.bail < 0.5) this.drawBail(ctx2, cx, cy, R2, t, false);
       const body = bodySprite(R2), C = R2 + 8;
@@ -34690,6 +34703,7 @@ kmlmk..
     for (const r of nd.req) grantNode(state, r, seen);
     if (state.lab.done[id]) return;
     state.lab.done[id] = Date.now();
+    (state.skills || (state.skills = {}))[id] = true;
     for (const u of nd.unlock) applyUnlock(state, u.kind, u.id);
   }
   function ensureLab(state) {
@@ -34725,6 +34739,7 @@ kmlmk..
       const nd = nodeFor("biome", b);
       if (nd && !L.done[nd.id]) {
         L.done[nd.id] = Date.now();
+        (state.skills || (state.skills = {}))[nd.id] = true;
         for (const u of nd.unlock) applyUnlock(state, u.kind, u.id);
       }
     }
@@ -34809,7 +34824,7 @@ kmlmk..
     const biome = nd.unlock.find((u) => u.kind === "biome")?.id;
     return { ...nd, cost: nd.cost.aero || 0, labCost: nd.cost, effect: biome ? { ...nd.effect, unlockBiome: biome } : nd.effect };
   });
-  var SKILL_BY_ID = Object.fromEntries([...SKILLS, { ...LAB_BY_ID[ROOT_ID], cost: 0 }].map((s) => [s.id, s]));
+  var SKILL_BY_ID = Object.fromEntries(SKILLS.map((s) => [s.id, s]));
   var BASE_STATS = {
     biteWindow: 1,
     lineStrength: 1,

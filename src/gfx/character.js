@@ -1332,6 +1332,8 @@ const FEATS = {
 };
 
 const fract = (v) => v - Math.floor(v);
+const HUE = new Float32Array(360 * 3);
+for (let h = 0; h < 360; h++) { const c = hslToRgb(h, 0.95, 0.64); HUE[h * 3] = c[0]; HUE[h * 3 + 1] = c[1]; HUE[h * 3 + 2] = c[2]; }
 // Re-shade bubble pixels (palette entries flagged bub) and glass pixels in place; returns the bubble mask.
 // head = {hc:[x,y], hr, Rinv (head-local from world), mx, cam} for the bubble's own patterns.
 export function shadeBubble(r, isBub, isGlass, T, head) {
@@ -1381,7 +1383,7 @@ export function shadeBubble(r, isBub, isGlass, T, head) {
       let hue = T.hue + T.span * dd * dd + 35 * Math.sin(Math.atan2(v, u) * 2 + 1.3);
       let mixI = T.irid * (0.1 + 0.9 * rim);
       if (sp === 'aurora') { hue = 130 + 140 * (0.5 + 0.5 * Math.sin(u * 3 + v * 6)); mixI = Math.max(mixI, 0.45); }
-      const [ir, ig, ib] = hslToRgb(hue, 0.95, 0.64);
+      const hi = ((Math.round(hue) % 360) + 360) % 360 * 3, ir = HUE[hi], ig = HUE[hi + 1], ib = HUE[hi + 2];
       cr = cr * (1 - mixI) + ir * mixI; cg = cg * (1 - mixI) + ig * mixI; cb = cb * (1 - mixI) + ib * mixI;
       al = T.alpha + (1 - T.alpha) * Math.pow(rim, 1.3) * 0.88;
       if (sp === 'stars') {

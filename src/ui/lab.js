@@ -376,7 +376,7 @@ export class LabPanel {
     const sway = Math.sin(this.t * 0.9) * 0.03;
     put(leafSprig(118, 3, false, 0.5), P.x - 10, P.y + P.h * 0.62, -1.42 + sway);
     put(leafSprig(84, 5, false, 0.3), P.x - 6, P.y + P.h - 10, -0.2 - sway);
-    put(leafSprig(104, 7, true, 0.45), P.x + P.w + 12, P.y + P.h - 44, -0.75 + sway);
+    put(leafSprig(96, 7, false, 0.45), P.x + P.w - 6, P.y + P.h * 0.6, 0.45 + sway);
     put(leafSprig(76, 9, true, 0.3), P.x + P.w + 10, P.y + 70, -0.62 - sway);
   }
 }

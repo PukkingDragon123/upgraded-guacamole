@@ -528,7 +528,7 @@ export class WardrobePanel {
     const cx = c.x + c.w / 2, by = c.y + c.h - 6 + lift - (pv && pv.h < c.h - 20 ? Math.round((c.h - 12 - pv.h) / 2) : 0);
     if (pv) {
       const a = ctx.globalAlpha;
-      if (!own) ctx.globalAlpha = a * 0.5;
+      if (!own) ctx.globalAlpha = a * 0.72;
       drawItemPreview(ctx, pv, cx, by, t + c.x * 0.01, 'wd:' + it.id);
       ctx.globalAlpha = a;
     } else {
@@ -560,7 +560,7 @@ export class WardrobePanel {
     drawText(ctx, it.name, b.x + 10, b.y + 8, { color: AERO.ink, shadow: '#ffffff' });
     const nw = measureText(it.name, 'normal');
     const tag = R.name.toUpperCase(), tw = measureText(tag, 'small') + 10;
-    drawAeroButton(ctx, b.x + 16 + nw, b.y + 6, tw, 12, { tone: { top: mix(R.color, '#ffffff', 0.5), mid: R.color, bot: R.dark, edge: shade(R.dark, -0.3), text: '#ffffff', shadow: shade(R.dark, -0.4), glow: '#ffffff', a: [1, 1] }, label: tag, font: 'small' });
+    drawAeroButton(ctx, b.x + 16 + nw, b.y + 6, tw, 12, { tone: { top: mix(R.color, '#ffffff', 0.5), mid: it.rarity === 'common' ? '#9fb0c0' : R.color, bot: R.dark, edge: shade(R.dark, -0.3), text: '#ffffff', shadow: shade(R.dark, -0.4), glow: '#ffffff', a: [1, 1] }, label: tag, font: 'small' });
     drawText(ctx, it.desc || '', b.x + 10, b.y + 24, { font: 'small', color: AERO.inkSoft });
     const own = this.owns(it), worn = isEquipped(this.look, it);
     const bw = 116, bh = 24, bx = b.x + b.w - bw - 10, by = b.y + b.h - bh - 8;

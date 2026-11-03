@@ -23005,6 +23005,7 @@ Your files are never touched.`;
     for (const r of nd.req) grantNode(state, r, seen);
     if (state.lab.done[id2]) return;
     state.lab.done[id2] = Date.now();
+    (state.skills || (state.skills = {}))[id2] = true;
     for (const u of nd.unlock) applyUnlock(state, u.kind, u.id);
   }
   function ensureLab(state) {
@@ -23040,6 +23041,7 @@ Your files are never touched.`;
       const nd = nodeFor("biome", b);
       if (nd && !L2.done[nd.id]) {
         L2.done[nd.id] = Date.now();
+        (state.skills || (state.skills = {}))[nd.id] = true;
         for (const u of nd.unlock) applyUnlock(state, u.kind, u.id);
       }
     }
@@ -23205,6 +23207,7 @@ Your files are never touched.`;
     L2.slots = L2.slots.filter((s) => s.id !== id2);
     L2.active = L2.slots[0] || null;
     L2.done[id2] = Date.now();
+    (st.skills || (st.skills = {}))[id2] = true;
     for (const u of nd.unlock) {
       applyUnlock(st, u.kind, u.id);
       game.emit?.("unlocked", { kind: u.kind, id: u.id });
@@ -26606,6 +26609,7 @@ kmlmk..
     if (w && (opts.page || opts.highlight)) STORE_RENDERERS.appsea.navigate(w, game, opts.page || "home", { highlight: opts.highlight });
     return w;
   }
+  var TUTORIAL_APP;
   var init_store = __esm({
     "src/store/index.js"() {
       init_icons();
@@ -26617,6 +26621,7 @@ kmlmk..
       init_boats();
       init_storeapp();
       init_sfx();
+      TUTORIAL_APP = "notes";
     }
   });
 
@@ -30167,7 +30172,7 @@ kmlmk..
           hue = 130 + 140 * (0.5 + 0.5 * Math.sin(u * 3 + v * 6));
           mixI = Math.max(mixI, 0.45);
         }
-        const [ir, ig, ib] = hslToRgb(hue, 0.95, 0.64);
+        const hi = (Math.round(hue) % 360 + 360) % 360 * 3, ir = HUE[hi], ig = HUE[hi + 1], ib = HUE[hi + 2];
         cr = cr * (1 - mixI) + ir * mixI;
         cg = cg * (1 - mixI) + ig * mixI;
         cb = cb * (1 - mixI) + ib * mixI;
@@ -31002,7 +31007,7 @@ kmlmk..
       else drawEmoteFx(ctx3, pv.fx, x + (pv.head?.[0] || 0), y + (pv.head?.[1] || -50), t, k);
     }
   }
-  var TINTS, skinOfTint, WARDROBE_SLOTS, it, pkg, lab, WARDROBE, WARDROBE_BY_ID, EMOTES, DEFAULT_CHARACTER, SLOT_KEYS, VALID, _a, LEGACY, HULL_NAMES, ROD_SKINS, TWIG, lookKey, DEG4, I3, M, mv, mul, ap, add4, sub, scl, dot, cross, norm, Tr, Ro, hsh, KITS, K, KG, HEAD, HAT_SEAT, HAT_TILT, TORSO, WAIST, TOPS, BOTTOMS, topCol, botCol, ARM, LEG, ROD, HIP_Y, J, OLD_SH, AK, conv, BASE_POSE, P3, S6, POSES, POSE_NAMES, FEATS, fract4, BASE_VS, PITCH, FACE_YAW, YAW_STEP2, MAX_FRAMES, MAX_PIXELS, framePx2, FRAMES2, FAMS, budgetMs3, spent3, windowStart2, statBuilt2, statFallback3, statMs, now3, PROF, RENDER, vsFor, INK5, inE, MOOD_FACE, EYESTATE, TRAILS, PREVIEWS, HEAD_SLOTS, TRAIL_IDS;
+  var TINTS, skinOfTint, WARDROBE_SLOTS, it, pkg, lab, WARDROBE, WARDROBE_BY_ID, EMOTES, DEFAULT_CHARACTER, SLOT_KEYS, VALID, _a, LEGACY, HULL_NAMES, ROD_SKINS, TWIG, lookKey, DEG4, I3, M, mv, mul, ap, add4, sub, scl, dot, cross, norm, Tr, Ro, hsh, KITS, K, KG, HEAD, HAT_SEAT, HAT_TILT, TORSO, WAIST, TOPS, BOTTOMS, topCol, botCol, ARM, LEG, ROD, HIP_Y, J, OLD_SH, AK, conv, BASE_POSE, P3, S6, POSES, POSE_NAMES, FEATS, fract4, HUE, BASE_VS, PITCH, FACE_YAW, YAW_STEP2, MAX_FRAMES, MAX_PIXELS, framePx2, FRAMES2, FAMS, budgetMs3, spent3, windowStart2, statBuilt2, statFallback3, statMs, now3, PROF, RENDER, vsFor, INK5, inE, MOOD_FACE, EYESTATE, TRAILS, PREVIEWS, HEAD_SLOTS, TRAIL_IDS;
   var init_character = __esm({
     "src/gfx/character.js"() {
       init_voxel();
@@ -31621,6 +31626,13 @@ kmlmk..
         mid: { d: [0, 0.1, 1], size: 1 }
       };
       fract4 = (v) => v - Math.floor(v);
+      HUE = new Float32Array(360 * 3);
+      for (let h = 0; h < 360; h++) {
+        const c = hslToRgb(h, 0.95, 0.64);
+        HUE[h * 3] = c[0];
+        HUE[h * 3 + 1] = c[1];
+        HUE[h * 3 + 2] = c[2];
+      }
       BASE_VS = 1.6;
       PITCH = 14;
       FACE_YAW = 38;
@@ -46363,6 +46375,7 @@ ${hearts} ${status}
             return;
           }
           const r = this.windowRect();
+          if (!r) return;
           const off = this.slideOff();
           const a = clamp012(this.winAnim * 1.6);
           if (a < 1) ctx3.globalAlpha = a;
@@ -47080,7 +47093,7 @@ ${hearts} ${status}
         const biome = nd.unlock.find((u) => u.kind === "biome")?.id;
         return { ...nd, cost: nd.cost.aero || 0, labCost: nd.cost, effect: biome ? { ...nd.effect, unlockBiome: biome } : nd.effect };
       });
-      SKILL_BY_ID = Object.fromEntries([...SKILLS, { ...LAB_BY_ID[ROOT_ID], cost: 0 }].map((s) => [s.id, s]));
+      SKILL_BY_ID = Object.fromEntries(SKILLS.map((s) => [s.id, s]));
       BASE_STATS = {
         biteWindow: 1,
         lineStrength: 1,
@@ -65672,8 +65685,9 @@ ${hearts} ${status}
     m.box(cx0 - 2, DECK + 10, ZC - 9, cx1 + 2, DECK + 10, ZC + 9, p.chrome);
     m.box(cx0 - 1, DECK + 11, ZC - 8, cx1 + 1, DECK + 11, ZC + 8, (x, y, z) => (x + z) % 4 === 0 ? p.solarL : p.solar);
     for (const [k, sd] of [[0, -1], [1, 1]]) {
-      const tx = X0 + 2 + k * 3, tz = ZC + sd * 8, top = DECK + 40 + k * 3;
-      m.line(tx, DECK + 1, tz, tx, top, tz, p.white, 0.7);
+      const tx = k ? X0 + 66 : X0 + 3, tz = ZC + sd * 8, top = k ? DECK + 30 : DECK + 40;
+      m.line(tx, DECK + 1, tz, tx, top, tz, p.white, 1);
+      for (let y = DECK + 4; y < top - 2; y += 6) m.set(tx, y, tz + 1, p.aqua);
       m.ellipsoid(tx + 1, top, tz, 2.6, 1.5, 1.5, p.white);
       m.set(tx + 3, top, tz, p.aqua);
       m.set(tx, top + 1, tz + 1, p.lime);
@@ -65730,13 +65744,13 @@ ${hearts} ${status}
       if (front2) return Math.abs(y - dTop - 1) < 0.8 || Math.abs(x - dx) < 0.6 || y > dTop + DR - 2.2 ? p.chrome : null;
       return rib ? p.chrome : (x + y) % 7 === 0 ? p.glassHi : p.glass;
     });
-    m.line(dx + 17, dTop, ZC - 2, dx + 17, dTop + 8, ZC - 2, p.chrome, 0.6);
-    m.line(dx + 17, dTop + 8, ZC - 2, dx + 20, dTop + 8, ZC - 2, p.chrome, 0.6);
+    m.line(dx + 24, dTop - 1, ZC - 2, dx + 24, dTop + 8, ZC - 2, p.chrome, 0.6);
+    m.line(dx + 24, dTop + 8, ZC - 2, dx + 27, dTop + 8, ZC - 2, p.chrome, 0.6);
     for (const [u, w] of [[64, 6], [10, 5]]) for (const sd of [-1, 1]) m.box(X0 + u - 3, CY, ZC + sd * (R3 - 1), X0 + u + 2, CY, ZC + sd * (R3 + w), p.aqua);
     m.box(X0 + 2, CY, ZC, X0 + 7, CY + R3 + 4, ZC, p.aqua);
     for (let a = 0; a < TAU; a += 0.2) m.set(X0 - 2, CY + Math.sin(a) * 3.6, ZC + Math.cos(a) * 3.6, p.chrome);
     m.sphere(X0 + LEN, CY + 1, ZC, 1.6, p.lamp);
-    A.flag = [dx + 17.5, dTop + 8.5, ZC - 1.5];
+    A.flag = [dx + 24.5, dTop + 8.5, ZC - 1.5];
     if (parts2.engine !== "none") engine(m, p, parts2.engine === "outboard" ? "bubble" : parts2.engine, X0 + 1, CY + R3 - 2, ZC, A, spin, bubbles, { x0: X0 + 10, x1: X0 + 22, h: 12, poleH: 14 });
     if (!A.bubbles0) {
       A.bubbles0 = [X0 - 3, CY, ZC + 0.5];
@@ -66640,7 +66654,7 @@ ${hearts} ${status}
           const cx = c.x + c.w / 2, by = c.y + c.h - 6 + lift - (pv && pv.h < c.h - 20 ? Math.round((c.h - 12 - pv.h) / 2) : 0);
           if (pv) {
             const a = ctx3.globalAlpha;
-            if (!own) ctx3.globalAlpha = a * 0.5;
+            if (!own) ctx3.globalAlpha = a * 0.72;
             drawItemPreview(ctx3, pv, cx, by, t + c.x * 0.01, "wd:" + it2.id);
             ctx3.globalAlpha = a;
           } else {
@@ -66674,7 +66688,7 @@ ${hearts} ${status}
           drawText(ctx3, it2.name, b.x + 10, b.y + 8, { color: AERO.ink, shadow: "#ffffff" });
           const nw = measureText(it2.name, "normal");
           const tag2 = R3.name.toUpperCase(), tw = measureText(tag2, "small") + 10;
-          drawAeroButton(ctx3, b.x + 16 + nw, b.y + 6, tw, 12, { tone: { top: mix(R3.color, "#ffffff", 0.5), mid: R3.color, bot: R3.dark, edge: shade(R3.dark, -0.3), text: "#ffffff", shadow: shade(R3.dark, -0.4), glow: "#ffffff", a: [1, 1] }, label: tag2, font: "small" });
+          drawAeroButton(ctx3, b.x + 16 + nw, b.y + 6, tw, 12, { tone: { top: mix(R3.color, "#ffffff", 0.5), mid: it2.rarity === "common" ? "#9fb0c0" : R3.color, bot: R3.dark, edge: shade(R3.dark, -0.3), text: "#ffffff", shadow: shade(R3.dark, -0.4), glow: "#ffffff", a: [1, 1] }, label: tag2, font: "small" });
           drawText(ctx3, it2.desc || "", b.x + 10, b.y + 24, { font: "small", color: AERO.inkSoft });
           const own = this.owns(it2), worn = isEquipped(this.look, it2);
           const bw = 116, bh = 24, bx = b.x + b.w - bw - 10, by = b.y + b.h - bh - 8;
@@ -73660,6 +73674,12 @@ ${hearts} ${status}
           ctx3.drawImage(glowSprite(gr, glowCol), cx - gr, cy - gr);
           ctx3.globalAlpha = 1;
           ctx3.globalCompositeOperation = "source-over";
+          if (gA > 0.3) {
+            const hr = thickRingSprite(R3 + 17, 4, glowCol, 1);
+            ctx3.globalAlpha = Math.min(0.85, gA);
+            ctx3.drawImage(hr, cx - Math.floor(hr.width / 2), cy - Math.floor(hr.height / 2));
+            ctx3.globalAlpha = 1;
+          }
           this.drawFoot(ctx3, cx, cy, R3);
           if (this.bail < 0.5) this.drawBail(ctx3, cx, cy, R3, t, false);
           const body = bodySprite(R3), C2 = R3 + 8;
@@ -76764,7 +76784,7 @@ ${hearts} ${status}
     if (status === "done") drawRays(ctx3, cx, oy, 54, t, 0.45, 12);
     drawAeroGlow(ctx3, cx, oy, 40, mix(col, "#ffffff", 0.5), 0.5);
     orbIcon(ctx3, nd.icon, cx, oy + Math.sin(t * 2) * 1.5, 24, col, status === "locked" ? "locked" : status === "done" ? "done" : "open", status === "locked" ? 0.6 : 1);
-    let y = oy + 36;
+    let y = oy + 40;
     for (const l of wrapText(nd.name, r.w - 16).slice(0, 2)) {
       drawText(ctx3, l, cx, y, { align: "center", color: INK7, shadow: "#ffffff" });
       y += 11;
@@ -76861,6 +76881,14 @@ ${hearts} ${status}
     }
     if (status === "researching") {
       const rem = labRemaining(st, id2), k = labProgress(st, id2);
+      const fy = bottom - 46, room = fy - (y + 40);
+      if (room > 40) {
+        const fh = Math.min(70, room), fw = Math.round(fh * 0.8);
+        drawAeroGlow(ctx3, cx, fy - fh * 0.35, fw * 1.1, mix(col, "#ffffff", 0.3), 0.5 + 0.15 * Math.sin(t * 4));
+        drawFlask(ctx3, cx, fy, { t, level: 0.2 + 0.75 * k, color: mix(col, "#4fd2ff", 0.3), w: fw, h: fh, glow: 1, active: true });
+        const ic = icon(nd.icon, 20);
+        if (ic) ctx3.drawImage(ic, Math.round(cx - ic.width / 2), Math.round(fy - fh * 0.32 - ic.height / 2 + Math.sin(t * 3) * 2));
+      }
       const ci2 = getUiIcon("clock");
       if (ci2) ctx3.drawImage(ci2, r.x + 10, bottom - 34);
       drawText(ctx3, fmtTime(rem), r.x + 24, bottom - 32, { color: INK7 });
@@ -77191,6 +77219,7 @@ ${hearts} ${status}
         // Branch name pills at the tips of the star; when a tip is off screen the pill waits at the edge of the dome
         // (pointing the way) and a click glides the camera there.
         drawBranchLabels(ctx3, ui, view) {
+          const placed = [];
           for (const b of BRANCH_ORDER) {
             const B2 = BRANCHES[b];
             const a = B2.angle * Math.PI / 180;
@@ -77203,6 +77232,8 @@ ${hearts} ${status}
             const off = x < view.x + mx || x > view.x + view.w - mx || y < view.y + my || y > view.y + view.h - my - 30;
             x = clamp(x, view.x + mx, view.x + view.w - mx);
             y = clamp(y, view.y + my, view.y + view.h - my - 30);
+            for (let k = 0; k < 4 && placed.some((p) => Math.abs(p.x - x) < (p.w + w) / 2 + 2 && Math.abs(p.y - y) < h + 2); k++) y += y > view.y + view.h / 2 ? -(h + 3) : h + 3;
+            placed.push({ x, y, w });
             const lx = Math.round(x - w / 2), ly = Math.round(y - h / 2);
             const rr3 = { x: lx, y: ly, w, h };
             const hov = ui.hover(rr3);
@@ -77525,7 +77556,7 @@ ${hearts} ${status}
       ctx3.drawImage(ic, Math.round(cx - ic.width / 2), Math.round(hy - ic.height / 2 + Math.sin(t * 2) * 2));
       ctx3.globalAlpha = 1;
     }
-    let y = hy + 40;
+    let y = hy + 50;
     drawText(ctx3, rod.name, cx, y, { align: "center", color: INK7, shadow: "#ffffff" });
     y += 12;
     drawAeroLabel(ctx3, rod.rarity.toUpperCase(), cx, y, { align: "center", font: "small", tone: { common: "grey", uncommon: "green", rare: "aqua", epic: "purple", legendary: "orange" }[rod.rarity] || "glass" });
@@ -77628,7 +77659,7 @@ ${hearts} ${status}
       ctx3.drawImage(ic, Math.round(cx - ic.width / 2), Math.round(hy - ic.height / 2 + Math.sin(t * 2) * 1.5));
       ctx3.globalAlpha = 1;
     }
-    let y = hy + 40;
+    let y = hy + 50;
     drawText(ctx3, rc.name + (rc.out?.qty > 1 ? ` x${rc.out.qty}` : ""), cx, y, { align: "center", color: INK7, shadow: "#ffffff" });
     y += 12;
     const tag2 = { building: "Blueprint", decor: "Aquarium decor", plans: "Seabed decor", bait: "Bait", special: "Bait mixer" }[rc.cat];
@@ -77784,7 +77815,7 @@ ${hearts} ${status}
       ctx3.drawImage(ic, Math.round(cx - ic.width / 2), Math.round(hy - ic.height / 2 + Math.sin(t * 1.6) * 1.5));
       ctx3.globalAlpha = 1;
     }
-    let y = hy + 44;
+    let y = hy + 56;
     drawText(ctx3, BOAT_NAMES[id2], cx, y, { align: "center", color: INK7, shadow: "#ffffff" });
     y += 12;
     drawText(ctx3, `TIER ${i + 1}`, cx, y, { font: "small", align: "center", color: INK_SOFT4 });
@@ -78444,7 +78475,7 @@ ${hearts} ${status}
           const sway = Math.sin(this.t * 0.9) * 0.03;
           put(leafSprig(118, 3, false, 0.5), P5.x - 10, P5.y + P5.h * 0.62, -1.42 + sway);
           put(leafSprig(84, 5, false, 0.3), P5.x - 6, P5.y + P5.h - 10, -0.2 - sway);
-          put(leafSprig(104, 7, true, 0.45), P5.x + P5.w + 12, P5.y + P5.h - 44, -0.75 + sway);
+          put(leafSprig(96, 7, false, 0.45), P5.x + P5.w - 6, P5.y + P5.h * 0.6, 0.45 + sway);
           put(leafSprig(76, 9, true, 0.3), P5.x + P5.w + 10, P5.y + 70, -0.62 - sway);
         }
       };
@@ -82484,6 +82515,7 @@ ${hearts} ${status}
       init_lab();
       init_items();
       init_biomes();
+      init_store();
       START_BIOME = "oscean";
       ALIAS = { skills: "lab", tank: "aquarium", store: "appsea", shop: "appsea" };
       SHOWN = {
@@ -82501,7 +82533,8 @@ ${hearts} ${status}
       };
       SAY2 = {
         appsea: ["{mouse_l} AppSea"],
-        download: ["Free bait!", "{mouse_l} Lite = 0"],
+        download: ["Free bait!", "{mouse_l} Lite"],
+        downloading: ["{clock} 56k...", "hehe"],
         cast: ["{hook} into the water", "{mouse_l} jiggle"],
         wait: ["Wait for {exclaim}"],
         bite: ["{mouse_l} NOW!"],
@@ -82663,6 +82696,10 @@ ${hearts} ${status}
             case "download":
               this.say("download");
               this.baitBase = this.baitCount();
+              try {
+                if (TUTORIAL_APP && typeof openStore === "function") openStore(g, { highlight: TUTORIAL_APP });
+              } catch (e) {
+              }
               break;
             case "cast":
               this.castBase = st.stats?.casts || 0;
@@ -82794,10 +82831,13 @@ ${hearts} ${status}
               if (this.storeOpen()) this.go("download");
               else if (this.baitCount() > this.baitBase) this.go("cast");
               break;
-            case "download":
+            case "download": {
+              const busy = (g.state.apps?.downloads || []).length > 0;
               if (this.baitCount() > this.baitBase) this.go("cast");
+              else if (busy) this.say("downloading", { silent: true });
               else if (this.t > 1.5 && !this.storeOpen()) this.go("appsea");
               break;
+            }
             case "cast":
               if ((g.state.stats?.casts || 0) > this.castBase || f && f.state !== "idle") this.go("wait");
               break;
@@ -82883,8 +82923,8 @@ ${hearts} ${status}
           const { W: W11, H: H10 } = this.game.screen;
           if (tg.rect) {
             const r = tg.rect;
-            const right = tg.side !== "left" && r.x + r.w + 120 < W11;
-            return [right ? r.x + r.w + 44 : r.x - 40, clamp(r.y + r.h * 0.55, 70, H10 - 60)];
+            const right = tg.side !== "left" && r.x + r.w + 140 < W11;
+            return [right ? r.x + r.w + 62 : r.x - 44, clamp(r.y + r.h * 0.6, 84, H10 - 60)];
           }
           if (tg.point) return [clamp(tg.point[0] - 120, 50, W11 - 50), clamp(tg.point[1] - 70, 80, H10 - 60)];
           if (tg.top) return [W11 * 0.5 - 150, 86];
@@ -82902,7 +82942,7 @@ ${hearts} ${status}
           const g = this.game, G = this.guide, t = this.t;
           const tg = this.target();
           if (this.step === "reveal") return;
-          if (tg.rect && !tg.noArrow) this.drawPointer(ctx3, tg.rect.x + tg.rect.w / 2, tg.rect.y + tg.rect.h / 2, Math.max(tg.rect.w, tg.rect.h) * 0.6, true);
+          if (tg.rect && !tg.noArrow) this.drawPointer(ctx3, tg.rect.x + tg.rect.w / 2, tg.rect.y + tg.rect.h / 2, Math.max(tg.rect.w, tg.rect.h) * 0.6, tg.rect.y < 50 ? "side" : true);
           else if (tg.point) this.drawPointer(ctx3, tg.point[0], tg.point[1], tg.small ? 10 : 18, !tg.small);
           const [sx, sy] = this.guideSpot(tg);
           const dt = 1 / 60;
@@ -82920,13 +82960,13 @@ ${hearts} ${status}
           if (a <= 0.01) return;
           ctx3.save();
           ctx3.globalAlpha = a;
-          drawAeroGlow(ctx3, G.x, G.y, 26, "#bff4ff", 0.35);
-          drawAeroBubble(ctx3, G.x, G.y, 21, 0.85);
+          drawAeroGlow(ctx3, G.x, G.y, 32, "#bff4ff", 0.4);
+          drawAeroBubble(ctx3, G.x, G.y, 26, 0.9);
           try {
-            drawGoldie(ctx3, G.x, G.y + 2, { scale: 0.8, base: 1, facing: G.facing, t: g.time, mood: this.step === "done" || this.step === "tank" ? "excited" : "happy", talk: G.talk > 0 ? 0.5 + 0.5 * Math.sin(g.time * 18) : 0, lookAt: tg.rect ? [tg.rect.x + tg.rect.w / 2, tg.rect.y + tg.rect.h / 2] : tg.point || null, id: "guide" });
+            drawGoldie(ctx3, G.x, G.y + 2, { scale: 1, base: 1, facing: G.facing, t: g.time, mood: this.step === "done" || this.step === "tank" ? "excited" : "happy", talk: G.talk > 0 ? 0.5 + 0.5 * Math.sin(g.time * 18) : 0, lookAt: tg.rect ? [tg.rect.x + tg.rect.w / 2, tg.rect.y + tg.rect.h / 2] : tg.point || null, id: "guide" });
           } catch (e) {
           }
-          if (G.say) this.drawSay(ctx3, G.x, G.y - 26, G.say);
+          if (G.say) this.drawSay(ctx3, G.x, G.y - 30, G.say);
           ctx3.restore();
           if (Math.random() < 0.04) g.particles?.aeroBubbles?.(G.x + 8, G.y - 16, 1, { sizes: [2, 2, 3], speed: [12, 30], layer: "ui" });
         }
@@ -82947,7 +82987,10 @@ ${hearts} ${status}
           ctx3.arc(Math.round(x), Math.round(y), r + k * 14 + 2, 0, TAU);
           ctx3.stroke();
           ctx3.restore();
-          if (arrow) {
+          if (arrow === "side") {
+            const a = getUiIcon("arrow_l");
+            if (a) ctx3.drawImage(a, Math.round(x + r + 8 + Math.sin(t * 6) * 3), Math.round(y - a.height / 2));
+          } else if (arrow) {
             const a = getUiIcon("arrow_d");
             if (a) ctx3.drawImage(a, Math.round(x - a.width / 2), Math.round(y - r - 14 - a.height + Math.sin(t * 6) * 3));
           }
@@ -87552,8 +87595,8 @@ void main() {
   });
 
   // src/dev/store.js
-  var store_exports = {};
-  __export(store_exports, {
+  var store_exports2 = {};
+  __export(store_exports2, {
     run: () => run21
   });
   function makeState(params2) {
@@ -88800,7 +88843,7 @@ void main() {
     "./dev/panels.js": () => Promise.resolve().then(() => (init_panels3(), panels_exports)),
     "./dev/props.js": () => Promise.resolve().then(() => (init_props2(), props_exports)),
     "./dev/species.js": () => Promise.resolve().then(() => (init_species2(), species_exports2)),
-    "./dev/store.js": () => Promise.resolve().then(() => (init_store2(), store_exports)),
+    "./dev/store.js": () => Promise.resolve().then(() => (init_store2(), store_exports2)),
     "./dev/testlooks.js": () => Promise.resolve().then(() => (init_testlooks(), testlooks_exports)),
     "./dev/uiart.js": () => Promise.resolve().then(() => (init_uiart(), uiart_exports)),
     "./dev/voxfish.js": () => Promise.resolve().then(() => (init_voxfish(), voxfish_exports)),

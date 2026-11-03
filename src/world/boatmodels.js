@@ -545,8 +545,9 @@ function catamaran(paint, trim, parts) {
   m.box(cx0 - 1, DECK + 11, ZC - 8, cx1 + 1, DECK + 11, ZC + 8, (x, y, z) => ((x + z) % 4 === 0 ? p.solarL : p.solar));
   // two wind turbines on the stern corners (blades spin as an overlay)
   for (const [k, sd] of [[0, -1], [1, 1]]) {
-    const tx = X0 + 2 + k * 3, tz = ZC + sd * 8, top = DECK + 40 + k * 3;
-    m.line(tx, DECK + 1, tz, tx, top, tz, p.white, 0.7);
+    const tx = k ? X0 + 66 : X0 + 3, tz = ZC + sd * 8, top = k ? DECK + 30 : DECK + 40;
+    m.line(tx, DECK + 1, tz, tx, top, tz, p.white, 1.0);
+    for (let y = DECK + 4; y < top - 2; y += 6) m.set(tx, y, tz + 1, p.aqua);
     m.ellipsoid(tx + 1, top, tz, 2.6, 1.5, 1.5, p.white);
     m.set(tx + 3, top, tz, p.aqua);
     m.set(tx, top + 1, tz + 1, p.lime);
@@ -596,13 +597,13 @@ function submarine(paint, trim, parts) {
     return rib ? p.chrome : (x + y) % 7 === 0 ? p.glassHi : p.glass;
   });
   // periscope, dive fins, tail fin + propeller shroud, nose light
-  m.line(dx + 17, dTop, ZC - 2, dx + 17, dTop + 8, ZC - 2, p.chrome, 0.6);
-  m.line(dx + 17, dTop + 8, ZC - 2, dx + 20, dTop + 8, ZC - 2, p.chrome, 0.6);
+  m.line(dx + 24, dTop - 1, ZC - 2, dx + 24, dTop + 8, ZC - 2, p.chrome, 0.6);
+  m.line(dx + 24, dTop + 8, ZC - 2, dx + 27, dTop + 8, ZC - 2, p.chrome, 0.6);
   for (const [u, w] of [[64, 6], [10, 5]]) for (const sd of [-1, 1]) m.box(X0 + u - 3, CY, ZC + sd * (R - 1), X0 + u + 2, CY, ZC + sd * (R + w), p.aqua);
   m.box(X0 + 2, CY, ZC, X0 + 7, CY + R + 4, ZC, p.aqua);
   for (let a = 0; a < TAU; a += 0.2) m.set(X0 - 2, CY + Math.sin(a) * 3.6, ZC + Math.cos(a) * 3.6, p.chrome);
   m.sphere(X0 + LEN, CY + 1, ZC, 1.6, p.lamp);
-  A.flag = [dx + 17.5, dTop + 8.5, ZC - 1.5];
+  A.flag = [dx + 24.5, dTop + 8.5, ZC - 1.5];
   if (parts.engine !== 'none') engine(m, p, parts.engine === 'outboard' ? 'bubble' : parts.engine, X0 + 1, CY + R - 2, ZC, A, spin, bubbles, { x0: X0 + 10, x1: X0 + 22, h: 12, poleH: 14 });
   if (!A.bubbles0) { A.bubbles0 = [X0 - 3, CY, ZC + 0.5]; bubbles.push('bubbles0'); }
   const front = twinFront(m, [p.chrome], (x, y, z) => z > ZC + 1.5 && y > dTop);

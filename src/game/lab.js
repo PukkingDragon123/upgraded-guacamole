@@ -8,7 +8,13 @@
 //     fish cost keys: 'rarity:<r>' (that rarity or better), 'biome:<oceanId>' (caught in that ocean), or a species id
 //     (a species that no longer exists falls back to 'rarity:common'). Paid with kept fish NOT in the tank.
 //     pos is in tree units around the root (0,0); ang (radians) / rad (units) are the same point in polar form.
-//   BRANCHES {id: {name, color, angle, icon}}, LAB_BY_ID, ROOT_ID, BOAT_ORDER, TANK_ORDER, OCEAN_ORDER
+//   120 nodes (root + 8 branches): rods (up), reel & shock, boats (right), oceans, aquarium (down), luck & idle,
+//   bait (left), crafting. Layout: tier t sits on ring LAB_RING(t); LAB_CHILDREN[id] -> ids that need it.
+//   BRANCHES {id: {name, color, angle, icon}}, BRANCH_ORDER, LAB_BY_ID, ROOT_ID, BOAT_ORDER, TANK_ORDER, OCEAN_ORDER,
+//   BOAT_NAMES, TANK_NAMES, OCEAN_NAMES, STARTER_UNLOCKS, DECOR_SETS (decor recipes per crafting node), EFFECT_INFO, MULT_KEYS
+//   Unlock ids: rod:<rods.js id>, boat:<BOAT_ORDER> (sets state.boat.tier), tank:<TANK_ORDER> (sets state.tank.tier),
+//   biome:<OCEAN_ORDER> (pushed to state.unlockedBiomes), recipe:<src/build/crafting.js id>, bait:<store bait id>
+//   (allows its AppSea download), feature:isp2..isp6 | multiplayer | autocollect | eng1 | eng2 | aquarium.
 //   ensureLab(state) -> state.lab = {done:{id:ts}, active:{id,start,end}|null, slots:[{id,start,end,paid}], unlocks:{'kind:id':true}}
 //   labHas(state, nodeId) -> bool
 //   labStatus(state, nodeId) -> 'done'|'researching'|'available'|'locked'
@@ -294,6 +300,7 @@ function grantNode(state, id, seen = new Set()) {
   for (const r of nd.req) grantNode(state, r, seen);
   if (state.lab.done[id]) return;
   state.lab.done[id] = Date.now();
+  (state.skills ||= {})[id] = true;
   for (const u of nd.unlock) applyUnlock(state, u.kind, u.id);
 }
 
@@ -325,7 +332,7 @@ export function ensureLab(state) {
   // oceans that are already open (a default save may start with more than the (OS)cean) count as charted
   for (const b of state.unlockedBiomes || []) {
     const nd = nodeFor('biome', b);
-    if (nd && !L.done[nd.id]) { L.done[nd.id] = Date.now(); for (const u of nd.unlock) applyUnlock(state, u.kind, u.id); }
+    if (nd && !L.done[nd.id]) { L.done[nd.id] = Date.now(); (state.skills ||= {})[nd.id] = true; for (const u of nd.unlock) applyUnlock(state, u.kind, u.id); }
   }
   L.slots = L.slots.filter((s) => s && LAB_BY_ID[s.id] && !L.done[s.id]);
   L.active = L.slots[0] || null;
@@ -494,6 +501,7 @@ export function finishResearch(game, id) {
   L.slots = L.slots.filter((s) => s.id !== id);
   L.active = L.slots[0] || null;
   L.done[id] = Date.now();
+  (st.skills ||= {})[id] = true; // mirrored for older readers of state.skills (map panel, dev pages)
   for (const u of nd.unlock) {
     applyUnlock(st, u.kind, u.id);
     game.emit?.('unlocked', { kind: u.kind, id: u.id });
