@@ -1,7 +1,7 @@
 // Dev preview of the 3D voxel world map: dist/dev/mapview.html
 //   &yaw=0..5 (rotation index)  &state=fresh|mid|all (unlocked locations)  &biome=<current id>
 //   &hover=<id> (force hover highlight)  &sel=<id>  &sail=<id> (start sailing there)  &forecast
-//   &bake (raw baked diorama + timings, no panel)  &w=960&h=540 (logical size)
+//   &night (night sky)  &bake (raw baked diorama + timings, no panel; &all times every yaw)  &w=960&h=540 (logical size)
 // window.FISHTOP = stub game (FISHTOP.ui.open('map'), FISHTOP.ui.panels.map.setYaw(i) ...)
 import { ctxOf } from '../core/canvas.js';
 import { Input } from '../core/input.js';
@@ -53,6 +53,7 @@ function makeGame(params) {
     },
   };
   g.stats = computeStats(st.skills);
+  if (params.has('night')) g.clock = { isNight: () => true, hour: () => 23 };
   if (params.has('forecast')) g.stats.forecast = 1;
   return g;
 }

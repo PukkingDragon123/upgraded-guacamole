@@ -15,10 +15,12 @@ import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { PixelBuffer } from '../gfx/pixel.js';
 import { VoxelModel, renderVoxels } from '../gfx/voxel.js';
 import { drawText, measureText, wrapText } from '../gfx/font.js';
-import { drawButton, drawPaper, drawBar } from './panels.js';
-import { AERO, aeroCached, aeroSurface, drawAeroFrame, toneFrom } from './aero.js';
+import { drawButton } from './panels.js';
+import { AERO, fmtAero, aeroCached, aeroSurface, drawAeroFrame, toneFrom, drawSunFlare, drawArcLines, drawAeroBubble, drawAeroLabel, drawAeroCard, drawAeroBar, drawSparkle } from './aero.js';
 import { getUiIcon } from '../gfx/uiicons.js';
-import { SKILLS, SKILL_BY_ID } from '../game/skills.js';
+import { SKILLS } from '../game/skills.js';
+import { LAB_BY_ID, ROOT_ID, nodeFor, labStatus, labCheck, labProgress, fishLabel } from '../game/lab.js';
+import { ITEMS } from '../build/items.js';
 import { SPECIES } from '../fish/species.js';
 
 const DEG = Math.PI / 180;
@@ -49,43 +51,43 @@ const ZONE1 = SEA - depthY(200), ZONE2 = SEA - depthY(1000); // sunlight / twili
 // sea = where the boat moors on the surface)
 export const MAP_LOCATIONS = [
   {
-    id: 'oscean', name: '(OS)cean', sub: 'The desktop wallpaper, flooded', depth: 4, color: '#38b6ff', skill: null,
+    id: 'oscean', name: '(OS)cean', sub: 'The desktop wallpaper, flooded', depth: 4, color: '#38b6ff',
     geo: { u: -18, w: 50, h: SEA - 8, s: 14, rad: 30 }, pin: [-19, SEA + 21, 49], focus: [-19, SEA + 9, 49], sea: [-3, 30],
     desc: 'Rolling green hills, wind turbines and bubbles under a glossy sky. Home sweet home.',
     weathers: ['sunny', 'bubbles', 'glossyrain', 'aurora'],
   },
   {
-    id: 'shallows', name: 'Sunny Shallows', sub: 'Crystal-clear tropical lagoon', depth: 8, color: '#ffc24a', skill: null,
+    id: 'shallows', name: 'Sunny Shallows', sub: 'Crystal-clear tropical lagoon', depth: 8, color: '#ffc24a',
     geo: { u: 24, w: 26, h: SEA - 6, s: 17, rad: 34 }, pin: [19, SEA + 17, 21], focus: [19, SEA + 6, 21], sea: [40, 22],
     desc: 'Warm, bright and friendly. Perfect for new anglers and very curious fish.',
     weathers: ['sunny', 'cloudy', 'rain', 'storm'],
   },
   {
-    id: 'fjord', name: 'Frosty Fjord', sub: 'Glaciers, ice caves & auroras', depth: 60, color: '#8ae2ff', skill: 'exp7',
+    id: 'fjord', name: 'Frosty Fjord', sub: 'Glaciers, ice caves & auroras', depth: 60, color: '#8ae2ff',
     geo: { u: 86, w: 18, h: SEA - 14, s: 15, rad: 34 }, pin: [87, SEA + 22, 14], focus: [87, SEA + 6, 14], sea: [87, 34],
     desc: 'Ice-cold, crystal water under shimmering northern lights. Frosty fish with frosty attitudes.',
     weathers: ['snowfall', 'aurora', 'seafog', 'blizzard'],
   },
   {
-    id: 'junkyard', name: 'Junkyard Reef', sub: 'Where old computers go to sleep', depth: 140, color: '#a6e05a', skill: 'exp1',
+    id: 'junkyard', name: 'Junkyard Reef', sub: 'Where old computers go to sleep', depth: 140, color: '#a6e05a',
     geo: { u: 30, w: 76, h: SEA - 24, s: 17, rad: 34 }, pin: [30, SEA + 3, 76], focus: [30, SEA - 16, 76], sea: [44, 97],
     desc: 'A reef of sunken hardware. Glitchy, mechanical and slightly rusty fish.',
     weathers: ['murky', 'static', 'oil', 'datarain'],
   },
   {
-    id: 'metropolis', name: 'Sunken Metropolis', sub: 'A drowned neon city', depth: 450, color: '#ff6ae0', skill: 'exp8',
+    id: 'metropolis', name: 'Sunken Metropolis', sub: 'A drowned neon city', depth: 450, color: '#ff6ae0',
     geo: { u: 90, w: 77, h: SEA - 38, s: 17, rad: 34 }, pin: [87, SEA + 12, 78], focus: [87, SEA - 6, 78], sea: [106, 95],
     desc: 'Skyscrapers still glowing under 450 m of water. The fish here never sleep.',
     weathers: ['neonrain', 'blackout', 'static', 'rushhour'],
   },
   {
-    id: 'volcano', name: 'Lava Rift', sub: 'Volcanic vents & magma glow', depth: 900, color: '#ff7a3a', skill: 'exp9',
+    id: 'volcano', name: 'Lava Rift', sub: 'Volcanic vents & magma glow', depth: 900, color: '#ff7a3a',
     geo: { u: 146, w: 28, h: SEA - 46, s: 17, rad: 34 }, pin: [146, SEA + 35, 28], focus: [146, SEA + 23, 28], sea: [124, 44],
     desc: 'Black glass, boiling vents and rivers of magma. Fireproof fish only.',
     weathers: ['ashfall', 'eruption', 'heathaze', 'embers'],
   },
   {
-    id: 'abyss', name: 'The Deep Ocean', sub: 'Something down here is watching', depth: 3200, color: '#8a9aff', skill: 'exp3',
+    id: 'abyss', name: 'The Deep Ocean', sub: 'Something down here is watching', depth: 3200, color: '#8a9aff',
     geo: { u: 146, w: 80, h: SEA - 32, s: 17, rad: 30 }, pin: [148, SEA + 4, 90], focus: [149, 16, 92], sea: [132, 95],
     desc: 'Pitch black and ancient. Bring a light. Bring courage. Bring snacks.',
     weathers: ['still', 'snow', 'current', 'glowtide'],
@@ -155,7 +157,8 @@ function torus(m, cx, cy, cz, R, r, c, axis = 'y', arc = null) {
 const AUTO = 0, SAND = 1, GRASS = 2, ROCK = 3, SNOW = 4, ICE = 5, CREV = 6, BASALT = 7, LAVA = 8, LAVAHOT = 9, CRUST = 10, RIFT = 11, PLAZA = 12, ROAD = 13, ROADLINE = 14;
 const OSAND = 15, HILL = 16, PATH = 17;
 const OC = [-19, 50];                                   // (OS)cean island centre
-const TURBINES = [[-25, 40, 16], [-14, 58, 14], [-27, 62, 13]]; // [u, w, tower height]
+const TURBINES = [[-28, 38, 15], [-19, 31, 17], [-10, 39, 14]]; // [u, w, tower height]
+const BUBBLE = [-12, 84];                               // glass-city bubble islet
 const CRACKS = [
   [[92, 40], [99, 45], [106, 43], [113, 49], [120, 47], [127, 53], [134, 51], [140, 57]],
   [[106, 43], [109, 36], [106, 29], [110, 22]],
@@ -190,6 +193,12 @@ function landAt(u, w) {
         h = Math.max(h, SEA + Math.round(dome * (2 + 9 * roll)));
         if (rr < 0.94) mt = Math.abs(du - Math.sin(dw * 0.18) * 4 - 2) < 0.9 && dw > -6 ? PATH : HILL;
       }
+    }
+    // sand islet carrying the glass-city bubble
+    const ri = Math.hypot(u - BUBBLE[0], w - BUBBLE[1]);
+    if (ri < 13) {
+      const ih = Math.round(lerp(SEA, h, smoothstep(8.5, 13, ri)));
+      if (ih >= h) { h = ih; mt = OSAND; }
     }
   }
   // --- shallows: sandy island with a grassy hill, sand shelf around it
@@ -500,7 +509,7 @@ function buildOscean(ctx, o) {
   // lollipop tree on the crest
   {
     const trunk = P('#9a6a3c', { jitter: 0.08 }, o), leaf = P('#4cc83a', { jitter: 0.12, smooth: 0.5 }, o), leafL = P('#9cf05a', { jitter: 0.1, smooth: 0.5 }, o);
-    const u = -12, w = 44, y = ground(u, w);
+    const u = -13, w = 56, y = ground(u, w);
     const x = X(u) + 0.5, z = Z(w) + 0.5;
     m.line(x, y, z, x + 0.3, y + 5, z, trunk, 0.7);
     shape(m, x - 4, y + 4, z - 4, x + 4, y + 11, z + 4, (xx, yy, zz) => {
@@ -512,7 +521,7 @@ function buildOscean(ctx, o) {
   {
     const g1 = P('#58d84a', { spec: 1, specPow: 10, smooth: 0.85, jitter: 0.04 }, o), g2 = P('#2fb43a', { spec: 1, specPow: 10, smooth: 0.85, jitter: 0.04 }, o);
     const land = P('#e8ffd8', { spec: 0.8, smooth: 0.85, jitter: 0.03 }, o), grid = P('#ffffff', { smooth: 0.85 }, o);
-    const u = -28, w = 48, y = ground(u, w);
+    const u = -25, w = 60, y = ground(u, w);
     const x = X(u) + 0.5, z = Z(w) + 0.5, cy = y + 9.5, R = 5.6;
     m.cylinder(x, z, y, y + 1, 2.2, chrome);
     m.cylinder(x, z, y + 2, y + 3, 0.8, chrome);
@@ -529,9 +538,8 @@ function buildOscean(ctx, o) {
   {
     const glass = P('#4ab0f0', { spec: 0.9, jitter: 0.04 }, o), glass2 = P('#7ad0ff', { spec: 0.9, jitter: 0.04 }, o), win = P('#eaf8ff', {}, o);
     const rib = P('#d4f6ff', { spec: 0.9, smooth: 0.6 }, o);
-    const u = -9, w = 82;
+    const [u, w] = BUBBLE;
     const cx = X(u) + 0.5, cz = Z(w) + 0.5, gy = ground(u, w) + 1, R = 8;
-    m.cylinder(cx, cz, gy - 1, gy, R - 0.5, ctx.LF.osand);
     const towers = [[-3, -2, 2, 11], [1, -3, 2, 8], [3, 1, 1, 9], [-2, 2, 1, 6], [0, 0, 1, 13], [-5, 1, 1, 5], [4, -2, 1, 6]];
     for (const [dx, dz, r, hgt] of towers) {
       const x0 = Math.floor(cx + dx), z0 = Math.floor(cz + dz);
@@ -1185,9 +1193,14 @@ function bakeView(dio, yaw, scale) {
         else if (band === 0 && ((ex + ez * 0.6 - ey * 0.9) % 26 + 26) % 26 < 3) { wc[0] = lerp(wc[0], 200, 0.25); wc[1] = lerp(wc[1], 240, 0.25); wc[2] = lerp(wc[2], 255, 0.25); }
       }
       const aq = Math.min(1, Math.floor(a * 12 + bq) / 12);
+      if (!ids[p]) {
+        // the ray leaves through the back glass: translucent water over whatever sits behind the diorama
+        const ga = Math.min(0.85, 0.4 + thick * 0.006);
+        px[p] = ((Math.round(ga * 255) << 24) | (Math.round(wc[2]) << 16) | (Math.round(wc[1]) << 8) | Math.round(wc[0])) >>> 0;
+        continue;
+      }
       const v = px[p];
       let br = v & 255, bg = (v >>> 8) & 255, bb = (v >>> 16) & 255;
-      if (!ids[p]) { br = 10; bg = 22; bb = 64; }
       br += (wc[0] - br) * aq; bg += (wc[1] - bg) * aq; bb += (wc[2] - bb) * aq;
       // caustics on shallow upward faces
       if (ax === 1 && topFace && ids[p]) {
@@ -1419,6 +1432,74 @@ function boatSprite(yaw) {
   });
 }
 
+// Wind-turbine rotor (3 white blades), one frame of its 120-degree cycle, rendered at the bake's scale / yaw.
+const ROTOR_FRAMES = 6, ROTOR_FACE = -25;
+function rotorSprite(scale, yaw, frame) {
+  return sprite(`rotor|${scale}|${yaw}|${frame}`, () => {
+    const m = new VoxelModel(21, 21, 3);
+    const white = m.color('#ffffff', { jitter: 0.02 }), tip = m.color('#bfe6f6', {}), hub = m.color('#d4e2ee', { spec: 0.9 });
+    const c = 10.5, rot = (frame * 120 / ROTOR_FRAMES) * DEG;
+    for (let k = 0; k < 3; k++) {
+      const a = rot + (k * TAU) / 3;
+      m.tube([[c, c, 1.5, 0.65], [c + Math.cos(a) * 3.5, c + Math.sin(a) * 3.5, 1.5, 0.55], [c + Math.cos(a) * 6.6, c + Math.sin(a) * 6.6, 1.5, 0.35]], (x, y) => (Math.hypot(x + 0.5 - c, y + 0.5 - c) > 5.5 ? tip : white), 3);
+    }
+    m.sphere(c, c, 1.6, 1.4, hub);
+    const r = renderVoxels(m, { scale, yaw: yaw + ROTOR_FACE, pitch: PITCH });
+    const [hx, hy] = r.project(c, c, 1.5);
+    return { canvas: r.canvas, hx, hy };
+  });
+}
+
+// Tiny voxel fish (cartoon eye: dark pupil + white shine), facing right ('r') or left.
+function fishVox(color, dir) {
+  return sprite(`fish|${color}|${dir}`, () => {
+    const m = new VoxelModel(10, 7, 4);
+    const body = m.color(color, { jitter: 0.04, spec: 0.7, smooth: 0.5 }), belly = m.color(mix(color, '#ffffff', 0.55), { smooth: 0.5 });
+    const fin = m.color(mix(color, '#bff6ff', 0.45), {}), eye = m.color('#10182a', {}), shine = m.color('#ffffff', {});
+    m.ellipsoid(5.6, 3.5, 2, 3.2, 2.2, 1.6, (x, y) => (y < 3 ? belly : body));
+    for (let y = 1; y <= 5; y++) m.set(0, y, 2, fin);
+    m.box(1, 2, 2, 1, 4, 2, fin);
+    m.set(5, 6, 2, fin);
+    for (const z of [0, 3]) { m.set(7, 4, z, eye); m.set(8, 4, z, shine); }
+    return renderVoxels(m, { scale: 1, yaw: dir === 'r' ? 4 : 184, pitch: 16 });
+  });
+}
+
+// Voxel seagull, wings up (0) or down (1).
+function gullVox(frame) {
+  return sprite('gull' + frame, () => {
+    const m = new VoxelModel(9, 6, 13);
+    const white = m.color('#ffffff', {}), grey = m.color('#c8d4e2', {}), beak = m.color('#ffb43a', {}), eye = m.color('#10182a', {});
+    m.ellipsoid(4.5, 2.5, 6.5, 3, 1.3, 1.3, white);
+    m.set(8, 3, 6, white); m.set(9 - 1, 2, 6, beak);
+    m.set(7, 3, 7, eye);
+    const wy = frame ? 1 : 4;
+    m.line(4.5, 2.6, 6.5, 4, wy, 1, frame ? grey : white, 0.6);
+    m.line(4.5, 2.6, 6.5, 4, wy, 12, frame ? grey : white, 0.6);
+    return renderVoxels(m, { scale: 1, yaw: 30, pitch: 34 });
+  });
+}
+
+function moonVox() {
+  return sprite('moon', () => {
+    const m = new VoxelModel(19, 19, 19);
+    const c1 = m.color('#f4f8ff', { smooth: 0.8 }), c2 = m.color('#c8d4ea', { smooth: 0.8 });
+    m.sphere(9.5, 9.5, 9.5, 8.5, c1);
+    m.paint(() => { m.sphere(6, 12, 17, 2.4, c2); m.sphere(12, 7, 17.5, 1.8, c2); m.sphere(13, 13, 16.5, 1.3, c2); });
+    return renderVoxels(m, { scale: 1.25, yaw: 0, pitch: 0, outline: false });
+  });
+}
+
+// Chain link seen face-on (0) or edge-on (1).
+function linkVox(kind) {
+  return sprite('link' + kind, () => {
+    const m = new VoxelModel(6, 7, 6);
+    const steel = m.color('#c8d2e0', { spec: 0.9, smooth: 0.5 });
+    torus(m, 3, 3.5, 3, 1.7, 0.6, steel, kind ? 'x' : 'z');
+    return renderVoxels(m, { scale: 1.25, yaw: 0, pitch: 0 });
+  });
+}
+
 function discSprite(r, color) {
   return sprite(`disc${r}${color}`, () => {
     const b = new PixelBuffer(r * 2 + 1, r * 2 + 1);
@@ -1432,14 +1513,14 @@ const packHex = (h) => { const [r, g, b] = RGB(h); return ((255 << 24) | (b << 1
 function backdrop(w, h, night) {
   return sprite(`bg${w}x${h}${night ? 'n' : 'd'}`, () => {
     const b = new PixelBuffer(w, h);
-    const top = RGB(night ? '#0a1a34' : '#1a4a7c'), mid = RGB(night ? '#1e4472' : '#3a7cb0'), bot = RGB(night ? '#3e7aa6' : '#7ab8d8');
+    const top = RGB(night ? '#0a2048' : '#1e8fe0'), mid = RGB(night ? '#1a4a86' : '#59c3ff'), bot = RGB(night ? '#3a86c0' : '#aee6ff');
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const k = y / h + (bayer(x, y) - 0.5) * 0.06;
       const [ca, cb, t] = k < 0.55 ? [top, mid, k / 0.55] : [mid, bot, (k - 0.55) / 0.45];
       const rad = Math.hypot((x - w * 0.47) / (w * 0.5), (y - h * 0.62) / (h * 0.55));
-      const glow = Math.max(0, 1 - rad) * 0.22;
+      const glow = Math.max(0, 1 - rad) * 0.25;
       let r = lerp(ca[0], cb[0], t), g = lerp(ca[1], cb[1], t), bb = lerp(ca[2], cb[2], t);
-      r += (150 - r) * glow; g += (220 - g) * glow; bb += (240 - bb) * glow;
+      r += (235 - r) * glow; g += (252 - g) * glow; bb += (255 - bb) * glow;
       b.set(x, y, ((255 << 24) | (Math.round(bb) << 16) | (Math.round(g) << 8) | Math.round(r)) >>> 0);
     }
     for (let i = 0; i < (night ? 80 : 0); i++) {
@@ -1488,19 +1569,22 @@ export class MapPanel {
     steps.push(() => {
       const Lay = this.layout(), bk = getBake(Lay.s, MAP_YAWS[this.yawI]);
       LOCS.forEach((L, i) => { if (!this.unlocked(L.id)) fogFor(bk, i + 1); });
-      LOCS.forEach((L) => pinSprite(L.color)); padlockSprite(); [1, 2, 3].forEach(cloudSprite);
+      LOCS.forEach((L) => { pinSprite(L.color); fishVox(mix(L.color, '#ffffff', 0.15), 'l'); fishVox(mix(L.color, '#ffffff', 0.15), 'r'); });
+      padlockSprite(); [1, 2, 3].forEach(cloudSprite); gullVox(0); gullVox(1); linkVox(0); linkVox(1); moonVox();
+      for (let f = 0; f < ROTOR_FRAMES; f++) rotorSprite(Lay.s, MAP_YAWS[this.yawI], f);
       backdrop(Lay.view.w, Lay.view.h, false); backdrop(Lay.view.w, Lay.view.h, true);
       outlineFor(bk, LOCS.findIndex((L) => L.id === this.current()) + 1);
       // panels.js caches its wood / paper / button textures per size: build them now, off screen
       const sc = ctxOf(makeCanvas(Lay.r.w, Lay.r.h)), bw = Lay.card.w - 18;
       drawAeroFrame(sc, 0, 0, Lay.r.w, Lay.r.h, { leaves: false, seed: 17 });
-      drawPaper(sc, 0, 0, Lay.card.w, Lay.card.h, { aged: true });
+      drawAeroCard(sc, 0, 0, Lay.card.w, Lay.card.h, { tone: 'frost' });
       for (const state of ['normal', 'hover', 'down', 'disabled']) drawButton(sc, 0, 0, bw, 24, { label: 'x', state, style: 'wood' });
       for (let k = 0; k < 16; k++) boatSprite(k * 22.5);
     });
     for (const i of order) steps.push(() => {
       const bk = getBake(this.layout().s, MAP_YAWS[i]);
       LOCS.forEach((L, k) => { if (!this.unlocked(L.id)) fogFor(bk, k + 1); });
+      for (let f = 0; f < ROTOR_FRAMES; f++) rotorSprite(bk.scale, bk.yaw, f);
     });
     this.warmLog = [];
     const run = () => {
@@ -1533,15 +1617,27 @@ export class MapPanel {
   unlocked(id) { return id === 'oscean' || !!this.game.state.unlockedBiomes?.includes(id); }
   current() { const id = this.game.ocean?.biome?.id || this.game.state.biome; return LOC_BY_ID[id] ? id : 'oscean'; }
 
-  skillFor(L) { return SKILLS.find((s) => s.effect?.unlockBiome === L.id) || (L.skill && SKILL_BY_ID[L.skill]) || null; }
+  skillFor(L) { return SKILLS.find((s) => s.effect?.unlockBiome === L.id) || null; }
 
+  // The Lab node that charts this ocean (skills.js wrappers expose it as effect.unlockBiome too).
+  labNode(L) {
+    const nd = nodeFor('biome', L.id);
+    if (nd) return nd;
+    const sk = this.skillFor(L);
+    return (sk && LAB_BY_ID[sk.id]) || null;
+  }
+
+  // Checklist for a locked ocean: earlier Lab nodes, the research cost (Aero, fish, materials), the research itself.
   requirements(L) {
-    const st = this.game.state, sk = this.skillFor(L);
-    if (!sk) return [{ text: `${L.name} expedition skill`, sub: 'coming soon', ok: false }];
-    const found = this.game.speciesFound?.() ?? 0;
-    const out = (sk.req || []).map((r) => ({ text: SKILL_BY_ID[r]?.name || r, sub: 'skill', ok: !!st.skills?.[r] }));
-    if (sk.needSpecies) out.push({ text: `Discover ${sk.needSpecies} species`, sub: `${Math.min(found, sk.needSpecies)}/${sk.needSpecies}`, ok: found >= sk.needSpecies });
-    out.push({ text: `Unlock '${sk.name}'`, sub: `${formatCommas(sk.cost)}{aero}`, ok: !!st.skills?.[sk.id] });
+    const st = this.game.state, nd = this.labNode(L);
+    if (!nd) return [{ text: 'Research in The Lab', sub: 'soon', ok: false }];
+    const status = labStatus(st, nd.id), c = labCheck(st, nd, this.game.stats);
+    const out = nd.req.filter((r) => r !== ROOT_ID).map((r) => ({ text: LAB_BY_ID[r]?.name || r, sub: '', ok: labStatus(st, r) === 'done' }));
+    if (c.aero.need) out.push({ text: `${fmtAero(c.aero.need)} {aero}`, sub: '', ok: c.aero.ok });
+    for (const f of c.fish) out.push({ text: fishLabel(f.key), sub: `${Math.min(f.have, f.need)}/${f.need}`, ok: f.ok });
+    for (const it of c.items) out.push({ text: ITEMS[it.id]?.name || it.id, sub: `${Math.min(it.have, it.need)}/${it.need}`, ok: it.ok });
+    if (status === 'researching') out.push({ text: `Researching '${nd.name}'`, sub: `${Math.round(labProgress(st, nd.id) * 100)}%`, ok: false });
+    else out.push({ text: `Research '${nd.name}' in The Lab`, sub: '', ok: status === 'done' });
     return out;
   }
 
@@ -1703,26 +1799,26 @@ export class MapPanel {
   drawSky(ctx, Lay, bk, ox, oy, t, reduced, night) {
     const { view } = Lay;
     const tt = reduced ? 0 : t;
-    // sun / moon
-    const sx = view.x + view.w - 64, sy = view.y + 46;
-    ctx.globalAlpha = 0.14;
-    ctx.drawImage(discSprite(22, night ? '#cfe0ff' : '#fff2b0'), sx - 22, sy - 22);
-    ctx.globalAlpha = 0.25;
-    ctx.drawImage(discSprite(16, night ? '#cfe0ff' : '#fff2b0'), sx - 16, sy - 16);
-    ctx.globalAlpha = 1;
+    // sun flare + white arcs by day, a voxel moon by night; soap bubbles drifting up
+    const sx = view.x + view.w - 66, sy = view.y + 50;
     if (night) {
-      ctx.drawImage(discSprite(11, '#eef2fa'), sx - 11, sy - 11);
-      ctx.drawImage(discSprite(3, '#c4cce0'), sx - 5, sy - 3);
-      ctx.drawImage(discSprite(2, '#c4cce0'), sx + 3, sy + 2);
-      ctx.drawImage(discSprite(1, '#c4cce0'), sx + 2, sy - 6);
+      const mn = moonVox();
+      ctx.globalAlpha = 0.25;
+      ctx.drawImage(discSprite(18, '#cfe6ff'), sx - 18, sy - 18);
+      ctx.globalAlpha = 1;
+      ctx.drawImage(mn.canvas, Math.round(sx - mn.w / 2), Math.round(sy - mn.h / 2));
+      for (let i = 0; i < 6; i++) if ((tt * 0.7 + hash1(i, 71)) % 1 < 0.25) drawSparkle(ctx, view.x + hash1(i, 72) * view.w, view.y + hash1(i, 73) * view.h * 0.4, 2, 0.8);
     } else {
-      ctx.fillStyle = '#ffe48a';
-      for (let k = 0; k < 12; k++) {
-        const a = (k / 12) * TAU + tt * 0.1, r0 = 15, r1 = k % 2 ? 19 : 22;
-        for (let q = r0; q <= r1; q++) ctx.fillRect(Math.round(sx + Math.cos(a) * q), Math.round(sy + Math.sin(a) * q), 1, 1);
-      }
-      ctx.drawImage(discSprite(12, '#ffe48a'), sx - 12, sy - 12);
-      ctx.drawImage(discSprite(10, '#fff4c0'), sx - 11, sy - 11);
+      ctx.save();
+      ctx.translate(view.x, view.y);
+      drawArcLines(ctx, sx - view.x, sy - view.y, 46, 6, { gap: 7, a0: 1.75, a1: 3.0, alpha: 0.5, w: view.w, h: view.h });
+      ctx.restore();
+      drawSunFlare(ctx, sx, sy, 30, 1);
+    }
+    for (let i = 0; i < 9; i++) {
+      const ph = (tt * (0.03 + hash1(i, 81) * 0.03) + hash1(i, 82)) % 1;
+      const bx = view.x + hash1(i, 83) * view.w + Math.sin(tt * 0.8 + i) * 4, by = view.y + view.h * (1 - ph);
+      drawAeroBubble(ctx, bx, by, 2 + hash1(i, 84) * 4, 0.7 * Math.min(1, (1 - ph) * 4, ph * 6));
     }
     // aurora curtains above the fjord
     const fj = LOC_BY_ID.fjord, [ax, ay] = bk.proj(fj.pin[0] + MX, SEA + 26, fj.pin[2] + M - 6);
@@ -1792,22 +1888,42 @@ export class MapPanel {
     // fish schools
     LOCS.forEach((L, li) => {
       if (!this.unlocked(L.id)) return;
-      const f = L.focus, fishCol = mix(L.color, '#1a4a8a', 0.35);
+      const f = L.focus, fishCol = mix(L.color, '#ffffff', 0.15);
       const cyY = Math.min(SEA - 4, f[1] + 7);
-      for (let k = 0; k < 5; k++) {
-        const a = tt * (0.35 + (k % 2) * 0.1) + k * 0.5 + li;
+      for (let k = 0; k < 4; k++) {
+        const a = tt * (0.35 + (k % 2) * 0.1) + k * 0.6 + li;
         const x = f[0] + MX + Math.cos(a) * (9 + (k % 3)), z = f[2] + M + Math.sin(a) * 6, y = cyY + Math.sin(a * 2 + k) * 1.5;
         const pt = bk.vis(x, y, z);
         if (!pt) continue;
-        const dir = -Math.sin(a) * bk.cam.R[0] + Math.cos(a) * bk.cam.R[2] < 0 ? -1 : 1;
-        const sx = Math.round(ox + pt[0]), sy = Math.round(oy + pt[1]);
-        ctx.fillStyle = fishCol;
-        ctx.fillRect(sx - 1, sy, 3, 2);
-        ctx.fillRect(sx - 1 - dir * 2, sy, 1, 2);
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(sx + dir, sy, 1, 1);
+        const dir = -Math.sin(a) * bk.cam.R[0] + Math.cos(a) * bk.cam.R[2] < 0 ? 'l' : 'r';
+        const fs = fishVox(fishCol, dir);
+        ctx.globalAlpha = 0.9;
+        ctx.drawImage(fs.canvas, Math.round(ox + pt[0] - fs.w / 2), Math.round(oy + pt[1] - fs.h / 2));
+        ctx.globalAlpha = 1;
       }
     });
+    // (OS)cean: spinning turbine rotors, the glass city's soap-bubble sheen, a bubble breeze
+    {
+      const fr = reduced ? 0 : Math.floor(t * 10) % ROTOR_FRAMES;
+      for (const [x, y, z] of DIO.turbines) {
+        const pt = bk.vis(x, y, z);
+        if (!pt) continue;
+        const rs = rotorSprite(bk.scale, bk.yaw, fr);
+        ctx.drawImage(rs.canvas, Math.round(ox + pt[0] - rs.hx), Math.round(oy + pt[1] - rs.hy));
+      }
+      const bc = DIO.bubbleCity;
+      if (bc) {
+        const [bx, by] = bk.proj(bc[0], bc[1], bc[2]);
+        const R = bc[3] * bk.scale * 1.05;
+        drawAeroBubble(ctx, ox + bx, oy + by, R, 0.5 + 0.1 * Math.sin(tt * 1.5));
+        drawSparkle(ctx, ox + bx - R * 0.45, oy + by - R * 0.5, 2, 0.6 + 0.4 * Math.sin(tt * 2.3));
+      }
+      for (let k = 0; k < 7; k++) {
+        const ph = (tt * 0.12 + hash1(k, 91)) % 1;
+        const [qx, qy] = bk.proj(OC[0] + MX + (hash1(k, 92) - 0.5) * 30, SEA + ph * 26, OC[1] + M + (hash1(k, 93) - 0.5) * 40);
+        drawAeroBubble(ctx, ox + qx + Math.sin(tt + k) * 2, oy + qy, 1.5 + hash1(k, 94) * 2.5, 0.75 * Math.min(1, (1 - ph) * 3, ph * 8));
+      }
+    }
     // bubbles from vents, the junk heap and the ruins
     ctx.fillStyle = '#c8f4ff';
     const vents = [[SMOKERS[0][0], SMOKERS[0][1], 0.5], [SMOKERS[2][0], SMOKERS[2][1], 0.6], [SMOKERS[1][0], SMOKERS[1][1], 0.4], [149, 92, 0.7], [30, 76, 0.4], [87, 78, 0.5]];
@@ -1855,14 +1971,12 @@ export class MapPanel {
         ctx.globalAlpha = 1;
       }
     }
-    // seagulls around the island
-    ctx.fillStyle = '#ffffff';
-    for (let k = 0; k < 2; k++) {
-      const a = tt * 0.5 + k * 3;
-      const [gx, gy] = bk.proj(20 + MX + Math.cos(a) * 14, SEA + 22 + k * 4, 22 + M + Math.sin(a) * 9);
-      const flap = Math.floor(tt * 6 + k) % 2;
-      const x = Math.round(ox + gx), y = Math.round(oy + gy);
-      ctx.fillRect(x - 2, y - flap, 2, 1); ctx.fillRect(x + 1, y - flap, 2, 1); ctx.fillRect(x, y, 1, 1);
+    // seagulls circling the islands
+    for (let k = 0; k < 3; k++) {
+      const a = tt * 0.5 + k * 2.1, [cu, cw] = k === 2 ? OC : [20, 22];
+      const [gx, gy] = bk.proj(cu + MX + Math.cos(a) * 14, SEA + 22 + k * 4, cw + M + Math.sin(a) * 9);
+      const gs = gullVox(Math.floor(tt * 5 + k) % 2);
+      ctx.drawImage(gs.canvas, Math.round(ox + gx - gs.w / 2), Math.round(oy + gy - gs.h / 2));
     }
   }
 
@@ -1968,33 +2082,21 @@ export class MapPanel {
         ctx.drawImage(lk.canvas, lx, ly);
         top = ly;
       }
-      // label plate
-      const name = L.name, depth = `${formatCommas(L.depth)} m`;
-      const nw = measureText(name), dw = measureText(depth, 'small');
-      const w = nw + dw + 16, h = 13;
-      const lx = Math.round(x - w / 2), ly = top - h - 2;
-      ctx.fillStyle = rgba('#06121e', isH ? 0.92 : 0.72);
-      ctx.fillRect(lx + 1, ly, w - 2, h); ctx.fillRect(lx, ly + 1, w, h - 2);
-      ctx.fillStyle = open ? L.color : '#7a8494';
-      ctx.fillRect(lx + 1, ly + h - 1, w - 2, 1);
-      if (isH || isS) { ctx.fillStyle = rgba(open ? L.color : '#c8d2e0', 0.9); ctx.fillRect(lx + 1, ly - 1, w - 2, 1); }
-      drawText(ctx, name, lx + 5, ly + 3, { color: open ? '#ffffff' : '#a8b2c2' });
-      drawText(ctx, depth, lx + 10 + nw, ly + 4, { font: 'small', color: open ? mix(L.color, '#ffffff', 0.4) : '#8a94a4' });
-      if (L.id === cur) {
-        drawText(ctx, 'YOU ARE HERE', x, ly - 8, { font: 'small', align: 'center', color: '#ffe08a', shadow: rgba('#06121e', 0.9) });
-      }
-      hits.push({ id: L.id, x: lx, y: ly - 2, w, h: Math.max(h + 4, y - ly + 4) });
+      // glossy label pill: name + depth
+      const tone = !open ? 'grey' : isH || isS ? toneFrom(L.color) : 'glass';
+      const lr = drawAeroLabel(ctx, `${L.name}  ${formatCommas(L.depth)} m`, x, top - 15, { align: 'center', tone });
+      if (L.id === cur) drawAeroLabel(ctx, 'YOU ARE HERE', x, lr.y - 12, { align: 'center', tone: 'orange', font: 'small' });
+      hits.push({ id: L.id, x: lr.x, y: lr.y - 2, w: lr.w, h: Math.max(lr.h + 4, y - lr.y + 4) });
     }
     this.pinHits = hits;
   }
 
   drawChain(ctx, x0, y0, x1, y1) {
-    const len = Math.hypot(x1 - x0, y1 - y0), n = Math.max(2, Math.floor(len / 3));
+    const len = Math.hypot(x1 - x0, y1 - y0), n = Math.max(2, Math.floor(len / 4));
     for (let i = 0; i <= n; i++) {
       const k = i / n, sag = Math.sin(k * Math.PI) * 3;
-      const x = Math.round(lerp(x0, x1, k)), y = Math.round(lerp(y0, y1, k) + sag);
-      if (i % 2) { ctx.fillStyle = '#3a4252'; ctx.fillRect(x - 1, y - 1, 3, 3); ctx.fillStyle = '#c8d0dc'; ctx.fillRect(x - 1, y - 1, 2, 1); ctx.fillStyle = '#7a8496'; ctx.fillRect(x, y, 1, 1); }
-      else { ctx.fillStyle = '#3a4252'; ctx.fillRect(x, y - 1, 1, 3); ctx.fillStyle = '#e0e6f0'; ctx.fillRect(x, y - 1, 1, 1); }
+      const lk = linkVox(i % 2);
+      ctx.drawImage(lk.canvas, Math.round(lerp(x0, x1, k) - lk.w / 2), Math.round(lerp(y0, y1, k) + sag - lk.h / 2));
     }
   }
 
@@ -2046,6 +2148,16 @@ export class MapPanel {
       ctx.drawImage(gl.canvas, x + 3 + (gl.x - sx) * 2, y + 3 + (gl.y - sy) * 2, gl.canvas.width * 2, gl.canvas.height * 2);
       ctx.restore();
     }
+    if (L.id === 'oscean') {
+      const fr = Math.floor(this.t * 10) % ROTOR_FRAMES;
+      ctx.save();
+      ctx.beginPath(); ctx.rect(x + 3, y + 3, sw * 2, sh * 2); ctx.clip();
+      for (const [tx, ty, tz] of DIO.turbines) {
+        const [px, py] = bk.proj(tx, ty, tz), rs = rotorSprite(bk.scale, bk.yaw, fr);
+        ctx.drawImage(rs.canvas, Math.round(x + 3 + (px - sx - rs.hx) * 2), Math.round(y + 3 + (py - sy - rs.hy) * 2), rs.canvas.width * 2, rs.canvas.height * 2);
+      }
+      ctx.restore();
+    }
     if (!open) {
       ctx.fillStyle = rgba('#3a4660', 0.62);
       ctx.fillRect(x + 3, y + 3, sw * 2, sh * 2);
@@ -2061,7 +2173,7 @@ export class MapPanel {
   drawCard(ctx, ui, rc, L, t) {
     const g = this.game, st = g.state;
     const open = this.unlocked(L.id), here = L.id === this.current();
-    drawPaper(ctx, rc.x, rc.y, rc.w, rc.h, { aged: true });
+    drawAeroCard(ctx, rc.x, rc.y, rc.w, rc.h, { tone: 'frost' });
     const x = rc.x + 9, w = rc.w - 18;
     let y = rc.y + 8;
     // header band
@@ -2078,11 +2190,11 @@ export class MapPanel {
       drawText(ctx, value, x + w, yy - 1, { align: 'right', color: INK });
     };
     row('DEPTH', `${formatCommas(L.depth)} m`, y);
-    drawBar(ctx, x, y + 9, w, 6, clamp01(Math.log10(L.depth + 1) / Math.log10(3201)), { color: '#3a9ef0' });
+    drawAeroBar(ctx, x, y + 9, w, 6, clamp01(Math.log10(L.depth + 1) / Math.log10(3201)), { color: '#3a9ef0' });
     y += 22;
     const [got, tot] = this.fishCount(L);
     row('FISH DISCOVERED', tot ? `${got} / ${tot}` : '? / ?', y);
-    drawBar(ctx, x, y + 9, w, 6, tot ? got / tot : 0, { color: open ? L.color : '#9a9aa4' });
+    drawAeroBar(ctx, x, y + 9, w, 6, tot ? got / tot : 0, { color: open ? L.color : '#9a9aa4' });
     y += 22;
     // weather
     drawText(ctx, 'WEATHER', x, y, { font: 'small', color: INK_L });
@@ -2119,17 +2231,16 @@ export class MapPanel {
       wrapText(L.desc, w).slice(0, 4).forEach((l, i) => drawText(ctx, l, x, y + i * 10, { color: INK_L }));
       y += Math.min(4, wrapText(L.desc, w).length) * 10 + 4;
     } else {
-      drawText(ctx, 'TO SAIL HERE YOU NEED:', x, y, { font: 'small', color: RED });
+      drawText(ctx, 'RESEARCH IN THE LAB:', x, y, { font: 'small', color: RED });
       y += 9;
       for (const q of this.requirements(L)) {
         ctx.drawImage(getUiIcon(q.ok ? 'check' : 'cross'), x, y - 1);
-        const sub = q.sub === 'skill' ? '' : ` (${q.sub})`;
+        const sub = q.sub ? ` (${q.sub})` : '';
         const lines = wrapText(q.text + sub, w - 14);
         lines.slice(0, 2).forEach((l, i) => drawText(ctx, l, x + 13, y + 1 + i * 9, { color: q.ok ? '#3a6a2a' : INK }));
         y += 9 * Math.min(2, lines.length) + 3;
       }
-      drawText(ctx, 'UNLOCK IN THE LAB', x, y + 1, { font: 'small', color: INK_L });
-      y += 10;
+      y += 2;
     }
     // travel button
     const bw = w, bh = 24, bx = x, by = rc.y + rc.h - bh - 9;
@@ -2171,10 +2282,18 @@ export class MapPanel {
         this.trySail(L);
       }
     } else {
-      drawButton(ctx, bx, by, bw, bh, { label: 'Locked', icon: getUiIcon('lock'), state: 'disabled', style: 'wood' });
-      if (ui.hover({ x: bx, y: by, w: bw, h: bh })) {
-        ui.tip = 'Unlock it in The Lab';
-        if (g.input.pressed) { g.input.pressed = false; g.audio.play('ui_error'); }
+      const nd = this.labNode(L);
+      if (g.ui?.panels?.lab && nd) {
+        if (ui.button(ctx, bx, by, bw, bh, 'Research in The Lab', { icon: 'lock', style: 'purple', tip: `Chart ${L.name} in The Lab` })) {
+          ui.close(this.id);
+          ui.open('lab', { tab: 'tree', focus: nd.id, highlight: nd.id });
+        }
+      } else {
+        drawButton(ctx, bx, by, bw, bh, { label: 'Locked', icon: getUiIcon('lock'), state: 'disabled', style: 'grey' });
+        if (ui.hover({ x: bx, y: by, w: bw, h: bh })) {
+          ui.tip = 'Research it in The Lab';
+          if (g.input.pressed) { g.input.pressed = false; g.audio.play('ui_error'); }
+        }
       }
     }
   }
