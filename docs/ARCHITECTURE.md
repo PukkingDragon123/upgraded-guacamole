@@ -190,7 +190,11 @@ seabed, world space), `drawUi(ctx)`, `hit(wx, wy)`, `active` (build mode), `togg
 - **Fish roster = internet culture and memes**, built on puns and similar-sounding words (e.g. Wi-Fish, Stonks
   Salmon, Rickroll Rockfish, 404 Fish Not Found, Buffering Blowfish), plus fun Frutiger Aero things. Affectionate
   parody names and ORIGINAL designs only: no copied meme images, characters, logos or exact trademarks.
-- **The Pac-Man-style fish is the ONE pixel-art fish** (a deliberate retro sprite among the voxel fish): a unique,
+- **FULL VOXEL ART, NO 2D FISH (user rule).** Every fish, creature, tank, room, backdrop, plant, prop and scenery
+  element is a voxel model rendered with the voxel pipeline. Never draw flat/illustrated 2D fish (not even in a tank
+  backdrop, a lamp panorama, an icon or a silhouette list) and never paint 2D backgrounds. Only UI chrome, text and
+  effects (particles, bubbles, light shafts, flares, bloom, splashes) may be 2D.
+- **The Pac-Man-style fish** (Wakka Fish) is a chunky retro VOXEL chomper (superseded: it was pixel art) (a deliberate retro sprite among the voxel fish): a unique,
   polished chomper of our own design (not a 1:1 copy) that moves like the arcade classic (straight runs, crisp
   90-degree turns, chomping mouth, gobbling pellet bubbles).
 - **Reference look (user images, view with Read):** `/tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/images/6.jpg`

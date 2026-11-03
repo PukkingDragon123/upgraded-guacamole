@@ -77995,6 +77995,8 @@ ${hearts} ${status}
         open(data) {
           const d = data || {};
           const st = this.game.state;
+          this.openedAt = performance.now();
+          this.lastData = d;
           ensureLab(st);
           this.rodSel = ensureRods(st).equipped;
           this.boatSel = null;
@@ -78012,6 +78014,14 @@ ${hearts} ${status}
         }
         close() {
           this.tree.drag = null;
+          if (performance.now() - (this.openedAt || 0) < 40 && !this.bounced) {
+            this.bounced = true;
+            const id2 = this.openId, d = this.lastData;
+            setTimeout(() => {
+              this.bounced = false;
+              if (!this.ui?.isOpen?.(id2)) this.ui?.open?.(id2, d);
+            }, 0);
+          }
         }
         setTab(id2, d = {}) {
           id2 = TAB_ALIAS[id2] || id2;

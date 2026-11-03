@@ -49,6 +49,8 @@ export class LabPanel {
   open(data) {
     const d = data || {};
     const st = this.game.state;
+    this.openedAt = performance.now();
+    this.lastData = d;
     ensureLab(st);
     this.rodSel = ensureRods(st).equipped;
     this.boatSel = null;
@@ -63,7 +65,16 @@ export class LabPanel {
     this.first = false;
   }
 
-  close() { this.tree.drag = null; }
+  close() {
+    this.tree.drag = null;
+    // A desktop icon toggle can race a script that opened the Lab in the same click (the tutorial opens it from
+    // 'iconOpen', then the icon toggles it shut). A close within a few ms of opening is that race: reopen.
+    if (performance.now() - (this.openedAt || 0) < 40 && !this.bounced) {
+      this.bounced = true;
+      const id = this.openId, d = this.lastData;
+      setTimeout(() => { this.bounced = false; if (!this.ui?.isOpen?.(id)) this.ui?.open?.(id, d); }, 0);
+    }
+  }
 
   setTab(id, d = {}) {
     id = TAB_ALIAS[id] || id;
