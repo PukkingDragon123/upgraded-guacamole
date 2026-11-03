@@ -20,9 +20,6 @@
 // drawBar(ctx,x,y,w,h,value,{color, back, segments})
 // drawTooltip(ctx,x,y,text,{maxW, font}) auto-placed near (x,y) inside the canvas          -> rect
 // drawTab(ctx,x,y,w,h,{label, icon, active, hover, color})
-// drawWindowChrome(ctx,{x,y,w,h},{title, iconCanvas, active=true, hover:'close'|'min'|null, down, fill, shadow=true})
-//   -> {content, close, min, titleBar};  windowRects({x,y,w,h}) -> the same rects without drawing
-// drawTaskbar(ctx,x,y,w,h)
 // drawPlank(ctx,x,y,w,h,{rope, tone, label})  glossy title pill                          -> inner rect
 // drawStamp(ctx,x,y,text,{color, angle (radians; |a|>π is read as degrees), font, scale})   glossy sticker centred on x,y
 // drawFrame(ctx,x,y,w,h,{style:'wood'|'gold'|'coral'})  glossy picture frame               -> inner rect
@@ -457,125 +454,6 @@ export function drawTab(ctx, x, y, w, h, opts = {}) {
     cx += iw;
   }
   if (label) drawText(ctx, label, cx, cy, { color: '#ffffff', shadow: active ? shade(color, -0.65) : '#0a4a7e' });
-}
-
-// ---------------------------------------------------------------- window chrome (Aero glass)
-
-const TITLE_H = 14, FRAME = 3;
-
-function windowTex(w, h, active) {
-  const tone = active
-    ? { top: '#c4f0ff', mid: '#6cc8f4', bot: '#2e8ed8', edge: '#0b3f74', a: [0.97, 0.95], glow: '#bff6ff' }
-    : { top: '#e4eef6', mid: '#a8c4d8', bot: '#7e9cb6', edge: '#3a5670', a: [0.95, 0.92], glow: '#e8f2fa' };
-  const frame = aeroSurface(w, h, { tone, r: 6, gloss: 0.55, glossH: TITLE_H + FRAME - 2, curve: 3, rim: 0.85, glow: 0.35, streak: true, sparkle: active ? 2 : 0, seed: w });
-  const c = makeCanvas(w, h);
-  const g = ctxOf(c);
-  g.drawImage(frame, 0, 0);
-  // inner content well edge
-  const cx = FRAME, cy = FRAME + TITLE_H + 1, cw = w - FRAME * 2, ch = h - cy - FRAME;
-  g.fillStyle = active ? 'rgba(6,46,90,0.55)' : 'rgba(40,64,90,0.45)';
-  g.fillRect(cx, cy - 1, cw, 1); g.fillRect(cx - 1, cy, 1, ch); g.fillRect(cx + cw, cy, 1, ch);
-  g.fillStyle = 'rgba(255,255,255,0.6)';
-  g.fillRect(cx, cy + ch, cw, 1);
-  return c;
-}
-
-function chromeButton(ctx, x, y, kind, state) {
-  const S = 11;
-  const tone = kind === 'close' ? 'red' : 'clear';
-  const st = state === 'down' ? 'down' : state === 'hover' ? 'hover' : 'normal';
-  drawAeroButton(ctx, x - (kind === 'close' ? 2 : 1), y, S + (kind === 'close' ? 3 : 1), S, { tone, state: st, radius: 3 });
-  const o = state === 'down' ? 1 : 0;
-  const cx = x + (kind === 'close' ? -1 : 0);
-  const pts = kind === 'close'
-    ? [[3, 3], [4, 4], [5, 5], [6, 6], [7, 7], [7, 3], [6, 4], [4, 6], [3, 7]]
-    : [[3, 7], [4, 7], [5, 7], [6, 7], [7, 7]];
-  ctx.fillStyle = kind === 'close' ? '#7a0c1a' : '#0a3e74';
-  for (const [gx, gy] of pts) ctx.fillRect(cx + gx + o + 1, y + gy + o, 1, 1);
-  ctx.fillStyle = '#ffffff';
-  for (const [gx, gy] of pts) ctx.fillRect(cx + gx + o + 1, y + gy + o - 1, 1, 1);
-}
-
-// The chrome's hit rects for a window rect (same numbers drawWindowChrome returns).
-export function windowRects(r) {
-  const x = Math.round(r.x), y = Math.round(r.y), w = Math.round(r.w), h = Math.round(r.h);
-  const close = { x: x + w - FRAME - 13, y: y + FRAME + 1, w: 11, h: 11 };
-  return {
-    titleBar: { x: x + FRAME, y: y + FRAME, w: w - FRAME * 2, h: TITLE_H },
-    close,
-    min: { x: close.x - 13, y: close.y, w: 11, h: 11 },
-    content: { x: x + FRAME + 1, y: y + FRAME + TITLE_H + 2, w: w - FRAME * 2 - 2, h: h - FRAME * 2 - TITLE_H - 3 },
-  };
-}
-
-export function drawWindowChrome(ctx, r, opts = {}) {
-  const x = Math.round(r.x), y = Math.round(r.y), w = Math.round(r.w), h = Math.round(r.h);
-  const active = opts.active !== false;
-  if (opts.shadow !== false) {
-    ctx.fillStyle = rgba(UI_COLORS.shadow, active ? 0.22 : 0.14);
-    ctx.fillRect(x + 5, y + h, w - 6, 2);
-    ctx.fillRect(x + w, y + 5, 2, h - 6);
-    ctx.fillStyle = rgba(UI_COLORS.shadow, active ? 0.12 : 0.08);
-    ctx.fillRect(x + 6, y + h + 2, w - 6, 2);
-    ctx.fillRect(x + w + 2, y + 6, 2, h - 4);
-  }
-  ctx.drawImage(aeroCached(`win|${w}|${h}|${active}`, () => windowTex(w, h, active)), x, y);
-  const { titleBar, close, min, content } = windowRects(r);
-  if (opts.fill !== false) {
-    ctx.fillStyle = typeof opts.fill === 'string' ? opts.fill : '#f4fbff';
-    ctx.fillRect(content.x, content.y, content.w, content.h);
-  }
-  let tx = titleBar.x + 4;
-  if (opts.iconCanvas) {
-    const ic = opts.iconCanvas;
-    const s = ic.height > 12 ? 12 / ic.height : 1;
-    const iw = Math.round(ic.width * s), ih = Math.round(ic.height * s);
-    ctx.drawImage(ic, tx - 1, titleBar.y + Math.floor((TITLE_H - ih) / 2), iw, ih);
-    tx += iw + 3;
-  }
-  if (opts.title) {
-    const maxW = min.x - tx - 4;
-    let t = String(opts.title);
-    while (t.length > 1 && measureText(t) > maxW) t = t.slice(0, -2) + '…';
-    aeroText(ctx, t.replace('…', '..'), tx, titleBar.y + 4, { color: active ? '#06305a' : '#3a4c5e', glow: '#ffffff', glowA: active ? 0.5 : 0.3 });
-  }
-  const st = (k) => (opts.down === k ? 'down' : opts.hover === k ? 'hover' : 'normal');
-  chromeButton(ctx, min.x, min.y, 'min', st('min'));
-  chromeButton(ctx, close.x, close.y, 'close', st('close'));
-  return { content, close, min, titleBar };
-}
-
-// ---------------------------------------------------------------- taskbar (dark Aero glass)
-
-function taskbarTex(w, h) {
-  // deep ocean glass: a bright glossy upper half, an aqua light line, a teal-green aurora along the bottom
-  const base = aeroSurface(w, h, { top: '#6cc4f4', mid: '#16569c', bot: '#062a58', a: [0.86, 0.94], edge: '#021a3a', edgeA: 0.95, r: 0, gloss: 0.5, glossH: Math.round(h * 0.48), curve: 0, rim: 0.4, glow: 0.6, glowColor: '#2ad8ff' });
-  const c = makeCanvas(w, h);
-  const g = ctxOf(c);
-  g.drawImage(base, 0, 0);
-  g.fillStyle = 'rgba(214,248,255,0.9)';
-  g.fillRect(0, 1, w, 1);
-  g.fillStyle = 'rgba(255,255,255,0.18)';
-  g.fillRect(0, 2, w, 1);
-  for (let x = 0; x < w; x++) {
-    const k = Math.sin(x * 0.011) * 0.5 + 0.5, k2 = Math.sin(x * 0.027 + 1.7) * 0.5 + 0.5;
-    g.fillStyle = `rgba(110,255,200,${(0.05 + 0.08 * k * k2).toFixed(3)})`;
-    g.fillRect(x, h - 6, 1, 4);
-  }
-  // a few soft light bubbles in the glass
-  for (let i = 0; i < w / 90; i++) {
-    const bx = Math.round(hash2(i, 3, 7) * w), by = Math.round(h * 0.55 + hash2(i, 5, 7) * h * 0.3);
-    g.fillStyle = 'rgba(200,250,255,0.22)';
-    g.fillRect(bx, by, 1, 1);
-  }
-  return c;
-}
-
-export function drawTaskbar(ctx, x, y, w, h) {
-  w = Math.round(w); h = Math.round(h);
-  ctx.fillStyle = rgba('#06243e', 0.18);
-  ctx.fillRect(Math.round(x), Math.round(y) - 2, w, 2);
-  ctx.drawImage(aeroCached(`taskbar|${w}|${h}`, () => taskbarTex(w, h)), Math.round(x), Math.round(y));
 }
 
 // ---------------------------------------------------------------- title pill ("hanging sign")

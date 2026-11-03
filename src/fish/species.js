@@ -3,8 +3,8 @@
 // plus the arrivals in species-oscean.js), Sunny Shallows, Frosty Fjord, Junkyard Reef, Sunken Metropolis,
 // Lava Rift 'volcano' and The Deep Ocean (species-extra.js holds fjord / volcano / metropolis).
 // About 15 per ocean: ~6 common, 4 uncommon, 3 rare, 1-2 epic, 1 legendary. Ids are the save keys: keep them.
-// Fish render as 3D voxel models (gfx/voxelfish.js) with cartoon voxel eyes; the Wakka Fish (kind 'chomper')
-// is the one pixel-art sprite. Schema: docs/ARCHITECTURE.md "Species schema". Looks are authored at the
+// Fish render as realistic 3D voxel models of their base animal (phase 4: src/fish/anatomy.js SPEC by id,
+// built by src/fish/realvox.js, natural eyes); the legacy look fields below still give sizes and kinds. Schema: docs/ARCHITECTURE.md "Species schema". Looks are authored at the
 // 960x540 logical scale (body len in px; tails/fins add to that). Bait interest 0..3 (unspecified = 0.25).
 // Phase 3 look keys: look.vox {glass, iri, gloss, finGlass, finTint} (voxel material), look.rotor (spinning
 // wind turbine), look.sneakers (white high-tops that walk), look.orb (a water bubble around the fish),
@@ -16,6 +16,7 @@
 
 import { EXTRA_SPECIES } from './species-extra.js';
 import { OSCEAN_SPECIES } from './species-oscean.js';
+import { SPEC as REAL_SPEC } from './anatomy.js';
 
 const S = [];
 const add = (o) => S.push(o);
@@ -2284,6 +2285,9 @@ for (const sp of [...EXTRA_SPECIES, ...OSCEAN_SPECIES]) {
   if (S.some((o) => o.id === sp.id)) continue;
   S.push(sp);
 }
+
+// Phase 4: every species renders as a realistic voxel model of its base animal (src/fish/anatomy.js).
+for (const sp of S) if (REAL_SPEC[sp.id] && sp.look) sp.look.real = REAL_SPEC[sp.id];
 
 export { grow as growLook };
 export const SPECIES = S;

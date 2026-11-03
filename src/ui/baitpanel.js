@@ -119,7 +119,7 @@ export class BaitPanel {
       if (hk) ctx.drawImage(hk, Math.round(cx - hk.width / 2), Math.round(ly + 40 - hk.height / 2));
       drawText(ctx, 'Empty hook', cx, ly + 86, { align: 'center', color: INK_SOFT });
     }
-    if (splashButton(ui, ctx, lx + 10, ly + lh - 26, lw - 20, 18, 'Get bait', { tone: 'green', tip: 'AppSea: download bait packs' })) this.openStore();
+    if (splashButton(ui, ctx, lx + 10, ly + lh - 26, lw - 20, 18, 'Get bait', { tone: 'green', tip: 'Bait Shop: buy bait packs' })) this.openStore(); // [phase4:shell]
     // right: bait grid
     const list = baitList(st);
     const gx = r.x + 160, gy = r.y + 34, gw = W - 170, gh = H - 80;
@@ -148,7 +148,7 @@ export class BaitPanel {
     }
     if (!list.length) {
       drawText(ctx, 'No bait left!', gx + gw / 2, gy + gh / 2 - 14, { align: 'center', color: INK, scale: 1 });
-      drawText(ctx, 'Download some at AppSea', gx + gw / 2, gy + gh / 2, { align: 'center', color: INK_SOFT });
+      drawText(ctx, 'Buy some at the Bait Shop', gx + gw / 2, gy + gh / 2, { align: 'center', color: INK_SOFT });
     }
     if (maxScroll > 0) {
       const sh = gh - 12, th = Math.max(12, sh * (rows / (rows + maxScroll)));
@@ -190,7 +190,7 @@ export class BaitPanel {
   openStore() {
     const g = this.game;
     g.ui.close(this.id);
-    try { openStore(g, { page: 'home' }); } catch (e) { g.toast?.('AppSea is offline.', 'info'); }
+    try { openStore(g, { page: 'home' }); } catch (e) { g.toast?.('The Bait Shop is closed.', 'info'); } // [phase4:shell]
   }
 
   // ---------------------------------------------------------------- custom builder

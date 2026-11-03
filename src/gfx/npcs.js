@@ -17,7 +17,7 @@ export const NPCS = {
   fizz: { id: 'fizz', name: 'Professor Fizz', role: 'Lab scientist', desc: 'A bubbly bubble-person scientist. Runs The Lab.', color: '#7affc8', h: 72 },
   goldie: { id: 'goldie', name: 'Goldie', role: 'Guide', desc: 'A chatty goldfish who lives in your starter jar.', color: '#ff9a2a', h: 40 },
   pinch: { id: 'pinch', name: 'Pinch', role: 'Helper', desc: 'A helpful little crab. Snip snip!', color: '#ff6a4a', h: 44 },
-  dot: { id: 'dot', name: 'Dot', role: 'AppSea mascot', desc: 'A glossy orb robot who loves downloads.', color: '#59e0ff', h: 56 },
+  dot: { id: 'dot', name: 'Dot', role: 'Bait Shop keeper', desc: 'A glossy orb robot who runs the Bait Shop.' /* [phase4:shell] */, color: '#59e0ff', h: 56 },
   marina: { id: 'marina', name: 'Marina', role: 'Pier keeper', desc: 'Keeps the pier tidy and the boats happy.', color: '#ffd23a', h: 74 },
   bloat: { id: 'bloat', name: 'Captain Bloat', role: 'Storyteller', desc: 'A retired pufferfish captain with a tale for every tide.', color: '#ffcf5a', h: 60 },
 };

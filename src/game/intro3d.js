@@ -1,86 +1,136 @@
-// The 3D opening (phase 3, Intro agent): about 24 s, skippable with a glossy Skip pill (or Esc).
-//   1. A sunny Frutiger Aero room in true one-point perspective: a white wall, a big window onto green hills
-//      (with parallax), a shelf with a glowing moving-picture aquarium lamp, a glass desk on chrome legs, a glossy
-//      monitor, Goldie (voxel, cartoon eyes) in her goldfish jar, a voxel plant, sun shafts, dust motes.
-//   2. A smooth camera dolly into the monitor, which shows the classic rolling-green-hill desktop.
-//   3. Bubbles rise from the jar, fly into the screen, and the desktop floods.
-//   4. Underwater, the bubbles coalesce into the player's bubble person (gfx/character.js drawCharacter).
-//   5. The camera tilts up through the surface into a 2000s eco wallpaper: a curved grass horizon, sun rays and
-//      a big lens flare, white arcs, a green glass globe, a glass city in a water bubble, glossy leaves framing
-//      the shot, splashes and bubbles; the glossy FISHTOP logo (puffy voxel letters) blooms in; a fish in white
-//      high-tops hops past.
-//   6. A dive back under with a bubble curtain dissolves into whatever is drawn underneath (the live game).
-// Props are voxel models (gfx/voxel.js) rendered once and drawn as billboards at their depth; glass, gloss and
-// light are painted per frame at the projected size so the dolly stays crisp. Assets build progressively
-// behind a white Aero bloom, so nothing hitches for long.
+// The 3D opening (phase 4, Intro agent): a Frutiger Aero fishing-game trailer, about 19 s, skippable with a
+// glossy Skip pill (or Esc). No desktop premise: it is all about fishing.
+//   1. Sweep  - fly in low over a glossy sunlit ocean toward the (OS)cean's green-hill island: rolling voxel hills,
+//               white wind turbines, a lone round tree, the glass city in its water bubble, the green glass globe
+//               floating in the sky, voxel clouds and gulls, sun rays, Aero arcs and a lens flare.
+//   2. Swoop  - bank down to the bubble person on their boat (drawCharacter + boatmodels), who casts a line.
+//   3. Plunge - follow the bobber under: a split-level shot through the glossy surface, a bubble curtain.
+//   4. Under  - glide past schools of voxel fish (the fish renderer), rising bubbles, sun shafts, a candy reef.
+//   5. Strike - a big fish rises out of the blue, charges the lure, strikes (flash, slow-mo) and surges up; it leaps
+//               out of the water toward the camera in a huge splash, droplets hitting the lens.
+//   6. Logo   - a glossy puffy-voxel FISHTOP logo blooms in over the sunny bay, with a sweeping lens flare.
+//   7. Hand-off - rising bubbles dissolve into the live game (onHandoff prepares it, onDone ends the opening).
+// The world is a true perspective camera (X right, Y DOWN with 0 = the sea surface, Z forward) along a keyframed
+// spline; every object is a voxel model rendered once and drawn as a depth-sorted billboard; the sea, the sky and
+// the underwater volume are painted per row from the camera, so the flight has real parallax. Only effects
+// (light, water streaks, bubbles, splashes, flares) are 2D. Assets build progressively behind a white Aero bloom.
 //
-//   const intro = new Intro3D({W, H, input, audio, look, onHandoff, onDone});
-//   intro.update(dt); intro.draw(ctx);    intro.skip(); intro.seek(t); intro.resize(W, H)
-//   intro.active (false once done), intro.t (timeline seconds), intro.ready (assets built), intro.opaque (covers all)
-//   drawGoldie(ctx, x, y, {scale, facing, blink, mood, t})   Goldie (npcs.js 'goldie' when present, else voxel)
+//   const intro = new Intro3D({W, H, input, audio, look, boat, music, onHandoff, onDone});
+//   intro.update(dt); intro.draw(ctx);    intro.skip(); intro.seek(t); intro.resize(W, H); intro.skipRect()
+//   intro.active (false once done), intro.t (timeline seconds), intro.ready (first assets built),
+//   intro.opaque (covers the whole frame: the host may skip drawing the world underneath)
 
 import { makeCanvas, ctxOf } from '../core/canvas.js';
-import { PixelBuffer } from '../gfx/pixel.js';
-import { pack, rgba } from '../core/color.js';
-import { clamp, clamp01, lerp, ease, hash2, fbm2, bayer, TAU } from '../core/math.js';
+import { rgba } from '../core/color.js';
+import { clamp, clamp01, lerp, ease, hash2, fbm2, smoothstep, TAU } from '../core/math.js';
 import { RNG } from '../core/rng.js';
 import { VoxelModel, renderVoxels } from '../gfx/voxel.js';
 import { Particles } from '../gfx/particles.js';
-import { renderLandscape, cumulus } from '../desktop/wallpaper.js';
-import { drawAeroButton, drawAeroGlow, drawAeroBubble, drawGlossOrb, drawSparkle, drawAeroSurface } from '../ui/aero.js';
-import { getUiIcon } from '../gfx/uiicons.js';
-import * as NPC from '../gfx/npcs.js';
+import * as AE from '../ui/aero.js';
+import * as UIC from '../gfx/uiicons.js';
 import * as CHAR from '../gfx/character.js';
-import * as BIG from '../gfx/bigicons.js';
+import * as KIT from '../world/aerokit.js';
+import * as GIANT from '../world/giants.js';
+import * as CRIT from '../world/voxcritters.js';
+import * as CORAL from '../world/coral.js';
+import * as BM from '../world/boatmodels.js';
+import * as RIG from '../gfx/fishrig.js';
+import * as SC from '../gfx/spritecache.js';
+import * as SPEC from '../fish/species.js';
+import * as ART from '../gfx/fishart.js';
 
 // ------------------------------------------------------------------------------------------------ timeline
 export const INTRO_T = {
-  fade: 1.5,                    // white bloom -> the room
-  notice: 2.4,                  // Goldie spots the camera
-  blow: 4.0,                    // ... and starts blowing bubbles
-  dolly0: 3.4, dolly1: 11.2,    // camera push into the monitor (the screen fills the frame at dolly1)
-  fly0: 5.0, fly1: 10.2,        // bubbles fly from the jar into the screen
-  flood0: 7.6, flood1: 12.4,    // the desktop floods
-  swirl: 12.2, gather: 13.8, pop: 14.6,
-  rise0: 15.8, rise1: 17.4,     // tilt up through the surface into the eco wallpaper
-  logo: 17.0, flare: 17.8,
-  sneak: 18.4,                  // the sneaker fish hops past
-  out0: 22.2, out1: 24.0,       // dive back under + dissolve to the live game
+  sweep: 0,          // fly in over the glossy ocean toward the island
+  swoop: 4.0,        // bank down to the boat
+  cast: 5.5,         // the bubble person casts (the bobber leaves the rod ~0.4 s later)
+  land: 6.75,        // the bobber splashes down
+  plunge: 7.55,      // follow the line under (the camera crosses the surface ~7.9)
+  under: 8.3,        // schools of fish, bubbles, sun shafts
+  shadow: 10.3,      // a big fish rises out of the blue
+  strike: 12.0,      // ... and strikes the lure
+  surge: 12.55,      // it surges for the surface
+  breach: 13.35,     // cut: it bursts out of the water toward the camera
+  logo: 15.05,       // white flash -> the glossy FISHTOP logo over the bay
+  flare: 15.8,
+  out0: 18.0, out1: 19.2,
 };
 const T = INTRO_T;
 const END = T.out1;
 
-// --------------------------------------------------------------------------------------------- the room
-// World units: at camera z = 0 a point at Z = 100 maps 1 unit -> 1 px of a 540 px tall screen. Y is down.
-const ZW = 185;            // back wall
-const FLOOR_Y = 300;
-const DESK = { y: 100, z0: 78, z1: 132, x0: -470, x1: 470, th: 7 };
-const SCREEN_H = 144;      // world height of the monitor's screen; its width follows the game's aspect
-const MON = { cy: -36, z: 100, depth: 9, side: 11, top: 11, chin: 24 };
-const JAR = { x: 236, z: 94, r: 50, cut: 6, water: -80 };
-const WIN = { x0: -870, x1: -230, y0: -455, y1: 70, frame: 15 };
-const SHELF = { x: 520, y: -170, z: ZW - 6 };
-const LAMP = { x: 640, y: -170, w: 118, h: 74 };   // the aquarium lamp sits on the shelf (world units, on the wall)
-const Z_OUT = 360;         // the landscape outside the window
-const WALL = { x0: -1050, x1: 950, y0: -640, y1: FLOOR_Y };
+// ------------------------------------------------------------------------------------------------ the world
+// World units ~ one boat voxel. X right, Y down (0 = the sea surface, negative = up), Z forward.
+// The sun sits at infinity; each shot gets its own (cuts hide the cheat): [azimuth, elevation] in radians.
+const SUNS = [[-0.2, 0.2], [-0.13, 0.3], [-0.2, 0.47]];
+const BOAT = { x: 0, z: 1000 };
+const LURE = { x: 150, y: 62, z: 1004 };      // where the lure sinks to (it lands at y = 0)
+const ISLE = { x: -240, z: 3600, w: 2300 };
+const GLOBE = { x: 1960, y: -760, z: 4300, r: 280 };
+const SEABED = 300;
+const FISH_LEN = 96;                          // the big fish, world units
+const EXIT = { x: 150, z: 1000 };             // where it breaks the surface
+const DOWN = { x: 50, z: 920 };               // ... and where its arc comes back down
+const SPLASH2 = { x: 170, z: 1240 };          // the splash still settling in the logo shot
 
+// Camera keys: [t, x, y, z, pitch (deg, + looks down), roll (deg)]. Three shots: the flight, the leap, the logo.
+const SHOTS = [
+  { t0: 0, t1: T.breach, keys: [
+    [0.0, -200, -430, -1700, 9, 0],
+    [2.0, -130, -300, -520, 8.5, -1.5],
+    [4.0, -50, -150, 430, 7, -3.5],
+    [5.0, -30, -62, 770, 5, -3],
+    [5.8, -14, -32, 868, 4, -1],
+    [6.5, 48, -25, 882, 6, 1],
+    [7.2, 118, -15, 890, 8, 0.5],
+    [7.6, 140, -6, 895, 8, 0],
+    [7.95, 148, 6, 898, 3, 0],
+    [8.6, 150, 34, 900, 0, 0],
+    [10.3, 152, 54, 908, 0.5, 0],
+    [12.0, 174, 64, 940, 2, 0],
+    [12.55, 166, 70, 918, -14, 1.5],
+    [13.35, 156, 52, 900, -30, 0],
+  ] },
+  { t0: T.breach, t1: T.logo, keys: [
+    [T.breach, 108, -11, 826, -3.5, 0],
+    [T.logo, 112, -14, 836, -4.5, 0],
+  ] },
+  { t0: T.logo, t1: 99, keys: [
+    [T.logo, -24, -40, 772, -6, 0],
+    [END, -12, -46, 812, -6.5, 0],
+  ] },
+];
 
 // ------------------------------------------------------------------------------------------------ helpers
 const inv = (a, b, t) => clamp01((t - a) / (b - a));
-
-function bez(p0, p1, p2, u) {
-  const a = (1 - u) * (1 - u), b = 2 * (1 - u) * u, c = u * u;
-  return [p0[0] * a + p1[0] * b + p2[0] * c, p0[1] * a + p1[1] * b + p2[1] * c, p0[2] * a + p1[2] * b + p2[2] * c];
-}
+const norm = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const DEG = Math.PI / 180;
 
 function vgrad(g, y0, y1, stops) {
   const gr = g.createLinearGradient(0, y0, 0, y1);
-  for (const [k, c] of stops) gr.addColorStop(k, c);
+  for (const [k, c] of stops) gr.addColorStop(clamp01(k), c);
   return gr;
 }
 
-const norm = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
-const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+// Hermite spline through keyed rows (finite-difference tangents) -> the row at time t.
+function spline(keys, t) {
+  if (t <= keys[0][0]) return keys[0].slice(1);
+  const n = keys.length;
+  if (t >= keys[n - 1][0]) return keys[n - 1].slice(1);
+  let i = 0;
+  while (i < n - 2 && t > keys[i + 1][0]) i++;
+  const a = keys[i], b = keys[i + 1];
+  const h = b[0] - a[0], s = (t - a[0]) / h;
+  const s2 = s * s, s3 = s2 * s;
+  const h00 = 2 * s3 - 3 * s2 + 1, h10 = s3 - 2 * s2 + s, h01 = -2 * s3 + 3 * s2, h11 = s3 - s2;
+  const tan = (k, j) => {
+    const p = keys[Math.max(0, k - 1)], q = keys[Math.min(n - 1, k + 1)];
+    return q[0] === p[0] ? 0 : (q[j] - p[j]) / (q[0] - p[0]);
+  };
+  const out = [];
+  for (let j = 1; j < a.length; j++) out.push(h00 * a[j] + h10 * h * tan(i, j) + h01 * b[j] + h11 * h * tan(i + 1, j));
+  return out;
+}
 
 // Oriented ellipsoid (axes = unit vectors in model space), colour = index or fn(u, v, w) -> index.
 function blob(m, cx, cy, cz, ax, ay, az, rx, ry, rz, col) {
@@ -132,285 +182,126 @@ function segDist(px, py, ax, ay, bx, by) {
   return Math.hypot(px - ax - dx * t, py - ay - dy * t);
 }
 
-// Big cartoon voxel eye: white ball, a big dark pupil looking along `look`, one emissive shine voxel.
-function cartoonEye(m, x, y, z, r, look, P, closed = false, lid = 0) {
-  if (closed) {
-    m.sphere(x, y, z, r, lid);
-    const n = norm(look);
-    for (let a = -1; a <= 1; a += 0.25) m.set(x + n[0] * r + a * r * 0.9 * (n[2] !== 0 ? 1 : 0), y - Math.abs(a) * 0.8 + 0.2, z + n[2] * r * 0.92 + a * r * 0.9 * (n[2] === 0 ? 1 : 0), P.pupil);
-    return;
+// A copy of a sprite washed toward a colour (fog), cached per quantised amount.
+const FOG = new Map();
+function fogged(src, color, a) {
+  const q = Math.round(clamp01(a) * 10) / 10;
+  if (q <= 0) return src;
+  let m = FOG.get(src);
+  if (!m) { FOG.set(src, (m = new Map())); if (FOG.size > 200) FOG.delete(FOG.keys().next().value); }
+  const key = color + q;
+  let c = m.get(key);
+  if (!c) {
+    c = makeCanvas(src.width, src.height);
+    const g = ctxOf(c);
+    g.drawImage(src, 0, 0);
+    g.globalCompositeOperation = 'source-atop';
+    g.globalAlpha = q;
+    g.fillStyle = color;
+    g.fillRect(0, 0, c.width, c.height);
+    m.set(key, c);
   }
-  m.sphere(x, y, z, r, P.white);
-  const n = norm(look);
-  m.sphere(x + n[0] * r * 0.62, y + n[1] * r * 0.62 - 0.2, z + n[2] * r * 0.62, r * 0.56, P.pupil);
-  m.set(x + n[0] * r * 1.02 - 0.5, y + r * 0.3, z + n[2] * r * 1.02, P.shine);
-  m.set(x + n[0] * r * 1.02 - 1.2, y + r * 0.3, z + n[2] * r * 1.02 - 0.6, P.shine);
-  m.set(x + n[0] * r * 1.0 + 0.6, y - r * 0.3, z + n[2] * r * 1.0, P.shine2);
+  return c;
 }
 
-// ------------------------------------------------------------------------------------------- voxel props
-function plantModel(seed = 5) {
-  const r = new RNG(seed);
-  const m = new VoxelModel(70, 92, 52);
-  const pot = m.color('#ffffff', { spec: 0.55, specPow: 18, smooth: 0.8, jitter: 0.03 });
-  const band = m.color('#8be04a', { spec: 0.45, specPow: 16, smooth: 0.8 });
-  const soil = m.color('#6a4a32', { jitter: 0.2 });
-  const stem = m.color('#3f9a2e', { smooth: 0.4 });
-  const pal = ['#2c8f34', '#4cbf45', '#8fe05a', '#d8ffa0'].map((c, i) => m.color(c, { spec: i < 3 ? 0.42 : 0.2, specPow: 14, smooth: 0.65, jitter: 0.05, edge: 0.6 }));
-  const cx = 35, cz = 26;
-  for (let y = 0; y < 22; y++) {
-    const rr = lerp(9, 13, Math.pow(y / 21, 0.8)) + (y > 18 ? 1 : 0);
-    m.cylinder(cx, cz, y, y, rr, y >= 9 && y <= 11 ? band : pot);
-  }
-  m.cylinder(cx, cz, 21, 21, 11.5, soil);
-  for (let i = 0; i < 11; i++) {
-    const a = (i / 11) * TAU + r.float(-0.25, 0.25);
-    const el = r.float(0.35, 1.25);
-    const h = r.float(30, 56);
-    const sx = cx + Math.cos(a) * 3, sz = cz + Math.sin(a) * 3;
-    const ex = cx + Math.cos(a) * r.float(8, 18), ez = cz + Math.sin(a) * r.float(5, 12);
-    m.line(sx, 21, sz, ex, h - 8, ez, stem, 0.7);
-    leaf(m, [ex, h - 8, ez], [Math.cos(a) * Math.cos(el), Math.sin(el), Math.sin(a) * Math.cos(el) * 0.7], r.float(17, 24), r.float(6, 8.5), pal, r.float(0.15, 0.45));
-  }
-  return m;
+// A vertically mirrored copy of a sprite, washed toward the water and fading away from the mirror line.
+function mirrorFade(src, wash, a0) {
+  const c = makeCanvas(src.width, src.height), g = ctxOf(c);
+  g.save(); g.scale(1, -1); g.drawImage(src, 0, -src.height); g.restore();
+  g.globalCompositeOperation = 'source-atop';
+  g.fillStyle = wash; g.fillRect(0, 0, c.width, c.height);
+  g.globalCompositeOperation = 'destination-in';
+  g.fillStyle = vgrad(g, 0, c.height, [[0, `rgba(0,0,0,${a0})`], [1, 'rgba(0,0,0,0)']]);
+  g.fillRect(0, 0, c.width, c.height);
+  return c;
 }
 
-function keyboardModel() {
-  const m = new VoxelModel(88, 6, 26);
-  const body = m.color('#9fb8c8', { spec: 0.5, specPow: 16, smooth: 0.4 });
-  const key = m.color('#ffffff', { spec: 0.6, specPow: 20, jitter: 0.02, light: 0.3 });
-  const led = m.color('#5fe6ff', { emissive: 0.8 });
-  m.box(0, 0, 0, 87, 2, 25, body);
-  m.box(3, 2, 1, 84, 2, 1, led);
-  for (let row = 0; row < 5; row++) for (let col = 0; col < 20; col++) {
-    if (row === 4 && col > 5 && col < 14) continue;
-    const x = 4 + col * 4, z = 4 + row * 4;
-    m.box(x, 3, z, x + 2, 3, z + 2, key);
-  }
-  m.box(4 + 6 * 4, 3, 20, 4 + 13 * 4 + 2, 3, 22, key);
-  return m;
-}
-
-function mouseModel() {
-  const m = new VoxelModel(16, 9, 22);
-  const shell = m.color('#ffffff', { spec: 0.7, specPow: 22, smooth: 1 });
-  const glow = m.color('#5fe6ff', { emissive: 0.7 });
-  m.ellipsoid(8, 0, 11, 6.5, 4.2, 10, shell);
-  m.box(7, 3, 3, 8, 4, 6, glow);
-  return m;
-}
-
-function gravelModel(seed = 3) {
-  const m = new VoxelModel(64, 16, 64);
-  const cols = ['#e8f4f8', '#5fd6e8', '#9be05a', '#6aa8f0', '#f6b8d0', '#ffffff', '#3cc0b0', '#c8e86a', '#ffd27a'];
-  const P = cols.map((c) => m.color(c, { spec: 0.5, specPow: 14, smooth: 0.7, jitter: 0.04 }));
-  const sand = m.color('#f0d8a8', { jitter: 0.15 });
-  m.ellipsoid(32, -2, 32, 31, 10, 31, sand);
-  const r = new RNG(seed);
-  for (let i = 0; i < 130; i++) {
-    const a = r.float(0, TAU), d = Math.sqrt(r.float(0, 1)) * 28;
-    const x = 32 + Math.cos(a) * d, z = 32 + Math.sin(a) * d;
-    const y = 8 * (1 - (d / 31) ** 2) - 1;
-    m.ellipsoid(x, y, z, r.float(1.6, 2.6), r.float(1.2, 2), r.float(1.6, 2.6), P[r.int(0, P.length - 1)]);
-  }
-  const g1 = m.color('#3fc85a', { smooth: 0.5 }), g2 = m.color('#8ff07a', { smooth: 0.5 });
-  for (const [x0, z0] of [[18, 40], [44, 30]]) {
-    for (let k = 0; k < 5; k++) {
-      const a = k * 1.3;
-      m.line(x0, 4, z0, x0 + Math.cos(a) * 4, 15, z0 + Math.sin(a) * 3, k % 2 ? g1 : g2, 0.6);
-    }
-  }
-  return m;
-}
-
-function shelfModel() {
-  const m = new VoxelModel(110, 34, 18);
-  const board = m.color('#ffffff', { spec: 0.4, specPow: 14, smooth: 0.4 });
-  const books = ['#3fb8f0', '#8be04a', '#f4fbff', '#2fd3e8'].map((c) => m.color(c, { spec: 0.35, specPow: 12, smooth: 0.3 }));
-  const pot = m.color('#e8f8ff', { spec: 0.6, specPow: 18, smooth: 0.8 });
-  const succ = ['#3fae5a', '#6fd47a', '#b8f0a0'].map((c) => m.color(c, { spec: 0.35, specPow: 12, smooth: 0.8 }));
-  m.box(0, 0, 2, 109, 3, 16, board);
-  let x = 6;
-  for (let i = 0; i < 4; i++) { const w = 4 + (i % 2), h = 20 + ((i * 7) % 6); m.box(x, 4, 5, x + w, 4 + h, 14, books[i]); x += w + 1; }
-  m.box(x + 1, 4, 5, x + 18, 8, 14, books[0]); m.box(x + 2, 9, 6, x + 16, 12, 13, books[1]);
-  m.cylinder(52, 10, 4, 12, 6, pot);
-  for (let i = 0; i < 9; i++) { const a = i * 0.7, rr = 2 + (i % 3); m.ellipsoid(52 + Math.cos(a) * rr, 15 + (i % 3) * 2, 10 + Math.sin(a) * rr * 0.6, 2.6, 3.2, 2.6, succ[i % 3]); }
-  return m;
-}
-
-function frondModel(seed = 9) {
-  const r = new RNG(seed);
-  const m = new VoxelModel(60, 60, 24);
-  const pal = ['#1f7a2e', '#36a63e', '#6fd04a', '#b8f08a'].map((c) => m.color(c, { smooth: 0.6, spec: 0.3 }));
-  for (let i = 0; i < 6; i++) {
-    const a = -0.4 + i * 0.32 + r.float(-0.1, 0.1);
-    leaf(m, [4, 50 - i * 5, 12], [Math.cos(a), -Math.sin(a) * 0.6, 0.1], r.float(26, 36), r.float(6, 9), pal, 0.2);
-  }
-  return m;
-}
-
-// Goldie: a round voxel goldfish with a flowing fan tail and big glossy cartoon eyes.
-// frame 0..3 = tail wag; mood: 'n' | 'b' (blink) | 'o' (mouth open, blowing bubbles) | 'h' (happy squint)
-function goldieModel(frame, mood) {
-  const m = new VoxelModel(36, 30, 22);
-  const B = ['#c63e08', '#f2600e', '#ff8424', '#ffad4a', '#ffd896'].map((c) => m.color(c, { spec: 0.6, specPow: 20, smooth: 0.95, jitter: 0.02, edge: 0.35 }));
-  const F = ['#ff7a2a', '#ffb070', '#ffe2c4'].map((c) => m.color(c, { spec: 0.35, specPow: 14, smooth: 0.5, light: 0.3 }));
-  const P = { white: m.color('#ffffff', { spec: 0.9, specPow: 30, smooth: 1 }), pupil: m.color('#141a2e', { spec: 1, specPow: 40, smooth: 1 }), shine: m.color('#ffffff', { emissive: 1 }), shine2: m.color('#cfefff', { emissive: 0.8 }) };
-  const blush = m.color('#ff7a9a', { smooth: 1 }), lip = m.color('#ff5a6a', { smooth: 1, spec: 0.6 }), dark = m.color('#5a1020');
-  const cx = 20, cy = 15, cz = 11;
-  m.ellipsoid(cx, cy, cz, 9.5, 8.5, 7, (x, y) => {
-    const k = (y + 0.5 - (cy - 8.5)) / 17;
-    return B[clamp(Math.round(k < 0.32 ? 4 : k < 0.45 ? 3 : 3 - (k - 0.45) * 5), 0, 4)];
-  });
-  // fan tail (two lobes) + wag
-  const wag = Math.sin((frame / 4) * TAU) * 0.55;
-  for (const s of [1, -1]) {
-    const ax = norm([-1, s * 0.62, wag]);
-    const az = norm(cross(ax, [0, 1, 0]));
-    const ay = norm(cross(az, ax));
-    blob(m, cx - 13, cy + s * 4, cz + wag * 6, ax, ay, az, 7, 5.2, 1.1, (u) => F[u > 0.5 ? 2 : u > -0.25 ? 1 : 0]);
-  }
-  // dorsal, pectoral and pelvic fins
-  blob(m, cx - 1.5, cy + 7.8, cz, norm([1, -0.2, 0]), [0, 1, 0], [0, 0, 1], 5.5, 3.6, 0.9, (u, v) => F[v > 0.35 ? 2 : 1]);
-  const pf = Math.sin((frame / 4) * TAU + 1) * 0.4;
-  blob(m, cx + 1, cy - 4.5, cz + 6.8, norm([-0.6, -0.5 + pf, 0.4]), norm([0.5, -0.6, 0]), norm([0.3, 0.3, 1]), 3.4, 2.2, 0.8, F[1]);
-  blob(m, cx - 3, cy - 7.5, cz + 2, norm([-0.7, -0.6, 0.2]), norm([0.6, -0.7, 0]), [0, 0, 1], 3.2, 1.8, 0.8, F[1]);
-  // cartoon eyes (both sides; the far one peeks over the head in the 3/4 view)
-  for (const s of [1, -1]) {
-    const ex = cx + 5.2, ey = cy + 2.6, ez = cz + s * 5.0;
-    const look = [0.65, 0.05, s * 0.75];
-    if (mood === 'b') cartoonEye(m, ex, ey, ez, 3.6, look, P, true, B[2]);
-    else if (mood === 'h') { m.sphere(ex, ey, ez, 3.6, B[3]); for (let a = -1; a <= 1; a += 0.25) m.set(ex + 2.6, ey + 1.2 - Math.abs(a) * 1.4, ez + s * 2.4 + a * 2.6, P.pupil); }
-    else cartoonEye(m, ex, ey, ez, 4.0, look, P);
-  }
-  // blush + mouth
-  m.ellipsoid(cx + 6.5, cy - 2.2, cz + 5.4, 1.6, 1, 1, blush);
-  if (mood === 'o') { m.ellipsoid(cx + 9.4, cy - 1.2, cz, 1.2, 2.2, 2.2, lip); m.ellipsoid(cx + 10.2, cy - 1.2, cz, 0.8, 1.4, 1.4, dark); }
-  else m.ellipsoid(cx + 9.2, cy - 1.6, cz, 1, 1.3, 1.8, lip);
-  return m;
-}
-
-const GOLDIE = new Map();
-function goldieFrame(vs, frame, mood) {
-  const key = vs + '|' + frame + '|' + mood;
-  let f = GOLDIE.get(key);
-  if (!f) {
-    const r = renderVoxels(goldieModel(frame, mood), { scale: vs, yaw: 34, pitch: 12, outline: true, ao: 0.7, edges: 0.5 });
-    const [ax, ay] = r.project(20, 15, 11);
-    f = { canvas: r.canvas, ax, ay, vs };
-    GOLDIE.set(key, f);
-  }
-  return f;
-}
-
-// Goldie: the Character agent's voxel NPC (gfx/npcs.js 'goldie') when it exists, else the built-in voxel Goldie.
-// (x, y) = body centre; scale 1 ~ 40 px tall (the NPC's scale); base = the scale her frames are rendered at (she
-// is drawn at base and transformed, so a continuously changing scale never re-renders voxels).
-// o: {scale, base, facing, blink, mood: 'happy'|'surprised'|'o' (blowing)|..., t, lookAt}
-export function drawGoldie(ctx, x, y, o = {}) {
-  const k = o.scale ?? 1, base = o.base ?? Math.max(0.5, Math.round(k * 4) / 4);
-  const m = k / base;
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.scale(m, m);
-  ctx.imageSmoothingEnabled = m < 0.98;
-  ctx.imageSmoothingQuality = 'high';
-  let done = false;
-  if (NPC.NPCS && NPC.NPCS.goldie && typeof NPC.drawNPC === 'function') {
-    try {
-      const mood = o.mood === 'o' ? 'excited' : o.mood === 'wide' ? 'surprised' : o.mood || 'happy';
-      NPC.drawNPC(ctx, 'goldie', { x: 0, y: 14 * base, t: o.t || 0, scale: base, facing: o.facing ?? 1, talk: o.mood === 'o' ? 0.9 : o.talk || 0, mood, pose: o.pose || (o.mood === 'o' ? 'talk' : 'idle'), shadow: false, lookAt: o.lookAt, id: o.id || 'goldie' });
-      done = true;
-    } catch (e) { done = false; }
-  }
-  if (!done) {
-    const vs = Math.max(1, Math.round(base * 1.4 * 4) / 4);
-    const mood = o.blink ? 'b' : o.mood === 'o' ? 'o' : o.mood === 'happy' ? 'h' : 'n';
-    const f = goldieFrame(vs, Math.floor((o.t || 0) * 8) % 4, mood);
-    const s = (base * 1.4) / vs;
-    if ((o.facing ?? 1) < 0) ctx.scale(-1, 1);
-    ctx.drawImage(f.canvas, -f.ax * s, -f.ay * s, f.canvas.width * s, f.canvas.height * s);
-  }
-  ctx.restore();
-  ctx.imageSmoothingEnabled = false;
-}
-
-// A silver fish standing in a pair of generic white high-top sneakers (meme gag; no logos).
-function sneakerFishModel() {
-  const m = new VoxelModel(70, 50, 34);
-  const sole = m.color('#f4f4f0', { spec: 0.3, smooth: 0.4 }), stripe = m.color('#d84a4a'), stripe2 = m.color('#3a62b8');
-  const canvasC = m.color('#ffffff', { smooth: 0.5, jitter: 0.03, spec: 0.2 }), toe = m.color('#f8f8f4', { spec: 0.5, smooth: 0.8 });
-  const lace = m.color('#c8ccd4'), eyelet = m.color('#9aa2ae', { spec: 0.8 }), inside = m.color('#d8d4cc');
-  const fish = ['#4a5a6a', '#7a8a9a', '#aab8c4', '#dfe8ee', '#f4f8fa'].map((c) => m.color(c, { spec: 0.7, specPow: 22, smooth: 0.9, jitter: 0.03 }));
-  const fin = m.color('#8a96a2', { smooth: 0.5, spec: 0.3 });
-  const P = { white: m.color('#ffffff', { spec: 0.9, smooth: 1 }), pupil: m.color('#141a2e', { spec: 1, smooth: 1 }), shine: m.color('#ffffff', { emissive: 1 }), shine2: m.color('#cfefff', { emissive: 0.8 }) };
-  const shoe = (x0, z0) => {
-    m.box(x0, 0, z0, x0 + 26, 2, z0 + 11, sole);
-    m.box(x0, 1, z0, x0 + 26, 1, z0 + 11, stripe);
-    m.box(x0, 2, z0, x0 + 26, 2, z0 + 11, stripe2);
-    m.ellipsoid(x0 + 21, 3, z0 + 5.5, 6, 3.5, 5.5, toe);
-    m.box(x0 + 1, 3, z0 + 1, x0 + 19, 8, z0 + 10, canvasC);
-    m.box(x0 + 1, 8, z0 + 1, x0 + 11, 22, z0 + 10, canvasC);
-    m.box(x0 + 3, 21, z0 + 3, x0 + 9, 22, z0 + 8, inside);
-    for (let y = 9; y < 21; y += 3) { m.set(x0 + 12, y, z0 + 2, eyelet); m.set(x0 + 12, y, z0 + 9, eyelet); m.line(x0 + 12, y, z0 + 2, x0 + 12, y + 1, z0 + 9, lace, 0.3); }
-    m.line(x0 + 12, 21, z0 + 5, x0 + 15, 17, z0 + 4, lace, 0.4);
+// ------------------------------------------------------------------------------------------- voxel models
+// The (OS)cean island: a smooth rolling green hill (the big glossy hill to the right, a shoulder on the left, a
+// meadow sloping to a white beach), foam at the shore, flowers in the grass. Returns {m, h(x, z) top height}.
+function islandModel(NX, NY, NZ) {
+  const m = new VoxelModel(NX, NY, NZ);
+  const C = (c, o = {}) => m.color(c, { jitter: 0.03, ...o });
+  const G = ['#1f8a34', '#2ea83c', '#46c244', '#6ad84e', '#9cec64', '#c8f88a'].map((c, i) => C(c, { spec: 0.3 + i * 0.07, specPow: 12, smooth: 0.7 }));
+  const sheen = C('#eaffc4', { spec: 0.9, specPow: 9, smooth: 0.85 });
+  const sand = C('#fff3d2', { spec: 0.3, smooth: 0.5 }), sandD = C('#ecd9a8', { smooth: 0.4 });
+  const foam = C('#ffffff', { spec: 0.6, smooth: 0.6 }), wet = C('#8fe6f2', { spec: 0.8, smooth: 0.8 });
+  const fl = [C('#ffffff'), C('#ffe23a'), C('#ff8ad0'), C('#8ad8ff')];
+  const cx = NX * 0.5, cz = NZ * 0.56;
+  const hill = (x, z) => {
+    const X = x / NX, Z = z / NZ;
+    let h = 1.0 * Math.exp(-(((X - 0.6) / 0.27) ** 2) - (((Z - 0.42) / 0.4) ** 2));
+    h += 0.5 * Math.exp(-(((X - 0.24) / 0.17) ** 2) - (((Z - 0.5) / 0.34) ** 2));
+    h += 0.16 * Math.exp(-(((X - 0.86) / 0.1) ** 2) - (((Z - 0.4) / 0.3) ** 2));
+    h += 0.04 * Math.sin(X * 17 + Z * 4) * smoothstep(0.2, 0.8, Z);
+    return h;
   };
-  shoe(6, 2); shoe(30, 18);
-  // the fish lies across the two shoe openings, head to the right
-  const fx = 36, fy = 32, fz = 17;
-  m.ellipsoid(fx, fy, fz, 22, 7.5, 6, (x, y) => fish[clamp(Math.round(((y - fy) / 7.5) * 1.6 + 2.6), 0, 4)]);
-  blob(m, fx - 25, fy + 3, fz, norm([-1, 0.7, 0]), norm([0.7, 1, 0]), [0, 0, 1], 6, 3.4, 1, fin);
-  blob(m, fx - 25, fy - 3, fz, norm([-1, -0.7, 0]), norm([0.7, -1, 0]), [0, 0, 1], 6, 3.4, 1, fin);
-  blob(m, fx - 2, fy + 7, fz, norm([1, 0.3, 0]), [0, 1, 0], [0, 0, 1], 6, 3, 0.9, fin);
-  cartoonEye(m, fx + 15, fy + 2, fz + 4.6, 3.2, [0.6, 0, 0.8], P);
-  m.ellipsoid(fx + 21.5, fy - 1.5, fz, 1, 1, 2, P.pupil);
+  const H = new Float32Array(NX * NZ);
+  for (let z = 0; z < NZ; z++) for (let x = 0; x < NX; x++) {
+    const dx = (x + 0.5 - cx) / (NX * 0.5), dz = (z + 0.5 - cz) / (NZ * 0.46);
+    const wob = (fbm2(x * 0.05, z * 0.09, 2, 7) - 0.5) * 0.18;
+    const r = Math.hypot(dx, dz) + wob;
+    if (r > 1) { H[z * NX + x] = -1; continue; }
+    const coast = smoothstep(1, 0.8, r);
+    H[z * NX + x] = 1.5 + coast * hill(x, z) * (NY - 6) + coast * 1.5;
+  }
+  const at = (x, z) => (x < 0 || z < 0 || x >= NX || z >= NZ ? -1 : H[z * NX + x]);
+  for (let z = 0; z < NZ; z++) for (let x = 0; x < NX; x++) {
+    const h = at(x, z);
+    if (h < 0) continue;
+    const top = Math.max(1, Math.round(h));
+    const nx = at(x + 1, z) - at(x - 1, z), nz = at(x, z + 1) - at(x, z - 1);
+    const lit = clamp01(0.55 - nx * 0.09 + nz * 0.05);
+    const shore = top <= 3;
+    for (let y = 0; y < top; y++) {
+      let c;
+      if (shore) c = y === 0 ? wet : y === top - 1 ? sand : sandD;
+      else if (y < 2) c = y === 0 ? wet : sand;
+      else {
+        const k = clamp01(y / (NY - 6));
+        c = G[clamp(Math.round(k * 3 + lit * 2.2 + (fbm2(x * 0.11, z * 0.13, 2, 3) - 0.5) * 1.6), 0, 5)];
+        if (y === top - 1) {
+          if (lit > 0.62 && k > 0.35 && hash2(x >> 1, z >> 1, 4) < 0.6) c = sheen;
+          const f = hash2(x, z, 9);
+          if (f < 0.022 && k < 0.7) c = fl[Math.floor(hash2(z, x, 2) * 4)];
+        }
+      }
+      m.set(x, y, z, c);
+    }
+    // a ring of foam around the beach
+    if (shore && (at(x + 2, z) < 0 || at(x - 2, z) < 0 || at(x, z + 2) < 0 || at(x, z - 2) < 0)) m.set(x, 0, z, foam);
+  }
+  return { m, h: (x, z) => Math.max(0, at(Math.round(x), Math.round(z))) };
+}
+
+// The red-and-white bobber (a glossy ball with an antenna) and the chrome lure with its hook.
+function bobberModel() {
+  const m = new VoxelModel(13, 18, 13);
+  const red = m.color('#ff3a3a', { spec: 0.9, specPow: 18, smooth: 1 }), white = m.color('#ffffff', { spec: 0.9, specPow: 18, smooth: 1 });
+  const stick = m.color('#ffd23a', { emissive: 0.4 });
+  m.sphere(6.5, 6.5, 6.5, 5.6, (x, y) => (y >= 6 ? white : red));
+  m.box(6, 12, 6, 6, 16, 6, stick);
   return m;
 }
 
-function cityModel() {
-  const m = new VoxelModel(74, 96, 34);
-  const glass = ['#3f6f9f', '#6a9ac8', '#a8d4f0', '#d8f0ff'].map((c) => m.color(c, { spec: 0.85, specPow: 26, smooth: 0.2, jitter: 0.03, edge: 0.6 }));
-  const towers = [[4, 8, 12, 10, 62], [17, 4, 10, 12, 84], [29, 10, 12, 10, 70], [42, 6, 9, 9, 92], [53, 12, 12, 10, 58], [12, 20, 10, 10, 40], [36, 22, 12, 9, 46], [60, 22, 10, 9, 34]];
-  towers.forEach(([x, z, w, d, h], i) => {
-    m.box(x, 0, z, x + w, h, z + d, (xx, yy, zz) => {
-      const win = yy % 4 === 0 ? 0 : (xx + zz) % 3 === 0 ? 1 : 2 + ((i + (yy >> 3)) % 2);
-      return glass[win];
-    });
-    if (i % 2 === 0) m.box(x + 2, h + 1, z + 2, x + w - 2, h + 4, z + d - 2, glass[1]);
-  });
+function lureModel() {
+  const m = new VoxelModel(26, 12, 10);
+  const chrome = ['#4a7a9a', '#8ac8e8', '#e8fbff'].map((c) => m.color(c, { spec: 1.1, specPow: 22, smooth: 1, jitter: 0.01 }));
+  const aqua = m.color('#2fe0f0', { spec: 1, specPow: 16, smooth: 1, emissive: 0.25 });
+  const hook = m.color('#c8d4e0', { spec: 1, specPow: 26 }), ring = m.color('#ffd23a', { spec: 0.8 });
+  // a curved spoon body
+  blob(m, 13, 6, 5, norm([1, 0.12, 0]), [0, 1, 0], [0, 0, 1], 8, 3.6, 1.6, (u, v) => chrome[v > 0.3 ? 2 : v > -0.3 ? 1 : 0]);
+  m.sphere(4.2, 6.5, 5, 1.6, aqua);
+  m.box(1, 6, 5, 2, 7, 5, ring);
+  // treble hook at the tail
+  m.line(21, 5, 5, 24, 5, 5, hook);
+  m.line(24, 5, 5, 24, 2, 5, hook);
+  m.line(24, 2, 5, 22.5, 3.2, 5, hook);
+  m.line(21, 5, 5, 24, 4, 7, hook);
   return m;
 }
 
-function globeModel(R = 30, seed = 7) {
-  const n = R * 2 + 3;
-  const m = new VoxelModel(n, n, n);
-  const land = ['#3fae2a', '#6fd83a', '#a6f06a'].map((c) => m.color(c, { spec: 0.7, specPow: 26, smooth: 1, jitter: 0.02 }));
-  const sea = ['#d8f8e0', '#f2fff4'].map((c) => m.color(c, { spec: 0.8, specPow: 30, smooth: 1, jitter: 0.01 }));
-  const c = n / 2;
-  m.sphere(c, c, c, R, (x, y, z) => {
-    const dx = x + 0.5 - c, dy = y + 0.5 - c, dz = z + 0.5 - c;
-    const lon = Math.atan2(dz, dx), lat = Math.asin(clamp(dy / R, -1, 1));
-    const v = fbm2(lon * 1.1 + 4, lat * 1.9, 4, seed) - 0.5 + Math.cos(lat) * 0.04;
-    if (v > 0.02) return land[v > 0.14 ? 2 : v > 0.07 ? 1 : 0];
-    return sea[dy > R * 0.2 ? 1 : 0];
-  });
-  return m;
-}
-
-function treeModel() {
-  const m = new VoxelModel(40, 52, 40);
-  const trunk = m.color('#6a4a2e', { jitter: 0.1 });
-  const P = ['#2f9a2a', '#4cbc32', '#86dc4a'].map((c) => m.color(c, { spec: 0.4, smooth: 0.8, jitter: 0.08 }));
-  m.box(18, 0, 18, 21, 22, 21, trunk);
-  const col = (x, y, z) => P[clamp(Math.round((y - 24) / 10 + (x < 20 ? 0.6 : 0) + hash2(x, z, 3) * 0.6), 0, 2)];
-  m.ellipsoid(20, 34, 20, 15, 13, 14, col);
-  m.ellipsoid(12, 30, 22, 9, 8, 9, col);
-  m.ellipsoid(28, 32, 18, 10, 9, 9, col);
-  m.ellipsoid(19, 44, 20, 9, 7, 9, col);
-  return m;
-}
-
-// Glossy leafy branch for framing the eco shot.
+// Glossy leafy branch for framing the logo shot.
 function branchModel(seed, nLeaves = 12) {
   const r = new RNG(seed);
   const m = new VoxelModel(120, 80, 30);
@@ -486,243 +377,12 @@ function logoModel() {
   return m;
 }
 
-// ---------------------------------------------------------------------------------------- painted textures
-let causticTile = null;
-function caustics() {
-  if (causticTile) return causticTile;
-  const S = 96;
-  const b = new PixelBuffer(S, S);
-  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-    const u = (x / S) * TAU, v = (y / S) * TAU;
-    const a = Math.sin(2 * u + 1.6 * Math.sin(v) + 0.7 * Math.sin(3 * v + u));
-    const c = Math.sin(2 * v + 1.4 * Math.sin(u * 2) - 0.6 * Math.sin(u + 3 * v));
-    const k = Math.exp(-a * a * 9) + Math.exp(-c * c * 9);
-    const al = clamp01((k - 0.45) * 1.6);
-    if (al > 0.05) b.set(x, y, pack('#ffffff', Math.round(al * 255)));
-  }
-  causticTile = b.toCanvas();
-  return causticTile;
-}
+// Fish used by the opening, in order of preference (ids from fish/species.js; the first that exists wins).
+const SCHOOL_IDS = ['zebrafish', 'pixel', 'loafer', 'cookie', 'googly'];
+const MID_IDS = ['grouper', 'bubblepuff', 'sneakerhead', 'koi'];
+const BIG_IDS = ['gottagofast', 'koi', 'dragonkarp', 'grouper'];
 
-// ------------------------------------------------------------------------------------------ voxel room
-// World units per voxel for the big room pieces.
-const WV = 8, DV = 4, MV = 2, JV = 1.25, LV = 2, LAMP_FRAMES = 12;
-const WALL_FZ = 34;           // floor depth (voxels) in front of the wall
-
-// The back wall with its window (the panes are holes: the landscape outside shows through), sill, glossy clock,
-// a lime/aqua Aero swoosh with glass bubbles, the baseboard and a strip of glossy floor tiles.
-function wallModel() {
-  const nx = Math.round((WALL.x1 - WALL.x0) / WV), ny = Math.round((WALL.y1 - WALL.y0) / WV);
-  const m = new VoxelModel(nx, ny + 1, WALL_FZ + 1);
-  const X = (x) => (x - WALL.x0) / WV, Y = (y) => (WALL.y1 - y) / WV;
-  const shades = ['#b4d8ea', '#badcec', '#c0e0ef', '#c7e4f2', '#cee9f5', '#d5edf8', '#dcf1fa', '#e3f4fb', '#eaf7fd', '#f2fbfe'].map((c) => m.color(c, { jitter: 0.012, smooth: 0.2, aoMul: 0.8 }));
-  const white = m.color('#ffffff', { spec: 0.5, specPow: 16, smooth: 0.4 }), whiteS = m.color('#e4f0f6', { smooth: 0.3 });
-  const tiles = [m.color('#f2f7f8', { spec: 0.45, specPow: 20 }), m.color('#e2edf1', { spec: 0.45, specPow: 20 }), m.color('#fffbea', { spec: 0.5, specPow: 20 })];
-  const lx = X(60), ly = Y(-160);
-  // the wall: soft vertical gradient, brighter where the sun pools to the right of the window
-  m.box(0, 0, 0, nx - 1, ny, 1, (x, y) => {
-    const k = 3 + (y / ny) * 4 + Math.max(0, 1 - Math.hypot(x - lx, (y - ly) * 1.3) / 70) * 3.5;
-    return shades[clamp(Math.round(k), 0, shades.length - 1)];
-  });
-  // window: frame, mullions, panes cut out, sill
-  const wx0 = Math.round(X(WIN.x0)), wx1 = Math.round(X(WIN.x1)), wy0 = Math.round(Y(WIN.y1)), wy1 = Math.round(Y(WIN.y0));
-  m.box(wx0, wy0, 0, wx1, wy1, 3, white);
-  const my = Math.round(wy1 - (wy1 - wy0) * 0.42), mx = Math.round((wx0 + wx1) / 2);
-  m.sub(() => { m.box(wx0 + 2, wy0 + 2, 0, mx - 1, my - 1, 3); m.box(mx + 1, wy0 + 2, 0, wx1 - 2, my - 1, 3); m.box(wx0 + 2, my + 1, 0, mx - 1, wy1 - 2, 3); m.box(mx + 1, my + 1, 0, wx1 - 2, wy1 - 2, 3); });
-  m.box(wx0 + 1, wy0 + 1, 3, wx1 - 1, wy0 + 1, 3, whiteS);
-  m.box(wx0 - 3, wy0 - 2, 0, wx1 + 3, wy0 - 1, 6, white);
-  // baseboard and the floor tiles (with the window's light falling on them)
-  m.box(0, 1, 0, nx - 1, 3, 2, white);
-  m.box(0, 0, 0, nx - 1, 0, WALL_FZ, (x, y, z) => {
-    const lit = x > X(-700) + z * 0.6 && x < X(-260) + z * 0.9 && z > 4;
-    return lit ? tiles[2] : tiles[((x >> 2) + (z >> 2)) & 1];
-  });
-  return { m, anchor: [0, ny, 2] };
-}
-
-// A glossy wall clock (2 units per voxel). Anchor: its centre on the wall.
-function clockModel() {
-  const m = new VoxelModel(52, 52, 8);
-  const chrome = m.color('#c8d6e0', { spec: 1.1, specPow: 26, smooth: 0.9 }), face = m.color('#fbfeff', { spec: 0.4, specPow: 18, smooth: 0.6 });
-  const ink = m.color('#0c3a52'), tick = m.color('#3f8fc4'), dot = m.color('#ff9d2e', { spec: 0.6 });
-  const c = 26;
-  m.cylinder(c, c, 0, 3, 23, chrome, 'z');
-  m.cylinder(c, c, 4, 4, 20, face, 'z');
-  m.sub(() => m.cylinder(c, c, 4, 4, 0.1, 0, 'z'));
-  for (let i = 0; i < 12; i++) { const a = (i / 12) * TAU, r = i % 3 ? 0.6 : 1.2; m.sphere(c + Math.cos(a) * 16, c + Math.sin(a) * 16, 5, r, tick); }
-  m.line(c, c, 5, c - 8, c + 8, 5, ink, 1.2);
-  m.line(c, c, 6, c + 11, c + 8, 6, ink, 0.8);
-  m.sphere(c, c, 6.5, 1.6, dot);
-  return { m, anchor: [c, c, 0] };
-}
-
-// The Aero wall decal: lime / aqua / white swoosh strands and glossy glass orbs (4 units per voxel).
-// Anchor: the decal's world origin (X 300, Y 200) on the wall.
-function decalModel() {
-  const D = 4, nx = Math.round(680 / D), ny = Math.round(330 / D);
-  const m = new VoxelModel(nx, ny, 12);
-  const X = (x) => (x - 300) / D, Y = (y) => (200 - y) / D;
-  const lime = m.color('#8be04a', { spec: 0.6, specPow: 18, smooth: 0.8 }), aqua = m.color('#46c8f0', { spec: 0.6, specPow: 18, smooth: 0.8 }), white = m.color('#ffffff', { spec: 0.6, smooth: 0.8 });
-  const glass = ['#4cc8f4', '#8fe0ff', '#d8f8ff'].map((c) => m.color(c, { spec: 1.2, specPow: 28, smooth: 1 }));
-  const P = [[300, 170], [470, -20], [700, 140], [960, -60]];
-  const bz = (t, i) => (1 - t) ** 3 * P[0][i] + 3 * (1 - t) ** 2 * t * P[1][i] + 3 * (1 - t) * t * t * P[2][i] + t ** 3 * P[3][i];
-  for (const [off, c, r] of [[0, lime, 2.2], [30, aqua, 1.4], [52, white, 0.7]]) for (let k = 0; k <= 120; k++) { const t = k / 120; m.line(X(bz(t, 0)), Y(bz(t, 1) - off), 1, X(bz(t, 0)), Y(bz(t, 1) - off), 2, c, r); }
-  for (const [bx, by, br] of [[380, 20, 26], [450, -40, 14], [620, 60, 34], [700, -30, 12], [820, 20, 22], [540, -90, 9]]) {
-    const r = br / D, cx = X(bx), cy = Y(by);
-    m.sphere(cx, cy, 1 + r, r, (x, y) => glass[clamp(Math.round(1 + (y - cy) / r * 1.2 - (x - cx) / r * 0.4), 0, 2)]);
-  }
-  return { m, anchor: [0, ny, 0] };
-}
-
-// The glass desk on chrome legs. Anchor: the top surface at the monitor's depth.
-function deskModel() {
-  const nx = Math.round((DESK.x1 - DESK.x0) / DV), nz = Math.round((DESK.z1 - DESK.z0) / DV) + 1;
-  const legH = Math.round((FLOOR_Y - DESK.y - DESK.th) / DV), ny = legH + 3;
-  const m = new VoxelModel(nx, ny, nz);
-  const glass = m.color('#c4f2ee', { spec: 0.9, specPow: 24, smooth: 0.3, jitter: 0.02 }), glassD = m.color('#9ee4dc', { spec: 0.7, specPow: 20 });
-  const edge = m.color('#5fd0b8', { spec: 0.8, specPow: 20, smooth: 0.5 }), rim = m.color('#e8fffa', { spec: 1, specPow: 30 });
-  const chrome = m.color('#d4e2ea', { spec: 1.1, specPow: 26, smooth: 0.9 }), foot = m.color('#9fb4c4', { smooth: 0.8 });
-  m.box(0, legH + 1, 0, nx - 1, legH + 2, nz - 1, (x, y, z) => (z === nz - 1 ? (y === legH + 2 ? rim : edge) : y === legH + 2 ? glass : glassD));
-  for (const lx of [6, nx - 7]) for (const lz of [2, nz - 3]) {
-    m.cylinder(lx, lz, 1, legH, 1.3, chrome);
-    m.cylinder(lx, lz, 0, 0, 2.2, foot);
-  }
-  return { m, anchor: [nx / 2, legH + 3, (DESK.z1 - 100) / DV] };
-}
-
-// The glossy monitor: a piano-black bezel around a recessed screen (the live desktop is drawn into the hole), a
-// glowing power LED, a chrome neck and a glass foot. Anchor: the screen centre on the front plane.
-function monitorModel(SW) {
-  const hw = Math.round(SW / MV), hh = Math.round(SCREEN_H / MV);
-  const side = Math.round(MON.side / MV), top = Math.round(MON.top / MV), chin = Math.round(MON.chin / MV);
-  const neck = Math.round((DESK.y - (MON.cy + SCREEN_H / 2 + MON.chin)) / MV);
-  const W = hw + side * 2, H = hh + top + chin;
-  const nz = 19, zf = nz - 1;
-  const m = new VoxelModel(W + 2, neck + H + 2, nz);
-  const bez = ['#3a4756', '#232d38', '#151c24', '#0b0f14'].map((c) => m.color(c, { spec: 0.9, specPow: 24, smooth: 0.6, jitter: 0.01 }));
-  const back = m.color('#05070a'), trim = m.color('#9fb4c4', { spec: 1, specPow: 26 });
-  const led = m.color('#5fe6ff', { emissive: 1 });
-  const chrome = m.color('#d4e2ea', { spec: 1.1, specPow: 26, smooth: 0.9 }), footC = m.color('#e8f6fa', { spec: 1, specPow: 26, smooth: 1 });
-  const x0 = 1, y0 = neck + 1;
-  const R = 3;
-  m.box(x0, y0, zf - 4, x0 + W - 1, y0 + H - 1, zf, (x, y) => {
-    const dx = Math.max(0, Math.max(x0 + R - x, x - (x0 + W - 1 - R))), dy = Math.max(0, Math.max(y0 + R - y, y - (y0 + H - 1 - R)));
-    if (dx * dx + dy * dy > R * R) return null;
-    const k = (y - y0) / H;
-    return bez[clamp(3 - Math.round(k * 3.4 - 0.2), 0, 3)];
-  });
-  // the screen hole (recessed) with a dark back plate
-  const sx0 = x0 + side, sy0 = y0 + chin;
-  m.sub(() => m.box(sx0, sy0, zf - 2, sx0 + hw - 1, sy0 + hh - 1, zf));
-  m.box(sx0, sy0, zf - 3, sx0 + hw - 1, sy0 + hh - 1, zf - 3, back);
-  m.box(x0 + 3, y0, zf, x0 + W - 4, y0, zf, trim);
-  m.box(x0 + W - side - 4, y0 + Math.round(chin * 0.45), zf, x0 + W - side - 3, y0 + Math.round(chin * 0.45), zf, led);
-  // neck + foot
-  const cx = x0 + W / 2;
-  m.box(cx - 6, 2, zf - 9, cx + 6, y0 + 4, zf - 6, chrome);
-  m.ellipsoid(cx, 1, zf - 8, 34, 1.6, 8, footC);
-  return { m, anchor: [sx0 + hw / 2, sy0 + hh / 2, nz], hole: [hw * MV, hh * MV] };
-}
-
-// The goldfish jar, in layers so Goldie can swim between them: 'back' glass, 'water', 'front' glass, 'lip'.
-function jarModel(part) {
-  const R = Math.round(JAR.r / JV), n = R * 2 + 4, c = n / 2;
-  const cy = R - JAR.cut / JV, lipY = cy + Math.sqrt(R * R - (34 / JV) ** 2), wl = -JAR.water / JV;
-  const m = new VoxelModel(n, Math.ceil(lipY) + 3, n);
-  if (part === 'base') { m.set(c, 0, c, m.color('#ffffff')); return { m, anchor: [c, 0, c] }; }
-  const glassB = m.color('#bdeff8', { spec: 1, specPow: 28, smooth: 1 }), glassF = m.color('#e6fbff', { spec: 1.2, specPow: 30, smooth: 1 });
-  const water = ['#2a9ad8', '#3cb4e6', '#5fd0f0', '#8ce6f8'].map((h) => m.color(h, { spec: 0.6, specPow: 18, smooth: 1, jitter: 0.02 }));
-  const lip = m.color('#ffffff', { spec: 1.2, specPow: 30, smooth: 1 });
-  for (let z = 0; z < n; z++) for (let y = 0; y < m.ny; y++) for (let x = 0; x < n; x++) {
-    const dx = x + 0.5 - c, dy = y + 0.5 - cy, dz = z + 0.5 - c;
-    const d = Math.hypot(dx, dy, dz);
-    if (part === 'lip') {
-      const rr = Math.hypot(dx, dz);
-      if (y >= lipY - 1.2 && y <= lipY + 1.2 && rr > 34 / JV - 1.6 && rr < 34 / JV + 1.2) m.set(x, y, z, lip);
-      continue;
-    }
-    if (y > lipY) continue;
-    if (part === 'water') {
-      if (d < R - 1.4 && y < wl) m.set(x, y, z, water[clamp(Math.round((y / wl) * 3 + (y > wl - 1.5 ? 1 : 0)), 0, 3)]);
-    } else if (d <= R && d > R - 1.4) {
-      if (part === 'back' && dz <= 0) m.set(x, y, z, glassB);
-      if (part === 'front' && dz > 0) m.set(x, y, z, glassF);
-    }
-  }
-  return { m, anchor: [c, 0, c] };
-}
-
-// The moving-picture aquarium lamp as a voxel model: a silver base and cap, clear corner posts, and inside a
-// rotating reef drum (blue cylinder with corals and little voxel fish around it). frame = rotation step.
-function lampModel(frame, frames) {
-  const w = Math.round(LAMP.w / LV), h = Math.round(LAMP.h / LV), d = 22;
-  const m = new VoxelModel(w, h, d);
-  const silver = ['#f2f6f9', '#c8d2da', '#9aa8b4'].map((c) => m.color(c, { spec: 1, specPow: 24, smooth: 0.7 }));
-  const post = m.color('#e8f6ff', { spec: 1, specPow: 28, smooth: 0.8 });
-  const sea = ['#0a3a9a', '#1660c8', '#2a8ae8', '#5ab8f6'].map((c) => m.color(c, { emissive: 0.35, smooth: 0.6 }));
-  const coral = ['#ff5a8a', '#ffb02e', '#b05aff', '#ff7a3a', '#3fe0c8', '#ffe05a'].map((c) => m.color(c, { emissive: 0.3, smooth: 0.5 }));
-  const fishC = [['#ff7a1a', '#ffffff'], ['#ffe02a', '#ffe02a'], ['#2a6aff', '#ffe02a'], ['#ff4a8a', '#ffffff']].map(([a, b]) => [m.color(a, { emissive: 0.35, smooth: 0.8 }), m.color(b, { emissive: 0.35 })]);
-  const eye = m.color('#141a2e'), sw = m.color('#1a2230'), red = m.color('#ff4040', { emissive: 1 });
-  const bh = Math.round(h * 0.2), th = Math.round(h * 0.1), cx = w / 2, cz = d / 2, R = Math.min(w / 2 - 4, d / 2 - 1);
-  m.box(0, 0, 0, w - 1, bh - 1, d - 1, (x, y) => silver[y === bh - 1 ? 0 : y > 1 ? 1 : 2]);
-  m.box(0, h - th, 0, w - 1, h - 1, d - 1, (x, y) => silver[y === h - 1 ? 0 : 1]);
-  for (const [px, pz] of [[0, 0], [w - 1, 0], [0, d - 1], [w - 1, d - 1]]) m.box(px, bh, pz, px, h - th - 1, pz, post);
-  m.box(w - 9, 2, d - 1, w - 7, 4, d - 1, sw); m.set(w - 8, 3, d - 1, red);
-  // the drum (an elliptical cylinder filling the lamp) with its picture rotating around the axis
-  const rot = (frame / frames) * TAU;
-  const rx = w / 2 - 2, rz = d / 2 - 1.5;
-  const at = (a, r = 1) => [cx + Math.cos(a) * rx * r, cz + Math.sin(a) * rz * r];
-  for (let y = bh; y < h - th; y++) {
-    const k = (y - bh) / (h - th - bh);
-    for (let z = 0; z < d; z++) for (let x = 0; x < w; x++) {
-      const e = ((x + 0.5 - cx) / rx) ** 2 + ((z + 0.5 - cz) / rz) ** 2;
-      if (e <= 1 && e > 0.72) m.set(x, y, z, sea[clamp(Math.round(k * 3.4), 0, 3)]);
-    }
-  }
-  const r = new RNG(77);
-  for (let i = 0; i < 14; i++) {
-    const a = r.float(0, TAU) + rot, [x, z] = at(a, 1.04), hgt = r.int(3, 8);
-    m.line(x, bh, z, x + r.float(-1, 1), bh + hgt, z, coral[i % coral.length], r.float(0.6, 1.2));
-  }
-  for (let i = 0; i < 9; i++) {
-    const a = (i / 9) * TAU + rot * (1 + (i % 3) * 0.15), y = bh + 6 + (i * 5) % (h - th - bh - 9);
-    const [x, z] = at(a, 1.06);
-    const [c1, c2] = fishC[i % 4];
-    const dir = Math.sign(Math.cos(a + Math.PI / 2)) || 1;
-    m.ellipsoid(x, y, z, 2.6, 1.6, 1.2, (xx) => ((Math.round(xx - x) & 1) && i % 4 === 0 ? c2 : c1));
-    m.set(x - dir * 3, y, z, c1); m.set(x - dir * 3, y + 1, z, c2); m.set(x - dir * 3, y - 1, z, c2);
-    m.set(x + dir * 1.6, y + 0.6, z + 1, eye);
-  }
-  return m;
-}
-
-// The eco wallpaper's land: a huge curved grass horizon (an ellipsoid cap) with a band of glossy water in front.
-function ecoLandModel(W, H, s) {
-  const nx = Math.ceil(W / s) + 2, rx = (1.9 * H) / s, ry = rx, nz = 64;
-  // the cap's crest runs along the back (z = 0) and its slope comes down toward the viewer into the water
-  const cx = nx * 0.42, cz = 0, rz = (nz - 16) * 1.04, topY = (0.36 * H) / s, cy = topY - ry, ny = Math.ceil(topY) + 3;
-  const m = new VoxelModel(nx, ny, nz);
-  const GR = ['#1f6a14', '#2a7e1a', '#358f20', '#43a126', '#52b32c', '#64c432', '#7ad23a', '#94de48', '#b2ea5a', '#d2f68a'];
-  const P = GR.map((c, i) => m.color(c, { spec: i > 5 ? 0.3 : 0.15, specPow: 14, smooth: 0.8, jitter: 0.04 }));
-  const water = ['#1878c8', '#2a9ae0', '#46bcf0', '#9ae6fc'].map((c) => m.color(c, { spec: 1, specPow: 26, smooth: 0.6, jitter: 0.02 }));
-  const hAt = (x, z) => { const e = 1 - ((x - cx) / rx) ** 2 - ((z - cz) / rz) ** 2 * 0.35; return e > 0 ? Math.max(0, cy + ry * Math.sqrt(e) - (z / rz) ** 2 * topY * 0.9) : -1; };
-  const wz = nz - 16;
-  for (let z = 0; z < wz; z++) for (let x = 0; x < nx; x++) {
-    const top = Math.min(ny - 1, Math.round(hAt(x + 0.5, z + 0.5)));
-    if (top < 0) continue;
-    const front = Math.max(0, Math.round(hAt(x + 0.5, z + 1.5)));
-    const lo = z === wz - 1 ? 0 : Math.max(0, Math.min(top, front) - 3);
-    const rim = top - Math.max(0, Math.round(hAt(x + 0.5, z - 0.5)));
-    for (let y = top; y >= lo; y--) {
-      const k = 3.5 + (y / ny) * 4.2 + (fbm2(x * 0.05, z * 0.08, 3, 4) - 0.5) * 2.4 - (x / nx) * 0.8 + (rim > 0 && y === top ? 1.6 : 0) - (top - y) * 0.6;
-      m.set(x, y, z, P[clamp(Math.round(k + bayer(x, z) - 0.5), 0, P.length - 1)]);
-    }
-  }
-  m.box(0, 0, wz, nx - 1, 3, nz - 1, (x, y, z) => water[clamp(y - 1 + (z > nz - 3 ? 1 : 0) + Math.round(hash2(x, z, 5) * 0.8 + Math.sin(x * 0.2 + z * 0.5) * 0.4), 0, 3)]);
-  return m;
-}
-
-// ===================================================================================================== Intro3D
+// ================================================================================================= Intro3D
 export class Intro3D {
   constructor(o = {}) {
     this.o = o;
@@ -736,187 +396,246 @@ export class Intro3D {
     this.skipT = -1;
     this.handed = false;
     this.cues = new Set();
-    this.fx = new Particles(1000);  // screen-space effects
-    this.sp = new Particles(700);   // bubbles inside the monitor's desktop (screen-layer coordinates)
-    this.p3 = [];                   // 3D particles: dust motes, jar bubbles, flying bubbles
-    this.gather = [];               // bubbles converging into the bubble person
-    this.icons = [];
-    this.rng = new RNG(1234);
+    this.fx = new Particles(900);
+    this.rng = new RNG(4242);
     this.A = {};
+    this.fish = null;
+    this.lens = [];
     this.resize(o.W || 960, o.H || 540);
   }
 
   // True while the opening fully covers the frame (the host may skip drawing the world underneath).
-  get opaque() { return this.active && this.skipT < 0 && (!this.ready || this.t < T.out0 - 1); }
+  get opaque() { return this.active && this.skipT < 0 && (!this.ready || this.t < T.out0 + 0.3); }
 
   resize(W, H) {
     W = Math.max(64, Math.round(W)); H = Math.max(64, Math.round(H));
     if (W === this.W && H === this.H) return;
     this.W = W; this.H = H;
     this.u = H / 540;
-    this.F = 100 * this.u;
-    this.SW = SCREEN_H * W / H;
-    this.Zf = 100 - (this.F * SCREEN_H) / H;
-    this.scr = makeCanvas(W, H);
-    this.sg = ctxOf(this.scr);
-    this.land = null;
+    this.F = H * 0.95;
+    this.layer = null;
     this.vig = null;
-    this.eco = null;
-    this.layoutIcons();
     this.ready = false;
+    this.A = {};
     this.tasks = this.buildTasks();
+    this.bubbles3 = this.spawnBubbles();
   }
 
   // ---------------------------------------------------------------------------------- progressive assets
+  // Each task: {need: timeline seconds by which it must exist, fn: () => 'again' | undefined}.
   buildTasks() {
-    const A = this.A;
-    const u = this.u;
-    const vox = (key, make, worldPerVoxel, maxScale, ro = {}) => () => {
-      const scale = Math.max(1, Math.round(worldPerVoxel * maxScale * u * 4) / 4);
-      const r = renderVoxels(make(), { scale, yaw: 0, pitch: 16, outline: true, ao: 0.9, ...ro });
-      A[key] = { canvas: r.canvas, ox: r.ox, oy: r.oy, res: scale / worldPerVoxel, r };
-    };
-    // a room piece: build() -> {m, anchor: model point that maps onto the piece's world anchor}
-    const room = (key, build, wpv, maxScale, ro = {}) => () => {
-      const { m, anchor, hole } = build();
-      const scale = Math.max(1, Math.round(wpv * maxScale * u * 4) / 4);
-      const r = renderVoxels(m, { scale, yaw: 0, pitch: 16, outline: true, ao: 0.9, ...ro });
-      const [ax, ay] = r.project(...anchor);
-      A[key] = { canvas: r.canvas, ox: ax, oy: ay, res: scale / wpv, hole };
-    };
-    const px = (key, make, scale, ro = {}) => () => {
-      const ss = ro.ss || 1;
-      const sc = Math.max(1, Math.round(scale * ss * 4) / 4);
-      const r = renderVoxels(make(), { scale: sc, outline: true, ao: 0.8, ...ro });
-      A[key] = { canvas: r.canvas, ox: r.ox, oy: r.oy, r, scale: sc, ss };
-    };
-    this.goldieBase = Math.max(1, Math.round(1.6 * u * 4) / 4);
-    const goldieJobs = [];
-    if (NPC.NPCS?.goldie && typeof NPC.warmNPC === 'function') for (const f of [1, -1]) goldieJobs.push(() => { NPC.warmNPC('goldie', { scale: this.goldieBase, facing: f }); });
-    else for (const mood of ['n', 'b', 'o', 'h']) for (let f = 0; f < 4; f++) goldieJobs.push(() => { goldieFrame(Math.max(1, Math.round(this.goldieBase * 1.4 * 4) / 4), f, mood); });
-    return [
-      () => { this.land = renderLandscape(this.W, this.H); },
-      room('wall', wallModel, WV, 0.55, { pitch: 12, outline: false, ao: 0.8, edges: 0.4 }),
-      room('clock', clockModel, 2, 1.0, { pitch: 4, ao: 0.6 }),
-      room('decal', decalModel, 4, 1.0, { pitch: 4, outline: false, ao: 0.5 }),
-      room('desk', deskModel, DV, 1.3, { pitch: 24, ao: 0.7 }),
-      room('monitor', () => monitorModel(this.SW), MV, 2.6, { pitch: 3, ao: 0.7 }),
-      ...['back', 'water', 'front', 'lip'].map((part) => room('jar_' + part, () => jarModel(part), JV, 2.1, { pitch: 20, outline: false, ao: 0.4, depthLines: false })),
-      ...Array.from({ length: LAMP_FRAMES }, (_, f) => room('lamp' + f, () => ({ m: lampModel(f, LAMP_FRAMES), anchor: [LAMP.w / LV / 2, 0, 11] }), LV, 1.0, { pitch: 10, ao: 0.6 })),
-      vox('plant', () => plantModel(5), 2.3, 1.7, { yaw: -14, pitch: 14 }),
-      vox('gravel', () => gravelModel(3), 1.25, 2.2, { pitch: 26, outline: false }),
-      vox('keyboard', keyboardModel, 2.0, 1.8, { pitch: 62, outline: false, ao: 0.6 }),
-      vox('mouse', mouseModel, 2.0, 1.8, { pitch: 42 }),
-      vox('shelf', shelfModel, 3.4, 1.0, { pitch: 10 }),
-      vox('frond', () => frondModel(9), 4, 0.6, { yaw: 10, pitch: 6, outline: false }),
-      ...goldieJobs,
-      () => {
-        const m = logoModel();
-        const want = this.W * 0.5 / m.nx;
-        const r = renderVoxels(m, { scale: Math.max(1, Math.round(want * 4) / 4), yaw: -5, pitch: 10, outline: false, depthLines: false, ao: 0.5, edges: 0.25, light: { top: 3.5, lit: 3.2, dark: 2.3, bottom: 1.7 } });
-        A.logo = this.finishLogo(r.canvas);
-      },
-      px('globe', () => globeModel(30, 7), (this.H * 0.36) / 63, { yaw: 20, pitch: 18, outline: false, ao: 0.4 }),
-      px('city', cityModel, (this.H * 0.3) / 96, { yaw: 24, pitch: 6, outline: true }),
-      px('tree', treeModel, (this.H * 0.13) / 52, { yaw: 10, pitch: 10 }),
-      px('branch', () => branchModel(4, 11), (this.H * 0.5) / 80, { yaw: -8, pitch: 12, outline: true, ao: 0.7, ss: 2 }),
-      px('branch2', () => branchModel(11, 7), (this.H * 0.36) / 80, { yaw: 12, pitch: 18, outline: true, ao: 0.7, ss: 2 }),
-      px('sneaker', sneakerFishModel, (this.H * 0.17) / 50, { yaw: 28, pitch: 10, outline: true }),
-      () => this.paintEco(),
-      () => this.warmCharacter(),
-    ];
+    const out = [];
+    const add = (need, fn) => out.push({ need, fn });
+    // the heavy one-off renders happen behind the boot bloom; light warmers trickle in while it plays
+    add(0, () => this.buildIsland());
+    add(0, () => this.buildIslandProps());
+    add(0, () => this.buildSky());
+    add(0, () => { this.globe = new KIT.GlassGlobe(Math.round(GLOBE.r * this.globeRes()), 24, 4); this.globe.frame(0); });
+    add(0, () => this.buildBoat());
+    add(0, () => this.buildLures());
+    add(0, () => this.buildFish());
+    add(0, () => this.buildSeabed());
+    add(0, () => this.buildLogo());
+    add(0, () => this.buildBranches());
+    add(1.2, () => { try { this.dolphin = this.dolphin || new GIANT.VoxelGiant('dolphin'); this.dolphin.warm(); return this.dolphin.frames.includes(null) ? 'again' : undefined; } catch (e) { this.dolphin = null; return undefined; } });
+    add(3.5, () => this.warmCharacter());
+    add(30, () => { if (!this.globe) return undefined; this.globe.warm(); return this.globe.frames.includes(null) ? 'again' : undefined; });
+    return out;
   }
 
-  runTasks(budgetMs) {
+  runTasks(budgetMs, horizon = 0.5) {
     const t0 = performance.now();
-    while (this.tasks.length) {
-      const job = this.tasks[0];
+    let i = 0;
+    while (i < this.tasks.length) {
+      const job = this.tasks[i];
+      const due = job.need <= horizon;
+      if (performance.now() - t0 > (due ? budgetMs * 2 : budgetMs)) break;
       let again = false;
-      try { again = job() === 'again'; } catch (e) { console.warn('intro asset', e); }
-      if (!again) this.tasks.shift();
-      if (performance.now() - t0 > budgetMs) break;
+      try { again = job.fn() === 'again'; } catch (e) { console.warn('intro asset', e); }
+      if (!again) this.tasks.splice(i, 1);
+      else if (performance.now() - t0 > (due ? Math.max(budgetMs, 30) : budgetMs)) break;
     }
-    if (!this.tasks.length) this.ready = true;
+    if (!this.tasks.some((j) => j.need <= 0.5)) this.ready = true;
   }
+
+  // px per world unit at which the sky objects (globe) are built: their size in the logo shot
+  globeRes() { return this.F / (GLOBE.z - SHOTS[2].keys[0][3]); }
+
+  buildIsland() {
+    const NX = 250, NY = 46, NZ = 96;
+    const { m, h } = islandModel(NX, NY, NZ);
+    const vu = ISLE.w / NX;
+    const want = (this.F / (ISLE.z - SHOTS[2].keys[0][3])) * vu; // px per voxel in the logo shot
+    const scale = clamp(Math.round(want * 4) / 4, 1, 4);
+    const r = renderVoxels(m, { scale, yaw: 0, pitch: 9, outline: true, ao: 0.85, edges: 0.45, depthLines: false, light: { top: 5.2, lit: 4, dark: 2.5, bottom: 1.4 } });
+    const [ax, ay] = r.project(NX / 2, 0, NZ * 0.56);
+    const res = scale / vu;
+    // the island reflected in the glossy sea: flipped, washed toward the water, fading out
+    const ref = makeCanvas(r.w, Math.round(r.h * 0.6));
+    const rg = ctxOf(ref);
+    rg.save();
+    rg.scale(1, -1);
+    rg.drawImage(r.canvas, 0, -Math.round(ay) - 1);
+    rg.restore();
+    rg.globalCompositeOperation = 'source-atop';
+    rg.fillStyle = 'rgba(70,190,250,0.55)';
+    rg.fillRect(0, 0, ref.width, ref.height);
+    rg.globalCompositeOperation = 'destination-in';
+    rg.fillStyle = vgrad(rg, 0, ref.height, [[0, 'rgba(0,0,0,0.55)'], [0.5, 'rgba(0,0,0,0.18)'], [1, 'rgba(0,0,0,0)']]);
+    rg.fillRect(0, 0, ref.width, ref.height);
+    this.A.isle = { canvas: r.canvas, ax, ay, res, ref, r, h, vu, NX, NZ };
+  }
+
+  // A spot on the island surface (model x, z fractions) -> world [X, Y, Z] just in front of the island card.
+  islePoint(xf, zf) {
+    const I = this.A.isle;
+    if (!I) return null;
+    const x = xf * I.NX, z = zf * I.NZ;
+    const [px, py] = I.r.project(x, I.h(x, z), z);
+    return [ISLE.x + (px - I.ax) / I.res, (py - I.ay) / I.res, ISLE.z - 1 - zf * 2];
+  }
+
+  buildIslandProps() {
+    const P = (this.A.props = []);
+    const I = this.A.isle;
+    if (!I) return;
+    const vs = clamp(Math.round(I.res * 5 * 4) / 4, 1, 3); // props: px per voxel
+    // white wind turbines along the hills (towers baked, rotors spin live)
+    for (const [xf, zf, h] of [[0.68, 0.34, 64], [0.77, 0.42, 58], [0.86, 0.5, 52], [0.36, 0.38, 56], [0.45, 0.6, 46]]) {
+      const pt = this.islePoint(xf, zf);
+      if (!pt) continue;
+      const tw = KIT.turbineTower(h, vs);
+      const rot = KIT.rotorFrames(Math.round(h * 0.42), vs, 12);
+      const unit = 3.9; // world units per turbine voxel
+      P.push({ kind: 'turbine', x: pt[0], y: pt[1] + 4, z: pt[2] - 0.5, spr: tw, res: vs / unit, rot, ph: xf * 7 });
+    }
+    // the lone round tree near the top of the big hill
+    { const pt = this.islePoint(0.565, 0.4); const tr = KIT.roundTree(vs, 5); if (pt && tr) P.push({ kind: 'sprite', x: pt[0], y: pt[1] + 3, z: pt[2] - 0.2, spr: tr, res: vs / 5.2 }); }
+    // the glass city in its water bubble, on the left shoulder
+    {
+      const pt = this.islePoint(0.18, 0.5);
+      const city = KIT.glassCity(3, vs);
+      if (pt && city) {
+        const res = vs / 5.2;
+        const R = Math.round((city.w * 0.62) / res * res);
+        const bub = KIT.voxWaterBubble ? KIT.voxWaterBubble(Math.round(city.w * 0.66)) : null;
+        P.push({ kind: 'city', x: pt[0], y: pt[1] + 5, z: pt[2] - 0.6, spr: city, res, bub, R });
+      }
+    }
+  }
+
+  buildSky() {
+    const S = (this.A.sky = { clouds: [], gulls: null });
+    const r = new RNG(77);
+    for (let i = 0; i < 9; i++) {
+      const w = r.int(90, 170), h = Math.round(w * r.float(0.3, 0.42));
+      let spr = null;
+      try { spr = CRIT.voxCloudSprite(20 + i, w, h); } catch (e) { spr = null; }
+      if (!spr) continue;
+      S.clouds.push({ spr, x: r.float(-9000, 9000), y: -r.float(900, 3400), z: r.float(9000, 15000), res: 0.75 / r.float(9, 14) });
+    }
+    try { S.gulls = CRIT.gullFrames('#ffffff'); } catch (e) { S.gulls = null; }
+  }
+
+  boatScale() { return clamp(Math.round((this.F / 130) * 0.5 * 4) / 4, 1, 3); }
+
+  buildBoat() {
+    const st = this.o.boat || {};
+    const bs = this.boatScale();
+    let pv = null;
+    try { pv = BM.renderBoatPreview(st.tier | 0, st.parts || null, { scale: bs }); } catch (e) { pv = null; }
+    if (!pv) { try { pv = BM.renderBoatPreview(0, null, { scale: bs }); } catch (e) { pv = null; } }
+    this.A.boat = pv ? { pv, res: 2 * bs, bs } : null;
+  }
+
+  charScale() { return 0.62 * this.boatScale(); }
 
   // The opening may start before the character's frames exist: build them under a small per-frame budget.
   warmCharacter() {
     if (typeof CHAR.warmCharacter !== 'function') return undefined;
     this.warmN = (this.warmN || 0) + 1;
     let done = true;
-    try { done = CHAR.warmCharacter(this.look, { poses: ['wave', 'idle', 'cheer'], scale: this.charScale(), facing: 1, ms: 10 }); } catch (e) { done = true; }
-    return !done && this.warmN < 150 ? 'again' : undefined;
+    try { done = CHAR.warmCharacter(this.look, { poses: ['idle', 'cast', 'cheer', 'reel'], scale: this.charScale(), facing: 1, ms: 12 }); } catch (e) { done = true; }
+    return !done && this.warmN < 200 ? 'again' : undefined;
   }
 
-  charScale() { return Math.max(1, Math.round(1.6 * this.u * 4) / 4); }
+  buildLures() {
+    const b = renderVoxels(bobberModel(), { scale: 2, yaw: 20, pitch: 14, outline: true, ao: 0.5 });
+    this.A.bobber = { canvas: b.canvas, ax: b.project(6.5, 0, 6.5)[0], ay: b.project(6.5, 6.5, 6.5)[1], res: 2 / 0.42 };
+    const l = renderVoxels(lureModel(), { scale: 3, yaw: 18, pitch: 10, outline: true, ao: 0.5 });
+    const [lx, ly] = l.project(1.5, 6.5, 5);
+    this.A.lure = { canvas: l.canvas, ax: lx, ay: ly, res: 3 / 0.42 };
+  }
 
-  // The back wall: gradient, sunlight patch, a big white window (panes cut out), a glossy clock, baseboard.
-  paintEco() {
-    const { W, H } = this;
-    const c = makeCanvas(W, H), g = ctxOf(c);
-    const sun = this.ecoSun();
-    g.fillStyle = vgrad(g, 0, H, [[0, '#0a4fc0'], [0.32, '#1f7ae0'], [0.6, '#5fb6f6'], [0.78, '#bfe6ff'], [1, '#e8f8ff']]);
-    g.fillRect(0, 0, W, H);
-    // sun bloom baked in
-    const sg = g.createRadialGradient(sun[0], sun[1], 0, sun[0], sun[1], H * 0.7);
-    sg.addColorStop(0, 'rgba(255,255,250,0.95)'); sg.addColorStop(0.12, 'rgba(240,250,255,0.7)'); sg.addColorStop(0.45, 'rgba(160,220,255,0.18)'); sg.addColorStop(1, 'rgba(160,220,255,0)');
-    g.fillStyle = sg; g.fillRect(0, 0, W, H);
-    // white wireframe arcs sweeping across the sky
-    g.strokeStyle = 'rgba(255,255,255,0.42)'; g.lineWidth = 1;
-    const ac = [W * 0.66, H * 1.25];
-    for (let i = 0; i < 12; i++) { const r = H * (0.78 + i * 0.032); g.beginPath(); g.arc(ac[0], ac[1], r, -2.55, -0.95); g.stroke(); }
-    g.strokeStyle = 'rgba(255,255,255,0.22)';
-    for (let i = 0; i < 6; i++) { const a = -2.4 + i * 0.26; g.beginPath(); g.moveTo(ac[0] + Math.cos(a) * H * 0.78, ac[1] + Math.sin(a) * H * 0.78); g.lineTo(ac[0] + Math.cos(a) * H * 1.13, ac[1] + Math.sin(a) * H * 1.13); g.stroke(); }
-    // cumulus wisps
-    const s = Math.max(1, Math.round(2 * this.u));
-    for (const [fx, fy, cw, seed] of [[0.12, 0.08, 46, 3], [0.3, 0.2, 30, 8], [0.88, 0.62, 40, 5], [0.62, 0.05, 26, 12]]) {
-      try { const cr = cumulus(seed, Math.round(cw * this.u * 2 / s), s); g.globalAlpha = 0.92; g.drawImage(cr.canvas, Math.round(fx * W - cr.w / 2), Math.round(fy * H)); g.globalAlpha = 1; } catch (e) { /* optional */ }
+  // The underwater floor: candy reefs, glossy orbs and turbines scattered on a grid (world-anchored).
+  buildSeabed() {
+    const S = (this.A.seabed = { reefs: [], orbs: [] });
+    for (let i = 0; i < 6; i++) {
+      try { S.reefs.push(CORAL.reefSprite(410 + i, 'oscean', { w: 86 + (i % 3) * 14, h: 56 + (i % 2) * 10, d: 34 }, 1, i % 2 === 1)); } catch (e) { /* the coral kit is optional */ }
     }
-    this.ecoSky = c;
-    // the land layer: the curved grass horizon (a huge glossy dome), the tree, the glass city in its bubble
-    const c2 = makeCanvas(W, H);
-    const g2 = ctxOf(c2);
-    // the voxel land: a huge curved grass horizon with glossy water in front; the horizon line is read back
-    // from the render so everything placed on the hill sits exactly on it
-    const ls = Math.max(2, Math.round(3 * this.u));
-    const lr = renderVoxels(ecoLandModel(W, H, ls), { scale: ls, yaw: 0, pitch: 16, outline: false, ao: 0.6, edges: 0.3, depthLines: false });
-    const lx = Math.round((W - lr.w) / 2), lyy = H - lr.h + 2;
-    g2.drawImage(lr.canvas, lx, lyy);
-    const img = g2.getImageData(0, 0, W, H).data;
-    const top = new Float32Array(W);
-    for (let x = 0; x < W; x++) { let y = 0; while (y < H - 1 && img[(y * W + x) * 4 + 3] < 128) y++; top[x] = y; }
-    const D = { top, y: (x) => top[clamp(Math.round(x), 0, W - 1)] };
-    this.ecoDome = D;
-    // the round tree on the horizon
-    const tr = this.A.tree;
-    if (tr) g2.drawImage(tr.canvas, Math.round(W * 0.56 - tr.ox), Math.round(D.y(W * 0.56) + 3 * this.u - tr.oy));
-    // the glass city inside a water bubble (left)
-    const ci = this.A.city;
-    const bx = W * 0.16, by = D.y(W * 0.16) - H * 0.12, br = H * 0.21;
-    if (ci) g2.drawImage(ci.canvas, Math.round(bx - ci.ox), Math.round(D.y(bx) + 8 * this.u - ci.oy));
-    g2.save();
-    g2.beginPath(); g2.arc(bx, by, br, 0, TAU); g2.clip();
-    g2.fillStyle = 'rgba(200,245,255,0.16)'; g2.fillRect(bx - br, by - br, br * 2, br * 2);
-    g2.restore();
-    const rg = g2.createRadialGradient(bx - br * 0.2, by - br * 0.25, br * 0.6, bx, by, br);
-    rg.addColorStop(0, 'rgba(255,255,255,0)'); rg.addColorStop(0.85, 'rgba(210,248,255,0.35)'); rg.addColorStop(1, 'rgba(255,255,255,0.9)');
-    g2.fillStyle = rg; g2.beginPath(); g2.arc(bx, by, br, 0, TAU); g2.fill();
-    g2.strokeStyle = 'rgba(255,255,255,0.85)'; g2.lineWidth = 1.5 * this.u;
-    g2.beginPath(); g2.arc(bx, by, br, Math.PI * 0.9, Math.PI * 1.65); g2.stroke();
-    g2.fillStyle = 'rgba(255,255,255,0.75)';
-    g2.beginPath(); g2.ellipse(bx - br * 0.45, by - br * 0.5, br * 0.22, br * 0.1, -0.7, 0, TAU); g2.fill();
-    // water wrapping around the bubble's base (a splash crown)
-    g2.fillStyle = 'rgba(220,250,255,0.6)';
-    for (let i = 0; i < 9; i++) { const a = Math.PI * (0.05 + i * 0.11); g2.beginPath(); g2.ellipse(bx + Math.cos(a) * br * 1.02, by + Math.sin(a) * br * 0.98, 3 * this.u, 9 * this.u, a + 1.2, 0, TAU); g2.fill(); }
-    this.eco = c2;
+    for (const [r, c] of [[7, '#7fdcff'], [5, '#8af0a8'], [6, '#ffffff'], [4, '#ffd27a']]) {
+      try { S.orbs.push(CRIT.voxBall(r, c, { spec: 0.95 })); } catch (e) { /* optional */ }
+    }
+    try { S.turbine = KIT.turbineTower(60, 2); S.rot = KIT.rotorFrames(25, 2, 12); } catch (e) { S.turbine = null; }
   }
 
-  ecoSun() { return [this.W * 0.4, this.H * 0.47]; }
+  // Fish: compiled looks, their size at scale 1 and the fixed scale their voxel frames are built at.
+  buildFish() {
+    const pick = (ids) => { for (const id of ids) { const sp = SPEC.SPECIES_BY_ID?.[id]; if (sp) return sp; } return SPEC.SPECIES?.[0] || null; };
+    const make = (sp, len, sMax) => {
+      if (!sp) return null;
+      try {
+        const c = SC.compiled(sp.look, null, sp.id);
+        const g = ART.rigGeom(c, { sw: 0, angle: 0, scale: 1, inflate: 0, still: true });
+        const gw = Math.max(8, g.w || 30);
+        const S0 = clamp((len * sMax) / gw, 0.2, 8);
+        return { sp, c, gw, len, S0 };
+      } catch (e) { console.warn('intro fish', e); return null; }
+    };
+    const s = this.F;
+    const school = [];
+    for (const id of SCHOOL_IDS) { const sp = SPEC.SPECIES_BY_ID?.[id]; if (sp && school.length < 2) school.push(make(sp, 22, s / 110)); }
+    this.fish = {
+      school: school.filter(Boolean),
+      mid: make(pick(MID_IDS), 50, s / 100),
+      big: make(pick(BIG_IDS), FISH_LEN, s / 150),
+    };
+    this.buildSchools();
+  }
 
-  dome() {
-    const { W, H } = this;
-    const r = H * 1.9, cx = W * 0.42, cy = H * 0.6 + r;
-    return { r, cx, cy, top: cy - r, y: (x) => cy - Math.sqrt(Math.max(0, r * r - (x - cx) ** 2)) };
+  // Touch the voxel frames the opening will show (a few per frame, drawn off-screen): the fish renderer queues
+  // and builds them under its own per-frame budget, so they exist before the camera goes under.
+  touchFish() {
+    const F = this.fish;
+    if (!F || typeof RIG.drawFishRig !== 'function') return;
+    if (!this.warmQ) {
+      this.warmQ = [];
+      const add = (f, st) => { if (f) for (let i = 0; i < 6; i++) this.warmQ.push([f, { ...st, swimPhase: i / 6, tailPhase: i / 6 }]); };
+      for (const f of F.school) { add(f, { facing: 1 }); add(f, { facing: -1 }); }
+      add(F.mid, { facing: -1 });
+      add(F.big, { facing: -1, heading: -48 });
+      add(F.big, { facing: -1, heading: -20 });
+      add(F.big, { facing: -1, heading: 0 });
+      this.warmI = 0;
+    }
+    const scratch = this.scratch || (this.scratch = ctxOf(makeCanvas(4, 4)));
+    for (let n = 0; n < 3 && this.warmQ.length; n++) {
+      const [f, st] = this.warmQ[this.warmI++ % this.warmQ.length];
+      try { RIG.drawFishRig(scratch, f.c, { x: 2, y: 2, scale: f.S0, turn: st.facing, angle: 0, speed01: 0.5, time: 0, emotion: 'neutral', pri: 3, ...st }); } catch (e) { /* the fish renderer may be mid-rework */ }
+    }
+  }
+
+  buildLogo() {
+    const m = logoModel();
+    const want = (this.W * 0.56) / m.nx;
+    const r = renderVoxels(m, { scale: Math.max(1, Math.round(want * 4) / 4), yaw: -5, pitch: 10, outline: false, depthLines: false, ao: 0.5, edges: 0.25, light: { top: 3.5, lit: 3.2, dark: 2.3, bottom: 1.7 } });
+    this.A.logo = this.finishLogo(r.canvas);
+  }
+
+  buildBranches() {
+    const px = (make, scale, o) => { const r = renderVoxels(make(), { scale: Math.max(1, Math.round(scale * 2 * 4) / 4), outline: true, ao: 0.7, ...o }); return { canvas: r.canvas, ss: 2 }; };
+    this.A.branch = px(() => branchModel(4, 11), (this.H * 0.46) / 80, { yaw: -8, pitch: 12 });
+    this.A.branch2 = px(() => branchModel(11, 7), (this.H * 0.34) / 80, { yaw: 12, pitch: 18 });
   }
 
   // Post-process the logo: white outline, deep drop shadow and a top gloss band.
@@ -943,18 +662,31 @@ export class Intro3D {
     return { canvas: c, mask, w, h };
   }
 
-  layoutIcons() {
-    const ids = (BIG.MENU_ICON_IDS || []).filter((id) => ['appsea', 'lab', 'aquarium', 'journal', 'map', 'settings'].includes(id));
-    this.icons = ids.map((id, i) => ({ id, x: 44 + Math.floor(i / 4) * 74, y: 48 + (i % 4) * 70, lift: 0, ph: i * 1.7, wet: 0 }));
+  // ------------------------------------------------------------------------------------------- the cast
+  // Schools: members keep an offset around a moving centre; each school crosses the view at its own depth.
+  buildSchools() {
+    const r = new RNG(9);
+    const F = this.fish;
+    const sch = (n, f, o) => ({ f, ...o, m: Array.from({ length: n }, () => ({ dx: r.gauss ? r.gauss() * o.sx : r.float(-1, 1) * o.sx, dy: r.float(-1, 1) * o.sy, dz: r.float(-1, 1) * o.sz, ph: r.float(0, 1), sp: r.float(0.85, 1.15) })) });
+    this.schools = [];
+    if (F.school[0]) {
+      this.schools.push(sch(18, F.school[0], { x0: -230, x1: 470, y: 92, z: 1060, dir: 1, sx: 60, sy: 22, sz: 34, t0: T.plunge, t1: T.strike + 0.8 }));
+      this.schools.push(sch(14, F.school[1] || F.school[0], { x0: 560, x1: -300, y: 170, z: 1330, dir: -1, sx: 80, sy: 30, sz: 50, t0: T.plunge, t1: T.strike + 2 }));
+      this.schools.push(sch(7, F.school[1] || F.school[0], { x0: -80, x1: 430, y: 28, z: 1015, dir: 1, sx: 30, sy: 10, sz: 12, t0: T.under + 0.2, t1: T.under + 2.8 }));
+    }
+  }
+
+  spawnBubbles() {
+    const r = new RNG(31);
+    return Array.from({ length: 110 }, () => ({ x: r.float(-160, 460), y: r.float(0, 360), z: r.float(900, 1500), r: r.float(1.2, 3.4), v: r.float(18, 46), ph: r.float(0, TAU) }));
   }
 
   // -------------------------------------------------------------------------------------------- control
   seek(t) {
-    while (this.tasks.length) this.runTasks(1e9);
+    while (this.tasks.length) this.runTasks(1e9, 1e9);
     this.t = t;
     this.ready = true;
-    for (const k of Object.keys(T)) if (T[k] < t) this.cues.add(k);
-    if (t > T.swirl && t < T.pop + 0.4) { this.cues.delete('swirl'); }
+    for (const k of Object.keys(T)) if (T[k] < t - 0.05) this.cues.add(k);
   }
 
   skip() {
@@ -962,6 +694,8 @@ export class Intro3D {
     this.skipT = 0;
     this.sfx('travel_whoosh', { vol: 0.5 });
   }
+
+  skipRect() { const w = 64, h = 20; return { x: this.W - w - 10, y: 10, w, h }; }
 
   sfx(name, o) { try { this.audio?.play?.(name, o); } catch (e) { /* audio is optional */ } }
 
@@ -972,33 +706,47 @@ export class Intro3D {
   }
 
   // ------------------------------------------------------------------------------------------- camera
+  shotAt(t) { for (let i = 0; i < SHOTS.length; i++) if (t < SHOTS[i].t1 || i === SHOTS.length - 1) return i; return SHOTS.length - 1; }
+
   camera(t) {
-    const a = ease.inOutCubic(inv(T.dolly0, T.dolly1, t));
-    const ax = ease.inOutCubic(inv(T.dolly0, T.dolly1 - 0.9, t));
-    const drift = t * 3.2;
-    const sx = -74 + drift * 1.6, sy = -52 + drift * 0.5, sz = -8 + drift * 2.2;
-    const hand = 1 - a;
-    const cx = lerp(sx, 0, ax) + Math.sin(t * 0.7) * 2.2 * hand;
-    const cy = lerp(sy, MON.cy, ax) + Math.cos(t * 0.53) * 1.4 * hand;
-    const cz = lerp(sz, this.Zf, a);
-    return { x: cx, y: cy, z: cz, a };
+    const si = this.shotAt(t);
+    const [x, y, z, pitch, roll] = spline(SHOTS[si].keys, t);
+    let sx = 0, sy = 0;
+    if (this.shake > 0) { sx = (Math.random() - 0.5) * this.shake; sy = (Math.random() - 0.5) * this.shake; }
+    const p = pitch * DEG;
+    return { x: x + sx, y: y + sy, z, p, cp: Math.cos(p), sp: Math.sin(p), roll: roll * DEG, shot: si };
   }
 
+  // World -> screen: [sx, sy, px per unit, depth] (null behind the camera).
   proj(X, Y, Z) {
     const c = this.cam;
-    const d = Math.max(0.5, Z - c.z);
+    const rx = X - c.x, ry = Y - c.y, rz = Z - c.z;
+    const d = ry * c.sp + rz * c.cp;
+    if (d < 2) return null;
+    const v = ry * c.cp - rz * c.sp;
     const s = this.F / d;
-    return [this.W / 2 + (X - c.x) * s, this.H / 2 + (Y - c.y) * s, s];
+    return [this.W / 2 + rx * s, this.H / 2 + v * s, s, d];
+  }
+
+  horizon() { return this.H / 2 - this.F * Math.tan(this.cam.p); }
+
+  // Screen row of a point on a horizontal plane (y = Y) straight ahead at forward distance D.
+  rowAt(Y, D) {
+    const c = this.cam;
+    const ry = Y - c.y;
+    const d = ry * c.sp + D * c.cp;
+    if (d < 1) return this.H * 4;
+    return this.H / 2 + (this.F * (ry * c.cp - D * c.sp)) / d;
   }
 
   // ------------------------------------------------------------------------------------------- update
   update(dt) {
     if (!this.active) return;
-    dt = Math.min(dt, 1 / 15);
+    dt = clamp(dt || 0, 0, 1 / 15);
     const inp = this.input;
     if (!this.ready) {
       this.bootT += dt;
-      this.runTasks(this.bootT < 0.15 ? 4 : 16);
+      this.runTasks(this.bootT < 0.15 ? 4 : 18, 0.5);
       if (!this.ready) return;
     }
     if (inp) {
@@ -1014,30 +762,22 @@ export class Intro3D {
       if (this.skipT > 0.5) this.finish();
       return;
     }
-    const t = (this.t += dt);
+    if (this.tasks.length) this.runTasks(5, this.t + 1.2);
+    if (this.t < T.strike) this.touchFish();
+    // slow-motion beats
+    let ts = 1;
+    if (this.t > T.strike && this.t < T.strike + 0.45) ts = 0.35;
+    const lk = inv(T.breach + 0.15, T.logo - 0.2, this.t);
+    if (lk > 0.3 && lk < 0.62) ts = 0.45;
+    const sdt = dt * ts;
+    const t = (this.t += sdt);
+    this.shake = Math.max(0, (this.shake || 0) - dt * 22);
     this.cam = this.camera(t);
     this.updateCues(t);
-    this.updateGoldie(dt, t);
-    this.update3D(dt, t);
-    this.updateScreen(dt, t);
-    this.updateGather(dt, t);
-    this.updateEco(dt, t);
-    // the bubble person bursts through the water surface while the camera tilts up
-    if (t > T.rise0 && t < T.rise1 + 0.3) {
-      const seam = ease.inOutCubic(inv(T.rise0, T.rise1, t)) * this.H;
-      const [hx, hy] = this.charPos(t);
-      const below = hy - 30 * this.charScale() > seam;
-      if (this.heroBelow && !below) {
-        this.sfx('splash_big', { vol: 0.7 });
-        this.fx.splash(hx, seam, 1.6);
-        this.fx.droplets(hx, seam, 26, { speed: [80, 260], spread: 0.9, w: 20 });
-        this.fx.ringWave(hx, seam, 60 * this.u, '#ffffff', { life: 0.5, w: 3, flat: 0.3 });
-        this.fx.aeroBubbles(hx, seam + 20, 20, { w: 60, h: 10, speed: [60, 180] });
-      }
-      this.heroBelow = below;
-    }
-    this.fx.update(dt);
-    if (t >= T.out0 + 0.3 && !this.handed) { this.handed = true; this.o.onHandoff?.(); }
+    this.updateBubbles(sdt, t);
+    this.updateLens(dt);
+    this.fx.update(sdt);
+    if (t >= T.out0 && !this.handed) { this.handed = true; this.o.onHandoff?.(); }
     if (t >= END) this.finish();
   }
 
@@ -1048,206 +788,79 @@ export class Intro3D {
   }
 
   updateCues(t) {
-    if (this.cue('start', 0)) { try { this.audio?.setMusic?.('desktop'); } catch (e) { /* optional */ } }
-    if (this.cue('notice', T.notice)) this.sfx('squeak', { vol: 0.5, pitch: 1.3 });
-    if (this.cue('blow', T.blow)) this.sfx('bubbles', { vol: 0.6 });
-    if (this.cue('dolly0', T.dolly0)) this.sfx('travel_whoosh', { vol: 0.25, pitch: 0.7 });
-    if (this.cue('flood0', T.flood0)) this.sfx('flood_rush', { vol: 0.7 });
-    if (this.cue('dolly1', T.dolly1)) this.sfx('splash_big', { vol: 0.5 });
-    if (this.cue('swirl', T.swirl)) { this.sfx('magic', { vol: 0.6 }); this.startGather(); }
-    if (this.cue('pop', T.pop)) {
-      this.sfx('boing', { vol: 0.7 }); this.sfx('catch_rare', { vol: 0.45 });
-      const [x, y] = this.charPos(t);
-      const h = 50 * this.charScale();
-      this.fx.ringWave(x, y - h * 0.5, 70 * this.u, '#dff8ff', { life: 0.6, w: 3 });
-      this.fx.glints(x, y - h * 0.5, 10, { w: 40 * this.u, h: 50 * this.u });
-      this.fx.aeroBubbles(x, y - h * 0.4, 26, { w: 30, h: 40, speed: [40, 120] });
+    const { W, H } = this;
+    if (this.cue('start', 0)) { try { this.audio?.setMusic?.(this.o.music || 'oscean'); } catch (e) { /* optional */ } this.sfx('travel_whoosh', { vol: 0.35, pitch: 0.7 }); }
+    if (this.cue('swoop', T.swoop)) this.sfx('travel_whoosh', { vol: 0.45, pitch: 1.1 });
+    if (this.cue('cast', T.cast + 0.35)) this.sfx('cast', { vol: 0.7 });
+    if (this.cue('land', T.land)) {
+      this.sfx('splash_small', { vol: 0.7 });
+      const p = this.proj(LURE.x, 0, LURE.z);
+      if (p) { this.fx.splash(p[0], p[1], 0.6); this.fx.ringWave(p[0], p[1], 26 * p[2], '#ffffff', { life: 0.7, w: 2, flat: 0.25 }); }
     }
-    if (this.cue('rise0', T.rise0)) { this.sfx('travel_whoosh', { vol: 0.5, pitch: 1.2 }); try { this.audio?.setMusic?.(this.o.music || 'shallows'); } catch (e) { /* optional */ } }
-    if (this.cue('logo', T.logo)) { this.sfx('ui_unlock', { vol: 0.6 }); this.sfx('sparkle', { vol: 0.6 }); }
+    if (this.cue('plunge', T.plunge + 0.32)) { this.fx.list.length = 0; this.sfx('splash_big', { vol: 0.55 }); this.sfx('bubbles', { vol: 0.7 }); }
+    if (this.cue('curtain', T.plunge + 0.42)) {
+      for (let i = 0; i < 70; i++) this.fx.add({ kind: 'gbubble', x: this.rng.float(0, W), y: H + this.rng.float(0, H * 0.3), vx: this.rng.float(-14, 14), vy: -this.rng.float(260, 520) * this.u, life: 1.6, r: this.rng.pick([2, 3, 4, 5, 6, 8, 10]), wob: this.rng.float(0, TAU), layer: 'fg', rise: 1, delay: this.rng.float(0, 0.35) });
+    }
+    if (this.cue('shadow', T.shadow)) this.sfx('whale_call', { vol: 0.25, pitch: 1.6 });
+    if (this.cue('strike', T.strike)) {
+      this.sfx('hookset', { vol: 0.9 }); this.sfx('bite', { vol: 0.7 });
+      this.shake = 9 * this.u;
+      this.flashT = t;
+      const p = this.lureScreen;
+      if (p) { this.fx.ringWave(p[0], p[1], 90 * this.u, '#ffffff', { life: 0.45, w: 3 }); this.fx.aeroBubbles(p[0], p[1], 30, { w: 30, h: 20, speed: [40, 160], layer: 'top' }); }
+    }
+    if (this.cue('surge', T.surge)) { this.sfx('reel', { vol: 0.6 }); this.sfx('bubbles', { vol: 0.6 }); }
+    if (this.cue('breach', T.breach + 0.08)) {
+      this.fx.list.length = 0;
+      this.sfx('jump_out', { vol: 0.9 }); this.sfx('splash_big', { vol: 0.9 });
+      this.flashT = t - 0.05;
+      this.shake = 7 * this.u;
+      const p = this.proj(EXIT.x, 0, EXIT.z);
+      if (p) {
+        this.fx.splash(p[0], p[1], 2.2);
+        this.fx.droplets?.(p[0], p[1], 40, { speed: [120, 380], spread: 1.1, w: 30 });
+        this.fx.ringWave(p[0], p[1], 120 * this.u, '#ffffff', { life: 0.6, w: 3, flat: 0.28 });
+      }
+      for (let i = 0; i < 9; i++) this.addLensDrop(this.rng.float(0.1, 0.9) * W, this.rng.float(0.15, 0.85) * H, this.rng.float(5, 15) * this.u, this.rng.float(0, 0.5));
+    }
+    if (this.cue('apex', T.breach + 0.75)) this.sfx('catch_epic', { vol: 0.55 });
+    if (this.cue('logo', T.logo)) { this.fx.list.length = 0; this.lens.length = 0; this.sfx('ui_unlock', { vol: 0.6 }); this.sfx('sparkle', { vol: 0.6 }); this.flashT = t; }
+    if (this.cue('down', T.logo + 0.12)) {
+      this.sfx('splash_big', { vol: 0.5 });
+      this.cam = this.camera(t);
+      const p = this.proj(SPLASH2.x, 0, SPLASH2.z);
+      if (p) { this.fx.splash(p[0], p[1], 1.1); this.fx.ringWave(p[0], p[1], 40 * this.u, '#ffffff', { life: 0.9, w: 2, flat: 0.28 }); }
+    }
     if (this.cue('flare', T.flare)) this.sfx('golden_shimmer', { vol: 0.5 });
-    if (this.cue('sneak', T.sneak + 0.4)) this.sfx('squeak', { vol: 0.4, pitch: 0.8 });
     if (this.cue('out0', T.out0)) {
-      this.sfx('splash_big', { vol: 0.7 });
       this.sfx('bubbles', { vol: 0.8 });
-      const { W, H } = this;
-      for (let i = 0; i < 80; i++) this.fx.add({ kind: 'gbubble', x: this.rng.float(0, W), y: H + this.rng.float(0, H * 0.5), vx: this.rng.float(-10, 10), vy: -this.rng.float(180, 340) * this.u, life: 3, r: this.rng.pick([3, 4, 5, 6, 8, 10, 12]), wob: this.rng.float(0, TAU), layer: 'top', rise: 1, delay: this.rng.float(0, 1.0) });
+      for (let i = 0; i < 90; i++) this.fx.add({ kind: 'gbubble', x: this.rng.float(0, W), y: H + this.rng.float(0, H * 0.5), vx: this.rng.float(-10, 10), vy: -this.rng.float(200, 380) * this.u, life: 3, r: this.rng.pick([3, 4, 5, 6, 8, 10, 12]), wob: this.rng.float(0, TAU), layer: 'top', rise: 1, delay: this.rng.float(0, 0.9) });
     }
   }
 
-  // --------------------------------------------------------------------------------------------- Goldie
-  updateGoldie(dt, t) {
-    const G = (this.goldie ||= { x: -10, y: -46, d: 0.2, facing: 1, blink: 0, mood: 'neutral' });
-    let tx, ty, td;
-    if (t < T.notice) { const a = t * 0.9; tx = Math.sin(a) * 22; ty = -44 + Math.sin(a * 1.7) * 5; td = Math.cos(a) * 0.8; }
-    else if (t < T.blow + 1.2) { tx = 4 + Math.sin(t * 2) * 2; ty = -46; td = 1; }
-    else { const a = (t - T.blow) * 1.1; tx = Math.sin(a) * 16; ty = -48 + Math.sin(a * 1.3) * 6; td = 0.4 + Math.cos(a) * 0.5; }
-    const px = G.x;
-    G.x += (tx - G.x) * Math.min(1, dt * 3);
-    G.y += (ty - G.y) * Math.min(1, dt * 3);
-    G.d += (td - G.d) * Math.min(1, dt * 3);
-    const vx = (G.x - px) / Math.max(1e-4, dt);
-    if (Math.abs(vx) > 3) G.facing = vx > 0 ? 1 : -1;
-    if (t >= T.notice && t < T.blow - 0.2) G.facing = 1;
-    if (t > T.blow - 0.2 && t < T.blow + 1.4) G.facing = -1; // turn toward the monitor and blow
-    G.blink = (t % 3.1 < 0.12) || (t > T.notice + 0.25 && t < T.notice + 0.37) || (t > T.notice + 0.55 && t < T.notice + 0.65) ? 1 : 0;
-    G.mood = t > T.blow - 0.2 && t < T.blow + 1.6 ? 'o' : t >= T.notice && t < T.notice + 0.6 ? 'wide' : 'happy';
-  }
-
-  // ----------------------------------------------------------------------------------- 3D particles
-  update3D(dt, t) {
-    const r = this.rng;
-    if (t < T.dolly1 && this.p3.length < 160 && r.chance(dt * 30)) {
-      this.p3.push({ kind: 'dust', x: r.float(-760, 300), y: r.float(-380, 220), z: r.float(60, 175), vx: r.float(-2, 2), vy: r.float(-3, 1), vz: r.float(-1, 1), t: 0, life: r.float(4, 8), r: r.pick([1, 1, 1, 2]), ph: r.float(0, TAU) });
-    }
-    if (t < T.dolly1 - 2 && this.p3.filter((p) => p.kind === 'bokeh').length < 9 && r.chance(dt * 3)) {
-      this.p3.push({ kind: 'bokeh', x: this.cam.x + r.float(-260, 260), y: this.cam.y + r.float(-170, 170), z: this.cam.z + r.float(26, 60), vx: r.float(-5, 5), vy: r.float(-6, -1), vz: 0, t: 0, life: r.float(3, 6), r: r.float(9, 20), c: r.pick(['#bff0ff', '#e8ffd0', '#ffffff', '#9fe8ff', '#d8ffa0']), ph: 0 });
-    }
-    const G = this.goldie;
-    const blowing = t > T.blow && t < T.fly1;
-    if (t < T.dolly1 && r.chance(dt * (blowing ? 14 : 1.4))) {
-      const fromG = blowing && r.chance(0.6);
-      this.p3.push({ kind: 'jar', x: fromG ? G.x - 12 * G.facing * -1 : r.float(-26, 26), y: fromG ? G.y - 2 : -14, z: JAR.z - 4 + r.float(-6, 6), vy: -r.float(14, 26), t: 0, life: 6, r: r.pick([1.5, 2, 2.5, 3]), ph: r.float(0, TAU), fly: blowing && t > T.fly0 - 1 && r.chance(0.75) });
-    }
-    for (const p of this.p3) {
-      p.t += dt;
-      if (p.kind === 'dust' || p.kind === 'bokeh') {
-        p.x += (p.vx + Math.sin(t * 0.6 + p.ph) * 2) * dt; p.y += p.vy * dt; p.z += p.vz * dt;
-        if (p.z - this.cam.z < 8) p.dead = true;
-      } else if (p.kind === 'jar') {
-        p.ph += dt * 6;
-        p.y += p.vy * dt; p.x += Math.sin(p.ph) * 6 * dt;
-        if (p.y < JAR.water + 2) {
-          if (p.fly) {
-            const tx = lerp(-this.SW * 0.42, this.SW * 0.42, r.float(0, 1)), ty = MON.cy + r.float(-0.2, 0.5) * SCREEN_H;
-            Object.assign(p, { kind: 'fly', p0: [JAR.x + p.x, DESK.y + JAR.water - 4, JAR.z], p1: [JAR.x * 0.35 + r.float(-60, 60), -200 + r.float(-40, 40), JAR.z - 8], p2: [tx, ty, MON.z - 0.5], t: 0, life: r.float(1.6, 2.6), r: p.r * 1.6 + r.float(0, 2) });
-          } else p.dead = true;
-        }
-      } else if (p.kind === 'fly') {
-        const k = ease.inOutQuad(clamp01(p.t / p.life));
-        const q = bez(p.p0, p.p1, p.p2, k);
-        p.x = q[0] + Math.sin(p.t * 5 + p.r) * 4 * (1 - k); p.y = q[1]; p.z = q[2];
-        if (p.t >= p.life) {
-          p.dead = true;
-          const lx = ((p.x + this.SW / 2) / this.SW) * this.W, ly = ((p.y - (MON.cy - SCREEN_H / 2)) / SCREEN_H) * this.H;
-          this.sp.add({ kind: 'gbubble', x: lx, y: ly, vx: r.float(-20, 20), vy: -r.float(10, 40), life: 4, r: Math.max(2, Math.round(p.r * this.H / SCREEN_H * 0.45)), wob: 0, layer: 'fg', rise: 0.6 });
-          this.sp.ringWave(lx, ly, 14 * this.u, '#e8fbff', { life: 0.4, w: 2 });
-          if (r.chance(0.3)) this.sfx('bubble', { vol: 0.25, pitch: r.float(0.9, 1.4) });
-        }
+  // 3D bubbles rising past the camera underwater (respawn ahead of it).
+  updateBubbles(dt, t) {
+    const c = this.cam;
+    if (!c || c.y < -20) return;
+    for (const b of this.bubbles3) {
+      b.y -= b.v * dt;
+      b.x += Math.sin(t * 2 + b.ph) * 6 * dt;
+      if (b.y < 1 || b.z < c.z + 10) {
+        b.y = c.y + this.rng.float(40, 260);
+        b.z = c.z + this.rng.float(40, 640);
+        b.x = c.x + this.rng.float(-300, 300);
       }
-      if (p.t >= p.life) p.dead = true;
-    }
-    this.p3 = this.p3.filter((p) => !p.dead);
-  }
-
-  // ---------------------------------------------------------------------------- the desktop on screen
-  waterline(x, t) {
-    const k = ease.inOutCubic(inv(T.flood0, T.flood1, t));
-    const base = lerp(this.H + 16, this.H * 0.085, k);
-    const amp = 1 + 2 * Math.sin(Math.PI * k);
-    return base + (Math.sin(x * 0.03 + t * 2.4) * 3 + Math.sin(x * 0.011 - t * 1.4) * 5) * amp;
-  }
-
-  updateScreen(dt, t) {
-    if (t > T.rise1 && t < T.out0) return;
-    const { W, H } = this;
-    const flooding = t > T.flood0;
-    this.sp.surfaceY = flooding ? this.waterline(W / 2, t) + 4 : null;
-    for (const ic of this.icons) {
-      const wl = this.waterline(ic.x, t);
-      const wet = flooding && wl < ic.y + 40;
-      ic.wet = clamp01(ic.wet + (wet ? dt * 1.5 : -dt));
-      if (wet) ic.lift = Math.min(ic.lift + dt * 14, 26);
-    }
-    if (flooding) {
-      const r = this.rng;
-      const k = inv(T.flood0, T.flood1, t);
-      if (k < 1) for (let i = 0; i < 3; i++) { const x = r.float(0, W); this.sp.bubble(x, this.waterline(x, t) + r.float(4, 30), { size: r.pick([1, 2, 2, 3]) }); }
-      if (r.chance(dt * 12)) { const x = r.float(0, W); this.sp.aeroBubbles(x, H + 6, 1, { sizes: [2, 3, 4, 5], speed: [30, 70], life: [2, 4] }); }
-      if (k > 0.05 && k < 0.95 && r.chance(dt * 4)) { const x = r.float(0, W); this.sp.splash(x, this.waterline(x, t), 0.5); }
-    }
-    this.sp.update(dt);
-  }
-
-  // ------------------------------------------------------------------------------- the bubble person
-  charPos(t) {
-    const { W, H } = this;
-    const bob = Math.sin(t * 1.8) * 3 * this.u;
-    const under = [W * 0.5, H * 0.66 + bob];
-    if (t < T.rise0) return under;
-    const D = this.ecoDome || this.dome();
-    const land = [W * 0.5, D.y(W * 0.5) + 6 * this.u];
-    const k = inv(T.rise0 + 0.1, T.rise1 + 0.2, t);
-    if (k >= 1) {
-      const hop = t < T.rise1 + 0.8 ? Math.abs(Math.sin((t - T.rise1) * 6)) * 6 * this.u * (1 - (t - T.rise1) / 0.8) : 0;
-      return [land[0], land[1] - hop];
-    }
-    // swim up through the surface in an arc and land on the hill
-    const e = ease.inOutCubic(k);
-    return [lerp(under[0], land[0], e), lerp(under[1], land[1], e) - Math.sin(Math.PI * e) * H * 0.22];
-  }
-
-  silhouette() {
-    const pts = [];
-    try {
-      if (typeof CHAR.drawCharacter === 'function') {
-        const S = Math.ceil(220 * this.u), c = makeCanvas(S, S), g = ctxOf(c);
-        CHAR.drawCharacter(g, S / 2, S * 0.92, { pose: 'wave', t: 0, facing: 1, scale: this.charScale(), look: this.look, shadow: false });
-        const d = g.getImageData(0, 0, S, S).data;
-        const step = Math.max(2, Math.round(3 * this.u));
-        for (let y = 0; y < S; y += step) for (let x = 0; x < S; x += step) if (d[(y * S + x) * 4 + 3] > 128) pts.push([x - S / 2, y - S * 0.92]);
-      }
-    } catch (e) { /* default below */ }
-    if (pts.length < 20) {
-      const s = this.charScale();
-      for (let i = 0; i < 90; i++) { const a = (i / 90) * TAU; const head = i % 3 === 0; pts.push(head ? [Math.cos(a) * 14 * s, -58 * s + Math.sin(a) * 14 * s] : [Math.cos(a) * 12 * s * this.rng.float(0.2, 1), -22 * s + Math.sin(a) * 22 * s * this.rng.float(0.2, 1)]); }
-    }
-    return pts;
-  }
-
-  startGather() {
-    const pts = this.silhouette();
-    const r = this.rng;
-    for (let i = pts.length - 1; i > 0; i--) { const j = r.int(0, i); [pts[i], pts[j]] = [pts[j], pts[i]]; }
-    const n = Math.min(150, pts.length);
-    const { W, H } = this;
-    this.gather = [];
-    for (let i = 0; i < n; i++) {
-      const a = r.float(0, TAU), d = r.float(0.45, 0.8) * Math.max(W, H);
-      this.gather.push({ tx: pts[i][0], ty: pts[i][1], a, d, r: r.pick([2, 2.5, 3, 3.5, 4, 5]), spin: r.float(2.2, 3.4), delay: r.float(0, 0.6), x: -99, y: -99 });
     }
   }
 
-  updateGather(dt, t) {
-    if (!this.gather.length) return;
-    const [cx, cy] = this.charPos(t);
-    const span = T.gather - T.swirl;
-    for (const b of this.gather) {
-      const k = clamp01((t - T.swirl - b.delay) / (span - b.delay * 0.5));
-      const e = ease.inOutCubic(k);
-      const ang = b.a + (1 - e) * b.spin * TAU * 0.5;
-      const rad = b.d * (1 - e);
-      b.x = cx + b.tx * e + Math.cos(ang) * rad;
-      b.y = cy + b.ty * e + Math.sin(ang) * rad * 0.7;
-    }
-    if (t > T.pop) for (const b of this.gather) if (!b.popped && this.rng.chance(0.25)) { b.popped = true; this.fx.sparkle(b.x, b.y, '#ffffff'); }
-    if (t > T.pop + 0.4) this.gather = [];
+  addLensDrop(x, y, r, delay = 0) { this.lens.push({ x, y, r, t: -delay, life: this.rng.float(1.6, 2.6), vy: this.rng.float(4, 18) * this.u }); }
+
+  updateLens(dt) {
+    for (const d of this.lens) { d.t += dt; if (d.t > 0) d.y += d.vy * dt * clamp01(d.t * 2); }
+    this.lens = this.lens.filter((d) => d.t < d.life);
   }
 
-  // --------------------------------------------------------------------------------------- eco scene
-  updateEco(dt, t) {
-    if (t < T.rise0 || !this.eco) return;
-    const { W, H } = this;
-    const r = this.rng;
-    // splashes and bubbles along the water at the bottom; sun glints
-    if (r.chance(dt * 3)) this.fx.splash(r.float(W * 0.05, W * 0.95), H * 0.93, r.float(0.4, 0.9));
-    if (r.chance(dt * 8)) this.fx.aeroBubbles(r.float(0, W), H * 0.98, 1, { sizes: [3, 4, 5, 6, 8], speed: [20, 60], life: [2, 4] });
-    if (r.chance(dt * 2)) this.fx.glint(r.float(0, W), r.float(H * 0.05, H * 0.5), { len: r.pick([3, 4, 6]) });
-  }
-
-  // ============================================================================================== drawing
-  skipRect() { const w = 64, h = 20; return { x: this.W - w - 10, y: 10, w, h }; }
-
+  // --------------------------------------------------------------------------------------------- draw
   draw(ctx) {
     if (!this.active) return;
     const { W, H } = this;
@@ -1258,7 +871,7 @@ export class Intro3D {
     const t = this.t;
     let alpha = 1;
     if (this.skipT >= 0) alpha = 1 - ease.inOutQuad(clamp01(this.skipT / 0.5));
-    else if (t > T.out0 + 0.5) alpha = 1 - ease.inOutCubic(inv(T.out0 + 0.5, T.out1, t));
+    else if (t > T.out0 + 0.4) alpha = 1 - ease.inOutCubic(inv(T.out0 + 0.4, T.out1, t));
     if (alpha > 0.002) {
       if (alpha < 1) {
         const L = this.layer || (this.layer = makeCanvas(W, H));
@@ -1281,534 +894,862 @@ export class Intro3D {
     const { W, H } = this;
     ctx.fillStyle = '#f5fcff';
     ctx.fillRect(0, 0, W, H);
-    drawAeroGlow(ctx, W / 2, H / 2, Math.round(H * 0.4), '#bfeeff', 0.5);
+    AE.drawAeroGlow?.(ctx, W / 2, H / 2, Math.round(H * 0.4), '#bfeeff', 0.5);
     const b = this.bootT;
     if (b > 0.25) {
       ctx.globalAlpha = clamp01((b - 0.25) * 3);
-      drawGlossOrb(ctx, W / 2, H / 2 + Math.sin(b * 4) * 3, 9 * this.u, '#2fd3e8');
-      for (let i = 0; i < 3; i++) { const ph = (b * 0.8 + i / 3) % 1; drawAeroBubble(ctx, W / 2 + Math.sin(ph * 9 + i) * 8, H / 2 - 14 - ph * 40, 2 + i, 1 - ph); }
+      AE.drawGlossOrb?.(ctx, W / 2, H / 2 + Math.sin(b * 4) * 3, 9 * this.u, '#2fd3e8');
+      for (let i = 0; i < 3; i++) { const ph = (b * 0.8 + i / 3) % 1; AE.drawAeroBubble?.(ctx, W / 2 + Math.sin(ph * 9 + i) * 8, H / 2 - 14 - ph * 40, 2 + i, 1 - ph); }
       ctx.globalAlpha = 1;
     }
   }
 
   drawFrame(ctx, t) {
     const { W, H } = this;
-    this.cam = this.camera(t);
-    // pan offsets: up into the eco wallpaper, then back down under the water at the end
-    const up = ease.inOutCubic(inv(T.rise0, T.rise1, t)), down = ease.inOutCubic(inv(T.out0, T.out0 + 1.1, t));
-    const pan = up - down;
-    if (pan < 0.999) {
-      this.renderScreen(t);
-      const dy = Math.round(pan * H);
-      if (t < T.dolly1) this.drawRoom(ctx, t);
-      else ctx.drawImage(this.scr, 0, dy);
-      if (t >= T.swirl - 0.1 && t < T.rise0 + 0.5) this.drawGather(ctx, t);
+    const c = (this.cam = this.camera(t));
+    ctx.save();
+    if (c.roll) { ctx.translate(W / 2, H / 2); ctx.rotate(c.roll); ctx.scale(1.06, 1.06); ctx.translate(-W / 2, -H / 2); }
+    // the meniscus sweeps across the lens while the camera crosses the surface
+    const rho = 7;
+    const k = clamp01((c.y + rho) / (2 * rho));
+    if (k <= 0) this.drawAbove(ctx, t);
+    else if (k >= 1) this.drawUnder(ctx, t);
+    else {
+      this.drawUnder(ctx, t);
+      const sy = H * (1 - k);
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(-40, -40);
+      ctx.lineTo(W + 40, -40);
+      for (let x = W + 40; x >= -40; x -= 16) ctx.lineTo(x, sy + Math.sin(x * 0.03 + t * 9) * 6 * this.u + Math.sin(x * 0.011 - t * 5) * 9 * this.u);
+      ctx.closePath();
+      ctx.clip();
+      this.drawAbove(ctx, t);
+      ctx.restore();
+      this.drawMeniscus(ctx, t, sy);
     }
-    if (pan > 0.001) this.drawEco(ctx, t, Math.round((pan - 1) * H));
-    if (pan > 0.001 && pan < 0.999) this.drawSurfaceSeam(ctx, t, Math.round(pan * H));
-    if (t >= T.pop - 0.15 && t < T.out0 + 0.9) this.drawHero(ctx, t, pan);
-    if (t >= T.logo) this.drawLogo(ctx, t, Math.round((pan - 1) * H));
+    ctx.restore();
     this.fx.draw(ctx, 'fg', t);
+    this.drawLens(ctx);
     this.drawVignette(ctx);
-    if (t < T.fade) {
-      const k = 1 - ease.outCubic(t / T.fade);
-      ctx.fillStyle = rgba('#f5fcff', k);
-      ctx.fillRect(0, 0, W, H);
+    this.drawBars(ctx, t);
+    if (t >= T.logo - 0.2) this.drawLogo(ctx, t);
+    this.drawFlash(ctx, t);
+  }
+
+  // ------------------------------------------------------------------------------------- above the water
+  drawAbove(ctx, t) {
+    const { W, H } = this;
+    this.ctx = ctx;
+    const hy = this.horizon();
+    this.drawSky(ctx, t, hy);
+    this.drawSea(ctx, t, hy);
+    // billboards, far -> near
+    const items = [];
+    const push = (z, fn) => items.push([z, fn]);
+    const I = this.A.isle;
+    if (I) push(ISLE.z, () => this.drawIsland(ctx, t));
+    for (const p of this.A.props || []) push(p.z, () => this.drawProp(ctx, p, t));
+    if (this.globe) push(GLOBE.z, () => this.drawGlobe(ctx, t));
+    const shot = this.cam.shot;
+    if (shot === 0 || shot === 2) push(BOAT.z, () => this.drawBoat(ctx, t));
+    if (shot === 0 && t > T.cast) push(LURE.z - 1, () => this.drawBobber(ctx, t));
+    if (shot === 1) push(950, () => this.drawLeaper(ctx, t));
+    this.drawGulls(ctx, t, push);
+    this.drawDolphins(ctx, t, push);
+    items.sort((a, b) => b[0] - a[0]);
+    for (const [, fn] of items) fn();
+    if (this.cam.shot === 1) this.drawBreachSplash(ctx, t);
+    // sun flare over everything above the water
+    const sun = this.sunPos;
+    if (sun) {
+      let vis = 0.55 + 0.25 * Math.sin(t * 1.3);
+      if (this.cam.shot === 2) vis = 0.35 + 0.65 * inv(T.flare - 0.3, T.flare + 0.6, t);
+      if (this.cam.shot === 1) vis = 0.9;
+      if (sun[0] > -60 && sun[0] < W + 60 && sun[1] > -60 && sun[1] < H) this.flare(ctx, sun[0], sun[1], vis, 1.2);
     }
   }
 
-  drawVignette(ctx) {
-    const { W, H } = this;
-    if (!this.vig || this.vig.width !== W || this.vig.height !== H) {
-      const c = makeCanvas(W, H), g = ctxOf(c);
-      const gr = g.createRadialGradient(W / 2, H * 0.48, Math.min(W, H) * 0.42, W / 2, H / 2, Math.hypot(W, H) * 0.62);
-      gr.addColorStop(0, 'rgba(6,40,80,0)'); gr.addColorStop(1, 'rgba(6,40,80,0.26)');
-      g.fillStyle = gr; g.fillRect(0, 0, W, H);
-      this.vig = c;
-    }
-    ctx.drawImage(this.vig, 0, 0);
-  }
-
-  // A sprite billboard at a world anchor; res = sprite px per world unit; (ax, ay) = anchor in sprite px.
-  card(ctx, spr, X, Y, Z, res, ax, ay, alpha = 1) {
-    if (!spr || Z - this.cam.z < 4) return;
-    const [sx, sy, s] = this.proj(X, Y, Z);
-    const k = s / res;
-    const w = spr.width * k, h = spr.height * k;
-    const x = sx - ax * k, y = sy - ay * k;
-    if (x > this.W || y > this.H || x + w < 0 || y + h < 0) return;
-    ctx.imageSmoothingEnabled = k < 0.98;
-    ctx.imageSmoothingQuality = 'high';
-    if (alpha < 1) ctx.globalAlpha = alpha;
-    ctx.drawImage(spr, x, y, w, h);
-    ctx.globalAlpha = 1;
-    ctx.imageSmoothingEnabled = false;
-  }
-
-  prop(ctx, key, X, Y, Z, alpha = 1) {
-    const a = this.A[key];
-    if (a && alpha > 0.01) this.card(ctx, a.canvas, X, Y, Z, a.res, a.ox, a.oy, alpha);
-  }
-
-  quad(ctx, pts) {
-    ctx.beginPath();
-    pts.forEach(([x, y, z], i) => { const p = this.proj(x, y, z); if (i) ctx.lineTo(p[0], p[1]); else ctx.moveTo(p[0], p[1]); });
-    ctx.closePath();
-  }
-
-  drawRoom(ctx, t) {
-    const { W, H } = this;
-    ctx.fillStyle = '#cfe8f4';
-    ctx.fillRect(0, 0, W, H);
-    this.drawOutside(ctx, t);
-    this.prop(ctx, 'wall', WALL.x0, WALL.y0, ZW);
-    this.prop(ctx, 'clock', 470, -390, ZW - 1);
-    this.prop(ctx, 'decal', 300, -130, ZW - 1);
-    this.prop(ctx, 'shelf', SHELF.x, SHELF.y, SHELF.z);
-    this.drawLamp(ctx, t);
-    this.drawBeams(ctx, t);
-    this.prop(ctx, 'desk', 0, DESK.y, 100);
-    this.drawDeskFx(ctx, t);
-    this.drawMonitor(ctx, t);
-    this.prop(ctx, 'keyboard', -18, DESK.y, 86);
-    this.prop(ctx, 'mouse', 150, DESK.y, 88);
-    this.drawJar(ctx, t);
-    this.prop(ctx, 'plant', -330, DESK.y, 98);
-    this.draw3D(ctx, t);
-    const fr = this.A.frond;
-    if (fr && this.cam.z < 30) this.card(ctx, fr.canvas, -300, -250, 46, fr.res, fr.canvas.width * 0.95, fr.canvas.height * 0.6, clamp01((30 - this.cam.z) / 16) * 0.92);
-    this.drawSunFlare(ctx, t);
-  }
-
-  // Light on the glass desk (effects only): window glare and the jar's focused caustic.
-  drawDeskFx(ctx, t) {
-    if (DESK.z0 - this.cam.z < 6) return;
-    const [x0, y0] = this.proj(-520, DESK.y, DESK.z1), [x1, y1] = this.proj(-200, DESK.y, DESK.z0);
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.fillStyle = 'rgba(255,255,255,0.10)';
-    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0 + (x1 - x0) * 0.6, y0); ctx.lineTo(x1, y1); ctx.lineTo(x1 - (x1 - x0) * 0.6, y1); ctx.closePath(); ctx.fill();
-    ctx.restore();
-    if (JAR.z - 22 - this.cam.z < 12) return;
-    const [cx, cy, s] = this.proj(JAR.x + 30, DESK.y, JAR.z - 22);
-    if (cx - 42 * s > this.W) return;
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.translate(cx, cy); ctx.scale(1, 0.28);
-    drawAeroGlow(ctx, 0, 0, Math.min(160, Math.round(42 * s)), '#c8fbff', 0.45 + 0.1 * Math.sin(t * 2));
-    ctx.restore();
-  }
-
-  drawOutside(ctx, t) {
-    if (!this.land) return;
-    const [x0, y0] = this.proj(WIN.x0, WIN.y0, ZW), [x1, y1] = this.proj(WIN.x1, WIN.y1, ZW);
-    if (x1 < 0 || x0 > this.W) return;
-    ctx.save();
-    ctx.beginPath(); ctx.rect(x0, y0, x1 - x0, y1 - y0); ctx.clip();
-    ctx.fillStyle = '#1361c8';
-    ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
-    const lw = 2700, lh = lw * this.land.height / this.land.width;
-    const [a, b, s] = this.proj(-2100, -120 - lh * 0.6, Z_OUT);
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(this.land, a, b, lw * s, lh * s);
-    ctx.imageSmoothingEnabled = false;
-    const [sx, sy] = this.proj(-930, -520, Z_OUT);
-    drawAeroGlow(ctx, sx, sy, Math.round(80 * this.u), '#fffbe0', 0.85);
-    drawAeroGlow(ctx, sx, sy, Math.round(26 * this.u), '#ffffff', 1);
-    ctx.restore();
+  drawSky(ctx, t, hy) {
+    const { W, H, u } = this;
+    const top = Math.min(-1, hy - H * 1.3);
+    ctx.fillStyle = vgrad(ctx, top, hy, [[0, '#0640b8'], [0.35, '#1268e0'], [0.68, '#3aa2fa'], [0.88, '#9adcff'], [1, '#eafcff']]);
+    ctx.fillRect(-W * 0.1, -H * 0.1, W * 1.2, Math.max(0, hy + 2 + H * 0.1));
+    const c = this.cam;
+    const [az, el] = SUNS[c.shot] || SUNS[0];
+    const sx = W / 2 + this.F * Math.tan(az), sy = H / 2 - this.F * Math.tan(el + c.p);
     this.sunPos = [sx, sy];
-    void t;
-  }
-
-  drawSunFlare(ctx, t) {
-    if (!this.sunPos) return;
-    const [sx, sy] = this.sunPos;
-    const vis = clamp01(1 - inv(T.dolly0 + 1, T.dolly0 + 4.5, t)) * (0.75 + 0.25 * Math.sin(t * 1.3));
-    if (vis > 0.01) this.flare(ctx, sx, sy, vis, 1);
-  }
-
-  // Lens flare from a light at (sx, sy) through the screen centre: anamorphic streak, glow, coloured ghosts.
-  flare(ctx, sx, sy, vis, size) {
-    const cx = this.W / 2, cy = this.H / 2;
+    // white Aero arcs sweeping across the sky
     ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    const L = 240 * this.u * size;
-    const gr = ctx.createLinearGradient(sx - L, 0, sx + L, 0);
-    gr.addColorStop(0, 'rgba(160,230,255,0)'); gr.addColorStop(0.5, rgba('#e8fbff', 0.55 * vis)); gr.addColorStop(1, 'rgba(160,230,255,0)');
-    ctx.fillStyle = gr;
-    ctx.fillRect(sx - L, sy - Math.max(1, size), L * 2, Math.max(2, 2 * size));
-    const ghosts = [[0.35, 10, '#bfefff', 0.16], [0.6, 5, '#fff2b0', 0.2], [0.85, 16, '#c8f56a', 0.1], [1.25, 8, '#7ff0ff', 0.16], [1.6, 24, '#bfeaff', 0.08], [1.9, 12, '#ffd0f0', 0.1]];
-    for (const [k, r, c, a] of ghosts) drawAeroGlow(ctx, lerp(sx, cx, k * 1.2), lerp(sy, cy, k * 1.2), Math.round(r * this.u * size), c, a * vis * 2);
+    ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 1;
+    const ac = [W * 0.72, hy + H * 0.9];
+    for (let i = 0; i < 11; i++) { const r = H * (0.95 + i * 0.03); ctx.beginPath(); ctx.arc(ac[0], ac[1], r, -2.5, -1.15); ctx.stroke(); }
     ctx.restore();
-  }
-
-  // Easter egg: the moving-picture aquarium lamp, a voxel model whose reef drum turns (pre-rendered steps).
-  drawLamp(ctx, t) {
-    const z = SHELF.z - 2, y = -183;
-    const [x, gy, s] = this.proj(LAMP.x, y - LAMP.h * 0.5, z);
-    if (x + LAMP.w * s < 0 || x - LAMP.w * s > this.W) return;
-    drawAeroGlow(ctx, x, gy, Math.round(LAMP.w * s * 0.75), '#5fc8ff', 0.35 + 0.05 * Math.sin(t * 3));
-    this.prop(ctx, 'lamp' + (Math.floor(t * 4) % LAMP_FRAMES), LAMP.x, y, z);
-  }
-
-  drawBeams(ctx, t) {
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    const off = [240, 330, -110];
-    for (let i = 0; i < 4; i++) {
-      const xa = WIN.x0 + 40 + i * 150, xb = xa + 70 + (i % 2) * 40;
-      const a = 0.03 + 0.015 * Math.sin(t * 0.9 + i * 1.7);
-      const P = [[xa, WIN.y0 + 30, ZW - 2], [xb, WIN.y0 + 30, ZW - 2], [xb + off[0], WIN.y1 + off[1], ZW - 2 + off[2]], [xa + off[0], WIN.y1 + off[1], ZW - 2 + off[2]]];
-      const p0 = this.proj(...P[0]), p2 = this.proj(...P[2]);
-      const gr = ctx.createLinearGradient(p0[0], p0[1], p2[0], p2[1]);
-      gr.addColorStop(0, rgba('#fffbe8', a)); gr.addColorStop(0.7, rgba('#fffbe8', a * 0.4)); gr.addColorStop(1, 'rgba(255,251,232,0)');
-      ctx.fillStyle = gr;
-      this.quad(ctx, P);
-      ctx.fill();
-    }
-    ctx.restore();
-  }
-
-  // The voxel monitor with the live desktop drawn into its screen, a glass sheen and the LED's glow (effects).
-  drawMonitor(ctx, t) {
-    const hw = this.SW / 2, hh = SCREEN_H / 2;
-    this.prop(ctx, 'monitor', 0, MON.cy, MON.z);
-    const [qx0, qy0] = this.proj(-hw, MON.cy - hh, MON.z), [qx1, qy1] = this.proj(hw, MON.cy + hh, MON.z);
-    const sw = qx1 - qx0, sh = qy1 - qy0;
-    ctx.imageSmoothingEnabled = sw < this.W - 0.5;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(this.scr, qx0, qy0, sw, sh);
-    ctx.imageSmoothingEnabled = false;
-    const sheen = 1 - this.cam.a;
-    if (sheen > 0.02) {
-      ctx.save();
-      ctx.beginPath(); ctx.rect(qx0, qy0, sw, sh); ctx.clip();
-      ctx.fillStyle = rgba('#ffffff', 0.13 * sheen);
-      ctx.beginPath(); ctx.moveTo(qx0, qy0); ctx.lineTo(qx0 + sw * 0.55, qy0); ctx.lineTo(qx0 + sw * 0.25, qy1); ctx.lineTo(qx0, qy1); ctx.fill();
-      ctx.fillStyle = rgba('#ffffff', 0.06 * sheen);
-      ctx.beginPath(); ctx.moveTo(qx0 + sw * 0.62, qy0); ctx.lineTo(qx0 + sw * 0.7, qy0); ctx.lineTo(qx0 + sw * 0.4, qy1); ctx.lineTo(qx0 + sw * 0.32, qy1); ctx.fill();
-      ctx.restore();
-    }
-    const [lx, ly, ls] = this.proj(hw - 7, MON.cy + hh + MON.chin - 11, MON.z);
-    drawAeroGlow(ctx, lx, ly, clamp(Math.round(7 * ls), 3, 40), '#5fe6ff', 0.6);
-    void t;
-  }
-
-  // The goldfish jar: voxel layers (back glass, water, gravel, Goldie, a water tint, front glass, the lip) plus
-  // painted light (shadow, glints) as effects. Local units = world units, origin = the jar's base centre.
-  drawJar(ctx, t) {
-    if (JAR.z - this.cam.z < 6) return;
-    const [sx, sy, s] = this.proj(JAR.x, DESK.y, JAR.z);
-    const R = JAR.r, cy = -R + JAR.cut;
-    if (sx - R * 1.3 * s > this.W || sx + R * 1.3 * s < 0) return;
-    ctx.fillStyle = 'rgba(20,60,80,0.2)';
-    ctx.beginPath(); ctx.ellipse(sx + 4 * s, sy + s, R * 0.72 * s, 5 * s, 0, 0, TAU); ctx.fill();
-    const L = (key, a) => this.prop(ctx, key, JAR.x, DESK.y, JAR.z, a);
-    L('jar_back', 0.55);
-    L('jar_water', 0.92);
-    ctx.save();
-    ctx.beginPath(); ctx.arc(sx, sy + cy * s, (R - 2.5) * s, 0, TAU); ctx.clip();
-    this.prop(ctx, 'gravel', JAR.x, DESK.y - 1, JAR.z - 2);
-    ctx.restore();
-    ctx.save();
-    ctx.translate(sx, sy);
-    ctx.scale(s, s);
-    this.drawJarBubbles(ctx, s, false);
-    const G = this.goldie;
-    if (G) {
-      const ds = 0.86 + G.d * 0.14;
-      ctx.save();
-      ctx.translate(G.x, G.y);
-      ctx.scale(1 / s, 1 / s);
-      drawGoldie(ctx, 0, 0, { scale: 0.8 * ds * s, base: this.goldieBase, facing: G.facing, blink: G.blink, mood: G.mood, t, id: 'intro-goldie' });
-      ctx.restore();
-    }
-    this.drawJarBubbles(ctx, s, true);
-    ctx.restore();
-    L('jar_water', 0.2);
-    L('jar_front', 0.32);
-    L('jar_lip', 0.95);
-    // glints on the glass (effects)
-    ctx.save();
-    ctx.translate(sx, sy);
-    ctx.scale(s, s);
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.beginPath(); ctx.ellipse(-R * 0.48, cy - R * 0.3, R * 0.12, R * 0.32, 0.45, 0, TAU); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.beginPath(); ctx.ellipse(-R * 0.36, cy - R * 0.58, R * 0.05, R * 0.09, 0.6, 0, TAU); ctx.fill();
-    ctx.restore();
-  }
-
-  drawJarBubbles(ctx, s, front) {
-    for (const p of this.p3) {
-      if (p.kind !== 'jar' || (p.z < JAR.z) !== front) continue;
-      ctx.save();
-      ctx.translate(p.x, p.y);
-      ctx.scale(1 / s, 1 / s);
-      drawAeroBubble(ctx, 0, 0, clamp(p.r * s * 0.8, 1.5, 24), 0.9);
-      ctx.restore();
-    }
-  }
-
-  draw3D(ctx, t) {
-    for (const p of this.p3) {
-      if (p.kind === 'dust') {
-        const [x, y, s] = this.proj(p.x, p.y, p.z);
-        if (x < 0 || y < 0 || x > this.W || y > this.H) continue;
-        const a = Math.sin(Math.PI * clamp01(p.t / p.life)) * (0.4 + 0.6 * Math.max(0, Math.sin(t * 2 + p.ph)));
-        if (a > 0.85 && s > 0.9) drawSparkle(ctx, x, y, 1, a * 0.8, '#fffbe0');
-        else { ctx.fillStyle = rgba('#ffffff', a * 0.7); const q = Math.max(1, Math.round(p.r * s * 0.6)); ctx.fillRect(Math.round(x), Math.round(y), q, q); }
-      } else if (p.kind === 'bokeh') {
-        const [x, y, s] = this.proj(p.x, p.y, p.z);
-        const a = Math.sin(Math.PI * clamp01(p.t / p.life)) * 0.32;
-        const rr = Math.round(p.r * s * 0.5);
-        if (rr < 2 || x < -rr || y < -rr || x > this.W + rr || y > this.H + rr) continue;
-        drawAeroGlow(ctx, x, y, rr, p.c, a);
-        ctx.strokeStyle = rgba('#ffffff', a * 0.5); ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.arc(x, y, rr * 0.8, 0, TAU); ctx.stroke();
-      } else if (p.kind === 'fly') {
-        if (p.z - this.cam.z < 6) continue;
-        const [x, y, s] = this.proj(p.x, p.y, p.z);
-        if (x < -40 || y < -40 || x > this.W + 40 || y > this.H + 40) continue;
-        drawAeroBubble(ctx, x, y, clamp(p.r * s * 0.7, 1.5, 24), 1);
-        if (Math.sin(t * 9 + p.r * 7) > 0.92) drawSparkle(ctx, x - p.r * s * 0.3, y - p.r * s * 0.3, 1, 0.9);
-      }
-    }
-  }
-
-  // The monitor's desktop: the classic hill wallpaper, glossy icons, a glass taskbar; then the flood.
-  renderScreen(t) {
-    const g = this.sg, { W, H } = this;
-    g.setTransform(1, 0, 0, 1, 0, 0);
-    g.globalAlpha = 1;
-    g.globalCompositeOperation = 'source-over';
-    if (this.land) g.drawImage(this.land, 0, 0); else { g.fillStyle = '#58aef0'; g.fillRect(0, 0, W, H); }
-    const flooding = t > T.flood0;
-    const wl = (x) => this.waterline(x, t);
-    const tb = Math.round(26 * this.u);
-    g.globalAlpha = 1 - inv(T.flood0, T.flood0 + 1.6, t) * 0.65;
-    drawAeroSurface(g, 0, H - tb, W, tb, { tone: 'sky', r: 0, gloss: 0.55, glossH: Math.round(tb * 0.42), rim: 0.6, glow: 0.4 });
-    drawGlossOrb(g, 18 * this.u, H - tb / 2, 10 * this.u, '#59d36a');
-    for (let i = 0; i < 3; i++) drawAeroSurface(g, (40 + i * 30) * this.u, H - tb + 4, 24 * this.u, tb - 8, { tone: 'clear', r: 4, gloss: 0.6, glossH: 6, rim: 0.7, glow: 0.3 });
-    g.globalAlpha = 1;
-    for (const ic of this.icons) {
-      const bob = ic.wet ? Math.sin(t * 1.6 + ic.ph) * 3 * ic.wet : 0;
-      const spr = this.iconSprite(ic.id);
-      if (spr) g.drawImage(spr.canvas, Math.round(ic.x * this.u - spr.cx), Math.round((ic.y - ic.lift) * this.u + bob - spr.by));
-    }
-    if (flooding) {
-      g.save();
-      g.beginPath();
-      g.moveTo(0, H);
-      for (let x = 0; x <= W; x += 6) g.lineTo(x, wl(x));
-      g.lineTo(W, H);
-      g.closePath();
-      g.clip();
-      const top = wl(W / 2);
-      g.fillStyle = vgrad(g, top - 10, H, [[0, 'rgba(80,215,255,0.4)'], [0.5, 'rgba(30,165,235,0.46)'], [1, 'rgba(10,95,190,0.58)']]);
-      g.fillRect(0, 0, W, H);
-      const ct = caustics();
-      g.globalCompositeOperation = 'lighter';
-      g.imageSmoothingEnabled = true;
-      const tw = Math.round(ct.width * 3.2 * this.u);
-      const ox = (t * 14) % tw, oy = (t * 6) % tw;
-      for (let y = -tw + oy; y < H; y += tw) {
-        g.globalAlpha = 0.11 * (1 - clamp01((y + tw * 0.5 - top) / (H * 0.9))) + 0.02;
-        for (let x = -tw + ox; x < W; x += tw) g.drawImage(ct, Math.round(x), Math.round(y), tw, tw);
-      }
-      g.imageSmoothingEnabled = false;
-      g.globalAlpha = 1;
-      for (let i = 0; i < 6; i++) {
-        const x = ((i * 0.19 + 0.07) * W + Math.sin(t * 0.4 + i * 2) * 30) % W;
-        const w = (30 + (i % 3) * 22) * this.u;
-        const gr = g.createLinearGradient(0, top, 0, H * 0.9);
-        gr.addColorStop(0, 'rgba(255,255,255,0.16)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
-        g.fillStyle = gr;
-        g.beginPath(); g.moveTo(x, top); g.lineTo(x + w, top); g.lineTo(x + w + 120 * this.u, H); g.lineTo(x + 60 * this.u, H); g.closePath(); g.fill();
-      }
-      g.globalCompositeOperation = 'source-over';
-      g.restore();
-      for (let x = 0; x < W; x += 2) {
-        const y = Math.round(wl(x));
-        const glint = Math.sin(x * 0.21 + t * 3) + Math.sin(x * 0.057 - t * 1.7) > 1.1;
-        g.fillStyle = glint ? '#ffffff' : 'rgba(255,255,255,0.8)';
-        g.fillRect(x, y - 1, 2, glint ? 2 : 1);
-        g.fillStyle = 'rgba(140,235,255,0.7)';
-        g.fillRect(x, y + 1, 2, 2);
-      }
-    }
-    this.sp.draw(g, 'fg', t);
-  }
-
-  iconSprite(id) {
-    this.iconCache ||= {};
-    if (id in this.iconCache) return this.iconCache[id];
-    let s = null;
-    try { s = typeof BIG.getBigIcon === 'function' ? BIG.getBigIcon(id, { size: 'big' }) : null; } catch (e) { s = null; }
-    this.iconCache[id] = s && s.canvas ? s : null;
-    return this.iconCache[id];
-  }
-
-  drawGather(ctx, t) {
-    if (!this.gather.length) return;
-    const [x, y] = this.charPos(t);
-    const fade = t > T.pop ? 1 - clamp01((t - T.pop) / 0.35) : 1;
-    for (const b of this.gather) {
-      if (fade <= 0) break;
-      const k = clamp01((t - T.swirl - b.delay) / 0.4);
-      drawAeroBubble(ctx, b.x, b.y, b.r * this.u * (t > T.gather ? 0.8 : 1), k * fade);
-    }
-    const g = inv(T.swirl + 0.6, T.pop, t);
-    if (g > 0 && t < T.pop + 0.3) drawAeroGlow(ctx, x, y - 45 * this.charScale(), Math.round(70 * this.u), '#dff8ff', 0.45 * g * (t > T.pop ? 1 - (t - T.pop) / 0.3 : 1));
-  }
-
-  // The bubble person: pops out of the gathered bubbles, rises through the surface and lands on the hill.
-  drawHero(ctx, t, pan) {
-    let [x, y] = this.charPos(t);
-    if (t > T.out0) y += (pan - 1) * this.H; // ride the dive with the scene
-    const k = ease.outBack(clamp01((t - T.pop + 0.15) / 0.5));
-    const alpha = clamp01((t - T.pop + 0.15) / 0.3);
-    const rising = t > T.rise0 && t < T.rise1 + 0.2;
-    const pose = rising ? 'cheer' : t < T.pop + 2.6 || (t > T.logo && t < T.logo + 2.5) ? 'wave' : 'idle';
-    ctx.save();
-    ctx.globalAlpha *= alpha;
-    drawAeroGlow(ctx, x, y - 42 * this.charScale(), Math.round(60 * this.u), '#bff0ff', t < T.rise0 ? 0.35 : 0.2);
-    ctx.translate(x, y);
-    ctx.scale(k, k);
-    try {
-      if (typeof CHAR.drawCharacter === 'function') CHAR.drawCharacter(ctx, 0, 0, { pose, t: t - T.pop, facing: 1, scale: this.charScale(), look: this.look, lookAt: [this.W / 2, this.H * 0.3], id: 'intro', shadow: t > T.rise1 });
-    } catch (e) { /* the character module is optional here */ }
-    ctx.restore();
-    if (t < T.rise1 && Math.random() < 0.08) this.fx.aeroBubbles(x + this.rng.float(-14, 14), y - 60 * this.charScale(), 1, { sizes: [2, 2, 3], speed: [20, 50] });
-    if (rising && Math.random() < 0.5) this.fx.aeroBubbles(x, y - 20 * this.charScale(), 1, { sizes: [2, 3, 4], speed: [10, 40], layer: 'fg' });
-  }
-
-  // The 2000s eco wallpaper (offset dy while panning): sky, arcs, hill, city bubble, globe, leaves, water.
-  drawEco(ctx, t, dy) {
-    const { W, H } = this;
-    if (!this.eco) return;
-    ctx.drawImage(this.ecoSky, 0, dy);
-    const [sx, sy0] = this.ecoSun();
-    const sy = sy0 + dy;
-    // rotating sun rays
+    // rotating sun rays + bloom
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     ctx.translate(sx, sy);
-    ctx.rotate(t * 0.05);
-    for (let i = 0; i < 18; i++) {
-      const a = (i / 18) * TAU, w = 0.035 + (i % 3) * 0.02, L = H * (0.8 + (i % 4) * 0.25);
+    ctx.rotate(t * 0.04);
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * TAU, w = 0.03 + (i % 3) * 0.018, L = H * (0.7 + (i % 4) * 0.22);
       const gr = ctx.createLinearGradient(0, 0, Math.cos(a) * L, Math.sin(a) * L);
-      gr.addColorStop(0, 'rgba(255,255,240,0.16)'); gr.addColorStop(0.5, 'rgba(255,255,240,0.05)'); gr.addColorStop(1, 'rgba(255,255,240,0)');
+      gr.addColorStop(0, 'rgba(255,255,240,0.17)'); gr.addColorStop(0.5, 'rgba(255,255,240,0.05)'); gr.addColorStop(1, 'rgba(255,255,240,0)');
       ctx.fillStyle = gr;
       ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a - w) * L, Math.sin(a - w) * L); ctx.lineTo(Math.cos(a + w) * L, Math.sin(a + w) * L); ctx.closePath(); ctx.fill();
     }
     ctx.restore();
-    drawAeroGlow(ctx, sx, sy, Math.round(H * 0.22), '#ffffff', 0.7);
-    drawAeroGlow(ctx, sx, sy, Math.round(H * 0.06), '#ffffff', 1);
-    ctx.drawImage(this.eco, 0, dy);
-    // the green glass globe (upper right) with its grid and gloss
-    const gl = this.A.globe;
-    if (gl) {
-      const gx = W * 0.82, gy = H * 0.4 + dy + Math.sin(t * 0.8) * 3 * this.u;
-      const R = 30 * gl.scale;
-      const [pcx, pcy] = gl.r.project(31.5, 31.5, 31.5);
-      drawAeroGlow(ctx, gx, gy, Math.round(R * 1.35), '#b8ff8a', 0.35);
-      ctx.drawImage(gl.canvas, Math.round(gx - pcx), Math.round(gy - pcy));
-      ctx.save();
-      ctx.beginPath(); ctx.arc(gx, gy, R, 0, TAU); ctx.clip();
-      ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1;
-      for (let i = 1; i < 6; i++) { ctx.beginPath(); ctx.ellipse(gx, gy, R, R * Math.abs(Math.cos((i / 6) * Math.PI)), 0, 0, TAU); ctx.stroke(); }
-      const sp = (t * 0.25) % 1;
-      for (let i = 0; i < 6; i++) { const ph = ((i / 6 + sp) % 1) * Math.PI; ctx.beginPath(); ctx.ellipse(gx, gy, R * Math.abs(Math.cos(ph)), R, 0, 0, TAU); ctx.stroke(); }
-      const hg = ctx.createRadialGradient(gx - R * 0.35, gy - R * 0.45, 0, gx - R * 0.35, gy - R * 0.45, R * 0.9);
-      hg.addColorStop(0, 'rgba(255,255,255,0.85)'); hg.addColorStop(0.35, 'rgba(255,255,255,0.25)'); hg.addColorStop(1, 'rgba(255,255,255,0)');
-      ctx.fillStyle = hg; ctx.fillRect(gx - R, gy - R, R * 2, R * 2);
-      ctx.restore();
-      ctx.strokeStyle = 'rgba(220,255,200,0.9)'; ctx.lineWidth = 1.5 * this.u;
-      ctx.beginPath(); ctx.arc(gx, gy, R, 0.2, 1.4); ctx.stroke();
-      // water spilling off the globe
-      if (Math.random() < 0.3) this.fx.droplets?.(gx + R * 0.6, gy + R * 0.7, 2, { colors: ['#e8fbff', '#bff0ff'] });
+    AE.drawAeroGlow?.(ctx, sx, sy, Math.round(H * 0.24), '#ffffff', 0.65);
+    AE.drawAeroGlow?.(ctx, sx, sy, Math.round(H * 0.06), '#ffffff', 1);
+    // voxel clouds (far billboards)
+    for (const cl of this.A.sky?.clouds || []) {
+      const p = this.proj(cl.x, cl.y, cl.z);
+      if (!p) continue;
+      const k = p[2] / cl.res;
+      const w = cl.spr.width * k, h = cl.spr.height * k;
+      if (p[0] + w < 0 || p[0] - w > W || p[1] > hy) continue;
+      ctx.imageSmoothingEnabled = k < 0.98;
+      ctx.globalAlpha = 0.95;
+      ctx.drawImage(cl.spr, Math.round(p[0] - w / 2), Math.round(p[1] - h), Math.round(w), Math.round(h));
     }
-    // sneaker fish hopping across the hill (meme gag)
-    this.drawSneaker(ctx, t, dy);
-    // a glossy crest twinkling along the voxel water (effect)
-    const wy = H * 0.93 + dy;
-    for (let x = (t * 40) % 24; x < W; x += 24) if (Math.sin(x * 0.13 + t * 3) > 0.6) drawSparkle(ctx, x, wy + Math.sin(x * 0.05 + t * 2) * 3, 1, 0.8);
-    // glossy leaves framing the shot (sway)
-    const br = this.A.branch, b2 = this.A.branch2;
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    if (br) {
-      const w = br.canvas.width / br.ss, h = br.canvas.height / br.ss;
+    ctx.globalAlpha = 1;
+    ctx.imageSmoothingEnabled = false;
+    // the horizon haze
+    const hz = ctx.createLinearGradient(0, hy - 26 * u, 0, hy + 10 * u);
+    hz.addColorStop(0, 'rgba(255,255,255,0)'); hz.addColorStop(0.75, 'rgba(240,252,255,0.75)'); hz.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = hz;
+    ctx.fillRect(-W * 0.1, hy - 26 * u, W * 1.2, 36 * u);
+  }
+
+  // The glossy sea: per-distance colour rows, the island's reflection, sun glitter, world-anchored wave streaks.
+  drawSea(ctx, t, hy) {
+    const { W, H, u } = this;
+    const c = this.cam;
+    if (hy > H + 40) return;
+    const stops = [[1e5, '#e4f9ff'], [5000, '#bdeeff'], [2400, '#78d6ff'], [1100, '#3bb4fa'], [450, '#1c92ee'], [160, '#0f74de'], [40, '#0a5cc8']];
+    const y0 = Math.max(-H * 0.2, hy), y1 = H * 1.15;
+    const gr = ctx.createLinearGradient(0, y0, 0, y1);
+    for (const [D, col] of stops) { const y = this.rowAt(0, D); gr.addColorStop(clamp01((y - y0) / (y1 - y0)), col); }
+    ctx.fillStyle = gr;
+    ctx.fillRect(-W * 0.1, y0, W * 1.2, y1 - y0);
+    this.drawReflections(ctx, t, hy);
+    // the island's reflection
+    const I = this.A.isle;
+    if (I) {
+      const p = this.proj(ISLE.x, 0, ISLE.z);
+      if (p) {
+        const k = p[2] / I.res;
+        ctx.imageSmoothingEnabled = true;
+        ctx.globalAlpha = 0.8;
+        const sh = Math.sin(t * 2.2) * 1.5 * u;
+        ctx.drawImage(I.ref, Math.round(p[0] - I.ax * k + sh), Math.round(p[1]), Math.round(I.ref.width * k), Math.round(I.ref.height * k * 0.8));
+        ctx.globalAlpha = 1;
+        ctx.imageSmoothingEnabled = false;
+      }
+    }
+    // broad glossy swells rolling toward the camera
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (let zi = Math.ceil((c.z + 30) / 70); zi <= Math.floor((c.z + 900) / 70); zi++) {
+      const Z = zi * 70 + Math.sin(t * 0.7 + zi) * 12;
+      const p = this.proj(c.x, 0, Z);
+      if (!p || p[1] > H + 6) continue;
+      const a = 0.05 * (0.5 + 0.5 * Math.sin(zi * 1.7 + t * 0.9)) * (1 - inv(500, 900, Z - c.z));
+      ctx.globalAlpha = a;
+      ctx.fillStyle = '#bff4ff';
+      ctx.fillRect(-W * 0.1, Math.round(p[1]), W * 1.2, Math.max(1, Math.round(p[2] * 5)));
+    }
+    ctx.restore();
+    // the sun's glitter path
+    const sun = this.sunPos;
+    if (sun && sun[0] > -W * 0.3 && sun[0] < W * 1.3) {
       ctx.save();
-      ctx.translate(W + 4, H * 0.98 + dy);
-      ctx.rotate(Math.sin(t * 0.9) * 0.025 - 0.08);
-      ctx.drawImage(br.canvas, -w * 0.98, -h * 0.92, w, h);
+      ctx.globalCompositeOperation = 'lighter';
+      const gw = ctx.createLinearGradient(0, hy, 0, H);
+      gw.addColorStop(0, 'rgba(255,255,240,0.3)'); gw.addColorStop(0.3, 'rgba(255,255,240,0.08)'); gw.addColorStop(1, 'rgba(255,255,240,0)');
+      ctx.fillStyle = gw;
+      ctx.beginPath(); ctx.moveTo(sun[0] - 4 * u, hy); ctx.lineTo(sun[0] + 4 * u, hy); ctx.lineTo(sun[0] + 46 * u, H); ctx.lineTo(sun[0] - 46 * u, H); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      for (let i = 0; i < 110; i++) {
+        const fy = Math.pow(hash2(i, 3, 1), 1.8);
+        const y = hy + 1 + fy * (H - hy);
+        const spread = (3 + fy * 78) * u;
+        const x = sun[0] + (hash2(i, 7, 2) - 0.5) * 2 * spread * (0.4 + hash2(i, 8, 2) * 0.6);
+        const tw = Math.sin(t * (4 + hash2(i, 1, 3) * 6) + i * 1.3);
+        if (tw < 0.3) continue;
+        const sz = tw > 0.9 && fy > 0.2 ? 2 : 1;
+        ctx.globalAlpha = tw * (1 - fy * 0.5);
+        ctx.fillRect(Math.round(x) - sz, Math.round(y), sz * 2 + 1, 1);
+        if (sz > 1) ctx.fillRect(Math.round(x), Math.round(y) - 1, 1, 3);
+      }
       ctx.restore();
     }
-    if (b2) {
-      const w = b2.canvas.width / b2.ss, h = b2.canvas.height / b2.ss;
-      ctx.save();
-      ctx.translate(-6, -4 + dy);
-      ctx.rotate(Math.PI + Math.sin(t * 1.1 + 1) * 0.03 + 0.12);
-      ctx.drawImage(b2.canvas, -w * 0.98, -h * 0.85, w, h);
-      ctx.restore();
+    // world-anchored wave marks: LOD bands (world spacing doubles with distance); a light crest, a dark trough
+    ctx.save();
+    const cap = 70 * u;
+    for (let band = 0; band < 6; band++) {
+      const sp = 10 * Math.pow(2, band), d0 = 24 * Math.pow(2.05, band) * 1.6, d1 = d0 * 2.05;
+      const zA = Math.ceil((c.z + d0) / sp), zB = Math.floor((c.z + d1) / sp);
+      for (let zi = zA; zi <= zB; zi++) {
+        const Z = zi * sp;
+        const dz = Z - c.z;
+        const fade = Math.min(inv(d0, d0 * 1.25, dz), 1 - inv(d1 * 0.8, d1, dz));
+        if (fade <= 0.02) continue;
+        const half = (dz * (W / this.F)) * 0.62 + 80;
+        const gx = sp * 2.1;
+        const xA = Math.floor((c.x - half) / gx), xB = Math.ceil((c.x + half) / gx);
+        for (let xi = xA; xi <= xB; xi++) {
+          const hsh = hash2(xi, zi, band + 3);
+          if (hsh > 0.68) continue;
+          const X = (xi + hash2(zi, xi, 5)) * gx + Math.sin(t * 0.8 + zi * 0.7) * sp * 0.4;
+          const p = this.proj(X, 0, Z + Math.sin(t * 1.5 + xi) * sp * 0.15);
+          if (!p || p[0] < -60 || p[0] > W + 60 || p[1] > H + 4) continue;
+          const len = Math.min(cap, Math.max(2, Math.round(sp * (0.55 + hsh * 1.1) * p[2])));
+          const th = p[2] > 1.6 ? 2 : 1;
+          const a = fade * (0.4 + 0.5 * hsh) * clamp01(0.45 + Math.sin(t * 2.2 + hsh * 20) * 0.55);
+          const x0 = Math.round(p[0] - len / 2), y = Math.round(p[1]);
+          if (p[2] > 0.35) { ctx.globalAlpha = a * 0.5; ctx.fillStyle = '#0a58b8'; ctx.fillRect(x0 + Math.round(len * 0.15), y + th, Math.round(len * 0.7), 1); }
+          ctx.globalAlpha = a * 0.5;
+          ctx.fillStyle = '#cdf6ff';
+          ctx.fillRect(x0, y, len, th);
+          ctx.globalAlpha = a;
+          ctx.fillRect(x0 + Math.round(len * 0.18), y, Math.max(1, Math.round(len * 0.64)), th);
+          if (hsh < 0.1) { ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(p[0]) - 1, y, 2, th); }
+        }
+      }
+    }
+    ctx.restore();
+    // twinkling sun glints on the swell
+    for (let zi = Math.ceil((c.z + 60) / 90); zi <= Math.floor((c.z + 1400) / 90); zi++) {
+      for (let k = 0; k < 2; k++) {
+        const hsh = hash2(zi, k, 41);
+        const tw = Math.sin(t * (2.5 + hsh * 3) + hsh * 40);
+        if (tw < 0.82) continue;
+        const p = this.proj(c.x + (hsh - 0.5) * (zi * 90 - c.z) * 1.6, 0, zi * 90);
+        if (!p || p[1] > H) continue;
+        AE.drawSparkle?.(ctx, Math.round(p[0]), Math.round(p[1]), p[2] > 1 ? 3 : 2, (tw - 0.82) / 0.18);
+      }
+    }
+  }
+
+  // The sky mirrored in the glossy water (a planar mirror: y -> -y): clouds and the green globe, rippling and faded.
+  drawReflections(ctx, t, hy) {
+    const { W, H } = this;
+    for (const cl of this.A.sky?.clouds || []) {
+      const p = this.proj(cl.x, -cl.y, cl.z);
+      if (!p || p[1] < hy - 2 || p[1] > H || p[1] - hy > H * 0.13) continue;
+      const k = p[2] / cl.res;
+      const w = cl.spr.width * k, h = cl.spr.height * k;
+      if (p[0] + w < 0 || p[0] - w > W) continue;
+      const ref = cl.ref || (cl.ref = mirrorFade(cl.spr, 'rgba(60,170,240,0.45)', 0.4));
+      const n = 5, sh = ref.height / n;
+      ctx.imageSmoothingEnabled = true;
+      for (let i = 0; i < n; i++) {
+        const dx = Math.sin(t * 2.2 + i * 1.7 + cl.x * 0.01) * 2 * this.u;
+        ctx.drawImage(ref, 0, i * sh, ref.width, sh, Math.round(p[0] - w / 2 + dx), Math.round(p[1] + i * (h / n)), Math.round(w), Math.ceil(h / n) + 1);
+      }
+    }
+    const G = this.globe;
+    if (G) {
+      const p = this.proj(GLOBE.x, -GLOBE.y - Math.sin(t * 0.8) * 10, GLOBE.z);
+      const f = p && G.get(Math.floor(t * 4));
+      if (f && p[1] > hy && p[1] < H + 200) {
+        const k = p[2] / this.globeRes();
+        const w = f.width * k, h = f.height * k;
+        ctx.save();
+        ctx.globalAlpha = 0.16;
+        ctx.imageSmoothingEnabled = true;
+        ctx.translate(Math.round(p[0] + Math.sin(t * 1.9) * 2 * this.u), Math.round(p[1]));
+        ctx.scale(1, -1);
+        ctx.drawImage(f, -w / 2, -h / 2, w, h);
+        ctx.restore();
+      }
     }
     ctx.imageSmoothingEnabled = false;
-    // the big lens flare
-    const fv = inv(T.rise1 - 0.4, T.rise1 + 0.6, t) * (0.85 + 0.15 * Math.sin(t * 1.7));
-    if (fv > 0.01) this.flare(ctx, sx, sy, fv, 1.6);
   }
 
-  drawSneaker(ctx, t, dy) {
-    const s = this.A.sneaker;
-    if (!s || t < T.sneak) return;
-    const { W } = this;
-    const D = this.ecoDome;
-    const k = (t - T.sneak) / 4.6;
-    if (k > 1) return;
-    const x = lerp(-s.canvas.width * 0.6, W + s.canvas.width * 0.6, k);
-    const hopT = (t - T.sneak) * 2.6;
-    const hop = Math.abs(Math.sin(hopT * Math.PI)) * 14 * this.u;
-    const sq = 1 + Math.max(0, 0.12 - Math.abs(Math.sin(hopT * Math.PI)) * 0.4);
-    const y = D.y(x) + 70 * this.u + dy;
-    ctx.fillStyle = 'rgba(20,60,20,0.25)';
-    ctx.beginPath(); ctx.ellipse(x, y, s.canvas.width * 0.3 * (1 - hop / (40 * this.u)), 3 * this.u, 0, 0, TAU); ctx.fill();
-    ctx.save();
-    ctx.translate(x, y - hop);
-    ctx.scale(1 / sq, sq);
-    ctx.drawImage(s.canvas, -s.ox, -s.oy);
-    ctx.restore();
-    if (k < 0.95 && Math.abs(Math.sin(hopT * Math.PI)) < 0.08 && this.rng.chance(0.5)) this.fx.leaves?.(x, y, 2, { speed: [20, 60], life: 1.2, g: 120 });
+  drawIsland(ctx, t) {
+    const I = this.A.isle;
+    const p = this.proj(ISLE.x, 0, ISLE.z);
+    if (!p) return;
+    const k = p[2] / I.res;
+    ctx.imageSmoothingEnabled = k < 0.98;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(I.canvas, Math.round(p[0] - I.ax * k), Math.round(p[1] - I.ay * k), Math.round(I.canvas.width * k), Math.round(I.canvas.height * k));
+    ctx.imageSmoothingEnabled = false;
+    // foam glinting along the shore
+    const w = I.canvas.width * k * 0.86;
+    for (let i = 0; i < 18; i++) {
+      const x = p[0] + (hash2(i, 9, 4) - 0.5) * w;
+      const tw = Math.sin(t * 3 + i * 1.7);
+      if (tw > 0.55) AE.drawSparkle?.(ctx, Math.round(x), Math.round(p[1] + 2 * this.u - hash2(i, 2, 2) * 4 * this.u), 1, tw);
+    }
   }
 
-  // Crossing the water surface while panning: a bright glossy band, foam and bubbles.
-  drawSurfaceSeam(ctx, t, y) {
-    const { W } = this;
-    const gr = ctx.createLinearGradient(0, y - 18 * this.u, 0, y + 18 * this.u);
-    gr.addColorStop(0, 'rgba(200,250,255,0)'); gr.addColorStop(0.45, 'rgba(230,252,255,0.85)'); gr.addColorStop(0.55, 'rgba(255,255,255,0.95)'); gr.addColorStop(1, 'rgba(120,220,255,0)');
+  drawProp(ctx, P, t) {
+    const p = this.proj(P.x, P.y, P.z);
+    if (!p) return;
+    const k = p[2] / P.res;
+    const spr = P.spr;
+    if (!spr?.canvas) return;
+    ctx.imageSmoothingEnabled = k < 0.98;
+    ctx.imageSmoothingQuality = 'high';
+    if (P.kind === 'city' && P.bub) {
+      // glass city in its water bubble: city, faint voxel shell, splashing rim, gloss
+      const cw = spr.canvas.width * k, ch = spr.canvas.height * k;
+      ctx.drawImage(spr.canvas, Math.round(p[0] - spr.ox * k), Math.round(p[1] - spr.oy * k), Math.round(cw), Math.round(ch));
+      const R = cw * 0.66, cx = p[0], cy = p[1] - ch * 0.42;
+      const B = P.bub, bk = (R * 2) / Math.max(1, B.shell.width);
+      ctx.globalAlpha = 0.35;
+      ctx.drawImage(B.shell, Math.round(cx - B.sx * bk), Math.round(cy - B.sy * bk), Math.round(B.shell.width * bk), Math.round(B.shell.height * bk));
+      ctx.globalAlpha = 0.9;
+      ctx.drawImage(B.ribbon, Math.round(cx - B.rx * bk), Math.round(cy - B.ry * bk), Math.round(B.ribbon.width * bk), Math.round(B.ribbon.height * bk));
+      ctx.globalAlpha = 1;
+      const rg = ctx.createRadialGradient(cx - R * 0.2, cy - R * 0.25, R * 0.55, cx, cy, R);
+      rg.addColorStop(0, 'rgba(255,255,255,0)'); rg.addColorStop(0.85, 'rgba(210,248,255,0.28)'); rg.addColorStop(1, 'rgba(255,255,255,0.75)');
+      ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.beginPath(); ctx.ellipse(cx - R * 0.45, cy - R * 0.5, R * 0.22, R * 0.09, -0.7, 0, TAU); ctx.fill();
+      if (Math.sin(t * 2.3) > 0.9) AE.drawSparkle?.(ctx, cx + R * 0.5, cy - R * 0.45, 2, 1);
+    } else {
+      ctx.drawImage(spr.canvas, Math.round(p[0] - spr.ox * k), Math.round(p[1] - spr.oy * k), Math.round(spr.canvas.width * k), Math.round(spr.canvas.height * k));
+    }
+    if (P.kind === 'turbine' && P.rot) {
+      const R = P.rot;
+      const f = R.frames[Math.floor((t * 1.6 + P.ph) * R.n) % R.n];
+      const hx = p[0] + (spr.hub[0] - spr.ox) * k, hy = p[1] + (spr.hub[1] - spr.oy) * k;
+      if (f) ctx.drawImage(f, Math.round(hx - R.cx * k), Math.round(hy - R.cy * k), Math.round(f.width * k), Math.round(f.height * k));
+    }
+    ctx.imageSmoothingEnabled = false;
+  }
+
+  drawGlobe(ctx, t) {
+    const G = this.globe;
+    const p = this.proj(GLOBE.x, GLOBE.y + Math.sin(t * 0.8) * 10, GLOBE.z);
+    if (!p || !G) return;
+    const f = G.get(Math.floor(t * 4));
+    if (!f) return;
+    const k = p[2] / this.globeRes();
+    const w = f.width * k, h = f.height * k;
+    const R = w / 2;
+    AE.drawAeroGlow?.(ctx, p[0], p[1], Math.round(R * 1.4), '#b8ff8a', 0.35);
+    ctx.imageSmoothingEnabled = k < 0.98;
+    ctx.drawImage(f, Math.round(p[0] - w / 2), Math.round(p[1] - h / 2), Math.round(w), Math.round(h));
+    ctx.imageSmoothingEnabled = false;
+    // glass gloss + a rim
+    const hg = ctx.createRadialGradient(p[0] - R * 0.35, p[1] - R * 0.45, 0, p[0] - R * 0.35, p[1] - R * 0.45, R * 0.9);
+    hg.addColorStop(0, 'rgba(255,255,255,0.8)'); hg.addColorStop(0.35, 'rgba(255,255,255,0.2)'); hg.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = hg;
+    ctx.beginPath(); ctx.arc(p[0], p[1], R * 0.96, 0, TAU); ctx.fill();
+    ctx.strokeStyle = 'rgba(220,255,200,0.85)'; ctx.lineWidth = Math.max(1, 1.5 * this.u);
+    ctx.beginPath(); ctx.arc(p[0], p[1], R * 0.96, 0.2, 1.4); ctx.stroke();
+    if (Math.random() < 0.25) this.fx.droplets?.(p[0] + R * 0.55, p[1] + R * 0.7, 1, { colors: ['#e8fbff', '#bff0ff'] });
+  }
+
+  // Gulls flying alongside the camera during the sweep (they keep pace, flapping and gliding).
+  drawGulls(ctx, t, push) {
+    const fr = this.A.sky?.gulls;
+    if (!fr || this.cam.shot !== 0 || t > 5.6) return;
+    const alt = lerp(-400, -175, clamp01(t / 4.5));
+    for (const [x0, dy, z0, vz, ph, dx] of [[-260, -30, -1150, 500, 0, 9], [-330, -60, -1080, 500, 0.6, 7], [190, -10, -1000, 490, 1.3, -6], [60, -90, -760, 470, 2.1, 5]]) {
+      const X = x0 + dx * t + Math.sin(t * 0.9 + ph) * 10, Y = alt + dy + Math.sin(t * 1.3 + ph * 5) * 8, Z = z0 + vz * t;
+      push(Z, () => {
+        const p = this.proj(X, Y, Z);
+        if (!p) return;
+        const glide = Math.sin(t * 0.8 + ph * 3) > 0.3;
+        const f = fr[glide ? 1 : Math.abs(Math.floor(t * 7 + ph * 3)) % 3];
+        const k = p[2] * 1.15;
+        if (k < 0.15 || k > 2.6) return;
+        ctx.save();
+        ctx.translate(Math.round(p[0]), Math.round(p[1]));
+        ctx.rotate(Math.sin(t * 1.1 + ph) * 0.12);
+        ctx.scale(k, k);
+        ctx.imageSmoothingEnabled = k < 0.98;
+        ctx.drawImage(f, -f.width / 2, -f.height / 2);
+        ctx.restore();
+      });
+    }
+  }
+
+  // A pod of glossy voxel dolphins leaping across the bay during the sweep (world-anchored, splashing).
+  drawDolphins(ctx, t, push) {
+    const D = this.dolphin;
+    if (!D || this.cam.shot !== 0 || t < 1.5 || t > 4.4) return;
+    const per = 1.25, air = 0.6;
+    for (let i = 0; i < 3; i++) {
+      const tt = t - 1.5 - i * 0.28;
+      if (tt < 0) continue;
+      const n = Math.floor(tt / per), u = (tt % per) / per;
+      if (u > air) continue;
+      const a = u / air;
+      const X = 60 - i * 34 - tt * 70, Z = 480 + i * 46, Y = -Math.sin(a * Math.PI) * (44 + i * 5);
+      push(Z, () => {
+        const p = this.proj(X, Y, Z);
+        if (!p) return;
+        const f = D.frame(t * 9 + i, -1);
+        if (!f) return;
+        const k = (p[2] * 56) / f.canvas.width;
+        if (k < 0.05) return;
+        ctx.save();
+        ctx.translate(Math.round(p[0]), Math.round(p[1]));
+        ctx.rotate(Math.cos(a * Math.PI) * 0.75);
+        ctx.scale(k, k);
+        ctx.imageSmoothingEnabled = k < 0.98;
+        ctx.drawImage(f.canvas, -f.ox, -f.oy);
+        ctx.restore();
+        ctx.imageSmoothingEnabled = false;
+        if (a < 0.08 && this.cue('dolO' + i + '_' + n, 0)) { const q = this.proj(X, 0, Z); if (q) { this.fx.splash(q[0], q[1], 0.5); this.sfx('splash_small', { vol: 0.25 }); } }
+        if (a > 0.9 && this.cue('dolI' + i + '_' + n, 0)) { const q = this.proj(X - 8, 0, Z); if (q) this.fx.splash(q[0], q[1], 0.45); }
+      });
+    }
+  }
+
+  // ------------------------------------------------------------------------------- the boat and the cast
+  boatBob(t) { return Math.sin(t * 1.7) * 1.2; }
+
+  drawBoat(ctx, t) {
+    const B = this.A.boat;
+    if (!B) return;
+    const pv = B.pv;
+    const bob = this.boatBob(t);
+    const p = this.proj(BOAT.x, bob, BOAT.z);
+    if (!p) return;
+    const k = p[2] / B.res;
+    if (pv.canvas.width * k < 4) return;
+    // compose boat + fisherman at native scale, tint the hull below the waterline, then draw in perspective
+    const pad = Math.round(60 * B.bs);
+    const w = pv.canvas.width + pad * 2, h = pv.canvas.height + pad * 2;
+    const L = this.boatL && this.boatL.width === w && this.boatL.height === h ? this.boatL : (this.boatL = makeCanvas(w, h));
+    const g = ctxOf(L);
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+    g.clearRect(0, 0, w, h);
+    const bx = pad + pv.px, by = pad + pv.py;
+    g.drawImage(pv.canvas, pad, pad);
+    let pose = 'idle', pt = t;
+    if (this.cam.shot === 2) { pose = 'cheer'; pt = t - T.logo; } else if (t > T.cast && t < T.cast + 0.75) { pose = 'cast'; pt = t - T.cast; } else if (t >= T.cast + 0.75) { pose = 'reel'; pt = t; }
+    let an = null;
+    try {
+      an = CHAR.drawCharacter(g, bx + pv.stand[0], by + pv.stand[1], { pose, t: pt, facing: 1, look: this.look, scale: this.charScale(), id: 'intro', shadow: true });
+    } catch (e) { an = null; }
+    try { pv.drawFront?.(g, bx, by, t, 1); } catch (e) { /* optional */ }
+    g.globalCompositeOperation = 'source-atop';
+    g.fillStyle = '#2a8ad8';
+    g.globalAlpha = 0.45; g.fillRect(0, by + 1, w, h);
+    g.globalAlpha = 0.25; g.fillRect(0, by + Math.round(6 * B.bs), w, h);
+    g.globalCompositeOperation = 'source-over';
+    g.globalAlpha = 1;
+    const ox = p[0] - bx * k, oy = p[1] - by * k;
+    ctx.imageSmoothingEnabled = k < 0.98;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(L, Math.round(ox), Math.round(oy), Math.round(w * k), Math.round(h * k));
+    ctx.imageSmoothingEnabled = false;
+    // foam hugging the hull
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    const hw = pv.canvas.width * k * 0.5;
+    for (let i = -6; i <= 6; i++) { const x = p[0] + (i / 6) * hw * 1.05; ctx.fillRect(Math.round(x), Math.round(p[1] + Math.sin(t * 4 + i) * k), Math.max(1, Math.round(3 * k)), 1); }
+    this.rodTip = an?.rodTip ? [ox + an.rodTip[0] * k, oy + an.rodTip[1] * k] : null;
+  }
+
+  // Bobber flight: rod tip -> a ballistic arc -> it lands and bobs (world space).
+  bobberAt(t) {
+    const t0 = T.cast + 0.42;
+    if (t < t0) return null;
+    const k = clamp01((t - t0) / (T.land - t0));
+    const s0 = [BOAT.x + 24, -40, BOAT.z], s1 = [LURE.x, 0, LURE.z];
+    if (k < 1) return [lerp(s0[0], s1[0], k), lerp(s0[1], s1[1], k) - Math.sin(k * Math.PI) * 34, lerp(s0[2], s1[2], k), k];
+    return [LURE.x, Math.sin((t - T.land) * 5) * 1.2 * Math.exp(-(t - T.land) * 1.5) + Math.sin(t * 1.7) * 0.6, LURE.z, 1];
+  }
+
+  drawBobber(ctx, t) {
+    const b = this.bobberAt(t);
+    const A = this.A.bobber;
+    if (!b || !A) return;
+    const p = this.proj(b[0], b[1], b[2]);
+    if (!p) return;
+    // the line: rod tip -> bobber, sagging once it has landed
+    const tip = this.rodTip;
+    if (tip) {
+      ctx.save();
+      const mx = (tip[0] + p[0]) / 2, my = (tip[1] + p[1]) / 2 + (b[3] >= 1 ? 18 * this.u : -6 * this.u);
+      ctx.beginPath(); ctx.moveTo(tip[0], tip[1]); ctx.quadraticCurveTo(mx, my, p[0], p[1] - 4);
+      ctx.strokeStyle = 'rgba(10,60,120,0.35)'; ctx.lineWidth = 2.2; ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineWidth = 1.2; ctx.stroke();
+      ctx.restore();
+    }
+    const k = p[2] / A.res;
+    ctx.imageSmoothingEnabled = k < 0.98;
+    ctx.drawImage(A.canvas, Math.round(p[0] - A.ax * k), Math.round(p[1] - A.ay * k), Math.round(A.canvas.width * k), Math.round(A.canvas.height * k));
+    ctx.imageSmoothingEnabled = false;
+    if (b[3] >= 1) {
+      const rr = (1 + ((t - T.land) * 0.8) % 1) * 9 * p[2];
+      ctx.strokeStyle = `rgba(255,255,255,${0.5 * (1 - ((t - T.land) * 0.8) % 1)})`;
+      ctx.beginPath(); ctx.ellipse(p[0], p[1], rr, rr * 0.22, 0, 0, TAU); ctx.stroke();
+    }
+  }
+
+  // ------------------------------------------------------------------------------------ under the water
+  drawUnder(ctx, t) {
+    const { W, H, u } = this;
+    this.ctx = ctx;
+    const c = this.cam;
+    const hy = this.horizon();
+    // the surface seen from below (above the horizon row): bright toward the top, shimmering
+    const top = Math.min(-H * 0.2, hy - H);
+    ctx.fillStyle = vgrad(ctx, top, Math.max(hy, 1), [[0, '#e8ffff'], [0.4, '#a6f2ff'], [0.8, '#52ccf4'], [1, '#2ab0ec']]);
+    ctx.fillRect(-W * 0.1, -H * 0.2, W * 1.2, Math.max(0, hy + H * 0.2 + 2));
+    // the water volume below: fog by distance over the seabed
+    const stops = [[1e5, '#2ab0ec'], [3000, '#22a0e2'], [1500, '#1888d4'], [900, '#1474c4'], [600, '#1f8aa0'], [430, '#2fa874'], [300, '#46c060']];
+    const y0 = Math.max(-H * 0.2, hy), y1 = H * 1.2;
+    const gr = ctx.createLinearGradient(0, y0, 0, y1);
+    for (const [D, col] of stops) gr.addColorStop(clamp01((this.rowAt(SEABED, D) - y0) / (y1 - y0)), col);
     ctx.fillStyle = gr;
-    ctx.fillRect(0, y - 18 * this.u, W, 36 * this.u);
-    for (let i = 0; i < 4; i++) { const x = this.rng.float(0, W); drawAeroBubble(ctx, x, y + this.rng.float(-6, 10), this.rng.pick([2, 3, 4]), 0.9); }
+    ctx.fillRect(-W * 0.1, y0, W * 1.2, y1 - y0);
+    // ripples on the underside of the surface (world-anchored)
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (let band = 0; band < 4; band++) {
+      const sp = 10 * Math.pow(2, band), d0 = 16 * Math.pow(2.1, band), d1 = d0 * 2.1;
+      const zA = Math.ceil((c.z + d0) / sp), zB = Math.floor((c.z + d1) / sp);
+      for (let zi = zA; zi <= zB; zi++) {
+        const Z = zi * sp, dz = Z - c.z;
+        const fade = Math.min(inv(d0, d0 * 1.3, dz), 1 - inv(d1 * 0.75, d1, dz));
+        if (fade <= 0.02) continue;
+        const half = dz * (W / this.F) * 0.7 + 60;
+        for (let xi = Math.floor((c.x - half) / (sp * 2)); xi <= Math.ceil((c.x + half) / (sp * 2)); xi++) {
+          const hsh = hash2(xi, zi, band + 11);
+          if (hsh > 0.6) continue;
+          const p = this.proj((xi + hash2(zi, xi, 6)) * sp * 2 + Math.sin(t * 1.2 + zi) * sp * 0.3, 0, Z);
+          if (!p || p[1] < -10 || p[1] > hy + 4) continue;
+          const len = Math.min(26 * u, Math.max(2, Math.round(sp * (0.5 + hsh * 0.7) * p[2])));
+          const a = fade * (0.22 + 0.4 * hsh) * (0.6 + 0.4 * Math.sin(t * 3 + hsh * 30));
+          ctx.fillStyle = '#ffffff';
+          ctx.globalAlpha = a * 0.5;
+          ctx.fillRect(Math.round(p[0] - len / 2), Math.round(p[1]), Math.round(len), 1);
+          ctx.globalAlpha = a;
+          ctx.fillRect(Math.round(p[0] - len / 4), Math.round(p[1]), Math.max(1, Math.round(len / 2)), 1);
+        }
+      }
+    }
+    ctx.restore();
+    // the sun through the surface + god rays
+    const sx = W / 2 + this.F * Math.tan(SUNS[0][0]) * 0.6, syy = Math.min(hy - 10, H / 2 - this.F * Math.tan(0.9 + c.p));
+    AE.drawAeroGlow?.(ctx, sx, syy, Math.round(H * 0.3), '#ffffff', 0.55);
+    this.drawRays(ctx, t, sx, syy);
+    // seabed decor, fish and the lure (far -> near)
+    const items = [];
+    const push = (d, fn) => items.push([d, fn]);
+    this.pushSeabed(push, t);
+    this.pushSchools(push, t);
+    this.pushBigFish(push, t);
+    this.pushLure(push, t);
+    items.sort((a, b) => b[0] - a[0]);
+    for (const [, fn] of items) fn();
+    // 3D bubbles and motes rising past the camera
+    for (const b of this.bubbles3) {
+      const p = this.proj(b.x, b.y, b.z);
+      if (!p || p[0] < -10 || p[0] > W + 10 || p[1] < -10 || p[1] > H + 10) continue;
+      const r = b.r * p[2] * 0.9;
+      if (r < 0.6) continue;
+      const fog = clamp01((p[3] - 150) / 700);
+      if (r < 1.5) { ctx.fillStyle = `rgba(230,255,255,${0.6 * (1 - fog)})`; ctx.fillRect(Math.round(p[0]), Math.round(p[1]), 1, 1); continue; }
+      AE.drawAeroBubble?.(ctx, p[0], p[1], Math.min(16, r), 0.85 * (1 - fog));
+    }
+    // a light haze toward the surface
+    const hz = ctx.createLinearGradient(0, hy - 30 * u, 0, hy + 20 * u);
+    hz.addColorStop(0, 'rgba(160,240,255,0)'); hz.addColorStop(0.6, 'rgba(160,240,255,0.3)'); hz.addColorStop(1, 'rgba(160,240,255,0)');
+    ctx.fillStyle = hz;
+    ctx.fillRect(-W * 0.1, hy - 30 * u, W * 1.2, 50 * u);
+  }
+
+  drawRays(ctx, t, sx, sy) {
+    const { W, H } = this;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 9; i++) {
+      const a = Math.PI / 2 + (i - 4) * 0.16 + Math.sin(t * 0.4 + i * 1.7) * 0.05;
+      const L = H * 1.5, w = 0.035 + (i % 3) * 0.015;
+      const al = 0.1 + 0.07 * Math.sin(t * 0.9 + i * 2.1);
+      const gr = ctx.createLinearGradient(sx, sy, sx + Math.cos(a) * L, sy + Math.sin(a) * L);
+      gr.addColorStop(0, `rgba(240,255,255,${al})`); gr.addColorStop(0.6, `rgba(200,250,255,${al * 0.35})`); gr.addColorStop(1, 'rgba(200,250,255,0)');
+      ctx.fillStyle = gr;
+      ctx.beginPath(); ctx.moveTo(sx + Math.cos(a + Math.PI / 2) * 6, sy); ctx.lineTo(sx + Math.cos(a - w) * L, sy + Math.sin(a - w) * L); ctx.lineTo(sx + Math.cos(a + w) * L, sy + Math.sin(a + w) * L); ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+    void W;
+  }
+
+  pushSeabed(push, t) {
+    const S = this.A.seabed;
+    if (!S) return;
+    const c = this.cam;
+    const fogC = '#2aa4e6';
+    // reefs on a world grid
+    const sp = 230;
+    for (let zi = Math.ceil((c.z + 200) / sp); zi <= Math.floor((c.z + 1700) / sp); zi++) {
+      for (let xi = Math.floor((c.x - 900) / sp); xi <= Math.ceil((c.x + 900) / sp); xi++) {
+        const h = hash2(xi, zi, 21);
+        const X = (xi + hash2(zi, xi, 22)) * sp, Z = zi * sp + hash2(xi, zi, 23) * sp * 0.5;
+        if (Z - c.z < 380) continue;
+        if (h < 0.55 && S.reefs.length) {
+          const spr = S.reefs[Math.floor(hash2(xi, zi, 24) * S.reefs.length)];
+          push(Z - c.z, () => this.drawSeabedSprite(spr.canvas, spr.ox ?? spr.canvas.width / 2, spr.oy ?? spr.canvas.height, X, SEABED + 6, Z, 1.6, fogC));
+        } else if (h < 0.75 && S.orbs.length) {
+          const b = S.orbs[Math.floor(hash2(xi, zi, 25) * S.orbs.length)];
+          push(Z - c.z, () => this.drawSeabedSprite(b.canvas, b.ox, b.h, X, SEABED + 2, Z, 1.3, fogC));
+        } else if (h < 0.6 && S.turbine && Z - c.z > 1100 && Math.abs(X - c.x) > 300) {
+          push(Z - c.z, () => {
+            this.drawSeabedSprite(S.turbine.canvas, S.turbine.ox, S.turbine.oy, X, SEABED + 4, Z, 1.7, fogC);
+            const p = this.proj(X, SEABED + 4, Z);
+            if (!p || !S.rot) return;
+            const k = p[2] * 1.7, R = S.rot, f = R.frames[Math.floor(t * 0.8 * R.n + xi) % R.n];
+            const hx = p[0] + (S.turbine.hub[0] - S.turbine.ox) * k, hy = p[1] + (S.turbine.hub[1] - S.turbine.oy) * k;
+            const fo = fogged(f, fogC, clamp01((p[3] - 200) / 1100));
+            this.ctx.imageSmoothingEnabled = k < 0.98;
+            this.ctx.drawImage(fo, Math.round(hx - R.cx * k), Math.round(hy - R.cy * k), Math.round(f.width * k), Math.round(f.height * k));
+            this.ctx.imageSmoothingEnabled = false;
+          });
+        }
+      }
+    }
+  }
+
+  drawSeabedSprite(canvas, ox, oy, X, Y, Z, unitPerPx, fogC) {
+    const ctx = this.ctx;
+    const p = this.proj(X, Y, Z);
+    if (!p) return;
+    const k = p[2] * unitPerPx;
+    const w = canvas.width * k, h = canvas.height * k;
+    if (p[0] + w < 0 || p[0] - w > this.W || p[1] - h > this.H || w < 2) return;
+    const src = fogged(canvas, fogC, clamp01((p[3] - 200) / 1100));
+    ctx.imageSmoothingEnabled = k < 0.98;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(src, Math.round(p[0] - ox * k), Math.round(p[1] - oy * k), Math.round(w), Math.round(h));
+    ctx.imageSmoothingEnabled = false;
+  }
+
+  // One voxel fish at a world point, drawn through the rig at its fixed build scale, perspective by transform.
+  drawFish(f, X, Y, Z, st, fogA = null) {
+    const ctx = this.ctx;
+    const p = this.proj(X, Y, Z);
+    if (!p || !f) return null;
+    const want = (f.len * p[2]) / f.gw;
+    const k = want / f.S0;
+    if (want * f.gw < 3) return p;
+    if (p[0] < -f.len * p[2] || p[0] > this.W + f.len * p[2] || p[1] < -f.len * p[2] || p[1] > this.H + f.len * p[2]) return p;
+    const fog = fogA ?? clamp01((p[3] - 160) / 900);
+    ctx.save();
+    ctx.translate(p[0], p[1]);
+    ctx.scale(k, k);
+    ctx.imageSmoothingEnabled = k < 0.98;
+    ctx.imageSmoothingQuality = 'high';
+    try {
+      RIG.drawFishRig(ctx, f.c, {
+        x: 0, y: 0, scale: f.S0, facing: st.facing ?? 1, turn: st.facing ?? 1, angle: st.angle || 0, heading: st.heading || 0,
+        swimPhase: st.swim ?? 0, tailPhase: st.swim ?? 0, finPhase: (st.swim ?? 0) * 1.3 % 1, speed01: st.speed ?? 0.5,
+        mouth: st.mouth || 0, emotion: st.emotion || 'neutral', time: this.t, blink: 0, pri: st.pri ?? 2, lod: 0,
+        wash: fog > 0.08 ? { color: '#2aa4e6', alpha: Math.round(fog * 8) / 10 } : null,
+      });
+    } catch (e) { /* the fish renderer may be mid-rework */ }
+    ctx.restore();
+    ctx.imageSmoothingEnabled = false;
+    return p;
+  }
+
+  pushSchools(push, t) {
+    if (!this.schools) return;
+    for (const S of this.schools) {
+      if (t < S.t0 - 0.5 || t > S.t1 + 1) continue;
+      const k = inv(S.t0, S.t1, t);
+      const cx = lerp(S.x0, S.x1, k);
+      // they scatter when the big fish strikes
+      const scat = inv(T.strike - 0.6, T.strike + 0.8, t);
+      for (const m of S.m) {
+        const sw = (t * 2.2 * m.sp + m.ph) % 1;
+        const X = cx + m.dx + Math.sin(t * 1.1 + m.ph * 9) * 6 + scat * m.dx * 3;
+        const Y = S.y + m.dy + Math.sin(t * 1.7 + m.ph * 7) * 4 - scat * Math.abs(m.dy) * 2;
+        const Z = S.z + m.dz;
+        const d = Z - this.cam.z;
+        push(d, () => this.drawFish(S.f, X, Y, Z, { facing: S.dir, swim: sw, speed: 0.6 + scat * 0.4, angle: Math.sin(t * 1.7 + m.ph * 7) * 0.08 }));
+      }
+    }
+    // a big mid fish cruising close past the lens
+    const M = this.fish?.mid;
+    if (M && t > T.under - 0.2 && t < T.shadow + 1.4) {
+      const k = inv(T.under - 0.2, T.shadow + 1.4, t);
+      const X = lerp(330, -120, k), Y = 120 + Math.sin(t * 1.3) * 4, Z = 1110;
+      push(Z - this.cam.z, () => this.drawFish(M, X, Y, Z, { facing: -1, swim: (t * 1.4) % 1, speed: 0.5 }));
+    }
+  }
+
+  // The big fish: rises from the blue, charges the lure (toward the camera), strikes, thrashes and surges up.
+  bigFishState(t) {
+    if (t < T.shadow || t > T.breach) return null;
+    const L = this.lurePos(t);
+    if (t < T.strike) {
+      const k = ease.inCubic(inv(T.shadow, T.strike, t));
+      const k2 = inv(T.shadow, T.strike, t);
+      const s0 = [420, 210, 1680];
+      const X = lerp(s0[0], L[0] + 36, k), Y = lerp(s0[1], L[1] + 4, k) + Math.sin(k2 * 7) * 8 * (1 - k), Z = lerp(s0[2], L[2] + 20, k);
+      return { X, Y, Z, facing: -1, heading: lerp(-20, -50, k), angle: lerp(-0.12, 0.05, k), mouth: k > 0.8 ? 1 : 0.2, swim: (t * lerp(1.2, 3.4, k)) % 1, speed: lerp(0.4, 1, k) };
+    }
+    if (t < T.surge) {
+      const k = inv(T.strike, T.surge, t);
+      return { X: L[0] + 36 + Math.sin(t * 40) * 3, Y: L[1] + 4, Z: L[2] + 20, facing: -1, heading: lerp(-50, -10, k), angle: Math.sin(t * 30) * 0.18, mouth: 0.1, swim: (t * 5) % 1, speed: 1, emotion: 'angry' };
+    }
+    const k = ease.inQuad(inv(T.surge, T.breach, t));
+    return { X: lerp(L[0] + 36, 150, k), Y: lerp(L[1] + 4, -40, k), Z: lerp(L[2] + 20, 960, k), facing: -1, heading: lerp(-10, 10, k), angle: lerp(-0.2, -1.15, Math.min(1, k * 2)), mouth: 0.1, swim: (t * 6) % 1, speed: 1 };
+  }
+
+  pushBigFish(push, t) {
+    const F = this.fish?.big;
+    const s = this.bigFishState(t);
+    if (!F || !s) return;
+    push(s.Z - this.cam.z, () => {
+      const fog = clamp01((s.Z - this.cam.z - 140) / 1300);
+      const p = this.drawFish(F, s.X, s.Y, s.Z, { ...s, pri: 3 }, fog);
+      if (p && t < T.strike) {
+        // its shadowy approach: a soft dark glow in the blue
+        const a = 0.25 * (1 - inv(T.strike - 0.8, T.strike, t));
+        if (a > 0.01) { this.ctx.fillStyle = `rgba(10,40,90,${a})`; this.ctx.beginPath(); this.ctx.ellipse(p[0], p[1], F.len * p[2] * 0.55, F.len * p[2] * 0.16, 0, 0, TAU); this.ctx.fill(); }
+      }
+    });
+  }
+
+  lurePos(t) {
+    const k = ease.outCubic(inv(T.land, T.shadow + 0.5, t));
+    return [LURE.x + Math.sin(t * 1.4) * 3, lerp(0, LURE.y, k) + Math.sin(t * 2.1) * 2, LURE.z];
+  }
+
+  pushLure(push, t) {
+    const A = this.A.lure;
+    if (!A || t > T.surge + 0.3) return;
+    const L = this.lurePos(t);
+    if (t >= T.strike) { const s = this.bigFishState(t); if (s) { L[0] = s.X - 34; L[1] = s.Y - 2; L[2] = s.Z - 18; } }
+    push(L[2] - this.cam.z - 0.5, () => {
+      const ctx = this.ctx;
+      const p = this.proj(L[0], L[1], L[2]);
+      if (!p) return;
+      this.lureScreen = [p[0], p[1]];
+      // the line rises to the surface
+      const q = this.proj(L[0] + 4, 0, L[2] + 6);
+      ctx.save();
+      ctx.strokeStyle = 'rgba(230,255,255,0.8)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(p[0], p[1]);
+      if (q) ctx.lineTo(q[0], q[1]); else ctx.lineTo(p[0] + 10, -20);
+      ctx.stroke();
+      ctx.restore();
+      if (t >= T.strike) return;
+      const k = p[2] / A.res;
+      ctx.save();
+      ctx.translate(Math.round(p[0]), Math.round(p[1]));
+      ctx.rotate(Math.sin(t * 2.4) * 0.25 + 0.3);
+      ctx.imageSmoothingEnabled = k < 0.98;
+      ctx.drawImage(A.canvas, -A.ax * k, -A.ay * k, A.canvas.width * k, A.canvas.height * k);
+      ctx.restore();
+      ctx.imageSmoothingEnabled = false;
+      if (Math.sin(t * 5) > 0.8) AE.drawSparkle?.(ctx, p[0] + 6 * p[2], p[1] - 2, 2, 1);
+    });
+  }
+
+  // ---------------------------------------------------------------------------------------- the leap
+  leapState(t) {
+    const t0 = T.breach + 0.06, t1 = T.logo + 0.35;
+    if (t < t0 || t > t1) return null;
+    const x = inv(t0, t1, t);
+    // ballistic in world space, fastest at the ends
+    const X = lerp(EXIT.x, DOWN.x, x), Z = lerp(EXIT.z, DOWN.z, x);
+    const Y = -4 * 52 * x * (1 - x) + (x < 0.04 ? (0.04 - x) * 300 : 0);
+    const vy = -4 * 52 * (1 - 2 * x), vx = DOWN.x - EXIT.x;
+    return { X, Y, Z, x, ang: Math.atan2(vy, -vx) };
+  }
+
+  drawLeaper(ctx, t) {
+    const F = this.fish?.big;
+    const s = this.leapState(t);
+    if (!F || !s) return;
+    const p = this.drawFishAbove(F, s, t);
+    if (p && Math.random() < 0.7) this.fx.droplets?.(p[0] + this.rng.float(-20, 20) * this.u, p[1] + this.rng.float(-8, 8) * this.u, 2, { speed: [20, 90], colors: ['#ffffff', '#bff4ff'] });
+  }
+
+  drawFishAbove(F, s, t) {
+    return this.drawFish(F, s.X, s.Y, s.Z, { facing: -1, angle: s.ang, swim: (t * 4) % 1, speed: 1, mouth: 0.3, pri: 3 }, 0);
+  }
+
+  drawBreachSplash(ctx, t) {
+    const p = this.proj(EXIT.x, 0, EXIT.z);
+    if (!p) return;
+    const k = inv(T.breach + 0.02, T.breach + 1.25, t);
+    if (k <= 0 || k >= 1) return;
+    this.drawSplashCrown(ctx, p[0], p[1], 26 * p[2], k, t);
+  }
+
+  // A glossy water crown (effect): a fan of water sheets with white crests and drops, a foam ring at its base.
+  drawSplashCrown(ctx, x, y, R, k, t) {
+    const rise = Math.sin(Math.min(1, k * 1.6) * Math.PI * 0.5) * (1 - ease.inCubic(k));
+    const spread = 0.7 + k * 0.45;
+    const a = 1 - smoothstep(0.55, 1, k);
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.globalAlpha = a;
+    // foam ring + glossy disc
+    ctx.fillStyle = 'rgba(200,245,255,0.7)';
+    ctx.beginPath(); ctx.ellipse(x, y, R * spread * 1.15, R * 0.2 * spread, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineWidth = Math.max(1, R * 0.05);
+    ctx.beginPath(); ctx.ellipse(x, y, R * spread * 1.15, R * 0.2 * spread, 0, 0, TAU); ctx.stroke();
+    // the water column dragged up behind the fish
+    const ch = R * 2.2 * rise * (1 - k * 0.6);
+    if (ch > 2) {
+      const g = ctx.createLinearGradient(0, y - ch, 0, y);
+      g.addColorStop(0, 'rgba(255,255,255,0.9)'); g.addColorStop(0.5, 'rgba(170,236,255,0.7)'); g.addColorStop(1, 'rgba(120,214,255,0.55)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(x - R * 0.42, y);
+      ctx.quadraticCurveTo(x - R * 0.16, y - ch * 0.5, x - R * 0.05, y - ch);
+      ctx.quadraticCurveTo(x + R * 0.12, y - ch * 0.96, x + R * 0.16, y - ch * 0.82);
+      ctx.quadraticCurveTo(x + R * 0.2, y - ch * 0.4, x + R * 0.42, y);
+      ctx.closePath(); ctx.fill();
+    }
+    // the crown sheets
+    const n = 13;
+    for (let i = 0; i < n; i++) {
+      const u = i / (n - 1) - 0.5;
+      const ang = -Math.PI / 2 + u * 2.5 + Math.sin(i * 3.1) * 0.08;
+      const len = R * (0.9 + 0.8 * hash2(i, 1, 7)) * rise * (1.15 - Math.abs(u));
+      const bx = x + u * R * 1.9 * spread, by = y + Math.abs(u) * R * 0.06;
+      const tx = bx + Math.cos(ang) * len * 0.85, ty = by + Math.sin(ang) * len;
+      const w = Math.max(1.5, R * 0.14 * (1 - Math.abs(u) * 1.2));
+      ctx.strokeStyle = 'rgba(140,226,255,0.8)'; ctx.lineWidth = w;
+      ctx.beginPath(); ctx.moveTo(bx, by); ctx.quadraticCurveTo(bx + (tx - bx) * 0.15, by + (ty - by) * 0.65, tx, ty); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineWidth = Math.max(1, w * 0.35);
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      const dr = Math.max(1, Math.min(2.5, R * 0.03));
+      ctx.beginPath(); ctx.arc(tx + Math.cos(ang) * dr * 3 * k * 4, ty + Math.sin(ang) * dr * 3 * k * 4, dr, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
     void t;
   }
 
-  drawLogo(ctx, t, dy) {
+  // ---------------------------------------------------------------------------------- the logo and fx
+  drawLogo(ctx, t) {
     const L = this.A.logo;
     if (!L) return;
     const { W, H } = this;
     const k = clamp01((t - T.logo) / 0.7);
     const sc = 0.55 + 0.45 * ease.outBack(k, 2.2);
-    const cx = W / 2, cy = H * 0.2 + Math.sin(t * 1.4) * 2 + dy;
-    const a = clamp01(k * 2);
+    const out = inv(T.out0, T.out0 + 0.9, t);
+    const cx = W / 2, cy = H * 0.3 + Math.sin(t * 1.4) * 2 - out * H * 0.06;
+    const a = clamp01(k * 2) * (1 - out);
     if (a <= 0) return;
+    // the leafy branches framing the shot
+    this.drawBranches(ctx, t, a);
     ctx.save();
     ctx.globalAlpha = a;
-    // bloom
     ctx.globalCompositeOperation = 'lighter';
-    drawAeroGlow(ctx, cx, cy, Math.round(L.w * 0.45 * sc), '#cfefff', 0.5);
+    AE.drawAeroGlow?.(ctx, cx, cy, Math.round(L.w * 0.45 * sc), '#cfefff', 0.5);
     ctx.globalCompositeOperation = 'source-over';
-    drawAeroGlow(ctx, cx, cy, Math.round(L.w * 0.32 * sc), '#ffffff', 0.4);
+    AE.drawAeroGlow?.(ctx, cx, cy, Math.round(L.w * 0.32 * sc), '#ffffff', 0.4);
     ctx.translate(cx, cy);
     ctx.scale(sc, sc);
     ctx.imageSmoothingEnabled = sc < 0.99;
@@ -1844,16 +1785,134 @@ export class Intro3D {
     if (t > T.logo + 0.5 && t < T.out0 && Math.random() < 0.1) this.fx.aeroBubbles(cx + this.rng.float(-0.4, 0.4) * L.w, cy + L.h * 0.4, 1, { sizes: [2, 3, 4], speed: [10, 30] });
   }
 
+  drawBranches(ctx, t, a) {
+    const { W, H } = this;
+    const br = this.A.branch, b2 = this.A.branch2;
+    const k = ease.outCubic(clamp01((t - T.logo) / 1.1));
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    if (br) {
+      const w = br.canvas.width / br.ss, h = br.canvas.height / br.ss;
+      ctx.save();
+      ctx.translate(W + 4 + (1 - k) * w * 0.5, H * 0.98);
+      ctx.rotate(Math.sin(t * 0.9) * 0.025 - 0.08);
+      ctx.drawImage(br.canvas, -w * 0.98, -h * 0.92, w, h);
+      ctx.restore();
+    }
+    if (b2) {
+      const w = b2.canvas.width / b2.ss, h = b2.canvas.height / b2.ss;
+      ctx.save();
+      ctx.translate(-6 - (1 - k) * w * 0.5, -4);
+      ctx.rotate(Math.PI + Math.sin(t * 1.1 + 1) * 0.03 + 0.12);
+      ctx.drawImage(b2.canvas, -w * 0.98, -h * 0.85, w, h);
+      ctx.restore();
+    }
+    ctx.restore();
+    ctx.imageSmoothingEnabled = false;
+  }
+
+  // Lens flare from a light at (sx, sy) through the screen centre: anamorphic streak, glow, coloured ghosts.
+  flare(ctx, sx, sy, vis, size) {
+    const cx = this.W / 2, cy = this.H / 2;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const L = 240 * this.u * size;
+    const gr = ctx.createLinearGradient(sx - L, 0, sx + L, 0);
+    gr.addColorStop(0, 'rgba(160,230,255,0)'); gr.addColorStop(0.5, rgba('#e8fbff', 0.55 * vis)); gr.addColorStop(1, 'rgba(160,230,255,0)');
+    ctx.fillStyle = gr;
+    ctx.fillRect(sx - L, sy - Math.max(1, size), L * 2, Math.max(2, 2 * size));
+    const ghosts = [[0.35, 10, '#bfefff', 0.16], [0.6, 5, '#fff2b0', 0.2], [0.85, 16, '#c8f56a', 0.1], [1.25, 8, '#7ff0ff', 0.16], [1.6, 24, '#bfeaff', 0.08], [1.9, 12, '#ffd0f0', 0.1]];
+    for (const [k, r, c, a] of ghosts) AE.drawAeroGlow?.(ctx, lerp(sx, cx, k * 1.2), lerp(sy, cy, k * 1.2), Math.round(r * this.u * size), c, a * vis * 2);
+    ctx.restore();
+  }
+
+  drawMeniscus(ctx, t, sy) {
+    const { W, u } = this;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+    ctx.lineWidth = Math.max(2, 3 * u);
+    ctx.beginPath();
+    for (let x = -40; x <= W + 40; x += 16) {
+      const y = sy + Math.sin(x * 0.03 + t * 9) * 6 * u + Math.sin(x * 0.011 - t * 5) * 9 * u;
+      if (x === -40) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 0.35;
+    ctx.lineWidth = Math.max(6, 10 * u);
+    ctx.strokeStyle = '#bff6ff';
+    ctx.stroke();
+    ctx.restore();
+    for (let i = 0; i < 3; i++) AE.drawAeroBubble?.(ctx, this.rng.float(0, W), sy + this.rng.float(-4, 14) * u, this.rng.pick([2, 3, 4, 5]), 0.9);
+  }
+
+  // Water drops sliding on the lens after the splash (refraction-ish highlight).
+  drawLens(ctx) {
+    for (const d of this.lens) {
+      if (d.t < 0) continue;
+      const a = clamp01(d.t * 6) * clamp01((d.life - d.t) * 2);
+      ctx.save();
+      ctx.globalAlpha = a;
+      const g = ctx.createRadialGradient(d.x - d.r * 0.3, d.y - d.r * 0.35, d.r * 0.1, d.x, d.y, d.r);
+      g.addColorStop(0, 'rgba(255,255,255,0.75)'); g.addColorStop(0.5, 'rgba(200,245,255,0.18)'); g.addColorStop(0.9, 'rgba(120,200,255,0.25)'); g.addColorStop(1, 'rgba(255,255,255,0.6)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.ellipse(d.x, d.y, d.r * 0.92, d.r, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.fillRect(Math.round(d.x - d.r * 0.4), Math.round(d.y - d.r * 0.5), Math.max(1, Math.round(d.r * 0.25)), Math.max(1, Math.round(d.r * 0.18)));
+      ctx.restore();
+    }
+  }
+
+  drawFlash(ctx, t) {
+    const { W, H } = this;
+    let a = 0;
+    if (t < 0.9) a = 1 - ease.outCubic(t / 0.9);
+    if (this.flashT != null) a = Math.max(a, 0.85 * (1 - clamp01((t - this.flashT) / 0.45)));
+    // a white splash wipe over the cut into the leap, and a bloom into the logo
+    a = Math.max(a, 0.9 * clamp01(1 - Math.abs(t - T.breach) / 0.14));
+    a = Math.max(a, clamp01(1 - Math.abs(t - T.logo) / 0.22));
+    if (a <= 0.01) return;
+    ctx.fillStyle = rgba('#f5fcff', a);
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  drawVignette(ctx) {
+    const { W, H } = this;
+    if (!this.vig || this.vig.width !== W || this.vig.height !== H) {
+      const c = makeCanvas(W, H), g = ctxOf(c);
+      const gr = g.createRadialGradient(W / 2, H * 0.48, Math.min(W, H) * 0.42, W / 2, H / 2, Math.hypot(W, H) * 0.62);
+      gr.addColorStop(0, 'rgba(6,40,80,0)'); gr.addColorStop(1, 'rgba(6,40,80,0.28)');
+      g.fillStyle = gr; g.fillRect(0, 0, W, H);
+      this.vig = c;
+    }
+    ctx.drawImage(this.vig, 0, 0);
+  }
+
+  // Cinema bars for the trailer part; they slide away for the logo.
+  drawBars(ctx, t) {
+    const { W, H } = this;
+    const k = 1 - ease.inOutCubic(inv(T.logo - 0.1, T.logo + 0.7, t));
+    const bh = Math.round(H * 0.07 * k * ease.outCubic(clamp01(t / 0.8)));
+    if (bh <= 0) return;
+    ctx.fillStyle = '#04132a';
+    ctx.fillRect(0, 0, W, bh);
+    ctx.fillRect(0, H - bh, W, bh);
+    ctx.fillStyle = 'rgba(127,240,255,0.35)';
+    ctx.fillRect(0, bh, W, 1);
+    ctx.fillRect(0, H - bh - 1, W, 1);
+  }
+
   drawSkip(ctx, alpha) {
     if (this.t < 0.3 && this.skipT < 0) return;
     const r = this.skipRect();
     ctx.globalAlpha = alpha * clamp01((this.t - 0.3) * 3);
-    drawAeroButton(ctx, r.x, r.y, r.w, r.h, { label: 'Skip', icon: getUiIcon('play'), tone: 'glass', state: this.skipHover ? 'hover' : 'normal' });
+    AE.drawAeroButton?.(ctx, r.x, r.y, r.w, r.h, { label: 'Skip', icon: UIC.getUiIcon?.('play'), tone: 'glass', state: this.skipHover ? 'hover' : 'normal' });
     if (this.audio?.isUnlocked && !this.audio.isUnlocked()) {
-      const ic = getUiIcon('sound'), ml = getUiIcon('mouse_l');
+      const ic = UIC.getUiIcon?.('sound'), ml = UIC.getUiIcon?.('mouse_l');
       if (ic && ml) {
         const w = ic.width + ml.width + 16, h = 18, x = this.W - w - 10, y = this.H - h - 10;
-        drawAeroSurface(ctx, x, y, w, h, { tone: 'glass', r: 'pill', gloss: 0.6, glossH: 8, rim: 0.8, glow: 0.4 });
+        AE.drawAeroSurface?.(ctx, x, y, w, h, { tone: 'glass', r: 'pill', gloss: 0.6, glossH: 8, rim: 0.8, glow: 0.4 });
         ctx.drawImage(ml, x + 6, y + Math.round((h - ml.height) / 2));
         ctx.drawImage(ic, x + 10 + ml.width, y + Math.round((h - ic.height) / 2));
       }

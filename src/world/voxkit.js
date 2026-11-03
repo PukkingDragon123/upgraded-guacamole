@@ -2,7 +2,7 @@
 // lays voxel sprites into wide parallax layers (back to front).
 
 import { VoxelModel, renderVoxels } from '../gfx/voxel.js';
-import { getProp } from '../gfx/props.js';
+import { getProp, getPropSteps } from '../gfx/props.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { pack } from '../core/color.js';
 
@@ -15,7 +15,14 @@ export const WORLD_PITCH = 24;
 
 // Library prop rendered with the world camera.
 export function worldProp(id, opts = {}) {
-  return getProp(id, { ...opts, yaw: WORLD_YAW, pitch: WORLD_PITCH });
+  const p = getProp(id, { ...opts, yaw: WORLD_YAW, pitch: WORLD_PITCH });
+  // p.hi(): rendered at twice the pixel scale for the zoomed-in camera (DepthScene hi-res pass)
+  if (p && !p.hi) {
+    const hiOpts = { ...opts, scale: (opts.scale ?? 1) * 2, yaw: WORLD_YAW, pitch: WORLD_PITCH };
+    Object.defineProperty(p, 'hi', { value: () => worldProp(id, hiOpts), enumerable: false, configurable: true });
+    Object.defineProperty(p, 'hiSteps', { value: () => getPropSteps(id, hiOpts), enumerable: false, configurable: true });
+  }
+  return p;
 }
 
 // Rotate a model about the z axis (screen-plane roll) around (px, py) in voxel units. Positive degrees lift +x.

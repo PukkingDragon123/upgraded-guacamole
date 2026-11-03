@@ -1,5 +1,5 @@
-// Dev preview (Online & AppSea agent) with a stub game: node tools/build.mjs --dev online
-//   dist/dev/online.html?p=bait|craft|mp|appsea|dl|eco  &page=home|bait|isp|downloads|<category>  &lab (all unlocks)
+// Dev preview (Online agent; Bait Shop: Shell agent) with a stub game: node tools/build.mjs --dev online
+//   dist/dev/online.html?p=bait|craft|mp|shop|eco  &tab=bait|lines (shop)  &lab (all unlocks)
 //   &online (go online)  &peers=N (fake peers in the panel)  &coins=N
 import { ctxOf } from '../core/canvas.js';
 import { Input } from '../core/input.js';
@@ -12,7 +12,7 @@ import { UI } from '../ui/ui.js';
 import { BaitPanel } from '../ui/baitpanel.js';
 import { MultiplayerPanel } from '../ui/multiplayer.js';
 import { installNet } from '../net/index.js';
-import { STORE_RENDERERS, installStore } from '../store/index.js';
+import { installStore, ShopPanel } from '../store/index.js'; // [phase4:shell] AppSea is now the Bait Shop panel
 import { addBait, ensureBait, BAITS } from '../store/bait.js';
 import { addItem } from '../build/items.js';
 import { ecoSky, leafSpray, ecoGlobe, splashButton, leaf } from '../store/ecoart.js';
@@ -37,7 +37,6 @@ export function run(params) {
   const listeners = {};
   const screen = { W, H, canvas: cv, scale: 2, toLogical: (x, y) => { const r = cv.getBoundingClientRect(); return [((x - r.left) / r.width) * W, ((y - r.top) / r.height) * H]; } };
   const input = new Input(cv, screen.toLogical);
-  const windows = [];
   const g = {
     params, canvas: cv, screen, state: st, audio, input, particles: new Particles(300), time: 0,
     ocean: { biome: { id: 'oscean' }, waterLevel: () => 100 },
@@ -45,11 +44,11 @@ export function run(params) {
     emit(ev, d) { for (const f of listeners[ev] || []) f(d); },
     toast(text, icon) { g.ui.toast(text, icon); },
     save() {},
-    desktop: { windows, windowAt: () => windows[windows.length - 1] || null, openApp: () => null, closeWindow() {}, focus() {} },
   };
   g.ui = new UI(g);
   g.ui.register(new BaitPanel());
   g.ui.register(new MultiplayerPanel());
+  g.ui.register(new ShopPanel());
   installStore(g);
   const net = installNet(g);
   const p = params.get('p') || 'eco';
@@ -68,15 +67,7 @@ export function run(params) {
       net.addFeed({ kind: 'wave', name: 'KelpQueen', color: '#ff6aa8' });
     }
   }
-  const win = { id: 'appsea', app: p === 'dl' ? 'appsea_dl' : 'appsea', x: 240, y: 60, w: 480, h: 320, data: {}, scroll: 0 };
-  if (p === 'appsea' || p === 'dl') {
-    const R = STORE_RENDERERS[win.app];
-    win.w = R.size[0]; win.h = R.size[1];
-    R.init(win, g);
-    windows.push(win);
-    if (p === 'appsea' && params.get('page')) R.navigate(win, g, params.get('page'));
-    if (p === 'dl') { g.store.request('notes', { noWarn: params.has('nowarn'), dialog: false }); }
-  }
+  if (p === 'shop' || p === 'appsea') g.ui.open('baitshop', { tab: params.get('tab') || 'bait' });
   let last = performance.now();
   const frame = (now) => {
     const dt = Math.min(0.05, (now - last) / 1000);
@@ -95,24 +86,13 @@ export function run(params) {
       ecoGlobe(ctx, 560, 90, 40, g.time);
       for (let i = 0; i < 6; i++) leaf(ctx, 640 + i * 40, 60, 30, -60 + i * 25, { tone: i % 3 });
       drawAeroPanel(ctx, 20, 190, 460, 120, { tone: 'glass', radius: 12 });
-      splashButton(g.ui, ctx, 40, 230, 90, 20, 'Download', { tone: 'green' });
+      splashButton(g.ui, ctx, 40, 230, 90, 20, 'Buy', { tone: 'green' });
       splashButton(g.ui, ctx, 150, 230, 90, 20, 'Get', { tone: 'orange' });
       splashButton(g.ui, ctx, 260, 230, 90, 20, 'Wave', { tone: 'aqua' });
       Object.keys(BAITS).filter((id) => !BAITS[id].app || id.endsWith('_lite') || id.endsWith('_enterprise')).slice(0, 26).forEach((id, i) => {
         drawBaitGloss(ctx, BAITS[id].art, 520 + (i % 9) * 46, 200 + Math.floor(i / 9) * 52, 40, g.time + i * 0.3);
         drawText(ctx, id.slice(0, 10), 520 + (i % 9) * 46, 224 + Math.floor(i / 9) * 52, { font: 'small', align: 'center', color: '#ffffff' });
       });
-    }
-    for (const w of windows) {
-      const R = STORE_RENDERERS[w.app];
-      ctx.fillStyle = '#0a3a6e'; ctx.fillRect(w.x - 3, w.y - 16, w.w + 6, w.h + 19);
-      drawText(ctx, w.title || '', w.x + 4, w.y - 12, { color: '#ffffff' });
-      const content = { x: w.x, y: w.y, w: w.w, h: w.h };
-      ctx.save(); ctx.beginPath(); ctx.rect(content.x, content.y, content.w, content.h); ctx.clip();
-      R.draw(ctx, w, g, content, g.time);
-      ctx.restore();
-      if (input.pressed && input.x >= w.x && input.y >= w.y && input.x < w.x + w.w && input.y < w.y + w.h) R.input(w, g, input, content);
-      if (input.wheel && R.scroll) w.scroll = Math.max(0, Math.min(R.scroll(w, content), w.scroll + input.wheel * 14));
     }
     g.ui.drawPanels(ctx, dt);
     g.ui.drawToasts(ctx);

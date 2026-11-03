@@ -8,6 +8,7 @@ import { drawText } from '../gfx/font.js';
 import { BIOMES, BIOME_DEPTH } from './biomes/index.js';
 import { worldTop } from './biomes/base.js';
 import { installAero } from './aerokit.js';
+import { installZoomSky } from './zoomsky.js';
 
 export class Ocean {
   constructor(game) {
@@ -24,8 +25,11 @@ export class Ocean {
       lantern: null, wind: 0, hour: 12, quality: 1, view: null, top: 0,
     };
     this.top = -400; // world y of the highest point the camera can show (sky / surface view)
-    this.reveal = 1; // 0 = plain wallpaper, 1 = full ocean (opening flood animation)
   }
+
+  // The ocean is always fully there (the old "wallpaper floods" reveal is gone); kept for older callers.
+  get reveal() { return 1; }
+  set reveal(v) { void v; }
 
   get W() { return this.game.screen.W; }
   get H() { return this.game.screen.H; }
@@ -41,6 +45,7 @@ export class Ocean {
     const Cls = BIOMES[id] || BIOMES.oscean || BIOMES.shallows;
     const b = new Cls(this);
     try { installAero(b); } catch (e) { console.error(e); }
+    try { installZoomSky(b); } catch (e) { console.error(e); }
     this.cache[id] = b;
     return b;
   }
@@ -120,6 +125,31 @@ export class Ocean {
     e.quality = g.lowPower ? 0.5 : 1;
     if (this.travelState) this.updateTravel(dt);
     this.biome.update(dt, e);
+    this.hiPass();
+  }
+
+  // Zoomed-in camera: re-render the current biome's near/mid scenery at 2x detail, a few ms per frame.
+  hiPass() {
+    const b = this.biome, cam = this.game.camera;
+    if (!b || b.ready === false || this.travelState || !cam?.open || (cam.z || 1) < 1.3) return;
+    const D = b.D;
+    if (!D?.hiSteps || b.hiDone === D) return;
+    if (this.hiFor !== D) {
+      this.hiFor?.dropHi?.();
+      this.hiFor = D;
+      const decor = b.decor?.hiSteps ? b.decor : null;
+      this.hiGen = (function* all() {
+        if (!D.hi) yield* D.hiSteps();
+        if (decor) yield* decor.hiSteps();
+        if (b.hiExtraSteps) yield* b.hiExtraSteps();
+        b.hiDone = D;
+      })();
+    }
+    if (!this.hiGen) return;
+    const t0 = performance.now(), budget = this.game.lowPower ? 3 : 7;
+    try {
+      while (performance.now() - t0 < budget) if (this.hiGen.next().done) { this.hiGen = null; break; }
+    } catch (e) { console.error(e); this.hiGen = null; }
   }
 
   // Ambient light at a point (for fish wash).
@@ -217,6 +247,9 @@ export class Ocean {
     if (rng.chance(0.9)) this.game.particles.bubble(rng.float(0, this.W), s.dir > 0 ? this.H + 5 : -5, { vy: s.dir > 0 ? -rng.float(160, 320) : rng.float(160, 320), life: 2.5, layer: 'ui', size: rng.pick([1, 2, 3]) });
     if (!s.switched && k >= 0.5) {
       s.switched = true;
+      s.from.D?.dropHi?.(); // free the old ocean's hi-res scenery
+      s.from.hiDone = null;
+      if (this.hiFor === s.from.D) { this.hiFor = null; this.hiGen = null; }
       this.biome = s.to;
       this.pickWeather(true);
       this.game.audio.play('arrive');

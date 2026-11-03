@@ -1,4 +1,6 @@
 // FISHTOP game orchestrator: owns every system, routes input top-down, draws the layered scene.
+// Phase 4: a standalone Frutiger Aero fishing game. The simulated desktop is gone; the game menu is the Aero HUD
+// (src/ui/hud.js, game.hud) and bait is bought at Dot's Bait Shop (src/store/, game.store, panel 'baitshop').
 
 import { clamp, clamp01, lerp, dist, damp, rectContains } from '../core/math.js';
 import { rng } from '../core/rng.js';
@@ -9,15 +11,13 @@ import { Screen } from './screen.js';
 import { Camera } from './camera.js';
 import { loadState, saveState, resetState } from './state.js';
 import { computeStats, SKILL_BY_ID, skillStatus } from './skills.js';
-import { BAITS, RELEASE_VALUE, CATCH_BONUS } from './shopdata.js';
+import { RELEASE_VALUE, CATCH_BONUS } from './shopdata.js';
 import { Particles } from '../gfx/particles.js';
 import { drawText } from '../gfx/font.js';
 import { registerUiIcons, getUiIcon, CURSOR_HOTSPOT } from '../gfx/uiicons.js';
-import { getMiniIcon } from '../desktop/icons.js';
 import { Clock } from '../world/clock.js';
 import { Ocean } from '../world/ocean.js';
 import { biomesReady, BIOMES } from '../world/biomes/index.js';
-import { Desktop, fileBait } from '../desktop/desktop.js';
 import { School } from '../fish/school.js';
 import { SPECIES, SPECIES_BY_ID } from '../fish/species.js';
 import { rollIndividual, valueMultiplier } from '../fish/traits.js';
@@ -27,26 +27,24 @@ import { UI } from '../ui/ui.js';
 import { registerPanels } from '../ui/registry.js';
 import { Aquarium } from '../aquarium/aquarium.js';
 import { Tutorial } from './tutorial.js';
-import { Wallpaper } from '../desktop/wallpaper.js';
-import { Dock } from '../ui/dock.js';
+import { Hud } from '../ui/hud.js'; // [phase4:shell] the Aero game HUD replaces the desktop icons
 import { host } from '../platform/host.js';
 import { installBrowserBridge } from './browserbridge.js';
 import { Boat } from '../world/boat.js';
 import { Build } from '../build/build.js';
-import { boatBonus, baitMods, CATALOG_BY_ID } from '../store/index.js';
+import { boatBonus, installStore, openStore, ShopPanel } from '../store/index.js'; // [phase4:shell] Dot's Bait Shop
 import { WaterFX } from '../gfx/watergl.js';
 import { makeLayer, resizeLayer } from '../core/canvas.js';
 import { Floaters } from '../world/floaters.js'; // [phase3:world]
 import { installNet } from '../net/index.js'; // [phase3:online] multiplayer (opt-in)
 import { currentBait as currentBait3 } from '../store/bait.js'; // [phase3:online] consumable bait
-import { consumeBait as consumeBait3 } from '../store/bait.js'; // [phase3:fishing] one bait used per hook-set
+import { consumeBait as consumeBait3, equipBait } from '../store/bait.js'; // [phase3:fishing] one bait used per hook-set
 
 export class Game {
   constructor(canvas, params) {
     this.params = params;
     this.canvas = canvas;
-    this.mode = host.mode || params.get('mode') || 'window';
-    this.overlay = this.mode === 'overlay' || this.mode === 'wallpaper';
+    this.mode = host.mode || 'window'; // 'window' | 'fullscreen' (Electron); the overlay modes are gone
     this.screen = new Screen(canvas, { scale: Number(params.get('scale')) || 0 });
     this.input = new Input(canvas, this.screen.toLogical);
     this.state = params.has('fresh') ? resetState() : loadState();
@@ -60,11 +58,9 @@ export class Game {
     this.time = 0;
     this.timeScale = 1; this.timeScaleTarget = 1;
     this.paused = false;
-    this.overlayFishing = false;
-    this.interactive = null;
     this.muted = false;
-    this.mini = this.mode === 'mini';
-    this.lowPower = this.mini || !!this.state.settings.lowPower;
+    this.mini = false; // kept for older readers (mini mode is gone)
+    this.lowPower = !!this.state.settings.lowPower;
     this.fps = 60; this.fpsAcc = 0; this.fpsN = 0;
     const self = this;
     this.world = {
@@ -85,17 +81,17 @@ export class Game {
     this.boat = new Boat(this);
     this.floaters = new Floaters(this); // [phase3:world] floating boxes to fish up
     this.wireSplashes();
-    this.desktop = new Desktop(this);
-    this.world.desktop = this.desktop;
+    this.hud = new Hud(this); // [phase4:shell] Aero HUD: hotbar, gear pod, location chip
+    this.desktop = this.hud.compat(); // [phase4:shell] tiny stand-in for older callers (iconRect, box, windows)
     this.school = new School(this.world);
     this.fishing = new Fishing(this);
     this.baitFx = new BaitEffects(this);
     this.aquarium = new Aquarium(this);
-    this.wallpaper = new Wallpaper(this);
     this.ui = new UI(this);
-    this.dock = new Dock(this);
     registerUiIcons();
     registerPanels(this.ui);
+    this.ui.register(new ShopPanel()); // [phase4:shell] 'baitshop'
+    installStore(this); // [phase4:shell] game.store: Dot's Bait Shop (stock, restock, prices)
     this.tutorial = new Tutorial(this);
     try { this.build = new Build(this); } catch (e) { console.error(e); this.build = null; }
     installNet(this); // [phase3:online] game.net: multiplayer, opt-in (Multiplayer panel)
@@ -110,8 +106,7 @@ export class Game {
     this.saveT = 10;
     this.offline();
     if (this.pendingWelcome) setTimeout(() => this.ui.open('welcome'), 1500);
-    // the opening plays on the simulated desktop; the real-desktop overlay starts straight in the ocean
-    if (!this.state.tutorialDone && !params.has('skipintro') && !this.overlay) this.tutorial.start();
+    if (!this.state.tutorialDone && !params.has('skipintro')) this.tutorial.start();
     else {
       this.ocean.reveal = 1;
       if (!this.state.tutorialDone) this.tutorial.skip();
@@ -158,24 +153,13 @@ export class Game {
     this.ocean.onResize();
     this.surfaceScroll = -Math.round(H * 0.62);
     this.camera.setScrollRange(this.surfaceScroll, 0);
-    this.desktop.onResize();
     this.aquarium.onResize?.();
-    this.wallpaper.onResize?.();
   }
 
   bindHost() {
-    host.onShortcut?.((id, ev) => {
-      if (id === 'toggle-fishing') {
-        this.overlayFishing = !this.overlayFishing;
-        this.toast(this.overlayFishing ? 'Fishing ON - your mouse is a hook.' : 'Fishing OFF - clicks go to your desktop.', 'hook');
-      }
+    host.onShortcut?.((id) => {
       if (id === 'pause') this.command('pause');
-      if (id === 'mini') this.command('mini');
-      if (id === 'cycle-overlay' && ev?.nextMode) host.setMode(ev.nextMode);
-    });
-    host.onCursor?.((x, y) => {
-      const [lx, ly] = this.screen.toLogical(x, y);
-      this.input.setExternalCursor(lx, ly);
+      if (id === 'fullscreen') this.command('fullscreen');
     });
   }
 
@@ -223,7 +207,7 @@ export class Game {
     if (!sk) return false;
     const st = skillStatus(sk, this.state, this.speciesFound());
     if (st.status !== 'available') { audio.play('ui_error'); this.toast(st.reason || 'Locked', 'lock'); return false; }
-    if (!this.spendCoins(sk.cost)) { this.toast('Not enough coins.', 'coin'); return false; }
+    if (!this.spendCoins(sk.cost)) { this.toast('Not enough Aero.', 'coin'); return false; }
     this.state.skills[id] = true;
     this.recomputeStats();
     audio.play('ui_unlock');
@@ -238,68 +222,31 @@ export class Game {
   }
 
   // ------------------------------------------------------------------ bait
+  // Consumable bait (src/store/bait.js): bought at the Bait Shop or mixed in the Bait panel. [phase4:shell]
   currentBait() {
-    const b3 = currentBait3(this.state); // [phase3:online] consumable bait inventory (src/store/bait.js)
-    if (b3) return b3; // [phase3:online]
-    const e = this.state.equipped;
-    if (!e) return null;
-    if (e.kind === 'icon') {
-      const ic = this.desktop.iconById(e.id);
-      if (!ic || !this.state.baitBox.includes(e.id)) return null;
-      return { kind: 'icon', type: ic.type, id: ic.id, mini: getMiniIcon(ic.icon), label: ic.label, mods: CATALOG_BY_ID[ic.id] ? baitMods(ic.id, this.state) : null };
-    }
-    if (e.kind === 'file') {
-      const f = this.state.files.find((x) => x.id === e.id);
-      return f ? { kind: 'icon', type: f.type, id: f.id, mini: getMiniIcon(f.icon), label: f.name } : null;
-    }
-    if (e.kind === 'special') {
-      if ((this.state.baits[e.id] || 0) <= 0) return null;
-      return { kind: 'special', type: e.id, id: e.id, label: BAITS[e.id]?.name };
-    }
-    return null;
+    return currentBait3(this.state); // [phase3:online] consumable bait inventory
   }
 
   equip(kind, id) {
-    this.state.equipped = { kind, id };
+    if (!equipBait(this.state, kind === 'bait' || kind === 'special' ? id : kind)) return;
     audio.play('ui_click');
     this.baitFx.onEquip(this.currentBait());
   }
 
-  consumeBait(type) {
-    if (this.currentBait()?.kind === 'bait') { const ok = consumeBait3(this.state); this.baitFx.onEquip(this.currentBait()); return ok; } // [phase3:fishing] one-time bait (store/bait.js), used at hook-set
-    const b = this.state.baits;
-    if (!b[type]) return;
-    b[type]--;
-    if (b[type] <= 0) {
-      delete b[type];
-      if (this.state.equipped?.kind === 'special' && this.state.equipped.id === type) {
-        this.state.equipped = this.state.baitBox.length ? { kind: 'icon', id: this.state.baitBox[0] } : null;
-        this.toast(`Out of ${BAITS[type]?.name || type}.`, 'bait');
-      }
-      this.baitFx.onEquip(this.currentBait());
-    }
+  consumeBait() {
+    if (!this.currentBait()) return false;
+    const ok = consumeBait3(this.state); // [phase3:fishing] one-time bait, used at hook-set
+    const now = this.currentBait();
+    if (!now) this.toast('Out of bait! Visit the Bait Shop.', 'bait');
+    this.baitFx.onEquip(now);
+    return ok;
   }
 
+  // Legacy entry (old shop ids): buys that bait at the Bait Shop.
   buyBait(id) {
-    const it = BAITS[id];
-    if (!it || !this.stats.unlockBait.has(id)) return false;
-    if (!this.spendCoins(it.price)) { this.toast('Not enough coins.', 'coin'); return false; }
-    this.state.baits[id] = (this.state.baits[id] || 0) + it.qty;
-    audio.play('ui_buy');
-    this.emit('buy', id);
-    return true;
-  }
-
-  addFileBait(name, isDir, forceType) {
-    const fb = fileBait(name, isDir);
-    if (forceType) fb.type = forceType;
-    if (!this.state.files.some((f) => f.id === fb.id)) {
-      this.state.files.push(fb);
-      if (this.state.files.length > 24) this.state.files.shift();
-    }
-    this.state.equipped = { kind: 'file', id: fb.id };
-    audio.play('icon_box');
-    this.toast(`"${name}" became virtual bait (${fb.type}). Your file is untouched.`, 'bait');
+    const r = this.store?.buy?.(id);
+    if (r?.ok) this.emit('buy', id);
+    return !!r?.ok;
   }
 
   // ------------------------------------------------------------------ catching
@@ -321,15 +268,12 @@ export class Game {
     j.minSize = Math.min(j.minSize, rec.sizeCm);
     if (rec.variant?.mutation) j.variants[rec.variant.mutation] = true;
     if (rec.variant?.shiny) j.variants.shiny = true;
-    // return stolen icons
-    if (fish.carry) { this.desktop.returnIcon(fish.carry); fish.carry = null; }
+    fish.carry = null;
     const bonus = Math.round((CATCH_BONUS[sp.rarity] || 2) * valueMultiplier(rec));
     this.addCoins(bonus, fish.x, fish.y);
     // buildings: samples, carried crates, bait saves (before the bait is consumed)
     let loot = null;
     try { loot = this.build?.onCatch?.(fish, sp, rec) ?? null; } catch (e) { console.error(e); }
-    const bait = this.currentBait();
-    if (bait?.kind === 'special') this.consumeBait(bait.type);
     audio.play(sp.rarity === 'legendary' ? 'catch_legendary' : sp.rarity === 'epic' ? 'catch_epic' : sp.rarity === 'rare' ? 'catch_rare' : 'catch');
     if (sp.sound) setTimeout(() => audio.play(sp.sound, { pitch: 1 / Math.max(0.6, fish.scale) }), 250);
     this.camera.flash('#ffffff', sp.rarity === 'legendary' ? 0.9 : 0.5);
@@ -379,8 +323,11 @@ export class Game {
   command(id) {
     const ui = this.ui;
     switch (id) {
-      case 'journal': case 'skills': case 'shop': case 'map': case 'bait': case 'settings': case 'lab': case 'wardrobe': case 'multiplayer': case 'inventory':
+      case 'journal': case 'skills': case 'map': case 'bait': case 'settings': case 'lab': case 'wardrobe': case 'multiplayer': case 'inventory':
         if (ui.panels[id]) ui.toggle(id); else this.toast('Coming soon!', 'info');
+        break;
+      case 'baitshop': case 'shop': case 'store': case 'appsea': // [phase4:shell] Dot's Bait Shop
+        if (ui.isOpen('baitshop')) ui.close('baitshop'); else openStore(this);
         break;
       case 'tank':
         this.setView(this.state.view === 'aquarium' ? 'ocean' : 'aquarium');
@@ -390,14 +337,13 @@ export class Game {
         break;
       case 'pause':
         this.paused = !this.paused;
-        this.toast(this.paused ? 'Fishing paused. Your desktop is all yours.' : 'Fishing resumed!', this.paused ? 'pause' : 'play');
+        this.toast(this.paused ? 'Paused. Press P to fish again.' : 'Back to fishing!', this.paused ? 'pause' : 'play');
         if (this.paused && this.fishing.busy) this.fishing.releaseFish(true);
         break;
-      case 'mini':
-        this.setMini(!this.mini);
-        break;
-      case 'restore':
-        this.desktop.restoreAll();
+      case 'fullscreen': // [phase4:shell] Electron toggles its window; the browser uses the Fullscreen API
+        if (host.toggleFullscreen) host.toggleFullscreen();
+        else if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+        else document.documentElement.requestFullscreen?.().catch(() => {});
         break;
       case 'mute':
         this.muted = !this.muted;
@@ -419,24 +365,13 @@ export class Game {
   }
 
   musicFor() {
-    if (this.mini) return null;
     if (this.state.view === 'aquarium') return 'aquarium';
-    if (this.ocean.reveal < 1) return 'desktop';
-    return this.ocean.biome?.music || 'shallows';
+    return this.ocean.biome?.music || 'shallows'; // [phase4:intro] no "desktop before the flood" track any more
   }
 
   musicTrackName() {
     const t = this.musicFor();
-    return { desktop: 'Desktop Lullaby', oscean: '(OS)cean Startup Chime', shallows: 'Sunny Shallows Groove', fjord: 'Frosty Fjord Aurora', junkyard: 'Junkyard Glitch-Hop', metropolis: 'Metropolis Neon Nights', volcano: 'Lava Rift Rumble', abyss: 'Deep Ocean Drone', aquarium: 'Aquarium Dreams' }[t] || 'Silence';
-  }
-
-  setMini(on) {
-    this.mini = on;
-    this.lowPower = on || !!this.state.settings.lowPower;
-    if (on) { this.fishing.releaseFish(false); this.ui.stack = []; }
-    host.setMode?.(on ? 'mini' : 'window');
-    audio.setMusic(this.musicFor());
-    this.toast(on ? 'Mini mode: a quiet little aquarium while you work. Press M to expand.' : 'Welcome back to the ocean!', on ? 'minimize' : 'expand');
+    return { desktop: 'Bubble Lullaby', oscean: '(OS)cean Startup Chime', shallows: 'Sunny Shallows Groove', fjord: 'Frosty Fjord Aurora', junkyard: 'Junkyard Glitch-Hop', metropolis: 'Metropolis Neon Nights', volcano: 'Lava Rift Rumble', abyss: 'Deep Ocean Drone', aquarium: 'Aquarium Dreams' }[t] || 'Silence';
   }
 
   biomeName() { return this.ocean.biome?.name || 'Ocean'; }
@@ -453,10 +388,6 @@ export class Game {
       this.save();
     });
     return true;
-  }
-
-  handleIconOpen(ic) {
-    return false;
   }
 
   debugSpawnRandom() {
@@ -488,7 +419,7 @@ export class Game {
     const view = this.state.view;
     const ocean = this.ocean;
     // the camera may only leave the default view in the open ocean
-    const canScroll = view === 'ocean' && !this.mini && ocean.reveal >= 1 && !ocean.travelState && !this.tutorial.active;
+    const canScroll = view === 'ocean' && ocean.reveal >= 1 && !ocean.travelState && !this.tutorial.active;
     cam.setScrollRange(canScroll ? this.surfaceScroll : 0, 0);
     cam.update(dtReal);
     this.timeScale = damp(this.timeScale, this.timeScaleTarget * cam.timeScale(), 10, dtReal);
@@ -511,9 +442,8 @@ export class Game {
     w.lowPower = this.lowPower;
     w.populationMul = this.baitFx.populationMul();
     w.rollMods = { mutationChance: this.stats.mutationChance * (1 + this.bonus('mutation')), shinyChance: this.stats.shinyChance * (1 + this.bonus('shiny')), ...(bm ? { sizeBonus: bm.sizeBonus, giantChance: 0.04 * bm.giantMul } : {}) };
-    const toWorld = (r) => { if (r) { const [x0, y0] = cam.screenToWorld(r.x, r.y); r.x = x0; r.y = y0; r.w /= z; r.h /= z; } return r; };
-    w.icons = this.desktop.iconRects().map(toWorld);
-    w.windows = this.desktop.windowRects().concat(this.aquarium.windowRect ? [this.aquarium.windowRect()] : []).filter(Boolean).map((r) => toWorld({ ...r }));
+    w.icons = []; // [phase4:shell] no desktop icons / windows for fish to perch on, steal or hide behind
+    w.windows = [];
     w.isTank = false;
     w.surfaceY = ocean.reveal < 1 ? null : ocean.surfaceY();
     this.particles.surfaceY = view === 'ocean' ? w.surfaceY : null;
@@ -530,15 +460,17 @@ export class Game {
     this.floaters?.update(dt); // [phase3:world]
     this.baitFx.update(dt);
     this.net?.update(dtReal); // [phase3:online]
+    this.storeT = (this.storeT || 0) - dtReal;
+    if (this.storeT <= 0) { this.storeT = 0.5; try { this.store?.tick?.(); } catch (e) { console.error(e); } } // [phase4:shell] shop restocks
 
     // ---- input routing (top-most first)
     const fighting = this.fishing.fighting;
-    const openWater = view === 'ocean' && !this.mini && ocean.reveal >= 1 && !ocean.travelState;
+    const openWater = view === 'ocean' && ocean.reveal >= 1 && !ocean.travelState;
     let layer = null;
     if (this.tutorial.capturesInput?.()) layer = 'tutorial';
     else if (this.ui.hit(inp.x, inp.y) && !fighting) layer = 'ui';
-    else if (!fighting) layer = this.aquarium.hit?.(inp.x, inp.y) ? 'tank' : this.overlay ? (this.desktop.overBox(inp.x, inp.y) ? 'box' : null) : this.desktop.hit(inp.x, inp.y);
-    if (this.desktop.drag && !fighting) layer = 'drag';
+    else if (!fighting && this.hud.hit(inp.x, inp.y)) layer = 'hud'; // [phase4:shell] the Aero HUD
+    else if (!fighting && this.aquarium.hit?.(inp.x, inp.y)) layer = 'tank';
     // world objects under the cursor: build mode / buildings, then the boat
     if (layer === null && !fighting && openWater && inp.inside) {
       let bh = false;
@@ -546,14 +478,8 @@ export class Game {
       if (bh) layer = 'build';
       else if (this.boat.dragging || (!this.fishing.busy && this.boat.hit(cur.x, cur.y))) layer = 'boat';
     }
-    if (this.boat.dragging && !fighting && !this.mini) layer = 'boat';
-    if (this.mini) layer = this.aquarium.hit?.(inp.x, inp.y) ? 'tank' : 'mini';
+    if (this.boat.dragging && !fighting) layer = 'boat';
     this.layer = layer;
-    // Desktop overlay (Electron): stay click-through unless fishing or the pointer is on game UI.
-    if (host.clickThrough) {
-      const want = this.mode === 'overlay' && ((this.overlayFishing && !this.paused) || this.fishing.busy || layer === 'ui' || this.ui.blocking || !!this.desktop.drag || layer === 'boat');
-      if (want !== this.interactive) { this.interactive = want; host.setInteractive(want); }
-    }
     cur.inWorld = (layer === null || fighting) && view === 'ocean' && inp.inside;
 
     // mouse wheel over open water scrolls between the underwater view and the surface/boat view
@@ -565,18 +491,10 @@ export class Game {
       if (inp.keyPressed('PageDown') || inp.keyPressed('End')) cam.scrollTo(0);
     }
 
-    if (!this.mini && layer !== 'tutorial') {
-      const deskLayer = layer === 'ui' || layer === 'tank' ? 'ui' : layer === 'drag' ? null : layer === 'boat' || layer === 'build' ? 'ui-blocked' : layer;
-      this.desktop.update(dt, inp, deskLayer === 'ui' ? 'ui-blocked' : deskLayer);
-    }
+    this.hud.update(dtReal, inp, layer === 'hud'); // [phase4:shell]
     this.aquarium.update(dt, layer === 'tank' ? inp : null);
 
-    // dropped files become bait
-    if (inp.files && !this.mini) {
-      for (const f of inp.files.slice(0, 3)) this.addFileBait(f.name, f.isDir);
-    }
-
-    const worldInput = (layer === null || fighting) && view === 'ocean' && !this.mini && (!host.clickThrough || this.overlayFishing || fighting) && (ocean.reveal >= 1 || this.tutorial.allowFishing) && !ocean.travelState;
+    const worldInput = (layer === null || fighting) && view === 'ocean' && (ocean.reveal >= 1 || this.tutorial.allowFishing) && !ocean.travelState;
     // double-clicking a posing Shortcut Fish unmasks it
     if (worldInput && inp.dblclick && !fighting) {
       for (const f of this.school.fishes) if (f.posing && dist(f.x, f.y, cur.x, cur.y) < 18) { f.unmask(); inp.consume(); }
@@ -584,7 +502,7 @@ export class Game {
     // the boat and the building system (world space)
     this.boat.update(dt, layer === 'boat' ? inp : null);
     try { this.build?.update?.(dt, inp, layer); } catch (e) { if (!this.buildErr) { this.buildErr = true; console.error(e); } }
-    if (view === 'ocean' && !this.mini) {
+    if (view === 'ocean') {
       this.school.update(dt);
       this.fishing.update(dt, worldInput);
       const rb = this.bonus('baitRadius');
@@ -609,7 +527,7 @@ export class Game {
   updateWater(dt) {
     const water = this.water, ocean = this.ocean;
     if (!water) return;
-    const live = this.state.view === 'ocean' && !this.mini && ocean.reveal >= 1 && !ocean.travelState;
+    const live = this.state.view === 'ocean' && ocean.reveal >= 1 && !ocean.travelState;
     const level = live ? ocean.waterLevel() : null;
     water.update(dt, { surfaceY: level, top: ocean.top, W: this.screen.W, H: this.screen.H, waveAt: (x) => ocean.waveAt(x) });
     if (!live) return;
@@ -660,8 +578,7 @@ export class Game {
 
   handleKeys() {
     const inp = this.input;
-    if (this.input.lastKeyEvent && this.desktop.windows.length && this.desktop.windows[this.desktop.windows.length - 1].app === 'terminal') return;
-    const map = { j: 'journal', l: 'lab', k: 'lab', t: 'map', b: 'bait', w: 'wardrobe', o: 'multiplayer', p: 'pause', m: 'mini', a: 'tank' };
+    const map = { j: 'journal', l: 'lab', k: 'lab', t: 'map', b: 'bait', s: 'baitshop', w: 'wardrobe', o: 'multiplayer', p: 'pause', a: 'tank' };
     for (const [k, cmd] of Object.entries(map)) {
       if (inp.keyPressed(k)) {
         if (this.tutorial.active && cmd !== 'pause') continue;
@@ -669,7 +586,9 @@ export class Game {
       }
     }
     if (inp.keyPressed('F3')) this.state.settings.showFps = !this.state.settings.showFps;
-    if (!this.tutorial.active && !this.mini) {
+    // Esc with nothing open: the settings / pause menu (an open panel closes itself on Esc)
+    if (inp.keyPressed('Escape') && !this.ui.active && !this.fishing.fighting && !this.tutorial.intro) { this.command('settings'); inp.keysPressed?.delete?.('Escape'); }
+    if (!this.tutorial.active) {
       if (inp.keyPressed('u')) { try { this.build?.toggle?.(); } catch (e) { console.error(e); } }
       if (inp.keyPressed('i') && this.ui.panels?.inventory) this.ui.toggle('inventory');
     }
@@ -677,26 +596,20 @@ export class Game {
 
   // ------------------------------------------------------------------ drawing
   // Layers: [world A: biome back/seabed/near + far & mid fish, offscreen when the water shader runs]
-  //   -> water post-process -> boat -> darkness pass -> boat lights -> desktop icons
-  //   -> [world B: near fish, fg particles, biome front, bait fx, line & hook, cinematics] -> windows, HUD, UI.
+  //   -> water post-process -> boat -> darkness pass -> boat lights
+  //   -> [world B: near fish, fg particles, biome front, bait fx, line & hook, cinematics] -> aquarium window, HUD, UI.
   draw(dt) {
     const ctx = this.screen.ctx;
     const W = this.screen.W, H = this.screen.H;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
-    if (this.mini) { this.drawMini(ctx, dt); return; }
     if (this.tutorial.intro?.opaque) { this.tutorial.drawUi(ctx); this.drawCursor(ctx); return; } // [phase3:intro] the opening covers the frame
-    const realDesktop = this.overlay; // Electron overlay / wallpaper: the real desktop replaces the simulated one
-    if (realDesktop) ctx.clearRect(0, 0, W, H);
 
     const ocean = this.ocean;
     const view = this.state.view;
     const cam = this.camera;
-    // adjustable transparency: overlay shows the real desktop through the water; on web the classic wallpaper
-    const opacity = this.mode === 'overlay' ? this.state.settings.overlayOpacity ?? 0.25 : this.state.settings.oceanOpacity ?? 1;
-    if (!realDesktop && opacity >= 1 && view === 'ocean') { ctx.fillStyle = '#0b1622'; ctx.fillRect(0, 0, W, H); }
-    if (!realDesktop && opacity < 1 && view === 'ocean') this.wallpaper.draw(ctx, dt);
+    if (view === 'ocean') { ctx.fillStyle = '#0b1622'; ctx.fillRect(0, 0, W, H); }
     const liveOcean = view === 'ocean' && !ocean.travelState && ocean.reveal >= 1;
     const shader = liveOcean && !this.lowPower && this.water?.available;
     let wctx = ctx;
@@ -720,29 +633,21 @@ export class Game {
       env.view = cam.view();
       const sorted = this.school.sorted();
       this.sortedCache = sorted;
-      if (ocean.reveal < 1) this.wallpaper.draw(wctx, dt);
       if (ocean.reveal > 0) {
-        if (ocean.reveal < 1) { wctx.save(); this.wallpaper.clipOcean(wctx); }
-        wctx.globalAlpha = opacity;
         ocean.biome.drawBack(wctx, env);
         L = ocean.lighting();
         try { this.build?.addLights?.(L); } catch (e) { if (!this.buildLightErr) { this.buildLightErr = true; console.error(e); } }
         wctx.globalAlpha = 1;
         this.floaters?.draw(wctx, 'far'); // [phase3:world]
         this.drawFishRange(wctx, sorted, 0.66, 2, L);
-        wctx.globalAlpha = opacity;
         ocean.biome.drawSeabed(wctx, env);
-        wctx.globalAlpha = 1;
         this.floaters?.draw(wctx, 'mid'); // [phase3:world]
         this.drawBuildings(wctx, env, 'far');
         this.drawFishRange(wctx, sorted, 0.33, 0.66, L);
-        wctx.globalAlpha = opacity;
         ocean.biome.drawNear?.(wctx, env);
-        wctx.globalAlpha = 1;
         this.floaters?.draw(wctx, 'near'); // [phase3:world]
         this.drawBuildings(wctx, env, 0);
         this.particles.draw(wctx, 'bg', this.time);
-        if (ocean.reveal < 1) { wctx.restore(); this.wallpaper.drawWaterline(wctx); }
       } else {
         this.drawFishRange(wctx, sorted, 0.33, 2, L);
       }
@@ -760,7 +665,7 @@ export class Game {
       cam.reset(ctx);
       if (L.dark > 0.02) L.lights.push(...this.boat.lights());
     }
-    if (!realDesktop && view === 'ocean' && !ocean.travelState && ocean.reveal > 0) ocean.applyLighting(ctx, L);
+    if (view === 'ocean' && !ocean.travelState && ocean.reveal > 0) ocean.applyLighting(ctx, L);
     if (liveOcean) {
       cam.apply(ctx);
       this.boat.drawLights(ctx, L.dark);
@@ -768,12 +673,7 @@ export class Game {
       this.net?.draw(ctx, 'tags'); // [phase3:online] name tags, emotes, catch pop-ups (screen space call)
     }
 
-    // desktop icons sit above the ocean (kept readable)
-    if ((view === 'ocean' || view === 'aquarium') && !realDesktop) {
-      this.baitFx.drawUnderIcons(ctx);
-      this.desktop.drawIcons(ctx);
-      if (this.tutorial.boxVisible()) this.desktop.drawBox(ctx, this.tutorial.boxOffset());
-    }
+    if (view === 'ocean') this.baitFx.drawUnderIcons(ctx);
 
     cam.apply(ctx);
     if (view === 'ocean' && !ocean.travelState) {
@@ -789,15 +689,8 @@ export class Game {
     cam.reset(ctx);
 
     this.tutorial.drawWorld?.(ctx);
-    if (this.mode === 'wallpaper') return;
-    if (realDesktop) this.desktop.drawBox(ctx);
-    this.dock.draw(ctx, dt);
     this.aquarium.drawWindow?.(ctx, dt);
-    if (!realDesktop) {
-      this.desktop.drawWindows(ctx);
-      this.desktop.drawDragged(ctx);
-      this.desktop.drawTaskbar(ctx);
-    }
+    this.hud.draw(ctx); // [phase4:shell] hotbar, gear pod, location chip
     this.fishing.drawHud(ctx);
     try { this.build?.drawUi?.(ctx); } catch (e) { if (!this.buildUiErr) { this.buildUiErr = true; console.error(e); } }
     this.ui.drawHud(ctx, dt);
@@ -808,10 +701,10 @@ export class Game {
     this.tutorial.drawUi?.(ctx);
     this.particles.draw(ctx, 'ui', this.time);
     this.ui.drawToasts(ctx);
-    this.desktop.drawTooltip(ctx, this.input);
+    this.hud.drawTooltip(ctx, this.input);
     this.ui.drawTip(ctx);
     cam.drawFlash(ctx);
-    if (this.paused) drawText(ctx, 'FISHING PAUSED (P)', W / 2, 6, { align: 'center', color: '#ffe8a8', outline: '#1a0e06' });
+    if (this.paused) drawText(ctx, 'PAUSED (P)', W / 2, 8, { align: 'center', color: '#ffffff', shadow: '#0a3e74' });
     if (this.state.settings.showFps) drawText(ctx, `${Math.round(this.fps)} fps  ${this.school.fishes.length} fish  ${this.particles.list.length} p  water:${this.water?.active ? this.water.kind : '2d'}`, 4, H - 36, { font: 'small', color: '#ffffff', outline: '#000' });
     this.drawCursor(ctx);
   }
@@ -843,13 +736,6 @@ export class Game {
   }
 
   drawFishExtras(ctx, f) {
-    if (f.carry) {
-      const m = f.anchors?.mouth || [f.x, f.y];
-      ctx.drawImage(getMiniIcon(f.carry.icon), Math.round(m[0] - 7 + f.facing * 4), Math.round(m[1] - 4));
-    }
-    if (f.posing) {
-      drawText(ctx, 'fish.exe', f.x, f.y + 20, { align: 'center', color: '#ffffff', outline: '#0b1a2a' });
-    }
     if (f.emote && f.z < 0.5) {
       const top = f.anchors?.top || [f.x, f.y - 14];
       const k = f.emote.t / f.emote.max;
@@ -864,24 +750,15 @@ export class Game {
     if (this.stats.sonar && (f.sp.rarity === 'epic' || f.sp.rarity === 'legendary' || f.sp.rarity === 'rare') && rng.chance(0.02)) this.particles.sparkle(f.x, f.y - 8, '#9affff');
   }
 
-  drawMini(ctx, dt) {
-    this.wallpaper.draw(ctx, dt, true);
-    this.desktop.drawIcons(ctx);
-    this.aquarium.drawMini?.(ctx, dt);
-    this.desktop.drawTaskbar(ctx);
-    this.ui.drawToasts(ctx);
-    this.drawCursor(ctx);
-  }
-
   drawCursor(ctx) {
     const inp = this.input;
     if (!inp.inside) return;
     const x = Math.round(inp.x), y = Math.round(inp.y);
-    const fishingCursor = this.world.cursor.inWorld && !this.paused && this.state.view === 'ocean' && !this.mini && (this.ocean.reveal >= 1 || this.tutorial.allowFishing);
+    const fishingCursor = this.world.cursor.inWorld && !this.paused && this.state.view === 'ocean' && (this.ocean.reveal >= 1 || this.tutorial.allowFishing);
     if (fishingCursor && !this.fishing.fighting) return; // the hook itself is the cursor
     let name = 'cursor';
-    if (this.desktop.drag || this.boat.dragging) name = 'cursor_grab';
-    else if (this.layer === 'boat' || this.layer === 'icon' || this.layer === 'box' || this.ui.dockHover >= 0) name = 'cursor_hand';
+    if (this.boat.dragging) name = 'cursor_grab';
+    else if (this.layer === 'boat' || this.layer === 'hud') name = 'cursor_hand';
     if (this.fishing.fighting) name = 'cursor_reel';
     const spr = getUiIcon(name) || getUiIcon('arrow_u');
     const hs = CURSOR_HOTSPOT[name] || [0, 0];

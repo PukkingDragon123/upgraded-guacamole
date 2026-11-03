@@ -80,7 +80,7 @@ export class Fish {
     if (this.style === 'crawl') this.z = rng.float(0, 0.3);
     if (this.quirks.has('wakka')) initWakka(this);
     // walkers in sneakers stand on their soles, not their bellies
-    const sk = species.look?.sneakers;
+    const sk = !this.c.real && species.look?.sneakers; // phase 4: realistic models wear no sneakers
     this.legs = sk ? (species.look.body?.h ?? 18) * 0.5 + (sk.h ?? 10) * 1.05 : 0;
     this.hopY = 0; this.hopV = 0;
   }
@@ -317,6 +317,8 @@ export class Fish {
     if (this.inflateHold > 0) this.inflateHold -= dt;
     else this.inflate = Math.max(0, this.inflate - dt * 0.35);
 
+    this.breathe(dt, s01);
+
     // idle glances
     this.glanceT -= dt;
     if (this.glanceT <= 0) {
@@ -392,6 +394,7 @@ export class Fish {
     this.feel('scared', 1.5);
     if (this.quirks.has('inflate')) {
       this.inflate = 1; this.inflateHold = 2.5; this.world.audio?.play('puff', { pitch: 1 / this.scale }); this.squashV += 8;
+      if (this.anchors?.mouth) this.world.particles?.aeroBubbles?.(this.anchors.mouth[0], this.anchors.mouth[1], 6, { w: 6, h: 6, sizes: [1, 2, 2, 3], speed: [16, 40] });
       if (this.quirks.has('buffering')) this.feel('dizzy', 3); // a spinning loading wheel in each eye
     }
     if (this.quirks.has('honk')) this.world.audio?.play('honk', { pitch: rng.float(0.9, 1.1) });
@@ -786,6 +789,27 @@ export class Fish {
       sy += ((ay / n) - this.vy) * 0.5 * k + ((cy / n) - this.y) * 0.4 * k;
     }
     return [sx, sy];
+  }
+
+  // Glossy bubbles trail from the mouth and gill slits while swimming (faster swimming = more bubbles).
+  breathe(dt, s01) {
+    const ps = this.world.particles;
+    if (!ps || this.alpha < 0.5 || this.hero || this.camo > 0.5) return;
+    const real = this.c.real;
+    if (!real) return;
+    const a = this.anchors;
+    if (!a?.mouth) return;
+    const solid = real.plan === 'solid';
+    const k = (real.bubbly ?? 1) * (solid ? 0.3 : 1) * (1 - this.z * 0.6);
+    this.bubbleT = (this.bubbleT ?? Math.random() * 2) - dt * (0.35 + s01 * 1.4 + (this.state === 'flee' ? 2 : 0)) * k;
+    if (this.bubbleT > 0) return;
+    this.bubbleT = 0.6 + Math.random() * 1.4;
+    const sc = this.scale * (1 - this.z * 0.5);
+    // exhale behind the mouth, at the gill opening, drifting back from the head
+    const gx = a.mouth[0] - this.facing * (6 + 6 * sc), gy = a.mouth[1] + 1;
+    const n = 1 + (Math.random() < 0.35 + s01 * 0.4 ? 1 : 0) + (Math.random() < 0.15 ? 1 : 0);
+    const big = Math.max(1, Math.round(sc * 1.6));
+    ps.aeroBubbles?.(gx, gy, n, { w: 2 * sc, h: 2 * sc, vx: -this.vx * 0.25, sizes: [big, big, big + 1, Math.max(1, big - 1)], speed: [10, 26], life: [1.2, 2.6], delay: 0.25 });
   }
 
   // ------------------------------------------------------------------ drawing

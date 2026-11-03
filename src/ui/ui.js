@@ -1,7 +1,7 @@
-// UI manager: modal panel stack, immediate-mode widgets, glass toasts and the Aero HUD pill.
+// UI manager: modal panel stack, immediate-mode widgets, glass toasts and the Aero currency pill.
 // Panels: { id, open(data), close(), draw(ctx, ui, dt) (immediate mode: draw + handle input), rect, modal }
-// The game menu lives on the desktop (floating app icons, src/desktop/desktop.js); while a modal panel is open
-// those icons are drawn above the dim and stay clickable, so they double as tabs.
+// The game menu is the Aero HUD hotbar (src/ui/hud.js, game.hud); while a modal panel is open the hotbar is
+// drawn above the dim and stays clickable, so its buttons double as tabs.
 
 import { clamp01, lerp, ease, rectContains } from '../core/math.js';
 import { rgba } from '../core/color.js';
@@ -23,8 +23,7 @@ export class UI {
     this.time = 0;
     this.coinShown = 0;
     this.coinBump = 0;
-    this.dockHover = -1;
-    this.dock = [];
+    this.dockHover = -1; // legacy readers
     this.flyers = []; // Aero drops flying to the counter
     this.anim = 0;
   }
@@ -68,7 +67,6 @@ export class UI {
   hit(x, y) {
     if (this.blocking) return true;
     for (const p of this.stack) if (p.rect && rectContains(p.rect, x, y)) return true;
-    if (this.dockHit(x, y) >= 0) return true;
     if (this.coinRect && rectContains(this.coinRect, x, y)) return true;
     return false;
   }
@@ -176,32 +174,11 @@ export class UI {
     return { x: r.x + 11, y: r.y + 10 };
   }
 
-  // ---------------------------------------------------------------- legacy dock hooks (no seabed dock any more)
-  setDock(items) { this.dock = items || []; }
-
-  dockHit(x, y) {
-    for (let i = 0; i < this.dock.length; i++) {
-      const d = this.dock[i];
-      if (d.rect && rectContains(d.rect, x, y)) return i;
-    }
-    return -1;
-  }
-
   // ---------------------------------------------------------------- frame
   drawHud(ctx, dt) {
     const g = this.game;
     this.tip = null;
-    this.drawAeroPill(ctx);
-    // legacy dock items (dev pages only)
-    this.dockHover = this.blocking ? -1 : this.dockHit(this.inp.x, this.inp.y);
-    for (let i = 0; i < this.dock.length; i++) {
-      const d = this.dock[i];
-      d.draw?.(ctx, this.dockHover === i, this.time);
-      if (this.dockHover === i) {
-        this.tip = d.label;
-        if (this.inp.pressed && !g.fishing?.fighting) { this.inp.pressed = false; g.audio.play('ui_click'); d.action(); }
-      }
-    }
+    if (!g.tutorial?.intro) this.drawAeroPill(ctx);
     // flying drops
     for (const f of this.flyers) {
       const k = ease.inCubic(clamp01(f.t / f.dur));
@@ -216,17 +193,19 @@ export class UI {
     const W = this.game.screen.W;
     const txt = fmtAero(this.coinShown);
     const tw = measureText(txt);
-    const w = tw + 30, h = 20;
+    const w = Math.max(64, tw + 38), h = 22;
     const bump = this.coinBump > 0 ? Math.sin(this.coinBump * 10) * this.coinBump * 2 : 0;
     const r = { x: W - w - 8, y: 6 - Math.round(bump), w, h };
     this.coinRect = r;
     const hov = this.hover(r) && !this.blocking;
-    if (this.coinBump > 0.05) drawAeroGlow(ctx, r.x + 11, r.y + 10, 16, '#9ff6ff', this.coinBump * 0.8);
-    ctx.drawImage(aeroCached(`hudpill|${w}|${hov}`, () => aeroSurface(w, h, { tone: hov ? { top: '#ffffff', mid: '#f4fcff', bot: '#cdeefc', edge: '#2a86c4', a: [0.97, 0.95], glow: '#ffffff' } : 'frost', r: 'pill', gloss: 0.75, glossH: 9, curve: 2, rim: 0.9, glow: 0.5, glowColor: '#bfeaff', sparkle: 1 })), r.x, r.y);
-    drawAeroLeaf(ctx, r.x + 4, r.y + 15, 13, 7, 150, { tone: 'deep', flip: true });
-    drawAeroLeaf(ctx, r.x + 5, r.y + 14, 15, 8, -160, { tone: 'lime' });
-    drawAeroCoin(ctx, r.x + 11, r.y + 10, 6.5, this.time);
-    drawText(ctx, txt, r.x + w - 8, r.y + 7, { align: 'right', color: AERO.ink, shadow: '#ffffff' });
+    if (this.coinBump > 0.05) drawAeroGlow(ctx, r.x + 12, r.y + 11, 18, '#9ff6ff', this.coinBump * 0.8);
+    ctx.fillStyle = 'rgba(3,38,74,0.16)';
+    ctx.fillRect(r.x + 8, r.y + h, w - 16, 2);
+    ctx.drawImage(aeroCached(`hudpill|${w}|${h}|${hov}`, () => aeroSurface(w, h, { tone: hov ? { top: '#ffffff', mid: '#f4fcff', bot: '#cdeefc', edge: '#2a86c4', a: [0.97, 0.95], glow: '#ffffff' } : { top: '#ffffff', mid: '#eef9ff', bot: '#bfe6f8', edge: '#4a9ed0', a: [0.96, 0.95], glow: '#ffffff' }, r: 'pill', gloss: 0.8, glossH: 10, curve: 2, rim: 0.9, glow: 0.6, glowColor: '#ffffff', sparkle: 1 })), r.x, r.y);
+    drawAeroLeaf(ctx, r.x + 4, r.y + 17, 14, 8, 150, { tone: 'deep', flip: true });
+    drawAeroLeaf(ctx, r.x + 5, r.y + 16, 16, 9, -160, { tone: 'lime' });
+    drawAeroCoin(ctx, r.x + 12, r.y + 11, 7.5, this.time);
+    drawText(ctx, txt, r.x + w - 9, r.y + 8, { align: 'right', color: AERO.ink, shadow: '#ffffff' });
     if (hov) this.tip = CURRENCY;
   }
 
@@ -235,9 +214,9 @@ export class UI {
     if (this.blocking) {
       ctx.fillStyle = rgba('#04304e', 0.36 * Math.min(1, (this.active?.anim ?? 1) * 2));
       ctx.fillRect(0, 0, g.screen.W, g.screen.H);
-      // the floating menu icons stay above the dim and keep working as tabs
+      // the HUD hotbar stays above the dim and keeps working as tabs
       const over = this.stack.some((p) => p.rect && rectContains(p.rect, this.inp.x, this.inp.y));
-      try { g.desktop?.drawMenuOverlay?.(ctx, this.inp, !over); } catch (e) { if (!this.menuErr) { this.menuErr = true; console.error(e); } }
+      try { g.hud?.drawOverlay?.(ctx, this.inp, !over); } catch (e) { if (!this.menuErr) { this.menuErr = true; console.error(e); } }
     }
     for (const p of this.stack.slice()) {
       const top = p === this.active;

@@ -84,6 +84,9 @@ export class School {
       fish.x = opts.x; fish.y = opts.y; fish.z = opts.z ?? 0.3;
     } else if (fromFog || sp.move?.style === 'crawl') {
       fish.x = rng.float(60, w.W - 60);
+      // [phase4:zoom] the zoomed camera sees part of the world: most fish fade in around the view
+      const v = w.view;
+      if (v && v.x1 - v.x0 < w.W * 0.9 && rng.chance(0.75)) fish.x = clamp(rng.float(v.x0 - 60, v.x1 + 60), 60, w.W - 60);
       fish.z = sp.move?.style === 'crawl' ? rng.float(0, 0.3) : rng.float(0.75, 1);
       fish.y = lerp(top, w.floorAt(fish.x, fish.z) - 10, rng.float(d0, d1));
       if (sp.move?.style === 'crawl') fish.x = rng.chance(0.5) ? -20 : w.W + 20;
@@ -96,6 +99,8 @@ export class School {
       fish.turn = fish.facing;
       fish.setState('enter');
       fish.enterTarget = { x: left ? rng.float(80, w.W * 0.6) : rng.float(w.W * 0.4, w.W - 80), y: fish.y };
+      const v = w.view; // [phase4:zoom] swim into the part of the world the camera is looking at
+      if (v && v.x1 - v.x0 < w.W * 0.9) fish.enterTarget.x = clamp(rng.float(v.x0 + 30, v.x1 - 30), 80, w.W - 80);
     }
     fish.life = rng.float(70, 200);
     this.fishes.push(fish);

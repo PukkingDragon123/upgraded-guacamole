@@ -51,7 +51,7 @@ const ZONE1 = SEA - depthY(200), ZONE2 = SEA - depthY(1000); // sunlight / twili
 // sea = where the boat moors on the surface)
 export const MAP_LOCATIONS = [
   {
-    id: 'oscean', name: '(OS)cean', sub: 'The desktop wallpaper, flooded', depth: 4, color: '#38b6ff',
+    id: 'oscean', name: '(OS)cean', sub: 'Rolling green hills, flooded' /* [phase4:shell] */, depth: 4, color: '#38b6ff',
     geo: { u: -18, w: 50, h: SEA - 8, s: 14, rad: 30 }, pin: [-19, SEA + 21, 49], focus: [-19, SEA + 9, 49], sea: [-3, 30],
     desc: 'Rolling green hills, wind turbines and bubbles under a glossy sky. Home sweet home.',
     weathers: ['sunny', 'bubbles', 'glossyrain', 'aurora'],

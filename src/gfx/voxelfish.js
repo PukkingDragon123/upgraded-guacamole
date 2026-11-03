@@ -1,42 +1,39 @@
-// Voxel fish engine: every creature becomes a 3D voxel sculpture built from its procedural look, rendered
-// by a fish-specialised orthographic ray-caster, so fish turn smoothly through yaw instead of flipping.
+// Voxel fish engine: every creature is a 3D voxel sculpture rendered by a fish-specialised orthographic
+// ray-caster, so fish turn smoothly through yaw instead of flipping.
 //
-// Model resolution follows the on-screen size (~VP screen px per voxel), so big fish get finer voxels.
-//  1. Layout: the look's rig layers are rasterised in voxel-albedo mode (fishart.rasterLayerVox: clean
-//     tones, no 2D lighting) at the model resolution, one pixel per voxel column.
-//  2. Grid (per swim frame): the body is extruded with an elliptical cross-section from a Euclidean
-//     distance transform (laterally compressed per shape); the spine bends along a travelling wave with
-//     arc-length compression (the tail visibly sweeps even side-on); fins are translucent 1-voxel
-//     membranes with opaque rays; pectorals hinge out from the flanks; eyes/mouth are stamped on both
-//     flanks (eyes domed). Kinds (crab, jelly, ray...) use their 2D animation frames; jellies, puddings,
-//     octopuses and blobs are solids of revolution.
-//  3. Render (per yaw / pitch / scale bucket): camera-space light from the upper left, blend of smoothed
-//     and per-face normals (visible voxel facets), per-face AO, sky/bounce ambient, Blinn glints, an
-//     underwater rim light, a hue-shifted 21-tone ramp, translucent membranes over the body, interior
-//     depth lines, a selective dark outline and an emissive glow halo. Frames render progressively
-//     (row slices) under a per-frame time budget, with nearest-frame fallback, LRU caches and warm-up.
-//
-// Phase 3 Frutiger Aero styling: vivid tropical saturation, translucent aqua-tinted fins that keep their hue,
-// glossy sheen and glints, and CARTOON voxel eyes (white ball, big dark pupil, a white shine voxel; lids for
-// blink / squint / sad / angry, a pink heart pupil for love, a swirl for dizzy). Outfits and gadgets:
-// look.rotor (spinning wind turbine), look.sneakers {u, h, len, accent} (white high-tops that walk with the
-// swim cycle), look.orb {r, color} (a glass water bubble around the fish), glasses extras (lenses / patch
-// stamped over the eye), look.vox.glass >= 0.5 (see-through iridescent soap-bubble body).
+// Phase 4 (realistic voxel fish): models come from src/fish/realvox.js, built from the anatomy library in
+// src/fish/anatomy.js (every look resolves to one, see fishart.compileLook -> c.real):
+//  - 'fish' plan: a bilateral column model (side-view maps of body mask / half-thickness / albedo sampled
+//    from an analytic anatomy) -> realGrid() per swim frame: travelling-wave spine bend, centre-plane fin
+//    membranes with rays, 3D paired fins that flap, barbels, lures, teeth, natural eyes. Flatfish and rays are
+//    the same model rolled toward the camera (G.roll); rays flap their wings, cetaceans undulate vertically.
+//  - 'solid' plan: crabs, jellyfish, octopus, squid, starfish, isopods, the seahorse and the Wakka chomper are
+//    voxelised primitives with analytic normals (solidGrid per animation frame).
+// Resolution follows the on-screen size (~VP device px per voxel, finer since the camera zoomed in); the
+// rig passes the transform scale of the canvas, so zoomed views render at device resolution.
+// Render (per yaw / pitch / scale bucket): camera-space light from the upper left, analytic smooth normals,
+// per-face AO, sky/bounce ambient, Blinn glints, a soft aqua rim light, Frutiger Aero gloss and a faint
+// iridescent sheen, translucent fin membranes over the body, interior depth lines, a selective outline and
+// an emissive glow halo (photophores, lures). Frames render progressively (row slices) under an adaptive
+// per-frame time budget, with nearest-frame fallback, LRU caches and warm-up (swim cycle first).
+// Close-ups add finer natural eye parts (dark pupil, coloured iris ring, catchlight; no lids, no cartoon).
 // Canonical yaw is -90..90 (0 = facing right, 90 = toward the viewer); left-facing fish are mirrored.
-// Composition (face overlays, wash, glow, silhouette) lives in fishrig.js (drawFishRig, style 'voxel').
-// drawVoxelFish(ctx, fish, {scale, glow, alpha}) remains for the aquarium (fish objects in tank space; it also
-// draws a Wakka fish's pellet bubbles).
+// Composition (wash, glow, silhouette) lives in fishrig.js (drawFishRig). drawVoxelFish(ctx, fish, {scale,
+// glow, alpha}) remains for the aquarium (fish objects in tank space; it also draws a Wakka fish's pellets).
+// The legacy look rasteriser path (buildLayout / cartoon eye parts) only serves looks without a real model,
+// which no longer occur (fishart resolves a fallback model for any look).
 
 import { rigLayers, rigGeom, rasterLayerVox, voxAlbedo, paintMouth, mouthBox, isKind, chainHeadVox, chainSegColor, emotionParams } from './fishart.js';
 import { PixelBuffer } from './pixel.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { drawFishRig } from './fishrig.js';
 import { drawPellets, wakkaRig } from '../fish/wakka.js';
+import { realLayout, realGrid, realEyeColor, solidGrid, realSegColor } from '../fish/realvox.js';
 
-export const VP = 2;               // target on-screen pixels per voxel
-const SCALE_STEP = 1.09;           // on-screen scale buckets (drawn scaled to the exact size)
+export const VP = 1.4;             // target on-screen pixels per voxel (phase 4: finer voxels for the zoomed camera)
+const SCALE_STEP = 1.12;           // on-screen scale buckets (drawn scaled to the exact size)
 export const YAW_STEP = 15;        // degrees per canonical yaw bucket (-90..90)
-const PITCH_STEP = 10;             // degrees per pitch bucket
+const PITCH_STEP = 12;             // degrees per pitch bucket
 const PITCH_MAX = 3;
 const CHAIN_PITCH_STEP = 15;
 const CHAIN_PITCH_MAX = 6;
@@ -44,7 +41,7 @@ const CAM_TILT = 16;               // we look slightly down onto the fish
 export const SWIM_N = 6;           // tail-beat frames
 const KIND_N = 6;                  // animation frames for kinds (legs, tentacles...)
 const INFL_N = 3;                  // inflate steps: 0, 1/3, 2/3, 1
-const MAX_VOX_LEN = 120;           // cap on model length (voxels): giants get chunkier voxels
+const MAX_VOX_LEN = 300;           // cap on model length (voxels): giants get chunkier voxels
 const FRAME_PX_MAX = 16e6;         // frame cache budget (pixels)
 const GRID_BYTES_MAX = 64e6;
 const LAYOUT_MAX = 260;
@@ -64,7 +61,7 @@ const FRONT_KINDS = new Set(['crab', 'jelly', 'pudding', 'octopus', 'star', 'ray
 
 // ------------------------------------------------------------------ budget
 
-let budgetMs = 3.2, spent = 0, forceSpent = 0, rafOn = false, lastReset = 0;
+let budgetMs = 3.2, budgetCap = 7, spent = 0, forceSpent = 0, rafOn = false, lastReset = 0, lastTick = 0;
 let statBuilt = 0, statFallback = 0, statJobs = 0, statPx = 0, workTotal = 0;
 const FORCE_MS = 20;               // extra per-frame allowance to get a creature's very first frame
 let syncAll = false;
@@ -72,7 +69,7 @@ let syncAll = false;
 export function setVoxelSync(on) { syncAll = !!on; }
 const WARM_MS = 1;                 // idle warm-up per animation frame
 
-export function setVoxelFishBudget(ms) { budgetMs = ms; }
+export function setVoxelFishBudget(ms) { budgetMs = ms; budgetCap = Math.max(ms, 2); }
 export function beginVoxelFishFrame() { if (!rafOn) { spent = 0; forceSpent = 0; } }
 if (typeof window !== 'undefined') window.__voxStats = () => voxelFishStats();
 export function voxelFishStats() {
@@ -83,6 +80,13 @@ function ensureTick() {
   rafOn = true;
   const tick = () => {
     requestAnimationFrame(tick);
+    // adaptive budget (AIMD): grow while frames arrive on time, back off when they are late
+    const t = now(), dt = t - lastTick;
+    lastTick = t;
+    if (dt > 0 && dt < 200) {
+      if (dt < 18.5) budgetMs = Math.min(budgetCap, budgetMs + 0.08);
+      else if (dt > 21) budgetMs = Math.max(1.6, budgetMs * 0.8);
+    }
     spent = 0; forceSpent = 0; lastReset = now();
     try { runWants(); runWarm(); } catch (e) { console.warn('voxelfish', e); wants.clear(); warmQ.length = 0; }
   };
@@ -106,7 +110,7 @@ function lookLen(c) {
 // Model resolution level (voxels per look px = 2^(rk/2)) for a scale bucket.
 function resLevel(c, Sb) {
   // look.vox.chunk > 1: deliberately chunkier voxels (the retro Wakka chomper)
-  let rk = Math.round(2 * Math.log2(Sb / (VP * (c.look.vox?.chunk || 1))));
+  let rk = Math.round(2 * Math.log2(Sb / (VP * (c.real ? c.real.chunk || 1 : c.look.vox?.chunk || 1))));
   const cap = Math.floor(2 * Math.log2(MAX_VOX_LEN / lookLen(c)));
   return clamp(Math.min(rk, cap), -6, 4);
 }
@@ -152,6 +156,18 @@ const DEF_MAT = { gloss: 0.8, iri: 0.14, chrome: 0, glass: 0, finGlass: 0.84, fi
 const VIVID = 0.32;
 export function matOf(c) {
   if (c._vmat) return c._vmat;
+  if (c.real) {
+    // realistic creatures: natural gloss, a faint iridescent sheen on the scales, glassy see-through fins
+    const v = c.real.mat || {};
+    const m = {
+      ...DEF_MAT, gloss: v.gloss ?? 0.82, iri: (v.iri ?? 0.12) + (c.variant?.shiny ? 0.3 : 0), chrome: v.chrome ?? 0, glass: v.glass ?? 0,
+      finGlass: v.finGlass ?? 0.58, finTint: v.finTint ?? 0.1, sheen: v.sheen ?? 0.7, rim: v.rim ?? 1, scales: false, real: true,
+      vivid: v.vivid ?? 0.16, silver: v.silver ?? 0,
+    };
+    if (c.variant?.mutation === 'ghost') { m.glass = Math.max(m.glass, 0.45); m.iri = Math.max(m.iri, 0.4); }
+    c._vmat = m;
+    return m;
+  }
   const v = c.look.vox || {};
   const kind = c.kind;
   const m = {
@@ -1009,10 +1025,14 @@ function hash3(x, y, z) {
 }
 
 function camera(G, yawDeg, pitchDeg, s, extraPad = 0) {
-  // M = Tilt * Ry(yaw) * Rz(-pitch): rows are the camera axes expressed in model space
+  // M = Tilt * Ry(yaw) * Rz(-pitch) * Rx(roll): rows are the camera axes expressed in model space
+  // (roll lays flatfish and rays down so their back faces the camera)
+  const roll = (G.roll || 0) * DEG;
   const xf = (v) => {
+    let v1 = v[1], v2 = v[2];
+    if (roll) { const cr = Math.cos(roll), sr = Math.sin(roll); v1 = v[1] * cr - v[2] * sr; v2 = v[1] * sr + v[2] * cr; }
     const cp = Math.cos(-pitchDeg * DEG), sp = Math.sin(-pitchDeg * DEG);
-    let x = v[0] * cp - v[1] * sp, y = v[0] * sp + v[1] * cp, z = v[2];
+    let x = v[0] * cp - v1 * sp, y = v[0] * sp + v1 * cp, z = v2;
     const cy = Math.cos(yawDeg * DEG), sy = Math.sin(yawDeg * DEG);
     const x2 = x * cy - z * sy, z2 = x * sy + z * cy;
     x = x2; z = z2;
@@ -1192,11 +1212,14 @@ class Job {
     let nx = fn[0], ny = fn[1], nz = fn[2];
     let gx = NaN, gy = 0, gz = 0;
     const Lo = G.Lo;
+    let smooth = false;
     if (G.nf) {
       const an = G.nf(ix, iy, iz, v);
       if (an) {
         gx = an[0]; gy = an[1]; gz = an[2];
-        const wf = role === R_LIMB ? 0.3 : 0.12;
+        // realistic bodies: almost purely analytic (smooth) normals, so swim-bend steps do not read as seams
+        smooth = !!mat.real && role === R_BODY;
+        const wf = smooth ? 0.04 : role === R_LIMB ? 0.3 : 0.12;
         nx = nx * wf + gx * (1 - wf); ny = ny * wf + gy * (1 - wf); nz = nz * wf + gz * (1 - wf);
         const l = Math.hypot(nx, ny, nz) || 1;
         nx /= l; ny /= l; nz /= l;
@@ -1254,7 +1277,7 @@ class Job {
       const w = data[x + y * NX + z * NXY];
       if (w && pal.alpha[w] >= 1) occ += a && b ? 0.55 : 1;
     }
-    const ao = 1 - Math.min(1, occ / 5.2);
+    const ao = smooth ? 1 - Math.min(1, occ / 5.2) * 0.25 : 1 - Math.min(1, occ / 5.2);
     const c0 = pal.rgb[v];
     let r = (c0 & 255) / 255, g = ((c0 >>> 8) & 255) / 255, b = ((c0 >>> 16) & 255) / 255;
     let alpha = 1;
@@ -1510,7 +1533,24 @@ function layoutFor(c, rk, infl, pose, kf, deadline) {
   let L = layouts.get(key);
   if (L) { touch(layouts, key, L); return L; }
   const t0 = now();
-  if (c.kind === 'chain') L = buildChainLayout(c, Math.pow(2, rk / 2));
+  if (c.real?.plan === 'fish') {
+    // realistic anatomy model (src/fish/realvox.js)
+    L = realLayout(c, Math.pow(2, rk / 2), infl / INFL_N);
+    L.mat = matOf(c);
+    L.pal = new Pal(L.mat);
+    L.roll = c.real.flat?.roll || 0;
+    if (infl > 0 && c.real.bubbleSkin) {
+      // the Bubble Pufferfish stretches into glossy, iridescent soap-bubble skin when it inflates
+      const k = infl / INFL_N;
+      L.mat = { ...L.mat, iri: L.mat.iri + 0.7 * k, gloss: 1, sheen: 1, rim: 1.4 };
+      L.pal = new Pal(L.mat);
+    }
+    L.eyes.forEach((e) => { e.lidL = L.bellyP; e.lidU = L.skinP; e.skin = L.skinP; });
+  } else if (c.real?.plan === 'solid') {
+    L = { c, solid: true, r: Math.pow(2, rk / 2), kf, mat: matOf(c), bytes: 64, real: true };
+    L.pal = new Pal(L.mat);
+  } else if (c.real?.plan === 'fish' && false) {
+  } else if (c.kind === 'chain') L = buildChainLayout(c, Math.pow(2, rk / 2));
   else {
     // one source raster per creature for every level up to 1 voxel / look px
     const srcK = Math.max(rk, 0);
@@ -1526,7 +1566,7 @@ function layoutFor(c, rk, infl, pose, kf, deadline) {
 }
 
 function gridFor(c, rk, infl, pose, sw, deadline) {
-  const kind = isKind(c) || c.kind === 'chain';
+  const kind = c.real ? c.real.plan === 'solid' : isKind(c) || c.kind === 'chain';
   const kf = kind && c.kind !== 'chain' ? sw : 0;
   const lkey = vidOf(c) + '|' + rk + '|' + infl + '|' + (pose ? 1 : 0) + '|' + kf;
   const gkey = lkey + '#' + (kind ? 0 : sw);
@@ -1535,7 +1575,9 @@ function gridFor(c, rk, infl, pose, sw, deadline) {
   const Lo = layoutFor(c, rk, infl, pose, kf, deadline);
   if (!Lo) return null;
   const t0 = now();
-  G = buildGrid(Lo, kind ? 0 : sw);
+  if (Lo.solid) G = solidGrid(Lo, kf);
+  else if (Lo.real) G = realGrid(Lo, sw);
+  else G = buildGrid(Lo, kind ? 0 : sw);
   spent += now() - t0; workTotal += now() - t0;
   grids.set(gkey, G);
   gridBytes += G.bytes;
@@ -1580,7 +1622,7 @@ function makeFrame(job, meta, up = 1) {
     // everything the dynamic voxel parts need to line up with this frame (no grid reference kept)
     pc: {
       Lo: G.Lo, NY: G.NY, zc: G.zc, zOf: G.zOf, srcOf: G.srcOf, center: G.center, eyes3: G.eyes3 || [], mouth: G.mouth,
-      yaw: job.yaw, pitch: job.pitch, s: job.s, up,
+      yaw: job.yaw, pitch: job.pitch, roll: G.roll || 0, s: job.s, up,
       pkey: meta.vid + '|' + meta.rk + '|' + meta.infl + '|' + meta.pose + '|' + meta.yawI + '|' + meta.pitchI + '|' + meta.sb,
     },
   };
@@ -1640,10 +1682,10 @@ function queueWarm(c, m) {
   warmed.add(key);
   if (warmed.size > 4000) warmed.clear();
   const isK = isKind(c) || c.kind === 'chain';
-  // the turn-around sweep first (so turning never pops), then the swim cycle side-on
-  for (const y of [3, 6, 1, 2, 4, 5, -1, -2]) warmQ.push({ c, m: { ...m, yawI: y, sw: 0 } });
-  if (!isK) for (let s = 1; s < SWIM_N; s++) warmQ.push({ c, m: { ...m, yawI: 0, sw: s } });
-  else for (let s = 1; s < KIND_N; s++) warmQ.push({ c, m: { ...m, yawI: 0, sw: s } });
+  // the swim cycle at the current view first (it plays all the time), then a coarse turn-around sweep
+  const y0 = m.yawI || 0;
+  for (let s = 1; s < (isK ? KIND_N : SWIM_N); s++) warmQ.push({ c, m: { ...m, yawI: y0, sw: (m.sw + s) % SWIM_N } });
+  for (const y of [3, 6, 1, 4]) if (y !== y0) warmQ.push({ c, m: { ...m, yawI: y, sw: 0 } });
   if (warmQ.length > 600) warmQ.splice(0, warmQ.length - 600);
 }
 // Frames requested last frame, biggest on-screen creatures first, within the per-frame budget.
@@ -1654,7 +1696,8 @@ function runWants() {
   if (!wants.size) return;
   const list = [...wants.values()].sort((a, b) => b.pri - a.pri);
   wants.clear();
-  const deadline = t + budgetMs;
+  // a hero close-up (catch card, journal page: pri >= 3) may take a bigger slice so it sharpens quickly
+  const deadline = t + budgetMs * (list[0].hero ? 2.5 : 1);
   for (const w of list) {
     if (now() >= deadline) break;
     const fkey = fkeyOf(w.m);
@@ -1709,7 +1752,7 @@ export function voxelFrame(c, req) {
   if (rafOn) {
     const pri = req.S * lookLen(c) * (req.lod ? 0.35 : 1) * (req.pri ?? 1);
     const w = wants.get(fkey);
-    if (!w || w.pri < pri) wants.set(fkey, { c, m, pri });
+    if (!w || w.pri < pri) wants.set(fkey, { c, m, pri, hero: (req.pri ?? 1) >= 3 });
   } else if (!overBudget()) {
     f = work(c, m, fkey, now() + Math.max(0.5, budgetMs - spent));
     if (f) return { f, k: req.S / f.Sb };
@@ -1743,7 +1786,7 @@ export function benchVoxel(c, S, yaw = 15, pitch = 0) {
   const t0 = now();
   const Lo = layoutFor(c, rk, 0, false, 0, Infinity);
   const t1 = now();
-  const G = buildGrid(Lo, 1);
+  const G = Lo.solid ? solidGrid(Lo, 1) : Lo.real ? realGrid(Lo, 1) : buildGrid(Lo, 1);
   const t2 = now();
   const s = Sb / Lo.r, up = s > 2.6 ? Math.ceil(s / 2.2) : 1;
   const job = new Job(G, yaw, pitch, s / up, { outline: true });
@@ -1762,9 +1805,9 @@ export function clearVoxelFishCache() {
 // ------------------------------------------------------------------ chain segments (voxel balls)
 
 const balls = new Map();
-export function chainBall(c, rScreen) {
+export function chainBall(c, rScreen, fin = false) {
   const rq = Math.max(1, Math.round(rScreen * 2) / 2);
-  const key = vidOf(c) + '|' + rq;
+  const key = vidOf(c) + '|' + rq + (fin ? 'f' : '');
   let b = balls.get(key);
   if (b) return b;
   const Rv = Math.max(1.5, rq / VP);
@@ -1772,13 +1815,13 @@ export function chainBall(c, rScreen) {
   const NXY = n * n;
   const data = new Uint16Array(NXY * n);
   const zmin = new Int16Array(NXY).fill(32767), zmax = new Int16Array(NXY).fill(-1);
-  const pal = new Pal();
+  const pal = new Pal(c.real ? matOf(c) : undefined);
   const m = n / 2;
   for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
     const dx = (x + 0.5 - m) / Rv, dy = (y + 0.5 - m) / Rv; // 2D painter coords: y down
     const d2 = dx * dx + dy * dy;
     if (d2 > 1) continue;
-    const col = chainSegColor(c, dx, dy, x, y) | 0xff000000;
+    const col = (fin ? hexP(c.real?.seg?.fin || c.real?.col?.fin || '#c8d8e8') : c.real ? realSegColor(c, dx, dy, x, y) : chainSegColor(c, dx, dy, x, y)) | 0xff000000;
     const pv = pal.idx(col, 0, false);
     const t = Math.round(Rv * Math.sqrt(1 - d2));
     const gy = n - 1 - y;
@@ -1792,7 +1835,8 @@ export function chainBall(c, rScreen) {
     }
   }
   const G = { Lo: { r: 1 }, data, NX: n, NY: n, NZ: n, NXY, zmin, zmax, pal, x0: 0, y0: 0, z0: 0, x1: n - 1, y1: n - 1, z1: n - 1, center: [m, m, m], eyes: [], mouth: null, anchors: {} };
-  const job = new Job(G, 0, 0, rq / Rv, { outline: true });
+  // realistic eels: no per-ball outline, so the segments melt into one smooth body
+  const job = new Job(G, 0, 0, rq / Rv, { outline: !c.real });
   job.step(Infinity);
   const C = job.cam.project(G.center);
   b = { canvas: job.canvas, ax: C[0], ay: C[1] };
@@ -1857,10 +1901,10 @@ function partPut(key, p) {
 }
 
 const rotCache = new Map();
-function camRot(yaw, pitch) {
-  const key = yaw * 1000 + pitch;
+function camRot(yaw, pitch, roll = 0) {
+  const key = yaw * 1000 + pitch + roll * 1e6;
   let r = rotCache.get(key);
-  if (!r) { const cam = camera({ center: [0, 0, 0], x0: 0, x1: 0, y0: 0, y1: 0, z0: 0, z1: 0 }, yaw, pitch, 1); r = [cam.R0, cam.R1, cam.R2]; rotCache.set(key, r); }
+  if (!r) { const cam = camera({ center: [0, 0, 0], x0: 0, x1: 0, y0: 0, y1: 0, z0: 0, z1: 0, roll }, yaw, pitch, 1); r = [cam.R0, cam.R1, cam.R2]; rotCache.set(key, r); }
   return r;
 }
 
@@ -1901,7 +1945,7 @@ class PartGrid {
     const G = {
       Lo: { r: 1 }, data: this.data, NX: this.NX, NY: this.NY, NZ: this.NZ, NXY: this.NXY, zmin: this.zmin, zmax: this.zmax,
       pal: this.pal, mat: this.mat, x0, x1, y0, y1, z0, z1, nf,
-      center: [(C[0] - this.o[0]) * fe, (C[1] - this.o[1]) * fe, (C[2] - this.o[2]) * fe], eyes: [], mouth: null, anchors: {},
+      center: [(C[0] - this.o[0]) * fe, (C[1] - this.o[1]) * fe, (C[2] - this.o[2]) * fe], eyes: [], mouth: null, anchors: {}, roll: F.roll || 0,
     };
     const pu = F.up || 1;
     const job = new Job(G, F.yaw, F.pitch, (F.s * pu) / fe, { outline: false });
@@ -2041,6 +2085,55 @@ function buildEyePart(F, e3, fl, S, fe) {
   return P.render(F, nf);
 }
 
+// Natural fish eye at a finer resolution than the body (close-ups): a domed cornea over a large dark pupil,
+// a coloured iris ring with a radial gradient, a dark limbus and a glossy catchlight (no lids, no cartoon).
+function buildRealEyePart(F, e3, fl, fe, look) {
+  const rb = e3.rb, C = fl.c, n = fl.n;
+  const m = rb * 1.15 + 1.5 / fe;
+  const N = Math.ceil(2 * m * fe) + 1;
+  const o = [C[0] - N / (2 * fe), C[1] - N / (2 * fe), C[2] - N / (2 * fe)];
+  const P = new PartGrid(o, [N, N, N], fe, { ...(F.Lo.mat || DEF_MAT), iri: 0.05 });
+  // gaze: the eye rolls a little toward what the fish looks at
+  let g = n;
+  if (look && (look[0] || look[1])) g = norm3(n[0] + look[0] * 0.22, n[1] - look[1] * 0.16, n[2]);
+  const [R0, R1, R2] = camRot(F.yaw, F.pitch, F.roll || 0);
+  const hM = norm3(HALF[0] * R0[0] + HALF[1] * R1[0] + HALF[2] * R2[0], HALF[0] * R0[1] + HALF[1] * R1[1] + HALF[2] * R2[1], HALF[0] * R0[2] + HALF[1] * R1[2] + HALF[2] * R2[2]);
+  const Re = rb * fe;
+  const pal = P.pal, e = e3.e;
+  const vSpec = pal.idx(0xffffffff, R_SPEC, false), vSpec2 = pal.idx(0xfff0f8ff, R_SPEC, false);
+  const cache = new Map();
+  const pv = (col, role, gl) => { const k = col * 4 + role; let v = cache.get(k); if (v === undefined) { v = pal.idx(col, role, !!gl); cache.set(k, v); } return v; };
+  let best = -2, bestAt = -1, best2 = -2, best2At = -1;
+  for (let k = 0; k < N; k++) for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const bx = P.bx(i), by = P.by(j), bz = P.bz(k);
+    const qx = (bx - C[0]) / rb, qy = (by - C[1]) / rb, qz = (bz - C[2]) / rb;
+    const d = Math.hypot(qx, qy, qz);
+    if (d > 1) continue;
+    const a = qx * n[0] + qy * n[1] + qz * n[2];
+    if (a < -0.1) continue;
+    if (inBody(F, bx, by, bz, 0.5)) continue;
+    const ux = qx / (d || 1), uy = qy / (d || 1), uz = qz / (d || 1);
+    const [col, role, gl] = realEyeColor(e, ux, uy, uz, g);
+    P.put(i, j, k, pv(col, role, gl));
+    if (d > 1 - 1.6 / Re) {
+      const h1 = ux * hM[0] + uy * hM[1] + uz * hM[2];
+      // catchlight sits on the dark pupil / inner iris, up and toward the light
+      const cosG = ux * g[0] + uy * g[1] + uz * g[2];
+      if (cosG > 0.55) {
+        if (h1 > best) { best = h1; bestAt = i + j * N + k * N * N; }
+        const h2 = ux * (hM[0] - 0.4) + uy * (hM[1] - 0.6) + uz * hM[2];
+        if (h2 > best2) { best2 = h2; best2At = i + j * N + k * N * N; }
+      }
+    }
+  }
+  const setAt = (at, v) => { if (at < 0) return; const i = at % N, j = Math.floor(at / N) % N, k = Math.floor(at / (N * N)); P.data[i + j * N + k * N * N] = v; };
+  setAt(bestAt, vSpec);
+  if (Re >= 5 && best2At !== bestAt) setAt(best2At, vSpec2);
+  const cx = (C[0] - o[0]) * fe, cy = (C[1] - o[1]) * fe, cz = (C[2] - o[2]) * fe;
+  const nf = (ix, iy, iz) => norm3(ix + 0.5 - cx, iy + 0.5 - cy, iz + 0.5 - cz);
+  return P.render(F, nf);
+}
+
 // Jaw gape: the lower jaw drops, opening a dark mouth (side view), or a round mouth opens (front faces).
 function buildGapePart(F, open) {
   const G3 = F.mouth, Lo = F.Lo;
@@ -2056,9 +2149,9 @@ function buildGapePart(F, open) {
   const pal = P.pal;
   const belly = Lo.eyes?.[0]?.lidL || (Lo.c.bellyR?.[3] ?? 0xffd8e0e8);
   const vIn0 = pal.idx(hexP('#2a0a16'), R_MOUTH, false), vIn1 = pal.idx(hexP('#6a1e30'), R_MOUTH, false), vTongue = pal.idx(hexP('#d4566a'), R_MOUTH, false);
-  const vJaw = pal.idx(belly | 0xff000000, R_BODY, false), vLip = pal.idx((Lo.c.mouth?.R?.[2] ?? belly) | 0xff000000, R_BODY, false);
+  const vJaw = pal.idx(belly | 0xff000000, R_BODY, false), vLip = pal.idx((Lo.real ? Lo.skinP : Lo.c.mouth?.R?.[2] ?? belly) | 0xff000000, R_BODY, false);
   const vTooth = pal.idx(0xfff8fcff, R_EYE, false);
-  const teeth = Lo.c.mouth?.type === 'fangs' || Lo.c.mouth?.teeth;
+  const teeth = Lo.real ? !!G3.m?.teeth : Lo.c.mouth?.type === 'fangs' || Lo.c.mouth?.teeth;
   for (let k = 0; k < N[2]; k++) for (let j = 0; j < N[1]; j++) for (let i = 0; i < N[0]; i++) {
     const bx = P.bx(i), by = P.by(j), bz = P.bz(k);
     const x = Math.floor(bx);
@@ -2179,7 +2272,7 @@ export function voxelParts(items, glows, c, f, st, fs, lod = 0) {
   const F = f.pc;
   if (!F) return;
   const Lo = F.Lo;
-  const [, , R2] = camRot(F.yaw, F.pitch);
+  const [, , R2] = camRot(F.yaw, F.pitch, F.roll || 0);
   const scr = F.s * (F.up || 1); // screen px per body voxel
   const push = (p) => {
     if (!p) return;
@@ -2200,6 +2293,20 @@ export function voxelParts(items, glows, c, f, st, fs, lod = 0) {
     return p;
   };
   const time = st.time || 0;
+  if (Lo.real) {
+    // natural eyes rendered finer than the body when they are big enough on screen
+    if (lod < 1 || st.pri > 1) for (const e3 of F.eyes3) {
+      if (e3.rb * scr < 3) continue;
+      const fe = clamp(Math.min(Math.round(scr), Math.floor(10 / e3.rb)), 2, 3);
+      for (const fl of e3.flanks) {
+        const vis = fl.n[0] * R2[0] + fl.n[1] * R2[1] + fl.n[2] * R2[2];
+        if (vis < -0.1) continue;
+        const key = F.pkey + '|re' + e3.idx + '|' + fl.fl + '|' + fe;
+        const p = build(key, () => buildRealEyePart(F, e3, fl, fe, null));
+        if (p && p.canvas) push(p);
+      }
+    }
+  } else
   // eyes (skip tiny / far ones: their baked eyeball reads fine)
   if (lod < 1 || st.pri > 1) {
     const gl = c.glasses, lens = gl && (gl.style || 'shades') !== 'round' && gl.style !== 'square';
@@ -2222,7 +2329,7 @@ export function voxelParts(items, glows, c, f, st, fs, lod = 0) {
   }
   // jaw gape
   const open = clamp01(fs.open || 0);
-  if (F.mouth && F.mouth.m && F.mouth.m.type !== 'none' && open > 0.14 && lod < 1 && F.mouth.wLook * Lo.r * scr >= 3) {
+  if (F.mouth && F.mouth.m && F.mouth.m.type !== 'none' && open > 0.14 && lod < 1 && F.mouth.wLook * Lo.r * scr >= 3 && !(Lo.real && (Lo.M?.S.mouth?.u ?? 0) > 0.15)) {
     const oq = Math.max(1, Math.round(open * 3)) / 3;
     const nm = F.mouth.front ? [0, 0, 1] : [1, 0, 0];
     if (nm[0] * R2[0] + nm[2] * R2[2] > -0.3 || !F.mouth.front) {
@@ -2231,7 +2338,7 @@ export function voxelParts(items, glows, c, f, st, fs, lod = 0) {
     }
   }
   // breathing gill flare (faster / wider when stressed)
-  if (Lo.gill && lod < 1 && !c.toon) {
+  if (Lo.gill && lod < 1 && !c.toon && !Lo.real) {
     const cue = fs.cue || {};
     const rate = 0.6 * (cue.breath || 1);
     const b = 0.5 + 0.5 * Math.sin(time * TAU * rate + (c.id || 0));

@@ -229,12 +229,17 @@ function drawRope(ctx, x0, y0, x1, y1, tension, surf, t, alpha) {
 }
 
 // ---------------------------------------------------------------- tags, emotes, pop-ups
+// [phase4:zoom] tags are UI: drawn in screen space at 1x over the zoomed world (anchors mapped through the camera)
+const toScreen = (game) => { const c = game.camera; return c?.worldToScreen ? (x, y) => c.worldToScreen(x, y) : (x, y) => [x, y]; };
 export function drawPeerTags(ctx, net, peers) {
   const t = net.t;
-  const viewTop = viewTopOf(net.game);
+  const S = toScreen(net.game);
+  const viewTop = 0;
   for (const peer of peers) {
-    const a = peer.anch;
-    if (!a) continue;
+    const a0 = peer.anch;
+    if (!a0) continue;
+    const head = S(a0.head[0], a0.head[1]);
+    const a = { head, top: S(a0.head[0], a0.top)[1], y: S(a0.head[0], a0.y)[1] };
     ctx.globalAlpha = peer.fade;
     const name = peer.p.name + (peer.isMe ? ' (you)' : '');
     const tw = measureText(name, 'small') + 16;
@@ -302,18 +307,17 @@ function speechBubble(ctx, cx, cy, w, h, color) {
   ctx.restore();
 }
 
-function viewTopOf(game) {
-  try { const p = game.camera?.screenToWorld?.(0, 0); if (p && Number.isFinite(p[1])) return p[1]; } catch { /* ignore */ }
-  return -Infinity;
-}
 
 // Small clover pill by the player's own boat while the party buff is active (above it, or under the hull).
 export function drawPartyBadge(ctx, net, luck, boat) {
   if (!(luck > 1) || !boat?.visible) return;
   const b = boat.bounds?.();
   const head = boat.anchorsWorld?.head?.[1];
-  const top = Math.min(b ? b.y : boat.y - 50, Number.isFinite(head) ? head - 14 : Infinity) - 14;
-  const x = Math.round(boat.x), y = Math.round(top < viewTopOf(net.game) + 2 ? boat.y + 10 : top);
+  const S = toScreen(net.game); // [phase4:zoom] screen space
+  const top0 = Math.min(b ? b.y : boat.y - 50, Number.isFinite(head) ? head - 14 : Infinity);
+  const [x0, sTop] = S(boat.x, top0), sBelow = S(boat.x, boat.y)[1];
+  const top = sTop - 14;
+  const x = Math.round(x0), y = Math.round(top < 2 ? sBelow + 10 : top);
   const txt = `PARTY +${Math.round((luck - 1) * 100)}%`;
   const w = measureText(txt, 'small') + 18;
   pill(ctx, x - w / 2, y, w, 11, { color: '#7ee04a', edge: 'rgba(255,255,255,0.95)', r: 5 });

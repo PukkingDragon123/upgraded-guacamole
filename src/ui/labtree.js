@@ -28,7 +28,7 @@ export function unlockInfo(u) {
     case 'tank': return { key: 'tank:' + u.id, name: TANK_NAMES[u.id] || u.id };
     case 'biome': return { key: 'biome:' + u.id, name: OCEAN_NAMES[u.id] || u.id };
     case 'recipe': return { key: RECIPE_BY_ID[u.id]?.icon || 'hammer', name: 'Recipe: ' + (RECIPE_BY_ID[u.id]?.name || u.id) };
-    case 'bait': return { key: 'bait:' + u.id, name: 'AppSea bait: ' + u.id };
+    case 'bait': return { key: 'bait:' + u.id, name: 'Bait Shop: ' + u.id }; // [phase4:shell]
     case 'feature': return { key: FEATURE_ICON[u.id] || 'sparkle', name: FEATURE_NAME[u.id] || u.id };
     default: return { key: 'star', name: u.id };
   }

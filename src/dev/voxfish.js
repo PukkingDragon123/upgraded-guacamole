@@ -31,11 +31,12 @@ function bg(g, top, bot) {
 }
 
 // Scale that fits a species into a w x h box (rig geometry at scale 1).
+let FIT_CAP = 2.4;
 function fitScale(sp, w, h) {
   const c = compiled(sp.look, null, sp.id);
   if (c.kind === 'chain') return Math.min(1.4, w / (c.chain.segs * c.chain.r * 1.2 + c.chain.r * 4));
   const g = rigGeom(c, { sw: 0, angle: 0, scale: 1, inflate: 0, still: true });
-  return Math.min(2.4, w / g.w, h / g.h);
+  return Math.min(FIT_CAP, w / g.w, h / g.h);
 }
 
 function chainPts(c, x, y, t, s, dir = 1) {
@@ -55,12 +56,14 @@ export function run(params) {
   const g = ctxOf(cv);
   if (params.has('budget')) setVoxelFishBudget(Number(params.get('budget')));
   const page = params.get('page') || 'all';
+  if (params.has('cap')) FIT_CAP = Number(params.get('cap'));
   const perf = { frame: 0, fish: 0, n: 0, max: 0, hist: [] };
   window.__vf = { perf, stats: voxelFishStats };
   if (page === 'ocean') return runOcean(cv, g, params, perf);
   if (page === 'bench') {
     const out = [];
-    for (const [id, S] of [['honk', 1.6], ['koi', 1.4], ['grouper', 1.3], ['puffer', 5.5], ['manyeyes', 1.2], ['clickcrab', 1.7], ['glowjelly', 1.7]]) {
+    const list = params.get('list') ? params.get('list').split(',').map((q) => { const [a, b] = q.split(':'); return [a, Number(b) || 2]; }) : [['honk', 1.6], ['koi', 1.4], ['grouper', 1.3], ['puffer', 5.5], ['manyeyes', 1.2], ['clickcrab', 1.7], ['glowjelly', 1.7]];
+    for (const [id, S] of list) {
       const sp = SPECIES_BY_ID[id];
       const c = compiled(sp.look, null, sp.id);
       let best = null;
@@ -251,6 +254,9 @@ function runOcean(cv, g, params, perf) {
     const b = ocean.biome, env = ocean.env;
     const safe = (fn) => { try { fn(); } catch (e) { if (!safe.warned) { safe.warned = true; console.warn('biome art (other agent WIP):', e.message); } } };
     let back = false;
+    // &zoom=K: the phase 4 follow camera draws the world zoomed in (fish render at the device resolution)
+    const ZM = Number(params.get('zoom') || 1);
+    g.setTransform(ZM, 0, 0, ZM, -W * (ZM - 1) / 2, -H * (ZM - 1) / 2);
     safe(() => { b.drawBack(g, env); back = true; });
     if (!back) bg(g, ...(BG[world.biome] || BG.all));
     let L = { dark: 0, tint: '#000', lights: [] };
@@ -262,6 +268,7 @@ function runOcean(cv, g, params, perf) {
     safe(() => ocean.applyLighting(g, L));
     drawRange(sorted, -1, 0.33, L);
     safe(() => b.drawFront(g, env));
+    g.setTransform(1, 0, 0, 1, 0, 0);
     const ms = performance.now() - T0;
     frameMs.push(ms);
     (window.__vf.fishLog ||= []).push([+ms.toFixed(1), +fishT.sum.toFixed(1), +fishT.worst.toFixed(1), fishT.who, voxelFishStats().spent]);

@@ -1,95 +1,45 @@
-// Host bridge: the game's single point of contact with the native desktop shell.
-// In Electron, desktop/preload.cjs exposes window.fishtopHost and every call goes to the main process.
-// In a plain browser (or the extension) everything is a safe no-op; Ctrl+Alt+F/P/M/O still arrive
-// through onShortcut from in-page key presses so the flows can be tried without the shell.
+// Host bridge: the game's single point of contact with the Electron shell (phase 4, Shell agent).
+// In Electron, electron/preload.cjs exposes window.fishtopHost; in a plain browser every call falls back to the
+// Fullscreen API or a safe no-op. FISHTOP runs as a normal windowed or fullscreen game; the old overlay,
+// click-through, wallpaper and mini modes and the Desktop-folder access are gone.
 //
 //   host.kind               'web' | 'electron'
-//   host.mode               'window' | 'overlay' | 'wallpaper' | 'mini'   (?mode=... on web, default 'window')
-//   host.transparent        overlay: draw no opaque background, the real desktop shows through
-//   host.clickThrough       overlay/wallpaper: the page gets no real mouse events by default -> use onCursor
-//   host.lowPower           mini: throttle fps / effects
-//   host.canUseRealDesktop  real Desktop items can be requested (Electron, not denied by the user)
-//   host.setInteractive(on) overlay: take mouse input while the cursor is over game UI or while fishing
-//   host.setFishing(on)     optional: tell the shell fishing started/ended (keeps tray + Ctrl+Alt+F in sync)
-//   host.setMode(mode)      -> Promise<{ok, mode, error?}> (the page reloads in the new mode)
-//   host.onShortcut(cb)     cb(id, {id, accelerator, mode, fishing, paused, interactive, nextMode?}) -> unsubscribe
-//                           ids: 'toggle-fishing' | 'pause' | 'mini' | 'cycle-overlay' | 'desktop-access'
-//   host.onCursor(cb)       cb(x, y, {x, y, screenX, screenY, inside, clickThrough}) ~30 Hz, CSS px relative
-//                           to the window; overlay/wallpaper only (Electron) -> unsubscribe
-//   host.requestDesktopFiles() -> Promise<[{name, title, ext, isDir, isShortcut, path, icon}]> ([] on web/denied)
-//   host.openPath(path)     -> Promise<{ok, error?}> (only listed Desktop items, only with permission)
-//   host.quit()
-
-export const HOST_MODES = ['window', 'overlay', 'wallpaper', 'mini'];
+//   host.mode               'window' | 'fullscreen' (the mode the page started in)
+//   host.platform           process.platform in Electron, 'web' otherwise
+//   host.isFullscreen()     -> bool
+//   host.setFullscreen(on)  host.toggleFullscreen()   (Electron: the window; web: document.documentElement)
+//   host.onFullscreen(cb)   cb(on) -> unsubscribe
+//   host.onShortcut(cb)     cb(id) -> unsubscribe; ids: 'fullscreen' (F11 / Alt+Enter on web)
+//   host.quit()             Electron only
+// Kept as harmless no-ops for older callers: transparent, clickThrough, lowPower, canUseRealDesktop (all false),
+//   setInteractive(), setFishing(), setMode(m) (fullscreen | window), onCursor(), requestDesktopFiles() -> [],
+//   openPath() -> {ok:false}.
 
 const win = typeof window !== 'undefined' ? window : null;
+const doc = typeof document !== 'undefined' ? document : null;
 const bridge = win && win.fishtopHost && win.fishtopHost.kind === 'electron' ? win.fishtopHost : null;
 
-function queryParam(name) {
-  try {
-    return new URLSearchParams(win ? win.location.search : '').get(name);
-  } catch {
-    return null;
-  }
-}
-
-function normMode(m) {
-  return HOST_MODES.includes(m) ? m : 'window';
-}
-
 const kind = bridge ? 'electron' : 'web';
-const mode = normMode(bridge ? bridge.mode : queryParam('mode'));
 const shortcutCbs = new Set();
-const cursorCbs = new Set();
-let interactive = false; // last value sent to the shell (deduped: games may call every frame)
-let webFishing = false;
-let webPaused = false;
+const fsCbs = new Set();
 let keysHooked = false;
-let cursorOff = null;
 
 function emit(set, ...args) {
   for (const cb of [...set]) {
-    try {
-      cb(...args);
-    } catch (err) {
-      console.error(err);
-    }
+    try { cb(...args); } catch (err) { console.error(err); }
   }
 }
 
-if (bridge) {
-  bridge.onShortcut((ev) => {
-    if (!ev || typeof ev.id !== 'string') return;
-    if (typeof ev.interactive === 'boolean') interactive = ev.interactive;
-    emit(shortcutCbs, ev.id, ev);
-  });
-}
+function webFullscreen() { return !!(doc && doc.fullscreenElement); }
 
-// Browser fallback for the global shortcuts (in-page only).
-const WEB_KEYS = {
-  KeyF: ['toggle-fishing', 'Ctrl+Alt+F'],
-  KeyP: ['pause', 'Ctrl+Alt+P'],
-  KeyM: ['mini', 'Ctrl+Alt+M'],
-  KeyO: ['cycle-overlay', 'Ctrl+Alt+O'],
-};
+if (bridge && typeof bridge.onFullscreen === 'function') bridge.onFullscreen((on) => emit(fsCbs, !!on));
+else if (doc) doc.addEventListener('fullscreenchange', () => emit(fsCbs, webFullscreen()));
 
+// Browser: Alt+Enter toggles fullscreen too (F11 stays the browser's own).
 function onWebKey(e) {
-  if (!e.ctrlKey || !e.altKey || e.shiftKey || e.metaKey || e.repeat || !shortcutCbs.size) return;
-  const hit = WEB_KEYS[e.code];
-  if (!hit) return;
+  if (!(e.altKey && e.key === 'Enter') || e.repeat || !shortcutCbs.size) return;
   e.preventDefault();
-  const [id, accelerator] = hit;
-  if (id === 'toggle-fishing') {
-    webFishing = !webFishing;
-    if (webFishing) webPaused = false;
-  } else if (id === 'pause') {
-    webPaused = !webPaused;
-    if (webPaused) webFishing = false;
-  }
-  const ev = { id, accelerator, mode, fishing: webFishing, paused: webPaused, interactive: true };
-  if (id === 'mini') ev.nextMode = mode === 'mini' ? 'window' : 'mini';
-  if (id === 'cycle-overlay') ev.nextMode = mode === 'overlay' ? 'window' : 'overlay';
-  emit(shortcutCbs, id, ev);
+  emit(shortcutCbs, 'fullscreen', { id: 'fullscreen' });
 }
 
 function hookWebKeys() {
@@ -100,30 +50,34 @@ function hookWebKeys() {
 
 export const host = {
   kind,
-  mode,
+  mode: bridge ? (bridge.mode === 'fullscreen' ? 'fullscreen' : 'window') : 'window',
   platform: bridge ? String(bridge.platform || '') : 'web',
-  transparent: kind === 'electron' && mode === 'overlay',
-  clickThrough: kind === 'electron' && (mode === 'overlay' || mode === 'wallpaper'),
-  lowPower: mode === 'mini',
-  canUseRealDesktop: !!(bridge && bridge.canUseRealDesktop),
+  transparent: false,
+  clickThrough: false,
+  lowPower: false,
+  canUseRealDesktop: false,
 
-  setInteractive(on) {
-    on = !!on;
-    if (on === interactive) return;
-    interactive = on;
-    if (bridge) bridge.setInteractive(on);
+  isFullscreen() {
+    if (bridge && typeof bridge.isFullscreen === 'function') return !!bridge.isFullscreen();
+    return webFullscreen();
   },
 
-  setFishing(on) {
-    on = !!on;
-    interactive = on;
-    if (bridge && typeof bridge.setFishing === 'function') bridge.setFishing(on);
-    else webFishing = on;
+  setFullscreen(on) {
+    if (bridge && typeof bridge.setFullscreen === 'function') return Promise.resolve(bridge.setFullscreen(!!on)).catch(() => false);
+    if (!doc) return Promise.resolve(false);
+    try {
+      if (on && !webFullscreen()) return Promise.resolve(doc.documentElement.requestFullscreen?.()).then(() => true, () => false);
+      if (!on && webFullscreen()) return Promise.resolve(doc.exitFullscreen?.()).then(() => false, () => true);
+    } catch { /* not allowed (no user gesture, iframe) */ }
+    return Promise.resolve(webFullscreen());
   },
 
-  setMode(next) {
-    if (!bridge) return Promise.resolve({ ok: false, mode, error: 'modes need the desktop app' });
-    return Promise.resolve(bridge.setMode(String(next))).catch((err) => ({ ok: false, mode, error: String(err && err.message || err) }));
+  toggleFullscreen() { return this.setFullscreen(!this.isFullscreen()); },
+
+  onFullscreen(cb) {
+    if (typeof cb !== 'function') return () => {};
+    fsCbs.add(cb);
+    return () => fsCbs.delete(cb);
   },
 
   onShortcut(cb) {
@@ -133,32 +87,15 @@ export const host = {
     return () => shortcutCbs.delete(cb);
   },
 
-  onCursor(cb) {
-    if (typeof cb !== 'function') return () => {};
-    cursorCbs.add(cb);
-    if (bridge && cursorCbs.size === 1) cursorOff = bridge.onCursor((ev) => ev && emit(cursorCbs, ev.x, ev.y, ev));
-    return () => {
-      cursorCbs.delete(cb);
-      if (!cursorCbs.size && cursorOff) {
-        cursorOff();
-        cursorOff = null;
-      }
-    };
-  },
+  quit() { if (bridge && typeof bridge.quit === 'function') bridge.quit(); },
 
-  requestDesktopFiles() {
-    if (!bridge) return Promise.resolve([]);
-    return Promise.resolve(bridge.requestDesktopFiles())
-      .then((list) => (Array.isArray(list) ? list : []))
-      .catch(() => []);
-  },
-
-  openPath(path) {
-    if (!bridge) return Promise.resolve({ ok: false, error: 'needs the desktop app' });
-    return Promise.resolve(bridge.openPath(String(path))).catch((err) => ({ ok: false, error: String(err && err.message || err) }));
-  },
-
-  quit() {
-    if (bridge) bridge.quit();
-  },
+  // ---- legacy no-ops
+  setInteractive() {},
+  setFishing() {},
+  setMode(next) { return this.setFullscreen(next === 'fullscreen').then(() => ({ ok: true, mode: next === 'fullscreen' ? 'fullscreen' : 'window' })); },
+  onCursor() { return () => {}; },
+  requestDesktopFiles() { return Promise.resolve([]); },
+  openPath() { return Promise.resolve({ ok: false, error: 'not available' }); },
 };
+
+export const HOST_MODES = ['window', 'fullscreen'];

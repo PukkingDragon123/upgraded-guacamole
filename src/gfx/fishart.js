@@ -1,3 +1,7 @@
+// Phase 4: compileLook() resolves every look into a realistic anatomy model (c.real, src/fish/anatomy.js),
+// which voxelfish.js renders through src/fish/realvox.js; rigGeom() reports that model's geometry. The 2D
+// cartoon painters below are legacy (kept for old dev pages / API compatibility) and no longer draw fish.
+//
 // Procedural creature rasteriser: high-res, layered 2D sprites with expressive cartoon faces.
 //
 // Every output pixel is inverse-mapped into the creature's local space (faces +x, y down, origin =
@@ -47,6 +51,8 @@
 import { TAU, clamp, clamp01, lerp, smoothstep, bayer, hash2, noise2, fract } from '../core/math.js';
 import { pack, ramp, shade, mix, adjust, invert, hexToHsl, hslToHex, unpack } from '../core/color.js';
 import { PixelBuffer } from './pixel.js';
+import { resolveReal } from '../fish/anatomy.js';
+import { realGeom } from '../fish/realvox.js';
 
 export const EMOTIONS = ['neutral', 'happy', 'sad', 'angry', 'scared', 'surprised', 'love', 'sleepy', 'dizzy', 'smug', 'determined', 'tired', 'disgust'];
 
@@ -273,6 +279,16 @@ export function compileLook(look, variant = null) {
   if (kind === 'squid' && (look.eyeGlow || look.photophores)) c.glow = true;
   if (kind === 'crab' && look.shell === 'mech') c.glow = true;
   if (kind === 'chain' && c.chain.glow) c.glow = true;
+  // phase 4: every creature is a realistic voxel model (src/fish/anatomy.js + realvox.js)
+  c.real = resolveReal(look, c.vc, kind);
+  if (c.real) {
+    c.toon = false;
+    c.glow = !!c.real.glow;
+    c.alpha = c.real.alpha ?? 255; // see-through looks are material properties now (glass / fins)
+    if (c.real.L) c.L = c.real.L;
+    if (c.real.H) c.H = c.real.H;
+    if (c.real.chainHead && c.chain) { c.L = c.chain.r * 6.2; c.H = c.chain.r * 2.6; }
+  }
   return c;
 }
 
@@ -4066,6 +4082,7 @@ export function rigLayers(c) {
  */
 export function rigGeom(c, q) {
   const s = q.scale || 1;
+  if (c.real && c.kind !== 'chain') return realGeom(c, s, q.inflate || 0);
   const K = KINDS[c.kind];
   if (K) {
     const B = boundsFor(K.ext(c), K.rotates ? q.angle || 0 : 0, s);

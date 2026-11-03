@@ -1,8 +1,7 @@
 // Settings (Frutiger Aero): a sky-glass window with two frosted cards. Left: sound sliders (icons only,
-// names in tooltips), ocean opacity, day-cycle orbs and glossy switches. Right: save (export / import /
-// reset), keyboard keycaps with icons and a one-line privacy note.
+// names in tooltips), fullscreen, day-cycle orbs and glossy switches. Right: save (export / import /
+// reset), keyboard keycaps with icons and a one-line privacy note. Esc opens it when nothing else is open.
 
-import { clamp01 } from '../core/math.js';
 import { rgba } from '../core/color.js';
 import { drawText, measureText } from '../gfx/font.js';
 import { drawToggle, TOGGLE_W, TOGGLE_H } from './panels.js';
@@ -10,9 +9,11 @@ import { getUiIcon } from '../gfx/uiicons.js';
 import { getBigIcon } from '../gfx/bigicons.js';
 import { AERO, aeroCached, aeroSurface, drawAeroFrame, drawAeroCard } from './aero.js';
 import { exportState, importState, resetState, saveState } from '../game/state.js';
+import { host } from '../platform/host.js';
 
 const INK = AERO.ink, INK_SOFT = AERO.inkSoft;
-const KEYS = [['J', 'book', 'FishDex'], ['T', 'map', 'Map'], ['B', 'bait', 'Bait'], ['A', 'tank', 'Aquarium'], ['I', 'trophy', 'Satchel'], ['P', 'pause', 'Pause'], ['M', 'minimize', 'Mini mode'], ['Esc', 'cross', 'Close']];
+const KEYS = [['L', 'sparkle', 'The Lab'], ['A', 'tank', 'Aquarium'], ['J', 'book', 'FishDex'], ['I', 'trophy', 'Satchel'], ['T', 'map', 'Map'], ['S', 'shop', 'Bait Shop'],
+  ['B', 'bait', 'Bait'], ['P', 'pause', 'Pause'], ['Spc', 'storm', 'Shock'], ['Esc', 'cross', 'Menu']];
 const CYCLES = [['real', 'clock', 'Real time'], ['fast', 'arrow_r', 'Fast days'], ['day', 'sun', 'Always day'], ['night', 'moon', 'Always night']];
 const VOLS = [['master', 'sound', 'Master'], ['music', 'music', 'Music'], ['sfx', 'sparkle', 'Effects'], ['ambience', 'rain', 'Ambience']];
 const TOGGLES = [
@@ -81,17 +82,25 @@ export class SettingsPanel {
     this.divider(ctx, L.x + 8, y - 3, L.w - 16);
 
     // ------------------------------------------------ display
-    y += 4;
-    ctx.drawImage(getUiIcon('eye'), L.x + 8, y - 1);
-    if (ui.hover({ x: L.x + 6, y: y - 2, w: 16, h: 14 })) ui.tip = 'Ocean opacity';
+    y += 1;
     {
-      const sx = L.x + 26, sw = L.w - 26 - 34;
-      const v = ui.slider(ctx, sx, y - 4, sw, clamp01((s.oceanOpacity - 0.15) / 0.85), 'ocean');
-      const nv = Math.round((0.15 + v * 0.85) * 100) / 100;
-      if (Math.abs(nv - s.oceanOpacity) > 0.001) { s.oceanOpacity = nv; g.emit?.('settings', 'oceanOpacity'); }
-      drawText(ctx, `${Math.round(s.oceanOpacity * 100)}`, L.x + L.w - 8, y + 1, { align: 'right', color: INK_SOFT });
+      const row = { x: L.x + 4, y: y - 3, w: L.w - 8, h: TOGGLE_H };
+      const hov = ui.hover(row);
+      const fs = this.isFullscreen();
+      if (hov) {
+        ctx.drawImage(aeroCached(`setrow|${row.w}|${row.h}`, () => aeroSurface(row.w, row.h, { tone: 'white', r: 6, gloss: 0.5, glossH: 9, rim: 0.6, glow: 0.4, a: [0.7, 0.7] })), row.x, row.y);
+        ui.tip = 'Fullscreen (F11 / Alt+Enter)';
+      }
+      ctx.drawImage(getUiIcon(fs ? 'minimize' : 'expand'), L.x + 8, y + 3);
+      drawText(ctx, 'Fullscreen', L.x + 24, y + 5, { color: INK });
+      drawToggle(ctx, L.x + L.w - TOGGLE_W - 8, y - 3, fs, { hover: hov });
+      if (hov && g.input.pressed) {
+        g.input.pressed = false;
+        g.audio.play('ui_toggle');
+        g.command?.('fullscreen');
+      }
     }
-    y += 18;
+    y += 22;
     // day cycle: four glossy orbs
     {
       const bw = 24, gap = 6, x0 = L.x + Math.round((L.w - (bw * 4 + gap * 3)) / 2);
@@ -122,7 +131,7 @@ export class SettingsPanel {
         g.input.pressed = false;
         s[key] = !s[key];
         g.audio.play('ui_toggle');
-        if (key === 'lowPower') g.lowPower = !!s.lowPower || !!g.mini;
+        if (key === 'lowPower') g.lowPower = !!s.lowPower;
         g.emit?.('settings', key);
         g.save?.();
       }
@@ -172,8 +181,12 @@ export class SettingsPanel {
     const ny = R.y + R.h - 22;
     ctx.drawImage(aeroCached(`setnote|${R.w - 14}`, () => aeroSurface(R.w - 14, 16, { tone: 'grass', r: 'pill', gloss: 0.7, glossH: 7, curve: 1, rim: 0.8, glow: 0.6 })), R.x + 7, ny);
     ctx.drawImage(getUiIcon('heart'), R.x + 13, ny + 4);
-    drawText(ctx, 'Your files stay untouched', R.x + 27, ny + 5, { font: 'small', color: '#ffffff', shadow: '#1c5a0e' });
+    drawText(ctx, 'Saved on this device', R.x + 27, ny + 5, { font: 'small', color: '#ffffff', shadow: '#1c5a0e' });
     F.finish();
+  }
+
+  isFullscreen() {
+    try { return host.isFullscreen ? !!host.isFullscreen() : !!document.fullscreenElement; } catch { return false; }
   }
 
   divider(ctx, x, y, w) {

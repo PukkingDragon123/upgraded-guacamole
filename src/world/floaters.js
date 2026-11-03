@@ -175,7 +175,7 @@ export class Floaters {
 
   live() {
     const g = this.game, o = g.ocean;
-    return !!o?.biome && !o.travelState && (o.reveal ?? 1) >= 1 && (g.state?.view ?? 'ocean') === 'ocean' && !g.mini;
+    return !!o?.biome && !o.travelState && (g.state?.view ?? 'ocean') === 'ocean' && !g.mini;
   }
 
   surfaceY() {

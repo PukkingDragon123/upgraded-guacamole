@@ -10,8 +10,17 @@ import { getUiIcon, registerUiIcons, UI_ICON_NAMES, CURSOR_NAMES } from '../gfx/
 import { APPS, getAppIcon, getMiniIcon, fileTypeInfo, FILE_ICON_IDS, ICON_IDS } from '../desktop/icons.js';
 import {
   drawWood, drawPaper, drawGlass, drawBottle, drawBubble, drawWaterBubble, drawButton, buttonSize, drawSlider, drawToggle,
-  drawBar, drawTooltip, drawTab, drawWindowChrome, drawTaskbar, drawPlank, drawStamp, drawFrame, UI_COLORS,
+  drawBar, drawTooltip, drawTab, drawPlank, drawStamp, drawFrame, UI_COLORS,
 } from '../ui/panels.js';
+import { drawAeroPanel } from '../ui/aero.js';
+
+// [phase4:shell] window chrome and the taskbar left with the desktop; glass-panel stand-ins keep this preview running
+function drawWindowChrome(g, r, o = {}) {
+  drawAeroPanel(g, r.x, r.y, r.w, r.h, { title: o.title });
+  const close = { x: r.x + r.w - 15, y: r.y + 4, w: 11, h: 11 };
+  return { content: { x: r.x + 4, y: r.y + 20, w: r.w - 8, h: r.h - 24 }, close, min: { ...close, x: close.x - 13 }, titleBar: { x: r.x, y: r.y, w: r.w, h: 18 } };
+}
+function drawTaskbar() {}
 
 const W = 960, H = 540;
 

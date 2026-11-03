@@ -21,6 +21,7 @@
 // Sprites are built lazily and cached per (id, scale, variant, frame); `ms` = [build, render] timing.
 
 import { VoxelModel, renderVoxels } from './voxel.js';
+import { renderSteps } from '../world/slabrender.js';
 import { RNG } from '../core/rng.js';
 import { hash3, clamp } from '../core/math.js';
 
@@ -4913,6 +4914,38 @@ function turnModel(res, deg) {
   if (res.anchors) for (const k of Object.keys(res.anchors)) res.anchors[k] = X(res.anchors[k]);
 }
 
+// Prop sprite (canvas + ground anchor only) built as a step generator: the model, then a slab render spread over
+// frames (src/world/slabrender.js). Used for the zoomed-in camera's hi-res scenery; cached separately from getProp.
+const stepCache = new Map();
+// Recently built prop models (scale-independent), so a hi-res re-render skips the recipe.
+const MODELS = new Map();
+function keepModel(k, res) { MODELS.set(k, res); if (MODELS.size > 48) MODELS.delete(MODELS.keys().next().value); }
+export function* getPropSteps(id, { scale = 1, variant = 0, frame = 0, yaw = null, pitch = null } = {}) {
+  const key = id + '|' + scale + '|' + variant + '|' + frame + '|' + yaw + '|' + pitch;
+  let p = stepCache.get(key) || cache.get(key.replace(/\|null\|null$/, ''));
+  if (p) return p;
+  const mk = id + '|' + variant + '|' + frame + '|' + yaw + '|' + pitch;
+  let res = MODELS.get(mk);
+  if (!res) {
+    const d = DEFS[id];
+    if (!d) throw new Error('unknown prop ' + id);
+    const rng = new RNG((hashStr(id) ^ Math.imul(variant + 1, 0x9e3779b1)) >>> 0);
+    res = d.build({ rng, variant, frame });
+    if (yaw !== null && res.turn) turnModel(res, res.turn);
+  }
+  yield;
+  const opts = { scale: (res.vs ?? 1.75) * scale, yaw: res.yaw ?? 32, pitch: res.pitch ?? 27, ...(res.render || {}) };
+  opts.scale = Math.max(0.25, Math.round(opts.scale * 4) / 4); // quarter-pixel voxel sizes keep slab seams on whole pixels
+  if (yaw !== null) opts.yaw = yaw;
+  if (pitch !== null) opts.pitch = pitch;
+  const r = yield* renderSteps(res.m, opts);
+  let ox = r.ox, oy = r.oy;
+  if (res.ground) { const [gx, gy] = r.project(res.ground[0], res.ground[1], res.ground[2]); ox = Math.round(gx); oy = Math.round(gy); }
+  p = { canvas: r.canvas, ox, oy, w: r.w, h: r.h };
+  stepCache.set(key, p);
+  return p;
+}
+
 const cache = new Map();
 // Optional camera overrides: yaw / pitch (degrees) replace the prop's own framing, e.g. yaw 0 renders
 // every prop front-facing with a shared pitch (the ocean); omitted = the prop's tuned 3/4 view.
@@ -4928,6 +4961,7 @@ export function getProp(id, { scale = 1, variant = 0, frame = 0, yaw = null, pit
   // Under a camera override a prop may turn its own model (res.turn degrees about y) so long, thin
   // pieces (a ribcage seen end-on) keep a readable silhouette in a straight front view.
   if (yaw !== null && res.turn) turnModel(res, res.turn);
+  if (yaw !== null || pitch !== null) keepModel(id + '|' + variant + '|' + frame + '|' + yaw + '|' + pitch, res);
   const t1 = performance.now();
   const opts = {
     scale: (res.vs ?? 1.75) * scale,

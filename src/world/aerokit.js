@@ -18,6 +18,7 @@ import { renderModel } from './voxkit.js';
 import { paint, todWeights, quality } from './scenery.js';
 import { skyBodies } from './sky.js';
 import { flipCanvas } from '../gfx/pixel.js';
+import { withSky } from './zoomsky.js';
 
 const cache = new Map();
 const memo = (key, fn) => { let v = cache.get(key); if (!v) { v = fn(); cache.set(key, v); } return v; };
@@ -418,9 +419,34 @@ export function rotorFrames(L, scale = 2, n = 12) {
 
 // Generic sway animation from a voxel builder: build(m, origin[x, y, z], phase, rng) fills the model.
 // Returns a coral.js voxAnim-compatible object {frames, nights, ox, oy, n, P} (use with placeAnim).
+// o.hi = {key, dims, build}: the double-detail twin built by A.hiSteps() for the zoomed-in camera.
 export function swayAnim(key, dims, build, o = {}) {
   const frames = o.frames ?? 8, scale = o.scale ?? 1;
-  return memo('sway|' + key + '|' + frames + '|' + scale, () => {
+  const k = 'sway|' + key + '|' + frames + '|' + scale;
+  let A = cache.get(k);
+  if (!A) {
+    const it = swaySteps(dims, build, o);
+    let r = it.next();
+    while (!r.done) r = it.next();
+    A = r.value;
+    cache.set(k, A);
+  }
+  if (o.hi && !A.hiSteps) {
+    Object.defineProperty(A, 'hiSteps', {
+      value: function* hiSteps() {
+        const hk = 'sway|' + o.hi.key + '|' + frames + '|' + scale;
+        let H = cache.get(hk);
+        if (!H) { H = yield* swaySteps(o.hi.dims, o.hi.build, { ...o, hi: null }); cache.set(hk, H); }
+        return H;
+      },
+      enumerable: false,
+    });
+  }
+  return A;
+}
+function* swaySteps(dims, build, o) {
+  const frames = o.frames ?? 8, scale = o.scale ?? 1;
+  {
     const out = [], nights = [];
     for (let f = 0; f < frames; f++) {
       const m = new VoxelModel(dims[0], dims[1], dims[2]);
@@ -429,13 +455,14 @@ export function swayAnim(key, dims, build, o = {}) {
       const p = r.project(dims[0] / 2, 0, dims[2] / 2);
       out.push({ canvas: r.canvas, ox: Math.round(p[0]), oy: Math.round(p[1]) });
       nights.push(glowIds ? idGlow(r, glowIds) : null);
+      yield;
     }
     const minX = Math.min(...out.map((q) => -q.ox)), minY = Math.min(...out.map((q) => -q.oy));
     const maxX = Math.max(...out.map((q) => q.canvas.width - q.ox)), maxY = Math.max(...out.map((q) => q.canvas.height - q.oy));
     const W = maxX - minX, Hh = maxY - minY;
     const box = (src, q) => { if (!src) return null; const c = makeCanvas(W, Hh); ctxOf(c).drawImage(src, -minX - q.ox, -minY - q.oy); return c; };
     return { frames: out.map((q) => box(q.canvas, q)), nights: out.map((q, i) => box(nights[i], q)), ox: -minX, oy: -minY, n: frames, P: o.period ?? 3.2 };
-  });
+  }
 }
 
 // Bright copy of the pixels whose voxel id is in `ids` (for additive night glow).
@@ -1184,7 +1211,7 @@ export class AeroOverlay {
       }
     }
     this.drawBokeh(ctx, env, true);
-    this.drawLeaves(ctx, env, s);
+    withSky(this.b, ctx, env, (e) => this.drawLeaves(ctx, e, s)); // far layer under the zoomed camera
   }
 
   drawBokeh(ctx, env, far) {
@@ -1235,7 +1262,7 @@ export class AeroOverlay {
       ctx.restore();
     }
     this.drawBokeh(ctx, env, false);
-    this.drawFlare(ctx, env, tod);
+    withSky(this.b, ctx, env, (e) => this.drawFlare(ctx, e, tod)); // the flare lives with the (far) sun
   }
 
   // Lens flare: starburst + streak at the sun, ghost rings and hexagons along the line through the view centre.

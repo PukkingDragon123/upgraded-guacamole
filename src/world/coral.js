@@ -20,7 +20,8 @@ import { noise3 } from '../gfx/props.js';
 import { RNG } from '../core/rng.js';
 import { TAU, clamp, hash3 } from '../core/math.js';
 import { mix, shade } from '../core/color.js';
-import { renderModel, idPaint } from './voxkit.js';
+import { renderModel, idPaint, WORLD_YAW, WORLD_PITCH } from './voxkit.js';
+import { renderSteps, runSteps } from './slabrender.js';
 import { flipCanvas } from '../gfx/pixel.js';
 
 // ------------------------------------------------------------------ themes
@@ -359,7 +360,7 @@ function glassSponge(m, o, size, P, r) {
 const SPECIES = { staghorn, table: tableCoral, fan: seaFan, brain: brainCoral, tube: tubeSponge, bubble: bubbleCoral, pillar: pillarCoral, whip: seaWhip, circuit: circuitCoral, bamboo: bambooCoral, glass: glassSponge };
 
 // Lumpy encrusted rock mound (bommie base).
-function rockMound(m, theme, r, cx, cz, w, h, d) {
+function* rockMound(m, theme, r, cx, cz, w, h, d) {
   const R = theme.rock.map((c) => m.color(c, { jitter: 0.12, rock: true }));
   const CL = theme.coralline.map((c) => m.color(c, { jitter: 0.12 }));
   const AL = theme.algae.map((c) => m.color(c, { jitter: 0.15 }));
@@ -369,12 +370,16 @@ function rockMound(m, theme, r, cx, cz, w, h, d) {
     const lx = cx + r.float(-w * 0.3, w * 0.3), lz = cz + r.float(-d * 0.18, d * 0.18);
     const rx = Math.min(w * r.float(0.2, 0.34), lx - 3, m.nx - 4 - lx), ry = h * r.float(0.55, 1), rz = Math.min(d * r.float(0.24, 0.36), lz - 2, m.nz - 3 - lz);
     if (rx < 4 || rz < 3) continue;
-    for (let y = 0; y <= ry; y++) for (let z = Math.floor(lz - rz); z <= Math.ceil(lz + rz); z++) for (let x = Math.floor(lx - rx); x <= Math.ceil(lx + rx); x++) {
-      const dx = (x + 0.5 - lx) / rx, dy = (y + 0.5) / ry, dz = (z + 0.5 - lz) / rz;
-      const q = dx * dx + dy * dy + dz * dz;
-      if (q > 1.35 || (q > 0.85 && q > 0.85 + noise3(x * 0.18, y * 0.18, z * 0.18, seed) * 0.5)) continue;
-      m.set(x, y, z, R[Math.floor(clamp(y / ry + (hash3(x, y, z, 2) - 0.5) * 0.4, 0, 0.999) * R.length)]);
+    for (let y = 0; y <= ry; y++) {
+      for (let z = Math.floor(lz - rz); z <= Math.ceil(lz + rz); z++) for (let x = Math.floor(lx - rx); x <= Math.ceil(lx + rx); x++) {
+        const dx = (x + 0.5 - lx) / rx, dy = (y + 0.5) / ry, dz = (z + 0.5 - lz) / rz;
+        const q = dx * dx + dy * dy + dz * dz;
+        if (q > 1.35 || (q > 0.85 && q > 0.85 + noise3(x * 0.18, y * 0.18, z * 0.18, seed) * 0.5)) continue;
+        m.set(x, y, z, R[Math.floor(clamp(y / ry + (hash3(x, y, z, 2) - 0.5) * 0.4, 0, 0.999) * R.length)]);
+      }
+      if ((y & 7) === 7) yield;
     }
+    yield;
   }
   // encrusting coralline algae and turf in patches on exposed tops
   for (let z = 0; z < m.nz; z++) for (let x = 0; x < m.nx; x++) for (let y = Math.min(m.ny - 2, Math.ceil(h * 1.5) + 2); y >= 0; y--) {
@@ -396,7 +401,7 @@ function surfaceY(m, x, z) {
 
 // Encrusting life on the rock faces: coral crusts, zoanthid dot clusters, button sponges and plate corals
 // shelving out of the front faces (tiers), so the rock reads as a living reef rather than bare stone.
-function encrust(m, theme, r, scheme, seed) {
+function* encrust(m, theme, r, scheme, seed) {
   const pals = (scheme || Object.keys(theme.pals)).map((k) => palIdx(m, theme.pals[k], theme.glow > 0.5));
   const { nx, ny, nz } = m;
   const D = m.data, SZ = nx * ny;
@@ -410,7 +415,9 @@ function encrust(m, theme, r, scheme, seed) {
       const front = !D[i + SZ], up = !D[i + nx];
       if (front || up) todo.push(x, y, z, front ? 1 : 0, up ? 1 : 0);
     }
+    if ((z & 15) === 15) yield;
   }
+  yield;
   for (let q = 0; q < todo.length; q += 5) {
     const x = todo[q], y = todo[q + 1], z = todo[q + 2], front = todo[q + 3], up = todo[q + 4];
     const n = noise3(x * 0.08, y * 0.08, z * 0.08, seed + 21);
@@ -428,6 +435,7 @@ function encrust(m, theme, r, scheme, seed) {
     } else if (h < 0.009) {
       ball(m, x, y + (up ? 1 : 0), z + (front ? 1 : 0), r.float(1, 1.8), P.c[r.int(1, 2)]);
     } else shelves.push([x, y, z, P]);
+    if (q % 20000 === 0) yield;
   }
   for (const [x, y, z, P] of shelves) {
     const R = r.float(3, 6.5);
@@ -441,13 +449,15 @@ function encrust(m, theme, r, scheme, seed) {
 }
 
 // A whole coral bommie: rock mound covered with species chosen by the theme's weights.
-export function reefFormation(seed, theme, { w = 140, h = 84, d = 54, density = 1, rock = 0.42, sizes = [10, 24] } = {}) {
+export function reefFormation(seed, theme, o) { return runSteps(reefFormationSteps(seed, theme, o)); }
+// The same, as a step generator (yields between chunks of work; returns the model).
+export function* reefFormationSteps(seed, theme, { w = 140, h = 84, d = 54, density = 1, rock = 0.42, sizes = [10, 24] } = {}) {
   const r = new RNG(seed);
   const m = new VoxelModel(w, h, d);
   const cx = w / 2, cz = d / 2;
   const scheme = theme.schemes ? theme.schemes[r.int(0, theme.schemes.length - 1)] : null;
-  rockMound(m, theme, r, cx, cz, w * 0.82, h * rock, d * 0.7);
-  encrust(m, theme, r, scheme, seed);
+  yield* rockMound(m, theme, r, cx, cz, w * 0.82, h * rock, d * 0.7);
+  yield* encrust(m, theme, r, scheme, seed);
   const kinds = Object.entries(theme.weights);
   const total = kinds.reduce((a, [, wt]) => a + wt, 0);
   const pick = () => { let q = r.next() * total; for (const [k, wt] of kinds) { q -= wt; if (q <= 0) return k; } return kinds[0][0]; };
@@ -464,8 +474,9 @@ export function reefFormation(seed, theme, { w = 140, h = 84, d = 54, density = 
     used.push([x, z, size]);
     const P = palIdx(m, pickPal(theme, r, scheme), theme.glow > 0.5);
     SPECIES[kind](m, [x, y, kind === 'fan' ? Math.max(3, Math.round(z * 0.6)) : z], size, P, r);
+    yield;
   }
-  polyps(m, seed);
+  yield* polypSteps(m, seed);
   return m;
 }
 
@@ -481,7 +492,8 @@ export function coralModel(kind, seed, theme, size = 10) {
 }
 
 // Sprinkle lighter polyp dots on exposed coral voxels (not on rock or sand).
-function polyps(m, seed) {
+function polyps(m, seed) { runSteps(polypSteps(m, seed)); }
+function* polypSteps(m, seed) {
   const lighter = new Map();
   const { nx, ny, nz } = m;
   const D = m.data, SZ = nx * ny;
@@ -498,6 +510,7 @@ function polyps(m, seed) {
       if (l === undefined) { l = m.palette.length < 250 ? m.color(shade(m.palette[v].color, 0.3), { jitter: 0.04 }) : v; lighter.set(v, l); }
       D[i] = l;
     }
+    if ((z & 15) === 15) yield;
   }
 }
 
@@ -616,6 +629,10 @@ const animCache = new Map();
 // Animated coral sprite set (frames over one sway cycle), cached per (kind, seed, theme, size, scale).
 // `k` scales the voxel count (perspective size); frames render at 1 px per voxel.
 export function voxAnim(kind, seed, themeId, size0, k, frames = 8, palKey = null) {
+  return runSteps(voxAnimSteps(kind, seed, themeId, size0, k, frames, palKey));
+}
+// The same as a step generator (one frame per step). A.hiSteps() builds the double-detail twin (zoomed camera).
+function* voxAnimSteps(kind, seed, themeId, size0, k, frames = 8, palKey = null) {
   const key = [kind, seed, themeId, size0, k, frames, palKey].join('|');
   const size = size0 * k;
   let A = animCache.get(key);
@@ -642,6 +659,7 @@ export function voxAnim(kind, seed, themeId, size0, k, frames = 8, palKey = null
     out.push({ canvas: r.canvas, ox, oy });
     const map = new Map([[P.c[3], shade(cols[3], 0.2)]]);
     nights.push(theme.glow ? idPaint(r, map) : null);
+    yield;
   }
   // normalise to a shared frame box
   const minX = Math.min(...out.map((q) => -q.ox)), minY = Math.min(...out.map((q) => -q.oy));
@@ -655,17 +673,22 @@ export function voxAnim(kind, seed, themeId, size0, k, frames = 8, palKey = null
     return c;
   };
   A = { frames: out.map((q) => box(q.canvas, q)), nights: out.map((q, i) => box(nights[i], q)), ox: -minX, oy: -minY, n: frames, P: 2.4 + (seed % 7) * 0.15 };
+  Object.defineProperty(A, 'hiSteps', { value: () => voxAnimSteps(kind, seed, themeId, size0, k * 2, frames, palKey), enumerable: false });
   animCache.set(key, A);
   return A;
 }
 
 // Bind an animation to a world position (DepthDecor-compatible: anim.x/y top-left, frame(t, off), frames).
+// gx, gy = the ground point. hiSteps() (when the animation has a double-detail twin) fills `hi` = {frames, ox, oy}
+// (twin px; DepthDecor draws it at half size while the camera is zoomed in).
 export function placeAnim(A, x, y) {
-  return {
-    frames: A.frames, nights: A.nights, n: A.n, P: A.P, x: Math.round(x - A.ox), y: Math.round(y - A.oy),
+  const pa = {
+    frames: A.frames, nights: A.nights, n: A.n, P: A.P, x: Math.round(x - A.ox), y: Math.round(y - A.oy), gx: Math.round(x), gy: Math.round(y), hi: null,
     frame(t, off = 0) { const i = Math.floor((t / A.P) * A.n + off); return A.frames[((i % A.n) + A.n) % A.n]; },
     night(t, off = 0) { const i = Math.floor((t / A.P) * A.n + off); return A.nights[((i % A.n) + A.n) % A.n]; },
   };
+  if (A.hiSteps) pa.hiSteps = function* hiSteps() { const H = yield* A.hiSteps(); if (H?.frames?.length === A.n) pa.hi = H; };
+  return pa;
 }
 
 // ------------------------------------------------------------------ cached sprites for the biomes
@@ -674,12 +697,37 @@ export function placeAnim(A, x, y) {
 // near corals carry the most detail and nothing is resampled at fractional scales.
 const spriteCache = new Map();
 const flipped = (s) => ({ ...s, canvas: flipCanvas(s.canvas), night: s.night ? flipCanvas(s.night) : null, ox: s.canvas.width - s.ox });
+// sprite.hi(): the same sprite at double voxel detail (DepthScene's hi-res pass for the zoomed-in camera)
+// sprite.hiSteps(): the same as a step generator (DepthScene runs it a few ms per frame)
+const withHi = (s, fn, steps = null) => {
+  if (s && !s.hi) Object.defineProperty(s, 'hi', { value: fn, enumerable: false, configurable: true });
+  if (s && steps && !s.hiSteps) Object.defineProperty(s, 'hiSteps', { value: steps, enumerable: false, configurable: true });
+  return s;
+};
+// Hi-res reef as a step generator (model build + slab render spread over frames); cached like reefSprite.
+const CORAL_RENDER = { outline: true, jitter: 0.06, ao: 1.3, edges: 0.7, sideEdges: 0.4, light: { top: 4.8, lit: 3.4, dark: 2.1, bottom: 1 } };
+function* reefSpriteSteps(seed, themeId, opts, k, flip) {
+  const key = 'reef|' + seed + '|' + themeId + '|' + JSON.stringify(opts) + '|' + k;
+  let s = spriteCache.get(key);
+  if (!s) {
+    const theme = THEMES[themeId];
+    const o = { ...opts, w: Math.round((opts.w ?? 140) * k), h: Math.round((opts.h ?? 84) * k), d: Math.round((opts.d ?? 54) * k), sizes: (opts.sizes ?? [10, 24]).map((v) => v * k) };
+    const m = yield* reefFormationSteps(seed, theme, o);
+    const r = yield* renderSteps(m, { scale: 1, ...CORAL_RENDER, yaw: WORLD_YAW, pitch: WORLD_PITCH });
+    s = { canvas: r.canvas, ox: r.ox, oy: r.oy, w: r.w, h: r.h, night: null, glow: null };
+    spriteCache.set(key, s);
+  }
+  if (!flip) return s;
+  let f = spriteCache.get(key + '|flip');
+  if (!f) { f = flipped(s); spriteCache.set(key + '|flip', f); }
+  return f;
+}
 export function reefSprite(seed, themeId, opts, k = 1, flip = false) {
   const key = 'reef|' + seed + '|' + themeId + '|' + JSON.stringify(opts) + '|' + k;
   if (flip) {
     let f = spriteCache.get(key + '|flip');
     if (!f) { f = flipped(reefSprite(seed, themeId, opts, k)); spriteCache.set(key + '|flip', f); }
-    return f;
+    return withHi(f, () => reefSprite(seed, themeId, opts, k * 2, true), () => reefSpriteSteps(seed, themeId, opts, k * 2, true));
   }
   let s = spriteCache.get(key);
   if (!s) {
@@ -688,13 +736,25 @@ export function reefSprite(seed, themeId, opts, k = 1, flip = false) {
     s = renderCoral(reefFormation(seed, theme, o), 1, theme);
     spriteCache.set(key, s);
   }
-  return s;
+  return withHi(s, () => reefSprite(seed, themeId, opts, k * 2), () => reefSpriteSteps(seed, themeId, opts, k * 2, false));
 }
 
 export function coralSprite(kind, seed, themeId, size, k = 1) {
   const key = kind + '|' + seed + '|' + themeId + '|' + size + '|' + k;
   let s = spriteCache.get(key);
   if (!s) { const theme = THEMES[themeId]; s = renderCoral(coralModel(kind, seed, theme, size * k), 1, theme); spriteCache.set(key, s); }
+  return withHi(s, () => coralSprite(kind, seed, themeId, size, k * 2), () => coralSpriteSteps(kind, seed, themeId, size, k * 2));
+}
+function* coralSpriteSteps(kind, seed, themeId, size, k) {
+  const key = kind + '|' + seed + '|' + themeId + '|' + size + '|' + k;
+  let s = spriteCache.get(key);
+  if (s) return s;
+  const theme = THEMES[themeId];
+  const m = coralModel(kind, seed, theme, size * k);
+  yield;
+  const r = yield* renderSteps(m, { scale: 1, ...CORAL_RENDER, yaw: WORLD_YAW, pitch: WORLD_PITCH });
+  s = { canvas: r.canvas, ox: r.ox, oy: r.oy, w: r.w, h: r.h, night: null, glow: null };
+  spriteCache.set(key, s);
   return s;
 }
 

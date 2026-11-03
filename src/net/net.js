@@ -4,7 +4,7 @@
 //   game.net = new Net(game)  (installNet in ./index.js)
 //   net.update(dtReal)        every frame (cheap when offline)
 //   net.draw(ctx, layer)      'boats': world space with the camera applied, drawn just before the player's boat
-//                             'tags':  screen space, after the lighting pass (net applies the camera itself)
+//                             'tags':  screen space, after the lighting pass (anchors mapped through the camera)
 //   net.partyLuck() -> 1..1.3 +10% luck per other player in the same ocean (max +30%); 1 when offline
 //   net.goOnline() / goOffline() / toggle(), net.setName(s), net.emote(id), net.wave(key)
 //   net.list() -> visible peers [{key, p, color, isMe, guest, here}], net.feed -> recent catches/joins, net.status
@@ -360,15 +360,14 @@ export class Net {
   draw(ctx, layer) {
     if (!this.online || !this.peers.size) return;
     const g = this.game;
-    if (g.state.view !== 'ocean' || g.ocean?.travelState || (g.ocean?.reveal ?? 1) < 1) return;
+    if (g.state.view !== 'ocean' || g.ocean?.travelState) return;
     const here = this.peersHere();
     try {
       if (layer === 'boats') drawPeerBoats(ctx, this, here);
       else if (layer === 'tags') {
-        g.camera?.apply?.(ctx);
+        // [phase4:zoom] screen space: name tags, emotes and pop-ups stay crisp 1x UI over the zoomed world
         drawPeerTags(ctx, this, here);
         drawPartyBadge(ctx, this, this.partyLuck(), g.boat);
-        g.camera?.reset?.(ctx);
       }
     } catch (e) {
       if (!this.drawErr) { this.drawErr = true; console.error('net draw', e); }

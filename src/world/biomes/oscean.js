@@ -30,7 +30,7 @@ import { MUSIC_TRACKS } from '../../core/audio.js';
 import {
   paint, gradientStrip, Blend, FogLayer, fillWith, drawWobble, makeRays, drawGlow, twinkle, Caustics, lumaMask, waveLine,
   waveRuns, Motes, Bubbles, todWeights, quality, inRect, streakTile, DepthScene, BandSet, DepthDecor, qscale, waterColorAt,
-  FogCache, hazeMask,
+  FogCache, hazeMask, zoomOf,
 } from '../scenery.js';
 import {
   AeroOverlay, AERO_LOOKS, glassOrb, chromeDrop, soapBubble, bubbleCloud, rainbowArc, auroraRibbon, turbineTower, rotorFrames,
@@ -68,7 +68,7 @@ const tri = (a, b, c, w) => qmix(qmix(a, b, w.dusk / Math.max(0.001, w.day + w.d
 export class OsceanBiome extends Biome {
   constructor(ocean) {
     super(ocean);
-    this.id = 'oscean'; this.name = '(OS)cean'; this.subtitle = 'The default wallpaper, flooded';
+    this.id = 'oscean'; this.name = '(OS)cean'; this.subtitle = 'Rolling green hills, flooded'; // [phase4:shell]
     this.music = MUSIC_TRACKS?.includes?.('oscean') ? 'oscean' : 'shallows';
     this.ambient = 'shallows';
     this.weathers = [
@@ -308,16 +308,19 @@ export class OsceanBiome extends Biome {
     for (const [xf, z, th, sc] of [[0.13, 0.36, 74, 1.7], [0.78, 0.9, 64, 1.05], [0.6, 1.12, 56, 0.8]]) {
       const s = qscale(sc, 0.05, 0.4);
       const T = turbineTower(th, s);
+      // double-resolution twin for the zoomed-in camera (DepthScene hi-res pass)
+      if (!T.hi) Object.defineProperty(T, 'hi', { value: () => turbineTower(th, s * 2), enumerable: false });
       const x = Math.round(xf * W);
       const it = D.add({ sprite: T, x, z, dy: 2 });
       const L = Math.round(th * 0.4);
-      this.turbines.push({ x: it.x - T.ox + T.hub[0], y: it.y - T.oy + T.hub[1], z, band: it.band, R: rotorFrames(L, s, 10), ph: xf * 9, v: 0.25 + (1 - z) * 0.1 });
+      this.turbines.push({ x: it.x - T.ox + T.hub[0], y: it.y - T.oy + T.hub[1], z, band: it.band, R: rotorFrames(L, s, 10), L, s, R2: null, ph: xf * 9, v: 0.25 + (1 - z) * 0.1 });
     }
     // glass orbs resting in the grass
     this.restOrbs = [];
     for (const [xf, z, r, ti] of [[0.47, 0.12, 9, 0], [0.505, 0.06, 5, 1], [0.27, 0.42, 7, 2], [0.86, 0.22, 8, 3], [0.68, 0.6, 6, 4], [0.215, 0.05, 4, 0]]) {
       const b = voxBall(r, ORB_TINTS[ti], { spec: 0.95 });
       const spr = { canvas: b.canvas, ox: b.ox, oy: b.h - 1 };
+      spr.hi = () => { const b2 = voxBall(r * 2, ORB_TINTS[ti], { spec: 0.95 }); return { canvas: b2.canvas, ox: b2.ox, oy: b2.h - 2 }; };
       const it = D.add({ sprite: spr, x: Math.round(xf * W), z, dy: 2 });
       this.restOrbs.push({ x: it.x, y: it.y - r - 1, r, z, band: it.band, tint: ORB_TINTS[ti] });
     }
@@ -350,10 +353,11 @@ export class OsceanBiome extends Biome {
       [0.74, -0.04], [0.8, 0.14], [0.88, -0.16], [0.2, 0.5], [0.33, 0.6], [0.5, 0.45], [0.62, 0.58], [0.75, 0.5], [0.9, 0.62], [0.12, 0.7]];
     for (const [xf, z] of tufts) add(voxAnim('seagrass', 1 + r.int(0, 2), 'oscean', 8, sc(z), 8), Math.round(xf * W), z);
     // flowers, glossy leaves, aqua bubble plants, app-like crystal plants
-    const flower = (seed, xf, z, size) => { const k = sc(z); const s = Math.round(size * k); add(swayAnim('flw' + seed + '|' + s, [s * 3 + 10, s * 2 + 12, 12], buildFlowers(s), { seed, frames: 6, period: 3.6 }), Math.round(xf * W), z); };
-    const leaves = (seed, xf, z, size, hue, frames = 6) => { const k = sc(z); const s = Math.round(size * k); add(swayAnim('lvs' + seed + '|' + s + hue, [s * 3 + 10, s * 2 + 10, 16], buildLeaves(s, hue), { seed, frames, period: 4.2 }), Math.round(xf * W), z); };
-    const bubbly = (seed, xf, z, size) => { const k = sc(z); const s = Math.round(size * k); add(swayAnim('bpl' + seed + '|' + s, [s * 3 + 10, s * 2 + 12, 12], buildBubblePlant(s), { seed, frames: 6, period: 3.2 }), Math.round(xf * W), z, true); };
-    const crystal = (seed, xf, z, size) => { const k = sc(z); const s = Math.round(size * k); add(swayAnim('cry' + seed + '|' + s, [s * 2 + 14, s * 2 + 12, 10], buildCrystalApps(s), { seed, frames: 4, period: 5 }), Math.round(xf * W), z, true); };
+    // each plant also knows its double-detail twin (o.hi), built in the background for the zoomed-in camera
+    const flower = (seed, xf, z, size) => { const k = sc(z); const s = Math.round(size * k), s2 = s * 2; add(swayAnim('flw' + seed + '|' + s, [s * 3 + 10, s * 2 + 12, 12], buildFlowers(s), { seed, frames: 6, period: 3.6, hi: { key: 'flw' + seed + '|' + s2, dims: [s2 * 3 + 20, s2 * 2 + 24, 24], build: buildFlowers(s2) } }), Math.round(xf * W), z); };
+    const leaves = (seed, xf, z, size, hue, frames = 6) => { const k = sc(z); const s = Math.round(size * k), s2 = s * 2; add(swayAnim('lvs' + seed + '|' + s + hue, [s * 3 + 10, s * 2 + 10, 16], buildLeaves(s, hue), { seed, frames, period: 4.2, hi: { key: 'lvs' + seed + '|' + s2 + hue, dims: [s2 * 3 + 20, s2 * 2 + 20, 32], build: buildLeaves(s2, hue) } }), Math.round(xf * W), z); };
+    const bubbly = (seed, xf, z, size) => { const k = sc(z); const s = Math.round(size * k), s2 = s * 2; add(swayAnim('bpl' + seed + '|' + s, [s * 3 + 10, s * 2 + 12, 12], buildBubblePlant(s), { seed, frames: 6, period: 3.2, hi: { key: 'bpl' + seed + '|' + s2, dims: [s2 * 3 + 20, s2 * 2 + 24, 24], build: buildBubblePlant(s2) } }), Math.round(xf * W), z, true); };
+    const crystal = (seed, xf, z, size) => { const k = sc(z); const s = Math.round(size * k), s2 = s * 2; add(swayAnim('cry' + seed + '|' + s, [s * 2 + 14, s * 2 + 12, 10], buildCrystalApps(s), { seed, frames: 4, period: 5, hi: { key: 'cry' + seed + '|' + s2, dims: [s2 * 2 + 28, s2 * 2 + 24, 20], build: buildCrystalApps(s2) } }), Math.round(xf * W), z, true); };
     flower(1, 0.065, 0.02, 12); flower(2, 0.345, -0.12, 11); flower(3, 0.585, 0.06, 12); flower(5, 0.97, 0.12, 11); flower(7, 0.83, 0.38, 12);
     // big glossy leaves framing the bottom corners, smaller clumps on the meadow
     leaves(11, 0.01, -0.36, 30, '#26c83a', 4); leaves(13, 0.99, -0.34, 32, '#22c040', 4); leaves(12, 0.405, 0.04, 13, '#4ad85a'); leaves(14, 0.56, 0.36, 13, '#5ae06a');
@@ -729,12 +733,20 @@ export class OsceanBiome extends Biome {
 
   drawRotors(ctx, band, dx, dy) {
     const tod = this.tod;
+    const hi = zoomOf(ctx) > 1.3;
     for (const tb of this.turbines) {
       if (tb.band !== band) continue;
-      const R = tb.R, f = R.frames[Math.floor(((tb.ph / (TAU / 3)) * R.n) % R.n + R.n) % R.n];
+      const R2 = hi ? tb.R2 : null, R = R2 || tb.R, f = R.frames[Math.floor(((tb.ph / (TAU / 3)) * R.n) % R.n + R.n) % R.n];
       const col = waterColorAt(WATER, tod, tb.y, this.base - 2, this.H);
-      ctx.drawImage(this.fog.get(f, col, this.D.fog(tb.z)), Math.round(tb.x + dx - R.cx), Math.round(tb.y + dy - R.cy));
+      const c = this.fog.get(f, col, this.D.fog(tb.z));
+      if (R2) ctx.drawImage(c, Math.round(tb.x + dx) - R2.cx / 2, Math.round(tb.y + dy) - R2.cy / 2, c.width / 2, c.height / 2);
+      else ctx.drawImage(c, Math.round(tb.x + dx - R.cx), Math.round(tb.y + dy - R.cy));
     }
+  }
+
+  // Ocean.hiPass extra: double-detail rotors for the zoomed-in camera (one turbine per step).
+  *hiExtraSteps() {
+    for (const tb of this.turbines || []) { if (!tb.R2) tb.R2 = rotorFrames(tb.L * 2, tb.s, 10); yield; }
   }
 
   drawPier(ctx, env, sy) {
@@ -749,7 +761,11 @@ export class OsceanBiome extends Biome {
     for (const n of this.npcs) {
       // same size as the fisherman on the boat; Marina waves now and then
       const pose = n.pose === 'wave' && (n.ph % 9) > 6.5 ? 'wave' : 'idle';
-      try { NPC.drawNPC?.(ctx, n.id, { x: n.x, y: deck, t: n.ph, scale: 0.62, facing: n.facing, pose, mood: 'happy', id: 'pier_' + n.id }); } catch { /* npc art pending */ }
+      // under the zoomed camera the NPCs render at twice the resolution and draw back at half size (crisp)
+      const R = zoomOf(ctx) > 1.3 ? 2 : 1;
+      if (R > 1) { ctx.save(); ctx.scale(1 / R, 1 / R); }
+      try { NPC.drawNPC?.(ctx, n.id, { x: n.x * R, y: deck * R, t: n.ph, scale: 0.62 * R, facing: n.facing, pose, mood: 'happy', id: 'pier_' + n.id }); } catch { /* npc art pending */ }
+      if (R > 1) ctx.restore();
     }
     const tod = this.tod;
     if (tod.night + tod.dusk * 0.5 > 0.15) drawGlow(ctx, x + p.P.lamp[0], y + p.P.lamp[1], 9, '#fff2b0', clamp01(tod.night + tod.dusk * 0.5) * (0.85 + 0.1 * Math.sin(this.t * 3)));

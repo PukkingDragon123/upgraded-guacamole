@@ -27,7 +27,7 @@ import { getProp, PROPS } from '../gfx/props.js';
 import { Fish } from '../fish/fish.js';
 import { SPECIES, SPECIES_BY_ID } from '../fish/species.js';
 import { rollIndividual } from '../fish/traits.js';
-import { TASKBAR_H } from '../desktop/desktop.js';
+const TASKBAR_H = 0; // [phase4:shell] the desktop taskbar is gone (the HUD floats over the scene)
 import { AERO, fmtAero, drawAeroCoin, drawAeroBubble, drawAeroSurface, drawAeroButton, drawSparkle, drawAeroGlow } from '../ui/aero.js';
 import { AeroDrops, DENOMS } from './drops.js';
 import { TankSpace, renderBackdrop, renderGlass, shaftSprite, causticFrames, FOG_SLABS } from './tank3d.js';

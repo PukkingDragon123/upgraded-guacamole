@@ -112,7 +112,7 @@ export class Fishing {
   toWorld(x, y) { const c = this.cam; return c?.screenToWorld ? c.screenToWorld(x, y) : [x, y]; }
   pointerWorld() { return this.toWorld(this.input.x, this.input.y); }
   zoom() { const c = this.cam; return c?.xform ? c.xform()[0] : 1; }
-  viewTop() { return this.cam?.scrollY ?? 0; }
+  viewTop() { const v = this.cam?.view?.(); return v ? v.y0 : this.cam?.scrollY ?? 0; } // [phase4:zoom] real view top
 
   zoneRadius() {
     const f = this.fish;
@@ -139,7 +139,7 @@ export class Fishing {
   focusCam(x, y, zoom, speed) {
     const c = this.cam;
     if (!c?.focus) return;
-    if (this.world.surfaceY === null || this.world.surfaceY === undefined) {
+    if ((this.world.surfaceY === null || this.world.surfaceY === undefined) && !c.open) { // [phase4:zoom] the follow camera clamps to the world itself
       const top = c.scrollY ?? 0, half = this.H / (2 * zoom);
       y = clamp(y, top + half, top + this.H - half);
     }
@@ -937,7 +937,11 @@ export class Fishing {
     // line vibration: buzzes with tension, thrums during surges
     const amp = fight ? Math.max(0, T - 0.6) * 5 + (B?.surging && !B.stunned ? 0.8 : 0) + (B?.stunned ? 0.7 : 0) : 0;
     const mx = (x0 + x1) / 2, my = (y0 + y1) / 2 + sag;
-    const steps = Math.max(4, Math.ceil(d / 1.5));
+    // [phase4:zoom] the line is plotted in screen space through the current transform: a crisp 1 px line at any
+    // camera zoom (world-space 1x1 dots would turn into fat blocks when zoomed in)
+    const m = ctx.getTransform();
+    const Z = Math.max(1, Math.hypot(m.a, m.b));
+    const steps = Math.max(4, Math.ceil((d * Z) / 1.5));
     let col = '#e8f4ff';
     if (fight) col = tension > 0.92 ? '#ff6a5a' : tension > 0.75 ? '#ffd25a' : '#e8f4ff';
     if (B?.stunned) col = Math.floor(this.t * 20) % 2 ? '#bff8ff' : '#ffffff';
@@ -948,28 +952,34 @@ export class Fishing {
     const zap = this.zapLine;
     const zk = zap ? clamp01(zap.t / zap.dur) : -1;
     const pts = [];
-    let px = null, py = null;
+    let px = null, py = null, pwy = null;
+    const ssurf = surf === null ? null : Math.round(m.d * surf + m.f);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     for (let i = 0; i <= steps; i++) {
       const t = i / steps;
       const wv = amp ? Math.sin(t * Math.PI) * amp * Math.sin(this.t * 70 + t * 14) : 0;
-      const x = Math.round((1 - t) * (1 - t) * x0 + 2 * (1 - t) * t * mx + t * t * x1 + nx * wv);
-      const y = Math.round((1 - t) * (1 - t) * y0 + 2 * (1 - t) * t * my + t * t * y1 + ny * wv);
-      if (zap && i % 4 === 0) pts.push([x, y, t]);
+      const wx = (1 - t) * (1 - t) * x0 + 2 * (1 - t) * t * mx + t * t * x1 + nx * wv;
+      const wy = (1 - t) * (1 - t) * y0 + 2 * (1 - t) * t * my + t * t * y1 + ny * wv;
+      if (zap && i % Math.max(4, Math.round(4 * Z)) === 0) pts.push([Math.round(wx), Math.round(wy), t]);
+      const x = Math.round(m.a * wx + m.c * wy + m.e), y = Math.round(m.b * wx + m.d * wy + m.f);
       if (x === px && y === py) continue;
-      const under = surf === null || y > surf;
+      const under = surf === null || wy > surf;
       const glint = reel > 0.15 && Math.abs(((1 - t) - glintPhase + 1) % 0.25) < 0.012;
+      if (Z > 1.4) { ctx.fillStyle = rgba('#0c3a5c', 0.3 * alpha); ctx.fillRect(x, y + 1, 1, 1); } // [phase4:zoom] a soft shade keeps the thin line readable over bright water
       ctx.fillStyle = glint ? '#ffffff' : rgba(col, under ? alpha * 0.8 : alpha);
       ctx.fillRect(x, y, 1, 1);
-      if (surf !== null && py !== null && (py <= surf) !== (y <= surf)) {
+      if (surf !== null && pwy !== null && (pwy <= surf) !== (wy <= surf)) {
         // little ripple where the line enters the water; spray off a straining line
-        const r = 3 + Math.sin(this.t * 4) * 1;
+        const r = (3 + Math.sin(this.t * 4) * 1) * Z, rw = Math.max(2, Math.round(2 * Z));
         ctx.fillStyle = rgba('#ffffff', 0.6);
-        ctx.fillRect(Math.round(x - r), surf + 1, 2, 1);
-        ctx.fillRect(Math.round(x + r - 1), surf + 1, 2, 1);
-        if (fight && T > 0.7 && rng.chance(0.25 * T)) this.particles.droplets?.(x, surf, 1, { dir: -Math.PI / 2, spread: 0.9, speed: [20, 60], g: 260 });
+        ctx.fillRect(Math.round(x - r), ssurf + Math.round(Z), rw, Math.max(1, Math.round(Z * 0.6)));
+        ctx.fillRect(Math.round(x + r - rw / 2), ssurf + Math.round(Z), rw, Math.max(1, Math.round(Z * 0.6)));
+        if (fight && T > 0.7 && rng.chance(0.25 * T)) this.particles.droplets?.(wx, surf, 1, { dir: -Math.PI / 2, spread: 0.9, speed: [20, 60], g: 260 });
       }
-      px = x; py = y;
+      px = x; py = y; pwy = wy;
     }
+    ctx.restore();
     // the shock running down the line: a bright bolt head trailing arcs
     if (zap && zk >= 0 && pts.length > 1) {
       const head = Math.min(pts.length - 1, Math.floor(zk * (pts.length - 1)));

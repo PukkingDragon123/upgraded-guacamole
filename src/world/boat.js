@@ -41,7 +41,10 @@ function buildModel(tier, hull, trim, parts) {
   return { T: fallbackRaft(hull), tier: 0 };
 }
 
-const VS = 2;            // px per voxel
+const VS = 2;            // px per voxel (world units)
+// Under the zoomed camera the boat and the fisherman render at RES x the voxel resolution and draw back at 1/RES, so
+// close-ups stay crisp (1 screen px outlines instead of zoomed-up blocks).
+const hiRes = (game) => (game.camera?.open && (game.camera.z || 1) >= 1.45 ? 2 : 1);
 const YAW = WORLD_YAW, PITCH = WORLD_PITCH;
 const ROLLS = [-8, -5.3, -2.7, 0, 2.7, 5.3, 8];
 const CHAR_SCALE = 0.62;
@@ -64,7 +67,7 @@ function buildFlag(paint, small) {
 export class Boat {
   constructor(game) {
     this.game = game;
-    // default to the left third, clear of the desktop icon column (x < 80) and the top-right tab bar
+    // start in the left third of the world
     this.x = Math.max(150, Math.round((game.screen?.W || 960) * 0.2));
     this.y = 0;
     this.vx = 0; this.vy = 0;
@@ -135,7 +138,7 @@ export class Boat {
     return this.M;
   }
 
-  buildSprite(M, dir, ri) {
+  buildSprite(M, dir, ri, R = 1) {
     const T = M.T;
     const nx = T.m.nx;
     const src = dir > 0 ? T.m : M.mirror;
@@ -144,29 +147,33 @@ export class Boat {
     const mx = (x) => (dir > 0 ? x : nx - x);
     const deg = ROLLS[ri] + (dir > 0 ? comp : -comp);
     const { model, map } = rollModel(src, deg, mx(T.pivot[0]), T.pivot[1]);
-    const r = renderModel(model, { scale: VS, yaw: dir > 0 ? YAW : -YAW, pitch: PITCH, jitter: 0.18 });
+    const r = renderModel(model, { scale: VS * R, yaw: dir > 0 ? YAW : -YAW, pitch: PITCH, jitter: 0.18 });
     const P = (p) => { const [x, y] = map(mx(p[0]), p[1]); return r.project(x, y, p[2]); };
     const piv = P([T.pivot[0], T.pivot[1], T.zc + 0.5]);
-    const rel = (p) => { if (!p) return null; const q = P(p); return [q[0] - piv[0], q[1] - piv[1]]; };
+    // anchors in world units (sprite px / R); px, py = pivot in sprite px
+    const rel = (p) => { if (!p) return null; const q = P(p); return [(q[0] - piv[0]) / R, (q[1] - piv[1]) / R]; };
     const A = {};
     for (const [k, p] of Object.entries(T.A)) A[k] = rel(p);
     for (const k of ['cabin', 'sub', 'under']) if (T[k]) A[k] = rel(T[k]);
-    return { r, canvas: r.canvas, px: Math.round(piv[0]), py: Math.round(piv[1]), front: idOverlay(r, T.front, true), night: idPaint(r, T.night), A };
+    return { r, R, canvas: r.canvas, px: Math.round(piv[0]), py: Math.round(piv[1]), front: idOverlay(r, T.front, true), night: idPaint(r, T.night), A };
   }
 
   sprite(dir, ri) {
     const M = this.model();
-    const key = this.modelKey + ':' + dir + ':' + ri;
+    const R = hiRes(this.game);
+    const key = this.modelKey + ':' + dir + ':' + ri + ':' + R;
     let s = this.sprites.get(key);
     if (s) return s;
-    // fall back to the nearest roll already built (the rest warm up one per frame)
-    for (let d = 1; d < ROLLS.length; d++) {
-      for (const j of [ri - d, ri + d]) {
-        const q = this.sprites.get(this.modelKey + ':' + dir + ':' + j);
-        if (q) { this.want = [dir, ri]; return q; }
+    // fall back to the nearest roll already built (the rest warm up one per frame), then the other resolution
+    for (const RR of R > 1 ? [R, 1] : [1, 2]) {
+      for (let d = RR === R ? 1 : 0; d < ROLLS.length; d++) {
+        for (const j of d ? [ri - d, ri + d] : [ri]) {
+          const q = this.sprites.get(this.modelKey + ':' + dir + ':' + j + ':' + RR);
+          if (q) { this.want = [dir, ri]; return q; }
+        }
       }
     }
-    s = this.buildSprite(M, dir, ri);
+    s = this.buildSprite(M, dir, ri, R);
     this.sprites.set(key, s);
     if (this.sprites.size > 40) this.sprites.delete(this.sprites.keys().next().value);
     return s;
@@ -177,10 +184,11 @@ export class Boat {
     const order = [3, 2, 4, 1, 5, 0, 6];
     const want = this.want;
     this.want = null;
+    const R = hiRes(this.game);
     const tryBuild = (dir, ri) => {
-      const key = this.modelKey + ':' + dir + ':' + ri;
+      const key = this.modelKey + ':' + dir + ':' + ri + ':' + R;
       if (this.sprites.has(key)) return false;
-      this.sprites.set(key, this.buildSprite(M, dir, ri));
+      this.sprites.set(key, this.buildSprite(M, dir, ri, R));
       return true;
     };
     if (want && tryBuild(want[0], want[1])) return;
@@ -344,22 +352,24 @@ export class Boat {
     if (!s) return;
     const g = this.game;
     const L = this.layer;
-    const pad = 70;
+    // the layer is in sprite px (R per world unit); ox, oy = world position of its top-left
+    const R = s.R || 1;
+    const pad = 70 * R;
     const w = s.canvas.width + pad * 2, h = s.canvas.height + pad * 2;
-    if (L.w < w || L.h < h || L.w > w + 200 || L.h > h + 200) resizeLayer(L, w, h);
+    if (L.w < w || L.h < h || L.w > w + 200 * R || L.h > h + 200 * R) resizeLayer(L, w, h);
     const lc = L.ctx;
     lc.setTransform(1, 0, 0, 1, 0, 0);
     lc.globalAlpha = 1;
     lc.globalCompositeOperation = 'source-over';
     lc.clearRect(0, 0, L.w, L.h);
     const bx = Math.round(this.x), by = Math.round(this.y);
-    const ox = bx - s.px - pad, oy = by - s.py - pad; // world position of the layer's top-left
+    const ox = bx - (s.px + pad) / R, oy = by - (s.py + pad) / R;
     lc.drawImage(s.canvas, pad, pad);
     // fisherman on the working deck
-    const sx = bx + Math.round(s.A.stand[0]) - ox, sy = by + Math.round(s.A.stand[1]) - oy;
+    const sx = s.px + pad + Math.round(s.A.stand[0] * R), sy = s.py + pad + Math.round(s.A.stand[1] * R);
     let an = null;
     try {
-      an = Character.drawCharacter(lc, sx, sy, { pose: this.pose || 'idle', t: this.poseT, facing: this.facing, look: g.state.character, fish: this.holdFish, scale: CHAR_SCALE, id: 'boat', shadow: true });
+      an = Character.drawCharacter(lc, sx, sy, { pose: this.pose || 'idle', t: this.poseT, facing: this.facing, look: g.state.character, fish: this.holdFish, scale: CHAR_SCALE * R, id: 'boat', shadow: true });
     } catch (e) {
       if (!this.charErr) { this.charErr = true; console.warn('drawCharacter failed', e); }
     }
@@ -368,31 +378,32 @@ export class Boat {
     const tint = g.ocean?.biome?.fogColor || '#2a7aa0';
     lc.globalCompositeOperation = 'source-atop';
     lc.fillStyle = tint;
-    const x0 = Math.max(0, pad - 2), x1 = Math.min(L.w, pad + s.canvas.width + 2);
+    const x0 = Math.max(0, pad - 2 * R), x1 = Math.min(L.w, pad + s.canvas.width + 2 * R);
     for (const [al, dy] of [[0.45, 1], [0.25, 7]]) {
       lc.globalAlpha = al;
       for (let x = x0; x < x1; x += 2) {
-        const wy = this.waterAt(ox + x);
+        const wy = this.waterAt(ox + x / R);
         if (wy === null) continue;
-        const yy = Math.round(wy - oy) + dy;
+        const yy = Math.round((wy - oy + dy) * R);
         if (yy < L.h) lc.fillRect(x, yy, 2, L.h - yy);
       }
     }
     lc.globalCompositeOperation = 'source-over';
     lc.globalAlpha = 1;
     this.drawSmoke(ctx);
-    ctx.drawImage(L.canvas, ox, oy);
+    ctx.drawImage(L.canvas, 0, 0, w, h, ox, oy, w / R, h / R);
     if (s.A.flag) this.drawFlag(ctx, bx + s.A.flag[0], by + s.A.flag[1]);
     try { BM.drawBoatAnim?.(ctx, this.M?.T, s.A, bx, by, this.t, this.dir, VS); } catch { /* spinning turbines + bubble jets */ } // [phase3:char]
     this.drawFoam(ctx, s, bx);
     const A = {};
     for (const [k, p] of Object.entries(s.A)) if (p) A[k] = [bx + p[0], by + p[1]];
-    if (an?.rodTip) A.rodTip = [an.rodTip[0] + ox, an.rodTip[1] + oy];
-    if (an?.hands) A.hands = [an.hands[0] + ox, an.hands[1] + oy];
-    if (an?.head) A.head = [an.head[0] + ox, an.head[1] + oy];
+    const toW = (p) => [p[0] / R + ox, p[1] / R + oy];
+    if (an?.rodTip) A.rodTip = toW(an.rodTip);
+    if (an?.hands) A.hands = toW(an.hands);
+    if (an?.head) A.head = toW(an.head);
     this.anchorsWorld = A;
     this.anchors = an;
-    this.drawOrigin = [ox + pad, oy + pad];
+    this.drawOrigin = [ox + pad / R, oy + pad / R, R];
     void env;
   }
 
@@ -448,8 +459,9 @@ export class Boat {
     if (!s) return;
     const a = clamp01((dark - 0.08) * 2.2);
     if (s.night) {
+      const R = s.R || 1;
       ctx.globalAlpha = a;
-      ctx.drawImage(s.night, this.drawOrigin[0], this.drawOrigin[1]);
+      ctx.drawImage(s.night, this.drawOrigin[0], this.drawOrigin[1], s.night.width / R, s.night.height / R);
       ctx.globalAlpha = 1;
     }
     const A = this.anchorsWorld;

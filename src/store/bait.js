@@ -1,13 +1,12 @@
-// Consumable bait (phase 3). OWNER: Online & AppSea agent.
-// Bait is downloaded from AppSea (or crafted/customised in the Lab recipe 'custombait') and is ONE-TIME USE:
-// one bait is used up each time a fish is hooked. Desktop icons are no longer bait (they are the game's menu).
+// Consumable bait (phase 3; phase 4: Shell agent). Bait is bought at Dot's Bait Shop (src/store/shop.js) or
+// crafted/customised (Lab recipe 'custombait') and is ONE-TIME USE: one bait is used up each time a fish is hooked.
 //
 //   BAITS: {id: {id, name, short, type /* species bait-pref key */, effect /* special bait effect or null */,
 //               attract, rarity, size, giant, luck, desc, art, tier, app, source, pack, price, kb}}
 //     Special ids keep the old shop ids (bread, worm, sugar, golden, flood, blackhole, chip, popup, lantern, relic)
 //     with type === id, so species prefs and the fishing agent's bait effects keep working; 'crumbs' is the free
-//     starter (type 'bread'). AppSea app baits are '<appId>_<tierId>' ('notes_lite', 'music_pro' ...) with
-//     type = the app's species bait-pref key (docs, folder, music, image, game, mail, terminal ...).
+//     starter (type 'bread'). Flavour-line baits are '<lineId>_<gradeId>' ('notes_lite', 'music_pro' ...) with
+//     type = the line's species bait-pref key (docs, folder, music, image, game, mail, terminal ...).
 //   ensureBait(state) -> state.bait = {inv:{baitId:count}, custom:[{id, name, base, scent, color, charm, size, mods,
 //                                      count, type, effect}], equipped:id|null, known:{id:true}}
 //   currentBait(state) -> {id, name, type, kind:'bait', effect, base, count,
@@ -39,33 +38,20 @@ const SPECIALS = [
   ['sugar', 'Sugar Cube', 'sugar', null, { attract: 1.2, size: 0.03 }, 'Sweet-toothed fish (and puddings) adore it.', { pack: 3, price: 30, kb: 320 }],
   ['chip', 'Overclocked Chip', 'chip', 'chip', { attract: 1.2, rarity: 1.05 }, 'Sparks attract mechanical and digital fish.', { pack: 3, price: 60, kb: 1400 }],
   ['popup', 'Pop-up Ad', 'popup', 'popup', { attract: 1.25 }, '"YOU WON A FREE FISH!" Spam fish can\'t resist.', { pack: 3, price: 40, kb: 650 }],
-  ['flood', 'Flood Bait', 'flood', 'flood', { attract: 1.1 }, 'Raises the water over your whole desktop for a while.', { pack: 1, price: 90, kb: 4800 }],
+  ['flood', 'Flood Bait', 'flood', 'flood', { attract: 1.1 }, 'Raises the water level for a while. Everything floats up.', { pack: 1, price: 90, kb: 4800 }],
   ['lantern', 'Lantern Pearl', 'lantern', 'lantern', { attract: 1.2, rarity: 1.08 }, 'A glowing pearl for the deep. Deep fish follow the light.', { pack: 2, price: 150, kb: 2600 }],
   ['golden', 'Golden Bait', 'golden', 'golden', { attract: 1.1, rarity: 1.15, giant: 1.3 }, 'Everything glitters. Rare fish come running.', { pack: 1, price: 140, kb: 9000 }],
-  ['blackhole', 'Black Hole Bait', 'blackhole', 'blackhole', { attract: 1.4, rarity: 1.1 }, 'Pulls icons and deep fish toward your hook.', { pack: 1, price: 320, kb: 26000 }],
+  ['blackhole', 'Black Hole Bait', 'blackhole', 'blackhole', { attract: 1.4, rarity: 1.1 }, 'Pulls deep fish toward your hook. Handle with care.', { pack: 1, price: 320, kb: 26000 }],
   ['relic', 'Ancient Relic', 'relic', 'relic', { attract: 1.2, rarity: 1.2, giant: 1.5 }, 'Something ancient answers. Use it in the deep.', { pack: 1, price: 1250, kb: 160000 }],
 ];
 export const SPECIAL_ORDER = SPECIALS.map((s) => s[0]);
 
-// AppSea listings for downloadable special bait (category 'bait').
-export const SPECIAL_SHOP = {
-  bread: { title: 'Bread.zip', publisher: 'Crumb Bakery', version: '1.0' },
-  worm: { title: 'GlowWorm Screensaver', publisher: 'Wiggle Soft', version: '3.1' },
-  sugar: { title: 'Sugar Rush', publisher: 'Candy Clam', version: '2.0' },
-  chip: { title: 'Overclock Utility', publisher: 'Root Beer Labs', version: '9000' },
-  popup: { title: 'PopUp Generator', publisher: 'TotallyLegitAds', version: '2000' },
-  flood: { title: 'FloodGate Installer', publisher: 'Tide Systems', version: '1.2' },
-  lantern: { title: 'Lantern Pearl Theme', publisher: 'Glow & Co.', version: 'Vista' },
-  golden: { title: 'GoldRush Toolbar', publisher: 'Shiny Inc.', version: '24K' },
-  blackhole: { title: 'BlackHole.exe', publisher: 'Event Horizon', version: '0.0' },
-  relic: { title: 'Ancient Relic.iso', publisher: 'Unknown', version: '???' },
-};
 
 export const BAITS = {};
 
 for (const [id, name, type, effect, m, desc, shop] of SPECIALS) {
   BAITS[id] = {
-    id, name, short: name, type, effect, desc, tier: -1, app: null, source: id === 'crumbs' ? 'starter' : 'appsea',
+    id, name, short: name, type, effect, desc, tier: -1, app: null, source: id === 'crumbs' ? 'starter' : 'shop',
     attract: m.attract ?? 1, rarity: m.rarity ?? 1, size: m.size ?? 0, giant: m.giant ?? 1, luck: m.luck ?? 0,
     pack: shop.pack, price: shop.price, kb: shop.kb, art: { shape: id },
   };
@@ -78,7 +64,7 @@ for (const fam of CATALOG) {
     const p = baitPowerAt(fam.id, tier), k = p - 1;
     const id = appBaitId(fam.id, tier);
     BAITS[id] = {
-      id, name: `${fam.name} ${TIERS[tier].name}`, short: fam.name, type, effect: null, tier, app: fam.id, source: 'appsea',
+      id, name: `${fam.name} ${TIERS[tier].name}`, short: fam.name, type, effect: null, tier, app: fam.id, source: 'shop',
       desc: fam.desc[tier], power: p,
       attract: Math.round((1.05 + k * 0.45) * 100) / 100, rarity: Math.round((1 + k * 0.3) * 100) / 100,
       size: Math.round(k * 0.07 * 1000) / 1000, giant: Math.round((1 + k * 0.9) * 100) / 100, luck: Math.round(k * 0.1 * 100) / 100,
@@ -141,7 +127,7 @@ export function ensureBait(state) {
     b.starter = true;
     b.inv.crumbs = (b.inv.crumbs || 0) + 10;
     b.known.crumbs = true;
-    // veterans: one pack of every app tier they had installed (apps used to be reusable desktop bait)
+    // veterans: one pack of every grade they owned before bait became consumable
     const tiers = state.apps?.tiers || {};
     for (const [app, t] of Object.entries(tiers)) {
       const id = appBaitId(app, t);

@@ -1,9 +1,9 @@
-// Phase 3 arrivals for the (OS)cean (the flooded green-hill wallpaper): Frutiger Aero things and absurd
-// meme fish. Same schema as species.js; authored at final size (no GROW pass), merged by species.js.
-//   bubblepuff   a glossy soap-bubble pufferfish (voxel glass body, look.vox.glass) that inflates
-//   sneakerhead  a fish standing in generic white high-tops (look.sneakers), walks / hops on the seabed
-//   hydrated     a fish that carries its own water bubble (look.orb)
-//   porpoise     the office-assistant porpoise with a paperclip fin (legendary)
+// Phase 3 arrivals for the (OS)cean (the flooded green-hill wallpaper). Same schema as species.js; authored at
+// final size (no GROW pass), merged by species.js. Phase 4 renders them as realistic voxel animals
+// (src/fish/anatomy.js): bubblepuff = a pufferfish whose skin turns into glossy soap-bubble film when it
+// inflates, sneakerhead = a snakehead (no sneakers), hydrated = a green chromis that trails extra bubbles,
+// porpoise = a harbour porpoise with horizontal flukes. The legacy look keys (vox.glass, sneakers, orb,
+// paperclip) are ignored by the realistic renderer.
 
 const S = [];
 const add = (o) => S.push(o);

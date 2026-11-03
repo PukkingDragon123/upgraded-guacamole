@@ -1,15 +1,16 @@
 {
   "name": "fishtop",
   "version": "1.0.0",
-  "description": "FISHTOP - a cozy desktop fishing & aquarium game where your desktop becomes a living pixel ocean.",
+  "description": "FISHTOP - a zoomed-in Frutiger Aero, skill-based voxel fishing game.",
   "private": true,
   "type": "module",
-  "main": "desktop/main.cjs",
+  "main": "electron/main.cjs",
   "scripts": {
     "build": "node tools/build.mjs",
     "watch": "node tools/build.mjs --watch",
     "serve": "node tools/serve.mjs",
     "test": "node tools/build.mjs && node tests/smoke.mjs",
+    "app": "node tools/build.mjs && electron .",
     "desktop": "node tools/build.mjs && electron ."
   },
   "devDependencies": {

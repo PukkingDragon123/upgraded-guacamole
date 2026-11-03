@@ -1,17 +1,21 @@
 // Fish rig entry point: drawFishRig(ctx, compiled, st) -> anchors in world coords (+ w, h of the drawn box).
-// FULL VOXEL ART: every fish and creature is a detailed 3D voxel model from voxelfish.js (cartoon voxel eyes,
-// Frutiger Aero gloss, spinning rotors, outfits); there is no 2D fish style any more. While a creature's very
-// first voxel frame is still building, nothing is drawn for it (anchors still come back from its geometry).
-// The Wakka chomper (kind 'chomper') is a chunky retro voxel model whose frame turns in 90-degree steps.
+// FULL VOXEL ART: every fish and creature is a realistic 3D voxel model from voxelfish.js (phase 4: natural
+// eyes, Frutiger Aero gloss, translucent fins). While a creature's very first voxel frame is still building,
+// nothing is drawn for it (anchors still come back from its geometry). Creatures outside the canvas (under
+// the current transform) are culled the same way. The render resolution follows the canvas transform scale
+// (the zoomed follow camera), so fish stay crisp up close. Realistic fish show no cartoon expressions: the
+// emotion field only opens the mouth a little when surprised / scared.
+// The Wakka chomper (kind 'chomper') is a round voxel model whose frame turns in 90-degree steps.
 // Extra st fields: pose (iconfish mimic pose), chain ([{x,y}] head-first for chain kinds), heading (deg,
 // + = swimming away from the viewer: the voxel fish turns its head into the scene), lod (0 near, 1 far:
-// fewer swim frames), pri (voxel build priority bonus), silhouette (true | colour: a dark voxel silhouette),
-// wash {color, alpha}, glow. turn is the world-space scaleX (-1..1) during a turn-around; turn: 1 with
+// fewer swim frames), pri (voxel build priority bonus; >= 3 = hero close-up), silhouette (true | colour),
+// wash {color, alpha}, glow, noCull. turn is the world-space scaleX (-1..1) during a turn-around; turn: 1 with
 // facing: -1 means "facing left". setFishStyle / getFishStyle remain for API compatibility (voxel only).
 
 import { rigGeom, isKind, kindRotates, chainRadius, defaultChainPoints, realCues } from './fishart.js';
 import { tinted, makeCanvas, ctxOf } from '../core/canvas.js';
 import { voxelFrame, chainBall, setVoxelFishBudget, SWIM_N, voxelParts } from './voxelfish.js';
+import { realYawBase } from '../fish/realvox.js';
 
 /** Kept for API compatibility: fish are always voxel. */
 export function setFishStyle() {}
@@ -26,8 +30,8 @@ const BASE_YAW = 15;
 
 export function setRigBudget(ms) { setVoxelFishBudget(Math.max(1.5, ms * 0.75)); }
 export function beginRigFrame() {}
-let drawMs = 0, drawCalls = 0, pending = 0;
-export function rigStats() { return { items: geoCache.size + washes.size, rasterized: 0, fallbacks: pending, drawMs, drawCalls, pending }; }
+let drawMs = 0, drawCalls = 0, pending = 0, culled = 0;
+export function rigStats() { return { items: geoCache.size + washes.size, rasterized: 0, fallbacks: pending, drawMs, drawCalls, pending, culled }; }
 const geoCache = new Map();
 export function clearRigCache() { geoCache.clear(); washes.clear(); }
 
@@ -61,6 +65,8 @@ function worldTurn(st) {
   return clamp(turn, -1, 1);
 }
 
+const NO_CUE = {}, REAL_GAPE = { gape: 0.25 };
+
 // Face state shared by all eyes of a fish this frame.
 function faceState(st, ang, sx, X, Y, geo) {
   let lx = 0, ly = 0;
@@ -72,7 +78,8 @@ function faceState(st, ang, sx, X, Y, geo) {
     if (m > 0.01) { const k = Math.min(1, m / 24) / m; lx = rx * k; ly = ry * k; }
   }
   const t = st.time || 0;
-  const cue = realCues(st.emotion || 'neutral');
+  // realistic fish: no cartoon expressions (no tints, twitches or rolling eyes), only a gape when surprised
+  const cue = geo?.real ? (st.emotion === 'surprised' || st.emotion === 'scared' ? REAL_GAPE : NO_CUE) : realCues(st.emotion || 'neutral');
   const toon = geo?.toon;
   if (!toon) {
     if (cue.spin) { lx = Math.cos(t * 7) * 0.75; ly = Math.sin(t * 7) * 0.75; }
@@ -89,8 +96,24 @@ function faceState(st, ang, sx, X, Y, geo) {
 }
 
 
+// Is the creature (roughly) outside the canvas under the current transform? Off-screen creatures are not
+// rendered (no voxel frames requested), only their anchors are returned. The zoomed follow camera shows a
+// small part of the world, so this saves most of the voxel work.
+function offscreen(ctx, c, st) {
+  if (!ctx.getTransform || !ctx.canvas || st.noCull) return false;
+  const m = ctx.getTransform();
+  const k = Math.hypot(m.a, m.b);
+  const x = st.chain && st.chain.length ? st.chain[0].x : st.x, y = st.chain && st.chain.length ? st.chain[0].y : st.y;
+  if (x == null || y == null) return false;
+  const sx = m.a * x + m.c * y + m.e, sy = m.b * x + m.d * y + m.f;
+  const reach = (Math.max(c.L || 30, c.H || 20) * 1.6 + (st.chain ? st.chain.length * (c.chain?.r || 4) * 1.2 : 0)) * (st.scale ?? 1) * k + 16;
+  const W = ctx.canvas.width, H = ctx.canvas.height;
+  return sx < -reach || sy < -reach || sx > W + reach || sy > H + reach;
+}
+
 export function drawFishRig(ctx, c, st) {
   const t0 = now();
+  if (offscreen(ctx, c, st)) { culled++; return placeholderAnchors(c, st); }
   let a = c.kind === 'chain' ? drawVoxelChain(ctx, c, st) : drawVoxelRig(ctx, c, st);
   if (!a) { pending++; a = placeholderAnchors(c, st); }
   drawMs += now() - t0;
@@ -189,17 +212,28 @@ function compose(ctx, items, glows, X, Y, scx, scy, st, c, bw, bh) {
   }
 }
 
+// On-screen pixels per world unit of the current transform (the zoomed world camera, scaled panels).
+function ctxScale(ctx) {
+  if (!ctx.getTransform) return 1;
+  const m = ctx.getTransform();
+  const k = Math.hypot(m.a, m.b);
+  return k > 0.05 && k < 40 ? k : 1;
+}
+
 function drawVoxelRig(ctx, c, st) {
-  const kind = isKind(c);
+  // realistic swimmers pitch, inflate and beat their tails even when their legacy kind was a 'blob', 'ray'...
+  const kind = c.real ? c.real.plan === 'solid' : isKind(c);
   const tau = worldTurn(st);
   // world yaw 0..180 through the front; side-on poses sit in a slight 3/4 view so the volume reads
   const Yw = Math.acos(clamp(tau, -1, 1)) / DEG;
   const mirror = Yw > 90;
   let yaw = mirror ? 180 - Yw : Yw;
-  const base = st.yawBase ?? (kindRotates(c) ? 0 : BASE_YAW); // the retro chomper reads best side-on
+  const base = st.yawBase ?? realYawBase(c) ?? (kindRotates(c) ? 0 : BASE_YAW); // the retro chomper reads best side-on
   yaw = base + (90 - base) * (yaw / 90) - (st.heading || 0);
   if (yaw < -90) yaw = -90;
-  const S = st.scale ?? 1;
+  // render at the device resolution of the zoomed camera: finer voxels up close, drawn back at world scale
+  const zk = ctxScale(ctx);
+  const S = (st.scale ?? 1) * zk;
   const ang = kind ? 0 : st.angle || 0;
   const t = st.time || 0;
   const lod = st.lod || 0;
@@ -210,14 +244,14 @@ function drawVoxelRig(ctx, c, st) {
   const pose = !!(st.pose || st.emotion === 'pose');
   const res = voxelFrame(c, { S, yaw, pitch: ang / DEG, sw, infl, pose, lod, pri: st.pri ?? 1 });
   if (!res) return null; // first frame still building: the pixel rig stands in this once
-  const { f, k } = res;
+  const f = res.f, k = res.k / zk;
   const sq = clamp(st.squash || 0, -1, 1);
   const kx = k * (1 + 0.22 * sq), ky = k * (1 - 0.2 * sq);
   const fang = f.pitch * DEG; // bucketed pitch of the frame (stable face sprite keys)
-  const fs = faceState(st, fang, mirror ? -1 : 1, st.x, st.y, { toon: !!c.toon, rest: c.mouth?.rest || 0 });
+  const fs = faceState(st, fang, mirror ? -1 : 1, st.x, st.y, { toon: !!c.toon, rest: c.real ? c.real.mouth?.rest || 0 : c.mouth?.rest || 0, real: !!c.real });
   const cue = fs.cue;
   const twitch = cue.twitch && !st.silhouette ? ((Math.floor(t * 23) % 3) - 1) * (Math.floor(t * 7) & 1) : 0;
-  const X = Math.round(st.x) + twitch, Y = Math.round(st.y + (st.bob || 0));
+  const X = Math.round(st.x * zk) / zk + twitch, Y = Math.round((st.y + (st.bob || 0)) * zk) / zk;
   // the Wakka chomper turns in crisp 90-degree steps: the finished voxel frame is rotated (+PI/2 = down)
   const rot = kindRotates(c) ? Math.round((st.angle || 0) / (Math.PI / 2)) * (Math.PI / 2) : 0;
   const items = [[f.canvas, -f.ax, -f.ay]];
@@ -297,9 +331,10 @@ function drawVoxelChain(ctx, c, st) {
   const mirror = Math.cos(dir) < 0;
   let pitch = mirror ? Math.PI - dir : dir;
   pitch = Math.atan2(Math.sin(pitch), Math.cos(pitch));
-  const res = voxelFrame(c, { S: s, yaw: 0, pitch: clamp(pitch / DEG, -90, 90), sw: 0, infl: 0, pose: false, lod: st.lod || 0, pri: st.pri ?? 1 });
+  const zk = ctxScale(ctx);
+  const res = voxelFrame(c, { S: s * zk, yaw: 0, pitch: clamp(pitch / DEG, -90, 90), sw: 0, infl: 0, pose: false, lod: st.lod || 0, pri: st.pri ?? 1 });
   if (!res) return null;
-  const { f, k } = res;
+  const f = res.f, k = res.k / zk;
   const items = [];
   const sx = mirror ? -1 : 1;
   // segments tail -> head (in head-local coords; mirrored items are drawn through the same transform)
@@ -308,11 +343,21 @@ function drawVoxelChain(ctx, c, st) {
     const ra = chainRadius(c, i, n, s), rb = chainRadius(c, i - 1, n, s);
     const d = Math.hypot(b.x - a.x, b.y - a.y);
     const steps = Math.max(1, Math.ceil(d / Math.max(1, Math.min(ra, rb) * 0.7)));
+    // dorsal fin ridge (realistic eels): small fin-coloured balls along the upper side of the path
+    let nx = 0, ny = 0;
+    if (c.real && d > 0.01) { nx = -(b.y - a.y) / d; ny = (b.x - a.x) / d; if (ny > 0) { nx = -nx; ny = -ny; } }
     for (let q = 0; q < steps; q++) {
       const u = q / steps;
-      const ball = chainBall(c, ra + (rb - ra) * u);
+      const rr = ra + (rb - ra) * u;
+      if (c.real && (i < n - 2 || q > 0)) {
+        const fb = chainBall(c, rr * 0.5 * zk, true);
+        const fx = a.x + (b.x - a.x) * u - X + nx * rr * 0.72, fy = a.y + (b.y - a.y) * u - Y + ny * rr * 0.72;
+        items.push([fb.canvas, Math.round((fx * sx) * zk - fb.ax) / zk, Math.round(fy * zk - fb.ay) / zk, fb.canvas.width / zk, fb.canvas.height / zk]);
+      }
+      const ball = chainBall(c, rr * zk);
       const wx = a.x + (b.x - a.x) * u - X, wy = a.y + (b.y - a.y) * u - Y;
-      items.push([ball.canvas, Math.round(wx * sx - ball.ax), Math.round(wy - ball.ay)]);
+      if (zk === 1) items.push([ball.canvas, Math.round(wx * sx - ball.ax), Math.round(wy - ball.ay)]);
+      else items.push([ball.canvas, Math.round((wx * sx) * zk - ball.ax) / zk, Math.round(wy * zk - ball.ay) / zk, ball.canvas.width / zk, ball.canvas.height / zk]);
     }
   }
   items.push([f.canvas, -f.ax * k, -f.ay * k, f.W * k, f.H * k]);

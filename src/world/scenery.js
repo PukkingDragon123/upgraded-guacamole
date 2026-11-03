@@ -281,12 +281,17 @@ export class Caustics {
     const [R, G, B] = hexToRgb(color);
     const cCore = packRGB(R, G, B, Math.round(255 * core)), cRim = packRGB(R, G, B, Math.round(255 * rim));
     const px = new Float32Array(n), py = new Float32Array(n);
+    this.o = o;
+    this.pts = [];
     for (let f = 0; f < frames; f++) {
       const a = (f / frames) * TAU;
+      const P0 = new Float32Array(n * 2);
       for (let i = 0; i < n; i++) {
         px[i] = ((i % cx) + bx[i] + Math.cos(a * sp[i] + ph[i]) * rad[i]) * cw;
         py[i] = (((i / cx) | 0) + by[i] + Math.sin(a * sp[i] + ph[i]) * rad[i]) * ch;
+        P0[i * 2] = px[i]; P0[i * 2 + 1] = py[i];
       }
+      this.pts.push(P0);
       this.frames.push(paint(tw, th, (x, y) => {
         const gx = Math.floor(x / cw), gy = Math.floor(y / ch);
         let d1 = 1e9, d2 = 1e9;
@@ -309,9 +314,84 @@ export class Caustics {
     this.pats = null;
   }
 
+  // Hi-res frame fi (R x resolution, thinner lines), painted on first use.
+  hiFrame(fi, R) {
+    this.hiFrames ||= [];
+    let c = this.hiFrames[fi];
+    if (c) return c;
+    const o = this.o, tw = this.tw * R, th = this.th * R, cxn = o.cx ?? 7, cyn = o.cy ?? 4;
+    const cw = tw / cxn, ch = th / cyn, P0 = this.pts[fi];
+    const thick = (o.thick ?? 1.15) * 1.1;
+    const [Rr, G, B] = hexToRgb(o.color ?? '#ffffff');
+    const cCore = packRGB(Rr, G, B, Math.round(255 * (o.core ?? 0.9))), cRim = packRGB(Rr, G, B, Math.round(255 * (o.rim ?? 0.42)));
+    c = paint(tw, th, (x, y) => {
+      const gx = Math.floor(x / cw), gy = Math.floor(y / ch);
+      let d1 = 1e9, d2 = 1e9;
+      for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
+        let ix = gx + i, iy = gy + j, ox = 0, oy = 0;
+        if (ix < 0) { ix += cxn; ox = -tw; } else if (ix >= cxn) { ix -= cxn; ox = tw; }
+        if (iy < 0) { iy += cyn; oy = -th; } else if (iy >= cyn) { iy -= cyn; oy = th; }
+        const k = iy * cxn + ix;
+        const dx = P0[k * 2] * R + ox - x - 0.5, dy = P0[k * 2 + 1] * R + oy - y - 0.5;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) d2 = d;
+      }
+      const e = d2 - d1;
+      if (e < thick) return cCore;
+      if (e < thick * 2.2 && bayer(x, y) < 0.5) return cRim;
+      return 0;
+    });
+    this.hiFrames[fi] = c;
+    return c;
+  }
+
   // mask: canvas whose alpha limits where caustics land (drawn at mx, my).
-  draw(ctx, mask, mx, my, t, alpha, { fps = 9, drift = 5, offset = 0 } = {}) {
+  draw(ctx, mask, mx, my, t, alpha, opts = {}) {
     if (alpha <= 0.01) return;
+    const lm = mask?.__luma;
+    if (lm && this.pts && zoomOf(ctx) > 1.3) {
+      const twin = HI_TWIN.get(lm.src);
+      if (twin) {
+        if (!mask.__hi || mask.__hiSrc !== twin) { mask.__hi = lumaMaskRaw(twin, lm.opts); mask.__hiSrc = twin; }
+        this.drawHi(ctx, mask.__hi, mx, my, t, alpha, opts, Math.round(twin.width / lm.src.width) || 2);
+        return;
+      }
+    }
+    this.draw1(ctx, mask, mx, my, t, alpha, opts);
+  }
+
+  drawHi(ctx, mask, mx, my, t, alpha, { fps = 9, drift = 5, offset = 0 } = {}, R = 2) {
+    if (!this.hiLayers) this.hiLayers = new Map();
+    let L = this.hiLayers.get(mask);
+    if (!L) { L = makeLayer(mask.width, mask.height); L.pats = []; this.hiLayers.set(mask, L); }
+    const g = L.ctx;
+    const fi = (Math.floor(t * fps) + offset) % this.frames.length;
+    const sx = Math.round((t * drift) % this.tw) * R;
+    const ck = fi * 100000 + sx;
+    if (L.ck !== ck) {
+      L.ck = ck;
+      L.pats[fi] ||= g.createPattern(this.hiFrame(fi, R), 'repeat');
+      g.globalCompositeOperation = 'source-over';
+      g.globalAlpha = 1;
+      g.clearRect(0, 0, L.w, L.h);
+      g.save();
+      g.translate(sx, 0);
+      g.fillStyle = L.pats[fi];
+      g.fillRect(-sx, 0, L.w, L.h);
+      g.restore();
+      g.globalCompositeOperation = 'destination-in';
+      g.drawImage(mask, 0, 0);
+      g.globalCompositeOperation = 'source-over';
+    }
+    const po = ctx.globalCompositeOperation, pa = ctx.globalAlpha;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = clamp01(alpha);
+    ctx.drawImage(L.canvas, 0, 0, mask.width, mask.height, Math.round(mx), Math.round(my), mask.width / R, mask.height / R);
+    ctx.globalCompositeOperation = po;
+    ctx.globalAlpha = pa;
+  }
+
+  draw1(ctx, mask, mx, my, t, alpha, { fps = 9, drift = 5, offset = 0 } = {}) {
     if (!this.layers) this.layers = new Map();
     let L = this.layers.get(mask);
     if (!L) { L = makeLayer(mask.width, mask.height); L.pats = this.frames.map((c) => L.ctx.createPattern(c, 'repeat')); this.layers.set(mask, L); }
@@ -343,7 +423,12 @@ export class Caustics {
 }
 
 // Luminance-weighted alpha mask of a canvas (bright, lit surfaces receive more caustic light).
-export function lumaMask(src, { gamma = 1.6, gain = 1.4, fadeTop = 0, fadeBottom = 0 } = {}) {
+export function lumaMask(src, opts = {}) {
+  const out = lumaMaskRaw(src, opts);
+  out.__luma = { src, opts }; // the caustics rebuild it from a hi-res twin of src (HI_TWIN) when zoomed in
+  return out;
+}
+function lumaMaskRaw(src, { gamma = 1.6, gain = 1.4, fadeTop = 0, fadeBottom = 0 } = {}) {
   const w = src.width, h = src.height;
   const s = ctxOf(src).getImageData(0, 0, w, h).data;
   return paintBuf(w, h, (d) => {
@@ -1000,6 +1085,7 @@ export class DepthScene {
   // Heightfield + colour grid in world space, then the column ray-march.
   // o.height(X, z) -> world px; o.color(X, z, h) -> [r, g, b] (0..255, unshaded); o.glow(X, z) -> [r,g,b] | null
   terrain(o) {
+    this.terrainOpts = o; // kept for the hi-res pass (hiSteps)
     const { W, H, pad, cx, K, hz } = this;
     const cw = o.cell ?? 2, dz = o.dz ?? 0.02, hstep = o.hstep ?? 2;
     const z0 = this.zNear - 0.06, z1 = this.zFar;
@@ -1165,11 +1251,13 @@ export class DepthScene {
     const bandOf = new Uint8Array(N), fogOf = new Float32Array(N);
     for (let i = 0; i < N; i++) {
       const cc = pc[i];
-      if (!cc) continue;
+      if (!cc) { bandOf[i] = 3; continue; }
       const z = pz[i];
       bandOf[i] = this.band(z);
       fogOf[i] = this.fog(z) * (((cc >>> 24) & 1) ? 0.5 : 1);
     }
+    this.bandOf = bandOf; // 1x band per pixel (3 = empty): the hi-res pass fills its band seams from it
+    this.variants = variants;
     for (const v of variants) {
       const sd = ctxOf(v.strip).getImageData(0, 0, v.strip.width, v.strip.height).data;
       const sw = v.strip.width;
@@ -1230,6 +1318,217 @@ export class DepthScene {
   }
 }
 
+// ------------------------------------------------------------------ hi-res pass (zoomed-in camera)
+// The follow camera shows the world at ~2x, so the near and mid bands are re-rendered at HI_RES x resolution with
+// half-size terrain voxels and props at double voxel detail (sprite.hi() when the sprite knows how to rebuild itself,
+// else the 1x sprite scaled). Time-sliced: Ocean.update drives hiSteps() under a per-frame budget once the biome is
+// built, and BandSet.draw switches to the hi-res canvases whenever the context is zoomed in.
+export const HI_RES = 2;
+export const HI_TWIN = new WeakMap(); // 1x band canvas -> hi-res band canvas (caustic masks find their twin here)
+export const zoomOf = (ctx) => { try { const m = ctx.getTransform(); return Math.hypot(m.a, m.b); } catch { return 1; } };
+
+DepthScene.prototype.hiSteps = function* hiSteps(R = HI_RES) {
+  const o = this.terrainOpts;
+  if (!o || !this.bands || !this.variants || this.hi || this.hiBusy) return;
+  this.hiBusy = true;
+  const { H, pad, cx, K, hz, LW, top, TH } = this;
+  const fine = 2;
+  const cw = (o.cell ?? 2) / fine, dz = (o.dz ?? 0.02) / fine, hstep = Math.max(0.5, (o.hstep ?? 2) / fine);
+  const zCut = this.cuts[1];
+  const z0 = this.zNear - 0.06, z1 = Math.min(this.zFar, zCut + 0.16);
+  const nz = Math.ceil((z1 - z0) / dz) + 2;
+  const span = (this.W / 2 + pad + 6) / this.s(Math.min(1.25, z1));
+  const X0 = cx - span, nx = Math.ceil((2 * span) / cw) + 2;
+  const N = nx * nz;
+  const hgt = new Float32Array(N), base = new Float32Array(N * 3), glow = new Uint8Array(N);
+  let t0 = performance.now();
+  const tick = () => performance.now() - t0 > 4;
+  for (let iz = 0; iz < nz; iz++) {
+    const z = z0 + iz * dz;
+    for (let ix = 0; ix < nx; ix++) {
+      const X = X0 + ix * cw, i = iz * nx + ix;
+      const h = Math.round(o.height(X, z) / hstep) * hstep;
+      hgt[i] = h;
+      let c = o.glow?.(X, z, h);
+      if (c) glow[i] = 1; else c = o.color(X, z, h, ix >> 1, iz >> 1);
+      base[i * 3] = c[0]; base[i * 3 + 1] = c[1]; base[i * 3 + 2] = c[2];
+    }
+    if (tick()) { yield; t0 = performance.now(); }
+  }
+  // shading (as terrain(): lambert from the height gradient, AO from a blurred height, voxel jitter)
+  const col = new Uint32Array(N), blur = new Float32Array(N), tmpB = new Float32Array(N);
+  const Rb = 3 * fine;
+  for (let iz = 0; iz < nz; iz++) {
+    const row = iz * nx;
+    let acc = 0, n = 0;
+    for (let k = 0; k <= Rb && k < nx; k++) { acc += hgt[row + k]; n++; }
+    for (let ix = 0; ix < nx; ix++) {
+      tmpB[row + ix] = acc / n;
+      const a = ix - Rb, b = ix + Rb + 1;
+      if (a >= 0) { acc -= hgt[row + a]; n--; }
+      if (b < nx) { acc += hgt[row + b]; n++; }
+    }
+  }
+  for (let ix = 0; ix < nx; ix++) {
+    let acc = 0, n = 0;
+    for (let k = 0; k <= Rb && k < nz; k++) { acc += tmpB[k * nx + ix]; n++; }
+    for (let iz = 0; iz < nz; iz++) {
+      blur[iz * nx + ix] = acc / n;
+      const a = iz - Rb, b = iz + Rb + 1;
+      if (a >= 0) { acc -= tmpB[a * nx + ix]; n--; }
+      if (b < nz) { acc += tmpB[b * nx + ix]; n++; }
+    }
+  }
+  yield; t0 = performance.now();
+  const L = [-0.42, 0.85, -0.32];
+  { const l = Math.hypot(...L); L[0] /= l; L[1] /= l; L[2] /= l; }
+  const amb = o.ambient ?? 0.62, dif = o.diffuse ?? 0.5, aoK = o.ao ?? 0.06, jit = (o.jitter ?? 0.07) * 0.8;
+  for (let iz = 0; iz < nz; iz++) {
+    for (let ix = 0; ix < nx; ix++) {
+      const i = iz * nx + ix;
+      const hl = hgt[iz * nx + Math.max(0, ix - 1)], hr = hgt[iz * nx + Math.min(nx - 1, ix + 1)];
+      const hn = hgt[Math.max(0, iz - 1) * nx + ix], hf = hgt[Math.min(nz - 1, iz + 1) * nx + ix];
+      let gx = -(hr - hl) / (2 * cw), gz = -(hf - hn) / (2 * cw), gy = 1;
+      const gl = Math.hypot(gx, gy, gz);
+      gx /= gl; gy /= gl; gz /= gl;
+      const lam = Math.max(0, gx * L[0] + gy * L[1] + gz * L[2]);
+      const ao = clamp01((blur[i] - hgt[i]) * aoK);
+      const k = glow[i] ? 1.25 : (amb + dif * lam) * (1 - ao * 0.55) + (hash2(ix, iz, 71) - 0.5) * 2 * jit;
+      const r = base[i * 3] * k, g = base[i * 3 + 1] * k, b = base[i * 3 + 2] * k;
+      col[i] = ((clamp(Math.round(r), 0, 255)) | (clamp(Math.round(g), 0, 255) << 8) | (clamp(Math.round(b), 0, 255) << 16) | (glow[i] ? 1 << 24 : 0) | (1 << 25)) >>> 0;
+    }
+    if (tick()) { yield; t0 = performance.now(); }
+  }
+  // ray-march every hi-res column front to back, only as deep as the mid band (+ a margin for its seams)
+  const HW = LW * R, HT = TH * R;
+  const pc = new Uint32Array(HW * HT), pz = new Float32Array(HW * HT);
+  const step = 1 / (K * R);
+  const wallF = o.wall ?? 0.72, sideF = o.side ?? 0.84, crestF = o.crest ?? 1.12;
+  const wallFn = o.wallColor || null, wallMin = o.wallMin ?? 24;
+  const shadeP = (c, f) => ((clamp(Math.round((c & 255) * f), 0, 255)) | (clamp(Math.round(((c >> 8) & 255) * f), 0, 255) << 8) | (clamp(Math.round(((c >> 16) & 255) * f), 0, 255) << 16) | (c & (3 << 24))) >>> 0;
+  for (let px = 0; px < HW; px++) {
+    const sx = (px + 0.5) / R - pad;
+    let ybuf = HT;
+    let prevCell = -1, prevH = -1e9, prevIz = -1;
+    for (let z = z0; z < z1; z += step) {
+      const s = 1 - 0.5 * z;
+      const X = cx + (sx - cx) / s;
+      const iz = Math.min(nz - 1, Math.floor((z - z0) / dz));
+      const ix = Math.floor((X - X0) / cw);
+      if (ix < 0 || ix >= nx) continue;
+      const cell = iz * nx + ix;
+      const h = hgt[cell];
+      const yt = (hz + (K - h) * s - top) * R;
+      const yi = Math.max(0, Math.ceil(yt));
+      if (yi < ybuf) {
+        let c = col[cell];
+        const isWall = cell !== prevCell && h > prevH + 0.01;
+        if (isWall && wallFn && h >= wallMin) {
+          const f = iz !== prevIz ? wallF : sideF;
+          for (let y = yi; y < ybuf; y++) {
+            const hp = K - (y / R + top - hz) / s;
+            const wc = wallFn(X, z, hp, h);
+            pc[y * HW + px] = ((clamp(Math.round(wc[0] * f), 0, 255)) | (clamp(Math.round(wc[1] * f), 0, 255) << 8) | (clamp(Math.round(wc[2] * f), 0, 255) << 16) | (1 << 25)) >>> 0;
+            pz[y * HW + px] = z;
+          }
+          if (h < K && ybuf - yi >= 2) pc[yi * HW + px] = shadeP(col[cell], crestF);
+          ybuf = yi;
+          if (ybuf <= 0) break;
+          prevCell = cell; prevH = h; prevIz = iz;
+          continue;
+        }
+        if (isWall) c = shadeP(c, iz !== prevIz ? wallF : sideF);
+        for (let y = yi; y < ybuf; y++) { pc[y * HW + px] = c; pz[y * HW + px] = z; }
+        if (isWall && ybuf - yi >= 2) pc[yi * HW + px] = shadeP(col[cell], crestF);
+        ybuf = yi;
+        if (ybuf <= 0) break;
+      }
+      prevCell = cell; prevH = h; prevIz = iz;
+    }
+    if ((px & 3) === 3 && tick()) { yield; t0 = performance.now(); }
+  }
+  // bands 0 and 1 for every time-of-day variant; band-2 samples fill the seams the 1x mid band covered
+  const b1 = this.bandOf;
+  const out = [0, 1].map((b) => ({ y: this.bands[b].y, h: this.bands[b].h, canvases: {} }));
+  const tmp = makeLayer(8, 8);
+  for (const v of this.variants) {
+    const sd = ctxOf(v.strip).getImageData(0, 0, v.strip.width, v.strip.height).data;
+    const sw = v.strip.width, sh = v.strip.height;
+    for (let b = 0; b < 2; b++) {
+      const B = out[b];
+      const c = makeCanvas(HW, B.h * R);
+      const g = ctxOf(c);
+      const img = g.createImageData(HW, B.h * R);
+      const d = new Uint32Array(img.data.buffer);
+      const off = (B.y - top) * R; // pc row of the canvas' first row
+      for (let yy = Math.max(0, -off); yy < B.h * R; yy++) {
+        const py = yy + off;
+        if (py >= HT) break;
+        const wy = Math.floor(py / R), sy = Math.min(sh - 1, wy + top);
+        const rowP = py * HW, row1 = wy * LW;
+        for (let x = 0; x < HW; x++) {
+          const cc = pc[rowP + x];
+          if (!cc) continue;
+          const z = pz[rowP + x];
+          let bb = z < this.cuts[0] ? 0 : z < zCut ? 1 : 2;
+          if (bb === 2) { const q = b1[row1 + ((x / R) | 0)]; if (q <= 1) bb = 1; }
+          if (bb !== b) continue;
+          const f = this.fog(z) * (((cc >>> 24) & 1) ? 0.5 : 1);
+          const si = (sy * sw + ((x >> 1) & (sw - 1))) * 4;
+          d[yy * HW + x] = dpack(lerp(cc & 255, sd[si], f), lerp((cc >> 8) & 255, sd[si + 1], f), lerp((cc >> 16) & 255, sd[si + 2], f), x, yy, 4);
+        }
+        if ((yy & 31) === 31 && tick()) { yield; t0 = performance.now(); }
+      }
+      g.putImageData(img, 0, 0);
+      // props of this band, far to near, fog tinted like render()
+      const pat = g.createPattern(v.strip, 'repeat');
+      for (const it of this.items) {
+        if (it.band !== b) continue;
+        const sp = it.sprite;
+        if (it.abs) { g.drawImage(sp.canvas, pad * R, -B.y * R, sp.canvas.width * R, sp.canvas.height * R); continue; }
+        let hs = null;
+        try { hs = typeof sp.hiSteps === 'function' ? yield* sp.hiSteps() : typeof sp.hi === 'function' ? sp.hi() : null; } catch { hs = null; }
+        if (hs && !hs.canvas) hs = null;
+        const src = hs ? hs.canvas : sp.canvas;
+        const k = hs ? 1 : R; // sprite px -> hi px
+        const sox = hs ? hs.ox : sp.ox * R, soy = hs ? hs.oy : sp.oy * R;
+        const dx = Math.round((it.x + pad) * R - sox), dy = Math.round((it.y - B.y) * R - soy);
+        const w = src.width * k, h = src.height * k;
+        const f = it.noFog ? 0 : this.fog(it.z) * it.fogMul;
+        if (f < 0.01) g.drawImage(src, dx, dy, w, h);
+        else {
+          if (tmp.w < w || tmp.h < h) resizeLayer(tmp, Math.max(tmp.w, w), Math.max(tmp.h, h));
+          const tg = tmp.ctx;
+          tg.setTransform(1, 0, 0, 1, 0, 0);
+          tg.globalCompositeOperation = 'source-over';
+          tg.globalAlpha = 1;
+          tg.clearRect(0, 0, tmp.w, tmp.h);
+          tg.drawImage(src, 0, 0, w, h);
+          tg.globalCompositeOperation = 'source-atop';
+          tg.globalAlpha = f;
+          const yTop = (it.y * R - soy) / R;
+          tg.setTransform(R, 0, 0, R, 0, -yTop * R);
+          tg.fillStyle = pat;
+          tg.fillRect(0, yTop, w / R + 1, h / R + 1);
+          tg.setTransform(1, 0, 0, 1, 0, 0);
+          tg.globalCompositeOperation = 'source-over';
+          tg.globalAlpha = 1;
+          g.drawImage(tmp.canvas, 0, 0, w, h, dx, dy, w, h);
+        }
+        if (it.painted) { g.save(); g.scale(R, R); try { it.painted(g, dx / R, dy / R, v.key); } catch { /* optional */ } g.restore(); }
+        if (tick()) { yield; t0 = performance.now(); }
+      }
+      B.canvases[v.key] = c;
+      HI_TWIN.set(this.bands[b].canvases[v.key], c);
+    }
+  }
+  this.hi = { R, bands: out };
+  this.hiBusy = false;
+};
+
+// Drop the hi-res canvases (memory) - rebuilt on the next visit.
+DepthScene.prototype.dropHi = function dropHi() { this.hi = null; this.hiBusy = false; };
+
 // Quantised perspective scale so props at similar depths share one voxel render.
 export function qscale(s, step = 0.1, min = 0.25) {
   return Math.max(min, Math.round(s / step) * step);
@@ -1237,16 +1536,27 @@ export function qscale(s, step = 0.1, min = 0.25) {
 
 // Blend helper for a DepthScene's baked bands across time-of-day variants.
 export class BandSet {
-  constructor(scene) { this.scene = scene; this.blends = [new Blend(), new Blend(), new Blend()]; }
+  constructor(scene) { this.scene = scene; this.blends = [new Blend(), new Blend(), new Blend()]; this.hiBlends = [new Blend(), new Blend()]; }
   canvas(b, w) {
     const B = this.scene.bands[b];
     const keys = Object.keys(B.canvases);
     if (keys.length === 1 || !w) return B.canvases[keys[0]];
     return this.blends[b].get([[B.canvases.day, w.day], [B.canvases.dusk, w.dusk], [B.canvases.night, w.night]]);
   }
+  // hi-res twin of canvas(b, w) when built (see DepthScene.hiSteps), else null
+  hiCanvas(b, w) {
+    const B = this.scene.hi?.bands?.[b];
+    if (!B) return null;
+    const keys = Object.keys(B.canvases);
+    if (!keys.length) return null;
+    if (keys.length === 1 || !w) return B.canvases[keys[0]];
+    return this.hiBlends[b].get([[B.canvases.day, w.day], [B.canvases.dusk, w.dusk], [B.canvases.night, w.night]]);
+  }
   draw(ctx, b, w, dx = 0, dy = 0) {
-    const B = this.scene.bands[b];
-    ctx.drawImage(this.canvas(b, w), Math.round(-this.scene.pad + dx), Math.round(B.y + dy));
+    const S = this.scene, B = S.bands[b];
+    const hc = S.hi && zoomOf(ctx) > 1.3 ? this.hiCanvas(b, w) : null;
+    if (hc) { const R = S.hi.R; ctx.drawImage(hc, Math.round(-S.pad + dx), Math.round(B.y + dy), hc.width / R, hc.height / R); return; }
+    ctx.drawImage(this.canvas(b, w), Math.round(-S.pad + dx), Math.round(B.y + dy));
   }
 }
 
@@ -1282,13 +1592,27 @@ export class DepthDecor {
     for (const it of this.list) { it.fc = colorAt(it.fy); it.fa = this.scene.fog(it.z) * it.fogMul; }
   }
   draw(ctx, band, t, dx = 0, dy = 0, speed = 1) {
+    const zoomed = zoomOf(ctx) > 1.3;
     for (const it of this.list) {
       if (it.band !== band || it.hidden) continue;
       if (it.anim) {
-        const fr = it.anim.frame(t * it.speed * speed, it.off);
-        ctx.drawImage(this.fog.get(fr, it.fc, it.fa), Math.round(it.anim.x + dx), Math.round(it.anim.y + dy));
+        const A = it.anim, H = zoomed ? A.hi : null;
+        if (H) {
+          // double-detail twin (built in the background), drawn at half size
+          const i = Math.floor(((t * it.speed * speed) / A.P) * A.n + it.off), fr = H.frames[((i % A.n) + A.n) % A.n];
+          ctx.drawImage(this.fog.get(fr, it.fc, it.fa), Math.round(A.gx + dx) - H.ox / 2, Math.round(A.gy + dy) - H.oy / 2, fr.width / 2, fr.height / 2);
+          continue;
+        }
+        const fr = A.frame(t * it.speed * speed, it.off);
+        ctx.drawImage(this.fog.get(fr, it.fc, it.fa), Math.round(A.x + dx), Math.round(A.y + dy));
       } else if (it.sprite) ctx.drawImage(this.fog.get(it.sprite, it.fc, it.fa), Math.round(it.x + dx), Math.round(it.y + dy));
     }
+  }
+
+  // Build the double-detail twins of the decor (near / mid bands first), a few ms per frame.
+  *hiSteps() {
+    const list = this.list.filter((it) => it.anim?.hiSteps && !it.anim.hi && it.band < 2).sort((a, b) => a.z - b.z);
+    for (const it of list) { if (!it.anim.hi) yield* it.anim.hiSteps(); yield; }
   }
 }
 
