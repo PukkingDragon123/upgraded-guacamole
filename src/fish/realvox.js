@@ -1930,8 +1930,17 @@ export function solidExtents(c) {
   const sp = solidSpec(c, 0);
   const B = sp.sol.bounds();
   const roll = (sp.roll || 0) * DEG;
-  const ky = roll ? Math.max(0.4, Math.abs(Math.cos(roll))) : 1;
-  E = { c, x0: B.x0, x1: B.x1, y0: B.y0 * ky, y1: B.y1 * ky, mouth: sp.anchors.mouth, eyes: (sp.eyes || []).map((e) => [e[0], e[1], e[3] || 1]), yawBase: sp.yawBase, roll: sp.roll || 0 };
+  // extents as seen from the creature's resting view (yawBase about y, roll about x)
+  const yb = (sp.yawBase || 0) * DEG, cy = Math.cos(yb), sy = Math.sin(yb), cr = Math.cos(roll), sr = Math.sin(roll);
+  let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+  for (let i = 0; i < 8; i++) {
+    const x = i & 1 ? B.x1 : B.x0, y = i & 2 ? B.y1 : B.y0, z = i & 4 ? B.z1 : B.z0;
+    const y2 = y * cr - z * sr, z2 = y * sr + z * cr;
+    const X = x * cy + z2 * sy;
+    x0 = Math.min(x0, X); x1 = Math.max(x1, X); y0 = Math.min(y0, y2); y1 = Math.max(y1, y2);
+  }
+  const rot = (q) => [q[0] * cy + (q[2] || 0) * sy, q[1]];
+  E = { c, x0, x1, y0, y1, mouth: rot(sp.anchors.mouth), eyes: (sp.eyes || []).map((e) => [...rot(e), e[3] || 1]), yawBase: sp.yawBase, roll: sp.roll || 0 };
   solidCache.set(key, E);
   if (solidCache.size > 400) solidCache.delete(solidCache.keys().next().value);
   return E;
