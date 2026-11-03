@@ -67,8 +67,8 @@ function buildFlag(paint, small) {
 export class Boat {
   constructor(game) {
     this.game = game;
-    // start in the left third of the world
-    this.x = Math.max(150, Math.round((game.screen?.W || 960) * 0.2));
+    // start left of centre, where the zoomed camera frames it with open water to fish in
+    this.x = Math.max(150, Math.round((game.screen?.W || 960) * 0.36));
     this.y = 0;
     this.vx = 0; this.vy = 0;
     this.dir = 1;

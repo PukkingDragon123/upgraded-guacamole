@@ -41,6 +41,25 @@ const tone3 = (o, k) => {
 };
 const lum3 = (c) => c[0] * 0.3 + c[1] * 0.59 + c[2] * 0.11;
 
+// Palette index cache keyed by small integers (SMI map keys stay fast): colour (24 bit) + translucency bit,
+// one map per role / glow pair.
+export function palCache(pal) {
+  const maps = [];
+  let lc = -1, lr = -1, lg = -1, lv = 0;
+  return (col, role, glow) => {
+    const g = glow ? 1 : 0;
+    if (col === lc && role === lr && g === lg) return lv;
+    const mi = role * 2 + g;
+    let m = maps[mi];
+    if (!m) m = maps[mi] = new Map();
+    const k = (col & 0xffffff) + ((col >>> 24) >= 235 ? 0 : (col >>> 24) >= 170 ? 16777216 : 33554432);
+    let v = m.get(k);
+    if (v === undefined) { v = pal.idx(col >>> 0, role, !!glow); m.set(k, v); }
+    lc = col; lr = role; lg = g; lv = v;
+    return v;
+  };
+}
+
 // ------------------------------------------------------------------ curves
 
 // Cubic Hermite through [[u, v], ...] (Catmull-Rom tangents); clamped outside the knots.
@@ -864,13 +883,7 @@ export function realGrid(Lo, sw) {
   const flat = Lo.flat;
   const blindP = flat ? pal.idx(packRGB(hexRGB(flat.blind || '#f4f2ee')), R_BODY, false) : 0;
   // ---- body columns
-  const idxCache = new Map();
-  const pidx = (p, ro, gl) => {
-    const k = p * 32 + ro * 2 + (gl ? 1 : 0);
-    let v = idxCache.get(k);
-    if (v === undefined) { v = pal.idx(p, ro, gl); idxCache.set(k, v); }
-    return v;
-  };
+  const pidx = palCache(pal);
   for (let tx = 0; tx < GW; tx++) {
     const gx = srcOf[tx];
     if (gx < 0) continue;
@@ -1228,8 +1241,7 @@ export function stampRealEye(e, rb, C, n, put, pal, skinP) {
   const g = n;
   const sd = norm3(g[0] + 0.35, g[1] + 0.55, g[2] + 0.2 * Math.sign(g[2] || 1));
   let best = -2, bx = 0, by = 0, bz = 0;
-  const cache = new Map();
-  const pv = (col, role, gl) => { const k = col * 4 + role; let v = cache.get(k); if (v === undefined) { v = pal.idx(col, role, !!gl); cache.set(k, v); } return v; };
+  const pv = palCache(pal);
   for (let dz = -R; dz <= R; dz++) for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
     const x = Math.floor(C[0]) + dx, y = Math.floor(C[1]) + dy, z = Math.floor(C[2]) + dz;
     const qx = (x + 0.5 - C[0]) / rb, qy = (y + 0.5 - C[1]) / rb, qz = (z + 0.5 - C[2]) / rb;
@@ -1302,8 +1314,8 @@ class Solid {
     let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9, z0 = 1e9, z1 = -1e9;
     for (const p of this.prims) {
       if (p.t === 0) {
-        const m = Math.max(p.r[0], p.r[1], p.r[2]);
-        x0 = Math.min(x0, p.c[0] - m); x1 = Math.max(x1, p.c[0] + m); y0 = Math.min(y0, p.c[1] - m); y1 = Math.max(y1, p.c[1] + m); z0 = Math.min(z0, p.c[2] - m); z1 = Math.max(z1, p.c[2] + m);
+        const h = ellExt(p);
+        x0 = Math.min(x0, p.c[0] - h[0]); x1 = Math.max(x1, p.c[0] + h[0]); y0 = Math.min(y0, p.c[1] - h[1]); y1 = Math.max(y1, p.c[1] + h[1]); z0 = Math.min(z0, p.c[2] - h[2]); z1 = Math.max(z1, p.c[2] + h[2]);
       } else {
         const m = Math.max(p.ra, p.rb);
         for (const q of [p.a, p.b]) { x0 = Math.min(x0, q[0] - m); x1 = Math.max(x1, q[0] + m); y0 = Math.min(y0, q[1] - m); y1 = Math.max(y1, q[1] + m); z0 = Math.min(z0, q[2] - m); z1 = Math.max(z1, q[2] + m); }
@@ -1311,6 +1323,15 @@ class Solid {
     }
     return { x0, x1, y0, y1, z0, z1 };
   }
+}
+
+// Exact axis-aligned half extents of an (optionally oriented) ellipsoid.
+function ellExt(p) {
+  if (p._ext) return p._ext;
+  if (!p.axes) return (p._ext = [p.r[0], p.r[1], p.r[2]]);
+  const [e0, e1, e2] = p.axes;
+  p._ext = [0, 1, 2].map((j) => Math.hypot(p.r[0] * e0[j], p.r[1] * e1[j], p.r[2] * e2[j]));
+  return p._ext;
 }
 
 // Inside test + normal for a primitive at model point (x, y, z); writes the normal into N, returns local
@@ -1360,34 +1381,81 @@ function voxelise(sol, r, pal, meta) {
   const data = new Uint16Array(NXY * NZ), pid = new Uint8Array(NXY * NZ);
   const zmin = new Int16Array(NXY).fill(32767), zmax = new Int16Array(NXY).fill(-1);
   const toV = (x, y, z) => [(x - B.x0) * r + PADV, (y - B.y0) * r + PADV, (z - B.z0) * r + PADV];
-  const cache = new Map();
-  const pv = (col, role, gl) => { const k = (col >>> 0) * 64 + role * 2 + (gl ? 1 : 0); let v = cache.get(k); if (v === undefined) { v = pal.idx(col >>> 0, role, !!gl); cache.set(k, v); } return v; };
+  const pv = palCache(pal);
   sol.prims.forEach((p, pi) => {
     let x0, x1, y0, y1, z0, z1;
-    if (p.t === 0) { const m = Math.max(p.r[0], p.r[1], p.r[2]); [x0, y0, z0] = toV(p.c[0] - m, p.c[1] - m, p.c[2] - m); [x1, y1, z1] = toV(p.c[0] + m, p.c[1] + m, p.c[2] + m); }
+    if (p.t === 0) { const h = ellExt(p); [x0, y0, z0] = toV(p.c[0] - h[0], p.c[1] - h[1], p.c[2] - h[2]); [x1, y1, z1] = toV(p.c[0] + h[0], p.c[1] + h[1], p.c[2] + h[2]); }
     else { const m = Math.max(p.ra, p.rb); [x0, y0, z0] = toV(Math.min(p.a[0], p.b[0]) - m, Math.min(p.a[1], p.b[1]) - m, Math.min(p.a[2], p.b[2]) - m); [x1, y1, z1] = toV(Math.max(p.a[0], p.b[0]) + m, Math.max(p.a[1], p.b[1]) + m, Math.max(p.a[2], p.b[2]) + m); }
     x0 = Math.max(0, Math.floor(x0)); y0 = Math.max(0, Math.floor(y0)); z0 = Math.max(0, Math.floor(z0));
     x1 = Math.min(NX - 1, Math.ceil(x1)); y1 = Math.min(NY - 1, Math.ceil(y1)); z1 = Math.min(NZ - 1, Math.ceil(z1));
-    const thin = p.t === 1 && Math.max(p.ra, p.rb) * r < 0.75;
+    // thin filaments stay connected: they are voxelised at a minimum radius of ~0.6 voxel
+    const q = p.t === 1 && Math.max(p.ra, p.rb) * r < 0.75 ? { ...p, ra: Math.max(p.ra, 0.62 / r), rb: Math.max(p.rb, 0.62 / r) } : p;
+    // padded copy for the analytic normals (evaluated slightly outside the surface)
+    p._n = p.t === 1 ? { ...p, ra: p.ra + 2 / r, rb: p.rb + 2 / r } : { ...p, shell: 0, cut: null, r: p.r.map((v) => v + 1.5 / r), _ext: null };
     const role = p.role ?? R_BODY;
-    for (let iz = z0; iz <= z1; iz++) for (let iy = y0; iy <= y1; iy++) for (let ix = x0; ix <= x1; ix++) {
-      const x = B.x0 + (ix - PADV + 0.5) / r, y = B.y0 + (iy - PADV + 0.5) / r, z = B.z0 + (iz - PADV + 0.5) / r;
-      let hit = primHit(p, x, y, z, null);
-      if (!hit && thin) {
-        // keep thin filaments connected: accept the voxel the segment passes through
-        const q = { ...p, ra: Math.max(p.ra, 0.62 / r), rb: Math.max(p.rb, 0.62 / r) };
-        hit = primHit(q, x, y, z, null);
+    const colFn = typeof p.col === 'function' ? p.col : null;
+    const roleFn = typeof p.roleAt === 'function' ? p.roleAt : null, glowFn = typeof p.glow === 'function' ? p.glow : null;
+    const glow0 = !!p.glow;
+    // only a ~2.5 voxel skin is filled: the inside of a solid is never seen (rays stop at the surface)
+    const minR = p.t === 0 ? Math.min(p.r[0], p.r[1], p.r[2]) : Math.min(q.ra, q.rb);
+    const inner = p.shell ? -1 : 1 - 2.5 / Math.max(0.5, minR * r);
+    const isCap = p.t === 1;
+    const ax = isCap ? q.a[0] : 0, ay = isCap ? q.a[1] : 0, az = isCap ? q.a[2] : 0;
+    const bx = isCap ? q.b[0] - ax : 0, by = isCap ? q.b[1] - ay : 0, bz = isCap ? q.b[2] - az : 0;
+    const iL2 = isCap ? 1 / (bx * bx + by * by + bz * bz || 1e-6) : 0;
+    const qa = isCap ? q.ra : 0, qb = isCap ? q.rb : 0;
+    const p0 = isCap ? 0 : p.c[0], p1 = isCap ? 0 : p.c[1], p2 = isCap ? 0 : p.c[2];
+    const e0 = isCap ? 1 : p.r[0], e1 = isCap ? 1 : p.r[1], e2 = isCap ? 1 : p.r[2];
+    // axis-aligned ellipsoids: solve each row's x span (and skip the hollow middle) instead of testing the box
+    const aligned = p.t === 0 && !p.axes;
+    const innerK = aligned && inner > 0 ? inner * inner : -1;
+    for (let iz = z0; iz <= z1; iz++) {
+      const z = B.z0 + (iz - PADV + 0.5) / r;
+      for (let iy = y0; iy <= y1; iy++) {
+        const y = B.y0 + (iy - PADV + 0.5) / r;
+        let xa = x0, xb = x1, ha = 1, hb = 0;
+        if (aligned) {
+          const qy = (y - p.c[1]) / p.r[1], qz = (z - p.c[2]) / p.r[2];
+          const rem = 1 - qy * qy - qz * qz;
+          if (rem < 0) continue;
+          const hw = Math.sqrt(rem) * p.r[0];
+          xa = Math.max(x0, Math.floor((p.c[0] - hw - B.x0) * r + PADV - 0.5));
+          xb = Math.min(x1, Math.ceil((p.c[0] + hw - B.x0) * r + PADV - 0.5));
+          if (innerK > 0 && innerK - qy * qy - qz * qz > 0) {
+            const hi = Math.sqrt(innerK - qy * qy - qz * qz) * p.r[0];
+            ha = Math.ceil((p.c[0] - hi - B.x0) * r + PADV - 0.5) + 1;
+            hb = Math.floor((p.c[0] + hi - B.x0) * r + PADV - 0.5) - 1;
+          }
+        }
+        for (let ix = xa; ix <= xb; ix++) {
+      if (ix >= ha && ix <= hb) { ix = hb; continue; }
+      const x = B.x0 + (ix - PADV + 0.5) / r;
+      // inlined inside tests (monomorphic locals; the generic primHit is only used for the hit's Qv)
+      if (isCap) {
+        let k = ((x - ax) * bx + (y - ay) * by + (z - az) * bz) * iL2;
+        k = k < 0 ? 0 : k > 1 ? 1 : k;
+        const dx = x - ax - bx * k, dy = y - ay - by * k, dz = z - az - bz * k;
+        const rr = qa + (qb - qa) * k;
+        const d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 > rr * rr) continue;
+        if (d2 < rr * rr * inner * inner * (inner > 0 ? 1 : 0)) continue;
+      } else if (aligned && !p.shell && !p.cut) {
+        const qx = (x - p0) / e0, qy = (y - p1) / e1, qz = (z - p2) / e2;
+        if (qx * qx + qy * qy + qz * qz > 1) continue;
       }
-      if (!hit) continue;
+      if (!primHit(q, x, y, z, null)) continue;
+      if ((p.t === 0 ? Qv[3] : Qv[1]) < inner) continue;
       const vi = ix + iy * NX + iz * NXY;
       if (p.under && data[vi]) continue;
-      const col = typeof p.col === 'function' ? p.col(Qv, x, y, z, ix, iy, iz) : p.col;
+      const col = colFn ? colFn(Qv, x, y, z, ix, iy, iz) : p.col;
       if (col === null || col === undefined) continue;
-      data[vi] = pv(col, typeof p.roleAt === 'function' ? p.roleAt(Qv) : role, typeof p.glow === 'function' ? p.glow(Qv) : !!p.glow);
+      data[vi] = pv(col, roleFn ? roleFn(Qv) : role, glowFn ? glowFn(Qv) : glow0);
       pid[vi] = pi + 1;
       const cc = ix + iy * NX;
       if (iz < zmin[cc]) zmin[cc] = iz;
       if (iz > zmax[cc]) zmax[cc] = iz;
+        }
+      }
     }
   });
   let x0 = NX, x1 = -1, y0 = NY, y1 = -1, z0 = NZ, z1 = -1;
@@ -1405,7 +1473,7 @@ function voxelise(sol, r, pal, meta) {
     const p = sol.prims[k - 1];
     if (p.flatN) return null;
     const x = B.x0 + (ix - PADV + 0.5) / r, y = B.y0 + (iy - PADV + 0.5) / r, z = B.z0 + (iz - PADV + 0.5) / r;
-    primHit(p.t === 1 ? { ...p, ra: p.ra + 2 / r, rb: p.rb + 2 / r } : { ...p, shell: 0, cut: null, r: p.r.map((v) => v + 1.5 / r) }, x, y, z, N);
+    primHit(p._n, x, y, z, N);
     return [N[0], N[1], N[2]];
   };
   const center = toV(0, 0, 0);

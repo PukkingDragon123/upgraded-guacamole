@@ -6452,6 +6452,28 @@
     const n2 = parseInt(String(h).slice(1, 7), 16);
     return [n2 >> 16 & 255, n2 >> 8 & 255, n2 & 255];
   }
+  function palCache(pal2) {
+    const maps = [];
+    let lc = -1, lr = -1, lg = -1, lv = 0;
+    return (col, role, glow) => {
+      const g = glow ? 1 : 0;
+      if (col === lc && role === lr && g === lg) return lv;
+      const mi = role * 2 + g;
+      let m = maps[mi];
+      if (!m) m = maps[mi] = /* @__PURE__ */ new Map();
+      const k = (col & 16777215) + (col >>> 24 >= 235 ? 0 : col >>> 24 >= 170 ? 16777216 : 33554432);
+      let v = m.get(k);
+      if (v === void 0) {
+        v = pal2.idx(col >>> 0, role, !!glow);
+        m.set(k, v);
+      }
+      lc = col;
+      lr = role;
+      lg = g;
+      lv = v;
+      return v;
+    };
+  }
   function knotFn(pts) {
     const n2 = pts.length;
     if (n2 === 1) return () => pts[0][1];
@@ -7387,16 +7409,7 @@
     const get = (x, gy, z) => x < 0 || x >= NX || z < 0 || z >= NZ || gy < 0 || gy >= NY ? 0 : data[x + (NY - 1 - gy) * NX + z * NXY];
     const flat = Lo.flat;
     const blindP = flat ? pal2.idx(packRGB2(hexRGB(flat.blind || "#f4f2ee")), R_BODY, false) : 0;
-    const idxCache = /* @__PURE__ */ new Map();
-    const pidx = (p, ro, gl) => {
-      const k = p * 32 + ro * 2 + (gl ? 1 : 0);
-      let v = idxCache.get(k);
-      if (v === void 0) {
-        v = pal2.idx(p, ro, gl);
-        idxCache.set(k, v);
-      }
-      return v;
-    };
+    const pidx = palCache(pal2);
     for (let tx = 0; tx < GW; tx++) {
       const gx = srcOf[tx];
       if (gx < 0) continue;
@@ -7787,16 +7800,7 @@
     const g = n2;
     const sd = norm3(g[0] + 0.35, g[1] + 0.55, g[2] + 0.2 * Math.sign(g[2] || 1));
     let best = -2, bx = 0, by = 0, bz = 0;
-    const cache6 = /* @__PURE__ */ new Map();
-    const pv = (col, role, gl) => {
-      const k = col * 4 + role;
-      let v = cache6.get(k);
-      if (v === void 0) {
-        v = pal2.idx(col, role, !!gl);
-        cache6.set(k, v);
-      }
-      return v;
-    };
+    const pv = palCache(pal2);
     for (let dz = -R2; dz <= R2; dz++) for (let dy = -R2; dy <= R2; dy++) for (let dx = -R2; dx <= R2; dx++) {
       const x = Math.floor(C2[0]) + dx, y = Math.floor(C2[1]) + dy, z = Math.floor(C2[2]) + dz;
       const qx = (x + 0.5 - C2[0]) / rb, qy = (y + 0.5 - C2[1]) / rb, qz = (z + 0.5 - C2[2]) / rb;
@@ -7849,6 +7853,13 @@
       eyes.push({ x, y, r: (S8.eye.r ?? 0.03) * L2 * s, e: { type: "real" } });
     }
     return { w: (M2.xmax - M2.xmin) * s, h: (M2.ymax - M2.ymin) * ky * s, ox: -M2.xmin * s, oy: M2.ymax * ky * s, eyes, mouth: null, anchors, offsets: null };
+  }
+  function ellExt(p) {
+    if (p._ext) return p._ext;
+    if (!p.axes) return p._ext = [p.r[0], p.r[1], p.r[2]];
+    const [e0, e1, e2] = p.axes;
+    p._ext = [0, 1, 2].map((j) => Math.hypot(p.r[0] * e0[j], p.r[1] * e1[j], p.r[2] * e2[j]));
+    return p._ext;
   }
   function primHit(p, x, y, z, N) {
     if (p.t === 0) {
@@ -7921,22 +7932,13 @@
     const data = new Uint16Array(NXY * NZ), pid = new Uint8Array(NXY * NZ);
     const zmin = new Int16Array(NXY).fill(32767), zmax = new Int16Array(NXY).fill(-1);
     const toV = (x, y, z) => [(x - B2.x0) * r + PADV, (y - B2.y0) * r + PADV, (z - B2.z0) * r + PADV];
-    const cache6 = /* @__PURE__ */ new Map();
-    const pv = (col, role, gl) => {
-      const k = (col >>> 0) * 64 + role * 2 + (gl ? 1 : 0);
-      let v = cache6.get(k);
-      if (v === void 0) {
-        v = pal2.idx(col >>> 0, role, !!gl);
-        cache6.set(k, v);
-      }
-      return v;
-    };
+    const pv = palCache(pal2);
     sol.prims.forEach((p, pi) => {
       let x02, x12, y02, y12, z02, z12;
       if (p.t === 0) {
-        const m = Math.max(p.r[0], p.r[1], p.r[2]);
-        [x02, y02, z02] = toV(p.c[0] - m, p.c[1] - m, p.c[2] - m);
-        [x12, y12, z12] = toV(p.c[0] + m, p.c[1] + m, p.c[2] + m);
+        const h = ellExt(p);
+        [x02, y02, z02] = toV(p.c[0] - h[0], p.c[1] - h[1], p.c[2] - h[2]);
+        [x12, y12, z12] = toV(p.c[0] + h[0], p.c[1] + h[1], p.c[2] + h[2]);
       } else {
         const m = Math.max(p.ra, p.rb);
         [x02, y02, z02] = toV(Math.min(p.a[0], p.b[0]) - m, Math.min(p.a[1], p.b[1]) - m, Math.min(p.a[2], p.b[2]) - m);
@@ -7948,25 +7950,72 @@
       x12 = Math.min(NX - 1, Math.ceil(x12));
       y12 = Math.min(NY - 1, Math.ceil(y12));
       z12 = Math.min(NZ - 1, Math.ceil(z12));
-      const thin = p.t === 1 && Math.max(p.ra, p.rb) * r < 0.75;
+      const q = p.t === 1 && Math.max(p.ra, p.rb) * r < 0.75 ? { ...p, ra: Math.max(p.ra, 0.62 / r), rb: Math.max(p.rb, 0.62 / r) } : p;
+      p._n = p.t === 1 ? { ...p, ra: p.ra + 2 / r, rb: p.rb + 2 / r } : { ...p, shell: 0, cut: null, r: p.r.map((v) => v + 1.5 / r), _ext: null };
       const role = p.role ?? R_BODY;
-      for (let iz = z02; iz <= z12; iz++) for (let iy = y02; iy <= y12; iy++) for (let ix = x02; ix <= x12; ix++) {
-        const x = B2.x0 + (ix - PADV + 0.5) / r, y = B2.y0 + (iy - PADV + 0.5) / r, z = B2.z0 + (iz - PADV + 0.5) / r;
-        let hit = primHit(p, x, y, z, null);
-        if (!hit && thin) {
-          const q = { ...p, ra: Math.max(p.ra, 0.62 / r), rb: Math.max(p.rb, 0.62 / r) };
-          hit = primHit(q, x, y, z, null);
+      const colFn = typeof p.col === "function" ? p.col : null;
+      const roleFn = typeof p.roleAt === "function" ? p.roleAt : null, glowFn = typeof p.glow === "function" ? p.glow : null;
+      const glow0 = !!p.glow;
+      const minR = p.t === 0 ? Math.min(p.r[0], p.r[1], p.r[2]) : Math.min(q.ra, q.rb);
+      const inner = p.shell ? -1 : 1 - 2.5 / Math.max(0.5, minR * r);
+      const isCap = p.t === 1;
+      const ax = isCap ? q.a[0] : 0, ay = isCap ? q.a[1] : 0, az = isCap ? q.a[2] : 0;
+      const bx = isCap ? q.b[0] - ax : 0, by = isCap ? q.b[1] - ay : 0, bz = isCap ? q.b[2] - az : 0;
+      const iL2 = isCap ? 1 / (bx * bx + by * by + bz * bz || 1e-6) : 0;
+      const qa = isCap ? q.ra : 0, qb = isCap ? q.rb : 0;
+      const p0 = isCap ? 0 : p.c[0], p1 = isCap ? 0 : p.c[1], p2 = isCap ? 0 : p.c[2];
+      const e0 = isCap ? 1 : p.r[0], e1 = isCap ? 1 : p.r[1], e2 = isCap ? 1 : p.r[2];
+      const aligned = p.t === 0 && !p.axes;
+      const innerK = aligned && inner > 0 ? inner * inner : -1;
+      for (let iz = z02; iz <= z12; iz++) {
+        const z = B2.z0 + (iz - PADV + 0.5) / r;
+        for (let iy = y02; iy <= y12; iy++) {
+          const y = B2.y0 + (iy - PADV + 0.5) / r;
+          let xa = x02, xb = x12, ha = 1, hb = 0;
+          if (aligned) {
+            const qy = (y - p.c[1]) / p.r[1], qz = (z - p.c[2]) / p.r[2];
+            const rem = 1 - qy * qy - qz * qz;
+            if (rem < 0) continue;
+            const hw = Math.sqrt(rem) * p.r[0];
+            xa = Math.max(x02, Math.floor((p.c[0] - hw - B2.x0) * r + PADV - 0.5));
+            xb = Math.min(x12, Math.ceil((p.c[0] + hw - B2.x0) * r + PADV - 0.5));
+            if (innerK > 0 && innerK - qy * qy - qz * qz > 0) {
+              const hi = Math.sqrt(innerK - qy * qy - qz * qz) * p.r[0];
+              ha = Math.ceil((p.c[0] - hi - B2.x0) * r + PADV - 0.5) + 1;
+              hb = Math.floor((p.c[0] + hi - B2.x0) * r + PADV - 0.5) - 1;
+            }
+          }
+          for (let ix = xa; ix <= xb; ix++) {
+            if (ix >= ha && ix <= hb) {
+              ix = hb;
+              continue;
+            }
+            const x = B2.x0 + (ix - PADV + 0.5) / r;
+            if (isCap) {
+              let k = ((x - ax) * bx + (y - ay) * by + (z - az) * bz) * iL2;
+              k = k < 0 ? 0 : k > 1 ? 1 : k;
+              const dx = x - ax - bx * k, dy = y - ay - by * k, dz = z - az - bz * k;
+              const rr = qa + (qb - qa) * k;
+              const d2 = dx * dx + dy * dy + dz * dz;
+              if (d2 > rr * rr) continue;
+              if (d2 < rr * rr * inner * inner * (inner > 0 ? 1 : 0)) continue;
+            } else if (aligned && !p.shell && !p.cut) {
+              const qx = (x - p0) / e0, qy = (y - p1) / e1, qz = (z - p2) / e2;
+              if (qx * qx + qy * qy + qz * qz > 1) continue;
+            }
+            if (!primHit(q, x, y, z, null)) continue;
+            if ((p.t === 0 ? Qv[3] : Qv[1]) < inner) continue;
+            const vi = ix + iy * NX + iz * NXY;
+            if (p.under && data[vi]) continue;
+            const col = colFn ? colFn(Qv, x, y, z, ix, iy, iz) : p.col;
+            if (col === null || col === void 0) continue;
+            data[vi] = pv(col, roleFn ? roleFn(Qv) : role, glowFn ? glowFn(Qv) : glow0);
+            pid[vi] = pi + 1;
+            const cc = ix + iy * NX;
+            if (iz < zmin[cc]) zmin[cc] = iz;
+            if (iz > zmax[cc]) zmax[cc] = iz;
+          }
         }
-        if (!hit) continue;
-        const vi = ix + iy * NX + iz * NXY;
-        if (p.under && data[vi]) continue;
-        const col = typeof p.col === "function" ? p.col(Qv, x, y, z, ix, iy, iz) : p.col;
-        if (col === null || col === void 0) continue;
-        data[vi] = pv(col, typeof p.roleAt === "function" ? p.roleAt(Qv) : role, typeof p.glow === "function" ? p.glow(Qv) : !!p.glow);
-        pid[vi] = pi + 1;
-        const cc = ix + iy * NX;
-        if (iz < zmin[cc]) zmin[cc] = iz;
-        if (iz > zmax[cc]) zmax[cc] = iz;
       }
     });
     let x0 = NX, x1 = -1, y0 = NY, y1 = -1, z0 = NZ, z1 = -1;
@@ -7991,7 +8040,7 @@
       const p = sol.prims[k - 1];
       if (p.flatN) return null;
       const x = B2.x0 + (ix - PADV + 0.5) / r, y = B2.y0 + (iy - PADV + 0.5) / r, z = B2.z0 + (iz - PADV + 0.5) / r;
-      primHit(p.t === 1 ? { ...p, ra: p.ra + 2 / r, rb: p.rb + 2 / r } : { ...p, shell: 0, cut: null, r: p.r.map((v) => v + 1.5 / r) }, x, y, z, N);
+      primHit(p._n, x, y, z, N);
       return [N[0], N[1], N[2]];
     };
     const center = toV(0, 0, 0);
@@ -8175,13 +8224,13 @@
           let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9, z0 = 1e9, z1 = -1e9;
           for (const p of this.prims) {
             if (p.t === 0) {
-              const m = Math.max(p.r[0], p.r[1], p.r[2]);
-              x0 = Math.min(x0, p.c[0] - m);
-              x1 = Math.max(x1, p.c[0] + m);
-              y0 = Math.min(y0, p.c[1] - m);
-              y1 = Math.max(y1, p.c[1] + m);
-              z0 = Math.min(z0, p.c[2] - m);
-              z1 = Math.max(z1, p.c[2] + m);
+              const h = ellExt(p);
+              x0 = Math.min(x0, p.c[0] - h[0]);
+              x1 = Math.max(x1, p.c[0] + h[0]);
+              y0 = Math.min(y0, p.c[1] - h[1]);
+              y1 = Math.max(y1, p.c[1] + h[1]);
+              z0 = Math.min(z0, p.c[2] - h[2]);
+              z1 = Math.max(z1, p.c[2] + h[2]);
             } else {
               const m = Math.max(p.ra, p.rb);
               for (const q of [p.a, p.b]) {
@@ -14686,16 +14735,7 @@
     const Re = rb * fe;
     const pal2 = P5.pal, e = e3.e;
     const vSpec = pal2.idx(4294967295, R_SPEC2, false), vSpec2 = pal2.idx(4293982463, R_SPEC2, false);
-    const cache6 = /* @__PURE__ */ new Map();
-    const pv = (col, role, gl) => {
-      const k = col * 4 + role;
-      let v = cache6.get(k);
-      if (v === void 0) {
-        v = pal2.idx(col, role, !!gl);
-        cache6.set(k, v);
-      }
-      return v;
-    };
+    const pv = palCache(pal2);
     let best = -2, bestAt = -1, best2 = -2, best2At = -1;
     for (let k = 0; k < N; k++) for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
       const bx = P5.bx(i), by = P5.by(j), bz = P5.bz(k);

@@ -28,7 +28,7 @@ import { PixelBuffer } from './pixel.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { drawFishRig } from './fishrig.js';
 import { drawPellets, wakkaRig } from '../fish/wakka.js';
-import { realLayout, realGrid, realEyeColor, solidGrid, realSegColor } from '../fish/realvox.js';
+import { realLayout, realGrid, realEyeColor, solidGrid, realSegColor, palCache } from '../fish/realvox.js';
 
 export const VP = 1.4;             // target on-screen pixels per voxel (phase 4: finer voxels for the zoomed camera)
 const SCALE_STEP = 1.12;           // on-screen scale buckets (drawn scaled to the exact size)
@@ -2101,8 +2101,7 @@ function buildRealEyePart(F, e3, fl, fe, look) {
   const Re = rb * fe;
   const pal = P.pal, e = e3.e;
   const vSpec = pal.idx(0xffffffff, R_SPEC, false), vSpec2 = pal.idx(0xfff0f8ff, R_SPEC, false);
-  const cache = new Map();
-  const pv = (col, role, gl) => { const k = col * 4 + role; let v = cache.get(k); if (v === undefined) { v = pal.idx(col, role, !!gl); cache.set(k, v); } return v; };
+  const pv = palCache(pal);
   let best = -2, bestAt = -1, best2 = -2, best2At = -1;
   for (let k = 0; k < N; k++) for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
     const bx = P.bx(i), by = P.by(j), bz = P.bz(k);

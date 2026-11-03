@@ -18,8 +18,8 @@ import { flask, drawPiece } from './labvox.js';
 import { icon, anyIcon, glassCard, pill, costTiles, costTilesHeight, pedestal, chip, orbIcon, INK, INK_SOFT, OK, BAD } from './labkit.js';
 
 const MAX_R = LAB_RING(9) + 40;
-const FEATURE_ICON = { isp2: 'wifi', isp3: 'wifi', isp4: 'wifi', isp5: 'wifi', isp6: 'wifi', multiplayer: 'people', autocollect: 'magnet', eng1: 'gear', eng2: 'gear', aquarium: 'tank:jar' };
-const FEATURE_NAME = { isp2: 'ISDN internet', isp3: 'DSL internet', isp4: 'Cable internet', isp5: 'Fibre internet', isp6: 'Quantum internet', multiplayer: 'Multiplayer', autocollect: 'Auto-collect', eng1: 'Building level 2', eng2: 'Building level 3' };
+const FEATURE_ICON = { isp2: 'bait:worm', isp3: 'bait:worm', isp4: 'bait:golden', isp5: 'bait:golden', isp6: 'bait:golden', /* [phase4:shell] isp* = Bait Shop levels */ multiplayer: 'people', autocollect: 'magnet', eng1: 'gear', eng2: 'gear', aquarium: 'tank:jar' };
+const FEATURE_NAME = { isp2: 'Bait Shop: Pro Shelf', isp3: 'Bait Shop: Ultra Shelf', isp4: 'Bait Shop: Mega Shelf', isp5: 'Bait Shop: Loyalty Card', isp6: 'Bait Shop: Express Restock', /* [phase4:shell] */ multiplayer: 'Multiplayer', autocollect: 'Auto-collect', eng1: 'Building level 2', eng2: 'Building level 3' };
 
 export function unlockInfo(u) {
   switch (u.kind) {
