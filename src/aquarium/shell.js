@@ -14,6 +14,12 @@
 
 import { Paint, C, setMix, grad, sdRR } from './paint.js';
 import { clamp01, smoothstep } from '../core/math.js';
+import { ctxOf } from '../core/canvas.js';
+import { slabVox, bezelVox, lipVox } from './tankvox.js';
+
+const vsOf = (L) => Math.max(1, Math.round(2 * L.u));
+// draw a voxel part (from tankvox.js) into a painted shell canvas
+const put = (shell, part, x, y) => { ctxOf(shell.canvas).drawImage(part.canvas, Math.round(x - part.ox), Math.round(y - part.oy)); };
 
 const COL = {
   white: C('#ffffff'), glassA: C('#e8fffb'), glassB: C('#9ff0e0'), glassC: C('#3cc4b4'), glassD: C('#1f8f9a'),
@@ -56,18 +62,7 @@ function roundShell(L, e) {
   const lipT = Math.max(2, Math.round(th * (L.tier === 0 ? 1.15 : 0.9)));
   const c0 = [0, 0, 0];
 
-  // ---- back: far half of the rolled lip, faint back glass
   const B = new Paint(W, H);
-  {
-    const c = B.c;
-    B.each(cx - lipRx - lipT, lipY - lipRy - lipT, cx + lipRx + lipT, lipY + 1, (x, y) => {
-      const d = Math.hypot((x - cx) / lipRx, (y - lipY) / lipRy);
-      const dt = (d - 1) * Math.min(lipRx, lipRy * 4);
-      if (y > lipY || dt < -lipT * 0.6 || dt > lipT * 0.6) return 0;
-      setMix(c, COL.glassB, COL.glassC, clamp01(0.5 + dt / lipT));
-      return 0.6;
-    });
-  }
 
   // ---- front: refracting rim, highlights, thick bottom, front half of the lip
   const F = new Paint(W, H);
@@ -127,22 +122,6 @@ function roundShell(L, e) {
       F.over(sx, sy + i, COL.white, k);
     }
   }
-  // front half of the rolled lip
-  F.each(cx - lipRx - lipT, lipY - lipRy - lipT, cx + lipRx + lipT, lipY + lipRy + lipT, (x, y) => {
-    const d = Math.hypot((x - cx) / lipRx, (y - lipY) / lipRy);
-    const dt = (d - 1) * Math.min(lipRx, lipRy * 4);
-    if (dt < -lipT * 0.6 || dt > lipT * 0.6) return 0;
-    if (y < lipY) {
-      // top surface of the rolled lip (both halves): bright
-      setMix(c, COL.white, COL.glassA, clamp01(dt / lipT + 0.5));
-      return 0.8;
-    }
-    const lit = clamp01(0.6 - (x - cx) / lipRx * 0.5);
-    grad(c, [[0, COL.glassC], [0.5, COL.glassB], [1, COL.white]], lit * (1 - clamp01(dt / lipT + 0.5) * 0.6));
-    if (Math.abs(dt) > lipT * 0.45) setMix(c, c, COL.edge, 0.55);
-    return 0.88;
-  });
-
   // ---- under: shadow and a caustic light pool on the desk (light from the window, upper left)
   const deskY = L.deskY - L.tank.y + pad;
   const U = new Paint(W + Math.round(30 * u), H);
@@ -163,7 +142,12 @@ function roundShell(L, e) {
       return 0.5 * (1 - d) + (d < 0.35 ? 0.25 : 0);
     });
   }
-  return { under: out(U, ox, oy), back: out(B, ox, oy), front: out(F, ox, oy), lip: { y: tank.y + 1, hw } };
+  // the rolled glass lip (voxel torus): far half behind the water, near half in front
+  const lip = lipVox(lipRx * 2 / 2, lipT * 1.6, vsOf(L));
+  const back = out(B, ox, oy), front = out(F, ox, oy);
+  put(back, lip.back, cx, lipY);
+  put(front, lip.front, cx, lipY);
+  return { under: out(U, ox, oy), back, front, lip: { y: tank.y + 1, hw } };
 }
 
 // ------------------------------------------------------------------ box (small, big, reef)
@@ -172,7 +156,7 @@ function boxShell(L) {
   const { tank, u, lid, base } = L;
   const reef = L.id === 'reeftank';
   const th = Math.max(2, Math.round(3 * u));
-  const pad = th + 3;
+  const pad = th + 3 + Math.round(lid * 0.6);
   const ox = tank.x - pad, oy = tank.y - lid - pad;
   const W = tank.w + pad * 2, H = tank.h + lid + base + pad * 2 + Math.round(6 * u);
   const x0 = pad, y0 = pad + lid; // inner glass rect in canvas coords
@@ -206,54 +190,6 @@ function boxShell(L) {
     if (lx < 2.5 * u + 2 && ly < tank.h * 0.6) a = Math.max(a, 0.28 * (1 - ly / (tank.h * 0.6)));
     return a;
   });
-  // hood (lid)
-  if (lid > 0) {
-    const hx0 = x0 - th - 1, hx1 = x1 + th + 1, hy0 = y0 - lid, hy1 = y0;
-    const r = Math.min(lid * 0.5, 6 * u + 1);
-    const hcx = (hx0 + hx1) / 2, hcy = (hy0 + hy1) / 2 + r / 2;
-    F.each(hx0, hy0, hx1, hy1 + 1, (x, y) => {
-      const d = sdRR(x, y, hcx, hcy, (hx1 - hx0) / 2, (hy1 - hy0) / 2 + r / 2, r);
-      if (d > 0 || y > hy1) return 0;
-      const t = (y - hy0) / lid;
-      if (reef) grad(c, [[0, COL.navyA], [0.45, COL.navyB], [1, COL.navyC]], t);
-      else grad(c, [[0, COL.hoodA], [0.5, COL.hoodB], [1, COL.hoodC]], t);
-      if (d > -1) setMix(c, c, reef ? COL.navyC : COL.chrome0, 0.6);
-      else if (y < hy0 + Math.max(1.5, lid * 0.18)) setMix(c, c, COL.white, reef ? 0.35 : 0.8);
-      // LED strip along the bottom of the hood
-      if (y > hy1 - Math.max(1.5, 2 * u)) { setMix(c, reef ? COL.blueLed : COL.aqua, COL.white, 0.25); return 1; }
-      // glossy sheen band
-      if (t > 0.18 && t < 0.42) setMix(c, c, COL.white, reef ? 0.12 : 0.3);
-      return 1;
-    });
-    // little glossy power button on the hood
-    const bx = hx1 - Math.round(10 * u) - 3, by = Math.round(hy0 + lid * 0.45);
-    const br = Math.max(1.5, 2.2 * u);
-    F.each(bx - br - 1, by - br - 1, bx + br + 1, by + br + 1, (x, y) => {
-      const d = Math.hypot(x - bx, y - by) / br;
-      if (d > 1) return 0;
-      setMix(c, COL.lime, COL.white, d < 0.45 && y < by ? 0.8 : 0);
-      return 1;
-    });
-  }
-  // plinth (base)
-  if (base > 0) {
-    const bx0 = x0 - th - 1, bx1 = x1 + th + 1, by0 = y1, by1 = y1 + base;
-    const r = Math.min(base * 0.4, 5 * u + 1);
-    F.each(bx0, by0, bx1, by1, (x, y) => {
-      const d = sdRR(x, y, (bx0 + bx1) / 2, (by0 + by1) / 2 - r / 2, (bx1 - bx0) / 2, (by1 - by0) / 2 + r / 2, r);
-      if (d > 0) return 0;
-      const t = (y - by0) / base;
-      if (reef) grad(c, [[0, COL.navyA], [0.5, COL.navyB], [1, COL.navyC]], t);
-      else grad(c, [[0, COL.white], [0.35, COL.hoodB], [1, COL.hoodC]], t);
-      if (t < 0.22) setMix(c, COL.chrome2, COL.chrome1, t / 0.22);
-      if (d > -1) setMix(c, c, reef ? COL.navyC : COL.chrome0, 0.55);
-      if (Math.abs(t - 0.62) < 0.08) setMix(c, c, COL.aquaD, 0.55);
-      return 1;
-    });
-    // power LED
-    const lx = bx1 - Math.round(8 * u) - 2, ly = Math.round(by0 + base * 0.62);
-    F.over(lx, ly, COL.lime, 1); F.over(lx + 1, ly, COL.lime, 1);
-  }
   // under: soft shadow on the desk below the plinth
   const U = new Paint(W + Math.round(12 * u), H + Math.round(10 * u));
   {
@@ -266,7 +202,11 @@ function boxShell(L) {
       return 0.26 * k * fx;
     });
   }
-  return { under: out(U, ox, oy), back: null, front: out(F, ox, oy) };
+  const front = out(F, ox, oy);
+  const vs = vsOf(L), look = reef ? 'navy' : 'white';
+  if (base > 0) put(front, slabVox(tank.w + th * 2 + 2, base, Math.max(4, base * 0.5), vs, look, { stripe: true, button: true }), x0 - th - 1, y1);
+  if (lid > 0) put(front, slabVox(tank.w + th * 2 + 2, lid, Math.max(4, lid * 0.55), vs, look, { led: 'bottom', ledColor: reef ? '#8ac8ff' : '#7ff6ff', button: true }), x0 - th - 1, y0 - lid);
+  return { under: out(U, ox, oy), back: null, front };
 }
 
 // ------------------------------------------------------------------ the moving-picture lamp
@@ -276,7 +216,7 @@ const SILVER = [C('#ffffff'), C('#dfe5eb'), C('#b9c3cd'), C('#919dab'), C('#6a76
 function lampShell(L) {
   const { tank, u, lid, base } = L;
   const side = Math.max(3, Math.round(6 * u));
-  const pad = side + 4;
+  const pad = side + 4 + Math.round(lid * 0.8);
   const ox = tank.x - pad, oy = tank.y - lid - pad;
   const W = tank.w + pad * 2, H = tank.h + lid + base + pad * 2 + Math.round(6 * u);
   const x0 = pad, y0 = pad + lid, x1 = x0 + tank.w, y1 = y0 + tank.h;
@@ -306,59 +246,6 @@ function lampShell(L) {
     if (Math.abs(lx - tank.w * 0.83) < 1.5 * u + 0.5) a = Math.max(a, 0.1 * (1 - ly / tank.h));
     return a;
   });
-  const silver = (t, sheen) => { grad(c, [[0, SILVER[0]], [0.25, SILVER[1]], [0.55, SILVER[2]], [0.85, SILVER[3]], [1, SILVER[4]]], t); if (sheen) setMix(c, c, COL.white, sheen); };
-  // hood
-  {
-    const hx0 = x0 - side - 2, hx1 = x1 + side + 2, hy0 = y0 - lid, hy1 = y0 + Math.max(1, Math.round(u));
-    const r = Math.min(lid * 0.55, 10 * u + 2);
-    F.each(hx0, hy0, hx1, hy1, (x, y) => {
-      const d = sdRR(x, y, (hx0 + hx1) / 2, (hy0 + hy1) / 2 + r / 2, (hx1 - hx0) / 2, (hy1 - hy0) / 2 + r / 2, r);
-      if (d > 0 || y >= hy1) return 0;
-      const t = (y - hy0) / (hy1 - hy0);
-      // brushed metal: a top face, a bright bevel, the front band, a dark lower lip
-      if (t < 0.24) silver(0.3 + t * 1.4, 0);
-      else if (t < 0.34) silver(0.02, 0.35);
-      else if (t < 0.84) silver(0.22 + (t - 0.34) * 1.2, Math.sin(x * 0.9) > 0.92 ? 0.08 : 0);
-      else { setMix(c, SILVER[4], SILVER[5], (t - 0.84) / 0.16); }
-      if (d > -1) setMix(c, c, SILVER[5], 0.6);
-      const ex = Math.min(x - hx0, hx1 - x) / (hx1 - hx0);
-      if (ex < 0.06) setMix(c, c, SILVER[4], 0.25 * (1 - ex / 0.06));
-      return 1;
-    });
-  }
-  // base
-  let sw = null;
-  {
-    const bx0 = x0 - side - 2, bx1 = x1 + side + 2, by0 = y1 - Math.max(1, Math.round(u)), by1 = y1 + base;
-    const foot = Math.max(2, Math.round(base * 0.18));
-    const r = Math.min(base * 0.3, 8 * u + 2);
-    F.each(bx0, by0, bx1, by1, (x, y) => {
-      const isFoot = y > by1 - foot;
-      const inset = isFoot ? Math.round(10 * u) + 2 : 0;
-      const d = sdRR(x, y, (bx0 + bx1) / 2, (by0 + by1 - foot) / 2 + (isFoot ? foot / 2 : 0), (bx1 - bx0) / 2 - inset, isFoot ? foot / 2 + 1 : (by1 - foot - by0) / 2, isFoot ? foot / 2 : r);
-      if (d > 0) return 0;
-      const t = (y - by0) / (by1 - foot - by0);
-      if (isFoot) { const tf = (y - (by1 - foot)) / foot; silver(0.45 + tf * 0.5, 0); }
-      else if (t < 0.14) silver(0.05 + t, 0.3);          // top bevel catching the light
-      else if (t < 0.2) silver(0.85, 0);                  // groove
-      else silver(0.15 + (t - 0.2) * 0.65, Math.sin(x * 0.9) > 0.92 ? 0.06 : 0);
-      if (d > -1) setMix(c, c, SILVER[5], 0.6);
-      return 1;
-    });
-    // screws
-    for (const sx of [bx0 + Math.round(12 * u) + 3, bx1 - Math.round(12 * u) - 4]) {
-      const sy = by0 + Math.round((by1 - foot - by0) * 0.3);
-      F.over(sx, sy, SILVER[4], 1); F.over(sx + 1, sy, SILVER[3], 1); F.over(sx, sy + 1, SILVER[5], 1); F.over(sx + 1, sy + 1, SILVER[4], 1);
-    }
-    // recessed switch well (the rocker itself is drawn live)
-    const sww = Math.max(6, Math.round(22 * u)), swh = Math.max(4, Math.round(13 * u));
-    const swx = Math.round(bx1 - (bx1 - bx0) * 0.2 - sww / 2), swy = Math.round(by0 + (by1 - foot - by0) * 0.56 - swh / 2);
-    F.each(swx - 1, swy - 1, swx + sww + 1, swy + swh + 1, (x, y) => {
-      setMix(c, SILVER[5], C('#2a323c'), x < swx || y < swy ? 0.2 : 0.6);
-      return 1;
-    });
-    sw = { x: ox + swx, y: oy + swy, w: sww, h: swh };
-  }
   // under: soft shadow on the desk
   const U = new Paint(W + Math.round(12 * u), H + Math.round(10 * u));
   {
@@ -370,7 +257,16 @@ function lampShell(L) {
       return 0.3 * k * Math.min(1, (x - sx0) / 6, (sx1 - x) / 6);
     });
   }
-  return { under: out(U, ox, oy), back: null, front: out(F, ox, oy), switch: sw, hood: { x: ox + x0 - side - 2, y: oy + y0 - lid, w: tank.w + side * 2 + 4, h: lid } };
+  // brushed silver hood (blue light strip underneath) and base (foot, screws, groove, a well for the rocker)
+  const front = out(F, ox, oy);
+  const vs = vsOf(L);
+  const hw = tank.w + side * 2 + 4;
+  put(front, slabVox(hw, lid, Math.max(6, lid * 0.75), vs, 'silver', { led: 'bottom', ledColor: '#7fd0ff', groove: true }), x0 - side - 2, y0 - lid);
+  const swW = Math.max(6, Math.round(22 * u)), swH = Math.max(4, Math.round(13 * u));
+  const bs = slabVox(hw, base, Math.max(6, base * 0.45), vs, 'silver', { foot: true, screws: true, groove: true, well: [0.78, swW, swH] });
+  put(front, bs, x0 - side - 2, y1);
+  const sw = { x: ox + x0 - side - 2 + bs.well.x, y: oy + y1 + bs.well.y, w: bs.well.w, h: bs.well.h };
+  return { under: out(U, ox, oy), back: null, front, switch: sw, hood: { x: ox + x0 - side - 2, y: oy + y0 - lid, w: hw, h: lid } };
 }
 
 // ------------------------------------------------------------------ wall aquarium
@@ -411,6 +307,7 @@ function wallShell(L) {
       if (f > 0.6 && f < 0.66) a = Math.max(a, 0.08);
       return a;
     }
+    return 0; // the bezel itself is voxel (below)
     // bezel: glossy white, lit from the top, chrome inner trim, aqua glow strip at the bottom
     const t = (y - (iy0 - bz)) / (tank.h + bz * 2);
     grad(c, [[0, COL.white], [0.5, COL.hoodB], [1, COL.hoodC]], t);
@@ -423,5 +320,7 @@ function wallShell(L) {
     return 1;
   });
   void ix1;
-  return { under: out(U, ox, oy), back: null, front: out(F, ox, oy) };
+  const front = out(F, ox, oy);
+  put(front, bezelVox(tank.w, tank.h, bz, vsOf(L)), ix0, iy0);
+  return { under: out(U, ox, oy), back: null, front };
 }

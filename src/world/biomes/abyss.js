@@ -15,6 +15,7 @@ import { pack } from '../../core/color.js';
 import { tinted, makeLayer } from '../../core/canvas.js';
 import { PROPS } from '../../gfx/props.js';
 import { worldProp } from '../voxkit.js';
+import { voxBall, voxCableAnim } from '../voxcritters.js';
 import { reefSprite, coralSprite, drawCoralGlow } from '../coral.js';
 import {
   waveLine, waveRuns, paint, gradientStrip, stopPalette, ditherPick, FogLayer, fillWith, drawWobble, makeRays, drawGlow, twinkle, Motes,
@@ -368,16 +369,14 @@ export class AbyssBiome extends Biome {
     for (const [side, yf, n, z] of [[-1, 0.12, 16, 0.12], [-1, 0.22, 11, 0.2], [1, 0.1, 14, 0.14], [1, 0.2, 9, 0.24], [-1, 0.3, 12, 0.55], [1, 0.32, 10, 0.6]]) {
       const s = D.s(z), X = D.cx + side * (this.edge(z, side) + 50), x = Math.round(D.cx + (X - D.cx) * s), y = Math.round(H * yf);
       if (x < 4 || x > W - 4) continue;
-      const st = new Strands();
-      st.add({ x, y, n, seg: Math.max(2, Math.round(4 * s)), down: true, w: 1, amp: 0.12, speed: 0.7, sec: 1, phase: x * 0.1, wave: 0.2, cols: ['#2a4a7a', '#3a7aaa', '#5ac8e8'], out: null, hl: false, tip: '#bfffff', tipR: 1 });
-      const anim = new SwayAnim(st, { frames: 20 });
-      this.decor.add({ anim, z, off: x % 20, fogMul: 0.5 });
-      this.tendrils.push({ tip: { x, y: y + n * st.list[0].seg }, z });
+      // voxel tendrils with glowing tips
+      const seg = Math.max(2, Math.round(4 * s));
+      this.decor.add({ anim: voxCableAnim(n * seg, '#3a7aaa', '#bfffff', x, y, 8, 1), z, off: x % 20, fogMul: 0.5 });
+      this.tendrils.push({ tip: { x, y: y + n * seg }, z });
     }
     this.decor.refog(() => '#1a2c5c', 'k');
     // leviathans gliding in the far fog
-    this.disc = [];
-    for (let rr = 1; rr <= 30; rr++) this.disc.push(discSprite(rr));
+    // (body segments are voxel spheres, see drawLeviathan)
     this.levi = { x: W * 0.62, y: D.hz - 120, dir: 1, v: 6, len: 420, rmax: 11, ph: 0 };
     this.leviT = 0;
     this.current = cloudTile(320, 120, '#8aa8e8', { seed: 4, alpha: 0.12, scale: 0.03, bias: 0.55, levels: 3 });
@@ -481,9 +480,10 @@ export class AbyssBiome extends Biome {
     for (let i = n - 1; i >= 0; i--) {
       const [x, y, rr] = pts[i];
       if (x < -40 || x > W + 40) continue;
-      g.drawImage(this.disc[Math.min(29, rr - 1)], Math.round(x - rr), Math.round(y - rr));
+      const b = voxBall(Math.min(30, rr), i % 6 === 3 ? '#26386a' : '#1a2850', { spec: 0.5 });
+      g.drawImage(b.canvas, Math.round(x - b.ox), Math.round(y - b.oy));
     }
-    g.fillStyle = '#ffffff';
+    g.fillStyle = '#1a2850';
     for (let k = 0; k < 4; k++) {
       const [fx, fy, fr] = pts[5 + k * 9];
       const h = Math.round(fr * 0.9 + 3);
@@ -493,11 +493,9 @@ export class AbyssBiome extends Biome {
     g.fillRect(Math.round(hx + L.dir * hr * 0.4), Math.round(hy + hr * 0.3), Math.round(L.dir * (hr + 4)), 2);
     // a long lure on a stalk
     for (let j = 0; j < 14; j++) g.fillRect(Math.round(hx + L.dir * (hr * 0.3 + j * 0.9)), Math.round(hy - hr - Math.sin((j / 14) * Math.PI) * 6 - j * 0.3), 1, 1);
-    g.globalCompositeOperation = 'source-in';
-    g.fillStyle = '#0a1230';
-    g.fillRect(0, 0, W, 120);
-    g.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = 0.6;
+    // a cute big cartoon eye on the head (voxel)
+    { const e = voxBall(Math.max(2, Math.round(hr * 0.3)), '#e8f4ff', { spec: 0.9 }), p = voxBall(Math.max(1, Math.round(hr * 0.18)), '#05070e', { spec: 0.9 }); g.drawImage(e.canvas, Math.round(hx + L.dir * hr * 0.35 - e.ox), Math.round(hy - hr * 0.2 - e.oy)); g.drawImage(p.canvas, Math.round(hx + L.dir * hr * 0.42 - p.ox), Math.round(hy - hr * 0.2 - p.oy)); }
+    ctx.globalAlpha = 0.62;
     ctx.drawImage(this.leviLayer.canvas, 0, oy);
     ctx.globalAlpha = 1;
     // photophores and the lure glow

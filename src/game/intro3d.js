@@ -21,8 +21,8 @@
 
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { PixelBuffer } from '../gfx/pixel.js';
-import { pack, mix, rgba } from '../core/color.js';
-import { clamp, clamp01, lerp, smoothstep, ease, hash2, fbm2, bayer, TAU } from '../core/math.js';
+import { pack, rgba } from '../core/color.js';
+import { clamp, clamp01, lerp, ease, hash2, fbm2, bayer, TAU } from '../core/math.js';
 import { RNG } from '../core/rng.js';
 import { VoxelModel, renderVoxels } from '../gfx/voxel.js';
 import { Particles } from '../gfx/particles.js';
@@ -64,12 +64,6 @@ const LAMP = { x: 640, y: -170, w: 118, h: 74 };   // the aquarium lamp sits on 
 const Z_OUT = 360;         // the landscape outside the window
 const WALL = { x0: -1050, x1: 950, y0: -640, y1: FLOOR_Y };
 
-const COL = {
-  wallM: '#e6f5fb', wallB: '#cfe9f4',
-  glassEdge: '#7fe2cc', glassEdgeD: '#2fa79a',
-  chrome: ['#5f7486', '#a9bccb', '#e8f2f8', '#ffffff'],
-  bezel: ['#3a4756', '#151c24', '#07090c', '#1a232d'],
-};
 
 // ------------------------------------------------------------------------------------------------ helpers
 const inv = (a, b, t) => clamp01((t - a) / (b - a));
@@ -79,25 +73,8 @@ function bez(p0, p1, p2, u) {
   return [p0[0] * a + p1[0] * b + p2[0] * c, p0[1] * a + p1[1] * b + p2[1] * c, p0[2] * a + p1[2] * b + p2[2] * c];
 }
 
-function rrect(g, x, y, w, h, r) {
-  r = Math.max(0, Math.min(r, w / 2, h / 2));
-  g.beginPath();
-  g.moveTo(x + r, y);
-  g.arcTo(x + w, y, x + w, y + h, r);
-  g.arcTo(x + w, y + h, x, y + h, r);
-  g.arcTo(x, y + h, x, y, r);
-  g.arcTo(x, y, x + w, y, r);
-  g.closePath();
-}
-
 function vgrad(g, y0, y1, stops) {
   const gr = g.createLinearGradient(0, y0, 0, y1);
-  for (const [k, c] of stops) gr.addColorStop(k, c);
-  return gr;
-}
-
-function hgrad(g, x0, x1, stops) {
-  const gr = g.createLinearGradient(x0, 0, x1, 0);
   for (const [k, c] of stops) gr.addColorStop(k, c);
   return gr;
 }

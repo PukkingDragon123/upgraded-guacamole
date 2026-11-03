@@ -331,7 +331,7 @@ export class Tutorial {
       case 'fight': return { top: true };
       case 'tank': case 'coin': return { rect: g.aquarium?.windowRect?.() || null, noArrow: this.step === 'tank' };
       case 'lab': return { rect: this.iconRect('lab') };
-      case 'research': return { top: true };
+      case 'research': return { corner: true };
       default: return {};
     }
   }
@@ -356,6 +356,7 @@ export class Tutorial {
     }
     if (tg.point) return [clamp(tg.point[0] - 120, 50, W - 50), clamp(tg.point[1] - 70, 80, H - 60)];
     if (tg.top) return [W * 0.5 - 150, 86];
+    if (tg.corner) return [W - 46, H - 96];
     return [W * 0.32, H * 0.7];
   }
 

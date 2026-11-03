@@ -24,7 +24,7 @@ const cache = new Map();
 const memo = (key, fn) => { let v = cache.get(key); if (!v) { v = fn(); cache.set(key, v); if (cache.size > 80) cache.delete(cache.keys().next().value); } return v; };
 
 // Render at 1 px per voxel, then upscale by vs (integer) with nearest-neighbour.
-function vrender(m, vs, o = {}) {
+export function vrender(m, vs, o = {}) {
   const r = renderVoxels(m, { scale: 1, yaw: 0, pitch: 24, outline: true, jitter: 0.04, ao: 0.9, edges: 0.55, light: LIGHT, ...o });
   let canvas = r.canvas;
   if (vs > 1) {
