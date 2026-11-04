@@ -45,6 +45,7 @@ import * as RIG from '../gfx/fishrig.js';
 import * as SC from '../gfx/spritecache.js';
 import * as SPEC from '../fish/species.js';
 import * as ART from '../gfx/fishart.js';
+import { swellAt, SWELLS, waterPalette } from '../world/watersim.js'; // the Water agent's swell field + ocean palette
 
 // ------------------------------------------------------------------------------------------------ timeline
 export const INTRO_T = {
@@ -76,8 +77,8 @@ const BEATS = ['clip', 'boat', 'fish', 'final'];
 const SUN = norm3([-0.4, 0.27, -0.88]);
 const SUN_COL = [2.1, 1.92, 1.66];
 const ISLE = { x: 0, z: -2700, vox: 10, NX: 240, NY: 46, NZ: 104, sink: 3 }; // sink: voxel rows under the sea (the shelf)
-const CLIP_A = [-40, 3, 236];
-const CLIP_B = [-22, 5, 46];
+const CLIP_A = [-60, 3, 300];
+const CLIP_B = [-35, 6, 42];
 const CLIP_C = [50, -42, -20];
 const CLIP_D = [-118, 46, 150];
 const BOBBER = [70, 0, -40];
@@ -91,8 +92,8 @@ const SHOTS = [
   { t0: 0, t1: T.breach, keys: [
     [0.0, -820, 470, 2600, 200, 70, -2700, 50, -2],
     [2.3, -430, 190, 1380, 80, 80, -2700, 48, -5],
-    [4.2, -170, 52, 560, -40, 14, 236, 50, -3],
-    [T.clip, -66, 21, 296, -32, 13, 236, 34, 0],
+    [4.2, -110, 34, 640, -56, 16, 280, 48, -3],
+    [T.clip, -48, 18, 340, -45, 12, 240, 34, 0],
     [6.3, -76, 40, 196, -6, 12, 50, 42, 3],
     [T.boat, -44, 20, 88, 4, 12, 0, 38, 0],
     [8.7, -66, 30, 118, 30, 8, -20, 46, 0],
@@ -574,7 +575,7 @@ export class Intro3D {
     const done = () => { this.beatsDone.add(id); this.holding = null; this.releaseT = this.wall; };
     const smug = this.picks.mood === 'smug', shy = this.picks.mood === 'surprised';
     if (id === 'clip') {
-      this.say3D('HELLO!', { palette: 'aqua', anchor: 'clip', dx: 1.35, dy: 0.55, size: 0.12, life: 4.2, px: 2 });
+      this.say3D('HELLO!', { palette: 'aqua', anchor: 'clip', dx: 1.5, dy: 0.05, size: 0.12, life: 4.2, px: 2 });
       d.script([
         { text: 'Whoa! A new angler in the (OS)cean!', mood: 'excited', pose: 'wave', hold: 1.4 },
         { text: "I'm Clip. I hold things together... mostly fishing lines.", mood: 'happy', pose: 'talk', choices: [
@@ -587,12 +588,12 @@ export class Intro3D {
         ], onChoose: (c) => {
           this.pick('name', c.value);
           d.vars.name = c.value;
-          this.say3D(c.value.toUpperCase(), { palette: 'leaf', anchor: 'clip', dx: 1.3, dy: 0.5, size: 0.1, life: 3.2, px: 2 });
+          this.say3D(c.value.toUpperCase(), { palette: 'leaf', anchor: 'clip', dx: 1.5, dy: 0.05, size: 0.1, life: 3.2, px: 2 });
           d.queue.unshift({ raw: '{name}! I love it. Come on, your boat is waiting!', mood: 'excited', pose: 'cheer', hold: 1.2 });
         } },
       ], done);
     } else if (id === 'boat') {
-      this.say3D('PAINT JOB!', { palette: 'sky', anchor: 'boat', dx: 0.25, dy: 1.05, size: 0.09, life: 4, px: 2 });
+      this.say3D('PAINT JOB!', { palette: 'sky', anchor: 'boat', dx: 0.35, dy: 0.62, size: 0.09, life: 4, px: 2 });
       d.script([
         { text: smug ? "That's your boat. Cute. A bit plain, though." : "That's your boat! Cute, but it needs a fresh coat.", mood: smug ? 'smug' : 'happy', pose: 'point', hold: 1.2 },
         { text: 'Pick a colour, {name}!', mood: 'excited', pose: 'talk', choices: [
@@ -907,8 +908,8 @@ export class Intro3D {
       p[1] += Math.sin(k * Math.PI) * 30;
       return p;
     }
-    const bob = Math.sin(this.wall * 3) * 0.4 - (t > T.strike ? 2 : 0);
-    return [BOBBER[0], bob, BOBBER[2]];
+    const sw = this.swell(BOBBER[0], BOBBER[2], this.wall);
+    return [BOBBER[0] + sw.dx * 0.4, sw.h * 0.8 + Math.sin(this.wall * 3) * 0.2 - (t > T.strike ? 2 : 0), BOBBER[2] + sw.dz * 0.4];
   }
 
   // Touch the voxel frames the opening will need (built by the fish renderer's own budgeted queue).
@@ -928,6 +929,23 @@ export class Intro3D {
       const [f, st] = this.warmQ[this.warmI++ % this.warmQ.length];
       try { RIG.drawFishRig(g, f.c, { x: 4, y: 4, angle: 0, speed01: 0.5, time: 0, emotion: 'neutral', pri: 3, yawBase: 0, noCull: true, ...st }); } catch (e) { /* the fish renderer may be mid-rework */ }
     }
+  }
+
+  // the Water agent's 2D Gerstner swell (watersim.swellAt), in our world units
+  swell(x, z, t) {
+    try { return swellAt(x, z, t, SWELLS.calm); } catch (e) { return { h: Math.sin(t * 1.6) * 0.5, dx: 0, dz: 0 }; }
+  }
+
+  // sea colours from the Water agent's (OS)cean palette (sRGB hex -> linear)
+  seaColours() {
+    if (this.seaCol) return this.seaCol;
+    let P = null;
+    try { P = waterPalette('oscean', 1); } catch (e) { P = null; }
+    const L = (h, k = 1) => hexLin(h).map((c) => c * k);
+    this.seaCol = P
+      ? { skyTop: [0.02, 0.2, 0.78], skyHor: mix3(L(P.horizon), [0.66, 0.88, 1.0], 0.5), deep: L(P.deep, 0.55), shallow: mix3(L(P.surface, 0.7), [0.04, 0.5, 0.6], 0.5) }
+      : { skyTop: [0.02, 0.2, 0.78], skyHor: [0.66, 0.88, 1.0], deep: [0.0, 0.12, 0.34], shallow: [0.04, 0.5, 0.6] };
+    return this.seaCol;
   }
 
   quantS(f, s) { const q = Math.pow(1.25, Math.round(Math.log(Math.max(0.05, s)) / Math.log(1.25))); return q; }
@@ -1063,8 +1081,9 @@ export class Intro3D {
     const B = this.A.boat;
     let boatM = null;
     if (B) {
-      const bob = Math.sin(w * 1.6) * 0.5;
-      boatM = M4.model([0, bob - 0.6, 0], { roll: Math.sin(w * 1.3) * 0.03, pitch: Math.sin(w * 1.1) * 0.02 });
+      // ride the shared Gerstner swell (src/world/watersim.js): heave plus roll / pitch from the local slope
+      const s0 = this.swell(0, 0, w), sx = this.swell(12, 0, w), sz = this.swell(0, 8, w);
+      boatM = M4.model([s0.dx * 0.5, s0.h * 0.7 - 0.6, s0.dz * 0.5], { roll: Math.atan2(sx.h - s0.h, 12) * 0.9 + Math.sin(w * 1.3) * 0.015, pitch: -Math.atan2(sz.h - s0.h, 8) * 0.9 });
       meshes.push({ mesh: B.mesh, model: boatM, reflect: true, k: [1, 1, 0, 1] });
     }
     // --- sprites: begin the atlas
@@ -1098,7 +1117,7 @@ export class Intro3D {
     const rp = this.ripple ? [this.ripple.p[0], this.ripple.p[2], (w - this.ripple.t0) * 26, w - this.ripple.t0] : null;
     E.render({
       cam, time: w, under, sunDir: SUN, sunCol: SUN_COL,
-      skyTop: [0.02, 0.2, 0.78], skyHor: [0.66, 0.88, 1.0], deep: [0.0, 0.12, 0.34], shallow: [0.04, 0.5, 0.6],
+      ...this.seaColours(),
       haze: 0.000045, waterDens: 0.0052, caustics: 1.2, spriteExp: 1.08,
       arcs: [-1.3, -0.25, -0.6, 0.22], water: true, ripple: rp,
       meshes, glass, billboards: bbs, particles: parts, lines, post,
@@ -1255,8 +1274,11 @@ export class Intro3D {
       if (sx > -0.3 && sx < 1.3 && sy > -0.3 && sy < 1.2) {
         let vis = 0.5;
         if (cam.shot === 2) vis = 0.35 + 0.65 * inv(T.flare - 0.3, T.flare + 0.6, t);
-        flares.push([sx, 1 - sy, vis, 1.1]);
-        P.raysSrc = [sx, 1 - sy]; P.rays = 0.32; P.raysDensity = 0.8;
+        // fade as the sun leaves the frame
+        const edge = Math.min(sx, 1 - sx, sy, 1 - sy);
+        const inside = clamp01((edge + 0.08) / 0.2);
+        flares.push([sx, 1 - sy, vis * inside, 1.1]);
+        P.raysSrc = [sx, 1 - sy]; P.rays = 0.3 * inside; P.raysDensity = 0.8;
       }
     }
     if (under) {

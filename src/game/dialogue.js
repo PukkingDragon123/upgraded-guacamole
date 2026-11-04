@@ -255,7 +255,7 @@ export class Dialogue {
     ctx.fillStyle = 'rgba(4,28,64,0.55)';
     roundRect(ctx, x + 2, yy + 4, w, h, 14); ctx.fill();
     const g = ctx.createLinearGradient(0, yy, 0, yy + h);
-    g.addColorStop(0, 'rgba(46,150,214,0.92)'); g.addColorStop(0.45, 'rgba(14,86,160,0.9)'); g.addColorStop(1, 'rgba(8,48,104,0.94)');
+    g.addColorStop(0, 'rgba(34,124,196,0.94)'); g.addColorStop(0.42, 'rgba(10,64,132,0.94)'); g.addColorStop(1, 'rgba(5,30,74,0.96)');
     ctx.fillStyle = g;
     roundRect(ctx, x, yy, w, h, 14); ctx.fill();
     // gloss band + rim

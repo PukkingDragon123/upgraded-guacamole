@@ -209,7 +209,7 @@ vec3 skyColor(vec3 d) {
   c = mix(c, u_skyTop, smoothstep(0.18, 0.85, y));
   if (y < 0.0) c = mix(u_skyHor * 0.92, u_deep * 1.6, smoothstep(0.0, -0.35, y));
   float s = max(dot(d, u_sun), 0.0);
-  c += u_sunCol * (pow(s, 1400.0) * 60.0 + pow(s, 120.0) * 0.6 + pow(s, 10.0) * 0.07);
+  c += u_sunCol * (pow(s, 1400.0) * 12.0 + pow(s, 160.0) * 0.55 + pow(s, 10.0) * 0.06);
   return c;
 }
 
@@ -648,6 +648,7 @@ void main() {
   c += texture(u_tex, v_uv + vec2(h.x, h.y)).rgb;
   c /= 8.0;
   if (u_thresh >= 0.0) {
+    c = min(c, vec3(6.0));
     float l = max(c.r, max(c.g, c.b));
     float k = max(l - u_thresh, 0.0);
     k = k * k / (k + 0.6);

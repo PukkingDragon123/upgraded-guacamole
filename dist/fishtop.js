@@ -52443,6 +52443,18 @@ ${hearts} ${status}
   });
 
   // src/world/watersim.js
+  function swellAt(x, z, t, waves = SWELLS.calm) {
+    let h = 0, dx = 0, dz = 0;
+    for (let i = 0; i < waves.length; i++) {
+      const w = waves[i], k = TAU4 / w.L, a = (i - 1) * 0.45, cx = Math.cos(a) * Math.sign(w.c || 1), cz = Math.sin(a);
+      const th = k * (cx * x + cz * z) - k * Math.abs(w.c) * t + i * 1.7;
+      h += w.A * Math.cos(th);
+      const q = w.Q / (k * waves.length) * Math.sin(th);
+      dx -= cx * q;
+      dz -= cz * q;
+    }
+    return { h, dx, dz };
+  }
   function waterPalette(id2, daylight = 1, dusk = 0) {
     const d = Math.round(Math.max(0, Math.min(1, daylight)) * 8) / 8, k = Math.round(Math.max(0, Math.min(1, dusk)) * 8) / 8;
     const key = id2 + "|" + d + "|" + k;
@@ -67904,9 +67916,9 @@ kmlmk..
           roundRect(ctx2, x + 2, yy + 4, w, h, 14);
           ctx2.fill();
           const g = ctx2.createLinearGradient(0, yy, 0, yy + h);
-          g.addColorStop(0, "rgba(46,150,214,0.92)");
-          g.addColorStop(0.45, "rgba(14,86,160,0.9)");
-          g.addColorStop(1, "rgba(8,48,104,0.94)");
+          g.addColorStop(0, "rgba(34,124,196,0.94)");
+          g.addColorStop(0.42, "rgba(10,64,132,0.94)");
+          g.addColorStop(1, "rgba(5,30,74,0.96)");
           ctx2.fillStyle = g;
           roundRect(ctx2, x, yy, w, h, 14);
           ctx2.fill();
@@ -68419,7 +68431,7 @@ vec3 skyColor(vec3 d) {
   c = mix(c, u_skyTop, smoothstep(0.18, 0.85, y));
   if (y < 0.0) c = mix(u_skyHor * 0.92, u_deep * 1.6, smoothstep(0.0, -0.35, y));
   float s = max(dot(d, u_sun), 0.0);
-  c += u_sunCol * (pow(s, 1400.0) * 60.0 + pow(s, 120.0) * 0.6 + pow(s, 10.0) * 0.07);
+  c += u_sunCol * (pow(s, 1400.0) * 12.0 + pow(s, 160.0) * 0.55 + pow(s, 10.0) * 0.06);
   return c;
 }
 
@@ -68841,6 +68853,7 @@ void main() {
   c += texture(u_tex, v_uv + vec2(h.x, h.y)).rgb;
   c /= 8.0;
   if (u_thresh >= 0.0) {
+    c = min(c, vec3(6.0));
     float l = max(c.r, max(c.g, c.b));
     float k = max(l - u_thresh, 0.0);
     k = k * k / (k + 0.6);
@@ -69034,7 +69047,15 @@ void main() {
           if (!gl) return;
           this.hdr = !!gl.getExtension("EXT_color_buffer_float");
           gl.getExtension("OES_texture_float_linear");
-          this.samples = o.msaa === false || o.lowPower ? 0 : Math.min(4, gl.getParameter(gl.MAX_SAMPLES) || 0);
+          let renderer = "";
+          try {
+            const dbg = gl.getExtension("WEBGL_debug_renderer_info");
+            renderer = String(gl.getParameter(dbg ? dbg.UNMASKED_RENDERER_WEBGL : gl.RENDERER) || "");
+          } catch (e) {
+            renderer = "";
+          }
+          this.software = /swiftshader|llvmpipe|software|basic render/i.test(renderer);
+          this.samples = o.msaa === false || o.lowPower || this.software ? 0 : Math.min(4, gl.getParameter(gl.MAX_SAMPLES) || 0);
           const P5 = this.P = {};
           P5.vox = compile(gl, VOX_VS, VOX_FS, "vox");
           P5.sky = compile(gl, SKY_VS, SKY_FS, "sky");
@@ -69895,7 +69916,7 @@ void main() {
         m.set(x, y, z, hash2(x, z, 3) < 0.04 && y === top - 1 ? sand : G[clamp(Math.round(k * 3 + (hash2(x >> 2, z >> 2, 8) - 0.5) * 1.5), 0, 4)]);
       }
       const r = hash2(x, z, 17);
-      if (r < 0.16) {
+      if (r < 0.1) {
         const gh = 1 + Math.floor(hash2(z, x, 2) * 3);
         for (let y = 0; y < gh; y++) m.set(x, top + y, z, grass[(x + z + y) % 3]);
         if (r < 0.022) m.set(x, top + gh, z, fl[Math.floor(hash2(x, z, 6) * fl.length)]);
@@ -69903,7 +69924,7 @@ void main() {
     }
     return m;
   }
-  var INTRO_T, T, END, BEATS, SUN, SUN_COL, ISLE, CLIP_A, CLIP_B, CLIP_C, CLIP_D, BOBBER, LURE_Y, SEABED, LEAP, LOGO, SHOTS, SCHOOL_IDS, FIRST_IDS, BIG_IDS, DEG9, inv, add33, sub3, scl3, dot32, mix32, Intro3D;
+  var INTRO_T, T, END, BEATS, SUN, SUN_COL, ISLE, CLIP_A, CLIP_B, CLIP_C, CLIP_D, BOBBER, LURE_Y, SEABED, LEAP, LOGO, SHOTS, SCHOOL_IDS, FIRST_IDS, BIG_IDS, DEG9, inv, add33, sub3, scl3, dot32, mix32, hexLin, Intro3D;
   var init_intro3d = __esm({
     "src/game/intro3d.js"() {
       init_canvas();
@@ -69923,6 +69944,7 @@ void main() {
       init_spritecache();
       init_species();
       init_fishart();
+      init_watersim();
       INTRO_T = {
         sweep: 0,
         pop: 4.6,
@@ -69961,21 +69983,21 @@ void main() {
       SUN = norm33([-0.4, 0.27, -0.88]);
       SUN_COL = [2.1, 1.92, 1.66];
       ISLE = { x: 0, z: -2700, vox: 10, NX: 240, NY: 46, NZ: 104, sink: 3 };
-      CLIP_A = [-40, 3, 236];
-      CLIP_B = [-22, 5, 46];
+      CLIP_A = [-60, 3, 300];
+      CLIP_B = [-35, 6, 42];
       CLIP_C = [50, -42, -20];
       CLIP_D = [-118, 46, 150];
       BOBBER = [70, 0, -40];
       LURE_Y = -40;
-      SEABED = { x: -360, z: -560, vox: 4, NX: 200, NZ: 200, y: -196 };
+      SEABED = { x: -300, z: -500, vox: 5, NX: 140, NZ: 130, y: -200 };
       LEAP = { x0: 64, z0: -118, x1: 14, z1: -14, top: 58 };
       LOGO = [0, 74, 150];
       SHOTS = [
         { t0: 0, t1: T.breach, keys: [
           [0, -820, 470, 2600, 200, 70, -2700, 50, -2],
           [2.3, -430, 190, 1380, 80, 80, -2700, 48, -5],
-          [4.2, -170, 52, 560, -40, 14, 236, 50, -3],
-          [T.clip, -66, 21, 296, -32, 13, 236, 34, 0],
+          [4.2, -110, 34, 640, -56, 16, 280, 48, -3],
+          [T.clip, -48, 18, 340, -45, 12, 240, 34, 0],
           [6.3, -76, 40, 196, -6, 12, 50, 42, 3],
           [T.boat, -44, 20, 88, 4, 12, 0, 38, 0],
           [8.7, -66, 30, 118, 30, 8, -20, 46, 0],
@@ -70008,6 +70030,11 @@ void main() {
       scl3 = (a, k) => [a[0] * k, a[1] * k, a[2] * k];
       dot32 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
       mix32 = (a, b, k) => [lerp(a[0], b[0], k), lerp(a[1], b[1], k), lerp(a[2], b[2], k)];
+      hexLin = (h) => {
+        const s = h.replace("#", "");
+        const v = parseInt(s, 16);
+        return [(v >> 16 & 255) / 255, (v >> 8 & 255) / 255, (v & 255) / 255].map((c) => c * c);
+      };
       Intro3D = class {
         constructor(o = {}) {
           this.o = o;
@@ -70293,7 +70320,7 @@ void main() {
           };
           const smug = this.picks.mood === "smug", shy = this.picks.mood === "surprised";
           if (id2 === "clip") {
-            this.say3D("HELLO!", { palette: "aqua", anchor: "clip", dx: 1.35, dy: 0.55, size: 0.12, life: 4.2, px: 2 });
+            this.say3D("HELLO!", { palette: "aqua", anchor: "clip", dx: 1.5, dy: 0.05, size: 0.12, life: 4.2, px: 2 });
             d.script([
               { text: "Whoa! A new angler in the (OS)cean!", mood: "excited", pose: "wave", hold: 1.4 },
               { text: "I'm Clip. I hold things together... mostly fishing lines.", mood: "happy", pose: "talk", choices: [
@@ -70311,12 +70338,12 @@ void main() {
               ], onChoose: (c) => {
                 this.pick("name", c.value);
                 d.vars.name = c.value;
-                this.say3D(c.value.toUpperCase(), { palette: "leaf", anchor: "clip", dx: 1.3, dy: 0.5, size: 0.1, life: 3.2, px: 2 });
+                this.say3D(c.value.toUpperCase(), { palette: "leaf", anchor: "clip", dx: 1.5, dy: 0.05, size: 0.1, life: 3.2, px: 2 });
                 d.queue.unshift({ raw: "{name}! I love it. Come on, your boat is waiting!", mood: "excited", pose: "cheer", hold: 1.2 });
               } }
             ], done);
           } else if (id2 === "boat") {
-            this.say3D("PAINT JOB!", { palette: "sky", anchor: "boat", dx: 0.25, dy: 1.05, size: 0.09, life: 4, px: 2 });
+            this.say3D("PAINT JOB!", { palette: "sky", anchor: "boat", dx: 0.35, dy: 0.62, size: 0.09, life: 4, px: 2 });
             d.script([
               { text: smug ? "That's your boat. Cute. A bit plain, though." : "That's your boat! Cute, but it needs a fresh coat.", mood: smug ? "smug" : "happy", pose: "point", hold: 1.2 },
               { text: "Pick a colour, {name}!", mood: "excited", pose: "talk", choices: [
@@ -70691,8 +70718,8 @@ void main() {
             p[1] += Math.sin(k * Math.PI) * 30;
             return p;
           }
-          const bob = Math.sin(this.wall * 3) * 0.4 - (t > T.strike ? 2 : 0);
-          return [BOBBER[0], bob, BOBBER[2]];
+          const sw = this.swell(BOBBER[0], BOBBER[2], this.wall);
+          return [BOBBER[0] + sw.dx * 0.4, sw.h * 0.8 + Math.sin(this.wall * 3) * 0.2 - (t > T.strike ? 2 : 0), BOBBER[2] + sw.dz * 0.4];
         }
         // Touch the voxel frames the opening will need (built by the fish renderer's own budgeted queue).
         touchFish() {
@@ -70722,6 +70749,27 @@ void main() {
             } catch (e) {
             }
           }
+        }
+        // the Water agent's 2D Gerstner swell (watersim.swellAt), in our world units
+        swell(x, z, t) {
+          try {
+            return swellAt(x, z, t, SWELLS.calm);
+          } catch (e) {
+            return { h: Math.sin(t * 1.6) * 0.5, dx: 0, dz: 0 };
+          }
+        }
+        // sea colours from the Water agent's (OS)cean palette (sRGB hex -> linear)
+        seaColours() {
+          if (this.seaCol) return this.seaCol;
+          let P5 = null;
+          try {
+            P5 = waterPalette("oscean", 1);
+          } catch (e) {
+            P5 = null;
+          }
+          const L4 = (h, k = 1) => hexLin(h).map((c) => c * k);
+          this.seaCol = P5 ? { skyTop: [0.02, 0.2, 0.78], skyHor: mix32(L4(P5.horizon), [0.66, 0.88, 1], 0.5), deep: L4(P5.deep, 0.55), shallow: mix32(L4(P5.surface, 0.7), [0.04, 0.5, 0.6], 0.5) } : { skyTop: [0.02, 0.2, 0.78], skyHor: [0.66, 0.88, 1], deep: [0, 0.12, 0.34], shallow: [0.04, 0.5, 0.6] };
+          return this.seaCol;
         }
         quantS(f, s) {
           const q = Math.pow(1.25, Math.round(Math.log(Math.max(0.05, s)) / Math.log(1.25)));
@@ -70885,12 +70933,12 @@ void main() {
               for (const c of P5.clouds) meshes.push({ mesh: c.mesh, model: M4.model(c.p, { scale: c.s, yaw: c.yaw }), reflect: true, k: [0.3, 0.5, 0, 1], tint: [1.25, 1.25, 1.3, 0] });
             }
           }
-          if (this.A.seabed && (under || cam.eye[1] < 30)) meshes.push({ mesh: this.A.seabed, model: M4.model([SEABED.x, SEABED.y, SEABED.z]), k: [0.6, 0.6, 0, 1] });
+          if (this.A.seabed && cam.eye[1] < 3) meshes.push({ mesh: this.A.seabed, model: M4.model([SEABED.x, SEABED.y, SEABED.z]), k: [0.6, 0.6, 0, 1] });
           const B3 = this.A.boat;
           let boatM = null;
           if (B3) {
-            const bob = Math.sin(w * 1.6) * 0.5;
-            boatM = M4.model([0, bob - 0.6, 0], { roll: Math.sin(w * 1.3) * 0.03, pitch: Math.sin(w * 1.1) * 0.02 });
+            const s0 = this.swell(0, 0, w), sx = this.swell(12, 0, w), sz = this.swell(0, 8, w);
+            boatM = M4.model([s0.dx * 0.5, s0.h * 0.7 - 0.6, s0.dz * 0.5], { roll: Math.atan2(sx.h - s0.h, 12) * 0.9 + Math.sin(w * 1.3) * 0.015, pitch: -Math.atan2(sz.h - s0.h, 8) * 0.9 });
             meshes.push({ mesh: B3.mesh, model: boatM, reflect: true, k: [1, 1, 0, 1] });
           }
           this.atlasBegin();
@@ -70931,10 +70979,7 @@ void main() {
             under,
             sunDir: SUN,
             sunCol: SUN_COL,
-            skyTop: [0.02, 0.2, 0.78],
-            skyHor: [0.66, 0.88, 1],
-            deep: [0, 0.12, 0.34],
-            shallow: [0.04, 0.5, 0.6],
+            ...this.seaColours(),
             haze: 45e-6,
             waterDens: 52e-4,
             caustics: 1.2,
@@ -71108,9 +71153,11 @@ void main() {
             if (sx > -0.3 && sx < 1.3 && sy > -0.3 && sy < 1.2) {
               let vis = 0.5;
               if (cam.shot === 2) vis = 0.35 + 0.65 * inv(T.flare - 0.3, T.flare + 0.6, t);
-              flares.push([sx, 1 - sy, vis, 1.1]);
+              const edge = Math.min(sx, 1 - sx, sy, 1 - sy);
+              const inside = clamp01((edge + 0.08) / 0.2);
+              flares.push([sx, 1 - sy, vis * inside, 1.1]);
               P5.raysSrc = [sx, 1 - sy];
-              P5.rays = 0.32;
+              P5.rays = 0.3 * inside;
               P5.raysDensity = 0.8;
             }
           }
