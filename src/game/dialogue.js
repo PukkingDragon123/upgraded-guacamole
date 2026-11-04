@@ -5,7 +5,8 @@
 //   const d = new Dialogue({audio, voice: 'clip', name: 'Clip', portrait(ctx, cx, cy, r, d), vars: {name}})
 //   d.say(text, o)         queue a line; o: {mood, pose, choices: [{text, value, mood, reply}], onChoose(choice, i),
 //                          onShow(line), onDone(line), hold (s after typing before auto-advance; 0 = wait for a
-//                          click), wait (always wait for a click), big, cps (chars/s), text3d}
+//                          click), wait (always wait for a click), big, cps (chars/s), silent (no voice blips),
+//                          autoPick (s before choice 0 is picked for the player)}
 //   d.script(lines, onDone) queue several lines (strings or [text, o] / {text, ...o}); onDone after the last one
 //   d.now(text, o)         replace everything with this line
 //   d.clear()  d.advance()  d.choose(i)  d.finishTyping()
@@ -190,7 +191,7 @@ export class Dialogue {
       const after = Math.floor(this.shown);
       for (let i = before; i < after; i++) {
         const c = l.text[i];
-        if (/[a-z0-9]/i.test(c) && this.blipN++ % 2 === 0) { try { this.audio?.babble?.(c, this.voice); } catch (e) { /* optional */ } }
+        if (!l.silent && /[a-z0-9]/i.test(c) && this.blipN++ % 2 === 0) { try { this.audio?.babble?.(c, this.voice); } catch (e) { /* optional */ } }
       }
       const c2 = l.text[after] || '';
       const open = /[.,!?]/.test(c2) ? 0.1 : VOWEL.test(c2) ? 1 : 0.55;

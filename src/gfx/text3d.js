@@ -22,8 +22,8 @@ export const TEXT3D_PALETTES = {
   gold: { face: ['#fffbe0', '#ffe066', '#ffb21a'], bevelL: '#ffffff', bevelD: '#d8820a', side: '#b0600a', back: '#7a3e06', outline: '#ffffff' },
   coral: { face: ['#fff0f0', '#ffb0a0', '#ff6a5a'], bevelL: '#ffffff', bevelD: '#d84a3a', side: '#b0302a', back: '#7a1e1a', outline: '#ffffff' },
   white: { face: ['#ffffff', '#f2fbff', '#cfeeff'], bevelL: '#ffffff', bevelD: '#8fc8ec', side: '#5a9ad0', back: '#3a6aa0', outline: '#2fb8e8' },
-  logoBlue: { face: ['#e8fcff', '#6fd6ff', '#1a8ef0'], bevelL: '#ffffff', bevelD: '#0f62c8', side: '#0a4fa8', back: '#06347a', outline: '#ffffff' },
-  logoGreen: { face: ['#f4ffe0', '#9ef05a', '#3cb424'], bevelL: '#ffffff', bevelD: '#2a8a16', side: '#1f7a12', back: '#124a0a', outline: '#ffffff' },
+  logoBlue: { face: ['#a8ecff', '#3cbcff', '#1478e8'], bevelL: '#ffffff', bevelD: '#0f62c8', side: '#0a4fa8', back: '#06347a', outline: '#ffffff' },
+  logoGreen: { face: ['#d4ff96', '#72e04a', '#2fa82a'], bevelL: '#ffffff', bevelD: '#2a8a16', side: '#1f7a12', back: '#124a0a', outline: '#ffffff' },
 };
 
 loadAlagard();
@@ -90,8 +90,9 @@ function voxelise(M, x0, x1, o, P) {
       const fi = k > 0.62 ? 0 : k > 0.3 ? 1 : 2;
       const up = !at(vx, vy + 1), left = !at(vx - 1, vy), down = !at(vx, vy - 1), right = !at(vx + 1, vy);
       let face = ids.face[fi];
-      if (px > 1 && (up || left)) face = ids.bevelL;
-      else if (px > 1 && (down || right)) face = ids.bevelD;
+      if (px > 2 && (up || left)) face = ids.bevelL;
+      else if (px > 2 && (down || right)) face = ids.bevelD;
+      else if (px > 1 && up) face = ids.face[Math.max(0, fi - 1)];
       for (let z = 1; z <= D; z++) m.set(vx, vy, z, z === D ? face : z === 1 ? ids.back : ids.side);
     } else if (OL > 0 && near(vx, vy, OL)) {
       for (let z = 0; z <= Math.max(1, D - px - 1); z++) m.set(vx, vy, z, ids.outline);

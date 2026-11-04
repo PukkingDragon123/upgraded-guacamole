@@ -185,7 +185,8 @@ uniform mat4 u_vp;
 uniform mat4 u_view;
 uniform mat4 u_proj;
 uniform vec3 u_cam;
-uniform vec3 u_sun;
+uniform vec3 u_sun;       // the visible sun (sky, glitter, flares)
+uniform vec3 u_light;     // the key light that shades voxels (a cinematographer's cheat: front-lit Aero look)
 uniform vec3 u_sunCol;
 uniform float u_time;
 uniform float u_under;     // camera underwater
@@ -242,6 +243,22 @@ float caustic(vec2 uv, float time) {
   return pow(abs(c), 8.0);
 }
 
+// volumetric light shafts underwater: a few samples along the view ray of a drifting pattern projected from the
+// surface along the (refracted) sun
+float shafts(vec3 a, vec3 b) {
+  vec3 L = normalize(vec3(u_sun.x * 0.55, 1.0, u_sun.z * 0.55));
+  float acc = 0.0;
+  for (int i = 0; i < 7; i++) {
+    vec3 q = mix(a, b, (float(i) + 0.5) / 7.0);
+    if (q.y > 0.0) continue;
+    vec2 s = (q.xz - L.xz / L.y * q.y) * 0.035;
+    float n = sin(s.x * 1.7 + sin(s.y * 0.6 + u_time * 0.35) * 2.2) * sin(s.y * 1.3 - u_time * 0.22 + sin(s.x * 0.8) * 1.6);
+    n = max(n, 0.0);
+    acc += n * n * n * exp(q.y * 0.006);
+  }
+  return acc / 7.0 * length(b - a) / 140.0;
+}
+
 // fog / haze / water absorption between the camera and a world point
 vec3 medium(vec3 col, vec3 p) {
   vec3 v = p - u_cam;
@@ -250,7 +267,8 @@ vec3 medium(vec3 col, vec3 p) {
   if (u_under > 0.5) {
     float f = 1.0 - exp(-dist * u_env.y);
     col *= exp(vec3(0.0042, 0.0012, 0.0008) * min(p.y, 0.0));
-    return mix(col, waterFog(d, p.y), f);
+    col = mix(col, waterFog(d, p.y), f);
+    return col + vec3(0.55, 0.92, 1.0) * shafts(u_cam, u_cam + d * min(dist, 320.0)) * u_env.z * 0.55;
   }
   if (p.y < -0.05) {
     float hc = max(u_cam.y, 0.5), dd = -p.y;
@@ -311,14 +329,14 @@ void main() {
   float ao = v_col.a;
   vec3 N = normalize(v_n);
   vec3 V = normalize(u_cam - v_w);
-  float ndl = max(dot(N, u_sun), 0.0);
+  float ndl = max(dot(N, u_light), 0.0);
   vec3 amb = mix(vec3(0.30, 0.36, 0.46), vec3(0.62, 0.80, 1.05), N.y * 0.5 + 0.5);
   if (u_under > 0.5 || v_w.y < -1.0) amb = mix(vec3(0.10, 0.30, 0.45), vec3(0.35, 0.75, 0.95), N.y * 0.5 + 0.5);
   float sunK = (u_under > 0.5 || v_w.y < -1.0) ? 0.55 : 1.0;
   vec3 col = base * (amb * ao + u_sunCol * ndl * sunK * (0.55 + 0.45 * ao));
   float spec = v_mat.y * 1.5 * u_k.x;
   float gloss = mix(6.0, 140.0, v_mat.z);
-  vec3 H = normalize(u_sun + V);
+  vec3 H = normalize(u_light + V);
   col += u_sunCol * spec * pow(max(dot(N, H), 0.0), gloss) * (gloss + 8.0) / 36.0 * ao * sunK;
   float nv = max(dot(N, V), 0.0);
   float fr = pow(1.0 - nv, 4.0);
@@ -360,6 +378,8 @@ void main() {
   vec3 c;
   if (u_under > 0.5) {
     c = waterFog(d, u_cam.y);
+    c = mix(c, waterFog(d, 0.0), 1.0 - exp(-320.0 * u_env.y));
+    c += vec3(0.55, 0.92, 1.0) * shafts(u_cam, u_cam + d * 320.0) * u_env.z * 0.55;
   } else {
     c = skyColor(d);
     if (d.y > 0.0 && u_arcs.w > 0.0) {
@@ -374,6 +394,8 @@ void main() {
     }
     // horizon haze line
     c = mix(c, u_skyHor * 1.08, exp(-abs(d.y) * 60.0) * 0.6);
+    // the sea reflection pass: no blown-out sun pool on the water
+    if (u_clip.x > 0.5) c = min(c, vec3(1.05));
   }
   o = vec4(c, 1.0);
 }`;
@@ -451,11 +473,11 @@ void main() {
   F = mix(0.16, 1.0, F);
   vec2 suv = gl_FragCoord.xy / u_res;
   vec2 off = N.xz * (14.0 / (dist * 0.02 + 6.0));
-  vec3 refl = texture(u_refl, clamp(suv + vec2(off.x, -off.y) * 0.5 * vec2(1.0, 1.0), 0.001, 0.999)).rgb;
+  vec3 refl = min(texture(u_refl, clamp(suv + vec2(off.x, -off.y) * 0.5, 0.001, 0.999)).rgb, vec3(1.6));
   vec3 R = reflect(-V, N);
   // the sun's glitter path
   float sd = max(dot(R, u_sun), 0.0);
-  vec3 spec = u_sunCol * (pow(sd, 700.0) * 90.0 + pow(sd, 120.0) * 1.6 + pow(sd, 24.0) * 0.05);
+  vec3 spec = u_sunCol * (pow(sd, 900.0) * 30.0 + pow(sd, 140.0) * 1.0 + pow(sd, 24.0) * 0.04);
   // a sparkle field: tiny twinkles on wave faces
   float tw = hash12(floor(v_w.xz * 0.35) + floor(u_time * 6.0));
   spec += vec3(1.0) * step(0.997, tw) * pow(sd, 30.0) * 9.0 * detail;
@@ -517,7 +539,7 @@ void main() {
   if (t.a < 0.45) discard;
   vec3 c = toLin(t.rgb / t.a) * u_env.w;
   if (u_under > 0.5 || v_w.y < -1.0) c *= mix(vec3(1.0), vec3(0.7, 0.95, 1.05), 0.5 * v_k.y + 0.3);
-  c += causticLight(v_w, vec3(0.0, 1.0, 0.0)) * c * 1.4;
+  c += causticLight(v_w, vec3(0.0, 1.0, 0.0)) * c * 0.6;
   c = mix(c, vec3(1.0), v_k.z);
   c = medium(c, v_w);
   o = vec4(c * v_k.x, v_k.x);
@@ -621,7 +643,7 @@ void main() {
   float fr = pow(1.0 - nv, 3.0);
   vec3 R = reflect(-V, N);
   vec3 env = skyColor(R);
-  vec3 H = normalize(u_sun + V);
+  vec3 H = normalize(u_light + V);
   float sp = pow(max(dot(N, H), 0.0), 220.0) * 14.0;
   vec3 irid = 0.5 + 0.5 * cos(6.28318 * (fr * 1.6 + vec3(0.0, 0.33, 0.67)));
   vec3 c = u_tint.rgb * (0.25 + 0.75 * fr) + env * fr * 0.9 + irid * fr * u_irid * 0.5 + u_sunCol * sp;
@@ -1158,6 +1180,7 @@ class VoxGL {
     if (U.u_proj) gl.uniformMatrix4fv(U.u_proj, false, this.proj);
     if (U.u_cam) gl.uniform3fv(U.u_cam, reflect ? this.reye : this.eye);
     if (U.u_sun) gl.uniform3fv(U.u_sun, S.sunDir);
+    if (U.u_light) gl.uniform3fv(U.u_light, S.lightDir || S.sunDir);
     if (U.u_sunCol) gl.uniform3fv(U.u_sunCol, S.sunCol);
     if (U.u_time) gl.uniform1f(U.u_time, S.time);
     if (U.u_under) gl.uniform1f(U.u_under, S.under ? 1 : 0);

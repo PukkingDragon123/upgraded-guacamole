@@ -1,8 +1,11 @@
-// End-to-end smoke test (phase 4). Boots the game in headless Chromium and plays the first session with real
-// mouse input: the 3D opening (a few beats are screenshotted, then the glossy Skip pill is clicked), the free
+// End-to-end smoke test (phase 5). Boots the game in headless Chromium and plays the first session with real
+// mouse input: the WebGL 3D opening (a few beats are screenshotted; at Clip's first beat a response bubble is
+// clicked with the mouse and the name is picked with key 2 through the dialogue system, then the glossy Skip pill
+// is clicked and the choices must reach the save), Clip's tutorial speech bubbles, the free
 // starter bait at Dot's Bait Shop (the HUD's only button), casting into the (OS)cean, the hook-set, winning the
 // reel fight (cranking by circling, a Shock, holding against surges), the catch card, the fish going into the
-// goldfish jar, collecting the jar's Aero, opening The Lab and starting the first research. Then it opens every
+// goldfish jar, collecting the jar's Aero, opening The Lab and starting the first research, then asks Clip's hint
+// helper for a tip. Then it opens every
 // panel, travels to all seven oceans and checks that the console stayed clean. Optional systems are
 // feature-detected so the test only fails on real breakage. Screenshots land in tests/out/.
 // Ownership: Intro agent; the Fishing agent may edit the scripted fight (marked below).
@@ -67,27 +70,44 @@ const ev = (e) => G(`(window.__ev['${e}'] || 0)`);
 const hasIntro = await G('!!(g.tutorial && g.tutorial.intro)');
 check('3D opening starts', hasIntro, String(await step()));
 if (hasIntro) {
-  const ready = await until(() => { const i = window.FISHTOP.tutorial.intro; return !i || (i.ready && i.t > 1.5); }, 60000);
-  check('opening assets build', ready, `t=${await G('g.tutorial.intro && g.tutorial.intro.t.toFixed(2)')}`);
+  const ready = await until(() => { const i = window.FISHTOP.tutorial.intro; return !i || i.ready; }, 60000);
+  check('opening assets build', ready, `gl=${await G('g.tutorial.intro && g.tutorial.intro.gl')}`);
   check('the opening covers the frame', await G('!g.tutorial.intro || g.tutorial.intro.opaque'));
-  await shot('01_intro_sweep.png');
-  // a few later beats (seek is the opening's own scrubbing API)
-  for (const [t, name] of [[5.9, '02_intro_boat.png'], [9.4, '03_intro_underwater.png'], [12.1, '04_intro_strike.png'], [14.3, '05_intro_leap.png'], [16.6, '06_intro_logo.png']]) {
+  note(`renderer: ${(await G('g.tutorial.intro && g.tutorial.intro.gl')) ? 'WebGL2 voxel scene' : '2D fallback'}`);
+  // a few beats (seek is the opening's own scrubbing API; software GL in headless is slow, so wait generously)
+  const IT = await G('g.tutorial.intro.T');
+  for (const [t, name] of [[1.2, '01_intro_sweep.png'], [IT.cast + 0.2, '02_intro_boat.png'], [IT.under + 0.5, '03_intro_underwater.png'], [IT.shadow + 0.9, '04_intro_strike.png'], [IT.breach + 0.5, '05_intro_leap.png'], [IT.flare + 0.4, '06_intro_logo.png']]) {
     if (!(await G('!!g.tutorial.intro'))) break;
     await G(`g.tutorial.intro.seek(${t})`);
-    await wait(900);
+    await wait(2600);
     await shot(name);
   }
-  await G('g.tutorial.intro && g.tutorial.intro.seek(3)');
-  await wait(400);
+  // Clip's first beat: crash zoom, floating 3D text, typed lines; answer with real input
+  await G(`g.tutorial.intro.seek(${IT.clip - 0.05})`);
+  const choosing = async () => G('!!(g.tutorial.intro && g.tutorial.intro.dialogue.choosing)');
+  const press = async (key, n = 40) => { for (let i = 0; i < n && !(await choosing()); i++) { await page.keyboard.press(key); await wait(700); } return choosing(); };
+  check('Clip talks at the first beat', await until(() => { const i = window.FISHTOP.tutorial.intro; return i && i.holding === 'clip' && i.dialogue.active; }, 20000));
+  check('response bubbles appear', await press('Enter'));
+  await shot('02b_intro_choices.png');
+  const rects = await G('g.tutorial.intro.choiceRects()');
+  check('2-3 response bubbles', Array.isArray(rects) && rects.length >= 2 && rects.length <= 3, JSON.stringify(rects && rects.length));
+  if (rects && rects[0]) { await clickL(rects[0].x + rects[0].w / 2, rects[0].y + rects[0].h / 2); await wait(400); }
+  check('a response bubble picked by mouse', await until(() => window.FISHTOP.tutorial.intro && window.FISHTOP.tutorial.intro.picks.mood === 'happy', 15000), String(await G('g.tutorial.intro && g.tutorial.intro.picks.mood')));
+  // the next question (the name): key 2
+  await wait(800);
+  if (await press('Enter')) await page.keyboard.press('2');
+  check('name picked with key 2', await until(() => window.FISHTOP.state.angler && window.FISHTOP.state.angler.name === 'Reel Deal', 15000), String(await G('g.state.angler && g.state.angler.name')));
+  await shot('02c_intro_name.png');
   // the glossy Skip pill (top right)
   const sr = await G('g.tutorial.intro && g.tutorial.intro.skipRect()');
   if (sr) await clickRect(sr);
-  const skipped = await until(() => !window.FISHTOP.tutorial.intro, 8000);
+  const skipped = await until(() => !window.FISHTOP.tutorial.intro, 15000);
   check('Skip pill ends the opening', skipped && (await step()) === 'bait', String(await step()));
+  check('choices reach the save', (await G('g.state.clip && g.state.clip.mood')) === 'happy' && (await G('g.state.angler.name')) === 'Reel Deal');
 }
 check('starts in the (OS)cean', (await G('g.ocean.biome && g.ocean.biome.id')) === 'oscean', await G('g.ocean.biome && g.ocean.biome.id'));
 await wait(900);
+check('Clip guides the tutorial (dialogue)', !!(await G('g.tutorial.dialogue && g.tutorial.dialogue.line && g.tutorial.dialogue.line.text')), String(await G('g.tutorial.dialogue.line && g.tutorial.dialogue.line.text')));
 check('HUD gated during the tutorial', !(await iconRect('lab')) && !(await iconRect('journal')) && !(await iconRect('map')));
 await shot('07_tut_bait.png');
 
@@ -120,7 +140,7 @@ const pxPerL = await page.evaluate(() => { const g = window.FISHTOP; return g.ca
 const clampX = (x) => Math.max(30, Math.min(W - 30, x)), clampY = (y) => Math.max(60, Math.min(H - 60, y));
 let shocked = false, held = 0;
 async function fishOnce(attempt) {
-  // hook into the water, where Goldie points
+  // hook into the water, where Clip points
   const spot = await G('g.tutorial.waterSpot ? g.tutorial.waterSpot() : null') || [W * 0.56, H * 0.62];
   await moveL(clampX(spot[0]), clampY(spot[1]), 20);
   await wait(600);
@@ -217,6 +237,14 @@ check('tutorial complete', await until(() => window.FISHTOP.state.tutorialDone, 
 await G(`g.ui.close('lab')`);
 await wait(3000);
 check('full HUD after the tutorial', !!(await iconRect('lab')) && !!(await iconRect('journal')) && !!(await iconRect('map')));
+// Clip's "keep me around?" question auto-answers yes; then the hint helper gives a tip on click
+await until(() => !window.FISHTOP.tutorial.active, 20000);
+const hr = await G('g.tutorial.helperRect && g.tutorial.helperRect()');
+check('Clip hint helper available', !!hr);
+if (hr) {
+  await clickRect(hr);
+  check('hint helper gives a tip', await until(() => { const d = window.FISHTOP.tutorial.dialogue; return !!(d && d.line && d.line.text); }, 6000), String(await G('g.tutorial.dialogue.line && g.tutorial.dialogue.line.text')));
+}
 await shot('16_ocean.png');
 
 // ---------------------------------------------------------------- panels

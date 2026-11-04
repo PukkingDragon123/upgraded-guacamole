@@ -74,26 +74,27 @@ const BEATS = ['clip', 'boat', 'fish', 'final'];
 
 // ------------------------------------------------------------------------------------------------ the world
 // Units: one boat voxel. X right, Y up (0 = the sea), Z toward the opening camera (it flies toward -Z).
-const SUN = norm3([-0.4, 0.27, -0.88]);
+const SUN = norm3([-0.38, 0.47, -0.8]);        // the visible sun: high front-left (flares, rays, glitter)
+const LIGHT = norm3([-0.45, 0.78, 0.44]);      // the key light shading the voxels: front-lit Aero look
 const SUN_COL = [2.1, 1.92, 1.66];
-const ISLE = { x: 0, z: -2700, vox: 10, NX: 240, NY: 46, NZ: 104, sink: 3 }; // sink: voxel rows under the sea (the shelf)
+const ISLE = { x: 0, z: -2250, vox: 10, NX: 240, NY: 46, NZ: 104, sink: 3 }; // sink: voxel rows under the sea (the shelf)
 const CLIP_A = [-60, 3, 300];
 const CLIP_B = [-35, 6, 42];
-const CLIP_C = [50, -42, -20];
-const CLIP_D = [-118, 46, 150];
+const CLIP_C = [66, -54, -59];
+const CLIP_D = [-50, 50, 252];
 const BOBBER = [70, 0, -40];
 const LURE_Y = -40;
 const SEABED = { x: -300, z: -500, vox: 5, NX: 140, NZ: 130, y: -200 };
-const LEAP = { x0: 64, z0: -118, x1: 14, z1: -14, top: 58 };
-const LOGO = [0, 74, 150];
+const LEAP = { x0: 70, z0: -44, x1: -24, z1: -22, top: 44 };
+const LOGO = [0, 86, 150];
 
 // Camera keys: [t, eye x, y, z, target x, y, z, fov, roll(deg)]. Three shots (cuts at the breach and the logo).
 const SHOTS = [
   { t0: 0, t1: T.breach, keys: [
-    [0.0, -820, 470, 2600, 200, 70, -2700, 50, -2],
-    [2.3, -430, 190, 1380, 80, 80, -2700, 48, -5],
+    [0.0, -760, 420, 2300, 180, 70, -2250, 48, -2],
+    [2.3, -400, 170, 1250, 70, 80, -2250, 46, -5],
     [4.2, -110, 34, 640, -56, 16, 280, 48, -3],
-    [T.clip, -48, 18, 340, -45, 12, 240, 34, 0],
+    [T.clip, -42, 21, 372, -44, 12, 240, 36, 0],
     [6.3, -76, 40, 196, -6, 12, 50, 42, 3],
     [T.boat, -44, 20, 88, 4, 12, 0, 38, 0],
     [8.7, -66, 30, 118, 30, 8, -20, 46, 0],
@@ -108,12 +109,12 @@ const SHOTS = [
     [T.breach, 58, -26, 12, 70, 2, -62, 56, 0],
   ] },
   { t0: T.breach, t1: T.logo, keys: [
-    [T.breach, -44, 7, 70, 42, 24, -84, 52, 0],
-    [T.logo, -50, 9, 82, 40, 28, -84, 48, 0],
+    [T.breach, -26, 5, 72, 26, 22, -40, 54, 0],
+    [T.logo, -32, 7, 86, 22, 26, -40, 50, 0],
   ] },
   { t0: T.logo, t1: 99, keys: [
-    [T.logo, 0, 52, 350, 0, 72, -400, 50, 0],
-    [END, 0, 56, 300, 0, 72, -400, 46, 0],
+    [T.logo, 0, 46, 360, 0, 96, -400, 50, 0],
+    [END, 0, 50, 310, 0, 98, -400, 46, 0],
   ] },
 ];
 
@@ -289,7 +290,7 @@ function bobberModel() {
   const m = new VoxelModel(9, 13, 9);
   const red = m.color('#ff3a4a', { spec: 1.2, specPow: 20, smooth: 1 }), white = m.color('#ffffff', { spec: 1.2, specPow: 20, smooth: 1 });
   const stick = m.color('#ffd23a', { emissive: 0.6 });
-  m.sphere(4.5, 4.5, 4.5, 4, (x, y) => (y >= 4 ? white : red));
+  m.sphere(4.5, 4.5, 4.5, 4, (x, y) => (y >= 5 ? red : white));
   m.box(4, 8, 4, 4, 12, 4, stick);
   return m;
 }
@@ -339,6 +340,7 @@ function seabedModel() {
 export class Intro3D {
   constructor(o = {}) {
     this.o = o;
+    this.T = INTRO_T;
     this.input = o.input || null;
     this.audio = o.audio || null;
     this.look = o.look || null;
@@ -479,7 +481,7 @@ export class Intro3D {
 
   buildBits() {
     this.A.bobber = this.mesh(bobberModel(), { scale: 0.7, origin: [4.5, 4, 4.5] });
-    this.A.lure = this.mesh(lureModel(), { scale: 0.45, origin: [1, 3.5, 2.5] });
+    this.A.lure = this.mesh(lureModel(), { scale: 0.24, origin: [1, 3.5, 2.5] });
   }
 
   buildSeabed() {
@@ -490,8 +492,8 @@ export class Intro3D {
 
   buildLogo() {
     if (!this.E) return alagardReady() ? undefined : 'again';
-    const a = buildText3D('FISH', { size: 16, px: 2, depth: 6, palette: 'logoBlue', outline: 1 });
-    const b = buildText3D('TOP', { size: 16, px: 2, depth: 6, palette: 'logoGreen', outline: 1 });
+    const a = buildText3D('FISH', { size: 16, px: 2, depth: 6, palette: 'logoBlue', outline: 0.5 });
+    const b = buildText3D('TOP', { size: 16, px: 2, depth: 6, palette: 'logoGreen', outline: 0.5 });
     if (!a || !b) return this.bootT > 3 ? undefined : 'again';
     this.A.logo = [a, b];
     return undefined;
@@ -604,7 +606,7 @@ export class Intro3D {
         { text: 'Now watch the line...', mood: 'happy', pose: 'point', hold: 0.6 },
       ], done);
     } else if (id === 'fish') {
-      this.say3D('FIRST FISH!', { palette: 'aqua', anchor: 'first', dx: 0, dy: 1.3, size: 0.1, life: 4, px: 2 });
+      this.say3D('FIRST FISH!', { palette: 'aqua', anchor: 'first', dx: 0.2, dy: 0.85, size: 0.1, life: 4, px: 2 });
       d.script([
         { text: shy ? 'Look! A real fish! Okay, okay, stay calm...' : 'Look, {name}! Your very first fish!', mood: 'excited', pose: 'point', hold: 1.2 },
         { text: "Fish are picky eaters. What's on the menu?", mood: 'happy', pose: 'think', choices: [
@@ -646,7 +648,7 @@ export class Intro3D {
   // spawn floating 3D text: anchor = 'clip' | 'boat' | 'first' | 'cam' | [x, y, z]; dx / dy offsets in subject sizes
   say3D(text, o = {}) {
     if (!this.E) { this.texts.push({ text, o, t0: this.wall, flat: true }); return; }
-    const T3 = buildText3D(text, { size: 16, px: o.px ?? 2, depth: o.px === 1 ? 4 : 5, palette: o.palette || 'aqua', outline: 1 });
+    const T3 = buildText3D(text, { size: 16, px: o.px ?? 2, depth: o.px === 1 ? 4 : 5, palette: o.palette || 'aqua', outline: o.px === 1 ? 1 : 0.5 });
     if (!T3) return;
     const meshes = T3.letters.map((L) => ({ L, mesh: this.meshFor(L) }));
     this.texts.push({ text, T3, meshes, o, t0: this.wall });
@@ -799,7 +801,7 @@ export class Intro3D {
     // ambient underwater bubbles around the camera
     if (this.cam && this.cam.eye[1] < -2 && this.parts.length < 500 && Math.random() < 0.6) {
       const e = this.cam.eye, f = this.camFwd || [0, 0, -1];
-      const p = add3(e, add3(scl3(f, this.rng.float(20, 140)), [this.rng.float(-60, 60), this.rng.float(-40, 10), this.rng.float(-60, 60)]));
+      const p = add3(e, add3(scl3(f, this.rng.float(45, 170)), [this.rng.float(-70, 70), this.rng.float(-40, 10), this.rng.float(-70, 70)]));
       if (p[1] < -4) this.parts.push({ x: p[0], y: p[1], z: p[2], vx: 0, vy: this.rng.float(6, 16), vz: 0, g: 2, size: this.rng.float(0.3, 1.0), c: [0.75, 1, 1.1, 0.7], kind: 1, life: 4, t: 0, bub: 1 });
     }
   }
@@ -814,10 +816,12 @@ export class Intro3D {
     // holding on a beat: a slow drift around the subject and a gentle push-in
     const hk = this.holding ? this.holdT : this.releaseT != null ? -Math.max(0, 0.8 - (this.wall - this.releaseT)) : 0;
     if (this.holding) {
-      const a = Math.sin(this.holdT * 0.32) * 0.09, push = 1 - 0.07 * smoothstep(0, 7, this.holdT);
-      const d = sub3(eye, target);
+      // orbit both the eye and the aim point slowly around the subject, easing a little closer
+      const piv = this.subject(this.holding, t) || target;
+      const a = Math.sin(this.holdT * 0.3) * 0.07, push = 1 - 0.06 * smoothstep(0, 7, this.holdT);
       const ca = Math.cos(a), sa = Math.sin(a);
-      eye = add3(target, scl3([d[0] * ca - d[2] * sa, d[1] + Math.sin(this.holdT * 0.5) * 1.2, d[0] * sa + d[2] * ca], push));
+      const rot = (p, k) => { const d = sub3(p, piv); return add3(piv, scl3([d[0] * ca - d[2] * sa, d[1] + Math.sin(this.holdT * 0.5) * 0.6, d[0] * sa + d[2] * ca], k)); };
+      eye = rot(eye, push); target = rot(target, 1);
     }
     void hk;
     // crash zoom when a beat starts (and the strike)
@@ -825,6 +829,15 @@ export class Intro3D {
     fov *= 1 + 0.5 * zk;
     if (this.shake > 0) { const s = this.shake * 0.08; target = add3(target, [(Math.random() - 0.5) * s, (Math.random() - 0.5) * s, 0]); }
     return { eye, target, fov, roll: roll * DEG, shot: si, near: si === 0 && t < 4 ? 4 : 1, far: 42000, zoom: zk };
+  }
+
+  // the subject of a beat (the camera orbits it while it holds)
+  subject(id, t) {
+    if (id === 'clip') return this.clipPos(t) || CLIP_A;
+    if (id === 'boat') return [0, 12, 0];
+    if (id === 'fish') return this.firstFishPos(t) || [86, -46, -54];
+    if (id === 'final') return LOGO;
+    return null;
   }
 
   // ---------------------------------------------------------------------------------- the cast
@@ -846,7 +859,7 @@ export class Intro3D {
       const k = ease.inOutCubic(inv(T.plunge + 0.35, T.under + 0.4, t));
       return mix3([CLIP_B[0] + 40, -10, CLIP_B[2] - 40], CLIP_C, k);
     }
-    if (t < T.logo) return [LEAP.x1 - 52, 3, LEAP.z1 + 44];
+    if (t < T.logo) return [-25, 4, 24];
     const k = ease.outBack(inv(T.logo + 0.4, T.logo + 1.2, t));
     return mix3([CLIP_D[0] - 30, CLIP_D[1] - 60, CLIP_D[2]], CLIP_D, k);
   }
@@ -875,7 +888,7 @@ export class Intro3D {
     if (t < T.shadow) return null;
     if (t < T.strike) {
       const k = inv(T.shadow, T.strike, t);
-      const p0 = [210, -150, -330];
+      const p0 = [290, -96, -100];
       return { p: mix3(p0, L, ease.inQuad(k)), dir: norm3(sub3(L, p0)) };
     }
     if (t < T.breach) {
@@ -1102,7 +1115,7 @@ export class Intro3D {
     }
     if (t > T.land && t < T.breach && this.A.lure) {
       const L = this.lurePos(t);
-      meshes.push({ mesh: this.A.lure, model: M4.model(L, { yaw: Math.sin(w * 2) * 0.6 + 1.2, roll: Math.sin(w * 3) * 0.3 }), k: [1.5, 1.5, 0.3, 1], sweep: [0, 1, 0, 0.4] });
+      meshes.push({ mesh: this.A.lure, model: M4.model(L, { yaw: Math.sin(w * 2) * 0.6 + 1.2, roll: Math.sin(w * 3) * 0.3 }), k: [1.4, 1.0, 0.22, 1] });
     }
     // --- floating 3D text
     this.drawTexts(meshes, w);
@@ -1116,9 +1129,9 @@ export class Intro3D {
     const post = this.postFx(t, w, cam, under);
     const rp = this.ripple ? [this.ripple.p[0], this.ripple.p[2], (w - this.ripple.t0) * 26, w - this.ripple.t0] : null;
     E.render({
-      cam, time: w, under, sunDir: SUN, sunCol: SUN_COL,
+      cam, time: w, under, sunDir: SUN, lightDir: LIGHT, sunCol: SUN_COL,
       ...this.seaColours(),
-      haze: 0.000045, waterDens: 0.0052, caustics: 1.2, spriteExp: 1.08,
+      haze: cam.shot === 2 ? 0.00003 : 0.000045, waterDens: 0.0052, caustics: 1.2, spriteExp: 1.08,
       arcs: [-1.3, -0.25, -0.6, 0.22], water: true, ripple: rp,
       meshes, glass, billboards: bbs, particles: parts, lines, post,
     });
@@ -1129,7 +1142,7 @@ export class Intro3D {
     const E = this.E;
     // the bubble person on the boat
     const B = this.A.boat;
-    if (B && boatM && (this.cam.shot !== 1)) {
+    if (B && boatM) {
       const sp = [boatM[12] + B.stand[0], boatM[13] + B.stand[1], boatM[14] + B.stand[2]];
       const pr = E.project(sp);
       if (pr) {
@@ -1219,7 +1232,7 @@ export class Intro3D {
       if (!parts[0].T3) continue;
       // anchor + size (fraction of the screen height)
       let pos, size = X.o.size ?? 0.1;
-      if (X.logo) pos = LOGO, size = 0.17;
+      if (X.logo) pos = LOGO, size = 0.2;
       else {
         const a = X.o.anchor;
         let base = null, sub = 16;
@@ -1232,14 +1245,15 @@ export class Intro3D {
         if (X.o.fly) pos = add3(pos, add3(scl3(U, age * sub * 0.25), scl3(f, -age * 4)));
       }
       const pr = E.project(pos);
-      if (!pr) continue;
+      if (!pr) { X.span = null; continue; }
       const ppu = E.ppu(pr[2]);
       const exit = X.logo ? 0 : clamp01((age - life) / 0.5);
       // total width so the pieces line up
       const pxPer = X.logo ? 2 : 1;
-      const totalW = parts.reduce((s, p) => s + p.T3.w, 0) + (parts.length - 1) * 6;
+      const totalW = parts.reduce((s, p) => s + p.T3.w, 0) + (parts.length - 1) * 2;
       const hVox = parts[0].T3.h;
       const s = (this.H * size) / (hVox * ppu);
+      X.span = [pr[0] - (totalW / 2) * s * ppu, pr[1] - hVox * s * ppu * 0.25, pr[0] + (totalW / 2) * s * ppu];
       let ox = -totalW / 2;
       let li = 0;
       for (const { T3 } of parts) {
@@ -1256,9 +1270,9 @@ export class Intro3D {
           // a glint band sweeping across the whole word every 3 s
           const ph = (age * 0.8) % 3;
           const sweepX = lerp(-40, totalW + 40, ph / 1.2) - (ox + totalW / 2 + L.cx - L.w / 2);
-          meshes.push({ mesh, model: M4.model(p, { scale: sc, yaw: yaw0 + spin, pitch: pitch0 + Math.sin(w * 1.1 + li) * 0.06, roll: this.cam.roll || 0 }), reflect: !X.logo, k: [1.4, 1.6, 0.35, 1 - exit], tint: [1, 1, 1, X.logo ? clamp01(1 - (w - X.t0) * 2) * 0.8 : 0], sweep: [sweepX, 7, 2.2, 0.32], grad: [0, L.model.ny, 0.5] });
+          meshes.push({ mesh, model: M4.model(p, { scale: sc, yaw: yaw0 + spin, pitch: pitch0 + Math.sin(w * 1.1 + li) * 0.06, roll: this.cam.roll || 0 }), reflect: !X.logo, k: [1.2, 1.0, 0.12, 1 - exit], tint: [1, 1, 1, X.logo ? clamp01(1 - (w - X.t0) * 3) * 0.6 : 0], sweep: [sweepX, 7, 1.3, 0.06], grad: [0, L.model.ny, 0.5] });
         }
-        ox += T3.w + 6;
+        ox += T3.w + 2;
       }
     }
   }
@@ -1287,19 +1301,15 @@ export class Intro3D {
       if (lp) { P.raysSrc = [lp[0] / this.W, 1 - lp[1] / this.H]; P.rays = 0.95; P.raysDensity = 1.0; P.raysDecay = 0.97; }
       P.bloom = 0.7; P.chroma = 0.5; P.saturation = 1.1;
     }
-    // a glint flare on fresh 3D text
+    // a glint flare riding the glint band across fresh 3D text (drawTexts stores each text's screen span)
     for (const X of this.texts) {
-      const age = w - X.t0;
-      if (age > 0.2 && age < 1.2 && X.o.anchor !== 'cam') {
-        const p = this.clipTop && X.o.anchor === 'clip' ? this.clipTop : null;
-        const q = p && E.project(p);
-        if (q) flares.push([q[0] / this.W + 0.06, 1 - q[1] / this.H, Math.sin(clamp01((age - 0.2) / 1) * Math.PI) * 0.8, 0.6]);
-      }
+      const age = w - X.t0, k = clamp01((age - 0.3) / 1.0);
+      if (X.span && k > 0 && k < 1) flares.push([lerp(X.span[0], X.span[2], k) / this.W, 1 - X.span[1] / this.H, Math.sin(k * Math.PI) * 0.6, 0.45]);
     }
     if (this.A.logo && t > T.flare - 0.3) {
       const q = E.project(LOGO);
       const k = inv(T.flare - 0.3, T.flare + 1.2, t);
-      if (q && k < 1) flares.push([q[0] / this.W - 0.3 + k * 0.6, 1 - q[1] / this.H, Math.sin(k * Math.PI) * 1.2, 0.8]);
+      if (q && k < 1) flares.push([q[0] / this.W - 0.3 + k * 0.6, 1 - q[1] / this.H, Math.sin(k * Math.PI) * 0.55, 0.55]);
     }
     P.flares = flares;
     // depth of field: focus on the subject of the shot

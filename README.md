@@ -75,9 +75,15 @@ Research takes real time, and a floating beaker shows its progress.
 
 ## What's inside
 
-- **The opening**: a 19-second voxel film. The camera flies over the (OS)cean island and swoops to you casting from
-  your boat. It plunges underwater past schools of fish, then a swordfish strikes at the lens.
-- **Goldie the goldfish** guides a short tutorial with icons and arrows.
+- **The opening** is a fully 3D, interactive voxel cinematic with real camera moves, bloom, depth of field,
+  lens flares and splashes on the lens.
+  - The camera crash-zooms in at key moments, and floating 3D voxel text appears in the Alagard font.
+  - You answer with reply bubbles (click or press 1/2/3): pick your name, your boat paint and your first bait.
+  - **Clip**, a talking chrome paperclip with a glass-bubble face, guides the opening and the tutorial. Afterwards it
+    stays on as a hint helper.
+- **Living water**: a wave simulation where casting, bites, jumps, fights, the boat's wake, rain and your mouse all
+  make ripples. The boat and boxes float on the waves. A custom water surface and underwater shading add glints,
+  foam, light rays and splashes.
 - **Seven voxel oceans**, each with a glossy water shader, day and night following your real clock, weather,
   secrets and its own music:
   - **(OS)cean**: a flooded green-hill landscape with wind turbines, a green glass globe and a glass city in a
