@@ -698,6 +698,7 @@ export class OsceanBiome extends Biome {
     ctx.drawImage(this.haze.tint(water, 1, key), 0, this.hazeY);
     this.drawRotors(ctx, 2, px * 2, py * 0.6);
     this.decor.draw(ctx, 2, t, px * 2, py * 0.6, 1 + this.wx.bubbles * 0.6);
+    this.drawWaterSheet?.(ctx, env); // [phase5:water] the water sheet sits behind the near-surface details (the pier stands in front)
     if (hasAir) this.drawPier(ctx, env, sy);
     this.drawSurface(ctx, env, sy);
     this.aero.drawBack(ctx, env);

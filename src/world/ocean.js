@@ -9,6 +9,7 @@ import { BIOMES, BIOME_DEPTH } from './biomes/index.js';
 import { worldTop } from './biomes/base.js';
 import { installAero } from './aerokit.js';
 import { installZoomSky } from './zoomsky.js';
+import { installWater } from './watersheet.js'; // [phase5:water] simulated surface + water sheet
 
 export class Ocean {
   constructor(game) {
@@ -46,6 +47,7 @@ export class Ocean {
     const b = new Cls(this);
     try { installAero(b); } catch (e) { console.error(e); }
     try { installZoomSky(b); } catch (e) { console.error(e); }
+    try { installWater(b); } catch (e) { console.error(e); } // [phase5:water]
     this.cache[id] = b;
     return b;
   }

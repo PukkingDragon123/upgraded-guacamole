@@ -202,8 +202,7 @@ export class Boat {
     const o = this.ocean;
     const base = o?.waveAt ? o.waveAt(x) : this.level();
     if (base === null || base === undefined) return null;
-    const w = this.game.water;
-    return w?.active ? base - (w.surfaceOffset(x) || 0) : base;
+    return base; // [phase5:water] ocean.waveAt already carries the simulated lift (watersheet.js installWater)
   }
 
   // ---------------------------------------------------------------- update
@@ -277,10 +276,12 @@ export class Boat {
       if (sp > 10) {
         const k = Math.min(1, sp / 260);
         water.disturb(this.x - this.dir * (half + 6), lvl + 4, 0.35 + k * 0.9, 7 + k * 6);
-        water.surf.impulse(this.x + this.dir * (half + 8), -(5 + k * 22), 12);
-        water.surf.impulse(this.x - this.dir * (half + 10), 4 + k * 14, 16);
+        if (water.sim?.wake) water.sim.wake(this.x, this.dir, this.vx, half); // [phase5:water] bow push + V of wake rings
+        else { water.surf.impulse(this.x + this.dir * (half + 8), -(5 + k * 22), 12); water.surf.impulse(this.x - this.dir * (half + 10), 4 + k * 14, 16); }
         if (k > 0.35 && rng.chance(0.5)) g.particles?.burst?.(this.x + this.dir * (half + 10), lvl - 2, 3, { colors: ['#ffffff', '#d8f4ff'], speed: 50 * k, up: 40, g: 200, life: 0.6, flat: 0.6 });
       } else water.disturb(this.x + rng.float(-half, half), lvl + 6, 0.12, 6);
+      // [phase5:water] the hull heaving on the swell pushes back on the water (soft, so it cannot resonate)
+      if (Math.abs(this.vy) > 6) water.sim?.impulse?.(this.x, -clamp(this.vy, -40, 40) * 0.25, half * 0.8);
     }
     // stovepipe smoke
     this.smokeT -= dt;

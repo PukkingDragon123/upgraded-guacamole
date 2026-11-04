@@ -1,32 +1,35 @@
-// Water physics + post-process shader for the world layer.
+// Water physics + post-process shader for the world layer (phase 5: Water agent).
 //
 //   game.water = new WaterFX(game)
-//   water.disturb(wx, wy, strength = 1, radius = 6)  ripple impulse at a world point (hook, fish, splashes, rain).
-//                                                     Points near the surface also push the surface waves.
-//   water.splash(wx, strength = 1, radius = 10)      push the 1D surface down at world x (waves the boat rides)
-//   water.surfaceOffset(wx) -> px                    simulated surface lift at x (positive = up)
-//   water.surfaceSlope(wx)                           d(lift)/dx
-//   water.update(dt, {surfaceY, top, W, H, waveAt})  step the CPU surface sim (call once per frame)
-//   water.render(srcCanvas, camera, look) -> canvas | null
-//                                                     post-process the screen-space world layer; null = draw src as is
-//   water.active                                     GPU path running (false -> plain 2D drawing)
+//   water.sim                                       the CPU surface sim (src/world/watersim.js WaterSim): swell, waves,
+//                                                   foam, ripple rings; water.surf is the same object (older callers)
+//   water.disturb(wx, wy, strength = 1, radius = 6) ripple impulse at a world point (hook, fish, splashes, rain);
+//                                                   points near the surface also push surface waves and ring the sheet
+//   water.splash(wx, strength = 1, radius = 10)     an impact on the surface at world x (waves + rings + ripples)
+//   water.heightAt(wx), water.slopeAt(wx)           simulated lift (px, up) / slope at x
+//   water.levelAt(wx)                               live waterline y at x (= ocean.waveAt: biome waves + sim lift)
+//   water.surfaceOffset(wx) -> 0                    the lift is already folded into ocean.waveAt (kept for callers)
+//   water.update(dt, {surfaceY, top, W, H, waveAt}) step everything (call once per frame)
+//   water.render(srcCanvas, camera, look) -> canvas | null   post-process the screen-space world layer
+//   water.drawLens(ctx)                             screen-space lens drops after the camera surfaces (call after
+//                                                   the world, before the HUD)
+//   water.active                                    GPU path running (false -> plain 2D drawing)
 //
-// Two simulations run side by side:
-//  - a 1D spring-chain along the surface on the CPU (cheap, readable by the boat and the 2D fallback);
-//  - a 2D wave-equation heightfield on the GPU, ping-ponged between two RGBA8 textures (height and previous
-//    height packed as 16-bit pairs so it works on every WebGL1/2 device), driven by queued impulses.
-// The composite pass refracts the underwater scene along the ripple gradient, lifts the waterline by the surface
-// sim, adds foam and a crest, caustics where ripples focus light, and a 1 px chromatic fringe on strong fronts.
-// Frutiger Aero gloss (phase 3): a drifting procedural caustic web in the sunlit water, twinkling specular
-// sparkles under the surface and on bright ripple faces, a glassy highlight band below the waterline and a cheap
-// 12-tap bloom that makes bright things (sun, foam, light shafts, glints) glow.
-// look extras: sparkle (0..2), bloom (0..1), pattern (procedural caustics 0..1), gloss (surface band 0..1),
-// glossColor (sparkle / band tint). Every offset is rounded to whole logical pixels and every added light is
-// quantised + dithered, so the result stays crisp pixel art.
+// The surface itself (the receding water sheet, reflections, the animated water texture, glints, rings, foam) is
+// drawn in 2D by every ocean's back pass (src/world/watersheet.js), so both paths share it. The GPU pass adds the
+// underwater look: refraction through a 2D wave-equation heightfield (ping-ponged RGBA8 textures, 16-bit packed
+// height + previous height, driven by queued impulses) plus an ambient wobble under the surface, caustics where
+// ripples focus light and a drifting caustic web on lit surfaces (seabed, fish), dancing god rays that brighten under
+// rising crests, a per-ocean depth tint, a 1 px chromatic fringe on strong ripple fronts, twinkling sparkles and a
+// cheap 12-tap bloom. Every offset is rounded to whole logical pixels and added light is quantised + dithered, so
+// the result stays crisp pixel art. Per-ocean palettes: WATER_PALETTES / waterPalette in watersim.js.
+// look (biome.waterLook): refract, caustic, chroma, causticColor, sparkle (0..2), bloom (0..1), pattern (procedural
+// caustics 0..1), gloss, glossColor, rays (god-ray strength), deepColor, tint (depth tint 0..1).
 
-const SURF_RANGE = 32; // packed surface lift range (+-px)
-const SURF_MAX = 11;   // physical clamp of the simulated lift (px)
+import { WaterSim, waterPalette } from '../world/watersim.js';
+
 const MAX_IMP = 24;
+const TAU = Math.PI * 2;
 
 const VS = `
 attribute vec2 a_pos;
@@ -79,14 +82,15 @@ uniform vec2 u_screen;
 uniform vec3 u_cam;      // zoom, offset x, offset y (screen = world * zoom + offset)
 uniform vec4 u_dom;      // sim top (world y), cell size, sim w, sim h
 uniform vec3 u_surf;     // still surface world y (< -9e4 none), surface texels, surface cell
-uniform vec4 u_k;        // refraction px, caustic gain, chroma (0/1), foam gain
+uniform vec4 u_k;        // refraction px, caustic gain, chroma (0/1), ambient wobble
 uniform float u_shine;   // ripple light/shadow banding
-uniform vec3 u_foamCol;
 uniform vec3 u_causCol;
-uniform vec3 u_crestCol;
 uniform float u_time;
-uniform vec4 u_fx;       // sparkle, bloom, procedural caustics, gloss band
+uniform vec4 u_fx;       // sparkle, bloom, procedural caustics, god rays
 uniform vec3 u_glossCol;
+uniform vec3 u_rayCol;
+uniform vec3 u_deepCol;
+uniform float u_tint;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 float q4(float v, vec2 sp) { return floor(clamp(v, 0.0, 1.0) * 4.0 + bayer4(sp)) / 4.0; }
@@ -110,8 +114,18 @@ vec4 surfAt(float wx) {
   float i = clamp(floor(wx / u_surf.z), 0.0, u_surf.y - 1.0);
   return texture2D(u_surfTex, vec2((i + 0.5) / u_surf.y, 0.5));
 }
+float waveAt(float wx) { return floor(surfAt(wx).a * 255.0 + 0.5) - 128.0; }
 vec4 scene(vec2 sp) { return texture2D(u_scene, (clamp(sp, vec2(0.0), u_screen - 1.0) + 0.5) / u_screen); }
-vec3 bright(vec2 sp) { vec4 c = scene(sp); return c.rgb * smoothstep(0.8, 1.0, lum(c.rgb)); }
+vec3 bright(vec2 sp) { vec4 c = scene(sp); return c.rgb * smoothstep(0.86, 1.0, lum(c.rgb)); }
+
+// dancing light shafts: slanted stripes that sway, brightest under rising crests, fading with depth
+float godRays(vec2 wp, float dd) {
+  float xr = wp.x + dd * 0.34;
+  float r = sin(xr * 0.043 + u_time * 0.31) * 0.5 + sin(xr * 0.107 - u_time * 0.53 + 1.3) * 0.32 + sin(xr * 0.021 + u_time * 0.17 + 4.0) * 0.42;
+  float crest = clamp(-waveAt(xr) * 0.18, -0.3, 0.6);
+  r = smoothstep(0.42, 1.05, r + crest * 0.5);
+  return r * exp(-dd / 240.0) * smoothstep(2.0, 26.0, dd);
+}
 
 void main() {
   vec2 sp = vec2(floor(gl_FragCoord.x), u_screen.y - 1.0 - floor(gl_FragCoord.y));
@@ -120,19 +134,9 @@ void main() {
   vec2 off = vec2(0.0);
   bool hasSurf = u_surf.x > -9.0e4;
   float line = -1.0e6;
-  float foam = 0.0;
-  float lift = 0.0;
-  if (hasSurf) {
-    vec4 st = surfAt(wp.x);
-    lift = dec(st.rg) * ${SURF_RANGE.toFixed(1)};
-    foam = st.b;
-    float wave = floor(st.a * 255.0 + 0.5) - 128.0;
-    line = u_surf.x + wave - lift;
-    float dy = wp.y - u_surf.x - wave;
-    float B = 12.0;
-    if (abs(dy) < B) off.y = lift * (1.0 - abs(dy) / B);
-  }
+  if (hasSurf) line = u_surf.x + waveAt(wp.x);
   bool water = !hasSurf || wp.y > line + 0.5;
+  float dd = hasSurf ? wp.y - line : 140.0;   // world px below the live waterline
   vec3 add = vec3(0.0);
   vec2 fr = vec2(0.0);
   float lit = 0.0;
@@ -143,8 +147,11 @@ void main() {
     float hu = simH(c - vec2(0.0, 1.0)), hd = simH(c + vec2(0.0, 1.0));
     vec2 g = vec2(hr - hl, hd - hu) * 0.5;
     off -= g * u_k.x;
+    // looking through moving water: a slow wobble that is strongest just under the surface
+    float wk = u_k.w * (hasSurf ? 0.35 + 0.65 * exp(-dd / 46.0) : 0.4);
+    off += vec2(sin(wp.y * 0.19 + u_time * 1.9 + wp.x * 0.031), cos(wp.x * 0.13 - u_time * 1.4 + wp.y * 0.05) * 0.5) * wk;
     float lap = hl + hr + hu + hd - 4.0 * h;
-    float depthK = hasSurf ? clamp(1.0 - (wp.y - line) / 420.0, 0.25, 1.0) : 0.6;
+    float depthK = hasSurf ? clamp(1.0 - dd / 420.0, 0.25, 1.0) : 0.6;
     float cs = clamp(-lap * u_k.y * depthK, 0.0, 1.0);
     cs = floor(cs * 3.0 + bayer4(sp)) / 3.0;
     add += u_causCol * cs;
@@ -161,26 +168,27 @@ void main() {
   }
   col.rgb += add * col.a;
   col.rgb *= 1.0 + (lit > 0.0 ? lit * 0.16 : lit * 0.12);
-  // ---- Frutiger Aero gloss
+  // ---- Frutiger Aero water light
   if (water) {
-    float dd = hasSurf ? wp.y - line : 140.0;          // world px below the waterline
     float sun = hasSurf ? clamp(1.0 - dd / 360.0, 0.0, 1.0) : 0.35;
-    // drifting caustic web, brightest on lit pixels in the upper water
+    // depth tint toward the ocean's deep colour
+    if (u_tint > 0.001) col.rgb = mix(col.rgb, u_deepCol * col.a, smoothstep(40.0, 520.0, dd) * u_tint);
+    // god rays
+    if (u_fx.w > 0.01 && hasSurf) col.rgb += u_rayCol * q4(godRays(wp, dd) * u_fx.w, sp) * 0.22 * col.a;
+    // drifting caustic web, brightest on lit pixels in the upper water (seabed, rocks, fish)
     if (u_fx.z > 0.01) {
       vec2 cp = vec2(wp.x * 0.0085, wp.y * 0.015 - u_time * 0.02);
       float web = causticWeb(mod(cp * 6.2831, 6.2831) - 250.0, u_time * 0.35 + 23.0);
-      float k = web * u_fx.z * sun * (0.35 + lum(col.rgb));
+      float k = web * u_fx.z * sun * (0.35 + lum(col.rgb)) * smoothstep(4.0, 40.0, dd);
       col.rgb += u_glossCol * q4(k * 0.55, sp) * 0.32 * col.a;
     }
-    // glassy band just under the surface
-    if (hasSurf && u_fx.w > 0.01 && dd >= 1.0 && dd < 7.0) col.rgb += u_glossCol * q4((1.0 - dd / 7.0) * u_fx.w, sp) * 0.22 * col.a;
     // specular sparkles: twinkling crosses in the sunlit layer + glints on bright ripple faces
     if (u_fx.x > 0.01) {
       vec2 wpi = floor(wp);
       vec2 cell = floor(wpi / vec2(7.0, 4.0));
       float hs = hash(cell);
       float ph = fract(u_time * (0.45 + hs * 0.5) + hs * 7.13);
-      float chance = u_fx.x * (hasSurf ? 0.004 + 0.16 * exp(-dd / 18.0) : 0.006);
+      float chance = u_fx.x * (hasSurf ? 0.004 + 0.05 * exp(-dd / 14.0) : 0.006);
       if (hash(cell + floor(u_time * (0.45 + hs * 0.5) + hs * 7.13) * 3.1) < chance) {
         vec2 lp = wpi - cell * vec2(7.0, 4.0) - vec2(1.0 + floor(hs * 5.0), 1.0 + floor(fract(hs * 13.0) * 2.0));
         float tw = sin(ph * 3.14159);
@@ -201,80 +209,9 @@ void main() {
     col.rgb += mix(b, vec3(1.0), 0.3) * bl * 0.35 * col.a;
   }
   col.rgb = min(col.rgb, vec3(col.a));
-  if (hasSurf) {
-    float ls = floor(line * z + u_cam.z);
-    float d = sp.y - ls;
-    if (d >= -1.0 && d <= 1.0) {
-      float f = clamp(foam * u_k.w, 0.0, 1.0) * (d == 0.0 ? 1.0 : 0.55);
-      if (f > bayer4(sp + vec2(0.0, floor(wp.x * 0.25)))) col.rgb = mix(col.rgb, u_foamCol * col.a, 0.85);
-      else if (d == 0.0 && abs(lift) > 0.6) col.rgb = mix(col.rgb, u_crestCol * col.a, 0.5);
-    }
-  }
   gl_FragColor = col;
 }
 `;
-
-// ------------------------------------------------------------------ CPU surface sim
-
-class SurfaceSim {
-  constructor() { this.resize(960); }
-
-  resize(W) {
-    this.cell = 2;
-    this.n = Math.ceil(W / this.cell) + 2;
-    this.h = new Float32Array(this.n);
-    this.v = new Float32Array(this.n);
-    this.foam = new Float32Array(this.n);
-    this.acc = 0;
-  }
-
-  idx(wx) { return Math.max(0, Math.min(this.n - 1, Math.round(wx / this.cell))); }
-
-  // velocity impulse (px/s, positive = up) with a smooth falloff
-  impulse(wx, vel, radius = 10) {
-    const c = this.cell, r = Math.max(c, radius);
-    const i0 = Math.max(0, Math.floor((wx - r) / c)), i1 = Math.min(this.n - 1, Math.ceil((wx + r) / c));
-    for (let i = i0; i <= i1; i++) {
-      const d = (i * c - wx) / r;
-      if (d * d >= 1) continue;
-      const k = 1 - d * d;
-      this.v[i] += vel * k * k;
-      this.foam[i] = Math.min(1, this.foam[i] + Math.abs(vel) * 0.012 * k);
-    }
-  }
-
-  step(dt) {
-    this.acc = Math.min(0.1, this.acc + dt);
-    const sub = 1 / 120;
-    const { h, v, n, foam } = this;
-    const c2 = (95 * 95) / (this.cell * this.cell);
-    while (this.acc >= sub) {
-      this.acc -= sub;
-      for (let i = 0; i < n; i++) {
-        const l = h[i > 0 ? i - 1 : 0], r = h[i < n - 1 ? i + 1 : n - 1];
-        v[i] += ((l + r - 2 * h[i]) * c2 - h[i] * 6) * sub;
-        v[i] *= 0.991;
-      }
-      for (let i = 0; i < n; i++) {
-        h[i] += v[i] * sub;
-        if (h[i] > SURF_MAX) { h[i] = SURF_MAX; v[i] *= -0.2; } else if (h[i] < -SURF_MAX) { h[i] = -SURF_MAX; v[i] *= -0.2; }
-      }
-    }
-    const fd = Math.exp(-dt * 1.8);
-    for (let i = 0; i < n; i++) {
-      const s = Math.abs(h[i < n - 1 ? i + 1 : i] - h[i > 0 ? i - 1 : i]) * 0.5;
-      foam[i] = Math.min(1, Math.max(foam[i] * fd, s > 0.7 ? (s - 0.7) * 0.8 : 0, Math.abs(v[i]) > 55 ? 0.6 : 0));
-    }
-  }
-
-  at(wx) {
-    const f = Math.max(0, Math.min(this.n - 1.001, wx / this.cell));
-    const i = Math.floor(f), k = f - i;
-    return this.h[i] + (this.h[i + 1] - this.h[i]) * k;
-  }
-
-  slope(wx) { return (this.at(wx + 3) - this.at(wx - 3)) / 6; }
-}
 
 // ------------------------------------------------------------------ WebGL helpers
 
@@ -316,12 +253,48 @@ function texture(gl, w, h, data = null) {
 
 const hex3 = (h) => [parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255];
 
+// ------------------------------------------------------------------ lens drops
+
+const dropCache = new Map();
+// rim + gloss for a lens drop of radius r (the refracted view is drawn live underneath)
+function dropRim(r) {
+  let c = dropCache.get(r);
+  if (c) return c;
+  const s = r * 2 + 3;
+  c = document.createElement('canvas');
+  c.width = s; c.height = s;
+  const g = c.getContext('2d');
+  const edge = 1.2 / r;
+  for (let y = 0; y < s; y++) for (let x = 0; x < s; x++) {
+    const dx = x + 0.5 - s / 2, dy = y + 0.5 - s / 2, d = Math.hypot(dx, dy) / r;
+    if (d > 1.04) continue;
+    const ang = Math.atan2(dy, dx); // light from the top-left
+    const lit = Math.cos(ang + 2.36);
+    let col = null;
+    if (d > 1 - edge) col = lit > 0.35 ? 'rgba(255,255,255,0.85)' : lit < -0.2 ? 'rgba(6,34,66,0.62)' : 'rgba(160,220,255,0.5)';
+    else if (d > 1 - edge * 2.2 && lit < -0.3) col = 'rgba(10,50,90,0.28)'; // inner shadow on the far side
+    else if (dy > r * 0.3 && d > 0.5) col = 'rgba(235,255,255,' + (0.18 + 0.3 * (d - 0.5)).toFixed(3) + ')'; // focused light
+    else col = 'rgba(190,240,255,0.08)';
+    g.fillStyle = col;
+    g.fillRect(x, y, 1, 1);
+  }
+  // glossy highlight: a little curved window reflection at the top-left
+  const hx = Math.round(s / 2 - r * 0.5), hy = Math.round(s / 2 - r * 0.5);
+  g.fillStyle = '#ffffff';
+  g.fillRect(hx + 1, hy, Math.max(1, Math.round(r * 0.35)), Math.max(1, Math.round(r * 0.14)));
+  g.fillRect(hx, hy + 1, Math.max(1, Math.round(r * 0.14)), Math.max(1, Math.round(r * 0.3)));
+  if (r >= 7) g.fillRect(Math.round(s / 2 + r * 0.25), Math.round(s / 2 + r * 0.45), 2, 1);
+  dropCache.set(r, c);
+  return c;
+}
+
 // ------------------------------------------------------------------ public
 
 export class WaterFX {
   constructor(game, opts = {}) {
     this.game = game;
-    this.surf = new SurfaceSim();
+    this.sim = new WaterSim({ width: game?.screen?.W || 960 });
+    this.surf = this.sim; // older callers: water.surf.impulse(x, vel, radius)
     this.queue = [];
     this.gl = null;
     this.kind = '2d';
@@ -332,10 +305,16 @@ export class WaterFX {
     this.active = false;
     this.W = 0; this.H = 0; this.top = 0;
     this.simAcc = 0;
+    this.time = 0;
     this.surfaceY = null;
     this.waveAt = null;
     this.perf = { t: 0, frames: 0, slow: 0, ms: 0 };
     this.surfBuf = null;
+    this.lens = [];
+    this.eyeSide = 0;
+    this.prevCur = null;
+    this.skimT = 0;
+    if (game?.particles) game.particles.water = this; // splash particles ring the surface when they land
     if (!this.disabled) this.init();
   }
 
@@ -358,7 +337,7 @@ export class WaterFX {
       if (this.software && !this.force) { this.kind = '2d'; return; }
       this.canvas = c;
       this.gl = gl;
-      this.sim = program(gl, SIM_FS);
+      this.simP = program(gl, SIM_FS);
       this.fx = program(gl, FX_FS);
       this.quad = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, this.quad);
@@ -386,11 +365,12 @@ export class WaterFX {
   layout(W, H, top) {
     if (W === this.W && H === this.H && top === this.top) return;
     this.W = W; this.H = H; this.top = top;
-    this.surf.resize(W);
-    this.surfBuf = new Uint8Array(this.surf.n * 4);
+    this.sim.resize(W);
+    this.cell = 2;
+    this.sn = Math.ceil(W / this.cell) + 2;
+    this.surfBuf = new Uint8Array(this.sn * 4);
     const gl = this.gl;
     if (!gl) return;
-    this.cell = 2;
     this.sw = Math.ceil(W / this.cell) + 1;
     this.sh = Math.ceil((H - top) / this.cell) + 1;
     const init = new Uint8Array(this.sw * this.sh * 4);
@@ -409,37 +389,49 @@ export class WaterFX {
     if (!ok) this.fail('framebuffer incomplete');
     this.cur = 0;
     gl.bindTexture(gl.TEXTURE_2D, this.surfTex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.surf.n, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.sn, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
   }
 
   // ---------------------------------------------------------------- events
+
+  levelAt(wx) {
+    try { const v = this.game.ocean?.waveAt?.(wx); return Number.isFinite(v) ? v : this.surfaceY; } catch { return this.surfaceY; }
+  }
 
   disturb(wx, wy, strength = 1, radius = 6) {
     if (!Number.isFinite(wx) || !Number.isFinite(wy)) return;
     const s = this.surfaceY;
     if (s !== null && s !== undefined) {
-      const d = wy - s;
+      const d = wy - (this.levelAt(wx) ?? s);
       if (d < -6) return; // in the air
-      if (d < 22) this.surf.impulse(wx, -strength * 26 * (1 - Math.max(0, d) / 22), radius * 1.6);
+      if (d < 22) this.sim.disturb(wx, strength * 0.7 * (1 - Math.max(0, d) / 22), radius * 1.6, { ring: d < 8 && strength > 0.25 });
     }
-    if (this.queue.length < 96) this.queue.push(wx, wy, strength, radius);
+    if (this.gl && this.queue.length < 96) this.queue.push(wx, wy, strength, radius);
   }
 
   splash(wx, strength = 1, radius = 10) {
-    this.surf.impulse(wx, -strength * 60, radius);
-    if (this.surfaceY !== null && this.queue.length < 96) this.queue.push(wx, this.surfaceY + 3, strength * 0.6, radius * 0.8);
+    if (!Number.isFinite(wx)) return;
+    this.sim.disturb(wx, strength * 1.6, radius);
+    if (this.gl && this.surfaceY !== null && this.queue.length < 96) this.queue.push(wx, this.surfaceY + 3, strength * 0.6, radius * 0.8);
   }
 
-  surfaceOffset(wx) { return this.surf.at(wx); }
-  surfaceSlope(wx) { return this.surf.slope(wx); }
-  foamAt(wx) { return this.surf.foam[this.surf.idx(wx)]; }
+  heightAt(wx) { return this.sim.heightAt(wx); }
+  slopeAt(wx) { return this.sim.slopeAt(wx); }
+  surfaceOffset() { return 0; }
+  surfaceSlope(wx) { return this.sim.slopeAt(wx); }
+  foamAt(wx) { return this.sim.foamAt(wx); }
 
   update(dt, info) {
     this.surfaceY = info.surfaceY ?? null;
     this.waveAt = info.waveAt || null;
     this.layout(info.W, info.H, info.top);
-    this.surf.step(dt);
     this.dt = dt;
+    this.time = (this.time + dt) % 3600;
+    const g = this.game, oc = g?.ocean;
+    const look = oc?.biome?.waterSim || null; // optional per-biome {swell, rain} multipliers
+    this.sim.update(dt, { weather: oc?.weather || 'calm', swellMul: (look?.swell ?? 1) * (this.surfaceY === null ? 0 : 1), rainMul: look?.rain ?? 1 });
+    if (this.surfaceY !== null) this.interact(dt);
+    this.updateLens(dt);
     // performance governor: give up on the GPU path if it keeps the game well under 60 fps
     const p = this.perf;
     if (this.active) {
@@ -453,11 +445,113 @@ export class WaterFX {
     }
   }
 
+  // The mouse playing with the water: skimming along the surface pushes waves and rings, pulling out of the water
+  // lifts a little bump, dragging (button held) through the surface sprays.
+  interact(dt) {
+    const g = this.game, c = g?.world?.cursor;
+    if (!c || !c.inWorld || g.state?.view !== 'ocean' || g.boat?.dragging) { this.prevCur = null; return; }
+    const p = this.prevCur;
+    this.prevCur = [c.x, c.y];
+    if (!p || dt <= 0) return;
+    const lv = this.levelAt(c.x), pl = this.levelAt(p[0]);
+    if (lv === null || pl === null) return;
+    const dx = c.x - p[0], dy = c.y - p[1];
+    const sp = Math.hypot(dx, dy) / dt;
+    const held = !!g.input?.down;
+    const wasIn = p[1] > pl, isIn = c.y > lv;
+    this.skimT -= dt;
+    this.crossT = (this.crossT || 0) - dt;
+    if (wasIn !== isIn && sp > 25 && this.crossT <= 0) {
+      this.crossT = 0.3;
+      const k = Math.min(1.4, sp / 500);
+      // entering with the hook out is the cast plop (fishing makes it); pulling out lifts a bump
+      if (!isIn) { this.sim.disturb(c.x, -0.35 - k * 0.4, 7); g.particles?.droplets?.(c.x, lv - 1, 2 + Math.round(k * 4), { dir: -Math.PI / 2, spread: 0.6, speed: [30, 60 + sp * 0.1], g: 300 }); }
+      else if (held || !g.fishing?.hook?.visible) { this.sim.disturb(c.x, 0.5 + k, 7); g.particles?.splash?.(c.x, lv, 0.25 + k * 0.3); }
+    } else if (Math.abs(c.y - lv) < 4 + (held ? 3 : 0) && Math.abs(dx) / dt > 30) {
+      const v = Math.abs(dx) / dt;
+      this.sim.impulse(c.x, -Math.min(36, v * 0.07) * (held ? 1.6 : 1), 8);
+      if (this.skimT <= 0) {
+        this.skimT = held ? 0.05 : 0.09;
+        this.sim.ring(c.x - Math.sign(dx) * 3, 0.18 + Math.random() * 0.12, Math.min(1, 0.35 + v / 700), { speed: 12 + v * 0.02, life: 0.9, r0: 2, kind: 'wake' });
+        if (held && v > 120) g.particles?.droplets?.(c.x, lv - 1, 2, { dir: -Math.PI / 2 - Math.sign(dx) * 0.5, spread: 0.5, speed: [40, 90], g: 320 });
+        if (v > 200) g.particles?.foam?.(c.x, lv, 1, { spread: 3 });
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------- lens drops / crossing the surface
+
+  updateLens(dt) {
+    const g = this.game, cam = g?.camera, s = this.surfaceY;
+    for (const d of this.lens) {
+      d.t += dt;
+      if (d.t > d.stick) { d.vy = Math.min(70, d.vy + 40 * dt); d.y += d.vy * dt; }
+      d.x += Math.sin(d.t * 3 + d.ph) * dt * 2;
+    }
+    if (this.lens.length) this.lens = this.lens.filter((d) => d.t < d.life && d.y - d.r < (g.screen?.H || 540));
+    if (!cam?.open || s === null || !cam.xform || g.state?.view !== 'ocean' || g.ocean?.travelState) { this.eyeSide = 0; return; }
+    const [z, , oy] = cam.xform();
+    const H = g.screen.H, W = g.screen.W;
+    const e = s - (H / 2 - oy) / z;
+    const side = e > 3 ? 1 : e < -3 ? -1 : this.eyeSide;
+    if (this.eyeSide === -1 && side === 1 && !g.state?.settings?.reducedMotion) {
+      // surfacing: water beads on the lens
+      const n = g.lowPower ? 6 : 14;
+      for (let i = 0; i < n; i++) {
+        const r = 4 + Math.floor(Math.random() * Math.random() * 15);
+        this.lens.push({ x: Math.random() * W, y: Math.random() * H * 0.85, r, t: 0, stick: 0.2 + Math.random() * 0.8, vy: 0, life: 1.6 + Math.random() * 1.8, ph: Math.random() * TAU });
+      }
+      g.audio?.play?.('splash_small', { vol: 0.25, pitch: 1.5 });
+    } else if (this.eyeSide === 1 && side === -1) {
+      // diving: a burst of bubbles under the surface and a ring where we went through
+      const cx = (W / 2 - cam.xform()[1]) / z;
+      g.particles?.aeroBubbles?.(cx, s + 14, g.lowPower ? 6 : 14, { w: W / (2.5 * z), h: 8, speed: [20, 60], sizes: [2, 2, 3, 4] });
+      this.sim.disturb(cx, 0.6, 18);
+    }
+    this.eyeSide = side;
+  }
+
+  drawLens(ctx) {
+    if (!this.lens.length) return;
+    const src = ctx.canvas;
+    const W = src.width, H = src.height;
+    if (!this.lensTmp || this.lensTmp.width !== W || this.lensTmp.height !== H) {
+      this.lensTmp = document.createElement('canvas');
+      this.lensTmp.width = W; this.lensTmp.height = H;
+      this.lensG = this.lensTmp.getContext('2d');
+      this.lensG.imageSmoothingEnabled = false;
+    }
+    this.lensG.clearRect(0, 0, W, H);
+    this.lensG.drawImage(src, 0, 0);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    for (const d of this.lens) {
+      const a = Math.min(1, (d.life - d.t) / 0.5, d.t / 0.08);
+      if (a <= 0.02) continue;
+      const x = Math.round(d.x), y = Math.round(d.y), r = d.r;
+      ctx.globalAlpha = a;
+      // a drop is a tiny fisheye lens: the view behind it, magnified and upside down
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(x + 0.5, y + 0.5, r, 0, TAU);
+      ctx.clip();
+      ctx.translate(x, y);
+      ctx.scale(-1, -1);
+      const k = r * 2.8;
+      ctx.drawImage(this.lensTmp, x - k, y - k, k * 2, k * 2, -r - 1, -r - 1, r * 2 + 2, r * 2 + 2);
+      ctx.restore();
+      const rim = dropRim(r);
+      ctx.drawImage(rim, x - r - 1, y - r - 1);
+    }
+    ctx.restore();
+  }
+
   // ---------------------------------------------------------------- GPU passes
 
   stepSim(steps) {
     const gl = this.gl;
-    const P = this.sim;
+    const P = this.simP;
     gl.useProgram(P.p);
     gl.viewport(0, 0, this.sw, this.sh);
     gl.uniform2f(P.u.u_size, this.sw, this.sh);
@@ -492,22 +586,22 @@ export class WaterFX {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
+  // live waterline (biome waves + sim lift, relative to the still level) and foam, one texel per 2 px
   uploadSurface() {
-    const gl = this.gl, s = this.surf, b = this.surfBuf, n = s.n;
+    const gl = this.gl, sim = this.sim, b = this.surfBuf, n = this.sn;
     const sy = this.surfaceY, wave = this.waveAt;
     for (let i = 0; i < n; i++) {
-      const v = Math.round((Math.max(-1, Math.min(1, s.h[i] / SURF_RANGE)) * 0.5 + 0.5) * 65535);
-      b[i * 4] = v >> 8;
-      b[i * 4 + 1] = v & 255;
-      b[i * 4 + 2] = Math.round(Math.min(1, s.foam[i]) * 255);
-      const w = wave && sy !== null ? Math.round(wave(i * s.cell) - sy) : 0;
+      const x = i * this.cell;
+      b[i * 4] = 128; b[i * 4 + 1] = 0;
+      b[i * 4 + 2] = Math.round(Math.min(1, sim.foamAt(x)) * 255);
+      let w = 0;
+      if (wave && sy !== null) { const v = wave(x); w = Number.isFinite(v) ? Math.round(v - sy) : 0; }
       b[i * 4 + 3] = Math.max(0, Math.min(255, w + 128));
     }
     gl.bindTexture(gl.TEXTURE_2D, this.surfTex);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, n, 1, gl.RGBA, gl.UNSIGNED_BYTE, b);
   }
 
-  // look: {refract, caustic, chroma, foam, foamColor, causticColor, crestColor, sparkle, bloom, pattern, gloss, glossColor}
   render(src, camera, look = {}) {
     this.active = false;
     if (!this.available || !this.simTex) { this.queue.length = 0; return null; }
@@ -542,16 +636,20 @@ export class WaterFX {
       const [z, ox, oy] = camera ? camera.xform() : [1, 0, 0];
       gl.uniform3f(P.u.u_cam, z, ox, oy);
       gl.uniform4f(P.u.u_dom, this.top, this.cell, this.sw, this.sh);
-      gl.uniform3f(P.u.u_surf, this.surfaceY === null ? -1e5 : this.surfaceY, this.surf.n, this.surf.cell);
-      gl.uniform4f(P.u.u_k, (look.refract ?? 14) * 2.2, look.caustic ?? 9, look.chroma === false ? 0 : 1, look.foam ?? 1);
+      gl.uniform3f(P.u.u_surf, this.surfaceY === null ? -1e5 : this.surfaceY, this.sn, this.cell);
+      // per-ocean palette (daylight-aware) for rays, depth tint and caustic light
+      const oc = this.game?.ocean, env = oc?.env || {};
+      const pal = waterPalette(oc?.biome?.waterPaletteId || oc?.biome?.id || 'oscean', env.daylight ?? 1, env.dusk ?? 0);
+      gl.uniform4f(P.u.u_k, (look.refract ?? 14) * 2.2, look.caustic ?? 9, look.chroma === false ? 0 : 1, look.wobble ?? 0.55);
       gl.uniform1f(P.u.u_shine, look.shine ?? 9);
-      gl.uniform3fv(P.u.u_foamCol, hex3(look.foamColor || '#f4fffc'));
       gl.uniform3fv(P.u.u_causCol, hex3(look.causticColor || '#2a3a30'));
-      gl.uniform3fv(P.u.u_crestCol, hex3(look.crestColor || '#ffffff'));
-      this.time = ((this.time || 0) + (this.dt || 1 / 60)) % 3600;
       gl.uniform1f(P.u.u_time, this.time);
-      gl.uniform4f(P.u.u_fx, look.sparkle ?? 0.8, look.bloom ?? 0.3, look.pattern ?? 0.4, look.gloss ?? 0.6);
-      gl.uniform3fv(P.u.u_glossCol, hex3(look.glossColor || '#ffffff'));
+      const day = env.daylight ?? 1;
+      gl.uniform4f(P.u.u_fx, look.sparkle ?? 0.8, look.bloom ?? 0.3, (look.pattern ?? 0.4) * (0.6 + pal.caustics * 0.6), (look.rays ?? pal.rays) * (0.3 + 0.7 * day));
+      gl.uniform3fv(P.u.u_glossCol, hex3(look.glossColor || pal.caustic || '#ffffff'));
+      gl.uniform3fv(P.u.u_rayCol, hex3(look.rayColor || pal.ray));
+      gl.uniform3fv(P.u.u_deepCol, hex3(look.deepColor || pal.deep));
+      gl.uniform1f(P.u.u_tint, look.tint ?? pal.tint);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       gl.activeTexture(gl.TEXTURE0);
       this.active = true;

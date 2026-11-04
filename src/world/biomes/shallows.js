@@ -616,6 +616,7 @@ export class ShallowsBiome extends Biome {
       wp.closePath();
       ctx.fillStyle = ctx.createPattern(water, 'repeat');
       ctx.fill(wp);
+      this.drawWaterSheet?.(ctx, env); // [phase5:water] the water sheet sits behind the near-surface details (the buoy floats in front)
       this.drawBuoy(ctx, env);
     } else fillWith(ctx, water, 0, -10, W, H + 10);
     // parallax layers (fogged toward the live water gradient)

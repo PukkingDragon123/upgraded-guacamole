@@ -5,6 +5,11 @@
 // bokeh orbs, lens flares (lensFlare), leaves and Aero confetti (aeroConfetti), thick glossy rings, and
 // the big-moment combos: bloom (swelling soft light), splashBurst (Aero water burst), boltBurst (radial lightning).
 //
+// [phase5:water] Water hooks: when game.water is attached (particles.water, set by WaterFX) drops and droplets landing
+// on the live waterline ring the surface, rising bubbles that reach it sit as little domes and pop, eruptions and
+// big splashes kick the surface sim, and splash() adds a crown + mist. New: crown(x, y, power), foamRing(x, y, power),
+// surfaceBubble(x, y, r).
+//
 // add(p) takes a plain object (kind, x, y, vx, vy, life, size, color, g, drag, layer, add, delay...).
 // `delay` (s) keeps a particle invisible and frozen until it is due. When the pool is full new
 // particles recycle the oldest ones instead of being dropped, so big moments never lose effects.
@@ -286,7 +291,49 @@ export class Particles {
     this.ring(x, y, power);
     if (power > 0.5) this.foam(x, y, Math.round(3 + power * 4), { spread: 6 + power * 8 });
     this.bubbles(x, y + 4, Math.round(4 + 6 * power));
+    if (power > 0.35 && this.water) { this.crown(x, y, power * 0.8); if (power > 0.6) this.spray(x, y - 2, power * 0.6); } // [phase5:water]
   }
+
+  // [phase5:water] ---------------------------------------------------------------- surface water
+  // Crown splash: a ring of droplets thrown up and out in a coronet, thin sheets at its rim, then they rain back.
+  crown(x, y, power = 1, opts = {}) {
+    const layer = opts.layer || 'fg';
+    const n = Math.round(8 + power * 10), w = 3 + power * 5;
+    for (let i = 0; i < n; i++) {
+      const side = i % 2 ? 1 : -1, f = (i >> 1) / Math.max(1, (n >> 1) - 1);
+      const a = -Math.PI / 2 + side * (0.35 + f * 0.55), sp = (70 + power * 70) * (0.85 + 0.3 * Math.random());
+      this.add({ kind: 'droplet', x: x + side * (w * (0.4 + f * 0.6)), y: y - 1, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.6 + power * 0.4, size: f < 0.3 && power > 0.8 ? 2 : 1, color: f > 0.6 ? '#ffffff' : '#d8f6ff', g: 330, drag: 0.6, layer, trail: 2 });
+    }
+    for (const s of [-1, 1]) this.add({ kind: 'column', x: Math.round(x + s * w * 0.8), y, h: 6 + power * 10, w: power > 0.8 ? 2 : 1, life: 0.28 + power * 0.1, layer, color: '#e8fbff' });
+    if (power > 0.6) this.add({ kind: 'column', x: Math.round(x), y, h: 10 + power * 18, w: power > 1.2 ? 3 : 2, life: 0.35 + power * 0.15, layer, color: '#f4fdff', delay: 0.12 });
+  }
+
+  // A foam ring on the surface sheet (water sim) + a few foam puffs on the line.
+  foamRing(x, y, power = 1, opts = {}) {
+    this.water?.sim?.ring?.(x, opts.z ?? 0.25 + Math.random() * 0.15, Math.min(1.2, 0.5 + power * 0.4), { speed: 18 + power * 16, life: 1 + power * 0.5, r0: 3 });
+    this.foam(x, y, Math.round(2 + power * 3), { spread: 4 + power * 6, layer: opts.layer });
+  }
+
+  // A bubble resting on the surface (tension dome) that wobbles and pops.
+  surfaceBubble(x, y, r = 2, opts = {}) {
+    return this.add({ kind: 'sbubble', x, y, r: Math.max(1, Math.min(4, Math.round(r))), life: opts.life ?? 0.25 + Math.random() * 0.7, layer: opts.layer || 'fg', fade: false, ph: Math.random() * 6 });
+  }
+
+  // the live waterline under x (falls back to the flat surface)
+  waterAt(x) {
+    const w = this.water;
+    if (w && w.levelAt) { const v = w.levelAt(x); if (Number.isFinite(v)) return v; }
+    return this.surfaceY;
+  }
+
+  // a drop hitting the surface: a tiny pock (ring + nudge) on the sim, rate-limited
+  dropLanded(x, size, vy) {
+    const w = this.water;
+    if (!w?.sim) return;
+    w.sim.impulse(x, -Math.min(14, 2 + vy * 0.02) * size, 2.5);
+    if ((size > 1 || vy > 140) && this.pockN < 14) { this.pockN++; w.sim.ring(x, 0.12 + Math.random() * 0.4, 0.5, { speed: 9, life: 0.45, r0: 0.5, kind: 'rain' }); }
+  }
+  // [/phase5:water]
 
   ring(x, y, power = 1, color = 'rgba(230,250,255,0.9)', opts = {}) {
     return this.add({ kind: 'ring', x, y, life: 0.6 + 0.3 * power, r0: 2, r1: 8 + 10 * power, color, layer: 'fg', ...opts });
@@ -359,6 +406,7 @@ export class Particles {
     this.ripples(x, y, 3, power, { layer });
     for (let i = 0; i < 4; i++) this.add({ kind: 'column', x: x + rng.float(-4, 4), y, h: rng.float(30, 60) * power, w: rng.pick([2, 3, 4]), life: rng.float(0.35, 0.6), layer, color: '#e8fbff', delay: i * 0.04 });
     this.bubbles(x, y + 6, Math.round(10 * power));
+    if (this.water && layer !== 'ui') { this.water.splash?.(x, 0.8 + power * 1.1, 12 + power * 10); this.crown(x, y, power * 1.1, { layer }); this.foamRing(x, y, power, { layer }); } // [phase5:water]
   }
 
   // ---------------------------------------------------------------- speed & light
@@ -556,6 +604,7 @@ export class Particles {
     this.foam(x, y, Math.round(4 + 4 * power), { spread: 6 * power, layer, scale: 0.8 + power * 0.3 });
     this.aeroBubbles(x, y, Math.round(4 + 6 * power), { w: 6 * power, h: 4, layer, speed: [30, 90], sizes: [2, 2, 3, 4, 5] });
     this.glints(x, y, Math.round(2 + 2 * power), { w: 10 * power, h: 8 * power, layer });
+    if (this.water && layer !== 'ui' && this.surfaceY !== null && Math.abs(y - (this.waterAt(x) ?? y)) < 14) this.water.splash?.(x, 0.5 + power * 0.6, 8 + power * 8); // [phase5:water]
   }
 
   // Radial lightning: jagged bolts shooting out of a point, a cyan ring and white-hot sparks.
@@ -575,6 +624,8 @@ export class Particles {
     const list = this.list;
     let w = 0;
     const surf = this.surfaceY;
+    this.pockN = 0; // [phase5:water]
+    const wl = surf !== null && this.water ? (x) => this.waterAt(x) : () => surf; // [phase5:water] live waterline
     for (let i = 0; i < list.length; i++) {
       const p = list[i];
       p.t += dt;
@@ -586,9 +637,14 @@ export class Particles {
           p.vy = Math.max(p.vy - 8 * dt, -45);
           p.x += (p.vx + Math.sin(p.wob) * 6) * dt;
           p.y += p.vy * dt;
-          if (surf !== null && p.y < surf + 2 && p.layer !== 'ui') {
+          if (surf !== null && p.y < surf + 16 && p.layer !== 'ui') {
+            const ly = wl(p.x); // [phase5:water]
+            if (p.y >= ly + 2) break;
             p.t = p.max; // pop
-            if (p.size > 1 && list.length < this.max) this.add({ kind: 'dot', x: p.x, y: surf + 1, vy: -10, life: 0.25, color: '#ffffff', layer: p.layer });
+            if (p.size > 1 && list.length < this.max) {
+              if (this.water && Math.random() < 0.6) this.surfaceBubble(p.x, ly + 1, p.size, { layer: p.layer }); // [phase5:water]
+              else this.add({ kind: 'dot', x: p.x, y: ly + 1, vy: -10, life: 0.25, color: '#ffffff', layer: p.layer });
+            }
             continue;
           }
           break;
@@ -598,12 +654,28 @@ export class Particles {
           p.vx *= Math.exp(-1.5 * dt);
           p.x += (p.vx + Math.sin(p.wob) * 5) * dt;
           p.y += p.vy * dt * p.rise;
-          if (surf !== null && p.y < surf + 2 && p.layer !== 'ui') {
+          if (surf !== null && p.y < surf + 16 && p.layer !== 'ui') {
+            const ly = wl(p.x); // [phase5:water]
+            if (p.y >= ly + 2) break;
             p.t = p.max;
-            if (list.length < this.max) this.add({ kind: 'ring', x: p.x, y: surf + 1, life: 0.3, r0: 1, r1: p.r + 2, color: 'rgba(240,252,255,0.85)', layer: p.layer });
+            if (this.water && p.r >= 2 && Math.random() < 0.7) this.surfaceBubble(p.x, ly + 1, Math.min(4, p.r), { layer: p.layer }); // [phase5:water]
+            else if (list.length < this.max) this.add({ kind: 'ring', x: p.x, y: ly + 1, life: 0.3, r0: 1, r1: p.r + 2, color: 'rgba(240,252,255,0.85)', layer: p.layer });
             continue;
           }
           break;
+        case 'sbubble': { // [phase5:water] a dome riding the waterline; pops into a micro splash
+          p.y = wl(p.x) + 1;
+          if (p.t + dt >= p.max) {
+            p.t = p.max;
+            if (list.length < this.max * 0.9) {
+              for (let i = 0; i < 2 + p.r; i++) this.add({ kind: 'drop', x: p.x + rng.float(-p.r, p.r), y: p.y - p.r, vx: rng.float(-30, 30), vy: -rng.float(30, 70), life: 0.5, size: 1, color: '#ffffff', g: 300, drag: 0.4, layer: p.layer });
+              this.add({ kind: 'ring', x: p.x, y: p.y, life: 0.3, r0: 1, r1: p.r + 3, color: 'rgba(240,252,255,0.9)', layer: p.layer });
+            }
+            this.water?.sim?.ring?.(p.x, 0.08 + Math.random() * 0.2, 0.45, { speed: 7, life: 0.4, r0: 0.5, kind: 'rain' });
+            continue;
+          }
+          break;
+        }
         case 'leaf':
         case 'confetti':
           p.spin += p.spinV * dt;
@@ -625,10 +697,14 @@ export class Particles {
             p.spin += p.spinV * dt;
             if (p.floor !== null && p.y > p.floor && p.vy > 0) { p.y = p.floor; p.vy *= -0.45; p.vx *= 0.7; }
           }
-          if ((p.kind === 'drop' || p.kind === 'droplet') && surf !== null && p.layer !== 'ui' && p.vy > 0 && p.y > surf + 1 && p.t > 0.1) {
-            p.t = p.max;
-            if (p.size > 1 && list.length < this.max * 0.8) this.add({ kind: 'ring', x: p.x, y: surf + 1, life: 0.35, r0: 1, r1: 4, color: 'rgba(230,250,255,0.8)', layer: p.layer });
-            continue;
+          if ((p.kind === 'drop' || p.kind === 'droplet') && surf !== null && p.layer !== 'ui' && p.vy > 0 && p.y > surf - 16 && p.t > 0.1) {
+            const ly = wl(p.x); // [phase5:water] land on the live waterline
+            if (p.y > ly + 1) {
+              p.t = p.max;
+              if (p.size > 1 && list.length < this.max * 0.8) this.add({ kind: 'ring', x: p.x, y: ly + 1, life: 0.35, r0: 1, r1: 4, color: 'rgba(230,250,255,0.8)', layer: p.layer });
+              if (this.water) this.dropLanded(p.x, p.size, p.vy);
+              continue;
+            }
           }
       }
       list[w++] = p;
@@ -745,6 +821,16 @@ export class Particles {
           ctx.drawImage(s, x - r, y - r);
           ctx.globalAlpha = 1;
           ctx.globalCompositeOperation = 'source-over';
+          break;
+        }
+        case 'sbubble': { // [phase5:water] upper half of a glossy bubble above the line, wobbling
+          const r = p.r + (Math.sin(p.t * 30 + p.ph) > 0.6 ? 1 : 0);
+          const s = bubbleSprite(r);
+          ctx.globalAlpha = 0.95;
+          ctx.drawImage(s, 0, 0, s.width, r + 1, x - r, y - r - 1, s.width, r + 1);
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(x - Math.ceil(r / 2), y - r, 1, 1);
+          ctx.globalAlpha = 1;
           break;
         }
         case 'mist':

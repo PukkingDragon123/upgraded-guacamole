@@ -284,6 +284,14 @@ export class Floaters {
           const wl = this.waveAt(f.x) ?? s;
           const sl = ((this.waveAt(f.x + 6) ?? wl) - (this.waveAt(f.x - 6) ?? wl)) / 12;
           f.rise = Math.max(0, f.rise - dt * 9);
+          // [phase5:water] a bobbing box laps the water: a nudge on the surface sim and a soft ring now and then
+          f.lapT = (f.lapT ?? this.rng.float(0, 1.4)) - dt;
+          if (f.lapT <= 0) {
+            f.lapT = this.rng.float(1, 2.2);
+            const ws = this.game.water?.sim;
+            ws?.impulse?.(f.x, -5 - (f.big ? 4 : 0), 6);
+            ws?.ring?.(f.x, 0.2 + this.rng.float(0, 0.12), 0.35, { speed: 8, life: 1.4, r0: 5 });
+          }
           f.y = wl + 1 + f.rise + Math.sin(this.t * 1.9 + f.ph) * 1.2;
           const tr = clamp(Math.atan(sl) * 57 + Math.sin(this.t * 1.3 + f.ph) * 5, -16, 16);
           f.rollV += ((tr - f.roll) * 30 - f.rollV * 6) * dt;

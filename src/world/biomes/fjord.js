@@ -1176,6 +1176,7 @@ export class FjordBiome extends Biome {
     this.drawFlock(ctx);
     const murk = wx.snow * 0.07 + wx.bliz * 0.26;
     if (murk > 0.01) { ctx.fillStyle = rgba(tod.night > 0.5 ? '#0a1424' : '#7a94a8', murk); ctx.fillRect(0, Math.max(y0, top), W, y1 - Math.max(y0, top)); }
+    this.drawWaterSheet?.(ctx, env); // [phase5:water] the water sheet sits behind the near-surface details
     this.drawSurface(ctx, env, sy);
   }
 

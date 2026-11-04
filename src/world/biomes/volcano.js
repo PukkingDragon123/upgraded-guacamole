@@ -641,6 +641,7 @@ export class VolcanoBiome extends Biome {
       wp.closePath();
       ctx.fillStyle = ctx.createPattern(this.water, 'repeat');
       ctx.fill(wp);
+      this.drawWaterSheet?.(ctx, env); // [phase5:water] the water sheet sits behind the near-surface details
       this.drawSurface(ctx);
     } else fillWith(ctx, this.water, 0, y0, W, y1 - y0);
     // dim red light from far above (only noticeable while scrolled up / in daylight)

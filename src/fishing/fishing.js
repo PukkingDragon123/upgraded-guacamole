@@ -373,6 +373,7 @@ export class Fishing {
           if (this.boxHover) { this.startBox(this.boxHover); break; }
           // jig the lure
           h.dip = -5;
+          g.water?.disturb?.(h.x, h.y, 0.45, 5); // [phase5:water] the twitch ripples the water
           h.av += rng.float(-3, 3);
           this.jig = Math.min(1.5, this.jig + 0.35);
           this.sfx('bubble', { vol: 0.4, pitch: rng.float(1, 1.4) });
@@ -446,6 +447,7 @@ export class Fishing {
       tx = h.x + side * mouthOff;
       if (this.nibblePhase <= 0.08 && !this.nibbled) {
         this.nibbled = true;
+        this.game.water?.disturb?.(h.x, h.y, 0.3, 4); // [phase5:water]
         h.dip = 3 + rng.float(0, 2);
         h.av += rng.float(-2, 2);
         f.chompT = 0.15;
@@ -470,6 +472,7 @@ export class Fishing {
         if (this.fakeBite && this.nibblesLeft === 1) { h.dip = 8; f.say('!', 0.4); this.sfx('nibble', { pitch: 0.7 }); this.fakeBite = false; }
       } else {
         this.state = 'bite';
+        this.game.water?.disturb?.(h.x, h.y, 0.9, 8); // [phase5:water] the strike
         this.biteT = (f.sp.fight?.biteWindow ?? 0.6) * (this.stats?.biteWindow ?? 1) * (g.tutorialActive ? 2.5 : 1);
         this.biteMax = this.biteT;
         h.dip = 10;
@@ -545,6 +548,7 @@ export class Fishing {
     P.speedLines?.(f.x, f.y, 18, { r0: 26, r1: 60, inward: true, len: [8, 18], color: '#ffffff' });
     P.burst(f.x, f.y, 14, { colors: ['#ffffff', '#bff8ff', '#c8f56a'], speed: 80, g: 0, life: 0.45 });
     P.splashBurst?.(f.x, f.y, 1.1);
+    g.water?.disturb?.(f.x, f.y, 1.4, 12); // [phase5:water] hook-set shock wave
     P.scales?.(f.x, f.y, 4, this.scaleColors());
     const surf = this.world.surfaceY;
     if (surf !== null && surf !== undefined && f.y - surf < 40) P.eruption?.(f.x, surf, 0.6);

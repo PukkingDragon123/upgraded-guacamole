@@ -1198,7 +1198,7 @@ export class AeroOverlay {
     const lightK = tod.day + tod.dusk * 0.6 + tod.night * 0.15;
     if (s !== null && look.bloom > 0) {
       const strip = bloomStrip(70, look.bloomColor || '#ffffff', 0.9);
-      const a = look.bloom * lightK;
+      const a = look.bloom * lightK * (this.b.__water ? 0.22 : 1); // [phase5:water] softer: the live water sheet + rays carry the surface light
       if (a > 0.02) {
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';

@@ -52,12 +52,9 @@ export class Biome {
 
   waveAt() { return null; }
 
-  // Without the GPU water pass, fold the simulated surface lift into the drawn waterline (2D fallback).
-  applySimLift(ys) {
-    const w = this.game?.water;
-    if (!w || w.active || !ys) return;
-    for (let x = 0; x < ys.length; x++) ys[x] -= Math.round(w.surfaceOffset(x));
-  }
+  // [phase5:water] the water sim (swell + waves) is folded into this.ys for every ocean by installWater
+  // (src/world/watersheet.js) right after update(), on both render paths; kept as a no-op for older callers.
+  applySimLift(ys) { void ys; }
 
   floorAt(x) {
     if (!this.floor) return this.H - 40;

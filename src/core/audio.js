@@ -1764,6 +1764,7 @@ const VOICES = {
   fish: { base: 69, scale: [0, 2, 4, 7, 9, 12], type: 'sine', dur: 0.075, gap: 0.08, vol: 0.075, lp: 3000, bend: 1.45, fmul: 1.1 },
   tiny: { base: 81, scale: [0, 2, 4, 7, 9, 12, 14], type: 'triangle', dur: 0.04, gap: 0.052, vol: 0.065, lp: 6000, bend: 1.08, fmul: 1.4 },
   deep: { base: 45, scale: [0, 3, 5, 7, 10], type: 'sawtooth', dur: 0.1, gap: 0.105, vol: 0.075, lp: 800, bend: 0.94, fmul: 0.7 },
+  clip: { base: 74, scale: [0, 2, 4, 7, 9, 12, 14], type: 'triangle', dur: 0.05, gap: 0.058, vol: 0.07, lp: 5200, bend: 1.22, fmul: 1.3 }, // [phase5:intro] Clip's chirpy chrome voice
 };
 const FORMANT = { a: 850, e: 1900, i: 2500, o: 600, u: 420, y: 2200 };
 const bab = { last: {}, line: null };

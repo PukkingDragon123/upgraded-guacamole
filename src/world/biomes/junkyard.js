@@ -647,6 +647,7 @@ export class JunkyardBiome extends Biome {
       ctx.fillRect(0, Math.max(0, top), W, H - Math.max(0, top));
       this.drawDataRain(ctx, wx.data * 0.85, 0, 0.6);
     }
+    this.drawWaterSheet?.(ctx, env); // [phase5:water] the water sheet sits behind the near-surface details
     this.drawSurface(ctx, env, sy);
   }
 

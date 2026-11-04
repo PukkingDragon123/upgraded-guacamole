@@ -101,6 +101,16 @@ export class AbyssBiome extends Biome {
     this.moonRays = makeRays(W, -level, { seed: 52, count: 7, sunX: W * 0.6, sunY: level * 1.6, minW: 6, maxW: 22, len: 0.9, color: '#8aa8ff', alpha: 0.35, levels: 3 });
   }
 
+  // [phase5:water] called by installWater (watersheet.js) after the water sheet, under the world camera
+  drawOverSheet(ctx, env) {
+    const view = env.view;
+    if ((view && view.y0 >= 0) || !this.buoy || !this.ys) return;
+    const b = this.buoy, a = b.spr.anchors.water;
+    const by = this.waveAt(b.x) + Math.round(Math.sin(this.t * 1.5) * 1.2);
+    ctx.drawImage(b.spr.day, Math.round(b.x - a[0]), Math.round(by - a[1]));
+    b.lamp = [b.x - a[0] + b.spr.anchors.lamp[0], by - a[1] + b.spr.anchors.lamp[1]];
+  }
+
   drawAbove(ctx, env) {
     const view = env.view;
     if (view && view.y0 >= 0) return;
@@ -158,11 +168,7 @@ export class AbyssBiome extends Biome {
       for (let k = -r + 1; k <= r - 1; k += 2) ctx.fillRect(x + k, y + 1 + (k & 1), 1, 3 + ((k + Math.round(t * 3)) & 3));
       ctx.globalAlpha = 1;
     }
-    // buoy riding the waves, crest + under-glint
-    const b = this.buoy, a = b.spr.anchors.water;
-    const by = this.waveAt(b.x) + Math.round(Math.sin(t * 1.5) * 1.2);
-    ctx.drawImage(b.spr.day, Math.round(b.x - a[0]), Math.round(by - a[1]));
-    b.lamp = [b.x - a[0] + b.spr.anchors.lamp[0], by - a[1] + b.spr.anchors.lamp[1]];
+    // buoy riding the waves: drawn by drawOverSheet in front of the water sheet [phase5:water]; crest + under-glint
     const crest = new Path2D(), sub = new Path2D();
     waveRuns(ys, W, (x0, len, y) => { crest.rect(x0, y, len, 1); sub.rect(x0, y + 1, len, 2); });
     ctx.fillStyle = '#5a7ab0'; ctx.globalAlpha = 0.6; ctx.fill(sub); ctx.globalAlpha = 1;

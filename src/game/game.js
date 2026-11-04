@@ -687,6 +687,7 @@ export class Game {
       this.particles.draw(ctx, 'fg', this.time);
     }
     cam.reset(ctx);
+    if (view === 'ocean') this.water?.drawLens?.(ctx); // [phase5:water] lens drops after the camera surfaces
 
     this.tutorial.drawWorld?.(ctx);
     this.aquarium.drawWindow?.(ctx, dt);
