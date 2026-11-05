@@ -289,3 +289,34 @@ Other agents: tiny tagged edits (`// [phase4:<agent>]`) only. Never revert other
 - Intro agent owns `src/game/intro3d.js`, `tutorial.js`, new `src/game/dialogue.js`, new `src/gfx/text3d.js`, the 'clip' NPC
   (tagged additions in `src/gfx/npcs.js`), `tests/smoke.mjs`. Water agent owns `src/gfx/watergl.js`, new `src/world/watersim.js`,
   water/surface parts of `src/world/ocean.js` and biomes (tagged), splash additions in `src/gfx/particles.js` (tagged).
+
+## Phase 6 contracts (low-poly creatures, seal guide, 3D tank, gear fishing, Lab rows, quests, deep oceans)
+User direction (latest, overrides earlier phases where they conflict):
+- **All fish and sea creatures are LOW-POLY 3D** (faceted, flat-shaded, softly painted, like the seal reference
+  `/tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/images/9.jpg`). No voxel fish or voxel dolphins anywhere.
+  Shared renderer: `src/gfx/lowpoly.js` (MeshBuilder, loft, fin, renderMesh -> cached sprite, LPScene for full 3D scenes, T4/M4).
+  `renderMesh` costs a GPU readback: cache frames (yaw buckets x swim frames), never render per fish per frame uncached.
+  World terrain, buildings and props may stay voxel.
+- **Guide**: a fat, cute bubble SEAL (low-poly, white seal pup like 9.jpg, glossy, with bubbles) replaces Clip. It swims
+  around the screen and points at things.
+- **UI a lot bigger, icons better** (HUD, hotbar, dialogue, catch card, reel/gear UI, tooltips).
+- **Aquarium = a real, super-detailed 3D fish tank** (LPScene) you can move around in, and swim in; expandable/upgradeable.
+- **Fishing harder**: a spinning 3D gear you spin to hook; hold and release to shock/stun; bigger UI.
+- **The Lab looks exactly like the row-based skill-tree reference**
+  `/tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/images/10.jpg` (rows of framed icon tiles per branch, labels with leader lines,
+  elbow connectors between rows, chained/padlocked locked tiles, level numbers, points left, Undo/Confirm), but Frutiger
+  Aero, cuter, with fully animated, interactive icons.
+- **Progression 100x better**: quest lines (chapters, NPC quest givers, objectives, rewards, a quest log, a HUD tracker).
+- **Oceans much deeper and scarier**: each ocean has several depth zones (sunlit, twilight, midnight, abyss) with their own
+  fish; darker and scarier the deeper you go. Zoom in a lot more. Many more plants, with physics.
+
+| Agent | Owns |
+| --- | --- |
+| Creatures | `src/gfx/lowpoly.js`, new `src/fish/lowpolyfish.js`, `src/fish/*`, `src/gfx/fishrig.js`, `voxelfish.js` (retire), creature drawing in `src/world/giants.js`/critters (tagged) |
+| Guide | `src/game/tutorial.js`, `dialogue.js`, `intro3d.js` (guide swap), new `src/gfx/seal.js`, seal in `npcs.js` (tagged), `tests/smoke.mjs` |
+| UI | `src/ui/hud.js`, `ui.js`, `aero.js`, `panels.js`, `src/gfx/uiicons.js`, `bigicons.js`, `labicons.js`, `settings.js`, `journal.js`, `inventory.js` |
+| Lab+Quests | `src/game/lab.js`, `rods.js`, `src/ui/lab*.js` (not labicons), new `src/game/quests.js`, new `src/ui/quests.js` |
+| Fishing | `src/fishing/*`, `src/ui/reveal.js`, `src/gfx/particles.js` (tagged) |
+| Aquarium | `src/aquarium/*` |
+| Oceans | `src/world/*` (except creatures), `src/game/camera.js`, `src/gfx/watergl.js`, `src/world/watersim.js`, `props.js` |
+`src/game/game.js` / `state.js` / `src/ui/registry.js`: tiny tagged additive edits only (`// [phase6:<agent>]`).
