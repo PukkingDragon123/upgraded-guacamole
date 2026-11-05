@@ -76793,8 +76793,8 @@ kmlmk..
             tc = ch > (B2.chargeWin?.hi ?? 1) ? "#ff7a5a" : "#fff07a";
             ta = 0.12 + ch * 0.3 + (Math.random() < 0.2 ? 0.15 : 0);
           } else if (this.heat > 0.05) {
-            tc = "#ff5a4a";
-            ta = this.heat * (0.22 + 0.12 * Math.sin(this.t * 30));
+            tc = "#ff7a2a";
+            ta = this.heat * (0.15 + 0.08 * Math.sin(this.t * 30));
           } else if (B2?.stunned) {
             tc = "#bff8ff";
             ta = 0.1 + Math.floor(this.t * 20) % 2 * 0.12;

@@ -568,7 +568,7 @@ export class Gear {
     const ch = B?.charge?.k || 0;
     let tc = null, ta = 0;
     if (ch > 0) { tc = ch > (B.chargeWin?.hi ?? 1) ? '#ff7a5a' : '#fff07a'; ta = 0.12 + ch * 0.3 + (Math.random() < 0.2 ? 0.15 : 0); }
-    else if (this.heat > 0.05) { tc = '#ff5a4a'; ta = this.heat * (0.22 + 0.12 * Math.sin(this.t * 30)); }
+    else if (this.heat > 0.05) { tc = '#ff7a2a'; ta = this.heat * (0.15 + 0.08 * Math.sin(this.t * 30)); } // red-hot strain
     else if (B?.stunned) { tc = '#bff8ff'; ta = 0.1 + (Math.floor(this.t * 20) % 2) * 0.12; }
     else if (this.state(B) === 'sweet') { tc = '#8be04a'; ta = 0.06 + 0.04 * Math.sin(this.t * 9); }
     if (this.flash > 0 && this.flash * 0.6 > ta) { tc = this.flashCol; ta = this.flash * 0.6; }
