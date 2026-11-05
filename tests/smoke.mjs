@@ -101,8 +101,14 @@ if (hasIntro) {
   check('name picked with key 2', await until(() => window.FISHTOP.state.angler && window.FISHTOP.state.angler.name === 'Reel Deal', 15000), String(await G('g.state.angler && g.state.angler.name')));
   await shot('02c_intro_name.png');
   // the glossy Skip pill (top right)
-  const sr = await G('g.tutorial.intro && g.tutorial.intro.skipRect()');
-  if (sr) await clickRect(sr);
+  // (a slow frame can swallow a click: try the pill up to three times until the skip starts)
+  for (let k = 0; k < 3; k++) {
+    const sr = await G('g.tutorial.intro && g.tutorial.intro.skipRect()');
+    if (!sr) break;
+    await clickRect(sr);
+    if (await until(() => { const i = window.FISHTOP.tutorial.intro; return !i || i.skipT >= 0; }, 20000)) break;
+    note('the Skip click did not register yet; clicking again');
+  }
   const skipped = await until(() => !window.FISHTOP.tutorial.intro, 120000); // software GL on a busy machine is slow
   check('Skip pill ends the opening', skipped && (await step()) === 'bait', String(await step()));
   check('choices reach the save', (await G('g.state.clip && g.state.clip.mood')) === 'happy' && (await G('g.state.angler.name')) === 'Reel Deal');

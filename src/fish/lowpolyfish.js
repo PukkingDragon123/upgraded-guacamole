@@ -905,7 +905,7 @@ function buildEel3D(c, sw, frames) {
   if (!fins.empty) parts.push({ key: 'fins', mb: fins.mb, alpha: 0.6, spec: 0.4, cull: false });
   // merge the ridge into the head's fin part when both exist (one translucent part)
   const fi = parts.findIndex((q) => q.key === 'fins');
-  const fj = parts.findLastIndex((q) => q.key === 'fins');
+  let fj = -1; parts.forEach((q, i) => { if (q.key === 'fins') fj = i; });
   if (fi !== fj) {
     const A = parts[fi], B = parts[fj];
     const v = B.mb.v; for (let i = 0; i < v.length; i += 33) A.mb.tri([v[i], v[i + 1], v[i + 2]], [v[i + 11], v[i + 12], v[i + 13]], [v[i + 22], v[i + 23], v[i + 24]], [v[i + 6], v[i + 7], v[i + 8]], A.texture ? head.white : undefined, A.texture ? head.white : undefined, A.texture ? head.white : undefined);
@@ -1752,6 +1752,7 @@ function meshFromPose(c, p) {
   main.emitTex = !!main.texture;
   main.plain = textured.length && plain.length ? merge(plain) : null;
   main.fins = finsP ? finsP.mesh : null;
+  main.finsTex = !!finsP?.texture;
   main.finAlpha = finsP?.alpha ?? 0.7;
   main.glass = glassP ? glassP.mesh : null;
   main.glow = merge(glowL);
@@ -1800,7 +1801,7 @@ export function addFishToScene(scene, mesh, model, o = {}) {
   scene.add(mesh, model, { ...base, texture: mesh.texture, emitTex: mesh.emitTex });
   if (mesh.plain) scene.add(mesh.plain, model, base);
   if (mesh.glow) scene.add(mesh.glow, model, { ...base, emit: 1 });
-  if (mesh.fins) scene.add(mesh.fins, model, { ...base, texture: mesh.texture, alpha: (o.alpha ?? 1) * mesh.finAlpha, cull: false, spec: 0.5, shine: 46 });
+  if (mesh.fins) scene.add(mesh.fins, model, { ...base, texture: mesh.finsTex === false ? undefined : mesh.texture, alpha: (o.alpha ?? 1) * mesh.finAlpha, cull: false, spec: 0.5, shine: 46 });
   if (mesh.glass) scene.add(mesh.glass, model, { ...base, texture: mesh.texture, alpha: 0.5, cull: false, env: 0.6 });
   return scene;
 }

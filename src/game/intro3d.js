@@ -551,6 +551,7 @@ export class Intro3D {
   skip() {
     if (this.skipT >= 0 || !this.active) return;
     this.skipT = 0;
+    this.skipAt = performance.now(); // the skip fade also ends on real time (slow machines)
     this.sfx('travel_whoosh', { vol: 0.5 });
     this.dlg.clear();
   }
@@ -685,7 +686,7 @@ export class Intro3D {
     if (this.skipT >= 0) {
       this.skipT += dt;
       if (!this.handed) { this.handed = true; this.o.onHandoff?.(); }
-      if (this.skipT > 0.5) this.finish();
+      if (this.skipT > 0.5 || performance.now() - (this.skipAt ?? 0) > 650) this.finish();
       return;
     }
     if (this.tasks.length) this.runTasks(4, this.t + 1.5);
