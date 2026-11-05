@@ -91651,7 +91651,7 @@ kmlmk..
               const h = f?.hook;
               if (this.step === "hook" && this.fishingKind().gear) {
                 const gr = this.gearRect();
-                if (gr) return { rect: gr, aim: ctr(gr), avoid: [gr], noRing: true, far: true };
+                if (gr) return { edge: true, aim: ctr(gr), action: ctr(gr), avoid: [gr], noRing: true };
               }
               if (h?.visible) {
                 const p2 = this.ws(h.x, h.y);

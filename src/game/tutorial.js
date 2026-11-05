@@ -711,7 +711,8 @@ export class Tutorial {
         const h = f?.hook;
         if (this.step === 'hook' && this.fishingKind().gear) {
           const gr = this.gearRect();
-          if (gr) return { rect: gr, aim: ctr(gr), avoid: [gr], noRing: true, far: true };
+          // rest at the far screen edge and point at the gear, so Bubbles never covers its dial
+          if (gr) return { edge: true, aim: ctr(gr), action: ctr(gr), avoid: [gr], noRing: true };
         }
         if (h?.visible) {
           const p = this.ws(h.x, h.y);

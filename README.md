@@ -25,8 +25,9 @@ To build from source, run `npm install && npm run build`, which bundles `src/` i
 
 ### Controls
 
-- **Menu**: the glossy hotbar at the bottom opens:
+- **Menu**: the big glossy hotbar at the bottom opens:
   - The Lab
+  - Quests
   - Aquarium
   - FishDex
   - Satchel
@@ -37,41 +38,31 @@ To build from source, run `npm install && npm run build`, which bundles `src/` i
   - Multiplayer
   - Settings
 
-  Your rod and bait are shown bottom left.
-- **Bait**: buy bait packs from Dot at the **Bait Shop** with Aero. The Lab unlocks better shelves, discounts and
-  faster restocks. Each bait is used up when a fish bites. Mix custom bait in the Bait panel once the Lab unlocks
-  the recipe.
-- **Fishing**:
-  - **Cast**: click the water. When the `!` pops, click to set the hook.
-  - **Crank**: circle your mouse to turn the big reel.
-  - **Shock**: right-click, press Space, or hit the reel's gold button to stun the fish.
-  - **Surge**: when the fish bolts, hold the button and drag against the glossy arrow.
-  - **Floating boxes**: hover the hook over a drifting crate, capsule, bottle or orb, then click and crank it in
-    for loot.
-- **Camera**: it follows your hook, boat and catch. Scroll (or press `Home`/`End`) to move between the surface and
-  the seabed. Ctrl/Alt + wheel or `+`/`-` changes the zoom.
+  Settings has a Normal / Big / Huge UI size.
+- **Bait**: buy bait packs from Dot at the **Bait Shop** with Aero. Each bait is used up when a fish bites.
+- **Fishing**: click the water to cast. Then:
+  - **Hook**: when a fish bites, circle your mouse to spin the big 3D gear into the green band before time
+    runs out. Too slow and it escapes; past the red line and the line rips.
+  - **Reel**: keep the gear's RPM needle in the drifting green band. Surges push it up; fakes drop it.
+  - **Shock**: hold the mouse button (or Space or right-click) to charge, and let go in the PERFECT window to
+    stun the fish. Overcharging fizzles or backfires.
+  - **Surge**: when the fish bolts, hold and drag against the pull.
+- **Depth**: each ocean drops through sunlit, twilight, midnight and abyss zones. Use `Home`/`End`,
+  `PageUp`/`PageDown` or the wheel to dive; a depth meter shows your zone. The camera follows your hook and
+  catch; Ctrl/Alt + wheel or `+`/`-` changes the zoom.
+- **Aquarium**: a real 3D tank. Drag to orbit, right-drag to pan, use the wheel to zoom, or press **Swim** to
+  dive in as your bubble person (WASD).
 - **Keys**:
-  - **Panels**: `L` The Lab, `J` FishDex, `I` Satchel, `W` Wardrobe, `T` map, `B` bait, `S` Bait Shop,
-    `O` multiplayer, `A` aquarium.
-  - **Building**: `U` build mode.
+  - **Panels**: `L` The Lab, `Q` quests, `J` FishDex, `I` Satchel, `W` Wardrobe, `T` map, `B` bait,
+    `S` Bait Shop, `O` multiplayer, `A` aquarium.
   - **Game**: `P` pause, `Esc` settings/close.
 
 ### The loop
 
-Catch fish and keep them in your aquarium. Kept fish make glossy **Aero** drops; collect them by hovering,
-clicking or sweeping. The tank also earns while you're away. Spend Aero, materials and fish on research in
-**The Lab**, a radial tree of 120 nodes in 8 branches:
-
-- Rods (15 Fisch-style rods with lure speed, luck, control, resilience, strength and shock stats)
-- Reel & Shock
-- Boats (raft to submarine)
-- Aquarium (goldfish jar to wall aquarium)
-- Oceans
-- Bait
-- Crafting (buildings, decor and custom bait)
-- Luck & Idle
-
-Research takes real time, and a floating beaker shows its progress.
+Catch fish and keep them in your 3D tank, where they earn **Aero** (even while you're away). Follow the
+**quest lines**: 7 story chapters told by Bubbles the seal, Professor Fizz, Marina, Dot and Captain Bloat.
+Each chapter's reward opens the next ocean. Research in **The Lab**, laid out as rows of animated glass
+tiles per branch: plan tiles, then Confirm.
 
 ## What's inside
 
@@ -79,8 +70,8 @@ Research takes real time, and a floating beaker shows its progress.
   lens flares and splashes on the lens.
   - The camera crash-zooms in at key moments, and floating 3D voxel text appears in the Alagard font.
   - You answer with reply bubbles (click or press 1/2/3): pick your name, your boat paint and your first bait.
-  - **Clip**, a talking chrome paperclip with a glass-bubble face, guides the opening and the tutorial. Afterwards it
-    stays on as a hint helper.
+  - **Bubbles**, a chubby low-poly bubble seal, swims around the screen, points at things and guides the opening
+    and the tutorial. Afterwards it stays on as a hint helper.
 - **Living water**: a wave simulation where casting, bites, jumps, fights, the boat's wake, rain and your mouse all
   make ripples. The boat and boxes float on the waves. A custom water surface and underwater shading add glints,
   foam, light rays and splashes.
@@ -94,7 +85,8 @@ Research takes real time, and a floating beaker shows its progress.
   - **Sunken Metropolis**
   - **Lava Rift**
   - **The Deep Ocean**
-- **111 realistic voxel fish** with glossy Aero shine and translucent fins. Their names are internet and meme
+- **111 low-poly 3D fish** plus dolphins, whales, orcas, seals and turtles, faceted and softly painted, with
+  glossy shine and translucent fins. Their names are internet and meme
   puns:
   - Wi-Fish
   - Stonks Salmon
