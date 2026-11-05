@@ -545,10 +545,11 @@ export class DeepSea {
       const field = z < 0.33 ? this.shelfFront : this.shelfBack;
       return field.add({ kind, x, y: y + 1, z, s, layer: z < 0.33 ? 'front' : 'back', rng: r, ...o, cols: o.cols || plantCols(o.color || '#3a9a4a', fogC, fogAt(z), o) });
     };
-    const zs = () => r.float(-0.12, 0.62);
+    const zs = () => r.float(-0.4, 0.62);
     const recipe = SHELF[id] || SHELF.shallows;
+    const lowK = this.game.lowPower ? 0.5 : 1;
     for (const [kind, count, opts] of recipe) {
-      for (let i = 0; i < count; i++) {
+      for (let i = 0; i < Math.round(count * lowK); i++) {
         const x = r.float(6, W - 6), z = opts.z ? r.float(opts.z[0], opts.z[1]) : zs();
         const color = r.pick(opts.colors);
         const o = { color, size: r.float(...(opts.size || [0.9, 1.15])), bulb: opts.bulb };
@@ -769,6 +770,18 @@ export class DeepSea {
       this.giantT = 30 + Math.random() * 40;
       this.spawnGiant(v, deep);
     }
+    // keep the next giant / lunge creature warm while down there (their low-poly frames build ahead of time)
+    if (deep === 'midnight' || deep === 'abyss') {
+      const W = this.warm ||= { giant: null, lunge: null, t: 0 };
+      W.t -= dt;
+      if (W.t <= 0) {
+        W.t = 0.6;
+        if (!W.giant) W.giant = this.creature(deep === 'abyss' ? 380 : 270);
+        if (deep === 'abyss' && !W.lunge) W.lunge = this.creature(170, 'big');
+        this.warmUp(W.giant, v);
+        if (W.lunge) this.warmUp(W.lunge, v);
+      }
+    }
     // rumbles, creaks and moans
     this.rumbleT -= dt;
     if (this.rumbleT <= 0) {
@@ -818,16 +831,44 @@ export class DeepSea {
     return f;
   }
 
-  spawnGiant(v, deep) {
+  // A creature for a silhouette pass, sized to `want` world px. Pre-built so its first frames are ready in time.
+  creature(want, pick = 'any') {
     const pool = this.giantSpecies();
-    if (!pool.length) return;
-    const sp = pool[Math.floor(Math.random() * pool.length)];
+    if (!pool.length) return null;
+    const sp = pick === 'big' ? pool[0] : pool[Math.floor(Math.random() * pool.length)];
     let f;
-    try { f = this.makeCreature(sp); } catch (e) { this.fail(e); return; }
+    try { f = this.makeCreature(sp); } catch (e) { this.fail(e); return null; }
     const len = Math.max(sp.look.body?.len || 40, (sp.look.body?.h || 30) * 0.8);
-    const want = deep === 'abyss' ? 300 + Math.random() * 160 : 220 + Math.random() * 100;
-    const dir = Math.random() < 0.5 ? 1 : -1;
     f.scale = want / len;
+    return { f, sp, len: want };
+  }
+
+  // draw a waiting creature once into the offscreen layer so the rig builds its frames before it is needed
+  warmUp(c, v) {
+    if (!c?.f || !v) return;
+    const cam = this.game.camera;
+    if (!cam?.xform) return;
+    const W = this.game.screen?.W || 960, H = this.game.screen?.H || 540;
+    let L = this.giantLayer;
+    if (!L) L = this.giantLayer = makeLayer(W, H);
+    if (L.w !== W || L.h !== H) resizeLayer(L, W, H);
+    const [z, ox, oy] = cam.xform();
+    const g = L.ctx, f = c.f, px = f.x, py = f.y;
+    f.x = (v.x0 + v.x1) / 2; f.y = (v.y0 + v.y1) / 2;
+    g.setTransform(z, 0, 0, z, ox, oy);
+    this.drawCreature(g, f, 1, this.t, 0);
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, L.w, L.h);
+    f.x = px; f.y = py;
+  }
+
+  spawnGiant(v, deep) {
+    const want = deep === 'abyss' ? 300 + Math.random() * 160 : 220 + Math.random() * 100;
+    let c = this.warm?.giant;
+    if (c) { c.f.scale *= want / c.len; c.len = want; this.warm.giant = null; } else c = this.creature(want);
+    if (!c) return;
+    const { f, sp } = c;
+    const dir = Math.random() < 0.5 ? 1 : -1;
     f.facing = dir; f.turn = dir;
     const x = dir > 0 ? v.x0 - want * 0.7 : v.x1 + want * 0.7;
     const y = lerp(v.y0, v.y1, 0.3 + Math.random() * 0.4);
@@ -843,13 +884,12 @@ export class DeepSea {
       this.scare = { kind, t: 0, dur: 2.6, x: h.x + side * (54 + Math.random() * 16), y: h.y - 6 + Math.random() * 12, sep: 16 + Math.random() * 6 };
       g.audio?.play?.('roar', { vol: 0.42, pitch: 0.3 });
     } else {
-      const pool = this.giantSpecies();
-      if (!pool.length) return;
-      let f;
-      try { f = this.makeCreature(pool[0]); } catch (e) { this.fail(e); return; }
-      const sp = pool[0], len = Math.max(sp.look.body?.len || 40, (sp.look.body?.h || 30) * 0.8);
       const want = 170;
-      f.scale = want / len; f.facing = side; f.turn = side; f.z = 0.2;
+      const c = this.warm?.lunge || this.creature(want, 'big');
+      if (this.warm) this.warm.lunge = null;
+      if (!c) return;
+      const f = c.f;
+      f.facing = side; f.turn = side; f.z = 0.2;
       const x = h.x - side * (want + 80);
       this.scare = { kind, t: 0, dur: 1.6, f, x, y: h.y - 10, dir: side, v: (want * 2 + 160) / 1.4, len: want };
       g.audio?.play?.('roar', { vol: 0.5, pitch: 0.26 });
@@ -1064,7 +1104,7 @@ export class DeepSea {
     // a faint far glow haze the giants pass in front of
     if (z.id !== 'twilight') {
       const hx = (v.x0 + v.x1) / 2 + Math.sin(t * 0.05) * 60, hy = cy + 30;
-      drawGlow(ctx, hx, hy, 90, z.id === 'abyss' ? '#1a3a5a' : '#2a2a6a', 0.22 + 0.06 * Math.sin(t * 0.3));
+      drawGlow(ctx, hx, hy, 110, z.id === 'abyss' ? '#1a3a5a' : '#2a2a6a', 0.3 + 0.08 * Math.sin(t * 0.3));
     }
     // bioluminescent sparks (stateless, world-anchored)
     const cs = 40, glow = L.def.glow;
@@ -1153,17 +1193,17 @@ export class DeepSea {
     }
   }
 
-  drawCreature(ctx, f, a, t, len = 0) {
+  drawCreature(ctx, f, a, t, len = 0, col = '#000000') {
     if (!f?.c) return;
     try {
-      const st = f.rigState({ silhouette: '#000000', wash: null, glow: 0, time: t, noCull: false });
+      const st = f.rigState({ silhouette: col, wash: null, glow: 0, time: t, noCull: false });
       ctx.globalAlpha = a;
       const an = drawFishRig(ctx, f.c, st);
       ctx.globalAlpha = 1;
       // a pale glint of an eye near the head
       let eye = an?.eyes?.[0];
       if (!eye && len) eye = { x: f.x + f.facing * len * 0.36, y: f.y - len * 0.04, r: len * 0.012 };
-      if (eye) {
+      if (eye && col === '#000000') {
         const k = 0.6 + 0.3 * Math.sin(t * 2.2);
         drawGlow(ctx, eye.x, eye.y, Math.max(4, Math.round((eye.r || 2) * 2.2)), '#d8f0ff', k * 0.7);
         ctx.fillStyle = '#eaf6ff'; ctx.globalAlpha = k;
@@ -1184,6 +1224,11 @@ export class DeepSea {
     g.globalAlpha = 1;
     g.clearRect(0, 0, W, H);
     g.setTransform(m);
+    // a faint cold rim along its back (as if something far above lit it), then the body as a black void
+    const fx = G.f.x, fy = G.f.y;
+    G.f.x = fx - 1.2; G.f.y = fy - 1.4;
+    this.drawCreature(g, G.f, 0.5, t, 0, '#3a5a86');
+    G.f.x = fx; G.f.y = fy;
     this.drawCreature(g, G.f, 1, t, G.len);
     // the lantern's pool stays clear: the giant glides behind what the light shows
     const h = this.game.fishing?.hook;

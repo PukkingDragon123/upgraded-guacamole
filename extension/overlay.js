@@ -7535,7 +7535,7 @@ void main() {
     const infl = solid2 ? 0 : Math.round(clamp2(st.inflate || 0, 0, 1) * 3);
     const surprised = st.emotion === "surprised" || st.emotion === "scared";
     const mouth = !solid2 && ((st.mouth || 0) > 0.3 || surprised) ? 1 : 0;
-    const f = lpFrame(c, { S: S8, yaw, sw, infl, mouth, pri: st.pri ?? 1, force: (st.pri ?? 1) >= 3 });
+    const f = lpFrame(c, { S: S8, yaw, sw, infl, mouth, pri: st.pri ?? 1 });
     if (!f) return null;
     const k = f.k / zk / lowK;
     const sq = clamp2(st.squash || 0, -1, 1);
@@ -12695,7 +12695,10 @@ void main() {
     parts.push({ key: "eelbody", mb: body.mb, spec: 0.55, shine: 28, env: 0.45, iri: 0.12, rim: 0.35, ambient: 0.45 });
     if (!fins.empty) parts.push({ key: "fins", mb: fins.mb, alpha: 0.6, spec: 0.4, cull: false });
     const fi = parts.findIndex((q) => q.key === "fins");
-    const fj = parts.findLastIndex((q) => q.key === "fins");
+    let fj = -1;
+    parts.forEach((q, i) => {
+      if (q.key === "fins") fj = i;
+    });
     if (fi !== fj) {
       const A2 = parts[fi], B2 = parts[fj];
       const v = B2.mb.v;
@@ -13216,7 +13219,7 @@ void main() {
     } else {
       const fb = nearest(vid, sb, yawI, infl, mouth);
       const force = req.force || syncAll;
-      const first = !fb && forceSpent < FORCE_MS;
+      const first = (!fb || (req.pri ?? 1) >= 3) && forceSpent < FORCE_MS;
       if (force || canSpend() || first) {
         const t0 = now2();
         const deadline = force ? Infinity : t0 + Math.max(0.6, first ? FORCE_MS - forceSpent : budgetMs - spent);
@@ -13399,7 +13402,7 @@ void main() {
       TEX_HI = 320;
       SHEET_PX_MAX = 2e7;
       POSE_MAX = 900;
-      FORCE_MS = 14;
+      FORCE_MS = 10;
       MAX_SPRITE = 1500;
       clamp3 = (v, a, b) => v < a ? a : v > b ? b : v;
       clamp013 = (v) => v < 0 ? 0 : v > 1 ? 1 : v;

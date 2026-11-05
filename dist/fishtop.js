@@ -8995,7 +8995,7 @@ void main() {
     const infl = solid2 ? 0 : Math.round(clamp2(st.inflate || 0, 0, 1) * 3);
     const surprised = st.emotion === "surprised" || st.emotion === "scared";
     const mouth = !solid2 && ((st.mouth || 0) > 0.3 || surprised) ? 1 : 0;
-    const f = lpFrame(c, { S: S10, yaw, sw, infl, mouth, pri: st.pri ?? 1, force: (st.pri ?? 1) >= 3 });
+    const f = lpFrame(c, { S: S10, yaw, sw, infl, mouth, pri: st.pri ?? 1 });
     if (!f) return null;
     const k = f.k / zk / lowK;
     const sq = clamp2(st.squash || 0, -1, 1);
@@ -14161,7 +14161,59 @@ void main() {
     if (!glow.empty) parts.push({ key: "glow", mb: glow.mb, emit: 1, spec: 0.6, shine: 40 });
     if (!fins.empty) parts.push({ key: "fins", mb: fins.mb, texture: sk.cv, ...mat.fins });
     parts.sort((a, b) => (a.key === "glass") - (b.key === "glass"));
-    return { parts, anchors, eyes: eyeA, L: L2, flatRoll: flat ? flat.roll || 0 : 0 };
+    return { parts, anchors, eyes: eyeA, L: L2, flatRoll: flat ? flat.roll || 0 : 0, white: W8 };
+  }
+  function buildEel3D(c, sw, frames) {
+    const head = buildFish(c, 0, 0, 0, true);
+    const ph = sw / frames;
+    const r = c.chain?.r || 4, segs = c.chain?.segs || 14;
+    const len = segs * r * 1.25, N = 18, sides = 8;
+    const g = c.real?.seg || {};
+    const top = rgb01(g.top || c.real?.col?.back || "#666666"), side = rgb01(g.side || c.real?.col?.flank || "#888888"), bel = rgb01(g.belly || c.real?.col?.belly || "#dddddd");
+    const c2 = g.col2 ? rgb01(g.col2) : null, finC = rgb01(g.fin || c.real?.col?.fin || "#888888");
+    const body = new Part(), fins = new Part();
+    const rad = (t) => r * (1.05 - 0.75 * Math.pow(t, 1.3));
+    const P5 = (t) => [-t * len, 0, Math.sin(TAU3 * ph - t * 7.5) * r * 1.6 * Math.min(1, t * 3)];
+    const rings = [];
+    for (let k = 0; k <= N; k++) {
+      const t = k / N, p = P5(t), q = P5(Math.min(1, t + 0.01)), q0 = P5(Math.max(0, t - 0.01));
+      const tx = q[0] - q0[0], tz = q[2] - q0[2], tl = Math.hypot(tx, tz) || 1;
+      const nx = -tz / tl, nz = tx / tl;
+      const rr3 = rad(t);
+      rings.push(Array.from({ length: sides }, (_, j) => {
+        const a = j / sides * TAU3;
+        return [p[0] + nx * Math.sin(a) * rr3, p[1] + Math.cos(a) * rr3, p[2] + nz * Math.sin(a) * rr3];
+      }));
+    }
+    for (let k = 0; k < N; k++) for (let j = 0; j < sides; j++) {
+      const j2 = (j + 1) % sides, ny = Math.cos((j + 0.5) / sides * TAU3);
+      let col = ny > 0.45 ? top : ny < -0.5 ? bel : side;
+      if (c2 && g.pattern === "stripes" && (Math.abs(ny - 0.62) < 0.2 || Math.abs(ny + 0.1) < 0.18)) col = c2;
+      else if (c2 && (g.pattern === "spots" || g.pattern === "dots") && hash2(k, j, 7) > 0.75 && ny > -0.3) col = c2;
+      const a = rings[k][j], b = rings[k][j2], cc = rings[k + 1][j2], d = rings[k + 1][j];
+      body.quad(a, d, cc, b, toneRGB(col, (hash2(k * 3, j, 5) - 0.5) * 0.05));
+    }
+    const end = P5(1);
+    for (let j = 0; j < sides; j++) body.tri(rings[N][j], rings[N][(j + 1) % sides], [end[0] - r * 0.4, end[1], end[2]], side);
+    if (c.real) for (let k = 1; k < N; k++) {
+      const a = P5(k / N), b = P5((k + 1) / N), ha = rad(k / N), hb = rad((k + 1) / N);
+      fins.quad([a[0], ha * 0.8, a[2]], [b[0], hb * 0.8, b[2]], [b[0], hb * 1.6, b[2]], [a[0], ha * 1.6, a[2]], finC);
+    }
+    const parts = head.parts.slice();
+    parts.push({ key: "eelbody", mb: body.mb, spec: 0.55, shine: 28, env: 0.45, iri: 0.12, rim: 0.35, ambient: 0.45 });
+    if (!fins.empty) parts.push({ key: "fins", mb: fins.mb, alpha: 0.6, spec: 0.4, cull: false });
+    const fi = parts.findIndex((q) => q.key === "fins");
+    let fj = -1;
+    parts.forEach((q, i) => {
+      if (q.key === "fins") fj = i;
+    });
+    if (fi !== fj) {
+      const A2 = parts[fi], B2 = parts[fj];
+      const v = B2.mb.v;
+      for (let i = 0; i < v.length; i += 33) A2.mb.tri([v[i], v[i + 1], v[i + 2]], [v[i + 11], v[i + 12], v[i + 13]], [v[i + 22], v[i + 23], v[i + 24]], [v[i + 6], v[i + 7], v[i + 8]], A2.texture ? head.white : void 0, A2.texture ? head.white : void 0, A2.texture ? head.white : void 0);
+      parts.splice(fj, 1);
+    }
+    return { ...head, parts, L: c.L + len };
   }
   function part3(part2, base, tip, col, W8) {
     part2.tri(base[0], base[1], tip, col, W8, W8, W8);
@@ -14581,9 +14633,9 @@ void main() {
   function poseCached(c, sw, infl, mouth, frames = LP_SWIM, hi = false) {
     return poses.has(poseKey(c, sw, infl, mouth, frames, hi && c.real?.plan === "fish" && !c.turtle));
   }
-  function poseOf(c, sw, infl, mouth, frames = LP_SWIM, hi = false) {
+  function poseOf(c, sw, infl, mouth, frames = LP_SWIM, hi = false, eel3d = false) {
     hi = hi && c.real?.plan === "fish" && !c.turtle;
-    const key = poseKey(c, sw, infl, mouth, frames, hi);
+    const key = poseKey(c, sw, infl, mouth, frames, hi) + (eel3d ? "|eel" : "");
     let p = poses.get(key);
     if (p) {
       poses.delete(key);
@@ -14595,6 +14647,7 @@ void main() {
     let b;
     if (c.turtle) b = buildTurtle(c, ph);
     else if (c.custom) b = c.custom(c, sw);
+    else if (eel3d && c.kind === "chain") b = buildEel3D(c, sw, frames);
     else if (c.real?.plan === "solid") b = buildSolid(c, ph);
     else b = buildFish(c, ph, infl, mouth, hi);
     p = { ...b, parts: b.parts.map((q) => {
@@ -14788,7 +14841,7 @@ void main() {
     } else {
       const fb = nearest(vid, sb, yawI, infl, mouth);
       const force = req.force || syncAll;
-      const first = !fb && forceSpent < FORCE_MS;
+      const first = (!fb || (req.pri ?? 1) >= 3) && forceSpent < FORCE_MS;
       if (force || canSpend() || first) {
         const t03 = now2();
         const deadline = force ? Infinity : t03 + Math.max(0.6, first ? FORCE_MS - forceSpent : budgetMs - spent);
@@ -14924,6 +14977,7 @@ void main() {
     main.emitTex = !!main.texture;
     main.plain = textured.length && plain.length ? merge3(plain) : null;
     main.fins = finsP ? finsP.mesh : null;
+    main.finsTex = !!finsP?.texture;
     main.finAlpha = finsP?.alpha ?? 0.7;
     main.glass = glassP ? glassP.mesh : null;
     main.glow = merge3(glowL);
@@ -14942,7 +14996,7 @@ void main() {
     let m = meshCache.get(key);
     if (m) return m;
     if (!lpAvailable()) return null;
-    const p = poseOf(c, sw, infl, mouth, frames, o.hi ?? true);
+    const p = poseOf(c, sw, infl, mouth, frames, o.hi ?? true, true);
     m = meshFromPose(c, p);
     if (m) {
       meshCache.set(key, m);
@@ -14974,7 +15028,7 @@ void main() {
     scene2.add(mesh, model, { ...base, texture: mesh.texture, emitTex: mesh.emitTex });
     if (mesh.plain) scene2.add(mesh.plain, model, base);
     if (mesh.glow) scene2.add(mesh.glow, model, { ...base, emit: 1 });
-    if (mesh.fins) scene2.add(mesh.fins, model, { ...base, texture: mesh.texture, alpha: (o.alpha ?? 1) * mesh.finAlpha, cull: false, spec: 0.5, shine: 46 });
+    if (mesh.fins) scene2.add(mesh.fins, model, { ...base, texture: mesh.finsTex === false ? void 0 : mesh.texture, alpha: (o.alpha ?? 1) * mesh.finAlpha, cull: false, spec: 0.5, shine: 46 });
     if (mesh.glass) scene2.add(mesh.glass, model, { ...base, texture: mesh.texture, alpha: 0.5, cull: false, env: 0.6 });
     return scene2;
   }
@@ -15065,7 +15119,7 @@ void main() {
       TEX_HI = 320;
       SHEET_PX_MAX = 2e7;
       POSE_MAX = 900;
-      FORCE_MS = 14;
+      FORCE_MS = 10;
       MAX_SPRITE = 1500;
       clamp3 = (v, a, b) => v < a ? a : v > b ? b : v;
       clamp012 = (v) => v < 0 ? 0 : v > 1 ? 1 : v;
@@ -28349,6 +28403,7 @@ void main() {
         g.quad2([b[0], 0.4, b[2]], [a[0], 0.4, a[2]], a, b, rgb(sub4.side[j % 2]));
       }
       pebbles(g, T3, sub4, rnd, Math.round(fr * fr * 0.35 * sub4.pebN));
+      if (tier >= 1) driftwood(g, T3.floorPoint(0.3, 0.7, 3), T3.minDim * 0.022, 0.6, rnd);
       return;
     }
     const cell = Math.max(1.4, T3.W / 64);
@@ -28387,6 +28442,8 @@ void main() {
       g.rock(r, 31 + i * 7 + tier, rnd() > 0.5 ? "#8e98a8" : "#a8a090", { sy: 0.65 + rnd() * 0.3 });
       g.pop();
     }
+    driftwood(g, T3.floorPoint(0.28, 0.72, 4), T3.minDim * 0.03, -0.4, rnd);
+    if (tier >= 3) driftwood(g, T3.floorPoint(0.78, 0.62, 4), T3.minDim * 0.025, 2.6, rnd);
     if (tier >= 4) {
       for (let i = 0; i < 7; i++) {
         const u = 0.18 + i * 0.1, p = T3.floorPoint(u, 0.9, 3);
@@ -28398,6 +28455,25 @@ void main() {
         g.pop();
       }
     }
+  }
+  function driftwood(g, p, k, yaw, rnd) {
+    const wood = (i) => i % 2 ? "#8a5a3a" : "#7a4e30";
+    g.push();
+    g.at(p[0], p[1] - 0.4 * k, p[2]);
+    g.rotY(yaw);
+    const main = [[-14, 0, 0], [-8, 3, 1], [-2, 7, -0.5], [4, 12, 1], [8, 18, 0], [9, 22, 1.5]].map(([x, y, z]) => [x * k, y * k, z * k]);
+    g.tube(main, [2.2, 1.9, 1.6, 1.3, 0.9, 0.5].map((r) => r * k), 6, wood);
+    const branch2 = (from, pts, r) => g.tube([main[from], ...pts.map(([x, y, z]) => [x * k, y * k, z * k])], [r * k, r * 0.7 * k, r * 0.35 * k], 5, wood);
+    branch2(2, [[-6, 12, 3], [-9, 16, 5]], 1.1);
+    branch2(3, [[10, 14, -3], [14, 15, -5]], 0.9);
+    branch2(4, [[5, 22, -2], [3, 26, -2.5]], 0.6);
+    g.tube([main[0], [-17 * k, -0.5 * k, 3 * k], [-19 * k, -1 * k, 5 * k]], [1.6 * k, 0.9 * k, 0.3 * k], 5, "#6a4228");
+    g.push();
+    g.at(main[2][0], main[2][1], main[2][2]);
+    g.sphere(1.9 * k, 0, "#946238", { jit: 0.3, seed: 5 });
+    g.pop();
+    void rnd;
+    g.pop();
   }
   function sideStrip(g, a0, b0, a1, b1, band, cols) {
     const m = (p, q, t) => [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t, p[2] + (q[2] - p[2]) * t];
@@ -28786,7 +28862,7 @@ void main() {
           } else if (d < d2) d2 = d;
         }
         const e = Math.sqrt(d2) - Math.sqrt(d1);
-        const a = Math.max(0, 1 - e / 0.022);
+        const a = Math.max(0, 1 - e / 0.03);
         const k = (y * size + x) * 4;
         const al = Math.round(Math.pow(a, 1.6) * 255);
         img.data[k] = 255;
@@ -33186,8 +33262,18 @@ void main() {
     body.push();
     body.rotZ(Math.PI / 2);
     body.at(0, 0, 0);
-    body.lathe([[1, -4.4], [1.45, -3.6], [1.55, -2.2], [1.5, -0.6], [1.2, 0.2], [0.8, 0.6]], 9, (i) => i < 2 ? bot : top, { capBot: bot, capTop: top });
+    body.lathe([[1, -4.4], [1.4, -3.6], [1.45, -2.6], [1.42, -1.4], [1.3, -0.4], [1.05, 0.2], [0.7, 0.6]], 9, (i) => i < 3 ? bot : top, { capBot: bot, capTop: top });
     body.pop();
+    for (const z of [-0.5, 0.5]) {
+      body.push();
+      body.at(-2.9, 1.55, z);
+      body.rotZ(-Math.PI / 2);
+      body.cyl(0.55, 0.55, 3.2, 8, "#3ac4f8", { capCol: "#bff4ff" });
+      body.at(0, 3.2, 0);
+      body.cyl(0.3, 0.2, 0.5, 6, "#dfe8f0");
+      body.pop();
+    }
+    body.tube([[-0.6, 1.35, -0.5], [-0.2, 1.1, 0], [-0.6, 1.35, 0.5]], 0.14, 4, "#dfe8f0");
     body.push();
     body.at(0.75, 0, 0);
     body.rotZ(Math.PI / 2);
@@ -33236,8 +33322,8 @@ void main() {
     leg.tube([[-3.4, 0, 0], [-3.6, 0, 0]], 0.5, 6, "#ffe0c8", { caps: false });
     leg.push();
     leg.at(-3.6, 0, 0);
-    leg.fan([[0, 0, 0], [-3.2, 0.2, 1.1], [-3.6, 0, 0], [-3.2, -0.2, -1.1]].map(([x, y, z]) => [x, y * 0.3, z]), "#2fd3e8");
-    leg.fan([[0, 0.05, 0], [-2.6, 0.1, 0.8], [-2.9, 0.05, 0], [-2.6, 0.1, -0.8]], "#8af0ff");
+    leg.fan([[0.3, 0, 0], [-3.8, 0.2, 1.5], [-4.3, 0, 0], [-3.8, -0.2, -1.5]].map(([x, y, z]) => [x, y * 0.3, z]), "#ffd23a");
+    leg.fan([[0.2, 0.05, 0], [-3.1, 0.1, 1], [-3.5, 0.05, 0], [-3.1, 0.1, -1]], "#fff08a");
     leg.pop();
     const mkArm = (s) => {
       const arm = new Geo();
@@ -33721,7 +33807,7 @@ void main() {
           const fi = Math.floor(t * 9) % causticFrames().length;
           const tankT = (o) => sc.add(o.mesh, root, o.o);
           for (const gp of farPanes) this.addOrigin(gp, root, gp.a);
-          if (kit2.caustic && lightOn) tankT({ mesh: kit2.caustic, o: { texture: causticFrames()[fi], tint: [...mixc(kit2.lightCol, "#ffffff", 0.5), 1], alpha: 0.32 - night * 0.18 } });
+          if (kit2.caustic && lightOn) tankT({ mesh: kit2.caustic, o: { texture: causticFrames()[fi], tint: [...mixc(kit2.lightCol, "#ffffff", 0.5), 1], alpha: 0.42 - night * 0.22 } });
           if (this.shafts && lightOn) tankT({ mesh: this.shafts, o: { texture: shaftTexture(), tint: [...rgb(kit2.light.shaft), 1], alpha: (swim ? 0.2 : 0.15) * (1 - night * 0.5) } });
           const clrM = this.dyn.clear.end();
           if (clrM) tankT({ mesh: clrM, o: { alpha: 0.34, env: 0.8, iri: 0.6, spec: 0.9, shine: 50, rim: 0.6 } });
@@ -34024,9 +34110,6 @@ void main() {
         }
         get stats() {
           return this.game.stats || {};
-        }
-        get drops_() {
-          return this.drops;
         }
         get coins() {
           return this.drops;
@@ -34590,8 +34673,8 @@ void main() {
         }
         startGrow(grow3, rebuilt = false) {
           this.growAnim = { t: 0, from: grow3.from, fx: 0 };
-          if (!rebuilt || this.view.kit?.shape.tier !== this.tier) this.view.rebuild();
-          else this.view.rebuild();
+          this.view.rebuild();
+          void rebuilt;
           this.view.setPreset("front");
           this.sfx("ui_unlock", { vol: 0.8 });
           this.sfx("travel_whoosh", { vol: 0.5 });
@@ -34690,7 +34773,7 @@ void main() {
                 if (pr.moved) view.pan(dx, dy);
               } else {
                 this.press = null;
-                if (!pr.moved && pr.decor) this.storeDecor(pr.decor);
+                if (!pr.moved && pr.decor && this.arrange) this.storeDecor(pr.decor);
               }
             } else if (inp.down) {
               if (pr.moved) {
@@ -34718,8 +34801,9 @@ void main() {
           this.hoverFish = hf;
           if (hd && !this.drag) {
             const name = PROPS[hd.rec.id]?.name || "Decoration", verb = propInteract(hd.rec.id)?.verb || "Poke";
-            tip(`${name}
-{mouse_l} ${verb}  {mouse_hold} move  {mouse_r} store`);
+            tip(this.arrange ? `${name}
+{mouse_hold} move  wheel: turn  {mouse_r} store` : `${name}
+{mouse_l} ${verb}  {mouse_hold} move`);
           } else if (hf) tip(this.fishTip(hf));
           if (inp.wheel) {
             if (hd && (this.arrange || this.drag)) {
@@ -34967,10 +35051,15 @@ void main() {
           }
           return out;
         }
-        swimButtons(inp) {
+        swimLayout() {
           const W8 = this.game.screen.W;
-          const r = { x: Math.round(W8 / 2 + 120), y: 7, w: 64, h: 18 };
-          this.swimExitRect = r;
+          const msg = "WASD / arrows swim   Drag: look   Space: up   Shift: down   Click: dart";
+          const mw = measureText(msg, "small") + 20;
+          const x0 = Math.round(W8 / 2 - mw / 2 - 40);
+          return { msg, pill: { x: x0, y: 7, w: mw, h: 18 }, exit: { x: x0 + mw + 6, y: 7, w: 64, h: 18 } };
+        }
+        swimButtons(inp) {
+          const r = this.swimLayout().exit;
           if (rectContains(r, inp.x, inp.y)) {
             this.hoverBtn = "exitswim";
             if (inp.pressed) {
@@ -35038,11 +35127,12 @@ ${row2.g.desc}`, run: () => this.buyGear(row2.g.id) };
           }
           const T3 = this.shape;
           const r = clamp(T3.minDim * 0.14, 1.6, 7);
-          const p = [0, lerp(T3.floorY(0, 0), T3.waterY, 0.55), T3.round ? 0 : T3.size[2] * 0.2];
+          const p = [0, lerp(T3.floorY(0, 0), T3.waterY, 0.6), T3.round ? T3.size[2] * 0.12 : T3.size[2] * 0.32];
           T3.clamp(p, r);
           this.swim = { p, v: [0, 0, 0], yaw: Math.PI / 2, pitch: -0.05, roll: 0, r, speed: 0, kick: 0, look: { yaw: Math.PI / 2, pitch: -0.08 }, intro: 0, got: 0, goal: null, bubT: 0 };
           this.panel = null;
           this.arrange = false;
+          this.camEye = null;
           this.ripples.add(p[0], p[2], 1.4);
           for (let i = 0; i < 14; i++) this.addBubble([p[0] + rng.float(-r, r), p[1] + rng.float(-r, r), p[2] + rng.float(-r, r)], r * rng.float(0.05, 0.15));
           this.sfx("splash_small", { vol: 0.7 });
@@ -35175,10 +35265,22 @@ ${row2.g.desc}`, run: () => this.buyGear(row2.g.id) };
           const s = this.swim, T3 = this.shape;
           const L2 = s.look;
           const d = this.swimDir(L2.yaw, L2.pitch);
-          const back = s.r * 5.2, up = s.r * 1.25;
-          const eye = [s.p[0] - d[0] * back, s.p[1] - d[1] * back + up, s.p[2] - d[2] * back];
+          const back = s.r * 6.2, up = s.r * 1.7;
+          let eye = [s.p[0] - d[0] * back, s.p[1] - d[1] * back + up, s.p[2] - d[2] * back];
           T3.clamp(eye, 0.35, 0.3);
-          const target = [s.p[0] + d[0] * s.r * 1.4, s.p[1] + d[1] * s.r * 1.4 + s.r * 0.45, s.p[2] + d[2] * s.r * 1.4];
+          for (let k2 = 1; k2 <= 8; k2++) {
+            const q = [s.p[0] + (eye[0] - s.p[0]) * k2 / 8, s.p[1] + (eye[1] - s.p[1]) * k2 / 8, s.p[2] + (eye[2] - s.p[2]) * k2 / 8];
+            const hit = this.decor.some((dd) => q[1] < dd.p[1] + dd.h && Math.hypot(q[0] - dd.p[0], q[2] - dd.p[2]) < dd.r * 0.9);
+            if (hit) {
+              const kk = Math.max(0.25, (k2 - 1) / 8);
+              eye = [s.p[0] + (eye[0] - s.p[0]) * kk, s.p[1] + (eye[1] - s.p[1]) * kk + s.r * 0.6, s.p[2] + (eye[2] - s.p[2]) * kk];
+              break;
+            }
+          }
+          const ce = this.camEye || (this.camEye = eye.slice());
+          for (let i = 0; i < 3; i++) ce[i] = lerp(ce[i], eye[i], 0.25);
+          eye = ce.slice();
+          const target = [s.p[0] + d[0] * s.r * 1.8, s.p[1] + d[1] * s.r * 1.8 + s.r * 1, s.p[2] + d[2] * s.r * 1.8];
           const k = smoothstep(0, 1, s.intro);
           if (k < 1) {
             const v = this.view;
@@ -35289,7 +35391,7 @@ ${row2.g.desc}`, run: () => this.buyGear(row2.g.id) };
             this.moodT = 0.5;
             const cap2 = this.capacity();
             const crowd = 1 - clamp01((n2 / cap2 - 0.65) / 0.7) * 0.6;
-            const decor = clamp01((this.decor.length + this.view.plants?.list?.length * 0.2 || 0) / (1.5 + n2 * 0.35) + this.tier * 0.06);
+            const decor = clamp01((this.decor.length + (this.view.plants?.list?.length || 0) * 0.2) / (1.5 + n2 * 0.35) + this.tier * 0.06);
             const gh = gearHappy(this.st);
             const k = 1 - Math.exp(-step / 40);
             for (const f of this.fish) {
@@ -35438,6 +35540,10 @@ ${row2.g.desc}`, run: () => this.buyGear(row2.g.id) };
         // effects at a 3D point: real bubbles in the water + screen-space sparkle / text particles
         fxAt(p, kind2, n2 = 6, r = 0, text = null) {
           const T3 = this.shape;
+          if (kind2 === "food") {
+            this.sprinkle(p[0], p[2], Math.min(8, n2));
+            return;
+          }
           if (kind2 === "bubbles" || kind2 === "foam" || kind2 === "steam" || kind2 === "smoke") {
             for (let i = 0; i < n2; i++) this.addBubble([p[0] + rng.float(-1, 1), p[1], p[2] + rng.float(-1, 1)], T3.fishLen * rng.float(0.03, 0.08));
             return;
@@ -35627,12 +35733,10 @@ ${hearts} ${status}
           const t = this.t;
           if (this.swim) {
             const s = this.swim;
-            const msg = "WASD / arrows swim   Drag: look   Space: up   Shift: down   Click: dart";
-            const mw = measureText(msg, "small") + 20;
-            drawAeroSurface(ctx2, Math.round(W8 / 2 - mw / 2 - 40), 7, mw, 18, { tone: "frost", r: "pill", gloss: 0.75, glossH: 8, rim: 0.9, glow: 0.5 });
-            drawText(ctx2, msg, Math.round(W8 / 2 - 40), 13, { font: "small", align: "center", color: AERO.ink });
-            const r = { x: Math.round(W8 / 2 + mw / 2 - 30), y: 7, w: 64, h: 18 };
-            this.swimExitRect = r;
+            const lay = this.swimLayout(), pl = lay.pill;
+            drawAeroSurface(ctx2, pl.x, pl.y, pl.w, pl.h, { tone: "frost", r: "pill", gloss: 0.75, glossH: 8, rim: 0.9, glow: 0.5 });
+            drawText(ctx2, lay.msg, pl.x + pl.w / 2, 13, { font: "small", align: "center", color: AERO.ink });
+            const r = lay.exit;
             drawAeroButton(ctx2, r.x, r.y, r.w, r.h, { label: "Exit", icon: getUiIcon("arrow_u"), state: this.hoverBtn === "exitswim" ? "hover" : "normal", tone: "aqua" });
             if (s.got) {
               drawAeroCoin(ctx2, W8 / 2 - 14, 38, 5, t);
@@ -54543,6 +54647,17 @@ ${hearts} ${status}
             this.giantT = 30 + Math.random() * 40;
             this.spawnGiant(v, deep);
           }
+          if (deep === "midnight" || deep === "abyss") {
+            const W8 = this.warm || (this.warm = { giant: null, lunge: null, t: 0 });
+            W8.t -= dt;
+            if (W8.t <= 0) {
+              W8.t = 0.6;
+              if (!W8.giant) W8.giant = this.creature(deep === "abyss" ? 380 : 270);
+              if (deep === "abyss" && !W8.lunge) W8.lunge = this.creature(170, "big");
+              this.warmUp(W8.giant, v);
+              if (W8.lunge) this.warmUp(W8.lunge, v);
+            }
+          }
           this.rumbleT -= dt;
           if (this.rumbleT <= 0) {
             this.rumbleT = deep === "abyss" ? 7 + Math.random() * 10 : deep === "midnight" ? 12 + Math.random() * 14 : 20;
@@ -54595,21 +54710,53 @@ ${hearts} ${status}
           f.z = 0.5;
           return f;
         }
-        spawnGiant(v, deep) {
+        // A creature for a silhouette pass, sized to `want` world px. Pre-built so its first frames are ready in time.
+        creature(want, pick3 = "any") {
           const pool = this.giantSpecies();
-          if (!pool.length) return;
-          const sp = pool[Math.floor(Math.random() * pool.length)];
+          if (!pool.length) return null;
+          const sp = pick3 === "big" ? pool[0] : pool[Math.floor(Math.random() * pool.length)];
           let f;
           try {
             f = this.makeCreature(sp);
           } catch (e) {
             this.fail(e);
-            return;
+            return null;
           }
           const len = Math.max(sp.look.body?.len || 40, (sp.look.body?.h || 30) * 0.8);
-          const want = deep === "abyss" ? 300 + Math.random() * 160 : 220 + Math.random() * 100;
-          const dir = Math.random() < 0.5 ? 1 : -1;
           f.scale = want / len;
+          return { f, sp, len: want };
+        }
+        // draw a waiting creature once into the offscreen layer so the rig builds its frames before it is needed
+        warmUp(c, v) {
+          if (!c?.f || !v) return;
+          const cam = this.game.camera;
+          if (!cam?.xform) return;
+          const W8 = this.game.screen?.W || 960, H8 = this.game.screen?.H || 540;
+          let L2 = this.giantLayer;
+          if (!L2) L2 = this.giantLayer = makeLayer(W8, H8);
+          if (L2.w !== W8 || L2.h !== H8) resizeLayer(L2, W8, H8);
+          const [z, ox, oy] = cam.xform();
+          const g = L2.ctx, f = c.f, px2 = f.x, py = f.y;
+          f.x = (v.x0 + v.x1) / 2;
+          f.y = (v.y0 + v.y1) / 2;
+          g.setTransform(z, 0, 0, z, ox, oy);
+          this.drawCreature(g, f, 1, this.t, 0);
+          g.setTransform(1, 0, 0, 1, 0, 0);
+          g.clearRect(0, 0, L2.w, L2.h);
+          f.x = px2;
+          f.y = py;
+        }
+        spawnGiant(v, deep) {
+          const want = deep === "abyss" ? 300 + Math.random() * 160 : 220 + Math.random() * 100;
+          let c = this.warm?.giant;
+          if (c) {
+            c.f.scale *= want / c.len;
+            c.len = want;
+            this.warm.giant = null;
+          } else c = this.creature(want);
+          if (!c) return;
+          const { f, sp } = c;
+          const dir = Math.random() < 0.5 ? 1 : -1;
           f.facing = dir;
           f.turn = dir;
           const x = dir > 0 ? v.x0 - want * 0.7 : v.x1 + want * 0.7;
@@ -54625,18 +54772,11 @@ ${hearts} ${status}
             this.scare = { kind: kind2, t: 0, dur: 2.6, x: h.x + side * (54 + Math.random() * 16), y: h.y - 6 + Math.random() * 12, sep: 16 + Math.random() * 6 };
             g.audio?.play?.("roar", { vol: 0.42, pitch: 0.3 });
           } else {
-            const pool = this.giantSpecies();
-            if (!pool.length) return;
-            let f;
-            try {
-              f = this.makeCreature(pool[0]);
-            } catch (e) {
-              this.fail(e);
-              return;
-            }
-            const sp = pool[0], len = Math.max(sp.look.body?.len || 40, (sp.look.body?.h || 30) * 0.8);
             const want = 170;
-            f.scale = want / len;
+            const c = this.warm?.lunge || this.creature(want, "big");
+            if (this.warm) this.warm.lunge = null;
+            if (!c) return;
+            const f = c.f;
             f.facing = side;
             f.turn = side;
             f.z = 0.2;
@@ -54840,7 +54980,7 @@ ${hearts} ${status}
           const deepK = z.id === "abyss" ? 1 : z.id === "midnight" ? 0.7 : 0.35;
           if (z.id !== "twilight") {
             const hx = (v.x0 + v.x1) / 2 + Math.sin(t * 0.05) * 60, hy = cy + 30;
-            drawGlow(ctx2, hx, hy, 90, z.id === "abyss" ? "#1a3a5a" : "#2a2a6a", 0.22 + 0.06 * Math.sin(t * 0.3));
+            drawGlow(ctx2, hx, hy, 110, z.id === "abyss" ? "#1a3a5a" : "#2a2a6a", 0.3 + 0.08 * Math.sin(t * 0.3));
           }
           const cs = 40, glow = L2.def.glow;
           const iy0 = Math.floor(Math.max(v.y0, this.H + 30) / cs), iy1 = Math.floor(v.y1 / cs);
@@ -54926,16 +55066,16 @@ ${hearts} ${status}
             }
           }
         }
-        drawCreature(ctx2, f, a, t, len = 0) {
+        drawCreature(ctx2, f, a, t, len = 0, col = "#000000") {
           if (!f?.c) return;
           try {
-            const st = f.rigState({ silhouette: "#000000", wash: null, glow: 0, time: t, noCull: false });
+            const st = f.rigState({ silhouette: col, wash: null, glow: 0, time: t, noCull: false });
             ctx2.globalAlpha = a;
             const an = drawFishRig(ctx2, f.c, st);
             ctx2.globalAlpha = 1;
             let eye = an?.eyes?.[0];
             if (!eye && len) eye = { x: f.x + f.facing * len * 0.36, y: f.y - len * 0.04, r: len * 0.012 };
-            if (eye) {
+            if (eye && col === "#000000") {
               const k = 0.6 + 0.3 * Math.sin(t * 2.2);
               drawGlow(ctx2, eye.x, eye.y, Math.max(4, Math.round((eye.r || 2) * 2.2)), "#d8f0ff", k * 0.7);
               ctx2.fillStyle = "#eaf6ff";
@@ -54959,6 +55099,12 @@ ${hearts} ${status}
           g.globalAlpha = 1;
           g.clearRect(0, 0, W8, H8);
           g.setTransform(m);
+          const fx = G.f.x, fy = G.f.y;
+          G.f.x = fx - 1.2;
+          G.f.y = fy - 1.4;
+          this.drawCreature(g, G.f, 0.5, t, 0, "#3a5a86");
+          G.f.x = fx;
+          G.f.y = fy;
           this.drawCreature(g, G.f, 1, t, G.len);
           const h = this.game.fishing?.hook;
           if (h?.visible) {
@@ -71815,6 +71961,7 @@ kmlmk..
         skip() {
           if (this.skipT >= 0 || !this.active) return;
           this.skipT = 0;
+          this.skipAt = performance.now();
           this.sfx("travel_whoosh", { vol: 0.5 });
           this.dlg.clear();
         }
@@ -71980,7 +72127,7 @@ kmlmk..
               this.handed = true;
               this.o.onHandoff?.();
             }
-            if (this.skipT > 0.5) this.finish();
+            if (this.skipT > 0.5 || performance.now() - (this.skipAt ?? 0) > 650) this.finish();
             return;
           }
           if (this.tasks.length) this.runTasks(4, this.t + 1.5);

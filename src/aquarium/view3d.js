@@ -339,7 +339,7 @@ export class TankView {
     const fi = Math.floor(t * 9) % causticFrames().length;
     const tankT = (o) => sc.add(o.mesh, root, o.o);
     for (const gp of farPanes) this.addOrigin(gp, root, gp.a);
-    if (kit.caustic && lightOn) tankT({ mesh: kit.caustic, o: { texture: causticFrames()[fi], tint: [...mixc(kit.lightCol, '#ffffff', 0.5), 1], alpha: (0.32 - night * 0.18) } });
+    if (kit.caustic && lightOn) tankT({ mesh: kit.caustic, o: { texture: causticFrames()[fi], tint: [...mixc(kit.lightCol, '#ffffff', 0.5), 1], alpha: (0.42 - night * 0.22) } });
     if (this.shafts && lightOn) tankT({ mesh: this.shafts, o: { texture: shaftTexture(), tint: [...rgb(kit.light.shaft), 1], alpha: (swim ? 0.2 : 0.15) * (1 - night * 0.5) } });
     const clrM = this.dyn.clear.end(); if (clrM) tankT({ mesh: clrM, o: { alpha: 0.34, env: 0.8, iri: 0.6, spec: 0.9, shine: 50, rim: 0.6 } });
     const ga = aq.growAnim;

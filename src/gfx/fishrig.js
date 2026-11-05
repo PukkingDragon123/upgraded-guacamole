@@ -157,7 +157,7 @@ function drawBody(ctx, c, st) {
   const infl = solid ? 0 : Math.round(clamp(st.inflate || 0, 0, 1) * 3);
   const surprised = st.emotion === 'surprised' || st.emotion === 'scared';
   const mouth = !solid && ((st.mouth || 0) > 0.3 || surprised) ? 1 : 0;
-  const f = lpFrame(c, { S, yaw, sw, infl, mouth, pri: st.pri ?? 1, force: (st.pri ?? 1) >= 3 });
+  const f = lpFrame(c, { S, yaw, sw, infl, mouth, pri: st.pri ?? 1 });
   if (!f) return null;
   const k = f.k / zk / lowK;
   const sq = clamp(st.squash || 0, -1, 1);

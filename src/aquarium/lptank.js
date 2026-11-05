@@ -88,6 +88,7 @@ function substrate(g, T, sub, rnd, tier) {
       g.quad2([b[0], 0.4, b[2]], [a[0], 0.4, a[2]], a, b, rgb(sub.side[j % 2]));
     }
     pebbles(g, T, sub, rnd, Math.round(fr * fr * 0.35 * sub.pebN));
+    if (tier >= 1) driftwood(g, T.floorPoint(0.3, 0.7, 3), T.minDim * 0.022, 0.6, rnd);
     return;
   }
   const cell = Math.max(1.4, T.W / 64);
@@ -122,6 +123,9 @@ function substrate(g, T, sub, rnd, tier) {
     g.rock(r, 31 + i * 7 + tier, rnd() > 0.5 ? '#8e98a8' : '#a8a090', { sy: 0.65 + rnd() * 0.3 });
     g.pop();
   }
+  // driftwood: a gnarled branch arching out of the gravel (two for the bigger tanks)
+  driftwood(g, T.floorPoint(0.28, 0.72, 4), T.minDim * 0.03, -0.4, rnd);
+  if (tier >= 3) driftwood(g, T.floorPoint(0.78, 0.62, 4), T.minDim * 0.025, 2.6, rnd);
   if (tier >= 4) {
     // live rock arch at the back with encrusting colour
     for (let i = 0; i < 7; i++) {
@@ -132,6 +136,22 @@ function substrate(g, T, sub, rnd, tier) {
       g.pop();
     }
   }
+}
+
+function driftwood(g, p, k, yaw, rnd) {
+  const wood = (i) => (i % 2 ? '#8a5a3a' : '#7a4e30');
+  g.push(); g.at(p[0], p[1] - 0.4 * k, p[2]); g.rotY(yaw);
+  const main = [[-14, 0, 0], [-8, 3, 1], [-2, 7, -0.5], [4, 12, 1], [8, 18, 0], [9, 22, 1.5]].map(([x, y, z]) => [x * k, y * k, z * k]);
+  g.tube(main, [2.2, 1.9, 1.6, 1.3, 0.9, 0.5].map((r) => r * k), 6, wood);
+  const branch = (from, pts, r) => g.tube([main[from], ...pts.map(([x, y, z]) => [x * k, y * k, z * k])], [r * k, r * 0.7 * k, r * 0.35 * k], 5, wood);
+  branch(2, [[-6, 12, 3], [-9, 16, 5]], 1.1);
+  branch(3, [[10, 14, -3], [14, 15, -5]], 0.9);
+  branch(4, [[5, 22, -2], [3, 26, -2.5]], 0.6);
+  // roots and a knot
+  g.tube([main[0], [-17 * k, -0.5 * k, 3 * k], [-19 * k, -1 * k, 5 * k]], [1.6 * k, 0.9 * k, 0.3 * k], 5, '#6a4228');
+  g.push(); g.at(main[2][0], main[2][1], main[2][2]); g.sphere(1.9 * k, 0, '#946238', { jit: 0.3, seed: 5 }); g.pop();
+  void rnd;
+  g.pop();
 }
 
 function sideStrip(g, a0, b0, a1, b1, band, cols) {
@@ -489,7 +509,7 @@ export function causticFrames() {
         if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) d2 = d;
       }
       const e = Math.sqrt(d2) - Math.sqrt(d1);
-      const a = Math.max(0, 1 - e / 0.022);
+      const a = Math.max(0, 1 - e / 0.03);
       const k = (y * size + x) * 4;
       const al = Math.round(Math.pow(a, 1.6) * 255);
       img.data[k] = 255; img.data[k + 1] = 255; img.data[k + 2] = 255; img.data[k + 3] = al > 40 ? al : 0;

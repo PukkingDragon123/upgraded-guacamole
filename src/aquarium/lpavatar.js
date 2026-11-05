@@ -24,8 +24,16 @@ export function avatarKit(look) {
   const body = new Geo();
   body.jit = 0.06;
   body.push(); body.rotZ(Math.PI / 2); body.at(0, 0, 0);
-  body.lathe([[1.0, -4.4], [1.45, -3.6], [1.55, -2.2], [1.5, -0.6], [1.2, 0.2], [0.8, 0.6]], 9, (i) => (i < 2 ? bot : top), { capBot: bot, capTop: top });
+  body.lathe([[1.0, -4.4], [1.4, -3.6], [1.45, -2.6], [1.42, -1.4], [1.3, -0.4], [1.05, 0.2], [0.7, 0.6]], 9, (i) => (i < 3 ? bot : top), { capBot: bot, capTop: top });
   body.pop();
+  // a glossy aqua Aero air tank on the back (reads as a little diver from behind)
+  for (const z of [-0.5, 0.5]) {
+    body.push(); body.at(-2.9, 1.55, z); body.rotZ(-Math.PI / 2);
+    body.cyl(0.55, 0.55, 3.2, 8, '#3ac4f8', { capCol: '#bff4ff' });
+    body.at(0, 3.2, 0); body.cyl(0.3, 0.2, 0.5, 6, '#dfe8f0');
+    body.pop();
+  }
+  body.tube([[-0.6, 1.35, -0.5], [-0.2, 1.1, 0], [-0.6, 1.35, 0.5]], 0.14, 4, '#dfe8f0');
   // neck ring the bubble sits on
   body.push(); body.at(0.75, 0, 0); body.rotZ(Math.PI / 2);
   const ring = []; for (let i = 0; i <= 14; i++) { const a = (i / 14) * Math.PI * 2; ring.push([Math.cos(a) * 1.1, 0, Math.sin(a) * 1.1]); }
@@ -52,8 +60,8 @@ export function avatarKit(look) {
   leg.tube([[0, 0, 0], [-1.8, -0.1, 0], [-3.4, 0, 0]], [0.62, 0.55, 0.45], 6, bot);
   leg.tube([[-3.4, 0, 0], [-3.6, 0, 0]], 0.5, 6, '#ffe0c8', { caps: false });
   leg.push(); leg.at(-3.6, 0, 0);
-  leg.fan([[0, 0, 0], [-3.2, 0.2, 1.1], [-3.6, 0, 0], [-3.2, -0.2, -1.1]].map(([x, y, z]) => [x, y * 0.3, z]), '#2fd3e8');
-  leg.fan([[0, 0.05, 0], [-2.6, 0.1, 0.8], [-2.9, 0.05, 0], [-2.6, 0.1, -0.8]], '#8af0ff');
+  leg.fan([[0.3, 0, 0], [-3.8, 0.2, 1.5], [-4.3, 0, 0], [-3.8, -0.2, -1.5]].map(([x, y, z]) => [x, y * 0.3, z]), '#ffd23a');
+  leg.fan([[0.2, 0.05, 0], [-3.1, 0.1, 1.0], [-3.5, 0.05, 0], [-3.1, 0.1, -1.0]], '#fff08a');
   leg.pop();
   // an arm, pivot at the shoulder, reaching forward (+x) when stroking
   const mkArm = (s) => {

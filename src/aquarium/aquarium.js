@@ -899,10 +899,10 @@ export class Aquarium {
     if (!this.view.ok) { this.game.toast?.('Swimming needs WebGL2.', 'info'); return; }
     const T = this.shape;
     const r = clamp(T.minDim * 0.14, 1.6, 7);
-    const p = [0, lerp(T.floorY(0, 0), T.waterY, 0.55), T.round ? 0 : T.size[2] * 0.2];
+    const p = [0, lerp(T.floorY(0, 0), T.waterY, 0.6), T.round ? T.size[2] * 0.12 : T.size[2] * 0.32];
     T.clamp(p, r);
     this.swim = { p, v: [0, 0, 0], yaw: Math.PI / 2, pitch: -0.05, roll: 0, r, speed: 0, kick: 0, look: { yaw: Math.PI / 2, pitch: -0.08 }, intro: 0, got: 0, goal: null, bubT: 0 };
-    this.panel = null; this.arrange = false;
+    this.panel = null; this.arrange = false; this.camEye = null;
     this.ripples.add(p[0], p[2], 1.4);
     for (let i = 0; i < 14; i++) this.addBubble([p[0] + rng.float(-r, r), p[1] + rng.float(-r, r), p[2] + rng.float(-r, r)], r * rng.float(0.05, 0.15));
     this.sfx('splash_small', { vol: 0.7 });
@@ -1018,10 +1018,19 @@ export class Aquarium {
     const s = this.swim, T = this.shape;
     const L = s.look;
     const d = this.swimDir(L.yaw, L.pitch);
-    const back = s.r * 5.2, up = s.r * 1.25;
-    const eye = [s.p[0] - d[0] * back, s.p[1] - d[1] * back + up, s.p[2] - d[2] * back];
+    const back = s.r * 6.2, up = s.r * 1.7;
+    let eye = [s.p[0] - d[0] * back, s.p[1] - d[1] * back + up, s.p[2] - d[2] * back];
     T.clamp(eye, 0.35, 0.3);
-    const target = [s.p[0] + d[0] * s.r * 1.4, s.p[1] + d[1] * s.r * 1.4 + s.r * 0.45, s.p[2] + d[2] * s.r * 1.4];
+    // keep the camera out of decorations: stop before the first one between the swimmer and the eye
+    for (let k = 1; k <= 8; k++) {
+      const q = [s.p[0] + (eye[0] - s.p[0]) * k / 8, s.p[1] + (eye[1] - s.p[1]) * k / 8, s.p[2] + (eye[2] - s.p[2]) * k / 8];
+      const hit = this.decor.some((dd) => q[1] < dd.p[1] + dd.h && Math.hypot(q[0] - dd.p[0], q[2] - dd.p[2]) < dd.r * 0.9);
+      if (hit) { const kk = Math.max(0.25, (k - 1) / 8); eye = [s.p[0] + (eye[0] - s.p[0]) * kk, s.p[1] + (eye[1] - s.p[1]) * kk + s.r * 0.6, s.p[2] + (eye[2] - s.p[2]) * kk]; break; }
+    }
+    const ce = (this.camEye ||= eye.slice());
+    for (let i = 0; i < 3; i++) ce[i] = lerp(ce[i], eye[i], 0.25);
+    eye = ce.slice();
+    const target = [s.p[0] + d[0] * s.r * 1.8, s.p[1] + d[1] * s.r * 1.8 + s.r * 1.0, s.p[2] + d[2] * s.r * 1.8];
     // dive-in: glide from the orbit camera into the water
     const k = smoothstep(0, 1, s.intro);
     if (k < 1) {

@@ -32,7 +32,8 @@
 //   addFishToScene(scene, mesh, model4x4, o?)  adds a fishMesh / creatureMesh with the right per-part options
 //   lpFrame(c, req) -> {canvas, sx, sy, w, h, ax, ay, k, anchors, eyes} | null       (sprite frames, fishrig.js)
 //       c = compiled look (spritecache.compiled); req {S (device px per look px), yaw (deg, 0 = side view facing
-//       right, 90 = toward the viewer), sw (0..LP_SWIM-1), infl (0..3), mouth (0|1), pri, force}
+//       right, 90 = toward the viewer), sw (0..LP_SWIM-1), infl (0..3), mouth (0|1), pri (>= 3 hero close-up: a
+//       capped extra build allowance), force (build now, whatever it costs)}
 //   creatureFrame(kind, req) -> same as lpFrame for creatureMesh kinds (far giants)
 //   lpTube(c, rPx) -> {canvas, ax, ay, r, w, h} faceted body pill for chain creatures (lpBall: a faceted ball)
 //   lpOrb(r, hex, glow) -> {canvas, ax, ay} glossy faceted orb (Wakka pellets); lpCrabLook(color) seabed crab look
@@ -62,7 +63,7 @@ const CAM_TILT = 13;
 const TEX_LO = 150, TEX_HI = 320;  // skin texture px along the body length (hi: close-ups, catch card, tank)
 const SHEET_PX_MAX = 20e6;        // sprite sheet cache (pixels)
 const POSE_MAX = 900;             // cached pose meshes
-const FORCE_MS = 14;              // extra allowance per frame for creatures that have nothing to show yet
+const FORCE_MS = 10;              // extra allowance per frame for creatures that have nothing to show yet (and heroes)
 const MAX_SPRITE = 1500;          // px: bigger creatures render at a lower scale and are drawn scaled up
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -1571,7 +1572,8 @@ export function lpFrame(c, req) {
   else {
     const fb = nearest(vid, sb, yawI, infl, mouth);
     const force = req.force || syncAll;
-    const first = !fb && forceSpent < FORCE_MS;
+    // creatures with nothing to show yet, and hero close-ups (pri >= 3), share a capped extra allowance per frame
+    const first = (!fb || (req.pri ?? 1) >= 3) && forceSpent < FORCE_MS;
     if (force || canSpend() || first) {
       const t0 = now();
       const deadline = force ? Infinity : t0 + Math.max(0.6, first ? FORCE_MS - forceSpent : budgetMs - spent);
