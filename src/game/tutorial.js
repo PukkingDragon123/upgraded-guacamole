@@ -293,7 +293,11 @@ export class Tutorial {
     if (!inp) return false;
     if (this.dlg.choosing && this.dlg.choiceRects().some((r) => inp.x >= r.x && inp.y >= r.y && inp.x < r.x + r.w && inp.y < r.y + r.h)) return true;
     const h = this.helperRect();
-    return !!(h && inp.x >= h.x && inp.y >= h.y && inp.x < h.x + h.w && inp.y < h.y + h.h);
+    const over = !!(h && inp.x >= h.x && inp.y >= h.y && inp.x < h.x + h.w && inp.y < h.y + h.h);
+    // game.js asks this before anything else uses the pointer: latch a click on the helper here, so a busy line
+    // (a bite or fight takes the pointer first) cannot swallow it
+    if (over && inp.pressed && !this.active) this.helperClick = true;
+    return over;
   }
   boxVisible() { return !this.intro; }
   boxOffset() { return 0; }
@@ -571,7 +575,8 @@ export class Tutorial {
   helperRect() {
     if (this.active || !this.helperOn()) return null;
     if (this.helper.show < 0.05 && !this.seal.anchors) return this.homeRect();
-    return this.seal.rect();
+    const r = this.seal.rect(), m = 6; // a forgiving click target
+    return { x: r.x - m, y: r.y - m, w: r.w + m * 2, h: r.h + m * 2 };
   }
 
   // where the helper rests: the bottom right edge (the left edge while a fight needs the corner)
@@ -607,8 +612,10 @@ export class Tutorial {
     S.update(dt, { W: g.screen.W, H: g.screen.H, cursor: inp && !this.helperHover ? [inp.x, inp.y] : null, talk: this.dlg.typing, noShy: true });
     const r = this.helperRect();
     this.helperHover = !!(r && inp && inp.x >= r.x && inp.y >= r.y && inp.x < r.x + r.w && inp.y < r.y + r.h);
-    if (this.helperHover && inp?.pressed) {
-      inp.consume?.();
+    const click = this.helperClick || (this.helperHover && inp?.pressed);
+    this.helperClick = false;
+    if (click) {
+      inp?.consume?.();
       this.dlg.vars.name = this.anglerName();
       const tip = this.hintTip();
       Hh.at = tip.at && this.iconRect(tip.at) ? tip.at : null;

@@ -234,7 +234,10 @@ async function fishOnce(attempt) {
       assisted = await G(`(() => { const f = g.fishing, h = f.hook, s = g.school; if (!s || !f.requestNibble || f.state !== 'idle') return false; let best = null, bd = 1e9; for (const x of s.fishes) { if (x.giant || x.boss || x.controlled) continue; const d = Math.hypot(x.x - h.x, x.y - h.y); if (d < bd) { bd = d; best = x; } } return !!(best && f.requestNibble(best)); })()`);
       if (assisted) note('test assist: the nearest fish was invited to nibble (slow machine)');
     }
-    if (!bit && i % 25 === 24) {
+    // jiggle / move toward fish only while nothing is already coming for the bait (a click while a fish nibbles
+    // scares it off, and a quick mouse move on a slow machine reads as a frantic jerk)
+    const keen = !bit && i % 25 === 24 && await G(`g.fishing.state !== 'idle' || g.school.fishes.some((f) => !f.controlled && (f.state === 'interest' || f.state === 'sniff'))`);
+    if (!bit && i % 25 === 24 && !keen) {
       const near = await G(`(() => { const h = g.fishing.hook, s = g.world.surfaceY ?? 0; let best = null, bd = 1e9; for (const f of g.school.fishes) { if (f.z > 0.6 || f.y < s + 12) continue; const d = Math.hypot(f.x - h.x, f.y - h.y); if (d < bd) { bd = d; best = f; } } if (!best) return null; const c = g.camera; return c && c.worldToScreen ? c.worldToScreen(best.x + (best.facing || 1) * 26, best.y) : [best.x, best.y]; })()`);
       if (near) await moveL(clampX(near[0]), clampY(near[1]), 10);
       await page.mouse.down(); await page.mouse.up(); // jiggle the lure
@@ -346,12 +349,20 @@ check('full HUD after the tutorial', !!(await iconRect('lab')) && !!(await iconR
 // the seal's "keep me around?" question auto-answers yes; then the hint helper gives a tip on click
 await until(() => !window.FISHTOP.tutorial.active, 20000);
 check("'tutorialDone' emitted (quests can start)", (await ev('tutorialDone')) === 1, String(await ev('tutorialDone')));
-await wait(1500); // the helper swims to its corner
+// the helper swims to its corner and settles on its bubble
+await until(() => { const T = window.FISHTOP.tutorial; return !T.seal || (T.helperRect() && T.seal.settled); }, 20000);
 const hr = await G('g.tutorial.helperRect && g.tutorial.helperRect()');
-check('seal hint helper available', !!hr);
+check('seal hint helper available', !!hr, JSON.stringify(hr && [Math.round(hr.x), Math.round(hr.y)]));
 if (hr) {
-  await clickRect(hr);
-  check('hint helper gives a tip', await until(() => { const d = window.FISHTOP.tutorial.dialogue; return !!(d && d.line && d.line.text); }, 6000), String(await G('g.tutorial.dialogue.line && g.tutorial.dialogue.line.text')));
+  // click the seal (it may still drift a little on a slow machine: re-read its rect and retry)
+  let tipped = false;
+  for (let k = 0; k < 3 && !tipped; k++) {
+    const r = await G('g.tutorial.helperRect && g.tutorial.helperRect()');
+    if (!r) break;
+    await clickRect(r);
+    tipped = await until(() => { const d = window.FISHTOP.tutorial.dialogue; return !!(d && d.line && d.line.text); }, 5000);
+  }
+  check('hint helper gives a tip', tipped, String(await G('g.tutorial.dialogue.line && g.tutorial.dialogue.line.text')));
 }
 await shot('16_ocean.png');
 

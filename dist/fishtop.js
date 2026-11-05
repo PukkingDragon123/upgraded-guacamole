@@ -78683,6 +78683,7 @@ kmlmk..
       init_gear();
       init_boxreel();
       init_rods();
+      init_species();
       BARE = { kind: "bare", type: "bare", id: null, label: "Bare hook", mods: { attract: 0.55, rarity: 1, sizeBonus: 0, giantMul: 1, luck: 0 } };
       Fishing = class {
         constructor(game) {
@@ -79060,6 +79061,7 @@ kmlmk..
           w.hook.bait = bait2 || BARE;
           w.hook.radiusMul = (this.stats?.baitRadius ?? 1) * (bait2 ? 1 : 0.6) * (0.85 + 0.15 * this.lureK());
           if (w.hook.active && inWater) this.lureAssist(dt);
+          if (g.tutorialActive) this.tutorialBite(dt, w.hook.active && inWater);
           this.boxHover = null;
           if (this.state === "idle" && canHook && inWater && g.floaters?.hitHook) {
             try {
@@ -79113,6 +79115,44 @@ kmlmk..
           if (this.cine && this.cine.update(dt, rdt) === "done") this.cine = null;
           if (this.lootPop && this.lootPop.update(rdt) === "done") this.lootPop = null;
           this.updateLoops();
+        }
+        // The tutorial's first casts must get a bite: if nothing is keen on the bait for a few seconds, a friendly 'intro'
+        // fish (Noobikarp: curious, greedy, bites at once) swims in from just outside the view and goes for the hook.
+        tutorialBite(dt, fishing) {
+          const school = this.game.school, h = this.hook;
+          if (!fishing || this.state !== "idle" || !school?.spawn) {
+            this.tutWait = Math.min(this.tutWait || 0, 1.5);
+            return;
+          }
+          const keen = school.fishes.some((f) => !f.controlled && (f.state === "interest" || f.state === "sniff"));
+          this.tutWait = keen ? Math.min(this.tutWait || 0, 1) : (this.tutWait || 0) + dt;
+          if (this.tutWait < 3.5) return;
+          this.tutWait = 0;
+          const old = school.fishes.find((f) => !f.controlled && !f.hero && f.quirks?.has?.("intro") && f.state !== "leave" && f.alpha > 0.5);
+          if (old) {
+            old.cooldown = 0;
+            old.interest = 2.5;
+            old.setState?.("interest");
+            return;
+          }
+          const sp = SPECIES.find((s) => s.quirks?.includes("intro") && s.biome === this.world.biome) || SPECIES.find((s) => s.quirks?.includes("intro"));
+          if (!sp) return;
+          try {
+            const side = rng.chance(0.5) ? -1 : 1;
+            const v = this.cam?.view?.();
+            const x = v ? side < 0 ? v.x0 - 20 : v.x1 + 20 : h.x + side * 140;
+            const f = school.spawn(sp, { x: clamp(x, 20, this.world.W - 20), y: h.y + rng.float(4, 20), z: 0.05, fromFog: false });
+            f.y = h.y + rng.float(4, 20);
+            f.z = 0.05;
+            f.facing = -side;
+            f.turn = f.facing;
+            f.cooldown = 0;
+            f.noticeT = 0;
+            f.interest = 2.5;
+            f.setState?.("interest");
+          } catch (e) {
+            console.error(e);
+          }
         }
         // Faster lures (rod lureSpeed > 1): nearby fish notice, sniff and commit sooner.
         lureAssist(dt) {
@@ -91113,7 +91153,9 @@ kmlmk..
           if (!inp) return false;
           if (this.dlg.choosing && this.dlg.choiceRects().some((r) => inp.x >= r.x && inp.y >= r.y && inp.x < r.x + r.w && inp.y < r.y + r.h)) return true;
           const h = this.helperRect();
-          return !!(h && inp.x >= h.x && inp.y >= h.y && inp.x < h.x + h.w && inp.y < h.y + h.h);
+          const over = !!(h && inp.x >= h.x && inp.y >= h.y && inp.x < h.x + h.w && inp.y < h.y + h.h);
+          if (over && inp.pressed && !this.active) this.helperClick = true;
+          return over;
         }
         boxVisible() {
           return !this.intro;
@@ -91446,7 +91488,8 @@ kmlmk..
         helperRect() {
           if (this.active || !this.helperOn()) return null;
           if (this.helper.show < 0.05 && !this.seal.anchors) return this.homeRect();
-          return this.seal.rect();
+          const r = this.seal.rect(), m = 6;
+          return { x: r.x - m, y: r.y - m, w: r.w + m * 2, h: r.h + m * 2 };
         }
         // where the helper rests: the bottom right edge (the left edge while a fight needs the corner)
         helperHome() {
@@ -91496,8 +91539,10 @@ kmlmk..
           S10.update(dt, { W: g.screen.W, H: g.screen.H, cursor: inp && !this.helperHover ? [inp.x, inp.y] : null, talk: this.dlg.typing, noShy: true });
           const r = this.helperRect();
           this.helperHover = !!(r && inp && inp.x >= r.x && inp.y >= r.y && inp.x < r.x + r.w && inp.y < r.y + r.h);
-          if (this.helperHover && inp?.pressed) {
-            inp.consume?.();
+          const click = this.helperClick || this.helperHover && inp?.pressed;
+          this.helperClick = false;
+          if (click) {
+            inp?.consume?.();
             this.dlg.vars.name = this.anglerName();
             const tip = this.hintTip();
             Hh.at = tip.at && this.iconRect(tip.at) ? tip.at : null;
