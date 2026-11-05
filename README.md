@@ -7,7 +7,7 @@ person in a little boat on a glossy, sunlit sea:
 - Zap fish with your rod's shock.
 - Fight surges by pulling against them.
 
-Then fill your goldfish jar with realistic voxel fish that earn Aero, and research better rods, boats, tanks and
+Then fill your goldfish jar with low-poly fish that earn Aero, and research better rods, boats, tanks and
 seven oceans in The Lab.
 
 All art (voxel world, fish, characters and rooms), all music and all sound effects are generated in code. The
