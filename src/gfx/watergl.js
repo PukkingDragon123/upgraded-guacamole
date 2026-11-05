@@ -25,6 +25,8 @@
 // the result stays crisp pixel art. Per-ocean palettes: WATER_PALETTES / waterPalette in watersim.js.
 // look (biome.waterLook): refract, caustic, chroma, causticColor, sparkle (0..2), bloom (0..1), pattern (procedural
 // caustics 0..1), gloss, glossColor, rays (god-ray strength), deepColor, tint (depth tint 0..1).
+// Phase 6 (Oceans): below the shelf lip (the deep zones, src/world/deepsea.js) the depth tint and sparkles fade out and
+// the ripple heightfield reads flat (its domain ends at the shelf), so the zones keep their own colours.
 
 import { WaterSim, waterPalette } from '../world/watersim.js';
 
@@ -91,6 +93,7 @@ uniform vec3 u_glossCol;
 uniform vec3 u_rayCol;
 uniform vec3 u_deepCol;
 uniform float u_tint;
+uniform float u_shelf;   // [phase6:oceans] world y where the deep column starts (its zones carry their own colour)
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 float q4(float v, vec2 sp) { return floor(clamp(v, 0.0, 1.0) * 4.0 + bayer4(sp)) / 4.0; }
@@ -109,7 +112,7 @@ float causticWeb(vec2 p, float t) {
 }
 float lum(vec3 c) { return dot(c, vec3(0.3, 0.55, 0.15)); }
 
-float simH(vec2 c) { return dec(texture2D(u_sim, (clamp(c, vec2(0.0), u_dom.zw - 1.0) + 0.5) / u_dom.zw).rg); }
+float simH(vec2 c) { if (c.y > u_dom.w - 1.0) return 0.0; return dec(texture2D(u_sim, (clamp(c, vec2(0.0), u_dom.zw - 1.0) + 0.5) / u_dom.zw).rg); }
 vec4 surfAt(float wx) {
   float i = clamp(floor(wx / u_surf.z), 0.0, u_surf.y - 1.0);
   return texture2D(u_surfTex, vec2((i + 0.5) / u_surf.y, 0.5));
@@ -171,8 +174,9 @@ void main() {
   // ---- Frutiger Aero water light
   if (water) {
     float sun = hasSurf ? clamp(1.0 - dd / 360.0, 0.0, 1.0) : 0.35;
-    // depth tint toward the ocean's deep colour
-    if (u_tint > 0.001) col.rgb = mix(col.rgb, u_deepCol * col.a, smoothstep(40.0, 520.0, dd) * u_tint);
+    // depth tint toward the ocean's deep colour (fading out in the deep zones below the shelf)
+    float deepK = smoothstep(u_shelf, u_shelf + 160.0, wp.y);
+    if (u_tint > 0.001) col.rgb = mix(col.rgb, u_deepCol * col.a, smoothstep(40.0, 520.0, dd) * u_tint * (1.0 - deepK));
     // god rays
     if (u_fx.w > 0.01 && hasSurf) col.rgb += u_rayCol * q4(godRays(wp, dd) * u_fx.w, sp) * 0.22 * col.a;
     // drifting caustic web, brightest on lit pixels in the upper water (seabed, rocks, fish)
@@ -188,7 +192,7 @@ void main() {
       vec2 cell = floor(wpi / vec2(7.0, 4.0));
       float hs = hash(cell);
       float ph = fract(u_time * (0.45 + hs * 0.5) + hs * 7.13);
-      float chance = u_fx.x * (hasSurf ? 0.004 + 0.05 * exp(-dd / 14.0) : 0.006);
+      float chance = u_fx.x * (hasSurf ? 0.004 + 0.05 * exp(-dd / 14.0) : 0.006) * (1.0 - deepK);
       if (hash(cell + floor(u_time * (0.45 + hs * 0.5) + hs * 7.13) * 3.1) < chance) {
         vec2 lp = wpi - cell * vec2(7.0, 4.0) - vec2(1.0 + floor(hs * 5.0), 1.0 + floor(fract(hs * 13.0) * 2.0));
         float tw = sin(ph * 3.14159);
@@ -650,6 +654,7 @@ export class WaterFX {
       gl.uniform3fv(P.u.u_rayCol, hex3(look.rayColor || pal.ray));
       gl.uniform3fv(P.u.u_deepCol, hex3(look.deepColor || pal.deep));
       gl.uniform1f(P.u.u_tint, look.tint ?? pal.tint);
+      if (P.u.u_shelf) gl.uniform1f(P.u.u_shelf, oc?.biome?.deep?.L ? (this.game.screen?.H ?? 1e6) : 1e6); // [phase6:oceans]
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       gl.activeTexture(gl.TEXTURE0);
       this.active = true;

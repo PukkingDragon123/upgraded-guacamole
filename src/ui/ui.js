@@ -2,13 +2,17 @@
 // Panels: { id, open(data), close(), draw(ctx, ui, dt) (immediate mode: draw + handle input), rect, modal }
 // The game menu is the Aero HUD hotbar (src/ui/hud.js, game.hud); while a modal panel is open the hotbar is
 // drawn above the dim and stays clickable, so its buttons double as tabs.
+// [phase6:ui] Everything scales with Settings > UI size (state.settings.uiScale: 'normal' | 'big' (default) | 'huge',
+// see uiK/uiFont in ./aero.js): the Aero pill (3D drop), toasts and tooltips. panelRect(game, w, h) centres a panel
+// in the space above the hotbar.
 
 import { clamp01, lerp, ease, rectContains } from '../core/math.js';
 import { rgba } from '../core/color.js';
 import { drawText, measureText, wrapText } from '../gfx/font.js';
 import { drawButton, drawSlider, drawToggle, drawTooltip, drawTab, TOGGLE_W, TOGGLE_H } from './panels.js';
 import { getUiIcon } from '../gfx/uiicons.js';
-import { AERO, CURRENCY, fmtAero, aeroSurface, aeroCached, drawAeroCoin, drawSparkle, drawAeroGlow, drawAeroLeaf } from './aero.js';
+import { AERO, CURRENCY, fmtAero, aeroSurface, aeroCached, drawAeroCoin, drawSparkle, drawAeroGlow, drawAeroLeaf, uiK, uiFont, capH, setUiScale, uiScaleMode } from './aero.js';
+import { iconFrame } from '../gfx/bigicons.js';
 
 export class UI {
   constructor(game) {
@@ -78,6 +82,7 @@ export class UI {
 
   update(dt) {
     this.time += dt;
+    setUiScale(this.game.state?.settings?.uiScale || 'big'); // [phase6:ui]
     for (const t of this.toasts) t.t += dt;
     this.toasts = this.toasts.filter((t) => t.t < t.max);
     const g = this.game;
@@ -108,7 +113,7 @@ export class UI {
     const hov = !opts.disabled && this.hover(r);
     const down = hov && this.inp.down;
     if (hov) this.markHot(label + x + y);
-    drawButton(ctx, x, y, w, h, { label, icon: opts.icon ? getUiIcon(opts.icon) : opts.iconCanvas, state: opts.disabled ? 'disabled' : down ? 'down' : hov ? 'hover' : opts.active ? 'down' : 'normal', style: opts.style || 'wood', font: opts.font, align: opts.align });
+    drawButton(ctx, x, y, w, h, { label, icon: opts.icon ? getUiIcon(opts.icon) : opts.iconCanvas, state: opts.disabled ? 'disabled' : down ? 'down' : hov ? 'hover' : opts.active ? 'down' : 'normal', style: opts.style || 'wood', font: opts.font, align: opts.align, fixedFont: opts.fixedFont });
     if (hov && opts.tip) this.tip = opts.tip;
     if (!opts.disabled && this.clicked(r)) {
       this.game.audio.play(opts.sound || 'ui_click');
@@ -171,41 +176,54 @@ export class UI {
 
   coinTarget() {
     const r = this.coinRect || { x: this.game.screen.W - 90, y: 6, w: 80, h: 20 };
-    return { x: r.x + 11, y: r.y + 10 };
+    return { x: r.x + Math.round(r.h * 0.52), y: r.y + Math.round(r.h / 2) };
   }
 
   // ---------------------------------------------------------------- frame
   drawHud(ctx, dt) {
     const g = this.game;
     this.tip = null;
+    this.dtLast = Math.max(0, Math.min(0.1, dt || 1 / 60));
     if (!g.tutorial?.intro) this.drawAeroPill(ctx);
     // flying drops
     for (const f of this.flyers) {
       const k = ease.inCubic(clamp01(f.t / f.dur));
       const x = lerp(f.x0, f.x1, k), y = lerp(f.y0, f.y1, k) - Math.sin(k * Math.PI) * 30;
-      drawAeroCoin(ctx, x, y, 3.5, 0);
+      drawAeroCoin(ctx, x, y, 3.5 * Math.min(1.6, uiK()), 0);
       if (k > 0.2 && (f.t * 20 | 0) % 3 === 0) drawSparkle(ctx, x - 3, y + 2, 1, 0.6);
     }
   }
 
-  // The Aero counter: a glossy frosted pill top-right with the currency drop and the amount.
+  // The Aero counter: a glossy frosted pill top-right with a spinning 3D Aero drop and the amount (scales with the UI size).
   drawAeroPill(ctx) {
     const W = this.game.screen.W;
+    const k = uiK(), mode = uiScaleMode();
+    const font = uiFont('normal'), sc = mode === 'huge' ? 2 : 1;
     const txt = fmtAero(this.coinShown);
-    const tw = measureText(txt);
-    const w = Math.max(64, tw + 38), h = 22;
-    const bump = this.coinBump > 0 ? Math.sin(this.coinBump * 10) * this.coinBump * 2 : 0;
-    const r = { x: W - w - 8, y: 6 - Math.round(bump), w, h };
+    const tw = measureText(txt, font, sc);
+    const h = Math.round(22 * k), D = Math.round(h * 1.05);
+    const w = Math.max(Math.round(64 * k), tw + D + Math.round(16 * k));
+    const bump = this.coinBump > 0 ? Math.sin(this.coinBump * 10) * this.coinBump * 2 * k : 0;
+    const m = Math.round(6 * k);
+    const r = { x: W - w - m - 2, y: m - Math.round(bump), w, h };
     this.coinRect = r;
     const hov = this.hover(r) && !this.blocking;
-    if (this.coinBump > 0.05) drawAeroGlow(ctx, r.x + 12, r.y + 11, 18, '#9ff6ff', this.coinBump * 0.8);
+    this.pillHov = (this.pillHov || 0) + ((hov ? 1 : 0) - (this.pillHov || 0)) * Math.min(1, (this.dtLast || 1 / 60) * 14);
+    const ccx = r.x + Math.round(h * 0.52), ccy = r.y + Math.round(h / 2);
+    if (this.coinBump > 0.05) drawAeroGlow(ctx, ccx, ccy, Math.round(18 * k), '#9ff6ff', this.coinBump * 0.8);
+    if (this.pillHov > 0.05) drawAeroGlow(ctx, r.x + w / 2, r.y + h / 2, Math.round(w * 0.55), '#ffffff', 0.35 * this.pillHov);
     ctx.fillStyle = 'rgba(3,38,74,0.16)';
-    ctx.fillRect(r.x + 8, r.y + h, w - 16, 2);
-    ctx.drawImage(aeroCached(`hudpill|${w}|${h}|${hov}`, () => aeroSurface(w, h, { tone: hov ? { top: '#ffffff', mid: '#f4fcff', bot: '#cdeefc', edge: '#2a86c4', a: [0.97, 0.95], glow: '#ffffff' } : { top: '#ffffff', mid: '#eef9ff', bot: '#bfe6f8', edge: '#4a9ed0', a: [0.96, 0.95], glow: '#ffffff' }, r: 'pill', gloss: 0.8, glossH: 10, curve: 2, rim: 0.9, glow: 0.6, glowColor: '#ffffff', sparkle: 1 })), r.x, r.y);
-    drawAeroLeaf(ctx, r.x + 4, r.y + 17, 14, 8, 150, { tone: 'deep', flip: true });
-    drawAeroLeaf(ctx, r.x + 5, r.y + 16, 16, 9, -160, { tone: 'lime' });
-    drawAeroCoin(ctx, r.x + 12, r.y + 11, 7.5, this.time);
-    drawText(ctx, txt, r.x + w - 9, r.y + 8, { align: 'right', color: AERO.ink, shadow: '#ffffff' });
+    ctx.fillRect(r.x + 8, r.y + h, w - 16, Math.round(2 * k));
+    ctx.drawImage(aeroCached(`hudpill|${w}|${h}|${hov}`, () => aeroSurface(w, h, { tone: hov ? { top: '#ffffff', mid: '#f4fcff', bot: '#cdeefc', edge: '#2a86c4', a: [0.97, 0.95], glow: '#ffffff' } : { top: '#ffffff', mid: '#eef9ff', bot: '#bfe6f8', edge: '#4a9ed0', a: [0.96, 0.95], glow: '#ffffff' }, r: 'pill', gloss: 0.8, glossH: Math.round(h * 0.45), curve: 2, rim: 0.9, glow: 0.6, glowColor: '#ffffff', sparkle: 1 })), r.x, r.y);
+    drawAeroLeaf(ctx, r.x + Math.round(4 * k), r.y + Math.round(h * 0.78), Math.round(14 * k), Math.round(8 * k), 150, { tone: 'deep', flip: true });
+    drawAeroLeaf(ctx, r.x + Math.round(5 * k), r.y + Math.round(h * 0.74), Math.round(16 * k), Math.round(9 * k), -160, { tone: 'lime' });
+    // the drop: a 3D water drop that turns slowly, spins up on hover and when Aero arrives
+    this.coinTurn = (this.coinTurn || 0) + (this.dtLast || 1 / 60) * (this.game.state?.settings?.reducedMotion ? 0 : 0.12 + this.pillHov * 0.8 + this.coinBump * 2.5);
+    const f = iconFrame('coin', Math.round(D * (1 + this.coinBump * 0.12)), this.coinTurn);
+    if (f) ctx.drawImage(f.canvas, Math.round(ccx - f.ox), Math.round(ccy - f.oy - 1));
+    else drawAeroCoin(ctx, ccx, ccy, 7.5 * k, this.time);
+    if ((this.time * 0.45) % 1 < 0.06) drawSparkle(ctx, ccx - Math.round(h * 0.16), ccy - Math.round(h * 0.2), k >= 1.5 ? 3 : 2, 1);
+    drawText(ctx, txt, r.x + w - Math.round(9 * k), r.y + Math.round((h - capH(font) * sc) / 2), { font, scale: sc, align: 'right', color: AERO.ink, shadow: '#ffffff' });
     if (hov) this.tip = CURRENCY;
   }
 
@@ -244,31 +262,54 @@ export class UI {
     if (a && this.game.input.keyPressed('Escape')) this.close();
   }
 
+  // Glass toasts under the Aero pill: bold text, the icon in a glossy aqua bubble (pixel icons at 2x when big).
   drawToasts(ctx) {
     const g = this.game;
-    let y = (this.coinRect ? this.coinRect.y + this.coinRect.h : 26) + 6;
+    const k = uiK(), font = uiFont('normal'), big = font === 'big';
+    const isc = k >= 1.5 ? 2 : 1;
+    const lh = big ? 13 : 10;
+    let y = (this.coinRect ? this.coinRect.y + this.coinRect.h : 26) + Math.round(6 * k);
     for (const t of this.toasts) {
       const a = Math.min(1, t.t * 5, (t.max - t.t) * 3);
-      const lines = wrapText(t.text, 220);
-      const h = lines.length * 10 + 9;
-      const w = Math.max(...lines.map((l) => measureText(l))) + 32;
-      const x = g.screen.W - w - 8 + Math.round((1 - ease.outCubic(Math.min(1, t.t * 4))) * 40);
+      const lines = wrapText(t.text, Math.round(160 * k), font);
+      const D = Math.round(15 * k);
+      const h = Math.max(D + Math.round(6 * k), lines.length * lh + Math.round(8 * k) + 2);
+      const w = Math.max(...lines.map((l) => measureText(l, font))) + D + Math.round(18 * k);
+      const slide = 1 - ease.outBack(Math.min(1, t.t * 4));
+      const x = g.screen.W - w - Math.round(8 * k) + Math.round(slide * 50 * k);
       ctx.globalAlpha = a;
-      ctx.drawImage(aeroCached(`toast|${w}|${h}`, () => aeroSurface(w, h, { tone: 'frost', r: Math.min(8, Math.floor(h / 2)), gloss: 0.6, glossH: Math.min(9, Math.round(h * 0.45)), curve: 2, rim: 0.9, glow: 0.45, glowColor: '#bfeaff', sparkle: 1 })), x, y);
-      // icon sits in a little aqua bubble
-      ctx.drawImage(aeroCached('toastdot', () => aeroSurface(15, 15, { tone: 'aqua', r: 'pill', gloss: 0.8, glossH: 7, curve: 1, rim: 0.7, glow: 0.6 })), x + 4, y + Math.round((h - 15) / 2));
-      drawAeroLeaf(ctx, x + 6, y + Math.round(h / 2) + 5, 10, 6, 140, { tone: 'lime', flip: true });
+      ctx.fillStyle = 'rgba(3,38,74,0.14)';
+      ctx.fillRect(x + 6, y + h, w - 12, 2);
+      ctx.drawImage(aeroCached(`toast|${w}|${h}`, () => aeroSurface(w, h, { tone: 'frost', r: Math.min(Math.round(9 * k), Math.floor(h / 2)), gloss: 0.6, glossH: Math.min(Math.round(9 * k), Math.round(h * 0.45)), curve: 2, rim: 0.9, glow: 0.45, glowColor: '#bfeaff', sparkle: 1 })), x, y);
+      // icon sits in a little aqua bubble that pops in
+      const pop = 1 + Math.sin(Math.min(1, t.t * 3) * Math.PI) * 0.18;
+      const bx = x + Math.round(4 * k), by = y + Math.round((h - D) / 2);
+      const Dp = Math.round(D * pop);
+      ctx.drawImage(aeroCached(`toastdot|${D}`, () => aeroSurface(D, D, { tone: 'aqua', r: 'pill', gloss: 0.8, glossH: Math.round(D * 0.45), curve: 1, rim: 0.7, glow: 0.6 })), bx + Math.round((D - Dp) / 2), by + Math.round((D - Dp) / 2), Dp, Dp);
+      drawAeroLeaf(ctx, bx + 2, by + D - 1, Math.round(10 * k), Math.round(6 * k), 140, { tone: 'lime', flip: true });
       const ic = getUiIcon(t.icon) || getUiIcon('info');
-      ctx.drawImage(ic, x + 4 + Math.round((15 - ic.width) / 2), y + Math.round((h - ic.height) / 2));
-      lines.forEach((l, i) => drawText(ctx, l, x + 24, y + 5 + i * 10, { color: AERO.ink }));
+      const iw = ic.width * isc, ih = ic.height * isc;
+      ctx.drawImage(ic, bx + Math.round((D - iw) / 2), by + Math.round((D - ih) / 2), iw, ih);
+      const tx = bx + D + Math.round(6 * k), ty = y + Math.round((h - lines.length * lh) / 2) + (big ? 2 : 1);
+      lines.forEach((l, i) => drawText(ctx, l, tx, ty + i * lh, { font, color: AERO.ink, shadow: big ? '#ffffff' : null }));
       ctx.globalAlpha = 1;
-      y += h + 4;
+      y += h + Math.round(4 * k);
     }
   }
 
   drawTip(ctx) {
     if (this.tip) drawTooltip(ctx, this.inp.x + 12, this.inp.y + 14, this.tip, { maxW: 200 });
   }
+}
+
+// [phase6:ui] A w x h panel rect centred in the space above the HUD hotbar (clamped to the screen), so big panels
+// never hide the hotbar that doubles as their tab strip.
+export function panelRect(game, w, h) {
+  const W = game.screen.W, H = game.screen.H;
+  const bottom = Math.max(Math.round(H * 0.6), Math.min(H, game.hud?.topY?.() ?? H) - 4);
+  w = Math.min(w, W - 16);
+  h = Math.min(h, bottom - 8);
+  return { x: Math.round((W - w) / 2), y: Math.max(4, Math.round((bottom - h) / 2)), w, h };
 }
 
 // Shared panel base helper: centred rect of given size.

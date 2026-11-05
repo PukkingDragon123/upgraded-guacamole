@@ -123,6 +123,7 @@ export class BoxReel {
     this.tier = ITEMS.TIERS?.[f.tier] ? f.tier : 'crate';
     this.progress = 0; this.tension = 0.25; this.reelRate = 0; this.snapT = 0; this.grace = 1;
     this.zone = { lo: 0.2, hi: 1.3 }; this.heavy = 0;
+    this.gearMode = 'box'; this.band = { lo: 30, hi: 195 }; this.canCharge = false; this.charge = null;
     this.shockReady = false; this.shockMax = 0; this.charges = 0; this.shockCd = 0; this.shockCdMax = 1;
     this.stunned = false; this.surging = false;
     this.start = { x: f.x, y: f.y };
@@ -152,11 +153,12 @@ export class BoxReel {
   cancel() { this.f.hooked = false; }
 
   update(dt) {
-    const F = this.F, f = this.f, cr = F.crank;
+    const F = this.F, f = this.f, G = F.gear;
     this.t += dt;
     this.hudIn = Math.min(1, this.hudIn + F.rdt * 3);
+    G.load = this.stage === 'reel' ? 12 : 0; G.brake = true;
     if (this.stage === 'reel') {
-      const p = cr.power;
+      const p = G.p;
       const rate = (Math.min(p, 1.1) * 0.75) / this.need;
       this.reelRate = rate;
       this.progress = Math.min(1, this.progress + rate * dt);
@@ -175,7 +177,7 @@ export class BoxReel {
         if (rng.chance(dt * 5)) F.particles.splash(f.x + rng.float(-6, 6), this.surface, 0.18);
       }
       F.focusCam(lerp(f.x, this.target.x, 0.3), f.y - 10, 1.6, 3);
-      if (!F.poseHold) F.setPose(cr.active ? 'reel' : 'pull');
+      if (!F.poseHold) F.setPose(p > 0.08 ? 'reel' : 'pull');
       if (this.progress >= 1) {
         this.stage = 'pop'; this.st = 0;
         this.p0 = [f.x, f.y];
@@ -235,8 +237,8 @@ export class BoxReel {
 
   drawHud(ctx) {
     // a soft crank-loop hint at the cursor until the player starts circling
-    const F = this.F, cr = F.crank, t = F.t;
-    if (cr.active) return;
+    const F = this.F, t = F.t;
+    if (F.gear.p > 0.08) return;
     for (let i = 0; i < 12; i++) {
       const a = (i / 12) * TAU + t * 5;
       ctx.fillStyle = rgba('#ffffff', 0.08 + (i / 12) * 0.6);
@@ -246,7 +248,7 @@ export class BoxReel {
 
   drawBands(ctx) {
     const k = clamp01(this.hudIn * 1.2);
-    this.F.reel.draw(ctx, this, 1 - Math.pow(1 - k, 3));
+    this.F.gear.draw(ctx, this, 1 - Math.pow(1 - k, 3));
   }
 }
 

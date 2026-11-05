@@ -94,7 +94,7 @@ const FIN_SHAPES = {
   rise: [[0, 0.25], [0.6, 0.85], [1, 1]],
   fall: [[0, 1], [0.4, 0.8], [1, 0.3]],
 };
-function finHeightFn(f) {
+export function finHeightFn(f) {
   if (Array.isArray(f.shape)) return knotFn(f.shape);
   return knotFn(FIN_SHAPES[f.shape || 'tri'] || FIN_SHAPES.tri);
 }
@@ -395,6 +395,12 @@ const PAD = 3;
  * anchors and spine extents. infl = pufferfish inflation 0..1.
  */
 export function realLayout(c, r, infl = 0) {
+  const it = realLayoutJob(c, r, infl);
+  for (;;) { const st = it.next(); if (st.done) return st.value; }
+}
+
+/** Resumable realLayout (phase 6 low-poly skins): a generator that yields every few rows; its return value is the layout. */
+export function* realLayoutJob(c, r, infl = 0) {
   const M = fishModel(c, infl);
   const S = M.S, L = M.L;
   const GW = Math.ceil((M.xmax - M.xmin) * r) + PAD * 2, GH = Math.ceil((M.ymax - M.ymin) * r) + PAD * 2;
@@ -442,6 +448,7 @@ export function realLayout(c, r, infl = 0) {
   };
 
   for (let gy = 0; gy < GH; gy++) {
+    if ((gy & 3) === 3) yield gy;
     const Y = gY(gy);
     for (let gx = 0; gx < GW; gx++) {
       const X = gX(gx);
@@ -1890,6 +1897,8 @@ SOLIDS.chomper = (S, L, ph) => {
 };
 
 const solidCache = new Map();
+/** Phase 6 (low-poly): the solid creature's primitives for animation phase ph (0..1): {sol: {prims}, anchors, eyes, yawBase, roll}. */
+export function solidPose(c, ph) { return solidSpec(c, ph); }
 function solidSpec(c, ph) {
   const S = c.real;
   const fn = SOLIDS[S.kind] || SOLIDS.crab;

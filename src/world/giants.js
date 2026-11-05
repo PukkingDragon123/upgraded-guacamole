@@ -1,172 +1,51 @@
-// Distant voxel giants that cruise through the far water: a humpback whale (tail-beat cycle), a green sea
-// turtle (flipper strokes) and a glossy dolphin (vertical tail beat). Frames are voxel models re-posed per phase and rendered lazily, one per call to
-// warm(), so the first sighting never stalls a frame; drawing falls back to the nearest built frame.
+// Distant giants that cruise through the far water (phase 6: LOW-POLY 3D, src/fish/lowpolyfish.js): a humpback
+// whale, a green sea turtle, a glossy bottlenose dolphin, a beluga, a harbour seal and an orca. Frames are cached
+// low-poly sprites (one swim cycle, the mesh bends: vertical fluke beats, flipper strokes), built lazily; warm()
+// builds at most one missing frame per call so the first sighting never stalls a frame.
+//   new VoxelGiant(kind)   (name kept for callers) .n, .warm(), .frame(ph rad, dir) -> {canvas, ox, oy, w, h}
+//   The canvas is rendered at RES device px per world px: draw it at (x - ox, y - oy) with size (w, h).
+//   lpCrabFrames(color) -> [idle, walk1, walk2] {canvas, ox (bottom centre), oy, w, h} low-poly seabed crabs
+//   lpPenguinFrames(dir), lpRestSealFrames() -> canvases with world size .w / .h (fjord critters)
 
-import { VoxelModel } from '../gfx/voxel.js';
-import { smoothstep, hash3, TAU } from '../core/math.js';
-import { flipCanvas } from '../gfx/pixel.js';
-import { renderModel } from './voxkit.js';
+import { TAU } from '../core/math.js';
+import { creatureFrame, creatureLook, LP_SWIM, lpCrabLook } from '../fish/lowpolyfish.js';
+import { makeCanvas } from '../core/canvas.js';
 
-const sm = smoothstep;
-
-function whaleModel(ph) {
-  const L = 96, R = 13;
-  const m = new VoxelModel(L + 6, 2 * R + 40, 2 * R + 30);
-  const C = (c, o = {}) => m.color(c, { jitter: 0.08, ...o });
-  const back = C('#34445e'), side = C('#4a5c7c'), belly = C('#c4ccd8'), groove = C('#8e98aa'), fin = C('#d4dae4'), finD = C('#3a4a66'), eye = C('#0e1218'), barn = C('#d8d2c2');
-  const cy = m.ny / 2 + 4, cz = m.nz / 2;
-  const flex = (u) => Math.sin(ph) * Math.pow(Math.max(0, 0.5 - u), 1.5) * 30;
-  for (let x = 0; x < L; x++) {
-    const u = x / L;
-    const r = R * (0.1 + 0.9 * sm(0.04, 0.42, u)) * (1 - sm(0.86, 1.0, u) * 0.45);
-    const yc = cy + flex(u) - Math.max(0, u - 0.8) * 8;
-    for (let y = Math.floor(yc - r); y <= Math.ceil(yc + r); y++) for (let z = Math.floor(cz - r); z <= Math.ceil(cz + r); z++) {
-      const dy = (y + 0.5 - yc) / r, dz = (z + 0.5 - cz) / (r * 0.86);
-      if (dy * dy + dz * dz > 1) continue;
-      let c = dy > 0.15 ? back : side;
-      if (dy < -0.3) c = u > 0.55 && (y + x) % 3 === 0 ? groove : belly;
-      if (u > 0.82 && dy > 0.45 && hash3(x, y, z, 4) < 0.08) c = barn;
-      m.set(x, y, z, c);
-    }
-    if (u > 0.33 && u < 0.38) m.set(x, Math.round(yc + r), cz, finD);
-  }
-  // flukes
-  const fy = cy + flex(0);
-  for (let x = 0; x < 9; x++) {
-    const k = x / 9, span = (R + 8) * (1 - Math.abs(k - 0.35) * 1.2);
-    for (let z = Math.floor(cz - span); z <= Math.ceil(cz + span); z++) { m.set(x, Math.round(fy), z, finD); if (k > 0.3) m.set(x, Math.round(fy) + 1, z, finD); }
-  }
-  // long pectoral fins (humpback), white underside
-  const px = Math.round(L * 0.64), pr = R * 0.9;
-  for (const side of [-1, 1]) m.line(px, cy - 3, cz + side * pr * 0.8, px - 20, cy - 16 + Math.sin(ph + 1) * 3, cz + side * (pr + 8), side > 0 ? fin : finD, 1.6);
-  // cute cartoon eye (big glossy pupil + white shine)
-  const ex = Math.round(L * 0.89), ey = Math.round(cy - 2), ez = Math.round(cz + R * 0.55);
-  const shine = C('#ffffff');
-  for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1], [0, -1], [1, -1]]) m.set(ex + dx, ey + dy, ez + 1, eye);
-  m.set(ex + 1, ey + 1, ez + 2, shine);
-  return m;
-}
-
-function turtleModel(ph) {
-  const m = new VoxelModel(50, 30, 36);
-  const C = (c, o = {}) => m.color(c, { jitter: 0.1, ...o });
-  const shellA = C('#7a6436'), shellB = C('#5e4c2a'), seam = C('#3a2e1c'), plast = C('#d8c89a'), skin = C('#6e8a5a'), skinD = C('#4e6a44'), spot = C('#c8d0a0'), eye = C('#101010');
-  const cx = 22, cy = 13, cz = 18;
-  m.ellipsoid(cx, cy, cz, 15, 7, 12, (x, y, z) => {
-    if (y < cy - 1) return plast;
-    const cell = Math.floor((x + 2) / 6) * 7 + Math.floor((z + 1) / 6);
-    const onSeam = (x + 2) % 6 === 0 || (z + 1) % 6 === 0;
-    return onSeam && y > cy ? seam : cell % 2 ? shellA : shellB;
-  });
-  m.sub(() => m.box(0, 0, 0, 49, cy - 3, 35, 1));
-  m.ellipsoid(cx, cy - 2, cz, 14, 2, 11, plast);
-  // neck + head
-  m.line(cx + 12, cy - 1, cz, cx + 18, cy, cz, skinD, 2.2);
-  m.ellipsoid(cx + 21, cy + 0.5, cz, 4, 3, 3, (x, y, z) => ((x + y + z) % 4 === 0 ? spot : skin));
-  const shine = C('#ffffff');
-  for (const zs of [3, -3]) { for (const [dx, dy] of [[0, 0], [0, 1], [-1, 0], [-1, 1]]) m.set(cx + 23 + dx, cy + 1 + dy, cz + zs, eye); m.set(cx + 23, cy + 2, cz + zs + Math.sign(zs), shine); }
-  // front flippers sweep down and back, rear flippers paddle
-  const a = 0.25 + (Math.sin(ph) * 0.5 + 0.5) * 1.05;
-  for (const side of [-1, 1]) {
-    const rx = cx + 8, rz = cz + side * 9;
-    const tx = rx - Math.cos(a) * 15, ty = cy - 1 - Math.sin(a) * 11, tz = rz + side * (5 + Math.cos(a) * 4);
-    m.line(rx, cy - 1, rz, (rx + tx) / 2, (cy - 1 + ty) / 2, (rz + tz) / 2, skin, 2.2);
-    m.line((rx + tx) / 2, (cy - 1 + ty) / 2, (rz + tz) / 2, tx, ty, tz, skinD, 1.2);
-    const b = Math.sin(ph + 2) * 0.35;
-    m.line(cx - 11, cy - 2, cz + side * 7, cx - 17, cy - 3 + b * 4, cz + side * 9, skinD, 1.4);
-  }
-  return m;
-}
-
-// Glossy bottlenose dolphin (Frutiger Aero): vertical tail beat, shiny blue-grey back, pale belly.
-function dolphinModel(ph) {
-  const L = 46, R = 5.6;
-  const m = new VoxelModel(L + 4, 2 * R + 22, 2 * R + 16);
-  const C = (c, o = {}) => m.color(c, { jitter: 0.04, spec: 0.55, specPow: 14, ...o });
-  const back = C('#3a6ea8'), side = C('#6aa6dc'), belly = C('#eaf6ff', { spec: 0.4 }), fin = C('#34629a'), eye = C('#0a1424', { spec: 0.9 });
-  const cy = m.ny / 2, cz = m.nz / 2;
-  const flex = (u) => Math.sin(ph) * Math.pow(Math.max(0, 0.55 - u), 1.4) * 14;
-  for (let x = 0; x < L; x++) {
-    const u = x / L;
-    let r = R * (0.22 + 0.78 * sm(0.0, 0.55, u)) * (1 - sm(0.8, 0.97, u) * 0.55);
-    if (u > 0.93) r = R * 0.28;
-    const yc = cy + flex(u) - (u > 0.92 ? 1 : 0);
-    for (let y = Math.floor(yc - r); y <= Math.ceil(yc + r); y++) for (let z = Math.floor(cz - r); z <= Math.ceil(cz + r); z++) {
-      const dy = (y + 0.5 - yc) / r, dz = (z + 0.5 - cz) / (r * 0.9);
-      if (dy * dy + dz * dz > 1) continue;
-      m.set(x, y, z, dy > 0.25 ? back : dy > -0.35 ? side : belly);
-    }
-  }
-  // dorsal fin, flukes, pectorals, eye
-  const dx = Math.round(L * 0.5), dyb = Math.round(cy + flex(0.5) + R - 1);
-  for (let k = 0; k < 6; k++) for (let j = 0; j < 6 - k; j++) m.set(dx - j + Math.round(k * 0.5), dyb + k, cz, fin);
-  const fy = Math.round(cy + flex(0));
-  for (let x = 0; x < 5; x++) { const span = 7 * (1 - Math.abs(x / 5 - 0.4)); for (let z = Math.floor(cz - span); z <= Math.ceil(cz + span); z++) m.set(x, fy, z, fin); }
-  for (const s of [-1, 1]) m.line(L * 0.7, cy - 2, cz + s * R * 0.6, L * 0.6, cy - 5, cz + s * (R + 3), fin, 0.9);
-  // cute cartoon eye: a big glossy pupil with a white shine (no realistic eyes)
-  const ex = Math.round(L * 0.84), ey = Math.round(cy + 1), ez = Math.round(cz + R * 0.72);
-  const shine = C('#ffffff', { spec: 1, emissive: 0.3 });
-  for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1], [0, -1], [1, -1]]) m.set(ex + dx, ey + dy, ez + 1, eye);
-  m.set(ex + 1, ey + 1, ez + 2, shine);
-  // a little smile
-  m.set(ex + 3, ey - 2, ez, eye); m.set(ex + 4, ey - 2, ez - 1, eye);
-  return m;
-}
-
-// Beluga (white, round melon head) and harbour seal (grey, dappled, fore flippers): simple swimmers with cute eyes.
-function swimmerModel(ph, o) {
-  const L = o.L, R = o.R;
-  const m = new VoxelModel(L + 6, 2 * R + 20, 2 * R + 16);
-  const C = (c, op = {}) => m.color(c, { jitter: 0.05, spec: 0.4, specPow: 12, ...op });
-  const back = C(o.back), side = C(o.side), belly = C(o.belly), fin = C(o.fin), spot = o.spot ? C(o.spot) : null;
-  const eye = C('#0a1020', { spec: 0.9 }), shine = C('#ffffff');
-  const cy = m.ny / 2, cz = m.nz / 2;
-  const flex = (u) => Math.sin(ph) * Math.pow(Math.max(0, 0.55 - u), 1.4) * o.flex;
-  for (let x = 0; x < L; x++) {
-    const u = x / L;
-    let r = R * (0.25 + 0.75 * sm(0.0, 0.5, u)) * (1 - sm(0.82, 1.0, u) * o.nose);
-    if (o.melon && u > 0.8) r = Math.max(r, R * 0.82);
-    const yc = cy + flex(u);
-    for (let y = Math.floor(yc - r); y <= Math.ceil(yc + r); y++) for (let z = Math.floor(cz - r); z <= Math.ceil(cz + r); z++) {
-      const dy = (y + 0.5 - yc) / r, dz = (z + 0.5 - cz) / (r * 0.9);
-      if (dy * dy + dz * dz > 1) continue;
-      let c = dy > 0.3 ? back : dy > -0.35 ? side : belly;
-      if (spot && hash3(x, y, z, 5) < 0.12 && dy > -0.2) c = spot;
-      m.set(x, y, z, c);
-    }
-  }
-  const fy = Math.round(cy + flex(0));
-  for (let x = 0; x < 5; x++) { const span = o.fluke * (1 - Math.abs(x / 5 - 0.4)); for (let z = Math.floor(cz - span); z <= Math.ceil(cz + span); z++) m.set(x, fy, z, fin); }
-  for (const sd of [-1, 1]) m.line(L * 0.68, cy - 2, cz + sd * R * 0.6, L * 0.58, cy - 6 + Math.sin(ph + 1) * 2, cz + sd * (R + 3), fin, 0.9);
-  const ex = Math.round(L * 0.86), ey = Math.round(cy + 1), ez = Math.round(cz + R * 0.66);
-  for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) m.set(ex + dx, ey + dy, ez + 1, eye);
-  m.set(ex + 1, ey + 1, ez + 2, shine);
-  return m;
-}
-const belugaModel = (ph) => swimmerModel(ph, { L: 54, R: 7, back: '#e8f2f6', side: '#f4fbff', belly: '#ffffff', fin: '#cfe0ea', flex: 12, nose: 0.3, melon: true, fluke: 8 });
-const sealModel = (ph) => swimmerModel(ph, { L: 34, R: 5.4, back: '#56606e', side: '#76808e', belly: '#b8c0ca', fin: '#3e4652', spot: '#3a424e', flex: 9, nose: 0.4, melon: false, fluke: 5 });
-
-const BUILD = {
-  whale: { n: 8, model: whaleModel, render: { scale: 2, yaw: 22, pitch: 10, jitter: 0.1 } },
-  turtle: { n: 10, model: turtleModel, render: { scale: 2, yaw: 18, pitch: 20, jitter: 0.12 } },
-  dolphin: { n: 8, model: dolphinModel, render: { scale: 2, yaw: 14, pitch: 12, jitter: 0.05 } },
-  beluga: { n: 8, model: belugaModel, render: { scale: 2, jitter: 0.05 } },
-  seal: { n: 8, model: sealModel, render: { scale: 2, jitter: 0.06 } },
+const RES = 3;
+// world length (px) and view of each giant
+const SIZE = {
+  whale: { len: 190, yaw: 18 }, turtle: { len: 78, yaw: 22 }, dolphin: { len: 92, yaw: 14 },
+  beluga: { len: 104, yaw: 14 }, seal: { len: 66, yaw: 16 }, orca: { len: 120, yaw: 14 },
 };
+
+function crop(f, flip) {
+  const w = f.w, h = f.h;
+  const cv = makeCanvas(Math.max(1, Math.round(w * f.k)), Math.max(1, Math.round(h * f.k)));
+  const g = cv.getContext('2d');
+  g.imageSmoothingEnabled = true;
+  if (flip) { g.translate(cv.width, 0); g.scale(-1, 1); }
+  g.drawImage(f.canvas, f.sx, f.sy, w, h, 0, 0, cv.width, cv.height);
+  return cv;
+}
 
 export class VoxelGiant {
   constructor(kind) {
     this.kind = kind;
-    this.B = BUILD[kind];
-    this.frames = new Array(this.B.n).fill(null);
-    this.flipped = new Array(this.B.n).fill(null);
+    this.B = SIZE[kind] || SIZE.dolphin;
+    this.frames = new Array(LP_SWIM).fill(null);
+    this.flipped = new Array(LP_SWIM).fill(null);
   }
 
-  get n() { return this.B.n; }
+  get n() { return LP_SWIM; }
 
   build(i) {
-    const r = renderModel(this.B.model((i / this.B.n) * TAU), this.B.render);
-    this.frames[i] = { canvas: r.canvas, ox: Math.round(r.w / 2), oy: Math.round(r.h / 2) };
+    const c = creatureLook(this.kind);
+    if (!c) return;
+    const S = (RES * this.B.len) / (c.L || 60);
+    const f = creatureFrame(this.kind, { S, yaw: this.B.yaw, sw: i, force: true });
+    if (!f) return;
+    const k = f.k * RES; // sprite px -> canvas px is f.k; canvas px -> world px is 1 / RES
+    this.frames[i] = { canvas: crop(f, false), ox: (f.ax * f.k) / RES, oy: (f.ay * f.k) / RES, w: (f.w * f.k) / RES, h: (f.h * f.k) / RES, res: RES, f, k };
   }
 
   // Build at most one missing frame (call once per update).
@@ -176,14 +55,78 @@ export class VoxelGiant {
   }
 
   frame(ph, dir) {
-    let i = Math.floor(((ph / TAU) * this.B.n) % this.B.n + this.B.n) % this.B.n;
+    const n = LP_SWIM;
+    let i = Math.floor(((ph / TAU) * n) % n + n) % n;
     if (!this.frames[i]) {
       if (this.frames.every((f) => !f)) this.build(i);
-      else { for (let d = 1; d < this.B.n; d++) { const j = (i + d) % this.B.n; if (this.frames[j]) { i = j; break; } } }
+      else { for (let d = 1; d < n; d++) { const j = (i + d) % n; if (this.frames[j]) { i = j; break; } } }
     }
     const f = this.frames[i];
+    if (!f) return { canvas: makeCanvas(1, 1), ox: 0, oy: 0, w: 1, h: 1 };
     if (dir > 0) return f;
-    if (!this.flipped[i]) this.flipped[i] = { canvas: flipCanvas(f.canvas), ox: f.canvas.width - f.ox, oy: f.oy };
+    if (!this.flipped[i]) this.flipped[i] = { canvas: crop(f.f, true), ox: f.w - f.ox, oy: f.oy, w: f.w, h: f.h, res: RES };
     return this.flipped[i];
   }
+}
+
+// Low-poly seabed crabs in a colour: idle + two walk frames, bottom-centre anchored (feet on the floor).
+const crabCache = new Map();
+export function lpCrabFrames(color = '#e0502e', len = 18) {
+  const key = color + '|' + len;
+  let out = crabCache.get(key);
+  if (out) return out;
+  const c = lpCrabLook(color);
+  out = [0, 2, 5].map((sw) => {
+    const f = c ? creatureFrame('crab:' + color, { S: (RES * len) / (c.L || 26), yaw: 70, sw, force: true, look: c }) : null;
+    if (!f) return { canvas: makeCanvas(1, 1), ox: 0, oy: 0, w: 1, h: 1 };
+    const cv = crop(f, false);
+    const w = (f.w * f.k) / RES, h = (f.h * f.k) / RES;
+    // anchor at the lowest point of the creature (feet): the bottom anchor of the frame
+    const by = f.anchors.bottom ? (f.ay + f.anchors.bottom[1]) * f.k / RES : h;
+    return { canvas: cv, ox: w / 2, oy: Math.min(h, by), w, h };
+  });
+  crabCache.set(key, out);
+  return out;
+}
+
+// Place a creature frame into a canvas of world size W x H (rendered at RES), the model origin at (ax, ay) world px
+// (or the frame centred when ax is null). The canvas carries its world size in .w / .h (draw with them).
+function placed(f, W, H, ax, ay, flip = false) {
+  const cv = makeCanvas(Math.round(W * RES), Math.round(H * RES));
+  const g = cv.getContext('2d');
+  g.imageSmoothingEnabled = true;
+  if (flip) { g.translate(cv.width, 0); g.scale(-1, 1); }
+  const k = f.k;
+  const ox = ax == null ? (cv.width - f.w * k) / 2 : ax * RES - f.ax * k;
+  const oy = ay == null ? (cv.height - f.h * k) / 2 : ay * RES - f.ay * k;
+  g.drawImage(f.canvas, f.sx, f.sy, f.w, f.h, ox, oy, f.w * k, f.h * k);
+  cv.w = W; cv.h = H;
+  return cv;
+}
+
+// Low-poly fjord penguins in the old sprite layout: 0 stand, 1-2 waddle, 3 flap (15 x 17 world px, feet at
+// (7, 15)), 4-5 swim strokes, 6 belly slide (19 x 11, centred). dir -1 faces left.
+const pengCache = new Map();
+export function lpPenguinFrames(dir = 1) {
+  let out = pengCache.get(dir);
+  if (out) return out;
+  out = [0, 1, 2, 3, 4, 5, 6].map((sw) => {
+    const f = creatureFrame('penguin', { S: RES, yaw: 18, sw, force: true });
+    if (!f) { const c = makeCanvas(1, 1); c.w = 1; c.h = 1; return c; }
+    return sw < 4 ? placed(f, 15, 17, 7, 15, dir < 0) : placed(f, 19, 11, null, null, dir < 0);
+  });
+  pengCache.set(dir, out);
+  return out;
+}
+
+// Low-poly harbour seal resting on a floe, head lifting: 3 frames, 34 x 16 world px, belly at (17, 12).
+let sealRest = null;
+export function lpRestSealFrames() {
+  if (sealRest) return sealRest;
+  sealRest = [0, 2, 3].map((sw) => {
+    const f = creatureFrame('restseal', { S: RES, yaw: 14, sw, force: true });
+    if (!f) { const c = makeCanvas(1, 1); c.w = 1; c.h = 1; return c; }
+    return placed(f, 34, 16, 17, 12.5);
+  });
+  return sealRest;
 }

@@ -5,8 +5,8 @@
 //   voxBall(r, color, o)        glossy voxel sphere sprite {canvas, ox, oy} (o.emissive, o.spec)
 //   voxPixelSprite(src, depth)  extrude a pixel sprite into voxels (cell 1) -> canvas padded by 2 px each side
 //   voxCloudSprite(seed, w, h)  a voxel cumulus (sky.js cloud model) in one palette -> canvas
-//   bgFish(biome)               compiled species looks for background fish (drawn with the voxel fish renderer)
-//   drawBgFish(ctx, c, x, y, o) draw one background fish with the voxel fish rig (o: scale, facing, t, wash)
+//   bgFish(biome)               compiled species looks for background fish (low-poly 3D via fishrig) // [phase6:creatures]
+//   drawBgFish(ctx, c, x, y, o) draw one background fish with the low-poly fish rig (o: scale, facing, t, wash)
 
 import { VoxelModel } from '../gfx/voxel.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';

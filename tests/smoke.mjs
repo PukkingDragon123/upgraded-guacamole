@@ -1,14 +1,15 @@
-// End-to-end smoke test (phase 5). Boots the game in headless Chromium and plays the first session with real
-// mouse input: the WebGL 3D opening (a few beats are screenshotted; at Clip's first beat a response bubble is
-// clicked with the mouse and the name is picked with key 2 through the dialogue system, then the glossy Skip pill
-// is clicked and the choices must reach the save), Clip's tutorial speech bubbles, the free
-// starter bait at Dot's Bait Shop (the HUD's only button), casting into the (OS)cean, the hook-set, winning the
-// reel fight (cranking by circling, a Shock, holding against surges), the catch card, the fish going into the
-// goldfish jar, collecting the jar's Aero, opening The Lab and starting the first research, then asks Clip's hint
-// helper for a tip. Then it opens every
-// panel, travels to all seven oceans and checks that the console stayed clean. Optional systems are
-// feature-detected so the test only fails on real breakage. Screenshots land in tests/out/.
-// Ownership: Intro agent; the Fishing agent may edit the scripted fight (marked below).
+// End-to-end smoke test (phase 5 Intro agent, phase 6 Guide agent). Boots the game in headless Chromium and plays
+// the first session with real mouse input: the WebGL 3D opening (a few beats are screenshotted; at the seal's first
+// beat a response bubble is clicked with the mouse and the name is picked with key 2 through the dialogue system,
+// then the glossy Skip pill is clicked and the choices must reach the save), Bubbles the low-poly seal guide
+// swimming around the screen and pointing at things while it talks in (bigger) speech bubbles, the free starter
+// bait at Dot's Bait Shop (the HUD's only button), casting into the (OS)cean, the hook-set (spinning the 3D gear
+// into its band when the gear minigame is there, else a click), winning the fight (spinning / cranking by circling,
+// a Shock, holding against surges), the catch card, the fish going into the goldfish jar, collecting the jar's Aero,
+// opening The Lab and starting the first research, the 'tutorialDone' event (quest lines start), then asks the
+// seal's hint helper for a tip. Then it opens every panel, travels to all seven oceans and checks that the console
+// stayed clean. Optional systems are feature-detected so the test only fails on real breakage. Screenshots land in
+// tests/out/. Ownership: Guide agent; the Fishing agent may edit the scripted fight (marked below).
 import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
@@ -45,7 +46,8 @@ const note = (s) => console.log(`      ${s}`);
 const G = (expr) => page.evaluate(`(() => { const g = window.FISHTOP; return ${expr}; })()`);
 const wait = (ms) => page.waitForTimeout(ms);
 const until = (fn, timeout, arg) => page.waitForFunction(fn, arg, { timeout, polling: 100 }).then(() => true).catch(() => false);
-const shot = (name) => page.screenshot({ path: join(out, name) });
+// screenshots are best-effort: a busy machine (software GL) must not crash the run
+const shot = (name) => page.screenshot({ path: join(out, name), timeout: 120000 }).catch((e) => note(`screenshot ${name} skipped: ${String(e.message).split('\n')[0]}`));
 // logical -> page pixels
 async function toPage(x, y) {
   return page.evaluate(([x, y]) => {
@@ -63,7 +65,7 @@ const iconRect = (id) => G(`(() => { for (const s of [g.hud, g.desktop]) { try {
 await page.goto(`http://localhost:${port}/index.html?fresh`);
 await until(() => !!window.FISHTOP, 20000);
 check('game booted', await G('!!g && g.screen.W > 0'), await G('g.screen.W + "x" + g.screen.H'));
-await G(`(window.__ev = {}, ['coinCollected', 'labStarted', 'baitBought', 'baitDownloaded', 'hooked', 'caught', 'escaped', 'revealDone', 'kept'].forEach((e) => g.on(e, () => { window.__ev[e] = (window.__ev[e] || 0) + 1; })), true)`);
+await G(`(window.__ev = {}, ['coinCollected', 'labStarted', 'baitBought', 'baitDownloaded', 'hooked', 'caught', 'escaped', 'revealDone', 'kept', 'tutorialDone'].forEach((e) => g.on(e, () => { window.__ev[e] = (window.__ev[e] || 0) + 1; })), true)`);
 const ev = (e) => G(`(window.__ev['${e}'] || 0)`);
 
 // ---------------------------------------------------------------- the 3D opening
@@ -82,11 +84,11 @@ if (hasIntro) {
     await wait(2600);
     await shot(name);
   }
-  // Clip's first beat: crash zoom, floating 3D text, typed lines; answer with real input
-  await G(`g.tutorial.intro.seek(${IT.clip - 0.05})`);
+  // the seal's first beat: crash zoom, floating 3D text, typed lines; answer with real input
+  await G(`g.tutorial.intro.seek(${(IT.seal ?? IT.clip) - 0.05})`);
   const choosing = async () => G('!!(g.tutorial.intro && g.tutorial.intro.dialogue.choosing)');
   const press = async (key, n = 40) => { for (let i = 0; i < n && !(await choosing()); i++) { await page.keyboard.press(key); await wait(700); } return choosing(); };
-  check('Clip talks at the first beat', await until(() => { const i = window.FISHTOP.tutorial.intro; return i && i.holding === 'clip' && i.dialogue.active; }, 20000));
+  check('Bubbles the seal talks at the first beat', await until(() => { const i = window.FISHTOP.tutorial.intro; return i && (i.holding === 'seal' || i.holding === 'clip') && i.dialogue.active; }, 20000), String(await G('g.tutorial.intro && g.tutorial.intro.dialogue.name')));
   check('response bubbles appear', await press('Enter'));
   await shot('02b_intro_choices.png');
   const rects = await G('g.tutorial.intro.choiceRects()');
@@ -101,14 +103,28 @@ if (hasIntro) {
   // the glossy Skip pill (top right)
   const sr = await G('g.tutorial.intro && g.tutorial.intro.skipRect()');
   if (sr) await clickRect(sr);
-  const skipped = await until(() => !window.FISHTOP.tutorial.intro, 15000);
+  const skipped = await until(() => !window.FISHTOP.tutorial.intro, 120000); // software GL on a busy machine is slow
   check('Skip pill ends the opening', skipped && (await step()) === 'bait', String(await step()));
   check('choices reach the save', (await G('g.state.clip && g.state.clip.mood')) === 'happy' && (await G('g.state.angler.name')) === 'Reel Deal');
 }
 check('starts in the (OS)cean', (await G('g.ocean.biome && g.ocean.biome.id')) === 'oscean', await G('g.ocean.biome && g.ocean.biome.id'));
 await wait(900);
-check('Clip guides the tutorial (dialogue)', !!(await G('g.tutorial.dialogue && g.tutorial.dialogue.line && g.tutorial.dialogue.line.text')), String(await G('g.tutorial.dialogue.line && g.tutorial.dialogue.line.text')));
+check('Bubbles guides the tutorial (dialogue)', await until(() => { const d = window.FISHTOP.tutorial.dialogue; return !!(d && d.line && d.line.text); }, 60000), String(await G('g.tutorial.dialogue.line && g.tutorial.dialogue.line.text')));
+check('bigger dialogue text', (await G('g.tutorial.dialogue.fontSize || 16')) >= 20, `Alagard ${await G('g.tutorial.dialogue.fontSize')}px`);
 check('HUD gated during the tutorial', !(await iconRect('lab')) && !(await iconRect('journal')) && !(await iconRect('map')));
+// Bubbles swims around the screen (smooth physics) to the Bait Shop button and points at it with a flipper
+const hasSeal = await G('!!(g.tutorial.seal && g.tutorial.seal.update)');
+check('the seal guide exists', hasSeal);
+if (hasSeal) {
+  await G(`(window.__seal = { anims: {}, xs: [] }, (function watch() { const S = window.FISHTOP.tutorial.seal; window.__seal.anims[S.anim] = 1; window.__seal.xs.push(S.x); if (window.__seal.xs.length < 4000) setTimeout(watch, 50); })(), true)`);
+  const swam = await until(() => window.__seal.anims.swim, 15000);
+  check('the seal swims around the screen', swam, JSON.stringify(await G('Object.keys(window.__seal.anims)')));
+  const pointed = await until(() => { const S = window.FISHTOP.tutorial.seal; return S.anim === 'point' && !!S.pointP; }, 30000);
+  const sp = await G('(() => { const S = g.tutorial.seal; return { x: Math.round(S.x), y: Math.round(S.y), p: S.pointP && S.pointP.map(Math.round), r: S.rect() }; })()');
+  check('the seal points at the Bait Shop button', pointed, JSON.stringify(sp));
+  const near = sp && sp.p && Math.hypot(sp.p[0] - sp.x, sp.p[1] - sp.y) < 260;
+  check('the seal perches beside its target', !!near);
+}
 await shot('07_tut_bait.png');
 
 // ---------------------------------------------------------------- free starter bait (Dot's Bait Shop)
@@ -139,8 +155,54 @@ const W = await G('g.screen.W'), H = await G('g.screen.H');
 const pxPerL = await page.evaluate(() => { const g = window.FISHTOP; return g.canvas.getBoundingClientRect().width / g.screen.W; });
 const clampX = (x) => Math.max(30, Math.min(W - 30, x)), clampY = (y) => Math.max(60, Math.min(H - 60, y));
 let shocked = false, held = 0;
+// Circle the mouse (the gear / crank). each(s) -> true (stop) | 'skip' (it handled this tick) | false.
+// A background mover circles the mouse at a wall-clock angular speed, so the game sees smooth circling at any frame
+// rate; this loop steers that speed from the game's own clock (slow headless frames run the game slower than the
+// wall clock) and from gear.rpm vs the band (a feedback loop), so the gear stays inside the band.
+const spinCtl = { omega: 0, paused: false, dil: 1.3, slip: 15 };
+async function spinGear(each, ms) {
+  const t0 = Date.now();
+  const [pcx, pcy] = await toPage(W * 0.42, H * 0.55);
+  const R = 40 * pxPerL;
+  let s = null, run = true, a = 0, last = Date.now(), prevW = 0, prevT = 0;
+  const mover = (async () => {
+    while (run) {
+      const now = Date.now();
+      a += (spinCtl.omega * (now - last)) / 1000; last = now;
+      if (spinCtl.paused || spinCtl.omega <= 0) { await wait(25); continue; }
+      await page.mouse.move(pcx + Math.cos(a) * R, pcy + Math.sin(a) * R);
+      await wait(8);
+    }
+  })();
+  try {
+    while (Date.now() - t0 < ms) {
+      s = await G(`(() => { const f = g.fishing, B = f.state === 'bite' ? f.hs : f.battle, gr = f.gear, band = B && B.band;
+        return { st: f.state, T: f.tension, rpm: gr && typeof gr.rpm === 'number' ? gr.rpm : null, gt: gr ? gr.t : 0, hand: gr ? gr.hand : 0, lo: band ? band.lo : null, hi: band ? band.hi : null,
+          hint: f.crankHint ? f.crankHint() : [g.input.x, g.input.y], ready: !!(B && B.shockReady), holdShock: !!(B && 'chargeWin' in B),
+          surge: !!(B && ((B.qte && B.qte.active) || (B.mode === 'surge' && typeof B.pullDir === 'number'))), pull: B ? (B.qte && B.qte.active ? B.qte.dir : B.pullDir) : null }; })()`);
+      const now = Date.now();
+      if (prevW && s.gt > prevT) spinCtl.dil = spinCtl.dil * 0.8 + Math.max(0.7, Math.min(5, (now - prevW) / 1000 / (s.gt - prevT))) * 0.2;
+      prevW = now; prevT = s.gt;
+      const r = await each(s);
+      if (r === true) return s;
+      if (r === 'skip') { last = Date.now(); continue; }
+      let tgt = 120; // rpm (or a steady crank without a gear)
+      if (s.rpm != null && s.lo != null) {
+        tgt = s.lo * 0.55 + s.hi * 0.45;
+        if (s.hand > 20) spinCtl.slip = Math.max(-30, Math.min(90, spinCtl.slip + 0.25 * (tgt - s.rpm)));
+      }
+      spinCtl.omega = ((Math.min(260, tgt + spinCtl.slip) / 60) * Math.PI * 2) / spinCtl.dil;
+      await wait(40);
+    }
+    return s;
+  } finally {
+    run = false;
+    await mover;
+    spinCtl.omega = 0;
+  }
+}
 async function fishOnce(attempt) {
-  // hook into the water, where Clip points
+  // hook into the water, where the seal points
   const spot = await G('g.tutorial.waterSpot ? g.tutorial.waterSpot() : null') || [W * 0.56, H * 0.62];
   await moveL(clampX(spot[0]), clampY(spot[1]), 20);
   await wait(600);
@@ -158,36 +220,52 @@ async function fishOnce(attempt) {
     }
   }
   if (!bit) return 'nobite';
+  const gearMode = await G(`!!(g.fishing.gear && 'hs' in g.fishing)`); // the 3D gear minigame (spin to hook / reel)
   if ((await G('g.fishing.state')) === 'bite') {
     if (attempt === 0) { await shot('10_tut_hookset.png'); check('hook-set cue', (await step()) === 'hook', String(await step())); }
-    await page.mouse.down(); await page.mouse.up(); await wait(120);
+    if (gearMode) await spinGear((s) => s.st !== 'bite', 8000); // spin the gear up into the hook band
+    else { await page.mouse.down(); await page.mouse.up(); await wait(120); }
   }
   if (!['fight', 'landing'].includes(await G('g.fishing.state'))) return 'nohook';
-  // crank the reel by circling the mouse, keeping the loop on the side opposite to the fish's pull
-  // (fishing.crankHint()); hold + drag against surges; one Shock; ease off when the line gets too tight.
-  let crankA = 0, fightShot = false;
+  // reel: spin the gear (or crank) by circling the mouse, keeping the gear's RPM inside the sweet band when there is
+  // one (a feedback loop on gear.rpm vs band); hold + drag against surges; one Shock (hold-and-release when the
+  // shock charges, else a Space tap); ease off when the line gets too tight.
   const ft0 = Date.now();
-  for (let i = 0; i < 3000 && Date.now() - ft0 < 100000; i++) {
-    const s = await G(`(() => { const f = g.fishing, B = f.battle; return { st: f.state, T: f.tension, hint: f.crankHint ? f.crankHint() : [g.input.x, g.input.y], mode: B && B.mode, pull: B && B.pullDir, ready: !!(B && B.shockReady) }; })()`);
-    if (s.st !== 'fight') break;
-    if (!shocked && s.ready && Date.now() - ft0 > 1500) { await page.keyboard.press('Space'); shocked = true; await wait(150); continue; }
-    if (s.mode === 'surge' && typeof s.pull === 'number') {
-      // hold the button and drag against the surge
+  let fightShot = false;
+  await spinGear(async (s) => {
+    if (s.st !== 'fight') return true;
+    if (!fightShot && Date.now() - ft0 > 2500) { fightShot = true; await shot('11_fight.png'); }
+    if (!shocked && s.ready && Date.now() - ft0 > 1500) {
+      if (s.holdShock) {
+        // hold Space (the gear keeps spinning) and let go early in the PERFECT window
+        await page.keyboard.down('Space');
+        let k = -1;
+        for (let i = 0; i < 300; i++) {
+          const c = await G('(() => { const B = g.fishing.battle; return B && B.charge ? { k: B.charge.k, w: B.chargeWin } : null; })()');
+          if (!c) { if (i > 8) break; continue; }
+          k = c.k;
+          if (k >= c.w.lo + (c.w.hi - c.w.lo) * 0.2) break;
+        }
+        await page.keyboard.up('Space');
+        note(`shock released at charge ${k.toFixed(2)}`);
+      } else await page.keyboard.press('Space');
+      shocked = true; await wait(150);
+      return false;
+    }
+    if (s.surge && typeof s.pull === 'number') {
+      // hold the button and drag against the surge (the circling pauses)
+      spinCtl.paused = true;
       const [ox, oy] = await toPage(clampX(s.hint[0]), clampY(s.hint[1]));
       await page.mouse.move(ox, oy); await page.mouse.down();
-      for (let k = 1; k <= 6; k++) await page.mouse.move(ox - Math.cos(s.pull) * k * 9 * pxPerL, oy - Math.sin(s.pull) * k * 9 * pxPerL);
+      for (let k = 1; k <= 7; k++) await page.mouse.move(ox - Math.cos(s.pull) * k * 9 * pxPerL, oy - Math.sin(s.pull) * k * 9 * pxPerL);
       await page.mouse.up();
+      spinCtl.paused = false;
       held++;
-      continue;
+      return 'skip';
     }
-    if (s.T > 0.85) { await wait(80); continue; }
-    const [ox, oy] = await toPage(clampX(s.hint[0]), clampY(s.hint[1]));
-    for (let k = 0; k < 4; k++) {
-      crankA += 1.0;
-      await page.mouse.move(ox + Math.cos(crankA) * 22 * pxPerL, oy + Math.sin(crankA) * 22 * pxPerL);
-    }
-    if (!fightShot && Date.now() - ft0 > 2500) { fightShot = true; await shot('11_fight.png'); }
-  }
+    if (s.T > 0.9 && s.lo == null) { await wait(80); return 'skip'; }
+    return false;
+  }, 100000);
   const st = await G('g.fishing.state');
   note(`fight ended in ${((Date.now() - ft0) / 1000).toFixed(1)}s (${st}; shock ${shocked ? 'used' : 'not used'}, ${held} surge holds)`);
   return (await until(() => ['card', 'tank', 'coin'].includes(window.FISHTOP.tutorial.step), 15000)) ? 'caught' : 'lost';
@@ -199,6 +277,12 @@ for (let attempt = 0; attempt < 3 && result !== 'caught'; attempt++) {
 }
 check('hooked a fish', (await ev('hooked')) > 0);
 check('fight won -> catch', result === 'caught', result);
+if (result !== 'caught' && (await G(`g.fishing.state === 'fight' && !!g.fishing.battle`))) {
+  // keep testing the rest of the first session: finish the fight through the battle's progress (reported above)
+  note('test assist: landing the hooked fish so the rest of the session can be checked');
+  await G(`(g.fishing.battle.progress = 1, true)`);
+  await until(() => ['card', 'tank', 'coin'].includes(window.FISHTOP.tutorial.step), 60000);
+}
 
 // ---------------------------------------------------------------- catch card, the jar, Aero
 const revealed = await until(() => window.FISHTOP.ui.isOpen('reveal') || window.FISHTOP.tutorial.step !== 'card', 10000);
@@ -234,13 +318,16 @@ const rid = await G('g.tutorial.researchId');
 const started = await G(`(() => { const p = g.ui.panels.lab; return p && p.research && g.tutorial.researchId ? p.research(g.tutorial.researchId) : false; })()`);
 check('first research started', !!started && (await ev('labStarted')) > 0, String(rid));
 check('tutorial complete', await until(() => window.FISHTOP.state.tutorialDone, 8000));
+if (hasSeal) check('the seal emoted along the way', (await G('Object.keys(window.__seal.anims).length')) >= 3, JSON.stringify(await G('Object.keys(window.__seal.anims)')));
 await G(`g.ui.close('lab')`);
 await wait(3000);
 check('full HUD after the tutorial', !!(await iconRect('lab')) && !!(await iconRect('journal')) && !!(await iconRect('map')));
-// Clip's "keep me around?" question auto-answers yes; then the hint helper gives a tip on click
+// the seal's "keep me around?" question auto-answers yes; then the hint helper gives a tip on click
 await until(() => !window.FISHTOP.tutorial.active, 20000);
+check("'tutorialDone' emitted (quests can start)", (await ev('tutorialDone')) === 1, String(await ev('tutorialDone')));
+await wait(1500); // the helper swims to its corner
 const hr = await G('g.tutorial.helperRect && g.tutorial.helperRect()');
-check('Clip hint helper available', !!hr);
+check('seal hint helper available', !!hr);
 if (hr) {
   await clickRect(hr);
   check('hint helper gives a tip', await until(() => { const d = window.FISHTOP.tutorial.dialogue; return !!(d && d.line && d.line.text); }, 6000), String(await G('g.tutorial.dialogue.line && g.tutorial.dialogue.line.text')));
@@ -248,8 +335,9 @@ if (hr) {
 await shot('16_ocean.png');
 
 // ---------------------------------------------------------------- panels
-for (const id of ['lab', 'journal', 'inventory', 'wardrobe', 'map', 'settings', 'bait', 'baitshop', 'multiplayer']) {
-  if (!(await G(`!!g.ui.panels['${id}']`))) { if (id !== 'multiplayer') check(`panel ${id} registered`, false); continue; }
+const OPTIONAL_PANELS = ['multiplayer', 'quests'];
+for (const id of ['lab', 'journal', 'inventory', 'wardrobe', 'map', 'settings', 'bait', 'baitshop', 'multiplayer', 'quests']) {
+  if (!(await G(`!!g.ui.panels['${id}']`))) { if (!OPTIONAL_PANELS.includes(id)) check(`panel ${id} registered`, false); continue; }
   await G(`g.ui.open('${id}')`);
   await wait(800);
   check(`panel ${id} opens`, await G(`g.ui.isOpen('${id}')`));

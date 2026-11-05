@@ -1,8 +1,10 @@
-// Reusable dialogue system (phase 5, Intro agent): typed-out Alagard text with procedural voice blips, a live
-// portrait, 2-3 glossy response choices (click, or keys 1/2/3) and callbacks. The opening (cinematic panel)
-// and the tutorial (speech bubble next to Clip) both use it.
+// Reusable dialogue system (phase 5 Intro agent, phase 6 Guide agent): typed-out Alagard text with procedural voice
+// blips, a live portrait, 2-3 glossy response choices (click, or keys 1/2/3) and callbacks. The opening (cinematic
+// panel) and the tutorial (speech bubble next to Bubbles the seal) both use it. Phase 6: everything is bigger and
+// follows the UI size setting (Alagard 16 / 20 / 24 / 32 px for ui scale normal / big / huge), and speech bubbles
+// pick the side of the speaker that keeps clear of what the guide is pointing at.
 //
-//   const d = new Dialogue({audio, voice: 'clip', name: 'Clip', portrait(ctx, cx, cy, r, d), vars: {name}})
+//   const d = new Dialogue({audio, voice: 'fish', name: 'Bubbles', portrait(ctx, cx, cy, r, d), vars: {name}, size})
 //   d.say(text, o)         queue a line; o: {mood, pose, choices: [{text, value, mood, reply}], onChoose(choice, i),
 //                          onShow(line), onDone(line), hold (s after typing before auto-advance; 0 = wait for a
 //                          click), wait (always wait for a click), big, cps (chars/s), silent (no voice blips),
@@ -12,8 +14,12 @@
 //   d.clear()  d.advance()  d.choose(i)  d.finishTyping()
 //   d.update(dt, input, {mouse = true, keys = true}) -> true when it used the click / key (consumed)
 //   d.drawPanel(ctx, {x, y, w, h, t, alpha})      cinematic glass panel: portrait orb, name tag, text, next arrow
-//   d.drawBubble(ctx, ax, ay, {maxW, t, alpha, W, H}) a speech bubble pointing at (ax, ay) (tutorial)
+//                                                 (grows to fit the text; d.panelH(w) is the height it wants)
+//   d.drawBubble(ctx, ax, ay, {maxW, t, alpha, W, H, side, sides: {above, below, left, right: [x, y]}, avoid: [rects]})
+//                                                 a speech bubble with its tail at the speaker; side 'auto' tries
+//                                                 above / below / right / left and keeps clear of `avoid`
 //   d.drawChoices(ctx, {x, y, w, align, t})       the response bubbles (drawPanel / drawBubble call it)
+//   d.fontSize (Alagard px, from the UI scale or o.size), dialogueFontSize()
 //   d.active d.line d.typing d.waiting d.choosing d.talk (0..1 mouth) d.mood d.pose d.shown (chars revealed)
 //   d.choiceRects() -> [{x, y, w, h, i}]   d.panelRect   d.hit(x, y)   d.vars ({name} etc. in text)
 //   Dialogue.auto = i   (test hook) choices are picked automatically (index i) after a short beat.
@@ -25,7 +31,12 @@ import { clamp, clamp01, ease, TAU } from '../core/math.js';
 loadAlagard();
 
 const FONT = 16;           // Alagard's pixel grid
-const LINE_H = 13;
+// Alagard size for the current UI scale (phase 6: the UI agent's uiK(), 1.25 / 1.6 / 2)
+export function dialogueFontSize() {
+  let k = 1.6;
+  try { k = AE.uiK?.() ?? 1.6; } catch (e) { k = 1.6; }
+  return k >= 1.9 ? 32 : k >= 1.45 ? 24 : 20;
+}
 let MCTX = null;
 export function alagardWidth(text, size = FONT) {
   if (!MCTX) MCTX = document.createElement('canvas').getContext('2d');
@@ -89,7 +100,11 @@ export class Dialogue {
     this.panelRect = null;
     this.blipN = 0;
     this.picked = -1;
+    this.size = o.size || 0;
   }
+
+  get fontSize() { return this.size || dialogueFontSize(); }
+  get lineH() { return Math.round(this.fontSize * 0.86); }
 
   get active() { return !!this.line; }
   get typing() { return !!this.line && this.shown < this.line.text.length; }
@@ -240,48 +255,73 @@ export class Dialogue {
   }
 
   // ---------------------------------------------------------------------------------- drawing
+  wrap(l, maxW) {
+    const fs = this.fontSize;
+    if (l._wrapW === maxW && l._wrapF === fs && l._wrap) return l._wrap;
+    l._wrap = wrapAlagard(l.text, maxW, fs); l._wrapW = maxW; l._wrapF = fs;
+    return l._wrap;
+  }
+
+  // the panel height drawPanel wants for width w (text lines + padding)
+  panelH(w, minH = 0) {
+    const l = this.line;
+    const k = this.fontSize / 16;
+    const base = Math.max(minH, Math.round(66 * k));
+    if (!l) return base;
+    const pr = Math.round(base * 0.42);
+    const maxW = w - (pr * 2 + 14 + 14) - 18;
+    const n = this.wrap(l, maxW).length;
+    return Math.max(base, n * (this.lineH + 3) + Math.round(22 * k));
+  }
+
   // Cinematic panel (bottom of the screen): deep aqua glass, portrait orb, name tag, typed text, choices above.
   drawPanel(ctx, o) {
     const l = this.line;
     if (!l) { this.panelRect = null; this.rects = []; return; }
-    const { x, y, w, h } = o;
+    const fs = this.fontSize, k = fs / 16, LH = this.lineH;
+    const { x, w } = o;
+    const h0 = o.h;
+    const pr = Math.round(Math.max(h0, Math.round(66 * k)) * 0.42);
+    const h = Math.max(h0, this.panelH(w, h0));
+    const y = o.y - (h - h0); // grows upward
     const t = o.t ?? this.t;
     const a0 = ctx.globalAlpha;
-    const k = ease.outBack(clamp01(this.t * 5));
+    const kk = ease.outBack(clamp01(this.t * 5));
     ctx.save();
     ctx.globalAlpha = a0 * (o.alpha ?? 1) * clamp01(this.t * 6);
-    const yy = Math.round(y + (1 - k) * 18);
+    const yy = Math.round(y + (1 - kk) * 18);
+    const R = Math.round(14 * Math.min(1.5, k));
     this.panelRect = { x, y: yy, w, h };
     // glass body
     ctx.fillStyle = 'rgba(4,28,64,0.55)';
-    roundRect(ctx, x + 2, yy + 4, w, h, 14); ctx.fill();
+    roundRect(ctx, x + 2, yy + 4, w, h, R); ctx.fill();
     const g = ctx.createLinearGradient(0, yy, 0, yy + h);
-    g.addColorStop(0, 'rgba(34,124,196,0.94)'); g.addColorStop(0.42, 'rgba(10,64,132,0.94)'); g.addColorStop(1, 'rgba(5,30,74,0.96)');
+    g.addColorStop(0, 'rgba(34,124,196,0.95)'); g.addColorStop(0.42, 'rgba(10,64,132,0.95)'); g.addColorStop(1, 'rgba(5,30,74,0.97)');
     ctx.fillStyle = g;
-    roundRect(ctx, x, yy, w, h, 14); ctx.fill();
+    roundRect(ctx, x, yy, w, h, R); ctx.fill();
     // gloss band + rim
     ctx.save();
-    roundRect(ctx, x, yy, w, h, 14); ctx.clip();
+    roundRect(ctx, x, yy, w, h, R); ctx.clip();
     const gl = ctx.createLinearGradient(0, yy, 0, yy + h * 0.5);
     gl.addColorStop(0, 'rgba(255,255,255,0.42)'); gl.addColorStop(1, 'rgba(255,255,255,0.04)');
     ctx.fillStyle = gl;
     ctx.beginPath(); ctx.ellipse(x + w * 0.5, yy - h * 0.15, w * 0.62, h * 0.6, 0, 0, TAU); ctx.fill();
     // drifting bubbles inside the glass
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < 9; i++) {
       const ph = (t * 0.12 + i * 0.37) % 1;
       const bx = x + 30 + ((i * 97) % (w - 60)), by = yy + h - ph * h;
       ctx.globalAlpha = a0 * 0.35 * Math.sin(ph * Math.PI);
       ctx.strokeStyle = '#bff6ff'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(bx, by, 2 + (i % 3), 0, TAU); ctx.stroke();
+      ctx.beginPath(); ctx.arc(bx, by, (2 + (i % 3)) * Math.min(1.5, k), 0, TAU); ctx.stroke();
     }
     ctx.restore();
     ctx.globalAlpha = a0 * (o.alpha ?? 1) * clamp01(this.t * 6);
     ctx.strokeStyle = 'rgba(160,240,255,0.95)'; ctx.lineWidth = 1;
-    roundRect(ctx, x + 0.5, yy + 0.5, w - 1, h - 1, 14); ctx.stroke();
+    roundRect(ctx, x + 0.5, yy + 0.5, w - 1, h - 1, R); ctx.stroke();
     ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-    roundRect(ctx, x + 2.5, yy + 2.5, w - 5, h - 5, 12); ctx.stroke();
+    roundRect(ctx, x + 2.5, yy + 2.5, w - 5, h - 5, R - 2); ctx.stroke();
     // portrait orb
-    const pr = Math.round(h * 0.42), pcx = x + pr + 14, pcy = yy + h / 2;
+    const pcx = x + pr + 14, pcy = yy + h / 2;
     const og = ctx.createRadialGradient(pcx - pr * 0.3, pcy - pr * 0.4, 2, pcx, pcy, pr);
     og.addColorStop(0, '#f2ffff'); og.addColorStop(0.55, '#8fe4f6'); og.addColorStop(1, '#2a9ad4');
     ctx.fillStyle = og;
@@ -294,118 +334,165 @@ export class Dialogue {
     }
     ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(pcx, pcy, pr, 0, TAU); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.55)';
-    ctx.beginPath(); ctx.ellipse(pcx - pr * 0.25, pcy - pr * 0.55, pr * 0.5, pr * 0.22, -0.3, 0, TAU); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.beginPath(); ctx.ellipse(pcx - pr * 0.25, pcy - pr * 0.6, pr * 0.45, pr * 0.18, -0.3, 0, TAU); ctx.fill();
     // name tag
     const tx = pcx + pr + 14;
     if (this.name) {
-      const nw = Math.ceil(alagardWidth(this.name.toUpperCase())) + 18;
-      const ny = yy - 9;
-      const ng = ctx.createLinearGradient(0, ny, 0, ny + 18);
+      const nfs = fs >= 24 ? 20 : 16;
+      const th = Math.round(nfs * 1.15);
+      const nw = Math.ceil(alagardWidth(this.name.toUpperCase(), nfs)) + 22;
+      const ny = yy - Math.round(th * 0.55);
+      const ng = ctx.createLinearGradient(0, ny, 0, ny + th);
       ng.addColorStop(0, '#9effa0'); ng.addColorStop(0.5, '#3fd06a'); ng.addColorStop(1, '#1e9a48');
       ctx.fillStyle = ng;
-      roundRect(ctx, tx - 4, ny, nw, 18, 9); ctx.fill();
+      roundRect(ctx, tx - 4, ny, nw, th, th / 2); ctx.fill();
       ctx.fillStyle = 'rgba(255,255,255,0.5)';
-      roundRect(ctx, tx - 1, ny + 2, nw - 6, 6, 3); ctx.fill();
+      roundRect(ctx, tx - 1, ny + 2, nw - 6, Math.round(th * 0.33), th * 0.16); ctx.fill();
       ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
-      roundRect(ctx, tx - 3.5, ny + 0.5, nw - 1, 17, 8.5); ctx.stroke();
-      drawAlagard(ctx, this.name.toUpperCase(), tx + 5, ny + 1, { color: '#ffffff', shadow: '#0c5a2a' });
+      roundRect(ctx, tx - 3.5, ny + 0.5, nw - 1, th - 1, th / 2 - 0.5); ctx.stroke();
+      drawAlagard(ctx, this.name.toUpperCase(), tx + 7, ny + Math.round((th - nfs * 1.05) / 2), { size: nfs, color: '#ffffff', shadow: '#0c5a2a' });
     }
     // the typed text
     const maxW = x + w - tx - 18;
-    const lines = (l._wrapW === maxW && l._wrap) || (l._wrap = wrapAlagard(l.text, maxW), l._wrapW = maxW, l._wrap);
+    const lines = this.wrap(l, maxW);
     let left = Math.floor(this.shown);
-    const ty0 = yy + Math.round((h - lines.length * (LINE_H + 3)) / 2) - 1;
+    const ty0 = yy + Math.round((h - lines.length * (LH + 3)) / 2) - Math.round(fs * 0.12);
     lines.forEach((ln, i) => {
       if (left <= 0) return;
-      drawAlagard(ctx, ln, tx, ty0 + i * (LINE_H + 3), { chars: left, color: '#ffffff', shadow: '#06264e' });
+      drawAlagard(ctx, ln, tx, ty0 + i * (LH + 3), { size: fs, chars: left, color: '#ffffff', shadow: '#06264e' });
       left -= ln.length + 1;
     });
     // next arrow
     if (this.waiting && this.picked < 0) {
       const bob = Math.round(Math.sin(t * 6) * 2);
-      const ax = x + w - 18, ay = yy + h - 14 + bob;
+      const ax = x + w - 20, ay = yy + h - 16 + bob, s = Math.round(5 * Math.min(1.6, k));
       ctx.fillStyle = '#ffffff';
-      ctx.beginPath(); ctx.moveTo(ax - 5, ay - 3); ctx.lineTo(ax + 5, ay - 3); ctx.lineTo(ax, ay + 3); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(ax - s, ay - s * 0.6); ctx.lineTo(ax + s, ay - s * 0.6); ctx.lineTo(ax, ay + s * 0.6); ctx.closePath(); ctx.fill();
     }
     ctx.restore();
     ctx.globalAlpha = a0;
     // choices: a row of bubbles above the panel
-    if (l.choices?.length && !this.typing) this.drawChoices(ctx, { x: x + w, y: yy - 16, align: 'right', t });
+    if (l.choices?.length && !this.typing) this.drawChoices(ctx, { x: x + w, y: yy - Math.round(16 * k), align: 'right', t, W: o.W });
     else this.rects = [];
   }
 
-  // Tutorial speech bubble pointing at (ax, ay). maxW: wrap width. Returns the bubble rect.
+  // Speech bubble with its tail at the speaker. Returns the bubble rect.
+  //   o.side: 'auto' (default) | 'above' | 'below' | 'left' | 'right'; o.sides: anchor per side (default (ax, ay));
+  //   o.avoid: rects to keep clear of (what the speaker points at); o.maxW: wrap width
   drawBubble(ctx, ax, ay, o = {}) {
     const l = this.line;
     if (!l) { this.panelRect = null; this.rects = []; return null; }
     const W = o.W || 960, H = o.H || 540;
     const t = o.t ?? this.t;
-    const maxW = o.maxW || 200;
-    const lines = (l._wrapW === maxW && l._wrap) || (l._wrap = wrapAlagard(l.text, maxW), l._wrapW = maxW, l._wrap);
-    const tw = Math.max(40, ...lines.map((s) => Math.ceil(alagardWidth(s)))) + 20;
-    const th = lines.length * (LINE_H + 2) + 12;
-    const below = o.below ?? ay - th - 18 < 8;
-    let bx = Math.round(clamp(ax - tw / 2, 6, W - tw - 6));
-    let by = Math.round(below ? ay + 16 : ay - th - 14);
-    by = clamp(by, 6, H - th - 6);
+    const fs = this.fontSize, k = fs / 16, LH = this.lineH;
+    const pad = Math.round(9 * k), M = 6;
+    const maxW = o.maxW || Math.round(200 * k);
+    const lines = this.wrap(l, maxW);
+    const tw = Math.max(Math.round(40 * k), ...lines.map((s) => Math.ceil(alagardWidth(s, fs)))) + pad * 2;
+    const th = lines.length * (LH + 2) + Math.round(pad * 1.2);
+    const gap = Math.round(14 * Math.min(1.4, k));
+    const S = o.sides || {};
+    const place = (side) => {
+      const [px, py] = S[side] || [ax, ay];
+      let bx, by;
+      if (side === 'above') { bx = px - tw / 2; by = py - th - gap; }
+      else if (side === 'below') { bx = px - tw / 2; by = py + gap; }
+      else if (side === 'right') { bx = px + gap; by = py - th / 2; }
+      else { bx = px - tw - gap; by = py - th / 2; }
+      const cx = clamp(bx, M, W - tw - M), cy = clamp(by, M, H - th - M);
+      const off = Math.abs(cx - bx) + Math.abs(cy - by);
+      return { side, px, py, x: Math.round(cx), y: Math.round(cy), off };
+    };
+    const hits = (r) => (o.avoid || []).some((a) => a && r.x < a.x + a.w && r.x + tw > a.x && r.y < a.y + a.h && r.y + th > a.y);
+    let P;
+    const want = o.side && o.side !== 'auto' ? o.side : null;
+    if (o.below != null && !want) P = place(o.below ? 'below' : 'above');
+    else if (want) P = place(want);
+    else {
+      const order = ['above', 'below', 'right', 'left'];
+      const cands = order.map(place);
+      P = cands.find((c) => c.off < 4 && !hits(c)) || cands.find((c) => !hits(c)) || cands[0];
+      // keep the chosen side while it still works (no flip-flopping)
+      const prev = this._side && cands.find((c) => c.side === this._side);
+      if (prev && prev !== P && prev.off < 4 && !hits(prev)) P = prev;
+    }
+    this._side = P.side;
+    const { x: bx, y: by, side } = P;
     const pop = ease.outBack(clamp01(this.t * 5));
     const a0 = ctx.globalAlpha;
     ctx.save();
     ctx.globalAlpha = a0 * (o.alpha ?? 1);
-    ctx.translate(ax, below ? by : by + th);
+    const ox = side === 'left' ? bx + tw : side === 'right' ? bx : clamp(P.px, bx, bx + tw);
+    const oy = side === 'above' ? by + th : side === 'below' ? by : clamp(P.py, by, by + th);
+    ctx.translate(ox, oy);
     const sc = Math.max(0.01, pop * (l.big ? 1 + 0.05 * Math.sin(t * 12) : 1));
     ctx.scale(sc, sc);
-    ctx.translate(-ax, -(below ? by : by + th));
+    ctx.translate(-ox, -oy);
     this.panelRect = { x: bx, y: by, w: tw, h: th };
-    // tail
+    // tail toward the speaker
+    const tl = Math.round(7 * Math.min(1.6, k));
     ctx.fillStyle = 'rgba(244,253,255,0.97)';
     ctx.beginPath();
-    const tx = clamp(ax, bx + 12, bx + tw - 12);
-    if (below) { ctx.moveTo(tx - 6, by + 1); ctx.lineTo(tx + 6, by + 1); ctx.lineTo(ax, by - 8); }
-    else { ctx.moveTo(tx - 6, by + th - 1); ctx.lineTo(tx + 6, by + th - 1); ctx.lineTo(ax, by + th + 8); }
+    if (side === 'above' || side === 'below') {
+      const tx = clamp(P.px, bx + tl * 2, bx + tw - tl * 2), ey = side === 'above' ? by + th - 1 : by + 1;
+      const tipY = side === 'above' ? Math.min(P.py - 2, ey + gap) : Math.max(P.py + 2, ey - gap);
+      ctx.moveTo(tx - tl, ey); ctx.lineTo(tx + tl, ey); ctx.lineTo(clamp(P.px, tx - tl * 2, tx + tl * 2), tipY);
+    } else {
+      const ty = clamp(P.py, by + tl * 2, by + th - tl * 2), ex = side === 'left' ? bx + tw - 1 : bx + 1;
+      const tipX = side === 'left' ? Math.min(P.px - 2, ex + gap) : Math.max(P.px + 2, ex - gap);
+      ctx.moveTo(ex, ty - tl); ctx.lineTo(ex, ty + tl); ctx.lineTo(tipX, clamp(P.py, ty - tl * 2, ty + tl * 2));
+    }
     ctx.closePath(); ctx.fill();
-    AE.drawAeroSurface?.(ctx, bx, by, tw, th, { tone: 'frost', r: 9, gloss: 0.55, glossH: Math.round(th * 0.42), rim: 0.9, glow: 0.45 });
+    AE.drawAeroSurface?.(ctx, bx, by, tw, th, { tone: 'frost', r: Math.round(10 * Math.min(1.5, k)), gloss: 0.55, glossH: Math.round(th * 0.42), rim: 0.9, glow: 0.45 });
     const ink = AE.AERO?.ink || '#13304e';
     let left = Math.floor(this.shown);
     lines.forEach((ln, i) => {
       if (left <= 0) return;
-      drawAlagard(ctx, ln, bx + 10, by + 6 + i * (LINE_H + 2), { chars: left, color: ink, shadow: 'rgba(255,255,255,0.9)' });
+      drawAlagard(ctx, ln, bx + pad, by + Math.round(pad * 0.55) + i * (LH + 2), { size: fs, chars: left, color: ink, shadow: 'rgba(255,255,255,0.9)' });
       left -= ln.length + 1;
     });
     ctx.restore();
     ctx.globalAlpha = a0;
-    if (l.choices?.length && !this.typing) this.drawChoices(ctx, { x: bx + tw / 2, y: below ? by + th + 8 : by - 8, align: 'center', t, up: !below, W, small: true });
-    else this.rects = [];
+    if (l.choices?.length && !this.typing) {
+      const up = side !== 'above' ? false : true;
+      this.drawChoices(ctx, { x: bx + tw / 2, y: up ? by - 8 : by + th + 8 + Math.round(fs * 1.5), align: 'center', t, up, W, small: true });
+    } else this.rects = [];
     return this.panelRect;
   }
 
-  // Glossy response bubbles (number badge + Alagard text), popping in one by one.
+  // Glossy response bubbles (number badge + Alagard text), popping in one by one. y is the row's bottom edge.
   drawChoices(ctx, o) {
     const l = this.line;
     const cs = l.choices || [];
     const t = this.doneT;
-    const gap = 8, ph = o.small ? 20 : 24;
-    const widths = cs.map((c) => Math.ceil(alagardWidth(c.text)) + (o.small ? 34 : 42));
-    const total = widths.reduce((s, w) => s + w, 0) + gap * (cs.length - 1);
+    const fs = this.fontSize, k = fs / 16;
+    const gap = Math.round(8 * k), ph = Math.round((o.small ? 21 : 24) * k);
+    const widths = cs.map((c) => Math.ceil(alagardWidth(c.text, fs)) + Math.round((o.small ? 36 : 44) * k));
+    let total = widths.reduce((s, w) => s + w, 0) + gap * (cs.length - 1);
+    // too wide for the screen: stack them
+    const W = o.W || 9999;
+    const stack = total > W - 12;
     let x0 = o.align === 'right' ? o.x - total : o.align === 'center' ? o.x - total / 2 : o.x;
+    if (stack) { const mw = Math.max(...widths); total = mw; x0 = o.align === 'right' ? o.x - mw : o.align === 'center' ? o.x - mw / 2 : o.x; }
     if (o.W) x0 = clamp(x0, 6, o.W - total - 6);
-    const y = Math.round(o.up === false || o.align === 'right' ? o.y - ph : o.y - ph);
+    const y = Math.round(o.y - ph);
     this.rects = [];
     let x = Math.round(x0);
     cs.forEach((c, i) => {
       const w = widths[i];
-      const k = ease.outBack(clamp01((t - i * 0.08) * 5));
+      const kk = ease.outBack(clamp01((t - i * 0.08) * 5));
       const picked = this.picked === i, other = this.picked >= 0 && !picked;
       const hov = this.hover === i && this.picked < 0;
       const lift = hov ? -2 : 0;
       const pk = picked ? 1 + 0.12 * Math.sin(clamp01(this.pickT * 3) * Math.PI) : 1;
-      const yy = y + Math.round((1 - k) * 14) + lift + Math.round(Math.sin((o.t ?? 0) * 2.4 + i * 1.3) * (this.picked < 0 ? 1.5 : 0));
+      const rowY = stack ? y - (cs.length - 1 - i) * (ph + gap) : y;
+      const yy = rowY + Math.round((1 - kk) * 14) + lift + Math.round(Math.sin((o.t ?? 0) * 2.4 + i * 1.3) * (this.picked < 0 ? 1.5 : 0));
       this.rects.push({ x, y: yy, w, h: ph, i });
       ctx.save();
-      ctx.globalAlpha *= clamp01(k * 1.4) * (other ? Math.max(0, 1 - this.pickT * 4) : 1);
+      ctx.globalAlpha *= clamp01(kk * 1.4) * (other ? Math.max(0, 1 - this.pickT * 4) : 1);
       ctx.translate(x + w / 2, yy + ph / 2);
-      ctx.scale(pk * (0.6 + 0.4 * k), pk * (0.6 + 0.4 * k));
+      ctx.scale(pk * (0.6 + 0.4 * kk), pk * (0.6 + 0.4 * kk));
       ctx.translate(-(x + w / 2), -(yy + ph / 2));
       // bubble pill
       ctx.fillStyle = 'rgba(4,30,70,0.35)';
@@ -427,11 +514,12 @@ export class Dialogue {
       ctx.fillStyle = bg;
       ctx.beginPath(); ctx.arc(bcx, bcy, br, 0, TAU); ctx.fill();
       ctx.strokeStyle = '#ffffff'; ctx.beginPath(); ctx.arc(bcx, bcy, br, 0, TAU); ctx.stroke();
-      drawAlagard(ctx, String(i + 1), bcx, bcy - 8, { align: 'center', color: '#ffffff', shadow: '#0a4a8a' });
-      drawAlagard(ctx, c.text, bcx + br + 6, yy + Math.round(ph / 2) - 8, { color: '#0e3a66', shadow: 'rgba(255,255,255,0.8)' });
+      const nfs = fs >= 24 ? 20 : 16;
+      drawAlagard(ctx, String(i + 1), bcx, bcy - Math.round(nfs * 0.55), { size: nfs, align: 'center', color: '#ffffff', shadow: '#0a4a8a' });
+      drawAlagard(ctx, c.text, bcx + br + Math.round(6 * k), yy + Math.round(ph / 2) - Math.round(fs * 0.55), { size: fs, color: '#0e3a66', shadow: 'rgba(255,255,255,0.8)' });
       if (hov && Math.sin((o.t ?? 0) * 9) > 0.6) AE.drawSparkle?.(ctx, x + w - 8, yy + 2, 2, 1);
       ctx.restore();
-      x += w + gap;
+      x += stack ? 0 : w + gap;
     });
   }
 }

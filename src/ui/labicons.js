@@ -1,4 +1,5 @@
-// Lab icons: voxel rods, boats, aquarium tanks and ocean globes, voxel buildings / bait (from their own
+// Lab icons: glossy low-poly 3D rods and globe (phase 6, src/gfx/iconmeshes.js; voxel fallback), voxel boats, aquarium
+// tanks and ocean globes, voxel buildings / bait (from their own
 // modules), and a set of hand-made pixel glyphs for stat nodes. Every icon is cached per (key, size).
 //   labIcon(key, px) -> canvas (fits a px x px box) | null
 //     key: 'rod:<id>' | 'boat:<id>' | 'tank:<id>' | 'biome:<id>' | 'bait:<id>' | 'bp:<buildingId>' | 'mat:<itemId>' | glyph name
@@ -14,6 +15,7 @@ import { buildingSprite } from '../build/buildingmodels.js';
 import { itemIcon } from '../build/itemdraw.js';
 import { baitIcon } from '../fishing/baitart.js';
 import { voxelFishIcon } from '../fish/fishicon.js'; // [phase3:fish]
+import { rodIcon, getBigIcon } from '../gfx/bigicons.js'; // [phase6:ui] glossy low-poly 3D rods / globe
 
 // ---------------------------------------------------------------- pixel glyphs
 const PAL = {
@@ -280,7 +282,7 @@ export function labIcon(key, px = 18) {
   let c = null;
   try {
     const [kind, id] = key.includes(':') ? key.split(':') : [null, key];
-    if (kind === 'rod' && ROD_BY_ID[id]) c = fitVoxel(() => rodModel(ROD_BY_ID[id]), px);
+    if (kind === 'rod' && ROD_BY_ID[id]) c = rodIcon(ROD_BY_ID[id], px) || fitVoxel(() => rodModel(ROD_BY_ID[id]), px);
     else if (kind === 'boat') c = fitVoxel(() => boatModel(id), px);
     else if (kind === 'tank') c = fitVoxel(() => tankModel(id), px);
     else if (kind === 'biome') c = fitVoxel(() => globeModel(id), px);
@@ -293,7 +295,7 @@ export function labIcon(key, px = 18) {
         c = b ? fitCanvas(b.canvas, px, false) : null;
       }
     } else if (kind === 'mat') c = itemIcon(id, px);
-    else if (key === 'globe') c = fitVoxel(() => globeModel('oscean'), px);
+    else if (key === 'globe') c = getBigIcon('map', { size: px })?.canvas || fitVoxel(() => globeModel('oscean'), px);
     else if (key === 'crab' || key === 'snail') c = fitVoxel(() => critterModel(key), px);
     else if (key === 'fish' || kind === 'fish') c = voxelFishIcon(id || 'pixel', px, px); // [phase3:fish] voxel, never a 2D glyph
     else if (GLYPH_ART[key]) {

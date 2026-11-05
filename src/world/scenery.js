@@ -1319,11 +1319,12 @@ export class DepthScene {
 }
 
 // ------------------------------------------------------------------ hi-res pass (zoomed-in camera)
-// The follow camera shows the world at ~2x, so the near and mid bands are re-rendered at HI_RES x resolution with
-// half-size terrain voxels and props at double voxel detail (sprite.hi() when the sprite knows how to rebuild itself,
-// else the 1x sprite scaled). Time-sliced: Ocean.update drives hiSteps() under a per-frame budget once the biome is
-// built, and BandSet.draw switches to the hi-res canvases whenever the context is zoomed in.
-export const HI_RES = 2;
+// The follow camera shows the world at ~3x (phase 6), so the near and mid bands are re-rendered at HI_RES x resolution
+// (one hi px per screen px) with half-size terrain voxels and props at higher detail (sprite.hi() when the sprite knows
+// how to rebuild itself: library props at 3x, corals / sway plants at 2x (their twin's hiR), else the 1x sprite scaled).
+// Time-sliced: Ocean.update drives hiSteps() under a per-frame budget once the biome is built, and BandSet.draw switches
+// to the hi-res canvases whenever the context is zoomed in.
+export const HI_RES = 3; // [phase6:oceans] was 2 for the old ~2x camera
 export const HI_TWIN = new WeakMap(); // 1x band canvas -> hi-res band canvas (caustic masks find their twin here)
 export const zoomOf = (ctx) => { try { const m = ctx.getTransform(); return Math.hypot(m.a, m.b); } catch { return 1; } };
 
@@ -1490,8 +1491,9 @@ DepthScene.prototype.hiSteps = function* hiSteps(R = HI_RES) {
         try { hs = typeof sp.hiSteps === 'function' ? yield* sp.hiSteps() : typeof sp.hi === 'function' ? sp.hi() : null; } catch { hs = null; }
         if (hs && !hs.canvas) hs = null;
         const src = hs ? hs.canvas : sp.canvas;
-        const k = hs ? 1 : R; // sprite px -> hi px
-        const sox = hs ? hs.ox : sp.ox * R, soy = hs ? hs.oy : sp.oy * R;
+        const hr = hs ? (hs.hiR || sp.hiR || 2) : 1; // the twin's own resolution (props 3x, corals 2x)
+        const k = R / hr; // sprite px -> hi px
+        const sox = hs ? hs.ox * k : sp.ox * R, soy = hs ? hs.oy * k : sp.oy * R;
         const dx = Math.round((it.x + pad) * R - sox), dy = Math.round((it.y - B.y) * R - soy);
         const w = src.width * k, h = src.height * k;
         const f = it.noFog ? 0 : this.fog(it.z) * it.fogMul;
@@ -1598,9 +1600,9 @@ export class DepthDecor {
       if (it.anim) {
         const A = it.anim, H = zoomed ? A.hi : null;
         if (H) {
-          // double-detail twin (built in the background), drawn at half size
-          const i = Math.floor(((t * it.speed * speed) / A.P) * A.n + it.off), fr = H.frames[((i % A.n) + A.n) % A.n];
-          ctx.drawImage(this.fog.get(fr, it.fc, it.fa), Math.round(A.gx + dx) - H.ox / 2, Math.round(A.gy + dy) - H.oy / 2, fr.width / 2, fr.height / 2);
+          // detail twin (built in the background), drawn at 1 / its resolution
+          const i = Math.floor(((t * it.speed * speed) / A.P) * A.n + it.off), fr = H.frames[((i % A.n) + A.n) % A.n], hr = H.hiR || 2;
+          ctx.drawImage(this.fog.get(fr, it.fc, it.fa), Math.round(A.gx + dx) - H.ox / hr, Math.round(A.gy + dy) - H.oy / hr, fr.width / hr, fr.height / hr);
           continue;
         }
         const fr = A.frame(t * it.speed * speed, it.off);

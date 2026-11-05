@@ -20,7 +20,7 @@ import { noise3, fbm3 } from '../../gfx/props.js';
 import { worldProp, WORLD_YAW, WORLD_PITCH, voxelize, voxRelief } from '../voxkit.js';
 import { voxAnim, placeAnim } from '../coral.js';
 import { gullFrames, voxPixelSprite, voxCloudSprite } from '../voxcritters.js';
-import { VoxelGiant } from '../giants.js';
+import { VoxelGiant, lpPenguinFrames, lpRestSealFrames } from '../giants.js'; // [phase6:creatures] low-poly critters
 import {
   paint, dpack, lerpStops, stopPalette, ditherPick, Blend, FogLayer, fillWith, drawWobble, makeRays, drawGlow, twinkle,
   Caustics, lumaMask, waveLine, waveRuns, Strands, Motes, Bubbles, Mask, ridge, todWeights, quality, inRect, bladeSprites,
@@ -963,9 +963,9 @@ export class FjordBiome extends Biome {
       this.anemones.push({ x, y: y - Math.round(16 * s), z });
     }
     // life above water
-    this.penguin = penguinFrames().map((c) => voxPixelSprite(c, 4));
-    this.penguinL = this.penguin.map(flipCanvas);
-    this.seal = sealFrames().map((c) => voxPixelSprite(c, 5));
+    this.penguin = lpPenguinFrames(1); // [phase6:creatures] low-poly penguins + resting seal (canvases carry world .w/.h)
+    this.penguinL = lpPenguinFrames(-1);
+    this.seal = lpRestSealFrames();
     // ice floes drifting on the surface
     this.floes = [];
     const fr = new RNG(71);
@@ -1267,9 +1267,9 @@ export class FjordBiome extends Biome {
     let c = this.giantFog.get(key);
     if (!c) { c = tinted(f.canvas, '#5aa8c8'); this.giantFog.set(key, c); if (this.giantFog.size > 40) this.giantFog.clear(); }
     ctx.globalAlpha = 0.75;
-    ctx.drawImage(f.canvas, Math.round(gi.x - f.ox + this.par.x * 1.1), Math.round(gi.y - f.oy + this.par.y * 0.5));
+    ctx.drawImage(f.canvas, Math.round(gi.x - f.ox + this.par.x * 1.1), Math.round(gi.y - f.oy + this.par.y * 0.5), f.w, f.h); // [phase6:creatures]
     ctx.globalAlpha = 0.5;
-    ctx.drawImage(c, Math.round(gi.x - f.ox + this.par.x * 1.1), Math.round(gi.y - f.oy + this.par.y * 0.5));
+    ctx.drawImage(c, Math.round(gi.x - f.ox + this.par.x * 1.1), Math.round(gi.y - f.oy + this.par.y * 0.5), f.w, f.h); // [phase6:creatures]
     ctx.globalAlpha = 1;
   }
 
@@ -1281,7 +1281,7 @@ export class FjordBiome extends Biome {
       if (p.x < -20 || p.x > this.W + 20) continue;
       const spr = fr[4 + (Math.floor(this.t * 10 + p.ph) % 2)];
       ctx.globalAlpha = 0.85;
-      ctx.drawImage(spr, Math.round(p.x - 7), Math.round(p.y - 3));
+      ctx.drawImage(spr, Math.round(p.x - 7), Math.round(p.y - 3), spr.w || spr.width, spr.h || spr.height); // [phase6:creatures]
     }
     ctx.globalAlpha = 1;
   }
@@ -1350,7 +1350,7 @@ export class FjordBiome extends Biome {
       f.top = wl - p.oy + 6;
       if (f.who === 2) {
         const fr = this.seal[Math.floor(t * 0.7) % 4 === 0 ? 1 + (Math.floor(t * 3) % 2) : 0];
-        ctx.drawImage(fr, x - 14, f.top - 10);
+        ctx.drawImage(fr, x - 14, f.top - 10, fr.w || fr.width, fr.h || fr.height); // [phase6:creatures]
       }
     }
     // penguins on (or around) their floe
@@ -1364,7 +1364,7 @@ export class FjordBiome extends Biome {
         spr = p.state === 'walk' ? fr[1 + (Math.floor(p.f) % 2)] : p.state === 'flap' ? fr[Math.floor(p.f) % 2 ? 3 : 0] : fr[0];
         x = fx - 5; y = (fl.top ?? this.base) - 13;
       }
-      ctx.drawImage(spr, x, y);
+      ctx.drawImage(spr, x, y, spr.w || spr.width, spr.h || spr.height); // [phase6:creatures]
       if (p.gift > 0 && p.state !== 'jump') { ctx.fillStyle = '#ffd84a'; ctx.fillRect(x + (p.dir > 0 ? 9 : 0), y + 4, 2, 2); twinkle(ctx, x + (p.dir > 0 ? 10 : 1), y + 3, Math.sin(p.gift * 4) * 0.5 + 0.5, '#fff6b0'); }
       if (p.secret && !this.secrets().fjord_penguin && p.state === 'stand') {
         const hk = ((this.hint + 1) % 8) / 8;
@@ -1436,7 +1436,8 @@ export class FjordBiome extends Biome {
     for (const p of this.penguins) {
       if (p.state !== 'swim') continue;
       const fr = p.dir > 0 ? this.penguinL : this.penguin;
-      ctx.drawImage(fr[4 + (Math.floor(t * 10) % 2)], Math.round(p.wx) - 7, Math.round(p.wy) - 3);
+      const q = fr[4 + (Math.floor(t * 10) % 2)]; // [phase6:creatures]
+      ctx.drawImage(q, Math.round(p.wx) - 7, Math.round(p.wy) - 3, q.w || q.width, q.h || q.height);
     }
     this.bubbles.draw(ctx, t);
   }

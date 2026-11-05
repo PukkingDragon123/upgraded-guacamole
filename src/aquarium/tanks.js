@@ -1,14 +1,15 @@
-// Aquarium tank tiers (phase 3) and the scene layout that places the tank in the Aero room.
+// Aquarium tank tiers and tank gear (phase 6: a real 3D tank).
 //
-//   TANK_TIERS[i]          {id, name, shape: 'round'|'box'|'lamp'|'wall', cap (extra fish over stats.tankCap),
-//                           rate (income multiplier), offlineH (offline earnings cap, hours), fish (fish scale
-//                           in the full view), plants [back, side, front, tufts], water: 'aero'|'reef'}
-//   tankTier(state)        0..5 (state.tank.tier, raised to the best Lab unlock 'tank:<id>')
-//   tierCapBonus(state)    extra tank capacity of the current tier (game.recomputeStats adds it to tankCap)
-//   aeroRate(rec, sp, stats, tier) -> Aero per minute for one fish (rarity, size, mutations, happiness, tier)
-//   sceneSize(key, tier, W, H) -> {sw, sh} scene (room) size for a view: 'full' | 'window' | 'mini'
-//   sceneLayout(key, tier, sw, sh) -> {tank: {x, y, w, h}, deskY, u, fishScale, decorScale, ...}
-//     tank = the inner glass rect (TankSpace W x H) in scene coordinates.
+//   TANK_IDS / TANK_TIERS[i]   {id, name, shape: 'round'|'lamp'|'box'|'wall', cap (extra fish over stats.tankCap),
+//                               rate (income multiplier), offlineH (offline earnings cap, hours), plants, water}
+//   TANK3D[i]                  3D size of the tier in centimetres (inner glass): round {R, cy, open, water, gravel}
+//                              or box {W, H, D, water, gravel, slope, hood, stand}; the tank's base sits at y = 0
+//   tankTier(state)            0..5 (state.tank.tier, raised to the best Lab unlock 'tank:<id>')
+//   tierCapBonus(state)        extra tank capacity of the current tier (skills.js computeStats adds it to tankCap)
+//   aeroRate(rec, sp, stats, tier, bonus, gearMul) -> Aero per minute for one fish
+//   GEAR / gearLevel(state, id) / gearMul(state) / gearHappy(state) / gearCost(id, level)
+//                              tank equipment bought with Aero in the aquarium (filter, heater, light, air,
+//                              substrate); every level is a visible 3D change and a small income/happiness boost
 
 import { clamp, clamp01 } from '../core/math.js';
 import { unlocked } from '../game/lab.js';
@@ -18,14 +19,25 @@ import * as shop from '../game/shopdata.js';
 export const TANK_IDS = ['jar', 'bowl', 'smalltank', 'bigtank', 'reeftank', 'wallaquarium'];
 
 export const TANK_TIERS = [
-  // cap = extra fish over stats.tankCap (= the tier index); the Aqua Lamp is the moving-picture lamp look
-  // (silver frame, blue top light, a rocker switch that turns its light and the scrolling reef on / off)
-  { id: 'jar', name: 'Goldfish Jar', shape: 'round', cap: 0, rate: 1, offlineH: 3, fish: 0.66, plants: [1, 0, 1, 2], water: 'aero' },
-  { id: 'bowl', name: 'Bubble Bowl', shape: 'round', cap: 1, rate: 1.15, offlineH: 4, fish: 0.68, plants: [2, 1, 1, 3], water: 'aero' },
-  { id: 'smalltank', name: 'Aqua Lamp', shape: 'lamp', cap: 2, rate: 1.3, offlineH: 5, fish: 0.7, plants: [3, 2, 2, 3], water: 'aero' },
-  { id: 'bigtank', name: 'Big Tank', shape: 'box', cap: 3, rate: 1.5, offlineH: 6, fish: 0.78, plants: [5, 2, 2, 4], water: 'aero' },
-  { id: 'reeftank', name: 'Reef Tank', shape: 'box', cap: 4, rate: 1.75, offlineH: 7, fish: 0.86, plants: [6, 3, 3, 5], water: 'reef' },
-  { id: 'wallaquarium', name: 'Wall Aquarium', shape: 'wall', cap: 5, rate: 2.1, offlineH: 8, fish: 0.96, plants: [8, 4, 3, 6], water: 'aero' },
+  { id: 'jar', name: 'Goldfish Jar', shape: 'round', cap: 0, rate: 1, offlineH: 3, plants: 3, water: 'aero' },
+  { id: 'bowl', name: 'Bubble Bowl', shape: 'round', cap: 1, rate: 1.15, offlineH: 4, plants: 5, water: 'aero' },
+  { id: 'smalltank', name: 'Aqua Lamp', shape: 'lamp', cap: 2, rate: 1.3, offlineH: 5, plants: 8, water: 'aero' },
+  { id: 'bigtank', name: 'Big Tank', shape: 'box', cap: 3, rate: 1.5, offlineH: 6, plants: 13, water: 'aero' },
+  { id: 'reeftank', name: 'Reef Tank', shape: 'box', cap: 4, rate: 1.75, offlineH: 7, plants: 18, water: 'reef' },
+  { id: 'wallaquarium', name: 'Wall Aquarium', shape: 'wall', cap: 5, rate: 2.1, offlineH: 8, plants: 26, water: 'aero' },
+];
+
+// Inner glass dimensions (cm). Round tanks: a glass globe of radius R centred at cy (cut flat at y = 0), open at
+// `open`, water up to `water`, gravel up to `gravel`. Box tanks: W x H x D centred on x / z, base at y = 0.
+export const TANK3D = [
+  // the jar: a mason-jar profile [[inner radius, y], ...] with a screw neck; the bowl: a glass globe
+  { shape: 'round', kind: 'jar', R: 9.2, cy: 8, open: 21, water: 15.6, gravel: 2.4, fish: 4.4,
+    prof: [[6.4, 0.6], [8.2, 1.2], [9.0, 2.6], [9.2, 5], [9.2, 12.4], [8.8, 14.6], [7.6, 16.6], [6.2, 18.0], [5.9, 18.8], [5.9, 21]] },
+  { shape: 'round', kind: 'bowl', R: 17, cy: 14.2, open: 26.6, water: 23.2, gravel: 3.6, fish: 5.4 },
+  { shape: 'box', W: 50, H: 27, D: 20, water: 25.2, gravel: 3.2, slope: 2.5, hood: 'lamp', stand: 'desk', fish: 6.2 },
+  { shape: 'box', W: 80, H: 42, D: 34, water: 39.5, gravel: 4.5, slope: 5, hood: 'lid', stand: 'cabinet', fish: 7.2 },
+  { shape: 'box', W: 104, H: 52, D: 46, water: 49, gravel: 5, slope: 7, hood: 'reef', stand: 'cabinet', fish: 8.2 },
+  { shape: 'box', W: 176, H: 72, D: 46, water: 68, gravel: 6, slope: 9, hood: 'wall', stand: 'wall', fish: 9.4 },
 ];
 
 // Aero per minute by rarity (falls back to the shop table when the Lab rebalances it).
@@ -41,100 +53,35 @@ export function tankTier(state) {
 
 export function tierCapBonus(state) { return TANK_TIERS[tankTier(state)].cap; }
 
-export function aeroRate(rec, sp, stats = {}, tier = 0, bonus = 1) {
+export function aeroRate(rec, sp, stats = {}, tier = 0, bonus = 1, gm = 1) {
   const base = shop.COIN_RATE?.[sp?.rarity] ?? RATE[sp?.rarity] ?? 2;
   const happy = clamp01(rec.happiness ?? 0.7);
-  return base * valueMultiplier(rec) * (0.6 + 0.8 * happy) * (TANK_TIERS[tier]?.rate || 1) * (stats.coinMul || 1) * bonus;
+  return base * valueMultiplier(rec) * (0.6 + 0.8 * happy) * (TANK_TIERS[tier]?.rate || 1) * (stats.coinMul || 1) * bonus * gm;
 }
 
-// ------------------------------------------------------------------ scene sizes
-
-const WIN_W = [250, 266, 290, 326, 362, 404];
-export const FRAME = { window: { lid: 15, side: 4, base: 14 }, mini: { lid: 10, side: 3, base: 3 } };
-
-export function sceneSize(key, tier, W, H, taskbar = 24) {
-  if (key === 'full') return { sw: W, sh: H - taskbar };
-  if (key === 'mini') return { sw: 176, sh: 112 };
-  const sw = Math.min(WIN_W[tier] || 300, W - 40);
-  return { sw, sh: Math.round(sw * 0.64) };
-}
-
-// Reference full scene is 960 x 516 (1920 x 1080 at 2x minus the taskbar).
-const REF_W = 960, REF_H = 516;
-// Full-view tank sizes in reference px: [width, height, lid, base, deskY (fraction of sh)]
-const FULL = [
-  [236, 222, 0, 0, 0.8],
-  [318, 236, 0, 0, 0.8],
-  [384, 222, 22, 30, 0.82],
-  [536, 288, 15, 13, 0.83],
-  [668, 330, 14, 15, 0.86],
-  [826, 398, 14, 14, 0.9],
+// ------------------------------------------------------------------ gear (bought with Aero in the aquarium)
+export const GEAR = [
+  { id: 'filter', name: 'Filter', icon: 'bubble', levels: ['Sponge Filter', 'Hang-on Filter', 'Canister Filter', 'Turbo Aero Filter'], cost: [0, 120, 480, 1800], desc: 'Crystal-clear water. Happier fish.' },
+  { id: 'heater', name: 'Heater', icon: 'sun', levels: ['No Heater', 'Glass Heater', 'Smart Heater'], cost: [0, 90, 650], desc: 'Cosy water. Tropical fish love it.' },
+  { id: 'light', name: 'Lid Light', icon: 'star', levels: ['Basic LED', 'Aero LED', 'Rainbow LED', 'Sunrise Array'], cost: [0, 150, 700, 2400], desc: 'Brighter light, light shafts, plant growth.' },
+  { id: 'air', name: 'Air Stones', icon: 'bubble', levels: ['One Air Stone', 'Twin Stones', 'Bubble Wall', 'Geyser Stones'], cost: [0, 80, 400, 1500], desc: 'More bubbles. Fish play in the stream.' },
+  { id: 'sand', name: 'Substrate', icon: 'coral', levels: ['Aqua Gravel', 'Beach Sand', 'Snow Pebbles', 'Rainbow Gravel', 'Black Sand'], cost: [0, 60, 120, 250, 250], desc: 'A new floor. Pure style.', cosmetic: true },
 ];
+export const GEAR_BY_ID = Object.fromEntries(GEAR.map((g) => [g.id, g]));
 
-export function sceneLayout(key, tier, sw, sh) {
-  const T = TANK_TIERS[tier];
-  const [fw, fh, lid0, base0, deskF] = FULL[tier];
-  const out = { key, tier, sw, sh, shape: T.shape, id: T.id };
-  if (key === 'full') {
-    const u = Math.min(sw / REF_W, sh / REF_H);
-    const w = Math.round(fw * u), h = Math.round(fh * u);
-    const lid = Math.round(lid0 * u), base = Math.round(base0 * u);
-    const deskY = Math.round(sh * deskF);
-    const x = Math.round((sw - w) / 2);
-    let y;
-    if (T.shape === 'wall') y = Math.round(sh * 0.47 - h / 2);
-    else y = deskY - base - h - (T.shape === 'round' ? Math.round(3 * u) : 0);
-    Object.assign(out, { u, deskY, tank: { x, y, w, h }, lid, base, zoom: 1 });
-    out.fishScale = T.fish * clamp(u, 0.8, 1.25);
-  } else {
-    // close-up: the tank fills most of the scene, the room shows around it
-    const deskY = Math.round(sh * (T.shape === 'wall' ? 0.97 : 0.88));
-    const frac = [0.84, 0.82, 0.8, 0.84, 0.88, 0.92][tier];
-    let w, h;
-    if (T.shape === 'round') {
-      h = Math.round((deskY - sh * 0.1) * (tier === 0 ? 0.98 : 0.92));
-      w = Math.round(h * fw / fh);
-      if (w > sw * frac) { w = Math.round(sw * frac); h = Math.round(w * fh / fw); }
-    } else {
-      w = Math.round(sw * frac);
-      h = Math.round(w * fh / fw);
-    }
-    const k = w / fw;
-    const lid = Math.max(lid0 ? 3 : 0, Math.round(lid0 * k)), base = Math.max(base0 ? 3 : 0, Math.round(base0 * k));
-    const maxH = (T.shape === 'wall' ? sh - 8 : deskY - 6) - lid - base;
-    if (h > maxH) { h = maxH; w = Math.round(h * fw / fh); }
-    const x = Math.round((sw - w) / 2);
-    let y;
-    if (T.shape === 'wall') y = Math.round((sh - h) / 2);
-    else y = deskY - base - h - (T.shape === 'round' ? 1 : 0);
-    const u = w / fw; // room props scale with the tank so the close-up stays in proportion
-    Object.assign(out, { u, deskY, tank: { x, y, w, h }, lid, base, zoom: 2 });
-    const fullW = FULL[tier][0];
-    out.fishScale = clamp(T.fish * (w / fullW), key === 'mini' ? 0.22 : 0.28, 0.7);
-  }
-  out.decorScale = Math.max(out.fishScale * 0.7, out.tank.w / 960);
-  return out;
+export function gearLevel(state, id) {
+  const g = GEAR_BY_ID[id];
+  const v = Math.floor(Number(state?.tank?.gear?.[id]) || 0);
+  return g ? clamp(v, 0, g.levels.length - 1) : 0;
 }
-
-// TankSpace options for a tier (interior geometry), given the inner glass size.
-export function tankOpts(tier, iw, ih, key) {
-  const T = TANK_TIERS[tier];
-  const small = key === 'mini' ? 0.5 : key === 'window' ? 0.75 : 1;
-  const cell = clamp(Math.round(iw / (T.shape === 'round' ? 70 : 130)), 2, 7);
-  const step = Math.max(1, Math.round(cell / 2.3));
-  if (T.shape === 'round') {
-    // glass silhouette ellipse resting on the bottom of the rect; its top is cut by the opening at y = 0
-    const rx = iw / 2 - 1, ry = tier === 0 ? Math.min(iw / 2, ih * 0.53) - 1 : ih * 0.56;
-    return {
-      shape: 'round', K: 0.13, vpy: -0.3, surf: Math.round(ih * (tier === 0 ? 0.2 : 0.17)),
-      floorFront: Math.round(ih * 0.85), slope: Math.round(ih * 0.03), cell, step, seed: 7 + tier,
-      edgeRise: 0, bowl: 0.15, water: T.water,
-      ell: { cx: iw / 2, cy: ih - ry - 1, rx, ry },
-      detail: small,
-    };
-  }
-  return {
-    shape: 'box', K: T.shape === 'lamp' ? 0.3 : 0.5, vpy: 0.44, surf: Math.max(3, Math.round(ih * 0.05)), floorFront: ih - Math.max(8, Math.round(ih * 0.13)),
-    slope: Math.max(5, Math.round(ih * 0.075)), cell, step, seed: 7 + tier, edgeRise: 0.75, bowl: 0.4, water: T.water, detail: small,
-  };
+export function gearCost(id, level) { return GEAR_BY_ID[id]?.cost[level] ?? Infinity; }
+// income multiplier from equipment (cosmetics excluded)
+export function gearMul(state) {
+  let n = 0;
+  for (const g of GEAR) if (!g.cosmetic) n += gearLevel(state, g.id);
+  return 1 + n * 0.04;
+}
+// happiness target bonus from equipment
+export function gearHappy(state) {
+  return gearLevel(state, 'filter') * 0.03 + gearLevel(state, 'heater') * 0.035 + gearLevel(state, 'light') * 0.015 + gearLevel(state, 'air') * 0.02;
 }

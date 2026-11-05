@@ -1,6 +1,7 @@
-// The Lab (phase 3): the ONE progression system. OWNER: Lab agent.
-// Everything is unlocked by researching nodes on a radial tree that branches out in every direction:
+// The Lab (phase 3, rows in phase 6): the ONE progression system. OWNER: Lab+Quests agent.
+// Everything is unlocked by researching nodes laid out as skill-tree ROWS (LAB_ROWS; src/ui/labrows.js draws them):
 // rods, boat upgrades, aquarium tiers, crafting recipes (buildings, bait, decor), oceans, features, stat boosts.
+// Quests (src/game/quests.js) also grant nodes for free (grantLabNode), e.g. the next ocean at each chapter's end.
 // Research costs Aero + materials + fish, takes real time, and shows a waiting widget (src/ui/labwidget.js).
 //
 //   LAB_NODES: [{id, name, branch, tier, lane, pos:[x,y], ang, rad, req:[ids], cost:{aero, items:{matId:n}, fish:{key:n}},
@@ -32,6 +33,9 @@
 //   labFocus(state, key) -> node id for ui.open('lab', {focus}) keys ('custombait', 'isp', 'rod:<id>', 'biome:<id>', node id)
 //   nodeFor(kind, id) -> the node that unlocks it (or null)
 // Events (game.emit): 'labStarted' {id}, 'labDone' {id}, 'unlocked' {kind, id}; also 'skill' (id) for old listeners.
+// [phase6:lab] Rows (LAB_ROWS, ROW_OF, node.row/col), plans and the queue (state.lab.queue = [{id, paid}]):
+//   canPlan, planCost, planAfford, confirmResearch(game, ids), labQueued; grantLabNode(game, id) for quest rewards.
+//   labStatus() reports a queued node as 'researching' (it is paid for); 'labQueued' {id} when Confirm queues one.
 import * as SPECIES_MOD from '../fish/species.js';
 import { giveRod } from './rods.js';
 
@@ -263,6 +267,47 @@ n('craft_decor3', 'crafting', 6, -1, 'Grand Decor', 'decor', ['craft_decor2'], {
 n('craft_vault', 'crafting', 7, -1, 'Treasure Vault', 'bp:vault', ['craft_lighthouse', 'craft_eng2'], { unlock: [U('recipe', 'bp_vault')], desc: 'Aero earns interest.' });
 n('craft_totem', 'crafting', 8, 0, 'Totem of Luck', 'bp:totem', ['craft_vault'], { unlock: [U('recipe', 'bp_totem')], desc: 'Rare and shiny odds up.' });
 
+// ---------------------------------------------------------------- [phase6:lab] the row layout (THE LAB skill-tree rows)
+// Every node sits in exactly one ROW: a left-to-right chain. A row's first node needs `from` (a node in another row,
+// drawn as an elbow connector) or nothing but the Lab itself; every later node needs the one before it.
+//   LAB_ROWS: [{id, branch, label, from: nodeId|null, side: 'above'|'below', nodes: [ids]}] in display order (top->bottom)
+//   ROW_BY_ID, ROW_OF[nodeId] -> row id; node.row, node.col (index in its row)
+export const LAB_ROWS = [];
+const row = (id, branch, label, from, side, nodes) => LAB_ROWS.push({ id, branch, label, from, side, nodes });
+row('tackle', 'rods', 'Tackle', 'hook1', 'above', ['line1', 'rod_bamboo', 'hook_lucky', 'rod_kelp', 'rod_tune', 'rod_coral', 'rod_aurora', 'line3', 'rod_prism']);
+row('rods', 'rods', 'Rods', null, 'below', ['hook1', 'rod_bubble', 'rod_glass', 'rod_chrome', 'rod_dolphin', 'rod_aero', 'rod_trident', 'rod_leviathan', 'rod_aerolite']);
+row('reel', 'reel', 'Reel & Shock', 'hook1', 'below', ['reel1', 'reel2', 'trace1', 'reel3', 'timing1', 'reel4', 'dodge1', 'autohook1', 'focus1', 'reel5']);
+row('shock', 'reel', 'Shock', 'reel1', 'below', ['shock1', 'shock2', 'shock3', 'rod_volt', 'shock4', 'shock5']);
+row('deck', 'boats', 'Deck Gear', 'boat_dinghy', 'above', ['boat_locker', 'boat_magnet', 'boat_winch', 'boat_sonar', 'boat_cooler', 'boat_radar', 'boat_lights']);
+row('boats', 'boats', 'Boats', null, 'below', ['boat_dinghy', 'boat_skiff', 'boat_hydrofoil', 'boat_yacht', 'boat_catamaran', 'boat_sub', 'boat_engine']);
+row('oceans', 'oceans', 'Oceans', 'boat_dinghy', 'below', ['sea_shallows', 'sea_fjord', 'sea_junkyard', 'sea_metropolis', 'sea_volcano', 'sea_abyss', 'sea_legend']);
+row('expedition', 'oceans', 'Expedition', 'sea_fjord', 'below', ['sea_compass', 'sea_multi', 'sea_forecast', 'sea_lantern', 'sea_sonar', 'sea_pressure']);
+row('aquarium', 'aquarium', 'Aquarium', null, 'below', ['tank_bowl', 'tank_small', 'tank_snail', 'tank_big', 'tank_crab', 'tank_reef', 'tank_currents', 'tank_wall']);
+row('tanklife', 'aquarium', 'Tank Life', 'tank_small', 'below', ['tank_feeder', 'tank_happy', 'tank_romance', 'tank_nursery', 'tank_mutation', 'tank_sparkle']);
+row('bait', 'bait', 'Bait', null, 'below', ['bait_worm', 'bait_sugar', 'bait_chip', 'bait_popup', 'bait_golden', 'bait_lantern', 'bait_flood', 'bait_blackhole', 'bait_relic', 'bait_master']);
+row('baitlab', 'bait', 'Bait Lab', 'bait_sugar', 'below', ['bait_custom', 'bait_slots1', 'bait_potent', 'bait_slots2']);
+row('crafting', 'crafting', 'Crafting', null, 'below', ['craft_coral', 'craft_shell', 'craft_bubble', 'craft_workshop', 'craft_hatchery', 'craft_arcade', 'craft_lighthouse', 'craft_vault', 'craft_totem']);
+row('decor', 'crafting', 'Decor', 'craft_shell', 'below', ['craft_decor1', 'craft_eng1', 'craft_decor2', 'craft_eng2', 'craft_decor3']);
+row('luck', 'luck', 'Luck & Idle', null, 'below', ['luck1', 'offline1', 'lab_slot2', 'autocollect', 'luck2', 'offline2', 'lab_speed1', 'shiny1', 'lab_slot3', 'luck3', 'luck4']);
+row('shop', 'luck', 'Bait Shop', 'luck1', 'below', ['isp2', 'isp3', 'isp4', 'isp5', 'isp6']);
+export const ROW_BY_ID = Object.fromEntries(LAB_ROWS.map((r) => [r.id, r]));
+export const ROW_OF = {};
+{
+  const rawById = Object.fromEntries(RAW.map((o) => [o.id, o]));
+  for (const r of LAB_ROWS) {
+    r.nodes = r.nodes.filter((id) => rawById[id]);
+    r.nodes.forEach((id, i) => {
+      const o = rawById[id];
+      ROW_OF[id] = r.id;
+      o.row = r.id; o.col = i; o.branch = r.branch;
+      o.req = [i === 0 ? (r.from && rawById[r.from] ? r.from : ROOT_ID) : r.nodes[i - 1]];
+      o.lane = r.side === 'above' ? -1 : r.from ? 1 : 0; // only for the old radial previews
+    });
+  }
+  // a node that no row lists still hangs off the Lab itself
+  for (const o of RAW) if (o.id !== ROOT_ID && !ROW_OF[o.id]) { o.req = [ROOT_ID]; o.row = null; o.col = 0; }
+}
+
 // ---------------------------------------------------------------- finalize: positions, costs, times
 // Polar layout: tier t sits on ring LAB_RING(t); lanes fan out sideways inside the branch's 45 degree wedge with a
 // roughly constant spacing (LANE units), capped so neighbouring branches never touch.
@@ -284,6 +329,7 @@ export const LAB_NODES = RAW.map((o) => {
   return {
     id: o.id, name: o.name, branch: o.branch, tier, lane: o.lane, ang, rad, pos: [Math.round(Math.cos(ang) * rad), Math.round(Math.sin(ang) * rad)], req: o.req || [],
     cost, time: o.time ?? (TIME_T[tier] || 0), effect: o.effect || {}, unlock: o.unlock || [], desc: o.desc || '', icon: o.icon || 'beaker',
+    row: o.row ?? null, col: o.col ?? 0, // [phase6:lab]
   };
 });
 export const LAB_BY_ID = Object.fromEntries(LAB_NODES.map((nd) => [nd.id, nd]));
@@ -335,6 +381,8 @@ export function ensureLab(state) {
     if (nd && !L.done[nd.id]) { L.done[nd.id] = Date.now(); (state.skills ||= {})[nd.id] = true; for (const u of nd.unlock) applyUnlock(state, u.kind, u.id); }
   }
   L.slots = L.slots.filter((s) => s && LAB_BY_ID[s.id] && !L.done[s.id]);
+  if (!Array.isArray(L.queue)) L.queue = []; // [phase6:lab] confirmed (paid) research waiting for a bench
+  L.queue = L.queue.filter((q) => q && LAB_BY_ID[q.id] && !L.done[q.id] && !L.slots.some((s) => s.id === q.id));
   L.active = L.slots[0] || null;
   return L;
 }
@@ -344,7 +392,7 @@ export function labHas(state, id) { return !!ensureLab(state).done[id]; }
 export function labStatus(state, id) {
   const L = ensureLab(state);
   if (L.done[id]) return 'done';
-  if (L.slots.some((s) => s.id === id)) return 'researching';
+  if (L.slots.some((s) => s.id === id) || L.queue.some((q) => q.id === id)) return 'researching'; // queued = paid, waiting
   const nd = LAB_BY_ID[id];
   if (!nd) return 'locked';
   return nd.req.every((r) => L.done[r]) ? 'available' : 'locked';
@@ -452,7 +500,7 @@ export function labCheck(state, nd, stats = null) {
   const reqOk = nd.req.every((r) => L.done[r]);
   const slots = labSlots(state, stats) - L.slots.length;
   const paid = aero.ok && items.every((x) => x.ok) && fish.every((x) => x.ok);
-  const ok = reqOk && paid && slots > 0 && !L.done[nd.id] && !L.slots.some((s) => s.id === nd.id);
+  const ok = reqOk && paid && slots > 0 && !L.done[nd.id] && !L.slots.some((s) => s.id === nd.id) && !L.queue.some((q) => q.id === nd.id);
   return { ok, paid, aero, items, fish, slots, reqOk };
 }
 
@@ -467,17 +515,12 @@ function takeFish(state, key, n) {
 }
 
 // ---------------------------------------------------------------- research flow
-export function startResearch(game, id) {
-  const st = game.state, L = ensureLab(st), nd = LAB_BY_ID[id];
-  if (!nd) return { ok: false, reason: 'Unknown research.' };
-  const c = labCheck(st, nd, game.stats);
-  if (L.done[id]) return { ok: false, reason: 'Already researched.' };
-  if (L.slots.some((s) => s.id === id)) return { ok: false, reason: 'Already brewing.' };
-  if (!c.reqOk) return { ok: false, reason: 'Research the earlier nodes first.' };
-  if (c.slots <= 0) return { ok: false, reason: 'All lab benches are busy.' };
-  if (!c.ok) return { ok: false, reason: 'Missing ingredients.' };
-  st.coins -= c.aero.need;
-  const paid = { aero: c.aero.need, items: { ...nd.cost.items }, fish: [] };
+// Takes a node's Aero, materials and fish; returns the receipt (refunded by cancelResearch).
+function payFor(game, nd) {
+  const st = game.state;
+  const aero = nd.cost.aero || 0;
+  st.coins -= aero;
+  const paid = { aero, items: { ...nd.cost.items }, fish: [] };
   st.inventory ||= { items: {}, packages: [] };
   st.inventory.items ||= {};
   for (const [mid, q] of Object.entries(nd.cost.items || {})) {
@@ -487,8 +530,22 @@ export function startResearch(game, id) {
   }
   for (const [key, q] of Object.entries(nd.cost.fish || {})) paid.fish.push(...takeFish(st, key, q));
   if (paid.fish.length) game.aquarium?.syncFish?.();
+  return paid;
+}
+
+export function startResearch(game, id) {
+  const st = game.state, L = ensureLab(st), nd = LAB_BY_ID[id];
+  if (!nd) return { ok: false, reason: 'Unknown research.' };
+  const c = labCheck(st, nd, game.stats);
+  if (L.done[id]) return { ok: false, reason: 'Already researched.' };
+  if (L.slots.some((s) => s.id === id) || L.queue.some((q) => q.id === id)) return { ok: false, reason: 'Already brewing.' };
+  if (!c.reqOk) return { ok: false, reason: 'Research the earlier nodes first.' };
+  if (c.slots <= 0) return { ok: false, reason: 'All lab benches are busy.' };
+  if (!c.ok) return { ok: false, reason: 'Missing ingredients.' };
+  const paid = payFor(game, nd);
   const now = Date.now();
-  L.slots.push({ id, start: now, end: now + labTime(st, nd, game.stats) * 1000, paid });
+  const end = now + labTime(st, nd, game.stats) * 1000; // (labTime may re-run ensureLab, which replaces L.slots)
+  L.slots.push({ id, start: now, end, paid });
   L.active = L.slots[0] || null;
   game.emit?.('labStarted', { id });
   game.save?.();
@@ -516,18 +573,34 @@ export function finishResearch(game, id) {
 
 export function cancelResearch(game, id) {
   const st = game.state, L = ensureLab(st);
-  const s = L.slots.find((q) => q.id === id);
+  const s = L.slots.find((q) => q.id === id) || L.queue.find((q) => q.id === id);
   if (!s) return false;
   L.slots = L.slots.filter((q) => q !== s);
+  L.queue = L.queue.filter((q) => q !== s); // [phase6:lab]
   L.active = L.slots[0] || null;
-  const p = s.paid || {};
+  refund(st, s.paid);
+  // queued research that needed this one can never start now: refund it too
+  for (let again = true; again;) {
+    again = false;
+    for (const q of L.queue.slice()) {
+      const nd = LAB_BY_ID[q.id];
+      if (nd && nd.req.every((r) => L.done[r] || L.slots.some((x) => x.id === r) || L.queue.some((x) => x.id === r))) continue;
+      L.queue = L.queue.filter((x) => x !== q);
+      refund(st, q.paid);
+      again = true;
+    }
+  }
+  game.save?.();
+  return true;
+}
+
+function refund(st, p0) {
+  const p = p0 || {};
   st.coins += p.aero || 0;
   st.inventory ||= { items: {}, packages: [] };
   st.inventory.items ||= {};
   for (const [mid, q] of Object.entries(p.items || {})) st.inventory.items[mid] = (st.inventory.items[mid] || 0) + q;
   for (const f of p.fish || []) st.fish.push({ ...f, inTank: false });
-  game.save?.();
-  return true;
 }
 
 export function labRemaining(state, id, now = Date.now()) {
@@ -561,10 +634,120 @@ export function instantFinish(game, id) {
 
 export function labTick(game, now = Date.now()) {
   const L = ensureLab(game.state);
-  if (!L.slots.length) return [];
+  if (!L.slots.length && !L.queue.length) return [];
   const due = L.slots.filter((s) => s.end <= now).map((s) => s.id);
   for (const id of due) finishResearch(game, id);
+  pumpQueue(game, now);
   return due;
+}
+
+// ---------------------------------------------------------------- [phase6:lab] plans, the queue, quest grants
+// The Lab panel queues a PLAN (ids in order) and Confirm pays for all of it. What can start right away takes a bench;
+// the rest waits in L.queue (already paid) and starts by itself when a bench frees up and its requirements are done.
+//   labQueued(state, id) -> 1-based queue position or 0
+//   canPlan(state, id, planned) -> {ok, reason}    (requirements may be done, brewing, queued or earlier in the plan)
+//   planCost(state, ids) -> {aero, items:{id:n}, fish:{key:n}}
+//   planAfford(state, ids) -> {ok, aero:{have,need,ok}, items:[{id,have,need,ok}], fish:[{key,have,need,ok}]}
+//   confirmResearch(game, ids) -> {started:[ids], queued:[ids], failed:[{id, reason}]}
+//   grantLabNode(game, id, {reason}) -> bool   free research (quest rewards); also grants what it needs; refunds a
+//                                              queued/brewing copy; emits 'unlocked' + 'labDone' {id, free:true}
+export function labQueued(state, id) { return ensureLab(state).queue.findIndex((q) => q.id === id) + 1; }
+
+export function canPlan(state, id, planned = []) {
+  const L = ensureLab(state), nd = LAB_BY_ID[id];
+  if (!nd || id === ROOT_ID) return { ok: false, reason: 'Unknown research.' };
+  if (L.done[id]) return { ok: false, reason: 'Already researched.' };
+  if (L.slots.some((s) => s.id === id) || L.queue.some((q) => q.id === id)) return { ok: false, reason: 'Already brewing.' };
+  if (planned.includes(id)) return { ok: false, reason: 'Already planned.' };
+  const ready = (r) => L.done[r] || L.slots.some((s) => s.id === r) || L.queue.some((q) => q.id === r) || planned.includes(r);
+  if (!nd.req.every(ready)) return { ok: false, reason: 'Unlock ' + nd.req.filter((r) => !ready(r)).map((r) => LAB_BY_ID[r]?.name || r).join(' + ') + ' first.' };
+  return { ok: true };
+}
+
+export function planCost(state, ids) {
+  const out = { aero: 0, items: {}, fish: {} };
+  for (const id of ids) {
+    const nd = LAB_BY_ID[id];
+    if (!nd) continue;
+    out.aero += nd.cost.aero || 0;
+    for (const [k, v] of Object.entries(nd.cost.items || {})) out.items[k] = (out.items[k] || 0) + v;
+    for (const [k, v] of Object.entries(nd.cost.fish || {})) out.fish[k] = (out.fish[k] || 0) + v;
+  }
+  return out;
+}
+
+export function planAfford(state, ids) {
+  const c = planCost(state, ids);
+  const aero = { have: Math.floor(state.coins || 0), need: c.aero };
+  aero.ok = aero.have >= aero.need;
+  const items = Object.entries(c.items).map(([id, need]) => { const have = matCount(state, id); return { id, have, need, ok: have >= need }; });
+  const fish = Object.entries(c.fish).map(([key, need]) => { const have = fishHave(state, key); return { key, have, need, ok: have >= need }; });
+  return { ok: aero.ok && items.every((x) => x.ok) && fish.every((x) => x.ok), aero, items, fish };
+}
+
+export function confirmResearch(game, ids) {
+  const st = game.state, L = ensureLab(st);
+  const out = { started: [], queued: [], failed: [] };
+  for (const id of ids) {
+    const nd = LAB_BY_ID[id];
+    const p = canPlan(st, id, []);
+    if (!nd || !p.ok) { out.failed.push({ id, reason: p.reason }); continue; }
+    const c = labCheck(st, nd, game.stats);
+    if (!c.paid) { out.failed.push({ id, reason: 'Missing ingredients.' }); continue; }
+    const now = Date.now();
+    const paid = payFor(game, nd);
+    if (c.reqOk && labSlots(st, game.stats) - L.slots.length > 0) {
+      const end = now + labTime(st, nd, game.stats) * 1000;
+      L.slots.push({ id, start: now, end, paid });
+      L.active = L.slots[0] || null;
+      out.started.push(id);
+      game.emit?.('labStarted', { id });
+    } else {
+      L.queue.push({ id, paid, at: now });
+      out.queued.push(id);
+      game.emit?.('labQueued', { id });
+    }
+  }
+  if (out.started.length || out.queued.length) game.save?.();
+  return out;
+}
+
+function pumpQueue(game, now = Date.now()) {
+  const st = game.state, L = ensureLab(st);
+  let free = labSlots(st, game.stats) - L.slots.length;
+  for (const q of L.queue.slice()) {
+    if (free <= 0) break;
+    const nd = LAB_BY_ID[q.id];
+    if (!nd || L.done[q.id]) { L.queue = L.queue.filter((x) => x !== q); continue; }
+    if (!nd.req.every((r) => L.done[r])) continue;
+    L.queue = L.queue.filter((x) => x !== q);
+    const end = now + labTime(st, nd, game.stats) * 1000;
+    L.slots.push({ id: q.id, start: now, end, paid: q.paid });
+    L.active = L.slots[0] || null;
+    free--;
+    game.emit?.('labStarted', { id: q.id, queued: true });
+  }
+}
+
+export function grantLabNode(game, id, o = {}) {
+  const st = game.state, L = ensureLab(st), nd = LAB_BY_ID[id];
+  if (!nd || L.done[id]) return false;
+  for (const r of nd.req) if (r !== ROOT_ID && !L.done[r]) grantLabNode(game, r, o);
+  const s = L.slots.find((q) => q.id === id) || L.queue.find((q) => q.id === id);
+  if (s) { L.slots = L.slots.filter((q) => q !== s); L.queue = L.queue.filter((q) => q !== s); refund(st, s.paid); }
+  L.active = L.slots[0] || null;
+  L.done[id] = Date.now();
+  (st.skills ||= {})[id] = true;
+  for (const u of nd.unlock) {
+    applyUnlock(st, u.kind, u.id);
+    game.emit?.('unlocked', { kind: u.kind, id: u.id, free: true });
+    if (u.kind === 'boat') game.emit?.('boatUpgraded', st.boat?.tier);
+  }
+  game.recomputeStats?.();
+  game.emit?.('labDone', { id, free: true, reason: o.reason || null });
+  game.emit?.('skill', id);
+  game.save?.();
+  return true;
 }
 
 // Which nodes can be researched right now (for badges).

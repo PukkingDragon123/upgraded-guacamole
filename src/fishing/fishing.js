@@ -1,7 +1,11 @@
-// Fishing controller: hook & line, one-time bait, nibbles, bites, the slow-mo hook-set, the reel fight
-// (battle.js: crank the physical reel, directional surge QTE, SHOCK; species events in minigames.js),
-// floating boxes (boxreel.js), the slow-motion landing finale and the escape cutscene (cinematics.js),
-// and the fight HUD (hud.js + the physical reel in reel.js).
+// Fishing controller: hook & line, one-time bait, nibbles, bites, SPIN TO HOOK (battle.js HookSpin), the reel
+// fight (battle.js: spin the 3D gear inside the moving sweet band, directional surge QTE, hold-and-release SHOCK;
+// species events in minigames.js), floating boxes (boxreel.js), the slow-motion landing finale and the escape
+// cutscene (cinematics.js), and the fight HUD (hud.js + the big 3D gear in gear.js).
+//
+// Controls: circle the mouse anywhere to spin the gear (spin it into the band when a fish bites to set the hook;
+// keep it in the sweet band to reel). Hold the mouse button / Space / right button to charge a shock and let go
+// in the PERFECT window to stun the fish. During a surge, hold the mouse button and drag against the pull.
 //
 // Rod stats (src/game/rods.js rodStats(state, game.stats)) drive everything:
 //   lureSpeed -> bite wait (fish notice / sniff / nibble faster, bigger lure radius)
@@ -15,7 +19,8 @@
 // space], drawHud(ctx) [screen space], drawCinematic(ctx) [world space, after fish],
 // drawCinematicHud(ctx) [screen space, above the HUD], requestNibble(fish), releaseFish(flee),
 // setHook(auto), message(text), crankHint(), luckMul(), landBox(f), and the fields state ('idle'|'nibble'|
-// 'bite'|'fight'|'landing'|'box'), busy, fighting, hook {x, y, visible}, tension, rod, reel.
+// 'bite'|'fight'|'landing'|'box'), busy, fighting, hook {x, y, visible}, tension, rod, gear (alias reel),
+// hs (the HookSpin while a fish bites).
 // If the host never calls drawCinematic/drawCinematicHud, drawWorld/drawHud draw them instead.
 // Emits through game.onHooked / onFishCaught / onFishEscaped (game.emit 'hooked' | 'caught' | 'escaped').
 
@@ -26,11 +31,11 @@ import { Particles, glowSprite, drawBolt, boltPoints } from '../gfx/particles.js
 import { drawFishRig } from '../gfx/fishrig.js';
 import { HOOK, baitSprite } from './baitart.js';
 import { Crank } from './crank.js';
-import { Battle, DEFAULT_ROD } from './battle.js';
+import { Battle, HookSpin, DEFAULT_ROD } from './battle.js';
 import { drawShots, drawCircle } from './minigames.js';
 import { Titles, Finale, EscapeCine, Outro } from './cinematics.js';
 import { drawFightScene, drawFightBands, drawBiteCue, drawMessage } from './hud.js';
-import { Reel } from './reel.js';
+import { Gear } from './gear.js';
 import { BoxReel, landBoxLoot, drawBoxHover } from './boxreel.js';
 import { rodStats, equippedRod } from '../game/rods.js';
 
@@ -59,7 +64,10 @@ export class Fishing {
     this.cursor = game.world.cursor;
     this.input = game.input;
     this.crank = new Crank();
-    this.reel = new Reel(this);
+    this.gear = new Gear(this);
+    this.reel = this.gear; // older name
+    this.hs = null; // spin-to-hook while a fish bites
+    this.holdKind = null; // what the current mouse-button hold is for: 'charge' | 'pull'
     this.fx = new Particles(900); // screen-space effects for the HUD and titles
     this.fx.surfaceY = null;
     this.titles = new Titles(this);
@@ -79,7 +87,8 @@ export class Fishing {
   // ------------------------------------------------------------------ accessors
   get stats() { return this.game.stats; }
   get busy() { return this.state !== 'idle' || !!this.cine; }
-  get fighting() { return this.state === 'fight' || this.state === 'landing' || this.state === 'box'; }
+  // (a bite counts: the mouse belongs to the gear while you spin to hook)
+  get fighting() { return this.state === 'bite' || this.state === 'fight' || this.state === 'landing' || this.state === 'box'; }
   get fight() { return this.battle; }
   get cam() { return this.game.camera; }
   get boat() { return this.game.boat || null; }
@@ -225,6 +234,7 @@ export class Fishing {
 
   crankHint() {
     if (this.box) return this.box.crankHint();
+    if (this.state === 'bite') return [Math.round(this.W * 0.42), Math.round(this.H * 0.55)];
     return this.battle ? this.battle.crankHint() : [this.input.x, this.input.y];
   }
 
@@ -265,6 +275,7 @@ export class Fishing {
     this.finale = null;
     this.cine = null;
     this.zapLine = null;
+    this.hs = null;
     this.state = 'idle';
     this.tension = 0;
     this.stopLoops();
@@ -323,8 +334,10 @@ export class Fishing {
     if (this.lostBait) { this.lostBait.t += rdt; if (this.lostBait.t > 1.2) this.lostBait = null; }
 
     const canHook = worldInput && !g.paused && !g.fishingDisabled && !this.cine?.blocksHook;
-    // hook follows the cursor
-    if (this.state === 'idle' || this.state === 'nibble' || this.state === 'bite') {
+    // hook follows the cursor (during a bite the fish holds it and the mouse spins the gear)
+    if (this.state === 'bite') {
+      h.visible = true;
+    } else if (this.state === 'idle' || this.state === 'nibble') {
       if (canHook) {
         h.visible = true;
         const px = h.x;
@@ -390,8 +403,8 @@ export class Fishing {
       default: break;
     }
     if (this.zapLine) { this.zapLine.t += rdt; if (this.zapLine.t > this.zapLine.dur + 0.15) this.zapLine = null; }
-    if (this.state === 'fight' || this.state === 'box') this.reel.update(rdt, this.battle || this.box);
-    else this.reel.idle(rdt);
+    this.gear.update(rdt, this.state === 'fight' ? this.battle : this.state === 'box' ? this.box : this.state === 'bite' ? this.hs : null);
+    if ((this.state === 'idle' && h.visible) || this.state === 'nibble') this.gear.warm(1); // cache the spin frames before a bite
     if (this.cine && this.cine.update(dt, rdt) === 'done') this.cine = null;
     if (this.lootPop && this.lootPop.update(rdt) === 'done') this.lootPop = null;
     this.updateLoops();
@@ -410,14 +423,14 @@ export class Fishing {
   }
 
   updateLoops() {
-    const fighting = (this.state === 'fight' && !!this.battle) || this.state === 'box';
+    const fighting = (this.state === 'fight' && !!this.battle) || this.state === 'box' || (this.state === 'bite' && !!this.hs);
     if (fighting && !this.loops) {
       const a = this.game.audio;
       this.loops = { reel: a?.loop?.('reel'), tension: a?.loop?.('tension') };
     }
     if (!this.loops) return;
     if (!fighting) { this.stopLoops(); return; }
-    this.loops.reel?.set?.(clamp01(this.crank.power * 0.9));
+    this.loops.reel?.set?.(clamp01(this.gear.p * 0.9));
     this.loops.tension?.set?.(clamp01((this.tension - 0.45) * 1.8));
   }
 
@@ -473,8 +486,10 @@ export class Fishing {
       } else {
         this.state = 'bite';
         this.game.water?.disturb?.(h.x, h.y, 0.9, 8); // [phase5:water] the strike
-        this.biteT = (f.sp.fight?.biteWindow ?? 0.6) * (this.stats?.biteWindow ?? 1) * (g.tutorialActive ? 2.5 : 1);
-        this.biteMax = this.biteT;
+        this.hs = new HookSpin(this, f);
+        this.biteT = this.biteMax = this.hs.window;
+        this.gear.reset();
+        this.gear.flashOn('#ffe27a', 0.8);
         h.dip = 10;
         f.feel('determined', 1);
         f.chompT = 0.3;
@@ -492,18 +507,46 @@ export class Fishing {
     }
   }
 
+  // The fish has the bait: spin the gear up into the hook band (HookSpin) before the window closes.
   updateBite(dt, canHook) {
-    const f = this.fish, h = this.hook, g = this.game, inp = this.input;
-    if (!f) { this.state = 'idle'; return; }
-    this.biteT -= dt;
+    const f = this.fish, h = this.hook, hs = this.hs;
+    if (!f || !hs) { this.releaseFish(true); return; }
+    const r = hs.update(dt);
+    this.biteT = hs.window - hs.t;
+    this.tension = hs.tension;
+    // the fish tugs and shakes on the hook; the line tightens as the gear spins up
     const side = f.x < h.x ? -1 : 1;
-    f.x = damp(f.x, h.x + side * (8 * f.scale + 3), 16, dt);
-    f.y = damp(f.y, h.y + 2, 16, dt);
-    h.dip = Math.max(h.dip, 6 + Math.sin(this.t * 40) * 2);
-    if (rng.chance(dt * 12)) this.particles.bubbles(h.x, h.y, 1, { size: 1 });
-    if (inp.pressed && canHook && !g.ui?.blocking) { this.setHook(false); return; }
-    if (this.biteT <= 0) {
-      this.iconPop('miss', ...this.toScreen(f.x, f.y));
+    const tug = Math.max(0, Math.sin(this.t * 11)) * 3;
+    f.x = damp(f.x, h.x + side * (8 * f.scale + 3 + tug), 16, dt);
+    f.y = damp(f.y, h.y + 2 + Math.sin(this.t * 23) * 1.2, 16, dt);
+    f.facing = -side;
+    f.feel(hs.inBand ? 'scared' : 'determined', 0.2);
+    this.focusCam(lerp(f.x, h.x, 0.5), f.y, this.fightZoom() * 0.9, 2.5); // a gentle push-in on the strike
+    h.dip = Math.max(h.dip, 4 + tug + Math.sin(this.t * 40) * 2 + hs.set * 4);
+    if (rng.chance(dt * (12 + hs.set * 20))) this.particles.bubbles(h.x, h.y, 1, { size: 1 });
+    if (hs.inBand && rng.chance(dt * 8)) this.particles.glint?.(h.x + rng.float(-4, 4), h.y + rng.float(-3, 3), { len: 3 });
+    void canHook;
+    if (r === 'hooked') { this.setHook(false); return; }
+    if (r === 'rip') { this.hookFail('rip'); return; }
+    if (r === 'slow') this.hookFail('slow');
+  }
+
+  // Spin-to-hook failed: too slow (the fish lets go) or the hook ripped out (spun far too fast).
+  hookFail(kind) {
+    const f = this.fish, h = this.hook;
+    const [sx, sy] = this.toScreen(f.x, f.y);
+    if (kind === 'rip') {
+      this.sfx('line_snap', { pitch: 1.25 });
+      this.shake(6);
+      this.cam?.flash?.('#ff9a8a', 0.2);
+      this.titles.add('snap', 'RIPPED!', { seed: rng.int(1, 9999) });
+      this.particles.sparks(h.x, h.y, 12, { speed: [40, 140], colors: ['#ffffff', '#ffd25a', '#ff9a3a'] });
+      this.gear.strain = 1;
+      this.gear.flashOn('#ff4f5e', 1);
+      this.releaseFish(true, 'anger');
+    } else {
+      this.iconPop('miss', sx, sy);
+      this.titles.pop('TOO SLOW!', sx, sy - 34, '#ff8a7a', { scale: 2 });
       this.sfx('escape', { vol: 0.6 });
       this.releaseFish(true, 'music');
     }
@@ -525,12 +568,15 @@ export class Fishing {
     }
     this.state = 'fight';
     this.cine = null;
-    this.crank.prevA = null;
+    this.hs = null;
     this.battle = new Battle(this);
     this.power = this.battle.power;
     this.tension = this.battle.tension;
     this.splats = [];
-    this.reel.reset();
+    this.holdKind = null;
+    this.gear.reset();
+    this.gear.flashOn('#ffffff', 1);
+    this.gear.kick(1);
     this.leanX = 0; this.leanY = 0;
     // cinematic: slow-mo punch-in with letterbox
     const cam = this.cam;
@@ -566,6 +612,7 @@ export class Fishing {
     g.onHooked?.(f);
   }
 
+  // Instant shock for older drivers (fires as a PERFECT release).
   tryShock() {
     const B = this.battle;
     if (!B) return false;
@@ -575,11 +622,13 @@ export class Fishing {
   updateFight(dt) {
     const g = this.game, B = this.battle, f = this.fish, inp = this.input;
     if (!B || !f) { this.releaseFish(false); return; }
-    // SHOCK: the reel's button, right mouse or Space
-    const onBtn = inp.pressed && this.reel.hitShock(inp.x, inp.y);
-    if (onBtn) { this.shockGrab = true; this.reel.btnPress = 1; inp.consume?.(); }
-    if (this.shockGrab && !inp.down) this.shockGrab = false;
-    if (onBtn || inp.rpressed || inp.keyPressed?.(' ')) this.tryShock();
+    // SHOCK: hold the mouse button (unless a surge is on: then the hold is a pull), Space or the right button
+    // to charge; let go to zap. What a mouse hold is for is decided when it starts.
+    if (inp.pressed) this.holdKind = !B.qte?.active && B.canCharge && !B.event ? 'charge' : 'pull';
+    if (!inp.down) this.holdKind = null;
+    const held = (inp.down && this.holdKind === 'charge') || !!inp.key?.(' ') || !!inp.rdown;
+    B.updateCharge(this.rdt, held);
+    this.shockGrab = this.holdKind === 'charge';
     g.timeScaleTarget = 1;
     const r = B.update(dt);
     this.tension = B.tension;
@@ -606,7 +655,7 @@ export class Fishing {
     else this.focusCam(f.x + this.leanX / zoom, f.y + this.leanY / zoom, zoom - Math.abs(lk) * 0.12, B.mode === 'hookset' ? 6 : 4);
     // character pose from what the player is doing
     if (!this.poseHold) {
-      const pose = q?.holding ? 'pull' : this.crank.active || B.stunned ? 'reel' : 'pull';
+      const pose = q?.holding ? 'pull' : this.gear.p > 0.08 || B.stunned ? 'reel' : 'pull';
       if (pose !== this.pose) this.setPose(pose);
     }
     if (r === 'ok') return;
@@ -633,7 +682,7 @@ export class Fishing {
       fx.glints(px, py, 4, { w: 20, h: 14, color: '#e2ffb0' });
       if (combo > 1) this.titles.pop('x' + combo, sx, sy - this.zoneRadius() * 0.6, '#c8f56a', { scale: 2 });
       this.setPose('yank', 0.3);
-      this.reel.kick(1);
+      this.gear.kick(1);
     } else {
       this.sfx('timing_miss');
       this.sfx('reel_tick', { pitch: 0.5, vol: 0.5 });
@@ -642,29 +691,87 @@ export class Fishing {
       const [rx, ry] = this.rodTip();
       P.sparks?.(rx, ry, 8, { speed: [40, 120], colors: ['#ffffff', '#ffd23a', '#ff9a3a'] });
       fx.ringWave(px, py, 24, '#ff6a5a', { life: 0.35, w: 3 });
-      this.reel.strain = 1;
+      this.gear.strain = 1;
     }
   }
 
-  onShockFire() {
-    const B = this.battle;
-    this.zapLine = { t: 0, dur: B?.zap?.dur ?? 0.2 };
-    this.reel.fire = 1; this.reel.btnPress = 1;
-    this.sfx('static_burst', { vol: 0.8, pitch: 1.2 });
-    this.sfx('neon_buzz', { vol: 0.5, pitch: 1.6 });
-    const L = this.reel.lay;
+  // ---- shock charge feedback
+  onChargeStart() {
+    this.sfx('neon_buzz', { vol: 0.35, pitch: 0.8 });
+  }
+
+  onChargePerfect() {
+    const G = this.gear, L = G.lay;
+    this.sfx('timing_perfect', { vol: 0.6, pitch: 1.5 });
+    G.flashOn('#ffffff', 0.7);
+    if (L) { this.fx.ringWave(L.cx, L.cy, L.R * 0.6, '#fff6c0', { life: 0.25, w: 3 }); this.fx.glints(L.cx, L.cy, 3, { w: L.R * 0.5, h: L.R * 0.5, color: '#fff6c0' }); }
+  }
+
+  onChargeOver() {
+    this.sfx('slack_warn', { vol: 0.5, pitch: 1.6 });
+    this.gear.denied = 0.6;
+  }
+
+  // tap: a quick press does nothing; show that the shock wants a HOLD
+  onChargeCancel(tap) {
+    if (!tap) return;
+    const L = this.gear.lay;
+    this.gear.denied = 0.5;
+    if (L) this.titles.pop('HOLD!', L.cx, L.cy - L.rg - 30 * L.S, '#ffe27a', { scale: 2 });
+  }
+
+  onBackfire() {
+    const G = this.gear, L = G.lay;
+    this.sfx('static_burst', { vol: 0.8, pitch: 0.6 });
+    this.sfx('timing_miss');
+    this.shake(7);
+    this.cam?.flash?.('#ff9a8a', 0.25);
+    G.flashOn('#ff4f5e', 1);
+    G.strain = 1;
     if (L) {
-      this.fx.boltBurst(L.bx, L.by, L.br + 16, 7);
-      this.fx.ringWave(L.bx, L.by, L.br + 16, '#fff07a', { life: 0.3, w: 3 });
+      this.fx.boltBurst(L.cx, L.cy, L.R + 30, 10, { color: '#ff9a7a' });
+      this.fx.sparks(L.cx, L.cy, 16, { speed: [80, 220], colors: ['#ffffff', '#ffd23a', '#ff5a4a'], g: 260 });
+      this.titles.pop('BACKFIRE!', L.cx, L.cy - L.rg - 30 * L.S, '#ff8a7a', { scale: 2 });
+    }
+  }
+
+  onShockFire(grade = 'perfect') {
+    const B = this.battle, G = this.gear, L = G.lay;
+    this.zapLine = { t: 0, dur: B?.zap?.dur ?? 0.2, grade };
+    G.fire = 1;
+    G.flashOn(grade === 'perfect' ? '#ffffff' : grade === 'fizzle' ? '#c8d4dc' : '#fff07a', grade === 'perfect' ? 1 : 0.6);
+    G.kick(grade === 'perfect' ? 1 : 0.4);
+    const strong = grade === 'perfect';
+    this.sfx('static_burst', { vol: strong ? 0.9 : 0.5, pitch: strong ? 1.2 : 0.9 });
+    this.sfx('neon_buzz', { vol: 0.5, pitch: 1.6 });
+    if (L) {
+      if (grade === 'fizzle') {
+        this.fx.burst(L.cx, L.cy, 10, { colors: ['#c8d4dc', '#ffffff', '#8a9aa8'], speed: 60, g: 0, life: 0.35 });
+        this.fx.aeroBubbles(L.cx, L.cy, 4, { w: L.R * 0.4, speed: [20, 50] });
+      } else {
+        this.fx.boltBurst(L.cx, L.cy, L.R + (strong ? 40 : 16), strong ? 12 : 6);
+        this.fx.ringWave(L.cx, L.cy, L.rg + (strong ? 20 : 6), strong ? '#fff07a' : '#bff8ff', { life: 0.35, w: strong ? 4 : 2 });
+      }
+      const label = { perfect: 'PERFECT!', weak: 'WEAK', fizzle: 'FIZZLE...', shrug: 'WEAK' }[grade];
+      if (label) this.titles.pop(label, L.cx, L.cy - L.rg - 30 * L.S, strong ? '#ffe27a' : grade === 'fizzle' ? '#bfeaff' : '#ffe27a', { scale: strong ? 3 : 2 });
     }
     const [rx, ry] = this.rodTip();
-    this.particles.electrify?.(rx, ry, 8, 2, { flat: 1 });
+    this.particles.electrify?.(rx, ry, 8, strong ? 3 : 1, { flat: 1 });
   }
 
-  onStun() {
+  // A zap that did not stun: fizzled, or the fish shrugged it off (shock resistance).
+  onShrug(grade) {
+    const f = this.fish;
+    if (!f) return;
+    const [sx, sy] = this.fishScreen();
+    if (grade === 'shrug') { this.titles.pop('RESISTED!', sx, sy - this.zoneRadius() * 0.7, '#bfeaff', { scale: 2 }); f.say('!', 0.5); f.feel('smug', 1.2); }
+    this.particles.electrify?.(f.x, f.y, this.fishLen() * 0.4, 2, { sparks: 2 });
+  }
+
+  onStun(grade = 'perfect') {
     const f = this.fish, P = this.particles, B = this.battle;
     if (!f) return;
-    const R = this.fishLen() * 0.55;
+    const R = this.fishLen() * (grade === 'perfect' ? 0.7 : 0.45);
     P.electrify?.(f.x, f.y, R, 7, { sparks: 10 });
     P.boltBurst?.(f.x, f.y, R + 14, 9);
     P.ringWave?.(f.x, f.y, R + 16, '#bff8ff', { life: 0.45, w: 3 });
@@ -685,9 +792,7 @@ export class Fishing {
 
   onShockFizzle() {
     this.sfx('ui_error', { vol: 0.4 });
-    this.reel.denied = 1;
-    const L = this.reel.lay;
-    if (L) this.fx.burst(L.bx, L.by, 6, { colors: ['#c8d4dc', '#ffffff'], speed: 40, g: 0, life: 0.25 });
+    this.gear.denied = 1;
   }
 
   onTele() {
@@ -700,7 +805,8 @@ export class Fishing {
     const f = this.fish;
     if (!f) return;
     this.particles.ringWave?.(f.x, f.y, 20, '#ffb08a', { life: 0.3, w: 2, flat: 0.6 });
-    this.reel.strain = Math.max(this.reel.strain, 0.6);
+    this.gear.strain = Math.max(this.gear.strain, 0.6);
+    this.gear.tiltVY += Math.cos(dir) * 2.5; this.gear.tiltVX += Math.sin(dir) * 1.5; // the surge yanks the gear
     void dir;
   }
 
@@ -720,7 +826,7 @@ export class Fishing {
   onJumpLand(ok) {
     const [sx, sy] = this.fishScreen();
     if (ok) this.fx.aeroBubbles(sx, sy, 8, { w: 20, speed: [40, 90] });
-    else { this.reel.strain = 1; this.cam?.flash?.('#ff9a8a', 0.2); }
+    else { this.gear.strain = 1; this.cam?.flash?.('#ff9a8a', 0.2); }
   }
 
   onExhausted() {
@@ -737,7 +843,7 @@ export class Fishing {
     this.sfx('grunt', { vol: 0.5 });
   }
 
-  onLineOut() { this.reel.strain = 1; }
+  onLineOut() { this.gear.strain = 1; }
 
   onEventStart(ev) {
     this.titles.banner(ev.title || '', ev.color || '#8ff0ff', '', { icon: ev.name });
@@ -823,8 +929,7 @@ export class Fishing {
     const g = this.game;
     this.state = 'box';
     this.box = new BoxReel(this, f);
-    this.reel.reset();
-    this.crank.prevA = null;
+    this.gear.reset();
     g.emit?.('boxHooked', f);
   }
 
@@ -875,7 +980,7 @@ export class Fishing {
       this.box.drawWorld(ctx);
     } else if (h.visible) {
       const [rx, ry] = this.rodTip();
-      this.drawRope(ctx, rx, ry, h.x, h.y - 5, 0.2, false);
+      this.drawRope(ctx, rx, ry, h.x, h.y - 5, this.state === 'bite' && this.hs ? 0.2 + this.hs.set * 0.7 : 0.2, false);
       this.drawHookAndBait(ctx);
       if (this.boxHover) drawBoxHover(ctx, this, this.boxHover);
     }
@@ -951,7 +1056,7 @@ export class Fishing {
     if (B?.stunned) col = Math.floor(this.t * 20) % 2 ? '#bff8ff' : '#ffffff';
     const L = d || 1, nx = -(y1 - y0) / L, ny = (x1 - x0) / L;
     // glints travelling up the line while reeling
-    const reel = fight ? this.crank.power : 0;
+    const reel = fight ? this.gear.p : 0;
     const glintPhase = (this.t * (0.6 + reel * 2.2)) % 1;
     const zap = this.zapLine;
     const zk = zap ? clamp01(zap.t / zap.dur) : -1;
@@ -1053,6 +1158,8 @@ export class Fishing {
 
   drawCinematicHudInner(ctx) {
     if (this.state === 'fight' && this.battle && this.fish) drawFightBands(ctx, this, this.battle);
+    else if (this.state === 'bite' && this.hs) this.gear.draw(ctx, this.hs, 1);
+    else if (this.state !== 'box' && this.gear.show > 0.01) this.gear.draw(ctx, null, 1);
     if (this.state === 'box' && this.box) this.box.drawBands(ctx);
     this.finale?.drawHud(ctx);
     this.cine?.drawHud?.(ctx);

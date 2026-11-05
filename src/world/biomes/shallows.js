@@ -7,7 +7,7 @@ import { Biome, worldTop } from './base.js';
 import { SkyDome, skyBodies } from '../sky.js';
 import { palmIsland, lighthouseIslet, sailboat, seaStacks, markerBuoy } from '../horizon.js';
 import { render, strip, spire, mesa, rockArch, ridgeStrip, kelpColumn, propSprite } from '../farvox.js';
-import { VoxelGiant } from '../giants.js';
+import { VoxelGiant, lpCrabFrames } from '../giants.js'; // [phase6:creatures] low-poly giants + crabs
 import { reefSprite, coralSprite, voxAnim, placeAnim, drawCoralGlow, voxCrab } from '../coral.js';
 import { clamp, clamp01, lerp, smoothstep, ease, hash2, fbm2, TAU } from '../../core/math.js';
 import { RNG } from '../../core/rng.js';
@@ -352,7 +352,7 @@ export class ShallowsBiome extends Biome {
     }
     for (const [xf, z, pal] of [[0.125, 0.1, 'red'], [0.548, 0.28, 'orange'], [0.745, 0.32, 'pink'], [0.43, 0.58, 'cream'], [0.99, 0.08, 'purple'], [0.3, 0.86, 'yellow']]) life('soft', 7 + Math.round(xf * 30), 12, z, Math.round(xf * W), pal);
     // critters
-    this.crabSpr = [voxCrab('#e0502e', 1), voxCrab('#f09a3a', 1)];
+    this.crabSpr = [lpCrabFrames('#e0502e'), lpCrabFrames('#f09a3a')]; // [phase6:creatures] low-poly crabs
     this.crabs = [[0.52, -0.05], [0.86, 0.06], [0.25, -0.2]].map(([xf, z], i) => ({ x: xf * W, z, dir: i % 2 ? -1 : 1, state: 'walk', t: r.float(1, 4), f: 0, kind: i % 2, ft: 0 }));
     // particles
     const sy = this.base;
@@ -668,7 +668,7 @@ export class ShallowsBiome extends Biome {
     const f = G.frame(gi.ph, gi.dir);
     const col = waterColorAt(WATER, this.tod, gi.y, this.base - 2, this.H);
     const c = this.giantFog.get(f.canvas, col, gi.kind === 'whale' ? 0.66 : 0.58);
-    ctx.drawImage(c, Math.round(gi.x - f.ox + this.par.x * 1.1), Math.round(gi.y - f.oy + this.par.y * 0.5));
+    ctx.drawImage(c, Math.round(gi.x - f.ox + this.par.x * 1.1), Math.round(gi.y - f.oy + this.par.y * 0.5), f.w, f.h); // [phase6:creatures] hi-res low-poly frame
   }
 
   drawSurface(ctx, env, sy) {
@@ -791,7 +791,7 @@ export class ShallowsBiome extends Biome {
     for (const cr of this.crabs) {
       const y = Math.round(this.D.floorAt(cr.x, cr.z));
       const spr = this.crabSpr[cr.kind][cr.state === 'walk' ? 1 + (Math.floor(cr.ft) % 2) : 0];
-      ctx.drawImage(spr.canvas, Math.round(cr.x - spr.ox), y - spr.oy + 1);
+      ctx.drawImage(spr.canvas, Math.round(cr.x - spr.ox), y - spr.oy + 1, spr.w ?? spr.canvas.width, spr.h ?? spr.canvas.height); // [phase6:creatures]
     }
     // secret hints
     const s = this.secrets();

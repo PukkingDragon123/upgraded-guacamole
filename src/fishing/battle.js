@@ -1,12 +1,22 @@
-// The fight backbone.
-//   Crank   circle the mouse anywhere: the reel winds line (progress). Crank speed has a sweet zone
-//           (rod control widens it): over-cranking strains the line, cranking into a run strains it more.
-//   Surge   the fish braces (tele) then surges in a direction: a directional QTE. HOLD the mouse button
-//           and drag AGAINST the surge. Success drains the fish and yanks it back; failure strains the
-//           line and gives up line (rod resilience keeps progress).
-//   Shock   (RMB / Space / the reel's button) sends a zap down the line that stuns the fish: no surges,
-//           fast reeling. Charges, stun time and cooldown come from rodStats().shock.
-//   Heavy   fish heavier than the rod's strength put the line at risk (more tension).
+// The fight backbone (phase 6: the 3D GEAR is the reel, see gear.js).
+//   Hook     HookSpin: when a fish bites, spin the gear up into the hook band (circle the mouse) and keep it
+//            there until the hook is set, inside a short window. Too slow: the fish lets go. Past the RIP
+//            line for too long: the hook tears out.
+//   Spin     circling the mouse drives the gear (momentum, the fish drags it back); it winds line (progress).
+//            Keep the RPM inside the moving SWEET BAND: faster reeling and stamina drain. Above it the line
+//            strains (snap risk); far below it the fish takes line (the gear even spins backwards).
+//            The band drifts on its own (faster for rarer fish) and jumps when the fish surges.
+//   Surge    the fish braces (tele) then surges in a direction: the band jumps up (spin harder!) and a
+//            directional QTE: HOLD the mouse button and drag AGAINST the surge (it also brakes the gear).
+//            Success drains the fish and yanks it back; failure strains the line and gives up line.
+//   Shock    HOLD the mouse button (outside a surge), Space or the right button to charge; RELEASE to zap down
+//            the line and STUN the fish (no surges, fast reeling, wide calm band). Release inside the PERFECT
+//            window for a long stun; early = weak (resistant fish shrug it off); overcharged = fizzle; held
+//            too long = BACKFIRE (line strain, the gear jams, the fish gets a free surge).
+//            Charges, stun power and cooldown come from rodStats().shock.
+//   Heavy    fish heavier than the rod's strength put the line at risk (more tension, more drag).
+// Rarer fish: faster band drift, a narrower band, stronger surges and shock resistance (DIFF); rod control
+// widens the band, calms the drift and widens the PERFECT window; resilience keeps progress.
 // Species tricks are short visual events and species phases are special events (minigames.js).
 //
 // update(dt) -> 'ok' | 'land' | 'snap' | 'throw' | 'run' | 'escape'
@@ -14,6 +24,7 @@
 import { TAU, clamp, clamp01, lerp, dist, damp } from '../core/math.js';
 import { rng } from '../core/rng.js';
 import { makeEvent } from './minigames.js';
+import { RPM_UNIT } from './gear.js';
 
 export const TRICK_TITLES = {
   dash: 'DASH!', fake: 'FAKE!', dive: 'DIVE!', jump: 'JUMP!', wrap: 'TANGLE!', hop: 'HOP!',
@@ -22,7 +33,75 @@ export const TRICK_TITLES = {
 
 export const DEFAULT_ROD = { lureSpeed: 1, luck: 1, control: 1, resilience: 0.1, strength: 6, shock: { power: 0.8, charges: 1, cooldown: 6 } };
 
+// Difficulty by rarity (RPM values). base/amp/drift: where the sweet band sits, how far and how fast it wanders;
+// width: band half-width; shift: how far a surge kicks it; surge: drag + line stripping; resist: shock resistance;
+// hook*: the spin-to-hook band centre / half-width, window (s) and the time in the band needed (s).
+export const DIFF = {
+  common: { i: 0, base: 96, amp: 16, drift: 0.32, width: 27, shift: 26, surge: 1, resist: 0, hookC: 98, hookW: 30, hookWin: 2.1, hookNeed: 0.35 },
+  uncommon: { i: 1, base: 104, amp: 22, drift: 0.45, width: 24, shift: 32, surge: 1.12, resist: 0.12, hookC: 106, hookW: 27, hookWin: 1.95, hookNeed: 0.4 },
+  rare: { i: 2, base: 112, amp: 28, drift: 0.6, width: 21, shift: 38, surge: 1.26, resist: 0.25, hookC: 115, hookW: 24, hookWin: 1.8, hookNeed: 0.45 },
+  epic: { i: 3, base: 120, amp: 34, drift: 0.8, width: 18, shift: 44, surge: 1.42, resist: 0.4, hookC: 125, hookW: 21, hookWin: 1.7, hookNeed: 0.5 },
+  legendary: { i: 4, base: 128, amp: 40, drift: 1.05, width: 16, shift: 50, surge: 1.6, resist: 0.55, hookC: 136, hookW: 18, hookWin: 1.6, hookNeed: 0.55 },
+};
+export const diffOf = (sp) => DIFF[sp?.rarity] || DIFF.common;
+
 const angleOf = (x, y) => Math.atan2(y, x);
+
+// ------------------------------------------------------------------ spin to hook
+// Built when a fish bites (Fishing.state 'bite'); update(dt) -> 'ok' | 'hooked' | 'slow' | 'rip'.
+export class HookSpin {
+  constructor(F, f) {
+    this.F = F; this.fish = f;
+    this.gearMode = 'hook';
+    const sp = f.sp, fight = sp.fight || {}, rod = F.rod || DEFAULT_ROD;
+    this.gentle = !!F.game.tutorialActive;
+    const d = diffOf(sp);
+    this.d = d;
+    const ctl = clamp(rod.control ?? 1, 0.5, 3);
+    const power = clamp01(fight.power ?? 0.4);
+    this.c0 = d.hookC + power * 10 + (f.rec?.giant ? 8 : 0);
+    this.w = d.hookW * Math.pow(ctl, 0.6) * (this.gentle ? 1.6 : 1);
+    this.ripGap = (32 + 10 * ctl) * (this.gentle ? 1.7 : 1);
+    this.window = (d.hookWin + (fight.biteWindow ?? 0.6) * 0.6) * (F.stats?.biteWindow ?? 1) * (this.gentle ? 2.4 : 1);
+    this.need = d.hookNeed * (this.gentle ? 0.7 : 1);
+    this.t = 0; this.got = 0; this.ripT = 0; this.ripMax = 0.3;
+    this.ph = rng.float(0, TAU);
+    this.band = { lo: 0, hi: 0, rip: 0, c: 0 };
+    this.set = 0; this.progress = 0; this.tension = 0.2; this.inBand = false;
+    this.snapT = 0; this.grace = 1; this.shockMax = 0; this.charges = 0;
+    this.load = 14 + power * 24;
+    this.updateBand();
+  }
+
+  get timeK() { return clamp01(1 - this.t / this.window); }
+
+  updateBand() {
+    const wob = this.gentle ? 0 : Math.sin(this.t * (1.4 + this.d.i * 0.7) + this.ph) * this.d.i * 4;
+    const c = this.c0 + wob, b = this.band;
+    b.c = c; b.lo = c - this.w; b.hi = c + this.w; b.rip = b.hi + this.ripGap;
+  }
+
+  update(dt) {
+    const G = this.F.gear, rpm = G.rpm;
+    this.t += dt;
+    this.updateBand();
+    const b = this.band;
+    const inBand = rpm >= b.lo && rpm <= b.hi;
+    if (inBand) this.got += dt;
+    else this.got = Math.max(0, this.got - dt * (rpm > b.hi ? 0.5 : 0.3));
+    if (rpm > b.rip) this.ripT += dt; else this.ripT = Math.max(0, this.ripT - dt * 1.2);
+    this.inBand = inBand;
+    this.set = this.progress = clamp01(this.got / this.need);
+    this.tension = clamp(0.15 + clamp01(rpm / b.rip) * 0.6 + (this.ripT / this.ripMax) * 0.45, 0, 1.2);
+    // the fish tugs on the bait: the gear has to fight a jerky drag
+    G.load = this.load * (0.7 + 0.6 * Math.max(0, Math.sin(this.t * 11)));
+    G.brake = false;
+    if (this.got >= this.need) return 'hooked';
+    if (this.ripT >= this.ripMax) return 'rip';
+    if (this.t >= this.window) return 'slow';
+    return 'ok';
+  }
+}
 
 export class Battle {
   constructor(F) {
@@ -47,10 +126,28 @@ export class Battle {
     this.shockCd = 0;
     this.stunT = 0; this.stunMax = 1;
     this.zap = null;
-    const hw = 0.17 * this.control * (this.gentle ? 1.4 : 1);
-    this.zone = { lo: clamp(0.68 - hw, 0.25, 0.68), hi: clamp(0.72 + hw, 0.78, 1.18) };
     // fish
     this.power = clamp01((fight.power ?? 0.4) * (this.gentle ? 0.25 : 1) * (f.rec?.giant ? 1.25 : 1) * (1 + this.heavy * 0.15));
+    // difficulty: rarity drives the band's drift, surges and shock resistance; the rod eases it
+    const d = diffOf(sp), giant = f.rec?.giant ? 1 : 0, ctl = this.control;
+    this.d = d;
+    this.gearMode = 'fight';
+    this.resist = this.gentle ? 0 : clamp(d.resist + giant * 0.1, 0, 0.8);
+    this.bandBase = clamp(d.base + this.power * 14 + giant * 6, 70, 170);
+    this.bandW = d.width * Math.pow(ctl, 0.7) * (this.gentle ? 1.7 : 1);
+    this.bandAmp = (d.amp * (this.gentle ? 0.45 : 1)) / Math.sqrt(ctl);
+    this.bandDrift = (d.drift * (this.gentle ? 0.5 : 1)) / Math.sqrt(ctl);
+    this.shiftAmt = (d.shift + this.power * 16) * (this.gentle ? 0.6 : 1);
+    this.bandShift = 0; this.shiftDir = 1; this.bandDir = 0; this.bandT = 0;
+    this.bph = [rng.float(0, TAU), rng.float(0, TAU), rng.float(0, TAU)];
+    this.band = { lo: 0, hi: 0, c: 0 };
+    this.inBand = false;
+    // shock charge: hold to charge, release in the PERFECT window
+    this.charge = null; this.needRelease = false; this.prevHeld = false;
+    this.chargeDur = 1;
+    const half = clamp(0.085 * Math.sqrt(ctl) * (this.gentle ? 1.8 : 1), 0.06, 0.2);
+    this.chargeWin = { lo: 0.78 - half, hi: Math.min(0.97, 0.78 + half) };
+    this.overHold = 0.45;
     this.stamSecs = (fight.stamina ?? 5) * (0.8 + this.power * 0.4) * (this.gentle ? 0.45 : 1);
     this.start = { x: f.x, y: f.y };
     this.land = F.landingPoint(f);
@@ -87,6 +184,7 @@ export class Battle {
     this.eventCool = 0;
     this.phases = this.events.map((e) => e.name).concat(this.finalNet ? ['net'] : []);
     this.pi = 0;
+    this.updateBand(0);
   }
 
   // Compatibility with older test drivers: fight.phase.startTrick(kind), fight.phaseName.
@@ -96,7 +194,9 @@ export class Battle {
   get surging() { return this.mode === 'surge' || !!this.trick?.pulls; }
   get stunned() { return this.stunT > 0; }
   get grace() { return this.F.stats.snapGrace * this.control * (this.gentle ? 3 : 1) + 0.15; }
-  get shockReady() { return this.charges > 0 && this.shockCd <= 0 && !this.zap && this.stunT <= 0 && !this.event && this.trick?.kind !== 'jump'; }
+  // a charge can start (hold); shockReady (older drivers, the tutorial) also wants the fish not already stunned
+  get canCharge() { return this.charges > 0 && this.shockCd <= 0 && !this.zap && !this.event && this.trick?.kind !== 'jump'; }
+  get shockReady() { return this.canCharge && this.stunT <= 0 && !this.charge; }
 
   anchor() {
     const p = this.progress;
@@ -106,7 +206,8 @@ export class Battle {
   bounds(x) {
     const F = this.F, w = F.world, f = this.fish;
     const top = w.surfaceY !== null && w.surfaceY !== undefined ? w.surfaceY + 8 + 4 * f.scale : F.viewTop() + 24;
-    const bottom = (w.floorAt ? w.floorAt(x) : F.viewTop() + F.H) - 8 - 3 * f.scale;
+    const deep = F.game?.ocean?.floorUnder?.(x, f.y); // [phase6:oceans] fights in the deep zones: the floor under the fish
+    const bottom = (Number.isFinite(deep) ? deep : w.floorAt ? w.floorAt(x) : F.viewTop() + F.H) - 8 - 3 * f.scale;
     return [top, Math.max(top + 4, bottom)];
   }
 
@@ -137,6 +238,9 @@ export class Battle {
     // camera lean toward the surge
     const leanT = this.qte?.active ? (this.mode === 'surge' ? 1 : 0.45) : 0;
     this.lean = damp(this.lean, leanT, 5, dt);
+
+    this.updateBand(dt);
+    this.driveGear();
 
     // ---- special event in progress
     if (this.event) {
@@ -197,7 +301,7 @@ export class Battle {
     if (this.snapT > this.grace) return 'snap';
     if (inEvent) return 'ok';
     // slack: doing nothing while the fish rests lets it spit the hook
-    const idle = F.crank.power < 0.1 && !F.input.down;
+    const idle = F.gear.rpm < 12 && !F.input.down && !this.charge;
     if (!this.gentle && this.mode === 'rest' && !this.trick && idle && !this.exhausted && !this.stunned) this.slackT += dt;
     else this.slackT = Math.max(0, this.slackT - dt * 2);
     const slackMax = st.slackGrace * 1.6;
@@ -226,36 +330,75 @@ export class Battle {
     return 'ok';
   }
 
+  // ------------------------------------------------------------------ the sweet band + gear drag
+  // The band (RPM) wanders on layered sines (faster for rarer fish), jumps when the fish surges (up: spin harder;
+  // a FAKE drops it instead) and calms down while the fish is stunned or exhausted.
+  updateBand(dt) {
+    const calm = this.stunned ? 0.12 : this.exhausted ? 0.3 : 1;
+    this.bandT += dt * this.bandDrift * calm;
+    const bt = this.bandT, p = this.bph;
+    const n = Math.sin(bt + p[0]) * 0.6 + Math.sin(bt * 2.3 + p[1]) * 0.3 + Math.sin(bt * 4.1 + p[2]) * 0.1;
+    let target = 0;
+    if (!this.stunned && !this.exhausted && !this.event) {
+      if (this.mode === 'tele') target = this.shiftAmt * 0.5;
+      else if (this.surging) target = this.shiftAmt * Math.min(1.6, this.surgeMul) * this.shiftDir;
+    }
+    this.bandDir = Math.abs(target - this.bandShift) > 6 ? Math.sign(target - this.bandShift) : 0;
+    this.bandShift = damp(this.bandShift, target, this.surging ? 3.5 : 2.2, dt);
+    const c = clamp(this.bandBase + this.bandAmp * n + this.bandShift, 62, 200);
+    const w = this.bandW * (this.stunned ? 1.45 : this.exhausted ? 1.3 : 1);
+    const b = this.band;
+    b.c = c; b.lo = Math.max(20, c - w); b.hi = c + w;
+    this.zone = { lo: b.lo / RPM_UNIT, hi: b.hi / RPM_UNIT };
+  }
+
+  // How hard the fish drags the gear back (rpm/s), and the brake while you hold against a surge.
+  driveGear() {
+    const G = this.F.gear;
+    let L = 14 + this.power * 26 + this.heavy * 16;
+    if (this.mode === 'tele') L += 25;
+    if (this.surging) L = (100 + this.power * 140) * Math.min(2, this.surgeMul) * this.d.surge * (0.35 + 0.65 * this.stamina) * (1 + this.heavy * 0.25);
+    if (this.exhausted) L *= 0.35;
+    if (this.mode === 'hookset') L = 45;
+    if (this.stunned || this.trick?.frozen || (this.event && !this.event.usesCrank)) L = 0;
+    G.load = L * (this.gentle ? 0.5 : 1);
+    G.brake = !!this.qte?.holding;
+  }
+
   // ------------------------------------------------------------------ reel physics
   crankState() {
-    const p = this.F.crank.power, z = this.zone;
-    if (p < 0.12) return 'idle';
+    const p = this.F.gear.p, z = this.zone;
+    if (p < 0.08) return 'idle';
     return p > z.hi ? 'over' : p >= z.lo ? 'sweet' : 'slow';
   }
 
   physics(dt, opts = {}) {
-    const F = this.F, st = F.stats, cr = F.crank;
-    const p = cr.power, z = this.zone;
+    const F = this.F, st = F.stats, G = F.gear;
+    const p = G.p, z = this.zone;
     const surging = this.surging && !this.stunned;
-    const fishPull = surging ? (0.42 + this.power * 0.58) * (0.35 + 0.65 * this.stamina) * this.surgeMul : 0.05;
+    const pull = surging ? (0.42 + this.power * 0.58) * (0.35 + 0.65 * this.stamina) * this.surgeMul : 0.05;
+    const inBand = p >= z.lo && p <= z.hi, under = p < z.lo;
     const eff = Math.min(p, z.hi), over = Math.max(0, p - z.hi);
     const reelStat = 0.6 + 0.4 * (st.reelSpeed / 34);
     let reel = (eff * reelStat) / this.reelSecs;
-    if (p >= z.lo && p <= z.hi) reel *= 1.18;
+    if (inBand) reel *= 1.3; else if (under) reel *= 0.7;
     if (this.stunned) reel *= 2.4;
-    if (surging) reel *= 0.2;
+    if (surging) reel *= inBand ? 0.45 : 0.15;
     if (this.tension > 0.95) reel *= 0.35;
     if (this.exhausted) reel *= 1.6;
     if (this.mode === 'hookset') reel *= 0.35;
     if (this.trick?.noReel) reel = 0;
     reel *= opts.reelMul ?? 1;
     const holding = !!this.qte?.holding;
-    const payout = surging ? fishPull * 0.085 * (1 - this.resil) * (holding ? 0.45 : 1) * (p > 0.15 ? 0.8 : 1) : 0;
-    this.progress += (reel - payout) * dt;
-    this.reelRate = reel - payout;
-    // tension
-    let T = 0.12 + eff * 0.2 + over * 1.5;
-    if (surging) T += fishPull * 0.5 + p * 0.55 + (holding ? 0.06 : 0);
+    // the fish takes line while it runs (less if you hold or keep up in the band), and when the gear spins back
+    const payout = surging ? pull * this.d.surge * 0.085 * (1 - this.resil) * (holding ? 0.45 : 1) * (inBand ? 0.35 : 1) : 0;
+    const back = G.rpm < 0 ? (-G.rpm / RPM_UNIT) * 0.09 * (1 - this.resil) : 0;
+    this.progress += (reel - payout - back) * dt;
+    this.reelRate = reel - payout - back;
+    this.inBand = inBand;
+    // tension: the line strains when the gear outruns the band, and while the fish runs
+    let T = 0.13 + eff * 0.14 + over * 2.3;
+    if (surging) T += pull * 0.42 + (inBand ? 0.1 : 0) + (holding ? 0.06 : 0);
     if (this.trick?.extraT) T += this.trick.extraT;
     T *= (0.85 + this.power * 0.3) * (1 + this.heavy * 0.55);
     T /= st.lineStrength * (this.gentle ? 1.6 : 1);
@@ -263,8 +406,8 @@ export class Battle {
     if (this.stunned) T *= 0.5;
     this.Ttarget = T;
     this.tension = clamp(damp(this.tension, T, T > this.tension ? 2.6 : 4, dt), 0, 1.25);
-    // stamina: cranking in the zone tires it a little; counters and shocks do the real work
-    let drain = p * 0.2 * (p >= z.lo && p <= z.hi ? 1.3 : 1) + (this.stunned ? 0.35 : 0);
+    // stamina: spinning in the band tires it; counters and shocks do the real work
+    let drain = p * 0.2 * (inBand ? 1.4 : 0.7) + (this.stunned ? 0.35 : 0);
     if (surging) drain *= 0.3;
     drain *= (st.staminaDrain / this.stamSecs) * (opts.stamMul ?? 1);
     if (this.mode === 'hookset') drain *= 0.3;
@@ -274,8 +417,8 @@ export class Battle {
 
   // Air time during a jump: any reeling strains the line.
   airPhysics(dt) {
-    const F = this.F, cr = F.crank;
-    const T = (0.05 + cr.power * 0.65 + (F.input.down ? 0.3 : 0)) / (F.stats.lineStrength * (this.gentle ? 1.6 : 1));
+    const F = this.F, G = F.gear;
+    const T = (0.05 + G.p * 0.65 + (F.input.down ? 0.3 : 0)) / (F.stats.lineStrength * (this.gentle ? 1.6 : 1));
     this.tension = clamp(damp(this.tension, T, 4, dt), 0, 1.25);
   }
 
@@ -360,34 +503,98 @@ export class Battle {
     F.onCounter?.(false, q.dir, 0);
   }
 
-  // ------------------------------------------------------------------ shock
-  shock() {
+  // ------------------------------------------------------------------ shock: hold to charge, release to zap
+  // held: the charge input this frame (LMB charge-hold, Space or the right button). Real time (rdt).
+  updateCharge(rdt, held) {
     const F = this.F;
-    if (!this.shockReady) { F.onShockFizzle?.(); return false; }
+    const edge = held && !this.prevHeld;
+    this.prevHeld = held;
+    if (!held) this.needRelease = false;
+    const c = this.charge;
+    if (!c) {
+      if (held && !this.needRelease && this.canCharge) {
+        this.charge = { t: 0, k: 0, full: 0, inWin: false };
+        F.onChargeStart?.();
+      } else if (edge && !this.canCharge && !this.event) F.onShockFizzle?.();
+      return;
+    }
+    if (this.event || this.trick?.kind === 'jump') { this.charge = null; this.needRelease = held; F.onChargeCancel?.(); return; }
+    if (held) {
+      c.t += rdt;
+      c.k = Math.min(1, c.t / this.chargeDur);
+      if (c.k >= 1) c.full += rdt;
+      const w = this.chargeWin;
+      const inWin = c.k >= w.lo && c.k <= w.hi;
+      if (inWin && !c.inWin) F.onChargePerfect?.();
+      if (!inWin && c.inWin) F.onChargeOver?.();
+      c.inWin = inWin;
+      if (c.full >= this.overHold) this.backfire();
+      return;
+    }
+    this.charge = null;
+    if (c.k < 0.12) { F.onChargeCancel?.(true); return; } // a tap: nothing spent
+    const w = this.chargeWin;
+    this.fireZap(c.k < w.lo ? 'weak' : c.k <= w.hi ? 'perfect' : 'fizzle', c.k);
+  }
+
+  // Spends a charge and sends the zap down the line; the stun lands when it arrives (updateZap).
+  fireZap(grade, k = 0.78) {
     this.charges--;
     this.shockCd = this.shockCdMax;
-    this.zap = { t: 0, dur: 0.2 };
-    F.onShockFire?.();
+    let stun = 0;
+    if (grade === 'perfect') stun = (this.shockPower + 0.6) * (1 - this.resist * 0.35);
+    else if (grade === 'weak') {
+      stun = this.shockPower * (0.3 + 0.45 * clamp01(k / this.chargeWin.lo)) * (1 - this.resist);
+      if (stun < 0.35) { stun = 0; grade = 'shrug'; }
+    }
+    this.zap = { t: 0, dur: 0.2, stun, grade };
+    this.F.onShockFire?.(grade);
+  }
+
+  // Instant shock for older drivers (RMB tap in old tests): fires as a release at `grade`.
+  shock(grade = 'perfect') {
+    if (!this.canCharge) { this.F.onShockFizzle?.(); return false; }
+    this.charge = null;
+    this.fireZap(grade);
     return true;
+  }
+
+  // Held past full: the charge discharges into your own gear.
+  backfire() {
+    const F = this.F;
+    this.charge = null; this.needRelease = true;
+    this.charges--;
+    this.shockCd = this.shockCdMax;
+    this.kick(0.3 + 0.08 * this.d.i);
+    F.crank.stun = Math.max(F.crank.stun, 0.6);
+    F.gear.jolt(-90);
+    F.gear.jam = 0.5;
+    this.fish.feel('smug', 1.5);
+    if (this.mode === 'rest' && !this.exhausted && !this.gentle) this.modeT = Math.min(this.modeT, 0.15); // free surge
+    F.onBackfire?.();
   }
 
   updateZap(dt) {
     if (!this.zap) return;
     this.zap.t += this.F.rdt;
-    if (this.zap.t >= this.zap.dur) { this.zap = null; this.stun(); }
+    if (this.zap.t < this.zap.dur) return;
+    const z = this.zap;
+    this.zap = null;
+    if (z.stun > 0) this.stun(z.stun, z.grade);
+    else this.F.onShrug?.(z.grade);
   }
 
-  stun() {
+  stun(dur = this.shockPower + 0.3, grade = 'perfect') {
     const F = this.F, f = this.fish;
-    this.stunMax = this.stunT = this.shockPower + 0.3;
+    this.stunMax = this.stunT = Math.max(this.stunT, dur);
     if (this.qte?.active) { this.qte.active = false; this.qte.win = true; this.qte.stunned = true; this.qte.t = 0; }
     if (this.trick && this.trick.kind !== 'jump') { this.trick = null; f.alpha = 1; }
     this.mode = 'stun';
     this.surgeMul = 1;
-    this.stamina = Math.max(0, this.stamina - 0.05);
+    this.stamina = Math.max(0, this.stamina - (grade === 'perfect' ? 0.12 : 0.05));
     f.feel('dizzy', this.stunT + 0.5);
     f.squashV += 14; f.wiggle = 1;
-    F.onStun?.();
+    F.onStun?.(grade);
   }
 
   stunMove(dt) {
@@ -407,6 +614,7 @@ export class Battle {
     const p = this.power;
     this.mode = 'rest';
     this.surgeMul = 1;
+    this.shiftDir = 1;
     this.modeT = this.exhausted ? 99 : rng.float(0.9, 1.8) * (1.25 - p * 0.5) * (this.gentle ? 1.6 : 1);
     this.fish.feel(this.stamina < 0.45 ? 'tired' : 'determined', 1);
   }
@@ -481,7 +689,7 @@ export class Battle {
     this.place(ax + this.offX, ay + this.offY);
     f.lookAt?.(this.land.x, this.land.y - 40);
     if (this.exhausted) f.feel('dizzy', 0.3);
-    if (F.crank.power > 0.3 && rng.chance(dt * 3)) F.particles.bubbleTrail(f.x, f.y, -Math.cos(this.away) * 60, -Math.sin(this.away) * 60);
+    if (F.gear.p > 0.3 && rng.chance(dt * 3)) F.particles.bubbleTrail(f.x, f.y, -Math.cos(this.away) * 60, -Math.sin(this.away) * 60);
   }
 
   brace(dt) {
@@ -533,6 +741,7 @@ export class Battle {
         // feint: the real surge goes the other way - the QTE arrow flips
         this.pullDir = this.teleDir + Math.PI + rng.float(-0.45, 0.45);
         this.surgeMul = 1.25;
+        this.shiftDir = -1; // ...and the band drops instead of jumping up
         if (this.qte?.active) { this.qte.dir = this.pullDir; this.qte.got *= 0.15; this.qte.flip = 1; }
         F.sfx('boing', { vol: 0.5 });
         F.particles.glints?.(f.x, f.y, 4, { w: 10, h: 8, color: '#ffb0ff' });
@@ -629,7 +838,7 @@ export class Battle {
         f.forceAngle = undefined;
         F.particles.eruption(f.x, sy, 0.7);
         F.sfx('splash_big', { vol: 0.7 });
-        const strained = F.crank.power > 0.35;
+        const strained = F.gear.p > 0.35;
         if (strained) { this.kick(0.45); F.shake(5); }
         else { this.stamina = Math.max(0, this.stamina - 0.2); F.particles.stars(f.x, sy, 8, { speed: [30, 70] }); }
         F.onJumpLand?.(!strained, f.x, sy);

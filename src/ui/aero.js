@@ -11,7 +11,7 @@
 //   drawAeroPanel(ctx, x, y, w, h, {tone:'glass'|'sky'|'grass'|'dark'|'deep'|any tone, radius, title, glow, bubbles, sparkle})
 //   drawAeroButton(ctx, x, y, w, h, {label, icon, state:'normal'|'hover'|'down'|'disabled', tone:'aqua'|'green'|'orange'|'glass'|..., font, align, radius})
 //   drawAeroBar(ctx, x, y, w, h, k, {color, back, gloss, segments})   glossy progress bar, k in 0..1
-//   drawAeroCoin(ctx, cx, cy, r, t)                           the Aero currency drop (glossy aqua bubble)
+//   drawAeroCoin(ctx, cx, cy, r, t)                           the Aero currency drop (glossy water drop; 3D from r >= 6)
 //   drawGlossOrb(ctx, cx, cy, r, color, t)                    generic glossy bubble/orb
 // Extras:
 //   aeroSurface(w, h, o) -> cached canvas   the raw surface rasteriser (see SURFACE OPTIONS below)
@@ -37,7 +37,7 @@
 import { rgba, shade, mix, pack, packRGB, hexToRgb } from '../core/color.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { PixelBuffer } from '../gfx/pixel.js';
-import { drawText, measureText } from '../gfx/font.js';
+import { drawText, measureText, FONTS } from '../gfx/font.js';
 import { hash1 } from '../core/math.js';
 
 export const CURRENCY = 'Aero';
@@ -49,6 +49,28 @@ export const AERO = {
 };
 
 export function fmtAero(n) { return Math.round(n || 0).toLocaleString('en-US'); }
+
+// ---------------------------------------------------------------- UI scale (phase 6)
+// Settings > UI size: 'normal' | 'big' (default) | 'huge' (state.settings.uiScale). The HUD multiplies its metrics
+// by uiK(); shared widgets pick their face with uiFont() / fitFont() (a face is promoted one step while it still fits).
+//   setUiScale(mode), uiScaleMode() -> mode, uiK() -> HUD size factor (vs. the phase 4 HUD)
+//   uiFont(base='normal') -> 'small' | 'normal' | 'big'      the face to use for `base` text at this scale
+//   fitFont(text, base, maxW, maxH) -> face                    promoted face if `text` fits maxW (and maxH), else base
+//   capH(font) -> cap height px ('small' 5, 'normal' 7, 'big' 9)
+export const UI_SCALES = { normal: 1.25, big: 1.6, huge: 2 };
+let uiMode = 'big';
+export function setUiScale(mode) { if (UI_SCALES[mode]) uiMode = mode; }
+export function uiScaleMode() { return uiMode; }
+export function uiK() { return UI_SCALES[uiMode]; }
+const PROMOTE = { small: 'normal', normal: 'big' };
+export function uiFont(base = 'normal') { return uiMode === 'normal' ? base : PROMOTE[base] || base; }
+export function capH(font) { return FONTS[font]?.height || 7; }
+export function fitFont(text, base = 'normal', maxW = Infinity, maxH = Infinity) {
+  const up = uiFont(base);
+  if (up === base || !text) return base;
+  if (capH(up) > maxH) return base;
+  return measureText(text, up) <= maxW ? up : base;
+}
 
 // ---------------------------------------------------------------- tones
 // top/mid/bot: vertical gradient stops (mid at 52%), a: [alpha top, alpha bottom], edge: outer 1 px line,
@@ -288,7 +310,7 @@ export function drawAeroPanel(ctx, x, y, w, h, o = {}) {
   if (o.title) {
     const T = toneOf(tone);
     const light = T.text !== '#ffffff';
-    drawText(ctx, o.title, Math.round(x + 10), Math.round(y + 7), { color: light ? AERO.ink : '#ffffff', shadow: light ? 'rgba(255,255,255,0.9)' : T.shadow });
+    drawText(ctx, o.title, Math.round(x + 10), Math.round(y + 7), { font: fitFont(o.title, 'normal', w - 20), color: light ? AERO.ink : '#ffffff', shadow: light ? 'rgba(255,255,255,0.9)' : T.shadow });
   }
 }
 
@@ -320,18 +342,19 @@ export function drawAeroButton(ctx, x, y, w, h, o = {}) {
   const key = `btn|${w}|${h}|${r}|${typeof toneName === 'object' ? JSON.stringify(toneName) : toneName}|${st}`;
   const c = aeroCached(key, () => surfaceTex(w, h, { tone: look, r, gloss: down ? 0.35 : 0.8, glossH: Math.max(3, Math.round(h * (down ? 0.38 : 0.46))), curve: Math.min(3, h * 0.12), rim: down ? 0.35 : 0.85, glow: down ? 0.25 : 0.75 }));
   ctx.drawImage(c, x, y);
-  const font = o.font || 'normal';
   const ic = o.icon || null;
   const iw = ic ? ic.width + (o.label ? 4 : 0) : 0;
   let label = o.label || '';
-  let tw = label ? measureText(label, font) : 0;
   const pad = Math.max(6, Math.min(10, Math.floor(h / 2)));
+  // [phase6:ui] bigger UI: promote the face one step when the label still fits the pill
+  const font = o.fixedFont ? o.font || 'normal' : fitFont(label, o.font || 'normal', w - pad * 2 + 2 - iw, h - 8);
+  let tw = label ? measureText(label, font) : 0;
   if (label && tw + iw > w - pad * 2 + 2) {
     while (label.length > 1 && measureText(label + '..', font) + iw > w - pad * 2 + 2) label = label.slice(0, -1);
     label = label.replace(/\s+$/, '') + '..';
     tw = measureText(label, font);
   }
-  const capH = font === 'small' ? 5 : 7;
+  const ch = capH(font);
   const dy = down ? 1 : 0;
   let cx = o.align === 'left' ? x + pad - 1 : x + Math.round((w - tw - iw) / 2);
   const dis = st === 'disabled';
@@ -344,7 +367,7 @@ export function drawAeroButton(ctx, x, y, w, h, o = {}) {
   if (label) {
     const col = dis ? '#eef2f6' : look.text || T.text;
     const sh = dis ? '#5a6a7c' : look.shadow || T.shadow;
-    drawText(ctx, label, cx, y + Math.round((h - capH) / 2) + dy, { font, color: col, shadow: sh });
+    drawText(ctx, label, cx, y + Math.round((h - ch) / 2) + dy, { font, color: col, shadow: sh });
   }
 }
 
@@ -453,43 +476,57 @@ export function drawAeroBubble(ctx, cx, cy, r, alpha = 1) {
   else ctx.drawImage(c, Math.round(cx - c.width / 2), Math.round(cy - c.height / 2));
 }
 
-// The Aero currency: a glossy aqua water drop-bubble with a little leaf-green swirl inside.
+// The Aero currency: a glossy aqua water drop (phase 6: a teardrop that matches the 3D drop on the HUD pill).
 function coinTex(r) {
   const S = Math.ceil(r * 2) + 2, c = S / 2;
   const b = new PixelBuffer(S, S);
   const body = [rgbOf('#0a6fa8'), rgbOf('#17a6d8'), rgbOf('#3fd2ee'), rgbOf('#9cf2ff')];
+  const R0 = r * 0.8, ccy = c + r * 0.18, tipY = c - r * 0.98;
+  const inside = (x, y) => {
+    const dx = x + 0.5 - c, py = y + 0.5;
+    if (py >= ccy) return Math.hypot(dx, py - ccy) <= R0;
+    const u = (ccy - py) / (ccy - tipY);
+    return u < 1 && Math.abs(dx) <= R0 * Math.pow(1 - u, 1.25) * (1 + 0.25 * u);
+  };
   for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-    const dx = x + 0.5 - c, dy = y + 0.5 - c, d = Math.hypot(dx, dy);
-    if (d > r) continue;
-    if (d > r - 1) { b.set(x, y, pack('#06406e')); continue; }
-    const lit = (-dx * 0.55 - dy * 0.85) / r;
-    const bottom = Math.max(0, dy / r) * Math.max(0, d / r - 0.35);
+    if (!inside(x, y)) continue;
+    const edge = !inside(x - 1, y) || !inside(x + 1, y) || !inside(x, y - 1) || !inside(x, y + 1);
+    if (edge) { b.set(x, y, pack('#06406e')); continue; }
+    const dx = x + 0.5 - c, dy = y + 0.5 - ccy;
+    const lit = (-dx * 0.6 - dy * 0.8) / r;
+    const bottom = Math.max(0, dy / R0) * Math.max(0, Math.hypot(dx, dy) / R0 - 0.35);
     let k = 1.4 + lit * 1.3 + bottom * 2.2;
     k = Math.max(0, Math.min(3, k));
     const i = Math.min(2, Math.floor(k)), f = k - i;
     const A = body[i], B = body[i + 1];
     b.set(x, y, packRGB(A[0] + (B[0] - A[0]) * f, A[1] + (B[1] - A[1]) * f, A[2] + (B[2] - A[2]) * f));
   }
-  // inner swirl: a tiny green leaf/wave crescent in the lower half
-  if (r >= 4) {
-    for (let a = 0.3; a < 2.6; a += 0.08) {
-      const rr = r * 0.48;
-      const x = Math.round(c + Math.cos(a) * rr - 0.5), y = Math.round(c + Math.sin(a) * rr * 0.75 - 0.5);
-      if (x > 0 && y > 0 && x < S && y < S) blend(b.data, y * S + x, 160, 255, 120, 0.75);
-    }
-  }
   // highlight
-  const hx = c - r * 0.3, hy = c - r * 0.48, hrx = r * 0.5, hry = r * 0.26;
+  const hx = c - r * 0.28, hy = ccy - r * 0.32, hrx = r * 0.26, hry = r * 0.36;
   for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
     const ex = (x + 0.5 - hx) / hrx, ey = (y + 0.5 - hy) / hry, e = ex * ex + ey * ey;
-    if (e < 1 && Math.hypot(x + 0.5 - c, y + 0.5 - c) < r - 1) blend(b.data, y * S + x, 255, 255, 255, 0.8 * (1 - e * 0.6));
+    if (e < 1 && inside(x, y) && inside(x - 1, y) && inside(x, y - 1)) blend(b.data, y * S + x, 255, 255, 255, 0.75 * (1 - e * 0.6));
   }
-  const gx = Math.round(c - r * 0.5), gy = Math.round(c - r * 0.5);
-  if (gx >= 0 && gy >= 0) blend(b.data, gy * S + gx, 255, 255, 255, 1);
+  const gx = Math.round(c - r * 0.3), gy = Math.round(ccy - r * 0.42);
+  if (gx >= 0 && gy >= 0 && inside(gx, gy)) blend(b.data, gy * S + gx, 255, 255, 255, 1);
   return b.toCanvas();
 }
 
+// [phase6:ui] bigicons.js registers the glossy low-poly 3D drop here (no import cycle); drawAeroCoin uses it from r >= 6.
+let coin3d = null;
+export function setCoinRenderer(fn) { coin3d = fn; }
+
 export function drawAeroCoin(ctx, cx, cy, r = 5, t = 0) {
+  if (coin3d && r >= 6) {
+    let f = null;
+    try { f = coin3d(Math.round(r * 2.3), t ? t * 0.12 + (cx * 0.013 + cy * 0.007) : 0); } catch { f = null; }
+    if (f) {
+      ctx.drawImage(f.canvas, Math.round(cx - f.ox), Math.round(cy - f.oy - r * 0.08));
+      const ph = (t * 0.45 + (cx * 0.013 + cy * 0.007)) % 1;
+      if (t && ph < 0.08) drawSparkle(ctx, Math.round(cx - r * 0.35), Math.round(cy - r * 0.45), ph < 0.04 ? 2 : 1, 1);
+      return;
+    }
+  }
   r = Math.max(2.5, Math.round(r * 2) / 2);
   const c = aeroCached(`coin|${r}`, () => coinTex(r));
   const x = Math.round(cx - c.width / 2), y = Math.round(cy - c.height / 2);
@@ -542,25 +579,26 @@ export function drawAeroGlow(ctx, cx, cy, r, color = '#bff6ff', alpha = 0.5) {
 export function drawAeroBadge(ctx, right, top, value, t = 0) {
   if (value === null || value === undefined || value === 0 || value === false) return null;
   const txt = value === '!' ? '!' : typeof value === 'number' && value > 99 ? '99+' : String(value);
-  const tw = measureText(txt, 'small');
-  const h = 11, w = Math.max(h, tw + 7);
+  const font = uiMode === 'huge' ? 'big' : uiFont('small'); // [phase6:ui]
+  const tw = measureText(txt, font), ch = capH(font);
+  const h = ch + 6 + (font === 'big' ? 2 : 0), w = Math.max(h, tw + 8);
   const x = Math.round(right - w), y = Math.round(top + (Math.sin(t * 5) > 0.85 ? -1 : 0));
   const tone = value === '!' ? 'orange' : 'red';
-  ctx.drawImage(aeroCached(`badge|${w}|${tone}`, () => surfaceTex(w, h, { tone, r: 'pill', gloss: 0.85, glossH: 5, curve: 1, rim: 0.7, glow: 0.6, edge: '#ffffff', edgeA: 1 })), x, y);
-  drawText(ctx, txt, x + Math.round((w - tw) / 2), y + 3, { font: 'small', color: '#ffffff', shadow: toneOf(tone).shadow });
+  ctx.drawImage(aeroCached(`badge|${w}|${h}|${tone}`, () => surfaceTex(w, h, { tone, r: 'pill', gloss: 0.85, glossH: Math.round(h * 0.45), curve: 1, rim: 0.7, glow: 0.6, edge: '#ffffff', edgeA: 1 })), x, y);
+  drawText(ctx, txt, x + Math.round((w - tw) / 2), y + Math.round((h - ch) / 2), { font, color: '#ffffff', shadow: toneOf(tone).shadow });
   return { x, y, w, h };
 }
 
 export function drawAeroLabel(ctx, text, x, y, o = {}) {
-  const font = o.font || 'normal';
+  const font = o.fixedFont ? o.font || 'normal' : uiFont(o.font || 'normal'); // [phase6:ui]
   const tw = measureText(text, font);
-  const h = font === 'small' ? 11 : 13, w = tw + 12;
+  const h = capH(font) + 6 + (font === 'big' ? 2 : 0), w = tw + (font === 'big' ? 16 : 12);
   let lx = Math.round(o.align === 'center' ? x - w / 2 : o.align === 'right' ? x - w : x);
   const ly = Math.round(y);
   const tone = o.tone || 'glass';
   ctx.drawImage(aeroCached(`label|${w}|${h}|${tone}`, () => surfaceTex(w, h, { tone, r: 'pill', gloss: 0.6, glossH: Math.round(h * 0.45), curve: 1, rim: 0.8, glow: 0.4 })), lx, ly);
   const T = toneOf(tone);
-  drawText(ctx, text, lx + 6, ly + Math.round((h - (font === 'small' ? 5 : 7)) / 2), { font, color: T.text, shadow: T.text === '#ffffff' ? T.shadow : null });
+  drawText(ctx, text, lx + Math.round((w - tw) / 2), ly + Math.round((h - capH(font)) / 2), { font, color: T.text, shadow: T.text === '#ffffff' ? T.shadow : null });
   return { x: lx, y: ly, w, h };
 }
 
@@ -585,7 +623,11 @@ export function drawAeroFrame(ctx, x, y, w, h, o = {}) {
     ctx.drawImage(ic, Math.round(x + 6), Math.round(y + 15 - ic.height / 2));
     tx = x + 8 + ic.width + 2;
   }
-  if (o.title) drawText(ctx, o.title, tx, y + 8, { scale: 2, color: '#ffffff', shadow: '#0a3e74' });
+  if (o.title) {
+    // [phase6:ui] bold big face at 2x (18 px caps) when the UI is enlarged; an outline keeps it readable on the sky
+    const tf = uiMode === 'normal' || measureText(o.title, 'big', 2) > w - (tx - x) - 70 ? 'normal' : 'big';
+    drawText(ctx, o.title, tx, y + (tf === 'big' ? 6 : 8), { font: tf, scale: 2, color: '#ffffff', shadow: '#0a3e74', outline: tf === 'big' ? 'rgba(10,62,116,0.55)' : null });
+  }
   const close = { x: x + w - 25, y: y + 6, w: 18, h: 18 };
   // finish(ctx): call after drawing the panel's content so the lower leaves and the splash sit on top
   const finish = (c2 = ctx) => {

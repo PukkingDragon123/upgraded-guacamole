@@ -18,7 +18,9 @@
 // drawSlider(ctx,x,y,w,value,{hover, down}) (height SLIDER_H)                            -> {knob}
 // drawToggle(ctx,x,y,on,{hover}) (TOGGLE_W x TOGGLE_H)  glossy switch
 // drawBar(ctx,x,y,w,h,value,{color, back, segments})
-// drawTooltip(ctx,x,y,text,{maxW, font}) auto-placed near (x,y) inside the canvas          -> rect
+// drawTooltip(ctx,x,y,text,{maxW, font, fixedFont}) auto-placed near (x,y) inside the canvas -> rect
+//   [phase6:ui] text faces follow the UI size (uiFont/fitFont in ./aero.js): buttons, tabs, title pills and tooltips
+//   promote 'small' -> 'normal' -> 'big' while the text still fits; pass fixedFont: true to opt out.
 // drawTab(ctx,x,y,w,h,{label, icon, active, hover, color})
 // drawPlank(ctx,x,y,w,h,{rope, tone, label})  glossy title pill                          -> inner rect
 // drawStamp(ctx,x,y,text,{color, angle (radians; |a|>π is read as degrees), font, scale})   glossy sticker centred on x,y
@@ -32,6 +34,7 @@ import { drawText, measureText, wrapText } from '../gfx/font.js';
 import { getUiIcon } from '../gfx/uiicons.js';
 import {
   AERO, aeroSurface, aeroCached, drawAeroButton, drawAeroBar, drawAeroBubble, drawGlossOrb, toneOf, toneFrom, aeroText, drawSparkle,
+  uiFont, fitFont, capH,
 } from './aero.js';
 
 const SKY = ['#0b3f74', '#1a68b0', '#2f8fdc', '#5cc0f4', '#9ee2ff', '#e4f8ff'];
@@ -333,12 +336,12 @@ export function drawWaterBubble(ctx, cx, cy, r) {
 const STYLE_TONE = { wood: 'aqua', coral: 'green', shell: 'white', paper: 'white', glass: 'clear' };
 
 export function buttonSize(label = '', opts = {}) {
-  const font = opts.font || 'normal';
+  const font = uiFont(opts.font || 'normal'); // [phase6:ui] sized for the promoted face
   const ic = iconOf(opts.icon);
   const tw = label ? measureText(label, font) : 0;
   const iw = ic ? ic.width + (label ? 4 : 0) : 0;
-  const h = font === 'small' ? 15 : 19;
-  return { w: Math.max(h, tw + iw + 16), h };
+  const h = font === 'small' ? 15 : font === 'big' ? 21 : 19;
+  return { w: Math.max(h, tw + iw + 20), h };
 }
 
 export function drawButton(ctx, x, y, w, h, opts = {}) {
@@ -347,7 +350,7 @@ export function drawButton(ctx, x, y, w, h, opts = {}) {
   const closeBtn = !opts.label && (opts.icon === 'cross');
   if (closeBtn) tone = 'red';
   const ic = iconOf(opts.icon);
-  drawAeroButton(ctx, x, y, w, h, { label: opts.label, icon: ic, state: opts.state || 'normal', tone, font: opts.font, align: opts.align, radius: closeBtn ? Math.floor(Math.min(w, h) / 2) : undefined });
+  drawAeroButton(ctx, x, y, w, h, { label: opts.label, icon: ic, state: opts.state || 'normal', tone, font: opts.font, fixedFont: opts.fixedFont, align: opts.align, radius: closeBtn ? Math.floor(Math.min(w, h) / 2) : undefined });
 }
 
 // ---------------------------------------------------------------- slider (glass track + pearl knob)
@@ -407,17 +410,20 @@ export function drawBar(ctx, x, y, w, h, value, opts = {}) {
 
 // ---------------------------------------------------------------- tooltip
 
+// [phase6:ui] tooltips use the promoted face (bold 'big' at the default UI size) and wrap wider
 export function tooltipSize(text, opts = {}) {
-  const font = opts.font || 'normal';
-  const lines = wrapText(text, opts.maxW || 170, font);
-  const lh = font === 'small' ? 7 : 10;
+  const font = opts.fixedFont ? opts.font || 'normal' : uiFont(opts.font || 'normal');
+  const big = font === 'big';
+  const lines = wrapText(text, (opts.maxW || 170) * (big ? 1.45 : 1), font);
+  const lh = font === 'small' ? 7 : big ? 13 : 10;
   const tw = Math.max(...lines.map((l) => measureText(l, font)));
-  const w = tw + 14, h = lines.length * lh + (font === 'small' ? 10 : 11);
-  return { w, h, lines, lh, fold: false };
+  const w = tw + (big ? 20 : 14), h = lines.length * lh + (font === 'small' ? 10 : big ? 12 : 11);
+  return { w, h, lines, lh, fold: false, font };
 }
 
 export function drawTooltip(ctx, x, y, text, opts = {}) {
-  const font = opts.font || 'normal';
+  const font = opts.fixedFont ? opts.font || 'normal' : uiFont(opts.font || 'normal');
+  const big = font === 'big';
   const { w, h, lines, lh } = tooltipSize(text, opts);
   const CW = ctx.canvas.width, CH = ctx.canvas.height;
   let tx = Math.round(x + 12), ty = Math.round(y + 14);
@@ -425,9 +431,10 @@ export function drawTooltip(ctx, x, y, text, opts = {}) {
   if (ty + h > CH - 4) ty = Math.round(y - h - 8);
   tx = clamp(tx, 3, Math.max(3, CW - w - 3));
   ty = clamp(ty, 3, Math.max(3, CH - h - 4));
-  const c = aeroCached(`tip|${w}|${h}`, () => withShadow(aeroSurface(w, h, { tone: 'frost', r: Math.min(6, Math.floor(h / 2)), gloss: 0.45, glossH: Math.min(9, Math.round(h * 0.45)), curve: 1, rim: 0.9, glow: 0.35, glowColor: '#bfeaff' }), 1, 2, 0.25));
+  const c = aeroCached(`tip|${w}|${h}`, () => withShadow(aeroSurface(w, h, { tone: 'frost', r: Math.min(big ? 8 : 6, Math.floor(h / 2)), gloss: 0.45, glossH: Math.min(big ? 11 : 9, Math.round(h * 0.45)), curve: 1, rim: 0.9, glow: 0.35, glowColor: '#bfeaff' }), 1, 2, 0.25));
   ctx.drawImage(c, tx, ty);
-  lines.forEach((l, i) => drawText(ctx, l, tx + 7, ty + 6 + i * lh, { font, color: UI_COLORS.ink }));
+  const px = big ? 10 : 7, py = big ? 6 : 6;
+  lines.forEach((l, i) => drawText(ctx, l, tx + px, ty + py + i * lh, { font, color: UI_COLORS.ink, shadow: big ? '#ffffff' : null }));
   return { x: tx, y: ty, w, h };
 }
 
@@ -445,15 +452,17 @@ export function drawTab(ctx, x, y, w, h, opts = {}) {
   ctx.drawImage(c, x, y + dy);
   const ic = iconOf(opts.icon);
   const label = opts.label || '';
-  const tw = label ? measureText(label) : 0;
   const iw = ic ? ic.width + (label ? 3 : 0) : 0;
+  const font = fitFont(label, 'normal', w - iw - 8, th - 6); // [phase6:ui]
+  const tw = label ? measureText(label, font) : 0;
+  const ch = capH(font);
   let cx = x + Math.round((w - tw - iw) / 2);
-  const cy = y + dy + Math.round((th - 7) / 2) + 1;
+  const cy = y + dy + Math.round((th - ch) / 2) + 1;
   if (ic) {
-    ctx.drawImage(ic, cx, cy + 3 - Math.floor(ic.height / 2));
+    ctx.drawImage(ic, cx, cy + Math.round(ch / 2) - Math.floor(ic.height / 2));
     cx += iw;
   }
-  if (label) drawText(ctx, label, cx, cy, { color: '#ffffff', shadow: active ? shade(color, -0.65) : '#0a4a7e' });
+  if (label) drawText(ctx, label, cx, cy, { font, color: '#ffffff', shadow: active ? shade(color, -0.65) : '#0a4a7e' });
 }
 
 // ---------------------------------------------------------------- title pill ("hanging sign")
@@ -465,7 +474,8 @@ export function drawPlank(ctx, x, y, w, h, opts = {}) {
   ctx.fillRect(x + 4, y - 1, w - 8, h + 2);
   ctx.drawImage(aeroCached(`plank|${w}|${h}|${tone}`, () => aeroSurface(w, h, { tone, r: Math.floor(h / 2), gloss: 0.8, glossH: Math.round(h * 0.46), curve: 2, rim: 0.85, glow: 0.7, sparkle: w > 50 ? 1 : 0 })), x, y);
   if (opts.label) {
-    drawText(ctx, opts.label, x + Math.round(w / 2), y + Math.round((h - 7) / 2), { align: 'center', color: '#ffffff', shadow: toneOf(tone).shadow });
+    const font = fitFont(opts.label, 'normal', w - 12, h - 8); // [phase6:ui]
+    drawText(ctx, opts.label, x + Math.round(w / 2), y + Math.round((h - capH(font)) / 2), { font, align: 'center', color: '#ffffff', shadow: toneOf(tone).shadow });
   }
   return { x: x + 4, y: y + 6, w: w - 8, h: h - 9 };
 }

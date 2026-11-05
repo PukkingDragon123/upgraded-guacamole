@@ -10,7 +10,7 @@ import { rng } from '../core/rng.js';
 import { drawText, measureText, wrapText } from '../gfx/font.js';
 import { drawTab } from './panels.js';
 import { getUiIcon } from '../gfx/uiicons.js';
-import { getBigIcon } from '../gfx/bigicons.js';
+import { getBigIcon, gemIcon } from '../gfx/bigicons.js';
 import { SPECIES_BY_ID } from '../fish/species.js';
 import { traitList, valueMultiplier } from '../fish/traits.js';
 import { RELEASE_VALUE } from '../game/shopdata.js';
@@ -21,7 +21,10 @@ import { PROJECTS, PERK_NAMES } from '../build/research.js';
 import { drawItem } from '../build/itemdraw.js';
 import { BAITS, baitList, ensureBait, equipBait } from '../store/bait.js';
 import { drawBaitGloss } from '../fishing/baitart.js';
-import { AERO, aeroCached, aeroSurface, drawAeroFrame, drawAeroCard, drawAeroBar, drawAeroBadge, drawAeroGlow, drawSparkle, ecoBackdrop, toneFrom, fmtAero } from './aero.js';
+import { AERO, aeroCached, aeroSurface, drawAeroFrame, drawAeroCard, drawAeroBar, drawAeroBadge, drawAeroGlow, drawSparkle, ecoBackdrop, toneFrom, fmtAero, uiFont, capH, uiScaleMode } from './aero.js';
+import { panelRect } from './ui.js';
+
+const BIGUI = () => uiScaleMode() !== 'normal'; // [phase6:ui] bigger text + tiles on the Big / Huge UI sizes
 
 const TABS = [
   { id: 'all', label: 'All', icon: 'star', color: '#2f9ef0' },
@@ -136,18 +139,20 @@ export class InventoryPanel {
     const g = this.game, st = g.state, inp = g.input;
     this.t += dt;
     const t = this.t;
-    const W = Math.min(g.screen.W - 24, 720), H = Math.min(g.screen.H - 60, 430);
-    const r = { x: Math.round((g.screen.W - W) / 2), y: Math.round((g.screen.H - H) / 2) - 8, w: W, h: H };
+    const big = BIGUI(), f1 = uiFont('normal');
+    const r = panelRect(g, big ? 790 : 720, big ? 470 : 430);
+    const W = r.w, H = r.h;
     this.rect = r;
-    const F = drawAeroFrame(ctx, r.x, r.y, W, H, { title: 'Satchel', icon: getBigIcon('inventory', { size: 'small' }).canvas, seed: 13 });
+    const F = drawAeroFrame(ctx, r.x, r.y, W, H, { title: 'Satchel', icon: getBigIcon('inventory', { size: big ? 30 : 'small' }).canvas, seed: 13 });
     if (ui.button(ctx, F.close.x, F.close.y, F.close.w, F.close.h, '', { icon: 'cross', tip: 'Close (Esc)' })) { ui.close(this.id); return; }
     // ---- icon tabs (names in tooltips)
     let tx = F.content.x;
+    const tabH = big ? 26 : 20;
     for (const tb of TABS) {
-      const tw = 30;
-      const tr = { x: tx, y: F.content.y, w: tw, h: 20 };
+      const tw = big ? 40 : 30;
+      const tr = { x: tx, y: F.content.y, w: tw, h: tabH };
       const hov = ui.hover(tr) && this.tab !== tb.id;
-      drawTab(ctx, tr.x, tr.y, tr.w, tr.h, { icon: tb.icon, active: this.tab === tb.id, hover: hov, color: tb.color });
+      drawTab(ctx, tr.x, tr.y, tr.w, tr.h, { icon: getUiIcon(tb.icon, big ? 2 : 1), active: this.tab === tb.id, hover: hov, color: tb.color });
       if (tb.id === 'package') {
         const n = inventory(st).packages.length;
         if (n) drawAeroBadge(ctx, tr.x + tr.w + 2, tr.y - 4, n, t);
@@ -160,11 +165,11 @@ export class InventoryPanel {
     const list = this.entries();
     if (this.sel && !list.some((e) => e.key === this.sel)) this.sel = null;
     if (!this.sel && list.length) this.sel = list[0].key;
-    const paneW = 250;
-    const grid = { x: F.content.x, y: F.content.y + 20, w: F.content.w - paneW - 6, h: F.content.h - 20 - 26 };
+    const paneW = big ? 282 : 250, barH = big ? 30 : 26;
+    const grid = { x: F.content.x, y: F.content.y + tabH, w: F.content.w - paneW - 6, h: F.content.h - tabH - barH };
     drawAeroCard(ctx, grid.x, grid.y, grid.w, grid.h, { seed: 6 });
-    const gap = 5;
-    const cols = Math.max(1, Math.floor((grid.w - 14 + gap) / (58 + gap)));
+    const gap = big ? 6 : 5;
+    const cols = Math.max(1, Math.floor((grid.w - 14 + gap) / ((big ? 64 : 58) + gap)));
     const cw = Math.floor((grid.w - 14 - (cols - 1) * gap) / cols), ch = cw;
     const rows = Math.ceil(list.length / cols);
     const viewH = grid.h - 12;
@@ -181,7 +186,7 @@ export class InventoryPanel {
       ctx.globalAlpha = 0.5 + 0.1 * Math.sin(t * 2);
       ctx.drawImage(ic, Math.round(cx - ic.width / 2), Math.round(cy - ic.height / 2 - 6 + Math.sin(t * 1.5) * 2));
       ctx.globalAlpha = 1;
-      drawText(ctx, 'Empty!', cx, cy + 18, { align: 'center', color: AERO.inkSoft });
+      drawText(ctx, 'Empty!', cx, cy + 18, { font: f1, align: 'center', color: AERO.inkSoft });
     }
     let hovered = null;
     list.forEach((e, i) => {
@@ -209,19 +214,22 @@ export class InventoryPanel {
     }
     if (hovered) ui.tip = `${hovered.name}${hovered.qty > 1 ? ` x${hovered.qty}` : ''}`;
     // ---- bottom bar: sort + collection
-    const bb = { x: grid.x, y: grid.y + grid.h + 5, w: grid.w, h: 20 };
+    const bb = { x: grid.x, y: grid.y + grid.h + 5, w: grid.w, h: barH - 6 };
     const so = SORTS.find((q) => q[0] === this.sort);
-    if (ui.button(ctx, bb.x, bb.y, 74, 19, so[1], { icon: so[2], style: 'white', font: 'small', tip: 'Sort' })) {
+    if (ui.button(ctx, bb.x, bb.y, big ? 96 : 74, bb.h, so[1], { icon: so[2], style: 'white', font: 'small', tip: 'Sort' })) {
       const i = SORTS.findIndex((q) => q[0] === this.sort);
       this.sort = SORTS[(i + 1) % SORTS.length][0];
     }
     const kinds = Object.values(ITEMS).filter((it) => it.kind !== 'coins' && it.kind !== 'package');
     const found = kinds.filter((it) => countItem(st, it.id) > 0).length;
     const pct = found / Math.max(1, kinds.length);
-    ctx.drawImage(getUiIcon('trophy'), bb.x + bb.w - 158, bb.y + 5);
-    drawAeroBar(ctx, bb.x + bb.w - 144, bb.y + 6, 96, 8, pct, { color: '#ffd24a' });
-    drawText(ctx, `${found}/${kinds.length}`, bb.x + bb.w - 4, bb.y + 6, { align: 'right', color: '#ffffff', shadow: '#0a3e74' });
-    if (ui.hover({ x: bb.x + bb.w - 160, y: bb.y, w: 160, h: 20 })) ui.tip = 'Collection';
+    const ctxt = `${found}/${kinds.length}`, ctw = measureText(ctxt, f1);
+    const tro = getUiIcon('trophy', big ? 2 : 1);
+    const barX = bb.x + bb.w - ctw - 10 - 96;
+    ctx.drawImage(tro, barX - tro.width - 4, bb.y + Math.round((bb.h - tro.height) / 2));
+    drawAeroBar(ctx, barX, bb.y + Math.round((bb.h - 9) / 2), 96, big ? 9 : 8, pct, { color: '#ffd24a' });
+    drawText(ctx, ctxt, bb.x + bb.w - 4, bb.y + Math.round((bb.h - capH(f1)) / 2), { font: f1, align: 'right', color: '#ffffff', shadow: '#0a3e74' });
+    if (ui.hover({ x: barX - tro.width - 6, y: bb.y, w: bb.x + bb.w - barX + tro.width + 6, h: bb.h })) ui.tip = 'Collection';
     // ---- showcase pane
     const sel = list.find((e) => e.key === this.sel) || null;
     this.drawPane(ctx, ui, sel, { x: F.content.x + F.content.w - paneW, y: F.content.y, w: paneW, h: F.content.h }, t, dt);
@@ -248,16 +256,19 @@ export class InventoryPanel {
     if (e.kind === 'bait' && e.def) drawBaitGloss(ctx, e.def.art, x + w / 2, y + h / 2 + 1, 34, t + i, { bubble: false });
     else drawItem(ctx, e.id, Math.round(x + w / 2), y + h - 8, { box: [w - 10, h - 14], t: spinT, spin: true, rec: e.rec, look: this.game.state.character });
     ctx.restore();
-    // rarity pips
-    for (let s = 0; s < R.stars; s++) {
+    // rarity gem (glossy 3D) or pips
+    const gem = gemIcon(R.color, BIGUI() ? 13 : 10);
+    if (gem) ctx.drawImage(gem, x + 2, y + 2);
+    else for (let s = 0; s < R.stars; s++) {
       ctx.fillStyle = shade(R.color, -0.4); ctx.fillRect(x + 4 + s * 4, y + 4, 3, 3);
       ctx.fillStyle = R.color; ctx.fillRect(x + 4 + s * 4, y + 4, 2, 2);
     }
     if (e.qty > 1 || e.kind === 'bait' || e.kind === 'material') {
       const txt = 'x' + formatCommas(e.qty);
-      const tw = measureText(txt, 'small') + 8;
-      ctx.drawImage(aeroCached(`satqty|${tw}`, () => aeroSurface(tw, 10, { tone: 'aqua', r: 'pill', gloss: 0.8, glossH: 4, curve: 1, rim: 0.6, glow: 0.5 })), x + w - tw - 2, y + h - 12);
-      drawText(ctx, txt, x + w - tw + 2, y + h - 10, { font: 'small', color: '#ffffff', shadow: '#0a4680' });
+      const qf = uiFont('small'), qh = capH(qf) + 5;
+      const tw = measureText(txt, qf) + 8;
+      ctx.drawImage(aeroCached(`satqty|${tw}|${qh}`, () => aeroSurface(tw, qh, { tone: 'aqua', r: 'pill', gloss: 0.8, glossH: Math.round(qh * 0.42), curve: 1, rim: 0.6, glow: 0.5 })), x + w - tw - 2, y + h - qh - 2);
+      drawText(ctx, txt, x + w - tw + 2, y + h - qh - 2 + Math.round((qh - capH(qf)) / 2), { font: qf, color: '#ffffff', shadow: '#0a4680' });
     }
     if (e.kind === 'fish') {
       ctx.drawImage(getUiIcon(e.rec.inTank ? 'tank' : 'bubble'), x + w - 12, y + 3);
@@ -277,7 +288,8 @@ export class InventoryPanel {
     this.pop = Math.min(1, this.pop + dt * 4);
     const R = e ? RARITY[e.rarity] || RARITY.common : RARITY.common;
     // showcase: a sunny glass bubble on a glossy aqua pedestal
-    const sc = { x: p.x, y: p.y, w: p.w, h: 128 };
+    const BU = BIGUI(), f1 = uiFont('normal'), f2 = uiFont('small');
+    const sc = { x: p.x, y: p.y, w: p.w, h: BU ? 136 : 128 };
     ctx.drawImage(aeroCached(`satsc|${sc.w}|${sc.h}`, () => ecoBackdrop(sc.w, sc.h, { seed: 21, r: 8 })), sc.x, sc.y);
     const cx = sc.x + sc.w / 2, cy = sc.y + 60;
     ctx.save();
@@ -313,37 +325,55 @@ export class InventoryPanel {
     drawAeroCard(ctx, ip.x, ip.y, ip.w, ip.h, { seed: 8 });
     if (!e) return;
     let y = ip.y + 7;
-    const lab = R.name.toUpperCase();
-    const lw = measureText(lab, 'small') + 12;
-    ctx.drawImage(aeroCached(`satrar|${lw}|${e.rarity}`, () => aeroSurface(lw, 11, { tone: toneFrom(R.color), r: 'pill', gloss: 0.8, glossH: 5, curve: 1, rim: 0.7, glow: 0.6 })), ip.x + ip.w - lw - 7, y);
+    const rf = BU ? 'normal' : 'small';
+    const lab = BU ? R.name : R.name.toUpperCase();
+    const gem = gemIcon(R.color, BU ? 15 : 11), gw = gem ? gem.width - 2 : 0;
+    const rh = capH(rf) + 6, lw = measureText(lab, rf) + 12 + gw;
+    ctx.drawImage(aeroCached(`satrar|${lw}|${rh}|${e.rarity}`, () => aeroSurface(lw, rh, { tone: toneFrom(R.color), r: 'pill', gloss: 0.8, glossH: Math.round(rh * 0.45), curve: 1, rim: 0.7, glow: 0.6 })), ip.x + ip.w - lw - 7, y);
+    if (gem) ctx.drawImage(gem, ip.x + ip.w - lw - 5, y + Math.round((rh - gem.height) / 2));
     const light = luminance(R.color) > 0.62;
-    drawText(ctx, lab, ip.x + ip.w - lw - 1, y + 3, { font: 'small', color: light ? AERO.ink : '#ffffff', shadow: light ? null : shade(R.color, -0.6) });
+    drawText(ctx, lab, ip.x + ip.w - lw - 1 + gw, y + Math.round((rh - capH(rf)) / 2), { font: rf, color: light ? AERO.ink : '#ffffff', shadow: light ? null : shade(R.color, -0.6) });
+    let nf = f1;
+    if (measureText(e.name, nf) > ip.w - lw - 24) nf = 'normal';
     let nm = e.name;
-    while (nm.length > 3 && measureText(nm) > ip.w - lw - 24) nm = nm.slice(0, -1);
+    while (nm.length > 3 && measureText(nm, nf) > ip.w - lw - 24) nm = nm.slice(0, -1);
     if (nm !== e.name) nm = nm.slice(0, -1) + '.';
-    drawText(ctx, nm, ip.x + 8, y + 2, { color: AERO.ink });
-    y += 15;
+    drawText(ctx, nm, ip.x + 8, y + Math.round((rh - capH(nf)) / 2), { font: nf, color: AERO.ink, shadow: '#ffffff' });
+    if (nm !== e.name && ui.hover({ x: ip.x + 4, y, w: ip.w - lw - 16, h: rh })) ui.tip = e.name;
+    y += rh + (BU ? 6 : 4);
     const info = this.infoLines(e);
+    const sl = BU ? 15 : 11;
     for (const [ic, v, c] of info.stats.slice(0, 3)) {
-      ctx.drawImage(getUiIcon(ic), ip.x + 8, y - 1);
-      drawText(ctx, v, ip.x + 22, y, { color: c || AERO.inkSoft });
-      y += 11;
+      const icn = getUiIcon(ic);
+      ctx.drawImage(icn, ip.x + 8, y + Math.round((capH(f1) - icn.height) / 2));
+      drawText(ctx, v, ip.x + 22, y, { font: f1, color: c || AERO.inkSoft });
+      y += sl;
     }
     y += 2;
-    for (const l of wrapText(info.desc, ip.w - 16).slice(0, 2)) { drawText(ctx, l, ip.x + 8, y, { color: AERO.inkSoft }); y += 10; }
+    const dl = BU ? 13 : 10;
+    const by = ip.y + ip.h - (BU ? 30 : 26);
+    const descRows = Math.max(1, Math.min(2, Math.floor((by - 4 - y) / dl)));
+    const dlines = wrapText(info.desc, ip.w - 16, f1);
+    dlines.slice(0, descRows).forEach((l, i) => {
+      if (i === descRows - 1 && dlines.length > descRows) { while (l.length > 4 && measureText(l + '...', f1) > ip.w - 16) l = l.slice(0, -1); l = l.replace(/[\s,.;:]*$/, '') + '...'; }
+      drawText(ctx, l, ip.x + 8, y, { font: f1, color: AERO.inkSoft });
+      y += dl;
+    });
+    if (dlines.length > descRows && ui.hover({ x: ip.x, y: y - dl * descRows, w: ip.w, h: dl * descRows })) ui.tip = info.desc;
     if (info.uses.length) {
       y += 2;
-      const maxU = Math.max(0, Math.min(3, Math.floor((ip.y + ip.h - 30 - y) / 9)));
-      info.uses.slice(0, maxU).forEach((u, i) => drawText(ctx, (i === maxU - 1 && info.uses.length > maxU ? `+${info.uses.length - i} more` : '- ' + u), ip.x + 10, y + i * 9, { font: 'small', color: '#2a8a3a' }));
+      const ul = capH(f2) + 4;
+      const maxU = Math.max(0, Math.min(3, Math.floor((by - 2 - y) / ul)));
+      info.uses.slice(0, maxU).forEach((u, i) => drawText(ctx, (i === maxU - 1 && info.uses.length > maxU ? `+${info.uses.length - i} more` : '- ' + u), ip.x + 10, y + i * ul, { font: f2, color: '#2a8a3a' }));
     }
     // actions
     const acts = this.actions(e);
     let bx = ip.x + 6;
-    const by = ip.y + ip.h - 26;
+    const bh = BU ? 24 : 20;
     for (const a of acts) {
-      const bw = Math.max(48, measureText(a.label) + (a.icon ? 34 : 20));
+      const bw = Math.max(48, measureText(a.label, f1) + (a.icon ? 34 : 20));
       if (bx + bw > ip.x + ip.w - 4) break;
-      if (ui.button(ctx, bx, by, bw, 20, a.label, { icon: a.icon, style: a.style || 'aqua', disabled: a.disabled, tip: a.tip })) a.run();
+      if (ui.button(ctx, bx, by, bw, bh, a.label, { icon: a.icon, style: a.style || 'aqua', disabled: a.disabled, tip: a.tip })) a.run();
       bx += bw + 4;
     }
   }

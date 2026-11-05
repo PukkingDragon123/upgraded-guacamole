@@ -5,11 +5,14 @@ import { rng } from '../core/rng.js';
 import { rgba, mix, hexToRgb } from '../core/color.js';
 import { makeLayer, resizeLayer } from '../core/canvas.js';
 import { drawText } from '../gfx/font.js';
+import { alagardBitmap, alagardReady } from '../gfx/alagard.js';
 import { BIOMES, BIOME_DEPTH } from './biomes/index.js';
 import { worldTop } from './biomes/base.js';
 import { installAero } from './aerokit.js';
 import { installZoomSky } from './zoomsky.js';
 import { installWater } from './watersheet.js'; // [phase5:water] simulated surface + water sheet
+import { installDeep, ZoneSpawner } from './deepsea.js'; // [phase6:oceans] depth zones under every ocean
+import { ZONE_IDS } from './depthzones.js';
 
 export class Ocean {
   constructor(game) {
@@ -26,6 +29,10 @@ export class Ocean {
       lantern: null, wind: 0, hour: 12, quality: 1, view: null, top: 0,
     };
     this.top = -400; // world y of the highest point the camera can show (sky / surface view)
+    // [phase6:oceans] depth zones: fish spawn per zone (school.js asks game.world.zones), zone ambience, the depth HUD
+    this.zones = new ZoneSpawner(this);
+    game.world.zones = this.zones;
+    this.zoneNow = null; this.zoneCard = null; this.meterA = 0;
   }
 
   // The ocean is always fully there (the old "wallpaper floods" reveal is gone); kept for older callers.
@@ -48,6 +55,7 @@ export class Ocean {
     try { installAero(b); } catch (e) { console.error(e); }
     try { installZoomSky(b); } catch (e) { console.error(e); }
     try { installWater(b); } catch (e) { console.error(e); } // [phase5:water]
+    try { installDeep(b); } catch (e) { console.error(e); } // [phase6:oceans]
     this.cache[id] = b;
     return b;
   }
@@ -57,6 +65,7 @@ export class Ocean {
     this.pickWeather(true);
     this.game.audio.setMusic(this.game.musicFor?.() ?? this.biome.music);
     this.game.audio.setAmbience(this.biome.ambient || id, { weather: this.weather, night: this.env.night });
+    this.ambNow = undefined; // [phase6:oceans] re-evaluated for the new ocean's zones
   }
 
   onResize() {
@@ -100,7 +109,7 @@ export class Ocean {
     if (!initial && w.id !== this.weather) this.game.toast?.(`Weather: ${w.name}`, w.icon || 'cloud');
     this.weather = w.id;
     this.weatherT = rng.float(150, 360);
-    this.game.audio.setAmbience(this.biome.ambient || this.biome.id, { weather: this.weather, night: this.env.night });
+    this.game.audio.setAmbience(this.ambienceId?.() ?? (this.biome.ambient || this.biome.id), { weather: this.weather, night: this.env.night });
   }
 
   weatherName() {
@@ -116,7 +125,7 @@ export class Ocean {
     if (night !== e.night) {
       e.night = night;
       g.audio.setNight(night);
-      g.audio.setAmbience(this.biome.ambient || this.biome.id, { weather: this.weather, night });
+      g.audio.setAmbience(this.ambienceId(), { weather: this.weather, night });
     }
     e.hour = clock.hour();
     e.weather = this.weather;
@@ -128,6 +137,82 @@ export class Ocean {
     if (this.travelState) this.updateTravel(dt);
     this.biome.update(dt, e);
     this.hiPass();
+    try { this.updateZone(dt); } catch (err) { if (!this.zoneErr) { this.zoneErr = true; console.error(err); } } // [phase6:oceans]
+  }
+
+  // ------------------------------------------------------------- depth zones (phase 6, see depthzones.js / deepsea.js)
+  // Zone and depth (m) at the hook while it is out, else at the camera centre: {id, name, depthM, y}.
+  depthZone() {
+    const D = this.biome?.deep;
+    if (!D?.L) return { id: 'sunlit', name: 'Sunlit Zone', depthM: 0, y: 0 };
+    const y = this.probeY();
+    const z = D.zoneAtY(y);
+    return { id: z.id, name: z.name, depthM: Math.round(D.metres(y)), y };
+  }
+
+  probeY() {
+    const g = this.game, h = g.fishing?.hook, v = g.world?.view;
+    if (h?.visible && Number.isFinite(h.y)) return h.y;
+    return v ? (v.y0 + v.y1) / 2 : 0;
+  }
+
+  // HUD data for a depth meter: zones (with y / metre spans), the current probe, the camera window, the bottom.
+  depthInfo() {
+    const D = this.biome?.deep;
+    if (!D?.L) return null;
+    const L = D.L, v = this.game.world?.view, z = this.depthZone();
+    return {
+      zone: z, zones: L.zones.map((q) => ({ id: q.id, name: q.name, y0: q.y0, y1: q.y1, m0: q.m0, m1: q.m1 })),
+      top: L.zones[0].y0, bottom: L.bottom, maxM: L.zones[L.zones.length - 1].m1, view: v ? [v.y0, v.y1] : null,
+    };
+  }
+
+  // World y of the bottom of the deep column, and the floor under a point (shelf above the lip, abyss floor below).
+  deepBottom() { return this.biome?.deep?.L?.bottom ?? this.H; }
+  floorUnder(x, y, z = 0) {
+    const D = this.biome?.deep;
+    return D?.L ? D.floorUnder(x, y, z) : this.floorAt(x, z);
+  }
+
+  // the zone the camera looks at decides the ambience and music; the probe zone fires 'depthZone'
+  camZone() {
+    const D = this.biome?.deep, v = this.game.world?.view;
+    if (!D?.L || !v) return null;
+    return D.zoneAtY((v.y0 + v.y1) / 2);
+  }
+
+  ambienceId() { return this.ambNow === 'deep' ? 'abyss' : (this.biome.ambient || this.biome.id); }
+
+  updateZone(dt) {
+    const g = this.game, D = this.biome?.deep;
+    if (!D?.L || this.travelState || g.state?.view !== 'ocean') { this.meterA = Math.max(0, this.meterA - dt * 3); return; }
+    const z = this.depthZone();
+    const prev = this.zoneNow;
+    if (!prev || prev.id !== z.id || prev.ocean !== this.biome.id) {
+      this.zoneNow = { ...z, ocean: this.biome.id };
+      if (prev && prev.ocean === this.biome.id) {
+        g.emit?.('depthZone', { id: z.id, name: z.name, depthM: z.depthM, prev: prev.id });
+        const order = ['sunlit', 'twilight', 'midnight', 'abyss'];
+        const deeper = order.indexOf(z.id) > order.indexOf(prev.id);
+        const now = performance.now();
+        if ((deeper || now - (this.cardAt || 0) > 4000) && !g.fishing?.fighting) { this.zoneCard = { t: 0, id: z.id, name: z.name, m: z.depthM }; this.cardAt = now; }
+      } else g.emit?.('depthZone', { id: z.id, name: z.name, depthM: z.depthM, prev: null });
+    } else { this.zoneNow.depthM = z.depthM; this.zoneNow.y = z.y; }
+    const cz = this.camZone();
+    const amb = cz && (cz.id === 'midnight' || cz.id === 'abyss') && cz.deep ? 'deep' : 'home';
+    if (amb !== this.ambNow) {
+      const first = this.ambNow === undefined;
+      this.ambNow = amb;
+      if (!first || amb === 'deep') {
+        g.audio.setMusic(amb === 'deep' ? 'abyss' : (g.musicFor?.() ?? this.biome.music));
+        g.audio.setAmbience(this.ambienceId(), { weather: this.weather, night: this.env.night });
+      }
+    }
+    const muff = { sunlit: 0, twilight: 0.18, midnight: 0.38, abyss: 0.55 }[cz?.deep ? cz.id : 'sunlit'] ?? 0;
+    this.muffle = damp(this.muffle ?? 0, muff, 1.5, dt);
+    if (Math.abs((this.muffleSet ?? -1) - this.muffle) > 0.02) { this.muffleSet = this.muffle; g.audio.setMuffle?.(this.muffle); }
+    const v = g.world?.view, under = v && this.waterLevel() !== null ? (v.y0 + v.y1) / 2 > (this.waterLevel() ?? 0) + 20 : !!v;
+    this.meterA = damp(this.meterA, under && !g.tutorial?.active ? 1 : 0, 4, dt);
   }
 
   // Zoomed-in camera: re-render the current biome's near/mid scenery at 2x detail, a few ms per frame.
@@ -157,7 +242,7 @@ export class Ocean {
   // Ambient light at a point (for fish wash).
   lightAt(x, y, L) {
     if (!L || L.dark < 0.02) return 1;
-    let lit = 1 - L.dark;
+    let lit = 1 - (L.profile ? L.profile(y).dark : L.dark); // [phase6:oceans] darkness varies with depth
     for (const l of L.lights) {
       const d = dist(x, y, l.x, l.y);
       if (d < l.r) lit += (1 - d / l.r) * (l.a ?? 1);
@@ -171,9 +256,12 @@ export class Ocean {
     // the lantern hook (abyss) and glowing fish add light
     if (L.dark > 0.05) {
       const h = g.fishing.hook;
-      if (h.visible && g.stats.lantern) L.lights.push({ x: h.x, y: h.y, r: 90, color: '#ffe8b0', a: 0.9 });
+      if (L.hookLit) { /* [phase6:oceans] the deep sea lights the hook itself */ }
+      else if (h.visible && g.stats.lantern) L.lights.push({ x: h.x, y: h.y, r: 90, color: '#ffe8b0', a: 0.9 });
       else if (h.visible) L.lights.push({ x: h.x, y: h.y, r: 34, color: '#c8e8ff', a: 0.35 });
+      const v = this.env.view;
       for (const f of g.school.fishes) {
+        if (v && (f.x < v.x0 - 60 || f.x > v.x1 + 60 || f.y < v.y0 - 60 || f.y > v.y1 + 60)) continue;
         if (f.quirks.has('glow') || f.quirks.has('lure')) {
           const a = f.anchors?.lure || [f.x, f.y];
           L.lights.push({ x: a[0], y: a[1], r: 40 + 20 * f.scale, color: f.sp.glowColor || '#7affea', a: 0.6 * (1 - f.z * 0.6) });
@@ -195,8 +283,17 @@ export class Ocean {
     const g = lc.ctx;
     const [tr, tg, tb] = hexToRgb(L.tint || '#1a2440');
     const k = clamp01(L.dark);
+    const prof = L.profile; // [phase6:oceans] darkness by depth: a vertical gradient through the zones
     g.globalCompositeOperation = 'source-over';
-    g.fillStyle = `rgb(${Math.round(lerp(255, tr, k))},${Math.round(lerp(255, tg, k))},${Math.round(lerp(255, tb, k))})`;
+    if (prof) {
+      const gr = g.createLinearGradient(0, 0, 0, H);
+      const n = 12;
+      for (let i = 0; i <= n; i++) {
+        const d = prof((i / n * H - oy) / z), kk = clamp01(d.dark), t = d.tint;
+        gr.addColorStop(i / n, `rgb(${Math.round(lerp(255, t[0], kk))},${Math.round(lerp(255, t[1], kk))},${Math.round(lerp(255, t[2], kk))})`);
+      }
+      g.fillStyle = gr;
+    } else g.fillStyle = `rgb(${Math.round(lerp(255, tr, k))},${Math.round(lerp(255, tg, k))},${Math.round(lerp(255, tb, k))})`;
     g.fillRect(0, 0, W, H);
     g.globalCompositeOperation = 'lighter';
     for (const l of L.lights) {
@@ -204,7 +301,7 @@ export class Ocean {
       if (x + r < 0 || y + r < 0 || x - r > W || y - r > H || r < 1) continue;
       const gr = g.createRadialGradient(x, y, 0, x, y, r);
       const [rr, gg, b] = hexToRgb(l.color || '#ffffff');
-      const a = (l.a ?? 1) * k;
+      const a = (l.a ?? 1) * (prof ? clamp01(prof(l.y).dark) : k);
       gr.addColorStop(0, `rgba(${rr},${gg},${b},${a})`);
       gr.addColorStop(0.55, `rgba(${rr},${gg},${b},${a * 0.45})`);
       gr.addColorStop(1, `rgba(${rr},${gg},${b},0)`);
@@ -217,6 +314,14 @@ export class Ocean {
     ctx.globalCompositeOperation = 'multiply';
     ctx.drawImage(lc.canvas, 0, 0);
     ctx.restore();
+    // [phase6:oceans] emissive deep-sea things after the darkness (sparks, eyes, glowing growths, the giants)
+    const D = this.biome?.deep;
+    if (D && prof) {
+      ctx.save();
+      ctx.setTransform(z, 0, 0, z, ox, oy);
+      try { D.drawGlowPass(ctx, this.env); } catch (e) { D.fail?.(e); }
+      ctx.restore();
+    }
   }
 
   // ------------------------------------------------------------- travel cinematic
@@ -258,6 +363,7 @@ export class Ocean {
     }
     if (k >= 1) {
       this.travelState = null;
+      this.ambNow = undefined; // [phase6:oceans]
       this.game.audio.setMusic(this.game.musicFor?.() ?? this.biome.music);
       this.game.audio.setAmbience(this.biome.ambient || this.biome.id, { weather: this.weather, night: this.env.night });
       this.titleCard = { t: 0, title: this.biome.name, sub: this.biome.subtitle };
@@ -299,7 +405,94 @@ export class Ocean {
     drawText(ctx, `DEPTH ${depth} m`, W / 2, H / 2 - 6, { align: 'center', color: '#e8fbff', outline: '#06121e', scale: 2 });
   }
 
+  // [phase6:oceans] the depth meter (a glass capsule on the right edge: zones, the camera window, the hook's depth)
+  // and the zone title card when the hook / camera crosses into another zone.
+  drawDepthHud(ctx, dt) {
+    const g = this.game, info = this.meterA > 0.02 ? this.depthInfo() : null;
+    if (info && !this.travelState && g.state?.view === 'ocean' && !g.ui?.blocking) {
+      const a = this.meterA, W = this.W, H = this.H;
+      const mh = Math.round(clamp(H * 0.44, 150, 280)), mw = 8;
+      const x = W - 22, y0 = Math.round(H * 0.5 - mh / 2 - 10);
+      const span = Math.max(1, info.bottom - info.top);
+      const Y = (wy) => y0 + clamp((wy - info.top) / span, 0, 1) * mh;
+      ctx.save();
+      ctx.globalAlpha = a;
+      // drop shadow + glass rim
+      ctx.fillStyle = 'rgba(4,16,34,0.35)';
+      ctx.fillRect(x - 3, y0 - 2, mw + 7, mh + 6);
+      for (const zn of info.zones) {
+        const c = ZONE_COLORS[zn.id] || ZONE_COLORS.sunlit;
+        const a0 = Math.round(Y(zn.y0)), a1 = Math.round(Y(zn.y1));
+        if (a1 <= a0) continue;
+        const gr = ctx.createLinearGradient(0, a0, 0, a1);
+        gr.addColorStop(0, c[0]); gr.addColorStop(1, c[1]);
+        ctx.fillStyle = gr;
+        ctx.fillRect(x, a0, mw, a1 - a0);
+        ctx.fillStyle = 'rgba(255,255,255,0.45)';
+        if (a0 > y0) ctx.fillRect(x - 2, a0, mw + 4, 1);
+      }
+      // camera window
+      if (info.view) {
+        const v0 = Math.round(Y(info.view[0])), v1 = Math.max(v0 + 3, Math.round(Y(info.view[1])));
+        ctx.fillStyle = 'rgba(255,255,255,0.22)';
+        ctx.fillRect(x - 1, v0, mw + 2, v1 - v0);
+        ctx.fillStyle = 'rgba(255,255,255,0.8)';
+        ctx.fillRect(x - 1, v0, mw + 2, 1); ctx.fillRect(x - 1, v1 - 1, mw + 2, 1);
+      }
+      // gloss + rim
+      ctx.fillStyle = 'rgba(255,255,255,0.42)';
+      ctx.fillRect(x + 1, y0 + 2, 2, mh - 4);
+      ctx.strokeStyle = 'rgba(220,248,255,0.9)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x - 0.5, y0 - 0.5, mw + 1, mh + 1);
+      // the hook / camera marker: a glossy pill with the depth
+      const zn = info.zone, my = Math.round(Y(zn.y));
+      const zc = ZONE_COLORS[zn.id] || ZONE_COLORS.sunlit;
+      const label = zn.depthM >= 1000 ? (zn.depthM / 1000).toFixed(zn.depthM >= 10000 ? 0 : 1) + ' km' : zn.depthM + ' m';
+      const tw = label.length * 6 + 10, px = x - tw - 8;
+      ctx.fillStyle = 'rgba(6,22,44,0.78)';
+      ctx.fillRect(px, my - 7, tw, 14);
+      ctx.fillStyle = zc[2];
+      ctx.fillRect(px, my - 7, tw, 1); ctx.fillRect(px, my + 6, tw, 1);
+      ctx.fillStyle = 'rgba(255,255,255,0.14)';
+      ctx.fillRect(px + 1, my - 6, tw - 2, 5);
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.moveTo(px + tw, my - 4); ctx.lineTo(px + tw + 5, my); ctx.lineTo(px + tw, my + 4); ctx.fill();
+      ctx.fillRect(x - 2, my, mw + 4, 1);
+      drawText(ctx, label, px + tw / 2, my - 4, { align: 'center', color: '#ffffff', outline: '#06121e' });
+      drawText(ctx, zn.name.toUpperCase(), x + mw + 2, y0 + mh + 7, { align: 'right', font: 'small', color: zc[2], outline: '#06121e' });
+      ctx.restore();
+    }
+    this.drawZoneCard(ctx, dt);
+  }
+
+  drawZoneCard(ctx, dt) {
+    const c = this.zoneCard;
+    if (!c) return;
+    c.t += dt;
+    const D = 3.2;
+    if (c.t > D || this.travelState || this.game.state?.view !== 'ocean') { this.zoneCard = null; return; }
+    if (this.game.ui?.blocking) return;
+    const a = Math.min(1, c.t * 2.5, (D - c.t) * 1.4);
+    const col = (ZONE_COLORS[c.id] || ZONE_COLORS.sunlit)[2];
+    const y = Math.round(this.H * 0.17 - (1 - Math.min(1, c.t * 2.5)) * 8);
+    const sh = c.id === 'abyss' ? Math.round(Math.sin(c.t * 40) * Math.max(0, 0.5 - c.t) * 4) : 0;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, a);
+    if (alagardReady()) {
+      const bm = alagardBitmap(c.name.toUpperCase(), { size: 16, color: col });
+      const bs = alagardBitmap(c.name.toUpperCase(), { size: 16, color: '#06121e' });
+      const s = 2, w = bm.width * s, h = bm.height * s, x0 = Math.round(this.W / 2 - w / 2) + sh;
+      for (const [dx, dy] of [[-2, 0], [2, 0], [0, -2], [0, 2], [2, 2]]) ctx.drawImage(bs, x0 + dx, y + dy, w, h);
+      ctx.drawImage(bm, x0, y, w, h);
+    } else drawText(ctx, c.name.toUpperCase(), this.W / 2 + sh, y + 6, { align: 'center', scale: 3, color: col, outline: '#06121e' });
+    const m = c.m >= 1000 ? (c.m / 1000).toFixed(1) + ' km' : c.m + ' m';
+    drawText(ctx, '- ' + m + ' -', this.W / 2, y + 40, { align: 'center', color: '#e8fbff', outline: '#06121e' });
+    ctx.restore();
+  }
+
   drawTitleCard(ctx, dt) {
+    this.drawDepthHud(ctx, dt); // [phase6:oceans]
     const c = this.titleCard;
     if (!c || this.game.ui.blocking) return;
     c.t += dt;
@@ -312,6 +505,15 @@ export class Ocean {
     ctx.globalAlpha = 1;
   }
 }
+
+// [phase6:oceans] depth meter colours per zone: [top, bottom, accent]
+const ZONE_COLORS = {
+  sunlit: ['#8ae8ff', '#1e8ad8', '#bff6ff'],
+  twilight: ['#4a5ac0', '#2a2470', '#c8b8ff'],
+  midnight: ['#18145a', '#07071e', '#8aa8ff'],
+  abyss: ['#06050c', '#000000', '#ff6a5a'],
+};
+void ZONE_IDS;
 
 function depthOf(id) {
   return BIOME_DEPTH[id] ?? 0;

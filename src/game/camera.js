@@ -3,14 +3,16 @@
 //
 // World space: y = 0 is the top of the old full-screen underwater view; negative y goes up toward the surface, the
 // boat and the sky. The world is one logical screen wide (game.screen.W) and spans [ocean.top, H] vertically.
-// In the open ocean the camera sits close: base zoom `state.settings.zoom` (default 2, Ctrl/Alt + wheel or +/-
-// change it between ZOOM.min and ZOOM.max) and it follows the action:
+// In the open ocean the camera sits close: base zoom `state.settings.zoom` (default 3, Ctrl/Alt + wheel or +/-
+// change it between ZOOM.min and ZOOM.max; saves from before phase 6 are scaled up once) and it follows the action:
 //   - the hook (cursor) while fishing: a soft dead zone; nearing a screen edge pans the camera (edge follow),
 //   - the boat while it is dragged; at the surface view an idle camera drifts back over the boat,
 //   - fights / cinematics: camera.focus(x, y, zoom) - the focus zoom stacks on top of the base zoom.
-// The wheel, Home/End and PageUp/PageDown still scroll between the surface (boat) and the seabed: game.js calls
-// scrollBy / scrollTo with the old full-screen scroll units (minScroll .. 0 = surface .. default view), which are
-// mapped onto the camera's vertical travel (surface view .. seabed view).
+// The wheel, Home/End and PageUp/PageDown scroll between the surface (boat), the shelf seabed and, below its lip, the
+// deep zones down to the abyss floor (phase 6, see src/world/depthzones.js): scrollKeys(inp) handles Home (surface),
+// End (the abyss floor) and PageUp/PageDown (one zone stop); the hook nearing the bottom edge dives the camera,
+// faster the longer it is held there. The old scroll units (minScroll .. 0 = surface view .. shelf seabed view) still
+// map onto the surface .. shelf travel and continue linearly (> 0) into the deep; scrollY (biome parallax) clamps at 0.
 // Outside the open ocean (aquarium, mini, travel) the camera is the old identity view (zoom 1, whole screen).
 //
 // API: shake, punch, flash, slowmo, timeScale, setScrollRange, scrollBy, scrollTo, focus, release, setLetterbox,
@@ -20,9 +22,9 @@
 
 import { clamp, damp, lerp } from '../core/math.js';
 
-export const ZOOM = { min: 1.4, max: 2.4, def: 2 };
+export const ZOOM = { min: 2, max: 4.5, def: 3 }; // [phase6:oceans] zoomed in a lot more
 // how much of a cinematic focus zoom (authored for the old 1x view) stacks on top of the base zoom
-const CINE_K = 0.42;
+const CINE_K = 0.3;
 // surface view: the waterline sits this far down the screen (0..1)
 const SURF_AT = 0.66;
 
@@ -86,7 +88,13 @@ export class Camera {
 
   // ---- zoom setting
   baseZoom() {
-    const z = Number(this.game.state?.settings?.zoom);
+    const st = this.game.state?.settings;
+    if (st && st.zoomV !== 6) { // pre-phase-6 saves: the old ~2x zoom becomes ~3x
+      const z0 = Number(st.zoom);
+      if (Number.isFinite(z0) && z0 > 0) st.zoom = Math.round(clamp(z0 * 1.5, ZOOM.min, ZOOM.max) * 20) / 20;
+      st.zoomV = 6;
+    }
+    const z = Number(st?.zoom);
     return Number.isFinite(z) && z > 0 ? clamp(z, ZOOM.min, ZOOM.max) : ZOOM.def;
   }
 
@@ -109,27 +117,32 @@ export class Camera {
       const s = Number.isFinite(L) ? L : 0;
       y0 = Math.max(y0, Math.min(s + (0.5 - SURF_AT) * 2 * hh, H - hh));
     }
-    const y1 = Math.max(y0, H - hh);
+    // [phase6:oceans] the world continues below the shelf (H) down to the deep column's bottom
+    let bottom = H;
+    try { const v = g.ocean?.deepBottom?.(); if (Number.isFinite(v) && v > H && !g.ocean?.travelState) bottom = v; } catch { bottom = H; }
+    const y1 = Math.max(y0, bottom - hh);
+    const yShelf = clamp(H - hh, y0, y1);
     const x0 = Math.min(hw, W / 2), x1 = Math.max(W - hw, W / 2);
-    return { x0, x1, y0, y1, hw, hh };
+    return { x0, x1, y0, y1, yShelf, hw, hh };
   }
 
   // old scroll units (minScroll..0) <-> centre y of the free camera
   refScroll() { const r = this.game.surfaceScroll; return Number.isFinite(r) && r < 0 ? r : -Math.round(this.H * 0.62); }
   scrollToY(s) {
     const b = this.bounds(this.open ? this.baseZoom() : this.base);
-    const k = clamp(1 - s / this.refScroll(), 0, 1);
-    return lerp(b.y0, b.y1, k);
+    const k = Math.max(0, 1 - s / this.refScroll()); // > 1: below the shelf view, into the deep
+    return clamp(lerp(b.y0, b.yShelf, k), b.y0, b.y1);
   }
   yToScroll(y) {
     if (!this.open) return 0;
     const b = this.bounds(this.base);
-    const k = b.y1 > b.y0 ? clamp((y - b.y0) / (b.y1 - b.y0), 0, 1) : 1;
+    const k = b.yShelf > b.y0 ? Math.max(0, (y - b.y0) / (b.yShelf - b.y0)) : 1;
     return this.refScroll() * (1 - k);
   }
 
-  // Old-style scroll value (surfaceScroll at the surface view, 0 at the seabed view).
-  get scrollY() { return this.yToScroll(this.cy); }
+  // Old-style scroll value (surfaceScroll at the surface view, 0 at the shelf seabed view; never deeper, so the
+  // biomes' parallax stays as authored). scrollTarget keeps the real (possibly deep) value for save / restore.
+  get scrollY() { return Math.min(0, this.yToScroll(this.cy)); }
   set scrollY(v) { this.cy = this.ty = this.scrollToY(v); }
   get scrollTarget() { return this.yToScroll(this.ty); }
 
@@ -138,14 +151,15 @@ export class Camera {
   scrollBy(dy) {
     if (!this.open) return;
     this.pin = null;
-    this.ty += dy * (this.H / this.z) / this.H * 1.25;
+    const deep = this.ty > this.H - this.H / (2 * this.z); // [phase6:oceans] long dives scroll faster
+    this.ty += dy * (this.H / this.z) / this.H * 1.25 * (deep ? 2.4 : 1);
     this.manualT = 0.7;
     this.clampTargets();
   }
   scrollTo(y, instant = false) {
     if (!this.open) return;
     this.ty = this.scrollToY(y);
-    this.pin = { k: clamp(1 - y / this.refScroll(), 0, 1), t: 1.2 }; // keep the framing while the zoom settles
+    this.pin = { s: y, t: 1.2 }; // keep the framing while the zoom settles
     // the surface view centres on the boat
     const boat = this.game.boat;
     if (y <= this.refScroll() + 1 && boat?.visible && !this.focusOn) this.tx = boat.x;
@@ -162,6 +176,7 @@ export class Camera {
 
   // Jump straight to a world point (no easing).
   snapTo(x, y) {
+    this.pin = null;
     this.tx = this.cx = x; this.ty = this.cy = y;
     this.clampTargets();
     this.cx = this.tx; this.cy = this.ty;
@@ -173,7 +188,7 @@ export class Camera {
     const b = this.bounds(this.baseZoom()); // where the surface view will be once the zoom has settled
     this.tx = clamp(boat?.x ?? this.W / 2, b.x0, b.x1);
     this.ty = b.y0;
-    this.pin = { k: 0, t: 1.6 };
+    this.pin = { s: this.refScroll(), t: 1.6 };
     if (instant) { this.cx = this.tx; this.cy = this.ty; }
   }
 
@@ -282,14 +297,14 @@ export class Camera {
     // ---- free follow
     const b = this.bounds(z), hard = this.bounds(z, false);
     const vw = W / z, vh = H / z;
-    if (this.pin?.t > 0) { this.pin.t -= dt; this.ty = lerp(b.y0, b.y1, this.pin.k); }
+    if (this.pin?.t > 0) { this.pin.t -= dt; this.ty = this.scrollToY(this.pin.s); }
     const boat = g.boat, hook = g.fishing?.hook, cur = g.world?.cursor;
     let sub = null;
     if (boat?.dragging) sub = { x: boat.x, y: boat.y - 16, vx: boat.vx || 0, vy: 0 };
     else if (hook?.visible && cur?.inWorld && inp?.inside) sub = { x: hook.x, y: hook.y, vx: (inp.vx || 0) / z, vy: (inp.vy || 0) / z };
     this.tx = clamp(this.tx, b.x0, b.x1); this.ty = clamp(this.ty, b.y0, b.y1);
     this.cx = damp(this.cx, this.tx, 5, dt);
-    this.cy = damp(this.cy, this.ty, 5, dt);
+    { const ny = damp(this.cy, this.ty, 5, dt), vmax = 1500 * dt; this.cy += clamp(ny - this.cy, -vmax, vmax); } // dives glide
     if (sub) {
       this.idleT = 0;
       if (this.manualT <= 0) {
@@ -298,8 +313,11 @@ export class Camera {
         const ex = sub.x - this.cx, ey = sub.y - this.cy;
         const ovx = Math.abs(ex) - dzx, ovy = Math.abs(ey) - dzy;
         const rate = 3.2;
+        // [phase6:oceans] holding the hook at the top / bottom edge dives (or climbs) faster and faster
+        this.edgeT = ovy > vh * 0.08 ? (this.edgeT || 0) + dt : 0;
+        const boost = 1 + clamp(this.edgeT - 0.35, 0, 1.6) * 2.2;
         if (ovx > 0) { const n = clamp(this.tx + Math.sign(ex) * ovx * Math.min(1, rate * dt), b.x0, b.x1); this.cx += n - this.tx; this.tx = n; }
-        if (ovy > 0) { const n = clamp(this.ty + Math.sign(ey) * ovy * Math.min(1, rate * dt), b.y0, b.y1); this.cy += n - this.ty; this.ty = n; }
+        if (ovy > 0) { const n = clamp(this.ty + Math.sign(ey) * ovy * Math.min(1, rate * boost * dt), b.y0, b.y1); this.cy += n - this.ty; this.ty = n; }
       }
       // a small lead in the direction of motion
       this.leadX = damp(this.leadX, clamp(sub.vx * 0.08, -vw * 0.06, vw * 0.06), 3, dt);
@@ -333,11 +351,36 @@ export class Camera {
     return { x0: -ox / z, y0: -oy / z, x1: (W - ox) / z, y1: (H - oy) / z, z };
   }
 
-  // 0 = seabed / default underwater view, 1 = surface view.
+  // 0 = seabed / default underwater view (or deeper), 1 = surface view.
   surfaceK() {
     if (!this.open) return 0;
     const b = this.bounds(this.base);
-    return b.y1 > b.y0 ? clamp((b.y1 - this.cy) / (b.y1 - b.y0), 0, 1) : 0;
+    return b.yShelf > b.y0 ? clamp((b.yShelf - this.cy) / (b.yShelf - b.y0), 0, 1) : 0;
+  }
+
+  // [phase6:oceans] Home = the surface view, End = the abyss floor, PageUp / PageDown = one zone stop. Returns true
+  // when it handled a key (game.js then skips its old surface / seabed jumps).
+  scrollKeys(inp) {
+    if (!this.open || !inp?.keyPressed) return false;
+    const home = inp.keyPressed('Home'), end = inp.keyPressed('End'), up = inp.keyPressed('PageUp'), down = inp.keyPressed('PageDown');
+    if (!(home || end || up || down)) return false;
+    const zones = this.game.ocean?.biome?.deep?.L?.zones;
+    if (!zones) return false;
+    if (home) { this.scrollTo(this.refScroll()); return true; }
+    const b = this.bounds(this.baseZoom());
+    const stops = [b.y0, b.yShelf];
+    for (const z of zones) if (z.deep) stops.push(clamp((z.top + z.y1) / 2, b.y0, b.y1));
+    stops.push(b.y1);
+    stops.sort((p, q) => p - q);
+    let y = end ? b.y1 : null;
+    if (down && y === null) y = stops.find((q) => q > this.ty + 12) ?? b.y1;
+    if (up) y = [...stops].reverse().find((q) => q < this.ty - 12) ?? b.y0;
+    this.pin = null;
+    this.ty = y;
+    if (y <= b.y0 + 1 && this.game.boat?.visible) this.tx = this.game.boat.x;
+    this.manualT = 1.4;
+    this.clampTargets();
+    return true;
   }
 
   worldToScreen(x, y) {

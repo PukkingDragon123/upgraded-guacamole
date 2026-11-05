@@ -38,7 +38,7 @@ export class School {
 
   speciesPool() {
     const w = this.world;
-    return SPECIES.filter((s) => s.biome === w.biome && !s.spawn?.never);
+    return SPECIES.filter((s) => s.biome === w.biome && !s.spawn?.never && (w.zones?.allow?.(s) ?? true)); // [phase6:oceans] depth zone
   }
 
   weightOf(sp) {
@@ -63,6 +63,7 @@ export class School {
     if (bait?.type === 'blackhole' && (sp.rarity === 'rare' || sp.rarity === 'epic' || sp.rarity === 'legendary')) wt *= 2;
     // keep legendaries special: at most one around (heroes do not count)
     if (sp.rarity === 'legendary' && this.fishes.some((f) => f.sp === sp && !f.hero)) wt = 0;
+    wt *= w.zones?.rarityMul?.(sp) ?? 1; // [phase6:oceans] deeper zones favour the rare
     return wt;
   }
 
@@ -102,6 +103,7 @@ export class School {
       const v = w.view; // [phase4:zoom] swim into the part of the world the camera is looking at
       if (v && v.x1 - v.x0 < w.W * 0.9) fish.enterTarget.x = clamp(rng.float(v.x0 + 30, v.x1 - 30), 80, w.W - 80);
     }
+    w.zones?.place?.(fish, sp, opts); // [phase6:oceans] into the depth zone in view, kept there
     fish.life = rng.float(70, 200);
     this.fishes.push(fish);
     return fish;
@@ -148,6 +150,7 @@ export class School {
       f.passSpeed = rng.float(26, 40) * (school ? 1.3 : 1);
       f.setState('pass');
       f.life = 1e9;
+      w.zones?.place?.(f, sp, { hero: true, x: f.x }); // [phase6:oceans]
       this.fishes.push(f);
       out.push(f);
     }
@@ -156,9 +159,9 @@ export class School {
 
   update(dt) {
     const w = this.world;
-    this.target = Math.round((w.lowPower ? 7 : 14) * (w.populationMul || 1));
+    this.target = Math.round((w.lowPower ? 7 : 14) * (w.populationMul || 1) * (w.zones?.popMul?.() ?? 1)); // [phase6:oceans] sparser deep
     this.spawnT -= dt;
-    const active = this.fishes.filter((f) => f.state !== 'leave' && !f.hero).length;
+    const active = this.fishes.filter((f) => f.state !== 'leave' && !f.hero && (w.zones?.inZone?.(f) ?? true)).length; // [phase6:oceans]
     if (this.spawnT <= 0 && active < this.target && w.spawning !== false) {
       const sp = this.pickSpecies();
       if (sp) {
@@ -176,7 +179,7 @@ export class School {
     }
     for (const f of this.fishes) {
       f.update(dt);
-      if (!f.controlled && !f.hero && f.state !== 'leave' && f.age > f.life && f.state !== 'sniff' && f.state !== 'interest' && !f.posing) f.setState('leave');
+      if (!f.controlled && !f.hero && f.state !== 'leave' && (f.age > f.life || w.zones?.expire?.(f)) && f.state !== 'sniff' && f.state !== 'interest' && !f.posing) f.setState('leave'); // [phase6:oceans] expire
     }
     for (let i = this.fishes.length - 1; i >= 0; i--) {
       const f = this.fishes[i];

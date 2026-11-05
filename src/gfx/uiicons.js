@@ -1,7 +1,8 @@
 // Small inline UI icons (9-11 px incl. outline), hand-authored as ASCII interiors.
 // A 1 px dark selective outline is added automatically around every opaque pixel;
 // '_' marks pixels that must stay transparent (no outline), '.' is plain transparent.
-// getUiIcon(name) -> cached canvas; registerUiIcons() makes every icon usable in text as {name}.
+// getUiIcon(name, zoom = 1) -> cached canvas (zoom 2 = crisp 2x for the bigger UI sizes); registerUiIcons() makes
+// every icon usable in text as {name}.
 // Cursors ('cursor', 'cursor_hand', 'cursor_grab', 'cursor_reel') come from getUiIcon too;
 // draw them at (mouseX - CURSOR_HOTSPOT[name][0], mouseY - CURSOR_HOTSPOT[name][1]).
 
@@ -758,7 +759,22 @@ const cache = new Map();
 export const UI_ICON_NAMES = [...new Set([...Object.keys(ICONS), 'aero', 'aero_big'])];
 export const CURSOR_NAMES = [...Object.keys(CURSORS), 'cursor_reel'];
 
-export function getUiIcon(name) {
+// getUiIcon(name, zoom = 1): zoom 2/3 gives a crisp nearest-neighbour enlargement (bigger UI sizes) [phase6:ui]
+export function getUiIcon(name, zoom = 1) {
+  zoom = Math.max(1, Math.round(zoom || 1));
+  if (zoom > 1) {
+    const key = name + '@' + zoom;
+    let z = cache.get(key);
+    if (!z) {
+      const src = getUiIcon(name);
+      z = makeCanvas(src.width * zoom, src.height * zoom);
+      const g = z.getContext('2d');
+      g.imageSmoothingEnabled = false;
+      g.drawImage(src, 0, 0, z.width, z.height);
+      cache.set(key, z);
+    }
+    return z;
+  }
   let c = cache.get(name);
   if (!c) {
     if (name === 'fish') c = voxelFishIcon('pixel', 12, 9) || makeCanvas(9, 9); // [phase3:fish] voxel, never a 2D glyph

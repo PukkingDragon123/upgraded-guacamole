@@ -1,8 +1,8 @@
-// Catch reveal, Frutiger Aero meme-poster style: a glossy glass card with a bright sky-blue sun burst,
-// glossy green leaves framing the big VOXEL fish (slow turntable swivel via drawFishRig), a sun flare,
-// rising bubbles and a water splash along the bottom. Minimal text: the fish's name, rarity stars,
-// size and weight chips, mutation / trait badges, a NEW sticker, the Aero bonus, and two icon orbs:
-// Keep (tank) and Release (+Aero). Enter keeps.
+// Catch reveal, Frutiger Aero meme-poster style: a BIG glossy glass card (phase 6: about two thirds of the screen)
+// with a bright sky-blue sun burst, glossy green leaves framing the big low-poly fish (slow turntable swivel via
+// drawFishRig), a sun flare, rising bubbles and a water splash along the bottom. Minimal text: the fish's name,
+// rarity stars, size and weight chips, mutation / trait badges, a NEW sticker, the Aero bonus, and two icon orbs:
+// Keep (tank) and Release (+Aero). Enter keeps. Everything is laid out on a 470 x 304 grid scaled by k.
 
 import { TAU, clamp, clamp01, ease, lerp } from '../core/math.js';
 import { rng } from '../core/rng.js';
@@ -82,27 +82,28 @@ const LEAF_LAYOUT = [
   [0.01, 0.66, 168, 42, 13, 1], [0.99, 0.56, 12, 42, 13, 1],
 ];
 
-function drawLeaves(ctx, r, t, front) {
+function drawLeaves(ctx, r, t, front, k = 1) {
   for (let i = 0; i < LEAF_LAYOUT.length; i++) {
     const [fx, fy, ang, L, Wd, fr] = LEAF_LAYOUT[i];
     if (!!fr !== front) continue;
     const sway = Math.sin(t * 1.3 + i * 1.7) * 5;
-    const s = leafSprite(L, Wd, ang + sway);
+    const s = leafSprite(Math.round(L * k), Math.round(Wd * k), ang + sway);
     const C = (s.width - 1) / 2;
     ctx.drawImage(s, Math.round(r.x + fx * r.w - C), Math.round(r.y + fy * r.h - C));
   }
 }
 
 // Sun flare: hot core, star rays, anamorphic streak and a few ghosts toward the card centre.
-function drawSunFlare(ctx, x, y, t, a, toward) {
+function drawSunFlare(ctx, x, y, t, a, toward, k = 1) {
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   ctx.globalAlpha = a;
-  ctx.drawImage(glowSprite(38, '#fff8d0'), Math.round(x - 38), Math.round(y - 38));
-  ctx.drawImage(glowSprite(16, '#ffffff'), Math.round(x - 16), Math.round(y - 16));
+  const g1 = Math.round(38 * k), g2 = Math.round(16 * k);
+  ctx.drawImage(glowSprite(g1, '#fff8d0'), Math.round(x - g1), Math.round(y - g1));
+  ctx.drawImage(glowSprite(g2, '#ffffff'), Math.round(x - g2), Math.round(y - g2));
   for (let i = 0; i < 12; i++) {
     const ang = (i / 12) * TAU + t * 0.15;
-    const len = (i % 2 ? 26 : 46) + Math.sin(t * 3 + i) * 4;
+    const len = ((i % 2 ? 26 : 46) + Math.sin(t * 3 + i) * 4) * k;
     for (let k = 4; k < len; k++) {
       ctx.globalAlpha = a * (1 - k / len) * 0.8;
       ctx.fillStyle = '#ffffff';
@@ -126,40 +127,50 @@ function drawSunFlare(ctx, x, y, t, a, toward) {
 }
 
 // Water splash across the bottom of the card: rolling crest, foam line, flying droplets.
-function drawSplash(ctx, x, y, w, t) {
+// (One gradient-filled crest polygon plus a pixel foam line, so the big card stays cheap to draw.)
+function drawSplash(ctx, x, y, w, t, k = 1) {
   const base = y;
-  for (let i = 0; i < w; i++) {
-    const h = 10 + Math.sin(i * 0.07 + t * 1.8) * 4 + Math.sin(i * 0.19 - t * 2.6) * 3 + Math.max(0, Math.sin(i * 0.031 + t * 0.9)) * 7;
-    const top = Math.round(base - h);
-    for (let yy = top; yy < base + 30; yy++) {
-      const k = (yy - top) / 26;
-      ctx.fillStyle = k < 0.12 ? '#ffffff' : k < 0.25 ? 'rgba(220,250,255,0.95)' : `rgba(${Math.round(89 - k * 40)},${Math.round(195 - k * 40)},255,${0.85})`;
-      ctx.fillRect(x + i, yy, 1, 1);
-    }
-    if (((i * 7 + Math.floor(t * 10)) % 23) === 0) { ctx.fillStyle = '#ffffff'; ctx.fillRect(x + i, top - 3 - ((i + Math.floor(t * 20)) % 6), 1, 2); }
+  const crest = (i) => base - (10 + Math.sin(i * 0.07 + t * 1.8) * 4 + Math.sin(i * 0.19 - t * 2.6) * 3 + Math.max(0, Math.sin(i * 0.031 + t * 0.9)) * 7) * k;
+  const top = base - 24 * k;
+  const gr = ctx.createLinearGradient(0, top, 0, base + 30 * k);
+  gr.addColorStop(0, 'rgba(220,250,255,0.95)');
+  gr.addColorStop(0.3, 'rgba(120,215,255,0.88)');
+  gr.addColorStop(1, 'rgba(49,155,255,0.85)');
+  ctx.fillStyle = gr;
+  ctx.beginPath();
+  ctx.moveTo(x, base + 30 * k);
+  for (let i = 0; i <= w; i += 3) ctx.lineTo(x + i, Math.round(crest(i)));
+  ctx.lineTo(x + w, base + 30 * k);
+  ctx.closePath();
+  ctx.fill();
+  // foam: a crisp white crest line with a pale band under it, and spray flecks
+  for (let i = 0; i < w; i += 1) {
+    const yy = Math.round(crest(i));
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(x + i, yy, 1, Math.max(2, Math.round(2 * k)));
+    if (((i * 7 + Math.floor(t * 10)) % 23) === 0) ctx.fillRect(x + i, yy - 3 * k - ((i + Math.floor(t * 20)) % 6), 1, 2);
   }
   // curling spray arcs
   for (let s = 0; s < 3; s++) {
-    const cx = x + w * (0.2 + s * 0.3) + Math.sin(t + s) * 10;
+    const cx = x + w * (0.2 + s * 0.3) + Math.sin(t + s) * 10 * k;
     const ph = (t * 0.7 + s * 0.33) % 1;
-    for (let k = 0; k < 14; k++) {
-      const u = k / 13;
-      const px = cx + (u - 0.5) * 40, py = base - 12 - Math.sin(u * Math.PI) * (18 + 10 * Math.sin(ph * Math.PI));
+    for (let q = 0; q < 14; q++) {
+      const u = q / 13;
+      const px = cx + (u - 0.5) * 40 * k, py = base - 12 * k - Math.sin(u * Math.PI) * (18 + 10 * Math.sin(ph * Math.PI)) * k;
       ctx.fillStyle = rgba('#ffffff', 0.85 * Math.sin(ph * Math.PI));
-      ctx.fillRect(Math.round(px), Math.round(py), 2, 1);
+      ctx.fillRect(Math.round(px), Math.round(py), Math.max(2, Math.round(2 * k)), 1);
     }
   }
 }
 
-// Glossy "NEW!" starburst sticker.
-function drawSticker(ctx, x, y, text, k, t, col = '#ff4f5e') {
+// Glossy "NEW!" starburst sticker (ts: integer text scale).
+function drawSticker(ctx, x, y, text, k, t, col = '#ff4f5e', ts = 1) {
   const s = ease.outBack(clamp01(k));
   if (s <= 0) return;
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(-0.25 + Math.sin(t * 2) * 0.04);
   ctx.scale(s * (k < 1 ? 1 + (1 - k) * 1.2 : 1), s * (k < 1 ? 1 + (1 - k) * 1.2 : 1));
-  const R = 18, n = 14;
+  const R = 18 * ts, n = 14;
   ctx.beginPath();
   for (let i = 0; i <= n * 2; i++) {
     const a = (i / (n * 2)) * TAU, rr = i % 2 ? R * 0.8 : R;
@@ -175,7 +186,7 @@ function drawSticker(ctx, x, y, text, k, t, col = '#ff4f5e') {
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(-0.25);
-  drawText(ctx, text, 0, -4, { align: 'center', color: '#ffffff', outline: '#7a0a18' });
+  drawText(ctx, text, 0, -4 * ts, { align: 'center', color: '#ffffff', outline: '#7a0a18', scale: ts });
   ctx.restore();
 }
 
@@ -204,13 +215,19 @@ export class RevealPanel {
     const g = this.game, d = this.data;
     this.t += dt;
     const t = this.t;
-    const W = 470, H = 304;
+    // big card: about two thirds of the screen; the 470 x 304 layout grid is scaled by k (text by integer ts)
+    const SW = g.screen.W, SH = g.screen.H;
+    const k = clamp(Math.min((SW * 0.7) / 470, (SH - 110) / 304), 1, 1.75);
+    const ts = k >= 1.25 ? 2 : 1;
+    const W = Math.round(470 * k), H = Math.round(304 * k);
     const r = centerRect(g, W, H);
+    r.y = Math.max(6, Math.round((SH - 72 - H) / 2)); // clear of the HUD bar along the bottom
     this.rect = r;
+    this.k = k; this.ts = ts;
     const rar = RARITY[d.sp.rarity] || RARITY.common;
     const pop = ease.outBack(clamp01(t * 3.5));
     const pcx = r.x + W / 2, pcy = r.y + H / 2;
-    const fcx = pcx, fcy = r.y + 132;
+    const fcx = pcx, fcy = r.y + Math.round(132 * k);
     if (!this.burst && t > 0.05) this.openFx(fcx, fcy, rar);
     ctx.save();
     ctx.translate(pcx, pcy);
@@ -220,10 +237,11 @@ export class RevealPanel {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = 0.35 + 0.1 * Math.sin(t * 3);
-    ctx.drawImage(glowSprite(230, rar.color), Math.round(pcx - 230), Math.round(pcy - 230));
+    const hr = Math.round(230 * k);
+    ctx.drawImage(glowSprite(hr, rar.color), Math.round(pcx - hr), Math.round(pcy - hr));
     ctx.restore();
     // ---- the card: glossy glass body with a sky-blue sun burst inside
-    drawAeroPanel(ctx, r.x, r.y, W, H, { tone: 'sky', radius: 12, bubbles: 0, sparkle: 0 });
+    drawAeroPanel(ctx, r.x, r.y, W, H, { tone: 'sky', radius: Math.round(12 * k), bubbles: 0, sparkle: 0 });
     ctx.save();
     ctx.beginPath();
     ctx.roundRect ? ctx.roundRect(r.x + 4, r.y + 4, W - 8, H - 8, 9) : ctx.rect(r.x + 4, r.y + 4, W - 8, H - 8);
@@ -240,36 +258,37 @@ export class RevealPanel {
       ctx.fillStyle = rgba('#ffffff', i % 2 ? 0.07 : 0.13);
       ctx.beginPath();
       ctx.moveTo(fcx, fcy);
-      ctx.lineTo(fcx + Math.cos(a - 0.08) * 400, fcy + Math.sin(a - 0.08) * 400);
-      ctx.lineTo(fcx + Math.cos(a + 0.08) * 400, fcy + Math.sin(a + 0.08) * 400);
+      ctx.lineTo(fcx + Math.cos(a - 0.08) * 400 * k, fcy + Math.sin(a - 0.08) * 400 * k);
+      ctx.lineTo(fcx + Math.cos(a + 0.08) * 400 * k, fcy + Math.sin(a + 0.08) * 400 * k);
       ctx.fill();
     }
     ctx.globalAlpha = 0.7;
-    ctx.drawImage(glowSprite(110, '#ffffff'), Math.round(fcx - 110), Math.round(fcy - 110));
+    const w1 = Math.round(110 * k), w2 = Math.round(70 * k);
+    ctx.drawImage(glowSprite(w1, '#ffffff'), Math.round(fcx - w1), Math.round(fcy - w1));
     ctx.globalAlpha = 0.5;
-    ctx.drawImage(glowSprite(70, rar.color), Math.round(fcx - 70), Math.round(fcy - 70));
+    ctx.drawImage(glowSprite(w2, rar.color), Math.round(fcx - w2), Math.round(fcy - w2));
     ctx.restore();
     // white swoosh arcs (eco wallpaper)
     ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    for (let k = 0; k < 3; k++) {
-      for (let i = 0; i < W; i += 1) {
-        const yy = r.y + H * 0.62 + k * 7 - Math.sin((i / W) * Math.PI) * (40 + k * 6) + Math.sin(t + k) * 2;
-        ctx.fillRect(r.x + i, Math.round(yy), 1, 1);
+    for (let kk = 0; kk < 3; kk++) {
+      for (let i = 0; i < W; i += k > 1.2 ? 2 : 1) {
+        const yy = r.y + H * 0.62 + kk * 7 * k - Math.sin((i / W) * Math.PI) * (40 + kk * 6) * k + Math.sin(t + kk) * 2;
+        ctx.fillRect(r.x + i, Math.round(yy), k > 1.2 ? 2 : 1, 1);
       }
     }
-    drawSunFlare(ctx, r.x + 64, r.y + 44, t, 1, [fcx, fcy]);
-    drawLeaves(ctx, r, t, false);
+    drawSunFlare(ctx, r.x + 64 * k, r.y + 44 * k, t, 1, [fcx, fcy], k);
+    drawLeaves(ctx, r, t, false, k);
     // bubbles drifting up behind the fish
     for (let i = 0; i < 12; i++) {
       const ph = (t * (0.08 + (i % 4) * 0.03) + i * 0.137) % 1;
       const bx = r.x + 20 + ((i * 97) % (W - 40)) + Math.sin(t * 2 + i) * 4;
       const by = r.y + H - 10 - ph * (H - 10);
-      const b = gbubbleSprite(2 + (i % 5) * 2);
+      const b = gbubbleSprite(Math.round((2 + (i % 5) * 2) * k));
       ctx.globalAlpha = Math.sin(ph * Math.PI);
       ctx.drawImage(b, Math.round(bx - b.width / 2), Math.round(by - b.height / 2));
     }
     ctx.globalAlpha = 1;
-    drawSplash(ctx, r.x, r.y + H - 28, W, t);
+    drawSplash(ctx, r.x, r.y + H - Math.round(28 * k), W, t, k);
     this.bubT -= dt;
     if (this.bubT <= 0 && t > 0.3) {
       this.bubT = 0.12;
@@ -280,13 +299,14 @@ export class RevealPanel {
     // ---- the fish: big voxel model on a slow swivel
     this.emoT += dt;
     if (this.emoT > 2.4) { this.emoT = 0; this.emo = rng.pick(REACTIONS); }
-    this.drawFish(ctx, fcx, fcy, 300, 150, t);
+    this.drawFish(ctx, fcx, fcy, 300 * k, 150 * k, t);
     ctx.restore();
-    drawLeaves(ctx, r, t, true);
+    drawLeaves(ctx, r, t, true, k);
     // ---- name + stars
     const pal = glossFor(d.sp.rarity);
-    const nameScale = measureText(d.sp.name, 'normal', 3) <= W - 150 ? 3 : measureText(d.sp.name, 'normal', 2) <= W - 70 ? 2 : 1;
-    const ny = r.y + 12;
+    const big = Math.max(3, Math.round(3 * k + 0.4));
+    const nameScale = [big, big - 1, 3, 2, 1].find((sc) => measureText(d.sp.name, 'normal', sc) <= W - 150 * k) || 1;
+    const ny = r.y + Math.round(12 * k);
     if (nameScale >= 2) {
       const gname = glossText(d.sp.name, nameScale, pal);
       ctx.drawImage(gname.c, Math.round(pcx - gname.w / 2 - gname.ox), Math.round(ny - gname.oy));
@@ -294,13 +314,13 @@ export class RevealPanel {
     const star = getUiIcon('star'), starE = getUiIcon('star_empty');
     if (star) {
       for (let i = 0; i < 5; i++) {
-        const k = ease.outBack(clamp01((t - 0.35 - i * 0.08) * 4));
-        if (k <= 0) continue;
+        const kk = ease.outBack(clamp01((t - 0.35 - i * 0.08) * 4));
+        if (kk <= 0) continue;
         const ic = i < rar.stars ? star : starE;
-        const sx = Math.round(pcx - 31 + i * 13), sy = ny + 8 + nameScale * 8;
+        const sx = Math.round(pcx + (i * 13 - 31) * ts), sy = ny + 8 + nameScale * 8;
         ctx.save();
-        ctx.translate(sx + ic.width / 2, sy + ic.height / 2);
-        ctx.scale(k, k);
+        ctx.translate(sx + (ic.width * ts) / 2, sy + (ic.height * ts) / 2);
+        ctx.scale(kk * ts, kk * ts);
         ctx.drawImage(ic, -ic.width / 2, -ic.height / 2);
         ctx.restore();
       }
@@ -308,40 +328,42 @@ export class RevealPanel {
     // ---- trait / mutation badges under the fish
     const traits = traitList(d.rec);
     let bw = 0;
-    const tw = traits.map((tr) => measureText(tr.text, 'small', 1) + 14);
+    const tw = traits.map((tr) => measureText(tr.text, 'small', ts) + 14 * ts);
     for (const w of tw) bw += w + 4;
     let bx = pcx - bw / 2;
     for (let i = 0; i < traits.length; i++) {
-      const k = ease.outBack(clamp01((t - 0.6 - i * 0.1) * 4));
-      if (k > 0) {
+      const kk = ease.outBack(clamp01((t - 0.6 - i * 0.1) * 4));
+      if (kk > 0) {
         ctx.save();
-        ctx.globalAlpha = clamp01(k);
-        drawGlassPill(ctx, bx + tw[i] / 2, r.y + 214, tw[i], 11, traits[i].color, 0.95);
-        drawText(ctx, traits[i].text.toUpperCase(), bx + tw[i] / 2, r.y + 217, { align: 'center', font: 'small', color: INK });
+        ctx.globalAlpha = clamp01(kk);
+        drawGlassPill(ctx, bx + tw[i] / 2, r.y + Math.round(214 * k), tw[i], 11 * ts, traits[i].color, 0.95);
+        drawText(ctx, traits[i].text.toUpperCase(), bx + tw[i] / 2, r.y + Math.round(214 * k) + 3 * ts, { align: 'center', font: 'small', color: INK, scale: ts });
         ctx.restore();
       }
       bx += tw[i] + 4;
     }
     // ---- size + weight chips (bottom left)
-    const cy0 = r.y + H - 34;
-    this.chip(ctx, r.x + 16, cy0, 'ruler', `${d.rec.sizeCm} cm`);
-    this.chip(ctx, r.x + 16, cy0 + 15, 'weight', `${d.rec.weightKg} kg`);
-    // Aero bonus (top right)
+    const ch = 15 * ts;
+    const cy0 = r.y + H - Math.round(20 * k) - ch * 2 + 2;
+    this.chip(ctx, r.x + Math.round(16 * k), cy0, 'ruler', `${d.rec.sizeCm} cm`, ts);
+    this.chip(ctx, r.x + Math.round(16 * k), cy0 + ch, 'weight', `${d.rec.weightKg} kg`, ts);
+    // Aero bonus (above the chips)
     if (d.bonus) {
       const label = '+' + d.bonus;
-      const w = measureText(label, 'normal', 1) + 22;
-      drawGlassPill(ctx, r.x + 16 + w / 2, r.y + H - 54, w, 14, '#2fd3e8', 0.95);
-      drawAeroCoin(ctx, r.x + 24, r.y + H - 47, 4.5, t);
-      drawText(ctx, label, r.x + 30, r.y + H - 51, { color: INK });
+      const w = measureText(label, 'normal', ts) + 22 * ts;
+      const by = cy0 - ch - 6;
+      drawGlassPill(ctx, r.x + Math.round(16 * k) + w / 2, by, w, 14 * ts, '#2fd3e8', 0.95);
+      drawAeroCoin(ctx, r.x + Math.round(16 * k) + 8 * ts, by + 7 * ts, 4.5 * ts, t);
+      drawText(ctx, label, r.x + Math.round(16 * k) + 14 * ts, by + 3 * ts, { color: INK, scale: ts });
     }
     ctx.restore();
     // ---- NEW / RECORD stickers
     if (d.isNew && t > 0.9) {
       const st = clamp01((t - 0.9) * 5);
       if (!this.stamped && st >= 1) { this.stamped = true; g.audio.play('record'); g.camera.shake?.(2); g.particles.aeroConfetti?.(r.x + 30, r.y + 30, 16, { layer: 'ui', speed: [60, 160] }); }
-      drawSticker(ctx, r.x + W - 44, r.y + 40, 'NEW!', st, t);
+      drawSticker(ctx, r.x + W - 44 * k, r.y + 40 * k, 'NEW!', st, t, '#ff4f5e', ts);
     }
-    if (d.record) drawSticker(ctx, r.x + W - 44, r.y + (d.isNew ? 84 : 40), 'BEST', clamp01((t - 1.1) * 5), t, '#ffb02e');
+    if (d.record) drawSticker(ctx, r.x + W - 44 * k, r.y + (d.isNew ? 84 : 40) * k, 'BEST', clamp01((t - 1.1) * 5), t, '#ffb02e', ts);
     // camera flash when the card appears
     if (t < 0.3) {
       ctx.fillStyle = rgba('#ffffff', (1 - t / 0.3) * 0.7);
@@ -350,25 +372,26 @@ export class RevealPanel {
     // ---- icon orbs: keep (tank) / release (+Aero)
     const full = g.tankCount() >= g.stats.tankCap;
     const relVal = Math.round((RELEASE_VALUE[d.sp.rarity] || 4) * valueMultiplier(d.rec));
-    const oy = r.y + H - 30;
-    const keepX = r.x + W - (d.tutorial ? 46 : 96);
+    const oy = r.y + H - Math.round(30 * k);
+    const keepX = r.x + W - Math.round((d.tutorial ? 46 : 96) * k);
     if (this.orb(ctx, ui, keepX, oy, full ? '#ffd23a' : '#2fd3e8', 'tank', full ? 'Tank full: holding bucket' : 'Keep in your aquarium', 'keep') || g.input.keyPressed('Enter')) {
       g.keepFish(d.rec);
       this.done();
       return;
     }
     if (!d.tutorial) {
-      const relX = r.x + W - 46;
+      const relX = r.x + W - Math.round(46 * k);
       if (this.orb(ctx, ui, relX, oy, '#8be04a', 'heart', `Release: +${relVal} Aero`, 'release')) {
         g.releaseFish(d.rec, relX, oy);
         this.done();
         return;
       }
       const label = '+' + relVal;
-      const w = measureText(label, 'small', 1) + 16;
-      drawGlassPill(ctx, relX, oy + 20, w, 9, '#2fd3e8', 0.95);
-      drawAeroCoin(ctx, relX - w / 2 + 6, oy + 24, 3, t);
-      drawText(ctx, label, relX - w / 2 + 11, oy + 22, { font: 'small', color: INK });
+      const w = measureText(label, 'small', ts) + 16 * ts;
+      const ly = oy + Math.round(20 * k);
+      drawGlassPill(ctx, relX, ly, w, 9 * ts, '#2fd3e8', 0.95);
+      drawAeroCoin(ctx, relX - w / 2 + 6 * ts, ly + 4 * ts, 3 * ts, t);
+      drawText(ctx, label, relX - w / 2 + 11 * ts, ly + 2 * ts, { font: 'small', color: INK, scale: ts });
     }
   }
 
@@ -386,7 +409,7 @@ export class RevealPanel {
   drawFish(ctx, x, y, bw, bh, t) {
     const d = this.data, g = this.game;
     const L = (this.c.L || d.sp.look.body?.len || 30) * 1.3 * (d.sp.look.kind === 'seahorse' ? 0.6 : 1);
-    const sc = Math.min(7, Math.max(0.6, Math.min(bw / Math.max(12, L), bh / Math.max(8, L * 0.6))));
+    const sc = Math.min(7 * (this.k || 1), Math.max(0.6, Math.min(bw / Math.max(12, L), bh / Math.max(8, L * 0.6))));
     const k = ease.outBack(clamp01((t - 0.15) * 2.2));
     // slow swivel through the front view (voxel turntable), settling side-on between turns
     const ph = t * 0.55;
@@ -413,24 +436,17 @@ export class RevealPanel {
     if ((d.rec.variant?.shiny || d.sp.rarity === 'legendary') && rng.chance(0.25)) g.particles.glint?.(x + rng.float(-bw * 0.35, bw * 0.35), fy + rng.float(-bh * 0.3, bh * 0.3), { layer: 'ui', color: '#fff6b0' });
   }
 
-  chip(ctx, x, y, icon, text) {
-    const w = measureText(text, 'normal', 1) + 24;
-    drawGlassPill(ctx, x + w / 2, y, w, 13, '#bfeaff', 0.95);
-    if (icon === 'ruler') {
-      ctx.fillStyle = INK; ctx.fillRect(x + 4, y + 4, 10, 5);
-      ctx.fillStyle = '#ffe27a'; ctx.fillRect(x + 5, y + 5, 8, 3);
-      ctx.fillStyle = INK; for (let i = 0; i < 4; i++) ctx.fillRect(x + 6 + i * 2, y + 5, 1, i % 2 ? 1 : 2);
-    } else {
-      ctx.fillStyle = INK; ctx.fillRect(x + 5, y + 3, 8, 8); ctx.fillRect(x + 7, y + 2, 4, 1);
-      ctx.fillStyle = '#b4d0e2'; ctx.fillRect(x + 6, y + 5, 6, 5);
-      ctx.fillStyle = '#ffffff'; ctx.fillRect(x + 6, y + 5, 2, 1);
-    }
-    drawText(ctx, text, x + 18, y + 3, { color: INK });
+  // Glass chip with a little ruler / weight icon (drawn at 1x and scaled up crisply when ts > 1).
+  chip(ctx, x, y, icon, text, ts = 1) {
+    const w = measureText(text, 'normal', ts) + 24 * ts;
+    drawGlassPill(ctx, x + w / 2, y, w, 13 * ts, '#bfeaff', 0.95);
+    ctx.drawImage(chipIcon(icon), x, y, 18 * ts, 13 * ts);
+    drawText(ctx, text, x + 18 * ts, y + 3 * ts, { color: INK, scale: ts });
   }
 
   // Big glossy icon orb button; returns true when clicked.
   orb(ctx, ui, cx, cy, color, icon, tip, id) {
-    const R = 18;
+    const R = Math.round(18 * (this.k || 1));
     const rect = { x: cx - R - 2, y: cy - R - 2, w: R * 2 + 4, h: R * 2 + 4 };
     const hov = ui.hover(rect);
     const down = hov && this.game.input.down;
@@ -451,7 +467,8 @@ export class RevealPanel {
     for (let y = -R - 1; y <= R + 1; y++) { const w = Math.round(Math.sqrt(Math.max(0, (R + 1.4) ** 2 - y * y))); ctx.fillRect(-w, y, w * 2 + 1, 1); }
     drawGlossOrb(ctx, 0, 0, R, color, t);
     const ic = getUiIcon(icon);
-    if (ic) ctx.drawImage(ic, Math.round(-ic.width / 2), Math.round(-ic.height / 2) + 1);
+    const is = this.ts || 1;
+    if (ic) ctx.drawImage(ic, Math.round((-ic.width * is) / 2), Math.round((-ic.height * is) / 2) + 1, ic.width * is, ic.height * is);
     ctx.restore();
     if (hov) { ui.tip = tip; ui.markHot?.('reveal' + id); }
     if (ui.clicked(rect)) { this.game.audio.play(id === 'keep' ? 'ui_click' : 'splash_small'); return true; }
@@ -463,6 +480,22 @@ export class RevealPanel {
     this.ui.close('reveal');
     this.game.emit('revealDone', this.data);
   }
+}
+
+const CHIP_ICONS = {};
+function chipIcon(icon) {
+  if (CHIP_ICONS[icon]) return CHIP_ICONS[icon];
+  const c = makeCanvas(18, 13), g = ctxOf(c);
+  if (icon === 'ruler') {
+    g.fillStyle = INK; g.fillRect(4, 4, 10, 5);
+    g.fillStyle = '#ffe27a'; g.fillRect(5, 5, 8, 3);
+    g.fillStyle = INK; for (let i = 0; i < 4; i++) g.fillRect(6 + i * 2, 5, 1, i % 2 ? 1 : 2);
+  } else {
+    g.fillStyle = INK; g.fillRect(5, 3, 8, 8); g.fillRect(7, 2, 4, 1);
+    g.fillStyle = '#b4d0e2'; g.fillRect(6, 5, 6, 5);
+    g.fillStyle = '#ffffff'; g.fillRect(6, 5, 2, 1);
+  }
+  return (CHIP_ICONS[icon] = c);
 }
 
 function fakeChain(x, y, t, sc) {

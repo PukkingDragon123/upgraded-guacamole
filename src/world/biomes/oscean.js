@@ -719,7 +719,7 @@ export class OsceanBiome extends Biome {
       const f = this.dolphin.frame(p.ph + k, p.dir);
       const c = this.giantFog.get(f.canvas, col, 0.55);
       const y = p.y + oy + Math.sin(p.ph * 0.25 + k) * 5;
-      ctx.drawImage(c, Math.round(p.x + ox * p.dir - f.ox + this.par.x), Math.round(y - f.oy + this.par.y * 0.5));
+      ctx.drawImage(c, Math.round(p.x + ox * p.dir - f.ox + this.par.x), Math.round(y - f.oy + this.par.y * 0.5), f.w, f.h); // [phase6:creatures] hi-res low-poly dolphin
     }
   }
 

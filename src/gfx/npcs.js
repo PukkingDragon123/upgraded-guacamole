@@ -10,7 +10,8 @@
 // (bob, sway), blinking, gaze, the talking mouth and moods are drawn live through the shared face layer.
 
 import { VoxelModel, renderVoxels } from './voxel.js';
-import { drawCharacter, faceFeatures, drawFaceLayer, cameraBasis, shadeBubble, TINTS, rasterFeature } from './character.js'; // [phase5:intro] rasterFeature (Clip's face)
+import { drawCharacter, faceFeatures, drawFaceLayer, cameraBasis, shadeBubble, TINTS } from './character.js';
+import { drawSeal, warmSeal, SEAL_INFO } from './seal.js'; // [phase6:guide]
 import { clamp, TAU, hash3 } from '../core/math.js';
 
 export const NPCS = {
@@ -20,7 +21,7 @@ export const NPCS = {
   dot: { id: 'dot', name: 'Dot', role: 'Bait Shop keeper', desc: 'A glossy orb robot who runs the Bait Shop.' /* [phase4:shell] */, color: '#59e0ff', h: 56 },
   marina: { id: 'marina', name: 'Marina', role: 'Pier keeper', desc: 'Keeps the pier tidy and the boats happy.', color: '#ffd23a', h: 74 },
   bloat: { id: 'bloat', name: 'Captain Bloat', role: 'Storyteller', desc: 'A retired pufferfish captain with a tale for every tide.', color: '#ffcf5a', h: 60 },
-  clip: { id: 'clip', name: 'Clip', role: 'Guide', desc: 'A chrome-and-aqua paperclip with a glass-bubble face. Holds things together, mostly fishing lines.', color: '#5fe0f4', h: 58 }, // [phase5:intro]
+  seal: { ...SEAL_INFO }, // [phase6:guide] Bubbles, the seal guide (replaces Clip)
 };
 
 const LOOKS = {
@@ -241,7 +242,7 @@ function frameFor(id, fi, variant, facing, vs) {
 const P0 = { gaze: [0, 0], lid: 0, squint: 0, mouth: 'rest', wobble: 0, eyeMode: null };
 
 export function drawNPC(ctx, id, o = {}) {
-  if (id === 'clip') return drawClip(ctx, o); // [phase5:intro]
+  if (id === 'seal' || id === 'clip') return drawSealNPC(ctx, o); // [phase6:guide]
   const x = o.x ?? 0, y = o.y ?? 0, t = o.t ?? 0, scale = o.scale ?? 1, facing = (o.facing ?? 1) < 0 ? -1 : 1;
   const pose = o.pose || 'idle';
   if (LOOKS[id]) {
@@ -278,7 +279,7 @@ export function drawNPC(ctx, id, o = {}) {
 }
 
 export function warmNPC(id, { scale = 1, facing = 1 } = {}) {
-  if (id === 'clip') return warmClip({ scale, facing }); // [phase5:intro]
+  if (id === 'seal' || id === 'clip') return warmSeal((scale || 1) * 40); // [phase6:guide]
   const D = VOX[id];
   if (!D) return true;
   const vs = Math.max(0.5, Math.round(1.6 * scale * 4) / 4);
@@ -287,312 +288,22 @@ export function warmNPC(id, { scale = 1, facing = 1 } = {}) {
 }
 
 
-// ====================================================================== [phase5:intro] Clip, the guide
-// An ORIGINAL design (not an office assistant): a glossy chrome-and-aqua voxel paperclip whose top loop cradles a
-// glass bubble face. No eyebrows. Tall glossy eyes (navy to aqua with catchlights), a talking mouth, and wire
-// gestures: the free end of the outer loop is its arm (wave, point, cheer), the upper wire bends (bow, droop,
-// laugh back) and leans (think); 'spin' turns it on the spot. It bounces on a little soap bubble.
-//   drawNPC(ctx, 'clip', {x, y /* bottom of the bubble */, t, scale, facing, talk 0..1, mood, pose, yaw,
-//                         lookAt [sx, sy], bubble (default true), id}) -> {head, mouth, top}
-//   moods: happy | excited | surprised | smug | sad | love | angry | think | neutral
-//   poses: idle | talk | wave | point | bend | think | cheer | laugh | sad | spin
-const CLIP_K = kit();
-const CLIP_N = 6;
-const CLIP_DIMS = [46, 80, 34];
-const CLIP_CX = 23, CLIP_CZ = 16, CLIP_Y0 = 4;
-const CLIP_WIRE = ['#ffffff', '#c4f4ff', '#62d2f0', '#2b8cc8', '#123f78'];
-const CLIP_ORB = ['#ffffff', '#eafeff', '#aaf0fb', '#62d4f0', '#2fa6dc'];
-const CLIP_POSE = {
-  idle: (k) => ({ bend: 0, lean: Math.sin(k) * 2, arm: 6 + Math.sin(k) * 4 }),
-  talk: (k) => ({ bend: Math.sin(k * 2) * 4, lean: Math.sin(k) * 3, arm: 14 + Math.sin(k * 2) * 8 }),
-  wave: (k) => ({ bend: 2, lean: -5, arm: 138 + Math.sin(k * 2) * 24 }),
-  point: (k) => ({ bend: 4, lean: 7 + Math.sin(k) * 1.5, arm: 94 + Math.sin(k * 2) * 3 }),
-  bend: (k) => ({ bend: 24 + Math.sin(k) * 3, lean: 0, arm: 16 }),
-  think: (k) => ({ bend: 6, lean: -11 + Math.sin(k) * 1.5, arm: 152, curl: 1 }),
-  cheer: (k) => ({ bend: -7, lean: Math.sin(k * 2) * 4, arm: 168 + Math.sin(k * 3) * 10, stretch: 1.06 }),
-  laugh: (k) => ({ bend: -12 + Math.sin(k * 3) * 5, lean: Math.sin(k * 3) * 3, arm: 34 + Math.sin(k * 3) * 10 }),
-  sad: (k) => ({ bend: 17, lean: 4, arm: 2, stretch: 0.97 }),
-  spin: (k) => ({ bend: 0, lean: 0, arm: 40 + Math.sin(k * 2) * 6 }),
-};
-
-// Centre line of the wire (model x relative to the centre, y up): inner leg, small top bend, middle leg, bottom bend,
-// outer leg, big top bend, outer-left leg + the arm (free end).
-function clipCenterline(P) {
-  const pts = [];
-  const leg = (x, ya, yb) => { const n = Math.max(2, Math.ceil(Math.abs(yb - ya) / 0.8)); for (let i = 0; i <= n; i++) pts.push([x, ya + ((yb - ya) * i) / n]); };
-  const arc = (cx, cy, r, a0, a1) => { const n = Math.ceil((Math.abs(a1 - a0) * r) / 0.8); for (let i = 0; i <= n; i++) { const a = a0 + ((a1 - a0) * i) / n; pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]); } };
-  leg(4, 24, 44);
-  arc(0, 44, 4, 0, Math.PI);
-  leg(-4, 44, 12);
-  arc(2.5, 12, 6.5, Math.PI, Math.PI * 2);
-  leg(9, 12, 50);
-  arc(0, 50, 9, 0, Math.PI);
-  leg(-9, 50, 34);
-  const body = pts.length;
-  // the arm: from the joint at (-9, 34), swinging out by P.arm degrees from straight down
-  const th = (P.arm * Math.PI) / 180, L = 17;
-  for (let i = 1; i <= 22; i++) {
-    const k = (i / 22) * L;
-    let dx = -Math.sin(th), dy = -Math.cos(th);
-    // a little hooked curl at the tip (think / cheer)
-    if (P.curl && k > L - 6) { const c = ((k - (L - 6)) / 6) * 1.6; const ca = Math.cos(c), sa = Math.sin(c); [dx, dy] = [dx * ca + dy * sa, -dx * sa + dy * ca]; }
-    const prev = pts[pts.length - 1];
-    pts.push(i === 1 ? [-9 + dx * (L / 22), 34 + dy * (L / 22)] : [prev[0] + dx * (L / 22), prev[1] + dy * (L / 22)]);
+// ====================================================================== [phase6:guide] Bubbles, the seal guide
+// The guide is now Bubbles, a fat low-poly bubble seal pup (src/gfx/seal.js); 'clip' is kept as an alias.
+//   drawNPC(ctx, 'seal', {x, y /* bottom (or body centre with base: 'center') */, t, scale | size, facing, talk, mood,
+//                         pose|anim, lookAt, point, ride, id})  -> {head, mouth, top, hand, ...}
+//   drawNPC(ctx, 'seal', {portrait: true, x, y, r, ...}) head and shoulders filling a portrait orb of radius r
+function drawSealNPC(ctx, o) {
+  const t = o.t ?? 0;
+  if (o.portrait) {
+    const r = o.r || 30;
+    return drawSeal(ctx, { x: o.x - r * 0.82, y: o.y + r * 0.62, t, size: r * 1.5, view: 'front', anim: o.pose === 'wave' ? 'wave' : 'idle', mood: o.mood, talk: o.talk, lookAt: o.lookAt || [o.x + r * 3, o.y + r], id: o.id ?? 'portrait' });
   }
-  return { pts, body };
+  const size = o.size ?? (o.scale ?? 1) * 40;
+  return drawSeal(ctx, {
+    x: o.x ?? 0, y: o.y ?? 0, base: o.base === 'center' ? undefined : 'bottom', t, size, k: o.k, facing: o.facing, tilt: o.tilt,
+    anim: o.anim || o.pose || 'idle', phase: o.phase, point: o.point, mood: o.mood, talk: o.talk, lookAt: o.lookAt, ride: o.ride ?? (o.bubble === false ? 0 : 1),
+    noseBubble: o.noseBubble, view: o.view, id: o.id ?? 'npc-seal', alpha: o.alpha,
+  });
 }
 
-function clipDeform(P) {
-  const b = (P.bend * Math.PI) / 180, l = (P.lean * Math.PI) / 180, st = P.stretch || 1;
-  const s = (y) => { const k = Math.min(1, Math.max(0, (y - 18) / 40)); return k * k * (3 - 2 * k); };
-  // (x, y, z) model-relative (x around 0, y absolute above base, z around 0) -> deformed
-  return (x, y, z) => {
-    y *= st;
-    const k = s(y);
-    // lean: rotate (x, y - 18) by l * k
-    const al = l * k, ca = Math.cos(al), sa = Math.sin(al);
-    let yy = y - 18;
-    let xx = x * ca - yy * sa; yy = x * sa + yy * ca;
-    // bend: rotate (yy, z) about the x axis by b * k (positive tips the top toward the viewer)
-    const ab = b * k, cb = Math.cos(ab), sb = Math.sin(ab);
-    const zz = z * cb + yy * sb;
-    yy = yy * cb - z * sb;
-    return [xx, yy + 18, zz];
-  };
-}
-
-function buildClip(pose, fi, mirror) {
-  const K = CLIP_K;
-  const [NX, NY, NZ] = CLIP_DIMS;
-  const m = K.model(NX, NY, NZ);
-  const wire = CLIP_WIRE.map((c, i) => K.g(c, { spec: 1.5, specPow: i < 2 ? 22 : 14, light: i === 0 ? 0.35 : 0.08 }));
-  const orb = CLIP_ORB.map((c, i) => K.g(c, { spec: 1.4, specPow: 16, light: i === 0 ? 0.5 : 0.18, jitter: 0.01 }));
-  const P = (CLIP_POSE[pose] || CLIP_POSE.idle)((fi / CLIP_N) * TAU);
-  const D = clipDeform(P);
-  const sx = mirror ? -1 : 1;
-  const { pts } = clipCenterline(P);
-  const W = pts.map(([x, y]) => { const q = D(x * sx, y, 0); return [CLIP_CX + q[0], CLIP_Y0 + q[1], CLIP_CZ + q[2]]; });
-  const R = 1.85;
-  for (let i = 0; i < W.length - 1; i++) {
-    const A = W[i], B = W[i + 1];
-    const ab = [B[0] - A[0], B[1] - A[1], B[2] - A[2]];
-    const l2 = ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2] || 1;
-    for (let z = Math.floor(Math.min(A[2], B[2]) - R); z <= Math.ceil(Math.max(A[2], B[2]) + R); z++)
-      for (let y = Math.floor(Math.min(A[1], B[1]) - R); y <= Math.ceil(Math.max(A[1], B[1]) + R); y++)
-        for (let x = Math.floor(Math.min(A[0], B[0]) - R); x <= Math.ceil(Math.max(A[0], B[0]) + R); x++) {
-          const px = x + 0.5 - A[0], py = y + 0.5 - A[1], pz = z + 0.5 - A[2];
-          const tt = Math.max(0, Math.min(1, (px * ab[0] + py * ab[1] + pz * ab[2]) / l2));
-          const dx = px - ab[0] * tt, dy = py - ab[1] * tt, dz = pz - ab[2] * tt;
-          const d = Math.hypot(dx, dy, dz);
-          if (d > R) continue;
-          // chrome bands: bright sky on the upper-left, a dark horizon line, aqua below
-          const lt = d > 0.01 ? (-dx * 0.72 + dy * 0.5 + dz * 0.42) / d : 0.6;
-          m.set(x, y, z, wire[lt > 0.62 ? 0 : lt > 0.28 ? 1 : lt > -0.02 ? 3 : lt > -0.4 ? 2 : 4]);
-        }
-  }
-  // the glass bubble face, cradled in the top loop
-  const oc = D(0, 49.5, 3.6);
-  const C = [CLIP_CX + oc[0], CLIP_Y0 + oc[1], CLIP_CZ + oc[2]];
-  const OR = 8.3;
-  const bb = (P.bend * Math.PI) / 180, ll = (P.lean * Math.PI) / 180;
-  for (let z = Math.floor(C[2] - OR - 1); z <= Math.ceil(C[2] + OR + 1); z++)
-    for (let y = Math.floor(C[1] - OR - 1); y <= Math.ceil(C[1] + OR + 1); y++)
-      for (let x = Math.floor(C[0] - OR - 1); x <= Math.ceil(C[0] + OR + 1); x++) {
-        const dx = x + 0.5 - C[0], dy = y + 0.5 - C[1], dz = z + 0.5 - C[2];
-        const d = Math.hypot(dx, dy, dz);
-        if (d > OR) continue;
-        const nx = dx / d, ny = dy / d, nz = dz / d;
-        const hl = -0.42 * nx + 0.62 * ny + 0.66 * nz;
-        let c = hl > 0.86 ? 0 : nz < 0.28 && ny > -0.6 ? 1 : ny > 0.3 ? 2 : ny > -0.35 ? 3 : 4;
-        if (hl > 0.74 && hl <= 0.86 && hash3(x, y, z, 7) < 0.5) c = 1;
-        m.set(x, y, z, orb[c]);
-      }
-  // head frame for the face features (follows the bend / lean of the top)
-  const cb = Math.cos(bb), sb = Math.sin(bb), cl = Math.cos(ll), sl = Math.sin(ll);
-  const Rm = [cl, -sl * cb, sl * sb, sl, cl * cb, -cl * sb, 0, sb, cb];
-  const feats = { eyeL: { d: n3([0.34, 0.16, 0.93]), size: 3.0 }, eyeR: { d: n3([-0.34, 0.16, 0.93]), size: 3.0 }, mouth: { d: n3([0, -0.44, 0.9]), size: 2.5 } };
-  const top = D(0, 60, 0), arm = W[W.length - 1];
-  return { m, head: { C, R: OR, Rm, feats }, faceIds: new Set(orb), anchors: { top: [CLIP_CX + top[0], CLIP_Y0 + top[1] + 3, CLIP_CZ + top[2]], head: [C[0], C[1] + OR, C[2]], mouth: [C[0], C[1] - OR * 0.4, C[2] + OR], hand: arm }, ground: [CLIP_CX + D(2.5, 5.5, 0)[0] * sx, CLIP_Y0 + 3.6, CLIP_CZ] };
-}
-
-const CLIP_CACHE = new Map();
-function clipFrame(pose, fi, facing, yaw, vs) {
-  const key = `${pose}|${fi}|${facing}|${yaw}|${vs}`;
-  let fr = CLIP_CACHE.get(key);
-  if (fr) return fr;
-  const B = buildClip(pose, fi, facing > 0);
-  const pitch = 10;
-  const r = renderVoxels(B.m, { scale: vs, yaw, pitch, ao: 0.9, edges: 0.55, sideEdges: 0.4, jitter: 0.05, glowRadius: 0 });
-  const cam = cameraBasis(yaw, pitch);
-  const proj = (g) => r.project(g[0], g[1], g[2]);
-  const feats = faceFeatures((p) => p, proj, B.head.C, B.head.R, B.head.Rm, B.head.feats, cam);
-  const mask = new Uint8Array(r.w * r.h);
-  for (let i = 0; i < mask.length; i++) if (B.faceIds.has(r.ids[i])) mask[i] = 1;
-  const [fx, fy] = proj(B.ground);
-  const rel = (p) => { const q = proj(p); return [q[0] - fx, q[1] - fy]; };
-  fr = { canvas: r.canvas, fx, fy, feats, mask: { d: mask, w: r.w, h: r.h }, hc: proj(B.head.C), anchors: { top: rel(B.anchors.top), head: rel(B.anchors.head), mouth: rel(B.anchors.mouth), hand: rel(B.anchors.hand) } };
-  CLIP_CACHE.set(key, fr);
-  if (CLIP_CACHE.size > 260) CLIP_CACHE.delete(CLIP_CACHE.keys().next().value);
-  return fr;
-}
-
-const CINK = '#0a1a40';
-const inE2 = (u, v, rx, ry) => (u / rx) ** 2 + (v / ry) ** 2 <= 1;
-function heart2(u, v, s) { const x = (u / s) * 1.12, y = (-v / s) * 1.12 + 0.2; const a = x * x + y * y - 1; return a * a * a - x * x * y * y * y <= 0; }
-
-// Clip's eye: a tall glossy capsule (navy -> aqua glow), two catchlights; lids for blink / moods.
-function clipEye(E, u, v) {
-  const th = Math.max(0.15, 1.05 / E.px);
-  const md = E.mood;
-  if (E.blink >= 0.85 || md === 'laugh') { const c = md === 'laugh' ? 0.15 - 0.55 * (1 - u * u) : 0.12 + 0.3 * u * u; return Math.abs(u) < 0.66 && Math.abs(v - c) < th * 1.1 ? CINK : null; }
-  if (md === 'happy' && E.squint) { const c = 0.2 - 0.62 * (1 - u * u); return Math.abs(u) < 0.66 && Math.abs(v - c) < th * 1.15 ? CINK : null; }
-  const wide = md === 'surprised';
-  const ew = wide ? 0.74 : 0.62, eh = wide ? 1.08 : 1;
-  const uu = u - E.gu * 0.2, vv = v - E.gv * 0.16;
-  if (!inE2(uu, vv, ew, eh)) return null;
-  // lids
-  let lidY = -eh + 2 * eh * Math.max(E.lid, 0);
-  const so = u * E.side; // + toward the outer side of the face
-  if (md === 'smug') lidY = Math.max(lidY, -0.12 - 0.14 * so);
-  else if (md === 'sad') lidY = Math.max(lidY, -0.62 + 0.42 * so);
-  else if (md === 'angry') lidY = Math.max(lidY, -0.5 - 0.4 * so);
-  else if (md === 'think') lidY = Math.max(lidY, -0.55);
-  if (vv < lidY) return null;
-  if (lidY > -eh + 0.05 && vv < lidY + th) return CINK;
-  const rr = (uu / ew) ** 2 + (vv / eh) ** 2;
-  if (rr > (1 - th * 0.95) ** 2) return CINK;
-  if (md === 'love') {
-    if (heart2(uu, vv + 0.05, 0.62)) return (uu + 0.2) ** 2 + (vv + 0.3) ** 2 < 0.05 ? '#ffffff' : vv < 0 ? '#ff7ab8' : '#ff3a86';
-    return '#14306e';
-  }
-  const shine = (cx, cy, rx, ry) => ((uu - cx) / rx) ** 2 + ((vv - cy) / ry) ** 2 < 1 || (uu - cx) ** 2 + (vv - cy) ** 2 < (0.65 / E.px) ** 2;
-  if (shine(-0.2 * ew, -0.45, wide ? 0.3 : 0.26, wide ? 0.34 : 0.3)) return '#ffffff';
-  if (shine(0.24 * ew, 0.42, 0.12, 0.12)) return '#e8ffff';
-  if (md === 'excited') { const a = Math.atan2(vv - 0.05, uu), r = Math.hypot(uu, vv - 0.05); if (r < 0.32 + 0.12 * Math.cos(a * 4 + E.t * 4)) return r < 0.12 ? '#ffffff' : '#fff2a0'; }
-  return vv < -0.25 ? '#0c2052' : vv < 0.3 ? '#1748a0' : vv < 0.62 ? '#2a9ae0' : '#5ae8f4';
-}
-
-// Clip's mouth: rest smile, talking oval (with a tongue), moods.
-function clipMouth(Mo, u, v) {
-  const th = Math.max(0.16, 1.05 / Mo.px);
-  const md = Mo.mood, open = Mo.open;
-  if (open > 0.08 || md === 'excited' || md === 'laugh') {
-    const o = Math.max(open, md === 'excited' || md === 'laugh' ? 0.75 : 0);
-    if (md === 'surprised') { const r = (u / (0.32 + o * 0.12)) ** 2 + ((v - 0.1) / (0.34 + o * 0.3)) ** 2; return r <= 1 ? (r > (1 - th * 2.2) ** 2 ? CINK : '#3a0e2a') : null; }
-    // a "D" shaped open smile, taller with talk
-    const top = -0.08, bot = 0.12 + o * 0.62 * (1 - 0.55 * u * u);
-    const half = 0.62 + o * 0.08;
-    if (Math.abs(u) > half || v < top - th || v > bot + th * 0.5) return null;
-    const curve = top + 0.12 * u * u;
-    if (v < curve - th) return null;
-    if (v < curve || v > bot - th * 0.5 || Math.abs(u) > half - th) return CINK;
-    if (v > bot - 0.28 * o - th && Math.abs(u) < half * 0.62) return '#ff7aa8';
-    return '#3a0e2a';
-  }
-  if (md === 'surprised') { const r = (u / 0.26) ** 2 + ((v - 0.1) / 0.3) ** 2; return r <= 1 && r > (1 - th * 2.6) ** 2 ? CINK : null; }
-  let c;
-  if (md === 'sad') c = 0.32 - 0.38 * (1 - u * u);
-  else if (md === 'smug') c = 0.1 + 0.2 * (1 - u * u) - 0.22 * u * Mo.side;
-  else if (md === 'angry' || md === 'think') c = 0.12 + 0.04 * u;
-  else c = -0.06 + 0.32 * (1 - u * u);
-  return Math.abs(u) < (md === 'think' ? 0.4 : 0.66) && Math.abs(v - c) < th ? CINK : null;
-}
-
-const CLIP_EYES = new Map();
-function clipEyeState(id) {
-  let s = CLIP_EYES.get(id);
-  const tn = typeof performance !== 'undefined' ? performance.now() : Date.now();
-  if (!s) { s = { last: tn, next: 1.4, blink: 0, gx: 0, gy: 0 }; CLIP_EYES.set(id, s); if (CLIP_EYES.size > 40) CLIP_EYES.delete(CLIP_EYES.keys().next().value); }
-  const dt = Math.min(0.05, Math.max(0, (tn - s.last) / 1000));
-  s.last = tn;
-  s.next -= dt;
-  if (s.next <= 0) { s.blink = 0.12; s.next = 2.2 + Math.random() * 3; if (Math.random() < 0.2) s.next = 0.22; }
-  s.blink = Math.max(0, s.blink - dt);
-  s.dt = dt;
-  return s;
-}
-
-function drawClipBubble(ctx, cx, cy, rx, ry, t) {
-  const a = ctx.globalAlpha;
-  const g = ctx.createRadialGradient(cx - rx * 0.3, cy - ry * 0.35, 1, cx, cy, Math.max(rx, ry));
-  g.addColorStop(0, 'rgba(255,255,255,0.32)'); g.addColorStop(0.6, 'rgba(170,240,255,0.18)'); g.addColorStop(1, 'rgba(90,210,255,0.42)');
-  ctx.fillStyle = g;
-  ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, TAU); ctx.fill();
-  ctx.lineWidth = 1;
-  ctx.strokeStyle = 'rgba(235,255,255,0.85)';
-  ctx.beginPath(); ctx.ellipse(cx, cy, rx - 0.5, ry - 0.5, 0, 0, TAU); ctx.stroke();
-  // iridescent sheen
-  ctx.globalAlpha = a * 0.5;
-  ctx.strokeStyle = `hsl(${(t * 60) % 360},90%,72%)`;
-  ctx.beginPath(); ctx.ellipse(cx, cy, rx - 2, ry - 2, 0, 0.3, 1.5); ctx.stroke();
-  ctx.strokeStyle = `hsl(${(t * 60 + 140) % 360},90%,72%)`;
-  ctx.beginPath(); ctx.ellipse(cx, cy, rx - 2, ry - 2, 0, 3.4, 4.4); ctx.stroke();
-  ctx.globalAlpha = a * 0.9;
-  ctx.fillStyle = '#ffffff';
-  ctx.beginPath(); ctx.ellipse(cx - rx * 0.42, cy - ry * 0.45, rx * 0.22, ry * 0.12, -0.6, 0, TAU); ctx.fill();
-  ctx.fillRect(Math.round(cx + rx * 0.45), Math.round(cy + ry * 0.35), 1, 1);
-  ctx.globalAlpha = a;
-}
-
-function drawClip(ctx, o) {
-  const x = o.x ?? 0, y = o.y ?? 0, t = o.t ?? 0, scale = o.scale ?? 1, facing = (o.facing ?? 1) < 0 ? -1 : 1;
-  const pose = CLIP_POSE[o.pose] ? o.pose : 'idle';
-  const mood = o.pose === 'laugh' ? 'laugh' : o.mood || 'happy';
-  const vs = Math.max(0.5, Math.round(1.6 * scale * 4) / 4);
-  let yaw = (facing > 0 ? 14 : -14) + (o.yaw ?? 0);
-  if (pose === 'spin') yaw += (t * 400) % 360;
-  yaw = ((Math.round(yaw / 15) * 15 + 540) % 360) - 180;
-  const speed = mood === 'excited' || pose === 'cheer' || pose === 'laugh' ? 1.7 : 1;
-  const fi = Math.floor(t * speed * CLIP_N) % CLIP_N;
-  const fr = clipFrame(pose, (fi + CLIP_N) % CLIP_N, facing, yaw, vs);
-  // bounce on the bubble
-  const ph = t * 2.7;
-  const hop = Math.abs(Math.sin(ph));
-  const lift = o.bubble === false ? Math.round(Math.sin(t * 2.2) * 1.5 * vs) : Math.round(hop * 3.2 * vs);
-  const sq = o.bubble === false ? 0 : Math.pow(1 - hop, 6);
-  const br = 9 * vs;
-  const brx = br * (1 + 0.14 * sq), bry = br * (1 - 0.16 * sq);
-  const groundY = o.bubble === false ? y : y - bry * 2 + 3.5 * vs;
-  if (o.bubble !== false) drawClipBubble(ctx, x, y - bry, brx, bry, t);
-  const X = Math.round(x - fr.fx), Y = Math.round(groundY - fr.fy - lift);
-  ctx.drawImage(fr.canvas, X, Y);
-  // face
-  const st = clipEyeState('clip:' + (o.id ?? 'main'));
-  let gx = Math.sin(t * 0.6) * 0.3, gy = Math.sin(t * 0.37) * 0.2;
-  if (o.lookAt) {
-    const dx = o.lookAt[0] - (X + fr.hc[0]), dy = o.lookAt[1] - (Y + fr.hc[1]);
-    const dl = Math.hypot(dx, dy) || 1, k = Math.min(1, dl / 40);
-    gx = (dx / dl) * k; gy = (dy / dl) * k;
-  }
-  if (mood === 'think') { gx = 0.6 * facing; gy = -0.7; }
-  st.gx += (gx - st.gx) * Math.min(1, (st.dt || 0.016) * 10);
-  st.gy += (gy - st.gy) * Math.min(1, (st.dt || 0.016) * 10);
-  const F = fr.feats;
-  const px = Math.max(1, Math.hypot(F.eyeL.ax, F.eyeL.ay, F.eyeL.bx, F.eyeL.by) / Math.SQRT2);
-  const squint = mood === 'happy' && (o.talk || 0) < 0.05 && Math.sin(t * 0.8) > 0.9;
-  const a0 = ctx.globalAlpha;
-  for (const k of ['eyeL', 'eyeR', 'mouth']) {
-    const f = F[k];
-    if (!f || f.z < 0.05) continue;
-    ctx.globalAlpha = a0 * Math.min(1, f.z / 0.2);
-    if (k === 'mouth') {
-      const mpx = Math.hypot(f.ax, f.ay);
-      rasterFeature(ctx, X, Y, f, 1, 1.25, fr.mask, (u, v) => clipMouth({ mood, open: Math.max(0, Math.min(1, o.talk || 0)), px: mpx, side: facing }, u, v));
-    } else {
-      const E = { mood, blink: st.blink > 0 ? 1 : 0, lid: mood === 'sad' ? 0.1 : 0, gu: st.gx, gv: st.gy, side: k === 'eyeL' ? 1 : -1, px, t, squint };
-      rasterFeature(ctx, X, Y, f, 1, 1.3, fr.mask, (u, v) => clipEye(E, u, v));
-    }
-  }
-  ctx.globalAlpha = a0;
-  const A = fr.anchors;
-  const at = (p) => [X + fr.fx + p[0], Y + fr.fy + p[1]];
-  return { head: at(A.head), mouth: at(A.mouth), top: at(A.top), hand: at(A.hand), w: fr.canvas.width, h: fr.canvas.height + (o.bubble === false ? 0 : bry * 2) };
-}
-
-function warmClip({ scale = 1, facing = 1, poses = ['idle', 'talk'] } = {}) {
-  const vs = Math.max(0.5, Math.round(1.6 * scale * 4) / 4);
-  const yaw = facing > 0 ? 15 : -15;
-  for (const p of poses) for (let fi = 0; fi < CLIP_N; fi++) clipFrame(p, fi, facing < 0 ? -1 : 1, yaw, vs);
-  return true;
-}
-export { warmClip };

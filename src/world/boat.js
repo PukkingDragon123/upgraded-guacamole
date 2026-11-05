@@ -44,7 +44,7 @@ function buildModel(tier, hull, trim, parts) {
 const VS = 2;            // px per voxel (world units)
 // Under the zoomed camera the boat and the fisherman render at RES x the voxel resolution and draw back at 1/RES, so
 // close-ups stay crisp (1 screen px outlines instead of zoomed-up blocks).
-const hiRes = (game) => (game.camera?.open && (game.camera.z || 1) >= 1.45 ? 2 : 1);
+const hiRes = (game) => (game.camera?.open && (game.camera.z || 1) >= 1.45 ? ((game.camera.z || 1) >= 2.4 ? 3 : 2) : 1); // [phase6:oceans] 3x camera
 const YAW = WORLD_YAW, PITCH = WORLD_PITCH;
 const ROLLS = [-8, -5.3, -2.7, 0, 2.7, 5.3, 8];
 const CHAR_SCALE = 0.62;

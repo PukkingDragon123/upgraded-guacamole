@@ -39,6 +39,7 @@ import { Floaters } from '../world/floaters.js'; // [phase3:world]
 import { installNet } from '../net/index.js'; // [phase3:online] multiplayer (opt-in)
 import { currentBait as currentBait3 } from '../store/bait.js'; // [phase3:online] consumable bait
 import { consumeBait as consumeBait3, equipBait } from '../store/bait.js'; // [phase3:fishing] one bait used per hook-set
+import { installQuests } from '../ui/quests.js'; // [phase6:lab] quest lines + HUD tracker (game.quests)
 
 export class Game {
   constructor(canvas, params) {
@@ -95,6 +96,7 @@ export class Game {
     this.tutorial = new Tutorial(this);
     try { this.build = new Build(this); } catch (e) { console.error(e); this.build = null; }
     installNet(this); // [phase3:online] game.net: multiplayer, opt-in (Multiplayer panel)
+    try { this.quests = installQuests(this); } catch (e) { console.error(e); this.quests = null; } // [phase6:lab]
     this.ocean.setBiome(this.state.biome);
     // optional biomes register asynchronously; switch once the saved one is available
     biomesReady.then(() => { if (this.ocean.biome?.id !== this.state.biome && BIOMES[this.state.biome] && !this.ocean.travelState) this.ocean.setBiome(this.state.biome); });
@@ -323,7 +325,7 @@ export class Game {
   command(id) {
     const ui = this.ui;
     switch (id) {
-      case 'journal': case 'skills': case 'map': case 'bait': case 'settings': case 'lab': case 'wardrobe': case 'multiplayer': case 'inventory':
+      case 'journal': case 'skills': case 'map': case 'bait': case 'settings': case 'lab': case 'wardrobe': case 'multiplayer': case 'inventory': case 'quests': // [phase6:lab] quests
         if (ui.panels[id]) ui.toggle(id); else this.toast('Coming soon!', 'info');
         break;
       case 'baitshop': case 'shop': case 'store': case 'appsea': // [phase4:shell] Dot's Bait Shop
@@ -470,6 +472,7 @@ export class Game {
     if (this.tutorial.capturesInput?.()) layer = 'tutorial';
     else if (this.ui.hit(inp.x, inp.y) && !fighting) layer = 'ui';
     else if (!fighting && this.hud.hit(inp.x, inp.y)) layer = 'hud'; // [phase4:shell] the Aero HUD
+    else if (!fighting && this.quests?.hit?.(inp.x, inp.y)) layer = 'quests'; // [phase6:lab] quest tracker
     else if (!fighting && this.aquarium.hit?.(inp.x, inp.y)) layer = 'tank';
     // world objects under the cursor: build mode / buildings, then the boat
     if (layer === null && !fighting && openWater && inp.inside) {
@@ -486,12 +489,13 @@ export class Game {
     if (inp.wheel && canScroll && (layer === null || layer === 'boat') && !fighting && !cam.focusOn) {
       cam.scrollBy(inp.wheel * this.screen.H * 0.11);
     }
-    if (canScroll && !fighting) {
+    if (canScroll && !fighting && !cam.scrollKeys?.(inp)) { // [phase6:oceans] Home / End / PageUp / PageDown move through the depth zones
       if (inp.keyPressed('PageUp') || inp.keyPressed('Home')) cam.scrollTo(this.surfaceScroll);
       if (inp.keyPressed('PageDown') || inp.keyPressed('End')) cam.scrollTo(0);
     }
 
     this.hud.update(dtReal, inp, layer === 'hud'); // [phase4:shell]
+    try { this.quests?.update?.(dtReal, layer === 'quests' ? inp : null); } catch (e) { if (!this.questErr) { this.questErr = true; console.error(e); } } // [phase6:lab]
     this.aquarium.update(dt, layer === 'tank' ? inp : null);
 
     const worldInput = (layer === null || fighting) && view === 'ocean' && (ocean.reveal >= 1 || this.tutorial.allowFishing) && !ocean.travelState;
@@ -578,7 +582,7 @@ export class Game {
 
   handleKeys() {
     const inp = this.input;
-    const map = { j: 'journal', l: 'lab', k: 'lab', t: 'map', b: 'bait', s: 'baitshop', w: 'wardrobe', o: 'multiplayer', p: 'pause', a: 'tank' };
+    const map = { j: 'journal', l: 'lab', k: 'lab', t: 'map', b: 'bait', s: 'baitshop', w: 'wardrobe', o: 'multiplayer', p: 'pause', a: 'tank', q: 'quests' }; // [phase6:lab] q: Quest Log
     for (const [k, cmd] of Object.entries(map)) {
       if (inp.keyPressed(k)) {
         if (this.tutorial.active && cmd !== 'pause') continue;
@@ -692,6 +696,7 @@ export class Game {
     this.tutorial.drawWorld?.(ctx);
     this.aquarium.drawWindow?.(ctx, dt);
     this.hud.draw(ctx); // [phase4:shell] hotbar, gear pod, location chip
+    try { this.quests?.drawHud?.(ctx, dt); } catch (e) { if (!this.questDrawErr) { this.questDrawErr = true; console.error(e); } } // [phase6:lab] quest tracker + banners
     this.fishing.drawHud(ctx);
     try { this.build?.drawUi?.(ctx); } catch (e) { if (!this.buildUiErr) { this.buildUiErr = true; console.error(e); } }
     this.ui.drawHud(ctx, dt);

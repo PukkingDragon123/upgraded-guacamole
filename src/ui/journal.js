@@ -10,7 +10,7 @@ import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { drawText, measureText, wrapText } from '../gfx/font.js';
 import { drawTab } from './panels.js';
 import { getUiIcon } from '../gfx/uiicons.js';
-import { getBigIcon } from '../gfx/bigicons.js';
+import { getBigIcon, gemIcon } from '../gfx/bigicons.js';
 import { getMiniIcon } from '../desktop/icons.js';
 import { compiled } from '../gfx/spritecache.js';
 import { drawFishRig } from '../gfx/fishrig.js';
@@ -19,7 +19,12 @@ import { SPECIES, SPECIES_BY_ID } from '../fish/species.js';
 import { MUTATIONS } from '../fish/traits.js';
 import { BAITS } from '../store/bait.js';
 import { baitSprite } from '../fishing/baitart.js';
-import { AERO, aeroCached, aeroSurface, drawAeroFrame, drawAeroCard, drawAeroBar, drawAeroBubble, drawSparkle, drawAeroGlow, toneFrom } from './aero.js';
+import { AERO, aeroCached, aeroSurface, drawAeroFrame, drawAeroCard, drawAeroBar, drawAeroBubble, drawSparkle, drawAeroGlow, toneFrom, uiFont, capH, uiScaleMode } from './aero.js';
+import { panelRect } from './ui.js';
+
+// [phase6:ui] text faces + metrics follow the UI size (Normal keeps the classic look)
+const BIGUI = () => uiScaleMode() !== 'normal';
+const F1 = () => uiFont('normal'), F2 = () => uiFont('small');
 
 const BIOMES = [
   { id: 'oscean', name: '(OS)cean', tab: 'OScean', color: '#2f9ef0', icon: 'home', water: ['#bff0ff', '#3aa8ec'] },
@@ -126,14 +131,18 @@ function glassOver(w, h, r = 10) {
   return aeroSurface(w, h, { top: '#ffffff', mid: '#ffffff', bot: '#ffffff', a: [0, 0], edge: '#ffffff', edgeA: 0.85, r, gloss: 0.5, glossH: Math.min(26, Math.round(h * 0.38)), curve: 6, rim: 0.7, glow: 0 });
 }
 
+const CHIP_H = () => (BIGUI() ? 21 : 17);
 function chip(ctx, x, y, w, icon, text, o = {}) {
-  ctx.drawImage(aeroCached(`dexchip|${w}|${o.tone || 'white'}`, () => aeroSurface(w, 17, { tone: o.tone || 'white', r: 'pill', gloss: 0.65, glossH: 8, curve: 1, rim: 0.85, glow: 0.45 })), x, y);
+  const h = CHIP_H();
+  ctx.drawImage(aeroCached(`dexchip|${w}|${h}|${o.tone || 'white'}`, () => aeroSurface(w, h, { tone: o.tone || 'white', r: 'pill', gloss: 0.65, glossH: Math.round(h * 0.45), curve: 1, rim: 0.85, glow: 0.45 })), x, y);
   const ic = getUiIcon(icon);
-  ctx.drawImage(ic, x + 5, y + Math.round((17 - ic.height) / 2));
+  ctx.drawImage(ic, x + 6, y + Math.round((h - ic.height) / 2));
+  let font = F1();
   let t = String(text);
-  while (t.length > 2 && measureText(t) > w - ic.width - 13) t = t.slice(0, -1);
+  if (font === 'big' && measureText(t, font) > w - ic.width - 15) font = 'normal';
+  while (t.length > 2 && measureText(t, font) > w - ic.width - 15) t = t.slice(0, -1);
   if (t !== String(text)) t = t.slice(0, -1) + '.';
-  drawText(ctx, t, x + ic.width + 8, y + 5, { color: o.color || INK });
+  drawText(ctx, t, x + ic.width + 10, y + Math.round((h - capH(font)) / 2), { font, color: o.color || INK });
 }
 
 function heartPip(on) {
@@ -213,18 +222,19 @@ export class JournalPanel {
     this.swapT = Math.min(1, this.swapT + dt * 4);
     this.gridT = Math.min(1, this.gridT + dt * 3.5);
     this.emoT += dt;
-    const W = Math.min(g.screen.W - 24, 720), H = Math.min(g.screen.H - 60, 440);
-    const r = { x: Math.round((g.screen.W - W) / 2), y: Math.round((g.screen.H - H) / 2) - 8, w: W, h: H };
+    const big = BIGUI(), f1 = F1(), f2 = F2();
+    const r = panelRect(g, big ? 780 : 720, big ? 470 : 440);
+    const W = r.w, H = r.h;
     this.rect = r;
-    const F = drawAeroFrame(ctx, r.x, r.y, W, H, { title: 'FishDex', icon: getBigIcon('journal', { size: 'small' }).canvas, seed: 11 });
+    const F = drawAeroFrame(ctx, r.x, r.y, W, H, { title: 'FishDex', icon: getBigIcon('journal', { size: big ? 30 : 'small' }).canvas, seed: 11 });
     if (ui.button(ctx, F.close.x, F.close.y, F.close.w, F.close.h, '', { icon: 'cross', tip: 'Close (Esc)' })) { ui.close(this.id); return; }
 
     // completion meter in the header
     const total = SPECIES.length, got = SPECIES.filter((s) => this.known(s.id) === 'caught').length;
-    const mx = r.x + W - 150, my = r.y + 11;
-    drawAeroBar(ctx, mx, my + 1, 76, 8, got / Math.max(1, total), { color: '#7ee04a' });
-    drawText(ctx, `${got}/${total}`, mx + 82, my, { color: '#ffffff', shadow: '#0a3e74' });
-    if (ui.hover({ x: mx, y: my - 2, w: 110, h: 14 })) ui.tip = 'Species caught';
+    const mw = big ? 96 : 76, mx = r.x + W - (big ? 186 : 150), my = r.y + (big ? 10 : 11);
+    drawAeroBar(ctx, mx, my + 1, mw, big ? 10 : 8, got / Math.max(1, total), { color: '#7ee04a' });
+    drawText(ctx, `${got}/${total}`, mx + mw + 6, my + (big ? 0 : 0), { font: f1, color: '#ffffff', shadow: '#0a3e74' });
+    if (ui.hover({ x: mx, y: my - 2, w: mw + 40, h: 16 })) ui.tip = 'Species caught';
 
     // ocean tabs
     let tx = F.content.x;
@@ -232,8 +242,9 @@ export class JournalPanel {
     for (const b of this.biomes()) {
       const active = b.id === this.biome;
       const unlocked = g.state.unlockedBiomes?.includes(b.id) ?? true;
-      const tw = measureText(b.tab) + 28;
-      const tr = { x: tx, y: ty, w: tw, h: 20 };
+      const th = big ? 25 : 20;
+      const tw = measureText(b.tab, f1) + (big ? 34 : 28);
+      const tr = { x: tx, y: ty, w: tw, h: th };
       const hov = ui.hover(tr) && !active;
       drawTab(ctx, tr.x, tr.y, tr.w, tr.h, { label: b.tab, icon: unlocked ? b.icon : 'lock', active, hover: hov, color: b.color });
       if (ui.hover(tr)) {
@@ -252,7 +263,8 @@ export class JournalPanel {
       tx += tw + 2;
     }
 
-    const cy = ty + 20, ch = F.content.h - 20;
+    const tabH = big ? 25 : 20;
+    const cy = ty + tabH, ch = F.content.h - tabH;
     const lw = Math.round(F.content.w * 0.47);
     const L = { x: F.content.x, y: cy, w: lw, h: ch };
     const R = { x: F.content.x + lw + 6, y: cy, w: F.content.w - lw - 6, h: ch };
@@ -272,7 +284,7 @@ export class JournalPanel {
     const n = list.length;
     const cols = n > 20 ? 6 : n > 12 ? 5 : 4;
     const rows = Math.max(1, Math.ceil(n / cols));
-    const top = 30, pad = 8, gap = 4;
+    const top = BIGUI() ? 32 : 30, pad = 8, gap = BIGUI() ? 5 : 4;
     const cw = Math.floor((L.w - pad * 2 - (cols - 1) * gap) / cols);
     const chh = Math.min(Math.round(cw * 1.05), Math.floor((L.h - top - pad - (rows - 1) * gap) / rows));
     return list.map((sp, i) => ({ sp, x: L.x + pad + (i % cols) * (cw + gap), y: L.y + top + Math.floor(i / cols) * (chh + gap), w: cw, h: chh, i }));
@@ -284,12 +296,15 @@ export class JournalPanel {
     const list = this.list(this.biome);
     const caught = list.filter((s) => this.known(s.id) === 'caught').length;
     // header: ocean name + progress
-    const ic = getUiIcon(B.icon);
-    ctx.drawImage(ic, L.x + 9, L.y + 8);
-    drawText(ctx, B.name, L.x + 13 + ic.width, L.y + 9, { color: INK });
-    drawAeroBar(ctx, L.x + L.w - 88, L.y + 9, 54, 7, caught / Math.max(1, list.length), { color: B.color });
-    drawText(ctx, `${caught}/${list.length}`, L.x + L.w - 8, L.y + 9, { align: 'right', font: 'small', color: INK_SOFT });
-    if (caught === list.length && list.length) drawText(ctx, '{crown}', L.x + L.w - 102, L.y + 8, {});
+    const big = BIGUI(), f1 = F1(), f2 = F2();
+    const ic = getUiIcon(B.icon, big ? 2 : 1);
+    const hy = L.y + (big ? 7 : 8);
+    ctx.drawImage(ic, L.x + 8, hy + Math.round((capH(f1) - ic.height) / 2) + (big ? 1 : 0));
+    drawText(ctx, B.name, L.x + 13 + ic.width, hy + 1, { font: f1, color: INK, shadow: '#ffffff' });
+    const cw = measureText(`${caught}/${list.length}`, f2);
+    drawAeroBar(ctx, L.x + L.w - cw - 70, hy + 1 + Math.round((capH(f1) - 7) / 2), 54, big ? 9 : 7, caught / Math.max(1, list.length), { color: B.color });
+    drawText(ctx, `${caught}/${list.length}`, L.x + L.w - 8, hy + 1 + Math.round((capH(f1) - capH(f2)) / 2), { align: 'right', font: f2, color: INK_SOFT });
+    if (caught === list.length && list.length) drawText(ctx, '{crown}', L.x + L.w - cw - 84, hy, {});
     const cells = this.gridCells(L);
     const k = ease.outCubic(this.gridT);
     for (const cl of cells) {
@@ -340,11 +355,13 @@ export class JournalPanel {
       ctx.globalAlpha *= k === 'seen' ? 0.85 : 0.6; // [phase3:fish] dark voxel silhouettes stay readable (not pale blobs)
       drawFishFit(ctx, sp, x + w / 2, y + h / 2, s, k === 'seen' ? t : 0.3, { silhouette: SIL, speed01: 0.1 });
       ctx.globalAlpha = 1;
-      drawText(ctx, '?', x + w / 2, y + h / 2 - 4, { align: 'center', color: '#ffffff', outline: SIL });
+      drawText(ctx, '?', x + w / 2, y + h / 2 - (BIGUI() ? 5 : 4), { font: F1(), align: 'center', color: '#ffffff', outline: SIL });
     }
     ctx.restore();
     if (k === 'caught') {
-      for (let i = 0; i < rar.stars; i++) { ctx.fillStyle = '#ffffff'; ctx.fillRect(x + 4 + i * 4, y + 4, 3, 3); ctx.fillStyle = rar.color; ctx.fillRect(x + 5 + i * 4, y + 5, 1, 1); }
+      const gem = gemIcon(rar.color, BIGUI() ? 13 : 10);
+      if (gem) { ctx.drawImage(gem, x + 2, y + 2); if (rar.stars > 1) drawText(ctx, String(rar.stars), x + 3 + gem.width, y + 4, { font: 'small', color: '#ffffff', outline: shade(rar.color, -0.55) }); }
+      else for (let i = 0; i < rar.stars; i++) { ctx.fillStyle = '#ffffff'; ctx.fillRect(x + 4 + i * 4, y + 4, 3, 3); ctx.fillStyle = rar.color; ctx.fillRect(x + 5 + i * 4, y + 5, 1, 1); }
       if (this.entry(sp.id)?.variants?.shiny && (t * 1.3) % 2 < 0.25) drawSparkle(ctx, x + w - 6, y + 6, 2, 1);
     }
     if (sel) {
@@ -377,34 +394,39 @@ export class JournalPanel {
     const B = BIOME_BY_ID[sp.biome] || BIOMES[1];
     const caught = k === 'caught';
     const pop = ease.outCubic(this.swapT);
+    const BU = BIGUI(), f1 = F1(), f2 = F2();
     const x = R.x + 10, w = R.w - 20;
     let y = R.y + 8 + Math.round((1 - pop) * 6);
     ctx.globalAlpha = 0.35 + 0.65 * pop;
     // name + number + stars
     const name = caught ? sp.name : '???';
-    const big = measureText(name, 'normal', 2) <= w - 40;
-    drawText(ctx, name, x, y, { scale: big ? 2 : 1, color: INK, shadow: '#ffffff', wave: caught && sp.rarity === 'legendary' ? 1 : 0, time: this.t });
+    const nf = BU && measureText(name, 'big', 2) <= w - 40 ? ['big', 2] : measureText(name, 'normal', 2) <= w - 40 ? ['normal', 2] : [f1, 1];
+    drawText(ctx, name, x, y, { font: nf[0], scale: nf[1], color: INK, shadow: '#ffffff', wave: caught && sp.rarity === 'legendary' ? 1 : 0, time: this.t });
     const list = this.list(sp.biome);
-    drawText(ctx, `#${String(list.indexOf(sp) + 1).padStart(2, '0')}`, x + w, y + 2, { align: 'right', font: 'small', color: INK_FAINT });
-    y += big ? 18 : 12;
+    drawText(ctx, `#${String(list.indexOf(sp) + 1).padStart(2, '0')}`, x + w, y + 2, { align: 'right', font: f2, color: INK_FAINT });
+    y += capH(nf[0]) * nf[1] + 5;
     for (let i = 0; i < 5; i++) {
       ctx.globalAlpha = (0.35 + 0.65 * pop) * (caught || i >= rar.stars ? 1 : 0.4);
       ctx.drawImage(getUiIcon(i < rar.stars ? 'star' : 'star_empty'), x + i * 11, y);
     }
     ctx.globalAlpha = 0.35 + 0.65 * pop;
     if (caught) {
-      const rl = rar.name.toUpperCase();
-      const rw = measureText(rl, 'small') + 12;
-      ctx.drawImage(aeroCached(`dexrar|${rw}|${sp.rarity}`, () => aeroSurface(rw, 11, { tone: toneFrom(rar.color), r: 'pill', gloss: 0.8, glossH: 5, curve: 1, rim: 0.7, glow: 0.6 })), x + 60, y - 1);
+      const rf = BU ? 'normal' : 'small';
+      const rl = BU ? rar.name : rar.name.toUpperCase();
+      const gem = gemIcon(rar.color, BU ? 16 : 12);
+      const gw = gem ? gem.width - 2 : 0;
+      const rh = capH(rf) + 6, rw = measureText(rl, rf) + 12 + gw;
+      ctx.drawImage(aeroCached(`dexrar|${rw}|${rh}|${sp.rarity}`, () => aeroSurface(rw, rh, { tone: toneFrom(rar.color), r: 'pill', gloss: 0.8, glossH: Math.round(rh * 0.45), curve: 1, rim: 0.7, glow: 0.6 })), x + 60, y - 1);
+      if (gem) ctx.drawImage(gem, x + 60 + 2, y - 1 + Math.round((rh - gem.height) / 2));
       const lightPill = luminance(rar.color) > 0.62;
-      drawText(ctx, rl, x + 66, y + 2, { font: 'small', color: lightPill ? INK : '#ffffff', shadow: lightPill ? null : shade(rar.color, -0.6) });
-      if (j?.variants?.shiny) chip(ctx, x + w - 58, y - 3, 58, 'sparkle', 'Shiny', { tone: 'orange', color: '#ffffff' });
+      drawText(ctx, rl, x + 66 + gw, y - 1 + Math.round((rh - capH(rf)) / 2), { font: rf, color: lightPill ? INK : '#ffffff', shadow: lightPill ? null : shade(rar.color, -0.6) });
+      if (j?.variants?.shiny) chip(ctx, x + w - (BU ? 72 : 58), y - 3, BU ? 72 : 58, 'sparkle', 'Shiny', { tone: 'orange', color: '#ffffff' });
     }
-    y += 14;
+    y += BU ? 17 : 14;
 
     // aquarium window
-    const lower = caught ? 118 : 60;
-    const ih = clamp(R.y + R.h - lower - y - 54, 70, 170);
+    const lower = caught ? (BU ? 138 : 118) : 60;
+    const ih = clamp(R.y + R.h - lower - y - (BU ? 62 : 54), 70, 170);
     const iw = w;
     ctx.drawImage(aeroCached(`dexwin|${iw}|${ih}|${B.id}`, () => waterTex(iw, ih, B, 12)), x, y);
     ctx.save();
@@ -445,71 +467,79 @@ export class JournalPanel {
     const dep = sp.move?.depth ? (sp.move.depth[0] + sp.move.depth[1]) / 2 : 0.5;
     const depthTxt = sp.move?.style === 'crawl' ? 'Seabed' : dep < 0.3 ? 'Surface' : dep < 0.62 ? 'Mid-water' : 'Deep';
     const half = Math.floor((w - 4) / 2);
+    const CH = CHIP_H();
     chip(ctx, x, y, half, 'map', k === 'unknown' ? '???' : depthTxt);
     chip(ctx, x + half + 4, y, half, act[0], k === 'unknown' ? '???' : act[1]);
-    y += 20;
+    y += CH + 3;
     chip(ctx, x, y, half, 'fish', caught ? `${sp.size[0]}-${sp.size[1]} cm` : '???');
     chip(ctx, x + half + 4, y, half, 'trophy', caught ? `${fmtKg(sp.weight[0])}-${fmtKg(sp.weight[1])} kg` : '???');
-    y += 23;
+    y += CH + 6;
 
     if (!caught) {
-      const lines = wrapText(hintFor(sp), w).slice(0, 3);
-      lines.forEach((l, i) => drawText(ctx, l, x, y + i * 10, { color: INK_SOFT }));
+      const lh = BU ? 13 : 10;
+      const lines = wrapText(hintFor(sp), w, f1).slice(0, 3);
+      lines.forEach((l, i) => drawText(ctx, l, x, y + i * lh, { font: f1, color: INK_SOFT }));
       ctx.globalAlpha = 1;
       return;
     }
     // one short line of flavour
-    const desc = wrapText(sp.desc || sp.behavior || '', w);
+    const desc = wrapText(sp.desc || sp.behavior || '', w, f1);
     if (desc.length) {
       let l = desc[0];
-      if (desc.length > 1) l = l.replace(/[\s,.;:]*$/, '') + '...';
-      drawText(ctx, l, x, y, { color: INK_SOFT });
-      y += 13;
+      if (desc.length > 1) {
+        l = l.replace(/[\s,.;:]*$/, '') + '...';
+        while (l.length > 4 && measureText(l, f1) > w) l = l.slice(0, -4).replace(/[\s,.;:]*$/, '') + '...';
+      }
+      drawText(ctx, l, x, y, { font: f1, color: INK_SOFT });
+      if (desc.length > 1 && ui.hover({ x, y: y - 2, w, h: capH(f1) + 4 })) ui.tip = sp.desc || sp.behavior;
+      y += capH(f1) + 6;
     }
     // bait tastes
-    ctx.drawImage(getUiIcon('bait'), x, y + 3);
+    const RW = BU ? 20 : 16; // row height for the bait / fight rows
+    ctx.drawImage(getUiIcon('bait'), x, y + Math.round((RW - 10) / 2));
     const prefs = Object.entries(sp.bait || {}).filter(([, v]) => v >= 1).sort((a, b) => b[1] - a[1]).slice(0, 4);
     let bx = x + 14;
     for (const [type, v] of prefs) {
       const special = !!BAITS[type] && !BAITS[type].app;
       let spr = null;
       try { spr = special ? baitSprite(type, this.t) : getMiniIcon(TYPE_ICON[type] || 'documents'); } catch { spr = null; }
-      const br = { x: bx, y: y, w: 38, h: 16 };
-      if (spr) ctx.drawImage(spr, bx + Math.round((14 - spr.width) / 2), y + 1 + Math.round((14 - spr.height) / 2));
-      for (let i = 0; i < 3; i++) ctx.drawImage(heartPip(i < v), bx + 15 + i * 7, y + 5);
+      const br = { x: bx, y: y, w: 38, h: RW };
+      if (spr) ctx.drawImage(spr, bx + Math.round((14 - spr.width) / 2), y + Math.round((RW - spr.height) / 2));
+      for (let i = 0; i < 3; i++) ctx.drawImage(heartPip(i < v), bx + 15 + i * 7, y + Math.round((RW - 6) / 2));
       if (ui.hover(br)) ui.tip = `${BAITS[type]?.name || TYPE_NAME[type] || type}: ${['', 'likes', 'loves', "can't resist"][Math.min(3, Math.round(v))]}`;
       bx += 41;
       if (bx > x + w - 38) break;
     }
-    if (!prefs.length) drawText(ctx, 'Anything!', bx, y + 4, { color: INK_SOFT });
-    y += 19;
+    if (!prefs.length) drawText(ctx, 'Anything!', bx, y + Math.round((RW - capH(f1)) / 2), { font: f1, color: INK_SOFT });
+    y += RW + 3;
     // fight phases + power
-    ctx.drawImage(getUiIcon('reel'), x, y + 3);
+    ctx.drawImage(getUiIcon('reel'), x, y + Math.round((RW - 10) / 2));
     let fx = x + 14;
     (sp.fight?.phases || []).forEach((ph, i) => {
       const P = PHASES[ph] || { icon: 'question', name: ph };
-      ctx.drawImage(aeroCached('dexph', () => aeroSurface(16, 16, { tone: 'sky', r: 5, gloss: 0.75, glossH: 7, curve: 1, rim: 0.8, glow: 0.6 })), fx, y);
+      ctx.drawImage(aeroCached(`dexph|${RW}`, () => aeroSurface(RW, RW, { tone: 'sky', r: 5, gloss: 0.75, glossH: Math.round(RW * 0.45), curve: 1, rim: 0.8, glow: 0.6 })), fx, y);
       const pi = getUiIcon(P.icon);
-      ctx.drawImage(pi, fx + Math.round((16 - pi.width) / 2), y + Math.round((16 - pi.height) / 2));
-      if (ui.hover({ x: fx, y, w: 16, h: 16 })) ui.tip = `${i + 1}. ${P.name}`;
-      fx += 19;
+      ctx.drawImage(pi, fx + Math.round((RW - pi.width) / 2), y + Math.round((RW - pi.height) / 2));
+      if (ui.hover({ x: fx, y, w: RW, h: RW })) ui.tip = `${i + 1}. ${P.name}`;
+      fx += RW + 3;
     });
     const pw = Math.round((sp.fight?.power || 0) * 5);
     for (let i = 0; i < 5; i++) {
-      ctx.drawImage(aeroCached(`dexpow|${i < pw}`, () => aeroSurface(6, 8, { tone: i < pw ? 'red' : 'grey', r: 2, gloss: 0.7, glossH: 3, rim: 0.4, glow: 0.4 })), x + w - 36 + i * 7, y + 4);
+      const pw2 = BU ? 8 : 6, ph2 = BU ? 11 : 8;
+      ctx.drawImage(aeroCached(`dexpow|${i < pw}|${pw2}`, () => aeroSurface(pw2, ph2, { tone: i < pw ? 'red' : 'grey', r: 2, gloss: 0.7, glossH: 3, rim: 0.4, glow: 0.4 })), x + w - (pw2 + 1) * 5 - 1 + i * (pw2 + 1), y + Math.round((RW - ph2) / 2));
     }
-    if (ui.hover({ x: x + w - 38, y, w: 38, h: 16 })) ui.tip = 'Power';
-    y += 21;
+    if (ui.hover({ x: x + w - 50, y, w: 50, h: RW })) ui.tip = 'Power';
+    y += RW + 5;
     // records + variants
     const vs = Object.keys(j.variants || {}).filter((v) => j.variants[v] && v !== 'shiny');
     const third = Math.floor((w - 8) / 3);
     chip(ctx, x, y, third, 'check', `x${j.caught}`);
     chip(ctx, x + third + 4, y, third, 'trophy', `${fmtCm(j.maxSize)} cm`);
     chip(ctx, x + third * 2 + 8, y, third, 'clock', fmtDate(j.first));
-    if (ui.hover({ x, y, w: third, h: 17 })) ui.tip = 'Caught';
-    if (ui.hover({ x: x + third + 4, y, w: third, h: 17 })) ui.tip = 'Biggest';
-    if (ui.hover({ x: x + third * 2 + 8, y, w: third, h: 17 })) ui.tip = 'First catch';
-    y += 20;
+    if (ui.hover({ x, y, w: third, h: CH })) ui.tip = 'Caught';
+    if (ui.hover({ x: x + third + 4, y, w: third, h: CH })) ui.tip = 'Biggest';
+    if (ui.hover({ x: x + third * 2 + 8, y, w: third, h: CH })) ui.tip = 'First catch';
+    y += CH + 3;
     let vx = x;
     for (const v of vs) {
       const label = MUTATIONS[v]?.name || v;

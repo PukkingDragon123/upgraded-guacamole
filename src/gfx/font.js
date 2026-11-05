@@ -1,4 +1,6 @@
 // Hand-authored bitmap fonts. Glyph rows are separated by '|', '#' = ink.
+// Faces: 'small' (5 px caps, uppercase), 'normal' (7 px caps), 'big' (phase 6: bold 9 px caps for the enlarged UI;
+// pick faces through uiFont()/fitFont() in src/ui/aero.js so they follow the Settings > UI size choice).
 // Inline sprite tokens like {aero} / {coin} (the Aero drop) are supported by drawText via registerInlineIcon.
 
 import { makeCanvas, ctxOf } from '../core/canvas.js';
@@ -150,9 +152,51 @@ function buildFont(def) {
   return { ...def, atlas: canvas, glyphs, tints: new Map(), atlasH };
 }
 
+// [phase6:ui] 'big': a bold 9 px cap-height face for the enlarged UI (x-height 6, 3 px descenders, 2 px stems).
+// Derived from the normal glyphs (rows 1 and 5 doubled, a middle column inserted on 4-wide glyphs, emboldened one
+// pixel to the right) plus hand-drawn overrides where diagonals would clog up.
+const BIG_OVERRIDES = {
+  M: '##...##|###.###|#######|##.#.##|##.#.##|##...##|##...##|##...##|##...##',
+  N: '##...##|###..##|###..##|####.##|##.####|##..###|##..###|##...##|##...##',
+  W: '##...##|##...##|##...##|##...##|##.#.##|##.#.##|#######|###.###|##...##',
+  V: '##..##|##..##|##..##|##..##|##..##|##..##|.####.|.####.|..##..',
+  m: '........|........|........|#######.|##.##.##|##.##.##|##.##.##|##.##.##|##.##.##',
+  v: '......|......|......|##..##|##..##|##..##|##..##|.####.|..##..',
+  w: '........|........|........|##....##|##....##|##.##.##|##.##.##|########|.##..##.',
+  x: '......|......|......|##..##|.####.|..##..|..##..|.####.|##..##',
+  c: '.....|.....|.....|.####|##...|##...|##...|##...|.####',
+  7: '######|....##|....##|...##.|...##.|..##..|..##..|..##..|..##..',
+  '+': '......|......|..##..|..##..|######|..##..|..##..|......|......',
+  '*': '......|.#..#.|..##..|######|..##..|.#..#.|......|......|......',
+  '%': '##...##|##..##.|...##..|...##..|..##...|..##...|.##..##|##...##|.......',
+  $: '..##..|.#####|##....|##....|.####.|....##|....##|#####.|..##..',
+  '#': '.##.##.|.##.##.|#######|.##.##.|.##.##.|#######|.##.##.|.##.##.|.......',
+  '×': '......|......|##..##|.####.|..##..|.####.|##..##|......|......',
+  '•': '....|....|....|.##.|####|####|.##.|....|....',
+};
+function bigGlyphs() {
+  const ROWS = [0, 1, 1, 2, 3, 4, 5, 5, 6];
+  const out = {};
+  for (const [ch, src] of Object.entries(NORMAL_DEF.glyphs)) {
+    if (BIG_OVERRIDES[ch]) { out[ch] = BIG_OVERRIDES[ch]; continue; }
+    const rows = src.split('|');
+    let r = ROWS.map((i) => rows[i]);
+    if (rows.length === 9) r.push(rows[7], rows[7], rows[8]);
+    else if (rows.length === 8) r.push(rows[7], rows[7]);
+    const w = r[0].length;
+    const cols = w === 4 ? [0, 1, 1, 2, 3] : [...Array(w).keys()];
+    r = r.map((row) => cols.map((c) => row[c]).join(''));
+    r = r.map((row) => { let s = ''; for (let x = 0; x <= row.length; x++) s += row[x] === '#' || row[x - 1] === '#' ? '#' : '.'; return s; });
+    out[ch] = r.join('|');
+  }
+  return out;
+}
+const BIG_DEF = { height: 9, descent: 3, lineHeight: 14, spacing: 1, space: 4, glyphs: bigGlyphs() };
+
 export const FONTS = {
   normal: buildFont(NORMAL_DEF),
   small: buildFont(SMALL_DEF),
+  big: buildFont(BIG_DEF), // [phase6:ui]
 };
 
 function tintAtlas(font, color) {
@@ -247,7 +291,7 @@ function blit(ctx, text, x, y, font, color, scale, wave, time, icons = true) {
 
 /**
  * drawText(ctx, text, x, y, opts)
- * opts: color, font ('normal'|'small'), align ('left'|'center'|'right'), scale,
+ * opts: color, font ('normal'|'small'|'big'), align ('left'|'center'|'right'), scale,
  *       shadow (color), outline (color), wave (px), time
  */
 export function drawText(ctx, text, x, y, opts = {}) {

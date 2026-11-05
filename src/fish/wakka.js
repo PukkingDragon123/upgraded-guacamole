@@ -9,7 +9,8 @@
 import { rng } from '../core/rng.js';
 import { clamp } from '../core/math.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
-import { voxelOrb } from '../gfx/voxelfish.js';
+import { lpOrb } from './lowpolyfish.js'; // [phase6:creatures] low-poly pellet orbs
+const voxelOrb = (r, hex, glow) => lpOrb(r, hex, glow) || { canvas: makeCanvas(1, 1), ax: 0, ay: 0 };
 
 const GRID = 24;        // grid cell (logical px)
 const SPEED = 62;       // px/s along the grid

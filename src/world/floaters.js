@@ -190,6 +190,11 @@ export class Floaters {
     try { const v = this.game.ocean.floorAt(x, z); return Number.isFinite(v) ? v : this.H - 40; } catch { return this.H - 40; }
   }
 
+  floorUnder(x, y, z) {
+    try { const v = this.game.ocean.floorUnder?.(x, y, z); if (Number.isFinite(v)) return v; } catch { /* older ocean */ }
+    return this.floorAt(x, z);
+  }
+
   // surface span the boxes may use (the (OS)cean pier fences off its end)
   span() {
     const W = this.W;
@@ -205,9 +210,9 @@ export class Floaters {
     return i < 0 ? 0.3 : i / Math.max(1, CANON_ORDER.length - 1);
   }
 
-  pickTier(colDepth) {
+  pickTier(colDepth, extra = 0) {
     const order = tierOrder();
-    const d = this.depthK(), k = clamp01(colDepth);
+    const d = this.depthK() + extra, k = clamp01(colDepth); // extra: [phase6:oceans] deeper zones hide better boxes
     const luck = clamp(Number(this.game.stats?.crateLuck) || 0, 0, 3);
     const boost = [0, 1.4 * d + 1.1 * k, 3 * d + 2.2 * k, 6 * d + 3.5 * k];
     const items = order.map((t, i) => [t, (BASE_W[Math.min(i, 3)] ?? 1) * (1 + (boost[Math.min(i, 3)] || 0)) * (i >= 2 ? 1 + luck : 1)]);
@@ -217,9 +222,20 @@ export class Floaters {
   spawn() {
     const r = this.rng, W = this.W, H = this.H;
     const s = this.surfaceY();
-    const surface = s !== null && s > -40 && r.chance(0.55);
+    // [phase6:oceans] while the camera is down in a deep zone, boxes drift there (rarer tiers deeper)
+    let zone = null, extra = 0;
+    try { zone = this.game.ocean?.camZone?.(); } catch { zone = null; }
+    const deep = !!zone?.deep;
+    const surface = s !== null && s > -40 && r.chance(deep ? 0.08 : 0.55);
     let x, y, z, colDepth;
-    if (surface) {
+    if (deep && !surface) {
+      const v = this.game.world?.view;
+      x = clamp(v ? r.float(v.x0 + 24, v.x1 - 24) : r.float(80, W - 50), 80, W - 50); z = r.float(0.1, 0.75);
+      const bot = zone.id === 'abyss' ? (this.game.ocean.deepBottom?.() ?? zone.y1) - 70 : zone.y1 - 30;
+      y = r.float(zone.top + 30, Math.max(zone.top + 40, bot));
+      colDepth = 1;
+      extra = { twilight: 0.3, midnight: 0.7, abyss: 1.3 }[zone.id] || 0;
+    } else if (surface) {
       const [lo, hi] = this.span();
       x = r.float(lo, hi); z = r.float(0.04, 0.26); colDepth = 0; y = s;
     } else {
@@ -229,7 +245,7 @@ export class Floaters {
       colDepth = r.float(0, 1) ** 0.8;
       y = lerp(top, bot, colDepth);
     }
-    const tier = this.pickTier(surface ? 0 : colDepth);
+    const tier = this.pickTier(surface ? 0 : colDepth, extra);
     const kinds = KINDS[tier] || KINDS[TIERS_FALLBACK[clamp(tierOrder().indexOf(tier), 0, 3)]] || KINDS.crate;
     let kind = r.weighted(kinds, (k) => k[1])[0];
     if (kind === 'bottle' && !surface && r.chance(0.5)) kind = 'crate';
@@ -261,7 +277,8 @@ export class Floaters {
     const [lo, hi] = this.span();
     // keep 1-4 on screen
     this.spawnT -= dt;
-    const active = this.list.filter((f) => !f.out).length;
+    const v = this.game.world?.view, cy = v ? (v.y0 + v.y1) / 2 : 0;
+    const active = this.list.filter((f) => !f.out && (!v || f.surface || Math.abs(f.y - cy) < 360)).length; // [phase6:oceans] per depth
     if (this.spawnT <= 0) {
       if (active < this.want) this.spawn();
       this.spawnT = active + 1 < this.want ? this.rng.float(1.5, 4) : this.rng.float(7, 16);
@@ -300,7 +317,7 @@ export class Floaters {
       } else {
         f.y = f.y0 + Math.sin(this.t * 0.45 + f.ph) * 5 - (f.out ? (1 - f.fade) * 10 : 0);
         f.roll = Math.sin(this.t * 0.7 + f.ph) * 8;
-        const fl = this.floorAt(f.x, f.z) - 24;
+        const fl = this.floorUnder(f.x, f.y0, f.z) - 24; // [phase6:oceans] the floor under the box (shelf or abyss)
         if (f.y > fl) f.y0 -= f.y - fl;
         if (s !== null && f.y < s + 30) f.y0 += s + 30 - f.y;
         if (f.x < -40 || f.x > W + 40) { f.out = true; f.fade = 0; }

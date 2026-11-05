@@ -1,25 +1,25 @@
 // The cinematic opening (phase 5, Intro agent): a FULLY 3D, interactive Frutiger Aero fishing trailer.
 // A real perspective camera (position, yaw, pitch, roll and field of view per frame) flies through a WebGL2 voxel
 // world rendered by src/gfx/voxgl.js: every island hill, wind turbine, glass tower, cloud, the boat, the seabed
-// meadow and the floating 3D Alagard lettering is a voxel mesh; fish (the realistic voxel fish renderer), the
-// bubble person and Clip are drawn by their own voxel renderers into a sprite atlas each frame and stand in the
-// world as depth-tested, fogged camera-facing billboards at the angle the camera sees them from.
+// meadow and the floating 3D Alagard lettering is a voxel mesh; fish, the bubble person and Bubbles the low-poly
+// seal guide (gfx/seal.js, phase 6 Guide agent) are drawn by their own renderers into a sprite atlas each frame and
+// stand in the world as depth-tested, fogged camera-facing billboards at the angle the camera sees them from.
 // Effects: HDR bloom, god rays, analytic lens flares, depth of field on far layers, chromatic aberration, zoom
 // blur on crash zooms, caustics, a glossy reflective sea with shore foam, 3D splash droplets, bubbles and
 // sparkles, water drops and bubbles refracting on the lens.
 //
 // Beats (story seconds, INTRO_T). At four of them the camera crash-zooms in, big floating 3D text appears and
-// Clip (the paperclip guide, gfx/npcs.js) talks through the dialogue system (game/dialogue.js); the story waits
+// Bubbles (the fat bubble seal guide, gfx/seal.js) talks through the dialogue system (game/dialogue.js); the story waits
 // for the player's response bubbles (click, or keys 1/2/3) while the camera keeps drifting:
 //   sweep  fly in low over the sea to the (OS)cean island: grass-and-flower hills, turbines, the glass city in
 //          its bubble, the green globe
-//   clip   a bubble pops out of the sea: Clip! -> greeting (sets Clip's mood) and your angler name
+//   seal   a bubble pops out of the sea: Bubbles the seal, riding it! -> greeting (sets its mood) and your angler name
 //   boat   swoop to the bubble person's boat -> pick its paint (the boat repaints)
 //   cast   the cast, the bobber lands; follow the line under the surface
 //   fish   schools of realistic fish, caustics, the seabed meadow; zoom on the first fish -> pick a first bait
 //   strike a big fish rises from the blue, strikes (flash, slow motion) and surges
 //   breach cut: it bursts out of the sea toward the camera, drops hit the lens
-//   logo   the glossy 3D FISHTOP logo over the bay, a flare sweep; Clip: "Let's fish!" -> hand-off
+//   logo   the glossy 3D FISHTOP logo over the bay, a flare sweep; Bubbles: "Let's fish!" -> hand-off
 //
 //   const intro = new Intro3D({W, H, input, audio, look, boat, music, state, lowPower,
 //                              onChoice(key, value, picks), onHandoff, onDone});
@@ -40,6 +40,7 @@ import * as AE from '../ui/aero.js';
 import * as UIC from '../gfx/uiicons.js';
 import * as CHAR from '../gfx/character.js';
 import * as NPC from '../gfx/npcs.js';
+import { drawSeal, warmSeal, sealSize, SEAL_INFO } from '../gfx/seal.js';
 import * as BM from '../world/boatmodels.js';
 import * as RIG from '../gfx/fishrig.js';
 import * as SC from '../gfx/spritecache.js';
@@ -50,8 +51,9 @@ import { swellAt, SWELLS, waterPalette } from '../world/watersim.js'; // the Wat
 // ------------------------------------------------------------------------------------------------ timeline
 export const INTRO_T = {
   sweep: 0,
-  pop: 4.6,        // a bubble surfaces and pops: Clip
-  clip: 5.3,       // beat: greeting + name
+  pop: 4.6,        // a bubble surfaces: Bubbles the seal rides it
+  seal: 5.3,       // beat: greeting + name
+  clip: 5.3,       // (old name of the seal beat)
   swoop: 5.4,
   boat: 7.6,       // beat: boat paint
   cast: 8.0,       // the bubble person casts
@@ -70,7 +72,7 @@ export const INTRO_T = {
 };
 const T = INTRO_T;
 const END = T.out1;
-const BEATS = ['clip', 'boat', 'fish', 'final'];
+const BEATS = ['seal', 'boat', 'fish', 'final'];
 
 // ------------------------------------------------------------------------------------------------ the world
 // Units: one boat voxel. X right, Y up (0 = the sea), Z toward the opening camera (it flies toward -Z).
@@ -78,10 +80,11 @@ const SUN = norm3([-0.38, 0.47, -0.8]);        // the visible sun: high front-le
 const LIGHT = norm3([-0.45, 0.78, 0.44]);      // the key light shading the voxels: front-lit Aero look
 const SUN_COL = [2.1, 1.92, 1.66];
 const ISLE = { x: 0, z: -2250, vox: 10, NX: 240, NY: 46, NZ: 104, sink: 3 }; // sink: voxel rows under the sea (the shelf)
-const CLIP_A = [-60, 3, 300];
-const CLIP_B = [-35, 6, 42];
-const CLIP_C = [66, -54, -59];
-const CLIP_D = [-50, 50, 252];
+const SEAL_A = [-60, 3, 300];   // the guide's spots: popping out of the sea, by the boat, under water, at the logo
+const SEAL_B = [-38, 6, 42];
+const SEAL_C = [66, -54, -59];
+const SEAL_D = [-50, 50, 252];
+const SEAL_WU = 9;              // world units per seal model unit (the seal is ~22 units long)
 const BOBBER = [70, 0, -40];
 const LURE_Y = -40;
 const SEABED = { x: -300, z: -500, vox: 5, NX: 140, NZ: 130, y: -200 };
@@ -94,7 +97,7 @@ const SHOTS = [
     [0.0, -760, 420, 2300, 180, 70, -2250, 48, -2],
     [2.3, -400, 170, 1250, 70, 80, -2250, 46, -5],
     [4.2, -110, 34, 640, -56, 16, 280, 48, -3],
-    [T.clip, -42, 21, 372, -44, 12, 240, 36, 0],
+    [T.seal, -42, 21, 372, -44, 12, 240, 36, 0],
     [6.3, -76, 40, 196, -6, 12, 50, 42, 3],
     [T.boat, -44, 20, 88, 4, 12, 0, 38, 0],
     [8.7, -66, 30, 118, 30, 8, -20, 46, 0],
@@ -369,8 +372,8 @@ export class Intro3D {
     this.fish = null;
     loadAlagard();
     this.dlg = new Dialogue({
-      audio: this.audio, voice: 'clip', name: 'Clip', vars: { name: 'Angler' },
-      portrait: (ctx, cx, cy, r, d) => NPC.drawNPC(ctx, 'clip', { x: cx + 1, y: cy + r * 1.45, t: this.wall, scale: r / 30, talk: d.talk, mood: d.mood, pose: 'talk', bubble: false, id: 'portrait' }),
+      audio: this.audio, voice: 'fish', name: SEAL_INFO.name, vars: { name: 'Angler' },
+      portrait: (ctx, cx, cy, r, d) => NPC.drawNPC(ctx, 'seal', { portrait: true, x: cx, y: cy, r, t: this.wall, talk: d.talk, mood: d.mood, pose: d.pose, id: 'portrait' }),
     });
     this.resize(o.W || 960, o.H || 540);
   }
@@ -407,7 +410,8 @@ export class Intro3D {
     add(0, 'font', () => (alagardReady() || this.bootT > 3 ? undefined : 'again'));
     add(0.3, 'seabed', () => this.buildSeabed());
     add(0.5, 'logo', () => this.buildLogo());
-    add(1, 'clip', () => { try { NPC.warmNPC?.('clip', { scale: 2.5, facing: 1 }); } catch (e) { /* optional */ } });
+    for (const a of ['idle', 'spin', 'wave', 'clap', 'swim', 'worried']) add(a === 'idle' || a === 'spin' ? 0.4 : 1, 'seal-' + a, () => { try { if (a !== 'swim') warmSeal(96, [a]); warmSeal(64, [a]); } catch (e) { /* optional */ } });
+    add(1, 'seal-portrait', () => { try { warmSeal(sealSize(this.dlg.panelH(Math.round(this.W * 0.8)) * 0.42 * 1.5), ['idle', 'wave'], 'front'); } catch (e) { /* optional */ } });
     add(3, 'char', () => this.warmCharacter());
     return out;
   }
@@ -576,21 +580,21 @@ export class Intro3D {
     const d = this.dlg;
     const done = () => { this.beatsDone.add(id); this.holding = null; this.releaseT = this.wall; };
     const smug = this.picks.mood === 'smug', shy = this.picks.mood === 'surprised';
-    if (id === 'clip') {
-      this.say3D('HELLO!', { palette: 'aqua', anchor: 'clip', dx: 1.5, dy: 0.05, size: 0.12, life: 4.2, px: 2 });
+    if (id === 'seal') {
+      this.say3D('HELLO!', { palette: 'aqua', anchor: 'seal', dx: 1.1, dy: 0.15, size: 0.12, life: 4.2, px: 2 });
       d.script([
         { text: 'Whoa! A new angler in the (OS)cean!', mood: 'excited', pose: 'wave', hold: 1.4 },
-        { text: "I'm Clip. I hold things together... mostly fishing lines.", mood: 'happy', pose: 'talk', choices: [
-          { text: 'Hi, Clip!', value: 'happy', mood: 'happy', reply: "Aww, a polite one! We'll be great pals." },
-          { text: 'A talking paperclip?', value: 'smug', mood: 'smug', reply: 'A talking FISHING paperclip. Totally different.' },
-          { text: 'Can you even fish?', value: 'surprised', mood: 'surprised', reply: "Can I fish?! I'm basically a hook with ambition!" },
+        { text: "I'm Bubbles! Professional seal. Amateur bubble-rider.", mood: 'happy', pose: 'talk', choices: [
+          { text: 'Hi, Bubbles!', value: 'happy', mood: 'happy', reply: "Aww, a polite one! We'll be great pals." },
+          { text: 'A talking seal?', value: 'smug', mood: 'smug', reply: 'A talking FISHING seal. Totally different.' },
+          { text: 'Can you even fish?', value: 'surprised', mood: 'surprised', reply: "Can I fish?! Fish is my favourite food group!" },
         ], onChoose: (c) => { this.pick('mood', c.value); this.response(c.text); } },
         { text: 'So... what should I call you?', mood: 'happy', pose: 'point', choices: [
           { text: 'Captain Bubbles', value: 'Captain Bubbles' }, { text: 'Reel Deal', value: 'Reel Deal' }, { text: 'Finn', value: 'Finn' },
         ], onChoose: (c) => {
           this.pick('name', c.value);
           d.vars.name = c.value;
-          this.say3D(c.value.toUpperCase(), { palette: 'leaf', anchor: 'clip', dx: 1.5, dy: 0.05, size: 0.1, life: 3.2, px: 2 });
+          this.say3D(c.value.toUpperCase(), { palette: 'leaf', anchor: 'seal', dx: 1.1, dy: 0.15, size: 0.1, life: 3.2, px: 2 });
           d.queue.unshift({ raw: '{name}! I love it. Come on, your boat is waiting!', mood: 'excited', pose: 'cheer', hold: 1.2 });
         } },
       ], done);
@@ -645,7 +649,7 @@ export class Intro3D {
     }
   }
 
-  // spawn floating 3D text: anchor = 'clip' | 'boat' | 'first' | 'cam' | [x, y, z]; dx / dy offsets in subject sizes
+  // spawn floating 3D text: anchor = 'seal' | 'boat' | 'first' | 'cam' | [x, y, z]; dx / dy offsets in subject sizes
   say3D(text, o = {}) {
     if (!this.E) { this.texts.push({ text, o, t0: this.wall, flat: true }); return; }
     const T3 = buildText3D(text, { size: 16, px: o.px ?? 2, depth: o.px === 1 ? 4 : 5, palette: o.palette || 'aqua', outline: o.px === 1 ? 1 : 0.5 });
@@ -720,8 +724,8 @@ export class Intro3D {
     if (this.cue('start', 0)) { try { this.audio?.setMusic?.(this.o.music || 'oscean'); } catch (e) { /* optional */ } this.sfx('travel_whoosh', { vol: 0.35, pitch: 0.7 }); }
     if (this.cue('pop', T.pop)) {
       this.sfx('bubble', { vol: 0.8 }); this.sfx('boing', { vol: 0.5, pitch: 1.4 });
-      this.splash([CLIP_A[0], 0, CLIP_A[2]], 0.5);
-      this.bubbleBurst([CLIP_A[0], 4, CLIP_A[2]], 26, 7);
+      this.splash([SEAL_A[0], 0, SEAL_A[2]], 0.5);
+      this.bubbleBurst([SEAL_A[0], 4, SEAL_A[2]], 26, 7);
     }
     if (this.cue('swoop', T.swoop)) this.sfx('travel_whoosh', { vol: 0.45, pitch: 1.1 });
     if (this.cue('cast', T.cast + 0.3)) this.sfx('cast', { vol: 0.7 });
@@ -833,7 +837,7 @@ export class Intro3D {
 
   // the subject of a beat (the camera orbits it while it holds)
   subject(id, t) {
-    if (id === 'clip') return this.clipPos(t) || CLIP_A;
+    if (id === 'seal') return this.sealPos(t) || SEAL_A;
     if (id === 'boat') return [0, 12, 0];
     if (id === 'fish') return this.firstFishPos(t) || [86, -46, -54];
     if (id === 'final') return LOGO;
@@ -841,37 +845,45 @@ export class Intro3D {
   }
 
   // ---------------------------------------------------------------------------------- the cast
-  clipPos(t) {
+  sealPos(t) {
     if (t < T.pop) return null;
     if (t < T.swoop) {
       const k = inv(T.pop, T.pop + 0.6, t);
-      const y = k < 1 ? lerp(-8, CLIP_A[1], ease.outBack(k)) : CLIP_A[1];
-      return [CLIP_A[0], y, CLIP_A[2]];
+      const y = k < 1 ? lerp(-10, SEAL_A[1], ease.outBack(k)) : SEAL_A[1];
+      return [SEAL_A[0], y, SEAL_A[2]];
     }
     if (t < T.boat) {
       const k = ease.inOutCubic(inv(T.swoop + 0.2, T.boat - 0.2, t));
-      const p = mix3(CLIP_A, CLIP_B, k);
+      const p = mix3(SEAL_A, SEAL_B, k);
       p[1] += Math.sin(k * Math.PI) * 26;
       return p;
     }
-    if (t < T.plunge + 0.35) return add3(CLIP_B, [0, 0, 0]);
+    if (t < T.plunge + 0.35) return add3(SEAL_B, [0, 0, 0]);
     if (t < T.breach) {
       const k = ease.inOutCubic(inv(T.plunge + 0.35, T.under + 0.4, t));
-      return mix3([CLIP_B[0] + 40, -10, CLIP_B[2] - 40], CLIP_C, k);
+      return mix3([SEAL_B[0] + 40, -10, SEAL_B[2] - 40], SEAL_C, k);
     }
     if (t < T.logo) return [-25, 4, 24];
     const k = ease.outBack(inv(T.logo + 0.4, T.logo + 1.2, t));
-    return mix3([CLIP_D[0] - 30, CLIP_D[1] - 60, CLIP_D[2]], CLIP_D, k);
+    return mix3([SEAL_D[0] - 30, SEAL_D[1] - 60, SEAL_D[2]], SEAL_D, k);
   }
 
-  clipPose(t) {
+  // the seal's animation for story time t: {anim, mood, talk, ride (its soap bubble), swim (moving)}
+  sealPose(t) {
     const d = this.dlg;
-    if (this.holding && d.line) return { pose: d.pose || 'talk', mood: d.mood, talk: d.talk };
-    if (t < T.pop + 0.8) return { pose: 'cheer', mood: 'excited', talk: 0 };
-    if (t > T.strike && t < T.breach) return { pose: 'point', mood: 'surprised', talk: 0 };
-    if (t > T.breach && t < T.logo) return { pose: 'cheer', mood: 'excited', talk: 0 };
-    if (t > T.logo) return { pose: 'wave', mood: 'happy', talk: 0 };
-    return { pose: 'idle', mood: this.picks.mood || 'happy', talk: 0 };
+    const moving = (t > T.swoop + 0.2 && t < T.boat - 0.2) || (t > T.plunge + 0.35 && t < T.under + 0.4) || (t > T.logo + 0.4 && t < T.logo + 1.2);
+    if (this.holding && d.line) {
+      const pose = d.pose || 'talk';
+      const anim = pose === 'wave' ? 'wave' : pose === 'cheer' ? 'clap' : pose === 'think' ? 'think' : pose === 'point' ? 'point' : 'idle';
+      return { anim, mood: d.mood, talk: d.talk, ride: 1 };
+    }
+    if (moving) return { anim: 'swim', mood: 'happy', talk: 0, ride: 0, swim: true };
+    if (t < T.pop + 0.9) return { anim: 'spin', mood: 'excited', talk: 0, ride: 1 };
+    if (t > T.strike && t < T.breach) return { anim: 'worried', mood: 'surprised', talk: 0, ride: 0 };
+    if (t > T.breach && t < T.logo) return { anim: 'clap', mood: 'excited', talk: 0, ride: 1 };
+    if (t > T.logo) return { anim: 'wave', mood: 'happy', talk: 0, ride: 1 };
+    const under = t > T.plunge + 0.35 && t < T.breach;
+    return { anim: 'idle', mood: this.picks.mood || 'happy', talk: 0, ride: under ? 0 : 1 };
   }
 
   firstFishPos(t) {
@@ -1166,24 +1178,30 @@ export class Intro3D {
         }
       }
     }
-    // Clip
-    const cp = this.clipPos(t);
+    // Bubbles the seal (a low-poly sprite sheet frame, scaled into the atlas)
+    const cp = this.sealPos(t);
     if (cp) {
       const pr = E.project(cp);
       if (pr) {
-        const ppu = E.ppu(pr[2]);
-        const VU = 0.21; // world units per Clip voxel
-        const vs = this.spriteLevel(ppu * VU, [1, 1.5, 2, 2.5, 3, 4, 5, 6]);
-        const k = vs / VU;
-        const cell = this.atlasCell(64 * vs, 110 * vs);
+        const want = clamp(E.ppu(pr[2]) * SEAL_WU, 8, 220);   // px per seal model unit at its depth
+        const tgt = this.spriteLevel(want, [12, 16, 20, 24, 32, 40, 48, 64, 80, 96, 112, 136, 160, 190, 220]);
+        const P = this.sealPose(t);
+        const size = tgt <= 72 || P.anim === 'swim' ? 64 : 96, sk = tgt / size;
+        const k = tgt / SEAL_WU;                              // atlas px per world unit
+        const cell = this.atlasCell(3.1 * tgt, 3.4 * tgt);
         if (cell) {
-          const P = this.clipPose(t);
+          const nx = this.sealPos(t + 0.05);
+          const mv = nx ? dot3(sub3(nx, cp), E.right) : 0;
+          const facing = P.swim && Math.abs(mv) > 0.05 ? (mv > 0 ? 1 : -1) : cp[0] > this.cam.eye[0] + 8 ? -1 : 1;
           const cx = cell.x + cell.w / 2, by = cell.y + cell.h - 2;
           let A = null;
-          try { A = NPC.drawNPC(this.atlasG, 'clip', { x: cx, y: by, t: w, scale: vs / 1.6, pose: P.pose, mood: P.mood, talk: P.talk, facing: cp[0] > this.cam.eye[0] + 8 ? -1 : 1, id: 'intro' }); } catch (e) { A = null; }
+          const g = this.atlasG;
+          try {
+            A = drawSeal(g, { x: cx, y: by, base: 'bottom', t: w, size, k: sk, anim: P.anim, mood: P.mood, talk: P.talk, facing, ride: P.ride, noseBubble: P.anim === 'clap' ? 1 : 0, point: P.anim === 'point' ? [cx + facing * tgt * 2, by - tgt * 1.6] : null, id: 'intro' });
+          } catch (e) { A = null; }
           bbs.push({ pos: cp, w: cell.w / k, h: cell.h / k, ax: 0.5, ay: 2 / cell.h, uv: this.uvOf(cell), reflect: true, wet: 0.4 });
-          this.clipTop = A?.top ? add3(cp, add3(scl3(E.right, (A.top[0] - cx) / k), scl3(E.upv, (by - A.top[1]) / k))) : add3(cp, [0, 18, 0]);
-          this.clipH = (cell.h / k) * 0.8;
+          this.sealTop = A?.top ? add3(cp, add3(scl3(E.right, (A.top[0] - cx) / k), scl3(E.upv, (by - A.top[1]) / k))) : add3(cp, [0, 18, 0]);
+          this.sealH = (cell.h / k) * 0.6;
         }
       }
     }
@@ -1236,7 +1254,7 @@ export class Intro3D {
       else {
         const a = X.o.anchor;
         let base = null, sub = 16;
-        if (a === 'clip') { base = this.clipTop || this.clipPos(this.t); sub = this.clipH || 16; }
+        if (a === 'seal') { base = this.sealTop || this.sealPos(this.t); sub = this.sealH || 16; }
         else if (a === 'boat') { base = [0, 18, 0]; sub = 30; }
         else if (a === 'first') { base = this.firstFishPos(this.t) || [86, -46, -54]; sub = 14; }
         else if (Array.isArray(a)) base = a;
@@ -1314,7 +1332,7 @@ export class Intro3D {
     P.flares = flares;
     // depth of field: focus on the subject of the shot
     let focus = 0, subj = null;
-    if (this.holding === 'clip' || (t > T.pop && t < T.swoop + 0.6)) subj = this.clipPos(t);
+    if (this.holding === 'seal' || (t > T.pop && t < T.swoop + 0.6)) subj = this.sealPos(t);
     else if (this.holding === 'boat' || (t > T.boat - 0.6 && t < T.cast)) subj = [0, 12, 0];
     else if (this.holding === 'fish') subj = this.firstFishPos(t);
     else if (t > T.shadow && t < T.breach) subj = this.bigFishPos(t)?.p;
@@ -1345,8 +1363,8 @@ export class Intro3D {
     else { g.addColorStop(0, '#1a6ee0'); g.addColorStop(0.5, '#9adcff'); g.addColorStop(0.52, '#3ab4f8'); g.addColorStop(1, '#0a5cc8'); }
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
     if (!under) { AE.drawAeroGlow?.(ctx, W * 0.25, H * 0.2, H * 0.3, '#ffffff', 0.6); AE.drawArcLines?.(ctx, W * 0.7, H * 1.2, H * 0.9, 7, {}); }
-    const P = this.clipPose(t);
-    if (t > T.pop) NPC.drawNPC(ctx, 'clip', { x: W * 0.32, y: H * 0.78, t: w, scale: 2.6, pose: P.pose, mood: P.mood, talk: P.talk, id: 'flat' });
+    const P = this.sealPose(t);
+    if (t > T.pop) drawSeal(ctx, { x: W * 0.32, y: H * 0.78, base: 'bottom', t: w, size: sealSize(H / 540 * 96), anim: P.anim, mood: P.mood, talk: P.talk, ride: P.ride, id: 'flat' });
     for (const X of this.texts) drawText3D(ctx, X.text, W * 0.66, H * 0.36, { t: w, pop: clamp01((w - X.t0) / 0.4), palette: X.o.palette, scale: 2, px: 1 });
     if (t > T.logo) { drawText3D(ctx, 'FISHTOP', W / 2, H * 0.3, { t: w, pop: clamp01((t - T.logo) / 0.5), palette: 'logoBlue', scale: 4, px: 1 }); }
   }
@@ -1372,8 +1390,8 @@ export class Intro3D {
     this.burst = (this.burst || []).filter((b) => this.wall - b.t0 < 0.8);
     // dialogue panel + response bubbles
     if (this.dlg.active) {
-      const pw = Math.min(W - 40, Math.round(W * 0.7)), ph = 66;
-      this.dlg.drawPanel(ctx, { x: Math.round((W - pw) / 2), y: H - bh - ph + 22, w: pw, h: ph, t: this.wall, alpha });
+      const pw = Math.min(W - 40, Math.round(W * 0.8)), ph = this.dlg.panelH(pw);
+      this.dlg.drawPanel(ctx, { x: Math.round((W - pw) / 2), y: H - bh - ph + 22, w: pw, h: ph, t: this.wall, alpha, W });
     }
     // skip pill + sound hint
     if (this.skipT < 0) {

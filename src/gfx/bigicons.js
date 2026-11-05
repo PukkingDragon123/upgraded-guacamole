@@ -1,10 +1,15 @@
-// Big chunky glossy voxel icons for the game menu (the desktop's floating app bubbles), rendered with the
-// voxel ray-caster so they match the world. Frutiger Aero look: bright aqua / grass / white, glossy specular.
-// Every icon has 'normal' | 'hover' | 'active' variants (same canvas size and anchor) and three sizes.
+// Big chunky glossy icons for the game menu / HUD hotbar. Phase 6: glossy LOW-POLY 3D objects (src/gfx/iconmeshes.js)
+// rendered once per (size, angle) with src/gfx/lowpoly.js, post-processed with a crisp selective outline and a soft
+// drop shadow, and cached. Hover animations spin ('full') or wobble ('wobble') the model through cached angle buckets.
+// The phase 3 voxel models below stay as the fallback when WebGL2 is unavailable.
 //
 //   BIG_ICON_IDS, MENU_ICON_IDS
 //   getBigIcon(id, {state = 'normal', small = false, size}) -> {canvas, cx, by}  (cx, by = bottom-centre anchor)
 //     size: 'big' (44, default) | 'menu' (32, fits a 44 px bubble) | 'small' (24) | a number (target px)
+//   iconFrame(id, px, turn = 0) -> {canvas, ox, oy} | null   the 3D icon turned by `turn` (0..1 = one full spin for
+//     'full' models, -1..1 = the wobble range for 'wobble' ones), centred at (ox, oy). Same centre for every turn.
+//   iconSpinMode(id) -> 'full' | 'wobble' | null
+//   rodIcon(rod, px) / gemIcon(color, px) -> canvas | null      3D rod (gear pod, Lab) and rarity gem sprites
 //   drawBigIcon(ctx, id, x, y, {state, small, size, badge, t, squash}) draws with the bottom-centre at (x, y);
 //     badge: number | '!' | null (glossy pill, top-right), squash: -1..1 (press squash / hop stretch)
 //   drawBadge(ctx, x, y, badge, t) (right edge at x, top at y)
@@ -13,10 +18,12 @@ import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { VoxelModel, renderVoxels } from './voxel.js';
 import { unpack, pack, mix, rgbToHex } from '../core/color.js';
 import { hash2, clamp } from '../core/math.js';
-import { drawAeroBadge } from '../ui/aero.js';
+import { drawAeroBadge, setCoinRenderer } from '../ui/aero.js';
+import { lpAvailable, renderMesh, LPMesh } from './lowpoly.js';
+import { ICON_MODELS, ROD_MODEL, GEM_MODEL } from './iconmeshes.js';
 
-export const MENU_ICON_IDS = ['lab', 'aquarium', 'journal', 'inventory', 'wardrobe', 'map', 'bait', 'appsea', 'multiplayer', 'settings'];
-export const BIG_ICON_IDS = [...MENU_ICON_IDS, 'skills', 'shop', 'build', 'research', 'store', 'boatyard', 'mycomputer', 'recycle'];
+export const MENU_ICON_IDS = ['lab', 'aquarium', 'journal', 'inventory', 'wardrobe', 'map', 'bait', 'appsea', 'multiplayer', 'settings', 'quests', 'shop', 'coin'];
+export const BIG_ICON_IDS = [...MENU_ICON_IDS, 'skills', 'build', 'research', 'store', 'boatyard', 'mycomputer', 'recycle'];
 
 const BIG = 44, SMALL = 24, MENU = 32, PAD = 3;
 const SIZES = { big: BIG, small: SMALL, menu: MENU };
@@ -627,6 +634,7 @@ const MODELS = {
   bait: aeroLure, appsea: aeroAppSea, multiplayer: aeroFriends, settings: aeroSettings,
   skills, shop, build, research: aeroLab, store: aeroAppSea, boatyard,
   tank: aeroAquarium, fishdex: aeroFishDex, satchel: aeroSatchel, mycomputer: aeroComputer, recycle: aeroRecycle,
+  quests: aeroFishDex, baitshop: aeroAppSea, // [phase6] voxel stand-ins when WebGL2 (the 3D icons) is unavailable
 };
 
 // ---------------------------------------------------------------- rendering & variants
@@ -683,7 +691,7 @@ function fallbackDef() {
   return { m, yaw: 30, pitch: 25 };
 }
 
-export function getBigIcon(id, opts = {}) {
+function voxelIcon(id, opts = {}) {
   const state = opts.state === 'hover' || opts.state === 'active' ? opts.state : 'normal';
   const small = typeof opts.size === 'number' ? opts.size : SIZES[opts.size] || (opts.small ? SMALL : BIG);
   const key = id + '|' + state + '|' + small;
@@ -706,6 +714,225 @@ export function getBigIcon(id, opts = {}) {
   e = { canvas, cx: Math.round(canvas.width / 2), by };
   cache.set(key, e);
   return e;
+}
+
+// ---------------------------------------------------------------- low-poly 3D icons (phase 6)
+
+const lpDefs = new Map();
+let lpOk = null;
+function lpReady() {
+  if (lpOk === null) { try { lpOk = lpAvailable(); } catch { lpOk = false; } }
+  return lpOk;
+}
+
+// Build (once) a model: recentre its vertices on the origin so spins turn about the object's own axis.
+function prepModel(key, make) {
+  let d = lpDefs.get(key);
+  if (d !== undefined) return d;
+  try {
+    d = make();
+    const meshes = [d.mesh, d.over, d.glass].filter(Boolean);
+    const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+    for (const m of meshes) for (let k = 0; k < 3; k++) { min[k] = Math.min(min[k], m.bounds.min[k]); max[k] = Math.max(max[k], m.bounds.max[k]); }
+    const c = [0, 1, 2].map((k) => (min[k] + max[k]) / 2);
+    for (const m of meshes) {
+      for (let i = 0; i < m.data.length; i += 11) { m.data[i] -= c[0]; m.data[i + 1] -= c[1]; m.data[i + 2] -= c[2]; }
+    }
+    d.radius = Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) / 2 || 1;
+    d.fits = new Map();
+  } catch (e) {
+    console.error(e);
+    d = null;
+  }
+  lpDefs.set(key, d);
+  return d;
+}
+
+// rotate vertex data about the y axis (or z for flat 'spinAxis: z' models) -> a throwaway LPMesh
+function turned(mesh, a, axis = 'y') {
+  const src = mesh.data, d = new Float32Array(src.length);
+  const c = Math.cos(a), s = Math.sin(a);
+  for (let i = 0; i < src.length; i += 11) {
+    for (let k = 0; k < 11; k++) d[i + k] = src[i + k];
+    for (const o of [0, 3]) {
+      const x = src[i + o], y = src[i + o + 1], z = src[i + o + 2];
+      if (axis === 'z') { d[i + o] = x * c - y * s; d[i + o + 1] = x * s + y * c; }
+      else { d[i + o] = x * c + z * s; d[i + o + 2] = -x * s + z * c; }
+    }
+  }
+  return new LPMesh(d, mesh.count, mesh.bounds);
+}
+
+// projected 2D bounds of the (yawed, pitched) model
+function projBounds(def, yaw) {
+  const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(def.pitch || 0), sp = Math.sin(def.pitch || 0);
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const m of [def.mesh, def.over, def.glass]) {
+    if (!m) continue;
+    const d = m.data;
+    for (let i = 0; i < d.length; i += 11) {
+      let x = d[i], y = d[i + 1], z = d[i + 2];
+      if (def.spinAxis === 'z') { const xx = x * cy - y * sy; y = x * sy + y * cy; x = xx; }
+      else { const xx = x * cy + z * sy; z = -x * sy + z * cy; x = xx; }
+      const yy = cp * y - sp * z;
+      x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, yy); y1 = Math.max(y1, yy);
+    }
+  }
+  return { x0, x1, y0, y1 };
+}
+
+const ICON_LIGHT = { light: [-0.55, 0.8, 0.7], ambient: 0.5, spec: 0.6, shine: 14, rim: 0.45, rimColor: '#e4fbff' };
+
+// crisp selective outline + soft drop shadow around a rendered sprite (in place, on a padded canvas)
+function finishSprite(src, w, h) {
+  const c = makeCanvas(w, h);
+  const g = ctxOf(c);
+  g.drawImage(src, 0, 0);
+  const img = g.getImageData(0, 0, w, h);
+  const d = new Uint32Array(img.data.buffer);
+  const solid = new Uint8Array(w * h);
+  for (let i = 0; i < d.length; i++) {
+    const a = d[i] >>> 24;
+    if (a > 70) solid[i] = 1; // translucent glass stays translucent; faint fringes are dropped (crisp pixel edges)
+    else d[i] = 0;
+  }
+  const out = new Uint32Array(d);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x;
+    if (solid[i]) continue;
+    let n = -1;
+    if (x > 0 && solid[i - 1]) n = i - 1; else if (x < w - 1 && solid[i + 1]) n = i + 1; else if (y > 0 && solid[i - w]) n = i - w; else if (y < h - 1 && solid[i + w]) n = i + w;
+    if (n < 0) continue;
+    const [r, gg, b] = unpack(d[n]);
+    out[i] = pack(mix(rgbToHex(Math.round(r * 0.3), Math.round(gg * 0.32), Math.round(b * 0.42)), '#06203e', 0.45));
+  }
+  for (let i = 0; i < d.length; i++) d[i] = out[i];
+  g.putImageData(img, 0, 0);
+  // drop shadow under everything
+  const sh = makeCanvas(w, h), sg = ctxOf(sh);
+  sg.drawImage(c, 1, 2);
+  sg.globalCompositeOperation = 'source-in';
+  sg.fillStyle = 'rgba(4,30,60,0.3)';
+  sg.fillRect(0, 0, w, h);
+  sg.globalCompositeOperation = 'source-over';
+  sg.drawImage(c, 0, 0);
+  return sh;
+}
+
+function renderDef(def, px, turn) {
+  // fit the static pose into px (cached per size)
+  let fit = def.fits.get(px);
+  if (!fit) {
+    const b = projBounds(def, def.yaw || 0);
+    const s = (px - 4) / Math.max(b.x1 - b.x0, b.y1 - b.y0, 0.01);
+    const bx = (b.x0 + b.x1) / 2, by = (b.y0 + b.y1) / 2, p = def.pitch || 0;
+    fit = { s, center: [bx, Math.cos(p) * by, -Math.sin(p) * by], S: Math.round(px * 1.3) + 8 };
+    def.fits.set(px, fit);
+  }
+  const S = fit.S;
+  const a = (def.yaw || 0) + turn;
+  const o = { ...ICON_LIGHT, ...(def.look || {}), w: S, h: S, pitch: def.pitch || 0, yaw: 0, scale: fit.s, center: fit.center };
+  const mesh = turned(def.mesh, def.spinAxis === 'z' ? turn : a, def.spinAxis || 'y');
+  let base = renderMesh(mesh, o);
+  mesh.dispose();
+  if (!base) return null;
+  if (def.over) {
+    const om = turned(def.over, def.spinAxis === 'z' ? turn : a, def.spinAxis || 'y');
+    const oc = renderMesh(om, o);
+    om.dispose();
+    if (oc) { const c2 = makeCanvas(S, S), g2 = ctxOf(c2); g2.drawImage(base, 0, 0); g2.drawImage(oc, 0, 0); base = c2; }
+  }
+  if (def.glass) {
+    const gm = turned(def.glass, def.spinAxis === 'z' ? turn : a, def.spinAxis || 'y');
+    const gl = renderMesh(gm, { ...o, alpha: def.glassAlpha ?? 0.4, spec: 0.9, shine: 30, rim: 0.7 });
+    gm.dispose();
+    if (gl) { const c2 = makeCanvas(S, S), g2 = ctxOf(c2); g2.drawImage(base, 0, 0); g2.drawImage(gl, 0, 0); base = c2; }
+  }
+  return finishSprite(base, S, S);
+}
+
+const frameCache = new Map();
+function frameOf(key, make, px, turn) {
+  px = Math.max(8, Math.round(px));
+  const def = prepModel(key, make);
+  if (!def) return null;
+  const steps = def.spin === 'full' ? 24 : 12;
+  let q = def.spin === 'full' ? Math.round((((turn % 1) + 1) % 1) * steps) % steps : Math.round(Math.max(-1, Math.min(1, turn)) * (steps / 2));
+  const k = key + '|' + px + '|' + q;
+  let e = frameCache.get(k);
+  if (e !== undefined) return e;
+  const ang = def.spin === 'full' ? (q / steps) * Math.PI * 2 : (q / (steps / 2)) * 0.62;
+  let canvas = null;
+  try { canvas = renderDef(def, px, ang); } catch (err) { console.error(err); canvas = null; }
+  e = canvas ? { canvas, ox: canvas.width / 2, oy: canvas.height / 2 } : null;
+  frameCache.set(k, e);
+  if (frameCache.size > 900) frameCache.delete(frameCache.keys().next().value);
+  return e;
+}
+
+export function iconSpinMode(id) {
+  if (!ICON_MODELS[id] || !lpReady()) return null;
+  return prepModel(id, ICON_MODELS[id])?.spin || null;
+}
+
+export function iconFrame(id, px, turn = 0) {
+  if (!ICON_MODELS[id] || !lpReady()) return null;
+  return frameOf(id, ICON_MODELS[id], px, turn);
+}
+setCoinRenderer((px, turn) => iconFrame('coin', px, turn)); // drawAeroCoin's 3D drop
+
+// crop a centred square of `px + pad` from a frame (static icons keep their old tight footprint)
+function cropFrame(f, px, pad = 6) {
+  const S = Math.min(f.canvas.width, px + pad);
+  const c = makeCanvas(S, S);
+  ctxOf(c).drawImage(f.canvas, Math.round(S / 2 - f.ox), Math.round(S / 2 - f.oy));
+  return c;
+}
+
+export function rodIcon(rod, px = 32) {
+  if (!lpReady() || !rod) return null;
+  const k = 'rod:' + (rod.id || rod.color || 'x') + '|' + px;
+  let c = frameCache.get(k);
+  if (c === undefined) {
+    const f = frameOf('rod:' + (rod.id || 'x'), () => ROD_MODEL(rod), px, 0);
+    c = f ? cropFrame(f, px) : null;
+    frameCache.set(k, c);
+  }
+  return c;
+}
+
+export function gemIcon(color, px = 16) {
+  if (!lpReady()) return null;
+  const k = 'gemc:' + color + '|' + px;
+  let c = frameCache.get(k);
+  if (c === undefined) {
+    const f = frameOf('gem:' + color, () => GEM_MODEL(color), px, 0);
+    c = f ? cropFrame(f, px, 4) : null;
+    frameCache.set(k, c);
+  }
+  return c;
+}
+
+export function getBigIcon(id, opts = {}) {
+  const px = typeof opts.size === 'number' ? opts.size : SIZES[opts.size] || (opts.small ? SMALL : BIG);
+  if (ICON_MODELS[id] && lpReady()) {
+    const state = opts.state === 'hover' || opts.state === 'active' ? opts.state : 'normal';
+    const key = 'lp|' + id + '|' + state + '|' + px;
+    let e = cache.get(key);
+    if (e) return e;
+    const f = frameOf(id, ICON_MODELS[id], px, 0);
+    if (f) {
+      const canvas = state === 'normal' ? cropFrame(f, px) : variant(cropFrame(f, px), state);
+      const g = ctxOf(canvas);
+      const data = g.getImageData(0, 0, canvas.width, canvas.height).data;
+      let by = canvas.height;
+      outer: for (let y = canvas.height - 1; y >= 0; y--) for (let x = 0; x < canvas.width; x++) if (data[(y * canvas.width + x) * 4 + 3] > 100) { by = y + 1; break outer; }
+      e = { canvas, cx: Math.round(canvas.width / 2), by };
+      cache.set(key, e);
+      return e;
+    }
+  }
+  return voxelIcon(id, opts);
 }
 
 export function drawBadge(ctx, x, y, badge, t = 0) {

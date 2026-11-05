@@ -10,6 +10,7 @@ import { WelcomePanel } from './welcome.js';
 import { registerBuildPanels } from '../build/panels.js';
 import { WardrobePanel } from './wardrobe.js';
 import { MultiplayerPanel } from './multiplayer.js'; // [phase3:online]
+import { registerQuestPanels } from './quests.js'; // [phase6:lab] Quest Log + chapter celebration
 
 export function registerPanels(ui) {
   for (const P of [RevealPanel, BaitPanel, JournalPanel, MapPanel, SettingsPanel, WelcomePanel, WardrobePanel]) ui.register(new P());
@@ -20,4 +21,5 @@ export function registerPanels(ui) {
   ui.register(new LabWidget()); // [phase3:lab] id 'labwidget' (game.build opens it while research runs)
   registerBuildPanels(ui); // inventory, package, building, buildtray
   ui.register(new MultiplayerPanel()); // [phase3:online] id 'multiplayer'
+  registerQuestPanels(ui); // [phase6:lab] ids 'quests' (key Q) and 'chapter'
 }

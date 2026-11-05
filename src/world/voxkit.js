@@ -12,15 +12,17 @@ import { pack } from '../core/color.js';
 // perspective scale and fog only.
 export const WORLD_YAW = 0;
 export const WORLD_PITCH = 24;
+const HI_R = 3; // [phase6:oceans] the ~3x camera: library props get a 3x twin
 
 // Library prop rendered with the world camera.
 export function worldProp(id, opts = {}) {
   const p = getProp(id, { ...opts, yaw: WORLD_YAW, pitch: WORLD_PITCH });
-  // p.hi(): rendered at twice the pixel scale for the zoomed-in camera (DepthScene hi-res pass)
+  // p.hi(): rendered at HI_R x the pixel scale for the zoomed-in camera (DepthScene hi-res pass; p.hiR tells it)
   if (p && !p.hi) {
-    const hiOpts = { ...opts, scale: (opts.scale ?? 1) * 2, yaw: WORLD_YAW, pitch: WORLD_PITCH };
+    const hiOpts = { ...opts, scale: (opts.scale ?? 1) * HI_R, yaw: WORLD_YAW, pitch: WORLD_PITCH };
     Object.defineProperty(p, 'hi', { value: () => worldProp(id, hiOpts), enumerable: false, configurable: true });
     Object.defineProperty(p, 'hiSteps', { value: () => getPropSteps(id, hiOpts), enumerable: false, configurable: true });
+    Object.defineProperty(p, 'hiR', { value: HI_R, enumerable: false, configurable: true });
   }
   return p;
 }

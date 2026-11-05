@@ -12,7 +12,7 @@ import { getUiIcon } from '../gfx/uiicons.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { drawCharacter } from '../gfx/character.js';
 import { discSprite, glowSprite, pixelLine, gbubbleSprite } from '../gfx/particles.js';
-import { glossText, drawGlassPill } from './cinematics.js';
+import { glossText, drawGlassPill, glossFor } from './cinematics.js';
 
 const INK = '#0c3a52';
 
@@ -153,22 +153,25 @@ function mixHex(a, b, t) {
 }
 
 // ------------------------------------------------------------------ bite cue: a big glossy "!" bubble
-// above the fish, a shrinking timer ring and a pulsing left-mouse glyph. No words.
+// above the fish, a shrinking timer ring, spin arrows racing round it (green once the gear is in the hook band,
+// gold dots for the hook-set meter) and the spin loop at the cursor. No words.
 export function drawBiteCue(ctx, F) {
-  const f = F.fish;
+  const f = F.fish, hs = F.hs;
   const k = clamp01(F.biteT / Math.max(0.01, F.biteMax));
   const [sx, sy] = F.toScreen(f.x, f.y);
   const z = F.zoom();
   const t = F.t;
-  const cx = Math.round(sx), cy = Math.round(sy - 22 * f.scale * z - 30);
+  const S = F.H / 540;
+  const cx = Math.round(sx), cy = Math.round(sy - 22 * f.scale * z - 36 * S);
   const pop = 1 + Math.max(0, 0.35 - (1 - k) * 2.5) + Math.sin(t * 30) * 0.05;
+  drawSpinLoop(ctx, F, hs?.inBand ? '#8be04a' : '#ffe27a');
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   ctx.globalAlpha = 0.55 + 0.3 * Math.sin(t * 20);
   ctx.drawImage(glowSprite(34, '#ffe27a'), cx - 34, cy - 34);
   ctx.restore();
   // timer ring
-  const R = 22, n = 64;
+  const R = Math.round(28 * S), n = 80;
   for (let i = 0; i < n; i++) {
     const u = i / n;
     const a = -Math.PI / 2 + u * TAU;
@@ -176,16 +179,60 @@ export function drawBiteCue(ctx, F) {
     ctx.fillStyle = on ? (k < 0.35 ? '#ff6a5a' : '#ffe27a') : 'rgba(12,58,82,0.35)';
     ctx.fillRect(Math.round(cx + Math.cos(a) * R) - 1, Math.round(cy + Math.sin(a) * R) - 1, 3, 3);
   }
-  const b = gbubbleSprite(18);
-  ctx.drawImage(b, cx - 18, cy - 18);
-  const g = glossText('!', 5, 'sun');
+  // spin arrows chasing round the ring: the faster the gear, the faster they run
+  const spin = F.gear.angle * -1, col = hs?.inBand ? '#8be04a' : '#ffffff';
+  for (let j = 0; j < 3; j++) {
+    const a0 = spin + (j * TAU) / 3;
+    for (let i = 0; i < 7; i++) {
+      const a = a0 - i * 0.07 * (F.gear.dir || 1);
+      const rr = R + 6 * S;
+      ctx.fillStyle = INK;
+      ctx.fillRect(Math.round(cx + Math.cos(a) * rr) - 2, Math.round(cy + Math.sin(a) * rr) - 2, i ? 4 : 6, i ? 4 : 6);
+      ctx.fillStyle = rgba(col, 1 - i / 8);
+      ctx.fillRect(Math.round(cx + Math.cos(a) * rr) - 1, Math.round(cy + Math.sin(a) * rr) - 1, i ? 2 : 4, i ? 2 : 4);
+    }
+  }
+  // hook-set meter: gold beads filling the inside of the ring
+  if (hs) {
+    const m = Math.round(hs.set * 16);
+    for (let i = 0; i < 16; i++) {
+      const a = -Math.PI / 2 + (i / 16) * TAU, rr = R - 7 * S;
+      ctx.fillStyle = i < m ? '#ffd23a' : 'rgba(255,255,255,0.25)';
+      ctx.fillRect(Math.round(cx + Math.cos(a) * rr) - 1, Math.round(cy + Math.sin(a) * rr) - 1, 3, 3);
+    }
+  }
+  const br = Math.round(18 * S);
+  const b = gbubbleSprite(br);
+  ctx.drawImage(b, cx - br, cy - br);
+  const g = glossText('!', Math.max(5, Math.round(5 * S)), hs?.inBand ? 'lime' : 'sun');
   ctx.save();
   ctx.translate(cx, cy);
   ctx.scale(pop, pop);
   ctx.drawImage(g.c, Math.round(-g.w / 2 - g.ox), Math.round(-g.h / 2 - g.oy));
   ctx.restore();
-  const mg = mouseHold(Math.floor(t * 8) % 2 === 0);
-  ctx.drawImage(mg, cx + R + 4, cy - 6);
+}
+
+// The player's spin loop at the cursor: a glossy dotted circle that follows the crank centre.
+function drawSpinLoop(ctx, F, col) {
+  const cr = F.crank, t = F.t;
+  if (!cr.active) {
+    const gr = Math.round(18 * (F.H / 540));
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * TAU + t * 6;
+      ctx.fillStyle = rgba(INK, 0.4);
+      ctx.fillRect(Math.round(F.input.x + Math.cos(a) * gr) - 2, Math.round(F.input.y + Math.sin(a) * gr) - 2, 4, 4);
+      ctx.fillStyle = rgba(col, 0.15 + (i / 14) * 0.8);
+      ctx.fillRect(Math.round(F.input.x + Math.cos(a) * gr) - 1, Math.round(F.input.y + Math.sin(a) * gr) - 1, 3, 3);
+    }
+    return;
+  }
+  const R = Math.round(clamp(cr.radius, 10, 70));
+  const n = Math.max(24, R * 2);
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * TAU;
+    ctx.fillStyle = rgba(col, i % 2 ? 0.25 : 0.6);
+    ctx.fillRect(Math.round(cr.cx + Math.cos(a) * R), Math.round(cr.cy + Math.sin(a) * R), 2, 2);
+  }
 }
 
 // Short message near the cursor (external callers: tutorial, overlay toasts) as a glass pill.
@@ -223,9 +270,7 @@ export function drawFightBands(ctx, F, B) {
   drawNamePill(ctx, F, B, 10, 10);
   drawAnglerCam(ctx, F, B);
   ctx.restore();
-  const k = clamp01(B.hudIn * 1.2);
-  const ease = 1 - Math.pow(1 - k, 3);
-  F.reel.draw(ctx, B, ease);
+  F.gear.draw(ctx, B, 1); // the gear keeps its own slide-in (it is already up from the hook-set)
 }
 
 export function drawFightHud(ctx, F, B) {
@@ -261,29 +306,11 @@ function drawStaminaArc(ctx, F, B) {
   if (ex && Math.random() < 0.15) F.fx.glint?.(sx + Math.cos(a0 + Math.random()) * R, sy + Math.sin(a0 + Math.random()) * R, { color: '#ffe27a' });
 }
 
-// ------------------------------------------------------------------ crank loop at the cursor
+// ------------------------------------------------------------------ spin loop at the cursor
 function drawCrankLoop(ctx, F, B) {
-  const cr = F.crank, t = F.t;
   if (B.qte?.active && B.qte.holding) return;
-  if (!cr.active) {
-    // a gentle hint orbit around the cursor
-    const gr = 14;
-    for (let i = 0; i < 12; i++) {
-      const a = (i / 12) * TAU + t * 5;
-      ctx.fillStyle = rgba('#ffffff', 0.08 + (i / 12) * 0.5);
-      ctx.fillRect(Math.round(F.input.x + Math.cos(a) * gr) - 1, Math.round(F.input.y + Math.sin(a) * gr) - 1, 2, 2);
-    }
-    return;
-  }
   const st = B.crankState();
-  const col = st === 'sweet' ? '#8be04a' : st === 'over' ? '#ff9d2e' : '#8ff0ff';
-  const R = Math.round(clamp(cr.radius, 10, 50));
-  const n = Math.max(20, R * 2);
-  for (let i = 0; i < n; i++) {
-    const a = (i / n) * TAU;
-    ctx.fillStyle = rgba(col, i % 2 ? 0.18 : 0.4);
-    ctx.fillRect(Math.round(cr.cx + Math.cos(a) * R), Math.round(cr.cy + Math.sin(a) * R), 1, 1);
-  }
+  drawSpinLoop(ctx, F, st === 'sweet' ? '#8be04a' : st === 'over' ? '#ff9d2e' : '#8ff0ff');
 }
 
 // ------------------------------------------------------------------ directional QTE
@@ -412,26 +439,32 @@ function edgeTint(ctx, W, H, dx, dy, rgb, a) {
 // ------------------------------------------------------------------ name pill
 function drawNamePill(ctx, F, B, x, y) {
   const sp = F.sp, rar = RARITY[sp.rarity] || RARITY.common;
-  const name = sp.name;
-  const nw = measureText(name, 'normal', 1);
+  const S = F.H / 540;
+  const ts = Math.max(2, Math.round(2 * S)); // name text scale: big and glossy
+  const g = glossText(sp.name, ts, glossFor(sp.rarity));
   const stars = rar.stars || 1;
-  const w = nw + 30 + stars * 8;
-  const h = 15;
-  drawPill(ctx, x, y, w, h, '#ffffff', '#bfeaff', INK, 0.88);
-  // rarity gem
-  const gx = x + 9, gy = y + 7;
-  ctx.fillStyle = INK; ctx.fillRect(gx - 4, gy - 4, 9, 9);
-  ctx.fillStyle = rar.dark; ctx.fillRect(gx - 3, gy - 3, 7, 7);
-  ctx.fillStyle = rar.color; ctx.fillRect(gx - 3, gy - 3, 6, 5);
-  ctx.fillStyle = '#ffffff'; ctx.fillRect(gx - 2, gy - 2, 2, 1);
-  drawText(ctx, name, x + 17, y + 4, { color: INK });
   const ic = getUiIcon('star');
-  for (let i = 0; i < stars; i++) if (ic) ctx.drawImage(ic, x + 20 + nw + i * 8, y + 3);
+  const ss = Math.max(1, Math.round(S * 1.5));
+  const starW = ic ? ic.width * ss + 2 : 0;
+  const h = 7 * ts + 12, gem = Math.round(h * 0.62);
+  const w = gem + 14 + g.w + 12 + stars * starW + 10;
+  drawPill(ctx, x, y, w, h, '#ffffff', '#bfeaff', INK, 0.9);
+  // rarity gem
+  const gx = x + 6 + Math.round(gem / 2), gy = y + Math.round(h / 2);
+  const gr = Math.round(gem / 2);
+  ctx.fillStyle = INK; ctx.fillRect(gx - gr - 1, gy - gr - 1, gr * 2 + 3, gr * 2 + 3);
+  ctx.fillStyle = rar.dark; ctx.fillRect(gx - gr, gy - gr, gr * 2 + 1, gr * 2 + 1);
+  ctx.fillStyle = rar.color; ctx.fillRect(gx - gr, gy - gr, gr * 2, Math.round(gr * 1.4));
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(gx - gr + 1, gy - gr + 1, Math.max(2, Math.round(gr * 0.6)), 2);
+  const tx = x + gem + 14;
+  ctx.drawImage(g.c, Math.round(tx - g.ox), Math.round(y + (h - g.h) / 2 - g.oy));
+  if (ic) for (let i = 0; i < stars; i++) ctx.drawImage(ic, Math.round(tx + g.w + 10 + i * starW), Math.round(y + (h - ic.height * ss) / 2), ic.width * ss, ic.height * ss);
   if (F.fish?.rec?.giant || B.heavy > 0) {
     const tag = F.fish?.rec?.giant ? 'GIANT' : `${Math.round(B.kg * 10) / 10} kg`;
-    const tw = measureText(tag, 'small', 1) + 10;
-    drawPill(ctx, x + w + 4, y + 2, tw, 11, B.heavy > 0 ? '#ffd0c8' : '#fff6c0', B.heavy > 0 ? '#ff6a5a' : '#ffd23a', INK, 0.9);
-    drawText(ctx, tag, x + w + 9, y + 5, { font: 'small', color: INK });
+    const tw = measureText(tag, 'normal', ts) + 16;
+    const th = 7 * ts + 8;
+    drawPill(ctx, x + w + 6, y + Math.round((h - th) / 2), tw, th, B.heavy > 0 ? '#ffd0c8' : '#fff6c0', B.heavy > 0 ? '#ff6a5a' : '#ffd23a', INK, 0.92);
+    drawText(ctx, tag, x + w + 14, y + Math.round((h - th) / 2) + 4, { scale: ts, color: INK });
   }
 }
 
@@ -484,7 +517,7 @@ function portholeRing(r) {
 
 function drawAnglerCam(ctx, F, B) {
   const t = F.t;
-  const r = Math.round(clamp(F.H * 0.085, 28, 48));
+  const r = Math.round(clamp(F.H * 0.11, 34, 80));
   const cx = r + 14, cy = F.H - r - 14;
   ctx.save();
   ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.clip();
@@ -509,7 +542,7 @@ function drawAnglerCam(ctx, F, B) {
   let pose = 'reel';
   if (B.event?.name === 'mash' || F.poseHold?.pose === 'yank') pose = 'yank';
   else if (B.qte?.holding || B.surging) pose = 'pull';
-  else if (!F.crank.active) pose = 'idle';
+  else if (F.gear.p < 0.08) pose = 'idle';
   const bob = Math.round(Math.sin(t * 2.2));
   ctx.fillStyle = '#ffffff'; ctx.fillRect(cx - r, wl - 2 + bob, r * 2, 3);
   ctx.fillStyle = '#59c3ff'; ctx.fillRect(cx - r, wl + 1 + bob, r * 2, 2);
