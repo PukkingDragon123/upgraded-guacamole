@@ -229,6 +229,14 @@ function outside(g, room, rnd, fy) {
 
 // ------------------------------------------------------------------ furniture
 function desk(g, glow, T, fy, rnd) {
+  // the Aqua Lamp stands on its own silver base, so its desk top sits a little lower
+  const top = T.d.hood === 'lamp' ? -4.6 : 0;
+  g.push(); g.at(0, top, 0); glow.push(); glow.at(0, top, 0);
+  desk0(g, glow, T, fy - top, rnd);
+  g.pop(); glow.pop();
+}
+
+function desk0(g, glow, T, fy, rnd) {
   const w = Math.max(150, (T.W || 40) + 90), d = Math.max(76, (T.D || 30) + 46);
   g.slab(-w / 2, -4, -d / 2, w / 2, 0, d / 2, 3, { top: '#d2e6f4', side: '#c4dcec', bottom: '#b0c6d8' });
   g.box(-w / 2 + 2, -4.6, d / 2 - 3, w / 2 - 2, -4, d / 2 - 1, AQUA);
@@ -279,6 +287,20 @@ function partition(g, T, fy, R) {
   // a low glossy bench in front
   g.slab(-W * 0.35, fy + 36, zf + 30, W * 0.35, fy + 42, zf + 62, 3, { top: GLOSS, side: '#e2eef6' });
   for (const s of [-1, 1]) { g.push(); g.at(s * W * 0.3, fy, zf + 46); g.cyl(2, 2, 36, 8, CHROME); g.pop(); }
+  // aqua light columns and round porthole windows either side, long planters with ferns along the wall
+  for (const s of [-1, 1]) {
+    const x = s * (W / 2 + b + 16);
+    g.box(x - 3, fy + 10, zf, x + 3, H + b + 10, zf + 1.5, AQUA);
+    const px = s * (W / 2 + b + 62), py = H * 0.55;
+    g.push(); g.at(px, py, zf + 0.5); g.rotX(Math.PI / 2);
+    const ring = []; for (let i = 0; i <= 20; i++) { const a = (i / 20) * Math.PI * 2; ring.push([Math.cos(a) * 16, 0, Math.sin(a) * 16]); }
+    g.tube(ring, 3, 6, CHROME, { caps: false });
+    g.cyl(14, 14, 0.6, 20, '#7fd8ff');
+    g.pop();
+    g.push(); g.at(px, fy, zf + 14); g.box(-34, 0, -10, 34, 26, 10, { top: '#6a4a2a', side: '#f4f8fc' });
+    for (let i = 0; i < 7; i++) { const lx = -28 + i * 9.3; g.blade([[lx, 26, 0], [lx + (i % 2 ? 4 : -4), 46, 3], [lx + (i % 2 ? 9 : -9), 58, 6]], [5, 6, 0], i % 2 ? '#3cb84a' : '#5ad46a', [1, 0, 0]); }
+    g.pop();
+  }
 }
 
 function shelves(g, R, fy, rnd) {

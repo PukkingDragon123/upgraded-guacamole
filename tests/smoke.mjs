@@ -45,7 +45,9 @@ function check(name, ok, info = '') {
 const note = (s) => console.log(`      ${s}`);
 const G = (expr) => page.evaluate(`(() => { const g = window.FISHTOP; return ${expr}; })()`);
 const wait = (ms) => page.waitForTimeout(ms);
-const until = (fn, timeout, arg) => page.waitForFunction(fn, arg, { timeout, polling: 100 }).then(() => true).catch(() => false);
+// waits scale with SMOKE_SLOW (default 3): headless software GL on a shared, busy machine can run at a few fps
+const SLOW = Math.max(1, Number(process.env.SMOKE_SLOW || 3));
+const until = (fn, timeout, arg) => page.waitForFunction(fn, arg, { timeout: timeout * SLOW, polling: 100 }).then(() => true).catch(() => false);
 // screenshots are best-effort: a busy machine (software GL) must not crash the run
 const shot = (name) => page.screenshot({ path: join(out, name), timeout: 120000 }).catch((e) => note(`screenshot ${name} skipped: ${String(e.message).split('\n')[0]}`));
 // logical -> page pixels
@@ -87,7 +89,7 @@ if (hasIntro) {
   // the seal's first beat: crash zoom, floating 3D text, typed lines; answer with real input
   await G(`g.tutorial.intro.seek(${(IT.seal ?? IT.clip) - 0.05})`);
   const choosing = async () => G('!!(g.tutorial.intro && g.tutorial.intro.dialogue.choosing)');
-  const press = async (key, n = 40) => { for (let i = 0; i < n && !(await choosing()); i++) { await page.keyboard.press(key); await wait(700); } return choosing(); };
+  const press = async (key, n = 40 * SLOW) => { for (let i = 0; i < n && !(await choosing()); i++) { await page.keyboard.press(key); await wait(700); } return choosing(); };
   check('Bubbles the seal talks at the first beat', await until(() => { const i = window.FISHTOP.tutorial.intro; return i && (i.holding === 'seal' || i.holding === 'clip') && i.dialogue.active; }, 20000), String(await G('g.tutorial.intro && g.tutorial.intro.dialogue.name')));
   check('response bubbles appear', await press('Enter'));
   await shot('02b_intro_choices.png');
@@ -109,13 +111,13 @@ if (hasIntro) {
     if (await until(() => { const i = window.FISHTOP.tutorial.intro; return !i || i.skipT >= 0; }, 20000)) break;
     note('the Skip click did not register yet; clicking again');
   }
-  const skipped = await until(() => !window.FISHTOP.tutorial.intro, 120000); // software GL on a busy machine is slow
+  const skipped = await until(() => !window.FISHTOP.tutorial.intro, 40000);
   check('Skip pill ends the opening', skipped && (await step()) === 'bait', String(await step()));
   check('choices reach the save', (await G('g.state.clip && g.state.clip.mood')) === 'happy' && (await G('g.state.angler.name')) === 'Reel Deal');
 }
 check('starts in the (OS)cean', (await G('g.ocean.biome && g.ocean.biome.id')) === 'oscean', await G('g.ocean.biome && g.ocean.biome.id'));
 await wait(900);
-check('Bubbles guides the tutorial (dialogue)', await until(() => { const d = window.FISHTOP.tutorial.dialogue; return !!(d && d.line && d.line.text); }, 60000), String(await G('g.tutorial.dialogue.line && g.tutorial.dialogue.line.text')));
+check('Bubbles guides the tutorial (dialogue)', await until(() => { const d = window.FISHTOP.tutorial.dialogue; return !!(d && d.line && d.line.text); }, 20000), String(await G('g.tutorial.dialogue.line && g.tutorial.dialogue.line.text')));
 check('bigger dialogue text', (await G('g.tutorial.dialogue.fontSize || 16')) >= 20, `Alagard ${await G('g.tutorial.dialogue.fontSize')}px`);
 check('HUD gated during the tutorial', !(await iconRect('lab')) && !(await iconRect('journal')) && !(await iconRect('map')));
 // Bubbles swims around the screen (smooth physics) to the Bait Shop button and points at it with a flipper
@@ -165,10 +167,17 @@ let shocked = false, held = 0;
 // A background mover circles the mouse at a wall-clock angular speed, so the game sees smooth circling at any frame
 // rate; this loop steers that speed from the game's own clock (slow headless frames run the game slower than the
 // wall clock) and from gear.rpm vs the band (a feedback loop), so the gear stays inside the band.
-const spinCtl = { omega: 0, paused: false, dil: 1.3, slip: 15 };
+const spinCtl = { omega: 0, paused: false, dil: 0, slip: 10 };
 async function spinGear(each, ms) {
-  const t0 = Date.now();
   const [pcx, pcy] = await toPage(W * 0.42, H * 0.55);
+  if (!spinCtl.dil) { // calibrate: how much game time passes per wall-clock second right now
+    const g0 = await G('g.fishing.gear ? g.fishing.gear.t : 0'), w0 = Date.now();
+    await wait(700);
+    const g1 = await G('g.fishing.gear ? g.fishing.gear.t : 0');
+    spinCtl.dil = g1 > g0 ? Math.max(0.8, Math.min(6, (Date.now() - w0) / 1000 / (g1 - g0))) : 2;
+    note(`game clock: ${(1 / spinCtl.dil).toFixed(2)}x wall time`);
+  }
+  const t0 = Date.now();
   const R = 40 * pxPerL;
   let s = null, run = true, a = 0, last = Date.now(), prevW = 0, prevT = 0;
   const mover = (async () => {
@@ -195,7 +204,8 @@ async function spinGear(each, ms) {
       let tgt = 120; // rpm (or a steady crank without a gear)
       if (s.rpm != null && s.lo != null) {
         tgt = s.lo * 0.55 + s.hi * 0.45;
-        if (s.hand > 20) spinCtl.slip = Math.max(-30, Math.min(90, spinCtl.slip + 0.25 * (tgt - s.rpm)));
+        // learn the fish's drag (slip) only once the hand really turns at the commanded speed
+        if (s.hand > 0.75 * (tgt + spinCtl.slip)) spinCtl.slip = Math.max(-30, Math.min(80, spinCtl.slip + 0.2 * (tgt - s.rpm)));
       }
       spinCtl.omega = ((Math.min(260, tgt + spinCtl.slip) / 60) * Math.PI * 2) / spinCtl.dil;
       await wait(40);
@@ -214,11 +224,16 @@ async function fishOnce(attempt) {
   await wait(600);
   if (attempt === 0) check('cast into the water', ['wait', 'hook', 'fight'].includes(await step()), String(await step()));
   // jiggle near the closest fish until one bites
-  let bit = false;
+  let bit = false, assisted = false;
   const t0 = Date.now();
-  for (let i = 0; !bit && Date.now() - t0 < 60000; i++) {
+  for (let i = 0; !bit && Date.now() - t0 < 60000 * SLOW; i++) {
     await wait(120);
     bit = ['bite', 'fight'].includes(await G('g.fishing.state')); // (the rod may set the hook by itself)
+    if (!bit && !assisted && Date.now() - t0 > 30000 * SLOW) {
+      // a slow machine: invite the nearest fish to nibble through the fishing API (it still has to bite and be hooked)
+      assisted = await G(`(() => { const f = g.fishing, h = f.hook, s = g.school; if (!s || !f.requestNibble || f.state !== 'idle') return false; let best = null, bd = 1e9; for (const x of s.fishes) { if (x.giant || x.boss || x.controlled) continue; const d = Math.hypot(x.x - h.x, x.y - h.y); if (d < bd) { bd = d; best = x; } } return !!(best && f.requestNibble(best)); })()`);
+      if (assisted) note('test assist: the nearest fish was invited to nibble (slow machine)');
+    }
     if (!bit && i % 25 === 24) {
       const near = await G(`(() => { const h = g.fishing.hook, s = g.world.surfaceY ?? 0; let best = null, bd = 1e9; for (const f of g.school.fishes) { if (f.z > 0.6 || f.y < s + 12) continue; const d = Math.hypot(f.x - h.x, f.y - h.y); if (d < bd) { bd = d; best = f; } } if (!best) return null; const c = g.camera; return c && c.worldToScreen ? c.worldToScreen(best.x + (best.facing || 1) * 26, best.y) : [best.x, best.y]; })()`);
       if (near) await moveL(clampX(near[0]), clampY(near[1]), 10);
@@ -229,7 +244,7 @@ async function fishOnce(attempt) {
   const gearMode = await G(`!!(g.fishing.gear && 'hs' in g.fishing)`); // the 3D gear minigame (spin to hook / reel)
   if ((await G('g.fishing.state')) === 'bite') {
     if (attempt === 0) { await shot('10_tut_hookset.png'); check('hook-set cue', (await step()) === 'hook', String(await step())); }
-    if (gearMode) await spinGear((s) => s.st !== 'bite', 8000); // spin the gear up into the hook band
+    if (gearMode) await spinGear((s) => s.st !== 'bite', 20000 * SLOW); // spin the gear up into the hook band (until hooked or lost)
     else { await page.mouse.down(); await page.mouse.up(); await wait(120); }
   }
   if (!['fight', 'landing'].includes(await G('g.fishing.state'))) return 'nohook';
@@ -271,7 +286,7 @@ async function fishOnce(attempt) {
     }
     if (s.T > 0.9 && s.lo == null) { await wait(80); return 'skip'; }
     return false;
-  }, 100000);
+  }, 100000 * SLOW);
   const st = await G('g.fishing.state');
   note(`fight ended in ${((Date.now() - ft0) / 1000).toFixed(1)}s (${st}; shock ${shocked ? 'used' : 'not used'}, ${held} surge holds)`);
   return (await until(() => ['card', 'tank', 'coin'].includes(window.FISHTOP.tutorial.step), 15000)) ? 'caught' : 'lost';

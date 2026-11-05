@@ -18,7 +18,7 @@ import { clamp, clamp01, lerp, smoothstep, hash2, fbm2, TAU, damp } from '../cor
 import { RNG } from '../core/rng.js';
 import { mix, shade } from '../core/color.js';
 import { makeCanvas, ctxOf, makeLayer, resizeLayer } from '../core/canvas.js';
-import { dpack, drawGlow, DepthScene, BandSet, qscale, FogCache } from './scenery.js';
+import { dpack, drawGlow, glowSprite, DepthScene, BandSet, qscale, FogCache } from './scenery.js';
 import { worldProp } from './voxkit.js';
 import { PlantField, plantCols, headCols } from './plants.js';
 import {
@@ -675,7 +675,19 @@ export class DeepSea {
       } catch (e) { this.fail(e); this.gen = null; }
     }
     if (!v || g.ocean?.travelState) return;
+    // far fish and boxes fog toward the zone's own water while the camera is down here
+    const b = this.b, cy = (v.y0 + v.y1) / 2;
+    if (cy > this.H + 30) {
+      if (!this.fogSaved) { this.fogSaved = true; this.fog0 = b.fogColor; this.fogAmt0 = b.fogAmount; }
+      b.fogColor = this.fogNow = rgbHex(waterAt(this.L, cy).map((c) => c * 1.15));
+      b.fogAmount = 0.65;
+    } else if (this.fogSaved) {
+      this.fogSaved = false;
+      if (b.fogColor === this.fogNow) b.fogColor = this.fog0;
+      b.fogAmount = this.fogAmt0;
+    }
     const deepIn = v.y1 > this.H - 8, shallowIn = v.y0 < this.H + 8;
+    this.dt = dt;
     const pushers = this.pushers(v), lines = this.lines();
     const flow = env.weather === 'current' ? 0.8 : env.weather === 'storm' ? 0.5 : 0;
     if (shallowIn) {
@@ -704,7 +716,8 @@ export class DeepSea {
     const h = g.fishing?.hook;
     if (h?.visible) {
       const px = this.prevHook?.[0] ?? h.x, py = this.prevHook?.[1] ?? h.y;
-      out.push({ x: h.x, y: h.y, r: 8, vx: (h.x - px) * 30, vy: (h.y - py) * 30, k: 1.3, z: 0.05 });
+      const iv = 1 / Math.max(1 / 120, this.dt || 1 / 60);
+      out.push({ x: h.x, y: h.y, r: 8, vx: clamp((h.x - px) * iv, -600, 600), vy: clamp((h.y - py) * iv, -600, 600), k: 1.3, z: 0.05 });
       this.prevHook = [h.x, h.y];
     } else this.prevHook = null;
     const boat = g.boat;
@@ -1125,7 +1138,7 @@ export class DeepSea {
         ctx.globalAlpha = k;
         ctx.fillStyle = c;
         ctx.fillRect(x, y, 1, 1);
-        if (h < dens * 0.6) drawGlow(ctx, x + 0.5, y + 0.5, h < dens * 0.2 ? 5 : 3, c, k * 0.6);
+        if (h < dens * 0.6) { const gs = glowSprite(h < dens * 0.2 ? 5 : 3, c); ctx.globalAlpha = k * 0.6; ctx.drawImage(gs, Math.round(x + 0.5) - (gs.width >> 1), Math.round(y + 0.5) - (gs.height >> 1)); }
       }
     }
     // bioluminescent drifts: chains of light curling through the midnight water
@@ -1142,7 +1155,7 @@ export class DeepSea {
           const a = (0.45 + 0.55 * Math.sin(t * 3 - k * 0.7 + i)) * (1 - k / (n + 2)) * deepK;
           if (a < 0.05) continue;
           ctx.globalAlpha = a; ctx.fillStyle = c; ctx.fillRect(x, y, 1, 1);
-          if (k % 3 === 0) drawGlow(ctx, x + 0.5, y + 0.5, 3, c, a * 0.5);
+          if (k % 3 === 0) { const gs = glowSprite(3, c); ctx.globalAlpha = a * 0.5; ctx.drawImage(gs, Math.round(x + 0.5) - (gs.width >> 1), Math.round(y + 0.5) - (gs.height >> 1)); }
         }
       }
     }

@@ -250,7 +250,6 @@ export class TankFish {
   poke(k = 6) { this.wiggleV += k; }
 
   update(dt, W) {
-    const T = W.tank;
     this.age += dt; this.stateT += dt;
     if (this.emote) { this.emote.t += dt; if (this.emote.t > this.emote.max) this.emote = null; }
     if (this.baby > 0) { this.baby -= dt; this.len = this.baseLen * (0.6 + 0.4 * clamp01(1 - this.baby / 40)); }
@@ -268,6 +267,7 @@ export class TankFish {
 
   think(W) {
     const rec = this.rec, T = W.tank;
+    void rec;
     const av = W.avatar;
     // the swimmer: shy fish bolt, curious ones come for a look
     if (av && this.state !== 'eat') {
@@ -289,8 +289,21 @@ export class TankFish {
         return;
       }
     }
+    // the cursor at the glass (orbit view): curious fish come to look, a fast swipe startles
+    const cu = W.cursor;
+    if (cu && !av && (this.state === 'wander' || this.state === 'curious')) {
+      const d = v3len(cu.p[0] - this.p[0], cu.p[1] - this.p[1], cu.p[2] - this.p[2]);
+      if (cu.speed > 700 && d < T.minDim * 0.45) {
+        const away = [this.p[0] * 2 - cu.p[0], this.p[1], this.p[2] * 2 - cu.p[2]];
+        T.clamp(away, this.len);
+        this.setState('flee', away);
+        if (rng.chance(0.3)) this.say('!', 0.9);
+        return;
+      }
+      if (this.state === 'wander' && d < T.minDim * 1.4 && cu.speed < 200 && rng.chance(this.curiosity * 0.05)) { this.setState('curious'); if (rng.chance(0.3)) this.say('?', 1); return; }
+    }
     if (this.state === 'flee' && this.stateT > 1.6) this.setState('wander');
-    if (this.state === 'curious' && (!av || this.stateT > 6)) this.setState('wander');
+    if (this.state === 'curious' && ((!av && !cu) || this.stateT > 6)) this.setState('wander');
     if (this.state === 'gather' && (!this.gather || this.stateT > (this.gather.time || 5))) { this.gather = null; this.setState('wander'); }
     // food
     if (this.state !== 'flee' && this.state !== 'eat' && W.food.length && (rec.hunger ?? 0.3) > 0.12) {
@@ -351,12 +364,18 @@ export class TankFish {
       case 'flee': sp = this.cruise * 3.2; break;
       case 'eat': if (this.food) { tg = this.food.p; sp = this.cruise * 1.8; if (v3len(tg[0] - p[0], tg[1] - p[1], tg[2] - p[2]) < Math.max(0.6, this.len * 0.35)) W.onEat?.(this, this.food); } break;
       case 'curious': {
-        const av = W.avatar;
+        const av = W.avatar, cu = W.cursor;
         if (av) {
           const a = this.age * 0.6 + this.id.length;
           tg = [av.p[0] + Math.cos(a) * av.r * 2.6, av.p[1] + Math.sin(a * 0.7) * av.r * 0.8, av.p[2] + Math.sin(a) * av.r * 2.6];
           T.clamp(tg, this.len * 0.6);
           sp = this.cruise * 1.2;
+        } else if (cu) {
+          // nose up to the glass where the cursor is
+          const a = this.age * 0.9 + this.id.length;
+          tg = [cu.p[0] + Math.cos(a) * this.len * 0.6, cu.p[1] + Math.sin(a * 1.3) * this.len * 0.3, cu.p[2]];
+          T.clamp(tg, this.len * 0.55);
+          sp = this.cruise * 0.9;
         }
         break;
       }

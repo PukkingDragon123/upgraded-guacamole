@@ -9,6 +9,8 @@ import { registerUiIcons } from '../gfx/uiicons.js';
 import { rng } from '../core/rng.js';
 import { Aquarium } from '../aquarium/aquarium.js';
 import { PROF } from '../aquarium/view3d.js';
+import { decorModel } from '../aquarium/lpdecor.js';
+import { PROPS } from '../gfx/props.js';
 import { defaultState } from '../game/state.js';
 import { computeStats, SKILLS } from '../game/skills.js';
 import { SPECIES } from '../fish/species.js';
@@ -58,6 +60,7 @@ export function run(params) {
   const aq = new Aquarium(game);
   game.aquarium = aq;
   window.AQ = aq; window.GAME = game; window.PROF = PROF;
+  window.decorCheck = () => { const bad = [], sizes = {}; for (const id of Object.keys(PROPS)) { if (!PROPS[id].decor) continue; try { const m = decorModel(id, 0); sizes[id] = [Math.round(m.r), Math.round(m.h), m.mesh.count / 3]; } catch (e) { bad.push(id + ': ' + e.message); } } return { bad, n: Object.keys(sizes).length, sizes }; };
   if (mode === 'window') aq.openWindow(true);
   for (const id of (params.get('decor') || 'rock_arch,coral_fan,treasure_chest,castle,rubber_duck').split(',').filter(Boolean)) aq.addDecor(id);
   for (let i = 0; i < Number(params.get('coins') || 0); i++) aq.drops.spawn(aq.shape.swimPoint(Math.random, Math.random(), 1), rng.chance(0.15) ? 2 : rng.chance(0.3) ? 1 : 0);

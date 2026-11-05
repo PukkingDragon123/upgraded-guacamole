@@ -13,7 +13,6 @@
 
 import { Geo, rgb, mixc, shadec, srand } from './lpkit.js';
 import { TankShape } from './sim3d.js';
-import { gearLevel } from './tanks.js';
 
 export const SUBSTRATES = [
   { name: 'Aqua Gravel', cols: ['#e8dcb4', '#d8ccA0', '#f0e6c4', '#cfc29a'], peb: ['#6ad8f0', '#bff4ff', '#3aa8e0', '#f4fbff', '#8ae0d0', '#2a8cd0'], side: ['#b8a47a', '#d4c49a'], pebN: 1.4 },

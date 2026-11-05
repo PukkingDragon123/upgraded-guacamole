@@ -23,7 +23,7 @@ import { PROPS, propInteract } from '../gfx/props.js';
 import { SPECIES_BY_ID } from '../fish/species.js';
 import { rollIndividual, sizeScaleOf } from '../fish/traits.js';
 import { nodeFor } from '../game/lab.js';
-import { AERO, fmtAero, drawAeroCoin, drawAeroSurface, drawAeroButton, drawSparkle, drawAeroPanel, drawAeroGlow } from '../ui/aero.js';
+import { AERO, fmtAero, drawAeroCoin, drawAeroSurface, drawAeroButton, drawSparkle, drawAeroPanel, drawAeroGlow, uiK } from '../ui/aero.js';
 import { TANK_TIERS, TANK_IDS, tankTier, aeroRate, GEAR, gearLevel, gearCost, gearMul, gearHappy } from './tanks.js';
 import { TankShape, TankFish, Drops3D, Ripples, DENOMS } from './sim3d.js';
 import { TankView } from './view3d.js';
@@ -98,7 +98,7 @@ export class Aquarium {
     this.drops.setScale(this.shape.fishLen / 6);
     this.decor = this.st.tank.decor.filter((d) => PROPS[d.id]).map((rec) => ({ rec }));
     this.layoutDecor();
-    this.view.rebuild(true);
+    this.view.invalidate(); // the 3D kit is built on first show
     this.syncFish();
     this.restoreCoins();
   }
@@ -478,7 +478,11 @@ export class Aquarium {
     if (shown === 'window') this.winAnim = Math.min(1, this.winAnim + dt * 5);
     if (shown !== 'full' && this.swim) this.exitSwim(true);
     if (shown !== 'full') { this.panel = null; this.arrange = false; }
-    if (shown === 'full' && was !== 'full') { this.view.setPreset('front', true); if (this.pendingGrow) { this.startGrow(this.pendingGrow); this.pendingGrow = null; } }
+    if (shown === 'full' && was !== 'full') {
+      this.view.w = g.screen.W; this.view.h = g.screen.H;
+      this.view.setPreset('front', true);
+      if (this.pendingGrow) { this.startGrow(this.pendingGrow); this.pendingGrow = null; }
+    }
     const clock = g.clock;
     this.nightK = clock ? clamp01(1 - clock.daylight()) : 0;
     this.comboT = Math.max(0, this.comboT - dt);
@@ -556,7 +560,7 @@ export class Aquarium {
     const a = this.growAnim;
     if (a.fx === 0 && a.t > 0.6) { a.fx = 1; this.sfx('splash_big', { vol: 0.6 }); this.sfx('bubbles', { vol: 0.5 }); for (let i = 0; i < 30; i++) this.addBubble(this.shape.swimPoint(Math.random, rng.float(0, 0.3), 1), rng.float(0.2, 0.6)); }
     if (a.fx === 1 && a.t > 1.9) { a.fx = 2; this.fxAt([0, this.shape.top * 0.8, 0], 'confetti', 40); this.sfx('sparkle', { vol: 0.7 }); }
-    if (a.t > 3) { this.growAnim = null; this.view.oldKit = null; }
+    if (a.t > 3) { this.growAnim = null; this.view.dropOldKit(); }
   }
 
   // ------------------------------------------------------------------ input
@@ -626,6 +630,13 @@ export class Aquarium {
     }
     // ---- hover: decor, fish, drops
     const ray = view.ray(lx, ly);
+    // where the cursor meets the water (fish come to look / get startled)
+    const th = this.shape.rayHit(ray.o, ray.d);
+    if (th !== null) {
+      const cp = [ray.o[0] + ray.d[0] * (th + 0.5), ray.o[1] + ray.d[1] * (th + 0.5), ray.o[2] + ray.d[2] * (th + 0.5)];
+      this.shape.clamp(cp, 1);
+      this.cursor3 = { p: cp, speed: inp.speed || 0, t: this.t };
+    }
     const hd = this.drag?.d || this.pickDecor(ray);
     const hf = hd ? null : this.pickFish(ray);
     this.hoverDecor = hd; this.hoverFish = hf;
@@ -796,11 +807,13 @@ export class Aquarium {
   }
 
   // Full view HUD: the stats pill + Ocean button (top) and a glossy dock on the right.
+  // HUD size factor: follows the game's UI size setting (uiK(), the phase 4 HUD = 1), clamped to fit the screen
+  hudK() { let k = 1.25; try { k = uiK(); } catch { /* aero not ready */ } return clamp(Math.min(k, this.game.screen.W / 620, this.game.screen.H / 380), 1, 2.2); }
   fullLayout() {
-    const W = this.game.screen.W;
-    const pw = 196, bw = 62;
+    const W = this.game.screen.W, k = this.hudK();
+    const pw = Math.round(200 * k), bw = Math.round(62 * k), ph = Math.round(20 * k);
     const px = Math.round(W / 2 - (pw + bw + 6) / 2);
-    return { pill: { x: px, y: 6, w: pw, h: 20 }, btn: { x: px + pw + 6, y: 7, w: bw, h: 18 } };
+    return { k, pill: { x: px, y: 6, w: pw, h: ph }, btn: { x: px + pw + 6, y: 7, w: bw, h: ph - 2 } };
   }
   fullButton() { return this.fullLayout().btn; }
 
@@ -809,8 +822,9 @@ export class Aquarium {
     const L = this.fullLayout();
     const out = [{ id: 'back', ...L.btn, run: () => g.setView?.('ocean'), tip: 'Back to the ocean' }];
     out.push({ id: 'pill', ...L.pill, run: () => {}, tip: `${this.tierInfo().name}\n{fish} ${this.fish.length}/${this.capacity()}  {coin} ${this.ratePerMin().toFixed(1)} Aero/min` });
-    const bw = 34, bh = 30, x = W - bw - 8;
-    let y = Math.max(44, Math.round(H * 0.5 - 4.5 * (bh + 4)));
+    const kd = clamp(Math.min(this.hudK(), (H - 150) / (9 * 34 + 8)), 0.8, 2);
+    const bw = Math.round(34 * kd), bh = Math.round(30 * kd), x = W - bw - 8;
+    let y = Math.max(Math.round(56 * kd), Math.round((H - 50) * 0.5 - 4.5 * (bh + 4)));
     const dock = [
       { id: 'front', icon: 'eye', label: 'Front', tip: 'Front view (1)', run: () => this.view.setPreset('front') },
       { id: 'top', icon: 'arrow_d', label: 'Top', tip: 'Top view (2)', run: () => this.view.setPreset('top') },
@@ -824,23 +838,25 @@ export class Aquarium {
       { id: 'light', icon: this.st.tank.lampOff ? 'moon' : 'sun', label: 'Light', tip: this.st.tank.lampOff ? 'Light on' : 'Light off', run: () => { this.st.tank.lampOff = !this.st.tank.lampOff; this.sfx('click', { vol: 0.6, pitch: this.st.tank.lampOff ? 0.8 : 1.25 }); this.game.save?.(); } },
     ];
     for (const b of dock) {
-      if (b.gap) { y += 8; continue; }
-      out.push({ ...b, x, y, w: bw, h: bh, dock: true });
+      if (b.gap) { y += Math.round(8 * kd); continue; }
+      out.push({ ...b, x, y, w: bw, h: bh, dock: true, kd });
       y += bh + 4;
     }
     if (this.arrange && this.st.tank.stored.length) {
       const n = this.st.tank.stored.length;
-      out.push({ id: 'unpack', x: x - 70, y: L.btn.y + 30, w: 64, h: 18, label: `+${n}`, tip: `Place ${PROPS[this.st.tank.stored.at(-1)]?.name || 'decoration'}\n(or click the floor)`, run: () => this.placeStored(), tone: 'green' });
+      out.push({ id: 'unpack', x: x - Math.round(70 * L.k), y: L.btn.y + L.btn.h + 12, w: Math.round(64 * L.k), h: L.btn.h, label: `+${n}`, tip: `Place ${PROPS[this.st.tank.stored.at(-1)]?.name || 'decoration'}\n(or click the floor)`, run: () => this.placeStored(), tone: 'green' });
     }
     return out;
   }
 
   swimLayout() {
-    const W = this.game.screen.W;
+    const W = this.game.screen.W, k = this.hudK();
+    const font = k >= 1.4 ? 'normal' : 'small';
     const msg = 'WASD / arrows swim   Drag: look   Space: up   Shift: down   Click: dart';
-    const mw = measureText(msg, 'small') + 20;
-    const x0 = Math.round(W / 2 - mw / 2 - 40);
-    return { msg, pill: { x: x0, y: 7, w: mw, h: 18 }, exit: { x: x0 + mw + 6, y: 7, w: 64, h: 18 } };
+    const mw = measureText(msg, font) + 20, h = Math.round(18 * k);
+    const ew = Math.round(64 * k);
+    const x0 = Math.round(W / 2 - (mw + ew + 6) / 2);
+    return { msg, font, pill: { x: x0, y: 7, w: mw, h }, exit: { x: x0 + mw + 6, y: 7, w: ew, h } };
   }
 
   swimButtons(inp) {
@@ -854,19 +870,22 @@ export class Aquarium {
   }
 
   // ------------------------------------------------------------------ gear panel
+  panelK() { return clamp(Math.min(this.hudK(), (this.game.screen.H - 60) / (34 + 58 + GEAR.length * 34 + 16)), 1, 2); }
   gearPanelRect() {
     const { W, H } = this.game.screen;
-    const w = 300, h = Math.min(H - 70, 64 + GEAR.length * 34 + 70);
-    return { x: W - 34 - 8 - 10 - w, y: Math.max(36, Math.round(H / 2 - h / 2)), w, h };
+    const k = this.panelK();
+    const dock = this.fullButtons().find((b) => b.dock);
+    const w = Math.round(300 * k), h = Math.min(H - 50, Math.round((34 + 58 + GEAR.length * 34 + 16) * k));
+    return { x: (dock ? dock.x : W - 42) - 10 - w, y: Math.max(36, Math.round(H / 2 - h / 2)), w, h, k };
   }
   gearRows() {
-    const r = this.gearPanelRect();
+    const r = this.gearPanelRect(), k = r.k;
     const rows = [];
-    let y = r.y + 34;
+    let y = r.y + Math.round(34 * k);
     // expansion (tier) first
-    rows.push({ kind: 'tier', x: r.x + 8, y, w: r.w - 16, h: 52 });
-    y += 58;
-    for (const gdef of GEAR) { rows.push({ kind: 'gear', g: gdef, x: r.x + 8, y, w: r.w - 16, h: 30 }); y += 34; }
+    rows.push({ kind: 'tier', x: r.x + 8, y, w: r.w - 16, h: Math.round(52 * k), k });
+    y += Math.round(58 * k);
+    for (const gdef of GEAR) { rows.push({ kind: 'gear', g: gdef, x: r.x + 8, y, w: r.w - 16, h: Math.round(30 * k), k }); y += Math.round(34 * k); }
     return rows;
   }
   panelInput(inp, tip) {
@@ -881,7 +900,8 @@ export class Aquarium {
     if (inp.pressed) inp.consume();
   }
   rowButton(row) {
-    const bx = row.x + row.w - 96, bw = 92, bh = 20;
+    const k = row.k || 1;
+    const bw = Math.round(92 * k), bh = Math.round(20 * k), bx = row.x + row.w - bw - 4;
     if (row.kind === 'tier') {
       const next = this.tier + 1;
       if (next >= TANK_TIERS.length) return null;
@@ -891,7 +911,7 @@ export class Aquarium {
     const lv = gearLevel(this.st, row.g.id);
     if (lv >= row.g.levels.length - 1) return null;
     const cost = gearCost(row.g.id, lv + 1);
-    return { x: bx, y: row.y + 5, w: bw, h: bh, label: fmtAero(cost), cost, tip: `${row.g.levels[lv + 1]}\n${row.g.desc}`, run: () => this.buyGear(row.g.id) };
+    return { x: bx, y: Math.round(row.y + (row.h - bh) / 2), w: bw, h: bh, label: fmtAero(cost), cost, tip: `${row.g.levels[lv + 1]}\n${row.g.desc}`, run: () => this.buyGear(row.g.id) };
   }
 
   // ------------------------------------------------------------------ swimming
@@ -946,8 +966,11 @@ export class Aquarium {
           if (!pr.moved) {
             const ray = this.view.ray(inp.x, inp.y);
             let tgt = null;
-            const f = this.pickFish(ray);
-            if (f) tgt = f.p.slice();
+            // a click near an Aero drop darts straight for it; otherwise toward a fish or into the water
+            let bd = 26;
+            for (const c of this.drops.list) { const sp = this.view.project(c.p); if (sp) { const d = Math.hypot(sp[0] - inp.x, sp[1] - inp.y); if (d < bd) { bd = d; tgt = c.p.slice(); } } }
+            const f = tgt ? null : this.pickFish(ray);
+            if (tgt) { /* drop */ } else if (f) tgt = f.p.slice();
             else {
               const tt = T.minDim * 0.6;
               tgt = [ray.o[0] + ray.d[0] * tt, ray.o[1] + ray.d[1] * tt, ray.o[2] + ray.d[2] * tt];
@@ -958,7 +981,6 @@ export class Aquarium {
         }
       } else if (inp.pressed || inp.rpressed) { inp.consume(); inp.rpressed = false; this.press = { x: inp.x, y: inp.y, lx: inp.x, ly: inp.y, moved: false }; }
       if (inp.wheel) L.pitch = clamp(L.pitch - inp.wheel * 0.08, -1.25, 1.25);
-      this.sweepDrops(inp.x, inp.y, false);
     }
     const turnK = 1.8;
     if (key('ArrowLeft') || key('a') && key('Alt')) L.yaw += turnK * dt;
@@ -1048,6 +1070,7 @@ export class Aquarium {
     return {
       tank: this.shape, fish: this.fish, food: this.food, decor: this.decor, night: this.nightK > 0.6,
       avatar: s ? { p: s.p, r: s.r, speed: s.speed } : null,
+      cursor: !s && this.cursor3 && this.t - this.cursor3.t < 0.5 ? this.cursor3 : null,
       onEat: (f, food) => this.onEat(f, food), canCourt: (f) => this.canCourt(f), onCourt: (a, b) => this.onCourt(a, b),
       onStartle: (f) => { for (let i = 0; i < 3; i++) this.addBubble(f.p, f.len * 0.05); },
     };
@@ -1415,7 +1438,7 @@ export class Aquarium {
       const s = this.swim;
       const lay = this.swimLayout(), pl = lay.pill;
       drawAeroSurface(ctx, pl.x, pl.y, pl.w, pl.h, { tone: 'frost', r: 'pill', gloss: 0.75, glossH: 8, rim: 0.9, glow: 0.5 });
-      drawText(ctx, lay.msg, pl.x + pl.w / 2, 13, { font: 'small', align: 'center', color: AERO.ink });
+      drawText(ctx, lay.msg, pl.x + pl.w / 2, Math.round(pl.y + (pl.h - (lay.font === 'normal' ? 7 : 5)) / 2), { font: lay.font, align: 'center', color: AERO.ink });
       const r = lay.exit;
       drawAeroButton(ctx, r.x, r.y, r.w, r.h, { label: 'Exit', icon: getUiIcon('arrow_u'), state: this.hoverBtn === 'exitswim' ? 'hover' : 'normal', tone: 'aqua' });
       if (s.got) { drawAeroCoin(ctx, W / 2 - 14, 38, 5, t); drawText(ctx, '+' + fmtAero(s.got), W / 2 - 6, 34, { color: '#ffffff', shadow: '#0a3e74' }); }
@@ -1426,24 +1449,24 @@ export class Aquarium {
       return;
     }
     const sm = this.tankSummary();
-    const { pill: p } = this.fullLayout();
-    drawAeroSurface(ctx, p.x, p.y, p.w, p.h, { tone: 'frost', r: 'pill', gloss: 0.75, glossH: 9, curve: 2, rim: 0.9, glow: 0.5 });
-    const ink = AERO.ink;
-    let x = p.x + 10;
-    const ty = p.y + 7;
-    const fi = getUiIcon('fish');
-    if (fi) { ctx.drawImage(fi, x, p.y + 5); x += fi.width + 3; }
+    const { pill: p, k } = this.fullLayout();
+    drawAeroSurface(ctx, p.x, p.y, p.w, p.h, { tone: 'frost', r: 'pill', gloss: 0.75, glossH: Math.round(p.h * 0.45), curve: 2, rim: 0.9, glow: 0.5 });
+    const ink = AERO.ink, font = k >= 1.4 ? 'big' : 'normal';
+    const th = font === 'big' ? 9 : 7;
+    let x = p.x + Math.round(10 * k);
+    const ty = Math.round(p.y + (p.h - th) / 2);
+    const icon = (name) => { const ic = getUiIcon(name); if (!ic) return; const s = k >= 1.4 ? 2 : 1; ctx.drawImage(ic, x, Math.round(p.y + (p.h - ic.height * s) / 2), ic.width * s, ic.height * s); x += ic.width * s + 3; };
+    icon('fish');
     const fs = `${sm.fish}/${sm.cap}`;
-    drawText(ctx, fs, x, ty, { color: ink });
-    x += measureText(fs) + 10;
-    const hi = getUiIcon('heart');
-    if (hi) { ctx.drawImage(hi, x, p.y + 5); x += hi.width + 3; }
+    drawText(ctx, fs, x, ty, { color: ink, font });
+    x += measureText(fs, font) + Math.round(10 * k);
+    icon('heart');
     const hs = sm.fish ? `${Math.round(sm.happiness * 100)}%` : '--';
-    drawText(ctx, hs, x, ty, { color: ink });
-    x += measureText(hs) + 10;
-    drawAeroCoin(ctx, x + 4, p.y + 10, 4.5, t);
-    x += 12;
-    drawText(ctx, `${sm.aeroPerMin.toFixed(1)}/min`, x, ty, { color: ink });
+    drawText(ctx, hs, x, ty, { color: ink, font });
+    x += measureText(hs, font) + Math.round(10 * k);
+    drawAeroCoin(ctx, x + 4 * k, p.y + p.h / 2, 4.5 * k, t);
+    x += Math.round(12 * k);
+    drawText(ctx, `${sm.aeroPerMin.toFixed(1)}/min`, x, ty, { color: ink, font });
     const btns = this.fullButtons();
     for (const b of btns) {
       if (b.id === 'pill' || b.dock) continue;
@@ -1454,9 +1477,10 @@ export class Aquarium {
     this.drawDock(ctx, btns.filter((b) => b.dock));
     if (this.arrange) {
       const msg = this.st.tank.stored.length ? 'Drag decor to move - wheel rotates - right-click stores - click the floor to place' : 'Drag decor to move - wheel rotates - right-click stores';
-      const mw = measureText(msg, 'small') + 20;
-      drawAeroSurface(ctx, Math.round(W / 2 - mw / 2), 30, mw, 16, { tone: 'frost', r: 'pill', gloss: 0.7, glossH: 7, rim: 0.9 });
-      drawText(ctx, msg, Math.round(W / 2), 35, { font: 'small', align: 'center', color: AERO.ink });
+      const L0 = this.fullLayout(), af = L0.k >= 1.4 ? 'normal' : 'small';
+      const mw = measureText(msg, af) + 20, mh = Math.round(16 * L0.k), my = L0.pill.y + L0.pill.h + 6;
+      drawAeroSurface(ctx, Math.round(W / 2 - mw / 2), my, mw, mh, { tone: 'frost', r: 'pill', gloss: 0.7, glossH: Math.round(mh * 0.45), rim: 0.9 });
+      drawText(ctx, msg, Math.round(W / 2), Math.round(my + (mh - (af === 'normal' ? 7 : 5)) / 2), { font: af, align: 'center', color: AERO.ink });
     }
     if (this.panel === 'gear') this.drawGearPanel(ctx);
     const ga = this.growAnim;
@@ -1471,7 +1495,7 @@ export class Aquarium {
     if (!this.view.ok) drawText(ctx, '2D view (WebGL2 unavailable)', 8, H - 40, { font: 'small', color: '#ffffff', outline: '#0a3e74' });
     else if (this.t < 12 && !this.arrange && !this.panel) {
       ctx.globalAlpha = clamp01((12 - this.t) / 2);
-      drawText(ctx, 'Drag: orbit   Right-drag: pan   Wheel: zoom   Click water: feed', W / 2, H - 70, { font: 'small', align: 'center', color: '#ffffff', outline: '#0a3e74' });
+      drawText(ctx, 'Drag: orbit   Right-drag: pan   Wheel: zoom   Click water: feed', W / 2, H - Math.round(60 * this.hudK()) - 20, { font: this.hudK() >= 1.4 ? 'normal' : 'small', align: 'center', color: '#ffffff', outline: '#0a3e74' });
       ctx.globalAlpha = 1;
     }
   }
@@ -1491,9 +1515,10 @@ export class Aquarium {
       g.translate(-x0, -y0);
       for (const b of dock) {
         drawAeroButton(g, b.x, b.y, b.w, b.h, { tone: b.on ? 'green' : b.tone || 'glass', state: b.on ? 'down' : this.hoverBtn === b.id ? 'hover' : 'normal', radius: 8 });
-        const ic = getUiIcon(b.icon);
-        if (ic) g.drawImage(ic, Math.round(b.x + (b.w - ic.width) / 2), b.y + 4);
-        drawText(g, b.label, b.x + b.w / 2, b.y + b.h - 9, { font: 'small', align: 'center', color: '#ffffff', shadow: '#0a3e74' });
+        const ic = getUiIcon(b.icon), s = b.kd >= 1.2 ? 2 : 1;
+        if (ic) g.drawImage(ic, Math.round(b.x + (b.w - ic.width * s) / 2), b.y + Math.round(4 * b.kd), ic.width * s, ic.height * s);
+        const lf = b.kd >= 1.2 ? 'normal' : 'small';
+        drawText(g, b.label, b.x + b.w / 2, b.y + b.h - (lf === 'normal' ? 11 : 9), { font: lf, align: 'center', color: '#ffffff', shadow: '#0a3e74' });
       }
       this.dockKey = key;
     }
@@ -1501,40 +1526,43 @@ export class Aquarium {
   }
 
   drawGearPanel(ctx) {
-    const r = this.gearPanelRect();
+    const r = this.gearPanelRect(), k = r.k;
     drawAeroPanel(ctx, r.x, r.y, r.w, r.h, { tone: 'glass', radius: 10, title: 'Tank Gear' });
     const ink = AERO.ink;
+    const big = k >= 1.4, f1 = big ? 'big' : 'normal', f2 = big ? 'normal' : 'small';
+    const is = big ? 2 : 1;
+    const icon = (name, x, y) => { const ic = getUiIcon(name); if (ic) ctx.drawImage(ic, x, y, ic.width * is, ic.height * is); };
+    const L = (v) => Math.round(v * k);
     for (const row of this.gearRows()) {
       const b = this.rowButton(row);
       if (row.kind === 'tier') {
         drawAeroSurface(ctx, row.x, row.y, row.w, row.h, { tone: 'frost', r: 6, gloss: 0.5, rim: 0.8 });
         const ti = this.tierInfo();
-        const ic = getUiIcon('tank');
-        if (ic) ctx.drawImage(ic, row.x + 6, row.y + 6);
-        drawText(ctx, `${ti.name}  (size ${this.tier + 1}/${TANK_TIERS.length})`, row.x + 24, row.y + 6, { color: ink });
-        drawText(ctx, `{fish} ${this.capacity()} fish  x${ti.rate.toFixed(2)} Aero`, row.x + 8, row.y + 22, { font: 'small', color: ink });
+        icon('tank', row.x + L(6), row.y + L(6));
+        drawText(ctx, `${ti.name}  (size ${this.tier + 1}/${TANK_TIERS.length})`, row.x + L(24), row.y + L(6), { color: ink, font: f1 });
+        drawText(ctx, `{fish} ${this.capacity()} fish  x${ti.rate.toFixed(2)} Aero`, row.x + L(8), row.y + L(22), { font: f2, color: ink });
         const next = TANK_TIERS[this.tier + 1];
         if (next) {
           const unlocked = tankTier(this.st) > this.tier;
-          drawText(ctx, `Next: ${next.name}  +${next.cap - ti.cap} fish  x${next.rate.toFixed(2)}`, row.x + 8, row.y + 36, { font: 'small', color: '#2a7a3a' });
+          drawText(ctx, `Next: ${next.name}  +${next.cap - ti.cap} fish  x${next.rate.toFixed(2)}`, row.x + L(8), row.y + L(36), { font: f2, color: '#2a7a3a' });
           if (b) drawAeroButton(ctx, b.x, b.y, b.w, b.h, { label: unlocked ? 'Expanding...' : 'Open Lab', icon: getUiIcon('expand'), tone: 'green', state: this.hoverBtn === 'row:tier' ? 'hover' : 'normal' });
-        } else drawText(ctx, 'The biggest tank there is!', row.x + 8, row.y + 36, { font: 'small', color: '#2a7a3a' });
+        } else drawText(ctx, 'The biggest tank there is!', row.x + L(8), row.y + L(36), { font: f2, color: '#2a7a3a' });
         continue;
       }
       const lv = gearLevel(this.st, row.g.id);
       drawAeroSurface(ctx, row.x, row.y, row.w, row.h, { tone: 'frost', r: 6, gloss: 0.4, rim: 0.7 });
-      const ic = getUiIcon(row.g.icon);
-      if (ic) ctx.drawImage(ic, row.x + 6, row.y + 8);
-      drawText(ctx, row.g.name, row.x + 24, row.y + 5, { color: ink });
-      drawText(ctx, row.g.levels[lv], row.x + 24, row.y + 17, { font: 'small', color: '#3a6a8a' });
+      icon(row.g.icon, row.x + L(6), row.y + L(8));
+      drawText(ctx, row.g.name, row.x + L(24), row.y + L(5), { color: ink, font: f1 });
+      drawText(ctx, row.g.levels[lv], row.x + L(24), row.y + L(18), { font: f2, color: '#3a6a8a' });
+      const bx0 = (b ? b.x : row.x + row.w - L(96)) - L(10);
       for (let i = 0; i < row.g.levels.length - 1; i++) {
         ctx.fillStyle = i < lv ? '#3ac4f8' : 'rgba(10,60,110,0.25)';
-        ctx.fillRect(row.x + row.w - 112 - (row.g.levels.length - 1 - i) * 6, row.y + 12, 4, 6);
+        ctx.fillRect(bx0 - (row.g.levels.length - 1 - i) * L(6), row.y + L(12), L(4), L(6));
       }
       if (b) {
         const afford = (this.st.coins || 0) >= b.cost;
         drawAeroButton(ctx, b.x, b.y, b.w, b.h, { label: b.label, icon: getUiIcon('coin'), tone: afford ? 'aqua' : 'glass', state: !afford ? 'disabled' : this.hoverBtn === 'row:' + row.g.id ? 'hover' : 'normal' });
-      } else drawText(ctx, 'MAX', row.x + row.w - 50, row.y + 11, { color: '#2a7a3a', align: 'center' });
+      } else drawText(ctx, 'MAX', row.x + row.w - L(50), row.y + L(11), { color: '#2a7a3a', align: 'center', font: f1 });
     }
   }
 }

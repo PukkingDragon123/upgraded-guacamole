@@ -391,7 +391,7 @@ export class Battle {
     reel *= opts.reelMul ?? 1;
     const holding = !!this.qte?.holding;
     // the fish takes line while it runs (less if you hold or keep up in the band), and when the gear spins back
-    const payout = surging ? pull * this.d.surge * 0.085 * (1 - this.resil) * (holding ? 0.45 : 1) * (inBand ? 0.35 : 1) : 0;
+    const payout = surging ? pull * Math.sqrt(this.d.surge) * 0.085 * (1 - this.resil) * (holding ? 0.45 : 1) * (inBand ? 0.35 : 1) : 0;
     const back = G.rpm < 0 ? (-G.rpm / RPM_UNIT) * 0.09 * (1 - this.resil) : 0;
     this.progress += (reel - payout - back) * dt;
     this.reelRate = reel - payout - back;

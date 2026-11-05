@@ -34,7 +34,6 @@ export class PlantField {
       g.push(); g.at(s.p[0], s.p[1] - 0.2, s.p[2]); g.rotY(srand(s.seed)() * 6.28);
       PLANTS[s.kind](g, s.h, k, srand(s.seed));
       g.pop();
-      const ph = (s.seed % 628) / 100;
       for (let i = n0; i < g.n; i += 11) {
         const y = g.d[i + 1] - s.p[1];
         const w = Math.max(0, Math.min(1, y / Math.max(0.5, s.h)));

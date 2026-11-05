@@ -99,8 +99,8 @@ function gearMeshes() {
     const inside = L((rb + R_TIP) / 2, 0, 0);
     face(mb, [B[0], B[1], T[1], T[0]], '#eaf6fc', inside); // front (sloped)
     face(mb, [T[0], T[1], T[2], T[3]], '#ffffff', inside); // land
-    face(mb, [B[1], B[2], T[2], T[1]], '#a3c6dc', inside); // flank
-    face(mb, [B[0], T[0], T[3], B[3]], '#82a8c0', inside); // flank
+    face(mb, [B[1], B[2], T[2], T[1]], '#93b9d0', inside); // flank
+    face(mb, [B[0], T[0], T[3], B[3]], '#6a92ad', inside); // flank
     face(mb, [B[3], T[3], T[2], B[2]], '#5f87a2', inside); // back
   }
   // spokes: ridged pentagon section, tapering toward the rim
@@ -312,6 +312,22 @@ function boltGlyph(fill) {
   });
 }
 
+// A crisp 1 px dark outline round a rendered sprite (pixel-art selective outline), in place.
+function outlined(c) {
+  if (!c) return c;
+  const g = c.getContext('2d'), w = c.width, h = c.height;
+  const img = g.getImageData(0, 0, w, h), d = img.data;
+  const solid = (x, y) => x >= 0 && y >= 0 && x < w && y < h && d[(y * w + x) * 4 + 3] > 150;
+  const out = [];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (d[(y * w + x) * 4 + 3] > 40) continue;
+    if (solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1)) out.push(x, y);
+  }
+  for (let i = 0; i < out.length; i += 2) { const j = (out[i + 1] * w + out[i]) * 4; d[j] = 12; d[j + 1] = 58; d[j + 2] = 82; d[j + 3] = 255; }
+  g.putImageData(img, 0, 0);
+  return c;
+}
+
 // Draws a ring sprite clipped to the clockwise arc a0 -> a1 (canvas angles: 0 = right, clockwise).
 function arcSprite(ctx, spr, cx, cy, a0, a1, alpha = 1) {
   if (a1 <= a0 + 1e-4) return;
@@ -437,7 +453,6 @@ export class Gear {
     const dA = this.dir * (this.rpm / 60) * TAU * dt;
     this.angle -= dA;
     this.spinV = -dA / Math.max(dt, 1e-3);
-    // 3D wobble: springy tilt kicked by load changes, precession at speed
     // 3D tilt: a spring kicked by jolts (hook-set, backfire, won counters); it rests at the cached view
     this.tiltVX += (-this.tiltX * 70 - this.tiltVX * 9) * dt;
     this.tiltVY += (-this.tiltY * 70 - this.tiltVY * 9) * dt;
@@ -488,7 +503,7 @@ export class Gear {
     const chrome = { mesh: M.body, spec: 0.95, shine: 30, env: 0.85, rim: 0.6 };
     return {
       w: L.size, h: L.size, matrix: T4.trs([0, 0, 0], pitch, yaw, spin, scale), scale: L.R, center: [0, 0, 0], radius: 1.3,
-      light: [-0.55, 0.72, 0.75], ambient: 0.5, sky: '#f6feff', ground: '#1a6496', rimColor: '#bff8ff',
+      light: [-0.55, 0.72, 0.75], ambient: 0.44, sky: '#f6feff', ground: '#0f4a78', rimColor: '#bff8ff',
       parts: [
         chrome,
         { mesh: M.glow, emit: 1, tint: [0.37, 0.96, 1, 0.6], spec: 0.2, env: 0, rim: 0 },
@@ -508,7 +523,7 @@ export class Gear {
     const c = this.frames(L);
     i = ((i % NF) + NF) % NF;
     if (!c.list[i]) {
-      c.list[i] = renderMesh(null, this.gearOpts(L, (i / NF) * SYM, PITCH, YAW));
+      c.list[i] = outlined(renderMesh(null, this.gearOpts(L, (i / NF) * SYM, PITCH, YAW)));
       c.n++;
     }
     return c.list[i];
@@ -554,8 +569,8 @@ export class Gear {
     let tc = null, ta = 0;
     if (ch > 0) { tc = ch > (B.chargeWin?.hi ?? 1) ? '#ff7a5a' : '#fff07a'; ta = 0.12 + ch * 0.3 + (Math.random() < 0.2 ? 0.15 : 0); }
     else if (this.heat > 0.05) { tc = '#ff5a4a'; ta = this.heat * (0.22 + 0.12 * Math.sin(this.t * 30)); }
-    else if (B?.stunned) { tc = '#bff8ff'; ta = 0.2 + (Math.floor(this.t * 20) % 2) * 0.15; }
-    else if (this.state(B) === 'sweet') { tc = '#8be04a'; ta = 0.1 + 0.05 * Math.sin(this.t * 9); }
+    else if (B?.stunned) { tc = '#bff8ff'; ta = 0.1 + (Math.floor(this.t * 20) % 2) * 0.12; }
+    else if (this.state(B) === 'sweet') { tc = '#8be04a'; ta = 0.06 + 0.04 * Math.sin(this.t * 9); }
     if (this.flash > 0 && this.flash * 0.6 > ta) { tc = this.flashCol; ta = this.flash * 0.6; }
     if (tc && ta > 0.01) {
       g.globalCompositeOperation = 'source-atop';

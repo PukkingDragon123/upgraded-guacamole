@@ -57,16 +57,21 @@ export class TankView {
     if (!force && key === this.kitKey && this.kit) return;
     const first = !this.kit;
     const oldKit = this.kit;
+    if (this.oldKit && this.oldKit !== oldKit) disposeKit(this.oldKit);
+    if (oldKit && !aq.growAnim) disposeKit(oldKit);
+    if (this.shafts) this.shafts.dispose();
     this.kitKey = key;
     this.kit = buildTank(aq.tier, gear);
     this.shafts = shaftMesh(this.kit);
-    if (!this.room || this.roomTier !== aq.tier) { this.room = buildRoom(aq.tier, this.kit); this.roomTier = aq.tier; }
+    if (!this.room || this.roomTier !== aq.tier) { if (this.room) disposeRoom(this.room); this.room = buildRoom(aq.tier, this.kit); this.roomTier = aq.tier; }
     this.plants = new PlantField(this.kit.shape, aq.tier, TANK_TIERS[aq.tier].plants + (gear.light | 0) * 2);
     this.plantMesh = null;
     this.oldKit = oldKit && aq.growAnim ? oldKit : null;
     if (first) this.setPreset('front', true);
     else this.fitPreset();
   }
+
+  dropOldKit() { if (this.oldKit) disposeKit(this.oldKit); this.oldKit = null; }
 
   // ------------------------------------------------------------------ camera
   frame() {
@@ -88,7 +93,7 @@ export class TankView {
     else if (name === 'close') Object.assign(c, { yaw: 0.12, pitch: 0.06, dist: f.dist * 0.5, target: [0, this.kit.shape.waterY * 0.42, 0] });
     else if (name === 'side') Object.assign(c, { yaw: -1.1, pitch: 0.16, dist: f.dist * 0.95, target: f.target.slice() });
     else if (name === 'room') Object.assign(c, { yaw: -0.55, pitch: 0.26, dist: f.dist * 2.1, target: [0, this.kit.shape.top * 0.6, 0] });
-    else Object.assign(c, { yaw: -0.26, pitch: 0.17, dist: f.dist * 1.28, target: f.target.slice() });
+    else Object.assign(c, { yaw: -0.26, pitch: 0.17, dist: f.dist * (this.kit.shape.d.stand === 'wall' ? 1.02 : 1.28), target: f.target.slice() });
     c.target = c.target.slice();
     this.limit(c);
     if (snap) { Object.assign(this.cam, c); this.cam.target = c.target.slice(); }
@@ -187,8 +192,11 @@ export class TankView {
   }
 
   // ------------------------------------------------------------------ render
+  invalidate() { this.kitKey = ''; this.dirty = true; }
+
   render(ctx, x, y, w, h) {
-    if (!this.ok || !this.kit) return false;
+    if (!this.ok) return false;
+    if (!this.kit || this.dirty) { this.dirty = false; this.rebuild(true); if (!this.kit) return false; }
     if (!this.scene) this.scene = new LPScene(w, h);
     if (this.scene.w !== w || this.scene.h !== h) this.scene.resize(w, h);
     if (this.w !== w || this.h !== h) { this.w = w; this.h = h; }
@@ -371,6 +379,20 @@ export class TankView {
       ctx.globalCompositeOperation = 'multiply';
       ctx.fillStyle = mixHex('#ffffff', '#4a5ca8', night * 0.55 + (lampOff ? 0.12 : 0));
       ctx.fillRect(x, y, w, h);
+      // at night the lit tank glows in the dim room (light only)
+      if (night > 0.2 && !lampOff && !swim) {
+        const c = this.project([0, T.waterY * 0.55, 0]);
+        if (c) {
+          const r = Math.max(30, T.size[0] * 0.75 * this.ppu(c[2]));
+          ctx.globalCompositeOperation = 'lighter';
+          const gr = ctx.createRadialGradient(x + c[0], y + c[1], 0, x + c[0], y + c[1], r);
+          const lc = rgb(kit.lightCol);
+          const col = `${Math.round(lc[0] * 120)},${Math.round(lc[1] * 200)},${Math.round(lc[2] * 255)}`;
+          gr.addColorStop(0, `rgba(${col},${(0.32 * night).toFixed(3)})`); gr.addColorStop(0.55, `rgba(${col},${(0.12 * night).toFixed(3)})`); gr.addColorStop(1, `rgba(${col},0)`);
+          ctx.fillStyle = gr;
+          ctx.fillRect(x + c[0] - r, y + c[1] - r, r * 2, r * 2);
+        }
+      }
       ctx.restore();
     }
     return true;
@@ -421,6 +443,14 @@ export class TankView {
 }
 
 function norm(v) { const l = Math.hypot(...v); return v.map((x) => x / l); }
+// free the GL buffers of a tank kit / room that is being replaced
+function disposeKit(k) {
+  const ms = [k.opaque, k.caustic, k.water?.mesh, k.water?.baked, ...k.glow.map((g) => g.mesh), ...k.glass.flatMap((g) => [g.mesh, g.baked])];
+  for (const m of new Set(ms)) m?.dispose?.();
+}
+function disposeRoom(r) {
+  for (const m of new Set([r.opaque, ...r.glow.map((g) => g.mesh), ...r.glass.map((g) => g.mesh), ...r.rotors.map((g) => g.mesh), ...r.clouds.map((g) => g.mesh)])) m?.dispose?.();
+}
 function hsl(h, s, l) {
   const f = (n) => { const k = (n + h / 30) % 12; const a = s * Math.min(l, 1 - l); return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)); };
   const to = (v) => Math.round(v * 255).toString(16).padStart(2, '0');

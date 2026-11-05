@@ -31845,8 +31845,9 @@ kmlmk..
       const gx = sx + Math.cos(surgeA) * (R0 + 26), gy = sy + Math.sin(surgeA) * (R0 + 26);
       ctx2.drawImage(glowSprite(26, "#ff6a3a"), Math.round(gx - 26), Math.round(gy - 26));
       ctx2.restore();
-      drawGlossArrow(ctx2, sx + Math.cos(surgeA) * R0, sy + Math.sin(surgeA) * R0, surgeA, { len: 54 * appear + 4, w: 15, kind: "surge", alpha: blink ? 0.6 : 0.95 });
-      const L2 = 112, W = 26;
+      const S8 = Math.max(1, F.H / 540);
+      drawGlossArrow(ctx2, sx + Math.cos(surgeA) * R0, sy + Math.sin(surgeA) * R0, surgeA, { len: (54 * appear + 4) * S8, w: 15 * S8, kind: "surge", alpha: blink ? 0.6 : 0.95 });
+      const L2 = Math.round(112 * S8), W = Math.round(26 * S8);
       const ax = F.input.x - Math.cos(pullA) * (q.holding ? q.k * 10 : 0), ay = F.input.y - Math.sin(pullA) * (q.holding ? q.k * 10 : 0);
       const off = 16;
       const tx = clamp(ax + Math.cos(pullA) * off, 20, F.W - 20), ty = clamp(ay + Math.sin(pullA) * off, 20, F.H - 20);
@@ -31870,7 +31871,8 @@ kmlmk..
       const k = q.t / 0.6;
       ctx2.save();
       ctx2.globalAlpha = 1 - k;
-      drawGlossArrow(ctx2, F.input.x, F.input.y, q.dir + Math.PI, { len: 112 + k * 40, w: 26, k: 1, kind: q.stunned ? "ok" : "pull" });
+      const S8 = Math.max(1, F.H / 540);
+      drawGlossArrow(ctx2, F.input.x, F.input.y, q.dir + Math.PI, { len: (112 + k * 40) * S8, w: 26 * S8, k: 1, kind: q.stunned ? "ok" : "pull" });
       ctx2.restore();
     }
   }
@@ -32944,8 +32946,8 @@ kmlmk..
       const inside = L2((rb + R_TIP) / 2, 0, 0);
       face(mb, [B2[0], B2[1], T2[1], T2[0]], "#eaf6fc", inside);
       face(mb, [T2[0], T2[1], T2[2], T2[3]], "#ffffff", inside);
-      face(mb, [B2[1], B2[2], T2[2], T2[1]], "#a3c6dc", inside);
-      face(mb, [B2[0], T2[0], T2[3], B2[3]], "#82a8c0", inside);
+      face(mb, [B2[1], B2[2], T2[2], T2[1]], "#93b9d0", inside);
+      face(mb, [B2[0], T2[0], T2[3], B2[3]], "#6a92ad", inside);
       face(mb, [B2[3], T2[3], T2[2], B2[2]], "#5f87a2", inside);
     }
     for (let i = 0; i < N_SPOKES; i++) {
@@ -33154,6 +33156,26 @@ kmlmk..
       for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (BOLT_ROWS[y][x] === "#") g.fillRect(x + 1, y + 1, 1, 1);
       return c;
     });
+  }
+  function outlined(c) {
+    if (!c) return c;
+    const g = c.getContext("2d"), w = c.width, h = c.height;
+    const img = g.getImageData(0, 0, w, h), d = img.data;
+    const solid2 = (x, y) => x >= 0 && y >= 0 && x < w && y < h && d[(y * w + x) * 4 + 3] > 150;
+    const out = [];
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      if (d[(y * w + x) * 4 + 3] > 40) continue;
+      if (solid2(x - 1, y) || solid2(x + 1, y) || solid2(x, y - 1) || solid2(x, y + 1)) out.push(x, y);
+    }
+    for (let i = 0; i < out.length; i += 2) {
+      const j = (out[i + 1] * w + out[i]) * 4;
+      d[j] = 12;
+      d[j + 1] = 58;
+      d[j + 2] = 82;
+      d[j + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+    return c;
   }
   function arcSprite(ctx2, spr, cx, cy, a0, a1, alpha = 1) {
     if (a1 <= a0 + 1e-4) return;
@@ -33365,9 +33387,9 @@ kmlmk..
         center: [0, 0, 0],
         radius: 1.3,
         light: [-0.55, 0.72, 0.75],
-        ambient: 0.5,
+        ambient: 0.44,
         sky: "#f6feff",
-        ground: "#1a6496",
+        ground: "#0f4a78",
         rimColor: "#bff8ff",
         parts: [
           chrome,
@@ -33386,7 +33408,7 @@ kmlmk..
       const c = this.frames(L2);
       i = (i % NF + NF) % NF;
       if (!c.list[i]) {
-        c.list[i] = renderMesh(null, this.gearOpts(L2, i / NF * SYM, PITCH2, YAW));
+        c.list[i] = outlined(renderMesh(null, this.gearOpts(L2, i / NF * SYM, PITCH2, YAW)));
         c.n++;
       }
       return c.list[i];
@@ -33440,10 +33462,10 @@ kmlmk..
         ta = this.heat * (0.22 + 0.12 * Math.sin(this.t * 30));
       } else if (B2?.stunned) {
         tc = "#bff8ff";
-        ta = 0.2 + Math.floor(this.t * 20) % 2 * 0.15;
+        ta = 0.1 + Math.floor(this.t * 20) % 2 * 0.12;
       } else if (this.state(B2) === "sweet") {
         tc = "#8be04a";
-        ta = 0.1 + 0.05 * Math.sin(this.t * 9);
+        ta = 0.06 + 0.04 * Math.sin(this.t * 9);
       }
       if (this.flash > 0 && this.flash * 0.6 > ta) {
         tc = this.flashCol;
@@ -34236,7 +34258,7 @@ kmlmk..
       if (this.trick?.noReel) reel = 0;
       reel *= opts.reelMul ?? 1;
       const holding = !!this.qte?.holding;
-      const payout = surging ? pull * this.d.surge * 0.085 * (1 - this.resil) * (holding ? 0.45 : 1) * (inBand ? 0.35 : 1) : 0;
+      const payout = surging ? pull * Math.sqrt(this.d.surge) * 0.085 * (1 - this.resil) * (holding ? 0.45 : 1) * (inBand ? 0.35 : 1) : 0;
       const back = G.rpm < 0 ? -G.rpm / RPM_UNIT * 0.09 * (1 - this.resil) : 0;
       this.progress += (reel - payout - back) * dt;
       this.reelRate = reel - payout - back;

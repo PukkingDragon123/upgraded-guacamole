@@ -195,7 +195,7 @@ export class Ocean {
         const order = ['sunlit', 'twilight', 'midnight', 'abyss'];
         const deeper = order.indexOf(z.id) > order.indexOf(prev.id);
         const now = performance.now();
-        if ((deeper || now - (this.cardAt || 0) > 4000) && !g.fishing?.fighting) { this.zoneCard = { t: 0, id: z.id, name: z.name, m: z.depthM }; this.cardAt = now; }
+        if ((deeper || now - (this.cardAt || 0) > 4000) && !g.fishing?.fighting && !this.titleCard) { this.zoneCard = { t: 0, id: z.id, name: z.name, m: z.depthM }; this.cardAt = now; }
       } else g.emit?.('depthZone', { id: z.id, name: z.name, depthM: z.depthM, prev: null });
     } else { this.zoneNow.depthM = z.depthM; this.zoneNow.y = z.y; }
     const cz = this.camZone();

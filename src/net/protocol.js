@@ -5,7 +5,7 @@
 //
 // Presence (absolute state, one object under the top-level key 'ft'):
 //   {v, sid, name, look, boat:{t, hull, trim, parts}, oc /*ocean id*/, x /*0..1 boat x*/, dir, st /*fishing state*/,
-//    hk:[x 0..1, depth 0..1]|null, em:{id, n}|null, lc:{sp, r, s, n}|null /*last catch*/, cn /*catches online*/}
+//    hk:[x 0..1, depth 0..1 (up to 8 in the deep zones below the shelf)]|null, em:{id, n}|null, lc:{sp, r, s, n}|null /*last catch*/, cn /*catches online*/}
 // Events (moments): 'caught' {sp, r, s, n}, 'emote' {id, n}, 'wave' {to /*sid or ''*/, n}
 //
 //   cleanName(s) -> safe display name (<= NAME_MAX chars) or ''
@@ -101,7 +101,7 @@ export function cleanPresence(raw) {
   if (raw.v !== PROTO || !isSid(raw.sid)) return null;
   const name = cleanName(raw.name) || 'Fisher';
   let hk = null;
-  if (Array.isArray(raw.hk) && raw.hk.length === 2) hk = [num(raw.hk[0], 0, 1, 0.5), num(raw.hk[1], -0.2, 1, 0)];
+  if (Array.isArray(raw.hk) && raw.hk.length === 2) hk = [num(raw.hk[0], 0, 1, 0.5), num(raw.hk[1], -0.2, 8, 0)]; // [phase6:oceans] > 1: below the shelf, in the deep zones
   let em = null;
   if (raw.em && typeof raw.em === 'object' && EMOTE_BY_ID[raw.em.id]) em = { id: raw.em.id, n: int(raw.em.n, 0, 1e9, 0) };
   return {

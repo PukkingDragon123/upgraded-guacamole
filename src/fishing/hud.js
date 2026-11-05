@@ -1,9 +1,10 @@
 // Fight HUD (screen space), Frutiger Aero and nearly text-free:
+//   bite   the big glossy "!" over the biting fish: bite-window ring, spin arrows, hook-set meter beads
 //   scene  fish stamina arc, the directional surge QTE (glossy surge arrow at the fish, a big glossy
-//          PULL arrow at the cursor that fills as you drag, hold-mouse glyph), the crank loop at the
+//          PULL arrow at the cursor that fills as you drag, hold-mouse glyph), the spin loop at the
 //          cursor, species event visuals, ink on the lens
-//   frame  soft Aero vignette, surge edge tint (and a green edge when you pull right), the name pill,
-//          the round glass "angler cam" porthole, and the physical reel (reel.js) with its SHOCK button.
+//   frame  soft Aero vignette, surge edge tint (and a green edge when you pull right), the big glossy name
+//          pill, the round glass "angler cam" porthole, and the 3D gear (gear.js) with its rings and SHOCK.
 
 import { TAU, clamp, clamp01, lerp, damp } from '../core/math.js';
 import { rgba, RARITY } from '../core/color.js';
@@ -333,9 +334,10 @@ function drawQte(ctx, F, B) {
     const gx = sx + Math.cos(surgeA) * (R0 + 26), gy = sy + Math.sin(surgeA) * (R0 + 26);
     ctx.drawImage(glowSprite(26, '#ff6a3a'), Math.round(gx - 26), Math.round(gy - 26));
     ctx.restore();
-    drawGlossArrow(ctx, sx + Math.cos(surgeA) * R0, sy + Math.sin(surgeA) * R0, surgeA, { len: 54 * appear + 4, w: 15, kind: 'surge', alpha: blink ? 0.6 : 0.95 });
+    const S = Math.max(1, F.H / 540);
+    drawGlossArrow(ctx, sx + Math.cos(surgeA) * R0, sy + Math.sin(surgeA) * R0, surgeA, { len: (54 * appear + 4) * S, w: 15 * S, kind: 'surge', alpha: blink ? 0.6 : 0.95 });
     // the PULL arrow at the cursor: drag along it while holding the button
-    const L = 112, W = 26;
+    const L = Math.round(112 * S), W = Math.round(26 * S);
     const ax = F.input.x - Math.cos(pullA) * (q.holding ? q.k * 10 : 0), ay = F.input.y - Math.sin(pullA) * (q.holding ? q.k * 10 : 0);
     const off = 16;
     const tx = clamp(ax + Math.cos(pullA) * off, 20, F.W - 20), ty = clamp(ay + Math.sin(pullA) * off, 20, F.H - 20);
@@ -361,7 +363,8 @@ function drawQte(ctx, F, B) {
     const k = q.t / 0.6;
     ctx.save();
     ctx.globalAlpha = 1 - k;
-    drawGlossArrow(ctx, F.input.x, F.input.y, q.dir + Math.PI, { len: 112 + k * 40, w: 26, k: 1, kind: q.stunned ? 'ok' : 'pull' });
+    const S = Math.max(1, F.H / 540);
+    drawGlossArrow(ctx, F.input.x, F.input.y, q.dir + Math.PI, { len: (112 + k * 40) * S, w: 26 * S, k: 1, kind: q.stunned ? 'ok' : 'pull' });
     ctx.restore();
   }
 }
