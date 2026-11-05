@@ -579,7 +579,9 @@ export class Tutorial {
     const { W, H } = this.game.screen, S = this.seal, u = S.size / 40;
     const f = this.game.fishing;
     if (f?.fighting || f?.state === 'bite') return [Math.round(56 * u), Math.round(H * 0.42)];
-    return [W - Math.round(58 * u), H - Math.round(110 * u)];
+    let top = H;
+    try { top = this.game.hud?.topY?.() ?? H; } catch (e) { top = H; }
+    return [W - Math.round(58 * u), Math.min(H - Math.round(110 * u), top - Math.round(34 * u))];
   }
   homeRect() { const [x, y] = this.helperHome(), s = this.seal.size; return { x: x - s * 1.1, y: y - s * 0.8, w: s * 2.2, h: s * 1.7 }; }
 
