@@ -23,7 +23,7 @@ import { PROPS, propInteract } from '../gfx/props.js';
 import { SPECIES_BY_ID } from '../fish/species.js';
 import { rollIndividual, sizeScaleOf } from '../fish/traits.js';
 import { nodeFor } from '../game/lab.js';
-import { AERO, fmtAero, drawAeroCoin, drawAeroSurface, drawAeroButton, drawSparkle, drawAeroPanel } from '../ui/aero.js';
+import { AERO, fmtAero, drawAeroCoin, drawAeroSurface, drawAeroButton, drawSparkle, drawAeroPanel, drawAeroGlow } from '../ui/aero.js';
 import { TANK_TIERS, TANK_IDS, tankTier, aeroRate, GEAR, gearLevel, gearCost, gearMul, gearHappy } from './tanks.js';
 import { TankShape, TankFish, Drops3D, Ripples, DENOMS } from './sim3d.js';
 import { TankView } from './view3d.js';
@@ -1379,8 +1379,18 @@ export class Aquarium {
       const sp = v.project([hd.p[0], hd.p[1] + hd.h + 1, hd.p[2]]);
       if (sp) drawSparkle(ctx, sp[0], sp[1] - 2 + Math.sin(t * 5) * 1.5, 2, 0.9);
     }
+    // Aero drops get a soft glow + a twinkle so the currency reads at any distance (light only)
+    ctx.globalCompositeOperation = 'lighter';
     for (const c of this.drops.list) {
-      if (!c.hint) { if (c.d === 2 && rng.chance(0.03)) { const sp = v.project(c.p); if (sp) this.particles.sparkle(sp[0] + rng.float(-3, 3), sp[1] + rng.float(-3, 3), '#bff8ff'); } continue; }
+      const sp = v.project(c.p);
+      if (!sp || sp[0] < -10 || sp[1] < -10 || sp[0] > w + 10 || sp[1] > h + 10) continue;
+      const rr = clamp(c.r * v.ppu(sp[2]), 2, 26);
+      drawAeroGlow(ctx, sp[0], sp[1], rr * 2.4, '#9af0ff', 0.22 + 0.08 * Math.sin(t * 3 + c.id));
+      if (((t * 0.7 + c.id * 0.37) % 1) < 0.08) drawSparkle(ctx, sp[0] - rr * 0.4, sp[1] - rr * 0.4, rr > 6 ? 2 : 1, 0.9);
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    for (const c of this.drops.list) {
+      if (!c.hint) continue;
       const sp = v.project(c.p);
       if (!sp) continue;
       const a = getUiIcon('arrow_d');

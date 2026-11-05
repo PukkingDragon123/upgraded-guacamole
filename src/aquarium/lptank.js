@@ -210,7 +210,7 @@ function roundTank(g, kit, T, gear, gl) {
   };
   band(1.95, 2.22, T.d.water * 0.22, T.d.water * 0.82, 0.06);
   band(2.3, 2.38, T.d.water * 0.3, T.d.water * 0.7, 0.06);
-  kit.glass.push({ mesh: hl.build(), pos: [0, 0, 0], a: 0.34, streak: true });
+  kit.glass.push({ mesh: hl.build(), pos: [0, 0, 0], a: 0.2, streak: true });
   const top = P[P.length - 1];
   if (T.d.kind === 'jar') {
     // screw neck threads + a glossy aqua lid resting tilted against the jar

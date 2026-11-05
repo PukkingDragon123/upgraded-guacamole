@@ -21,7 +21,7 @@
   };
   var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
-  // src/core/canvas.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/core/canvas.js
   function makeCanvas(w, h) {
     const c = document.createElement("canvas");
     c.width = Math.max(1, Math.ceil(w));
@@ -84,13 +84,13 @@
   }
   var tintCache, scratch;
   var init_canvas = __esm({
-    "src/core/canvas.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/core/canvas.js"() {
       tintCache = /* @__PURE__ */ new WeakMap();
       scratch = null;
     }
   });
 
-  // src/gfx/font.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/font.js
   function buildFont(def2) {
     const entries = [];
     let atlasW = 0;
@@ -272,7 +272,7 @@
   }
   var NORMAL_DEF, SMALL_DEF, BIG_OVERRIDES, BIG_DEF, FONTS, inlineIcons;
   var init_font = __esm({
-    "src/gfx/font.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/font.js"() {
       init_canvas();
       NORMAL_DEF = {
         height: 7,
@@ -479,7 +479,7 @@
     }
   });
 
-  // src/core/math.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/core/math.js
   function hashInt(x) {
     x |= 0;
     x = Math.imul(x ^ x >>> 16, 2146121005);
@@ -528,7 +528,7 @@
   }
   var TAU, clamp, clamp01, lerp, smoothstep, fract, dist, damp, ease, smooth, BAYER4, bayer;
   var init_math = __esm({
-    "src/core/math.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/core/math.js"() {
       TAU = Math.PI * 2;
       clamp = (v, a, b) => v < a ? a : v > b ? b : v;
       clamp01 = (v) => v < 0 ? 0 : v > 1 ? 1 : v;
@@ -569,7 +569,7 @@
     }
   });
 
-  // src/core/color.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/core/color.js
   function hexToRgb(hex4) {
     let c = rgbCache.get(hex4);
     if (c) return c;
@@ -667,7 +667,7 @@
   }
   var rgbCache, toHex2, rgbToHex, hexToHsl, hslToHex, rgbaCache, RARITY, RARITY_ORDER;
   var init_color = __esm({
-    "src/core/color.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/core/color.js"() {
       init_math();
       rgbCache = /* @__PURE__ */ new Map();
       toHex2 = (v) => clamp(Math.round(v), 0, 255).toString(16).padStart(2, "0");
@@ -686,7 +686,7 @@
     }
   });
 
-  // src/gfx/pixel.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/pixel.js
   function selOut(strength = 0.72) {
     const cache15 = /* @__PURE__ */ new Map();
     return (n2) => {
@@ -732,7 +732,7 @@
   }
   var PixelBuffer;
   var init_pixel = __esm({
-    "src/gfx/pixel.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/pixel.js"() {
       init_canvas();
       init_color();
       PixelBuffer = class {
@@ -845,7 +845,7 @@
     }
   });
 
-  // src/ui/aero.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/aero.js
   function fmtAero(n2) {
     return Math.round(n2 || 0).toLocaleString("en-US");
   }
@@ -1644,7 +1644,7 @@
   }
   var CURRENCY, AERO, UI_SCALES, uiMode, PROMOTE, AERO_TONES, TONE_ALIAS, customTones, tex, rgbCache2, PANEL_TONE, coin3d, LEAF_TONES, SPRIG;
   var init_aero = __esm({
-    "src/ui/aero.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/aero.js"() {
       init_color();
       init_canvas();
       init_pixel();
@@ -1717,7 +1717,7 @@
     }
   });
 
-  // src/gfx/voxgl.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/voxgl.js
   function meshVoxels(model, o = {}) {
     const { nx, ny, nz, data } = model;
     const pal2 = model.palette.map((p) => {
@@ -1843,7 +1843,7 @@
   }
   var DEG, M4, hexRGB, AO_K, FACES, HEAD, SCENE_UNI, COMMON, VOX_VS, VOX_FS, SKY_VS, SKY_FS, WATER_VS, WATER_FS, BB_VS, BB_FS, PT_VS, PT_FS, LINE_VS, LINE_FS, GLASS_VS, GLASS_FS, FS_VS, DOWN_FS, UP_FS, BLUR_FS, RAYS_FS, FINAL_FS, VoxGL;
   var init_voxgl = __esm({
-    "src/gfx/voxgl.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/voxgl.js"() {
       DEG = Math.PI / 180;
       M4 = {
         ident() {
@@ -3301,7 +3301,7 @@ void main() {
     }
   });
 
-  // src/gfx/lowpoly.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/lowpoly.js
   function lpStats() {
     return { ...T, w: GLW, h: GLH };
   }
@@ -3707,7 +3707,7 @@ void main() {
   }
   var gl, glCanvas, prog, failed, copyMode, GLW, GLH, T, tnow, texCache, MAX_GL, VS, FS, UNIFORMS, softOn, LPMesh, hexCache, hexRgb, MeshBuilder, Z2, T4, finish, pixBuf, LPScene, texPix;
   var init_lowpoly = __esm({
-    "src/gfx/lowpoly.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/lowpoly.js"() {
       init_voxgl();
       gl = null;
       glCanvas = null;
@@ -4027,7 +4027,7 @@ void main() {
     }
   });
 
-  // src/fish/realvox.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fish/realvox.js
   function hexRGB2(h) {
     if (Array.isArray(h)) return h;
     const n2 = parseInt(String(h).slice(1, 7), 16);
@@ -5003,7 +5003,7 @@ void main() {
   }
   var R_BODY, R_FIN, R_EYE, R_MOUTH, R_SPEC, R_GLASS, R_PUPIL, TAU2, DEG2, cl8, packRGB2, mix3, tone3, FIN_SHAPES, SCR, PAD, Solid, P, vnorm, add3, SOLIDS, solidCache;
   var init_realvox = __esm({
-    "src/fish/realvox.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fish/realvox.js"() {
       init_math();
       R_BODY = 0;
       R_FIN = 1;
@@ -5423,7 +5423,7 @@ void main() {
     }
   });
 
-  // src/fish/anatomy.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fish/anatomy.js
   function autoReal(look, kind2) {
     const col = look.col || look.chain?.col || {};
     const c = { back: col.back || col.body || "#4a6a8a", flank: col.body || "#8aa0b8", belly: col.belly || "#f0f4f8", fin: col.fin || col.body || "#8aa0b8" };
@@ -5459,7 +5459,7 @@ void main() {
   }
   var A, fin, rayKnots, C, S, SPEC_IN, solid, eelHead, SPEC, SHAPE_BASE, SOLID_KIND, FISH_KIND, isObj;
   var init_anatomy = __esm({
-    "src/fish/anatomy.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fish/anatomy.js"() {
       A = {};
       A.perch = {
         plan: "fish",
@@ -6700,7 +6700,7 @@ void main() {
     }
   });
 
-  // src/gfx/fishart.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/fishart.js
   function toonInk(hex4) {
     const [h, s, l] = hexToHsl(hex4);
     const hh = l > 0.92 || s < 0.08 ? 215 : h;
@@ -7704,7 +7704,7 @@ void main() {
   }
   var SHAPES, withA, P2, MOUTH_W, spineAt, TONES7, satd, SPARK, VOXM, IRI, IRI_SOFT, ACC_TYPES, CAP_WIDE, MOUTH_IN, EYE_RING, PUPIL_EDGE, SCLERA, SCLERA_TOP, HEART, TEAR, TEAR_D, WHITE, VEIN, VEIN_D, BLUSH, GREEN, GL_FRAME, GL_LENS, GL_LENS2, GL_GLINT, GL_SHINE, KINDS, rp, pk, chainRadius, isKind, kindRotates;
   var init_fishart = __esm({
-    "src/gfx/fishart.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/fishart.js"() {
       init_math();
       init_color();
       init_pixel();
@@ -8861,7 +8861,7 @@ void main() {
     }
   });
 
-  // src/gfx/fishrig.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/fishrig.js
   function beginRigFrame() {
   }
   function rigStats() {
@@ -9164,7 +9164,7 @@ void main() {
   }
   var clamp2, fract2, now, DEG3, BASE_YAW, drawMs, drawCalls, pending, culled, geoCache, washes;
   var init_fishrig = __esm({
-    "src/gfx/fishrig.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/fishrig.js"() {
       init_fishart();
       init_canvas();
       init_lowpolyfish();
@@ -9184,7 +9184,7 @@ void main() {
     }
   });
 
-  // src/gfx/spritecache.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/spritecache.js
   function compiled(look, variant2 = null, key = null) {
     const k = key ? key + "|" + variantKey(variant2) : null;
     if (k && compiledCache.has(k)) return compiledCache.get(k);
@@ -9241,7 +9241,7 @@ void main() {
   }
   var MAX, cache, nextId, FRAMES, compiledCache;
   var init_spritecache = __esm({
-    "src/gfx/spritecache.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/spritecache.js"() {
       init_fishart();
       init_lowpolyfish();
       init_fishrig();
@@ -9254,7 +9254,7 @@ void main() {
     }
   });
 
-  // src/fish/species-extra.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fish/species-extra.js
   function grow(o, f, eyeF, key = "") {
     if (Array.isArray(o)) return o.map((v) => grow(v, f, eyeF, key));
     if (!o || typeof o !== "object") return o;
@@ -9268,7 +9268,7 @@ void main() {
   }
   var S2, add, fight, spawn, GROW, GROW_KEYS, EXTRA_SPECIES, EXTRA_BIOMES, EXTRA_BY_BIOME;
   var init_species_extra = __esm({
-    "src/fish/species-extra.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fish/species-extra.js"() {
       S2 = [];
       add = (o) => S2.push(o);
       fight = (phases, power, stamina, tricks, o = {}) => ({ phases, power, stamina, tricks, biteWindow: 0.8, nibbles: [1, 2], fakeBite: 0.1, ...o });
@@ -10568,10 +10568,10 @@ void main() {
     }
   });
 
-  // src/fish/species-oscean.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fish/species-oscean.js
   var S3, add2, fight2, spawn2, OSCEAN_SPECIES;
   var init_species_oscean = __esm({
-    "src/fish/species-oscean.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fish/species-oscean.js"() {
       S3 = [];
       add2 = (o) => S3.push(o);
       fight2 = (phases, power, stamina, tricks, o = {}) => ({ phases, power, stamina, tricks, biteWindow: 0.8, nibbles: [1, 2], fakeBite: 0.1, ...o });
@@ -10711,7 +10711,7 @@ void main() {
     }
   });
 
-  // src/fish/species.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fish/species.js
   function grow2(o, f, eyeF, key = "") {
     if (Array.isArray(o)) return o.map((v) => grow2(v, f, eyeF, key));
     if (!o || typeof o !== "object") return o;
@@ -10725,7 +10725,7 @@ void main() {
   }
   var S4, add4, SPEC_EXTRA, GLOW_EYES, COSTUME, COMMON_FIGHT, NOSPAWN, GROW2, GROW_KEYS2, SPECIES, SPECIES_BY_ID, OCEAN_ORDER, SPECIES_BY_BIOME;
   var init_species = __esm({
-    "src/fish/species.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fish/species.js"() {
       init_species_extra();
       init_species_oscean();
       init_anatomy();
@@ -13353,7 +13353,7 @@ void main() {
     }
   });
 
-  // src/fish/lowpolyfish.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fish/lowpolyfish.js
   function setLowpolyBudget(ms) {
     budgetMs = Math.max(1, ms);
   }
@@ -15101,7 +15101,7 @@ void main() {
   }
   var LP_SWIM, TAU3, DEG4, YAW_STEP, SCALE_STEP, CAM_TILT, TEX_LO, TEX_HI, SHEET_PX_MAX, POSE_MAX, FORCE_MS, MAX_SPRITE, clamp3, clamp012, smooth2, now2, norm, cross, rgb01, unpack2, toneRGB, mixRGB, budgetMs, spent, forceSpent, syncAll, rafOn, stat, canSpend, Part, US, R_FIN2, R_EYE2, R_SPEC2, R_GLASS2, QV, CREATURES, creatureC, poses, poseKey, sheets, byVid, sheetPx, scaleBucket, bucketScale, stills, crabLooks, icons, meshCache, orbs, tubes;
   var init_lowpolyfish = __esm({
-    "src/fish/lowpolyfish.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fish/lowpolyfish.js"() {
       init_lowpoly();
       init_realvox();
       init_anatomy();
@@ -15281,17 +15281,17 @@ void main() {
     }
   });
 
-  // src/fish/fishicon.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fish/fishicon.js
   function voxelFishIcon(sp, w, h = w, o = {}) {
     return lpFishIcon(sp, w, h, o);
   }
   var init_fishicon = __esm({
-    "src/fish/fishicon.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fish/fishicon.js"() {
       init_lowpolyfish();
     }
   });
 
-  // src/gfx/uiicons.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/uiicons.js
   function pk2(hex4, a = 255) {
     const k = hex4 + a;
     let v = pkCache.get(k);
@@ -15390,7 +15390,7 @@ void main() {
   }
   var PAL, PAL_A, OUTLINE, ICONS, CURSORS, CURSOR_HOTSPOT, pkCache, outCache, AERO_ICONS, cache2, UI_ICON_NAMES, CURSOR_NAMES, registered;
   var init_uiicons = __esm({
-    "src/gfx/uiicons.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/uiicons.js"() {
       init_canvas();
       init_pixel();
       init_color();
@@ -16100,13 +16100,13 @@ void main() {
     }
   });
 
-  // src/core/rng.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/core/rng.js
   function uid() {
     return Date.now().toString(36) + Math.floor(Math.random() * 1e9).toString(36);
   }
   var RNG, rng;
   var init_rng = __esm({
-    "src/core/rng.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/core/rng.js"() {
       RNG = class {
         constructor(seed = Date.now()) {
           this.s = seed >>> 0 || 1;
@@ -16160,7 +16160,7 @@ void main() {
     }
   });
 
-  // src/core/audio.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/core/audio.js
   function warnOnce(key, msg) {
     if (warned.has(key)) return;
     warned.add(key);
@@ -17139,7 +17139,7 @@ void main() {
   }
   var AC, LOOKAHEAD, LIMITS, ctx, B, NYQ, pools, NB, WAVES, warned, lastPlay, vols, S5, rand, pick, chance, clamp013, m2f, ready, cf, curve, TRIM, bub, bell, chime, mallet, tink, whoosh, thump, tick2, droplets, arp, SFX, COMBO, combo, MIN_GAP, VERB, LOOP_CAT, activeLoops, pendingLoops, loopO, creak, LOOPS, MINPENTA, evOut, AMB, withV, evLayer, dataBlip, WEATHER, scene, INS, SH_CH, SH_PROGS, SH_MEL, JY_CH, JY_PROGS, JY_LEAD, AB_CH, AQ_CH, AQ_PROGS, AQ_MEL, FJ_CH, FJ_PROGS, VO_CH, VO_RIFF, ME_CH, ME_PROGS, ME_LEAD, TRACKS, tracks, curTrack, VOICES, FORMANT, bab, timer, failed2, NOOP_LOOP, SFX_NAMES, LOOP_NAMES, MUSIC_TRACKS, BABBLE_VOICES, audio;
   var init_audio = __esm({
-    "src/core/audio.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/core/audio.js"() {
       AC = typeof window !== "undefined" ? window.AudioContext || window.webkitAudioContext : null;
       LOOKAHEAD = 0.12;
       LIMITS = { sfx: 32, music: 28, amb: 14 };
@@ -18454,7 +18454,7 @@ void main() {
     }
   });
 
-  // src/gfx/particles.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/particles.js
   function ringSprite(r, color, flat = 0.4) {
     const key = r + color + flat;
     let c = ringCache.get(key);
@@ -18661,7 +18661,7 @@ void main() {
   }
   var ringCache, bubbleCache, discCache, glowCache, coinFrames, CONFETTI, AERO_CONFETTI, gbubbleCache, thickRingCache, Particles;
   var init_particles = __esm({
-    "src/gfx/particles.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/particles.js"() {
       init_rng();
       init_color();
       init_font();
@@ -19513,7 +19513,7 @@ void main() {
     }
   });
 
-  // src/gfx/voxel.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/voxel.js
   function ramp7(hex4, contrast = 1) {
     const key = hex4 + "|" + contrast;
     let r = rampCache.get(key);
@@ -20080,7 +20080,7 @@ void main() {
   }
   var DEG5, VoxelModel, RAMP_STEPS, rampCache, POOL, NRM, AO_CURVE, PD, outlineCache;
   var init_voxel = __esm({
-    "src/gfx/voxel.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/voxel.js"() {
       init_canvas();
       init_color();
       init_math();
@@ -20330,7 +20330,7 @@ void main() {
     }
   });
 
-  // src/world/slabrender.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/slabrender.js
   function* renderSteps(m, opts = {}, slabPx = 40) {
     const b = m.bounds();
     yield;
@@ -20392,13 +20392,13 @@ void main() {
     return r.value;
   }
   var init_slabrender = __esm({
-    "src/world/slabrender.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/slabrender.js"() {
       init_voxel();
       init_canvas();
     }
   });
 
-  // src/gfx/props.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/props.js
   function noise3(x, y, z, seed = 0) {
     x += seed * 17.13;
     y += seed * 7.71;
@@ -21110,7 +21110,7 @@ void main() {
   }
   var PERM, NVAL, sm, h3, topOpen, unpackIdx, SAND, REEF_ROCK, MOSS, WOOD, RUST, DEFS, INTERACT, CORAL_SCHEMES, JUNK_SAND, GUN, BEIGE, ABYSS_STONE, ABYSS_SILT, BONE, RUNES, GEMS, CASTLE_STONE, LAVA, BASES, GLYPH, PIANO_TUNE, TV_BARS, JUKE, LAMP_INTERACT, ROCKET_SEQ, PROPS, PROP_VARIANTS, TAG_INTERACT, EXTRA_INTERACT, interactCache, ANIMATED_DECOR, stepCache, MODELS, cache3;
   var init_props = __esm({
-    "src/gfx/props.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/props.js"() {
       init_voxel();
       init_slabrender();
       init_rng();
@@ -25623,7 +25623,7 @@ void main() {
     }
   });
 
-  // src/fish/traits.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fish/traits.js
   function randomName() {
     return rng.pick(NAME_A) + rng.pick(NAME_B);
   }
@@ -25695,7 +25695,7 @@ void main() {
   }
   var MUTATIONS, PATTERNS, PERSONALITIES, NAME_A, NAME_B;
   var init_traits = __esm({
-    "src/fish/traits.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fish/traits.js"() {
       init_rng();
       init_math();
       MUTATIONS = {
@@ -25734,7 +25734,7 @@ void main() {
     }
   });
 
-  // src/game/rods.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/game/rods.js
   function ensureRods(state) {
     const r = state.rods || (state.rods = { owned: ["twig"], equipped: "twig", skins: {} });
     r.owned || (r.owned = ["twig"]);
@@ -25772,7 +25772,7 @@ void main() {
   }
   var R, S6, RODS, ROD_BY_ID, ROD_STAT_KEYS;
   var init_rods = __esm({
-    "src/game/rods.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/game/rods.js"() {
       R = (id2, tier, rarity, name, desc, stats, look) => ({ id: id2, tier, rarity, name, desc, stats, look });
       S6 = (lureSpeed, luck, control, resilience, strength, power, charges, cooldown) => ({ lureSpeed, luck, control, resilience, strength, shock: { power, charges, cooldown } });
       RODS = [
@@ -25924,7 +25924,7 @@ void main() {
     }
   });
 
-  // src/game/lab.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/game/lab.js
   function autoCost(branch2, tier, wantFish) {
     const items = {};
     const band = tier <= 3 ? 0 : tier <= 6 ? 1 : 2;
@@ -26374,7 +26374,7 @@ void main() {
   }
   var STARTER_UNLOCKS, ROOT_ID, BOAT_ORDER, TANK_ORDER, RARITIES, speciesById, BOAT_NAMES, TANK_NAMES, OCEAN_NAMES, BRANCHES, MULT_KEYS, EFFECT_INFO, AERO_T, TIME_T, MAT_T, FLAVOUR, FLAVOUR_Q, MAT_RARITY, FISH_T, RAW, U, BU, DECOR_SETS, DU, LAB_ROWS, row, ROW_BY_ID, ROW_OF, LAB_R0, LAB_STEP, LANE, LANE_MAX, LAB_RING, LAB_NODES, LAB_BY_ID, LAB_CHILDREN, UNLOCK_INDEX, matCount;
   var init_lab = __esm({
-    "src/game/lab.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/game/lab.js"() {
       init_species();
       init_rods();
       STARTER_UNLOCKS = ["rod:twig", "tank:jar", "boat:raft", "biome:oscean", "bait:crumbs", "feature:aquarium", "recipe:bp_research_lab", "recipe:decor_rubber_duck"];
@@ -26733,10 +26733,10 @@ void main() {
     }
   });
 
-  // src/game/shopdata.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/game/shopdata.js
   var BAITS, BAIT_ORDER, RELEASE_VALUE, COIN_RATE, CATCH_BONUS;
   var init_shopdata = __esm({
-    "src/game/shopdata.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/game/shopdata.js"() {
       BAITS = {
         bread: { name: "Breadcrumbs", price: 6, qty: 5, desc: "Cheap and cheerful. Common fish love it.", effect: null },
         worm: { name: "Glowing Worm", price: 24, qty: 3, desc: "Wiggles over your icons. Most fish find it irresistible.", effect: "worm" },
@@ -26756,7 +26756,7 @@ void main() {
     }
   });
 
-  // src/aquarium/tanks.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/aquarium/tanks.js
   function tankTier(state) {
     let t = clamp(Math.floor(Number(state?.tank?.tier) || 0), 0, TANK_TIERS.length - 1);
     try {
@@ -26794,7 +26794,7 @@ void main() {
   }
   var TANK_IDS, TANK_TIERS, TANK3D, RATE, GEAR, GEAR_BY_ID;
   var init_tanks = __esm({
-    "src/aquarium/tanks.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/aquarium/tanks.js"() {
       init_math();
       init_lab();
       init_traits();
@@ -26839,7 +26839,7 @@ void main() {
     }
   });
 
-  // src/aquarium/lpkit.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/aquarium/lpkit.js
   function hash01(n2) {
     n2 = Math.imul((n2 | 0) ^ 2654435769, 2246822507);
     n2 ^= n2 >>> 13;
@@ -26902,7 +26902,7 @@ void main() {
   }
   var rgb, mixc, shadec, ident, STRIDE, Geo, DynMesh, TPL, ICO;
   var init_lpkit = __esm({
-    "src/aquarium/lpkit.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/aquarium/lpkit.js"() {
       init_lowpoly();
       rgb = (c) => {
         if (Array.isArray(c)) return c;
@@ -27359,7 +27359,7 @@ void main() {
     }
   });
 
-  // src/aquarium/lpfish.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/aquarium/lpfish.js
   function beginFishFrame(ms = 6) {
     budget = ms;
     spent2 = 0;
@@ -27666,7 +27666,7 @@ void main() {
   }
   var FISH_PHASES, REAL, PLACE, BUILT, budget, spent2, t0, failed3, built;
   var init_lpfish = __esm({
-    "src/aquarium/lpfish.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/aquarium/lpfish.js"() {
       init_lpkit();
       init_traits();
       init_lowpolyfish();
@@ -27682,7 +27682,7 @@ void main() {
     }
   });
 
-  // src/aquarium/sim3d.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/aquarium/sim3d.js
   function vnoise(x, z) {
     const xi = Math.floor(x), zi = Math.floor(z), xf = x - xi, zf = z - zi;
     const u = xf * xf * (3 - 2 * xf), v = zf * zf * (3 - 2 * zf);
@@ -27700,7 +27700,7 @@ void main() {
   }
   var DENOMS, DROP_CAP, v3len, hashN, TankShape, STYLE, TankFish, Drops3D, Ripples;
   var init_sim3d = __esm({
-    "src/aquarium/sim3d.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/aquarium/sim3d.js"() {
       init_math();
       init_rng();
       init_tanks();
@@ -28234,7 +28234,7 @@ void main() {
           for (const c of this.list) c.r = this.radius(c.d, c.value);
         }
         radius(d, value) {
-          const base = [0.75, 0.95, 1.25][d] ?? 0.75;
+          const base = [1.05, 1.3, 1.65][d] ?? 1.05;
           const extra = value > DENOMS[d] ? Math.min(0.8, Math.log2(value / DENOMS[d]) * 0.14) : 0;
           return (base + extra) * this.k;
         }
@@ -28351,7 +28351,7 @@ void main() {
     }
   });
 
-  // src/aquarium/lptank.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/aquarium/lptank.js
   function buildTank(tier, gear2 = {}) {
     const T3 = new TankShape(tier);
     const g = new Geo();
@@ -28529,7 +28529,7 @@ void main() {
     };
     band(1.95, 2.22, T3.d.water * 0.22, T3.d.water * 0.82, 0.06);
     band(2.3, 2.38, T3.d.water * 0.3, T3.d.water * 0.7, 0.06);
-    kit2.glass.push({ mesh: hl.build(), pos: [0, 0, 0], a: 0.34, streak: true });
+    kit2.glass.push({ mesh: hl.build(), pos: [0, 0, 0], a: 0.2, streak: true });
     const top = P5[P5.length - 1];
     if (T3.d.kind === "jar") {
       for (let k = 0; k < 2; k++) {
@@ -28943,7 +28943,7 @@ void main() {
   }
   var SUBSTRATES, LIGHTS, CAUSTIC_TILE, GLASS_EDGE, SILVER, SILVER_D, WHITE2, AQUA, CAUSTICS, CPTS, C_N, C_SIZE, SHAFT;
   var init_lptank = __esm({
-    "src/aquarium/lptank.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/aquarium/lptank.js"() {
       init_lpkit();
       init_sim3d();
       init_tanks();
@@ -28974,7 +28974,7 @@ void main() {
     }
   });
 
-  // src/aquarium/lproom.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/aquarium/lproom.js
   function buildRoom(tier, kit2) {
     const T3 = kit2.shape;
     const wall = T3.d.stand === "wall";
@@ -29390,7 +29390,7 @@ void main() {
   }
   var WALL, WAIN, TRIM2, WOOD2, CHROME, AQUA2, GLOSS, GRASS;
   var init_lproom = __esm({
-    "src/aquarium/lproom.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/aquarium/lproom.js"() {
       init_lpkit();
       WALL = "#e6f4fb";
       WAIN = "#cfe9f5";
@@ -29403,7 +29403,7 @@ void main() {
     }
   });
 
-  // src/aquarium/lpplants.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/aquarium/lpplants.js
   function vallis(g, h, k, rnd) {
     const n2 = 5 + Math.floor(rnd() * 4);
     for (let b = 0; b < n2; b++) {
@@ -29519,7 +29519,7 @@ void main() {
   }
   var GREENS, PlantField, grad, PLANTS;
   var init_lpplants = __esm({
-    "src/aquarium/lpplants.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/aquarium/lpplants.js"() {
       init_lpkit();
       GREENS = ["#2fa84a", "#3cc25a", "#58d468", "#8ae84a", "#1f8a5a", "#46b86e"];
       PlantField = class {
@@ -29630,7 +29630,7 @@ void main() {
     }
   });
 
-  // src/aquarium/lpdecor.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/aquarium/lpdecor.js
   function decorModel(id2, variant2 = 0) {
     const key = id2 + "|" + variant2;
     let m = CACHE.get(key);
@@ -29709,7 +29709,7 @@ void main() {
   }
   var CACHE, at, rock, CORAL, coralCol, MODELS2;
   var init_lpdecor = __esm({
-    "src/aquarium/lpdecor.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/aquarium/lpdecor.js"() {
       init_lpkit();
       init_props();
       CACHE = /* @__PURE__ */ new Map();
@@ -30675,7 +30675,7 @@ void main() {
     }
   });
 
-  // src/gfx/character.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/character.js
   function normalizeLook(look) {
     const src = look && typeof look === "object" ? look : {};
     const L2 = { ...DEFAULT_CHARACTER };
@@ -32591,7 +32591,7 @@ void main() {
   }
   var TINTS, skinOfTint, WARDROBE_SLOTS, it, pkg, lab, WARDROBE, WARDROBE_BY_ID, EMOTES, DEFAULT_CHARACTER, SLOT_KEYS, VALID, _a, LEGACY, HULL_NAMES, ROD_SKINS, TWIG, lookKey, DEG6, I3, M, mv, mul, ap, add5, sub, scl, dot, cross2, norm3, Tr, Ro, hsh, KITS, K, KG, HEAD2, HAT_SEAT, HAT_TILT, TORSO, WAIST, TOPS, BOTTOMS, topCol, botCol, ARM, LEG, ROD, HIP_Y, J, OLD_SH, AK, conv, BASE_POSE, P3, S7, POSES, POSE_NAMES, FEATS, fract3, HUE, BASE_VS, PITCH, FACE_YAW, YAW_STEP2, MAX_FRAMES, MAX_PIXELS, framePx, FRAMES2, FAMS, budgetMs2, spent3, windowStart, statBuilt, statFallback, statMs, now3, PROF, RENDER, vsFor, INK, inE, MOOD_FACE, EYESTATE, TRAILS, PREVIEWS, HEAD_SLOTS, TRAIL_IDS;
   var init_character = __esm({
-    "src/gfx/character.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/character.js"() {
       init_voxel();
       init_canvas();
       init_color();
@@ -33245,7 +33245,7 @@ void main() {
     }
   });
 
-  // src/aquarium/lpavatar.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/aquarium/lpavatar.js
   function avatarKit(look) {
     let L2;
     try {
@@ -33370,7 +33370,7 @@ void main() {
   }
   var TOPS2, BOTTOMS2, KIT, KEY;
   var init_lpavatar = __esm({
-    "src/aquarium/lpavatar.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/aquarium/lpavatar.js"() {
       init_lpkit();
       init_lowpoly();
       init_character();
@@ -33381,7 +33381,7 @@ void main() {
     }
   });
 
-  // src/aquarium/view3d.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/aquarium/view3d.js
   function norm4(v) {
     const l = Math.hypot(...v);
     return v.map((x) => x / l);
@@ -33435,7 +33435,7 @@ void main() {
   }
   var FOV, PROF2, ID, COIN_COL, WHITE3, SHELL_COL, BUB_COL, easeOutElastic, TankView;
   var init_view3d = __esm({
-    "src/aquarium/view3d.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/aquarium/view3d.js"() {
       init_lowpoly();
       init_math();
       init_lpkit();
@@ -33901,7 +33901,7 @@ void main() {
     }
   });
 
-  // src/aquarium/flat2d.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/aquarium/flat2d.js
   function drawFlat(ctx2, aq, x, y, w, h) {
     const T3 = aq.shape;
     const sw = T3.size[0] * 1.5, sh = T3.top * 1.6;
@@ -33997,13 +33997,13 @@ void main() {
     ctx2.fillRect(x0 + (x1 - x0) * 0.1, y1 + 4, (x1 - x0) * 0.06, y0 - y1 - 8);
   }
   var init_flat2d = __esm({
-    "src/aquarium/flat2d.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/aquarium/flat2d.js"() {
       init_math();
       init_aero();
     }
   });
 
-  // src/aquarium/aquarium.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/aquarium/aquarium.js
   function segDist(px2, py, ax, ay, bx, by) {
     const dx = bx - ax, dy = by - ay;
     const L2 = dx * dx + dy * dy;
@@ -34043,7 +34043,7 @@ void main() {
   }
   var HUNGER_RATE, AUTO_POP, ICONS2, EMOTE_ICON, FRAME, WIN_W, FOOD_COLS, v3, Aquarium;
   var init_aquarium = __esm({
-    "src/aquarium/aquarium.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/aquarium/aquarium.js"() {
       init_math();
       init_rng();
       init_audio();
@@ -35705,14 +35705,17 @@ ${hearts} ${status}
             const sp = v.project([hd.p[0], hd.p[1] + hd.h + 1, hd.p[2]]);
             if (sp) drawSparkle(ctx2, sp[0], sp[1] - 2 + Math.sin(t * 5) * 1.5, 2, 0.9);
           }
+          ctx2.globalCompositeOperation = "lighter";
           for (const c of this.drops.list) {
-            if (!c.hint) {
-              if (c.d === 2 && rng.chance(0.03)) {
-                const sp2 = v.project(c.p);
-                if (sp2) this.particles.sparkle(sp2[0] + rng.float(-3, 3), sp2[1] + rng.float(-3, 3), "#bff8ff");
-              }
-              continue;
-            }
+            const sp = v.project(c.p);
+            if (!sp || sp[0] < -10 || sp[1] < -10 || sp[0] > w + 10 || sp[1] > h + 10) continue;
+            const rr3 = Math.max(2, c.r * v.ppu(sp[2]));
+            drawAeroGlow(ctx2, sp[0], sp[1], rr3 * 2.4, "#9af0ff", 0.22 + 0.08 * Math.sin(t * 3 + c.id));
+            if ((t * 0.7 + c.id * 0.37) % 1 < 0.08) drawSparkle(ctx2, sp[0] - rr3 * 0.4, sp[1] - rr3 * 0.4, rr3 > 6 ? 2 : 1, 0.9);
+          }
+          ctx2.globalCompositeOperation = "source-over";
+          for (const c of this.drops.list) {
+            if (!c.hint) continue;
             const sp = v.project(c.p);
             if (!sp) continue;
             const a = getUiIcon("arrow_d");
@@ -35871,7 +35874,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/game/state.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/game/state.js
   function defaultState() {
     return {
       v: 3,
@@ -35976,13 +35979,13 @@ ${hearts} ${status}
   }
   var KEY2, LEGACY_KEYS;
   var init_state = __esm({
-    "src/game/state.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/game/state.js"() {
       KEY2 = "fishtop.save.v3";
       LEGACY_KEYS = ["fishtop.save.v1"];
     }
   });
 
-  // src/build/buildings.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/build/buildings.js
   function buildingDef(id2) {
     return BUILDINGS[id2] || (DECOR_BUILDS[id2] ? { ...DECOR_BUILDS[id2], decor: true, bonus: {}, action: null } : null);
   }
@@ -36083,7 +36086,7 @@ ${hearts} ${status}
   }
   var MAX_LEVEL, ZMIN, ZMAX, BUILDINGS, BUILDING_ORDER, DECOR_PICK, DECOR_BUILDS, RECIPES, ARCADE_PRICE, BLESS_COOLDOWN;
   var init_buildings = __esm({
-    "src/build/buildings.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/build/buildings.js"() {
       init_props();
       MAX_LEVEL = 3;
       ZMIN = 0.04;
@@ -36236,7 +36239,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/game/skills.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/game/skills.js
   function computeStats(arg = {}) {
     const st = isState(arg) ? arg : { skills: arg || {}, coins: 0, fish: [] };
     const lab3 = computeLabStats(st);
@@ -36277,7 +36280,7 @@ ${hearts} ${status}
   }
   var BRANCHES2, SKILLS, SKILL_BY_ID, BASE_STATS, isState;
   var init_skills = __esm({
-    "src/game/skills.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/game/skills.js"() {
       init_lab();
       init_tanks();
       init_buildings();
@@ -36338,7 +36341,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/dev/aquarium.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/aquarium.js
   var aquarium_exports = {};
   __export(aquarium_exports, {
     run: () => run
@@ -36533,7 +36536,7 @@ ${hearts} ${status}
     requestAnimationFrame(frame2);
   }
   var init_aquarium2 = __esm({
-    "src/dev/aquarium.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/aquarium.js"() {
       init_canvas();
       init_font();
       init_uiicons();
@@ -36547,7 +36550,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/dev/audio.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/audio.js
   var audio_exports = {};
   __export(audio_exports, {
     run: () => run2
@@ -36685,7 +36688,7 @@ ${hearts} ${status}
   }
   var W, H, S8, AMBIENCES, LINE, wait;
   var init_audio2 = __esm({
-    "src/dev/audio.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/audio.js"() {
       init_canvas();
       init_font();
       init_audio();
@@ -36711,10 +36714,10 @@ ${hearts} ${status}
     }
   });
 
-  // src/world/clock.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/clock.js
   var Clock;
   var init_clock = __esm({
-    "src/world/clock.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/clock.js"() {
       init_math();
       Clock = class {
         constructor(game) {
@@ -36758,7 +36761,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/gfx/alagard.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/alagard.js
   function loadAlagard() {
     if (ready2) return Promise.resolve(true);
     if (loading) return loading;
@@ -36804,7 +36807,7 @@ ${hearts} ${status}
   }
   var DATA, ready2, loading, cache4;
   var init_alagard = __esm({
-    "src/gfx/alagard.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/alagard.js"() {
       DATA = "data:font/ttf;base64,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";
       ready2 = false;
       loading = null;
@@ -36812,7 +36815,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/world/biomes/base.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/biomes/base.js
   var base_exports = {};
   __export(base_exports, {
     Biome: () => Biome,
@@ -36820,7 +36823,7 @@ ${hearts} ${status}
   });
   var worldTop, Biome;
   var init_base = __esm({
-    "src/world/biomes/base.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/biomes/base.js"() {
       init_math();
       worldTop = (H8) => -Math.ceil(H8 * 0.74);
       Biome = class {
@@ -36891,7 +36894,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/world/scenery.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/scenery.js
   function paint(w, h, fn) {
     w = Math.max(1, Math.ceil(w));
     h = Math.max(1, Math.ceil(h));
@@ -37235,7 +37238,7 @@ ${hearts} ${status}
   }
   var quality, Blend, FogLayer, glowCache2, Caustics, Motes, bubbleSprites, Bubbles, Mask, FogCache, DepthScene, HI_RES, HI_TWIN, zoomOf, BandSet, DepthDecor;
   var init_scenery = __esm({
-    "src/world/scenery.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/scenery.js"() {
       init_canvas();
       init_rng();
       init_math();
@@ -38385,7 +38388,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/world/voxkit.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/voxkit.js
   function worldProp(id2, opts = {}) {
     const p = getProp(id2, { ...opts, yaw: WORLD_YAW, pitch: WORLD_PITCH });
     if (p && !p.hi) {
@@ -38529,7 +38532,7 @@ ${hearts} ${status}
   }
   var WORLD_YAW, WORLD_PITCH, HI_R, lumDepth;
   var init_voxkit = __esm({
-    "src/world/voxkit.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/voxkit.js"() {
       init_voxel();
       init_props();
       init_canvas();
@@ -38541,7 +38544,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/world/sky.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/sky.js
   function recolor2(src, ramp4, gamma = 1, vshade = 0) {
     const w = src.width, h = src.height;
     const s = ctxOf(src).getImageData(0, 0, w, h).data;
@@ -38662,7 +38665,7 @@ ${hearts} ${status}
   }
   var CLOUD_PALS, SkyDome, puffCache;
   var init_sky = __esm({
-    "src/world/sky.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/sky.js"() {
       init_voxel();
       init_canvas();
       init_rng();
@@ -38830,7 +38833,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/world/giants.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/giants.js
   function crop(f, flip) {
     const w = f.w, h = f.h;
     const cv = makeCanvas(Math.max(1, Math.round(w * f.k)), Math.max(1, Math.round(h * f.k)));
@@ -38907,7 +38910,7 @@ ${hearts} ${status}
   }
   var RES, SIZE, VoxelGiant, crabCache, pengCache, sealRest;
   var init_giants = __esm({
-    "src/world/giants.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/giants.js"() {
       init_math();
       init_lowpolyfish();
       init_canvas();
@@ -38972,7 +38975,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/world/coral.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/coral.js
   function palIdx(m, cols, glowTips) {
     m._pals || (m._pals = /* @__PURE__ */ new Map());
     const key = cols.join(",");
@@ -39686,7 +39689,7 @@ ${hearts} ${status}
   }
   var THEMES, pickPal, SPECIES2, ANIMATED, animCache, spriteCache, flipped, withHi, CORAL_RENDER;
   var init_coral = __esm({
-    "src/world/coral.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/coral.js"() {
       init_voxel();
       init_props();
       init_rng();
@@ -39801,7 +39804,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/world/horizon.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/horizon.js
   function hazed(src, color, a) {
     const c = makeCanvas(src.width, src.height);
     const g = ctxOf(c);
@@ -40054,7 +40057,7 @@ ${hearts} ${status}
     return finish3(m, { scale: 1, yaw: 0, pitch: 14, jitter: 0.2 }, haze);
   }
   var init_horizon = __esm({
-    "src/world/horizon.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/horizon.js"() {
       init_voxel();
       init_canvas();
       init_rng();
@@ -40063,7 +40066,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/world/voxcritters.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/voxcritters.js
   function gullFrames(tint = "#ffffff") {
     return memo("gull|" + tint, () => [1, 0, -1].map((flap) => {
       const m = new VoxelModel(17, 9, 5);
@@ -40158,7 +40161,7 @@ ${hearts} ${status}
   }
   var cache5, memo;
   var init_voxcritters = __esm({
-    "src/world/voxcritters.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/voxcritters.js"() {
       init_voxel();
       init_canvas();
       init_color();
@@ -40179,7 +40182,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/gfx/seal.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/seal.js
   function triV(mb, a, b, c, ca, cb, cc) {
     const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx2 = c[0] - a[0], vy2 = c[1] - a[1], vz = c[2] - a[2];
     let nx = uy * vz - uz * vy2, ny = uz * vx2 - ux * vz, nz = ux * vy2 - uy * vx2;
@@ -40909,7 +40912,7 @@ ${hearts} ${status}
   }
   var SEAL_INFO, add6, sub2, scl2, cross3, norm5, rx, ry, rz, h32, rgb2, mixC, lit, C2, LOOK, BODY, BODY_SEG, PIV, NECK, HEAD_C, HEAD_R, EYE_R, FACE, SHOULDER, HIP, C0, CELL_W, CELL_H, PaintMesh, EYES_REST, paintCheek, paintNose, S9, CO, POINT_E, SEAL_ANIMS, SEAL_ALIAS, SHEETS, budgetT, budgetN, SIZES, FACESTATE, RIDE, FLAT, SealGuide;
   var init_seal = __esm({
-    "src/gfx/seal.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/seal.js"() {
       init_lowpoly();
       init_math();
       init_aero();
@@ -41419,7 +41422,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/gfx/npcs.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/npcs.js
   function kit() {
     const m = new VoxelModel(1, 1, 1);
     const memo3 = /* @__PURE__ */ new Map();
@@ -41687,7 +41690,7 @@ ${hearts} ${status}
   }
   var NPCS, LOOKS, BUBBLE_POSE, n3, I32, GOLDIE_K, PINCH_K, DOT_K, BLOAT_K, VOX, CACHE2, P02;
   var init_npcs = __esm({
-    "src/gfx/npcs.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/npcs.js"() {
       init_voxel();
       init_character();
       init_seal();
@@ -41727,7 +41730,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/world/zoomsky.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/zoomsky.js
   function horizonY(b) {
     const o = b.ocean;
     let y = null;
@@ -41793,7 +41796,7 @@ ${hearts} ${status}
   }
   var SKY_ZOOM, SKY_PAN, LOCKED;
   var init_zoomsky = __esm({
-    "src/world/zoomsky.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/zoomsky.js"() {
       init_math();
       SKY_ZOOM = 0.1;
       SKY_PAN = 0.3;
@@ -41801,7 +41804,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/world/aerokit.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/aerokit.js
   function chromeDrop(h, tint = "#5ac8ff") {
     h = Math.max(6, Math.round(h));
     return memo2("drop|" + h + tint, () => {
@@ -42550,7 +42553,7 @@ ${hearts} ${status}
   }
   var cache6, memo2, qa, L3, WHITE4, leafCol, GlassGlobe, AERO_LOOKS, AeroOverlay;
   var init_aerokit = __esm({
-    "src/world/aerokit.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/aerokit.js"() {
       init_voxel();
       init_canvas();
       init_rng();
@@ -42924,7 +42927,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/world/biomes/oscean.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/biomes/oscean.js
   var oscean_exports = {};
   __export(oscean_exports, {
     OsceanBiome: () => OsceanBiome
@@ -42954,7 +42957,7 @@ ${hearts} ${status}
   }
   var SKY, SKYHZ, OVERCAST, WATER, ORB_TINTS, PAR, qmix, tri, OsceanBiome;
   var init_oscean = __esm({
-    "src/world/biomes/oscean.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/biomes/oscean.js"() {
       init_base();
       init_sky();
       init_giants();
@@ -44053,7 +44056,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/world/farvox.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/farvox.js
   function propSprite(id2, scale = 1.15, variant2 = 0) {
     try {
       const p = worldProp(id2, { scale, variant: variant2 });
@@ -44360,7 +44363,7 @@ ${hearts} ${status}
   }
   var spr, render, pals;
   var init_farvox = __esm({
-    "src/world/farvox.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/farvox.js"() {
       init_voxel();
       init_canvas();
       init_rng();
@@ -44372,14 +44375,14 @@ ${hearts} ${status}
     }
   });
 
-  // src/world/biomes/shallows.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/biomes/shallows.js
   var shallows_exports = {};
   __export(shallows_exports, {
     ShallowsBiome: () => ShallowsBiome
   });
   var SKY2, SKYHZ2, OVERCAST2, WATER2, RIDDLES, qmix2, tri2, ShallowsBiome;
   var init_shallows = __esm({
-    "src/world/biomes/shallows.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/biomes/shallows.js"() {
       init_base();
       init_sky();
       init_horizon();
@@ -45398,7 +45401,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/world/biomes/junkyard.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/biomes/junkyard.js
   var junkyard_exports = {};
   __export(junkyard_exports, {
     JunkyardBiome: () => JunkyardBiome
@@ -45438,7 +45441,7 @@ ${hearts} ${status}
   }
   var SKY3, SKYHZ3, WATER3, qmix3, tri3, SCREEN_TEXT, VEND, ScreenFX, JunkyardBiome;
   var init_junkyard = __esm({
-    "src/world/biomes/junkyard.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/biomes/junkyard.js"() {
       init_base();
       init_sky();
       init_horizon();
@@ -46448,7 +46451,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/world/biomes/abyss.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/biomes/abyss.js
   var abyss_exports = {};
   __export(abyss_exports, {
     AbyssBiome: () => AbyssBiome
@@ -46463,7 +46466,7 @@ ${hearts} ${status}
   }
   var SKY_NIGHT, UPPER, WATER4, GLYPHS, GLYPH_IDS, ORDER, STRATA, AbyssBiome;
   var init_abyss = __esm({
-    "src/world/biomes/abyss.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/biomes/abyss.js"() {
       init_base();
       init_sky();
       init_horizon();
@@ -47225,7 +47228,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/world/biomes/fjord.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/biomes/fjord.js
   var fjord_exports = {};
   __export(fjord_exports, {
     FjordBiome: () => FjordBiome,
@@ -47522,7 +47525,7 @@ ${hearts} ${status}
   }
   var tinted2, qmix4, tri4, MODELS3, SPRITES, SKY4, OVERCAST3, WATER5, MT, STRATA2, NEON_ICE, FjordBiome;
   var init_fjord = __esm({
-    "src/world/biomes/fjord.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/biomes/fjord.js"() {
       init_base();
       init_math();
       init_rng();
@@ -48893,7 +48896,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/world/biomes/metropolis.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/biomes/metropolis.js
   var metropolis_exports = {};
   __export(metropolis_exports, {
     MetropolisBiome: () => MetropolisBiome
@@ -49048,7 +49051,7 @@ ${hearts} ${status}
   }
   var WATER6, SKY5, FACADES, NEON, SIGNS, ADS, TRAFFIC_FISH, MetropolisBiome;
   var init_metropolis = __esm({
-    "src/world/biomes/metropolis.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/biomes/metropolis.js"() {
       init_base();
       init_math();
       init_rng();
@@ -49891,7 +49894,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/world/biomes/volcano.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/biomes/volcano.js
   var volcano_exports = {};
   __export(volcano_exports, {
     VolcanoBiome: () => VolcanoBiome
@@ -50034,7 +50037,7 @@ ${hearts} ${status}
   }
   var WATER7, SKY6, VOLC, VolcanoBiome;
   var init_volcano = __esm({
-    "src/world/biomes/volcano.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/biomes/volcano.js"() {
       init_base();
       init_math();
       init_rng();
@@ -51076,10 +51079,10 @@ ${hearts} ${status}
     }
   });
 
-  // import("./**/*.js") in src/world/biomes/index.js
+  // import("./**/*.js") in ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/biomes/index.js
   var globImport_js;
   var init_ = __esm({
-    'import("./**/*.js") in src/world/biomes/index.js'() {
+    'import("./**/*.js") in ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/biomes/index.js'() {
       globImport_js = __glob({
         "./abyss.js": () => Promise.resolve().then(() => (init_abyss(), abyss_exports)),
         "./base.js": () => Promise.resolve().then(() => (init_base(), base_exports)),
@@ -51094,7 +51097,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/world/biomes/index.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/biomes/index.js
   var biomes_exports = {};
   __export(biomes_exports, {
     BIOMES: () => BIOMES,
@@ -51105,7 +51108,7 @@ ${hearts} ${status}
   });
   var CANON_ORDER, BIOME_DEPTH, BIOMES, BIOME_ORDER, rank, EXTRA, load, biomesReady;
   var init_biomes = __esm({
-    "src/world/biomes/index.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/biomes/index.js"() {
       init_oscean();
       init_shallows();
       init_junkyard();
@@ -51133,7 +51136,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/world/watersim.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/watersim.js
   function swellAt(x, z, t, waves = SWELLS.calm) {
     let h = 0, dx = 0, dz = 0;
     for (let i = 0; i < waves.length; i++) {
@@ -51168,7 +51171,7 @@ ${hearts} ${status}
   }
   var TAU4, SUB, MAX_LIFT, MAX_RINGS, SWELLS, WEATHER2, weatherWater, WATER_PALETTES, hexRgb2, rgbHex, mixHex2, palMemo, WaterSim;
   var init_watersim = __esm({
-    "src/world/watersim.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/watersim.js"() {
       TAU4 = Math.PI * 2;
       SUB = 1 / 120;
       MAX_LIFT = 14;
@@ -51420,7 +51423,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/world/watersheet.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/watersheet.js
   function buildField(f) {
     const H8 = new Float32Array(TW * (TH + 2));
     for (let r = -1; r <= TH; r++) {
@@ -51877,7 +51880,7 @@ ${hearts} ${status}
   }
   var TAU5, TW, TH, NF, MAXB, MAXU, KB, KU, WAVES2, fields, frameCache, ringCache2, glintCache, liftBuf, warned2, tmp;
   var init_watersheet = __esm({
-    "src/world/watersheet.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/watersheet.js"() {
       init_canvas();
       init_math();
       init_color();
@@ -51909,7 +51912,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/world/plants.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/plants.js
   function plantCols(base, fog = null, f = 0, o = {}) {
     const b = fog && f > 0 ? mix(base, fog, clamp(f, 0, 0.9)) : base;
     return {
@@ -51925,7 +51928,7 @@ ${hearts} ${status}
   }
   var PLANT_KINDS, LIGHT, PlantField2;
   var init_plants = __esm({
-    "src/world/plants.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/plants.js"() {
       init_math();
       init_rng();
       init_color();
@@ -52361,7 +52364,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/world/depthzones.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/depthzones.js
   function layoutZones(oceanId, H8, surfaceY2 = null) {
     const d = depthDef(oceanId);
     const [pT, pM, pA] = d.px;
@@ -52454,7 +52457,7 @@ ${hearts} ${status}
   }
   var ZONE_NAMES, ZONE_POP, ZONE_RARITY, DEF, OCEAN_DEPTHS, depthDef, LIP_H, FLOOR_H, DARK, TINT, TINTR;
   var init_depthzones = __esm({
-    "src/world/depthzones.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/depthzones.js"() {
       init_math();
       ZONE_NAMES = { sunlit: "Sunlit Zone", twilight: "Twilight Zone", midnight: "Midnight Zone", abyss: "The Abyss" };
       ZONE_POP = { sunlit: 1, twilight: 0.75, midnight: 0.55, abyss: 0.4 };
@@ -52547,7 +52550,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/fish/wakka.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fish/wakka.js
   function initWakka(f) {
     f.wk = { dir: null, tx: 0, ty: 0, run: 0, pellets: [], dist: 0, alt: false, eaten: 0, power: 0, nextPower: rng.int(10, 16), active: false };
   }
@@ -52728,7 +52731,7 @@ ${hearts} ${status}
   }
   var voxelOrb, GRID, SPEED, CHOMP, DIRS, GRID_STATES, snap, inB, SPR;
   var init_wakka = __esm({
-    "src/fish/wakka.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fish/wakka.js"() {
       init_rng();
       init_math();
       init_canvas();
@@ -52745,7 +52748,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/fish/fish.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fish/fish.js
   function baitInterest(sp, bait2) {
     if (!bait2) return 0;
     const prefs = sp.bait || {};
@@ -52762,7 +52765,7 @@ ${hearts} ${status}
   }
   var SPEED2, EMOTE_TIME, Fish;
   var init_fish = __esm({
-    "src/fish/fish.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fish/fish.js"() {
       init_math();
       init_rng();
       init_spritecache();
@@ -53768,7 +53771,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/world/deepsea.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/deepsea.js
   function* reliefSteps(x0, y0, w, h, R4, sample, out) {
     const gw = Math.ceil(w / CELL), gh = Math.ceil(h / CELL), N = gw * gh;
     const H8 = new Float32Array(N), C3 = new Float32Array(N * 3), F = new Uint8Array(N);
@@ -53923,7 +53926,7 @@ ${hearts} ${status}
   }
   var DEEP_R, CHUNK, CELL, DeepSea, SHELF, HANG, ZoneSpawner;
   var init_deepsea = __esm({
-    "src/world/deepsea.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/deepsea.js"() {
       init_math();
       init_rng();
       init_color();
@@ -54398,10 +54401,11 @@ ${hearts} ${status}
             const field = z < 0.33 ? this.shelfFront : this.shelfBack;
             return field.add({ kind: kind2, x, y: y + 1, z, s, layer: z < 0.33 ? "front" : "back", rng: r, ...o, cols: o.cols || plantCols(o.color || "#3a9a4a", fogC, fogAt(z), o) });
           };
-          const zs = () => r.float(-0.12, 0.62);
+          const zs = () => r.float(-0.4, 0.62);
           const recipe = SHELF[id2] || SHELF.shallows;
+          const lowK = this.game.lowPower ? 0.5 : 1;
           for (const [kind2, count, opts] of recipe) {
-            for (let i = 0; i < count; i++) {
+            for (let i = 0; i < Math.round(count * lowK); i++) {
               const x = r.float(6, W8 - 6), z = opts.z ? r.float(opts.z[0], opts.z[1]) : zs();
               const color = r.pick(opts.colors);
               const o = { color, size: r.float(...opts.size || [0.9, 1.15]), bulb: opts.bulb };
@@ -55300,13 +55304,13 @@ ${hearts} ${status}
     }
   });
 
-  // src/world/ocean.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/ocean.js
   function depthOf(id2) {
     return BIOME_DEPTH[id2] ?? 0;
   }
   var Ocean, ZONE_COLORS;
   var init_ocean = __esm({
-    "src/world/ocean.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/ocean.js"() {
       init_math();
       init_rng();
       init_color();
@@ -55841,7 +55845,7 @@ ${hearts} ${status}
           if (this.game.ui?.blocking) return;
           const a = Math.min(1, c.t * 2.5, (D - c.t) * 1.4);
           const col = (ZONE_COLORS[c.id] || ZONE_COLORS.sunlit)[2];
-          const y = Math.round(this.H * 0.17 - (1 - Math.min(1, c.t * 2.5)) * 8);
+          const y = Math.round(this.H * 0.24 - (1 - Math.min(1, c.t * 2.5)) * 8);
           const sh = c.id === "abyss" ? Math.round(Math.sin(c.t * 40) * Math.max(0, 0.5 - c.t) * 4) : 0;
           ctx2.save();
           ctx2.globalAlpha = Math.max(0, a);
@@ -55882,7 +55886,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/dev/biomes.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/biomes.js
   var biomes_exports2 = {};
   __export(biomes_exports2, {
     run: () => run3
@@ -56125,7 +56129,7 @@ ${hearts} ${status}
   }
   var TASKBAR_H;
   var init_biomes2 = __esm({
-    "src/dev/biomes.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/biomes.js"() {
       init_canvas();
       init_math();
       init_color();
@@ -56136,10 +56140,10 @@ ${hearts} ${status}
     }
   });
 
-  // src/core/input.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/core/input.js
   var Input;
   var init_input = __esm({
-    "src/core/input.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/core/input.js"() {
       Input = class {
         constructor(canvas, toLogical) {
           this.canvas = canvas;
@@ -56325,10 +56329,10 @@ ${hearts} ${status}
     }
   });
 
-  // src/game/camera.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/game/camera.js
   var ZOOM, CINE_K, SURF_AT, Camera;
   var init_camera = __esm({
-    "src/game/camera.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/game/camera.js"() {
       init_math();
       ZOOM = { min: 2, max: 4.5, def: 3 };
       CINE_K = 0.3;
@@ -56774,7 +56778,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/ui/panels.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/panels.js
   function withShadow(src, dx, dy, alpha, color = "#06243e") {
     const c = makeCanvas(src.width + dx, src.height + dy);
     const g = ctxOf(c);
@@ -57222,7 +57226,7 @@ ${hearts} ${status}
   }
   var SKY7, DEEP, FROST, CHROME2, GOLD, GRASS2, UI_COLORS, iconOf, INSETS, STYLE_TONE, SLIDER_H, TOGGLE_W, TOGGLE_H, FRAME_TONE;
   var init_panels = __esm({
-    "src/ui/panels.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/panels.js"() {
       init_canvas();
       init_pixel();
       init_color();
@@ -57276,7 +57280,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/gfx/iconmeshes.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/iconmeshes.js
   function face(mb, pts, col, inside) {
     const n2 = crs(sub3(pts[1], pts[0]), sub3(pts[2], pts[0]));
     if (inside) {
@@ -57686,7 +57690,7 @@ ${hearts} ${status}
   }
   var sub3, crs, dot2, nrm2, jit, circle, FISH_OUTLINE, ICON_MODELS;
   var init_iconmeshes = __esm({
-    "src/gfx/iconmeshes.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/iconmeshes.js"() {
       init_lowpoly();
       init_color();
       init_math();
@@ -57729,7 +57733,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/gfx/bigicons.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/bigicons.js
   function skills() {
     const m = new VoxelModel(28, 31, 18);
     const rock2 = m.color("#6a7a90", { jitter: 0.15 }), rockD = m.color("#4a5670");
@@ -58450,7 +58454,7 @@ ${hearts} ${status}
   }
   var MENU_ICON_IDS, BIG_ICON_IDS, BIG, SMALL, MENU, PAD2, SIZES2, h33, MODELS4, cache7, lpDefs, lpOk, ICON_LIGHT, frameCache2;
   var init_bigicons = __esm({
-    "src/gfx/bigicons.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/bigicons.js"() {
       init_canvas();
       init_voxel();
       init_color();
@@ -58501,7 +58505,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/ui/ui.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/ui.js
   function panelRect(game, w, h) {
     const W8 = game.screen.W, H8 = game.screen.H;
     const bottom = Math.max(Math.round(H8 * 0.6), Math.min(H8, game.hud?.topY?.() ?? H8) - 4);
@@ -58515,7 +58519,7 @@ ${hearts} ${status}
   }
   var UI;
   var init_ui = __esm({
-    "src/ui/ui.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/ui.js"() {
       init_math();
       init_color();
       init_font();
@@ -58828,7 +58832,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/build/buildingmodels.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/build/buildingmodels.js
   function shape3(m, x0, y0, z0, x1, y1, z1, test, c) {
     for (let y = Math.floor(y0); y <= Math.ceil(y1); y++) for (let z = Math.floor(z0); z <= Math.ceil(z1); z++) for (let x = Math.floor(x0); x <= Math.ceil(x1); x++) {
       if (test(x + 0.5, y + 0.5, z + 0.5)) m.put(x, y, z, c);
@@ -58992,7 +58996,7 @@ ${hearts} ${status}
   }
   var h34, pal, SAND2, STONE, KELP, MODELS5, MODEL_IDS, WORLD_SCALE, BUILD_YAW, BUILD_PITCH, winStart, spent4, built2, cache8, scalesOf;
   var init_buildingmodels = __esm({
-    "src/build/buildingmodels.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/build/buildingmodels.js"() {
       init_voxel();
       init_props();
       init_math();
@@ -59507,7 +59511,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/build/itemart.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/build/itemart.js
   function shape4(m, x0, y0, z0, x1, y1, z1, test, c) {
     for (let y = Math.floor(y0); y <= Math.ceil(y1); y++) for (let z = Math.floor(z0); z <= Math.ceil(z1); z++) for (let x = Math.floor(x0); x <= Math.ceil(x1); x++) {
       if (test(x + 0.5, y + 0.5, z + 0.5)) m.put(x, y, z, c);
@@ -59580,7 +59584,7 @@ ${hearts} ${status}
   }
   var SPIN, h35, MODELS6, PKG, ART_IDS, PACKAGE_ART, winStart2, spent5, BUDGET, built3, cache9, pkgCache;
   var init_itemart = __esm({
-    "src/build/itemart.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/build/itemart.js"() {
       init_voxel();
       init_math();
       SPIN = 16;
@@ -59980,7 +59984,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/desktop/icons.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/desktop/icons.js
   function pk3(c, a = 255) {
     if (typeof c === "number") return c;
     const k = c + "|" + a;
@@ -61262,7 +61266,7 @@ ${hearts} ${status}
   }
   var MINI_SIZE, APPS, pkc, INSETS2, Painter, OUT_INK, outCache2, BEIGE2, STEEL, OCEAN, LAND, MANILA, ORANGE, GOLD2, LAV, CREAM, LEGAL, SLATE, WOOD3, BRASS, SKYB, PAGE, TINY, BIG2, AQUA3, NAVY, PCB, GERM, HULL, WHITE5, PAGE_KINDS, MINI, TIER_BADGES, cache10, EXT_MAP, addExt, NAME_HINTS, ICON_IDS, FILE_ICON_IDS;
   var init_icons = __esm({
-    "src/desktop/icons.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/desktop/icons.js"() {
       init_canvas();
       init_pixel();
       init_color();
@@ -61766,7 +61770,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/store/catalog.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/store/catalog.js
   function appBaitId(app, tier) {
     return `${app}_${TIERS[tier]?.id || "lite"}`;
   }
@@ -61816,7 +61820,7 @@ ${hearts} ${status}
   }
   var TIERS, MAX_TIER, TIER_SIZE, TIER_PRICE, PACK_QTY, TIER_POWER, L, CATALOG, CATALOG_BY_ID, APP_DEF, boundState;
   var init_catalog = __esm({
-    "src/store/catalog.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/store/catalog.js"() {
       init_icons();
       init_math();
       TIERS = [
@@ -61858,7 +61862,7 @@ ${hearts} ${status}
     }
   });
 
-  // src/fishing/baitart.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fishing/baitart.js
   function grub(m, a) {
     const c1 = a.color || "#ffd84a", c2 = a.color2 || mix(c1, "#ffffff", 0.6);
     const tier = a.tier | 0;
@@ -62128,7 +62132,7 @@ ${hearts} ${status}
   }
   var P4, HOOK, TYPE_ART, SPECIAL_SHAPES, GLOSS2, BUILDERS, VCACHE;
   var init_baitart = __esm({
-    "src/fishing/baitart.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fishing/baitart.js"() {
       init_pixel();
       init_voxel();
       init_canvas();
@@ -62180,7 +62184,7 @@ kmlmk..
     }
   });
 
-  // src/store/bait.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/store/bait.js
   function ensureBait(state) {
     const b = state.bait || (state.bait = { inv: {}, custom: [], equipped: null, known: {} });
     if (!b.inv || typeof b.inv !== "object") b.inv = {};
@@ -62416,7 +62420,7 @@ kmlmk..
   }
   var SPECIALS, SPECIAL_ORDER, BAITS2, modsOf, CRAFT_BASES, BASE_COST, SCENTS, COLOURS, CHARMS, SIZES3, BATCHES, DEFAULT_RECIPE, AERO_PER_MISSING, byId, curCache;
   var init_bait = __esm({
-    "src/store/bait.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/store/bait.js"() {
       init_catalog();
       init_baitart();
       SPECIALS = [
@@ -62532,7 +62536,7 @@ kmlmk..
     }
   });
 
-  // src/build/items.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/build/items.js
   function add7(id2, o) {
     ITEMS[id2] = { id: id2, art: id2, lore: "", biome: null, ...o };
     return ITEMS[id2];
@@ -62756,7 +62760,7 @@ kmlmk..
   }
   var ITEMS, MATS, MAT_VAL, MATERIAL_IDS, BP_VAL, COS_VAL, COSMETIC_IDS, TIERS2, TIER_ORDER, packageLuck, CRATE_DEEP;
   var init_items = __esm({
-    "src/build/items.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/build/items.js"() {
       init_rng();
       init_color();
       init_shopdata();
@@ -62868,7 +62872,7 @@ kmlmk..
     }
   });
 
-  // src/build/research.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/build/research.js
   function researchState(state) {
     const r = state.research || (state.research = { active: [], done: {}, perks: {} });
     r.active || (r.active = []);
@@ -62878,7 +62882,7 @@ kmlmk..
   }
   var PROJECTS, PROJECT_BY_ID, PERK_NAMES;
   var init_research = __esm({
-    "src/build/research.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/build/research.js"() {
       init_lab();
       PROJECTS = LAB_NODES.filter((nd) => nd.id !== ROOT_ID).map((nd) => ({
         id: nd.id,
@@ -62908,7 +62912,7 @@ kmlmk..
     }
   });
 
-  // src/ui/journal.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/journal.js
   function fishBox(sp) {
     let b = boxCache.get(sp.id);
     if (b) return b;
@@ -63040,7 +63044,7 @@ kmlmk..
   }
   var BIGUI, F1, F2, BIOMES2, BIOME_BY_ID, INK2, INK_SOFT, INK_FAINT, SIL, TYPE_ICON, TYPE_NAME, PHASES, MUT_COLOR, ACTIVITY, WEATHER_HINT, boxCache, CHIP_H, JournalPanel;
   var init_journal = __esm({
-    "src/ui/journal.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/journal.js"() {
       init_math();
       init_color();
       init_canvas();
@@ -63554,7 +63558,7 @@ kmlmk..
     }
   });
 
-  // src/build/itemdraw.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/build/itemdraw.js
   var itemdraw_exports = {};
   __export(itemdraw_exports, {
     blueprintSheet: () => blueprintSheet,
@@ -63790,7 +63794,7 @@ kmlmk..
   }
   var propFit, bldFit, techCache, sheets2, icons2;
   var init_itemdraw = __esm({
-    "src/build/itemdraw.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/build/itemdraw.js"() {
       init_math();
       init_canvas();
       init_props();
@@ -63809,7 +63813,7 @@ kmlmk..
     }
   });
 
-  // src/ui/inventory.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/inventory.js
   function usesOf(id2) {
     if (usesCache.has(id2)) return usesCache.get(id2);
     const out = [];
@@ -63825,7 +63829,7 @@ kmlmk..
   }
   var BIGUI2, TABS, SORTS, rIdx, BAIT_RARITY, usesCache, InventoryPanel;
   var init_inventory = __esm({
-    "src/ui/inventory.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/inventory.js"() {
       init_math();
       init_color();
       init_rng();
@@ -64348,10 +64352,10 @@ kmlmk..
     }
   });
 
-  // src/ui/package.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/package.js
   var REVEAL_SFX, PackagePanel, cwMin;
   var init_package = __esm({
-    "src/ui/package.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/package.js"() {
       init_math();
       init_color();
       init_rng();
@@ -64711,7 +64715,7 @@ kmlmk..
     }
   });
 
-  // src/ui/buildpanel.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/buildpanel.js
   function drawCost(ctx2, state, cost, x, y, o = {}) {
     let cx = x;
     const color = o.color || "#fff6e2", bad = o.bad || "#ff8a7a", shadow = o.shadow ?? "#1a0e06";
@@ -64768,7 +64772,7 @@ kmlmk..
   }
   var pct, BuildTrayPanel, silCache, greyCache, ACTION_TITLE, BuildingPanel;
   var init_buildpanel = __esm({
-    "src/ui/buildpanel.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/buildpanel.js"() {
       init_math();
       init_color();
       init_rng();
@@ -65342,7 +65346,7 @@ kmlmk..
     }
   });
 
-  // src/build/panels.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/build/panels.js
   function registerBuildPanels(ui, force = false) {
     for (const P5 of BUILD_PANELS) {
       const p = new P5();
@@ -65351,7 +65355,7 @@ kmlmk..
   }
   var BUILD_PANELS;
   var init_panels2 = __esm({
-    "src/build/panels.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/build/panels.js"() {
       init_inventory();
       init_package();
       init_buildpanel();
@@ -65359,7 +65363,7 @@ kmlmk..
     }
   });
 
-  // src/ui/labicons.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/labicons.js
   function glyphCanvas(name) {
     const rows = GLYPH_ART[name];
     const h = rows.length, w = Math.max(...rows.map((r) => r.length));
@@ -65624,7 +65628,7 @@ kmlmk..
   }
   var PAL2, GLYPH_ART, GLYPHS2, BIOME_PAL, cache11;
   var init_labicons = __esm({
-    "src/ui/labicons.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/labicons.js"() {
       init_canvas();
       init_pixel();
       init_color();
@@ -65747,7 +65751,7 @@ kmlmk..
     }
   });
 
-  // src/ui/labart.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/labart.js
   function cached(key, build3) {
     let c = cache12.get(key);
     if (!c) {
@@ -65990,7 +65994,7 @@ kmlmk..
   }
   var cache12, LOCKED_ORB;
   var init_labart = __esm({
-    "src/ui/labart.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/labart.js"() {
       init_canvas();
       init_color();
       init_math();
@@ -65999,7 +66003,7 @@ kmlmk..
     }
   });
 
-  // src/ui/labkit.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/labkit.js
   function iconBudget(n2 = 6) {
     budget2 = n2;
     frameStart = now4();
@@ -66244,7 +66248,7 @@ kmlmk..
   }
   var INK3, INK_SOFT2, OK, BAD, BUCKETS, bucket, budget2, frameStart, now4, warmList, warmI, thumbSp;
   var init_labkit = __esm({
-    "src/ui/labkit.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/labkit.js"() {
       init_font();
       init_uiicons();
       init_color();
@@ -66275,7 +66279,7 @@ kmlmk..
     }
   });
 
-  // src/build/build.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/build/build.js
   function alphaAt(canvas, x, y) {
     let m = masks.get(canvas);
     if (!m) {
@@ -66308,7 +66312,7 @@ kmlmk..
   }
   var BAND_PX, BAND_PY, masks, gridTex, Build;
   var init_build = __esm({
-    "src/build/build.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/build/build.js"() {
       init_math();
       init_rng();
       init_color();
@@ -67383,10 +67387,10 @@ kmlmk..
     }
   });
 
-  // src/ui/research.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/research.js
   var ResearchPanel;
   var init_research2 = __esm({
-    "src/ui/research.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/research.js"() {
       ResearchPanel = class {
         constructor() {
           this.id = "research";
@@ -67407,7 +67411,7 @@ kmlmk..
     }
   });
 
-  // src/dev/build.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/build.js
   var build_exports = {};
   __export(build_exports, {
     run: () => run4
@@ -67677,7 +67681,7 @@ kmlmk..
     requestAnimationFrame(frame2);
   }
   var init_build2 = __esm({
-    "src/dev/build.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/build.js"() {
       init_canvas();
       init_input();
       init_audio();
@@ -67705,7 +67709,7 @@ kmlmk..
     }
   });
 
-  // src/world/boatmodels.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/boatmodels.js
   function resolveParts(tier, parts) {
     const d = DEFAULTS[tier] || DEFAULTS[0];
     const out = {};
@@ -68431,7 +68435,7 @@ kmlmk..
   }
   var sm2, P_, BOAT_PARTS, BOAT_PART_SLOTS, PART_BY, DEFAULTS, MASTED, deckFn, finish5, BOAT_TIERS, BOAT_TIER_BY_ID, FLAG_ROWS, PREV, PREVIEW_YAW, PREVIEW_PITCH;
   var init_boatmodels = __esm({
-    "src/world/boatmodels.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/boatmodels.js"() {
       init_voxel();
       init_math();
       init_color();
@@ -68535,7 +68539,7 @@ kmlmk..
     }
   });
 
-  // src/store/aerokit.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/store/aerokit.js
   function rrect(ctx2, x, y, w, h, r) {
     r = Math.max(0, Math.min(r, w / 2, h / 2));
     ctx2.beginPath();
@@ -68748,7 +68752,7 @@ kmlmk..
   }
   var INK4, INK_SOFT3, AQUA4, GRASS3, WA;
   var init_aerokit2 = __esm({
-    "src/store/aerokit.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/store/aerokit.js"() {
       init_font();
       init_color();
       init_canvas();
@@ -68762,7 +68766,7 @@ kmlmk..
     }
   });
 
-  // src/ui/wardrobe.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/wardrobe.js
   function glyph(id2) {
     let c = glyphCache.get(id2);
     if (c) return c;
@@ -68868,7 +68872,7 @@ kmlmk..
   }
   var pick2, SAY, SLOT_SOUND, THUMB, PART_PRICE, TABS2, NONE_FIRST, GLYPHS3, GCOL, glyphCache, bgCache, WardrobePanel;
   var init_wardrobe = __esm({
-    "src/ui/wardrobe.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/wardrobe.js"() {
       init_math();
       init_color();
       init_canvas();
@@ -69728,7 +69732,7 @@ kmlmk..
     }
   });
 
-  // src/dev/character.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/character.js
   var character_exports2 = {};
   __export(character_exports2, {
     run: () => run5
@@ -70024,7 +70028,7 @@ kmlmk..
   }
   var LOOKS2;
   var init_character2 = __esm({
-    "src/dev/character.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/character.js"() {
       init_canvas();
       init_font();
       init_character();
@@ -70055,7 +70059,7 @@ kmlmk..
     }
   });
 
-  // src/gfx/voxelfish.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/voxelfish.js
   function setVoxelSync(on) {
     setLowpolySync(on);
   }
@@ -70076,7 +70080,7 @@ kmlmk..
   }
   var DEG7, now5;
   var init_voxelfish = __esm({
-    "src/gfx/voxelfish.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/voxelfish.js"() {
       init_fishrig();
       init_wakka();
       init_lowpolyfish();
@@ -70086,7 +70090,7 @@ kmlmk..
     }
   });
 
-  // src/dev/fishpix.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/fishpix.js
   var fishpix_exports = {};
   __export(fishpix_exports, {
     run: () => run6
@@ -70274,7 +70278,7 @@ kmlmk..
   }
   var W2, H2, MAXS, EMO, fit;
   var init_fishpix = __esm({
-    "src/dev/fishpix.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/fishpix.js"() {
       init_spritecache();
       init_icons();
       init_uiicons();
@@ -70297,14 +70301,14 @@ kmlmk..
     }
   });
 
-  // src/dev/testlooks.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/testlooks.js
   var testlooks_exports = {};
   __export(testlooks_exports, {
     TEST_LOOKS: () => TEST_LOOKS
   });
   var TEST_LOOKS;
   var init_testlooks = __esm({
-    "src/dev/testlooks.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/testlooks.js"() {
       TEST_LOOKS = [
         { name: "clownfish", look: { body: { len: 16, h: 10, shape: "oval" }, col: { body: "#ff8a2a", belly: "#ffc070", back: "#e8641a", fin: "#ff9a3a" }, pattern: [{ type: "bands", color: "#ffffff", at: [0.2, 0.52, 0.85], width: 0.07, edge: true }], tail: { type: "round", len: 5, spread: 5 }, dorsal: { type: "round", from: 0.25, to: 0.75, h: 3 } } },
         { name: "guppy", look: { body: { len: 11, h: 6, shape: "torpedo" }, col: { body: "#ff7ab8", belly: "#ffd0e6", back: "#c2479a", fin: "#9f6bff" }, tail: { type: "veil", len: 9, spread: 7 }, dorsal: { type: "sail", from: 0.4, to: 0.8, h: 3 } } },
@@ -70335,7 +70339,7 @@ kmlmk..
     }
   });
 
-  // src/dev/gallery.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/gallery.js
   var gallery_exports = {};
   __export(gallery_exports, {
     run: () => run7,
@@ -70372,7 +70376,7 @@ kmlmk..
     window.__galleryReady = true;
   }
   var init_gallery = __esm({
-    "src/dev/gallery.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/gallery.js"() {
       init_canvas();
       init_spritecache();
       init_font();
@@ -70380,7 +70384,7 @@ kmlmk..
     }
   });
 
-  // src/platform/host.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/platform/host.js
   function emit(set, ...args) {
     for (const cb of [...set]) {
       try {
@@ -70405,7 +70409,7 @@ kmlmk..
   }
   var win, doc, bridge, kind, shortcutCbs, fsCbs, keysHooked, host, HOST_MODES;
   var init_host = __esm({
-    "src/platform/host.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/platform/host.js"() {
       win = typeof window !== "undefined" ? window : null;
       doc = typeof document !== "undefined" ? document : null;
       bridge = win && win.fishtopHost && win.fishtopHost.kind === "electron" ? win.fishtopHost : null;
@@ -70479,7 +70483,7 @@ kmlmk..
     }
   });
 
-  // src/dev/host.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/host.js
   var host_exports = {};
   __export(host_exports, {
     run: () => run8
@@ -70582,14 +70586,14 @@ kmlmk..
     window.__hostReady = true;
   }
   var init_host2 = __esm({
-    "src/dev/host.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/host.js"() {
       init_host();
       init_canvas();
       init_font();
     }
   });
 
-  // src/gfx/text3d.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/text3d.js
   function measure(text, size) {
     if (!measurer) measurer = document.createElement("canvas").getContext("2d");
     measurer.font = size + "px Alagard, monospace";
@@ -70732,7 +70736,7 @@ kmlmk..
   }
   var TEXT3D_PALETTES, measurer, CACHE3, SPR2;
   var init_text3d = __esm({
-    "src/gfx/text3d.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/text3d.js"() {
       init_alagard();
       init_voxel();
       TEXT3D_PALETTES = {
@@ -70752,7 +70756,7 @@ kmlmk..
     }
   });
 
-  // src/game/dialogue.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/game/dialogue.js
   var dialogue_exports = {};
   __export(dialogue_exports, {
     Dialogue: () => Dialogue,
@@ -70825,7 +70829,7 @@ kmlmk..
   }
   var FONT, MCTX, VOWEL, Dialogue;
   var init_dialogue = __esm({
-    "src/game/dialogue.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/game/dialogue.js"() {
       init_alagard();
       init_aero();
       init_math();
@@ -71387,7 +71391,7 @@ kmlmk..
     }
   });
 
-  // src/game/intro3d.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/game/intro3d.js
   var intro3d_exports = {};
   __export(intro3d_exports, {
     INTRO_T: () => INTRO_T,
@@ -71595,7 +71599,7 @@ kmlmk..
   }
   var INTRO_T, T2, END, BEATS, SUN, LIGHT2, SUN_COL, ISLE, SEAL_A, SEAL_B, SEAL_C, SEAL_D, SEAL_WU, BOBBER, LURE_Y, SEABED, LEAP, LOGO, SHOTS, SCHOOL_IDS, FIRST_IDS, BIG_IDS, DEG8, inv, add32, sub32, scl3, dot3, mix32, hexLin, Intro3D;
   var init_intro3d = __esm({
-    "src/game/intro3d.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/game/intro3d.js"() {
       init_canvas();
       init_math();
       init_rng();
@@ -72986,7 +72990,7 @@ kmlmk..
     }
   });
 
-  // src/dev/intro.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/intro.js
   var intro_exports = {};
   __export(intro_exports, {
     run: () => run9
@@ -73136,7 +73140,7 @@ kmlmk..
     requestAnimationFrame(frame2);
   }
   var init_intro = __esm({
-    "src/dev/intro.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/intro.js"() {
       init_canvas();
       init_input();
       init_uiicons();
@@ -73149,7 +73153,7 @@ kmlmk..
     }
   });
 
-  // src/dev/lab.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/lab.js
   var lab_exports = {};
   __export(lab_exports, {
     run: () => run10
@@ -73236,7 +73240,7 @@ kmlmk..
     window.__ready = true;
   }
   var init_lab2 = __esm({
-    "src/dev/lab.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/lab.js"() {
       init_canvas();
       init_font();
       init_labicons();
@@ -73245,7 +73249,7 @@ kmlmk..
     }
   });
 
-  // src/ui/labvox.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/labvox.js
   function voxBudget(ms = 8) {
     budget3 = ms;
     t02 = now6();
@@ -73688,7 +73692,7 @@ kmlmk..
   }
   var VS2, PITCH2, COS, cache13, budget3, t02, now6, render3, vx, vy, ROOM_CHUNK;
   var init_labvox = __esm({
-    "src/ui/labvox.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/labvox.js"() {
       init_voxel();
       init_math();
       init_color();
@@ -73706,7 +73710,7 @@ kmlmk..
     }
   });
 
-  // src/dev/labart.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/labart.js
   var labart_exports = {};
   __export(labart_exports, {
     run: () => run11
@@ -73772,7 +73776,7 @@ kmlmk..
     window.__ready = true;
   }
   var init_labart2 = __esm({
-    "src/dev/labart.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/labart.js"() {
       init_canvas();
       init_font();
       init_labvox();
@@ -73780,10 +73784,10 @@ kmlmk..
     }
   });
 
-  // src/game/screen.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/game/screen.js
   var TARGET_W, Screen;
   var init_screen = __esm({
-    "src/game/screen.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/game/screen.js"() {
       init_canvas();
       TARGET_W = 960;
       Screen = class {
@@ -73834,7 +73838,7 @@ kmlmk..
     }
   });
 
-  // src/fish/school.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fish/school.js
   function presenceOf(sp) {
     const l = sp.look || {};
     if (l.kind === "chain") return 1.45;
@@ -73844,7 +73848,7 @@ kmlmk..
   }
   var HERO_MIN_LEN, School;
   var init_school = __esm({
-    "src/fish/school.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fish/school.js"() {
       init_rng();
       init_math();
       init_color();
@@ -74021,10 +74025,10 @@ kmlmk..
     }
   });
 
-  // src/fishing/crank.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fishing/crank.js
   var WINDOW, MIN_R, Crank;
   var init_crank = __esm({
-    "src/fishing/crank.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fishing/crank.js"() {
       init_math();
       WINDOW = 0.42;
       MIN_R = 5;
@@ -74102,7 +74106,7 @@ kmlmk..
     }
   });
 
-  // src/fishing/minigames.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fishing/minigames.js
   function drawCircle(ctx2, cx, cy, r, color, a = 1, w = 1, dash = 0, rot2 = 0) {
     ctx2.fillStyle = rgba(color, a);
     const n2 = Math.max(12, Math.round(r * 4));
@@ -74150,7 +74154,7 @@ kmlmk..
   }
   var Event, MashEvent, TimingEvent, PATHS, TraceEvent, DodgeEvent, UnwrapEvent, NetEvent, EVENTS, EVENT_NAMES;
   var init_minigames = __esm({
-    "src/fishing/minigames.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fishing/minigames.js"() {
       init_math();
       init_rng();
       init_color();
@@ -74649,7 +74653,7 @@ kmlmk..
     }
   });
 
-  // src/fishing/hud.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fishing/hud.js
   function crankIcon(dir) {
     const c = makeCanvas(11, 11);
     const g = ctxOf(c);
@@ -75189,7 +75193,7 @@ kmlmk..
   }
   var INK5, iconsReady, ART, arrowCanvas, arrowCtx, ARROW_RAMPS, hexRgb3, RAMP_RGB;
   var init_hud = __esm({
-    "src/fishing/hud.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fishing/hud.js"() {
       init_math();
       init_color();
       init_font();
@@ -75214,7 +75218,7 @@ kmlmk..
     }
   });
 
-  // src/fishing/cinematics.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fishing/cinematics.js
   function glossFor(rarity) {
     return RARITY_GLOSS[rarity] || "aqua";
   }
@@ -75345,7 +75349,7 @@ kmlmk..
   }
   var GLOSS3, RARITY_GLOSS, glossCache, DUR, Titles, SeedRng, Finale, TAUNTS, EscapeCine, Outro;
   var init_cinematics = __esm({
-    "src/fishing/cinematics.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fishing/cinematics.js"() {
       init_math();
       init_rng();
       init_color();
@@ -76016,7 +76020,7 @@ kmlmk..
     }
   });
 
-  // src/fishing/gear.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fishing/gear.js
   function face2(mb, pts, col, inside) {
     const [a, b, c] = pts;
     const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx2 = c[0] - a[0], vy2 = c[1] - a[1], vz = c[2] - a[2];
@@ -76298,7 +76302,7 @@ kmlmk..
   }
   var RPM_UNIT, RPM_MAX, GRIP, INK6, G0, G1, shadeHex2, N_TEETH, N_SPOKES, SYM, NF2, PITCH3, YAW, R_IN, R_ROOT, R_TIP, MESH, ART2, hex2, RAMPS, RAMP_RGB2, rampAt, BOLT_ROWS, TENSION_COLS, Gear;
   var init_gear = __esm({
-    "src/fishing/gear.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fishing/gear.js"() {
       init_math();
       init_color();
       init_canvas();
@@ -76983,10 +76987,10 @@ kmlmk..
     }
   });
 
-  // src/fishing/battle.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fishing/battle.js
   var TRICK_TITLES, DEFAULT_ROD, DIFF, diffOf, angleOf, HookSpin, Battle;
   var init_battle = __esm({
-    "src/fishing/battle.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fishing/battle.js"() {
       init_math();
       init_rng();
       init_minigames();
@@ -78058,7 +78062,7 @@ kmlmk..
     }
   });
 
-  // src/fishing/boxreel.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fishing/boxreel.js
   function mixRgb(a, b, t) {
     const A2 = hexRgb4(a), B2 = hexRgb4(b);
     return [0, 1, 2].map((i) => Math.round(A2[i] + (B2[i] - A2[i]) * t));
@@ -78193,7 +78197,7 @@ kmlmk..
   }
   var TIER_COL, ART3, hexRgb4, BoxReel, itemDraw, itemDrawLoading, LootPop;
   var init_boxreel = __esm({
-    "src/fishing/boxreel.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fishing/boxreel.js"() {
       init_math();
       init_rng();
       init_color();
@@ -78462,10 +78466,10 @@ kmlmk..
     }
   });
 
-  // src/fishing/fishing.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fishing/fishing.js
   var BARE, Fishing;
   var init_fishing = __esm({
-    "src/fishing/fishing.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fishing/fishing.js"() {
       init_math();
       init_rng();
       init_color();
@@ -79705,10 +79709,10 @@ kmlmk..
     }
   });
 
-  // src/fishing/baiteffects.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fishing/baiteffects.js
   var BaitEffects;
   var init_baiteffects = __esm({
-    "src/fishing/baiteffects.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/fishing/baiteffects.js"() {
       init_math();
       init_rng();
       init_color();
@@ -79872,7 +79876,7 @@ kmlmk..
     }
   });
 
-  // src/ui/reveal.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/reveal.js
   function paint4(w, h, fn) {
     const c = makeCanvas(w, h), g = ctxOf(c);
     const img = g.createImageData(w, h), d = img.data;
@@ -80047,7 +80051,7 @@ kmlmk..
   }
   var REACTIONS, INK7, hexRgb5, mixRgb2, LEAVES, LEAF_LAYOUT, RevealPanel, CHIP_ICONS;
   var init_reveal = __esm({
-    "src/ui/reveal.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/reveal.js"() {
       init_math();
       init_rng();
       init_color();
@@ -80401,7 +80405,7 @@ kmlmk..
     }
   });
 
-  // src/store/isp.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/store/isp.js
   function shopUnlocked(state, i) {
     const p = SHOP_LEVELS[i];
     if (!p) return false;
@@ -80419,7 +80423,7 @@ kmlmk..
   }
   var SHOP_LEVELS;
   var init_isp = __esm({
-    "src/store/isp.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/store/isp.js"() {
       init_lab();
       SHOP_LEVELS = [
         {
@@ -80498,7 +80502,7 @@ kmlmk..
     }
   });
 
-  // src/store/shop.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/store/shop.js
   function defaultAppsState() {
     return { installed: [], tiers: {}, downloads: [], isp: 0, lastTick: Date.now(), stats: { downloaded: 0, completed: 0 } };
   }
@@ -80551,7 +80555,7 @@ kmlmk..
   }
   var DEAL_OFF, SPECIAL_STOCK, GRADE_STOCK, GATED, BaitShop;
   var init_shop = __esm({
-    "src/store/shop.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/store/shop.js"() {
       init_catalog();
       init_isp();
       init_bait();
@@ -80782,7 +80786,7 @@ kmlmk..
     }
   });
 
-  // src/store/shoppanel.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/store/shoppanel.js
   function awningTex(w) {
     const S10 = 14, BODY2 = 12, SC = 5, H8 = BODY2 + SC + 2;
     const c = makeCanvas(w, H8);
@@ -80822,7 +80826,7 @@ kmlmk..
   }
   var INK8, INK_SOFT4, STATS, LIKES, GREET, THANKS, SHELVES, ShopPanel;
   var init_shoppanel = __esm({
-    "src/store/shoppanel.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/store/shoppanel.js"() {
       init_math();
       init_color();
       init_font();
@@ -81393,7 +81397,7 @@ kmlmk..
     }
   });
 
-  // src/store/boats.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/store/boats.js
   function boatTier(state) {
     return Math.max(0, Math.min(BOAT_TIERS2.length - 1, state?.boat?.tier | 0));
   }
@@ -81404,7 +81408,7 @@ kmlmk..
   }
   var BOAT_PERKS, BOAT_TIERS2;
   var init_boats = __esm({
-    "src/store/boats.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/store/boats.js"() {
       BOAT_PERKS = {
         baitSlots: { label: "Bait box slots", kind: "add", fmt: (v) => "+" + v },
         reel: { label: "Reel speed", kind: "mul", fmt: (v) => "+" + Math.round((v - 1) * 100) + "%" },
@@ -81453,7 +81457,7 @@ kmlmk..
     }
   });
 
-  // src/store/index.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/store/index.js
   function openStore(game, opts = {}) {
     installStore(game);
     const ui = game?.ui;
@@ -81467,7 +81471,7 @@ kmlmk..
     return ui.panels.baitshop;
   }
   var init_store = __esm({
-    "src/store/index.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/store/index.js"() {
       init_shop();
       init_shop();
       init_shoppanel();
@@ -81477,7 +81481,7 @@ kmlmk..
     }
   });
 
-  // src/store/ecoart.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/store/ecoart.js
   function leafTex2(len, ang, tone4) {
     const pad = 3, R4 = len + pad * 2;
     const S10 = Math.ceil(R4 * 2);
@@ -81839,7 +81843,7 @@ kmlmk..
   }
   var TAU6, LEAF;
   var init_ecoart = __esm({
-    "src/store/ecoart.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/store/ecoart.js"() {
       init_canvas();
       init_math();
       init_aero();
@@ -81848,13 +81852,13 @@ kmlmk..
     }
   });
 
-  // src/ui/baitpanel.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/baitpanel.js
   function modsOfDef(d) {
     return { attract: d.attract ?? 1, rarity: d.rarity ?? 1, sizeBonus: d.size ?? 0, giantMul: d.giant ?? 1, luck: d.luck ?? 0 };
   }
   var DEPS, STATS2, TYPE_LABEL, BaitPanel;
   var init_baitpanel = __esm({
-    "src/ui/baitpanel.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/baitpanel.js"() {
       init_font();
       init_color();
       init_icons();
@@ -82239,7 +82243,7 @@ kmlmk..
     }
   });
 
-  // src/build/crafting.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/build/crafting.js
   function decorCost(price, size) {
     const items = { ...SIZE_ITEMS[size] || SIZE_ITEMS[1] };
     for (const [p, extra] of Object.entries(RICH_ITEMS)) if (price >= Number(p)) for (const [k, v] of Object.entries(extra)) items[k] = (items[k] || 0) + v;
@@ -82297,7 +82301,7 @@ kmlmk..
   }
   var CRAFT_CATS, SIZE_ITEMS, RICH_ITEMS, RECIPES2, R2, decorIds, planIds, RECIPE_BY_ID;
   var init_crafting = __esm({
-    "src/build/crafting.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/build/crafting.js"() {
       init_buildings();
       init_items();
       init_props();
@@ -82339,7 +82343,7 @@ kmlmk..
     }
   });
 
-  // src/ui/labrows.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/labrows.js
   function unlockInfo(u) {
     switch (u.kind) {
       case "rod":
@@ -82598,7 +82602,7 @@ kmlmk..
   }
   var FEATURE_ICON, FEATURE_NAME, GROUP_GAP, LABEL_FONT, labelOf, branchCol, texCache2, LabRows;
   var init_labrows = __esm({
-    "src/ui/labrows.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/labrows.js"() {
       init_math();
       init_color();
       init_canvas();
@@ -83514,7 +83518,7 @@ kmlmk..
     }
   });
 
-  // src/ui/labviews.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/labviews.js
   function tile(ctx2, ui, x, y, w, h, o = {}) {
     const hov = ui.hover({ x, y, w, h });
     ctx2.save();
@@ -83917,7 +83921,7 @@ kmlmk..
   }
   var rarityCol;
   var init_labviews = __esm({
-    "src/ui/labviews.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/labviews.js"() {
       init_math();
       init_color();
       init_font();
@@ -83934,7 +83938,7 @@ kmlmk..
     }
   });
 
-  // src/ui/lab.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/lab.js
   function splitTwo(s) {
     const w = s.split(" ");
     let best = [s], bd = 1e9;
@@ -84035,7 +84039,7 @@ kmlmk..
   }
   var TABS3, TAB_ALIAS, HEAD3, FOOT, LINES, LabPanel, LabAlias;
   var init_lab3 = __esm({
-    "src/ui/lab.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/lab.js"() {
       init_math();
       init_color();
       init_font();
@@ -84540,10 +84544,10 @@ kmlmk..
     }
   });
 
-  // src/ui/labwidget.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/labwidget.js
   var LAB_IDS, LabWidget;
   var init_labwidget = __esm({
-    "src/ui/labwidget.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/labwidget.js"() {
       init_math();
       init_color();
       init_font();
@@ -84668,7 +84672,7 @@ kmlmk..
     }
   });
 
-  // src/ui/mappanel.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/mappanel.js
   function depthY(m) {
     for (let i = 0; i < DEPTH_KNOTS.length - 1; i++) {
       const [a, ya] = DEPTH_KNOTS[i], [b, yb] = DEPTH_KNOTS[i + 1];
@@ -86233,7 +86237,7 @@ kmlmk..
   }
   var DEG9, UO, M2, BX, BZ, NX, NZ, NY, MX, XR, ZF, Y0, SEA, PITCH4, MAP_YAWS, YAW0, DEPTH_KNOTS, ZONE1, ZONE2, MAP_LOCATIONS, LOCS, LOC_BY_ID, WEATHER3, angAbs, AUTO, SAND3, GRASS4, ROCK, SNOW, ICE, CREV, BASALT, LAVA2, LAVAHOT, CRUST, RIFT, PLAZA, ROAD, ROADLINE, OSAND, HILL, PATH, OC, TURBINES, BUBBLE, CRACKS, ROAD_U, ROAD_W, VC, SMOKERS, DEBUG, _t0, _t1, _ax, RGB, TOPG, GLASS, SPR3, ROTOR_FRAMES, ROTOR_FACE, packHex, INK9, INK_L, RED, idle, DIO, BAKES, MapPanel, __mapDev;
   var init_mappanel = __esm({
-    "src/ui/mappanel.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/mappanel.js"() {
       init_math();
       init_color();
       init_rng();
@@ -87224,7 +87228,7 @@ kmlmk..
     }
   });
 
-  // src/ui/settings.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/settings.js
   function icon2(ctx2, name, x, cy, z) {
     const ic = getUiIcon(name);
     if (!ic) return 0;
@@ -87233,7 +87237,7 @@ kmlmk..
   }
   var INK10, INK_SOFT5, KEYS, CYCLES, VOLS, SIZES4, TOGGLES, SettingsPanel;
   var init_settings = __esm({
-    "src/ui/settings.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/settings.js"() {
       init_color();
       init_font();
       init_panels();
@@ -87537,7 +87541,7 @@ kmlmk..
     }
   });
 
-  // src/ui/welcome.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/welcome.js
   function fmtAway(sec) {
     const m = Math.max(1, Math.round(sec / 60));
     if (m < 60) return `${m} min`;
@@ -87564,7 +87568,7 @@ kmlmk..
   }
   var WelcomePanel;
   var init_welcome = __esm({
-    "src/ui/welcome.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/welcome.js"() {
       init_math();
       init_font();
       init_uiicons();
@@ -87703,7 +87707,7 @@ kmlmk..
     }
   });
 
-  // src/net/protocol.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/net/protocol.js
   function cleanName(s) {
     if (typeof s !== "string") return "";
     const folded = Array.from(s.slice(0, 200).normalize("NFKD")).filter((ch) => !badChar(ch) && !(ch.codePointAt(0) >= 768 && ch.codePointAt(0) <= 879));
@@ -87796,7 +87800,7 @@ kmlmk..
   }
   var PROTO, NAME_MAX, TOPICS, STATES, RARITIES2, EMOTES2, EMOTE_BY_ID, BAD_RANGES, badChar, ID_RE, HEX_RE, SID_RE, num, int, id, hex3, isSid, NAME_OK, NA, NB2;
   var init_protocol = __esm({
-    "src/net/protocol.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/net/protocol.js"() {
       PROTO = 1;
       NAME_MAX = 16;
       TOPICS = ["caught", "emote", "wave"];
@@ -87852,7 +87856,7 @@ kmlmk..
     }
   });
 
-  // src/net/transport.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/net/transport.js
   function sizeOk(v) {
     try {
       return JSON.stringify(v).length <= MAX_JSON;
@@ -87862,7 +87866,7 @@ kmlmk..
   }
   var CHANNEL, HEARTBEAT, MAX_JSON, LocalTransport, RoomTransport;
   var init_transport = __esm({
-    "src/net/transport.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/net/transport.js"() {
       init_protocol();
       CHANNEL = "fishtop-net-1";
       HEARTBEAT = 2e3;
@@ -88069,7 +88073,7 @@ kmlmk..
     }
   });
 
-  // src/net/render.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/net/render.js
   function voxBoat(tier, hull2, trim, dir) {
     const T3 = buildBoatModel?.(tier, hull2, trim);
     if (!T3?.m || !T3.A?.stand || !T3.pivot || typeof renderModel !== "function") return null;
@@ -88400,7 +88404,7 @@ kmlmk..
   }
   var CHAR_SCALE, VS3, SPR4, warned3, layer2, PEER_COLORS, toScreen;
   var init_render = __esm({
-    "src/net/render.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/net/render.js"() {
       init_character();
       init_boatmodels();
       init_voxkit();
@@ -88426,7 +88430,7 @@ kmlmk..
     }
   });
 
-  // src/net/net.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/net/net.js
   function ensureNet(state) {
     const n2 = state.net || (state.net = { online: false, name: "" });
     if (typeof n2.name !== "string") n2.name = "";
@@ -88458,7 +88462,7 @@ kmlmk..
   }
   var NET_NEEDS_LAB, LOCAL_TTL, MAX_PEERS, FEED_MAX, Net;
   var init_net = __esm({
-    "src/net/net.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/net/net.js"() {
       init_protocol();
       init_transport();
       init_render();
@@ -88861,7 +88865,7 @@ kmlmk..
     }
   });
 
-  // src/net/index.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/net/index.js
   function installNet(game) {
     if (game.net) return game.net;
     try {
@@ -88875,21 +88879,21 @@ kmlmk..
     return game.net;
   }
   var init_net2 = __esm({
-    "src/net/index.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/net/index.js"() {
       init_net();
       init_net();
       init_protocol();
     }
   });
 
-  // src/ui/multiplayer.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/multiplayer.js
   function ago(ms) {
     const s = Math.max(0, Math.round((Date.now() - ms) / 1e3));
     return s < 60 ? s + "s" : s < 3600 ? Math.round(s / 60) + "m" : Math.round(s / 3600) + "h";
   }
   var PRIVACY, MultiplayerPanel;
   var init_multiplayer = __esm({
-    "src/ui/multiplayer.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/multiplayer.js"() {
       init_font();
       init_uiicons();
       init_color();
@@ -89202,7 +89206,7 @@ kmlmk..
     }
   });
 
-  // src/game/quests.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/game/quests.js
   function ensureQuests(state) {
     const S10 = state.quests || (state.quests = {});
     S10.v || (S10.v = 1);
@@ -89354,7 +89358,7 @@ kmlmk..
   }
   var ZONES, ZONE_NAMES2, RAR, cap, Q, CHAPTERS, CHAPTER_BY_ID, QUEST_BY_ID, ACTIVE_MAX, NPC_NAMES, speciesName, QuestBook;
   var init_quests = __esm({
-    "src/game/quests.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/game/quests.js"() {
       init_lab();
       init_items();
       init_bait();
@@ -89737,7 +89741,7 @@ kmlmk..
     }
   });
 
-  // src/ui/quests.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/quests.js
   function title(ctx2, text, x, y, size = 16, color = "#ffffff", outline = "#0a3a6e", align = "left") {
     if (alagardReady()) {
       const bmp = aeroCached(`qt|${text}|${size}|${color}|${outline}`, () => {
@@ -89911,7 +89915,7 @@ kmlmk..
   }
   var NPC_COL, CHEERS, npcName, PORTRAIT, PORT_OFF, lookRef, QuestHud, QuestPanel, ChapterPanel;
   var init_quests2 = __esm({
-    "src/ui/quests.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/quests.js"() {
       init_math();
       init_color();
       init_font();
@@ -90543,7 +90547,7 @@ kmlmk..
     }
   });
 
-  // src/ui/registry.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/registry.js
   function registerPanels(ui) {
     for (const P5 of [RevealPanel, BaitPanel, JournalPanel, MapPanel, SettingsPanel, WelcomePanel, WardrobePanel]) ui.register(new P5());
     const lab3 = new LabPanel();
@@ -90555,7 +90559,7 @@ kmlmk..
     registerQuestPanels(ui);
   }
   var init_registry = __esm({
-    "src/ui/registry.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/registry.js"() {
       init_reveal();
       init_baitpanel();
       init_lab3();
@@ -90571,10 +90575,10 @@ kmlmk..
     }
   });
 
-  // src/game/tutorial.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/game/tutorial.js
   var START_BIOME, START_BAIT, ALIAS, SHOWN, DOTS, DOT_OF, BAIT_GIFT, GUIDE_NAME, SAY2, EMOTE, TIPS, Tutorial;
   var init_tutorial = __esm({
-    "src/game/tutorial.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/game/tutorial.js"() {
       init_math();
       init_color();
       init_font();
@@ -91735,7 +91739,7 @@ kmlmk..
     }
   });
 
-  // src/ui/hud.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/hud.js
   function bubbleTex3(D, tint, part2) {
     const b = new PixelBuffer(D, D);
     const r = D / 2, c = D / 2;
@@ -91806,7 +91810,7 @@ kmlmk..
   }
   var HUD_ITEMS, ALIAS2, BIOME_TINT, R3, bubble, toneShadow, Hud;
   var init_hud2 = __esm({
-    "src/ui/hud.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/ui/hud.js"() {
       init_math();
       init_color();
       init_pixel();
@@ -92583,7 +92587,7 @@ kmlmk..
     }
   });
 
-  // src/game/browserbridge.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/game/browserbridge.js
   function sanitize(r) {
     const v = r.variant && typeof r.variant === "object" ? r.variant : null;
     let variant2 = null;
@@ -92656,7 +92660,7 @@ kmlmk..
   }
   var num2;
   var init_browserbridge = __esm({
-    "src/game/browserbridge.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/game/browserbridge.js"() {
       init_species();
       init_traits();
       init_math();
@@ -92664,7 +92668,7 @@ kmlmk..
     }
   });
 
-  // src/world/boat.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/boat.js
   function fallbackRaft(paint5) {
     const m = new VoxelModel(40, 10, 14);
     const wood = m.color(paint5 || "#c8583a", { jitter: 0.08 }), deck = m.color("#e8d2a4", { jitter: 0.06 });
@@ -92700,7 +92704,7 @@ kmlmk..
   }
   var tierCount, validModel, VS4, hiRes, YAW2, PITCH5, ROLLS, CHAR_SCALE2, Boat;
   var init_boat = __esm({
-    "src/world/boat.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/boat.js"() {
       init_voxel();
       init_character();
       init_canvas();
@@ -93181,7 +93185,7 @@ kmlmk..
     }
   });
 
-  // src/gfx/watergl.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/watergl.js
   function compile2(gl2, type, src) {
     const s = gl2.createShader(type);
     gl2.shaderSource(s, src);
@@ -93247,7 +93251,7 @@ kmlmk..
   }
   var MAX_IMP, TAU7, VS5, COMMON2, SIM_FS, FX_FS, hex32, dropCache, WaterFX;
   var init_watergl = __esm({
-    "src/gfx/watergl.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/gfx/watergl.js"() {
       init_watersim();
       MAX_IMP = 24;
       TAU7 = Math.PI * 2;
@@ -93865,7 +93869,7 @@ void main() {
     }
   });
 
-  // src/world/floaters.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/floaters.js
   function crateModel(F) {
     const n2 = 10, h = 9;
     const m = new VoxelModel(n2, h, n2);
@@ -93978,7 +93982,7 @@ void main() {
   }
   var TIERS_FALLBACK, tierOrder, FINISH, finishOf, KINDS2, BASE_W, ROLLS2, SCALES, MODELS7, cache14, fogCache, nextId2, Floaters;
   var init_floaters = __esm({
-    "src/world/floaters.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/world/floaters.js"() {
       init_voxel();
       init_items();
       init_rng();
@@ -94306,10 +94310,10 @@ void main() {
     }
   });
 
-  // src/game/game.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/game/game.js
   var Game;
   var init_game = __esm({
-    "src/game/game.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/game/game.js"() {
       init_math();
       init_rng();
       init_color();
@@ -95228,7 +95232,7 @@ void main() {
     }
   });
 
-  // src/game/boot.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/game/boot.js
   var boot_exports = {};
   __export(boot_exports, {
     startGame: () => startGame
@@ -95241,12 +95245,12 @@ void main() {
     return game;
   }
   var init_boot = __esm({
-    "src/game/boot.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/game/boot.js"() {
       init_game();
     }
   });
 
-  // src/dev/labgame.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/labgame.js
   var labgame_exports = {};
   __export(labgame_exports, {
     run: () => run12
@@ -95255,12 +95259,12 @@ void main() {
     startGame(params2);
   }
   var init_labgame = __esm({
-    "src/dev/labgame.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/labgame.js"() {
       init_boot();
     }
   });
 
-  // src/dev/lowpoly.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/lowpoly.js
   var lowpoly_exports = {};
   __export(lowpoly_exports, {
     run: () => run13,
@@ -95456,7 +95460,7 @@ void main() {
     }
   }
   var init_lowpoly2 = __esm({
-    "src/dev/lowpoly.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/lowpoly.js"() {
       init_lowpoly();
       init_species();
       init_spritecache();
@@ -95466,7 +95470,7 @@ void main() {
     }
   });
 
-  // src/dev/mapview.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/mapview.js
   var mapview_exports = {};
   __export(mapview_exports, {
     run: () => run14
@@ -95621,7 +95625,7 @@ void main() {
   }
   var W3, H3, PRESETS;
   var init_mapview = __esm({
-    "src/dev/mapview.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/mapview.js"() {
       init_canvas();
       init_input();
       init_audio();
@@ -95643,7 +95647,7 @@ void main() {
     }
   });
 
-  // src/dev/newbiomes.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/newbiomes.js
   var newbiomes_exports = {};
   __export(newbiomes_exports, {
     run: () => run15
@@ -96009,7 +96013,7 @@ void main() {
   }
   var TASKBAR_H2, BG;
   var init_newbiomes = __esm({
-    "src/dev/newbiomes.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/newbiomes.js"() {
       init_canvas();
       init_math();
       init_color();
@@ -96031,7 +96035,7 @@ void main() {
     }
   });
 
-  // src/dev/online.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/online.js
   var online_exports = {};
   __export(online_exports, {
     run: () => run16
@@ -96145,7 +96149,7 @@ void main() {
     requestAnimationFrame(frame2);
   }
   var init_online = __esm({
-    "src/dev/online.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/online.js"() {
       init_canvas();
       init_input();
       init_audio();
@@ -96167,7 +96171,7 @@ void main() {
     }
   });
 
-  // src/dev/onlinebait.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/onlinebait.js
   var onlinebait_exports = {};
   __export(onlinebait_exports, {
     run: () => run17
@@ -96208,7 +96212,7 @@ void main() {
     frame2();
   }
   var init_onlinebait = __esm({
-    "src/dev/onlinebait.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/onlinebait.js"() {
       init_canvas();
       init_font();
       init_bait();
@@ -96216,7 +96220,7 @@ void main() {
     }
   });
 
-  // src/dev/panels.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/panels.js
   var panels_exports = {};
   __export(panels_exports, {
     run: () => run18
@@ -96479,7 +96483,7 @@ void main() {
   }
   var W4, H4;
   var init_panels3 = __esm({
-    "src/dev/panels.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/panels.js"() {
       init_canvas();
       init_input();
       init_audio();
@@ -96498,7 +96502,7 @@ void main() {
     }
   });
 
-  // src/dev/props.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/props.js
   var props_exports = {};
   __export(props_exports, {
     run: () => run19
@@ -96630,7 +96634,7 @@ void main() {
   }
   var PAGES;
   var init_props2 = __esm({
-    "src/dev/props.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/props.js"() {
       init_canvas();
       init_font();
       init_props();
@@ -96644,7 +96648,7 @@ void main() {
     }
   });
 
-  // src/dev/shell.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/shell.js
   var shell_exports = {};
   __export(shell_exports, {
     run: () => run20
@@ -96680,7 +96684,7 @@ void main() {
     window.__galleryReady = true;
   }
   var init_shell = __esm({
-    "src/dev/shell.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/shell.js"() {
       init_canvas();
       init_font();
       init_bigicons();
@@ -96693,7 +96697,7 @@ void main() {
     }
   });
 
-  // src/dev/species.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/species.js
   var species_exports2 = {};
   __export(species_exports2, {
     REF_LOOKS: () => REF_LOOKS,
@@ -96939,7 +96943,7 @@ void main() {
   }
   var W5, H5, BIOMES3, BG2, EMOTIONS, MUTS, TITLES, comp, REF_LOOKS, fitCache, REF_GROWN;
   var init_species2 = __esm({
-    "src/dev/species.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/species.js"() {
       init_spritecache();
       init_fishrig();
       init_voxelfish();
@@ -97090,7 +97094,7 @@ void main() {
     }
   });
 
-  // src/dev/ui6.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/ui6.js
   var ui6_exports = {};
   __export(ui6_exports, {
     run: () => run22
@@ -97160,7 +97164,7 @@ void main() {
   }
   var IDS;
   var init_ui6 = __esm({
-    "src/dev/ui6.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/ui6.js"() {
       init_canvas();
       init_font();
       init_bigicons();
@@ -97171,7 +97175,7 @@ void main() {
     }
   });
 
-  // src/dev/uiart.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/uiart.js
   var uiart_exports = {};
   __export(uiart_exports, {
     run: () => run23
@@ -97533,7 +97537,7 @@ void main() {
   }
   var W6, H6;
   var init_uiart = __esm({
-    "src/dev/uiart.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/uiart.js"() {
       init_canvas();
       init_font();
       init_uiicons();
@@ -97545,7 +97549,7 @@ void main() {
     }
   });
 
-  // src/dev/voxfish.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/voxfish.js
   var voxfish_exports = {};
   __export(voxfish_exports, {
     run: () => run24
@@ -97874,7 +97878,7 @@ void main() {
   }
   var W7, H7, BG3, FIT_CAP, EMOS;
   var init_voxfish = __esm({
-    "src/dev/voxfish.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/voxfish.js"() {
       init_canvas();
       init_font();
       init_color();
@@ -97894,7 +97898,7 @@ void main() {
     }
   });
 
-  // src/dev/world.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/world.js
   var world_exports = {};
   __export(world_exports, {
     run: () => run25
@@ -98160,7 +98164,7 @@ void main() {
     requestAnimationFrame(frame2);
   }
   var init_world = __esm({
-    "src/dev/world.js"() {
+    "../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/dev/world.js"() {
       init_canvas();
       init_font();
       init_boat();
@@ -98177,7 +98181,7 @@ void main() {
     }
   });
 
-  // import("./dev/**/*.js") in src/main.js
+  // import("./dev/**/*.js") in ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/main.js
   var globImport_dev_js = __glob({
     "./dev/aquarium.js": () => Promise.resolve().then(() => (init_aquarium2(), aquarium_exports)),
     "./dev/audio.js": () => Promise.resolve().then(() => (init_audio2(), audio_exports)),
@@ -98207,7 +98211,7 @@ void main() {
     "./dev/world.js": () => Promise.resolve().then(() => (init_world(), world_exports))
   });
 
-  // src/main.js
+  // ../../../tmp/claude-0/-home-user-upgraded-guacamole/0635e6e6-6374-5dae-a608-c9722d156879/scratchpad/srccopy/src/main.js
   var params = new URLSearchParams(location.search);
   var dev = params.get("dev") || (params.has("gallery") ? "gallery" : null);
   async function boot() {

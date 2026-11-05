@@ -441,7 +441,7 @@ export class Drops3D {
   constructor() { this.list = []; this.nextId = 1; this.k = 1; this.mergeT = 0; this.onMerge = null; }
   setScale(k) { this.k = k; for (const c of this.list) c.r = this.radius(c.d, c.value); }
   radius(d, value) {
-    const base = [0.75, 0.95, 1.25][d] ?? 0.75;
+    const base = [1.05, 1.3, 1.65][d] ?? 1.05;
     const extra = value > DENOMS[d] ? Math.min(0.8, Math.log2(value / DENOMS[d]) * 0.14) : 0;
     return (base + extra) * this.k;
   }

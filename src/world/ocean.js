@@ -475,7 +475,7 @@ export class Ocean {
     if (this.game.ui?.blocking) return;
     const a = Math.min(1, c.t * 2.5, (D - c.t) * 1.4);
     const col = (ZONE_COLORS[c.id] || ZONE_COLORS.sunlit)[2];
-    const y = Math.round(this.H * 0.17 - (1 - Math.min(1, c.t * 2.5)) * 8);
+    const y = Math.round(this.H * 0.24 - (1 - Math.min(1, c.t * 2.5)) * 8);
     const sh = c.id === 'abyss' ? Math.round(Math.sin(c.t * 40) * Math.max(0, 0.5 - c.t) * 4) : 0;
     ctx.save();
     ctx.globalAlpha = Math.max(0, a);
