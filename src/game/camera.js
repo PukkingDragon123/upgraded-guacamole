@@ -317,7 +317,11 @@ export class Camera {
         this.edgeT = ovy > vh * 0.08 ? (this.edgeT || 0) + dt : 0;
         const boost = 1 + clamp(this.edgeT - 0.35, 0, 1.6) * 2.2;
         if (ovx > 0) { const n = clamp(this.tx + Math.sign(ex) * ovx * Math.min(1, rate * dt), b.x0, b.x1); this.cx += n - this.tx; this.tx = n; }
-        if (ovy > 0) { const n = clamp(this.ty + Math.sign(ey) * ovy * Math.min(1, rate * boost * dt), b.y0, b.y1); this.cy += n - this.ty; this.ty = n; }
+        // [phase6:fishing] hold the depth while a fish is coming for / nibbling the bait (and on the tutorial's first
+        // casts): the hook rides the screen-space cursor, so an edge dive would drag it away from the fish forever
+        const F = g.fishing;
+        const baitHeld = g.tutorialActive || F?.state === 'nibble' || F?.state === 'bite' || !!g.school?.fishes?.some((f) => !f.controlled && (f.state === 'interest' || f.state === 'sniff'));
+        if (ovy > 0 && !baitHeld) { const n = clamp(this.ty + Math.sign(ey) * ovy * Math.min(1, rate * boost * dt), b.y0, b.y1); this.cy += n - this.ty; this.ty = n; }
       }
       // a small lead in the direction of motion
       this.leadX = damp(this.leadX, clamp(sub.vx * 0.08, -vw * 0.06, vw * 0.06), 3, dt);
