@@ -320,3 +320,8 @@ User direction (latest, overrides earlier phases where they conflict):
 | Aquarium | `src/aquarium/*` |
 | Oceans | `src/world/*` (except creatures), `src/game/camera.js`, `src/gfx/watergl.js`, `src/world/watersim.js`, `props.js` |
 `src/game/game.js` / `state.js` / `src/ui/registry.js`: tiny tagged additive edits only (`// [phase6:<agent>]`).
+- Creatures API (`src/fish/lowpolyfish.js`): `fishMesh(sp, rec, {phase, frames})`, `creatureMesh(kind, {phase})`,
+  `addFishToScene(scene, mesh, model)`, cached sprites `lpFrame`, `lpStill`, `lpFishIcon`. 8 swim frames x 10-degree yaw steps.
+- Oceans API: `game.ocean.depthZone()` -> {id, name, depthM}, event 'depthZone'; species may set `zone`/`depthM`.
+- Quests: `src/game/quests.js` (7 chapters, 42 quests), panel 'quests' (Q), tracker in `game.hud.questSlot()`.
+- Aquarium: one LPScene per frame; swim mode; gear panel (Aero) for filter/heater/light/air/substrate.

@@ -91453,7 +91453,13 @@ kmlmk..
           const { W: W8, H: H8 } = this.game.screen, S10 = this.seal, u = S10.size / 40;
           const f = this.game.fishing;
           if (f?.fighting || f?.state === "bite") return [Math.round(56 * u), Math.round(H8 * 0.42)];
-          return [W8 - Math.round(58 * u), H8 - Math.round(110 * u)];
+          let top = H8;
+          try {
+            top = this.game.hud?.topY?.() ?? H8;
+          } catch (e) {
+            top = H8;
+          }
+          return [W8 - Math.round(58 * u), Math.min(H8 - Math.round(110 * u), top - Math.round(34 * u))];
         }
         homeRect() {
           const [x, y] = this.helperHome(), s = this.seal.size;
