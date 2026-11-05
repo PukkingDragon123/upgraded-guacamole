@@ -325,3 +325,11 @@ User direction (latest, overrides earlier phases where they conflict):
 - Oceans API: `game.ocean.depthZone()` -> {id, name, depthM}, event 'depthZone'; species may set `zone`/`depthM`.
 - Quests: `src/game/quests.js` (7 chapters, 42 quests), panel 'quests' (Q), tracker in `game.hud.questSlot()`.
 - Aquarium: one LPScene per frame; swim mode; gear panel (Aero) for filter/heater/light/air/substrate.
+
+## Phase 7 (cute seal, detailed voxel environment, centre-out Lab with fog of war, cube tank, management, polish)
+- Bubbles the seal: super cute, bubbly, SMOOTH (not faceted low-poly): smooth-shaded higher-poly mesh, glossy bubble.
+- Environment: much more detailed voxel art in every ocean (finer voxels, richer props/terrain), crisp at the zoom.
+- The Lab: one tree that branches out from the middle, camera zoomed in on the frontier, tidy and polished; nodes you
+  cannot unlock yet are hidden as black silhouettes (fog of war) until they become reachable.
+- The tank is a CUBE; better decor building inside it; a real fish-management screen.
+- Fish and sea creatures stay low-poly (phase 6).
