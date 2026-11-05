@@ -24,7 +24,7 @@ const TOGGLES = [
   ['lowPower', 'sun', 'Eco', 'Lower frame rate, fewer effects'],
   ['showFps', 'clock', 'FPS', 'Frame counter (F3)'],
   ['browserFish', 'fish', 'Web fish', 'Fish visit your web pages (extension)'],
-  ['hints', 'question', 'Tips', 'Pinch pops up with tips'],
+  ['hints', 'question', 'Tips', 'Bubbles the seal pops up with tips'],
 ];
 
 // a pixel icon at an integer zoom (2x on the bigger UI sizes), centred vertically on cy

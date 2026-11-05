@@ -56844,7 +56844,9 @@ ${hearts} ${status}
                 this.cx += n2 - this.tx;
                 this.tx = n2;
               }
-              if (ovy > 0) {
+              const F = g.fishing;
+              const baitHeld = g.tutorialActive || F?.state === "nibble" || F?.state === "bite" || !!g.school?.fishes?.some((f) => !f.controlled && (f.state === "interest" || f.state === "sniff"));
+              if (ovy > 0 && !baitHeld) {
                 const n2 = clamp(this.ty + Math.sign(ey) * ovy * Math.min(1, rate * boost * dt), b.y0, b.y1);
                 this.cy += n2 - this.ty;
                 this.ty = n2;
@@ -87509,7 +87511,7 @@ kmlmk..
         ["lowPower", "sun", "Eco", "Lower frame rate, fewer effects"],
         ["showFps", "clock", "FPS", "Frame counter (F3)"],
         ["browserFish", "fish", "Web fish", "Fish visit your web pages (extension)"],
-        ["hints", "question", "Tips", "Pinch pops up with tips"]
+        ["hints", "question", "Tips", "Bubbles the seal pops up with tips"]
       ];
       SettingsPanel = class {
         constructor() {
