@@ -71,7 +71,6 @@ export class Aquarium {
   // ------------------------------------------------------------------ state
   get st() { return this.game.state; }
   get stats() { return this.game.stats || {}; }
-  get drops_() { return this.drops; }
   get coins() { return this.drops; } // older readers
 
   ensureState() {
@@ -546,8 +545,8 @@ export class Aquarium {
 
   startGrow(grow, rebuilt = false) {
     this.growAnim = { t: 0, from: grow.from, fx: 0 };
-    if (!rebuilt || this.view.kit?.shape.tier !== this.tier) this.view.rebuild();
-    else this.view.rebuild();
+    this.view.rebuild();
+    void rebuilt;
     this.view.setPreset('front');
     this.sfx('ui_unlock', { vol: 0.8 });
     this.sfx('travel_whoosh', { vol: 0.5 });
@@ -611,7 +610,7 @@ export class Aquarium {
       if (Math.hypot(inp.x - pr.x, inp.y - pr.y) > 4) pr.moved = true;
       if (pr.button === 'r') {
         if (inp.rdown) { if (pr.moved) view.pan(dx, dy); }
-        else { this.press = null; if (!pr.moved && pr.decor) this.storeDecor(pr.decor); }
+        else { this.press = null; if (!pr.moved && pr.decor && this.arrange) this.storeDecor(pr.decor); }
       } else if (inp.down) {
         if (pr.moved) {
           if (pr.decor && !this.drag) { this.drag = { kind: 'decor', d: pr.decor }; this.sfx('icon_pickup', { vol: 0.5 }); }
@@ -632,7 +631,7 @@ export class Aquarium {
     this.hoverDecor = hd; this.hoverFish = hf;
     if (hd && !this.drag) {
       const name = PROPS[hd.rec.id]?.name || 'Decoration', verb = propInteract(hd.rec.id)?.verb || 'Poke';
-      tip(`${name}\n{mouse_l} ${verb}  {mouse_hold} move  {mouse_r} store`);
+      tip(this.arrange ? `${name}\n{mouse_hold} move  wheel: turn  {mouse_r} store` : `${name}\n{mouse_l} ${verb}  {mouse_hold} move`);
     } else if (hf) tip(this.fishTip(hf));
     // wheel: rotate a hovered decoration in arrange mode, otherwise zoom
     if (inp.wheel) {
@@ -836,10 +835,16 @@ export class Aquarium {
     return out;
   }
 
-  swimButtons(inp) {
+  swimLayout() {
     const W = this.game.screen.W;
-    const r = { x: Math.round(W / 2 + 120), y: 7, w: 64, h: 18 };
-    this.swimExitRect = r;
+    const msg = 'WASD / arrows swim   Drag: look   Space: up   Shift: down   Click: dart';
+    const mw = measureText(msg, 'small') + 20;
+    const x0 = Math.round(W / 2 - mw / 2 - 40);
+    return { msg, pill: { x: x0, y: 7, w: mw, h: 18 }, exit: { x: x0 + mw + 6, y: 7, w: 64, h: 18 } };
+  }
+
+  swimButtons(inp) {
+    const r = this.swimLayout().exit;
     if (rectContains(r, inp.x, inp.y)) {
       this.hoverBtn = 'exitswim';
       if (inp.pressed) { inp.consume(); this.exitSwim(); }
@@ -1122,7 +1127,7 @@ export class Aquarium {
       this.moodT = 0.5;
       const cap = this.capacity();
       const crowd = 1 - clamp01((n / cap - 0.65) / 0.7) * 0.6;
-      const decor = clamp01((this.decor.length + this.view.plants?.list?.length * 0.2 || 0) / (1.5 + n * 0.35) + this.tier * 0.06);
+      const decor = clamp01((this.decor.length + (this.view.plants?.list?.length || 0) * 0.2) / (1.5 + n * 0.35) + this.tier * 0.06);
       const gh = gearHappy(this.st);
       const k = 1 - Math.exp(-step / 40);
       for (const f of this.fish) {
@@ -1238,6 +1243,7 @@ export class Aquarium {
   // effects at a 3D point: real bubbles in the water + screen-space sparkle / text particles
   fxAt(p, kind, n = 6, r = 0, text = null) {
     const T = this.shape;
+    if (kind === 'food') { this.sprinkle(p[0], p[2], Math.min(8, n)); return; }
     if (kind === 'bubbles' || kind === 'foam' || kind === 'steam' || kind === 'smoke') { for (let i = 0; i < n; i++) this.addBubble([p[0] + rng.float(-1, 1), p[1], p[2] + rng.float(-1, 1)], T.fishLen * rng.float(0.03, 0.08)); return; }
     if (!this.visibleKey) return;
     const sp = this.view.project(p);
@@ -1388,12 +1394,10 @@ export class Aquarium {
     const t = this.t;
     if (this.swim) {
       const s = this.swim;
-      const msg = 'WASD / arrows swim   Drag: look   Space: up   Shift: down   Click: dart';
-      const mw = measureText(msg, 'small') + 20;
-      drawAeroSurface(ctx, Math.round(W / 2 - mw / 2 - 40), 7, mw, 18, { tone: 'frost', r: 'pill', gloss: 0.75, glossH: 8, rim: 0.9, glow: 0.5 });
-      drawText(ctx, msg, Math.round(W / 2 - 40), 13, { font: 'small', align: 'center', color: AERO.ink });
-      const r = { x: Math.round(W / 2 + mw / 2 - 30), y: 7, w: 64, h: 18 };
-      this.swimExitRect = r;
+      const lay = this.swimLayout(), pl = lay.pill;
+      drawAeroSurface(ctx, pl.x, pl.y, pl.w, pl.h, { tone: 'frost', r: 'pill', gloss: 0.75, glossH: 8, rim: 0.9, glow: 0.5 });
+      drawText(ctx, lay.msg, pl.x + pl.w / 2, 13, { font: 'small', align: 'center', color: AERO.ink });
+      const r = lay.exit;
       drawAeroButton(ctx, r.x, r.y, r.w, r.h, { label: 'Exit', icon: getUiIcon('arrow_u'), state: this.hoverBtn === 'exitswim' ? 'hover' : 'normal', tone: 'aqua' });
       if (s.got) { drawAeroCoin(ctx, W / 2 - 14, 38, 5, t); drawText(ctx, '+' + fmtAero(s.got), W / 2 - 6, 34, { color: '#ffffff', shadow: '#0a3e74' }); }
       // depth gauge
