@@ -67,38 +67,44 @@ export class TankView {
     this.plants = new PlantField(this.kit.shape, aq.tier, TANK_TIERS[aq.tier].plants + (gear.light | 0) * 2);
     this.plantMesh = null;
     this.oldKit = oldKit && aq.growAnim ? oldKit : null;
-    if (first) this.setPreset('front', true);
+    if (first) this.setPreset('iso', true);
     else this.fitPreset();
   }
 
   dropOldKit() { if (this.oldKit) disposeKit(this.oldKit); this.oldKit = null; }
 
   // ------------------------------------------------------------------ camera
+  // camera distance that fits the glass cube (its bounding sphere plus the plinth and the light above)
   frame() {
     const T = this.kit.shape;
     const s = T.size;
-    const fitW = Math.max(s[0], s[2] * 0.6), fitH = T.top;
+    const R = Math.hypot(s[0], s[1] * 1.15, s[2]) * 0.5;
     const asp = this.w / this.h;
     const tf = Math.tan((FOV * Math.PI / 180) / 2);
-    const dist = Math.max(fitH / 2 / tf, fitW / 2 / (tf * asp)) * 1.32 + Math.max(s[2], 10) * 0.5;
-    return { dist, target: [0, T.top * 0.45, 0], max: Math.max(dist * 2.6, 220) };
+    const dist = Math.max(R / tf, R / (tf * asp)) * 1.12;
+    return { dist, target: [0, T.top * 0.44, 0], max: Math.max(dist * 2.6, 220) };
   }
 
+  // presets: 'iso' (default, a 3/4 view from above: two glass faces and the water surface), 'front', 'top',
+  // 'close', 'side', 'room'
   setPreset(name, snap = false) {
     if (!this.kit) return;
+    if (name === 'default') name = 'iso';
+    this.follow = null;
     const f = this.frame();
     this.preset = name;
-    const c = this.camT;
-    if (name === 'top') Object.assign(c, { yaw: -0.15, pitch: 1.18, dist: f.dist * 1.05, target: [0, this.kit.shape.waterY * 0.4, 0] });
-    else if (name === 'close') Object.assign(c, { yaw: 0.12, pitch: 0.06, dist: f.dist * 0.5, target: [0, this.kit.shape.waterY * 0.42, 0] });
-    else if (name === 'side') Object.assign(c, { yaw: -1.1, pitch: 0.16, dist: f.dist * 0.95, target: f.target.slice() });
-    else if (name === 'room') Object.assign(c, { yaw: -0.55, pitch: 0.26, dist: f.dist * 2.1, target: [0, this.kit.shape.top * 0.6, 0] });
-    else Object.assign(c, { yaw: -0.26, pitch: 0.17, dist: f.dist * (this.kit.shape.d.stand === 'wall' ? 1.02 : 1.28), target: f.target.slice() });
+    const c = this.camT, T = this.kit.shape;
+    if (name === 'top') Object.assign(c, { yaw: 0.35, pitch: 1.3, dist: f.dist * 1.02, target: [0, T.waterY * 0.4, 0] });
+    else if (name === 'front') Object.assign(c, { yaw: 0, pitch: 0.12, dist: f.dist * 1.0, target: f.target.slice() });
+    else if (name === 'close') Object.assign(c, { yaw: 0.42, pitch: 0.22, dist: f.dist * 0.55, target: [0, T.waterY * 0.42, 0] });
+    else if (name === 'side') Object.assign(c, { yaw: 1.2, pitch: 0.2, dist: f.dist * 0.95, target: f.target.slice() });
+    else if (name === 'room') Object.assign(c, { yaw: 0.8, pitch: 0.3, dist: f.dist * 2.2, target: [0, T.top * 0.6, 0] });
+    else Object.assign(c, { yaw: 0.68, pitch: 0.5, dist: f.dist * 1.04, target: [0, T.top * 0.4, 0] });
     c.target = c.target.slice();
     this.limit(c);
     if (snap) { Object.assign(this.cam, c); this.cam.target = c.target.slice(); }
   }
-  fitPreset() { this.setPreset(this.preset || 'front'); }
+  fitPreset() { this.setPreset(this.preset || 'iso'); }
 
   limit(c) {
     const f = this.frame();
@@ -113,20 +119,36 @@ export class TankView {
   }
 
   orbit(dx, dy) { this.camT.yaw -= dx * 0.008; this.camT.pitch += dy * 0.006; this.limit(this.camT); this.preset = null; }
+  // keep the camera on a fish (the fish manager's "See in tank"): it glides in and follows until you orbit / pan
+  focusFish(f) {
+    if (!this.kit || !f) return;
+    this.follow = f;
+    this.preset = null;
+    const c = this.camT, T = this.kit.shape;
+    c.dist = clamp(f.len * 7 + T.minDim * 0.25, T.minDim * 0.45, this.frame().dist * 0.8);
+    c.pitch = clamp(c.pitch, 0.18, 0.55);
+    c.target = f.p.slice();
+    this.limit(c);
+  }
   pan(dx, dy) {
+    this.follow = null;
     const k = this.camT.dist * 0.0022;
     const c = this.camT;
     for (let i = 0; i < 3; i++) c.target[i] += (-this.right[i] * dx + this.up[i] * dy) * k;
     this.limit(c);
     this.preset = null;
   }
-  zoom(k) { this.camT.dist *= k; this.limit(this.camT); this.preset = null; }
+  zoom(k) { this.camT.dist *= k; this.limit(this.camT); if (!this.follow) this.preset = null; }
 
   update(dt) {
     if (!this.kit) return;
     this.t += dt;
     const c = this.cam, T = this.camT;
-    const k = 1 - Math.exp(-dt * 7);
+    if (this.follow) {
+      if (!this.aq.fish.includes(this.follow)) this.follow = null;
+      else { const p = this.follow.p; for (let i = 0; i < 3; i++) T.target[i] = p[i]; this.limit(T); }
+    }
+    const k = 1 - Math.exp(-dt * (this.follow ? 4 : 7));
     let dy = ((T.yaw - c.yaw + Math.PI) % TAU + TAU) % TAU - Math.PI;
     c.yaw += dy * k;
     c.pitch = lerp(c.pitch, T.pitch, k);

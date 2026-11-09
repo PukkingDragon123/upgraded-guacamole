@@ -22,8 +22,17 @@
 //       .camera({eye, target, up, fov, near, far}) .render(opts) -> the scene's own canvas (draw it with drawImage)
 //   M4 (re-exported mat4 helpers from voxgl.js) + T4 {trs(t, rx, ry, rz, s), rot(rx, ry, rz) (R = Rx * Ry * Rz:
 //       roll, then yaw, then camera pitch)} for model matrices
-//   Shape helpers: loft(mb, rings, seg, colorAt), fin(mb, outline, z, col), ellipsoid(mb, c, r, seg, rings, col),
-//       tube(mb, pts, radius(t), sides, col)
+//   Shape helpers: loft(mb, rings, seg, colorAt, o?), fin(mb, outline, z, col), ellipsoid(mb, c, r, seg, rings, col, o?),
+//       tube(mb, pts, radius(t), sides, col, o?)   o: {smooth: true | crease degrees} = smooth-shaded (averaged normals)
+// Phase 7 (smooth, additive; every default is unchanged):
+//   new MeshBuilder(cap, {smooth: true | creaseDeg})   build() averages vertex normals of coincident vertices (smooth
+//       shading instead of facets; with a crease angle, edges sharper than it stay hard). .triC(a, b, c, ca, cb, cc,
+//       uva?, uvb?, uvc?) per-vertex colours; .smoothRange(fromTri, toTri?, crease?) smooths only those triangles;
+//       build({smooth}) overrides. smoothNormals(data, crease?, from?, to?) does it on raw vertex floats.
+//   LPMesh.smooth = true for smoothed meshes: the shader then trusts interpolated normals (front faces keep them, two-
+//       sided back faces flip by gl_FrontFacing) instead of flipping per pixel, so silhouettes stay clean.
+//   render options soft (0..1) + softColor: plush subsurface-ish shading (wrapped smooth diffuse, hemisphere sky /
+//       ground ambient, a warm scatter band at the terminator, a soft velvet rim); 0 = the classic look.
 // Textures: any canvas (uploaded premultiplied, filtered without fringes); emitTex reads texture alpha 0.5..1 as
 // emissive 1..0 (opaque skins with glowing photophores). Set canvas._lpSmooth = true for linear + mipmapped filtering (painted skins), and
 // canvas._lpDirty = true after repainting it. renderSheet batches many sprite renders into one GL pass / readback.
@@ -57,12 +66,18 @@ uniform vec3 uLight; uniform vec3 uEye; uniform float uAmb; uniform float uSpec;
 uniform float uRim; uniform vec3 uRimCol; uniform sampler2D uTex; uniform float uUseTex; uniform float uAlpha;
 uniform vec4 uTint; uniform vec3 uFogCol; uniform float uFog; uniform float uOrtho;
 uniform float uEnv; uniform float uIri; uniform float uEmit; uniform float uEmitTex; uniform vec3 uSky; uniform vec3 uGround;
+uniform float uSmoothN; uniform float uSoft; uniform vec3 uSoftCol;
 out vec4 frag;
 void main() {
   vec3 n = normalize(vNrm);
   vec3 l = normalize(uLight);
   vec3 v = uOrtho > 0.5 ? vec3(0.0, 0.0, 1.0) : normalize(uEye - vWorld);
-  if (dot(n, v) < 0.0) n = -n; // two-sided (thin fins, open shells)
+  if (uSmoothN > 0.5) {
+    // smooth meshes: interpolated normals graze the view at silhouettes; bend them back instead of flipping them
+    if (!gl_FrontFacing) n = -n;
+    float dv = dot(n, v);
+    if (dv < 0.02) n = normalize(n - v * (dv - 0.02));
+  } else if (dot(n, v) < 0.0) n = -n; // two-sided (thin fins, open shells)
   vec3 base = vCol;
   float a = uAlpha;
   float emit = uEmit;
@@ -77,6 +92,18 @@ void main() {
   float wrap = max((dot(n, l) + 0.35) / 1.35, 0.0);
   vec3 col = base * (uAmb + (1.0 - uAmb) * mix(d, wrap, 0.5));
   float nv = max(dot(n, v), 0.0);
+  if (uSoft > 0.0) {
+    // plush, subsurface-ish: a wide smooth wrap, sky / ground tinted ambient, warm light bleeding into the terminator
+    float ndl = dot(n, l);
+    float sd = clamp((ndl + 0.6) / 1.6, 0.0, 1.0);
+    sd = sd * sd * (3.0 - 2.0 * sd);
+    vec3 hemi = mix(uGround, uSky, clamp(n.y * 0.5 + 0.5, 0.0, 1.0));
+    vec3 softC = base * (uAmb * mix(vec3(1.0), hemi, 0.55) + (1.0 - uAmb) * sd);
+    float band = clamp(1.0 - abs(ndl + 0.05) * 2.4, 0.0, 1.0);
+    softC += base * uSoftCol * band * 0.2;
+    softC += uSoftCol * pow(1.0 - nv, 2.2) * 0.16 * clamp(0.65 - ndl * 0.5, 0.0, 1.0);
+    col = mix(col, softC, clamp(uSoft, 0.0, 1.0));
+  }
   if (uEnv > 0.0) {
     vec3 r = reflect(-v, n);
     vec3 env = mix(uGround, uSky, smoothstep(-0.25, 0.75, r.y));
@@ -99,7 +126,7 @@ void main() {
   frag = vec4(col * a, a);
 }`;
 
-const UNIFORMS = ['uMVP', 'uModel', 'uLight', 'uEye', 'uAmb', 'uSpec', 'uShine', 'uRim', 'uRimCol', 'uTex', 'uUseTex', 'uAlpha', 'uTint', 'uFogCol', 'uFog', 'uOrtho', 'uEnv', 'uIri', 'uEmit', 'uEmitTex', 'uSky', 'uGround'];
+const UNIFORMS = ['uMVP', 'uModel', 'uLight', 'uEye', 'uAmb', 'uSpec', 'uShine', 'uRim', 'uRimCol', 'uTex', 'uUseTex', 'uAlpha', 'uTint', 'uFogCol', 'uFog', 'uOrtho', 'uEnv', 'uIri', 'uEmit', 'uEmitTex', 'uSky', 'uGround', 'uSmoothN', 'uSoft', 'uSoftCol'];
 
 function init() {
   if (gl || failed) return gl;
@@ -179,24 +206,30 @@ const hexRgb = (c) => {
 export { hexRgb as lpColor };
 
 export class MeshBuilder {
-  constructor(capTris = 256) { this.buf = new Float32Array(capTris * 33); this.n = 0; }
+  // o.smooth: true (average the normals of coincident vertices: smooth shading) or a crease angle in degrees
+  constructor(capTris = 256, o = {}) { this.buf = new Float32Array(capTris * 33); this.n = 0; this.smooth = o.smooth || false; this.ranges = null; }
   get count() { return this.n / 33; }            // triangles so far
   get v() { return this.buf.subarray(0, this.n); } // raw vertex floats (11 per vertex: pos, normal, colour, uv)
   // a, b, c: [x, y, z] counter-clockwise when seen from outside; col: '#hex' or [r, g, b] (0..1); uv*: [u, v]
   tri(a, b, c, col = '#ffffff', ua = Z2, ub = Z2, uc = Z2) {
+    const k = hexRgb(col);
+    return this.triC(a, b, c, k, k, k, ua, ub, uc);
+  }
+  // the same with one colour per vertex (painted gradients across a face)
+  triC(a, b, c, ca, cb, cc, ua = Z2, ub = Z2, uc = Z2) {
     const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
     let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
     const l = Math.sqrt(nx * nx + ny * ny + nz * nz);
     if (l < 1e-12) return this; // degenerate
     nx /= l; ny /= l; nz /= l;
-    const k = hexRgb(col);
+    const ka = hexRgb(ca), kb = hexRgb(cb), kc = hexRgb(cc);
     if (this.n + 33 > this.buf.length) { const nb = new Float32Array(this.buf.length * 2 + 33); nb.set(this.buf.subarray(0, this.n)); this.buf = nb; }
     const B = this.buf;
     let o = this.n;
     ua = ua || Z2; ub = ub || Z2; uc = uc || Z2;
-    B[o] = a[0]; B[o + 1] = a[1]; B[o + 2] = a[2]; B[o + 3] = nx; B[o + 4] = ny; B[o + 5] = nz; B[o + 6] = k[0]; B[o + 7] = k[1]; B[o + 8] = k[2]; B[o + 9] = ua[0]; B[o + 10] = ua[1]; o += 11;
-    B[o] = b[0]; B[o + 1] = b[1]; B[o + 2] = b[2]; B[o + 3] = nx; B[o + 4] = ny; B[o + 5] = nz; B[o + 6] = k[0]; B[o + 7] = k[1]; B[o + 8] = k[2]; B[o + 9] = ub[0]; B[o + 10] = ub[1]; o += 11;
-    B[o] = c[0]; B[o + 1] = c[1]; B[o + 2] = c[2]; B[o + 3] = nx; B[o + 4] = ny; B[o + 5] = nz; B[o + 6] = k[0]; B[o + 7] = k[1]; B[o + 8] = k[2]; B[o + 9] = uc[0]; B[o + 10] = uc[1]; o += 11;
+    B[o] = a[0]; B[o + 1] = a[1]; B[o + 2] = a[2]; B[o + 3] = nx; B[o + 4] = ny; B[o + 5] = nz; B[o + 6] = ka[0]; B[o + 7] = ka[1]; B[o + 8] = ka[2]; B[o + 9] = ua[0]; B[o + 10] = ua[1]; o += 11;
+    B[o] = b[0]; B[o + 1] = b[1]; B[o + 2] = b[2]; B[o + 3] = nx; B[o + 4] = ny; B[o + 5] = nz; B[o + 6] = kb[0]; B[o + 7] = kb[1]; B[o + 8] = kb[2]; B[o + 9] = ub[0]; B[o + 10] = ub[1]; o += 11;
+    B[o] = c[0]; B[o + 1] = c[1]; B[o + 2] = c[2]; B[o + 3] = nx; B[o + 4] = ny; B[o + 5] = nz; B[o + 6] = kc[0]; B[o + 7] = kc[1]; B[o + 8] = kc[2]; B[o + 9] = uc[0]; B[o + 10] = uc[1]; o += 11;
     this.n = o;
     return this;
   }
@@ -204,15 +237,92 @@ export class MeshBuilder {
     this.tri(a, b, c, col, uv?.[0], uv?.[1], uv?.[2]);
     return this.tri(a, c, d, col, uv?.[0], uv?.[2], uv?.[3]);
   }
-  build() {
+  // smooth-shade only triangles [fromTri, toTri) (e.g. one lofted body inside an otherwise faceted mesh)
+  smoothRange(fromTri, toTri = this.count, crease = 180) {
+    if (toTri > fromTri) (this.ranges ||= []).push([fromTri * 33, toTri * 33, crease === true ? 180 : crease]);
+    return this;
+  }
+  build(o = {}) {
     const data = this.buf.slice(0, this.n);
+    const sm = o.smooth ?? this.smooth;
+    let smooth = false;
+    if (sm) { smoothNormals(data, sm === true ? 180 : sm); smooth = true; }
+    else if (this.ranges) for (const [a, b, cr] of this.ranges) { smoothNormals(data, cr, a, Math.min(b, data.length)); smooth = true; }
     const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
     for (let i = 0; i < data.length; i += 11) for (let k = 0; k < 3; k++) { const q = data[i + k]; if (q < min[k]) min[k] = q; if (q > max[k]) max[k] = q; }
     if (!data.length) { min.fill(0); max.fill(0); }
     const center = [0, 1, 2].map((k) => (min[k] + max[k]) / 2);
     const radius = Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) / 2 || 1;
-    return new LPMesh(data, data.length / 11, { min, max, center, radius });
+    const mesh = new LPMesh(data, data.length / 11, { min, max, center, radius });
+    if (smooth) mesh.smooth = true;
+    return mesh;
   }
+}
+
+/**
+ * Smooth shading: replace the normals of vertex floats data[from, to) (11 floats per vertex, whole triangles) by the
+ * corner-angle weighted average of the face normals of every triangle sharing that vertex position. Faces meeting
+ * at more than `crease` degrees keep a hard edge. Works in place; returns data.
+ */
+export function smoothNormals(data, crease = 180, from = 0, to = data.length) {
+  const nv = Math.floor((to - from) / 33) * 3;
+  if (nv < 3) return data;
+  const fn = new Float32Array(nv * 3), wt = new Float32Array(nv);
+  let lo = Infinity, hi = -Infinity;
+  for (let t = 0; t < nv; t += 3) {
+    const o = from + t * 11;
+    const ax = data[o], ay = data[o + 1], az = data[o + 2], bx = data[o + 11], by = data[o + 12], bz = data[o + 13], cx = data[o + 22], cy = data[o + 23], cz = data[o + 24];
+    const e1x = bx - ax, e1y = by - ay, e1z = bz - az, e2x = cx - ax, e2y = cy - ay, e2z = cz - az, e3x = cx - bx, e3y = cy - by, e3z = cz - bz;
+    let nx = e1y * e2z - e1z * e2y, ny = e1z * e2x - e1x * e2z, nz = e1x * e2y - e1y * e2x;
+    const l = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+    nx /= l; ny /= l; nz /= l;
+    const l1 = Math.sqrt(e1x * e1x + e1y * e1y + e1z * e1z) || 1, l2 = Math.sqrt(e2x * e2x + e2y * e2y + e2z * e2z) || 1, l3 = Math.sqrt(e3x * e3x + e3y * e3y + e3z * e3z) || 1;
+    const angA = Math.acos(Math.max(-1, Math.min(1, (e1x * e2x + e1y * e2y + e1z * e2z) / (l1 * l2))));
+    const angB = Math.acos(Math.max(-1, Math.min(1, (-e1x * e3x - e1y * e3y - e1z * e3z) / (l1 * l3))));
+    const ang = [angA, angB, Math.max(0, Math.PI - angA - angB)];
+    for (let k = 0; k < 3; k++) { const i = t + k; fn[i * 3] = nx; fn[i * 3 + 1] = ny; fn[i * 3 + 2] = nz; wt[i] = ang[k]; }
+    for (const q of [ax, ay, az, bx, by, bz, cx, cy, cz]) { if (q < lo) lo = q; if (q > hi) hi = q; }
+  }
+  // weld coincident vertices: quantised position -> hash table of representatives
+  const inv = 1 / (Math.max(1e-6, hi - lo) * 2e-6);
+  const qx = new Int32Array(nv), qy = new Int32Array(nv), qz = new Int32Array(nv);
+  let size = 1; while (size < nv * 2) size <<= 1;
+  const mask = size - 1, table = new Int32Array(size).fill(-1), rep = new Int32Array(nv), first = new Int32Array(nv).fill(-1), next = new Int32Array(nv).fill(-1);
+  for (let i = 0; i < nv; i++) {
+    const o = from + i * 11;
+    const x = Math.round((data[o] - lo) * inv), y = Math.round((data[o + 1] - lo) * inv), z = Math.round((data[o + 2] - lo) * inv);
+    qx[i] = x; qy[i] = y; qz[i] = z;
+    let h = (Math.imul(x, 73856093) ^ Math.imul(y, 19349663) ^ Math.imul(z, 83492791)) & mask;
+    for (;;) {
+      const r = table[h];
+      if (r < 0) { table[h] = i; rep[i] = i; break; }
+      if (qx[r] === x && qy[r] === y && qz[r] === z) { rep[i] = r; break; }
+      h = (h + 1) & mask;
+    }
+    const r = rep[i];
+    next[i] = first[r]; first[r] = i;
+  }
+  const cosC = crease >= 180 ? -2 : Math.cos((crease * Math.PI) / 180);
+  const acc = cosC < -1 ? new Float32Array(nv * 3) : null;
+  if (acc) for (let i = 0; i < nv; i++) { const r = rep[i] * 3, w = wt[i]; acc[r] += fn[i * 3] * w; acc[r + 1] += fn[i * 3 + 1] * w; acc[r + 2] += fn[i * 3 + 2] * w; }
+  for (let i = 0; i < nv; i++) {
+    let sx, sy, sz;
+    if (acc) { const r = rep[i] * 3; sx = acc[r]; sy = acc[r + 1]; sz = acc[r + 2]; }
+    else {
+      sx = sy = sz = 0;
+      const fx = fn[i * 3], fy = fn[i * 3 + 1], fz = fn[i * 3 + 2];
+      for (let j = first[rep[i]]; j >= 0; j = next[j]) {
+        const gx = fn[j * 3], gy = fn[j * 3 + 1], gz = fn[j * 3 + 2];
+        if (fx * gx + fy * gy + fz * gz < cosC) continue;
+        sx += gx * wt[j]; sy += gy * wt[j]; sz += gz * wt[j];
+      }
+    }
+    const l = Math.sqrt(sx * sx + sy * sy + sz * sz);
+    if (l < 1e-9) continue;
+    const o = from + i * 11;
+    data[o + 3] = sx / l; data[o + 4] = sy / l; data[o + 5] = sz / l;
+  }
+  return data;
 }
 const Z2 = [0, 0];
 
@@ -308,6 +418,10 @@ function drawMesh(mesh, mvp, model, o) {
   gl.uniform1f(u.uIri, o.iri ?? 0);
   gl.uniform1f(u.uEmit, o.emit ?? 0);
   gl.uniform1f(u.uEmitTex, o.emitTex ? 1 : 0);
+  gl.uniform1f(u.uSmoothN, mesh.smooth ? 1 : 0);
+  gl.uniform1f(u.uSoft, o.soft ?? 0);
+  const sc = hexRgb(o.softColor || '#ffc9b8');
+  gl.uniform3f(u.uSoftCol, sc[0], sc[1], sc[2]);
   const tint = o.tint || [0, 0, 0, 0];
   gl.uniform4f(u.uTint, tint[0], tint[1], tint[2], tint[3]);
   if (o.texture) { bindTexture(o.texture); gl.uniform1f(u.uUseTex, 1); } else gl.uniform1f(u.uUseTex, 0);
@@ -511,7 +625,9 @@ export class LPScene {
 // ------------------------------------------------------------------------------------------------ shape helpers
 // Lofted body: rings of `seg` vertices along x; ring(i) -> {x, ry, rz, cy} (half-height, half-width, centre y).
 // colorAt(i, j, ring) -> colour for the quad between ring i..i+1, segment j..j+1. Closed nose/tail caps.
-export function loft(mb, rings, seg, colorAt) {
+// o.smooth: true | crease degrees -> smooth-shaded (averaged vertex normals) instead of faceted.
+export function loft(mb, rings, seg, colorAt, o = {}) {
+  const t0 = mb.count;
   const pts = rings.map((r) => {
     const out = [];
     for (let j = 0; j < seg; j++) {
@@ -530,6 +646,7 @@ export function loft(mb, rings, seg, colorAt) {
     mb.tri(capA, pts[0][j2], pts[0][j], colorAt(0, j, rings[0]));
     mb.tri(capB, pts[pts.length - 1][j], pts[pts.length - 1][j2], colorAt(rings.length - 2, j, rings[rings.length - 2]));
   }
+  if (o.smooth && mb.smoothRange) mb.smoothRange(t0, mb.count, o.smooth);
   return mb;
 }
 
@@ -543,7 +660,8 @@ export function fin(mb, outline, z, col) {
 }
 
 // Low-poly ellipsoid at c with radii r [rx, ry, rz]; col: colour or fn(nx, ny, nz) -> colour (face centre normal).
-export function ellipsoid(mb, c, r, seg = 10, rings = 7, col = '#ffffff') {
+export function ellipsoid(mb, c, r, seg = 10, rings = 7, col = '#ffffff', o = {}) {
+  const t0 = mb.count;
   const P = (i, j) => {
     const th = (i / rings) * Math.PI, ph = (j / seg) * Math.PI * 2;
     return [c[0] + Math.sin(th) * Math.cos(ph) * r[0], c[1] + Math.cos(th) * r[1], c[2] + Math.sin(th) * Math.sin(ph) * r[2]];
@@ -558,13 +676,15 @@ export function ellipsoid(mb, c, r, seg = 10, rings = 7, col = '#ffffff') {
     if (i > 0) mb.tri(a, b, e, k);
     if (i < rings - 1) mb.tri(a, e, d, k);
   }
+  if (o.smooth && mb.smoothRange) mb.smoothRange(t0, mb.count, o.smooth);
   return mb;
 }
 
 // Low-poly tube through pts [[x,y,z], ...] with radius(t 0..1) and `sides` facets; col: colour or fn(t, side).
-export function tube(mb, pts, radius = () => 0.1, sides = 6, col = '#ffffff') {
+export function tube(mb, pts, radius = () => 0.1, sides = 6, col = '#ffffff', o = {}) {
   const n = pts.length;
   if (n < 2) return mb;
+  const t0 = mb.count;
   const rings = [];
   let prevN = null;
   for (let i = 0; i < n; i++) {
@@ -595,6 +715,7 @@ export function tube(mb, pts, radius = () => 0.1, sides = 6, col = '#ffffff') {
     mb.tri(rings[0][0], rings[0][s + 1], rings[0][s], cf(0, s));
     mb.tri(rings[n - 1][0], rings[n - 1][s], rings[n - 1][s + 1], cf(1, s));
   }
+  if (o.smooth && mb.smoothRange) mb.smoothRange(t0, mb.count, o.smooth);
   return mb;
 }
 

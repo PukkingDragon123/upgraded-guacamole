@@ -1975,6 +1975,100 @@ void main() {
   function lpCanRender() {
     return !!init2() || typeof document !== "undefined" && softOn;
   }
+  function smoothNormals(data, crease = 180, from = 0, to = data.length) {
+    const nv = Math.floor((to - from) / 33) * 3;
+    if (nv < 3) return data;
+    const fn = new Float32Array(nv * 3), wt = new Float32Array(nv);
+    let lo = Infinity, hi = -Infinity;
+    for (let t = 0; t < nv; t += 3) {
+      const o = from + t * 11;
+      const ax = data[o], ay = data[o + 1], az = data[o + 2], bx = data[o + 11], by = data[o + 12], bz = data[o + 13], cx = data[o + 22], cy = data[o + 23], cz = data[o + 24];
+      const e1x = bx - ax, e1y = by - ay, e1z = bz - az, e2x = cx - ax, e2y = cy - ay, e2z = cz - az, e3x = cx - bx, e3y = cy - by, e3z = cz - bz;
+      let nx = e1y * e2z - e1z * e2y, ny = e1z * e2x - e1x * e2z, nz = e1x * e2y - e1y * e2x;
+      const l = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+      nx /= l;
+      ny /= l;
+      nz /= l;
+      const l1 = Math.sqrt(e1x * e1x + e1y * e1y + e1z * e1z) || 1, l2 = Math.sqrt(e2x * e2x + e2y * e2y + e2z * e2z) || 1, l3 = Math.sqrt(e3x * e3x + e3y * e3y + e3z * e3z) || 1;
+      const angA = Math.acos(Math.max(-1, Math.min(1, (e1x * e2x + e1y * e2y + e1z * e2z) / (l1 * l2))));
+      const angB = Math.acos(Math.max(-1, Math.min(1, (-e1x * e3x - e1y * e3y - e1z * e3z) / (l1 * l3))));
+      const ang = [angA, angB, Math.max(0, Math.PI - angA - angB)];
+      for (let k = 0; k < 3; k++) {
+        const i = t + k;
+        fn[i * 3] = nx;
+        fn[i * 3 + 1] = ny;
+        fn[i * 3 + 2] = nz;
+        wt[i] = ang[k];
+      }
+      for (const q of [ax, ay, az, bx, by, bz, cx, cy, cz]) {
+        if (q < lo) lo = q;
+        if (q > hi) hi = q;
+      }
+    }
+    const inv = 1 / (Math.max(1e-6, hi - lo) * 2e-6);
+    const qx = new Int32Array(nv), qy = new Int32Array(nv), qz = new Int32Array(nv);
+    let size = 1;
+    while (size < nv * 2) size <<= 1;
+    const mask = size - 1, table = new Int32Array(size).fill(-1), rep = new Int32Array(nv), first = new Int32Array(nv).fill(-1), next = new Int32Array(nv).fill(-1);
+    for (let i = 0; i < nv; i++) {
+      const o = from + i * 11;
+      const x = Math.round((data[o] - lo) * inv), y = Math.round((data[o + 1] - lo) * inv), z = Math.round((data[o + 2] - lo) * inv);
+      qx[i] = x;
+      qy[i] = y;
+      qz[i] = z;
+      let h = (Math.imul(x, 73856093) ^ Math.imul(y, 19349663) ^ Math.imul(z, 83492791)) & mask;
+      for (; ; ) {
+        const r2 = table[h];
+        if (r2 < 0) {
+          table[h] = i;
+          rep[i] = i;
+          break;
+        }
+        if (qx[r2] === x && qy[r2] === y && qz[r2] === z) {
+          rep[i] = r2;
+          break;
+        }
+        h = h + 1 & mask;
+      }
+      const r = rep[i];
+      next[i] = first[r];
+      first[r] = i;
+    }
+    const cosC = crease >= 180 ? -2 : Math.cos(crease * Math.PI / 180);
+    const acc = cosC < -1 ? new Float32Array(nv * 3) : null;
+    if (acc) for (let i = 0; i < nv; i++) {
+      const r = rep[i] * 3, w = wt[i];
+      acc[r] += fn[i * 3] * w;
+      acc[r + 1] += fn[i * 3 + 1] * w;
+      acc[r + 2] += fn[i * 3 + 2] * w;
+    }
+    for (let i = 0; i < nv; i++) {
+      let sx, sy, sz;
+      if (acc) {
+        const r = rep[i] * 3;
+        sx = acc[r];
+        sy = acc[r + 1];
+        sz = acc[r + 2];
+      } else {
+        sx = sy = sz = 0;
+        const fx = fn[i * 3], fy = fn[i * 3 + 1], fz = fn[i * 3 + 2];
+        for (let j = first[rep[i]]; j >= 0; j = next[j]) {
+          const gx = fn[j * 3], gy = fn[j * 3 + 1], gz = fn[j * 3 + 2];
+          if (fx * gx + fy * gy + fz * gz < cosC) continue;
+          sx += gx * wt[j];
+          sy += gy * wt[j];
+          sz += gz * wt[j];
+        }
+      }
+      const l = Math.sqrt(sx * sx + sy * sy + sz * sz);
+      if (l < 1e-9) continue;
+      const o = from + i * 11;
+      data[o + 3] = sx / l;
+      data[o + 4] = sy / l;
+      data[o + 5] = sz / l;
+    }
+    return data;
+  }
   function bindTexture(tex2) {
     let t = texCache.get(tex2);
     if (!t || tex2._lpDirty) {
@@ -2030,6 +2124,10 @@ void main() {
     gl.uniform1f(u.uIri, o.iri ?? 0);
     gl.uniform1f(u.uEmit, o.emit ?? 0);
     gl.uniform1f(u.uEmitTex, o.emitTex ? 1 : 0);
+    gl.uniform1f(u.uSmoothN, mesh.smooth ? 1 : 0);
+    gl.uniform1f(u.uSoft, o.soft ?? 0);
+    const sc = hexRgb(o.softColor || "#ffc9b8");
+    gl.uniform3f(u.uSoftCol, sc[0], sc[1], sc[2]);
     const tint = o.tint || [0, 0, 0, 0];
     gl.uniform4f(u.uTint, tint[0], tint[1], tint[2], tint[3]);
     if (o.texture) {
@@ -2195,7 +2293,8 @@ void main() {
     const qx = m[0] * x + m[4] * y + m[8] * z, qy = m[1] * x + m[5] * y + m[9] * z;
     return [w / 2 + qx * s + (o.offset?.[0] || 0), h / 2 - qy * s + (o.offset?.[1] || 0)];
   }
-  function ellipsoid(mb, c, r, seg = 10, rings = 7, col = "#ffffff") {
+  function ellipsoid(mb, c, r, seg = 10, rings = 7, col = "#ffffff", o = {}) {
+    const t0 = mb.count;
     const P5 = (i, j) => {
       const th = i / rings * Math.PI, ph = j / seg * Math.PI * 2;
       return [c[0] + Math.sin(th) * Math.cos(ph) * r[0], c[1] + Math.cos(th) * r[1], c[2] + Math.sin(th) * Math.sin(ph) * r[2]];
@@ -2210,6 +2309,7 @@ void main() {
       if (i > 0) mb.tri(a, b, e, k);
       if (i < rings - 1) mb.tri(a, e, d, k);
     }
+    if (o.smooth && mb.smoothRange) mb.smoothRange(t0, mb.count, o.smooth);
     return mb;
   }
   function texel(tex2, u, v) {
@@ -2343,12 +2443,18 @@ uniform vec3 uLight; uniform vec3 uEye; uniform float uAmb; uniform float uSpec;
 uniform float uRim; uniform vec3 uRimCol; uniform sampler2D uTex; uniform float uUseTex; uniform float uAlpha;
 uniform vec4 uTint; uniform vec3 uFogCol; uniform float uFog; uniform float uOrtho;
 uniform float uEnv; uniform float uIri; uniform float uEmit; uniform float uEmitTex; uniform vec3 uSky; uniform vec3 uGround;
+uniform float uSmoothN; uniform float uSoft; uniform vec3 uSoftCol;
 out vec4 frag;
 void main() {
   vec3 n = normalize(vNrm);
   vec3 l = normalize(uLight);
   vec3 v = uOrtho > 0.5 ? vec3(0.0, 0.0, 1.0) : normalize(uEye - vWorld);
-  if (dot(n, v) < 0.0) n = -n; // two-sided (thin fins, open shells)
+  if (uSmoothN > 0.5) {
+    // smooth meshes: interpolated normals graze the view at silhouettes; bend them back instead of flipping them
+    if (!gl_FrontFacing) n = -n;
+    float dv = dot(n, v);
+    if (dv < 0.02) n = normalize(n - v * (dv - 0.02));
+  } else if (dot(n, v) < 0.0) n = -n; // two-sided (thin fins, open shells)
   vec3 base = vCol;
   float a = uAlpha;
   float emit = uEmit;
@@ -2363,6 +2469,18 @@ void main() {
   float wrap = max((dot(n, l) + 0.35) / 1.35, 0.0);
   vec3 col = base * (uAmb + (1.0 - uAmb) * mix(d, wrap, 0.5));
   float nv = max(dot(n, v), 0.0);
+  if (uSoft > 0.0) {
+    // plush, subsurface-ish: a wide smooth wrap, sky / ground tinted ambient, warm light bleeding into the terminator
+    float ndl = dot(n, l);
+    float sd = clamp((ndl + 0.6) / 1.6, 0.0, 1.0);
+    sd = sd * sd * (3.0 - 2.0 * sd);
+    vec3 hemi = mix(uGround, uSky, clamp(n.y * 0.5 + 0.5, 0.0, 1.0));
+    vec3 softC = base * (uAmb * mix(vec3(1.0), hemi, 0.55) + (1.0 - uAmb) * sd);
+    float band = clamp(1.0 - abs(ndl + 0.05) * 2.4, 0.0, 1.0);
+    softC += base * uSoftCol * band * 0.2;
+    softC += uSoftCol * pow(1.0 - nv, 2.2) * 0.16 * clamp(0.65 - ndl * 0.5, 0.0, 1.0);
+    col = mix(col, softC, clamp(uSoft, 0.0, 1.0));
+  }
   if (uEnv > 0.0) {
     vec3 r = reflect(-v, n);
     vec3 env = mix(uGround, uSky, smoothstep(-0.25, 0.75, r.y));
@@ -2384,7 +2502,7 @@ void main() {
   col = mix(col, uFogCol, fogK);
   frag = vec4(col * a, a);
 }`;
-      UNIFORMS = ["uMVP", "uModel", "uLight", "uEye", "uAmb", "uSpec", "uShine", "uRim", "uRimCol", "uTex", "uUseTex", "uAlpha", "uTint", "uFogCol", "uFog", "uOrtho", "uEnv", "uIri", "uEmit", "uEmitTex", "uSky", "uGround"];
+      UNIFORMS = ["uMVP", "uModel", "uLight", "uEye", "uAmb", "uSpec", "uShine", "uRim", "uRimCol", "uTex", "uUseTex", "uAlpha", "uTint", "uFogCol", "uFog", "uOrtho", "uEnv", "uIri", "uEmit", "uEmitTex", "uSky", "uGround", "uSmoothN", "uSoft", "uSoftCol"];
       softOn = true;
       LPMesh = class {
         constructor(data, count, bounds2) {
@@ -2433,9 +2551,12 @@ void main() {
         return k;
       };
       MeshBuilder = class {
-        constructor(capTris = 256) {
+        // o.smooth: true (average the normals of coincident vertices: smooth shading) or a crease angle in degrees
+        constructor(capTris = 256, o = {}) {
           this.buf = new Float32Array(capTris * 33);
           this.n = 0;
+          this.smooth = o.smooth || false;
+          this.ranges = null;
         }
         get count() {
           return this.n / 33;
@@ -2447,6 +2568,11 @@ void main() {
         // raw vertex floats (11 per vertex: pos, normal, colour, uv)
         // a, b, c: [x, y, z] counter-clockwise when seen from outside; col: '#hex' or [r, g, b] (0..1); uv*: [u, v]
         tri(a, b, c, col = "#ffffff", ua = Z2, ub = Z2, uc = Z2) {
+          const k = hexRgb(col);
+          return this.triC(a, b, c, k, k, k, ua, ub, uc);
+        }
+        // the same with one colour per vertex (painted gradients across a face)
+        triC(a, b, c, ca, cb, cc, ua = Z2, ub = Z2, uc = Z2) {
           const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
           let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
           const l = Math.sqrt(nx * nx + ny * ny + nz * nz);
@@ -2454,7 +2580,7 @@ void main() {
           nx /= l;
           ny /= l;
           nz /= l;
-          const k = hexRgb(col);
+          const ka = hexRgb(ca), kb = hexRgb(cb), kc = hexRgb(cc);
           if (this.n + 33 > this.buf.length) {
             const nb = new Float32Array(this.buf.length * 2 + 33);
             nb.set(this.buf.subarray(0, this.n));
@@ -2471,9 +2597,9 @@ void main() {
           B2[o + 3] = nx;
           B2[o + 4] = ny;
           B2[o + 5] = nz;
-          B2[o + 6] = k[0];
-          B2[o + 7] = k[1];
-          B2[o + 8] = k[2];
+          B2[o + 6] = ka[0];
+          B2[o + 7] = ka[1];
+          B2[o + 8] = ka[2];
           B2[o + 9] = ua[0];
           B2[o + 10] = ua[1];
           o += 11;
@@ -2483,9 +2609,9 @@ void main() {
           B2[o + 3] = nx;
           B2[o + 4] = ny;
           B2[o + 5] = nz;
-          B2[o + 6] = k[0];
-          B2[o + 7] = k[1];
-          B2[o + 8] = k[2];
+          B2[o + 6] = kb[0];
+          B2[o + 7] = kb[1];
+          B2[o + 8] = kb[2];
           B2[o + 9] = ub[0];
           B2[o + 10] = ub[1];
           o += 11;
@@ -2495,9 +2621,9 @@ void main() {
           B2[o + 3] = nx;
           B2[o + 4] = ny;
           B2[o + 5] = nz;
-          B2[o + 6] = k[0];
-          B2[o + 7] = k[1];
-          B2[o + 8] = k[2];
+          B2[o + 6] = kc[0];
+          B2[o + 7] = kc[1];
+          B2[o + 8] = kc[2];
           B2[o + 9] = uc[0];
           B2[o + 10] = uc[1];
           o += 11;
@@ -2508,8 +2634,22 @@ void main() {
           this.tri(a, b, c, col, uv?.[0], uv?.[1], uv?.[2]);
           return this.tri(a, c, d, col, uv?.[0], uv?.[2], uv?.[3]);
         }
-        build() {
+        // smooth-shade only triangles [fromTri, toTri) (e.g. one lofted body inside an otherwise faceted mesh)
+        smoothRange(fromTri, toTri = this.count, crease = 180) {
+          if (toTri > fromTri) (this.ranges || (this.ranges = [])).push([fromTri * 33, toTri * 33, crease === true ? 180 : crease]);
+          return this;
+        }
+        build(o = {}) {
           const data = this.buf.slice(0, this.n);
+          const sm2 = o.smooth ?? this.smooth;
+          let smooth3 = false;
+          if (sm2) {
+            smoothNormals(data, sm2 === true ? 180 : sm2);
+            smooth3 = true;
+          } else if (this.ranges) for (const [a, b, cr] of this.ranges) {
+            smoothNormals(data, cr, a, Math.min(b, data.length));
+            smooth3 = true;
+          }
           const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
           for (let i = 0; i < data.length; i += 11) for (let k = 0; k < 3; k++) {
             const q = data[i + k];
@@ -2522,7 +2662,9 @@ void main() {
           }
           const center = [0, 1, 2].map((k) => (min[k] + max[k]) / 2);
           const radius = Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) / 2 || 1;
-          return new LPMesh(data, data.length / 11, { min, max, center, radius });
+          const mesh = new LPMesh(data, data.length / 11, { min, max, center, radius });
+          if (smooth3) mesh.smooth = true;
+          return mesh;
         }
       };
       Z2 = [0, 0];
@@ -36815,11 +36957,11 @@ kmlmk..
   var row = (id, branch, label, from, side, nodes) => LAB_ROWS.push({ id, branch, label, from, side, nodes });
   row("tackle", "rods", "Tackle", "hook1", "above", ["line1", "rod_bamboo", "hook_lucky", "rod_kelp", "rod_tune", "rod_coral", "rod_aurora", "line3", "rod_prism"]);
   row("rods", "rods", "Rods", null, "below", ["hook1", "rod_bubble", "rod_glass", "rod_chrome", "rod_dolphin", "rod_aero", "rod_trident", "rod_leviathan", "rod_aerolite"]);
-  row("reel", "reel", "Reel & Shock", "hook1", "below", ["reel1", "reel2", "trace1", "reel3", "timing1", "reel4", "dodge1", "autohook1", "focus1", "reel5"]);
+  row("reel", "reel", "Reel & Shock", null, "below", ["reel1", "reel2", "trace1", "reel3", "timing1", "reel4", "dodge1", "autohook1", "focus1", "reel5"]);
   row("shock", "reel", "Shock", "reel1", "below", ["shock1", "shock2", "shock3", "rod_volt", "shock4", "shock5"]);
   row("deck", "boats", "Deck Gear", "boat_dinghy", "above", ["boat_locker", "boat_magnet", "boat_winch", "boat_sonar", "boat_cooler", "boat_radar", "boat_lights"]);
   row("boats", "boats", "Boats", null, "below", ["boat_dinghy", "boat_skiff", "boat_hydrofoil", "boat_yacht", "boat_catamaran", "boat_sub", "boat_engine"]);
-  row("oceans", "oceans", "Oceans", "boat_dinghy", "below", ["sea_shallows", "sea_fjord", "sea_junkyard", "sea_metropolis", "sea_volcano", "sea_abyss", "sea_legend"]);
+  row("oceans", "oceans", "Oceans", null, "below", ["sea_shallows", "sea_fjord", "sea_junkyard", "sea_metropolis", "sea_volcano", "sea_abyss", "sea_legend"]);
   row("expedition", "oceans", "Expedition", "sea_fjord", "below", ["sea_compass", "sea_multi", "sea_forecast", "sea_lantern", "sea_sonar", "sea_pressure"]);
   row("aquarium", "aquarium", "Aquarium", null, "below", ["tank_bowl", "tank_small", "tank_snail", "tank_big", "tank_crab", "tank_reef", "tank_currents", "tank_wall"]);
   row("tanklife", "aquarium", "Tank Life", "tank_small", "below", ["tank_feeder", "tank_happy", "tank_romance", "tank_nursery", "tank_mutation", "tank_sparkle"]);
@@ -36842,7 +36984,6 @@ kmlmk..
         o.col = i;
         o.branch = r.branch;
         o.req = [i === 0 ? r.from && rawById[r.from] ? r.from : ROOT_ID : r.nodes[i - 1]];
-        o.lane = r.side === "above" ? -1 : r.from ? 1 : 0;
       });
     }
     for (const o of RAW) if (o.id !== ROOT_ID && !ROW_OF[o.id]) {
@@ -36851,32 +36992,46 @@ kmlmk..
       o.col = 0;
     }
   }
-  var LAB_R0 = 72;
-  var LAB_STEP = 54;
-  var LANE = 33;
-  var LANE_MAX = 0.165;
-  var LAB_RING = (t) => t <= 0 ? 0 : LAB_R0 + (t - 1) * LAB_STEP;
-  function nodePolar(branch, tier, lane) {
-    if (!branch) return [0, 0];
-    const r = LAB_RING(tier) + Math.abs(lane) * 2;
-    const a = BRANCHES[branch].angle * Math.PI / 180 + lane * Math.min(LANE_MAX, LANE / Math.max(r, 40));
-    return [a, r];
+  var LAB_R1 = 190;
+  var LAB_STEP = 86;
+  var LAB_FORK = 19;
+  var LAB_NODE = 52;
+  var LAB_RING = (d) => d <= 0 ? 0 : LAB_R1 + (d - 1) * LAB_STEP;
+  var LAYOUT = {};
+  {
+    const rawById = Object.fromEntries(RAW.map((o) => [o.id, o]));
+    const depth = (id, seen = 0) => {
+      const o = rawById[id];
+      if (!o || id === ROOT_ID || seen > 40) return 0;
+      if (o.depth !== void 0) return o.depth;
+      o.depth = 1 + Math.max(0, ...(o.req || []).map((r) => depth(r, seen + 1)));
+      return o.depth;
+    };
+    for (const o of RAW) {
+      const d = depth(o.id);
+      const lane = o.row && ROW_BY_ID[o.row]?.from ? 1 : 0;
+      const a = o.branch ? (BRANCHES[o.branch].angle + lane * LAB_FORK) * Math.PI / 180 : 0;
+      const r = LAB_RING(d);
+      LAYOUT[o.id] = { depth: d, lane, ang: a, rad: r, pos: [Math.round(Math.cos(a) * r), Math.round(Math.sin(a) * r)] };
+    }
   }
+  var LAB_EXTENT = Math.max(...Object.values(LAYOUT).map((p) => p.rad)) + LAB_NODE;
   var LAB_NODES = RAW.map((o) => {
     const tier = o.tier;
     const unlockNode = !!o.unlock?.some((u) => u.kind !== "recipe" || tier >= 3);
     const auto = o.branch ? autoCost(o.branch, tier, unlockNode ? tier >= 3 : tier >= 5) : { aero: 0, items: {}, fish: {} };
     const cost = { aero: o.cost?.aero ?? auto.aero, items: { ...o.cost?.items || auto.items }, fish: { ...o.fish || auto.fish } };
-    const [ang, rad] = nodePolar(o.branch, tier, o.lane);
+    const { depth, lane, ang, rad, pos } = LAYOUT[o.id];
     return {
       id: o.id,
       name: o.name,
       branch: o.branch,
       tier,
-      lane: o.lane,
+      depth,
+      lane,
       ang,
       rad,
-      pos: [Math.round(Math.cos(ang) * rad), Math.round(Math.sin(ang) * rad)],
+      pos,
       req: o.req || [],
       cost,
       time: o.time ?? (TIME_T[tier] || 0),
@@ -36991,12 +37146,21 @@ kmlmk..
   init_shopdata();
   var TANK_IDS = ["jar", "bowl", "smalltank", "bigtank", "reeftank", "wallaquarium"];
   var TANK_TIERS = [
-    { id: "jar", name: "Goldfish Jar", shape: "round", cap: 0, rate: 1, offlineH: 3, plants: 3, water: "aero" },
-    { id: "bowl", name: "Bubble Bowl", shape: "round", cap: 1, rate: 1.15, offlineH: 4, plants: 5, water: "aero" },
-    { id: "smalltank", name: "Aqua Lamp", shape: "lamp", cap: 2, rate: 1.3, offlineH: 5, plants: 8, water: "aero" },
-    { id: "bigtank", name: "Big Tank", shape: "box", cap: 3, rate: 1.5, offlineH: 6, plants: 13, water: "aero" },
-    { id: "reeftank", name: "Reef Tank", shape: "box", cap: 4, rate: 1.75, offlineH: 7, plants: 18, water: "reef" },
-    { id: "wallaquarium", name: "Wall Aquarium", shape: "wall", cap: 5, rate: 2.1, offlineH: 8, plants: 26, water: "aero" }
+    { id: "jar", name: "Nano Cube", shape: "cube", cap: 0, rate: 1, offlineH: 3, plants: 4, water: "aero" },
+    { id: "bowl", name: "Bubble Cube", shape: "cube", cap: 1, rate: 1.15, offlineH: 4, plants: 6, water: "aero" },
+    { id: "smalltank", name: "Aqua Cube", shape: "cube", cap: 2, rate: 1.3, offlineH: 5, plants: 9, water: "aero" },
+    { id: "bigtank", name: "Big Cube", shape: "cube", cap: 3, rate: 1.5, offlineH: 6, plants: 13, water: "aero" },
+    { id: "reeftank", name: "Reef Cube", shape: "cube", cap: 4, rate: 1.75, offlineH: 7, plants: 18, water: "reef" },
+    { id: "wallaquarium", name: "Mega Cube", shape: "cube", cap: 5, rate: 2.1, offlineH: 8, plants: 26, water: "aero" }
+  ];
+  var cube = (S8, o) => ({ shape: "box", cube: true, W: S8, H: S8, D: S8, water: Math.round(S8 * 0.9 * 10) / 10, ...o });
+  var TANK3D = [
+    cube(24, { gravel: 2.6, slope: 1.2, glass: 0.7, stand: "desk", light: "arm", fish: 4.4 }),
+    cube(32, { gravel: 3.1, slope: 1.8, glass: 0.8, stand: "desk", light: "arm", fish: 5.2 }),
+    cube(42, { gravel: 3.7, slope: 2.6, glass: 0.95, stand: "desk", light: "arm", fish: 6.1 }),
+    cube(54, { gravel: 4.4, slope: 3.8, glass: 1.1, stand: "pedestal", light: "halo", fish: 7.1 }),
+    cube(68, { gravel: 5.2, slope: 5.2, glass: 1.3, stand: "pedestal", light: "halo", fish: 8.1 }),
+    cube(86, { gravel: 6, slope: 6.8, glass: 1.55, stand: "pedestal", light: "halo", fish: 9.4 })
   ];
   function tankTier(state) {
     let t = clamp(Math.floor(Number(state?.tank?.tier) || 0), 0, TANK_TIERS.length - 1);

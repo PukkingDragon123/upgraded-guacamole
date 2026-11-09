@@ -3370,6 +3370,100 @@ void main() {
   function lpDisableGL() {
     if (!gl) failed = true;
   }
+  function smoothNormals(data, crease = 180, from = 0, to = data.length) {
+    const nv = Math.floor((to - from) / 33) * 3;
+    if (nv < 3) return data;
+    const fn = new Float32Array(nv * 3), wt = new Float32Array(nv);
+    let lo = Infinity, hi = -Infinity;
+    for (let t = 0; t < nv; t += 3) {
+      const o = from + t * 11;
+      const ax = data[o], ay = data[o + 1], az = data[o + 2], bx = data[o + 11], by = data[o + 12], bz = data[o + 13], cx = data[o + 22], cy = data[o + 23], cz = data[o + 24];
+      const e1x = bx - ax, e1y = by - ay, e1z = bz - az, e2x = cx - ax, e2y = cy - ay, e2z = cz - az, e3x = cx - bx, e3y = cy - by, e3z = cz - bz;
+      let nx = e1y * e2z - e1z * e2y, ny = e1z * e2x - e1x * e2z, nz = e1x * e2y - e1y * e2x;
+      const l = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+      nx /= l;
+      ny /= l;
+      nz /= l;
+      const l1 = Math.sqrt(e1x * e1x + e1y * e1y + e1z * e1z) || 1, l2 = Math.sqrt(e2x * e2x + e2y * e2y + e2z * e2z) || 1, l3 = Math.sqrt(e3x * e3x + e3y * e3y + e3z * e3z) || 1;
+      const angA = Math.acos(Math.max(-1, Math.min(1, (e1x * e2x + e1y * e2y + e1z * e2z) / (l1 * l2))));
+      const angB = Math.acos(Math.max(-1, Math.min(1, (-e1x * e3x - e1y * e3y - e1z * e3z) / (l1 * l3))));
+      const ang = [angA, angB, Math.max(0, Math.PI - angA - angB)];
+      for (let k = 0; k < 3; k++) {
+        const i = t + k;
+        fn[i * 3] = nx;
+        fn[i * 3 + 1] = ny;
+        fn[i * 3 + 2] = nz;
+        wt[i] = ang[k];
+      }
+      for (const q of [ax, ay, az, bx, by, bz, cx, cy, cz]) {
+        if (q < lo) lo = q;
+        if (q > hi) hi = q;
+      }
+    }
+    const inv2 = 1 / (Math.max(1e-6, hi - lo) * 2e-6);
+    const qx = new Int32Array(nv), qy = new Int32Array(nv), qz = new Int32Array(nv);
+    let size = 1;
+    while (size < nv * 2) size <<= 1;
+    const mask = size - 1, table = new Int32Array(size).fill(-1), rep = new Int32Array(nv), first = new Int32Array(nv).fill(-1), next = new Int32Array(nv).fill(-1);
+    for (let i = 0; i < nv; i++) {
+      const o = from + i * 11;
+      const x = Math.round((data[o] - lo) * inv2), y = Math.round((data[o + 1] - lo) * inv2), z = Math.round((data[o + 2] - lo) * inv2);
+      qx[i] = x;
+      qy[i] = y;
+      qz[i] = z;
+      let h = (Math.imul(x, 73856093) ^ Math.imul(y, 19349663) ^ Math.imul(z, 83492791)) & mask;
+      for (; ; ) {
+        const r2 = table[h];
+        if (r2 < 0) {
+          table[h] = i;
+          rep[i] = i;
+          break;
+        }
+        if (qx[r2] === x && qy[r2] === y && qz[r2] === z) {
+          rep[i] = r2;
+          break;
+        }
+        h = h + 1 & mask;
+      }
+      const r = rep[i];
+      next[i] = first[r];
+      first[r] = i;
+    }
+    const cosC = crease >= 180 ? -2 : Math.cos(crease * Math.PI / 180);
+    const acc = cosC < -1 ? new Float32Array(nv * 3) : null;
+    if (acc) for (let i = 0; i < nv; i++) {
+      const r = rep[i] * 3, w = wt[i];
+      acc[r] += fn[i * 3] * w;
+      acc[r + 1] += fn[i * 3 + 1] * w;
+      acc[r + 2] += fn[i * 3 + 2] * w;
+    }
+    for (let i = 0; i < nv; i++) {
+      let sx, sy, sz;
+      if (acc) {
+        const r = rep[i] * 3;
+        sx = acc[r];
+        sy = acc[r + 1];
+        sz = acc[r + 2];
+      } else {
+        sx = sy = sz = 0;
+        const fx = fn[i * 3], fy = fn[i * 3 + 1], fz = fn[i * 3 + 2];
+        for (let j = first[rep[i]]; j >= 0; j = next[j]) {
+          const gx = fn[j * 3], gy = fn[j * 3 + 1], gz = fn[j * 3 + 2];
+          if (fx * gx + fy * gy + fz * gz < cosC) continue;
+          sx += gx * wt[j];
+          sy += gy * wt[j];
+          sz += gz * wt[j];
+        }
+      }
+      const l = Math.sqrt(sx * sx + sy * sy + sz * sz);
+      if (l < 1e-9) continue;
+      const o = from + i * 11;
+      data[o + 3] = sx / l;
+      data[o + 4] = sy / l;
+      data[o + 5] = sz / l;
+    }
+    return data;
+  }
   function bindTexture(tex3) {
     let t = texCache.get(tex3);
     if (!t || tex3._lpDirty) {
@@ -3425,6 +3519,10 @@ void main() {
     gl.uniform1f(u.uIri, o.iri ?? 0);
     gl.uniform1f(u.uEmit, o.emit ?? 0);
     gl.uniform1f(u.uEmitTex, o.emitTex ? 1 : 0);
+    gl.uniform1f(u.uSmoothN, mesh.smooth ? 1 : 0);
+    gl.uniform1f(u.uSoft, o.soft ?? 0);
+    const sc = hexRgb(o.softColor || "#ffc9b8");
+    gl.uniform3f(u.uSoftCol, sc[0], sc[1], sc[2]);
     const tint = o.tint || [0, 0, 0, 0];
     gl.uniform4f(u.uTint, tint[0], tint[1], tint[2], tint[3]);
     if (o.texture) {
@@ -3590,7 +3688,8 @@ void main() {
     const qx = m[0] * x + m[4] * y + m[8] * z, qy = m[1] * x + m[5] * y + m[9] * z;
     return [w / 2 + qx * s + (o.offset?.[0] || 0), h / 2 - qy * s + (o.offset?.[1] || 0)];
   }
-  function ellipsoid(mb, c, r, seg = 10, rings = 7, col = "#ffffff") {
+  function ellipsoid(mb, c, r, seg = 10, rings = 7, col = "#ffffff", o = {}) {
+    const t03 = mb.count;
     const P5 = (i, j) => {
       const th = i / rings * Math.PI, ph = j / seg * Math.PI * 2;
       return [c[0] + Math.sin(th) * Math.cos(ph) * r[0], c[1] + Math.cos(th) * r[1], c[2] + Math.sin(th) * Math.sin(ph) * r[2]];
@@ -3605,6 +3704,7 @@ void main() {
       if (i > 0) mb.tri(a, b, e, k);
       if (i < rings - 1) mb.tri(a, e, d, k);
     }
+    if (o.smooth && mb.smoothRange) mb.smoothRange(t03, mb.count, o.smooth);
     return mb;
   }
   function texel(tex3, u, v) {
@@ -3738,12 +3838,18 @@ uniform vec3 uLight; uniform vec3 uEye; uniform float uAmb; uniform float uSpec;
 uniform float uRim; uniform vec3 uRimCol; uniform sampler2D uTex; uniform float uUseTex; uniform float uAlpha;
 uniform vec4 uTint; uniform vec3 uFogCol; uniform float uFog; uniform float uOrtho;
 uniform float uEnv; uniform float uIri; uniform float uEmit; uniform float uEmitTex; uniform vec3 uSky; uniform vec3 uGround;
+uniform float uSmoothN; uniform float uSoft; uniform vec3 uSoftCol;
 out vec4 frag;
 void main() {
   vec3 n = normalize(vNrm);
   vec3 l = normalize(uLight);
   vec3 v = uOrtho > 0.5 ? vec3(0.0, 0.0, 1.0) : normalize(uEye - vWorld);
-  if (dot(n, v) < 0.0) n = -n; // two-sided (thin fins, open shells)
+  if (uSmoothN > 0.5) {
+    // smooth meshes: interpolated normals graze the view at silhouettes; bend them back instead of flipping them
+    if (!gl_FrontFacing) n = -n;
+    float dv = dot(n, v);
+    if (dv < 0.02) n = normalize(n - v * (dv - 0.02));
+  } else if (dot(n, v) < 0.0) n = -n; // two-sided (thin fins, open shells)
   vec3 base = vCol;
   float a = uAlpha;
   float emit = uEmit;
@@ -3758,6 +3864,18 @@ void main() {
   float wrap = max((dot(n, l) + 0.35) / 1.35, 0.0);
   vec3 col = base * (uAmb + (1.0 - uAmb) * mix(d, wrap, 0.5));
   float nv = max(dot(n, v), 0.0);
+  if (uSoft > 0.0) {
+    // plush, subsurface-ish: a wide smooth wrap, sky / ground tinted ambient, warm light bleeding into the terminator
+    float ndl = dot(n, l);
+    float sd = clamp((ndl + 0.6) / 1.6, 0.0, 1.0);
+    sd = sd * sd * (3.0 - 2.0 * sd);
+    vec3 hemi = mix(uGround, uSky, clamp(n.y * 0.5 + 0.5, 0.0, 1.0));
+    vec3 softC = base * (uAmb * mix(vec3(1.0), hemi, 0.55) + (1.0 - uAmb) * sd);
+    float band = clamp(1.0 - abs(ndl + 0.05) * 2.4, 0.0, 1.0);
+    softC += base * uSoftCol * band * 0.2;
+    softC += uSoftCol * pow(1.0 - nv, 2.2) * 0.16 * clamp(0.65 - ndl * 0.5, 0.0, 1.0);
+    col = mix(col, softC, clamp(uSoft, 0.0, 1.0));
+  }
   if (uEnv > 0.0) {
     vec3 r = reflect(-v, n);
     vec3 env = mix(uGround, uSky, smoothstep(-0.25, 0.75, r.y));
@@ -3779,7 +3897,7 @@ void main() {
   col = mix(col, uFogCol, fogK);
   frag = vec4(col * a, a);
 }`;
-      UNIFORMS = ["uMVP", "uModel", "uLight", "uEye", "uAmb", "uSpec", "uShine", "uRim", "uRimCol", "uTex", "uUseTex", "uAlpha", "uTint", "uFogCol", "uFog", "uOrtho", "uEnv", "uIri", "uEmit", "uEmitTex", "uSky", "uGround"];
+      UNIFORMS = ["uMVP", "uModel", "uLight", "uEye", "uAmb", "uSpec", "uShine", "uRim", "uRimCol", "uTex", "uUseTex", "uAlpha", "uTint", "uFogCol", "uFog", "uOrtho", "uEnv", "uIri", "uEmit", "uEmitTex", "uSky", "uGround", "uSmoothN", "uSoft", "uSoftCol"];
       softOn = true;
       LPMesh = class {
         constructor(data, count, bounds2) {
@@ -3828,9 +3946,12 @@ void main() {
         return k;
       };
       MeshBuilder = class {
-        constructor(capTris = 256) {
+        // o.smooth: true (average the normals of coincident vertices: smooth shading) or a crease angle in degrees
+        constructor(capTris = 256, o = {}) {
           this.buf = new Float32Array(capTris * 33);
           this.n = 0;
+          this.smooth = o.smooth || false;
+          this.ranges = null;
         }
         get count() {
           return this.n / 33;
@@ -3842,6 +3963,11 @@ void main() {
         // raw vertex floats (11 per vertex: pos, normal, colour, uv)
         // a, b, c: [x, y, z] counter-clockwise when seen from outside; col: '#hex' or [r, g, b] (0..1); uv*: [u, v]
         tri(a, b, c, col = "#ffffff", ua = Z2, ub = Z2, uc = Z2) {
+          const k = hexRgb(col);
+          return this.triC(a, b, c, k, k, k, ua, ub, uc);
+        }
+        // the same with one colour per vertex (painted gradients across a face)
+        triC(a, b, c, ca, cb, cc, ua = Z2, ub = Z2, uc = Z2) {
           const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx2 = c[0] - a[0], vy2 = c[1] - a[1], vz = c[2] - a[2];
           let nx = uy * vz - uz * vy2, ny = uz * vx2 - ux * vz, nz = ux * vy2 - uy * vx2;
           const l = Math.sqrt(nx * nx + ny * ny + nz * nz);
@@ -3849,7 +3975,7 @@ void main() {
           nx /= l;
           ny /= l;
           nz /= l;
-          const k = hexRgb(col);
+          const ka = hexRgb(ca), kb = hexRgb(cb), kc = hexRgb(cc);
           if (this.n + 33 > this.buf.length) {
             const nb = new Float32Array(this.buf.length * 2 + 33);
             nb.set(this.buf.subarray(0, this.n));
@@ -3866,9 +3992,9 @@ void main() {
           B2[o + 3] = nx;
           B2[o + 4] = ny;
           B2[o + 5] = nz;
-          B2[o + 6] = k[0];
-          B2[o + 7] = k[1];
-          B2[o + 8] = k[2];
+          B2[o + 6] = ka[0];
+          B2[o + 7] = ka[1];
+          B2[o + 8] = ka[2];
           B2[o + 9] = ua[0];
           B2[o + 10] = ua[1];
           o += 11;
@@ -3878,9 +4004,9 @@ void main() {
           B2[o + 3] = nx;
           B2[o + 4] = ny;
           B2[o + 5] = nz;
-          B2[o + 6] = k[0];
-          B2[o + 7] = k[1];
-          B2[o + 8] = k[2];
+          B2[o + 6] = kb[0];
+          B2[o + 7] = kb[1];
+          B2[o + 8] = kb[2];
           B2[o + 9] = ub[0];
           B2[o + 10] = ub[1];
           o += 11;
@@ -3890,9 +4016,9 @@ void main() {
           B2[o + 3] = nx;
           B2[o + 4] = ny;
           B2[o + 5] = nz;
-          B2[o + 6] = k[0];
-          B2[o + 7] = k[1];
-          B2[o + 8] = k[2];
+          B2[o + 6] = kc[0];
+          B2[o + 7] = kc[1];
+          B2[o + 8] = kc[2];
           B2[o + 9] = uc[0];
           B2[o + 10] = uc[1];
           o += 11;
@@ -3903,8 +4029,22 @@ void main() {
           this.tri(a, b, c, col, uv?.[0], uv?.[1], uv?.[2]);
           return this.tri(a, c, d, col, uv?.[0], uv?.[2], uv?.[3]);
         }
-        build() {
+        // smooth-shade only triangles [fromTri, toTri) (e.g. one lofted body inside an otherwise faceted mesh)
+        smoothRange(fromTri, toTri = this.count, crease = 180) {
+          if (toTri > fromTri) (this.ranges || (this.ranges = [])).push([fromTri * 33, toTri * 33, crease === true ? 180 : crease]);
+          return this;
+        }
+        build(o = {}) {
           const data = this.buf.slice(0, this.n);
+          const sm3 = o.smooth ?? this.smooth;
+          let smooth3 = false;
+          if (sm3) {
+            smoothNormals(data, sm3 === true ? 180 : sm3);
+            smooth3 = true;
+          } else if (this.ranges) for (const [a, b, cr] of this.ranges) {
+            smoothNormals(data, cr, a, Math.min(b, data.length));
+            smooth3 = true;
+          }
           const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
           for (let i = 0; i < data.length; i += 11) for (let k = 0; k < 3; k++) {
             const q = data[i + k];
@@ -3917,7 +4057,9 @@ void main() {
           }
           const center = [0, 1, 2].map((k) => (min[k] + max[k]) / 2);
           const radius = Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) / 2 || 1;
-          return new LPMesh(data, data.length / 11, { min, max, center, radius });
+          const mesh = new LPMesh(data, data.length / 11, { min, max, center, radius });
+          if (smooth3) mesh.smooth = true;
+          return mesh;
         }
       };
       Z2 = [0, 0];
@@ -8176,8 +8318,8 @@ void main() {
                 let light = 0.56 - bnx * 0.3 - bny * 0.12;
                 if (belly) light = 0.62 - (px2 - H8 * 0.035) / (H8 * 0.085) * 0.25;
                 col = rampPick(belly ? B2 : R4, clamp01(light), x, y);
-                const ring2 = Math.abs(fract(bt * ringN) - 0.5) < 0.11;
-                if (!belly && bt > 0.04 && bt < 0.97 && ring2) col = R4[1];
+                const ring = Math.abs(fract(bt * ringN) - 0.5) < 0.11;
+                if (!belly && bt > 0.04 && bt < 0.97 && ring) col = R4[1];
                 if (belly && Math.abs(fract(py / Math.max(2, H8 * 0.04)) - 0.5) < 0.12) col = B2[1];
                 if (!belly && bnx < -0.45 && bnx > -0.8 && bt > 0.05 && bt < 0.55 && bayer(x, y) < 0.4) col = R4[4];
               }
@@ -13691,16 +13833,16 @@ void main() {
       const yw = bot + hgt * wy;
       const X = xN - u * L2;
       const t03 = M0.topL(u), b0 = M0.botL(u);
-      const ring2 = [];
+      const ring = [];
       for (let j = 0; j < NV; j++) {
         const a = j / NV * TAU3, cs = Math.cos(a), sn = Math.sin(a);
         const Y = yw + (cs >= 0 ? top - yw : yw - bot) * cs;
         const Z = hw * Math.sign(sn) * Math.pow(Math.abs(sn), 2 / xs);
         const v = hgt > 1e-6 ? (Y - bot) / hgt : 0.5;
         const rest = jaw([X, Y, Z]);
-        ring2.push({ p: D(rest), uv: sk.uvB(X, b0 + (t03 - b0) * v), z: Z });
+        ring.push({ p: D(rest), uv: sk.uvB(X, b0 + (t03 - b0) * v), z: Z });
       }
-      rings.push(ring2);
+      rings.push(ring);
     }
     const bodyPart = mat.glass ? new Part() : body;
     const emitQuad = (part2, a, b, c2, d) => {
@@ -14023,12 +14165,12 @@ void main() {
           }
           const t1 = norm(...cross([0, 1, 0], n2)), t2 = cross(n2, t1);
           const fwd = sd > 0 ? 1 : -1;
-          const ring2 = (rk, hk) => Array.from({ length: 12 }, (_, j) => {
+          const ring = (rk, hk) => Array.from({ length: 12 }, (_, j) => {
             const a = j / 12 * TAU3;
             const ca = Math.cos(a) * fwd, sa = Math.sin(a);
             return { p: D([C3[0] + (t1[0] * ca + t2[0] * sa) * re * rk + n2[0] * re * hk, C3[1] + (t1[1] * ca + t2[1] * sa) * re * rk + n2[1] * re * hk, C3[2] + (t1[2] * ca + t2[2] * sa) * re * rk + n2[2] * re * hk]), uv: sk.cell(0, 0.5 + Math.cos(a) * 0.5 * rk, 0.5 - Math.sin(a) * 0.5 * rk) };
           });
-          const r0 = ring2(1, -0.12), r1 = ring2(0.62, 0.3);
+          const r0 = ring(1, -0.12), r1 = ring(0.62, 0.3);
           const apex = { p: D([C3[0] + n2[0] * re * 0.44, C3[1] + n2[1] * re * 0.44, C3[2] + n2[2] * re * 0.44]), uv: sk.cell(0, 0.5, 0.5) };
           for (let j = 0; j < 12; j++) {
             const j2 = (j + 1) % 12;
@@ -14241,13 +14383,13 @@ void main() {
       prevN = nn;
       const bb = cross(t, nn);
       const r = rad(i / (n2 - 1));
-      const ring2 = [];
+      const ring = [];
       for (let s = 0; s < sides; s++) {
         const a2 = s / sides * TAU3, ca = Math.cos(a2) * r, sa = Math.sin(a2) * r;
         const p = [pts[i][0] + nn[0] * ca + bb[0] * sa, pts[i][1] + nn[1] * ca + bb[1] * sa, pts[i][2] + nn[2] * ca + bb[2] * sa];
-        ring2.push(D ? D(p) : p);
+        ring.push(D ? D(p) : p);
       }
-      rings.push(ring2);
+      rings.push(ring);
     }
     const cf2 = (t) => typeof col === "function" ? col(t) : col;
     for (let i = 0; i < n2 - 1; i++) {
@@ -14402,13 +14544,13 @@ void main() {
       prevN = nn;
       const bb = cross(t, nn);
       const r = Math.max(3e-3 * L2, rads[i]);
-      const ring2 = [];
+      const ring = [];
       for (let s = 0; s < sides; s++) {
         const a2 = s / sides * TAU3, ca = Math.cos(a2), sa = Math.sin(a2);
         const dir = [nn[0] * ca + bb[0] * sa, nn[1] * ca + bb[1] * sa, nn[2] * ca + bb[2] * sa];
-        ring2.push({ p: [pts[i][0] + dir[0] * r, pts[i][1] + dir[1] * r, pts[i][2] + dir[2] * r], dir });
+        ring.push({ p: [pts[i][0] + dir[0] * r, pts[i][1] + dir[1] * r, pts[i][2] + dir[2] * r], dir });
       }
-      rings.push(ring2);
+      rings.push(ring);
       frames.push(t);
     }
     for (let i = 0; i < n2 - 1; i++) {
@@ -19451,10 +19593,10 @@ void main() {
                   ctx2.fillRect(x, y + i, 1, 1);
                 }
                 const G = [[0.35, 5, "#9affd8", 0], [0.62, 11, "#7ad8ff", 1], [0.85, 3, "#ffe27a", 0], [1.2, 16, "#c8a8ff", 1], [1.55, 7, "#8aff9a", 0], [1.9, 22, "#7ad8ff", 1]];
-                for (const [t, r, col, ring2] of G) {
+                for (const [t, r, col, ring] of G) {
                   const gx = Math.round(p.x + vx2 * t), gy = Math.round(p.y + vy2 * t), rr3 = Math.max(2, Math.round(r * sc));
-                  ctx2.globalAlpha = fa * (ring2 ? 0.35 : 0.3);
-                  if (ring2) {
+                  ctx2.globalAlpha = fa * (ring ? 0.35 : 0.3);
+                  if (ring) {
                     const rs = thickRingSprite(rr3, 2, col, 1);
                     ctx2.drawImage(rs, gx - Math.floor(rs.width / 2), gy - Math.floor(rs.height / 2));
                   } else ctx2.drawImage(glowSprite(rr3, col), gx - rr3, gy - rr3);
@@ -21600,8 +21742,8 @@ void main() {
         });
         const sp = [cx, 9, zc], dp = [34, 4, 20], rot2 = [0, 24, -16];
         stampRot(m, a, sp, dp, ...rot2);
-        const ring2 = xformPt([cx - 0.5, 55, zc], sp, dp, ...rot2);
-        chain(m, [ring2, [ring2[0] - 6, ring2[1] - 16, ring2[2] + 6], [ring2[0] - 14, 4, 34], [6, 2, 38]], iron[1], rust[0]);
+        const ring = xformPt([cx - 0.5, 55, zc], sp, dp, ...rot2);
+        chain(m, [ring, [ring[0] - 6, ring[1] - 16, ring[2] + 6], [ring[0] - 14, 4, 34], [6, 2, 38]], iron[1], rust[0]);
         sandMound(m, 34, 22, 22, 15, 6, 5);
         barnacles(m, rng2, 3, [...iron, ...rust]);
         moss(m, rng2, 8, MOSS, 0.2, 0.2, [...iron, ...rust]);
@@ -25937,12 +26079,6 @@ void main() {
   function n(id2, branch2, tier, lane, name, icon3, req, o = {}) {
     RAW.push({ id: id2, branch: branch2, tier, lane, name, icon: icon3, req, ...o });
   }
-  function nodePolar(branch2, tier, lane) {
-    if (!branch2) return [0, 0];
-    const r = LAB_RING(tier) + Math.abs(lane) * 2;
-    const a = BRANCHES[branch2].angle * Math.PI / 180 + lane * Math.min(LANE_MAX, LANE / Math.max(r, 40));
-    return [a, r];
-  }
   function grantNode(state, id2, seen = /* @__PURE__ */ new Set()) {
     const nd = LAB_BY_ID[id2];
     if (!nd || seen.has(id2)) return;
@@ -26372,7 +26508,7 @@ void main() {
     if (s < 3600) return Math.floor(s / 60) + "m" + (s % 60 ? " " + s % 60 + "s" : "");
     return Math.floor(s / 3600) + "h" + (Math.floor(s % 3600 / 60) ? " " + Math.floor(s % 3600 / 60) + "m" : "");
   }
-  var STARTER_UNLOCKS, ROOT_ID, BOAT_ORDER, TANK_ORDER, RARITIES, speciesById, BOAT_NAMES, TANK_NAMES, OCEAN_NAMES, BRANCHES, MULT_KEYS, EFFECT_INFO, AERO_T, TIME_T, MAT_T, FLAVOUR, FLAVOUR_Q, MAT_RARITY, FISH_T, RAW, U, BU, DECOR_SETS, DU, LAB_ROWS, row, ROW_BY_ID, ROW_OF, LAB_R0, LAB_STEP, LANE, LANE_MAX, LAB_RING, LAB_NODES, LAB_BY_ID, LAB_CHILDREN, UNLOCK_INDEX, matCount;
+  var STARTER_UNLOCKS, ROOT_ID, BOAT_ORDER, TANK_ORDER, RARITIES, speciesById, BOAT_NAMES, TANK_NAMES, OCEAN_NAMES, BRANCHES, MULT_KEYS, EFFECT_INFO, AERO_T, TIME_T, MAT_T, FLAVOUR, FLAVOUR_Q, MAT_RARITY, FISH_T, RAW, U, BU, DECOR_SETS, DU, LAB_ROWS, row, ROW_BY_ID, ROW_OF, LAB_R1, LAB_STEP, LAB_FORK, LAB_NODE, LAB_RING, LAYOUT, LAB_EXTENT, LAB_NODES, LAB_BY_ID, LAB_CHILDREN, UNLOCK_INDEX, matCount;
   var init_lab = __esm({
     "src/game/lab.js"() {
       init_species();
@@ -26657,11 +26793,11 @@ void main() {
       row = (id2, branch2, label3, from, side, nodes) => LAB_ROWS.push({ id: id2, branch: branch2, label: label3, from, side, nodes });
       row("tackle", "rods", "Tackle", "hook1", "above", ["line1", "rod_bamboo", "hook_lucky", "rod_kelp", "rod_tune", "rod_coral", "rod_aurora", "line3", "rod_prism"]);
       row("rods", "rods", "Rods", null, "below", ["hook1", "rod_bubble", "rod_glass", "rod_chrome", "rod_dolphin", "rod_aero", "rod_trident", "rod_leviathan", "rod_aerolite"]);
-      row("reel", "reel", "Reel & Shock", "hook1", "below", ["reel1", "reel2", "trace1", "reel3", "timing1", "reel4", "dodge1", "autohook1", "focus1", "reel5"]);
+      row("reel", "reel", "Reel & Shock", null, "below", ["reel1", "reel2", "trace1", "reel3", "timing1", "reel4", "dodge1", "autohook1", "focus1", "reel5"]);
       row("shock", "reel", "Shock", "reel1", "below", ["shock1", "shock2", "shock3", "rod_volt", "shock4", "shock5"]);
       row("deck", "boats", "Deck Gear", "boat_dinghy", "above", ["boat_locker", "boat_magnet", "boat_winch", "boat_sonar", "boat_cooler", "boat_radar", "boat_lights"]);
       row("boats", "boats", "Boats", null, "below", ["boat_dinghy", "boat_skiff", "boat_hydrofoil", "boat_yacht", "boat_catamaran", "boat_sub", "boat_engine"]);
-      row("oceans", "oceans", "Oceans", "boat_dinghy", "below", ["sea_shallows", "sea_fjord", "sea_junkyard", "sea_metropolis", "sea_volcano", "sea_abyss", "sea_legend"]);
+      row("oceans", "oceans", "Oceans", null, "below", ["sea_shallows", "sea_fjord", "sea_junkyard", "sea_metropolis", "sea_volcano", "sea_abyss", "sea_legend"]);
       row("expedition", "oceans", "Expedition", "sea_fjord", "below", ["sea_compass", "sea_multi", "sea_forecast", "sea_lantern", "sea_sonar", "sea_pressure"]);
       row("aquarium", "aquarium", "Aquarium", null, "below", ["tank_bowl", "tank_small", "tank_snail", "tank_big", "tank_crab", "tank_reef", "tank_currents", "tank_wall"]);
       row("tanklife", "aquarium", "Tank Life", "tank_small", "below", ["tank_feeder", "tank_happy", "tank_romance", "tank_nursery", "tank_mutation", "tank_sparkle"]);
@@ -26684,7 +26820,6 @@ void main() {
             o.col = i;
             o.branch = r.branch;
             o.req = [i === 0 ? r.from && rawById[r.from] ? r.from : ROOT_ID : r.nodes[i - 1]];
-            o.lane = r.side === "above" ? -1 : r.from ? 1 : 0;
           });
         }
         for (const o of RAW) if (o.id !== ROOT_ID && !ROW_OF[o.id]) {
@@ -26693,26 +26828,46 @@ void main() {
           o.col = 0;
         }
       }
-      LAB_R0 = 72;
-      LAB_STEP = 54;
-      LANE = 33;
-      LANE_MAX = 0.165;
-      LAB_RING = (t) => t <= 0 ? 0 : LAB_R0 + (t - 1) * LAB_STEP;
+      LAB_R1 = 190;
+      LAB_STEP = 86;
+      LAB_FORK = 19;
+      LAB_NODE = 52;
+      LAB_RING = (d) => d <= 0 ? 0 : LAB_R1 + (d - 1) * LAB_STEP;
+      LAYOUT = {};
+      {
+        const rawById = Object.fromEntries(RAW.map((o) => [o.id, o]));
+        const depth = (id2, seen = 0) => {
+          const o = rawById[id2];
+          if (!o || id2 === ROOT_ID || seen > 40) return 0;
+          if (o.depth !== void 0) return o.depth;
+          o.depth = 1 + Math.max(0, ...(o.req || []).map((r) => depth(r, seen + 1)));
+          return o.depth;
+        };
+        for (const o of RAW) {
+          const d = depth(o.id);
+          const lane = o.row && ROW_BY_ID[o.row]?.from ? 1 : 0;
+          const a = o.branch ? (BRANCHES[o.branch].angle + lane * LAB_FORK) * Math.PI / 180 : 0;
+          const r = LAB_RING(d);
+          LAYOUT[o.id] = { depth: d, lane, ang: a, rad: r, pos: [Math.round(Math.cos(a) * r), Math.round(Math.sin(a) * r)] };
+        }
+      }
+      LAB_EXTENT = Math.max(...Object.values(LAYOUT).map((p) => p.rad)) + LAB_NODE;
       LAB_NODES = RAW.map((o) => {
         const tier = o.tier;
         const unlockNode = !!o.unlock?.some((u) => u.kind !== "recipe" || tier >= 3);
         const auto = o.branch ? autoCost(o.branch, tier, unlockNode ? tier >= 3 : tier >= 5) : { aero: 0, items: {}, fish: {} };
         const cost = { aero: o.cost?.aero ?? auto.aero, items: { ...o.cost?.items || auto.items }, fish: { ...o.fish || auto.fish } };
-        const [ang, rad] = nodePolar(o.branch, tier, o.lane);
+        const { depth, lane, ang, rad, pos } = LAYOUT[o.id];
         return {
           id: o.id,
           name: o.name,
           branch: o.branch,
           tier,
-          lane: o.lane,
+          depth,
+          lane,
           ang,
           rad,
-          pos: [Math.round(Math.cos(ang) * rad), Math.round(Math.sin(ang) * rad)],
+          pos,
           req: o.req || [],
           cost,
           time: o.time ?? (TIME_T[tier] || 0),
@@ -26792,7 +26947,7 @@ void main() {
   function gearHappy(state) {
     return gearLevel(state, "filter") * 0.03 + gearLevel(state, "heater") * 0.035 + gearLevel(state, "light") * 0.015 + gearLevel(state, "air") * 0.02;
   }
-  var TANK_IDS, TANK_TIERS, TANK3D, RATE, GEAR, GEAR_BY_ID;
+  var TANK_IDS, TANK_TIERS, cube, TANK3D, RATE, GEAR, GEAR_BY_ID;
   var init_tanks = __esm({
     "src/aquarium/tanks.js"() {
       init_math();
@@ -26801,31 +26956,21 @@ void main() {
       init_shopdata();
       TANK_IDS = ["jar", "bowl", "smalltank", "bigtank", "reeftank", "wallaquarium"];
       TANK_TIERS = [
-        { id: "jar", name: "Goldfish Jar", shape: "round", cap: 0, rate: 1, offlineH: 3, plants: 3, water: "aero" },
-        { id: "bowl", name: "Bubble Bowl", shape: "round", cap: 1, rate: 1.15, offlineH: 4, plants: 5, water: "aero" },
-        { id: "smalltank", name: "Aqua Lamp", shape: "lamp", cap: 2, rate: 1.3, offlineH: 5, plants: 8, water: "aero" },
-        { id: "bigtank", name: "Big Tank", shape: "box", cap: 3, rate: 1.5, offlineH: 6, plants: 13, water: "aero" },
-        { id: "reeftank", name: "Reef Tank", shape: "box", cap: 4, rate: 1.75, offlineH: 7, plants: 18, water: "reef" },
-        { id: "wallaquarium", name: "Wall Aquarium", shape: "wall", cap: 5, rate: 2.1, offlineH: 8, plants: 26, water: "aero" }
+        { id: "jar", name: "Nano Cube", shape: "cube", cap: 0, rate: 1, offlineH: 3, plants: 4, water: "aero" },
+        { id: "bowl", name: "Bubble Cube", shape: "cube", cap: 1, rate: 1.15, offlineH: 4, plants: 6, water: "aero" },
+        { id: "smalltank", name: "Aqua Cube", shape: "cube", cap: 2, rate: 1.3, offlineH: 5, plants: 9, water: "aero" },
+        { id: "bigtank", name: "Big Cube", shape: "cube", cap: 3, rate: 1.5, offlineH: 6, plants: 13, water: "aero" },
+        { id: "reeftank", name: "Reef Cube", shape: "cube", cap: 4, rate: 1.75, offlineH: 7, plants: 18, water: "reef" },
+        { id: "wallaquarium", name: "Mega Cube", shape: "cube", cap: 5, rate: 2.1, offlineH: 8, plants: 26, water: "aero" }
       ];
+      cube = (S10, o) => ({ shape: "box", cube: true, W: S10, H: S10, D: S10, water: Math.round(S10 * 0.9 * 10) / 10, ...o });
       TANK3D = [
-        // the jar: a mason-jar profile [[inner radius, y], ...] with a screw neck; the bowl: a glass globe
-        {
-          shape: "round",
-          kind: "jar",
-          R: 9.2,
-          cy: 8,
-          open: 21,
-          water: 15.6,
-          gravel: 2.4,
-          fish: 4.4,
-          prof: [[6.4, 0.6], [8.2, 1.2], [9, 2.6], [9.2, 5], [9.2, 12.4], [8.8, 14.6], [7.6, 16.6], [6.2, 18], [5.9, 18.8], [5.9, 21]]
-        },
-        { shape: "round", kind: "bowl", R: 17, cy: 14.2, open: 26.6, water: 23.2, gravel: 3.6, fish: 5.4 },
-        { shape: "box", W: 50, H: 27, D: 20, water: 25.2, gravel: 3.2, slope: 2.5, hood: "lamp", stand: "desk", fish: 6.2 },
-        { shape: "box", W: 80, H: 42, D: 34, water: 39.5, gravel: 4.5, slope: 5, hood: "lid", stand: "cabinet", fish: 7.2 },
-        { shape: "box", W: 104, H: 52, D: 46, water: 49, gravel: 5, slope: 7, hood: "reef", stand: "cabinet", fish: 8.2 },
-        { shape: "box", W: 176, H: 72, D: 46, water: 68, gravel: 6, slope: 9, hood: "wall", stand: "wall", fish: 9.4 }
+        cube(24, { gravel: 2.6, slope: 1.2, glass: 0.7, stand: "desk", light: "arm", fish: 4.4 }),
+        cube(32, { gravel: 3.1, slope: 1.8, glass: 0.8, stand: "desk", light: "arm", fish: 5.2 }),
+        cube(42, { gravel: 3.7, slope: 2.6, glass: 0.95, stand: "desk", light: "arm", fish: 6.1 }),
+        cube(54, { gravel: 4.4, slope: 3.8, glass: 1.1, stand: "pedestal", light: "halo", fish: 7.1 }),
+        cube(68, { gravel: 5.2, slope: 5.2, glass: 1.3, stand: "pedestal", light: "halo", fish: 8.1 }),
+        cube(86, { gravel: 6, slope: 6.8, glass: 1.55, stand: "pedestal", light: "halo", fish: 9.4 })
       ];
       RATE = { common: 2, uncommon: 3.5, rare: 6, epic: 10, legendary: 20 };
       GEAR = [
@@ -27094,7 +27239,7 @@ void main() {
         }
         cyl(r0, r1, h, seg = 8, col = "#ffffff", o = {}) {
           const rnd = o.jit ? srand(o.seed || 7) : null;
-          const ring2 = (r, y) => {
+          const ring = (r, y) => {
             const out = [];
             for (let j = 0; j < seg; j++) {
               const a = (o.a0 || 0) + j / seg * Math.PI * 2;
@@ -27103,7 +27248,7 @@ void main() {
             }
             return out;
           };
-          const A2 = ring2(r0, 0), B2 = ring2(r1, h);
+          const A2 = ring(r0, 0), B2 = ring(r1, h);
           const colAt = typeof col === "function" ? col : () => col;
           for (let j = 0; j < seg; j++) {
             const j2 = (j + 1) % seg;
@@ -27227,12 +27372,12 @@ void main() {
             nrm3 = nrm3.map((x) => x / nl);
             prevN = nrm3;
             const b = [t[1] * nrm3[2] - t[2] * nrm3[1], t[2] * nrm3[0] - t[0] * nrm3[2], t[0] * nrm3[1] - t[1] * nrm3[0]];
-            const ring2 = [];
+            const ring = [];
             for (let j = 0; j < seg; j++) {
               const a = j / seg * Math.PI * 2, c = Math.cos(a), s = Math.sin(a);
-              ring2.push([p[0] + (nrm3[0] * c + b[0] * s) * R4(i), p[1] + (nrm3[1] * c + b[1] * s) * R4(i), p[2] + (nrm3[2] * c + b[2] * s) * R4(i)]);
+              ring.push([p[0] + (nrm3[0] * c + b[0] * s) * R4(i), p[1] + (nrm3[1] * c + b[1] * s) * R4(i), p[2] + (nrm3[2] * c + b[2] * s) * R4(i)]);
             }
-            rings.push(ring2);
+            rings.push(ring);
           }
           for (let i = 0; i < n2 - 1; i++) for (let j = 0; j < seg; j++) {
             const j2 = (j + 1) % seg;
@@ -28373,6 +28518,9 @@ void main() {
   });
 
   // src/aquarium/lptank.js
+  function plinthHeight(T3) {
+    return Math.max(2.4, Math.min(7, T3.W * 0.085));
+  }
   function buildTank(tier, gear2 = {}) {
     const T3 = new TankShape(tier);
     const g = new Geo();
@@ -28385,16 +28533,15 @@ void main() {
     kit2.lightCol = light.col === "rainbow" ? "#e8d8ff" : light.col;
     const rnd = srand(77 + tier * 13);
     substrate(g, T3, sub4, rnd, tier);
-    if (T3.round) roundTank(g, kit2, T3, gear2, gl2);
-    else boxTank(g, kit2, T3, gear2, gl2, tier);
+    cubeTank(g, kit2, T3, gl2, tier);
     equipment(g, kit2, T3, gl2, rnd);
     kit2.opaque = g.build();
     kit2.caustic = causticOverlay(T3);
-    const n2 = T3.round ? Math.max(1, Math.round(light.n / 2)) : light.n + (tier >= 4 ? 2 : 0);
+    const n2 = light.n + (tier >= 3 ? 2 : 0);
     for (let i = 0; i < n2; i++) {
       const u = (i + 0.3 + rnd() * 0.4) / n2;
-      const p = T3.floorPoint(0.12 + u * 0.76, 0.2 + rnd() * 0.6, 3);
-      kit2.shafts.push({ x: p[0], z: p[2], w: T3.minDim * (0.12 + rnd() * 0.1), a: 0.13 + rnd() * 0.08, ph: rnd() * 6.28, tilt: (rnd() - 0.5) * 0.25 });
+      const p = T3.floorPoint(0.12 + u * 0.76, 0.15 + rnd() * 0.7, 3);
+      kit2.shafts.push({ x: p[0], z: p[2], w: T3.minDim * (0.1 + rnd() * 0.09), a: 0.13 + rnd() * 0.08, ph: rnd() * 6.28, tilt: (rnd() - 0.5) * 0.25 });
     }
     return kit2;
   }
@@ -28406,27 +28553,6 @@ void main() {
       const h = Math.sin(x * 91.7 + z * 47.3) * 43758.5;
       return shadec(mixc(cols[i], cols[i + 1], n2 * (cols.length - 1) - i), (h - Math.floor(h) - 0.5) * 0.08);
     };
-    if (T3.round) {
-      const fr = T3.floorR + 0.5;
-      const rings = 7, seg = 28;
-      const pt = (i, j) => {
-        const r = fr * (i / rings), a = j / seg * Math.PI * 2;
-        const x = Math.cos(a) * r, z = Math.sin(a) * r;
-        return [x, T3.floorY(x, z), z];
-      };
-      for (let i = 0; i < rings; i++) for (let j = 0; j < seg; j++) {
-        const a = pt(i, j), b = pt(i, j + 1), c = pt(i + 1, j + 1), d = pt(i + 1, j);
-        g.tri(a, b, c, pick3(a[0] + 1, a[2]));
-        g.tri(a, c, d, pick3(d[0], d[2] + 2));
-      }
-      for (let j = 0; j < seg; j++) {
-        const a = pt(rings, j), b = pt(rings, j + 1);
-        g.quad2([b[0], 0.4, b[2]], [a[0], 0.4, a[2]], a, b, rgb(sub4.side[j % 2]));
-      }
-      pebbles(g, T3, sub4, rnd, Math.round(fr * fr * 0.35 * sub4.pebN));
-      if (tier >= 1) driftwood(g, T3.floorPoint(0.3, 0.7, 3), T3.minDim * 0.022, 0.6, rnd);
-      return;
-    }
     const cell = Math.max(1.4, T3.W / 64);
     const nx = Math.ceil(T3.W / cell), nz = Math.ceil(T3.D / cell);
     const X = (i) => -T3.W / 2 + i / nx * T3.W, Z = (j) => -T3.D / 2 + j / nz * T3.D;
@@ -28442,20 +28568,21 @@ void main() {
     const band = () => rgb(sub4.side[0]);
     for (let i = 0; i < nx; i++) {
       const a = P5(i, nz), b = P5(i + 1, nz);
-      sideStrip(g, [a[0], 0.3, a[2]], [b[0], 0.3, b[2]], a, b, band, cols);
+      sideStrip(g, [a[0], 0.3, a[2]], [b[0], 0.3, b[2]], a, b, band, cols, sub4);
       const c = P5(i + 1, 0), d = P5(i, 0);
-      sideStrip(g, [c[0], 0.3, c[2]], [d[0], 0.3, d[2]], c, d, band, cols);
+      sideStrip(g, [c[0], 0.3, c[2]], [d[0], 0.3, d[2]], c, d, band, cols, sub4);
     }
     for (let j = 0; j < nz; j++) {
       const a = P5(nx, j + 1), b = P5(nx, j);
-      sideStrip(g, [a[0], 0.3, a[2]], [b[0], 0.3, b[2]], a, b, band, cols);
+      sideStrip(g, [a[0], 0.3, a[2]], [b[0], 0.3, b[2]], a, b, band, cols, sub4);
       const c = P5(0, j), d = P5(0, j + 1);
-      sideStrip(g, [c[0], 0.3, c[2]], [d[0], 0.3, d[2]], c, d, band, cols);
+      sideStrip(g, [c[0], 0.3, c[2]], [d[0], 0.3, d[2]], c, d, band, cols, sub4);
     }
     pebbles(g, T3, sub4, rnd, Math.round(T3.W * T3.D / 16 * sub4.pebN));
-    const rocks = tier >= 4 ? 9 : tier >= 3 ? 5 : 3;
+    glassPebbles(g, T3, sub4, rnd);
+    const rocks = tier >= 4 ? 6 : tier >= 3 ? 4 : 2;
     for (let i = 0; i < rocks; i++) {
-      const p = T3.floorPoint(0.08 + rnd() * 0.84, 0.55 + rnd() * 0.42, 4);
+      const p = T3.floorPoint(0.08 + rnd() * 0.84, 0.7 + rnd() * 0.27, 4);
       const r = T3.minDim * (0.05 + rnd() * 0.07);
       g.push();
       g.at(p[0], p[1] - r * 0.2, p[2]);
@@ -28496,12 +28623,43 @@ void main() {
     void rnd;
     g.pop();
   }
-  function sideStrip(g, a0, b0, a1, b1, band, cols) {
+  function sideStrip(g, a0, b0, a1, b1, band, cols, sub4) {
     const m = (p, q, t) => [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t, p[2] + (q[2] - p[2]) * t];
-    const am = m(a0, a1, 0.55), bm = m(b0, b1, 0.55);
     const k = Math.sin(a0[0] * 3.1 + a0[2] * 2.3) * 0.04;
-    g.quad(a0, b0, bm, am, shadec(band(a0[1], a0[0]), k));
+    const w0 = 0.3 + 0.06 * Math.sin(a0[0] * 0.9 + a0[2] * 0.7), w1 = 0.62 + 0.05 * Math.sin(a0[0] * 0.5 - a0[2] * 1.1);
+    const as = m(a0, a1, w0), bs = m(b0, b1, w0), am = m(a0, a1, w1), bm = m(b0, b1, w1);
+    g.quad(a0, b0, bs, as, shadec(sub4.soil || band(), k));
+    g.quad(as, bs, bm, am, shadec(band(), k));
     g.quad(am, bm, b1, a1, shadec(cols[1], k));
+  }
+  function glassPebbles(g, T3, sub4, rnd) {
+    const n2 = Math.round((T3.W + T3.D) * 0.7 * Math.max(0.4, sub4.pebN));
+    const cols = [...sub4.peb, sub4.side[0], sub4.side[1]];
+    for (let i = 0; i < n2; i++) {
+      const side = i % 4, u = rnd();
+      let x, z;
+      if (side === 0) {
+        x = (u - 0.5) * T3.W;
+        z = T3.D / 2 - 0.12;
+      } else if (side === 1) {
+        x = (u - 0.5) * T3.W;
+        z = -T3.D / 2 + 0.12;
+      } else if (side === 2) {
+        x = T3.W / 2 - 0.12;
+        z = (u - 0.5) * T3.D;
+      } else {
+        x = -T3.W / 2 + 0.12;
+        z = (u - 0.5) * T3.D;
+      }
+      const top = T3.floorY(x, z);
+      const r = T3.minDim * (6e-3 + rnd() * 0.01) + 0.1;
+      const y = 0.3 + r + rnd() * Math.max(0.1, top - 0.6 - r * 2);
+      g.push();
+      g.at(x, y, z);
+      g.scale(side < 2 ? 1 : 0.5, 0.75, side < 2 ? 0.5 : 1);
+      g.sphere(r, 0, cols[Math.floor(rnd() * cols.length)], { jit: 0.3, seed: i + 9 });
+      g.pop();
+    }
   }
   function pebbles(g, T3, sub4, rnd, n2) {
     const cols = sub4.peb;
@@ -28526,220 +28684,131 @@ void main() {
     }
     g.jit = old;
   }
-  function roundTank(g, kit2, T3, gear2, gl2) {
-    const P5 = T3.prof;
-    const th = T3.d.kind === "jar" ? 0.55 : 0.45;
-    const outer = P5.map(([r, y]) => [r + th, y]);
-    outer.unshift([P5[0][0] * 0.9 + th, 0]);
-    const gi = new Geo(), go = new Geo();
-    gi.lathe(outer, 28, "#dff8ff", { smooth: true, inside: true });
-    go.lathe(outer, 28, "#e8fbff", { smooth: true });
-    go.cyl(outer[0][0], outer[0][0], 0.5, 28, "#c8f4f0", { smooth: false });
-    kit2.glass.push({ mesh: gi.build(), pos: [0, 0, 0], a: 0.16, inner: true });
-    kit2.glass.push({ mesh: go.build(), pos: [0, 0, 0], a: 0.2 });
-    const hl = new Geo();
-    const band = (a0, a1, y0, y1, push) => {
-      const n2 = 6, am = (a0 + a1) / 2, hw = (a1 - a0) / 2;
-      const R4 = (y) => T3.rAt(y) + th + push;
-      const P6 = (a, y) => [Math.cos(a) * R4(y), y, Math.sin(a) * R4(y)];
-      for (let j = 0; j < n2; j++) {
-        const ya = y0 + (y1 - y0) * (j / n2), yb = y0 + (y1 - y0) * ((j + 1) / n2);
-        const wa = hw * Math.sin(Math.PI * j / n2), wb = hw * Math.sin(Math.PI * (j + 1) / n2);
-        hl.quad(P6(am + wa, ya), P6(am - wa, ya), P6(am - wb, yb), P6(am + wb, yb), "#ffffff");
-      }
-    };
-    band(1.95, 2.22, T3.d.water * 0.22, T3.d.water * 0.82, 0.06);
-    band(2.3, 2.38, T3.d.water * 0.3, T3.d.water * 0.7, 0.06);
-    kit2.glass.push({ mesh: hl.build(), pos: [0, 0, 0], a: 0.2, streak: true });
-    const top = P5[P5.length - 1];
-    if (T3.d.kind === "jar") {
-      for (let k = 0; k < 2; k++) {
-        g.push();
-        g.at(0, top[1] - 0.9 - k * 0.9, 0);
-        ring(g, top[0] + th + 0.06, 0.12, 24, GLASS_EDGE);
-        g.pop();
-      }
-      g.push();
-      g.at(T3.R + top[0] + 4, 0, T3.R * 0.5);
-      g.rotZ(0.06);
-      g.cyl(top[0] + th + 0.5, top[0] + th + 0.5, 1.5, 20, AQUA, { capCol: "#7fdcff" });
-      g.at(0, 1.5, 0);
-      g.cyl(top[0] * 0.72, top[0] * 0.6, 0.3, 20, "#f4fbff");
-      g.pop();
-    }
-    g.push();
-    g.at(0, top[1], 0);
-    ring(g, top[0] + th * 0.5, th * 0.75, 28, GLASS_EDGE);
-    g.pop();
-    g.push();
-    g.at(0, 0.25, 0);
-    ring(g, outer[0][0] - 0.1, 0.25, 28, GLASS_EDGE);
-    g.pop();
-    const wv = new Geo();
-    const wp = [];
-    for (const [r, y] of P5) if (y < T3.waterY) wp.push([Math.max(0.1, r - 0.05), Math.max(y, 0.6)]);
-    wp.push([T3.rAt(T3.waterY) - 0.05, T3.waterY]);
-    wv.lathe(wp, 24, "#3ab8e4", { smooth: true });
-    kit2.water = { mesh: wv.build(), pos: [0, 0, 0] };
-    const mg = new Geo();
-    mg.push();
-    mg.at(0, T3.waterY, 0);
-    ring(mg, T3.rAt(T3.waterY) - 0.05, 0.12, 32, "#ffffff");
-    mg.pop();
-    kit2.glow.push({ mesh: mg.build(), col: [0.93, 1, 1], a: 0.55 });
-    kit2.lid = { y: top[1] };
-    if (gl2("light") > 0) {
-      const lx = -top[0] * 0.2;
-      g.push();
-      g.at(lx, top[1], -top[0] - th);
-      g.box(-1.2, -2.5, -0.6, 1.2, 0.8, 0.4, SILVER);
-      g.tube([[0, 0.8, 0], [0, 4.2, 0.4], [0, 5.6, 2.6], [0, 5.4, 5.2]], 0.35, 6, SILVER_D);
-      g.at(0, 5.2, 5.6);
-      g.slab(-2.4, -0.4, -1.6, 2.4, 0.6, 1.6, 0.5, WHITE2);
-      g.pop();
-      const lg = new Geo();
-      lg.push();
-      lg.at(lx, top[1] + 5, -top[0] - th + 5.6);
-      lg.box(-2.1, -0.2, -1.3, 2.1, 0.05, 1.3, "#ffffff");
-      lg.pop();
-      kit2.glow.push({ mesh: lg.build(), col: rgb(kit2.lightCol), a: 1, light: true });
-    }
-  }
-  function ring(g, R4, r, seg, col) {
-    const pts = [];
-    for (let i = 0; i <= seg; i++) {
-      const a = i / seg * Math.PI * 2;
-      pts.push([Math.cos(a) * R4, 0, Math.sin(a) * R4]);
-    }
-    g.tube(pts, r, 5, col, { caps: false });
-  }
-  function boxTank(g, kit2, T3, gear2, gl2, tier) {
-    const W8 = T3.W, H8 = T3.H, D = T3.D, t = tier >= 4 ? 1 : 0.7;
-    const hood = T3.d.hood;
-    const pane = (x0, y0, z0, x1, y1, z1, a) => {
+  function cubeTank(g, kit2, T3, gl2, tier) {
+    const W8 = T3.W, H8 = T3.H, D = T3.D, t = T3.d.glass || 0.8, S10 = Math.max(W8, D);
+    const lv = gl2("light");
+    const pane = (x0, y0, z0, x1, y1, z1, a, n2) => {
       const pg = new Geo();
       const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, cz = (z0 + z1) / 2;
-      pg.box(x0 - cx, y0 - cy, z0 - cz, x1 - cx, y1 - cy, z1 - cz, "#e4fbff");
-      kit2.glass.push({ mesh: pg.build(), pos: [cx, cy, cz], a });
+      pg.box(x0 - cx, y0 - cy, z0 - cz, x1 - cx, y1 - cy, z1 - cz, "#dcfaf6");
+      kit2.glass.push({ mesh: pg.build(), pos: [cx, cy, cz], a, n: n2 });
     };
-    pane(-W8 / 2 - t, 0, D / 2, W8 / 2 + t, H8, D / 2 + t, 0.12);
-    pane(-W8 / 2 - t, 0, -D / 2 - t, W8 / 2 + t, H8, -D / 2, 0.12);
-    pane(-W8 / 2 - t, 0, -D / 2, -W8 / 2, H8, D / 2, 0.14);
-    pane(W8 / 2, 0, -D / 2, W8 / 2 + t, H8, D / 2, 0.14);
-    const st = new Geo();
-    const sz = D / 2 + t + 0.05;
-    for (const [u, w, k] of [[0.12, 0.05, 1], [0.19, 0.015, 0.8], [0.62, 0.035, 0.9], [0.68, 0.012, 0.7]]) {
-      const x0 = -W8 / 2 + W8 * u, dx = H8 * 0.35;
-      st.quad([x0, H8 * 0.05, 0], [x0 + W8 * w, H8 * 0.05, 0], [x0 + W8 * w + dx, H8 * 0.95 * k, 0], [x0 + dx, H8 * 0.95 * k, 0], "#ffffff");
+    pane(-W8 / 2 - t, 0, D / 2, W8 / 2 + t, H8, D / 2 + t, 0.1, [0, 0, 1]);
+    pane(-W8 / 2 - t, 0, -D / 2 - t, W8 / 2 + t, H8, -D / 2, 0.1, [0, 0, -1]);
+    pane(-W8 / 2 - t, 0, -D / 2, -W8 / 2, H8, D / 2, 0.1, [-1, 0, 0]);
+    pane(W8 / 2, 0, -D / 2, W8 / 2 + t, H8, D / 2, 0.1, [1, 0, 0]);
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+      const eg = new Geo();
+      const x0 = sx > 0 ? W8 / 2 : -W8 / 2 - t, z0 = sz > 0 ? D / 2 : -D / 2 - t;
+      const cx = x0 + t / 2, cz = z0 + t / 2;
+      eg.box(-t / 2, 0, -t / 2, t / 2, H8, t / 2, { top: GLASS_TOP, side: GLASS_EDGE, front: GLASS_EDGE });
+      const nl = Math.hypot(sx, sz);
+      kit2.glass.push({ mesh: eg.build(), pos: [cx, 0, cz], a: 0.62, n: [sx / nl, 0, sz / nl], edge: true });
     }
-    kit2.glass.push({ mesh: st.build(), pos: [0, 0, sz], a: 0.16, streak: true });
-    const e = t * 0.55;
-    const edge = (x0, y0, z0, x1, y1, z1) => g.box(x0, y0, z0, x1, y1, z1, GLASS_EDGE);
-    for (const sx of [-1, 1]) for (const sz2 of [-1, 1]) {
-      const x = sx * (W8 / 2 + t / 2), z = sz2 * (D / 2 + t / 2);
-      edge(x - e, 0, z - e, x + e, H8, z + e);
-    }
-    for (const y of [0, H8]) {
-      edge(-W8 / 2 - t, y - e, D / 2, W8 / 2 + t, y + (y ? 0 : e), D / 2 + t);
-      edge(-W8 / 2 - t, y - e, -D / 2 - t, W8 / 2 + t, y + (y ? 0 : e), -D / 2);
-      edge(-W8 / 2 - t, y - e, -D / 2, -W8 / 2, y + (y ? 0 : e), D / 2);
-      edge(W8 / 2, y - e, -D / 2, W8 / 2 + t, y + (y ? 0 : e), D / 2);
-    }
-    g.box(-W8 / 2 - t, -0.4, -D / 2 - t, W8 / 2 + t, 0, D / 2 + t, "#9ee8e0");
+    const faces = [
+      { c: [0, H8 / 2, D / 2 + t + 0.04], u: [1, 0, 0], n: [0, 0, 1], w: W8 + 2 * t },
+      { c: [W8 / 2 + t + 0.04, H8 / 2, 0], u: [0, 0, -1], n: [1, 0, 0], w: D + 2 * t },
+      { c: [0, H8 / 2, -D / 2 - t - 0.04], u: [-1, 0, 0], n: [0, 0, -1], w: W8 + 2 * t },
+      { c: [-W8 / 2 - t - 0.04, H8 / 2, 0], u: [0, 0, 1], n: [-1, 0, 0], w: D + 2 * t }
+    ];
+    const STREAKS = [[[0.1, 0.05, 1], [0.18, 0.014, 0.85], [0.64, 0.035, 0.92], [0.7, 0.01, 0.7]], [[0.2, 0.04, 0.9], [0.27, 0.012, 0.75], [0.74, 0.03, 1]]];
+    faces.forEach((f, i) => {
+      const st = new Geo();
+      const P5 = (su, sv) => [f.u[0] * su, sv, f.u[2] * su];
+      for (const [u, w, k] of STREAKS[i % 2]) {
+        const x0 = -f.w / 2 + f.w * u, dx = H8 * 0.32;
+        st.quad(P5(x0, -H8 * 0.45), P5(x0 + f.w * w, -H8 * 0.45), P5(x0 + f.w * w + dx, H8 * (0.45 * k)), P5(x0 + dx, H8 * (0.45 * k)), "#ffffff");
+      }
+      for (const s of [-1, 1]) {
+        const e = s * (f.w / 2), ew = Math.max(t * 1.6, f.w * 0.025);
+        st.quad(P5(e, -H8 / 2), P5(e - s * ew, -H8 / 2), P5(e - s * ew, H8 / 2), P5(e, H8 / 2), "#c8fff2");
+      }
+      kit2.glass.push({ mesh: st.build(), pos: f.c, a: 0.13, n: f.n, streak: true });
+    });
+    const rim = new Geo();
+    const rt = 0.08 + t * 0.06;
+    rim.box(-W8 / 2 - t, H8, D / 2, W8 / 2 + t, H8 + rt, D / 2 + t, "#ffffff");
+    rim.box(-W8 / 2 - t, H8, -D / 2 - t, W8 / 2 + t, H8 + rt, -D / 2, "#ffffff");
+    rim.box(-W8 / 2 - t, H8, -D / 2, -W8 / 2, H8 + rt, D / 2, "#ffffff");
+    rim.box(W8 / 2, H8, -D / 2, W8 / 2 + t, H8 + rt, D / 2, "#ffffff");
+    kit2.glow.push({ mesh: rim.build(), col: rgb("#d4fff6"), a: 1, rim: true });
+    kit2.rim = [[-W8 / 2 - t, H8, D / 2 + t], [W8 / 2 + t, H8, D / 2 + t], [W8 / 2 + t, H8, -D / 2 - t], [-W8 / 2 - t, H8, -D / 2 - t]];
+    g.box(-W8 / 2 - t, -t, -D / 2 - t, W8 / 2 + t, 0, D / 2 + t, { top: "#bff4ec", side: GLASS_EDGE_D, bottom: "#6ac8bc" });
     const wv = new Geo();
     wv.box(-W8 / 2 + 0.05, 0.2 - T3.waterY / 2, -D / 2 + 0.05, W8 / 2 - 0.05, T3.waterY / 2, D / 2 - 0.05, "#3ab8e4");
     kit2.water = { mesh: wv.build(), pos: [0, T3.waterY / 2, 0] };
     const mg = new Geo();
-    const wy = T3.waterY, m = 0.12;
-    mg.box(-W8 / 2, wy - m, D / 2 - 0.08, W8 / 2, wy + m, D / 2 - 0.02, "#ffffff");
-    mg.box(-W8 / 2, wy - m, -D / 2 + 0.02, W8 / 2, wy + m, -D / 2 + 0.08, "#ffffff");
-    mg.box(-W8 / 2 + 0.02, wy - m, -D / 2, -W8 / 2 + 0.08, wy + m, D / 2, "#ffffff");
-    mg.box(W8 / 2 - 0.08, wy - m, -D / 2, W8 / 2 - 0.02, wy + m, D / 2, "#ffffff");
+    const wy = T3.waterY, m0 = 0.12;
+    mg.box(-W8 / 2, wy - m0, D / 2 - 0.08, W8 / 2, wy + m0, D / 2 - 0.02, "#ffffff");
+    mg.box(-W8 / 2, wy - m0, -D / 2 + 0.02, W8 / 2, wy + m0, -D / 2 + 0.08, "#ffffff");
+    mg.box(-W8 / 2 + 0.02, wy - m0, -D / 2, -W8 / 2 + 0.08, wy + m0, D / 2, "#ffffff");
+    mg.box(W8 / 2 - 0.08, wy - m0, -D / 2, W8 / 2 - 0.02, wy + m0, D / 2, "#ffffff");
     kit2.glow.push({ mesh: mg.build(), col: [0.93, 1, 1], a: 0.6 });
-    const lg = new Geo();
-    if (hood === "lamp") {
-      g.slab(-W8 / 2 - 2.2, H8, -D / 2 - 2.2, W8 / 2 + 2.2, H8 + 5.2, D / 2 + 2.2, 1.6, { top: SILVER, side: shadec(SILVER, -0.06), bottom: SILVER_D });
-      g.slab(-W8 / 2 - 1.6, H8 + 5.2, -D / 2 - 1.6, W8 / 2 + 1.6, H8 + 5.9, D / 2 + 1.6, 1.2, "#eef4fa");
-      g.slab(-W8 / 2 - 2.4, -4.6, -D / 2 - 2.4, W8 / 2 + 2.4, -0.4, D / 2 + 2.4, 1.6, { top: SILVER, side: shadec(SILVER, -0.08), bottom: SILVER_D });
-      for (const sx of [-1, 1]) {
+    const PH = plinthHeight(T3), m = Math.max(1.1, S10 * 0.035);
+    const X0 = -W8 / 2 - t - m, X1 = W8 / 2 + t + m, Z0 = -D / 2 - t - m, Z1 = D / 2 + t + m;
+    kit2.plinth = PH;
+    g.slab(X0 + m * 0.55, -PH, Z0 + m * 0.55, X1 - m * 0.55, -PH * 0.8, Z1 - m * 0.55, m * 0.6, { top: "#9fb4c6", side: "#8aa0b4", bottom: "#7a90a4" });
+    g.slab(X0, -PH * 0.8, Z0, X1, -PH * 0.56, Z1, m * 0.9, { top: WHITE2, side: "#e6f0f8", front: "#eef5fb", bottom: "#c8d8e6" });
+    g.slab(X0, -PH * 0.44, Z0, X1, -PH * 0.16, Z1, m * 0.9, { top: WHITE2, side: "#f0f7fc", front: "#f6fbfe", bottom: "#d8e6f0" });
+    g.slab(X0 + m * 0.35, -PH * 0.16, Z0 + m * 0.35, X1 - m * 0.35, -t, Z1 - m * 0.35, m * 0.7, { top: CHROME, side: SILVER, front: "#eaf2f8" });
+    const band = new Geo();
+    band.slab(X0 + m * 0.12, -PH * 0.56, Z0 + m * 0.12, X1 - m * 0.12, -PH * 0.44, Z1 - m * 0.12, m * 0.85, "#ffffff");
+    kit2.glow.push({ mesh: band.build(), col: rgb("#5ad8ff"), a: 1, rim: true, band: true });
+    const bx = X1 - Math.max(2.4, S10 * 0.1), by = -PH * 0.3, bz = Z1 + 0.02;
+    g.push();
+    g.at(bx, by, bz);
+    g.rotX(Math.PI / 2);
+    g.cyl(PH * 0.14 + 0.25, PH * 0.14 + 0.25, 0.12, 14, CHROME);
+    g.pop();
+    const btn = new Geo();
+    btn.push();
+    btn.at(bx, by, bz + 0.1);
+    btn.rotX(Math.PI / 2);
+    btn.cyl(PH * 0.12, PH * 0.1, 0.18, 14, "#ffffff");
+    btn.pop();
+    kit2.glow.push({ mesh: btn.build(), col: rgb("#8af0ff"), a: 1, light: true, button: true });
+    kit2.lid = { y: H8, sw: [bx, by, bz + 0.3] };
+    const lg = new Geo(), ring = new Geo();
+    if (T3.d.light === "arm") {
+      const ps = S10 * (0.44 + lv * 0.05), py = H8 + S10 * 0.27, pz = -D * 0.04;
+      const cx = W8 * 0.3, cz = -D / 2 - t / 2;
+      g.box(cx - S10 * 0.035, H8 - S10 * 0.07, cz - t / 2 - 0.35, cx + S10 * 0.035, H8 + 0.5, cz + t / 2 + 0.35, { top: CHROME, side: SILVER });
+      g.tube([[cx, H8 + 0.4, cz], [cx, H8 + S10 * 0.14, cz], [cx * 0.85, H8 + S10 * 0.31, -D * 0.36], [ps * 0.36, py + S10 * 0.05, -D * 0.2], [ps * 0.3, py + 0.4, pz]], S10 * 0.012 + 0.12, 7, CHROME);
+      g.slab(-ps / 2, py, pz - ps / 2, ps / 2, py + S10 * 0.035, pz + ps / 2, ps * 0.16, { top: WHITE2, side: CHROME, bottom: "#dfe8f0" });
+      g.push();
+      g.at(ps * 0.3, py + S10 * 0.035, pz);
+      g.cyl(S10 * 0.03, S10 * 0.025, S10 * 0.012, 10, SILVER_D);
+      g.pop();
+      lg.slab(-ps / 2 + ps * 0.08, py - 0.05, pz - ps / 2 + ps * 0.08, ps / 2 - ps * 0.08, py + 0.02, pz + ps / 2 - ps * 0.08, ps * 0.12, "#ffffff");
+      ring.slab(-ps / 2 - 0.12, py + S10 * 0.012, pz - ps / 2 - 0.12, ps / 2 + 0.12, py + S10 * 0.022, pz + ps / 2 + 0.12, ps * 0.16, "#ffffff");
+      kit2.lid.y = py + S10 * 0.035;
+    } else {
+      const ps = S10 * (0.8 + lv * 0.05), py = H8 + S10 * 0.3;
+      g.slab(-ps / 2, py, -ps / 2, ps / 2, py + S10 * 0.03, ps / 2, ps * 0.12, { top: WHITE2, side: CHROME, bottom: "#e4eef6" });
+      g.slab(-ps * 0.3, py + S10 * 0.03, -ps * 0.3, ps * 0.3, py + S10 * 0.045, ps * 0.3, ps * 0.08, "#eef5fb");
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.tube([[sx * ps * 0.4, py + S10 * 0.03, sz * ps * 0.4], [sx * ps * 0.4, 260, sz * ps * 0.4]], 0.12, 4, SILVER);
+      lg.slab(-ps / 2 + ps * 0.07, py - 0.05, -ps / 2 + ps * 0.07, ps / 2 - ps * 0.07, py + 0.02, ps / 2 - ps * 0.07, ps * 0.09, "#ffffff");
+      ring.slab(-ps / 2 - 0.15, py + S10 * 0.01, -ps / 2 - 0.15, ps / 2 + 0.15, py + S10 * 0.02, ps / 2 + 0.15, ps * 0.12, "#ffffff");
+      if (lv >= 3) for (const sx of [-1, 1]) {
         g.push();
-        g.at(sx * (W8 / 2 - 1), H8 + 2.6, D / 2 + 2.25);
-        g.rotX(Math.PI / 2);
-        g.cyl(0.45, 0.45, 0.15, 8, SILVER_D);
+        g.at(sx * ps * 0.55, py, 0);
+        g.sphere(S10 * 0.025, 1, CHROME, { smooth: true });
         g.pop();
+        lg.push();
+        lg.at(sx * ps * 0.55, py - S10 * 0.02, 0);
+        lg.sphere(S10 * 0.015, 0, "#ffffff");
+        lg.pop();
       }
-      g.box(W8 / 2 - 7, H8 + 1.4, D / 2 + 2.1, W8 / 2 - 3.2, H8 + 3.8, D / 2 + 2.6, "#10141a");
-      g.box(W8 / 2 - 6.8, H8 + 1.6, D / 2 + 2.5, W8 / 2 - 5.1, H8 + 3.6, D / 2 + 2.9, "#2a323e");
-      lg.box(-W8 / 2 + 0.6, H8 - 0.25, -D / 2 + 0.6, W8 / 2 - 0.6, H8 - 0.05, D / 2 - 0.6, "#ffffff");
-      kit2.lid = { y: H8 + 5.9, sw: [W8 / 2 - 5, H8 + 2.6, D / 2 + 2.8] };
-    } else if (hood === "lid") {
-      g.slab(-W8 / 2 - 1.4, H8 + 0.2, -D / 2 - 1.4, W8 / 2 + 1.4, H8 + 3.8, D / 2 + 1.4, 1.1, { top: WHITE2, side: "#e8f2fa", bottom: "#b8c8d8" });
-      g.box(-W8 / 2 - 1.42, H8 + 0.6, D / 2 + 1.3, W8 / 2 + 1.42, H8 + 1.1, D / 2 + 1.48, AQUA);
-      g.slab(-W8 / 2 * 0.7, H8 + 3.8, -D / 2 * 0.5, W8 / 2 * 0.7, H8 + 4.3, D / 2 * 0.5, 0.8, "#f0f6fc");
-      g.box(-W8 / 2 - 1.2, -1.6, -D / 2 - 1.2, W8 / 2 + 1.2, 0, D / 2 + 1.2, { top: "#e8f2fa", side: "#2a3a4a" });
-      lg.box(-W8 / 2 + 1, H8 - 0.1, -D / 4, W8 / 2 - 1, H8 + 0.2, D / 6, "#ffffff");
-      kit2.lid = { y: H8 + 4.3 };
-    } else if (hood === "reef") {
-      const py = H8 + 22;
-      g.slab(-W8 / 2 + 4, py, -D / 4, W8 / 2 - 4, py + 2.4, D / 4, 1.6, { top: "#1c2430", side: "#2a3442", bottom: "#151c26" });
-      for (const sx of [-1, 1]) g.tube([[sx * (W8 / 2 - 10), py + 2.4, 0], [sx * (W8 / 2 - 10), 220, 0]], 0.15, 4, SILVER);
-      g.box(-W8 / 2 - 0.9, -1.4, -D / 2 - 0.9, W8 / 2 + 0.9, 0, D / 2 + 0.9, "#1a222c");
-      for (let i = 0; i < 6; i++) lg.box(-W8 / 2 + 6 + i * (W8 - 12) / 6, py - 0.15, -D / 4 + 1.5, -W8 / 2 + 6 + (i + 0.8) * (W8 - 12) / 6, py + 0.05, D / 4 - 1.5, "#ffffff");
-      kit2.lid = { y: py + 2.4, pendant: py };
-    } else if (hood === "wall") {
-      const b = 9;
-      g.box(-W8 / 2 - b, -b, D / 2 + 0.7, W8 / 2 + b, 0, D / 2 + 3, WHITE2);
-      g.box(-W8 / 2 - b, H8, D / 2 + 0.7, W8 / 2 + b, H8 + b, D / 2 + 3, WHITE2);
-      g.box(-W8 / 2 - b, 0, D / 2 + 0.7, -W8 / 2, H8, D / 2 + 3, WHITE2);
-      g.box(W8 / 2, 0, D / 2 + 0.7, W8 / 2 + b, H8, D / 2 + 3, WHITE2);
-      g.box(-W8 / 2 - b, -b + 1, D / 2 + 2.9, W8 / 2 + b, -b + 1.6, D / 2 + 3.2, AQUA);
-      g.box(-W8 / 2 - 1, H8, -D / 2 - 1, W8 / 2 + 1, H8 + 12, D / 2 + 0.7, "#e8eef4");
-      g.box(-W8 / 2 - 1, -12, -D / 2 - 1, W8 / 2 + 1, -0.4, D / 2 + 0.7, "#e8eef4");
-      lg.box(-W8 / 2 + 2, H8 - 0.1, -D / 3, W8 / 2 - 2, H8 + 0.1, D / 6, "#ffffff");
-      kit2.lid = { y: H8 + 12 };
+      kit2.lid.y = py + S10 * 0.045;
     }
-    if (lg.n) kit2.glow.push({ mesh: lg.build(), col: rgb(kit2.lightCol), a: 1, light: true });
+    kit2.glow.push({ mesh: lg.build(), col: rgb(kit2.lightCol), a: 1, light: true });
+    kit2.glow.push({ mesh: ring.build(), col: rgb(lv >= 1 ? "#7ae8ff" : "#e8fbff"), a: 1, rim: true });
+    void tier;
   }
   function equipment(g, kit2, T3, gl2, rnd) {
     const fl = gl2("filter"), ht = gl2("heater"), air = gl2("air");
     const glow = new Geo();
     const k = T3.minDim / 30;
-    if (T3.round) {
-      if (fl > 0) {
-        const p = T3.floorPoint(0.22, 0.75, 2);
-        g.push();
-        g.at(p[0], p[1], p[2]);
-        g.cyl(1.1, 1.1, 2.6, 10, "#2a3440", { jit: 0.08, seed: 3 });
-        g.at(0, 2.6, 0);
-        g.cyl(0.25, 0.25, T3.top - p[1] - 1, 6, "#e8f4ff");
-        g.pop();
-        kit2.filterOut = [p[0], T3.waterY - 1, p[2]];
-      }
-      if (ht > 0) {
-        const p = T3.floorPoint(0.8, 0.7, 2);
-        g.push();
-        g.at(p[0], p[1] + 1.5, p[2]);
-        g.rotZ(0.15);
-        g.cyl(0.55, 0.55, T3.waterY - p[1] - 1, 8, "#d8f0f8");
-        g.pop();
-        glow.push();
-        glow.at(p[0], p[1] + 2, p[2]);
-        glow.rotZ(0.15);
-        glow.cyl(0.35, 0.35, 3.4, 6, "#ffffff");
-        glow.pop();
-        kit2.heater = [p[0], p[1] + 3, p[2]];
-      }
-      const sp = T3.floorPoint(0.6, 0.62, 2);
-      airStone(g, sp, 0.9, null);
-      kit2.stones.push([sp[0], sp[1] + 0.6, sp[2]]);
-      for (let i = 1; i <= air; i++) {
-        const q = T3.floorPoint(0.3 + i * 0.15, 0.4, 2);
-        airStone(g, q, 0.7, null);
-        kit2.stones.push([q[0], q[1] + 0.5, q[2]]);
-      }
-      if (glow.n) kit2.glow.push({ mesh: glow.build(), col: rgb("#ff8a3a"), a: 1 });
-      return;
-    }
     const W8 = T3.W, D = T3.D, H8 = T3.H;
     if (fl === 0) {
       const p = T3.floorPoint(0.06, 0.94, 2.5 * k);
@@ -28962,30 +29031,33 @@ void main() {
     }
     return dyn.end();
   }
-  var SUBSTRATES, LIGHTS, CAUSTIC_TILE, GLASS_EDGE, SILVER, SILVER_D, WHITE2, AQUA, CAUSTICS, CPTS, C_N, C_SIZE, SHAFT;
+  var SUBSTRATES, LIGHTS, CAUSTIC_TILE, GLASS_EDGE, GLASS_EDGE_D, GLASS_TOP, SILVER, SILVER_D, WHITE2, AQUA, CHROME, CAUSTICS, CPTS, C_N, C_SIZE, SHAFT;
   var init_lptank = __esm({
     "src/aquarium/lptank.js"() {
       init_lpkit();
       init_sim3d();
       SUBSTRATES = [
-        { name: "Aqua Gravel", cols: ["#e8dcb4", "#d8ccA0", "#f0e6c4", "#cfc29a"], peb: ["#6ad8f0", "#bff4ff", "#3aa8e0", "#f4fbff", "#8ae0d0", "#2a8cd0"], side: ["#b8a47a", "#d4c49a"], pebN: 1.4 },
-        { name: "Beach Sand", cols: ["#f4e2b0", "#ecd8a4", "#f8eac4", "#e4d098"], peb: ["#fff0c8", "#dcc08a", "#f8e8c0", "#ffffff"], side: ["#c8a870", "#e0c690"], pebN: 0.35 },
-        { name: "Snow Pebbles", cols: ["#e8eef4", "#dfe8f0", "#eef4f8", "#d8e2ec"], peb: ["#ffffff", "#e8f0f8", "#d0dce8", "#f4f8ff", "#c0d0e0"], side: ["#a8b8cc", "#d0dce8"], pebN: 1.6 },
-        { name: "Rainbow Gravel", cols: ["#e8e0f0", "#dcd8ec", "#f0e8f4", "#d4d0e4"], peb: ["#ff6a8a", "#ffd23a", "#6ae04a", "#3ac4f8", "#a86aff", "#ff9a3a", "#ffffff"], side: ["#9a8ab0", "#c0b4d4"], pebN: 1.6 },
-        { name: "Black Sand", cols: ["#2a2e3a", "#32364a", "#262a36", "#3a3e4e"], peb: ["#3a3e4c", "#1a1e28", "#4a5060", "#2a3240"], side: ["#1a1e28", "#2a2e3a"], pebN: 0.6, glint: "#e8f4ff" }
+        { name: "Aqua Gravel", cols: ["#e8dcb4", "#d8ccA0", "#f0e6c4", "#cfc29a"], peb: ["#6ad8f0", "#bff4ff", "#3aa8e0", "#f4fbff", "#8ae0d0", "#2a8cd0"], side: ["#b8a47a", "#d4c49a"], soil: "#6a5a44", pebN: 1.4 },
+        { name: "Beach Sand", cols: ["#f4e2b0", "#ecd8a4", "#f8eac4", "#e4d098"], peb: ["#fff0c8", "#dcc08a", "#f8e8c0", "#ffffff"], side: ["#c8a870", "#e0c690"], soil: "#a88a5a", pebN: 0.35 },
+        { name: "Snow Pebbles", cols: ["#e8eef4", "#dfe8f0", "#eef4f8", "#d8e2ec"], peb: ["#ffffff", "#e8f0f8", "#d0dce8", "#f4f8ff", "#c0d0e0"], side: ["#a8b8cc", "#d0dce8"], soil: "#7a889a", pebN: 1.6 },
+        { name: "Rainbow Gravel", cols: ["#e8e0f0", "#dcd8ec", "#f0e8f4", "#d4d0e4"], peb: ["#ff6a8a", "#ffd23a", "#6ae04a", "#3ac4f8", "#a86aff", "#ff9a3a", "#ffffff"], side: ["#9a8ab0", "#c0b4d4"], soil: "#6a5a80", pebN: 1.6 },
+        { name: "Black Sand", cols: ["#2a2e3a", "#32364a", "#262a36", "#3a3e4e"], peb: ["#3a3e4c", "#1a1e28", "#4a5060", "#2a3240"], side: ["#1a1e28", "#2a2e3a"], soil: "#14161e", pebN: 0.6, glint: "#e8f4ff" }
       ];
       LIGHTS = [
-        { col: "#eef8ff", shaft: "#fffbe8", n: 2 },
+        { col: "#eef8ff", shaft: "#fffbe8", n: 3 },
         { col: "#8adcff", shaft: "#d8f6ff", n: 4 },
         { col: "rainbow", shaft: "#f0e8ff", n: 5 },
         { col: "#fff0c0", shaft: "#fff4d0", n: 7 }
       ];
       CAUSTIC_TILE = 18;
       GLASS_EDGE = "#b4f6ee";
+      GLASS_EDGE_D = "#7fdcd0";
+      GLASS_TOP = "#e4fffa";
       SILVER = "#d4dee8";
       SILVER_D = "#8e9cac";
       WHITE2 = "#f6fbff";
       AQUA = "#3ac4f8";
+      CHROME = "#e2ecf4";
       CAUSTICS = null;
       CPTS = null;
       C_N = 20;
@@ -28997,12 +29069,13 @@ void main() {
   // src/aquarium/lproom.js
   function buildRoom(tier, kit2) {
     const T3 = kit2.shape;
-    const wall = T3.d.stand === "wall";
-    const g = new Geo(), glow = new Geo(), out = new Geo();
+    const ped = T3.d.stand === "pedestal";
+    const PH = kit2.plinth || 0;
+    const g = new Geo(), glow = new Geo(), out = new Geo(), aglow = new Geo();
     const rnd = srand(555 + tier);
-    const fy = wall ? -96 : T3.d.stand === "cabinet" ? -80 : -76;
+    const fy = Math.round(ped ? -PH - 70 : -PH - 74);
     const R4 = { x0: -380, x1: 380, z0: -330, z1: 340, y1: 205 };
-    const room = { glow: [], glass: [], rotors: [], clouds: [], floorY: fy, bounds: R4, yawLimit: wall ? 1.15 : null, sun: norm2([0.42, 0.42, -1]) };
+    const room = { glow: [], glass: [], rotors: [], clouds: [], floorY: fy, bounds: R4, yawLimit: null, sun: norm2([0.42, 0.42, -1]) };
     g.jit = 0.05;
     g.seed = 3;
     const pw = 22;
@@ -29014,8 +29087,8 @@ void main() {
         z = z1;
       }
     }
-    const rugR = Math.max(110, T3.round ? 60 : T3.W * 0.9);
-    const rugZ = wall ? T3.D / 2 + rugR * 0.9 : 0;
+    const rugR = Math.max(110, T3.W * 1.7);
+    const rugZ = 0;
     ringDisk(g, 0, fy + 0.3, rugZ, rugR, 0, 32, "#7fd8f0");
     ringDisk(g, 0, fy + 0.4, rugZ, rugR * 0.86, rugR * 0.8, 32, "#ffffff");
     ringDisk(g, 0, fy + 0.4, rugZ, rugR * 0.5, rugR * 0.44, 32, "#bff0ff");
@@ -29033,15 +29106,14 @@ void main() {
     glow.pop();
     g.push();
     g.at(0, R4.y1 - 3, 40);
-    g.cyl(50, 50, 3, 20, CHROME);
+    g.cyl(50, 50, 3, 20, CHROME2);
     g.pop();
     frameZ(g, win2, R4.z0, 3);
     frameX(g, sw, R4.x0, 3);
     room.glass.push(paneZ(win2, R4.z0 + 1), paneX(sw, R4.x0 + 1));
     outside(out, room, rnd, fy);
-    if (T3.d.stand === "wall") partition(g, T3, fy, R4);
-    else if (T3.d.stand === "cabinet") cabinet(g, T3, fy);
-    else desk(g, glow, T3, fy, rnd);
+    if (ped) pedestal(g, aglow, T3, PH, fy);
+    else desk(g, glow, T3, fy, rnd, PH);
     shelves(g, R4, fy, rnd);
     bigPlant(g, [R4.x1 - 70, fy, R4.z0 + 70], 1.15, rnd);
     bigPlant(g, [R4.x0 + 60, fy, R4.z1 - 80], 0.9, rnd);
@@ -29051,6 +29123,7 @@ void main() {
     poster(g, glow, R4, fy);
     room.opaque = mergeBuild(g, out);
     room.glow.push({ mesh: glow.build(), col: [1, 1, 0.97] });
+    if (aglow.n) room.glow.push({ mesh: aglow.build(), col: rgb("#6adcff") });
     return room;
   }
   function norm2(v) {
@@ -29231,8 +29304,8 @@ void main() {
       room.clouds.push({ mesh: cg.build(), pos: [Math.cos(a) * r, 520 + rnd() * 380, Math.sin(a) * r], speed: 4 + rnd() * 6 });
     }
   }
-  function desk(g, glow, T3, fy, rnd) {
-    const top = T3.d.hood === "lamp" ? -4.6 : 0;
+  function desk(g, glow, T3, fy, rnd, PH) {
+    const top = -PH;
     g.push();
     g.at(0, top, 0);
     glow.push();
@@ -29248,20 +29321,20 @@ void main() {
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
       g.push();
       g.at(sx * (w / 2 - 8), fy, sz * (d / 2 - 8));
-      g.cyl(2.2, 2.2, -4 - fy, 8, CHROME);
+      g.cyl(2.2, 2.2, -4 - fy, 8, CHROME2);
       g.pop();
     }
     for (const sx of [-1, 1]) {
       g.push();
       g.at(sx * (w / 2 - 8), fy + 18, -d / 2 + 8);
       g.rotX(Math.PI / 2);
-      g.cyl(1.4, 1.4, d - 16, 6, CHROME);
+      g.cyl(1.4, 1.4, d - 16, 6, CHROME2);
       g.pop();
     }
     g.push();
     g.at(-w / 2 + 22, 0, -d / 2 + 18);
-    g.cyl(7, 7.5, 1.6, 12, CHROME);
-    g.tube([[0, 1.6, 0], [3, 22, -3], [14, 34, 4]], 0.9, 6, CHROME);
+    g.cyl(7, 7.5, 1.6, 12, CHROME2);
+    g.tube([[0, 1.6, 0], [3, 22, -3], [14, 34, 4]], 0.9, 6, CHROME2);
     g.at(15, 33, 5);
     g.rotZ(-0.9);
     g.lathe([[2, 0], [5, -3], [8, -8]], 12, GLOSS, { inside: false });
@@ -29292,63 +29365,54 @@ void main() {
     g.pop();
     void rnd;
   }
-  function cabinet(g, T3, fy) {
-    const w = T3.W + 6, d = T3.D + 6;
-    g.slab(-w / 2, fy, -d / 2, w / 2, -1.6, d / 2, 1.5, { top: GLOSS, side: "#eaf3fa", front: "#f4f9fd" });
-    g.box(-w / 2, fy, -d / 2, w / 2, fy + 6, d / 2, { top: "#d8e6f0", side: "#c8dae8" });
-    g.box(-w / 2 - 0.1, -10, d / 2, w / 2 + 0.1, -8.6, d / 2 + 0.2, AQUA2);
-    const doors = T3.W > 90 ? 3 : 2;
-    for (let i = 0; i < doors; i++) {
-      const x0 = -w / 2 + 4 + i * (w - 8) / doors, x1 = x0 + (w - 8) / doors - 2;
-      g.box(x0, fy + 9, d / 2, x1, -14, d / 2 + 0.6, "#f8fcff");
-      g.push();
-      g.at(i % 2 ? x0 + 4 : x1 - 4, (fy - 14) / 2 + 6, d / 2 + 0.6);
-      g.box(-0.6, -6, 0, 0.6, 6, 1.4, CHROME);
-      g.pop();
-    }
-  }
-  function partition(g, T3, fy, R4) {
-    const W8 = T3.W, H8 = T3.H, b = 9;
-    const zf = T3.D / 2 + 3, zb = -T3.D / 2 - 16;
-    const box2 = (x0, y0, x1, y1) => g.box(x0, y0, zb, x1, y1, zf, { top: WALL, side: WALL, front: WALL });
-    box2(R4.x0, fy, -W8 / 2 - b, R4.y1);
-    box2(W8 / 2 + b, fy, R4.x1, R4.y1);
-    box2(-W8 / 2 - b, fy, W8 / 2 + b, -b);
-    box2(-W8 / 2 - b, H8 + b, W8 / 2 + b, R4.y1);
-    g.box(R4.x0, fy, zf, R4.x1, fy + 9, zf + 2, TRIM2);
-    g.box(R4.x0, fy + 88, zf, -W8 / 2 - b, fy + 92, zf + 1, TRIM2);
-    g.box(W8 / 2 + b, fy + 88, zf, R4.x1, fy + 92, zf + 1, TRIM2);
-    g.slab(-W8 * 0.35, fy + 36, zf + 30, W8 * 0.35, fy + 42, zf + 62, 3, { top: GLOSS, side: "#e2eef6" });
-    for (const s of [-1, 1]) {
-      g.push();
-      g.at(s * W8 * 0.3, fy, zf + 46);
-      g.cyl(2, 2, 36, 8, CHROME);
-      g.pop();
-    }
-    for (const s of [-1, 1]) {
-      const x = s * (W8 / 2 + b + 16);
-      g.box(x - 3, fy + 10, zf, x + 3, H8 + b + 10, zf + 1.5, AQUA2);
-      const px2 = s * (W8 / 2 + b + 62), py = H8 * 0.55;
-      g.push();
-      g.at(px2, py, zf + 0.5);
-      g.rotX(Math.PI / 2);
-      const ring2 = [];
-      for (let i = 0; i <= 20; i++) {
-        const a = i / 20 * Math.PI * 2;
-        ring2.push([Math.cos(a) * 16, 0, Math.sin(a) * 16]);
+  function pedestal(g, aglow, T3, PH, fy) {
+    const t = T3.d.glass || 1, S10 = T3.W;
+    const w = S10 + 2 * t + Math.max(6, S10 * 0.12), d = w;
+    const top = -PH, ch = Math.max(3, S10 * 0.06);
+    g.slab(-w / 2 + 3, fy, -d / 2 + 3, w / 2 - 3, fy + 6, d / 2 - 3, ch, { top: "#c8d8e6", side: "#7f94a8", front: "#8aa0b4" });
+    aglow.slab(-w / 2 + 1, fy + 0.15, -d / 2 + 1, w / 2 - 1, fy + 0.45, d / 2 - 1, ch * 1.1, "#ffffff");
+    g.slab(-w / 2, fy + 6, -d / 2, w / 2, top - 3.4, d / 2, ch, { top: GLOSS, side: "#edf5fb", front: "#f6fbfe", bottom: "#d0dfea" });
+    aglow.slab(-w / 2 + 0.25, top - 3.4, -d / 2 + 0.25, w / 2 - 0.25, top - 2.3, d / 2 - 0.25, ch, "#ffffff");
+    g.slab(-w / 2 - 1.4, top - 2.3, -d / 2 - 1.4, w / 2 + 1.4, top, d / 2 + 1.4, ch * 1.15, { top: GLOSS, side: "#e8f2f8", front: "#f2f8fc" });
+    const y0 = fy + 10, y1 = top - 7;
+    const doors = (face3) => {
+      for (const s of [-1, 1]) {
+        const a0 = s < 0 ? -w / 2 + ch + 1 : 0.6, a1 = s < 0 ? -0.6 : w / 2 - ch - 1;
+        const P5 = (u, y, k) => face3 === "z" ? [u, y, d / 2 + k] : [w / 2 + k, y, -u];
+        const box2 = (u0, yy0, u1, yy1, k0, k1, col) => {
+          const A2 = P5(u0, yy0, k0), B2 = P5(u1, yy1, k1);
+          g.box(Math.min(A2[0], B2[0]), yy0, Math.min(A2[2], B2[2]), Math.max(A2[0], B2[0]), yy1, Math.max(A2[2], B2[2]), col);
+        };
+        box2(a0, y0, a1, y1, 0, 0.5, { top: "#ffffff", side: "#eef5fa", front: "#fbfdff" });
+        const hu = s < 0 ? a1 - 2.2 : a0 + 2.2, hy = (y0 + y1) / 2 + 6;
+        box2(hu - 0.5, hy - 7, hu + 0.5, hy + 7, 0.5, 1.6, CHROME2);
+        const pc = P5((a0 + a1) / 2, y1 - (y1 - y0) * 0.24, 0.55);
+        const pr = Math.min((a1 - a0) * 0.28, (y1 - y0) * 0.16);
+        g.push();
+        g.at(pc[0], pc[1], pc[2]);
+        if (face3 === "z") g.rotX(Math.PI / 2);
+        else {
+          g.rotZ(-Math.PI / 2);
+        }
+        const ring = [];
+        for (let i = 0; i <= 20; i++) {
+          const a = i / 20 * Math.PI * 2;
+          ring.push([Math.cos(a) * pr, 0, Math.sin(a) * pr]);
+        }
+        g.tube(ring, Math.max(0.5, pr * 0.12), 6, CHROME2, { caps: false });
+        g.cyl(pr * 0.94, pr * 0.94, 0.4, 20, "#7fd8ff");
+        g.pop();
+        for (let i = 0; i < 3; i++) {
+          const q = P5((a0 + a1) / 2 + (i - 1) * pr * 0.35, pc[1] - pr * 0.3 + i * pr * 0.28, 1.1);
+          g.push();
+          g.at(q[0], q[1], q[2]);
+          g.sphere(pr * (0.12 + i * 0.03), 0, "#e8fbff", { smooth: true });
+          g.pop();
+        }
       }
-      g.tube(ring2, 3, 6, CHROME, { caps: false });
-      g.cyl(14, 14, 0.6, 20, "#7fd8ff");
-      g.pop();
-      g.push();
-      g.at(px2, fy, zf + 14);
-      g.box(-34, 0, -10, 34, 26, 10, { top: "#6a4a2a", side: "#f4f8fc" });
-      for (let i = 0; i < 7; i++) {
-        const lx = -28 + i * 9.3;
-        g.blade([[lx, 26, 0], [lx + (i % 2 ? 4 : -4), 46, 3], [lx + (i % 2 ? 9 : -9), 58, 6]], [5, 6, 0], i % 2 ? "#3cb84a" : "#5ad46a", [1, 0, 0]);
-      }
-      g.pop();
-    }
+    };
+    doors("z");
+    doors("x");
   }
   function shelves(g, R4, fy, rnd) {
     const x = R4.x1 - 2;
@@ -29442,7 +29506,7 @@ void main() {
     g.pop();
     void glow;
   }
-  var WALL, WAIN, TRIM2, WOOD2, CHROME, AQUA2, GLOSS, GRASS;
+  var WALL, WAIN, TRIM2, WOOD2, CHROME2, AQUA2, GLOSS, GRASS;
   var init_lproom = __esm({
     "src/aquarium/lproom.js"() {
       init_lpkit();
@@ -29450,7 +29514,7 @@ void main() {
       WAIN = "#cfe9f5";
       TRIM2 = "#ffffff";
       WOOD2 = ["#e8c89a", "#e2c090", "#eccfa4", "#dcb886"];
-      CHROME = "#dfe8f0";
+      CHROME2 = "#dfe8f0";
       AQUA2 = "#3ac4f8";
       GLOSS = "#f8fcff";
       GRASS = ["#5cc832", "#6ad43a", "#4ab82a", "#86e04a", "#3aa82a"];
@@ -31354,16 +31418,16 @@ void main() {
       m.line(x0 + 1.5, y0 + 1, z0 + 1, x0 + 1.5, y0 + 5, z0, weed, 0.5);
       straps(KG(kit2, "#2fb8e8"));
     } else if (id2 === "globe") {
-      const sea = kit2.glass("#4cd83a", { ga: 215 }), land = KG(kit2, "#f4fff0"), ring2 = KG(kit2, "#ffffff", { spec: 1.6 }), base = KG(kit2, "#2fb8e8");
+      const sea = kit2.glass("#4cd83a", { ga: 215 }), land = KG(kit2, "#f4fff0"), ring = KG(kit2, "#ffffff", { spec: 1.6 }), base = KG(kit2, "#2fb8e8");
       const gx = cx, gy = hy + 7.4, gz = bz - 6.4, r = 5.4;
       m.sphere(gx, gy, gz, r, (x, y, z) => {
         const nx = (x - gx) / r, ny = (y - gy) / r, nz = (z - gz) / r;
         const s = Math.sin(nx * 3.1 + 1.2) * Math.sin(ny * 4.3 + 0.4) + 0.8 * Math.sin(nz * 3.7 + nx * 2.1);
         return s > 0.42 ? land : sea;
       });
-      for (let a = -0.4; a < Math.PI + 0.4; a += 0.08) m.set(gx + Math.cos(a) * (r + 1.2), gy + Math.sin(a) * (r + 1.2), gz, ring2);
+      for (let a = -0.4; a < Math.PI + 0.4; a += 0.08) m.set(gx + Math.cos(a) * (r + 1.2), gy + Math.sin(a) * (r + 1.2), gz, ring);
       m.box(gx - 2, hy + 0.6, gz - 1.5, gx + 2, hy + 1.6, gz + 1.5, base);
-      m.line(gx, hy + 1.6, gz, gx, gy - r - 1, gz, ring2, 0.5);
+      m.line(gx, hy + 1.6, gz, gx, gy - r - 1, gz, ring, 0.5);
       m.box(cx - 2.5, hy + 2, bz - 1.4, cx + 2.5, hy + 7, bz - 0.4, base);
       straps(KG(kit2, "#2fb8e8"));
     } else if (id2 === "cape") {
@@ -33330,12 +33394,12 @@ void main() {
     body.push();
     body.at(0.75, 0, 0);
     body.rotZ(Math.PI / 2);
-    const ring2 = [];
+    const ring = [];
     for (let i = 0; i <= 14; i++) {
       const a = i / 14 * Math.PI * 2;
-      ring2.push([Math.cos(a) * 1.1, 0, Math.sin(a) * 1.1]);
+      ring.push([Math.cos(a) * 1.1, 0, Math.sin(a) * 1.1]);
     }
-    body.tube(ring2, 0.28, 5, mixc(tint.tint, "#ffffff", 0.4), { caps: false });
+    body.tube(ring, 0.28, 5, mixc(tint.tint, "#ffffff", 0.4), { caps: false });
     body.pop();
     const face3 = new Geo();
     for (const s of [-1, 1]) {
@@ -33577,7 +33641,7 @@ void main() {
           this.plants = new PlantField(this.kit.shape, aq.tier, TANK_TIERS[aq.tier].plants + (gear2.light | 0) * 2);
           this.plantMesh = null;
           this.oldKit = oldKit && aq.growAnim ? oldKit : null;
-          if (first) this.setPreset("front", true);
+          if (first) this.setPreset("iso", true);
           else this.fitPreset();
         }
         dropOldKit() {
@@ -33585,25 +33649,31 @@ void main() {
           this.oldKit = null;
         }
         // ------------------------------------------------------------------ camera
+        // camera distance that fits the glass cube (its bounding sphere plus the plinth and the light above)
         frame() {
           const T3 = this.kit.shape;
           const s = T3.size;
-          const fitW = Math.max(s[0], s[2] * 0.6), fitH = T3.top;
+          const R4 = Math.hypot(s[0], s[1] * 1.15, s[2]) * 0.5;
           const asp = this.w / this.h;
           const tf = Math.tan(FOV * Math.PI / 180 / 2);
-          const dist2 = Math.max(fitH / 2 / tf, fitW / 2 / (tf * asp)) * 1.32 + Math.max(s[2], 10) * 0.5;
-          return { dist: dist2, target: [0, T3.top * 0.45, 0], max: Math.max(dist2 * 2.6, 220) };
+          const dist2 = Math.max(R4 / tf, R4 / (tf * asp)) * 1.12;
+          return { dist: dist2, target: [0, T3.top * 0.44, 0], max: Math.max(dist2 * 2.6, 220) };
         }
+        // presets: 'iso' (default, a 3/4 view from above: two glass faces and the water surface), 'front', 'top',
+        // 'close', 'side', 'room'
         setPreset(name, snap2 = false) {
           if (!this.kit) return;
+          if (name === "default") name = "iso";
+          this.follow = null;
           const f = this.frame();
           this.preset = name;
-          const c = this.camT;
-          if (name === "top") Object.assign(c, { yaw: -0.15, pitch: 1.18, dist: f.dist * 1.05, target: [0, this.kit.shape.waterY * 0.4, 0] });
-          else if (name === "close") Object.assign(c, { yaw: 0.12, pitch: 0.06, dist: f.dist * 0.5, target: [0, this.kit.shape.waterY * 0.42, 0] });
-          else if (name === "side") Object.assign(c, { yaw: -1.1, pitch: 0.16, dist: f.dist * 0.95, target: f.target.slice() });
-          else if (name === "room") Object.assign(c, { yaw: -0.55, pitch: 0.26, dist: f.dist * 2.1, target: [0, this.kit.shape.top * 0.6, 0] });
-          else Object.assign(c, { yaw: -0.26, pitch: 0.17, dist: f.dist * (this.kit.shape.d.stand === "wall" ? 1.02 : 1.28), target: f.target.slice() });
+          const c = this.camT, T3 = this.kit.shape;
+          if (name === "top") Object.assign(c, { yaw: 0.35, pitch: 1.3, dist: f.dist * 1.02, target: [0, T3.waterY * 0.4, 0] });
+          else if (name === "front") Object.assign(c, { yaw: 0, pitch: 0.12, dist: f.dist * 1, target: f.target.slice() });
+          else if (name === "close") Object.assign(c, { yaw: 0.42, pitch: 0.22, dist: f.dist * 0.55, target: [0, T3.waterY * 0.42, 0] });
+          else if (name === "side") Object.assign(c, { yaw: 1.2, pitch: 0.2, dist: f.dist * 0.95, target: f.target.slice() });
+          else if (name === "room") Object.assign(c, { yaw: 0.8, pitch: 0.3, dist: f.dist * 2.2, target: [0, T3.top * 0.6, 0] });
+          else Object.assign(c, { yaw: 0.68, pitch: 0.5, dist: f.dist * 1.04, target: [0, T3.top * 0.4, 0] });
           c.target = c.target.slice();
           this.limit(c);
           if (snap2) {
@@ -33612,7 +33682,7 @@ void main() {
           }
         }
         fitPreset() {
-          this.setPreset(this.preset || "front");
+          this.setPreset(this.preset || "iso");
         }
         limit(c) {
           const f = this.frame();
@@ -33631,7 +33701,19 @@ void main() {
           this.limit(this.camT);
           this.preset = null;
         }
+        // keep the camera on a fish (the fish manager's "See in tank"): it glides in and follows until you orbit / pan
+        focusFish(f) {
+          if (!this.kit || !f) return;
+          this.follow = f;
+          this.preset = null;
+          const c = this.camT, T3 = this.kit.shape;
+          c.dist = clamp(f.len * 7 + T3.minDim * 0.25, T3.minDim * 0.45, this.frame().dist * 0.8);
+          c.pitch = clamp(c.pitch, 0.18, 0.55);
+          c.target = f.p.slice();
+          this.limit(c);
+        }
         pan(dx, dy) {
+          this.follow = null;
           const k = this.camT.dist * 22e-4;
           const c = this.camT;
           for (let i = 0; i < 3; i++) c.target[i] += (-this.right[i] * dx + this.up[i] * dy) * k;
@@ -33641,13 +33723,21 @@ void main() {
         zoom(k) {
           this.camT.dist *= k;
           this.limit(this.camT);
-          this.preset = null;
+          if (!this.follow) this.preset = null;
         }
         update(dt) {
           if (!this.kit) return;
           this.t += dt;
           const c = this.cam, T3 = this.camT;
-          const k = 1 - Math.exp(-dt * 7);
+          if (this.follow) {
+            if (!this.aq.fish.includes(this.follow)) this.follow = null;
+            else {
+              const p = this.follow.p;
+              for (let i = 0; i < 3; i++) T3.target[i] = p[i];
+              this.limit(T3);
+            }
+          }
+          const k = 1 - Math.exp(-dt * (this.follow ? 4 : 7));
           let dy = ((T3.yaw - c.yaw + Math.PI) % TAU + TAU) % TAU - Math.PI;
           c.yaw += dy * k;
           c.pitch = lerp(c.pitch, T3.pitch, k);
@@ -38587,7 +38677,7 @@ ${hearts} ${status}
     }
     return out;
   }
-  function idOverlay(r, set, ring2 = true) {
+  function idOverlay(r, set, ring = true) {
     const { w, h, ids } = r;
     const src = ctxOf(r.canvas).getImageData(0, 0, w, h);
     const s32 = new Uint32Array(src.data.buffer);
@@ -38602,7 +38692,7 @@ ${hearts} ${status}
         any = true;
         continue;
       }
-      if (!ring2 || ids[p] || !s32[p]) continue;
+      if (!ring || ids[p] || !s32[p]) continue;
       const x = p % w, y = p / w | 0;
       if (x > 0 && set.has(ids[p - 1]) || x < w - 1 && set.has(ids[p + 1]) || y > 0 && set.has(ids[p - w]) || y < h - 1 && set.has(ids[p + w])) d[p] = s32[p];
     }
@@ -39604,8 +39694,8 @@ ${hearts} ${status}
     const n2 = Math.round(14 + size * 2.2);
     for (let i = 0; i < n2; i++) {
       const a = i / n2 * TAU + r.float(-0.1, 0.1);
-      const ring2 = i % 2 ? R4 * 0.55 : R4 + 0.4;
-      let x = cx + Math.cos(a) * ring2, y = top, z = cz + Math.sin(a) * ring2 * 0.8;
+      const ring = i % 2 ? R4 * 0.55 : R4 + 0.4;
+      let x = cx + Math.cos(a) * ring, y = top, z = cz + Math.sin(a) * ring * 0.8;
       const L2 = size * r.float(0.45, 0.7);
       let dx = Math.cos(a) * 0.55, dy = 0.85, dz = Math.sin(a) * 0.45;
       for (let k = 0; k < L2; k++) {
@@ -40360,11 +40450,11 @@ ${hearts} ${status}
       }
     }
   }
-  function capFan(mb, ring2, c, paint5, deform, flip) {
+  function capFan(mb, ring, c, paint5, deform, flip) {
     const pc = deform(c), cc = paint5(c);
-    const P5 = ring2.map(deform), K2 = ring2.map(paint5);
-    for (let j = 0; j < ring2.length; j++) {
-      const j2 = (j + 1) % ring2.length;
+    const P5 = ring.map(deform), K2 = ring.map(paint5);
+    for (let j = 0; j < ring.length; j++) {
+      const j2 = (j + 1) % ring.length;
       if (flip) triV(mb, pc, P5[j], P5[j2], cc, K2[j], K2[j2]);
       else triV(mb, pc, P5[j2], P5[j], cc, K2[j2], K2[j]);
     }
@@ -41687,7 +41777,7 @@ ${hearts} ${status}
     const K2 = DOT_K;
     const m = K2.model(34, 40, 34);
     const white = K2.g("#f6fbff", { spec: 1.5, specPow: 10, light: 0.12 }), whiteD = K2.g("#d6e8f4", { spec: 1.2 }), screen = K2.g("#0c2246", { spec: 1.6, specPow: 16 }), rim = K2.g("#2fd3e8", { spec: 1.4 });
-    const fin2 = K2.g("#59e0ff", { spec: 1.3 }), lime = K2.c("#a8ff5a", { emissive: 0.6, jitter: 0 }), ring2 = K2.c("#7affff", { emissive: 0.9, jitter: 0 }), grey = K2.g("#a8bccc");
+    const fin2 = K2.g("#59e0ff", { spec: 1.3 }), lime = K2.c("#a8ff5a", { emissive: 0.6, jitter: 0 }), ring = K2.c("#7affff", { emissive: 0.9, jitter: 0 }), grey = K2.g("#a8bccc");
     const cx = 17, cy = 18, cz = 17, R4 = 9.5;
     m.sphere(cx, cy, cz, R4, (x, y) => y < cy - 6.5 ? whiteD : white);
     shapeIn(m, cx - 9, cy - 7, cz, cx + 9, cy + 7, cz + R4 + 1, (x, y, z) => ((x - cx) / 6.8) ** 2 + ((y - cy - 0.6) / 5) ** 2 <= 1 && z > cz + 5, (x, y, z) => ((x - cx) / 6.8) ** 2 + ((y - cy - 0.6) / 5) ** 2 > 0.8 ? rim : screen);
@@ -41696,7 +41786,7 @@ ${hearts} ${status}
     m.sphere(cx + sw, cy + R4 + 5.6, cz, 1.6, lime);
     const fl = Math.sin(fi / 6 * TAU * 2) * 1.4;
     for (const s of [-1, 1]) for (let k = 0; k < 5; k++) for (let j = -1.5; j <= 1.5; j += 0.5) m.set(cx + s * (R4 + 0.4 + k), cy + 1 + j + k * 0.4 + fl * (k / 5), cz - 1 + j * 0.3, k > 3 ? rim : fin2);
-    for (let a = 0; a < TAU; a += 0.06) m.set(cx + Math.cos(a) * 5.6, 3, cz + Math.sin(a) * 5.6, ring2);
+    for (let a = 0; a < TAU; a += 0.06) m.set(cx + Math.cos(a) * 5.6, 3, cz + Math.sin(a) * 5.6, ring);
     m.cylinder(cx, cz, 5, 8.4, 2.4, grey);
     const head = { C: [cx, cy, cz], R: R4, Rm: I32, feats: { eyeL: { d: n3([0.32, 0.12, 0.94]), size: 2.4 }, eyeR: { d: n3([-0.32, 0.12, 0.94]), size: 2.4 }, mouth: { d: n3([0, -0.24, 0.97]), size: 2 } } };
     return { m, head, faceIds: /* @__PURE__ */ new Set([screen]), anchors: { top: [cx, cy + R4 + 7, cz], head: [cx, cy + R4, cz], mouth: [cx, cy - 2, cz + R4] }, ground: [cx, 0, cz], n: 6, eyes: "led", mouth: "led" };
@@ -57403,7 +57493,7 @@ ${hearts} ${status}
     }
     return { x: x + fw, y: y + fw, w: w - fw * 2, h: h - fw * 2 };
   }
-  var SKY7, DEEP, FROST, CHROME2, GOLD, GRASS2, UI_COLORS, iconOf, INSETS, STYLE_TONE, SLIDER_H, TOGGLE_W, TOGGLE_H, FRAME_TONE;
+  var SKY7, DEEP, FROST, CHROME3, GOLD, GRASS2, UI_COLORS, iconOf, INSETS, STYLE_TONE, SLIDER_H, TOGGLE_W, TOGGLE_H, FRAME_TONE;
   var init_panels = __esm({
     "src/ui/panels.js"() {
       init_canvas();
@@ -57416,7 +57506,7 @@ ${hearts} ${status}
       SKY7 = ["#0b3f74", "#1a68b0", "#2f8fdc", "#5cc0f4", "#9ee2ff", "#e4f8ff"];
       DEEP = ["#031634", "#082650", "#123f7c", "#1a5ea8", "#3c94d8", "#8fd0ff"];
       FROST = ["#5a8cac", "#9cc8e0", "#cfe9f7", "#e6f6fd", "#f4fbff", "#ffffff"];
-      CHROME2 = ["#2a4258", "#5a7c96", "#8fb0c8", "#c4dcea", "#e6f3fa", "#ffffff"];
+      CHROME3 = ["#2a4258", "#5a7c96", "#8fb0c8", "#c4dcea", "#e6f3fa", "#ffffff"];
       GOLD = ["#5a3608", "#a8680e", "#e0a020", "#ffd04a", "#ffe98a", "#fffbd8"];
       GRASS2 = ["#164e0e", "#2c8a1c", "#5cc234", "#94e05a", "#c8f590", "#f0ffd8"];
       UI_COLORS = {
@@ -57430,10 +57520,10 @@ ${hearts} ${status}
         wood: SKY7,
         woodDark: DEEP,
         paper: FROST,
-        brass: CHROME2,
+        brass: CHROME3,
         gold: GOLD,
         coral: GRASS2,
-        chrome: CHROME2,
+        chrome: CHROME3,
         glass: "#9fe6ff",
         sea: "#1f8fc6",
         seaDeep: "#0a3a6e",
@@ -57471,11 +57561,11 @@ ${hearts} ${status}
   }
   function lathe2(mb, prof, seg, col, o = {}) {
     const cx = o.x || 0, cy = o.y || 0, cz = o.z || 0, a0 = o.a0 ?? Math.PI / seg;
-    const ring2 = ([r, y]) => Array.from({ length: seg }, (_, j) => {
+    const ring = ([r, y]) => Array.from({ length: seg }, (_, j) => {
       const a = a0 + j / seg * Math.PI * 2;
       return [cx + Math.cos(a) * r, cy + y, cz + Math.sin(a) * r];
     });
-    const rings = prof.map(ring2);
+    const rings = prof.map(ring);
     const C3 = (i, j) => typeof col === "function" ? col(i, j) : col;
     for (let i = 0; i < prof.length - 1; i++) {
       const ym = cy + (prof[i][1] + prof[i + 1][1]) / 2;
@@ -57709,12 +57799,12 @@ ${hearts} ${status}
       if (Math.abs(c[1]) > 0.86) return "#f4fcff";
       return land(c) ? jit(c[1] > 0.3 ? "#8ae04a" : "#4cc23a", i, 0.08) : jit(c[1] > 0.2 ? "#4ac8f8" : "#2a98e8", i, 0.05);
     });
-    const ring2 = [];
+    const ring = [];
     for (let i = 0; i <= 12; i++) {
       const a = -Math.PI * 0.62 + i / 12 * Math.PI * 1.24;
-      ring2.push([Math.sin(a) * 0.86, 0.12 + Math.cos(a) * 0.86, -0.1]);
+      ring.push([Math.sin(a) * 0.86, 0.12 + Math.cos(a) * 0.86, -0.1]);
     }
-    tube(mb, ring2, 0.05, 5, "#dfeefa");
+    tube(mb, ring, 0.05, 5, "#dfeefa");
     tube(mb, [[0, -0.74, -0.1], [0, -0.86, -0.1]], 0.07, 6, "#b8cce0");
     lathe2(mb, [[0.46, -1], [0.48, -0.94], [0.3, -0.86], [0.1, -0.84]], 8, (i, j) => jit("#c8dcee", j), { capTop: true, capCol: "#e8f4fc" });
     return { mesh: mb.build(), yaw: 0.6, pitch: 0.18, spin: "full", center: [0, 0, 0] };
@@ -57852,11 +57942,11 @@ ${hearts} ${status}
   function GEM_MODEL(color = "#3ab4ff") {
     const mb = new MeshBuilder();
     const n2 = 8, top = 0.36, crown = 0.62, girdle = 0.9;
-    const ring2 = (r, y, a0) => Array.from({ length: n2 }, (_, i) => {
+    const ring = (r, y, a0) => Array.from({ length: n2 }, (_, i) => {
       const a = a0 + i / n2 * Math.PI * 2;
       return [Math.cos(a) * r, y, Math.sin(a) * r];
     });
-    const T3 = ring2(crown, top, Math.PI / n2), G = ring2(girdle, 0.12, 0), P5 = [0, -0.9, 0];
+    const T3 = ring(crown, top, Math.PI / n2), G = ring(girdle, 0.12, 0), P5 = [0, -0.9, 0];
     const light = mix(color, "#ffffff", 0.55), mid = color, dark = shade(color, -0.35);
     for (let i = 0; i < n2; i++) {
       const i2 = (i + 1) % n2;
@@ -62140,11 +62230,11 @@ ${hearts} ${status}
     m.sphere(7.5, 4.4, 5.2, 1.4, g);
   }
   function blackhole(m) {
-    const core = m.color("#0a0614", { spec: 0.6 }), ring2 = m.color("#b07aff", { emissive: 1 }), ring22 = m.color("#ff8ad8", { emissive: 0.9 });
+    const core = m.color("#0a0614", { spec: 0.6 }), ring = m.color("#b07aff", { emissive: 1 }), ring2 = m.color("#ff8ad8", { emissive: 0.9 });
     m.sphere(6.5, 5, 6.5, 3.4, core);
     for (let a = 0; a < TAU; a += 0.12) {
       const r = 5.6;
-      m.set(6.5 + Math.cos(a) * r, 5 + Math.sin(a) * 1.2, 6.5 + Math.sin(a) * r * 0.9, a % 0.5 < 0.25 ? ring2 : ring22);
+      m.set(6.5 + Math.cos(a) * r, 5 + Math.sin(a) * 1.2, 6.5 + Math.sin(a) * r * 0.9, a % 0.5 < 0.25 ? ring : ring2);
     }
   }
   function relic(m) {
@@ -66333,7 +66423,7 @@ kmlmk..
     const per = Math.max(1, Math.floor((w + 3) / (tileW + 3)));
     return Math.ceil(n2 / per) * 23 - 3;
   }
-  function pedestal(ctx2, cx, cy, w, t = 0, color = "#bff6ff") {
+  function pedestal2(ctx2, cx, cy, w, t = 0, color = "#bff6ff") {
     const py = cy + Math.round(w * 0.42);
     ctx2.save();
     ctx2.fillStyle = rgba("#0a4a7a", 0.12);
@@ -75363,8 +75453,8 @@ kmlmk..
     ctx2.ellipse(cx - r * 0.25, cy - r * 0.5, r * 0.62, r * 0.3, -0.35, 0, TAU);
     ctx2.fill();
     ctx2.restore();
-    const ring2 = portholeRing(r);
-    ctx2.drawImage(ring2, cx - r - 4, cy - r - 4);
+    const ring = portholeRing(r);
+    ctx2.drawImage(ring, cx - r - 4, cy - r - 4);
     if (Math.floor(t * 2) % 2) {
       ctx2.fillStyle = INK5;
       ctx2.fillRect(cx + r - 9, cy - r + 5, 5, 5);
@@ -83876,7 +83966,7 @@ kmlmk..
     if (!rod) return;
     const owned = R4.owned.includes(rod.id), eq = R4.equipped === rod.id;
     const cx = r.x + r.w / 2, hy = r.y + 46;
-    pedestal(ctx2, cx, hy, 80, t, mix(rarityCol(rod.rarity), "#ffffff", 0.4));
+    pedestal2(ctx2, cx, hy, 80, t, mix(rarityCol(rod.rarity), "#ffffff", 0.4));
     drawRays(ctx2, cx, hy, 56, t, owned ? 0.4 : 0.15, 12);
     drawAeroGlow(ctx2, cx, hy, 44, mix(rarityCol(rod.rarity), "#ffffff", 0.4), 0.6);
     const ic = icon("rod:" + rod.id, 64);
@@ -83979,7 +84069,7 @@ kmlmk..
     if (!rc) return;
     const open = recipeUnlocked(st, rc.id);
     const cx = r.x + r.w / 2, hy = r.y + 46;
-    pedestal(ctx2, cx, hy, 80, t);
+    pedestal2(ctx2, cx, hy, 80, t);
     drawAeroGlow(ctx2, cx, hy, 44, "#bff6ff", 0.6);
     drawRays(ctx2, cx, hy, 56, t, open ? 0.35 : 0.1, 12);
     const ic = icon(rc.icon, 64);
@@ -84125,7 +84215,7 @@ kmlmk..
     const has = i === 0 || unlocked(st, "boat", id2);
     const nd = nodeFor("boat", id2);
     const cx = r.x + r.w / 2, hy = r.y + 48;
-    pedestal(ctx2, cx, hy, 96, t);
+    pedestal2(ctx2, cx, hy, 96, t);
     drawRays(ctx2, cx, hy, 60, t, has ? 0.4 : 0.12, 12);
     drawAeroGlow(ctx2, cx, hy, 46, "#bff6ff", 0.6);
     const ic = icon("boat:" + id2, 80);

@@ -1,9 +1,11 @@
-// Aquarium tank tiers and tank gear (phase 6: a real 3D tank).
+// Aquarium tank tiers and tank gear (phase 6: a real 3D tank; phase 7: YOUR TANK IS A CUBE).
 //
-//   TANK_IDS / TANK_TIERS[i]   {id, name, shape: 'round'|'lamp'|'box'|'wall', cap (extra fish over stats.tankCap),
-//                               rate (income multiplier), offlineH (offline earnings cap, hours), plants, water}
-//   TANK3D[i]                  3D size of the tier in centimetres (inner glass): round {R, cy, open, water, gravel}
-//                              or box {W, H, D, water, gravel, slope, hood, stand}; the tank's base sits at y = 0
+//   TANK_IDS / TANK_TIERS[i]   {id, name, shape: 'cube', cap (extra fish over stats.tankCap), rate (income
+//                               multiplier), offlineH (offline earnings cap, hours), plants, water}
+//   TANK3D[i]                  3D size of the tier in centimetres (inner glass): a glass cube {W = H = D, water, gravel,
+//                               slope, glass (pane thickness), stand: 'desk' (on a glossy plinth on the desk) |
+//                               'pedestal' (a tall Aero pedestal on the floor), light: 'arm' | 'halo', fish}; the
+//                               tank's base sits at y = 0. The ids are the Lab's (tank:jar ... tank:wallaquarium).
 //   tankTier(state)            0..5 (state.tank.tier, raised to the best Lab unlock 'tank:<id>')
 //   tierCapBonus(state)        extra tank capacity of the current tier (skills.js computeStats adds it to tankCap)
 //   aeroRate(rec, sp, stats, tier, bonus, gearMul) -> Aero per minute for one fish
@@ -19,25 +21,23 @@ import * as shop from '../game/shopdata.js';
 export const TANK_IDS = ['jar', 'bowl', 'smalltank', 'bigtank', 'reeftank', 'wallaquarium'];
 
 export const TANK_TIERS = [
-  { id: 'jar', name: 'Goldfish Jar', shape: 'round', cap: 0, rate: 1, offlineH: 3, plants: 3, water: 'aero' },
-  { id: 'bowl', name: 'Bubble Bowl', shape: 'round', cap: 1, rate: 1.15, offlineH: 4, plants: 5, water: 'aero' },
-  { id: 'smalltank', name: 'Aqua Lamp', shape: 'lamp', cap: 2, rate: 1.3, offlineH: 5, plants: 8, water: 'aero' },
-  { id: 'bigtank', name: 'Big Tank', shape: 'box', cap: 3, rate: 1.5, offlineH: 6, plants: 13, water: 'aero' },
-  { id: 'reeftank', name: 'Reef Tank', shape: 'box', cap: 4, rate: 1.75, offlineH: 7, plants: 18, water: 'reef' },
-  { id: 'wallaquarium', name: 'Wall Aquarium', shape: 'wall', cap: 5, rate: 2.1, offlineH: 8, plants: 26, water: 'aero' },
+  { id: 'jar', name: 'Nano Cube', shape: 'cube', cap: 0, rate: 1, offlineH: 3, plants: 4, water: 'aero' },
+  { id: 'bowl', name: 'Bubble Cube', shape: 'cube', cap: 1, rate: 1.15, offlineH: 4, plants: 6, water: 'aero' },
+  { id: 'smalltank', name: 'Aqua Cube', shape: 'cube', cap: 2, rate: 1.3, offlineH: 5, plants: 9, water: 'aero' },
+  { id: 'bigtank', name: 'Big Cube', shape: 'cube', cap: 3, rate: 1.5, offlineH: 6, plants: 13, water: 'aero' },
+  { id: 'reeftank', name: 'Reef Cube', shape: 'cube', cap: 4, rate: 1.75, offlineH: 7, plants: 18, water: 'reef' },
+  { id: 'wallaquarium', name: 'Mega Cube', shape: 'cube', cap: 5, rate: 2.1, offlineH: 8, plants: 26, water: 'aero' },
 ];
 
-// Inner glass dimensions (cm). Round tanks: a glass globe of radius R centred at cy (cut flat at y = 0), open at
-// `open`, water up to `water`, gravel up to `gravel`. Box tanks: W x H x D centred on x / z, base at y = 0.
+// Inner glass dimensions (cm): every tier is a glass cube (W = H = D) centred on x / z with its base at y = 0.
+const cube = (S, o) => ({ shape: 'box', cube: true, W: S, H: S, D: S, water: Math.round(S * 0.9 * 10) / 10, ...o });
 export const TANK3D = [
-  // the jar: a mason-jar profile [[inner radius, y], ...] with a screw neck; the bowl: a glass globe
-  { shape: 'round', kind: 'jar', R: 9.2, cy: 8, open: 21, water: 15.6, gravel: 2.4, fish: 4.4,
-    prof: [[6.4, 0.6], [8.2, 1.2], [9.0, 2.6], [9.2, 5], [9.2, 12.4], [8.8, 14.6], [7.6, 16.6], [6.2, 18.0], [5.9, 18.8], [5.9, 21]] },
-  { shape: 'round', kind: 'bowl', R: 17, cy: 14.2, open: 26.6, water: 23.2, gravel: 3.6, fish: 5.4 },
-  { shape: 'box', W: 50, H: 27, D: 20, water: 25.2, gravel: 3.2, slope: 2.5, hood: 'lamp', stand: 'desk', fish: 6.2 },
-  { shape: 'box', W: 80, H: 42, D: 34, water: 39.5, gravel: 4.5, slope: 5, hood: 'lid', stand: 'cabinet', fish: 7.2 },
-  { shape: 'box', W: 104, H: 52, D: 46, water: 49, gravel: 5, slope: 7, hood: 'reef', stand: 'cabinet', fish: 8.2 },
-  { shape: 'box', W: 176, H: 72, D: 46, water: 68, gravel: 6, slope: 9, hood: 'wall', stand: 'wall', fish: 9.4 },
+  cube(24, { gravel: 2.6, slope: 1.2, glass: 0.7, stand: 'desk', light: 'arm', fish: 4.4 }),
+  cube(32, { gravel: 3.1, slope: 1.8, glass: 0.8, stand: 'desk', light: 'arm', fish: 5.2 }),
+  cube(42, { gravel: 3.7, slope: 2.6, glass: 0.95, stand: 'desk', light: 'arm', fish: 6.1 }),
+  cube(54, { gravel: 4.4, slope: 3.8, glass: 1.1, stand: 'pedestal', light: 'halo', fish: 7.1 }),
+  cube(68, { gravel: 5.2, slope: 5.2, glass: 1.3, stand: 'pedestal', light: 'halo', fish: 8.1 }),
+  cube(86, { gravel: 6, slope: 6.8, glass: 1.55, stand: 'pedestal', light: 'halo', fish: 9.4 }),
 ];
 
 // Aero per minute by rarity (falls back to the shop table when the Lab rebalances it).

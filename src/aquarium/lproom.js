@@ -1,8 +1,9 @@
 // The Frutiger Aero room around the 3D tank (phase 6), all low-poly: pale aqua walls with a white wainscot, a
 // light plank floor with a round aqua rug, a huge white-framed window onto rolling green hills (round trees, white
 // wind turbines with spinning rotors, a glass city in a water bubble, puffy clouds), a side window, shelves,
-// potted plants (monstera, snake plant, trailing pothos), a desk lamp, and the tier's furniture: a glossy desk
-// (jar, bowl, Aqua Lamp), an aquarium cabinet (big / reef tanks) or a partition wall the Wall Aquarium is built into.
+// potted plants (monstera, snake plant, trailing pothos), a desk lamp, and the tier's furniture: a glossy desk the
+// small cubes stand on (their own plinth on top), or a tall glossy Aero pedestal with an aqua glow band, doors with
+// portholes and a light line on the floor for the big cubes (phase 7).
 // The sky behind the windows is a 2D gradient + sun flare drawn by the view (light only).
 //
 //   buildRoom(tier, kit) -> {opaque: LPMesh, glow: [{mesh, col}], glass: [{mesh, pos, a}], rotors: [{mesh, pos, yaw, speed}],
@@ -16,12 +17,13 @@ const GRASS = ['#5cc832', '#6ad43a', '#4ab82a', '#86e04a', '#3aa82a'];
 
 export function buildRoom(tier, kit) {
   const T = kit.shape;
-  const wall = T.d.stand === 'wall';
-  const g = new Geo(), glow = new Geo(), out = new Geo();
+  const ped = T.d.stand === 'pedestal';
+  const PH = kit.plinth || 0;
+  const g = new Geo(), glow = new Geo(), out = new Geo(), aglow = new Geo();
   const rnd = srand(555 + tier);
-  const fy = wall ? -96 : T.d.stand === 'cabinet' ? -80 : -76;
+  const fy = Math.round(ped ? -PH - 70 : -PH - 74);
   const R = { x0: -380, x1: 380, z0: -330, z1: 340, y1: 205 };
-  const room = { glow: [], glass: [], rotors: [], clouds: [], floorY: fy, bounds: R, yawLimit: wall ? 1.15 : null, sun: norm([0.42, 0.42, -1]) };
+  const room = { glow: [], glass: [], rotors: [], clouds: [], floorY: fy, bounds: R, yawLimit: null, sun: norm([0.42, 0.42, -1]) };
   g.jit = 0.05; g.seed = 3;
 
   // ---- floor planks + rug
@@ -34,8 +36,8 @@ export function buildRoom(tier, kit) {
       z = z1;
     }
   }
-  const rugR = Math.max(110, (T.round ? 60 : T.W * 0.9));
-  const rugZ = wall ? T.D / 2 + rugR * 0.9 : 0;
+  const rugR = Math.max(110, T.W * 1.7);
+  const rugZ = 0;
   ringDisk(g, 0, fy + 0.3, rugZ, rugR, 0, 32, '#7fd8f0');
   ringDisk(g, 0, fy + 0.4, rugZ, rugR * 0.86, rugR * 0.8, 32, '#ffffff');
   ringDisk(g, 0, fy + 0.4, rugZ, rugR * 0.5, rugR * 0.44, 32, '#bff0ff');
@@ -64,9 +66,8 @@ export function buildRoom(tier, kit) {
   outside(out, room, rnd, fy);
 
   // ---- furniture for the tier
-  if (T.d.stand === 'wall') partition(g, T, fy, R);
-  else if (T.d.stand === 'cabinet') cabinet(g, T, fy);
-  else desk(g, glow, T, fy, rnd);
+  if (ped) pedestal(g, aglow, T, PH, fy);
+  else desk(g, glow, T, fy, rnd, PH);
 
   // ---- room decoration: shelves, plants, a beanbag, a poster
   shelves(g, R, fy, rnd);
@@ -79,6 +80,7 @@ export function buildRoom(tier, kit) {
 
   room.opaque = mergeBuild(g, out);
   room.glow.push({ mesh: glow.build(), col: [1, 1, 0.97] });
+  if (aglow.n) room.glow.push({ mesh: aglow.build(), col: rgb('#6adcff') });
   return room;
 }
 
@@ -228,9 +230,9 @@ function outside(g, room, rnd, fy) {
 }
 
 // ------------------------------------------------------------------ furniture
-function desk(g, glow, T, fy, rnd) {
-  // the Aqua Lamp stands on its own silver base, so its desk top sits a little lower
-  const top = T.d.hood === 'lamp' ? -4.6 : 0;
+function desk(g, glow, T, fy, rnd, PH) {
+  // the cube stands on its own glossy plinth, so the desk top sits under it
+  const top = -PH;
   g.push(); g.at(0, top, 0); glow.push(); glow.at(0, top, 0);
   desk0(g, glow, T, fy - top, rnd);
   g.pop(); glow.pop();
@@ -259,48 +261,46 @@ function desk0(g, glow, T, fy, rnd) {
   void rnd;
 }
 
-function cabinet(g, T, fy) {
-  const w = T.W + 6, d = T.D + 6;
-  g.slab(-w / 2, fy, -d / 2, w / 2, -1.6, d / 2, 1.5, { top: GLOSS, side: '#eaf3fa', front: '#f4f9fd' });
-  g.box(-w / 2, fy, -d / 2, w / 2, fy + 6, d / 2, { top: '#d8e6f0', side: '#c8dae8' });
-  g.box(-w / 2 - 0.1, -10, d / 2, w / 2 + 0.1, -8.6, d / 2 + 0.2, AQUA);
-  const doors = T.W > 90 ? 3 : 2;
-  for (let i = 0; i < doors; i++) {
-    const x0 = -w / 2 + 4 + i * (w - 8) / doors, x1 = x0 + (w - 8) / doors - 2;
-    g.box(x0, fy + 9, d / 2, x1, -14, d / 2 + 0.6, '#f8fcff');
-    g.push(); g.at(i % 2 ? x0 + 4 : x1 - 4, (fy - 14) / 2 + 6, d / 2 + 0.6); g.box(-0.6, -6, 0, 0.6, 6, 1.4, CHROME); g.pop();
-  }
-}
-
-function partition(g, T, fy, R) {
-  const W = T.W, H = T.H, b = 9;
-  const zf = T.D / 2 + 3, zb = -T.D / 2 - 16;
-  const box = (x0, y0, x1, y1) => g.box(x0, y0, zb, x1, y1, zf, { top: WALL, side: WALL, front: WALL });
-  box(R.x0, fy, -W / 2 - b, R.y1);
-  box(W / 2 + b, fy, R.x1, R.y1);
-  box(-W / 2 - b, fy, W / 2 + b, -b);
-  box(-W / 2 - b, H + b, W / 2 + b, R.y1);
-  // wainscot + trims on the front face
-  g.box(R.x0, fy, zf, R.x1, fy + 9, zf + 2, TRIM);
-  g.box(R.x0, fy + 88, zf, -W / 2 - b, fy + 92, zf + 1, TRIM);
-  g.box(W / 2 + b, fy + 88, zf, R.x1, fy + 92, zf + 1, TRIM);
-  // a low glossy bench in front
-  g.slab(-W * 0.35, fy + 36, zf + 30, W * 0.35, fy + 42, zf + 62, 3, { top: GLOSS, side: '#e2eef6' });
-  for (const s of [-1, 1]) { g.push(); g.at(s * W * 0.3, fy, zf + 46); g.cyl(2, 2, 36, 8, CHROME); g.pop(); }
-  // aqua light columns and round porthole windows either side, long planters with ferns along the wall
-  for (const s of [-1, 1]) {
-    const x = s * (W / 2 + b + 16);
-    g.box(x - 3, fy + 10, zf, x + 3, H + b + 10, zf + 1.5, AQUA);
-    const px = s * (W / 2 + b + 62), py = H * 0.55;
-    g.push(); g.at(px, py, zf + 0.5); g.rotX(Math.PI / 2);
-    const ring = []; for (let i = 0; i <= 20; i++) { const a = (i / 20) * Math.PI * 2; ring.push([Math.cos(a) * 16, 0, Math.sin(a) * 16]); }
-    g.tube(ring, 3, 6, CHROME, { caps: false });
-    g.cyl(14, 14, 0.6, 20, '#7fd8ff');
-    g.pop();
-    g.push(); g.at(px, fy, zf + 14); g.box(-34, 0, -10, 34, 26, 10, { top: '#6a4a2a', side: '#f4f8fc' });
-    for (let i = 0; i < 7; i++) { const lx = -28 + i * 9.3; g.blade([[lx, 26, 0], [lx + (i % 2 ? 4 : -4), 46, 3], [lx + (i % 2 ? 9 : -9), 58, 6]], [5, 6, 0], i % 2 ? '#3cb84a' : '#5ad46a', [1, 0, 0]); }
-    g.pop();
-  }
+// The big cubes' stand: a tall glossy white pedestal with chamfered corners, an aqua glass band under an
+// overhanging cap, two doors with chrome handles and bubble portholes, a recessed kick base and a light line on
+// the floor around it (aglow: unlit aqua).
+function pedestal(g, aglow, T, PH, fy) {
+  const t = T.d.glass || 1, S = T.W;
+  const w = S + 2 * t + Math.max(6, S * 0.12), d = w;
+  const top = -PH, ch = Math.max(3, S * 0.06);
+  // kick base, recessed, with the glow line on the floor
+  g.slab(-w / 2 + 3, fy, -d / 2 + 3, w / 2 - 3, fy + 6, d / 2 - 3, ch, { top: '#c8d8e6', side: '#7f94a8', front: '#8aa0b4' });
+  aglow.slab(-w / 2 + 1, fy + 0.15, -d / 2 + 1, w / 2 - 1, fy + 0.45, d / 2 - 1, ch * 1.1, '#ffffff');
+  // body
+  g.slab(-w / 2, fy + 6, -d / 2, w / 2, top - 3.4, d / 2, ch, { top: GLOSS, side: '#edf5fb', front: '#f6fbfe', bottom: '#d0dfea' });
+  // aqua band + overhanging cap
+  aglow.slab(-w / 2 + 0.25, top - 3.4, -d / 2 + 0.25, w / 2 - 0.25, top - 2.3, d / 2 - 0.25, ch, '#ffffff');
+  g.slab(-w / 2 - 1.4, top - 2.3, -d / 2 - 1.4, w / 2 + 1.4, top, d / 2 + 1.4, ch * 1.15, { top: GLOSS, side: '#e8f2f8', front: '#f2f8fc' });
+  // doors on the front and the right side (both show in the isometric view)
+  const y0 = fy + 10, y1 = top - 7;
+  const doors = (face) => {
+    for (const s of [-1, 1]) {
+      const a0 = s < 0 ? -w / 2 + ch + 1 : 0.6, a1 = s < 0 ? -0.6 : w / 2 - ch - 1;
+      const P = (u, y, k) => (face === 'z' ? [u, y, d / 2 + k] : [w / 2 + k, y, -u]);
+      const box = (u0, yy0, u1, yy1, k0, k1, col) => { const A = P(u0, yy0, k0), B = P(u1, yy1, k1); g.box(Math.min(A[0], B[0]), yy0, Math.min(A[2], B[2]), Math.max(A[0], B[0]), yy1, Math.max(A[2], B[2]), col); };
+      box(a0, y0, a1, y1, 0, 0.5, { top: '#ffffff', side: '#eef5fa', front: '#fbfdff' });
+      // chrome handle by the seam
+      const hu = s < 0 ? a1 - 2.2 : a0 + 2.2, hy = (y0 + y1) / 2 + 6;
+      box(hu - 0.5, hy - 7, hu + 0.5, hy + 7, 0.5, 1.6, CHROME);
+      // a bubble porthole in the upper door
+      const pc = P((a0 + a1) / 2, y1 - (y1 - y0) * 0.24, 0.55);
+      const pr = Math.min((a1 - a0) * 0.28, (y1 - y0) * 0.16);
+      g.push(); g.at(pc[0], pc[1], pc[2]);
+      if (face === 'z') g.rotX(Math.PI / 2); else { g.rotZ(-Math.PI / 2); }
+      const ring = []; for (let i = 0; i <= 20; i++) { const a = (i / 20) * Math.PI * 2; ring.push([Math.cos(a) * pr, 0, Math.sin(a) * pr]); }
+      g.tube(ring, Math.max(0.5, pr * 0.12), 6, CHROME, { caps: false });
+      g.cyl(pr * 0.94, pr * 0.94, 0.4, 20, '#7fd8ff');
+      g.pop();
+      for (let i = 0; i < 3; i++) { const q = P((a0 + a1) / 2 + (i - 1) * pr * 0.35, pc[1] - pr * 0.3 + i * pr * 0.28, 1.1); g.push(); g.at(q[0], q[1], q[2]); g.sphere(pr * (0.12 + i * 0.03), 0, '#e8fbff', { smooth: true }); g.pop(); }
+    }
+  };
+  doors('z');
+  doors('x');
 }
 
 function shelves(g, R, fy, rnd) {

@@ -1,16 +1,17 @@
-// The Lab (phase 3, rows in phase 6): the ONE progression system. OWNER: Lab+Quests agent.
+// The Lab (phase 3, rows in phase 6, centre-out tree in phase 7): the ONE progression system. OWNER: Lab+Quests agent.
 // Everything is unlocked by researching nodes laid out as skill-tree ROWS (LAB_ROWS; src/ui/labrows.js draws them):
 // rods, boat upgrades, aquarium tiers, crafting recipes (buildings, bait, decor), oceans, features, stat boosts.
 // Quests (src/game/quests.js) also grant nodes for free (grantLabNode), e.g. the next ocean at each chapter's end.
 // Research costs Aero + materials + fish, takes real time, and shows a waiting widget (src/ui/labwidget.js).
 //
-//   LAB_NODES: [{id, name, branch, tier, lane, pos:[x,y], ang, rad, req:[ids], cost:{aero, items:{matId:n}, fish:{key:n}},
+//   LAB_NODES: [{id, name, branch, tier, depth, lane, pos:[x,y], ang, rad, req:[ids], cost:{aero, items:{matId:n}, fish:{key:n}},
 //               time /*seconds*/, effect:{statKey:value}, unlock:[{kind, id}], desc, icon}]
 //     fish cost keys: 'rarity:<r>' (that rarity or better), 'biome:<oceanId>' (caught in that ocean), or a species id
 //     (a species that no longer exists falls back to 'rarity:common'). Paid with kept fish NOT in the tank.
 //     pos is in tree units around the root (0,0); ang (radians) / rad (units) are the same point in polar form.
 //   120 nodes (root + 8 branches): rods (up), reel & shock, boats (right), oceans, aquarium (down), luck & idle,
-//   bait (left), crafting. Layout: tier t sits on ring LAB_RING(t); LAB_CHILDREN[id] -> ids that need it.
+//   bait (left), crafting. [phase7:lab] Centre-out layout: depth d sits on ring LAB_RING(d), each branch is a spoke
+//   with its main row on the spoke and its side row forking LAB_FORK degrees clockwise; LAB_CHILDREN[id] -> ids that need it.
 //   BRANCHES {id: {name, color, angle, icon}}, BRANCH_ORDER, LAB_BY_ID, ROOT_ID, BOAT_ORDER, TANK_ORDER, OCEAN_ORDER,
 //   BOAT_NAMES, TANK_NAMES, OCEAN_NAMES, STARTER_UNLOCKS, DECOR_SETS (decor recipes per crafting node), EFFECT_INFO, MULT_KEYS
 //   Unlock ids: rod:<rods.js id>, boat:<BOAT_ORDER> (sets state.boat.tier), tank:<TANK_ORDER> (sets state.tank.tier),
@@ -276,11 +277,11 @@ export const LAB_ROWS = [];
 const row = (id, branch, label, from, side, nodes) => LAB_ROWS.push({ id, branch, label, from, side, nodes });
 row('tackle', 'rods', 'Tackle', 'hook1', 'above', ['line1', 'rod_bamboo', 'hook_lucky', 'rod_kelp', 'rod_tune', 'rod_coral', 'rod_aurora', 'line3', 'rod_prism']);
 row('rods', 'rods', 'Rods', null, 'below', ['hook1', 'rod_bubble', 'rod_glass', 'rod_chrome', 'rod_dolphin', 'rod_aero', 'rod_trident', 'rod_leviathan', 'rod_aerolite']);
-row('reel', 'reel', 'Reel & Shock', 'hook1', 'below', ['reel1', 'reel2', 'trace1', 'reel3', 'timing1', 'reel4', 'dodge1', 'autohook1', 'focus1', 'reel5']);
+row('reel', 'reel', 'Reel & Shock', null, 'below', ['reel1', 'reel2', 'trace1', 'reel3', 'timing1', 'reel4', 'dodge1', 'autohook1', 'focus1', 'reel5']);
 row('shock', 'reel', 'Shock', 'reel1', 'below', ['shock1', 'shock2', 'shock3', 'rod_volt', 'shock4', 'shock5']);
 row('deck', 'boats', 'Deck Gear', 'boat_dinghy', 'above', ['boat_locker', 'boat_magnet', 'boat_winch', 'boat_sonar', 'boat_cooler', 'boat_radar', 'boat_lights']);
 row('boats', 'boats', 'Boats', null, 'below', ['boat_dinghy', 'boat_skiff', 'boat_hydrofoil', 'boat_yacht', 'boat_catamaran', 'boat_sub', 'boat_engine']);
-row('oceans', 'oceans', 'Oceans', 'boat_dinghy', 'below', ['sea_shallows', 'sea_fjord', 'sea_junkyard', 'sea_metropolis', 'sea_volcano', 'sea_abyss', 'sea_legend']);
+row('oceans', 'oceans', 'Oceans', null, 'below', ['sea_shallows', 'sea_fjord', 'sea_junkyard', 'sea_metropolis', 'sea_volcano', 'sea_abyss', 'sea_legend']);
 row('expedition', 'oceans', 'Expedition', 'sea_fjord', 'below', ['sea_compass', 'sea_multi', 'sea_forecast', 'sea_lantern', 'sea_sonar', 'sea_pressure']);
 row('aquarium', 'aquarium', 'Aquarium', null, 'below', ['tank_bowl', 'tank_small', 'tank_snail', 'tank_big', 'tank_crab', 'tank_reef', 'tank_currents', 'tank_wall']);
 row('tanklife', 'aquarium', 'Tank Life', 'tank_small', 'below', ['tank_feeder', 'tank_happy', 'tank_romance', 'tank_nursery', 'tank_mutation', 'tank_sparkle']);
@@ -301,33 +302,50 @@ export const ROW_OF = {};
       ROW_OF[id] = r.id;
       o.row = r.id; o.col = i; o.branch = r.branch;
       o.req = [i === 0 ? (r.from && rawById[r.from] ? r.from : ROOT_ID) : r.nodes[i - 1]];
-      o.lane = r.side === 'above' ? -1 : r.from ? 1 : 0; // only for the old radial previews
     });
   }
   // a node that no row lists still hangs off the Lab itself
   for (const o of RAW) if (o.id !== ROOT_ID && !ROW_OF[o.id]) { o.req = [ROOT_ID]; o.row = null; o.col = 0; }
 }
 
-// ---------------------------------------------------------------- finalize: positions, costs, times
-// Polar layout: tier t sits on ring LAB_RING(t); lanes fan out sideways inside the branch's 45 degree wedge with a
-// roughly constant spacing (LANE units), capped so neighbouring branches never touch.
-export const LAB_R0 = 72, LAB_STEP = 54, LANE = 33, LANE_MAX = 0.165;
-export const LAB_RING = (t) => (t <= 0 ? 0 : LAB_R0 + (t - 1) * LAB_STEP);
-function nodePolar(branch, tier, lane) {
-  if (!branch) return [0, 0];
-  const r = LAB_RING(tier) + Math.abs(lane) * 2;
-  const a = (BRANCHES[branch].angle * Math.PI) / 180 + lane * Math.min(LANE_MAX, LANE / Math.max(r, 40));
-  return [a, r];
+// ---------------------------------------------------------------- [phase7:lab] centre-out layout, costs, times
+// The Lab is one tree that grows out of the middle. The root sits at (0,0); every branch is a straight spoke at
+// BRANCHES[b].angle (8 spokes, 45 degrees apart). A branch's main row runs along its spoke (lane 0) and its side row
+// forks off LAB_FORK degrees clockwise (lane 1), so each spoke reads as a tidy "V". A node's depth (steps from the
+// root) puts it on ring LAB_RING(depth), so tiers are evenly spaced circles. Units are tree units (1 = 1 logical px
+// at camera zoom 1); LAB_NODE is a node's diameter, LAB_ROOT the root hub's.
+//   nd.depth, nd.lane (0 main | 1 side), nd.ang (radians), nd.rad, nd.pos [x, y]; LAB_EXTENT = the outermost ring
+// (Reel & Shock and Oceans used to hang off the first rod / boat node; they now start at the root like the rest.)
+export const LAB_R1 = 190, LAB_STEP = 86, LAB_FORK = 19, LAB_NODE = 52, LAB_ROOT = 88;
+export const LAB_RING = (d) => (d <= 0 ? 0 : LAB_R1 + (d - 1) * LAB_STEP);
+const LAYOUT = {};
+{
+  const rawById = Object.fromEntries(RAW.map((o) => [o.id, o]));
+  const depth = (id, seen = 0) => {
+    const o = rawById[id];
+    if (!o || id === ROOT_ID || seen > 40) return 0;
+    if (o.depth !== undefined) return o.depth;
+    o.depth = 1 + Math.max(0, ...(o.req || []).map((r) => depth(r, seen + 1)));
+    return o.depth;
+  };
+  for (const o of RAW) {
+    const d = depth(o.id);
+    const lane = o.row && ROW_BY_ID[o.row]?.from ? 1 : 0;
+    const a = o.branch ? ((BRANCHES[o.branch].angle + lane * LAB_FORK) * Math.PI) / 180 : 0;
+    const r = LAB_RING(d);
+    LAYOUT[o.id] = { depth: d, lane, ang: a, rad: r, pos: [Math.round(Math.cos(a) * r), Math.round(Math.sin(a) * r)] };
+  }
 }
+export const LAB_EXTENT = Math.max(...Object.values(LAYOUT).map((p) => p.rad)) + LAB_NODE;
 
 export const LAB_NODES = RAW.map((o) => {
   const tier = o.tier;
   const unlockNode = !!o.unlock?.some((u) => u.kind !== 'recipe' || tier >= 3);
   const auto = o.branch ? autoCost(o.branch, tier, unlockNode ? tier >= 3 : tier >= 5) : { aero: 0, items: {}, fish: {} };
   const cost = { aero: o.cost?.aero ?? auto.aero, items: { ...(o.cost?.items || auto.items) }, fish: { ...(o.fish || auto.fish) } };
-  const [ang, rad] = nodePolar(o.branch, tier, o.lane);
+  const { depth, lane, ang, rad, pos } = LAYOUT[o.id];
   return {
-    id: o.id, name: o.name, branch: o.branch, tier, lane: o.lane, ang, rad, pos: [Math.round(Math.cos(ang) * rad), Math.round(Math.sin(ang) * rad)], req: o.req || [],
+    id: o.id, name: o.name, branch: o.branch, tier, depth, lane, ang, rad, pos, req: o.req || [],
     cost, time: o.time ?? (TIME_T[tier] || 0), effect: o.effect || {}, unlock: o.unlock || [], desc: o.desc || '', icon: o.icon || 'beaker',
     row: o.row ?? null, col: o.col ?? 0, // [phase6:lab]
   };
