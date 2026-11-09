@@ -333,3 +333,18 @@ User direction (latest, overrides earlier phases where they conflict):
   cannot unlock yet are hidden as black silhouettes (fog of war) until they become reachable.
 - The tank is a CUBE; better decor building inside it; a real fish-management screen.
 - Fish and sea creatures stay low-poly (phase 6).
+
+## Phase 8 (latest; overrides phase 6/7 where they conflict)
+User direction: "Make everything more voxel art: fish realistic voxel art; UI and icons more voxel / pixel art; bigger text;
+polish; a crafting system and a workshop; you can sail to a Lab or Workshop to unlock things; super cute; cool progression,
+new rods; better chest openings with a crack-it-open minigame; remove the lazy circle effects; a lot more 2D pixel-art
+particle effects; most items pixel art. Plants, furniture and items: much higher voxel count, more polish; 2D pixel art
+that feels hand-made."
+- Fish AND sea creatures AND the seal guide: realistic, high-resolution VOXEL art (back from low-poly). Fine voxels,
+  smooth silhouettes, natural eyes for fish; the seal is a super-cute voxel pup in a bubble.
+- Plants, furniture/decor, items, props: much higher voxel counts, polished.
+- UI chrome + icons: voxel/pixel-art look, bigger text. Items mostly hand-made-feeling pixel art.
+- No lazy ring/circle effects (expanding circles, dotted rings, ring "ripples" as UI fluff). Replace with rich 2D pixel-art
+  particles (sparkles, splashes, droplets, stars, puffs, confetti, fish scales, bubbles drawn as pixel sprites).
+- Progression: crafting system + Workshop; the Lab and the Workshop are PLACES you sail to on the map; new rods;
+  chests are cracked open with a minigame.
