@@ -267,6 +267,11 @@ export class TankScene {
     return this.sprite(`rock|${r.kind}|${r.seed}|${px}`, () => rockSteps(r.kind, r.seed, px));
   }
 
+  // the glass frame's pieces are built (the grow animation waits for them)
+  frameReady() {
+    const L = gearLevel(this.aq.st, 'light');
+    return ['base', 'pillar', 'hood'].every((k) => this.frame(k, k === 'hood' ? { light: L } : {}));
+  }
   frame(kind, o = {}) { return this.sprite(`frame|${kind}|${this.Z}|${o.light ?? ''}`, () => frameSteps(kind, this.Z, o)); }
   room(kind) { return this.sprite(`room|${kind}`, () => roomSteps(kind, 3)); }
   gear(kind, lv) { return this.sprite(`gear|${kind}|${lv}|${this.Z}`, () => gearSteps(kind, lv, this.Z)); }

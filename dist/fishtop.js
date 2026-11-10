@@ -97634,7 +97634,7 @@ kmlmk..
       if (kind2 === "lamp") {
         const m = new VoxelModel(30, 96, 30);
         const chrome = m.color("#e8f0f8", { spec: 1, specPow: 24 }), base = m.color("#ffffff", { spec: 0.8 });
-        const orb = m.color("#bff8ff", { emissive: 0.8, spec: 1 }), orb2 = m.color("#7ae8ff", { emissive: 0.6 });
+        const orb = m.color("#8aeeff", { emissive: 0.45, spec: 1, smooth: 0.9 }), orb2 = m.color("#3ac4f8", { emissive: 0.35, smooth: 0.9 });
         m.cylinder(15, 15, 0, 3, 10, base);
         m.cylinder(15, 15, 4, 74, 1.4, chrome);
         m.sphere(15, 84, 15, 11, (x, y, z) => hash3(x >> 1, y >> 1, z >> 1, 3) < 0.25 ? orb2 : orb);
@@ -98078,6 +98078,11 @@ kmlmk..
           const px3 = Math.round(r.size * this.Z * sK);
           if (r.type === "plant") return this.sprite(`plant|${r.kind}|${r.seed}|${px3}`, () => plantSteps(r.kind, r.seed, px3));
           return this.sprite(`rock|${r.kind}|${r.seed}|${px3}`, () => rockSteps(r.kind, r.seed, px3));
+        }
+        // the glass frame's pieces are built (the grow animation waits for them)
+        frameReady() {
+          const L2 = gearLevel(this.aq.st, "light");
+          return ["base", "pillar", "hood"].every((k) => this.frame(k, k === "hood" ? { light: L2 } : {}));
         }
         frame(kind2, o = {}) {
           return this.sprite(`frame|${kind2}|${this.Z}|${o.light ?? ""}`, () => frameSteps(kind2, this.Z, o));
@@ -100122,7 +100127,7 @@ ${t.e.kind === "blueprint" ? `Blueprint x${o.n}` : o.kind === "owned" ? `You own
           }
           if (this.growAnim) {
             const ga = this.growAnim;
-            const ready3 = !this.scene.planes.some((p) => !p) || ga.wait > 5;
+            const ready3 = !this.scene.planes.some((p) => !p) && this.scene.frameReady() || ga.wait > 5;
             if (!ready3 && ga.t < 0.2) {
               ga.wait = (ga.wait || 0) + dt;
               this.scene.pump(22);

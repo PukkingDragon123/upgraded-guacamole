@@ -664,7 +664,7 @@ export class Aquarium {
     if (this.growAnim) {
       // wait (briefly) for the bigger tank's substrate to be built so the expansion plays with its full art
       const ga = this.growAnim;
-      const ready = !this.scene.planes.some((p) => !p) || ga.wait > 5;
+      const ready = (!this.scene.planes.some((p) => !p) && this.scene.frameReady()) || ga.wait > 5;
       if (!ready && ga.t < 0.2) { ga.wait = (ga.wait || 0) + dt; this.scene.pump(22); } else { ga.t += dt; this.updateGrow(); }
     }
 

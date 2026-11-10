@@ -618,7 +618,7 @@ export function roomSteps(kind, seed = 1) {
     if (kind === 'lamp') {
       const m = new VoxelModel(30, 96, 30);
       const chrome = m.color('#e8f0f8', { spec: 1, specPow: 24 }), base = m.color('#ffffff', { spec: 0.8 });
-      const orb = m.color('#bff8ff', { emissive: 0.8, spec: 1 }), orb2 = m.color('#7ae8ff', { emissive: 0.6 });
+      const orb = m.color('#8aeeff', { emissive: 0.45, spec: 1, smooth: 0.9 }), orb2 = m.color('#3ac4f8', { emissive: 0.35, smooth: 0.9 });
       m.cylinder(15, 15, 0, 3, 10, base);
       m.cylinder(15, 15, 4, 74, 1.4, chrome);
       m.sphere(15, 84, 15, 11, (x, y, z) => (hash3(x >> 1, y >> 1, z >> 1, 3) < 0.25 ? orb2 : orb));
