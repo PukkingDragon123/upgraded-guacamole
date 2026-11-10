@@ -1,5 +1,5 @@
 // The Bait Shop panel (id 'baitshop', phase 4, Shell agent): Dot's glossy Aero bait shop. A striped awning over
-// glass shelves of bait bubbles (Classics and Flavours), Dot the orb robot at the counter with a speech bubble,
+// glass shelves of bait bubbles (Classics and Flavours), Bubbles the seal at the counter with a speech bubble,
 // a detail card with stats and a big Buy button. Stock restocks on a timer (src/store/shop.js); better grades,
 // faster restocks and discounts are researched in The Lab (shop levels, src/store/isp.js).
 //
@@ -167,13 +167,13 @@ export class ShopPanel {
     if (ui.hover({ x, y, w, h })) ui.tip = CURRENCY;
   }
 
-  // ---------------------------------------------------------------- Dot's counter
+  // ---------------------------------------------------------------- Bubbles' counter
   drawCounter(ctx, ui, L, shop, dt) {
     const g = this.game, t = this.t;
     // a little sky booth: soft sky card, sun glow, bubbles
     ctx.drawImage(aeroCached(`shopbooth|${L.w}|${L.h}`, () => aeroSurface(L.w, L.h, { top: '#e8f9ff', mid: '#a8e2fa', bot: '#5cc0ee', edge: '#2a86c4', edgeA: 0.9, r: 8, gloss: 0.35, glossH: 30, curve: 3, rim: 0.9, glow: 0.6, glowColor: '#ffffff', bubbles: 5, seed: 4, a: [0.92, 0.92] })), L.x, L.y);
     drawAeroGlow(ctx, L.x + L.w / 2, L.y + 118, 52, '#ffffff', 0.45);
-    // Dot's speech bubble
+    // Bubbles' speech bubble
     const S = this.say || { text: GREET[0], t: 9, mood: 'happy' };
     S.t += dt;
     const lines = wrapText(S.text, L.w - 20).slice(0, 3);
@@ -183,7 +183,7 @@ export class ShopPanel {
     ctx.save();
     if (pop < 1) { ctx.translate(bx + bw / 2, by + bh); ctx.scale(pop, pop); ctx.translate(-(bx + bw / 2), -(by + bh)); }
     ctx.drawImage(aeroCached(`dotsay|${bw}|${bh}`, () => aeroSurface(bw, bh, { tone: 'white', r: 7, gloss: 0.55, glossH: 7, curve: 2, rim: 0.9, glow: 0.3, edge: '#5aa8d8' })), bx, by);
-    // tail pointing down at Dot
+    // tail pointing down at Bubbles
     ctx.fillStyle = '#ffffff';
     for (let i = 0; i < 5; i++) ctx.fillRect(Math.round(bx + bw / 2 - 5 + i), by + bh - 1 + i, 6 - i, 1);
     ctx.fillStyle = '#5aa8d8';
@@ -197,7 +197,7 @@ export class ShopPanel {
     });
     ctx.restore();
     const talking = shown < lines.join('').length;
-    // Dot on a glossy podium
+    // Bubbles on a glossy podium
     const px = L.x + L.w / 2, py = L.y + 152;
     ctx.drawImage(aeroCached('shoppodium', () => aeroSurface(72, 12, { tone: 'aqua', r: 'pill', gloss: 0.8, glossH: 5, curve: 1, rim: 0.9, glow: 0.7 })), Math.round(px - 36), py - 2);
     drawAeroLeaf(ctx, px + 30, py + 2, 16, 9, -30, { tone: 'lime' });
@@ -205,7 +205,7 @@ export class ShopPanel {
     const cheer = S.pose === 'cheer' && S.t < 1.4;
     const lookAt = g.input ? [g.input.x, g.input.y] : null;
     try {
-      drawNPC(ctx, 'dot', { x: px, y: py - 2, t, scale: 1.45, facing: 1, pose: cheer ? 'cheer' : talking ? 'talk' : 'idle', talk: talking ? 0.5 + 0.5 * Math.sin(t * 22) : 0, mood: S.mood, lookAt, shadow: false });
+      drawNPC(ctx, 'seal', { x: px, y: py + 2, t, scale: 1.35, facing: 1, pose: cheer ? 'clap' : 'idle', talk: talking ? 0.5 + 0.5 * Math.sin(t * 22) : 0, mood: S.mood, lookAt, ride: 0, id: 'shopkeeper' });
     } catch (e) { if (!this.npcErr) { this.npcErr = true; console.error(e); } }
     if (cheer && (t * 6) % 1 < 0.2) drawSparkle(ctx, px + 22, py - 70, 3, 1);
     // shop level + restock

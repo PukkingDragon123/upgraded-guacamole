@@ -61,7 +61,7 @@ export const CHAPTERS = [
     id: 'ch2', title: 'Sunny Shallows', ocean: 'shallows', giver: 'marina',
     intro: [
       { npc: 'marina', text: 'The Shallows are warm, bright and bursting with fish. Hop in the dinghy!' },
-      { npc: 'dot', text: 'BEEP! Dot\'s Bait Shop is open. Better bait, better fish!' },
+      { npc: 'seal', text: 'The Bait Shop is open! Better bait, better fish!' },
     ],
     outro: { npc: 'bloat', text: 'Hrrumph! Captain Bloat. Up north, the Frosty Fjord hides a tale or two...' },
     reward: { aero: 120, lab: ['sea_fjord'], cosmetics: ['top_sailor'], items: { sea_glass: 2 }, unlock: [{ kind: 'recipe', id: 'ws_rod_frost' }] }, // [phase8:prog]
@@ -69,7 +69,7 @@ export const CHAPTERS = [
       Q('c2_sail', 'marina', 'Set Sail', 'Open the Map and travel to the Sunny Shallows.', [{ t: 'visit', biome: 'shallows' }], { aero: 20 }),
       Q('c2_catch', 'marina', 'Shallow Waters', 'The shallows are teeming. Fill that bucket!', [{ t: 'catch', n: 6, biome: 'shallows' }], { items: { driftwood: 3, sea_glass: 2 } }),
       Q('c2_workshop', 'marina', 'Marina\'s Workshop', 'My crafting dock is a mess! Bring me 8 Driftwood and 3 Shells to fix it up.', [{ t: 'have', id: 'driftwood', n: 8, take: true }, { t: 'have', id: 'shell', n: 3, take: true }], { aero: 30, items: { fish_scale: 3, kelp_fibre: 2 }, unlock: [{ kind: 'feature', id: 'workshop' }] }), // [phase8:prog]
-      Q('c2_bait', 'dot', 'Dot\'s Specials', 'Buy any bait at my shop. BEEP BOOP.', [{ t: 'bait', n: 1 }], { bait: { worm: 3 } }),
+      Q('c2_bait', 'seal', 'Shop Specials', 'Buy any bait at the Bait Shop. Yum!', [{ t: 'bait', n: 1 }], { bait: { worm: 3 } }),
       Q('c2_dock', 'marina', 'All Aboard!', 'Open the Map and sail to my Workshop dock!', [{ t: 'dest', id: 'workshop' }], { aero: 20, items: { driftwood: 4 } }), // [phase8:prog]
       Q('c2_craftrod', 'marina', 'Your First Rod', 'Craft the Rubber Duck Rod at the Workshop. Squeak!', [{ t: 'craftRod', n: 1 }], { aero: 40, items: { fish_scale: 4, kelp_fibre: 2 } }), // [phase8:prog]
       Q('c2_rare', 'marina', 'Something Shiny', 'Catch an Uncommon fish or better.', [{ t: 'catch', n: 1, rarity: 'uncommon' }], { aero: 40, items: { coral_chunk: 1 } }),
@@ -83,7 +83,7 @@ export const CHAPTERS = [
       { npc: 'bloat', text: 'In my day we fished the Fjord with nothing but a toothpick and courage!' },
       { npc: 'fizz', text: 'And we have SCIENCE now. Let\'s upgrade everything!' },
     ],
-    outro: { npc: 'dot', text: 'BEEP! A reef made of scrap and glitches? My kind of place! Junkyard Reef unlocked!' },
+    outro: { npc: 'fizz', text: 'A reef made of scrap and glitches? Fascinating! Junkyard Reef unlocked!' },
     reward: { aero: 250, lab: ['sea_junkyard'], cosmetics: ['face_goggles'], items: { gear: 2, pkg_golden: 1 }, unlock: [{ kind: 'recipe', id: 'ws_rod_magnet' }] }, // [phase8:prog] + a golden chest
     quests: [
       Q('c3_sail', 'bloat', 'Cold Feet', 'Sail to the Frosty Fjord. Bring a scarf.', [{ t: 'visit', biome: 'fjord' }], { aero: 40 }),
@@ -97,21 +97,21 @@ export const CHAPTERS = [
     ],
   },
   {
-    id: 'ch4', title: 'Junkyard Reef', ocean: 'junkyard', giver: 'dot',
+    id: 'ch4', title: 'Junkyard Reef', ocean: 'junkyard', giver: 'fizz',
     intro: [
-      { npc: 'dot', text: 'Scrap, circuits and glitchy fish! Bring me parts, I bring you gadgets.' },
+      { npc: 'fizz', text: 'Scrap, circuits and glitchy fish! Bring me parts, I bring you gadgets.' },
       { npc: 'seal', text: 'It gets darker down there. Stay close to the bubbles!' },
     ],
     outro: { npc: 'marina', text: 'I found an old chart... a whole city under the sea! Sunken Metropolis unlocked!' },
     reward: { aero: 500, lab: ['sea_metropolis'], cosmetics: ['shoes_flippers'], items: { circuit_board: 2 }, unlock: [{ kind: 'recipe', id: 'ws_rod_glow' }] }, // [phase8:prog]
     quests: [
-      Q('c4_sail', 'dot', 'Scrap Happy', 'Travel to the Junkyard Reef.', [{ t: 'visit', biome: 'junkyard' }], { aero: 60 }),
-      Q('c4_catch', 'dot', 'Glitch Hunt', 'Ten junkyard fish. Some of them are probably printers.', [{ t: 'catch', n: 10, biome: 'junkyard' }], { items: { scrap_metal: 4, gear: 1 } }),
+      Q('c4_sail', 'fizz', 'Scrap Happy', 'Travel to the Junkyard Reef.', [{ t: 'visit', biome: 'junkyard' }], { aero: 60 }),
+      Q('c4_catch', 'fizz', 'Glitch Hunt', 'Ten junkyard fish. Some of them are probably printers.', [{ t: 'catch', n: 10, biome: 'junkyard' }], { items: { scrap_metal: 4, gear: 1 } }),
       Q('c4_dex', 'fizz', 'Field Notes', 'Discover 15 different species.', [{ t: 'species', n: 15 }], { aero: 120 }),
       Q('c4_deep', 'seal', 'Midnight Snack', 'Reach the Midnight Zone. Bring a light!', [{ t: 'depth', zone: 'midnight', alt: { t: 'catch', n: 3, rarity: 'uncommon' } }], { aero: 100, bait: { lantern: 2 } }),
-      Q('c4_golden', 'dot', 'Golden Glitter', 'Crack open a Golden Chest. BEEP: lockpicks ready!', [{ t: 'chest', tier: 'golden', n: 1 }], { aero: 150, items: { pkg_iron: 1 } }), // [phase8:prog]
-      Q('c4_magnet', 'dot', 'Magnetic Personality', 'Craft the Magnet Rod. Boxes will come to YOU.', [{ t: 'craftRod', id: 'magnet' }], { aero: 120, items: { spring_coil: 2 } }), // [phase8:prog]
-      Q('c4_aero', 'dot', 'Cha-Ching', 'Earn 1,500 Aero.', [{ t: 'aero', n: 1500 }], { items: { circuit_board: 1 } }),
+      Q('c4_golden', 'fizz', 'Golden Glitter', 'Crack open a Golden Chest. Lockpicks ready!', [{ t: 'chest', tier: 'golden', n: 1 }], { aero: 150, items: { pkg_iron: 1 } }), // [phase8:prog]
+      Q('c4_magnet', 'fizz', 'Magnetic Personality', 'Craft the Magnet Rod. Boxes will come to YOU.', [{ t: 'craftRod', id: 'magnet' }], { aero: 120, items: { spring_coil: 2 } }), // [phase8:prog]
+      Q('c4_aero', 'fizz', 'Cha-Ching', 'Earn 1,500 Aero.', [{ t: 'aero', n: 1500 }], { items: { circuit_board: 1 } }),
       Q('c4_shock', 'fizz', 'Shock Therapy', 'Research the Capacitor in the Shock row.', [{ t: 'research', id: 'shock2' }], { aero: 100 }),
     ],
   },
@@ -145,7 +145,7 @@ export const CHAPTERS = [
       Q('c6_sail', 'bloat', 'Hot Water', 'Brave the Lava Rift.', [{ t: 'visit', biome: 'volcano' }], { aero: 150 }),
       Q('c6_catch', 'bloat', 'Fire and Fins', 'Catch 12 Lava Rift fish.', [{ t: 'catch', n: 12, biome: 'volcano' }], { items: { ancient_stone: 2 } }),
       Q('c6_deep', 'seal', 'Into the Abyss', 'Reach the Abyssal Zone. Deep breath!', [{ t: 'depth', zone: 'abyss', alt: { t: 'catch', n: 2, rarity: 'rare' } }], { aero: 300, bait: { blackhole: 1 } }),
-      Q('c6_aero', 'dot', 'Big Spender', 'Earn 5,000 Aero.', [{ t: 'aero', n: 5000 }], { items: { circuit_board: 2, pearl: 1 } }),
+      Q('c6_aero', 'seal', 'Big Spender', 'Earn 5,000 Aero.', [{ t: 'aero', n: 5000 }], { items: { circuit_board: 2, pearl: 1 } }),
       Q('c6_dex', 'fizz', 'Encyclopedia', 'Discover 35 species.', [{ t: 'species', n: 35 }], { aero: 400 }),
       Q('c6_turbo', 'bloat', 'Need for Speed', 'Craft the Turbo Reel Rod. Vroom!', [{ t: 'craftRod', id: 'turbo' }], { aero: 400, items: { lava_glass: 1 } }), // [phase8:prog]
       Q('c6_tackle', 'marina', 'Fully Kitted', 'Fill all four tackle slots on your rod.', [{ t: 'tackle', n: 4 }], { aero: 300, items: { pearl: 1 } }), // [phase8:prog]

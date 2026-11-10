@@ -1,5 +1,5 @@
 // Procedural WebAudio engine: SFX, loops, biome ambience, generative music and babble.
-// Everything is synthesized at runtime (no samples, no network). Every public call is a
+// Everything is synthesized at runtime, except a few CC0 recordings layered on top (src/core/samples.js). Every public call is a
 // silent no-op until unlock() has created/resumed the AudioContext on a user gesture;
 // music/ambience/volume/loop requests made earlier are remembered and start on unlock.
 //
@@ -16,6 +16,8 @@
 //
 // Graph: voices -> category bus (sfx | music | amb) -> master -> compressor -> limiter -> out
 //        voices -> per-category reverb send -> convolver (generated impulse) -> master
+
+import { SAMPLE_MAP, playSample, warmSamples } from './samples.js';
 
 const AC = typeof window !== 'undefined' ? (window.AudioContext || window.webkitAudioContext) : null;
 const LOOKAHEAD = 0.12;
@@ -1896,15 +1898,20 @@ function unlock() {
   return ready();
 }
 
+let samplesWarm = false;
 function play(name, opts) {
   const fn = SFX[name];
-  if (!fn) { warnOnce('sfx:' + name, `unknown sound "${name}"`); return; }
+  if (!fn && !SAMPLE_MAP[name]) { warnOnce('sfx:' + name, `unknown sound "${name}"`); return; }
   if (!ready()) return;
+  if (!samplesWarm) { samplesWarm = true; try { warmSamples(ctx); } catch (e) { /* synth only */ } }
   const { vol = 1, pitch = 1, pan = 0 } = opts || {};
   if (!(vol > 0)) return;
   const now = ctx.currentTime;
   if (now - (lastPlay.get(name) ?? -1) < (MIN_GAP[name] ?? 0.03)) return;
   lastPlay.set(name, now);
+  // a recorded CC0 clip when one is mapped and decoded; otherwise the procedural voice
+  try { if (playSample(ctx, B.sfx.in, name, { vol, pitch, pan })) return; } catch (e) { /* fall back */ }
+  if (!fn) return;
   try {
     fire(fn, now + 0.005, {
       dry: B.sfx.in, wet: B.sfx.verb, pool: 'sfx', vol: Math.min(+vol, 2), pan: +pan || 0,

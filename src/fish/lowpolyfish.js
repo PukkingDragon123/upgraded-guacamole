@@ -1462,6 +1462,40 @@ function viewMatrix(yawDeg, rollDeg, tiltDeg = CAM_TILT) {
 
 function sheetKeyOf(vid, sb, yawI, infl, mouth, tilt) { return vid + '|' + sb + '|' + yawI + '|' + infl + '|' + mouth + '|' + tilt; }
 
+// A crisp 1-pixel black outline around every creature in a sprite sheet (user request): any transparent pixel
+// touching a solid one in the same cell turns into a dark ink pixel. Faint glass fins (low alpha) do not count as solid.
+const OUTLINE_INK = [10, 14, 26];
+function outlineSheet(canvas, cols, w, h) {
+  const W = canvas.width, H = canvas.height;
+  if (!W || !H) return;
+  let g;
+  try { g = canvas.getContext('2d', { willReadFrequently: true }); } catch { return; }
+  if (!g) return;
+  const img = g.getImageData(0, 0, W, H), d = img.data;
+  const solid = new Uint8Array(W * H);
+  for (let i = 0, j = 3; i < solid.length; i++, j += 4) solid[i] = d[j] > 110 ? 1 : 0;
+  // bigger sprites get a 2-pixel ink line so it still reads once the sheet is scaled down on screen
+  const passes = h > 56 ? 2 : 1;
+  for (let pass = 0; pass < passes; pass++) {
+  const add = [];
+  for (let y = 0; y < H; y++) {
+    const cy0 = Math.floor(y / h) * h, cy1 = cy0 + h - 1;
+    for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      if (solid[i]) continue;
+      const cx0 = Math.floor(x / w) * w, cx1 = cx0 + w - 1;
+      if ((x > cx0 && solid[i - 1]) || (x < cx1 && solid[i + 1]) || (y > cy0 && solid[i - W]) || (y < cy1 && solid[i + W])) {
+        const j = i * 4;
+        d[j] = OUTLINE_INK[0]; d[j + 1] = OUTLINE_INK[1]; d[j + 2] = OUTLINE_INK[2]; d[j + 3] = 255;
+        add.push(i);
+      }
+    }
+  }
+  for (const i of add) solid[i] = 1;
+  }
+  g.putImageData(img, 0, 0);
+}
+
 function buildSheet(c, sb, yawI, infl, mouth, tilt, hi = false, only = null) {
   const t0 = now();
   const Sb = bucketScale(sb);
@@ -1496,6 +1530,7 @@ function buildSheet(c, sb, yawI, infl, mouth, tilt, hi = false, only = null) {
   stat.glMs += now() - tg;
   // voxel poses keep only their compact face lists between sheet builds
   if (!canvas) return null;
+  outlineSheet(canvas, cols, w, h);
   // glow pass: emissive parts only (the rest renders black), blurred into a soft additive halo
   let glow = null;
   if (c.glow) {

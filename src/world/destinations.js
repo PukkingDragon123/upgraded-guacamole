@@ -315,11 +315,10 @@ export class Destinations {
       // water lapping at the pier posts
       for (let i = 0; i < 12; i++) { const x = sc.bx - S.ox + 10 + i * (S.w - 20) / 11; ctx.fillStyle = rgba('#ffffff', 0.5 + 0.3 * Math.sin(t * 3 + i)); ctx.fillRect(Math.round(x), sc.by - 2 + Math.round(Math.sin(t * 2 + i) * 1), 6, 1); }
     }
-    // the NPC (+ Dot hovering at the workshop) waves you in
+    // the NPC waves you in
     const waving = this.phase === 'arrive' || (this.phase === 'docked' && !g.ui?.blocking);
     try {
       NPC.drawNPC(ctx, D.npc, { x: sc.npcX, y: sc.npcY, t, scale: 1.25, pose: waving ? 'wave' : 'idle', talk: this.phase === 'arrive' ? (Math.sin(t * 9) + 1) * 0.4 : 0, mood: 'happy', facing: -1 });
-      if (this.at === 'workshop') NPC.drawNPC(ctx, 'dot', { x: sc.exX, y: sc.exY - 6, t: t + 1, scale: 0.9, mood: 'happy', facing: -1 });
     } catch (e) { if (!this.npcErr) { this.npcErr = true; console.error(e); } }
     // the player's boat sails in (out), bobs at the dock, sails off (back)
     this.drawBoat(ctx, sc, dt, reduced);

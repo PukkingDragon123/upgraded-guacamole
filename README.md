@@ -12,7 +12,8 @@ seven oceans in The Lab.
 
 All art (voxel world, fish, characters and rooms), all music and all sound effects are generated in code. The
 one asset is the Alagard pixel font by Hewett Tsoi (`assets/fonts/alagard.ttf`, embedded in the build) used for
-titles, dialogue and 3D text. Multiplayer is opt-in, and the game is fully playable offline.
+titles, dialogue and 3D text. Common sound effects (splashes, bubbles, clicks, chests) are CC0 recordings from OpenGameArt.org,
+including Kenney's UI set (see `assets/sfx/CREDITS.md`); everything else is synthesized. Multiplayer is opt-in, and the game is fully playable offline.
 
 ## Play
 

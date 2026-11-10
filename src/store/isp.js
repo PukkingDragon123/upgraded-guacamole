@@ -19,7 +19,7 @@ export const SHOP_LEVELS = [
   { id: 'mega', name: 'Mega Shelf', short: 'Mega', feature: 'isp4', grade: 4, restock: 150, discount: 0.1, stock: 1, color: '#6a7aff',
     desc: 'Mega-grade bait and 10% off everything.' },
   { id: 'loyal', name: 'Loyalty Card', short: 'Loyal', feature: 'isp5', grade: 4, restock: 120, discount: 0.15, stock: 2, color: '#ffb02e',
-    desc: 'Dot knows your name. 15% off, bigger stock.' },
+    desc: 'The shop knows your name. 15% off, bigger stock.' },
   { id: 'express', name: 'Express Restock', short: 'Express', feature: 'isp6', grade: 4, restock: 60, discount: 0.2, stock: 2, color: '#ff7ab4',
     desc: 'Shelves refill every minute. 20% off.' },
 ];
