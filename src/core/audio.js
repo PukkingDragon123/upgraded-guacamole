@@ -1196,7 +1196,7 @@ const SLOOPS = {
   },
 };
 const SLOOP_CLIPS = { tension: ['lp_creak'], reel: ['lp_reel'], rain: ['lp_rain'], storm: ['lp_rain', 'lp_wind'], static: ['lp_static'], blackhole: ['lp_rumble'], flood: ['lp_flow'] };
-const useSampleLoop = (name) => SLOOPS[name] && (SLOOP_CLIPS[name] || []).every((id) => hasClip(id) && !clipFailed(id));
+const useSampleLoop = (name) => !synthOnly && SLOOPS[name] && (SLOOP_CLIPS[name] || []).every((id) => hasClip(id) && !clipFailed(id));
 
 function makeLoop(name) {
   const build = useSampleLoop(name) ? SLOOPS[name] : LOOPS[name];
@@ -1536,7 +1536,7 @@ function buildScene(key, biome, weather, night) {
   const g = group(B.amb.in, B.amb.verb, 1, 2.5);
   const sdef = (SCENES[biome] || SCENES.desktop)(night);
   const wdef = SWEATHER[weather] ? SWEATHER[weather](night) : null;
-  const okRec = (d) => d && sceneClips(d).every((id) => hasClip(id) && !clipFailed(id));
+  const okRec = (d) => d && !synthOnly && sceneClips(d).every((id) => hasClip(id) && !clipFailed(id));
   // recorded scene normally; the procedural one only if its clips are missing
   const evs = okRec(sdef) ? startRecorded(g, sdef) : ((AMB[biome] || AMB.desktop)(g, night) || []);
   let layer = null;
@@ -2018,7 +2018,7 @@ function applyMusic() {
   if (curTrack) { if (curTrack.sample) stopSampleTrack(curTrack, 2.5); else stopTrack(curTrack, 2.5); curTrack = null; }
   if (!name) return;
   const id = MUSIC_CLIPS[name];
-  if (id && hasClip(id) && !clipFailed(id)) curTrack = makeSampleTrack(name, id);
+  if (id && hasClip(id) && !clipFailed(id) && !synthOnly) curTrack = makeSampleTrack(name, id);
   else if (TRACKS[name]) { curTrack = makeTrack(name); tracks.push(curTrack); }
 }
 
@@ -2178,6 +2178,7 @@ let samplesWarm = false;
 // clips the loops and babble need, decoded together with the SFX on unlock (ambience beds and music decode on demand)
 const WARM_EXTRA = ['lp_reel', 'lp_creak', 'creak1', 'creak2', 'creak3', 'wsqueak1', 'wsqueak2', 'k_pluck1', 'k_drop3', 'k_glass2', 'k_select1'];
 const stats = { sample: 0, synth: 0, pending: 0, dropped: 0, synthNames: new Set() };
+let synthOnly = false; // dev: A/B the recordings against the procedural fallback
 function play(name, opts) {
   const fn = SFX[name];
   if (!fn && !SAMPLE_MAP[name]) { warnOnce('sfx:' + name, `unknown sound "${name}"`); return; }
@@ -2191,7 +2192,7 @@ function play(name, opts) {
   let p = Math.max(0.1, Math.min(+pitch || 1, 8));
   const o = { vol: Math.min(+vol, 2), pitch: p, pan: +pan || 0 };
   // the recording (normal case)
-  if (SAMPLE_MAP[name]) {
+  if (SAMPLE_MAP[name] && !synthOnly) {
     if (name === 'coin_collect') o.pitch = p * comboStep();
     try {
       const r = playSample(ctx, B.sfx.in, B.sfx.verb, name, o);
@@ -2298,5 +2299,6 @@ export const audio = {
   _meter: meter,
   _voices: () => ({ sfx: pools.sfx.length, music: pools.music.length, amb: pools.amb.length }),
   // dev/test: how many one-shots came from recordings vs the synth fallback, and what is playing
+  _synthOnly: (on) => { synthOnly = !!on; },
   _stats: () => ({ ...stats, synthNames: [...stats.synthNames], music: curTrack ? { name: curTrack.name, recorded: !!curTrack.sample, playing: !!(curTrack.src || !curTrack.sample) } : null, scene: scene ? scene.key : null }),
 };

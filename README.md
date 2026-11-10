@@ -10,10 +10,12 @@ person in a little boat on a glossy, sunlit sea:
 Then fill your side-scrolling voxel tank with fish that earn Aero, and research better rods, boats, tanks and
 seven oceans in The Lab.
 
-All art (voxel world, fish, characters and rooms), all music and all sound effects are generated in code. The
-one asset is the Alagard pixel font by Hewett Tsoi (`assets/fonts/alagard.ttf`, embedded in the build) used for
-titles, dialogue and 3D text. Common sound effects (splashes, bubbles, clicks, chests) are CC0 recordings from OpenGameArt.org,
-including Kenney's UI set (see `assets/sfx/CREDITS.md`); everything else is synthesized. Multiplayer is opt-in, and the game is fully playable offline.
+All art (voxel world, fish, characters and rooms) is generated in code. The Alagard pixel font by Hewett Tsoi
+(`assets/fonts/alagard.ttf`, embedded in the build) is used for titles, dialogue and 3D text. All sound is recorded
+audio embedded in the build: sound effects, jingles and ambience from CC0 packs on OpenGameArt.org (Kenney, rubberduck
+and many others) plus public-domain US National Park Service field recordings (whales, otters, geese, thunder), and
+music by Memoraphile, Peachtea, cynicmusic, joth, TAD, umplix and Zane Little Music, all CC0; full list in
+`assets/sfx/CREDITS.md`. Multiplayer is opt-in, and the game is fully playable offline.
 
 ## Play
 
@@ -147,8 +149,9 @@ with a minigame.
 - **Multiplayer fishing** (opt-in): when the game is opened from its shared claude.ai link, you see other
   players' bubble people and boats in your ocean, their catches and their emotes. Fishing with other people in
   the same ocean gives up to +30% luck. Windows on one computer can also see each other.
-- **Procedural audio** in WebAudio: reel clicks, zaps, splashes, creature voices, per-ocean ambience and
-  generative music.
+- **Recorded audio** in WebAudio: CC0 / public-domain clips for every sound (variants, pitch jitter, no
+  machine-gunning), seamless looping ambience beds per ocean and weather, and a looping CC0 track per ocean
+  with crossfades (a procedural synth remains only as a fallback).
 
 ## Safety and privacy
 
@@ -181,4 +184,7 @@ src/store     Bait Shop, bait, custom bait               src/build    buildings,
   The test fails on any console error.
 - `node tools/build.mjs --dev <name>` + `node tools/shot.mjs "dev/<name>.html" out.png` render the art preview
   pages in `src/dev/`.
+- Audio: after changing `assets/sfx` or `assets/music`, run `node tools/gen-samples.mjs` (embeds the OGGs) and
+  then `node tests/audio-samples.mjs`, which checks that every sound name used in `src/` has a recording and plays
+  them all, plus every loop, music track and ambience scene, headlessly without touching the synth fallback.
 - Module contracts live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
