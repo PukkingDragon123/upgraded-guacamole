@@ -20,7 +20,7 @@
 //   anemone, glow_mushroom, circuit_coral, glyph_stone, lava_lamp; other ids reseed per variant.
 // Sprites are built lazily and cached per (id, scale, variant, frame); `ms` = [build, render] timing.
 
-import { VoxelModel, renderVoxels } from './voxel.js';
+import { VoxelModel, renderVoxels, refineSteps } from './voxel.js';
 import { renderSteps } from '../world/slabrender.js';
 import { RNG } from '../core/rng.js';
 import { hash3, clamp } from '../core/math.js';
@@ -4919,6 +4919,7 @@ function turnModel(res, deg) {
 const stepCache = new Map();
 // Recently built prop models (scale-independent), so a hi-res re-render skips the recipe.
 const MODELS = new Map();
+const FINE = new Map(); // [phase7:env] refined (2x) models for hi-res twins
 function keepModel(k, res) { MODELS.set(k, res); if (MODELS.size > 48) MODELS.delete(MODELS.keys().next().value); }
 export function* getPropSteps(id, { scale = 1, variant = 0, frame = 0, yaw = null, pitch = null } = {}) {
   const key = id + '|' + scale + '|' + variant + '|' + frame + '|' + yaw + '|' + pitch;
@@ -4935,12 +4936,26 @@ export function* getPropSteps(id, { scale = 1, variant = 0, frame = 0, yaw = nul
   }
   yield;
   const opts = { scale: (res.vs ?? 1.75) * scale, yaw: res.yaw ?? 32, pitch: res.pitch ?? 27, ...(res.render || {}) };
+  // [phase7:env] hi-res twins get 2x the voxels per axis (3D EPX refine + surface grit), rendered at half the voxel size
+  let model = res.m, ground = res.ground;
+  if (opts.scale >= 2.2 && !res.noRefine) {
+    let fine = FINE.get(mk);
+    if (!fine) {
+      fine = yield* refineSteps(res.m);
+      FINE.set(mk, fine);
+      if (FINE.size > 24) FINE.delete(FINE.keys().next().value);
+    }
+    model = fine;
+    opts.scale /= 2;
+    if (ground) ground = ground.map((q) => q * 2);
+    if (opts.glowRadius) opts.glowRadius *= 2;
+  }
   opts.scale = Math.max(0.25, Math.round(opts.scale * 4) / 4); // quarter-pixel voxel sizes keep slab seams on whole pixels
   if (yaw !== null) opts.yaw = yaw;
   if (pitch !== null) opts.pitch = pitch;
-  const r = yield* renderSteps(res.m, opts);
+  const r = yield* renderSteps(model, opts);
   let ox = r.ox, oy = r.oy;
-  if (res.ground) { const [gx, gy] = r.project(res.ground[0], res.ground[1], res.ground[2]); ox = Math.round(gx); oy = Math.round(gy); }
+  if (ground) { const [gx, gy] = r.project(ground[0], ground[1], ground[2]); ox = Math.round(gx); oy = Math.round(gy); }
   p = { canvas: r.canvas, ox, oy, w: r.w, h: r.h };
   stepCache.set(key, p);
   return p;

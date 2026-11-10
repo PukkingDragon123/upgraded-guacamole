@@ -1,11 +1,13 @@
-// Low-poly 3D models of every aquarium decoration (the props.js decor ids), authored at natural size in centimetres
-// for a mid-size tank (the aquarium scales them with the tank). Base on y = 0, facing +z (toward the front glass).
+// 3D models of every aquarium decoration (the props.js decor ids), authored at natural size in centimetres for a
+// mid-size tank (the aquarium scales them with the tank). Base on y = 0, facing +z (toward the front glass).
+// Phase 8: every model is turned into a polished, high-count VOXEL model (lpkit voxelize: ~30-40 voxels tall,
+// per-voxel colour jitter, lit tops), so the decor reads as hand-built voxel art.
 //
 //   decorModel(id, variant) -> {mesh, glow: [{mesh, col}], part: {mesh, pivot, anim, speed} | null,
 //                               r (footprint radius), h (height), top: [x, y, z]}   cached
 //   Unknown ids fall back to a model picked by the prop's tags.
 
-import { Geo, rgb, mixc, shadec, srand } from './lpkit.js';
+import { Geo, rgb, mixc, shadec, srand, voxelize } from './lpkit.js';
 import { PROPS } from '../gfx/props.js';
 
 const CACHE = new Map();
@@ -23,10 +25,14 @@ export function decorModel(id, variant = 0) {
   const gb = glow.n ? glow.bounds() : null;
   const pb = part.n ? part.bounds() : null;
   const maxY = Math.max(b.max[1], gb?.max[1] ?? -1, pb?.max[1] ?? -1);
+  const ext = Math.max(maxY, b.max[0] - b.min[0], b.max[2] - b.min[2]);
+  const vs = Math.max(0.16, Math.min(0.5, ext / 36));
+  const vg = voxelize(g, vs, { maxCells: 9000 }), vgl = glow.n ? voxelize(glow, vs, { jitter: 0 }) : null, vp = part.n ? voxelize(part, vs, { maxCells: 4000 }) : null;
   m = {
-    mesh: g.build(),
-    glow: glow.n ? [{ mesh: glow.build(), col: rgb(ctx.glowCol) }] : [],
-    part: part.n ? { mesh: part.build(), pivot: ctx.partPivot, anim: ctx.anim || 'spinY', speed: ctx.speed } : null,
+    mesh: vg.build(),
+    glow: vgl ? [{ mesh: vgl.build(), col: rgb(ctx.glowCol) }] : [],
+    part: vp ? { mesh: vp.build(), pivot: ctx.partPivot, anim: ctx.anim || 'spinY', speed: ctx.speed } : null,
+    vs,
     r: Math.max(1.5, Math.max(Math.abs(b.min[0]), Math.abs(b.max[0]), Math.abs(b.min[2]), Math.abs(b.max[2])) * 0.85),
     h: Math.max(1.5, maxY),
   };

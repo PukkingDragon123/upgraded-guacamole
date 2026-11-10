@@ -38,7 +38,9 @@ import { rgba, shade, mix, pack, packRGB, hexToRgb } from '../core/color.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { PixelBuffer } from '../gfx/pixel.js';
 import { drawText, measureText, FONTS } from '../gfx/font.js';
-import { hash1 } from '../core/math.js';
+import { hash1, bayer } from '../core/math.js';
+import { pixelBubble, pixelCloud } from '../gfx/pxsprites.js';
+import { alagardReady, alagardBitmap, loadAlagard } from '../gfx/alagard.js';
 
 export const CURRENCY = 'Aero';
 export const AERO = {
@@ -162,13 +164,19 @@ function surfaceTex(w, h, o) {
   const m = (x, y) => x >= 0 && y >= 0 && x < w && y < h && mask[y * w + x] === 1;
   const midY = 0.52;
   const seed = o.seed ?? (w * 7 + h * 13);
+  // [phase8:ui] pixel-art look: the body gradient is quantised into a few bands with ordered (bayer) dithering, the
+  // sheen is a hard two-step band with a dithered edge, the rim is a bevel (light top-left, shade bottom-right).
+  const px = o.smooth ? 0 : 1;
+  const bands = Math.max(3, Math.min(7, Math.round(h / 12)));
   for (let y = 0; y < h; y++) {
-    const t = h > 1 ? y / (h - 1) : 0;
+    const t0 = h > 1 ? y / (h - 1) : 0;
     let cr, cg, cb;
+    for (let x = 0; x < w; x++) {
+    const t = px ? Math.min(1, Math.floor(t0 * bands + bayer(x, y) * 0.999) / bands) : t0;
     if (t < midY) { const k = t / midY; cr = top[0] + (mid[0] - top[0]) * k; cg = top[1] + (mid[1] - top[1]) * k; cb = top[2] + (mid[2] - top[2]) * k; }
     else { const k = (t - midY) / (1 - midY); cr = mid[0] + (bot[0] - mid[0]) * k; cg = mid[1] + (bot[1] - mid[1]) * k; cb = mid[2] + (bot[2] - mid[2]) * k; }
     const ba = A[0] + (A[1] - A[0]) * t;
-    for (let x = 0; x < w; x++) {
+    {
       if (!mask[y * w + x]) continue;
       let r = cr, g = cg, bl = cb, a = ba;
       // overlay helper: source-over of colour (sr,sg,sb) with alpha sa
@@ -184,7 +192,9 @@ function surfaceTex(w, h, o) {
       if (glow > 0 && t > 0.55) {
         const k = (t - 0.55) / 0.45;
         const cx = Math.abs(x + 0.5 - w / 2) / (w / 2);
-        over(glowC[0], glowC[1], glowC[2], glow * k * k * 0.55 * (1 - cx * cx * 0.7));
+        let gk = k * k * (1 - cx * cx * 0.7);
+        if (px) gk = Math.floor(gk * 3 + bayer(x + 1, y) * 0.999) / 3;
+        over(glowC[0], glowC[1], glowC[2], glow * gk * 0.55);
       }
       // recessed: soft inner shadow at the top and left
       if (o.inset) {
@@ -203,12 +213,18 @@ function surfaceTex(w, h, o) {
         const edgeY = glossH - curve * (1 - nx * nx);
         if (y < edgeY) {
           const k = y / Math.max(1, edgeY);
-          over(255, 255, 255, gloss * (0.62 - 0.42 * k));
-        }
+          if (!px) over(255, 255, 255, gloss * (0.62 - 0.42 * k));
+          else {
+            const q = k + (bayer(x, y) - 0.5) * 0.34;
+            over(255, 255, 255, gloss * (q < 0.42 ? 0.62 : q < 0.86 ? 0.36 : 0.2));
+          }
+        } else if (px && y < edgeY + 2 && ((x + y) & 1) === 0) over(255, 255, 255, gloss * 0.14);
       }
       if (ring1 && rim > 0) {
-        const k = y < h * 0.5 ? 0.9 : 0.45;
-        over(255, 255, 255, rim * k);
+        if (!px) over(255, 255, 255, rim * (y < h * 0.5 ? 0.9 : 0.45));
+        else if (y < h * 0.5 && (x < w * 0.85 || y < 3)) over(255, 255, 255, rim * 0.95);
+        else if (y > h * 0.5) over(edge[0], edge[1], edge[2], rim * 0.22);
+        else over(255, 255, 255, rim * 0.5);
       }
       if (ring0) {
         // outer line: tone edge, lighter at the top so the top reads as a lit glass lip
@@ -216,6 +232,7 @@ function surfaceTex(w, h, o) {
         r = er; g = eg; bl = eb; a = Math.max(a * 0.5, edgeA);
       }
       d[y * w + x] = ((Math.round(a * 255) & 255) << 24 | (Math.round(bl) & 255) << 16 | (Math.round(g) & 255) << 8 | (Math.round(r) & 255)) >>> 0;
+    }
     }
   }
   // decorative bubbles (rings with a glint) and a lens-flare sparkle
@@ -238,15 +255,16 @@ function blend(d, i, r, g, bl, sa) {
   d[i] = ((Math.round(na * 255) & 255) << 24 | (Math.round(nb) & 255) << 16 | (Math.round(ng) & 255) << 8 | (Math.round(nr) & 255)) >>> 0;
 }
 
+// [phase8:ui] decorative panel 'bubbles' are now tiny pixel twinkles (no ring outlines)
 function ringInto(b, mask, w, h, cx, cy, r) {
-  for (let y = cy - r - 1; y <= cy + r + 1; y++) for (let x = cx - r - 1; x <= cx + r + 1; x++) {
+  const L = Math.max(1, r - 1);
+  const pts = [[0, 0, 0.9]];
+  for (let i = 1; i <= L; i++) { const a = 0.75 * (1 - i / (L + 1)); pts.push([i, 0, a], [-i, 0, a], [0, i, a], [0, -i, a]); }
+  for (const [dx, dy, a] of pts) {
+    const x = cx + dx, y = cy + dy;
     if (x < 0 || y < 0 || x >= w || y >= h || !mask[y * w + x]) continue;
-    const dd = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
-    if (dd <= r && dd > r - 1) blend(b.data, y * w + x, 255, 255, 255, (x - cx) + (y - cy) < 0 ? 0.5 : 0.22);
-    else if (dd <= r - 1) blend(b.data, y * w + x, 220, 248, 255, 0.08);
+    blend(b.data, y * w + x, 255, 255, 255, a * 0.7);
   }
-  const gx = cx - Math.round(r * 0.45), gy = cy - Math.round(r * 0.45);
-  if (gx >= 0 && gy >= 0 && gx < w && gy < h && mask[gy * w + gx]) blend(b.data, gy * w + gx, 255, 255, 255, 0.9);
 }
 
 function sparkleInto(b, mask, w, cx, cy, s) {
@@ -262,7 +280,7 @@ function sparkleInto(b, mask, w, cx, cy, s) {
 
 function surfKey(w, h, o) {
   const t = typeof o.tone === 'object' ? JSON.stringify(o.tone) : o.tone || '';
-  return `s|${w}|${h}|${t}|${o.top || ''}|${o.mid || ''}|${o.bot || ''}|${o.a || ''}|${o.edge || ''}|${o.edgeA ?? ''}|${o.r ?? ''}|${o.shape || ''}|${o.gloss ?? ''}|${o.glossH ?? ''}|${o.curve ?? ''}|${o.rim ?? ''}|${o.glow ?? ''}|${o.glowColor || ''}|${o.streak ? 1 : 0}|${o.inset ? 1 : 0}|${o.bubbles | 0}|${o.sparkle || 0}|${o.seed ?? ''}`;
+  return `s|${w}|${h}|${t}|${o.top || ''}|${o.mid || ''}|${o.bot || ''}|${o.a || ''}|${o.edge || ''}|${o.edgeA ?? ''}|${o.r ?? ''}|${o.shape || ''}|${o.gloss ?? ''}|${o.glossH ?? ''}|${o.curve ?? ''}|${o.rim ?? ''}|${o.glow ?? ''}|${o.glowColor || ''}|${o.streak ? 1 : 0}|${o.inset ? 1 : 0}|${o.bubbles | 0}|${o.sparkle || 0}|${o.seed ?? ''}|${o.smooth ? 1 : 0}`;
 }
 
 export function aeroSurface(w, h, o = {}) {
@@ -292,6 +310,68 @@ export function aeroText(ctx, text, x, y, o = {}) {
   for (const [dx, dy] of [[-2, 0], [2, 0], [0, -2], [0, 2], [-1, -1], [1, -1], [-1, 1], [1, 1]]) drawText(ctx, text, ax + dx * scale, y + dy * scale, { ...base, color: glow });
   ctx.restore();
   drawText(ctx, text, ax, y, { ...base, shadow: o.shadow ?? null, outline: o.outline ?? null, color: o.color || AERO.ink });
+}
+
+
+// ---------------------------------------------------------------- [phase8:ui] Alagard titles
+// drawTitle(ctx, text, x, y, {size = 16, scale = 2, color, outline, shadow, align}) -> {w, h}
+//   crisp Alagard (16 px grid, drawn at an integer scale) with a chunky pixel outline and a drop shadow; y = cap top.
+//   Falls back to the 'big' bitmap face until the font has loaded. titleSize(text, o) -> {w, h} measures it.
+const trimCache = new Map();
+function trimmed(text, size, color) {
+  const key = size + '|' + color + '|' + text;
+  let e = trimCache.get(key);
+  if (e) return e;
+  const src = alagardBitmap(text, { size, color });
+  const g = ctxOf(src);
+  const d = g.getImageData(0, 0, src.width, src.height).data;
+  let y0 = src.height, y1 = -1, x1 = 0;
+  for (let y = 0; y < src.height; y++) for (let x = 0; x < src.width; x++) if (d[(y * src.width + x) * 4 + 3]) { if (y < y0) y0 = y; if (y > y1) y1 = y; if (x > x1) x1 = x; }
+  // cap top: first row of a capital/ascender; measure from a reference 'H' so every title sits on the same line
+  const ref = alagardBitmap('H', { size, color });
+  const rd = ctxOf(ref).getImageData(0, 0, ref.width, ref.height).data;
+  let capTop = 0, capBot = 0;
+  for (let y = 0; y < ref.height; y++) for (let x = 0; x < ref.width; x++) if (rd[(y * ref.width + x) * 4 + 3]) { if (!capTop) capTop = y || 1; capBot = y; }
+  e = { canvas: src, top: capTop, cap: capBot - capTop + 1, w: x1 + 1, y1 };
+  if (trimCache.size > 300) trimCache.clear();
+  trimCache.set(key, e);
+  return e;
+}
+
+export function titleSize(text, o = {}) {
+  const size = o.size ?? 16, sc = o.scale ?? 2;
+  if (!alagardReady()) { try { loadAlagard(); } catch { /* fallback */ } return { w: measureText(text, 'big', sc), h: 9 * sc }; }
+  const t = trimmed(text, size, '#ffffff');
+  return { w: (t.w + 1) * sc, h: t.cap * sc };
+}
+
+export function drawTitle(ctx, text, x, y, o = {}) {
+  const size = o.size ?? 16, sc = o.scale ?? 2;
+  const color = o.color || '#ffffff', outline = o.outline ?? '#0a3e74', shadow = o.shadow ?? '#041e46';
+  if (!alagardReady()) {
+    try { loadAlagard(); } catch { /* fallback */ }
+    drawText(ctx, text, x, y, { font: 'big', scale: sc, color, shadow: outline, align: o.align });
+    return { w: measureText(text, 'big', sc), h: 9 * sc };
+  }
+  const t = trimmed(text, size, color);
+  const W = (t.w + 1) * sc;
+  let ax = Math.round(x);
+  if (o.align === 'center') ax -= Math.round(W / 2); else if (o.align === 'right') ax -= W;
+  const dy = Math.round(y) - t.top * sc;
+  const bw = t.canvas.width * sc, bh = t.canvas.height * sc;
+  if (shadow) { const ga = ctx.globalAlpha; ctx.globalAlpha = ga * (o.shadowA ?? 0.45); ctx.drawImage(trimmed(text, size, shadow).canvas, ax, dy + sc * 2, bw, bh); ctx.globalAlpha = ga; }
+  if (outline) {
+    const oc = trimmed(text, size, outline).canvas;
+    for (const [ox, oy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, 1], [1, 1], [-1, -1], [1, -1]]) ctx.drawImage(oc, ax + ox * sc, dy + oy * sc, bw, bh);
+  }
+  ctx.drawImage(t.canvas, ax, dy, bw, bh);
+  if (o.gloss !== false && sc >= 2) {
+    // a 1-row highlight on the upper part of the letters (cheap: lighter copy clipped to the top third)
+    const hl = trimmed(text, size, o.glossColor || '#e8fbff').canvas;
+    const top = t.top, rows = Math.max(1, Math.round(t.cap * 0.3));
+    ctx.drawImage(hl, 0, top, hl.width, rows, ax, dy + top * sc, bw, rows * sc);
+  }
+  return { w: W, h: t.cap * sc };
 }
 
 // ---------------------------------------------------------------- panel
@@ -471,7 +551,7 @@ function bubbleTex(r) {
 
 export function drawAeroBubble(ctx, cx, cy, r, alpha = 1) {
   r = Math.max(1.5, Math.round(r * 2) / 2);
-  const c = aeroCached(`bub|${r}`, () => bubbleTex(r));
+  const c = aeroCached(`pbub|${r}`, () => pixelBubble(r)); // [phase8:ui] pixel bubble with a chunky highlight
   if (alpha < 1) { const ga = ctx.globalAlpha; ctx.globalAlpha = ga * alpha; ctx.drawImage(c, Math.round(cx - c.width / 2), Math.round(cy - c.height / 2)); ctx.globalAlpha = ga; }
   else ctx.drawImage(c, Math.round(cx - c.width / 2), Math.round(cy - c.height / 2));
 }
@@ -624,9 +704,10 @@ export function drawAeroFrame(ctx, x, y, w, h, o = {}) {
     tx = x + 8 + ic.width + 2;
   }
   if (o.title) {
-    // [phase6:ui] bold big face at 2x (18 px caps) when the UI is enlarged; an outline keeps it readable on the sky
-    const tf = uiMode === 'normal' || measureText(o.title, 'big', 2) > w - (tx - x) - 70 ? 'normal' : 'big';
-    drawText(ctx, o.title, tx, y + (tf === 'big' ? 6 : 8), { font: tf, scale: 2, color: '#ffffff', shadow: '#0a3e74', outline: tf === 'big' ? 'rgba(10,62,116,0.55)' : null });
+    // [phase8:ui] Alagard title (16 px grid at 2x: 20 px caps) with a chunky outline; falls back to the bitmap face
+    const fits = titleSize(o.title, { scale: 2 }).w <= w - (tx - x) - 70;
+    if (fits) drawTitle(ctx, o.title, tx, y + 5, { scale: 2 });
+    else drawText(ctx, o.title, tx, y + 8, { font: 'normal', scale: 2, color: '#ffffff', shadow: '#0a3e74' });
   }
   const close = { x: x + w - 25, y: y + 6, w: 18, h: 18 };
   // finish(ctx): call after drawing the panel's content so the lower leaves and the splash sit on top
@@ -749,18 +830,24 @@ export function drawLeafSprig(ctx, x, y, corner = 'tl', scale = 1) {
   ctx.drawImage(c, Math.round(x - c.ox), Math.round(y - c.oy));
 }
 
+// [phase8:ui] pixel sun: a bayer-dithered bloom in three steps and chunky 2 px rays of alternating length
 function flareTex(r) {
   const S = r * 2, c = makeCanvas(S, S), g = ctxOf(c);
-  const gr = g.createRadialGradient(r, r, 0, r, r, r);
-  gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.12, 'rgba(255,255,250,0.95)'); gr.addColorStop(0.3, 'rgba(220,250,255,0.45)'); gr.addColorStop(1, 'rgba(200,240,255,0)');
-  g.fillStyle = gr; g.fillRect(0, 0, S, S);
-  // rays (crisp 1 px spokes of varying length)
-  for (let i = 0; i < 16; i++) {
-    const a = (i / 16) * Math.PI * 2 + 0.2, L = r * (i % 2 ? 0.55 : 0.95) * (0.8 + hash1(i, 3) * 0.3);
-    for (let d = r * 0.12; d < L; d += 0.7) {
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const d = Math.hypot(x + 0.5 - r, y + 0.5 - r) / r;
+    if (d > 1) continue;
+    const k = (1 - d) * (1 - d) + (bayer(x, y) - 0.5) * 0.16;
+    if (k < 0.08) continue;
+    g.fillStyle = k > 0.62 ? '#ffffff' : k > 0.36 ? 'rgba(255,253,236,0.8)' : k > 0.18 ? 'rgba(232,250,255,0.5)' : 'rgba(210,244,255,0.28)';
+    g.fillRect(x, y, 1, 1);
+  }
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2 + 0.26, L = r * (i % 2 ? 0.6 : 0.98);
+    for (let d = r * 0.3; d < L; d += 0.8) {
       const k = 1 - d / L;
-      g.fillStyle = `rgba(255,255,255,${(0.55 * k).toFixed(3)})`;
-      g.fillRect(Math.round(r + Math.cos(a) * d), Math.round(r + Math.sin(a) * d), 1, 1);
+      g.fillStyle = k > 0.55 ? 'rgba(255,255,255,0.75)' : k > 0.25 ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.22)';
+      const px = Math.round(r + Math.cos(a) * d), py = Math.round(r + Math.sin(a) * d);
+      g.fillRect(px, py, i % 2 ? 1 : 2, i % 2 ? 1 : 2);
     }
   }
   return c;
@@ -837,10 +924,20 @@ function ecoTex(w, h, o) {
   const g = ctxOf(c);
   g.drawImage(body, 0, 0);
   g.globalCompositeOperation = 'source-atop';
-  // sun bloom + arcs from it (upper right, left of the close orb)
+  // [phase8:ui] a pixel sun with chunky rays and a few fluffy pixel clouds (no thin arc lines)
   const sx = Math.round(w * 0.78), sy = -4;
-  drawArcLines(g, sx, sy, Math.round(h * 0.35), 6, { gap: 7, a0: 1.75, a1: 3.0, alpha: 0.4, w, h });
   drawSunFlare(g, sx, sy + 6, Math.min(46, Math.round(h * 0.18)), 0.85);
+  if (h > 90 && w > 140) {
+    const nC = Math.max(1, Math.round(w / 260));
+    for (let i = 0; i < nC; i++) {
+      const cw = Math.round(Math.min(90, w * 0.16) * (0.7 + hash1(i, o.seed + 41) * 0.5));
+      const cl = pixelCloud(cw, i + (o.seed | 0));
+      const cx = Math.round(w * (0.3 + 0.55 * ((i + 0.5) / nC)) + (hash1(i, o.seed + 42) - 0.5) * 60);
+      g.globalAlpha = 0.5;
+      g.drawImage(cl, cx - (cl.width >> 1), Math.round(10 + hash1(i, o.seed + 43) * 12));
+      g.globalAlpha = 1;
+    }
+  }
   // curved grass horizon along the bottom
   const base = h - 4;
   for (let x = 0; x < w; x++) {
@@ -858,7 +955,7 @@ function ecoTex(w, h, o) {
   for (let i = 0; i < Math.round(w / 60); i++) {
     const bx = hash1(i, o.seed + 31) < 0.5 ? 6 + hash1(i, 32) * 30 : w - 36 + hash1(i, 33) * 30;
     const by = h * (0.25 + hash1(i, 34) * 0.55), br = 2 + Math.floor(hash1(i, 35) * 4);
-    g.drawImage(aeroCached(`bub|${br}`, () => bubbleTex(br)), Math.round(bx - br - 1), Math.round(by - br - 1));
+    g.drawImage(aeroCached(`pbub|${br}`, () => pixelBubble(br)), Math.round(bx - br), Math.round(by - br));
   }
   g.globalCompositeOperation = 'source-over';
   return c;

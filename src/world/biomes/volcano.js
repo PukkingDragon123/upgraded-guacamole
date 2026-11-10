@@ -357,6 +357,7 @@ export class VolcanoBiome extends Biome {
       return Math.min(560, D.K - (rimY - D.hz) / D.s(z)) + Math.round(hx * 4) * 2;
     };
     D.terrain({
+      micro: { ripple: 0.4, pebble: 1.8, shell: 1, pebbles: [[46, 40, 44], [70, 58, 58], [34, 30, 34], [96, 70, 60]], shells: [[255, 130, 50], [255, 200, 90]] }, // [phase7:env] basalt and embers
       cell: 2, dz: 0.02, hstep: 2, ambient: 0.66, diffuse: 0.5, ao: 0.08, jitter: 0.06, wall: 0.78, side: 0.9, crest: 1.18, wallMin: 22, fullHeight: true,
       height: (X, z) => cliff(X, z) ?? floorH(X, z),
       floorHeight: floorH,

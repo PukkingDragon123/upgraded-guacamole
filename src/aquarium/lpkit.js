@@ -13,6 +13,10 @@
 //   g.tube([[x,y,z]...], r | [r...], seg, col)               swept tube (stems, driftwood, airline)
 //   g.blade([[x,y,z]...], widths, col, nrmSide)             double-sided ribbon (leaves, grass)
 //   g.build() -> LPMesh  (null when empty)
+//   voxelize(src, vs, {into, jitter, maxCells, glow}) -> Geo   (phase 8) turns any Geo's surfaces into a polished voxel
+//                                                        model: cubes of size vs on a world-aligned grid, hidden faces
+//                                                        culled, per-voxel colour jitter, lit tops / darker undersides
+//   vox(g, vs, build, o)                                 build(tmpGeo) then voxelize it into g (same transform space)
 //   DynMesh: per-frame rebuilt geometry (water surface, swaying plants, particle batches): g = dm.begin(); ... dm.end()
 //   rgb(hex), mixc(a, b, t), shadec(col, k), hash01(n)
 
@@ -363,6 +367,78 @@ export class Geo {
     const data = this.d.slice(0, this.n);
     return new LPMesh(data, this.n / STRIDE, this.bounds());
   }
+}
+
+// ------------------------------------------------------------------ voxels (phase 8: everything is voxel art)
+const VDIRS = [
+  [1, 0, 0, [[1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 1]]], [-1, 0, 0, [[0, 0, 1], [0, 1, 1], [0, 1, 0], [0, 0, 0]]],
+  [0, 1, 0, [[0, 1, 0], [0, 1, 1], [1, 1, 1], [1, 1, 0]]], [0, -1, 0, [[0, 0, 1], [0, 0, 0], [1, 0, 0], [1, 0, 1]]],
+  [0, 0, 1, [[1, 0, 1], [1, 1, 1], [0, 1, 1], [0, 0, 1]]], [0, 0, -1, [[0, 0, 0], [0, 1, 0], [1, 1, 0], [1, 0, 0]]],
+];
+// Surface voxelisation of a Geo (or raw vertex data): every triangle is sampled densely, each touched cell takes the
+// mean colour of its samples (softly posterised so it reads as hand-placed voxels), and only faces between a filled
+// and an empty cell are emitted. Thin sheets (leaves, fins, blades) become one voxel thick.
+export function voxelize(src, vs = 0.5, o = {}) {
+  const d = src.d || src, n = src.n ?? d.length;
+  const out = o.into || new Geo();
+  if (!n) return out;
+  // keep the cell count sane: grow the voxel size if the surface is too large for the budget
+  let area = 0;
+  for (let i = 0; i < n; i += STRIDE * 3) {
+    const ux = d[i + 11] - d[i], uy = d[i + 12] - d[i + 1], uz = d[i + 13] - d[i + 2], vx = d[i + 22] - d[i], vy = d[i + 23] - d[i + 1], vz = d[i + 24] - d[i + 2];
+    area += 0.5 * Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx);
+  }
+  const maxCells = o.maxCells || 26000;
+  if (area / (vs * vs) > maxCells) vs *= Math.sqrt(area / (vs * vs) / maxCells);
+  const inv = 1 / vs, K = 2048, H = 1024;
+  const off = o.off || [0, 0, 0]; // grid shift: put a surface exactly on a cell boundary (desk tops, plinths)
+  const cells = new Map();
+  let sum = [];
+  const put = (x, y, z, r, g, b) => {
+    const ix = Math.floor((x + off[0]) * inv), iy = Math.floor((y + off[1]) * inv), iz = Math.floor((z + off[2]) * inv);
+    const key = (ix + H) + (iy + H) * K + (iz + H) * K * K;
+    let s = cells.get(key);
+    if (s === undefined) { s = sum.length; cells.set(key, s); sum.push(0, 0, 0, 0, ix, iy, iz); }
+    sum[s] += r; sum[s + 1] += g; sum[s + 2] += b; sum[s + 3]++;
+  };
+  const step = vs * 0.45;
+  for (let i = 0; i < n; i += STRIDE * 3) {
+    const ax = d[i], ay = d[i + 1], az = d[i + 2], bx = d[i + 11], by = d[i + 12], bz = d[i + 13], cx = d[i + 22], cy = d[i + 23], cz = d[i + 24];
+    const L = Math.max(Math.hypot(bx - ax, by - ay, bz - az), Math.hypot(cx - ax, cy - ay, cz - az), Math.hypot(cx - bx, cy - by, cz - bz));
+    const m = Math.min(400, Math.max(1, Math.ceil(L / step)));
+    const r = (d[i + 6] + d[i + 17] + d[i + 28]) / 3, g = (d[i + 7] + d[i + 18] + d[i + 29]) / 3, b = (d[i + 8] + d[i + 19] + d[i + 30]) / 3;
+    for (let u = 0; u <= m; u++) for (let v = 0; v <= m - u; v++) {
+      const s1 = u / m, s2 = v / m;
+      put(ax + (bx - ax) * s1 + (cx - ax) * s2, ay + (by - ay) * s1 + (cy - ay) * s2, az + (bz - az) * s1 + (cz - az) * s2, r, g, b);
+    }
+  }
+  const jit = o.jitter ?? 0.07, post = o.posterize ?? 20;
+  const q = (v) => Math.round(v * post) / post;
+  out.grow(cells.size * 6 * 6 * STRIDE * 0.5);
+  for (let s = 0; s < sum.length; s += 7) {
+    const c = sum[s + 3], ix = sum[s + 4], iy = sum[s + 5], iz = sum[s + 6];
+    const h = hash01((ix * 73856093) ^ (iy * 19349663) ^ (iz * 83492791));
+    const base = shadec([q(sum[s] / c), q(sum[s + 1] / c), q(sum[s + 2] / c)], (h - 0.5) * jit);
+    for (const [dx, dy, dz, quad] of VDIRS) {
+      if (cells.has((ix + dx + H) + (iy + dy + H) * K + (iz + dz + H) * K * K)) continue;
+      const col = dy > 0 ? shadec(base, 0.07) : dy < 0 ? shadec(base, -0.14) : base;
+      const P = quad.map(([a, b2, c2]) => [(ix + a) * vs - off[0], (iy + b2) * vs - off[1], (iz + c2) * vs - off[2]]);
+      out.grow(STRIDE * 6);
+      const nr = [dx, dy, dz];
+      out.vert(P[0], nr, col); out.vert(P[1], nr, col); out.vert(P[2], nr, col);
+      out.vert(P[0], nr, col); out.vert(P[2], nr, col); out.vert(P[3], nr, col);
+    }
+  }
+  out.voxelSize = vs;
+  return out;
+}
+// build some geometry with the target's current transform, then add it to g as voxels
+export function vox(g, vs, build, o = {}) {
+  const t = new Geo();
+  t.m = g.m.slice(); t.jit = g.jit; t.seed = g.seed;
+  build(t);
+  if (o.raw) return g.merge(t);
+  return voxelize(t, vs, { ...o, into: g });
 }
 
 // Geometry rebuilt every frame into one LPMesh (re-uploaded on change).

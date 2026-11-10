@@ -266,6 +266,7 @@ export class OsceanBiome extends Biome {
     { const l = Math.hypot(Hx, Hy, Hz); Hx /= l; Hy /= l; Hz /= l; }
     const G0 = [38, 150, 46], G1 = [74, 196, 58], G2 = [148, 228, 80], GL = [190, 244, 110];
     D.terrain({
+      micro: { ripple: 0, pebble: 0.9, shell: 0, pebbles: [[255, 255, 255], [255, 214, 70], [255, 120, 180], [190, 150, 255], [120, 210, 70]] }, // [phase7:env] meadow flecks: tiny flowers and clover
       cell: 2, dz: 0.02, hstep: 2, ambient: 0.72, diffuse: 0.4, ao: 0.05, jitter: 0.02, wall: 0.95, side: 0.97, crest: 1.045, fullHeight: true,
       height,
       color: (X, z, h) => {

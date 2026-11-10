@@ -1,5 +1,5 @@
-// The aquarium (phase 6): a real, super-detailed 3D fish tank (low-poly, src/gfx/lowpoly.js LPScene) in a Frutiger
-// Aero room. Move around it (drag to orbit, right-drag to pan, wheel to zoom, Front / Top / Close-up presets), go
+// The aquarium (phase 6; phase 7: YOUR TANK IS A CUBE, a build mode and fish management; phase 8: voxel decor, plants
+// and furniture, pixel-art particles): a real 3D glass cube tank (src/gfx/lowpoly.js LPScene) in a Frutiger Aero room. Move around it (drag to orbit, right-drag to pan, wheel to zoom, Front / Top / Close-up presets), go
 // swimming inside as your bubble person (WASD / arrows + drag to look, or click to dart; fish react, Aero drops are
 // collected by swimming through them, bubbles trail; Esc or the Exit pill leaves), arrange decorations in 3D, buy
 // tank gear with Aero and watch the tank swell when the Lab unlocks a bigger tier (goldfish jar -> bowl -> Aqua Lamp ->
@@ -7,6 +7,9 @@
 // evolution and auto-collect keep working. Without WebGL2 a simple 2D front view stands in (flat2d.js).
 //
 // Shown as the full-screen scene (state.view === 'aquarium') and as a floating Aero glass window over the ocean.
+// Build mode (buildmode.js, dock 'Build'): catalog, ghost, grid snap, rotate / raise / stack, move, duplicate, store,
+// sell, undo, plant & rock brushes. Fish management (src/ui/fishmgr.js) uses: fishOf(rec), moveFish(rec, toTank),
+// releaseFish(rec), feedAll(), breedPair(recA, recB), focusFish(rec), canBreed(rec). editing (true while building).
 // API used by the game: addFish(rec), update(dt, inpOrNull), hit(x, y), drawFull, drawWindow, drawMini, windowRect(),
 // toggleWindow(), openWindow(force), closeWindow(), forceCoin(), offlineCoins(sec), onResize(). Extra: addDecor(id),
 // storedDecor(), placeStored(id), tankSummary(), interact(decorOrId), openFull(), capacity(), tier, syncFish(),
@@ -27,6 +30,7 @@ import { AERO, fmtAero, drawAeroCoin, drawAeroSurface, drawAeroButton, drawSpark
 import { TANK_TIERS, TANK_IDS, tankTier, aeroRate, GEAR, gearLevel, gearCost, gearMul, gearHappy } from './tanks.js';
 import { TankShape, TankFish, Drops3D, Ripples, DENOMS } from './sim3d.js';
 import { TankView } from './view3d.js';
+import { BuildMode } from './buildmode.js';
 import { decorModel } from './lpdecor.js';
 import { warmFishFrame } from './lpfish.js';
 import { drawFlat } from './flat2d.js';
@@ -55,7 +59,7 @@ export class Aquarium {
     this.view = new TankView(this);
     this.visibleKey = null;
     this.swim = null;
-    this.arrange = false;
+    this.build = new BuildMode(this);
     this.panel = null; // 'gear' | null
     this.press = null; this.drag = null;
     this.hoverFish = null; this.hoverDecor = null; this.hoverBtn = null;
@@ -72,6 +76,8 @@ export class Aquarium {
   get st() { return this.game.state; }
   get stats() { return this.game.stats || {}; }
   get coins() { return this.drops; } // older readers
+  get arrange() { return this.build.on; } // older readers
+  get editing() { return this.visibleKey === 'full' && this.build.on; }
 
   ensureState() {
     const st = this.st;
@@ -82,6 +88,7 @@ export class Aquarium {
     tk.stored ||= [];
     tk.coins ||= [];
     tk.gear ||= {};
+    tk.paint ||= [];
     if (!Number.isFinite(tk.tier)) tk.tier = 0;
     for (const d of tk.decor) { if (d.z === undefined) d.z = 0.3 + ((d.x * 997) % 1) * 0.5; }
     st.tankWindow ||= { open: false, x: 0, y: 0 };
@@ -97,7 +104,8 @@ export class Aquarium {
     this.swim = null; this.growAnim = null; this.pendingGrow = null;
     this.drops.setScale(this.shape.fishLen / 6);
     this.decor = this.st.tank.decor.filter((d) => PROPS[d.id]).map((rec) => ({ rec }));
-    this.layoutDecor();
+    this.layoutDecor(true);
+    this.paintDirty = true;
     this.view.invalidate(); // the 3D kit is built on first show
     this.syncFish();
     this.restoreCoins();
@@ -116,37 +124,67 @@ export class Aquarium {
     return Math.max(0.15, k);
   }
 
-  layoutDecor() {
-    const T = this.shape;
+  // Lay the pieces out in list order: each one stands on the floor or on an earlier piece under its centre (stacking),
+  // plus its own lift. d.ty is where it rests; d.p falls to it under water gravity (updateDecor).
+  layoutDecor(snap = false) {
+    const T = this.shape, S = T.size[1];
+    const done = [];
     for (const d of this.decor) {
       d.model ||= decorModel(d.rec.id, d.rec.v || 0);
       d.k = this.decorScale(d);
-      const p = T.floorPoint(clamp01(d.rec.x ?? 0.5), clamp01(d.rec.z ?? 0.5), d.model.r * d.k * 0.6);
-      d.p = [p[0], p[1] - 0.25, p[2]];
-      d.yaw = d.rec.r ?? ((((d.rec.x || 0) * 997) % 1) - 0.5) * 0.8;
       d.r = d.model.r * d.k; d.h = d.model.h * d.k;
+      const fp = T.floorPoint(clamp01(d.rec.x ?? 0.5), clamp01(d.rec.z ?? 0.5), d.r * 0.6);
+      let base = fp[1] - 0.25;
+      for (const e of done) if (!e.held && Math.hypot(e.p[0] - fp[0], e.p[2] - fp[2]) < e.r * 0.7) base = Math.max(base, e.ty + e.h * 0.92);
+      d.ty = base + (d.rec.lift || 0) * S;
+      if (!d.held) {
+        if (!d.p || snap) d.p = [fp[0], d.ty, fp[2]];
+        else if (!d.glide) { d.p[0] = fp[0]; d.p[2] = fp[2]; if (d.p[1] < d.ty) d.p[1] = d.ty; }
+        d.fp = fp;
+        d.yaw = d.rec.r ?? ((((d.rec.x || 0) * 997) % 1) - 0.5) * 0.8;
+      }
       d.squash = d.squash || 0; d.squashV = d.squashV || 0;
+      done.push(d);
     }
+  }
+
+  // a decoration record into the tank (index -1 = on top); dropFrom: it falls in from that height
+  insertDecorRec(rec, index = -1, o = {}) {
+    const tk = this.st.tank;
+    const d = { rec };
+    if (index < 0 || index >= this.decor.length) { tk.decor.push(rec); this.decor.push(d); }
+    else { tk.decor.splice(Math.min(index, tk.decor.length), 0, rec); this.decor.splice(index, 0, d); }
+    this.layoutDecor();
+    if (o.dropFrom != null) { d.p[1] = Math.max(d.ty, o.dropFrom); d.vy = 0; }
+    d.squashV = 4;
+    return d;
+  }
+  removeDecorRec(rec, fx = 'puff') {
+    const tk = this.st.tank;
+    const d = this.decor.find((x) => x.rec === rec);
+    tk.decor = tk.decor.filter((r) => r !== rec);
+    this.decor = this.decor.filter((x) => x.rec !== rec);
+    if (d?.p) { if (fx === 'puff') this.puff([d.p[0], d.ty, d.p[2]], d.r, 8); else this.fxAt([d.p[0], d.p[1] + d.h * 0.5, d.p[2]], 'burst', 10); }
+    this.sfx('ui_close', { vol: 0.5 });
+    this.layoutDecor();
+    return d;
   }
 
   addDecor(id, opts = {}) {
     const meta = PROPS[id];
     if (!meta?.decor) return false;
-    const tk = this.st.tank;
     let best = null, bs = -1;
     for (let i = 0; i < 40; i++) {
-      const x = rng.float(0.12, 0.88), z = rng.float(0.2, 0.8);
-      let m = 9;
-      for (const d of tk.decor) m = Math.min(m, Math.abs(d.x - x) + Math.abs((d.z ?? 0.5) - z) * 0.6);
+      const x = rng.float(0.12, 0.88), z = rng.float(0.15, 0.85);
+      const ev = this.build.evaluate({ id, x, z }, null);
+      let m = ev.ok ? 9 : 0;
+      for (const d of this.st.tank.decor) m = Math.min(m, Math.abs(d.x - x) + Math.abs((d.z ?? 0.5) - z));
       if (m > bs) { bs = m; best = { x, z }; }
     }
-    const rec = { id, x: opts.x ?? best.x, z: opts.z ?? best.z };
+    const rec = { id, x: opts.x ?? best.x, z: opts.z ?? best.z, r: rng.float(-0.6, 0.6) };
     if (opts.v) rec.v = opts.v;
-    tk.decor.push(rec);
-    const d = { rec };
-    this.decor.push(d);
-    this.layoutDecor();
-    d.hop = 6; d.squashV = 4;
+    const d = this.insertDecorRec(rec, -1);
+    d.p[1] += this.shape.size[1] * 0.25;
     this.game.save?.();
     return true;
   }
@@ -164,14 +202,47 @@ export class Aquarium {
   }
 
   storeDecor(d) {
-    const tk = this.st.tank;
-    tk.decor = tk.decor.filter((r) => r !== d.rec);
-    tk.stored.push(d.rec.id);
-    this.decor = this.decor.filter((x) => x !== d);
-    this.fxAt([d.p[0], d.p[1] + d.h * 0.5, d.p[2]], 'burst', 10);
+    this.removeDecorRec(d.rec, 'burst');
+    this.st.tank.stored.push(d.rec.id);
     this.game.toast?.(`${PROPS[d.rec.id]?.name || 'Decoration'} packed away.`, 'tank');
-    this.sfx('ui_close');
     this.game.save?.();
+  }
+
+  // painted plants: base-layout indices the eraser removed (reset when the layout changes with the tier / light)
+  plantKey() { return this.tier + '|' + (TANK_TIERS[this.tier].plants + (gearLevel(this.st, 'light') | 0) * 2); }
+  baseOff() {
+    const tk = this.st.tank;
+    if (!tk.baseOff || tk.baseOff.key !== this.plantKey()) tk.baseOff = { key: this.plantKey(), i: [] };
+    return tk.baseOff;
+  }
+  basePlantsIn(u, v, R) {
+    const T = this.shape, out = [];
+    for (const s of this.view.plants?.list || []) {
+      if (s.base == null) continue;
+      const [pu, pv] = T.toUV(s.p[0], s.p[2]);
+      if (Math.abs(pu - u) < R && Math.abs(pv - v) < R) out.push(s.base);
+    }
+    return out;
+  }
+  // a pixel-art sand puff where something lands or lifts off (+ a few real bubbles)
+  puff(p, r = 2, n = 6) {
+    const sub = this.view.kit?.sub;
+    const cols = sub ? [sub.cols[0], sub.cols[2], sub.side[1], '#ffffff'] : ['#e8dcb4', '#f0e6c4', '#ffffff'];
+    for (let i = 0; i < Math.min(5, n); i++) this.addBubble([p[0] + rng.float(-r, r) * 0.6, p[1] + 0.3, p[2] + rng.float(-r, r) * 0.6], this.shape.fishLen * rng.float(0.025, 0.05));
+    if (!this.visibleKey) return;
+    const sp = this.view.project(p);
+    if (!sp) return;
+    const o = this.viewOrigin();
+    const rr = Math.max(3, r * this.view.ppu(sp[2]));
+    this.px('dust', sp[0], sp[1], Math.round(5 + n), { speed: [10, 26 + rr], up: 10, w: rr * 0.6, h: 1, ramps: ['dust', 'white'] });
+    this.px('puff', sp[0], sp[1] - 1, Math.round(2 + n / 3), { speed: [6, 18], w: rr * 0.4, ramp: 'white' });
+    void o;
+  }
+  // 2D pixel-art particles (phase 8), falling back to plain sparkles on older particle systems
+  px(kind, x, y, n, o = {}) {
+    const P = this.particles;
+    if (P.pixelBurst) return P.pixelBurst(kind, x, y, n, o);
+    for (let i = 0; i < n; i++) P.sparkle(x + rng.float(-4, 4), y + rng.float(-4, 4), '#ffffff');
   }
 
   // ------------------------------------------------------------------ fish
@@ -282,7 +353,7 @@ export class Aquarium {
     const g = this.game;
     this.press = null; this.drag = null;
     g.setView?.('aquarium');
-    this.view.setPreset('front');
+    this.view.setPreset('iso');
   }
 
   shownKey() {
@@ -376,7 +447,9 @@ export class Aquarium {
   onCourt(a, b) {
     const T = this.shape;
     const [u, v] = T.toUV((a.p[0] + b.p[0]) / 2, (a.p[2] + b.p[2]) / 2);
-    const egg = { species: a.sp.id, x: u, z: v, t: 0, dur: 180 / (this.stats.hatchSpeed || 1), n: rng.int(3, 6), color: a.sp.look?.col?.belly || '#ffd8a8', parents: [a.rec.uid, b.rec.uid] };
+    const species = a.breedSp || b.breedSp || a.sp.id;
+    a.breedSp = b.breedSp = null;
+    const egg = { species, x: u, z: v, t: 0, dur: 180 / (this.stats.hatchSpeed || 1), n: rng.int(3, 6), color: a.sp.look?.col?.belly || '#ffd8a8', parents: [a.rec.uid, b.rec.uid] };
     this.st.tank.eggs.push(egg);
     const later = Date.now() + 6 * 60 * 1000;
     a.rec.breedAt = later; b.rec.breedAt = later;
@@ -447,6 +520,65 @@ export class Aquarium {
     return { fish: n, cap: this.capacity(), happiness: happy, coinsPerMin: this.ratePerMin(), aeroPerMin: this.ratePerMin(), coins: this.drops.list.length, decor: this.decor.length, tier: this.tier, tank: this.tierInfo().name };
   }
 
+  // ------------------------------------------------------------------ fish management (src/ui/fishmgr.js)
+  fishOf(rec) { return this.fish.find((f) => f.rec === rec) || null; }
+  tankCount() { return (this.st.fish || []).filter((r) => r.inTank).length; }
+  rateOf(rec) { const sp = SPECIES_BY_ID[rec.species]; return sp ? aeroRate(rec, sp, this.stats, this.tier, this.game.coinMulBonus || 1, this.gearMul()) : 0; }
+  // move a fish between the tank and storage (the holding bucket), respecting the tank's capacity
+  moveFish(rec, toTank) {
+    if (!!rec.inTank === !!toTank) return { ok: true };
+    if (toTank && this.tankCount() >= this.capacity()) return { ok: false, why: `The tank is full (${this.capacity()} fish). Upgrade it in The Lab!` };
+    rec.inTank = !!toTank;
+    if (toTank) this.addFish(rec, { splash: true });
+    else { const f = this.fishOf(rec); if (f) { this.fxAt(f.p, 'burst', 6); this.fish.splice(this.fish.indexOf(f), 1); } }
+    this.sfx(toTank ? 'splash_small' : 'bubble', { vol: 0.5 });
+    this.game.save?.();
+    return { ok: true };
+  }
+  releaseFish(rec) {
+    const st = this.st, i = (st.fish || []).indexOf(rec);
+    if (i < 0) return 0;
+    const f = this.fishOf(rec);
+    if (f) { this.fxAt(f.p, 'burst', 8); this.fish.splice(this.fish.indexOf(f), 1); }
+    st.fish.splice(i, 1);
+    const g = this.game;
+    return g.releaseFish ? g.releaseFish(rec, g.input?.x, g.input?.y) : 0;
+  }
+  feedAll() {
+    const T = this.shape;
+    for (let i = 0; i < 4; i++) { const p = T.floorPoint(0.2 + i * 0.2, rng.float(0.3, 0.7), 2); this.sprinkle(p[0], p[2], 6); }
+    for (const f of this.fish) f.rec.hunger = Math.max(0, (f.rec.hunger ?? 0.4) - 0.3);
+    this.sfx('bubble', { vol: 0.5, pitch: 1.2 });
+    this.game.emit?.('tankFed', { n: this.fish.length });
+  }
+  canBreed(rec) {
+    if (!this.stats.breeding) return 'Research breeding in The Lab first.';
+    if (!rec.inTank) return 'Both fish must be in the tank.';
+    if ((rec.breedAt || 0) > Date.now()) return `${rec.name || SPECIES_BY_ID[rec.species]?.name || 'This fish'} needs a rest (${Math.ceil(((rec.breedAt || 0) - Date.now()) / 60000)} min).`;
+    if (this.st.tank.eggs.length >= 2) return 'The tank already has two clutches of eggs.';
+    return null;
+  }
+  // a chosen pair courts (they swim in a heart around each other) and lays eggs of one parent's species
+  breedPair(a, b) {
+    if (a === b) return { ok: false, why: 'Pick two different fish.' };
+    const why = this.canBreed(a) || this.canBreed(b);
+    if (why) return { ok: false, why };
+    const fa = this.fishOf(a), fb = this.fishOf(b);
+    if (!fa || !fb) return { ok: false, why: 'Both fish must be in the tank.' };
+    fa.setState('court'); fa.mate = fb; fb.setState('court'); fb.mate = fa;
+    fa.say('heart', 2); fb.say('heart', 2);
+    if (rng.chance(0.5)) fa.breedSp = fb.sp.id;
+    this.sfx('magic', { vol: 0.5 });
+    return { ok: true };
+  }
+  // the camera glides to a fish and follows it (switches to the tank view first)
+  focusFish(rec) {
+    if (!rec?.inTank) return false;
+    this.pendingFocus = rec; this.pendingFocusT = 3;
+    if (this.game.state.view !== 'aquarium') this.game.setView?.('aquarium');
+    return true;
+  }
+
   // ------------------------------------------------------------------ gear (Aero upgrades)
   buyGear(id) {
     const g = GEAR.find((q) => q.id === id);
@@ -470,6 +602,7 @@ export class Aquarium {
     const g = this.game;
     if (this.stateRef !== g.state) this.load();
     this.t += dt;
+    this.dtLast = dt;
     const tier = tankTier(this.st);
     if (tier !== this.tier) this.changeTier(tier);
     const shown = this.shownKey();
@@ -477,12 +610,22 @@ export class Aquarium {
     this.visibleKey = shown;
     if (shown === 'window') this.winAnim = Math.min(1, this.winAnim + dt * 5);
     if (shown !== 'full' && this.swim) this.exitSwim(true);
-    if (shown !== 'full') { this.panel = null; this.arrange = false; }
+    if (shown !== 'full') { this.panel = null; if (this.build.on) this.build.exit(); }
     if (shown === 'full' && was !== 'full') {
       this.view.w = g.screen.W; this.view.h = g.screen.H;
-      this.view.setPreset('front', true);
+      this.view.setPreset('iso', true);
       if (this.pendingGrow) { this.startGrow(this.pendingGrow); this.pendingGrow = null; }
     }
+    if (shown === 'full' && this.pendingFocus) {
+      const f = this.fish.find((q) => q.rec === this.pendingFocus);
+      if (f && this.view.kit) { this.view.focusFish(f); this.focusT = 4; f.say('heart', 1.6); }
+      if (f || !this.pendingFocusT || (this.pendingFocusT -= dt) <= 0) this.pendingFocus = null;
+    }
+    if (this.focusT > 0) this.focusT -= dt;
+    // F: the fish manager (anywhere in the game)
+    const I = g.input;
+    if (I?.keyPressed('f') && !g.ui?.active && !g.tutorial?.active && !this.build.on && !this.swim && g.ui?.panels?.fishmgr) { g.ui.open('fishmgr'); I.keysPressed?.delete?.('f'); }
+    if (this.build.on) this.build.update(dt);
     const clock = g.clock;
     this.nightK = clock ? clamp01(1 - clock.daylight()) : 0;
     this.comboT = Math.max(0, this.comboT - dt);
@@ -551,7 +694,7 @@ export class Aquarium {
     this.growAnim = { t: 0, from: grow.from, fx: 0 };
     this.view.rebuild();
     void rebuilt;
-    this.view.setPreset('front');
+    this.view.setPreset('iso');
     this.sfx('ui_unlock', { vol: 0.8 });
     this.sfx('travel_whoosh', { vol: 0.5 });
   }
@@ -583,6 +726,7 @@ export class Aquarium {
     }
     if (vk === 'window') { this.windowInput(dt, inp, tip); return; }
     if (this.swim) { this.swimButtons(inp); return; }
+    if (this.build.on) { this.build.input(inp, tip); this.prevCur = null; return; }
     // ---- full view: HUD first
     const W = g.screen.W;
     for (const b of this.fullButtons()) {
@@ -603,9 +747,10 @@ export class Aquarium {
     const lx = inp.x, ly = inp.y;
     // keys: camera presets
     if (!g.ui?.active) {
-      if (inp.keyPressed('1')) this.view.setPreset('front');
-      if (inp.keyPressed('2')) this.view.setPreset('top');
-      if (inp.keyPressed('3')) this.view.setPreset('close');
+      if (inp.keyPressed('1')) this.view.setPreset('iso');
+      if (inp.keyPressed('2')) this.view.setPreset('front');
+      if (inp.keyPressed('3')) this.view.setPreset('top');
+      if (inp.keyPressed('4')) this.view.setPreset('close');
     }
     // ---- dragging (camera or decor)
     const pr = this.press;
@@ -614,13 +759,9 @@ export class Aquarium {
       if (Math.hypot(inp.x - pr.x, inp.y - pr.y) > 4) pr.moved = true;
       if (pr.button === 'r') {
         if (inp.rdown) { if (pr.moved) view.pan(dx, dy); }
-        else { this.press = null; if (!pr.moved && pr.decor && this.arrange) this.storeDecor(pr.decor); }
+        else this.press = null;
       } else if (inp.down) {
-        if (pr.moved) {
-          if (pr.decor && !this.drag) { this.drag = { kind: 'decor', d: pr.decor }; this.sfx('icon_pickup', { vol: 0.5 }); }
-          if (this.drag?.kind === 'decor') this.dragDecor(lx, ly);
-          else view.orbit(dx, dy);
-        }
+        if (pr.moved) view.orbit(dx, dy);
       } else {
         this.press = null;
         if (this.drag) this.endDrag();
@@ -637,17 +778,16 @@ export class Aquarium {
       this.shape.clamp(cp, 1);
       this.cursor3 = { p: cp, speed: inp.speed || 0, t: this.t };
     }
-    const hd = this.drag?.d || this.pickDecor(ray);
+    const hd = this.pickDecor(ray);
     const hf = hd ? null : this.pickFish(ray);
     this.hoverDecor = hd; this.hoverFish = hf;
     if (hd && !this.drag) {
       const name = PROPS[hd.rec.id]?.name || 'Decoration', verb = propInteract(hd.rec.id)?.verb || 'Poke';
-      tip(this.arrange ? `${name}\n{mouse_hold} move  wheel: turn  {mouse_r} store` : `${name}\n{mouse_l} ${verb}  {mouse_hold} move`);
+      tip(`${name}\n{mouse_l} ${verb}   Build mode moves it`);
     } else if (hf) tip(this.fishTip(hf));
     // wheel: rotate a hovered decoration in arrange mode, otherwise zoom
     if (inp.wheel) {
-      if (hd && (this.arrange || this.drag)) { hd.rec.r = (hd.yaw || 0) + inp.wheel * 0.3; this.layoutDecor(); this.game.save?.(); }
-      else view.zoom(Math.pow(1.12, inp.wheel));
+      view.zoom(Math.pow(1.12, inp.wheel));
     }
     this.sweepDrops(lx, ly, inp.down && !this.drag);
     if (inp.pressed && !this.press) {
@@ -677,11 +817,6 @@ export class Aquarium {
     const t = this.shape.rayHit(ray.o, ray.d);
     if (t === null) return;
     const p = [ray.o[0] + ray.d[0] * t, 0, ray.o[2] + ray.d[2] * t];
-    if (this.arrange && this.st.tank.stored.length) {
-      const fp = this.floorHit(ray);
-      if (fp) { const [u, v] = this.shape.toUV(fp[0], fp[2]); this.placeStored(null, { x: u, z: v }); }
-      return;
-    }
     this.sprinkle(p[0], p[2]);
   }
 
@@ -708,9 +843,10 @@ export class Aquarium {
     }
     return best;
   }
-  pickDecor(ray) {
+  pickDecor(ray, ex = null) {
     let best = null, bt = Infinity;
     for (const d of this.decor) {
+      if (d === ex || !d.p) continue;
       const c = [d.p[0], d.p[1] + d.h * 0.45, d.p[2]];
       const t = raySphere(ray, c, Math.max(d.r * 0.85, d.h * 0.5));
       if (t !== null && t < bt) { bt = t; best = d; }
@@ -730,25 +866,7 @@ export class Aquarium {
     }
     return p;
   }
-  dragDecor(lx, ly) {
-    const d = this.drag.d;
-    const fp = this.floorHit(this.view.ray(lx, ly));
-    if (!fp) return;
-    const [u, v] = this.shape.toUV(fp[0], fp[2]);
-    d.rec.x = clamp(u, 0.03, 0.97); d.rec.z = clamp(v, 0.03, 0.97);
-    this.layoutDecor();
-    d.p[1] += 1.2;
-  }
-  endDrag() {
-    const d = this.drag;
-    this.drag = null;
-    if (d?.kind !== 'decor') return;
-    this.layoutDecor();
-    d.d.squashV = 5;
-    this.fxAt(d.d.p, 'burst', 8);
-    this.sfx('box_close', { vol: 0.5 });
-    this.game.save?.();
-  }
+  endDrag() { this.drag = null; }
 
   windowInput(dt, inp, tip) {
     const g = this.game, tw = g.state.tankWindow;
@@ -822,29 +940,27 @@ export class Aquarium {
     const L = this.fullLayout();
     const out = [{ id: 'back', ...L.btn, run: () => g.setView?.('ocean'), tip: 'Back to the ocean' }];
     out.push({ id: 'pill', ...L.pill, run: () => {}, tip: `${this.tierInfo().name}\n{fish} ${this.fish.length}/${this.capacity()}  {coin} ${this.ratePerMin().toFixed(1)} Aero/min` });
-    const kd = clamp(Math.min(this.hudK(), (H - 150) / (9 * 34 + 8)), 0.8, 2);
+    const kd = clamp(Math.min(this.hudK(), (H - 150) / (11 * 34 + 8)), 0.8, 2);
     const bw = Math.round(34 * kd), bh = Math.round(30 * kd), x = W - bw - 8;
-    let y = Math.max(Math.round(56 * kd), Math.round((H - 50) * 0.5 - 4.5 * (bh + 4)));
+    let y = Math.max(Math.round(40 * kd), Math.round((H - 50) * 0.5 - 5.5 * (bh + 4)));
     const dock = [
-      { id: 'front', icon: 'eye', label: 'Front', tip: 'Front view (1)', run: () => this.view.setPreset('front') },
-      { id: 'top', icon: 'arrow_d', label: 'Top', tip: 'Top view (2)', run: () => this.view.setPreset('top') },
-      { id: 'close', icon: 'plus', label: 'Close', tip: 'Close-up (3)', run: () => this.view.setPreset('close') },
+      { id: 'iso', icon: 'eye', label: 'Iso', tip: 'Isometric view (1)', run: () => this.view.setPreset('iso') },
+      { id: 'front', icon: 'arrow_r', label: 'Front', tip: 'Front view (2)', run: () => this.view.setPreset('front') },
+      { id: 'top', icon: 'arrow_d', label: 'Top', tip: 'Top view (3)', run: () => this.view.setPreset('top') },
+      { id: 'close', icon: 'plus', label: 'Close', tip: 'Close-up (4)', run: () => this.view.setPreset('close') },
       { id: 'room', icon: 'home', label: 'Room', tip: 'See the whole room', run: () => this.view.setPreset('room') },
       { gap: true },
       { id: 'swim', icon: 'bubble', label: 'Swim', tip: 'Go for a swim inside the tank!', run: () => this.enterSwim(), tone: 'green' },
       { id: 'feed', icon: 'food', label: 'Feed', tip: 'Sprinkle food', run: () => this.sprinkle(rng.float(-0.25, 0.25) * this.shape.size[0], rng.float(-0.2, 0.2) * this.shape.size[2], 9) },
-      { id: 'arrange', icon: 'coral', label: 'Decor', tip: this.arrange ? 'Done arranging' : 'Arrange decorations (drag, wheel rotates, right-click stores)', run: () => { this.arrange = !this.arrange; this.panel = null; }, on: this.arrange },
-      { id: 'gear', icon: 'gear', label: 'Gear', tip: 'Upgrade & expand the tank', run: () => { this.panel = this.panel === 'gear' ? null : 'gear'; this.arrange = false; }, on: this.panel === 'gear', tone: 'orange' },
+      { id: 'fish', icon: 'fish', label: 'Fish', tip: 'Manage your fish (F)', run: () => g.ui?.panels?.fishmgr && g.ui.open('fishmgr') },
+      { id: 'build', icon: 'coral', label: 'Build', tip: 'Build mode: decorate the cube', run: () => this.build.enter() },
+      { id: 'gear', icon: 'gear', label: 'Gear', tip: 'Upgrade & expand the tank', run: () => { this.panel = this.panel === 'gear' ? null : 'gear'; }, on: this.panel === 'gear', tone: 'orange' },
       { id: 'light', icon: this.st.tank.lampOff ? 'moon' : 'sun', label: 'Light', tip: this.st.tank.lampOff ? 'Light on' : 'Light off', run: () => { this.st.tank.lampOff = !this.st.tank.lampOff; this.sfx('click', { vol: 0.6, pitch: this.st.tank.lampOff ? 0.8 : 1.25 }); this.game.save?.(); } },
     ];
     for (const b of dock) {
       if (b.gap) { y += Math.round(8 * kd); continue; }
       out.push({ ...b, x, y, w: bw, h: bh, dock: true, kd });
       y += bh + 4;
-    }
-    if (this.arrange && this.st.tank.stored.length) {
-      const n = this.st.tank.stored.length;
-      out.push({ id: 'unpack', x: x - Math.round(70 * L.k), y: L.btn.y + L.btn.h + 12, w: Math.round(64 * L.k), h: L.btn.h, label: `+${n}`, tip: `Place ${PROPS[this.st.tank.stored.at(-1)]?.name || 'decoration'}\n(or click the floor)`, run: () => this.placeStored(), tone: 'green' });
     }
     return out;
   }
@@ -922,7 +1038,7 @@ export class Aquarium {
     const p = [0, lerp(T.floorY(0, 0), T.waterY, 0.6), T.round ? T.size[2] * 0.12 : T.size[2] * 0.32];
     T.clamp(p, r);
     this.swim = { p, v: [0, 0, 0], yaw: Math.PI / 2, pitch: -0.05, roll: 0, r, speed: 0, kick: 0, look: { yaw: Math.PI / 2, pitch: -0.08 }, intro: 0, got: 0, goal: null, bubT: 0 };
-    this.panel = null; this.arrange = false; this.camEye = null;
+    this.panel = null; if (this.build.on) this.build.exit(); this.camEye = null;
     this.ripples.add(p[0], p[2], 1.4);
     for (let i = 0; i < 14; i++) this.addBubble([p[0] + rng.float(-r, r), p[1] + rng.float(-r, r), p[2] + rng.float(-r, r)], r * rng.float(0.05, 0.15));
     this.sfx('splash_small', { vol: 0.7 });
@@ -939,7 +1055,7 @@ export class Aquarium {
     this.ripples.add(s.p[0], s.p[2], 1.2);
     this.sfx('splash_small', { vol: 0.6 });
     if (s.got) this.game.toast?.(`Swim haul: ${fmtAero(s.got)} Aero!`, 'coin');
-    this.view.setPreset('front');
+    this.view.setPreset('iso');
   }
 
   swimDir(yaw, pitch) { const cp = Math.cos(pitch); return [Math.cos(yaw) * cp, Math.sin(pitch), -Math.sin(yaw) * cp]; }
@@ -1129,7 +1245,28 @@ export class Aquarium {
   }
 
   updateDecor(dt) {
+    const T = this.shape, gk = T.size[1] / 54;
     for (const d of this.decor) {
+      if (!d.p) continue;
+      if (d.glide) {
+        // glide back to its spot (a cancelled or refused drop, an undo)
+        d.glide.t += dt;
+        const k = smoothstep(0, 1, Math.min(1, d.glide.t / 0.35));
+        const to = [d.fp?.[0] ?? d.p[0], d.ty, d.fp?.[2] ?? d.p[2]];
+        for (let i = 0; i < 3; i++) d.p[i] = lerp(d.glide.from[i], to[i], k) + (i === 1 ? Math.sin(k * Math.PI) * T.fishLen * 0.6 : 0);
+        if (d.glide.t >= 0.35) { d.glide = null; d.squashV += 4; this.puff([d.p[0], d.ty, d.p[2]], d.r, 5); this.layoutDecor(); }
+      } else if (!d.held) {
+        // sink to its resting height under water gravity; land with a squash and a sand puff
+        if (d.p[1] > d.ty + 0.01) {
+          d.vy = Math.max(-28 * gk, (d.vy || 0) - 70 * gk * dt);
+          d.p[1] += d.vy * dt;
+          if (d.p[1] <= d.ty) {
+            d.p[1] = d.ty;
+            if (d.vy < -4 * gk) { d.squashV += Math.min(9, -d.vy / gk * 0.35); this.puff([d.p[0], d.ty, d.p[2]], d.r, 8); this.sfx('box_close', { vol: 0.3, pitch: 0.8 }); }
+            d.vy = 0;
+          }
+        } else { d.p[1] = d.ty; d.vy = 0; }
+      }
       d.squashV += (-d.squash * 160 - d.squashV * 9) * dt;
       d.squash = clamp(d.squash + d.squashV * dt, -0.45, 0.45);
       if (d.hop > 0) d.hop = Math.max(0, d.hop - dt * 14);
@@ -1241,9 +1378,10 @@ export class Aquarium {
   }
 
   // ------------------------------------------------------------------ decor interactions
-  interact(d) {
+  interact(d, quiet = false) {
     if (typeof d === 'string') d = this.decor.find((q) => q.rec.id === d);
     if (!d) return false;
+    if (quiet) { d.squashV += 3; this.sfx('click', { vol: 0.35, pitch: 1.2 }); return true; }
     const spec = propInteract(d.rec.id) || { sfx: [], fx: [], squash: 0.1 };
     d.squashV += (spec.squash ?? 0.1) * 40 + 3;
     d.hop = spec.squash > 0.15 ? 3 : 0;
@@ -1284,18 +1422,18 @@ export class Aquarium {
     const P = this.particles;
     switch (kind) {
       case 'pop': {
-        const rr = r * this.view.ppu(sp[2]);
-        P.ring(x, y, 0.15 + rr * 0.05, 'rgba(220,255,255,0.95)');
-        for (let i = 0; i < 3; i++) P.sparkle(x + rng.float(-3, 3), y + rng.float(-3, 3), '#bff8ff');
+        const rr = Math.max(2, r * this.view.ppu(sp[2]));
+        this.px('drop', x, y, 5, { ramp: 'aqua', speed: [30, 70], spread: 1.4 });
+        this.px('sparkle', x, y, 3, { ramp: 'aqua', w: rr * 0.5, h: rr * 0.5 });
         if (n > 1) P.text(x, y - 6, '+' + fmtAero(n), { font: 'small', color: '#e8fdff', layer: 'fg', life: 0.9, vy: -16 });
         break;
       }
-      case 'hearts': for (let i = 0; i < n; i++) P.text(x + rng.float(-6, 6), y - 6, '{heart}', { layer: 'fg', life: 1, vy: -14 }); break;
+      case 'hearts': this.px('heart', x, y - 4, Math.max(1, n), {}); break;
       case 'text': if (text) P.text(x, y - 8, text, { font: 'small', color: '#ffffff', layer: 'fg', life: 1.6, vy: -10 }); break;
-      case 'confetti': P.aeroConfetti ? P.aeroConfetti(x, y, n) : P.confetti(x, y, n); break;
-      case 'evolve': P.shockwave?.(x, y, 26, '#bff6ff'); P.aeroConfetti ? P.aeroConfetti(x, y, 26) : P.confetti(x, y, 24); break;
-      case 'burst': P.burst(x, y, n, { colors: ['#ffffff', '#bfeaff', '#c8f56a'], speed: 26, g: 30, life: 0.6, up: 8 }); break;
-      default: for (let i = 0; i < Math.min(14, n); i++) P.sparkle(x + rng.float(-8, 8), y + rng.float(-8, 4), rng.pick(['#bff8ff', '#ffffff', '#fff6b0'])); break;
+      case 'confetti': if (P.pixelBurst) this.px('confetti', x, y, n, {}); else P.confetti(x, y, n); break;
+      case 'evolve': this.px('star', x, y, 10, {}); this.px('confetti', x, y, 24, {}); this.px('sparkle', x, y, 12, { ramp: 'aqua' }); break;
+      case 'burst': this.px('sparkle', x, y, n, { ramps: ['aqua', 'white', 'gold'] }); this.px('puff', x, y, 3, { ramp: 'white' }); break;
+      default: this.px('sparkle', x, y, Math.min(14, n), { ramps: ['aqua', 'white', 'gold'], w: 6, h: 5 }); break;
     }
     if (kind !== 'pop' && kind !== 'text') for (let i = 0; i < 3; i++) this.addBubble(p, T.fishLen * 0.04);
   }
@@ -1337,7 +1475,7 @@ export class Aquarium {
     const v = this.view;
     const keep = { yaw: v.cam.yaw, pitch: v.cam.pitch, dist: v.cam.dist, target: v.cam.target.slice() };
     const f = v.kit ? v.frame() : null;
-    if (f) { v.w = d.sw; v.h = d.sh; const ff = v.frame(); Object.assign(v.cam, { yaw: Math.sin(this.t * 0.12) * 0.28, pitch: 0.14, dist: ff.dist * 0.74, target: ff.target }); }
+    if (f) { v.w = d.sw; v.h = d.sh; const ff = v.frame(); Object.assign(v.cam, { yaw: 0.6 + Math.sin(this.t * 0.12) * 0.22, pitch: 0.36, dist: ff.dist * 0.98, target: [0, this.shape.top * 0.42, 0] }); }
     ctx.save();
     ctx.beginPath(); ctx.rect(ix, iy, d.sw, d.sh); ctx.clip();
     if (!v.render(ctx, ix, iy, d.sw, d.sh)) drawFlat(ctx, this, ix, iy, d.sw, d.sh);
@@ -1395,7 +1533,7 @@ export class Aquarium {
     const hf = this.hoverFish;
     if (hf) {
       const sp = v.project(hf.p);
-      if (sp) { const r = hf.len * v.ppu(sp[2]) * 0.6 + 3; for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2 + t * 2; drawSparkle(ctx, sp[0] + Math.cos(a) * r, sp[1] + Math.sin(a) * r * 0.7, 1, 0.8); } }
+      if (sp) { const r = hf.len * v.ppu(sp[2]) * 0.5 + 3; drawSparkle(ctx, sp[0] - r, sp[1] - r * 0.6, (t * 3) % 1 < 0.5 ? 2 : 1, 0.9); drawSparkle(ctx, sp[0] + r * 0.8, sp[1] + r * 0.4, (t * 3 + 0.5) % 1 < 0.5 ? 2 : 1, 0.8); }
     }
     const hd = this.hoverDecor;
     if (hd && !this.drag) {
@@ -1448,6 +1586,7 @@ export class Aquarium {
       drawAeroCoin(ctx, 15, Math.round(H / 2 + 45 - k * 90), 4, t);
       return;
     }
+    if (this.build.on) { this.build.draw(ctx); return; }
     const sm = this.tankSummary();
     const { pill: p, k } = this.fullLayout();
     drawAeroSurface(ctx, p.x, p.y, p.w, p.h, { tone: 'frost', r: 'pill', gloss: 0.75, glossH: Math.round(p.h * 0.45), curve: 2, rim: 0.9, glow: 0.5 });
@@ -1475,13 +1614,6 @@ export class Aquarium {
       drawAeroButton(ctx, b.x, b.y, b.w, b.h, { label: b.label, icon: getUiIcon('tank'), state: st, tone: b.tone || 'aqua' });
     }
     this.drawDock(ctx, btns.filter((b) => b.dock));
-    if (this.arrange) {
-      const msg = this.st.tank.stored.length ? 'Drag decor to move - wheel rotates - right-click stores - click the floor to place' : 'Drag decor to move - wheel rotates - right-click stores';
-      const L0 = this.fullLayout(), af = L0.k >= 1.4 ? 'normal' : 'small';
-      const mw = measureText(msg, af) + 20, mh = Math.round(16 * L0.k), my = L0.pill.y + L0.pill.h + 6;
-      drawAeroSurface(ctx, Math.round(W / 2 - mw / 2), my, mw, mh, { tone: 'frost', r: 'pill', gloss: 0.7, glossH: Math.round(mh * 0.45), rim: 0.9 });
-      drawText(ctx, msg, Math.round(W / 2), Math.round(my + (mh - (af === 'normal' ? 7 : 5)) / 2), { font: af, align: 'center', color: AERO.ink });
-    }
     if (this.panel === 'gear') this.drawGearPanel(ctx);
     const ga = this.growAnim;
     if (ga && ga.t > 0.3 && ga.t < 2.9) {
@@ -1493,7 +1625,7 @@ export class Aquarium {
       ctx.globalAlpha = 1;
     }
     if (!this.view.ok) drawText(ctx, '2D view (WebGL2 unavailable)', 8, H - 40, { font: 'small', color: '#ffffff', outline: '#0a3e74' });
-    else if (this.t < 12 && !this.arrange && !this.panel) {
+    else if (this.t < 12 && !this.panel) {
       ctx.globalAlpha = clamp01((12 - this.t) / 2);
       drawText(ctx, 'Drag: orbit   Right-drag: pan   Wheel: zoom   Click water: feed', W / 2, H - Math.round(60 * this.hudK()) - 20, { font: this.hudK() >= 1.4 ? 'normal' : 'small', align: 'center', color: '#ffffff', outline: '#0a3e74' });
       ctx.globalAlpha = 1;

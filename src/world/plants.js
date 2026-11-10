@@ -13,10 +13,10 @@
 // damping. Node forces (buoyancy or weight, the current, pushers) become joint torques  sum_j>i cross(p_j - p_i, F_j)
 // over the joint's moment of inertia  sum_j>i |p_j - p_i|^2, so long kelp is lazy and short grass is snappy. Only
 // plants near the camera view are simulated (the rest keep their last pose); budget ~300+ active segments.
-// Drawing: each segment is two facets split along the spine (lit / shaded by their facing to the top-left light),
-// colour-batched into a handful of Path2D fills per frame, with a glossy rim on the near layer.
+// Drawing (phase 7): crisp voxel segments on the world voxel grid (see draw()): lit / shaded facet voxels, bright top
+// faces, dark undersides, flecks and a 1 px selective outline, colour-batched into a handful of Path2D fills per frame.
 
-import { clamp, clamp01, lerp, TAU } from '../core/math.js';
+import { clamp, clamp01, lerp, TAU, hash2 } from '../core/math.js';
 import { RNG } from '../core/rng.js';
 import { mix, shade } from '../core/color.js';
 
@@ -188,7 +188,12 @@ export class PlantField {
     }
   }
 
-  // ------------------------------------------------------------------ drawing
+  // ------------------------------------------------------------------ drawing (phase 7: crisp voxel segments)
+  // Every visible plant is rasterised each frame onto the world voxel grid (VS world px per voxel: 2/3 on the near
+  // layers = 2 screen px at the 3x camera, 1 further back): the spine is a chain of tapered capsules, each voxel lit or
+  // shaded by the facet it falls on (the old low-poly ribbon halves), voxels with open sky above get a bright top face,
+  // open below a dark underside, a few get mineral flecks, and the silhouette gets a 1 px dark selective outline.
+  // Horizontal runs of one colour merge into one rect; rects are colour-batched into Path2D fills.
   path(map, key) {
     let pa = map.get(key);
     if (!pa) { pa = new Path2D(); map.set(key, pa); }
@@ -199,145 +204,195 @@ export class PlantField {
     const v = o.view, dx = o.dx || 0, dy = o.dy || 0;
     const paths = this.paths, rims = this.rims;
     paths.clear(); rims.clear();
-    const rimOn = layer === 'front' && o.rim !== false;
-    const order = [];
+    const vs = layer === 'front' || layer === 'deepFront' ? 2 / 3 : 1;
+    let any = false;
     for (const p of this.list) {
       if (p.layer !== layer || p.hidden) continue;
       if (v && (p.x1 + dx < v.x0 || p.x0 + dx > v.x1 || p.y1 + dy < v.y0 || p.y0 + dy > v.y1)) continue;
       this.fk(p);
-      this.ribbon(p, dx, dy, rimOn);
-      if (p.head) order.push(p);
+      this.voxPlant(p, dx, dy, vs);
+      any = true;
     }
+    if (!any) return;
+    for (const [col, pa] of rims) { ctx.fillStyle = col; ctx.fill(pa); } // outlines first
     for (const [col, pa] of paths) { ctx.fillStyle = col; ctx.fill(pa); }
-    if (rims.size) {
-      ctx.lineWidth = 0.55;
-      ctx.lineCap = 'round';
-      for (const [col, pa] of rims) { ctx.strokeStyle = col; ctx.stroke(pa); }
-    }
-    if (order.length) {
-      paths.clear();
-      for (const p of order) this.headOf(p, dx, dy);
-      for (const [col, pa] of paths) { ctx.fillStyle = col; ctx.fill(pa); }
-    }
   }
 
-  ribbon(p, dx, dy, rimOn) {
-    const n = p.n, px = p.px, py = p.py, w = p.w, C = p.cols;
-    const lit = this.path(this.paths, C.lit), dark = this.path(this.paths, C.dark);
-    let pLx = 0, pLy = 0, pRx = 0, pRy = 0;
-    const rim = rimOn && C.rim ? this.path(this.rims, C.rim) : null;
-    for (let j = 0; j <= n; j++) {
-      // tangent: average of the adjacent segments
-      const ja = Math.max(0, j - 1), jb = Math.min(n, j + 1);
-      let tx = px[jb] - px[ja], ty = py[jb] - py[ja];
-      const tl = Math.hypot(tx, ty) || 1;
-      tx /= tl; ty /= tl;
-      const nx = -ty, ny = tx, hw = w[j] * 0.5;
-      const cx = px[j] + dx, cy = py[j] + dy;
-      const Lx = cx + nx * hw, Ly = cy + ny * hw, Rx = cx - nx * hw, Ry = cy - ny * hw;
-      if (j > 0) {
-        const qx = px[j - 1] + dx, qy = py[j - 1] + dy;
-        // which facet faces the light (the left normal points to +n)
-        let litLeft = nx * LIGHT[0] + ny * LIGHT[1] > 0;
-        if (p.twist >= 0 && ((j + p.twist) & 2)) litLeft = !litLeft;
-        const A = litLeft ? lit : dark, B = litLeft ? dark : lit;
-        A.moveTo(pLx, pLy); A.lineTo(Lx, Ly); A.lineTo(cx, cy); A.lineTo(qx, qy); A.closePath();
-        B.moveTo(qx, qy); B.lineTo(cx, cy); B.lineTo(Rx, Ry); B.lineTo(pRx, pRy); B.closePath();
-        if (rim && j < n) { const sx = litLeft ? pLx : pRx, sy = litLeft ? pLy : pRy; rim.moveTo(sx, sy); rim.lineTo(litLeft ? Lx : Rx, litLeft ? Ly : Ry); }
-        // kelp: side blades every few nodes, bulbs at the blade roots; fronds / roots: little leaflets
-        if (p.K.leaves && j % 3 === 1 && j < n) this.leaf(p, cx, cy, tx, ty, nx, ny, j, dx, dy);
-        if (p.K.leaflets && j < n && j > 0 && (p.K.leaflets !== 'sparse' || (j + p.leafSeed) % 3 === 0)) this.leaflet(p, cx, cy, tx, ty, nx, ny, j);
+  // rasterise one plant into a cell grid, then emit shaded runs
+  voxPlant(p, dx, dy, vs) {
+    const iv = 1 / vs;
+    const gx0 = Math.floor((p.x0 + dx) * iv) - 1, gy0 = Math.floor((p.y0 + dy) * iv) - 1;
+    const gw = Math.ceil((p.x1 + dx) * iv) - gx0 + 2, gh = Math.ceil((p.y1 + dy) * iv) - gy0 + 2;
+    if (gw <= 0 || gh <= 0 || gw * gh > 60000) return;
+    const N = gw * gh;
+    if (!this.grid || this.grid.length < N) this.grid = new Uint8Array(Math.max(N, 4096));
+    const G = this.grid;
+    G.fill(0, 0, N);
+    const pal = this.pal || (this.pal = []);
+    pal.length = 1;
+    const pi = (c) => { let i = pal.indexOf(c); if (i < 0) { i = pal.length; pal.push(c); } return i; };
+    const C = p.cols;
+    const iLit = pi(C.lit), iDark = pi(C.dark);
+    // capsule from (ax, ay) to (bx, by), half widths ha -> hb; colour fn(side) -> palette index
+    const cap = (ax, ay, bx, by, ha, hb, ci, cj) => {
+      ax += dx; ay += dy; bx += dx; by += dy;
+      const m = Math.max(ha, hb) + vs;
+      const cx0 = Math.max(0, Math.floor((Math.min(ax, bx) - m) * iv) - gx0), cx1 = Math.min(gw - 1, Math.ceil((Math.max(ax, bx) + m) * iv) - gx0);
+      const cy0 = Math.max(0, Math.floor((Math.min(ay, by) - m) * iv) - gy0), cy1 = Math.min(gh - 1, Math.ceil((Math.max(ay, by) + m) * iv) - gy0);
+      const ex = bx - ax, ey = by - ay, ee = ex * ex + ey * ey || 1e-6;
+      const minH = vs * 0.52;
+      for (let cy = cy0; cy <= cy1; cy++) {
+        const wy = (cy + gy0 + 0.5) * vs;
+        for (let cx = cx0; cx <= cx1; cx++) {
+          const wx = (cx + gx0 + 0.5) * vs;
+          const qx = wx - ax, qy = wy - ay;
+          const t = clamp01((qx * ex + qy * ey) / ee);
+          const rx = qx - ex * t, ry = qy - ey * t;
+          const hw = Math.max(minH, ha + (hb - ha) * t);
+          if (rx * rx + ry * ry > hw * hw) continue;
+          G[cy * gw + cx] = cj === undefined ? ci : (ex * qy - ey * qx > 0 ? ci : cj);
+        }
       }
-      pLx = Lx; pLy = Ly; pRx = Rx; pRy = Ry;
+    };
+    const disc = (x, y, r, fn) => {
+      x += dx; y += dy;
+      const cx0 = Math.max(0, Math.floor((x - r) * iv) - gx0 - 1), cx1 = Math.min(gw - 1, Math.ceil((x + r) * iv) - gx0 + 1);
+      const cy0 = Math.max(0, Math.floor((y - r) * iv) - gy0 - 1), cy1 = Math.min(gh - 1, Math.ceil((y + r) * iv) - gy0 + 1);
+      for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) {
+        const qx = (cx + gx0 + 0.5) * vs - x, qy = (cy + gy0 + 0.5) * vs - y;
+        const d = Math.hypot(qx, qy);
+        if (d > r) continue;
+        const c = fn(qx, qy, d);
+        if (c) G[cy * gw + cx] = c;
+      }
+    };
+    const n = p.n, px = p.px, py = p.py, w = p.w;
+    for (let j = 0; j < n; j++) {
+      const ax = px[j], ay = py[j], bx = px[j + 1], by = py[j + 1];
+      const tx = bx - ax, ty = by - ay, tl = Math.hypot(tx, ty) || 1;
+      const nx = -ty / tl, ny = tx / tl;
+      let litLeft = nx * LIGHT[0] + ny * LIGHT[1] > 0;
+      if (p.twist >= 0 && ((j + 1 + p.twist) & 2)) litLeft = !litLeft;
+      // left of travel (cross > 0 in screen coords) = +n side
+      cap(ax, ay, bx, by, w[j] * 0.5, w[j + 1] * 0.5, litLeft ? iDark : iLit, litLeft ? iLit : iDark);
+      const k = j + 1;
+      if (k < n) {
+        if (p.K.leaves && k % 3 === 1) this.voxLeaf(p, k, cap, disc, iLit, iDark, pi);
+        if (p.K.leaflets && (p.K.leaflets !== 'sparse' || (k + p.leafSeed) % 3 === 0)) this.voxLeaflets(p, k, cap, iLit, iDark);
+      }
+    }
+    if (p.head) this.voxHead(p, cap, disc, pi);
+    // emit runs
+    const shades = this.shades || (this.shades = new Map());
+    const sh = (c) => {
+      let q = shades.get(c);
+      if (!q) { q = [c, shade(c, 0.2), shade(c, -0.22), shade(c, 0.1), mix(shade(c, -0.62), '#140c22', 0.35)]; shades.set(c, q); if (shades.size > 600) shades.clear(); }
+      return q;
+    };
+    const rims = this.rims, paths = this.paths, e = vs * 0.5;
+    for (let cy = 0; cy < gh; cy++) {
+      const row = cy * gw;
+      let runC = null, runX = 0;
+      const flush = (end) => {
+        if (runC === null) return;
+        const x = (runX + gx0) * vs, y = (cy + gy0) * vs, ww = (end - runX) * vs;
+        this.path(paths, runC).rect(x, y, ww, vs);
+        runC = null;
+      };
+      let outStart = -1, outCol = null;
+      for (let cx = 0; cx <= gw; cx++) {
+        const v = cx < gw ? G[row + cx] : 0;
+        let col = null;
+        if (v) {
+          const q = sh(pal[v]);
+          const up = cy > 0 ? G[row - gw + cx] : 0, dn = cy < gh - 1 ? G[row + gw + cx] : 0;
+          if (!up) col = q[1];
+          else if (!dn) col = q[2];
+          else if (cx < gw - 1 && !G[row + cx + 1]) col = q[2];
+          else if (hash2(cx + gx0, cy + gy0, 977) < 0.09) col = q[3];
+          else col = q[0];
+          if (outStart < 0) { outStart = cx; outCol = q[4]; }
+        } else if (outStart >= 0) {
+          // silhouette outline: the run's rect grown by half a voxel (drawn underneath)
+          this.path(rims, outCol).rect((outStart + gx0) * vs - e, (cy + gy0) * vs - e, (cx - outStart) * vs + 2 * e, vs + 2 * e);
+          outStart = -1;
+        }
+        if (col !== runC) { flush(cx); if (col) { runC = col; runX = cx; } }
+      }
+      flush(gw);
     }
   }
 
-  leaf(p, cx, cy, tx, ty, nx, ny, j) {
+  voxLeaf(p, j, cap, disc, iLit, iDark, pi) {
     const C = p.cols, side = ((j + p.leafSeed) & 1) ? 1 : -1, s = p.s * (p.size ?? 1);
-    const L = 7 * s, Wd = 2.2 * s;
-    const ax = nx * side, ay = ny * side;
-    const bx = cx + ax * 1.5, by = cy + ay * 1.5;
-    const tipx = bx + (ax * 0.55 + tx * 0.85) * L, tipy = by + (ay * 0.55 + ty * 0.85) * L;
-    const mx = (bx + tipx) / 2, my = (by + tipy) / 2;
-    const lit = this.path(this.paths, C.lit), dark = this.path(this.paths, C.dark);
-    lit.moveTo(bx, by); lit.lineTo(mx + tx * Wd, my + ty * Wd); lit.lineTo(tipx, tipy); lit.closePath();
-    dark.moveTo(bx, by); dark.lineTo(tipx, tipy); dark.lineTo(mx - tx * Wd, my - ty * Wd); dark.closePath();
-    if (C.bulb) { const b = this.path(this.paths, C.bulb); b.moveTo(bx + 1.1 * s, by); b.arc(bx, by, 1.1 * s, 0, TAU); }
+    const cx = p.px[j], cy = p.py[j];
+    const ja = Math.max(0, j - 1), jb = Math.min(p.n, j + 1);
+    let tx = p.px[jb] - p.px[ja], ty = p.py[jb] - p.py[ja];
+    const tl = Math.hypot(tx, ty) || 1;
+    tx /= tl; ty /= tl;
+    const nx = -ty * side, ny = tx * side;
+    const L = 7 * s;
+    const bx = cx + nx * 1.5, by = cy + ny * 1.5;
+    const mx = bx + (nx * 0.55 + tx * 0.85) * L * 0.5, my = by + (ny * 0.55 + ty * 0.85) * L * 0.5;
+    const ex = bx + (nx * 0.55 + tx * 0.85) * L, ey = by + (ny * 0.55 + ty * 0.85) * L;
+    cap(bx, by, mx, my, 0.5 * s, 1.15 * s, iLit, iDark);
+    cap(mx, my, ex, ey, 1.15 * s, 0.15, iLit, iDark);
+    if (C.bulb) { const ib = pi(C.bulb), ih = pi(shade(C.bulb, 0.35)); disc(bx, by, 1.2 * s, (qx, qy, d) => (qx + qy < -0.6 * s && d < 0.8 * s ? ih : ib)); }
   }
 
-  leaflet(p, cx, cy, tx, ty, nx, ny, j) {
-    const C = p.cols, s = p.s * (p.size ?? 1), L = (p.kind === 'fan' ? 3.2 : 2.6) * s * (1 - (j / p.n) * 0.45);
-    const lit = this.path(this.paths, C.lit), dark = this.path(this.paths, C.dark);
+  voxLeaflets(p, j, cap, iLit, iDark) {
+    const s = p.s * (p.size ?? 1), L = (p.kind === 'fan' ? 3.2 : 2.6) * s * (1 - (j / p.n) * 0.45);
+    const cx = p.px[j], cy = p.py[j];
+    const ja = Math.max(0, j - 1), jb = Math.min(p.n, j + 1);
+    let tx = p.px[jb] - p.px[ja], ty = p.py[jb] - p.py[ja];
+    const tl = Math.hypot(tx, ty) || 1;
+    tx /= tl; ty /= tl;
     for (const side of [1, -1]) {
-      const ax = nx * side, ay = ny * side;
-      const ex = cx + (ax * 0.8 + tx * 0.6) * L, ey = cy + (ay * 0.8 + ty * 0.6) * L;
-      const P = side > 0 ? lit : dark;
-      P.moveTo(cx, cy); P.lineTo(ex, ey); P.lineTo(cx + tx * L * 0.55, cy + ty * L * 0.55); P.closePath();
+      const ax = -ty * side, ay = tx * side;
+      cap(cx, cy, cx + (ax * 0.8 + tx * 0.6) * L, cy + (ay * 0.8 + ty * 0.6) * L, 0.55 * s, 0.2, side > 0 ? iLit : iDark);
     }
   }
 
-  headOf(p, dx, dy) {
+  voxHead(p, cap, disc, pi) {
     const n = p.n, H = p.head;
-    const x = p.px[n] + dx, y = p.py[n] + dy;
+    const x = p.px[n], y = p.py[n];
     const tx = p.px[n] - p.px[n - 1], ty = p.py[n] - p.py[n - 1], tl = Math.hypot(tx, ty) || 1;
     const ux = tx / tl, uy = ty / tl, vx = -uy, vy = ux;
     const s = p.s * (H.size ?? 1);
+    const iL = pi(H.lit), iD = pi(H.dark), iC = pi(H.core), iS = pi(H.shine || '#ffffff');
     if (H.type === 'daisy' || H.type === 'star') {
-      const np = H.type === 'daisy' ? 8 : 5, R = (H.type === 'daisy' ? 3.4 : 3.6) * s, Wd = (H.type === 'daisy' ? 0.9 : 1.6) * s;
-      const rot = Math.atan2(uy, ux);
+      const np = H.type === 'daisy' ? 8 : 5, R = (H.type === 'daisy' ? 3.4 : 3.6) * s, Wd = (H.type === 'daisy' ? 0.75 : 1.5) * s;
+      const rot = Math.atan2(uy, ux) + 0.2;
       for (let i = 0; i < np; i++) {
-        const a = rot + (i / np) * TAU + 0.2;
-        const cx = Math.cos(a), cy = Math.sin(a);
-        const P = this.path(this.paths, i % 2 ? H.dark : H.lit);
-        const ex = x + cx * R, ey = y + cy * R;
-        P.moveTo(x - cy * Wd, y + cx * Wd); P.lineTo(ex, ey); P.lineTo(x + cy * Wd, y - cx * Wd); P.closePath();
+        const a = rot + (i / np) * TAU;
+        const ex = x + Math.cos(a) * R, ey = y + Math.sin(a) * R;
+        cap(x, y, ex, ey, Wd, 0.25, i % 2 ? iD : iL);
       }
-      const c = this.path(this.paths, H.core);
-      const r = 1.25 * s;
-      c.moveTo(x + r, y);
-      for (let i = 1; i <= 6; i++) c.lineTo(x + Math.cos((i / 6) * TAU) * r, y + Math.sin((i / 6) * TAU) * r);
-      c.closePath();
-      const hl = this.path(this.paths, H.shine || '#ffffff');
-      hl.moveTo(x - 0.5 * s, y - 0.6 * s); hl.lineTo(x, y - 0.9 * s); hl.lineTo(x + 0.1 * s, y - 0.3 * s); hl.closePath();
+      const rc = 1.3 * s;
+      disc(x, y, rc, (qx, qy, d) => (qx + qy < -0.5 * rc && d > rc * 0.3 ? iS : iC));
     } else if (H.type === 'tulip') {
-      // a faceted cup opening along the stem
-      const L = 4.2 * s, Wd = 2.3 * s;
+      const L = 4.2 * s, Wd = 2.2 * s;
       const bx = x - ux * 0.6 * s, by = y - uy * 0.6 * s;
-      const pts = [[-Wd, 0.2], [-Wd * 1.05, 0.75], [-Wd * 0.45, 1.05], [0, 0.78], [Wd * 0.45, 1.05], [Wd * 1.05, 0.75], [Wd, 0.2]];
-      const P = (q) => [bx + vx * q[0] + ux * q[1] * L, by + vy * q[0] + uy * q[1] * L];
-      const lit = this.path(this.paths, H.lit), dark = this.path(this.paths, H.dark), mid = this.path(this.paths, H.core);
-      const p0 = P([0, 0]);
-      const ps = pts.map(P);
-      lit.moveTo(p0[0], p0[1]); for (let i = 0; i < 4; i++) lit.lineTo(ps[i][0], ps[i][1]); lit.closePath();
-      dark.moveTo(p0[0], p0[1]); for (let i = 3; i < 7; i++) dark.lineTo(ps[i][0], ps[i][1]); dark.closePath();
-      mid.moveTo(ps[2][0], ps[2][1]); mid.lineTo(ps[3][0], ps[3][1]); mid.lineTo(ps[4][0], ps[4][1]); mid.lineTo(p0[0] + ux * L * 0.55, p0[1] + uy * L * 0.55); mid.closePath();
-      const hl = this.path(this.paths, H.shine || '#ffffff');
-      const a = P([-Wd * 0.7, 0.35]), b = P([-Wd * 0.75, 0.7]), c = P([-Wd * 0.45, 0.62]);
-      hl.moveTo(a[0], a[1]); hl.lineTo(b[0], b[1]); hl.lineTo(c[0], c[1]); hl.closePath();
+      // three petals: left lit, right dark, a middle cup
+      cap(bx, by, bx + ux * L * 0.95 - vx * Wd * 0.75, by + uy * L * 0.95 - vy * Wd * 0.75, Wd * 0.45, Wd * 0.35, iL);
+      cap(bx, by, bx + ux * L * 0.95 + vx * Wd * 0.75, by + uy * L * 0.95 + vy * Wd * 0.75, Wd * 0.45, Wd * 0.35, iD);
+      cap(bx, by, bx + ux * L * 0.75, by + uy * L * 0.75, Wd * 0.55, Wd * 0.4, iC);
+      cap(bx + ux * L * 0.35 - vx * Wd * 0.6, by + uy * L * 0.35 - vy * Wd * 0.6, bx + ux * L * 0.65 - vx * Wd * 0.7, by + uy * L * 0.65 - vy * Wd * 0.7, 0.3 * s, 0.25 * s, iS);
     } else if (H.type === 'bulb' || H.type === 'pod') {
       const r = (H.type === 'pod' ? 1.6 : 1.8) * s;
-      const P = this.path(this.paths, H.lit), D = this.path(this.paths, H.dark);
-      // a faceted gem-like bulb: upper-left facets lit, lower-right dark
-      const pts = [];
-      for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU + 0.3; pts.push([x + Math.cos(a) * r, y + Math.sin(a) * r * 1.15]); }
-      for (let i = 0; i < 6; i++) {
-        const a = pts[i], b = pts[(i + 1) % 6];
-        const T = (a[0] + b[0]) / 2 - x < -0.2 * r || (a[1] + b[1]) / 2 - y < -0.3 * r ? P : D;
-        T.moveTo(x, y); T.lineTo(a[0], a[1]); T.lineTo(b[0], b[1]); T.closePath();
-      }
-      const hl = this.path(this.paths, H.shine || '#ffffff');
-      hl.moveTo(x - r * 0.55, y - r * 0.5); hl.lineTo(x - r * 0.1, y - r * 0.85); hl.lineTo(x - r * 0.2, y - r * 0.35); hl.closePath();
+      disc(x, y, r * 1.08, (qx, qy, d) => {
+        if (qx < -0.15 * r && qy < -0.15 * r && d > r * 0.25 && d < r * 0.7) return iS;
+        return qx + qy * 1.2 < 0.1 * r ? iL : iD;
+      });
     } else if (H.type === 'feather') {
-      // crinoid / sea lily crown: arms fanning out of the tip
-      const P = this.path(this.paths, H.lit), D = this.path(this.paths, H.dark);
       const rot = Math.atan2(uy, ux);
       for (let i = 0; i < 7; i++) {
         const a = rot + (i - 3) * 0.42 + Math.sin(p.ph + i) * 0.1;
-        const L = 5.5 * s, ex = x + Math.cos(a) * L, ey = y + Math.sin(a) * L;
-        const T = i < 4 ? P : D;
-        T.moveTo(x, y); T.lineTo(ex - Math.sin(a) * 0.7 * s, ey + Math.cos(a) * 0.7 * s); T.lineTo(ex, ey); T.closePath();
+        const L = 5.5 * s;
+        cap(x, y, x + Math.cos(a) * L, y + Math.sin(a) * L, 0.55 * s, 0.2, i < 4 ? iL : iD);
       }
     }
+    void vx; void vy;
   }
 
   // Emissive tips and spots (call after the darkness pass, under the world camera).

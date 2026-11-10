@@ -209,6 +209,7 @@ export class AbyssBiome extends Biome {
       return 560;
     };
     D.terrain({
+      micro: { ripple: 0.6, pebble: 1, shell: 1, pebbles: [[50, 54, 76], [70, 74, 100], [40, 42, 58]], shells: [[200, 196, 180], [150, 220, 255]] }, // [phase7:env] bone chips
       cell: 2, dz: 0.02, hstep: 2, ambient: 0.62, diffuse: 0.5, ao: 0.08, jitter: 0.07, wall: 0.8, side: 0.9, crest: 1.15, wallMin: 30, fullHeight: true,
       height: (X, z) => cliff(X, z) ?? floorH(X, z),
       floorHeight: floorH,

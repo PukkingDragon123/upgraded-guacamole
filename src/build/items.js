@@ -50,7 +50,20 @@ const MATS = [
 ];
 const MAT_VAL = { common: 3, uncommon: 8, rare: 22, epic: 65, legendary: 220 };
 for (const [id, name, rarity, biome, desc, lore] of MATS) add(id, { name, kind: 'material', rarity, biome, desc, lore, value: MAT_VAL[rarity] });
-export const MATERIAL_IDS = MATS.map((m) => m[0]);
+// [phase8:prog] Workshop materials + fish parts (pixel-art icons from ./pixart.js; ITEMS[id].pix = true).
+const MATS8 = [
+  ['fish_scale', 'Fish Scale', 'common', null, 'A glittery scale from a catch. Lures, charms and bait.', 'Every fish sheds a little sparkle.'],
+  ['fin_ribbon', 'Fin Ribbon', 'uncommon', null, 'A silky fin frill from an uncommon catch. Lines and sails.', 'Fish wave goodbye with these.'],
+  ['glow_bulb', 'Glow Bulb', 'rare', 'abyss', 'A softly glowing lure from a deep fish. Glow gear.', 'It blinks when it is happy.'],
+  ['clover_leaf', 'Clover Leaf', 'uncommon', 'oscean', 'A four-leaf clover from the meadow sea. Lucky gear.', 'Picked from a flooded hill. Still lucky.'],
+  ['ice_shard', 'Ice Shard', 'uncommon', 'fjord', 'A never-melting shard of fjord ice. Frost gear.', 'Cold enough to make a penguin say brr.'],
+  ['spring_coil', 'Spring Coil', 'uncommon', 'junkyard', 'A bouncy steel spring. Reels and gadgets.', 'Boing. Boing. Boing.'],
+  ['magnet_stone', 'Magnet Stone', 'rare', 'metropolis', 'A lodestone that tugs on metal. Magnet gear.', 'Your keys will never be lost again.'],
+  ['lava_glass', 'Lava Glass', 'rare', 'volcano', 'Glossy volcanic glass with a warm glow. Turbo gear.', 'Still warm. Do not use as a pillow.'],
+];
+for (const [id, name, rarity, biome, desc, lore] of MATS8) add(id, { name, kind: 'material', rarity, biome, desc, lore, value: MAT_VAL[rarity], art: null, pix: true });
+export const MATERIAL_IDS = [...MATS.map((m) => m[0]), ...MATS8.map((m) => m[0])];
+export const FISH_PART_IDS = ['fish_scale', 'fin_ribbon', 'glow_bulb'];
 
 add('fish_egg', { name: 'Fish Egg', kind: 'egg', rarity: 'uncommon', desc: 'A warm egg from the Hatchery. Hatch it into a baby fish for your aquarium.', lore: 'Something inside is doing a little dance.', value: 15 });
 

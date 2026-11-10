@@ -10,6 +10,16 @@
 // big splashes kick the surface sim, and splash() adds a crown + mist. New: crown(x, y, power), foamRing(x, y, power),
 // surfaceBubble(x, y, r).
 //
+// [phase8:ui] PIXEL-ART LIBRARY (hand-drawn sprite sheets from src/gfx/pxsprites.js, no lazy rings):
+//   pixelBurst(kind, x, y, n = 8, opts)   kinds: sparkle star heart drop splash foam puff bubble scale coin aero
+//       confetti ribbon dust smoke leaf petal zap spark impact pop note shard wave
+//       opts: {ramp | ramps[], layer, speed:[a,b], dir, spread, up, g, life:[a,b], size, scale (int), w, h, delay}
+//   pixel(kind, x, y, opts)               one sprite particle
+//   Big-moment combos: impact(x, y, size, opts), poof, pixelSplash, wavelets, hearts, zapBurst, celebrate,
+//       uiClick, purchase, unlock, levelUp, chestOpen(x, y, rarity, opts), catchBurst(x, y, rarity, opts)
+//   ring / ripples / shockwave / ringWave and raw {kind:'ring'|'ring2'} adds are now routed to pixel effects
+//   (wavelets on water, impact bursts / pops elsewhere); no expanding circles are drawn anymore.
+//
 // add(p) takes a plain object (kind, x, y, vx, vy, life, size, color, g, drag, layer, add, delay...).
 // `delay` (s) keeps a particle invisible and frozen until it is due. When the pool is full new
 // particles recycle the oldest ones instead of being dropped, so big moments never lose effects.
@@ -19,6 +29,7 @@ import { rgba } from '../core/color.js';
 import { drawText } from './font.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { TAU, bayer } from '../core/math.js';
+import { pxFrames, pixelBubble } from './pxsprites.js'; // [phase8:ui]
 
 // ---------------------------------------------------------------- cached sprites
 const ringCache = new Map();
@@ -41,23 +52,9 @@ function ringSprite(r, color, flat = 0.4) {
 }
 
 const bubbleCache = new Map();
-function bubbleSprite(r) {
+function bubbleSprite(r) { // [phase8:ui] pixel bubble with a chunky highlight
   let c = bubbleCache.get(r);
-  if (!c) {
-    const s = r * 2 + 1;
-    c = makeCanvas(s, s);
-    const g = ctxOf(c);
-    for (let y = 0; y < s; y++) for (let x = 0; x < s; x++) {
-      const dx = x - r, dy = y - r, d = Math.hypot(dx, dy);
-      if (d > r + 0.3) continue;
-      if (d > r - 0.8) g.fillStyle = 'rgba(220,250,255,0.85)';
-      else g.fillStyle = 'rgba(160,230,255,0.18)';
-      g.fillRect(x, y, 1, 1);
-    }
-    g.fillStyle = 'rgba(255,255,255,0.95)';
-    g.fillRect(Math.max(0, r - Math.ceil(r / 2)), Math.max(0, r - Math.ceil(r / 2)), 1, 1);
-    bubbleCache.set(r, c);
-  }
+  if (!c) { c = pixelBubble(r); bubbleCache.set(r, c); }
   return c;
 }
 
@@ -233,6 +230,48 @@ export function drawBolt(ctx, pts, a = 1, color = '#7ff4ff', core = '#ffffff') {
 }
 export { boltPoints };
 
+
+// [phase8:ui] ramp for a CSS colour: hex -> derived 5-step ramp; rgba()/unknown -> fallback name
+function rampFor(color, fallback = 'white') {
+  if (Array.isArray(color)) return color;
+  if (typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color)) {
+    const c = color.toLowerCase();
+    if (c === '#ffffff' || c === '#fff6b0' || c === '#fff6c0' || c === '#ffe27a' || c === '#fff6a0' || c === '#ffd23a') return c === '#ffffff' ? 'white' : 'gold';
+    return c;
+  }
+  return fallback;
+}
+const RARITY_RAMP = { common: 'white', uncommon: 'lime', rare: 'aqua', epic: 'purple', legendary: 'gold', mythic: 'pink' };
+const PX_CONFETTI = ['pink', 'gold', 'aqua', 'lime', 'purple', 'orange', 'mint'];
+const rs = (v) => (Array.isArray(v) ? rng.float(v[0], v[1]) : v);
+const pickOf = (v) => (Array.isArray(v) ? rng.pick(v) : v);
+// per-kind defaults for pixelBurst: sheet, ramp, speed, g, drag, life, anim, size(s), sway, dir/spread
+const PXDEF = {
+  sparkle: { sheet: 'sparkle', ramp: 'gold', speed: [10, 70], g: -8, drag: 3, life: [0.45, 0.9], anim: 'life', size: [0, 1, 1] },
+  star: { sheet: 'star', ramp: 'gold', speed: [50, 150], g: 90, drag: 2.4, life: [0.7, 1.3], anim: 'twinkle', size: [0, 0, 1], up: 30, blink: true },
+  heart: { sheet: 'heart', ramp: 'pink', speed: [20, 70], g: -40, drag: 2.2, life: [1, 1.7], anim: 'fixed', size: [0, 0, 1], sway: 10, up: 20, blink: true },
+  drop: { sheet: 'drop', ramp: 'aqua', speed: [60, 170], g: 330, drag: 0.3, life: [0.6, 1.1], anim: 'fixed', size: [0, 0, 1], dir: -Math.PI / 2, spread: 1.1 },
+  foam: { sheet: 'puff', ramp: 'foam', speed: [10, 40], g: -6, drag: 3, life: [0.5, 0.9], anim: 'life', size: [0, 1] },
+  puff: { sheet: 'puff', ramp: 'white', speed: [20, 60], g: -10, drag: 3.2, life: [0.45, 0.8], anim: 'life', size: [0, 1, 1] },
+  bubble: { sheet: 'bubble', ramp: 'white', speed: [10, 40], g: -60, drag: 1.5, life: [0.9, 1.8], anim: 'fixed', size: [0, 1, 1, 2, 3], sway: 6, pop: true },
+  scale: { sheet: 'scale', ramp: 'aqua', speed: [30, 100], g: 80, drag: 2, life: [1, 1.8], anim: 'loop', fps: 10, up: 20 },
+  aero: { sheet: 'aero', ramp: 'aqua', speed: [80, 180], g: 380, drag: 0.6, life: [1, 1.6], anim: 'fixed', dir: -Math.PI / 2, spread: 1, glint: true },
+  confetti: { sheet: 'confetti', ramp: PX_CONFETTI, speed: [80, 240], g: 90, drag: 1.8, life: [1.6, 3], anim: 'loop', fps: 12, sway: 18, dir: -Math.PI / 2, spread: 1.2 },
+  ribbon: { sheet: 'ribbon', ramp: PX_CONFETTI, speed: [80, 220], g: 70, drag: 1.8, life: [1.6, 3], anim: 'loop', fps: 8, sway: 14, dir: -Math.PI / 2, spread: 1.1 },
+  dust: { sheet: 'dust', ramp: 'dust', speed: [10, 40], g: -4, drag: 3, life: [0.5, 1], anim: 'life', size: [0, 1] },
+  smoke: { sheet: 'smoke', ramp: 'smoke', speed: [6, 24], g: -30, drag: 2, life: [0.9, 1.6], anim: 'life', size: [1, 2] },
+  leaf: { sheet: 'leaf', ramp: 'leaf', speed: [50, 180], g: 60, drag: 2, life: [1.6, 3], anim: 'loop', fps: 6, sway: 16, size: [0, 1], dir: -Math.PI / 2, spread: 1.2 },
+  petal: { sheet: 'petal', ramp: ['pink', 'peach', 'white'], speed: [40, 150], g: 45, drag: 2, life: [1.6, 3], anim: 'loop', fps: 6, sway: 18, size: [0, 1], dir: -Math.PI / 2, spread: 1.3 },
+  zap: { sheet: 'zap', ramp: 'cyan', speed: [30, 90], g: 0, drag: 4, life: [0.18, 0.35], anim: 'loop', fps: 20 },
+  spark: { sheet: 'spark', ramp: 'cyan', speed: [60, 180], g: 120, drag: 2, life: [0.25, 0.5], anim: 'loop', fps: 16 },
+  note: { sheet: 'note', ramp: ['purple', 'pink', 'aqua'], speed: [20, 50], g: -30, drag: 2, life: [1, 1.5], anim: 'fixed', sway: 8, up: 20, blink: true },
+  shard: { sheet: 'shard', ramp: 'cyan', speed: [60, 160], g: 240, drag: 1, life: [0.6, 1.1], anim: 'loop', fps: 10, up: 40 },
+  pop: { sheet: 'pop', ramp: 'white', speed: [0, 0], g: 0, drag: 0, life: [0.22, 0.28], anim: 'life', one: true },
+  impact: { sheet: 'impact', ramp: 'gold', speed: [0, 0], g: 0, drag: 0, life: [0.3, 0.34], anim: 'life', size: [1], one: true },
+  wave: { sheet: 'wave', ramp: 'foam', speed: [0, 0], g: 0, drag: 0, life: [0.35, 0.5], anim: 'life', one: true },
+};
+export { PXDEF, RARITY_RAMP };
+
 export class Particles {
   constructor(max = 900) {
     this.max = max;
@@ -247,6 +286,7 @@ export class Particles {
       kind: 'dot', x: 0, y: 0, vx: 0, vy: 0, life: 1, t: 0, size: 1, color: '#ffffff',
       g: 0, drag: 0, layer: 'fg', add: false, fade: true, ...p,
     };
+    if (q.kind === 'ring' || q.kind === 'ring2') return this.ringFx(q); // [phase8:ui] no lazy circles
     q.max = q.life;
     if (q.delay) q.t = -q.delay;
     const cap = Math.max(16, Math.floor(this.max * this.limitScale));
@@ -336,7 +376,7 @@ export class Particles {
   // [/phase5:water]
 
   ring(x, y, power = 1, color = 'rgba(230,250,255,0.9)', opts = {}) {
-    return this.add({ kind: 'ring', x, y, life: 0.6 + 0.3 * power, r0: 2, r1: 8 + 10 * power, color, layer: 'fg', ...opts });
+    return this.ringFx({ x, y, r1: 8 + 10 * power, color, layer: opts.layer || 'fg', flat: opts.flat, delay: opts.delay, life: opts.life });
   }
 
   sparkle(x, y, color = '#fff6b0', opts = {}) {
@@ -391,9 +431,7 @@ export class Particles {
 
   // Concentric ripple rings spreading out over time.
   ripples(x, y, n = 3, power = 1, opts = {}) {
-    for (let i = 0; i < n; i++) {
-      this.add({ kind: 'ring', x, y, life: 0.7 + power * 0.4, r0: 2 + i * 2, r1: (10 + 14 * power) + i * 6, color: opts.color || 'rgba(230,250,255,0.85)', delay: i * (opts.gap ?? 0.16), layer: opts.layer || 'fg', flat: opts.flat });
-    }
+    for (let i = 0; i < n; i++) this.wavelets(x, y, power * (1 - i * 0.2), { layer: opts.layer, delay: i * (opts.gap ?? 0.16), spread: 2 + i * 3 }); // [phase8:ui]
   }
 
   // Big fish-out-of-water eruption: water column, crown droplets, foam skirt, mist, rings, bubbles.
@@ -466,8 +504,9 @@ export class Particles {
   }
 
   // Full circular shockwave (underwater hits, hook-set).
+  // [phase8:ui] now a pixel-art impact burst (spiky pop + shards + sparkles) instead of an expanding circle.
   shockwave(x, y, r = 30, color = '#ffffff', opts = {}) {
-    return this.add({ kind: 'ring', x, y, life: opts.life ?? 0.45, r0: opts.r0 ?? 3, r1: r, color: rgba(color, opts.alpha ?? 0.9), flat: 1, layer: opts.layer || 'fg', delay: opts.delay });
+    return this.impact(x, y, r > 34 ? 2 : r > 16 ? 1 : 0, { ramp: rampFor(color, 'gold'), layer: opts.layer, delay: opts.delay });
   }
 
   // ---------------------------------------------------------------- creature bits
@@ -585,8 +624,9 @@ export class Particles {
   }
 
   // Thick glossy ring wave.
+  // [phase8:ui] was a thick expanding ring; now an impact burst with a spray of sparkles in the same colour.
   ringWave(x, y, r = 30, color = '#bfeaff', opts = {}) {
-    return this.add({ kind: 'ring2', x, y, life: opts.life ?? 0.5, r0: opts.r0 ?? 3, r1: r, w: opts.w ?? 3, color, flat: opts.flat ?? 1, layer: opts.layer || 'fg', delay: opts.delay, fade: false });
+    return this.impact(x, y, r > 50 ? 2 : r > 20 ? 1 : 0, { ramp: rampFor(color, 'aqua'), layer: opts.layer, delay: opts.delay, sparkles: Math.round(4 + r / 10) });
   }
 
   // Bloom: a big soft additive light that swells and fades (sun-flare moments).
@@ -600,8 +640,8 @@ export class Particles {
   splashBurst(x, y, power = 1, opts = {}) {
     const layer = opts.layer || 'fg';
     this.droplets(x, y, Math.round(18 * power), { dir: opts.dir ?? -Math.PI / 2, spread: opts.spread ?? Math.PI, speed: [40 * power, 150 * power], g: opts.g ?? 220, w: 3, layer, colors: ['#ffffff', '#e8fbff', '#bff8ff', '#7fd8ff'] });
-    this.ringWave(x, y, Math.round(14 + 18 * power), opts.color || '#bff8ff', { life: 0.4, w: 2 + Math.round(power), layer });
-    this.foam(x, y, Math.round(4 + 4 * power), { spread: 6 * power, layer, scale: 0.8 + power * 0.3 });
+    this.pixelBurst('drop', x, y, Math.round(4 + 4 * power), { layer, spread: Math.PI, speed: [50 * power, 140 * power] }); // [phase8:ui]
+    this.pixelBurst('puff', x, y, Math.round(3 + 2 * power), { layer, ramp: 'foam', speed: [20, 60 * power] });
     this.aeroBubbles(x, y, Math.round(4 + 6 * power), { w: 6 * power, h: 4, layer, speed: [30, 90], sizes: [2, 2, 3, 4, 5] });
     this.glints(x, y, Math.round(2 + 2 * power), { w: 10 * power, h: 8 * power, layer });
     if (this.water && layer !== 'ui' && this.surfaceY !== null && Math.abs(y - (this.waterAt(x) ?? y)) < 14) this.water.splash?.(x, 0.5 + power * 0.6, 8 + power * 8); // [phase5:water]
@@ -614,9 +654,163 @@ export class Particles {
       const a = (i / n) * TAU + rng.float(-0.3, 0.3), rr = r * rng.float(0.6, 1.1);
       this.arc(x, y, x + Math.cos(a) * rr, y + Math.sin(a) * rr * (opts.flat ?? 1), { jag: opts.jag ?? 5, layer, life: rng.float(0.12, 0.26), color: opts.color, delay: rng.float(0, 0.08) });
     }
-    this.ringWave(x, y, Math.round(r * 1.2), '#bff8ff', { life: 0.3, w: 2, layer });
+    this.pixelBurst('zap', x, y, Math.max(2, Math.round(n / 2)), { layer, speed: [40, 110] }); // [phase8:ui]
     this.sparks(x, y, Math.round(n * 1.5), { colors: ['#ffffff', '#bff8ff', '#7ff4ff', '#fff6a0'], speed: [60, 180], g: 60, layer, life: 0.4 });
     this.glow(x, y, Math.round(r * 0.7), '#bff8ff', { life: 0.25, grow: 0.5, layer });
+  }
+
+
+  // ---------------------------------------------------------------- [phase8:ui] pixel-art library
+  // One hand-drawn sprite particle. opts: ramp, size, scale, anim ('life'|'loop'|'twinkle'|'fixed'), fps, frame,
+  // vx, vy, g, drag, life, sway, layer, delay, blink (flicker out at the end), pop (bubble pops when done).
+  pixel(sheet, x, y, o = {}) {
+    const ramp = pickOf(o.ramp ?? 'white');
+    return this.add({
+      kind: 'px', sheet, ramp, sz: o.size ?? 1, sc: Math.max(1, Math.round(o.scale ?? 1)), x, y, vx: o.vx ?? 0, vy: o.vy ?? 0,
+      g: o.g ?? 0, drag: o.drag ?? 0, life: o.life ?? 0.5, anim: o.anim || 'life', fps: o.fps ?? 10, fr: o.frame ?? rng.int(0, 7),
+      sway: o.sway ?? 0, ph: rng.float(0, TAU), layer: o.layer || 'fg', delay: o.delay, fade: false, blink: o.blink ?? false, popEnd: !!o.pop,
+      flip: o.flip ?? rng.chance(0.5),
+    });
+  }
+
+  // Radial (or directed) burst of n hand-drawn sprites of one kind. See PXDEF for the per-kind defaults.
+  pixelBurst(kind, x, y, n = 8, o = {}) {
+    if (kind === 'coin' || kind === 'coins') return this.coins(x, y, n, o);
+    if (kind === 'splash') return this.pixelSplash(x, y, o.power ?? Math.min(2, n / 8), o);
+    const D = PXDEF[kind] || PXDEF.sparkle;
+    const sp = o.speed || D.speed, life = o.life || D.life;
+    const dir = o.dir ?? D.dir, spread = o.spread ?? D.spread ?? Math.PI;
+    let first = null;
+    for (let i = 0; i < n; i++) {
+      const a = dir !== undefined ? dir + rng.float(-spread, spread) : (i / Math.max(1, n)) * TAU + rng.float(-0.4, 0.4);
+      const v = D.one ? 0 : rs(sp);
+      const q = this.pixel(D.sheet, x + rng.float(-(o.w ?? 0), o.w ?? 0), y + rng.float(-(o.h ?? 0), o.h ?? 0), {
+        ramp: o.ramps ? rng.pick(o.ramps) : o.ramp ?? D.ramp, size: o.size ?? pickOf(D.size ?? 1), scale: o.scale,
+        vx: Math.cos(a) * v + (o.vx ?? 0), vy: Math.sin(a) * v - (o.up ?? D.up ?? 0) + (o.vy ?? 0), g: o.g ?? D.g, drag: o.drag ?? D.drag,
+        life: rs(life), anim: D.anim, fps: D.fps, sway: o.sway ?? D.sway ?? 0, layer: o.layer, blink: o.blink ?? D.blink,
+        delay: o.delay ? (o.stagger === false ? o.delay : rng.float(0, o.delay)) : 0, pop: D.pop,
+      });
+      if (D.glint && q) q.glint = true;
+      first ||= q;
+    }
+    return first;
+  }
+
+  // Comic impact: a spiky burst that pops into shards, plus sparkles and tiny stars. size 0 | 1 | 2.
+  impact(x, y, size = 1, o = {}) {
+    const layer = o.layer || 'fg', ramp = o.ramp || 'gold';
+    const q = this.pixel('impact', x, y, { ramp, size, life: 0.3 + size * 0.04, layer, delay: o.delay });
+    this.pixelBurst('sparkle', x, y, o.sparkles ?? 4 + size * 3, { layer, ramp: o.sparkRamp || ramp, speed: [40 + size * 30, 90 + size * 60], delay: o.delay, stagger: false });
+    if (size >= 1) this.pixelBurst('star', x, y, 2 + size * 2, { layer, ramp: o.sparkRamp || ramp, size: 0, speed: [60, 140 + size * 40], delay: o.delay, stagger: false });
+    return q;
+  }
+
+  // A cute "poof" (cloud puffs + a couple of sparkles): spawns, despawns, UI closes.
+  poof(x, y, o = {}) {
+    const layer = o.layer || 'fg';
+    this.pixelBurst('puff', x, y, o.n ?? 6, { layer, ramp: o.ramp || 'white', speed: [20, 60 * (o.power ?? 1)], w: 2, h: 2 });
+    this.pixelBurst('sparkle', x, y, 2, { layer, ramp: o.sparkRamp || 'gold', size: 0 });
+  }
+
+  // Water splash as pixel art: teardrop droplets, foam puffs and two wavelets scooting off on the surface.
+  pixelSplash(x, y, power = 1, o = {}) {
+    const layer = o.layer || 'fg';
+    this.pixelBurst('drop', x, y, Math.round(5 + 8 * power), { layer, ramp: o.ramp || 'aqua', speed: [70 * (0.6 + power * 0.5), 180 * (0.6 + power * 0.5)], spread: 0.95 });
+    this.pixelBurst('foam', x, y, Math.round(2 + 3 * power), { layer, w: 4 + power * 4, speed: [8, 30] });
+    this.wavelets(x, y, power, { layer });
+    if (power > 0.6) this.pixelBurst('sparkle', x, y - 4, 2, { layer, ramp: 'white', size: 0 });
+  }
+
+  // Two pixel wave crests sliding left and right on the water line (replaces ripple rings).
+  wavelets(x, y, power = 1, o = {}) {
+    const layer = o.layer || 'fg', sp = 14 + power * 16, d = o.spread ?? 2;
+    for (const s of [-1, 1]) this.pixel('wave', x + s * d, y - 1, { ramp: o.ramp || 'foam', vx: s * sp, drag: 1.4, life: 0.45 + power * 0.25, layer, delay: o.delay, flip: s < 0 });
+  }
+
+  hearts(x, y, n = 5, o = {}) { return this.pixelBurst('heart', x, y, n, { dir: -Math.PI / 2, spread: 0.9, ...o }); }
+
+  // Crackling electricity: zig-zag bolt sprites and bright plus sparks.
+  zapBurst(x, y, n = 4, o = {}) {
+    const layer = o.layer || 'fg';
+    this.pixelBurst('zap', x, y, n, { layer, ramp: o.ramp || 'cyan', speed: [30, 100], w: o.r ?? 6, h: o.r ?? 6 });
+    this.pixelBurst('spark', x, y, n * 2, { layer, ramp: o.ramp || 'cyan' });
+  }
+
+  // Party! confetti chips, ribbons, stars, hearts and sparkles.
+  celebrate(x, y, power = 1, o = {}) {
+    const layer = o.layer || 'fg';
+    this.pixelBurst('confetti', x, y, Math.round(18 * power), { layer, w: 10 * power });
+    this.pixelBurst('ribbon', x, y, Math.round(6 * power), { layer, w: 8 * power });
+    this.pixelBurst('star', x, y, Math.round(5 * power), { layer, ramp: o.ramp || 'gold', speed: [80, 200] });
+    this.pixelBurst('heart', x, y, Math.round(2 + 2 * power), { layer, dir: -Math.PI / 2, spread: 1, speed: [40, 110] });
+    this.pixelBurst('sparkle', x, y, Math.round(6 * power), { layer, ramp: 'white', w: 16 * power, h: 10 * power, delay: 0.4 });
+  }
+
+  // Juicy little UI click: a puff of tiny sparkles (and a dust kick).
+  uiClick(x, y, o = {}) {
+    const layer = o.layer || 'ui';
+    this.pixelBurst('sparkle', x, y, o.n ?? 4, { layer, ramp: o.ramp || 'white', size: 0, speed: [40, 90] });
+    this.pixelBurst('puff', x, y + 2, 2, { layer, ramp: 'white', size: 0, speed: [16, 36], dir: -Math.PI / 2, spread: 1.4 });
+  }
+
+  // Buying something: Aero drops + coins hop out, gold sparkles and a star.
+  purchase(x, y, o = {}) {
+    const layer = o.layer || 'ui';
+    this.pixelBurst('aero', x, y, o.n ?? 5, { layer, speed: [70, 150], g: 300 });
+    this.pixelBurst('sparkle', x, y, 6, { layer, ramp: 'gold' });
+    this.pixelBurst('star', x, y, 3, { layer, ramp: 'gold', size: 0, speed: [50, 120] });
+  }
+
+  // Unlocking: a big impact, a star fountain and drifting sparkles.
+  unlock(x, y, o = {}) {
+    const layer = o.layer || 'ui', ramp = o.ramp || 'gold';
+    this.impact(x, y, 1, { layer, ramp });
+    this.pixelBurst('star', x, y, 6, { layer, ramp, dir: -Math.PI / 2, spread: 1.2, speed: [80, 180] });
+    this.pixelBurst('sparkle', x, y, 6, { layer, ramp: 'white', w: 18, h: 12, delay: 0.3 });
+    this.pixelBurst('confetti', x, y, 8, { layer });
+  }
+
+  // Level up: a rising column of stars and sparkles, then confetti.
+  levelUp(x, y, o = {}) {
+    const layer = o.layer || 'ui';
+    for (let i = 0; i < 10; i++) this.pixel(i % 3 ? 'sparkle' : 'star', x + rng.float(-14, 14), y + rng.float(-4, 4), { ramp: i % 2 ? 'gold' : 'lime', size: i % 3 ? 1 : 0, vy: -rng.float(50, 110), g: 20, drag: 1.2, life: rng.float(0.8, 1.3), anim: i % 3 ? 'life' : 'twinkle', layer, delay: i * 0.04, blink: true });
+    this.impact(x, y, 1, { layer, ramp: 'lime', sparkRamp: 'gold' });
+    this.celebrate(x, y - 10, 0.8, { layer });
+  }
+
+  // Chest / crate cracking open: a rarity-coloured impact, shards, coins, stars and confetti.
+  chestOpen(x, y, rarity = 'common', o = {}) {
+    const layer = o.layer || 'ui', ramp = RARITY_RAMP[rarity] || 'gold';
+    const pw = { common: 0.7, uncommon: 0.85, rare: 1, epic: 1.25, legendary: 1.6, mythic: 1.8 }[rarity] ?? 1;
+    this.impact(x, y, pw > 1.2 ? 2 : 1, { layer, ramp, sparkRamp: 'gold' });
+    this.pixelBurst('shard', x, y, Math.round(6 * pw), { layer, ramp });
+    this.pixelBurst('dust', x, y + 6, 5, { layer, speed: [30, 70], dir: -Math.PI / 2, spread: 1.6 });
+    this.coins(x, y, Math.round(4 * pw), { layer, speed: [90, 200] });
+    this.pixelBurst('star', x, y, Math.round(5 * pw), { layer, ramp, speed: [80, 200] });
+    if (pw >= 1) this.celebrate(x, y, pw * 0.7, { layer, ramp });
+  }
+
+  // A catch: splash, scales in the fish's colours, rarity stars and (for good ones) hearts and confetti.
+  catchBurst(x, y, rarity = 'common', o = {}) {
+    const layer = o.layer || 'fg', ramp = RARITY_RAMP[rarity] || 'aqua';
+    const pw = { common: 0.6, uncommon: 0.8, rare: 1, epic: 1.3, legendary: 1.7, mythic: 1.9 }[rarity] ?? 1;
+    this.pixelSplash(x, y, pw, { layer });
+    this.pixelBurst('scale', x, y, Math.round(4 + 4 * pw), { layer, ramp: o.scaleRamp || 'aqua' });
+    this.pixelBurst('star', x, y, Math.round(3 + 3 * pw), { layer, ramp, speed: [70, 180] });
+    if (pw >= 1) this.hearts(x, y - 8, Math.round(2 * pw), { layer });
+    if (pw >= 1.3) this.celebrate(x, y - 10, pw * 0.6, { layer, ramp });
+  }
+
+  // Converts legacy ring adds into pixel effects (water rings -> wavelets, flat rings -> pops / impacts).
+  ringFx(q) {
+    const r = q.r1 ?? 12, layer = q.layer || 'fg', flat = q.flat ?? 0.4;
+    const nearWater = this.surfaceY !== null && layer !== 'ui' && Math.abs(q.y - (this.waterAt(q.x) ?? q.y)) < 10;
+    if (flat < 0.8 || nearWater) {
+      this.wavelets(q.x, q.y, Math.min(1.5, r / 18), { layer, delay: q.delay });
+      return this.pixel('puff', q.x, q.y - 1, { ramp: 'foam', size: 0, life: 0.35, layer, delay: q.delay });
+    }
+    if (r < 10) return this.pixel('pop', q.x, q.y, { ramp: rampFor(q.color, 'white'), life: 0.25, layer, delay: q.delay });
+    return this.impact(q.x, q.y, r > 40 ? 2 : r > 18 ? 1 : 0, { ramp: rampFor(q.color, 'white'), layer, delay: q.delay, sparkles: 3 });
   }
 
   // ---------------------------------------------------------------- simulation
@@ -659,7 +853,7 @@ export class Particles {
             if (p.y >= ly + 2) break;
             p.t = p.max;
             if (this.water && p.r >= 2 && Math.random() < 0.7) this.surfaceBubble(p.x, ly + 1, Math.min(4, p.r), { layer: p.layer }); // [phase5:water]
-            else if (list.length < this.max) this.add({ kind: 'ring', x: p.x, y: ly + 1, life: 0.3, r0: 1, r1: p.r + 2, color: 'rgba(240,252,255,0.85)', layer: p.layer });
+            else if (list.length < this.max) this.pixel('pop', p.x, ly, { layer: p.layer, ramp: 'white', life: 0.22 }); // [phase8:ui]
             continue;
           }
           break;
@@ -669,13 +863,23 @@ export class Particles {
             p.t = p.max;
             if (list.length < this.max * 0.9) {
               for (let i = 0; i < 2 + p.r; i++) this.add({ kind: 'drop', x: p.x + rng.float(-p.r, p.r), y: p.y - p.r, vx: rng.float(-30, 30), vy: -rng.float(30, 70), life: 0.5, size: 1, color: '#ffffff', g: 300, drag: 0.4, layer: p.layer });
-              this.add({ kind: 'ring', x: p.x, y: p.y, life: 0.3, r0: 1, r1: p.r + 3, color: 'rgba(240,252,255,0.9)', layer: p.layer });
+              this.pixel('pop', p.x, p.y - 1, { layer: p.layer, ramp: 'white', life: 0.22 }); // [phase8:ui]
             }
             this.water?.sim?.ring?.(p.x, 0.08 + Math.random() * 0.2, 0.45, { speed: 7, life: 0.4, r0: 0.5, kind: 'rain' });
             continue;
           }
           break;
         }
+        case 'px': // [phase8:ui] sprite particle
+          p.vx *= Math.exp(-p.drag * dt);
+          p.vy *= Math.exp(-p.drag * dt);
+          p.vy += p.g * dt;
+          p.x += (p.vx + (p.sway ? Math.sin(p.t * 5 + p.ph) * p.sway : 0)) * dt;
+          p.y += p.vy * dt;
+          if (p.glint && p.vy > 0 && p.floor != null && p.y > p.floor) { p.y = p.floor; p.vy *= -0.4; }
+          if (p.popEnd && p.t + dt >= p.max && list.length < this.max) { p.t = p.max; this.pixel('pop', p.x, p.y, { ramp: 'white', life: 0.22, layer: p.layer }); continue; }
+          if (p.popEnd && surf !== null && p.layer !== 'ui' && p.y < wl(p.x) + 1) { p.t = p.max; this.pixel('pop', p.x, wl(p.x), { ramp: 'white', life: 0.22, layer: p.layer }); continue; }
+          break;
         case 'leaf':
         case 'confetti':
           p.spin += p.spinV * dt;
@@ -701,7 +905,7 @@ export class Particles {
             const ly = wl(p.x); // [phase5:water] land on the live waterline
             if (p.y > ly + 1) {
               p.t = p.max;
-              if (p.size > 1 && list.length < this.max * 0.8) this.add({ kind: 'ring', x: p.x, y: ly + 1, life: 0.35, r0: 1, r1: 4, color: 'rgba(230,250,255,0.8)', layer: p.layer });
+              if (p.size > 1 && list.length < this.max * 0.8) this.pixel('wave', p.x, ly, { layer: p.layer, ramp: 'foam', life: 0.3 }); // [phase8:ui]
               if (this.water) this.dropLanded(p.x, p.size, p.vy);
               continue;
             }
@@ -721,6 +925,21 @@ export class Particles {
       if (a <= 0.02) continue;
       const x = Math.round(p.x), y = Math.round(p.y);
       switch (p.kind) {
+        case 'px': { // [phase8:ui] hand-drawn sprite sheet particle
+          if (p.blink && k > 0.72 && Math.floor(p.t * 22) % 2) break;
+          const F = pxFrames(p.sheet, p.ramp, p.sz);
+          let fi;
+          if (p.anim === 'life') fi = Math.min(F.length - 1, Math.floor(k * F.length));
+          else if (p.anim === 'loop') fi = Math.floor(p.t * p.fps + p.fr) % F.length;
+          else if (p.anim === 'twinkle') fi = Math.sin(p.t * 16 + p.ph) > 0.55 ? Math.min(1, F.length - 1) : 0;
+          else fi = p.fr % F.length;
+          const c = F[fi];
+          const w = c.width * p.sc, h = c.height * p.sc;
+          if (p.flip && p.sheet !== 'zap') {
+            ctx.save(); ctx.translate(x + (w >> 1), y - (h >> 1)); ctx.scale(-1, 1); ctx.drawImage(c, 0, 0, w, h); ctx.restore();
+          } else ctx.drawImage(c, x - (w >> 1), y - (h >> 1), w, h);
+          break;
+        }
         case 'bubble': {
           const s = bubbleSprite(p.size);
           ctx.globalAlpha = a;
@@ -736,38 +955,20 @@ export class Particles {
           ctx.globalAlpha = 1;
           break;
         }
-        case 'sparkle': {
-          const tw = Math.sin(k * Math.PI);
-          ctx.globalCompositeOperation = 'lighter';
-          ctx.fillStyle = rgba(p.color, a);
-          ctx.fillRect(x, y, 1, 1);
-          if (tw > 0.4) {
-            ctx.fillRect(x - 1, y, 1, 1); ctx.fillRect(x + 1, y, 1, 1);
-            ctx.fillRect(x, y - 1, 1, 1); ctx.fillRect(x, y + 1, 1, 1);
-          }
-          if (tw > 0.8 && (p.big ?? true)) {
-            ctx.fillStyle = rgba(p.color, a * 0.5);
-            ctx.fillRect(x - 2, y, 1, 1); ctx.fillRect(x + 2, y, 1, 1);
-            ctx.fillRect(x, y - 2, 1, 1); ctx.fillRect(x, y + 2, 1, 1);
-          }
-          ctx.globalCompositeOperation = 'source-over';
+        case 'sparkle': { // [phase8:ui] animated pixel sparkle (grow -> cross -> fade)
+          const F = pxFrames('sparkle', rampFor(p.color, 'gold'), p.big === false ? 0 : 1);
+          const c = F[Math.min(F.length - 1, Math.floor(k * F.length))];
+          ctx.globalAlpha = Math.min(1, a * 1.4);
+          ctx.drawImage(c, x - (c.width >> 1), y - (c.height >> 1));
+          ctx.globalAlpha = 1;
           break;
         }
-        case 'star': {
-          const s = p.size;
-          const tw = 0.6 + 0.4 * Math.sin(p.t * 18 + p.spin);
-          ctx.globalCompositeOperation = 'lighter';
-          ctx.fillStyle = rgba(p.color, a * tw);
-          const diag = Math.floor(p.t * 6 + p.spin) % 2 === 1 && s > 1;
-          if (diag) {
-            for (let i = -s; i <= s; i++) { ctx.fillRect(x + i, y + i, 1, 1); ctx.fillRect(x + i, y - i, 1, 1); }
-          } else {
-            ctx.fillRect(x - s, y, s * 2 + 1, 1);
-            ctx.fillRect(x, y - s, 1, s * 2 + 1);
-          }
-          ctx.fillStyle = rgba('#ffffff', a);
-          ctx.fillRect(x, y, 1, 1);
-          ctx.globalCompositeOperation = 'source-over';
+        case 'star': { // [phase8:ui] cute outlined pixel stars instead of plus shapes
+          if (k > 0.75 && Math.floor(p.t * 22) % 2) break;
+          const sz = p.size;
+          const F = sz <= 1 ? pxFrames('sparkle', rampFor(p.color, 'gold'), 0) : pxFrames('star', rampFor(p.color, 'gold'), sz >= 3 ? 1 : 0);
+          const c = sz <= 1 ? F[Math.min(F.length - 1, Math.floor(k * F.length))] : F[Math.sin(p.t * 16 + p.spin) > 0.5 ? 1 : 0];
+          ctx.drawImage(c, x - (c.width >> 1), y - (c.height >> 1));
           break;
         }
         case 'text':
@@ -858,18 +1059,20 @@ export class Particles {
           if (p.add) ctx.globalCompositeOperation = 'source-over';
           break;
         }
-        case 'scale': {
-          const flick = Math.sin(p.t * 14 + p.ph);
-          ctx.fillStyle = rgba(flick > 0.3 ? '#ffffff' : p.color, a);
-          if (flick > -0.4) { ctx.fillRect(x, y - 1, 1, 1); ctx.fillRect(x - 1, y, 3, 1); ctx.fillRect(x, y + 1, 1, 1); }
-          else ctx.fillRect(x - 1, y, 2, 1);
+        case 'scale': { // [phase8:ui] flipping pixel fish scale
+          const F = pxFrames('scale', rampFor(p.color, 'aqua'), 1);
+          const c = F[Math.floor(p.t * 10 + p.ph) % F.length];
+          ctx.globalAlpha = a;
+          ctx.drawImage(c, x - (c.width >> 1), y - (c.height >> 1));
+          ctx.globalAlpha = 1;
           break;
         }
-        case 'confetti': {
-          const cw = Math.max(1, Math.round(Math.abs(Math.cos(p.spin)) * p.w));
-          ctx.fillStyle = rgba(p.color, a);
-          ctx.fillRect(x - (cw >> 1), y, cw, p.h);
-          if (cw > 1) { ctx.fillStyle = rgba('#ffffff', a * 0.5); ctx.fillRect(x - (cw >> 1), y, cw, 1); }
+        case 'confetti': { // [phase8:ui] outlined pixel confetti chips flipping in 3D
+          const F = pxFrames('confetti', rampFor(p.color, 'pink'), 1);
+          const c = F[Math.floor(Math.abs(p.spin) * 1.3) % F.length];
+          ctx.globalAlpha = a;
+          ctx.drawImage(c, x - (c.width >> 1), y - (c.height >> 1));
+          ctx.globalAlpha = 1;
           break;
         }
         case 'arc': {
@@ -940,20 +1143,19 @@ export class Particles {
           for (const [t, r, col, ring] of G) {
             const gx = Math.round(p.x + vx * t), gy = Math.round(p.y + vy * t), rr = Math.max(2, Math.round(r * sc));
             ctx.globalAlpha = fa * (ring ? 0.35 : 0.3);
-            if (ring) { const rs = thickRingSprite(rr, 2, col, 1); ctx.drawImage(rs, gx - Math.floor(rs.width / 2), gy - Math.floor(rs.height / 2)); }
-            else ctx.drawImage(glowSprite(rr, col), gx - rr, gy - rr);
+            const gr2 = ring ? Math.max(2, rr >> 1) : rr; // [phase8:ui] soft orbs, no ghost rings
+            ctx.drawImage(glowSprite(gr2, col), gx - gr2, gy - gr2);
           }
           ctx.globalAlpha = 1;
           ctx.globalCompositeOperation = 'source-over';
           break;
         }
-        case 'leaf': {
-          const cw = Math.cos(p.spin);
-          ctx.fillStyle = rgba(p.color, a);
-          if (Math.abs(cw) > 0.5) { ctx.fillRect(x - 2, y, 4, 2); ctx.fillRect(x - 1, y - 1, 2, 1); }
-          else { ctx.fillRect(x - 1, y - 1, 2, 3); }
-          ctx.fillStyle = rgba('#e8ffd0', a * 0.8);
-          ctx.fillRect(x - 1, y, 1, 1);
+        case 'leaf': { // [phase8:ui] shaded pixel leaf fluttering through rotation frames
+          const F = pxFrames('leaf', rampFor(p.color, 'leaf'), 0);
+          const c = F[Math.floor(Math.abs(p.spin)) % F.length];
+          ctx.globalAlpha = a;
+          ctx.drawImage(c, x - (c.width >> 1), y - (c.height >> 1));
+          ctx.globalAlpha = 1;
           break;
         }
         case 'ring2': {

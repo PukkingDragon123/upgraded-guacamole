@@ -217,13 +217,16 @@ export class Ocean {
 
   // Zoomed-in camera: re-render the current biome's near/mid scenery at 2x detail, a few ms per frame.
   hiPass() {
-    const b = this.biome, cam = this.game.camera;
-    if (!b || b.ready === false || this.travelState || !cam?.open || (cam.z || 1) < 1.3) return;
+    const b = this.biome, cam = this.game.camera, ts = this.travelState;
+    // [phase7:env] the second half of the trip (destination built, old ocean gone) already polishes the hi-res pass
+    const early = ts && ts.switched && !ts.gen;
+    if (!b || b.ready === false || (ts && !early) || (!early && (!cam?.open || (cam.z || 1) < 1.3))) return;
     const D = b.D;
     if (!D?.hiSteps || b.hiDone === D) return;
     if (this.hiFor !== D) {
       this.hiFor?.dropHi?.();
       this.hiFor = D;
+      this.hiT0 = performance.now();
       const decor = b.decor?.hiSteps ? b.decor : null;
       this.hiGen = (function* all() {
         if (!D.hi) yield* D.hiSteps();
@@ -233,7 +236,9 @@ export class Ocean {
       })();
     }
     if (!this.hiGen) return;
-    const t0 = performance.now(), budget = this.game.lowPower ? 3 : 7;
+    // [phase7:env] a bigger slice while the trip / the loading shimmer covers it, the usual few ms afterwards
+    const fresh = early || (this.hiT0 != null && performance.now() - this.hiT0 < 6000);
+    const t0 = performance.now(), budget = this.game.lowPower ? 5 : fresh ? 28 : 7;
     try {
       while (performance.now() - t0 < budget) if (this.hiGen.next().done) { this.hiGen = null; break; }
     } catch (e) { console.error(e); this.hiGen = null; }
@@ -466,6 +471,45 @@ export class Ocean {
     this.drawZoneCard(ctx, dt);
   }
 
+  // [phase7:env] while the zoomed-in voxel detail is still being built: a small glossy loading pill with a shimmer
+  // sweep and pixel sparkles (bottom centre, above the hotbar), fading out when the pass completes
+  drawShimmer(ctx, dt) {
+    const b = this.biome, busy = !!(this.hiGen && b && b.hiDone !== b.D && !this.travelState && this.game.state?.view === 'ocean');
+    this.shimA = clamp01((this.shimA || 0) + (busy ? dt * 3 : -dt * 2));
+    if (this.shimA < 0.02 || this.game.ui?.blocking) return;
+    const W = this.W, H = this.H, a = this.shimA, t = performance.now() / 1000;
+    const w = 96, h = 14, x = Math.round(W / 2 - w / 2), y = Math.round(H * 0.8);
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.fillStyle = 'rgba(6,30,58,0.55)';
+    ctx.fillRect(x - 1, y + 1, w + 2, h + 1);
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, '#c8f4ff'); g.addColorStop(0.5, '#4ab8f0'); g.addColorStop(1, '#1a6ab8');
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.fillRect(x + 1, y + 1, w - 2, 4);
+    // the shimmer: a bright diagonal band sweeping across
+    const sx = x + ((t * 70) % (w + 30)) - 15;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    for (let i = 0; i < h; i++) ctx.fillRect(Math.round(sx - i * 0.5), y + i, 6, 1);
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(230,252,255,0.95)'; ctx.lineWidth = 1;
+    ctx.strokeRect(x - 0.5, y - 0.5, w + 1, h + 1);
+    drawText(ctx, 'Polishing voxels', W / 2, y + 4, { align: 'center', font: 'small', color: '#ffffff', outline: '#0a3a6a' });
+    // pixel sparkles hopping off the pill
+    ctx.fillStyle = '#ffffff';
+    for (let i = 0; i < 4; i++) {
+      const k = (t * 0.9 + i * 0.25) % 1, px = x + ((i * 37 + Math.floor(t * 0.9 + i * 0.25) * 53) % w), py = y - Math.round(k * 10);
+      ctx.globalAlpha = a * (1 - k);
+      ctx.fillRect(px, py, 1, 1);
+      if (k < 0.5) { ctx.fillRect(px - 1, py, 3, 1); ctx.fillRect(px, py - 1, 1, 3); }
+    }
+    ctx.restore();
+  }
+
   drawZoneCard(ctx, dt) {
     const c = this.zoneCard;
     if (!c) return;
@@ -493,6 +537,7 @@ export class Ocean {
 
   drawTitleCard(ctx, dt) {
     this.drawDepthHud(ctx, dt); // [phase6:oceans]
+    this.drawShimmer(ctx, dt); // [phase7:env]
     const c = this.titleCard;
     if (!c || this.game.ui.blocking) return;
     c.t += dt;

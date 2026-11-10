@@ -50,6 +50,7 @@ import { MeshBuilder, LPMesh, renderSheet, lpAvailable, lpCanRender, lpProject, 
 import { fishModel, realLayoutJob, solidPose, finHeightFn, hexRGB } from './realvox.js';
 import { resolveReal } from './anatomy.js';
 import { compiled } from '../gfx/spritecache.js';
+import { voxelizeParts, mergeVox, voxelizeMesh } from './voxelize.js';
 import { SPECIES_BY_ID } from './species.js';
 import { makeCanvas } from '../core/canvas.js';
 import { hash2 } from '../core/math.js';
@@ -695,7 +696,7 @@ function buildFish(c, ph, inflStep, gape, hi) {
   paired(S.pec, 'pec');
   paired(S.pel, 'pel');
   // ---- eyes: small natural glossy domes set into the head
-  const eyes3 = [];
+  const eyes3 = [], eyeVox = [];
   if (S.eye) {
     const e = S.eye;
     const list = [[e.u ?? 0.08, e.v ?? 0.62]];
@@ -739,6 +740,7 @@ function buildFish(c, ph, inflStep, gape, hi) {
         }
         if (e.glow || e.type === 'glow') ellInto(glow, [C[0] + n[0] * re * 0.5, C[1], C[2] + n[2] * re * 0.5], [re * 0.4, re * 0.4, re * 0.4], 6, 4, rgb01(e.glowCol || '#9ffcff'), D);
         if (sd > 0) eyes3.push({ p: [C[0] + n[0] * re * 0.4, C[1], C[2] + n[2] * re * 0.4], r: re, sd });
+        eyeVox.push({ c: D([C[0] + n[0] * re * 0.3, C[1] + n[1] * re * 0.3, C[2] + n[2] * re * 0.3]), n, r: re, iris: e.iris || '#c8a050', pupil: e.pupil, glow: e.glow || e.type === 'glow' ? e.glowCol || '#9ffcff' : null });
       }
     }
   }
@@ -863,7 +865,7 @@ function buildFish(c, ph, inflStep, gape, hi) {
   if (!fins.empty) parts.push({ key: 'fins', mb: fins.mb, texture: sk.cv, ...mat.fins });
   // glass bodies: draw the see-through skin last
   parts.sort((a, b) => (a.key === 'glass') - (b.key === 'glass'));
-  return { parts, anchors, eyes: eyeA, L, flatRoll: flat ? (flat.roll || 0) : 0, white: W };
+  return { parts, anchors, eyes: eyeA, eyeVox, L, flatRoll: flat ? (flat.roll || 0) : 0, white: W };
 }
 
 // 3D eel for scenes (fishMesh of a chain species): the low-poly head + a faceted body tube that undulates.
@@ -1390,9 +1392,20 @@ function vidOf(c) { return c._lpVid || (c._lpVid = 'v' + (c.id ?? Math.random().
 
 // Built meshes for one pose: {parts: [{mesh, ...opts}], anchors, eyes, L, flatRoll, yawBase}
 const poseKey = (c, sw, infl, mouth, frames, hi) => vidOf(c) + '|' + sw + '/' + frames + '|' + infl + '|' + mouth + (hi ? '|h' : '');
-function poseCached(c, sw, infl, mouth, frames = LP_SWIM, hi = false) { return poses.has(poseKey(c, sw, infl, mouth, frames, hi && c.real?.plan === 'fish' && !c.turtle)); }
+function poseCached(c, sw, infl, mouth, frames = LP_SWIM, hi = false) { return poses.has(poseKey(c, sw, infl, mouth, frames, !VOXEL && hi && c.real?.plan === 'fish' && !c.turtle)); }
+let poseBytes = 0;
+const POSE_BYTES = 90e6;
+const poseSize = (p) => { let n = 0; for (const q of p.parts) n += q.mesh.bytes ?? q.mesh.data.byteLength; return n; };
+// Voxel edge (model units) of a creature: ~48 voxels along small fish, up to ~140 along giants and bosses.
+let VOXEL = true;
+export function setVoxelMode(on) { VOXEL = !!on; clearLowpolyCache(); }
+export function voxelSize(c, p) {
+  const Lk = c.L || p.L || 30;
+  const N = clamp(30 + Lk * 0.75, 48, 140) * (c.voxK || 1);
+  return (p.L || Lk) / N;
+}
 function poseOf(c, sw, infl, mouth, frames = LP_SWIM, hi = false, eel3d = false) {
-  hi = hi && c.real?.plan === 'fish' && !c.turtle;
+  hi = !VOXEL && hi && c.real?.plan === 'fish' && !c.turtle;
   const key = poseKey(c, sw, infl, mouth, frames, hi) + (eel3d ? '|eel' : '');
   let p = poses.get(key);
   if (p) { poses.delete(key); poses.set(key, p); return p; }
@@ -1405,12 +1418,19 @@ function poseOf(c, sw, infl, mouth, frames = LP_SWIM, hi = false, eel3d = false)
   else if (c.real?.plan === 'solid') b = buildSolid(c, ph);
   else b = buildFish(c, ph, infl, mouth, hi);
   p = { ...b, parts: b.parts.map((q) => { const { mb, key: k2, ...o } = q; return { key: k2, mesh: mb.build(), ...o }; }) };
+  if (VOXEL) {
+    // phase 8: the anatomical mesh becomes a real voxel model (fine voxels, baked AO, translucent fin voxels)
+    const src = p.parts;
+    p = { ...p, parts: voxelizeParts(src, voxelSize(c, p), { ao: 1, eyes: p.eyeVox }) };
+    for (const q of src) q.mesh.dispose?.();
+  }
   poses.set(key, p);
+  poseBytes += poseSize(p);
   stat.poses++;
   stat.tris = 0; for (const q of p.parts) stat.tris += q.mesh.count / 3;
-  if (poses.size > POSE_MAX) {
+  if (poses.size > POSE_MAX || poseBytes > POSE_BYTES) {
     const it = poses.keys();
-    for (let i = 0; i < 60; i++) { const k = it.next().value; const q = poses.get(k); poses.delete(k); for (const pt of q.parts) pt.mesh.dispose(); }
+    for (let i = 0; i < 60 || poseBytes > POSE_BYTES * 0.8; i++) { const k = it.next().value; if (k === undefined || k === key) break; const q = poses.get(k); poses.delete(k); poseBytes -= poseSize(q); for (const pt of q.parts) pt.mesh.dispose(); }
   }
   stat.poseMs += now() - t0;
   return p;
@@ -1467,11 +1487,12 @@ function buildSheet(c, sb, yawI, infl, mouth, tilt, hi = false, only = null) {
   const tg = now();
   const canvas = renderSheet(cells, { ...o, cols });
   stat.glMs += now() - tg;
+  // voxel poses keep only their compact face lists between sheet builds
   if (!canvas) return null;
   // glow pass: emissive parts only (the rest renders black), blurred into a soft additive halo
   let glow = null;
   if (c.glow) {
-    const gcells = frames.map((f) => ({ parts: f.parts.filter((p) => p.key !== 'fins' && p.key !== 'glass').map((p) => ({ ...p, ambient: 0, spec: 0, env: 0, rim: 0, iri: 0 })) }));
+    const gcells = frames.map((f) => ({ parts: f.parts.filter((p) => p.key !== 'fins' && p.key !== 'finrays' && p.key !== 'glass').map((p) => ({ ...p, ambient: 0, spec: 0, env: 0, rim: 0, iri: 0 })) }));
     const raw = renderSheet(gcells, { ...o, cols, light: [0, 0, -1], ambient: 0 });
     if (raw) {
       glow = makeCanvas(raw.width, raw.height);
@@ -1484,6 +1505,7 @@ function buildSheet(c, sb, yawI, infl, mouth, tilt, hi = false, only = null) {
       g.drawImage(raw, 0, 0);
     }
   }
+  for (const f of frames) for (const pt of f.parts) pt.mesh.release?.();
   const proj = (p) => lpProject(p, o);
   const [ax, ay] = proj([0, 0, 0]);
   const meta = frames.map((f) => {
@@ -1492,7 +1514,7 @@ function buildSheet(c, sb, yawI, infl, mouth, tilt, hi = false, only = null) {
     const eyes = f.eyes.map((e) => { const q = proj(e.p); return { x: q[0] - ax, y: q[1] - ay, r: e.r * Sb }; });
     return { anchors, eyes };
   });
-  const sh = { canvas, glow, w, h, cols, ax, ay, Sb, meta, vid: vidOf(c), px: canvas.width * canvas.height * (glow ? 2 : 1), yawI, sb, infl, mouth, tilt, lo: !hi && (c.L || 30) * Sb > 300 && c.real?.plan === 'fish' };
+  const sh = { canvas, glow, w, h, cols, ax, ay, Sb, meta, vid: vidOf(c), px: canvas.width * canvas.height * (glow ? 2 : 1), yawI, sb, infl, mouth, tilt, lo: !VOXEL && !hi && (c.L || 30) * Sb > 300 && c.real?.plan === 'fish' };
   const dt = now() - t0;
   spent += dt; stat.ms += dt; stat.sheets++; stat.renders += LP_SWIM;
   return sh;
@@ -1532,7 +1554,7 @@ function progress(c, sb, yawI, infl, mouth, tilt, deadline) {
   if (c._lpBroken) return null;
   const Sb = bucketScale(sb);
   const fishPlan = c.real?.plan === 'fish' && !c.turtle;
-  const hi = fishPlan && (c.L || 30) * Sb > 300 && (syncAll || !!c._lpSkinHi || !!c._lpSkin);
+  const hi = !VOXEL && fishPlan && (c.L || 30) * Sb > 300 && (syncAll || !!c._lpSkinHi || !!c._lpSkin);
   if (fishPlan && !advanceSkin(c, hi, deadline)) return null;
   for (let sw = 0; sw < LP_SWIM; sw++) {
     if (poseCached(c, sw, infl, mouth, LP_SWIM, hi)) continue;
@@ -1624,9 +1646,11 @@ export function lpStill(c, req) {
 export function warmFish(c, S, yaw = 15) { return lpFrame(c, { S, yaw, sw: 0, force: true }); }
 
 export function clearLowpolyCache() {
-  sheets.clear(); byVid.clear(); sheetPx = 0;
+  sheets.clear(); byVid.clear(); sheetPx = 0; stills.clear?.();
   for (const p of poses.values()) for (const pt of p.parts) pt.mesh.dispose();
-  poses.clear();
+  poses.clear(); poseBytes = 0;
+  for (const m of meshCache.values()) { m.dispose(); m.plain?.dispose(); m.glow?.dispose(); }
+  meshCache.clear();
 }
 
 /** Far giants / non-species creatures as sprite frames (same contract as lpFrame). */
@@ -1730,9 +1754,10 @@ export function lpFishIcon(sp, w, h = w, o = {}) {
 
 function meshFromPose(c, p) {
   // merge the opaque parts (body, eyes, glow) into one mesh with the skin texture; fins stay separate
-  const op = p.parts.filter((q) => q.key !== 'fins' && q.key !== 'glass');
+  const op = p.parts.filter((q) => q.key !== 'fins' && q.key !== 'finrays' && q.key !== 'glass');
   const merge = (list) => {
     if (!list.length) return null;
+    if (list.every((q) => q.mesh.voxel)) return mergeVox(list.map((q) => q.mesh));
     let n = 0;
     for (const q of list) n += q.mesh.data.length;
     const data = new Float32Array(n);
@@ -1756,6 +1781,9 @@ function meshFromPose(c, p) {
   main.fins = finsP ? finsP.mesh : null;
   main.finsTex = !!finsP?.texture;
   main.finAlpha = finsP?.alpha ?? 0.7;
+  const raysP = p.parts.find((q) => q.key === 'finrays');
+  main.finRays = raysP ? raysP.mesh : null;
+  main.rayAlpha = raysP?.alpha ?? 0.9;
   main.glass = glassP ? glassP.mesh : null;
   main.glow = merge(glowL);
   main.L = p.L;
@@ -1777,7 +1805,7 @@ function cachedMesh(c, o) {
   if (!lpAvailable()) return null;
   const p = poseOf(c, sw, infl, mouth, frames, o.hi ?? true, true);
   m = meshFromPose(c, p);
-  if (m) { meshCache.set(key, m); if (meshCache.size > 1200) { const k = meshCache.keys().next().value; const q = meshCache.get(k); meshCache.delete(k); q.dispose(); q.plain?.dispose(); q.glow?.dispose(); } }
+  if (m) { meshCache.set(key, m); if (meshCache.size > 240) { const k = meshCache.keys().next().value; const q = meshCache.get(k); meshCache.delete(k); q.dispose(); q.plain?.dispose(); q.glow?.dispose(); } }
   return m;
 }
 
@@ -1804,6 +1832,7 @@ export function addFishToScene(scene, mesh, model, o = {}) {
   if (mesh.plain) scene.add(mesh.plain, model, base);
   if (mesh.glow) scene.add(mesh.glow, model, { ...base, emit: 1 });
   if (mesh.fins) scene.add(mesh.fins, model, { ...base, texture: mesh.finsTex === false ? undefined : mesh.texture, alpha: (o.alpha ?? 1) * mesh.finAlpha, cull: false, spec: 0.5, shine: 46 });
+  if (mesh.finRays) scene.add(mesh.finRays, model, { ...base, alpha: (o.alpha ?? 1) * mesh.rayAlpha, cull: false, spec: 0.5, shine: 46 });
   if (mesh.glass) scene.add(mesh.glass, model, { ...base, texture: mesh.texture, alpha: 0.5, cull: false, env: 0.6 });
   return scene;
 }
@@ -1823,7 +1852,8 @@ export function lpOrb(r, hex = '#e6fdff', glow = false) {
   const mb = new MeshBuilder();
   const col = rgb01(hex);
   ellInto({ tri: (a, bb, c2, k) => mb.tri(a, bb, c2, k) }, [0, 0, 0], [1, 1, 1], 10, 7, col);
-  const mesh = mb.build();
+  let mesh = mb.build();
+  if (VOXEL) { const vm = voxelizeMesh(mesh, 2 / clamp(Math.round(rq * 0.9), 5, 12), { jitter: 0.02 }); if (vm) { mesh.dispose(); mesh = vm; } }
   const sz = Math.ceil(rq * 2 + 4);
   const cv = renderSheet([{ mesh }], { w: sz, h: sz, scale: rq, center: [0, 0, 0], radius: 1.2, matrix: viewMatrix(0, 0), spec: 1, shine: 40, env: 0.6, iri: 0.35, rim: 0.6, emit: glow ? 0.35 : 0, light: [-0.42, 0.82, 0.62], sky: '#f2fdff', ground: '#2a6a9a' });
   mesh.dispose();
@@ -1875,7 +1905,14 @@ export function lpTube(c, rPx) {
     const a = P(prof[i], j), b2 = P(prof[i], j + 1), d = P(prof[i + 1], j), e = P(prof[i + 1], j + 1);
     mb.quad(a, d, e, b2, k);
   }
-  const mesh = mb.build();
+  let mesh = mb.build();
+  if (VOXEL) {
+    // voxel pill: as many voxels across as the head model has across the body
+    const vsH = voxelSize(c, { L: c.L || 30 });
+    const d = clamp(Math.round((2 * (c.chain?.r || 4) * 0.95) / vsH), 5, 16);
+    const vm = voxelizeMesh(mesh, 2 / d, { jitter: 0.03 });
+    if (vm) { mesh.dispose(); mesh = vm; }
+  }
   const w = Math.ceil(rb * 4) + 2, h = Math.ceil(rb * 2) + 2;
   const cy = h / 2;
   const cv = renderSheet([{ mesh }], { w, h, scale: rb, center: [0, 0, 0], radius: 2.4, matrix: viewMatrix(0, 0, 0), spec: 0.6, shine: 26, env: 0.5, iri: 0.12, rim: 0.4, emit: g.glow ? 0.25 : 0, light: [-0.3, 0.9, 0.5], sky: '#f2fdff', ground: '#2a6a9a' });

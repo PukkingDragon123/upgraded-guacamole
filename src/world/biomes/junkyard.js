@@ -251,6 +251,7 @@ export class JunkyardBiome extends Biome {
     const dockX = W - 260;
     const JUNK = [[138, 86, 52], [112, 116, 124], [60, 62, 70], [196, 186, 156], [70, 96, 150], [150, 60, 54], [96, 120, 90], [168, 150, 96]];
     D.terrain({
+      micro: { ripple: 0.7, pebble: 1.5, shell: 2, pebbles: [[120, 124, 132], [160, 150, 120], [96, 80, 64], [70, 74, 82]], shells: [[220, 60, 50], [60, 140, 220], [230, 200, 60]] }, // [phase7:env] bolts, washers, bottle caps
       cell: 2, dz: 0.02, hstep: 2, ambient: 0.74, diffuse: 0.48, ao: 0.08, jitter: 0.08, wall: 0.78, side: 0.88, crest: 1.1,
       height: (X, z) => {
         let h = (fbm2(X * 0.005, z * 1.4, 3, 21) - 0.5) * 12;

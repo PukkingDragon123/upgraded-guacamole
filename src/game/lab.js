@@ -316,7 +316,7 @@ export const ROW_OF = {};
 // at camera zoom 1); LAB_NODE is a node's diameter, LAB_ROOT the root hub's.
 //   nd.depth, nd.lane (0 main | 1 side), nd.ang (radians), nd.rad, nd.pos [x, y]; LAB_EXTENT = the outermost ring
 // (Reel & Shock and Oceans used to hang off the first rod / boat node; they now start at the root like the rest.)
-export const LAB_R1 = 190, LAB_STEP = 86, LAB_FORK = 19, LAB_NODE = 52, LAB_ROOT = 88;
+export const LAB_R1 = 205, LAB_STEP = 96, LAB_FORK = 19, LAB_NODE = 52, LAB_ROOT = 88;
 export const LAB_RING = (d) => (d <= 0 ? 0 : LAB_R1 + (d - 1) * LAB_STEP);
 const LAYOUT = {};
 {

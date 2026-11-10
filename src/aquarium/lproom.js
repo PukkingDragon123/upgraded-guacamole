@@ -9,7 +9,7 @@
 //   buildRoom(tier, kit) -> {opaque: LPMesh, glow: [{mesh, col}], glass: [{mesh, pos, a}], rotors: [{mesh, pos, yaw, speed}],
 //                            clouds: [{mesh, pos, speed}], floorY, bounds: {x0, x1, z0, z1, y1}, yawLimit, sun: [x, y, z] dir}
 
-import { Geo, rgb, mixc, shadec, srand } from './lpkit.js';
+import { Geo, rgb, mixc, shadec, srand, voxelize } from './lpkit.js';
 
 const WALL = '#e6f4fb', WAIN = '#cfe9f5', TRIM = '#ffffff', WOOD = ['#e8c89a', '#e2c090', '#eccfa4', '#dcb886'];
 const CHROME = '#dfe8f0', AQUA = '#3ac4f8', GLOSS = '#f8fcff';
@@ -66,21 +66,26 @@ export function buildRoom(tier, kit) {
   outside(out, room, rnd, fy);
 
   // ---- furniture for the tier
-  if (ped) pedestal(g, aglow, T, PH, fy);
-  else desk(g, glow, T, fy, rnd, PH);
+  // phase 8: furniture, plants and knick-knacks are voxel models (built into fur, voxelised below)
+  const fur = new Geo();
+  fur.jit = 0.05; fur.seed = 3;
+  if (ped) pedestal(fur, aglow, T, PH, fy);
+  else desk(fur, glow, T, fy, rnd, PH);
 
   // ---- room decoration: shelves, plants, a beanbag, a poster
-  shelves(g, R, fy, rnd);
-  bigPlant(g, [R.x1 - 70, fy, R.z0 + 70], 1.15, rnd);
-  bigPlant(g, [R.x0 + 60, fy, R.z1 - 80], 0.9, rnd);
-  snakePlant(g, [-250, fy, R.z0 + 45], rnd);
-  snakePlant(g, [R.x1 - 60, fy, R.z1 - 60], rnd);
-  beanbag(g, [-180, fy, 200]);
-  poster(g, glow, R, fy);
+  shelves(fur, R, fy, rnd);
+  bigPlant(fur, [R.x1 - 70, fy, R.z0 + 70], 1.15, rnd);
+  bigPlant(fur, [R.x0 + 60, fy, R.z1 - 80], 0.9, rnd);
+  snakePlant(fur, [-250, fy, R.z0 + 45], rnd);
+  snakePlant(fur, [R.x1 - 60, fy, R.z1 - 60], rnd);
+  beanbag(fur, [-180, fy, 200]);
+  poster(fur, glow, R, fy);
+  const vs = 1.5, shift = [0, PH - Math.floor(PH / vs) * vs - 0.001, 0];
+  voxelize(fur, vs, { into: g, maxCells: 110000, off: shift });
 
   room.opaque = mergeBuild(g, out);
   room.glow.push({ mesh: glow.build(), col: [1, 1, 0.97] });
-  if (aglow.n) room.glow.push({ mesh: aglow.build(), col: rgb('#6adcff') });
+  if (aglow.n) room.glow.push({ mesh: voxelize(aglow, vs, { jitter: 0, off: shift }).build(), col: rgb('#6adcff') });
   return room;
 }
 

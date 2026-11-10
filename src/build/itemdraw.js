@@ -15,6 +15,7 @@ import { drawFishFit, fitScale } from '../ui/journal.js';
 import { ITEMS } from './items.js';
 import { itemSprite, packageParts, SPIN } from './itemart.js';
 import { buildingSprite } from './buildingmodels.js';
+import { pixIcon } from './pixart.js'; // [phase8:prog] pixel-art items
 
 const propFit = new Map();
 function fittedProp(id, w, h) {
@@ -108,7 +109,8 @@ export function itemIcon(id, size = 14) {
   const it = ITEMS[id];
   const art = it?.art || (id === 'coins' ? 'coins' : null);
   let src = null;
-  if (art && !art.startsWith('pkg_')) src = itemSprite(art, { scale: 0.5, frame: 0, force: true })?.canvas;
+  if (it?.pix) src = pixIcon(id, 1); // [phase8:prog]
+  else if (art && !art.startsWith('pkg_')) src = itemSprite(art, { scale: 0.5, frame: 0, force: true })?.canvas;
   else if (art) src = packageParts(art.slice(4), 0.5, 0, true, true)?.full;
   else if (it?.kind === 'bait') src = baitSprite(id, 0);
   else if (it?.kind === 'decor') src = fittedProp(id, size * 2, size * 2)?.canvas;
@@ -137,6 +139,14 @@ export function drawItem(ctx, id, cx, by, o = {}) {
     return true;
   }
   if (!it && id !== 'coins') return false;
+  if (it?.pix) { // [phase8:prog] hand-made pixel-art items, integer-scaled to fit
+    const b = pixIcon(id, 1);
+    if (!b) return false;
+    const k = Math.max(1, Math.min(o.big ? 5 : 3, Math.floor(Math.min(bw / b.width, bh / b.height))));
+    const c = pixIcon(id, k);
+    ctx.drawImage(c, Math.round(cx - c.width / 2), Math.round(by - c.height - (o.spin ? Math.abs(Math.sin(t * 3)) * 2 : 0)));
+    return true;
+  }
   const art = it?.art || (id === 'coins' ? 'coins' : null);
   if (it?.kind === 'package') {
     const psc = big === 2 ? 1.6 : 0.9;

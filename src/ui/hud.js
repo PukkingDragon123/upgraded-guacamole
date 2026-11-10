@@ -29,6 +29,7 @@
 import { clamp, damp, dist, ease, rectContains } from '../core/math.js';
 import { rgba, mix, shade, hexToRgb } from '../core/color.js';
 import { PixelBuffer } from '../gfx/pixel.js';
+import { tinted } from '../core/canvas.js';
 import { drawText, measureText } from '../gfx/font.js';
 import { getUiIcon } from '../gfx/uiicons.js';
 import { getBigIcon, iconFrame, iconSpinMode, rodIcon } from '../gfx/bigicons.js';
@@ -105,18 +106,40 @@ function bubbleTex(D, tint, part) {
 }
 const bubble = (D, tint, part) => aeroCached(`hudbub|${D}|${tint}|${part}`, () => bubbleTex(D, tint, part));
 
-function ringTex(D) {
-  return aeroCached(`hudring|${D}`, () => {
-    const S = D + 6;
-    const b = new PixelBuffer(S, S);
-    const C = S / 2, Rr = D / 2 + 2;
-    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-      const d = Math.hypot(x + 0.5 - C, y + 0.5 - C);
-      if (Math.abs(d - Rr) < 0.75) b.data[y * S + x] = 0xffffffff;
-      else if (Math.abs(d - Rr - 1.2) < 0.6) b.data[y * S + x] = 0x66ffe08f;
-    }
-    return b.toCanvas();
+// [phase8:ui] chunky pixel-art tile buttons (rounded square, dark outline, banded dithered gradient, hard gloss)
+function tileTex(D, tint, lit) {
+  return aeroCached(`hudtile|${D}|${tint}|${lit}`, () => {
+    const top = mix(tint, '#ffffff', lit ? 0.82 : 0.7), mid = mix(tint, '#ffffff', lit ? 0.38 : 0.22), bot = shade(tint, lit ? -0.02 : -0.16);
+    const c = aeroSurface(D, D, { top, mid, bot, edge: shade(tint, -0.62), r: Math.max(5, R(D * 0.24)), gloss: 0.72, glossH: R(D * 0.42), curve: R(D * 0.06), rim: 1, glow: 0.6, glowColor: mix(tint, '#ffffff', 0.75), sparkle: 2 });
+    // a 2 px solid pixel drop shadow under the tile
+    const out = document.createElement('canvas');
+    out.width = D; out.height = D + 3;
+    const g = out.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    g.globalAlpha = 0.45;
+    g.drawImage(tinted(c, shade(tint, -0.75)), 0, 3);
+    g.globalAlpha = 1;
+    g.drawImage(c, 0, 0);
+    return out;
   });
+}
+const tile = (D, tint, lit = 0) => tileTex(D, tint, lit ? 1 : 0);
+
+// [phase8:ui] animated pixel corner brackets (focus / open marker instead of a ring)
+function drawBrackets(ctx, x, y, w, h, t, col = '#ffffff', ink = '#0a3e74', k = 1) {
+  const o = R((Math.sin(t * 6) > 0 ? 1 : 0) * k);
+  const L = R(6 * k), T = Math.max(2, R(2 * k));
+  const corners = [[x - o, y - o, 1, 1], [x + w + o, y - o, -1, 1], [x - o, y + h + o, 1, -1], [x + w + o, y + h + o, -1, -1]];
+  for (const pass of [0, 1]) {
+    ctx.fillStyle = pass ? col : ink;
+    const e = pass ? 0 : 1;
+    for (const [cx, cy, sx, sy] of corners) {
+      const x0 = sx > 0 ? cx - e : cx - L - e, y0 = sy > 0 ? cy - e : cy - T - e;
+      ctx.fillRect(x0, y0, L + e * 2, T + e * 2);
+      const x1 = sx > 0 ? cx - e : cx - T - e, y1 = sy > 0 ? cy - e : cy - L - e;
+      ctx.fillRect(x1, y1, T + e * 2, L + e * 2);
+    }
+  }
 }
 
 const toneShadow = (t) => (t === 'green' ? '#1c5a0e' : t === 'orange' ? '#843a04' : '#6a0a16');
@@ -358,8 +381,9 @@ export class Hud {
       const B = this.m?.B || 34;
       const cx = it.x + B / 2, cy = it.y + B / 2;
       g.particles?.bubbles?.(cx, cy, 7, { layer: 'ui', life: 1 });
-      g.particles?.ring?.(cx, cy, 1.1 * (this.m?.k || 1), 'rgba(220,250,255,0.8)', { layer: 'ui' });
-      if (!g.state.settings?.reducedMotion) g.particles?.burst?.(cx, cy - B * 0.2, 6, { colors: ['#ffffff', '#fff6b0', mix(it.tint, '#ffffff', 0.4)], speed: 80, speedMin: 30, g: 160, life: 0.5, up: 60, layer: 'ui', drag: 1 });
+      // [phase8:ui] juicy pixel click: sparkles + a puff + tiny stars in the button's colour (no ring)
+      g.particles?.uiClick?.(cx, cy - B * 0.1, { ramp: it.tint, n: 5 });
+      if (!g.state.settings?.reducedMotion) g.particles?.pixelBurst?.('star', cx, cy - B * 0.3, 3, { layer: 'ui', ramp: it.tint, size: 0, dir: -Math.PI / 2, spread: 1.1, speed: [60, 120] });
     }
     g.audio.play('bubble', { pitch: 1.1 + Math.random() * 0.15 });
     g.emit?.('iconOpen', it || { id });
@@ -546,7 +570,7 @@ export class Hud {
     ctx.fillStyle = rgba('#03264a', 0.16 + hov * 0.06);
     const sw = R(B * (0.62 - hov * 0.1));
     ctx.fillRect(R(it.x + B / 2 - sw / 2), R(it.y + B + 1), sw, R(2 * k));
-    draw(bubble(B, it.tint, 'back'));
+    draw(tile(B, it.tint, hov > 0.5 || active)); // [phase8:ui] pixel tile instead of a glass bubble
     // the 3D icon: wobbles / spins while hovered, hops on pop
     const hop = it.pop > 0 ? -R(Math.sin(it.pop * Math.PI) * 4 * k) : 0;
     const iconHop = hop - R(hov * 2 * k);
@@ -558,12 +582,9 @@ export class Hud {
       try { spr = getBigIcon(it.icon, { size: m.icon }); } catch { spr = null; }
       if (spr) draw(spr.canvas, iconHop);
     }
-    draw(bubble(B, it.tint, 'front'));
-    if (active) {
-      const rt = ringTex(B);
-      ctx.drawImage(rt, cx - R(rt.width / 2), cy - R(rt.height / 2));
-      const a = t * 2.4;
-      drawSparkle(ctx, cx + Math.cos(a) * (B / 2 + 2), cy + Math.sin(a) * (B / 2 + 2), k >= 1.5 ? 3 : 2, 1);
+    if (active) { // [phase8:ui] bouncing pixel corner brackets + a twinkle (no ring)
+      drawBrackets(ctx, R(cx - B / 2), R(cy - B / 2), B, B, t, '#ffffff', '#0a3e74', Math.max(1, R(k * 0.7)));
+      if (Math.sin(t * 3) > 0) drawSparkle(ctx, cx + B * 0.36, cy - B * 0.36, k >= 1.5 ? 3 : 2, 1);
     }
     // "open" light under the button
     if (active) {
@@ -635,7 +656,7 @@ export class Hud {
       const w = R(img.width * s), h = R(img.height * s);
       ctx.drawImage(img, R(x - w / 2), R(y - h / 2), w, h);
     };
-    blit(bubble(D, '#7ad8ff', 'back'), rcx, rcy);
+    blit(tile(D, '#5cc0f4', rh > 0.5), rcx, rcy + 1); // [phase8:ui] pixel tile slot
     let rod = null;
     try { rod = equippedRod(g.state); } catch { rod = null; }
     if (rod) {
@@ -644,7 +665,6 @@ export class Hud {
       const wob = calm ? 0 : Math.sin(t * 7) * rh * 1.5 * k;
       if (ic) blit(ic, rcx + wob * 0.3, rcy - rh * 2 * k);
     }
-    blit(bubble(D, '#7ad8ff', 'front'), rcx, rcy);
     if (rh > 0.4 && !calm) drawSparkle(ctx, rcx + D * 0.3, rcy - D * 0.32, 2, rh);
     // bait slot: bubble + count pill
     const b = this.box, bh = this.baitHov;
@@ -653,13 +673,12 @@ export class Hud {
     if (bh > 0.05) drawAeroGlow(ctx, bcx, bcy, R(D * 0.75), '#fff2c8', 0.7 * bh);
     let cur = null;
     try { cur = currentBait(g.state); } catch { cur = null; }
-    if (cur?.art) drawBaitGloss(ctx, cur.art, bcx, bcy, R(D * (1 + bh * 0.08)), t, { tint: '#fff4dc', rim: '#ffa83c', bob: b.hover });
+    blit(tile(D, '#ffb43c', bh > 0.5), bcx, bcy + 1, 1 + bh * 0.08); // [phase8:ui] pixel tile slot
+    if (cur?.art) drawBaitGloss(ctx, cur.art, bcx, bcy, R(D * (1 + bh * 0.08)), t, { bubble: false, bob: b.hover });
     else {
-      blit(bubble(D, '#ffc070', 'back'), bcx, bcy, 1 + bh * 0.08);
       const f = iconFrame('bait', R(D * 0.8), calm ? 0 : Math.sin(t * 6) * bh * 0.8);
       if (f) { ctx.globalAlpha = a0 * 0.85; ctx.drawImage(f.canvas, R(bcx - f.ox), R(bcy - f.oy)); ctx.globalAlpha = a0; }
       else { const hk = getUiIcon('hook'); if (hk) ctx.drawImage(hk, bcx - Math.floor(hk.width / 2), bcy - Math.floor(hk.height / 2)); }
-      blit(bubble(D, '#ffc070', 'front'), bcx, bcy, 1 + bh * 0.08);
     }
     const n = cur ? cur.count : 0;
     const txt = n > 999 ? '999+' : 'x' + n;

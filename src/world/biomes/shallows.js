@@ -155,6 +155,7 @@ export class ShallowsBiome extends Biome {
     this.D = D;
     const dockX = W - 260;
     D.terrain({
+      micro: { ripple: 1, pebble: 1, shell: 1.4 }, // [phase7:env]
       cell: 2, dz: 0.02, hstep: 2, ambient: 0.66, diffuse: 0.42, ao: 0.07, jitter: 0.05, wall: 0.86, side: 0.92, crest: 1.06,
       height: (X, z) => {
         let h = (fbm2(X * 0.004, z * 1.3, 3, 11) - 0.45) * 16;

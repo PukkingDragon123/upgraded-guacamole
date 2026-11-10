@@ -15,7 +15,7 @@
 //   shaftTexture() -> canvas      soft vertical light-shaft gradient
 //   plinthHeight(T)               height of the glossy plinth under the glass (the room's desk / pedestal top)
 
-import { Geo, rgb, mixc, shadec, srand } from './lpkit.js';
+import { Geo, rgb, mixc, shadec, srand, voxelize } from './lpkit.js';
 import { TankShape } from './sim3d.js';
 
 export const SUBSTRATES = [
@@ -49,9 +49,14 @@ export function buildTank(tier, gear = {}) {
   kit.lightCol = light.col === 'rainbow' ? '#e8d8ff' : light.col;
   const rnd = srand(77 + tier * 13);
 
-  substrate(g, T, sub, rnd, tier);
-  cubeTank(g, kit, T, gl, tier);
-  equipment(g, kit, T, gl, rnd);
+  // phase 8: the plinth, the light, rocks, driftwood and equipment are built into fx and turned into voxels; the
+  // glass stays smooth, polished glass
+  kit.vs = Math.max(0.2, T.W / 110);
+  const fx = new Geo();
+  substrate(g, fx, T, sub, rnd, tier);
+  cubeTank(g, fx, kit, T, gl, tier);
+  equipment(fx, kit, T, gl, rnd);
+  voxelize(fx, kit.vs, { into: g, maxCells: 70000, off: [0, (T.d.glass || 0.8) - 0.001, 0] });
   kit.opaque = g.build();
   kit.caustic = causticOverlay(T);
   // light shafts: start under the light, spread across the cube (a few rows deep: it is as deep as it is wide)
@@ -65,7 +70,7 @@ export function buildTank(tier, gear = {}) {
 }
 
 // ------------------------------------------------------------------ substrate
-function substrate(g, T, sub, rnd, tier) {
+function substrate(g, fx, T, sub, rnd, tier) {
   const cols = sub.cols.map(rgb);
   // soft sandy base: a slow blend between the palette colours plus a little per-facet grain
   const pick = (x, z) => {
@@ -74,50 +79,69 @@ function substrate(g, T, sub, rnd, tier) {
     const h = Math.sin(x * 91.7 + z * 47.3) * 43758.5;
     return shadec(mixc(cols[i], cols[i + 1], n * (cols.length - 1) - i), ((h - Math.floor(h)) - 0.5) * 0.08);
   };
-  const cell = Math.max(1.4, T.W / 64);
-  const nx = Math.ceil(T.W / cell), nz = Math.ceil(T.D / cell);
-  const X = (i) => -T.W / 2 + (i / nx) * T.W, Z = (j) => -T.D / 2 + (j / nz) * T.D;
-  const P = (i, j) => { const x = X(i), z = Z(j); return [x, T.floorY(x, z), z]; };
-  for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
-    const a = P(i, j), b = P(i + 1, j), c = P(i + 1, j + 1), d = P(i, j + 1);
-    g.tri(a, d, c, pick(a[0], a[2])); g.tri(a, c, b, pick(c[0] + 3, c[2]));
+  // phase 8: a voxel substrate. Columns of sand (cell c, steps of q) with pebble voxels scattered on top; the outer
+  // columns show the strata through the glass (dark soil, the side colour, the top layer) with stones in them.
+  const n = Math.round(T.W / Math.max(0.45, T.W / 56)), c = T.W / n, q = c * 0.5;
+  T.vq = q;
+  const pebs = sub.peb.map(rgb), soil = rgb(sub.soil || sub.side[0]), side = rgb(sub.side[0]), side2 = rgb(sub.side[1]);
+  const hgt = [], col = [];
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+    const x = -T.W / 2 + (i + 0.5) * c, z = -T.D / 2 + (j + 0.5) * c;
+    let h = Math.max(q, Math.round(T.floorY(x, z) / q) * q);
+    let k = pick(x, z);
+    if (rnd() < 0.1 * sub.pebN) { k = pebs[Math.floor(rnd() * pebs.length)]; if (rnd() < 0.5) h += q; }
+    else if (sub.glint && rnd() < 0.05) k = rgb(sub.glint);
+    hgt.push(h); col.push(k);
   }
-  // cross-section seen through the glass: banded layers of substrate
-  const band = () => rgb(sub.side[0]);
-  for (let i = 0; i < nx; i++) {
-    const a = P(i, nz), b = P(i + 1, nz);
-    sideStrip(g, [a[0], 0.3, a[2]], [b[0], 0.3, b[2]], a, b, band, cols, sub);
-    const c = P(i + 1, 0), d = P(i, 0);
-    sideStrip(g, [c[0], 0.3, c[2]], [d[0], 0.3, d[2]], c, d, band, cols, sub);
+  const H = (i, j) => (i < 0 || j < 0 || i >= n || j >= n ? -1 : hgt[i * n + j]);
+  const strata = (y, h, x, z, i) => {
+    const r = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719 + i) * 43758.5453;
+    const f = r - Math.floor(r);
+    if (f < 0.07 * sub.pebN) return pebs[Math.floor(f * 1000) % pebs.length];
+    const t = y / Math.max(q, h);
+    const base = t < 0.32 ? soil : t < 0.66 ? side : h - y <= q * 1.01 ? col[i] : side2;
+    return shadec(base, (f - 0.5) * 0.1);
+  };
+  const quadV = (x0, z0, x1, z1, y0, y1, k, nr) => {
+    g.grow(66);
+    const A = [x0, y0, z0], B = [x1, y0, z1], C = [x1, y1, z1], D = [x0, y1, z0];
+    g.vert(A, nr, k); g.vert(B, nr, k); g.vert(C, nr, k); g.vert(A, nr, k); g.vert(C, nr, k); g.vert(D, nr, k);
+  };
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+    const h = hgt[i * n + j], k = col[i * n + j];
+    const x0 = -T.W / 2 + i * c, x1 = x0 + c, z0 = -T.D / 2 + j * c, z1 = z0 + c;
+    g.grow(66);
+    const up = [0, 1, 0], kt = shadec(k, 0.03);
+    g.vert([x0, h, z0], up, kt); g.vert([x0, h, z1], up, kt); g.vert([x1, h, z1], up, kt);
+    g.vert([x0, h, z0], up, kt); g.vert([x1, h, z1], up, kt); g.vert([x1, h, z0], up, kt);
+    // step faces toward lower neighbours; the outer wall shows every layer (the cross-section through the glass)
+    const sides = [[1, 0, [x1, z1, x1, z0], [1, 0, 0]], [-1, 0, [x0, z0, x0, z1], [-1, 0, 0]], [0, 1, [x0, z1, x1, z1], [0, 0, 1]], [0, -1, [x1, z0, x0, z0], [0, 0, -1]]];
+    for (const [di, dj, [ax, az, bx, bz], nr] of sides) {
+      const nh = H(i + di, j + dj);
+      const from = nh < 0 ? 0.3 : nh;
+      if (from >= h) continue;
+      for (let y = from; y < h - 1e-4; y += q) quadV(ax, az, bx, bz, y, Math.min(h, y + q), nh < 0 ? strata(y, h, ax + bx, az + bz, i * n + j) : shadec(k, -0.08), nr);
+    }
   }
-  for (let j = 0; j < nz; j++) {
-    const a = P(nx, j + 1), b = P(nx, j);
-    sideStrip(g, [a[0], 0.3, a[2]], [b[0], 0.3, b[2]], a, b, band, cols, sub);
-    const c = P(0, j), d = P(0, j + 1);
-    sideStrip(g, [c[0], 0.3, c[2]], [d[0], 0.3, d[2]], c, d, band, cols, sub);
-  }
-  pebbles(g, T, sub, rnd, Math.round(T.W * T.D / 16 * sub.pebN));
-  glassPebbles(g, T, sub, rnd);
   // a few feature rocks at the back (the player builds the rest)
   const rocks = tier >= 4 ? 6 : tier >= 3 ? 4 : 2;
   for (let i = 0; i < rocks; i++) {
     const p = T.floorPoint(0.08 + rnd() * 0.84, 0.7 + rnd() * 0.27, 4);
     const r = T.minDim * (0.05 + rnd() * 0.07);
-    g.push(); g.at(p[0], p[1] - r * 0.2, p[2]); g.rotY(rnd() * 6.28);
-    g.rock(r, 31 + i * 7 + tier, rnd() > 0.5 ? '#8e98a8' : '#a8a090', { sy: 0.65 + rnd() * 0.3 });
-    g.pop();
+    fx.push(); fx.at(p[0], p[1] - r * 0.2, p[2]); fx.rotY(rnd() * 6.28);
+    fx.rock(r, 31 + i * 7 + tier, rnd() > 0.5 ? '#8e98a8' : '#a8a090', { sy: 0.65 + rnd() * 0.3 });
+    fx.pop();
   }
   // driftwood: a gnarled branch arching out of the gravel (two for the bigger tanks)
-  driftwood(g, T.floorPoint(0.28, 0.72, 4), T.minDim * 0.03, -0.4, rnd);
-  if (tier >= 3) driftwood(g, T.floorPoint(0.78, 0.62, 4), T.minDim * 0.025, 2.6, rnd);
+  driftwood(fx, T.floorPoint(0.42, 0.8, 4), T.minDim * 0.026, -0.25, rnd);
   if (tier >= 4) {
     // live rock arch at the back with encrusting colour
     for (let i = 0; i < 7; i++) {
       const u = 0.18 + i * 0.1, p = T.floorPoint(u, 0.9, 3);
       const r = T.minDim * (0.09 + 0.05 * Math.sin(i * 1.7) ** 2);
-      g.push(); g.at(p[0], p[1] + (i > 1 && i < 5 ? r * 0.9 : 0), p[2]); g.rotY(i);
-      g.rock(r, 300 + i, i % 2 ? '#c88a9a' : '#a8889a', { sy: 0.8 });
-      g.pop();
+      fx.push(); fx.at(p[0], p[1] + (i > 1 && i < 5 ? r * 0.9 : 0), p[2]); fx.rotY(i);
+      fx.rock(r, 300 + i, i % 2 ? '#c88a9a' : '#a8889a', { sy: 0.8 });
+      fx.pop();
     }
   }
 }
@@ -138,54 +162,9 @@ function driftwood(g, p, k, yaw, rnd) {
   g.pop();
 }
 
-function sideStrip(g, a0, b0, a1, b1, band, cols, sub) {
-  // the cross-section through the glass: dark aqua soil at the bottom, the substrate's side colour, the top layer
-  const m = (p, q, t) => [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t, p[2] + (q[2] - p[2]) * t];
-  const k = Math.sin(a0[0] * 3.1 + a0[2] * 2.3) * 0.04;
-  const w0 = 0.3 + 0.06 * Math.sin(a0[0] * 0.9 + a0[2] * 0.7), w1 = 0.62 + 0.05 * Math.sin(a0[0] * 0.5 - a0[2] * 1.1);
-  const as = m(a0, a1, w0), bs = m(b0, b1, w0), am = m(a0, a1, w1), bm = m(b0, b1, w1);
-  g.quad(a0, b0, bs, as, shadec(sub.soil || band(), k));
-  g.quad(as, bs, bm, am, shadec(band(), k));
-  g.quad(am, bm, b1, a1, shadec(cols[1], k));
-}
-
-// little stones pressed against the glass in the cross-section (they read as real gravel through the panes)
-function glassPebbles(g, T, sub, rnd) {
-  const n = Math.round((T.W + T.D) * 0.7 * Math.max(0.4, sub.pebN));
-  const cols = [...sub.peb, sub.side[0], sub.side[1]];
-  for (let i = 0; i < n; i++) {
-    const side = i % 4, u = rnd();
-    let x, z;
-    if (side === 0) { x = (u - 0.5) * T.W; z = T.D / 2 - 0.12; } else if (side === 1) { x = (u - 0.5) * T.W; z = -T.D / 2 + 0.12; } else if (side === 2) { x = T.W / 2 - 0.12; z = (u - 0.5) * T.D; } else { x = -T.W / 2 + 0.12; z = (u - 0.5) * T.D; }
-    const top = T.floorY(x, z);
-    const r = T.minDim * (0.006 + rnd() * 0.01) + 0.1;
-    const y = 0.3 + r + rnd() * Math.max(0.1, top - 0.6 - r * 2);
-    g.push(); g.at(x, y, z); g.scale(side < 2 ? 1 : 0.5, 0.75, side < 2 ? 0.5 : 1);
-    g.sphere(r, 0, cols[Math.floor(rnd() * cols.length)], { jit: 0.3, seed: i + 9 });
-    g.pop();
-  }
-}
-
-function pebbles(g, T, sub, rnd, n) {
-  const cols = sub.peb;
-  const old = g.jit;
-  g.jit = 0.15;
-  for (let i = 0; i < n; i++) {
-    const p = T.floorPoint(rnd(), rnd(), 1);
-    const r = T.minDim * (0.008 + rnd() * 0.012) + 0.12;
-    g.push(); g.at(p[0], p[1] - r * 0.15, p[2]); g.rotY(rnd() * 6.28); g.scale(1, 0.6, 0.8);
-    g.sphere(r, 0, cols[Math.floor(rnd() * cols.length)], { jit: 0.3, seed: i + 5 });
-    g.pop();
-  }
-  if (sub.glint) for (let i = 0; i < n / 3; i++) {
-    const p = T.floorPoint(rnd(), rnd(), 1);
-    g.push(); g.at(p[0], p[1] + 0.05, p[2]); g.sphere(0.12, 0, sub.glint); g.pop();
-  }
-  g.jit = old;
-}
-
 // ------------------------------------------------------------------ the glass cube
-function cubeTank(g, kit, T, gl, tier) {
+function cubeTank(g, fx, kit, T, gl, tier) {
+  const VG = (geo) => voxelize(geo, kit.vs, { jitter: 0.02, off: [0, (T.d.glass || 0.8) - 0.001, 0] }).build();
   const W = T.W, H = T.H, D = T.D, t = T.d.glass || 0.8, S = Math.max(W, D);
   const lv = gl('light');
   // ---- glass panes: thick boxes, each its own transparent item (sorted against the water by its outward normal)
@@ -257,19 +236,19 @@ function cubeTank(g, kit, T, gl, tier) {
   const PH = plinthHeight(T), m = Math.max(1.1, S * 0.035);
   const X0 = -W / 2 - t - m, X1 = W / 2 + t + m, Z0 = -D / 2 - t - m, Z1 = D / 2 + t + m;
   kit.plinth = PH;
-  g.slab(X0 + m * 0.55, -PH, Z0 + m * 0.55, X1 - m * 0.55, -PH * 0.8, Z1 - m * 0.55, m * 0.6, { top: '#9fb4c6', side: '#8aa0b4', bottom: '#7a90a4' });
-  g.slab(X0, -PH * 0.8, Z0, X1, -PH * 0.56, Z1, m * 0.9, { top: WHITE, side: '#e6f0f8', front: '#eef5fb', bottom: '#c8d8e6' });
-  g.slab(X0, -PH * 0.44, Z0, X1, -PH * 0.16, Z1, m * 0.9, { top: WHITE, side: '#f0f7fc', front: '#f6fbfe', bottom: '#d8e6f0' });
-  g.slab(X0 + m * 0.35, -PH * 0.16, Z0 + m * 0.35, X1 - m * 0.35, -t, Z1 - m * 0.35, m * 0.7, { top: CHROME, side: SILVER, front: '#eaf2f8' });
+  fx.slab(X0 + m * 0.55, -PH, Z0 + m * 0.55, X1 - m * 0.55, -PH * 0.8, Z1 - m * 0.55, m * 0.6, { top: '#9fb4c6', side: '#8aa0b4', bottom: '#7a90a4' });
+  fx.slab(X0, -PH * 0.8, Z0, X1, -PH * 0.56, Z1, m * 0.9, { top: WHITE, side: '#e6f0f8', front: '#eef5fb', bottom: '#c8d8e6' });
+  fx.slab(X0, -PH * 0.44, Z0, X1, -PH * 0.16, Z1, m * 0.9, { top: WHITE, side: '#f0f7fc', front: '#f6fbfe', bottom: '#d8e6f0' });
+  fx.slab(X0 + m * 0.35, -PH * 0.16, Z0 + m * 0.35, X1 - m * 0.35, -t, Z1 - m * 0.35, m * 0.7, { top: CHROME, side: SILVER, front: '#eaf2f8' });
   const band = new Geo();
   band.slab(X0 + m * 0.12, -PH * 0.56, Z0 + m * 0.12, X1 - m * 0.12, -PH * 0.44, Z1 - m * 0.12, m * 0.85, '#ffffff');
-  kit.glow.push({ mesh: band.build(), col: rgb('#5ad8ff'), a: 1, rim: true, band: true });
+  kit.glow.push({ mesh: VG(band), col: rgb('#5ad8ff'), a: 1, rim: true, band: true });
   // the light button on the front of the plinth (click it to switch the light)
   const bx = X1 - Math.max(2.4, S * 0.1), by = -PH * 0.3, bz = Z1 + 0.02;
-  g.push(); g.at(bx, by, bz); g.rotX(Math.PI / 2); g.cyl(PH * 0.14 + 0.25, PH * 0.14 + 0.25, 0.12, 14, CHROME); g.pop();
+  fx.push(); fx.at(bx, by, bz); fx.rotX(Math.PI / 2); fx.cyl(PH * 0.14 + 0.25, PH * 0.14 + 0.25, 0.12, 14, CHROME); fx.pop();
   const btn = new Geo();
   btn.push(); btn.at(bx, by, bz + 0.1); btn.rotX(Math.PI / 2); btn.cyl(PH * 0.12, PH * 0.1, 0.18, 14, '#ffffff'); btn.pop();
-  kit.glow.push({ mesh: btn.build(), col: rgb('#8af0ff'), a: 1, light: true, button: true });
+  kit.glow.push({ mesh: VG(btn), col: rgb('#8af0ff'), a: 1, light: true, button: true });
   kit.lid = { y: H, sw: [bx, by, bz + 0.3] };
 
   // ---- the light
@@ -278,26 +257,26 @@ function cubeTank(g, kit, T, gl, tier) {
     // a chrome gooseneck clamped on the back glass holding a glossy LED puck over the water
     const ps = S * (0.44 + lv * 0.05), py = H + S * 0.27, pz = -D * 0.04;
     const cx = W * 0.3, cz = -D / 2 - t / 2;
-    g.box(cx - S * 0.035, H - S * 0.07, cz - t / 2 - 0.35, cx + S * 0.035, H + 0.5, cz + t / 2 + 0.35, { top: CHROME, side: SILVER });
-    g.tube([[cx, H + 0.4, cz], [cx, H + S * 0.14, cz], [cx * 0.85, H + S * 0.31, -D * 0.36], [ps * 0.36, py + S * 0.05, -D * 0.2], [ps * 0.3, py + 0.4, pz]], S * 0.012 + 0.12, 7, CHROME);
-    g.slab(-ps / 2, py, pz - ps / 2, ps / 2, py + S * 0.035, pz + ps / 2, ps * 0.16, { top: WHITE, side: CHROME, bottom: '#dfe8f0' });
-    g.push(); g.at(ps * 0.3, py + S * 0.035, pz); g.cyl(S * 0.03, S * 0.025, S * 0.012, 10, SILVER_D); g.pop();
+    fx.box(cx - S * 0.035, H - S * 0.07, cz - t / 2 - 0.35, cx + S * 0.035, H + 0.5, cz + t / 2 + 0.35, { top: CHROME, side: SILVER });
+    fx.tube([[cx, H + 0.4, cz], [cx, H + S * 0.14, cz], [cx * 0.85, H + S * 0.31, -D * 0.36], [ps * 0.36, py + S * 0.05, -D * 0.2], [ps * 0.3, py + 0.4, pz]], S * 0.012 + 0.12, 7, CHROME);
+    fx.slab(-ps / 2, py, pz - ps / 2, ps / 2, py + S * 0.035, pz + ps / 2, ps * 0.16, { top: WHITE, side: CHROME, bottom: '#dfe8f0' });
+    fx.push(); fx.at(ps * 0.3, py + S * 0.035, pz); fx.cyl(S * 0.03, S * 0.025, S * 0.012, 10, SILVER_D); fx.pop();
     lg.slab(-ps / 2 + ps * 0.08, py - 0.05, pz - ps / 2 + ps * 0.08, ps / 2 - ps * 0.08, py + 0.02, pz + ps / 2 - ps * 0.08, ps * 0.12, '#ffffff');
     ring.slab(-ps / 2 - 0.12, py + S * 0.012, pz - ps / 2 - 0.12, ps / 2 + 0.12, py + S * 0.022, pz + ps / 2 + 0.12, ps * 0.16, '#ffffff');
     kit.lid.y = py + S * 0.035;
   } else {
     // a floating halo panel on four chrome wires from the ceiling: glossy white, glowing underneath and all round
     const ps = S * (0.8 + lv * 0.05), py = H + S * 0.3;
-    g.slab(-ps / 2, py, -ps / 2, ps / 2, py + S * 0.03, ps / 2, ps * 0.12, { top: WHITE, side: CHROME, bottom: '#e4eef6' });
-    g.slab(-ps * 0.3, py + S * 0.03, -ps * 0.3, ps * 0.3, py + S * 0.045, ps * 0.3, ps * 0.08, '#eef5fb');
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.tube([[sx * ps * 0.4, py + S * 0.03, sz * ps * 0.4], [sx * ps * 0.4, 260, sz * ps * 0.4]], 0.12, 4, SILVER);
+    fx.slab(-ps / 2, py, -ps / 2, ps / 2, py + S * 0.03, ps / 2, ps * 0.12, { top: WHITE, side: CHROME, bottom: '#e4eef6' });
+    fx.slab(-ps * 0.3, py + S * 0.03, -ps * 0.3, ps * 0.3, py + S * 0.045, ps * 0.3, ps * 0.08, '#eef5fb');
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) fx.tube([[sx * ps * 0.4, py + S * 0.03, sz * ps * 0.4], [sx * ps * 0.4, 260, sz * ps * 0.4]], 0.12, 4, SILVER);
     lg.slab(-ps / 2 + ps * 0.07, py - 0.05, -ps / 2 + ps * 0.07, ps / 2 - ps * 0.07, py + 0.02, ps / 2 - ps * 0.07, ps * 0.09, '#ffffff');
     ring.slab(-ps / 2 - 0.15, py + S * 0.01, -ps / 2 - 0.15, ps / 2 + 0.15, py + S * 0.02, ps / 2 + 0.15, ps * 0.12, '#ffffff');
-    if (lv >= 3) for (const sx of [-1, 1]) { g.push(); g.at(sx * ps * 0.55, py, 0); g.sphere(S * 0.025, 1, CHROME, { smooth: true }); g.pop(); lg.push(); lg.at(sx * ps * 0.55, py - S * 0.02, 0); lg.sphere(S * 0.015, 0, '#ffffff'); lg.pop(); }
+    if (lv >= 3) for (const sx of [-1, 1]) { fx.push(); fx.at(sx * ps * 0.55, py, 0); fx.sphere(S * 0.025, 1, CHROME, { smooth: true }); fx.pop(); lg.push(); lg.at(sx * ps * 0.55, py - S * 0.02, 0); lg.sphere(S * 0.015, 0, '#ffffff'); lg.pop(); }
     kit.lid.y = py + S * 0.045;
   }
-  kit.glow.push({ mesh: lg.build(), col: rgb(kit.lightCol), a: 1, light: true });
-  kit.glow.push({ mesh: ring.build(), col: rgb(lv >= 1 ? '#7ae8ff' : '#e8fbff'), a: 1, rim: true });
+  kit.glow.push({ mesh: VG(lg), col: rgb(kit.lightCol), a: 1, light: true });
+  kit.glow.push({ mesh: VG(ring), col: rgb(lv >= 1 ? '#7ae8ff' : '#e8fbff'), a: 1, rim: true });
   void tier;
 }
 
@@ -358,7 +337,7 @@ function equipment(g, kit, T, gl, rnd) {
     for (let i = 0; i < 8; i++) kit.stones.push([-W * 0.35 + (i + 0.5) * W * 0.7 / 8, y + 0.6 * k, z]);
   }
   if (air >= 3) for (const u of [0.25, 0.5, 0.75]) { const p = T.floorPoint(u, 0.35, 3 * k); airStone(g, p, 1.6 * k, null); kit.stones.push([p[0], p[1] + 1.2 * k, p[2]], [p[0], p[1] + 1.2 * k, p[2]]); }
-  if (glow.n) kit.glow.push({ mesh: glow.build(), col: rgb('#ff7a2a'), a: 1 });
+  if (glow.n) kit.glow.push({ mesh: voxelize(glow, kit.vs, { jitter: 0 }).build(), col: rgb('#ff7a2a'), a: 1 });
   void rnd;
 }
 
@@ -388,7 +367,7 @@ function causticOverlay(T) {
     if (T.round && Math.hypot((ax + bx) / 2, (az + bz) / 2) > T.floorR) continue;
     const ub = fr(i * cell / tile);
     const u = (x) => ub + (x - i * cell) / tile, vb = fr(j * cell / tile), v = (z) => vb + (z - j * cell) / tile;
-    const P = (x, z) => [x, T.floorY(x, z) + 0.12, z];
+    const P = (x, z) => [x, T.floorY(x, z) + (T.vq || 0) * 0.5 + 0.1, z];
     g.quad(P(ax, bz), P(bx, bz), P(bx, az), P(ax, az), '#ffffff', [[u(ax), v(bz)], [u(bx), v(bz)], [u(bx), v(az)], [u(ax), v(az)]]);
   }
   return g.build();

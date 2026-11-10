@@ -742,3 +742,74 @@ function largestRect(ids, W, H, k, x0, y0, x1, y1) {
   }
   return best;
 }
+
+// ------------------------------------------------------------------ 2x refinement (phase 7)
+// refineSteps(model) -> (generator) a model with twice the voxels per axis: a 3D Scale2x / EPX upscale. Every fine
+// voxel starts as its coarse parent; in each axis plane the fine corner takes the neighbour's value when the two
+// neighbours toward that corner agree and the two away from it differ (EPX), which rounds convex steps, fills
+// concave ones and keeps 1-voxel lines and plates intact. Palette indices are compared, so colour boundaries are
+// smoothed too. Then a few surface details: grit flecks and mineral highlights on exposed non-emissive voxels (via
+// hashed recolours into lighter / darker twins of the palette entry, when the palette has room). Render the result
+// at half the voxel scale for the same size with 8x the voxels.
+export function* refineSteps(m, o = {}) {
+  const { nx, ny, nz, data } = m;
+  const NX = nx * 2, NY = ny * 2, NZ = nz * 2;
+  const out = new VoxelModel(NX, NY, NZ);
+  out.palette = m.palette.slice();
+  const D = out.data;
+  const g = (x, y, z) => (x < 0 || y < 0 || z < 0 || x >= nx || y >= ny || z >= nz ? 0 : data[x + nx * (y + ny * z)]);
+  const b = m.bounds();
+  if (!b) return out;
+  const corner = (P, Nu, Nv, Ou, Ov) => (Nu === Nv && Nu !== Ov && Nv !== Ou ? Nu : -1);
+  for (let z = Math.max(0, b.z0 - 1); z <= Math.min(nz - 1, b.z1 + 1); z++) {
+    for (let y = Math.max(0, b.y0 - 1); y <= Math.min(ny - 1, b.y1 + 1); y++) {
+      for (let x = Math.max(0, b.x0 - 1); x <= Math.min(nx - 1, b.x1 + 1); x++) {
+        const P = data[x + nx * (y + ny * z)];
+        const xm = g(x - 1, y, z), xp = g(x + 1, y, z), ym = g(x, y - 1, z), yp = g(x, y + 1, z), zm = g(x, y, z - 1), zp = g(x, y, z + 1);
+        if (!P && !xm && !xp && !ym && !yp && !zm && !zp) continue;
+        for (let k = 0; k < 8; k++) {
+          const sx = k & 1, sy = (k >> 1) & 1, sz = (k >> 2) & 1;
+          const Nx = sx ? xp : xm, Ox = sx ? xm : xp, Ny = sy ? yp : ym, Oy = sy ? ym : yp, Nz = sz ? zp : zm, Oz = sz ? zm : zp;
+          let v = corner(P, Nx, Ny, Ox, Oy);
+          if (v < 0) v = corner(P, Ny, Nz, Oy, Oz);
+          if (v < 0) v = corner(P, Nx, Nz, Ox, Oz);
+          if (v < 0) v = P;
+          // a filled concave corner must touch the parent shape (avoid growing blobs into empty space)
+          if (v && !P && !(o.grow ?? false)) {
+            const n = (Nx ? 1 : 0) + (Ny ? 1 : 0) + (Nz ? 1 : 0);
+            if (n < 2) v = 0;
+          }
+          if (v) D[(2 * x + sx) + NX * ((2 * y + sy) + NY * (2 * z + sz))] = v;
+        }
+      }
+    }
+    yield;
+  }
+  // surface grit: lighter / darker flecks on exposed solid voxels
+  const P = out.palette, base = P.length;
+  if (o.grit !== false && base * 3 < 250) {
+    const lite = new Int16Array(base).fill(-1), dark = new Int16Array(base).fill(-1);
+    for (let i = 1; i < base; i++) {
+      const pe = P[i];
+      if (!pe || pe.emissive || (pe.spec || 0) > 0.6) continue;
+      lite[i] = out.color(shade(pe.color, 0.16), { ...pe, ramp: undefined });
+      dark[i] = out.color(shade(pe.color, -0.18), { ...pe, ramp: undefined });
+    }
+    const SY = NX, SZ = NX * NY, amt = o.grit ?? 0.14;
+    for (let z = 1; z < NZ - 1; z++) {
+      for (let y = 1; y < NY - 1; y++) {
+        let i = 1 + NX * (y + NY * z);
+        for (let x = 1; x < NX - 1; x++, i++) {
+          const v = D[i];
+          if (!v || v >= base || lite[v] < 0) continue;
+          if (D[i + 1] && D[i - 1] && D[i + SY] && D[i - SY] && D[i + SZ] && D[i - SZ]) continue;
+          const h = hash3(x, y, z, 131);
+          if (h < amt * 0.45) D[i] = dark[v];
+          else if (h > 1 - amt * 0.55) D[i] = lite[v];
+        }
+      }
+      if ((z & 7) === 7) yield;
+    }
+  }
+  return out;
+}

@@ -428,14 +428,21 @@ function drawRings(S, hb, hS, under) {
     if (a < 0.03) continue;
     const col = r.kind === 'rain' ? pal.sheen : pal.crest;
     const cx = xs(r.x);
-    ctx.globalAlpha = Math.min(1, a);
-    const spr = ringSprite(rx, ry, col, r.kind === 'rain' ? null : pal.trough);
-    ctx.drawImage(spr, cx - rx - 1, cy - ry - 1);
-    if (rx > 6 && r.kind !== 'rain') {
-      // a fainter inner ring trailing the first
-      const r2 = Math.round(rx * 0.62), q2 = Math.max(1, Math.round(ry * 0.62));
-      ctx.globalAlpha = Math.min(1, a * 0.45);
-      ctx.drawImage(ringSprite(r2, q2, col), cx - r2 - 1, cy - q2 - 1);
+    // [phase7:env] no expanding rings: a pixel-art splash instead - droplets hop out along the (perspective) ripple
+    // front and land as foam specks that drift outward and fade
+    const n = r.kind === 'rain' ? 2 : clamp(Math.round(rx / 2.2), 5, 16);
+    const seed = Math.round(r.x * 7 + (r.z || 0) * 1000 + r.life * 100);
+    for (let i = 0; i < n; i++) {
+      const h1 = hash2(i, seed, 41), h2 = hash2(i, seed, 42);
+      const ang = (i / n) * TAU + h1 * 0.7;
+      const rr = 0.55 + 0.45 * h2;
+      const px = Math.round(cx + Math.cos(ang) * rx * rr), py0 = Math.round(cy + Math.sin(ang) * ry * rr);
+      const hopK = clamp01(k / 0.4), hop = !under && r.kind !== 'rain' && hopK < 1 ? Math.round(Math.sin(hopK * Math.PI) * (2 + h1 * 4) * Math.max(1, z * 0.6)) : 0;
+      const sz = hop > 0 && h2 > 0.55 ? 2 : 1;
+      ctx.globalAlpha = Math.min(1, a * (hop ? 1 : 0.8));
+      ctx.fillStyle = hop ? col : (i & 1 ? pal.sheen : col);
+      ctx.fillRect(px, py0 - hop, sz, sz);
+      if (!hop && sz === 1 && rx > 8 && h1 > 0.6) ctx.fillRect(px + (Math.cos(ang) > 0 ? 1 : -1), py0, 1, 1);
     }
     if (r.kind === 'rain' && r.t < 0.12 && !under) {
       // the drop's own little jump

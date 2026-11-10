@@ -21,6 +21,7 @@ import { makeCanvas, ctxOf, makeLayer, resizeLayer } from '../core/canvas.js';
 import { dpack, drawGlow, glowSprite, DepthScene, BandSet, qscale, FogCache } from './scenery.js';
 import { worldProp } from './voxkit.js';
 import { PlantField, plantCols, headCols } from './plants.js';
+import { DRESS, dressSprite } from './deepdress.js'; // [phase7:env] fine voxel props on the deep ledges
 import {
   layoutZones, zoneAt, metresAt, waterAt, rockAt, deepDark, LIP_H, ZONE_POP, ZONE_RARITY, speciesZones, rgbHex, hex, mixRGB,
 } from './depthzones.js';
@@ -31,13 +32,14 @@ import { drawFishRig } from '../gfx/fishrig.js';
 
 export const DEEP_R = 3;           // hi-res pixels per world px for the deep's near layers (the camera sits at ~3x)
 const CHUNK = 128;                 // wall chunk height (world px)
-const CELL = 2;                    // relief voxel size (world px)
+const CELL = 2;                    // relief voxel size (world px) of the far pinnacles
+const FINE_CELL = 1;               // [phase7:env] relief voxel size of the lip, walls and sea stacks (3 hi px per voxel)
 
 // ------------------------------------------------------------------ relief painter
 // A rock face seen from the front: cells (CELL world px) with a height toward the viewer and a colour, shaded like
 // voxels (lambert from the height gradient, lit top / left lips, dark bottom / right lips, ordered dither) at R hi px
 // per world px. sample(wx, wy) -> null | [h, r, g, b, flag] (flag 1 = glows, 2 = sediment top).
-function* reliefSteps(x0, y0, w, h, R, sample, out) {
+function* reliefSteps(x0, y0, w, h, R, sample, out, CELL = FINE_CELL) {
   const gw = Math.ceil(w / CELL), gh = Math.ceil(h / CELL), N = gw * gh;
   const H = new Float32Array(N), C = new Float32Array(N * 3), F = new Uint8Array(N);
   let t0 = performance.now();
@@ -46,7 +48,8 @@ function* reliefSteps(x0, y0, w, h, R, sample, out) {
       const k = j * gw + i;
       const s = sample(x0 + (i + 0.5) * CELL, y0 + (j + 0.5) * CELL);
       if (!s) { H[k] = -1e9; continue; }
-      H[k] = s[0]; C[k * 3] = s[1]; C[k * 3 + 1] = s[2]; C[k * 3 + 2] = s[3]; F[k] = s[4] | 0;
+      // [phase7:env] voxel terraces + loose grains
+      H[k] = Math.round(s[0] / 1.5) * 1.5 + (hash2(i, j + y0 * 3, 73) < 0.06 ? 1.5 : 0); C[k * 3] = s[1]; C[k * 3 + 1] = s[2]; C[k * 3 + 2] = s[3]; F[k] = s[4] | 0;
     }
     if (performance.now() - t0 > 3) { yield; t0 = performance.now(); }
   }
@@ -132,6 +135,8 @@ export function installDeep(b) {
   };
   return D;
 }
+
+const L0glow = (d) => (d.kind === 'vent' ? '#ff9a4a' : d.kind === 'worms' ? '#ff6a6a' : '#7affe0');
 
 // ------------------------------------------------------------------ the deep sea
 export class DeepSea {
@@ -230,6 +235,7 @@ export class DeepSea {
         this.pillars.push(p);
       }
     }
+    this.placeDress(W, L);
     this.far = [];
     this.floor = null;
     this.strip = null;
@@ -241,6 +247,68 @@ export class DeepSea {
     this.vignette = null;
     this.glowSpots = [];
     this.glowChunks = null;
+  }
+
+  // ------------------------------------------------------------------ voxel dressing (phase 7)
+  // Fine voxel props per zone (deepdress.js) on every sea-stack ledge and top and on the canyon walls' ledges.
+  placeDress(W, L) {
+    const r = new RNG(W * 7 + L.bottom * 3 + this.b.id.length);
+    const out = this.dress = [];
+    const add = (x, y) => {
+      const z = zoneAt(L, y);
+      if (!z.deep || y > L.bottom - 60) return;
+      const kinds = DRESS[z.id] || DRESS.twilight;
+      out.push({ kind: kinds[r.int(0, kinds.length - 1)], x, y, zone: z.id, v: r.int(0, 3), s: null });
+    };
+    for (const p of this.pillars) {
+      const cxAt = (y) => p.cx + Math.sin(y * 0.007 + p.seed) * 14 + (fbm2(y * 0.02, p.seed, 2, 205) - 0.5) * 10;
+      add(cxAt(p.top + 6), p.top + 6);
+      for (const l of p.ledges) {
+        const n = r.chance(0.55) ? 2 : 1;
+        for (let i = 0; i < n; i++) add(cxAt(l.y) + l.side * (p.half(l.y) + r.float(3, Math.max(4, l.d * 0.75))), l.y + 1);
+      }
+    }
+    for (const l of this.ledges) {
+      const n = r.int(1, 2);
+      for (let i = 0; i < n; i++) add(r.float(l.x0 + 3, l.x1 - 3), l.wy + 1);
+    }
+    out.sort((a, b) => a.y - b.y);
+  }
+
+  dressCols(zone) {
+    const L = this.L, z = L.zones.find((q) => q.id === zone && q.deep) || L.zones[1];
+    const rc = rgbHex(rockAt(L, (z.y0 + z.y1) / 2).map((c) => c * 1.1));
+    const moss = { twilight: '#4a6a7a', midnight: '#2e3456', abyss: '#2a2832' }[zone] || '#3e5a4a';
+    return { rock: [shade(rc, -0.18), rc, shade(rc, 0.12), shade(rc, -0.06)], moss, sponge: L.def.sponge, glows: L.def.glow, pale: '#d8f0ff', noGlow: zone === 'twilight' };
+  }
+
+  *dressSteps() {
+    const cols = {};
+    for (;;) {
+      const cy = this.camY();
+      let best = null, bd = Infinity;
+      for (const d of this.dress) if (!d.s) { const dd = Math.abs(d.y - cy); if (dd < bd) { bd = dd; best = d; } }
+      if (!best) break;
+      const c = cols[best.zone] || (cols[best.zone] = this.dressCols(best.zone));
+      try { best.s = dressSprite(best.kind, 4100 + best.v * 31 + best.kind.length, c, this.R, this.b.id + best.zone); } catch (e) { this.fail(e); best.s = { canvas: null }; }
+      yield;
+    }
+  }
+
+  drawDress(ctx, v, glow = false) {
+    const R = this.R;
+    for (const d of this.dress) {
+      const s = d.s;
+      if (!s?.canvas) continue;
+      const x = d.x - s.ox / R, y = d.y - s.oy / R, w = s.w / R, h = s.h / R;
+      if (v && (x > v.x1 || x + w < v.x0 || y > v.y1 || y + h < v.y0)) continue;
+      if (glow) {
+        if (!s.glow) continue;
+        ctx.globalAlpha = 0.85 + 0.15 * Math.sin(this.t * 1.3 + d.x);
+        ctx.drawImage(s.glow, x, y, w, h);
+        ctx.globalAlpha = 1;
+      } else ctx.drawImage(s.canvas, x, y, w, h);
+    }
   }
 
   // ------------------------------------------------------------------ geometry
@@ -413,6 +481,7 @@ export class DeepSea {
     yield;
     // lip, then the wall chunks nearest to the camera first
     yield* reliefSteps(0, this.lip.y0, W, this.lip.h, R, (x, y) => this.lipSample(x, y), this.lip);
+    yield* this.dressSteps();
     // far pinnacles in the twilight / upper midnight
     const r = new RNG(L.bottom * 7 + W);
     const tw = L.zones.find((z) => z.id === 'twilight' && z.deep) || L.zones.find((z) => z.id === 'midnight');
@@ -423,7 +492,7 @@ export class DeepSea {
       const p = { cx: lerp(W * 0.12, W * 0.88, (i + r.float(0.1, 0.9)) / 7), y0: r.float(span0, span1), w, h, seed: r.int(1, 999), par: r.float(0.25, 0.5) };
       p.x0 = Math.floor(p.cx - w / 2 - 6); p.ww = w + 12;
       const out = {};
-      yield* reliefSteps(p.x0, p.y0, p.ww, h, Math.min(R, 2), (x, y) => this.pinnacleSample(p, x, y), out);
+      yield* reliefSteps(p.x0, p.y0, p.ww, h, Math.min(R, 2), (x, y) => this.pinnacleSample(p, x, y), out, CELL);
       p.canvas = out.canvas; p.R = out.R;
       this.far.push(p);
       yield;
@@ -471,6 +540,7 @@ export class DeepSea {
     };
     D.terrain({
       cell: 2, dz: 0.02, hstep: 2, ambient: 0.64, diffuse: 0.5, ao: 0.08, jitter: 0.08,
+      micro: { ripple: 0.7, pebble: 1.3, shell: 1, pebbles: sed.map((c) => c.map((q) => q * 1.35)).concat([sed[0].map((q) => q * 0.7)]), shells: [[196, 188, 170], [170, 160, 150]] }, // [phase7:env]
       height: floorH, floorHeight: floorH,
       color: (X, z, h) => {
         const hs = hash2(Math.floor(X / 2), Math.floor(z * 50), 166);
@@ -664,7 +734,7 @@ export class DeepSea {
     if (this.gen) {
       const cam = g.camera;
       const urgent = v && v.y1 > this.H && (!this.wallsReadyIn(v) || (!this.floor && v.y1 > this.L.bottom - 400));
-      const budget = g.lowPower ? 3 : urgent ? 11 : (cam?.open && v && v.y1 > this.H - 200 ? 6 : 2.5);
+      const budget = g.lowPower ? 3 : urgent ? 12 : (cam?.open && v && v.y1 > this.H - 200 ? 7 : this.b.hiDone ? 4 : 2); // [phase7:env]
       const t0 = performance.now();
       try {
         while (performance.now() - t0 < budget) {
@@ -702,6 +772,7 @@ export class DeepSea {
   wallsReadyIn(v) {
     if (!this.lip.canvas && v.y0 < this.lipMax && v.y1 > this.H) return false;
     for (const w of this.walls) if (!w.canvas && w.y0 < v.y1 && w.y0 + w.h > v.y0) return false;
+    for (const p of this.pillars) for (const c of p.chunks) if (!c.canvas && c.y0 < v.y1 && c.y0 + c.h > v.y0 && c.x0 < v.x1 && c.x0 + c.w > v.x0) return false; // [phase7:env]
     return true;
   }
 
@@ -946,6 +1017,14 @@ export class DeepSea {
     const abyssK = zoneAt(Z, cy).id === 'abyss' ? 0.35 : 1;
     const gl = this.deepPlants.glowLights(v, abyssK < 1 ? 2 : 5);
     for (const p of gl) out.lights.push({ x: p.x, y: p.y, r: 16, color: p.color, a: 0.45 * abyssK });
+    let nd = 0;
+    for (const d of this.dress) {
+      if (nd >= 5 || !d.s?.glow || d.y < v.y0 - 20 || d.y > v.y1 + 30 || d.x < v.x0 - 30 || d.x > v.x1 + 30) continue;
+      const l = d.s.lights[0];
+      if (!l) continue;
+      nd++;
+      out.lights.push({ x: d.x + (l.x - d.s.ox) / this.R, y: d.y + (l.y - d.s.oy) / this.R, r: 30, color: L0glow(d), a: 0.42 * (abyssK < 1 ? 0.8 : 1) });
+    }
     if (this.floor && v.y1 > this.floor.oy) for (const l of this.floor.lights) out.lights.push({ x: l.x, y: l.y, r: l.r * 0.7, color: l.color, a: (0.5 + 0.2 * Math.sin(this.t * 1.3 + l.ph)) * (1 - l.z * 0.7) * (l.vent ? 1 : 0.4) });
     if (this.scare?.kind === 'eyes') out.lights.push({ x: this.scare.x, y: this.scare.y, r: 26, color: '#ffe86a', a: 0.35 * this.scareK() });
     return out;
@@ -1056,6 +1135,7 @@ export class DeepSea {
         ctx.fill();
       }
     }
+    this.drawDress(ctx, v);
     // the abyss floor (far + mid bands)
     const F = this.floor;
     if (F && (!v || v.y1 > F.oy + F.D.hz - 4)) {
@@ -1169,6 +1249,7 @@ export class DeepSea {
         drawGlow(ctx, x, y, 3, c, 0.45 + 0.35 * Math.sin(t * 1.3 + x * 0.7 + y));
       }
     }
+    this.drawDress(ctx, v, true);
     this.deepPlants.drawGlows(ctx, { view: v, t, glow: drawGlow, a: 0.9 });
     // the giant silhouette: composited offscreen with the hook's light pool cut out (it passes behind it)
     const G = this.giant;

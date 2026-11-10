@@ -1225,8 +1225,9 @@ export class AeroOverlay {
       if (k.far !== far) continue;
       const a = base * (0.6 + 0.4 * Math.sin(this.t * 0.7 + k.ph)) * (far ? 0.7 : 1);
       if (a < 0.01) continue;
-      const spr = bokehDisc(far ? Math.round(k.r * 0.6) : k.r, k.c);
-      ctx.globalAlpha = a;
+      // [phase7:env] pixel twinkles instead of soft bokeh circles
+      const spr = sparkleStar(Math.max(2, Math.round((far ? k.r * 0.35 : k.r * 0.5))), k.c);
+      ctx.globalAlpha = Math.min(1, a * 3);
       ctx.drawImage(spr, Math.round(k.x - spr.width / 2), Math.round(k.y - spr.height / 2));
     }
     ctx.restore();
@@ -1292,9 +1293,10 @@ export class AeroOverlay {
     const sk = flareStreak(220, dusk ? '#ffc890' : '#bfeaff');
     ctx.globalAlpha = 0.5 * k;
     ctx.drawImage(sk, Math.round(sx - 220), Math.round(sy - 2));
+    // [phase7:env] no ring / hex ghosts: a chain of pixel twinkle stars along the flare axis
     const ghosts = [
-      [0.32, flareHex(11, '#a8ffe0'), 0.35], [0.52, flareDisc(6, '#fff0b0'), 0.5], [0.74, flareRing(20, '#9ad8ff'), 0.45], [0.88, flareDisc(10, '#c8ffb0'), 0.22],
-      [1.0, flareHex(16, '#d0b0ff'), 0.28], [1.22, flareDisc(4, '#ffffff'), 0.6], [1.45, flareRing(32, '#b8ffe8'), 0.32], [1.8, flareHex(24, '#9ae8ff'), 0.2],
+      [0.32, sparkleStar(5, '#a8ffe0'), 0.5], [0.52, sparkleStar(3, '#fff0b0'), 0.6], [0.74, sparkleStar(7, '#9ad8ff'), 0.45], [0.88, sparkleStar(4, '#c8ffb0'), 0.4],
+      [1.0, sparkleStar(6, '#d0b0ff'), 0.4], [1.22, sparkleStar(3, '#ffffff'), 0.7], [1.45, sparkleStar(9, '#b8ffe8'), 0.35], [1.8, sparkleStar(5, '#9ae8ff'), 0.3],
     ];
     for (const [f, spr, a] of ghosts) {
       const x = sx + (cx - sx) * f, y = sy + (cy - sy) * f;

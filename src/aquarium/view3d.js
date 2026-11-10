@@ -10,14 +10,15 @@
 
 import { LPScene, M4, T4, lpAvailable } from '../gfx/lowpoly.js';
 import { clamp, clamp01, lerp, TAU } from '../core/math.js';
-import { DynMesh, rgb, mixc, template } from './lpkit.js';
+import { DynMesh, Geo, rgb, mixc, template, voxelize } from './lpkit.js';
 import { buildTank, surfaceMesh, causticFrames, shaftTexture, shaftMesh } from './lptank.js';
 import { buildRoom } from './lproom.js';
-import { PlantField } from './lpplants.js';
+import { PlantField, PLANT_KINDS } from './lpplants.js';
+import { ROCK_KINDS, rockGeo } from './buildmode.js';
 import { decorModel, decorPartAlpha } from './lpdecor.js';
 import { fishFor, addFish, beginFishFrame } from './lpfish.js';
 import { avatarKit, avatarItems } from './lpavatar.js';
-import { TANK_TIERS } from './tanks.js';
+import { TANK_TIERS, gearLevel } from './tanks.js';
 
 const FOV = 50;
 // optional per-section timing (window.AQ.view.prof = true): PROF.t holds smoothed ms per section
@@ -37,7 +38,7 @@ export class TankView {
     this.scene = null;
     this.kit = null; this.room = null; this.plants = null;
     this.kitKey = '';
-    this.dyn = { surf: new DynMesh(), plants: new DynMesh(), solid: new DynMesh(), clear: new DynMesh(), glowB: new DynMesh(), head: new DynMesh() };
+    this.dyn = { surf: new DynMesh(), plants: new DynMesh(), solid: new DynMesh(), clear: new DynMesh(), glowB: new DynMesh(), head: new DynMesh(), marks: new DynMesh() };
     this.cam = { yaw: -0.38, pitch: 0.2, dist: 120, target: [0, 10, 0] };
     this.camT = { yaw: -0.38, pitch: 0.2, dist: 120, target: [0, 10, 0] };
     this.preset = 'front';
@@ -64,11 +65,45 @@ export class TankView {
     this.kit = buildTank(aq.tier, gear);
     this.shafts = shaftMesh(this.kit);
     if (!this.room || this.roomTier !== aq.tier) { if (this.room) disposeRoom(this.room); this.room = buildRoom(aq.tier, this.kit); this.roomTier = aq.tier; }
-    this.plants = new PlantField(this.kit.shape, aq.tier, TANK_TIERS[aq.tier].plants + (gear.light | 0) * 2);
-    this.plantMesh = null;
+    this.gridMesh?.dispose?.(); this.gridMesh = null;
+    this.rebuildPaint();
     this.oldKit = oldKit && aq.growAnim ? oldKit : null;
     if (first) this.setPreset('iso', true);
     else this.fitPreset();
+  }
+
+  // plants (the tier's layout minus erased ones, plus painted ones) and the painted voxel rocks
+  rebuildPaint() {
+    const aq = this.aq, kit = this.kit, T = kit.shape;
+    const paint = aq.st.tank.paint || [];
+    const count = TANK_TIERS[aq.tier].plants + (gearLevel(aq.st, 'light') | 0) * 2;
+    this.plants = new PlantField(T, aq.tier, count, paint.filter((r) => PLANT_KINDS[r.k]), new Set(aq.baseOff().i));
+    this.plantMesh = null;
+    const k = Math.max(0.35, T.minDim / 30);
+    const g = new Geo();
+    for (const r of paint) {
+      if (!ROCK_KINDS[r.k]) continue;
+      const p = T.floorPoint(r.x, r.z, 0.5);
+      g.push(); g.at(p[0], p[1] - 0.15, p[2]); g.rotY((r.s % 628) / 100); rockGeo(g, r.k, r.s, k * 0.9); g.pop();
+    }
+    this.paintRocks?.dispose?.();
+    this.paintRocks = g.n ? voxelize(g, Math.max(0.16, k * 0.28), { maxCells: 30000 }).build() : null;
+    aq.paintDirty = false;
+    this.paintT = 0.15;
+  }
+
+  // the build grid: thin lines over the floor, following the sand
+  buildGrid() {
+    const T = this.kit.shape, g = new Geo(), N = 12, w = Math.max(0.05, T.W * 0.0035), lift = (T.vq || 0) * 0.5 + 0.18;
+    const seg = 24;
+    for (let i = 0; i <= N; i++) for (const axis of [0, 1]) for (let j = 0; j < seg; j++) {
+      const a = i / N, b0 = j / seg, b1 = (j + 1) / seg;
+      const P = (u, v) => { const x = (u - 0.5) * T.W, z = (0.5 - v) * T.D; return [x, T.floorY(x, z) + lift, z]; };
+      const [p0, p1] = axis ? [P(a, b0), P(a, b1)] : [P(b0, a), P(b1, a)];
+      const ox = axis ? w : 0, oz = axis ? 0 : w;
+      g.quad([p0[0] - ox, p0[1], p0[2] - oz], [p1[0] - ox, p1[1], p1[2] - oz], [p1[0] + ox, p1[1], p1[2] + oz], [p0[0] + ox, p0[1], p0[2] + oz], i === 0 || i === N ? '#bff8ff' : '#ffffff');
+    }
+    return g.build();
   }
 
   dropOldKit() { if (this.oldKit) disposeKit(this.oldKit); this.oldKit = null; }
@@ -99,7 +134,7 @@ export class TankView {
     else if (name === 'close') Object.assign(c, { yaw: 0.42, pitch: 0.22, dist: f.dist * 0.55, target: [0, T.waterY * 0.42, 0] });
     else if (name === 'side') Object.assign(c, { yaw: 1.2, pitch: 0.2, dist: f.dist * 0.95, target: f.target.slice() });
     else if (name === 'room') Object.assign(c, { yaw: 0.8, pitch: 0.3, dist: f.dist * 2.2, target: [0, T.top * 0.6, 0] });
-    else Object.assign(c, { yaw: 0.68, pitch: 0.5, dist: f.dist * 1.04, target: [0, T.top * 0.4, 0] });
+    else Object.assign(c, { yaw: 0.68, pitch: 0.42, dist: f.dist * 1.3, target: [0, T.top * 0.5, 0] });
     c.target = c.target.slice();
     this.limit(c);
     if (snap) { Object.assign(this.cam, c); this.cam.target = c.target.slice(); }
@@ -258,12 +293,19 @@ export class TankView {
       let col = gw.col;
       if (gw.light) {
         if (kit.light.col === 'rainbow') col = rgb(hsl((t * 40) % 360, 0.85, 0.72));
-        if (!lightOn) col = [0.15, 0.2, 0.28];
+        if (!lightOn) col = gw.button ? [0.95, 0.45, 0.4] : [0.15, 0.2, 0.28];
+      } else if (gw.rim) {
+        // the rim light breathes softly; dimmer with the lamp off
+        const k = (lightOn ? 1 : 0.55) * (0.9 + 0.1 * Math.sin(t * 1.7 + (gw.band ? 1.3 : 0)));
+        col = col.map((v) => v * k);
       }
       sc.add(gw.mesh, root, { tint: [...col, 1], alpha: gw.a ?? 1 });
     }
-    // plants (swaying, pushed by the swimmer)
+    // plants (swaying, pushed by the swimmer); painted plants / rocks rebuild a few times a second while painting
     PROF.mark('plants');
+    this.paintT = (this.paintT || 0) - 1 / 60;
+    if (aq.paintDirty && this.paintT <= 0) this.rebuildPaint();
+    if (this.paintRocks) sc.add(this.paintRocks, root);
     const push = aq.swim ? [{ p: aq.swim.p, r: aq.swim.r }] : [];
     for (const f of aq.fish) if (f.len > 3) push.push({ p: f.p, r: f.len * 0.25 });
     this.plantTick = (this.plantTick || 0) + 1;
@@ -277,7 +319,8 @@ export class TankView {
       const s = d.k;
       const hop = d.hop || 0;
       const M = R(T4.trs([d.p[0], d.p[1] + hop, d.p[2]], 0, d.yaw + (d.shake || 0) * Math.sin(t * 60) * 0.06, 0, [s * (1 + q * 0.5), s * (1 - q), s * (1 + q * 0.5)]));
-      sc.add(m.mesh, M);
+      const bad = d.held && aq.build.held && !aq.build.held.ok;
+      sc.add(m.mesh, M, bad ? { tint: [1, 0.3, 0.32, 0.45] } : d.held ? { tint: [0.75, 1, 0.95, 0.18] } : undefined);
       for (const gw of m.glow) sc.add(gw.mesh, M, { tint: [...mixc(gw.col, '#ffffff', 0.2), 1] });
       if (m.part) {
         let pm2 = M;
@@ -293,6 +336,33 @@ export class TankView {
         d.partModel = pm2;
       }
     }
+    // the build ghost: a softly pulsing hologram of the piece (aqua when it fits, red when it does not)
+    const gv = aq.build?.ghostView();
+    if (gv) {
+      const pulse = 0.5 + 0.5 * Math.sin(t * 6);
+      const M = R(T4.trs(gv.p, 0, gv.yaw, 0, gv.k));
+      sc.add(gv.model.mesh, M, { tint: gv.ok ? [0.55, 1, 0.9, 0.3 + 0.12 * pulse] : [1, 0.25, 0.3, 0.55], emit: 0.2 });
+      for (const gw of gv.model.glow) sc.add(gw.mesh, M, { tint: [...gw.col, 1] });
+      if (gv.model.part) sc.add(gv.model.part.mesh, M, { tint: gv.ok ? [0.7, 1, 1, 0.4] : [1, 0.4, 0.4, 0.6] });
+    }
+    // build marks: glowing corner brackets around footprints and the brush square
+    const mk = this.dyn.marks.begin();
+    const bracket = (c, hs, col, y) => {
+      const L = hs * 0.42, w = Math.max(0.08, hs * 0.07);
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+        const x = c[0] + sx * hs, z = c[2] + sz * hs;
+        mk.quad([x, y, z], [x - sx * L, y, z], [x - sx * L, y, z - sz * w], [x, y, z - sz * w], col);
+        mk.quad([x, y, z], [x, y, z - sz * L], [x - sx * w, y, z - sz * L], [x - sx * w, y, z], col);
+        mk.quad([x, y, z], [x - sx * w, y, z], [x - sx * L, y, z - sz * w], [x - sx * L, y, z], col);
+      }
+    };
+    if (aq.build?.on) {
+      for (const m of aq.build.marks()) bracket(m.p, m.r * 0.8, m.ok ? (m.hover ? '#bff8ff' : m.sel ? '#ffe86a' : '#7affb0') : '#ff4a5a', m.p[1] + 0.2 + (T.vq || 0) * 0.5);
+      const bv = aq.build.brushView();
+      if (bv) bracket(bv.p, bv.r, bv.erase ? '#ff6a7a' : '#7ae8ff', bv.p[1] + 0.25 + (T.vq || 0) * 0.5);
+    }
+    const mkM = this.dyn.marks.end();
+    if (mkM) sc.add(mkM, root, { emit: 1, cull: false });
     // fish
     PROF.mark('fish');
     beginFishFrame(this.aq.visibleKey === 'full' ? 7 : 4);
@@ -334,16 +404,6 @@ export class TankView {
         sol.pop();
       }
     }
-    // arrange-mode ring under the selected decoration
-    const sel = aq.arrange && (aq.drag?.d || aq.hoverDecor);
-    if (sel) {
-      const rr = sel.model ? sel.model.r * sel.k * 1.2 : 3;
-      for (let i = 0; i < 24; i++) {
-        const a = (i / 24) * TAU + t, b = a + 0.12;
-        glb.tri([sel.p[0] + Math.cos(a) * rr, sel.p[1] + 0.25, sel.p[2] + Math.sin(a) * rr], [sel.p[0] + Math.cos(b) * rr, sel.p[1] + 0.25, sel.p[2] + Math.sin(b) * rr], [sel.p[0] + Math.cos(a) * rr * 0.86, sel.p[1] + 0.25, sel.p[2] + Math.sin(a) * rr * 0.86], '#ffffff');
-        glb.tri([sel.p[0] + Math.cos(a) * rr, sel.p[1] + 0.25, sel.p[2] + Math.sin(a) * rr], [sel.p[0] + Math.cos(a) * rr * 0.86, sel.p[1] + 0.25, sel.p[2] + Math.sin(a) * rr * 0.86], [sel.p[0] + Math.cos(b) * rr, sel.p[1] + 0.25, sel.p[2] + Math.sin(b) * rr], '#ffffff');
-      }
-    }
     for (const b of aq.bubbles) clr.stamp(ball0, b.p[0], b.p[1], b.p[2], b.r, 0, BUB_COL);
     if (headItems) {
       // the bubble head, baked into the clear batch so it sorts with the tank water
@@ -360,7 +420,7 @@ export class TankView {
     for (const gp of kit.glass) {
       if (gp.inner) { farPanes.push(gp); continue; }
       if (T.round) { nearPanes.push(gp); continue; }
-      const n = gp.pos[2] > T.D / 2 - 0.1 ? [0, 0, 1] : gp.pos[2] < -T.D / 2 + 0.1 ? [0, 0, -1] : gp.pos[0] > 0 ? [1, 0, 0] : [-1, 0, 0];
+      const n = gp.n || (gp.pos[2] > T.D / 2 - 0.1 ? [0, 0, 1] : gp.pos[2] < -T.D / 2 + 0.1 ? [0, 0, -1] : gp.pos[0] > 0 ? [1, 0, 0] : [-1, 0, 0]);
       const e = this.eye;
       const near = !swim && (n[0] * (e[0] - gp.pos[0]) + n[2] * (e[2] - gp.pos[2])) > 0;
       (near ? nearPanes : farPanes).push(gp);
@@ -370,6 +430,7 @@ export class TankView {
     const tankT = (o) => sc.add(o.mesh, root, o.o);
     for (const gp of farPanes) this.addOrigin(gp, root, gp.a);
     if (kit.caustic && lightOn) tankT({ mesh: kit.caustic, o: { texture: causticFrames()[fi], tint: [...mixc(kit.lightCol, '#ffffff', 0.5), 1], alpha: (0.42 - night * 0.22) } });
+    if (aq.build?.on && aq.build.grid && !swim) { this.gridMesh ||= this.buildGrid(); tankT({ mesh: this.gridMesh, o: { alpha: 0.22, emit: 1, cull: false } }); }
     if (this.shafts && lightOn) tankT({ mesh: this.shafts, o: { texture: shaftTexture(), tint: [...rgb(kit.light.shaft), 1], alpha: (swim ? 0.2 : 0.15) * (1 - night * 0.5) } });
     const clrM = this.dyn.clear.end(); if (clrM) tankT({ mesh: clrM, o: { alpha: 0.34, env: 0.8, iri: 0.6, spec: 0.9, shine: 50, rim: 0.6 } });
     const ga = aq.growAnim;

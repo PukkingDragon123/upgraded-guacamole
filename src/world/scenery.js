@@ -1344,15 +1344,40 @@ DepthScene.prototype.hiSteps = function* hiSteps(R = HI_RES) {
   const hgt = new Float32Array(N), base = new Float32Array(N * 3), glow = new Uint8Array(N);
   let t0 = performance.now();
   const tick = () => performance.now() - t0 > 4;
+  // [phase7:env] voxel micro-relief on the fine grid: sand ripples (1-voxel terraces with lit crests), pebbles, shells
+  // and grit; o.micro = false opts out, o.micro = {ripple, pebble, shell, pebbles: [[r,g,b]...], shells} tunes it
+  const mo = o.micro === false ? null : { ripple: 1, pebble: 1, shell: 1, ...(o.micro || {}) };
+  const pebC = mo?.pebbles || [[118, 112, 104], [150, 140, 126], [92, 88, 96], [176, 164, 140]];
+  const shC = mo?.shells || [[250, 240, 226], [255, 196, 206], [240, 220, 176]];
   for (let iz = 0; iz < nz; iz++) {
     const z = z0 + iz * dz;
     for (let ix = 0; ix < nx; ix++) {
       const X = X0 + ix * cw, i = iz * nx + ix;
-      const h = Math.round(o.height(X, z) / hstep) * hstep;
+      let hr = o.height(X, z), c = o.glow?.(X, z, Math.round(hr / hstep) * hstep), tint = 1;
+      if (c) glow[i] = 1;
+      else if (mo) {
+        // ripples run across the floor, bending with a slow noise; crests get a lit voxel row
+        const rp = Math.sin(X * 0.42 + z * 9 + Math.sin(X * 0.031 + z * 3.1) * 2.6);
+        if (mo.ripple && hr < 24) { hr += (rp > 0.45 ? 1 : 0) * mo.ripple; tint = rp > 0.75 ? 1.07 : rp < -0.6 ? 0.93 : 1; }
+        const cx2 = ix >> 1, cz2 = iz >> 1, hp = hash2(cx2, cz2, 913);
+        const patch = smoothstep(0.45, 0.8, hash2(ix >> 5, iz >> 3, 919) * 0.6 + hash2((ix + 16) >> 5, (iz + 4) >> 3, 920) * 0.4);
+        if (hp < (0.004 + 0.03 * patch) * mo.pebble) {
+          c = pebC[Math.floor(hash2(cx2, cz2, 914) * pebC.length)];
+          hr += 1;
+          tint = 0.95 + hash2(cx2, cz2, 916) * 0.25;
+        } else if (hp > 1 - 0.006 * mo.shell) {
+          c = shC[Math.floor(hash2(cx2, cz2, 917) * shC.length)];
+          hr += 1;
+          tint = 1.05;
+        }
+      }
+      const h = Math.round(hr / hstep) * hstep;
       hgt[i] = h;
-      let c = o.glow?.(X, z, h);
-      if (c) glow[i] = 1; else c = o.color(X, z, h, ix >> 1, iz >> 1);
-      base[i * 3] = c[0]; base[i * 3 + 1] = c[1]; base[i * 3 + 2] = c[2];
+      if (!c) c = o.color(X, z, h, ix >> 1, iz >> 1);
+      if (tint !== 1 || mo) {
+        const gr = mo && !glow[i] ? 1 + (hash2(ix, iz, 918) - 0.5) * 0.08 : 1;
+        base[i * 3] = c[0] * tint * gr; base[i * 3 + 1] = c[1] * tint * gr; base[i * 3 + 2] = c[2] * tint * gr;
+      } else { base[i * 3] = c[0]; base[i * 3 + 1] = c[1]; base[i * 3 + 2] = c[2]; }
     }
     if (tick()) { yield; t0 = performance.now(); }
   }

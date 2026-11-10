@@ -1,45 +1,78 @@
-// Low-poly aquarium plants that sway (phase 6). Each tier gets a planted layout (tall vallisneria / kelp / cabomba
-// at the back, sword plants, java fern and red-tipped rotala at the sides, hairgrass tufts and moss balls in front).
-// All plants live in one rest mesh; every frame the vertices bend with height (a slow two-wave sway with per-plant
-// phase) and get pushed aside by the swimmer, then the merged mesh is written straight into a DynMesh.
+// Aquarium plants that sway (phase 6; phase 8: every plant is a voxel model). Each tier gets a planted layout (tall
+// vallisneria / kelp / cabomba at the back, sword plants, java fern and red-tipped rotala at the sides, hairgrass
+// tufts and moss balls in front), plus the plants the player paints with the build brush. All plants live in one
+// rest mesh; every frame the vertices bend with height (a slow two-wave sway with per-plant phase) and get pushed
+// aside by the swimmer, then the merged mesh is written straight into a DynMesh.
 //
-//   new PlantField(shape, tier, count)   .frame(dyn, t, pushers [{p, r}]) -> LPMesh   .list (plant spots)
+//   new PlantField(shape, tier, count, painted?, hidden?)  painted: [{k: kind, x, z (0..1 floor uv), h (0..1), s (seed)}]
+//                                       hidden: Set of base-layout indices the eraser removed
+//   .frame(dyn, t, pushers [{p, r}]) -> LPMesh   .list (plant spots: {kind, p, h, seed, base (index) | painted (rec)})
+//   PLANT_KINDS                          brush kinds with display names
 
-import { Geo, rgb, mixc, srand } from './lpkit.js';
+import { Geo, rgb, mixc, srand, voxelize } from './lpkit.js';
 
 const GREENS = ['#2fa84a', '#3cc25a', '#58d468', '#8ae84a', '#1f8a5a', '#46b86e'];
 
+const VCACHE = new Map();
+// one plant's geometry at the origin (build mode thumbnails)
+export function plantGeo(g, kind, h, k, seed) { (PLANTS[kind] || PLANTS.hair)(g, h, k, srand(seed)); return g; }
+
+export const PLANT_KINDS = { hair: 'Hairgrass', moss: 'Moss Ball', sword: 'Sword Plant', fern: 'Java Fern', rotala: 'Rotala', vallis: 'Vallisneria', cabomba: 'Cabomba', kelp: 'Kelp' };
+
 export class PlantField {
-  constructor(T, tier, count) {
+  constructor(T, tier, count, painted = [], hidden = null) {
     this.T = T;
     const rnd = srand(9001 + tier * 31);
     const k = Math.max(0.35, T.minDim / 30);
     const H = T.waterY - T.floorY(0, 0);
     const spots = [];
-    const add = (kind, u, v, h) => { const p = T.floorPoint(u, v, 1.2 * k); spots.push({ kind, p, h, seed: Math.floor(rnd() * 99999), sway: 0.6 + rnd() * 0.5 }); };
+    let bi = 0;
+    const add = (kind, u, v, h) => { const p = T.floorPoint(u, v, 1.2 * k); const s = { kind, p, h, seed: Math.floor(rnd() * 99999), sway: 0.6 + rnd() * 0.5, base: bi++ }; if (!hidden?.has(s.base)) spots.push(s); };
     const nBack = Math.max(1, Math.round(count * 0.42)), nSide = Math.round(count * 0.3), nFront = Math.max(1, count - nBack - nSide);
-    const backKinds = T.round ? ['cabomba', 'vallis', 'rotala'] : tier >= 4 ? ['vallis', 'kelp', 'cabomba', 'vallis', 'rotala'] : ['vallis', 'cabomba', 'rotala', 'vallis'];
+    const backKinds = tier >= 4 ? ['vallis', 'kelp', 'cabomba', 'vallis', 'rotala'] : ['vallis', 'cabomba', 'rotala', 'vallis'];
     for (let i = 0; i < nBack; i++) {
       const u = nBack === 1 ? 0.3 : 0.05 + (i + rnd() * 0.8) / nBack * 0.9;
-      add(backKinds[i % backKinds.length], u, T.round ? 0.62 + rnd() * 0.2 : 0.82 + rnd() * 0.14, H * (0.55 + rnd() * 0.35));
+      add(backKinds[i % backKinds.length], u, 0.82 + rnd() * 0.14, H * (0.55 + rnd() * 0.35));
     }
     for (let i = 0; i < nSide; i++) add(['sword', 'fern', 'rotala', 'sword'][i % 4], i % 2 ? 0.86 + rnd() * 0.1 : 0.04 + rnd() * 0.1, 0.3 + rnd() * 0.45, H * (0.3 + rnd() * 0.22));
     for (let i = 0; i < nFront; i++) add(i % 3 === 2 ? 'moss' : 'hair', 0.1 + rnd() * 0.8, 0.05 + rnd() * 0.4, H * (0.06 + rnd() * 0.06));
+    for (const r of painted) {
+      if (!PLANTS[r.k]) continue;
+      const p = T.floorPoint(r.x, r.z, 0.8 * k);
+      spots.push({ kind: r.k, p, h: H * r.h, seed: r.s, sway: 0.6 + (r.s % 50) / 100, painted: r });
+    }
     this.list = spots;
-    // rest geometry
+    // rest geometry: each plant built, then voxelised (a budget of voxels shared by all plants keeps the sway cheap)
     const g = new Geo();
-    const meta = []; // per vertex: [weight, phase, amp, rootX, rootZ]
-    for (const s of spots) {
+    const meta = []; // per vertex: [weight, plant index, amp, rootX, rootZ]
+    const per = Math.max(260, Math.min(1500, Math.round(16000 / Math.max(1, spots.length))));
+    const vs = Math.max(0.18, 0.42 * k);
+    spots.forEach((s, si) => {
       const n0 = g.n;
-      g.push(); g.at(s.p[0], s.p[1] - 0.2, s.p[2]); g.rotY(srand(s.seed)() * 6.28);
-      PLANTS[s.kind](g, s.h, k, srand(s.seed));
-      g.pop();
+      // each plant is voxelised once at the origin (cached), then dropped in at a grid-aligned spot
+      const key = s.kind + '|' + s.seed + '|' + Math.round(s.h * 4) + '|' + Math.round(k * 50) + '|' + per;
+      let loc = VCACHE.get(key);
+      if (!loc) {
+        const t = new Geo();
+        t.rotY(srand(s.seed)() * 6.28);
+        PLANTS[s.kind](t, s.h, k, srand(s.seed));
+        const v = voxelize(t, vs, { maxCells: s.kind === 'moss' ? per * 0.5 : per, jitter: 0.1 });
+        loc = v.d.slice(0, v.n);
+        VCACHE.set(key, loc);
+        if (VCACHE.size > 400) VCACHE.delete(VCACHE.keys().next().value);
+      }
+      const ox = Math.round(s.p[0] / vs) * vs, oy = Math.round((s.p[1] - 0.2) / vs) * vs, oz = Math.round(s.p[2] / vs) * vs;
+      g.grow(loc.length);
+      g.d.set(loc, g.n);
+      for (let i = g.n; i < g.n + loc.length; i += 11) { g.d[i] += ox; g.d[i + 1] += oy; g.d[i + 2] += oz; }
+      g.n += loc.length;
+      const amp = s.sway * Math.min(3.5, s.h * 0.09) * (s.kind === 'hair' ? 0.6 : 1);
       for (let i = n0; i < g.n; i += 11) {
         const y = g.d[i + 1] - s.p[1];
         const w = Math.max(0, Math.min(1, y / Math.max(0.5, s.h)));
-        meta.push(s.kind === 'moss' ? 0 : w, spots.indexOf(s), s.sway * Math.min(3.5, s.h * 0.09) * (s.kind === 'hair' ? 0.6 : 1), s.p[0], s.p[2]);
+        meta.push(s.kind === 'moss' ? 0 : w, si, amp, s.p[0], s.p[2]);
       }
-    }
+    });
     this.rest = g.d.slice(0, g.n);
     this.meta = new Float32Array(meta);
     this.count = g.n / 11;
@@ -87,15 +120,6 @@ export class PlantField {
         dx += ox / d * f; dz += oz / d * f;
       }
       out[i] = src[i] + dx; out[i + 2] = src[i + 2] + dz; out[i + 1] = y - (dx * dx + dz * dz) * 0.04;
-    }
-    // flat normals per triangle
-    for (let i = 0; i < n * 11; i += 33) {
-      const ax = out[i], ay = out[i + 1], az = out[i + 2];
-      const ux = out[i + 11] - ax, uy = out[i + 12] - ay, uz = out[i + 13] - az;
-      const vx = out[i + 22] - ax, vy = out[i + 23] - ay, vz = out[i + 24] - az;
-      let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
-      const l = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1; nx /= l; ny /= l; nz /= l;
-      for (let k = 0; k < 33; k += 11) { out[i + k + 3] = nx; out[i + k + 4] = ny; out[i + k + 5] = nz; }
     }
     g.n = this.rest.length;
     return dyn.end();

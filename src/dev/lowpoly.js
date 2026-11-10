@@ -7,6 +7,7 @@ import { SPECIES } from '../fish/species.js';
 import { compiled } from '../gfx/spritecache.js';
 import { drawFishRig, rigStats } from '../gfx/fishrig.js';
 import { VoxelGiant, lpCrabFrames, lpPenguinFrames, lpRestSealFrames } from '../world/giants.js';
+import { voxStats } from '../fish/voxelize.js';
 import { setLowpolySync, creatureFrame, fishMesh, creatureMesh, addFishToScene, lowpolyStats, lpFishIcon } from '../fish/lowpolyfish.js';
 
 export function sampleFish() { return fishMesh('pixel'); }
@@ -158,7 +159,7 @@ export function run(params) {
       const out = sc.render({ background: [0, 0, 0, 0], light: [-0.4, 0.8, 0.5], sky: '#f2fdff', ground: '#2a6a9a', fog: 0.25, fogColor: '#3a9ad0' });
       if (out) g.drawImage(out, 0, 0);
     }
-    window.__stats = { rig: rigStats(), lp: lowpolyStats(), gl: lpStats(), ms: performance.now() - t0 };
+    window.__stats = { rig: rigStats(), lp: lowpolyStats(), gl: lpStats(), vox: voxStats(), ms: performance.now() - t0 };
     frameNo++;
   };
   if (mode === 'perf') setLowpolySync(false);

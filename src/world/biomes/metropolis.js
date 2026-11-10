@@ -330,6 +330,7 @@ export class MetropolisBiome extends Biome {
       return Math.round(Math.min(bh, cap(z, rimY)) / 2) * 2;
     };
     D.terrain({
+      micro: { ripple: 0.5, pebble: 1.2, shell: 1, pebbles: [[110, 124, 150], [150, 166, 190], [80, 90, 120], [190, 200, 220]], shells: [[140, 220, 255], [255, 140, 220]] }, // [phase7:env] glass shards
       cell: 2, dz: 0.02, hstep: 2, ambient: 0.68, diffuse: 0.45, ao: 0.07, jitter: 0.04, wall: 0.82, side: 0.9, crest: 1.2, wallMin: 20, fullHeight: true,
       height: (X, z) => bldg(X, z) ?? floorH(X, z),
       floorHeight: floorH,

@@ -16,8 +16,8 @@
 
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { VoxelModel, renderVoxels } from './voxel.js';
-import { unpack, pack, mix, rgbToHex } from '../core/color.js';
-import { hash2, clamp } from '../core/math.js';
+import { unpack, pack, mix, rgbToHex, rgbToHsl, hslToRgb } from '../core/color.js';
+import { hash2, clamp, bayer } from '../core/math.js';
 import { drawAeroBadge, setCoinRenderer } from '../ui/aero.js';
 import { lpAvailable, renderMesh, LPMesh } from './lowpoly.js';
 import { ICON_MODELS, ROD_MODEL, GEM_MODEL } from './iconmeshes.js';
@@ -783,6 +783,35 @@ function projBounds(def, yaw) {
 
 const ICON_LIGHT = { light: [-0.55, 0.8, 0.7], ambient: 0.5, spec: 0.6, shine: 14, rim: 0.45, rimColor: '#e4fbff' };
 
+// [phase8:ui] Turns a smooth render into hand-made-looking pixel art: lightness snapped to a few steps with ordered
+// dithering between them, shadows drift cool (toward blue/purple), highlights warm, saturation nudged up.
+export function pixelize(d, solid, w, h, levels = 7) {
+  const cache = new Map();
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x;
+    if (!solid[i]) continue;
+    const c = d[i], a = c >>> 24;
+    const r = c & 255, g = (c >>> 8) & 255, b = (c >>> 16) & 255;
+    const bq = Math.floor(bayer(x, y) * 4);
+    const key = ((r >> 2) << 16) | ((g >> 2) << 8) | (b >> 2) | (bq << 24);
+    let o = cache.get(key);
+    if (o === undefined) {
+      let [H, S, L] = rgbToHsl(r, g, b);
+      const q = Math.min(levels, Math.floor(L * levels + 0.5 + ((bq + 0.5) / 4 - 0.5) * 0.42)); // dither only near a step
+      const Lq = Math.max(0.05, Math.min(0.97, q / levels));
+      // shadows drift toward blue-violet, highlights toward warm yellow (degrees, shortest way)
+      const target = Lq < 0.5 ? 250 : 55, amt = Math.abs(0.5 - Lq) * 24 * (S > 0.08 ? 1 : 0);
+      let dh = ((target - H + 540) % 360) - 180;
+      H = (H + Math.sign(dh) * Math.min(Math.abs(dh), amt) + 360) % 360;
+      S = Math.min(1, S * (Lq < 0.3 ? 1.15 : 1.08));
+      const [R2, G2, B2] = hslToRgb(H, S, Lq).map((v) => Math.max(0, Math.min(255, Math.round(v))));
+      o = (R2 | (G2 << 8) | (B2 << 16)) >>> 0;
+      cache.set(key, o);
+    }
+    d[i] = (o | (a << 24)) >>> 0;
+  }
+}
+
 // crisp selective outline + soft drop shadow around a rendered sprite (in place, on a padded canvas)
 function finishSprite(src, w, h) {
   const c = makeCanvas(w, h);
@@ -796,6 +825,7 @@ function finishSprite(src, w, h) {
     if (a > 70) solid[i] = 1; // translucent glass stays translucent; faint fringes are dropped (crisp pixel edges)
     else d[i] = 0;
   }
+  pixelize(d, solid, w, h); // [phase8:ui] posterised, dithered, hue-shifted pixel-art shading
   const out = new Uint32Array(d);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const i = y * w + x;

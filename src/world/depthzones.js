@@ -158,8 +158,9 @@ export function rockAt(L, y) {
 }
 
 // Darkness (0..1) and its tint at world y below the shelf (the biome's own light rules above it).
-const DARK = { twilight: [0.34, 0.7], midnight: [0.82, 0.92], abyss: [0.955, 0.985] };
-const TINT = { twilight: [28, 22, 84], midnight: [6, 6, 26], abyss: [0, 0, 2] };
+// [phase7:env] a little less black so the voxel dressing reads; still darker and scarier with depth
+const DARK = { twilight: [0.28, 0.6], midnight: [0.68, 0.84], abyss: [0.86, 0.94] };
+const TINT = { twilight: [30, 26, 92], midnight: [10, 10, 40], abyss: [2, 3, 12] };
 const TINTR = { twilight: [TINT.twilight, TINT.midnight], midnight: [TINT.midnight, TINT.abyss], abyss: [TINT.abyss, TINT.abyss] };
 export function deepDark(L, y) {
   const z = zoneAt(L, y);
