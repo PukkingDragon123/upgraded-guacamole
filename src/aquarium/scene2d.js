@@ -80,7 +80,7 @@ export class TankScene {
     this.W = W; this.H = H;
     const T = this.shape;
     const by = Math.round(bottomY);
-    const hood = 21, base = 12;
+    const hood = 30, base = 12; // the lid art is ~30 tank px tall at any zoom (its voxel count follows the zoom)
     let Z = (by - base - this.topY) / (T.H + hood);
     Z = clamp(Math.floor(Z * 20) / 20, 0.8, clamp((H / 540) * 1.45, 1.45, 2.1));
     const key = [T.tier, Z, W, H].join('|');
@@ -89,15 +89,18 @@ export class TankScene {
   }
 
   // horizontal scroll range of the full view (0 when the tank fits)
+  // the full view's horizontal viewport (the dock column on the right is left out so the tank never hides under it)
+  viewW() { const v = this.view; return v ? v.x1 - v.x0 : this.W; }
+  viewCx() { const v = this.view; return v ? (v.x0 + v.x1) / 2 : this.W / 2; }
   scrollMax() {
     const T = this.shape, Z = this.Z;
-    const half = this.W / 2 / Z, need = T.W / 2 + 70;
+    const half = this.viewW() / 2 / Z, need = T.W / 2 + 16;
     return Math.max(0, need - half);
   }
 
   cam(camX) {
     const Z = this.Z;
-    return { Z, camX, cx: this.W / 2, hy: this.bottomY - this.eyeY * Z, clip: null, full: true };
+    return { Z, camX, cx: Math.round(this.viewCx()), hy: this.bottomY - this.eyeY * Z, clip: null, full: true };
   }
   // a camera for the floating window: same zoom, centred on (camX, ty)
   windowCam(r, camX, ty) {
@@ -349,6 +352,7 @@ export class TankScene {
     const F0 = this.proj(-hw, 0, zf, cam), F1 = this.proj(hw, hh, zf, cam);
     const B0 = this.proj(-hw, 0, zb, cam), B1 = this.proj(hw, hh, zb, cam);
     const fx0 = Math.round(F0.x), fx1 = Math.round(F1.x), fy0 = Math.round(F1.y), fy1 = Math.round(F0.y);
+    if (cam.full) this.box = { fx0, fx1, fy0, fy1, dark };
     if (cam.full) this.drawRoom(ctx, cam, fx0, fx1, fy0, fy1);
     else { ctx.save(); ctx.beginPath(); ctx.rect(cam.clip.x, cam.clip.y, cam.clip.w, cam.clip.h); ctx.clip(); }
     // ---- interior
@@ -391,7 +395,7 @@ export class TankScene {
       const mine = items.filter((it) => it.l === l).sort((a, b) => a.z - b.z || a.y - b.y);
       for (const it of mine) it.draw();
     }
-    this.drawFood(ctx, cam);
+    if (!o.noFood) aq.feed.draw(ctx, cam, { dark });
     this.drawBubbles(ctx, cam, t);
     this.drawDrops(ctx, cam, t);
     this.drawMotes(ctx, cam, t, fx0, fx1, fy0, fy1);
@@ -481,11 +485,13 @@ export class TankScene {
     // air gap between the waterline and the lid: a pale glassy band with a reflection line
     const ah = Math.max(0, wy - fy0);
     if (ah > 0) {
-      if (!this.airTex || this.airTex.height !== ah) this.airTex = gradientStrip(ah, [[0, '#ffffff'], [0.5, pal.air], [1, '#bdf2ff']], { levels: 8, w: 8 }), this.airPat = null;
+      if (!this.airTex || this.airTex.height !== ah) this.airTex = gradientStrip(ah, [[0, '#9cd8f2'], [0.3, '#d8f6ff'], [0.7, pal.air], [1, '#bdf2ff']], { levels: 8, w: 8 }), this.airPat = null;
       this.airPat ||= ctx.createPattern(this.airTex, 'repeat-x');
       ctx.save(); ctx.translate(0, fy0); ctx.fillStyle = this.airPat; ctx.fillRect(fx0, 0, fx1 - fx0, ah); ctx.restore();
-      ctx.fillStyle = 'rgba(255,255,255,0.9)';
-      ctx.fillRect(fx0, fy0 + Math.round(ah * 0.35), fx1 - fx0, 1);
+      // a soft broken reflection line in the air gap (no hard rule)
+      const ry = fy0 + Math.round(ah * 0.4);
+      ctx.fillStyle = 'rgba(255,255,255,0.32)';
+      for (let x = fx0 + 6; x < fx1 - 6; x += 22) ctx.fillRect(x, ry, 12 + ((x * 7) % 5), 1);
     }
     ctx.save();
     ctx.translate(0, wy);
@@ -630,7 +636,7 @@ export class TankScene {
       x: p.x, y: p.y + (f.wiggle || 0) * 2, facing, turn: Math.abs(turn) > 0.98 ? facing : turn, angle: clamp(-f.pitch * 0.85, -0.6, 0.6),
       scale: f.drawScale * p.s * Z, squash: (f.wiggle || 0) * 0.4, swimPhase: f.phase, tailPhase: f.phase, finPhase: (f.phase * 1.3) % 1, speed01: sp01,
       inflate: f.inflate || 0, lookX: null, lookY: null, blink: f.blinkT < 0 ? 1 : 0, emotion: f.state === 'sleep' ? 'sleepy' : f.state === 'flee' ? 'scared' : 'neutral',
-      mouth: f.state === 'eat' ? Math.abs(Math.sin(t * 9)) : 0, time: f.age, heading, wash, glow: f.sp.glow ? 1 : 0.6, pri: 1,
+      mouth: f.chomp > 0 ? 1 : f.state === 'eat' ? Math.abs(Math.sin(t * 9)) * 0.7 : 0, time: f.age, heading, wash, glow: f.sp.glow ? 1 : 0.6, pri: 1,
     };
     if (f.c.kind === 'chain') {
       const pts = [];
@@ -642,17 +648,6 @@ export class TankScene {
       st.chain = pts;
     }
     return st;
-  }
-
-  drawFood(ctx, cam) {
-    for (const p of this.aq.food) {
-      if (p.eaten) continue;
-      const q = this.proj(p.p[0], p.p[1], p.p[2], cam);
-      ctx.fillStyle = p.c;
-      ctx.fillRect(Math.round(q.x), Math.round(q.y), 2, 2);
-      ctx.fillStyle = 'rgba(255,255,255,0.7)';
-      ctx.fillRect(Math.round(q.x), Math.round(q.y), 1, 1);
-    }
   }
 
   drawBubbles(ctx, cam, t) {
@@ -730,6 +725,16 @@ export class TankScene {
     ctx.globalCompositeOperation = 'lighter';
     ctx.fillStyle = 'rgba(255,255,255,0.05)';
     ctx.fillRect(fx0, fy0, w, Math.round(h * 0.08));
+    // stepped voxel glints in the top-left corner of the pane and a cool sheen down both inner edges
+    for (let i = 0; i < 18; i++) {
+      const a = 0.34 * (1 - i / 18);
+      ctx.fillStyle = `rgba(255,255,255,${a.toFixed(3)})`;
+      ctx.fillRect(fx0 + 10 + i * 2, fy0 + 30 + 34 - i * 2, 6, 2);
+      if (i < 12) ctx.fillRect(fx0 + 22 + i * 2, fy0 + 30 + 34 - i * 2 + 2, 2, 2);
+    }
+    ctx.fillStyle = 'rgba(200,250,255,0.10)';
+    ctx.fillRect(fx0, fy0, 3, h);
+    ctx.fillRect(fx1 - 3, fy0, 3, h);
     const n = Math.max(2, Math.round(w / 420));
     for (let i = 0; i < n; i++) {
       const x = fx0 + Math.round(((i + 0.3) / n) * w);
@@ -763,20 +768,12 @@ export class TankScene {
       for (let x = left; x < right; x += base.w) ctx.drawImage(base.canvas, 0, 0, Math.min(base.w, right - x), base.h, x, by, Math.min(base.w, right - x), base.h);
     } else { ctx.fillStyle = '#f4fbff'; ctx.fillRect(left, by, right - left, 12); }
     if (pil) {
-      for (const x of [fx0 - pil.w, fx1]) for (let y = fy0; y < fy1; y += pil.h) ctx.drawImage(pil.canvas, 0, 0, pil.w, Math.min(pil.h, fy1 - y), x === fx1 ? x : x, y, pil.w, Math.min(pil.h, fy1 - y));
+      for (const x of [fx0 - pil.w, fx1]) { const src = x === fx1 ? flipped(pil.canvas) : pil.canvas; for (let y = fy0; y < fy1; y += pil.h) ctx.drawImage(src, 0, 0, pil.w, Math.min(pil.h, fy1 - y), x, y, pil.w, Math.min(pil.h, fy1 - y)); }
     } else { ctx.fillStyle = 'rgba(200,255,246,0.8)'; ctx.fillRect(fx0 - 6, fy0, 6, fy1 - fy0); ctx.fillRect(fx1, fy0, 6, fy1 - fy0); }
     if (hood) {
       const hy = fy0 + 3;
       if (hcap) { ctx.drawImage(hcap.canvas, left - hcap.w + 4, hy - hcap.h); ctx.drawImage(flipped(hcap.canvas), right - 4, hy - hcap.h); }
       for (let x = left; x < right; x += hood.w) ctx.drawImage(hood.canvas, 0, 0, Math.min(hood.w, right - x), hood.h, x, hy - hood.h, Math.min(hood.w, right - x), hood.h);
-      // Aero gloss on the lid: a soft white sheen over its upper half and a crisp highlight line
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.fillStyle = 'rgba(255,255,255,0.10)';
-      ctx.fillRect(left - 2, hy - hood.h + 3, right - left + 4, Math.round(hood.h * 0.4));
-      ctx.fillStyle = 'rgba(255,255,255,0.35)';
-      ctx.fillRect(left + 6, hy - hood.h + 4, right - left - 12, 1);
-      ctx.restore();
       // the light strip glows under the hood
       if (!this.aq.st.tank.lampOff) {
         const col = lightLv === 2 ? `hsl(${(t * 50) % 360},95%,72%)` : LIGHT_COLS[lightLv];

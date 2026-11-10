@@ -1160,21 +1160,21 @@
     }
     return end + 0.012;
   }
-  function setFreq(param, t, f, f2, glide, mul2 = 1) {
+  function setFreq(param, t, f, f2, glide, mul3 = 1) {
     if (Array.isArray(f)) {
-      param.setValueAtTime(cf(f[0][1] * mul2), t + f[0][0]);
-      for (let i = 1; i < f.length; i++) param.exponentialRampToValueAtTime(cf(f[i][1] * mul2), t + f[i][0]);
-      return f[0][1] * mul2;
+      param.setValueAtTime(cf(f[0][1] * mul3), t + f[0][0]);
+      for (let i = 1; i < f.length; i++) param.exponentialRampToValueAtTime(cf(f[i][1] * mul3), t + f[i][0]);
+      return f[0][1] * mul3;
     }
-    param.setValueAtTime(cf(f * mul2), t);
-    if (f2) param.exponentialRampToValueAtTime(cf(f2 * mul2), t + Math.max(5e-3, glide));
-    return f * mul2;
+    param.setValueAtTime(cf(f * mul3), t);
+    if (f2) param.exponentialRampToValueAtTime(cf(f2 * mul3), t + Math.max(5e-3, glide));
+    return f * mul3;
   }
-  function addFilter(t, spec, dur, mul2, nodes) {
+  function addFilter(t, spec, dur, mul3, nodes) {
     const fl = ctx.createBiquadFilter();
     fl.type = spec.type || "lowpass";
     fl.Q.value = spec.q ?? 0.7;
-    setFreq(fl.frequency, t, spec.f, spec.f2, spec.glide ?? dur, spec.track === false ? 1 : mul2);
+    setFreq(fl.frequency, t, spec.f, spec.f2, spec.glide ?? dur, spec.track === false ? 1 : mul3);
     nodes.push(fl);
     return fl;
   }
@@ -4742,17 +4742,17 @@
     }
     return out;
   }
-  function ditherPick(pal2, v, x, y, soft = 0.7) {
-    const n2 = pal2.length;
+  function ditherPick(pal3, v, x, y, soft = 0.7) {
+    const n2 = pal3.length;
     const q = clamp012(v) * (n2 - 1);
     const i = Math.floor(q);
     const f = q - i;
     const e = soft >= 1 ? f : smoothstep(0.5 - soft / 2, 0.5 + soft / 2, f);
-    return pal2[Math.min(n2 - 1, bayer(x, y) < e ? i + 1 : i)];
+    return pal3[Math.min(n2 - 1, bayer(x, y) < e ? i + 1 : i)];
   }
   function gradientStrip(h, stops, { levels = 18, w = 8, soft = 0.7, y0 = 0, y1 = h } = {}) {
-    const pal2 = stopPalette(stops, levels);
-    return paint(w, h, (x, y) => ditherPick(pal2, (y - y0) / Math.max(1, y1 - y0), x, y, soft));
+    const pal3 = stopPalette(stops, levels);
+    return paint(w, h, (x, y) => ditherPick(pal3, (y - y0) / Math.max(1, y1 - y0), x, y, soft));
   }
   function fillWith(ctx3, canvas, x, y, w, h) {
     if (w <= 0 || h <= 0) return;
@@ -6332,8 +6332,8 @@
     const Rz = [[cc, -sc, 0], [sc, cc, 0], [0, 0, 1]];
     const Rx = [[1, 0, 0], [0, ca, -sa], [0, sa, ca]];
     const Ry = [[cb, 0, sb], [0, 1, 0], [-sb, 0, cb]];
-    const mul2 = (A2, B2) => A2.map((row2, i) => [0, 1, 2].map((j) => row2[0] * B2[0][j] + row2[1] * B2[1][j] + row2[2] * B2[2][j]));
-    return mul2(Ry, mul2(Rx, Rz));
+    const mul3 = (A2, B2) => A2.map((row2, i) => [0, 1, 2].map((j) => row2[0] * B2[0][j] + row2[1] * B2[1][j] + row2[2] * B2[2][j]));
+    return mul3(Ry, mul3(Rx, Rz));
   }
   function stampRot(dst, src, sp, dp, rx2 = 0, ry2 = 0, rz2 = 0) {
     const R4 = rotMat(rx2, ry2, rz2);
@@ -11617,14 +11617,14 @@
   function renderModel(m, opts = {}) {
     return renderVoxels(m, { scale: 2, outline: true, ...opts, yaw: WORLD_YAW, pitch: opts.flat ? 0 : WORLD_PITCH });
   }
-  function voxelize(src, { cell = 2, depth = () => 3, maxD = 8, alignZ = null, render: render4 = {} } = {}) {
+  function voxelize(src, { cell = 2, depth = () => 3, maxD = 8, alignZ = null, render: render5 = {} } = {}) {
     const w = src.width, h = src.height;
     const d = src.getContext ? src.getContext("2d").getImageData(0, 0, w, h).data : src.data;
     const rowStep = cell * Math.cos(WORLD_PITCH * Math.PI / 180);
     const nx = Math.ceil(w / cell), ny = Math.ceil(h / rowStep);
     const rowY = (cy) => Math.min(h - 1, Math.floor((cy + 0.5) * rowStep));
     const m = new VoxelModel(nx, ny, maxD);
-    const pal2 = /* @__PURE__ */ new Map();
+    const pal3 = /* @__PURE__ */ new Map();
     let shift = 3;
     const keyOf = (r, g, b) => r >> shift << 16 | g >> shift << 8 | b >> shift;
     for (let tries = 0; tries < 3; tries++) {
@@ -11642,22 +11642,22 @@
       if (d[i + 3] <= 110) continue;
       const r = d[i], g = d[i + 1], b = d[i + 2];
       const k = keyOf(r, g, b);
-      let id2 = pal2.get(k);
+      let id2 = pal3.get(k);
       if (id2 === void 0) {
-        if (pal2.size >= 250) {
-          id2 = pal2.values().next().value;
+        if (pal3.size >= 250) {
+          id2 = pal3.values().next().value;
         } else {
           const q = (v) => Math.min(255, (v >> shift << shift) + (1 << shift - 1));
           const hex4 = "#" + [q(r), q(g), q(b)].map((v) => v.toString(16).padStart(2, "0")).join("");
           id2 = m.color(hex4, { jitter: 0.03 });
-          pal2.set(k, id2);
+          pal3.set(k, id2);
         }
       }
       const dz = Math.max(0, Math.min(maxD, Math.round(depth(r, g, b, px3, py))));
       const y = ny - 1 - cy;
       for (let z = 0; z < dz; z++) m.set(cx, y, z, id2);
     }
-    const rr3 = renderVoxels(m, { scale: cell, outline: true, jitter: 0.03, ao: 0.7, edges: 0.45, light: { top: 4.6, lit: 3.4, dark: 2.6, bottom: 1.6 }, ...render4, yaw: WORLD_YAW, pitch: WORLD_PITCH });
+    const rr3 = renderVoxels(m, { scale: cell, outline: true, jitter: 0.03, ao: 0.7, edges: 0.45, light: { top: 4.6, lit: 3.4, dark: 2.6, bottom: 1.6 }, ...render5, yaw: WORLD_YAW, pitch: WORLD_PITCH });
     const az = alignZ ?? Math.ceil(maxD / 2);
     const p = rr3.project(0, ny, az);
     return { canvas: rr3.canvas, w: rr3.w, h: rr3.h, ox: Math.round(p[0]), oy: Math.round(p[1]) };
@@ -11974,7 +11974,7 @@
   // src/gfx/voxgl.js
   function meshVoxels(model, o = {}) {
     const { nx, ny, nz, data } = model;
-    const pal2 = model.palette.map((p) => {
+    const pal3 = model.palette.map((p) => {
       if (!p) return null;
       const [r, g, b] = hexRGB(p.color);
       const spec = Math.min(1.5, p.spec ?? 0.35), pow = p.specPow ?? 10;
@@ -12006,7 +12006,7 @@
       for (let x = 0; x < nx; x++) {
         const c = data[row2 + x];
         if (!c) continue;
-        const pe = pal2[c];
+        const pe = pal3[c];
         if (!pe) continue;
         if (keep && !keep(x, y, z, c)) continue;
         let h = x * 374761393 + y * 668265263 + z * 2147483647 | 0;
@@ -25922,8 +25922,8 @@ void main() {
     const lean = pose2 === 1 ? 0.12 : pose2 === 2 ? -0.12 : 0;
     const wing = pose2 === 3 ? 1.1 : swim ? pose2 === 4 ? 0.9 : pose2 === 5 ? -0.5 : -1.2 : 0.15;
     const foot = pose2 === 1 ? 0.7 : pose2 === 2 ? -0.7 : 0;
-    const rotZ = swim ? -Math.PI / 2 : lean;
-    const cz = Math.cos(rotZ), szn = Math.sin(rotZ);
+    const rotZ2 = swim ? -Math.PI / 2 : lean;
+    const cz = Math.cos(rotZ2), szn = Math.sin(rotZ2);
     const pivot = swim ? [0, 5, 0] : [0, 0, 0];
     const R4 = (p) => {
       const x = p[0] - pivot[0], y = p[1] - pivot[1];
@@ -27752,7 +27752,7 @@ void main() {
     out.base = r.canvas;
     return out;
   }
-  function palm(m, x, z, h, lean, pal2, r) {
+  function palm(m, x, z, h, lean, pal3, r) {
     let px3 = x, py = 0;
     const pts = [];
     for (let i = 0; i <= h; i++) {
@@ -27760,8 +27760,8 @@ void main() {
       px3 = x + lean * k * k * h * 0.5;
       py = i;
       pts.push([px3, py]);
-      m.set(Math.round(px3), py, z, i % 3 === 0 ? pal2.trunkDark : pal2.trunk);
-      if (i < h * 0.4) m.set(Math.round(px3) + 1, py, z, pal2.trunkDark);
+      m.set(Math.round(px3), py, z, i % 3 === 0 ? pal3.trunkDark : pal3.trunk);
+      if (i < h * 0.4) m.set(Math.round(px3) + 1, py, z, pal3.trunkDark);
     }
     const [tx, ty] = pts[pts.length - 1];
     for (let f = 0; f < 7; f++) {
@@ -27770,17 +27770,17 @@ void main() {
       for (let j = 1; j <= len; j++) {
         const k = j / len;
         const fx = tx + Math.cos(a) * j, fz = z + Math.sin(a) * j * 0.8, fy = ty + 1 + k * 2 - k * k * 5;
-        m.set(Math.round(fx), Math.round(fy), Math.round(fz), k > 0.75 ? pal2.leafTip : f % 2 ? pal2.leaf : pal2.leafDark);
+        m.set(Math.round(fx), Math.round(fy), Math.round(fz), k > 0.75 ? pal3.leafTip : f % 2 ? pal3.leaf : pal3.leafDark);
       }
     }
-    m.set(Math.round(tx), ty, z + 1, pal2.coco);
-    m.set(Math.round(tx) + 1, ty - 1, z, pal2.coco);
+    m.set(Math.round(tx), ty, z + 1, pal3.coco);
+    m.set(Math.round(tx) + 1, ty - 1, z, pal3.coco);
   }
   function palmIsland(seed = 4, haze) {
     const r = new RNG(seed);
     const m = new VoxelModel(64, 34, 26);
     const C5 = (c, o = {}) => m.color(c, o);
-    const pal2 = {
+    const pal3 = {
       sand: C5("#ecd29a", { jitter: 0.12 }),
       wetSand: C5("#c8a46e", { jitter: 0.1 }),
       grass: C5("#3f9a48", { jitter: 0.18 }),
@@ -27797,20 +27797,20 @@ void main() {
       thatchDark: C5("#9a6e32", { jitter: 0.1 }),
       door: C5("#4a3020")
     };
-    m.ellipsoid(30, 0, 13, 28, 5, 11, (x, y) => y <= 1 ? pal2.wetSand : pal2.sand);
-    m.ellipsoid(27, 2, 12, 17, 6, 8, (x, y) => y > 5 ? pal2.grass : pal2.jungle);
-    m.ellipsoid(44, 1, 10, 6, 4, 5, pal2.rock);
-    m.ellipsoid(8, 0, 15, 5, 3, 4, pal2.rock);
-    m.ellipsoid(50, 0, 18, 3, 2, 3, pal2.rock);
-    for (let i = 0; i < 14; i++) m.ellipsoid(r.float(16, 40), r.float(5, 8), r.float(8, 16), r.float(2, 3.5), r.float(1.5, 2.5), r.float(2, 3), pal2.jungle);
-    m.box(36, 6, 9, 42, 10, 14, (x, y, z) => x === 39 && z === 14 && y < 9 ? pal2.door : pal2.wall);
+    m.ellipsoid(30, 0, 13, 28, 5, 11, (x, y) => y <= 1 ? pal3.wetSand : pal3.sand);
+    m.ellipsoid(27, 2, 12, 17, 6, 8, (x, y) => y > 5 ? pal3.grass : pal3.jungle);
+    m.ellipsoid(44, 1, 10, 6, 4, 5, pal3.rock);
+    m.ellipsoid(8, 0, 15, 5, 3, 4, pal3.rock);
+    m.ellipsoid(50, 0, 18, 3, 2, 3, pal3.rock);
+    for (let i = 0; i < 14; i++) m.ellipsoid(r.float(16, 40), r.float(5, 8), r.float(8, 16), r.float(2, 3.5), r.float(1.5, 2.5), r.float(2, 3), pal3.jungle);
+    m.box(36, 6, 9, 42, 10, 14, (x, y, z) => x === 39 && z === 14 && y < 9 ? pal3.door : pal3.wall);
     for (let y = 11; y <= 15; y++) {
       const k = y - 11;
-      m.box(35 + k, y, 8 + k * 0.6, 43 - k, y, 15 - k * 0.6, k % 2 ? pal2.thatchDark : pal2.thatch);
+      m.box(35 + k, y, 8 + k * 0.6, 43 - k, y, 15 - k * 0.6, k % 2 ? pal3.thatchDark : pal3.thatch);
     }
-    palm(m, 22, 12, 22, -0.5, pal2, r);
-    palm(m, 30, 14, 17, 0.45, pal2, r);
-    palm(m, 16, 9, 14, -0.2, pal2, r);
+    palm(m, 22, 12, 22, -0.5, pal3, r);
+    palm(m, 30, 14, 17, 0.45, pal3, r);
+    palm(m, 16, 9, 14, -0.2, pal3, r);
     return finish3(m, { scale: 2, yaw: 24, pitch: 14, jitter: 0.16 }, haze);
   }
   function lighthouseIslet(seed = 7, haze) {
@@ -28032,10 +28032,10 @@ void main() {
     ctxOf(c).drawImage(v.canvas, 2 - v.ox, 2 - v.oy);
     return c;
   }
-  function voxCloudSprite(seed, w, h, pal2 = "day") {
-    return memo("vcloud|" + seed + "|" + w + "|" + h + "|" + pal2, () => {
-      const s = cloudSprites(seed, Math.round(w / 2), Math.round(h / 2), Math.max(6, Math.round(h * 0.4)), 2, [pal2]);
-      return s[pal2];
+  function voxCloudSprite(seed, w, h, pal3 = "day") {
+    return memo("vcloud|" + seed + "|" + w + "|" + h + "|" + pal3, () => {
+      const s = cloudSprites(seed, Math.round(w / 2), Math.round(h / 2), Math.max(6, Math.round(h * 0.4)), 2, [pal3]);
+      return s[pal3];
     });
   }
   function voxCableAnim(len, color, tip, x, top, frames = 8, thick = 1) {
@@ -28205,13 +28205,13 @@ void main() {
     if (c) return c;
     const rows = PART[kind2] || PART.spark;
     const r = ramp5(color);
-    const pal2 = { o: r[1], h: r[2], w: r[4] };
+    const pal3 = { o: r[1], h: r[2], w: r[4] };
     const w = rows[0].length, h = rows.length;
     c = makeCanvas(w * scale, h * scale);
     const g = ctxOf(c);
     rows.forEach((row2, y) => [...row2].forEach((ch, x) => {
-      if (pal2[ch]) {
-        g.fillStyle = pal2[ch];
+      if (pal3[ch]) {
+        g.fillStyle = pal3[ch];
         g.fillRect(x * scale, y * scale, scale, scale);
       }
     }));
@@ -28321,9 +28321,9 @@ void main() {
           return this;
         }
         // rows of chars; pal maps char -> colour ('.' / ' ' = empty)
-        ascii(rows, pal2, ox = 0, oy = 0) {
+        ascii(rows, pal3, ox = 0, oy = 0) {
           rows.forEach((row2, y) => [...row2].forEach((ch, x) => {
-            const c = pal2[ch];
+            const c = pal3[ch];
             if (c) this.set(ox + x, oy + y, c);
           }));
           return this;
@@ -38457,12 +38457,12 @@ void main() {
         }
         makeHeap() {
           const w = 60, h = 20;
-          const pal2 = stopPalette([[0, "#b08a5a"], [0.5, "#e2c48a"], [1, "#fff0c8"]], 6);
+          const pal3 = stopPalette([[0, "#b08a5a"], [0.5, "#e2c48a"], [1, "#fff0c8"]], 6);
           return paint(w, h, (x, y) => {
             const dx = (x - w / 2) / (w / 2), top = h - (1 - dx * dx) * (h - 2) - Math.sin(x * 0.7) * 1.2;
             if (y < top) return 0;
             const lv = 0.85 - (y - top) / h * 0.9 - dx * 0.25 + (hash2(x, y, 3) - 0.5) * 0.25;
-            return ditherPick(pal2, lv, x, y);
+            return ditherPick(pal3, lv, x, y);
           });
         }
         // Far reef walls & coral silhouettes behind the floor's foggy horizon.
@@ -38557,12 +38557,12 @@ void main() {
           ];
           for (const [xf, z] of spots) life("seagrass", 1 + r.int(0, 1), 8, z, Math.round(xf * W11));
           this.anemones = [];
-          for (const [xf, z, pal2, glow] of [[0.385, 0.02, "pink", "#ff7ab0"], [0.18, -0.08, "teal", "#5affea"], [0.79, 0.1, "orange", "#ffb070"], [0.56, 0.5, "purple", "#c08aff"], [0.66, -0.16, "magenta", "#ff8af0"], [0.28, 0.36, "yellow", "#ffe27a"]]) {
+          for (const [xf, z, pal3, glow] of [[0.385, 0.02, "pink", "#ff7ab0"], [0.18, -0.08, "teal", "#5affea"], [0.79, 0.1, "orange", "#ffb070"], [0.56, 0.5, "purple", "#c08aff"], [0.66, -0.16, "magenta", "#ff8af0"], [0.28, 0.36, "yellow", "#ffe27a"]]) {
             const x = Math.round(xf * W11);
-            const it2 = life("anemone", 3 + Math.round(xf * 20), 9, z, x, pal2);
+            const it2 = life("anemone", 3 + Math.round(xf * 20), 9, z, x, pal3);
             this.anemones.push({ x, y: it2.anim.y + it2.anim.frames[0].height - 4, z, glow });
           }
-          for (const [xf, z, pal2] of [[0.125, 0.1, "red"], [0.548, 0.28, "orange"], [0.745, 0.32, "pink"], [0.43, 0.58, "cream"], [0.99, 0.08, "purple"], [0.3, 0.86, "yellow"]]) life("soft", 7 + Math.round(xf * 30), 12, z, Math.round(xf * W11), pal2);
+          for (const [xf, z, pal3] of [[0.125, 0.1, "red"], [0.548, 0.28, "orange"], [0.745, 0.32, "pink"], [0.43, 0.58, "cream"], [0.99, 0.08, "purple"], [0.3, 0.86, "yellow"]]) life("soft", 7 + Math.round(xf * 30), 12, z, Math.round(xf * W11), pal3);
           this.crabSpr = [lpCrabFrames("#e0502e"), lpCrabFrames("#f09a3a")];
           this.crabs = [[0.52, -0.05], [0.86, 0.06], [0.25, -0.2]].map(([xf, z], i) => ({ x: xf * W11, z, dir: i % 2 ? -1 : 1, state: "walk", t: r.float(1, 4), f: 0, kind: i % 2, ft: 0 }));
           const sy = this.base;
@@ -39802,7 +39802,7 @@ void main() {
             [0.46, 0.8],
             [0.7, 0.95]
           ]) life("seagrass", 11 + r.int(0, 1), 8, z, Math.round(xf * W11));
-          for (const [xf, z, pal2] of [[0.335, 0.06, "rust"], [0.68, 0.22, "oxide"], [0.2, 0.46, "copper"], [0.88, 0.7, "wire"]]) life("soft", 31 + Math.round(xf * 20), 11, z, Math.round(xf * W11), pal2);
+          for (const [xf, z, pal3] of [[0.335, 0.06, "rust"], [0.68, 0.22, "oxide"], [0.2, 0.46, "copper"], [0.88, 0.7, "wire"]]) life("soft", 31 + Math.round(xf * 20), 11, z, Math.round(xf * W11), pal3);
           const s0 = this.base;
           for (const [xf, n2, col, z] of [[0.18, 30, "#2a2a34", 0.5], [0.585, 22, "#3a3a48", 0.85], [0.79, 13, "#b83a3a", 0.6], [0.36, 26, "#2a2a34", 1.1]]) {
             const sc = D.s(z);
@@ -41071,8 +41071,8 @@ void main() {
   });
   function worldStrip(H8, top, stops, tOf, levels = 24, w = 8) {
     const S11 = H8 - top;
-    const pal2 = stopPalette(stops, levels);
-    return paint(w, S11, (x, row2) => ditherPick(pal2, tOf(row2 < H8 ? row2 : row2 - S11), x, row2));
+    const pal3 = stopPalette(stops, levels);
+    return paint(w, S11, (x, row2) => ditherPick(pal3, tOf(row2 < H8 ? row2 : row2 - S11), x, row2));
   }
   function stripColorAt(stops, t) {
     const c = lerpStops(stops, clamp012(t));
@@ -41154,11 +41154,11 @@ void main() {
     SPRITES.set(sk, p);
     return p;
   }
-  function placeSprite(D, W11, sprite2, xf, z, extra = {}) {
-    const it2 = D.add({ sprite: sprite2, x: Math.round(xf * W11), z, ...extra });
-    it2.p = sprite2;
-    it2.left = it2.x - sprite2.ox;
-    it2.top = it2.y - sprite2.oy;
+  function placeSprite(D, W11, sprite3, xf, z, extra = {}) {
+    const it2 = D.add({ sprite: sprite3, x: Math.round(xf * W11), z, ...extra });
+    it2.p = sprite3;
+    it2.left = it2.x - sprite3.ox;
+    it2.top = it2.y - sprite3.oy;
     it2.s = D.s(z);
     return it2;
   }
@@ -41634,33 +41634,33 @@ void main() {
           };
           const mtnOf = (kind2) => {
             const P7 = MT[kind2];
-            const pal2 = {};
-            for (const k of ["far", "rock", "snow", "ice"]) pal2[k] = P7[k].map((c) => pack(c) >>> 0);
+            const pal3 = {};
+            for (const k of ["far", "rock", "snow", "ice"]) pal3[k] = P7[k].map((c) => pack(c) >>> 0);
             return paint(W11, h, (x, row2) => {
               const i = row2 * W11 + x, tn = tone5[i];
               switch (mat[i]) {
                 case 1:
-                  return ditherPick(pal2.far, tn * 0.75, x, row2);
+                  return ditherPick(pal3.far, tn * 0.75, x, row2);
                 case 10:
-                  return ditherPick(pal2.far, 0.55 + tn * 0.45, x, row2);
+                  return ditherPick(pal3.far, 0.55 + tn * 0.45, x, row2);
                 case 2:
-                  return ditherPick(pal2.rock, tn, x, row2);
+                  return ditherPick(pal3.rock, tn, x, row2);
                 case 3:
-                  return ditherPick(pal2.snow, tn, x, row2);
+                  return ditherPick(pal3.snow, tn, x, row2);
                 case 4:
-                  return tn < 0 ? pal2.rock[3] : ditherPick(pal2.snow, 0.15 + tn * 0.85, x, row2);
+                  return tn < 0 ? pal3.rock[3] : ditherPick(pal3.snow, 0.15 + tn * 0.85, x, row2);
                 case 5:
-                  return ditherPick(pal2.ice, tn, x, row2);
+                  return ditherPick(pal3.ice, tn, x, row2);
                 case 6:
-                  return ditherPick(pal2.rock, tn * 0.9, x, row2);
+                  return ditherPick(pal3.rock, tn * 0.9, x, row2);
                 case 7:
-                  return ditherPick(pal2.snow, 0.35 + tn * 0.65, x, row2);
+                  return ditherPick(pal3.snow, 0.35 + tn * 0.65, x, row2);
                 case 8:
-                  return ditherPick(pal2.ice, 0.35 + tn * 0.65, x, row2);
+                  return ditherPick(pal3.ice, 0.35 + tn * 0.65, x, row2);
                 case 9:
-                  return pal2.snow[4];
+                  return pal3.snow[4];
                 case 11:
-                  return ditherPick(pal2.ice, 0.3 + tn * 0.7, x, row2);
+                  return ditherPick(pal3.ice, 0.3 + tn * 0.7, x, row2);
                 default:
                   return 0;
               }
@@ -41682,8 +41682,8 @@ void main() {
           this.mtnBlend = new Blend();
           this.overcast = {};
           for (const k of ["day", "dusk", "night"]) {
-            const pal2 = stopPalette(OVERCAST3[k], 10);
-            this.overcast[k] = paint(8, h, (x, y) => ditherPick(pal2, y / h, x, y));
+            const pal3 = stopPalette(OVERCAST3[k], 10);
+            this.overcast[k] = paint(8, h, (x, y) => ditherPick(pal3, y / h, x, y));
           }
           const r = new RNG(31);
           this.stars = [];
@@ -45281,8 +45281,8 @@ void main() {
     }
     fields[f] = I;
   }
-  function sheetFrame(pal2, f) {
-    const key = pal2.sheen + pal2.trough + pal2.glint;
+  function sheetFrame(pal3, f) {
+    const key = pal3.sheen + pal3.trough + pal3.glint;
     if (frameCache.key !== key) {
       frameCache.key = key;
       frameCache.frames = [];
@@ -45292,17 +45292,17 @@ void main() {
     for (let i2 = 0; i2 < NF && built4 < 3; i2++) {
       if (fr[i2]) continue;
       if (!fields[i2]) buildField(i2);
-      fr[i2] = colourFrame(fields[i2], pal2);
+      fr[i2] = colourFrame(fields[i2], pal3);
       built4++;
     }
     let i = (f % NF + NF) % NF;
     while (!fr[i] && i > 0) i--;
     return fr[i] || null;
   }
-  function colourFrame(I, pal2) {
+  function colourFrame(I, pal3) {
     const c = makeCanvas(TW, TH), g = ctxOf(c);
     const img = g.createImageData(TW, TH), d = img.data;
-    const S11 = hexToRgb(pal2.sheen), T5 = hexToRgb(pal2.trough), G = hexToRgb(pal2.glint);
+    const S11 = hexToRgb(pal3.sheen), T5 = hexToRgb(pal3.trough), G = hexToRgb(pal3.glint);
     for (let r = 0; r < TH; r++) {
       const v = (r + 0.5) / TH;
       for (let u = 0; u < TW; u++) {
@@ -45418,7 +45418,7 @@ void main() {
     if (part2 === "top" !== e > -2) return;
     const W11 = b.W;
     const tod = todWeights(env);
-    const pal2 = waterPalette(b.waterPaletteId || b.id, env.daylight ?? 1, tod.dusk);
+    const pal3 = waterPalette(b.waterPaletteId || b.id, env.daylight ?? 1, tod.dusk);
     const t = water?.time ?? env.time ?? 0;
     const lowQ = !!g?.lowPower;
     const S11 = {
@@ -45432,7 +45432,7 @@ void main() {
       CW,
       CH,
       W: W11,
-      pal: pal2,
+      pal: pal3,
       t,
       lowQ,
       sim,
@@ -45455,7 +45455,7 @@ void main() {
     ctx3.restore();
   }
   function drawTop(S11, hb) {
-    const { ctx: ctx3, z, oy, CW, CH, pal: pal2, t, lowQ, x0, x1, xs, yn, ys, s } = S11;
+    const { ctx: ctx3, z, oy, CW, CH, pal: pal3, t, lowQ, x0, x1, xs, yn, ys, s } = S11;
     const hbS = Math.round(hb * z);
     if (hbS < 2) return;
     const YF = Math.round((s - hb) * z + oy);
@@ -45477,7 +45477,7 @@ void main() {
     const L2 = xs(x0), R4 = xs(x1 + 1), BH = maxY - YF;
     let refl = null;
     const RH = Math.min(BH + 1, YF);
-    if (!lowQ && RH > 1 && pal2.reflect > 0) {
+    if (!lowQ && RH > 1 && pal3.reflect > 0) {
       refl = scratch3(CW, RH);
       refl.g.clearRect(0, 0, CW, RH);
       refl.g.drawImage(ctx3.canvas, 0, YF - RH, CW, RH, 0, 0, CW, RH);
@@ -45485,10 +45485,10 @@ void main() {
     ctx3.save();
     ctx3.clip(path);
     const gr = ctx3.createLinearGradient(0, YF, 0, YF + hbS);
-    gr.addColorStop(0, pal2.horizon);
-    gr.addColorStop(0.3, mix(pal2.horizon, pal2.surface, 0.62));
-    gr.addColorStop(0.72, pal2.surface);
-    gr.addColorStop(1, mix(pal2.surface, pal2.deep, 0.3));
+    gr.addColorStop(0, pal3.horizon);
+    gr.addColorStop(0.3, mix(pal3.horizon, pal3.surface, 0.62));
+    gr.addColorStop(0.72, pal3.surface);
+    gr.addColorStop(1, mix(pal3.surface, pal3.deep, 0.3));
     ctx3.fillStyle = gr;
     ctx3.fillRect(L2, YF, R4 - L2, BH + 1);
     if (refl) {
@@ -45496,12 +45496,12 @@ void main() {
         const v = clamp012(r / hbS);
         const src = RH - 1 - Math.min(RH - 1, r);
         const wob = Math.round(Math.sin(r * 0.83 - t * 2.4) * (0.4 + v * 1.6) + Math.sin(r * 0.31 + t * 1.3 + 1.7) * (0.3 + v * 1.4));
-        ctx3.globalAlpha = pal2.reflect * (0.82 - 0.68 * v);
+        ctx3.globalAlpha = pal3.reflect * (0.82 - 0.68 * v);
         ctx3.drawImage(refl.c, 0, src, CW, 1, wob, YF + r, CW, 1);
       }
       ctx3.globalAlpha = 1;
     }
-    const fr = sheetFrame(pal2, Math.floor(t * 11));
+    const fr = sheetFrame(pal3, Math.floor(t * 11));
     if (fr) {
       const pat = ctx3.createPattern(fr, "repeat");
       pat.setTransform(new DOMMatrix([z / 2, 0, 0, hbS / TH, Math.round(S11.ox + t * 4 * z), YF]));
@@ -45509,7 +45509,7 @@ void main() {
       ctx3.fillRect(L2, YF, R4 - L2, BH + 1);
     }
     ctx3.globalAlpha = 0.55;
-    ctx3.fillStyle = pal2.horizon;
+    ctx3.fillStyle = pal3.horizon;
     ctx3.fillRect(L2, YF, R4 - L2, 1);
     ctx3.globalAlpha = 1;
     ctx3.globalCompositeOperation = "lighter";
@@ -45519,7 +45519,7 @@ void main() {
     ctx3.restore();
   }
   function drawUnder(S11, hu) {
-    const { ctx: ctx3, z, oy, CW, CH, pal: pal2, t, lowQ, x0, x1, xs, yn, ys, s } = S11;
+    const { ctx: ctx3, z, oy, CW, CH, pal: pal3, t, lowQ, x0, x1, xs, yn, ys, s } = S11;
     const huS = Math.round(hu * z);
     if (huS < 2) return;
     const YB = Math.round((s + hu) * z + oy);
@@ -45549,8 +45549,8 @@ void main() {
     ctx3.save();
     ctx3.clip(path);
     const gr = ctx3.createLinearGradient(0, YB - huS, 0, YB);
-    gr.addColorStop(0, mix(pal2.under, pal2.surface, 0.25));
-    gr.addColorStop(1, mix(pal2.under, pal2.surface, 0.6));
+    gr.addColorStop(0, mix(pal3.under, pal3.surface, 0.25));
+    gr.addColorStop(1, mix(pal3.under, pal3.surface, 0.6));
     ctx3.globalAlpha = 0.3;
     ctx3.fillStyle = gr;
     ctx3.fillRect(L2, minY, R4 - L2, BH + 1);
@@ -45563,7 +45563,7 @@ void main() {
       }
     }
     ctx3.globalAlpha = 1;
-    const fr = sheetFrame(pal2, Math.floor(t * 11));
+    const fr = sheetFrame(pal3, Math.floor(t * 11));
     if (fr) {
       ctx3.globalAlpha = 0.9;
       const pat = ctx3.createPattern(fr, "repeat");
@@ -45579,7 +45579,7 @@ void main() {
     ctx3.restore();
   }
   function drawGlints(S11, Y02, hS, under) {
-    const { ctx: ctx3, b, s, W: W11, pal: pal2, t, lowQ, tod, env, xs } = S11;
+    const { ctx: ctx3, b, s, W: W11, pal: pal3, t, lowQ, tod, env, xs } = S11;
     const B2 = skyBodies(env.hour ?? 12, W11, b.top ?? -400, s);
     const night = tod.night > 0.5;
     const light = night ? B2.moon : B2.sun;
@@ -45593,20 +45593,20 @@ void main() {
       const ep = Math.floor(ph);
       const k = Math.sin((ph - ep) * Math.PI);
       if (k < 0.2) continue;
-      const h1 = hash2(i, ep, 31), h2 = hash2(i, ep, 32), h36 = hash2(i, ep, 33);
+      const h1 = hash2(i, ep, 31), h2 = hash2(i, ep, 32), h37 = hash2(i, ep, 33);
       const onPath = i % 3 !== 0;
       const wx = onPath ? light.x + (h1 - 0.5) * (40 + h2 * 140) : h1 * W11;
       const v = onPath ? 0.15 + h2 * 0.85 : h2;
       const x = xs(wx), y = Math.round(Y02 + Math.sign(hS) * v * (H8 - 1));
-      const size = k > 0.8 && h36 > 0.55 ? 2 : k > 0.5 ? 1 : 0;
-      const spr3 = glintSprite(size, h36 > 0.7 ? pal2.glint : pal2.sheen);
+      const size = k > 0.8 && h37 > 0.55 ? 2 : k > 0.5 ? 1 : 0;
+      const spr3 = glintSprite(size, h37 > 0.7 ? pal3.glint : pal3.sheen);
       ctx3.globalAlpha = k * k0 * (0.55 + v * 0.45);
       ctx3.drawImage(spr3, x - size, y - size);
     }
     ctx3.globalAlpha = 1;
   }
   function drawRings(S11, hb, hS, under) {
-    const { ctx: ctx3, sim, z, pal: pal2, ys, s, xs, x0, x1 } = S11;
+    const { ctx: ctx3, sim, z, pal: pal3, ys, s, xs, x0, x1 } = S11;
     if (!sim?.rings?.length) return;
     const flat0 = 0.14 + 0.32 * clamp012(hb / (under ? MAXU : MAXB));
     const sgn = under ? 1 : -1;
@@ -45623,7 +45623,7 @@ void main() {
       const fade = Math.pow(1 - k, 1.1);
       const a = r.a * fade;
       if (a < 0.03) continue;
-      const col = r.kind === "rain" ? pal2.sheen : pal2.crest;
+      const col = r.kind === "rain" ? pal3.sheen : pal3.crest;
       const cx = xs(r.x);
       const n2 = r.kind === "rain" ? 2 : clamp(Math.round(rx2 / 2.2), 5, 16);
       const seed = Math.round(r.x * 7 + (r.z || 0) * 1e3 + r.life * 100);
@@ -45635,22 +45635,22 @@ void main() {
         const hopK = clamp012(k / 0.4), hop = !under && r.kind !== "rain" && hopK < 1 ? Math.round(Math.sin(hopK * Math.PI) * (2 + h1 * 4) * Math.max(1, z * 0.6)) : 0;
         const sz = hop > 0 && h2 > 0.55 ? 2 : 1;
         ctx3.globalAlpha = Math.min(1, a * (hop ? 1 : 0.8));
-        ctx3.fillStyle = hop ? col : i & 1 ? pal2.sheen : col;
+        ctx3.fillStyle = hop ? col : i & 1 ? pal3.sheen : col;
         ctx3.fillRect(px3, py0 - hop, sz, sz);
         if (!hop && sz === 1 && rx2 > 8 && h1 > 0.6) ctx3.fillRect(px3 + (Math.cos(ang) > 0 ? 1 : -1), py0, 1, 1);
       }
       if (r.kind === "rain" && r.t < 0.12 && !under) {
         ctx3.globalAlpha = 0.9 * (1 - r.t / 0.12);
-        ctx3.fillStyle = pal2.crest;
+        ctx3.fillStyle = pal3.crest;
         ctx3.fillRect(cx, cy - 1 - Math.round(r.t * 30), 1, Math.max(1, Math.round(z * 0.5)));
       }
     }
     ctx3.globalAlpha = 1;
   }
   function drawRim(S11, e) {
-    const { ctx: ctx3, z, pal: pal2, x0, x1, xs, yn, ys, sim, t, lowQ } = S11;
+    const { ctx: ctx3, z, pal: pal3, x0, x1, xs, yn, ys, sim, t, lowQ } = S11;
     const above = e > -2;
-    ctx3.fillStyle = pal2.crest;
+    ctx3.fillStyle = pal3.crest;
     ctx3.globalAlpha = above ? 0.85 : 0.6;
     for (let x = x0; x <= x1; ) {
       let x2 = x;
@@ -45663,7 +45663,7 @@ void main() {
       ctx3.globalAlpha = 1;
       return;
     }
-    ctx3.fillStyle = pal2.foam;
+    ctx3.fillStyle = pal3.foam;
     const step = lowQ ? 2 : 1;
     let swA = 0;
     for (const w of sim.swell || []) swA += w.A;
@@ -45984,13 +45984,13 @@ void main() {
           if (!this.grid || this.grid.length < N2) this.grid = new Uint8Array(Math.max(N2, 4096));
           const G = this.grid;
           G.fill(0, 0, N2);
-          const pal2 = this.pal || (this.pal = []);
-          pal2.length = 1;
+          const pal3 = this.pal || (this.pal = []);
+          pal3.length = 1;
           const pi = (c) => {
-            let i = pal2.indexOf(c);
+            let i = pal3.indexOf(c);
             if (i < 0) {
-              i = pal2.length;
-              pal2.push(c);
+              i = pal3.length;
+              pal3.push(c);
             }
             return i;
           };
@@ -46072,7 +46072,7 @@ void main() {
               const v = cx < gw ? G[row2 + cx] : 0;
               let col = null;
               if (v) {
-                const q = sh(pal2[v]);
+                const q = sh(pal3[v]);
                 const up = cy > 0 ? G[row2 - gw + cx] : 0, dn = cy < gh - 1 ? G[row2 + gw + cx] : 0;
                 if (!up) col = q[1];
                 else if (!dn) col = q[2];
@@ -49251,12 +49251,12 @@ void main() {
           for (let iy = iy0; iy <= iy1; iy++) {
             for (let ix = ix0; ix <= ix1; ix++) {
               for (let k = 0; k < n2; k++) {
-                const h1 = hash2(ix * 3 + k, iy, 501), h2 = hash2(ix, iy * 3 + k, 502), h36 = hash2(ix + k, iy + k, 503);
-                const y = iy * cs + (h2 * cs + t * speed * (2 + h36 * 5)) % cs;
+                const h1 = hash2(ix * 3 + k, iy, 501), h2 = hash2(ix, iy * 3 + k, 502), h37 = hash2(ix + k, iy + k, 503);
+                const y = iy * cs + (h2 * cs + t * speed * (2 + h37 * 5)) % cs;
                 if (y < H8 + 4) continue;
-                const x = ix * cs + h1 * cs + Math.sin(t * 0.4 + h36 * 9) * 3;
-                ctx3.globalAlpha = a * (0.4 + h36 * 0.6);
-                ctx3.fillRect(x, y, size * (h36 > 0.85 ? 1.5 : 1), size);
+                const x = ix * cs + h1 * cs + Math.sin(t * 0.4 + h37 * 9) * 3;
+                ctx3.globalAlpha = a * (0.4 + h37 * 0.6);
+                ctx3.fillRect(x, y, size * (h37 > 0.85 ? 1.5 : 1), size);
               }
             }
           }
@@ -55888,11 +55888,11 @@ void main() {
         // ---------------------------------------------------------------- [phase8:ui] pixel-art library
         // One hand-drawn sprite particle. opts: ramp, size, scale, anim ('life'|'loop'|'twinkle'|'fixed'), fps, frame,
         // vx, vy, g, drag, life, sway, layer, delay, blink (flicker out at the end), pop (bubble pops when done).
-        pixel(sheet2, x, y, o = {}) {
+        pixel(sheet3, x, y, o = {}) {
           const ramp4 = pickOf(o.ramp ?? "white");
           return this.add({
             kind: "px",
-            sheet: sheet2,
+            sheet: sheet3,
             ramp: ramp4,
             sz: o.size ?? 1,
             sc: Math.max(1, Math.round(o.scale ?? 1)),
@@ -59109,8 +59109,8 @@ void main() {
           for (const t of this.toasts) {
             const fadeIn = Math.min(1, t.t * 3.2), fadeOut = Math.min(1, (t.max - t.t) * 2.5);
             const lines = wrapText(t.text, Math.round(92 * k), "normal").slice(0, 2);
-            const pal2 = POP_PALETTE[t.icon] || "white", TS = 1.25;
-            const sizes = lines.map((l) => text3dCanvas(l, { palette: pal2, scale: TS }));
+            const pal3 = POP_PALETTE[t.icon] || "white", TS = 1.25;
+            const sizes = lines.map((l) => text3dCanvas(l, { palette: pal3, scale: TS }));
             if (sizes.some((c) => !c)) {
               this.drawToastFallback(ctx3, t, y);
               y += 22;
@@ -59127,8 +59127,8 @@ void main() {
             ctx3.globalAlpha = Math.min(fadeIn * 1.5, fadeOut);
             {
               const pw = Math.round(w + 18), ph = Math.round(h + 12), pk4 = Math.min(1, ease.outBack ? ease.outBack(Math.min(1, t.t * 3)) : Math.min(1, t.t * 3));
-              const ptone = pal2 === "coral" ? { top: "#8a3a52", mid: "#5a1a30", bot: "#3a0a1c", edge: "#1e0410", text: "#ffffff", shadow: "#1e0410", glow: "#ff8aa8" } : "deep";
-              const plate = aeroCached(`toastplate|${pw}|${ph}|${pal2 === "coral" ? "c" : "d"}`, () => aeroSurface(pw, ph, { tone: ptone, a: [0.84, 0.9], r: 8, gloss: 0.45, glossH: Math.round(ph * 0.42), curve: 2, rim: 0.9, glow: 0.5, depth: 1, block: 4, bubbles: pw > 120 ? 2 : 0, seed: pw }));
+              const ptone = pal3 === "coral" ? { top: "#8a3a52", mid: "#5a1a30", bot: "#3a0a1c", edge: "#1e0410", text: "#ffffff", shadow: "#1e0410", glow: "#ff8aa8" } : "deep";
+              const plate = aeroCached(`toastplate|${pw}|${ph}|${pal3 === "coral" ? "c" : "d"}`, () => aeroSurface(pw, ph, { tone: ptone, a: [0.84, 0.9], r: 8, gloss: 0.45, glossH: Math.round(ph * 0.42), curve: 2, rim: 0.9, glow: 0.5, depth: 1, block: 4, bubbles: pw > 120 ? 2 : 0, seed: pw }));
               const sw = Math.max(1, Math.round(pw * pk4)), sh = Math.max(1, Math.round(ph * (2 - pk4) * pk4));
               ctx3.drawImage(plate, Math.round(x - 9 + (pw - sw) / 2), Math.round(cy - ph / 2 + (ph - sh) / 2), sw, sh);
             }
@@ -59140,7 +59140,7 @@ void main() {
             let ly = cy - th / 2;
             lines.forEach((l, i) => {
               const c = sizes[i];
-              drawPop3D(ctx3, l, x + D + 6 + c.width / 2, ly + c.height / 2, { t: this.time + i * 0.4, pop: Math.min(1, t.t * 2.6 - i * 0.15), palette: pal2, scale: TS, phase: t.max * 3 + i, wobble: 0.6, sparkle: i === 0 });
+              drawPop3D(ctx3, l, x + D + 6 + c.width / 2, ly + c.height / 2, { t: this.time + i * 0.4, pop: Math.min(1, t.t * 2.6 - i * 0.15), palette: pal3, scale: TS, phase: t.max * 3 + i, wobble: 0.6, sparkle: i === 0 });
               ly += c.height - 2;
             });
             ctx3.restore();
@@ -59148,7 +59148,7 @@ void main() {
               t.fx = true;
               try {
                 const ps = g.particles;
-                ps?.pixelBurst?.("sparkle", x + D / 2, cy, 6, { layer: "ui", ramp: pal2 === "gold" ? "gold" : pal2 === "coral" ? "pink" : "aqua" });
+                ps?.pixelBurst?.("sparkle", x + D / 2, cy, 6, { layer: "ui", ramp: pal3 === "gold" ? "gold" : pal3 === "coral" ? "pink" : "aqua" });
                 ps?.pixelBurst?.("bubble", x + D / 2, cy + 4, 3, { layer: "ui", size: 0 });
               } catch {
               }
@@ -61743,9 +61743,9 @@ void main() {
             for (let x = Math.floor(cx - r); x <= cx + r; x++) if (Math.hypot(x + 0.5 - cx, y + 0.5 - cy) <= r) this.b.set(x, y, 0);
           }
         }
-        ascii(x, y, rows, pal2) {
+        ascii(x, y, rows, pal3) {
           rows.forEach((row2, j) => {
-            for (let i = 0; i < row2.length; i++) if (pal2[row2[i]]) this.px(x + i, y + j, pal2[row2[i]]);
+            for (let i = 0; i < row2.length; i++) if (pal3[row2[i]]) this.px(x + i, y + j, pal3[row2[i]]);
           });
         }
         // Thick segment. fn(t 0..1 along, s -1..1 across (+ = lit side), x, y) -> colour; w may be fn(t).
@@ -62776,7 +62776,7 @@ kmlmk..
   }
   function customCost(state, r, batch = 5, deps = {}) {
     const rec = customRecipe(state, r);
-    const mul2 = Math.max(1, Math.round(batch / 5));
+    const mul3 = Math.max(1, Math.round(batch / 5));
     const items = {};
     const base = BAITS2[rec.base];
     const parts = [
@@ -62785,11 +62785,11 @@ kmlmk..
       byId(CHARMS, rec.charm).cost,
       byId(SIZES3, rec.size).cost
     ];
-    let aero = (5 + Math.max(0, base?.tier ?? 0) * 12) * mul2;
+    let aero = (5 + Math.max(0, base?.tier ?? 0) * 12) * mul3;
     for (const p of parts) for (const [id2, q] of Object.entries(p || {})) {
       if (!q) continue;
-      if (!deps.known || deps.known(id2)) items[id2] = (items[id2] || 0) + q * mul2;
-      else aero += AERO_PER_MISSING * q * mul2;
+      if (!deps.known || deps.known(id2)) items[id2] = (items[id2] || 0) + q * mul3;
+      else aero += AERO_PER_MISSING * q * mul3;
     }
     return { items, aero };
   }
@@ -64109,9 +64109,9 @@ kmlmk..
         const c3 = makeCanvas(size, size);
         ctxOf(c3).drawImage(f.canvas, Math.round(size / 2 - f.ox), Math.round(size / 2 - f.oy));
         if (f.canvas.hi) {
-          const h36 = makeCanvas(size * 2, size * 2);
-          ctxOf(h36).drawImage(f.canvas.hi, Math.round((size / 2 - f.ox) * 2), Math.round((size / 2 - f.oy) * 2));
-          Object.defineProperty(c3, "hi", { value: h36, configurable: true });
+          const h37 = makeCanvas(size * 2, size * 2);
+          ctxOf(h37).drawImage(f.canvas.hi, Math.round((size / 2 - f.ox) * 2), Math.round((size / 2 - f.oy) * 2));
+          Object.defineProperty(c3, "hi", { value: h37, configurable: true });
         }
         icons2.set(key, c3);
         return c3;
@@ -64179,11 +64179,11 @@ kmlmk..
         return true;
       }
       const w = Math.min(bw, Math.round(bh * 1.25)), h = Math.min(bh, Math.round(w * 0.82));
-      const sheet2 = blueprintSheet(it2.builds, w, h);
+      const sheet3 = blueprintSheet(it2.builds, w, h);
       const bob = o.spin ? Math.round(Math.sin(t * 2) * 1) : 0;
       ctx3.fillStyle = "rgba(0,0,0,0.3)";
       ctx3.fillRect(Math.round(cx - w / 2) + 2, by - h + 2 + bob, w, h);
-      ctx3.drawImage(sheet2, Math.round(cx - w / 2), by - h + bob);
+      ctx3.drawImage(sheet3, Math.round(cx - w / 2), by - h + bob);
       return true;
     }
     if (art2 && itemPixel(art2) && !hasItemModel(art2)) {
@@ -75711,11 +75711,11 @@ kmlmk..
   function glossFor(rarity) {
     return RARITY_GLOSS[rarity] || "aqua";
   }
-  function glossText(text, scale, pal2 = "aqua") {
-    const key = text + "|" + scale + "|" + pal2;
+  function glossText(text, scale, pal3 = "aqua") {
+    const key = text + "|" + scale + "|" + pal3;
     let s = glossCache.get(key);
     if (s) return s;
-    const P7 = GLOSS2[pal2] || GLOSS2.aqua;
+    const P7 = GLOSS2[pal3] || GLOSS2.aqua;
     const ow = Math.max(1, Math.round(scale * 0.55));
     const gw = Math.max(2, Math.round(scale * 1.2));
     const pad = ow + gw + 2;
@@ -77277,14 +77277,14 @@ kmlmk..
         drawReadout(ctx3, cx, cy, L2, B2, st) {
           const t = this.t, S11 = L2.S;
           const rpm = Math.max(0, Math.round(this.rpmShown));
-          const pal2 = st === "sweet" ? "lime" : st === "over" ? "sun" : st === "rip" ? "red" : "aqua";
+          const pal3 = st === "sweet" ? "lime" : st === "over" ? "sun" : st === "rip" ? "red" : "aqua";
           const ds = Math.max(2, Math.round(3 * S11));
           const str = String(rpm), dw = Math.round(12 * S11 * (ds / 3));
           const tw = str.length * dw;
           const y = Math.round(cy + L2.rg + L2.tg * 0.2);
           const ph = 7 * ds + 10, pw = Math.max(tw + 26, Math.round(64 * S11));
           drawPillGlass(ctx3, cx, y - Math.round(ph / 2), pw, ph);
-          for (let i = 0; i < str.length; i++) word3D(ctx3, str[i], Math.round(cx - tw / 2 + dw * (i + 0.5)), y, { t: 0, scale: 0.75 * S11, pal: pal2, wobble: 0 });
+          for (let i = 0; i < str.length; i++) word3D(ctx3, str[i], Math.round(cx - tw / 2 + dw * (i + 0.5)), y, { t: 0, scale: 0.75 * S11, pal: pal3, wobble: 0 });
           word3D(ctx3, "RPM", cx + Math.round(pw / 2) + Math.round(16 * S11), y, { t: 0, scale: 0.4 * S11, pal: "white", wobble: 0 });
           if (B2 && (st === "idle" || st === "slow") && !B2.charge && !B2.stunned && B2.gearMode !== "box") {
             const rr3 = Math.round(12 * S11), a = t * 7 * (this.dir || 1);
@@ -80136,10 +80136,10 @@ kmlmk..
           return clamp(this.W * 0.36 / Math.max(12, this.fishLen()), 1.05, 1.7);
         }
         // a 3D word over the hooked fish
-        popOver(text, pal2, scale = 3) {
+        popOver(text, pal3, scale = 3) {
           const [sx, sy] = this.fishScreen();
           const len = this.fishLen() * this.zoom();
-          const col = { lime: "#c8f56a", red: "#ff8a7a", sun: "#ffe27a", aqua: "#bff8ff" }[pal2] || "#ffffff";
+          const col = { lime: "#c8f56a", red: "#ff8a7a", sun: "#ffe27a", aqua: "#bff8ff" }[pal3] || "#ffffff";
           this.titles.pop(text, clamp(sx, 120, this.W - 120), clamp(sy - len * 0.32 - 60, this.battle?.boss ? 150 : 90, this.H - 160), col, { scale });
         }
         // Start the current species event now (debug / older test drivers).
@@ -81820,12 +81820,12 @@ kmlmk..
           this.drawFish(ctx3, fcx, fcy, 300 * k, 150 * k, t);
           ctx3.restore();
           drawLeaves(ctx3, r, t, true, k);
-          const pal2 = glossFor(d.sp.rarity);
+          const pal3 = glossFor(d.sp.rarity);
           const big = Math.max(3, Math.round(3 * k + 0.4));
           const nameScale = [big, big - 1, 3, 2, 1].find((sc) => measureText(d.sp.name, "normal", sc) <= W11 - 150 * k) || 1;
           const ny = r.y + Math.round(12 * k);
           if (nameScale >= 2) {
-            const gname = glossText(d.sp.name, nameScale, pal2);
+            const gname = glossText(d.sp.name, nameScale, pal3);
             ctx3.drawImage(gname.c, Math.round(pcx - gname.w / 2 - gname.ox), Math.round(ny - gname.oy));
           } else drawText(ctx3, d.sp.name, pcx, ny + 3, { align: "center", color: "#ffffff", outline: INK9 });
           const star = getUiIcon("star"), starE = getUiIcon("star_empty");
@@ -87310,7 +87310,7 @@ kmlmk..
           quests: [
             Q("c1_lesson", "seal", "Fishing 101", "Hook, reel, shock! I'll show you everything.", [{ t: "tutorial" }], { aero: 10, bait: { crumbs: 5 } }),
             Q("c1_catch", "seal", "First Splash", "Three fish. You can do it!", [{ t: "catch", n: 3 }], { aero: 15, items: { driftwood: 2 } }),
-            Q("c1_keep", "seal", "Home Sweet Jar", "Keep a fish! It makes Aero while you fish.", [{ t: "keep", n: 1 }], { aero: 10, items: { shell: 2 } }),
+            Q("c1_keep", "seal", "Home Sweet Tank", "Keep a fish! It makes Aero while you fish.", [{ t: "keep", n: 1 }], { aero: 10, items: { shell: 2 } }),
             Q("c1_chest", "seal", "Crack It Open!", "There's a crate in your Satchel. Tap the glowing knots to crack it!", [{ t: "chest", n: 1 }], { aero: 10, items: { fish_scale: 3 } }),
             // [phase8:prog]
             Q("c1_lab", "fizz", "Lab Coat On", "Plan a tile in The Lab, then press Confirm!", [{ t: "research", n: 1 }], { items: { driftwood: 3, kelp_fibre: 2 } }),
@@ -96711,7 +96711,7 @@ kmlmk..
             this.gather = null;
             this.setState("wander");
           }
-          if (this.state !== "flee" && this.state !== "eat" && W11.food.length && (rec.hunger ?? 0.3) > 0.12) {
+          if (this.state !== "flee" && this.state !== "eat" && this.state !== "court" && W11.food.length && ((rec.hunger ?? 0.3) > 0.05 || rng.chance(0.3))) {
             let best = null, bd = Infinity;
             for (const f of W11.food) {
               if (f.eaten) continue;
@@ -96724,10 +96724,12 @@ kmlmk..
             if (best && (bd < T5.minDim * 1.2 || rng.chance(0.5))) {
               this.setState("eat");
               this.food = best;
+              this.wiggleV += 3;
+              if (bd > this.len * 2 && rng.chance(0.2)) this.say("!", 0.7);
               return;
             }
           }
-          if (this.state === "eat" && (!this.food || this.food.eaten)) {
+          if (this.state === "eat" && (!this.food || this.food.eaten || !W11.food.includes(this.food) || this.stateT > 14)) {
             this.food = null;
             this.setState("wander");
           }
@@ -96799,8 +96801,11 @@ kmlmk..
             case "eat":
               if (this.food) {
                 tg = this.food.p;
-                sp = this.cruise * 1.8;
-                if (v3len(tg[0] - p[0], tg[1] - p[1], tg[2] - p[2]) < Math.max(0.6, this.len * 0.35)) W11.onEat?.(this, this.food);
+                const d = this.dir, L2 = this.len;
+                const far = v3len(tg[0] - p[0], tg[1] - p[1], tg[2] - p[2]);
+                sp = this.cruise * (far > L2 * 1.6 ? 2.8 : 1.5);
+                const mx = p[0] + d[0] * L2 * 0.42, my = p[1] + d[1] * L2 * 0.42, mz = p[2] + d[2] * L2 * 0.3;
+                if (v3len(tg[0] - mx, tg[1] - my, tg[2] - mz) < Math.max(1.6, L2 * 0.22) || far < L2 * 0.3) W11.onEat?.(this, this.food);
               }
               break;
             case "curious": {
@@ -96847,7 +96852,7 @@ kmlmk..
           dy /= dist2;
           dz /= dist2;
           const arrive = this.len * 1.5;
-          if (dist2 < arrive && this.state !== "flee") sp *= Math.max(0.25, dist2 / arrive);
+          if (dist2 < arrive && this.state !== "flee") sp *= Math.max(this.state === "eat" ? 0.55 : 0.25, dist2 / arrive);
           let sx = 0, sy = 0, sz = 0;
           for (const o of W11.fish) {
             if (o === this) continue;
@@ -97380,48 +97385,67 @@ kmlmk..
       const n2 = (v) => Math.max(2, Math.round(v * k));
       yield;
       if (kind2 === "hood" || kind2 === "hoodcap") {
-        const T5 = 24, h = n2(18), d = n2(13);
+        const T5 = 24, h = n2(15), d = n2(12);
         const wide = kind2 === "hood" ? T5 * 3 : n2(12) + 2;
         const m = new VoxelModel(wide, h + 1, d + 1);
-        const white = m.color("#f6fcff", { jitter: 0.015, spec: 0.9, specPow: 14, smooth: 0.9 });
-        const white2 = m.color("#e2eef8", { jitter: 0.015, spec: 0.6, smooth: 0.9 });
-        const lip = m.color("#b8d4e8", { spec: 0.5 });
-        const aqua = m.color("#4ad2ff", { spec: 1, specPow: 18, smooth: 0.9, emissive: 0.15 });
-        const aqua2 = m.color("#1e9ee8", { spec: 0.9, smooth: 0.9 });
-        const aquaHi = m.color("#c8f6ff", { spec: 1, emissive: 0.3 });
-        const vent2 = m.color("#a8c4dc");
+        const top = m.color("#e2f3fc", { jitter: 0.03, spec: 0.9, specPow: 14, smooth: 0.7 });
+        const chrome = m.color("#dff2ff", { spec: 1, specPow: 22, smooth: 0.9 });
+        const vent2 = m.color("#7a9cc0");
+        const blueHi = m.color("#5cc4ff", { spec: 1, specPow: 18, smooth: 0.9 });
+        const blue = m.color("#2a8ee6", { jitter: 0.06, spec: 0.9, specPow: 16, smooth: 0.6 });
+        const blue2 = m.color("#1a66c0", { jitter: 0.05, spec: 0.7, smooth: 0.6 });
+        const seamD = m.color("#124c98"), seamL = m.color("#7ad0ff", { spec: 1 });
+        const navy = m.color("#0f3f80", { spec: 0.5 });
+        const visor = m.color("#5adcff", { spec: 1, specPow: 20, smooth: 0.9, emissive: 0.12 });
+        const visorHi = m.color("#d4f8ff", { spec: 1, emissive: 0.3 });
+        const visorLo = m.color("#2aa6e8", { spec: 0.9, smooth: 0.9 });
+        const glint = m.color("#ffffff", { emissive: 0.4 });
         const lite = m.color(LIGHT_COLS[o.light ?? 0], { emissive: 1 });
         const leaf2 = m.color("#6ae04a", { spec: 0.8, emissive: 0.2 });
-        const rr3 = Math.max(2, Math.round(Math.min(h, d) * 0.5));
-        const b0 = Math.round(h * 0.38), b1 = b0 + Math.max(2, Math.round(h * 0.2));
-        const front = m.color("#38c0f6", { spec: 1, specPow: 16, smooth: 0.9 }), front2 = m.color("#1f94e0", { spec: 0.9, smooth: 0.9 });
+        const leaf22 = m.color("#3ab84a", { spec: 0.8 });
+        const rr3 = Math.max(2, Math.round(Math.min(h, d) * 0.42));
+        const b0 = Math.round(h * 0.34), b1 = b0 + Math.max(3, Math.round(h * 0.24));
+        const cy = h - rr3, cz = d - rr3;
         for (let x = 0; x < wide; x++) for (let y = 0; y <= h; y++) for (let z = 0; z <= d; z++) {
-          const cy = h - rr3, cz = d - rr3;
           if (y > cy && z > cz && (y - cy) ** 2 + (z - cz) ** 2 > rr3 * rr3) continue;
-          if (y > 1 && z === d && !(y >= b0 && y <= b1)) continue;
+          if (y <= 1 && z > d - 1) continue;
           const outer = y > cy ? cz + Math.sqrt(Math.max(0, rr3 * rr3 - (y - cy) ** 2)) : d;
           const shell = z >= outer - 1.6;
-          let c = y <= 1 ? lip : !shell ? white : y > cy + rr3 * 0.55 ? white : y < b0 ? front2 : front;
-          if (y >= b0 && y <= b1 && shell) c = y === b1 ? aquaHi : y === b0 ? aqua2 : white;
-          if (y === 0 && z > d * 0.3 && z < d - 1) c = lite;
-          if (y >= h - 1 && z > 1 && z < d - rr3 && x % 8 < 4) c = vent2;
+          let c;
+          if (!shell) c = y >= h - 1 ? top : blue2;
+          else if (y > cy + rr3 * 0.62) c = top;
+          else if (y > cy + rr3 * 0.3) c = chrome;
+          else if (y > cy) c = blueHi;
+          else if (y >= b0 && y <= b1) c = y === b1 ? visorHi : y === b0 ? visorLo : visor;
+          else if (y <= 1) c = navy;
+          else if (y < b0) c = y <= 2 ? blue2 : blue;
+          else c = blue;
+          if (shell && y > b0 && y < b1 && ((x + (y - b0) * 1) % T5 === 4 || (x + (y - b0)) % T5 === 6)) c = glint;
+          if (shell && y > 1 && y <= cy && !(y >= b0 && y <= b1) && x % T5 === 0) c = seamD;
+          if (shell && y > 1 && y <= cy && !(y >= b0 && y <= b1) && x % T5 === 1) c = seamL;
+          if (shell && (y === b0 - 2 || y === b1 + 2) && x % T5 === 12) c = chrome;
+          if (y === 0 && z > d * 0.25 && z < d - 2) c = lite;
+          if (y >= h - 1 && z > 2 && z < d - rr3 - 1 && x % 6 < 3 && x % T5 < T5 - 6) c = vent2;
           m.set(x, y, z, c);
         }
         if (kind2 === "hoodcap") {
-          const R0 = 3.2;
+          const R0 = 3.6;
           m.sub(() => {
             for (let x = 0; x < wide; x++) for (let y = 0; y <= h; y++) {
               const dx = R0 - x, dy = y - (h - R0);
               if (dx > 0 && dy > 0 && dx * dx + dy * dy > R0 * R0) m.box(x, y, 0, x, y, d, 1);
             }
           });
-          const lx = Math.round(wide * 0.62), ly = Math.round(h * 0.68);
+          m.paint(() => {
+            for (let y = 2; y < h - 2; y++) for (let z = 0; z <= d; z++) m.put(0, y, z, chrome);
+          });
+          const lx = Math.round(wide * 0.5), ly = Math.round(h * 0.62);
           for (let i = 0; i < 4; i++) {
             m.set(lx + i, ly + (i >> 1), d - Math.round(rr3 * 0.3), leaf2);
-            m.set(lx + i, ly + 1 + (i >> 1), d - Math.round(rr3 * 0.3), leaf2);
+            m.set(lx + i, ly + 1 + (i >> 1), d - Math.round(rr3 * 0.3), i & 1 ? leaf22 : leaf2);
           }
         }
-        const r = renderVoxels(m, { scale: PXV, yaw: 0, pitch: 20, outline: true, ao: 0.45, edges: 0.9 });
+        const r = renderVoxels(m, { scale: PXV, yaw: 0, pitch: 30, outline: true, ao: 0.5, edges: 0.9 });
         if (kind2 === "hood") {
           const t = midTile(r, "x");
           return { canvas: t.canvas, ox: 0, oy: t.h, w: t.w, h: t.h };
@@ -97429,18 +97453,23 @@ kmlmk..
         return spr2(r, r.canvas.width - 1, r.canvas.height);
       }
       if (kind2 === "base" || kind2 === "basecap") {
-        const T5 = 24, h = n2(8), d = n2(9);
+        const T5 = 24, h = n2(10), d = n2(10);
         const wide = kind2 === "base" ? T5 * 3 : n2(10) + 2;
         const m = new VoxelModel(wide, h, d);
         const white = m.color("#f4fbff", { spec: 0.8, smooth: 0.8 });
-        const shadeW = m.color("#c8dcec", { spec: 0.5 });
-        const aqua = m.color("#4ad0ff", { spec: 0.9, smooth: 0.8, emissive: 0.15 });
+        const blue = m.color("#2a8ee6", { jitter: 0.06, spec: 0.9, specPow: 16, smooth: 0.6 });
+        const blueHi = m.color("#5cc4ff", { spec: 1, smooth: 0.9 });
+        const chrome = m.color("#dff2ff", { spec: 1, specPow: 22 });
+        const seamD = m.color("#124c98");
+        const navy = m.color("#0f3f80", { spec: 0.5 });
         const green = m.color("#6ae04a", { spec: 0.9 });
+        const stripe = Math.round(h * 0.45);
         for (let x = 0; x < wide; x++) for (let y = 0; y < h; y++) for (let z = 0; z < d; z++) {
           if (y === h - 1 && z === d - 1) continue;
-          let c = y < 2 ? shadeW : white;
-          if (y === Math.round(h * 0.5)) c = aqua;
-          if (kind2 === "basecap" && y === Math.round(h * 0.5) && x > wide - 4) c = green;
+          let c = y >= h - 2 ? white : y === h - 3 ? blueHi : y <= 1 ? navy : blue;
+          if (y === stripe) c = chrome;
+          if (kind2 === "base" && z === d - 1 && y > 1 && y < h - 3 && y !== stripe && x % T5 === 0) c = seamD;
+          if (kind2 === "basecap" && y === stripe && x > wide - 4) c = green;
           m.set(x, y, z, c);
         }
         if (kind2 === "basecap") m.sub(() => {
@@ -97455,12 +97484,17 @@ kmlmk..
         return spr2(r, r.canvas.width - 1, 0);
       }
       if (kind2 === "pillar") {
-        const T5 = 16, wv = n2(4), d = 3;
+        const T5 = 16, wv = n2(8), d = 3;
         const m = new VoxelModel(wv, T5 * 3, d);
-        const g1 = m.color("#c8fff6", { spec: 1, smooth: 0.9 }), g2 = m.color("#7ae8d8", { spec: 0.9, smooth: 0.9 }), g3 = m.color("#3aa8b8", { spec: 0.6 });
-        const seal = m.color("#1e5a6a");
+        const hi = m.color("#8adcff", { spec: 1, smooth: 0.9 }), b1 = m.color("#2a8ee6", { jitter: 0.06, spec: 0.9, specPow: 16, smooth: 0.6 }), b2 = m.color("#1a66c0", { jitter: 0.04, spec: 0.6 });
+        const front = m.color("#3aa2f0", { spec: 1, specPow: 18, smooth: 0.9 });
+        const stud = m.color("#e8f6ff", { spec: 1, specPow: 24 });
+        const seal = m.color("#0f2f5a");
+        const glassE = m.color("#9af0ff", { spec: 1, emissive: 0.2 });
         for (let x = 0; x < wv; x++) for (let y = 0; y < T5 * 3; y++) for (let z = 0; z < d; z++) {
-          const c = x === 0 ? g1 : x === wv - 1 ? seal : y % T5 === 0 && x === 1 ? g1 : z === d - 1 ? g2 : g3;
+          let c = x === 0 ? hi : x === wv - 1 ? glassE : x === wv - 2 ? seal : x === wv - 3 ? b2 : z === d - 1 ? front : b1;
+          if (x === 1 && z === d - 1 && y % 4 === 0) c = hi;
+          if (x === Math.floor((wv - 2) / 2) && z === d - 1 && y % T5 === T5 / 2) c = stud;
           m.set(x, y, z, c);
         }
         const r = renderVoxels(m, { scale: PXV, yaw: 0, pitch: 0, outline: false, ao: 0.2, edges: 0.9 });
@@ -97869,7 +97903,7 @@ kmlmk..
           this.H = H8;
           const T5 = this.shape;
           const by = Math.round(bottomY);
-          const hood = 21, base = 12;
+          const hood = 30, base = 12;
           let Z = (by - base - this.topY) / (T5.H + hood);
           Z = clamp(Math.floor(Z * 20) / 20, 0.8, clamp(H8 / 540 * 1.45, 1.45, 2.1));
           const key = [T5.tier, Z, W11, H8].join("|");
@@ -97881,14 +97915,23 @@ kmlmk..
           }
         }
         // horizontal scroll range of the full view (0 when the tank fits)
+        // the full view's horizontal viewport (the dock column on the right is left out so the tank never hides under it)
+        viewW() {
+          const v = this.view;
+          return v ? v.x1 - v.x0 : this.W;
+        }
+        viewCx() {
+          const v = this.view;
+          return v ? (v.x0 + v.x1) / 2 : this.W / 2;
+        }
         scrollMax() {
           const T5 = this.shape, Z = this.Z;
-          const half = this.W / 2 / Z, need = T5.W / 2 + 70;
+          const half = this.viewW() / 2 / Z, need = T5.W / 2 + 16;
           return Math.max(0, need - half);
         }
         cam(camX) {
           const Z = this.Z;
-          return { Z, camX, cx: this.W / 2, hy: this.bottomY - this.eyeY * Z, clip: null, full: true };
+          return { Z, camX, cx: Math.round(this.viewCx()), hy: this.bottomY - this.eyeY * Z, clip: null, full: true };
         }
         // a camera for the floating window: same zoom, centred on (camX, ty)
         windowCam(r, camX, ty) {
@@ -98160,6 +98203,7 @@ kmlmk..
           const F0 = this.proj(-hw, 0, zf, cam), F12 = this.proj(hw, hh, zf, cam);
           const B0 = this.proj(-hw, 0, zb, cam), B1 = this.proj(hw, hh, zb, cam);
           const fx0 = Math.round(F0.x), fx1 = Math.round(F12.x), fy0 = Math.round(F12.y), fy1 = Math.round(F0.y);
+          if (cam.full) this.box = { fx0, fx1, fy0, fy1, dark };
           if (cam.full) this.drawRoom(ctx3, cam, fx0, fx1, fy0, fy1);
           else {
             ctx3.save();
@@ -98203,7 +98247,7 @@ kmlmk..
             const mine = items.filter((it2) => it2.l === l).sort((a, b) => a.z - b.z || a.y - b.y);
             for (const it2 of mine) it2.draw();
           }
-          this.drawFood(ctx3, cam);
+          if (!o.noFood) aq.feed.draw(ctx3, cam, { dark });
           this.drawBubbles(ctx3, cam, t);
           this.drawDrops(ctx3, cam, t);
           this.drawMotes(ctx3, cam, t, fx0, fx1, fy0, fy1);
@@ -98290,26 +98334,27 @@ kmlmk..
           ctx3.fillRect(fx0 + 10, fy0 + 14, fx1 - fx0, fy1 - fy0);
         }
         drawWater(ctx3, fx0, fx1, fy0, fy1, wy, cam) {
-          const pal2 = WATER8[gearLevel(this.aq.st, "filter") >= 2 ? 1 : 0];
+          const pal3 = WATER8[gearLevel(this.aq.st, "filter") >= 2 ? 1 : 0];
           const h = Math.max(8, fy1 - wy);
-          const key = h + pal2.top;
+          const key = h + pal3.top;
           if (!this.waterTex || this.waterKey !== key) {
             this.waterKey = key;
-            this.waterTex = gradientStrip(h, [[0, pal2.top], [0.35, pal2.mid], [1, pal2.bot]], { levels: 20, w: 8 });
+            this.waterTex = gradientStrip(h, [[0, pal3.top], [0.35, pal3.mid], [1, pal3.bot]], { levels: 20, w: 8 });
             this.waterPat = null;
           }
           this.waterPat || (this.waterPat = ctx3.createPattern(this.waterTex, "repeat-x"));
           const ah = Math.max(0, wy - fy0);
           if (ah > 0) {
-            if (!this.airTex || this.airTex.height !== ah) this.airTex = gradientStrip(ah, [[0, "#ffffff"], [0.5, pal2.air], [1, "#bdf2ff"]], { levels: 8, w: 8 }), this.airPat = null;
+            if (!this.airTex || this.airTex.height !== ah) this.airTex = gradientStrip(ah, [[0, "#9cd8f2"], [0.3, "#d8f6ff"], [0.7, pal3.air], [1, "#bdf2ff"]], { levels: 8, w: 8 }), this.airPat = null;
             this.airPat || (this.airPat = ctx3.createPattern(this.airTex, "repeat-x"));
             ctx3.save();
             ctx3.translate(0, fy0);
             ctx3.fillStyle = this.airPat;
             ctx3.fillRect(fx0, 0, fx1 - fx0, ah);
             ctx3.restore();
-            ctx3.fillStyle = "rgba(255,255,255,0.9)";
-            ctx3.fillRect(fx0, fy0 + Math.round(ah * 0.35), fx1 - fx0, 1);
+            const ry2 = fy0 + Math.round(ah * 0.4);
+            ctx3.fillStyle = "rgba(255,255,255,0.32)";
+            for (let x = fx0 + 6; x < fx1 - 6; x += 22) ctx3.fillRect(x, ry2, 12 + x * 7 % 5, 1);
           }
           ctx3.save();
           ctx3.translate(0, wy);
@@ -98476,7 +98521,7 @@ kmlmk..
             lookY: null,
             blink: f.blinkT < 0 ? 1 : 0,
             emotion: f.state === "sleep" ? "sleepy" : f.state === "flee" ? "scared" : "neutral",
-            mouth: f.state === "eat" ? Math.abs(Math.sin(t * 9)) : 0,
+            mouth: f.chomp > 0 ? 1 : f.state === "eat" ? Math.abs(Math.sin(t * 9)) * 0.7 : 0,
             time: f.age,
             heading,
             wash,
@@ -98493,16 +98538,6 @@ kmlmk..
             st.chain = pts;
           }
           return st;
-        }
-        drawFood(ctx3, cam) {
-          for (const p of this.aq.food) {
-            if (p.eaten) continue;
-            const q = this.proj(p.p[0], p.p[1], p.p[2], cam);
-            ctx3.fillStyle = p.c;
-            ctx3.fillRect(Math.round(q.x), Math.round(q.y), 2, 2);
-            ctx3.fillStyle = "rgba(255,255,255,0.7)";
-            ctx3.fillRect(Math.round(q.x), Math.round(q.y), 1, 1);
-          }
         }
         drawBubbles(ctx3, cam, t) {
           for (const b of this.aq.bubbles) {
@@ -98573,6 +98608,15 @@ kmlmk..
           ctx3.globalCompositeOperation = "lighter";
           ctx3.fillStyle = "rgba(255,255,255,0.05)";
           ctx3.fillRect(fx0, fy0, w, Math.round(h * 0.08));
+          for (let i = 0; i < 18; i++) {
+            const a = 0.34 * (1 - i / 18);
+            ctx3.fillStyle = `rgba(255,255,255,${a.toFixed(3)})`;
+            ctx3.fillRect(fx0 + 10 + i * 2, fy0 + 30 + 34 - i * 2, 6, 2);
+            if (i < 12) ctx3.fillRect(fx0 + 22 + i * 2, fy0 + 30 + 34 - i * 2 + 2, 2, 2);
+          }
+          ctx3.fillStyle = "rgba(200,250,255,0.10)";
+          ctx3.fillRect(fx0, fy0, 3, h);
+          ctx3.fillRect(fx1 - 3, fy0, 3, h);
           const n2 = Math.max(2, Math.round(w / 420));
           for (let i = 0; i < n2; i++) {
             const x = fx0 + Math.round((i + 0.3) / n2 * w);
@@ -98613,7 +98657,10 @@ kmlmk..
             ctx3.fillRect(left, by, right - left, 12);
           }
           if (pil) {
-            for (const x of [fx0 - pil.w, fx1]) for (let y = fy0; y < fy1; y += pil.h) ctx3.drawImage(pil.canvas, 0, 0, pil.w, Math.min(pil.h, fy1 - y), x === fx1 ? x : x, y, pil.w, Math.min(pil.h, fy1 - y));
+            for (const x of [fx0 - pil.w, fx1]) {
+              const src = x === fx1 ? flipped2(pil.canvas) : pil.canvas;
+              for (let y = fy0; y < fy1; y += pil.h) ctx3.drawImage(src, 0, 0, pil.w, Math.min(pil.h, fy1 - y), x, y, pil.w, Math.min(pil.h, fy1 - y));
+            }
           } else {
             ctx3.fillStyle = "rgba(200,255,246,0.8)";
             ctx3.fillRect(fx0 - 6, fy0, 6, fy1 - fy0);
@@ -98626,13 +98673,6 @@ kmlmk..
               ctx3.drawImage(flipped2(hcap.canvas), right - 4, hy - hcap.h);
             }
             for (let x = left; x < right; x += hood.w) ctx3.drawImage(hood.canvas, 0, 0, Math.min(hood.w, right - x), hood.h, x, hy - hood.h, Math.min(hood.w, right - x), hood.h);
-            ctx3.save();
-            ctx3.globalCompositeOperation = "lighter";
-            ctx3.fillStyle = "rgba(255,255,255,0.10)";
-            ctx3.fillRect(left - 2, hy - hood.h + 3, right - left + 4, Math.round(hood.h * 0.4));
-            ctx3.fillStyle = "rgba(255,255,255,0.35)";
-            ctx3.fillRect(left + 6, hy - hood.h + 4, right - left - 12, 1);
-            ctx3.restore();
             if (!this.aq.st.tank.lampOff) {
               const col = lightLv === 2 ? `hsl(${t * 50 % 360},95%,72%)` : LIGHT_COLS[lightLv];
               ctx3.save();
@@ -99310,6 +99350,514 @@ ${t.e.kind === "blueprint" ? `Blueprint x${o.n}` : o.kind === "owned" ? `You own
     }
   });
 
+  // src/aquarium/food.js
+  function voxelize2(G, R4, shape6, m) {
+    const c = G / 2;
+    for (let iz = 0; iz < G; iz++) for (let iy = 0; iy < G; iy++) for (let ix = 0; ix < G; ix++) {
+      const px3 = ix + 0.5 - c, py = iy + 0.5 - c, pz = iz + 0.5 - c;
+      const qx = R4[0] * px3 + R4[3] * py + R4[6] * pz, qy = R4[1] * px3 + R4[4] * py + R4[7] * pz, qz = R4[2] * px3 + R4[5] * py + R4[8] * pz;
+      const v = shape6(qx, qy, qz, px3, py, pz);
+      if (v) m.set(ix, iy, iz, v);
+    }
+  }
+  function pal2(m, cols) {
+    const o = {};
+    for (const k in cols) o[k] = m.color(cols[k][0], { jitter: 0.06, spec: cols[k][1] ?? 0.5, ...cols[k][2] || {} });
+    return o;
+  }
+  function flakeShape(m, v) {
+    const base = FOODS.flakes.cols[v % FOODS.flakes.cols.length];
+    const P7 = pal2(m, { a: [base, 0.4], b: [shadeHex3(base, 0.35), 0.6], c: [shadeHex3(base, -0.28), 0.3], s: [v % 2 ? "#ffffff" : "#ffe8a0", 0.8] });
+    return (x, y, z) => {
+      const bump2 = Math.sin(x * 1.1 + v) * 0.45 + Math.cos(y * 0.9 + v * 2) * 0.35;
+      if (Math.abs(z - bump2) > 0.62) return 0;
+      const a = Math.atan2(y, x), r = Math.hypot(x, y);
+      const R0 = 4.3 * (1 + 0.2 * Math.sin(3 * a + v * 1.7) + 0.13 * Math.sin(5 * a + v * 2.9));
+      if (r > R0) return 0;
+      const h = h36(Math.round(x), Math.round(y), v);
+      if (h < 0.1) return P7.s;
+      if (r > R0 - 1.1) return h < 0.55 ? P7.c : P7.a;
+      return h < 0.33 ? P7.b : P7.a;
+    };
+  }
+  function pelletShape(m, v, bitten) {
+    const base = FOODS.pellets.cols[v % FOODS.pellets.cols.length];
+    const P7 = pal2(m, { a: [base, 0.6], b: [shadeHex3(base, 0.22), 0.8], c: [shadeHex3(base, -0.4), 0.3], s: [shadeHex3(base, 0.55), 0.9], g: ["#ffffff", 1, { emissive: 0.2 }], d: [shadeHex3(base, -0.25), 0.4], k: [shadeHex3(base, -0.55), 0.2] });
+    const R4 = 3.4;
+    return (x, y, z, wx, wy, wz) => {
+      const d = x * x + y * y + z * z;
+      if (d > R4 * R4) return 0;
+      if (bitten && (x - 2.6) ** 2 + (y - 1.2) ** 2 + (z - 1) ** 2 < 5.5) return bitten && d > 2.2 * 2.2 ? 0 : P7.k;
+      const lit2 = (-wx * 0.5 + wy * 0.7 + wz * 0.5) / R4;
+      if (lit2 > 0.78 && d > (R4 - 1.2) ** 2) return P7.g;
+      const h = h36(Math.round(x), Math.round(y), Math.round(z));
+      if (h < 0.13) return P7.c;
+      if (lit2 < -0.45) return h > 0.8 ? P7.c : P7.d;
+      if (lit2 > 0.4) return h > 0.7 ? P7.s : P7.b;
+      return h > 0.88 ? P7.s : P7.a;
+    };
+  }
+  function wormShape(m, len, ph) {
+    const P7 = pal2(m, { a: ["#d8283a", 0.7], b: ["#a8162c", 0.5], c: ["#ff6a6a", 0.9], h: ["#6a0a1c", 0.4] });
+    const L2 = len / 2;
+    return (x, y, z) => {
+      if (Math.abs(x) > L2) return 0;
+      const u = (x + L2) / (2 * L2);
+      const cy = Math.sin(u * TAU * 1.1 + ph) * 1.6 * (0.4 + u * 0.6);
+      const rr3 = 1.05 + (u > 0.15 && u < 0.9 ? 0.2 : 0) - (u < 0.08 ? 0.3 : 0);
+      if ((y - cy) ** 2 + z * z > rr3 * rr3) return 0;
+      if (x > L2 - 1.4) return y - cy > 0.3 ? P7.b : P7.h;
+      const seg = Math.floor((x + L2) / 1.5) % 2;
+      if (y - cy > 0.6 && z > -0.2) return seg ? P7.c : P7.a;
+      return seg ? P7.b : P7.a;
+    };
+  }
+  function shrimpShape(m, curl, scale = 1) {
+    const P7 = pal2(m, { a: ["#ff8a6a", 0.7], b: ["#ffc0a0", 0.9], c: ["#e8604a", 0.5], e: ["#1a1020", 1], t: ["#ffd8c0", 0.8] });
+    const pts = [];
+    const n2 = 9;
+    for (let i = 0; i < n2; i++) {
+      const u = i / (n2 - 1);
+      const a = -0.4 + u * (1.6 + curl * 0.9);
+      pts.push([Math.cos(a) * 3.2 * scale - 0.6, -Math.sin(a) * 2.6 * scale + 0.6, (1.25 - u * 0.75) * scale]);
+    }
+    return (x, y, z) => {
+      let best = 1e9, bi = 0;
+      for (let i = 0; i < n2; i++) {
+        const p2 = pts[i];
+        const d = (x - p2[0]) ** 2 + (y - p2[1]) ** 2;
+        if (d < best) {
+          best = d;
+          bi = i;
+        }
+      }
+      const p = pts[bi];
+      const r = p[2];
+      if (best + z * z > r * r) {
+        const q = pts[n2 - 1];
+        if (Math.abs(z) < 1.3 * scale && (x - q[0] + 0.8) ** 2 + (y - q[1] - 0.4) ** 2 < 1.4 * scale) return P7.t;
+        if (Math.abs(z) < 0.6 && y > pts[0][1] - 0.2 && y < pts[0][1] + 0.6 && x > pts[0][0] && x < pts[0][0] + 2.2 * scale) return P7.c;
+        return 0;
+      }
+      if (bi === 0 && z > 0.2 && y > p[1]) return P7.e;
+      if (y > p[1] + r * 0.45) return P7.b;
+      return bi % 2 ? P7.c : P7.a;
+    };
+  }
+  function canBuild() {
+    const n2 = performance.now();
+    if (n2 - budgetT2 > 16) {
+      budgetT2 = n2;
+      budgetN2 = 0;
+    }
+    return budgetN2 < 6;
+  }
+  function render4(m, o = {}) {
+    const r = renderVoxels(m, { ...RENDER2, ...o });
+    return r.canvas;
+  }
+  function sprite2(type, v, frame2, size) {
+    const key = type + "|" + v + "|" + frame2 + "|" + size;
+    let c = SPR5.get(key);
+    if (c !== void 0) return c;
+    if (!canBuild()) return null;
+    budgetN2++;
+    const G = type === "worms" ? 22 : type === "crumb" ? 6 : type === "shrimp" ? 17 : 14;
+    const m = new VoxelModel(G, G, G);
+    const F3 = FOODS[type]?.frames || 1;
+    const a = frame2 / F3 * TAU;
+    try {
+      if (type === "flakes") voxelize2(G, mul2(rotZ(a * 0.5 + v), rotY(Math.sin(a) * 1.25)), flakeShape(m, v), m);
+      else if (type === "pellets") voxelize2(G, mul2(rotY(a), rotZ(a * 0.5 + v)), pelletShape(m, v, size < 2), m);
+      else if (type === "worms") voxelize2(G, rotY(0.25), wormShape(m, 6 + size * 4, a), m);
+      else if (type === "shrimp") voxelize2(G, rotY(-0.3), shrimpShape(m, Math.sin(a) * 0.5 + 0.5, size < 2 ? 0.95 : 1.25), m);
+      else if (type === "crumb") {
+        const P7 = pal2(m, { a: [v, 0.5], b: [shadeHex3(v, -0.3), 0.3] });
+        voxelize2(G, rotY(frame2), (x, y, z) => Math.abs(x) < 1 && Math.abs(y) < 0.6 && Math.abs(z) < 1 && x + z < 0.9 ? y > 0 ? P7.a : P7.b : 0, m);
+      }
+      c = render4(m);
+    } catch (e) {
+      console.warn("food sprite", key, e);
+      c = false;
+    }
+    SPR5.set(key, c);
+    return c;
+  }
+  function foodIcon(type, scale = 3) {
+    const key = type + "|" + scale;
+    if (ICONS2.has(key)) return ICONS2.get(key);
+    const G = 18, m = new VoxelModel(G, G, G);
+    const put = (shape6, R4, ox, oy, oz) => voxelize2(G, R4, (x, y, z) => shape6(x - ox, y - oy, z - oz), m);
+    if (type === "flakes") {
+      put(flakeShape(m, 0), rotX(0.35), -2, -1, 1);
+      put(flakeShape(m, 1), rotX(-0.5), 2.5, 1.5, -1);
+      put(flakeShape(m, 2), rotZ(0.6), 0.5, 3.6, 1.5);
+    } else if (type === "pellets") {
+      put(pelletShape(m, 0, false), rotY(0), -2.6, -1.5, 0);
+      put(pelletShape(m, 1, false), rotY(1), 2.6, -1.5, 0.5);
+      put(pelletShape(m, 2, false), rotY(2), 0, 2.2, 0);
+    } else if (type === "worms") {
+      put(wormShape(m, 13, 0.6), rotZ(0.25), 0, 0, 0);
+      put(wormShape(m, 9, 2.4), mul2(rotY(1.2), rotZ(-0.2)), 0, -2.5, 0);
+    } else put(shrimpShape(m, 0.6, 1.35), rotY(-0.25), 0, 0, 0);
+    let c = null;
+    try {
+      c = render4(m, { scale, yaw: 24, pitch: 30, ao: 0.5 });
+    } catch (e) {
+      console.warn("food icon", e);
+    }
+    ICONS2.set(key, c);
+    return c;
+  }
+  function shakerSprite(tilt = 0) {
+    if (SHAKERS.has(tilt)) return SHAKERS.get(tilt);
+    const G = 22, m = new VoxelModel(G, G, G);
+    const P7 = pal2(m, { can: ["#2a9ae8", 0.9], can2: ["#1a6ac0", 0.6], lab: ["#f4fbff", 0.6], lid: ["#e8f2fa", 1], hole: ["#30486a", 0.2], fish: ["#ff8a3a", 0.8], eye: ["#1a1020", 0.5], rim: ["#b8d0e4", 0.8] });
+    const shape6 = (x, y, z) => {
+      const r = Math.hypot(x, z);
+      if (y < -5.5 || y > 6) return 0;
+      if (y > 4.2) {
+        if (r > 4.1) return 0;
+        if (y > 5.2 && r < 3.2 && Math.abs((x + 10) % 1.6 - 0.8) < 0.45 && Math.abs((z + 10) % 1.6 - 0.8) < 0.45) return P7.hole;
+        return r > 3.6 ? P7.rim : P7.lid;
+      }
+      if (r > 3.6) return 0;
+      if (y > -2.6 && y < 2.4 && z > 0) {
+        const fx = x, fy = y + 0.1;
+        if (fx * fx / 3.2 + fy * fy / 1.1 < 1) return Math.abs(fx - 1.1) < 0.5 && fy > 0 ? P7.eye : P7.fish;
+        if (fx < -1.6 && fx > -2.8 && Math.abs(fy) < (fx + 2.8) * 0.8) return P7.fish;
+        return P7.lab;
+      }
+      return y < -4.5 ? P7.can2 : P7.can;
+    };
+    voxelize2(G, mul2(rotZ(tilt), rotY(-0.5)), shape6, m);
+    let c = null;
+    try {
+      c = render4(m, { scale: 4, yaw: 0, pitch: 18, ao: 0.4 });
+    } catch (e) {
+      console.warn("shaker", e);
+    }
+    SHAKERS.set(tilt, c);
+    return c;
+  }
+  var FOODS, FOOD_IDS, RENDER2, shadeHex3, h36, rotX, rotY, rotZ, mul2, SPR5, budgetT2, budgetN2, ICONS2, SHAKERS, FoodSim;
+  var init_food = __esm({
+    "src/aquarium/food.js"() {
+      init_voxel();
+      init_canvas();
+      init_math();
+      init_rng();
+      FOODS = {
+        flakes: { name: "Reef Flakes", short: "Flakes", tip: "Light flakes that flutter down slowly", n: [9, 12], bites: 1, feed: 0.09, sink: [5, 8], r: 2.2, frames: 8, cols: ["#ff7a3a", "#ffcf3a", "#6ad04a", "#ff5a7a"] },
+        pellets: { name: "Pop Pellets", short: "Pellets", tip: "Crunchy pellets that sink fast", n: [5, 7], bites: 2, feed: 0.16, sink: [20, 27], r: 1.8, frames: 6, cols: ["#d8743a", "#7ac23a", "#e8b43a"] },
+        worms: { name: "Bloodworms", short: "Worms", tip: "Wriggly worms - a feast!", n: [3, 4], bites: 3, feed: 0.24, sink: [9, 13], r: 2.6, frames: 6, cols: ["#d8283a"] },
+        shrimp: { name: "Brine Shrimp", short: "Shrimp", tip: "Tiny shrimp that kick as they sink", n: [5, 6], bites: 2, feed: 0.18, sink: [4, 7], r: 2, frames: 4, cols: ["#ff8a6a"] }
+      };
+      FOOD_IDS = Object.keys(FOODS);
+      RENDER2 = { scale: 2, yaw: 0, pitch: 26, outline: true, ao: 0.35, edges: 0.85, groundAO: false, jitter: 0.08 };
+      shadeHex3 = (hex4, k) => {
+        const n2 = parseInt(hex4.slice(1), 16);
+        const f = (v) => Math.max(0, Math.min(255, Math.round(k >= 0 ? v + (255 - v) * k : v * (1 + k))));
+        return "#" + [n2 >> 16 & 255, n2 >> 8 & 255, n2 & 255].map((v) => f(v).toString(16).padStart(2, "0")).join("");
+      };
+      h36 = (x, y, z) => {
+        const s = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453;
+        return s - Math.floor(s);
+      };
+      rotX = (a) => [1, 0, 0, 0, Math.cos(a), -Math.sin(a), 0, Math.sin(a), Math.cos(a)];
+      rotY = (a) => [Math.cos(a), 0, Math.sin(a), 0, 1, 0, -Math.sin(a), 0, Math.cos(a)];
+      rotZ = (a) => [Math.cos(a), -Math.sin(a), 0, Math.sin(a), Math.cos(a), 0, 0, 0, 1];
+      mul2 = (A2, B2) => {
+        const o = new Array(9);
+        for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) o[i * 3 + j] = A2[i * 3] * B2[j] + A2[i * 3 + 1] * B2[3 + j] + A2[i * 3 + 2] * B2[6 + j];
+        return o;
+      };
+      SPR5 = /* @__PURE__ */ new Map();
+      budgetT2 = 0;
+      budgetN2 = 0;
+      ICONS2 = /* @__PURE__ */ new Map();
+      SHAKERS = /* @__PURE__ */ new Map();
+      FoodSim = class {
+        constructor(aq) {
+          this.aq = aq;
+          this.items = [];
+          this.crumbs = [];
+          this.queue = [];
+          this.splashT = 0;
+        }
+        get T() {
+          return this.aq.shape;
+        }
+        clear() {
+          this.items.length = 0;
+          this.crumbs.length = 0;
+          this.queue.length = 0;
+        }
+        live() {
+          return this.items.filter((p) => p.wet && !p.eaten);
+        }
+        // a pinch of food: pieces appear under the lid around x (staggered like a shaker) and fall into the water
+        drop(type, x, z, n2 = null, o = {}) {
+          const F3 = FOODS[type] || FOODS.flakes;
+          n2 ?? (n2 = rng.int(F3.n[0], F3.n[1]));
+          if (this.items.length > 70) n2 = Math.min(n2, 2);
+          for (let i = 0; i < n2; i++) this.queue.push({ at: (o.delay || 0) + i * (o.gap ?? 0.045) + rng.float(0, 0.03), type, x: x + rng.float(-1, 1) * (o.spread ?? 14), z: z + rng.float(-1, 1) * 10 });
+        }
+        spawn(q) {
+          const T5 = this.T, F3 = FOODS[q.type];
+          const p = [clamp(q.x, -T5.W / 2 + 4, T5.W / 2 - 4), T5.H - 2 - rng.float(0, 3), clamp(q.z, -T5.D / 2 + 6, T5.D / 2 - 6)];
+          this.items.push({
+            type: q.type,
+            v: rng.int(0, 99),
+            p,
+            vel: [rng.float(-6, 6), -rng.float(10, 30), 0],
+            wet: false,
+            eaten: false,
+            rot: rng.float(0, TAU),
+            rotV: rng.float(2, 6) * (rng.chance(0.5) ? 1 : -1),
+            ph: rng.float(0, TAU),
+            dir: rng.chance(0.5) ? 1 : -1,
+            bites: F3.bites,
+            t: 0,
+            rest: 0,
+            floatT: q.type === "flakes" ? rng.float(0.4, 1.4) : 0,
+            hopT: rng.float(0.3, 1),
+            r: F3.r,
+            bounced: false,
+            alpha: 1,
+            sink: rng.float(F3.sink[0], F3.sink[1])
+          });
+        }
+        step(dt) {
+          const T5 = this.T, aq = this.aq;
+          this.splashT -= dt;
+          if (this.queue.length) {
+            for (const q of this.queue) q.at -= dt;
+            const due = this.queue.filter((q) => q.at <= 0);
+            if (due.length) {
+              this.queue = this.queue.filter((q) => q.at > 0);
+              for (const q of due) this.spawn(q);
+            }
+          }
+          let w = 0;
+          for (const p of this.items) {
+            p.t += dt;
+            if (p.eaten) continue;
+            const v = p.vel;
+            if (!p.wet) {
+              v[1] -= 260 * dt;
+              p.p[0] += v[0] * dt;
+              p.p[1] += v[1] * dt;
+              p.rot += p.rotV * dt * 2;
+              if (p.p[1] <= T5.waterY) {
+                p.p[1] = T5.waterY - 0.5;
+                p.wet = true;
+                v[1] *= p.type === "pellets" ? 0.35 : 0.12;
+                v[0] *= 0.3;
+                aq.foodSplash(p);
+              }
+            } else if (p.floatT > 0) {
+              p.floatT -= dt;
+              p.p[1] = T5.waterY - 0.8 + Math.sin(p.t * 5 + p.ph) * 0.3;
+              p.p[0] += Math.sin(p.t * 1.3 + p.ph) * 3 * dt;
+              p.rot += Math.sin(p.t * 2 + p.ph) * dt * 0.6;
+              v[1] = -1;
+            } else if (p.rest <= 0) {
+              const k = Math.min(1, dt * (p.type === "pellets" ? 2.2 : 3));
+              v[1] += (-p.sink - v[1]) * k;
+              if (p.type === "flakes") {
+                v[0] = Math.sin(p.t * 2.1 + p.ph) * 7;
+                p.rotV = 3 + Math.sin(p.t * 1.7 + p.ph) * 3;
+                v[1] -= Math.abs(Math.cos(p.t * 2.1 + p.ph)) * 3 * dt;
+              } else if (p.type === "pellets") {
+                v[0] *= Math.exp(-dt * 2);
+                v[0] += Math.sin(p.t * 3 + p.ph) * 1.2 * dt;
+              } else if (p.type === "worms") {
+                v[0] = Math.sin(p.t * 3 + p.ph) * 4 + p.dir * 2;
+              } else if (p.type === "shrimp") {
+                p.hopT -= dt;
+                if (p.hopT <= 0) {
+                  p.hopT = rng.float(0.7, 1.5);
+                  v[1] = rng.float(9, 15);
+                  v[0] = p.dir * rng.float(6, 12);
+                  if (rng.chance(0.3)) p.dir *= -1;
+                }
+                v[0] *= Math.exp(-dt * 2.5);
+              }
+              p.p[0] += v[0] * dt;
+              p.p[1] += v[1] * dt;
+              p.p[2] += (v[2] || 0) * dt;
+              p.rot += p.rotV * dt;
+              const fy = T5.floorY(p.p[0], p.p[2]) + p.r * 0.6;
+              if (p.p[1] <= fy) {
+                p.p[1] = fy;
+                if (p.type === "pellets" && !p.bounced && v[1] < -10) {
+                  p.bounced = true;
+                  v[1] = -v[1] * 0.32;
+                  v[0] += rng.float(-6, 6);
+                  aq.foodLand(p, true);
+                } else {
+                  p.rest = 1e-3;
+                  v[0] = v[1] = 0;
+                  aq.foodLand(p, false);
+                }
+              }
+              if (p.p[1] > T5.waterY - 0.8) {
+                p.p[1] = T5.waterY - 0.8;
+                v[1] = Math.min(v[1], 0);
+              }
+            } else {
+              p.rest += dt;
+              if (p.type === "shrimp") {
+                p.hopT -= dt;
+                if (p.hopT <= 0) {
+                  p.hopT = rng.float(1.5, 3.5);
+                  p.rest = 0;
+                  v[1] = rng.float(5, 9);
+                  v[0] = p.dir * rng.float(3, 6);
+                }
+              }
+              if (p.type === "flakes" || p.type === "pellets") p.rot += (Math.round(p.rot / Math.PI) * Math.PI - p.rot) * Math.min(1, dt * 4);
+              p.alpha = clamp012(1 - (p.rest - 26) / 4);
+              if (p.rest > 30) continue;
+            }
+            const hx2 = T5.W / 2 - 3, hz = T5.D / 2 - 4;
+            p.p[0] = clamp(p.p[0], -hx2, hx2);
+            p.p[2] = clamp(p.p[2], -hz, hz);
+            this.items[w++] = p;
+          }
+          this.items.length = w;
+          w = 0;
+          for (const c of this.crumbs) {
+            c.t += dt;
+            if (c.t > c.life) continue;
+            c.vel[1] += (-6 - c.vel[1]) * Math.min(1, dt * 2);
+            c.vel[0] *= Math.exp(-dt * 2);
+            c.p[0] += c.vel[0] * dt;
+            c.p[1] += c.vel[1] * dt;
+            c.frame = (c.frame + dt * 6) % 4;
+            const fy = T5.floorY(c.p[0], c.p[2]);
+            if (c.p[1] < fy) {
+              c.p[1] = fy;
+              c.vel[0] = 0;
+            }
+            this.crumbs[w++] = c;
+          }
+          this.crumbs.length = w;
+        }
+        // a fish takes a bite: crumbs fly, the piece is knocked about; returns true when it is all gone
+        bite(f, p) {
+          const d = f.dir;
+          p.bites--;
+          const col = FOODS[p.type].cols[p.v % FOODS[p.type].cols.length];
+          const n2 = p.bites <= 0 ? rng.int(3, 5) : rng.int(2, 3);
+          for (let i = 0; i < n2 && this.crumbs.length < 80; i++) {
+            this.crumbs.push({ p: [p.p[0] + rng.float(-1.5, 1.5), p.p[1] + rng.float(-1, 1.5), p.p[2]], vel: [d[0] * rng.float(4, 14) + rng.float(-8, 8), rng.float(2, 10), 0], t: 0, life: rng.float(1.2, 2.4), col, frame: rng.float(0, 4) });
+          }
+          if (p.bites <= 0) {
+            p.eaten = true;
+            return true;
+          }
+          p.vel[0] += d[0] * rng.float(5, 10);
+          p.vel[1] += rng.float(3, 7);
+          p.rest = 0;
+          p.rotV += rng.float(-6, 6);
+          p.floatT = 0;
+          return false;
+        }
+        // ---- drawing (cam: the scene camera; o.hi = drawing on the full-res layer)
+        draw(ctx3, cam, o = {}) {
+          const S11 = this.aq.scene;
+          const half = 0.5;
+          const prevF = ctx3.filter;
+          if (o.dark > 0.05) ctx3.filter = `brightness(${(1 - o.dark * 0.5).toFixed(2)}) saturate(${(1 - o.dark * 0.3).toFixed(2)})`;
+          for (const c of this.crumbs) {
+            const s = sprite2("crumb", c.col, Math.floor(c.frame) % 4, 1);
+            const q = S11.proj(c.p[0], c.p[1], c.p[2], cam);
+            const a = clamp012((c.life - c.t) / 0.6);
+            if (!s) {
+              ctx3.fillStyle = c.col;
+              ctx3.fillRect(Math.round(q.x), Math.round(q.y), 1, 1);
+              continue;
+            }
+            ctx3.globalAlpha = a;
+            ctx3.drawImage(s, Math.round((q.x - s.width * half / 2) * 2) / 2, Math.round((q.y - s.height * half / 2) * 2) / 2, s.width * half, s.height * half);
+            ctx3.globalAlpha = 1;
+          }
+          for (const p of this.items) {
+            if (p.eaten) continue;
+            const F3 = FOODS[p.type];
+            const fr = F3.frames;
+            let frame2, v = 0, size = 2;
+            if (p.type === "flakes") {
+              v = p.v % 4;
+              frame2 = (Math.floor(p.rot / TAU * fr) % fr + fr) % fr;
+            } else if (p.type === "pellets") {
+              v = p.v % 3;
+              size = p.bites >= 2 ? 2 : 1;
+              frame2 = (Math.floor(p.rot / TAU * fr) % fr + fr) % fr;
+            } else if (p.type === "worms") {
+              size = clamp(p.bites, 1, 3);
+              frame2 = Math.floor((p.t * (p.rest > 0 ? 4 : 9) + p.ph) % fr);
+            } else {
+              size = p.bites >= 2 ? 2 : 1;
+              const hop = p.hopT < 0.25 ? 1 : 0;
+              frame2 = (Math.floor(p.t * 3 + p.ph) + hop * 2) % fr;
+            }
+            const s = sprite2(p.type, v, frame2, size);
+            const q = S11.proj(p.p[0], p.p[1], p.p[2], cam);
+            if (!s) {
+              ctx3.fillStyle = F3.cols[0];
+              ctx3.fillRect(Math.round(q.x) - 1, Math.round(q.y) - 1, 2, 2);
+              continue;
+            }
+            const w = s.width * half, h = s.height * half;
+            if (p.alpha < 1) ctx3.globalAlpha = p.alpha;
+            const flip = (p.type === "worms" || p.type === "shrimp") && p.dir < 0;
+            const x = Math.round((q.x - w / 2) * 2) / 2, y = Math.round((q.y - h / 2) * 2) / 2;
+            if (flip) {
+              ctx3.save();
+              ctx3.translate(x + w, y);
+              ctx3.scale(-1, 1);
+              ctx3.drawImage(s, 0, 0, w, h);
+              ctx3.restore();
+            } else ctx3.drawImage(s, x, y, w, h);
+            ctx3.globalAlpha = 1;
+          }
+          ctx3.filter = prevF || "none";
+        }
+      };
+      FoodSim.prototype.sheet = function sheet2() {
+        const rows = [];
+        for (const type of FOOD_IDS) for (let v = 0; v < (type === "flakes" ? 4 : type === "pellets" ? 3 : 1); v++) for (const size of type === "flakes" ? [2] : type === "worms" ? [3, 2, 1] : [2, 1]) {
+          const row2 = [];
+          for (let f = 0; f < FOODS[type].frames; f++) {
+            budgetN2 = 0;
+            const c = sprite2(type, v, f, size);
+            if (c) row2.push(c);
+          }
+          rows.push(row2);
+        }
+        const icons3 = FOOD_IDS.map((id2) => foodIcon(id2, 5)).concat([shakerSprite(-0.18), shakerSprite(-0.75)]).filter(Boolean);
+        rows.push(icons3);
+        const W11 = Math.max(...rows.map((r) => r.reduce((a, c) => a + c.width + 4, 0))), H8 = rows.reduce((a, r) => a + Math.max(1, ...r.map((c) => c.height)) + 4, 0);
+        const out = makeCanvas(W11, H8), g = ctxOf(out);
+        g.fillStyle = "#45c8f0";
+        g.fillRect(0, 0, W11, H8);
+        let y = 0;
+        for (const r of rows) {
+          let x = 0;
+          for (const c of r) {
+            g.drawImage(c, x, y);
+            x += c.width + 4;
+          }
+          y += Math.max(1, ...r.map((c) => c.height)) + 4;
+        }
+        return out;
+      };
+    }
+  });
+
   // src/aquarium/aquarium.js
   function segDist2(px3, py, ax, ay, bx, by) {
     const dx = bx - ax, dy = by - ay;
@@ -99339,7 +99887,7 @@ ${t.e.kind === "blueprint" ? `Blueprint x${o.n}` : o.kind === "owned" ? `You own
       ctx3.fillRect(x0 + i * k, y0 + j * k, k, k);
     }
   }
-  var HUNGER_RATE, AUTO_POP, ICONS2, EMOTE_ICON, FRAME, WIN_W, FOOD_COLS, Aquarium, masks2, SNAIL, SNAIL_COL;
+  var HUNGER_RATE, AUTO_POP, ICONS3, EMOTE_ICON, FRAME, WIN_W, Aquarium, masks2, SNAIL, SNAIL_COL;
   var init_aquarium = __esm({
     "src/aquarium/aquarium.js"() {
       init_math();
@@ -99358,19 +99906,23 @@ ${t.e.kind === "blueprint" ? `Blueprint x${o.n}` : o.kind === "owned" ? `You own
       init_sim2d();
       init_scene2d();
       init_build2d();
+      init_food();
+      init_icons3d();
+      init_bigicons();
+      init_pop3d();
+      init_color();
       HUNGER_RATE = 1 / 2e3;
       AUTO_POP = [Infinity, 14, 7, 3.5, 2];
-      ICONS2 = new Set(UI_ICON_NAMES);
+      ICONS3 = new Set(UI_ICON_NAMES);
       EMOTE_ICON = { "!": "exclaim", "!!": "exclaim", "?": "question", $: "dollar" };
       FRAME = { lid: 15, side: 4, base: 14 };
       WIN_W = [250, 266, 290, 326, 362, 404];
-      FOOD_COLS = ["#e86a3a", "#f0a040", "#c8503a", "#8ac04a", "#e8c070"];
       Aquarium = class {
         constructor(game) {
           this.game = game;
           this.t = 0;
           this.fish = [];
-          this.food = [];
+          this.feed = new FoodSim(this);
           this.bubbles = [];
           this.decor = [];
           this.drops = new Drops3D();
@@ -99422,6 +99974,13 @@ ${t.e.kind === "blueprint" ? `Blueprint x${o.n}` : o.kind === "owned" ? `You own
           return null;
         }
         // swimming retired in phase 10
+        get food() {
+          return this.feed.items;
+        }
+        get foodType() {
+          const f = this.st.tank?.food;
+          return FOODS[f] ? f : "flakes";
+        }
         ensureState() {
           const st = this.st;
           st.tank || (st.tank = {});
@@ -99454,7 +100013,7 @@ ${t.e.kind === "blueprint" ? `Blueprint x${o.n}` : o.kind === "owned" ? `You own
           this.tier = tankTier(this.st);
           this.shape = new SideShape(this.tier);
           this.fish.length = 0;
-          this.food.length = 0;
+          this.feed.clear();
           this.bubbles.length = 0;
           this.drops.list.length = 0;
           this.growAnim = null;
@@ -99802,6 +100361,9 @@ ${t.e.kind === "blueprint" ? `Blueprint x${o.n}` : o.kind === "owned" ? `You own
         }
         fullCam() {
           const g = this.game;
+          const L2 = this.fullLayout();
+          this.scene.view = { x0: 0, x1: L2.dock.x - 4 };
+          this.scene.topY = L2.top + 2;
           this.scene.layout(g.screen.W, g.screen.H, this.layoutBottom ?? this.hudBottom());
           return this.scene.cam(this.camX);
         }
@@ -99881,14 +100443,62 @@ ${t.e.kind === "blueprint" ? `Blueprint x${o.n}` : o.kind === "owned" ? `You own
           this.ripples.add(c.p[0], c.p[2], 0.3);
           this.game.emit?.("coinCollected", { value: c.value, by });
         }
+        // a fish nibbles a piece of food: hunger down, crumbs and chomp bubbles, a gulp when it is all gone
         onEat(f, food) {
-          if (food.eaten) return;
+          if (food.eaten || !food.wet || (f.biteT || 0) > this.t) return;
+          f.biteT = this.t + rng.float(0.28, 0.46);
+          const F3 = FOODS[food.type] || FOODS.flakes;
           const rec = f.rec;
-          rec.hunger = Math.max(0, (rec.hunger ?? 0.5) - 0.16);
-          rec.happiness = Math.min(1, (rec.happiness ?? 0.7) + 0.015);
-          food.eaten = true;
-          f.poke(4);
-          this.sfx("gulp", { vol: 0.35, pitch: 1.4 });
+          rec.hunger = Math.max(0, (rec.hunger ?? 0.5) - F3.feed / F3.bites);
+          rec.happiness = Math.min(1, (rec.happiness ?? 0.7) + 0.012);
+          const done = this.feed.bite(f, food);
+          f.poke(done ? 7 : 4);
+          f.chomp = 0.3;
+          const mouth = food.p.slice();
+          this.addBubble([mouth[0], mouth[1] + 1, mouth[2]], rng.float(0.6, 1.1));
+          if (done) this.addBubble([mouth[0] + rng.float(-2, 2), mouth[1] + 2, mouth[2]], rng.float(0.8, 1.4));
+          if ((this.eatSfxT || 0) < this.t) {
+            this.eatSfxT = this.t + 0.08;
+            if (done) this.sfx(food.type === "worms" ? "worm_squish" : "gulp", { vol: food.type === "worms" ? 0.22 : 0.3, pitch: rng.float(1.25, 1.6) });
+            else this.sfx("nibble", { vol: 0.22, pitch: rng.float(1.4, 1.9) });
+          }
+          if (this.visibleKey) {
+            const sp = this.project(mouth);
+            if (sp) {
+              const col = F3.cols[food.v % F3.cols.length];
+              this.px("sparkle", sp[0], sp[1], done ? 3 : 1, { ramps: [col, "white"], speed: [12, 36], w: 3, h: 3 });
+              if (done) this.px("puff", sp[0], sp[1], 2, { ramp: "white", speed: [6, 16], w: 2, h: 2 });
+            }
+          }
+          if (done && (rec.hunger ?? 0) < 0.08 && !f.emote && rng.chance(0.3)) f.say("heart", 1.2);
+          if (done) this.game.emit?.("tankAte", { species: f.sp.id, food: food.type });
+        }
+        // food hits the water: a little splash, ripples and a bubble trail
+        foodSplash(p) {
+          const T5 = this.shape;
+          this.ripples.add(p.p[0], p.p[2], p.type === "pellets" ? 0.45 : 0.3);
+          if (rng.chance(0.7)) this.addBubble([p.p[0] + rng.float(-1, 1), T5.waterY - 3, p.p[2]], rng.float(0.6, 1.3));
+          if (!this.visibleKey) return;
+          const sp = this.project([p.p[0], T5.waterY, p.p[2]]);
+          if (sp) {
+            this.px("drop", sp[0], sp[1] - 1, rng.int(2, 3), { ramp: "aqua", speed: [25, 60], spread: 0.9 });
+            if (rng.chance(0.5)) this.px("foam", sp[0], sp[1], 1, { speed: [4, 10] });
+          }
+          if (this.feed.splashT <= 0) {
+            this.feed.splashT = 0.07;
+            this.sfx("splash_small", { vol: 0.16, pitch: rng.float(1.4, 1.9) });
+          }
+        }
+        // food settles on the gravel (pellets bounce once)
+        foodLand(p, bounce) {
+          if (!this.visibleKey) return;
+          const sp = this.project(p.p);
+          if (!sp) return;
+          this.px("dust", sp[0], sp[1] + 1, bounce ? 3 : 2, { speed: [6, 16], up: 4, w: 2, h: 1, ramps: ["dust", "white"] });
+          if (bounce && (this.landSfxT || 0) < this.t) {
+            this.landSfxT = this.t + 0.1;
+            this.sfx("click", { vol: 0.12, pitch: rng.float(1.6, 2.1) });
+          }
         }
         canCourt(f) {
           const s = this.stats;
@@ -100016,7 +100626,7 @@ ${t.e.kind === "blueprint" ? `Blueprint x${o.n}` : o.kind === "owned" ? `You own
         }
         feedAll() {
           const T5 = this.shape;
-          for (let i = 0; i < 4; i++) this.sprinkle((0.15 + i * 0.23 - 0.5) * T5.W * 0.8 + this.camX * 0.5, rng.float(-0.2, 0.2) * T5.D, 6);
+          for (let i = 0; i < 4; i++) this.feed.drop(this.foodType, (0.15 + i * 0.23 - 0.5) * T5.W * 0.8 + this.camX * 0.5, rng.float(-0.2, 0.2) * T5.D, null, { delay: i * 0.18 });
           for (const f of this.fish) f.rec.hunger = Math.max(0, (f.rec.hunger ?? 0.4) - 0.3);
           this.sfx("bubble", { vol: 0.5, pitch: 1.2 });
           this.game.emit?.("tankFed", { n: this.fish.length });
@@ -100331,6 +100941,11 @@ ${t.e.kind === "blueprint" ? `Blueprint x${o.n}` : o.kind === "owned" ? `You own
             this.prevCur = null;
             return;
           }
+          if (this.panel && g.input?.keyPressed("Escape")) {
+            this.panel = null;
+            g.input.keysPressed?.delete?.("Escape");
+            this.sfx("ui_close", { vol: 0.35 });
+          }
           if (this.panel === "gear") {
             const pr2 = this.gearPanelRect();
             if (rectContains(pr2, inp.x, inp.y)) {
@@ -100342,6 +100957,10 @@ ${t.e.kind === "blueprint" ? `Blueprint x${o.n}` : o.kind === "owned" ? `You own
               inp.consume();
               return;
             }
+          }
+          if (this.panel === "feed" && this.feedPanelInput(inp, tip)) {
+            this.prevCur = null;
+            return;
           }
           const cam = this.fullCam();
           const Z = cam.Z;
@@ -100367,11 +100986,14 @@ ${t.e.kind === "blueprint" ? `Blueprint x${o.n}` : o.kind === "owned" ? `You own
           }
           const [wx, wy] = this.scene.unproj(inp.x, inp.y, this.shape.D / 2 - 8, cam);
           this.cursor3 = { p: [wx, clamp(wy, 0, this.shape.waterY), this.shape.D / 2 - 10], speed: inp.speed || 0, t: this.t };
-          const hf = this.pickFish(inp.x, inp.y);
-          const hd = hf ? null : this.pickPiece(inp.x, inp.y);
+          const feeding = this.panel === "feed";
+          const hf = feeding ? null : this.pickFish(inp.x, inp.y);
+          const hd = hf || feeding ? null : this.pickPiece(inp.x, inp.y);
           this.hoverDecor = hd;
           this.hoverFish = hf;
-          if (hd && !pr?.panning) {
+          this.shakeCur = feeding && this.inWater(inp.x, inp.y, cam) ? { x: inp.x, y: inp.y } : null;
+          if (this.shakeCur && !pr?.panning) tip(`{mouse_l} Sprinkle ${FOODS[this.foodType].name}`);
+          else if (hd && !pr?.panning) {
             if (hd.kind === "building") tip(`${this.buildingName(hd)}
 {mouse_l} Open`);
             else tip(`${PROPS[hd.id]?.name || "Decoration"}
@@ -100389,6 +101011,13 @@ ${t.e.kind === "blueprint" ? `Blueprint x${o.n}` : o.kind === "owned" ? `You own
           }
           if (inp.rpressed) inp.rpressed = false;
         }
+        // the screen point is over the tank's water (or the air gap under the lid)
+        inWater(x, y, cam) {
+          const b = this.scene.box;
+          if (!b || x < b.fx0 || x > b.fx1 || y < b.fy0 || y > b.fy1) return false;
+          const [wx, wy] = this.scene.unproj(x, y, 0, cam);
+          return Math.abs(wx) < this.shape.W / 2 && wy > this.shape.floorY(wx, 0) - 6;
+        }
         buildingName(p) {
           return this.game.build?.defName?.(p.id) || p.id;
         }
@@ -100397,6 +101026,11 @@ ${t.e.kind === "blueprint" ? `Blueprint x${o.n}` : o.kind === "owned" ? `You own
             this.st.tank.lampOff = !this.st.tank.lampOff;
             this.sfx("click", { vol: 0.6, pitch: this.st.tank.lampOff ? 0.8 : 1.25 });
             this.game.save?.();
+            return;
+          }
+          if (this.panel === "feed" && this.inWater(x, y, cam)) {
+            const [wx2] = this.scene.unproj(x, y, 0, cam);
+            this.sprinkle(clamp(wx2, -this.shape.W / 2 + 6, this.shape.W / 2 - 6), rng.float(-0.25, 0.25) * this.shape.D);
             return;
           }
           const f = this.pickFish(x, y);
@@ -100534,43 +101168,137 @@ ${t.e.kind === "blueprint" ? `Blueprint x${o.n}` : o.kind === "owned" ? `You own
           }
           return clamp(Math.min(k, this.game.screen.W / 620, this.game.screen.H / 380), 1, 2.2);
         }
+        statFont() {
+          return this.hudK() >= 1.4 ? "big" : "normal";
+        }
+        // the top plate: [tank name in voxel letters][fish][happiness][Aero/min] wells, the Ocean button beside it and the
+        // scroll rail under it; the right dock column of voxel tiles (Build, Feed, Fish, Gear, Light)
         fullLayout() {
-          const W11 = this.game.screen.W, k = this.hudK();
-          const pw = Math.round(200 * k), bw = Math.round(62 * k), ph = Math.round(20 * k);
-          const px3 = Math.round(W11 / 2 - (pw + bw + 6) / 2);
-          return { k, pill: { x: px3, y: 6, w: pw, h: ph }, btn: { x: px3 + pw + 6, y: 7, w: bw, h: ph - 2 } };
+          const key = this.t + "|" + this.game.screen.W + "|" + this.game.screen.H + "|" + this.tier;
+          if (this.layKey === key && this.lay) return this.lay;
+          this.layKey = key;
+          return this.lay = this.computeLayout();
+        }
+        computeLayout() {
+          const { W: W11, H: H8 } = this.game.screen, k = this.hudK();
+          const R4 = Math.round;
+          const sm3 = this.tankSummary();
+          const font = this.statFont();
+          const ph = R4(26 * k), y = 5;
+          const nameC = text3dCanvas(this.tierInfo().name, { palette: "white", size: 16, depth: 2 });
+          const nameW = R4(Math.max(nameC ? nameC.width : measureText(this.tierInfo().name, "big") + 12, 40) + 14 * k);
+          const icW = R4(13 * k), wellPad = R4(6 * k), wh = ph - R4(9 * k);
+          const vals = [`${sm3.fish}/${sm3.cap}`, sm3.fish ? `${Math.round(sm3.happiness * 100)}%` : "--", `${sm3.aeroPerMin.toFixed(1)}/min`];
+          const wells = vals.map((v, i) => ({ v, w: icW + R4(4 * k) + Math.max(measureText(i === 2 ? "000.0/min" : i === 1 ? "100%" : "00/00", font), measureText(v, font)) + wellPad * 2, h: wh, icon: ["fish", "heart", "coin"][i] }));
+          const pad = R4(7 * k), gap = R4(4 * k);
+          const pw = pad * 2 + nameW + wells.reduce((a, q) => a + q.w + gap, 0);
+          const bw = R4(66 * k), bgap = R4(6 * k);
+          const x0 = R4(W11 / 2 - (pw + bgap + bw) / 2);
+          const plate = { x: x0, y, w: pw, h: ph, nameW };
+          let wx = x0 + pad + nameW + gap;
+          for (const q of wells) {
+            q.x = wx;
+            q.y = y + R4((ph - R4(3 * k) - wh) / 2);
+            wx += q.w + gap;
+          }
+          const btn = { x: x0 + pw + bgap, y: y + R4(1 * k), w: bw, h: ph - R4(2 * k) };
+          const rail = { x: R4(plate.x + plate.w * 0.16), y: y + ph + R4(3 * k), w: R4(plate.w * 0.68), h: Math.max(5, R4(5 * k)) };
+          const kd = clamp(Math.min(k, (H8 - 150) / (5 * 46)), 0.8, 2);
+          const B2 = R4(30 * kd), lab3 = R4(10 * kd), dpad = R4(5 * kd), dgap = R4(4 * kd);
+          const cell = B2 + lab3 + dgap;
+          const dw = B2 + dpad * 2, dh = 5 * cell - dgap + dpad * 2;
+          const dx = W11 - dw - R4(3 * kd);
+          const top = rail.y + rail.h + R4(4 * k);
+          const dy = top + R4(4 * kd), dhFull = Math.max(dh, this.hudBottom() - dy - R4(6 * kd));
+          const dock = { x: dx, y: dy, w: dw, h: dhFull, B: B2, lab: lab3, pad: dpad, cell, kd, ty: dy + R4((dhFull - dh) / 2) };
+          return { k, plate, wells, btn, rail, dock, font, top };
         }
         fullButton() {
           return this.fullLayout().btn;
         }
         fullButtons() {
-          const g = this.game, W11 = g.screen.W, H8 = g.screen.H;
+          const g = this.game;
           const L2 = this.fullLayout();
           const out = [{ id: "back", ...L2.btn, run: () => g.setView?.("ocean"), tip: "Back to the ocean" }];
-          out.push({ id: "pill", ...L2.pill, run: () => {
+          out.push({ id: "pill", ...L2.plate, run: () => {
           }, tip: `${this.tierInfo().name}
 {fish} ${this.fish.length}/${this.capacity()}  {coin} ${this.ratePerMin().toFixed(1)} Aero/min` });
-          const kd = clamp(Math.min(this.hudK(), (H8 - 150) / (6 * 34 + 8)), 0.8, 2);
-          const bw = Math.round(34 * kd), bh = Math.round(30 * kd), x = W11 - bw - 8;
-          let y = Math.max(Math.round(44 * kd), Math.round((H8 - 60) * 0.5 - 2.5 * (bh + 4)));
+          const D = L2.dock;
+          const lampOff = this.st.tank.lampOff;
           const dock = [
-            { id: "build", icon: "coral", label: "Build", tip: "Build & decorate your tank (U)", run: () => this.build.enter(), tone: "green" },
-            { id: "feed", icon: "food", label: "Feed", tip: "Sprinkle food", run: () => this.sprinkle(this.camX + rng.float(-0.2, 0.2) * Math.min(this.shape.W, W11 / this.scene.Z), rng.float(-0.2, 0.2) * this.shape.D, 9) },
-            { id: "fish", icon: "fish", label: "Fish", tip: "Manage your fish (F)", run: () => g.ui?.panels?.fishmgr && g.ui.open("fishmgr") },
+            { id: "build", icon: "hammer", label: "Build", tip: "Build & decorate your tank (U)", run: () => {
+              this.panel = null;
+              this.build.enter();
+            }, tint: "#5ccc3c" },
+            { id: "feed", icon: "food", label: "Feed", tip: `Feed your fish: ${FOODS[this.foodType].name}
+Click the water to sprinkle more`, run: () => this.toggleFeed(), on: this.panel === "feed", tint: "#ff9a3a" },
+            { id: "fish", icon: "fishdex", label: "Fish", tip: "Manage your fish (F)", run: () => {
+              this.panel = null;
+              if (g.ui?.panels?.fishmgr) g.ui.open("fishmgr");
+            }, tint: "#38b8f2" },
             { id: "gear", icon: "gear", label: "Gear", tip: "Upgrade & expand the tank", run: () => {
               this.panel = this.panel === "gear" ? null : "gear";
-            }, on: this.panel === "gear", tone: "orange" },
-            { id: "light", icon: this.st.tank.lampOff ? "moon" : "sun", label: "Light", tip: this.st.tank.lampOff ? "Light on" : "Light off", run: () => {
+              this.sfx(this.panel ? "ui_open" : "ui_close", { vol: 0.4 });
+            }, on: this.panel === "gear", tint: "#a674f4" },
+            { id: "light", icon: lampOff ? "moon" : "sun", label: "Light", tip: lampOff ? "Light on" : "Light off", run: () => {
               this.st.tank.lampOff = !this.st.tank.lampOff;
               this.sfx("click", { vol: 0.6, pitch: this.st.tank.lampOff ? 0.8 : 1.25 });
               this.game.save?.();
-            } }
+            }, tint: lampOff ? "#6a7ae8" : "#ffc83a" }
           ];
-          for (const b of dock) {
-            out.push({ ...b, x, y, w: bw, h: bh, dock: true, kd });
-            y += bh + 4;
-          }
+          dock.forEach((b, i) => out.push({ ...b, x: D.x + D.pad, y: D.ty + D.pad + i * D.cell, w: D.B, h: D.B + D.lab, tile: D.B, dock: true, kd: D.kd }));
           return out;
+        }
+        // ------------------------------------------------------------------ feeding tray
+        toggleFeed() {
+          if (this.panel === "feed") {
+            this.panel = null;
+            this.sfx("ui_close", { vol: 0.35 });
+            return;
+          }
+          this.panel = "feed";
+          this.sfx("ui_open", { vol: 0.35 });
+          this.feedHere();
+        }
+        // a pinch over the middle of the view (near the fish when they are around)
+        feedHere(type = this.foodType) {
+          const T5 = this.shape, c = this.fullCam();
+          const vw = this.scene.viewW() / c.Z * 0.5;
+          const near = this.fish.filter((f) => Math.abs(f.p[0] - this.camX) < vw);
+          const cx = near.length ? near.reduce((a, f) => a + f.p[0], 0) / near.length : this.camX;
+          const x = clamp(cx + rng.float(-0.15, 0.15) * vw, this.camX - vw * 0.8, this.camX + vw * 0.8);
+          this.sprinkle(clamp(x, -T5.W / 2 + 10, T5.W / 2 - 10), rng.float(-0.2, 0.2) * T5.D, null, type);
+          this.shakeAt = null;
+        }
+        feedPanelRect() {
+          const L2 = this.fullLayout(), D = L2.dock, kd = D.kd;
+          const R4 = Math.round;
+          const fb = this.fullButtons().find((b) => b.id === "feed");
+          const pad = R4(6 * kd), gap = R4(5 * kd), B2 = D.B, titleH = R4(12 * kd);
+          const w = pad * 2 + FOOD_IDS.length * (B2 + gap) - gap, h = pad * 2 + titleH + B2 + D.lab;
+          const x = D.x - R4(8 * kd) - w, y = R4(clamp(fb.y + fb.h / 2 - h / 2 - titleH / 2, L2.top + 4, this.game.screen.H - h - 10));
+          const chips = FOOD_IDS.map((id2, i) => ({ id: id2, x: x + pad + i * (B2 + gap), y: y + pad + titleH, w: B2, h: B2 + D.lab, B: B2 }));
+          return { x, y, w, h, kd, pad, titleH, chips };
+        }
+        feedPanelInput(inp, tip) {
+          const r = this.feedPanelRect();
+          if (!rectContains(r, inp.x, inp.y)) return false;
+          for (const c of r.chips) {
+            if (!rectContains(c, inp.x, inp.y)) continue;
+            this.hoverBtn = "food:" + c.id;
+            tip(`${FOODS[c.id].name}
+${FOODS[c.id].tip}`);
+            if (inp.pressed) {
+              inp.consume();
+              this.st.tank.food = c.id;
+              this.chipPop = { id: c.id, t: this.t };
+              this.sfx("ui_click", { vol: 0.5, pitch: 1.1 + FOOD_IDS.indexOf(c.id) * 0.08 });
+              this.feedHere(c.id);
+            }
+            return true;
+          }
+          if (inp.pressed) inp.consume();
+          return true;
         }
         // ------------------------------------------------------------------ gear panel
         panelK() {
@@ -100579,9 +101307,9 @@ ${t.e.kind === "blueprint" ? `Blueprint x${o.n}` : o.kind === "owned" ? `You own
         gearPanelRect() {
           const { W: W11, H: H8 } = this.game.screen;
           const k = this.panelK();
-          const dock = this.fullButtons().find((b) => b.dock);
+          const D = this.fullLayout().dock;
           const w = Math.round(300 * k), h = Math.min(H8 - 50, Math.round((34 + 58 + GEAR.length * 34 + 16) * k));
-          return { x: (dock ? dock.x : W11 - 42) - 10 - w, y: Math.max(36, Math.round(H8 / 2 - h / 2)), w, h, k };
+          return { x: (D ? D.x : W11 - 42) - 10 - w, y: Math.max(36, Math.round(H8 / 2 - h / 2)), w, h, k };
         }
         gearRows() {
           const r = this.gearPanelRect(), k = r.k;
@@ -100633,7 +101361,7 @@ ${row2.g.desc}`, run: () => this.buyGear(row2.g.id) };
           return {
             tank: this.shape,
             fish: this.fish,
-            food: this.food,
+            food: this.feed.live(),
             decor: decor.filter((d) => d.p[2] > -this.shape.D / 2 + 6),
             night: this.nightK > 0.6,
             avatar: null,
@@ -100653,47 +101381,29 @@ ${row2.g.desc}`, run: () => this.buyGear(row2.g.id) };
           this.sfx(f.sp.sound || "blub", { vol: 0.35, pitch: 1.2 });
           this.fxAt(f.p, "hearts", 2);
         }
-        // sprinkle flakes over a point of the water (x, z)
-        sprinkle(x, z, n2 = rng.int(5, 7)) {
-          const T5 = this.shape;
-          if (this.food.length > 60) return;
-          for (let i = 0; i < n2; i++) {
-            const p = [x + rng.float(-1, 1) * 18, T5.waterY - 1, z + rng.float(-1, 1) * 10];
-            T5.clamp(p, 2);
-            this.food.push({ p, vy: rng.float(9, 16), t: 0, c: rng.pick(FOOD_COLS), eaten: false, wob: rng.float(0, TAU), landed: false, r: 1 });
-          }
-          this.ripples.add(x, z, 0.6);
-          this.sfx("bubble", { vol: 0.35, pitch: 1.4 });
+        // shake a pinch of the chosen food into the water over (x, z); n = pieces (default: the food's pinch)
+        sprinkle(x, z, n2 = null, type = this.foodType) {
+          if (this.feed.items.length > 80) return;
+          this.feed.drop(type, x, z, n2 ?? null);
+          this.shakeT = 0.45;
+          for (let i = 0; i < 3; i++) this.sfxQ.push({ at: i * 0.09, name: "click", o: { vol: 0.16, pitch: rng.float(1.9, 2.4) } });
+          this.sfxQ.push({ at: 0.22, name: "bubble", o: { vol: 0.2, pitch: 1.5 } });
+          if (this.visibleKey === "full") this.fedT = this.t;
         }
         addBubble(p, r) {
           if (this.bubbles.length > 160) this.bubbles.shift();
           this.bubbles.push({ p: p.slice(), r: Math.max(0.6, r), vy: 0, wob: rng.float(0, TAU) });
         }
         updateFood(dt) {
-          const T5 = this.shape;
-          let w = 0;
-          for (const p of this.food) {
-            p.t += dt;
-            if (p.eaten || p.t > 40) continue;
-            if (!p.landed) {
-              p.wob += dt * 3;
-              p.p[1] -= p.vy * dt;
-              p.p[0] += Math.sin(p.wob) * 4 * dt;
-              p.p[2] += Math.cos(p.wob * 0.7) * 2 * dt;
-              const fy = T5.floorY(p.p[0], p.p[2]) + p.r;
-              if (p.p[1] <= fy) {
-                p.p[1] = fy;
-                p.landed = true;
-              }
-              T5.clamp(p.p, 2, p.r);
-            }
-            this.food[w++] = p;
-          }
-          this.food.length = w;
+          this.feed.step(dt);
+          if (this.shakeT > 0) this.shakeT = Math.max(0, this.shakeT - dt);
         }
         updateFish(dt) {
           const W11 = this.simWorld();
-          for (const f of this.fish) f.update(dt, W11);
+          for (const f of this.fish) {
+            f.update(dt, W11);
+            if (f.chomp > 0) f.chomp -= dt;
+          }
         }
         updateDecor(dt) {
           for (const d of this.decor) {
@@ -100951,10 +101661,28 @@ ${hearts} ${status}
           ctx3.save();
           ctx3.setTransform(1, 0, 0, 1, 0, 0);
           const cam = this.fullCam();
-          this.scene.draw(ctx3, cam, { grow: this.growK() });
-          this.drawOverlays(ctx3, cam);
-          this.drawHud(ctx3, cam);
+          this.scene.draw(ctx3, cam, { grow: this.growK(), noFood: true });
+          this.drawWorldMarks(ctx3, cam);
           ctx3.restore();
+        }
+        // [phase10 polish] everything over the tank in the full view draws on the full-res UI layer (game.js calls this
+        // before the game HUD): the food, emotes, particles, the shaker, the top plate, the dock, panels and build mode
+        drawUi(ctx3) {
+          if (this.visibleKey !== "full") return;
+          const cam = this.fullCam();
+          const b = this.scene.box;
+          if (b) {
+            ctx3.save();
+            ctx3.beginPath();
+            ctx3.rect(b.fx0, b.fy0, b.fx1 - b.fx0, b.fy1 - b.fy0);
+            ctx3.clip();
+            this.feed.draw(ctx3, cam, { dark: b.dark, hi: true });
+            ctx3.restore();
+          }
+          this.drawEmotes(ctx3, cam);
+          this.particles.draw(ctx3, "fg", this.t);
+          this.drawShaker(ctx3, cam);
+          this.drawHud(ctx3, cam);
         }
         drawWindow(ctx3) {
           if (this.visibleKey !== "window") return;
@@ -101012,18 +101740,27 @@ ${hearts} ${status}
         }
         drawMini() {
         }
-        // 2D overlays: emotes, hover sparkles, the tutorial arrow, the snail, particles
+        // overlays of the floating window view: emotes, world marks (snail, eggs) and particles
         drawOverlays(ctx3, cam) {
-          const t = this.t, S11 = this.scene;
+          this.drawWorldMarks(ctx3, cam);
+          this.drawEmotes(ctx3, cam);
+          this.particles.draw(ctx3, "fg", this.t);
+        }
+        // emotes as little voxel icons over the fish, hover sparkles, the tutorial arrow
+        drawEmotes(ctx3, cam) {
+          const t = this.t;
+          void cam;
           for (const f of this.fish) {
             if (!f.emote || !f.screen) continue;
             const sx = f.screen.x, sy = f.screen.y - f.screen.r * 0.7;
             const k = f.emote.t / f.emote.max;
             const name = EMOTE_ICON[f.emote.icon] || f.emote.icon;
-            const y = Math.round(sy - 4 - Math.min(1, f.emote.t * 6) * 3);
+            const pop = Math.min(1, f.emote.t * 6);
+            const y = Math.round(sy - 6 - pop * 4);
             ctx3.globalAlpha = Math.min(1, (1 - k) * 4);
             if (name === "dollar" || name === "coin") drawAeroCoin(ctx3, sx, y - 5, 4, t);
-            else if (ICONS2.has(name)) {
+            else if (has3D(name) && drawIcon3D(ctx3, name, sx, y - 6, 11 + (1 - pop) * 4, { t, phase: f.phase * 6 })) {
+            } else if (ICONS3.has(name)) {
               const ic = getUiIcon(name);
               ctx3.drawImage(ic, Math.round(sx - ic.width / 2), y - ic.height);
             } else drawText(ctx3, f.emote.icon, sx, y - 8, { align: "center", color: "#ffffff", outline: "#0c3a52" });
@@ -101043,6 +101780,10 @@ ${hearts} ${status}
             if (a) ctx3.drawImage(a, Math.round(c.screen.x - a.width / 2), Math.round(c.screen.y - c.screen.r - 6 - a.height + Math.sin(t * 7) * 2));
             if (rng.chance(0.08)) this.particles.sparkle(c.screen.x + rng.float(-3, 3), c.screen.y + rng.float(-3, 3), "#bff8ff");
           }
+        }
+        // things that live in the tank's world layer: the snail janitor and egg clutches
+        drawWorldMarks(ctx3, cam) {
+          const t = this.t, S11 = this.scene;
           if (this.snail?.p) {
             const q = S11.proj(this.snail.p[0], this.snail.p[1], this.snail.p[2], cam);
             drawSnail(ctx3, q.x, q.y, Math.max(6, 14 * cam.Z), this.snail.dir, t);
@@ -101055,7 +101796,60 @@ ${hearts} ${status}
               ctx3.fillRect(Math.round(q.x + (i - 2) * 3), Math.round(q.y - 3 - i % 2 * 2 + Math.sin(t * 2 + i) * 0.5), 2, 2);
             }
           }
-          this.particles.draw(ctx3, "fg", t);
+        }
+        // the food shaker: follows the cursor over the water while the feeding tray is open and tips over to pour
+        drawShaker(ctx3, cam) {
+          const sc = this.shakeCur;
+          if (!sc || this.build.on) return;
+          const pour = this.shakeT > 0;
+          const s = shakerSprite(pour ? -0.75 : -0.18);
+          if (!s) return;
+          const w = s.width / 2, h = s.height / 2;
+          const jig = pour ? Math.round(Math.sin(this.t * 48) * 1.5) : 0;
+          const bob = pour ? 0 : Math.sin(this.t * 3) * 1;
+          const x = sc.x + 3 + jig, y = sc.y - h - 4 + bob;
+          ctx3.fillStyle = "rgba(4,30,60,0.18)";
+          ctx3.fillRect(Math.round(x + 2), Math.round(y + h + 1), Math.round(w - 4), 2);
+          ctx3.drawImage(s, Math.round(x * 2) / 2, Math.round(y * 2) / 2, w, h);
+          if (pour && rng.chance(0.5)) {
+            const F3 = FOODS[this.foodType];
+            this.px("sparkle", sc.x + rng.float(-2, 2), sc.y + rng.float(-1, 3), 1, { ramps: [F3.cols[rng.int(0, F3.cols.length - 1)]], speed: [4, 14], w: 2, h: 2 });
+          }
+          void cam;
+        }
+        // a square voxel tile for the dock / tray (lit = active)
+        tileTex(D, tint, lit2) {
+          return aeroCached(`tanktile|${D}|${tint}|${lit2 ? 1 : 0}`, () => {
+            const top = mix(tint, "#ffffff", lit2 ? 0.85 : 0.72), mid = mix(tint, "#ffffff", lit2 ? 0.42 : 0.24), bot = shade(tint, lit2 ? -0.02 : -0.16);
+            const c = aeroSurface(D, D, { top, mid, bot, edge: shade(tint, -0.62), r: Math.max(5, Math.round(D * 0.24)), gloss: 0.72, glossH: Math.round(D * 0.42), curve: Math.round(D * 0.06), rim: 1, glow: 0.6, glowColor: mix(tint, "#ffffff", 0.75), sparkle: 2 });
+            return c;
+          });
+        }
+        drawTile(ctx3, x, y, D, tint, o = {}) {
+          const hov = o.hover ? 1 : 0, on = !!o.on;
+          const lift = hov ? -2 : on ? 1 : 0;
+          ctx3.fillStyle = rgba(shade(tint, -0.7), 0.4);
+          ctx3.fillRect(Math.round(x + 3), Math.round(y + D + 1), Math.round(D - 6), 2);
+          if (hov || on) drawAeroGlow(ctx3, x + D / 2, y + D / 2 + lift, Math.round(D * 0.8), mix(tint, "#ffffff", 0.5), on ? 0.55 : 0.45);
+          ctx3.drawImage(this.tileTex(D, tint, hov || on), Math.round(x), Math.round(y + lift));
+          return lift;
+        }
+        // a voxel icon by name (3D UI icons first, then the big menu models, then the inline icon)
+        drawIcon(ctx3, name, cx, cy, px3, o = {}) {
+          if (has3D(name) && drawIcon3D(ctx3, name, cx, cy, px3, { t: this.t, hover: o.hover ? 1 : 0, phase: o.phase || 0 })) return true;
+          let f = null;
+          try {
+            f = iconFrame(name, Math.round(px3), o.hover ? this.t * 0.6 % 1 : Math.sin(this.t * 0.8 + (o.phase || 0)) * 0.05);
+          } catch {
+            f = null;
+          }
+          if (f) {
+            ctx3.drawImage(f.canvas, Math.round((cx - f.ox) * 2) / 2, Math.round((cy - f.oy) * 2) / 2);
+            return true;
+          }
+          const ic = getUiIcon(name, 2);
+          if (ic) ctx3.drawImage(ic, Math.round(cx - ic.width / 2), Math.round(cy - ic.height / 2));
+          return !!ic;
         }
         drawHud(ctx3, cam) {
           const g = this.game;
@@ -101065,101 +101859,124 @@ ${hearts} ${status}
             this.build.draw(ctx3, cam);
             return;
           }
-          const sm3 = this.tankSummary();
-          const { pill: p, k } = this.fullLayout();
-          drawAeroSurface(ctx3, p.x, p.y, p.w, p.h, { tone: "frost", r: "pill", gloss: 0.75, glossH: Math.round(p.h * 0.45), curve: 2, rim: 0.9, glow: 0.5 });
-          const ink = AERO.ink, font = k >= 1.4 ? "big" : "normal";
-          const th = font === "big" ? 9 : 7;
-          let x = p.x + Math.round(10 * k);
-          const ty = Math.round(p.y + (p.h - th) / 2);
-          const icon3 = (name) => {
-            const ic = getUiIcon(name);
-            if (!ic) return;
-            const s = k >= 1.4 ? 2 : 1;
-            ctx3.drawImage(ic, x, Math.round(p.y + (p.h - ic.height * s) / 2), ic.width * s, ic.height * s);
-            x += ic.width * s + 3;
-          };
-          icon3("fish");
-          const fs = `${sm3.fish}/${sm3.cap}`;
-          drawText(ctx3, fs, x, ty, { color: ink, font });
-          x += measureText(fs, font) + Math.round(10 * k);
-          icon3("heart");
-          const hs = sm3.fish ? `${Math.round(sm3.happiness * 100)}%` : "--";
-          drawText(ctx3, hs, x, ty, { color: ink, font });
-          x += measureText(hs, font) + Math.round(10 * k);
-          drawAeroCoin(ctx3, x + 4 * k, p.y + p.h / 2, 4.5 * k, t);
-          x += Math.round(12 * k);
-          drawText(ctx3, `${sm3.aeroPerMin.toFixed(1)}/min`, x, ty, { color: ink, font });
-          const btns = this.fullButtons();
-          for (const b of btns) {
-            if (b.id !== "back") continue;
-            drawAeroButton(ctx3, b.x, b.y, b.w, b.h, { label: "Ocean", icon: getUiIcon("arrow_l"), state: this.hoverBtn === b.id ? "hover" : "normal", tone: "aqua" });
-          }
-          this.drawDock(ctx3, btns.filter((b) => b.dock));
-          this.drawScrollbar(ctx3, cam);
+          const L2 = this.fullLayout();
+          const { k, plate: p, font } = L2;
+          const R4 = Math.round;
+          ctx3.fillStyle = "rgba(3,38,74,0.2)";
+          ctx3.fillRect(p.x + 6, p.y + p.h + 1, p.w - 12, R4(2 * k));
+          drawAeroSurface(ctx3, p.x, p.y, p.w, p.h, { top: "#d4f8ff", mid: "#48bcf0", bot: "#1270c0", a: [0.96, 0.98], edge: "#0b4a8a", r: R4(9 * k), gloss: 0.6, glossH: R4(p.h * 0.42), curve: R4(2 * k), rim: 0.9, glow: 0.7, glowColor: "#8ff6ff", depth: 2, bubbles: 2, seed: 11, streak: true });
+          const nameCx = p.x + R4(7 * k) + p.nameW / 2;
+          drawAeroSurface(ctx3, p.x + R4(5 * k), L2.wells[0].y, p.nameW + R4(4 * k), L2.wells[0].h, { tone: "deep", r: R4(5 * k), inset: true, gloss: 0.25, rim: 0.5, glow: 0.4, glowColor: "#3ab0ff" });
+          if (!drawPop3D(ctx3, this.tierInfo().name, nameCx, L2.wells[0].y + L2.wells[0].h / 2 - R4(1 * k), { t, palette: "white", size: 16, depth: 2, wobble: 0.25, glow: false, sparkle: true, phase: 1.3 }))
+            drawText(ctx3, this.tierInfo().name, nameCx, R4(p.y + p.h / 2 - 5), { align: "center", font: "big", color: "#ffffff", shadow: "#0a4680" });
+          const ink = AERO.ink, th = font === "big" ? 9 : 7;
+          L2.wells.forEach((q, i) => {
+            drawAeroSurface(ctx3, q.x, q.y, q.w, q.h, { tone: "frost", r: R4(5 * k), inset: true, gloss: 0.35, rim: 0.7, glow: 0.3 });
+            const icx = q.x + R4(5 * k) + R4(6 * k), icy = q.y + q.h / 2;
+            if (q.icon === "coin") drawAeroCoin(ctx3, icx, icy, R4(5 * k), t);
+            else if (q.icon === "fish") {
+              const ic = getUiIcon("fish", 2);
+              if (ic) ctx3.drawImage(ic, R4(icx - ic.width / 2), R4(icy - ic.height / 2));
+            } else this.drawIcon(ctx3, q.icon, icx, icy, R4(12 * k), { phase: i });
+            drawText(ctx3, q.v, q.x + R4(5 * k) + R4(13 * k) + R4(3 * k), R4(q.y + (q.h - th) / 2), { color: ink, font });
+          });
+          const bb = L2.btn;
+          drawAeroButton(ctx3, bb.x, bb.y, bb.w, bb.h, { label: "Ocean", icon: getUiIcon("hook"), state: this.hoverBtn === "back" ? "hover" : "normal", tone: "aqua", radius: R4(8 * k) });
+          this.drawScrollbar(ctx3, cam, L2);
+          this.drawDock(ctx3, this.fullButtons().filter((b) => b.dock), L2);
+          if (this.panel === "feed") this.drawFeedPanel(ctx3);
           if (this.panel === "gear") this.drawGearPanel(ctx3);
           const ga = this.growAnim;
           if (ga && ga.t > 0.3 && ga.t < 2.9) {
             const a = clamp012(Math.min((ga.t - 0.3) * 3, (2.9 - ga.t) * 3));
-            ctx3.globalAlpha = a;
-            drawText(ctx3, "Tank expanded!", W11 / 2, Math.round(H8 * 0.16), { align: "center", color: "#ffffff", outline: "#0a3e74", scale: 2 });
-            drawText(ctx3, this.tierInfo().name, W11 / 2, Math.round(H8 * 0.16) + 22, { align: "center", color: "#bff8ff", outline: "#0a3e74" });
-            ctx3.globalAlpha = 1;
+            const pop = clamp012((ga.t - 0.3) * 2.5);
+            if (!drawPop3D(ctx3, "Tank expanded!", W11 / 2, Math.round(H8 * 0.2), { t, pop, alpha: a, palette: "aqua", size: 32, depth: 4 }))
+              drawText(ctx3, "Tank expanded!", W11 / 2, Math.round(H8 * 0.16), { align: "center", color: "#ffffff", outline: "#0a3e74", scale: 2 });
+            drawPop3D(ctx3, this.tierInfo().name, W11 / 2, Math.round(H8 * 0.2) + 30, { t: t + 0.5, pop: clamp012(pop * 1.4 - 0.4), alpha: a, palette: "white", size: 16, depth: 3, sparkle: false });
           }
         }
-        // a glossy scroll track along the top of the hood when the tank is wider than the screen
-        drawScrollbar(ctx3, cam) {
+        // a voxel rail under the top plate when the tank is wider than the screen: the knob shows the view, orange
+        // studs show where your fish are
+        drawScrollbar(ctx3, cam, L2) {
           const max = this.scene.scrollMax();
           if (max <= 0) return;
-          const T5 = this.shape, W11 = this.game.screen.W;
-          const tw = Math.round(Math.min(W11 * 0.36, 260)), th = 6;
-          const x0 = Math.round(W11 / 2 - tw / 2), y0 = Math.round(this.fullLayout().pill.y + this.fullLayout().pill.h + 6);
-          drawAeroSurface(ctx3, x0, y0, tw, th, { tone: "glass", r: 3, gloss: 0.5, rim: 0.8 });
-          const vis = clamp012(W11 / cam.Z / (T5.W + 68));
-          const kw = Math.max(14, Math.round(tw * vis));
-          const kx = Math.round(x0 + (this.camX + max) / (2 * max) * (tw - kw));
-          drawAeroSurface(ctx3, kx, y0, kw, th, { tone: "aqua", r: 3, gloss: 0.8, rim: 0.9 });
+          const T5 = this.shape, r = L2.rail;
+          drawAeroSurface(ctx3, r.x, r.y, r.w, r.h, { tone: "deep", r: 3, inset: true, gloss: 0.2, rim: 0.5, glow: 0 });
+          const vis = clamp012(this.scene.viewW() / cam.Z / (T5.W + 68));
+          const kw = Math.max(14, Math.round(r.w * vis));
+          const kx = Math.round(r.x + (this.camX + max) / (2 * max) * (r.w - kw));
+          drawAeroSurface(ctx3, kx, r.y - 1, kw, r.h + 2, { tone: "aqua", r: 3, gloss: 0.8, rim: 0.9, glow: 0.6 });
           for (const f of this.fish) {
             const u = clamp012(f.p[0] / T5.W + 0.5);
+            const fx = Math.round(r.x + 2 + u * (r.w - 4));
+            ctx3.fillStyle = "#7a3a06";
+            ctx3.fillRect(fx - 1, r.y + 1, 2, r.h - 2);
             ctx3.fillStyle = "#ffb43a";
-            ctx3.fillRect(Math.round(x0 + u * tw), y0 + 2, 1, 2);
+            ctx3.fillRect(fx - 0.5, r.y + 1.5, 1, r.h - 3);
           }
         }
-        drawDock(ctx3, dock) {
+        // the dock: a column of voxel tiles with voxel icons on an aqua slab, labels under the tiles
+        drawDock(ctx3, dock, L2) {
           if (!dock.length) return;
-          const x0 = dock[0].x - 4, y0 = dock[0].y - 4, x1 = Math.max(...dock.map((b) => b.x + b.w)) + 4, y1 = Math.max(...dock.map((b) => b.y + b.h)) + 4;
-          const key = dock.map((b) => b.id + (b.on ? 1 : 0) + b.icon + (this.hoverBtn === b.id ? "h" : "") + b.y).join("|");
-          let c = this.dockCv;
-          if (!c || this.dockKey !== key) {
-            c = this.dockCv = this.dockCv && this.dockCv.width === x1 - x0 && this.dockCv.height === y1 - y0 ? this.dockCv : document.createElement("canvas");
-            c.width = x1 - x0;
-            c.height = y1 - y0;
-            const g = c.getContext("2d");
-            g.imageSmoothingEnabled = false;
-            g.clearRect(0, 0, c.width, c.height);
-            g.translate(-x0, -y0);
-            for (const b of dock) {
-              drawAeroButton(g, b.x, b.y, b.w, b.h, { tone: b.on ? "green" : b.tone || "glass", state: b.on ? "down" : this.hoverBtn === b.id ? "hover" : "normal", radius: 8 });
-              const ic = getUiIcon(b.icon), s = b.kd >= 1.2 ? 2 : 1;
-              if (ic) g.drawImage(ic, Math.round(b.x + (b.w - ic.width * s) / 2), b.y + Math.round(4 * b.kd), ic.width * s, ic.height * s);
-              const lf = b.kd >= 1.2 ? "normal" : "small";
-              drawText(g, b.label, b.x + b.w / 2, b.y + b.h - (lf === "normal" ? 11 : 9), { font: lf, align: "center", color: "#ffffff", shadow: "#0a3e74" });
-            }
-            this.dockKey = key;
+          const D = L2.dock, R4 = Math.round, kd = D.kd;
+          ctx3.fillStyle = "rgba(3,38,74,0.22)";
+          ctx3.fillRect(D.x + 6, D.y + D.h + 1, D.w - 12, R4(3 * kd));
+          drawAeroSurface(ctx3, D.x, D.y, D.w, D.h, { top: "#d4f8ff", mid: "#48bcf0", bot: "#1270c0", a: [0.95, 0.98], edge: "#0b4a8a", r: R4(9 * kd), gloss: 0.45, glossH: R4(16 * kd), curve: R4(2 * kd), rim: 0.9, glow: 0.7, glowColor: "#8ff6ff", depth: 2, bubbles: 3, seed: 23 });
+          const spare = D.ty - D.y;
+          if (spare > 26) {
+            drawVoxDecor(ctx3, "bubbles", D.x + D.w / 2, D.y + spare / 2 + 2, Math.min(R4(spare * 0.8), R4(D.w * 0.62)), { t: this.t, phase: 0.6 });
+            drawVoxDecor(ctx3, "starfish", D.x + D.w / 2, D.y + D.h - spare / 2 - 2, Math.min(R4(spare * 0.8), R4(D.w * 0.62)), { t: this.t, phase: 2.1 });
           }
-          ctx3.drawImage(c, x0, y0);
+          const lf = kd >= 1.2 ? "normal" : "small";
+          dock.forEach((b, i) => {
+            const hov = this.hoverBtn === b.id;
+            const lift = this.drawTile(ctx3, b.x, b.y, b.tile, b.tint, { hover: hov, on: b.on });
+            const px3 = R4(b.tile * 0.62);
+            this.drawIcon(ctx3, b.icon, b.x + b.tile / 2, b.y + b.tile / 2 + lift, px3, { hover: hov, phase: i * 1.7 });
+            if (b.on) drawPixelBrackets(ctx3, b.x - 1, b.y - 1 + lift, b.tile + 2, b.tile + 2, this.t, { k: kd >= 1.4 ? 2 : 1 });
+            if (b.id === "feed" && this.fish.some((f) => (f.rec.hunger ?? 0) > 0.62) && !b.on) {
+              const bx = b.x + b.tile - 2, by = b.y + 2 + Math.sin(this.t * 5) * 1.5;
+              this.drawIcon(ctx3, "exclaim", bx, by, R4(9 * kd), {});
+            }
+            drawText(ctx3, b.label, b.x + b.tile / 2, R4(b.y + b.tile + (D.lab - (lf === "normal" ? 7 : 5)) / 2 + 1), { font: lf, align: "center", color: "#ffffff", shadow: "#0a3e74" });
+          });
+        }
+        // the feeding tray: four foods as voxel tiles; the chosen one glows
+        drawFeedPanel(ctx3) {
+          const r = this.feedPanelRect(), R4 = Math.round, kd = r.kd;
+          ctx3.fillStyle = "rgba(3,38,74,0.2)";
+          ctx3.fillRect(r.x + 6, r.y + r.h + 1, r.w - 12, R4(3 * kd));
+          drawAeroSurface(ctx3, r.x, r.y, r.w, r.h, { tone: "frost", r: R4(9 * kd), gloss: 0.5, glossH: R4(12 * kd), rim: 0.9, glow: 0.5, depth: 2, bubbles: 2, seed: 31 });
+          const fb = this.fullButtons().find((b) => b.id === "feed");
+          if (fb) {
+            const py = R4(fb.y + fb.tile / 2);
+            ctx3.fillStyle = "#86c4e6";
+            for (let i = 0; i < 4; i++) ctx3.fillRect(r.x + r.w + i, py - 4 + i, 1, 8 - i * 2);
+          }
+          const lf = kd >= 1.2 ? "normal" : "small";
+          drawText(ctx3, "Pick a food, then click the water", r.x + r.w / 2, r.y + r.pad - 1, { font: "small", align: "center", color: AERO.ink });
+          for (const c of r.chips) {
+            const F3 = FOODS[c.id], on = this.foodType === c.id, hov = this.hoverBtn === "food:" + c.id;
+            const lift = this.drawTile(ctx3, c.x, c.y, c.B, on ? "#ff9a3a" : "#6ac8f0", { hover: hov, on });
+            const ic = foodIcon(c.id, clamp(Math.round(c.B * 2 * 0.72 / 13), 3, 7));
+            if (ic) {
+              const pop = this.chipPop?.id === c.id ? clamp012((this.t - this.chipPop.t) * 5) : 1;
+              const s = 0.5 * (pop < 1 ? 1 + Math.sin(pop * Math.PI) * 0.25 : 1);
+              const w = ic.width * s, h = ic.height * s;
+              const bob = hov ? Math.sin(this.t * 6) * 1 : 0;
+              ctx3.drawImage(ic, Math.round((c.x + c.B / 2 - w / 2) * 2) / 2, Math.round((c.y + c.B / 2 - h / 2 + lift + bob) * 2) / 2, w, h);
+            }
+            if (on) drawPixelBrackets(ctx3, c.x - 1, c.y - 1 + lift, c.B + 2, c.B + 2, this.t, { k: kd >= 1.4 ? 2 : 1 });
+            drawText(ctx3, F3.short, c.x + c.B / 2, R4(c.y + c.B + 2), { font: lf, align: "center", color: on ? "#c0500a" : AERO.ink });
+          }
         }
         drawGearPanel(ctx3) {
           const r = this.gearPanelRect(), k = r.k;
           drawAeroPanel(ctx3, r.x, r.y, r.w, r.h, { tone: "glass", radius: 10, title: "Tank Gear" });
           const ink = AERO.ink;
           const big = k >= 1.4, f1 = big ? "big" : "normal", f2 = big ? "normal" : "small";
-          const is = big ? 2 : 1;
-          const icon3 = (name, x, y) => {
-            const ic = getUiIcon(name);
-            if (ic) ctx3.drawImage(ic, x, y, ic.width * is, ic.height * is);
-          };
           const L2 = (v) => Math.round(v * k);
+          const icon3 = (name, x, y) => this.drawIcon(ctx3, name, x + L2(7), y + L2(6), L2(14), { phase: x * 0.1 });
           for (const row2 of this.gearRows()) {
             const b = this.rowButton(row2);
             if (row2.kind === "tier") {
@@ -101178,7 +101995,7 @@ ${hearts} ${status}
             }
             const lv = gearLevel(this.st, row2.g.id);
             drawAeroSurface(ctx3, row2.x, row2.y, row2.w, row2.h, { tone: "frost", r: 6, gloss: 0.4, rim: 0.7 });
-            icon3(row2.g.icon, row2.x + L2(6), row2.y + L2(8));
+            icon3(has3D("tank_" + row2.g.id) ? "tank_" + row2.g.id : row2.g.icon, row2.x + L2(6), row2.y + L2(8));
             drawText(ctx3, row2.g.name, row2.x + L2(24), row2.y + L2(5), { color: ink, font: f1 });
             drawText(ctx3, row2.g.levels[lv], row2.x + L2(24), row2.y + L2(18), { font: f2, color: "#3a6a8a" });
             const bx0 = (b ? b.x : row2.x + row2.w - L2(96)) - L2(10);
@@ -104437,17 +105254,17 @@ void main() {
             gl2.uniform4f(P7.u.u_dom, this.top, this.cell, this.sw, this.sh);
             gl2.uniform3f(P7.u.u_surf, this.surfaceY === null ? -1e5 : this.surfaceY, this.sn, this.cell);
             const oc = this.game?.ocean, env = oc?.env || {};
-            const pal2 = waterPalette(oc?.biome?.waterPaletteId || oc?.biome?.id || "oscean", env.daylight ?? 1, env.dusk ?? 0);
+            const pal3 = waterPalette(oc?.biome?.waterPaletteId || oc?.biome?.id || "oscean", env.daylight ?? 1, env.dusk ?? 0);
             gl2.uniform4f(P7.u.u_k, (look.refract ?? 14) * 2.2, look.caustic ?? 9, look.chroma === false ? 0 : 1, look.wobble ?? 0.55);
             gl2.uniform1f(P7.u.u_shine, look.shine ?? 9);
             gl2.uniform3fv(P7.u.u_causCol, hex32(look.causticColor || "#2a3a30"));
             gl2.uniform1f(P7.u.u_time, this.time);
             const day = env.daylight ?? 1;
-            gl2.uniform4f(P7.u.u_fx, look.sparkle ?? 0.8, look.bloom ?? 0.3, (look.pattern ?? 0.4) * (0.6 + pal2.caustics * 0.6), (look.rays ?? pal2.rays) * (0.3 + 0.7 * day));
-            gl2.uniform3fv(P7.u.u_glossCol, hex32(look.glossColor || pal2.caustic || "#ffffff"));
-            gl2.uniform3fv(P7.u.u_rayCol, hex32(look.rayColor || pal2.ray));
-            gl2.uniform3fv(P7.u.u_deepCol, hex32(look.deepColor || pal2.deep));
-            gl2.uniform1f(P7.u.u_tint, look.tint ?? pal2.tint);
+            gl2.uniform4f(P7.u.u_fx, look.sparkle ?? 0.8, look.bloom ?? 0.3, (look.pattern ?? 0.4) * (0.6 + pal3.caustics * 0.6), (look.rays ?? pal3.rays) * (0.3 + 0.7 * day));
+            gl2.uniform3fv(P7.u.u_glossCol, hex32(look.glossColor || pal3.caustic || "#ffffff"));
+            gl2.uniform3fv(P7.u.u_rayCol, hex32(look.rayColor || pal3.ray));
+            gl2.uniform3fv(P7.u.u_deepCol, hex32(look.deepColor || pal3.deep));
+            gl2.uniform1f(P7.u.u_tint, look.tint ?? pal3.tint);
             if (P7.u.u_shelf) gl2.uniform1f(P7.u.u_shelf, oc?.biome?.deep?.L ? this.game.screen?.H ?? 1e6 : 1e6);
             gl2.drawArrays(gl2.TRIANGLES, 0, 3);
             gl2.activeTexture(gl2.TEXTURE0);
@@ -105862,6 +106679,14 @@ void main() {
           }
           {
             const ctx4 = uctx0 || this.screen.ctx;
+            if (view === "aquarium") try {
+              this.aquarium.drawUi(ctx4);
+            } catch (e) {
+              if (!this.aqUiErr) {
+                this.aqUiErr = true;
+                console.error(e);
+              }
+            }
             this.hud.draw(ctx4);
             try {
               this.quests?.drawHud?.(ctx4, dt);

@@ -391,59 +391,85 @@ export function frameSteps(kind, Z, o = {}) {
     const n = (v) => Math.max(2, Math.round(v * k));
     yield;
     if (kind === 'hood' || kind === 'hoodcap') {
-      // a glossy white Aero lid: rounded front, an aqua glass band with a highlight, vents on top, the LED strip below
-      const T = 24, h = n(18), d = n(13);
+      // [phase10 polish] a chunky lacquered lid: a white top with vent slots and a chrome front edge, a deep aqua-blue
+      // body with a glossy glass visor band (glints), a navy lip and the LED strip glowing underneath
+      const T = 24, h = n(15), d = n(12);
       const wide = kind === 'hood' ? T * 3 : n(12) + 2;
       const m = new VoxelModel(wide, h + 1, d + 1);
-      const white = m.color('#f6fcff', { jitter: 0.015, spec: 0.9, specPow: 14, smooth: 0.9 });
-      const white2 = m.color('#e2eef8', { jitter: 0.015, spec: 0.6, smooth: 0.9 });
-      const lip = m.color('#b8d4e8', { spec: 0.5 });
-      const aqua = m.color('#4ad2ff', { spec: 1, specPow: 18, smooth: 0.9, emissive: 0.15 });
-      const aqua2 = m.color('#1e9ee8', { spec: 0.9, smooth: 0.9 });
-      const aquaHi = m.color('#c8f6ff', { spec: 1, emissive: 0.3 });
-      const vent = m.color('#a8c4dc');
+      const top = m.color('#e2f3fc', { jitter: 0.03, spec: 0.9, specPow: 14, smooth: 0.7 });
+      const chrome = m.color('#dff2ff', { spec: 1, specPow: 22, smooth: 0.9 });
+      const vent = m.color('#7a9cc0');
+      const blueHi = m.color('#5cc4ff', { spec: 1, specPow: 18, smooth: 0.9 });
+      const blue = m.color('#2a8ee6', { jitter: 0.06, spec: 0.9, specPow: 16, smooth: 0.6 });
+      const blue2 = m.color('#1a66c0', { jitter: 0.05, spec: 0.7, smooth: 0.6 });
+      const seamD = m.color('#124c98'), seamL = m.color('#7ad0ff', { spec: 1 });
+      const navy = m.color('#0f3f80', { spec: 0.5 });
+      const visor = m.color('#5adcff', { spec: 1, specPow: 20, smooth: 0.9, emissive: 0.12 });
+      const visorHi = m.color('#d4f8ff', { spec: 1, emissive: 0.3 });
+      const visorLo = m.color('#2aa6e8', { spec: 0.9, smooth: 0.9 });
+      const glint = m.color('#ffffff', { emissive: 0.4 });
       const lite = m.color(LIGHT_COLS[o.light ?? 0], { emissive: 1 });
       const leaf = m.color('#6ae04a', { spec: 0.8, emissive: 0.2 });
-      const rr = Math.max(2, Math.round(Math.min(h, d) * 0.5));
-      const b0 = Math.round(h * 0.38), b1 = b0 + Math.max(2, Math.round(h * 0.2));
-      const front = m.color('#38c0f6', { spec: 1, specPow: 16, smooth: 0.9 }), front2 = m.color('#1f94e0', { spec: 0.9, smooth: 0.9 });
+      const leaf2 = m.color('#3ab84a', { spec: 0.8 });
+      const rr = Math.max(2, Math.round(Math.min(h, d) * 0.42));
+      const b0 = Math.round(h * 0.34), b1 = b0 + Math.max(3, Math.round(h * 0.24));
+      const cy = h - rr, cz = d - rr;
       for (let x = 0; x < wide; x++) for (let y = 0; y <= h; y++) for (let z = 0; z <= d; z++) {
         // rounded top-front edge (quarter circle of radius rr)
-        const cy = h - rr, cz = d - rr;
         if (y > cy && z > cz && (y - cy) ** 2 + (z - cz) ** 2 > rr * rr) continue;
-        if (y > 1 && z === d && !(y >= b0 && y <= b1)) continue;
+        if (y <= 1 && z > d - 1) continue; // the lip steps in under the body
         const outer = y > cy ? cz + Math.sqrt(Math.max(0, rr * rr - (y - cy) ** 2)) : d;
         const shell = z >= outer - 1.6;
-        let c = y <= 1 ? lip : !shell ? white : y > cy + rr * 0.55 ? white : y < b0 ? front2 : front;
-        if (y >= b0 && y <= b1 && shell) c = y === b1 ? aquaHi : y === b0 ? aqua2 : white;
-        if (y === 0 && z > d * 0.3 && z < d - 1) c = lite;
-        if (y >= h - 1 && z > 1 && z < d - rr && x % 8 < 4) c = vent;
+        let c;
+        if (!shell) c = y >= h - 1 ? top : blue2;
+        else if (y > cy + rr * 0.62) c = top;
+        else if (y > cy + rr * 0.3) c = chrome;
+        else if (y > cy) c = blueHi;
+        else if (y >= b0 && y <= b1) c = y === b1 ? visorHi : y === b0 ? visorLo : visor;
+        else if (y <= 1) c = navy;
+        else if (y < b0) c = y <= 2 ? blue2 : blue;
+        else c = blue;
+        // glints running diagonally across the visor
+        if (shell && y > b0 && y < b1 && ((x + (y - b0) * 1) % T === 4 || (x + (y - b0)) % T === 6)) c = glint;
+        // panel seams every tile on the body (not across the visor)
+        if (shell && y > 1 && y <= cy && !(y >= b0 && y <= b1) && x % T === 0) c = seamD;
+        if (shell && y > 1 && y <= cy && !(y >= b0 && y <= b1) && x % T === 1) c = seamL;
+        if (shell && (y === b0 - 2 || y === b1 + 2) && x % T === 12) c = chrome; // studs
+        if (y === 0 && z > d * 0.25 && z < d - 2) c = lite;
+        if (y >= h - 1 && z > 2 && z < d - rr - 1 && x % 6 < 3 && (x % T) < T - 6) c = vent;
         m.set(x, y, z, c);
       }
       if (kind === 'hoodcap') {
-        // rounded outer end
-        const R0 = 3.2;
+        // rounded outer end with a chrome corner and a little voxel leaf badge
+        const R0 = 3.6;
         m.sub(() => { for (let x = 0; x < wide; x++) for (let y = 0; y <= h; y++) { const dx = R0 - x, dy = y - (h - R0); if (dx > 0 && dy > 0 && dx * dx + dy * dy > R0 * R0) m.box(x, y, 0, x, y, d, 1); } });
-        const lx = Math.round(wide * 0.62), ly = Math.round(h * 0.68);
-        for (let i = 0; i < 4; i++) { m.set(lx + i, ly + (i >> 1), d - Math.round(rr * 0.3), leaf); m.set(lx + i, ly + 1 + (i >> 1), d - Math.round(rr * 0.3), leaf); }
+        m.paint(() => { for (let y = 2; y < h - 2; y++) for (let z = 0; z <= d; z++) m.put(0, y, z, chrome); });
+        const lx = Math.round(wide * 0.5), ly = Math.round(h * 0.62);
+        for (let i = 0; i < 4; i++) { m.set(lx + i, ly + (i >> 1), d - Math.round(rr * 0.3), leaf); m.set(lx + i, ly + 1 + (i >> 1), d - Math.round(rr * 0.3), i & 1 ? leaf2 : leaf); }
       }
-      const r = renderVoxels(m, { scale: PXV, yaw: 0, pitch: 20, outline: true, ao: 0.45, edges: 0.9 });
+      const r = renderVoxels(m, { scale: PXV, yaw: 0, pitch: 30, outline: true, ao: 0.5, edges: 0.9 });
       if (kind === 'hood') { const t = midTile(r, 'x'); return { canvas: t.canvas, ox: 0, oy: t.h, w: t.w, h: t.h }; }
       return spr(r, r.canvas.width - 1, r.canvas.height);
     }
     if (kind === 'base' || kind === 'basecap') {
-      const T = 24, h = n(8), d = n(9);
+      // the bottom rail: a white bevel on top, the aqua-blue body with a chrome pin-stripe, a navy foot
+      const T = 24, h = n(10), d = n(10);
       const wide = kind === 'base' ? T * 3 : n(10) + 2;
       const m = new VoxelModel(wide, h, d);
       const white = m.color('#f4fbff', { spec: 0.8, smooth: 0.8 });
-      const shadeW = m.color('#c8dcec', { spec: 0.5 });
-      const aqua = m.color('#4ad0ff', { spec: 0.9, smooth: 0.8, emissive: 0.15 });
+      const blue = m.color('#2a8ee6', { jitter: 0.06, spec: 0.9, specPow: 16, smooth: 0.6 });
+      const blueHi = m.color('#5cc4ff', { spec: 1, smooth: 0.9 });
+      const chrome = m.color('#dff2ff', { spec: 1, specPow: 22 });
+      const seamD = m.color('#124c98');
+      const navy = m.color('#0f3f80', { spec: 0.5 });
       const green = m.color('#6ae04a', { spec: 0.9 });
+      const stripe = Math.round(h * 0.45);
       for (let x = 0; x < wide; x++) for (let y = 0; y < h; y++) for (let z = 0; z < d; z++) {
         if (y === h - 1 && z === d - 1) continue;
-        let c = y < 2 ? shadeW : white;
-        if (y === Math.round(h * 0.5)) c = aqua;
-        if (kind === 'basecap' && y === Math.round(h * 0.5) && x > wide - 4) c = green;
+        let c = y >= h - 2 ? white : y === h - 3 ? blueHi : y <= 1 ? navy : blue;
+        if (y === stripe) c = chrome;
+        if (kind === 'base' && z === d - 1 && y > 1 && y < h - 3 && y !== stripe && x % T === 0) c = seamD;
+        if (kind === 'basecap' && y === stripe && x > wide - 4) c = green;
         m.set(x, y, z, c);
       }
       if (kind === 'basecap') m.sub(() => { m.box(0, h - 2, 0, 1, h - 1, d - 1, 1); m.box(0, 0, 0, 0, 1, d - 1, 1); });
@@ -452,12 +478,19 @@ export function frameSteps(kind, Z, o = {}) {
       return spr(r, r.canvas.width - 1, 0);
     }
     if (kind === 'pillar') {
-      const T = 16, wv = n(4), d = 3;
+      // the corner posts: lacquered aqua-blue with a lit outer bevel, chrome studs and a dark silicone seal
+      // against the glass (drawn mirrored on the right)
+      const T = 16, wv = n(8), d = 3;
       const m = new VoxelModel(wv, T * 3, d);
-      const g1 = m.color('#c8fff6', { spec: 1, smooth: 0.9 }), g2 = m.color('#7ae8d8', { spec: 0.9, smooth: 0.9 }), g3 = m.color('#3aa8b8', { spec: 0.6 });
-      const seal = m.color('#1e5a6a');
+      const hi = m.color('#8adcff', { spec: 1, smooth: 0.9 }), b1 = m.color('#2a8ee6', { jitter: 0.06, spec: 0.9, specPow: 16, smooth: 0.6 }), b2 = m.color('#1a66c0', { jitter: 0.04, spec: 0.6 });
+      const front = m.color('#3aa2f0', { spec: 1, specPow: 18, smooth: 0.9 });
+      const stud = m.color('#e8f6ff', { spec: 1, specPow: 24 });
+      const seal = m.color('#0f2f5a');
+      const glassE = m.color('#9af0ff', { spec: 1, emissive: 0.2 });
       for (let x = 0; x < wv; x++) for (let y = 0; y < T * 3; y++) for (let z = 0; z < d; z++) {
-        const c = x === 0 ? g1 : x === wv - 1 ? seal : (y % T === 0 && x === 1) ? g1 : z === d - 1 ? g2 : g3;
+        let c = x === 0 ? hi : x === wv - 1 ? glassE : x === wv - 2 ? seal : x === wv - 3 ? b2 : z === d - 1 ? front : b1;
+        if (x === 1 && z === d - 1 && y % 4 === 0) c = hi;
+        if (x === Math.floor((wv - 2) / 2) && z === d - 1 && y % T === T / 2) c = stud;
         m.set(x, y, z, c);
       }
       const r = renderVoxels(m, { scale: PXV, yaw: 0, pitch: 0, outline: false, ao: 0.2, edges: 0.9 });

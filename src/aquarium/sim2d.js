@@ -228,12 +228,13 @@ export class TankFish {
     if (this.state === 'curious' && ((!av && !cu) || this.stateT > 6)) this.setState('wander');
     if (this.state === 'gather' && (!this.gather || this.stateT > (this.gather.time || 5))) { this.gather = null; this.setState('wander'); }
     // food
-    if (this.state !== 'flee' && this.state !== 'eat' && W.food.length && (rec.hunger ?? 0.3) > 0.12) {
+    // food: hungry fish dart for the nearest piece; full ones still snack now and then
+    if (this.state !== 'flee' && this.state !== 'eat' && this.state !== 'court' && W.food.length && ((rec.hunger ?? 0.3) > 0.05 || rng.chance(0.3))) {
       let best = null, bd = Infinity;
       for (const f of W.food) { if (f.eaten) continue; const d = v3len(f.p[0] - this.p[0], f.p[1] - this.p[1], f.p[2] - this.p[2]); if (d < bd) { bd = d; best = f; } }
-      if (best && (bd < T.minDim * 1.2 || rng.chance(0.5))) { this.setState('eat'); this.food = best; return; }
+      if (best && (bd < T.minDim * 1.2 || rng.chance(0.5))) { this.setState('eat'); this.food = best; this.wiggleV += 3; if (bd > this.len * 2 && rng.chance(0.2)) this.say('!', 0.7); return; }
     }
-    if (this.state === 'eat' && (!this.food || this.food.eaten)) { this.food = null; this.setState('wander'); }
+    if (this.state === 'eat' && (!this.food || this.food.eaten || !W.food.includes(this.food) || this.stateT > 14)) { this.food = null; this.setState('wander'); }
     // night: sleepy fish drift low and slow
     if (W.night && this.state === 'wander' && rng.chance(0.08)) { this.setState('sleep', T.swimPoint(Math.random, rng.float(0.05, 0.3), this.len)); this.say('zzz', 2); return; }
     if (this.state === 'sleep' && (!W.night || this.stateT > 30)) this.setState('wander');
@@ -284,7 +285,15 @@ export class TankFish {
     let tg = this.target, sp = this.cruise;
     switch (this.state) {
       case 'flee': sp = this.cruise * 3.2; break;
-      case 'eat': if (this.food) { tg = this.food.p; sp = this.cruise * 1.8; if (v3len(tg[0] - p[0], tg[1] - p[1], tg[2] - p[2]) < Math.max(0.6, this.len * 0.35)) W.onEat?.(this, this.food); } break;
+      case 'eat': if (this.food) {
+        // dart at the food, then nibble with the mouth (a little ahead of the body centre)
+        tg = this.food.p;
+        const d = this.dir, L = this.len;
+        const far = v3len(tg[0] - p[0], tg[1] - p[1], tg[2] - p[2]);
+        sp = this.cruise * (far > L * 1.6 ? 2.8 : 1.5);
+        const mx = p[0] + d[0] * L * 0.42, my = p[1] + d[1] * L * 0.42, mz = p[2] + d[2] * L * 0.3;
+        if (v3len(tg[0] - mx, tg[1] - my, tg[2] - mz) < Math.max(1.6, L * 0.22) || far < L * 0.3) W.onEat?.(this, this.food);
+      } break;
       case 'curious': {
         const av = W.avatar, cu = W.cursor;
         if (av) {
@@ -311,7 +320,7 @@ export class TankFish {
     const dist = v3len(dx, dy, dz) || 0.001;
     dx /= dist; dy /= dist; dz /= dist;
     const arrive = this.len * 1.5;
-    if (dist < arrive && this.state !== 'flee') sp *= Math.max(0.25, dist / arrive);
+    if (dist < arrive && this.state !== 'flee') sp *= Math.max(this.state === 'eat' ? 0.55 : 0.25, dist / arrive);
     // separation from neighbours (looser for the same species when schooling)
     let sx = 0, sy = 0, sz = 0;
     for (const o of W.fish) {

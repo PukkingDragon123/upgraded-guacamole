@@ -708,6 +708,7 @@ export class Game {
     this.aquarium.drawWindow?.(ctx, dt);
     try { this.prog?.draw?.(ctx, dt); } catch (e) { if (!this.progDrawErr) { this.progDrawErr = true; console.error(e); } } // [phase8:prog] destination scene
     { const ctx = uctx0 || this.screen.ctx; // [phase9:ui] HUD, panels, toasts, UI particles and the cursor draw at full resolution
+      if (view === 'aquarium') try { this.aquarium.drawUi(ctx); } catch (e) { if (!this.aqUiErr) { this.aqUiErr = true; console.error(e); } } // [phase10] tank HUD, food, fx
       this.hud.draw(ctx); // [phase4:shell] hotbar, gear pod, location chip
       try { this.quests?.drawHud?.(ctx, dt); } catch (e) { if (!this.questDrawErr) { this.questDrawErr = true; console.error(e); } } // [phase6:lab] quest tracker + banners
       this.fishing.drawHud(ctx);

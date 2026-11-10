@@ -400,3 +400,14 @@ that feels hand-made."
 - Building: `src/aquarium/build2d.js` is the only build mode. `src/build/build.js` routes blueprints, U, Move and
   Demolish into the tank. Old seabed (ocean-world) buildings migrate into the tank once on load, keeping bonuses and
   production. While build mode is open it consumes Q, E, F, Delete and Esc.
+- Tank HUD (polish pass): everything over the full view draws on the full-res UI layer (`Aquarium.drawUi`, called by
+  game.js before the game HUD): an aqua voxel top plate (tank name in voxel letters, fish / happiness / Aero-per-minute
+  wells), the Ocean button, a voxel scroll rail, a full-height tool rail on the right (Build, Feed, Fish, Gear, Light
+  tiles with voxel icons), the Feed / Gear panels, emotes, particles and build mode. The scene's viewport stops at the
+  rail (`scene.view`), so the tank never hides under it and the scroll ends at the frame. The frame (tankart.js) is a
+  lacquered aqua-blue lid with a glass visor and LED strip, studded corner posts and a matching bottom rail.
+- Food (`src/aquarium/food.js`, `FoodSim`): four voxel foods (Reef Flakes, Pop Pellets, Bloodworms, Brine Shrimp), each
+  a tiny VoxelModel re-voxelised per tumble / wriggle frame; pieces fall from under the lid, splash, sink with their own
+  physics (flutter, plunge and bounce, wriggle, kick), rest on the gravel and melt away. Fish dart at food and nibble
+  it in bites (crumbs, chomp bubbles, nibble / gulp SFX). The Feed tile opens a food tray (`state.tank.food`) and a
+  voxel shaker follows the cursor over the water: click to sprinkle there.

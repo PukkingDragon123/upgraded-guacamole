@@ -33,11 +33,16 @@ import { compiled } from '../gfx/spritecache.js';
 import { SPECIES_BY_ID } from '../fish/species.js';
 import { rollIndividual, sizeScaleOf } from '../fish/traits.js';
 import { nodeFor } from '../game/lab.js';
-import { AERO, fmtAero, drawAeroCoin, drawAeroSurface, drawAeroButton, drawSparkle, drawAeroPanel, uiK } from '../ui/aero.js';
+import { AERO, fmtAero, drawAeroCoin, drawAeroSurface, drawAeroButton, drawSparkle, drawAeroPanel, uiK, drawPixelBrackets, aeroCached, aeroSurface, drawAeroGlow, drawVoxDecor } from '../ui/aero.js';
 import { TANK_TIERS, TANK_IDS, tankTier, aeroRate, GEAR, gearLevel, gearCost, gearMul, gearHappy } from './tanks.js';
 import { SideShape, TankFish, Drops3D, Ripples, DENOMS } from './sim2d.js';
 import { TankScene } from './scene2d.js';
 import { Build2D } from './build2d.js';
+import { FoodSim, FOODS, FOOD_IDS, foodIcon, shakerSprite } from './food.js';
+import { drawIcon3D, has3D } from '../gfx/icons3d.js';
+import { iconFrame } from '../gfx/bigicons.js';
+import { drawPop3D, text3dCanvas } from '../ui/pop3d.js';
+import { mix, shade, rgba } from '../core/color.js';
 
 const HUNGER_RATE = 1 / 2000; // 0 -> 0.6 ("hungry") in 20 minutes
 const AUTO_POP = [Infinity, 14, 7, 3.5, 2];
@@ -45,14 +50,13 @@ const ICONS = new Set(UI_ICON_NAMES);
 const EMOTE_ICON = { '!': 'exclaim', '!!': 'exclaim', '?': 'question', $: 'dollar' };
 const FRAME = { lid: 15, side: 4, base: 14 };
 const WIN_W = [250, 266, 290, 326, 362, 404];
-const FOOD_COLS = ['#e86a3a', '#f0a040', '#c8503a', '#8ac04a', '#e8c070'];
 
 export class Aquarium {
   constructor(game) {
     this.game = game;
     this.t = 0;
     this.fish = [];
-    this.food = [];
+    this.feed = new FoodSim(this);
     this.bubbles = [];
     this.decor = []; // pieces: {kind: 'decor'|'building', rec, id, v, l, x, wy, flip, squash, ...}
     this.drops = new Drops3D();
@@ -84,6 +88,8 @@ export class Aquarium {
   get arrange() { return this.build.on; }
   get editing() { return this.visibleKey === 'full' && this.build.on; }
   get swim() { return null; } // swimming retired in phase 10
+  get food() { return this.feed.items; }
+  get foodType() { const f = this.st.tank?.food; return FOODS[f] ? f : 'flakes'; }
 
   ensureState() {
     const st = this.st;
@@ -109,7 +115,7 @@ export class Aquarium {
     this.ensureState();
     this.tier = tankTier(this.st);
     this.shape = new SideShape(this.tier);
-    this.fish.length = 0; this.food.length = 0; this.bubbles.length = 0;
+    this.fish.length = 0; this.feed.clear(); this.bubbles.length = 0;
     this.drops.list.length = 0;
     this.growAnim = null; this.pendingGrow = null;
     this.drops.setScale(6);
@@ -382,6 +388,10 @@ export class Aquarium {
   }
   fullCam() {
     const g = this.game;
+    const L = this.fullLayout();
+    // the tank sits left of the dock column, under the top plate
+    this.scene.view = { x0: 0, x1: L.dock.x - 4 };
+    this.scene.topY = L.top + 2;
     this.scene.layout(g.screen.W, g.screen.H, this.layoutBottom ?? this.hudBottom());
     return this.scene.cam(this.camX);
   }
@@ -458,14 +468,57 @@ export class Aquarium {
     this.game.emit?.('coinCollected', { value: c.value, by });
   }
 
+  // a fish nibbles a piece of food: hunger down, crumbs and chomp bubbles, a gulp when it is all gone
   onEat(f, food) {
-    if (food.eaten) return;
+    if (food.eaten || !food.wet || (f.biteT || 0) > this.t) return;
+    f.biteT = this.t + rng.float(0.28, 0.46);
+    const F = FOODS[food.type] || FOODS.flakes;
     const rec = f.rec;
-    rec.hunger = Math.max(0, (rec.hunger ?? 0.5) - 0.16);
-    rec.happiness = Math.min(1, (rec.happiness ?? 0.7) + 0.015);
-    food.eaten = true;
-    f.poke(4);
-    this.sfx('gulp', { vol: 0.35, pitch: 1.4 });
+    rec.hunger = Math.max(0, (rec.hunger ?? 0.5) - F.feed / F.bites);
+    rec.happiness = Math.min(1, (rec.happiness ?? 0.7) + 0.012);
+    const done = this.feed.bite(f, food);
+    f.poke(done ? 7 : 4);
+    f.chomp = 0.3;
+    const mouth = food.p.slice();
+    this.addBubble([mouth[0], mouth[1] + 1, mouth[2]], rng.float(0.6, 1.1));
+    if (done) this.addBubble([mouth[0] + rng.float(-2, 2), mouth[1] + 2, mouth[2]], rng.float(0.8, 1.4));
+    if ((this.eatSfxT || 0) < this.t) {
+      this.eatSfxT = this.t + 0.08;
+      if (done) this.sfx(food.type === 'worms' ? 'worm_squish' : 'gulp', { vol: food.type === 'worms' ? 0.22 : 0.3, pitch: rng.float(1.25, 1.6) });
+      else this.sfx('nibble', { vol: 0.22, pitch: rng.float(1.4, 1.9) });
+    }
+    if (this.visibleKey) {
+      const sp = this.project(mouth);
+      if (sp) {
+        const col = F.cols[food.v % F.cols.length];
+        this.px('sparkle', sp[0], sp[1], done ? 3 : 1, { ramps: [col, 'white'], speed: [12, 36], w: 3, h: 3 });
+        if (done) this.px('puff', sp[0], sp[1], 2, { ramp: 'white', speed: [6, 16], w: 2, h: 2 });
+      }
+    }
+    if (done && (rec.hunger ?? 0) < 0.08 && !f.emote && rng.chance(0.3)) f.say('heart', 1.2);
+    if (done) this.game.emit?.('tankAte', { species: f.sp.id, food: food.type });
+  }
+
+  // food hits the water: a little splash, ripples and a bubble trail
+  foodSplash(p) {
+    const T = this.shape;
+    this.ripples.add(p.p[0], p.p[2], p.type === 'pellets' ? 0.45 : 0.3);
+    if (rng.chance(0.7)) this.addBubble([p.p[0] + rng.float(-1, 1), T.waterY - 3, p.p[2]], rng.float(0.6, 1.3));
+    if (!this.visibleKey) return;
+    const sp = this.project([p.p[0], T.waterY, p.p[2]]);
+    if (sp) {
+      this.px('drop', sp[0], sp[1] - 1, rng.int(2, 3), { ramp: 'aqua', speed: [25, 60], spread: 0.9 });
+      if (rng.chance(0.5)) this.px('foam', sp[0], sp[1], 1, { speed: [4, 10] });
+    }
+    if (this.feed.splashT <= 0) { this.feed.splashT = 0.07; this.sfx('splash_small', { vol: 0.16, pitch: rng.float(1.4, 1.9) }); }
+  }
+  // food settles on the gravel (pellets bounce once)
+  foodLand(p, bounce) {
+    if (!this.visibleKey) return;
+    const sp = this.project(p.p);
+    if (!sp) return;
+    this.px('dust', sp[0], sp[1] + 1, bounce ? 3 : 2, { speed: [6, 16], up: 4, w: 2, h: 1, ramps: ['dust', 'white'] });
+    if (bounce && (this.landSfxT || 0) < this.t) { this.landSfxT = this.t + 0.1; this.sfx('click', { vol: 0.12, pitch: rng.float(1.6, 2.1) }); }
   }
 
   canCourt(f) {
@@ -578,7 +631,7 @@ export class Aquarium {
   }
   feedAll() {
     const T = this.shape;
-    for (let i = 0; i < 4; i++) this.sprinkle((0.15 + i * 0.23 - 0.5) * T.W * 0.8 + this.camX * 0.5, rng.float(-0.2, 0.2) * T.D, 6);
+    for (let i = 0; i < 4; i++) this.feed.drop(this.foodType, (0.15 + i * 0.23 - 0.5) * T.W * 0.8 + this.camX * 0.5, rng.float(-0.2, 0.2) * T.D, null, { delay: i * 0.18 });
     for (const f of this.fish) f.rec.hunger = Math.max(0, (f.rec.hunger ?? 0.4) - 0.3);
     this.sfx('bubble', { vol: 0.5, pitch: 1.2 });
     this.game.emit?.('tankFed', { n: this.fish.length });
@@ -824,11 +877,13 @@ export class Aquarium {
       this.prevCur = null;
       return;
     }
+    if (this.panel && g.input?.keyPressed('Escape')) { this.panel = null; g.input.keysPressed?.delete?.('Escape'); this.sfx('ui_close', { vol: 0.35 }); }
     if (this.panel === 'gear') {
       const pr = this.gearPanelRect();
       if (rectContains(pr, inp.x, inp.y)) { this.panelInput(inp, tip); return; }
       if (inp.pressed) { this.panel = null; inp.consume(); return; }
     }
+    if (this.panel === 'feed' && this.feedPanelInput(inp, tip)) { this.prevCur = null; return; }
     const cam = this.fullCam();
     const Z = cam.Z;
     // ---- press: a click (feed, pet, poke, open a building) or a drag (scroll the tank)
@@ -847,10 +902,13 @@ export class Aquarium {
     // ---- hover: pieces, fish, drops
     const [wx, wy] = this.scene.unproj(inp.x, inp.y, this.shape.D / 2 - 8, cam);
     this.cursor3 = { p: [wx, clamp(wy, 0, this.shape.waterY), this.shape.D / 2 - 10], speed: inp.speed || 0, t: this.t };
-    const hf = this.pickFish(inp.x, inp.y);
-    const hd = hf ? null : this.pickPiece(inp.x, inp.y);
+    const feeding = this.panel === 'feed';
+    const hf = feeding ? null : this.pickFish(inp.x, inp.y);
+    const hd = hf || feeding ? null : this.pickPiece(inp.x, inp.y);
     this.hoverDecor = hd; this.hoverFish = hf;
-    if (hd && !pr?.panning) {
+    this.shakeCur = feeding && this.inWater(inp.x, inp.y, cam) ? { x: inp.x, y: inp.y } : null;
+    if (this.shakeCur && !pr?.panning) tip(`{mouse_l} Sprinkle ${FOODS[this.foodType].name}`);
+    else if (hd && !pr?.panning) {
       if (hd.kind === 'building') tip(`${this.buildingName(hd)}\n{mouse_l} Open`);
       else tip(`${PROPS[hd.id]?.name || 'Decoration'}\n{mouse_l} ${propInteract(hd.id)?.verb || 'Poke'}`);
     } else if (hf) tip(this.fishTip(hf));
@@ -864,6 +922,14 @@ export class Aquarium {
     if (inp.rpressed) inp.rpressed = false;
   }
 
+  // the screen point is over the tank's water (or the air gap under the lid)
+  inWater(x, y, cam) {
+    const b = this.scene.box;
+    if (!b || x < b.fx0 || x > b.fx1 || y < b.fy0 || y > b.fy1) return false;
+    const [wx, wy] = this.scene.unproj(x, y, 0, cam);
+    return Math.abs(wx) < this.shape.W / 2 && wy > this.shape.floorY(wx, 0) - 6;
+  }
+
   buildingName(p) { return this.game.build?.defName?.(p.id) || p.id; }
 
   click(pr, x, y, cam) {
@@ -871,6 +937,11 @@ export class Aquarium {
       this.st.tank.lampOff = !this.st.tank.lampOff;
       this.sfx('click', { vol: 0.6, pitch: this.st.tank.lampOff ? 0.8 : 1.25 });
       this.game.save?.();
+      return;
+    }
+    if (this.panel === 'feed' && this.inWater(x, y, cam)) {
+      const [wx] = this.scene.unproj(x, y, 0, cam);
+      this.sprinkle(clamp(wx, -this.shape.W / 2 + 6, this.shape.W / 2 - 6), rng.float(-0.25, 0.25) * this.shape.D);
       return;
     }
     const f = this.pickFish(x, y);
@@ -978,34 +1049,112 @@ export class Aquarium {
 
   // HUD size factor: follows the game's UI size setting (uiK()), clamped to fit the screen
   hudK() { let k = 1.25; try { k = uiK(); } catch { /* aero not ready */ } return clamp(Math.min(k, this.game.screen.W / 620, this.game.screen.H / 380), 1, 2.2); }
+  statFont() { return this.hudK() >= 1.4 ? 'big' : 'normal'; }
+  // the top plate: [tank name in voxel letters][fish][happiness][Aero/min] wells, the Ocean button beside it and the
+  // scroll rail under it; the right dock column of voxel tiles (Build, Feed, Fish, Gear, Light)
   fullLayout() {
-    const W = this.game.screen.W, k = this.hudK();
-    const pw = Math.round(200 * k), bw = Math.round(62 * k), ph = Math.round(20 * k);
-    const px = Math.round(W / 2 - (pw + bw + 6) / 2);
-    return { k, pill: { x: px, y: 6, w: pw, h: ph }, btn: { x: px + pw + 6, y: 7, w: bw, h: ph - 2 } };
+    const key = this.t + '|' + this.game.screen.W + '|' + this.game.screen.H + '|' + this.tier;
+    if (this.layKey === key && this.lay) return this.lay;
+    this.layKey = key;
+    return (this.lay = this.computeLayout());
+  }
+  computeLayout() {
+    const { W, H } = this.game.screen, k = this.hudK();
+    const R = Math.round;
+    const sm = this.tankSummary();
+    const font = this.statFont();
+    const ph = R(26 * k), y = 5;
+    const nameC = text3dCanvas(this.tierInfo().name, { palette: 'white', size: 16, depth: 2 });
+    const nameW = R(Math.max(nameC ? nameC.width : measureText(this.tierInfo().name, 'big') + 12, 40) + 14 * k);
+    const icW = R(13 * k), wellPad = R(6 * k), wh = ph - R(9 * k);
+    const vals = [`${sm.fish}/${sm.cap}`, sm.fish ? `${Math.round(sm.happiness * 100)}%` : '--', `${sm.aeroPerMin.toFixed(1)}/min`];
+    const wells = vals.map((v, i) => ({ v, w: icW + R(4 * k) + Math.max(measureText(i === 2 ? '000.0/min' : i === 1 ? '100%' : '00/00', font), measureText(v, font)) + wellPad * 2, h: wh, icon: ['fish', 'heart', 'coin'][i] }));
+    const pad = R(7 * k), gap = R(4 * k);
+    const pw = pad * 2 + nameW + wells.reduce((a, q) => a + q.w + gap, 0);
+    const bw = R(66 * k), bgap = R(6 * k);
+    const x0 = R(W / 2 - (pw + bgap + bw) / 2);
+    const plate = { x: x0, y, w: pw, h: ph, nameW };
+    let wx = x0 + pad + nameW + gap;
+    for (const q of wells) { q.x = wx; q.y = y + R((ph - R(3 * k) - wh) / 2); wx += q.w + gap; }
+    const btn = { x: x0 + pw + bgap, y: y + R(1 * k), w: bw, h: ph - R(2 * k) };
+    const rail = { x: R(plate.x + plate.w * 0.16), y: y + ph + R(3 * k), w: R(plate.w * 0.68), h: Math.max(5, R(5 * k)) };
+    // dock
+    const kd = clamp(Math.min(k, (H - 150) / (5 * 46)), 0.8, 2);
+    const B = R(30 * kd), lab = R(10 * kd), dpad = R(5 * kd), dgap = R(4 * kd);
+    const cell = B + lab + dgap;
+    const dw = B + dpad * 2, dh = 5 * cell - dgap + dpad * 2;
+    // a full-height tool rail at the right edge (it hides the room behind it, so no slivers peek past the tank)
+    const dx = W - dw - R(3 * kd);
+    const top = rail.y + rail.h + R(4 * k);
+    const dy = top + R(4 * kd), dhFull = Math.max(dh, this.hudBottom() - dy - R(6 * kd));
+    const dock = { x: dx, y: dy, w: dw, h: dhFull, B, lab, pad: dpad, cell, kd, ty: dy + R((dhFull - dh) / 2) };
+    return { k, plate, wells, btn, rail, dock, font, top };
   }
   fullButton() { return this.fullLayout().btn; }
 
   fullButtons() {
-    const g = this.game, W = g.screen.W, H = g.screen.H;
+    const g = this.game;
     const L = this.fullLayout();
     const out = [{ id: 'back', ...L.btn, run: () => g.setView?.('ocean'), tip: 'Back to the ocean' }];
-    out.push({ id: 'pill', ...L.pill, run: () => {}, tip: `${this.tierInfo().name}\n{fish} ${this.fish.length}/${this.capacity()}  {coin} ${this.ratePerMin().toFixed(1)} Aero/min` });
-    const kd = clamp(Math.min(this.hudK(), (H - 150) / (6 * 34 + 8)), 0.8, 2);
-    const bw = Math.round(34 * kd), bh = Math.round(30 * kd), x = W - bw - 8;
-    let y = Math.max(Math.round(44 * kd), Math.round((H - 60) * 0.5 - 2.5 * (bh + 4)));
+    out.push({ id: 'pill', ...L.plate, run: () => {}, tip: `${this.tierInfo().name}\n{fish} ${this.fish.length}/${this.capacity()}  {coin} ${this.ratePerMin().toFixed(1)} Aero/min` });
+    const D = L.dock;
+    const lampOff = this.st.tank.lampOff;
     const dock = [
-      { id: 'build', icon: 'coral', label: 'Build', tip: 'Build & decorate your tank (U)', run: () => this.build.enter(), tone: 'green' },
-      { id: 'feed', icon: 'food', label: 'Feed', tip: 'Sprinkle food', run: () => this.sprinkle(this.camX + rng.float(-0.2, 0.2) * Math.min(this.shape.W, W / this.scene.Z), rng.float(-0.2, 0.2) * this.shape.D, 9) },
-      { id: 'fish', icon: 'fish', label: 'Fish', tip: 'Manage your fish (F)', run: () => g.ui?.panels?.fishmgr && g.ui.open('fishmgr') },
-      { id: 'gear', icon: 'gear', label: 'Gear', tip: 'Upgrade & expand the tank', run: () => { this.panel = this.panel === 'gear' ? null : 'gear'; }, on: this.panel === 'gear', tone: 'orange' },
-      { id: 'light', icon: this.st.tank.lampOff ? 'moon' : 'sun', label: 'Light', tip: this.st.tank.lampOff ? 'Light on' : 'Light off', run: () => { this.st.tank.lampOff = !this.st.tank.lampOff; this.sfx('click', { vol: 0.6, pitch: this.st.tank.lampOff ? 0.8 : 1.25 }); this.game.save?.(); } },
+      { id: 'build', icon: 'hammer', label: 'Build', tip: 'Build & decorate your tank (U)', run: () => { this.panel = null; this.build.enter(); }, tint: '#5ccc3c' },
+      { id: 'feed', icon: 'food', label: 'Feed', tip: `Feed your fish: ${FOODS[this.foodType].name}\nClick the water to sprinkle more`, run: () => this.toggleFeed(), on: this.panel === 'feed', tint: '#ff9a3a' },
+      { id: 'fish', icon: 'fishdex', label: 'Fish', tip: 'Manage your fish (F)', run: () => { this.panel = null; if (g.ui?.panels?.fishmgr) g.ui.open('fishmgr'); }, tint: '#38b8f2' },
+      { id: 'gear', icon: 'gear', label: 'Gear', tip: 'Upgrade & expand the tank', run: () => { this.panel = this.panel === 'gear' ? null : 'gear'; this.sfx(this.panel ? 'ui_open' : 'ui_close', { vol: 0.4 }); }, on: this.panel === 'gear', tint: '#a674f4' },
+      { id: 'light', icon: lampOff ? 'moon' : 'sun', label: 'Light', tip: lampOff ? 'Light on' : 'Light off', run: () => { this.st.tank.lampOff = !this.st.tank.lampOff; this.sfx('click', { vol: 0.6, pitch: this.st.tank.lampOff ? 0.8 : 1.25 }); this.game.save?.(); }, tint: lampOff ? '#6a7ae8' : '#ffc83a' },
     ];
-    for (const b of dock) {
-      out.push({ ...b, x, y, w: bw, h: bh, dock: true, kd });
-      y += bh + 4;
-    }
+    dock.forEach((b, i) => out.push({ ...b, x: D.x + D.pad, y: D.ty + D.pad + i * D.cell, w: D.B, h: D.B + D.lab, tile: D.B, dock: true, kd: D.kd }));
     return out;
+  }
+
+  // ------------------------------------------------------------------ feeding tray
+  toggleFeed() {
+    if (this.panel === 'feed') { this.panel = null; this.sfx('ui_close', { vol: 0.35 }); return; }
+    this.panel = 'feed';
+    this.sfx('ui_open', { vol: 0.35 });
+    this.feedHere();
+  }
+  // a pinch over the middle of the view (near the fish when they are around)
+  feedHere(type = this.foodType) {
+    const T = this.shape, c = this.fullCam();
+    const vw = (this.scene.viewW() / c.Z) * 0.5;
+    const near = this.fish.filter((f) => Math.abs(f.p[0] - this.camX) < vw);
+    const cx = near.length ? near.reduce((a, f) => a + f.p[0], 0) / near.length : this.camX;
+    const x = clamp(cx + rng.float(-0.15, 0.15) * vw, this.camX - vw * 0.8, this.camX + vw * 0.8);
+    this.sprinkle(clamp(x, -T.W / 2 + 10, T.W / 2 - 10), rng.float(-0.2, 0.2) * T.D, null, type);
+    this.shakeAt = null;
+  }
+  feedPanelRect() {
+    const L = this.fullLayout(), D = L.dock, kd = D.kd;
+    const R = Math.round;
+    const fb = this.fullButtons().find((b) => b.id === 'feed');
+    const pad = R(6 * kd), gap = R(5 * kd), B = D.B, titleH = R(12 * kd);
+    const w = pad * 2 + FOOD_IDS.length * (B + gap) - gap, h = pad * 2 + titleH + B + D.lab;
+    const x = D.x - R(8 * kd) - w, y = R(clamp(fb.y + fb.h / 2 - h / 2 - titleH / 2, L.top + 4, this.game.screen.H - h - 10));
+    const chips = FOOD_IDS.map((id, i) => ({ id, x: x + pad + i * (B + gap), y: y + pad + titleH, w: B, h: B + D.lab, B }));
+    return { x, y, w, h, kd, pad, titleH, chips };
+  }
+  feedPanelInput(inp, tip) {
+    const r = this.feedPanelRect();
+    if (!rectContains(r, inp.x, inp.y)) return false;
+    for (const c of r.chips) {
+      if (!rectContains(c, inp.x, inp.y)) continue;
+      this.hoverBtn = 'food:' + c.id;
+      tip(`${FOODS[c.id].name}\n${FOODS[c.id].tip}`);
+      if (inp.pressed) {
+        inp.consume();
+        this.st.tank.food = c.id;
+        this.chipPop = { id: c.id, t: this.t };
+        this.sfx('ui_click', { vol: 0.5, pitch: 1.1 + FOOD_IDS.indexOf(c.id) * 0.08 });
+        this.feedHere(c.id);
+      }
+      return true;
+    }
+    if (inp.pressed) inp.consume();
+    return true;
   }
 
   // ------------------------------------------------------------------ gear panel
@@ -1013,9 +1162,9 @@ export class Aquarium {
   gearPanelRect() {
     const { W, H } = this.game.screen;
     const k = this.panelK();
-    const dock = this.fullButtons().find((b) => b.dock);
+    const D = this.fullLayout().dock;
     const w = Math.round(300 * k), h = Math.min(H - 50, Math.round((34 + 58 + GEAR.length * 34 + 16) * k));
-    return { x: (dock ? dock.x : W - 42) - 10 - w, y: Math.max(36, Math.round(H / 2 - h / 2)), w, h, k };
+    return { x: (D ? D.x : W - 42) - 10 - w, y: Math.max(36, Math.round(H / 2 - h / 2)), w, h, k };
   }
   gearRows() {
     const r = this.gearPanelRect(), k = r.k;
@@ -1056,7 +1205,7 @@ export class Aquarium {
   simWorld() {
     const decor = this.decor.map((d) => ({ p: this.pieceWorld(d), r: d.screen ? d.screen.w / 2 / Math.max(0.3, this.scene.Z * this.scene.sOf(this.scene.layerZ(d.l))) * 0.6 : 14, h: d.screen ? d.screen.h / Math.max(0.3, this.scene.Z) * 0.8 : 30 }));
     return {
-      tank: this.shape, fish: this.fish, food: this.food, decor: decor.filter((d) => d.p[2] > -this.shape.D / 2 + 6), night: this.nightK > 0.6,
+      tank: this.shape, fish: this.fish, food: this.feed.live(), decor: decor.filter((d) => d.p[2] > -this.shape.D / 2 + 6), night: this.nightK > 0.6,
       avatar: null,
       cursor: this.visibleKey === 'full' && !this.build.on && this.cursor3 && this.t - this.cursor3.t < 0.5 ? this.cursor3 : null,
       onEat: (f, food) => this.onEat(f, food), canCourt: (f) => this.canCourt(f), onCourt: (a, b) => this.onCourt(a, b),
@@ -1072,17 +1221,15 @@ export class Aquarium {
     this.fxAt(f.p, 'hearts', 2);
   }
 
-  // sprinkle flakes over a point of the water (x, z)
-  sprinkle(x, z, n = rng.int(5, 7)) {
-    const T = this.shape;
-    if (this.food.length > 60) return;
-    for (let i = 0; i < n; i++) {
-      const p = [x + rng.float(-1, 1) * 18, T.waterY - 1, z + rng.float(-1, 1) * 10];
-      T.clamp(p, 2);
-      this.food.push({ p, vy: rng.float(9, 16), t: 0, c: rng.pick(FOOD_COLS), eaten: false, wob: rng.float(0, TAU), landed: false, r: 1 });
-    }
-    this.ripples.add(x, z, 0.6);
-    this.sfx('bubble', { vol: 0.35, pitch: 1.4 });
+  // shake a pinch of the chosen food into the water over (x, z); n = pieces (default: the food's pinch)
+  sprinkle(x, z, n = null, type = this.foodType) {
+    if (this.feed.items.length > 80) return;
+    this.feed.drop(type, x, z, n ?? null);
+    this.shakeT = 0.45;
+    // the shaker rattles a few times
+    for (let i = 0; i < 3; i++) this.sfxQ.push({ at: i * 0.09, name: 'click', o: { vol: 0.16, pitch: rng.float(1.9, 2.4) } });
+    this.sfxQ.push({ at: 0.22, name: 'bubble', o: { vol: 0.2, pitch: 1.5 } });
+    if (this.visibleKey === 'full') this.fedT = this.t;
   }
 
   addBubble(p, r) {
@@ -1091,28 +1238,13 @@ export class Aquarium {
   }
 
   updateFood(dt) {
-    const T = this.shape;
-    let w = 0;
-    for (const p of this.food) {
-      p.t += dt;
-      if (p.eaten || p.t > 40) continue;
-      if (!p.landed) {
-        p.wob += dt * 3;
-        p.p[1] -= p.vy * dt;
-        p.p[0] += Math.sin(p.wob) * 4 * dt;
-        p.p[2] += Math.cos(p.wob * 0.7) * 2 * dt;
-        const fy = T.floorY(p.p[0], p.p[2]) + p.r;
-        if (p.p[1] <= fy) { p.p[1] = fy; p.landed = true; }
-        T.clamp(p.p, 2, p.r);
-      }
-      this.food[w++] = p;
-    }
-    this.food.length = w;
+    this.feed.step(dt);
+    if (this.shakeT > 0) this.shakeT = Math.max(0, this.shakeT - dt);
   }
 
   updateFish(dt) {
     const W = this.simWorld();
-    for (const f of this.fish) f.update(dt, W);
+    for (const f of this.fish) { f.update(dt, W); if (f.chomp > 0) f.chomp -= dt; }
   }
 
   updateDecor(dt) {
@@ -1299,10 +1431,27 @@ export class Aquarium {
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     const cam = this.fullCam();
-    this.scene.draw(ctx, cam, { grow: this.growK() });
-    this.drawOverlays(ctx, cam);
-    this.drawHud(ctx, cam);
+    this.scene.draw(ctx, cam, { grow: this.growK(), noFood: true });
+    this.drawWorldMarks(ctx, cam);
     ctx.restore();
+  }
+
+  // [phase10 polish] everything over the tank in the full view draws on the full-res UI layer (game.js calls this
+  // before the game HUD): the food, emotes, particles, the shaker, the top plate, the dock, panels and build mode
+  drawUi(ctx) {
+    if (this.visibleKey !== 'full') return;
+    const cam = this.fullCam();
+    const b = this.scene.box;
+    if (b) {
+      ctx.save();
+      ctx.beginPath(); ctx.rect(b.fx0, b.fy0, b.fx1 - b.fx0, b.fy1 - b.fy0); ctx.clip();
+      this.feed.draw(ctx, cam, { dark: b.dark, hi: true });
+      ctx.restore();
+    }
+    this.drawEmotes(ctx, cam);
+    this.particles.draw(ctx, 'fg', this.t);
+    this.drawShaker(ctx, cam);
+    this.drawHud(ctx, cam);
   }
 
   drawWindow(ctx) {
@@ -1353,17 +1502,27 @@ export class Aquarium {
 
   drawMini() { /* the mini window is gone (phase 4) */ }
 
-  // 2D overlays: emotes, hover sparkles, the tutorial arrow, the snail, particles
+  // overlays of the floating window view: emotes, world marks (snail, eggs) and particles
   drawOverlays(ctx, cam) {
-    const t = this.t, S = this.scene;
+    this.drawWorldMarks(ctx, cam);
+    this.drawEmotes(ctx, cam);
+    this.particles.draw(ctx, 'fg', this.t);
+  }
+
+  // emotes as little voxel icons over the fish, hover sparkles, the tutorial arrow
+  drawEmotes(ctx, cam) {
+    const t = this.t;
+    void cam;
     for (const f of this.fish) {
       if (!f.emote || !f.screen) continue;
       const sx = f.screen.x, sy = f.screen.y - f.screen.r * 0.7;
       const k = f.emote.t / f.emote.max;
       const name = EMOTE_ICON[f.emote.icon] || f.emote.icon;
-      const y = Math.round(sy - 4 - Math.min(1, f.emote.t * 6) * 3);
+      const pop = Math.min(1, f.emote.t * 6);
+      const y = Math.round(sy - 6 - pop * 4);
       ctx.globalAlpha = Math.min(1, (1 - k) * 4);
       if (name === 'dollar' || name === 'coin') drawAeroCoin(ctx, sx, y - 5, 4, t);
+      else if (has3D(name) && drawIcon3D(ctx, name, sx, y - 6, 11 + (1 - pop) * 4, { t, phase: f.phase * 6 })) { /* voxel icon */ }
       else if (ICONS.has(name)) { const ic = getUiIcon(name); ctx.drawImage(ic, Math.round(sx - ic.width / 2), y - ic.height); }
       else drawText(ctx, f.emote.icon, sx, y - 8, { align: 'center', color: '#ffffff', outline: '#0c3a52' });
       ctx.globalAlpha = 1;
@@ -1378,11 +1537,15 @@ export class Aquarium {
       if (a) ctx.drawImage(a, Math.round(c.screen.x - a.width / 2), Math.round(c.screen.y - c.screen.r - 6 - a.height + Math.sin(t * 7) * 2));
       if (rng.chance(0.08)) this.particles.sparkle(c.screen.x + rng.float(-3, 3), c.screen.y + rng.float(-3, 3), '#bff8ff');
     }
+  }
+
+  // things that live in the tank's world layer: the snail janitor and egg clutches
+  drawWorldMarks(ctx, cam) {
+    const t = this.t, S = this.scene;
     if (this.snail?.p) {
       const q = S.proj(this.snail.p[0], this.snail.p[1], this.snail.p[2], cam);
       drawSnail(ctx, q.x, q.y, Math.max(6, 14 * cam.Z), this.snail.dir, t);
     }
-    // eggs on the floor
     for (const e of this.st.tank.eggs) {
       const p = this.shape.floorPoint(e.x, e.z, 4);
       const q = S.proj(p[0], p[1], p[2], cam);
@@ -1391,7 +1554,56 @@ export class Aquarium {
         ctx.fillRect(Math.round(q.x + (i - 2) * 3), Math.round(q.y - 3 - (i % 2) * 2 + Math.sin(t * 2 + i) * 0.5), 2, 2);
       }
     }
-    this.particles.draw(ctx, 'fg', t);
+  }
+
+  // the food shaker: follows the cursor over the water while the feeding tray is open and tips over to pour
+  drawShaker(ctx, cam) {
+    const sc = this.shakeCur;
+    if (!sc || this.build.on) return;
+    const pour = this.shakeT > 0;
+    const s = shakerSprite(pour ? -0.75 : -0.18);
+    if (!s) return;
+    const w = s.width / 2, h = s.height / 2;
+    const jig = pour ? Math.round(Math.sin(this.t * 48) * 1.5) : 0;
+    const bob = pour ? 0 : Math.sin(this.t * 3) * 1;
+    // the lid points down-left at the cursor
+    const x = sc.x + 3 + jig, y = sc.y - h - 4 + bob;
+    ctx.fillStyle = 'rgba(4,30,60,0.18)';
+    ctx.fillRect(Math.round(x + 2), Math.round(y + h + 1), Math.round(w - 4), 2);
+    ctx.drawImage(s, Math.round(x * 2) / 2, Math.round(y * 2) / 2, w, h);
+    if (pour && rng.chance(0.5)) {
+      const F = FOODS[this.foodType];
+      this.px('sparkle', sc.x + rng.float(-2, 2), sc.y + rng.float(-1, 3), 1, { ramps: [F.cols[rng.int(0, F.cols.length - 1)]], speed: [4, 14], w: 2, h: 2 });
+    }
+    void cam;
+  }
+
+  // a square voxel tile for the dock / tray (lit = active)
+  tileTex(D, tint, lit) {
+    return aeroCached(`tanktile|${D}|${tint}|${lit ? 1 : 0}`, () => {
+      const top = mix(tint, '#ffffff', lit ? 0.85 : 0.72), mid = mix(tint, '#ffffff', lit ? 0.42 : 0.24), bot = shade(tint, lit ? -0.02 : -0.16);
+      const c = aeroSurface(D, D, { top, mid, bot, edge: shade(tint, -0.62), r: Math.max(5, Math.round(D * 0.24)), gloss: 0.72, glossH: Math.round(D * 0.42), curve: Math.round(D * 0.06), rim: 1, glow: 0.6, glowColor: mix(tint, '#ffffff', 0.75), sparkle: 2 });
+      return c;
+    });
+  }
+  drawTile(ctx, x, y, D, tint, o = {}) {
+    const hov = o.hover ? 1 : 0, on = !!o.on;
+    const lift = hov ? -2 : on ? 1 : 0;
+    ctx.fillStyle = rgba(shade(tint, -0.7), 0.4);
+    ctx.fillRect(Math.round(x + 3), Math.round(y + D + 1), Math.round(D - 6), 2);
+    if (hov || on) drawAeroGlow(ctx, x + D / 2, y + D / 2 + lift, Math.round(D * 0.8), mix(tint, '#ffffff', 0.5), on ? 0.55 : 0.45);
+    ctx.drawImage(this.tileTex(D, tint, hov || on), Math.round(x), Math.round(y + lift));
+    return lift;
+  }
+  // a voxel icon by name (3D UI icons first, then the big menu models, then the inline icon)
+  drawIcon(ctx, name, cx, cy, px, o = {}) {
+    if (has3D(name) && drawIcon3D(ctx, name, cx, cy, px, { t: this.t, hover: o.hover ? 1 : 0, phase: o.phase || 0 })) return true;
+    let f = null;
+    try { f = iconFrame(name, Math.round(px), o.hover ? (this.t * 0.6) % 1 : Math.sin(this.t * 0.8 + (o.phase || 0)) * 0.05); } catch { f = null; }
+    if (f) { ctx.drawImage(f.canvas, Math.round((cx - f.ox) * 2) / 2, Math.round((cy - f.oy) * 2) / 2); return true; }
+    const ic = getUiIcon(name, 2);
+    if (ic) ctx.drawImage(ic, Math.round(cx - ic.width / 2), Math.round(cy - ic.height / 2));
+    return !!ic;
   }
 
   drawHud(ctx, cam) {
@@ -1399,84 +1611,116 @@ export class Aquarium {
     const { W, H } = g.screen;
     const t = this.t;
     if (this.build.on) { this.build.draw(ctx, cam); return; }
-    const sm = this.tankSummary();
-    const { pill: p, k } = this.fullLayout();
-    drawAeroSurface(ctx, p.x, p.y, p.w, p.h, { tone: 'frost', r: 'pill', gloss: 0.75, glossH: Math.round(p.h * 0.45), curve: 2, rim: 0.9, glow: 0.5 });
-    const ink = AERO.ink, font = k >= 1.4 ? 'big' : 'normal';
-    const th = font === 'big' ? 9 : 7;
-    let x = p.x + Math.round(10 * k);
-    const ty = Math.round(p.y + (p.h - th) / 2);
-    const icon = (name) => { const ic = getUiIcon(name); if (!ic) return; const s = k >= 1.4 ? 2 : 1; ctx.drawImage(ic, x, Math.round(p.y + (p.h - ic.height * s) / 2), ic.width * s, ic.height * s); x += ic.width * s + 3; };
-    icon('fish');
-    const fs = `${sm.fish}/${sm.cap}`;
-    drawText(ctx, fs, x, ty, { color: ink, font });
-    x += measureText(fs, font) + Math.round(10 * k);
-    icon('heart');
-    const hs = sm.fish ? `${Math.round(sm.happiness * 100)}%` : '--';
-    drawText(ctx, hs, x, ty, { color: ink, font });
-    x += measureText(hs, font) + Math.round(10 * k);
-    drawAeroCoin(ctx, x + 4 * k, p.y + p.h / 2, 4.5 * k, t);
-    x += Math.round(12 * k);
-    drawText(ctx, `${sm.aeroPerMin.toFixed(1)}/min`, x, ty, { color: ink, font });
-    const btns = this.fullButtons();
-    for (const b of btns) {
-      if (b.id !== 'back') continue;
-      drawAeroButton(ctx, b.x, b.y, b.w, b.h, { label: 'Ocean', icon: getUiIcon('arrow_l'), state: this.hoverBtn === b.id ? 'hover' : 'normal', tone: 'aqua' });
-    }
-    this.drawDock(ctx, btns.filter((b) => b.dock));
-    this.drawScrollbar(ctx, cam);
+    const L = this.fullLayout();
+    const { k, plate: p, font } = L;
+    const R = Math.round;
+    // ---- the top plate: a chunky aqua voxel slab with the tank's name in voxel letters and three stat wells
+    ctx.fillStyle = 'rgba(3,38,74,0.2)';
+    ctx.fillRect(p.x + 6, p.y + p.h + 1, p.w - 12, R(2 * k));
+    drawAeroSurface(ctx, p.x, p.y, p.w, p.h, { top: '#d4f8ff', mid: '#48bcf0', bot: '#1270c0', a: [0.96, 0.98], edge: '#0b4a8a', r: R(9 * k), gloss: 0.6, glossH: R(p.h * 0.42), curve: R(2 * k), rim: 0.9, glow: 0.7, glowColor: '#8ff6ff', depth: 2, bubbles: 2, seed: 11, streak: true });
+    const nameCx = p.x + R(7 * k) + p.nameW / 2;
+    drawAeroSurface(ctx, p.x + R(5 * k), L.wells[0].y, p.nameW + R(4 * k), L.wells[0].h, { tone: 'deep', r: R(5 * k), inset: true, gloss: 0.25, rim: 0.5, glow: 0.4, glowColor: '#3ab0ff' });
+    if (!drawPop3D(ctx, this.tierInfo().name, nameCx, L.wells[0].y + L.wells[0].h / 2 - R(1 * k), { t, palette: 'white', size: 16, depth: 2, wobble: 0.25, glow: false, sparkle: true, phase: 1.3 }))
+      drawText(ctx, this.tierInfo().name, nameCx, R(p.y + p.h / 2 - 5), { align: 'center', font: 'big', color: '#ffffff', shadow: '#0a4680' });
+    const ink = AERO.ink, th = font === 'big' ? 9 : 7;
+    L.wells.forEach((q, i) => {
+      drawAeroSurface(ctx, q.x, q.y, q.w, q.h, { tone: 'frost', r: R(5 * k), inset: true, gloss: 0.35, rim: 0.7, glow: 0.3 });
+      const icx = q.x + R(5 * k) + R(6 * k), icy = q.y + q.h / 2;
+      if (q.icon === 'coin') drawAeroCoin(ctx, icx, icy, R(5 * k), t);
+      else if (q.icon === 'fish') { const ic = getUiIcon('fish', 2); if (ic) ctx.drawImage(ic, R(icx - ic.width / 2), R(icy - ic.height / 2)); }
+      else this.drawIcon(ctx, q.icon, icx, icy, R(12 * k), { phase: i });
+      drawText(ctx, q.v, q.x + R(5 * k) + R(13 * k) + R(3 * k), R(q.y + (q.h - th) / 2), { color: ink, font });
+    });
+    // ---- the Ocean button (a voxel button with a voxel hook)
+    const bb = L.btn;
+    drawAeroButton(ctx, bb.x, bb.y, bb.w, bb.h, { label: 'Ocean', icon: getUiIcon('hook'), state: this.hoverBtn === 'back' ? 'hover' : 'normal', tone: 'aqua', radius: R(8 * k) });
+    this.drawScrollbar(ctx, cam, L);
+    this.drawDock(ctx, this.fullButtons().filter((b) => b.dock), L);
+    if (this.panel === 'feed') this.drawFeedPanel(ctx);
     if (this.panel === 'gear') this.drawGearPanel(ctx);
     const ga = this.growAnim;
     if (ga && ga.t > 0.3 && ga.t < 2.9) {
       const a = clamp01(Math.min((ga.t - 0.3) * 3, (2.9 - ga.t) * 3));
-      ctx.globalAlpha = a;
-      drawText(ctx, 'Tank expanded!', W / 2, Math.round(H * 0.16), { align: 'center', color: '#ffffff', outline: '#0a3e74', scale: 2 });
-      drawText(ctx, this.tierInfo().name, W / 2, Math.round(H * 0.16) + 22, { align: 'center', color: '#bff8ff', outline: '#0a3e74' });
-      ctx.globalAlpha = 1;
+      const pop = clamp01((ga.t - 0.3) * 2.5);
+      if (!drawPop3D(ctx, 'Tank expanded!', W / 2, Math.round(H * 0.2), { t, pop, alpha: a, palette: 'aqua', size: 32, depth: 4 }))
+        drawText(ctx, 'Tank expanded!', W / 2, Math.round(H * 0.16), { align: 'center', color: '#ffffff', outline: '#0a3e74', scale: 2 });
+      drawPop3D(ctx, this.tierInfo().name, W / 2, Math.round(H * 0.2) + 30, { t: t + 0.5, pop: clamp01(pop * 1.4 - 0.4), alpha: a, palette: 'white', size: 16, depth: 3, sparkle: false });
     }
   }
 
-  // a glossy scroll track along the top of the hood when the tank is wider than the screen
-  drawScrollbar(ctx, cam) {
+  // a voxel rail under the top plate when the tank is wider than the screen: the knob shows the view, orange
+  // studs show where your fish are
+  drawScrollbar(ctx, cam, L) {
     const max = this.scene.scrollMax();
     if (max <= 0) return;
-    const T = this.shape, W = this.game.screen.W;
-    const tw = Math.round(Math.min(W * 0.36, 260)), th = 6;
-    const x0 = Math.round(W / 2 - tw / 2), y0 = Math.round(this.fullLayout().pill.y + this.fullLayout().pill.h + 6);
-    drawAeroSurface(ctx, x0, y0, tw, th, { tone: 'glass', r: 3, gloss: 0.5, rim: 0.8 });
-    const vis = clamp01((W / cam.Z) / (T.W + 68));
-    const kw = Math.max(14, Math.round(tw * vis));
-    const kx = Math.round(x0 + ((this.camX + max) / (2 * max)) * (tw - kw));
-    drawAeroSurface(ctx, kx, y0, kw, th, { tone: 'aqua', r: 3, gloss: 0.8, rim: 0.9 });
+    const T = this.shape, r = L.rail;
+    drawAeroSurface(ctx, r.x, r.y, r.w, r.h, { tone: 'deep', r: 3, inset: true, gloss: 0.2, rim: 0.5, glow: 0 });
+    const vis = clamp01((this.scene.viewW() / cam.Z) / (T.W + 68));
+    const kw = Math.max(14, Math.round(r.w * vis));
+    const kx = Math.round(r.x + ((this.camX + max) / (2 * max)) * (r.w - kw));
+    drawAeroSurface(ctx, kx, r.y - 1, kw, r.h + 2, { tone: 'aqua', r: 3, gloss: 0.8, rim: 0.9, glow: 0.6 });
     for (const f of this.fish) {
       const u = clamp01(f.p[0] / T.W + 0.5);
-      ctx.fillStyle = '#ffb43a';
-      ctx.fillRect(Math.round(x0 + u * tw), y0 + 2, 1, 2);
+      const fx = Math.round(r.x + 2 + u * (r.w - 4));
+      ctx.fillStyle = '#7a3a06'; ctx.fillRect(fx - 1, r.y + 1, 2, r.h - 2);
+      ctx.fillStyle = '#ffb43a'; ctx.fillRect(fx - 0.5, r.y + 1.5, 1, r.h - 3);
     }
   }
 
-  drawDock(ctx, dock) {
+  // the dock: a column of voxel tiles with voxel icons on an aqua slab, labels under the tiles
+  drawDock(ctx, dock, L) {
     if (!dock.length) return;
-    const x0 = dock[0].x - 4, y0 = dock[0].y - 4, x1 = Math.max(...dock.map((b) => b.x + b.w)) + 4, y1 = Math.max(...dock.map((b) => b.y + b.h)) + 4;
-    const key = dock.map((b) => b.id + (b.on ? 1 : 0) + b.icon + (this.hoverBtn === b.id ? 'h' : '') + b.y).join('|');
-    let c = this.dockCv;
-    if (!c || this.dockKey !== key) {
-      c = this.dockCv = this.dockCv && this.dockCv.width === x1 - x0 && this.dockCv.height === y1 - y0 ? this.dockCv : document.createElement('canvas');
-      c.width = x1 - x0; c.height = y1 - y0;
-      const g = c.getContext('2d');
-      g.imageSmoothingEnabled = false;
-      g.clearRect(0, 0, c.width, c.height);
-      g.translate(-x0, -y0);
-      for (const b of dock) {
-        drawAeroButton(g, b.x, b.y, b.w, b.h, { tone: b.on ? 'green' : b.tone || 'glass', state: b.on ? 'down' : this.hoverBtn === b.id ? 'hover' : 'normal', radius: 8 });
-        const ic = getUiIcon(b.icon), s = b.kd >= 1.2 ? 2 : 1;
-        if (ic) g.drawImage(ic, Math.round(b.x + (b.w - ic.width * s) / 2), b.y + Math.round(4 * b.kd), ic.width * s, ic.height * s);
-        const lf = b.kd >= 1.2 ? 'normal' : 'small';
-        drawText(g, b.label, b.x + b.w / 2, b.y + b.h - (lf === 'normal' ? 11 : 9), { font: lf, align: 'center', color: '#ffffff', shadow: '#0a3e74' });
-      }
-      this.dockKey = key;
+    const D = L.dock, R = Math.round, kd = D.kd;
+    ctx.fillStyle = 'rgba(3,38,74,0.22)';
+    ctx.fillRect(D.x + 6, D.y + D.h + 1, D.w - 12, R(3 * kd));
+    drawAeroSurface(ctx, D.x, D.y, D.w, D.h, { top: '#d4f8ff', mid: '#48bcf0', bot: '#1270c0', a: [0.95, 0.98], edge: '#0b4a8a', r: R(9 * kd), gloss: 0.45, glossH: R(16 * kd), curve: R(2 * kd), rim: 0.9, glow: 0.7, glowColor: '#8ff6ff', depth: 2, bubbles: 3, seed: 23 });
+    // voxel ornaments in the rail's spare space: bubbles on top, a starfish at the foot
+    const spare = D.ty - D.y;
+    if (spare > 26) {
+      drawVoxDecor(ctx, 'bubbles', D.x + D.w / 2, D.y + spare / 2 + 2, Math.min(R(spare * 0.8), R(D.w * 0.62)), { t: this.t, phase: 0.6 });
+      drawVoxDecor(ctx, 'starfish', D.x + D.w / 2, D.y + D.h - spare / 2 - 2, Math.min(R(spare * 0.8), R(D.w * 0.62)), { t: this.t, phase: 2.1 });
     }
-    ctx.drawImage(c, x0, y0);
+    const lf = kd >= 1.2 ? 'normal' : 'small';
+    dock.forEach((b, i) => {
+      const hov = this.hoverBtn === b.id;
+      const lift = this.drawTile(ctx, b.x, b.y, b.tile, b.tint, { hover: hov, on: b.on });
+      const px = R(b.tile * 0.62);
+      this.drawIcon(ctx, b.icon, b.x + b.tile / 2, b.y + b.tile / 2 + lift, px, { hover: hov, phase: i * 1.7 });
+      if (b.on) drawPixelBrackets(ctx, b.x - 1, b.y - 1 + lift, b.tile + 2, b.tile + 2, this.t, { k: kd >= 1.4 ? 2 : 1 });
+      if (b.id === 'feed' && this.fish.some((f) => (f.rec.hunger ?? 0) > 0.62) && !b.on) {
+        // hungry fish: the feed tile bobs a little voxel bubble with a "!"
+        const bx = b.x + b.tile - 2, by = b.y + 2 + Math.sin(this.t * 5) * 1.5;
+        this.drawIcon(ctx, 'exclaim', bx, by, R(9 * kd), {});
+      }
+      drawText(ctx, b.label, b.x + b.tile / 2, R(b.y + b.tile + (D.lab - (lf === 'normal' ? 7 : 5)) / 2 + 1), { font: lf, align: 'center', color: '#ffffff', shadow: '#0a3e74' });
+    });
+  }
+
+  // the feeding tray: four foods as voxel tiles; the chosen one glows
+  drawFeedPanel(ctx) {
+    const r = this.feedPanelRect(), R = Math.round, kd = r.kd;
+    ctx.fillStyle = 'rgba(3,38,74,0.2)';
+    ctx.fillRect(r.x + 6, r.y + r.h + 1, r.w - 12, R(3 * kd));
+    drawAeroSurface(ctx, r.x, r.y, r.w, r.h, { tone: 'frost', r: R(9 * kd), gloss: 0.5, glossH: R(12 * kd), rim: 0.9, glow: 0.5, depth: 2, bubbles: 2, seed: 31 });
+    // a little pointer toward the Feed tile
+    const fb = this.fullButtons().find((b) => b.id === 'feed');
+    if (fb) { const py = R(fb.y + fb.tile / 2); ctx.fillStyle = '#86c4e6'; for (let i = 0; i < 4; i++) ctx.fillRect(r.x + r.w + i, py - 4 + i, 1, 8 - i * 2); }
+    const lf = kd >= 1.2 ? 'normal' : 'small';
+    drawText(ctx, 'Pick a food, then click the water', r.x + r.w / 2, r.y + r.pad - 1, { font: 'small', align: 'center', color: AERO.ink });
+    for (const c of r.chips) {
+      const F = FOODS[c.id], on = this.foodType === c.id, hov = this.hoverBtn === 'food:' + c.id;
+      const lift = this.drawTile(ctx, c.x, c.y, c.B, on ? '#ff9a3a' : '#6ac8f0', { hover: hov, on });
+      const ic = foodIcon(c.id, clamp(Math.round((c.B * 2 * 0.72) / 13), 3, 7));
+      if (ic) {
+        const pop = this.chipPop?.id === c.id ? clamp01((this.t - this.chipPop.t) * 5) : 1;
+        const s = 0.5 * (pop < 1 ? 1 + Math.sin(pop * Math.PI) * 0.25 : 1);
+        const w = ic.width * s, h = ic.height * s;
+        const bob = hov ? Math.sin(this.t * 6) * 1 : 0;
+        ctx.drawImage(ic, Math.round((c.x + c.B / 2 - w / 2) * 2) / 2, Math.round((c.y + c.B / 2 - h / 2 + lift + bob) * 2) / 2, w, h);
+      }
+      if (on) drawPixelBrackets(ctx, c.x - 1, c.y - 1 + lift, c.B + 2, c.B + 2, this.t, { k: kd >= 1.4 ? 2 : 1 });
+      drawText(ctx, F.short, c.x + c.B / 2, R(c.y + c.B + 2), { font: lf, align: 'center', color: on ? '#c0500a' : AERO.ink });
+    }
   }
 
   drawGearPanel(ctx) {
@@ -1484,9 +1728,8 @@ export class Aquarium {
     drawAeroPanel(ctx, r.x, r.y, r.w, r.h, { tone: 'glass', radius: 10, title: 'Tank Gear' });
     const ink = AERO.ink;
     const big = k >= 1.4, f1 = big ? 'big' : 'normal', f2 = big ? 'normal' : 'small';
-    const is = big ? 2 : 1;
-    const icon = (name, x, y) => { const ic = getUiIcon(name); if (ic) ctx.drawImage(ic, x, y, ic.width * is, ic.height * is); };
     const L = (v) => Math.round(v * k);
+    const icon = (name, x, y) => this.drawIcon(ctx, name, x + L(7), y + L(6), L(14), { phase: x * 0.1 });
     for (const row of this.gearRows()) {
       const b = this.rowButton(row);
       if (row.kind === 'tier') {
@@ -1505,7 +1748,7 @@ export class Aquarium {
       }
       const lv = gearLevel(this.st, row.g.id);
       drawAeroSurface(ctx, row.x, row.y, row.w, row.h, { tone: 'frost', r: 6, gloss: 0.4, rim: 0.7 });
-      icon(row.g.icon, row.x + L(6), row.y + L(8));
+      icon(has3D('tank_' + row.g.id) ? 'tank_' + row.g.id : row.g.icon, row.x + L(6), row.y + L(8));
       drawText(ctx, row.g.name, row.x + L(24), row.y + L(5), { color: ink, font: f1 });
       drawText(ctx, row.g.levels[lv], row.x + L(24), row.y + L(18), { font: f2, color: '#3a6a8a' });
       const bx0 = (b ? b.x : row.x + row.w - L(96)) - L(10);

@@ -53,7 +53,7 @@ export const CHAPTERS = [
     quests: [
       Q('c1_lesson', 'seal', 'Fishing 101', 'Hook, reel, shock! I\'ll show you everything.', [{ t: 'tutorial' }], { aero: 10, bait: { crumbs: 5 } }),
       Q('c1_catch', 'seal', 'First Splash', 'Three fish. You can do it!', [{ t: 'catch', n: 3 }], { aero: 15, items: { driftwood: 2 } }),
-      Q('c1_keep', 'seal', 'Home Sweet Jar', 'Keep a fish! It makes Aero while you fish.', [{ t: 'keep', n: 1 }], { aero: 10, items: { shell: 2 } }),
+      Q('c1_keep', 'seal', 'Home Sweet Tank', 'Keep a fish! It makes Aero while you fish.', [{ t: 'keep', n: 1 }], { aero: 10, items: { shell: 2 } }),
       Q('c1_chest', 'seal', 'Crack It Open!', 'There\'s a crate in your Satchel. Tap the glowing knots to crack it!', [{ t: 'chest', n: 1 }], { aero: 10, items: { fish_scale: 3 } }), // [phase8:prog]
       Q('c1_lab', 'fizz', 'Lab Coat On', 'Plan a tile in The Lab, then press Confirm!', [{ t: 'research', n: 1 }], { items: { driftwood: 3, kelp_fibre: 2 } }),
       Q('c1_dex', 'seal', 'FishDex Rookie', 'Every new fish goes in your FishDex.', [{ t: 'species', n: 4 }], { aero: 25 }),
