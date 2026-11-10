@@ -1,20 +1,26 @@
-// The aquarium (phase 6; phase 7: YOUR TANK IS A CUBE, a build mode and fish management; phase 8: voxel decor, plants
-// and furniture, pixel-art particles): a real 3D glass cube tank (src/gfx/lowpoly.js LPScene) in a Frutiger Aero room. Move around it (drag to orbit, right-drag to pan, wheel to zoom, Front / Top / Close-up presets), go
-// swimming inside as your bubble person (WASD / arrows + drag to look, or click to dart; fish react, Aero drops are
-// collected by swimming through them, bubbles trail; Esc or the Exit pill leaves), arrange decorations in 3D, buy
-// tank gear with Aero and watch the tank swell when the Lab unlocks a bigger tier (goldfish jar -> bowl -> Aqua Lamp ->
-// big tank -> reef tank -> wall aquarium). Idle Aero (drops the fish puff out), offline earnings, feeding, breeding,
-// evolution and auto-collect keep working. Without WebGL2 a simple 2D front view stands in (flat2d.js).
+// The aquarium (phase 10: YOUR TANK IS 2D SIDE-SCROLLING, LIKE THE OCEAN, AND YOU CAN ONLY BUILD IN IT).
+// A side view into a big glass tank in a Frutiger Aero room (scene2d.js, voxel art in tankart.js): front glass edges,
+// a voxel substrate in three depth planes (front / mid / back), rocks, swaying physics plants, light shafts, caustics,
+// bubbles, voxel tank equipment (filter, heater, light, air stones, substrate) and your fish swimming in it (drawFishRig).
+// Bigger tiers are WIDER than the screen: scroll with drag, wheel, A / D / arrows or by resting the cursor at an edge.
+// A Lab tank unlock grows the tank with a bouncy expansion. Idle Aero drops (sweep the cursor over them), offline
+// earnings, feeding, breeding, evolution and auto-collect all live here.
 //
-// Shown as the full-screen scene (state.view === 'aquarium') and as a floating Aero glass window over the ocean.
-// Build mode (buildmode.js, dock 'Build'): catalog, ghost, grid snap, rotate / raise / stack, move, duplicate, store,
-// sell, undo, plant & rock brushes. Fish management (src/ui/fishmgr.js) uses: fishOf(rec), moveFish(rec, toTank),
-// releaseFish(rec), feedAll(), breedPair(recA, recB), focusFish(rec), canBreed(rec). editing (true while building).
+// Building happens ONLY here (build2d.js, dock 'Build', key U anywhere): a catalog of decorations and blueprints, a
+// ghost that snaps to the floor of the front / mid / back plane or to the back glass, move, flip, store, undo. Seabed
+// buildings (state.buildings) stand in the tank (b.tank = {u, l, h, f}) and keep their bonuses (src/build/build.js).
+//
+// Shown as the full-screen scene (state.view === 'aquarium') and as a floating Aero glass window over the ocean (a live
+// close-up camera that follows your fish). Fish management (src/ui/fishmgr.js) uses: fishOf(rec), moveFish(rec,
+// toTank), releaseFish(rec), feedAll(), breedPair(recA, recB), focusFish(rec), canBreed(rec), rateOf(rec).
 // API used by the game: addFish(rec), update(dt, inpOrNull), hit(x, y), drawFull, drawWindow, drawMini, windowRect(),
-// toggleWindow(), openWindow(force), closeWindow(), forceCoin(), offlineCoins(sec), onResize(). Extra: addDecor(id),
-// storedDecor(), placeStored(id), tankSummary(), interact(decorOrId), openFull(), capacity(), tier, syncFish(),
-// evolveFish(dt), enterSwim(), exitSwim(), setPreset(name), buyGear(id). Events via game.emit: 'tankFish',
-// 'coinCollected' ({value, by}), 'decorPlayed', 'fishEvolved', 'hatched', 'tankUpgraded' ({from, to}), 'gearBought'.
+// toggleWindow(), openWindow(force), closeWindow(), forceCoin(), hintPoint(), offlineCoins(sec), onResize(),
+// addDecor(id), storedDecor(), placeStored(id), tankSummary(), interact(decorOrId), openFull(), openBuild(o),
+// capacity(), tier, syncFish(), evolveFish(dt), buyGear(id), pieceScreen(rec), editing, view.rebuild().
+// Events via game.emit: 'tankFish', 'coinCollected' ({value, by}), 'decorPlayed', 'fishEvolved', 'hatched',
+// 'tankUpgraded' ({from, to}), 'gearBought', 'tankFed', 'tankBuilt'.
+// state.tank: {tier, decor: [{id, u, l, h, f, v}], stored: [ids], eggs, coins, gear, lampOff}. l: 0 front, 1 mid,
+// 2 back, 3 the back glass (h = height 0..1).
 
 import { clamp, clamp01, lerp, rectContains, smoothstep, TAU } from '../core/math.js';
 import { rng } from '../core/rng.js';
@@ -23,17 +29,15 @@ import { Particles } from '../gfx/particles.js';
 import { drawText, measureText } from '../gfx/font.js';
 import { getUiIcon, UI_ICON_NAMES } from '../gfx/uiicons.js';
 import { PROPS, propInteract } from '../gfx/props.js';
+import { compiled } from '../gfx/spritecache.js';
 import { SPECIES_BY_ID } from '../fish/species.js';
 import { rollIndividual, sizeScaleOf } from '../fish/traits.js';
 import { nodeFor } from '../game/lab.js';
-import { AERO, fmtAero, drawAeroCoin, drawAeroSurface, drawAeroButton, drawSparkle, drawAeroPanel, drawAeroGlow, uiK } from '../ui/aero.js';
+import { AERO, fmtAero, drawAeroCoin, drawAeroSurface, drawAeroButton, drawSparkle, drawAeroPanel, uiK } from '../ui/aero.js';
 import { TANK_TIERS, TANK_IDS, tankTier, aeroRate, GEAR, gearLevel, gearCost, gearMul, gearHappy } from './tanks.js';
-import { TankShape, TankFish, Drops3D, Ripples, DENOMS } from './sim3d.js';
-import { TankView } from './view3d.js';
-import { BuildMode } from './buildmode.js';
-import { decorModel } from './lpdecor.js';
-import { warmFishFrame } from './lpfish.js';
-import { drawFlat } from './flat2d.js';
+import { SideShape, TankFish, Drops3D, Ripples, DENOMS } from './sim2d.js';
+import { TankScene } from './scene2d.js';
+import { Build2D } from './build2d.js';
 
 const HUNGER_RATE = 1 / 2000; // 0 -> 0.6 ("hungry") in 20 minutes
 const AUTO_POP = [Infinity, 14, 7, 3.5, 2];
@@ -42,7 +46,6 @@ const EMOTE_ICON = { '!': 'exclaim', '!!': 'exclaim', '?': 'question', $: 'dolla
 const FRAME = { lid: 15, side: 4, base: 14 };
 const WIN_W = [250, 266, 290, 326, 362, 404];
 const FOOD_COLS = ['#e86a3a', '#f0a040', '#c8503a', '#8ac04a', '#e8c070'];
-const v3 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 
 export class Aquarium {
   constructor(game) {
@@ -51,15 +54,15 @@ export class Aquarium {
     this.fish = [];
     this.food = [];
     this.bubbles = [];
-    this.decor = [];
+    this.decor = []; // pieces: {kind: 'decor'|'building', rec, id, v, l, x, wy, flip, squash, ...}
     this.drops = new Drops3D();
-    this.drops.onMerge = (c) => this.fxAt(c.p, 'sparkle', 3);
     this.ripples = new Ripples();
     this.particles = new Particles(240);
-    this.view = new TankView(this);
+    this.scene = new TankScene(this);
+    this.camX = 0; this.camV = 0;
+    this.winCam = { x: 0, y: 0 };
     this.visibleKey = null;
-    this.swim = null;
-    this.build = new BuildMode(this);
+    this.build = new Build2D(this);
     this.panel = null; // 'gear' | null
     this.press = null; this.drag = null;
     this.hoverFish = null; this.hoverDecor = null; this.hoverBtn = null;
@@ -69,15 +72,18 @@ export class Aquarium {
     this.sfxQ = [];
     this.winAnim = 1;
     this.coinsDirty = false;
+    // compat: the old 3D view object (workshop.js calls view.rebuild(); fxAt / overlays use project)
+    this.view = { rebuild: () => this.scene.invalidate(), invalidate: () => this.scene.invalidate(), ok: true, project: (p) => this.project(p), ppu: () => this.scene.Z };
     this.load();
   }
 
   // ------------------------------------------------------------------ state
   get st() { return this.game.state; }
   get stats() { return this.game.stats || {}; }
-  get coins() { return this.drops; } // older readers
-  get arrange() { return this.build.on; } // older readers
+  get coins() { return this.drops; }
+  get arrange() { return this.build.on; }
   get editing() { return this.visibleKey === 'full' && this.build.on; }
+  get swim() { return null; } // swimming retired in phase 10
 
   ensureState() {
     const st = this.st;
@@ -88,9 +94,13 @@ export class Aquarium {
     tk.stored ||= [];
     tk.coins ||= [];
     tk.gear ||= {};
-    tk.paint ||= [];
     if (!Number.isFinite(tk.tier)) tk.tier = 0;
-    for (const d of tk.decor) { if (d.z === undefined) d.z = 0.3 + ((d.x * 997) % 1) * 0.5; }
+    // phase 10 migration: old cube decor {x, z, r, lift} -> side view {u, l}
+    for (const d of tk.decor) {
+      if (d.u === undefined) { d.u = clamp01(d.x ?? 0.5); d.l = (d.z ?? 0.5) < 0.34 ? 0 : (d.z ?? 0.5) < 0.67 ? 1 : 2; d.f = (d.r || 0) < 0; delete d.x; delete d.z; delete d.r; delete d.lift; }
+      d.l = clamp(d.l | 0, 0, 3);
+    }
+    delete tk.paint; delete tk.baseOff;
     st.tankWindow ||= { open: false, x: 0, y: 0 };
   }
 
@@ -98,15 +108,14 @@ export class Aquarium {
     this.stateRef = this.game.state;
     this.ensureState();
     this.tier = tankTier(this.st);
-    this.shape = new TankShape(this.tier);
+    this.shape = new SideShape(this.tier);
     this.fish.length = 0; this.food.length = 0; this.bubbles.length = 0;
     this.drops.list.length = 0;
-    this.swim = null; this.growAnim = null; this.pendingGrow = null;
-    this.drops.setScale(this.shape.fishLen / 6);
-    this.decor = this.st.tank.decor.filter((d) => PROPS[d.id]).map((rec) => ({ rec }));
-    this.layoutDecor(true);
-    this.paintDirty = true;
-    this.view.invalidate(); // the 3D kit is built on first show
+    this.growAnim = null; this.pendingGrow = null;
+    this.drops.setScale(6);
+    this.camX = 0;
+    this.syncPieces();
+    this.scene.invalidate();
     this.syncFish();
     this.restoreCoins();
   }
@@ -115,76 +124,82 @@ export class Aquarium {
   tierInfo() { return TANK_TIERS[this.tier] || TANK_TIERS[0]; }
   sfx(name, opts) { if (!this.visibleKey) return; try { audio.play(name, opts); } catch { /* audio not ready */ } }
 
-  // ------------------------------------------------------------------ decor
-  decorScale(d) {
-    const T = this.shape, m = d.model;
-    const size = PROPS[d.rec.id]?.decor?.size || 1;
-    let k = clamp(T.fishLen / 7.2, 0.42, 1.45) * [0.95, 1, 1.05][size - 1];
-    if (m) { k = Math.min(k, (T.waterY * (T.round ? 0.5 : 0.72)) / m.h, (T.minDim * (T.round ? 0.26 : 0.5)) / m.r); }
-    return Math.max(0.15, k);
+  // ------------------------------------------------------------------ pieces (decor + buildings in the tank)
+  tankBuildings() { return (this.st.buildings || []).filter((b) => b.tank); }
+  // rebuild the piece list from the save, keeping per-piece animation state
+  syncPieces() {
+    const old = new Map(this.decor.map((p) => [p.rec, p]));
+    const out = [];
+    const T = this.shape;
+    const mk = (kind, rec, id, v, pl) => {
+      const p = old.get(rec) || { kind, rec, squash: 0, squashV: 0, hop: 0, shake: 0, lift: 0, vy: 0 };
+      p.kind = kind; p.id = id; p.v = v || 0; p.l = clamp(pl.l | 0, 0, 3); p.flip = !!pl.f;
+      p.x = (clamp01(pl.u ?? 0.5) - 0.5) * (T.W - 40);
+      p.wy = lerp(T.planeH(2, p.x) + 16, T.waterY - 30, clamp01(pl.h ?? 0.5));
+      p.order = out.length;
+      out.push(p);
+    };
+    for (const d of this.st.tank.decor) if (PROPS[d.id]) mk('decor', d, d.id, d.v, d);
+    for (const b of this.tankBuildings()) mk('building', b, b.id, 0, b.tank);
+    this.decor = out;
+    this.pieceKey = this.st.tank.decor.length + '|' + this.tankBuildings().length;
+  }
+  pieces() {
+    const g = this.build.ghostPiece();
+    return g ? [...this.decor, g] : this.decor;
+  }
+  pieceOf(rec) { return this.decor.find((p) => p.rec === rec) || null; }
+  // screen position of a placed record (buildings use it for pop-up effects)
+  pieceScreen(rec) {
+    const p = this.pieceOf(rec);
+    if (!p?.screen || !this.visibleKey) return null;
+    return [p.screen.x + p.screen.w / 2, p.screen.y + p.screen.h * 0.3];
   }
 
-  // Lay the pieces out in list order: each one stands on the floor or on an earlier piece under its centre (stacking),
-  // plus its own lift. d.ty is where it rests; d.p falls to it under water gravity (updateDecor).
-  layoutDecor(snap = false) {
-    const T = this.shape, S = T.size[1];
-    const done = [];
-    for (const d of this.decor) {
-      d.model ||= decorModel(d.rec.id, d.rec.v || 0);
-      d.k = this.decorScale(d);
-      d.r = d.model.r * d.k; d.h = d.model.h * d.k;
-      const fp = T.floorPoint(clamp01(d.rec.x ?? 0.5), clamp01(d.rec.z ?? 0.5), d.r * 0.6);
-      let base = fp[1] - 0.25;
-      for (const e of done) if (!e.held && Math.hypot(e.p[0] - fp[0], e.p[2] - fp[2]) < e.r * 0.7) base = Math.max(base, e.ty + e.h * 0.92);
-      d.ty = base + (d.rec.lift || 0) * S;
-      if (!d.held) {
-        if (!d.p || snap) d.p = [fp[0], d.ty, fp[2]];
-        else if (!d.glide) { d.p[0] = fp[0]; d.p[2] = fp[2]; if (d.p[1] < d.ty) d.p[1] = d.ty; }
-        d.fp = fp;
-        d.yaw = d.rec.r ?? ((((d.rec.x || 0) * 997) % 1) - 0.5) * 0.8;
-      }
-      d.squash = d.squash || 0; d.squashV = d.squashV || 0;
-      done.push(d);
-    }
-  }
-
-  // a decoration record into the tank (index -1 = on top); dropFrom: it falls in from that height
-  insertDecorRec(rec, index = -1, o = {}) {
-    const tk = this.st.tank;
-    const d = { rec };
-    if (index < 0 || index >= this.decor.length) { tk.decor.push(rec); this.decor.push(d); }
-    else { tk.decor.splice(Math.min(index, tk.decor.length), 0, rec); this.decor.splice(index, 0, d); }
-    this.layoutDecor();
-    if (o.dropFrom != null) { d.p[1] = Math.max(d.ty, o.dropFrom); d.vy = 0; }
-    d.squashV = 4;
-    return d;
+  insertDecorRec(rec, o = {}) {
+    this.st.tank.decor.push(rec);
+    this.syncPieces();
+    const p = this.pieceOf(rec);
+    if (p && o.drop) { p.lift = this.shape.H * 0.55; p.vy = 0; }
+    if (p) p.squashV = 4;
+    return p;
   }
   removeDecorRec(rec, fx = 'puff') {
     const tk = this.st.tank;
-    const d = this.decor.find((x) => x.rec === rec);
+    const p = this.pieceOf(rec);
     tk.decor = tk.decor.filter((r) => r !== rec);
-    this.decor = this.decor.filter((x) => x.rec !== rec);
-    if (d?.p) { if (fx === 'puff') this.puff([d.p[0], d.ty, d.p[2]], d.r, 8); else this.fxAt([d.p[0], d.p[1] + d.h * 0.5, d.p[2]], 'burst', 10); }
+    if (p) this.pieceFx(p, fx);
+    this.syncPieces();
     this.sfx('ui_close', { vol: 0.5 });
-    this.layoutDecor();
-    return d;
+    return p;
+  }
+  pieceFx(p, fx = 'puff') {
+    const wp = this.pieceWorld(p);
+    if (fx === 'puff') this.puff(wp, 14, 8); else this.fxAt([wp[0], wp[1] + 20, wp[2]], 'burst', 10);
+  }
+  pieceWorld(p) {
+    const T = this.shape, z = this.scene.layerZ(p.l);
+    return [p.x, p.l === 3 ? p.wy : T.planeH(p.l, p.x), z];
+  }
+
+  // a free spot for a new piece: the widest gap on a plane
+  freeSpot(l = null) {
+    let best = { u: 0.5, l: l ?? 1 }, bs = -1;
+    for (let i = 0; i < 40; i++) {
+      const u = rng.float(0.08, 0.92), ll = l ?? rng.pick([1, 1, 2, 0]);
+      let m = 9;
+      for (const d of this.decor) m = Math.min(m, Math.abs((d.x / (this.shape.W - 40) + 0.5) - u) + (d.l === ll ? 0 : 0.15));
+      if (m > bs) { bs = m; best = { u, l: ll }; }
+    }
+    return best;
   }
 
   addDecor(id, opts = {}) {
-    const meta = PROPS[id];
-    if (!meta?.decor) return false;
-    let best = null, bs = -1;
-    for (let i = 0; i < 40; i++) {
-      const x = rng.float(0.12, 0.88), z = rng.float(0.15, 0.85);
-      const ev = this.build.evaluate({ id, x, z }, null);
-      let m = ev.ok ? 9 : 0;
-      for (const d of this.st.tank.decor) m = Math.min(m, Math.abs(d.x - x) + Math.abs((d.z ?? 0.5) - z));
-      if (m > bs) { bs = m; best = { x, z }; }
-    }
-    const rec = { id, x: opts.x ?? best.x, z: opts.z ?? best.z, r: rng.float(-0.6, 0.6) };
+    if (!PROPS[id]?.decor) return false;
+    const spot = this.freeSpot(opts.l ?? null);
+    const rec = { id, u: opts.u ?? spot.u, l: opts.l ?? spot.l, h: opts.h ?? 0.5, f: opts.f ?? rng.chance(0.5) };
     if (opts.v) rec.v = opts.v;
-    const d = this.insertDecorRec(rec, -1);
-    d.p[1] += this.shape.size[1] * 0.25;
+    this.insertDecorRec(rec, { drop: true });
     this.game.save?.();
     return true;
   }
@@ -208,37 +223,15 @@ export class Aquarium {
     this.game.save?.();
   }
 
-  // painted plants: base-layout indices the eraser removed (reset when the layout changes with the tier / light)
-  plantKey() { return this.tier + '|' + (TANK_TIERS[this.tier].plants + (gearLevel(this.st, 'light') | 0) * 2); }
-  baseOff() {
-    const tk = this.st.tank;
-    if (!tk.baseOff || tk.baseOff.key !== this.plantKey()) tk.baseOff = { key: this.plantKey(), i: [] };
-    return tk.baseOff;
-  }
-  basePlantsIn(u, v, R) {
-    const T = this.shape, out = [];
-    for (const s of this.view.plants?.list || []) {
-      if (s.base == null) continue;
-      const [pu, pv] = T.toUV(s.p[0], s.p[2]);
-      if (Math.abs(pu - u) < R && Math.abs(pv - v) < R) out.push(s.base);
-    }
-    return out;
-  }
   // a pixel-art sand puff where something lands or lifts off (+ a few real bubbles)
-  puff(p, r = 2, n = 6) {
-    const sub = this.view.kit?.sub;
-    const cols = sub ? [sub.cols[0], sub.cols[2], sub.side[1], '#ffffff'] : ['#e8dcb4', '#f0e6c4', '#ffffff'];
-    for (let i = 0; i < Math.min(5, n); i++) this.addBubble([p[0] + rng.float(-r, r) * 0.6, p[1] + 0.3, p[2] + rng.float(-r, r) * 0.6], this.shape.fishLen * rng.float(0.025, 0.05));
+  puff(p, r = 8, n = 6) {
+    for (let i = 0; i < Math.min(5, n); i++) this.addBubble([p[0] + rng.float(-r, r) * 0.6, p[1] + 2, p[2]], rng.float(0.8, 1.8));
     if (!this.visibleKey) return;
-    const sp = this.view.project(p);
+    const sp = this.project(p);
     if (!sp) return;
-    const o = this.viewOrigin();
-    const rr = Math.max(3, r * this.view.ppu(sp[2]));
-    this.px('dust', sp[0], sp[1], Math.round(5 + n), { speed: [10, 26 + rr], up: 10, w: rr * 0.6, h: 1, ramps: ['dust', 'white'] });
-    this.px('puff', sp[0], sp[1] - 1, Math.round(2 + n / 3), { speed: [6, 18], w: rr * 0.4, ramp: 'white' });
-    void o;
+    this.px('dust', sp[0], sp[1], Math.round(5 + n), { speed: [10, 26 + r], up: 10, w: r * 0.6, h: 1, ramps: ['dust', 'white'] });
+    this.px('puff', sp[0], sp[1] - 1, Math.round(2 + n / 3), { speed: [6, 18], w: r * 0.4, ramp: 'white' });
   }
-  // 2D pixel-art particles (phase 8), falling back to plain sparkles on older particle systems
   px(kind, x, y, n, o = {}) {
     const P = this.particles;
     if (P.pixelBurst) return P.pixelBurst(kind, x, y, n, o);
@@ -246,37 +239,39 @@ export class Aquarium {
   }
 
   // ------------------------------------------------------------------ fish
-  fishLen(rec, sp) {
+  makeFish(rec, opts = {}) {
+    const sp = SPECIES_BY_ID[rec.species];
+    if (!sp) return null;
+    rec.hunger ??= 0.3; rec.happiness ??= 0.75; rec.coinT ??= 0;
+    let c;
+    try { c = compiled(sp.look, rec.variant, sp.id); } catch (e) { console.warn('tank fish', rec.species, e); return null; }
     const T = this.shape;
-    const base = T.fishLen * clamp(sizeScaleOf(rec, sp), 0.6, 1.9);
-    return Math.min(base, T.minDim * 0.42);
+    const L = (c.L || 30) * (c.kind === 'chain' ? 1.6 : 1.3);
+    let k = clamp(sizeScaleOf(rec, sp), 0.5, 2.2);
+    const maxLen = T.H * 0.38, minLen = 30;
+    if (L * k > maxLen) k = maxLen / L;
+    if (L * k < minLen) k = minLen / L;
+    let f;
+    try { f = new TankFish(rec, sp, L * k); } catch (e) { console.warn('tank fish', rec.species, e); return null; }
+    f.c = c; f.drawScale = k;
+    if (opts.at) f.p = opts.at.slice();
+    else if (opts.splash) { f.p = [rng.float(-0.3, 0.3) * T.W, T.waterY - f.len * 0.5, rng.float(-0.2, 0.2) * T.D]; f.pitch = -0.6; f.speed = f.cruise * 2; }
+    else f.p = T.swimPoint(Math.random, rng.float(0.2, 0.8), f.len);
+    T.clamp(f.p, f.len * 0.45);
+    if (opts.splash) {
+      this.ripples.add(f.p[0], f.p[2], 1.2);
+      for (let i = 0; i < 8; i++) this.addBubble([f.p[0] + rng.float(-1, 1) * f.len * 0.3, f.p[1], f.p[2]], rng.float(0.8, 2));
+      this.sfx('splash_small', { vol: 0.6 });
+    }
+    if (opts.baby) f.baby = 40;
+    this.fish.push(f);
+    return f;
   }
 
   addFish(rec, opts = {}) {
     if (this.fish.some((f) => f.rec === rec)) return;
     const f = this.makeFish(rec, { splash: opts.splash ?? true, ...opts });
     if (f) this.game.emit?.('tankFish', rec);
-  }
-
-  makeFish(rec, opts = {}) {
-    const sp = SPECIES_BY_ID[rec.species];
-    if (!sp) return null;
-    rec.hunger ??= 0.3; rec.happiness ??= 0.75; rec.coinT ??= 0;
-    let f;
-    try { f = new TankFish(rec, sp, this.fishLen(rec, sp)); } catch (e) { console.warn('tank fish', rec.species, e); return null; }
-    const T = this.shape;
-    if (opts.at) f.p = opts.at.slice();
-    else if (opts.splash) { f.p = [rng.float(-0.3, 0.3) * T.size[0], T.waterY - f.len * 0.5, rng.float(-0.2, 0.2) * T.size[2]]; f.pitch = -0.6; f.speed = f.cruise * 2; }
-    else f.p = T.swimPoint(Math.random, rng.float(0.2, 0.8), f.len);
-    T.clamp(f.p, f.len * 0.45);
-    if (opts.splash) {
-      this.ripples.add(f.p[0], f.p[2], 1.2);
-      for (let i = 0; i < 8; i++) this.addBubble([f.p[0] + rng.float(-1, 1) * f.len * 0.3, f.p[1], f.p[2] + rng.float(-1, 1) * f.len * 0.3], f.len * 0.06);
-      this.sfx('splash_small', { vol: 0.6 });
-    }
-    if (opts.baby) f.baby = 40;
-    this.fish.push(f);
-    return f;
   }
 
   evolveFish(dt) {
@@ -336,7 +331,7 @@ export class Aquarium {
     const d = this.winDims(), { W, H } = g.screen;
     if (force || (!tw.x && !tw.y) || tw.x > W - 40 || tw.y > H - 60) { tw.x = Math.round(W * 0.38 - d.w / 2); tw.y = Math.round(H - d.h - 64); }
     this.clampWindow();
-    if (!was) { this.winAnim = 0; try { audio.play('ui_open'); } catch { /* no audio */ } }
+    if (!was) { this.winAnim = 0; this.winCam.snap = true; try { audio.play('ui_open'); } catch { /* no audio */ } }
   }
   closeWindow() {
     const tw = this.st.tankWindow;
@@ -348,12 +343,21 @@ export class Aquarium {
     if (g.state.view === 'aquarium') { g.setView?.('ocean'); this.openWindow(); return; }
     if (g.state.tankWindow.open) this.closeWindow(); else this.openWindow();
   }
-  onResize() { if (this.st.tankWindow) this.clampWindow(); }
+  onResize() { if (this.st.tankWindow) this.clampWindow(); this.scene.invalidate(); }
   openFull() {
     const g = this.game;
     this.press = null; this.drag = null;
     g.setView?.('aquarium');
-    this.view.setPreset('iso');
+  }
+  // open the tank's build mode (from anywhere: key U, blueprints, the Workshop)
+  openBuild(o = {}) {
+    const g = this.game;
+    if (g.fishing?.fighting) { g.toast?.('Finish the fight first!', 'hook'); return false; }
+    g.ui?.close?.();
+    if (g.state.view !== 'aquarium') this.openFull();
+    this.pendingBuild = o;
+    if (this.visibleKey === 'full') { this.build.enter(o); this.pendingBuild = null; }
+    return true;
   }
 
   shownKey() {
@@ -371,6 +375,40 @@ export class Aquarium {
     return !!r && rectContains(r, x, y);
   }
 
+  // ------------------------------------------------------------------ cameras & projection
+  hudBottom() {
+    const g = this.game, H = g.screen.H;
+    try { const h = g.hud; const m = h.m || h.metrics(); return H - m.trayH - m.margin - Math.round(m.B * 0.36) - 4; } catch { return H - 80; }
+  }
+  fullCam() {
+    const g = this.game;
+    this.scene.layout(g.screen.W, g.screen.H, this.layoutBottom ?? this.hudBottom());
+    return this.scene.cam(this.camX);
+  }
+  winInner() {
+    const r = this.windowRect();
+    if (!r) return null;
+    const d = this.winDims();
+    return { x: r.x + FRAME.side, y: r.y + FRAME.lid + this.slideOff(), w: d.sw, h: d.sh };
+  }
+  winCamera() {
+    const ir = this.winInner();
+    if (!ir) return null;
+    return this.scene.windowCam(ir, this.winCam.x, this.winCam.y);
+  }
+  curCam() { return this.visibleKey === 'window' ? this.winCamera() : this.visibleKey === 'full' ? this.fullCam() : null; }
+  // screen [x, y, depth] of a tank point under the visible camera (null when hidden)
+  project(p) {
+    const c = this.curCam();
+    if (!c) return null;
+    const q = this.scene.proj(p[0], p[1], p[2], c);
+    return [q.x, q.y, p[2]];
+  }
+  hintPoint() {
+    const c = this.drops.list.find((d) => d.hint);
+    return c?.screen && this.visibleKey ? [c.screen.x, c.screen.y] : null;
+  }
+
   // ------------------------------------------------------------------ economy
   gearMul() { return gearMul(this.st); }
   fishRate(f) { return aeroRate(f.rec, f.sp, this.stats, this.tier, this.game.coinMulBonus || 1, this.gearMul()); }
@@ -381,8 +419,8 @@ export class Aquarium {
     const T = this.shape;
     const f = this.fish[0];
     const p = f ? f.p.slice() : T.swimPoint(Math.random, 0.4, 2);
-    p[2] = Math.max(p[2], T.round ? 0 : T.size[2] * 0.15);
-    T.clamp(p, 2);
+    p[2] = T.D * 0.3;
+    T.clamp(p, 4);
     const c = this.drops.spawn(p, 0, { value: DENOMS[0] });
     c.hint = true;
     this.coinsDirty = true;
@@ -391,12 +429,12 @@ export class Aquarium {
 
   dropCoin(f, d) {
     const dir = f.dir;
-    const p = [f.p[0] + dir[0] * f.len * 0.5, f.p[1] + dir[1] * f.len * 0.5, f.p[2] + dir[2] * f.len * 0.5];
-    this.shape.clamp(p, 1);
-    this.drops.spawn(p, d, { v: [dir[0] * 4, 1, dir[2] * 4], hold: 0.35 });
+    const p = [f.p[0] + dir[0] * f.len * 0.5, f.p[1] + dir[1] * f.len * 0.5, f.p[2] + dir[2] * f.len * 0.3];
+    this.shape.clamp(p, 3);
+    this.drops.spawn(p, d, { v: [dir[0] * 10, 2, dir[2] * 4], hold: 0.35 });
     this.sfx('bubble', { vol: 0.3, pitch: [1.35, 1.15, 0.95][d] });
     f.poke(3);
-    for (let i = 0; i < 3; i++) this.addBubble(p, f.len * 0.04);
+    for (let i = 0; i < 3; i++) this.addBubble(p, rng.float(0.8, 1.5));
     this.coinsDirty = true;
   }
 
@@ -406,20 +444,15 @@ export class Aquarium {
     this.drops.remove(c);
     this.coinsDirty = true;
     const vk = this.visibleKey;
-    let sx, sy;
-    if (vk) {
-      const sp = this.view.project(c.p);
-      if (sp) { const o = this.viewOrigin(); sx = o.x + sp[0]; sy = o.y + sp[1]; }
-    }
+    const sp = vk ? this.project(c.p) : null;
     if (by === 'player') this.lastGrabT = this.t;
-    this.game.addCoins?.(c.value, sx, sy);
+    this.game.addCoins?.(c.value, sp?.[0], sp?.[1]);
     if (vk) {
       this.combo = this.comboT > 0 ? this.combo + 1 : 0;
       this.comboT = 0.45;
       this.sfx('bubble', { vol: by === 'player' ? 0.5 : 0.25, pitch: 1.5 + Math.min(12, this.combo) * 0.06 });
       this.sfx('coin_collect', { vol: by === 'player' ? 0.3 : 0.15, pitch: 1.1 + Math.min(12, this.combo) * 0.045 });
       this.fxAt(c.p, 'pop', c.value, c.r);
-      if (this.swim && by === 'player') this.swim.got += c.value;
     }
     this.ripples.add(c.p[0], c.p[2], 0.3);
     this.game.emit?.('coinCollected', { value: c.value, by });
@@ -467,8 +500,8 @@ export class Aquarium {
     const inTank = this.fish.length < this.capacity();
     const rec = { ...rolled, inTank, happiness: 0.85, hunger: 0.2, coinT: 0, bornAt: Date.now(), caughtAt: Date.now(), rarity: sp.rarity, bred: true, parents: egg.parents };
     (g.state.fish ||= []).push(rec);
-    const p = this.shape.floorPoint(egg.x, egg.z, 2);
-    if (inTank) this.makeFish(rec, { splash: false, baby: true, at: [p[0], p[1] + 2, p[2]] });
+    const p = this.shape.floorPoint(egg.x, egg.z, 4);
+    if (inTank) this.makeFish(rec, { splash: false, baby: true, at: [p[0], p[1] + 8, p[2]] });
     this.fxAt(p, 'burst', 10);
     this.sfx('sparkle', { vol: 0.6 });
     const trait = rec.variant?.shiny ? 'A SHINY ' : rec.variant?.mutation ? 'A mutated ' : 'A baby ';
@@ -506,8 +539,8 @@ export class Aquarium {
     const T = this.shape;
     for (const [u, v, d, val] of this.st.tank.coins || []) {
       if (!(d >= 0 && d <= 2)) continue;
-      const p = T.floorPoint(clamp01(u), clamp01(v), 2);
-      p[1] = T.waterY - 0.5;
+      const p = T.floorPoint(clamp01(u), clamp01(v), 6);
+      p[1] = T.waterY - 2;
       const c = this.drops.spawn(p, d, { value: val });
       c.sleep = true;
     }
@@ -524,7 +557,6 @@ export class Aquarium {
   fishOf(rec) { return this.fish.find((f) => f.rec === rec) || null; }
   tankCount() { return (this.st.fish || []).filter((r) => r.inTank).length; }
   rateOf(rec) { const sp = SPECIES_BY_ID[rec.species]; return sp ? aeroRate(rec, sp, this.stats, this.tier, this.game.coinMulBonus || 1, this.gearMul()) : 0; }
-  // move a fish between the tank and storage (the holding bucket), respecting the tank's capacity
   moveFish(rec, toTank) {
     if (!!rec.inTank === !!toTank) return { ok: true };
     if (toTank && this.tankCount() >= this.capacity()) return { ok: false, why: `The tank is full (${this.capacity()} fish). Upgrade it in The Lab!` };
@@ -546,7 +578,7 @@ export class Aquarium {
   }
   feedAll() {
     const T = this.shape;
-    for (let i = 0; i < 4; i++) { const p = T.floorPoint(0.2 + i * 0.2, rng.float(0.3, 0.7), 2); this.sprinkle(p[0], p[2], 6); }
+    for (let i = 0; i < 4; i++) this.sprinkle((0.15 + i * 0.23 - 0.5) * T.W * 0.8 + this.camX * 0.5, rng.float(-0.2, 0.2) * T.D, 6);
     for (const f of this.fish) f.rec.hunger = Math.max(0, (f.rec.hunger ?? 0.4) - 0.3);
     this.sfx('bubble', { vol: 0.5, pitch: 1.2 });
     this.game.emit?.('tankFed', { n: this.fish.length });
@@ -558,7 +590,6 @@ export class Aquarium {
     if (this.st.tank.eggs.length >= 2) return 'The tank already has two clutches of eggs.';
     return null;
   }
-  // a chosen pair courts (they swim in a heart around each other) and lays eggs of one parent's species
   breedPair(a, b) {
     if (a === b) return { ok: false, why: 'Pick two different fish.' };
     const why = this.canBreed(a) || this.canBreed(b);
@@ -571,7 +602,7 @@ export class Aquarium {
     this.sfx('magic', { vol: 0.5 });
     return { ok: true };
   }
-  // the camera glides to a fish and follows it (switches to the tank view first)
+  // the camera scrolls to a fish and follows it for a moment (switches to the tank view first)
   focusFish(rec) {
     if (!rec?.inTank) return false;
     this.pendingFocus = rec; this.pendingFocusT = 3;
@@ -588,9 +619,9 @@ export class Aquarium {
     const cost = gearCost(id, lv + 1);
     if (!this.game.spendCoins?.(cost)) { this.game.toast?.('Not enough Aero.', 'coin'); return false; }
     this.st.tank.gear[id] = lv + 1;
-    this.view.rebuild();
+    this.scene.invalidate();
     this.sfx('ui_unlock', { vol: 0.7 });
-    this.fxAt([0, this.shape.waterY * 0.6, 0], 'confetti', 24);
+    this.fxAt([this.camX, this.shape.waterY * 0.6, 0], 'confetti', 24);
     this.game.toast?.(`${g.levels[lv + 1]} installed!`, 'sparkle');
     this.game.emit?.('gearBought', { id, level: lv + 1 });
     this.game.save?.();
@@ -605,37 +636,42 @@ export class Aquarium {
     this.dtLast = dt;
     const tier = tankTier(this.st);
     if (tier !== this.tier) this.changeTier(tier);
+    const pk = this.st.tank.decor.length + '|' + this.tankBuildings().length;
+    if (pk !== this.pieceKey) this.syncPieces();
     const shown = this.shownKey();
     const was = this.visibleKey;
     this.visibleKey = shown;
     if (shown === 'window') this.winAnim = Math.min(1, this.winAnim + dt * 5);
-    if (shown !== 'full' && this.swim) this.exitSwim(true);
     if (shown !== 'full') { this.panel = null; if (this.build.on) this.build.exit(); }
     if (shown === 'full' && was !== 'full') {
-      this.view.w = g.screen.W; this.view.h = g.screen.H;
-      this.view.setPreset('iso', true);
+      if (!this.build.on) this.layoutBottom = this.hudBottom();
       if (this.pendingGrow) { this.startGrow(this.pendingGrow); this.pendingGrow = null; }
+      if (this.pendingBuild) { const o = this.pendingBuild; this.pendingBuild = null; this.build.enter(o); }
     }
     if (shown === 'full' && this.pendingFocus) {
       const f = this.fish.find((q) => q.rec === this.pendingFocus);
-      if (f && this.view.kit) { this.view.focusFish(f); this.focusT = 4; f.say('heart', 1.6); }
+      if (f) { this.follow = f; this.followT = 4; f.say('heart', 1.6); }
       if (f || !this.pendingFocusT || (this.pendingFocusT -= dt) <= 0) this.pendingFocus = null;
     }
-    if (this.focusT > 0) this.focusT -= dt;
     // F: the fish manager (anywhere in the game)
     const I = g.input;
-    if (I?.keyPressed('f') && !g.ui?.active && !g.tutorial?.active && !this.build.on && !this.swim && g.ui?.panels?.fishmgr) { g.ui.open('fishmgr'); I.keysPressed?.delete?.('f'); }
-    if (this.build.on) this.build.update(dt);
+    if (I?.keyPressed('f') && !g.ui?.active && !g.tutorial?.active && !this.build.on && g.ui?.panels?.fishmgr) { g.ui.open('fishmgr'); I.keysPressed?.delete?.('f'); }
     const clock = g.clock;
     this.nightK = clock ? clamp01(1 - clock.daylight()) : 0;
     this.comboT = Math.max(0, this.comboT - dt);
     this.syncT -= dt;
     if (this.syncT <= 0) { this.syncT = 0.5; this.syncFish(); this.evolveFish(0.5); }
-    if (this.growAnim) { this.growAnim.t += dt; this.updateGrow(); }
+    if (this.growAnim) {
+      // wait (briefly) for the bigger tank's substrate to be built so the expansion plays with its full art
+      const ga = this.growAnim;
+      const ready = !this.scene.planes.some((p) => !p) || ga.wait > 5;
+      if (!ready && ga.t < 0.2) { ga.wait = (ga.wait || 0) + dt; this.scene.pump(22); } else { ga.t += dt; this.updateGrow(); }
+    }
 
+    if (shown === 'full') this.updateScroll(dt, inp);
+    if (shown === 'window') this.updateWinCam(dt);
+    if (this.build.on) this.build.update(dt);
     this.handleInput(dt, inp);
-    if (this.swim) this.updateSwim(dt, inp);
-    this.view.update(dt);
     this.ripples.step(dt);
     this.updateFood(dt);
     this.updateFish(dt);
@@ -648,27 +684,73 @@ export class Aquarium {
     this.updateBubbles(dt);
     this.particles.update(dt);
     this.runSfxQueue(dt);
+    if (shown) {
+      const cam = this.curCam();
+      if (cam) this.scene.update(dt, cam);
+      this.scene.pump(shown === 'full' ? 10 : 5);
+    } else if (this.t > 3) { this.fullCam(); this.scene.ensure(); this.scene.pump(2.5); } // quietly pre-build the tank's art in the background
     this.saveT -= dt;
     if (this.saveT <= 0 && this.coinsDirty) { this.saveT = 1; this.saveCoins(); }
-    // while the tank is hidden, quietly build the fish's 3D swim frames (one every few frames)
-    if (!this.visibleKey && this.view.ok && this.t > 4) {
-      this.warmT = (this.warmT || 0) - dt;
-      if (this.warmT <= 0) { this.warmT = 0.25; for (const f of this.fish) if (warmFishFrame(f.sp, f.rec)) break; }
-    }
   }
 
-  // New tank tier: re-map the tank's contents; when visible (or the next time it is) the tank swells.
+  // horizontal scrolling: drag (handleInput), wheel, A / D / arrows, edge pan, inertia; the camera follows a focused fish
+  updateScroll(dt, inp) {
+    const g = this.game, I = g.input;
+    const max = this.scene.scrollMax();
+    let push = 0;
+    const typing = g.ui?.active && g.ui?.stack?.some((p) => p.modal !== false);
+    if (I && !typing && !g.tutorial?.active) {
+      if (I.key('a') || I.key('ArrowLeft')) push -= 1;
+      if (I.key('d') || I.key('ArrowRight')) push += 1;
+    }
+    if (inp && inp.inside && !this.press && !this.hoverBtn && !this.panel && max > 0) {
+      const W = g.screen.W, e = 22;
+      if (inp.x < e && inp.y > 40) push -= (e - inp.x) / e;
+      else if (inp.x > W - e && inp.y > 40) push += (inp.x - (W - e)) / e;
+    }
+    const Z = this.scene.Z;
+    if (push) { this.camV = lerp(this.camV, push * 520 / Z, Math.min(1, dt * 8)); this.follow = null; }
+    else if (!this.press?.panning) this.camV *= Math.exp(-dt * 5);
+    if (this.follow && this.followT > 0) {
+      this.followT -= dt;
+      if (!this.fish.includes(this.follow)) this.follow = null;
+      else this.camX = lerp(this.camX, this.follow.p[0], Math.min(1, dt * 3));
+    }
+    this.camX += this.camV * dt;
+    if (this.camX < -max) { this.camX = -max; this.camV = 0; }
+    if (this.camX > max) { this.camX = max; this.camV = 0; }
+  }
+
+  // the floating window's camera glides after your fish (or the tutorial's drop)
+  updateWinCam(dt) {
+    const T = this.shape, wc = this.winCam;
+    const hint = this.drops.list.find((c) => c.hint);
+    let tx = 0, ty = T.H * 0.42;
+    if (hint) { tx = hint.p[0]; ty = hint.p[1]; }
+    else if (this.fish.length) { tx = this.fish.reduce((a, f) => a + f.p[0], 0) / this.fish.length; ty = this.fish.reduce((a, f) => a + f.p[1], 0) / this.fish.length; }
+    const ir = this.winInner();
+    if (ir) {
+      const Z = this.scene.Z, s0 = this.scene.sOf(0);
+      const hwW = ir.w / 2 / (Z * s0), hhW = ir.h / 2 / (Z * s0);
+      tx = clamp(tx, -T.W / 2 + hwW - 10, T.W / 2 - hwW + 10);
+      if (hwW * 2 > T.W) tx = 0;
+      ty = clamp(ty, hhW - 6, T.H - hhW + 4);
+    }
+    const k = wc.snap ? 1 : Math.min(1, dt * 1.5);
+    wc.snap = false;
+    wc.x = lerp(wc.x, tx, k); wc.y = lerp(wc.y, ty, k);
+  }
+
+  // New tank tier: re-map the tank's contents; when visible (or the next time it is) the tank grows.
   changeTier(tier) {
     const from = this.tier;
     const old = this.shape;
-    const T = new TankShape(tier);
-    // fish and drops keep their relative place in the bigger tank
+    const T = new SideShape(tier);
     const map = (p) => {
-      const [u, v] = old.toUV(p[0], p[2]);
-      const fy = old.floorY(p[0], p[2]);
+      const u = p[0] / old.W, fy = old.floorY(p[0], p[2]);
       const y01 = clamp01((p[1] - fy) / Math.max(1, old.waterY - fy));
-      const q = T.floorPoint(u, v, 1);
-      return [q[0], lerp(q[1], T.waterY, y01), q[2]];
+      const x = u * T.W, z = (p[2] / old.D) * T.D;
+      return [x, lerp(T.floorY(x, z), T.waterY, y01), z];
     };
     for (const f of this.fish) { f.p = map(f.p); f.target = null; }
     for (const c of this.drops.list) c.p = map(c.p);
@@ -676,13 +758,13 @@ export class Aquarium {
     this.bubbles.length = 0;
     this.tier = tier;
     this.shape = T;
-    for (const f of this.fish) { f.baseLen = this.fishLen(f.rec, f.sp); f.len = f.baseLen; T.clamp(f.p, f.len * 0.45); }
-    this.drops.setScale(T.fishLen / 6);
-    this.layoutDecor();
-    const grow = tier > from ? { from: [old.size[0] / T.size[0], old.top / T.top, old.size[2] / T.size[2]].map((k) => clamp(k, 0.2, 1)) } : null;
-    if (grow && this.visibleKey === 'full') this.startGrow(grow, true);
-    else { if (grow) this.pendingGrow = grow; this.view.rebuild(); }
-    if (this.swim) this.exitSwim(true);
+    for (const f of this.fish) T.clamp(f.p, f.len * 0.45);
+    this.camX = clamp(this.camX * (T.W / old.W), -T.W / 2, T.W / 2);
+    this.syncPieces();
+    this.scene.invalidate();
+    const grow = tier > from ? { from: [old.W / T.W, old.H / T.H, old.waterY / T.waterY].map((k) => clamp(k, 0.2, 1)) } : null;
+    if (grow && this.visibleKey === 'full') this.startGrow(grow);
+    else if (grow) this.pendingGrow = grow;
     this.game.recomputeStats?.();
     if (tier > from) {
       this.game.toast?.(`Tank upgraded: ${TANK_TIERS[tier].name}!`, 'tank', 4);
@@ -690,27 +772,33 @@ export class Aquarium {
     }
   }
 
-  startGrow(grow, rebuilt = false) {
+  startGrow(grow) {
     this.growAnim = { t: 0, from: grow.from, fx: 0 };
-    this.view.rebuild();
-    void rebuilt;
-    this.view.setPreset('iso');
     this.sfx('ui_unlock', { vol: 0.8 });
     this.sfx('travel_whoosh', { vol: 0.5 });
   }
-
-  updateGrow() {
+  // the box grows with an elastic overshoot; the water rises a beat later
+  growK() {
     const a = this.growAnim;
-    if (a.fx === 0 && a.t > 0.6) { a.fx = 1; this.sfx('splash_big', { vol: 0.6 }); this.sfx('bubbles', { vol: 0.5 }); for (let i = 0; i < 30; i++) this.addBubble(this.shape.swimPoint(Math.random, rng.float(0, 0.3), 1), rng.float(0.2, 0.6)); }
-    if (a.fx === 1 && a.t > 1.9) { a.fx = 2; this.fxAt([0, this.shape.top * 0.8, 0], 'confetti', 40); this.sfx('sparkle', { vol: 0.7 }); }
-    if (a.t > 3) { this.growAnim = null; this.view.dropOldKit(); }
+    if (!a) return null;
+    const u = clamp01((a.t - 0.3) / 1.6), w = clamp01((a.t - 0.7) / 1.5);
+    // slide out with a little bounce at the end; the water rises a beat later
+    const io = u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
+    const e = io + 0.07 * Math.sin(Math.PI * clamp01((u - 0.55) / 0.45)) * (u < 1 ? 1 : 0);
+    const ew = 1 - Math.pow(1 - w, 3);
+    return [lerp(a.from[0], 1, e), lerp(a.from[1], 1, Math.min(1, e * 1.02)), lerp(a.from[2] * a.from[1], 1, ew)];
+  }
+  updateGrow() {
+    const a = this.growAnim, T = this.shape;
+    if (a.fx === 0 && a.t > 0.6) {
+      a.fx = 1; this.sfx('splash_big', { vol: 0.6 }); this.sfx('bubbles', { vol: 0.5 });
+      for (let i = 0; i < 40; i++) this.addBubble([rng.float(-0.5, 0.5) * T.W, rng.float(10, T.waterY * 0.5), rng.float(-0.4, 0.4) * T.D], rng.float(1, 3));
+    }
+    if (a.fx === 1 && a.t > 1.6) { a.fx = 2; this.fxAt([this.camX, T.top * 0.8, T.D / 2], 'confetti', 40); this.sfx('sparkle', { vol: 0.7 }); }
+    if (a.t > 3) this.growAnim = null;
   }
 
   // ------------------------------------------------------------------ input
-  viewOrigin() {
-    if (this.visibleKey === 'window') { const r = this.windowRect(); return r ? { x: r.x + FRAME.side, y: r.y + FRAME.lid + this.slideOff() } : { x: 0, y: 0 }; }
-    return { x: 0, y: 0 };
-  }
   slideOff() { return Math.round((1 - clamp01(this.winAnim) ** 0.5) * 14); }
 
   handleInput(dt, inp) {
@@ -719,16 +807,14 @@ export class Aquarium {
     this.hoverFish = null; this.hoverDecor = null; this.hoverBtn = null;
     const tip = (t) => { if (g.desktop) g.desktop.tooltip = t; };
     if (!inp || !vk) {
-      if (this.drag && (!inp || !inp.down)) this.endDrag();
+      if (this.drag && (!inp || !inp.down)) this.drag = null;
       if (!inp || !inp.down) this.press = null;
       this.prevCur = null;
       return;
     }
     if (vk === 'window') { this.windowInput(dt, inp, tip); return; }
-    if (this.swim) { this.swimButtons(inp); return; }
     if (this.build.on) { this.build.input(inp, tip); this.prevCur = null; return; }
     // ---- full view: HUD first
-    const W = g.screen.W;
     for (const b of this.fullButtons()) {
       if (!rectContains(b, inp.x, inp.y)) continue;
       this.hoverBtn = b.id;
@@ -742,82 +828,61 @@ export class Aquarium {
       if (rectContains(pr, inp.x, inp.y)) { this.panelInput(inp, tip); return; }
       if (inp.pressed) { this.panel = null; inp.consume(); return; }
     }
-    void W;
-    const view = this.view;
-    const lx = inp.x, ly = inp.y;
-    // keys: camera presets
-    if (!g.ui?.active) {
-      if (inp.keyPressed('1')) this.view.setPreset('iso');
-      if (inp.keyPressed('2')) this.view.setPreset('front');
-      if (inp.keyPressed('3')) this.view.setPreset('top');
-      if (inp.keyPressed('4')) this.view.setPreset('close');
-    }
-    // ---- dragging (camera or decor)
+    const cam = this.fullCam();
+    const Z = cam.Z;
+    // ---- press: a click (feed, pet, poke, open a building) or a drag (scroll the tank)
     const pr = this.press;
     if (pr) {
-      const dx = inp.x - pr.lx, dy = inp.y - pr.ly;
-      if (Math.hypot(inp.x - pr.x, inp.y - pr.y) > 4) pr.moved = true;
-      if (pr.button === 'r') {
-        if (inp.rdown) { if (pr.moved) view.pan(dx, dy); }
-        else this.press = null;
-      } else if (inp.down) {
-        if (pr.moved) view.orbit(dx, dy);
+      const dx = inp.x - pr.lx;
+      if (Math.hypot(inp.x - pr.x, inp.y - pr.y) > 5) pr.moved = true;
+      if (inp.down) {
+        if (pr.moved && this.scene.scrollMax() > 0) { pr.panning = true; this.camX -= dx / Z; this.camV = -dx / Z / Math.max(1 / 120, dt); this.follow = null; }
       } else {
         this.press = null;
-        if (this.drag) this.endDrag();
-        else if (!pr.moved) this.click(pr, lx, ly);
+        if (!pr.moved && !pr.collected) this.click(pr, inp.x, inp.y, cam);
       }
       if (this.press) { this.press.lx = inp.x; this.press.ly = inp.y; }
     }
-    // ---- hover: decor, fish, drops
-    const ray = view.ray(lx, ly);
-    // where the cursor meets the water (fish come to look / get startled)
-    const th = this.shape.rayHit(ray.o, ray.d);
-    if (th !== null) {
-      const cp = [ray.o[0] + ray.d[0] * (th + 0.5), ray.o[1] + ray.d[1] * (th + 0.5), ray.o[2] + ray.d[2] * (th + 0.5)];
-      this.shape.clamp(cp, 1);
-      this.cursor3 = { p: cp, speed: inp.speed || 0, t: this.t };
-    }
-    const hd = this.pickDecor(ray);
-    const hf = hd ? null : this.pickFish(ray);
+    // ---- hover: pieces, fish, drops
+    const [wx, wy] = this.scene.unproj(inp.x, inp.y, this.shape.D / 2 - 8, cam);
+    this.cursor3 = { p: [wx, clamp(wy, 0, this.shape.waterY), this.shape.D / 2 - 10], speed: inp.speed || 0, t: this.t };
+    const hf = this.pickFish(inp.x, inp.y);
+    const hd = hf ? null : this.pickPiece(inp.x, inp.y);
     this.hoverDecor = hd; this.hoverFish = hf;
-    if (hd && !this.drag) {
-      const name = PROPS[hd.rec.id]?.name || 'Decoration', verb = propInteract(hd.rec.id)?.verb || 'Poke';
-      tip(`${name}\n{mouse_l} ${verb}   Build mode moves it`);
+    if (hd && !pr?.panning) {
+      if (hd.kind === 'building') tip(`${this.buildingName(hd)}\n{mouse_l} Open`);
+      else tip(`${PROPS[hd.id]?.name || 'Decoration'}\n{mouse_l} ${propInteract(hd.id)?.verb || 'Poke'}`);
     } else if (hf) tip(this.fishTip(hf));
-    // wheel: rotate a hovered decoration in arrange mode, otherwise zoom
-    if (inp.wheel) {
-      view.zoom(Math.pow(1.12, inp.wheel));
-    }
-    this.sweepDrops(lx, ly, inp.down && !this.drag);
+    if (inp.wheel && this.scene.scrollMax() > 0) { this.camV += inp.wheel * 260 / Z; this.follow = null; }
+    this.sweepDrops(inp.x, inp.y, inp.down && !pr?.panning);
     if (inp.pressed && !this.press) {
       inp.consume();
-      this.press = { x: inp.x, y: inp.y, lx: inp.x, ly: inp.y, button: 'l', decor: hd, fish: hf, moved: false };
+      this.press = { x: inp.x, y: inp.y, lx: inp.x, ly: inp.y, moved: false, collected: false };
+      this.camV = 0;
     }
-    if (inp.rpressed && !this.press) {
-      inp.rpressed = false;
-      this.press = { x: inp.x, y: inp.y, lx: inp.x, ly: inp.y, button: 'r', decor: hd, moved: false };
-    }
+    if (inp.rpressed) inp.rpressed = false;
   }
 
-  click(pr, lx, ly) {
-    // the Aqua Lamp's rocker switch on the hood
-    const sw = this.view.kit?.lid?.sw;
-    const sp = sw && this.view.project(sw);
-    if (sp && Math.hypot(sp[0] - lx, sp[1] - ly) < Math.max(8, 3 * this.view.ppu(sp[2]))) {
+  buildingName(p) { return this.game.build?.defName?.(p.id) || p.id; }
+
+  click(pr, x, y, cam) {
+    if (this.scene.hoodRect && rectContains(this.scene.hoodRect, x, y) && y < this.scene.hoodRect.y + this.scene.hoodRect.h - 2) {
       this.st.tank.lampOff = !this.st.tank.lampOff;
       this.sfx('click', { vol: 0.6, pitch: this.st.tank.lampOff ? 0.8 : 1.25 });
       this.game.save?.();
       return;
     }
-    if (pr.decor && this.decor.includes(pr.decor)) { this.interact(pr.decor); return; }
-    if (pr.fish && this.fish.includes(pr.fish)) { this.pet(pr.fish); return; }
-    // in the water: sprinkle food (or place a stored decoration in arrange mode)
-    const ray = this.view.ray(lx, ly);
-    const t = this.shape.rayHit(ray.o, ray.d);
-    if (t === null) return;
-    const p = [ray.o[0] + ray.d[0] * t, 0, ray.o[2] + ray.d[2] * t];
-    this.sprinkle(p[0], p[2]);
+    const f = this.pickFish(x, y);
+    if (f) { this.pet(f); return; }
+    const d = this.pickPiece(x, y);
+    if (d) {
+      if (d.kind === 'building') { d.squashV += 5; this.sfx('click', { vol: 0.5 }); this.game.build?.interact?.(d.rec); return; }
+      this.interact(d);
+      return;
+    }
+    // in the water: sprinkle food where you clicked
+    const [wx, wy] = this.scene.unproj(x, y, 0, cam);
+    if (wy > 0 && Math.abs(wx) < this.shape.W / 2) this.sprinkle(wx, rng.float(-0.25, 0.25) * this.shape.D);
   }
 
   // drops pop when the cursor passes over them (a held button sweeps a wider path)
@@ -826,47 +891,35 @@ export class Aquarium {
     const p0 = this.prevCur || { x: lx, y: ly };
     for (let i = this.drops.list.length - 1; i >= 0; i--) {
       const c = this.drops.list[i];
-      const sp = this.view.project(c.p);
-      if (!sp) continue;
-      const rr = (sweep ? rad * 1.35 : rad) * 0.6 + c.r * this.view.ppu(sp[2]) + (c.hint ? 18 : 0);
-      const d = sweep ? segDist(sp[0], sp[1], p0.x, p0.y, lx, ly) : Math.hypot(sp[0] - lx, sp[1] - ly);
+      const sc = c.screen;
+      if (!sc) continue;
+      const rr = (sweep ? rad * 1.35 : rad) * 0.6 + sc.r + (c.hint ? 18 : 0);
+      const d = sweep ? segDist(sc.x, sc.y, p0.x, p0.y, lx, ly) : Math.hypot(sc.x - lx, sc.y - ly);
       if (d < rr) { this.collectCoin(c, 'player'); if (this.press) this.press.collected = true; }
     }
     this.prevCur = { x: lx, y: ly };
   }
 
-  pickFish(ray) {
-    let best = null, bt = Infinity;
+  pickFish(x, y) {
+    let best = null, bd = Infinity;
     for (const f of this.fish) {
-      const t = raySphere(ray, f.p, f.len * 0.55 + 0.6);
-      if (t !== null && t < bt) { bt = t; best = f; }
+      const s = f.screen;
+      if (!s) continue;
+      const d = Math.hypot((s.x - x) * 0.8, s.y - y);
+      if (d < s.r * 0.75 + 3 && d < bd) { bd = d; best = f; }
     }
     return best;
   }
-  pickDecor(ray, ex = null) {
-    let best = null, bt = Infinity;
-    for (const d of this.decor) {
-      if (d === ex || !d.p) continue;
-      const c = [d.p[0], d.p[1] + d.h * 0.45, d.p[2]];
-      const t = raySphere(ray, c, Math.max(d.r * 0.85, d.h * 0.5));
-      if (t !== null && t < bt) { bt = t; best = d; }
+  // pixel-accurate pick of a placed piece (front-most first)
+  pickPiece(x, y, ex = null) {
+    const list = this.decor.filter((d) => d !== ex && d.screen).sort((a, b) => (a.l - b.l) || (b.order - a.order));
+    for (const d of list) {
+      const s = d.screen;
+      if (x < s.x || y < s.y || x >= s.x + s.w || y >= s.y + s.h) continue;
+      if (alphaAt(s.canvas, (x - s.x) / s.k, (y - s.y) / s.k) > 40) return d;
     }
-    return best;
+    return null;
   }
-  floorHit(ray) {
-    const T = this.shape;
-    let y = T.floorY(0, 0);
-    let p = null;
-    for (let i = 0; i < 3; i++) {
-      if (Math.abs(ray.d[1]) < 1e-4) return null;
-      const t = (y - ray.o[1]) / ray.d[1];
-      if (t < 0) return null;
-      p = [ray.o[0] + ray.d[0] * t, y, ray.o[2] + ray.d[2] * t];
-      y = T.floorY(p[0], p[2]);
-    }
-    return p;
-  }
-  endDrag() { this.drag = null; }
 
   windowInput(dt, inp, tip) {
     const g = this.game, tw = g.state.tankWindow;
@@ -895,7 +948,7 @@ export class Aquarium {
     }
     if (inp.y < r.y + FRAME.lid + this.slideOff()) {
       if (this.hoverBtn) tip(btns.find((b) => b.id === this.hoverBtn).tip);
-      else if (!this.press) tip('{mouse_l} Dive into the aquarium\n{mouse_hold} Drag to move');
+      else if (!this.press) tip('{mouse_l} Open the aquarium\n{mouse_hold} Drag to move');
       if (inp.pressed) {
         inp.consume();
         if (this.hoverBtn === 'close') this.closeWindow();
@@ -904,15 +957,13 @@ export class Aquarium {
       }
       return;
     }
-    const o = this.viewOrigin();
-    const lx = inp.x - o.x, ly = inp.y - o.y;
-    const d = this.winDims();
-    const inScene = lx >= 0 && ly >= 0 && lx < d.sw && ly < d.sh;
+    const ir = this.winInner();
+    const inScene = ir && rectContains(ir, inp.x, inp.y);
     if (!inScene) { if (inp.pressed) inp.consume(); return; }
-    this.sweepDrops(lx, ly, inp.down);
-    const hf = this.pickFish(this.view.ray(lx, ly));
+    this.sweepDrops(inp.x, inp.y, inp.down);
+    const hf = this.pickFish(inp.x, inp.y);
     this.hoverFish = hf;
-    if (hf) tip(this.fishTip(hf) + '\n{mouse_l} Dive in');
+    if (hf) tip(this.fishTip(hf) + '\n{mouse_l} Open the aquarium');
     if (inp.pressed) { inp.consume(); this.press = { kind: 'glass', x: inp.x, y: inp.y, collected: false }; }
   }
 
@@ -924,8 +975,7 @@ export class Aquarium {
     ];
   }
 
-  // Full view HUD: the stats pill + Ocean button (top) and a glossy dock on the right.
-  // HUD size factor: follows the game's UI size setting (uiK(), the phase 4 HUD = 1), clamped to fit the screen
+  // HUD size factor: follows the game's UI size setting (uiK()), clamped to fit the screen
   hudK() { let k = 1.25; try { k = uiK(); } catch { /* aero not ready */ } return clamp(Math.min(k, this.game.screen.W / 620, this.game.screen.H / 380), 1, 2.2); }
   fullLayout() {
     const W = this.game.screen.W, k = this.hudK();
@@ -940,49 +990,21 @@ export class Aquarium {
     const L = this.fullLayout();
     const out = [{ id: 'back', ...L.btn, run: () => g.setView?.('ocean'), tip: 'Back to the ocean' }];
     out.push({ id: 'pill', ...L.pill, run: () => {}, tip: `${this.tierInfo().name}\n{fish} ${this.fish.length}/${this.capacity()}  {coin} ${this.ratePerMin().toFixed(1)} Aero/min` });
-    const kd = clamp(Math.min(this.hudK(), (H - 150) / (11 * 34 + 8)), 0.8, 2);
+    const kd = clamp(Math.min(this.hudK(), (H - 150) / (6 * 34 + 8)), 0.8, 2);
     const bw = Math.round(34 * kd), bh = Math.round(30 * kd), x = W - bw - 8;
-    let y = Math.max(Math.round(40 * kd), Math.round((H - 50) * 0.5 - 5.5 * (bh + 4)));
+    let y = Math.max(Math.round(44 * kd), Math.round((H - 60) * 0.5 - 2.5 * (bh + 4)));
     const dock = [
-      { id: 'iso', icon: 'eye', label: 'Iso', tip: 'Isometric view (1)', run: () => this.view.setPreset('iso') },
-      { id: 'front', icon: 'arrow_r', label: 'Front', tip: 'Front view (2)', run: () => this.view.setPreset('front') },
-      { id: 'top', icon: 'arrow_d', label: 'Top', tip: 'Top view (3)', run: () => this.view.setPreset('top') },
-      { id: 'close', icon: 'plus', label: 'Close', tip: 'Close-up (4)', run: () => this.view.setPreset('close') },
-      { id: 'room', icon: 'home', label: 'Room', tip: 'See the whole room', run: () => this.view.setPreset('room') },
-      { gap: true },
-      { id: 'swim', icon: 'bubble', label: 'Swim', tip: 'Go for a swim inside the tank!', run: () => this.enterSwim(), tone: 'green' },
-      { id: 'feed', icon: 'food', label: 'Feed', tip: 'Sprinkle food', run: () => this.sprinkle(rng.float(-0.25, 0.25) * this.shape.size[0], rng.float(-0.2, 0.2) * this.shape.size[2], 9) },
+      { id: 'build', icon: 'coral', label: 'Build', tip: 'Build & decorate your tank (U)', run: () => this.build.enter(), tone: 'green' },
+      { id: 'feed', icon: 'food', label: 'Feed', tip: 'Sprinkle food', run: () => this.sprinkle(this.camX + rng.float(-0.2, 0.2) * Math.min(this.shape.W, W / this.scene.Z), rng.float(-0.2, 0.2) * this.shape.D, 9) },
       { id: 'fish', icon: 'fish', label: 'Fish', tip: 'Manage your fish (F)', run: () => g.ui?.panels?.fishmgr && g.ui.open('fishmgr') },
-      { id: 'build', icon: 'coral', label: 'Build', tip: 'Build mode: decorate the cube', run: () => this.build.enter() },
       { id: 'gear', icon: 'gear', label: 'Gear', tip: 'Upgrade & expand the tank', run: () => { this.panel = this.panel === 'gear' ? null : 'gear'; }, on: this.panel === 'gear', tone: 'orange' },
       { id: 'light', icon: this.st.tank.lampOff ? 'moon' : 'sun', label: 'Light', tip: this.st.tank.lampOff ? 'Light on' : 'Light off', run: () => { this.st.tank.lampOff = !this.st.tank.lampOff; this.sfx('click', { vol: 0.6, pitch: this.st.tank.lampOff ? 0.8 : 1.25 }); this.game.save?.(); } },
     ];
     for (const b of dock) {
-      if (b.gap) { y += Math.round(8 * kd); continue; }
       out.push({ ...b, x, y, w: bw, h: bh, dock: true, kd });
       y += bh + 4;
     }
     return out;
-  }
-
-  swimLayout() {
-    const W = this.game.screen.W, k = this.hudK();
-    const font = k >= 1.4 ? 'normal' : 'small';
-    const msg = 'WASD / arrows swim   Drag: look   Space: up   Shift: down   Click: dart';
-    const mw = measureText(msg, font) + 20, h = Math.round(18 * k);
-    const ew = Math.round(64 * k);
-    const x0 = Math.round(W / 2 - (mw + ew + 6) / 2);
-    return { msg, font, pill: { x: x0, y: 7, w: mw, h }, exit: { x: x0 + mw + 6, y: 7, w: ew, h } };
-  }
-
-  swimButtons(inp) {
-    const r = this.swimLayout().exit;
-    if (rectContains(r, inp.x, inp.y)) {
-      this.hoverBtn = 'exitswim';
-      if (inp.pressed) { inp.consume(); this.exitSwim(); }
-      return true;
-    }
-    return false;
   }
 
   // ------------------------------------------------------------------ gear panel
@@ -998,7 +1020,6 @@ export class Aquarium {
     const r = this.gearPanelRect(), k = r.k;
     const rows = [];
     let y = r.y + Math.round(34 * k);
-    // expansion (tier) first
     rows.push({ kind: 'tier', x: r.x + 8, y, w: r.w - 16, h: Math.round(52 * k), k });
     y += Math.round(58 * k);
     for (const gdef of GEAR) { rows.push({ kind: 'gear', g: gdef, x: r.x + 8, y, w: r.w - 16, h: Math.round(30 * k), k }); y += Math.round(34 * k); }
@@ -1030,165 +1051,15 @@ export class Aquarium {
     return { x: bx, y: Math.round(row.y + (row.h - bh) / 2), w: bw, h: bh, label: fmtAero(cost), cost, tip: `${row.g.levels[lv + 1]}\n${row.g.desc}`, run: () => this.buyGear(row.g.id) };
   }
 
-  // ------------------------------------------------------------------ swimming
-  enterSwim() {
-    if (!this.view.ok) { this.game.toast?.('Swimming needs WebGL2.', 'info'); return; }
-    const T = this.shape;
-    const r = clamp(T.minDim * 0.14, 1.6, 7);
-    const p = [0, lerp(T.floorY(0, 0), T.waterY, 0.6), T.round ? T.size[2] * 0.12 : T.size[2] * 0.32];
-    T.clamp(p, r);
-    this.swim = { p, v: [0, 0, 0], yaw: Math.PI / 2, pitch: -0.05, roll: 0, r, speed: 0, kick: 0, look: { yaw: Math.PI / 2, pitch: -0.08 }, intro: 0, got: 0, goal: null, bubT: 0 };
-    this.panel = null; if (this.build.on) this.build.exit(); this.camEye = null;
-    this.ripples.add(p[0], p[2], 1.4);
-    for (let i = 0; i < 14; i++) this.addBubble([p[0] + rng.float(-r, r), p[1] + rng.float(-r, r), p[2] + rng.float(-r, r)], r * rng.float(0.05, 0.15));
-    this.sfx('splash_small', { vol: 0.7 });
-    this.sfx('bubbles', { vol: 0.5 });
-    try { audio.setMuffle?.(0.6); } catch { /* optional */ }
-  }
-
-  exitSwim(quiet = false) {
-    if (!this.swim) return;
-    const s = this.swim;
-    this.swim = null;
-    try { audio.setMuffle?.(0); } catch { /* optional */ }
-    if (quiet) return;
-    this.ripples.add(s.p[0], s.p[2], 1.2);
-    this.sfx('splash_small', { vol: 0.6 });
-    if (s.got) this.game.toast?.(`Swim haul: ${fmtAero(s.got)} Aero!`, 'coin');
-    this.view.setPreset('iso');
-  }
-
-  swimDir(yaw, pitch) { const cp = Math.cos(pitch); return [Math.cos(yaw) * cp, Math.sin(pitch), -Math.sin(yaw) * cp]; }
-
-  updateSwim(dt, inp) {
-    const s = this.swim, T = this.shape, g = this.game;
-    const I = g.input;
-    s.intro = Math.min(1, s.intro + dt * 1.6);
-    // keys (the game's hotkeys must not fire while swimming)
-    const key = (k) => I.key(k);
-    for (const k of ['w', 'a', 's', 'd', 'q', 'e', 'c', ' ', 'Shift', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']) I.keysPressed?.delete?.(k);
-    if (I.keyPressed('Escape')) { I.keysPressed.delete('Escape'); this.exitSwim(); return; }
-    const L = s.look;
-    // mouse: drag to look, click to dart toward a point
-    if (inp && !this.hoverBtn) {
-      const pr = this.press;
-      if (pr) {
-        if (Math.hypot(inp.x - pr.x, inp.y - pr.y) > 4) pr.moved = true;
-        if (inp.down || inp.rdown) {
-          if (pr.moved) { L.yaw -= (inp.x - pr.lx) * 0.006; L.pitch = clamp(L.pitch - (inp.y - pr.ly) * 0.005, -1.25, 1.25); }
-          pr.lx = inp.x; pr.ly = inp.y;
-        } else {
-          this.press = null;
-          if (!pr.moved) {
-            const ray = this.view.ray(inp.x, inp.y);
-            let tgt = null;
-            // a click near an Aero drop darts straight for it; otherwise toward a fish or into the water
-            let bd = 26;
-            for (const c of this.drops.list) { const sp = this.view.project(c.p); if (sp) { const d = Math.hypot(sp[0] - inp.x, sp[1] - inp.y); if (d < bd) { bd = d; tgt = c.p.slice(); } } }
-            const f = tgt ? null : this.pickFish(ray);
-            if (tgt) { /* drop */ } else if (f) tgt = f.p.slice();
-            else {
-              const tt = T.minDim * 0.6;
-              tgt = [ray.o[0] + ray.d[0] * tt, ray.o[1] + ray.d[1] * tt, ray.o[2] + ray.d[2] * tt];
-            }
-            T.clamp(tgt, s.r);
-            s.goal = tgt;
-          }
-        }
-      } else if (inp.pressed || inp.rpressed) { inp.consume(); inp.rpressed = false; this.press = { x: inp.x, y: inp.y, lx: inp.x, ly: inp.y, moved: false }; }
-      if (inp.wheel) L.pitch = clamp(L.pitch - inp.wheel * 0.08, -1.25, 1.25);
-    }
-    const turnK = 1.8;
-    if (key('ArrowLeft') || key('a') && key('Alt')) L.yaw += turnK * dt;
-    if (key('ArrowRight')) L.yaw -= turnK * dt;
-    const fwd = this.swimDir(L.yaw, L.pitch), right = [Math.sin(L.yaw), 0, Math.cos(L.yaw)];
-    let mx = 0, my = 0, mz = 0;
-    const F = (key('w') || key('ArrowUp') ? 1 : 0) - (key('s') || key('ArrowDown') ? 1 : 0);
-    const S = (key('d') ? 1 : 0) - (key('a') ? 1 : 0);
-    const U = (key(' ') || key('e') ? 1 : 0) - (key('Shift') || key('c') || key('q') ? 1 : 0);
-    if (F || S || U) s.goal = null;
-    mx = fwd[0] * F + right[0] * S; my = fwd[1] * F + U; mz = fwd[2] * F + right[2] * S;
-    if (s.goal) {
-      const d = [s.goal[0] - s.p[0], s.goal[1] - s.p[1], s.goal[2] - s.p[2]];
-      const l = Math.hypot(...d);
-      if (l < s.r * 0.8) s.goal = null;
-      else {
-        mx = d[0] / l; my = d[1] / l; mz = d[2] / l;
-        L.yaw = lerpAngle(L.yaw, Math.atan2(-d[2], d[0]), Math.min(1, dt * 3));
-        L.pitch = lerp(L.pitch, clamp(Math.atan2(d[1], Math.hypot(d[0], d[2])), -1, 1), Math.min(1, dt * 2));
-      }
-    }
-    const ml = Math.hypot(mx, my, mz);
-    const vmax = s.r * 3.4 * (key('Shift') && F ? 1 : 1);
-    const want = ml > 0.01 ? [mx / ml * vmax, my / ml * vmax, mz / ml * vmax] : [0, 0, 0];
-    const acc = ml > 0.01 ? 4 : 2.2;
-    for (let i = 0; i < 3; i++) s.v[i] = lerp(s.v[i], want[i], Math.min(1, dt * acc));
-    // a gentle bob when idle
-    s.v[1] += Math.sin(this.t * 1.8) * s.r * 0.05 * dt;
-    for (let i = 0; i < 3; i++) s.p[i] += s.v[i] * dt;
-    T.clamp(s.p, s.r * 0.75, s.r * 0.6);
-    s.speed = Math.hypot(...s.v);
-    s.kick = lerp(s.kick, clamp01(s.speed / vmax), Math.min(1, dt * 4));
-    // body heading follows the look while moving, idles toward it otherwise
-    s.yaw = lerpAngle(s.yaw, L.yaw, Math.min(1, dt * 5));
-    s.pitch = lerp(s.pitch, L.pitch, Math.min(1, dt * 4));
-    s.roll = lerp(s.roll, -S * 0.35, Math.min(1, dt * 5));
-    // bubble trail
-    s.bubT -= dt * (0.6 + s.kick * 3);
-    if (s.bubT <= 0) {
-      s.bubT = rng.float(0.12, 0.3);
-      const hd = this.swimDir(s.yaw, s.pitch);
-      this.addBubble([s.p[0] + hd[0] * s.r * 0.9, s.p[1] + s.r * 0.3, s.p[2] + hd[2] * s.r * 0.9], s.r * rng.float(0.05, 0.11));
-    }
-    if (s.p[1] > T.waterY - s.r * 0.9 && s.speed > s.r) this.ripples.add(s.p[0], s.p[2], 0.15);
-    // swim through Aero drops
-    for (let i = this.drops.list.length - 1; i >= 0; i--) {
-      const c = this.drops.list[i];
-      if (v3(c.p, s.p) < s.r * 1.25 + c.r) this.collectCoin(c, 'player');
-    }
-    // eat-through food? (fish only) ; poke fish you bump into
-    for (const f of this.fish) {
-      if (v3(f.p, s.p) < s.r + f.len * 0.4 && f.state !== 'flee') { f.poke(5); if (rng.chance(0.3)) f.say(rng.pick(['!', 'heart', '?']), 1); }
-    }
-  }
-
-  swimCamera() {
-    const s = this.swim, T = this.shape;
-    const L = s.look;
-    const d = this.swimDir(L.yaw, L.pitch);
-    const back = s.r * 6.2, up = s.r * 1.7;
-    let eye = [s.p[0] - d[0] * back, s.p[1] - d[1] * back + up, s.p[2] - d[2] * back];
-    T.clamp(eye, 0.35, 0.3);
-    // keep the camera out of decorations: stop before the first one between the swimmer and the eye
-    for (let k = 1; k <= 8; k++) {
-      const q = [s.p[0] + (eye[0] - s.p[0]) * k / 8, s.p[1] + (eye[1] - s.p[1]) * k / 8, s.p[2] + (eye[2] - s.p[2]) * k / 8];
-      const hit = this.decor.some((dd) => q[1] < dd.p[1] + dd.h && Math.hypot(q[0] - dd.p[0], q[2] - dd.p[2]) < dd.r * 0.9);
-      if (hit) { const kk = Math.max(0.25, (k - 1) / 8); eye = [s.p[0] + (eye[0] - s.p[0]) * kk, s.p[1] + (eye[1] - s.p[1]) * kk + s.r * 0.6, s.p[2] + (eye[2] - s.p[2]) * kk]; break; }
-    }
-    const ce = (this.camEye ||= eye.slice());
-    for (let i = 0; i < 3; i++) ce[i] = lerp(ce[i], eye[i], 0.25);
-    eye = ce.slice();
-    const target = [s.p[0] + d[0] * s.r * 1.8, s.p[1] + d[1] * s.r * 1.8 + s.r * 1.0, s.p[2] + d[2] * s.r * 1.8];
-    // dive-in: glide from the orbit camera into the water
-    const k = smoothstep(0, 1, s.intro);
-    if (k < 1) {
-      const v = this.view;
-      const c = v.cam, cp = Math.cos(c.pitch);
-      const oe = [c.target[0] + Math.sin(c.yaw) * cp * c.dist, c.target[1] + Math.sin(c.pitch) * c.dist, c.target[2] + Math.cos(c.yaw) * cp * c.dist];
-      return { eye: oe.map((x, i) => lerp(x, eye[i], k)), target: c.target.map((x, i) => lerp(x, target[i], k)) };
-    }
-    return { eye, target };
-  }
-
   // ------------------------------------------------------------------ simulation
   simWorld() {
-    const s = this.swim;
+    const decor = this.decor.map((d) => ({ p: this.pieceWorld(d), r: d.screen ? d.screen.w / 2 / Math.max(0.3, this.scene.Z * this.scene.sOf(this.scene.layerZ(d.l))) * 0.6 : 14, h: d.screen ? d.screen.h / Math.max(0.3, this.scene.Z) * 0.8 : 30 }));
     return {
-      tank: this.shape, fish: this.fish, food: this.food, decor: this.decor, night: this.nightK > 0.6,
-      avatar: s ? { p: s.p, r: s.r, speed: s.speed } : null,
-      cursor: !s && this.cursor3 && this.t - this.cursor3.t < 0.5 ? this.cursor3 : null,
+      tank: this.shape, fish: this.fish, food: this.food, decor: decor.filter((d) => d.p[2] > -this.shape.D / 2 + 6), night: this.nightK > 0.6,
+      avatar: null,
+      cursor: this.visibleKey === 'full' && !this.build.on && this.cursor3 && this.t - this.cursor3.t < 0.5 ? this.cursor3 : null,
       onEat: (f, food) => this.onEat(f, food), canCourt: (f) => this.canCourt(f), onCourt: (a, b) => this.onCourt(a, b),
-      onStartle: (f) => { for (let i = 0; i < 3; i++) this.addBubble(f.p, f.len * 0.05); },
+      onStartle: (f) => { for (let i = 0; i < 3; i++) this.addBubble(f.p, rng.float(0.8, 1.6)); },
     };
   }
 
@@ -1204,19 +1075,18 @@ export class Aquarium {
   sprinkle(x, z, n = rng.int(5, 7)) {
     const T = this.shape;
     if (this.food.length > 60) return;
-    const r = 0.18 * (T.fishLen / 6) + 0.08;
     for (let i = 0; i < n; i++) {
-      const p = [x + rng.float(-1, 1) * T.fishLen * 0.4, T.waterY - 0.2, z + rng.float(-1, 1) * T.fishLen * 0.4];
-      T.clamp(p, 0.6);
-      this.food.push({ p, vy: rng.float(0.8, 1.6) * (T.fishLen / 6), t: 0, c: rng.pick(FOOD_COLS), eaten: false, wob: rng.float(0, TAU), landed: false, r });
+      const p = [x + rng.float(-1, 1) * 18, T.waterY - 1, z + rng.float(-1, 1) * 10];
+      T.clamp(p, 2);
+      this.food.push({ p, vy: rng.float(9, 16), t: 0, c: rng.pick(FOOD_COLS), eaten: false, wob: rng.float(0, TAU), landed: false, r: 1 });
     }
     this.ripples.add(x, z, 0.6);
     this.sfx('bubble', { vol: 0.35, pitch: 1.4 });
   }
 
   addBubble(p, r) {
-    if (this.bubbles.length > 140) this.bubbles.shift();
-    this.bubbles.push({ p: p.slice(), r: Math.max(0.08, r), vy: 0, wob: rng.float(0, TAU) });
+    if (this.bubbles.length > 160) this.bubbles.shift();
+    this.bubbles.push({ p: p.slice(), r: Math.max(0.6, r), vy: 0, wob: rng.float(0, TAU) });
   }
 
   updateFood(dt) {
@@ -1228,11 +1098,11 @@ export class Aquarium {
       if (!p.landed) {
         p.wob += dt * 3;
         p.p[1] -= p.vy * dt;
-        p.p[0] += Math.sin(p.wob) * 0.4 * dt;
-        p.p[2] += Math.cos(p.wob * 0.7) * 0.3 * dt;
+        p.p[0] += Math.sin(p.wob) * 4 * dt;
+        p.p[2] += Math.cos(p.wob * 0.7) * 2 * dt;
         const fy = T.floorY(p.p[0], p.p[2]) + p.r;
         if (p.p[1] <= fy) { p.p[1] = fy; p.landed = true; }
-        T.clamp(p.p, 0.4, p.r);
+        T.clamp(p.p, 2, p.r);
       }
       this.food[w++] = p;
     }
@@ -1245,27 +1115,12 @@ export class Aquarium {
   }
 
   updateDecor(dt) {
-    const T = this.shape, gk = T.size[1] / 54;
     for (const d of this.decor) {
-      if (!d.p) continue;
-      if (d.glide) {
-        // glide back to its spot (a cancelled or refused drop, an undo)
-        d.glide.t += dt;
-        const k = smoothstep(0, 1, Math.min(1, d.glide.t / 0.35));
-        const to = [d.fp?.[0] ?? d.p[0], d.ty, d.fp?.[2] ?? d.p[2]];
-        for (let i = 0; i < 3; i++) d.p[i] = lerp(d.glide.from[i], to[i], k) + (i === 1 ? Math.sin(k * Math.PI) * T.fishLen * 0.6 : 0);
-        if (d.glide.t >= 0.35) { d.glide = null; d.squashV += 4; this.puff([d.p[0], d.ty, d.p[2]], d.r, 5); this.layoutDecor(); }
-      } else if (!d.held) {
-        // sink to its resting height under water gravity; land with a squash and a sand puff
-        if (d.p[1] > d.ty + 0.01) {
-          d.vy = Math.max(-28 * gk, (d.vy || 0) - 70 * gk * dt);
-          d.p[1] += d.vy * dt;
-          if (d.p[1] <= d.ty) {
-            d.p[1] = d.ty;
-            if (d.vy < -4 * gk) { d.squashV += Math.min(9, -d.vy / gk * 0.35); this.puff([d.p[0], d.ty, d.p[2]], d.r, 8); this.sfx('box_close', { vol: 0.3, pitch: 0.8 }); }
-            d.vy = 0;
-          }
-        } else { d.p[1] = d.ty; d.vy = 0; }
+      // pieces dropped into the tank sink to the floor and land with a squash and a sand puff
+      if (d.lift > 0) {
+        d.vy = Math.max(-260, (d.vy || 0) - 420 * dt);
+        d.lift += d.vy * dt;
+        if (d.lift <= 0) { d.lift = 0; if (d.vy < -40) { d.squashV += Math.min(9, -d.vy * 0.03); this.puff(this.pieceWorld(d), 14, 8); this.sfx('box_close', { vol: 0.3, pitch: 0.8 }); } d.vy = 0; }
       }
       d.squashV += (-d.squash * 160 - d.squashV * 9) * dt;
       d.squash = clamp(d.squash + d.squashV * dt, -0.45, 0.45);
@@ -1288,7 +1143,7 @@ export class Aquarium {
       if (rec.coinT >= val && !this.growAnim) { rec.coinT -= val; this.dropCoin(f, d); }
       if (rec.hunger > 0.62 && rng.chance(dt * 0.04) && !f.emote && f.state !== 'sleep') f.say('food', 1.6);
       else if ((rec.happiness ?? 0) > 0.85 && rng.chance(dt * 0.015) && !f.emote && f.state !== 'sleep') f.say('heart', 1.2);
-      if (rng.chance(dt * 0.25)) this.addBubble(f.p, f.len * 0.035);
+      if (rng.chance(dt * 0.25)) this.addBubble(f.p, rng.float(0.6, 1.2));
     }
     this.moodT -= dt;
     if (this.moodT <= 0) {
@@ -1296,7 +1151,7 @@ export class Aquarium {
       this.moodT = 0.5;
       const cap = this.capacity();
       const crowd = 1 - clamp01((n / cap - 0.65) / 0.7) * 0.6;
-      const decor = clamp01((this.decor.length + (this.view.plants?.list?.length || 0) * 0.2) / (1.5 + n * 0.35) + this.tier * 0.06);
+      const decor = clamp01((this.decor.length + (TANK_TIERS[this.tier]?.plants || 4) * 0.2) / (1.5 + n * 0.35) + this.tier * 0.06);
       const gh = gearHappy(this.st);
       const k = 1 - Math.exp(-step / 40);
       for (const f of this.fish) {
@@ -1313,7 +1168,7 @@ export class Aquarium {
       if (this.feederT <= 0) {
         this.feederT = 40;
         const avg = this.fish.reduce((a, f) => a + (f.rec.hunger ?? 0), 0) / n;
-        if (avg > 0.4 && this.food.length < 6) { const p = this.shape.floorPoint(0.75, 0.3, 2); this.sprinkle(p[0], p[2], 8); this.sfx('click', { vol: 0.4 }); }
+        if (avg > 0.4 && this.food.length < 6) { this.sprinkle(this.shape.W * 0.25, 0, 8); this.sfx('click', { vol: 0.4 }); }
       }
     }
   }
@@ -1326,16 +1181,14 @@ export class Aquarium {
     const s = (this.snail ||= { x: 0, dir: 1, t: 0 });
     s.t += dt;
     const rest = this.drops.list.filter((c) => c.sleep && !c.hint);
-    let tx = Math.sin(s.t * 0.05) * T.size[0] * 0.4;
+    let tx = Math.sin(s.t * 0.05) * T.W * 0.4;
     if (rest.length) { rest.sort((a, b) => Math.abs(a.p[0] - s.x) - Math.abs(b.p[0] - s.x)); tx = rest[0].p[0]; }
-    const sp = T.fishLen * 0.5 * (1 + ac * 0.2);
+    const sp = 22 * (1 + ac * 0.2);
     s.dir = tx > s.x ? 1 : -1;
     s.x += clamp(tx - s.x, -sp * dt, sp * dt);
-    const lim = T.round ? T.rAt(T.waterY - 1) * 0.8 : T.size[0] / 2 - 2;
-    s.x = clamp(s.x, -lim, lim);
-    const z = T.round ? Math.sqrt(Math.max(0, (T.rAt(T.waterY - 1.5) - 0.6) ** 2 - s.x * s.x)) : T.size[2] / 2 - 0.6;
-    s.p = [s.x, T.waterY - 1.4 * (T.fishLen / 6), z];
-    for (const c of rest) if (Math.abs(c.p[0] - s.x) < c.r + 1 && Math.abs(c.p[2] - z) < T.size[2] * 0.5) { this.collectCoin(c, 'helper'); break; }
+    s.x = clamp(s.x, -T.W / 2 + 10, T.W / 2 - 10);
+    s.p = [s.x, T.waterY - 9, T.D / 2 - 1];
+    for (const c of rest) if (Math.abs(c.p[0] - s.x) < c.r + 6) { this.collectCoin(c, 'helper'); break; }
   }
 
   autoCollect(dt) {
@@ -1353,25 +1206,14 @@ export class Aquarium {
   }
 
   updateBubbles(dt) {
-    const T = this.shape, kit = this.view.kit;
-    if (this.visibleKey && kit) {
-      const air = gearLevel(this.st, 'air');
-      this.bubT = (this.bubT || 0) - dt * (1 + air * 0.8) * (kit.stones.length ? 1 : 0.3);
-      while (this.bubT < 0) {
-        this.bubT += 0.09;
-        const st = kit.stones[Math.floor(rng.next() * kit.stones.length)] || T.floorPoint(rng.next(), rng.next(), 2);
-        this.addBubble([st[0] + rng.float(-0.3, 0.3), st[1], st[2] + rng.float(-0.3, 0.3)], T.fishLen * rng.pick([0.03, 0.04, 0.05, 0.07]) * (air >= 3 && rng.chance(0.2) ? 2 : 1));
-      }
-      if (kit.filterOut && rng.chance(dt * 6)) this.addBubble([kit.filterOut[0] + rng.float(-1, 1), kit.filterOut[1] - rng.float(0, 2), kit.filterOut[2] + rng.float(0, 1.5)], T.fishLen * 0.03);
-    }
+    const T = this.shape;
     let w = 0;
     for (const b of this.bubbles) {
       b.wob += dt * 5;
-      b.vy = Math.min(b.vy + dt * 18 * (0.4 + b.r), 3 + b.r * 18);
+      b.vy = Math.min(b.vy + dt * 60, 30 + b.r * 14);
       b.p[1] += b.vy * dt;
-      b.p[0] += Math.sin(b.wob) * 0.6 * dt;
-      b.p[2] += Math.cos(b.wob * 0.8) * 0.4 * dt;
-      if (b.p[1] >= T.waterY - b.r * 0.5) { if (b.r > T.fishLen * 0.05) this.ripples.add(b.p[0], b.p[2], 0.12); continue; }
+      b.p[0] += Math.sin(b.wob) * 5 * dt;
+      if (b.p[1] >= T.waterY - b.r * 0.5) { if (b.r > 1.6) this.ripples.add(b.p[0], b.p[2], 0.12); continue; }
       this.bubbles[w++] = b;
     }
     this.bubbles.length = w;
@@ -1379,21 +1221,23 @@ export class Aquarium {
 
   // ------------------------------------------------------------------ decor interactions
   interact(d, quiet = false) {
-    if (typeof d === 'string') d = this.decor.find((q) => q.rec.id === d);
+    if (typeof d === 'string') d = this.decor.find((q) => q.id === d);
     if (!d) return false;
     if (quiet) { d.squashV += 3; this.sfx('click', { vol: 0.35, pitch: 1.2 }); return true; }
-    const spec = propInteract(d.rec.id) || { sfx: [], fx: [], squash: 0.1 };
+    const spec = propInteract(d.id) || { sfx: [], fx: [], squash: 0.1 };
     d.squashV += (spec.squash ?? 0.1) * 40 + 3;
     d.hop = spec.squash > 0.15 ? 3 : 0;
     if (spec.shake) d.shake = spec.shake;
     for (const e of spec.sfx || []) this.sfxQ.push({ at: e.at || 0, name: e.name, o: { vol: e.vol ?? 0.6, pitch: e.pitch } });
-    const top = [d.p[0], d.p[1] + d.h, d.p[2]];
-    for (const f of spec.fx || []) this.sfxQ.push({ at: f.at || 0, fx: f.kind, p: f.from === 'center' ? [d.p[0], d.p[1] + d.h * 0.5, d.p[2]] : top, n: f.n || 6, text: f.text });
-    const near = this.fish.filter((f) => v3(f.p, d.p) < this.shape.minDim * 1.2);
-    if (spec.fish === 'gather' || spec.fish === 'dance') for (const f of near) { f.setState('gather'); f.gather = { p: [d.p[0], d.p[1] + d.h * 0.7, d.p[2]], r: d.r + f.len, time: 4, dance: spec.fish === 'dance' }; }
-    if (spec.fish === 'flee') for (const f of near) { const away = [f.p[0] * 2 - d.p[0], f.p[1] + 2, f.p[2] * 2 - d.p[2]]; this.shape.clamp(away, f.len); f.setState('flee', away); f.say('!', 1); }
+    const wp = this.pieceWorld(d);
+    const h = d.screen ? d.screen.h / Math.max(0.3, this.scene.Z) : 30;
+    const top = [wp[0], wp[1] + h * 0.9, wp[2]];
+    for (const f of spec.fx || []) this.sfxQ.push({ at: f.at || 0, fx: f.kind, p: f.from === 'center' ? [wp[0], wp[1] + h * 0.5, wp[2]] : top, n: f.n || 6, text: f.text });
+    const near = this.fish.filter((f) => Math.abs(f.p[0] - wp[0]) < this.shape.H * 0.8);
+    if (spec.fish === 'gather' || spec.fish === 'dance') for (const f of near) { f.setState('gather'); f.gather = { p: [wp[0], wp[1] + h * 0.7, wp[2]], r: h * 0.5 + f.len, time: 4, dance: spec.fish === 'dance' }; }
+    if (spec.fish === 'flee') for (const f of near) { const away = [f.p[0] * 2 - wp[0], f.p[1] + 20, f.p[2]]; this.shape.clamp(away, f.len); f.setState('flee', away); f.say('!', 1); }
     if (spec.coin && !(d.coinCd > 0)) { d.coinCd = spec.coin.cooldown || 30; this.sfxQ.push({ at: spec.coin.at || 0.3, coin: true, p: top }); }
-    this.game.emit?.('decorPlayed', { id: d.rec.id });
+    this.game.emit?.('decorPlayed', { id: d.id });
     return true;
   }
   useDecor(d) { return this.interact(d); }
@@ -1406,23 +1250,22 @@ export class Aquarium {
     for (const e of due) {
       if (e.name) this.sfx(e.name, e.o);
       if (e.fx) this.fxAt(e.p, e.fx, e.n, 0, e.text);
-      if (e.coin) this.drops.spawn(e.p, 1, { v: [0, 2, 0] });
+      if (e.coin) { const p = e.p.slice(); this.shape.clamp(p, 4); this.drops.spawn(p, 1, { v: [0, 6, 0] }); }
     }
   }
 
-  // effects at a 3D point: real bubbles in the water + screen-space sparkle / text particles
+  // effects at a tank point: real bubbles in the water + screen-space pixel particles
   fxAt(p, kind, n = 6, r = 0, text = null) {
-    const T = this.shape;
     if (kind === 'food') { this.sprinkle(p[0], p[2], Math.min(8, n)); return; }
-    if (kind === 'bubbles' || kind === 'foam' || kind === 'steam' || kind === 'smoke') { for (let i = 0; i < n; i++) this.addBubble([p[0] + rng.float(-1, 1), p[1], p[2] + rng.float(-1, 1)], T.fishLen * rng.float(0.03, 0.08)); return; }
+    if (kind === 'bubbles' || kind === 'foam' || kind === 'steam' || kind === 'smoke') { for (let i = 0; i < n; i++) this.addBubble([p[0] + rng.float(-6, 6), p[1], p[2]], rng.float(0.8, 2.4)); return; }
     if (!this.visibleKey) return;
-    const sp = this.view.project(p);
+    const sp = this.project(p);
     if (!sp) return;
     const [x, y] = sp;
     const P = this.particles;
     switch (kind) {
       case 'pop': {
-        const rr = Math.max(2, r * this.view.ppu(sp[2]));
+        const rr = Math.max(2, r * this.scene.Z);
         this.px('drop', x, y, 5, { ramp: 'aqua', speed: [30, 70], spread: 1.4 });
         this.px('sparkle', x, y, 3, { ramp: 'aqua', w: rr * 0.5, h: rr * 0.5 });
         if (n > 1) P.text(x, y - 6, '+' + fmtAero(n), { font: 'small', color: '#e8fdff', layer: 'fg', life: 0.9, vy: -16 });
@@ -1435,7 +1278,7 @@ export class Aquarium {
       case 'burst': this.px('sparkle', x, y, n, { ramps: ['aqua', 'white', 'gold'] }); this.px('puff', x, y, 3, { ramp: 'white' }); break;
       default: this.px('sparkle', x, y, Math.min(14, n), { ramps: ['aqua', 'white', 'gold'], w: 6, h: 5 }); break;
     }
-    if (kind !== 'pop' && kind !== 'text') for (let i = 0; i < 3; i++) this.addBubble(p, T.fishLen * 0.04);
+    if (kind !== 'pop' && kind !== 'text') for (let i = 0; i < 3; i++) this.addBubble(p, rng.float(0.8, 1.6));
   }
 
   fishTip(f) {
@@ -1452,10 +1295,13 @@ export class Aquarium {
   // ------------------------------------------------------------------ drawing
   drawFull(ctx) {
     if (this.visibleKey !== 'full') return;
-    const { W, H } = this.game.screen;
-    if (!this.view.render(ctx, 0, 0, W, H)) drawFlat(ctx, this, 0, 0, W, H);
-    this.drawOverlays(ctx, 0, 0, W, H);
-    this.drawHud(ctx);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const cam = this.fullCam();
+    this.scene.draw(ctx, cam, { grow: this.growK() });
+    this.drawOverlays(ctx, cam);
+    this.drawHud(ctx, cam);
+    ctx.restore();
   }
 
   drawWindow(ctx) {
@@ -1470,21 +1316,17 @@ export class Aquarium {
     ctx.fillRect(r.x + 4, r.y + off + r.h, r.w - 4, 3);
     ctx.fillRect(r.x + r.w, r.y + off + 6, 3, r.h - 3);
     drawAeroSurface(ctx, r.x, r.y + off, r.w, r.h, { tone: 'sky', r: 7, gloss: 0.7, glossH: FRAME.lid + 1, curve: 2, rim: 0.85, glow: 0.6, streak: true });
-    const ix = r.x + FRAME.side, iy = r.y + FRAME.lid + off;
-    // the window keeps its own gentle, slowly drifting front camera
-    const v = this.view;
-    const keep = { yaw: v.cam.yaw, pitch: v.cam.pitch, dist: v.cam.dist, target: v.cam.target.slice() };
-    const f = v.kit ? v.frame() : null;
-    if (f) { v.w = d.sw; v.h = d.sh; const ff = v.frame(); Object.assign(v.cam, { yaw: 0.6 + Math.sin(this.t * 0.12) * 0.22, pitch: 0.34, dist: ff.dist * 0.8, target: [0, this.shape.top * 0.45, 0] }); }
-    ctx.save();
-    ctx.beginPath(); ctx.rect(ix, iy, d.sw, d.sh); ctx.clip();
-    if (!v.render(ctx, ix, iy, d.sw, d.sh)) drawFlat(ctx, this, ix, iy, d.sw, d.sh);
-    this.drawOverlays(ctx, ix, iy, d.sw, d.sh);
-    ctx.restore();
-    Object.assign(v.cam, keep);
+    const ir = this.winInner();
+    const cam = this.winCamera();
+    if (cam) {
+      this.scene.draw(ctx, cam, {});
+      ctx.save();
+      ctx.beginPath(); ctx.rect(ir.x, ir.y, ir.w, ir.h); ctx.clip();
+      this.drawOverlays(ctx, cam);
+      ctx.restore();
+    }
     ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    ctx.fillRect(ix - 1, iy - 1, d.sw + 2, 1);
-    // chrome: title, buttons, stats
+    ctx.fillRect(ir.x - 1, ir.y - 1, d.sw + 2, 1);
     const sm = this.tankSummary();
     for (const b of this.chromeButtons(r)) {
       drawAeroButton(ctx, b.x, b.y, b.w, b.h, { tone: b.tone, state: this.hoverBtn === b.id ? 'hover' : 'normal', radius: 4 });
@@ -1510,83 +1352,52 @@ export class Aquarium {
 
   drawMini() { /* the mini window is gone (phase 4) */ }
 
-  // 2D overlays projected from the 3D scene: emotes, hover sparkles, the tutorial arrow, the snail, particles
-  drawOverlays(ctx, ox, oy, w, h) {
-    const v = this.view;
-    if (!v.VP) return;
-    ctx.save();
-    ctx.translate(ox, oy);
-    const t = this.t;
+  // 2D overlays: emotes, hover sparkles, the tutorial arrow, the snail, particles
+  drawOverlays(ctx, cam) {
+    const t = this.t, S = this.scene;
     for (const f of this.fish) {
-      if (!f.emote) continue;
-      const sp = v.project([f.p[0], f.p[1] + f.len * 0.45, f.p[2]]);
-      if (!sp || sp[0] < -20 || sp[0] > w + 20) continue;
+      if (!f.emote || !f.screen) continue;
+      const sx = f.screen.x, sy = f.screen.y - f.screen.r * 0.7;
       const k = f.emote.t / f.emote.max;
       const name = EMOTE_ICON[f.emote.icon] || f.emote.icon;
-      const y = Math.round(sp[1] - 4 - Math.min(1, f.emote.t * 6) * 3);
+      const y = Math.round(sy - 4 - Math.min(1, f.emote.t * 6) * 3);
       ctx.globalAlpha = Math.min(1, (1 - k) * 4);
-      if (name === 'dollar' || name === 'coin') drawAeroCoin(ctx, sp[0], y - 5, 4, t);
-      else if (ICONS.has(name)) { const ic = getUiIcon(name); ctx.drawImage(ic, Math.round(sp[0] - ic.width / 2), y - ic.height); }
-      else drawText(ctx, f.emote.icon, sp[0], y - 8, { align: 'center', color: '#ffffff', outline: '#0c3a52' });
+      if (name === 'dollar' || name === 'coin') drawAeroCoin(ctx, sx, y - 5, 4, t);
+      else if (ICONS.has(name)) { const ic = getUiIcon(name); ctx.drawImage(ic, Math.round(sx - ic.width / 2), y - ic.height); }
+      else drawText(ctx, f.emote.icon, sx, y - 8, { align: 'center', color: '#ffffff', outline: '#0c3a52' });
       ctx.globalAlpha = 1;
     }
     const hf = this.hoverFish;
-    if (hf) {
-      const sp = v.project(hf.p);
-      if (sp) { const r = hf.len * v.ppu(sp[2]) * 0.5 + 3; drawSparkle(ctx, sp[0] - r, sp[1] - r * 0.6, (t * 3) % 1 < 0.5 ? 2 : 1, 0.9); drawSparkle(ctx, sp[0] + r * 0.8, sp[1] + r * 0.4, (t * 3 + 0.5) % 1 < 0.5 ? 2 : 1, 0.8); }
-    }
+    if (hf?.screen) { const r = hf.screen.r + 3; drawSparkle(ctx, hf.screen.x - r, hf.screen.y - r * 0.6, (t * 3) % 1 < 0.5 ? 2 : 1, 0.9); drawSparkle(ctx, hf.screen.x + r * 0.8, hf.screen.y + r * 0.4, (t * 3 + 0.5) % 1 < 0.5 ? 2 : 1, 0.8); }
     const hd = this.hoverDecor;
-    if (hd && !this.drag) {
-      const sp = v.project([hd.p[0], hd.p[1] + hd.h + 1, hd.p[2]]);
-      if (sp) drawSparkle(ctx, sp[0], sp[1] - 2 + Math.sin(t * 5) * 1.5, 2, 0.9);
-    }
-    // Aero drops get a soft glow + a twinkle so the currency reads at any distance (light only)
-    ctx.globalCompositeOperation = 'lighter';
+    if (hd?.screen && !this.build.on) drawSparkle(ctx, hd.screen.x + hd.screen.w / 2, hd.screen.y - 2 + Math.sin(t * 5) * 1.5, 2, 0.9);
     for (const c of this.drops.list) {
-      const sp = v.project(c.p);
-      if (!sp || sp[0] < -10 || sp[1] < -10 || sp[0] > w + 10 || sp[1] > h + 10) continue;
-      const rr = clamp(c.r * v.ppu(sp[2]), 2, 26);
-      drawAeroGlow(ctx, sp[0], sp[1], rr * 2.4, '#9af0ff', 0.22 + 0.08 * Math.sin(t * 3 + c.id));
-      if (((t * 0.7 + c.id * 0.37) % 1) < 0.08) drawSparkle(ctx, sp[0] - rr * 0.4, sp[1] - rr * 0.4, rr > 6 ? 2 : 1, 0.9);
-    }
-    ctx.globalCompositeOperation = 'source-over';
-    for (const c of this.drops.list) {
-      if (!c.hint) continue;
-      const sp = v.project(c.p);
-      if (!sp) continue;
+      if (!c.hint || !c.screen) continue;
       const a = getUiIcon('arrow_d');
-      const rr = c.r * v.ppu(sp[2]);
-      if (a) ctx.drawImage(a, Math.round(sp[0] - a.width / 2), Math.round(sp[1] - rr - 6 - a.height + Math.sin(t * 7) * 2));
-      if (rng.chance(0.08)) this.particles.sparkle(sp[0] + rng.float(-3, 3), sp[1] + rng.float(-3, 3), '#bff8ff');
+      if (a) ctx.drawImage(a, Math.round(c.screen.x - a.width / 2), Math.round(c.screen.y - c.screen.r - 6 - a.height + Math.sin(t * 7) * 2));
+      if (rng.chance(0.08)) this.particles.sparkle(c.screen.x + rng.float(-3, 3), c.screen.y + rng.float(-3, 3), '#bff8ff');
     }
-    // the snail janitor: a little glossy 2D sticker on the glass (a helper effect, drawn at its 3D spot)
     if (this.snail?.p) {
-      const sp = v.project(this.snail.p);
-      if (sp) drawSnail(ctx, sp[0], sp[1], Math.max(3, this.shape.fishLen * 0.35 * v.ppu(sp[2])), this.snail.dir, t);
+      const q = S.proj(this.snail.p[0], this.snail.p[1], this.snail.p[2], cam);
+      drawSnail(ctx, q.x, q.y, Math.max(6, 14 * cam.Z), this.snail.dir, t);
+    }
+    // eggs on the floor
+    for (const e of this.st.tank.eggs) {
+      const p = this.shape.floorPoint(e.x, e.z, 4);
+      const q = S.proj(p[0], p[1], p[2], cam);
+      for (let i = 0; i < Math.min(6, e.n || 4); i++) {
+        ctx.fillStyle = i % 2 ? '#ffffff' : e.color || '#ffd8a8';
+        ctx.fillRect(Math.round(q.x + (i - 2) * 3), Math.round(q.y - 3 - (i % 2) * 2 + Math.sin(t * 2 + i) * 0.5), 2, 2);
+      }
     }
     this.particles.draw(ctx, 'fg', t);
-    ctx.restore();
   }
 
-  drawHud(ctx) {
+  drawHud(ctx, cam) {
     const g = this.game;
     const { W, H } = g.screen;
     const t = this.t;
-    if (this.swim) {
-      const s = this.swim;
-      const lay = this.swimLayout(), pl = lay.pill;
-      drawAeroSurface(ctx, pl.x, pl.y, pl.w, pl.h, { tone: 'frost', r: 'pill', gloss: 0.75, glossH: 8, rim: 0.9, glow: 0.5 });
-      drawText(ctx, lay.msg, pl.x + pl.w / 2, Math.round(pl.y + (pl.h - (lay.font === 'normal' ? 7 : 5)) / 2), { font: lay.font, align: 'center', color: AERO.ink });
-      const r = lay.exit;
-      drawAeroButton(ctx, r.x, r.y, r.w, r.h, { label: 'Exit', icon: getUiIcon('arrow_u'), state: this.hoverBtn === 'exitswim' ? 'hover' : 'normal', tone: 'aqua' });
-      if (s.got) { drawAeroCoin(ctx, W / 2 - 14, 38, 5, t); drawText(ctx, '+' + fmtAero(s.got), W / 2 - 6, 34, { color: '#ffffff', shadow: '#0a3e74' }); }
-      // depth gauge
-      const T = this.shape, k = clamp01((s.p[1] - T.floorY(s.p[0], s.p[2])) / Math.max(1, T.waterY - T.floorY(s.p[0], s.p[2])));
-      drawAeroSurface(ctx, 10, Math.round(H / 2 - 50), 10, 100, { tone: 'glass', r: 5, gloss: 0.6, rim: 0.8 });
-      drawAeroCoin(ctx, 15, Math.round(H / 2 + 45 - k * 90), 4, t);
-      return;
-    }
-    if (this.build.on) { this.build.draw(ctx); return; }
+    if (this.build.on) { this.build.draw(ctx, cam); return; }
     const sm = this.tankSummary();
     const { pill: p, k } = this.fullLayout();
     drawAeroSurface(ctx, p.x, p.y, p.w, p.h, { tone: 'frost', r: 'pill', gloss: 0.75, glossH: Math.round(p.h * 0.45), curve: 2, rim: 0.9, glow: 0.5 });
@@ -1608,31 +1419,41 @@ export class Aquarium {
     drawText(ctx, `${sm.aeroPerMin.toFixed(1)}/min`, x, ty, { color: ink, font });
     const btns = this.fullButtons();
     for (const b of btns) {
-      if (b.id === 'pill' || b.dock) continue;
-      const st = this.hoverBtn === b.id ? 'hover' : 'normal';
-      if (b.id === 'back') { drawAeroButton(ctx, b.x, b.y, b.w, b.h, { label: 'Ocean', icon: getUiIcon('arrow_l'), state: st, tone: 'aqua' }); continue; }
-      drawAeroButton(ctx, b.x, b.y, b.w, b.h, { label: b.label, icon: getUiIcon('tank'), state: st, tone: b.tone || 'aqua' });
+      if (b.id !== 'back') continue;
+      drawAeroButton(ctx, b.x, b.y, b.w, b.h, { label: 'Ocean', icon: getUiIcon('arrow_l'), state: this.hoverBtn === b.id ? 'hover' : 'normal', tone: 'aqua' });
     }
     this.drawDock(ctx, btns.filter((b) => b.dock));
+    this.drawScrollbar(ctx, cam);
     if (this.panel === 'gear') this.drawGearPanel(ctx);
     const ga = this.growAnim;
     if (ga && ga.t > 0.3 && ga.t < 2.9) {
       const a = clamp01(Math.min((ga.t - 0.3) * 3, (2.9 - ga.t) * 3));
       ctx.globalAlpha = a;
-      const name = this.tierInfo().name;
       drawText(ctx, 'Tank expanded!', W / 2, Math.round(H * 0.16), { align: 'center', color: '#ffffff', outline: '#0a3e74', scale: 2 });
-      drawText(ctx, name, W / 2, Math.round(H * 0.16) + 22, { align: 'center', color: '#bff8ff', outline: '#0a3e74' });
-      ctx.globalAlpha = 1;
-    }
-    if (!this.view.ok) drawText(ctx, '2D view (WebGL2 unavailable)', 8, H - 40, { font: 'small', color: '#ffffff', outline: '#0a3e74' });
-    else if (this.t < 12 && !this.panel) {
-      ctx.globalAlpha = clamp01((12 - this.t) / 2);
-      drawText(ctx, 'Drag: orbit   Right-drag: pan   Wheel: zoom   Click water: feed', W / 2, H - Math.round(60 * this.hudK()) - 20, { font: this.hudK() >= 1.4 ? 'normal' : 'small', align: 'center', color: '#ffffff', outline: '#0a3e74' });
+      drawText(ctx, this.tierInfo().name, W / 2, Math.round(H * 0.16) + 22, { align: 'center', color: '#bff8ff', outline: '#0a3e74' });
       ctx.globalAlpha = 1;
     }
   }
 
-  // the right-hand dock, cached as one canvas until its look changes (hover, toggles, size)
+  // a glossy scroll track along the top of the hood when the tank is wider than the screen
+  drawScrollbar(ctx, cam) {
+    const max = this.scene.scrollMax();
+    if (max <= 0) return;
+    const T = this.shape, W = this.game.screen.W;
+    const tw = Math.round(Math.min(W * 0.36, 260)), th = 6;
+    const x0 = Math.round(W / 2 - tw / 2), y0 = Math.round(this.fullLayout().pill.y + this.fullLayout().pill.h + 6);
+    drawAeroSurface(ctx, x0, y0, tw, th, { tone: 'glass', r: 3, gloss: 0.5, rim: 0.8 });
+    const vis = clamp01((W / cam.Z) / (T.W + 68));
+    const kw = Math.max(14, Math.round(tw * vis));
+    const kx = Math.round(x0 + ((this.camX + max) / (2 * max)) * (tw - kw));
+    drawAeroSurface(ctx, kx, y0, kw, th, { tone: 'aqua', r: 3, gloss: 0.8, rim: 0.9 });
+    for (const f of this.fish) {
+      const u = clamp01(f.p[0] / T.W + 0.5);
+      ctx.fillStyle = '#ffb43a';
+      ctx.fillRect(Math.round(x0 + u * tw), y0 + 2, 1, 2);
+    }
+  }
+
   drawDock(ctx, dock) {
     if (!dock.length) return;
     const x0 = dock[0].x - 4, y0 = dock[0].y - 4, x1 = Math.max(...dock.map((b) => b.x + b.w)) + 4, y1 = Math.max(...dock.map((b) => b.y + b.h)) + 4;
@@ -1706,18 +1527,22 @@ function segDist(px, py, ax, ay, bx, by) {
   const t = L > 0 ? clamp(((px - ax) * dx + (py - ay) * dy) / L, 0, 1) : 0;
   return Math.hypot(px - ax - dx * t, py - ay - dy * t);
 }
-function raySphere(ray, c, r) {
-  const ox = ray.o[0] - c[0], oy = ray.o[1] - c[1], oz = ray.o[2] - c[2];
-  const b = ox * ray.d[0] + oy * ray.d[1] + oz * ray.d[2];
-  const cc = ox * ox + oy * oy + oz * oz - r * r;
-  const disc = b * b - cc;
-  if (disc < 0) return null;
-  const t = -b - Math.sqrt(disc);
-  return t > 0 ? t : null;
-}
-function lerpAngle(a, b, k) { const d = ((b - a + Math.PI) % TAU + TAU) % TAU - Math.PI; return a + d * k; }
 
-// the snail janitor as a little hand-drawn pixel sprite (phase 8: no drawn circles)
+// alpha masks for pixel-accurate clicks
+const masks = new WeakMap();
+export function alphaAt(canvas, x, y) {
+  let m = masks.get(canvas);
+  if (!m) {
+    const d = canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, canvas.width, canvas.height).data;
+    m = new Uint8Array(canvas.width * canvas.height);
+    for (let i = 0; i < m.length; i++) m[i] = d[i * 4 + 3];
+    masks.set(canvas, m);
+  }
+  if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) return 0;
+  return m[(y | 0) * canvas.width + (x | 0)];
+}
+
+// the snail janitor as a little hand-drawn pixel sprite
 const SNAIL = [
   '....aaa....',
   '..abbbba...',

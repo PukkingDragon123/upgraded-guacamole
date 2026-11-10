@@ -308,6 +308,14 @@ export class UI {
       const cy = y + h / 2 - lift;
       ctx.save();
       ctx.globalAlpha = Math.min(fadeIn * 1.5, fadeOut);
+      // [phase10:ui] a bevelled voxel plate under the toast (deep glass slab, pops in with a little squash)
+      {
+        const pw = Math.round(w + 18), ph = Math.round(h + 12), pk = Math.min(1, ease.outBack ? ease.outBack(Math.min(1, t.t * 3)) : Math.min(1, t.t * 3));
+        const ptone = pal === 'coral' ? { top: '#8a3a52', mid: '#5a1a30', bot: '#3a0a1c', edge: '#1e0410', text: '#ffffff', shadow: '#1e0410', glow: '#ff8aa8' } : 'deep';
+        const plate = aeroCached(`toastplate|${pw}|${ph}|${pal === 'coral' ? 'c' : 'd'}`, () => aeroSurface(pw, ph, { tone: ptone, a: [0.84, 0.9], r: 8, gloss: 0.45, glossH: Math.round(ph * 0.42), curve: 2, rim: 0.9, glow: 0.5, depth: 1, block: 4, bubbles: pw > 120 ? 2 : 0, seed: pw }));
+        const sw = Math.max(1, Math.round(pw * pk)), sh = Math.max(1, Math.round(ph * (2 - pk) * pk));
+        ctx.drawImage(plate, Math.round(x - 9 + (pw - sw) / 2), Math.round(cy - ph / 2 + (ph - sh) / 2), sw, sh);
+      }
       // the 3D icon spins in, then rocks gently
       const icon = getUiIcon(t.icon)?.__icon3d ? t.icon : 'info';
       if (!drawIcon3D(ctx, icon, x + D / 2, cy, D, { t: t.t + this.time, hover: t.t < 0.9 ? 1 : 0, phase: t.max })) { const ic = getUiIcon(t.icon) || getUiIcon('info'); ctx.drawImage(ic, Math.round(x + D / 2 - ic.width / 2), Math.round(cy - ic.height / 2)); }
@@ -322,7 +330,7 @@ export class UI {
         t.fx = true;
         try { const ps = g.particles; ps?.pixelBurst?.('sparkle', x + D / 2, cy, 6, { layer: 'ui', ramp: pal === 'gold' ? 'gold' : pal === 'coral' ? 'pink' : 'aqua' }); ps?.pixelBurst?.('bubble', x + D / 2, cy + 4, 3, { layer: 'ui', size: 0 }); } catch { /* optional */ }
       }
-      y += h + Math.round(6 * k);
+      y += h + 12 + Math.round(6 * k); // [phase10:ui] room for the plates
     }
   }
 

@@ -34,7 +34,7 @@ import { getUiIcon } from '../gfx/uiicons.js';
 import { getBigIcon, iconFrame, iconSpinMode, rodIcon } from '../gfx/bigicons.js';
 import { drawTooltip } from './panels.js';
 import {
-  AERO, aeroCached, aeroSurface, drawAeroGlow, drawAeroBadge, drawAeroLabel, drawSparkle, drawAeroBubble, drawAeroLeaf, drawGlossOrb,
+  AERO, aeroCached, aeroSurface, drawAeroGlow, drawAeroBadge, drawAeroLabel, drawSparkle, drawAeroBubble, drawAeroLeaf, drawGlossOrb, drawVoxDecor,
   uiK, uiFont, capH, setUiScale, drawPixelBrackets,
 } from './aero.js';
 import { currentBait, totalBait } from '../store/bait.js';
@@ -468,10 +468,13 @@ export class Hud {
       gloss: 0.65, glossH: R(tr.h * 0.42), curve: R(3 * k), rim: 0.9, glow: 0.85, glowColor: '#8ff6ff', streak: true, bubbles: 4, seed: 5,
     })), tr.x, tr.y);
     const L = R(16 * k), Wd = R(9 * k);
-    drawAeroLeaf(ctx, tr.x + R(4 * k), tr.y + R(8 * k), L, Wd, 200, { tone: 'lime', flip: true });
-    drawAeroLeaf(ctx, tr.x + R(6 * k), tr.y + R(11 * k), R(L * 0.8), R(Wd * 0.85), 150, { tone: 'deep' });
-    drawAeroLeaf(ctx, tr.x + tr.w - R(4 * k), tr.y + R(8 * k), L, Wd, -20, { tone: 'lime' });
-    drawAeroLeaf(ctx, tr.x + tr.w - R(6 * k), tr.y + R(11 * k), R(L * 0.8), R(Wd * 0.85), 30, { tone: 'deep', flip: true });
+    // [phase10:ui] voxel leaf sprigs at both ends of the dock (2D pixel leaves until the voxel renderer is up)
+    if (!drawVoxDecor(ctx, 'leaves_l', tr.x - R(2 * k), tr.y + R(2 * k), R(34 * k), { t, phase: 0.3 }) || !drawVoxDecor(ctx, 'leaves', tr.x + tr.w + R(2 * k), tr.y + R(2 * k), R(34 * k), { t, phase: 1.7 })) {
+      drawAeroLeaf(ctx, tr.x + R(4 * k), tr.y + R(8 * k), L, Wd, 200, { tone: 'lime', flip: true });
+      drawAeroLeaf(ctx, tr.x + R(6 * k), tr.y + R(11 * k), R(L * 0.8), R(Wd * 0.85), 150, { tone: 'deep' });
+      drawAeroLeaf(ctx, tr.x + tr.w - R(4 * k), tr.y + R(8 * k), L, Wd, -20, { tone: 'lime' });
+      drawAeroLeaf(ctx, tr.x + tr.w - R(6 * k), tr.y + R(11 * k), R(L * 0.8), R(Wd * 0.85), 30, { tone: 'deep', flip: true });
+    }
     // group separators: etched glass lines
     const vis = this.visible();
     for (let i = 1; i < vis.length; i++) {
@@ -587,8 +590,10 @@ export class Hud {
       top: '#ffffff', mid: '#dff4fd', bot: '#8fd0ee', a: [0.9, 0.93], edge: '#ffffff', edgeA: 0.95, r: 'pill',
       gloss: 0.75, glossH: R(G.h * 0.4), curve: R(3 * k), rim: 0.9, glow: 0.7, glowColor: '#ffffff', sparkle: 1,
     })), G.x, G.y);
-    drawAeroLeaf(ctx, G.x + G.w - R(6 * k), G.y + R(6 * k), R(15 * k), R(8 * k), -40, { tone: 'lime' });
-    drawAeroLeaf(ctx, G.x + G.w - R(8 * k), G.y + R(7 * k), R(11 * k), R(7 * k), -95, { tone: 'leaf', flip: true });
+    if (!drawVoxDecor(ctx, 'leaves', G.x + G.w - R(4 * k), G.y + R(2 * k), R(28 * k), { t: this.time, phase: 2.4 })) { // [phase10:ui]
+      drawAeroLeaf(ctx, G.x + G.w - R(6 * k), G.y + R(6 * k), R(15 * k), R(8 * k), -40, { tone: 'lime' });
+      drawAeroLeaf(ctx, G.x + G.w - R(8 * k), G.y + R(7 * k), R(11 * k), R(7 * k), -95, { tone: 'leaf', flip: true });
+    }
     // rod slot: a glass bubble with the equipped rod in 3D
     const Rs = this.rodSlot, D = Rs.w, rcx = Rs.x + D / 2, rcy = Rs.y + D / 2;
     const rh = this.rodHov;

@@ -15,6 +15,7 @@ import { HI, hiFromBuffer, withHi } from '../gfx/hires.js';
 import { alagardReady, alagardBitmap } from '../gfx/alagard.js';
 import { drawText } from '../gfx/font.js';
 import { BRANCHES } from '../game/lab.js';
+import { cutGemFrame } from '../gfx/bigicons.js'; // [phase10:ui] voxel gems
 
 export const GEM_CUT = { rods: 'drop', reel: 'diamond', boats: 'square', oceans: 'round', aquarium: 'heart', luck: 'clover', bait: 'oval', crafting: 'hex' };
 
@@ -92,7 +93,31 @@ function gemInto(b, cx, cy, R, color, cut = 'round', dim = false) {
   }
 }
 
+// [phase10:ui] a VOXEL gem (bigicons.cutGemFrame) cropped into a logical box of L px; null until WebGL is up
+function voxGem(r, color, cut, dim, L) {
+  let f = null;
+  try { f = cutGemFrame(color, cut, Math.max(6, Math.round(r * 2 + 1)), dim); } catch { f = null; }
+  if (!f || !f.canvas.hi) return null;
+  const c = makeCanvas(L, L);
+  ctxOf(c).drawImage(f.canvas, Math.round(L / 2 - f.ox), Math.round(L / 2 - f.oy));
+  const hc = makeCanvas(L * HI, L * HI);
+  ctxOf(hc).drawImage(f.canvas.hi, Math.round((L / 2 - f.ox) * HI), Math.round((L / 2 - f.oy) * HI));
+  Object.defineProperty(c, 'hi', { value: hc, configurable: true });
+  return c;
+}
+// stamp a voxel gem over a finished tile canvas (logical + `.hi`), centred at device px (gx, gy), radius R device px
+function stampGem(c, gx, gy, R, color, cut, dim) {
+  let f = null;
+  try { f = cutGemFrame(color, cut, Math.max(6, Math.round((R * 2.3) / HI)), dim); } catch { f = null; }
+  if (!f || !f.canvas.hi) return false;
+  ctxOf(c).drawImage(f.canvas, Math.round(gx / HI - f.ox), Math.round(gy / HI - f.oy));
+  ctxOf(c.hi).drawImage(f.canvas.hi, Math.round(gx - f.ox * HI), Math.round(gy - f.oy * HI));
+  return true;
+}
+
 export function gemTex(r, color, cut = 'round', dim = false) {
+  const vg = r >= 2 ? cached(`vgem|${r}|${color}|${cut}|${dim}`, () => voxGem(r, color, cut, dim, Math.ceil(r * 2 + 3)) || undefined) : null;
+  if (vg) return vg;
   return cached(`gem|${r}|${color}|${cut}|${dim}`, () => {
     const L = Math.ceil(r * 2 + 3), D = L * HI;
     const b = new PixelBuffer(D, D);
@@ -243,13 +268,23 @@ export function nodeTile(S, look, branch) {
         over(b, x, y, r, g, bl, 1);
       }
     }
-    if (look !== 'root') gemInto(b, gcx, gcy, gr, col, cut, dark);
+    // [phase10:ui] the crest gem and the inlaid side gems are voxel gems stamped over the tile when WebGL is up
+    const vox = !!cutGemFrame('#35c8ff', 'round', 8);
+    if (look !== 'root' && !vox) gemInto(b, gcx, gcy, gr, col, cut, dark);
     // small inlaid side gems on the left, right and bottom bands (bigger tiles only)
+    const side = [];
     if (T >= 76) {
       const sr = Math.max(2.2, f * 0.3), mid = o + T / 2, bc = f * 0.46;
-      for (const [sx2, sy2] of [[o + bc, mid], [o + T - bc - 1, mid], [mid, o + T - bc - 1]]) gemInto(b, sx2, sy2, sr, look === 'root' ? '#ffd23a' : mix(col, '#ffffff', 0.15), 'diamond', dark);
+      for (const [sx2, sy2] of [[o + bc, mid], [o + T - bc - 1, mid], [mid, o + T - bc - 1]]) {
+        if (vox) side.push([sx2, sy2, sr]); else gemInto(b, sx2, sy2, sr, look === 'root' ? '#ffd23a' : mix(col, '#ffffff', 0.15), 'diamond', dark);
+      }
     }
-    return withPad(hiFromBuffer(b), pad);
+    const out = withPad(hiFromBuffer(b), pad);
+    if (vox) {
+      if (look !== 'root') stampGem(out, gcx, gcy, gr * 1.15, col, cut, dark);
+      for (const [sx2, sy2, sr] of side) stampGem(out, sx2, sy2, sr * 1.3, look === 'root' ? '#ffd23a' : mix(col, '#ffffff', 0.15), 'diamond', dark);
+    }
+    return out;
   });
 }
 function withPad(c, pad) { c.pad = pad; return c; }

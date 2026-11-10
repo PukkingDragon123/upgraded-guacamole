@@ -19,10 +19,11 @@ import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { VoxelModel, renderVoxels } from './voxel.js';
 import { unpack, pack, mix, rgbToHex, rgbToHsl, hslToRgb } from '../core/color.js';
 import { hash2, clamp, bayer } from '../core/math.js';
-import { drawAeroBadge, setCoinRenderer } from '../ui/aero.js';
+import { drawAeroBadge, setCoinRenderer, setDecorRenderer } from '../ui/aero.js';
 import { lpAvailable, renderMesh, LPMesh } from './lowpoly.js';
-import { ICON_MODELS, ROD_MODEL, GEM_MODEL } from './iconmeshes.js';
+import { ICON_MODELS, ROD_MODEL, GEM_MODEL, DECOR_MODELS, CUT_GEM_MODEL, ORB_MODEL } from './iconmeshes.js';
 import { itemPixel, itemPixelScaled } from '../build/itempix.js'; // [phase8:ui]
+import { voxelizeIconMesh, voxelEdge, iconRes } from './voxicon.js'; // [phase10:ui] every 3D icon is a voxel model
 
 export const MENU_ICON_IDS = ['lab', 'aquarium', 'journal', 'inventory', 'wardrobe', 'map', 'bait', 'appsea', 'multiplayer', 'settings', 'quests', 'shop', 'coin'];
 export const BIG_ICON_IDS = [...MENU_ICON_IDS, 'skills', 'build', 'research', 'store', 'boatyard', 'mycomputer', 'recycle'];
@@ -851,6 +852,27 @@ function finishSprite(src, w, h, pix = true) {
   return sh;
 }
 
+// [phase10:ui] the voxel twin of a model at `res` voxels along its longest side (cached on the def)
+const VOX_LIGHT = { light: [-0.34, 0.8, 1.0], ambient: 0.58, spec: 0.16, shine: 10, rim: 0.12, rimColor: '#e4fbff' };
+let voxOn = true;
+export function setVoxelIcons(on) { voxOn = !!on; frameCache.clear(); hiFrames.clear(); cache.clear(); }
+function voxOf(def, res) {
+  if (!def.vox) def.vox = new Map();
+  let v = def.vox.get(res);
+  if (v !== undefined) return v;
+  try {
+    const vs = voxelEdge(def, res);
+    const mesh = voxelizeIconMesh(def.mesh, res, { vs });
+    v = mesh ? {
+      mesh,
+      over: def.over ? voxelizeIconMesh(def.over, res, { vs }) : null,
+      glass: def.glass ? voxelizeIconMesh(def.glass, res, { vs, hollow: true, hl: 0, ao: 0, jitter: 0 }) : null,
+    } : null;
+  } catch (e) { console.error('voxel icon', e); v = null; }
+  def.vox.set(res, v);
+  return v;
+}
+
 function renderDef(def, px, turn, pix = true) {
   // fit the static pose into px (cached per size)
   let fit = def.fits.get(px);
@@ -863,7 +885,12 @@ function renderDef(def, px, turn, pix = true) {
   }
   const S = fit.S;
   const a = (def.yaw || 0) + turn;
-  const o = { ...ICON_LIGHT, ...(def.look || {}), w: S, h: S, pitch: def.pitch || 0, yaw: 0, scale: fit.s, center: fit.center };
+  const vx = voxOn && !def.noVoxel ? voxOf(def, iconRes(pix ? px * HI : px)) : null; // [phase10:ui]
+  if (vx) def = { ...def, mesh: vx.mesh, over: vx.over, glass: vx.glass };
+  const look = def.look || {};
+  const o = vx
+    ? { ...VOX_LIGHT, ...look, spec: Math.min(0.32, (look.spec ?? 0.5) * 0.3), shine: 10, rim: 0.12, w: S, h: S, pitch: def.pitch || 0, yaw: 0, scale: fit.s, center: fit.center }
+    : { ...ICON_LIGHT, ...look, w: S, h: S, pitch: def.pitch || 0, yaw: 0, scale: fit.s, center: fit.center };
   const mesh = turned(def.mesh, def.spinAxis === 'z' ? turn : a, def.spinAxis || 'y');
   let base = renderMesh(mesh, o);
   mesh.dispose();
@@ -876,13 +903,24 @@ function renderDef(def, px, turn, pix = true) {
   }
   if (def.glass) {
     const gm = turned(def.glass, def.spinAxis === 'z' ? turn : a, def.spinAxis || 'y');
-    const gl = renderMesh(gm, { ...o, alpha: def.glassAlpha ?? 0.4, spec: 0.9, shine: 30, rim: 0.7 });
+    const gl = renderMesh(gm, vx ? { ...o, alpha: (def.glassAlpha ?? 0.4) * 0.62, ambient: 0.92, spec: 0.08, shine: 8, rim: 0.25 } : { ...o, alpha: def.glassAlpha ?? 0.4, spec: 0.9, shine: 30, rim: 0.7 });
     gm.dispose();
     if (gl) { const c2 = makeCanvas(S, S), g2 = ctxOf(c2); g2.drawImage(base, 0, 0); g2.drawImage(gl, 0, 0); base = c2; }
   }
   return finishSprite(base, S, S, pix);
 }
 
+// [phase10:ui] new voxel frames are built within a per-frame budget (~7 ms per 16 ms); while over it the nearest
+// cached turn of the same icon stands in (or null: callers draw their fallback and ask again next frame)
+let vbWin = 0, vbSpent = 0;
+let vbMiss = 0;
+function vBudget() { const n = performance.now(); if (n - vbWin > 16) { vbWin = n; vbSpent = 0; } if (vbSpent < 7) return true; vbMiss++; return false; }
+/** Count of frame builds deferred by the budget (callers that cache their own results compare before / after). */
+export function voxMisses() { return vbMiss; }
+function nearestTurn(map, key, px, q, steps) {
+  for (let d = 1; d <= steps; d++) for (const s of [q - d, q + d]) { const e = map.get(key + '|' + px + '|' + s); if (e) return e; }
+  return null;
+}
 const frameCache = new Map();
 function frameOf(key, make, px, turn) {
   px = Math.max(8, Math.round(px));
@@ -893,12 +931,15 @@ function frameOf(key, make, px, turn) {
   const k = key + '|' + px + '|' + q;
   let e = frameCache.get(k);
   if (e !== undefined) return e;
+  if (!vBudget()) return nearestTurn(frameCache, key, px, q, steps);
+  const tb = performance.now();
   const ang = def.spin === 'full' ? (q / steps) * Math.PI * 2 : (q / (steps / 2)) * 0.62;
   let canvas = null;
   try { canvas = renderDef(def, px, ang); } catch (err) { console.error(err); canvas = null; }
   e = canvas ? { canvas, ox: canvas.width / 2, oy: canvas.height / 2 } : null;
   // [phase9:ui] the full-res UI layer gets a 2x render (more facets, a finer outline), built lazily within a budget
   if (canvas) withHi(canvas, () => { if (!hiBudget()) return undefined; const t0 = performance.now(); let big = null; try { big = renderDef(def, px * HI, ang, false); } catch { big = null; } hiSpent += performance.now() - t0; return big ? fitHi(canvas, big) : null; });
+  vbSpent += performance.now() - tb;
   frameCache.set(k, e);
   if (frameCache.size > 900) frameCache.delete(frameCache.keys().next().value);
   return e;
@@ -907,7 +948,7 @@ function frameOf(key, make, px, turn) {
 // [phase9:ui] 3D icons for the full-res UI: rendered smooth (no pixelize) at 2x right away, 1x = a downsample.
 //   modelFrame(key, make, px, turn) -> {canvas (logical, `.hi` twin), ox, oy} | null     (turn as in iconFrame)
 const hiFrames = new Map();
-export function modelFrame(key, make, px, turn = 0) {
+export function modelFrame(key, make, px, turn = 0, force = false) {
   if (!lpReady()) return null;
   px = Math.max(6, Math.round(px));
   const def = prepModel(key, make);
@@ -917,6 +958,8 @@ export function modelFrame(key, make, px, turn = 0) {
   const k = key + '|' + px + '|' + q;
   let e = hiFrames.get(k);
   if (e !== undefined) return e;
+  if (!force && !vBudget()) return nearestTurn(hiFrames, key, px, q, steps);
+  const tb = performance.now();
   const ang = def.spin === 'full' ? (q / steps) * Math.PI * 2 : (q / (steps / 2)) * 0.62;
   let big = null;
   try { big = renderDef(def, px * HI, ang, false); } catch (err) { console.error('3D icon ' + key, err); big = null; }
@@ -928,6 +971,7 @@ export function modelFrame(key, make, px, turn = 0) {
     Object.defineProperty(c, 'hi', { value: hc, configurable: true });
     e = { canvas: c, ox: S / 2, oy: S / 2 };
   } else e = null;
+  vbSpent += performance.now() - tb;
   hiFrames.set(k, e);
   if (hiFrames.size > 1500) hiFrames.delete(hiFrames.keys().next().value);
   return e;
@@ -962,7 +1006,8 @@ export function rodIcon(rod, px = 32) {
   let c = frameCache.get(k);
   if (c === undefined) {
     const f = frameOf('rod:' + (rod.id || 'x'), () => ROD_MODEL(rod), px, 0);
-    c = f ? cropFrame(f, px) : null;
+    if (!f) return null; // [phase10:ui] over the build budget: ask again next frame
+    c = cropFrame(f, px);
     frameCache.set(k, c);
   }
   return c;
@@ -974,11 +1019,25 @@ export function gemIcon(color, px = 16) {
   let c = frameCache.get(k);
   if (c === undefined) {
     const f = frameOf('gem:' + color, () => GEM_MODEL(color), px, 0);
-    c = f ? cropFrame(f, px, 4) : null;
+    if (!f) return null;
+    c = cropFrame(f, px, 4);
     frameCache.set(k, c);
   }
   return c;
 }
+
+// [phase10:ui] voxel ornaments for the chrome (leaves, shell, starfish, bubbles, pearl, coral) and Lab cut gems
+//   decorFrame(name, px, turn) -> {canvas (`.hi`), ox, oy} | null
+//   cutGemFrame(color, cut, px, dim, turn) -> {canvas (`.hi`), ox, oy} | null
+export function decorFrame(name, px, turn = 0) {
+  if (name.startsWith('orb:')) return modelFrame('decor:' + name, () => ORB_MODEL(name.slice(4)), px, turn);
+  const make = DECOR_MODELS[name];
+  return make ? modelFrame('decor:' + name, make, px, turn) : null;
+}
+export function cutGemFrame(color, cut = 'round', px = 12, dim = false, turn = 0) {
+  return modelFrame('cutgem:' + color + '|' + cut + '|' + (dim ? 1 : 0), () => CUT_GEM_MODEL(color, cut, dim), px, turn, true);
+}
+setDecorRenderer(decorFrame);
 
 export function getBigIcon(id, opts = {}) {
   const px = typeof opts.size === 'number' ? opts.size : SIZES[opts.size] || (opts.small ? SMALL : BIG);

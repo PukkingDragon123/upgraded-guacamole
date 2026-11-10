@@ -1,5 +1,17 @@
-// Building system (game.build): blueprint mode over the 3D seabed, placed voxel buildings, construction
-// animations, building interactions, package grants from catches and the hooks the orchestrator calls.
+// Building system (game.build). PHASE 10: you can only build in your TANK. The seabed blueprint mode is retired:
+// toggle() / startPlacing() / startMove() open the aquarium's build mode (src/aquarium/build2d.js), buildings stand in
+// the side-view tank (b.tank = {u, l, h, f}) and keep every bonus, production timer and panel. Old saves: buildings
+// that stood on the seabed move into the tank once (ensure()). This class keeps the building records, construction
+// effects, building interactions, package grants from catches, the Lab tick and the hooks the orchestrator calls.
+//
+//   placeInTank(itemId, {u, l, h, f}) -> record | null   uses up a blueprint, the building goes up in the tank
+//   removeFromTank(b, {quiet})          packs a building up (its blueprint goes back to the Satchel)
+//   restoreToTank(b)                    undo of removeFromTank (takes the blueprint again)
+//   defName(id)                         display name of a building / decor build
+// Retired hooks kept as no-ops for the orchestrator: drawWorld, addLights, drawUi (nothing on the seabed any more);
+// hit() -> null; active -> false.
+//
+// (phase 2 notes below describe the record format and the remaining hooks)
 //
 //   update(dt, inp, layer)     call before fishing; in blueprint mode it owns world clicks (consumes input).
 //                              Outside blueprint mode a click on a building opens it (only while not fishing).
@@ -67,7 +79,6 @@ function blueprintGrid() {
 export class Build {
   constructor(game) {
     this.game = game;
-    this.active = false;
     this.sel = null;          // selected blueprint item id (bp_*)
     this.mode = 'place';      // place | move | demolish
     this.depth = 0.5;
@@ -93,7 +104,10 @@ export class Build {
   }
 
   get state() { return this.game.state; }
+  get active() { return false; } // [phase10:tank] no seabed blueprint mode: building happens in the tank
+  set active(v) { void v; }
   bonus(key) { return buildingBonus(this.state, key); }
+  defName(id) { return buildingDef(id)?.name || id; }
 
   // Fills in save fields; starter kit (Research Lab blueprint + materials + a crate) on first run.
   ensure() {
@@ -104,6 +118,20 @@ export class Build {
     st.buildings ||= [];
     researchState(st);
     st.vault ||= { coins: 0, last: Date.now(), earned: 0 };
+    // [phase10:tank] seabed buildings move into the tank (they keep levels, production and bonuses)
+    const loose = st.buildings.filter((b) => !b.tank);
+    if (loose.length) {
+      const n = st.buildings.length;
+      loose.forEach((b, i) => {
+        const idx = st.buildings.indexOf(b);
+        b.tank = { u: Math.round((0.1 + 0.8 * ((idx + 0.5) / Math.max(1, n))) * 1000) / 1000, l: buildingDef(b.id)?.decor ? 1 : 2, h: 0.5, f: !!b.flip };
+        void i;
+      });
+      if (!this.migrateNoted) {
+        this.migrateNoted = true;
+        setTimeout(() => this.game.toast?.(`Your ${loose.length > 1 ? loose.length + ' buildings' : 'building'} moved into your tank! Build and decorate there.`, 'home', 5), 2500);
+      }
+    }
     if (!inv.starter) {
       inv.starter = 1;
       addItem(st, 'bp_research_lab', 1);
@@ -159,6 +187,10 @@ export class Build {
   byUid(u) { return this.state.buildings.find((b) => b.uid === u) || null; }
 
   hit(wx, wy) {
+    return null; // [phase10:tank] nothing stands on the seabed any more
+  }
+
+  hitSeabed(wx, wy) {
     const list = this.sorted().reverse();
     for (const b of list) {
       if (this.active && b.uid === this.moving) continue;
@@ -176,29 +208,14 @@ export class Build {
     return Object.keys(items).filter((id) => ITEMS[id]?.kind === 'blueprint' && items[id] > 0);
   }
 
-  toggle(on = !this.active) {
-    const g = this.game;
-    if (on === this.active) return;
-    if (on) {
-      if (g.fishing?.fighting) { g.toast?.('Finish the fight first!', 'hook'); return; }
-      if (g.state.view !== 'ocean') g.setView?.('ocean');
-      if (g.fishing?.busy) g.fishing.releaseFish?.(false);
-      this.active = true;
-      this.mode = 'place';
-      if (!this.sel || !countItem(this.state, this.sel)) this.sel = this.ownedBlueprints().sort((a, b) => order(a) - order(b))[0] || null;
-      g.ui?.open?.('buildtray');
-      g.camera?.scrollTo?.(0);
-      g.audio?.play('box_open', { vol: 0.6 });
-      g.emit?.('buildMode', true);
-    } else {
-      this.active = false;
-      this.moving = null;
-      this.ghost = null;
-      this.confirm = null;
-      if (g.ui?.isOpen?.('buildtray')) g.ui.close('buildtray');
-      g.audio?.play('box_close', { vol: 0.5 });
-      g.emit?.('buildMode', false);
-    }
+  // [phase10:tank] building happens in the aquarium: U / the HUD / blueprints open the tank's build mode
+  toggle(on) {
+    const aq = this.game.aquarium;
+    if (!aq) return;
+    const isOn = !!aq.build?.on && this.game.state.view === 'aquarium';
+    if (on === undefined) on = !isOn;
+    if (on && !isOn) aq.openBuild?.();
+    else if (!on && isOn) aq.build.exit();
   }
 
   select(itemId) {
@@ -211,17 +228,56 @@ export class Build {
   // Opens blueprint mode with a blueprint picked (inventory "Place" action).
   startPlacing(itemId) {
     this.game.ui?.close?.();
-    this.toggle(true);
-    if (itemId) this.select(itemId);
+    this.game.aquarium?.openBuild?.({ place: itemId });
   }
 
   startMove(b) {
     this.game.ui?.close?.();
-    this.toggle(true);
-    this.mode = 'move';
-    this.moving = b.uid;
-    this.depth = b.z;
-    this.flip = !!b.flip;
+    this.game.aquarium?.openBuild?.({ select: b });
+  }
+
+  // [phase10:tank] a blueprint becomes a building in the tank
+  placeInTank(itemId, pl) {
+    const g = this.game, st = this.state;
+    const id = ITEMS[itemId]?.builds;
+    const def = buildingDef(id);
+    if (!def) return null;
+    if (def.unique && st.buildings.some((b) => b.id === id)) { g.audio?.play('ui_error'); g.toast?.(`You already have a ${def.name}.`, 'cross'); return null; }
+    if (!removeItem(st, itemId, 1)) { g.toast?.('No blueprint left.', 'cross'); return null; }
+    const now = Date.now();
+    const b = { uid: uid(), id, x: 0, z: 0.5, flip: !!pl.f, lvl: 1, built: now, prod: now, on: true, tank: { u: pl.u, l: Math.min(2, pl.l | 0), h: pl.h ?? 0.5, f: !!pl.f } };
+    st.buildings.push(b);
+    this.anims.set(b.uid, { t: 0, dur: def.decor ? 1.2 : 2.8, kind: 'build' });
+    g.audio?.play('icon_drop', { vol: 0.7 });
+    g.audio?.play('box_open', { vol: 0.4, pitch: 0.7 });
+    g.emit?.('built', b);
+    g.save?.();
+    return b;
+  }
+
+  removeFromTank(b, o = {}) {
+    const g = this.game, st = this.state;
+    if (!st.buildings.includes(b)) return false;
+    const at = g.aquarium?.pieceScreen?.(b);
+    st.buildings = st.buildings.filter((q) => q !== b);
+    addItem(st, 'bp_' + b.id, 1);
+    if (b.id === 'vault' && st.vault?.coins > 0) { g.addCoins?.(Math.floor(st.vault.coins), ...(at || [])); st.vault.coins = 0; }
+    if (at) for (let i = 0; i < 16; i++) g.aquarium?.particles?.pixelBurst?.('puff', at[0] + rng.float(-12, 12), at[1] + rng.float(-6, 12), 1, {});
+    g.audio?.play('splash_big', { vol: 0.4, pitch: 0.7 });
+    if (!o.quiet) g.toast?.(`${buildingDef(b.id)?.name} packed up. Blueprint returned.`, 'home');
+    g.aquarium?.syncPieces?.();
+    g.save?.();
+    return true;
+  }
+
+  restoreToTank(b) {
+    const st = this.state;
+    if (st.buildings.includes(b)) return false;
+    if (!removeItem(st, 'bp_' + b.id, 1)) return false;
+    st.buildings.push(b);
+    this.game.aquarium?.syncPieces?.();
+    this.game.save?.();
+    return true;
   }
 
   costOf(itemId) {
@@ -298,22 +354,7 @@ export class Build {
   // Refund: the blueprint comes back (so it can be placed again).
   refundOf() { return { coins: 0, items: {} }; }
 
-  demolish(b) {
-    const g = this.game, st = this.state;
-    const L = this.layout(b);
-    const ref = this.refundOf(b);
-    st.buildings = st.buildings.filter((q) => q.uid !== b.uid);
-    addItem(st, 'bp_' + b.id, 1);
-    for (const [iid, q] of Object.entries(ref.items)) addItem(st, iid, q);
-    if (ref.coins) g.addCoins?.(ref.coins, ...(L ? this.toScreen(L.gx, L.gy - L.h / 2) : []));
-    if (b.id === 'vault' && st.vault?.coins > 0) { g.addCoins?.(Math.floor(st.vault.coins)); st.vault.coins = 0; }
-    if (L) this.wrecks.push({ L, t: 0, dur: 0.9 });
-    g.audio?.play('splash_big', { vol: 0.5, pitch: 0.6 });
-    g.camera?.shake?.(4);
-    if (L) for (let i = 0; i < 24; i++) g.particles?.bubble(L.gx + rng.float(-L.hw, L.hw), L.gy - rng.float(0, L.h * 0.7), { layer: 'fg', size: rng.pick([1, 2, 3]) });
-    g.toast?.(`${buildingDef(b.id)?.name} packed up. Blueprint returned.`, 'trash');
-    g.save?.();
-  }
+  demolish(b) { return this.removeFromTank(b); } // [phase10:tank]
 
   upgrade(b) {
     const g = this.game, st = this.state;
@@ -348,8 +389,7 @@ export class Build {
     if (!P || P.ready <= 0) return [];
     const got = rollProduce(b, P.ready);
     markCollected(b, P.ready);
-    const L = this.layout(b);
-    const [sx, sy] = L ? this.toScreen(L.gx, L.dy + 6) : [g.screen.W / 2, g.screen.H / 2];
+    const [sx, sy] = g.aquarium?.pieceScreen?.(b) || [g.screen.W / 2, g.screen.H / 2]; // [phase10:tank]
     for (const it of got) {
       if (it.id === 'coins') g.addCoins?.(it.qty, sx, sy);
       else {
@@ -489,48 +529,7 @@ export class Build {
     this.wrecks = this.wrecks.filter((w) => w.t < w.dur);
     if (this.confirm && (this.confirm.t += dt) > 2.5) this.confirm = null;
     this.ambientFx(dt);
-    if (!inp) return;
-    if (!this.active) {
-      this.ghost = null;
-      const free = (layer === null || layer === undefined || layer === 'build') && g.state.view === 'ocean' && inp.inside && !g.fishing?.busy && !g.fishing?.fighting && !g.ocean?.travelState;
-      if (free) {
-        const [wx, wy] = this.toWorld(inp.x, inp.y);
-        this.hover = this.hit(wx, wy);
-        if (this.hover && inp.pressed) { inp.consume(); g.audio?.play('ui_click'); this.interact(this.hover); }
-      } else this.hover = null;
-      return;
-    }
-    // ---- blueprint mode
-    if (g.state.view !== 'ocean' || g.ocean?.travelState || g.fishing?.fighting) { this.toggle(false); return; }
-    if (inp.keyPressed?.('f') || inp.keyPressed?.('r')) { this.flip = !this.flip; g.audio?.play('ui_toggle'); }
-    if (inp.keyPressed?.('e') || inp.keyPressed?.('ArrowUp')) this.setDepth(this.depth + 0.05);
-    if (inp.keyPressed?.('q') || inp.keyPressed?.('ArrowDown')) this.setDepth(this.depth - 0.05);
-    const overUi = layer === 'ui' || layer === 'tank' || layer === 'drag' || layer === 'tutorial' || layer === 'boat';
-    if (overUi) { this.hover = null; if (this.ghost) this.ghost.show = false; return; }
-    if (inp.wheel) { this.setDepth(this.depth + inp.wheel * 0.03); inp.wheel = 0; }
-    const [wx, wy] = this.toWorld(inp.x, inp.y);
-    this.hover = this.mode === 'place' && !this.moving ? null : this.hit(wx, wy);
-    const mv = this.moving ? this.byUid(this.moving) : null;
-    const id = mv ? mv.id : ITEMS[this.sel]?.builds;
-    if (id && (this.mode === 'place' || mv)) {
-      const x = clamp(Math.round(wx), 0, g.screen.W);
-      const reason = this.invalidReason(id, x, this.depth, mv?.uid, !mv);
-      this.ghost = { id, x, z: this.depth, reason, show: inp.inside };
-    } else this.ghost = null;
-    if (inp.rpressed) {
-      if (this.moving) { this.moving = null; this.mode = 'place'; } else if (this.mode !== 'place') this.mode = 'place'; else this.sel = null;
-      g.audio?.play('ui_close');
-    }
-    if (inp.pressed) {
-      inp.consume();
-      if (mv && this.ghost) this.moveTo(mv, this.ghost.x, this.ghost.z);
-      else if (this.mode === 'place' && this.ghost) this.place(this.sel, this.ghost.x, this.ghost.z);
-      else if (this.mode === 'move' && this.hover) { this.moving = this.hover.uid; this.flip = !!this.hover.flip; this.depth = this.hover.z; g.audio?.play('icon_pickup'); }
-      else if (this.mode === 'demolish' && this.hover) {
-        if (this.confirm?.uid === this.hover.uid) { this.confirm = null; this.demolish(this.hover); } else { this.confirm = { uid: this.hover.uid, t: 0 }; g.audio?.play('slack_warn', { vol: 0.5 }); }
-      }
-    }
-    inp.dblclick = false;
+    void inp; void layer; // [phase10:tank] no world clicks: buildings are clicked in the tank (aquarium.js)
   }
 
   setDepth(z) { this.depth = clamp(z, ZMIN, ZMAX); }
@@ -539,6 +538,7 @@ export class Build {
   buildFx(u, a, dt) {
     const b = this.byUid(u);
     if (!b) return;
+    if (b.tank) { this.tankBuildFx(b, a); return; } // [phase10:tank]
     const k = a.t / a.dur;
     if (k < 0.12 || k > 0.86) return;
     const L = this.layout(b);
@@ -563,7 +563,10 @@ export class Build {
     const b = this.byUid(u);
     const g = this.game;
     if (!b) return;
-    const L = this.layout(b);
+    const L = b.tank ? null : this.layout(b);
+    const at = b.tank ? g.aquarium?.pieceScreen?.(b) : null;
+    const P = g.aquarium?.particles;
+    if (at && P?.pixelBurst) { P.pixelBurst('confetti', at[0], at[1], 26, {}); P.pixelBurst('sparkle', at[0], at[1], 14, { ramps: ['gold', 'white'] }); }
     const def = buildingDef(b.id);
     if (L) {
       const cx = L.gx, cy = L.gy - L.h * 0.5;
@@ -578,8 +581,34 @@ export class Build {
     if (!def?.decor) g.toast?.(a.kind === 'upgrade' ? `${def?.name} upgraded to level ${levelOf(b)}!` : `${def?.name} built! Click it to use it.`, a.kind === 'upgrade' ? 'star' : 'home');
   }
 
+  // [phase10:tank] hammer sparks while a building goes up in the tank
+  tankBuildFx(b, a) {
+    const at = this.game.aquarium?.pieceScreen?.(b);
+    const P = this.game.aquarium?.particles;
+    if (!at || !P?.pixelBurst) return;
+    const n = Math.floor(a.t / 0.2);
+    if (n === a.lastHit) return;
+    a.lastHit = n;
+    P.pixelBurst('spark', at[0] + rng.float(-14, 14), at[1] + rng.float(-10, 16), 4, {});
+    if (n % 2 === 0) this.game.audio?.play('click', { vol: 0.45, pitch: rng.float(0.55, 0.75) });
+  }
+
   // chimney bubbles, bubble-tower coin bubbles, sparkles on ready buildings
   ambientFx(dt) {
+    const g = this.game;
+    if (g.state.view !== 'aquarium' || g.lowPower) return; // [phase10:tank] buildings live in the tank
+    const P = g.aquarium?.particles;
+    for (const b of this.state.buildings) {
+      if (this.anims.has(b.uid)) continue;
+      const at = g.aquarium?.pieceScreen?.(b);
+      if (!at || !P) continue;
+      const pr = produceInfo(b);
+      if (pr?.ready > 0 && rng.chance(dt * 1.5)) P.sparkle?.(at[0] + rng.float(-12, 12), at[1] + rng.float(-8, 12), '#fff6b0');
+      if (b.id === 'totem' && rng.chance(dt * 1.2)) P.sparkle?.(at[0] + rng.float(-6, 6), at[1] + rng.float(0, 14), '#9aff8a');
+    }
+  }
+
+  ambientFxSeabed(dt) {
     const g = this.game;
     if (!g.particles || g.state.view !== 'ocean' || g.lowPower) return;
     for (const b of this.state.buildings) {
@@ -596,7 +625,9 @@ export class Build {
   }
 
   // ------------------------------------------------------------------ drawing (world)
-  drawWorld(ctx, env = this.game.ocean?.env || {}, band) {
+  drawWorld(ctx, env, band) { void ctx; void env; void band; } // [phase10:tank] nothing on the seabed
+
+  drawSeabed(ctx, env = this.game.ocean?.env || {}, band) {
     const g = this.game;
     if (g.state.view !== 'ocean') return;
     const want = band === undefined || band === null ? null : Array.isArray(band) ? band : band === 'far' ? [1, 2] : [band];
@@ -792,7 +823,9 @@ export class Build {
     void g;
   }
 
-  addLights(L) {
+  addLights(L) { return L; } // [phase10:tank]
+
+  addSeabedLights(L) {
     if (!L || !L.lights) return L;
     const dark = this.darkness();
     if (dark < 0.05) return L;
@@ -816,7 +849,9 @@ export class Build {
   }
 
   // ------------------------------------------------------------------ drawing (screen): blueprint overlay
-  drawUi(ctx) {
+  drawUi(ctx) { void ctx; } // [phase10:tank] tank build mode draws its own UI (src/aquarium/build2d.js)
+
+  drawSeabedUi(ctx) {
     const g = this.game;
     if (!this.active) {
       if (this.hover && g.input?.inside && !g.ui?.blocking) {
@@ -980,7 +1015,7 @@ export class Build {
   dockItems() {
     const g = this.game;
     const items = [
-      { id: 'build', label: 'Blueprints - build on the seabed', w: 34, action: () => this.toggle() },
+      { id: 'build', label: 'Build in your tank', w: 34, action: () => this.toggle() },
       { id: 'inventory', label: 'Inventory', w: 30, action: () => g.ui?.toggle?.('inventory') },
     ];
     for (const it of items) it.draw = (ctx, hover, t) => this.drawDockItem(ctx, it, hover, t);

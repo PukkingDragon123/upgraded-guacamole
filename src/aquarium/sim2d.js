@@ -1,107 +1,87 @@
-// The aquarium's 3D simulation (phase 6). Everything lives in tank space: centimetres, Y up, the tank's base at
-// y = 0, centred on x / z, the front glass toward +z.
+// The aquarium's simulation (phase 10: a 2D SIDE VIEW tank; the fish AI keeps a shallow depth axis). Tank space is in
+// tank pixels: x across (0 = the tank's centre), y UP from the inner glass bottom, z depth (front glass +D/2, back glass
+// -D/2). The substrate is three voxel planes (front / mid / back) whose surface heights the floor interpolates.
 //
-//   new TankShape(tier)        geometry queries: floorY(x, z), waterY, inside(p, m), clamp(p, m) -> hit normal |
-//                              null, floorPoint(u, v) / toUV(x, z) (u across 0..1, v 0 front .. 1 back),
-//                              swimPoint(rnd, y01, m), rayHit(o, d) (ray vs the water volume), size, center
-//   new TankFish(rec, sp, len) steering AI in 3D (heading + speed, so fish always swim nose first): wander in the
-//                              species' depth band, school, eat flakes, flee / inspect the swimmer, gather at a
-//                              poked decoration, court (breeding), sleep at night; crawlers walk the gravel,
-//                              jellies pulse, rays glide. update(dt, W) with the world W (see Aquarium.simWorld()).
+//   new SideShape(tier)        geometry: floorY(x, z), planeH(k, x), waterY, top, clamp(p, m) -> hit normal | null,
+//                              inside(p, m), wallAvoid(p, range), floorPoint(u, v) / toUV(x, z) (u across 0..1, v 0 front
+//                              .. 1 back), swimPoint(rnd, y01, m), planeZ [front, mid, back], size, W / H / D
+//   new TankFish(rec, sp, len) steering AI (heading + speed, fish always swim nose first): wander in the species' depth
+//                              band, school, eat flakes, flee / inspect the cursor, gather at a poked decoration, court
+//                              (breeding), sleep at night; crawlers walk the gravel, jellies pulse, rays glide.
 //   new Drops3D()              Aero drops that rise to the surface and bob there until popped
-//   Ripples                    surface ring waves: add(x, z, amp), height(x, z, t)
+//   Ripples                    surface waves: add(x, z, amp), height(x, z, t)
 //   DENOMS                     drop denominations
 
 import { clamp, clamp01, lerp, TAU } from '../core/math.js';
 import { rng } from '../core/rng.js';
-import { TANK3D } from './tanks.js';
-import { fishKind } from './lpfish.js';
+import { TANK2D } from './tanks.js';
 
 export const DENOMS = [1, 5, 25];
 export const DROP_CAP = 70;
 
 const v3len = (x, y, z) => Math.sqrt(x * x + y * y + z * z);
 const hashN = (x, z) => { const s = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453; return s - Math.floor(s); };
-function vnoise(x, z) {
+export function vnoise(x, z) {
   const xi = Math.floor(x), zi = Math.floor(z), xf = x - xi, zf = z - zi;
   const u = xf * xf * (3 - 2 * xf), v = zf * zf * (3 - 2 * zf);
   const a = hashN(xi, zi), b = hashN(xi + 1, zi), c = hashN(xi, zi + 1), d = hashN(xi + 1, zi + 1);
   return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
 }
 
-// inner profile of a glass globe of radius R centred at cy, cut flat at y = 0 and open at `open`
-export function sphereProf(R, cy, open, n = 14) {
-  const out = [];
-  const y0 = 0.5;
-  for (let i = 0; i <= n; i++) {
-    const y = y0 + (open - y0) * (i / n);
-    out.push([Math.sqrt(Math.max(0.01, R * R - (y - cy) ** 2)), y]);
-  }
-  return out;
+export function fishKind(sp) {
+  const k = sp?.look?.kind;
+  if (k === 'crab' || k === 'isopod' || k === 'star') return 'crab';
+  if (k === 'jelly' || k === 'pudding') return 'jelly';
+  if (k === 'ray') return 'ray';
+  if (k === 'chain' || sp?.move?.style === 'chain') return 'eel';
+  if (k === 'blob' || k === 'octopus' || k === 'squid') return 'blob';
+  return 'fish';
 }
 
-// ------------------------------------------------------------------ tank geometry
-export class TankShape {
+// ------------------------------------------------------------------ tank geometry (side view)
+export class SideShape {
   constructor(tier) {
-    const d = TANK3D[tier] || TANK3D[0];
+    const d = TANK2D[tier] || TANK2D[0];
     this.tier = tier;
     this.d = d;
-    this.round = d.shape === 'round';
-    this.waterY = d.water;
-    this.fishLen = d.fish;
-    if (this.round) {
-      this.R = d.R; this.cy = d.cy;
-      // inner glass profile [[r, y]...] (the bowl's comes from its sphere)
-      this.prof = d.prof || sphereProf(d.R, d.cy, d.open);
-      this.size = [d.R * 2, d.open, d.R * 2];
-      this.center = [0, Math.min(d.cy, d.water * 0.55), 0];
-      this.floorR = this.rAt(d.gravel) - 0.6;
-      this.top = d.open;
-    } else {
-      this.W = d.W; this.H = d.H; this.D = d.D;
-      this.size = [d.W, d.H, d.D];
-      this.center = [0, d.H / 2, 0];
-      this.top = d.H;
-    }
-    this.minDim = Math.min(this.size[0], this.waterY, this.size[2]);
+    this.round = false;
+    this.W = d.W; this.H = d.H; this.D = d.D;
+    this.size = [d.W, d.H, d.D];
+    this.top = d.H;
+    this.waterY = d.H - 12;
+    this.center = [0, d.H / 2, 0];
+    this.fishLen = 44;
+    this.minDim = Math.min(d.W, this.waterY, d.D);
+    this.planeZ = [d.D / 3, 0, -d.D / 3];
+    this.seed = 17 + tier * 31;
   }
 
-  // radius of the round glass at height y
-  rAt(y) {
-    const P = this.prof;
-    if (y <= P[0][1]) return P[0][0];
-    for (let i = 1; i < P.length; i++) if (y <= P[i][1]) { const [r0, y0] = P[i - 1], [r1, y1] = P[i]; return r0 + (r1 - r0) * (y - y0) / Math.max(1e-6, y1 - y0); }
-    return P[P.length - 1][0];
+  // surface height of substrate plane k (0 front, 1 mid, 2 back) at x: rolling dunes banked up against the side glass
+  planeH(k, x) {
+    const d = this.d, S = this.seed + k * 13;
+    const u = x / d.W + 0.5;
+    const edge = Math.max(0, Math.abs(u - 0.5) * 2 - 0.86) / 0.14;
+    const big = (vnoise(x * 0.006 + S, S * 0.37) - 0.5) * (8 + k * 6);
+    const small = (vnoise(x * 0.03 + S * 2, S) - 0.5) * 4;
+    return d.gravel + d.rise * [0, 0.5, 1][k] + big + small + edge * edge * (3 + k * 2);
   }
 
   floorY(x, z) {
-    const d = this.d;
-    if (this.round) {
-      const r = Math.hypot(x, z) / Math.max(1, this.floorR);
-      return d.gravel + 0.9 * (1 - Math.min(1, r * r)) - 0.4 + vnoise(x * 0.5 + 3, z * 0.5) * 0.5;
-    }
-    const back = clamp01((d.D / 2 - z) / d.D);
-    return d.gravel + d.slope * back * back * (1.2 - 0.2 * back) + (vnoise(x * 0.12, z * 0.12) - 0.5) * d.slope * 0.35 + (vnoise(x * 0.6 + 9, z * 0.6) - 0.5) * 0.5;
+    const P = this.planeZ;
+    if (z >= P[0]) return this.planeH(0, x);
+    if (z <= P[2]) return this.planeH(2, x);
+    if (z >= P[1]) { const t = (P[0] - z) / (P[0] - P[1]); return lerp(this.planeH(0, x), this.planeH(1, x), t); }
+    const t = (P[1] - z) / (P[1] - P[2]);
+    return lerp(this.planeH(1, x), this.planeH(2, x), t);
   }
 
   // floor point from normalised (u across, v depth 0 = front .. 1 = back)
-  floorPoint(u, v, m = 1.5) {
-    let x, z;
-    if (this.round) {
-      const fr = this.floorR - m;
-      x = (u - 0.5) * 2 * fr; z = (0.5 - v) * 2 * fr;
-      const r = Math.hypot(x, z);
-      if (r > fr) { x *= fr / r; z *= fr / r; }
-    } else {
-      x = clamp((u - 0.5) * this.W, -this.W / 2 + m, this.W / 2 - m);
-      z = clamp((0.5 - v) * this.D, -this.D / 2 + m, this.D / 2 - m);
-    }
+  floorPoint(u, v, m = 2) {
+    const x = clamp((u - 0.5) * this.W, -this.W / 2 + m, this.W / 2 - m);
+    const z = clamp((0.5 - v) * this.D, -this.D / 2 + m, this.D / 2 - m);
     return [x, this.floorY(x, z), z];
   }
-  toUV(x, z) {
-    if (this.round) { const fr = this.floorR - 1.5; return [clamp01(x / (2 * fr) + 0.5), clamp01(0.5 - z / (2 * fr))]; }
-    return [clamp01(x / this.W + 0.5), clamp01(0.5 - z / this.D)];
-  }
+  toUV(x, z) { return [clamp01(x / this.W + 0.5), clamp01(0.5 - z / this.D)]; }
 
   // keep p inside the swimmable water (margin m); returns the push normal when it hit a wall, else null
   clamp(p, m = 1, floorM = m) {
@@ -110,42 +90,25 @@ export class TankShape {
     if (p[1] > top) { p[1] = top; hit = [0, -1, 0]; }
     const fy = this.floorY(p[0], p[2]) + floorM;
     if (p[1] < fy) { p[1] = fy; hit = [0, 1, 0]; }
-    if (this.round) {
-      const r = this.rAt(p[1]) - m;
-      const h = Math.hypot(p[0], p[2]);
-      if (h > r) {
-        const k = Math.max(0, r) / (h || 1);
-        hit = [-p[0] / (h || 1), 0, -p[2] / (h || 1)];
-        p[0] *= k; p[2] *= k;
-      }
-    } else {
-      const hx = this.W / 2 - m, hz = this.D / 2 - m;
-      if (p[0] > hx) { p[0] = hx; hit = [-1, 0, 0]; } else if (p[0] < -hx) { p[0] = -hx; hit = [1, 0, 0]; }
-      if (p[2] > hz) { p[2] = hz; hit = [0, 0, -1]; } else if (p[2] < -hz) { p[2] = -hz; hit = [0, 0, 1]; }
-    }
+    const hx = this.W / 2 - m, hz = Math.max(1, this.D / 2 - Math.min(m, this.D * 0.3));
+    if (p[0] > hx) { p[0] = hx; hit = [-1, 0, 0]; } else if (p[0] < -hx) { p[0] = -hx; hit = [1, 0, 0]; }
+    if (p[2] > hz) { p[2] = hz; hit = [0, 0, -1]; } else if (p[2] < -hz) { p[2] = -hz; hit = [0, 0, 1]; }
     return hit;
   }
 
   inside(p, m = 0) {
     if (p[1] > this.waterY - m || p[1] < this.floorY(p[0], p[2]) + m) return false;
-    if (this.round) return Math.hypot(p[0], p[2]) <= this.rAt(p[1]) - m;
     return Math.abs(p[0]) <= this.W / 2 - m && Math.abs(p[2]) <= this.D / 2 - m;
   }
 
-  // distance-ish to the nearest wall (for steering), and the inward normal
+  // push away from nearby walls (for steering)
   wallAvoid(p, range) {
     const out = [0, 0, 0];
-    if (this.round) {
-      const h = Math.hypot(p[0], p[2]) || 0.001, r = this.rAt(p[1]);
-      const d = r - h;
-      if (d < range) { const k = 1 - d / range; out[0] -= (p[0] / h) * k; out[2] -= (p[2] / h) * k; }
-    } else {
-      const hx = this.W / 2, hz = this.D / 2;
-      if (hx - p[0] < range) out[0] -= 1 - (hx - p[0]) / range;
-      if (p[0] + hx < range) out[0] += 1 - (p[0] + hx) / range;
-      if (hz - p[2] < range) out[2] -= 1 - (hz - p[2]) / range;
-      if (p[2] + hz < range) out[2] += 1 - (p[2] + hz) / range;
-    }
+    const hx = this.W / 2, hz = this.D / 2, rz = Math.min(range, this.D * 0.3);
+    if (hx - p[0] < range) out[0] -= 1 - (hx - p[0]) / range;
+    if (p[0] + hx < range) out[0] += 1 - (p[0] + hx) / range;
+    if (hz - p[2] < rz) out[2] -= 1 - (hz - p[2]) / rz;
+    if (p[2] + hz < rz) out[2] += 1 - (p[2] + hz) / rz;
     const top = this.waterY - p[1], bot = p[1] - this.floorY(p[0], p[2]);
     if (top < range * 0.6) out[1] -= 1 - top / (range * 0.6);
     if (bot < range * 0.6) out[1] += 1 - bot / (range * 0.6);
@@ -154,52 +117,11 @@ export class TankShape {
 
   // a random swimmable point with its height at fraction y01 of the local water column (0 floor .. 1 surface)
   swimPoint(rnd = Math.random, y01 = 0.5, m = 2) {
-    let x, z;
-    if (this.round) {
-      const y = lerp(this.floorY(0, 0) + m, this.waterY - m, y01);
-      const r = Math.max(0.5, this.rAt(y) - m);
-      const a = rnd() * TAU, k = Math.sqrt(rnd()) * r;
-      x = Math.cos(a) * k; z = Math.sin(a) * k;
-      const p = [x, y, z];
-      this.clamp(p, m);
-      return p;
-    }
-    x = (rnd() - 0.5) * (this.W - 2 * m); z = (rnd() - 0.5) * (this.D - 2 * m);
+    const x = (rnd() - 0.5) * (this.W - 2 * m), z = (rnd() - 0.5) * Math.max(2, this.D - 2 * Math.min(m, this.D * 0.3));
     const fy = this.floorY(x, z);
     const p = [x, lerp(fy + m, this.waterY - m, y01), z];
     this.clamp(p, m);
     return p;
-  }
-
-  // ray (origin o, unit dir d) vs the water volume's bounding shape: entry distance or null
-  rayHit(o, d) {
-    if (this.round) {
-      // march the profile: first sample inside the glass
-      const tc = this.rayBox(o, d, [-this.R, 0, -this.R], [this.R, this.top, this.R]);
-      if (!tc) return null;
-      const n = 48, step = (tc[1] - tc[0]) / n;
-      for (let i = 0; i <= n; i++) {
-        const t = tc[0] + step * i;
-        const x = o[0] + d[0] * t, y = o[1] + d[1] * t, z = o[2] + d[2] * t;
-        if (Math.hypot(x, z) <= this.rAt(y)) return t;
-      }
-      return null;
-    }
-    const r = this.rayBox(o, d, [-this.W / 2, 0, -this.D / 2], [this.W / 2, this.top, this.D / 2]);
-    return r ? r[0] : null;
-  }
-
-  rayBox(o, d, lo, hi) {
-    let t0 = -Infinity, t1 = Infinity;
-    for (let k = 0; k < 3; k++) {
-      if (Math.abs(d[k]) < 1e-9) { if (o[k] < lo[k] || o[k] > hi[k]) return null; continue; }
-      let a = (lo[k] - o[k]) / d[k], b = (hi[k] - o[k]) / d[k];
-      if (a > b) [a, b] = [b, a];
-      t0 = Math.max(t0, a); t1 = Math.min(t1, b);
-      if (t0 > t1) return null;
-    }
-    if (t1 < 0) return null;
-    return [Math.max(0, t0), t1];
   }
 }
 

@@ -15,6 +15,7 @@ import { VoxelModel, renderVoxels } from '../gfx/voxel.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { shade, mix, rgba } from '../core/color.js';
 import { TAU, hash1 } from '../core/math.js';
+import { HI, withHi, fitHi } from '../gfx/hires.js'; // [phase10:ui]
 
 const P = {
   k: '#14131c', d: '#5d6677', m: '#9aa6b8', l: '#d8e2ee', w: '#ffffff',
@@ -219,7 +220,10 @@ export function baitVoxel(art, scale = 2) {
   let out;
   try {
     const m = buildModel(a);
-    const v = renderVoxels(m, { scale, yaw: a.shape === 'grub' || a.shape === 'worm' ? -14 : 28, pitch: 24, outline: true, groundAO: false });
+    const ro = { scale, yaw: a.shape === 'grub' || a.shape === 'worm' ? -14 : 28, pitch: 24, outline: true, groundAO: false };
+    const v = renderVoxels(m, ro);
+    // [phase10:ui] full-res twin: the same voxel model rendered at twice the scale for the 2x UI layer
+    withHi(v.canvas, () => { const v2 = renderVoxels(m, { ...ro, scale: scale * HI }); return fitHi(v.canvas, v2.canvas, v.ox, v.oy, v2.ox, v2.oy); });
     out = { canvas: v.canvas, glow: v.glow, w: v.w, h: v.h };
   } catch (e) {
     const c = makeCanvas(6, 6);

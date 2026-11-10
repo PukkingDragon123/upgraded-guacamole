@@ -471,3 +471,118 @@ export function GEM_MODEL(color = '#3ab4ff') {
   }
   return { mesh: mb.build(), yaw: 0.2, pitch: 0.5, spin: 'full' };
 }
+
+// ---------------------------------------------------------------- [phase10:ui] voxel chrome decor & cut gems
+// DECOR_MODELS { leaves | leaves_l | shell | starfish | bubbles | pearl | coral: () => model } little ornaments for the
+// panel frames (rendered as voxel models by bigicons.decorFrame). CUT_GEM_MODEL(color, cut, dim) -> a gem in one of
+// the Lab cuts (round | diamond | square | drop | heart | clover | oval | hex) built as stepped, terraced layers.
+const TAU2 = Math.PI * 2;
+const ring2 = (n, r, cx = 0, cy = 0, a0 = 0, sx = 1) => Array.from({ length: n }, (_, i) => { const a = a0 + (i / n) * TAU2; return [cx + Math.cos(a) * r * sx, cy + Math.sin(a) * r]; });
+function leafInto(mb, bx, by, len, wid, ang, z, col) {
+  const ca = Math.cos(ang), sa = Math.sin(ang), pts = [];
+  const N = 10;
+  for (let i = 0; i <= N; i++) { const u = i / N, hw = Math.pow(Math.sin(Math.PI * Math.min(1, u * 1.02)), 0.7) * wid * (1 - 0.15 * u); pts.push([u * len, hw]); }
+  for (let i = N - 1; i >= 1; i--) { const u = i / N, hw = Math.pow(Math.sin(Math.PI * Math.min(1, u * 1.02)), 0.7) * wid * (1 - 0.15 * u); pts.push([u * len, -hw]); }
+  const P = (p) => [bx + p[0] * ca - p[1] * sa, by + p[0] * sa + p[1] * ca];
+  const lit = mix(col, '#e8ffa0', 0.35);
+  prism(mb, pts.map(P), z - 0.04, z + 0.04, col, { front: (i) => jit(i % 3 ? lit : col, i, 0.05), side: shade(col, -0.3) });
+  tube(mb, [[bx, by, z + 0.045], [bx + ca * len * 0.85, by + sa * len * 0.85, z + 0.045]], 0.018, 3, mix(col, '#f4ffc0', 0.7));
+}
+export const DECOR_MODELS = {
+  leaves: () => {
+    const mb = new MeshBuilder();
+    tube(mb, [[0.95, 0.75, 0], [0.4, 0.55, 0.02], [-0.1, 0.25, 0.04], [-0.55, -0.2, 0.05]], (i) => [0.05, 0.045, 0.035, 0.025][i], 5, '#2c7a1c');
+    leafInto(mb, 0.55, 0.6, 0.62, 0.2, 2.2, 0.08, '#4fbf2c');
+    leafInto(mb, 0.3, 0.45, 0.7, 0.22, -2.6, 0.12, '#62d63a');
+    leafInto(mb, 0.0, 0.2, 0.66, 0.21, 2.5, 0.16, '#3caa22');
+    leafInto(mb, -0.2, 0.02, 0.6, 0.2, -2.0, 0.2, '#86e04a');
+    leafInto(mb, -0.5, -0.18, 0.5, 0.17, -3.0, 0.22, '#52c830');
+    return { mesh: mb.build(), yaw: 0.15, pitch: 0.2, spin: 'wobble', spinAxis: 'z' };
+  },
+  leaves_l: () => mirrorModel(DECOR_MODELS.leaves()),
+  shell: () => {
+    const mb = new MeshBuilder();
+    const n = 9;
+    for (let i = 0; i < n; i++) {
+      const a0 = Math.PI * (0.08 + (0.84 * i) / n), a1 = Math.PI * (0.08 + (0.84 * (i + 1)) / n), am = (a0 + a1) / 2;
+      const r = 0.92, d = 0.12 + 0.2 * Math.sin((i + 0.5) / n * Math.PI);
+      const col = i % 2 ? '#ffb4a0' : '#ffd6c4';
+      prism(mb, [[0, -0.55], [Math.cos(a0) * r, -0.55 + Math.sin(a0) * r], [Math.cos(am) * r * 1.04, -0.55 + Math.sin(am) * r * 1.04], [Math.cos(a1) * r, -0.55 + Math.sin(a1) * r]], -d * 0.6, d, col, { front: (k) => jit(col, i * 5 + k, 0.04), side: '#e0806a' });
+    }
+    prism(mb, [[-0.32, -0.75], [0.32, -0.75], [0.2, -0.5], [-0.2, -0.5]], -0.08, 0.14, '#ffc0aa', { side: '#d87460' });
+    return { mesh: mb.build(), yaw: 0.2, pitch: 0.35, spin: 'wobble' };
+  },
+  starfish: () => {
+    const mb = new MeshBuilder();
+    const pts = Array.from({ length: 10 }, (_, i) => { const a = Math.PI / 2 + (i / 10) * TAU2, r = i % 2 ? 0.36 : 0.95; return [Math.cos(a) * r, Math.sin(a) * r]; });
+    prism(mb, pts, -0.12, 0.14, '#ff8a3a', { front: (i) => jit('#ffa04a', i, 0.05), side: '#d8601c' });
+    for (let k = 0; k < 5; k++) { const a = Math.PI / 2 + (k / 5) * TAU2; for (const t of [0.25, 0.45, 0.65]) sphere(mb, [Math.cos(a) * t, Math.sin(a) * t, 0.16], 0.06, 0, '#ffe0a0'); }
+    sphere(mb, [0, 0, 0.17], 0.09, 0, '#ffd080');
+    return { mesh: mb.build(), yaw: 0.1, pitch: 0.4, spin: 'wobble', spinAxis: 'z' };
+  },
+  bubbles: () => {
+    const mb = new MeshBuilder(), glass = new MeshBuilder();
+    for (const [x, y, r] of [[-0.35, -0.35, 0.5], [0.45, 0.2, 0.34], [0.05, 0.72, 0.22]]) {
+      sphere(glass, [x, y, 0], r, 2, (c, i) => jit(c[1] > 0.3 ? '#ffffff' : '#bff0ff', i, 0.03));
+      sphere(mb, [x - r * 0.4, y + r * 0.42, r * 0.55], r * 0.2, 1, '#ffffff');
+      sphere(mb, [x + r * 0.35, y - r * 0.4, r * 0.6], r * 0.1, 0, '#e6fbff');
+    }
+    return { mesh: mb.build(), glass: glass.build(), glassAlpha: 0.38, yaw: 0, pitch: 0.1, spin: 'wobble' };
+  },
+  pearl: () => {
+    const mb = new MeshBuilder();
+    sphere(mb, [0, 0, 0], 0.9, 2, (c, i) => jit(c[1] > 0.35 && c[0] < 0.2 ? '#ffffff' : c[1] < -0.4 ? '#c8d4f0' : '#eef0ff', i, 0.03));
+    return { mesh: mb.build(), yaw: 0, pitch: 0.1, spin: 'full' };
+  },
+  coral: () => {
+    const mb = new MeshBuilder();
+    const br = [[[0, -0.95, 0], [0, -0.3, 0], [-0.1, 0.2, 0], [-0.4, 0.7, 0]], [[0, -0.4, 0], [0.35, 0.05, 0.05], [0.5, 0.6, 0.05]], [[-0.05, 0.05, 0], [0.12, 0.45, -0.05], [0.1, 0.9, -0.05]], [[0, -0.6, 0], [-0.45, -0.2, 0.05], [-0.7, 0.15, 0.05]]];
+    for (const p of br) tube(mb, p, (i) => 0.13 - i * 0.025, 6, (i, j) => jit(i > 1 ? '#ff9ec0' : '#ff6a96', i * 6 + j, 0.05));
+    return { mesh: mb.build(), yaw: 0.2, pitch: 0.15, spin: 'wobble' };
+  },
+};
+
+// mirror a model left-right (x -> -x, triangle winding kept)
+function mirrorModel(md) {
+  const d = md.mesh.data;
+  for (let i = 0; i < d.length; i += 33) {
+    for (let v = 0; v < 3; v++) { d[i + v * 11] = -d[i + v * 11]; d[i + v * 11 + 3] = -d[i + v * 11 + 3]; }
+    for (let k = 0; k < 11; k++) { const a = d[i + 11 + k]; d[i + 11 + k] = d[i + 22 + k]; d[i + 22 + k] = a; }
+  }
+  const b = md.mesh.bounds, mn = b.min[0], mx = b.max[0];
+  b.min[0] = -mx; b.max[0] = -mn; b.center[0] = -b.center[0];
+  return { ...md, yaw: -(md.yaw || 0) };
+}
+
+function cutOutline(cut) {
+  switch (cut) {
+    case 'diamond': return [[0, 1], [-0.95, 0], [0, -1], [0.95, 0]];
+    case 'square': { const p = []; for (const [cx, cy, a0] of [[0.62, 0.62, 0], [-0.62, 0.62, 0.25], [-0.62, -0.62, 0.5], [0.62, -0.62, 0.75]]) for (let i = 0; i <= 3; i++) { const a = (a0 + (i / 3) * 0.25) * TAU2; p.push([cx + Math.cos(a) * 0.2, cy + Math.sin(a) * 0.2]); } return p; }
+    case 'drop': { const p = [[0, 1]]; for (let i = 0; i <= 14; i++) { const a = Math.PI * 0.18 + (i / 14) * Math.PI * 1.64; p.push([Math.cos(a + Math.PI / 2) * 0.72, -0.28 + Math.sin(a + Math.PI / 2) * 0.72]); } return p; }
+    case 'heart': return Array.from({ length: 24 }, (_, i) => { const t = (i / 24) * TAU2; const x = 16 * Math.sin(t) ** 3, y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t); return [x / 17, y / 17 + 0.12]; });
+    case 'clover': return Array.from({ length: 32 }, (_, i) => { const a = (i / 32) * TAU2, r = 0.5 + 0.48 * Math.pow(Math.abs(Math.cos(2 * a)), 0.6); return [Math.cos(a) * r, Math.sin(a) * r]; });
+    case 'oval': return ring2(18, 1, 0, 0, 0, 0.72);
+    case 'hex': return ring2(6, 0.98);
+    default: return ring2(18, 1);
+  }
+}
+export function CUT_GEM_MODEL(color = '#3ab4ff', cut = 'round', dim = false) {
+  const mb = new MeshBuilder();
+  const P = cutOutline(cut);
+  const base = dim ? '#16243a' : color;
+  const L = [[1, -0.3, 0.02, shade(base, -0.3)], [0.84, 0.02, 0.16, base], [0.62, 0.16, 0.3, mix(base, '#ffffff', dim ? 0.12 : 0.35)]];
+  for (const [s, z0, z1, c] of L) prism(mb, P.map(([x, y]) => [x * s, y * s]), z0, z1, c, { front: (i) => jit(c, i, 0.05), side: shade(c, -0.25) });
+  if (!dim) { sphere(mb, [-0.28, 0.3, 0.32], 0.1, 0, '#ffffff'); sphere(mb, [-0.14, 0.38, 0.31], 0.06, 0, '#ffffff'); }
+  return { mesh: mb.build(), yaw: 0.28, pitch: 0.32, spin: 'wobble' };
+}
+
+// A glossy voxel bubble-orb in any colour (aero.drawGlossOrb): lit top-left, deeper below, a white glint cluster.
+export function ORB_MODEL(color = '#2fd3e8') {
+  const mb = new MeshBuilder();
+  const lt = mix(color, '#ffffff', 0.5), dk = shade(color, -0.3);
+  sphere(mb, [0, 0, 0], 0.92, 2, (c, i) => jit(c[1] - c[0] * 0.5 > 0.45 ? lt : c[1] < -0.45 ? dk : color, i, 0.03));
+  sphere(mb, [-0.36, 0.42, 0.7], 0.17, 1, '#ffffff');
+  sphere(mb, [-0.12, 0.6, 0.66], 0.09, 0, '#ffffff');
+  sphere(mb, [0.42, -0.4, 0.72], 0.1, 0, mix(color, '#ffffff', 0.75));
+  return { mesh: mb.build(), yaw: 0, pitch: 0.12, spin: 'full' };
+}

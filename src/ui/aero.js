@@ -139,7 +139,176 @@ function rgbOf(hex) {
 // [phase9:ui] surfaceTex(w, h, o) -> logical canvas with a lazy `.hi` twin rasterised at 2x (device pixels): a 1 px
 // outer line with a soft inner line, a finer bevel/rim, finer bayer dither and smoother rounded corners.
 function surfaceTex(w, h, o) {
-  return withHi(surfaceRaster(w, h, o, 1), () => surfaceRaster(w, h, o, HI));
+  if (o.ring) return withHi(voxelSlab(w, h, o, 1), () => voxelSlab(w, h, o, HI));
+  return withHi(surfaceRaster(w, h, o, 1), () => (o.smooth || o.voxel === false ? surfaceRaster(w, h, o, HI) : voxelSlab(w, h, o, HI)));
+}
+
+// [phase10:ui] VOXEL SLAB chrome (the full-res `.hi` twin of every Aero surface): the shape is built from chunky
+// voxel blocks (B device px; stepped corners), seen as a thick slab from slightly above: a bevelled frame ring of
+// blocks (lit top-left, shaded bottom-right, each block with its own lit top / shaded bottom pixel row), a face of
+// blocks with whisper tone jitter, the extruded side band under the face (o.depth blocks, AO under the lip),
+// a 1 px dark outline, the stepped gloss band / glow / streaks quantised per block, and voxel bubbles.
+//   extra options: block (device px per voxel), depth (side band rows; default 1-2 for plain rects)
+const vhash = (i, j, s) => { let h = (i * 374761393 + j * 668265263 + s * 2147483647) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+function voxelSlab(lw, lh, o, S) {
+  const w = lw * S, h = lh * S;
+  const T = typeof o.tone === 'object' ? o.tone : o.tone ? toneOf(o.tone) : {};
+  const top = rgbOf(o.top || T.top || '#ffffff'), mid = rgbOf(o.mid || T.mid || o.top || '#d8f0ff'), bot = rgbOf(o.bot || T.bot || '#8cc8ec');
+  const A = o.a || T.a || [1, 1];
+  const edge = rgbOf(o.edge || T.edge || '#0b4a8a'), edgeA = o.edgeA ?? T.edgeA ?? 1;
+  const glowC = rgbOf(o.glowColor || T.glow || '#ffffff');
+  const shape = o.shape || 'rect';
+  const gloss = o.gloss ?? 0.6, rim = o.rim ?? 0.8, glow = o.glow ?? 0.5;
+  const B = Math.max(1, Math.round(((o.block || (lh >= 20 && lw >= 20 ? 4 : 2)) * S) / 2));
+  const GW = Math.max(1, Math.round(w / B)), GH = Math.max(1, Math.round(h / B));
+  const bx0 = (i) => Math.floor((i * w) / GW), by0 = (j) => Math.floor((j * h) / GH);
+  const dep = Math.min(Math.floor(GH / 4), o.depth ?? (shape === 'rect' && !o.inset && o.r !== 'pill' && lh >= 16 ? (lh >= 90 ? 2 : 1) : 0));
+  const FH = GH - dep; // face rows
+  const Rb = (o.r === 'pill' ? (FH * B) / 2 : Math.max(0, Math.min(o.r ?? 6, lw / 2, lh / 2)) * S) / B;
+  const roundTop = shape !== 'bottom', roundBot = shape !== 'tab';
+  // ---- block masks: 1 face, 2 side band
+  const M = new Uint8Array(GW * GH);
+  for (let j = 0; j < FH; j++) for (let i = 0; i < GW; i++) {
+    let inn = true;
+    if (Rb > 0.5) {
+      let cx = null, cy = null;
+      if (i + 0.5 < Rb) cx = Rb; else if (i + 0.5 > GW - Rb) cx = GW - Rb;
+      if (j + 0.5 < Rb && roundTop) cy = Rb; else if (j + 0.5 > FH - Rb && roundBot) cy = FH - Rb;
+      if (cx !== null && cy !== null) { const dx = i + 0.5 - cx, dy = j + 0.5 - cy; inn = dx * dx + dy * dy <= Rb * Rb + 0.25; }
+    }
+    if (inn) M[j * GW + i] = 1;
+  }
+  for (let j = FH; j < GH; j++) for (let i = 0; i < GW; i++) for (let k = 1; k <= dep; k++) if (j - k >= 0 && M[(j - k) * GW + i] === 1) { M[j * GW + i] = 2; break; }
+  for (let j = FH - 1; j >= 0; j--) for (let i = 0; i < GW; i++) if (!M[j * GW + i]) for (let k = 1; k <= dep; k++) if (j - k >= 0 && M[(j - k) * GW + i] === 1) { M[j * GW + i] = 2; break; }
+  const face = (i, j) => i >= 0 && j >= 0 && i < GW && j < GH && M[j * GW + i] === 1;
+  // block distance from the face edge (1 = border ring)
+  const D = new Uint8Array(GW * GH);
+  for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) if (M[j * GW + i] === 1) D[j * GW + i] = 9;
+  for (let pass = 1; pass <= 4; pass++) for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
+    const q = j * GW + i;
+    if (D[q] !== 9) continue;
+    const nb = (a, b2) => (a < 0 || b2 < 0 || a >= GW || b2 >= GH ? 0 : D[b2 * GW + a]);
+    if (nb(i - 1, j) === pass - 1 || nb(i + 1, j) === pass - 1 || nb(i, j - 1) === pass - 1 || nb(i, j + 1) === pass - 1) D[q] = pass;
+  }
+  // ring mode (window frames): only the outer `ring` blocks stay; the hole reads as 'outside' for the bevel, so the
+  // inner edge is lit along the bottom / shaded along the top like a raised frame; a soft AO falls into the hole
+  const ringN = o.ring | 0;
+  const hole = new Uint8Array(ringN ? GW * GH : 0);
+  if (ringN) for (let q = 0; q < GW * GH; q++) if (M[q] === 1 && D[q] > ringN) { M[q] = 0; hole[q] = 1; }
+  // ---- block colours
+  const seed = o.seed ?? (lw * 7 + lh * 13);
+  const glossRows = ((o.glossH ?? Math.min(26, Math.round(lh * 0.46))) * S) / B;
+  const curveB = ((o.curve ?? Math.min(6, (glossRows * B) / S * 0.35)) * S) / B;
+  const sideC = [mid[0] * 0.45 + edge[0] * 0.55, mid[1] * 0.45 + edge[1] * 0.55, mid[2] * 0.45 + edge[2] * 0.55];
+  const BC = new Float32Array(GW * GH * 4);
+  const bevelK = rim > 0 ? 0.5 + rim * 0.5 : 0.35;
+  for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
+    const q = j * GW + i, m = M[q];
+    if (!m) continue;
+    let r, g, bl, a;
+    const jit = 1 + (vhash(i, j, seed) - 0.5) * 0.05;
+    if (m === 2) {
+      const k = dep > 1 ? (j - (FH - 1)) / dep : 1;
+      r = sideC[0] * (1.06 - 0.12 * k) * jit; g = sideC[1] * (1.06 - 0.12 * k) * jit; bl = sideC[2] * (1.06 - 0.12 * k) * jit; a = Math.max(A[1], 0.75);
+    } else {
+      const t = FH > 1 ? j / (FH - 1) : 0;
+      if (t < 0.52) { const k = t / 0.52; r = top[0] + (mid[0] - top[0]) * k; g = top[1] + (mid[1] - top[1]) * k; bl = top[2] + (mid[2] - top[2]) * k; }
+      else { const k = (t - 0.52) / 0.48; r = mid[0] + (bot[0] - mid[0]) * k; g = mid[1] + (bot[1] - mid[1]) * k; bl = mid[2] + (bot[2] - mid[2]) * k; }
+      r *= jit; g *= jit; bl *= jit;
+      a = A[0] + (A[1] - A[0]) * t;
+      const ov = (sr, sg, sb, sa) => { if (sa <= 0) return; const na = sa + a * (1 - sa); r = (sr * sa + r * a * (1 - sa)) / na; g = (sg * sa + g * a * (1 - sa)) / na; bl = (sb * sa + bl * a * (1 - sa)) / na; a = na; };
+      const dd = D[q];
+      if (glow > 0 && t > 0.55) { const k = (t - 0.55) / 0.45, cx = Math.abs(i + 0.5 - GW / 2) / (GW / 2); ov(glowC[0], glowC[1], glowC[2], glow * Math.floor(k * k * (1 - cx * cx * 0.7) * 4 + 0.5) / 4 * 0.55); }
+      if (o.inset) { const ly = (j * B) / S, lx = (i * B) / S; if (ly < 5) ov(4, 20, 40, (5 - ly) * 0.07); if (lx < 3) ov(4, 20, 40, (3 - lx) * 0.05); }
+      if (o.streak) { const s2 = ((i * B) / S + ((j * B) / S) * 0.75 + seed * 3) % Math.max(60, lw * 0.9); if (s2 > 0 && s2 < 14) ov(255, 255, 255, 0.07); else if (s2 > 20 && s2 < 24) ov(255, 255, 255, 0.05); }
+      if (gloss > 0) {
+        const nx = (i + 0.5 - GW / 2) / (GW / 2);
+        const edgeY = glossRows - curveB * (1 - nx * nx);
+        if (j + 0.5 < edgeY) { const k = (j + 0.5) / Math.max(1, edgeY); ov(255, 255, 255, gloss * (k < 0.3 ? 0.62 : k < 0.6 ? 0.44 : k < 0.86 ? 0.3 : 0.2)); }
+        else if (j + 0.5 < edgeY + 1 && ((i + j) & 1) === 0) ov(255, 255, 255, gloss * 0.12);
+      }
+      // bevel: the frame ring of blocks is raised, lit from the top-left, shaded toward the bottom-right
+      if (ringN) {
+        // raised frame ring: per-block bevel toward the outside and toward the hole
+        const lit = (!face(i - 1, j) ? 1 : 0) + (!face(i, j - 1) ? 1.2 : 0);
+        const shd = (!face(i + 1, j) ? 1 : 0) + (!face(i, j + 1) ? 1.2 : 0);
+        const inner = dd === ringN, outer = dd === 1;
+        if (outer) ov(edge[0], edge[1], edge[2], 0.28);
+        if (outer && lit > shd) ov(255, 255, 255, 0.5);
+        else if (outer && shd > lit) ov(edge[0], edge[1], edge[2], 0.32);
+        else if (inner && lit > shd) ov(255, 255, 255, 0.32);
+        else if (inner && shd > lit) ov(edge[0], edge[1], edge[2], 0.4);
+        if (!outer && !inner && ((i + j * 3 + seed) % 7 === 0)) ov(255, 255, 255, 0.14); // glints along the band
+      } else if (dd <= 2) {
+        const s1 = dd === 1 ? 1 : 0.45;
+        const lit = (!face(i - dd, j) ? 1 : 0) + (!face(i, j - dd) ? 1.2 : 0) + (!face(i - dd, j - dd) && dd === 1 ? 0.3 : 0);
+        const shd = (!face(i + dd, j) ? 1 : 0) + (!face(i, j + dd) ? 1.2 : 0);
+        if (lit > shd) ov(255, 255, 255, Math.min(0.7, 0.34 * s1 * lit * bevelK));
+        else if (shd > lit) ov(edge[0], edge[1], edge[2], Math.min(0.5, 0.2 * s1 * shd * bevelK));
+      } else if (dd === 3 && (!face(i, j - 3))) ov(4, 24, 50, 0.07); // AO under the raised top rim
+    }
+    BC[q * 4] = r; BC[q * 4 + 1] = g; BC[q * 4 + 2] = bl; BC[q * 4 + 3] = a;
+  }
+  // voxel bubbles on the face
+  const nbub = o.bubbles | 0;
+  const bub = [];
+  for (let k = 0; k < nbub; k++) {
+    const rr = 1.3 + Math.floor(hash1(k, seed) * 3) * 0.6;
+    bub.push([Math.round(GW * (0.08 + 0.84 * hash1(k + 7, seed + 1))), Math.round(FH * (0.55 + 0.38 * hash1(k + 3, seed + 2))), rr]);
+  }
+  for (const [cx, cy, rr] of bub) {
+    for (let j = Math.floor(cy - rr - 1); j <= cy + rr + 1; j++) for (let i = Math.floor(cx - rr - 1); i <= cx + rr + 1; i++) {
+      if (!face(i, j) || D[j * GW + i] <= 2) continue;
+      const dd = Math.hypot(i + 0.5 - cx, j + 0.5 - cy);
+      let al = 0;
+      if (dd <= rr && dd > rr - 1) al = 0.5; else if (dd <= rr - 1) al = 0.1;
+      if (Math.abs(i + 0.5 - (cx - rr * 0.4)) < 0.6 && Math.abs(j + 0.5 - (cy - rr * 0.4)) < 0.6) al = 0.85;
+      if (!al) continue;
+      const q = (j * GW + i) * 4, a0 = BC[q + 3], na = al + a0 * (1 - al);
+      BC[q] = (255 * al + BC[q] * a0 * (1 - al)) / na; BC[q + 1] = (255 * al + BC[q + 1] * a0 * (1 - al)) / na; BC[q + 2] = (255 * al + BC[q + 2] * a0 * (1 - al)) / na; BC[q + 3] = na;
+    }
+  }
+  // ---- pixels: each block filled with its colour, ring / side blocks get their own lit top + shaded bottom rows
+  const b = new PixelBuffer(w, h);
+  const d = b.data;
+  const put = (x, y, r, g, bl, a) => { d[y * w + x] = ((Math.round(Math.max(0, Math.min(1, a)) * 255) & 255) << 24 | (Math.max(0, Math.min(255, Math.round(bl))) << 16) | (Math.max(0, Math.min(255, Math.round(g))) << 8) | Math.max(0, Math.min(255, Math.round(r)))) >>> 0; };
+  const inside = (i, j) => i >= 0 && j >= 0 && i < GW && j < GH && M[j * GW + i] > 0;
+  for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
+    const q = j * GW + i, m = M[q];
+    if (!m) continue;
+    const x0 = bx0(i), x1 = bx0(i + 1), y0 = by0(j), y1 = by0(j + 1);
+    const r = BC[q * 4], g = BC[q * 4 + 1], bl = BC[q * 4 + 2], a = BC[q * 4 + 3];
+    const cube = m === 2 || D[q] <= 2; // frame / side blocks read as separate little cubes
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+      let k = 1;
+      if (cube) {
+        if (y === y0) k = m === 2 && j === FH ? 0.72 : 1.16; else if (y === y1 - 1) k = 0.86;
+        if (x === x0 && y !== y1 - 1) k *= 1.06; else if (x === x1 - 1) k *= 0.94;
+      }
+      // dark outline on the silhouette (lit along the top edge)
+      const ol = (x === x0 && !inside(i - 1, j)) || (x === x1 - 1 && !inside(i + 1, j)) || (y === y0 && !inside(i, j - 1)) || (y === y1 - 1 && !inside(i, j + 1));
+      if (ol) {
+        const lit = y === y0 && !inside(i, j - 1) && m === 1 ? 0.3 : 0;
+        put(x, y, edge[0] + (255 - edge[0]) * lit, edge[1] + (255 - edge[1]) * lit, edge[2] + (255 - edge[2]) * lit, Math.max(a * 0.6, edgeA));
+        continue;
+      }
+      put(x, y, r * k, g * k, bl * k, a);
+    }
+  }
+  if (ringN) {
+    // ambient occlusion cast by the frame into the hole (top and left inner edges)
+    for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
+      const q = j * GW + i;
+      if (!hole[q]) continue;
+      const nearT = j > 0 && M[(j - 1) * GW + i] === 1, nearL = i > 0 && M[j * GW + i - 1] === 1;
+      const near2 = j > 1 && M[(j - 2) * GW + i] === 1;
+      const al = nearT ? 0.26 : nearL ? 0.16 : near2 ? 0.1 : 0;
+      if (!al) continue;
+      for (let y = by0(j); y < by0(j + 1); y++) for (let x = bx0(i); x < bx0(i + 1); x++) put(x, y, 4, 24, 58, al);
+    }
+  }
+  if (o.sparkle) sparkleInto(b, (() => { const mk = new Uint8Array(w * h); for (let i = 0; i < w * h; i++) mk[i] = d[i] >>> 24 ? 1 : 0; return mk; })(), w, Math.round(Math.min(lw * 0.12, Rb * B / S + 6) * S) + 2 * S, 3 * S + 2, (o.sparkle === true ? 2 : o.sparkle) * S);
+  return b.toCanvas();
 }
 
 function surfaceRaster(lw, lh, o, S) {
@@ -618,6 +787,8 @@ function orbTex(r, color) {
 
 export function drawGlossOrb(ctx, cx, cy, r, color = AERO.aqua, t = 0) {
   r = Math.max(1.5, Math.round(r * 2) / 2);
+  // [phase10:ui] from r >= 4 the orb is a voxel bubble (bigicons decor 'orb:<color>'), still and centred
+  if (r >= 4 && decor3d) { let f = null; try { f = decor3d('orb:' + color, Math.round(r * 2 + 1), 0); } catch { f = null; } if (f) { ctx.drawImage(f.canvas, Math.round((cx - f.ox) * 2) / 2, Math.round((cy - f.oy) * 2) / 2); return; } }
   const c = aeroCached(`orb|${r}|${color}`, () => { const c1 = orbTex(r, color); return withHi(c1, () => fitHi(c1, orbTex(r * HI, color))); });
   ctx.drawImage(c, Math.round(cx - c.width / 2), Math.round(cy - c.height / 2));
   void t;
@@ -689,6 +860,20 @@ function coinTex(r) {
 // [phase6:ui] bigicons.js registers the glossy low-poly 3D drop here (no import cycle); drawAeroCoin uses it from r >= 6.
 let coin3d = null;
 export function setCoinRenderer(fn) { coin3d = fn; }
+// [phase10:ui] voxel ornaments (rendered by src/gfx/bigicons.js decorFrame): leaves | shell | starfish | bubbles | pearl | coral
+let decor3d = null;
+export function setDecorRenderer(fn) { decor3d = fn; }
+//   drawVoxDecor(ctx, name, cx, cy, px, {t, phase, sway, still}) -> bool   centred, gently swaying
+export function drawVoxDecor(ctx, name, cx, cy, px, o = {}) {
+  if (!decor3d) return false;
+  const t = o.t ?? performance.now() / 1000;
+  const turn = o.still ? 0 : Math.sin(t * 0.9 + (o.phase || 0)) * (o.sway ?? 0.18);
+  let f = null;
+  try { f = decor3d(name, Math.round(px), turn); } catch { f = null; }
+  if (!f) return false;
+  ctx.drawImage(f.canvas, Math.round((cx - f.ox) * 2) / 2, Math.round((cy - f.oy) * 2) / 2);
+  return true;
+}
 // [phase9:ui] src/gfx/uiicons.js registers icons3d.drawIcon3D here (no import cycle): buttons rock / spin 3D icons
 let icon3dDraw = null;
 export function setIcon3DDrawer(fn) { icon3dDraw = fn; }
@@ -808,13 +993,23 @@ export function drawAeroFrame(ctx, x, y, w, h, o = {}) {
   ctx.fillRect(x + 4, y - 2, w - 8, h + 4);
   // the body is a little eco wallpaper: deep sky, sun bloom, white arcs, a curved grass horizon
   ctx.drawImage(ecoBackdrop(w, h, { seed: o.seed ?? 7, r: 10 }), x, y);
+  // [phase10:ui] the window chrome is a chunky VOXEL frame: a raised glossy glass-blue ring of blocks (bevel, AO into
+  // the content, a slab edge underneath), a voxel title plaque, voxel ornaments (leaves, shell, starfish, bubbles)
+  ctx.drawImage(aeroCached(`vframe|${w}|${h}`, () => surfaceTex(w, h, { ring: 4, r: 10, top: '#ffffff', mid: '#d2f1ff', bot: '#86c8f0', edge: '#06336e', gloss: 0.3, glossH: 6, rim: 1, glow: 0.3, depth: 2, block: 4, seed: w })), x, y);
   const k = w > 360 ? 1 : 0.8;
-  if (o.leaves !== false) drawLeafSprig(ctx, x + w - 6, y + 5, 'tr', k);
+  const t = performance.now() / 1000;
+  const deco = o.leaves !== false;
   let tx = x + 12;
+  const tw = o.title ? Math.min(w - 120, (titleSize(o.title, { scale: 2 }).w || measureText(o.title, 'normal', 2)) + 22) : 0;
+  const iw = o.icon ? o.icon.width + 4 : 0;
+  if (o.title || o.icon) {
+    const pw = Math.round(iw + tw + 14), ph = 28;
+    ctx.drawImage(aeroCached(`vplaque|${pw}|${ph}`, () => surfaceTex(pw, ph, { tone: 'aqua', r: 8, gloss: 0.75, glossH: 12, curve: 2, rim: 0.9, glow: 0.6, depth: 1, block: 4 })), x + 5, y + 3);
+  }
   if (o.icon) {
     const ic = o.icon;
-    ctx.drawImage(ic, Math.round(x + 6), Math.round(y + 15 - ic.height / 2));
-    tx = x + 8 + ic.width + 2;
+    ctx.drawImage(ic, Math.round(x + 10), Math.round(y + 16 - ic.height / 2));
+    tx = x + 12 + ic.width + 2;
   }
   if (o.title) {
     // [phase8:ui] Alagard title (16 px grid at 2x: 20 px caps) with a chunky outline; falls back to the bitmap face
@@ -822,12 +1017,18 @@ export function drawAeroFrame(ctx, x, y, w, h, o = {}) {
     if (fits) drawTitle(ctx, o.title, tx, y + 5, { scale: 2 });
     else drawText(ctx, o.title, tx, y + 8, { font: 'normal', scale: 2, color: '#ffffff', shadow: '#0a3e74' });
   }
+  if (deco && !drawVoxDecor(ctx, 'leaves', x + w + 4, y - 8, Math.round(64 * k), { t, phase: x * 0.01 })) drawLeafSprig(ctx, x + w - 6, y + 5, 'tr', k);
   const close = { x: x + w - 25, y: y + 6, w: 18, h: 18 };
-  // finish(ctx): call after drawing the panel's content so the lower leaves and the splash sit on top
+  // finish(ctx): call after drawing the panel's content so the ornaments and the splash sit on top
   const finish = (c2 = ctx) => {
-    if (o.leaves === false) return;
+    if (!deco) return;
     drawSplash(c2, x + w - 96 * k, y + h + 9, Math.round(84 * k), { flip: true });
-    drawLeafSprig(c2, x + 5, y + h - 6, 'bl', k);
+    const ok = drawVoxDecor(c2, 'shell', x + 16, y + h - 10, Math.round(34 * k), { t, phase: 1.3 });
+    if (ok) {
+      drawVoxDecor(c2, 'starfish', x + 42, y + h - 4, Math.round(26 * k), { t, phase: 2.1, sway: 0.25 });
+      drawVoxDecor(c2, 'bubbles', x + 8, y + h * 0.55, Math.round(24 * k), { t, phase: 0.4 });
+      drawVoxDecor(c2, 'coral', x + w - 14, y + h - 18, Math.round(30 * k), { t, phase: 0.8 });
+    } else drawLeafSprig(c2, x + 5, y + h - 6, 'bl', k);
   };
   return { content: { x: x + 8, y: y + 32, w: w - 16, h: h - 40 }, close, header: { x, y, w, h: 30 }, finish };
 }

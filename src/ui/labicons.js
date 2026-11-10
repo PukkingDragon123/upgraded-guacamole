@@ -17,7 +17,8 @@ import { buildingSprite } from '../build/buildingmodels.js';
 import { itemIcon } from '../build/itemdraw.js';
 import { baitIcon } from '../fishing/baitart.js';
 import { voxelFishIcon } from '../fish/fishicon.js'; // [phase3:fish]
-import { rodIcon, getBigIcon } from '../gfx/bigicons.js'; // [phase6:ui] glossy low-poly 3D rods / globe
+import { rodIcon, getBigIcon, voxMisses } from '../gfx/bigicons.js'; // [phase6:ui] glossy low-poly 3D rods / globe
+import { lpAvailable } from '../gfx/lowpoly.js'; // [phase10:ui]
 
 // ---------------------------------------------------------------- pixel glyphs
 const PAL = {
@@ -281,7 +282,11 @@ export function labIcon(key, px = 18) {
   px = Math.max(6, Math.round(px));
   const ck = key + '|' + px;
   if (cache.has(ck)) return cache.get(ck);
+  // [phase10:ui] voxel rods are built within a frame budget: while it is spent, return null (asked again next frame)
+  if (key.startsWith('rod:') && ROD_BY_ID[key.slice(4)] && lpAvailable()) { const r = rodIcon(ROD_BY_ID[key.slice(4)], px); if (!r) return null; }
+  const miss0 = voxMisses();
   let c = buildIcon(key, px);
+  if (voxMisses() !== miss0) return c && !c.__icon3d ? null : c; // deferred voxel build: not cached, asked again
   if (!c && GLYPH_ART[key] === undefined && key !== 'beaker') c = labIcon('beaker', px);
   // [phase9:ui] the 2x twin for the full-res UI layer: glyphs are remastered (Scale2x + fine outline + bevel), 3D /
   // voxel icons are rendered again at twice the size (more detail, not a blow-up)

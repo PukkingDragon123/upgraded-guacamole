@@ -18,6 +18,7 @@ import { itemPixel, itemPixelScaled } from './itempix.js'; // [phase8:ui]
 import { buildingSprite } from './buildingmodels.js';
 import { pixIcon } from './pixart.js'; // [phase8:prog] pixel-art items
 import { has3D, icon3d, drawIcon3D } from '../gfx/icons3d.js'; // [phase9:ui]
+import { lpAvailable } from '../gfx/lowpoly.js'; // [phase10:ui]
 const art0 = (it, id) => it?.art || (id === 'coins' ? 'coins' : null); // [phase9:ui]
 
 const propFit = new Map();
@@ -112,7 +113,7 @@ export function itemIcon(id, size = 14) {
   const it = ITEMS[id];
   const art = it?.art || (id === 'coins' ? 'coins' : null);
   let src = null;
-  if (has3D(id) || (art && has3D(art))) { const c3 = icon3d(has3D(id) ? id : art, size, size); if (c3) { icons.set(key, c3); return c3; } } // [phase9:ui] 3D icons first
+  if (has3D(id) || (art && has3D(art))) { const c3 = icon3d(has3D(id) ? id : art, size, size); if (c3) { icons.set(key, c3); return c3; } if (lpAvailable()) return null; } // [phase9:ui] 3D icons first ([phase10:ui] voxel build deferred: ask again)
   if (it?.pix) src = pixIcon(id, 1); // [phase8:prog]
   else if (art && itemPixel(art) && !hasItemModel(art)) { const b = itemPixel(art); src = itemPixelScaled(art, Math.max(1, Math.floor(Math.min(size / b.w, size / b.h)))); } // [phase8:ui]
   else if (art && !art.startsWith('pkg_')) src = itemSprite(art, { scale: 0.5, frame: 0, force: true })?.canvas;
