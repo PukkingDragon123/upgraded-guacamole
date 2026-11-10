@@ -79,6 +79,15 @@ export class Progression {
     // each ocean's own Workshop material now and then
     const local = BIOME_MAT[biome];
     if (local && local !== 'glow_bulb' && rng.chance(0.1 + ri * 0.04)) give(local, 1);
+    // the deep zones: fish sometimes come up clutching a chest
+    let zone = null;
+    try { zone = this.game.ocean?.depthZone?.()?.id || null; } catch { zone = null; }
+    const zi = ['sunlit', 'twilight', 'midnight', 'abyss'].indexOf(zone);
+    if (zi >= 1 && rng.chance(0.03 + zi * 0.025 + ri * 0.01)) {
+      const tier = zi >= 3 && rng.chance(0.25) ? 'orb' : zi >= 2 && rng.chance(0.45) ? 'golden' : 'iron';
+      give('pkg_' + tier, 1);
+      setTimeout(() => this.game.toast?.('It was hugging a chest! Check your Satchel.', 'star', 4), 1600);
+    }
     return out;
   }
 }

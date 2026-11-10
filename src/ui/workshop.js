@@ -20,6 +20,8 @@ import { ROD_BY_ID, ROD_STAT_KEYS, TACKLE_BY_ID, TACKLE_SLOTS, TACKLE_SLOT_NAMES
 import { aeroSurface, aeroCached, drawAeroFrame, drawAeroCard, drawAeroCoin, fmtAero, drawAeroGlow, drawAeroBadge } from './aero.js';
 import { panelRect } from './ui.js';
 
+const BENCH_CATS = new Set(['build', 'decor', 'bait']);
+const CAT_ALIAS = { building: 'build', plans: 'decor', special: 'bait' }; // src/build/crafting.js categories
 const INK = '#0c3a52', INK_SOFT = '#3c6f88', OK = '#1f9a3a', BAD = '#e0384a';
 const fmtT = (s) => { s = Math.ceil(s); return s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : `${s}s`; };
 
@@ -64,8 +66,11 @@ export class WorkshopPanel {
     const st = this.game.state;
     ensureWorkshop(st);
     ensureRods(st);
-    if (data?.cat && WS_CATS.some((c) => c.id === data.cat)) this.cat = data.cat;
-    if (data?.recipe) { const r = wsRecipe(st, data.recipe); if (r) { this.cat = r.cat; this.sel = r.id; } }
+    this.limited = !workshopUnlocked(st);
+    this.showMarina = false;
+    const cat = CAT_ALIAS[data?.cat] || data?.cat;
+    if (cat && WS_CATS.some((c) => c.id === cat)) this.cat = cat;
+    if (data?.recipe) { const r = wsRecipe(st, data.recipe); if (r) { this.cat = r.cat; this.sel = r.id; if (this.limited && !r.lab) this.showMarina = true; } }
     if (!this.sel || wsRecipe(st, this.sel)?.cat !== this.cat) this.sel = this.firstOf(this.cat);
     this.scroll = 0;
     this.t = 0;
@@ -73,9 +78,11 @@ export class WorkshopPanel {
     this.game.emit?.('workshopOpen', {});
   }
 
+  cats() { return this.limited ? WS_CATS.filter((c) => BENCH_CATS.has(c.id)) : WS_CATS; }
+
   firstOf(cat) {
     const st = this.game.state;
-    const list = recipesFor(st, cat);
+    const list = recipesFor(st, cat).filter((rc) => !this.limited || rc.lab);
     return (list.find((r) => wsUnlocked(st, r) && wsCheck(st, r).ok) || list.find((r) => wsUnlocked(st, r)) || list[0])?.id || null;
   }
 
@@ -99,7 +106,10 @@ export class WorkshopPanel {
     this.rect = L.r;
     try { wsTick(g); } catch (e) { console.error(e); }
     const FR = drawAeroFrame(ctx, L.r.x, L.r.y, L.r.w, L.r.h, { title: 'Marina\'s Workshop', icon: pixIcon('hammer', 2), seed: 31 });
-    if (!workshopUnlocked(st)) this.drawLocked(ctx, ui, L);
+    // until Marina's quest opens the Workshop, only the Lab's workbench recipes (buildings, decor, bait) are here
+    this.limited = !workshopUnlocked(st);
+    if (this.limited && !BENCH_CATS.has(this.cat)) { this.cat = 'build'; this.sel = this.firstOf('build'); }
+    if (this.showMarina) this.drawLocked(ctx, ui, L);
     else {
       this.drawTabs(ctx, ui, L.tabs);
       this.drawGrid(ctx, ui, L.grid);
@@ -126,18 +136,31 @@ export class WorkshopPanel {
     NPC.drawNPC(ctx, 'marina', { x: c.x + 170, y: c.y + c.h - 50, t, scale: 1.6, pose: 'wave', talk: (Math.sin(t * 3) + 1) * 0.3, mood: 'happy' });
     const tx = c.x + 290;
     drawText(ctx, 'The Workshop is still a mess!', tx, c.y + 70, { font: 'big', scale: 2, color: INK });
-    const lines = wrapText('Marina needs a hand fixing up her crafting dock. Finish her quest "Marina\'s Workshop" (bring her 5 Driftwood) and it opens up: rods, tackle, boat parts, tank gear and more!', c.w - 360, 'big');
+    const lines = wrapText('Marina needs a hand fixing up her crafting dock. Finish her Chapter 2 quest "Marina\'s Workshop" (bring her 8 Driftwood and 3 Shells) and it opens up: rods, tackle, boat parts, tank gear and more!', c.w - 360, 'big');
     lines.forEach((l, i) => drawText(ctx, l, tx, c.y + 110 + i * 15, { font: 'big', color: INK_SOFT }));
-    const have = countItem(g.state, 'driftwood');
-    drawText(ctx, `Driftwood: ${Math.min(5, have)} / 5`, tx, c.y + 120 + lines.length * 15, { font: 'big', color: have >= 5 ? OK : BAD });
+    [['driftwood', 8], ['shell', 3]].forEach(([id, n], i) => {
+      const have = countItem(g.state, id);
+      drawText(ctx, `${ITEMS[id]?.name}: ${Math.min(n, have)} / ${n}`, tx, c.y + 120 + (lines.length + i) * 15, { font: 'big', color: have >= n ? OK : BAD });
+    });
     if (g.ui.panels.quests && ui.button(ctx, tx, c.y + c.h - 100, 200, 32, 'Open Quests', { style: 'orange', icon: 'star' })) { ui.close(this.id); ui.open('quests'); }
+    if (ui.button(ctx, tx + 214, c.y + c.h - 100, 200, 32, 'Workbench', { style: 'aqua', icon: 'arrow_l', tip: 'Lab recipes you can already make' })) this.showMarina = false;
   }
 
   // ------------------------------------------------------------------ category tabs
   drawTabs(ctx, ui, R) {
     const st = this.game.state, t = this.t;
     const h = Math.min(56, Math.floor((R.h - 4) / WS_CATS.length));
-    WS_CATS.forEach((cat, i) => {
+    if (this.limited) {
+      const r = { x: R.x, y: R.y + R.h - 58, w: R.w, h: 54 };
+      ctx.drawImage(aeroCached(`wstab|${r.w}|${r.h}|purple`, () => aeroSurface(r.w, r.h, { tone: 'purple', r: 9, gloss: 0.7, glossH: 22, rim: 0.9, glow: 0.6 })), r.x, r.y);
+      const lk = getUiIcon('lock');
+      if (lk) ctx.drawImage(lk, Math.round(r.x + r.w / 2 - lk.width / 2), r.y + 12);
+      drawText(ctx, 'More', r.x + r.w / 2, r.y + r.h - 13, { font: 'small', align: 'center', color: '#ffffff' });
+      if (ui.hover(r)) ui.tip = 'Rods, tackle, boat parts and tank gear: finish Marina\'s quest!';
+      if (ui.clicked(r)) { this.showMarina = true; this.game.audio.play('ui_click'); }
+    }
+    const cats = this.cats();
+    cats.forEach((cat, i) => {
       const y = R.y + i * h, r = { x: R.x, y, w: R.w, h: h - 4 };
       const act = this.cat === cat.id, hov = ui.hover(r);
       const tone = act ? 'orange' : hov ? 'white' : 'glass';
@@ -146,7 +169,7 @@ export class WorkshopPanel {
       if (ic) { const bob = act ? Math.round(Math.sin(t * 4) * 1.5) : 0; ctx.drawImage(ic, Math.round(r.x + r.w / 2 - ic.width / 2), Math.round(r.y + r.h / 2 - ic.height / 2) - 4 + bob); }
       const lbl = cat.short || cat.name;
       drawText(ctx, lbl, r.x + r.w / 2, r.y + r.h - 11, { font: 'small', align: 'center', color: act ? '#ffffff' : INK, shadow: act ? '#7a2a06' : null });
-      const n = recipesFor(st, cat.id).filter((rc) => !st.workshop.seen[rc.id] && wsUnlocked(st, rc) && wsCheck(st, rc).ok).length;
+      const n = recipesFor(st, cat.id).filter((rc) => (!this.limited || rc.lab) && !st.workshop.seen[rc.id] && wsUnlocked(st, rc) && wsCheck(st, rc).ok).length;
       if (n) drawAeroBadge(ctx, r.x + r.w + 2, r.y - 2, n, t);
       if (hov) ui.tip = cat.name;
       if (ui.clicked(r) && !act) { this.cat = cat.id; this.sel = this.firstOf(cat.id); this.scroll = 0; this.game.audio.play('ui_tab'); }
@@ -162,7 +185,7 @@ export class WorkshopPanel {
     drawText(ctx, cat?.name || '', R.x + 10, y0, { font: 'big', scale: 1, color: INK });
     y0 += 16;
     if (this.cat === 'tackle' || this.cat === 'rods' || this.cat === 'upgrade') y0 = this.drawBench(ctx, ui, { x: R.x + 6, y: y0, w: R.w - 12 }) + 4;
-    const list = recipesFor(st, this.cat).sort((a, b) => (wsUnlocked(st, b) ? 1 : 0) - (wsUnlocked(st, a) ? 1 : 0));
+    const list = recipesFor(st, this.cat).filter((rc) => !this.limited || rc.lab).sort((a, b) => (wsUnlocked(st, b) ? 1 : 0) - (wsUnlocked(st, a) ? 1 : 0));
     const TW = 74, TH = 82, gap = 6;
     const cols = Math.max(1, Math.floor((R.w - 12 + gap) / (TW + gap)));
     const area = { x: R.x + 6, y: y0, w: R.w - 12, h: R.y + R.h - 6 - y0 };
@@ -223,7 +246,8 @@ export class WorkshopPanel {
     if (ic) ctx.drawImage(ic, R.x + 6, R.y + 6);
     const lv = rodLevel(st, rod.id);
     drawText(ctx, rod.name, R.x + 44, R.y + 8, { font: 'normal', color: '#ffffff', shadow: '#0a3e74' });
-    drawText(ctx, lv ? '★'.repeat(lv) : 'equipped', R.x + 44, R.y + 22, { font: 'small', color: '#fff6b0', shadow: '#0a3e74' });
+    if (lv) for (let i = 0; i < lv; i++) ctx.drawImage(partSprite('star', '#ffd23a', 1), R.x + 44 + i * 7, R.y + 21);
+    else drawText(ctx, 'equipped', R.x + 44, R.y + 22, { font: 'small', color: '#fff6b0', shadow: '#0a3e74' });
     if (rod.perk) drawText(ctx, PERKS[rod.perk]?.name || '', R.x + 44, R.y + 31, { font: 'small', color: '#c8ffb0', shadow: '#0a3e74' });
     const sw = 38, x0 = R.x + R.w - TACKLE_SLOTS.length * (sw + 4) - 2;
     TACKLE_SLOTS.forEach((slot, i) => {
@@ -434,13 +458,14 @@ export class WorkshopPanel {
           A.last = strike;
           this.fx.burst(cx + 10, cy + 10, 14, { kinds: ['spark', 'spark', 'star'], colors: ['#ffe27a', '#ffffff', '#ff9d2e'], speed: 220, speedMin: 60, g: 500, life: 0.6, up: 120, scale: 2 });
           this.game.audio.play('click', { vol: 0.6, pitch: 0.7 + strike * 0.15 }); this.game.audio.play('coin_bounce', { vol: 0.3, pitch: 0.6 });
-          this.game.particles?.pixelBurst?.('spark', cx + 10, cy + 10, 6);
+          this.game.particles?.pixelBurst?.('spark', cx + 10, cy + 10, 6, { layer: 'ui' });
         }
       }
       if (A.t >= 0.9 && !A.popped) {
         A.popped = true;
         this.fx.burst(cx, cy, 30, { kinds: ['sparkle', 'star', 'confetti', 'heart'], colors: ['#ffffff', '#ffe27a', '#8ae8ff', '#ff9ad0', '#8ae84a'], speed: 240, speedMin: 50, g: 160, life: 1.2, up: 80, scale: 2 });
         this.game.audio.play(A.queued ? 'ui_unlock' : 'sparkle', { vol: 0.7 });
+        try { this.game.particles?.[A.queued ? 'purchase' : 'celebrate']?.(cx, cy); } catch { /* optional */ }
       }
       if (A.t >= 0.9 && A.t < 2.2) {
         const txt = A.queued ? 'On the bench!' : 'Crafted!';

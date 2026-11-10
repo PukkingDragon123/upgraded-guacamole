@@ -341,7 +341,7 @@ export class TankView {
     if (gv) {
       const pulse = 0.5 + 0.5 * Math.sin(t * 6);
       const M = R(T4.trs(gv.p, 0, gv.yaw, 0, gv.k));
-      sc.add(gv.model.mesh, M, { tint: gv.ok ? [0.5, 1, 0.92, 0.42 + 0.15 * pulse] : [1, 0.22, 0.28, 0.6], emit: 0.45 });
+      sc.add(gv.model.mesh, M, { tint: gv.ok ? [0.55, 1, 0.95, 0.55 + 0.15 * pulse] : [1, 0.25, 0.3, 0.7], emit: 0.8 });
       for (const gw of gv.model.glow) sc.add(gw.mesh, M, { tint: [...gw.col, 1] });
       if (gv.model.part) sc.add(gv.model.part.mesh, M, { tint: gv.ok ? [0.7, 1, 1, 0.4] : [1, 0.4, 0.4, 0.6] });
     }
@@ -357,9 +357,9 @@ export class TankView {
       }
     };
     if (aq.build?.on) {
-      for (const m of aq.build.marks()) bracket(m.p, m.r * 0.8, m.ok ? (m.hover ? '#bff8ff' : m.sel ? '#ffe86a' : '#7affb0') : '#ff4a5a', m.p[1] + 0.2 + (T.vq || 0) * 0.5);
+      for (const m of aq.build.marks()) bracket(m.p, m.r * 0.8, m.ok ? (m.hover ? '#bff8ff' : m.sel ? '#ffe86a' : '#7affb0') : '#ff4a5a', Math.max(m.p[1] + 0.3, T.floorY(m.p[0], m.p[2]) + (T.vq || 0) * 0.6 + 0.3));
       const bv = aq.build.brushView();
-      if (bv) bracket(bv.p, bv.r, bv.erase ? '#ff6a7a' : '#7ae8ff', bv.p[1] + 0.25 + (T.vq || 0) * 0.5);
+      if (bv) bracket(bv.p, bv.r, bv.erase ? '#ff6a7a' : '#7ae8ff', bv.p[1] + 0.3 + (T.vq || 0) * 0.6);
     }
     const mkM = this.dyn.marks.end();
     if (mkM) sc.add(mkM, root, { emit: 1, cull: false });

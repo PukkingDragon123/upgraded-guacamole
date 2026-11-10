@@ -286,6 +286,13 @@ export class Destinations {
     const reduced = !!g.state.settings?.reducedMotion;
     ctx.drawImage(skyCanvas(W, H, hz), 0, 0);
     drawSunFlare(ctx, W * 0.86, H * 0.12, 30, 0.9);
+    // a few pixel seagulls gliding by
+    for (let i = 0; i < 3; i++) {
+      const gx = Math.round((((t * (14 + i * 5) + i * 330) % (W + 80)) + W + 80) % (W + 80) - 40), gy = Math.round(70 + i * 34 + Math.sin(t * 0.8 + i * 2) * 8);
+      const up = Math.sin(t * 5 + i * 1.7) > 0;
+      const rows = up ? ['#...#', '.#.#.', '..#..'] : ['.....', '#####', '..#..'];
+      rows.forEach((row, ry) => [...row].forEach((ch, rx) => { if (ch === '#') { ctx.fillStyle = rx === 0 || rx === 4 ? '#6a8aaa' : '#ffffff'; ctx.fillRect(gx + rx * 2, gy + ry * 2, 2, 2); } }));
+    }
     // drifting sea highlights (pixel dashes)
     for (let i = 0; i < 70; i++) {
       const y = hz + 3 + ((i * 37) % (H - hz - 4));

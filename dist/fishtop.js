@@ -20918,7 +20918,7 @@ void main() {
             switch (p.kind) {
               case "px": {
                 if (p.blink && k > 0.72 && Math.floor(p.t * 22) % 2) break;
-                const F = pxFrames(p.sheet, p.ramp, p.sz);
+                const F = p.F || (p.F = pxFrames(p.sheet, p.ramp, p.sz));
                 let fi;
                 if (p.anim === "life") fi = Math.min(F.length - 1, Math.floor(k * F.length));
                 else if (p.anim === "loop") fi = Math.floor(p.t * p.fps + p.fr) % F.length;
@@ -20952,7 +20952,7 @@ void main() {
                 break;
               }
               case "sparkle": {
-                const F = pxFrames("sparkle", rampFor(p.color, "gold"), p.big === false ? 0 : 1);
+                const F = p.F || (p.F = pxFrames("sparkle", rampFor(p.color, "gold"), p.big === false ? 0 : 1));
                 const c = F[Math.min(F.length - 1, Math.floor(k * F.length))];
                 ctx2.globalAlpha = Math.min(1, a * 1.4);
                 ctx2.drawImage(c, x - (c.width >> 1), y - (c.height >> 1));
@@ -20962,7 +20962,7 @@ void main() {
               case "star": {
                 if (k > 0.75 && Math.floor(p.t * 22) % 2) break;
                 const sz = p.size;
-                const F = sz <= 1 ? pxFrames("sparkle", rampFor(p.color, "gold"), 0) : pxFrames("star", rampFor(p.color, "gold"), sz >= 3 ? 1 : 0);
+                const F = p.F || (p.F = sz <= 1 ? pxFrames("sparkle", rampFor(p.color, "gold"), 0) : pxFrames("star", rampFor(p.color, "gold"), sz >= 3 ? 1 : 0));
                 const c = sz <= 1 ? F[Math.min(F.length - 1, Math.floor(k * F.length))] : F[Math.sin(p.t * 16 + p.spin) > 0.5 ? 1 : 0];
                 ctx2.drawImage(c, x - (c.width >> 1), y - (c.height >> 1));
                 break;
@@ -21057,7 +21057,7 @@ void main() {
                 break;
               }
               case "scale": {
-                const F = pxFrames("scale", rampFor(p.color, "aqua"), 1);
+                const F = p.F || (p.F = pxFrames("scale", rampFor(p.color, "aqua"), 1));
                 const c = F[Math.floor(p.t * 10 + p.ph) % F.length];
                 ctx2.globalAlpha = a;
                 ctx2.drawImage(c, x - (c.width >> 1), y - (c.height >> 1));
@@ -21065,7 +21065,7 @@ void main() {
                 break;
               }
               case "confetti": {
-                const F = pxFrames("confetti", rampFor(p.color, "pink"), 1);
+                const F = p.F || (p.F = pxFrames("confetti", rampFor(p.color, "pink"), 1));
                 const c = F[Math.floor(Math.abs(p.spin) * 1.3) % F.length];
                 ctx2.globalAlpha = a;
                 ctx2.drawImage(c, x - (c.width >> 1), y - (c.height >> 1));
@@ -21153,7 +21153,7 @@ void main() {
                 break;
               }
               case "leaf": {
-                const F = pxFrames("leaf", rampFor(p.color, "leaf"), 0);
+                const F = p.F || (p.F = pxFrames("leaf", rampFor(p.color, "leaf"), 0));
                 const c = F[Math.floor(Math.abs(p.spin)) % F.length];
                 ctx2.globalAlpha = a;
                 ctx2.drawImage(c, x - (c.width >> 1), y - (c.height >> 1));
@@ -27802,12 +27802,23 @@ void main() {
         },
         fish_scale() {
           const p = new Pix(S6, S6);
-          p.ball(8, 9, 6, "#5fd8e8", 6);
-          for (let y = 0; y < 4; y++) for (let x = 0; x < S6; x++) p.set(x, y, null);
-          p.poly([[2, 9], [8, 2], [14, 9]], "#7ae8f0");
-          p.line(4, 8, 8, 4, "#c8fcff").line(8, 4, 12, 8, "#3aa8c8").line(5, 11, 11, 11, "#a8f0ff");
-          p.glint(6, 6);
-          return p.outline();
+          p.ascii([
+            "......oo......",
+            "....oo44oo....",
+            "...o344w43o...",
+            "..o34444w43o..",
+            ".o3444444443o.",
+            ".o3p44444443o.",
+            "o32p4444444p3o",
+            "o322333333223o",
+            "o32p4444444p3o",
+            ".o3444444443o.",
+            ".o2333333332o.",
+            "..o22pppp22o..",
+            "...oo2222oo...",
+            ".....oooo....."
+          ], { o: "#1a6a8a", 2: "#2f9ac8", 3: "#4cc4e8", 4: "#8eeaff", w: "#ffffff", p: "#ffb0e0" }, 1, 1);
+          return p;
         },
         fin_ribbon() {
           const p = new Pix(S6, S6);
@@ -27904,11 +27915,15 @@ void main() {
         // ---------------- boat parts (tinted by recipe)
         boat_hull(col = "#2fb8e8") {
           const p = new Pix(S6, S6);
-          p.box(3, 6, 12, 14, "#c8d2e0");
-          p.box(4, 4, 11, 6, col);
-          p.bar(3, 5, 1, 9, 0.6, col);
-          p.bar(12, 7, 12, 11, 1, col);
-          p.line(3, 5, 12, 5, mix(col, "#ffffff", 0.6));
+          for (let a = 0; a <= 10; a++) {
+            const t = Math.PI * (a / 10);
+            p.set(Math.round(8 - Math.cos(t) * 6), Math.round(5 - Math.sin(t) * 4), "#97a2b8");
+          }
+          p.box(2, 5, 13, 14, "#c8d2e0");
+          p.box(2, 5, 13, 7, col);
+          p.bar(5, 7, 5, 11, 0.8, col);
+          p.bar(10, 7, 10, 9, 0.8, col);
+          p.glint(3, 6).glint(4, 9);
           return p.outline();
         },
         boat_sail(col = "#ffffff") {
@@ -28151,6 +28166,7 @@ void main() {
           ctx2.globalAlpha = 1;
         }
       };
+      if (typeof window !== "undefined") window.__pixart = { pixIcon, rodPix, PIX_IDS, partSprite };
     }
   });
 
@@ -41554,7 +41570,7 @@ ${o.kind === "owned" ? `You own ${o.n}` : o.kind === "buy" ? `{coin} ${fmtAero(o
           if (gv) {
             const pulse = 0.5 + 0.5 * Math.sin(t * 6);
             const M3 = R4(T4.trs(gv.p, 0, gv.yaw, 0, gv.k));
-            sc.add(gv.model.mesh, M3, { tint: gv.ok ? [0.5, 1, 0.92, 0.42 + 0.15 * pulse] : [1, 0.22, 0.28, 0.6], emit: 0.45 });
+            sc.add(gv.model.mesh, M3, { tint: gv.ok ? [0.55, 1, 0.95, 0.55 + 0.15 * pulse] : [1, 0.25, 0.3, 0.7], emit: 0.8 });
             for (const gw of gv.model.glow) sc.add(gw.mesh, M3, { tint: [...gw.col, 1] });
             if (gv.model.part) sc.add(gv.model.part.mesh, M3, { tint: gv.ok ? [0.7, 1, 1, 0.4] : [1, 0.4, 0.4, 0.6] });
           }
@@ -41569,9 +41585,9 @@ ${o.kind === "owned" ? `You own ${o.n}` : o.kind === "buy" ? `{coin} ${fmtAero(o
             }
           };
           if (aq.build?.on) {
-            for (const m of aq.build.marks()) bracket(m.p, m.r * 0.8, m.ok ? m.hover ? "#bff8ff" : m.sel ? "#ffe86a" : "#7affb0" : "#ff4a5a", m.p[1] + 0.2 + (T5.vq || 0) * 0.5);
+            for (const m of aq.build.marks()) bracket(m.p, m.r * 0.8, m.ok ? m.hover ? "#bff8ff" : m.sel ? "#ffe86a" : "#7affb0" : "#ff4a5a", Math.max(m.p[1] + 0.3, T5.floorY(m.p[0], m.p[2]) + (T5.vq || 0) * 0.6 + 0.3));
             const bv = aq.build.brushView();
-            if (bv) bracket(bv.p, bv.r, bv.erase ? "#ff6a7a" : "#7ae8ff", bv.p[1] + 0.25 + (T5.vq || 0) * 0.5);
+            if (bv) bracket(bv.p, bv.r, bv.erase ? "#ff6a7a" : "#7ae8ff", bv.p[1] + 0.3 + (T5.vq || 0) * 0.6);
           }
           const mkM = this.dyn.marks.end();
           if (mkM) sc.add(mkM, root, { emit: 1, cull: false });
@@ -41881,24 +41897,17 @@ ${o.kind === "owned" ? `You own ${o.n}` : o.kind === "buy" ? `{coin} ${fmtAero(o
     return a + d * k;
   }
   function drawSnail(ctx2, x, y, s, dir, t) {
-    x = Math.round(x);
-    y = Math.round(y);
-    const r = Math.max(2, Math.round(s * 0.45));
-    ctx2.fillStyle = "#9be84a";
-    ctx2.fillRect(x - Math.round(s * 0.6), y, Math.round(s * 1.2), Math.max(1, Math.round(s * 0.25)));
-    ctx2.fillRect(x + dir * Math.round(s * 0.5), y - Math.round(s * 0.35), 1, Math.round(s * 0.35));
-    ctx2.beginPath();
-    ctx2.arc(x - dir * Math.round(s * 0.1), y - r * 0.6, r, 0, TAU);
-    ctx2.fillStyle = "#3ac4f8";
-    ctx2.fill();
-    ctx2.beginPath();
-    ctx2.arc(x - dir * Math.round(s * 0.1), y - r * 0.6, r * 0.5, 0, TAU);
-    ctx2.fillStyle = "#ffffff";
-    ctx2.fill();
-    ctx2.fillStyle = "#ffffff";
-    ctx2.fillRect(x + dir * Math.round(s * 0.5), y - Math.round(s * 0.4) + (Math.sin(t * 3) > 0.9 ? 1 : 0), 1, 1);
+    const k = Math.max(1, Math.round(s / 8));
+    const w = SNAIL[0].length, h = SNAIL.length;
+    const x0 = Math.round(x - w * k / 2), y0 = Math.round(y - h * k) + (Math.sin(t * 3) > 0.92 ? -k : 0);
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+      const ch = SNAIL[j][dir >= 0 ? i : w - 1 - i];
+      if (ch === ".") continue;
+      ctx2.fillStyle = SNAIL_COL[ch];
+      ctx2.fillRect(x0 + i * k, y0 + j * k, k, k);
+    }
   }
-  var HUNGER_RATE, AUTO_POP, ICONS2, EMOTE_ICON, FRAME, WIN_W, FOOD_COLS, v3, Aquarium;
+  var HUNGER_RATE, AUTO_POP, ICONS2, EMOTE_ICON, FRAME, WIN_W, FOOD_COLS, v3, Aquarium, SNAIL, SNAIL_COL;
   var init_aquarium = __esm({
     "src/aquarium/aquarium.js"() {
       init_math();
@@ -43956,6 +43965,17 @@ ${hearts} ${status}
           }
         }
       };
+      SNAIL = [
+        "....aaa....",
+        "..abbbba...",
+        ".abccccba..",
+        ".abcbbcba..",
+        ".abcbdcba.e",
+        ".abccccba.e",
+        "ffabbbbaffg",
+        "fffffffffff"
+      ];
+      SNAIL_COL = { a: "#1f6a9a", b: "#3ac4f8", c: "#bff4ff", d: "#ffffff", e: "#7ad83a", f: "#9be84a", g: "#ffffff" };
     }
   });
 
@@ -90215,7 +90235,7 @@ ${hearts} ${status}
           quests: [
             Q("c2_sail", "marina", "Set Sail", "Open the Map and travel to the Sunny Shallows.", [{ t: "visit", biome: "shallows" }], { aero: 20 }),
             Q("c2_catch", "marina", "Shallow Waters", "The shallows are teeming. Fill that bucket!", [{ t: "catch", n: 6, biome: "shallows" }], { items: { driftwood: 3, sea_glass: 2 } }),
-            Q("c2_workshop", "marina", "Marina's Workshop", "My crafting dock is a mess! Bring me 5 Driftwood to fix it up.", [{ t: "have", id: "driftwood", n: 5, take: true }], { aero: 30, items: { fish_scale: 3, kelp_fibre: 2 }, unlock: [{ kind: "feature", id: "workshop" }] }),
+            Q("c2_workshop", "marina", "Marina's Workshop", "My crafting dock is a mess! Bring me 8 Driftwood and 3 Shells to fix it up.", [{ t: "have", id: "driftwood", n: 8, take: true }, { t: "have", id: "shell", n: 3, take: true }], { aero: 30, items: { fish_scale: 3, kelp_fibre: 2 }, unlock: [{ kind: "feature", id: "workshop" }] }),
             // [phase8:prog]
             Q("c2_bait", "dot", "Dot's Specials", "Buy any bait at my shop. BEEP BOOP.", [{ t: "bait", n: 1 }], { bait: { worm: 3 } }),
             Q("c2_dock", "marina", "All Aboard!", "Open the Map and sail to my Workshop dock!", [{ t: "dest", id: "workshop" }], { aero: 20, items: { driftwood: 4 } }),
@@ -90648,7 +90668,7 @@ ${hearts} ${status}
     return {
       id: "ws_up_" + rod.id,
       cat: "upgrade",
-      name: `${rod.name} ${"\u2605".repeat(Math.min(next, MAX_ROD_LEVEL))}`,
+      name: lv >= MAX_ROD_LEVEL ? `${rod.name} +${MAX_ROD_LEVEL}` : `${rod.name} +${next}`,
       rarity: rod.rarity,
       maxed: lv >= MAX_ROD_LEVEL,
       desc: lv >= MAX_ROD_LEVEL ? "Fully tuned. A masterpiece." : `Tune it to level ${next}: +6% lure, luck and control, +10% strength, more resilience.`,
@@ -90796,6 +90816,7 @@ ${hearts} ${status}
       }
       return { ...res, queued: false };
     }
+    if (!workshopUnlocked(st)) return { ok: false, reason: "Finish Marina's quest to open the Workshop." };
     const c = wsCheck(st, r);
     if (!c.ok) return { ok: false, reason: c.reason };
     st.coins -= c.aero.need;
@@ -90988,7 +91009,7 @@ ${hearts} ${status}
           const items = { ...c[1] };
           items[SLOT_MAT[slot]] = (items[SLOT_MAT[slot]] || 0) + 2;
           const tint = (p.color || PART_TINT[p.id] || "#2fb8e8").replace("#", "");
-          add8({ id: `ws_boat_${slot}_${p.id}`, cat: "boat", name: `${p.name} ${slotName}`, rarity: p.rarity, desc: `A ${slotName.toLowerCase()} for your boat. Equip it in the Wardrobe's Boat tab.`, icon: `pix:${SLOT_ART[slot]}#${tint}`, cost: { aero: c[0], items }, time: c[2], out: { type: "boatpart", slot, id: p.id }, req: c[3] });
+          add8({ id: `ws_boat_${slot}_${p.id}`, cat: "boat", name: new RegExp(slotName + "$", "i").test(p.name) ? p.name : `${p.name} ${slotName}`, rarity: p.rarity, desc: `A ${slotName.toLowerCase()} for your boat. Equip it in the Wardrobe's Boat tab.`, icon: `pix:${SLOT_ART[slot]}#${tint}`, cost: { aero: c[0], items }, time: c[2], out: { type: "boatpart", slot, id: p.id }, req: c[3] });
         }
       }
       LAB_CAT = { building: "build", decor: "decor", plans: "decor", bait: "bait", special: "bait" };
@@ -91115,7 +91136,7 @@ ${hearts} ${status}
     const r = renderVoxels(b.m, { scale, yaw: b.yaw, pitch: b.pitch, outline: true, glowRadius: 2 });
     const stand = id2 === "lab" ? r.project(26, 20.5, 38) : r.project(20, 6, 33);
     const extra = id2 === "lab" ? r.project(46, 20.5, 30) : r.project(42, 6, 34);
-    s = { canvas: r.canvas, glow: r.glow, ox: r.ox, oy: r.oy, w: r.w, h: r.h, stand: [stand[0] - r.ox, stand[1] - r.oy], extra: [extra[0] - r.ox, extra[1] - r.oy] };
+    s = { canvas: r.canvas, glow: r.glow, ox: r.ox, oy: r.oy, w: r.w, h: r.h, stand: [stand[0], stand[1]], extra: [extra[0], extra[1]] };
     sprites2.set(key, s);
     return s;
   }
@@ -91156,12 +91177,12 @@ ${hearts} ${status}
   function mapSpots(Lay) {
     const v = Lay.view;
     return {
-      lab: { x: v.x + 92, y: v.y + 92, s: 1 },
-      workshop: { x: v.x + v.w - 118, y: v.y + v.h - 70, s: 1 }
+      lab: { x: v.x + 74, y: v.y + 86 },
+      workshop: { x: v.x + 92, y: v.y + v.h - 92 }
     };
   }
   function mapRect(id2, p, t) {
-    const S11 = destSprite(id2, 1);
+    const S11 = destSprite(id2, MAP_SCALE);
     const bob = Math.round(Math.sin(t * 1.6 + (id2 === "lab" ? 0 : 2)) * 2);
     return { x: p.x - S11.ox, y: p.y - S11.oy + bob, w: S11.w, h: S11.h, S: S11, bob };
   }
@@ -91208,7 +91229,7 @@ ${hearts} ${status}
         if (lk) ctx2.drawImage(lk, Math.round(r.x + r.w / 2 - lk.width / 2), Math.round(r.y + r.h / 2 - lk.height / 2));
       }
       if (sel && (t * 4 | 0) % 2) ctx2.drawImage(partSprite("sparkle", "#ffffff", 1), r.x + r.w - 6, r.y);
-      drawAeroLabel(ctx2, D.name, r.x + r.w / 2, r.y - 14, { align: "center", tone: !open ? "grey" : hov || sel ? toneFrom(D.color) : "glass" });
+      drawAeroLabel(ctx2, D.name, r.x + r.w / 2, r.y + r.h + 2, { align: "center", tone: !open ? "grey" : hov || sel ? toneFrom(D.color) : "glass" });
     }
   }
   function sailFromMap(panel, id2) {
@@ -91271,7 +91292,7 @@ ${hearts} ${status}
     }
     return true;
   }
-  var DESTS, DEST_ORDER, MODELS7, built4, sprites2, Destinations;
+  var DESTS, DEST_ORDER, SCENE_SCALE, MAP_SCALE, MODELS7, built4, sprites2, Destinations;
   var init_destinations = __esm({
     "src/world/destinations.js"() {
       init_math();
@@ -91311,6 +91332,8 @@ ${hearts} ${status}
         }
       };
       DEST_ORDER = ["lab", "workshop"];
+      SCENE_SCALE = 4;
+      MAP_SCALE = 1.5;
       MODELS7 = { lab: labModel, workshop: workshopModel };
       built4 = /* @__PURE__ */ new Map();
       sprites2 = /* @__PURE__ */ new Map();
@@ -91375,7 +91398,7 @@ ${hearts} ${status}
           this.fx.list = [];
           g.audio?.play("travel_whoosh", { vol: 0.7 });
           try {
-            destSprite(id2, 3);
+            destSprite(id2, SCENE_SCALE);
           } catch (e) {
             console.error(e);
           }
@@ -91425,17 +91448,21 @@ ${hearts} ${status}
             this.end();
             g.camera?.flash?.("#bfefff", 0.4);
           }
+          if (this.phase === "docked" && !g.ui?.active && g.input?.keyPressed?.("Escape")) {
+            g.input.keysPressed?.delete?.("Escape");
+            this.leave();
+          }
           void inp;
         }
         scene() {
           const W10 = this.game.screen.W, H8 = this.game.screen.H;
           const hz = Math.round(H8 * 0.56);
-          const S11 = destSprite(this.at, 3);
+          const S11 = destSprite(this.at, SCENE_SCALE);
           const k = this.phase === "out" ? ease.outCubic(clamp01(this.pt / this.dur)) : this.phase === "back" ? 1 : 1;
           const slide = Math.round((1 - k) * (W10 * 0.75));
           const lab3 = this.at === "lab";
           const bob = lab3 ? Math.round(Math.sin(this.t * 1.3) * 4) : 0;
-          const bx = Math.round(W10 * 0.6) + slide, by = lab3 ? hz - 40 + bob : hz + 48;
+          const bx = Math.round(W10 * 0.62) + slide, by = lab3 ? hz - 30 + bob : hz + 70;
           const npcX = bx - S11.ox + S11.stand[0], npcY = by - S11.oy + S11.stand[1];
           const exX = bx - S11.ox + S11.extra[0], exY = by - S11.oy + S11.extra[1];
           return { W: W10, H: H8, hz, S: S11, bx, by, npcX, npcY, exX, exY, slide, bob };
@@ -91448,6 +91475,17 @@ ${hearts} ${status}
           const reduced = !!g.state.settings?.reducedMotion;
           ctx2.drawImage(skyCanvas(W10, H8, hz), 0, 0);
           drawSunFlare(ctx2, W10 * 0.86, H8 * 0.12, 30, 0.9);
+          for (let i = 0; i < 3; i++) {
+            const gx = Math.round(((t * (14 + i * 5) + i * 330) % (W10 + 80) + W10 + 80) % (W10 + 80) - 40), gy = Math.round(70 + i * 34 + Math.sin(t * 0.8 + i * 2) * 8);
+            const up = Math.sin(t * 5 + i * 1.7) > 0;
+            const rows = up ? ["#...#", ".#.#.", "..#.."] : [".....", "#####", "..#.."];
+            rows.forEach((row2, ry2) => [...row2].forEach((ch, rx2) => {
+              if (ch === "#") {
+                ctx2.fillStyle = rx2 === 0 || rx2 === 4 ? "#6a8aaa" : "#ffffff";
+                ctx2.fillRect(gx + rx2 * 2, gy + ry2 * 2, 2, 2);
+              }
+            }));
+          }
           for (let i = 0; i < 70; i++) {
             const y = hz + 3 + i * 37 % (H8 - hz - 4);
             const k = (y - hz) / (H8 - hz);
@@ -91515,12 +91553,12 @@ ${hearts} ${status}
           let pv = null;
           try {
             const b = resolveBoat(g.state);
-            pv = renderBoatPreview(b.tier, b.parts, { scale: 1.1 });
+            pv = renderBoatPreview(b.tier, b.parts, { scale: 1.5 });
           } catch {
             pv = null;
           }
           if (!pv) return;
-          const W10 = sc.W, dockX = Math.round(W10 * 0.26), y = sc.hz + 66;
+          const W10 = sc.W, dockX = Math.round(W10 * 0.24), y = sc.hz + 92;
           let x = dockX;
           if (this.phase === "out") x = Math.round(lerp(-160, dockX, ease.outCubic(clamp01(this.pt / this.dur))));
           if (this.phase === "back") x = Math.round(lerp(dockX, -200, ease.inCubic(clamp01(this.pt / this.dur))));
@@ -91557,8 +91595,7 @@ ${hearts} ${status}
           const x0 = Math.round(sc.W / 2 - bw - 8);
           const label3 = D.panel === "lab" ? "Enter the Lab" : "Open Workshop";
           if (ui.button(ctx2, x0, y, bw, bh, label3, { style: "green", icon: "star", sound: "ui_open" })) ui.open(D.panel);
-          if (ui.button(ctx2, x0 + bw + 16, y, bw, bh, "Set sail", { style: "aqua", icon: "map", sound: "travel_whoosh", tip: "Back to fishing" })) this.leave();
-          if (g.input.keyPressed?.("Escape")) this.leave();
+          if (ui.button(ctx2, x0 + bw + 16, y, bw, bh, "Set sail", { style: "aqua", icon: "map", sound: "travel_whoosh", tip: "Back to fishing (Esc)" })) this.leave();
         }
       };
     }
@@ -97539,7 +97576,7 @@ ${hearts} ${status}
     }
     if (kind2 === "item") drawItem(ctx2, id2, cx, Math.round(cy + size / 2), { box: [size, size], t, big: size > 48 });
   }
-  var INK12, INK_SOFT6, OK2, BAD2, fmtT, WorkshopPanel;
+  var BENCH_CATS, CAT_ALIAS, INK12, INK_SOFT6, OK2, BAD2, fmtT, WorkshopPanel;
   var init_workshop2 = __esm({
     "src/ui/workshop.js"() {
       init_math();
@@ -97554,6 +97591,8 @@ ${hearts} ${status}
       init_rods();
       init_aero();
       init_ui();
+      BENCH_CATS = /* @__PURE__ */ new Set(["build", "decor", "bait"]);
+      CAT_ALIAS = { building: "build", plans: "decor", special: "bait" };
       INK12 = "#0c3a52";
       INK_SOFT6 = "#3c6f88";
       OK2 = "#1f9a3a";
@@ -97578,12 +97617,16 @@ ${hearts} ${status}
           const st = this.game.state;
           ensureWorkshop(st);
           ensureRods(st);
-          if (data?.cat && WS_CATS.some((c) => c.id === data.cat)) this.cat = data.cat;
+          this.limited = !workshopUnlocked(st);
+          this.showMarina = false;
+          const cat = CAT_ALIAS[data?.cat] || data?.cat;
+          if (cat && WS_CATS.some((c) => c.id === cat)) this.cat = cat;
           if (data?.recipe) {
             const r = wsRecipe(st, data.recipe);
             if (r) {
               this.cat = r.cat;
               this.sel = r.id;
+              if (this.limited && !r.lab) this.showMarina = true;
             }
           }
           if (!this.sel || wsRecipe(st, this.sel)?.cat !== this.cat) this.sel = this.firstOf(this.cat);
@@ -97592,9 +97635,12 @@ ${hearts} ${status}
           this.fx.list = [];
           this.game.emit?.("workshopOpen", {});
         }
+        cats() {
+          return this.limited ? WS_CATS.filter((c) => BENCH_CATS.has(c.id)) : WS_CATS;
+        }
         firstOf(cat) {
           const st = this.game.state;
-          const list = recipesFor(st, cat);
+          const list = recipesFor(st, cat).filter((rc) => !this.limited || rc.lab);
           return (list.find((r) => wsUnlocked(st, r) && wsCheck(st, r).ok) || list.find((r) => wsUnlocked(st, r)) || list[0])?.id || null;
         }
         layout() {
@@ -97620,7 +97666,12 @@ ${hearts} ${status}
             console.error(e);
           }
           const FR = drawAeroFrame(ctx2, L2.r.x, L2.r.y, L2.r.w, L2.r.h, { title: "Marina's Workshop", icon: pixIcon("hammer", 2), seed: 31 });
-          if (!workshopUnlocked(st)) this.drawLocked(ctx2, ui, L2);
+          this.limited = !workshopUnlocked(st);
+          if (this.limited && !BENCH_CATS.has(this.cat)) {
+            this.cat = "build";
+            this.sel = this.firstOf("build");
+          }
+          if (this.showMarina) this.drawLocked(ctx2, ui, L2);
           else {
             this.drawTabs(ctx2, ui, L2.tabs);
             this.drawGrid(ctx2, ui, L2.grid);
@@ -97645,20 +97696,36 @@ ${hearts} ${status}
           drawNPC(ctx2, "marina", { x: c.x + 170, y: c.y + c.h - 50, t, scale: 1.6, pose: "wave", talk: (Math.sin(t * 3) + 1) * 0.3, mood: "happy" });
           const tx = c.x + 290;
           drawText(ctx2, "The Workshop is still a mess!", tx, c.y + 70, { font: "big", scale: 2, color: INK12 });
-          const lines = wrapText(`Marina needs a hand fixing up her crafting dock. Finish her quest "Marina's Workshop" (bring her 5 Driftwood) and it opens up: rods, tackle, boat parts, tank gear and more!`, c.w - 360, "big");
+          const lines = wrapText(`Marina needs a hand fixing up her crafting dock. Finish her Chapter 2 quest "Marina's Workshop" (bring her 8 Driftwood and 3 Shells) and it opens up: rods, tackle, boat parts, tank gear and more!`, c.w - 360, "big");
           lines.forEach((l, i) => drawText(ctx2, l, tx, c.y + 110 + i * 15, { font: "big", color: INK_SOFT6 }));
-          const have = countItem(g.state, "driftwood");
-          drawText(ctx2, `Driftwood: ${Math.min(5, have)} / 5`, tx, c.y + 120 + lines.length * 15, { font: "big", color: have >= 5 ? OK2 : BAD2 });
+          [["driftwood", 8], ["shell", 3]].forEach(([id2, n2], i) => {
+            const have = countItem(g.state, id2);
+            drawText(ctx2, `${ITEMS[id2]?.name}: ${Math.min(n2, have)} / ${n2}`, tx, c.y + 120 + (lines.length + i) * 15, { font: "big", color: have >= n2 ? OK2 : BAD2 });
+          });
           if (g.ui.panels.quests && ui.button(ctx2, tx, c.y + c.h - 100, 200, 32, "Open Quests", { style: "orange", icon: "star" })) {
             ui.close(this.id);
             ui.open("quests");
           }
+          if (ui.button(ctx2, tx + 214, c.y + c.h - 100, 200, 32, "Workbench", { style: "aqua", icon: "arrow_l", tip: "Lab recipes you can already make" })) this.showMarina = false;
         }
         // ------------------------------------------------------------------ category tabs
         drawTabs(ctx2, ui, R4) {
           const st = this.game.state, t = this.t;
           const h = Math.min(56, Math.floor((R4.h - 4) / WS_CATS.length));
-          WS_CATS.forEach((cat, i) => {
+          if (this.limited) {
+            const r = { x: R4.x, y: R4.y + R4.h - 58, w: R4.w, h: 54 };
+            ctx2.drawImage(aeroCached(`wstab|${r.w}|${r.h}|purple`, () => aeroSurface(r.w, r.h, { tone: "purple", r: 9, gloss: 0.7, glossH: 22, rim: 0.9, glow: 0.6 })), r.x, r.y);
+            const lk = getUiIcon("lock");
+            if (lk) ctx2.drawImage(lk, Math.round(r.x + r.w / 2 - lk.width / 2), r.y + 12);
+            drawText(ctx2, "More", r.x + r.w / 2, r.y + r.h - 13, { font: "small", align: "center", color: "#ffffff" });
+            if (ui.hover(r)) ui.tip = "Rods, tackle, boat parts and tank gear: finish Marina's quest!";
+            if (ui.clicked(r)) {
+              this.showMarina = true;
+              this.game.audio.play("ui_click");
+            }
+          }
+          const cats = this.cats();
+          cats.forEach((cat, i) => {
             const y = R4.y + i * h, r = { x: R4.x, y, w: R4.w, h: h - 4 };
             const act = this.cat === cat.id, hov = ui.hover(r);
             const tone4 = act ? "orange" : hov ? "white" : "glass";
@@ -97670,7 +97737,7 @@ ${hearts} ${status}
             }
             const lbl = cat.short || cat.name;
             drawText(ctx2, lbl, r.x + r.w / 2, r.y + r.h - 11, { font: "small", align: "center", color: act ? "#ffffff" : INK12, shadow: act ? "#7a2a06" : null });
-            const n2 = recipesFor(st, cat.id).filter((rc) => wsUnlocked(st, rc) && wsCheck(st, rc).ok).length;
+            const n2 = recipesFor(st, cat.id).filter((rc) => (!this.limited || rc.lab) && !st.workshop.seen[rc.id] && wsUnlocked(st, rc) && wsCheck(st, rc).ok).length;
             if (n2) drawAeroBadge(ctx2, r.x + r.w + 2, r.y - 2, n2, t);
             if (hov) ui.tip = cat.name;
             if (ui.clicked(r) && !act) {
@@ -97690,7 +97757,7 @@ ${hearts} ${status}
           drawText(ctx2, cat?.name || "", R4.x + 10, y0, { font: "big", scale: 1, color: INK12 });
           y0 += 16;
           if (this.cat === "tackle" || this.cat === "rods" || this.cat === "upgrade") y0 = this.drawBench(ctx2, ui, { x: R4.x + 6, y: y0, w: R4.w - 12 }) + 4;
-          const list = recipesFor(st, this.cat).sort((a, b) => (wsUnlocked(st, b) ? 1 : 0) - (wsUnlocked(st, a) ? 1 : 0));
+          const list = recipesFor(st, this.cat).filter((rc) => !this.limited || rc.lab).sort((a, b) => (wsUnlocked(st, b) ? 1 : 0) - (wsUnlocked(st, a) ? 1 : 0));
           const TW2 = 74, TH2 = 82, gap = 6;
           const cols = Math.max(1, Math.floor((R4.w - 12 + gap) / (TW2 + gap)));
           const area = { x: R4.x + 6, y: y0, w: R4.w - 12, h: R4.y + R4.h - 6 - y0 };
@@ -97777,7 +97844,8 @@ ${hearts} ${status}
           if (ic) ctx2.drawImage(ic, R4.x + 6, R4.y + 6);
           const lv = rodLevel(st, rod.id);
           drawText(ctx2, rod.name, R4.x + 44, R4.y + 8, { font: "normal", color: "#ffffff", shadow: "#0a3e74" });
-          drawText(ctx2, lv ? "\u2605".repeat(lv) : "equipped", R4.x + 44, R4.y + 22, { font: "small", color: "#fff6b0", shadow: "#0a3e74" });
+          if (lv) for (let i = 0; i < lv; i++) ctx2.drawImage(partSprite("star", "#ffd23a", 1), R4.x + 44 + i * 7, R4.y + 21);
+          else drawText(ctx2, "equipped", R4.x + 44, R4.y + 22, { font: "small", color: "#fff6b0", shadow: "#0a3e74" });
           if (rod.perk) drawText(ctx2, PERKS[rod.perk]?.name || "", R4.x + 44, R4.y + 31, { font: "small", color: "#c8ffb0", shadow: "#0a3e74" });
           const sw = 38, x0 = R4.x + R4.w - TACKLE_SLOTS.length * (sw + 4) - 2;
           TACKLE_SLOTS.forEach((slot, i) => {
@@ -98043,13 +98111,17 @@ ${hearts} ${status}
                 this.fx.burst(cx + 10, cy + 10, 14, { kinds: ["spark", "spark", "star"], colors: ["#ffe27a", "#ffffff", "#ff9d2e"], speed: 220, speedMin: 60, g: 500, life: 0.6, up: 120, scale: 2 });
                 this.game.audio.play("click", { vol: 0.6, pitch: 0.7 + strike * 0.15 });
                 this.game.audio.play("coin_bounce", { vol: 0.3, pitch: 0.6 });
-                this.game.particles?.pixelBurst?.("spark", cx + 10, cy + 10, 6);
+                this.game.particles?.pixelBurst?.("spark", cx + 10, cy + 10, 6, { layer: "ui" });
               }
             }
             if (A2.t >= 0.9 && !A2.popped) {
               A2.popped = true;
               this.fx.burst(cx, cy, 30, { kinds: ["sparkle", "star", "confetti", "heart"], colors: ["#ffffff", "#ffe27a", "#8ae8ff", "#ff9ad0", "#8ae84a"], speed: 240, speedMin: 50, g: 160, life: 1.2, up: 80, scale: 2 });
               this.game.audio.play(A2.queued ? "ui_unlock" : "sparkle", { vol: 0.7 });
+              try {
+                this.game.particles?.[A2.queued ? "purchase" : "celebrate"]?.(cx, cy);
+              } catch {
+              }
             }
             if (A2.t >= 0.9 && A2.t < 2.2) {
               const txt = A2.queued ? "On the bench!" : "Crafted!";
@@ -98226,7 +98298,7 @@ ${hearts} ${status}
           const col = CHIP_COL[this.tier] || CHIP_COL.crate;
           this.fx.burst(x, y, 10 + power * 6, { kinds: ["chip", "chip", "spark"], colors: col, speed: 220, speedMin: 70, g: 520, life: 0.9, up: 120, scale: 2 });
           this.fx.burst(x, y, 4, { kinds: ["sparkle", "star"], colors: ["#ffffff", C4.glow], speed: 120, g: 60, life: 0.7, scale: 1 });
-          g.particles?.pixelBurst?.(perfect ? "star" : "spark", x, y, 6);
+          g.particles?.pixelBurst?.(perfect ? "star" : "spark", x, y, 6, { layer: "ui" });
           g.audio.play(this.prog >= 1 ? "eruption_boom" : "ice_crack", { vol: 0.55 + this.prog * 0.35, pitch: 0.8 + this.prog * 0.5 + Math.random() * 0.1 });
           if (perfect) {
             this.perfect++;
@@ -98290,7 +98362,11 @@ ${hearts} ${status}
           const col = CHIP_COL[this.tier] || CHIP_COL.crate;
           this.fx.burst(s.cx, lidY, 46, { kinds: ["chip", "chip", "shard"], colors: col, speed: 380, speedMin: 120, g: 600, life: 1.4, up: 160, scale: 2 });
           this.fx.burst(s.cx, lidY, 40, { kinds: ["sparkle", "star", "confetti", "heart"], colors: ["#ffffff", C4.glow, "#ffe27a", "#ff9ad0", "#8ae8ff", "#8ae84a"], speed: 300, speedMin: 60, g: 140, life: 1.8, up: 120, scale: 2 });
-          g.particles?.pixelBurst?.("confetti", s.cx, lidY, 30);
+          try {
+            if (g.particles?.chestOpen) g.particles.chestOpen(s.cx, lidY, this.tier === "orb" ? "legendary" : this.tier === "golden" ? "epic" : this.tier === "iron" ? "rare" : "uncommon");
+            else g.particles?.pixelBurst?.("confetti", s.cx, lidY, 30, { layer: "ui" });
+          } catch {
+          }
           const list = this.loot || [];
           const n2 = list.length, per = Math.min(n2, 9), rows = Math.ceil(n2 / per);
           const SW = 76, SH = 84;
@@ -98714,7 +98790,7 @@ ${hearts} ${status}
               f.done = true;
               g.audio.play("coin_collect", { vol: 0.4, pitch: 1 + Math.random() * 0.3 });
               this.fx.burst(f.x1, f.y1, 6, { kind: "star", colors: ["#ffffff", "#ffe27a"], speed: 90, g: 100, life: 0.5 });
-              g.particles?.pixelBurst?.("sparkle", f.x1, f.y1, 4);
+              g.particles?.pixelBurst?.("sparkle", f.x1, f.y1, 4, { layer: "ui" });
             }
           }
           if (this.flyers.length && this.flyers.every((f) => f.done)) {
@@ -102612,6 +102688,18 @@ void main() {
           if ((deep || biome === "abyss") && rng.chance(0.22 + ri * 0.1)) give("glow_bulb", 1);
           const local = BIOME_MAT[biome];
           if (local && local !== "glow_bulb" && rng.chance(0.1 + ri * 0.04)) give(local, 1);
+          let zone = null;
+          try {
+            zone = this.game.ocean?.depthZone?.()?.id || null;
+          } catch {
+            zone = null;
+          }
+          const zi = ["sunlit", "twilight", "midnight", "abyss"].indexOf(zone);
+          if (zi >= 1 && rng.chance(0.03 + zi * 0.025 + ri * 0.01)) {
+            const tier = zi >= 3 && rng.chance(0.25) ? "orb" : zi >= 2 && rng.chance(0.45) ? "golden" : "iron";
+            give("pkg_" + tier, 1);
+            setTimeout(() => this.game.toast?.("It was hugging a chest! Check your Satchel.", "star", 4), 1600);
+          }
           return out;
         }
       };

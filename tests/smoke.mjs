@@ -378,6 +378,33 @@ for (const id of ['lab', 'journal', 'inventory', 'wardrobe', 'map', 'settings', 
   await wait(200);
 }
 
+// ---------------------------------------------------------------- [phase8:prog] Workshop, chest minigame, destinations
+if (await G('!!(g.ui.panels.workshop && g.ui.panels.crate && g.dest)')) {
+  await G(`((g.state.workshop ||= {}).unlocked = true, g.ui.open('workshop', { cat: 'tackle' }))`);
+  await wait(800);
+  check('Workshop opens', await G(`g.ui.isOpen('workshop')`));
+  await shot('17_panel_workshop.png');
+  await G(`g.ui.close('workshop')`);
+  await G(`(g.state.inventory.packages.push({ uid: 'smoke', tier: 'crate', from: null, at: 1 }), g.ui.open('crate', { uid: 'smoke' }))`);
+  await until(() => window.FISHTOP.ui.panels.crate.phase === 'play', 6000);
+  for (let i = 0; i < 16; i++) {
+    const sp = await G(`(() => { const p = g.ui.panels.crate; const s = p.phase === 'play' && p.spots[0]; return s ? [Math.round(s.x), Math.round(s.y)] : null; })()`);
+    if (!sp) break;
+    await clickL(sp[0], sp[1]);
+    await until((n) => window.FISHTOP.ui.panels.crate.hits > n || window.FISHTOP.ui.panels.crate.phase !== 'play', 3000, i);
+  }
+  check('chest cracked open by tapping its weak points', await until(() => window.FISHTOP.ui.panels.crate.phase === 'loot', 8000), `hits ${await G('g.ui.panels.crate.hits')}`);
+  check('chest loot granted', (await G(`(g.ui.panels.crate.loot || []).length`)) > 0 && !(await G(`g.state.inventory.packages.some((p) => p.uid === 'smoke')`)));
+  await shot('17_chest_open.png');
+  await G(`g.ui.close('crate')`);
+  await wait(300);
+  await G(`g.dest.sail('workshop')`);
+  check('sailed to the Workshop dock', await until(() => window.FISHTOP.dest.phase === 'docked' && window.FISHTOP.ui.isOpen('workshop'), 12000), String(await G('g.dest.phase')));
+  await shot('17_dest_workshop.png');
+  await G(`(g.ui.close('workshop'), g.dest.leave())`);
+  check('set sail back to the ocean', await until(() => !window.FISHTOP.dest.active, 8000));
+}
+
 // ---------------------------------------------------------------- the seven oceans
 const OCEANS = ['shallows', 'fjord', 'junkyard', 'metropolis', 'volcano', 'abyss', 'oscean'];
 await G(`(g.state.coins += 99999, OCEANS => { for (const b of OCEANS) if (!g.state.unlockedBiomes.includes(b)) g.state.unlockedBiomes.push(b); })(${JSON.stringify(OCEANS)})`);

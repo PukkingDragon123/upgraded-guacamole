@@ -1717,13 +1717,26 @@ function raySphere(ray, c, r) {
 }
 function lerpAngle(a, b, k) { const d = ((b - a + Math.PI) % TAU + TAU) % TAU - Math.PI; return a + d * k; }
 
+// the snail janitor as a little hand-drawn pixel sprite (phase 8: no drawn circles)
+const SNAIL = [
+  '....aaa....',
+  '..abbbba...',
+  '.abccccba..',
+  '.abcbbcba..',
+  '.abcbdcba.e',
+  '.abccccba.e',
+  'ffabbbbaffg',
+  'fffffffffff',
+];
+const SNAIL_COL = { a: '#1f6a9a', b: '#3ac4f8', c: '#bff4ff', d: '#ffffff', e: '#7ad83a', f: '#9be84a', g: '#ffffff' };
 function drawSnail(ctx, x, y, s, dir, t) {
-  x = Math.round(x); y = Math.round(y);
-  const r = Math.max(2, Math.round(s * 0.45));
-  ctx.fillStyle = '#9be84a';
-  ctx.fillRect(x - Math.round(s * 0.6), y, Math.round(s * 1.2), Math.max(1, Math.round(s * 0.25)));
-  ctx.fillRect(x + dir * Math.round(s * 0.5), y - Math.round(s * 0.35), 1, Math.round(s * 0.35));
-  ctx.beginPath(); ctx.arc(x - dir * Math.round(s * 0.1), y - r * 0.6, r, 0, TAU); ctx.fillStyle = '#3ac4f8'; ctx.fill();
-  ctx.beginPath(); ctx.arc(x - dir * Math.round(s * 0.1), y - r * 0.6, r * 0.5, 0, TAU); ctx.fillStyle = '#ffffff'; ctx.fill();
-  ctx.fillStyle = '#ffffff'; ctx.fillRect(x + dir * Math.round(s * 0.5), y - Math.round(s * 0.4) + (Math.sin(t * 3) > 0.9 ? 1 : 0), 1, 1);
+  const k = Math.max(1, Math.round(s / 8));
+  const w = SNAIL[0].length, h = SNAIL.length;
+  const x0 = Math.round(x - (w * k) / 2), y0 = Math.round(y - h * k) + (Math.sin(t * 3) > 0.92 ? -k : 0);
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+    const ch = SNAIL[j][dir >= 0 ? i : w - 1 - i];
+    if (ch === '.') continue;
+    ctx.fillStyle = SNAIL_COL[ch];
+    ctx.fillRect(x0 + i * k, y0 + j * k, k, k);
+  }
 }

@@ -943,7 +943,7 @@ export class Particles {
       switch (p.kind) {
         case 'px': { // [phase8:ui] hand-drawn sprite sheet particle
           if (p.blink && k > 0.72 && Math.floor(p.t * 22) % 2) break;
-          const F = pxFrames(p.sheet, p.ramp, p.sz);
+          const F = p.F || (p.F = pxFrames(p.sheet, p.ramp, p.sz));
           let fi;
           if (p.anim === 'life') fi = Math.min(F.length - 1, Math.floor(k * F.length));
           else if (p.anim === 'loop') fi = Math.floor(p.t * p.fps + p.fr) % F.length;
@@ -973,7 +973,7 @@ export class Particles {
           break;
         }
         case 'sparkle': { // [phase8:ui] animated pixel sparkle (grow -> cross -> fade)
-          const F = pxFrames('sparkle', rampFor(p.color, 'gold'), p.big === false ? 0 : 1);
+          const F = p.F || (p.F = pxFrames('sparkle', rampFor(p.color, 'gold'), p.big === false ? 0 : 1));
           const c = F[Math.min(F.length - 1, Math.floor(k * F.length))];
           ctx.globalAlpha = Math.min(1, a * 1.4);
           ctx.drawImage(c, x - (c.width >> 1), y - (c.height >> 1));
@@ -983,7 +983,7 @@ export class Particles {
         case 'star': { // [phase8:ui] cute outlined pixel stars instead of plus shapes
           if (k > 0.75 && Math.floor(p.t * 22) % 2) break;
           const sz = p.size;
-          const F = sz <= 1 ? pxFrames('sparkle', rampFor(p.color, 'gold'), 0) : pxFrames('star', rampFor(p.color, 'gold'), sz >= 3 ? 1 : 0);
+          const F = p.F || (p.F = sz <= 1 ? pxFrames('sparkle', rampFor(p.color, 'gold'), 0) : pxFrames('star', rampFor(p.color, 'gold'), sz >= 3 ? 1 : 0));
           const c = sz <= 1 ? F[Math.min(F.length - 1, Math.floor(k * F.length))] : F[Math.sin(p.t * 16 + p.spin) > 0.5 ? 1 : 0];
           ctx.drawImage(c, x - (c.width >> 1), y - (c.height >> 1));
           break;
@@ -1077,7 +1077,7 @@ export class Particles {
           break;
         }
         case 'scale': { // [phase8:ui] flipping pixel fish scale
-          const F = pxFrames('scale', rampFor(p.color, 'aqua'), 1);
+          const F = p.F || (p.F = pxFrames('scale', rampFor(p.color, 'aqua'), 1));
           const c = F[Math.floor(p.t * 10 + p.ph) % F.length];
           ctx.globalAlpha = a;
           ctx.drawImage(c, x - (c.width >> 1), y - (c.height >> 1));
@@ -1085,7 +1085,7 @@ export class Particles {
           break;
         }
         case 'confetti': { // [phase8:ui] outlined pixel confetti chips flipping in 3D
-          const F = pxFrames('confetti', rampFor(p.color, 'pink'), 1);
+          const F = p.F || (p.F = pxFrames('confetti', rampFor(p.color, 'pink'), 1));
           const c = F[Math.floor(Math.abs(p.spin) * 1.3) % F.length];
           ctx.globalAlpha = a;
           ctx.drawImage(c, x - (c.width >> 1), y - (c.height >> 1));
@@ -1168,7 +1168,7 @@ export class Particles {
           break;
         }
         case 'leaf': { // [phase8:ui] shaded pixel leaf fluttering through rotation frames
-          const F = pxFrames('leaf', rampFor(p.color, 'leaf'), 0);
+          const F = p.F || (p.F = pxFrames('leaf', rampFor(p.color, 'leaf'), 0));
           const c = F[Math.floor(Math.abs(p.spin)) % F.length];
           ctx.globalAlpha = a;
           ctx.drawImage(c, x - (c.width >> 1), y - (c.height >> 1));

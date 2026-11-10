@@ -119,7 +119,7 @@ for (const { id: slot, name: slotName } of BOAT_PART_SLOTS) {
     const items = { ...c[1] };
     items[SLOT_MAT[slot]] = (items[SLOT_MAT[slot]] || 0) + 2;
     const tint = (p.color || PART_TINT[p.id] || '#2fb8e8').replace('#', '');
-    add({ id: `ws_boat_${slot}_${p.id}`, cat: 'boat', name: `${p.name} ${slotName}`, rarity: p.rarity, desc: `A ${slotName.toLowerCase()} for your boat. Equip it in the Wardrobe's Boat tab.`, icon: `pix:${SLOT_ART[slot]}#${tint}`, cost: { aero: c[0], items }, time: c[2], out: { type: 'boatpart', slot, id: p.id }, req: c[3] });
+    add({ id: `ws_boat_${slot}_${p.id}`, cat: 'boat', name: new RegExp(slotName + '$', 'i').test(p.name) ? p.name : `${p.name} ${slotName}`, rarity: p.rarity, desc: `A ${slotName.toLowerCase()} for your boat. Equip it in the Wardrobe's Boat tab.`, icon: `pix:${SLOT_ART[slot]}#${tint}`, cost: { aero: c[0], items }, time: c[2], out: { type: 'boatpart', slot, id: p.id }, req: c[3] });
   }
 }
 
@@ -146,7 +146,7 @@ function upgradeRecipe(state, rod) {
   if (next >= 4) items.pearl = (items.pearl || 0) + (next - 3);
   if (next >= 5 && t >= 6) items.abyss_crystal = (items.abyss_crystal || 0) + 1;
   return {
-    id: 'ws_up_' + rod.id, cat: 'upgrade', name: `${rod.name} ${'★'.repeat(Math.min(next, MAX_ROD_LEVEL))}`, rarity: rod.rarity, maxed: lv >= MAX_ROD_LEVEL,
+    id: 'ws_up_' + rod.id, cat: 'upgrade', name: lv >= MAX_ROD_LEVEL ? `${rod.name} +${MAX_ROD_LEVEL}` : `${rod.name} +${next}`, rarity: rod.rarity, maxed: lv >= MAX_ROD_LEVEL,
     desc: lv >= MAX_ROD_LEVEL ? 'Fully tuned. A masterpiece.' : `Tune it to level ${next}: +6% lure, luck and control, +10% strength, more resilience.`,
     icon: 'rod:' + rod.id, cost: { aero: Math.round(25 * (t + 1) * Math.pow(next, 1.45)), items }, time: 8 + next * 8 + t * 4, out: { type: 'rodlevel', id: rod.id, lv: next }, req: [{ starter: true }], dynamic: true,
   };
@@ -249,6 +249,7 @@ export function wsCraft(game, id) {
     if (res.ok) { const W = ensureWorkshop(st); W.made[id] = (W.made[id] || 0) + 1; W.total++; }
     return { ...res, queued: false };
   }
+  if (!workshopUnlocked(st)) return { ok: false, reason: 'Finish Marina\'s quest to open the Workshop.' };
   const c = wsCheck(st, r);
   if (!c.ok) return { ok: false, reason: c.reason };
   st.coins -= c.aero.need;

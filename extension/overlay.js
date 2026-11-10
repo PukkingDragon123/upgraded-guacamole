@@ -16803,7 +16803,36 @@ kmlmk..
     cache2.set(key, c);
     return c;
   }
-  var ramp5, LX, LY, Pix, S6, HOOK2, ART2, PERK_ORN, RODS_BY_ID, cache2, PIX_IDS;
+  function rodPix(rod, scale = 1) {
+    if (!rod) return null;
+    const key = "rodobj:" + rod.id + "|" + scale;
+    let c = cache2.get(key);
+    if (!c) {
+      c = rodArt(rod.look, rod.perk).canvas(scale);
+      cache2.set(key, c);
+    }
+    return c;
+  }
+  function partSprite(kind, color = "#ffe27a", scale = 1) {
+    const key = kind + color + scale;
+    let c = pcache.get(key);
+    if (c) return c;
+    const rows = PART[kind] || PART.spark;
+    const r = ramp5(color);
+    const pal2 = { o: r[1], h: r[2], w: r[4] };
+    const w = rows[0].length, h = rows.length;
+    c = makeCanvas(w * scale, h * scale);
+    const g = ctxOf(c);
+    rows.forEach((row2, y) => [...row2].forEach((ch, x) => {
+      if (pal2[ch]) {
+        g.fillStyle = pal2[ch];
+        g.fillRect(x * scale, y * scale, scale, scale);
+      }
+    }));
+    pcache.set(key, c);
+    return c;
+  }
+  var ramp5, LX, LY, Pix, S6, HOOK2, ART2, PERK_ORN, RODS_BY_ID, cache2, PIX_IDS, PART, pcache;
   var init_pixart = __esm({
     "src/build/pixart.js"() {
       init_canvas();
@@ -17001,12 +17030,23 @@ kmlmk..
         },
         fish_scale() {
           const p = new Pix(S6, S6);
-          p.ball(8, 9, 6, "#5fd8e8", 6);
-          for (let y = 0; y < 4; y++) for (let x = 0; x < S6; x++) p.set(x, y, null);
-          p.poly([[2, 9], [8, 2], [14, 9]], "#7ae8f0");
-          p.line(4, 8, 8, 4, "#c8fcff").line(8, 4, 12, 8, "#3aa8c8").line(5, 11, 11, 11, "#a8f0ff");
-          p.glint(6, 6);
-          return p.outline();
+          p.ascii([
+            "......oo......",
+            "....oo44oo....",
+            "...o344w43o...",
+            "..o34444w43o..",
+            ".o3444444443o.",
+            ".o3p44444443o.",
+            "o32p4444444p3o",
+            "o322333333223o",
+            "o32p4444444p3o",
+            ".o3444444443o.",
+            ".o2333333332o.",
+            "..o22pppp22o..",
+            "...oo2222oo...",
+            ".....oooo....."
+          ], { o: "#1a6a8a", 2: "#2f9ac8", 3: "#4cc4e8", 4: "#8eeaff", w: "#ffffff", p: "#ffb0e0" }, 1, 1);
+          return p;
         },
         fin_ribbon() {
           const p = new Pix(S6, S6);
@@ -17103,11 +17143,15 @@ kmlmk..
         // ---------------- boat parts (tinted by recipe)
         boat_hull(col = "#2fb8e8") {
           const p = new Pix(S6, S6);
-          p.box(3, 6, 12, 14, "#c8d2e0");
-          p.box(4, 4, 11, 6, col);
-          p.bar(3, 5, 1, 9, 0.6, col);
-          p.bar(12, 7, 12, 11, 1, col);
-          p.line(3, 5, 12, 5, mix(col, "#ffffff", 0.6));
+          for (let a = 0; a <= 10; a++) {
+            const t = Math.PI * (a / 10);
+            p.set(Math.round(8 - Math.cos(t) * 6), Math.round(5 - Math.sin(t) * 4), "#97a2b8");
+          }
+          p.box(2, 5, 13, 14, "#c8d2e0");
+          p.box(2, 5, 13, 7, col);
+          p.bar(5, 7, 5, 11, 0.8, col);
+          p.bar(10, 7, 10, 9, 0.8, col);
+          p.glint(3, 6).glint(4, 9);
           return p.outline();
         },
         boat_sail(col = "#ffffff") {
@@ -17298,6 +17342,19 @@ kmlmk..
       RODS_BY_ID = {};
       cache2 = /* @__PURE__ */ new Map();
       PIX_IDS = new Set(Object.keys(ART2));
+      PART = {
+        star: ["..o..", ".oho.", "ohwho", ".oho.", "..o.."],
+        sparkle: ["...h...", "...h...", "..hwh..", "hhwwwhh", "..hwh..", "...h...", "...h..."],
+        spark: [".h.", "hwh", ".h."],
+        chip: ["oo", "ho"],
+        heart: [".oo.oo.", "ohhohho", "ohwhhho", ".ohhho.", "..oho..", "...o..."],
+        coin: [".ooo.", "ohwho", "ohhho", "ohhho", ".ooo."],
+        confetti: ["hh", "oo"],
+        puff: [".hhh.", "hwwwh", "hwwhh", ".hhh."],
+        shard: ["..w", ".hh", "ho."]
+      };
+      pcache = /* @__PURE__ */ new Map();
+      if (typeof window !== "undefined") window.__pixart = { pixIcon, rodPix, PIX_IDS, partSprite };
     }
   });
 
@@ -32117,7 +32174,7 @@ kmlmk..
         switch (p.kind) {
           case "px": {
             if (p.blink && k > 0.72 && Math.floor(p.t * 22) % 2) break;
-            const F = pxFrames(p.sheet, p.ramp, p.sz);
+            const F = p.F || (p.F = pxFrames(p.sheet, p.ramp, p.sz));
             let fi;
             if (p.anim === "life") fi = Math.min(F.length - 1, Math.floor(k * F.length));
             else if (p.anim === "loop") fi = Math.floor(p.t * p.fps + p.fr) % F.length;
@@ -32151,7 +32208,7 @@ kmlmk..
             break;
           }
           case "sparkle": {
-            const F = pxFrames("sparkle", rampFor(p.color, "gold"), p.big === false ? 0 : 1);
+            const F = p.F || (p.F = pxFrames("sparkle", rampFor(p.color, "gold"), p.big === false ? 0 : 1));
             const c = F[Math.min(F.length - 1, Math.floor(k * F.length))];
             ctx2.globalAlpha = Math.min(1, a * 1.4);
             ctx2.drawImage(c, x - (c.width >> 1), y - (c.height >> 1));
@@ -32161,7 +32218,7 @@ kmlmk..
           case "star": {
             if (k > 0.75 && Math.floor(p.t * 22) % 2) break;
             const sz = p.size;
-            const F = sz <= 1 ? pxFrames("sparkle", rampFor(p.color, "gold"), 0) : pxFrames("star", rampFor(p.color, "gold"), sz >= 3 ? 1 : 0);
+            const F = p.F || (p.F = sz <= 1 ? pxFrames("sparkle", rampFor(p.color, "gold"), 0) : pxFrames("star", rampFor(p.color, "gold"), sz >= 3 ? 1 : 0));
             const c = sz <= 1 ? F[Math.min(F.length - 1, Math.floor(k * F.length))] : F[Math.sin(p.t * 16 + p.spin) > 0.5 ? 1 : 0];
             ctx2.drawImage(c, x - (c.width >> 1), y - (c.height >> 1));
             break;
@@ -32256,7 +32313,7 @@ kmlmk..
             break;
           }
           case "scale": {
-            const F = pxFrames("scale", rampFor(p.color, "aqua"), 1);
+            const F = p.F || (p.F = pxFrames("scale", rampFor(p.color, "aqua"), 1));
             const c = F[Math.floor(p.t * 10 + p.ph) % F.length];
             ctx2.globalAlpha = a;
             ctx2.drawImage(c, x - (c.width >> 1), y - (c.height >> 1));
@@ -32264,7 +32321,7 @@ kmlmk..
             break;
           }
           case "confetti": {
-            const F = pxFrames("confetti", rampFor(p.color, "pink"), 1);
+            const F = p.F || (p.F = pxFrames("confetti", rampFor(p.color, "pink"), 1));
             const c = F[Math.floor(Math.abs(p.spin) * 1.3) % F.length];
             ctx2.globalAlpha = a;
             ctx2.drawImage(c, x - (c.width >> 1), y - (c.height >> 1));
@@ -32352,7 +32409,7 @@ kmlmk..
             break;
           }
           case "leaf": {
-            const F = pxFrames("leaf", rampFor(p.color, "leaf"), 0);
+            const F = p.F || (p.F = pxFrames("leaf", rampFor(p.color, "leaf"), 0));
             const c = F[Math.floor(Math.abs(p.spin)) % F.length];
             ctx2.globalAlpha = a;
             ctx2.drawImage(c, x - (c.width >> 1), y - (c.height >> 1));

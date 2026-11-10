@@ -103,7 +103,7 @@ export class ChestPanel {
     const col = CHIP_COL[this.tier] || CHIP_COL.crate;
     this.fx.burst(x, y, 10 + power * 6, { kinds: ['chip', 'chip', 'spark'], colors: col, speed: 220, speedMin: 70, g: 520, life: 0.9, up: 120, scale: 2 });
     this.fx.burst(x, y, 4, { kinds: ['sparkle', 'star'], colors: ['#ffffff', C.glow], speed: 120, g: 60, life: 0.7, scale: 1 });
-    g.particles?.pixelBurst?.(perfect ? 'star' : 'spark', x, y, 6);
+    g.particles?.pixelBurst?.(perfect ? 'star' : 'spark', x, y, 6, { layer: 'ui' });
     g.audio.play(this.prog >= 1 ? 'eruption_boom' : 'ice_crack', { vol: 0.55 + this.prog * 0.35, pitch: 0.8 + this.prog * 0.5 + Math.random() * 0.1 });
     if (perfect) { this.perfect++; this.pop(x, y - 18, 'PERFECT!', '#ffe27a'); g.audio.play('timing_perfect', { vol: 0.6 }); }
     if (this.prog >= 1) this.startBurst();
@@ -163,7 +163,7 @@ export class ChestPanel {
     const col = CHIP_COL[this.tier] || CHIP_COL.crate;
     this.fx.burst(s.cx, lidY, 46, { kinds: ['chip', 'chip', 'shard'], colors: col, speed: 380, speedMin: 120, g: 600, life: 1.4, up: 160, scale: 2 });
     this.fx.burst(s.cx, lidY, 40, { kinds: ['sparkle', 'star', 'confetti', 'heart'], colors: ['#ffffff', C.glow, '#ffe27a', '#ff9ad0', '#8ae8ff', '#8ae84a'], speed: 300, speedMin: 60, g: 140, life: 1.8, up: 120, scale: 2 });
-    g.particles?.pixelBurst?.('confetti', s.cx, lidY, 30);
+    try { if (g.particles?.chestOpen) g.particles.chestOpen(s.cx, lidY, this.tier === 'orb' ? 'legendary' : this.tier === 'golden' ? 'epic' : this.tier === 'iron' ? 'rare' : 'uncommon'); else g.particles?.pixelBurst?.('confetti', s.cx, lidY, 30, { layer: 'ui' }); } catch { /* optional */ }
     // the loot flies out and lands in slots
     const list = this.loot || [];
     const n = list.length, per = Math.min(n, 9), rows = Math.ceil(n / per);
@@ -531,7 +531,7 @@ export class ChestPanel {
       const e = ease.inCubic(k);
       const x = lerp(f.x0, f.x1, e), y = lerp(f.y0, f.y1, e) - Math.sin(k * Math.PI) * 80;
       this.drawLootIcon(ctx, f.c, x, y + 14, 1 - k * 0.5);
-      if (k >= 1 && !f.done) { f.done = true; g.audio.play('coin_collect', { vol: 0.4, pitch: 1 + Math.random() * 0.3 }); this.fx.burst(f.x1, f.y1, 6, { kind: 'star', colors: ['#ffffff', '#ffe27a'], speed: 90, g: 100, life: 0.5 }); g.particles?.pixelBurst?.('sparkle', f.x1, f.y1, 4); }
+      if (k >= 1 && !f.done) { f.done = true; g.audio.play('coin_collect', { vol: 0.4, pitch: 1 + Math.random() * 0.3 }); this.fx.burst(f.x1, f.y1, 6, { kind: 'star', colors: ['#ffffff', '#ffe27a'], speed: 90, g: 100, life: 0.5 }); g.particles?.pixelBurst?.('sparkle', f.x1, f.y1, 4, { layer: 'ui' }); }
     }
     if (this.flyers.length && this.flyers.every((f) => f.done)) { this.flyers = []; this.afterCollect(); return; }
     // bonus banner

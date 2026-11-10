@@ -357,3 +357,17 @@ that feels hand-made."
   resolution) with a soft-body jiggle (squash spring + row ripple) in `drawSeal`; same anims / `drawNPC(ctx, 'seal', ...)`.
   Dev: `node tools/build.mjs --dev lowpoly` -> `dev/lowpoly.html?mode=gallery&page=N | giants | vg | seal | icons | scene |
   turn&ids=puffer | perf`.
+- [phase8:ui] Pixel-art FX + UI API (UI & Particles agent):
+  - `game.particles` (src/gfx/particles.js): `pixelBurst(kind, x, y, n, opts)` with kinds sparkle star heart drop splash
+    foam puff bubble scale coin aero confetti ribbon dust smoke leaf petal zap spark impact pop note shard wave;
+    combos `impact(x, y, size 0|1|2)`, `poof`, `pixelSplash`, `wavelets`, `hearts`, `zapBurst`, `celebrate`, `uiClick`,
+    `purchase`, `unlock`, `levelUp`, `chestOpen(x, y, rarity)`, `catchBurst(x, y, rarity)`. opts.layer defaults to 'fg'
+    for bursts and 'ui' for the UI combos (pass `{layer:'fg'}` on a particle system that only draws 'fg').
+    ring / ripples / shockwave / ringWave (and raw `{kind:'ring'}`) now emit pixel effects: never draw expanding circles.
+  - Sprites: src/gfx/pxsprites.js (`pxFrames(name, ramp, size)`, `RAMPS`, `pixelBubble(r)`, `pixelCloud(w)`).
+  - Items: src/build/itempix.js hand-made 24 px pixel art for the material/sample/egg/Aero/satchel/scroll art ids;
+    `itemSprite()` returns it automatically (`{voxel:true}` forces the old model). Packages stay voxel.
+  - UI: `drawTitle(ctx, text, x, y, {scale})` (Alagard titles), `drawPixelBrackets` / `drawFocusBrackets` (selection /
+    'look here' markers instead of rings), pixel-styled `aeroSurface` (banded dither + hard gloss + bevel; `smooth:true`
+    opts out). Text: while UI size is Big/Huge the 'small' face renders with the 7 px glyphs in capitals
+    (`faceOf`, `setTextBump` in font.js); measure with measureText / lineHeight rather than hard-coded 7 px rows.
