@@ -82,6 +82,7 @@ export function voxelizeParts(parts, vs, o = {}) {
   STAT.cells += N;
   // material per class (the options of the first part of that class)
   const mats = {};
+  const dens = o.density ?? 1.8; // surface samples per voxel along a triangle edge
   // ---- surface sampling
   for (const p of parts) {
     const d = p.mesh?.data;
@@ -100,7 +101,7 @@ export function voxelizeParts(parts, vs, o = {}) {
       const e1 = Math.max(Math.abs(bx - ax), Math.abs(by - ay), Math.abs(bz - az));
       const e2 = Math.max(Math.abs(cx - ax), Math.abs(cy - ay), Math.abs(cz - az));
       const e3 = Math.max(Math.abs(cx - bx), Math.abs(cy - by), Math.abs(cz - bz));
-      const m = Math.max(1, Math.ceil(Math.max(e1, e2, e3) * 1.8));
+      const m = Math.max(1, Math.ceil(Math.max(e1, e2, e3) * dens));
       const im = 1 / m;
       STAT.samples += (m + 1) * (m + 2) / 2;
       for (let a = 0; a <= m; a++) {

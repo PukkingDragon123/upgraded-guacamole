@@ -357,6 +357,14 @@ that feels hand-made."
   resolution) with a soft-body jiggle (squash spring + row ripple) in `drawSeal`; same anims / `drawNPC(ctx, 'seal', ...)`.
   Dev: `node tools/build.mjs --dev lowpoly` -> `dev/lowpoly.html?mode=gallery&page=N | giants | vg | seal | icons | scene |
   turn&ids=puffer | perf`.
+- Creatures remake (phase 8b): solid creatures (realvox SOLIDS) are tessellated into ~2-voxel facets (per-face colour
+  = near per-voxel detail; `real.voxK` raises a species' voxel count) with superellipsoid / warp primitives and natural
+  voxel eyes (`natEye`). Rebuilt anatomy: crabs (granular carapace with grooves, eyestalks, jointed chelipeds,
+  4 pairs of jointed walking legs in a tetrapod gait), seahorse (head + snout + coronet, ringed plates, coiled tail),
+  jellyfish (glassy bell, lappets, frilly oral arms, long tentacles), dumbo octopus / vampire squid (webbed umbrella),
+  Wakka chomper = blown-up spiny pufferfish with a chomping beak. Fish-plan: puffer archetype (blunt head, beak,
+  round spiny ball when inflated), flatfish (bulging eyes, opaque fringe), mola (tall fleshy fins, scalloped
+  'clavus' tail type), globular anglers with visible teeth.
 - [phase8:ui] Pixel-art FX + UI API (UI & Particles agent):
   - `game.particles` (src/gfx/particles.js): `pixelBurst(kind, x, y, n, opts)` with kinds sparkle star heart drop splash
     foam puff bubble scale coin aero confetti ribbon dust smoke leaf petal zap spark impact pop note shard wave;

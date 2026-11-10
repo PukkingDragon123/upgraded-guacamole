@@ -4973,20 +4973,6 @@ void main() {
         bot: (u) => lerp(b0(u), Math.min(b0(u), -R4 * Math.sqrt(Math.max(0, 1 - ((u - 0.45) / 0.55) ** 2)) - 0.02), infl)
       };
     }
-    if (infl > 0) {
-      D = lerp(D, 0.86, infl);
-      up = lerp(up, 0.5, infl);
-      at2 = lerp(at2, 0.46, infl);
-      atB = lerp(atB, 0.48, infl);
-      ped = lerp(ped, 0.1, infl);
-      fore = lerp(fore, 2.6, infl);
-      chin = lerp(chin, 2.6, infl);
-      back = lerp(back, 0.7, infl);
-      backB = back;
-      tip = lerp(tip, 0, infl);
-      hump *= 1 - infl;
-      sag *= 1 - infl;
-    }
     const Dt = D * up, Db = D * (1 - up);
     const pt = pc + D * ped * 0.5, pb = pc - D * ped * 0.5;
     const topF = (u) => {
@@ -5011,6 +4997,14 @@ void main() {
       }
       return y - sag * D * Math.sin(Math.PI * clamp01((u - 0.1) / 0.75));
     };
+    if (infl > 0) {
+      const ball2 = (u) => 0.43 * Math.sqrt(Math.max(0, 1 - ((u - 0.47) / 0.47) ** 2));
+      const yc = pc * (1 - infl);
+      return {
+        top: (u) => lerp(topF(u), Math.max(topF(u), yc + ball2(u)), infl),
+        bot: (u) => lerp(botF(u), Math.min(botF(u), yc - ball2(u)), infl)
+      };
+    }
     return { top: topF, bot: botF };
   }
   function widthOf(B2, infl) {
@@ -5019,7 +5013,7 @@ void main() {
     if (B2.wid) f = knotFn(B2.wid);
     else f = (u) => u < at2 ? wt + (W10 - wt) * (1 - Math.pow(1 - u / at2, e)) : pw + (W10 - pw) * Math.pow(0.5 + 0.5 * Math.cos(Math.PI * (u - at2) / (1 - at2)), B2.wBack ?? 0.9);
     if (!infl) return f;
-    return (u) => lerp(f(u), Math.max(f(u), 0.42 * Math.sqrt(Math.max(0, 1 - ((u - 0.46) / 0.56) ** 2))), infl);
+    return (u) => lerp(f(u), Math.max(f(u), 0.42 * Math.sqrt(Math.max(0, 1 - ((u - 0.47) / 0.5) ** 2))), infl);
   }
   function fishModel(c, infl = 0) {
     const key = Math.round(infl * 12);
@@ -5709,6 +5703,9 @@ void main() {
         case "round":
           R4 = len * (1.02 - 0.28 * s * s) / Math.cos(th * 0.5);
           break;
+        case "clavus":
+          R4 = len * (1 - 0.3 * s * s) * (1 + 0.07 * Math.cos(t * (tf.lobes ?? 9) * TAU2)) / Math.cos(th * 0.3);
+          break;
         case "fan":
           R4 = len * (1.05 - 0.22 * s * s + 0.06 * Math.sin(t * 40));
           break;
@@ -5788,28 +5785,6 @@ void main() {
     }
     return [Tx, Ty];
   }
-  function realEyeColor(e, dx, dy, dz, g) {
-    const cosA = dx * g[0] + dy * g[1] + dz * g[2];
-    if (cosA <= 0.05) return [e._rim || 4280297520, R_PUPIL, 0];
-    const rho = Math.sqrt(Math.max(0, 1 - cosA * cosA));
-    const pr = e.pupil ?? 0.52;
-    if (!e._iris) {
-      const ir = hexRGB2(e.iris || "#c8a850");
-      e._iris = [packRGB2(tone3([...ir], -0.35)), packRGB2(ir), packRGB2(tone3([...ir], 0.28)), packRGB2(tone3([...ir], 0.5))];
-      e._pup = packRGB2(hexRGB2(e.pupilCol || "#06080e"));
-      e._rim = packRGB2(hexRGB2(e.rim || "#141820"));
-    }
-    if (e.glow && rho < pr) return [packRGB2(hexRGB2(e.glow)), R_EYE, 1];
-    if (rho < pr) return [e._pup, R_PUPIL, 0];
-    if (rho < pr + 0.06) return [e._iris[0], R_EYE, 0];
-    if (rho < 0.88) {
-      const k = (rho - pr) / (0.88 - pr);
-      const up = dy - g[1] * cosA;
-      if (up > 0.35 && k > 0.3) return [e._iris[0], R_EYE, 0];
-      return [k < 0.45 ? e._iris[2] : k < 0.8 ? e._iris[1] : e._iris[3], R_EYE, 0];
-    }
-    return [e._rim, R_PUPIL, 0];
-  }
   function realGeom(c, s = 1, infl = 0) {
     if (c.real.plan === "solid") {
       const E = solidExtents(c);
@@ -5848,25 +5823,61 @@ void main() {
     p._ext = [0, 1, 2].map((j) => Math.hypot(p.r[0] * e0[j], p.r[1] * e1[j], p.r[2] * e2[j]));
     return p._ext;
   }
-  function eyePrim(sol, c, rad, n2, iris = "#c8a050", o = {}) {
-    const e = { iris, pupil: o.pupil ?? 0.55 };
+  function natEye(sol, c, rad, n2, iris = "#c8a050", o = {}) {
     const g = vnorm(...n2);
-    sol.ell(c, [rad, rad, rad], {
-      role: R_EYE,
-      col: (q) => {
-        const l = Math.hypot(q[0], q[1], q[2]) || 1;
-        const [col] = realEyeColor(e, q[0] / l, q[1] / l, q[2] / l, g);
-        const h = (q[0] * (g[0] + 0.3) + q[1] * (g[1] + 0.55) + q[2] * (g[2] + 0.25)) / l;
-        if (h > 1.05 && l > 0.7 && rad * 2 > 1.5) return 4294967295;
-        return col;
-      },
-      roleAt: (q) => {
-        const l = Math.hypot(q[0], q[1], q[2]) || 1;
-        const h = (q[0] * (g[0] + 0.3) + q[1] * (g[1] + 0.55) + q[2] * (g[2] + 0.25)) / l;
-        return h > 1.05 && l > 0.7 ? R_SPEC : R_EYE;
-      },
-      glow: !!o.glow
+    const ir = hexRGB2(iris);
+    sol.ell(c, [rad, rad, rad], { col: (q) => {
+      const d = (q[0] * g[0] + q[1] * g[1] + q[2] * g[2]) / (Math.hypot(q[0], q[1], q[2]) || 1);
+      return packRGB2(d > 0.2 ? tone3([...ir], 0.12 - 0.3 * Math.max(0, q[1])) : tone3([...ir], -0.55));
+    } });
+    const pr = rad * (o.pupil ?? 0.6);
+    const pc = add3(c, g, rad - pr * 0.75);
+    sol.ell(pc, [pr, pr, pr], { col: P(o.pupilCol || "#07080c") });
+    if (o.catchlight !== false) {
+      const up = vnorm(-g[0] * g[1], 1 - g[1] * g[1], -g[2] * g[1]);
+      sol.ell(add3(add3(pc, g, pr * 0.72), up, pr * 0.45), [pr * 0.32, pr * 0.32, pr * 0.32], { col: P("#f4fbff") });
+    }
+  }
+  function webUmbrella(sol, o) {
+    const { apex, ax, len, rim, n: n2, col, inner, arm, armTip, P2: P22, L: L2, rot: rot2 = 0 } = o;
+    const [e0, e1, e2] = frameOf(ax, Math.abs(ax[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0]);
+    const o3 = [0, 0, 0];
+    const seg = Math.PI / n2;
+    const cen = add3(apex, e0, len);
+    const scal = o.scallop ?? 0.32;
+    sol.ell(cen, [len, rim, rim], {
+      axes: [e0, e1, e2],
+      shell: o.shell ?? 0.1,
+      cut: { x1: 0 },
+      col: (q, x, y, z) => {
+        const a = Math.atan2(q[2], q[1]) - rot2;
+        const da = Math.abs((a % (2 * seg) + 4 * seg) % (2 * seg) - seg) / seg;
+        const mid = 1 - da;
+        if (q[0] > -scal * mid * mid) return null;
+        const rr3 = Math.hypot(q[1], q[2]);
+        mix3(o3, inner, col, 0.5 + 0.5 * smoothstep(0.2, 0.6, -q[0]));
+        tone3(o3, (grain(x, y, z, L2 / 45, 3) - 0.5) * 0.1 + (da > 0.85 ? 0.05 : 0) - (rr3 > 0.96 ? 0.06 : 0));
+        return packRGB2(o3);
+      }
     });
+    for (let i = 0; i < n2; i++) {
+      const a = rot2 + i / n2 * TAU2;
+      const rd = add3(e1.map((v) => v * Math.cos(a)), e2.map((v) => v * Math.sin(a)));
+      const pts = [];
+      for (let k = 0; k <= 6; k++) {
+        const th = k / 6 * Math.PI * 0.5;
+        pts.push(add3(add3(cen, e0, -len * Math.cos(th)), rd, rim * Math.sin(th) * 1.03));
+      }
+      const base = pts[6];
+      for (let k = 1; k <= 3; k++) {
+        const t2 = k / 3;
+        const curl = (o.curl ?? 1.2) * t2 + 0.25 * Math.sin(P22 + i * 1.3);
+        const dir = add3(e0.map((v) => v * Math.cos(curl)), rd.map((v) => v * -Math.sin(curl) * 0.6 + v * 0.4));
+        pts.push(add3(base, dir, len * (o.tip ?? 0.3) * t2));
+      }
+      sol.tube(pts, (t) => L2 * (o.armR ?? 0.03) * (1 - 0.6 * t) + L2 * 6e-3, { col: (q, x, y, z) => packRGB2(tone3(mix3(o3, arm, armTip, smoothstep(0.75, 0.92, q[2])), (grain(x, y, z, L2 / 50, 9) - 0.5) * 0.1)) });
+    }
+    return e0;
   }
   function solidPose(c, ph) {
     return solidSpec(c, ph);
@@ -5907,7 +5918,7 @@ void main() {
     if (solidCache.size > 400) solidCache.delete(solidCache.keys().next().value);
     return E;
   }
-  var R_BODY, R_FIN, R_EYE, R_MOUTH, R_SPEC, R_GLASS, R_PUPIL, TAU2, DEG2, cl8, packRGB2, mix3, tone3, FIN_SHAPES, SCR, PAD, Solid, P, vnorm, add3, SOLIDS, solidCache;
+  var R_BODY, R_FIN, R_EYE, R_MOUTH, R_GLASS, TAU2, DEG2, cl8, packRGB2, mix3, tone3, FIN_SHAPES, SCR, PAD, Solid, P, vnorm, add3, lerp3, SOLIDS, grain, rotAx, cross3, frameOf, solidCache;
   var init_realvox = __esm({
     "src/fish/realvox.js"() {
       init_math();
@@ -5915,9 +5926,7 @@ void main() {
       R_FIN = 1;
       R_EYE = 2;
       R_MOUTH = 3;
-      R_SPEC = 6;
       R_GLASS = 7;
-      R_PUPIL = 8;
       TAU2 = Math.PI * 2;
       DEG2 = Math.PI / 180;
       cl8 = (v) => v < 0 ? 0 : v > 255 ? 255 : Math.round(v);
@@ -6006,183 +6015,319 @@ void main() {
         return [x / l, y / l, z / l];
       };
       add3 = (a, b, k = 1) => [a[0] + b[0] * k, a[1] + b[1] * k, a[2] + b[2] * k];
+      lerp3 = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
       SOLIDS = {};
+      grain = (x, y, z, g, seed = 0) => hash2(Math.floor(x / g) * 7 + Math.floor(z / g) * 131, Math.floor(y / g) * 3 + Math.floor(z / g) * 17, seed);
+      rotAx = (v, k, a) => {
+        const c = Math.cos(a), s = Math.sin(a), d = (k[0] * v[0] + k[1] * v[1] + k[2] * v[2]) * (1 - c);
+        return [v[0] * c + (k[1] * v[2] - k[2] * v[1]) * s + k[0] * d, v[1] * c + (k[2] * v[0] - k[0] * v[2]) * s + k[1] * d, v[2] * c + (k[0] * v[1] - k[1] * v[0]) * s + k[2] * d];
+      };
+      cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+      frameOf = (dir, up = [0, 1, 0]) => {
+        const e0 = vnorm(...dir);
+        let e2 = cross3(e0, up);
+        if (Math.hypot(...e2) < 1e-4) e2 = cross3(e0, [1, 0, 0]);
+        e2 = vnorm(...e2);
+        const e1 = cross3(e2, e0);
+        return [e0, e1, e2];
+      };
       SOLIDS.crab = (S11, L2, ph) => {
         const sol = new Solid();
-        const W10 = L2 * (S11.wide ?? 0.5), Hc = L2 * (S11.domeH ?? 0.2), Dp = L2 * (S11.depth ?? 0.32);
         const C4 = S11.col;
-        const top = hexRGB2(C4.back), side = hexRGB2(C4.flank), under = hexRGB2(C4.belly), leg = hexRGB2(C4.leg || C4.flank), claw2 = hexRGB2(C4.claw || C4.back), tip = hexRGB2(C4.tip || "#2a2024");
+        const W10 = L2 * (S11.wide ?? 0.5) * 0.74, Dp = L2 * (S11.depth ?? 0.32) * 0.82, Hc = L2 * (S11.domeH ?? 0.2) * 0.62;
+        const top = hexRGB2(C4.back), side = hexRGB2(C4.flank), under = hexRGB2(C4.belly), legC = hexRGB2(C4.leg || C4.flank), clawC = hexRGB2(C4.claw || C4.back), tip = hexRGB2(C4.tip || "#2a2024");
         const spots = C4.spots ? hexRGB2(C4.spots) : null;
-        const o3 = [0, 0, 0];
-        const cy = L2 * 0.12;
-        sol.ell([0, cy, 0], [Dp, Hc, W10], {
-          col: (q, x, y, z, ix, iy, iz) => {
-            const v = clamp01((q[1] + 1) / 2);
-            mix3(o3, under, side, smoothstep(0.15, 0.4, v));
-            mix3(o3, o3, top, smoothstep(0.45, 0.75, v));
-            if (spots && v > 0.45 && spotAt(x / L2, z / L2, 0.03, 0.55, 3) > 0.1) mix3(o3, o3, spots, 0.85);
-            tone3(o3, (hash2(ix * 7 + iz, iy * 3 + iz * 5, 9) - 0.5) * 0.07);
-            if (Math.abs(q[2]) < 0.06 && q[0] < 0.2 && v > 0.6) tone3(o3, -0.12);
-            if (Math.abs(Math.hypot(q[0] + 0.15, q[2]) - 0.55) < 0.04 && v > 0.55) tone3(o3, -0.1);
-            return packRGB2(o3);
-          },
-          cut: { y0: -0.55 }
-        });
-        sol.ell([0, cy - Hc * 0.35, 0], [Dp * 0.85, Hc * 0.45, W10 * 0.86], { col: P(C4.belly), under: true });
-        for (let k = -3; k <= 3; k++) {
-          const a = k / 3 * 0.9;
-          sol.cap([Dp * 0.9 * Math.cos(a), cy + Hc * 0.15, W10 * 0.92 * Math.sin(a)], [Dp * 1.06 * Math.cos(a), cy + Hc * 0.2, W10 * 1.05 * Math.sin(a)], L2 * 0.022, L2 * 5e-3, { col: P(C4.back) });
-        }
-        for (const sd of [1, -1]) {
-          const base = [Dp * 0.9, cy + Hc * 0.5, sd * W10 * 0.18];
-          const eye = [Dp * 1.02, cy + Hc * (S11.stalk ?? 1.2), sd * W10 * 0.24];
-          sol.cap(base, eye, L2 * 0.025, L2 * 0.02, { col: P(C4.leg || C4.flank) });
-          eyePrim(sol, eye, L2 * (S11.eyeR ?? 0.035), [0.8, 0.3, sd * 0.5], C4.eye || "#3a3020", { pupil: 0.7 });
-        }
-        const clawK = S11.claw ?? 1;
-        for (const sd of [1, -1]) {
-          const snap2 = 0.25 + 0.2 * Math.max(0, Math.sin(TAU2 * ph * 2 + (sd > 0 ? 0 : 1.5)));
-          const s0 = [Dp * 0.7, cy - Hc * 0.2, sd * W10 * 0.55];
-          const s1 = [Dp * 1.25, cy - Hc * 0.05, sd * W10 * 0.85];
-          const s2 = [Dp * 1.55, cy + Hc * 0.05, sd * W10 * 0.55];
-          sol.cap(s0, s1, L2 * 0.05 * clawK, L2 * 0.05 * clawK, { col: P(C4.claw || C4.back) });
-          sol.cap(s1, s2, L2 * 0.055 * clawK, L2 * 0.06 * clawK, { col: P(C4.claw || C4.back) });
-          const pc = add3(s2, [L2 * 0.12 * clawK, 0, -sd * W10 * 0.06]);
-          sol.ell(pc, [L2 * 0.14 * clawK, L2 * 0.09 * clawK, L2 * 0.07 * clawK], { col: (q) => packRGB2(mix3(o3, claw2, tone3([...claw2], 0.25), smoothstep(-0.2, 0.8, q[1]))) });
-          const f0 = add3(pc, [L2 * 0.12 * clawK, -L2 * 0.03 * clawK, 0]);
-          sol.cap(f0, add3(f0, [L2 * 0.16 * clawK, -L2 * 0.03 * clawK, 0]), L2 * 0.035 * clawK, L2 * 8e-3, { col: (q) => packRGB2(q[0] > 0.6 ? tip : claw2) });
-          const d0 = add3(pc, [L2 * 0.1 * clawK, L2 * 0.05 * clawK, 0]);
-          sol.cap(d0, add3(d0, [L2 * 0.17 * clawK * Math.cos(snap2), L2 * 0.17 * clawK * Math.sin(snap2) * 0.4, 0]), L2 * 0.032 * clawK, L2 * 8e-3, { col: (q) => packRGB2(q[0] > 0.6 ? tip : claw2) });
-        }
         const legLen = L2 * (S11.legLen ?? 0.42);
-        for (const sd of [1, -1]) for (let i = 0; i < 4; i++) {
-          const g = TAU2 * ph + i * Math.PI * 0.5 + (sd > 0 ? 0 : Math.PI);
-          const lift = Math.max(0, Math.sin(g)) * L2 * 0.06, swing = Math.cos(g) * L2 * 0.05;
-          const bx = Dp * (0.45 - i * 0.3);
-          const root = [bx, cy - Hc * 0.25, sd * W10 * 0.82];
-          const knee = [bx + swing - i * L2 * 0.03, cy + Hc * 0.35 + lift, sd * (W10 + legLen * 0.45)];
-          const foot = [bx + swing * 1.4 - i * L2 * 0.05, cy - Hc * 1.25 - L2 * 0.02 + lift * 0.6, sd * (W10 + legLen * 0.85)];
-          const r0 = L2 * 0.032, r1 = L2 * 0.026;
-          sol.cap(root, knee, r0, r1, { col: P(C4.leg || C4.flank) });
-          sol.cap(knee, foot, r1, L2 * 8e-3, { col: (q) => packRGB2(q[0] > 0.85 ? tip : leg) });
+        const g = L2 / 46;
+        const o3 = [0, 0, 0];
+        const cy = L2 * 0.1 + legLen * 0.12;
+        const teeth = S11.teeth ?? 4;
+        sol.ell([0, cy, 0], [Dp, Hc, W10], {
+          sq: [0.82, 0.9],
+          warp: (q) => [q[0] * (1 + 0.06 * q[2] * q[2]), q[1] * (q[1] > 0 ? 1 - 0.25 * q[0] * q[0] : 1), q[2] * (1 - 0.2 * Math.max(0, -q[0]) - 0.08 * Math.max(0, q[0]) ** 2)],
+          cut: { y0: -0.42 },
+          col: (q, x, y, z) => {
+            const v = clamp01((q[1] + 1) / 2);
+            mix3(o3, under, side, smoothstep(0.2, 0.42, v));
+            mix3(o3, o3, top, smoothstep(0.5, 0.78, v));
+            const rr3 = Math.hypot(q[0], q[2]);
+            if (v > 0.55) {
+              const gz = Math.abs(Math.abs(q[2]) - 0.3), gx = Math.abs(q[0] + 0.12);
+              if (gz < 0.035 && q[0] > -0.45 && q[0] < 0.3 || gx < 0.03 && Math.abs(q[2]) < 0.3) tone3(o3, -0.16);
+              if (spots) {
+                const sv = spotAt(x / L2 + 3, z / L2, 0.045, 0.6, 3);
+                if (sv > 0.05) mix3(o3, o3, spots, Math.min(1, sv * 2.4));
+              }
+              tone3(o3, 0.06 * (1 - rr3) - 0.2 * smoothstep(0.82, 0.98, rr3));
+            }
+            tone3(o3, (grain(x, y, z, g, 9) - 0.5) * 0.14 + (grain(x, y, z, g * 2.2, 4) > 0.86 ? 0.1 : 0));
+            return packRGB2(o3);
+          }
+        });
+        sol.ell([0, cy - Hc * 0.3, 0], [Dp * 0.86, Hc * 0.36, W10 * 0.8], { col: (q, x, y, z) => packRGB2(tone3(mix3(o3, under, side, 0.15), (grain(x, y, z, g, 2) - 0.5) * 0.08)), under: true });
+        for (const sd of [1, -1]) for (let k = 0; k < teeth; k++) {
+          const a = 0.55 + k * 0.22;
+          const b0 = [Dp * 0.98 * Math.cos(a), cy + Hc * 0.05, sd * W10 * 0.97 * Math.sin(a)];
+          sol.cap(b0, add3(b0, [Dp * 0.1 * Math.cos(a + 0.4), Hc * 0.05, sd * W10 * 0.12 * Math.sin(a + 0.4)]), L2 * 0.02, L2 * 4e-3, { col: packRGB2(tone3([...top], -0.08)) });
         }
-        return { sol, anchors: { mouth: [Dp * 1.1, cy, 0], top: [0, cy + Hc * 1.2, 0], bottom: [0, cy - Hc * 1.6, 0], tail: [-Dp, cy, 0] }, eyes: [[Dp * 1.02, cy + Hc * 1.2, W10 * 0.24, L2 * 0.035]], yawBase: S11.yawBase ?? 62 };
+        sol.ell([Dp * 0.86, cy - Hc * 0.18, 0], [L2 * 0.05, Hc * 0.42, W10 * 0.22], { col: (q, x, y, z) => packRGB2(tone3(mix3(o3, side, under, 0.4), (Math.abs(q[2]) < 0.06 ? -0.2 : 0) + (grain(x, y, z, g, 5) - 0.5) * 0.1)) });
+        const stalk = S11.stalk ?? 1.2;
+        const eyesOut = [];
+        for (const sd of [1, -1]) {
+          const base = [Dp * 0.86, cy + Hc * 0.42, sd * W10 * 0.3];
+          const eye = [Dp * 0.98, cy + Hc * 0.45 + L2 * 0.075 * stalk, sd * W10 * (0.34 + 0.02 * stalk)];
+          sol.cap(base, eye, L2 * 0.024, L2 * 0.018, { col: (q) => packRGB2(tone3(mix3(o3, legC, under, 0.25), q[3] < -0.2 ? -0.12 : 0.04)) });
+          const er = L2 * (S11.eyeR ?? 0.035) * 0.8;
+          const ec = add3(eye, [er * 0.15, er * 0.35 * Math.min(1.6, stalk), 0]);
+          sol.ell(ec, [er * 0.95, er * (0.9 + 0.35 * Math.max(0, stalk - 1)), er * 0.95], { col: (q) => q[0] > 0.45 && q[1] > 0.45 ? P("#5a5a66") : P(C4.eye || "#141218") });
+          eyesOut.push([...ec, er]);
+        }
+        const ck = S11.claw ?? 1;
+        const clawCol = (q, x, y, z) => {
+          mix3(o3, tone3([...clawC], 0.3), clawC, smoothstep(-0.5, 0.3, q[3] ?? q[1]));
+          tone3(o3, (grain(x, y, z, g * 0.9, 6) - 0.5) * 0.12);
+          return packRGB2(o3);
+        };
+        const fingerCol = (q, x, y, z) => {
+          const t = q[2];
+          if (t > 0.62) mix3(o3, clawC, tip, smoothstep(0.62, 0.8, t));
+          else mix3(o3, tone3([...clawC], 0.2), clawC, smoothstep(-0.5, 0.3, q[3]));
+          tone3(o3, (grain(x, y, z, g * 0.8, 8) - 0.5) * 0.1);
+          return packRGB2(o3);
+        };
+        for (const sd of [1, -1]) {
+          const snap2 = 0.12 + 0.32 * Math.max(0, Math.sin(TAU2 * ph + (sd > 0 ? 0 : 2.4)));
+          const shoulder = [Dp * 0.55, cy - Hc * 0.2, sd * W10 * 0.6];
+          const elbow = [Dp * 0.95 + L2 * 0.04 * ck, cy - Hc * 0.12, sd * (W10 * 0.92 + L2 * 0.02 * ck)];
+          const wrist = [Dp * 1.05 + L2 * 0.11 * ck, cy + Hc * 0.02, sd * (W10 * 0.62 + L2 * 0.02 * ck)];
+          sol.tube([shoulder, elbow, wrist], (k) => L2 * (0.042 - 8e-3 * k) * Math.sqrt(ck), { col: clawCol });
+          const dirP = vnorm(1, 0.05, -sd * 0.42);
+          const [e0, e1, e2] = frameOf(dirP);
+          const pl = L2 * 0.13 * ck, ph2 = L2 * 0.075 * ck, pt = L2 * 0.05 * ck;
+          const pc = add3(wrist, dirP, pl * 0.82);
+          sol.ell(pc, [pl, ph2, pt], { axes: [e0, e1, e2], col: (q, x, y, z) => {
+            mix3(o3, tone3([...clawC], 0.28), clawC, smoothstep(-0.55, 0.35, q[1]));
+            tone3(o3, (grain(x, y, z, g * 0.9, 6) - 0.5) * 0.12 + 0.08 * q[0] * q[1]);
+            return packRGB2(o3);
+          } });
+          const fb = add3(add3(pc, e0, pl * 0.75), e1, -ph2 * 0.35);
+          const fl = L2 * 0.12 * ck;
+          const fing = (base, a, len, curl) => {
+            const pts = [];
+            for (let k = 0; k <= 4; k++) {
+              const t = k / 4;
+              const dir = rotAx(e0, e2, a - curl * t * t);
+              pts.push(add3(base, dir, len * t));
+            }
+            return pts;
+          };
+          sol.tube(fing(fb, -0.12, fl, -0.35), (k) => L2 * 0.032 * Math.sqrt(ck) * (1 - 0.82 * k) + L2 * 4e-3, { col: fingerCol });
+          const db = add3(add3(pc, e0, pl * 0.6), e1, ph2 * 0.45);
+          sol.tube(fing(db, snap2, fl * 1.08, 0.45), (k) => L2 * 0.03 * Math.sqrt(ck) * (1 - 0.8 * k) + L2 * 4e-3, { col: fingerCol });
+        }
+        const thick = S11.legThick ?? 1;
+        const elK = Math.min(1, Math.pow(0.42 / (S11.legLen ?? 0.42), 0.8)), el0 = 0.42 * elK * elK;
+        let footY = Infinity;
+        const legCol = (q, x, y, z) => {
+          const t = q[2], seg = Math.min(3, Math.floor(t * 4)), lt = t * 4 - seg;
+          mix3(o3, tone3(mix3([0, 0, 0], legC, under, 0.35), 0.05), legC, smoothstep(-0.6, 0.2, q[3]));
+          if (spots && seg < 2 && grain(x, y, z, g * 1.6, 3) > 0.8) mix3(o3, o3, spots, 0.7);
+          if (lt < 0.1 || lt > 0.93) tone3(o3, -0.16);
+          if (seg === 3) mix3(o3, o3, tip, smoothstep(0.35, 0.85, lt));
+          tone3(o3, (grain(x, y, z, g * 0.8, 1) - 0.5) * 0.1);
+          return packRGB2(o3);
+        };
+        for (const sd of [1, -1]) for (let i = 0; i < 4; i++) {
+          const gph = TAU2 * ph + i % 2 * Math.PI + (sd > 0 ? 0 : Math.PI);
+          const lift = Math.max(0, Math.sin(gph));
+          const yaw = (62 + i * 27 + Math.cos(gph) * 9) * DEG2;
+          const d = [Math.cos(yaw), 0, sd * Math.sin(yaw)];
+          const kL = legLen * (i === 3 ? 0.86 : i === 0 ? 0.92 : 1);
+          const root = [Dp * (0.42 - i * 0.32), cy - Hc * 0.18, sd * W10 * (0.84 - 0.05 * Math.abs(i - 1.5))];
+          const segs = [[0.4, el0 + lift * 0.35], [0.2, -0.25 * elK + lift * 0.25], [0.24, -0.95 * elK + lift * 0.2], [0.2, -1.3 + lift * 0.15]];
+          const pts = [root];
+          let p = root;
+          for (const [ln, el] of segs) {
+            p = add3(p, [d[0] * Math.cos(el), Math.sin(el), d[2] * Math.cos(el)], ln * kL);
+            pts.push(p);
+          }
+          if (!lift) footY = Math.min(footY, p[1]);
+          const R4 = [0.03, 0.028, 0.021, 0.016, 4e-3].map((r) => r * L2 * thick);
+          sol.tube(pts, (k) => R4[Math.round(k * 4)], { col: legCol });
+        }
+        if (!isFinite(footY)) footY = cy - legLen;
+        return { sol, anchors: { mouth: [Dp * 1.05, cy, 0], top: [0, cy + Hc, 0], bottom: [0, footY, 0], tail: [-Dp, cy, 0] }, eyes: eyesOut.slice(0, 1), yawBase: S11.yawBase ?? 58 };
       };
       SOLIDS.jelly = (S11, L2, ph) => {
         const sol = new Solid();
         const C4 = S11.col;
-        const pulse = Math.sin(TAU2 * ph);
-        const R4 = L2 * 0.5 * (1 + 0.06 * pulse), Hb = L2 * (S11.bellH ?? 0.42) * (1 - 0.1 * pulse);
-        const bell2 = hexRGB2(C4.back), rim = hexRGB2(C4.flank), gon = hexRGB2(C4.gonad || C4.fin || C4.flank);
+        const P22 = TAU2 * ph;
+        const pulse = Math.sin(P22);
+        const R4 = L2 * 0.47 * (1 + 0.05 * pulse), Hb = L2 * (S11.bellH ?? 0.42) * 0.95 * (1 - 0.09 * pulse);
+        const bell2 = hexRGB2(C4.back), rim = hexRGB2(C4.flank), pale = hexRGB2(C4.belly || C4.flank), gon = hexRGB2(C4.gonad || C4.fin || C4.flank);
         const o3 = [0, 0, 0];
-        const top = L2 * 0.25;
+        const top = L2 * 0.22;
+        const glow = !!S11.glow;
+        const nm = S11.lappets ?? 16;
         sol.ell([0, top, 0], [R4, Hb, R4], {
           role: R_GLASS,
-          shell: S11.shell ?? 0.22,
-          cut: { y0: S11.flat ? -0.05 : -0.1 },
+          shell: S11.shell ?? 0.2,
+          cut: { y0: S11.flat ? -0.02 : -0.08 },
           col: (q) => {
             const v = clamp01(q[1]);
-            mix3(o3, rim, bell2, smoothstep(0, 0.7, v));
-            if (S11.warts && hash2(Math.round(q[0] * 14), Math.round(q[2] * 14), 3) > 0.84 && v > 0.2) tone3(o3, 0.25);
-            if (S11.knob && v > 0.75) mix3(o3, o3, hexRGB2(S11.knob), smoothstep(0.75, 0.9, v));
+            mix3(o3, rim, bell2, smoothstep(0.05, 0.75, v));
+            const a = Math.atan2(q[2], q[0]);
+            const canal = Math.abs(Math.sin(a * nm * 0.5)) < 0.12 && v < 0.85;
+            if (canal) tone3(o3, 0.22);
+            if (v < 0.12) tone3(o3, -0.08);
+            if (S11.warts && hash2(Math.round(q[0] * 14), Math.round(q[2] * 14), 3) > 0.84 && v > 0.2) tone3(o3, 0.3);
+            if (S11.knob && v > 0.72) mix3(o3, o3, hexRGB2(S11.knob), smoothstep(0.72, 0.85, v) * 0.6);
             return packRGB2(o3);
           },
-          // bioluminescence lives in the warts / gonads / margin, the bell itself stays glassy
-          glow: S11.warts && S11.glow ? (q) => hash2(Math.round(q[0] * 14), Math.round(q[2] * 14), 3) > 0.84 && q[1] > 0.2 : false
+          glow: S11.warts && glow ? (q) => hash2(Math.round(q[0] * 14), Math.round(q[2] * 14), 3) > 0.84 && q[1] > 0.2 : false
         });
-        if (S11.knob) sol.ell([0, top + Hb * 0.55, 0], [R4 * 0.42, Hb * 0.42, R4 * 0.42], { col: P(S11.knob), role: R_BODY });
+        if (S11.knob) {
+          const kn = hexRGB2(S11.knob);
+          sol.ell([0, top + Hb * 0.72, 0], [R4 * 0.44, Hb * 0.5, R4 * 0.44], { col: (q, x, y, z) => packRGB2(tone3(mix3(o3, tone3([...kn], 0.25), kn, smoothstep(0.2, 0.9, q[1])), (grain(x, y, z, L2 / 40, 6) - 0.5) * 0.1)), cut: { y0: -0.1 } });
+        }
         const ng = S11.gonads ?? 4;
         for (let i = 0; i < ng; i++) {
           const a = i / ng * TAU2 + 0.4;
-          sol.ell([Math.cos(a) * R4 * 0.32, top + Hb * 0.18, Math.sin(a) * R4 * 0.32], [R4 * 0.16, Hb * 0.12, R4 * 0.16], { col: packRGB2(gon), role: R_BODY, glow: !!S11.glow });
+          for (let k = 0; k < 5; k++) {
+            const b = a + (k - 2) * 0.22;
+            sol.ell([Math.cos(b) * R4 * 0.34, top + Hb * 0.2, Math.sin(b) * R4 * 0.34], [R4 * 0.075, Hb * 0.07, R4 * 0.075], { col: packRGB2(tone3([...gon], k === 2 ? 0.1 : 0)), role: R_BODY, glow });
+          }
         }
-        const nm = 16;
         for (let i = 0; i < nm; i++) {
           const a = i / nm * TAU2;
-          sol.ell([Math.cos(a) * R4 * 0.97, top - Hb * 0.06, Math.sin(a) * R4 * 0.97], [R4 * 0.11, Hb * 0.09, R4 * 0.11], { col: packRGB2(rim), role: R_GLASS, glow: !!S11.glow });
+          sol.ell([Math.cos(a) * R4 * 0.96, top - Hb * 0.05, Math.sin(a) * R4 * 0.96], [R4 * 0.1, Hb * 0.07, R4 * 0.1], { col: packRGB2(tone3([...rim], -0.04)), role: R_GLASS });
+          if (i % 2 === 0) sol.ell([Math.cos(a + Math.PI / nm) * R4 * 0.98, top - Hb * 0.04, Math.sin(a + Math.PI / nm) * R4 * 0.98], [L2 * 0.012, L2 * 0.012, L2 * 0.012], { col: packRGB2(tone3([...gon], -0.2)), role: R_BODY, glow });
         }
         const na = S11.arms ?? 4;
+        const armLen = L2 * (S11.armLen ?? 0.9);
+        const armC = mix3([0, 0, 0], pale, gon, 0.35);
+        sol.ell([0, top - Hb * 0.05, 0], [R4 * 0.2, Hb * 0.22, R4 * 0.2], { col: packRGB2(armC), role: R_GLASS });
         for (let i = 0; i < na; i++) {
           const a = i / na * TAU2 + 0.8;
           const pts = [];
-          const len = L2 * (S11.armLen ?? 0.9);
-          for (let k = 0; k <= 8; k++) {
-            const t = k / 8;
-            const sway = Math.sin(TAU2 * ph - t * 3 + i) * L2 * 0.07 * t;
-            pts.push([Math.cos(a) * R4 * (0.12 + 0.15 * t) + sway, top - Hb * 0.1 - len * t, Math.sin(a) * R4 * (0.12 + 0.15 * t) + sway * 0.5]);
+          const nk = 10;
+          for (let k = 0; k <= nk; k++) {
+            const t = k / nk;
+            const sway = Math.sin(P22 - t * 3.2 + i * 1.7) * L2 * 0.06 * t;
+            const out = R4 * (0.12 + (na <= 4 ? 0.3 : 0.16) * t) * (1 + 0.15 * pulse * t);
+            pts.push([Math.cos(a) * out + sway, top - Hb * 0.12 - armLen * t, Math.sin(a) * out + sway * 0.6]);
           }
-          sol.tube(pts, (t) => L2 * (S11.armR ?? 0.07) * (1 - 0.6 * t) + L2 * 0.015, { role: R_GLASS, col: (q, x, y, z, ix, iy, iz) => packRGB2(tone3(mix3(o3, gon, rim, 0.4), (hash2(ix, iy * 2 + iz, 5) - 0.5) * 0.3 + (S11.armTip && q[2] > 0.7 ? 0 : 0))), glow: !!S11.glow });
-          if (S11.armTip) sol.ell(pts[8], [L2 * 0.04, L2 * 0.04, L2 * 0.04], { col: P(S11.armTip), role: R_BODY, glow: !!S11.glow });
+          const ar = (t) => L2 * (S11.armR ?? 0.06) * (1 - 0.55 * t) + L2 * 0.012;
+          sol.tube(pts, ar, { role: R_GLASS, col: (q, x, y, z) => packRGB2(tone3([...armC], (grain(x, y, z, L2 / 50, 5) - 0.5) * 0.25)) });
+          for (let k = 1; k < nk; k++) {
+            const t = k / nk, p0 = pts[k];
+            const w = ar(t) * 1.6;
+            for (const sg of [1, -1]) {
+              if ((k + (sg > 0 ? 0 : 1)) % 2) continue;
+              const side = [-Math.sin(a) * sg, 0, Math.cos(a) * sg];
+              const wob = Math.sin(k * 2.1 + i + P22) * 0.5;
+              const e2 = vnorm(-side[2], 0, side[0]);
+              sol.ell(add3(p0, side, w * 0.8), [w * 0.6, armLen / nk * 0.9, w * 0.22 + L2 * 6e-3], { axes: [rotAx(side, e2, wob), rotAx([0, 1, 0], e2, wob), e2], col: packRGB2(tone3(mix3([0, 0, 0], armC, gon, 0.3), k % 2 * 0.08)), role: R_GLASS });
+            }
+            if (S11.armTip && k % 3 === 2) {
+              const side = [Math.cos(a + k), 0, Math.sin(a + k)];
+              const tp = add3(p0, side, ar(t) * 1.6);
+              sol.cap(p0, tp, L2 * 8e-3, L2 * 6e-3, { col: packRGB2(armC), role: R_BODY });
+              sol.ell(tp, [L2 * 0.022, L2 * 0.022, L2 * 0.022], { col: P(S11.armTip), role: R_BODY, glow });
+            }
+          }
         }
-        const nt = S11.tentacles ?? 12;
+        const nt = S11.tentacles ?? 16;
+        const tLen = L2 * (S11.tentLen ?? 1.4);
         for (let i = 0; i < nt; i++) {
-          const a = i / nt * TAU2;
-          const len = L2 * (S11.tentLen ?? 1.4) * (0.75 + 0.25 * hash2(i, 3, 1));
+          const a = i / nt * TAU2 + 0.1;
+          const len = tLen * (0.72 + 0.28 * hash2(i, 3, 1));
           const pts = [];
-          for (let k = 0; k <= 10; k++) {
-            const t = k / 10;
-            const sway = Math.sin(TAU2 * ph - t * 4 + i * 1.3) * L2 * 0.08 * t;
-            pts.push([Math.cos(a) * R4 * (0.92 - 0.25 * t) + sway, top - Hb * 0.06 - len * t, Math.sin(a) * R4 * (0.92 - 0.25 * t)]);
+          const nk = 10;
+          for (let k = 0; k <= nk; k++) {
+            const t = k / nk;
+            const sway = Math.sin(P22 - t * 4.5 + i * 1.3) * L2 * 0.12 * t;
+            pts.push([Math.cos(a) * R4 * (0.93 - 0.3 * t) + sway, top - Hb * 0.07 - len * t, Math.sin(a) * R4 * (0.93 - 0.3 * t) + Math.cos(P22 - t * 3 + i) * L2 * 0.03 * t]);
           }
-          sol.tube(pts, () => L2 * 8e-3, { role: R_GLASS, col: packRGB2(rim), glow: !!S11.glow });
+          sol.tube(pts, (t) => L2 * 9e-3 * (1 - 0.4 * t), { role: R_GLASS, col: (q) => packRGB2(tone3([...rim], q[2] < 0.2 ? -0.05 : q[2] * 14 % 1 < 0.3 ? 0.1 : 0)) });
         }
-        return { sol, anchors: { mouth: [0, top - Hb * 0.2, 0], top: [0, top + Hb, 0], bottom: [0, top - L2 * 0.9, 0], tail: [0, top - L2, 0] }, eyes: [], yawBase: 0 };
+        const bot = top - Math.max(armLen, nt ? tLen : 0) - Hb * 0.1;
+        return { sol, anchors: { mouth: [0, top - Hb * 0.2, 0], top: [0, top + Hb, 0], bottom: [0, bot, 0], tail: [0, bot, 0] }, eyes: [], yawBase: 0, glassAlpha: 0.5 };
       };
       SOLIDS.octopus = (S11, L2, ph) => {
         const sol = new Solid();
         const C4 = S11.col;
         const o3 = [0, 0, 0];
-        const body = hexRGB2(C4.back), under = hexRGB2(C4.belly), fin2 = hexRGB2(C4.fin || C4.flank);
-        const flap = Math.sin(TAU2 * ph);
-        const mh = L2 * 0.36;
-        sol.ell([0, L2 * 0.2, 0], [L2 * 0.32, mh, L2 * 0.3], { col: (q, x, y, z, ix, iy, iz) => packRGB2(tone3(mix3(o3, under, body, smoothstep(-0.6, 0.4, q[1])), (hash2(ix, iy, iz) - 0.5) * 0.05)) });
+        const body = hexRGB2(C4.back), side = hexRGB2(C4.flank), under = hexRGB2(C4.belly), fin2 = hexRGB2(C4.fin || C4.flank);
+        const P22 = TAU2 * ph;
+        const flap = Math.sin(P22);
+        const skin = (q, x, y, z) => {
+          mix3(o3, under, side, smoothstep(-0.7, -0.1, q[1]));
+          mix3(o3, o3, body, smoothstep(0.1, 0.8, q[1]));
+          tone3(o3, (grain(x, y, z, L2 / 50, 2) - 0.5) * 0.08 + (grain(x, y, z, L2 / 22, 5) > 0.9 ? -0.08 : 0));
+          return packRGB2(o3);
+        };
+        sol.ell([-L2 * 0.03, L2 * 0.26, 0], [L2 * 0.27, L2 * 0.3, L2 * 0.26], { col: skin });
+        sol.ell([L2 * 0.02, L2 * 0.06, 0], [L2 * 0.24, L2 * 0.17, L2 * 0.25], { col: skin });
         for (const sd of [1, -1]) {
-          const a = 0.45 * flap + 0.25;
-          const ax2 = vnorm(0, Math.sin(a), sd * Math.cos(a));
-          const c0 = [-L2 * 0.02, L2 * 0.3, sd * L2 * 0.26];
-          sol.ell(add3(c0, ax2, L2 * 0.13), [L2 * 0.11, L2 * 0.15, L2 * 0.035], { col: packRGB2(fin2), axes: [[1, 0, 0], ax2, vnorm(0, -sd * Math.cos(a), Math.sin(a))] });
+          const a = 0.25 + 0.5 * flap;
+          const dir = vnorm(-0.1, Math.sin(a), sd * Math.cos(a));
+          const nrm3 = vnorm(0, -sd * Math.cos(a), Math.sin(a));
+          const root = [-L2 * 0.03, L2 * 0.36, sd * L2 * 0.2];
+          sol.ell(add3(root, dir, L2 * 0.13), [L2 * 0.1, L2 * 0.15, L2 * 0.03], { axes: [[1, 0, 0], dir, nrm3], col: (q, x, y, z) => packRGB2(tone3(mix3(o3, fin2, body, 0.3), (grain(x, y, z, L2 / 50, 7) - 0.5) * 0.08 + (q[1] > 0.7 ? 0.06 : 0))) });
         }
-        for (const sd of [1, -1]) eyePrim(sol, [L2 * 0.2, L2 * 0.12, sd * L2 * 0.2], L2 * 0.06, [0.6, 0.15, sd * 0.8], C4.eye || "#2a1a20", { pupil: 0.7 });
-        const open = 0.5 + 0.5 * flap;
-        sol.ell([0, -L2 * 0.02, 0], [L2 * (0.34 + 0.06 * open), L2 * (0.3 - 0.06 * open), L2 * (0.34 + 0.06 * open)], { col: packRGB2(mix3(o3, under, body, 0.35)), shell: 0.12, cut: { y1: -0.15 } });
-        for (let i = 0; i < 8; i++) {
-          const a = i / 8 * TAU2 + 0.2;
-          const pts = [];
-          for (let k = 0; k <= 6; k++) {
-            const t = k / 6;
-            const rr3 = L2 * (0.1 + (0.3 + 0.08 * open) * Math.sin(t * Math.PI * 0.55));
-            pts.push([Math.cos(a) * rr3, -L2 * 0.06 - L2 * (0.28 - 0.05 * open) * t, Math.sin(a) * rr3]);
-          }
-          sol.tube(pts, (t) => L2 * 0.05 * (1 - 0.7 * t) + L2 * 8e-3, { col: (q) => packRGB2(q[3] < -0.3 ? under : body) });
+        const eyes = [];
+        for (const sd of [1, -1]) {
+          const ec = [L2 * 0.13, L2 * 0.1, sd * L2 * 0.19];
+          sol.ell(ec, [L2 * 0.07, L2 * 0.065, L2 * 0.05], { col: skin });
+          const e = add3(ec, [L2 * 0.02, 0, sd * L2 * 0.03]);
+          natEye(sol, e, L2 * 0.045, [0.55, 0.05, sd * 0.85], C4.eye || "#2a1a20", { pupil: 0.72 });
+          eyes.push([...e, L2 * 0.045]);
         }
-        return { sol, anchors: { mouth: [0, -L2 * 0.1, 0], top: [0, L2 * 0.6, 0], bottom: [0, -L2 * 0.3, 0], tail: [-L2 * 0.3, 0, 0] }, eyes: [[L2 * 0.2, L2 * 0.12, L2 * 0.2, L2 * 0.06]], yawBase: 35 };
+        const open = 0.5 + 0.5 * Math.sin(P22 + 0.8);
+        webUmbrella(sol, { apex: [0, L2 * 0.02, 0], ax: [0, -1, 0], len: L2 * (0.34 - 0.05 * open), rim: L2 * (0.3 + 0.08 * open), n: 8, rot: 0.2, col: side, inner: mix3([0, 0, 0], under, side, 0.4), arm: body, armTip: under, P2: P22, L: L2, shell: 0.12 });
+        return { sol, anchors: { mouth: [0, -L2 * 0.1, 0], top: [0, L2 * 0.56, 0], bottom: [0, -L2 * 0.42, 0], tail: [-L2 * 0.3, 0, 0] }, eyes: eyes.slice(0, 1), yawBase: 30 };
       };
       SOLIDS.squid = (S11, L2, ph) => {
         const sol = new Solid();
         const C4 = S11.col;
         const o3 = [0, 0, 0];
-        const body = hexRGB2(C4.back), web = hexRGB2(C4.fin || C4.back), under = hexRGB2(C4.belly);
-        const flap = Math.sin(TAU2 * ph);
-        sol.ell([-L2 * 0.18, 0, 0], [L2 * 0.34, L2 * 0.22, L2 * 0.22], { col: (q, x, y, z, ix, iy, iz) => packRGB2(tone3(mix3(o3, under, body, smoothstep(-0.7, 0.2, q[1])), (hash2(ix, iy, iz) - 0.5) * 0.06)) });
+        const body = hexRGB2(C4.back), web = hexRGB2(C4.fin || C4.back), under = hexRGB2(C4.belly), side = hexRGB2(C4.flank);
+        const P22 = TAU2 * ph;
+        const flap = Math.sin(P22);
+        const skin = (q, x, y, z) => {
+          mix3(o3, under, side, smoothstep(-0.8, -0.2, q[1]));
+          mix3(o3, o3, body, smoothstep(0, 0.7, q[1]));
+          tone3(o3, (grain(x, y, z, L2 / 55, 4) - 0.5) * 0.1);
+          return packRGB2(o3);
+        };
+        sol.ell([-L2 * 0.2, L2 * 0.01, 0], [L2 * 0.27, L2 * 0.15, L2 * 0.15], { col: skin, warp: (q) => [q[0], q[1] * (1 - 0.25 * Math.max(0, -q[0])), q[2] * (1 - 0.25 * Math.max(0, -q[0]))] });
+        sol.ell([L2 * 0.06, 0, 0], [L2 * 0.12, L2 * 0.13, L2 * 0.14], { col: skin });
         for (const sd of [1, -1]) {
-          const a = 0.3 * flap;
-          sol.ell([-L2 * 0.38, L2 * 0.04, sd * L2 * 0.22], [L2 * 0.1, L2 * 0.035, L2 * 0.12], { col: P(C4.back), axes: [[1, 0, 0], vnorm(0, Math.cos(a), sd * Math.sin(a)), vnorm(0, -sd * Math.sin(a), Math.cos(a))] });
-          if (S11.photo) sol.ell([-L2 * 0.44, L2 * 0.06, sd * L2 * 0.27], [L2 * 0.03, L2 * 0.03, L2 * 0.03], { col: P(S11.photo), role: R_EYE, glow: true });
+          const a = 0.35 * flap + 0.15;
+          const dir = vnorm(-0.2, Math.sin(a), sd * Math.cos(a));
+          const root = [-L2 * 0.32, L2 * 0.03, sd * L2 * 0.08];
+          sol.ell(add3(root, dir, L2 * 0.09), [L2 * 0.07, L2 * 0.1, L2 * 0.022], { axes: [[1, 0, 0], dir, vnorm(0, -sd * Math.cos(a), Math.sin(a))], col: (q, x, y, z) => packRGB2(tone3([...body], (grain(x, y, z, L2 / 55, 6) - 0.5) * 0.1 + (q[1] > 0.75 ? -0.1 : 0))) });
+          if (S11.photo) sol.ell(add3(root, [L2 * 0.03, L2 * 5e-3, sd * L2 * 0.03], 1), [L2 * 0.022, L2 * 0.022, L2 * 0.022], { col: P(S11.photo), role: R_EYE, glow: true });
         }
-        for (const sd of [1, -1]) eyePrim(sol, [L2 * 0.12, L2 * 0.07, sd * L2 * 0.15], L2 * 0.065, [0.5, 0.2, sd * 0.85], C4.eye || "#3a8aff", { pupil: 0.62 });
-        const open = 0.55 + 0.45 * Math.sin(TAU2 * ph + 1);
-        sol.ell([L2 * 0.32, -L2 * 0.02, 0], [L2 * 0.2, L2 * (0.14 + 0.1 * open), L2 * (0.14 + 0.1 * open)], { col: packRGB2(web), shell: 0.3, cut: { x0: -0.3 } });
+        const eyes = [];
+        for (const sd of [1, -1]) {
+          const e = [L2 * 0.08, L2 * 0.05, sd * L2 * 0.12];
+          natEye(sol, e, L2 * 0.05, [0.35, 0.2, sd * 0.92], C4.eye || "#3a8aff", { pupil: 0.6 });
+          eyes.push([...e, L2 * 0.05]);
+        }
+        const open = 0.55 + 0.45 * Math.sin(P22 + 1);
+        webUmbrella(sol, { apex: [L2 * 0.13, 0, 0], ax: [1, 0, 0], len: L2 * (0.36 - 0.08 * open), rim: L2 * (0.16 + 0.12 * open), n: 8, rot: 0.39, col: web, inner: tone3([...web], -0.25), arm: body, armTip: hexRGB2(S11.armTip || "#140608"), P2: P22, L: L2, shell: 0.14 });
         for (let i = 0; i < 8; i++) {
-          const a = i / 8 * TAU2;
-          const pts = [];
-          for (let k = 0; k <= 6; k++) {
-            const t = k / 6;
-            const rr3 = L2 * (0.08 + (0.18 + 0.14 * open) * t);
-            pts.push([L2 * (0.2 + 0.32 * t), Math.cos(a) * rr3, Math.sin(a) * rr3]);
+          const a = 0.39 + i / 8 * TAU2;
+          for (let k = 1; k <= 3; k++) {
+            const x = L2 * 0.13 + L2 * 0.3 * (k / 4) * (1 - 0.2 * open);
+            const rr3 = L2 * (0.16 + 0.12 * open) * Math.sin(k / 4 * Math.PI * 0.5) * 0.85;
+            const b = [x, Math.cos(a) * rr3, Math.sin(a) * rr3];
+            sol.cap(b, add3(b, [L2 * 0.02, -Math.cos(a) * L2 * 0.03, -Math.sin(a) * L2 * 0.03]), L2 * 8e-3, L2 * 4e-3, { col: P("#e8d8d8") });
           }
-          sol.tube(pts, (t) => L2 * 0.03 * (1 - 0.6 * t) + L2 * 8e-3, { col: (q) => packRGB2(q[2] > 0.85 ? hexRGB2(S11.armTip || C4.back) : web) });
         }
-        return { sol, anchors: { mouth: [L2 * 0.5, 0, 0], top: [0, L2 * 0.25, 0], bottom: [0, -L2 * 0.25, 0], tail: [-L2 * 0.5, 0, 0] }, eyes: [[L2 * 0.12, L2 * 0.07, L2 * 0.15, L2 * 0.065]], yawBase: 18 };
+        return { sol, anchors: { mouth: [L2 * 0.5, 0, 0], top: [0, L2 * 0.25, 0], bottom: [0, -L2 * 0.25, 0], tail: [-L2 * 0.48, 0, 0] }, eyes: eyes.slice(0, 1), yawBase: 18 };
       };
       SOLIDS.star = (S11, L2, ph) => {
         const sol = new Solid();
@@ -6251,79 +6396,208 @@ void main() {
       SOLIDS.seahorse = (S11, L2, ph) => {
         const sol = new Solid();
         const C4 = S11.col;
+        const H8 = L2;
         const o3 = [0, 0, 0];
-        const body = hexRGB2(C4.flank), back = hexRGB2(C4.back), belly = hexRGB2(C4.belly);
-        const Hh = L2;
-        const sp = [];
-        for (let k = 0; k <= 22; k++) {
-          const t = k / 22;
-          let x, y;
-          if (t < 0.45) {
-            x = -Hh * 0.06 * Math.sin(t / 0.45 * Math.PI * 0.8);
-            y = Hh * (0.32 - t * 0.9);
-          } else {
-            const a = (t - 0.45) / 0.55 * Math.PI * 1.7;
-            const rr3 = Hh * 0.17 * (1 - (t - 0.45) * 0.9);
-            x = -Hh * 0.06 + Math.sin(a) * rr3 * 1.1 - rr3 * 0.1;
-            y = Hh * (0.32 - 0.405) - Hh * 0.08 - (1 - Math.cos(a)) * rr3 * 0.9;
-          }
-          sp.push([x, y, 0]);
+        const body = hexRGB2(C4.flank), back = hexRGB2(C4.back), belly = hexRGB2(C4.belly), finC = hexRGB2(C4.fin || C4.belly);
+        const spot = hexRGB2(C4.spots || "#fff6e0");
+        const P22 = TAU2 * ph;
+        const bob = Math.sin(P22) * 0.012;
+        const ctrl = [[-0.03, 0.335], [-0.09, 0.27], [-0.11, 0.17], [-0.095, 0.06], [-0.06, -0.04], [-0.03, -0.12], [-0.015, -0.2], [-0.01, -0.28]];
+        const cr = (p0, p1, p2, p3, t) => {
+          const t2 = t * t, t3 = t2 * t;
+          return [0, 1].map((i) => 0.5 * (2 * p1[i] + (-p0[i] + p2[i]) * t + (2 * p0[i] - 5 * p1[i] + 4 * p2[i] - p3[i]) * t2 + (-p0[i] + 3 * p1[i] - 3 * p2[i] + p3[i]) * t3));
+        };
+        const pts = [];
+        for (let i = 0; i < ctrl.length - 1; i++) {
+          const p0 = ctrl[Math.max(0, i - 1)], p1 = ctrl[i], p2 = ctrl[i + 1], p3 = ctrl[Math.min(ctrl.length - 1, i + 2)];
+          for (let k = 0; k < 6; k++) pts.push(cr(p0, p1, p2, p3, k / 6));
         }
-        const rad = (t) => t < 0.08 ? Hh * 0.07 : t < 0.45 ? Hh * (0.085 + 0.03 * Math.sin((t - 0.08) / 0.37 * Math.PI)) : Hh * 0.085 * Math.pow(1 - (t - 0.45) / 0.55, 0.9) + Hh * 0.01;
-        sol.tube(sp, rad, {
-          col: (q, x, y, z, ix, iy, iz) => {
-            const t = q[2];
-            mix3(o3, body, back, smoothstep(0.2, 0.9, -q[3] * 0 + (x < sp[Math.round(t * 22)][0] ? 1 : 0) * 0.6));
-            if (x > sp[Math.round(t * 22)][0] + rad(t) * 0.4 && t < 0.45) mix3(o3, o3, belly, 0.7);
-            if (t * 60 % 1 < 0.22) tone3(o3, -0.16);
-            if (hash2(ix, iy, iz + 3) > 0.9) tone3(o3, 0.22);
-            return packRGB2(o3);
+        const curl = 1 + 0.06 * Math.sin(P22 + 1);
+        const cc = [0.06, -0.32], r0 = 0.07;
+        const last = ctrl[ctrl.length - 1];
+        for (let k = 1; k <= 40; k++) {
+          const t = k / 40, a = Math.PI + t * Math.PI * 2.1 * curl;
+          const rr3 = r0 * (1 - 0.62 * t);
+          const q = [cc[0] + Math.cos(a) * rr3, cc[1] + Math.sin(a) * rr3];
+          if (k < 4) {
+            const b = k / 4;
+            q[0] = lerp(last[0], q[0], b);
+            q[1] = lerp(last[1], q[1], b);
+          }
+          pts.push(q);
+        }
+        const acc2 = [0];
+        for (let i = 1; i < pts.length; i++) acc2.push(acc2[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+        const total = acc2[acc2.length - 1];
+        const at2 = (s02) => {
+          const s12 = clamp(s02, 0, 1) * total;
+          let i = 1;
+          while (i < acc2.length - 1 && acc2[i] < s12) i++;
+          const f = (s12 - acc2[i - 1]) / Math.max(1e-6, acc2[i] - acc2[i - 1]);
+          return [lerp(pts[i - 1][0], pts[i][0], f), lerp(pts[i - 1][1], pts[i][1], f)];
+        };
+        const tanAt = (s02) => {
+          const a = at2(s02 - 4e-3), b = at2(s02 + 4e-3);
+          return vnorm(b[0] - a[0], b[1] - a[1], 0);
+        };
+        const sT = 0.36;
+        const depth = (s02) => s02 < 0.08 ? lerp(0.085, 0.1, s02 / 0.08) : s02 < sT ? 0.1 + 0.105 * Math.sin(Math.PI * Math.pow(clamp01((s02 - 0.04) / (sT - 0.02)), 0.8)) : lerp(0.095, 0.022, Math.pow((s02 - sT) / (1 - sT), 0.8));
+        const width = (s02) => depth(s02) * (s02 < sT ? 0.62 : 0.8);
+        const nR = 46;
+        const rings = [];
+        for (let i = 0; i < nR; i++) {
+          const s02 = (i + 0.5) / nR;
+          const q = at2(s02), t = tanAt(s02);
+          const n2 = [t[1], -t[0], 0];
+          rings.push({ s: s02, c: [q[0] * H8, (q[1] + bob) * H8, 0], t, n: n2, d: depth(s02) * H8, w: width(s02) * H8 });
+        }
+        const segL = total / nR * H8;
+        rings.forEach((R4, i) => {
+          const front = vnorm(-R4.n[0], -R4.n[1], 0);
+          const bulge = R4.s < sT ? 0.35 * Math.sin(Math.PI * clamp01((R4.s - 0.08) / (sT - 0.06))) : 0;
+          const c = add3(R4.c, front, R4.d * bulge * 0.5);
+          sol.ell(c, [segL * 0.78, R4.d * (0.5 + bulge * 0.25), R4.w * 0.5], {
+            axes: [R4.t, R4.n, [0, 0, 1]],
+            sq: [0.78, 0.85],
+            col: (q, x, y, z) => {
+              const v = q[1];
+              mix3(o3, belly, body, smoothstep(-0.85, -0.2, v));
+              mix3(o3, o3, back, smoothstep(0.25, 0.85, v));
+              if (Math.abs(q[0]) > 0.62) tone3(o3, -0.2);
+              else if (Math.abs(q[2]) > 0.55 && Math.abs(v) > 0.45) tone3(o3, 0.14);
+              if (grain(x, y, z, H8 * 0.022, i) > 0.9) mix3(o3, o3, spot, 0.75);
+              if (i % 5 === 2 && v > 0.3) tone3(o3, -0.12);
+              return packRGB2(o3);
+            }
+          });
+          if (i % 2 === 0 && R4.s < 0.85) {
+            const kr = Math.max(6e-3, R4.d / H8 * 0.13) * H8;
+            for (const sd of [1, -1]) sol.ell(add3(add3(c, R4.n, R4.d * 0.42), [0, 0, sd * R4.w * 0.42]), [kr, kr, kr], { col: packRGB2(tone3([...back], 0.08)) });
+            if (R4.s < sT + 0.08) sol.ell(add3(c, R4.n, R4.d * 0.55), [kr * 1.2, kr * 1.3, kr * 1.1], { col: packRGB2(tone3([...back], -0.05)) });
           }
         });
-        const hc = [Hh * 0.06, Hh * 0.36, 0];
-        sol.ell(hc, [Hh * 0.1, Hh * 0.075, Hh * 0.07], { col: P(C4.flank) });
-        sol.cap(add3(hc, [Hh * 0.06, -Hh * 0.01, 0]), add3(hc, [Hh * 0.24, -Hh * 0.06, 0]), Hh * 0.035, Hh * 0.028, { col: P(C4.flank) });
-        sol.cap(add3(hc, [-Hh * 0.02, Hh * 0.05, 0]), add3(hc, [-Hh * 0.04, Hh * 0.13, 0]), Hh * 0.03, Hh * 0.02, { col: P(C4.back) });
-        for (const sd of [1, -1]) eyePrim(sol, add3(hc, [Hh * 0.02, Hh * 0.02, sd * Hh * 0.055]), Hh * 0.03, [0.4, 0.2, sd], C4.eye || "#c89030", { pupil: 0.5 });
-        const fin2 = hexRGB2(C4.fin || C4.flank);
-        for (let k = 0; k < 7; k++) {
-          const t = 0.22 + k * 0.025;
-          const p0 = sp[Math.round(t * 22)];
-          const fl = Math.sin(TAU2 * ph * 2 + k * 0.9) * Hh * 0.02;
-          sol.cap([p0[0] - rad(t) * 0.8, p0[1], 0], [p0[0] - rad(t) - Hh * 0.08, p0[1] + Hh * 0.01, fl], Hh * 0.01, Hh * 6e-3, { col: packRGB2(fin2), role: R_FIN });
+        const top = rings[0];
+        const hc = [0.035 * H8, (0.375 + bob) * H8, 0];
+        const hd = vnorm(1, -0.22, 0);
+        const [h0, h1, h2] = frameOf(hd);
+        const headCol = (q, x, y, z) => {
+          mix3(o3, belly, body, smoothstep(-0.9, -0.2, q[1]));
+          mix3(o3, o3, back, smoothstep(0.35, 0.9, q[1]));
+          if (grain(x, y, z, H8 * 0.02, 33) > 0.9) mix3(o3, o3, spot, 0.7);
+          return packRGB2(o3);
+        };
+        sol.ell(hc, [0.095 * H8, 0.066 * H8, 0.05 * H8], { axes: [h0, h1, h2], col: headCol });
+        sol.ell(lerp3(hc, top.c, 0.55), [0.05 * H8, 0.06 * H8, 0.04 * H8], { axes: [vnorm(top.c[0] - hc[0], top.c[1] - hc[1], 0), vnorm(-(top.c[1] - hc[1]), top.c[0] - hc[0], 0), [0, 0, 1]], col: headCol });
+        const s0 = add3(hc, hd, 0.06 * H8), s1 = add3(add3(hc, hd, 0.215 * H8), [0, -0.012 * H8, 0]);
+        sol.cap(s0, s1, 0.026 * H8, 0.017 * H8, { col: (q, x, y, z) => packRGB2(tone3(mix3(o3, belly, body, smoothstep(-0.6, 0.3, q[3])), (grain(x, y, z, H8 * 0.02, 7) > 0.86 ? 0.15 : 0) + (q[2] > 0.92 ? -0.25 : 0))) });
+        sol.ell(add3(s1, hd, 6e-3 * H8), [0.012 * H8, 0.02 * H8, 0.019 * H8], { axes: [h0, h1, h2], col: (q) => packRGB2(q[0] > 0.6 ? tone3([...body], -0.45) : tone3([...body], -0.05)) });
+        const cb = add3(hc, [-0.035 * H8, 0.04 * H8, 0]);
+        sol.cap(cb, add3(cb, [-0.012 * H8, 0.05 * H8, 0]), 0.026 * H8, 0.02 * H8, { col: (q, x, y, z) => packRGB2(tone3(mix3(o3, body, back, 0.55), (grain(x, y, z, H8 * 0.02, 2) - 0.5) * 0.15)) });
+        for (let k = 0; k < 5; k++) {
+          const a = k / 5 * TAU2 + 0.3;
+          const b = add3(cb, [-0.012 * H8 + Math.cos(a) * 0.016 * H8, 0.05 * H8, Math.sin(a) * 0.016 * H8]);
+          sol.cap(b, add3(b, [Math.cos(a) * 8e-3 * H8, 0.016 * H8, Math.sin(a) * 8e-3 * H8]), 7e-3 * H8, 3e-3 * H8, { col: packRGB2(tone3([...back], -0.1)) });
         }
-        for (const sd of [1, -1]) sol.ell(add3(hc, [-Hh * 0.08, -Hh * 0.04, sd * Hh * 0.075]), [Hh * 0.03, Hh * 0.04, Hh * 8e-3], { col: packRGB2(fin2), role: R_FIN });
-        return { sol, anchors: { mouth: [hc[0] + Hh * 0.25, hc[1] - Hh * 0.06, 0], top: [0, Hh * 0.5, 0], bottom: [0, -Hh * 0.45, 0], tail: [0, -Hh * 0.3, 0] }, eyes: [[hc[0] + Hh * 0.02, hc[1] + Hh * 0.02, Hh * 0.055, Hh * 0.03]], yawBase: 20 };
+        for (const sd of [1, -1]) {
+          const ep = add3(hc, [0.022 * H8, 0.012 * H8, sd * 0.044 * H8]);
+          natEye(sol, ep, 0.017 * H8, [0.25, 0.25, sd], C4.eye || "#c88a20", { pupil: 0.55 });
+          sol.cap(add3(ep, [-6e-3 * H8, 0.016 * H8, 0]), add3(ep, [-0.012 * H8, 0.03 * H8, sd * 6e-3 * H8]), 7e-3 * H8, 2e-3 * H8, { col: packRGB2(tone3([...back], 0)) });
+          sol.ell(add3(hc, [-0.03 * H8, -0.02 * H8, sd * 0.03 * H8]), [0.034 * H8, 0.032 * H8, 0.024 * H8], { col: (q) => packRGB2(tone3(mix3(o3, body, belly, 0.25), Math.hypot(q[0], q[1]) > 0.8 ? -0.15 : 0.04)) });
+          const pf = add3(hc, [-0.075 * H8, -0.04 * H8, sd * 0.04 * H8]);
+          const fa = 0.6 * Math.sin(P22 * 3 + (sd > 0 ? 0 : 1));
+          sol.ell(add3(pf, [-0.012 * H8, 0, sd * 0.01 * H8]), [0.022 * H8, 0.03 * H8, 4e-3 * H8], { axes: [vnorm(Math.cos(fa), 0, sd * Math.sin(fa)), [0, 1, 0], vnorm(-sd * Math.sin(fa), 0, Math.cos(fa))], role: R_FIN, col: (q) => packRGB2(tone3([...finC], Math.round(q[1] * 6) % 2 ? -0.06 : 0.05)) });
+        }
+        const nd = 9;
+        for (let k = 0; k < nd; k++) {
+          const sk = sT - 0.1 + k / (nd - 1) * 0.13;
+          const q = at2(sk), t = tanAt(sk), n2 = [t[1], -t[0], 0];
+          const base = [q[0] * H8, (q[1] + bob) * H8, 0];
+          const d = depth(sk) * H8 * 0.48;
+          const hgt = 0.075 * H8 * Math.sin(Math.PI * (0.15 + 0.85 * (k + 0.5) / nd));
+          const zf = Math.sin(P22 * 4 - k * 0.9) * 0.012 * H8;
+          sol.cap(add3(base, n2, d * 0.9), add3(add3(base, n2, d + hgt), [0, 0, zf]), 75e-4 * H8, 4e-3 * H8, { role: R_FIN, col: (q2) => packRGB2(tone3([...finC], q2[2] > 0.85 ? 0.12 : -0.04)) });
+        }
+        const mouth = add3(s1, hd, 0.02 * H8);
+        const eye = add3(hc, [0.022 * H8, 0.012 * H8, 0.044 * H8]);
+        const tailTip = rings[nR - 1].c;
+        return { sol, anchors: { mouth, top: [cb[0], cb[1] + 0.07 * H8, 0], bottom: [cc[0] * H8, (cc[1] - r0 - 0.02) * H8, 0], tail: tailTip }, eyes: [[...eye, 0.017 * H8]], yawBase: 18, finAlpha: 0.6 };
       };
       SOLIDS.chomper = (S11, L2, ph) => {
         const sol = new Solid();
         const C4 = S11.col;
         const o3 = [0, 0, 0];
         const back = hexRGB2(C4.back), flank = hexRGB2(C4.flank), belly = hexRGB2(C4.belly);
-        const R4 = L2 * 0.5;
-        const gape = (0.12 + 0.55 * Math.abs(Math.sin(Math.PI * ph))) * 0.62;
-        sol.ell([0, 0, 0], [R4, R4, R4], {
-          col: (q, x, y, z, ix, iy, iz) => {
-            const a = Math.atan2(q[1], q[0]);
-            if (q[0] > 0 && Math.abs(a) < gape) return null;
-            const v = (q[1] + 1) / 2;
-            mix3(o3, belly, flank, smoothstep(0.2, 0.45, v));
-            mix3(o3, o3, back, smoothstep(0.6, 0.85, v));
-            const sa = Math.atan2(q[2], q[0]) * 5, sb = q[1] * 6;
-            const row2 = Math.floor(sb), fa = (sa + (row2 & 1) * 0.5) % 1, fb = sb - row2;
-            if (Math.hypot((fa + 1) % 1 - 0.55, (fb - 0.5) * 1.2) > 0.48) tone3(o3, -0.1);
-            return packRGB2(o3);
-          }
-        });
-        sol.ell([R4 * 0.05, 0, 0], [R4 * 0.9, R4 * 0.9, R4 * 0.9], { col: (q) => Math.abs(Math.atan2(q[1], q[0])) < gape && q[0] > 0 ? P("#4a1426") : null, under: true, role: R_MOUTH });
-        for (const sd of [1, -1]) eyePrim(sol, [R4 * 0.38, R4 * 0.5, sd * R4 * 0.66], R4 * 0.17, [0.45, 0.3, sd * 0.85], C4.eye || "#d8a040", { pupil: 0.55 });
-        const finC = hexRGB2(C4.fin || C4.flank);
-        for (let k = -4; k <= 4; k++) {
-          const sw = Math.sin(TAU2 * ph) * R4 * 0.15;
-          sol.cap([-R4 * 0.92, 0, 0], [-R4 * 1.45, k * R4 * 0.11, sw], R4 * 0.045, R4 * 0.03, { col: packRGB2(finC), role: R_FIN });
+        const finC = hexRGB2(C4.fin || C4.flank), dorsC = hexRGB2(C4.dorsal || C4.fin || C4.flank);
+        const R4 = L2 * 0.46;
+        const P22 = TAU2 * ph;
+        const gape = 0.05 + 0.42 * Math.abs(Math.sin(Math.PI * ph));
+        const hx = R4 * 0.5, hy = -R4 * 0.12;
+        const inMouth = (x, y) => x > hx && Math.abs(Math.atan2(y - hy, x - hx)) < gape;
+        const g = L2 / 70;
+        const B2 = [R4 * 1.02, R4 * 0.94, R4 * 0.9];
+        const skin = (q, x, y, z) => {
+          const v = (q[1] + 1) / 2;
+          mix3(o3, belly, flank, smoothstep(0.3, 0.48, v));
+          mix3(o3, o3, back, smoothstep(0.55, 0.8, v));
+          if (v > 0.42 && spotAt(x / L2 * 1.3 + 2, (y + z * 0.7) / L2 * 1.3, 0.035, 0.7, 11) > 0.08) tone3(o3, -0.42);
+          if (v < 0.4) tone3(o3, Math.sin(y / R4 * 28 + Math.sin(z / R4 * 6) * 2) > 0.7 ? -0.06 : 0);
+          tone3(o3, (grain(x, y, z, g, 4) - 0.5) * 0.06);
+          return o3;
+        };
+        sol.ell([0, 0, 0], B2, { col: (q, x, y, z) => inMouth(x, y) ? null : packRGB2(skin(q, x, y, z)) });
+        sol.ell([R4 * 0.82, hy + R4 * 0.02, 0], [R4 * 0.24, R4 * 0.3, R4 * 0.32], { col: (q, x, y, z) => inMouth(x, y) ? null : packRGB2(skin([q[0], q[1] * 0.5 - 0.1, q[2]], x, y, z)) });
+        sol.ell([hx + R4 * 0.15, hy, 0], [R4 * 0.42, R4 * 0.4, R4 * 0.26], { col: (q, x, y) => inMouth(x, y) ? P("#3a1424") : null, under: true, role: R_MOUTH });
+        for (const sg of [1, -1]) {
+          const a = sg * gape;
+          const d = [Math.cos(a), Math.sin(a), 0];
+          const b0 = [hx + d[0] * R4 * 0.36, hy + d[1] * R4 * 0.36, 0];
+          const b1 = [hx + d[0] * R4 * 0.6, hy + d[1] * R4 * 0.6, 0];
+          for (const sz of [1, -1]) sol.cap(add3(b0, [0, 0, sz * R4 * 0.15]), add3(b1, [0, -sg * R4 * 0.02, sz * R4 * 0.06]), R4 * 0.06, R4 * 0.055, { col: P("#f4efe2") });
+          sol.cap(add3(b1, [0, -sg * R4 * 0.02, R4 * 0.07]), add3(b1, [0, -sg * R4 * 0.02, -R4 * 0.07]), R4 * 0.058, R4 * 0.058, { col: P("#f8f4ea") });
         }
-        for (let k = 0; k < 5; k++) sol.cap([-R4 * 0.1 - k * R4 * 0.12, R4 * 0.95, 0], [-R4 * 0.25 - k * R4 * 0.14, R4 * 1.28 - k * R4 * 0.03, 0], R4 * 0.04, R4 * 0.025, { col: packRGB2(C4.dorsal ? hexRGB2(C4.dorsal) : finC), role: R_FIN });
-        return { sol, anchors: { mouth: [R4, 0, 0], top: [0, R4 * 1.2, 0], bottom: [0, -R4, 0], tail: [-R4 * 1.4, 0, 0] }, eyes: [[R4 * 0.38, R4 * 0.5, R4 * 0.66, R4 * 0.17]], yawBase: 0 };
+        const NS = 170, ga = Math.PI * (3 - Math.sqrt(5));
+        for (let i = 0; i < NS; i++) {
+          const yy = 1 - 2 * (i + 0.5) / NS, rr3 = Math.sqrt(1 - yy * yy), a = i * ga;
+          const n2 = [Math.cos(a) * rr3, yy, Math.sin(a) * rr3];
+          if (n2[0] > 0.55 && Math.abs(n2[1] + 0.1) < 0.55) continue;
+          if (n2[0] > 0.1 && n2[1] > 0.15 && Math.abs(n2[2]) > 0.45 && n2[1] < 0.75) continue;
+          if (n2[0] < -0.75) continue;
+          const p0 = [n2[0] * B2[0] * 0.97, n2[1] * B2[1] * 0.97, n2[2] * B2[2] * 0.97];
+          const nn = vnorm(n2[0] / B2[0], n2[1] / B2[1], n2[2] / B2[2]);
+          const sl = R4 * (0.13 + 0.04 * hash2(i, 3, 5));
+          const v = (n2[1] + 1) / 2;
+          const sc = mix3([0, 0, 0], tone3([...belly], -0.08), tone3([...back], 0.35), smoothstep(0.4, 0.7, v));
+          sol.cap(p0, add3(p0, nn, sl), R4 * 0.045, R4 * 8e-3, { col: packRGB2(sc) });
+        }
+        const eyes = [];
+        for (const sd of [1, -1]) {
+          const n2 = vnorm(0.42, 0.4, sd * 0.82);
+          const er = R4 * 0.19;
+          const c = [n2[0] * B2[0] * 0.97, n2[1] * B2[1] * 0.97, n2[2] * B2[2] * 0.97];
+          sol.ell(add3(c, n2, -er * 0.25), [er * 1.25, er * 1.25, er * 1.25], { col: (q, x, y, z) => packRGB2(tone3(skin(q, x, y, z), -0.1)) });
+          natEye(sol, c, er, [0.3, 0.2, sd], C4.eye || "#e8b040", { pupil: 0.55 });
+          eyes.push([...c, er]);
+        }
+        for (const sd of [1, -1]) {
+          const fa = 0.45 + 0.4 * Math.sin(P22 * 2 + (sd > 0 ? 0 : 1.3));
+          const root = [-R4 * 0.02, -R4 * 0.12, sd * B2[2] * 0.92];
+          const dir = vnorm(-Math.cos(fa), 0, sd * Math.sin(fa));
+          sol.ell(add3(root, dir, R4 * 0.2), [R4 * 0.22, R4 * 0.2, R4 * 0.03], { axes: [dir, [0, 1, 0], vnorm(-dir[2], 0, dir[0])], role: R_FIN, col: (q) => packRGB2(tone3(mix3(o3, finC, belly, 0.62), Math.abs(Math.sin(Math.atan2(q[1], q[0] + 1) * 7)) < 0.25 ? -0.08 : 0.04)) });
+        }
+        const sw = Math.sin(P22) * 0.35;
+        const finFan = (base, dir, len, wid, col, phase) => {
+          const [e0, e1, e2] = frameOf(dir, [0, 0, 1]);
+          const fl = Math.sin(P22 * 2 + phase) * 0.25;
+          const a0 = rotAx(e0, e2, fl), a1 = rotAx(e1, e2, fl);
+          sol.ell(add3(base, a0, len * 0.55), [len * 0.6, R4 * 0.035, wid], { axes: [a0, a1, e2], role: R_FIN, col: (q) => packRGB2(tone3([...col], (Math.abs(Math.sin(Math.atan2(q[2], q[0] + 1) * 5)) < 0.22 ? -0.12 : 0) + (q[0] > 0.6 ? 0.1 : 0))) });
+        };
+        finFan([-R4 * 0.55, B2[1] * 0.72, 0], vnorm(-0.55, 1, 0), R4 * 0.42, R4 * 0.2, dorsC, 0);
+        finFan([-R4 * 0.58, -B2[1] * 0.7, 0], vnorm(-0.6, -1, 0), R4 * 0.3, R4 * 0.15, mix3([0, 0, 0], finC, belly, 0.5), 1.5);
+        const pd = [-B2[0] * 1.12, 0, Math.sin(sw) * R4 * 0.12];
+        sol.cap([-B2[0] * 0.8, 0, 0], pd, R4 * 0.2, R4 * 0.13, { col: (q, x, y, z) => packRGB2(skin([0, q[3] * 0.6, 0], x, y, z)) });
+        const td = vnorm(-Math.cos(sw), 0, Math.sin(sw));
+        sol.ell(add3(pd, td, R4 * 0.22), [R4 * 0.26, R4 * 0.36, R4 * 0.035], { axes: [td, [0, 1, 0], vnorm(-td[2], 0, td[0])], role: R_FIN, col: (q) => packRGB2(tone3([...finC], (Math.abs(Math.sin(Math.atan2(q[1], q[0] + 1) * 6)) < 0.25 ? -0.12 : 0) + (q[0] > 0.55 ? -0.15 : 0))) });
+        return { sol, anchors: { mouth: [B2[0] + R4 * 0.12, hy, 0], top: [0, B2[1] * 1.15, 0], bottom: [0, -B2[1], 0], tail: [-B2[0] * 1.5, 0, 0] }, eyes: eyes.slice(0, 1), yawBase: 0, finAlpha: 0.75 };
       };
       solidCache = /* @__PURE__ */ new Map();
     }
@@ -6673,22 +6947,28 @@ void main() {
         tail: { type: "lunate", len: 0.22, spread: 0.2, fork: 0.35, rays: 14 }
       };
       A.puffer = {
+        // pufferfish (Arothron / Takifugu): a big blunt head with high eyes, a small beak mouth, a stubby body that tapers
+        // to a narrow peduncle, small dorsal + anal fins set far back, little fan pectorals, a short rounded tail
         plan: "fish",
-        body: { D: 0.38, up: 0.52, at: 0.36, ped: 0.24, tip: -0.01, fore: 2.6, chin: 2.4, back: 0.75, W: 0.15, pw: 0.04, nose: 0.06, xs: 2.1, wy: 0.45 },
-        eye: { u: 0.17, v: 0.7, r: 0.045, iris: "#40b878" },
-        mouth: { u: 0.035, v: 0.42, drop: 0, lips: "#e8e0c8", dark: 0.4 },
+        body: { D: 0.4, up: 0.52, at: 0.28, atB: 0.38, ped: 0.15, pc: 0.01, tip: -0.03, fore: 2.5, chin: 2.1, back: 1.35, backB: 1.15, W: 0.19, atW: 0.3, wTip: 0.08, pw: 0.032, wBack: 1.1, nose: 0.12, xs: 2.2, wy: 0.42, sag: 0.05 },
+        eye: { u: 0.2, v: 0.74, r: 0.04, iris: "#40b878", bulge: 0.55 },
+        mouth: { u: 0.028, v: 0.4, drop: 0, curve: 2e-3, lips: "#f4efe0", dark: 0.45, gapeK: 0.6 },
         op: null,
+        noGill: true,
+        scales: null,
+        lateral: null,
         fins: [
-          { at: "top", from: 0.68, to: 0.8, h: 0.1, shape: "round", rake: 0.4, rays: 9 },
-          { at: "bot", from: 0.7, to: 0.81, h: 0.09, shape: "round", rake: 0.4, rays: 8 }
+          { at: "top", from: 0.66, to: 0.77, h: 0.12, shape: "round", rake: 0.45, rays: 10 },
+          { at: "bot", from: 0.69, to: 0.79, h: 0.11, shape: "round", rake: 0.45, rays: 9 }
         ],
-        pec: { u: 0.29, v: 0.48, len: 0.09, w: 0.06, ang: 0, spread: 50, rays: 14, shape: "fan" },
+        pec: { u: 0.29, v: 0.48, len: 0.1, w: 0.07, ang: 0, spread: 22, rays: 14, shape: "fan", flap: 1.2 },
         pel: null,
-        tail: { type: "round", len: 0.2, spread: 0.13, rays: 10 },
-        spines: { len: 0.05, gap: 0.07, col: "#f4f0e0" },
+        tail: { type: "round", len: 0.19, spread: 0.12, rays: 11 },
+        spines: { len: 0.045, gap: 0.07, col: "#f4f0e0" },
         col: { back: "#6a6a50", flank: "#a8a888", belly: "#fafaf2", fin: "#c8c098", vb: 0.6, vbel: 0.36, soft: 0.06 },
+        pat: [{ type: "speckle", tone: -0.12, density: 0.06 }],
         mat: { iri: 0.1, gloss: 0.88 },
-        wave: 0.28,
+        wave: 0.22,
         stiff: true
       };
       A.boxfish = {
@@ -6790,24 +7070,26 @@ void main() {
         stiff: true
       };
       A.flatfish = {
+        // flounder / halibut lying on its blind side: an oval body, both eyes bulging on the up side near the front, a
+        // continuous fringe of dorsal and anal fin all round, a rounded tail, mottled sandy skin
         plan: "fish",
-        flat: { roll: -62, blind: "#f6f4ef" },
-        body: { D: 0.5, up: 0.5, at: 0.42, ped: 0.16, tip: 0.04, fore: 1.6, chin: 1.8, back: 1.1, W: 0.03, nose: 0.06, xs: 1.6, wy: 0.5 },
-        eye: { u: 0.1, v: 0.62, r: 0.03, iris: "#c8a860", second: [0.035, 0.12], bulge: 0.7 },
-        mouth: { u: 0.06, v: 0.5, drop: -0.012, curve: 0.01 },
-        op: { u: 0.22, top: 0.7, bot: 0.26, bulge: 0.03, dark: 0.15 },
-        lateral: { v0: 0.6, v1: 0.5, tone: -0.12 },
-        scales: { size: 0.014, k: 0.04 },
+        flat: { roll: -46, blind: "#f6f4ef" },
+        body: { D: 0.48, up: 0.5, at: 0.42, ped: 0.15, tip: 0.05, fore: 1.7, chin: 1.9, back: 1.1, W: 0.032, nose: 0.06, xs: 1.6, wy: 0.5 },
+        eye: { u: 0.115, v: 0.6, r: 0.032, iris: "#a88440", second: [0.045, 0.17], bulge: 0.95, pupil: 0.62 },
+        mouth: { u: 0.055, v: 0.5, drop: -0.016, curve: 0.012, dark: 0.4 },
+        op: { u: 0.21, top: 0.72, bot: 0.24, bulge: 0.03, dark: 0.07 },
+        lateral: { v0: 0.56, v1: 0.5, tone: -0.1 },
+        scales: { size: 0.012, k: 0.035 },
         fins: [
-          { at: "top", from: 0.08, to: 0.94, h: 0.07, shape: "low", rake: 0.3, rays: 40 },
-          { at: "bot", from: 0.2, to: 0.94, h: 0.07, shape: "low", rake: 0.3, rays: 32 }
+          { at: "top", from: 0.1, to: 0.95, h: 0.085, shape: "low", rake: 0.3, rays: 46, thick: 0.012 },
+          { at: "bot", from: 0.22, to: 0.95, h: 0.085, shape: "low", rake: 0.3, rays: 38, thick: 0.012 }
         ],
-        pec: { u: 0.24, v: 0.5, len: 0.08, w: 0.03, ang: 0, spread: 8, rays: 8 },
+        pec: { u: 0.23, v: 0.5, len: 0.08, w: 0.03, ang: 0, spread: 8, rays: 8 },
         pel: null,
-        tail: { type: "round", len: 0.16, spread: 0.12, rays: 16 },
-        col: { back: "#8a7050", flank: "#a08868", belly: "#b09a78", fin: "#8a7458", vb: 0.66, vbel: 0.3 },
+        tail: { type: "round", len: 0.15, spread: 0.12, rays: 16, thick: 0.012 },
+        col: { back: "#8a7050", flank: "#a08868", belly: "#b09a78", fin: "#9a8262", vb: 0.66, vbel: 0.3 },
         pat: [{ type: "mottle", color: "#5a4430", scale: 12, thresh: 0.55, amt: 0.6 }],
-        mat: { iri: 0.04, gloss: 0.7 },
+        mat: { iri: 0.04, gloss: 0.7, finGlass: 0.35 },
         wave: 0.4
       };
       A.lantern = {
@@ -6828,9 +7110,9 @@ void main() {
       };
       A.angler = {
         plan: "fish",
-        body: { D: 0.66, up: 0.48, at: 0.34, ped: 0.14, tip: 0.05, fore: 1.25, chin: 1, back: 0.8, W: 0.2, pw: 0.04, nose: 0.02, xs: 2.2, wy: 0.45, sag: 0.04 },
+        body: { top: [[0, 0.13], [0.04, 0.24], [0.14, 0.32], [0.34, 0.35], [0.58, 0.28], [0.8, 0.12], [1, 0.045]], bot: [[0, 0.01], [0.03, -0.13], [0.12, -0.25], [0.34, -0.31], [0.6, -0.23], [0.82, -0.1], [1, -0.045]], W: 0.24, pw: 0.04, nose: 0.05, xs: 2.2, wy: 0.45 },
         eye: { u: 0.2, v: 0.8, r: 0.022, iris: "#3a3a50", pupil: 0.6 },
-        mouth: { u: 0.3, v: 0.62, drop: -0.18, curve: -0.02, dark: 0.7, teeth: { n: 12, len: 0.07, col: "#e8f0f8" } },
+        mouth: { u: 0.3, v: 0.62, drop: -0.18, curve: -0.02, dark: 0.7, teeth: { n: 12, len: 0.07, col: "#e8f0f8", out: 1.02 } },
         op: null,
         noGill: true,
         nostril: false,
@@ -7135,20 +7417,27 @@ void main() {
         glow: true
       };
       A.mola = {
+        // ocean sunfish: a tall, short, laterally flat disc that ends in the clavus (a rounded, scalloped rudder in place
+        // of a tail), very tall swept-back dorsal and anal fins (fleshy, body coloured), a small pectoral, a tiny mouth
         plan: "fish",
-        body: { top: [[0, 0.04], [0.1, 0.2], [0.3, 0.3], [0.55, 0.3], [0.8, 0.24], [1, 0.2]], bot: [[0, -0.04], [0.1, -0.18], [0.3, -0.28], [0.55, -0.29], [0.8, -0.23], [1, -0.19]], wid: [[0, 0.04], [0.2, 0.09], [0.6, 0.08], [1, 0.03]], nose: 0.08, xs: 1.8, wy: 0.5 },
-        eye: { u: 0.12, v: 0.58, r: 0.03, iris: "#5a5a60" },
-        mouth: { u: 0.025, v: 0.48, drop: 0, lips: "#e8e4e0" },
+        body: { top: [[0, 0.03], [0.06, 0.14], [0.18, 0.26], [0.36, 0.33], [0.58, 0.33], [0.8, 0.28], [0.94, 0.24], [1, 0.22]], bot: [[0, -0.05], [0.07, -0.17], [0.2, -0.28], [0.4, -0.33], [0.62, -0.32], [0.82, -0.27], [0.94, -0.23], [1, -0.21]], wid: [[0, 0.03], [0.15, 0.085], [0.45, 0.095], [0.8, 0.06], [1, 0.03]], nose: 0.07, xs: 1.7, wy: 0.5 },
+        eye: { u: 0.13, v: 0.6, r: 0.026, iris: "#4a4a52" },
+        mouth: { u: 0.02, v: 0.46, drop: 0, lips: "#e4e8ec", dark: 0.5 },
         op: null,
         noGill: true,
-        fins: [fin("top", 0.6, 0.86, 0.48, [[0, 0.4], [0.3, 0.9], [0.6, 1], [1, 0.3]], 0.55, 12), fin("bot", 0.62, 0.88, 0.46, [[0, 0.4], [0.3, 0.9], [0.6, 1], [1, 0.3]], 0.55, 12)],
-        pec: { u: 0.28, v: 0.5, len: 0.1, w: 0.04, ang: 0, rays: 10 },
+        lateral: null,
+        scales: null,
+        fins: [
+          fin("top", 0.6, 0.84, 0.56, [[0, 0.45], [0.2, 0.9], [0.42, 1], [0.7, 0.62], [1, 0.12]], 0.6, 1, { thick: 0.028 }),
+          fin("bot", 0.62, 0.86, 0.52, [[0, 0.45], [0.2, 0.9], [0.42, 1], [0.7, 0.62], [1, 0.12]], 0.6, 1, { thick: 0.028 })
+        ],
+        pec: { u: 0.3, v: 0.52, len: 0.09, w: 0.035, ang: 5, spread: 15, rays: 8, opaque: true, flap: 0.6 },
         pel: null,
-        tail: { type: "round", len: 0.1, spread: 0.24, rays: 16, focus: 0.06 },
-        col: { back: "#6a7888", flank: "#b8c4ce", belly: "#e8eef2", fin: "#7a8898", vb: 0.66, vbel: 0.3 },
-        pat: [{ type: "mottle", color: "#f2f6f8", scale: 6, thresh: 0.56, amt: 0.6 }],
-        mat: { iri: 0.2, gloss: 0.82 },
-        wave: 0.1,
+        tail: { type: "clavus", len: 0.085, spread: 0.27, rays: 1, focus: 0.04, thick: 0.028, lobes: 9 },
+        col: { back: "#5e6c7c", flank: "#aab6c2", belly: "#e6ecf0", fin: "#66748a", vb: 0.7, vbel: 0.3, soft: 0.08 },
+        pat: [{ type: "mottle", color: "#dfe6ec", scale: 7, thresh: 0.56, amt: 0.5 }, { type: "speckle", tone: -0.12, density: 0.05 }],
+        mat: { iri: 0.12, gloss: 0.75 },
+        wave: 0.08,
         stiff: true
       };
       A.hatchet = {
@@ -7315,9 +7604,9 @@ void main() {
       };
       A.football = {
         ...A.angler,
-        body: { D: 0.8, up: 0.52, at: 0.4, ped: 0.14, tip: 0.06, fore: 1.8, chin: 1.4, back: 0.75, W: 0.28, pw: 0.04, nose: 0.06, xs: 2.2, wy: 0.45 },
-        mouth: { u: 0.26, v: 0.66, drop: -0.18, curve: -0.02, dark: 0.75, teeth: { n: 10, len: 0.05, col: "#e8f0f8" } },
-        lure: { u: 0.18, len: 0.42, ang: 95, curve: 1.6, bulb: 0.05, col: "#ffe8f0", rod: "#3a2830", filaments: 5 },
+        body: { top: [[0, 0.15], [0.05, 0.3], [0.2, 0.4], [0.42, 0.42], [0.65, 0.31], [0.85, 0.13], [1, 0.045]], bot: [[0, -0.01], [0.04, -0.17], [0.18, -0.31], [0.42, -0.37], [0.66, -0.27], [0.86, -0.11], [1, -0.045]], W: 0.3, pw: 0.04, nose: 0.07, xs: 2.2, wy: 0.45 },
+        mouth: { u: 0.26, v: 0.66, drop: -0.18, curve: -0.02, dark: 0.75, teeth: { n: 10, len: 0.05, col: "#e8f0f8", out: 1.02 } },
+        lure: { u: 0.18, len: 0.42, ang: 95, curve: 1.6, bulb: 0.038, col: "#ffe8f0", rod: "#3a2830", filaments: 5 },
         spines: { len: 0.03, gap: 0.08, col: "#5a4048", always: 1 },
         col: { back: "#2a1a22", flank: "#3a2630", belly: "#4a3038", fin: "#2a1a22", vb: 0.6, vbel: 0.3 }
       };
@@ -7420,7 +7709,7 @@ void main() {
         fins: [],
         pec: null,
         pel: null,
-        tail: { type: "whip", len: 0.45, taper: 1.2, w: 0.012, col: "#141c2c" },
+        tail: { type: "whip", len: 0.32, taper: 1.3, w: 0.014, col: "#141c2c" },
         col: { back: "#14203a", flank: "#1c2c4c", belly: "#1c2c4c", fin: "#14203a", vb: 0.6, vbel: 0.3 },
         pat: [{ type: "blotch", u: 0.24, v: 0.72, rx: 0.07, ry: 0.07, color: "#e8eef4" }, { type: "blotch", u: 0.24, v: 0.28, rx: 0.07, ry: 0.07, color: "#e8eef4" }],
         flap: 0.32,
@@ -7432,7 +7721,7 @@ void main() {
         ...A.manta,
         body: { ...rayKnots([[0, 0.05], [0.04, 0.07], [0.1, 0.11], [0.2, 0.42], [0.34, 0.86], [0.42, 1], [0.48, 0.78], [0.6, 0.38], [0.75, 0.14], [0.88, 0.07], [1, 0.05]]), wid: [[0, 0.04], [0.15, 0.08], [0.4, 0.08], [0.75, 0.05], [1, 0.025]], nose: 0.04, xs: 1.15, wy: 0.5 },
         eye: { u: 0.1, v: 0.94, r: 0.022, iris: "#3a3a40", second: [0, -0.88] },
-        tail: { type: "whip", len: 0.9, taper: 1.2, w: 0.01, col: "#101828" },
+        tail: { type: "whip", len: 0.7, taper: 1.6, w: 0.016, col: "#101828" },
         col: { back: "#0e1a34", flank: "#16264a", belly: "#16264a", fin: "#0e1a34", vb: 0.6, vbel: 0.3 },
         pat: [{ type: "spots", color: "#f0f6ff", size: 0.02, density: 0.5, seed: 21, umin: 0.08 }],
         flap: 0.36
@@ -7442,7 +7731,7 @@ void main() {
         flat: { roll: -62, blind: "#f2f0ec" },
         body: { ...rayKnots([[0, 0], [0.06, 0.12], [0.18, 0.34], [0.36, 0.6], [0.46, 0.62], [0.58, 0.44], [0.72, 0.2], [0.82, 0.1], [1, 0.07]]), wid: [[0, 0.02], [0.2, 0.06], [0.45, 0.07], [0.8, 0.05], [1, 0.035]], nose: 0.03, xs: 1.15, wy: 0.5 },
         eye: { u: 0.16, v: 0.62, r: 0.02, iris: "#c8a860", second: [0, -0.24] },
-        tail: { type: "whip", len: 0.6, taper: 0.8, w: 0.025, col: "#5a6070" },
+        tail: { type: "whip", len: 0.42, taper: 0.9, w: 0.03, col: "#5a6070" },
         col: { back: "#5a6070", flank: "#6a7080", belly: "#6a7080", fin: "#5a6070", vb: 0.6, vbel: 0.3 },
         pat: [{ type: "spots", color: "#a8acb8", size: 0.025, density: 0.35, seed: 25 }, { type: "ocelli", color: "#2a2e3a", ring: "#e8d8a8", size: 0.05, density: 0.15, seed: 4 }],
         flap: 0.2,
@@ -7453,7 +7742,7 @@ void main() {
         flat: { roll: -62, blind: "#f4f2ee" },
         body: { ...rayKnots([[0, 0.12], [0.06, 0.26], [0.2, 0.42], [0.45, 0.46], [0.7, 0.38], [0.88, 0.18], [1, 0.06]]), wid: [[0, 0.03], [0.25, 0.07], [0.6, 0.065], [1, 0.03]], nose: 0.03, xs: 1.2, wy: 0.5 },
         eye: { u: 0.2, v: 0.7, r: 0.032, iris: "#d8b050", second: [0, -0.4] },
-        tail: { type: "whip", len: 0.7, taper: 1.1, w: 0.02, col: "#b89a6a" },
+        tail: { type: "whip", len: 0.55, taper: 1.5, w: 0.022, col: "#b89a6a" },
         col: { back: "#b89a6a", flank: "#c8aa78", belly: "#c8aa78", fin: "#b89a6a", vb: 0.6, vbel: 0.3 },
         pat: [{ type: "spots", color: "#1a8aff", size: 0.03, density: 0.45, seed: 33 }],
         flap: 0.14,
@@ -7479,7 +7768,7 @@ void main() {
       S("porpoise", "porpoise");
       S("puffer", "puffer", { col: C("#e8a800", "#ffd418", "#fff4b0", "#ffd860"), pat: [{ type: "spots", color: "#3a2c10", size: 0.014, density: 0.22, vmin: 0.3, seed: 5 }], eye: { iris: "#3ab070" } });
       S("briefcase", "salmon", { body: { hump: 0.05, D: 0.25 }, col: C("#b81414", "#e02a22", "#f0a088", "#4a6a30", { head: "#3a5a26", headU: 0.24 }), mouth: { drop: -0.03, curve: -0.01 }, tail: { col: "#4a6a30" }, fins: [fin("top", 0.4, 0.53, 0.11, "tri", 0.45, 11, { col: "#a82020" }), fin("top", 0.79, 0.85, 0.035, "tri", 0.3, 1, { adipose: true, col: "#a82020" }), fin("bot", 0.68, 0.79, 0.08, "tri", 0.4, 9, { col: "#4a6a30" })] });
-      S("flounder", "flatfish", { col: C("#9a8060", "#ae9470", "#ae9470", "#9a8262"), pat: [{ type: "mottle", color: "#6a5238", scale: 10, thresh: 0.56, amt: 0.6 }, { type: "ocelli", color: "#a08868", ring: "#3ab8ff", size: 0.04, density: 0.35, seed: 9 }, { type: "spots", color: "#5ac8ff", size: 0.01, density: 0.3, seed: 4 }], fins: [fin("top", 0.08, 0.94, 0.07, "low", 0.3, 40, { spots: "#3ab8ff" }), fin("bot", 0.2, 0.94, 0.07, "low", 0.3, 32, { spots: "#3ab8ff" })] });
+      S("flounder", "flatfish", { col: C("#4c3c28", "#5c4932", "#5c4932", "#4a3a28"), op: { dark: 0.03 }, pat: [{ type: "mottle", color: "#30241a", scale: 10, thresh: 0.53, amt: 0.7 }, { type: "mottle", color: "#7a6646", scale: 20, thresh: 0.62, amt: 0.45 }, { type: "ocelli", color: "#241a10", ring: "#806848", size: 0.03, density: 0.22, seed: 9 }, { type: "spots", color: "#8a7656", size: 6e-3, density: 0.18, seed: 4 }], fins: [fin("top", 0.1, 0.95, 0.085, "low", 0.3, 46, { spots: "#2e2218", edge: "#2a2016", thick: 0.012 }), fin("bot", 0.22, 0.95, 0.085, "low", 0.3, 38, { spots: "#2e2218", edge: "#2a2016", thick: 0.012 })], tail: { type: "round", len: 0.15, spread: 0.12, thick: 0.012, col: "#4a3a28", edge: "#2a2016" } });
       S("angel", "angelfw", { col: C("#d8b8f0", "#f6e0fa", "#fff6fc", "#ecd4fc"), pat: [{ type: "bars", at: [0.15, 0.48, 0.82], width: 0.06, color: "#5ad8f0", slant: -0.05, alpha: 0.55 }, { type: "vgrad", v0: 0.7, v1: 1, color: "#ff9ad8", amt: 0.5 }], fins: [fin("top", 0.42, 0.86, 0.55, "rise", 1.5, 13, { col: "#f0d0fa", edge: "#5ad8f0" }), fin("bot", 0.42, 0.86, 0.55, "rise", 1.5, 13, { col: "#f0d0fa", edge: "#5ad8f0" })], mat: { iri: 0.7 } });
       S("parrot", "parrot", { col: C("#0e9a84", "#22d0a8", "#8ef0d4", "#ff78b0"), pat: [{ type: "scalenet", color: "#ff8ac4", size: 0.05, inner: 0.5, umin: 0.25, alpha: 0.3 }, { type: "lines", color: "#ff9ad0", umax: 0.22, freq: 30, width: 0.18, slope: 0.4, wavy: 0.2 }], fins: [fin("top", 0.24, 0.84, 0.08, "low", 0.4, 20, { col: "#ff78b0", edge: "#3af0ff" }), fin("bot", 0.56, 0.84, 0.075, "low", 0.4, 12, { col: "#ff78b0", edge: "#3af0ff" })], tail: { col: "#ff78b0", edge: "#3af0ff" } });
       S("gourami", "gourami", { col: C("#2e4e90", "#6c9ce0", "#d4e4f8", "#5a84c4"), pat: [{ type: "mottle", color: "#2a3e78", scale: 12, thresh: 0.55, amt: 0.6 }, { type: "blotch", u: 0.5, v: 0.5, rx: 0.03, ry: 0.07, color: "#141c3a" }, { type: "blotch", u: 0.96, v: 0.5, rx: 0.03, ry: 0.12, color: "#141c3a" }] });
@@ -7548,7 +7837,7 @@ void main() {
       S("surfermullet", "mullet");
       S("conefish", "butterfly", { body: { tip: 0.04, fore: 1, nose: 4e-3 }, mouth: { u: 0.02, v: 0.55 }, col: C("#f8f6f0", "#fcfbf8", "#ffffff", "#f6f0e4"), pat: [{ type: "bars", at: [0.14, 0.38, 0.6, 0.82], width: 0.1, color: "#ff7a10", edge: true, edgeW: 0.012, slant: 0.04 }, { type: "blotch", u: 0.78, v: 0.82, rx: 0.04, ry: 0.06, color: "#14141a", ring: "#fcfbf8" }], body2: true });
       S("pigeonfish", "perch", { body: { D: 0.46, up: 0.55, at: 0.38, ped: 0.22, W: 0.06, xs: 1.7 }, col: C("#2a4a5a", "#7a98a8", "#f0d8a8", "#6a8a98"), pat: [{ type: "bars", at: [0.3, 0.42, 0.54, 0.66, 0.78], width: 0.05, color: "#3a5a6a", alpha: 0.5 }, { type: "grad", u0: 0.3, u1: 0.1, color: "#5a7ab8", amt: 0.6 }, { type: "blotch", u: 0.25, v: 0.62, rx: 0.02, ry: 0.07, color: "#0e1418" }], mat: { iri: 0.6 } });
-      S("bettercallsole", "flatfish", { body: { D: 0.42, at: 0.4, tip: 0.02, fore: 2.2 }, col: C("#6a5238", "#80664a", "#80664a", "#6a5238"), pat: [{ type: "mottle", color: "#4a3826", scale: 14, thresh: 0.54, amt: 0.7 }, { type: "spots", color: "#3a2a1a", size: 8e-3, density: 0.4, seed: 2 }], tail: { type: "round", col: "#5a4430", edge: "#1a1410" } });
+      S("bettercallsole", "flatfish", { body: { D: 0.42, at: 0.4, tip: 0.02, fore: 2.2 }, col: C("#4a3828", "#584432", "#584432", "#4a3828"), pat: [{ type: "mottle", color: "#30241a", scale: 14, thresh: 0.54, amt: 0.7 }, { type: "spots", color: "#2a1e14", size: 8e-3, density: 0.4, seed: 2 }], tail: { type: "round", thick: 0.012, col: "#4a3828", edge: "#1a1410" } });
       S("mindthegap", "catfish", { col: C("#3a4a5a", "#7a8a9a", "#eef0f2", "#5a6a7a", { vb: 0.6, vbel: 0.35, soft: 0.1 }), pat: [{ type: "spots", color: "#1a2228", size: 8e-3, density: 0.5, vmin: 0.35, seed: 6 }], tail: { type: "fork", fork: 0.55, len: 0.22, spread: 0.18 }, barbels: [{ u: 0.03, v: 0.62, len: 0.2, ang: -12, curl: 0.6, out: 0.5, col: "#3a4048" }, { u: 0.02, v: 0.05, len: 0.08, ang: -85, curl: 0.4, out: 0.2, col: "#d8d8d8" }, { u: 0.04, v: 0.02, len: 0.07, ang: -95, curl: 0.3, out: 0.3, col: "#d8d8d8" }] });
       S("adbreakray", "stingray");
       S("gottagofast", "billfish", { bill: { len: 0.42, h: 0.012, w: 0.03 }, fins: [fin("top", 0.18, 0.3, 0.2, "sickle", 0.5, 10), fin("top", 0.9, 0.93, 0.025, "tri", 0.4, 3), fin("bot", 0.64, 0.72, 0.1, "sickle", 0.6, 8)], pel: null, col: C("#2a1e3a", "#6a5a78", "#e4dce8", "#3a2e4a"), pat: [], mat: { iri: 0.5 } });
@@ -7558,19 +7847,19 @@ void main() {
       S("hammerhead", "hammerhead");
       S("goldbar", "goldfish", { col: C("#f09010", "#ffb020", "#ffe080", "#ffd070"), mat: { iri: 0.35, gloss: 0.95, finGlass: 0.42 }, fins: [fin("top", 0.32, 0.7, 0.22, "trail", 0.6, 14, { col: "#e8f8ff" }), fin("bot", 0.72, 0.82, 0.14, "trail", 0.6, 7, { col: "#e8f8ff" })], tail: { col: "#e8f8ff", base: "#ffb020" }, pec: { col: "#e8f8ff" }, pel: { col: "#e8f8ff" } });
       S("batfish", "platax", { pat: [{ type: "vgrad", v0: 0.95, v1: 1, color: "#ff6a10" }, { type: "vgrad", v0: 0.05, v1: 0, color: "#ff6a10" }], fins: [fin("top", 0.32, 0.86, 0.72, "rise", 0.9, 20, { edge: "#ff6a10", edgeW: 0.1 }), fin("bot", 0.38, 0.86, 0.7, "rise", 0.9, 18, { edge: "#ff6a10", edgeW: 0.1 })], tail: { edge: "#ff6a10", edgeW: 0.15 }, pel: { col: "#1a1a22", edge: "#ff6a10" } });
-      solid = (kind2, col, o = {}) => ({ plan: "solid", kind: kind2, col, chunk: kind2 === "jelly" ? 1.35 : 1.15, ...o });
+      solid = (kind2, col, o = {}) => ({ plan: "solid", kind: kind2, col, chunk: kind2 === "jelly" ? 1.35 : 1.15, ...kind2 === "crab" ? { voxK: 1.2 } : null, ...o });
       SPEC_IN.clickcrab = solid("crab", { back: "#e6dccb", flank: "#f0e8da", belly: "#faf6ee", leg: "#ece2d0", claw: "#f2e8d8", tip: "#c87a50", eye: "#141414" }, { stalk: 1.7, eyeR: 0.03, yawBase: 58 });
       SPEC_IN.mechacrab = solid("crab", { back: "#e0300e", flank: "#ff5a22", belly: "#ffd2a8", leg: "#e8481a", claw: "#d4260c", tip: "#ffd040", spots: "#ffd040", eye: "#1a1418" }, { stalk: 1.4 });
       SPEC_IN.snowcrab = solid("crab", { back: "#e07a3e", flank: "#eea062", belly: "#f8e8d2", leg: "#e88a50", claw: "#da7038", tip: "#3a2a20" }, { legLen: 0.85, wide: 0.42, claw: 0.7, stalk: 0.9 });
       SPEC_IN.steamcrab = solid("crab", { back: "#9e3a26", flank: "#c46446", belly: "#f0d8c0", leg: "#b04a30", claw: "#c4462a", tip: "#141010" }, { claw: 1.35, wide: 0.52 });
       SPEC_IN.taxicrab = solid("crab", { back: "#e6b424", flank: "#f0c844", belly: "#faf0d0", leg: "#e8bc38", claw: "#e0a820", tip: "#2a2024", spots: "#8a3a6a" }, { wide: 0.55 });
-      SPEC_IN.glowjelly = solid("jelly", { back: "#d07ac8", flank: "#f0a8e0", belly: "#f8d0f0", gonad: "#ff4aa8" }, { warts: true, glow: true, tentLen: 1.8, arms: 4, armLen: 1.1, armR: 0.06, glowColor: "#ff7ad8" });
-      SPEC_IN.purin = solid("jelly", { back: "#f2dc98", flank: "#f8ecc8", belly: "#fff6e0", gonad: "#e8c070" }, { knob: "#f09a18", arms: 8, armLen: 0.38, armR: 0.07, armTip: "#6a58d0", tentacles: 0, bellH: 0.28, shell: 0.3 });
+      SPEC_IN.glowjelly = solid("jelly", { back: "#d07ac8", flank: "#f0a8e0", belly: "#f8d0f0", gonad: "#ff4aa8" }, { warts: true, glow: true, tentLen: 1.8, tentacles: 8, arms: 4, armLen: 1.2, armR: 0.035, glowColor: "#ff7ad8" });
+      SPEC_IN.purin = solid("jelly", { back: "#f6e6b0", flank: "#fbf1d4", belly: "#fff8e8", gonad: "#e8b860" }, { knob: "#f09a18", arms: 8, armLen: 0.55, armR: 0.05, armTip: "#6a58d0", tentacles: 12, tentLen: 1, bellH: 0.3, shell: 0.24 });
       SPEC_IN.dumbo = solid("octopus", { back: "#f09ac4", flank: "#f6b6d6", belly: "#ffdcec", fin: "#f8b0d4", eye: "#2a1420" });
-      SPEC_IN.vampsquid = solid("squid", { back: "#a01426", flank: "#b42032", belly: "#c83446", fin: "#3a0812", eye: "#3a8aff" }, { photo: "#7affff", armTip: "#f4ecec", glow: true });
+      SPEC_IN.vampsquid = solid("squid", { back: "#a01426", flank: "#b42032", belly: "#c83446", fin: "#3a0812", eye: "#3a8aff" }, { photo: "#7affff", armTip: "#120608", glow: true });
       SPEC_IN.starfish = solid("star", { back: "#d81e30", flank: "#ea3a4a", belly: "#f8c8b8", spots: "#ff8a70" });
       SPEC_IN.isopod = solid("isopod", { back: "#c4b8c6", flank: "#a89cae", belly: "#e8e0e8", eye: "#2a2a24" });
-      SPEC_IN.seahorse = solid("seahorse", { back: "#d86a0e", flank: "#ff9a1e", belly: "#ffd25a", fin: "#ffe2a8", eye: "#c88a20" });
+      SPEC_IN.seahorse = solid("seahorse", { back: "#c45a0c", flank: "#f08a1c", belly: "#ffc85a", fin: "#ffe6b8", eye: "#c88a20" }, { voxK: 2 });
       SPEC_IN.guppy = solid("chomper", { back: "#1478d0", flank: "#38b8ff", belly: "#d8f6ff", fin: "#ff4ab0", dorsal: "#ffd23a", eye: "#e8a838" }, { chunk: 1.3 });
       eelHead = (o) => ({
         base: "perch",
@@ -10226,6 +10515,7 @@ void main() {
     ensure(N2);
     STAT.cells += N2;
     const mats = {};
+    const dens = o.density ?? 1.8;
     for (const p of parts) {
       const d = p.mesh?.data;
       if (!d) continue;
@@ -10243,7 +10533,7 @@ void main() {
         const e1 = Math.max(Math.abs(bx - ax), Math.abs(by - ay), Math.abs(bz - az));
         const e2 = Math.max(Math.abs(cx - ax), Math.abs(cy - ay), Math.abs(cz - az));
         const e3 = Math.max(Math.abs(cx - bx), Math.abs(cy - by), Math.abs(cz - bz));
-        const m = Math.max(1, Math.ceil(Math.max(e1, e2, e3) * 1.8));
+        const m = Math.max(1, Math.ceil(Math.max(e1, e2, e3) * dens));
         const im = 1 / m;
         STAT.samples += (m + 1) * (m + 2) / 2;
         for (let a = 0; a <= m; a++) {
@@ -14980,6 +15270,8 @@ void main() {
         return len / Math.cos(th);
       case "round":
         return len * (1.02 - 0.28 * s * s) / Math.cos(th * 0.5);
+      case "clavus":
+        return len * (1 - 0.3 * s * s) * (1 + 0.07 * Math.cos((s + 1) / 2 * (tf.lobes ?? 9) * TAU3)) / Math.cos(th * 0.3);
       case "fan":
         return len * (1.05 - 0.22 * s * s);
       case "pointed":
@@ -15505,7 +15797,7 @@ void main() {
       ellInto(glow, [px2, py, 0], [R4, R4, R4], 9, 6, rgb01(lu.col || "#bff8ff"), D, W10);
       if (lu.filaments) for (let k = 0; k < lu.filaments; k++) {
         const fa = -0.6 + k / Math.max(1, lu.filaments - 1) * 2.4;
-        tubeInto(glow, [[px2, py, 0], [px2 + Math.cos(fa) * R4 * 2.2, py + Math.sin(fa) * R4 * 2.2, 0]], () => 3e-3 * L2, 4, rgb01(lu.col || "#bff8ff"), D, W10);
+        tubeInto(glow, [[px2, py, 0], [px2 + Math.cos(fa) * R4 * 1.5, py + Math.sin(fa) * R4 * 1.5, 0]], (t) => 35e-4 * L2 * (1 - 0.6 * t), 4, rgb01(lu.col || "#bff8ff"), D, W10);
       }
       lureTip = [px2, py, 0];
     }
@@ -15518,7 +15810,7 @@ void main() {
         const Y = mouthY(u);
         const tl = (tt.len ?? 0.03) * L2 * (k % 2 ? 0.6 : 1) * (1 - 0.4 * (k / n2));
         const up = k % 2 === 0 ? 1 : -1;
-        const z = surf(u, Y) * 0.8;
+        const z = surf(u, Y) * (tt.out ?? 0.8);
         const w = Math.max(4e-3 * L2, tl * 0.28);
         for (const sd of [1, -1]) {
           const base = [[X - w, Y + up * 2e-3 * L2, sd * z], [X + w, Y + up * 2e-3 * L2, sd * z], [X, Y + up * 2e-3 * L2, sd * (z - w)]];
@@ -15701,6 +15993,7 @@ void main() {
     const L2 = c.real.size ?? (c.real.kind === "seahorse" ? Math.max(c.L, c.H) : c.L);
     const prims = sp.sol.prims;
     const body = new Part(), glass = new Part(), fins = new Part(), eyes = new Part(), glow = new Part();
+    const vs = VOXEL ? voxelSize(c, { L: L2 }) : L2 / 40;
     const vk = 30 / L2;
     const colorOf = (p, Q2, x, y, z) => {
       let col = typeof p.col === "function" ? p.col(Q2, x, y, z, Math.floor(x * vk), Math.floor(y * vk), Math.floor(z * vk)) : p.col;
@@ -15709,10 +16002,10 @@ void main() {
       const gl2 = typeof p.glow === "function" ? p.glow(Q2) : !!p.glow;
       return { rgb: unpack2(col), role, glow: gl2 };
     };
-    const route2 = (o) => o.glow ? glow : o.role === R_GLASS2 ? glass : o.role === R_FIN2 ? fins : o.role === R_EYE2 || o.role === R_SPEC2 ? eyes : body;
+    const route2 = (o) => o.glow ? glow : o.role === R_GLASS2 ? glass : o.role === R_FIN2 ? fins : o.role === R_EYE2 || o.role === R_SPEC ? eyes : body;
     const emit2 = (o, a, b, cc, twoSided) => {
       const pt = route2(o);
-      if (twoSided || pt === glass || pt === fins) pt.both(a, b, cc, o.rgb);
+      if (!VOXEL && (twoSided || pt === glass || pt === fins)) pt.both(a, b, cc, o.rgb);
       else pt.tri(a, b, cc, o.rgb);
     };
     const used = /* @__PURE__ */ new Set();
@@ -15720,7 +16013,7 @@ void main() {
       const p = prims[pi];
       if (used.has(pi)) continue;
       if (p.t === 0) {
-        tessEll(p, L2, colorOf, emit2);
+        tessEll(p, L2, colorOf, emit2, vs);
         continue;
       }
       const chain2 = [p];
@@ -15732,7 +16025,7 @@ void main() {
           used.add(q);
         } else break;
       }
-      tessTube(chain2, L2, colorOf, emit2);
+      tessTube(chain2, L2, colorOf, emit2, vs);
     }
     const A2 = sp.anchors || {};
     const anchors = {};
@@ -15742,21 +16035,26 @@ void main() {
     if (!body.empty) parts.push({ key: "body", mb: body.mb, spec: 0.5, shine: 34, env: 0.42, iri: 0.08, rim: 0.3, ambient: 0.48 });
     if (!eyes.empty) parts.push({ key: "eyes", mb: eyes.mb, spec: 1.1, shine: 90, env: 0.35, rim: 0.05, ambient: 0.6 });
     if (!glow.empty) parts.push({ key: "glow", mb: glow.mb, emit: 0.55, alpha: 0.85, spec: 0.8, shine: 50, env: 0.3, cull: false });
-    if (!fins.empty) parts.push({ key: "fins", mb: fins.mb, alpha: 0.7, spec: 0.5, shine: 40, env: 0.2, cull: false });
-    if (!glass.empty) parts.push({ key: "glass", mb: glass.mb, alpha: 0.58, spec: 0.9, shine: 60, env: 0.6, iri: 0.3, rim: 0.7, cull: false, depthWrite: false });
+    if (!fins.empty) parts.push({ key: "fins", mb: fins.mb, alpha: sp.finAlpha ?? 0.7, spec: 0.5, shine: 40, env: 0.2, cull: false });
+    if (!glass.empty) parts.push({ key: "glass", mb: glass.mb, alpha: sp.glassAlpha ?? 0.58, spec: 0.9, shine: 60, env: 0.6, iri: 0.3, rim: 0.7, cull: false, depthWrite: false });
     return { parts, anchors, eyes: eyesA, L: L2, flatRoll: sp.roll || 0, yawBase: sp.yawBase || 0 };
   }
-  function tessEll(p, L2, colorOf, emit2) {
+  function tessEll(p, L2, colorOf, emit2, vs = L2 / 40) {
     const rmax = Math.max(p.r[0], p.r[1], p.r[2]);
     const isEye = p.role === R_EYE2;
-    const seg = isEye ? 14 : clamp3(Math.round(7 + 18 * rmax / L2), 7, 18), rings = isEye ? 10 : Math.max(4, Math.round(seg * 0.62));
+    const seg = clamp3(Math.round(TAU3 * rmax / (2.4 * vs)), isEye ? 12 : rmax < 1.5 * vs ? 6 : 8, 56), rings = Math.max(isEye ? 8 : rmax < 1.5 * vs ? 3 : 4, Math.round(seg * 0.5));
     const ax = p.axes || [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
     const det = ax[0][0] * (ax[1][1] * ax[2][2] - ax[1][2] * ax[2][1]) - ax[0][1] * (ax[1][0] * ax[2][2] - ax[1][2] * ax[2][0]) + ax[0][2] * (ax[1][0] * ax[2][1] - ax[1][1] * ax[2][0]);
     const flip = det < 0;
     const cu = p.cut;
     const shell = !!p.shell;
+    const sq = p.sq, warp = p.warp;
     const qOf = (i, j) => {
       const th = i / rings * Math.PI, ph = j / seg * TAU3;
+      if (sq) {
+        const st = Math.sin(th), ct = Math.cos(th), e1 = sq[1] ?? 1, e2 = sq[0] ?? 1;
+        return [spow(st, e1) * spow(Math.cos(ph), e2), spow(ct, e1), spow(st, e1) * spow(Math.sin(ph), e2)];
+      }
       return [Math.sin(th) * Math.cos(ph), Math.cos(th), Math.sin(th) * Math.sin(ph)];
     };
     const out = (q) => cu && (cu.x0 != null && q[0] < cu.x0 - 1e-6 || cu.x1 != null && q[0] > cu.x1 + 1e-6 || cu.y0 != null && q[1] < cu.y0 - 1e-6 || cu.y1 != null && q[1] > cu.y1 + 1e-6 || cu.z0 != null && q[2] < cu.z0 - 1e-6 || cu.z1 != null && q[2] > cu.z1 + 1e-6);
@@ -15764,15 +16062,16 @@ void main() {
       if (!cu) return q;
       return [clamp3(q[0], cu.x0 ?? -2, cu.x1 ?? 2), clamp3(q[1], cu.y0 ?? -2, cu.y1 ?? 2), clamp3(q[2], cu.z0 ?? -2, cu.z1 ?? 2)];
     };
-    const W10 = (q) => [
-      p.c[0] + ax[0][0] * q[0] * p.r[0] + ax[1][0] * q[1] * p.r[1] + ax[2][0] * q[2] * p.r[2],
-      p.c[1] + ax[0][1] * q[0] * p.r[0] + ax[1][1] * q[1] * p.r[1] + ax[2][1] * q[2] * p.r[2],
-      p.c[2] + ax[0][2] * q[0] * p.r[0] + ax[1][2] * q[1] * p.r[1] + ax[2][2] * q[2] * p.r[2]
-    ];
+    const W10 = (q0) => {
+      const q = warp ? warp(q0) : q0;
+      return [
+        p.c[0] + ax[0][0] * q[0] * p.r[0] + ax[1][0] * q[1] * p.r[1] + ax[2][0] * q[2] * p.r[2],
+        p.c[1] + ax[0][1] * q[0] * p.r[0] + ax[1][1] * q[1] * p.r[1] + ax[2][1] * q[2] * p.r[2],
+        p.c[2] + ax[0][2] * q[0] * p.r[0] + ax[1][2] * q[1] * p.r[1] + ax[2][2] * q[2] * p.r[2]
+      ];
+    };
     const face3 = (qa2, qb, qc) => {
       if (shell && out(qa2) && out(qb) && out(qc)) return;
-      if (!shell && cu && out(qa2) && out(qb) && out(qc)) {
-      }
       const ca = clampQ(qa2), cb = clampQ(qb), cc = clampQ(qc);
       const m = norm(ca[0] + cb[0] + cc[0], ca[1] + cb[1] + cc[1], ca[2] + cb[2] + cc[2]);
       QV[0] = m[0];
@@ -15786,23 +16085,39 @@ void main() {
       if (flip) emit2(o, wa, wc, wb, shell);
       else emit2(o, wa, wb, wc, shell);
     };
+    const Q2 = [];
+    for (let i = 0; i <= rings; i++) {
+      const row2 = [];
+      for (let j = 0; j <= seg; j++) row2.push(qOf(i, j));
+      Q2.push(row2);
+    }
     for (let i = 0; i < rings; i++) for (let j = 0; j < seg; j++) {
-      const a = qOf(i, j), b = qOf(i, j + 1), d = qOf(i + 1, j), e = qOf(i + 1, j + 1);
+      const a = Q2[i][j], b = Q2[i][j + 1], d = Q2[i + 1][j], e = Q2[i + 1][j + 1];
       if (i > 0) face3(a, b, e);
       if (i < rings - 1) face3(a, e, d);
     }
   }
-  function tessTube(chain2, L2, colorOf, emit2) {
-    const pts = [chain2[0].a, ...chain2.map((p) => p.b)];
-    const rads = [chain2[0].ra, ...chain2.map((p) => p.rb)];
-    const n2 = pts.length;
-    const rmax = Math.max(...rads);
-    const sides = clamp3(Math.round(5 + 30 * rmax / L2), 5, 10);
-    const rings = [];
+  function tessTube(chain2, L2, colorOf, emit2, vs = L2 / 40) {
+    const P03 = [chain2[0].a, ...chain2.map((p) => p.b)];
+    const R0 = [chain2[0].ra, ...chain2.map((p) => p.rb)];
+    const rmax = Math.max(...R0);
+    const sides = clamp3(Math.round(TAU3 * rmax / (2.4 * vs)), 6, 28);
+    const S11 = [];
+    for (let i = 0; i < chain2.length; i++) {
+      const pr = chain2[i], a = P03[i], b = P03[i + 1];
+      const len = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+      const n4 = clamp3(Math.ceil(len / (2.4 * vs)), 1, 16);
+      const k0 = pr.k0 ?? i / chain2.length, k1 = pr.k1 ?? (i + 1) / chain2.length;
+      for (let s = i ? 1 : 0; s <= n4; s++) {
+        const t = s / n4;
+        S11.push({ p: [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t], r: Math.max(3e-3 * L2, R0[i] + (R0[i + 1] - R0[i]) * t), pr, t, k: k0 + (k1 - k0) * t });
+      }
+    }
+    const n2 = S11.length;
     let prevN = null;
-    const frames = [];
+    const rings = [], tans = [];
     for (let i = 0; i < n2; i++) {
-      const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n2 - 1, i + 1)];
+      const a = S11[Math.max(0, i - 1)].p, b = S11[Math.min(n2 - 1, i + 1)].p;
       const t = norm(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
       let nn;
       if (prevN) {
@@ -15815,46 +16130,61 @@ void main() {
       }
       prevN = nn;
       const bb = cross(t, nn);
-      const r = Math.max(3e-3 * L2, rads[i]);
+      const r = S11[i].r, c0 = S11[i].p;
       const ring = [];
       for (let s = 0; s < sides; s++) {
         const a2 = s / sides * TAU3, ca = Math.cos(a2), sa = Math.sin(a2);
         const dir = [nn[0] * ca + bb[0] * sa, nn[1] * ca + bb[1] * sa, nn[2] * ca + bb[2] * sa];
-        ring.push({ p: [pts[i][0] + dir[0] * r, pts[i][1] + dir[1] * r, pts[i][2] + dir[2] * r], dir });
+        ring.push({ p: [c0[0] + dir[0] * r, c0[1] + dir[1] * r, c0[2] + dir[2] * r], dir });
       }
       rings.push(ring);
-      frames.push(t);
+      tans.push(t);
     }
+    const col = (sm3, t, k, dy, x, y, z) => {
+      QV[0] = t;
+      QV[1] = 1;
+      QV[2] = k;
+      QV[3] = dy;
+      return colorOf(sm3.pr, QV, x, y, z);
+    };
     for (let i = 0; i < n2 - 1; i++) {
-      const pr = chain2[i];
+      const A2 = S11[i], B2 = S11[i + 1];
+      const pr = B2.pr, tm = B2.pr === A2.pr ? (A2.t + B2.t) / 2 : B2.t / 2, km = (A2.k + B2.k) / 2;
       for (let s = 0; s < sides; s++) {
         const s2 = (s + 1) % sides;
         const a = rings[i][s], b = rings[i][s2], c = rings[i + 1][s2], d = rings[i + 1][s];
-        const dy = (a.dir[1] + b.dir[1]) / 2;
-        QV[0] = 0.5;
-        QV[1] = 1;
-        QV[2] = pr.k0 != null ? pr.k0 + (pr.k1 - pr.k0) * 0.5 : 0.5;
-        QV[3] = dy;
-        const cx = (a.p[0] + c.p[0]) / 2, cy = (a.p[1] + c.p[1]) / 2, cz = (a.p[2] + c.p[2]) / 2;
-        const o = colorOf(pr, QV, cx, cy, cz);
+        const o = col({ pr }, tm, km, (a.dir[1] + b.dir[1]) / 2, (a.p[0] + c.p[0]) / 2, (a.p[1] + c.p[1]) / 2, (a.p[2] + c.p[2]) / 2);
         if (!o) continue;
         emit2(o, a.p, b.p, c.p);
         emit2(o, a.p, c.p, d.p);
       }
     }
-    for (const [i, sg, pr] of [[0, -1, chain2[0]], [n2 - 1, 1, chain2[chain2.length - 1]]]) {
-      const t = frames[i], r = Math.max(3e-3 * L2, rads[i]);
-      const tip = [pts[i][0] + t[0] * sg * r * 0.7, pts[i][1] + t[1] * sg * r * 0.7, pts[i][2] + t[2] * sg * r * 0.7];
-      QV[0] = i ? 1 : 0;
-      QV[1] = 1;
-      QV[2] = pr.k0 != null ? i ? pr.k1 : pr.k0 : i ? 1 : 0;
-      QV[3] = 0;
-      const o = colorOf(pr, QV, tip[0], tip[1], tip[2]);
-      if (!o) continue;
-      for (let s = 0; s < sides; s++) {
-        const s2 = (s + 1) % sides;
-        if (sg < 0) emit2(o, tip, rings[i][s2].p, rings[i][s].p);
-        else emit2(o, tip, rings[i][s].p, rings[i][s2].p);
+    for (const [i, sg] of [[0, -1], [n2 - 1, 1]]) {
+      const t = tans[i], sm3 = S11[i], r = sm3.r, c0 = sm3.p;
+      const NR = clamp3(Math.round(r * 1.6 / vs), 1, 6);
+      let prev = rings[i].map((q) => q.p);
+      for (let k = 1; k <= NR; k++) {
+        const a = k / NR * Math.PI * 0.5, cr = Math.cos(a), sr = Math.sin(a);
+        const ring = k === NR ? null : rings[i].map((q) => [c0[0] + q.dir[0] * r * cr + t[0] * sg * r * sr, c0[1] + q.dir[1] * r * cr + t[1] * sg * r * sr, c0[2] + q.dir[2] * r * cr + t[2] * sg * r * sr]);
+        const tip = [c0[0] + t[0] * sg * r, c0[1] + t[1] * sg * r, c0[2] + t[2] * sg * r];
+        for (let s = 0; s < sides; s++) {
+          const s2 = (s + 1) % sides;
+          const pa = prev[s], pb = prev[s2];
+          const o = col(sm3, i ? 1 : 0, sm3.k, rings[i][s].dir[1] * cr + t[1] * sg * sr, pa[0], pa[1], pa[2]);
+          if (!o) continue;
+          if (ring) {
+            const qa2 = ring[s], qb = ring[s2];
+            if (sg < 0) {
+              emit2(o, pa, qb, pb);
+              emit2(o, pa, qa2, qb);
+            } else {
+              emit2(o, pa, pb, qb);
+              emit2(o, pa, qb, qa2);
+            }
+          } else if (sg < 0) emit2(o, tip, pb, pa);
+          else emit2(o, tip, pa, pb);
+        }
+        if (ring) prev = ring;
       }
     }
   }
@@ -16049,7 +16379,7 @@ void main() {
   }
   function voxelSize(c, p) {
     const Lk = c.L || p.L || 30;
-    const N2 = clamp3(30 + Lk * 0.75, 48, 140) * (c.voxK || 1);
+    const N2 = clamp3(30 + Lk * 0.75, 48, 140) * (c.voxK || c.real?.voxK || 1);
     return (p.L || Lk) / N2;
   }
   function poseOf(c, sw, infl, mouth, frames = LP_SWIM, hi = false, eel3d = false) {
@@ -16075,7 +16405,7 @@ void main() {
     }) };
     if (VOXEL) {
       const src = p.parts;
-      p = { ...p, parts: voxelizeParts(src, voxelSize(c, p), { ao: 1, eyes: p.eyeVox }) };
+      p = { ...p, parts: voxelizeParts(src, voxelSize(c, p), { ao: 1, eyes: p.eyeVox, density: c.real?.plan === "solid" ? 1.35 : 1.8 }) };
       for (const q of src) q.mesh.dispose?.();
     }
     poses.set(key, p);
@@ -16585,7 +16915,7 @@ void main() {
     if (tubes.size > 400) tubes.delete(tubes.keys().next().value);
     return b;
   }
-  var LP_SWIM, TAU3, DEG4, YAW_STEP, SCALE_STEP, CAM_TILT, TEX_LO, TEX_HI, SHEET_PX_MAX, POSE_MAX, FORCE_MS, MAX_SPRITE, clamp3, clamp012, smooth2, now3, norm, cross, rgb01, unpack2, toneRGB, mixRGB, budgetMs, spent, forceSpent, syncAll, rafOn, stat, canSpend, Part, US, R_FIN2, R_EYE2, R_SPEC2, R_GLASS2, QV, CREATURES, creatureC, poses, poseKey, poseBytes, POSE_BYTES, poseSize, VOXEL, sheets2, byVid, sheetPx, scaleBucket, bucketScale, OUTLINE_INK, stills, crabLooks, icons, meshCache, orbs, tubes;
+  var LP_SWIM, TAU3, DEG4, YAW_STEP, SCALE_STEP, CAM_TILT, TEX_LO, TEX_HI, SHEET_PX_MAX, POSE_MAX, FORCE_MS, MAX_SPRITE, clamp3, clamp012, smooth2, now3, norm, cross, rgb01, unpack2, toneRGB, mixRGB, budgetMs, spent, forceSpent, syncAll, rafOn, stat, canSpend, Part, US, R_FIN2, R_EYE2, R_SPEC, R_GLASS2, QV, spow, CREATURES, creatureC, poses, poseKey, poseBytes, POSE_BYTES, poseSize, VOXEL, sheets2, byVid, sheetPx, scaleBucket, bucketScale, OUTLINE_INK, stills, crabLooks, icons, meshCache, orbs, tubes;
   var init_lowpolyfish = __esm({
     "src/fish/lowpolyfish.js"() {
       init_lowpoly();
@@ -16656,9 +16986,10 @@ void main() {
       US = [0, 0.015, 0.04, 0.075, 0.12, 0.175, 0.24, 0.32, 0.41, 0.5, 0.59, 0.68, 0.76, 0.83, 0.89, 0.94, 0.975, 1];
       R_FIN2 = 1;
       R_EYE2 = 2;
-      R_SPEC2 = 6;
+      R_SPEC = 6;
       R_GLASS2 = 7;
       QV = [0, 0, 0, 1];
+      spow = (v, e) => v < 0 ? -Math.pow(-v, e) : Math.pow(v, e);
       CREATURES = {
         dolphin: {
           L: 60,
@@ -23174,9 +23505,9 @@ void main() {
           const r = Math.hypot(x + 0.5 - cx, y + 0.5 - 4);
           const n2 = noise3(x * 0.16, y * 0.16, 0, seed);
           const rib = Math.abs(((a * 7 + n2 * 2.2) % 1 + 1) % 1 - 0.5) < 0.14;
-          const cross4 = Math.abs(((r * 0.22 + n2 * 1.6) % 1 + 1) % 1 - 0.5) < 0.12;
+          const cross5 = Math.abs(((r * 0.22 + n2 * 1.6) % 1 + 1) % 1 - 0.5) < 0.12;
           const edge = !inFan(x + 2, y + 0.5) || !inFan(x - 1, y + 0.5) || !inFan(x + 0.5, y + 2.5);
-          if (rib || cross4 || edge) {
+          if (rib || cross5 || edge) {
             const z = Math.round(zOf(x, y));
             m.set(x, y, z, edge ? rim : vein);
             if (!edge && r < 18) m.set(x, y, z + 1, vein);
@@ -23366,7 +23697,7 @@ void main() {
         const W10 = 46, H8 = 44, D = 52;
         const m = new VoxelModel(W10, H8, D);
         const plank = [m.color("#8e512c", { jitter: 0.14 }), m.color("#a0602f", { jitter: 0.14 }), m.color("#7c4428", { jitter: 0.14 })];
-        const grain = m.color("#6a3622", { jitter: 0.06 });
+        const grain2 = m.color("#6a3622", { jitter: 0.06 });
         const gold = m.color("#eab23c", { jitter: 0.08, spec: 1.2 });
         const goldDk = m.color("#b97a22", { jitter: 0.08 });
         const rivet = m.color("#fff0a8", { jitter: 0 });
@@ -23378,7 +23709,7 @@ void main() {
         const gems = [m.color("#ff5b7a", { emissive: 0.7, jitter: 0 }), m.color("#5be0ff", { emissive: 0.7, jitter: 0 }), m.color("#a8ff6b", { emissive: 0.7, jitter: 0 })];
         const inner = m.color("#3e1e18", { jitter: 0.05 });
         const x0 = 3, x1 = 42, z0 = 22, z1 = 47, yTop = 17;
-        const pl = (x, y, z) => h3(x, Math.floor(y / 4), 0, 3) < 0.25 && (x * 7 + y) % 5 === 0 ? grain : plank[Math.floor(y / 4) % 3];
+        const pl = (x, y, z) => h3(x, Math.floor(y / 4), 0, 3) < 0.25 && (x * 7 + y) % 5 === 0 ? grain2 : plank[Math.floor(y / 4) % 3];
         m.box(x0, 0, z0, x1, yTop, z1, pl);
         m.sub(() => m.box(x0 + 2, 3, z0 + 2, x1 - 2, yTop, z1 - 2));
         m.box(x0 + 2, 3, z0 + 2, x1 - 2, 3, z1 - 2, inner);
@@ -48219,7 +48550,7 @@ ${hearts} ${status}
   function loafN(x, a) {
     const e = 0.01;
     const p0 = loafPt(x, a), px2 = loafPt(x + e, a), pa = loafPt(x, a + e);
-    let n2 = norm5(cross3(sub2(px2, p0), sub2(pa, p0)));
+    let n2 = norm5(cross4(sub2(px2, p0), sub2(pa, p0)));
     const out = sub2(p0, [x, loafAt(x)[0], 0]);
     if (dot2(n2, out) < 0) n2 = scl2(n2, -1);
     return n2;
@@ -48354,10 +48685,10 @@ ${hearts} ${status}
   }
   function paddle(mb, base, D, Thint, L2, widths, thick, paint5, twist = 0) {
     D = norm5(D);
-    let Wd = cross3(D, norm5(Thint));
-    if (Math.hypot(Wd[0], Wd[1], Wd[2]) < 1e-3) Wd = cross3(D, [0, 1, 0.01]);
+    let Wd = cross4(D, norm5(Thint));
+    if (Math.hypot(Wd[0], Wd[1], Wd[2]) < 1e-3) Wd = cross4(D, [0, 1, 0.01]);
     Wd = norm5(Wd);
-    let T5 = cross3(Wd, D);
+    let T5 = cross4(Wd, D);
     if (twist) {
       const c = Math.cos(twist), s = Math.sin(twist);
       const W22 = add7(scl2(Wd, c), scl2(T5, s));
@@ -49052,7 +49383,7 @@ ${hearts} ${status}
       ctx2.fillRect(Math.round(from[0]), Math.round(from[1]) - s2, 1, s2 * 2 + 1);
     }
   }
-  var SEAL_INFO, add7, sub2, scl2, dot2, cross3, norm5, rx, ry, rz, h33, rgb2, mixC, lit, C2, LOOK, SEAL_VOXEL, LOAF, BODY_SEG, BODY_ROWS, PIV, HEADP, HEAD_C, EYE_R, FACE, SHOULDER, HIP, C0, CELL_W, CELL_H, PaintMesh, paintMuzzle, paintNose, S10, CO, POINT_E, SEAL_ANIMS, SEAL_ALIAS, SHEETS, budgetT, budgetN, SIZES2, FACESTATE, FPX, RIDE, FLAT, JIG, COMP, SealGuide;
+  var SEAL_INFO, add7, sub2, scl2, dot2, cross4, norm5, rx, ry, rz, h33, rgb2, mixC, lit, C2, LOOK, SEAL_VOXEL, LOAF, BODY_SEG, BODY_ROWS, PIV, HEADP, HEAD_C, EYE_R, FACE, SHOULDER, HIP, C0, CELL_W, CELL_H, PaintMesh, paintMuzzle, paintNose, S10, CO, POINT_E, SEAL_ANIMS, SEAL_ALIAS, SHEETS, budgetT, budgetN, SIZES2, FACESTATE, FPX, RIDE, FLAT, JIG, COMP, SealGuide;
   var init_seal = __esm({
     "src/gfx/seal.js"() {
       init_lowpoly();
@@ -49071,7 +49402,7 @@ ${hearts} ${status}
       sub2 = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
       scl2 = (a, k) => [a[0] * k, a[1] * k, a[2] * k];
       dot2 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-      cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+      cross4 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
       norm5 = (a) => {
         const l = Math.hypot(a[0], a[1], a[2]) || 1;
         return [a[0] / l, a[1] / l, a[2] / l];
@@ -65927,14 +66258,14 @@ ${hearts} ${status}
   }
   function earcut(poly) {
     const idx = poly.map((_, i) => i), out = [];
-    const cross4 = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    const cross5 = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
     let guard = 0;
     while (idx.length > 3 && guard++ < 4e3) {
       let cut = false;
       for (let i = 0; i < idx.length; i++) {
         const i0 = idx[(i + idx.length - 1) % idx.length], i1 = idx[i], i2 = idx[(i + 1) % idx.length];
         const a = poly[i0], b = poly[i1], c = poly[i2];
-        if (cross4(a, b, c) <= 1e-9) continue;
+        if (cross5(a, b, c) <= 1e-9) continue;
         if (idx.some((j) => j !== i0 && j !== i1 && j !== i2 && inTri(poly[j], a, b, c))) continue;
         out.push([i0, i1, i2]);
         idx.splice(i, 1);
@@ -66991,7 +67322,7 @@ ${hearts} ${status}
     }
     return finishSprite(base, S11, S11);
   }
-  function frameOf(key, make, px2, turn) {
+  function frameOf2(key, make, px2, turn) {
     px2 = Math.max(8, Math.round(px2));
     const def2 = prepModel(key, make);
     if (!def2) return null;
@@ -67019,7 +67350,7 @@ ${hearts} ${status}
   }
   function iconFrame(id2, px2, turn = 0) {
     if (!ICON_MODELS[id2] || !lpReady()) return null;
-    return frameOf(id2, ICON_MODELS[id2], px2, turn);
+    return frameOf2(id2, ICON_MODELS[id2], px2, turn);
   }
   function cropFrame(f, px2, pad = 6) {
     const S11 = Math.min(f.canvas.width, px2 + pad);
@@ -67032,7 +67363,7 @@ ${hearts} ${status}
     const k = "rod:" + (rod.id || rod.color || "x") + "|" + px2;
     let c = frameCache2.get(k);
     if (c === void 0) {
-      const f = frameOf("rod:" + (rod.id || "x"), () => ROD_MODEL(rod), px2, 0);
+      const f = frameOf2("rod:" + (rod.id || "x"), () => ROD_MODEL(rod), px2, 0);
       c = f ? cropFrame(f, px2) : null;
       frameCache2.set(k, c);
     }
@@ -67043,7 +67374,7 @@ ${hearts} ${status}
     const k = "gemc:" + color + "|" + px2;
     let c = frameCache2.get(k);
     if (c === void 0) {
-      const f = frameOf("gem:" + color, () => GEM_MODEL(color), px2, 0);
+      const f = frameOf2("gem:" + color, () => GEM_MODEL(color), px2, 0);
       c = f ? cropFrame(f, px2, 4) : null;
       frameCache2.set(k, c);
     }
@@ -67056,7 +67387,7 @@ ${hearts} ${status}
       const key = "lp|" + id2 + "|" + state + "|" + px2;
       let e = cache12.get(key);
       if (e) return e;
-      const f = frameOf(id2, ICON_MODELS[id2], px2, 0);
+      const f = frameOf2(id2, ICON_MODELS[id2], px2, 0);
       if (f) {
         const canvas = state === "normal" ? cropFrame(f, px2) : variant(cropFrame(f, px2), state);
         const g = ctxOf(canvas);

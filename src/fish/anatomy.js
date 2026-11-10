@@ -341,22 +341,25 @@ A.parrot = {
 };
 
 A.puffer = {
+  // pufferfish (Arothron / Takifugu): a big blunt head with high eyes, a small beak mouth, a stubby body that tapers
+  // to a narrow peduncle, small dorsal + anal fins set far back, little fan pectorals, a short rounded tail
   plan: 'fish',
-  body: { D: 0.38, up: 0.52, at: 0.36, ped: 0.24, tip: -0.01, fore: 2.6, chin: 2.4, back: 0.75, W: 0.15, pw: 0.04, nose: 0.06, xs: 2.1, wy: 0.45 },
-  eye: { u: 0.17, v: 0.7, r: 0.045, iris: '#40b878' },
-  mouth: { u: 0.035, v: 0.42, drop: 0, lips: '#e8e0c8', dark: 0.4 },
-  op: null,
+  body: { D: 0.4, up: 0.52, at: 0.28, atB: 0.38, ped: 0.15, pc: 0.01, tip: -0.03, fore: 2.5, chin: 2.1, back: 1.35, backB: 1.15, W: 0.19, atW: 0.3, wTip: 0.08, pw: 0.032, wBack: 1.1, nose: 0.12, xs: 2.2, wy: 0.42, sag: 0.05 },
+  eye: { u: 0.2, v: 0.74, r: 0.04, iris: '#40b878', bulge: 0.55 },
+  mouth: { u: 0.028, v: 0.4, drop: 0, curve: 0.002, lips: '#f4efe0', dark: 0.45, gapeK: 0.6 },
+  op: null, noGill: true, scales: null, lateral: null,
   fins: [
-    { at: 'top', from: 0.68, to: 0.8, h: 0.1, shape: 'round', rake: 0.4, rays: 9 },
-    { at: 'bot', from: 0.7, to: 0.81, h: 0.09, shape: 'round', rake: 0.4, rays: 8 },
+    { at: 'top', from: 0.66, to: 0.77, h: 0.12, shape: 'round', rake: 0.45, rays: 10 },
+    { at: 'bot', from: 0.69, to: 0.79, h: 0.11, shape: 'round', rake: 0.45, rays: 9 },
   ],
-  pec: { u: 0.29, v: 0.48, len: 0.09, w: 0.06, ang: 0, spread: 50, rays: 14, shape: 'fan' },
+  pec: { u: 0.29, v: 0.48, len: 0.1, w: 0.07, ang: 0, spread: 22, rays: 14, shape: 'fan', flap: 1.2 },
   pel: null,
-  tail: { type: 'round', len: 0.2, spread: 0.13, rays: 10 },
-  spines: { len: 0.05, gap: 0.07, col: '#f4f0e0' },
+  tail: { type: 'round', len: 0.19, spread: 0.12, rays: 11 },
+  spines: { len: 0.045, gap: 0.07, col: '#f4f0e0' },
   col: { back: '#6a6a50', flank: '#a8a888', belly: '#fafaf2', fin: '#c8c098', vb: 0.6, vbel: 0.36, soft: 0.06 },
+  pat: [{ type: 'speckle', tone: -0.12, density: 0.06 }],
   mat: { iri: 0.1, gloss: 0.88 },
-  wave: 0.28, stiff: true,
+  wave: 0.22, stiff: true,
 };
 
 A.boxfish = {
@@ -462,24 +465,26 @@ A.billfish = {
 // ---------------------------------------------------------------- flatfish & rays
 
 A.flatfish = {
+  // flounder / halibut lying on its blind side: an oval body, both eyes bulging on the up side near the front, a
+  // continuous fringe of dorsal and anal fin all round, a rounded tail, mottled sandy skin
   plan: 'fish',
-  flat: { roll: -62, blind: '#f6f4ef' },
-  body: { D: 0.5, up: 0.5, at: 0.42, ped: 0.16, tip: 0.04, fore: 1.6, chin: 1.8, back: 1.1, W: 0.03, nose: 0.06, xs: 1.6, wy: 0.5 },
-  eye: { u: 0.1, v: 0.62, r: 0.03, iris: '#c8a860', second: [0.035, 0.12], bulge: 0.7 },
-  mouth: { u: 0.06, v: 0.5, drop: -0.012, curve: 0.01 },
-  op: { u: 0.22, top: 0.7, bot: 0.26, bulge: 0.03, dark: 0.15 },
-  lateral: { v0: 0.6, v1: 0.5, tone: -0.12 },
-  scales: { size: 0.014, k: 0.04 },
+  flat: { roll: -46, blind: '#f6f4ef' },
+  body: { D: 0.48, up: 0.5, at: 0.42, ped: 0.15, tip: 0.05, fore: 1.7, chin: 1.9, back: 1.1, W: 0.032, nose: 0.06, xs: 1.6, wy: 0.5 },
+  eye: { u: 0.115, v: 0.6, r: 0.032, iris: '#a88440', second: [0.045, 0.17], bulge: 0.95, pupil: 0.62 },
+  mouth: { u: 0.055, v: 0.5, drop: -0.016, curve: 0.012, dark: 0.4 },
+  op: { u: 0.21, top: 0.72, bot: 0.24, bulge: 0.03, dark: 0.07 },
+  lateral: { v0: 0.56, v1: 0.5, tone: -0.1 },
+  scales: { size: 0.012, k: 0.035 },
   fins: [
-    { at: 'top', from: 0.08, to: 0.94, h: 0.07, shape: 'low', rake: 0.3, rays: 40 },
-    { at: 'bot', from: 0.2, to: 0.94, h: 0.07, shape: 'low', rake: 0.3, rays: 32 },
+    { at: 'top', from: 0.1, to: 0.95, h: 0.085, shape: 'low', rake: 0.3, rays: 46, thick: 0.012 },
+    { at: 'bot', from: 0.22, to: 0.95, h: 0.085, shape: 'low', rake: 0.3, rays: 38, thick: 0.012 },
   ],
-  pec: { u: 0.24, v: 0.5, len: 0.08, w: 0.03, ang: 0, spread: 8, rays: 8 },
+  pec: { u: 0.23, v: 0.5, len: 0.08, w: 0.03, ang: 0, spread: 8, rays: 8 },
   pel: null,
-  tail: { type: 'round', len: 0.16, spread: 0.12, rays: 16 },
-  col: { back: '#8a7050', flank: '#a08868', belly: '#b09a78', fin: '#8a7458', vb: 0.66, vbel: 0.3 },
+  tail: { type: 'round', len: 0.15, spread: 0.12, rays: 16, thick: 0.012 },
+  col: { back: '#8a7050', flank: '#a08868', belly: '#b09a78', fin: '#9a8262', vb: 0.66, vbel: 0.3 },
   pat: [{ type: 'mottle', color: '#5a4430', scale: 12, thresh: 0.55, amt: 0.6 }],
-  mat: { iri: 0.04, gloss: 0.7 },
+  mat: { iri: 0.04, gloss: 0.7, finGlass: 0.35 },
   wave: 0.4,
 };
 
@@ -504,9 +509,9 @@ A.lantern = {
 
 A.angler = {
   plan: 'fish',
-  body: { D: 0.66, up: 0.48, at: 0.34, ped: 0.14, tip: 0.05, fore: 1.25, chin: 1.0, back: 0.8, W: 0.2, pw: 0.04, nose: 0.02, xs: 2.2, wy: 0.45, sag: 0.04 },
+  body: { top: [[0, 0.13], [0.04, 0.24], [0.14, 0.32], [0.34, 0.35], [0.58, 0.28], [0.8, 0.12], [1, 0.045]], bot: [[0, 0.01], [0.03, -0.13], [0.12, -0.25], [0.34, -0.31], [0.6, -0.23], [0.82, -0.1], [1, -0.045]], W: 0.24, pw: 0.04, nose: 0.05, xs: 2.2, wy: 0.45 },
   eye: { u: 0.2, v: 0.8, r: 0.022, iris: '#3a3a50', pupil: 0.6 },
-  mouth: { u: 0.3, v: 0.62, drop: -0.18, curve: -0.02, dark: 0.7, teeth: { n: 12, len: 0.07, col: '#e8f0f8' } },
+  mouth: { u: 0.3, v: 0.62, drop: -0.18, curve: -0.02, dark: 0.7, teeth: { n: 12, len: 0.07, col: '#e8f0f8', out: 1.02 } },
   op: null, noGill: true, nostril: false,
   fins: [
     { at: 'top', from: 0.7, to: 0.84, h: 0.1, shape: 'round', rake: 0.4, rays: 8 },
@@ -817,19 +822,24 @@ A.pineapple = {
 };
 
 A.mola = {
+  // ocean sunfish: a tall, short, laterally flat disc that ends in the clavus (a rounded, scalloped rudder in place
+  // of a tail), very tall swept-back dorsal and anal fins (fleshy, body coloured), a small pectoral, a tiny mouth
   plan: 'fish',
-  body: { top: [[0, 0.04], [0.1, 0.2], [0.3, 0.3], [0.55, 0.3], [0.8, 0.24], [1, 0.2]], bot: [[0, -0.04], [0.1, -0.18], [0.3, -0.28], [0.55, -0.29], [0.8, -0.23], [1, -0.19]], wid: [[0, 0.04], [0.2, 0.09], [0.6, 0.08], [1, 0.03]], nose: 0.08, xs: 1.8, wy: 0.5 },
-  eye: { u: 0.12, v: 0.58, r: 0.03, iris: '#5a5a60' },
-  mouth: { u: 0.025, v: 0.48, drop: 0, lips: '#e8e4e0' },
-  op: null, noGill: true,
-  fins: [fin('top', 0.6, 0.86, 0.48, [[0, 0.4], [0.3, 0.9], [0.6, 1], [1, 0.3]], 0.55, 12), fin('bot', 0.62, 0.88, 0.46, [[0, 0.4], [0.3, 0.9], [0.6, 1], [1, 0.3]], 0.55, 12)],
-  pec: { u: 0.28, v: 0.5, len: 0.1, w: 0.04, ang: 0, rays: 10 },
+  body: { top: [[0, 0.03], [0.06, 0.14], [0.18, 0.26], [0.36, 0.33], [0.58, 0.33], [0.8, 0.28], [0.94, 0.24], [1, 0.22]], bot: [[0, -0.05], [0.07, -0.17], [0.2, -0.28], [0.4, -0.33], [0.62, -0.32], [0.82, -0.27], [0.94, -0.23], [1, -0.21]], wid: [[0, 0.03], [0.15, 0.085], [0.45, 0.095], [0.8, 0.06], [1, 0.03]], nose: 0.07, xs: 1.7, wy: 0.5 },
+  eye: { u: 0.13, v: 0.6, r: 0.026, iris: '#4a4a52' },
+  mouth: { u: 0.02, v: 0.46, drop: 0, lips: '#e4e8ec', dark: 0.5 },
+  op: null, noGill: true, lateral: null, scales: null,
+  fins: [
+    fin('top', 0.6, 0.84, 0.56, [[0, 0.45], [0.2, 0.9], [0.42, 1], [0.7, 0.62], [1, 0.12]], 0.6, 1, { thick: 0.028 }),
+    fin('bot', 0.62, 0.86, 0.52, [[0, 0.45], [0.2, 0.9], [0.42, 1], [0.7, 0.62], [1, 0.12]], 0.6, 1, { thick: 0.028 }),
+  ],
+  pec: { u: 0.3, v: 0.52, len: 0.09, w: 0.035, ang: 5, spread: 15, rays: 8, opaque: true, flap: 0.6 },
   pel: null,
-  tail: { type: 'round', len: 0.1, spread: 0.24, rays: 16, focus: 0.06 },
-  col: { back: '#6a7888', flank: '#b8c4ce', belly: '#e8eef2', fin: '#7a8898', vb: 0.66, vbel: 0.3 },
-  pat: [{ type: 'mottle', color: '#f2f6f8', scale: 6, thresh: 0.56, amt: 0.6 }],
-  mat: { iri: 0.2, gloss: 0.82 },
-  wave: 0.1, stiff: true,
+  tail: { type: 'clavus', len: 0.085, spread: 0.27, rays: 1, focus: 0.04, thick: 0.028, lobes: 9 },
+  col: { back: '#5e6c7c', flank: '#aab6c2', belly: '#e6ecf0', fin: '#66748a', vb: 0.7, vbel: 0.3, soft: 0.08 },
+  pat: [{ type: 'mottle', color: '#dfe6ec', scale: 7, thresh: 0.56, amt: 0.5 }, { type: 'speckle', tone: -0.12, density: 0.05 }],
+  mat: { iri: 0.12, gloss: 0.75 },
+  wave: 0.08, stiff: true,
 };
 
 A.hatchet = {
@@ -992,9 +1002,9 @@ A.frogfish = {
 
 A.football = {
   ...A.angler,
-  body: { D: 0.8, up: 0.52, at: 0.4, ped: 0.14, tip: 0.06, fore: 1.8, chin: 1.4, back: 0.75, W: 0.28, pw: 0.04, nose: 0.06, xs: 2.2, wy: 0.45 },
-  mouth: { u: 0.26, v: 0.66, drop: -0.18, curve: -0.02, dark: 0.75, teeth: { n: 10, len: 0.05, col: '#e8f0f8' } },
-  lure: { u: 0.18, len: 0.42, ang: 95, curve: 1.6, bulb: 0.05, col: '#ffe8f0', rod: '#3a2830', filaments: 5 },
+  body: { top: [[0, 0.15], [0.05, 0.3], [0.2, 0.4], [0.42, 0.42], [0.65, 0.31], [0.85, 0.13], [1, 0.045]], bot: [[0, -0.01], [0.04, -0.17], [0.18, -0.31], [0.42, -0.37], [0.66, -0.27], [0.86, -0.11], [1, -0.045]], W: 0.3, pw: 0.04, nose: 0.07, xs: 2.2, wy: 0.45 },
+  mouth: { u: 0.26, v: 0.66, drop: -0.18, curve: -0.02, dark: 0.75, teeth: { n: 10, len: 0.05, col: '#e8f0f8', out: 1.02 } },
+  lure: { u: 0.18, len: 0.42, ang: 95, curve: 1.6, bulb: 0.038, col: '#ffe8f0', rod: '#3a2830', filaments: 5 },
   spines: { len: 0.03, gap: 0.08, col: '#5a4048', always: 1 },
   col: { back: '#2a1a22', flank: '#3a2630', belly: '#4a3038', fin: '#2a1a22', vb: 0.6, vbel: 0.3 },
 };
@@ -1099,7 +1109,7 @@ A.manta = {
   eye: { u: 0.06, v: 0.93, r: 0.018, iris: '#3a3a40', second: [0, -0.86] },
   mouth: null, op: null, noGill: true, nostril: false, orbit: false, lateral: null, scales: null,
   fins: [], pec: null, pel: null,
-  tail: { type: 'whip', len: 0.45, taper: 1.2, w: 0.012, col: '#141c2c' },
+  tail: { type: 'whip', len: 0.32, taper: 1.3, w: 0.014, col: '#141c2c' },
   col: { back: '#14203a', flank: '#1c2c4c', belly: '#1c2c4c', fin: '#14203a', vb: 0.6, vbel: 0.3 },
   pat: [{ type: 'blotch', u: 0.24, v: 0.72, rx: 0.07, ry: 0.07, color: '#e8eef4' }, { type: 'blotch', u: 0.24, v: 0.28, rx: 0.07, ry: 0.07, color: '#e8eef4' }],
   flap: 0.32, flapK: 1.1,
@@ -1110,7 +1120,7 @@ A.eagleray = {
   ...A.manta,
   body: { ...rayKnots([[0, 0.05], [0.04, 0.07], [0.1, 0.11], [0.2, 0.42], [0.34, 0.86], [0.42, 1.0], [0.48, 0.78], [0.6, 0.38], [0.75, 0.14], [0.88, 0.07], [1, 0.05]]), wid: [[0, 0.04], [0.15, 0.08], [0.4, 0.08], [0.75, 0.05], [1, 0.025]], nose: 0.04, xs: 1.15, wy: 0.5 },
   eye: { u: 0.1, v: 0.94, r: 0.022, iris: '#3a3a40', second: [0, -0.88] },
-  tail: { type: 'whip', len: 0.9, taper: 1.2, w: 0.01, col: '#101828' },
+  tail: { type: 'whip', len: 0.7, taper: 1.6, w: 0.016, col: '#101828' },
   col: { back: '#0e1a34', flank: '#16264a', belly: '#16264a', fin: '#0e1a34', vb: 0.6, vbel: 0.3 },
   pat: [{ type: 'spots', color: '#f0f6ff', size: 0.02, density: 0.5, seed: 21, umin: 0.08 }],
   flap: 0.36,
@@ -1120,7 +1130,7 @@ A.skate = {
   flat: { roll: -62, blind: '#f2f0ec' },
   body: { ...rayKnots([[0, 0.0], [0.06, 0.12], [0.18, 0.34], [0.36, 0.6], [0.46, 0.62], [0.58, 0.44], [0.72, 0.2], [0.82, 0.1], [1, 0.07]]), wid: [[0, 0.02], [0.2, 0.06], [0.45, 0.07], [0.8, 0.05], [1, 0.035]], nose: 0.03, xs: 1.15, wy: 0.5 },
   eye: { u: 0.16, v: 0.62, r: 0.02, iris: '#c8a860', second: [0, -0.24] },
-  tail: { type: 'whip', len: 0.6, taper: 0.8, w: 0.025, col: '#5a6070' },
+  tail: { type: 'whip', len: 0.42, taper: 0.9, w: 0.03, col: '#5a6070' },
   col: { back: '#5a6070', flank: '#6a7080', belly: '#6a7080', fin: '#5a6070', vb: 0.6, vbel: 0.3 },
   pat: [{ type: 'spots', color: '#a8acb8', size: 0.025, density: 0.35, seed: 25 }, { type: 'ocelli', color: '#2a2e3a', ring: '#e8d8a8', size: 0.05, density: 0.15, seed: 4 }],
   flap: 0.2, flapK: 1.6,
@@ -1130,7 +1140,7 @@ A.stingray = {
   flat: { roll: -62, blind: '#f4f2ee' },
   body: { ...rayKnots([[0, 0.12], [0.06, 0.26], [0.2, 0.42], [0.45, 0.46], [0.7, 0.38], [0.88, 0.18], [1, 0.06]]), wid: [[0, 0.03], [0.25, 0.07], [0.6, 0.065], [1, 0.03]], nose: 0.03, xs: 1.2, wy: 0.5 },
   eye: { u: 0.2, v: 0.7, r: 0.032, iris: '#d8b050', second: [0, -0.4] },
-  tail: { type: 'whip', len: 0.7, taper: 1.1, w: 0.02, col: '#b89a6a' },
+  tail: { type: 'whip', len: 0.55, taper: 1.5, w: 0.022, col: '#b89a6a' },
   col: { back: '#b89a6a', flank: '#c8aa78', belly: '#c8aa78', fin: '#b89a6a', vb: 0.6, vbel: 0.3 },
   pat: [{ type: 'spots', color: '#1a8aff', size: 0.03, density: 0.45, seed: 33 }],
   flap: 0.14, flapK: 3,
@@ -1162,7 +1172,7 @@ S('porpoise', 'porpoise');
 // Sunny Shallows
 S('puffer', 'puffer', { col: C('#e8a800', '#ffd418', '#fff4b0', '#ffd860'), pat: [{ type: 'spots', color: '#3a2c10', size: 0.014, density: 0.22, vmin: 0.3, seed: 5 }], eye: { iris: '#3ab070' } });
 S('briefcase', 'salmon', { body: { hump: 0.05, D: 0.25 }, col: C('#b81414', '#e02a22', '#f0a088', '#4a6a30', { head: '#3a5a26', headU: 0.24 }), mouth: { drop: -0.03, curve: -0.01 }, tail: { col: '#4a6a30' }, fins: [fin('top', 0.4, 0.53, 0.11, 'tri', 0.45, 11, { col: '#a82020' }), fin('top', 0.79, 0.85, 0.035, 'tri', 0.3, 1, { adipose: true, col: '#a82020' }), fin('bot', 0.68, 0.79, 0.08, 'tri', 0.4, 9, { col: '#4a6a30' })] });
-S('flounder', 'flatfish', { col: C('#9a8060', '#ae9470', '#ae9470', '#9a8262'), pat: [{ type: 'mottle', color: '#6a5238', scale: 10, thresh: 0.56, amt: 0.6 }, { type: 'ocelli', color: '#a08868', ring: '#3ab8ff', size: 0.04, density: 0.35, seed: 9 }, { type: 'spots', color: '#5ac8ff', size: 0.01, density: 0.3, seed: 4 }], fins: [fin('top', 0.08, 0.94, 0.07, 'low', 0.3, 40, { spots: '#3ab8ff' }), fin('bot', 0.2, 0.94, 0.07, 'low', 0.3, 32, { spots: '#3ab8ff' })] });
+S('flounder', 'flatfish', { col: C('#4c3c28', '#5c4932', '#5c4932', '#4a3a28'), op: { dark: 0.03 }, pat: [{ type: 'mottle', color: '#30241a', scale: 10, thresh: 0.53, amt: 0.7 }, { type: 'mottle', color: '#7a6646', scale: 20, thresh: 0.62, amt: 0.45 }, { type: 'ocelli', color: '#241a10', ring: '#806848', size: 0.03, density: 0.22, seed: 9 }, { type: 'spots', color: '#8a7656', size: 0.006, density: 0.18, seed: 4 }], fins: [fin('top', 0.1, 0.95, 0.085, 'low', 0.3, 46, { spots: '#2e2218', edge: '#2a2016', thick: 0.012 }), fin('bot', 0.22, 0.95, 0.085, 'low', 0.3, 38, { spots: '#2e2218', edge: '#2a2016', thick: 0.012 })], tail: { type: 'round', len: 0.15, spread: 0.12, thick: 0.012, col: '#4a3a28', edge: '#2a2016' } });
 S('angel', 'angelfw', { col: C('#d8b8f0', '#f6e0fa', '#fff6fc', '#ecd4fc'), pat: [{ type: 'bars', at: [0.15, 0.48, 0.82], width: 0.06, color: '#5ad8f0', slant: -0.05, alpha: 0.55 }, { type: 'vgrad', v0: 0.7, v1: 1, color: '#ff9ad8', amt: 0.5 }], fins: [fin('top', 0.42, 0.86, 0.55, 'rise', 1.5, 13, { col: '#f0d0fa', edge: '#5ad8f0' }), fin('bot', 0.42, 0.86, 0.55, 'rise', 1.5, 13, { col: '#f0d0fa', edge: '#5ad8f0' })], mat: { iri: 0.7 } });
 S('parrot', 'parrot', { col: C('#0e9a84', '#22d0a8', '#8ef0d4', '#ff78b0'), pat: [{ type: 'scalenet', color: '#ff8ac4', size: 0.05, inner: 0.5, umin: 0.25, alpha: 0.3 }, { type: 'lines', color: '#ff9ad0', umax: 0.22, freq: 30, width: 0.18, slope: 0.4, wavy: 0.2 }], fins: [fin('top', 0.24, 0.84, 0.08, 'low', 0.4, 20, { col: '#ff78b0', edge: '#3af0ff' }), fin('bot', 0.56, 0.84, 0.075, 'low', 0.4, 12, { col: '#ff78b0', edge: '#3af0ff' })], tail: { col: '#ff78b0', edge: '#3af0ff' } });
 S('gourami', 'gourami', { col: C('#2e4e90', '#6c9ce0', '#d4e4f8', '#5a84c4'), pat: [{ type: 'mottle', color: '#2a3e78', scale: 12, thresh: 0.55, amt: 0.6 }, { type: 'blotch', u: 0.5, v: 0.5, rx: 0.03, ry: 0.07, color: '#141c3a' }, { type: 'blotch', u: 0.96, v: 0.5, rx: 0.03, ry: 0.12, color: '#141c3a' }] });
@@ -1241,7 +1251,7 @@ S('neonpunk', 'tetra', { col: C('#3a4a3a', '#8a98a8', '#e8eef2', '#d8e0e8'), pat
 S('surfermullet', 'mullet');
 S('conefish', 'butterfly', { body: { tip: 0.04, fore: 1.0, nose: 0.004 }, mouth: { u: 0.02, v: 0.55 }, col: C('#f8f6f0', '#fcfbf8', '#ffffff', '#f6f0e4'), pat: [{ type: 'bars', at: [0.14, 0.38, 0.6, 0.82], width: 0.1, color: '#ff7a10', edge: true, edgeW: 0.012, slant: 0.04 }, { type: 'blotch', u: 0.78, v: 0.82, rx: 0.04, ry: 0.06, color: '#14141a', ring: '#fcfbf8' }], body2: true });
 S('pigeonfish', 'perch', { body: { D: 0.46, up: 0.55, at: 0.38, ped: 0.22, W: 0.06, xs: 1.7 }, col: C('#2a4a5a', '#7a98a8', '#f0d8a8', '#6a8a98'), pat: [{ type: 'bars', at: [0.3, 0.42, 0.54, 0.66, 0.78], width: 0.05, color: '#3a5a6a', alpha: 0.5 }, { type: 'grad', u0: 0.3, u1: 0.1, color: '#5a7ab8', amt: 0.6 }, { type: 'blotch', u: 0.25, v: 0.62, rx: 0.02, ry: 0.07, color: '#0e1418' }], mat: { iri: 0.6 } });
-S('bettercallsole', 'flatfish', { body: { D: 0.42, at: 0.4, tip: 0.02, fore: 2.2 }, col: C('#6a5238', '#80664a', '#80664a', '#6a5238'), pat: [{ type: 'mottle', color: '#4a3826', scale: 14, thresh: 0.54, amt: 0.7 }, { type: 'spots', color: '#3a2a1a', size: 0.008, density: 0.4, seed: 2 }], tail: { type: 'round', col: '#5a4430', edge: '#1a1410' } });
+S('bettercallsole', 'flatfish', { body: { D: 0.42, at: 0.4, tip: 0.02, fore: 2.2 }, col: C('#4a3828', '#584432', '#584432', '#4a3828'), pat: [{ type: 'mottle', color: '#30241a', scale: 14, thresh: 0.54, amt: 0.7 }, { type: 'spots', color: '#2a1e14', size: 0.008, density: 0.4, seed: 2 }], tail: { type: 'round', thick: 0.012, col: '#4a3828', edge: '#1a1410' } });
 S('mindthegap', 'catfish', { col: C('#3a4a5a', '#7a8a9a', '#eef0f2', '#5a6a7a', { vb: 0.6, vbel: 0.35, soft: 0.1 }), pat: [{ type: 'spots', color: '#1a2228', size: 0.008, density: 0.5, vmin: 0.35, seed: 6 }], tail: { type: 'fork', fork: 0.55, len: 0.22, spread: 0.18 }, barbels: [{ u: 0.03, v: 0.62, len: 0.2, ang: -12, curl: 0.6, out: 0.5, col: '#3a4048' }, { u: 0.02, v: 0.05, len: 0.08, ang: -85, curl: 0.4, out: 0.2, col: '#d8d8d8' }, { u: 0.04, v: 0.02, len: 0.07, ang: -95, curl: 0.3, out: 0.3, col: '#d8d8d8' }] });
 S('adbreakray', 'stingray');
 S('gottagofast', 'billfish', { bill: { len: 0.42, h: 0.012, w: 0.03 }, fins: [fin('top', 0.18, 0.3, 0.2, 'sickle', 0.5, 10), fin('top', 0.9, 0.93, 0.025, 'tri', 0.4, 3), fin('bot', 0.64, 0.72, 0.1, 'sickle', 0.6, 8)], pel: null, col: C('#2a1e3a', '#6a5a78', '#e4dce8', '#3a2e4a'), pat: [], mat: { iri: 0.5 } });
@@ -1252,19 +1262,19 @@ S('hammerhead', 'hammerhead');
 S('goldbar', 'goldfish', { col: C('#f09010', '#ffb020', '#ffe080', '#ffd070'), mat: { iri: 0.35, gloss: 0.95, finGlass: 0.42 }, fins: [fin('top', 0.32, 0.7, 0.22, 'trail', 0.6, 14, { col: '#e8f8ff' }), fin('bot', 0.72, 0.82, 0.14, 'trail', 0.6, 7, { col: '#e8f8ff' })], tail: { col: '#e8f8ff', base: '#ffb020' }, pec: { col: '#e8f8ff' }, pel: { col: '#e8f8ff' } });
 S('batfish', 'platax', { pat: [{ type: 'vgrad', v0: 0.95, v1: 1.0, color: '#ff6a10' }, { type: 'vgrad', v0: 0.05, v1: 0.0, color: '#ff6a10' }], fins: [fin('top', 0.32, 0.86, 0.72, 'rise', 0.9, 20, { edge: '#ff6a10', edgeW: 0.1 }), fin('bot', 0.38, 0.86, 0.7, 'rise', 0.9, 18, { edge: '#ff6a10', edgeW: 0.1 })], tail: { edge: '#ff6a10', edgeW: 0.15 }, pel: { col: '#1a1a22', edge: '#ff6a10' } });
 // ---- solid creatures (realvox SOLIDS) and eel heads for chain creatures
-const solid = (kind, col, o = {}) => ({ plan: 'solid', kind, col, chunk: kind === 'jelly' ? 1.35 : 1.15, ...o });
+const solid = (kind, col, o = {}) => ({ plan: 'solid', kind, col, chunk: kind === 'jelly' ? 1.35 : 1.15, ...(kind === 'crab' ? { voxK: 1.2 } : null), ...o });
 SPEC_IN.clickcrab = solid('crab', { back: '#e6dccb', flank: '#f0e8da', belly: '#faf6ee', leg: '#ece2d0', claw: '#f2e8d8', tip: '#c87a50', eye: '#141414' }, { stalk: 1.7, eyeR: 0.03, yawBase: 58 });
 SPEC_IN.mechacrab = solid('crab', { back: '#e0300e', flank: '#ff5a22', belly: '#ffd2a8', leg: '#e8481a', claw: '#d4260c', tip: '#ffd040', spots: '#ffd040', eye: '#1a1418' }, { stalk: 1.4 });
 SPEC_IN.snowcrab = solid('crab', { back: '#e07a3e', flank: '#eea062', belly: '#f8e8d2', leg: '#e88a50', claw: '#da7038', tip: '#3a2a20' }, { legLen: 0.85, wide: 0.42, claw: 0.7, stalk: 0.9 });
 SPEC_IN.steamcrab = solid('crab', { back: '#9e3a26', flank: '#c46446', belly: '#f0d8c0', leg: '#b04a30', claw: '#c4462a', tip: '#141010' }, { claw: 1.35, wide: 0.52 });
 SPEC_IN.taxicrab = solid('crab', { back: '#e6b424', flank: '#f0c844', belly: '#faf0d0', leg: '#e8bc38', claw: '#e0a820', tip: '#2a2024', spots: '#8a3a6a' }, { wide: 0.55 });
-SPEC_IN.glowjelly = solid('jelly', { back: '#d07ac8', flank: '#f0a8e0', belly: '#f8d0f0', gonad: '#ff4aa8' }, { warts: true, glow: true, tentLen: 1.8, arms: 4, armLen: 1.1, armR: 0.06, glowColor: '#ff7ad8' });
-SPEC_IN.purin = solid('jelly', { back: '#f2dc98', flank: '#f8ecc8', belly: '#fff6e0', gonad: '#e8c070' }, { knob: '#f09a18', arms: 8, armLen: 0.38, armR: 0.07, armTip: '#6a58d0', tentacles: 0, bellH: 0.28, shell: 0.3 });
+SPEC_IN.glowjelly = solid('jelly', { back: '#d07ac8', flank: '#f0a8e0', belly: '#f8d0f0', gonad: '#ff4aa8' }, { warts: true, glow: true, tentLen: 1.8, tentacles: 8, arms: 4, armLen: 1.2, armR: 0.035, glowColor: '#ff7ad8' });
+SPEC_IN.purin = solid('jelly', { back: '#f6e6b0', flank: '#fbf1d4', belly: '#fff8e8', gonad: '#e8b860' }, { knob: '#f09a18', arms: 8, armLen: 0.55, armR: 0.05, armTip: '#6a58d0', tentacles: 12, tentLen: 1.0, bellH: 0.3, shell: 0.24 });
 SPEC_IN.dumbo = solid('octopus', { back: '#f09ac4', flank: '#f6b6d6', belly: '#ffdcec', fin: '#f8b0d4', eye: '#2a1420' });
-SPEC_IN.vampsquid = solid('squid', { back: '#a01426', flank: '#b42032', belly: '#c83446', fin: '#3a0812', eye: '#3a8aff' }, { photo: '#7affff', armTip: '#f4ecec', glow: true });
+SPEC_IN.vampsquid = solid('squid', { back: '#a01426', flank: '#b42032', belly: '#c83446', fin: '#3a0812', eye: '#3a8aff' }, { photo: '#7affff', armTip: '#120608', glow: true });
 SPEC_IN.starfish = solid('star', { back: '#d81e30', flank: '#ea3a4a', belly: '#f8c8b8', spots: '#ff8a70' });
 SPEC_IN.isopod = solid('isopod', { back: '#c4b8c6', flank: '#a89cae', belly: '#e8e0e8', eye: '#2a2a24' });
-SPEC_IN.seahorse = solid('seahorse', { back: '#d86a0e', flank: '#ff9a1e', belly: '#ffd25a', fin: '#ffe2a8', eye: '#c88a20' });
+SPEC_IN.seahorse = solid('seahorse', { back: '#c45a0c', flank: '#f08a1c', belly: '#ffc85a', fin: '#ffe6b8', eye: '#c88a20' }, { voxK: 2 });
 SPEC_IN.guppy = solid('chomper', { back: '#1478d0', flank: '#38b8ff', belly: '#d8f6ff', fin: '#ff4ab0', dorsal: '#ffd23a', eye: '#e8a838' }, { chunk: 1.3 });
 
 // eels (chain creatures): a realistic head model; the body segments follow the game's path

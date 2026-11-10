@@ -294,6 +294,7 @@ function tailR(tf, th, s, len) {
   switch (tf.type) {
     case 'truncate': return len / Math.cos(th);
     case 'round': return len * (1.02 - 0.28 * s * s) / Math.cos(th * 0.5);
+    case 'clavus': return len * (1 - 0.3 * s * s) * (1 + 0.07 * Math.cos(((s + 1) / 2) * (tf.lobes ?? 9) * TAU)) / Math.cos(th * 0.3);
     case 'fan': return len * (1.05 - 0.22 * s * s);
     case 'pointed': return len * (1 - 0.65 * Math.abs(s));
     case 'lunate': return len * (1 - (tf.fork ?? 0.6) * Math.max(0, 1 - s * s)) / Math.cos(th * 0.85);
@@ -797,7 +798,7 @@ function buildFish(c, ph, inflStep, gape, hi) {
     ellInto(glow, [px, py, 0], [R, R, R], 9, 6, rgb01(lu.col || '#bff8ff'), D, W);
     if (lu.filaments) for (let k = 0; k < lu.filaments; k++) {
       const fa = -0.6 + (k / Math.max(1, lu.filaments - 1)) * 2.4;
-      tubeInto(glow, [[px, py, 0], [px + Math.cos(fa) * R * 2.2, py + Math.sin(fa) * R * 2.2, 0]], () => 0.003 * L, 4, rgb01(lu.col || '#bff8ff'), D, W);
+      tubeInto(glow, [[px, py, 0], [px + Math.cos(fa) * R * 1.5, py + Math.sin(fa) * R * 1.5, 0]], (t) => 0.0035 * L * (1 - 0.6 * t), 4, rgb01(lu.col || '#bff8ff'), D, W);
     }
     lureTip = [px, py, 0];
   }
@@ -811,7 +812,7 @@ function buildFish(c, ph, inflStep, gape, hi) {
       const Y = mouthY(u);
       const tl = (tt.len ?? 0.03) * L * (k % 2 ? 0.6 : 1) * (1 - 0.4 * (k / n));
       const up = k % 2 === 0 ? 1 : -1;
-      const z = surf(u, Y) * 0.8;
+      const z = surf(u, Y) * (tt.out ?? 0.8);
       const w = Math.max(0.004 * L, tl * 0.28);
       for (const sd of [1, -1]) {
         const base = [[X - w, Y + up * 0.002 * L, sd * z], [X + w, Y + up * 0.002 * L, sd * z], [X, Y + up * 0.002 * L, sd * (z - w)]];
@@ -995,6 +996,8 @@ function buildSolid(c, ph) {
   const L = c.real.size ?? (c.real.kind === 'seahorse' ? Math.max(c.L, c.H) : c.L);
   const prims = sp.sol.prims;
   const body = new Part(), glass = new Part(), fins = new Part(), eyes = new Part(), glow = new Part();
+  // facets about one voxel across (the voxeliser samples one flat colour per triangle: fine facets = fine detail)
+  const vs = VOXEL ? voxelSize(c, { L }) : L / 40;
   const vk = 30 / L;
   const colorOf = (p, Q, x, y, z) => {
     let col = typeof p.col === 'function' ? p.col(Q, x, y, z, Math.floor(x * vk), Math.floor(y * vk), Math.floor(z * vk)) : p.col;
@@ -1004,20 +1007,21 @@ function buildSolid(c, ph) {
     return { rgb: unpack(col), role, glow: gl };
   };
   const route = (o) => (o.glow ? glow : o.role === R_GLASS ? glass : o.role === R_FIN ? fins : o.role === R_EYE || o.role === R_SPEC ? eyes : body);
-  const emit = (o, a, b, cc, twoSided) => { const pt = route(o); if (twoSided || pt === glass || pt === fins) pt.both(a, b, cc, o.rgb); else pt.tri(a, b, cc, o.rgb); };
+  // (voxels: one side is enough, the voxeliser only samples the surface)
+  const emit = (o, a, b, cc, twoSided) => { const pt = route(o); if (!VOXEL && (twoSided || pt === glass || pt === fins)) pt.both(a, b, cc, o.rgb); else pt.tri(a, b, cc, o.rgb); };
   // group capsule chains (tubes share point arrays) into continuous tubes
   const used = new Set();
   for (let pi = 0; pi < prims.length; pi++) {
     const p = prims[pi];
     if (used.has(pi)) continue;
-    if (p.t === 0) { tessEll(p, L, colorOf, emit); continue; }
+    if (p.t === 0) { tessEll(p, L, colorOf, emit, vs); continue; }
     const chain = [p];
     used.add(pi);
     for (let q = pi + 1; q < prims.length; q++) {
       const nq = prims[q], last = chain[chain.length - 1];
       if (nq.t === 1 && nq.a === last.b && nq.col === last.col) { chain.push(nq); used.add(q); } else break;
     }
-    tessTube(chain, L, colorOf, emit);
+    tessTube(chain, L, colorOf, emit, vs);
   }
   const A = sp.anchors || {};
   const anchors = {};
@@ -1027,22 +1031,30 @@ function buildSolid(c, ph) {
   if (!body.empty) parts.push({ key: 'body', mb: body.mb, spec: 0.5, shine: 34, env: 0.42, iri: 0.08, rim: 0.3, ambient: 0.48 });
   if (!eyes.empty) parts.push({ key: 'eyes', mb: eyes.mb, spec: 1.1, shine: 90, env: 0.35, rim: 0.05, ambient: 0.6 });
   if (!glow.empty) parts.push({ key: 'glow', mb: glow.mb, emit: 0.55, alpha: 0.85, spec: 0.8, shine: 50, env: 0.3, cull: false });
-  if (!fins.empty) parts.push({ key: 'fins', mb: fins.mb, alpha: 0.7, spec: 0.5, shine: 40, env: 0.2, cull: false });
-  if (!glass.empty) parts.push({ key: 'glass', mb: glass.mb, alpha: 0.58, spec: 0.9, shine: 60, env: 0.6, iri: 0.3, rim: 0.7, cull: false, depthWrite: false });
+  if (!fins.empty) parts.push({ key: 'fins', mb: fins.mb, alpha: sp.finAlpha ?? 0.7, spec: 0.5, shine: 40, env: 0.2, cull: false });
+  if (!glass.empty) parts.push({ key: 'glass', mb: glass.mb, alpha: sp.glassAlpha ?? 0.58, spec: 0.9, shine: 60, env: 0.6, iri: 0.3, rim: 0.7, cull: false, depthWrite: false });
   return { parts, anchors, eyes: eyesA, L, flatRoll: sp.roll || 0, yawBase: sp.yawBase || 0 };
 }
 
-function tessEll(p, L, colorOf, emit) {
+const spow = (v, e) => (v < 0 ? -Math.pow(-v, e) : Math.pow(v, e));
+// Ellipsoid (or superellipsoid: p.sq = [e horizontal, e vertical], < 1 boxier) tessellated so that facets are about
+// one voxel (vs) across; p.warp(q) -> q bends the unit shape before it is scaled / rotated into place.
+function tessEll(p, L, colorOf, emit, vs = L / 40) {
   const rmax = Math.max(p.r[0], p.r[1], p.r[2]);
   const isEye = p.role === R_EYE;
-  const seg = isEye ? 14 : clamp(Math.round(7 + 18 * rmax / L), 7, 18), rings = isEye ? 10 : Math.max(4, Math.round(seg * 0.62));
+  const seg = clamp(Math.round((TAU * rmax) / (2.4 * vs)), isEye ? 12 : rmax < 1.5 * vs ? 6 : 8, 56), rings = Math.max(isEye ? 8 : rmax < 1.5 * vs ? 3 : 4, Math.round(seg * 0.5));
   const ax = p.axes || [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
   const det = ax[0][0] * (ax[1][1] * ax[2][2] - ax[1][2] * ax[2][1]) - ax[0][1] * (ax[1][0] * ax[2][2] - ax[1][2] * ax[2][0]) + ax[0][2] * (ax[1][0] * ax[2][1] - ax[1][1] * ax[2][0]);
   const flip = det < 0;
   const cu = p.cut;
   const shell = !!p.shell;
+  const sq = p.sq, warp = p.warp;
   const qOf = (i, j) => {
     const th = (i / rings) * Math.PI, ph = (j / seg) * TAU;
+    if (sq) {
+      const st = Math.sin(th), ct = Math.cos(th), e1 = sq[1] ?? 1, e2 = sq[0] ?? 1;
+      return [spow(st, e1) * spow(Math.cos(ph), e2), spow(ct, e1), spow(st, e1) * spow(Math.sin(ph), e2)];
+    }
     return [Math.sin(th) * Math.cos(ph), Math.cos(th), Math.sin(th) * Math.sin(ph)];
   };
   const out = (q) => cu && ((cu.x0 != null && q[0] < cu.x0 - 1e-6) || (cu.x1 != null && q[0] > cu.x1 + 1e-6) || (cu.y0 != null && q[1] < cu.y0 - 1e-6) || (cu.y1 != null && q[1] > cu.y1 + 1e-6) || (cu.z0 != null && q[2] < cu.z0 - 1e-6) || (cu.z1 != null && q[2] > cu.z1 + 1e-6));
@@ -1050,16 +1062,16 @@ function tessEll(p, L, colorOf, emit) {
     if (!cu) return q;
     return [clamp(q[0], cu.x0 ?? -2, cu.x1 ?? 2), clamp(q[1], cu.y0 ?? -2, cu.y1 ?? 2), clamp(q[2], cu.z0 ?? -2, cu.z1 ?? 2)];
   };
-  const W = (q) => [
-    p.c[0] + ax[0][0] * q[0] * p.r[0] + ax[1][0] * q[1] * p.r[1] + ax[2][0] * q[2] * p.r[2],
-    p.c[1] + ax[0][1] * q[0] * p.r[0] + ax[1][1] * q[1] * p.r[1] + ax[2][1] * q[2] * p.r[2],
-    p.c[2] + ax[0][2] * q[0] * p.r[0] + ax[1][2] * q[1] * p.r[1] + ax[2][2] * q[2] * p.r[2],
-  ];
+  const W = (q0) => {
+    const q = warp ? warp(q0) : q0;
+    return [
+      p.c[0] + ax[0][0] * q[0] * p.r[0] + ax[1][0] * q[1] * p.r[1] + ax[2][0] * q[2] * p.r[2],
+      p.c[1] + ax[0][1] * q[0] * p.r[0] + ax[1][1] * q[1] * p.r[1] + ax[2][1] * q[2] * p.r[2],
+      p.c[2] + ax[0][2] * q[0] * p.r[0] + ax[1][2] * q[1] * p.r[1] + ax[2][2] * q[2] * p.r[2],
+    ];
+  };
   const face = (qa, qb, qc) => {
     if (shell && out(qa) && out(qb) && out(qc)) return;
-    if (!shell && cu && out(qa) && out(qb) && out(qc)) {
-      // fully cut away: the flat cap is made by the clamped faces around it
-    }
     const ca = clampQ(qa), cb = clampQ(qb), cc = clampQ(qc);
     const m = norm(ca[0] + cb[0] + cc[0], ca[1] + cb[1] + cc[1], ca[2] + cb[2] + cc[2]);
     QV[0] = m[0]; QV[1] = m[1]; QV[2] = m[2]; QV[3] = 1;
@@ -1069,63 +1081,87 @@ function tessEll(p, L, colorOf, emit) {
     if (!o) return;
     if (flip) emit(o, wa, wc, wb, shell); else emit(o, wa, wb, wc, shell);
   };
+  const Q = [];
+  for (let i = 0; i <= rings; i++) { const row = []; for (let j = 0; j <= seg; j++) row.push(qOf(i, j)); Q.push(row); }
   for (let i = 0; i < rings; i++) for (let j = 0; j < seg; j++) {
-    const a = qOf(i, j), b = qOf(i, j + 1), d = qOf(i + 1, j), e = qOf(i + 1, j + 1);
+    const a = Q[i][j], b = Q[i][j + 1], d = Q[i + 1][j], e = Q[i + 1][j + 1];
     if (i > 0) face(a, b, e);
     if (i < rings - 1) face(a, e, d);
   }
 }
 
-function tessTube(chain, L, colorOf, emit) {
-  const pts = [chain[0].a, ...chain.map((p) => p.b)];
-  const rads = [chain[0].ra, ...chain.map((p) => p.rb)];
-  const n = pts.length;
-  const rmax = Math.max(...rads);
-  const sides = clamp(Math.round(5 + 30 * rmax / L), 5, 10);
-  const rings = [];
+// Capsule chain -> one continuous tube: rings every ~voxel along the axis, sides about one voxel wide, rounded
+// (hemispherical) ends. Colour functions get Q = [t within the capsule, 1, t along the whole tube, dy].
+function tessTube(chain, L, colorOf, emit, vs = L / 40) {
+  const P0 = [chain[0].a, ...chain.map((p) => p.b)];
+  const R0 = [chain[0].ra, ...chain.map((p) => p.rb)];
+  const rmax = Math.max(...R0);
+  const sides = clamp(Math.round((TAU * rmax) / (2.4 * vs)), 6, 28);
+  // refined samples: {p, r, pr (capsule), t (within capsule), k (along the tube)}
+  const S = [];
+  for (let i = 0; i < chain.length; i++) {
+    const pr = chain[i], a = P0[i], b = P0[i + 1];
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+    const n = clamp(Math.ceil(len / (2.4 * vs)), 1, 16);
+    const k0 = pr.k0 ?? i / chain.length, k1 = pr.k1 ?? (i + 1) / chain.length;
+    for (let s = i ? 1 : 0; s <= n; s++) {
+      const t = s / n;
+      S.push({ p: [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t], r: Math.max(0.003 * L, R0[i] + (R0[i + 1] - R0[i]) * t), pr, t, k: k0 + (k1 - k0) * t });
+    }
+  }
+  const n = S.length;
   let prevN = null;
-  const frames = [];
+  const rings = [], tans = [];
   for (let i = 0; i < n; i++) {
-    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)];
+    const a = S[Math.max(0, i - 1)].p, b = S[Math.min(n - 1, i + 1)].p;
     const t = norm(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
     let nn;
     if (prevN) { const d = prevN[0] * t[0] + prevN[1] * t[1] + prevN[2] * t[2]; nn = norm(prevN[0] - d * t[0], prevN[1] - d * t[1], prevN[2] - d * t[2]); }
     else { const up = Math.abs(t[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0]; const d = up[0] * t[0] + up[1] * t[1] + up[2] * t[2]; nn = norm(up[0] - d * t[0], up[1] - d * t[1], up[2] - d * t[2]); }
     prevN = nn;
     const bb = cross(t, nn);
-    const r = Math.max(0.003 * L, rads[i]);
+    const r = S[i].r, c0 = S[i].p;
     const ring = [];
     for (let s = 0; s < sides; s++) {
       const a2 = (s / sides) * TAU, ca = Math.cos(a2), sa = Math.sin(a2);
       const dir = [nn[0] * ca + bb[0] * sa, nn[1] * ca + bb[1] * sa, nn[2] * ca + bb[2] * sa];
-      ring.push({ p: [pts[i][0] + dir[0] * r, pts[i][1] + dir[1] * r, pts[i][2] + dir[2] * r], dir });
+      ring.push({ p: [c0[0] + dir[0] * r, c0[1] + dir[1] * r, c0[2] + dir[2] * r], dir });
     }
     rings.push(ring);
-    frames.push(t);
+    tans.push(t);
   }
+  const col = (sm, t, k, dy, x, y, z) => { QV[0] = t; QV[1] = 1; QV[2] = k; QV[3] = dy; return colorOf(sm.pr, QV, x, y, z); };
   for (let i = 0; i < n - 1; i++) {
-    const pr = chain[i];
+    const A = S[i], B = S[i + 1];
+    const pr = B.pr, tm = B.pr === A.pr ? (A.t + B.t) / 2 : B.t / 2, km = (A.k + B.k) / 2;
     for (let s = 0; s < sides; s++) {
       const s2 = (s + 1) % sides;
       const a = rings[i][s], b = rings[i][s2], c = rings[i + 1][s2], d = rings[i + 1][s];
-      const dy = (a.dir[1] + b.dir[1]) / 2;
-      QV[0] = 0.5; QV[1] = 1; QV[2] = pr.k0 != null ? pr.k0 + (pr.k1 - pr.k0) * 0.5 : 0.5; QV[3] = dy;
-      const cx = (a.p[0] + c.p[0]) / 2, cy = (a.p[1] + c.p[1]) / 2, cz = (a.p[2] + c.p[2]) / 2;
-      const o = colorOf(pr, QV, cx, cy, cz);
+      const o = col({ pr }, tm, km, (a.dir[1] + b.dir[1]) / 2, (a.p[0] + c.p[0]) / 2, (a.p[1] + c.p[1]) / 2, (a.p[2] + c.p[2]) / 2);
       if (!o) continue;
       emit(o, a.p, b.p, c.p); emit(o, a.p, c.p, d.p);
     }
   }
-  // rounded ends: a short cone
-  for (const [i, sg, pr] of [[0, -1, chain[0]], [n - 1, 1, chain[chain.length - 1]]]) {
-    const t = frames[i], r = Math.max(0.003 * L, rads[i]);
-    const tip = [pts[i][0] + t[0] * sg * r * 0.7, pts[i][1] + t[1] * sg * r * 0.7, pts[i][2] + t[2] * sg * r * 0.7];
-    QV[0] = i ? 1 : 0; QV[1] = 1; QV[2] = pr.k0 != null ? (i ? pr.k1 : pr.k0) : i ? 1 : 0; QV[3] = 0;
-    const o = colorOf(pr, QV, tip[0], tip[1], tip[2]);
-    if (!o) continue;
-    for (let s = 0; s < sides; s++) {
-      const s2 = (s + 1) % sides;
-      if (sg < 0) emit(o, tip, rings[i][s2].p, rings[i][s].p); else emit(o, tip, rings[i][s].p, rings[i][s2].p);
+  // hemispherical ends
+  for (const [i, sg] of [[0, -1], [n - 1, 1]]) {
+    const t = tans[i], sm = S[i], r = sm.r, c0 = sm.p;
+    const NR = clamp(Math.round((r * 1.6) / vs), 1, 6);
+    let prev = rings[i].map((q) => q.p);
+    for (let k = 1; k <= NR; k++) {
+      const a = (k / NR) * Math.PI * 0.5, cr = Math.cos(a), sr = Math.sin(a);
+      const ring = k === NR ? null : rings[i].map((q) => [c0[0] + q.dir[0] * r * cr + t[0] * sg * r * sr, c0[1] + q.dir[1] * r * cr + t[1] * sg * r * sr, c0[2] + q.dir[2] * r * cr + t[2] * sg * r * sr]);
+      const tip = [c0[0] + t[0] * sg * r, c0[1] + t[1] * sg * r, c0[2] + t[2] * sg * r];
+      for (let s = 0; s < sides; s++) {
+        const s2 = (s + 1) % sides;
+        const pa = prev[s], pb = prev[s2];
+        const o = col(sm, i ? 1 : 0, sm.k, (rings[i][s].dir[1] * cr + t[1] * sg * sr), pa[0], pa[1], pa[2]);
+        if (!o) continue;
+        if (ring) {
+          const qa = ring[s], qb = ring[s2];
+          if (sg < 0) { emit(o, pa, qb, pb); emit(o, pa, qa, qb); } else { emit(o, pa, pb, qb); emit(o, pa, qb, qa); }
+        } else if (sg < 0) emit(o, tip, pb, pa); else emit(o, tip, pa, pb);
+      }
+      if (ring) prev = ring;
     }
   }
 }
@@ -1408,7 +1444,7 @@ let VOXEL = true;
 export function setVoxelMode(on) { VOXEL = !!on; clearLowpolyCache(); }
 export function voxelSize(c, p) {
   const Lk = c.L || p.L || 30;
-  const N = clamp(30 + Lk * 0.75, 48, 140) * (c.voxK || 1);
+  const N = clamp(30 + Lk * 0.75, 48, 140) * (c.voxK || c.real?.voxK || 1);
   return (p.L || Lk) / N;
 }
 function poseOf(c, sw, infl, mouth, frames = LP_SWIM, hi = false, eel3d = false) {
@@ -1428,7 +1464,7 @@ function poseOf(c, sw, infl, mouth, frames = LP_SWIM, hi = false, eel3d = false)
   if (VOXEL) {
     // phase 8: the anatomical mesh becomes a real voxel model (fine voxels, baked AO, translucent fin voxels)
     const src = p.parts;
-    p = { ...p, parts: voxelizeParts(src, voxelSize(c, p), { ao: 1, eyes: p.eyeVox }) };
+    p = { ...p, parts: voxelizeParts(src, voxelSize(c, p), { ao: 1, eyes: p.eyeVox, density: c.real?.plan === 'solid' ? 1.35 : 1.8 }) };
     for (const q of src) q.mesh.dispose?.();
   }
   poses.set(key, p);
@@ -1905,7 +1941,7 @@ export function lpOrb(r, hex = '#e6fdff', glow = false) {
 }
 
 // debug / benchmarks (dev pages, tools)
-export const _lpDebug = { poseOf: (...a) => poseOf(...a), skinOf: (...a) => skinOf(...a) };
+export const _lpDebug = { poseOf: (...a) => poseOf(...a), skinOf: (...a) => skinOf(...a), buildSolid: (...a) => buildSolid(...a) };
 
 // ------------------------------------------------------------------------------------------------ chain tubes
 
