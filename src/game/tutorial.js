@@ -80,7 +80,7 @@ const SAY = {
   shockHold: { text: 'Hold, then let go to ZAP it!', pose: 'point', mood: 'excited', g: 'hold' },
   surge: { text: 'Hold and drag against it!', pose: 'bend', mood: 'determined', g: 'hold' },
   card: { text: 'Look at that! Keep it!', pose: 'cheer', mood: 'love' },
-  tank: { text: 'Into your jar it goes! Proud?', pose: 'wave', mood: 'excited', choices: [
+  tank: { text: 'Into your tank it goes! Proud?', pose: 'wave', mood: 'excited', choices: [
     { text: 'So proud!', mood: 'love', reply: 'You should be!' },
     { text: 'Next one is bigger', mood: 'smug', reply: "That's the spirit!" },
   ] },
@@ -99,7 +99,7 @@ const EMOTE = { cheer: ['clap', 1.4], wave: ['wave', 1.8], sad: ['worried', 1.2]
 const TIPS = [
   { text: 'Rare fish love special bait.', at: 'bait' },
   { text: 'Floating boxes hide loot. Fish them up!' },
-  { text: 'Your jar fish make Aero while you play.', at: 'aquarium' },
+  { text: 'Your tank fish make Aero while you play.', at: 'aquarium' },
   { text: 'New oceans open up from the Map.', at: 'map' },
   { text: 'Different rods, different skills. Visit The Lab!', at: 'lab' },
   { text: 'Some fish only show up at night.' },

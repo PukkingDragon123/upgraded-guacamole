@@ -51,6 +51,7 @@ export const HUD_ITEMS = [
   { id: 'journal', label: 'FishDex', key: 'J', tint: '#3a9cf0', icon: 'journal', group: 0 },
   { id: 'inventory', label: 'Satchel', key: 'I', tint: '#8ad848', icon: 'inventory', group: 0 },
   { id: 'wardrobe', label: 'Wardrobe', key: 'W', tint: '#5ab4ff', icon: 'wardrobe', group: 0 },
+  { id: 'workshop', label: 'Workshop', key: 'C', tint: '#ffa04a', icon: 'build', alias: 'crafting', group: 1 }, // [phase8] Workshop (panel registered by src/ui/workshop.js)
   { id: 'map', label: 'Map', key: 'T', tint: '#2ad0b8', icon: 'map', group: 1 },
   { id: 'baitshop', label: 'Bait Shop', key: 'S', tint: '#ffb43c', icon: 'shop', alias: 'appsea', group: 1 },
   { id: 'bait', label: 'Bait', key: 'B', tint: '#ff9ac2', icon: 'bait', group: 1 },
@@ -332,6 +333,7 @@ export class Hud {
     const closeModals = () => { if (ui?.blocking) for (const p of ui.stack.slice()) ui.close(p.id); };
     switch (ALIAS[id] || id) {
       case 'aquarium': closeModals(); g.command('tank'); break;
+      case 'workshop': if (ui?.isOpen?.('workshop')) ui.close('workshop'); else g.command('workshop'); break; // [phase8] sail there instantly
       case 'baitshop':
         if (ui?.isOpen?.('baitshop')) ui.close('baitshop');
         else openStore(g);

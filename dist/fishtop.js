@@ -29012,7 +29012,7 @@ void main() {
         }
       };
       BOAT_NAMES = { raft: "Bubble Raft", dinghy: "Dinghy", skiff: "Skiff", hydrofoil: "Hydrofoil", yacht: "Aero Yacht", catamaran: "Catamaran", submarine: "Submarine" };
-      TANK_NAMES = { jar: "Goldfish Jar", bowl: "Fishbowl", smalltank: "Small Tank", bigtank: "Big Tank", reeftank: "Reef Tank", wallaquarium: "Wall Aquarium" };
+      TANK_NAMES = { jar: "Nano Cube", bowl: "Bubble Cube", smalltank: "Aqua Cube", bigtank: "Big Cube", reeftank: "Reef Cube", wallaquarium: "Mega Cube" };
       OCEAN_NAMES = { oscean: "(OS)cean", shallows: "Sunny Shallows", fjord: "Frosty Fjord", junkyard: "Junkyard Reef", metropolis: "Sunken Metropolis", volcano: "Lava Rift", abyss: "The Deep Ocean" };
       BRANCHES = {
         rods: { name: "Rods", color: "#35c8ff", angle: -90, icon: "rod:glass" },
@@ -29211,20 +29211,20 @@ void main() {
       n("sea_abyss", "oceans", 6, 0, "The Deep Ocean", "biome:abyss", ["sea_volcano", "sea_lantern"], { unlock: [U("biome", "abyss")], desc: "Into the deep dark.", fish: { "biome:volcano": 2, "rarity:rare": 1 } });
       n("sea_pressure", "oceans", 7, -1, "Pressure Suit", "heart", ["sea_abyss"], { effect: { rodResilience: 0.08, calm: 1.1 }, desc: "Deep fish fight less dirty." });
       n("sea_legend", "oceans", 8, 0, "Legend Hunter", "crown", ["sea_abyss", "sea_sonar"], { effect: { rarityBoost: 1.12, shinyChance: 1.25 }, desc: "Legends sense a worthy angler.", fish: { "biome:abyss": 2, "rarity:epic": 1 } });
-      n("tank_bowl", "aquarium", 1, 0, "Fishbowl", "tank:bowl", [ROOT_ID], { unlock: [U("tank", "bowl")], effect: { tankCap: 1 }, desc: "Upgrade the jar to a proper bowl." });
-      n("tank_small", "aquarium", 2, 0, "Small Tank", "tank:smalltank", ["tank_bowl"], { unlock: [U("tank", "smalltank")], effect: { tankCap: 2 }, desc: "Room for more fish." });
+      n("tank_bowl", "aquarium", 1, 0, "Bubble Cube", "tank:bowl", [ROOT_ID], { unlock: [U("tank", "bowl")], effect: { tankCap: 1 }, desc: "Grow your Nano Cube into a roomier Bubble Cube." });
+      n("tank_small", "aquarium", 2, 0, "Aqua Cube", "tank:smalltank", ["tank_bowl"], { unlock: [U("tank", "smalltank")], effect: { tankCap: 2 }, desc: "Room for more fish." });
       n("tank_feeder", "aquarium", 2, 1, "Auto-Feeder", "food", ["tank_bowl"], { effect: { feeder: 1 }, desc: "Fish get fed while you work." });
       n("tank_snail", "aquarium", 3, -1, "Snail Janitor", "snail", ["tank_small"], { effect: { autoCollect: 1 }, desc: "A snail collects Aero for you." });
       n("tank_happy", "aquarium", 3, 1, "Happy Water", "heart", ["tank_feeder"], { effect: { coinMul: 1.2 }, desc: "Happy fish make more Aero." });
-      n("tank_big", "aquarium", 4, 0, "Big Tank", "tank:bigtank", ["tank_small"], { unlock: [U("tank", "bigtank")], effect: { tankCap: 3 }, desc: "A big glossy tank." });
+      n("tank_big", "aquarium", 4, 0, "Big Cube", "tank:bigtank", ["tank_small"], { unlock: [U("tank", "bigtank")], effect: { tankCap: 3 }, desc: "A big glossy tank." });
       n("tank_romance", "aquarium", 4, 1, "Fish Romance", "heart", ["tank_happy"], { effect: { breeding: 1 }, desc: "Happy pairs lay eggs." });
       n("tank_crab", "aquarium", 5, -1, "Coin Crab", "crab", ["tank_snail", "tank_big"], { effect: { autoCollect: 1, collectRadius: 4 }, desc: "A greedy crab helps collect." });
       n("tank_nursery", "aquarium", 5, 1, "Warm Nursery", "egg", ["tank_romance"], { effect: { hatchSpeed: 1.5 }, desc: "Eggs hatch faster." });
-      n("tank_reef", "aquarium", 6, 0, "Reef Tank", "tank:reeftank", ["tank_big"], { unlock: [U("tank", "reeftank")], effect: { tankCap: 3, coinMul: 1.1 }, desc: "Living coral, happy fish." });
+      n("tank_reef", "aquarium", 6, 0, "Reef Cube", "tank:reeftank", ["tank_big"], { unlock: [U("tank", "reeftank")], effect: { tankCap: 3, coinMul: 1.1 }, desc: "Living coral, happy fish." });
       n("tank_mutation", "aquarium", 6, 2, "Mutation Lab", "dna", ["tank_nursery"], { effect: { mutationChance: 0.03 }, desc: "More mutations." });
       n("tank_currents", "aquarium", 7, -1, "Treasure Currents", "coin", ["tank_reef"], { effect: { coinMul: 1.3, offlineMul: 0.1 }, desc: "More Aero, even while away." });
       n("tank_sparkle", "aquarium", 7, 1, "Sparkle Genes", "star", ["tank_mutation", "tank_reef"], { effect: { shinyChance: 1.6 }, desc: "Shiny fish more often." });
-      n("tank_wall", "aquarium", 8, 0, "Wall Aquarium", "tank:wallaquarium", ["tank_currents"], { unlock: [U("tank", "wallaquarium")], effect: { tankCap: 6, coinMul: 1.15 }, desc: "A whole wall of ocean." });
+      n("tank_wall", "aquarium", 8, 0, "Mega Cube", "tank:wallaquarium", ["tank_currents"], { unlock: [U("tank", "wallaquarium")], effect: { tankCap: 6, coinMul: 1.15 }, desc: "A whole wall of ocean." });
       n("luck1", "luck", 1, 0, "Four-Leaf Kelp", "clover", [ROOT_ID], { effect: { rarityBoost: 1.05 }, desc: "A little luck for every cast." });
       n("offline1", "luck", 2, -1, "Night Shift", "moon", ["luck1"], { effect: { offlineMul: 0.1 }, desc: "More Aero while you're away." });
       n("lab_slot2", "luck", 2, 0, "Second Bench", "beaker", ["luck1"], { effect: { labSlots: 1 }, desc: "Research two things at once.", cost: { aero: 120, items: { driftwood: 4, sea_glass: 2 } }, time: 30 });
@@ -90217,7 +90217,7 @@ ${hearts} ${status}
             // [phase8:prog]
             Q("c1_lab", "fizz", "Lab Coat On", "Plan a tile in The Lab, then press Confirm!", [{ t: "research", n: 1 }], { items: { driftwood: 3, kelp_fibre: 2 } }),
             Q("c1_dex", "seal", "FishDex Rookie", "Every new fish goes in your FishDex.", [{ t: "species", n: 4 }], { aero: 25 }),
-            Q("c1_bowl", "fizz", "A Bigger Bowl", "That jar is cramped. Research the Fishbowl!", [{ t: "tank", tier: 1 }], { aero: 30, items: { shell: 3, kelp_fibre: 2 } })
+            Q("c1_bowl", "fizz", "A Bigger Cube", "That Nano Cube is cramped. Research the Bubble Cube!", [{ t: "tank", tier: 1 }], { aero: 30, items: { shell: 3, kelp_fibre: 2 } })
           ]
         },
         {
@@ -98948,7 +98948,7 @@ ${hearts} ${status}
         shockHold: { text: "Hold, then let go to ZAP it!", pose: "point", mood: "excited", g: "hold" },
         surge: { text: "Hold and drag against it!", pose: "bend", mood: "determined", g: "hold" },
         card: { text: "Look at that! Keep it!", pose: "cheer", mood: "love" },
-        tank: { text: "Into your jar it goes! Proud?", pose: "wave", mood: "excited", choices: [
+        tank: { text: "Into your tank it goes! Proud?", pose: "wave", mood: "excited", choices: [
           { text: "So proud!", mood: "love", reply: "You should be!" },
           { text: "Next one is bigger", mood: "smug", reply: "That's the spirit!" }
         ] },
@@ -98964,7 +98964,7 @@ ${hearts} ${status}
       TIPS = [
         { text: "Rare fish love special bait.", at: "bait" },
         { text: "Floating boxes hide loot. Fish them up!" },
-        { text: "Your jar fish make Aero while you play.", at: "aquarium" },
+        { text: "Your tank fish make Aero while you play.", at: "aquarium" },
         { text: "New oceans open up from the Map.", at: "map" },
         { text: "Different rods, different skills. Visit The Lab!", at: "lab" },
         { text: "Some fish only show up at night." },
@@ -100101,6 +100101,8 @@ ${hearts} ${status}
         { id: "journal", label: "FishDex", key: "J", tint: "#3a9cf0", icon: "journal", group: 0 },
         { id: "inventory", label: "Satchel", key: "I", tint: "#8ad848", icon: "inventory", group: 0 },
         { id: "wardrobe", label: "Wardrobe", key: "W", tint: "#5ab4ff", icon: "wardrobe", group: 0 },
+        { id: "workshop", label: "Workshop", key: "C", tint: "#ffa04a", icon: "build", alias: "crafting", group: 1 },
+        // [phase8] Workshop (panel registered by src/ui/workshop.js)
         { id: "map", label: "Map", key: "T", tint: "#2ad0b8", icon: "map", group: 1 },
         { id: "baitshop", label: "Bait Shop", key: "S", tint: "#ffb43c", icon: "shop", alias: "appsea", group: 1 },
         { id: "bait", label: "Bait", key: "B", tint: "#ff9ac2", icon: "bait", group: 1 },
@@ -100363,6 +100365,11 @@ ${hearts} ${status}
               closeModals();
               g.command("tank");
               break;
+            case "workshop":
+              if (ui?.isOpen?.("workshop")) ui.close("workshop");
+              else g.command("workshop");
+              break;
+            // [phase8] sail there instantly
             case "baitshop":
               if (ui?.isOpen?.("baitshop")) ui.close("baitshop");
               else openStore(g);
