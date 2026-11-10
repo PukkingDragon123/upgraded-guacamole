@@ -9,7 +9,8 @@
 // AeroOverlay: the glossy layer every ocean gets (Ocean installs it): an under-surface bloom band, rising glass
 // bubbles, twinkling sparkles, soft bokeh orbs and a lens flare when the sun is in view.
 
-import { VoxelModel } from '../gfx/voxel.js';
+import { VoxelModel, refineSteps } from '../gfx/voxel.js';
+import { runSteps } from './slabrender.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { RNG } from '../core/rng.js';
 import { clamp, clamp01, lerp, smoothstep, bayer, hash2, TAU } from '../core/math.js';
@@ -377,8 +378,10 @@ export function turbineTower(h, scale = 2, accent = '#3ad0ff') {
     m.cone(cx, cz, 1, h, 2.3, 1.2, (x, y) => (y > 4 && y < 7 ? acc : white), 'y');
     m.box(cx - 2, h, cz - 2, cx + 1, h + 3, cz + 4, (x, y) => (y === h + 3 ? white : shadeW));
     m.sphere(cx - 0.5, h + 1.6, cz + 5.6, 1.8, white);
-    const r = renderModel(m, { scale, outline: true, jitter: 0.04, ao: 0.8, edges: 0.4, light: { top: 5, lit: 4, dark: 2.6, bottom: 1.6 } });
-    const hub = r.project(cx - 0.5, h + 1.6, cz + 7.4);
+    const [mm, sc] = fineModel(m, scale, 0.06);
+    const k = mm === m ? 1 : 2;
+    const r = renderModel(mm, { scale: sc, outline: true, jitter: 0.04, ao: 0.8, edges: 0.4, light: { top: 5, lit: 4, dark: 2.6, bottom: 1.6 } });
+    const hub = r.project((cx - 0.5) * k, (h + 1.6) * k, (cz + 7.4) * k);
     return { canvas: r.canvas, ox: r.ox, oy: r.oy, w: r.w, h: r.h, hub: [hub[0], hub[1]] };
   });
 }
@@ -755,7 +758,7 @@ export class GlassGlobe {
 
   // One frame = a voxel sphere (2 px voxels): green glass sea, pale lime land, white grid lines, a darker rim.
   build(fi) {
-    const rv = Math.round(this.r / 2), s = rv * 2 + 3, c0 = rv + 1.5, rot = (fi / this.n) * TAU;
+    const rv = Math.round(this.r / 1.5), s = rv * 2 + 3, c0 = rv + 1.5, rot = (fi / this.n) * TAU; // [phase7:env] 1.5 px voxels (was 2)
     const m = new VoxelModel(s, s, s);
     const sea = m.color('#2fbf3a', { jitter: 0.02, spec: 0.9, specPow: 9, smooth: 0.9 }), seaD = m.color('#16902e', { jitter: 0.02, spec: 0.8, smooth: 0.9 });
     const land = m.color('#c8f8a0', { jitter: 0.03, spec: 0.7, smooth: 0.8 }), coast = m.color('#8ae46a', { jitter: 0.03, spec: 0.7, smooth: 0.8 });
@@ -765,7 +768,7 @@ export class GlassGlobe {
     for (let z = 0; z < s; z++) for (let y = 0; y < s; y++) for (let x = 0; x < s; x++) {
       const nx = (x + 0.5 - c0) / rv, ny = (y + 0.5 - c0) / rv, nz = (z + 0.5 - c0) / rv;
       const d2 = nx * nx + ny * ny + nz * nz;
-      if (d2 > 1 || d2 < 0.62) continue; // hollow shell
+      if (d2 > 1 || d2 < 0.8) continue; // hollow shell
       // tilted axis; ny is up in model space
       const ty = ny * ca - nx * sa, tx = nx * ca + ny * sa;
       const dd = Math.sqrt(d2);
@@ -781,7 +784,7 @@ export class GlassGlobe {
       }
       m.set(x, y, z, c);
     }
-    const r = renderModel(m, { scale: 2, outline: true, jitter: 0.02, ao: 0.3, edges: 0.3, light: { top: 5, lit: 4.2, dark: 2.8, bottom: 2.2 } });
+    const r = renderModel(m, { scale: 1.5, outline: true, jitter: 0.02, ao: 0.3, edges: 0.3, light: { top: 5, lit: 4.2, dark: 2.8, bottom: 2.2 } });
     return r.canvas;
   }
 }
@@ -896,9 +899,16 @@ export function glassCity(seed = 3, scale = 2) {
       // roof garden
       if (r.chance(0.6)) m.box(x0 + 1, h, z0 + 1, x0 + w - 2, h, z0 + d - 2, green);
     }
-    const o = renderModel(m, { scale, outline: true, jitter: 0.04, ao: 0.6, edges: 0.5, light: { top: 5.2, lit: 4.2, dark: 2.6, bottom: 1.6 } });
+    const [mm, sc] = fineModel(m, scale);
+    const o = renderModel(mm, { scale: sc, outline: true, jitter: 0.04, ao: 0.6, edges: 0.5, light: { top: 5.2, lit: 4.2, dark: 2.6, bottom: 1.6 } });
     return { canvas: o.canvas, w: o.w, h: o.h, ox: o.ox, oy: o.oy };
   });
+}
+
+// [phase7:env] 2x voxel refinement (EPX smoothing + surface grit) for models rendered at >= 2 px per voxel
+function fineModel(m, scale, grit = 0.1) {
+  if (scale < 2) return [m, scale];
+  return [runSteps(refineSteps(m, { grit })), scale / 2];
 }
 
 // Round glossy voxel tree (the lone tree on the wallpaper hill).
@@ -912,7 +922,8 @@ export function roundTree(scale = 2, seed = 5) {
       const cx = 15 + r.float(-7, 7), cy = 21 + r.float(-5, 7), cz = 12 + r.float(-5, 5), rr = r.float(5, 8);
       m.sphere(cx, cy, cz, rr, (x, y, z) => (y > cy + rr * 0.35 && x < cx + 2 ? leafL : y < cy - rr * 0.4 ? leafD : leaf));
     }
-    const o = renderModel(m, { scale, outline: true, jitter: 0.05, ao: 1, edges: 0.6, light: { top: 5.2, lit: 4, dark: 2.4, bottom: 1.4 } });
+    const [mm, sc] = fineModel(m, scale, 0.16);
+    const o = renderModel(mm, { scale: sc, outline: true, jitter: 0.05, ao: 1, edges: 0.6, light: { top: 5.2, lit: 4, dark: 2.4, bottom: 1.4 } });
     return { canvas: o.canvas, w: o.w, h: o.h, ox: o.ox, oy: o.oy };
   });
 }

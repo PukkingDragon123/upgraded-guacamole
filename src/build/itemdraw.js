@@ -14,6 +14,7 @@ import { SPECIES_BY_ID } from '../fish/species.js';
 import { drawFishFit, fitScale } from '../ui/journal.js';
 import { ITEMS } from './items.js';
 import { itemSprite, packageParts, SPIN } from './itemart.js';
+import { itemPixel, itemPixelScaled } from './itempix.js'; // [phase8:ui]
 import { buildingSprite } from './buildingmodels.js';
 import { pixIcon } from './pixart.js'; // [phase8:prog] pixel-art items
 
@@ -110,6 +111,7 @@ export function itemIcon(id, size = 14) {
   const art = it?.art || (id === 'coins' ? 'coins' : null);
   let src = null;
   if (it?.pix) src = pixIcon(id, 1); // [phase8:prog]
+  else if (art && itemPixel(art)) { const b = itemPixel(art); src = itemPixelScaled(art, Math.max(1, Math.floor(Math.min(size / b.w, size / b.h)))); } // [phase8:ui]
   else if (art && !art.startsWith('pkg_')) src = itemSprite(art, { scale: 0.5, frame: 0, force: true })?.canvas;
   else if (art) src = packageParts(art.slice(4), 0.5, 0, true, true)?.full;
   else if (it?.kind === 'bait') src = baitSprite(id, 0);
@@ -170,6 +172,29 @@ export function drawItem(ctx, id, cx, by, o = {}) {
     ctx.fillStyle = 'rgba(0,0,0,0.3)';
     ctx.fillRect(Math.round(cx - w / 2) + 2, by - h + 2 + bob, w, h);
     ctx.drawImage(sheet, Math.round(cx - w / 2), by - h + bob);
+    return true;
+  }
+  if (art && itemPixel(art)) {
+    // [phase8:ui] hand-made pixel art: the largest integer scale that fits, a happy bob and a twinkle
+    const b = itemPixel(art);
+    const k = Math.max(1, Math.min(o.big ? 5 : 3, Math.floor(Math.min(bw / b.w, bh / b.h))));
+    const c = itemPixelScaled(art, k);
+    const bob = o.spin ? Math.round((Math.sin(t * 2.4) * 0.5 + 0.5) * k * 1.5) : 0;
+    if (o.spin) {
+      ctx.fillStyle = 'rgba(8,40,80,0.18)';
+      const sw = Math.round(c.width * 0.7 - bob);
+      ctx.fillRect(Math.round(cx - sw / 2), by - k, sw, k);
+    }
+    ctx.drawImage(c, Math.round(cx - c.width / 2), Math.round(by - c.height - bob - (o.spin ? k : 0)));
+    if (o.spin) {
+      const ph = (t * 0.7) % 1;
+      if (ph < 0.25) {
+        const tw = Math.sin((ph / 0.25) * Math.PI), L = Math.round(1 + tw * (k + 1));
+        const gx = Math.round(cx - c.width * 0.22), gy = Math.round(by - c.height * 0.75 - bob - k);
+        ctx.fillStyle = 'rgba(255,255,255,' + (0.5 + tw * 0.5).toFixed(2) + ')';
+        ctx.fillRect(gx - L, gy, L * 2 + 1, 1); ctx.fillRect(gx, gy - L, 1, L * 2 + 1);
+      }
+    }
     return true;
   }
   if (art) {

@@ -8,6 +8,7 @@
 
 import { VoxelModel, renderVoxels } from '../gfx/voxel.js';
 import { hash3, clamp } from '../core/math.js';
+import { itemPixel, itemPixelScaled } from './itempix.js'; // [phase8:ui] hand-drawn pixel art for most items
 
 export const SPIN = 16;
 const h3 = (x, y, z, s = 0) => hash3(x, y, z, s);
@@ -377,7 +378,19 @@ function modelOf(id) {
 
 const cache = new Map();
 // force = render even when over budget (used for one-off large previews)
-export function itemSprite(id, { scale = 1, frame = 0, force = false } = {}) {
+export function itemSprite(id, { scale = 1, frame = 0, force = false, voxel = false } = {}) {
+  // [phase8:ui] items with hand-made pixel art return it (integer-scaled, same {canvas, ox, oy, w, h} framing)
+  if (!voxel && itemPixel(id)) {
+    const k = Math.max(1, Math.round(2 * scale));
+    const pk = 'px|' + id + '|' + k;
+    let q = cache.get(pk);
+    if (!q) {
+      const c = itemPixelScaled(id, k);
+      q = { canvas: c, glow: null, ox: c.width / 2, oy: c.height, w: c.width, h: c.height, pixel: true };
+      cache.set(pk, q);
+    }
+    return q;
+  }
   frame = ((frame % SPIN) + SPIN) % SPIN;
   const key = id + '|' + scale + '|' + frame;
   let s = cache.get(key);

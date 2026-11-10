@@ -25,6 +25,7 @@
 //       bubble when it rests (pops it when it leaves), shies away from the cursor, trails bubbles, blows bubbles.
 
 import { LPMesh, renderSheet, lpProject, lpAvailable, T4 } from './lowpoly.js';
+import { voxelizeMesh } from '../fish/voxelize.js';
 import { clamp, clamp01, lerp, TAU } from '../core/math.js';
 import { drawAeroBubble } from '../ui/aero.js';
 
@@ -49,35 +50,52 @@ const mixC = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a
 const lit = (c, k) => [clamp01(c[0] * k), clamp01(c[1] * k), clamp01(c[2] * k)];
 
 // ------------------------------------------------------------------------------------------------ palette
+// (phase 8) the chubby plush seal: soft grey-white fur dappled with grey spots, a cream belly and muzzle, slate flippers
 const C = {
-  belly: rgb('#fbf5ea'), side: rgb('#f3f5fa'), back: rgb('#d8dcea'), rear: rgb('#c9cedd'), speck: rgb('#bdbbd3'),
-  face: rgb('#fafbfe'), smudge: rgb('#a9aec2'), cheek: rgb('#ffffff'), chin: rgb('#f6efe6'),
-  flip: rgb('#d2d7e4'), flipTip: rgb('#a9afc3'), nose: rgb('#272c3a'), noseHi: rgb('#4a5266'),
+  fur: rgb('#eef0f4'), furMid: rgb('#dfe2e9'), belly: rgb('#f8f7f3'), back: rgb('#d3d7df'),
+  spot: rgb('#a3a9b5'), spotD: rgb('#848b98'), muzzle: rgb('#fafaf7'), chin: rgb('#f1efea'),
+  flip: rgb('#9aa1ad'), flipTip: rgb('#747b88'), nose: rgb('#2b2d35'), noseHi: rgb('#4c5060'),
 };
-// the look (lowpoly shader options): soft painted body, glossy Aero highlights
-const LOOK = { ambient: 0.62, spec: 0.5, shine: 28, rim: 0.55, rimColor: '#c4f2ff', env: 0.22, iri: 0.06, sky: '#f2fdff', ground: '#a8d4ee', light: [-0.42, 0.72, 0.75] };
+// the look (lowpoly shader options): soft plush shading with a glossy Frutiger Aero rim and sky sheen
+const LOOK = { ambient: 0.6, spec: 0.32, shine: 22, rim: 0.5, rimColor: '#c4f2ff', env: 0.2, iri: 0.05, sky: '#f2fdff', ground: '#a8d4ee', light: [-0.42, 0.72, 0.75] };
+// voxel edge in model units (the body is ~2 units long: ~45 voxels nose to tail)
+export const SEAL_VOXEL = 0.043;
 
 // ------------------------------------------------------------------------------------------------ geometry
-// Model space: x forward (the nose), y up, z toward the near (+z) side. Rest pose, units ~ the head radius x2.
-const BODY = [ // [x, centre y, half height, half width]  a fat, round bean
-  [-0.96, 0.13, 0.05, 0.06], [-0.89, 0.13, 0.17, 0.19], [-0.77, 0.14, 0.3, 0.34], [-0.59, 0.16, 0.43, 0.48],
-  [-0.37, 0.18, 0.54, 0.6], [-0.12, 0.21, 0.6, 0.65], [0.13, 0.25, 0.6, 0.63], [0.33, 0.31, 0.52, 0.54],
-  [0.49, 0.37, 0.38, 0.4], [0.59, 0.41, 0.2, 0.22], [0.62, 0.43, 0.05, 0.06],
-];
-const BODY_SEG = 12;
-const PIV = [-0.15, 0.21, 0];           // squash pivot
-const NECK = [0.32, 0.5, 0];           // head pivot (rest)
-const HEAD_C = [0.52, 0.76, 0];         // head centre (rest)
-const HEAD_R = [0.49, 0.46, 0.52];
-const EYE_R = 0.135;
-const FACE = {                          // head-local feature points (rest)
-  eye: [0.38, 0.1, 0.235], nose: [0.515, -0.045, 0], mouth: [0.475, -0.21, 0], muzzle: [0.47, -0.13, 0.13],
-  cheek: [0.31, -0.1, 0.34], top: [0, 0.46, 0], brow: [0.38, 0.29, 0.24],
-};
-const SHOULDER = [0.2, -0.05, 0.5];
-const HIP = [-0.88, 0.13, 0.08];
-const C0 = [-0.12, 0.38, 0];            // sprite centre (model point at the sheet cell centre)
+// Model space: x forward (the face), y up, z toward the near (+z) side. One fat, almost round loaf (no neck): the face
+// sits on its front, tiny flippers under its sides and a small tail flipper pair at the back.
+const LOAF = { x0: -1.0, x1: 0.86, xc: -0.07, a: 0.93, hy: 0.6, hz: 0.64, cy: 0.42 };
+const BODY_SEG = 26, BODY_ROWS = 28;
+const PIV = [-0.1, 0.0, 0];             // squash pivot (bottom centre)
+const HEADP = [0.12, 0.44, 0];          // the face region pivots here (no neck: a soft weighted twist)
+const HEAD_C = [0.6, 0.5, 0];           // "head" anchor (centre of the face region)
+const EYE_R = 0.075;
+const FACE = { eyeX: 0.735, eyeA: 0.86, eyeY: 0.035, nose: [0.885, 0.5, 0], mouth: [0.868, 0.365, 0], muzzle: [0.82, 0.43, 0.085], cheekX: 0.62, cheekA: 1.28, top: [0.28, 1.04, 0] };
+const SHOULDER = [0.3, 0.1, 0.5];
+const HIP = [-0.93, 0.3, 0.07];
+const C0 = [-0.1, 0.42, 0];             // sprite centre (model point at the sheet cell centre)
 const CELL_W = 3.0, CELL_H = 2.5;      // cell size in model units
+// rest body section at x: [centre y, half height, half width]
+function loafAt(x) {
+  const t = clamp((x - LOAF.xc) / LOAF.a, -1, 1);
+  let f = Math.pow(Math.max(0, 1 - Math.pow(Math.abs(t), 2.5)), 1 / 2.5);
+  if (t < 0) f *= 1 - 0.1 * t * t;      // a softly tapering rear
+  return [LOAF.cy + 0.035 * Math.max(0, t) - 0.04 * Math.max(0, -t) * Math.max(0, -t), LOAF.hy * f, LOAF.hz * f];
+}
+// surface point of the rest loaf at x and section angle a (0 = top, PI/2 = +z flank, PI = bottom); pillowy sections
+function loafPt(x, a) {
+  const [cy, hy, hz] = loafAt(x);
+  const c = Math.cos(a), s = Math.sin(a);
+  let y = Math.sign(c) * Math.pow(Math.abs(c), 0.8) * hy;
+  if (y < 0) { y *= 0.92; if (y < -0.72 * hy) y = -0.72 * hy + (y + 0.72 * hy) * 0.35; } // sits flat on its belly
+  return [x, cy + y, Math.sign(s) * Math.pow(Math.abs(s), 0.8) * hz];
+}
+function loafN(x, a) {
+  const e = 0.01;
+  const p0 = loafPt(x, a), px = loafPt(x + e, a), pa = loafPt(x, a + e);
+  const n = cross(sub(px, p0), sub(pa, p0));
+  return norm(Math.abs(a) < 1e-3 ? [n[0], Math.abs(n[1]) + 1e-3, n[2]] : n);
+}
 
 // A tiny builder with PER-VERTEX colours (the painted look: colours blend across a facet, lighting stays faceted),
 // producing the shared renderer's LPMesh (11 floats per vertex: position, flat normal, colour, uv).
@@ -143,30 +161,33 @@ function ellRows(c, r, seg, rings) {
   return rows;
 }
 
-// ---- paint (rest positions -> colour)
-function noiseLit(p, amt) { return 1 + (h3(Math.round(p[0] * 11), Math.round(p[1] * 11), Math.round(p[2] * 11)) - 0.5) * amt; }
+// ---- paint (rest positions -> colour): dappled plush fur
+function vnoise(x, y, z) {
+  const X = Math.floor(x), Y = Math.floor(y), Z = Math.floor(z), fx = x - X, fy = y - Y, fz = z - Z;
+  const u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy), w = fz * fz * (3 - 2 * fz);
+  const L = (a, b, k) => a + (b - a) * k;
+  return L(L(L(h3(X, Y, Z), h3(X + 1, Y, Z), u), L(h3(X, Y + 1, Z), h3(X + 1, Y + 1, Z), u), v),
+    L(L(h3(X, Y, Z + 1), h3(X + 1, Y, Z + 1), u), L(h3(X, Y + 1, Z + 1), h3(X + 1, Y + 1, Z + 1), u), v), w);
+}
+function dapple(p, scale = 1) {
+  const n = vnoise(p[0] * 6.2 * scale + 3.1, p[1] * 6.2 * scale, p[2] * 6.2 * scale + 7.7) * 0.72 + vnoise(p[0] * 15 * scale, p[1] * 15 * scale + 4.2, p[2] * 15 * scale) * 0.28;
+  return n;
+}
 function paintBody(p) {
-  const up = clamp((p[1] - 0.12) / 0.48, -1, 1);
-  let c = up < 0 ? mixC(C.side, C.belly, Math.min(1, -up * 1.4)) : mixC(C.side, C.back, Math.pow(up, 1.3) * 0.95);
-  c = mixC(c, C.rear, clamp01((-p[0] - 0.35) / 0.75) * 0.6 * (0.5 + 0.5 * clamp01(up + 0.6)));
-  if (up > 0.15 && h3(Math.round(p[0] * 7), Math.round(p[1] * 7), Math.round(p[2] * 7)) > 0.86) c = mixC(c, C.speck, 0.45);
-  return lit(c, noiseLit(p, 0.05));
+  const [cy, hy] = loafAt(p[0]);
+  const up = clamp((p[1] - cy) / Math.max(0.05, hy), -1, 1);
+  let c = up < -0.25 ? mixC(C.fur, C.belly, clamp01((-up - 0.25) * 2)) : mixC(C.fur, C.back, clamp01(up) * 0.75);
+  c = mixC(c, C.furMid, clamp01((-p[0] - 0.3) / 0.7) * 0.5);
+  // the face: a clean pale mask around the muzzle, finer freckles toward the eyes
+  const face = clamp01((p[0] - 0.55) / 0.25) * clamp01(1 - Math.abs(p[2]) / 0.38) * clamp01(1 - Math.abs(p[1] - 0.47) / 0.3);
+  const d = dapple(p, 1 + face * 0.8);
+  const th = 0.6 + 0.08 * clamp01(-up * 1.5) + face * 0.14;
+  if (d > th) c = mixC(c, d > th + 0.1 ? C.spotD : C.spot, clamp01((d - th) * 9) * (1 - 0.45 * clamp01(-up)));
+  return lit(c, 1 + (h3(Math.round(p[0] * 23), Math.round(p[1] * 23), Math.round(p[2] * 23)) - 0.5) * 0.04);
 }
-const EYES_REST = [[FACE.eye[0], FACE.eye[1], FACE.eye[2]], [FACE.eye[0], FACE.eye[1], -FACE.eye[2]]];
-function paintHead(q) { // head-local
-  const up = q[1] / HEAD_R[1], fr = q[0] / HEAD_R[0];
-  let c = mixC(C.face, C.back, clamp01(up * 0.9 - fr * 0.7) * 0.8);
-  c = mixC(c, C.chin, clamp01(-up * 1.6 - 0.35));
-  for (const e of EYES_REST) {
-    const d = Math.hypot(q[0] - e[0], (q[1] - e[1]) * 1.15, q[2] - e[2]);
-    const k = clamp01(1 - d / 0.2);
-    c = mixC(c, C.smudge, k * k * 0.9);
-  }
-  return lit(c, noiseLit(q, 0.035));
-}
-const paintCheek = (q) => lit(mixC(C.cheek, C.chin, clamp01(-q[1] * 4)), noiseLit(q, 0.03));
-const paintNose = (q) => (q[1] > -0.02 && q[0] > 0.49 ? C.noseHi : C.nose);
-function paintFlip(t) { return (q) => lit(mixC(C.flip, C.flipTip, clamp01((q[0] / t - 0.45) * 1.6)), noiseLit(q, 0.04)); }
+const paintMuzzle = (q) => lit(mixC(C.muzzle, C.chin, clamp01((0.42 - q[1]) * 6)), 1 + (h3(Math.round(q[0] * 30), Math.round(q[1] * 30), Math.round(q[2] * 30)) - 0.5) * 0.03);
+const paintNose = (q) => (q[1] > 0.505 && q[0] > 0.9 ? C.noseHi : C.nose);
+function paintFlip(t) { return (q) => { const c = mixC(C.flip, C.flipTip, clamp01((q[0] / t - 0.4) * 1.5)); return lit(c, dapple(q, 2) > 0.62 ? 0.88 : 1); }; }
 
 // ---- the pose
 function P0() {
@@ -177,14 +198,27 @@ function P0() {
   };
 }
 
+// body deformation: squash about the bottom, swim wave, sway; then the face region twists softly (no neck)
 function bodyDeform(P) {
   const [sx, sy, sz] = P.sq;
+  const [hp0, hy0, hr0] = P.head;
+  const hp = hp0 * 0.55, hyw = (hy0 + 0.22) * 0.6, hr = hr0 * 0.6;
   return (p) => {
-    let x = PIV[0] + (p[0] - PIV[0]) * sx, y = PIV[1] + (p[1] - PIV[1]) * sy, z = p[2] * sz;
-    const u = p[0] - PIV[0];
-    y += P.bend * u * u * 0.6;
-    if (P.wave) y += P.wave * Math.sin(P.wph - (p[0] - 0.4) * 3.0) * Math.pow(clamp01((0.45 - p[0]) / 1.5), 1.1);
-    if (P.side) z += P.side * Math.sign(u) * u * u * 0.8;
+    // the face twist first (rest coordinates), weighted toward the front
+    let q = p;
+    const w = clamp01((p[0] - HEADP[0]) / 0.6);
+    const ww = w * w * (3 - 2 * w);
+    if (ww > 0 && (hp || hyw || hr || P.hdy || P.hsq !== 1)) {
+      let v = sub(p, HEADP);
+      v = [v[0], v[1] * (1 + (P.hsq - 1) * ww), v[2]];
+      v = rx(v, hr * ww); v = rz(v, hp * ww); v = ry(v, hyw * ww);
+      q = add(add(HEADP, v), [0, P.hdy * ww, 0]);
+    }
+    let x = PIV[0] + (q[0] - PIV[0]) * sx, y = PIV[1] + (q[1] - PIV[1]) * sy, z = q[2] * sz;
+    const u = q[0] - PIV[0];
+    y += P.bend * u * u * 0.5;
+    if (P.wave) y += P.wave * Math.sin(P.wph - (q[0] - 0.4) * 3.0) * Math.pow(clamp01((0.35 - q[0]) / 1.4), 1.1);
+    if (P.side) z += P.side * Math.sign(u) * u * u * 0.6;
     return [x, y, z];
   };
 }
@@ -197,7 +231,7 @@ function paddle(mb, base, D, Thint, L, widths, thick, paint, twist = 0) {
   Wd = norm(Wd);
   let T = cross(Wd, D);
   if (twist) { const c = Math.cos(twist), s = Math.sin(twist); const W2 = add(scl(Wd, c), scl(T, s)); T = sub(scl(T, c), scl(Wd, s)); Wd = W2; }
-  const seg = 6, n = widths.length;
+  const seg = 8, n = widths.length;
   const rows = [];
   for (let i = 0; i < n; i++) {
     const t = i / (n - 1), row = [];
@@ -214,70 +248,56 @@ function paddle(mb, base, D, Thint, L, widths, thick, paint, twist = 0) {
   return place([L + 0.02, 0, 0]);
 }
 
-// Build the seal mesh for pose P -> {mesh, A (model-space anchors)}
+// Build the (voxel) seal for pose P -> {mesh, A (model-space anchors)}
 function buildSeal(P) {
   const mb = new PaintMesh();
   const def = bodyDeform(P);
-  // body loft
-  const rows = BODY.map(([x, cy, hy, hz]) => {
+  // the loaf: rows of pillowy sections, denser toward the round ends
+  const rows = [];
+  for (let i = 0; i <= BODY_ROWS; i++) {
+    const k = i / BODY_ROWS, x = LOAF.x0 + (LOAF.x1 - LOAF.x0) * (0.5 - 0.5 * Math.cos(k * Math.PI));
     const row = [];
-    for (let j = 0; j < BODY_SEG; j++) {
-      const a = (j / BODY_SEG) * TAU, c = Math.cos(a);
-      row.push([x, cy + c * hy * (c < 0 ? 0.84 : 1), Math.sin(a) * hz]);
-    }
-    return row;
-  });
-  sheetMesh(mb, rows, paintBody, def);
-  capFan(mb, rows[0], [-0.99, 0.13, 0], paintBody, def, false);
-  capFan(mb, rows[rows.length - 1], [0.64, 0.43, 0], paintBody, def, true);
-  // head (rotates about the neck, rides the body's deformation)
-  const neck = def(NECK);
-  const hoff = sub(HEAD_C, NECK);
-  const [hp, hyaw, hroll] = P.head;
-  const hs = [1, P.hsq, 1 + (1 - P.hsq) * 0.5];
-  const headX = (q) => {
-    let v = add(hoff, [q[0] * hs[0], q[1] * hs[1], q[2] * hs[2]]);
-    v = rx(v, hroll); v = rz(v, hp); v = ry(v, hyaw);
-    return add(add(neck, v), [0, P.hdy, 0]);
-  };
-  const headN = (n) => ry(rz(rx(n, hroll), hp), hyaw);
-  sheetMesh(mb, ellRows([0, 0, 0], HEAD_R, 12, 8), paintHead, headX);
-  // whisker cheeks (puff when blowing), chin, nose
-  const pk = 1 + P.cheek * 0.35;
-  for (const s of [1, -1]) sheetMesh(mb, ellRows([0.4, -0.13, 0.1 * s * (1 + P.cheek * 0.2)], [0.12 * pk, 0.105 * pk, 0.13 * pk], 8, 5), paintCheek, headX);
-  sheetMesh(mb, ellRows([0.37, -0.25, 0], [0.1, 0.07, 0.11], 8, 4), paintCheek, headX);
-  sheetMesh(mb, ellRows([0.5, -0.04, 0], [0.055, 0.05, 0.08], 7, 4), paintNose, headX);
-  // front flippers
-  const shN = def([SHOULDER[0] + 0.16 * P.shN, SHOULDER[1] + 0.34 * P.shN, SHOULDER[2] + 0.08 * P.shN]);
-  const shF = def([SHOULDER[0] + 0.16 * P.shF, SHOULDER[1] + 0.34 * P.shF, -SHOULDER[2] + 0.02 * P.shF]);
-  const fw = [0.1, 0.15, 0.16, 0.13, 0.05], ft = [0.075, 0.06, 0.05, 0.04, 0.025];
-  const tipF = paddle(mb, shF, P.fr, [0.1, 0.3, -1], 0.44 * P.frLen, fw, ft, paintFlip(0.44 * P.frLen), P.frTw);
-  const tipN = paddle(mb, shN, P.fl, [0.1, 0.3, 1], 0.44 * P.flLen, fw, ft, paintFlip(0.44 * P.flLen), P.flTw);
-  // rear flippers follow the tail's slope
-  const t0 = def([-0.8, 0.13, 0]), t1 = def([-0.94, 0.13, 0]);
-  const slope = Math.atan2(t1[1] - t0[1], t0[0] - t1[0]);
-  for (const s of [1, -1]) {
-    const base = def([HIP[0], HIP[1], HIP[2] * s]);
-    const ang = P.tail + slope * 0.8 + P.flap * s * 0.5 + P.flap;
-    const D = [-Math.cos(ang) * Math.cos(P.spread), Math.sin(ang), Math.sin(P.spread) * s];
-    paddle(mb, base, D, [0, 1, 0], 0.4, [0.07, 0.12, 0.17, 0.21, 0.16], [0.05, 0.04, 0.035, 0.03, 0.02], paintFlip(0.4));
+    for (let j = 0; j < BODY_SEG; j++) row.push(loafPt(x, (j / BODY_SEG) * TAU));
+    rows.push(row);
   }
-  const mesh = mb.build();
-  // anchors
-  const f = (q) => headX(q);
+  sheetMesh(mb, rows, paintBody, def);
+  capFan(mb, rows[0], [LOAF.x0 - 0.005, loafAt(LOAF.x0)[0], 0], paintBody, def, false);
+  capFan(mb, rows[rows.length - 1], [LOAF.x1 + 0.005, loafAt(LOAF.x1)[0], 0], paintBody, def, true);
+  // the face: two puffy muzzle pads (puff out when blowing), a little chin, the tiny nose
+  const pk = 1 + P.cheek * 0.35;
+  for (const sd of [1, -1]) sheetMesh(mb, ellRows([FACE.muzzle[0], FACE.muzzle[1], FACE.muzzle[2] * sd * (1 + P.cheek * 0.2)], [0.085 * pk, 0.078 * pk, 0.095 * pk], 10, 6), paintMuzzle, def);
+  sheetMesh(mb, ellRows([0.8, 0.355, 0], [0.07, 0.05, 0.085], 8, 5), paintMuzzle, def);
+  sheetMesh(mb, ellRows(FACE.nose, [0.034, 0.03, 0.05], 8, 5), paintNose, def);
+  // tiny front flippers under the sides
+  const shN = def([SHOULDER[0] + 0.1 * P.shN, SHOULDER[1] + 0.3 * P.shN, SHOULDER[2] + 0.06 * P.shN]);
+  const shF = def([SHOULDER[0] + 0.1 * P.shF, SHOULDER[1] + 0.3 * P.shF, -SHOULDER[2] - 0.02 * P.shF]);
+  const fw = [0.08, 0.12, 0.13, 0.1, 0.04], ft = [0.06, 0.05, 0.042, 0.034, 0.022];
+  const tipF = paddle(mb, shF, P.fr, [0.1, 0.3, -1], 0.3 * P.frLen, fw, ft, paintFlip(0.3 * P.frLen), P.frTw);
+  const tipN = paddle(mb, shN, P.fl, [0.1, 0.3, 1], 0.3 * P.flLen, fw, ft, paintFlip(0.3 * P.flLen), P.flTw);
+  // the tail flipper pair follows the rear's slope
+  const t0 = def([-0.8, 0.32, 0]), t1 = def([-0.95, 0.32, 0]);
+  const slope = Math.atan2(t1[1] - t0[1], t0[0] - t1[0]);
+  for (const sd of [1, -1]) {
+    const base = def([HIP[0], HIP[1], HIP[2] * sd]);
+    const ang = P.tail + 0.1 + slope * 0.8 + P.flap * sd * 0.5 + P.flap;
+    const D = [-Math.cos(ang) * Math.cos(P.spread * 0.8), Math.sin(ang), Math.sin(P.spread * 0.8) * sd];
+    paddle(mb, base, D, [0, 1, 0], 0.3, [0.06, 0.1, 0.15, 0.17, 0.12], [0.05, 0.04, 0.032, 0.026, 0.018], paintFlip(0.3));
+  }
+  const raw = mb.build();
+  const mesh = voxelizeMesh(raw, SEAL_VOXEL, { jitter: 0.025, ao: 1 }) || raw;
+  if (mesh !== raw) raw.dispose?.();
+  // anchors (posed)
+  const eyeP = (sd) => { const a = FACE.eyeA * sd; const q = loafPt(FACE.eyeX, a); return [q[0], q[1] + FACE.eyeY, q[2]]; };
+  const nrmD = (p, n) => norm(sub(def(add(p, scl(n, 0.05))), def(p)));
   const A = {
-    eyes: [1, -1].map((s) => {
-      const q = [FACE.eye[0], FACE.eye[1], FACE.eye[2] * s];
-      const n = norm([q[0] / (HEAD_R[0] ** 2), q[1] / (HEAD_R[1] ** 2), q[2] / (HEAD_R[2] ** 2)]);
-      return { p: f(q), n: headN(n), side: s };
-    }),
-    brows: [1, -1].map((s) => f([FACE.brow[0], FACE.brow[1], FACE.brow[2] * s])),
-    nose: f(FACE.nose), mouth: f(FACE.mouth), faceN: headN([1, -0.2, 0]),
-    muzzle: [1, -1].map((s) => f([FACE.muzzle[0], FACE.muzzle[1], FACE.muzzle[2] * s * (1 + P.cheek * 0.3)])),
-    cheeks: [1, -1].map((s) => f([FACE.cheek[0], FACE.cheek[1], FACE.cheek[2] * s])),
-    cheekN: [1, -1].map((s) => headN(norm([FACE.cheek[0] / (HEAD_R[0] ** 2), FACE.cheek[1] / (HEAD_R[1] ** 2), FACE.cheek[2] * s / (HEAD_R[2] ** 2)]))),
-    top: f(FACE.top), head: f([0, 0, 0]), hand: tipN, hand2: tipF, tail: def([-1.05, 0.14, 0]),
-    bottom: def([-0.1, -0.3, 0]),
+    eyes: [1, -1].map((sd) => { const q = eyeP(sd); return { p: def(q), n: nrmD(q, loafN(FACE.eyeX, FACE.eyeA * sd)), side: sd }; }),
+    brows: [1, -1].map((sd) => { const q = eyeP(sd); return def([q[0] - 0.02, q[1] + 0.11, q[2] * 0.97]); }),
+    nose: def(FACE.nose), mouth: def(FACE.mouth), faceN: nrmD(FACE.nose, [1, -0.1, 0]),
+    muzzle: [1, -1].map((sd) => def([FACE.muzzle[0] + 0.03, FACE.muzzle[1], FACE.muzzle[2] * sd * (1 + P.cheek * 0.3)])),
+    cheeks: [1, -1].map((sd) => def(loafPt(FACE.cheekX, FACE.cheekA * sd))),
+    cheekN: [1, -1].map((sd) => nrmD(loafPt(FACE.cheekX, FACE.cheekA * sd), loafN(FACE.cheekX, FACE.cheekA * sd))),
+    top: def(FACE.top), head: def(HEAD_C), hand: tipN, hand2: tipF, tail: def([-1.12, 0.32, 0]),
+    bottom: def([-0.1, -0.05, 0]),
   };
   return { mesh, A };
 }
@@ -470,6 +490,7 @@ function faceState(id, t) {
   return s;
 }
 
+let FPX = 1; // the face is drawn at voxel resolution: one face pixel = FPX sprite px
 function ellipse(ctx, x, y, rx, ry, rot = 0) { ctx.beginPath(); ctx.ellipse(x, y, Math.max(0.3, rx), Math.max(0.3, ry), rot, 0, TAU); }
 
 // one eye in its own upright frame (radius r): big dark glossy Aero eye, moods
@@ -478,12 +499,12 @@ function drawEye(ctx, r, o) {
   const ink = '#141a2a';
   ctx.lineCap = 'round';
   if (blink > 0.5 || mood === 'happy-closed') {
-    ctx.strokeStyle = ink; ctx.lineWidth = Math.max(1, r * 0.34);
+    ctx.strokeStyle = ink; ctx.lineWidth = Math.max(FPX, r * 0.34);
     ctx.beginPath(); ctx.arc(0, -r * 0.1, r * 0.8, 0.25 * Math.PI, 0.75 * Math.PI); ctx.stroke();
     return;
   }
   if (mood === 'laugh' || mood === 'joy') {
-    ctx.strokeStyle = ink; ctx.lineWidth = Math.max(1, r * 0.36);
+    ctx.strokeStyle = ink; ctx.lineWidth = Math.max(FPX, r * 0.36);
     ctx.beginPath(); ctx.arc(0, r * 0.35, r * 0.75, 1.15 * Math.PI, 1.85 * Math.PI); ctx.stroke();
     return;
   }
@@ -498,7 +519,7 @@ function drawEye(ctx, r, o) {
     ctx.fillStyle = 'rgba(255,255,255,0.9)'; ellipse(ctx, -k * 0.38, -k * 0.38, k * 0.2, k * 0.13, -0.6); ctx.fill();
     return;
   }
-  let rx = r * 0.9, ry = r * 1.08;
+  let rx = r * 1.05, ry = r * 0.8;
   if (mood === 'surprised' || mood === 'excited') { rx *= 1.12; ry *= 1.12; }
   const ox = gx * r * 0.16, oy = gy * r * 0.14;
   ctx.save();
@@ -511,15 +532,15 @@ function drawEye(ctx, r, o) {
     ctx.clip();
   }
   const g = ctx.createLinearGradient(0, -ry, 0, ry);
-  g.addColorStop(0, '#0b1020'); g.addColorStop(0.6, '#1a2440'); g.addColorStop(1, '#2f5a8c');
+  g.addColorStop(0, '#0d0f16'); g.addColorStop(0.65, '#1c2130'); g.addColorStop(1, '#3a4a6a');
   ctx.fillStyle = g;
-  ellipse(ctx, ox, oy, rx, ry); ctx.fill();
+  ellipse(ctx, ox, oy, rx, ry, 0.12 * side); ctx.fill();
   // glassy aqua bounce light along the bottom
-  ctx.strokeStyle = 'rgba(120,220,255,0.55)'; ctx.lineWidth = Math.max(0.8, r * 0.16);
+  ctx.strokeStyle = 'rgba(120,220,255,0.55)'; ctx.lineWidth = Math.max(FPX, r * 0.16);
   ctx.beginPath(); ctx.ellipse(ox, oy, rx * 0.78, ry * 0.8, 0, 0.18 * Math.PI, 0.82 * Math.PI); ctx.stroke();
   // catchlights
   ctx.fillStyle = '#ffffff';
-  ellipse(ctx, ox - rx * 0.32, oy - ry * 0.38, rx * 0.36, ry * 0.3, -0.5); ctx.fill();
+  ctx.fillRect(Math.round((ox - rx * 0.32) / FPX - 0.5) * FPX, Math.round((oy - ry * 0.4) / FPX - 0.5) * FPX, FPX * (r > FPX * 2.2 ? 2 : 1), FPX * (r > FPX * 2.2 ? 2 : 1));
   ctx.globalAlpha *= 0.9;
   ellipse(ctx, ox + rx * 0.34, oy + ry * 0.32, rx * 0.15, ry * 0.13); ctx.fill();
   if (mood === 'excited' || mood === 'surprised') { ellipse(ctx, ox + rx * 0.05, oy - ry * 0.62, rx * 0.11, ry * 0.09); ctx.fill(); }
@@ -580,7 +601,7 @@ function drawFace(ctx, F, o, s) {
   ctx.globalAlpha = a0;
   // worried / determined brows
   if ((mood === 'worried' || mood === 'scared' || mood === 'angry' || mood === 'determined' || mood === 'sad') && F.faceZ > 0.1) {
-    ctx.strokeStyle = '#59607a'; ctx.lineWidth = Math.max(1, er * 0.32); ctx.lineCap = 'round';
+    ctx.strokeStyle = '#59607a'; ctx.lineWidth = Math.max(FPX, er * 0.32); ctx.lineCap = 'round';
     const up = mood === 'angry' || mood === 'determined' ? -1 : 1;
     F.brows.forEach((b, i) => {
       if (F.eyes[i].nz < 0.15) return;
@@ -591,7 +612,7 @@ function drawFace(ctx, F, o, s) {
   if (F.faceZ < 0.05) return;
   // whiskers (twitch while talking)
   if (s >= 22) {
-    ctx.strokeStyle = 'rgba(110,118,142,0.6)'; ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(150,156,176,0.45)'; ctx.lineWidth = FPX * 0.7;
     const tw = (o.talk || 0) * 0.25 * Math.sin(t * 30);
     const cx = (F.muzzle[0][0] + F.muzzle[1][0]) / 2;
     for (const m of F.muzzle) {
@@ -603,14 +624,14 @@ function drawFace(ctx, F, o, s) {
         ctx.lineTo(m[0] + dir * (er * 0.4 + Math.cos(a) * L), m[1] + i * er * 0.25 + Math.sin(a) * L * 0.6);
         ctx.stroke();
       }
-      ctx.fillStyle = 'rgba(80,88,110,0.55)';
-      for (let i = 0; i < 3; i++) ctx.fillRect(Math.round(m[0] - dir * er * (0.15 + i * 0.3)) - 0.5, Math.round(m[1] - er * 0.1 + (i % 2) * er * 0.3), 1, 1);
+      ctx.fillStyle = 'rgba(96,100,118,0.75)';
+      for (let i = 0; i < 3; i++) ctx.fillRect(m[0] - dir * er * (0.1 + i * 0.45) - FPX / 2, m[1] - er * 0.2 + (i % 2) * er * 0.45, FPX, FPX);
     }
   }
   // mouth: the little omega, opening while talking
   const [mx, my] = F.mouth;
   const w = s * 0.085, talk = clamp01(o.talk || 0);
-  ctx.strokeStyle = '#4a4458'; ctx.lineWidth = Math.max(1, s * 0.03); ctx.lineCap = 'round';
+  ctx.strokeStyle = '#4a4458'; ctx.lineWidth = Math.max(FPX, s * 0.03); ctx.lineCap = 'round';
   if (talk > 0.06 || mood === 'surprised' || mood === 'excited' || em === 'joy') {
     const open = Math.max(talk, mood === 'surprised' ? 0.6 : mood === 'excited' || em === 'joy' ? 0.3 : 0);
     const oh = s * (0.03 + open * 0.085), ow = s * (mood === 'surprised' ? 0.06 : 0.085);
@@ -686,6 +707,40 @@ const FLAT = new Map();
 // ------------------------------------------------------------------------------------------------ drawSeal
 export function pointBucket(ex, ey) { return clamp(Math.round(Math.atan2(-ey, Math.max(1, ex)) / (Math.PI / 6)) + 3, 0, 6); }
 
+// Soft-body state per seal id: a squash spring (kicked by vertical acceleration, landings, animation changes and
+// talking) and a travelling ripple across the voxel rows (belly jiggle).
+const JIG = new Map();
+function jiggle(id, t, x, y, anim, talk) {
+  let j = JIG.get(id);
+  if (!j || t < j.t - 1 || t - j.t > 1) { j = { t, x, y, vx: 0, vy: 0, s: 0, v: 0, anim, rip: 0, talk: 0 }; JIG.set(id, j); if (JIG.size > 40) JIG.delete(JIG.keys().next().value); }
+  const dt = clamp(t - j.t, 0, 0.05);
+  if (dt > 0) {
+    const vx = (x - j.x) / dt, vy = (y - j.y) / dt;
+    const ay = (vy - j.vy) / Math.max(dt, 1 / 60), ax = (vx - j.vx) / Math.max(dt, 1 / 60);
+    // spring: stiff enough to snap back, soft enough to wobble a few times
+    let f = -170 * j.s - 9 * j.v;
+    f += clamp(-ay * 0.0011, -6, 6) + clamp(Math.abs(ax) * 0.0004, 0, 3);
+    if (anim !== j.anim) { j.v += anim === 'flop' ? -2.2 : 1.1; j.anim = anim; }
+    j.talk += ((talk || 0) - j.talk) * Math.min(1, dt * 10);
+    f += j.talk * Math.sin(t * 17) * 9;
+    j.v += f * dt; j.s = clamp(j.s + j.v * dt, -0.22, 0.22);
+    const sp = Math.hypot(vx, vy);
+    j.rip += ((clamp(sp / 300, 0, 1) * 0.6 + Math.abs(j.v) * 0.6 + j.talk * 0.8 + 0.18) - j.rip) * Math.min(1, dt * 4);
+    j.vx = vx; j.vy = vy;
+  }
+  j.t = t; j.x = x; j.y = y;
+  return j;
+}
+
+// per-seal scratch canvases: the composited frame (body + pixel face) and the low-res face layer
+const COMP = new Map();
+function scratch(id, w, h) {
+  let c = COMP.get(id);
+  if (!c) { c = { a: document.createElement('canvas'), f: document.createElement('canvas') }; COMP.set(id, c); if (COMP.size > 24) COMP.delete(COMP.keys().next().value); }
+  if (c.a.width !== w || c.a.height !== h) { c.a.width = w; c.a.height = h; }
+  return c;
+}
+
 export function drawSeal(ctx, o = {}) {
   const size = sealSize(o.size ?? 40);
   const view = o.view === 'front' ? 'front' : 'side';
@@ -715,24 +770,66 @@ export function drawSeal(ctx, o = {}) {
   const F = sh.frames[fi];
   const sk = (k * size) / sh.size; // the stand-in sheet may be another size
   const cw = sh.cw, ch = sh.ch;
-  if (o.base === 'bottom') y -= (F.bottom[1] - ch / 2) * sk + (o.ride ? size * k * 0.72 * (0.35 + 0.65 * clamp01(o.ride)) * 1.62 : 0);
+  const ride = clamp01(o.ride || 0);
+  const rideR = size * k * 0.5 * (0.35 + 0.65 * ride);
+  if (o.base === 'bottom') y -= (F.bottom[1] - ch / 2) * sk + (ride ? rideR * 1.5 : 0);
   const lift = (F.dy || 0) * sh.size * sk;
+  // soft body: squash spring about the bottom + ripple
+  const id = o.id ?? 'seal';
+  const J = jiggle(id, t, x, y, anim, o.talk);
+  const sqY = 1 + J.s, sqX = 1 - J.s * 0.7;
+  const bY = F.bottom[1], cX = cw / 2;
+  const sqp = (p) => [cX + (p[0] - cX) * sqX, bY + (p[1] - bY) * sqY];
   // screen transform of a sprite-local point
   const ct = Math.cos(tilt), st = Math.sin(tilt);
-  const toScreen = (p) => {
+  const toScreen = (p0) => {
+    const p = sqp(p0);
     const lx = (p[0] - cw / 2) * facing * sk, ly = (p[1] - ch / 2) * sk - lift;
     return [x + lx * ct - ly * st, y + lx * st + ly * ct];
   };
   const a0 = ctx.globalAlpha;
   if (o.alpha != null) ctx.globalAlpha = a0 * o.alpha;
-  // the soap bubble it rides
-  const ride = clamp01(o.ride || 0);
+  // the (subtle) soap bubble it may sit in
   const bot = toScreen([F.bottom[0], F.bottom[1] + lift / Math.max(0.01, sk)]);
   if (ride > 0.02) {
-    const r = size * k * 0.72 * (0.35 + 0.65 * ride);
     const sq = ride * (0.5 + 0.5 * Math.sin(t * 2.2));
-    drawSoapBubble(ctx, bot[0], bot[1] + r * 0.62, r, sq);
+    const ga = ctx.globalAlpha;
+    ctx.globalAlpha = ga * 0.7;
+    drawSoapBubble(ctx, bot[0], bot[1] + rideR * 0.55, rideR, sq);
+    ctx.globalAlpha = ga;
   }
+  // ---- composite the frame: voxel body + a pixel-art face drawn at voxel resolution
+  const q = Math.max(1, SEAL_VOXEL * sh.size);                  // sheet px per voxel
+  const SC = scratch(id, cw, ch);
+  const g = SC.a.getContext('2d');
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.clearRect(0, 0, cw, ch);
+  g.drawImage(sh.canvas, (fi % sh.cols) * cw, Math.floor(fi / sh.cols) * ch, cw, ch, 0, 0, cw, ch);
+  const fw = Math.ceil(cw / q), fh = Math.ceil(ch / q);
+  if (SC.f.width !== fw || SC.f.height !== fh) { SC.f.width = fw; SC.f.height = fh; }
+  const gf = SC.f.getContext('2d');
+  gf.setTransform(1, 0, 0, 1, 0, 0);
+  gf.clearRect(0, 0, fw, fh);
+  gf.setTransform(1 / q, 0, 0, 1 / q, 0, 0);
+  FPX = q;
+  const state = faceState(id, t);
+  let look = null;
+  if (o.lookAt) {
+    const hd = toScreen(F.head);
+    look = [(o.lookAt[0] - hd[0]) * facing, o.lookAt[1] - hd[1]];
+  }
+  drawFace(gf, F, { mood: o.mood, talk: o.talk, t, state, look, blink: o.blink, facing }, sh.size);
+  // a glossy sweat drop when it is worried
+  if (sh.anim === 'worried' || o.mood === 'worried' || o.mood === 'scared') {
+    const s2 = sh.size, dx = F.top[0] - s2 * 0.32, dy = F.top[1] + s2 * 0.12 + ((t * 2) % 1) * s2 * 0.08;
+    gf.fillStyle = '#7fdcff';
+    gf.beginPath(); gf.moveTo(dx, dy - s2 * 0.12); gf.quadraticCurveTo(dx + s2 * 0.08, dy, dx, dy + s2 * 0.05); gf.quadraticCurveTo(dx - s2 * 0.08, dy, dx, dy - s2 * 0.12); gf.fill();
+    gf.fillStyle = '#ffffff'; gf.fillRect(dx - q * 0.5, dy - s2 * 0.04, q, q);
+  }
+  g.imageSmoothingEnabled = false;
+  g.drawImage(SC.f, 0, 0, fw * q, fh * q);
+  // ---- draw it in voxel rows: squash-and-stretch about the bottom, a ripple travelling through the rows and a
+  // belly jiggle (rows below the middle sway wider)
   ctx.save();
   ctx.translate(Math.round(x), Math.round(y));
   if (tilt) ctx.rotate(tilt);
@@ -741,38 +838,40 @@ export function drawSeal(ctx, o = {}) {
   ctx.translate(-cw / 2, -ch / 2);
   const smooth = ctx.imageSmoothingEnabled;
   if (Math.abs(sk - 1) > 0.01) ctx.imageSmoothingEnabled = true;
-  ctx.drawImage(sh.canvas, (fi % sh.cols) * cw, Math.floor(fi / sh.cols) * ch, cw, ch, 0, 0, cw, ch);
+  const rows = Math.max(1, Math.round(ch / (q * 2)));
+  const rh = ch / rows;
+  const amp = J.rip * q * 0.9;
+  const ripple = amp > 0.05 || Math.abs(J.s) > 0.004;
+  if (!ripple) ctx.drawImage(SC.a, 0, 0);
+  else {
+    const mid = (F.top[1] + bY) / 2;
+    for (let r = 0; r < rows; r++) {
+      const y0 = r * rh, yc = y0 + rh / 2;
+      const belly = clamp01((yc - mid) / Math.max(1, bY - mid));
+      const dxr = amp * Math.sin(t * 8.5 - (yc / q) * 0.55) * (0.4 + 0.6 * clamp01((bY - yc) / (bY - F.top[1] + 1) + 0.3));
+      const wob = 1 + J.talk * 0.035 * belly * Math.sin(t * 17) + belly * J.s * 0.25;
+      const w = cw * sqX * wob;
+      const dy0 = bY + (y0 - bY) * sqY, dh = rh * sqY;
+      ctx.drawImage(SC.a, 0, y0, cw, rh, cX - w / 2 + dxr, dy0, w, dh + 0.6);
+    }
+  }
   ctx.imageSmoothingEnabled = smooth;
-  const state = faceState(o.id ?? 'seal', t);
-  let look = null;
-  if (o.lookAt) {
-    const hd = toScreen(F.head);
-    look = [(o.lookAt[0] - hd[0]) * facing, o.lookAt[1] - hd[1]];
-  }
-  drawFace(ctx, F, { mood: o.mood, talk: o.talk, t, state, look, blink: o.blink }, sh.size);
-  // a glossy sweat drop when it is worried
-  if (sh.anim === 'worried' || o.mood === 'worried' || o.mood === 'scared') {
-    const s2 = sh.size, dx = F.top[0] - s2 * 0.32, dy = F.top[1] + s2 * 0.12 + ((t * 2) % 1) * s2 * 0.08;
-    ctx.fillStyle = '#7fdcff';
-    ctx.beginPath(); ctx.moveTo(dx, dy - s2 * 0.12); ctx.quadraticCurveTo(dx + s2 * 0.08, dy, dx, dy + s2 * 0.05); ctx.quadraticCurveTo(dx - s2 * 0.08, dy, dx, dy - s2 * 0.12); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.fillRect(Math.round(dx - s2 * 0.02), Math.round(dy - s2 * 0.03), 1, Math.max(1, Math.round(s2 * 0.03)));
-  }
   ctx.restore();
   // the little bubble balanced on its nose
   const nb = clamp01(o.noseBubble || 0);
   if (nb > 0.02 && F.faceZ > 0) {
     const nz = toScreen(F.nose);
-    const r = size * k * 0.16 * nb;
+    const r = size * k * 0.14 * nb;
     drawSoapBubble(ctx, nz[0] + Math.sin(t * 3.1) * r * 0.25, nz[1] - r * 1.05 - Math.abs(Math.sin(t * 3.1)) * r * 0.3, r, 0);
   }
   ctx.globalAlpha = a0;
-  const pts = [F.top, F.bottom, F.tail, F.head].map(toScreen);
+  const pts = [F.top, F.bottom, F.tail, F.head, F.nose].map(toScreen);
   const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
   const rx0 = Math.min(...xs) - size * k * 0.1, ry0 = Math.min(...ys) - size * k * 0.08;
   return {
     head: toScreen(F.head), top: toScreen(F.top), mouth: toScreen(F.mouth), nose: toScreen(F.nose), hand: toScreen(F.hand),
     tail: toScreen(F.tail), bottom: bot, center: [x, y],
-    rect: { x: rx0, y: ry0, w: Math.max(...xs) - rx0 + size * k * 0.1, h: Math.max(...ys) - ry0 + size * k * 0.1 + (ride > 0.1 ? size * k * 0.9 : 0) },
+    rect: { x: rx0, y: ry0, w: Math.max(...xs) - rx0 + size * k * 0.1, h: Math.max(...ys) - ry0 + size * k * 0.1 + (ride > 0.1 ? rideR * 1.2 : 0) },
   };
 }
 

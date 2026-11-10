@@ -191,6 +191,7 @@ export class Hud {
     if (g.tutorial?.intro) return false;
     if (g.fishing?.fighting || g.fishing?.cine || g.fishing?.finale) return false;
     if (g.ocean?.travelState) return false;
+    if (g.aquarium?.editing) return false; // [phase7:tank] the cube tank's build mode uses the whole screen
     return true;
   }
 

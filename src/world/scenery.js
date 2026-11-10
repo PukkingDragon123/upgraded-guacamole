@@ -1328,7 +1328,9 @@ export const HI_RES = 3; // [phase6:oceans] was 2 for the old ~2x camera
 export const HI_TWIN = new WeakMap(); // 1x band canvas -> hi-res band canvas (caustic masks find their twin here)
 export const zoomOf = (ctx) => { try { const m = ctx.getTransform(); return Math.hypot(m.a, m.b); } catch { return 1; } };
 
-DepthScene.prototype.hiSteps = function* hiSteps(R = HI_RES) {
+// prefer: variant keys in build order (the current time of day first); yields 'variant' after each finished variant
+// (this.hi is live from the first one on, so the camera switches to the detail before the rest are done)
+DepthScene.prototype.hiSteps = function* hiSteps(R = HI_RES, prefer = null) {
   const o = this.terrainOpts;
   if (!o || !this.bands || !this.variants || this.hi || this.hiBusy) return;
   this.hiBusy = true;
@@ -1477,7 +1479,9 @@ DepthScene.prototype.hiSteps = function* hiSteps(R = HI_RES) {
   const b1 = this.bandOf;
   const out = [0, 1].map((b) => ({ y: this.bands[b].y, h: this.bands[b].h, canvases: {} }));
   const tmp = makeLayer(8, 8);
-  for (const v of this.variants) {
+  const order = prefer ? this.variants.slice().sort((a, b) => (prefer.indexOf(a.key) + 99) % 99 - (prefer.indexOf(b.key) + 99) % 99) : this.variants;
+  let vi = 0;
+  for (const v of order) {
     const sd = ctxOf(v.strip).getImageData(0, 0, v.strip.width, v.strip.height).data;
     const sw = v.strip.width, sh = v.strip.height;
     for (let b = 0; b < 2; b++) {
@@ -1548,6 +1552,8 @@ DepthScene.prototype.hiSteps = function* hiSteps(R = HI_RES) {
       B.canvases[v.key] = c;
       HI_TWIN.set(this.bands[b].canvases[v.key], c);
     }
+    if (vi++ === 0) this.hi = { R, bands: out };
+    if (vi < order.length) yield 'variant';
   }
   this.hi = { R, bands: out };
   this.hiBusy = false;
@@ -1577,7 +1583,10 @@ export class BandSet {
     const keys = Object.keys(B.canvases);
     if (!keys.length) return null;
     if (keys.length === 1 || !w) return B.canvases[keys[0]];
-    return this.hiBlends[b].get([[B.canvases.day, w.day], [B.canvases.dusk, w.dusk], [B.canvases.night, w.night]]);
+    // [phase7:env] variants arrive one by one: blend only those built so far
+    const items = [['day', w.day], ['dusk', w.dusk], ['night', w.night]].filter(([k]) => B.canvases[k]).map(([k, q]) => [B.canvases[k], q]);
+    if (items.length === 1) return items[0][0];
+    return this.hiBlends[b].get(items);
   }
   draw(ctx, b, w, dx = 0, dy = 0) {
     const S = this.scene, B = S.bands[b];

@@ -9,6 +9,7 @@ import { alagardBitmap, alagardReady } from '../gfx/alagard.js';
 import { BIOMES, BIOME_DEPTH } from './biomes/index.js';
 import { worldTop } from './biomes/base.js';
 import { installAero } from './aerokit.js';
+import { todWeights } from './scenery.js'; // [phase7:env]
 import { installZoomSky } from './zoomsky.js';
 import { installWater } from './watersheet.js'; // [phase5:water] simulated surface + water sheet
 import { installDeep, ZoneSpawner } from './deepsea.js'; // [phase6:oceans] depth zones under every ocean
@@ -228,16 +229,24 @@ export class Ocean {
       this.hiFor = D;
       this.hiT0 = performance.now();
       const decor = b.decor?.hiSteps ? b.decor : null;
+      const w = todWeights(this.env), prefer = ['day', 'dusk', 'night'].sort((p, q) => w[q] - w[p]);
       this.hiGen = (function* all() {
-        if (!D.hi) yield* D.hiSteps();
+        // [phase7:env] the current time of day's detail first, then the decor; the other variants follow afterwards
+        let g = null;
+        if (!D.hi) {
+          g = D.hiSteps(undefined, prefer);
+          for (;;) { const r = g.next(); if (r.done) { g = null; break; } if (r.value === 'variant') break; yield; }
+        }
+        b.hiFirst = D;
         if (decor) yield* decor.hiSteps();
         if (b.hiExtraSteps) yield* b.hiExtraSteps();
+        if (g) yield* g;
         b.hiDone = D;
       })();
     }
     if (!this.hiGen) return;
     // [phase7:env] a bigger slice while the trip / the loading shimmer covers it, the usual few ms afterwards
-    const fresh = early || (this.hiT0 != null && performance.now() - this.hiT0 < 6000);
+    const fresh = early || (this.hiT0 != null && performance.now() - this.hiT0 < (b.hiFirst !== D ? 8000 : 2500));
     const t0 = performance.now(), budget = this.game.lowPower ? 5 : fresh ? 28 : 7;
     try {
       while (performance.now() - t0 < budget) if (this.hiGen.next().done) { this.hiGen = null; break; }
@@ -360,7 +369,7 @@ export class Ocean {
     if (!s.switched && k >= 0.5) {
       s.switched = true;
       s.from.D?.dropHi?.(); // free the old ocean's hi-res scenery
-      s.from.hiDone = null;
+      s.from.hiDone = null; s.from.hiFirst = null;
       if (this.hiFor === s.from.D) { this.hiFor = null; this.hiGen = null; }
       this.biome = s.to;
       this.pickWeather(true);
@@ -474,7 +483,7 @@ export class Ocean {
   // [phase7:env] while the zoomed-in voxel detail is still being built: a small glossy loading pill with a shimmer
   // sweep and pixel sparkles (bottom centre, above the hotbar), fading out when the pass completes
   drawShimmer(ctx, dt) {
-    const b = this.biome, busy = !!(this.hiGen && b && b.hiDone !== b.D && !this.travelState && this.game.state?.view === 'ocean');
+    const b = this.biome, busy = !!(this.hiGen && b && b.hiFirst !== b.D && !this.travelState && this.game.state?.view === 'ocean');
     this.shimA = clamp01((this.shimA || 0) + (busy ? dt * 3 : -dt * 2));
     if (this.shimA < 0.02 || this.game.ui?.blocking) return;
     const W = this.W, H = this.H, a = this.shimA, t = performance.now() / 1000;
