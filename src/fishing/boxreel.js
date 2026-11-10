@@ -303,7 +303,7 @@ class LootPop {
     this.t = 0; this.dur = 3.2;
     const fx = F.fx;
     fx.aeroConfetti(x, y, 26, { speed: [80, 200] });
-    fx.ringWave(x, y, 40, '#bff8ff', { life: 0.5, w: 4 });
+    fx.chestOpen?.(x, y, tier === 'golden' || tier === 'orb' ? 'epic' : tier === 'iron' ? 'rare' : 'uncommon', { layer: 'fg' }); // [phase8:ui] pixel chest pop (was a ring wave)
     fx.lensFlare(x, y, { cx: F.W / 2, cy: F.H / 2, life: 1, scale: 0.8 });
     fx.coins(x, y, 8, { speed: [100, 200] });
   }

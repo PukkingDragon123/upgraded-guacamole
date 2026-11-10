@@ -12,7 +12,7 @@ import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { getUiIcon } from '../gfx/uiicons.js';
 import { compiled } from '../gfx/spritecache.js';
 import { drawFishRig } from '../gfx/fishrig.js';
-import { glowSprite, gbubbleSprite, thickRingSprite } from '../gfx/particles.js';
+import { glowSprite, gbubbleSprite } from '../gfx/particles.js';
 import { traitList, valueMultiplier } from '../fish/traits.js';
 import { RELEASE_VALUE } from '../game/shopdata.js';
 import { drawAeroPanel, drawGlossOrb, drawAeroCoin } from './aero.js';
@@ -119,9 +119,7 @@ function drawSunFlare(ctx, x, y, t, a, toward, k = 1) {
   for (const [k, rr, col] of G) {
     const gx = Math.round(lerp(x, toward[0], k)), gy = Math.round(lerp(y, toward[1], k));
     ctx.globalAlpha = a * 0.3;
-    const rs = thickRingSprite(rr, 1, col, 1);
-    ctx.drawImage(rs, gx - Math.floor(rs.width / 2), gy - Math.floor(rs.height / 2));
-    ctx.drawImage(glowSprite(rr, col), gx - rr, gy - rr);
+    ctx.drawImage(glowSprite(rr, col), gx - rr, gy - rr); // [phase8:ui] soft orbs only, no ghost rings
   }
   ctx.restore();
 }
@@ -400,8 +398,13 @@ export class RevealPanel {
     this.burst = true;
     P.aeroBubbles?.(x, y + 30, 18, { layer: 'ui', w: 80, h: 20, speed: [40, 120], sizes: [2, 3, 4, 5, 7] });
     P.aeroConfetti?.(x, y - 20, 40, { layer: 'ui', spread: Math.PI, speed: [100, 260], w: 40 });
-    P.ringWave?.(x, y, 120, '#ffffff', { layer: 'ui', life: 0.5, w: 4 });
-    P.ringWave?.(x, y, 80, rar.color, { layer: 'ui', life: 0.45, w: 3, delay: 0.06 });
+    // [phase8:ui] pixel-art catch burst: impact pop, rarity stars, hearts, scales, confetti chips (no ring waves)
+    const rk = this.data?.rarity || this.data?.sp?.rarity || 'common';
+    P.impact?.(x, y, 2, { layer: 'ui', ramp: rar.color });
+    P.pixelBurst?.('star', x, y, 10, { layer: 'ui', ramp: rar.color, speed: [100, 260] });
+    P.hearts?.(x, y - 10, rk === 'common' ? 3 : 6, { layer: 'ui', speed: [60, 160] });
+    P.pixelBurst?.('scale', x, y, 10, { layer: 'ui', ramp: 'aqua', speed: [80, 200] });
+    P.celebrate?.(x, y - 20, rk === 'legendary' || rk === 'epic' ? 1.6 : 1, { layer: 'ui', ramp: rar.color });
     P.lensFlare?.(x - 140, y - 80, { layer: 'ui', cx: g.screen.W / 2, cy: g.screen.H / 2, life: 1.6, scale: 1.1 });
     P.glints?.(x, y, 8, { layer: 'ui', w: 120, h: 50 });
   }

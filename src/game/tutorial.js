@@ -938,15 +938,8 @@ export class Tutorial {
 
   drawPointer(ctx, x, y, r, arrow, bang = false) {
     const t = this.t;
-    const k = (t * 1.1) % 1;
-    ctx.save();
-    ctx.globalAlpha = 0.85 * (1 - k);
-    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(Math.round(x), Math.round(y), r + k * 14, 0, TAU); ctx.stroke();
-    ctx.globalAlpha = 0.5 * (1 - k);
-    ctx.strokeStyle = '#7ff0ff'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.arc(Math.round(x), Math.round(y), r + k * 14 + 2, 0, TAU); ctx.stroke();
-    ctx.restore();
+    // [phase8:ui] bouncing pixel corner brackets instead of expanding rings
+    if (AE.drawFocusBrackets) AE.drawFocusBrackets(ctx, Math.round(x), Math.round(y), Math.round(r), t);
     const ic = (n) => UIC.getUiIcon?.(n);
     if (bang) {
       const e = ic('exclaim');

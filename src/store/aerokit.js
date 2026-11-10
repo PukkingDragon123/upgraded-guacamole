@@ -13,7 +13,7 @@
 //   button(ui, ctx, x, y, w, h, label, {tone, icon, disabled, tip, sound}) -> clicked   (Aero pill button widget)
 //   INK, INK_SOFT, colours
 
-import { drawText, measureText } from '../gfx/font.js';
+import { drawText, measureText, faceOf } from '../gfx/font.js';
 import { shade, rgba, mix } from '../core/color.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { TAU } from '../core/math.js';
@@ -101,7 +101,7 @@ export function burst(ctx, cx, cy, r, text, t = 0, o = {}) {
 
 export function tag(ctx, x, y, text, color = AQUA, ink = '#ffffff') {
   const w = measureText(text, 'small') + 7;
-  pill(ctx, x, y, w, 9, { color, r: 3 });
+  pill(ctx, x, y, w, faceOf('small') === 'small' ? 9 : 11, { color, r: 3 }); // [phase8:ui] fits the bigger small text
   drawText(ctx, text, x + 4, y + 2, { font: 'small', color: ink });
   return w;
 }

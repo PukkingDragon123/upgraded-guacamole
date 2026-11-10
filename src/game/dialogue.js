@@ -311,8 +311,7 @@ export class Dialogue {
       const ph = (t * 0.12 + i * 0.37) % 1;
       const bx = x + 30 + ((i * 97) % (w - 60)), by = yy + h - ph * h;
       ctx.globalAlpha = a0 * 0.35 * Math.sin(ph * Math.PI);
-      ctx.strokeStyle = '#bff6ff'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(bx, by, (2 + (i % 3)) * Math.min(1.5, k), 0, TAU); ctx.stroke();
+      AE.drawAeroBubble(ctx, bx, by, (2 + (i % 3)) * Math.min(1.5, k)); // [phase8:ui] pixel bubble, not a thin ring
     }
     ctx.restore();
     ctx.globalAlpha = a0 * (o.alpha ?? 1) * clamp01(this.t * 6);

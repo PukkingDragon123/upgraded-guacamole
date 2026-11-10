@@ -26,6 +26,7 @@ import { drawTooltip } from '../ui/panels.js';
 import { ITEMS, addItem, removeItem, countItem, hasItems, takeItems, addPackage, TIERS, inventory, setPackageLuck, rollCrate, grantLoot } from './items.js';
 import { BUILDINGS, BUILDING_ORDER, DECOR_BUILDS, buildingDef, buildingBonus, produceInfo, rollProduce, markCollected, levelOf, maxLevelFor, upgradeCost, vaultAccrue, MAX_LEVEL, ZMIN, ZMAX } from './buildings.js';
 import { registerBuildPanels } from './panels.js';
+import { boxToChest } from './crates.js'; // [phase8:prog]
 import { buildingSprite, WORLD_SCALE, MODEL_IDS } from './buildingmodels.js';
 import { researchState } from './research.js';
 import { ensureLab, labTick, labProgress, LAB_BY_ID, LAB_NODES } from '../game/lab.js';
@@ -392,6 +393,18 @@ export class Build {
   onBoxCaught(f) {
     const g = this.game, st = this.state;
     this.ensure();
+    // [phase8:prog] iron and better boxes are CHESTS: into the Satchel, cracked open with a minigame (ui 'crate')
+    const chest = boxToChest(g, f);
+    if (chest) {
+      g.audio?.play(chest.tier === 'orb' || chest.tier === 'golden' ? 'golden_shimmer' : 'treasure_open', { vol: 0.6 });
+      g.emit?.('chestFound', { tier: chest.tier });
+      g.save?.();
+      setTimeout(() => {
+        if (g.ui?.panels?.crate && !g.ui.blocking && !g.fishing?.busy && !g.tutorial?.active && !g.dest?.active && inventory(st).packages.includes(chest)) g.ui.open('crate', { uid: chest.uid });
+        else g.toast?.(`${TIERS[chest.tier]?.name || 'A chest'} in your Satchel! Crack it open!`, 'star', 4);
+      }, 1700);
+      return { tier: chest.tier, aero: 0, items: [{ id: 'pkg_' + chest.tier, qty: 1 }], chest: true };
+    }
     const loot = rollCrate(f?.tier ?? 'crate', f?.biome || g.ocean?.biome?.id || null, (g.stats?.crateLuck || 0) + this.bonus('luck'));
     const [sx, sy] = f && Number.isFinite(f.x) ? this.toScreen(f.x, f.y) : [g.screen.W / 2, g.screen.H / 2];
     grantLoot(g, loot, sx, sy);
@@ -418,6 +431,7 @@ export class Build {
     if ((r === 'rare' && rng.chance(0.35)) || (r === 'epic' && rng.chance(0.65)) || r === 'legendary') give('rare_specimen', 1);
     if (r === 'legendary' && rng.chance(0.4)) give('golden_scale', 1);
     if (rng.chance(this.bonus('eggChance'))) give('fish_egg', 1);
+    try { for (const it of g.prog?.onCatch?.(sp, rec) || []) items.push(it); } catch (e) { console.error(e); } // [phase8:prog] fish parts
     // Bait Workshop: sometimes the special bait survives the catch
     const bait = g.currentBait?.();
     if (bait?.id && rng.chance(this.bonus('baitSave'))) {

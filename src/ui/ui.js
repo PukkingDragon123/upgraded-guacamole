@@ -30,6 +30,7 @@ export class UI {
     this.dockHover = -1; // legacy readers
     this.flyers = []; // Aero drops flying to the counter
     this.anim = 0;
+    try { this.hookPixelFx(game); } catch { /* optional juice */ } // [phase8:ui]
   }
 
   register(panel) {
@@ -154,13 +155,36 @@ export class UI {
     return false;
   }
 
+  // [phase8:ui] pixel-art celebrations for game moments (purchases, unlocks, crafts, finished quests). Never throws.
+  hookPixelFx(game) {
+    if (!game?.on) return;
+    const at = () => {
+      const i = this.inp || {};
+      const W = game.screen?.W || 960, H = game.screen?.H || 540;
+      return Number.isFinite(i.x) && i.x > 0 ? [i.x, i.y] : [W / 2, H * 0.42];
+    };
+    const fx = (fn) => () => {
+      const ps = game.particles;
+      if (!ps?.pixelBurst || game.state?.settings?.reducedMotion) return;
+      try { fn(ps, ...at()); } catch (e) { console.warn('pixel fx', e); }
+    };
+    game.on('buy', fx((ps, x, y) => ps.purchase(x, y)));
+    game.on('unlocked', fx((ps, x, y) => ps.unlock(x, y)));
+    game.on('crafted', fx((ps, x, y) => { ps.impact(x, y, 1, { layer: 'ui', ramp: 'lime' }); ps.pixelBurst('star', x, y, 5, { layer: 'ui', ramp: 'gold' }); ps.pixelBurst('dust', x, y + 4, 4, { layer: 'ui' }); }));
+    game.on('questDone', fx((ps) => { const W = game.screen?.W || 960; ps.levelUp(W / 2, 110); }));
+  }
+
   // water-splash accent on clicks: aqua droplets + a couple of bubbles (UI particle layer)
   splash(x, y, k = 1) {
     const ps = this.game.particles;
     if (!ps || this.game.state?.settings?.reducedMotion) return;
     try {
-      ps.burst(x, y, Math.round(6 * k), { colors: ['#ffffff', '#bff4ff', '#5cd0ff'], speed: 70 * k, speedMin: 20, g: 220, life: 0.45, up: 50, layer: 'ui', drag: 1 });
-      ps.bubbles?.(x, y, Math.round(2 * k), { layer: 'ui', life: 0.9 });
+      // [phase8:ui] pixel click: sparkles, a tiny puff, a few drops and (big buttons) a couple of stars
+      if (ps.uiClick) {
+        ps.uiClick(x, y, { n: Math.round(3 + 3 * k) });
+        ps.pixelBurst('drop', x, y, Math.round(3 * k), { layer: 'ui', size: 0, speed: [50, 110 * k], spread: 1.2 });
+        if (k >= 1) ps.pixelBurst('star', x, y - 2, 2, { layer: 'ui', size: 0, dir: -Math.PI / 2, spread: 1, speed: [60, 120] });
+      } else ps.burst(x, y, Math.round(6 * k), { colors: ['#ffffff', '#bff4ff', '#5cd0ff'], speed: 70 * k, speedMin: 20, g: 220, life: 0.45, up: 50, layer: 'ui', drag: 1 });
     } catch { /* particles are optional */ }
   }
 

@@ -40,6 +40,8 @@ import { installNet } from '../net/index.js'; // [phase3:online] multiplayer (op
 import { currentBait as currentBait3 } from '../store/bait.js'; // [phase3:online] consumable bait
 import { consumeBait as consumeBait3, equipBait } from '../store/bait.js'; // [phase3:fishing] one bait used per hook-set
 import { installQuests } from '../ui/quests.js'; // [phase6:lab] quest lines + HUD tracker (game.quests)
+import { installProgression } from '../build/progression.js'; // [phase8:prog] Workshop, chests, destinations (game.prog, game.dest)
+import { perkStats } from './rods.js'; // [phase8:prog] rod perks + tackle
 
 export class Game {
   constructor(canvas, params) {
@@ -97,6 +99,7 @@ export class Game {
     try { this.build = new Build(this); } catch (e) { console.error(e); this.build = null; }
     installNet(this); // [phase3:online] game.net: multiplayer, opt-in (Multiplayer panel)
     try { this.quests = installQuests(this); } catch (e) { console.error(e); this.quests = null; } // [phase6:lab]
+    try { this.prog = installProgression(this); } catch (e) { console.error(e); this.prog = null; } // [phase8:prog]
     this.ocean.setBiome(this.state.biome);
     // optional biomes register asynchronously; switch once the saved one is available
     biomesReady.then(() => { if (this.ocean.biome?.id !== this.state.biome && BIOMES[this.state.biome] && !this.ocean.travelState) this.ocean.setBiome(this.state.biome); });
@@ -147,6 +150,7 @@ export class Game {
     s.reelSpeed *= b('reel');
     s.collectRadius *= b('coinMagnet');
     s.rarityBoost *= b('rarity');
+    try { perkStats(this.state, s); } catch (e) { console.error(e); } // [phase8:prog] equipped rod perk + tackle
   }
 
   onResize() {
@@ -328,6 +332,9 @@ export class Game {
       case 'journal': case 'skills': case 'map': case 'bait': case 'settings': case 'lab': case 'wardrobe': case 'multiplayer': case 'inventory': case 'quests': // [phase6:lab] quests
         if (ui.panels[id]) ui.toggle(id); else this.toast('Coming soon!', 'info');
         break;
+      case 'workshop': case 'crafting': // [phase8:prog] quick access: opens the Workshop panel (sail there instantly)
+        if (this.prog) this.prog.command('workshop'); else if (ui.panels.workshop) ui.toggle('workshop');
+        break;
       case 'baitshop': case 'shop': case 'store': case 'appsea': // [phase4:shell] Dot's Bait Shop
         if (ui.isOpen('baitshop')) ui.close('baitshop'); else openStore(this);
         break;
@@ -472,6 +479,7 @@ export class Game {
     if (this.tutorial.capturesInput?.()) layer = 'tutorial';
     else if (this.ui.hit(inp.x, inp.y) && !fighting) layer = 'ui';
     else if (!fighting && this.hud.hit(inp.x, inp.y)) layer = 'hud'; // [phase4:shell] the Aero HUD
+    else if (this.prog?.hit?.(inp.x, inp.y)) layer = 'dest'; // [phase8:prog] a destination scene covers the ocean
     else if (!fighting && this.quests?.hit?.(inp.x, inp.y)) layer = 'quests'; // [phase6:lab] quest tracker
     else if (!fighting && this.aquarium.hit?.(inp.x, inp.y)) layer = 'tank';
     // world objects under the cursor: build mode / buildings, then the boat
@@ -495,6 +503,7 @@ export class Game {
     }
 
     this.hud.update(dtReal, inp, layer === 'hud'); // [phase4:shell]
+    try { this.prog?.update?.(dtReal, layer === 'dest' ? inp : null); } catch (e) { if (!this.progErr) { this.progErr = true; console.error(e); } } // [phase8:prog]
     try { this.quests?.update?.(dtReal, layer === 'quests' ? inp : null); } catch (e) { if (!this.questErr) { this.questErr = true; console.error(e); } } // [phase6:lab]
     this.aquarium.update(dt, layer === 'tank' ? inp : null);
 
@@ -582,7 +591,7 @@ export class Game {
 
   handleKeys() {
     const inp = this.input;
-    const map = { j: 'journal', l: 'lab', k: 'lab', t: 'map', b: 'bait', s: 'baitshop', w: 'wardrobe', o: 'multiplayer', p: 'pause', a: 'tank', q: 'quests' }; // [phase6:lab] q: Quest Log
+    const map = { j: 'journal', l: 'lab', k: 'lab', t: 'map', b: 'bait', s: 'baitshop', w: 'wardrobe', o: 'multiplayer', p: 'pause', a: 'tank', q: 'quests', c: 'workshop' }; // [phase8:prog] c: Workshop // [phase6:lab] q: Quest Log
     for (const [k, cmd] of Object.entries(map)) {
       if (inp.keyPressed(k)) {
         if (this.tutorial.active && cmd !== 'pause') continue;
@@ -695,6 +704,7 @@ export class Game {
 
     this.tutorial.drawWorld?.(ctx);
     this.aquarium.drawWindow?.(ctx, dt);
+    try { this.prog?.draw?.(ctx, dt); } catch (e) { if (!this.progDrawErr) { this.progDrawErr = true; console.error(e); } } // [phase8:prog] destination scene
     this.hud.draw(ctx); // [phase4:shell] hotbar, gear pod, location chip
     try { this.quests?.drawHud?.(ctx, dt); } catch (e) { if (!this.questDrawErr) { this.questDrawErr = true; console.error(e); } } // [phase6:lab] quest tracker + banners
     this.fishing.drawHud(ctx);

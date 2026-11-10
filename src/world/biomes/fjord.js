@@ -778,7 +778,7 @@ export class FjordBiome extends Biome {
       return Math.min(h, cap(z));
     };
     D.terrain({
-      micro: { ripple: 0.6, pebble: 1.6, shell: 0.6, pebbles: [[96, 104, 118], [130, 138, 150], [72, 78, 92], [168, 174, 182]], shells: [[230, 236, 244], [200, 150, 160]] }, // [phase7:env]
+      micro: { ripple: 0.6, pebble: 1, shell: 0.6, pebbles: [[130, 138, 152], [160, 168, 180], [110, 116, 130], [188, 194, 202]], shells: [[230, 236, 244], [200, 150, 160]] }, // [phase7:env]
       cell: 2, dz: 0.02, hstep: 2, ambient: 0.66, diffuse: 0.46, ao: 0.07, jitter: 0.06, wall: 0.8, side: 0.9, crest: 1.14, wallMin: 28, fullHeight: true,
       height: (X, z) => cliff(X, z) ?? floorH(X, z),
       floorHeight: floorH,

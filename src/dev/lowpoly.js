@@ -1,13 +1,14 @@
 // Dev preview for src/gfx/lowpoly.js + src/fish/lowpolyfish.js (dist/dev/lowpoly.html): a full low-poly species
 // gallery (drawn through fishrig.drawFishRig at device resolution), the far giants, and a 3D LPScene of fishMesh /
-// creatureMesh models. Params: page (0..), per (species per page), ids (comma list), mode (gallery | giants |
-// scene | turn | big | perf), anim (1 = animate), scale, yaw, bg (water | dark).
+// creatureMesh models. Params: page (0..), per (species per page), ids (comma list), mode (gallery | giants | vg |
+// seal | icons | scene | turn | big | perf), anim (1 = animate), scale, yaw, bg (water | dark).
 import { lpAvailable, LPScene, T4, lpStats, lpDisableGL } from '../gfx/lowpoly.js';
 import { SPECIES } from '../fish/species.js';
 import { compiled } from '../gfx/spritecache.js';
 import { drawFishRig, rigStats } from '../gfx/fishrig.js';
 import { VoxelGiant, lpCrabFrames, lpPenguinFrames, lpRestSealFrames } from '../world/giants.js';
 import { voxStats } from '../fish/voxelize.js';
+import { drawSeal, warmSeal, SEAL_ANIMS } from '../gfx/seal.js';
 import { setLowpolySync, creatureFrame, fishMesh, creatureMesh, addFishToScene, lowpolyStats, lpFishIcon } from '../fish/lowpolyfish.js';
 
 export function sampleFish() { return fishMesh('pixel'); }
@@ -109,6 +110,18 @@ export function run(params) {
       [cr, cr2].forEach((F, j) => F.forEach((spr, i) => g.drawImage(spr.canvas, Math.round(120 + i * 60 + j * 220 - spr.ox), 330 - spr.oy + 1, spr.w, spr.h)));
       [...lpPenguinFrames(1), ...lpPenguinFrames(-1).slice(0, 2)].forEach((q, i) => g.drawImage(q, 40 + i * 30, 270, q.w, q.h));
       lpRestSealFrames().forEach((q, i) => g.drawImage(q, 340 + i * 45, 270, q.w, q.h));
+    } else if (mode === 'seal') {
+      // Bubbles, the voxel plush seal: every animation, moods, the soft-body jiggle (anim=1) and a big portrait
+      const anims = Object.keys(SEAL_ANIMS);
+      const moods = ['happy', 'happy', 'excited', 'happy', 'happy', 'excited', 'love', 'worried', 'excited', 'think', 'happy'];
+      if (!window.__sw) { window.__sw = 1; const v0 = voxStats().ms, f0 = voxStats().faces; const t0 = performance.now(); warmSeal(56, ['point']); window.__sealPointMs = performance.now() - t0; window.__sealVox = [voxStats().ms - v0, voxStats().faces - f0]; const t1 = performance.now(); warmSeal(56, ['idle']); window.__sealIdleMs = performance.now() - t1; warmSeal(56, anims); }
+      const t = anim ? time / 1000 : 0.4;
+      anims.forEach((a, i) => {
+        const x = 70 + (i % 6) * 110, y = 70 + Math.floor(i / 6) * 120 + (anim ? Math.sin(t * 3 + i) * 8 : 0);
+        drawSeal(g, { x, y, t: t + i * 0.3, size: 56, anim: a, mood: moods[i] || 'happy', talk: i === 0 ? 0.5 + 0.5 * Math.sin(t * 18) : 0, point: [x + 80, y - 60], id: 'dv' + i, noseBubble: i === 8 ? 1 : 0 });
+        g.fillText(a, x - 40, y + 50);
+      });
+      drawSeal(g, { x: 800, y: 380, t, size: 128, k: 1.1, anim: 'idle', mood: 'happy', talk: anim ? 0.5 + 0.5 * Math.sin(t * 9) : 0, id: 'big', view: 'front', noseBubble: 1 });
     } else if (mode === 'icons') {
       SPECIES.slice(0, 60).forEach((sp, i) => {
         const ic = lpFishIcon(sp, 64, 40);

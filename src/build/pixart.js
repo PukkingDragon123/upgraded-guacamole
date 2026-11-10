@@ -92,12 +92,13 @@ class Pix {
     return this;
   }
   glint(x, y) { this.set(x, y, '#ffffff'); this.noOutline.add(y * this.w + x); return this; }
+  thin(x, y, col) { if (this.in(x, y)) { this.set(x, y, col); this.noOutline.add(y * this.w + x); } return this; }
   outline(col = null) {
     const add = [];
     for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) {
       if (this.get(x, y)) continue;
       let n = null;
-      for (const [ax, ay] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const q = this.get(x + ax, y + ay); if (q) { n = q; break; } }
+      for (const [ax, ay] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const q = this.get(x + ax, y + ay); if (q && !this.noOutline.has((y + ay) * this.w + x + ax)) { n = q; break; } }
       if (n) add.push([x, y, col || shade(n, -0.66)]);
     }
     for (const [x, y, c] of add) this.set(x, y, c);
@@ -157,12 +158,23 @@ const ART = {
   },
   fish_scale() {
     const p = new Pix(S, S);
-    p.ball(8, 9, 6, '#5fd8e8', 6);
-    for (let y = 0; y < 4; y++) for (let x = 0; x < S; x++) p.set(x, y, null);
-    p.poly([[2, 9], [8, 2], [14, 9]], '#7ae8f0');
-    p.line(4, 8, 8, 4, '#c8fcff').line(8, 4, 12, 8, '#3aa8c8').line(5, 11, 11, 11, '#a8f0ff');
-    p.glint(6, 6);
-    return p.outline();
+    p.ascii([
+      '......oo......',
+      '....oo44oo....',
+      '...o344w43o...',
+      '..o34444w43o..',
+      '.o3444444443o.',
+      '.o3p44444443o.',
+      'o32p4444444p3o',
+      'o322333333223o',
+      'o32p4444444p3o',
+      '.o3444444443o.',
+      '.o2333333332o.',
+      '..o22pppp22o..',
+      '...oo2222oo...',
+      '.....oooo.....',
+    ], { o: '#1a6a8a', 2: '#2f9ac8', 3: '#4cc4e8', 4: '#8eeaff', w: '#ffffff', p: '#ffb0e0' }, 1, 1);
+    return p;
   },
   fin_ribbon() {
     const p = new Pix(S, S);
@@ -221,11 +233,12 @@ const ART = {
   // ---------------- boat parts (tinted by recipe)
   boat_hull(col = '#2fb8e8') {
     const p = new Pix(S, S);
-    p.box(3, 6, 12, 14, '#c8d2e0');
-    p.box(4, 4, 11, 6, col);
-    p.bar(3, 5, 1, 9, 0.6, col);
-    p.bar(12, 7, 12, 11, 1, col);
-    p.line(3, 5, 12, 5, mix(col, '#ffffff', 0.6));
+    for (let a = 0; a <= 10; a++) { const t = Math.PI * (a / 10); p.set(Math.round(8 - Math.cos(t) * 6), Math.round(5 - Math.sin(t) * 4), '#97a2b8'); }
+    p.box(2, 5, 13, 14, '#c8d2e0');
+    p.box(2, 5, 13, 7, col);
+    p.bar(5, 7, 5, 11, 0.8, col);
+    p.bar(10, 7, 10, 9, 0.8, col);
+    p.glint(3, 6).glint(4, 9);
     return p.outline();
   },
   boat_sail(col = '#ffffff') {
@@ -414,9 +427,8 @@ function rodArt(look = {}, perk = null) {
   const shaft = look.shaft || '#b88a52', grip = look.grip || '#7a5432', reel = look.reel || '#c8c8c8', tip = look.tip || '#ffffff';
   const kind = look.kind || 'stick';
   // fishing line + hook hanging from the tip
-  for (let y = 4; y < 13; y++) p.set(14 + (y > 9 ? 0 : 0), y, '#e8f4ff');
-  HOOK(p, 13, 12, '#c8d2e0');
-  p.set(13, 12, null).set(14, 12, '#c8d2e0');
+  for (let y = 4; y < 12; y++) p.thin(14, y, 'rgba(232,244,255,0.85)');
+  p.thin(14, 12, '#c8d2e0').thin(14, 13, '#c8d2e0').thin(13, 14, '#c8d2e0').thin(12, 13, '#c8d2e0');
   p.bar(2, 14, 13, 3, kind === 'stick' ? 1 : 0.8, shaft);
   if (kind === 'stick') { p.set(6, 10, shade(shaft, -0.35)).set(9, 7, shade(shaft, -0.35)); }
   if (kind === 'carbon') for (let i = 0; i < 3; i++) p.set(6 + i * 2, 10 - i * 2, mix(shaft, '#ffffff', 0.7));
@@ -535,3 +547,6 @@ export class PixFx {
     ctx.globalAlpha = 1;
   }
 }
+
+// dev hook: window.__pixart for the art review (no gameplay effect)
+if (typeof window !== 'undefined') window.__pixart = { pixIcon, rodPix, PIX_IDS, partSprite };

@@ -21,6 +21,7 @@ import { hash2, clamp, bayer } from '../core/math.js';
 import { drawAeroBadge, setCoinRenderer } from '../ui/aero.js';
 import { lpAvailable, renderMesh, LPMesh } from './lowpoly.js';
 import { ICON_MODELS, ROD_MODEL, GEM_MODEL } from './iconmeshes.js';
+import { itemPixel, itemPixelScaled } from '../build/itempix.js'; // [phase8:ui]
 
 export const MENU_ICON_IDS = ['lab', 'aquarium', 'journal', 'inventory', 'wardrobe', 'map', 'bait', 'appsea', 'multiplayer', 'settings', 'quests', 'shop', 'coin'];
 export const BIG_ICON_IDS = [...MENU_ICON_IDS, 'skills', 'build', 'research', 'store', 'boatyard', 'mycomputer', 'recycle'];
@@ -961,6 +962,18 @@ export function getBigIcon(id, opts = {}) {
       cache.set(key, e);
       return e;
     }
+  }
+  if (!MODELS[id] && itemPixel('icon_' + id)) { // [phase8:ui] hand-drawn pixel icon for ids without a model
+    const key = 'pix|' + id + '|' + px;
+    let e = cache.get(key);
+    if (!e) {
+      const b = itemPixel('icon_' + id);
+      const k = Math.max(1, Math.floor(px / Math.max(b.w, b.h)));
+      const c = itemPixelScaled('icon_' + id, k);
+      e = { canvas: c, cx: Math.round(c.width / 2), by: c.height };
+      cache.set(key, e);
+    }
+    return e;
   }
   return voxelIcon(id, opts);
 }

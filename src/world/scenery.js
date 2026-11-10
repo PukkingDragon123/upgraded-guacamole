@@ -1363,10 +1363,10 @@ DepthScene.prototype.hiSteps = function* hiSteps(R = HI_RES, prefer = null) {
         if (mo.ripple && hr < 24) { hr += (rp > 0.45 ? 1 : 0) * mo.ripple; tint = rp > 0.75 ? 1.07 : rp < -0.6 ? 0.93 : 1; }
         const cx2 = ix >> 1, cz2 = iz >> 1, hp = hash2(cx2, cz2, 913);
         const patch = smoothstep(0.45, 0.8, hash2(ix >> 5, iz >> 3, 919) * 0.6 + hash2((ix + 16) >> 5, (iz + 4) >> 3, 920) * 0.4);
-        if (hp < (0.004 + 0.03 * patch) * mo.pebble) {
+        if (hp < (0.002 + 0.016 * patch) * mo.pebble) {
           c = pebC[Math.floor(hash2(cx2, cz2, 914) * pebC.length)];
           hr += 1;
-          tint = 0.95 + hash2(cx2, cz2, 916) * 0.25;
+          tint = 1.05 + hash2(cx2, cz2, 916) * 0.2;
         } else if (hp > 1 - 0.006 * mo.shell) {
           c = shC[Math.floor(hash2(cx2, cz2, 917) * shC.length)];
           hr += 1;

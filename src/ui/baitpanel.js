@@ -7,7 +7,7 @@ import { drawText, wrapText, measureText } from '../gfx/font.js';
 import { rgba } from '../core/color.js';
 import { getMiniIcon } from '../desktop/icons.js';
 import { getUiIcon } from '../gfx/uiicons.js';
-import { drawAeroPanel, drawGlossOrb, drawAeroCoin, fmtAero } from './aero.js';
+import { drawAeroPanel, drawGlossOrb, drawAeroCoin, fmtAero, drawPixelBrackets } from './aero.js';
 import { centerRect } from './ui.js';
 import {
   BAITS, ensureBait, baitList, equipBait, totalBait, currentBait, baitDef, craftBases, customRecipe, customCost, canCraft, craftCustom,
@@ -237,7 +237,7 @@ export class BaitPanel {
     label('SCENT');
     SCENTS.forEach((s, i) => {
       const bx = ox + 68 + i * 26, by = y + 9, on = s.id === rec.scent, rr = { x: bx - 10, y: by - 10, w: 20, h: 20 };
-      if (on) { ctx.beginPath(); ctx.arc(bx, by, 10, 0, Math.PI * 2); ctx.strokeStyle = GRASS; ctx.lineWidth = 2; ctx.stroke(); }
+      if (on) drawPixelBrackets(ctx, bx - 9, by - 9, 18, 18, t, { col: GRASS, ink: '#1a5e12' }); // [phase8:ui] selected marker, no ring
       drawGlossOrb(ctx, bx, by, 7, s.id === 'none' ? '#e8f0f4' : s.color);
       if (s.id !== 'none') for (let k = 0; k < 3; k++) { ctx.fillStyle = rgba(s.color, 0.8); ctx.fillRect(Math.round(bx + 6 + k * 2), Math.round(by - 8 - Math.abs(Math.sin(t * 2 + k)) * 3 - k), 1, 1); }
       if (ui.hover(rr)) ui.tip = s.name;
@@ -248,7 +248,7 @@ export class BaitPanel {
     label('COLOUR');
     COLOURS.forEach((c, i) => {
       const bx = ox + 68 + i * 26, by = y + 9, on = c.id === rec.color, rr = { x: bx - 10, y: by - 10, w: 20, h: 20 };
-      if (on) { ctx.beginPath(); ctx.arc(bx, by, 10, 0, Math.PI * 2); ctx.strokeStyle = GRASS; ctx.lineWidth = 2; ctx.stroke(); }
+      if (on) drawPixelBrackets(ctx, bx - 9, by - 9, 18, 18, t, { col: GRASS, ink: '#1a5e12' }); // [phase8:ui] selected marker, no ring
       drawGlossOrb(ctx, bx, by, 7.5, c.hex);
       if (ui.hover(rr)) ui.tip = c.name;
       if (ui.clicked(rr)) { this.recipe.color = c.id; g.audio.play('ui_click'); }

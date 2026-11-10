@@ -1,4 +1,5 @@
-// Distant giants that cruise through the far water (phase 6: LOW-POLY 3D, src/fish/lowpolyfish.js): a humpback
+// [phase8:creatures] Distant giants that cruise through the far water, now VOXEL models (phase 8: the lowpolyfish.js
+// poses are voxelised by src/fish/voxelize.js; phase 6 built them LOW-POLY 3D, src/fish/lowpolyfish.js): a humpback
 // whale, a green sea turtle, a glossy bottlenose dolphin, a beluga, a harbour seal and an orca. Frames are cached
 // low-poly sprites (one swim cycle, the mesh bends: vertical fluke beats, flipper strokes), built lazily; warm()
 // builds at most one missing frame per call so the first sighting never stalls a frame.

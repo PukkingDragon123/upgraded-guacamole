@@ -35,7 +35,7 @@ import { getBigIcon, iconFrame, iconSpinMode, rodIcon } from '../gfx/bigicons.js
 import { drawTooltip } from './panels.js';
 import {
   AERO, aeroCached, aeroSurface, drawAeroGlow, drawAeroBadge, drawAeroLabel, drawSparkle, drawAeroBubble, drawAeroLeaf, drawGlossOrb,
-  uiK, uiFont, capH, setUiScale,
+  uiK, uiFont, capH, setUiScale, drawPixelBrackets,
 } from './aero.js';
 import { currentBait, totalBait } from '../store/bait.js';
 import { drawBaitGloss } from '../fishing/baitart.js';
@@ -47,6 +47,7 @@ export const HUD_ITEMS = [
   { id: 'lab', label: 'The Lab', key: 'L', tint: '#6ee04a', icon: 'lab', alias: 'skills', group: 0 },
   { id: 'quests', label: 'Quests', key: 'Q', tint: '#ffc23a', icon: 'quests', group: 0 }, // [phase6] shows once the Quests panel is registered
   { id: 'aquarium', label: 'Aquarium', key: 'A', tint: '#3ac4f8', icon: 'aquarium', alias: 'tank', group: 0 },
+  { id: 'fishmgr', label: 'My Fish', key: 'F', tint: '#ff9a3a', icon: 'fishmgr', group: 0 }, // [phase7:tank] fish management (panel registered by src/ui/fishmgr.js)
   { id: 'journal', label: 'FishDex', key: 'J', tint: '#3a9cf0', icon: 'journal', group: 0 },
   { id: 'inventory', label: 'Satchel', key: 'I', tint: '#8ad848', icon: 'inventory', group: 0 },
   { id: 'wardrobe', label: 'Wardrobe', key: 'W', tint: '#5ab4ff', icon: 'wardrobe', group: 0 },
@@ -80,22 +81,6 @@ function tileTex(D, tint, lit) {
 }
 const tile = (D, tint, lit = 0) => tileTex(D, tint, lit ? 1 : 0);
 
-// [phase8:ui] animated pixel corner brackets (focus / open marker instead of a ring)
-function drawBrackets(ctx, x, y, w, h, t, col = '#ffffff', ink = '#0a3e74', k = 1) {
-  const o = R((Math.sin(t * 6) > 0 ? 1 : 0) * k);
-  const L = R(6 * k), T = Math.max(2, R(2 * k));
-  const corners = [[x - o, y - o, 1, 1], [x + w + o, y - o, -1, 1], [x - o, y + h + o, 1, -1], [x + w + o, y + h + o, -1, -1]];
-  for (const pass of [0, 1]) {
-    ctx.fillStyle = pass ? col : ink;
-    const e = pass ? 0 : 1;
-    for (const [cx, cy, sx, sy] of corners) {
-      const x0 = sx > 0 ? cx - e : cx - L - e, y0 = sy > 0 ? cy - e : cy - T - e;
-      ctx.fillRect(x0, y0, L + e * 2, T + e * 2);
-      const x1 = sx > 0 ? cx - e : cx - T - e, y1 = sy > 0 ? cy - e : cy - L - e;
-      ctx.fillRect(x1, y1, T + e * 2, L + e * 2);
-    }
-  }
-}
 
 const toneShadow = (t) => (t === 'green' ? '#1c5a0e' : t === 'orange' ? '#843a04' : '#6a0a16');
 
@@ -539,7 +524,7 @@ export class Hud {
       if (spr) draw(spr.canvas, iconHop);
     }
     if (active) { // [phase8:ui] bouncing pixel corner brackets + a twinkle (no ring)
-      drawBrackets(ctx, R(cx - B / 2), R(cy - B / 2), B, B, t, '#ffffff', '#0a3e74', Math.max(1, R(k * 0.7)));
+      drawPixelBrackets(ctx, R(cx - B / 2), R(cy - B / 2), B, B, t, { k: Math.max(1, R(k * 0.7)) });
       if (Math.sin(t * 3) > 0) drawSparkle(ctx, cx + B * 0.36, cy - B * 0.36, k >= 1.5 ? 3 : 2, 1);
     }
     // "open" light under the button

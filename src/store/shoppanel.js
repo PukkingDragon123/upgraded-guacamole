@@ -14,8 +14,7 @@ import { getBigIcon } from '../gfx/bigicons.js';
 import { drawNPC } from '../gfx/npcs.js';
 import {
   AERO, CURRENCY, fmtAero, aeroCached, aeroSurface, drawAeroFrame, drawAeroCard, drawAeroCoin, drawAeroGlow, drawSparkle,
-  drawAeroBubble, drawAeroBar, drawGlossOrb, drawAeroLeaf,
-} from '../ui/aero.js';
+  drawAeroBubble, drawAeroBar, drawGlossOrb, drawAeroLeaf, drawFocusBrackets } from '../ui/aero.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { drawBaitGloss } from '../fishing/baitart.js';
 import { statBar, tag, rrect, burst } from './aerokit.js';
@@ -315,10 +314,7 @@ export class ShopPanel {
     if (sel) drawAeroGlow(ctx, cx, cy, 26, '#d6ffb0', 0.75);
     else if (hov) drawAeroGlow(ctx, cx, cy, 24, '#ffffff', 0.6);
     if (this.highlight && (this.highlight === o.id || this.highlight === o.line)) {
-      const p = 0.5 + 0.5 * Math.sin(t * 6);
-      ctx.strokeStyle = `rgba(255,214,90,${(0.5 + p * 0.5).toFixed(2)})`;
-      ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(cx + 0.5, cy + 0.5, 21 + p * 2, 0, TAU); ctx.stroke();
+      drawFocusBrackets(ctx, cx, cy, 20, t, { col: '#ffd65a', ink: '#7a4a06' }); // [phase8:ui] no pulsing ring
     }
     ctx.globalAlpha = locked || out ? 0.55 : 1;
     drawBaitGloss(ctx, art, cx, cy, sel || hov ? 36 : 34, t + x * 0.01, { tint: sel ? '#e2ffd0' : '#e8fbff', rim: sel ? '#4cc830' : '#2fb8e0', bob: hov || sel });

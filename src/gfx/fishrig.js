@@ -1,4 +1,5 @@
 // Fish rig entry point: drawFishRig(ctx, compiled, st) -> anchors in world coords (+ w, h of the drawn box).
+// PHASE 8: the models are realistic VOXEL art (src/fish/voxelize.js converts every pose; see lowpolyfish.js).
 // PHASE 6 LOW-POLY: every fish and creature is a faceted low-poly 3D model (src/fish/lowpolyfish.js on the shared
 // WebGL2 renderer src/gfx/lowpoly.js): realistic anatomy, softly painted skin, translucent fins, small natural
 // glossy eyes, Frutiger Aero gloss. Frames are cached sprite sheets (yaw bucket x swim frame x scale bucket x
@@ -21,7 +22,7 @@ import { realYawBase } from '../fish/realvox.js';
 
 /** Kept for API compatibility: fish are always low-poly 3D. */
 export function setFishStyle() {}
-export function getFishStyle() { return 'lowpoly'; }
+export function getFishStyle() { return 'voxel'; }
 if (typeof window !== 'undefined') window.__rigStats = () => rigStats(); // debug / perf
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);

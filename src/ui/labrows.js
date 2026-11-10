@@ -187,7 +187,7 @@ function drawAnimIcon(ctx, key, cx, cy, px, t, ph, o = {}) {
   if (m.bubbles) for (let i = 0; i < 2; i++) { const q = (t * 0.7 + i * 0.5 + ph * 0.1) % 1; drawAeroBubble(ctx, cx + Math.sin(t * 2 + i * 3) * px * 0.2, cy + px * 0.25 - q * px * 0.8, 1 + q, (1 - q) * 0.9); }
   if (m.orbit) { const a = t * 2.4 + ph; drawSparkle(ctx, cx + Math.cos(a) * px * 0.52, cy + Math.sin(a) * px * 0.3, 1, 0.9); }
   if (m.twinkle && ((t * 0.8 + ph) % 1) < 0.18) drawSparkle(ctx, cx + px * 0.32, cy - px * 0.3, 2, 1, '#fff6a0');
-  if (m.pulse) { const q = (t * 0.8 + ph * 0.2) % 1; ctx.strokeStyle = rgba('#9ff6ff', 1 - q); ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx, cy, 2 + q * px * 0.55, 0, TAU); ctx.stroke(); }
+  if (m.pulse) { const q = (t * 0.8 + ph * 0.2) % 1, rr = 2 + q * px * 0.5; for (let i = 0; i < 4; i++) { const a = i * 1.571 + 0.785 + ph; drawSparkle(ctx, cx + Math.cos(a) * rr, cy + Math.sin(a) * rr, q < 0.5 ? 2 : 1, 1 - q); } } // [phase8:ui] twinkles, no ring
   if (m.flicker && Math.sin(t * 23 + ph) > 0.8) drawSparkle(ctx, cx + px * 0.3, cy + px * 0.25, 1, 1, '#fff6a0');
 }
 

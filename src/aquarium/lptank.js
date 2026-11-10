@@ -269,7 +269,7 @@ function cubeTank(g, fx, kit, T, gl, tier) {
     const ps = S * (0.8 + lv * 0.05), py = H + S * 0.3;
     fx.slab(-ps / 2, py, -ps / 2, ps / 2, py + S * 0.03, ps / 2, ps * 0.12, { top: WHITE, side: CHROME, bottom: '#e4eef6' });
     fx.slab(-ps * 0.3, py + S * 0.03, -ps * 0.3, ps * 0.3, py + S * 0.045, ps * 0.3, ps * 0.08, '#eef5fb');
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) fx.tube([[sx * ps * 0.4, py + S * 0.03, sz * ps * 0.4], [sx * ps * 0.4, 260, sz * ps * 0.4]], 0.12, 4, SILVER);
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.tube([[sx * ps * 0.4, py + S * 0.03, sz * ps * 0.4], [sx * ps * 0.4, 260, sz * ps * 0.4]], 0.1, 5, SILVER); // fine chrome wires (not voxels)
     lg.slab(-ps / 2 + ps * 0.07, py - 0.05, -ps / 2 + ps * 0.07, ps / 2 - ps * 0.07, py + 0.02, ps / 2 - ps * 0.07, ps * 0.09, '#ffffff');
     ring.slab(-ps / 2 - 0.15, py + S * 0.01, -ps / 2 - 0.15, ps / 2 + 0.15, py + S * 0.02, ps / 2 + 0.15, ps * 0.12, '#ffffff');
     if (lv >= 3) for (const sx of [-1, 1]) { fx.push(); fx.at(sx * ps * 0.55, py, 0); fx.sphere(S * 0.025, 1, CHROME, { smooth: true }); fx.pop(); lg.push(); lg.at(sx * ps * 0.55, py - S * 0.02, 0); lg.sphere(S * 0.015, 0, '#ffffff'); lg.pop(); }

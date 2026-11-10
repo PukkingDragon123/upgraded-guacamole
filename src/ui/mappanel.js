@@ -22,6 +22,7 @@ import { SKILLS } from '../game/skills.js';
 import { LAB_BY_ID, ROOT_ID, nodeFor, labStatus, labCheck, labProgress, fishLabel } from '../game/lab.js';
 import { ITEMS } from '../build/items.js';
 import { SPECIES } from '../fish/species.js';
+import { mapDestInput, drawMapDests, drawDestCard } from '../world/destinations.js'; // [phase8:prog] Lab island + Workshop dock on the map
 
 const DEG = Math.PI / 180;
 
@@ -1602,6 +1603,7 @@ export class MapPanel {
     const g = this.game;
     this.t = 0;
     this.sel = (data && LOC_BY_ID[data]) ? data : this.current();
+    this.destSel = data?.dest || (typeof data === 'string' && (data === 'lab' || data === 'workshop') ? data : null); // [phase8:prog] ui.open('map', {dest})
     this.hover = null;
     this.drag = null;
     this.sail = null;
@@ -1707,6 +1709,7 @@ export class MapPanel {
     ctx.drawImage(backdrop(view.w, view.h, night), view.x, view.y);
 
     // ------------------------------------------------ input: hover, drag-rotate, click-select, wheel
+    try { mapDestInput(this, Lay, ui); } catch (e) { if (!this.destErr) { this.destErr = true; console.error(e); } } // [phase8:prog] destinations first
     const inView = ui.hover(view) && !this.sail;
     if (this.drag) {
       if (!inp.down) {
@@ -1755,13 +1758,16 @@ export class MapPanel {
     this.drawBoat(ctx, bk, ox, oy, t, dt, reduced);
     this.drawRuler(ctx, bk, ox, oy);
     this.drawPins(ctx, bk, ox, oy, t, reduced, cur);
+    try { drawMapDests(this, ctx, Lay, t); } catch (e) { if (!this.destDrawErr) { this.destDrawErr = true; console.error(e); } } // [phase8:prog]
     this.drawControls(ctx, ui, Lay);
     ctx.restore();
 
     // ------------------------------------------------ title + card + close
     this.drawBanner(ctx, view.x + view.w / 2, r.y + 3, 'World Map');
     this.listHover = null;
-    this.drawCard(ctx, ui, card, LOC_BY_ID[focus] || LOC_BY_ID[cur], t);
+    let destCard = false;
+    try { destCard = drawDestCard(this, ctx, ui, card, t); } catch (e) { destCard = false; } // [phase8:prog] a destination's card
+    if (!destCard) this.drawCard(ctx, ui, card, LOC_BY_ID[focus] || LOC_BY_ID[cur], t);
     FR.finish();
     if (ui.button(ctx, FR.close.x, FR.close.y, FR.close.w, FR.close.h, '', { icon: 'cross', tip: 'Close (Esc)' })) ui.close(this.id);
     if (!this.sail && this.sel && (inp.keyPressed?.('Enter'))) this.trySail(LOC_BY_ID[this.sel]);
@@ -1780,6 +1786,7 @@ export class MapPanel {
   }
 
   select(id) {
+    this.destSel = null; // [phase8:prog]
     if (this.sel !== id) { this.sel = id; this.game.audio.play('ui_click'); }
   }
 
@@ -2219,7 +2226,7 @@ export class MapPanel {
       const rare = SPECIES.filter((s) => s.biome === L.id && s.spawn?.weather);
       if (rare.length) {
         const txt = 'RARE: ' + rare.slice(0, 3).map((s) => `${st.journal?.[s.id]?.caught ? s.name : '???'} (${(WEATHER[s.spawn.weather] || ['', s.spawn.weather])[1]})`).join(', ');
-        wrapText(txt.toUpperCase(), w, 'small').slice(0, 2).forEach((l, i) => drawText(ctx, l, x, y + i * 7, { font: 'small', color: RED }));
+        wrapText(txt.toUpperCase(), w, 'small').slice(0, 2).forEach((l, i) => drawText(ctx, l, x, y + i * 9, { font: 'small', color: RED }) /* [phase8:ui] bigger small text */);
         y += 16;
       }
     }

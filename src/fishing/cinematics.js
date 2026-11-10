@@ -198,6 +198,9 @@ export class Titles {
       fx.confetti(W + 4, H * 0.55, 30, { dir: -Math.PI + 1.0, spread: 0.35, speed: [220, 380] });
       fx.lightStreaks(W * 0.5, cy, 22, { colors: ['#ffffff', '#bff8ff', '#e2ffb0'] });
       fx.stars(W * 0.5, cy, 24, { speed: [80, 220], g: 40, w: 90, h: 10 });
+      fx.hearts?.(W * 0.5, cy, 8, { speed: [80, 200], w: 40 }); // [phase8:ui] cute pixel hearts + scales + ribbons
+      fx.pixelBurst?.('scale', W * 0.5, cy, 14, { speed: [100, 240], w: 30 });
+      fx.pixelBurst?.('ribbon', W * 0.5, cy, 12, { speed: [120, 280], w: 50 });
       fx.ringWave(W * 0.5, cy + 10, 170, '#bff8ff', { life: 0.7, w: 5 });
       fx.ringWave(W * 0.5, cy + 10, 120, '#ffffff', { life: 0.5, w: 3, delay: 0.08 });
       fx.lensFlare(W * 0.28, cy - 40, { cx: W / 2, cy: H / 2, life: 1.8, scale: 1.3 });

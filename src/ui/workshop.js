@@ -56,7 +56,7 @@ export class WorkshopPanel {
     this.sel = null;
     this.t = 0;
     this.fx = new PixFx(300);
-    this.anim = null;
+    this.hammer = null;
     this.scroll = 0;
   }
 
@@ -144,9 +144,9 @@ export class WorkshopPanel {
       ctx.drawImage(aeroCached(`wstab|${r.w}|${r.h}|${tone}`, () => aeroSurface(r.w, r.h, { tone, r: 9, gloss: 0.7, glossH: Math.round(r.h * 0.42), rim: 0.9, glow: act ? 0.7 : 0.4 })), r.x, r.y);
       const ic = pixIcon(cat.icon, 2);
       if (ic) { const bob = act ? Math.round(Math.sin(t * 4) * 1.5) : 0; ctx.drawImage(ic, Math.round(r.x + r.w / 2 - ic.width / 2), Math.round(r.y + r.h / 2 - ic.height / 2) - 4 + bob); }
-      let lbl = cat.name.split(' ')[0];
+      const lbl = cat.short || cat.name;
       drawText(ctx, lbl, r.x + r.w / 2, r.y + r.h - 11, { font: 'small', align: 'center', color: act ? '#ffffff' : INK, shadow: act ? '#7a2a06' : null });
-      const n = recipesFor(st, cat.id).filter((rc) => wsUnlocked(st, rc) && wsCheck(st, rc).ok).length;
+      const n = recipesFor(st, cat.id).filter((rc) => !st.workshop.seen[rc.id] && wsUnlocked(st, rc) && wsCheck(st, rc).ok).length;
       if (n) drawAeroBadge(ctx, r.x + r.w + 2, r.y - 2, n, t);
       if (hov) ui.tip = cat.name;
       if (ui.clicked(r) && !act) { this.cat = cat.id; this.sel = this.firstOf(cat.id); this.scroll = 0; this.game.audio.play('ui_tab'); }
@@ -335,7 +335,7 @@ export class WorkshopPanel {
       wrapText(chk.reason, w, 'small').slice(0, 2).forEach((l, i) => drawText(ctx, l, x + w / 2, btnY - 18 + i * 8, { font: 'small', align: 'center', color: BAD }));
     } else {
       const label = chk.ok ? (rc.time ? `Craft (${fmtT(rc.time)})` : 'Craft!') : chk.reason;
-      const busy = this.anim && this.anim.t < 0.9;
+      const busy = this.hammer && this.hammer.t < 0.9;
       if (ui.button(ctx, bx, btnY, bw, bh, label, { style: chk.ok ? 'green' : 'grey', icon: chk.ok ? 'star' : null, disabled: !chk.ok || busy, sound: 'ui_buy', tip: chk.ok ? 'Hammer it together!' : chk.reason })) this.doCraft(rc);
     }
   }
@@ -404,7 +404,7 @@ export class WorkshopPanel {
   }
 
   drawAnvil(ctx, x, y, w, h, rc, dt) {
-    const t = this.t, A = this.anim;
+    const t = this.t, A = this.hammer;
     const anvil = pixIcon('anvil', 2);
     const ax = Math.round(x + w / 2 - (anvil?.width || 40) / 2), ay = y + h - (anvil?.height || 28) - 6;
     // Marina watching from the side
@@ -419,7 +419,7 @@ export class WorkshopPanel {
     ctx.translate(cx, cy);
     const sq = hammering ? 1 - Math.max(0, Math.sin(A.t * 3 * TAU)) * 0.12 : pop;
     ctx.scale(hammering ? 1 + (1 - sq) : sq, sq);
-    drawRef(ctx, ref, 0, 0, 52, t);
+    drawRef(ctx, ref, 0, 0, 64, t);
     ctx.restore();
     // the hammer swings three times, sparks on each strike
     if (A) {
@@ -428,12 +428,12 @@ export class WorkshopPanel {
       if (hammering && ham) {
         const ph = (A.t * 3) % 1;
         const ang = ph < 0.55 ? -1.1 + ph * 0.6 : -0.8 + ((ph - 0.55) / 0.45) * 1.25;
-        ctx.save(); ctx.translate(cx + 40, cy + 14); ctx.rotate(ang); ctx.drawImage(ham, -ham.width + 6, -ham.height + 8); ctx.restore();
+        ctx.save(); ctx.translate(cx + 54, cy + 16); ctx.rotate(ang); ctx.drawImage(ham, -ham.width + 6, -ham.height + 8); ctx.restore();
         const strike = Math.floor(A.t * 3 - 0.98);
         if (strike >= 0 && strike !== A.last) {
           A.last = strike;
           this.fx.burst(cx + 10, cy + 10, 14, { kinds: ['spark', 'spark', 'star'], colors: ['#ffe27a', '#ffffff', '#ff9d2e'], speed: 220, speedMin: 60, g: 500, life: 0.6, up: 120, scale: 2 });
-          this.game.audio.play('rim', { vol: 0.5, pitch: 1 + strike * 0.12 });
+          this.game.audio.play('click', { vol: 0.6, pitch: 0.7 + strike * 0.15 }); this.game.audio.play('coin_bounce', { vol: 0.3, pitch: 0.6 });
           this.game.particles?.pixelBurst?.('spark', cx + 10, cy + 10, 6);
         }
       }
@@ -446,7 +446,7 @@ export class WorkshopPanel {
         const txt = A.queued ? 'On the bench!' : 'Crafted!';
         drawText(ctx, txt, cx, y + 8, { font: 'big', align: 'center', color: '#ffffff', shadow: '#0a3e74', outline: 'rgba(10,62,116,0.5)' });
       }
-      if (A.t > 2.4) this.anim = null;
+      if (A.t > 2.4) this.hammer = null;
     } else if (Math.random() < 0.04) this.fx.add({ x: cx + (Math.random() - 0.5) * 50, y: cy + (Math.random() - 0.5) * 30, vx: 0, vy: -10, g: 0, life: 0.8, kind: 'sparkle', color: '#ffffff' });
   }
 
@@ -454,12 +454,12 @@ export class WorkshopPanel {
     const g = this.game;
     const res = wsCraft(g, rc.id);
     if (!res.ok) { g.audio.play('ui_error'); g.toast?.(res.reason || 'Cannot craft that yet.', 'lock'); return; }
-    this.anim = { t: 0, icon: rc.icon, queued: !!res.queued, last: -1 };
+    this.hammer = { t: 0, icon: rc.icon, queued: !!res.queued, last: -1 };
     if (!res.queued) this.celebrate(rc, true);
   }
   celebrate(rc, quiet = false) {
     if (!rc) return;
-    if (!quiet) this.anim = { t: 0.9, icon: rc.icon, queued: false, last: 5 };
+    if (!quiet) this.hammer = { t: 0.9, icon: rc.icon, queued: false, last: 5 };
     const o = rc.out || {};
     if (o.type === 'rod') this.game.toast?.(`New rod: ${ROD_BY_ID[o.id]?.name}! Equipped.`, 'star');
   }

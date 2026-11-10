@@ -61,8 +61,11 @@ export class ChestPanel {
   stage() {
     const W = this.game.screen.W, H = this.game.screen.H;
     const p = this.parts;
-    const cx = Math.round(W / 2), gy = Math.round(H * 0.6);
-    return { W, H, cx, gy, x: cx - p.ox, y: gy - p.oy, w: p.w, h: p.h };
+    const cx = Math.round(W / 2);
+    const lift = this.phase === 'loot' ? ease.inOutCubic(clamp01(this.pt / 0.6)) : 0;
+    const gy = Math.round(H * 0.58 - lift * 74);
+    const hudTop = Math.min(H, this.game.hud?.topY?.() ?? H);
+    return { W, H, cx, gy, gy0: Math.round(H * 0.58), x: cx - p.ox, y: gy - p.oy, w: p.w, h: p.h, hudTop, k: 1 - lift * 0.22 };
   }
   // the chest's front face in screen space (where weak points and cracks live)
   face() {
@@ -151,6 +154,7 @@ export class ChestPanel {
     this.phase = 'loot';
     this.pt = 0;
     this.flash = 1;
+    this.cracks = [];
     const p = this.parts;
     const lidY = s.y + (p.lidAt?.[1] ?? s.h * 0.3);
     this.lid = { x: 0, y: 0, vx: (Math.random() - 0.5) * 120, vy: -520, rot: 0, vr: (Math.random() - 0.5) * 7 };
@@ -162,13 +166,13 @@ export class ChestPanel {
     g.particles?.pixelBurst?.('confetti', s.cx, lidY, 30);
     // the loot flies out and lands in slots
     const list = this.loot || [];
-    const n = list.length, per = Math.min(n, 7), rows = Math.ceil(n / per);
-    const SW = 78, SH = 86;
-    const y0 = s.H - 40 - rows * (SH + 8);
+    const n = list.length, per = Math.min(n, 9), rows = Math.ceil(n / per);
+    const SW = 76, SH = 84;
+    const y0 = s.hudTop - 48 - rows * (SH + 6) + 6;
     this.cards = list.map((e, i) => {
       const row = Math.floor(i / per), inRow = Math.min(per, n - row * per), col2 = i % per;
-      const x = Math.round(s.W / 2 - (inRow * (SW + 8) - 8) / 2 + col2 * (SW + 8));
-      return { ...e, x, y: y0 + row * (SH + 8), w: SW, h: SH, t: -0.25 - i * 0.16, sx: s.cx + (Math.random() - 0.5) * 30, sy: lidY, rev: false, rarity: e.id === 'coins' ? 'common' : ITEMS[e.id]?.rarity || 'common' };
+      const x = Math.round(s.W / 2 - (inRow * (SW + 6) - 6) / 2 + col2 * (SW + 6));
+      return { ...e, x, y: y0 + row * (SH + 6), w: SW, h: SH, t: -0.25 - i * 0.16, sx: s.cx + (Math.random() - 0.5) * 30, sy: lidY, rev: false, rarity: e.id === 'coins' ? 'common' : ITEMS[e.id]?.rarity || 'common' };
     });
   }
 
@@ -209,16 +213,16 @@ export class ChestPanel {
     }
 
     // ---- the chest
-    this.drawChest(ctx, s, reduced);
+    this.drawChest(ctx, s, reduced, dt);
     if (this.phase === 'play') this.drawGame(ctx, ui, s);
     this.fx.draw(ctx);
 
     // ---- header: name + hint + progress
     const title = this.C.name;
-    drawText(ctx, title, s.cx, 26, { font: 'big', scale: 2, align: 'center', color: '#ffffff', shadow: '#0a3e74', outline: 'rgba(10,62,116,0.55)' });
+    drawText(ctx, title, s.cx, this.phase === 'loot' ? 44 : 96, { font: 'big', scale: 2, align: 'center', color: '#ffffff', shadow: '#0a3e74', outline: 'rgba(10,62,116,0.55)' });
     if (this.phase === 'play' || this.phase === 'intro') {
-      drawText(ctx, this.C.hint, s.cx, 62, { font: 'big', align: 'center', color: '#fff6c0', shadow: '#0a3e74' });
-      this.drawCrackMeter(ctx, s.cx - 110, 80, 220, 14);
+      drawText(ctx, this.C.hint, s.cx, 120, { font: 'big', align: 'center', color: '#fff6c0', shadow: '#0a3e74' });
+      this.drawCrackMeter(ctx, s.cx - 110, 136, 220, 14);
     }
     for (const p of this.popText) {
       const k = p.t;
@@ -229,13 +233,15 @@ export class ChestPanel {
     if (this.phase === 'loot') this.drawLoot(ctx, ui, s, dt);
     if (this.flash > 0) { ctx.fillStyle = rgba('#ffffff', this.flash * 0.8); ctx.fillRect(0, 0, s.W, s.H); }
     // leave (keeps the chest if it is still closed)
-    if (this.phase !== 'loot' && this.phase !== 'burst' && ui.button(ctx, s.W - 34, 10, 24, 24, '', { icon: 'cross', tip: 'Later (Esc)' })) ui.close(this.id);
+    if (this.phase !== 'loot' && this.phase !== 'burst' && ui.button(ctx, s.W - 34, 44, 24, 24, '', { icon: 'cross', tip: 'Later (Esc)' })) ui.close(this.id);
     void inp;
   }
 
   drawStage(ctx, s) {
     // soft spotlight + pixel rays behind the chest
     const C = this.C, t = this.t;
+    ctx.fillStyle = 'rgba(3,22,46,0.55)';
+    ctx.fillRect(0, 0, s.W, s.H);
     drawAeroGlow(ctx, s.cx, s.gy - s.h * 0.45, Math.round(s.h * 1.25), C.glow, 0.35 + this.prog * 0.3);
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
@@ -251,19 +257,20 @@ export class ChestPanel {
     ctx.restore();
     // pedestal: a chunky glossy pixel plinth
     const pw = Math.round(s.w * 1.25), ph = 18;
-    ctx.drawImage(aeroCached(`chestped|${pw}`, () => aeroSurface(pw, ph, { tone: 'glass', r: 8, gloss: 0.7, glossH: 7, rim: 0.9, glow: 0.6, sparkle: 2 })), s.cx - Math.round(pw / 2), s.gy - 6);
+    ctx.drawImage(aeroCached(`chestped|${pw}`, () => aeroSurface(pw, ph, { tone: 'glass', r: 8, gloss: 0.7, glossH: 7, rim: 0.9, glow: 0.6, sparkle: 2 })), s.cx - Math.round(pw / 2), s.gy0 - 6);
     ctx.fillStyle = 'rgba(6,30,60,0.35)';
-    for (let i = 0; i < 6; i++) { const hw = Math.round(s.w * 0.42 * Math.sqrt(1 - (i / 6) ** 2)); ctx.fillRect(s.cx - hw, s.gy - 3 + i, hw * 2, 1); }
+    const sk = 1 - (s.gy0 - s.gy) / 150;
+    for (let i = 0; i < 6; i++) { const hw = Math.round(s.w * 0.42 * sk * Math.sqrt(1 - (i / 6) ** 2)); ctx.fillRect(s.cx - hw, s.gy0 - 3 + i, hw * 2, 1); }
   }
 
-  drawChest(ctx, s, reduced) {
+  drawChest(ctx, s, reduced, dt = 1 / 60) {
     const p = this.parts, C = this.C, t = this.t;
     if (!p) return;
     const sh = reduced ? 0 : this.shake;
     const jx = Math.round((Math.random() - 0.5) * sh * 8), jy = Math.round((Math.random() - 0.5) * sh * 4);
     const intro = this.phase === 'intro' ? ease.outBack(clamp01(this.pt / 0.55)) : 1;
     const sq = ease.outQuad(this.squash);
-    const sx = (1 + sq * 0.08) * intro, sy = (1 - sq * 0.07) * intro;
+    const sx = (1 + sq * 0.08) * intro * s.k, sy = (1 - sq * 0.07) * intro * s.k;
     const bob = this.phase === 'play' && !reduced ? Math.round(Math.sin(t * 2.2) * 2) : 0;
     ctx.save();
     ctx.translate(s.cx + jx, s.gy + jy + bob);
@@ -289,7 +296,6 @@ export class ChestPanel {
       ctx.drawImage(p.lid, x0 + lx, y0 - lift);
     } else if (this.lid) {
       const L = this.lid;
-      const dt = 1 / 60;
       L.vy += 1100 * dt; L.x += L.vx * dt; L.y += L.vy * dt; L.rot += L.vr * dt;
       if (L.y < 600) {
         ctx.save();
@@ -537,10 +543,10 @@ export class ChestPanel {
     }
     if (allIn && !this.flyers.length && this.pt > 0.8) {
       const left = (inventory(g.state).packages || []).length;
-      const bw = 170, bh = 34, by = s.H - 40 + 2;
+      const bw = 170, bh = 32, by = s.hudTop - 36;
       const bx = left ? s.cx - bw - 6 : s.cx - bw / 2;
-      if (ui.button(ctx, bx, by - 4, bw, bh, 'Collect!', { style: 'green', icon: 'check', sound: 'ui_buy' }) || ui.inp.keyPressed?.('Enter')) this.collect(false);
-      if (left && ui.button(ctx, s.cx + 6, by - 4, bw, bh, `Open next (${left})`, { style: 'orange', icon: 'star' })) this.collect(true);
+      if (ui.button(ctx, bx, by, bw, bh, 'Collect!', { style: 'green', icon: 'check', sound: 'ui_buy' }) || ui.inp.keyPressed?.('Enter')) this.collect(false);
+      if (left && ui.button(ctx, s.cx + 6, by, bw, bh, `Open next (${left})`, { style: 'orange', icon: 'star' })) this.collect(true);
     }
   }
 

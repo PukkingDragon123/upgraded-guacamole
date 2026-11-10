@@ -1,5 +1,6 @@
-// RETIRED (phase 6): fish and sea creatures are LOW-POLY 3D models now (src/fish/lowpolyfish.js on the shared
-// WebGL2 renderer src/gfx/lowpoly.js). This module only keeps the old voxel-fish entry points as thin wrappers so
+// Phase 8: fish and sea creatures are voxel models again, built by voxelising the anatomical pose meshes of
+// src/fish/lowpolyfish.js (src/fish/voxelize.js) and rendered on the shared WebGL2 renderer src/gfx/lowpoly.js.
+// This module only keeps the old voxel-fish entry points as thin wrappers so
 // existing callers (aquarium, dev pages) keep working:
 //   drawVoxelFish(ctx, fish, {scale, glow, alpha}) -> anchors      (aquarium fish objects, via drawFishRig)
 //   warmVoxelFish(c, scale), setVoxelFishBudget(ms), beginVoxelFishFrame(), voxelFishStats(), setVoxelSync(on),

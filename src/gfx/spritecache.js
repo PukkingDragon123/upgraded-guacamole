@@ -1,4 +1,5 @@
-// Compiled creature looks (memoised) and an LRU cache of baked whole-creature frames (phase 6: low-poly sprites).
+// Compiled creature looks (memoised) and an LRU cache of baked whole-creature frames (phase 8: voxel sprites from
+// src/fish/lowpolyfish.js + src/fish/voxelize.js).
 
 import { compileLook } from './fishart.js';
 import { lpFrame, LP_SWIM } from '../fish/lowpolyfish.js';

@@ -28,11 +28,11 @@ import { CHAPTERS, QUEST_BY_ID } from '../game/quests.js';
 export const WS_CATS = [
   { id: 'rods', name: 'Rods', icon: 'cat_rods' },
   { id: 'tackle', name: 'Tackle', icon: 'cat_tackle' },
-  { id: 'upgrade', name: 'Rod Upgrades', icon: 'cat_upgrade' },
+  { id: 'upgrade', name: 'Rod Upgrades', short: 'Upgrade', icon: 'cat_upgrade' },
   { id: 'bait', name: 'Bait', icon: 'cat_bait' },
   { id: 'decor', name: 'Decor', icon: 'cat_decor' },
-  { id: 'boat', name: 'Boat Parts', icon: 'cat_boat' },
-  { id: 'tank', name: 'Tank Gear', icon: 'cat_tank' },
+  { id: 'boat', name: 'Boat Parts', short: 'Boat', icon: 'cat_boat' },
+  { id: 'tank', name: 'Tank Gear', short: 'Tank', icon: 'cat_tank' },
   { id: 'build', name: 'Buildings', icon: 'cat_build' },
 ];
 
@@ -60,7 +60,7 @@ const add = (o) => STATIC.push({ time: 0, desc: '', req: [{ starter: true }], ..
 // ---- rods (crafted rods each have a perk; see rods.js PERKS)
 const ROD_RECIPES = {
   duck: { aero: 40, items: { driftwood: 4, kelp_fibre: 2, fish_scale: 3 }, time: 20, req: [{ starter: true }] },
-  clover: { aero: 120, items: { clover_leaf: 3, kelp_fibre: 4, fish_scale: 4 }, time: 45, req: [{ lab: 'luck1' }, { ch: 2 }] },
+  clover: { aero: 120, items: { clover_leaf: 3, kelp_fibre: 4, fish_scale: 4 }, time: 45, req: [{ lab: 'luck1' }, { ch: 1 }] },
   frost: { aero: 260, items: { ice_shard: 4, sea_glass: 3, fin_ribbon: 2 }, time: 75, req: [{ ch: 2 }] },
   magnet: { aero: 300, items: { scrap_metal: 6, spring_coil: 2, gear: 1 }, time: 90, req: [{ lab: 'boat_magnet' }, { ch: 3 }] },
   sakura: { aero: 450, items: { coral_chunk: 3, fin_ribbon: 3, pearl: 1 }, time: 120, req: [{ lab: 'craft_decor1' }, { ch: 3 }] },

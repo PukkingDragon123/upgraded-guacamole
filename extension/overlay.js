@@ -393,7 +393,12 @@
     if (font.upper) ch = ch.toUpperCase();
     return font.glyphs.get(ch) || (ch === " " ? null : font.glyphs.get("?"));
   }
+  function faceOf(name = "normal") {
+    return bump && name === "small" ? "normal" : name;
+  }
   function measureText(text, fontName = "normal", scale = 1) {
+    text = upper(fontName, text);
+    fontName = faceOf(fontName);
     const font = FONTS[fontName];
     let w = 0, maxW = 0;
     for (const t of tokenize(String(text))) {
@@ -450,8 +455,8 @@
     }
   }
   function drawText(ctx2, text, x, y, opts = {}) {
-    text = String(text);
-    const font = FONTS[opts.font || "normal"];
+    text = upper(opts.font, String(text));
+    const font = FONTS[faceOf(opts.font || "normal")];
     const scale = opts.scale || 1;
     const color = opts.color || "#ffffff";
     if (opts.align && opts.align !== "left") {
@@ -469,7 +474,7 @@
     if (opts.shadow) blit(ctx2, text, x + scale, y + scale, font, opts.shadow, scale, opts.wave, time, false);
     blit(ctx2, text, x, y, font, color, scale, opts.wave, time);
   }
-  var NORMAL_DEF, SMALL_DEF, BIG_OVERRIDES, BIG_DEF, FONTS, inlineIcons;
+  var NORMAL_DEF, SMALL_DEF, BIG_OVERRIDES, BIG_DEF, FONTS, inlineIcons, bump, upper;
   var init_font = __esm({
     "src/gfx/font.js"() {
       init_canvas();
@@ -675,6 +680,8 @@
         // [phase6:ui]
       };
       inlineIcons = /* @__PURE__ */ new Map();
+      bump = true;
+      upper = (name, text) => bump && name === "small" ? String(text).replace(/\{[^}]*\}|[^{]+/g, (m) => m[0] === "{" ? m : m.toUpperCase()) : text;
     }
   });
 
@@ -4547,9 +4554,9 @@ void main() {
         const sol = new Solid();
         const C2 = S9.col;
         const o3 = [0, 0, 0];
-        const top = hexRGB(C2.back), side = hexRGB(C2.flank), under = hexRGB(C2.belly), bump = hexRGB(C2.spots || C2.flank);
+        const top = hexRGB(C2.back), side = hexRGB(C2.flank), under = hexRGB(C2.belly), bump2 = hexRGB(C2.spots || C2.flank);
         const R2 = L2 * 0.5;
-        sol.ell([0, 0, 0], [R2 * 0.3, R2 * 0.3, L2 * 0.09], { col: (q, x, y, z, ix, iy, iz) => packRGB2(q[2] < -0.2 ? under : hash2(ix * 3, iy * 5 + iz, 2) > 0.78 ? bump : mix3(o3, side, top, smoothstep(-0.2, 0.6, q[2]))) });
+        sol.ell([0, 0, 0], [R2 * 0.3, R2 * 0.3, L2 * 0.09], { col: (q, x, y, z, ix, iy, iz) => packRGB2(q[2] < -0.2 ? under : hash2(ix * 3, iy * 5 + iz, 2) > 0.78 ? bump2 : mix3(o3, side, top, smoothstep(-0.2, 0.6, q[2]))) });
         for (let i = 0; i < 5; i++) {
           const a = Math.PI / 2 + i / 5 * TAU2;
           const curl = 0.08 * Math.sin(TAU2 * ph + i * 1.3);
@@ -4563,7 +4570,7 @@ void main() {
               const up = (z - pts[0][2]) / (L2 * 0.1);
               if (up < -0.35) return packRGB2(under);
               mix3(o3, side, top, smoothstep(-0.1, 0.5, q[3] * 0 + up));
-              if (hash2(ix * 3 + iz, iy * 5, 2) > 0.8) mix3(o3, o3, bump, 0.9);
+              if (hash2(ix * 3 + iz, iy * 5, 2) > 0.8) mix3(o3, o3, bump2, 0.9);
               return packRGB2(o3);
             }
           });
@@ -7692,9 +7699,9 @@ void main() {
               let armHit = false;
               for (let i = 0; i < n2; i++) {
                 const xi = ((i + 0.5) / n2 * 2 - 1) * L2 * 0.5 + Math.sin(ph * TAU + i) * L2 * 0.03;
-                const bump = Math.max(0, 1 - Math.abs(dx - xi) / (L2 * 0.08));
-                edge = Math.max(edge, 0.62 + 0.38 * bump);
-                if (bump > 0.55) armHit = true;
+                const bump2 = Math.max(0, 1 - Math.abs(dx - xi) / (L2 * 0.08));
+                edge = Math.max(edge, 0.62 + 0.38 * bump2);
+                if (bump2 > 0.55) armHit = true;
               }
               if (t > edge) continue;
               let col = rampPick(F, clamp01(0.5 - t * 0.25 - dx / L2 * 0.2 + (armHit ? 0.08 : -0.06)), x, y);
@@ -16752,9 +16759,8 @@ kmlmk..
     const p = new Pix(S6, S6);
     const shaft2 = look.shaft || "#b88a52", grip = look.grip || "#7a5432", reel = look.reel || "#c8c8c8", tip = look.tip || "#ffffff";
     const kind = look.kind || "stick";
-    for (let y = 4; y < 13; y++) p.set(14 + (y > 9 ? 0 : 0), y, "#e8f4ff");
-    HOOK2(p, 13, 12, "#c8d2e0");
-    p.set(13, 12, null).set(14, 12, "#c8d2e0");
+    for (let y = 4; y < 12; y++) p.thin(14, y, "rgba(232,244,255,0.85)");
+    p.thin(14, 12, "#c8d2e0").thin(14, 13, "#c8d2e0").thin(13, 14, "#c8d2e0").thin(12, 13, "#c8d2e0");
     p.bar(2, 14, 13, 3, kind === "stick" ? 1 : 0.8, shaft2);
     if (kind === "stick") {
       p.set(6, 10, shade(shaft2, -0.35)).set(9, 7, shade(shaft2, -0.35));
@@ -16912,6 +16918,13 @@ kmlmk..
           this.noOutline.add(y * this.w + x);
           return this;
         }
+        thin(x, y, col) {
+          if (this.in(x, y)) {
+            this.set(x, y, col);
+            this.noOutline.add(y * this.w + x);
+          }
+          return this;
+        }
         outline(col = null) {
           const add7 = [];
           for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) {
@@ -16919,7 +16932,7 @@ kmlmk..
             let n2 = null;
             for (const [ax, ay] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
               const q = this.get(x + ax, y + ay);
-              if (q) {
+              if (q && !this.noOutline.has((y + ay) * this.w + x + ax)) {
                 n2 = q;
                 break;
               }
@@ -18487,7 +18500,7 @@ kmlmk..
       at("hat", hat, mul(seat, Tr(-hat.pivot[0], -hat.pivot[1], -hat.pivot[2])));
       hatTop = ap(seat, [0, hat.b.y1 + 1 - hat.pivot[1], 0]);
     }
-    const upper = kit.part("upper", () => buildUpper(kit)), fore = kit.part("fore", () => buildFore(kit));
+    const upper2 = kit.part("upper", () => buildUpper(kit)), fore = kit.part("fore", () => buildFore(kit));
     const gripLocal = sub(fore.anchors.grip, fore.pivot);
     const armFK = (shJ, sr, er) => {
       const Mu = mul(spine, mul(Tr(...shJ), Ro(sr)));
@@ -18501,7 +18514,7 @@ kmlmk..
       return { Mu: M(alignY(sub(Sw, E), fwd), Sw), Mf: M(alignY(sub(E, T3), fwd), E) };
     };
     const R2 = p.handR ? armIK(J.shR, toWorld(conv(p.handR, "shR")), -1) : armFK(J.shR, p.shR, p.elR);
-    at("upper", upper, place(upper, R2.Mu));
+    at("upper", upper2, place(upper2, R2.Mu));
     at("fore", fore, place(fore, R2.Mf));
     const gripR = ap(R2.Mf, gripLocal);
     let rod = null, Wr = null, rodTip = gripR;
@@ -18522,7 +18535,7 @@ kmlmk..
     else if (Array.isArray(target)) target = toWorld(conv(target, "shL"));
     else target = null;
     const Lh = target ? armIK(J.shL, target, 1) : armFK(J.shL, p.shL, p.elL);
-    at("upper", upper, place(upper, Lh.Mu));
+    at("upper", upper2, place(upper2, Lh.Mu));
     at("fore", fore, place(fore, Lh.Mf));
     const gripL = ap(Lh.Mf, gripLocal);
     const center = ap(Wh, head.anchors.center);
@@ -25840,6 +25853,19 @@ kmlmk..
           p.poly([[10, 17], [12, 15], [14, 17], [13, 22], [12, 19], [11, 22]], "ribbon", { bias: 0.2 });
           p.over(6, 7, P5.paper[4]);
           p.over(7, 7, P5.paper[4]);
+        },
+        icon_fishmgr(p) {
+          p.poly([[2, 9], [7, 13], [2, 18]], "egg", { bias: -0.1 });
+          p.ell(12.5, 13.5, 7.5, 5.5, "egg");
+          p.poly([[10, 8.5], [14, 6], [16, 9]], "egg", { bias: 0.3 });
+          p.ell(16, 12, 1.6, 1.6, "pearl", { bias: 0.8 });
+          p.put(16, 12, P5.chip[0]);
+          p.put(16, 11, P5.chip[0]);
+          p.line(17, 15, 18, 15, P5.egg[0]);
+          for (const [x, y] of [[9, 10], [10, 10], [9, 11]]) p.over(x, y, W2);
+          for (const x of [9, 11]) for (let y = 12; y < 17; y++) p.over(x, y, P5.egg[3]);
+          const hx = 19, hy = 4;
+          for (const [x, y] of [[0, 0], [1, 0], [3, 0], [4, 0], [-1, 1], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1], [5, 1], [-1, 2], [0, 2], [1, 2], [2, 2], [3, 2], [4, 2], [5, 2], [0, 3], [1, 3], [2, 3], [3, 3], [4, 3], [1, 4], [2, 4], [3, 4], [2, 5]]) p.put(hx - 2 + x, hy + y, x < 1 && y < 2 ? W2 : P5.coral[2]);
         }
       };
       PIXEL_ITEM_IDS = new Set(Object.keys(ART5));
@@ -27695,6 +27721,7 @@ kmlmk..
       init_aero();
       init_lowpoly();
       init_iconmeshes();
+      init_itempix();
       MENU_ICON_IDS = ["lab", "aquarium", "journal", "inventory", "wardrobe", "map", "bait", "appsea", "multiplayer", "settings", "quests", "shop", "coin"];
       BIG_ICON_IDS = [...MENU_ICON_IDS, "skills", "build", "research", "store", "boatyard", "mycomputer", "recycle"];
       lpDefs = /* @__PURE__ */ new Map();
@@ -31359,7 +31386,16 @@ kmlmk..
         fade: true,
         ...p
       };
-      if (q.kind === "ring" || q.kind === "ring2") return this.ringFx(q);
+      if (q.kind === "ring" || q.kind === "ring2") {
+        try {
+          return this.ringFx(q) || q;
+        } catch (e) {
+          console.warn("ringFx", e);
+          return q;
+        }
+      }
+      if (!(q.life > 0) || !Number.isFinite(q.life)) q.life = 0.5;
+      if (!Number.isFinite(q.x) || !Number.isFinite(q.y)) return q;
       q.max = q.life;
       if (q.delay) q.t = -q.delay;
       const cap = Math.max(16, Math.floor(this.max * this.limitScale));
@@ -31796,6 +31832,8 @@ kmlmk..
     }
     // Radial (or directed) burst of n hand-drawn sprites of one kind. See PXDEF for the per-kind defaults.
     pixelBurst(kind, x, y, n2 = 8, o = {}) {
+      n2 = Number.isFinite(n2) ? Math.min(200, Math.max(0, Math.round(n2))) : 8;
+      o = o && typeof o === "object" ? o : {};
       if (kind === "coin" || kind === "coins") return this.coins(x, y, n2, o);
       if (kind === "splash") return this.pixelSplash(x, y, o.power ?? Math.min(2, n2 / 8), o);
       const D = PXDEF[kind] || PXDEF.sparkle;
@@ -31829,6 +31867,7 @@ kmlmk..
     }
     // Comic impact: a spiky burst that pops into shards, plus sparkles and tiny stars. size 0 | 1 | 2.
     impact(x, y, size = 1, o = {}) {
+      size = size === 0 || size === 2 ? size : 1;
       const layer = o.layer || "fg", ramp3 = o.ramp || "gold";
       const q = this.pixel("impact", x, y, { ramp: ramp3, size, life: 0.3 + size * 0.04, layer, delay: o.delay });
       this.pixelBurst("sparkle", x, y, o.sparkles ?? 4 + size * 3, { layer, ramp: o.sparkRamp || ramp3, speed: [40 + size * 30, 90 + size * 60], delay: o.delay, stagger: false });
@@ -31843,6 +31882,7 @@ kmlmk..
     }
     // Water splash as pixel art: teardrop droplets, foam puffs and two wavelets scooting off on the surface.
     pixelSplash(x, y, power = 1, o = {}) {
+      if (!Number.isFinite(power)) power = 1;
       const layer = o.layer || "fg";
       this.pixelBurst("drop", x, y, Math.round(5 + 8 * power), { layer, ramp: o.ramp || "aqua", speed: [70 * (0.6 + power * 0.5), 180 * (0.6 + power * 0.5)], spread: 0.95 });
       this.pixelBurst("foam", x, y, Math.round(2 + 3 * power), { layer, w: 4 + power * 4, speed: [8, 30] });
@@ -31851,6 +31891,7 @@ kmlmk..
     }
     // Two pixel wave crests sliding left and right on the water line (replaces ripple rings).
     wavelets(x, y, power = 1, o = {}) {
+      if (!Number.isFinite(power)) power = 1;
       const layer = o.layer || "fg", sp = 14 + power * 16, d = o.spread ?? 2;
       for (const s of [-1, 1]) this.pixel("wave", x + s * d, y - 1, { ramp: o.ramp || "foam", vx: s * sp, drag: 1.4, life: 0.45 + power * 0.25, layer, delay: o.delay, flip: s < 0 });
     }
@@ -31865,6 +31906,7 @@ kmlmk..
     }
     // Party! confetti chips, ribbons, stars, hearts and sparkles.
     celebrate(x, y, power = 1, o = {}) {
+      if (!Number.isFinite(power)) power = 1;
       const layer = o.layer || "fg";
       this.pixelBurst("confetti", x, y, Math.round(18 * power), { layer, w: 10 * power });
       this.pixelBurst("ribbon", x, y, Math.round(6 * power), { layer, w: 8 * power });
@@ -31923,6 +31965,15 @@ kmlmk..
     }
     // Converts legacy ring adds into pixel effects (water rings -> wavelets, flat rings -> pops / impacts).
     ringFx(q) {
+      if (this._inRing) return null;
+      this._inRing = true;
+      try {
+        return this.ringFxInner(q);
+      } finally {
+        this._inRing = false;
+      }
+    }
+    ringFxInner(q) {
       const r = q.r1 ?? 12, layer = q.layer || "fg", flat = q.flat ?? 0.4;
       const nearWater = this.surfaceY !== null && layer !== "ui" && Math.abs(q.y - (this.waterAt(q.x) ?? q.y)) < 10;
       if (flat < 0.8 || nearWater) {
@@ -32072,7 +32123,8 @@ kmlmk..
             else if (p.anim === "loop") fi = Math.floor(p.t * p.fps + p.fr) % F.length;
             else if (p.anim === "twinkle") fi = Math.sin(p.t * 16 + p.ph) > 0.55 ? Math.min(1, F.length - 1) : 0;
             else fi = p.fr % F.length;
-            const c = F[fi];
+            const c = F[fi] || F[0];
+            if (!c) break;
             const w = c.width * p.sc, h = c.height * p.sc;
             if (p.flip && p.sheet !== "zap") {
               ctx2.save();
@@ -34947,6 +34999,9 @@ kmlmk..
         fx.confetti(W3 + 4, H * 0.55, 30, { dir: -Math.PI + 1, spread: 0.35, speed: [220, 380] });
         fx.lightStreaks(W3 * 0.5, cy, 22, { colors: ["#ffffff", "#bff8ff", "#e2ffb0"] });
         fx.stars(W3 * 0.5, cy, 24, { speed: [80, 220], g: 40, w: 90, h: 10 });
+        fx.hearts?.(W3 * 0.5, cy, 8, { speed: [80, 200], w: 40 });
+        fx.pixelBurst?.("scale", W3 * 0.5, cy, 14, { speed: [100, 240], w: 30 });
+        fx.pixelBurst?.("ribbon", W3 * 0.5, cy, 12, { speed: [120, 280], w: 50 });
         fx.ringWave(W3 * 0.5, cy + 10, 170, "#bff8ff", { life: 0.7, w: 5 });
         fx.ringWave(W3 * 0.5, cy + 10, 120, "#ffffff", { life: 0.5, w: 3, delay: 0.08 });
         fx.lensFlare(W3 * 0.28, cy - 40, { cx: W3 / 2, cy: H / 2, life: 1.8, scale: 1.3 });
@@ -37904,7 +37959,7 @@ kmlmk..
       this.dur = 3.2;
       const fx = F.fx;
       fx.aeroConfetti(x, y, 26, { speed: [80, 200] });
-      fx.ringWave(x, y, 40, "#bff8ff", { life: 0.5, w: 4 });
+      fx.chestOpen?.(x, y, tier === "golden" || tier === "orb" ? "epic" : tier === "iron" ? "rare" : "uncommon", { layer: "fg" });
       fx.lensFlare(x, y, { cx: F.W / 2, cy: F.H / 2, life: 1, scale: 0.8 });
       fx.coins(x, y, 8, { speed: [100, 200] });
     }

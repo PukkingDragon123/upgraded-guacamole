@@ -1,10 +1,13 @@
-// Bubbles, the guide (phase 6, Guide agent): a fat, cute bubble SEAL pup. An ORIGINAL design built as a LOW-POLY 3D
-// mesh with src/gfx/lowpoly.js: a chubby white body softly painted per vertex (cream belly, lavender back, grey eye
-// smudges, mottling), a big round head with puffy whisker cheeks and a glossy dark nose, paddle flippers; flat-shaded
-// facets with glossy Frutiger Aero highlights (specular, aqua rim, sky reflection, a pearly sheen). Big dark glossy
-// eyes, the talking mouth, whiskers and blush are drawn live on top (projected from the mesh), so blinking, gaze,
-// moods and lip-sync cost nothing. It rides a glossy soap bubble, blows bubbles, balances one on its nose and leaves
-// bubble trails.
+// Bubbles, the guide (phase 8, Creatures agent): a chubby PLUSH SEAL in high-resolution VOXEL art (after the user's
+// plush reference): an almost round, squishy loaf with no neck, soft grey-white fur dappled with darker grey spots, a
+// small flat face on the front (puffy muzzle pads, a tiny nose), tiny side flippers and a little tail flipper pair. Each
+// pose is modelled as a smooth painted mesh and then VOXELISED (src/fish/voxelize.js: fine voxels, soft baked AO) and
+// rendered with plush shading + a glossy Aero rim. The small dark eyes (with a sparkle), blush, the talking mouth,
+// whisker dots and moods are drawn live on top AT VOXEL RESOLUTION (a low-res layer scaled up crisp), so blinking,
+// gaze and lip-sync cost nothing. It is BOUNCY and JIGGLY: a per-seal squash spring (kicked by acceleration, landings,
+// animation changes and talking) squashes and stretches it about its bottom, and the frame is drawn in voxel rows with
+// a ripple travelling through the body and a belly wobble. A subtle soap bubble seat (ride) and a little bubble on its
+// nose remain optional extras.
 //
 // Frames are CACHED: every animation cycle is rendered once per size into one sprite sheet (lowpoly renderSheet: one
 // GL pass + one readback), at most one new sheet per frame (otherwise the nearest cached sheet stands in).
@@ -31,7 +34,7 @@ import { drawAeroBubble } from '../ui/aero.js';
 
 export const SEAL_INFO = {
   id: 'seal', name: 'Bubbles', role: 'Guide', color: '#bfefff', h: 56,
-  desc: 'A fat, fluffy bubble seal pup who rides soap bubbles and knows every fish in the sea (by smell).',
+  desc: 'A round, squishy, very jiggly seal pup who blows bubbles and knows every fish in the sea (by smell).',
 };
 
 // ------------------------------------------------------------------------------------------------ small math
@@ -53,26 +56,26 @@ const lit = (c, k) => [clamp01(c[0] * k), clamp01(c[1] * k), clamp01(c[2] * k)];
 // (phase 8) the chubby plush seal: soft grey-white fur dappled with grey spots, a cream belly and muzzle, slate flippers
 const C = {
   fur: rgb('#eef0f4'), furMid: rgb('#dfe2e9'), belly: rgb('#f8f7f3'), back: rgb('#d3d7df'),
-  spot: rgb('#a3a9b5'), spotD: rgb('#848b98'), muzzle: rgb('#fafaf7'), chin: rgb('#f1efea'),
+  spot: rgb('#8d95a5'), spotD: rgb('#646c7d'), muzzle: rgb('#fafaf7'), chin: rgb('#f1efea'),
   flip: rgb('#9aa1ad'), flipTip: rgb('#747b88'), nose: rgb('#2b2d35'), noseHi: rgb('#4c5060'),
 };
 // the look (lowpoly shader options): soft plush shading with a glossy Frutiger Aero rim and sky sheen
-const LOOK = { ambient: 0.6, spec: 0.32, shine: 22, rim: 0.5, rimColor: '#c4f2ff', env: 0.2, iri: 0.05, sky: '#f2fdff', ground: '#a8d4ee', light: [-0.42, 0.72, 0.75] };
+const LOOK = { ambient: 0.62, spec: 0.22, shine: 20, soft: 0.5, softColor: '#ffd8e0', rim: 0.45, rimColor: '#c4f2ff', env: 0.12, iri: 0.05, sky: '#f2fdff', ground: '#a8d4ee', light: [-0.42, 0.72, 0.75] };
 // voxel edge in model units (the body is ~2 units long: ~45 voxels nose to tail)
 export const SEAL_VOXEL = 0.043;
 
 // ------------------------------------------------------------------------------------------------ geometry
 // Model space: x forward (the face), y up, z toward the near (+z) side. One fat, almost round loaf (no neck): the face
 // sits on its front, tiny flippers under its sides and a small tail flipper pair at the back.
-const LOAF = { x0: -1.0, x1: 0.86, xc: -0.07, a: 0.93, hy: 0.6, hz: 0.64, cy: 0.42 };
+const LOAF = { x0: -0.94, x1: 0.84, xc: -0.05, a: 0.89, hy: 0.66, hz: 0.68, cy: 0.46 };
 const BODY_SEG = 26, BODY_ROWS = 28;
 const PIV = [-0.1, 0.0, 0];             // squash pivot (bottom centre)
 const HEADP = [0.12, 0.44, 0];          // the face region pivots here (no neck: a soft weighted twist)
-const HEAD_C = [0.6, 0.5, 0];           // "head" anchor (centre of the face region)
-const EYE_R = 0.075;
-const FACE = { eyeX: 0.735, eyeA: 0.86, eyeY: 0.035, nose: [0.885, 0.5, 0], mouth: [0.868, 0.365, 0], muzzle: [0.82, 0.43, 0.085], cheekX: 0.62, cheekA: 1.28, top: [0.28, 1.04, 0] };
-const SHOULDER = [0.3, 0.1, 0.5];
-const HIP = [-0.93, 0.3, 0.07];
+const HEAD_C = [0.55, 0.56, 0];           // "head" anchor (centre of the face region)
+const EYE_R = 0.1;
+const FACE = { eyeX: 0.775, eyeA: 0.66, eyeY: 0.0, nose: [0.862, 0.535, 0], mouth: [0.85, 0.4, 0], muzzle: [0.8, 0.465, 0.08], cheekX: 0.72, cheekA: 1.12, top: [0.2, 1.12, 0] };
+const SHOULDER = [0.3, 0.12, 0.6];
+const HIP = [-0.87, 0.36, 0.07];
 const C0 = [-0.1, 0.42, 0];             // sprite centre (model point at the sheet cell centre)
 const CELL_W = 3.0, CELL_H = 2.5;      // cell size in model units
 // rest body section at x: [centre y, half height, half width]
@@ -93,8 +96,10 @@ function loafPt(x, a) {
 function loafN(x, a) {
   const e = 0.01;
   const p0 = loafPt(x, a), px = loafPt(x + e, a), pa = loafPt(x, a + e);
-  const n = cross(sub(px, p0), sub(pa, p0));
-  return norm(Math.abs(a) < 1e-3 ? [n[0], Math.abs(n[1]) + 1e-3, n[2]] : n);
+  let n = norm(cross(sub(px, p0), sub(pa, p0)));
+  const out = sub(p0, [x, loafAt(x)[0], 0]);
+  if (dot(n, out) < 0) n = scl(n, -1);
+  return n;
 }
 
 // A tiny builder with PER-VERTEX colours (the painted look: colours blend across a facet, lighting stays faceted),
@@ -170,7 +175,7 @@ function vnoise(x, y, z) {
     L(L(h3(X, Y, Z + 1), h3(X + 1, Y, Z + 1), u), L(h3(X, Y + 1, Z + 1), h3(X + 1, Y + 1, Z + 1), u), v), w);
 }
 function dapple(p, scale = 1) {
-  const n = vnoise(p[0] * 6.2 * scale + 3.1, p[1] * 6.2 * scale, p[2] * 6.2 * scale + 7.7) * 0.72 + vnoise(p[0] * 15 * scale, p[1] * 15 * scale + 4.2, p[2] * 15 * scale) * 0.28;
+  const n = vnoise(p[0] * 9 * scale + 3.1, p[1] * 9 * scale, p[2] * 9 * scale + 7.7) * 0.7 + vnoise(p[0] * 21 * scale, p[1] * 21 * scale + 4.2, p[2] * 21 * scale) * 0.3;
   return n;
 }
 function paintBody(p) {
@@ -179,20 +184,20 @@ function paintBody(p) {
   let c = up < -0.25 ? mixC(C.fur, C.belly, clamp01((-up - 0.25) * 2)) : mixC(C.fur, C.back, clamp01(up) * 0.75);
   c = mixC(c, C.furMid, clamp01((-p[0] - 0.3) / 0.7) * 0.5);
   // the face: a clean pale mask around the muzzle, finer freckles toward the eyes
-  const face = clamp01((p[0] - 0.55) / 0.25) * clamp01(1 - Math.abs(p[2]) / 0.38) * clamp01(1 - Math.abs(p[1] - 0.47) / 0.3);
+  const face = clamp01((p[0] - 0.5) / 0.25) * clamp01(1 - Math.abs(p[2]) / 0.4) * clamp01(1 - Math.abs(p[1] - 0.5) / 0.3);
   const d = dapple(p, 1 + face * 0.8);
-  const th = 0.6 + 0.08 * clamp01(-up * 1.5) + face * 0.14;
-  if (d > th) c = mixC(c, d > th + 0.1 ? C.spotD : C.spot, clamp01((d - th) * 9) * (1 - 0.45 * clamp01(-up)));
+  const th = 0.56 + 0.1 * clamp01(-up * 1.5) + face * 0.12;
+  if (d > th) c = mixC(c, d > th + 0.06 ? C.spotD : C.spot, 1 - 0.4 * clamp01(-up));
   return lit(c, 1 + (h3(Math.round(p[0] * 23), Math.round(p[1] * 23), Math.round(p[2] * 23)) - 0.5) * 0.04);
 }
-const paintMuzzle = (q) => lit(mixC(C.muzzle, C.chin, clamp01((0.42 - q[1]) * 6)), 1 + (h3(Math.round(q[0] * 30), Math.round(q[1] * 30), Math.round(q[2] * 30)) - 0.5) * 0.03);
-const paintNose = (q) => (q[1] > 0.505 && q[0] > 0.9 ? C.noseHi : C.nose);
+const paintMuzzle = (q) => lit(mixC(C.muzzle, C.chin, clamp01((0.45 - q[1]) * 6)), 1 + (h3(Math.round(q[0] * 30), Math.round(q[1] * 30), Math.round(q[2] * 30)) - 0.5) * 0.03);
+const paintNose = (q) => (q[1] > 0.545 && q[0] > 0.875 ? C.noseHi : C.nose);
 function paintFlip(t) { return (q) => { const c = mixC(C.flip, C.flipTip, clamp01((q[0] / t - 0.4) * 1.5)); return lit(c, dapple(q, 2) > 0.62 ? 0.88 : 1); }; }
 
 // ---- the pose
 function P0() {
   return {
-    yaw: -0.52, tilt: 0.17, rz: 0, sq: [1, 1, 1], bend: 0, wave: 0, wph: 0, side: 0,
+    yaw: -0.88, tilt: 0.22, rz: 0, sq: [1, 1, 1], bend: 0, wave: 0, wph: 0, side: 0,
     head: [0, -0.22, 0], hdy: 0, hsq: 1, fl: [-0.5, -0.6, 0.62], fr: [-0.5, -0.6, -0.62], flLen: 1, frLen: 1,
     flTw: 0, frTw: 0, shN: 0, shF: 0, tail: 0.12, spread: 0.45, flap: 0, cheek: 0, dy: 0,
   };
@@ -265,17 +270,17 @@ function buildSeal(P) {
   capFan(mb, rows[rows.length - 1], [LOAF.x1 + 0.005, loafAt(LOAF.x1)[0], 0], paintBody, def, true);
   // the face: two puffy muzzle pads (puff out when blowing), a little chin, the tiny nose
   const pk = 1 + P.cheek * 0.35;
-  for (const sd of [1, -1]) sheetMesh(mb, ellRows([FACE.muzzle[0], FACE.muzzle[1], FACE.muzzle[2] * sd * (1 + P.cheek * 0.2)], [0.085 * pk, 0.078 * pk, 0.095 * pk], 10, 6), paintMuzzle, def);
-  sheetMesh(mb, ellRows([0.8, 0.355, 0], [0.07, 0.05, 0.085], 8, 5), paintMuzzle, def);
+  for (const sd of [1, -1]) sheetMesh(mb, ellRows([FACE.muzzle[0], FACE.muzzle[1], FACE.muzzle[2] * sd * (1 + P.cheek * 0.2)], [0.095 * pk, 0.085 * pk, 0.1 * pk], 10, 6), paintMuzzle, def);
+  sheetMesh(mb, ellRows([0.785, 0.395, 0], [0.07, 0.05, 0.085], 8, 5), paintMuzzle, def);
   sheetMesh(mb, ellRows(FACE.nose, [0.034, 0.03, 0.05], 8, 5), paintNose, def);
   // tiny front flippers under the sides
-  const shN = def([SHOULDER[0] + 0.1 * P.shN, SHOULDER[1] + 0.3 * P.shN, SHOULDER[2] + 0.06 * P.shN]);
-  const shF = def([SHOULDER[0] + 0.1 * P.shF, SHOULDER[1] + 0.3 * P.shF, -SHOULDER[2] - 0.02 * P.shF]);
+  const shN = def([SHOULDER[0] + 0.12 * P.shN, SHOULDER[1] + 0.22 * P.shN, SHOULDER[2] + 0.2 * P.shN]);
+  const shF = def([SHOULDER[0] + 0.12 * P.shF, SHOULDER[1] + 0.22 * P.shF, -SHOULDER[2] - 0.2 * P.shF]);
   const fw = [0.08, 0.12, 0.13, 0.1, 0.04], ft = [0.06, 0.05, 0.042, 0.034, 0.022];
-  const tipF = paddle(mb, shF, P.fr, [0.1, 0.3, -1], 0.3 * P.frLen, fw, ft, paintFlip(0.3 * P.frLen), P.frTw);
-  const tipN = paddle(mb, shN, P.fl, [0.1, 0.3, 1], 0.3 * P.flLen, fw, ft, paintFlip(0.3 * P.flLen), P.flTw);
+  const tipF = paddle(mb, shF, P.fr, [0.1, 0.3, -1], 0.34 * P.frLen * (1 + 0.4 * P.shF), fw, ft, paintFlip(0.34 * P.frLen * (1 + 0.4 * P.shF)), P.frTw);
+  const tipN = paddle(mb, shN, P.fl, [0.1, 0.3, 1], 0.34 * P.flLen * (1 + 0.4 * P.shN), fw, ft, paintFlip(0.34 * P.flLen * (1 + 0.4 * P.shN)), P.flTw);
   // the tail flipper pair follows the rear's slope
-  const t0 = def([-0.8, 0.32, 0]), t1 = def([-0.95, 0.32, 0]);
+  const t0 = def([-0.75, 0.38, 0]), t1 = def([-0.9, 0.38, 0]);
   const slope = Math.atan2(t1[1] - t0[1], t0[0] - t1[0]);
   for (const sd of [1, -1]) {
     const base = def([HIP[0], HIP[1], HIP[2] * sd]);
@@ -284,7 +289,7 @@ function buildSeal(P) {
     paddle(mb, base, D, [0, 1, 0], 0.3, [0.06, 0.1, 0.15, 0.17, 0.12], [0.05, 0.04, 0.032, 0.026, 0.018], paintFlip(0.3));
   }
   const raw = mb.build();
-  const mesh = voxelizeMesh(raw, SEAL_VOXEL, { jitter: 0.025, ao: 1 }) || raw;
+  const mesh = voxelizeMesh(raw, SEAL_VOXEL, { jitter: 0.015, ao: 0.4 }) || raw;
   if (mesh !== raw) raw.dispose?.();
   // anchors (posed)
   const eyeP = (sd) => { const a = FACE.eyeA * sd; const q = loafPt(FACE.eyeX, a); return [q[0], q[1] + FACE.eyeY, q[2]]; };
@@ -296,7 +301,7 @@ function buildSeal(P) {
     muzzle: [1, -1].map((sd) => def([FACE.muzzle[0] + 0.03, FACE.muzzle[1], FACE.muzzle[2] * sd * (1 + P.cheek * 0.3)])),
     cheeks: [1, -1].map((sd) => def(loafPt(FACE.cheekX, FACE.cheekA * sd))),
     cheekN: [1, -1].map((sd) => nrmD(loafPt(FACE.cheekX, FACE.cheekA * sd), loafN(FACE.cheekX, FACE.cheekA * sd))),
-    top: def(FACE.top), head: def(HEAD_C), hand: tipN, hand2: tipF, tail: def([-1.12, 0.32, 0]),
+    top: def(FACE.top), head: def(HEAD_C), hand: tipN, hand2: tipF, tail: def([-1.08, 0.38, 0]),
     bottom: def([-0.1, -0.05, 0]),
   };
   return { mesh, A };
@@ -337,7 +342,7 @@ export const SEAL_ANIMS = {
     P.fl = norm([0.15 + 0.42 * s, 0.95, 0.55]); P.shN = 0.9;
     P.head = [0.12, -0.32, 0.13]; P.flLen = 1.3;
   } },
-  point: { n: 6, dur: 1.1, buckets: 7, fn(P, k, b) {
+  point: { n: 4, dur: 1.1, buckets: 7, fn(P, k, b) {
     SEAL_ANIMS.idle.fn(P, k * 0.5);
     const e = POINT_E[b];
     P.rz = clamp(e, -1.2, 1.2) * 0.26;
@@ -365,7 +370,7 @@ export const SEAL_ANIMS = {
     }
   } },
   spin: { n: 16, dur: 0.85, fn(P, k) {
-    P.yaw = -0.52 - k * TAU;
+    P.yaw = -0.88 - k * TAU;
     P.dy = S(k * Math.PI) * 0.14; P.sq = [0.97, 1.05, 0.97];
     P.fl = [0.05, 0.3, 0.95]; P.fr = [0.05, 0.3, -0.95]; P.head = [0.12, -0.15, 0]; P.tail = 0.3; P.spread = 0.7;
   } },
@@ -402,9 +407,9 @@ function solvePoint(P, e) {
 
 function pose(anim, k, b, view) {
   const P = P0();
-  if (view === 'front') { P.yaw = -0.3; P.tilt = 0.12; }
+  if (view === 'front') { P.yaw = -1.15; P.tilt = 0.16; }
   SEAL_ANIMS[anim].fn(P, k, b);
-  if (view === 'front' && anim !== 'spin') P.yaw = -0.3;
+  if (view === 'front' && anim !== 'spin') P.yaw = -1.15;
   return P;
 }
 
@@ -532,11 +537,11 @@ function drawEye(ctx, r, o) {
     ctx.clip();
   }
   const g = ctx.createLinearGradient(0, -ry, 0, ry);
-  g.addColorStop(0, '#0d0f16'); g.addColorStop(0.65, '#1c2130'); g.addColorStop(1, '#3a4a6a');
+  g.addColorStop(0, '#0b0c12'); g.addColorStop(0.7, '#191c27'); g.addColorStop(1, '#2c3346');
   ctx.fillStyle = g;
   ellipse(ctx, ox, oy, rx, ry, 0.12 * side); ctx.fill();
   // glassy aqua bounce light along the bottom
-  ctx.strokeStyle = 'rgba(120,220,255,0.55)'; ctx.lineWidth = Math.max(FPX, r * 0.16);
+  ctx.strokeStyle = 'rgba(120,200,240,0.3)'; ctx.lineWidth = Math.max(FPX, r * 0.16);
   ctx.beginPath(); ctx.ellipse(ox, oy, rx * 0.78, ry * 0.8, 0, 0.18 * Math.PI, 0.82 * Math.PI); ctx.stroke();
   // catchlights
   ctx.fillStyle = '#ffffff';
@@ -630,11 +635,11 @@ function drawFace(ctx, F, o, s) {
   }
   // mouth: the little omega, opening while talking
   const [mx, my] = F.mouth;
-  const w = s * 0.085, talk = clamp01(o.talk || 0);
+  const w = s * 0.06, talk = clamp01(o.talk || 0);
   ctx.strokeStyle = '#4a4458'; ctx.lineWidth = Math.max(FPX, s * 0.03); ctx.lineCap = 'round';
   if (talk > 0.06 || mood === 'surprised' || mood === 'excited' || em === 'joy') {
     const open = Math.max(talk, mood === 'surprised' ? 0.6 : mood === 'excited' || em === 'joy' ? 0.3 : 0);
-    const oh = s * (0.03 + open * 0.085), ow = s * (mood === 'surprised' ? 0.06 : 0.085);
+    const oh = s * (0.022 + open * 0.045), ow = s * (mood === 'surprised' ? 0.04 : 0.05);
     ctx.fillStyle = '#5b2238';
     ellipse(ctx, mx, my - s * 0.01 + oh * 0.5, ow, oh); ctx.fill();
     ctx.fillStyle = '#ff7f9f';
@@ -837,7 +842,7 @@ export function drawSeal(ctx, o = {}) {
   ctx.scale(facing * sk, sk);
   ctx.translate(-cw / 2, -ch / 2);
   const smooth = ctx.imageSmoothingEnabled;
-  if (Math.abs(sk - 1) > 0.01) ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingEnabled = sk < 0.99; // voxels stay crisp when scaled up
   const rows = Math.max(1, Math.round(ch / (q * 2)));
   const rh = ch / rows;
   const amp = J.rip * q * 0.9;
@@ -861,8 +866,9 @@ export function drawSeal(ctx, o = {}) {
   const nb = clamp01(o.noseBubble || 0);
   if (nb > 0.02 && F.faceZ > 0) {
     const nz = toScreen(F.nose);
-    const r = size * k * 0.14 * nb;
-    drawSoapBubble(ctx, nz[0] + Math.sin(t * 3.1) * r * 0.25, nz[1] - r * 1.05 - Math.abs(Math.sin(t * 3.1)) * r * 0.3, r, 0);
+    const r = size * k * 0.11 * nb;
+    // a little bubble bobbing on the tip of its nose (clear of the eyes)
+    drawSoapBubble(ctx, nz[0] + facing * r * 1.25 + Math.sin(t * 3.1) * r * 0.15, nz[1] - r * 0.15 - Math.abs(Math.sin(t * 3.1)) * r * 0.25, r, 0);
   }
   ctx.globalAlpha = a0;
   const pts = [F.top, F.bottom, F.tail, F.head, F.nose].map(toScreen);

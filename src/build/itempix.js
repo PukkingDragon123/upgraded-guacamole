@@ -327,6 +327,19 @@ const ART = {
     p.poly([[10, 17], [12, 15], [14, 17], [13, 22], [12, 19], [11, 22]], 'ribbon', { bias: 0.2 });
     p.over(6, 7, P.paper[4]); p.over(7, 7, P.paper[4]);
   },
+  icon_fishmgr(p) {
+    // HUD 'My Fish': a happy orange fish with a pink heart bubble
+    p.poly([[2, 9], [7, 13], [2, 18]], 'egg', { bias: -0.1 });
+    p.ell(12.5, 13.5, 7.5, 5.5, 'egg');
+    p.poly([[10, 8.5], [14, 6], [16, 9]], 'egg', { bias: 0.3 });
+    p.ell(16, 12, 1.6, 1.6, 'pearl', { bias: 0.8 });
+    p.put(16, 12, P.chip[0]); p.put(16, 11, P.chip[0]);
+    p.line(17, 15, 18, 15, P.egg[0]);
+    for (const [x, y] of [[9, 10], [10, 10], [9, 11]]) p.over(x, y, W);
+    for (const x of [9, 11]) for (let y = 12; y < 17; y++) p.over(x, y, P.egg[3]);
+    const hx = 19, hy = 4;
+    for (const [x, y] of [[0, 0], [1, 0], [3, 0], [4, 0], [-1, 1], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1], [5, 1], [-1, 2], [0, 2], [1, 2], [2, 2], [3, 2], [4, 2], [5, 2], [0, 3], [1, 3], [2, 3], [3, 3], [4, 3], [1, 4], [2, 4], [3, 4], [2, 5]]) p.put(hx - 2 + x, hy + y, x < 1 && y < 2 ? W : P.coral[2]);
+  },
 };
 
 export const PIXEL_ITEM_IDS = new Set(Object.keys(ART));

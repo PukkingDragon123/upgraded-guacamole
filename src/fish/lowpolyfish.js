@@ -1,3 +1,10 @@
+// PHASE 8 VOXEL CREATURES: every pose mesh built below is converted into a REAL VOXEL MODEL before it is cached
+// (src/fish/voxelize.js: fine voxels, ~48 along small fish up to ~140 along giants via voxelSize(c, pose); colours
+// sampled from the painted skin; natural stamped eyes with iris, pupil and catchlight; translucent fin voxels with
+// denser rays; baked ambient occlusion; glow voxels), so sprite sheets, fishMesh (the 3D tank), lpTube (eel bodies)
+// and lpOrb all show voxel art. Pose caches keep compact face lists (VoxMesh) and release the GL buffers once a sheet
+// has been rendered. setVoxelMode(false) brings back the smooth anatomical meshes (debug / comparison).
+//
 // Low-poly fish & sea creatures (phase 6). Every fish and creature is a faceted, flat-shaded 3D mesh rendered
 // with src/gfx/lowpoly.js (the look of the user's low-poly seal reference): realistic anatomy from
 // src/fish/anatomy.js, a soft painted skin (countershading, stripes, spots, scale rows, gill and lateral lines,

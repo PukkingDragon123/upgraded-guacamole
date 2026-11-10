@@ -348,3 +348,12 @@ that feels hand-made."
   particles (sparkles, splashes, droplets, stars, puffs, confetti, fish scales, bubbles drawn as pixel sprites).
 - Progression: crafting system + Workshop; the Lab and the Workshop are PLACES you sail to on the map; new rods;
   chests are cracked open with a minigame.
+- Creatures (phase 8, Creatures agent): every fish / creature pose mesh from `src/fish/lowpolyfish.js` is VOXELISED by
+  `src/fish/voxelize.js` (`voxelizeParts(parts, vs)`, `voxelizeMesh(mesh, vs)`, compact `VoxMesh`, `mergeVox`): fine voxels
+  (`voxelSize(c, pose)`: ~48 voxels along small fish .. ~140 along giants), skin colours, stamped natural eyes, translucent
+  fin voxels + denser rays (`'finrays'` part), glow voxels, baked AO. All APIs are unchanged (drawFishRig, lpFrame,
+  lpFishIcon/voxelFishIcon, fishMesh/creatureMesh/addFishToScene give voxel meshes for the tank). `setVoxelMode(false)` = old
+  smooth meshes. Bubbles (`src/gfx/seal.js`) is a voxel plush seal (round dappled loaf, small dark eyes drawn at voxel
+  resolution) with a soft-body jiggle (squash spring + row ripple) in `drawSeal`; same anims / `drawNPC(ctx, 'seal', ...)`.
+  Dev: `node tools/build.mjs --dev lowpoly` -> `dev/lowpoly.html?mode=gallery&page=N | giants | vg | seal | icons | scene |
+  turn&ids=puffer | perf`.

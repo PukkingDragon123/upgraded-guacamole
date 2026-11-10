@@ -35,9 +35,9 @@
 //   ecoBackdrop(w, h, o) -> cached canvas      sky gradient + sun + white arcs + curved grass horizon + bubbles
 
 import { rgba, shade, mix, pack, packRGB, hexToRgb } from '../core/color.js';
-import { makeCanvas, ctxOf } from '../core/canvas.js';
+import { makeCanvas, ctxOf, tinted } from '../core/canvas.js';
 import { PixelBuffer } from '../gfx/pixel.js';
-import { drawText, measureText, FONTS } from '../gfx/font.js';
+import { drawText, measureText, FONTS, setTextBump, faceOf } from '../gfx/font.js';
 import { hash1, bayer } from '../core/math.js';
 import { pixelBubble, pixelCloud } from '../gfx/pxsprites.js';
 import { alagardReady, alagardBitmap, loadAlagard } from '../gfx/alagard.js';
@@ -61,12 +61,12 @@ export function fmtAero(n) { return Math.round(n || 0).toLocaleString('en-US'); 
 //   capH(font) -> cap height px ('small' 5, 'normal' 7, 'big' 9)
 export const UI_SCALES = { normal: 1.25, big: 1.6, huge: 2 };
 let uiMode = 'big';
-export function setUiScale(mode) { if (UI_SCALES[mode]) uiMode = mode; }
+export function setUiScale(mode) { if (UI_SCALES[mode]) uiMode = mode; setTextBump(uiMode !== 'normal'); } // [phase8:ui] bigger small text
 export function uiScaleMode() { return uiMode; }
 export function uiK() { return UI_SCALES[uiMode]; }
 const PROMOTE = { small: 'normal', normal: 'big' };
 export function uiFont(base = 'normal') { return uiMode === 'normal' ? base : PROMOTE[base] || base; }
-export function capH(font) { return FONTS[font]?.height || 7; }
+export function capH(font) { return FONTS[faceOf(font)]?.height || 7; }
 export function fitFont(text, base = 'normal', maxW = Infinity, maxH = Infinity) {
   const up = uiFont(base);
   if (up === base || !text) return base;
@@ -313,6 +313,32 @@ export function aeroText(ctx, text, x, y, o = {}) {
 }
 
 
+// ---------------------------------------------------------------- [phase8:ui] focus brackets
+// drawPixelBrackets(ctx, x, y, w, h, t, {col, ink, k, gap}) four chunky pixel corner brackets that tick in and out
+//   (the 'look here' / selected marker that replaces pulsing rings); drawFocusBrackets(ctx, cx, cy, r, t, o) centred.
+export function drawPixelBrackets(ctx, x, y, w, h, t = 0, o = {}) {
+  const k = Math.max(1, Math.round(o.k ?? 1));
+  const col = o.col || '#ffffff', ink = o.ink || '#0a3e74';
+  const off = (o.gap ?? 0) + ((Math.sin(t * 6) > 0 ? 1 : 0) + (o.bounce ? Math.round(Math.abs(Math.sin(t * 3)) * 2) : 0)) * k;
+  x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+  const L = Math.max(4, Math.round(Math.min(w, h) * 0.22)) + 2 * k, T = 2 * k;
+  const corners = [[x - off, y - off, 1, 1], [x + w + off, y - off, -1, 1], [x - off, y + h + off, 1, -1], [x + w + off, y + h + off, -1, -1]];
+  for (const pass of [0, 1]) {
+    ctx.fillStyle = pass ? col : ink;
+    const e = pass ? 0 : 1;
+    for (const [cx, cy, sx, sy] of corners) {
+      const x0 = sx > 0 ? cx - e : cx - L - e, y0 = sy > 0 ? cy - e : cy - T - e;
+      ctx.fillRect(x0, y0, L + e * 2, T + e * 2);
+      const x1 = sx > 0 ? cx - e : cx - T - e, y1 = sy > 0 ? cy - e : cy - L - e;
+      ctx.fillRect(x1, y1, T + e * 2, L + e * 2);
+    }
+  }
+}
+export function drawFocusBrackets(ctx, cx, cy, r, t = 0, o = {}) {
+  drawPixelBrackets(ctx, cx - r, cy - r, r * 2, r * 2, t, { gap: 2, bounce: true, ...o });
+  if (Math.sin(t * 4) > 0.3) drawSparkle(ctx, cx + r + 3, cy - r - 3, 2, 1);
+}
+
 // ---------------------------------------------------------------- [phase8:ui] Alagard titles
 // drawTitle(ctx, text, x, y, {size = 16, scale = 2, color, outline, shadow, align}) -> {w, h}
 //   crisp Alagard (16 px grid, drawn at an integer scale) with a chunky pixel outline and a drop shadow; y = cap top.
@@ -421,6 +447,11 @@ export function drawAeroButton(ctx, x, y, w, h, o = {}) {
   }
   const key = `btn|${w}|${h}|${r}|${typeof toneName === 'object' ? JSON.stringify(toneName) : toneName}|${st}`;
   const c = aeroCached(key, () => surfaceTex(w, h, { tone: look, r, gloss: down ? 0.35 : 0.8, glossH: Math.max(3, Math.round(h * (down ? 0.38 : 0.46))), curve: Math.min(3, h * 0.12), rim: down ? 0.35 : 0.85, glow: down ? 0.25 : 0.75 }));
+  // [phase8:ui] chunky pixel press: a solid 2 px base under the button; hover lifts the body 1 px, down sinks it
+  const base = aeroCached(key + '|base', () => tinted(c, st === 'disabled' ? '#6a7a8c' : shade(T.edge || '#0b4a8a', -0.1)));
+  const lift = st === 'hover' ? -1 : down ? 1 : 0;
+  if (h >= 10) { const ga = ctx.globalAlpha; ctx.globalAlpha = ga * 0.85; ctx.drawImage(base, x, y + 2); ctx.globalAlpha = ga; }
+  y += lift;
   ctx.drawImage(c, x, y);
   const ic = o.icon || null;
   const iw = ic ? ic.width + (o.label ? 4 : 0) : 0;
@@ -435,7 +466,7 @@ export function drawAeroButton(ctx, x, y, w, h, o = {}) {
     tw = measureText(label, font);
   }
   const ch = capH(font);
-  const dy = down ? 1 : 0;
+  const dy = 0;
   let cx = o.align === 'left' ? x + pad - 1 : x + Math.round((w - tw - iw) / 2);
   const dis = st === 'disabled';
   if (ic) {

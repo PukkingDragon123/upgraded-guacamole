@@ -10,6 +10,10 @@
 //           {t: 'tank', tier}  {t: 'boat', tier}             {t: 'visit', biome}  {t: 'depth', zone, alt: obj}
 //           {t: 'aero', n}  Aero earned since the quest started    {t: 'tutorial'}  {t: 'open', panel}
 //     reward {aero, items: {matId: n}, bait: {baitId: n}, cosmetics: [wardrobe ids], lab: [node ids], unlock: [{kind, id}]}
+//   [phase8:prog] objectives {t: 'chest', n, tier?} (chests cracked open, tier or better) {t: 'have', id, n, take?} (items in
+//     the Satchel; take = handed over on completion) {t: 'dest', id} (sailed to the Lab / Workshop) {t: 'craftRod', n | id}
+//     (Workshop rods owned) {t: 'rodUp', n} (any rod tuned to n stars) {t: 'tackle', n} (tackle slots filled).
+//     reward.unlock [{kind, id}] is applied with lab.grantUnlock (e.g. feature:workshop, recipe:ws_rod_frost).
 //   QUEST_BY_ID, ZONES (depth zone order), CHAPTER_BY_ID
 //   ensureQuests(state) -> state.quests = {v, ch, started:{qid:{at, coins}}, prog:{qid:[n]}, done:{qid:ts},
 //                          chDone:{chId:ts}, visited:{biome:1}, zones:{zone:1}, intro: chId|null, outro: chId|null}
@@ -19,13 +23,16 @@
 // Progress: game events ('caught', 'labDone', 'unlocked', 'tankUpgraded', 'travel', 'tutorialDone', 'depthZone', 'kept', 'released',
 // 'baitBought', 'crafted', 'rodEquipped', 'panelOpen', 'boatUpgraded') plus a light poll of the save (oceans, tiers,
 // tutorial) and the depth zone (game.ocean.depthZone(), feature-detected; without it depth goals use their `alt`).
-import { LAB_BY_ID, OCEAN_NAMES, TANK_NAMES, BOAT_NAMES, BOAT_ORDER, TANK_ORDER, ensureLab, grantLabNode, ROOT_ID } from './lab.js';
+import { LAB_BY_ID, OCEAN_NAMES, TANK_NAMES, BOAT_NAMES, BOAT_ORDER, TANK_ORDER, ensureLab, grantLabNode, ROOT_ID, grantUnlock } from './lab.js';
+import { ROD_BY_ID, ensureRods } from './rods.js'; // [phase8:prog]
 import * as ITEMS from '../build/items.js';
 import * as BAIT from '../store/bait.js';
 import * as CHAR from '../gfx/character.js';
 import * as SPECIES from '../fish/species.js';
 
 export const ZONES = ['sunlit', 'twilight', 'midnight', 'abyss'];
+const CHEST_RANK = ['crate', 'iron', 'golden', 'orb']; // [phase8:prog]
+const CHEST_NAMES = { crate: 'Driftwood Crate', iron: 'Iron Crate', golden: 'Golden Chest', orb: 'Mystery Orb' };
 export const ZONE_NAMES = { sunlit: 'Sunlit Zone', twilight: 'Twilight Zone', midnight: 'Midnight Zone', abyss: 'Abyssal Zone' };
 const RAR = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
 const cap = (s) => s[0].toUpperCase() + s.slice(1);
@@ -39,11 +46,12 @@ export const CHAPTERS = [
       { npc: 'fizz', text: 'And I\'m Professor Fizz! Bring me Aero and I\'ll invent you wonderful things!' },
     ],
     outro: { npc: 'marina', text: 'Ahoy! Marina, pier keeper. My old dinghy is yours - the Sunny Shallows await!' },
-    reward: { aero: 60, lab: ['sea_shallows'], cosmetics: ['hat_leafcrown'] },
+    reward: { aero: 60, lab: ['sea_shallows'], cosmetics: ['hat_leafcrown'], unlock: [{ kind: 'recipe', id: 'ws_rod_clover' }] }, // [phase8:prog] + a rod recipe
     quests: [
       Q('c1_lesson', 'seal', 'Fishing 101', 'Hook, reel, shock! I\'ll show you everything.', [{ t: 'tutorial' }], { aero: 10, bait: { crumbs: 5 } }),
       Q('c1_catch', 'seal', 'First Splash', 'Three fish. You can do it!', [{ t: 'catch', n: 3 }], { aero: 15, items: { driftwood: 2 } }),
       Q('c1_keep', 'seal', 'Home Sweet Jar', 'Keep a fish! It makes Aero while you fish.', [{ t: 'keep', n: 1 }], { aero: 10, items: { shell: 2 } }),
+      Q('c1_chest', 'seal', 'Crack It Open!', 'There\'s a crate in your Satchel. Tap the glowing knots to crack it!', [{ t: 'chest', n: 1 }], { aero: 10, items: { fish_scale: 3 } }), // [phase8:prog]
       Q('c1_lab', 'fizz', 'Lab Coat On', 'Plan a tile in The Lab, then press Confirm!', [{ t: 'research', n: 1 }], { items: { driftwood: 3, kelp_fibre: 2 } }),
       Q('c1_dex', 'seal', 'FishDex Rookie', 'Every new fish goes in your FishDex.', [{ t: 'species', n: 4 }], { aero: 25 }),
       Q('c1_bowl', 'fizz', 'A Bigger Bowl', 'That jar is cramped. Research the Fishbowl!', [{ t: 'tank', tier: 1 }], { aero: 30, items: { shell: 3, kelp_fibre: 2 } }),
@@ -56,11 +64,14 @@ export const CHAPTERS = [
       { npc: 'dot', text: 'BEEP! Dot\'s Bait Shop is open. Better bait, better fish!' },
     ],
     outro: { npc: 'bloat', text: 'Hrrumph! Captain Bloat. Up north, the Frosty Fjord hides a tale or two...' },
-    reward: { aero: 120, lab: ['sea_fjord'], cosmetics: ['top_sailor'], items: { sea_glass: 2 } },
+    reward: { aero: 120, lab: ['sea_fjord'], cosmetics: ['top_sailor'], items: { sea_glass: 2 }, unlock: [{ kind: 'recipe', id: 'ws_rod_frost' }] }, // [phase8:prog]
     quests: [
       Q('c2_sail', 'marina', 'Set Sail', 'Open the Map and travel to the Sunny Shallows.', [{ t: 'visit', biome: 'shallows' }], { aero: 20 }),
       Q('c2_catch', 'marina', 'Shallow Waters', 'The shallows are teeming. Fill that bucket!', [{ t: 'catch', n: 6, biome: 'shallows' }], { items: { driftwood: 3, sea_glass: 2 } }),
+      Q('c2_workshop', 'marina', 'Marina\'s Workshop', 'My crafting dock is a mess! Bring me 5 Driftwood to fix it up.', [{ t: 'have', id: 'driftwood', n: 5, take: true }], { aero: 30, items: { fish_scale: 3, kelp_fibre: 2 }, unlock: [{ kind: 'feature', id: 'workshop' }] }), // [phase8:prog]
       Q('c2_bait', 'dot', 'Dot\'s Specials', 'Buy any bait at my shop. BEEP BOOP.', [{ t: 'bait', n: 1 }], { bait: { worm: 3 } }),
+      Q('c2_dock', 'marina', 'All Aboard!', 'Open the Map and sail to my Workshop dock!', [{ t: 'dest', id: 'workshop' }], { aero: 20, items: { driftwood: 4 } }), // [phase8:prog]
+      Q('c2_craftrod', 'marina', 'Your First Rod', 'Craft the Rubber Duck Rod at the Workshop. Squeak!', [{ t: 'craftRod', n: 1 }], { aero: 40, items: { fish_scale: 4, kelp_fibre: 2 } }), // [phase8:prog]
       Q('c2_rare', 'marina', 'Something Shiny', 'Catch an Uncommon fish or better.', [{ t: 'catch', n: 1, rarity: 'uncommon' }], { aero: 40, items: { coral_chunk: 1 } }),
       Q('c2_rod', 'fizz', 'Wand of Bubbles', 'Research the Bubble Wand rod!', [{ t: 'research', id: 'rod_bubble' }], { aero: 30, items: { kelp_fibre: 3 } }),
       Q('c2_deep', 'seal', 'Twilight Peek', 'Dive down past the sunlight. Spooky... and fun!', [{ t: 'depth', zone: 'twilight', alt: { t: 'catch', n: 4 } }], { aero: 40, items: { pearl: 1 } }),
@@ -73,12 +84,14 @@ export const CHAPTERS = [
       { npc: 'fizz', text: 'And we have SCIENCE now. Let\'s upgrade everything!' },
     ],
     outro: { npc: 'dot', text: 'BEEP! A reef made of scrap and glitches? My kind of place! Junkyard Reef unlocked!' },
-    reward: { aero: 250, lab: ['sea_junkyard'], cosmetics: ['face_goggles'], items: { gear: 2 } },
+    reward: { aero: 250, lab: ['sea_junkyard'], cosmetics: ['face_goggles'], items: { gear: 2, pkg_golden: 1 }, unlock: [{ kind: 'recipe', id: 'ws_rod_magnet' }] }, // [phase8:prog] + a golden chest
     quests: [
       Q('c3_sail', 'bloat', 'Cold Feet', 'Sail to the Frosty Fjord. Bring a scarf.', [{ t: 'visit', biome: 'fjord' }], { aero: 40 }),
       Q('c3_catch', 'bloat', 'Ice Fishing', 'Eight fjord fish, and not one less!', [{ t: 'catch', n: 8, biome: 'fjord' }], { items: { sea_glass: 3, shell: 3 } }),
       Q('c3_tank', 'fizz', 'Tank You Very Much', 'Your fish want a Small Tank.', [{ t: 'tank', tier: 2 }], { aero: 60, items: { coral_chunk: 2 } }),
       Q('c3_rare', 'bloat', 'A Rare Tale', 'Catch a Rare fish. Then you\'ll have a story!', [{ t: 'catch', n: 1, rarity: 'rare' }], { aero: 80, bait: { sugar: 3 } }),
+      Q('c3_frost', 'bloat', 'Brr-illiant Rod', 'Craft the Frost Rod. The fjord fish will be chill.', [{ t: 'craftRod', id: 'frost' }], { aero: 80, items: { ice_shard: 2 } }), // [phase8:prog]
+      Q('c3_tune', 'marina', 'Fine Tuning', 'Upgrade any rod to one star at the Workshop.', [{ t: 'rodUp', n: 1 }], { aero: 60, items: { fin_ribbon: 2 } }), // [phase8:prog]
       Q('c3_lab', 'fizz', 'Busy Benches', 'Finish 10 research projects in The Lab.', [{ t: 'research', n: 10 }], { items: { gear: 1, kelp_fibre: 4 } }),
       Q('c3_boat', 'marina', 'Sea Legs', 'Upgrade to the Skiff. Zoom zoom!', [{ t: 'boat', tier: 2 }], { aero: 80 }),
     ],
@@ -90,12 +103,14 @@ export const CHAPTERS = [
       { npc: 'seal', text: 'It gets darker down there. Stay close to the bubbles!' },
     ],
     outro: { npc: 'marina', text: 'I found an old chart... a whole city under the sea! Sunken Metropolis unlocked!' },
-    reward: { aero: 500, lab: ['sea_metropolis'], cosmetics: ['shoes_flippers'], items: { circuit_board: 2 } },
+    reward: { aero: 500, lab: ['sea_metropolis'], cosmetics: ['shoes_flippers'], items: { circuit_board: 2 }, unlock: [{ kind: 'recipe', id: 'ws_rod_glow' }] }, // [phase8:prog]
     quests: [
       Q('c4_sail', 'dot', 'Scrap Happy', 'Travel to the Junkyard Reef.', [{ t: 'visit', biome: 'junkyard' }], { aero: 60 }),
       Q('c4_catch', 'dot', 'Glitch Hunt', 'Ten junkyard fish. Some of them are probably printers.', [{ t: 'catch', n: 10, biome: 'junkyard' }], { items: { scrap_metal: 4, gear: 1 } }),
       Q('c4_dex', 'fizz', 'Field Notes', 'Discover 15 different species.', [{ t: 'species', n: 15 }], { aero: 120 }),
       Q('c4_deep', 'seal', 'Midnight Snack', 'Reach the Midnight Zone. Bring a light!', [{ t: 'depth', zone: 'midnight', alt: { t: 'catch', n: 3, rarity: 'uncommon' } }], { aero: 100, bait: { lantern: 2 } }),
+      Q('c4_golden', 'dot', 'Golden Glitter', 'Crack open a Golden Chest. BEEP: lockpicks ready!', [{ t: 'chest', tier: 'golden', n: 1 }], { aero: 150, items: { pkg_iron: 1 } }), // [phase8:prog]
+      Q('c4_magnet', 'dot', 'Magnetic Personality', 'Craft the Magnet Rod. Boxes will come to YOU.', [{ t: 'craftRod', id: 'magnet' }], { aero: 120, items: { spring_coil: 2 } }), // [phase8:prog]
       Q('c4_aero', 'dot', 'Cha-Ching', 'Earn 1,500 Aero.', [{ t: 'aero', n: 1500 }], { items: { circuit_board: 1 } }),
       Q('c4_shock', 'fizz', 'Shock Therapy', 'Research the Capacitor in the Shock row.', [{ t: 'research', id: 'shock2' }], { aero: 100 }),
     ],
@@ -107,12 +122,13 @@ export const CHAPTERS = [
       { npc: 'bloat', text: 'Epic fish lurk between the towers. Hrrumph, I\'ve seen them!' },
     ],
     outro: { npc: 'bloat', text: 'Feel that heat? The Lava Rift opens! Only the bravest fish there.' },
-    reward: { aero: 1000, lab: ['sea_volcano'], cosmetics: ['hat_tophat'], items: { pearl: 2 } },
+    reward: { aero: 1000, lab: ['sea_volcano'], cosmetics: ['hat_tophat'], items: { pearl: 2 }, unlock: [{ kind: 'recipe', id: 'ws_rod_turbo' }] }, // [phase8:prog]
     quests: [
       Q('c5_sail', 'marina', 'City Lights', 'Sail to the Sunken Metropolis.', [{ t: 'visit', biome: 'metropolis' }], { aero: 100 }),
       Q('c5_catch', 'marina', 'Rush Hour', 'Catch 10 Metropolis fish.', [{ t: 'catch', n: 10, biome: 'metropolis' }], { items: { circuit_board: 2, gear: 2 } }),
       Q('c5_epic', 'bloat', 'Epic Proportions', 'Catch an Epic fish!', [{ t: 'catch', n: 1, rarity: 'epic' }], { aero: 300, bait: { golden: 1 } }),
       Q('c5_tank', 'fizz', 'Big Tank Energy', 'Upgrade to the Big Tank.', [{ t: 'tank', tier: 3 }], { aero: 200 }),
+      Q('c5_glow', 'seal', 'Night Light', 'Craft the Glow Rod for the deep, dark zones.', [{ t: 'craftRod', id: 'glow' }], { aero: 250, items: { glow_bulb: 1 } }), // [phase8:prog]
       Q('c5_boat', 'marina', 'Flying Fish', 'Get the Hydrofoil.', [{ t: 'boat', tier: 3 }], { items: { gear: 2, sea_glass: 3 } }),
       Q('c5_lab', 'fizz', 'Mad Science', 'Finish 30 research projects.', [{ t: 'research', n: 30 }], { aero: 300 }),
     ],
@@ -124,13 +140,15 @@ export const CHAPTERS = [
       { npc: 'seal', text: 'The deepest zone is down there somewhere. I can smell it!' },
     ],
     outro: { npc: 'seal', text: 'You did it! The Deep Ocean is waiting. The scariest, most beautiful place of all.' },
-    reward: { aero: 2000, lab: ['sea_abyss'], cosmetics: ['face_heart'], items: { abyss_crystal: 1 } },
+    reward: { aero: 2000, lab: ['sea_abyss'], cosmetics: ['face_heart'], items: { abyss_crystal: 1, pkg_orb: 1 }, unlock: [{ kind: 'recipe', id: 'ws_rod_starfish' }] }, // [phase8:prog]
     quests: [
       Q('c6_sail', 'bloat', 'Hot Water', 'Brave the Lava Rift.', [{ t: 'visit', biome: 'volcano' }], { aero: 150 }),
       Q('c6_catch', 'bloat', 'Fire and Fins', 'Catch 12 Lava Rift fish.', [{ t: 'catch', n: 12, biome: 'volcano' }], { items: { ancient_stone: 2 } }),
       Q('c6_deep', 'seal', 'Into the Abyss', 'Reach the Abyssal Zone. Deep breath!', [{ t: 'depth', zone: 'abyss', alt: { t: 'catch', n: 2, rarity: 'rare' } }], { aero: 300, bait: { blackhole: 1 } }),
       Q('c6_aero', 'dot', 'Big Spender', 'Earn 5,000 Aero.', [{ t: 'aero', n: 5000 }], { items: { circuit_board: 2, pearl: 1 } }),
       Q('c6_dex', 'fizz', 'Encyclopedia', 'Discover 35 species.', [{ t: 'species', n: 35 }], { aero: 400 }),
+      Q('c6_turbo', 'bloat', 'Need for Speed', 'Craft the Turbo Reel Rod. Vroom!', [{ t: 'craftRod', id: 'turbo' }], { aero: 400, items: { lava_glass: 1 } }), // [phase8:prog]
+      Q('c6_tackle', 'marina', 'Fully Kitted', 'Fill all four tackle slots on your rod.', [{ t: 'tackle', n: 4 }], { aero: 300, items: { pearl: 1 } }), // [phase8:prog]
       Q('c6_rare', 'bloat', 'Hot Rarities', 'Catch 3 Rare fish in the Lava Rift.', [{ t: 'catch', n: 3, rarity: 'rare', biome: 'volcano' }], { items: { abyss_crystal: 1 } }),
     ],
   },
@@ -149,6 +167,8 @@ export const CHAPTERS = [
       Q('c7_lab', 'fizz', 'Nobel Bubble Prize', 'Finish 60 research projects.', [{ t: 'research', n: 60 }], { aero: 800 }),
       Q('c7_dex', 'seal', 'Know Them All', 'Discover 50 species.', [{ t: 'species', n: 50 }], { aero: 800 }),
       Q('c7_sub', 'marina', 'Yellow Submarine', 'Build the Submarine.', [{ t: 'boat', tier: 6 }], { aero: 600 }),
+      Q('c7_orb', 'fizz', 'Orb of Mystery', 'Crack open a Mystery Orb.', [{ t: 'chest', tier: 'orb', n: 1 }], { aero: 500 }), // [phase8:prog]
+      Q('c7_star', 'seal', 'Wish Upon a Starfish', 'Craft the Starfish Scepter.', [{ t: 'craftRod', id: 'starfish' }], { aero: 1000 }), // [phase8:prog]
     ],
   },
 ];
@@ -167,6 +187,7 @@ export function ensureQuests(state) {
   if (!Number.isInteger(S.ch) || S.ch < 0) S.ch = 0;
   S.ch = Math.min(S.ch, CHAPTERS.length);
   S.started ||= {}; S.prog ||= {}; S.done ||= {}; S.chDone ||= {}; S.visited ||= {}; S.zones ||= {};
+  S.dests ||= {}; // [phase8:prog] destinations sailed to
   if (S.intro === undefined) S.intro = CHAPTERS[0].id;
   if (S.outro === undefined) S.outro = null;
   return S;
@@ -195,6 +216,12 @@ export function objLabel(o) {
     case 'aero': return `Earn ${o.n.toLocaleString('en-US')} Aero`;
     case 'tutorial': return 'Finish Bubbles\' fishing lesson';
     case 'open': return `Open the ${o.panel}`;
+    case 'chest': return o.tier ? `Crack open a ${CHEST_NAMES[o.tier] || o.tier}` : o.n > 1 ? `Crack open ${o.n} chests` : 'Crack open a chest'; // [phase8:prog]
+    case 'have': return `Bring ${o.n} ${ITEMS.ITEMS?.[o.id]?.name || o.id}`;
+    case 'dest': return `Sail to ${o.id === 'lab' ? 'Fizz Lab Island' : 'Marina\'s Workshop'}`;
+    case 'craftRod': return o.id ? `Craft the ${ROD_BY_ID[o.id]?.name || o.id}` : o.n > 1 ? `Craft ${o.n} rods at the Workshop` : 'Craft a rod at the Workshop';
+    case 'rodUp': return `Upgrade a rod to ${o.n} star${o.n > 1 ? 's' : ''}`;
+    case 'tackle': return `Equip ${o.n} pieces of tackle`;
     default: return o.t;
   }
 }
@@ -211,6 +238,11 @@ export function objIcon(o) {
     case 'aero': return 'coin';
     case 'bait': return 'bait:worm';
     case 'tutorial': return 'hook';
+    case 'chest': return 'mat:pkg_' + (o.tier || 'crate'); // [phase8:prog]
+    case 'have': return 'mat:' + o.id;
+    case 'dest': return o.id === 'lab' ? 'beaker' : 'hammer';
+    case 'craftRod': return o.id ? 'rod:' + o.id : 'rod:duck';
+    case 'rodUp': case 'tackle': return 'hammer';
     default: return 'star';
   }
 }
@@ -226,7 +258,11 @@ export function rewardList(rw = {}) {
   for (const [id, n] of Object.entries(rw.items || {})) out.push({ key: 'mat:' + id, label: `${n} ${ITEMS.ITEMS?.[id]?.name || id}`, n });
   for (const [id, n] of Object.entries(rw.bait || {})) out.push({ key: 'bait:' + id, label: `${n} ${BAIT.BAITS?.[id]?.name || id}`, n });
   for (const id of rw.cosmetics || []) out.push({ key: 'cosmetic:' + id, label: CHAR.WARDROBE_BY_ID?.[id]?.name || id, cosmetic: id });
-  for (const u of rw.unlock || []) out.push({ key: u.kind + ':' + u.id, label: u.id });
+  for (const u of rw.unlock || []) { // [phase8:prog] readable unlock rewards
+    if (u.kind === 'recipe' && u.id.startsWith('ws_rod_')) out.push({ key: 'rod:' + u.id.slice(7), label: 'New rod recipe: ' + (ROD_BY_ID[u.id.slice(7)]?.name || u.id), big: true });
+    else if (u.kind === 'feature' && u.id === 'workshop') out.push({ key: 'hammer', label: 'Marina\'s Workshop opens!', big: true });
+    else out.push({ key: u.kind + ':' + u.id, label: u.id });
+  }
   return out;
 }
 
@@ -248,7 +284,7 @@ export function grantReward(game, rw = {}, reason = 'quest') {
   for (const [id, n] of Object.entries(rw.items || {})) { try { ITEMS.addItem(st, id, n); } catch { /* items not ready */ } }
   for (const [id, n] of Object.entries(rw.bait || {})) { try { BAIT.ensureBait?.(st); BAIT.addBait(st, id, n); } catch { /* bait not ready */ } }
   for (const id of rw.cosmetics || []) { try { if (!CHAR.grantCosmetic?.(st, id)) (st.cosmetics ||= {})[id] = true; } catch { (st.cosmetics ||= {})[id] = true; } }
-  for (const u of rw.unlock || []) { try { game.emit?.('unlocked', { kind: u.kind, id: u.id, free: true }); } catch { /* ignore */ } }
+  for (const u of rw.unlock || []) { try { grantUnlock(st, u.kind, u.id); game.emit?.('unlocked', { kind: u.kind, id: u.id, free: true }); } catch { /* ignore */ } } // [phase8:prog] applied, not just announced
   game.recomputeStats?.();
   return { bonus };
 }
@@ -306,6 +342,17 @@ export class QuestBook {
       case 'depth': return { have: S.zones[o.zone] || ZONES.indexOf(o.zone) <= this.maxZone() ? 1 : 0, need: 1 };
       case 'aero': return { have: Math.max(0, Math.min(o.n, (st.totalCoins || 0) - (S.started[q.id]?.coins ?? st.totalCoins ?? 0))), need: o.n };
       case 'tutorial': return { have: st.tutorialDone ? 1 : 0, need: 1 };
+      // [phase8:prog] Workshop, chests, destinations
+      case 'chest': return { have: cnt, need: o.n || 1 };
+      case 'have': return { have: Math.min(o.n, ITEMS.countItem?.(st, o.id) || 0), need: o.n };
+      case 'dest': return { have: S.dests?.[o.id] ? 1 : 0, need: 1 };
+      case 'craftRod': {
+        const R = ensureRods(st);
+        if (o.id) return { have: R.owned.includes(o.id) ? 1 : 0, need: 1 };
+        return { have: R.owned.filter((id) => ROD_BY_ID[id]?.src === 'workshop').length, need: o.n || 1 };
+      }
+      case 'rodUp': { const R = ensureRods(st); return { have: Math.min(o.n, Math.max(0, ...R.owned.map((id) => R.lv[id] | 0))), need: o.n }; }
+      case 'tackle': { const R = ensureRods(st); return { have: Object.values(R.tackle.on).filter(Boolean).length, need: o.n }; }
       default: return { have: 0, need: 1 };
     }
   }
@@ -350,6 +397,9 @@ export class QuestBook {
     on('baitCrafted', () => this.bump((o) => o.t === 'craft'));
     on('rodEquipped', () => this.bump((o) => o.t === 'equip'));
     on('panelOpen', (id) => this.bump((o) => o.t === 'open' && o.panel === id));
+    on('chestOpened', (d) => { const r = CHEST_RANK.indexOf(d?.tier); this.bump((o) => o.t === 'chest' && (!o.tier || r >= CHEST_RANK.indexOf(o.tier))); }); // [phase8:prog]
+    on('destVisit', (d) => { if (d?.id) { this.S.dests[d.id] = 1; this.check(); } });
+    for (const ev of ['rodCrafted', 'rodUpgraded', 'tackleEquipped', 'crafted']) on(ev, () => this.check());
     on('travel', (d) => { const id = typeof d === 'string' ? d : d?.to || d?.id || d?.biome; if (id) this.S.visited[id] = 1; this.check(); });
     on('depthZone', (d) => { const z = zoneId(d); if (z) { this.S.zones[z] = 1; this.check(); } }); // the Oceans agent's zone changes
     for (const ev of ['labDone', 'unlocked', 'tankUpgraded', 'tutorialDone', 'boatUpgraded']) on(ev, () => this.check());
@@ -392,6 +442,7 @@ export class QuestBook {
     const g = this.game, S = this.S;
     if (S.done[q.id]) return;
     S.done[q.id] = Date.now();
+    for (const o of q.objectives) if (o.t === 'have' && o.take) { try { ITEMS.removeItem?.(g.state, o.id, o.n); } catch { /* ignore */ } } // [phase8:prog] hand the items over
     const r = grantReward(g, q.reward, 'quest');
     g.emit?.('questDone', { id: q.id, bonus: r.bonus });
     g.save?.();

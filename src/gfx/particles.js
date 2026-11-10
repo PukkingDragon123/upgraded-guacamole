@@ -286,7 +286,11 @@ export class Particles {
       kind: 'dot', x: 0, y: 0, vx: 0, vy: 0, life: 1, t: 0, size: 1, color: '#ffffff',
       g: 0, drag: 0, layer: 'fg', add: false, fade: true, ...p,
     };
-    if (q.kind === 'ring' || q.kind === 'ring2') return this.ringFx(q); // [phase8:ui] no lazy circles
+    if (q.kind === 'ring' || q.kind === 'ring2') { // [phase8:ui] no lazy circles: legacy rings become pixel effects
+      try { return this.ringFx(q) || q; } catch (e) { console.warn('ringFx', e); return q; }
+    }
+    if (!(q.life > 0) || !Number.isFinite(q.life)) q.life = 0.5; // [phase8:ui] never let a bad arg break drawing
+    if (!Number.isFinite(q.x) || !Number.isFinite(q.y)) return q;
     q.max = q.life;
     if (q.delay) q.t = -q.delay;
     const cap = Math.max(16, Math.floor(this.max * this.limitScale));
@@ -675,6 +679,8 @@ export class Particles {
 
   // Radial (or directed) burst of n hand-drawn sprites of one kind. See PXDEF for the per-kind defaults.
   pixelBurst(kind, x, y, n = 8, o = {}) {
+    n = Number.isFinite(n) ? Math.min(200, Math.max(0, Math.round(n))) : 8;
+    o = o && typeof o === 'object' ? o : {};
     if (kind === 'coin' || kind === 'coins') return this.coins(x, y, n, o);
     if (kind === 'splash') return this.pixelSplash(x, y, o.power ?? Math.min(2, n / 8), o);
     const D = PXDEF[kind] || PXDEF.sparkle;
@@ -698,6 +704,7 @@ export class Particles {
 
   // Comic impact: a spiky burst that pops into shards, plus sparkles and tiny stars. size 0 | 1 | 2.
   impact(x, y, size = 1, o = {}) {
+    size = size === 0 || size === 2 ? size : 1;
     const layer = o.layer || 'fg', ramp = o.ramp || 'gold';
     const q = this.pixel('impact', x, y, { ramp, size, life: 0.3 + size * 0.04, layer, delay: o.delay });
     this.pixelBurst('sparkle', x, y, o.sparkles ?? 4 + size * 3, { layer, ramp: o.sparkRamp || ramp, speed: [40 + size * 30, 90 + size * 60], delay: o.delay, stagger: false });
@@ -714,6 +721,7 @@ export class Particles {
 
   // Water splash as pixel art: teardrop droplets, foam puffs and two wavelets scooting off on the surface.
   pixelSplash(x, y, power = 1, o = {}) {
+    if (!Number.isFinite(power)) power = 1;
     const layer = o.layer || 'fg';
     this.pixelBurst('drop', x, y, Math.round(5 + 8 * power), { layer, ramp: o.ramp || 'aqua', speed: [70 * (0.6 + power * 0.5), 180 * (0.6 + power * 0.5)], spread: 0.95 });
     this.pixelBurst('foam', x, y, Math.round(2 + 3 * power), { layer, w: 4 + power * 4, speed: [8, 30] });
@@ -723,6 +731,7 @@ export class Particles {
 
   // Two pixel wave crests sliding left and right on the water line (replaces ripple rings).
   wavelets(x, y, power = 1, o = {}) {
+    if (!Number.isFinite(power)) power = 1;
     const layer = o.layer || 'fg', sp = 14 + power * 16, d = o.spread ?? 2;
     for (const s of [-1, 1]) this.pixel('wave', x + s * d, y - 1, { ramp: o.ramp || 'foam', vx: s * sp, drag: 1.4, life: 0.45 + power * 0.25, layer, delay: o.delay, flip: s < 0 });
   }
@@ -738,6 +747,7 @@ export class Particles {
 
   // Party! confetti chips, ribbons, stars, hearts and sparkles.
   celebrate(x, y, power = 1, o = {}) {
+    if (!Number.isFinite(power)) power = 1;
     const layer = o.layer || 'fg';
     this.pixelBurst('confetti', x, y, Math.round(18 * power), { layer, w: 10 * power });
     this.pixelBurst('ribbon', x, y, Math.round(6 * power), { layer, w: 8 * power });
@@ -803,6 +813,12 @@ export class Particles {
 
   // Converts legacy ring adds into pixel effects (water rings -> wavelets, flat rings -> pops / impacts).
   ringFx(q) {
+    if (this._inRing) return null;
+    this._inRing = true;
+    try { return this.ringFxInner(q); } finally { this._inRing = false; }
+  }
+
+  ringFxInner(q) {
     const r = q.r1 ?? 12, layer = q.layer || 'fg', flat = q.flat ?? 0.4;
     const nearWater = this.surfaceY !== null && layer !== 'ui' && Math.abs(q.y - (this.waterAt(q.x) ?? q.y)) < 10;
     if (flat < 0.8 || nearWater) {
@@ -933,7 +949,8 @@ export class Particles {
           else if (p.anim === 'loop') fi = Math.floor(p.t * p.fps + p.fr) % F.length;
           else if (p.anim === 'twinkle') fi = Math.sin(p.t * 16 + p.ph) > 0.55 ? Math.min(1, F.length - 1) : 0;
           else fi = p.fr % F.length;
-          const c = F[fi];
+          const c = F[fi] || F[0];
+          if (!c) break;
           const w = c.width * p.sc, h = c.height * p.sc;
           if (p.flip && p.sheet !== 'zap') {
             ctx.save(); ctx.translate(x + (w >> 1), y - (h >> 1)); ctx.scale(-1, 1); ctx.drawImage(c, 0, 0, w, h); ctx.restore();

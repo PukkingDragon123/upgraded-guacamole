@@ -3,7 +3,7 @@
 // a plain privacy line. Everything shown about other players comes from src/net (already validated) and is
 // drawn as canvas text only (never HTML).
 
-import { drawText, wrapText, measureText } from '../gfx/font.js';
+import { drawText, wrapText, measureText, lineHeight } from '../gfx/font.js';
 import { getUiIcon } from '../gfx/uiicons.js';
 import { RARITY } from '../core/color.js';
 import { drawAeroPanel, drawGlossOrb, drawSparkle } from './aero.js';
@@ -127,12 +127,13 @@ export class MultiplayerPanel {
     drawText(ctx, 'EACH FRIEND IN YOUR OCEAN: +10%', x + 8, y + 151, { font: 'small', color: '#7aa6bc' });
     // privacy
     const lines = wrapText(PRIVACY, w - 24, 'small');
-    const ly = y + h - 6 - lines.length * 7;
+    const LH = Math.min(9, lineHeight('small')); // [phase8:ui] follows the bigger small text
+    const ly = y + h - 6 - lines.length * LH;
     ctx.fillStyle = 'rgba(12,58,82,0.08)';
-    rrect(ctx, x + 4, ly - 4, w - 8, lines.length * 7 + 7, 5); ctx.fill();
+    rrect(ctx, x + 4, ly - 4, w - 8, lines.length * LH + 7, 5); ctx.fill();
     const lk = getUiIcon('lock');
     if (lk) ctx.drawImage(lk, x + 7, ly - 1);
-    lines.forEach((l, i) => drawText(ctx, l, x + 17, ly + i * 7, { font: 'small', color: INK_SOFT }));
+    lines.forEach((l, i) => drawText(ctx, l, x + 17, ly + i * LH, { font: 'small', color: INK_SOFT }));
   }
 
   // ---------------------------------------------------------------- players

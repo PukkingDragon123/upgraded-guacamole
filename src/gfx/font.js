@@ -246,7 +246,18 @@ function glyphFor(font, ch) {
   return font.glyphs.get(ch) || (ch === ' ' ? null : font.glyphs.get('?'));
 }
 
+// [phase8:ui] Bigger text: while the bump is on (UI size Big / Huge), the tiny 5 px 'small' face is drawn with the 7 px
+// 'normal' glyphs in capitals (the same look, ~40% larger). measureText / wrapText / lineHeight follow, so layouts
+// that measure stay consistent. setTextBump(on), textBump() -> bool, faceOf(name) -> the face actually used.
+let bump = true;
+export function setTextBump(on) { bump = !!on; }
+export function textBump() { return bump; }
+export function faceOf(name = 'normal') { return bump && name === 'small' ? 'normal' : name; }
+const upper = (name, text) => (bump && name === 'small' ? String(text).replace(/\{[^}]*\}|[^{]+/g, (m) => (m[0] === '{' ? m : m.toUpperCase())) : text);
+
 export function measureText(text, fontName = 'normal', scale = 1) {
+  text = upper(fontName, text);
+  fontName = faceOf(fontName);
   const font = FONTS[fontName];
   let w = 0, maxW = 0;
   for (const t of tokenize(String(text))) {
@@ -261,7 +272,7 @@ export function measureText(text, fontName = 'normal', scale = 1) {
 }
 
 export function lineHeight(fontName = 'normal', scale = 1) {
-  return FONTS[fontName].lineHeight * scale;
+  return FONTS[faceOf(fontName)].lineHeight * scale;
 }
 
 // Core glyph blitter. (x, y) = top-left of the cap height box.
@@ -295,8 +306,8 @@ function blit(ctx, text, x, y, font, color, scale, wave, time, icons = true) {
  *       shadow (color), outline (color), wave (px), time
  */
 export function drawText(ctx, text, x, y, opts = {}) {
-  text = String(text);
-  const font = FONTS[opts.font || 'normal'];
+  text = upper(opts.font, String(text));
+  const font = FONTS[faceOf(opts.font || 'normal')];
   const scale = opts.scale || 1;
   const color = opts.color || '#ffffff';
   if (opts.align && opts.align !== 'left') {

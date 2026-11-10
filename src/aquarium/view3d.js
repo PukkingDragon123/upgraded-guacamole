@@ -341,14 +341,14 @@ export class TankView {
     if (gv) {
       const pulse = 0.5 + 0.5 * Math.sin(t * 6);
       const M = R(T4.trs(gv.p, 0, gv.yaw, 0, gv.k));
-      sc.add(gv.model.mesh, M, { tint: gv.ok ? [0.55, 1, 0.9, 0.3 + 0.12 * pulse] : [1, 0.25, 0.3, 0.55], emit: 0.2 });
+      sc.add(gv.model.mesh, M, { tint: gv.ok ? [0.5, 1, 0.92, 0.42 + 0.15 * pulse] : [1, 0.22, 0.28, 0.6], emit: 0.45 });
       for (const gw of gv.model.glow) sc.add(gw.mesh, M, { tint: [...gw.col, 1] });
       if (gv.model.part) sc.add(gv.model.part.mesh, M, { tint: gv.ok ? [0.7, 1, 1, 0.4] : [1, 0.4, 0.4, 0.6] });
     }
     // build marks: glowing corner brackets around footprints and the brush square
     const mk = this.dyn.marks.begin();
     const bracket = (c, hs, col, y) => {
-      const L = hs * 0.42, w = Math.max(0.08, hs * 0.07);
+      const L = hs * 0.5, w = Math.max(0.12, hs * 0.11);
       for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
         const x = c[0] + sx * hs, z = c[2] + sz * hs;
         mk.quad([x, y, z], [x - sx * L, y, z], [x - sx * L, y, z - sz * w], [x, y, z - sz * w], col);

@@ -267,6 +267,11 @@ export class DeepSea {
         const n = r.chance(0.55) ? 2 : 1;
         for (let i = 0; i < n; i++) add(cxAt(l.y) + l.side * (p.half(l.y) + r.float(3, Math.max(4, l.d * 0.75))), l.y + 1);
       }
+      // outcrops growing from the flanks between the ledges
+      for (let y = p.top + 40 + r.int(0, 30); y < p.bot - 50; y += r.int(48, 84)) {
+        const side = r.chance(0.5) ? -1 : 1;
+        add(cxAt(y) + side * (p.half(y) - 1), y);
+      }
     }
     for (const l of this.ledges) {
       const n = r.int(1, 2);
