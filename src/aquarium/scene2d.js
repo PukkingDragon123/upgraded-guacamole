@@ -82,7 +82,7 @@ export class TankScene {
     const by = Math.round(bottomY);
     const hood = 21, base = 12;
     let Z = (by - base - this.topY) / (T.H + hood);
-    Z = clamp(Math.floor(Z * 20) / 20, 0.8, 1.45);
+    Z = clamp(Math.floor(Z * 20) / 20, 0.8, clamp((H / 540) * 1.45, 1.45, 2.1));
     const key = [T.tier, Z, W, H].join('|');
     this.bottomY = by - Math.round(base * Z);
     if (key !== this.layoutKey) { this.layoutKey = key; this.Z = Z; this.invalidate(); }
@@ -597,7 +597,8 @@ export class TankScene {
           c.drawImage(s.canvas, dx + sx, dy, w, h);
           c.globalAlpha = 1;
         }),
-        glow: s.glow ? () => ctx2((c) => c.drawImage(s.glow, dx, dy, w, h)) : null,
+        glow: s.glow ? () => ctx2((c) => c.drawImage(s.glow, dx, dy, w, h))
+          : PROPS[d.id]?.tags?.includes('glow') || PROPS[d.id]?.tags?.includes('crystal') ? (dk) => ctx2((c) => { drawAeroGlow(c, dx + w / 2, dy + h * 0.45, Math.round(Math.max(w, h) * 0.7), '#bff8ff', 0.3 * dk); c.globalAlpha = 0.35 * dk; c.drawImage(s.canvas, dx, dy, w, h); c.globalAlpha = 1; }) : null,
       });
     }
     // fish

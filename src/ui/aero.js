@@ -787,8 +787,8 @@ function orbTex(r, color) {
 
 export function drawGlossOrb(ctx, cx, cy, r, color = AERO.aqua, t = 0) {
   r = Math.max(1.5, Math.round(r * 2) / 2);
-  // [phase10:ui] from r >= 4 the orb is a voxel bubble (bigicons decor 'orb:<color>'), still and centred
-  if (r >= 4 && decor3d) { let f = null; try { f = decor3d('orb:' + color, Math.round(r * 2 + 1), 0); } catch { f = null; } if (f) { ctx.drawImage(f.canvas, Math.round((cx - f.ox) * 2) / 2, Math.round((cy - f.oy) * 2) / 2); return; } }
+  // [phase10:ui] big orbs (r >= 9: hub badges) are chunky voxel bubbles (bigicons decor 'orb:<color>'); small knobs stay 2D
+  if (r >= 9 && decor3d) { let f = null; try { f = decor3d('orb:' + color, Math.round(r * 2 + 1), 0); } catch { f = null; } if (f) { ctx.drawImage(f.canvas, Math.round((cx - f.ox) * 2) / 2, Math.round((cy - f.oy) * 2) / 2); return; } }
   const c = aeroCached(`orb|${r}|${color}`, () => { const c1 = orbTex(r, color); return withHi(c1, () => fitHi(c1, orbTex(r * HI, color))); });
   ctx.drawImage(c, Math.round(cx - c.width / 2), Math.round(cy - c.height / 2));
   void t;

@@ -10,6 +10,9 @@ import { HI, withHi, fitHi } from '../gfx/hires.js'; // [phase9:ui]
 import { VoxelModel, renderVoxels } from '../gfx/voxel.js';
 import { hash3, clamp } from '../core/math.js';
 import { itemPixel, itemPixelScaled } from './itempix.js'; // [phase8:ui] hand-drawn pixel art for most items
+import { voxelModelFrame } from '../gfx/bigicons.js'; // [phase10:ui] toy-block voxel items
+import { lpAvailable } from '../gfx/lowpoly.js';
+import { ctxOf } from '../core/canvas.js';
 
 export const SPIN = 16;
 const h3 = (x, y, z, s = 0) => hash3(x, y, z, s);
@@ -394,6 +397,25 @@ export function itemSprite(id, { scale = 1, frame = 0, force = false, voxel = fa
     return q;
   }
   frame = ((frame % SPIN) + SPIN) % SPIN;
+  // [phase10:ui] the voxel models render as chunky toy blocks (bigicons.voxelModelFrame, same style as every icon)
+  if (MODELS[id] && lpAvailable()) {
+    const b0 = modelOf(id);
+    const px = Math.max(12, Math.round(Math.max(b0.m.nx, b0.m.ny, b0.m.nz) * 2 * scale * (b0.vs ?? 1) * 1.1));
+    const f = voxelModelFrame('item:' + id, () => modelOf(id).m, px, frame / SPIN, force);
+    if (f) {
+      const tk = 'toy|' + id + '|' + px + '|' + frame;
+      let q = cache.get(tk);
+      if (!q) {
+        const c = f.canvas, d = ctxOf(c).getImageData(0, 0, c.width, c.height).data;
+        let by = c.height;
+        outer: for (let y = c.height - 1; y >= 0; y--) for (let x = 0; x < c.width; x++) if (d[(y * c.width + x) * 4 + 3] > 100) { by = y + 1; break outer; }
+        q = { canvas: c, glow: null, ox: Math.round(f.ox), oy: by, w: c.width, h: c.height };
+        cache.set(tk, q);
+      }
+      return q;
+    }
+    if (!force) return null;
+  }
   const key = id + '|' + scale + '|' + frame;
   let s = cache.get(key);
   if (s) return s;
@@ -443,3 +465,4 @@ export function packageParts(tier, scale = 1, frame = 0, force = true, full = fa
 export function hasItemModel(id) { return !!(MODELS[id] || PKG[String(id).replace(/^pkg_/, '')]); } // [phase9:ui]
 
 export function clampFrame(f) { return clamp(Math.floor(f), 0, SPIN - 1); }
+export function itemModelOf(id) { return MODELS[id] ? modelOf(id).m : null; } // [phase10:ui] the raw VoxelModel

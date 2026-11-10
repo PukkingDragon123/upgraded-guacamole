@@ -186,7 +186,7 @@ export function drawCraftCard(ctx, ui, panel, r) {
   let y = hy + 50;
   drawText(ctx, rc.name + (rc.out?.qty > 1 ? ` x${rc.out.qty}` : ''), cx, y, { align: 'center', color: INK, shadow: '#ffffff' });
   y += 12;
-  const tag = { building: 'Blueprint', decor: 'Aquarium decor', plans: 'Seabed decor', bait: 'Bait', special: 'Bait mixer' }[rc.cat];
+  const tag = { building: 'Blueprint', decor: 'Aquarium decor', plans: 'Tank plans', bait: 'Bait', special: 'Bait mixer' }[rc.cat]; // [phase10:tank]
   drawText(ctx, tag.toUpperCase(), cx, y, { font: 'small', align: 'center', color: INK_SOFT });
   y += 10;
   for (const l of wrapText(rc.desc || ITEMS[rc.out?.id]?.desc || '', r.w - 20).slice(0, 3)) { drawText(ctx, l, cx, y, { align: 'center', color: INK_SOFT }); y += 11; }
@@ -225,7 +225,7 @@ export function drawCraftCard(ctx, ui, panel, r) {
   const multi = rc.cat === 'bait' || rc.cat === 'decor';
   const w1 = canPlace || multi ? Math.round((r.w - 24) * 0.58) : r.w - 20;
   if (pill(ui, ctx, r.x + 10, by, w1, 24, 'Craft', { tone: 'green', icon: icon('hammer', 14), disabled: !c.ok, sound: 'ui_unlock' })) doCraft(1);
-  if (canPlace) { if (pill(ui, ctx, r.x + 14 + w1, by, r.w - 24 - w1, 24, 'Place', { tone: 'aqua', icon: getUiIcon('home'), tip: 'Place it on the seabed' })) { ui.close(); g.build.startPlacing(rc.out.id); } }
+  if (canPlace) { if (pill(ui, ctx, r.x + 14 + w1, by, r.w - 24 - w1, 24, 'Place', { tone: 'aqua', icon: getUiIcon('home'), tip: 'Place it in your tank' })) { ui.close(); g.build.startPlacing(rc.out.id); } } // [phase10:tank]
   else if (multi) { const c5 = craftCheck(st, rc, 5); if (pill(ui, ctx, r.x + 14 + w1, by, r.w - 24 - w1, 24, 'x5', { tone: 'aqua', disabled: !c5.ok })) doCraft(5); }
 }
 

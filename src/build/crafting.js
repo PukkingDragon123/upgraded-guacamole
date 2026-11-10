@@ -1,8 +1,9 @@
 // Crafting (phase 3). OWNER: Lab agent. Recipes are unlocked in The Lab (unlock kind 'recipe') and turn Aero +
-// materials into building blueprints, aquarium decor, seabed decor plans or bait. Crafting is instant.
+// materials into building blueprints, aquarium decor, tank decor plans or bait. Crafting is instant.
+// Phase 10: everything built from them is placed in the TANK (aquarium build mode).
 //   RECIPES: [{id, cat, name, icon /* labIcon key */, out: {id, qty} | null, cost: {aero, items}, desc}]
 //     cat: 'building' (bp_<buildingId> -> blueprint, placed in build mode), 'decor' (decor_<propId> -> straight into
-//          the aquarium, or the inventory when it is full), 'plans' (plans_<propId> -> seabed decor blueprint),
+//          the aquarium, or the inventory when it is full), 'plans' (plans_<propId> -> tank decor blueprint),
 //          'bait' (bait_<baitId> -> store/bait.js addBait), 'special' (custombait -> opens the Bait panel's mixer)
 //   RECIPE_BY_ID, CRAFT_CATS [{id, name, icon}]
 //   recipeUnlocked(state, id), recipeNode(id) -> the Lab node that unlocks it (null = starter)
@@ -17,7 +18,7 @@ import { BAITS as STORE_BAITS } from '../store/bait.js';
 export const CRAFT_CATS = [
   { id: 'building', name: 'Buildings', icon: 'bp:coral_garden' },
   { id: 'decor', name: 'Aquarium Decor', icon: 'decor' },
-  { id: 'plans', name: 'Seabed Decor', icon: 'bp:lighthouse' },
+  { id: 'plans', name: 'Tank Plans', icon: 'bp:lighthouse' }, // [phase10:tank] everything is built in the tank
   { id: 'bait', name: 'Bait', icon: 'bait:worm' },
 ];
 

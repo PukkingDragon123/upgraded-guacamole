@@ -139,10 +139,10 @@ export class BuildTrayPanel {
       const def = buildingDef(it.builds);
       drawText(ctx, def.name.toUpperCase(), px, y + 9, { color: '#ffffff', outline: '#0a2a5a' });
       drawText(ctx, `x${countItem(st, sel)} blueprint${countItem(st, sel) > 1 ? 's' : ''}${def.unique ? ' - unique' : ''}`, px + measureText(def.name.toUpperCase()) + 8, y + 10, { font: 'small', color: '#9ad0ff' });
-      drawText(ctx, 'Click the seabed to place it. Free!', px, y + 23, { color: '#bfe2ff' });
+      drawText(ctx, 'Click your tank to place it. Free!', px, y + 23, { color: '#bfe2ff' }); // [phase10:tank]
     } else if (B.moving) {
       drawText(ctx, 'MOVING ' + (buildingDef(B.byUid(B.moving)?.id)?.name || '').toUpperCase(), px, y + 9, { color: '#ffe27a', outline: '#0a2a5a' });
-      drawText(ctx, 'Free of charge. Click the seabed to set it down.', px, y + 23, { color: '#bfe2ff' });
+      drawText(ctx, 'Free of charge. Click your tank to set it down.', px, y + 23, { color: '#bfe2ff' }); // [phase10:tank]
     } else {
       drawText(ctx, B.mode === 'demolish' ? 'DEMOLISH MODE' : B.mode === 'move' ? 'MOVE MODE' : 'PICK A BLUEPRINT', px, y + 9, { color: B.mode === 'demolish' ? '#ffb0a0' : '#ffffff', outline: '#0a2a5a' });
       drawText(ctx, B.mode === 'demolish' ? 'Packs it up: the blueprint comes back.' : B.mode === 'move' ? 'Click a building to pick it up.' : 'Craft blueprints in the Lab.', px, y + 23, { color: '#bfe2ff' });

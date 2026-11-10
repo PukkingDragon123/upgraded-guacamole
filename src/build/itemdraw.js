@@ -13,7 +13,8 @@ import * as CHAR from '../gfx/character.js';
 import { SPECIES_BY_ID } from '../fish/species.js';
 import { drawFishFit, fitScale } from '../ui/journal.js';
 import { ITEMS } from './items.js';
-import { itemSprite, packageParts, SPIN, hasItemModel } from './itemart.js';
+import { itemSprite, packageParts, SPIN, hasItemModel, itemModelOf } from './itemart.js';
+import { voxelModelFrame } from '../gfx/bigicons.js'; // [phase10:ui]
 import { itemPixel, itemPixelScaled } from './itempix.js'; // [phase8:ui]
 import { buildingSprite } from './buildingmodels.js';
 import { pixIcon } from './pixart.js'; // [phase8:prog] pixel-art items
@@ -116,6 +117,7 @@ export function itemIcon(id, size = 14) {
   if (has3D(id) || (art && has3D(art))) { const c3 = icon3d(has3D(id) ? id : art, size, size); if (c3) { icons.set(key, c3); return c3; } if (lpAvailable()) return null; } // [phase9:ui] 3D icons first ([phase10:ui] voxel build deferred: ask again)
   if (it?.pix) src = pixIcon(id, 1); // [phase8:prog]
   else if (art && itemPixel(art) && !hasItemModel(art)) { const b = itemPixel(art); src = itemPixelScaled(art, Math.max(1, Math.floor(Math.min(size / b.w, size / b.h)))); } // [phase8:ui]
+  else if (art && !art.startsWith('pkg_') && hasItemModel(art) && lpAvailable()) { const f = voxelModelFrame('item:' + art, () => itemModelOf(art), size + 2, 0, true); if (f) { const c3 = makeCanvas(size, size); ctxOf(c3).drawImage(f.canvas, Math.round(size / 2 - f.ox), Math.round(size / 2 - f.oy)); if (f.canvas.hi) { const h3 = makeCanvas(size * 2, size * 2); ctxOf(h3).drawImage(f.canvas.hi, Math.round((size / 2 - f.ox) * 2), Math.round((size / 2 - f.oy) * 2)); Object.defineProperty(c3, 'hi', { value: h3, configurable: true }); } icons.set(key, c3); return c3; } } // [phase10:ui] toy-block voxel icon
   else if (art && !art.startsWith('pkg_')) src = itemSprite(art, { scale: 0.5, frame: 0, force: true })?.canvas;
   else if (art) src = packageParts(art.slice(4), 0.5, 0, true, true)?.full;
   else if (it?.kind === 'bait') src = baitSprite(id, 0);

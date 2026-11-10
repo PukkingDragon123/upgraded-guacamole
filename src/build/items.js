@@ -4,7 +4,7 @@
 //              art (itemart id), biome?, builds? (blueprint -> building/decor id), prop? (decor), slot/look (cosmetic), tier (package)}
 //   Materials: driftwood, kelp_fibre, shell, sea_glass, coral_chunk, pearl, scrap_metal, gear, circuit_board,
 //   ancient_stone, abyss_crystal, golden_scale, fish_sample, rare_specimen (+ fish_egg).
-//   Blueprints: bp_<building id> (BUILDINGS) and bp_<prop id> (seabed decor). Bait ids mirror BAITS (stored in
+//   Blueprints: bp_<building id> (BUILDINGS) and bp_<prop id> (tank decor plans; everything is built in the tank). Bait ids mirror BAITS (stored in
 //   state.baits). Decor ids are PROPS ids with a decor field. Cosmetics: cos_<slot>_<id> from WARDROBE.
 //   Packages: pkg_crate, pkg_iron, pkg_golden, pkg_orb (the package objects live in state.inventory.packages).
 // addItem(state, id, qty) / removeItem(state, id, qty) -> bool / countItem(state, id)
@@ -89,7 +89,7 @@ for (const [id, p] of Object.entries(PROPS)) {
   if (!p.decor || ITEMS[id]) continue;
   const pr = p.decor.price;
   const r = pr < 80 ? 'common' : pr < 220 ? 'uncommon' : pr < 450 ? 'rare' : pr < 900 ? 'epic' : 'legendary';
-  add(id, { name: p.name, kind: 'decor', rarity: r, prop: id, art: null, biome: p.biome === 'aquarium' ? null : p.biome, desc: `Decoration for your aquarium${DECOR_BUILDS[id] ? ' or the seabed' : ''}. Size: ${['', 'small', 'medium', 'large'][p.decor.size] || 'medium'}.`, value: Math.round(pr * 0.4) });
+  add(id, { name: p.name, kind: 'decor', rarity: r, prop: id, art: null, biome: p.biome === 'aquarium' ? null : p.biome, desc: `Decoration for your aquarium. Size: ${['', 'small', 'medium', 'large'][p.decor.size] || 'medium'}.`, value: Math.round(pr * 0.4) });
 }
 
 // ---------------------------------------------------------------- cosmetics (WARDROBE from character.js)

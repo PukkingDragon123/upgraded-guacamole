@@ -234,7 +234,7 @@ export class Build2D {
     else if (op.op === 'storeB') this.game.build?.restoreToTank?.(op.b);
     aq.syncPieces();
     this.sel = null;
-    aq.sfx('ui_back', { vol: 0.5 });
+    aq.sfx('ui_close', { vol: 0.5 });
     this.game.save?.();
   }
 
@@ -344,6 +344,7 @@ export class Build2D {
     if (kp('f')) { I.keysPressed.delete('f'); this.doFlip(); }
     if ((kp('Delete') || kp('Backspace')) && this.sel) this.store();
     if (kp('z') && (I.key('Control') || I.key('Meta'))) this.undo();
+    for (const k of ['q', 'e', 'f', 'z', 'Delete', 'Backspace']) I?.keysPressed?.delete?.(k); // build keys, not game hotkeys (Q = quests)
     const W = g.screen.W;
     void W;
     // toolbar

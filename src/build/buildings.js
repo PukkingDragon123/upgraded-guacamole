@@ -1,10 +1,10 @@
-// Seabed buildings: definitions, upgrade levels, production timers, the Treasure Vault, Bait Workshop
+// Buildings (phase 10: they stand in the side-view TANK, b.tank): definitions, upgrade levels, production timers, the Treasure Vault, Bait Workshop
 // recipes and the bonus hook the orchestrator reads.
 //
 // BUILDINGS[id] = {name, rarity, unique, desc, lore, cost: {coins (Aero), items} (crafting cost of its blueprint in the Lab),
 //                  action, bonus: {key: [lv1, lv2, lv3]},
 //                  produce?: {every (s), cap: [..], give: [{id, qty, w}] | coins: [min, max]}, upgrades: [cost lv2, cost lv3]}
-// DECOR_BUILDS[id] = seabed decor (a PROPS id) placed from a decor blueprint.
+// DECOR_BUILDS[id] = tank decor (a PROPS id) placed from a decor blueprint.
 // buildingBonus(state, key) -> number (sum over placed buildings at their level + research perks; 0 when none).
 //   Keys: rarity, nightRarity, coinMul, baitRadius, luck (crate luck), shiny, mutation, sellMul,
 //         eggChance, baitSave, researchSpeed, light (lighthouse beam strength). Multiplicative keys are
@@ -115,7 +115,7 @@ for (const id of DECOR_PICK) {
   if (!p?.decor) continue;
   const price = p.decor.price;
   const rarity = price < 150 ? 'common' : price < 350 ? 'uncommon' : price < 650 ? 'rare' : price < 1200 ? 'epic' : 'legendary';
-  DECOR_BUILDS[id] = { name: p.name, rarity, prop: id, size: p.decor.size, desc: `Seabed decoration: a ${p.name.toLowerCase()} for your underwater neighbourhood.`, cost: { coins: Math.round(price * 0.25), items: {} } };
+  DECOR_BUILDS[id] = { name: p.name, rarity, prop: id, size: p.decor.size, desc: `Tank plans: build a ${p.name.toLowerCase()} in your aquarium.`, cost: { coins: Math.round(price * 0.25), items: {} } };
 }
 
 export function buildingDef(id) {

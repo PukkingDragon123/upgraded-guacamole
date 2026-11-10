@@ -426,7 +426,7 @@ export class InventoryPanel {
     if (it?.biome) stats.push(['map', { oscean: '(OS)cean', shallows: 'Sunny Shallows', fjord: 'Frosty Fjord', junkyard: 'Junkyard Reef', metropolis: 'Sunken Metropolis', volcano: 'Lava Rift', abyss: 'The Deep Ocean' }[it.biome] || it.biome]);
     if (e.kind === 'material' || e.kind === 'egg') uses = usesOf(e.id);
     if (e.kind === 'egg') uses = ['Hatch a baby fish', ...uses];
-    if (e.kind === 'decor') uses = ['Aquarium decor', ...(DECOR_BUILDS[e.id] ? ['Seabed plans'] : [])];
+    if (e.kind === 'decor') uses = ['Aquarium decor', ...(DECOR_BUILDS[e.id] ? ['Tank plans'] : [])]; // [phase10:tank]
     if (e.kind === 'cosmetic') {
       const w = wardrobeItem(e.id);
       if (w?.slot) stats.push(['crown', w.slot[0].toUpperCase() + w.slot.slice(1)]);
@@ -453,7 +453,7 @@ export class InventoryPanel {
       const it = ITEMS[e.id];
       const def = buildingDef(it.builds);
       const done = def?.unique && st.buildings?.some((b) => b.id === it.builds);
-      out.push({ label: done ? 'Built' : 'Build', icon: 'home', style: 'green', disabled: done || (g.state.view !== 'ocean' && !g.setView), tip: 'Place it on the seabed', run: () => { ui.close(this.id); g.build?.startPlacing?.(e.id); } });
+      out.push({ label: done ? 'Built' : 'Build', icon: 'home', style: 'green', disabled: done || (g.state.view !== 'ocean' && !g.setView), tip: 'Place it in your tank', run: () => { ui.close(this.id); g.build?.startPlacing?.(e.id); } }); // [phase10:tank]
       out.push({ label: 'Sell', icon: 'aero', run: () => sell(1) });
     }
     if (e.kind === 'material') { out.push({ label: 'Sell', icon: 'aero', run: () => sell(1) }); out.push({ label: 'All', icon: 'aero', tip: 'Sell all', run: () => sell(e.qty) }); }

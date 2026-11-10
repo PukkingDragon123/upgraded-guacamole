@@ -485,19 +485,18 @@ function leafInto(mb, bx, by, len, wid, ang, z, col) {
   for (let i = N - 1; i >= 1; i--) { const u = i / N, hw = Math.pow(Math.sin(Math.PI * Math.min(1, u * 1.02)), 0.7) * wid * (1 - 0.15 * u); pts.push([u * len, -hw]); }
   const P = (p) => [bx + p[0] * ca - p[1] * sa, by + p[0] * sa + p[1] * ca];
   const lit = mix(col, '#e8ffa0', 0.35);
-  prism(mb, pts.map(P), z - 0.04, z + 0.04, col, { front: (i) => jit(i % 3 ? lit : col, i, 0.05), side: shade(col, -0.3) });
+  prism(mb, pts.map(P), z - 0.07, z + 0.07, col, { front: (i) => jit(i % 3 ? lit : col, i, 0.05), side: shade(col, -0.3) });
   tube(mb, [[bx, by, z + 0.045], [bx + ca * len * 0.85, by + sa * len * 0.85, z + 0.045]], 0.018, 3, mix(col, '#f4ffc0', 0.7));
 }
 export const DECOR_MODELS = {
   leaves: () => {
+    // three big, simple leaves on a short twig: reads clearly as chunky voxels
     const mb = new MeshBuilder();
-    tube(mb, [[0.95, 0.75, 0], [0.4, 0.55, 0.02], [-0.1, 0.25, 0.04], [-0.55, -0.2, 0.05]], (i) => [0.05, 0.045, 0.035, 0.025][i], 5, '#2c7a1c');
-    leafInto(mb, 0.55, 0.6, 0.62, 0.2, 2.2, 0.08, '#4fbf2c');
-    leafInto(mb, 0.3, 0.45, 0.7, 0.22, -2.6, 0.12, '#62d63a');
-    leafInto(mb, 0.0, 0.2, 0.66, 0.21, 2.5, 0.16, '#3caa22');
-    leafInto(mb, -0.2, 0.02, 0.6, 0.2, -2.0, 0.2, '#86e04a');
-    leafInto(mb, -0.5, -0.18, 0.5, 0.17, -3.0, 0.22, '#52c830');
-    return { mesh: mb.build(), yaw: 0.15, pitch: 0.2, spin: 'wobble', spinAxis: 'z' };
+    tube(mb, [[0.95, 0.8, 0], [0.45, 0.45, 0.02], [-0.1, 0.05, 0.04]], (i) => [0.08, 0.07, 0.05][i], 5, '#2c7a1c');
+    leafInto(mb, 0.55, 0.55, 1.0, 0.34, 2.45, 0.1, '#4fbf2c');
+    leafInto(mb, 0.25, 0.3, 1.05, 0.36, -2.55, 0.16, '#6ad83e');
+    leafInto(mb, -0.05, 0.05, 0.85, 0.3, -3.6, 0.22, '#3caa22');
+    return { mesh: mb.build(), yaw: 0.15, pitch: 0.2, spin: 'wobble', spinAxis: 'z', res: 16 };
   },
   leaves_l: () => mirrorModel(DECOR_MODELS.leaves()),
   shell: () => {

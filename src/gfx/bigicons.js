@@ -23,7 +23,7 @@ import { drawAeroBadge, setCoinRenderer, setDecorRenderer } from '../ui/aero.js'
 import { lpAvailable, renderMesh, LPMesh } from './lowpoly.js';
 import { ICON_MODELS, ROD_MODEL, GEM_MODEL, DECOR_MODELS, CUT_GEM_MODEL, ORB_MODEL } from './iconmeshes.js';
 import { itemPixel, itemPixelScaled } from '../build/itempix.js'; // [phase8:ui]
-import { voxelizeIconMesh, voxelEdge, iconRes } from './voxicon.js'; // [phase10:ui] every 3D icon is a voxel model
+import { voxelizeIconMesh, voxelEdge, iconRes, voxelModelMesh } from './voxicon.js'; // [phase10:ui] every 3D icon is a voxel model
 
 export const MENU_ICON_IDS = ['lab', 'aquarium', 'journal', 'inventory', 'wardrobe', 'map', 'bait', 'appsea', 'multiplayer', 'settings', 'quests', 'shop', 'coin'];
 export const BIG_ICON_IDS = [...MENU_ICON_IDS, 'skills', 'build', 'research', 'store', 'boatyard', 'mycomputer', 'recycle'];
@@ -734,6 +734,15 @@ function prepModel(key, make) {
   if (d !== undefined) return d;
   try {
     d = make();
+    // [phase10:ui] toy-block icons sit in a slight isometric 3/4 view
+    // (tiny icons keep a flatter, more frontal view so they stay readable)
+    d.view0 = { yaw: d.yaw || 0, pitch: d.pitch || 0 };
+    if (voxOn && !d.spinAxis && !d.keepView) {
+      const y0 = d.yaw || 0;
+      d.yaw = Math.abs(y0) < 0.5 ? (y0 < 0 ? -0.55 : 0.55) : Math.sign(y0) * Math.min(0.8, Math.abs(y0));
+      d.pitch = Math.max(0.4, Math.min(0.6, d.pitch || 0));
+      d.view0 = { yaw: Math.sign(d.yaw) * Math.min(Math.abs(d.yaw), 0.3), pitch: Math.min(d.pitch, 0.3) };
+    }
     const meshes = [d.mesh, d.over, d.glass].filter(Boolean);
     const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
     for (const m of meshes) for (let k = 0; k < 3; k++) { min[k] = Math.min(min[k], m.bounds.min[k]); max[k] = Math.max(max[k], m.bounds.max[k]); }
@@ -743,6 +752,7 @@ function prepModel(key, make) {
     }
     d.radius = Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) / 2 || 1;
     d.fits = new Map();
+    d.vox = new Map(); // [phase10:ui] shared by the per-size view copies in renderDef
   } catch (e) {
     console.error(e);
     d = null;
@@ -853,7 +863,8 @@ function finishSprite(src, w, h, pix = true) {
 }
 
 // [phase10:ui] the voxel twin of a model at `res` voxels along its longest side (cached on the def)
-const VOX_LIGHT = { light: [-0.34, 0.8, 1.0], ambient: 0.58, spec: 0.16, shine: 10, rim: 0.12, rimColor: '#e4fbff' };
+// [phase10:ui] toy-block light: tops brightest, the 3/4 front face mid, the side darker; flat, no specular sheen
+const VOX_LIGHT = { light: [-0.55, 1.0, 0.62], ambient: 0.5, spec: 0, shine: 8, rim: 0, rimColor: '#e4fbff' };
 let voxOn = true;
 export function setVoxelIcons(on) { voxOn = !!on; frameCache.clear(); hiFrames.clear(); cache.clear(); }
 function voxOf(def, res) {
@@ -862,11 +873,11 @@ function voxOf(def, res) {
   if (v !== undefined) return v;
   try {
     const vs = voxelEdge(def, res);
-    const mesh = voxelizeIconMesh(def.mesh, res, { vs });
+    const mesh = def.prevox ? def.mesh : voxelizeIconMesh(def.mesh, res, { vs });
     v = mesh ? {
       mesh,
-      over: def.over ? voxelizeIconMesh(def.over, res, { vs }) : null,
-      glass: def.glass ? voxelizeIconMesh(def.glass, res, { vs, hollow: true, hl: 0, ao: 0, jitter: 0 }) : null,
+      over: def.over && !def.prevox ? voxelizeIconMesh(def.over, res, { vs }) : null,
+      glass: def.glass && !def.prevox ? voxelizeIconMesh(def.glass, res, { vs, hollow: true, jitter: 0, bands: false }) : null,
     } : null;
   } catch (e) { console.error('voxel icon', e); v = null; }
   def.vox.set(res, v);
@@ -874,6 +885,7 @@ function voxOf(def, res) {
 }
 
 function renderDef(def, px, turn, pix = true) {
+  if (def.view0 && (pix ? px * HI : px) < 52) def = { ...def, yaw: def.view0.yaw, pitch: def.view0.pitch }; // [phase10:ui]
   // fit the static pose into px (cached per size)
   let fit = def.fits.get(px);
   if (!fit) {
@@ -885,11 +897,11 @@ function renderDef(def, px, turn, pix = true) {
   }
   const S = fit.S;
   const a = (def.yaw || 0) + turn;
-  const vx = voxOn && !def.noVoxel ? voxOf(def, iconRes(pix ? px * HI : px)) : null; // [phase10:ui]
+  const vx = voxOn && !def.noVoxel ? voxOf(def, def.res || iconRes(pix ? px * HI : px)) : null; // [phase10:ui]
   if (vx) def = { ...def, mesh: vx.mesh, over: vx.over, glass: vx.glass };
   const look = def.look || {};
   const o = vx
-    ? { ...VOX_LIGHT, ...look, spec: Math.min(0.32, (look.spec ?? 0.5) * 0.3), shine: 10, rim: 0.12, w: S, h: S, pitch: def.pitch || 0, yaw: 0, scale: fit.s, center: fit.center }
+    ? { ...VOX_LIGHT, w: S, h: S, pitch: def.pitch || 0, yaw: 0, scale: fit.s, center: fit.center }
     : { ...ICON_LIGHT, ...look, w: S, h: S, pitch: def.pitch || 0, yaw: 0, scale: fit.s, center: fit.center };
   const mesh = turned(def.mesh, def.spinAxis === 'z' ? turn : a, def.spinAxis || 'y');
   let base = renderMesh(mesh, o);
@@ -903,11 +915,52 @@ function renderDef(def, px, turn, pix = true) {
   }
   if (def.glass) {
     const gm = turned(def.glass, def.spinAxis === 'z' ? turn : a, def.spinAxis || 'y');
-    const gl = renderMesh(gm, vx ? { ...o, alpha: (def.glassAlpha ?? 0.4) * 0.62, ambient: 0.92, spec: 0.08, shine: 8, rim: 0.25 } : { ...o, alpha: def.glassAlpha ?? 0.4, spec: 0.9, shine: 30, rim: 0.7 });
+    const gl = renderMesh(gm, vx ? { ...o, alpha: (def.glassAlpha ?? 0.4) * 0.7, ambient: 0.85 } : { ...o, alpha: def.glassAlpha ?? 0.4, spec: 0.9, shine: 30, rim: 0.7 });
     gm.dispose();
     if (gl) { const c2 = makeCanvas(S, S), g2 = ctxOf(c2); g2.drawImage(base, 0, 0); g2.drawImage(gl, 0, 0); base = c2; }
   }
-  return finishSprite(base, S, S, pix);
+  return vx ? finishToy(base, S, S, pix) : finishSprite(base, S, S, pix);
+}
+
+// [phase10:ui] toy-block finish: a THICK dark outline around the silhouette (the neighbour's own hue, deepened toward
+// ink navy) and a soft drop shadow below-right
+function finishToy(src, w, h, lo) {
+  const T = lo || w < 64 ? 1 : Math.max(2, Math.round(w / 42));
+  const c = makeCanvas(w, h), g = ctxOf(c);
+  g.drawImage(src, 0, 0);
+  const img = g.getImageData(0, 0, w, h);
+  const d = new Uint32Array(img.data.buffer);
+  const solid = new Uint8Array(w * h);
+  for (let i = 0; i < d.length; i++) { if ((d[i] >>> 24) > 70) solid[i] = 1; else d[i] = 0; }
+  // grow the outline ring by ring; each ring pixel copies a deepened colour of a neighbour (ring 1 from the art)
+  let cur = solid;
+  for (let ring = 0; ring < T; ring++) {
+    const next = new Uint8Array(cur);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      if (cur[i]) continue;
+      let n = -1;
+      if (x > 0 && cur[i - 1]) n = i - 1; else if (x < w - 1 && cur[i + 1]) n = i + 1; else if (y > 0 && cur[i - w]) n = i - w; else if (y < h - 1 && cur[i + w]) n = i + w;
+      else if (ring > 0 && ring === T - 1) { if (x > 0 && y > 0 && cur[i - w - 1]) n = i - w - 1; else if (x < w - 1 && y < h - 1 && cur[i + w + 1]) n = i + w + 1; else if (x > 0 && y < h - 1 && cur[i + w - 1]) n = i + w - 1; else if (x < w - 1 && y > 0 && cur[i - w + 1]) n = i - w + 1; }
+      if (n < 0) continue;
+      if (ring === 0) { const [r, gg, b] = unpack(d[n]); d[i] = pack(mix(rgbToHex(Math.round(r * 0.28), Math.round(gg * 0.3), Math.round(b * 0.4)), '#0a1630', 0.5)); }
+      else d[i] = d[n];
+      next[i] = 1;
+    }
+    cur = next;
+  }
+  g.putImageData(img, 0, 0);
+  // soft drop shadow
+  const sh = makeCanvas(w, h), sg = ctxOf(sh);
+  const off = Math.max(1, Math.round(T * 0.8));
+  const sil = makeCanvas(w, h), sl = ctxOf(sil);
+  sl.drawImage(c, 0, 0);
+  sl.globalCompositeOperation = 'source-in'; sl.fillStyle = 'rgba(4,24,56,0.34)'; sl.fillRect(0, 0, w, h);
+  try { sg.filter = `blur(${Math.max(1, T)}px)`; } catch { /* no filter: hard shadow */ }
+  sg.drawImage(sil, Math.round(off * 0.5), off + 1);
+  sg.filter = 'none';
+  sg.drawImage(c, 0, 0);
+  return sh;
 }
 
 // [phase10:ui] new voxel frames are built within a per-frame budget (~7 ms per 16 ms); while over it the nearest
@@ -926,14 +979,14 @@ function frameOf(key, make, px, turn) {
   px = Math.max(8, Math.round(px));
   const def = prepModel(key, make);
   if (!def) return null;
-  const steps = def.spin === 'full' ? 24 : 12;
+  const steps = def.spin === 'full' ? 8 : 4; // [phase10:ui] a few chunky angles
   let q = def.spin === 'full' ? Math.round((((turn % 1) + 1) % 1) * steps) % steps : Math.round(Math.max(-1, Math.min(1, turn)) * (steps / 2));
   const k = key + '|' + px + '|' + q;
   let e = frameCache.get(k);
   if (e !== undefined) return e;
   if (!vBudget()) return nearestTurn(frameCache, key, px, q, steps);
   const tb = performance.now();
-  const ang = def.spin === 'full' ? (q / steps) * Math.PI * 2 : (q / (steps / 2)) * 0.62;
+  const ang = def.spin === 'full' ? (q / steps) * Math.PI * 2 : (q / (steps / 2)) * 0.5;
   let canvas = null;
   try { canvas = renderDef(def, px, ang); } catch (err) { console.error(err); canvas = null; }
   e = canvas ? { canvas, ox: canvas.width / 2, oy: canvas.height / 2 } : null;
@@ -953,14 +1006,14 @@ export function modelFrame(key, make, px, turn = 0, force = false) {
   px = Math.max(6, Math.round(px));
   const def = prepModel(key, make);
   if (!def) return null;
-  const steps = def.spin === 'full' ? 24 : 12;
+  const steps = def.spin === 'full' ? 8 : 4; // [phase10:ui] a few chunky angles
   const q = def.spin === 'full' ? Math.round((((turn % 1) + 1) % 1) * steps) % steps : Math.round(Math.max(-1, Math.min(1, turn)) * (steps / 2));
   const k = key + '|' + px + '|' + q;
   let e = hiFrames.get(k);
   if (e !== undefined) return e;
   if (!force && !vBudget()) return nearestTurn(hiFrames, key, px, q, steps);
   const tb = performance.now();
-  const ang = def.spin === 'full' ? (q / steps) * Math.PI * 2 : (q / (steps / 2)) * 0.62;
+  const ang = def.spin === 'full' ? (q / steps) * Math.PI * 2 : (q / (steps / 2)) * 0.5;
   let big = null;
   try { big = renderDef(def, px * HI, ang, false); } catch (err) { console.error('3D icon ' + key, err); big = null; }
   if (big) {
@@ -1038,6 +1091,17 @@ export function cutGemFrame(color, cut = 'round', px = 12, dim = false, turn = 0
   return modelFrame('cutgem:' + color + '|' + cut + '|' + (dim ? 1 : 0), () => CUT_GEM_MODEL(color, cut, dim), px, turn, true);
 }
 setDecorRenderer(decorFrame);
+
+// [phase10:ui] VoxelModel art (items, bait) in the same toy-block style:
+//   voxelModelFrame(key, make () -> VoxelModel, px, turn) -> {canvas (`.hi`), ox, oy} | null
+export function voxelModelFrame(key, make, px, turn = 0, force = false) {
+  return modelFrame('vm:' + key, () => {
+    const m = make();
+    const mesh = m ? voxelModelMesh(m, 16) : null;
+    if (!mesh) throw new Error('empty voxel model ' + key);
+    return { mesh, prevox: true, yaw: 0.6, pitch: 0.48, spin: 'full' };
+  }, px, turn, force);
+}
 
 export function getBigIcon(id, opts = {}) {
   const px = typeof opts.size === 'number' ? opts.size : SIZES[opts.size] || (opts.small ? SMALL : BIG);

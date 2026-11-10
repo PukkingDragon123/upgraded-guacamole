@@ -17,7 +17,7 @@ import { buildingSprite } from '../build/buildingmodels.js';
 import { itemIcon } from '../build/itemdraw.js';
 import { baitIcon } from '../fishing/baitart.js';
 import { voxelFishIcon } from '../fish/fishicon.js'; // [phase3:fish]
-import { rodIcon, getBigIcon, voxMisses } from '../gfx/bigicons.js'; // [phase6:ui] glossy low-poly 3D rods / globe
+import { rodIcon, getBigIcon, voxMisses, voxelModelFrame } from '../gfx/bigicons.js'; // [phase6:ui] glossy low-poly 3D rods / globe
 import { lpAvailable } from '../gfx/lowpoly.js'; // [phase10:ui]
 
 // ---------------------------------------------------------------- pixel glyphs
@@ -258,7 +258,20 @@ function critterModel(kind) {
 
 // ---------------------------------------------------------------- render + cache
 const cache = new Map();
-function fitVoxel(build, px) {
+function fitVoxel(build, px, key = null) {
+  // [phase10:ui] toy-block voxel render (bigicons.voxelModelFrame) cropped into px x px, with a full-res twin
+  if (key && lpAvailable()) {
+    let f = null;
+    try { f = voxelModelFrame('lab:' + key, () => build().m, px + 2, 0, true); } catch { f = null; }
+    if (f && f.canvas.hi) {
+      const c = makeCanvas(px, px);
+      ctxOf(c).drawImage(f.canvas, Math.round(px / 2 - f.ox), Math.round(px / 2 - f.oy));
+      const h = makeCanvas(px * HI, px * HI);
+      ctxOf(h).drawImage(f.canvas.hi, Math.round((px / 2 - f.ox) * HI), Math.round((px / 2 - f.oy) * HI));
+      Object.defineProperty(c, 'hi', { value: h, configurable: true });
+      return c;
+    }
+  }
   const { m, yaw, pitch } = build();
   const one = renderVoxels(m, { scale: 1, yaw, pitch, outline: true, groundAO: false });
   const k = Math.min(px / one.w, px / one.h);
@@ -324,10 +337,10 @@ function buildIcon(key, px) {
   let c = null;
   try {
     const [kind, id] = key.includes(':') ? key.split(':') : [null, key];
-    if (kind === 'rod' && ROD_BY_ID[id]) c = rodIcon(ROD_BY_ID[id], px) || fitVoxel(() => rodModel(ROD_BY_ID[id]), px);
-    else if (kind === 'boat') c = fitVoxel(() => boatModel(id), px);
-    else if (kind === 'tank') c = fitVoxel(() => tankModel(id), px);
-    else if (kind === 'biome') c = fitVoxel(() => globeModel(id), px);
+    if (kind === 'rod' && ROD_BY_ID[id]) c = rodIcon(ROD_BY_ID[id], px) || fitVoxel(() => rodModel(ROD_BY_ID[id]), px, key);
+    else if (kind === 'boat') c = fitVoxel(() => boatModel(id), px, key);
+    else if (kind === 'tank') c = fitVoxel(() => tankModel(id), px, key);
+    else if (kind === 'biome') c = fitVoxel(() => globeModel(id), px, key);
     else if (kind === 'bait') c = fitCanvas(baitIcon({ shape: id }, px).canvas, px, false);
     else if (kind === 'bp') {
       const s = buildingSprite(id, { scale: 0.2, force: true });
@@ -337,8 +350,8 @@ function buildIcon(key, px) {
         c = b ? fitCanvas(b.canvas, px, false) : null;
       }
     } else if (kind === 'mat') c = itemIcon(id, px);
-    else if (key === 'globe') c = getBigIcon('map', { size: px })?.canvas || fitVoxel(() => globeModel('oscean'), px);
-    else if (key === 'crab' || key === 'snail') c = fitVoxel(() => critterModel(key), px);
+    else if (key === 'globe') c = getBigIcon('map', { size: px })?.canvas || fitVoxel(() => globeModel('oscean'), px, 'globe');
+    else if (key === 'crab' || key === 'snail') c = fitVoxel(() => critterModel(key), px, key);
     else if (key === 'fish' || kind === 'fish') c = voxelFishIcon(id || 'pixel', px, px); // [phase3:fish] voxel, never a 2D glyph
     else if (!kind && has3D(key) && (c = icon3d(key, px, px))) { /* [phase9:ui] 3D model icon */ }
     else if (GLYPH_ART[key]) {

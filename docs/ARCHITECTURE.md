@@ -379,3 +379,15 @@ that feels hand-made."
     'look here' markers instead of rings), pixel-styled `aeroSurface` (banded dither + hard gloss + bevel; `smooth:true`
     opts out). Text: while UI size is Big/Huge the 'small' face renders with the 7 px glyphs in capitals
     (`faceOf`, `setTextBump` in font.js); measure with measureText / lineHeight rather than hard-coded 7 px rows.
+
+## Phase 10 UI (toy-block voxel icons + voxel chrome) [phase10:ui]
+- Icons: every model icon (bigicons.modelFrame / iconFrame / getBigIcon / rodIcon / gemIcon, icons3d, fishing icons3d)
+  is voxelised by `src/gfx/voxicon.js` into a LOW-RES toy-block model (9..16 voxels), rendered in a 3/4 view with flat
+  2-3 shade faces, a thick dark outline and a soft drop shadow (`finishToy`). VoxelModel art (items via `itemSprite` /
+  `itemIcon`, bait via `baitIcon`, Lab boats / tanks / globes) goes through `voxelModelFrame(key, make, px, turn)`.
+  Spins step through 8 (full) or 5 (wobble) chunky angles; new frames are built within ~7 ms per frame
+  (`voxMisses()` lets callers that cache skip deferred results). Extra models: `DECOR_MODELS` (leaves, leaves_l,
+  shell, starfish, bubbles, pearl, coral), `CUT_GEM_MODEL` (Lab gem cuts), `ORB_MODEL`.
+- Chrome: the `.hi` twin of every `aeroSurface` is a voxel slab (`voxelSlab` in src/ui/aero.js: block grid, stepped
+  corners, bevelled frame ring, side band `depth`, outline; `ring: n` = frame only). `drawAeroFrame` adds a voxel
+  frame ring, a title plaque and voxel ornaments (`drawVoxDecor(ctx, name, cx, cy, px)`); toasts sit on voxel plates.

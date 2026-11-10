@@ -702,6 +702,7 @@ export class Aquarium {
     if (I && !typing && !g.tutorial?.active) {
       if (I.key('a') || I.key('ArrowLeft')) push -= 1;
       if (I.key('d') || I.key('ArrowRight')) push += 1;
+      if (max > 0) I.keysPressed?.delete?.('a'); // A scrolls a wide tank (instead of leaving it)
     }
     if (inp && inp.inside && !this.press && !this.hoverBtn && !this.panel && max > 0) {
       const W = g.screen.W, e = 22;

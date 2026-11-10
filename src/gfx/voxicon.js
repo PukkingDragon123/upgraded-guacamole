@@ -1,26 +1,22 @@
-// [phase10:ui] VOXEL icons: every 3D UI icon model (src/gfx/iconmeshes.js, icons3d.js, src/fishing/icons3d.js, rods,
-// rarity gems) is turned into a real voxel model before it is rendered (src/gfx/bigicons.js renderDef): the low-poly
-// surfaces are sampled into a grid (`res` voxels along the longest side), the inside is filled, and only the visible
-// cube faces are meshed, with
-//   - baked ambient occlusion in every crease (MagicaVoxel-style corner AO),
-//   - bevel edge highlights on convex voxel edges (the lit "chunky block" edge of pixel-art voxels),
-//   - a little per-voxel tone jitter (hand-placed feel) and a slight colour ramp (cool shadows, warm lights).
+// [phase10:ui] TOY-BLOCK VOXEL icons: every 3D UI icon model (src/gfx/iconmeshes.js, icons3d.js, src/fishing/icons3d.js,
+// rods, gems, decor) and every VoxelModel item / bait is turned into a LOW-RES chunky voxel model (9..16 voxels along
+// the longest side) before src/gfx/bigicons.js renders it: bold saturated colours, flat faces split into 2-3 flat shades
+// (a bright band along convex top edges, a darker band along the bottom edge of sides), no gradients. bigicons adds the
+// slight isometric 3/4 view, a thick dark outline and a soft drop shadow (finishToy).
 // Later geometry wins a voxel (details painted over their base), `over` layers stay separate overlays, `glass`
 // shells stay hollow and translucent.
 //
-//   voxelizeIconMesh(mesh, res, o?) -> LPMesh | null   o: {hollow (glass shell), vs (voxel edge, overrides res), ao, hl}
+//   voxelizeIconMesh(mesh, res, o?) -> LPMesh | null   o: {hollow (glass shell), vs (voxel edge, overrides res), sat, bands}
+//   voxelModelMesh(voxelModel, maxRes = 16) -> LPMesh   a VoxelModel downsampled (majority colour) and meshed the same way
 //   voxelEdge(def, res) -> vs                          one voxel edge for every layer of a model (so they line up)
 //   iconRes(px) -> voxels along the longest side for an icon drawn px (device) pixels wide
 import { LPMesh } from './lowpoly.js';
 
 const hash3 = (x, y, z) => { let h = (x * 374761393 + y * 668265263 + z * 1274126177) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
 
-/** Voxels along the longest side for a sprite `px` device pixels wide: ~2.9 px per voxel, a few fixed steps. */
+/** Voxels along the longest side for a sprite `px` device pixels wide: LOW-RES chunky toy blocks, 9..16 voxels. */
 export function iconRes(px) {
-  const r = px / 2.9;
-  const steps = [14, 18, 22, 26, 30, 34, 40, 46, 52];
-  for (const s of steps) if (r <= s) return s;
-  return steps[steps.length - 1];
+  return px <= 40 ? 9 : px <= 80 ? 11 : px <= 130 ? 13 : 16;
 }
 
 function boundsOf(meshes) {
@@ -115,29 +111,57 @@ function voxelizeIconMesh0(mesh, res, o = {}) {
     if (y > 0) push(i - NX); if (y < NY - 1) push(i + NX);
     if (z > 0) push(i - NXY); if (z < NZ - 1) push(i + NXY);
   }
+  return meshGrid(NX, NY, NZ, ox, oy, oz, vs, o);
+}
+
+// ---------------------------------------------------------------------------------------------- the toy-block mesher
+// Every exposed cube face is split into up to 3 x 3 flat sub-quads: a plain face, a bright highlight band along its
+// convex top edges (all convex edges on top faces) and a darker band along the bottom edge of side faces, so each
+// voxel reads as a little bevelled toy block with 2-3 flat shades and no gradients. Colours are pushed to a bold,
+// saturated palette.
+const W_HL = 0.2, K_HL = 1.3, K_SH = 0.74;
+function meshGrid(NX, NY, NZ, ox, oy, oz, vs, o = {}) {
+  const NXY = NX * NY, N = NXY * NZ;
   const hollow = !!o.hollow;
+  // outside = flood fill from the border (6-connected); solid codes: 0 unknown, 1 outside, 2 surface, 3 inside
+  let qh = 0, qt = 0;
+  const push = (i) => { if (solid[i] === 0) { solid[i] = 1; queue[qt++] = i; } };
+  for (let z = 0; z < NZ; z++) for (let y = 0; y < NY; y++) { push(y * NX + z * NXY); push(NX - 1 + y * NX + z * NXY); }
+  for (let z = 0; z < NZ; z++) for (let x = 0; x < NX; x++) { push(x + z * NXY); push(x + (NY - 1) * NX + z * NXY); }
+  for (let y = 0; y < NY; y++) for (let x = 0; x < NX; x++) { push(x + y * NX); push(x + y * NX + (NZ - 1) * NXY); }
+  while (qh < qt) {
+    const i = queue[qh++];
+    const x = i % NX, y = ((i / NX) | 0) % NY, z = (i / NXY) | 0;
+    if (x > 0) push(i - 1); if (x < NX - 1) push(i + 1);
+    if (y > 0) push(i - NX); if (y < NY - 1) push(i + NX);
+    if (z > 0) push(i - NXY); if (z < NZ - 1) push(i + NXY);
+  }
   // hollow shells (glass): the sealed inside stays empty (4) and gets no faces, so only the outer skin shows
   for (let i = 0; i < N; i++) if (solid[i] === 0) solid[i] = hollow ? 4 : 3;
   const filled = (i) => solid[i] === 2 || solid[i] === 3;
-  // ---- faces
-  const aoK = o.ao ?? 1, hl = o.hl ?? 0.17, jit = o.jitter ?? 0.03, sat = o.sat ?? 1.22;
-  const AO = [1 - 0.42 * aoK, 1 - 0.26 * aoK, 1 - 0.12 * aoK, 1];
+  const jit = o.jitter ?? 0.025, sat = o.sat ?? 1.38, bands = o.bands !== false;
   const ST = [1, NX, NXY];
-  const out = [];
   let nf = 0;
-  const cap = { a: new Float32Array(66 * 1024) };
-  const emit = (vals) => {
-    if ((nf + 1) * 66 > cap.a.length) { const na = new Float32Array(cap.a.length * 2); na.set(cap.a); cap.a = na; }
-    cap.a.set(vals, nf * 66); nf++;
+  let A = new Float32Array(66 * 512);
+  const quad = (P0, U, V, u0, u1, v0, v1, n, sgn, r, g, b) => {
+    if ((nf + 1) * 66 > A.length) { const na = new Float32Array(A.length * 2); na.set(A); A = na; }
+    const C = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]];
+    const ord = sgn > 0 ? [0, 1, 2, 0, 2, 3] : [0, 3, 2, 0, 2, 1];
+    let p = nf * 66;
+    for (const k of ord) {
+      const [a, c] = C[k];
+      A[p] = (P0[0] + U[0] * a + V[0] * c) * vs; A[p + 1] = (P0[1] + U[1] * a + V[1] * c) * vs; A[p + 2] = (P0[2] + U[2] * a + V[2] * c) * vs;
+      A[p + 3] = n[0]; A[p + 4] = n[1]; A[p + 5] = n[2];
+      A[p + 6] = r; A[p + 7] = g; A[p + 8] = b; A[p + 9] = 0; A[p + 10] = 0;
+      p += 11;
+    }
+    nf++;
   };
-  const F = new Float32Array(66);
-  const cx = [0, 0, 0, 0], cy = [0, 0, 0, 0], cz = [0, 0, 0, 0], ca = [0, 0, 0, 0];
+  const P0 = [0, 0, 0];
   for (let z = 1; z < NZ - 1; z++) for (let y = 1; y < NY - 1; y++) for (let x = 1; x < NX - 1; x++) {
     const i = x + y * NX + z * NXY;
     if (solid[i] !== 2) continue;
-    // colour: per-voxel tone jitter
     const jj = 1 + (hash3(x + ox, y + oy, z + oz) - 0.5) * 2 * jit;
-    // a voxel-art palette: saturation pushed up a little around the voxel's own luminance
     const lum = colR[i] * 0.3 + colG[i] * 0.59 + colB[i] * 0.11;
     const r = Math.max(0, lum + (colR[i] - lum) * sat) * jj, g = Math.max(0, lum + (colG[i] - lum) * sat) * jj, bl = Math.max(0, lum + (colB[i] - lum) * sat) * jj;
     for (let dd = 0; dd < 3; dd++) {
@@ -145,47 +169,79 @@ function voxelizeIconMesh0(mesh, res, o = {}) {
       for (let sgn = -1; sgn <= 1; sgn += 2) {
         const j = i + sgn * st;
         if (solid[j] !== 1) continue; // only faces toward the outside
-        const u = CU[dd], v = CV[dd];
-        const su = u[0] + u[1] * NX + u[2] * NXY, sv = v[0] + v[1] * NX + v[2] * NXY;
-        // AO from the open layer in front of the face; edge highlight where the voxel's own in-plane neighbour is open
-        const um = filled(j - su), up = filled(j + su), vm = filled(j - sv), vp = filled(j + sv);
-        const mm = filled(j - su - sv), pm = filled(j + su - sv), pp = filled(j + su + sv), mp = filled(j - su + sv);
-        const eum = !filled(i - su) && !um, eup = !filled(i + su) && !up, evm = !filled(i - sv) && !vm, evp = !filled(i + sv) && !vp;
-        const aoc = (a, bq, c) => AO[a && bq ? 0 : 3 - a - bq - c];
-        const H = (e1, e2) => 1 + hl * ((e1 ? 1 : 0) + (e2 ? 1 : 0)) * (sgn > 0 && dd === 1 ? 1.25 : dd === 1 ? 0.4 : 1);
-        ca[0] = aoc(um, vm, mm) * H(eum, evm);
-        ca[1] = aoc(up, vm, pm) * H(eup, evm);
-        ca[2] = aoc(up, vp, pp) * H(eup, evp);
-        ca[3] = aoc(um, vp, mp) * H(eum, evp);
-        let X = x, Y = y, Z = z;
-        if (sgn > 0) { if (dd === 0) X++; else if (dd === 1) Y++; else Z++; }
-        cx[0] = X; cy[0] = Y; cz[0] = Z;
-        cx[1] = X + u[0]; cy[1] = Y + u[1]; cz[1] = Z + u[2];
-        cx[2] = X + u[0] + v[0]; cy[2] = Y + u[1] + v[1]; cz[2] = Z + u[2] + v[2];
-        cx[3] = X + v[0]; cy[3] = Y + v[1]; cz[3] = Z + v[2];
-        const flip = ca[0] + ca[2] < ca[1] + ca[3];
-        const ord = sgn > 0 ? (flip ? [1, 2, 3, 1, 3, 0] : [0, 1, 2, 0, 2, 3]) : (flip ? [1, 0, 3, 1, 3, 2] : [0, 3, 2, 0, 2, 1]);
-        const nx = dd === 0 ? sgn : 0, ny = dd === 1 ? sgn : 0, nz = dd === 2 ? sgn : 0;
-        let p = 0;
-        for (let q = 0; q < 6; q++) {
-          const k = ord[q], a = ca[k];
-          F[p] = (cx[k] + ox) * vs; F[p + 1] = (cy[k] + oy) * vs; F[p + 2] = (cz[k] + oz) * vs;
-          F[p + 3] = nx; F[p + 4] = ny; F[p + 5] = nz;
-          F[p + 6] = r * a; F[p + 7] = g * a; F[p + 8] = bl * a;
-          F[p + 9] = 0; F[p + 10] = 0;
-          p += 11;
+        const U = CU[dd], V = CV[dd];
+        const su = U[0] + U[1] * NX + U[2] * NXY, sv = V[0] + V[1] * NX + V[2] * NXY;
+        const conv = (s) => !filled(i + s) && !filled(j + s); // a convex edge of this face toward in-plane step s
+        // edge kinds per side (0 none, 1 highlight, 2 shade): -u, +u, -v, +v
+        const ek = [0, 0, 0, 0];
+        if (bands) {
+          const top = dd === 1 && sgn > 0, side = dd !== 1;
+          const sides = [[-su, U, -1], [su, U, 1], [-sv, V, -1], [sv, V, 1]];
+          for (let e = 0; e < 4; e++) {
+            const [s, ax, dir] = sides[e];
+            if (!conv(s)) continue;
+            if (top) ek[e] = 1;
+            else if (side && ax[1]) ek[e] = dir > 0 ? 1 : 2; // the in-plane axis is y: top edge lit, bottom edge shaded
+          }
         }
-        emit(F);
+        const uu = [0, ek[0] ? W_HL : 0, ek[1] ? 1 - W_HL : 1, 1], vv = [0, ek[2] ? W_HL : 0, ek[3] ? 1 - W_HL : 1, 1];
+        P0[0] = x + ox; P0[1] = y + oy; P0[2] = z + oz;
+        if (sgn > 0) P0[dd] += 1;
+        const n = [dd === 0 ? sgn : 0, dd === 1 ? sgn : 0, dd === 2 ? sgn : 0];
+        for (let a = 0; a < 3; a++) for (let c = 0; c < 3; c++) {
+          const u0 = uu[a], u1 = uu[a + 1], v0 = vv[c], v1 = vv[c + 1];
+          if (u1 - u0 < 1e-4 || v1 - v0 < 1e-4) continue;
+          const kinds = [a === 0 ? ek[0] : 0, a === 2 ? ek[1] : 0, c === 0 ? ek[2] : 0, c === 2 ? ek[3] : 0];
+          const k = kinds.includes(1) ? K_HL : kinds.includes(2) ? K_SH : 1;
+          const lift = k > 1 ? 0.06 : 0;
+          quad(P0, U, V, u0, u1, v0, v1, n, sgn, r * k + lift, g * k + lift, bl * k + lift);
+        }
       }
     }
   }
   if (!nf) return null;
-  const data = cap.a.slice(0, nf * 66);
+  const data = A.slice(0, nf * 66);
   const bb = boundsOf([{ data }]);
   const center = [0, 1, 2].map((k) => (bb.min[k] + bb.max[k]) / 2);
   const radius = Math.hypot(bb.max[0] - bb.min[0], bb.max[1] - bb.min[1], bb.max[2] - bb.min[2]) / 2 || 1;
-  out.length = 0;
   const mOut = new LPMesh(data, nf * 6, { min: bb.min, max: bb.max, center, radius });
   mOut.voxel = true; mOut.vs = vs;
   return mOut;
+}
+
+/**
+ * A VoxelModel (src/gfx/voxel.js: item, bait art) -> a toy-block LPMesh about -1..1, downsampled (majority colour) so
+ * the longest side has at most maxRes voxels.
+ */
+export function voxelModelMesh(m, maxRes = 16) {
+  const big = Math.max(m.nx, m.ny, m.nz);
+  const f = Math.max(1, Math.ceil(big / maxRes));
+  const bx = Math.ceil(m.nx / f), by = Math.ceil(m.ny / f), bz = Math.ceil(m.nz / f);
+  const NX = bx + 4, NY = by + 4, NZ = bz + 4, NXY = NX * NY;
+  ensure(NXY * NZ);
+  const cols = m.palette.map((pe) => (pe ? hexRGB(pe.color, pe.emissive ? 1.25 : 1) : null));
+  const need = Math.max(1, Math.round(f * f * f * 0.3));
+  const cnt = new Map();
+  for (let z = 0; z < bz; z++) for (let y = 0; y < by; y++) for (let x = 0; x < bx; x++) {
+    cnt.clear();
+    let tot = 0;
+    for (let dz = 0; dz < f; dz++) for (let dy = 0; dy < f; dy++) for (let dx = 0; dx < f; dx++) {
+      const c = m.get(x * f + dx, y * f + dy, z * f + dz);
+      if (c) { tot++; cnt.set(c, (cnt.get(c) || 0) + 1); }
+    }
+    if (tot < need) continue;
+    let best = 0, bc = 0;
+    for (const [c, n] of cnt) if (n > bc) { bc = n; best = c; }
+    const col = cols[best];
+    if (!col) continue;
+    const i = (x + 2) + (y + 2) * NX + (z + 2) * NXY;
+    colR[i] = col[0]; colG[i] = col[1]; colB[i] = col[2]; solid[i] = 2;
+  }
+  const vs = 2 / Math.max(bx, by, bz);
+  const ox = -2 - bx / 2, oy = -2 - by / 2, oz = -2 - bz / 2;
+  return meshGrid(NX, NY, NZ, ox, oy, oz, vs, {});
+}
+function hexRGB(h, k = 1) {
+  const n = parseInt(String(h).replace('#', '').slice(0, 6), 16);
+  return [Math.min(1.4, (((n >> 16) & 255) / 255) * k), Math.min(1.4, (((n >> 8) & 255) / 255) * k), Math.min(1.4, ((n & 255) / 255) * k)];
 }

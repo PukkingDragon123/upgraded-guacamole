@@ -16,6 +16,8 @@ import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { shade, mix, rgba } from '../core/color.js';
 import { TAU, hash1 } from '../core/math.js';
 import { HI, withHi, fitHi } from '../gfx/hires.js'; // [phase10:ui]
+import { voxelModelFrame } from '../gfx/bigicons.js'; // [phase10:ui]
+import { lpAvailable } from '../gfx/lowpoly.js';
 
 const P = {
   k: '#14131c', d: '#5d6677', m: '#9aa6b8', l: '#d8e2ee', w: '#ffffff',
@@ -252,6 +254,12 @@ export function baitMini(art) {
 // Inventory sprite that fits roughly `px` (picks an integer voxel scale).
 export function baitIcon(art, px = 28) {
   const a = art || { shape: 'crumbs' };
+  // [phase10:ui] chunky toy-block voxel bait (same style as every UI icon) once the voxel icon renderer is up
+  if (lpAvailable()) {
+    let f = null;
+    try { f = voxelModelFrame('bait:' + artKey(a, 0), () => buildModel(a), Math.round(px * 1.15 * (a.scale || 1)), 0, true); } catch { f = null; }
+    if (f) return { canvas: f.canvas, glow: null, w: f.canvas.width, h: f.canvas.height };
+  }
   const one = baitVoxel(a, 1);
   const s = Math.max(1, Math.min(4, Math.round((px / Math.max(one.w, one.h)) * (a.scale || 1) * 4) / 4));
   return baitVoxel(a, s);

@@ -33120,7 +33120,7 @@ void main() {
   }
   function drawGlossOrb(ctx3, cx, cy, r, color = AERO.aqua, t = 0) {
     r = Math.max(1.5, Math.round(r * 2) / 2);
-    if (r >= 4 && decor3d) {
+    if (r >= 9 && decor3d) {
       let f = null;
       try {
         f = decor3d("orb:" + color, Math.round(r * 2 + 1), 0);
@@ -51190,7 +51190,7 @@ void main() {
     }
     const P7 = (p) => [bx + p[0] * ca - p[1] * sa, by + p[0] * sa + p[1] * ca];
     const lit2 = mix(col, "#e8ffa0", 0.35);
-    prism(mb, pts.map(P7), z - 0.04, z + 0.04, col, { front: (i) => jit(i % 3 ? lit2 : col, i, 0.05), side: shade(col, -0.3) });
+    prism(mb, pts.map(P7), z - 0.07, z + 0.07, col, { front: (i) => jit(i % 3 ? lit2 : col, i, 0.05), side: shade(col, -0.3) });
     tube(mb, [[bx, by, z + 0.045], [bx + ca * len * 0.85, by + sa * len * 0.85, z + 0.045]], 0.018, 3, mix(col, "#f4ffc0", 0.7));
   }
   function mirrorModel2(md) {
@@ -51322,13 +51322,11 @@ void main() {
       DECOR_MODELS = {
         leaves: () => {
           const mb = new MeshBuilder();
-          tube(mb, [[0.95, 0.75, 0], [0.4, 0.55, 0.02], [-0.1, 0.25, 0.04], [-0.55, -0.2, 0.05]], (i) => [0.05, 0.045, 0.035, 0.025][i], 5, "#2c7a1c");
-          leafInto(mb, 0.55, 0.6, 0.62, 0.2, 2.2, 0.08, "#4fbf2c");
-          leafInto(mb, 0.3, 0.45, 0.7, 0.22, -2.6, 0.12, "#62d63a");
-          leafInto(mb, 0, 0.2, 0.66, 0.21, 2.5, 0.16, "#3caa22");
-          leafInto(mb, -0.2, 0.02, 0.6, 0.2, -2, 0.2, "#86e04a");
-          leafInto(mb, -0.5, -0.18, 0.5, 0.17, -3, 0.22, "#52c830");
-          return { mesh: mb.build(), yaw: 0.15, pitch: 0.2, spin: "wobble", spinAxis: "z" };
+          tube(mb, [[0.95, 0.8, 0], [0.45, 0.45, 0.02], [-0.1, 0.05, 0.04]], (i) => [0.08, 0.07, 0.05][i], 5, "#2c7a1c");
+          leafInto(mb, 0.55, 0.55, 1, 0.34, 2.45, 0.1, "#4fbf2c");
+          leafInto(mb, 0.25, 0.3, 1.05, 0.36, -2.55, 0.16, "#6ad83e");
+          leafInto(mb, -0.05, 0.05, 0.85, 0.3, -3.6, 0.22, "#3caa22");
+          return { mesh: mb.build(), yaw: 0.15, pitch: 0.2, spin: "wobble", spinAxis: "z", res: 16 };
         },
         leaves_l: () => mirrorModel2(DECOR_MODELS.leaves()),
         shell: () => {
@@ -51842,10 +51840,7 @@ void main() {
 
   // src/gfx/voxicon.js
   function iconRes(px3) {
-    const r = px3 / 2.9;
-    const steps = [14, 18, 22, 26, 30, 34, 40, 46, 52];
-    for (const s of steps) if (r <= s) return s;
-    return steps[steps.length - 1];
+    return px3 <= 40 ? 9 : px3 <= 80 ? 11 : px3 <= 130 ? 13 : 16;
   }
   function boundsOf(meshes) {
     const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
@@ -51903,13 +51898,13 @@ void main() {
       const i = t * 33;
       const ax = d[i] * iv - ox, ay = d[i + 1] * iv - oy, az = d[i + 2] * iv - oz;
       const bx = d[i + 11] * iv - ox, by = d[i + 12] * iv - oy, bz = d[i + 13] * iv - oz;
-      const cx2 = d[i + 22] * iv - ox, cy2 = d[i + 23] * iv - oy, cz2 = d[i + 24] * iv - oz;
-      const e = Math.max(Math.abs(bx - ax), Math.abs(by - ay), Math.abs(bz - az), Math.abs(cx2 - ax), Math.abs(cy2 - ay), Math.abs(cz2 - az), Math.abs(cx2 - bx), Math.abs(cy2 - by), Math.abs(cz2 - bz));
+      const cx = d[i + 22] * iv - ox, cy = d[i + 23] * iv - oy, cz = d[i + 24] * iv - oz;
+      const e = Math.max(Math.abs(bx - ax), Math.abs(by - ay), Math.abs(bz - az), Math.abs(cx - ax), Math.abs(cy - ay), Math.abs(cz - az), Math.abs(cx - bx), Math.abs(cy - by), Math.abs(cz - bz));
       const m = Math.max(1, Math.ceil(e * 2.2));
       const im = 1 / m;
-      for (let a = 0; a <= m; a++) for (let bb2 = 0; a + bb2 <= m; bb2++) {
-        const u = a * im, v = bb2 * im, w = 1 - u - v;
-        const gx = ax * w + bx * u + cx2 * v | 0, gy = ay * w + by * u + cy2 * v | 0, gz = az * w + bz * u + cz2 * v | 0;
+      for (let a = 0; a <= m; a++) for (let bb = 0; a + bb <= m; bb++) {
+        const u = a * im, v = bb * im, w = 1 - u - v;
+        const gx = ax * w + bx * u + cx * v | 0, gy = ay * w + by * u + cy * v | 0, gz = az * w + bz * u + cz * v | 0;
         const idx = gx + gy * NX2 + gz * NXY;
         if (own[idx] === t) {
           colR[idx] += d[i + 6] * w + d[i + 17] * u + d[i + 28] * v;
@@ -51961,26 +51956,73 @@ void main() {
       if (z > 0) push(i - NXY);
       if (z < NZ2 - 1) push(i + NXY);
     }
+    return meshGrid(NX2, NY2, NZ2, ox, oy, oz, vs, o);
+  }
+  function meshGrid(NX2, NY2, NZ2, ox, oy, oz, vs, o = {}) {
+    const NXY = NX2 * NY2, N2 = NXY * NZ2;
     const hollow = !!o.hollow;
+    let qh = 0, qt = 0;
+    const push = (i) => {
+      if (solid2[i] === 0) {
+        solid2[i] = 1;
+        queue2[qt++] = i;
+      }
+    };
+    for (let z = 0; z < NZ2; z++) for (let y = 0; y < NY2; y++) {
+      push(y * NX2 + z * NXY);
+      push(NX2 - 1 + y * NX2 + z * NXY);
+    }
+    for (let z = 0; z < NZ2; z++) for (let x = 0; x < NX2; x++) {
+      push(x + z * NXY);
+      push(x + (NY2 - 1) * NX2 + z * NXY);
+    }
+    for (let y = 0; y < NY2; y++) for (let x = 0; x < NX2; x++) {
+      push(x + y * NX2);
+      push(x + y * NX2 + (NZ2 - 1) * NXY);
+    }
+    while (qh < qt) {
+      const i = queue2[qh++];
+      const x = i % NX2, y = (i / NX2 | 0) % NY2, z = i / NXY | 0;
+      if (x > 0) push(i - 1);
+      if (x < NX2 - 1) push(i + 1);
+      if (y > 0) push(i - NX2);
+      if (y < NY2 - 1) push(i + NX2);
+      if (z > 0) push(i - NXY);
+      if (z < NZ2 - 1) push(i + NXY);
+    }
     for (let i = 0; i < N2; i++) if (solid2[i] === 0) solid2[i] = hollow ? 4 : 3;
     const filled = (i) => solid2[i] === 2 || solid2[i] === 3;
-    const aoK = o.ao ?? 1, hl = o.hl ?? 0.17, jit2 = o.jitter ?? 0.03, sat = o.sat ?? 1.22;
-    const AO = [1 - 0.42 * aoK, 1 - 0.26 * aoK, 1 - 0.12 * aoK, 1];
+    const jit2 = o.jitter ?? 0.025, sat = o.sat ?? 1.38, bands = o.bands !== false;
     const ST = [1, NX2, NXY];
-    const out = [];
     let nf = 0;
-    const cap2 = { a: new Float32Array(66 * 1024) };
-    const emit2 = (vals) => {
-      if ((nf + 1) * 66 > cap2.a.length) {
-        const na = new Float32Array(cap2.a.length * 2);
-        na.set(cap2.a);
-        cap2.a = na;
+    let A2 = new Float32Array(66 * 512);
+    const quad = (P04, U2, V, u0, u1, v0, v1, n2, sgn, r, g, b) => {
+      if ((nf + 1) * 66 > A2.length) {
+        const na = new Float32Array(A2.length * 2);
+        na.set(A2);
+        A2 = na;
       }
-      cap2.a.set(vals, nf * 66);
+      const C5 = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]];
+      const ord = sgn > 0 ? [0, 1, 2, 0, 2, 3] : [0, 3, 2, 0, 2, 1];
+      let p = nf * 66;
+      for (const k of ord) {
+        const [a, c] = C5[k];
+        A2[p] = (P04[0] + U2[0] * a + V[0] * c) * vs;
+        A2[p + 1] = (P04[1] + U2[1] * a + V[1] * c) * vs;
+        A2[p + 2] = (P04[2] + U2[2] * a + V[2] * c) * vs;
+        A2[p + 3] = n2[0];
+        A2[p + 4] = n2[1];
+        A2[p + 5] = n2[2];
+        A2[p + 6] = r;
+        A2[p + 7] = g;
+        A2[p + 8] = b;
+        A2[p + 9] = 0;
+        A2[p + 10] = 0;
+        p += 11;
+      }
       nf++;
     };
-    const F3 = new Float32Array(66);
-    const cx = [0, 0, 0, 0], cy = [0, 0, 0, 0], cz = [0, 0, 0, 0], ca = [0, 0, 0, 0];
+    const P03 = [0, 0, 0];
     for (let z = 1; z < NZ2 - 1; z++) for (let y = 1; y < NY2 - 1; y++) for (let x = 1; x < NX2 - 1; x++) {
       const i = x + y * NX2 + z * NXY;
       if (solid2[i] !== 2) continue;
@@ -51992,70 +52034,89 @@ void main() {
         for (let sgn = -1; sgn <= 1; sgn += 2) {
           const j = i + sgn * st;
           if (solid2[j] !== 1) continue;
-          const u = CU2[dd], v = CV2[dd];
-          const su = u[0] + u[1] * NX2 + u[2] * NXY, sv = v[0] + v[1] * NX2 + v[2] * NXY;
-          const um = filled(j - su), up = filled(j + su), vm = filled(j - sv), vp = filled(j + sv);
-          const mm = filled(j - su - sv), pm = filled(j + su - sv), pp = filled(j + su + sv), mp = filled(j - su + sv);
-          const eum = !filled(i - su) && !um, eup = !filled(i + su) && !up, evm = !filled(i - sv) && !vm, evp = !filled(i + sv) && !vp;
-          const aoc = (a, bq, c) => AO[a && bq ? 0 : 3 - a - bq - c];
-          const H8 = (e1, e2) => 1 + hl * ((e1 ? 1 : 0) + (e2 ? 1 : 0)) * (sgn > 0 && dd === 1 ? 1.25 : dd === 1 ? 0.4 : 1);
-          ca[0] = aoc(um, vm, mm) * H8(eum, evm);
-          ca[1] = aoc(up, vm, pm) * H8(eup, evm);
-          ca[2] = aoc(up, vp, pp) * H8(eup, evp);
-          ca[3] = aoc(um, vp, mp) * H8(eum, evp);
-          let X = x, Y = y, Z = z;
-          if (sgn > 0) {
-            if (dd === 0) X++;
-            else if (dd === 1) Y++;
-            else Z++;
+          const U2 = CU2[dd], V = CV2[dd];
+          const su = U2[0] + U2[1] * NX2 + U2[2] * NXY, sv = V[0] + V[1] * NX2 + V[2] * NXY;
+          const conv2 = (s) => !filled(i + s) && !filled(j + s);
+          const ek = [0, 0, 0, 0];
+          if (bands) {
+            const top = dd === 1 && sgn > 0, side = dd !== 1;
+            const sides = [[-su, U2, -1], [su, U2, 1], [-sv, V, -1], [sv, V, 1]];
+            for (let e = 0; e < 4; e++) {
+              const [s, ax, dir] = sides[e];
+              if (!conv2(s)) continue;
+              if (top) ek[e] = 1;
+              else if (side && ax[1]) ek[e] = dir > 0 ? 1 : 2;
+            }
           }
-          cx[0] = X;
-          cy[0] = Y;
-          cz[0] = Z;
-          cx[1] = X + u[0];
-          cy[1] = Y + u[1];
-          cz[1] = Z + u[2];
-          cx[2] = X + u[0] + v[0];
-          cy[2] = Y + u[1] + v[1];
-          cz[2] = Z + u[2] + v[2];
-          cx[3] = X + v[0];
-          cy[3] = Y + v[1];
-          cz[3] = Z + v[2];
-          const flip = ca[0] + ca[2] < ca[1] + ca[3];
-          const ord = sgn > 0 ? flip ? [1, 2, 3, 1, 3, 0] : [0, 1, 2, 0, 2, 3] : flip ? [1, 0, 3, 1, 3, 2] : [0, 3, 2, 0, 2, 1];
-          const nx = dd === 0 ? sgn : 0, ny = dd === 1 ? sgn : 0, nz = dd === 2 ? sgn : 0;
-          let p = 0;
-          for (let q = 0; q < 6; q++) {
-            const k = ord[q], a = ca[k];
-            F3[p] = (cx[k] + ox) * vs;
-            F3[p + 1] = (cy[k] + oy) * vs;
-            F3[p + 2] = (cz[k] + oz) * vs;
-            F3[p + 3] = nx;
-            F3[p + 4] = ny;
-            F3[p + 5] = nz;
-            F3[p + 6] = r * a;
-            F3[p + 7] = g * a;
-            F3[p + 8] = bl * a;
-            F3[p + 9] = 0;
-            F3[p + 10] = 0;
-            p += 11;
+          const uu = [0, ek[0] ? W_HL : 0, ek[1] ? 1 - W_HL : 1, 1], vv = [0, ek[2] ? W_HL : 0, ek[3] ? 1 - W_HL : 1, 1];
+          P03[0] = x + ox;
+          P03[1] = y + oy;
+          P03[2] = z + oz;
+          if (sgn > 0) P03[dd] += 1;
+          const n2 = [dd === 0 ? sgn : 0, dd === 1 ? sgn : 0, dd === 2 ? sgn : 0];
+          for (let a = 0; a < 3; a++) for (let c = 0; c < 3; c++) {
+            const u0 = uu[a], u1 = uu[a + 1], v0 = vv[c], v1 = vv[c + 1];
+            if (u1 - u0 < 1e-4 || v1 - v0 < 1e-4) continue;
+            const kinds = [a === 0 ? ek[0] : 0, a === 2 ? ek[1] : 0, c === 0 ? ek[2] : 0, c === 2 ? ek[3] : 0];
+            const k = kinds.includes(1) ? K_HL : kinds.includes(2) ? K_SH : 1;
+            const lift = k > 1 ? 0.06 : 0;
+            quad(P03, U2, V, u0, u1, v0, v1, n2, sgn, r * k + lift, g * k + lift, bl * k + lift);
           }
-          emit2(F3);
         }
       }
     }
     if (!nf) return null;
-    const data = cap2.a.slice(0, nf * 66);
+    const data = A2.slice(0, nf * 66);
     const bb = boundsOf([{ data }]);
     const center = [0, 1, 2].map((k) => (bb.min[k] + bb.max[k]) / 2);
     const radius = Math.hypot(bb.max[0] - bb.min[0], bb.max[1] - bb.min[1], bb.max[2] - bb.min[2]) / 2 || 1;
-    out.length = 0;
     const mOut = new LPMesh(data, nf * 6, { min: bb.min, max: bb.max, center, radius });
     mOut.voxel = true;
     mOut.vs = vs;
     return mOut;
   }
-  var hash33, CAP2, own, colR, colG, colB, solid2, queue2, CU2, CV2, VOXICON_STATS;
+  function voxelModelMesh(m, maxRes = 16) {
+    const big = Math.max(m.nx, m.ny, m.nz);
+    const f = Math.max(1, Math.ceil(big / maxRes));
+    const bx = Math.ceil(m.nx / f), by = Math.ceil(m.ny / f), bz = Math.ceil(m.nz / f);
+    const NX2 = bx + 4, NY2 = by + 4, NZ2 = bz + 4, NXY = NX2 * NY2;
+    ensure2(NXY * NZ2);
+    const cols = m.palette.map((pe) => pe ? hexRGB3(pe.color, pe.emissive ? 1.25 : 1) : null);
+    const need = Math.max(1, Math.round(f * f * f * 0.3));
+    const cnt = /* @__PURE__ */ new Map();
+    for (let z = 0; z < bz; z++) for (let y = 0; y < by; y++) for (let x = 0; x < bx; x++) {
+      cnt.clear();
+      let tot = 0;
+      for (let dz = 0; dz < f; dz++) for (let dy = 0; dy < f; dy++) for (let dx = 0; dx < f; dx++) {
+        const c = m.get(x * f + dx, y * f + dy, z * f + dz);
+        if (c) {
+          tot++;
+          cnt.set(c, (cnt.get(c) || 0) + 1);
+        }
+      }
+      if (tot < need) continue;
+      let best = 0, bc = 0;
+      for (const [c, n2] of cnt) if (n2 > bc) {
+        bc = n2;
+        best = c;
+      }
+      const col = cols[best];
+      if (!col) continue;
+      const i = x + 2 + (y + 2) * NX2 + (z + 2) * NXY;
+      colR[i] = col[0];
+      colG[i] = col[1];
+      colB[i] = col[2];
+      solid2[i] = 2;
+    }
+    const vs = 2 / Math.max(bx, by, bz);
+    const ox = -2 - bx / 2, oy = -2 - by / 2, oz = -2 - bz / 2;
+    return meshGrid(NX2, NY2, NZ2, ox, oy, oz, vs, {});
+  }
+  function hexRGB3(h, k = 1) {
+    const n2 = parseInt(String(h).replace("#", "").slice(0, 6), 16);
+    return [Math.min(1.4, (n2 >> 16 & 255) / 255 * k), Math.min(1.4, (n2 >> 8 & 255) / 255 * k), Math.min(1.4, (n2 & 255) / 255 * k)];
+  }
+  var hash33, CAP2, own, colR, colG, colB, solid2, queue2, CU2, CV2, VOXICON_STATS, W_HL, K_HL, K_SH;
   var init_voxicon = __esm({
     "src/gfx/voxicon.js"() {
       init_lowpoly();
@@ -52068,6 +52129,9 @@ void main() {
       CU2 = [[0, 1, 0], [0, 0, 1], [1, 0, 0]];
       CV2 = [[0, 0, 1], [1, 0, 0], [0, 1, 0]];
       VOXICON_STATS = { n: 0, ms: 0, max: 0 };
+      W_HL = 0.2;
+      K_HL = 1.3;
+      K_SH = 0.74;
     }
   });
 
@@ -52565,6 +52629,13 @@ void main() {
     if (d !== void 0) return d;
     try {
       d = make();
+      d.view0 = { yaw: d.yaw || 0, pitch: d.pitch || 0 };
+      if (voxOn && !d.spinAxis && !d.keepView) {
+        const y0 = d.yaw || 0;
+        d.yaw = Math.abs(y0) < 0.5 ? y0 < 0 ? -0.55 : 0.55 : Math.sign(y0) * Math.min(0.8, Math.abs(y0));
+        d.pitch = Math.max(0.4, Math.min(0.6, d.pitch || 0));
+        d.view0 = { yaw: Math.sign(d.yaw) * Math.min(Math.abs(d.yaw), 0.3), pitch: Math.min(d.pitch, 0.3) };
+      }
       const meshes = [d.mesh, d.over, d.glass].filter(Boolean);
       const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
       for (const m of meshes) for (let k = 0; k < 3; k++) {
@@ -52581,6 +52652,7 @@ void main() {
       }
       d.radius = Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) / 2 || 1;
       d.fits = /* @__PURE__ */ new Map();
+      d.vox = /* @__PURE__ */ new Map();
     } catch (e) {
       console.error(e);
       d = null;
@@ -52700,11 +52772,11 @@ void main() {
     if (v !== void 0) return v;
     try {
       const vs = voxelEdge(def2, res);
-      const mesh = voxelizeIconMesh(def2.mesh, res, { vs });
+      const mesh = def2.prevox ? def2.mesh : voxelizeIconMesh(def2.mesh, res, { vs });
       v = mesh ? {
         mesh,
-        over: def2.over ? voxelizeIconMesh(def2.over, res, { vs }) : null,
-        glass: def2.glass ? voxelizeIconMesh(def2.glass, res, { vs, hollow: true, hl: 0, ao: 0, jitter: 0 }) : null
+        over: def2.over && !def2.prevox ? voxelizeIconMesh(def2.over, res, { vs }) : null,
+        glass: def2.glass && !def2.prevox ? voxelizeIconMesh(def2.glass, res, { vs, hollow: true, jitter: 0, bands: false }) : null
       } : null;
     } catch (e) {
       console.error("voxel icon", e);
@@ -52714,6 +52786,7 @@ void main() {
     return v;
   }
   function renderDef(def2, px3, turn, pix = true) {
+    if (def2.view0 && (pix ? px3 * HI : px3) < 52) def2 = { ...def2, yaw: def2.view0.yaw, pitch: def2.view0.pitch };
     let fit2 = def2.fits.get(px3);
     if (!fit2) {
       const b = projBounds(def2, def2.yaw || 0);
@@ -52724,10 +52797,10 @@ void main() {
     }
     const S11 = fit2.S;
     const a = (def2.yaw || 0) + turn;
-    const vx2 = voxOn && !def2.noVoxel ? voxOf(def2, iconRes(pix ? px3 * HI : px3)) : null;
+    const vx2 = voxOn && !def2.noVoxel ? voxOf(def2, def2.res || iconRes(pix ? px3 * HI : px3)) : null;
     if (vx2) def2 = { ...def2, mesh: vx2.mesh, over: vx2.over, glass: vx2.glass };
     const look = def2.look || {};
-    const o = vx2 ? { ...VOX_LIGHT, ...look, spec: Math.min(0.32, (look.spec ?? 0.5) * 0.3), shine: 10, rim: 0.12, w: S11, h: S11, pitch: def2.pitch || 0, yaw: 0, scale: fit2.s, center: fit2.center } : { ...ICON_LIGHT, ...look, w: S11, h: S11, pitch: def2.pitch || 0, yaw: 0, scale: fit2.s, center: fit2.center };
+    const o = vx2 ? { ...VOX_LIGHT, w: S11, h: S11, pitch: def2.pitch || 0, yaw: 0, scale: fit2.s, center: fit2.center } : { ...ICON_LIGHT, ...look, w: S11, h: S11, pitch: def2.pitch || 0, yaw: 0, scale: fit2.s, center: fit2.center };
     const mesh = turned(def2.mesh, def2.spinAxis === "z" ? turn : a, def2.spinAxis || "y");
     let base = renderMesh(mesh, o);
     mesh.dispose();
@@ -52745,7 +52818,7 @@ void main() {
     }
     if (def2.glass) {
       const gm = turned(def2.glass, def2.spinAxis === "z" ? turn : a, def2.spinAxis || "y");
-      const gl2 = renderMesh(gm, vx2 ? { ...o, alpha: (def2.glassAlpha ?? 0.4) * 0.62, ambient: 0.92, spec: 0.08, shine: 8, rim: 0.25 } : { ...o, alpha: def2.glassAlpha ?? 0.4, spec: 0.9, shine: 30, rim: 0.7 });
+      const gl2 = renderMesh(gm, vx2 ? { ...o, alpha: (def2.glassAlpha ?? 0.4) * 0.7, ambient: 0.85 } : { ...o, alpha: def2.glassAlpha ?? 0.4, spec: 0.9, shine: 30, rim: 0.7 });
       gm.dispose();
       if (gl2) {
         const c2 = makeCanvas(S11, S11), g2 = ctxOf(c2);
@@ -52754,7 +52827,61 @@ void main() {
         base = c2;
       }
     }
-    return finishSprite(base, S11, S11, pix);
+    return vx2 ? finishToy(base, S11, S11, pix) : finishSprite(base, S11, S11, pix);
+  }
+  function finishToy(src, w, h, lo) {
+    const T5 = lo || w < 64 ? 1 : Math.max(2, Math.round(w / 42));
+    const c = makeCanvas(w, h), g = ctxOf(c);
+    g.drawImage(src, 0, 0);
+    const img = g.getImageData(0, 0, w, h);
+    const d = new Uint32Array(img.data.buffer);
+    const solid3 = new Uint8Array(w * h);
+    for (let i = 0; i < d.length; i++) {
+      if (d[i] >>> 24 > 70) solid3[i] = 1;
+      else d[i] = 0;
+    }
+    let cur = solid3;
+    for (let ring = 0; ring < T5; ring++) {
+      const next = new Uint8Array(cur);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        if (cur[i]) continue;
+        let n2 = -1;
+        if (x > 0 && cur[i - 1]) n2 = i - 1;
+        else if (x < w - 1 && cur[i + 1]) n2 = i + 1;
+        else if (y > 0 && cur[i - w]) n2 = i - w;
+        else if (y < h - 1 && cur[i + w]) n2 = i + w;
+        else if (ring > 0 && ring === T5 - 1) {
+          if (x > 0 && y > 0 && cur[i - w - 1]) n2 = i - w - 1;
+          else if (x < w - 1 && y < h - 1 && cur[i + w + 1]) n2 = i + w + 1;
+          else if (x > 0 && y < h - 1 && cur[i + w - 1]) n2 = i + w - 1;
+          else if (x < w - 1 && y > 0 && cur[i - w + 1]) n2 = i - w + 1;
+        }
+        if (n2 < 0) continue;
+        if (ring === 0) {
+          const [r, gg, b] = unpack(d[n2]);
+          d[i] = pack(mix(rgbToHex(Math.round(r * 0.28), Math.round(gg * 0.3), Math.round(b * 0.4)), "#0a1630", 0.5));
+        } else d[i] = d[n2];
+        next[i] = 1;
+      }
+      cur = next;
+    }
+    g.putImageData(img, 0, 0);
+    const sh = makeCanvas(w, h), sg = ctxOf(sh);
+    const off = Math.max(1, Math.round(T5 * 0.8));
+    const sil = makeCanvas(w, h), sl = ctxOf(sil);
+    sl.drawImage(c, 0, 0);
+    sl.globalCompositeOperation = "source-in";
+    sl.fillStyle = "rgba(4,24,56,0.34)";
+    sl.fillRect(0, 0, w, h);
+    try {
+      sg.filter = `blur(${Math.max(1, T5)}px)`;
+    } catch {
+    }
+    sg.drawImage(sil, Math.round(off * 0.5), off + 1);
+    sg.filter = "none";
+    sg.drawImage(c, 0, 0);
+    return sh;
   }
   function vBudget() {
     const n2 = performance.now();
@@ -52780,14 +52907,14 @@ void main() {
     px3 = Math.max(8, Math.round(px3));
     const def2 = prepModel(key, make);
     if (!def2) return null;
-    const steps = def2.spin === "full" ? 24 : 12;
+    const steps = def2.spin === "full" ? 8 : 4;
     let q = def2.spin === "full" ? Math.round((turn % 1 + 1) % 1 * steps) % steps : Math.round(Math.max(-1, Math.min(1, turn)) * (steps / 2));
     const k = key + "|" + px3 + "|" + q;
     let e = frameCache2.get(k);
     if (e !== void 0) return e;
     if (!vBudget()) return nearestTurn(frameCache2, key, px3, q, steps);
     const tb = performance.now();
-    const ang = def2.spin === "full" ? q / steps * Math.PI * 2 : q / (steps / 2) * 0.62;
+    const ang = def2.spin === "full" ? q / steps * Math.PI * 2 : q / (steps / 2) * 0.5;
     let canvas = null;
     try {
       canvas = renderDef(def2, px3, ang);
@@ -52818,14 +52945,14 @@ void main() {
     px3 = Math.max(6, Math.round(px3));
     const def2 = prepModel(key, make);
     if (!def2) return null;
-    const steps = def2.spin === "full" ? 24 : 12;
+    const steps = def2.spin === "full" ? 8 : 4;
     const q = def2.spin === "full" ? Math.round((turn % 1 + 1) % 1 * steps) % steps : Math.round(Math.max(-1, Math.min(1, turn)) * (steps / 2));
     const k = key + "|" + px3 + "|" + q;
     let e = hiFrames.get(k);
     if (e !== void 0) return e;
     if (!force && !vBudget()) return nearestTurn(hiFrames, key, px3, q, steps);
     const tb = performance.now();
-    const ang = def2.spin === "full" ? q / steps * Math.PI * 2 : q / (steps / 2) * 0.62;
+    const ang = def2.spin === "full" ? q / steps * Math.PI * 2 : q / (steps / 2) * 0.5;
     let big = null;
     try {
       big = renderDef(def2, px3 * HI, ang, false);
@@ -52911,6 +53038,14 @@ void main() {
   }
   function cutGemFrame(color, cut = "round", px3 = 12, dim = false, turn = 0) {
     return modelFrame("cutgem:" + color + "|" + cut + "|" + (dim ? 1 : 0), () => CUT_GEM_MODEL(color, cut, dim), px3, turn, true);
+  }
+  function voxelModelFrame(key, make, px3, turn = 0, force = false) {
+    return modelFrame("vm:" + key, () => {
+      const m = make();
+      const mesh = m ? voxelModelMesh(m, 16) : null;
+      if (!mesh) throw new Error("empty voxel model " + key);
+      return { mesh, prevox: true, yaw: 0.6, pitch: 0.48, spin: "full" };
+    }, px3, turn, force);
   }
   function getBigIcon(id2, opts = {}) {
     const px3 = typeof opts.size === "number" ? opts.size : SIZES2[opts.size] || (opts.small ? SMALL : BIG);
@@ -53004,7 +53139,7 @@ void main() {
       lpDefs = /* @__PURE__ */ new Map();
       lpOk = null;
       ICON_LIGHT = { light: [-0.55, 0.8, 0.7], ambient: 0.5, spec: 0.6, shine: 14, rim: 0.45, rimColor: "#e4fbff" };
-      VOX_LIGHT = { light: [-0.34, 0.8, 1], ambient: 0.58, spec: 0.16, shine: 10, rim: 0.12, rimColor: "#e4fbff" };
+      VOX_LIGHT = { light: [-0.55, 1, 0.62], ambient: 0.5, spec: 0, shine: 8, rim: 0, rimColor: "#e4fbff" };
       voxOn = true;
       vbWin = 0;
       vbSpent = 0;
@@ -57565,7 +57700,7 @@ void main() {
         if (!p?.decor) continue;
         const price = p.decor.price;
         const rarity = price < 150 ? "common" : price < 350 ? "uncommon" : price < 650 ? "rare" : price < 1200 ? "epic" : "legendary";
-        DECOR_BUILDS[id2] = { name: p.name, rarity, prop: id2, size: p.decor.size, desc: `Seabed decoration: a ${p.name.toLowerCase()} for your underwater neighbourhood.`, cost: { coins: Math.round(price * 0.25), items: {} } };
+        DECOR_BUILDS[id2] = { name: p.name, rarity, prop: id2, size: p.decor.size, desc: `Tank plans: build a ${p.name.toLowerCase()} in your aquarium.`, cost: { coins: Math.round(price * 0.25), items: {} } };
       }
       RECIPES = [
         { id: "bread", qty: 6, items: { kelp_fibre: 2 }, coins: 0, lvl: 1 },
@@ -59756,6 +59891,27 @@ void main() {
       return q;
     }
     frame2 = (frame2 % SPIN + SPIN) % SPIN;
+    if (MODELS5[id2] && lpAvailable()) {
+      const b0 = modelOf2(id2);
+      const px3 = Math.max(12, Math.round(Math.max(b0.m.nx, b0.m.ny, b0.m.nz) * 2 * scale * (b0.vs ?? 1) * 1.1));
+      const f = voxelModelFrame("item:" + id2, () => modelOf2(id2).m, px3, frame2 / SPIN, force);
+      if (f) {
+        const tk = "toy|" + id2 + "|" + px3 + "|" + frame2;
+        let q = cache13.get(tk);
+        if (!q) {
+          const c = f.canvas, d = ctxOf(c).getImageData(0, 0, c.width, c.height).data;
+          let by = c.height;
+          outer: for (let y = c.height - 1; y >= 0; y--) for (let x = 0; x < c.width; x++) if (d[(y * c.width + x) * 4 + 3] > 100) {
+            by = y + 1;
+            break outer;
+          }
+          q = { canvas: c, glow: null, ox: Math.round(f.ox), oy: by, w: c.width, h: c.height };
+          cache13.set(tk, q);
+        }
+        return q;
+      }
+      if (!force) return null;
+    }
     const key = id2 + "|" + scale + "|" + frame2;
     let s = cache13.get(key);
     if (s) return s;
@@ -59803,6 +59959,9 @@ void main() {
   function hasItemModel(id2) {
     return !!(MODELS5[id2] || PKG[String(id2).replace(/^pkg_/, "")]);
   }
+  function itemModelOf(id2) {
+    return MODELS5[id2] ? modelOf2(id2).m : null;
+  }
   var SPIN, h35, MODELS5, PKG, ART_IDS, PACKAGE_ART, winStart2, spent4, BUDGET, built2, cache13, pkgCache;
   var init_itemart = __esm({
     "src/build/itemart.js"() {
@@ -59810,6 +59969,9 @@ void main() {
       init_voxel();
       init_math();
       init_itempix();
+      init_bigicons();
+      init_lowpoly();
+      init_canvas();
       SPIN = 16;
       h35 = (x, y, z, s = 0) => hash3(x, y, z, s);
       MODELS5 = {
@@ -62288,6 +62450,15 @@ void main() {
   }
   function baitIcon(art2, px3 = 28) {
     const a = art2 || { shape: "crumbs" };
+    if (lpAvailable()) {
+      let f = null;
+      try {
+        f = voxelModelFrame("bait:" + artKey(a, 0), () => buildModel(a), Math.round(px3 * 1.15 * (a.scale || 1)), 0, true);
+      } catch {
+        f = null;
+      }
+      if (f) return { canvas: f.canvas, glow: null, w: f.canvas.width, h: f.canvas.height };
+    }
     const one = baitVoxel(a, 1);
     const s = Math.max(1, Math.min(4, Math.round(px3 / Math.max(one.w, one.h) * (a.scale || 1) * 4) / 4));
     return baitVoxel(a, s);
@@ -62367,6 +62538,8 @@ void main() {
       init_color();
       init_math();
       init_hires();
+      init_bigicons();
+      init_lowpoly();
       P5 = {
         k: "#14131c",
         d: "#5d6677",
@@ -63047,7 +63220,7 @@ kmlmk..
         if (!p.decor || ITEMS[id2]) continue;
         const pr = p.decor.price;
         const r = pr < 80 ? "common" : pr < 220 ? "uncommon" : pr < 450 ? "rare" : pr < 900 ? "epic" : "legendary";
-        add7(id2, { name: p.name, kind: "decor", rarity: r, prop: id2, art: null, biome: p.biome === "aquarium" ? null : p.biome, desc: `Decoration for your aquarium${DECOR_BUILDS[id2] ? " or the seabed" : ""}. Size: ${["", "small", "medium", "large"][p.decor.size] || "medium"}.`, value: Math.round(pr * 0.4) });
+        add7(id2, { name: p.name, kind: "decor", rarity: r, prop: id2, art: null, biome: p.biome === "aquarium" ? null : p.biome, desc: `Decoration for your aquarium. Size: ${["", "small", "medium", "large"][p.decor.size] || "medium"}.`, value: Math.round(pr * 0.4) });
       }
       COS_VAL = { common: 40, uncommon: 100, rare: 260, epic: 700, legendary: 1800 };
       for (const w of wardrobeEntries()) {
@@ -63930,6 +64103,19 @@ kmlmk..
     else if (art2 && itemPixel(art2) && !hasItemModel(art2)) {
       const b = itemPixel(art2);
       src = itemPixelScaled(art2, Math.max(1, Math.floor(Math.min(size / b.w, size / b.h))));
+    } else if (art2 && !art2.startsWith("pkg_") && hasItemModel(art2) && lpAvailable()) {
+      const f = voxelModelFrame("item:" + art2, () => itemModelOf(art2), size + 2, 0, true);
+      if (f) {
+        const c3 = makeCanvas(size, size);
+        ctxOf(c3).drawImage(f.canvas, Math.round(size / 2 - f.ox), Math.round(size / 2 - f.oy));
+        if (f.canvas.hi) {
+          const h36 = makeCanvas(size * 2, size * 2);
+          ctxOf(h36).drawImage(f.canvas.hi, Math.round((size / 2 - f.ox) * 2), Math.round((size / 2 - f.oy) * 2));
+          Object.defineProperty(c3, "hi", { value: h36, configurable: true });
+        }
+        icons2.set(key, c3);
+        return c3;
+      }
     } else if (art2 && !art2.startsWith("pkg_")) src = itemSprite(art2, { scale: 0.5, frame: 0, force: true })?.canvas;
     else if (art2) src = packageParts(art2.slice(4), 0.5, 0, true, true)?.full;
     else if (it2?.kind === "bait") src = baitSprite(id2, 0);
@@ -64091,6 +64277,7 @@ kmlmk..
       init_journal();
       init_items();
       init_itemart();
+      init_bigicons();
       init_itempix();
       init_buildingmodels();
       init_pixart();
@@ -64547,7 +64734,7 @@ kmlmk..
           if (it2?.biome) stats.push(["map", { oscean: "(OS)cean", shallows: "Sunny Shallows", fjord: "Frosty Fjord", junkyard: "Junkyard Reef", metropolis: "Sunken Metropolis", volcano: "Lava Rift", abyss: "The Deep Ocean" }[it2.biome] || it2.biome]);
           if (e.kind === "material" || e.kind === "egg") uses = usesOf(e.id);
           if (e.kind === "egg") uses = ["Hatch a baby fish", ...uses];
-          if (e.kind === "decor") uses = ["Aquarium decor", ...DECOR_BUILDS[e.id] ? ["Seabed plans"] : []];
+          if (e.kind === "decor") uses = ["Aquarium decor", ...DECOR_BUILDS[e.id] ? ["Tank plans"] : []];
           if (e.kind === "cosmetic") {
             const w = wardrobeItem(e.id);
             if (w?.slot) stats.push(["crown", w.slot[0].toUpperCase() + w.slot.slice(1)]);
@@ -64573,7 +64760,7 @@ kmlmk..
             const it2 = ITEMS[e.id];
             const def2 = buildingDef(it2.builds);
             const done = def2?.unique && st.buildings?.some((b) => b.id === it2.builds);
-            out.push({ label: done ? "Built" : "Build", icon: "home", style: "green", disabled: done || g.state.view !== "ocean" && !g.setView, tip: "Place it on the seabed", run: () => {
+            out.push({ label: done ? "Built" : "Build", icon: "home", style: "green", disabled: done || g.state.view !== "ocean" && !g.setView, tip: "Place it in your tank", run: () => {
               ui.close(this.id);
               g.build?.startPlacing?.(e.id);
             } });
@@ -65180,10 +65367,10 @@ kmlmk..
             const def2 = buildingDef(it2.builds);
             drawText(ctx3, def2.name.toUpperCase(), px3, y + 9, { color: "#ffffff", outline: "#0a2a5a" });
             drawText(ctx3, `x${countItem(st, sel)} blueprint${countItem(st, sel) > 1 ? "s" : ""}${def2.unique ? " - unique" : ""}`, px3 + measureText(def2.name.toUpperCase()) + 8, y + 10, { font: "small", color: "#9ad0ff" });
-            drawText(ctx3, "Click the seabed to place it. Free!", px3, y + 23, { color: "#bfe2ff" });
+            drawText(ctx3, "Click your tank to place it. Free!", px3, y + 23, { color: "#bfe2ff" });
           } else if (B2.moving) {
             drawText(ctx3, "MOVING " + (buildingDef(B2.byUid(B2.moving)?.id)?.name || "").toUpperCase(), px3, y + 9, { color: "#ffe27a", outline: "#0a2a5a" });
-            drawText(ctx3, "Free of charge. Click the seabed to set it down.", px3, y + 23, { color: "#bfe2ff" });
+            drawText(ctx3, "Free of charge. Click your tank to set it down.", px3, y + 23, { color: "#bfe2ff" });
           } else {
             drawText(ctx3, B2.mode === "demolish" ? "DEMOLISH MODE" : B2.mode === "move" ? "MOVE MODE" : "PICK A BLUEPRINT", px3, y + 9, { color: B2.mode === "demolish" ? "#ffb0a0" : "#ffffff", outline: "#0a2a5a" });
             drawText(ctx3, B2.mode === "demolish" ? "Packs it up: the blueprint comes back." : B2.mode === "move" ? "Click a building to pick it up." : "Craft blueprints in the Lab.", px3, y + 23, { color: "#bfe2ff" });
@@ -65914,7 +66101,23 @@ kmlmk..
     }
     return { m, yaw: 18, pitch: 16 };
   }
-  function fitVoxel(build4, px3) {
+  function fitVoxel(build4, px3, key = null) {
+    if (key && lpAvailable()) {
+      let f = null;
+      try {
+        f = voxelModelFrame("lab:" + key, () => build4().m, px3 + 2, 0, true);
+      } catch {
+        f = null;
+      }
+      if (f && f.canvas.hi) {
+        const c = makeCanvas(px3, px3);
+        ctxOf(c).drawImage(f.canvas, Math.round(px3 / 2 - f.ox), Math.round(px3 / 2 - f.oy));
+        const h = makeCanvas(px3 * HI, px3 * HI);
+        ctxOf(h).drawImage(f.canvas.hi, Math.round((px3 / 2 - f.ox) * HI), Math.round((px3 / 2 - f.oy) * HI));
+        Object.defineProperty(c, "hi", { value: h, configurable: true });
+        return c;
+      }
+    }
     const { m, yaw, pitch } = build4();
     const one = renderVoxels(m, { scale: 1, yaw, pitch, outline: true, groundAO: false });
     const k = Math.min(px3 / one.w, px3 / one.h);
@@ -65995,10 +66198,10 @@ kmlmk..
     let c = null;
     try {
       const [kind2, id2] = key.includes(":") ? key.split(":") : [null, key];
-      if (kind2 === "rod" && ROD_BY_ID[id2]) c = rodIcon(ROD_BY_ID[id2], px3) || fitVoxel(() => rodModel(ROD_BY_ID[id2]), px3);
-      else if (kind2 === "boat") c = fitVoxel(() => boatModel(id2), px3);
-      else if (kind2 === "tank") c = fitVoxel(() => tankModel(id2), px3);
-      else if (kind2 === "biome") c = fitVoxel(() => globeModel(id2), px3);
+      if (kind2 === "rod" && ROD_BY_ID[id2]) c = rodIcon(ROD_BY_ID[id2], px3) || fitVoxel(() => rodModel(ROD_BY_ID[id2]), px3, key);
+      else if (kind2 === "boat") c = fitVoxel(() => boatModel(id2), px3, key);
+      else if (kind2 === "tank") c = fitVoxel(() => tankModel(id2), px3, key);
+      else if (kind2 === "biome") c = fitVoxel(() => globeModel(id2), px3, key);
       else if (kind2 === "bait") c = fitCanvas(baitIcon({ shape: id2 }, px3).canvas, px3, false);
       else if (kind2 === "bp") {
         const s = buildingSprite(id2, { scale: 0.2, force: true });
@@ -66008,8 +66211,8 @@ kmlmk..
           c = b ? fitCanvas(b.canvas, px3, false) : null;
         }
       } else if (kind2 === "mat") c = itemIcon(id2, px3);
-      else if (key === "globe") c = getBigIcon("map", { size: px3 })?.canvas || fitVoxel(() => globeModel("oscean"), px3);
-      else if (key === "crab" || key === "snail") c = fitVoxel(() => critterModel(key), px3);
+      else if (key === "globe") c = getBigIcon("map", { size: px3 })?.canvas || fitVoxel(() => globeModel("oscean"), px3, "globe");
+      else if (key === "crab" || key === "snail") c = fitVoxel(() => critterModel(key), px3, key);
       else if (key === "fish" || kind2 === "fish") c = voxelFishIcon(id2 || "pixel", px3, px3);
       else if (!kind2 && has3D(key) && (c = icon3d(key, px3, px3))) {
       } else if (GLYPH_ART[key]) {
@@ -83713,7 +83916,8 @@ kmlmk..
       CRAFT_CATS = [
         { id: "building", name: "Buildings", icon: "bp:coral_garden" },
         { id: "decor", name: "Aquarium Decor", icon: "decor" },
-        { id: "plans", name: "Seabed Decor", icon: "bp:lighthouse" },
+        { id: "plans", name: "Tank Plans", icon: "bp:lighthouse" },
+        // [phase10:tank] everything is built in the tank
         { id: "bait", name: "Bait", icon: "bait:worm" }
       ];
       SIZE_ITEMS = [null, { shell: 1, kelp_fibre: 1 }, { shell: 2, coral_chunk: 1 }, { driftwood: 3, sea_glass: 2 }];
@@ -86088,7 +86292,7 @@ kmlmk..
     let y = hy + 50;
     drawText(ctx3, rc.name + (rc.out?.qty > 1 ? ` x${rc.out.qty}` : ""), cx, y, { align: "center", color: INK4, shadow: "#ffffff" });
     y += 12;
-    const tag2 = { building: "Blueprint", decor: "Aquarium decor", plans: "Seabed decor", bait: "Bait", special: "Bait mixer" }[rc.cat];
+    const tag2 = { building: "Blueprint", decor: "Aquarium decor", plans: "Tank plans", bait: "Bait", special: "Bait mixer" }[rc.cat];
     drawText(ctx3, tag2.toUpperCase(), cx, y, { font: "small", align: "center", color: INK_SOFT2 });
     y += 10;
     for (const l of wrapText(rc.desc || ITEMS[rc.out?.id]?.desc || "", r.w - 20).slice(0, 3)) {
@@ -86136,7 +86340,7 @@ kmlmk..
     const w1 = canPlace || multi ? Math.round((r.w - 24) * 0.58) : r.w - 20;
     if (pill(ui, ctx3, r.x + 10, by, w1, 24, "Craft", { tone: "green", icon: icon("hammer", 14), disabled: !c.ok, sound: "ui_unlock" })) doCraft(1);
     if (canPlace) {
-      if (pill(ui, ctx3, r.x + 14 + w1, by, r.w - 24 - w1, 24, "Place", { tone: "aqua", icon: getUiIcon("home"), tip: "Place it on the seabed" })) {
+      if (pill(ui, ctx3, r.x + 14 + w1, by, r.w - 24 - w1, 24, "Place", { tone: "aqua", icon: getUiIcon("home"), tip: "Place it in your tank" })) {
         ui.close();
         g.build.startPlacing(rc.out.id);
       }
@@ -97667,7 +97871,7 @@ kmlmk..
           const by = Math.round(bottomY);
           const hood = 21, base = 12;
           let Z = (by - base - this.topY) / (T5.H + hood);
-          Z = clamp(Math.floor(Z * 20) / 20, 0.8, 1.45);
+          Z = clamp(Math.floor(Z * 20) / 20, 0.8, clamp(H8 / 540 * 1.45, 1.45, 2.1));
           const key = [T5.tier, Z, W11, H8].join("|");
           this.bottomY = by - Math.round(base * Z);
           if (key !== this.layoutKey) {
@@ -98220,7 +98424,12 @@ kmlmk..
                 c.drawImage(s.canvas, dx + sx, dy, w, h);
                 c.globalAlpha = 1;
               }),
-              glow: s.glow ? () => ctx2((c) => c.drawImage(s.glow, dx, dy, w, h)) : null
+              glow: s.glow ? () => ctx2((c) => c.drawImage(s.glow, dx, dy, w, h)) : PROPS[d.id]?.tags?.includes("glow") || PROPS[d.id]?.tags?.includes("crystal") ? (dk) => ctx2((c) => {
+                drawAeroGlow(c, dx + w / 2, dy + h * 0.45, Math.round(Math.max(w, h) * 0.7), "#bff8ff", 0.3 * dk);
+                c.globalAlpha = 0.35 * dk;
+                c.drawImage(s.canvas, dx, dy, w, h);
+                c.globalAlpha = 1;
+              }) : null
             });
           }
           const wash = aq.nightK > 0.4 || aq.st.tank.lampOff ? { color: "#0a2a5a", alpha: 0.25 } : null;
@@ -98754,7 +98963,7 @@ kmlmk..
           } else if (op.op === "storeB") this.game.build?.restoreToTank?.(op.b);
           aq.syncPieces();
           this.sel = null;
-          aq.sfx("ui_back", { vol: 0.5 });
+          aq.sfx("ui_close", { vol: 0.5 });
           this.game.save?.();
         }
         pickUp(p, sx) {
@@ -98878,6 +99087,7 @@ kmlmk..
           }
           if ((kp("Delete") || kp("Backspace")) && this.sel) this.store();
           if (kp("z") && (I.key("Control") || I.key("Meta"))) this.undo();
+          for (const k of ["q", "e", "f", "z", "Delete", "Backspace"]) I?.keysPressed?.delete?.(k);
           const W11 = g.screen.W;
           void W11;
           for (const b of this.toolButtons()) {
@@ -99961,6 +100171,7 @@ ${t.e.kind === "blueprint" ? `Blueprint x${o.n}` : o.kind === "owned" ? `You own
           if (I && !typing && !g.tutorial?.active) {
             if (I.key("a") || I.key("ArrowLeft")) push -= 1;
             if (I.key("d") || I.key("ArrowRight")) push += 1;
+            if (max > 0) I.keysPressed?.delete?.("a");
           }
           if (inp && inp.inside && !this.press && !this.hoverBtn && !this.panel && max > 0) {
             const W11 = g.screen.W, e = 22;
