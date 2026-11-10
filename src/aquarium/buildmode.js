@@ -236,7 +236,7 @@ export class BuildMode {
       aq.paintDirty = true;
     }
     if (this.sel && !aq.decor.includes(this.sel)) this.sel = null;
-    aq.sfx('ui_back', { vol: 0.6 });
+    aq.sfx('ui_close', { vol: 0.6 });
     this.game.save?.();
   }
 

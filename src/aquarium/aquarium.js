@@ -1475,7 +1475,7 @@ export class Aquarium {
     const v = this.view;
     const keep = { yaw: v.cam.yaw, pitch: v.cam.pitch, dist: v.cam.dist, target: v.cam.target.slice() };
     const f = v.kit ? v.frame() : null;
-    if (f) { v.w = d.sw; v.h = d.sh; const ff = v.frame(); Object.assign(v.cam, { yaw: 0.6 + Math.sin(this.t * 0.12) * 0.22, pitch: 0.36, dist: ff.dist * 0.98, target: [0, this.shape.top * 0.42, 0] }); }
+    if (f) { v.w = d.sw; v.h = d.sh; const ff = v.frame(); Object.assign(v.cam, { yaw: 0.6 + Math.sin(this.t * 0.12) * 0.22, pitch: 0.34, dist: ff.dist * 0.8, target: [0, this.shape.top * 0.45, 0] }); }
     ctx.save();
     ctx.beginPath(); ctx.rect(ix, iy, d.sw, d.sh); ctx.clip();
     if (!v.render(ctx, ix, iy, d.sw, d.sh)) drawFlat(ctx, this, ix, iy, d.sw, d.sh);

@@ -40358,7 +40358,7 @@ kmlmk..
             aq.paintDirty = true;
           }
           if (this.sel && !aq.decor.includes(this.sel)) this.sel = null;
-          aq.sfx("ui_back", { vol: 0.6 });
+          aq.sfx("ui_close", { vol: 0.6 });
           this.game.save?.();
         }
         // ------------------------------------------------------------------ actions
@@ -43715,7 +43715,7 @@ ${hearts} ${status}
             v.w = d.sw;
             v.h = d.sh;
             const ff = v.frame();
-            Object.assign(v.cam, { yaw: 0.6 + Math.sin(this.t * 0.12) * 0.22, pitch: 0.36, dist: ff.dist * 0.98, target: [0, this.shape.top * 0.42, 0] });
+            Object.assign(v.cam, { yaw: 0.6 + Math.sin(this.t * 0.12) * 0.22, pitch: 0.34, dist: ff.dist * 0.8, target: [0, this.shape.top * 0.45, 0] });
           }
           ctx2.save();
           ctx2.beginPath();
@@ -97225,7 +97225,7 @@ ${hearts} ${status}
                 e.rec.name = e.text.trim() || void 0;
                 if (!e.rec.name) delete e.rec.name;
                 g.save?.();
-                g.audio.play("ui_confirm");
+                g.audio.play("ui_click");
               }
             }
             g.input.keysPressed?.clear?.();

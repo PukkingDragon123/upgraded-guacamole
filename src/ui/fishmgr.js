@@ -183,7 +183,7 @@ export class FishManagerPanel {
     // keyboard: the game's hotkeys stay quiet while the panel is open
     for (const k of ['f', 'q', 'w', 's', 'b', 't', 'j', 'l', 'k', 'o', 'p', 'i', 'u', 'a']) g.input.keysPressed?.delete?.(k);
     if (this.edit) {
-      if (this.edit.done) { const e = this.edit; e.close(); this.edit = null; if (e.done === 'ok') { e.rec.name = e.text.trim() || undefined; if (!e.rec.name) delete e.rec.name; g.save?.(); g.audio.play('ui_confirm'); } }
+      if (this.edit.done) { const e = this.edit; e.close(); this.edit = null; if (e.done === 'ok') { e.rec.name = e.text.trim() || undefined; if (!e.rec.name) delete e.rec.name; g.save?.(); g.audio.play('ui_click'); } }
       g.input.keysPressed?.clear?.();
     }
     drawAeroSurface(ctx, R.x, R.y, R.w, R.h, { top: '#f4fdff', mid: '#cdeefc', bot: '#8fd0f0', a: [0.98, 0.98], edge: '#0b4f8f', r: 12, gloss: 0.45, glossH: 24, curve: 3, rim: 0.95, glow: 0.6, streak: true, bubbles: 4 });

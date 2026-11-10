@@ -3,7 +3,9 @@
 // sky (2D light) -> room -> tank (substrate, equipment, plants, decor, fish, eggs, food, Aero drops, bubbles, the
 // swimmer) -> caustics, light shafts, water volume, rippling surface, glass -> 2D overlays (drawn by aquarium.js).
 //
-//   new TankView(aq)          .rebuild() after tier / gear changes   .setPreset('front'|'top'|'close'|'side'|'room')
+//   new TankView(aq)          .rebuild() after tier / gear changes   .setPreset('iso'|'front'|'top'|'close'|'side'|'room')
+//   .focusFish(f) (follow a fish)  .rebuildPaint() (painted plants / rocks)  build mode: ghost hologram, footprint
+//   brackets, brush square, floor grid (phase 7)
 //   .orbit(dx, dy) .pan(dx, dy) .zoom(k)  .update(dt)  .render(ctx, x, y, w, h) -> bool (false = no WebGL)
 //   .project([x, y, z]) -> [sx, sy, depth] | null (view-local px)   .ray(sx, sy) -> {o, d}
 //   .eye, .fwd                 current camera
