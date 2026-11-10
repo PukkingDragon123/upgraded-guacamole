@@ -22,4 +22,8 @@ export const RELEASE_VALUE = { common: 4, uncommon: 9, rare: 22, epic: 60, legen
 export const COIN_RATE = { common: 2, uncommon: 3.5, rare: 6, epic: 10, legendary: 20 };
 // Coins awarded immediately on a catch.
 export const CATCH_BONUS = { common: 2, uncommon: 4, rare: 10, epic: 25, legendary: 100 };
+// [balance] Fish from later oceans are worth more (catch bonus, release value and tank Aero/min all scale): each new
+// ocean is a noticeable pay rise that keeps pace with the steeper Lab / Workshop prices. Applied by
+// fish/traits.js valueMultiplier(rec, sp) from the fish's ocean (rec.biome, else its species' home ocean).
+export const OCEAN_VALUE = { oscean: 1, shallows: 1.25, fjord: 1.6, junkyard: 2, metropolis: 2.6, volcano: 3.3, abyss: 4.2 };
 

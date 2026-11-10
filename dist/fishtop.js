@@ -39200,7 +39200,7 @@ void main() {
   });
 
   // src/game/shopdata.js
-  var BAITS, BAIT_ORDER, RELEASE_VALUE, COIN_RATE, CATCH_BONUS;
+  var BAITS, BAIT_ORDER, RELEASE_VALUE, COIN_RATE, CATCH_BONUS, OCEAN_VALUE;
   var init_shopdata = __esm({
     "src/game/shopdata.js"() {
       BAITS = {
@@ -39219,6 +39219,7 @@ void main() {
       RELEASE_VALUE = { common: 4, uncommon: 9, rare: 22, epic: 60, legendary: 220 };
       COIN_RATE = { common: 2, uncommon: 3.5, rare: 6, epic: 10, legendary: 20 };
       CATCH_BONUS = { common: 2, uncommon: 4, rare: 10, epic: 25, legendary: 100 };
+      OCEAN_VALUE = { oscean: 1, shallows: 1.25, fjord: 1.6, junkyard: 2, metropolis: 2.6, volcano: 3.3, abyss: 4.2 };
     }
   });
 
@@ -46760,8 +46761,8 @@ void main() {
   function personalityOf(rec) {
     return PERSONALITIES.find((q) => q.id === rec.personality) || PERSONALITIES[10];
   }
-  function valueMultiplier(rec) {
-    let m = 1;
+  function valueMultiplier(rec, sp = null) {
+    let m = OCEAN_VALUE[rec?.biome || sp?.biome] || 1;
     if (rec.variant?.mutation) m *= MUTATIONS[rec.variant.mutation]?.coin || 1.3;
     if (rec.variant?.pattern) m *= 1.2;
     if (rec.variant?.shiny) m *= 4;
@@ -46774,6 +46775,7 @@ void main() {
     "src/fish/traits.js"() {
       init_rng();
       init_math();
+      init_shopdata();
       MUTATIONS = {
         albino: { name: "Albino", coin: 1.5, weight: 10 },
         melanistic: { name: "Melanistic", coin: 1.5, weight: 10 },
@@ -56594,15 +56596,147 @@ void main() {
     }
   });
 
+  // src/fish/bosses.js
+  var BOSSES, BOSS_BY_ID, BOSS_BY_OCEAN;
+  var init_bosses = __esm({
+    "src/fish/bosses.js"() {
+      BOSSES = [
+        {
+          id: "bruce",
+          ocean: "oscean",
+          chapter: "ch1",
+          quest: "c1_boss",
+          tier: 1,
+          title: "Turbine Shark",
+          sub: "Spinner of the Green Hills",
+          color: "#8ff0ff",
+          glow: "#bff8ff",
+          len: 104,
+          attacks: ["charge"],
+          minion: "pixel",
+          hp: 1,
+          reward: { aero: 200, chest: "pkg_iron", recipe: "ws_rod_sakura" },
+          repeat: { aero: 50, chest: "pkg_crate" }
+        },
+        {
+          id: "dragonkarp",
+          ocean: "shallows",
+          chapter: "ch2",
+          quest: "c2_boss",
+          tier: 2,
+          title: "Rage-Quit Dragon-Karp",
+          sub: "It did NOT lag",
+          color: "#ff9d5a",
+          glow: "#ffe0a8",
+          len: 108,
+          attacks: ["charge", "minions"],
+          minion: null,
+          hp: 1.1,
+          reward: { aero: 500, chest: "pkg_iron", recipe: "ws_rod_pixel" },
+          repeat: { aero: 120, chest: "pkg_crate" }
+        },
+        {
+          id: "eldershark",
+          ocean: "fjord",
+          chapter: "ch3",
+          quest: "c3_boss",
+          tier: 3,
+          title: "Ok Boomer Shark",
+          sub: "Back in my day...",
+          color: "#bfeaff",
+          glow: "#e8fbff",
+          len: 118,
+          attacks: ["charge", "ink"],
+          minion: null,
+          hp: 1.2,
+          reward: { aero: 1400, chest: "pkg_golden", recipe: "ws_rod_magnet" },
+          repeat: { aero: 350, chest: "pkg_iron" }
+        },
+        {
+          id: "bsod",
+          ocean: "junkyard",
+          chapter: "ch4",
+          quest: "c4_boss",
+          tier: 4,
+          title: "Blue Screen of Death Ray",
+          sub: "A fatal exception has occurred",
+          color: "#5a9aff",
+          glow: "#bfe0ff",
+          len: 112,
+          attacks: ["charge", "minions", "ink"],
+          minion: null,
+          hp: 1.3,
+          reward: { aero: 3500, chest: "pkg_golden", recipe: "ws_rod_glow" },
+          repeat: { aero: 850, chest: "pkg_iron" }
+        },
+        {
+          id: "mayorgrouper",
+          ocean: "metropolis",
+          chapter: "ch5",
+          quest: "c5_boss",
+          tier: 5,
+          title: "Main Character Marlin",
+          sub: "Everyone else is an NPC",
+          color: "#ffd23a",
+          glow: "#fff2b8",
+          len: 120,
+          attacks: ["charge", "minions", "ink"],
+          minion: null,
+          hp: 1.4,
+          reward: { aero: 8e3, chest: "pkg_golden", recipe: "ws_rod_turbo" },
+          repeat: { aero: 2e3, chest: "pkg_golden" }
+        },
+        {
+          id: "moltenleviathan",
+          ocean: "volcano",
+          chapter: "ch6",
+          quest: "c6_boss",
+          tier: 6,
+          title: "The Final Boss Leviathan",
+          sub: "(it is not the final boss)",
+          color: "#ff6a3a",
+          glow: "#ffc08a",
+          len: 128,
+          attacks: ["charge", "minions", "ink"],
+          minion: null,
+          hp: 1.5,
+          reward: { aero: 18e3, chest: "pkg_orb", recipe: "ws_rod_starfish" },
+          repeat: { aero: 4500, chest: "pkg_golden" }
+        },
+        {
+          id: "manyeyes",
+          ocean: "abyss",
+          chapter: "ch7",
+          quest: "c7_boss",
+          tier: 7,
+          title: "The Algorithm",
+          sub: "It has been watching you",
+          color: "#c89aff",
+          glow: "#ecd8ff",
+          len: 130,
+          attacks: ["charge", "ink", "minions"],
+          minion: null,
+          hp: 1.6,
+          reward: { aero: 35e3, chest: "pkg_orb", rod: "aerolite" },
+          repeat: { aero: 9e3, chest: "pkg_orb" }
+        }
+      ];
+      BOSS_BY_ID = Object.fromEntries(BOSSES.map((b) => [b.id, b]));
+      BOSS_BY_OCEAN = Object.fromEntries(BOSSES.map((b) => [b.ocean, b]));
+    }
+  });
+
   // src/game/lab.js
-  function autoCost(branch, tier, wantFish) {
+  function autoCost(branch, tier, wantFish, main = false) {
     const items = {};
     const band = tier <= 3 ? 0 : tier <= 6 ? 1 : 2;
     const fl = tier > 1 ? FLAVOUR[branch]?.[band] : null;
     if (fl) items[fl] = FLAVOUR_Q[MAT_RARITY[fl] || "common"][band] + (tier % 3 === 0 ? 1 : 0) - (tier === 2 ? 1 : 0);
     for (const [k, v] of Object.entries(MAT_T[tier] || {})) items[k] = (items[k] || 0) + v;
+    if (main && tier >= 9) items.golden_scale = (items.golden_scale || 0) + 1;
     const fish = wantFish && FISH_T[tier] ? { ...FISH_T[tier] } : {};
-    return { aero: AERO_T[tier] || 0, items, fish };
+    const aero = AERO_T[tier] || 0;
+    return { aero: main ? Math.round(aero * MAIN_MUL / 5) * 5 : aero, items, fish };
   }
   function n(id2, branch, tier, lane, name, icon3, req, o = {}) {
     RAW.push({ id: id2, branch, tier, lane, name, icon: icon3, req, ...o });
@@ -56773,8 +56907,50 @@ void main() {
     const reqOk = nd.req.every((r) => L2.done[r]);
     const slots = labSlots(state, stats) - L2.slots.length;
     const paid = aero.ok && items.every((x) => x.ok) && fish.every((x) => x.ok);
-    const ok = reqOk && paid && slots > 0 && !L2.done[nd.id] && !L2.slots.some((s) => s.id === nd.id) && !L2.queue.some((q) => q.id === nd.id);
-    return { ok, paid, aero, items, fish, slots, reqOk };
+    const gOk = gateOk(state, nd);
+    const ok = reqOk && gOk && paid && slots > 0 && !L2.done[nd.id] && !L2.slots.some((s) => s.id === nd.id) && !L2.queue.some((q) => q.id === nd.id);
+    return { ok, paid, aero, items, fish, slots, reqOk, gateOk: gOk, gate: gOk ? null : gateLabel(nd) };
+  }
+  function gateOk(state, nd) {
+    const id2 = nd?.gate?.boss;
+    if (!id2) return true;
+    if (state?.bosses?.won?.[id2]) return true;
+    const b = BOSS_BY_ID[id2];
+    const n2 = Number(String(b?.chapter || "").replace(/\D/g, "")) || 0;
+    return !b || !!state?.quests?.chDone?.[b.chapter] || (state?.quests?.ch | 0) >= n2;
+  }
+  function gateLabel(nd) {
+    const b = BOSS_BY_ID[nd?.gate?.boss];
+    return b ? `Beat ${b.title} (${OCEAN_NAMES[b.ocean] || b.ocean} boss) first.` : "";
+  }
+  function labGoals(state) {
+    const L2 = ensureLab(state);
+    const out = [];
+    for (const rid of GOAL_ROWS) {
+      const id2 = ROW_BY_ID[rid]?.nodes.find((n2) => !L2.done[n2]);
+      if (!id2) continue;
+      const node = LAB_BY_ID[id2];
+      out.push({ id: id2, node, row: rid, status: labStatus(state, id2), check: labCheck(state, node) });
+    }
+    return out;
+  }
+  function labGoal(state) {
+    const gs = labGoals(state).filter((g) => g.status === "available" || g.status === "researching");
+    if (!gs.length) return null;
+    const score = (g) => (g.status === "researching" ? 3e9 : 0) + (g.check.gateOk ? 0 : 2e9) + (g.check.paid ? 0 : 1e9) + (g.node.cost.aero || 0);
+    return gs.sort((a, b) => score(a) - score(b))[0];
+  }
+  function labGoalNeed(state, g) {
+    if (!g) return "";
+    const c = g.check;
+    if (!c.gateOk) return c.gate;
+    const parts = [];
+    if (!c.aero.ok) parts.push(`${(c.aero.need - c.aero.have).toLocaleString("en-US")} more Aero`);
+    const mi = c.items.find((x) => !x.ok);
+    if (mi) parts.push(`${mi.need - mi.have} more ${mi.id.replace(/_/g, " ")}`);
+    const mf = c.fish.find((x) => !x.ok);
+    if (mf) parts.push(`${mf.need - mf.have} more ${fishLabel(mf.key)}`);
+    return parts.length ? "Need " + parts.slice(0, 2).join(" and ") + "." : "";
   }
   function takeFish(state, key, n2) {
     const pool = spareFish(state).filter((f) => fishMatches(f, key));
@@ -56808,6 +56984,7 @@ void main() {
     if (L2.done[id2]) return { ok: false, reason: "Already researched." };
     if (L2.slots.some((s) => s.id === id2) || L2.queue.some((q) => q.id === id2)) return { ok: false, reason: "Already brewing." };
     if (!c.reqOk) return { ok: false, reason: "Research the earlier nodes first." };
+    if (!c.gateOk) return { ok: false, reason: c.gate };
     if (c.slots <= 0) return { ok: false, reason: "All lab benches are busy." };
     if (!c.ok) return { ok: false, reason: "Missing ingredients." };
     const paid = payFor(game, nd);
@@ -56912,6 +57089,7 @@ void main() {
     if (planned.includes(id2)) return { ok: false, reason: "Already planned." };
     const ready3 = (r) => L2.done[r] || L2.slots.some((s) => s.id === r) || L2.queue.some((q) => q.id === r) || planned.includes(r);
     if (!nd.req.every(ready3)) return { ok: false, reason: "Unlock " + nd.req.filter((r) => !ready3(r)).map((r) => LAB_BY_ID[r]?.name || r).join(" + ") + " first." };
+    if (!gateOk(state, nd)) return { ok: false, reason: gateLabel(nd) };
     return { ok: true };
   }
   function confirmResearch(game, ids) {
@@ -57011,11 +57189,12 @@ void main() {
     if (s < 3600) return Math.floor(s / 60) + "m" + (s % 60 ? " " + s % 60 + "s" : "");
     return Math.floor(s / 3600) + "h" + (Math.floor(s % 3600 / 60) ? " " + Math.floor(s % 3600 / 60) + "m" : "");
   }
-  var STARTER_UNLOCKS, ROOT_ID, BOAT_ORDER, TANK_ORDER, RARITIES, speciesById, BOAT_NAMES, TANK_NAMES, OCEAN_NAMES, BRANCHES, BRANCH_ORDER, MULT_KEYS, EFFECT_INFO, AERO_T, TIME_T, MAT_T, FLAVOUR, FLAVOUR_Q, MAT_RARITY, FISH_T, RAW, U, BU, DECOR_SETS, DU, LAB_ROWS, row, ROW_BY_ID, ROW_OF, LAB_R1, LAB_STEP, LAB_FORK, LAB_NODE, LAB_ROOT, LAB_RING, LAYOUT, LAB_EXTENT, LAB_NODES, LAB_BY_ID, LAB_CHILDREN, UNLOCK_INDEX, matCount;
+  var STARTER_UNLOCKS, ROOT_ID, BOAT_ORDER, TANK_ORDER, RARITIES, speciesById, BOAT_NAMES, TANK_NAMES, OCEAN_NAMES, BRANCHES, BRANCH_ORDER, MULT_KEYS, EFFECT_INFO, AERO_T, TIME_T, MAIN_KINDS, MAIN_MUL, MAT_T, FLAVOUR, FLAVOUR_Q, MAT_RARITY, FISH_T, LAB_GATE, RAW, U, BU, DECOR_SETS, DU, LAB_ROWS, row, ROW_BY_ID, ROW_OF, LAB_R1, LAB_STEP, LAB_FORK, LAB_NODE, LAB_ROOT, LAB_RING, LAYOUT, LAB_EXTENT, LAB_NODES, LAB_BY_ID, LAB_CHILDREN, UNLOCK_INDEX, matCount, GOAL_ROWS;
   var init_lab = __esm({
     "src/game/lab.js"() {
       init_species();
       init_rods();
+      init_bosses();
       STARTER_UNLOCKS = ["rod:twig", "tank:jar", "boat:raft", "biome:oscean", "bait:crumbs", "feature:aquarium", "recipe:bp_research_lab", "recipe:decor_rubber_duck"];
       ROOT_ID = "core";
       BOAT_ORDER = ["raft", "dinghy", "skiff", "hydrofoil", "yacht", "catamaran", "submarine"];
@@ -57111,19 +57290,21 @@ void main() {
         labSpeed: ["clock", "Lab speed", "mul"],
         crateLuck: ["star", "Crate luck", "pct"]
       };
-      AERO_T = [0, 10, 30, 80, 200, 480, 1100, 2400, 5200, 11e3];
-      TIME_T = [0, 5, 15, 40, 90, 180, 360, 720, 1500, 3e3];
+      AERO_T = [0, 15, 60, 220, 650, 1700, 4200, 1e4, 22e3, 48e3];
+      TIME_T = [0, 5, 20, 60, 150, 360, 720, 1500, 2700, 4500];
+      MAIN_KINDS = /* @__PURE__ */ new Set(["rod", "boat", "tank"]);
+      MAIN_MUL = 1.5;
       MAT_T = [
         null,
         { driftwood: 2 },
         { kelp_fibre: 2 },
         { sea_glass: 2 },
         { coral_chunk: 3 },
-        { gear: 2 },
-        { pearl: 2 },
-        { circuit_board: 3 },
-        { ancient_stone: 3 },
-        { abyss_crystal: 3 }
+        { gear: 3 },
+        { pearl: 3 },
+        { circuit_board: 4 },
+        { ancient_stone: 4 },
+        { abyss_crystal: 4 }
       ];
       FLAVOUR = {
         rods: ["driftwood", "sea_glass", "abyss_crystal"],
@@ -57160,10 +57341,11 @@ void main() {
         { "rarity:common": 2 },
         { "rarity:uncommon": 2 },
         { "rarity:rare": 1 },
-        { "rarity:rare": 2 },
-        { "rarity:epic": 1 },
-        { "rarity:epic": 2 }
+        { "rarity:rare": 3 },
+        { "rarity:epic": 2 },
+        { "rarity:epic": 3 }
       ];
+      LAB_GATE = { 6: "eldershark", 7: "bsod", 8: "mayorgrouper", 9: "moltenleviathan" };
       RAW = [];
       U = (kind2, id2) => ({ kind: kind2, id: id2 });
       RAW.push({ id: ROOT_ID, branch: null, tier: 0, lane: 0, name: "The Lab", icon: "beaker", req: [], desc: "Professor Fizz's lab. Every discovery grows from here." });
@@ -57244,7 +57426,7 @@ void main() {
       n("tank_wall", "aquarium", 8, 0, "Mega Tank", "tank:wallaquarium", ["tank_currents"], { unlock: [U("tank", "wallaquarium")], effect: { tankCap: 6, coinMul: 1.15 }, desc: "A whole wall of ocean." });
       n("luck1", "luck", 1, 0, "Four-Leaf Kelp", "clover", [ROOT_ID], { effect: { rarityBoost: 1.05 }, desc: "A little luck for every cast." });
       n("offline1", "luck", 2, -1, "Night Shift", "moon", ["luck1"], { effect: { offlineMul: 0.1 }, desc: "More Aero while you're away." });
-      n("lab_slot2", "luck", 2, 0, "Second Bench", "beaker", ["luck1"], { effect: { labSlots: 1 }, desc: "Research two things at once.", cost: { aero: 120, items: { driftwood: 4, sea_glass: 2 } }, time: 30 });
+      n("lab_slot2", "luck", 2, 0, "Second Bench", "beaker", ["luck1"], { effect: { labSlots: 1 }, desc: "Research two things at once.", cost: { aero: 300, items: { driftwood: 5, sea_glass: 2 } }, time: 45 });
       n("isp2", "luck", 2, 1, "Pro Shelf", "box", ["luck1"], { unlock: [U("feature", "isp2")], desc: "Dot stocks better bait at the Bait Shop." });
       n("autocollect", "luck", 3, -1, "Auto-Collect", "magnet", ["offline1"], { unlock: [U("feature", "autocollect")], effect: { autoCollect: 1, collectRadius: 6 }, desc: "Aero drops collect themselves." });
       n("luck2", "luck", 3, 0, "Lucky Charm", "horseshoe", ["lab_slot2"], { effect: { rarityBoost: 1.06, crateLuck: 0.1 }, desc: "Luckier fish and crates." });
@@ -57360,9 +57542,11 @@ void main() {
       LAB_NODES = RAW.map((o) => {
         const tier = o.tier;
         const unlockNode = !!o.unlock?.some((u) => u.kind !== "recipe" || tier >= 3);
-        const auto = o.branch ? autoCost(o.branch, tier, unlockNode ? tier >= 3 : tier >= 5) : { aero: 0, items: {}, fish: {} };
+        const main = !!o.unlock?.some((u) => MAIN_KINDS.has(u.kind));
+        const auto = o.branch ? autoCost(o.branch, tier, unlockNode ? tier >= 3 : tier >= 5, main) : { aero: 0, items: {}, fish: {} };
         const cost = { aero: o.cost?.aero ?? auto.aero, items: { ...o.cost?.items || auto.items }, fish: { ...o.fish || auto.fish } };
         const { depth, lane, ang, rad, pos } = LAYOUT[o.id];
+        const gate = o.branch && LAB_GATE[tier] && BOSS_BY_ID[LAB_GATE[tier]] ? { boss: LAB_GATE[tier] } : null;
         return {
           id: o.id,
           name: o.name,
@@ -57381,8 +57565,11 @@ void main() {
           desc: o.desc || "",
           icon: o.icon || "beaker",
           row: o.row ?? null,
-          col: o.col ?? 0
+          col: o.col ?? 0,
           // [phase6:lab]
+          main,
+          gate
+          // [balance] main-track unlock (rod / boat / tank); boss gate for tier 6+
         };
       });
       LAB_BY_ID = Object.fromEntries(LAB_NODES.map((nd) => [nd.id, nd]));
@@ -57390,6 +57577,7 @@ void main() {
       for (const nd of LAB_NODES) for (const r of nd.req) (LAB_CHILDREN[r] || (LAB_CHILDREN[r] = [])).push(nd.id);
       UNLOCK_INDEX = {};
       matCount = (state, id2) => state.inventory?.items?.[id2] || 0;
+      GOAL_ROWS = ["rods", "aquarium", "boats", "oceans"];
     }
   });
 
@@ -57411,7 +57599,7 @@ void main() {
   function aeroRate(rec, sp, stats = {}, tier = 0, bonus = 1, gm = 1) {
     const base = COIN_RATE?.[sp?.rarity] ?? RATE[sp?.rarity] ?? 2;
     const happy = clamp012(rec.happiness ?? 0.7);
-    return base * valueMultiplier(rec) * (0.6 + 0.8 * happy) * (TANK_TIERS[tier]?.rate || 1) * (stats.coinMul || 1) * bonus * gm;
+    return base * valueMultiplier(rec, sp) * (0.6 + 0.8 * happy) * (TANK_TIERS[tier]?.rate || 1) * (stats.coinMul || 1) * bonus * gm;
   }
   function gearLevel(state, id2) {
     const g = GEAR_BY_ID[id2];
@@ -57439,11 +57627,11 @@ void main() {
       TANK_IDS = ["jar", "bowl", "smalltank", "bigtank", "reeftank", "wallaquarium"];
       TANK_TIERS = [
         { id: "jar", name: "Nano Tank", shape: "side", cap: 0, rate: 1, offlineH: 3, plants: 4, water: "aero" },
-        { id: "bowl", name: "Bubble Tank", shape: "side", cap: 1, rate: 1.15, offlineH: 4, plants: 6, water: "aero" },
-        { id: "smalltank", name: "Aqua Tank", shape: "side", cap: 2, rate: 1.3, offlineH: 5, plants: 9, water: "aero" },
-        { id: "bigtank", name: "Big Tank", shape: "side", cap: 3, rate: 1.5, offlineH: 6, plants: 13, water: "aero" },
-        { id: "reeftank", name: "Reef Tank", shape: "side", cap: 4, rate: 1.75, offlineH: 7, plants: 18, water: "reef" },
-        { id: "wallaquarium", name: "Mega Tank", shape: "side", cap: 5, rate: 2.1, offlineH: 8, plants: 26, water: "aero" }
+        { id: "bowl", name: "Bubble Tank", shape: "side", cap: 1, rate: 1.2, offlineH: 4, plants: 6, water: "aero" },
+        { id: "smalltank", name: "Aqua Tank", shape: "side", cap: 2, rate: 1.45, offlineH: 6, plants: 9, water: "aero" },
+        { id: "bigtank", name: "Big Tank", shape: "side", cap: 4, rate: 1.75, offlineH: 8, plants: 13, water: "aero" },
+        { id: "reeftank", name: "Reef Tank", shape: "side", cap: 6, rate: 2.1, offlineH: 10, plants: 18, water: "reef" },
+        { id: "wallaquarium", name: "Mega Tank", shape: "side", cap: 9, rate: 2.6, offlineH: 12, plants: 26, water: "aero" }
       ];
       TANK2D = [
         { W: 400, H: 250, D: 120, gravel: 20, rise: 16 },
@@ -57455,11 +57643,12 @@ void main() {
       ];
       RATE = { common: 2, uncommon: 3.5, rare: 6, epic: 10, legendary: 20 };
       GEAR = [
-        { id: "filter", name: "Filter", icon: "bubble", levels: ["Sponge Filter", "Hang-on Filter", "Canister Filter", "Turbo Aero Filter"], cost: [0, 120, 480, 1800], desc: "Crystal-clear water. Happier fish." },
-        { id: "heater", name: "Heater", icon: "sun", levels: ["No Heater", "Glass Heater", "Smart Heater"], cost: [0, 90, 650], desc: "Cosy water. Tropical fish love it." },
-        { id: "light", name: "Lid Light", icon: "star", levels: ["Basic LED", "Aero LED", "Rainbow LED", "Sunrise Array"], cost: [0, 150, 700, 2400], desc: "Brighter light, light shafts, plant growth." },
-        { id: "air", name: "Air Stones", icon: "bubble", levels: ["One Air Stone", "Twin Stones", "Bubble Wall", "Geyser Stones"], cost: [0, 80, 400, 1500], desc: "More bubbles. Fish play in the stream." },
-        { id: "sand", name: "Substrate", icon: "coral", levels: ["Aqua Gravel", "Beach Sand", "Snow Pebbles", "Rainbow Gravel", "Black Sand"], cost: [0, 60, 120, 250, 250], desc: "A new floor. Pure style.", cosmetic: true }
+        // [balance] roughly x4-5 per level: level 1 is an early treat, the top level is a late-game investment
+        { id: "filter", name: "Filter", icon: "bubble", levels: ["Sponge Filter", "Hang-on Filter", "Canister Filter", "Turbo Aero Filter"], cost: [0, 200, 1100, 5500], desc: "Crystal-clear water. Happier fish." },
+        { id: "heater", name: "Heater", icon: "sun", levels: ["No Heater", "Glass Heater", "Smart Heater"], cost: [0, 160, 1600], desc: "Cosy water. Tropical fish love it." },
+        { id: "light", name: "Lid Light", icon: "star", levels: ["Basic LED", "Aero LED", "Rainbow LED", "Sunrise Array"], cost: [0, 250, 1500, 7e3], desc: "Brighter light, light shafts, plant growth." },
+        { id: "air", name: "Air Stones", icon: "bubble", levels: ["One Air Stone", "Twin Stones", "Bubble Wall", "Geyser Stones"], cost: [0, 140, 900, 4500], desc: "More bubbles. Fish play in the stream." },
+        { id: "sand", name: "Substrate", icon: "coral", levels: ["Aqua Gravel", "Beach Sand", "Snow Pebbles", "Rainbow Gravel", "Black Sand"], cost: [0, 80, 160, 320, 320], desc: "A new floor. Pure style.", cosmetic: true }
       ];
       GEAR_BY_ID = Object.fromEntries(GEAR.map((g) => [g.id, g]));
     }
@@ -57579,10 +57768,10 @@ void main() {
           size: 1,
           desc: "A cosy house of science with a rooftop antenna. A door into The Lab, and research runs faster.",
           lore: "Professor Fizz's seaside office. He once proved fish can count (to three).",
-          cost: { coins: 30, items: { driftwood: 6, kelp_fibre: 4, sea_glass: 2 } },
+          cost: { coins: 40, items: { driftwood: 6, kelp_fibre: 4, sea_glass: 2 } },
           action: "research",
           bonus: { researchSpeed: [0, 0.15, 0.3] },
-          upgrades: [{ coins: 400, items: { driftwood: 8, gear: 3, sea_glass: 4 } }, { coins: 1400, items: { circuit_board: 3, ancient_stone: 3, pearl: 2 } }]
+          upgrades: [{ coins: 800, items: { driftwood: 8, gear: 3, sea_glass: 4 } }, { coins: 3500, items: { circuit_board: 3, ancient_stone: 3, pearl: 2 } }]
         },
         coral_garden: {
           name: "Coral Garden",
@@ -57590,11 +57779,11 @@ void main() {
           size: 1,
           desc: "Terraced coral beds that slowly grow coral, kelp and shells for you to harvest.",
           lore: "The polyps unionised. They now demand ambient whale song.",
-          cost: { coins: 150, items: { coral_chunk: 3, shell: 3, kelp_fibre: 2 } },
+          cost: { coins: 300, items: { coral_chunk: 3, shell: 3, kelp_fibre: 2 } },
           action: "collect",
           bonus: { coinMul: [0.03, 0.05, 0.08] },
           produce: { every: 20 * 60, cap: [3, 5, 8], give: [{ id: "coral_chunk", qty: 1, w: 4 }, { id: "kelp_fibre", qty: 2, w: 4 }, { id: "shell", qty: 1, w: 3 }, { id: "pearl", qty: 1, w: 0.4 }] },
-          upgrades: [{ coins: 350, items: { coral_chunk: 6, shell: 4 } }, { coins: 1100, items: { coral_chunk: 10, pearl: 2 } }]
+          upgrades: [{ coins: 700, items: { coral_chunk: 6, shell: 4 } }, { coins: 2750, items: { coral_chunk: 10, pearl: 2 } }]
         },
         bubble_tower: {
           name: "Bubble Tower",
@@ -57602,11 +57791,11 @@ void main() {
           size: 0.7,
           desc: "A spiralling glass tower that blows coin bubbles and widens the pull of your bait.",
           lore: "Built by a pufferfish with very strong opinions about architecture.",
-          cost: { coins: 220, items: { sea_glass: 4, scrap_metal: 3, shell: 2 } },
+          cost: { coins: 450, items: { sea_glass: 4, scrap_metal: 3, shell: 2 } },
           action: "collect",
           bonus: { baitRadius: [0.08, 0.13, 0.2] },
           produce: { every: 12 * 60, cap: [3, 4, 6], coins: [8, 22] },
-          upgrades: [{ coins: 500, items: { sea_glass: 6, gear: 2 } }, { coins: 1500, items: { sea_glass: 10, circuit_board: 2 } }]
+          upgrades: [{ coins: 1e3, items: { sea_glass: 6, gear: 2 } }, { coins: 3750, items: { sea_glass: 10, circuit_board: 2 } }]
         },
         bait_workshop: {
           name: "Bait Workshop",
@@ -57614,10 +57803,10 @@ void main() {
           size: 1,
           desc: "A tinkerer's shed with a bait press. Crafts special bait from materials, and sometimes saves a bait.",
           lore: "Smells of worms and ambition.",
-          cost: { coins: 260, items: { driftwood: 6, scrap_metal: 4, gear: 2 } },
+          cost: { coins: 500, items: { driftwood: 6, scrap_metal: 4, gear: 2 } },
           action: "workshop",
           bonus: { baitSave: [0.06, 0.1, 0.15] },
-          upgrades: [{ coins: 600, items: { scrap_metal: 6, gear: 4 } }, { coins: 1800, items: { circuit_board: 3, gear: 6 } }]
+          upgrades: [{ coins: 1200, items: { scrap_metal: 6, gear: 4 } }, { coins: 4500, items: { circuit_board: 3, gear: 6 } }]
         },
         shell_shack: {
           name: "Shell Shack",
@@ -57625,11 +57814,11 @@ void main() {
           size: 0.9,
           desc: "A hermit crab's trading post. Gathers shells, glass and pearls, and haggles better prices when you sell.",
           lore: "Shelly the hermit crab moved in and never moved out. She moves house a lot, just never out.",
-          cost: { coins: 240, items: { driftwood: 5, shell: 6, pearl: 1 } },
+          cost: { coins: 500, items: { driftwood: 5, shell: 6, pearl: 1 } },
           action: "collect",
           bonus: { sellMul: [0.1, 0.18, 0.28] },
           produce: { every: 30 * 60, cap: [2, 4, 6], give: [{ id: "shell", qty: 2, w: 4 }, { id: "sea_glass", qty: 1, w: 3 }, { id: "pearl", qty: 1, w: 1 }] },
-          upgrades: [{ coins: 550, items: { shell: 8, pearl: 2 } }, { coins: 1600, items: { pearl: 4, golden_scale: 1 } }]
+          upgrades: [{ coins: 1100, items: { shell: 8, pearl: 2 } }, { coins: 4e3, items: { pearl: 4, golden_scale: 1 } }]
         },
         hatchery: {
           name: "Fish Hatchery",
@@ -57637,11 +57826,11 @@ void main() {
           size: 1,
           desc: "Warm nursery tanks. Lays fish eggs over time and sometimes gives a bonus egg when you catch a fish.",
           lore: 'Every egg has a name. Most of them are "Kevin".',
-          cost: { coins: 450, items: { coral_chunk: 5, kelp_fibre: 6, fish_sample: 4 } },
+          cost: { coins: 900, items: { coral_chunk: 5, kelp_fibre: 6, fish_sample: 4 } },
           action: "collect",
           bonus: { eggChance: [0.04, 0.07, 0.11] },
           produce: { every: 40 * 60, cap: [2, 3, 5], give: [{ id: "fish_egg", qty: 1, w: 1 }] },
-          upgrades: [{ coins: 900, items: { fish_sample: 8, coral_chunk: 6 } }, { coins: 2400, items: { rare_specimen: 3, pearl: 3 } }]
+          upgrades: [{ coins: 1800, items: { fish_sample: 8, coral_chunk: 6 } }, { coins: 6e3, items: { rare_specimen: 3, pearl: 3 } }]
         },
         arcade: {
           name: "Sunken Arcade",
@@ -57649,10 +57838,10 @@ void main() {
           size: 1,
           desc: "A flickering claw machine parlour. Spend coins to grab mystery packages. Luck rubs off on your catches.",
           lore: "The claw is rigged. The claw has always been rigged. Play anyway.",
-          cost: { coins: 600, items: { circuit_board: 3, scrap_metal: 6, gear: 3, sea_glass: 3 } },
+          cost: { coins: 1200, items: { circuit_board: 3, scrap_metal: 6, gear: 3, sea_glass: 3 } },
           action: "arcade",
           bonus: { luck: [0.05, 0.09, 0.14] },
-          upgrades: [{ coins: 1200, items: { circuit_board: 4, gear: 4 } }, { coins: 3200, items: { circuit_board: 6, abyss_crystal: 1 } }]
+          upgrades: [{ coins: 2400, items: { circuit_board: 4, gear: 4 } }, { coins: 8e3, items: { circuit_board: 6, abyss_crystal: 1 } }]
         },
         lighthouse: {
           name: "Lighthouse",
@@ -57661,10 +57850,10 @@ void main() {
           size: 0.8,
           desc: "A sunken lighthouse whose lamp still turns. Lights the dark and draws rare night fish to your hook.",
           lore: "The keeper is a lanternfish named Lumen. He is very proud of his job and his beard.",
-          cost: { coins: 800, items: { ancient_stone: 4, sea_glass: 6, gear: 3, pearl: 1 } },
+          cost: { coins: 1600, items: { ancient_stone: 4, sea_glass: 6, gear: 3, pearl: 1 } },
           action: "toggle",
           bonus: { nightRarity: [0.15, 0.25, 0.4], light: [1, 1.35, 1.7] },
-          upgrades: [{ coins: 1600, items: { sea_glass: 8, ancient_stone: 4 } }, { coins: 4e3, items: { abyss_crystal: 2, golden_scale: 1 } }]
+          upgrades: [{ coins: 3200, items: { sea_glass: 8, ancient_stone: 4 } }, { coins: 1e4, items: { abyss_crystal: 2, golden_scale: 1 } }]
         },
         vault: {
           name: "Treasure Vault",
@@ -57673,11 +57862,11 @@ void main() {
           size: 1,
           desc: "A riveted iron vault. Deposit coins and they earn interest every hour, even while you are away.",
           lore: "Guarded by a very serious clam. The clam is not serious. The clam is asleep.",
-          cost: { coins: 1200, items: { scrap_metal: 8, gear: 4, ancient_stone: 3, pearl: 2 } },
+          cost: { coins: 2400, items: { scrap_metal: 8, gear: 4, ancient_stone: 3, pearl: 2 } },
           action: "vault",
           bonus: {},
           vault: { rate: [0.012, 0.016, 0.022], cap: [3e3, 12e3, 5e4] },
-          upgrades: [{ coins: 2500, items: { scrap_metal: 10, gear: 6 } }, { coins: 6e3, items: { golden_scale: 2, ancient_stone: 6 } }]
+          upgrades: [{ coins: 5e3, items: { scrap_metal: 10, gear: 6 } }, { coins: 15e3, items: { golden_scale: 2, ancient_stone: 6 } }]
         },
         totem: {
           name: "Totem of Luck",
@@ -57686,10 +57875,10 @@ void main() {
           size: 0.6,
           desc: "A grinning carved totem. Raises rare and shiny odds, and gives a blessing package once a day.",
           lore: "It winks when nobody is looking. Everybody has seen it wink.",
-          cost: { coins: 1500, items: { driftwood: 8, abyss_crystal: 2, golden_scale: 1, ancient_stone: 3 } },
+          cost: { coins: 3e3, items: { driftwood: 8, abyss_crystal: 2, golden_scale: 1, ancient_stone: 3 } },
           action: "bless",
           bonus: { rarity: [0.05, 0.08, 0.12], shiny: [0.15, 0.25, 0.4], mutation: [0.05, 0.08, 0.12] },
-          upgrades: [{ coins: 3e3, items: { abyss_crystal: 2, driftwood: 10 } }, { coins: 8e3, items: { golden_scale: 2, abyss_crystal: 3 } }]
+          upgrades: [{ coins: 6e3, items: { abyss_crystal: 2, driftwood: 10 } }, { coins: 2e4, items: { golden_scale: 2, abyss_crystal: 3 } }]
         }
       };
       BUILDING_ORDER = ["research_lab", "coral_garden", "bubble_tower", "bait_workshop", "shell_shack", "hatchery", "arcade", "lighthouse", "vault", "totem"];
@@ -64699,7 +64888,7 @@ kmlmk..
             stats.push(["fish", `${rec.sizeCm} cm  ${rec.weightKg} kg`], [rec.inTank ? "tank" : "bubble", rec.inTank ? "In the tank" : "In the bucket", rec.inTank ? "#1a7ab8" : "#c8582a"]);
             const tr = traitList(rec).map((q) => q.text).join(", ");
             if (tr) stats.push(["sparkle", tr.length > 28 ? tr.slice(0, 27) + "." : tr, "#8a3ab8"]);
-            stats.push(["aero", fmtAero(Math.round((RELEASE_VALUE[sp.rarity] || 4) * valueMultiplier(rec)))]);
+            stats.push(["aero", fmtAero(Math.round((RELEASE_VALUE[sp.rarity] || 4) * valueMultiplier(rec, sp)))]);
             return { stats, desc, uses };
           }
           if (e.kind === "bait") {
@@ -75784,23 +75973,6 @@ kmlmk..
     ctx3.fillRect(x + r, y + 1, w - 2 * r, 1);
     ctx3.restore();
   }
-  function drawRays2(ctx3, x, y, r, n2, t, color, alpha, width = 0.11) {
-    if (alpha <= 0.01) return;
-    ctx3.save();
-    ctx3.globalCompositeOperation = "lighter";
-    for (let i = 0; i < n2; i++) {
-      const a = i / n2 * TAU + t;
-      const w = width * (i % 2 ? 0.6 : 1);
-      ctx3.fillStyle = rgba(color, alpha * (i % 2 ? 0.6 : 1));
-      ctx3.beginPath();
-      ctx3.moveTo(x, y);
-      ctx3.lineTo(x + Math.cos(a - w) * r, y + Math.sin(a - w) * r);
-      ctx3.lineTo(x + Math.cos(a + w) * r, y + Math.sin(a + w) * r);
-      ctx3.closePath();
-      ctx3.fill();
-    }
-    ctx3.restore();
-  }
   function drawGlow2(ctx3, x, y, r, color, a) {
     if (a <= 0.01) return;
     const s = glowSprite2(r, color);
@@ -75887,7 +76059,6 @@ kmlmk..
     const W11 = F3.W, H8 = F3.H;
     const cx = W11 / 2, by = H8 * 0.86;
     const a = ease.outBack(clamp012(k));
-    drawGlow2(ctx3, cx, by - 40, 70, "#bff8ff", 0.45 * k);
     ctx3.save();
     ctx3.globalAlpha = clamp012(k * 2);
     ctx3.translate(cx, by + (1 - a) * 80);
@@ -75979,13 +76150,10 @@ kmlmk..
             fx.aeroConfetti(W11 * 0.5, cy, 80, { spread: Math.PI, speed: [120, 320], life: 3.2, w: 60 });
             fx.confetti(-4, H8 * 0.55, 30, { dir: -1, spread: 0.35, speed: [220, 380], colors: void 0 });
             fx.confetti(W11 + 4, H8 * 0.55, 30, { dir: -Math.PI + 1, spread: 0.35, speed: [220, 380] });
-            fx.lightStreaks(W11 * 0.5, cy, 22, { colors: ["#ffffff", "#bff8ff", "#e2ffb0"] });
             fx.stars(W11 * 0.5, cy, 24, { speed: [80, 220], g: 40, w: 90, h: 10 });
             fx.hearts?.(W11 * 0.5, cy, 8, { speed: [80, 200], w: 40 });
             fx.pixelBurst?.("scale", W11 * 0.5, cy, 14, { speed: [100, 240], w: 30 });
             fx.pixelBurst?.("ribbon", W11 * 0.5, cy, 12, { speed: [120, 280], w: 50 });
-            fx.lensFlare(W11 * 0.28, cy - 40, { cx: W11 / 2, cy: H8 / 2, life: 1.8, scale: 1.3 });
-            fx.bloom(W11 * 0.5, cy, 140, "#e8fbff", { life: 0.8 });
             fx.splashBurst(W11 * 0.5, H8 * 0.62, 2.2, { g: 300 });
             fx.aeroBubbles(W11 * 0.5, H8 + 10, 26, { w: W11 * 0.45, speed: [60, 160], sizes: [3, 4, 5, 6, 8, 10], life: [2, 3.5] });
             F3.cam?.flash?.("#f0fcff", 0.6);
@@ -76023,7 +76191,7 @@ kmlmk..
             }
           }
         }
-        // FISH ON!: the word slams in from huge, shakes, then sways in 3D under a ray burst.
+        // FISH ON!: the word slams in from huge, shakes, then sways in 3D.
         drawFishOn(ctx3, it2) {
           const W11 = this.F.W, H8 = this.F.H, t = it2.t;
           const a = clamp012((it2.dur - t) * 4);
@@ -76031,8 +76199,6 @@ kmlmk..
           const cy = Math.round(H8 * 0.22);
           ctx3.save();
           ctx3.globalAlpha = a;
-          drawRays2(ctx3, W11 / 2, cy + 6, 260, 16, t * 0.8, "#bff8ff", 0.1 * a);
-          drawGlow2(ctx3, W11 / 2, cy + 4, 90, "#bff8ff", 0.4 * a);
           const jx = t < 0.25 ? rng.int(-3, 3) : 0;
           const big = W11 < 700 ? 1.6 : 2;
           word3D(ctx3, it2.text, W11 / 2 + jx, cy, { t, pop: clamp012(t * 4), scale: lerp(big * 2.2, big, k), pal: glossFor(it2.rarity), rot: Math.sin(t * 2.2) * 0.05, wobble: 1.5 });
@@ -76061,14 +76227,11 @@ kmlmk..
           word3D(ctx3, it2.text, it2.x, y, { t: t * 2, pop: clamp012(t * 6), scale: 0.45 + s * 0.22, pal: palOf(it2.color), rot: Math.sin(t * 5) * 0.06 });
           ctx3.restore();
         }
-        // I GOT IT!: big 3D voxel letters drop in one by one and bounce, under rays and confetti.
+        // I GOT IT!: big 3D voxel letters drop in one by one and bounce, in a shower of confetti.
         drawIGotIt(ctx3, it2) {
           const F3 = this.F, W11 = F3.W, H8 = F3.H, t = it2.t;
           const aIn = clamp012(t * 5) * clamp012((it2.dur - t) * 2.2);
           const cx = W11 / 2, cy = Math.round(H8 * 0.3);
-          drawRays2(ctx3, cx, cy, Math.max(W11, H8) * 0.75, 20, t * 0.4, "#bff8ff", 0.09 * aIn, 0.08);
-          drawRays2(ctx3, cx, cy, Math.max(W11, H8) * 0.5, 12, -t * 0.3, "#e2ffb0", 0.06 * aIn, 0.05);
-          drawGlow2(ctx3, cx, cy, 120, "#bff8ff", 0.5 * aIn);
           const out = clamp012((it2.dur - t) * 3);
           ctx3.save();
           ctx3.globalAlpha = out;
@@ -76157,7 +76320,6 @@ kmlmk..
           this.compact = !F3.cam?.focus;
           this.stage = "surface";
           this.from = { x: fish.x, y: fish.y };
-          this.rays = 0;
           this.portrait = 0;
           fish.controlled = true;
           fish.forceAngle = void 0;
@@ -76165,7 +76327,6 @@ kmlmk..
           if (this.hasBoat) F3.scrollTo(this.surface - F3.H * 0.58);
           F3.setPose("pull");
           F3.sfx("reel", { pitch: 1.3 });
-          F3.particles.speedLines(fish.x, fish.y, 14, { r0: 10, r1: 34, inward: true, color: "#ffffff" });
           F3.particles.aeroBubbles?.(fish.x, fish.y, 8, { w: 8 });
         }
         hands() {
@@ -76201,9 +76362,6 @@ kmlmk..
               }
               F3.particles.aeroBubbles?.(f.x, sy, 14, { w: 12, speed: [40, 120], sizes: [2, 3, 4, 5, 6] });
               F3.particles.splashBurst?.(f.x, sy, 1.4);
-              F3.particles.lightStreaks(f.x, sy - 4, 12, { dir: -Math.PI / 2, spread: 1.1, colors: ["#ffffff", "#bff8ff", "#e2ffb0"] });
-              const [sx, sy2] = F3.toScreen(f.x, sy);
-              F3.fx.lensFlare(sx, sy2 - 10, { cx: F3.W / 2, cy: F3.H / 2, life: 1.4, scale: 1 });
               F3.sfx("splash_big");
               F3.sfx("jump_out", { pitch: 0.9 });
               f.feel("surprised", 4);
@@ -76242,7 +76400,6 @@ kmlmk..
               const [hx2, hy] = this.hands();
               F3.particles.coins(hx2, hy - 6, 10, { speed: [100, 200], floor: this.surface !== null ? this.surface - 1 : null });
               F3.particles.aeroConfetti?.(hx2, hy - 10, 30, { speed: [80, 200] });
-              F3.particles.lightStreaks(hx2, hy, 14, { colors: ["#ffffff", "#bff8ff", "#ffe27a"] });
               F3.sfx("timing_perfect");
               break;
             }
@@ -76289,7 +76446,6 @@ kmlmk..
               f.forceAngle = clamp(Math.atan2(vy2, Math.abs(vx2) + 1e-3), -1.3, 1.3) + Math.sin(this.rt * 22) * 0.15;
               f.wiggle = 0.8;
               f.z = 0;
-              this.rays = Math.min(1, this.rays + rdt * 2);
               if (rng.chance(rdt * 40)) F3.particles.droplets(f.x, f.y, 2, { dir: Math.PI / 2, spread: 1.2, speed: [10, 50], g: 260, w: 6 });
               if (rng.chance(rdt * 18)) F3.particles.glint?.(f.x + rng.float(-10, 10) * f.scale, f.y + rng.float(-6, 6), { len: rng.pick([3, 4, 5]) });
               if (rng.chance(rdt * 14)) F3.particles.aeroBubbles?.(f.x, f.y, 1, { w: 6, speed: [10, 30], sizes: [2, 3, 4] });
@@ -76299,11 +76455,9 @@ kmlmk..
               break;
             }
             case "catch":
-              this.rays = Math.min(1, this.rays + rdt * 2);
               if (this.st > (this.compact ? 0.15 : 0.45)) this.go("igotit");
               break;
             case "igotit":
-              this.rays = Math.max(0, this.rays - rdt * 1.2);
               if (this.hasBoat) {
                 const [hx2, hy] = this.hands();
                 F3.focusCam(hx2, hy - 36, 2.4, 3);
@@ -76316,13 +76470,8 @@ kmlmk..
           if (this.portraitOn) this.portrait = Math.min(1, this.portrait + rdt * 3);
           return "ok";
         }
-        drawWorld(ctx3) {
-          const f = this.fish;
-          if (this.rays > 0.01 && (this.stage === "erupt" || this.stage === "catch" || this.stage === "igotit")) {
-            const [x, y] = this.stage === "erupt" ? [f.x, f.y] : this.hands();
-            drawRays2(ctx3, x, y, 130, 12, this.rt * 0.9, "#e8fbff", 0.1 * this.rays, 0.08);
-            drawGlow2(ctx3, x, y, 26, "#bff8ff", 0.45 * this.rays);
-          }
+        // [catch fx] no light rays / spotlight glow around the catch: the fish, splash and particles carry the moment
+        drawWorld() {
         }
         drawHud(ctx3) {
           if (this.portrait > 0.01) drawPortrait(ctx3, this.F, this.fish, this.portrait, "hold", this.rt);
@@ -77397,136 +77546,6 @@ kmlmk..
     }
   });
 
-  // src/fish/bosses.js
-  var BOSSES, BOSS_BY_ID, BOSS_BY_OCEAN;
-  var init_bosses = __esm({
-    "src/fish/bosses.js"() {
-      BOSSES = [
-        {
-          id: "bruce",
-          ocean: "oscean",
-          chapter: "ch1",
-          quest: "c1_boss",
-          tier: 1,
-          title: "Turbine Shark",
-          sub: "Spinner of the Green Hills",
-          color: "#8ff0ff",
-          glow: "#bff8ff",
-          len: 104,
-          attacks: ["charge"],
-          minion: "pixel",
-          hp: 1,
-          reward: { aero: 150, chest: "pkg_iron", recipe: "ws_rod_sakura" },
-          repeat: { aero: 40, chest: "pkg_crate" }
-        },
-        {
-          id: "dragonkarp",
-          ocean: "shallows",
-          chapter: "ch2",
-          quest: "c2_boss",
-          tier: 2,
-          title: "Rage-Quit Dragon-Karp",
-          sub: "It did NOT lag",
-          color: "#ff9d5a",
-          glow: "#ffe0a8",
-          len: 108,
-          attacks: ["charge", "minions"],
-          minion: null,
-          hp: 1.1,
-          reward: { aero: 300, chest: "pkg_iron", recipe: "ws_rod_pixel" },
-          repeat: { aero: 80, chest: "pkg_crate" }
-        },
-        {
-          id: "eldershark",
-          ocean: "fjord",
-          chapter: "ch3",
-          quest: "c3_boss",
-          tier: 3,
-          title: "Ok Boomer Shark",
-          sub: "Back in my day...",
-          color: "#bfeaff",
-          glow: "#e8fbff",
-          len: 118,
-          attacks: ["charge", "ink"],
-          minion: null,
-          hp: 1.2,
-          reward: { aero: 600, chest: "pkg_golden", recipe: "ws_rod_magnet" },
-          repeat: { aero: 150, chest: "pkg_iron" }
-        },
-        {
-          id: "bsod",
-          ocean: "junkyard",
-          chapter: "ch4",
-          quest: "c4_boss",
-          tier: 4,
-          title: "Blue Screen of Death Ray",
-          sub: "A fatal exception has occurred",
-          color: "#5a9aff",
-          glow: "#bfe0ff",
-          len: 112,
-          attacks: ["charge", "minions", "ink"],
-          minion: null,
-          hp: 1.3,
-          reward: { aero: 1100, chest: "pkg_golden", recipe: "ws_rod_glow" },
-          repeat: { aero: 260, chest: "pkg_iron" }
-        },
-        {
-          id: "mayorgrouper",
-          ocean: "metropolis",
-          chapter: "ch5",
-          quest: "c5_boss",
-          tier: 5,
-          title: "Main Character Marlin",
-          sub: "Everyone else is an NPC",
-          color: "#ffd23a",
-          glow: "#fff2b8",
-          len: 120,
-          attacks: ["charge", "minions", "ink"],
-          minion: null,
-          hp: 1.4,
-          reward: { aero: 2e3, chest: "pkg_golden", recipe: "ws_rod_turbo" },
-          repeat: { aero: 450, chest: "pkg_golden" }
-        },
-        {
-          id: "moltenleviathan",
-          ocean: "volcano",
-          chapter: "ch6",
-          quest: "c6_boss",
-          tier: 6,
-          title: "The Final Boss Leviathan",
-          sub: "(it is not the final boss)",
-          color: "#ff6a3a",
-          glow: "#ffc08a",
-          len: 128,
-          attacks: ["charge", "minions", "ink"],
-          minion: null,
-          hp: 1.5,
-          reward: { aero: 3500, chest: "pkg_orb", recipe: "ws_rod_starfish" },
-          repeat: { aero: 800, chest: "pkg_golden" }
-        },
-        {
-          id: "manyeyes",
-          ocean: "abyss",
-          chapter: "ch7",
-          quest: "c7_boss",
-          tier: 7,
-          title: "The Algorithm",
-          sub: "It has been watching you",
-          color: "#c89aff",
-          glow: "#ecd8ff",
-          len: 130,
-          attacks: ["charge", "ink", "minions"],
-          minion: null,
-          hp: 1.6,
-          reward: { aero: 6e3, chest: "pkg_orb", rod: "aerolite" },
-          repeat: { aero: 1400, chest: "pkg_orb" }
-        }
-      ];
-      BOSS_BY_ID = Object.fromEntries(BOSSES.map((b) => [b.id, b]));
-      BOSS_BY_OCEAN = Object.fromEntries(BOSSES.map((b) => [b.ocean, b]));
-    }
-  });
-
   // src/fishing/boss.js
   function bossRecord(state) {
     const b = state.bosses || (state.bosses = {});
@@ -78254,7 +78273,6 @@ kmlmk..
           const a = clamp012((1.8 - pc.t) * 3);
           ctx3.save();
           ctx3.globalAlpha = a;
-          drawRays2(ctx3, W11 / 2, H8 * 0.3, 220, 14, pc.t, pc.n >= 3 ? "#ff8a7a" : "#ffe27a", 0.12 * a);
           letters3D(ctx3, "PHASE " + pc.n, W11 / 2, Math.round(H8 * 0.3), pc.t, { pal: pc.n >= 3 ? "red" : "sun", scale: 2.2, stagger: 0.04, drop: 90 });
           ctx3.restore();
         }
@@ -78310,7 +78328,6 @@ kmlmk..
             F3.fx.celebrate?.(W11 / 2, H8 * 0.3, 2.2, { layer: "fg" });
             F3.fx.pixelBurst?.("star", W11 / 2, H8 * 0.3, 24, { ramp: "gold", speed: [120, 300] });
             F3.fx.pixelBurst?.("confetti", W11 / 2, -10, 40, { dir: Math.PI / 2, spread: 1.3, w: W11 * 0.4, speed: [20, 90] });
-            F3.fx.lensFlare?.(W11 * 0.3, H8 * 0.22, { cx: W11 / 2, cy: H8 / 2, life: 2, scale: 1.3 });
             F3.sfx("catch_legendary");
             F3.sfx("unlock_biome", { vol: 0.6 });
             F3.cam?.flash?.("#fff6c0", 0.6);
@@ -78336,8 +78353,6 @@ kmlmk..
           if (a <= 0.01) return;
           ctx3.save();
           ctx3.globalAlpha = a;
-          drawRays2(ctx3, W11 / 2, H8 * 0.24, 340, 18, t * 0.6, "#fff2b8", 0.13);
-          drawGlow2(ctx3, W11 / 2, H8 * 0.24, 110, "#fff6c0", 0.4);
           const landed = letters3D(ctx3, "VICTORY!", W11 / 2, Math.round(H8 * 0.22), t, { pal: "sun", scale: W11 < 700 ? 2.2 : 2.8, stagger: 0.07 });
           for (const [lx, ly, i] of landed) {
             if (this.landed.has(i)) continue;
@@ -79719,7 +79734,6 @@ kmlmk..
               const sy = this.surface ?? f.y;
               F3.particles.eruption?.(f.x, sy, 0.9);
               F3.particles.splashBurst?.(f.x, sy, 1);
-              F3.particles.lightStreaks?.(f.x, sy - 4, 8, { dir: -Math.PI / 2, spread: 1, colors: ["#ffffff", "#bff8ff"] });
               F3.sfx("splash_big", { vol: 0.7 });
               F3.sfx("jump_out", { pitch: 1.2 });
               F3.shake(4);
@@ -79795,7 +79809,6 @@ kmlmk..
           const fx = F3.fx;
           fx.aeroConfetti(x, y, 26, { speed: [80, 200] });
           fx.chestOpen?.(x, y, tier === "golden" || tier === "orb" ? "epic" : tier === "iron" ? "rare" : "uncommon", { layer: "fg" });
-          fx.lensFlare(x, y, { cx: F3.W / 2, cy: F3.H / 2, life: 1, scale: 0.8 });
           fx.coins(x, y, 8, { speed: [100, 200] });
         }
         update(dt) {
@@ -79824,7 +79837,6 @@ kmlmk..
           const pop = ease.outBack(clamp012(t * 3));
           ctx3.save();
           ctx3.globalAlpha = a;
-          drawRays2(ctx3, cx, cy, 190, 16, t * 0.6, T5.glow, 0.1, 0.09);
           ctx3.save();
           ctx3.globalCompositeOperation = "lighter";
           ctx3.globalAlpha = 0.4 * a;
@@ -80612,11 +80624,6 @@ kmlmk..
           P7.scales?.(f.x, f.y, 4, this.scaleColors());
           const surf = this.world.surfaceY;
           if (surf !== null && surf !== void 0 && f.y - surf < 40) P7.eruption?.(f.x, surf, 0.6);
-          const [sx, sy] = this.toScreen(f.x, f.y);
-          const W11 = this.W, H8 = this.H;
-          this.fx.speedLines(W11 / 2, H8 / 2, 34, { r0: Math.min(W11, H8) * 0.35, r1: Math.max(W11, H8) * 0.6, inward: true, speed: [400, 700], len: [20, 46], color: "#ffffff", life: 0.35 });
-          this.fx.lensFlare(sx, sy, { cx: W11 / 2, cy: H8 / 2, life: 0.9, scale: 0.9 });
-          this.fx.bloom(sx, sy, 60, "#e8fbff", { life: 0.5 });
           if (!f.boss) this.titles.add("fishon", auto ? "AUTO!" : "FISH ON!", { rarity: f.sp.rarity });
           f.feel("surprised", 0.8);
           f.squashV += 10;
@@ -81547,36 +81554,6 @@ kmlmk..
       ctx3.drawImage(s, Math.round(r.x + fx * r.w - C5), Math.round(r.y + fy * r.h - C5));
     }
   }
-  function drawSunFlare2(ctx3, x, y, t, a, toward, k = 1) {
-    ctx3.save();
-    ctx3.globalCompositeOperation = "lighter";
-    ctx3.globalAlpha = a;
-    const g1 = Math.round(38 * k), g2 = Math.round(16 * k);
-    ctx3.drawImage(glowSprite2(g1, "#fff8d0"), Math.round(x - g1), Math.round(y - g1));
-    ctx3.drawImage(glowSprite2(g2, "#ffffff"), Math.round(x - g2), Math.round(y - g2));
-    for (let i = 0; i < 12; i++) {
-      const ang = i / 12 * TAU + t * 0.15;
-      const len = ((i % 2 ? 26 : 46) + Math.sin(t * 3 + i) * 4) * k;
-      for (let k2 = 4; k2 < len; k2++) {
-        ctx3.globalAlpha = a * (1 - k2 / len) * 0.8;
-        ctx3.fillStyle = "#ffffff";
-        ctx3.fillRect(Math.round(x + Math.cos(ang) * k2), Math.round(y + Math.sin(ang) * k2), 1, 1);
-      }
-    }
-    for (let k2 = 0; k2 < 90; k2 += 2) {
-      ctx3.globalAlpha = a * (1 - k2 / 90) * 0.6;
-      ctx3.fillStyle = "#e8fbff";
-      ctx3.fillRect(Math.round(x + k2), Math.round(y), 2, 1);
-      ctx3.fillRect(Math.round(x - k2 - 2), Math.round(y), 2, 1);
-    }
-    const G = [[0.35, 4, "#9affd8"], [0.6, 9, "#7ad8ff"], [0.9, 3, "#ffe27a"], [1.25, 12, "#c8a8ff"]];
-    for (const [k2, rr3, col] of G) {
-      const gx = Math.round(lerp(x, toward[0], k2)), gy = Math.round(lerp(y, toward[1], k2));
-      ctx3.globalAlpha = a * 0.3;
-      ctx3.drawImage(glowSprite2(rr3, col), gx - rr3, gy - rr3);
-    }
-    ctx3.restore();
-  }
   function drawSplash3(ctx3, x, y, w, t, k = 1) {
     const base = y;
     const crest = (i) => base - (10 + Math.sin(i * 0.07 + t * 1.8) * 4 + Math.sin(i * 0.19 - t * 2.6) * 3 + Math.max(0, Math.sin(i * 0.031 + t * 0.9)) * 7) * k;
@@ -81753,7 +81730,7 @@ kmlmk..
           ctx3.translate(-pcx, -pcy);
           ctx3.save();
           ctx3.globalCompositeOperation = "lighter";
-          ctx3.globalAlpha = 0.35 + 0.1 * Math.sin(t * 3);
+          ctx3.globalAlpha = 0.2;
           const hr = Math.round(230 * k);
           ctx3.drawImage(glowSprite2(hr, rar.color), Math.round(pcx - hr), Math.round(pcy - hr));
           ctx3.restore();
@@ -81771,19 +81748,16 @@ kmlmk..
           ctx3.fillRect(r.x, r.y, W11, H8);
           ctx3.save();
           ctx3.globalCompositeOperation = "lighter";
-          for (let i = 0; i < 20; i++) {
-            const a = i / 20 * TAU + t * 0.12;
-            ctx3.fillStyle = rgba("#ffffff", i % 2 ? 0.07 : 0.13);
-            ctx3.beginPath();
-            ctx3.moveTo(fcx, fcy);
-            ctx3.lineTo(fcx + Math.cos(a - 0.08) * 400 * k, fcy + Math.sin(a - 0.08) * 400 * k);
-            ctx3.lineTo(fcx + Math.cos(a + 0.08) * 400 * k, fcy + Math.sin(a + 0.08) * 400 * k);
-            ctx3.fill();
+          for (let i = 0; i < 9; i++) {
+            const ph = (t * (0.025 + i % 3 * 0.012) + i * 0.29) % 1;
+            const bx2 = r.x + W11 * ((i * 0.37 + 0.08) % 1) + Math.sin(t * 0.6 + i * 2.1) * 10 * k;
+            const by = r.y + H8 * (0.95 - ph * 0.9);
+            const br = Math.round((10 + i % 4 * 7) * k);
+            ctx3.globalAlpha = 0.16 * Math.sin(ph * Math.PI);
+            ctx3.drawImage(glowSprite2(br, i % 3 ? "#e8fbff" : "#c8f56a"), Math.round(bx2 - br), Math.round(by - br));
           }
-          ctx3.globalAlpha = 0.7;
-          const w1 = Math.round(110 * k), w2 = Math.round(70 * k);
-          ctx3.drawImage(glowSprite2(w1, "#ffffff"), Math.round(fcx - w1), Math.round(fcy - w1));
-          ctx3.globalAlpha = 0.5;
+          ctx3.globalAlpha = 0.14;
+          const w2 = Math.round(96 * k);
           ctx3.drawImage(glowSprite2(w2, rar.color), Math.round(fcx - w2), Math.round(fcy - w2));
           ctx3.restore();
           ctx3.fillStyle = "rgba(255,255,255,0.35)";
@@ -81793,7 +81767,6 @@ kmlmk..
               ctx3.fillRect(r.x + i, Math.round(yy), k > 1.2 ? 2 : 1, 1);
             }
           }
-          drawSunFlare2(ctx3, r.x + 64 * k, r.y + 44 * k, t, 1, [fcx, fcy], k);
           drawLeaves(ctx3, r, t, false, k);
           for (let i = 0; i < 12; i++) {
             const ph = (t * (0.08 + i % 4 * 0.03) + i * 0.137) % 1;
@@ -81925,7 +81898,6 @@ kmlmk..
           P7.hearts?.(x, y - 10, rk === "common" ? 3 : 6, { layer: "ui", speed: [60, 160] });
           P7.pixelBurst?.("scale", x, y, 10, { layer: "ui", ramp: "aqua", speed: [80, 200] });
           P7.celebrate?.(x, y - 20, rk === "legendary" || rk === "epic" ? 1.6 : 1, { layer: "ui", ramp: rar.color });
-          P7.lensFlare?.(x - 140, y - 80, { layer: "ui", cx: g.screen.W / 2, cy: g.screen.H / 2, life: 1.6, scale: 1.1 });
           P7.glints?.(x, y, 8, { layer: "ui", w: 120, h: 50 });
         }
         drawFish(ctx3, x, y, bw, bh, t) {
@@ -83070,6 +83042,22 @@ kmlmk..
           price: 9e3,
           desc: "Sonar, cranes and a tiny submarine. SCIENCE!",
           perks: { baitSlots: 5, reel: 1.45, depth: 320, coinMagnet: 2, rarity: 1.25, netBoost: 2 }
+        },
+        // [balance] state.boat.tier follows the Lab's 7 boats (lab.js BOAT_ORDER): the Catamaran and the Submarine used to
+        // stop at the Research Vessel's perks; now each one is a real step up (never lower than before).
+        {
+          id: "catamaran",
+          name: "Catamaran",
+          price: 0,
+          desc: "Two hulls, twice the fun.",
+          perks: { baitSlots: 5, reel: 1.55, depth: 400, coinMagnet: 2.3, rarity: 1.32, netBoost: 2.5 }
+        },
+        {
+          id: "submarine",
+          name: "Submarine",
+          price: 0,
+          desc: "Dive with the fish. Bubble windows!",
+          perks: { baitSlots: 6, reel: 1.65, depth: 480, coinMagnet: 2.6, rarity: 1.4, netBoost: 3 }
         }
       ];
     }
@@ -84772,7 +84760,7 @@ kmlmk..
       });
     });
   }
-  var NODES, NODE_R, ROOT_R, LABEL_R, TOTAL, CARD_W, ZMIN2, ZMAX2, Z_HOME, REVEALED, branchCol, SIL_ALPHA, EDGES, SHELF2, inkCache, LabTree;
+  var GOAL_MARK, NODES, NODE_R, ROOT_R, LABEL_R, TOTAL, CARD_W, ZMIN2, ZMAX2, Z_HOME, REVEALED, branchCol, SIL_ALPHA, EDGES, SHELF2, inkCache, LabTree;
   var init_labtree = __esm({
     "src/ui/labtree.js"() {
       init_math();
@@ -84791,6 +84779,7 @@ kmlmk..
       init_pop3d();
       init_icons3d();
       init_labtiles();
+      GOAL_MARK = { title: "Next goal", goal: true };
       NODES = LAB_NODES.filter((n2) => n2.id !== ROOT_ID).sort((a, b) => a.depth - b.depth);
       NODE_R = LAB_NODE / 2;
       ROOT_R = LAB_ROOT / 2;
@@ -85007,7 +84996,7 @@ kmlmk..
           if (!nd) return false;
           const c = labCheck(st, nd, g.stats);
           if (c.ok) return this.p.research(id2);
-          if (c.reqOk && c.paid && c.slots <= 0) {
+          if (c.reqOk && c.gateOk && c.paid && c.slots <= 0) {
             const r = confirmResearch(g, [id2]);
             if (r.queued.length) {
               g.audio.play("ui_unlock");
@@ -85017,7 +85006,7 @@ kmlmk..
               return true;
             }
           }
-          this.reject(id2, !c.reqOk ? "Research the one before it first." : !c.aero.ok ? "Not enough Aero for that one!" : !c.paid ? "Missing ingredients!" : "All benches are busy.");
+          this.reject(id2, !c.reqOk ? "Research the one before it first." : !c.gateOk ? c.gate : !c.aero.ok ? "Not enough Aero for that one!" : !c.paid ? "Missing ingredients!" : "All benches are busy.");
           return false;
         }
         reject(id2, reason) {
@@ -85621,7 +85610,10 @@ kmlmk..
           const x = Math.round(this.X(nd.pos[0]) + shake), y = Math.round(this.Y(nd.pos[1]) + bob);
           const x0 = x - S11 / 2, y0 = y - S11 / 2;
           const f = Math.max(2.5, Math.round(S11 * 0.135 * 2) / 2), iw = S11 - f * 2;
-          const afford = s === "available" && labCheck(st, nd, this.game.stats).paid;
+          const afford = s === "available" && (() => {
+            const c = labCheck(st, nd, this.game.stats);
+            return c.paid && c.gateOk;
+          })();
           ctx3.fillStyle = "rgba(2,20,52,0.32)";
           ctx3.fillRect(x - Math.round(S11 * 0.36), y0 + S11 + 1, Math.round(S11 * 0.72), Math.max(2, Math.round(S11 * 0.07)));
           const look = s === "done" ? "done" : s === "researching" || s === "queued" ? "brew" : "open";
@@ -85696,7 +85688,7 @@ kmlmk..
           if (this.questMark?.[nd.id] && s !== "done") {
             const ex = getUiIcon("exclaim");
             const by = Math.round(y0 - 6 - Math.abs(Math.sin(t * 4 + A2.ph)) * 3);
-            ctx3.drawImage(aeroSurface(12, 14, { tone: "orange", r: 3, gloss: 0.8, glossH: 6, curve: 1, rim: 0.8, glow: 0.6, edge: "#ffffff", edgeA: 1 }), x0 - 4, by);
+            ctx3.drawImage(aeroSurface(12, 14, { tone: this.questMark[nd.id] === GOAL_MARK ? "green" : "orange", r: 3, gloss: 0.8, glossH: 6, curve: 1, rim: 0.8, glow: 0.6, edge: "#ffffff", edgeA: 1 }), x0 - 4, by);
             if (ex) ctx3.drawImage(ex, x0 - 4 + Math.round((12 - ex.width) / 2), by + Math.round((14 - ex.height) / 2));
             else drawText(ctx3, "!", x0, by + 3, { font: "big", color: "#ffffff", shadow: "#843a04" });
           }
@@ -85757,7 +85749,7 @@ kmlmk..
         }
         // Lab nodes that an active quest asks for -> the revealed node on the way there gets the "!"
         questMarks() {
-          var _a2, _b, _c;
+          var _a2, _b, _c, _d;
           const out = {};
           this.quest = {};
           const book = this.game.quests?.book;
@@ -85779,6 +85771,15 @@ kmlmk..
                   (_b = this.quest)[_c = m.id] || (_b[_c] = q);
                 }
               }
+            }
+          } catch {
+          }
+          this.goalId = null;
+          try {
+            const gl2 = labGoal(this.game.state);
+            if (gl2 && !this.quest[gl2.id] && this.revealed(gl2.id)) {
+              out[_d = gl2.id] || (out[_d] = GOAL_MARK);
+              this.goalId = gl2.id;
             }
           } catch {
           }
@@ -85877,6 +85878,12 @@ kmlmk..
               drawText(ctx3, `READY ${ready3}`, x2 + IW - measureText(`READY ${ready3}`), y2 + 2, { color: OK });
             });
             buttons.push({ label: "Show next", tone: "aqua", icon: getUiIcon("home"), fn: () => this.home() });
+            const gl2 = labGoal(st);
+            if (gl2) {
+              const need = labGoalNeed(st, gl2);
+              text(`Next goal: ${gl2.node.name}${gl2.status === "researching" ? " (brewing)" : need ? ". " + need : ". Ready!"}`, "#1d6fa8", 4);
+              buttons.push({ label: "Go to goal", tone: "green", icon: getUiIcon("arrow_r"), fn: () => this.select(gl2.id) });
+            }
           } else if (hidden) {
             const gt = this.gate(id2);
             title3 = "???";
@@ -85926,9 +85933,10 @@ kmlmk..
                 costTiles(ctx3, ui, cr, x2, y2 + 17, IW, { tileW: 72 });
               });
               const benchFree = c.slots > 0;
-              if (!c.paid) text("Need more ingredients.", BAD, 1);
+              if (!c.gateOk) text(c.gate, BAD, 2);
+              else if (!c.paid) text("Need more ingredients.", BAD, 1);
               else if (!benchFree) text("All benches busy: it will queue.", "#6a3ab8", 2);
-              buttons.push({ kind: "research", label: benchFree || !c.paid ? "Research" : "Queue it", tone: benchFree || !c.paid ? "green" : "purple", icon: getUiIcon(benchFree ? "check" : "clock"), disabled: !c.paid, sound: "ui_unlock", tip: "Start this research (Enter)", fn: () => this.research(id2) });
+              buttons.push({ kind: "research", label: benchFree || !c.paid ? "Research" : "Queue it", tone: benchFree || !c.paid ? "green" : "purple", icon: getUiIcon(benchFree ? "check" : "clock"), disabled: !c.paid || !c.gateOk, sound: "ui_unlock", tip: "Start this research (Enter)", fn: () => this.research(id2) });
             } else if (s === "researching") {
               add9(30, (x2, y2) => {
                 drawText(ctx3, "BREWING", x2, y2, { color: "#b8640a" });
@@ -85967,6 +85975,7 @@ kmlmk..
             }
             const qq = this.quest?.[id2];
             if (qq && s !== "done") text("Quest: " + qq.title, "#c86a0a", 2);
+            else if (this.goalId === id2 && s !== "done") text("Your next big upgrade!", "#1d8a3a", 2);
           }
           const HEAD4 = 62, BTN = buttons.length ? 34 : 0;
           let H8 = HEAD4 + 8 + rows.reduce((a, r2) => a + r2.h + 4, 0) + BTN + 6;
@@ -86916,7 +86925,10 @@ kmlmk..
               all++;
               const s = labStatus(st, nd.id);
               if (s === "done") done++;
-              else if (s === "available" && labCheck(st, nd, g.stats).paid) ready3++;
+              else if (s === "available") {
+                const c = labCheck(st, nd, g.stats);
+                if (c.paid && c.gateOk) ready3++;
+              }
             }
             if (ready3) drawAeroBadge(ctx3, r.x + bs + 2, r.y - 4, ready3, t);
             if (hov) ui.tip = `${B2.name}: ${done} / ${all} researched${ready3 ? `, ${ready3} ready` : ""}`;
@@ -87287,6 +87299,7 @@ kmlmk..
       init_character();
       init_species();
       init_bosses();
+      init_shopdata();
       ZONES = ["sunlit", "twilight", "midnight", "abyss"];
       CHEST_RANK = ["crate", "iron", "golden", "orb"];
       CHEST_NAMES = { crate: "Driftwood Crate", iron: "Iron Crate", golden: "Golden Chest", orb: "Mystery Orb" };
@@ -87305,7 +87318,7 @@ kmlmk..
             { npc: "fizz", text: "And I'm Professor Fizz! Bring me Aero and I'll invent you wonderful things!" }
           ],
           outro: { npc: "marina", text: "Ahoy! Marina, pier keeper. My old dinghy is yours - the Sunny Shallows await!" },
-          reward: { aero: 60, lab: ["sea_shallows"], cosmetics: ["hat_leafcrown"], unlock: [{ kind: "recipe", id: "ws_rod_clover" }] },
+          reward: { aero: 80, lab: ["sea_shallows"], cosmetics: ["hat_leafcrown"], unlock: [{ kind: "recipe", id: "ws_rod_clover" }] },
           // [phase8:prog] + a rod recipe
           quests: [
             Q("c1_lesson", "seal", "Fishing 101", "Hook, reel, shock! I'll show you everything.", [{ t: "tutorial" }], { aero: 10, bait: { crumbs: 5 } }),
@@ -87330,7 +87343,7 @@ kmlmk..
             { npc: "seal", text: "The Bait Shop is open! Better bait, better fish!" }
           ],
           outro: { npc: "bloat", text: "Hrrumph! Captain Bloat. Up north, the Frosty Fjord hides a tale or two..." },
-          reward: { aero: 120, lab: ["sea_fjord"], cosmetics: ["top_sailor"], items: { sea_glass: 2 }, unlock: [{ kind: "recipe", id: "ws_rod_frost" }] },
+          reward: { aero: 250, lab: ["sea_fjord"], cosmetics: ["top_sailor"], items: { sea_glass: 2 }, unlock: [{ kind: "recipe", id: "ws_rod_frost" }] },
           // [phase8:prog]
           quests: [
             Q("c2_sail", "marina", "Set Sail", "Open the Map and travel to the Sunny Shallows.", [{ t: "visit", biome: "shallows" }], { aero: 20 }),
@@ -87345,6 +87358,8 @@ kmlmk..
             Q("c2_rare", "marina", "Something Shiny", "Catch an Uncommon fish or better.", [{ t: "catch", n: 1, rarity: "uncommon" }], { aero: 40, items: { coral_chunk: 1 } }),
             Q("c2_rod", "fizz", "Wand of Bubbles", "Research the Bubble Wand rod!", [{ t: "research", id: "rod_bubble" }], { aero: 30, items: { kelp_fibre: 3 } }),
             Q("c2_deep", "seal", "Twilight Peek", "Dive down past the sunlight. Spooky... and fun!", [{ t: "depth", zone: "twilight", alt: { t: "catch", n: 4 } }], { aero: 40, items: { pearl: 1 } }),
+            Q("c2_dinghy", "marina", "A Real Boat", "Research the Dinghy in The Lab. Oars included!", [{ t: "boat", tier: 1 }], { aero: 30, items: { driftwood: 3, kelp_fibre: 2 } }),
+            // [balance] main-track goal
             Q("c2_boss", "marina", "Boss: Dragon-Karp", "A karp that rage-quit the river lives at the bottom. Beat it!", [{ t: "boss", id: "dragonkarp" }], { aero: 80, items: { coral_chunk: 2 } })
             // [phase9:fishing]
           ]
@@ -87359,7 +87374,7 @@ kmlmk..
             { npc: "fizz", text: "And we have SCIENCE now. Let's upgrade everything!" }
           ],
           outro: { npc: "fizz", text: "A reef made of scrap and glitches? Fascinating! Junkyard Reef unlocked!" },
-          reward: { aero: 250, lab: ["sea_junkyard"], cosmetics: ["face_goggles"], items: { gear: 2, pkg_golden: 1 }, unlock: [{ kind: "recipe", id: "ws_rod_magnet" }] },
+          reward: { aero: 700, lab: ["sea_junkyard"], cosmetics: ["face_goggles"], items: { gear: 2, pkg_golden: 1 }, unlock: [{ kind: "recipe", id: "ws_rod_magnet" }] },
           // [phase8:prog] + a golden chest
           quests: [
             Q("c3_sail", "bloat", "Cold Feet", "Sail to the Frosty Fjord. Bring a scarf.", [{ t: "visit", biome: "fjord" }], { aero: 40 }),
@@ -87372,6 +87387,8 @@ kmlmk..
             // [phase8:prog]
             Q("c3_lab", "fizz", "Busy Benches", "Finish 10 research projects in The Lab.", [{ t: "research", n: 10 }], { items: { gear: 1, kelp_fibre: 4 } }),
             Q("c3_boat", "marina", "Sea Legs", "Upgrade to the Skiff. Zoom zoom!", [{ t: "boat", tier: 2 }], { aero: 80 }),
+            Q("c3_glass", "fizz", "Clear Thinking", "Research the Glass Rod. Two shocks per fight!", [{ t: "research", id: "rod_glass" }], { aero: 60, items: { sea_glass: 2, coral_chunk: 2 } }),
+            // [balance] main-track goal
             Q("c3_boss", "bloat", "Boss: Ok Boomer Shark", "Hrrumph! The old shark at the bottom of the Fjord. Show it how it's done!", [{ t: "boss", id: "eldershark" }], { aero: 150, items: { ice_shard: 2 } })
             // [phase9:fishing]
           ]
@@ -87386,7 +87403,7 @@ kmlmk..
             { npc: "seal", text: "It gets darker down there. Stay close to the bubbles!" }
           ],
           outro: { npc: "marina", text: "I found an old chart... a whole city under the sea! Sunken Metropolis unlocked!" },
-          reward: { aero: 500, lab: ["sea_metropolis"], cosmetics: ["shoes_flippers"], items: { circuit_board: 2 }, unlock: [{ kind: "recipe", id: "ws_rod_glow" }] },
+          reward: { aero: 1800, lab: ["sea_metropolis"], cosmetics: ["shoes_flippers"], items: { circuit_board: 2 }, unlock: [{ kind: "recipe", id: "ws_rod_glow" }] },
           // [phase8:prog]
           quests: [
             Q("c4_sail", "fizz", "Scrap Happy", "Travel to the Junkyard Reef.", [{ t: "visit", biome: "junkyard" }], { aero: 60 }),
@@ -87397,8 +87414,10 @@ kmlmk..
             // [phase8:prog]
             Q("c4_magnet", "fizz", "Magnetic Personality", "Craft the Magnet Rod. Boxes will come to YOU.", [{ t: "craftRod", id: "magnet" }], { aero: 120, items: { spring_coil: 2 } }),
             // [phase8:prog]
-            Q("c4_aero", "fizz", "Cha-Ching", "Earn 1,500 Aero.", [{ t: "aero", n: 1500 }], { items: { circuit_board: 1 } }),
+            Q("c4_aero", "fizz", "Cha-Ching", "Earn 3,000 Aero.", [{ t: "aero", n: 3e3 }], { items: { circuit_board: 1 } }),
             Q("c4_shock", "fizz", "Shock Therapy", "Research the Capacitor in the Shock row.", [{ t: "research", id: "shock2" }], { aero: 100 }),
+            Q("c4_chrome", "fizz", "Chrome Dome", "Research the Chrome Caster. Fast, shiny and strong.", [{ t: "research", id: "rod_chrome" }], { aero: 100, items: { gear: 2, pearl: 1 } }),
+            // [balance] main-track goal
             Q("c4_boss", "fizz", "Boss: Blue Screen Ray", "A fatal exception lurks in the deep. ZAP it when it's dazed!", [{ t: "boss", id: "bsod" }], { aero: 250, items: { circuit_board: 1 } })
             // [phase9:fishing]
           ]
@@ -87413,7 +87432,7 @@ kmlmk..
             { npc: "bloat", text: "Epic fish lurk between the towers. Hrrumph, I've seen them!" }
           ],
           outro: { npc: "bloat", text: "Feel that heat? The Lava Rift opens! Only the bravest fish there." },
-          reward: { aero: 1e3, lab: ["sea_volcano"], cosmetics: ["hat_tophat"], items: { pearl: 2 }, unlock: [{ kind: "recipe", id: "ws_rod_turbo" }] },
+          reward: { aero: 4500, lab: ["sea_volcano"], cosmetics: ["hat_tophat"], items: { pearl: 2 }, unlock: [{ kind: "recipe", id: "ws_rod_turbo" }] },
           // [phase8:prog]
           quests: [
             Q("c5_sail", "marina", "City Lights", "Sail to the Sunken Metropolis.", [{ t: "visit", biome: "metropolis" }], { aero: 100 }),
@@ -87424,6 +87443,8 @@ kmlmk..
             // [phase8:prog]
             Q("c5_boat", "marina", "Flying Fish", "Get the Hydrofoil.", [{ t: "boat", tier: 3 }], { items: { gear: 2, sea_glass: 3 } }),
             Q("c5_lab", "fizz", "Mad Science", "Finish 30 research projects.", [{ t: "research", n: 30 }], { aero: 300 }),
+            Q("c5_dolphin", "marina", "Dolphin Talk", "Research the Dolphin Spinner. The fish come to chat.", [{ t: "research", id: "rod_dolphin" }], { aero: 150, items: { pearl: 2, circuit_board: 1 } }),
+            // [balance] main-track goal
             Q("c5_boss", "marina", "Boss: Main Character Marlin", "The Metropolis has a main character. Hook it from the very bottom!", [{ t: "boss", id: "mayorgrouper" }], { aero: 400, items: { pearl: 1 } })
             // [phase9:fishing]
           ]
@@ -87438,19 +87459,21 @@ kmlmk..
             { npc: "seal", text: "The deepest zone is down there somewhere. I can smell it!" }
           ],
           outro: { npc: "seal", text: "You did it! The Deep Ocean is waiting. The scariest, most beautiful place of all." },
-          reward: { aero: 2e3, lab: ["sea_abyss"], cosmetics: ["face_heart"], items: { abyss_crystal: 1, pkg_orb: 1 }, unlock: [{ kind: "recipe", id: "ws_rod_starfish" }] },
+          reward: { aero: 1e4, lab: ["sea_abyss"], cosmetics: ["face_heart"], items: { abyss_crystal: 1, pkg_orb: 1 }, unlock: [{ kind: "recipe", id: "ws_rod_starfish" }] },
           // [phase8:prog]
           quests: [
             Q("c6_sail", "bloat", "Hot Water", "Brave the Lava Rift.", [{ t: "visit", biome: "volcano" }], { aero: 150 }),
             Q("c6_catch", "bloat", "Fire and Fins", "Catch 12 Lava Rift fish.", [{ t: "catch", n: 12, biome: "volcano" }], { items: { ancient_stone: 2 } }),
             Q("c6_deep", "seal", "Into the Abyss", "Reach the Abyssal Zone. Deep breath!", [{ t: "depth", zone: "abyss", alt: { t: "catch", n: 2, rarity: "rare" } }], { aero: 300, bait: { blackhole: 1 } }),
-            Q("c6_aero", "seal", "Big Spender", "Earn 5,000 Aero.", [{ t: "aero", n: 5e3 }], { items: { circuit_board: 2, pearl: 1 } }),
+            Q("c6_aero", "seal", "Big Spender", "Earn 15,000 Aero.", [{ t: "aero", n: 15e3 }], { items: { circuit_board: 2, pearl: 1 } }),
             Q("c6_dex", "fizz", "Encyclopedia", "Discover 35 species.", [{ t: "species", n: 35 }], { aero: 400 }),
             Q("c6_turbo", "bloat", "Need for Speed", "Craft the Turbo Reel Rod. Vroom!", [{ t: "craftRod", id: "turbo" }], { aero: 400, items: { lava_glass: 1 } }),
             // [phase8:prog]
             Q("c6_tackle", "marina", "Fully Kitted", "Fill all four tackle slots on your rod.", [{ t: "tackle", n: 4 }], { aero: 300, items: { pearl: 1 } }),
             // [phase8:prog]
             Q("c6_rare", "bloat", "Hot Rarities", "Catch 3 Rare fish in the Lava Rift.", [{ t: "catch", n: 3, rarity: "rare", biome: "volcano" }], { items: { abyss_crystal: 1 } }),
+            Q("c6_carbon", "fizz", "Featherweight", "Research the Aero Carbon rod. Light as a bubble!", [{ t: "research", id: "rod_aero" }], { aero: 200, items: { circuit_board: 2, ancient_stone: 2 } }),
+            // [balance] main-track goal
             Q("c6_boss", "bloat", "Boss: The Final Boss", "A leviathan of lava at the bottom of the Rift. It is NOT the final boss.", [{ t: "boss", id: "moltenleviathan" }], { aero: 700, items: { lava_glass: 2 } })
             // [phase9:fishing]
           ]
@@ -87465,7 +87488,7 @@ kmlmk..
             { npc: "bloat", text: "They say a legend sleeps at the bottom. Hrrumph. Find it." }
           ],
           outro: { npc: "fizz", text: "A true Legend Hunter! I've never been so proud. More adventures soon!" },
-          reward: { aero: 5e3, lab: ["sea_legend"], cosmetics: ["trail_rainbow"], items: { golden_scale: 1 } },
+          reward: { aero: 2e4, lab: ["sea_legend"], cosmetics: ["trail_rainbow"], items: { golden_scale: 1 } },
           quests: [
             Q("c7_sail", "seal", "Lights Out", "Dive into The Deep Ocean.", [{ t: "visit", biome: "abyss" }], { aero: 300 }),
             Q("c7_catch", "bloat", "Deep Haul", "Catch 12 fish in The Deep.", [{ t: "catch", n: 12, biome: "abyss" }], { items: { abyss_crystal: 2 } }),
@@ -87477,6 +87500,8 @@ kmlmk..
             // [phase8:prog]
             Q("c7_star", "seal", "Wish Upon a Starfish", "Craft the Starfish Scepter.", [{ t: "craftRod", id: "starfish" }], { aero: 1e3 }),
             // [phase8:prog]
+            Q("c7_trident", "bloat", "Sea King", "Research the Sea King Trident. Giants beware!", [{ t: "research", id: "rod_trident" }], { aero: 250, items: { abyss_crystal: 2, ancient_stone: 2 } }),
+            // [balance] main-track goal
             Q("c7_boss", "seal", "Boss: The Algorithm", "It has watched you all along. Face it at the bottom of The Deep!", [{ t: "boss", id: "manyeyes" }], { aero: 1500, items: { golden_scale: 1 } })
             // [phase9:fishing]
           ]
@@ -87485,6 +87510,10 @@ kmlmk..
       CHAPTERS.forEach((c, i) => {
         c.n = i + 1;
       });
+      for (const c of CHAPTERS) {
+        const k = OCEAN_VALUE[c.ocean] || 1;
+        for (const q of c.quests) if (q.reward?.aero && k !== 1) q.reward.aero = Math.round(q.reward.aero * k / 5) * 5;
+      }
       CHAPTER_BY_ID = Object.fromEntries(CHAPTERS.map((c) => [c.id, c]));
       QUEST_BY_ID = {};
       for (const c of CHAPTERS) for (const q of c.quests) {
@@ -87788,9 +87817,10 @@ kmlmk..
       rarity: rod.rarity,
       maxed: lv >= MAX_ROD_LEVEL,
       desc: lv >= MAX_ROD_LEVEL ? "Fully tuned. A masterpiece." : `Tune it to level ${next}: +6% lure, luck and control, +10% strength, more resilience.`,
+      // [balance] steeper per star (next^1.75) and per rod tier ((t+1)^1.3): +1 on a starter rod is a quick win, +5 on a top rod is a project
       icon: "rod:" + rod.id,
-      cost: { aero: Math.round(25 * (t + 1) * Math.pow(next, 1.45)), items },
-      time: 8 + next * 8 + t * 4,
+      cost: { aero: Math.round(30 * Math.pow(t + 1, 1.3) * Math.pow(next, 1.75) / 5) * 5, items },
+      time: 10 + next * 12 + t * 6,
       out: { type: "rodlevel", id: rod.id, lv: next },
       req: [{ starter: true }],
       dynamic: true
@@ -88071,15 +88101,15 @@ kmlmk..
       STATIC = [];
       add8 = (o) => STATIC.push({ time: 0, desc: "", req: [{ starter: true }], ...o });
       ROD_RECIPES = {
-        duck: { aero: 40, items: { driftwood: 4, kelp_fibre: 2, fish_scale: 3 }, time: 20, req: [{ starter: true }] },
-        clover: { aero: 120, items: { clover_leaf: 3, kelp_fibre: 4, fish_scale: 4 }, time: 45, req: [{ lab: "luck1" }, { ch: 1 }] },
-        frost: { aero: 260, items: { ice_shard: 4, sea_glass: 3, fin_ribbon: 2 }, time: 75, req: [{ ch: 2 }] },
-        magnet: { aero: 300, items: { scrap_metal: 6, spring_coil: 2, gear: 1 }, time: 90, req: [{ lab: "boat_magnet" }, { ch: 3 }] },
-        sakura: { aero: 450, items: { coral_chunk: 3, fin_ribbon: 3, pearl: 1 }, time: 120, req: [{ lab: "craft_decor1" }, { ch: 3 }] },
-        pixel: { aero: 600, items: { circuit_board: 2, spring_coil: 3, fish_scale: 6 }, time: 150, req: [{ ch: 4 }] },
-        glow: { aero: 900, items: { sea_glass: 4, glow_bulb: 2, circuit_board: 1 }, time: 180, req: [{ lab: "sea_lantern" }, { ch: 4 }] },
-        turbo: { aero: 1600, items: { lava_glass: 3, gear: 4, spring_coil: 4 }, time: 240, req: [{ lab: "reel5" }, { ch: 5 }] },
-        starfish: { aero: 5e3, items: { golden_scale: 1, abyss_crystal: 2, pearl: 3, glow_bulb: 3 }, time: 360, req: [{ ch: 6 }] }
+        duck: { aero: 50, items: { driftwood: 4, kelp_fibre: 2, fish_scale: 3 }, time: 20, req: [{ starter: true }] },
+        clover: { aero: 220, items: { clover_leaf: 3, kelp_fibre: 4, fish_scale: 4 }, time: 60, req: [{ lab: "luck1" }, { ch: 1 }] },
+        frost: { aero: 500, items: { ice_shard: 4, sea_glass: 3, fin_ribbon: 2 }, time: 120, req: [{ ch: 2 }] },
+        magnet: { aero: 800, items: { scrap_metal: 6, spring_coil: 3, gear: 2 }, time: 150, req: [{ lab: "boat_magnet" }, { ch: 3 }] },
+        sakura: { aero: 1300, items: { coral_chunk: 4, fin_ribbon: 3, pearl: 1 }, time: 180, req: [{ lab: "craft_decor1" }, { ch: 3 }] },
+        pixel: { aero: 1800, items: { circuit_board: 2, spring_coil: 4, fish_scale: 8 }, time: 240, req: [{ ch: 4 }] },
+        glow: { aero: 3200, items: { sea_glass: 5, glow_bulb: 3, circuit_board: 1 }, time: 300, req: [{ lab: "sea_lantern" }, { ch: 4 }] },
+        turbo: { aero: 7e3, items: { lava_glass: 4, gear: 5, spring_coil: 4 }, time: 480, req: [{ lab: "reel5" }, { ch: 5 }] },
+        starfish: { aero: 24e3, items: { golden_scale: 1, abyss_crystal: 3, pearl: 4, glow_bulb: 4 }, time: 900, req: [{ ch: 6 }] }
       };
       WS_ROD_IDS = Object.keys(ROD_RECIPES);
       for (const [id2, c] of Object.entries(ROD_RECIPES)) {
@@ -88088,19 +88118,19 @@ kmlmk..
         add8({ id: "ws_rod_" + id2, cat: "rods", name: rod.name, rarity: rod.rarity, desc: rod.desc, icon: "rod:" + id2, cost: { aero: c.aero, items: c.items }, time: c.time, out: { type: "rod", id: id2 }, req: c.req });
       }
       TK = {
-        reel_spin: [20, { scrap_metal: 1, driftwood: 2 }, 0, [{ starter: true }]],
-        line_braid: [15, { kelp_fibre: 3, fish_scale: 1 }, 0, [{ starter: true }]],
-        lure_spoon: [15, { shell: 2, fish_scale: 2 }, 0, [{ starter: true }]],
-        charm_heart: [20, { shell: 2, fish_scale: 2 }, 0, [{ starter: true }]],
-        lure_frog: [60, { clover_leaf: 1, fish_scale: 3, kelp_fibre: 2 }, 0, [{ lab: "hook_lucky" }, { ch: 2 }]],
-        charm_clover: [70, { clover_leaf: 3, shell: 2 }, 0, [{ lab: "luck1" }, { ch: 2 }]],
-        reel_turbo: [160, { spring_coil: 2, gear: 2, scrap_metal: 2 }, 20, [{ lab: "reel3" }, { ch: 3 }]],
-        line_glow: [150, { fin_ribbon: 2, glow_bulb: 1, kelp_fibre: 3 }, 20, [{ lab: "sea_lantern" }, { ch: 4 }]],
-        lure_squid: [140, { glow_bulb: 1, fin_ribbon: 2, fish_scale: 3 }, 20, [{ ch: 4 }]],
-        charm_star: [180, { pearl: 1, sea_glass: 3, fish_scale: 3 }, 20, [{ lab: "luck2" }, { ch: 4 }]],
-        reel_gold: [420, { gear: 3, pearl: 1, lava_glass: 1 }, 45, [{ lab: "reel5" }, { ch: 5 }]],
-        line_titan: [380, { fin_ribbon: 4, magnet_stone: 1, scrap_metal: 4 }, 45, [{ lab: "line3" }, { ch: 5 }]],
-        charm_pearl: [500, { pearl: 2, glow_bulb: 1, coral_chunk: 2 }, 45, [{ ch: 6 }]]
+        reel_spin: [25, { scrap_metal: 1, driftwood: 2 }, 0, [{ starter: true }]],
+        line_braid: [20, { kelp_fibre: 3, fish_scale: 1 }, 0, [{ starter: true }]],
+        lure_spoon: [20, { shell: 2, fish_scale: 2 }, 0, [{ starter: true }]],
+        charm_heart: [25, { shell: 2, fish_scale: 2 }, 0, [{ starter: true }]],
+        lure_frog: [120, { clover_leaf: 1, fish_scale: 3, kelp_fibre: 2 }, 0, [{ lab: "hook_lucky" }, { ch: 2 }]],
+        charm_clover: [140, { clover_leaf: 3, shell: 2 }, 0, [{ lab: "luck1" }, { ch: 2 }]],
+        reel_turbo: [450, { spring_coil: 2, gear: 2, scrap_metal: 3 }, 30, [{ lab: "reel3" }, { ch: 3 }]],
+        line_glow: [600, { fin_ribbon: 3, glow_bulb: 1, kelp_fibre: 3 }, 30, [{ lab: "sea_lantern" }, { ch: 4 }]],
+        lure_squid: [550, { glow_bulb: 1, fin_ribbon: 2, fish_scale: 4 }, 30, [{ ch: 4 }]],
+        charm_star: [700, { pearl: 1, sea_glass: 3, fish_scale: 4 }, 30, [{ lab: "luck2" }, { ch: 4 }]],
+        reel_gold: [2200, { gear: 4, pearl: 2, lava_glass: 1 }, 90, [{ lab: "reel5" }, { ch: 5 }]],
+        line_titan: [2e3, { fin_ribbon: 5, magnet_stone: 2, scrap_metal: 4 }, 90, [{ lab: "line3" }, { ch: 5 }]],
+        charm_pearl: [3200, { pearl: 3, glow_bulb: 2, coral_chunk: 3 }, 90, [{ ch: 6 }]]
       };
       for (const t of TACKLE) {
         const c = TK[t.id];
@@ -88110,10 +88140,11 @@ kmlmk..
       add8({ id: "ws_bait_sprinkle", cat: "bait", name: "Scale Sprinkles", rarity: "common", desc: "Crumbs dusted with fish-scale glitter.", icon: "item:crumbs", cost: { aero: 0, items: { fish_scale: 2, kelp_fibre: 1 } }, out: { type: "item", id: "crumbs", qty: 5 } });
       add8({ id: "ws_bait_wormy", cat: "bait", name: "Wiggly Worms", rarity: "uncommon", desc: "Fresh worms in a ribbon bow.", icon: "item:worm", cost: { aero: 10, items: { fin_ribbon: 1, kelp_fibre: 2 } }, out: { type: "item", id: "worm", qty: 4 }, req: [{ ch: 1 }] });
       BP_COST = {
-        uncommon: [60, { driftwood: 4, kelp_fibre: 3 }, 15, [{ starter: true }]],
-        rare: [180, { sea_glass: 3, fin_ribbon: 2 }, 30, [{ lab: "boat_skiff" }, { ch: 3 }]],
-        epic: [500, { gear: 3, circuit_board: 1, spring_coil: 2 }, 60, [{ ch: 4 }]],
-        legendary: [1500, { golden_scale: 1, pearl: 2 }, 120, [{ ch: 5 }]]
+        // [balance]
+        uncommon: [80, { driftwood: 4, kelp_fibre: 3 }, 15, [{ starter: true }]],
+        rare: [400, { sea_glass: 3, fin_ribbon: 2 }, 30, [{ lab: "boat_skiff" }, { ch: 3 }]],
+        epic: [1500, { gear: 3, circuit_board: 1, spring_coil: 2 }, 60, [{ ch: 4 }]],
+        legendary: [6e3, { golden_scale: 1, pearl: 2 }, 120, [{ ch: 5 }]]
       };
       SLOT_MAT = { hull: "shell", sail: "fin_ribbon", flag: "kelp_fibre", engine: "spring_coil", decal: "shell" };
       SLOT_ART = { hull: "boat_hull", sail: "boat_sail", flag: "boat_flag", engine: "boat_engine", decal: "boat_decal" };
@@ -94509,7 +94540,7 @@ kmlmk..
         }
         value(rec) {
           const sp = SPECIES_BY_ID[rec.species];
-          return Math.round((RELEASE_VALUE2[sp?.rarity] || 4) * valueMultiplier(rec));
+          return Math.round((RELEASE_VALUE2[sp?.rarity] || 4) * valueMultiplier(rec, sp));
         }
         release(recs) {
           let total = 0;
@@ -102775,6 +102806,13 @@ ${hearts} ${status}
             bait2 = 1;
           }
           if (bait2 <= 0) return { text: "Out of bait? Visit Dot's Bait Shop!", at: "baitshop" };
+          if (this.helper.tipI % 2 === 0) {
+            const gt = this.goalTip();
+            if (gt) {
+              this.helper.tipI++;
+              return gt;
+            }
+          }
           for (let n2 = 0; n2 < TIPS.length; n2++) {
             const tip = TIPS[this.helper.tipI++ % TIPS.length];
             if (tip.at === "quests" && !this.iconRect("quests")) continue;
@@ -102784,6 +102822,17 @@ ${hearts} ${status}
         }
         hintText() {
           return this.hintTip().text;
+        }
+        goalTip() {
+          let gl2 = null;
+          try {
+            gl2 = labGoal?.(this.game.state);
+          } catch (e) {
+            gl2 = null;
+          }
+          if (!gl2 || gl2.status !== "available") return null;
+          const need = labGoalNeed?.(this.game.state, gl2) || "";
+          return need ? { text: `Next goal: the ${gl2.node.name}! ${need}`, at: "lab" } : { text: `You can research the ${gl2.node.name}! Open The Lab!`, at: "lab", mood: "excited" };
         }
         // ---------------------------------------------------------------- targets
         // screen point of a world point (the follow camera), identity without a camera
@@ -105734,6 +105783,7 @@ void main() {
       init_workshop();
       init_rods();
       init_items();
+      init_lab();
       DEEP2 = /* @__PURE__ */ new Set(["twilight", "midnight", "abyss"]);
       BIOME_MAT = { oscean: "clover_leaf", shallows: "clover_leaf", fjord: "ice_shard", junkyard: "spring_coil", metropolis: "magnet_stone", volcano: "lava_glass", abyss: "glow_bulb" };
       Progression = class {
@@ -105781,6 +105831,7 @@ void main() {
               }
               if (g.fishing) g.fishing.rodC = null;
             }
+            this.goalPing();
           }
           this.magnet(dt);
           this.dest.update(dt, inp);
@@ -105802,6 +105853,23 @@ void main() {
             f.age = Math.max(0, (f.age || 0) - dt * 0.5);
             if (rng.chance(dt * 6)) g.particles?.sparkle?.(f.x + rng.float(-6, 6), f.y + rng.float(-6, 6), "#ff8a8a");
           }
+        }
+        // [balance] the next big upgrade (lab.js labGoal: rod / tank / boat / ocean) just became affordable: one toast per node
+        goalPing() {
+          const g = this.game, st = g.state;
+          if (!st?.tutorialDone || g.fishing?.fighting || g.ui?.blocking) return;
+          let gl2 = null;
+          try {
+            gl2 = labGoal(st);
+          } catch {
+            gl2 = null;
+          }
+          if (!gl2 || gl2.status !== "available" || !gl2.check.paid || !gl2.check.gateOk) return;
+          const L2 = st.lab;
+          if (!L2 || L2.goalPing === gl2.id) return;
+          L2.goalPing = gl2.id;
+          g.toast?.(`${gl2.node.name} is ready in The Lab!`, "beaker");
+          g.audio?.play?.("sparkle", { vol: 0.5 });
         }
         draw(ctx3, dt) {
           this.dest.draw(ctx3, dt);
@@ -106177,7 +106245,7 @@ void main() {
           if (rec.variant?.mutation) j.variants[rec.variant.mutation] = true;
           if (rec.variant?.shiny) j.variants.shiny = true;
           fish.carry = null;
-          const bonus = Math.round((CATCH_BONUS[sp.rarity] || 2) * valueMultiplier(rec));
+          const bonus = Math.round((CATCH_BONUS[sp.rarity] || 2) * valueMultiplier(rec, sp));
           this.addCoins(bonus, fish.x, fish.y);
           let loot = null;
           try {
@@ -106226,7 +106294,7 @@ void main() {
         }
         releaseFish(rec, x, y) {
           const sp = SPECIES_BY_ID[rec.species];
-          const v = Math.round((RELEASE_VALUE[sp?.rarity] || 4) * valueMultiplier(rec));
+          const v = Math.round((RELEASE_VALUE[sp?.rarity] || 4) * valueMultiplier(rec, sp));
           this.addCoins(v, x ?? this.screen.W / 2, y ?? this.screen.H / 2);
           this.state.stats.released++;
           audio.play("splash_small");

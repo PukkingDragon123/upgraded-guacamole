@@ -107,25 +107,6 @@ export function drawGlassPill(ctx, cx, y, w, h, col = '#59c3ff', a = 0.92) {
   ctx.restore();
 }
 
-// Rotating burst of light wedges.
-export function drawRays(ctx, x, y, r, n, t, color, alpha, width = 0.11) {
-  if (alpha <= 0.01) return;
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  for (let i = 0; i < n; i++) {
-    const a = (i / n) * TAU + t;
-    const w = width * (i % 2 ? 0.6 : 1);
-    ctx.fillStyle = rgba(color, alpha * (i % 2 ? 0.6 : 1));
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x + Math.cos(a - w) * r, y + Math.sin(a - w) * r);
-    ctx.lineTo(x + Math.cos(a + w) * r, y + Math.sin(a + w) * r);
-    ctx.closePath();
-    ctx.fill();
-  }
-  ctx.restore();
-}
-
 function drawGlow(ctx, x, y, r, color, a) {
   if (a <= 0.01) return;
   const s = glowSprite(r, color);
@@ -269,13 +250,10 @@ export class Titles {
       fx.aeroConfetti(W * 0.5, cy, 80, { spread: Math.PI, speed: [120, 320], life: 3.2, w: 60 });
       fx.confetti(-4, H * 0.55, 30, { dir: -1.0, spread: 0.35, speed: [220, 380], colors: undefined });
       fx.confetti(W + 4, H * 0.55, 30, { dir: -Math.PI + 1.0, spread: 0.35, speed: [220, 380] });
-      fx.lightStreaks(W * 0.5, cy, 22, { colors: ['#ffffff', '#bff8ff', '#e2ffb0'] });
       fx.stars(W * 0.5, cy, 24, { speed: [80, 220], g: 40, w: 90, h: 10 });
       fx.hearts?.(W * 0.5, cy, 8, { speed: [80, 200], w: 40 });
       fx.pixelBurst?.('scale', W * 0.5, cy, 14, { speed: [100, 240], w: 30 });
       fx.pixelBurst?.('ribbon', W * 0.5, cy, 12, { speed: [120, 280], w: 50 });
-      fx.lensFlare(W * 0.28, cy - 40, { cx: W / 2, cy: H / 2, life: 1.8, scale: 1.3 });
-      fx.bloom(W * 0.5, cy, 140, '#e8fbff', { life: 0.8 });
       fx.splashBurst(W * 0.5, H * 0.62, 2.2, { g: 300 });
       fx.aeroBubbles(W * 0.5, H + 10, 26, { w: W * 0.45, speed: [60, 160], sizes: [3, 4, 5, 6, 8, 10], life: [2, 3.5] });
       F.cam?.flash?.('#f0fcff', 0.6);
@@ -299,7 +277,7 @@ export class Titles {
     }
   }
 
-  // FISH ON!: the word slams in from huge, shakes, then sways in 3D under a ray burst.
+  // FISH ON!: the word slams in from huge, shakes, then sways in 3D.
   drawFishOn(ctx, it) {
     const W = this.F.W, H = this.F.H, t = it.t;
     const a = clamp01((it.dur - t) * 4);
@@ -307,8 +285,6 @@ export class Titles {
     const cy = Math.round(H * 0.22);
     ctx.save();
     ctx.globalAlpha = a;
-    drawRays(ctx, W / 2, cy + 6, 260, 16, t * 0.8, '#bff8ff', 0.1 * a);
-    drawGlow(ctx, W / 2, cy + 4, 90, '#bff8ff', 0.4 * a);
     const jx = t < 0.25 ? rng.int(-3, 3) : 0;
     const big = W < 700 ? 1.6 : 2;
     word3D(ctx, it.text, W / 2 + jx, cy, { t, pop: clamp01(t * 4), scale: lerp(big * 2.2, big, k), pal: glossFor(it.rarity), rot: Math.sin(t * 2.2) * 0.05, wobble: 1.5 });
@@ -340,14 +316,11 @@ export class Titles {
     ctx.restore();
   }
 
-  // I GOT IT!: big 3D voxel letters drop in one by one and bounce, under rays and confetti.
+  // I GOT IT!: big 3D voxel letters drop in one by one and bounce, in a shower of confetti.
   drawIGotIt(ctx, it) {
     const F = this.F, W = F.W, H = F.H, t = it.t;
     const aIn = clamp01(t * 5) * clamp01((it.dur - t) * 2.2);
     const cx = W / 2, cy = Math.round(H * 0.3);
-    drawRays(ctx, cx, cy, Math.max(W, H) * 0.75, 20, t * 0.4, '#bff8ff', 0.09 * aIn, 0.08);
-    drawRays(ctx, cx, cy, Math.max(W, H) * 0.5, 12, -t * 0.3, '#e2ffb0', 0.06 * aIn, 0.05);
-    drawGlow(ctx, cx, cy, 120, '#bff8ff', 0.5 * aIn);
     const out = clamp01((it.dur - t) * 3);
     ctx.save();
     ctx.globalAlpha = out;
@@ -442,7 +415,6 @@ export class Finale {
     this.compact = !F.cam?.focus;
     this.stage = 'surface';
     this.from = { x: fish.x, y: fish.y };
-    this.rays = 0;
     this.portrait = 0;
     fish.controlled = true;
     fish.forceAngle = undefined;
@@ -450,7 +422,6 @@ export class Finale {
     if (this.hasBoat) F.scrollTo(this.surface - F.H * 0.58);
     F.setPose('pull');
     F.sfx('reel', { pitch: 1.3 });
-    F.particles.speedLines(fish.x, fish.y, 14, { r0: 10, r1: 34, inward: true, color: '#ffffff' });
     F.particles.aeroBubbles?.(fish.x, fish.y, 8, { w: 8 });
   }
 
@@ -486,9 +457,6 @@ export class Finale {
         }
         F.particles.aeroBubbles?.(f.x, sy, 14, { w: 12, speed: [40, 120], sizes: [2, 3, 4, 5, 6] });
         F.particles.splashBurst?.(f.x, sy, 1.4);
-        F.particles.lightStreaks(f.x, sy - 4, 12, { dir: -Math.PI / 2, spread: 1.1, colors: ['#ffffff', '#bff8ff', '#e2ffb0'] });
-        const [sx, sy2] = F.toScreen(f.x, sy);
-        F.fx.lensFlare(sx, sy2 - 10, { cx: F.W / 2, cy: F.H / 2, life: 1.4, scale: 1 });
         F.sfx('splash_big');
         F.sfx('jump_out', { pitch: 0.9 });
         f.feel('surprised', 4);
@@ -526,7 +494,6 @@ export class Finale {
         const [hx, hy] = this.hands();
         F.particles.coins(hx, hy - 6, 10, { speed: [100, 200], floor: this.surface !== null ? this.surface - 1 : null });
         F.particles.aeroConfetti?.(hx, hy - 10, 30, { speed: [80, 200] });
-        F.particles.lightStreaks(hx, hy, 14, { colors: ['#ffffff', '#bff8ff', '#ffe27a'] });
         F.sfx('timing_perfect');
         break;
       }
@@ -569,7 +536,6 @@ export class Finale {
         f.forceAngle = clamp(Math.atan2(vy, Math.abs(vx) + 0.001), -1.3, 1.3) + Math.sin(this.rt * 22) * 0.15;
         f.wiggle = 0.8;
         f.z = 0;
-        this.rays = Math.min(1, this.rays + rdt * 2);
         if (rng.chance(rdt * 40)) F.particles.droplets(f.x, f.y, 2, { dir: Math.PI / 2, spread: 1.2, speed: [10, 50], g: 260, w: 6 });
         if (rng.chance(rdt * 18)) F.particles.glint?.(f.x + rng.float(-10, 10) * f.scale, f.y + rng.float(-6, 6), { len: rng.pick([3, 4, 5]) });
         if (rng.chance(rdt * 14)) F.particles.aeroBubbles?.(f.x, f.y, 1, { w: 6, speed: [10, 30], sizes: [2, 3, 4] });
@@ -579,11 +545,9 @@ export class Finale {
         break;
       }
       case 'catch':
-        this.rays = Math.min(1, this.rays + rdt * 2);
         if (this.st > (this.compact ? 0.15 : 0.45)) this.go('igotit');
         break;
       case 'igotit':
-        this.rays = Math.max(0, this.rays - rdt * 1.2);
         if (this.hasBoat) { const [hx, hy] = this.hands(); F.focusCam(hx, hy - 36, 2.4, 3); }
         if (this.st > (this.compact ? 0.05 : F.bossWin ? 5.2 : 2.4)) return 'caught';
         break;
@@ -593,14 +557,8 @@ export class Finale {
     return 'ok';
   }
 
-  drawWorld(ctx) {
-    const f = this.fish;
-    if (this.rays > 0.01 && (this.stage === 'erupt' || this.stage === 'catch' || this.stage === 'igotit')) {
-      const [x, y] = this.stage === 'erupt' ? [f.x, f.y] : this.hands();
-      drawRays(ctx, x, y, 130, 12, this.rt * 0.9, '#e8fbff', 0.1 * this.rays, 0.08);
-      drawGlow(ctx, x, y, 26, '#bff8ff', 0.45 * this.rays);
-    }
-  }
+  // [catch fx] no light rays / spotlight glow around the catch: the fish, splash and particles carry the moment
+  drawWorld() {}
 
   drawHud(ctx) {
     if (this.portrait > 0.01) drawPortrait(ctx, this.F, this.fish, this.portrait, 'hold', this.rt);
@@ -612,7 +570,6 @@ function drawPortrait(ctx, F, fish, k, pose, t) {
   const W = F.W, H = F.H;
   const cx = W / 2, by = H * 0.86;
   const a = ease.outBack(clamp01(k));
-  drawGlow(ctx, cx, by - 40, 70, '#bff8ff', 0.45 * k);
   ctx.save();
   ctx.globalAlpha = clamp01(k * 2);
   ctx.translate(cx, by + (1 - a) * 80);

@@ -634,6 +634,8 @@ export class Tutorial {
     let bait = 1;
     try { bait = BAIT.totalBait(st); } catch (e) { bait = 1; }
     if (bait <= 0) return { text: "Out of bait? Visit Dot's Bait Shop!", at: 'baitshop' };
+    // [balance] every other tip: the next big upgrade (rod / tank / boat) and what it still needs
+    if (this.helper.tipI % 2 === 0) { const gt = this.goalTip(); if (gt) { this.helper.tipI++; return gt; } }
     for (let n = 0; n < TIPS.length; n++) {
       const tip = TIPS[this.helper.tipI++ % TIPS.length];
       if (tip.at === 'quests' && !this.iconRect('quests')) continue;
@@ -642,6 +644,13 @@ export class Tutorial {
     return TIPS[0];
   }
   hintText() { return this.hintTip().text; }
+  goalTip() {
+    let gl = null;
+    try { gl = LAB.labGoal?.(this.game.state); } catch (e) { gl = null; }
+    if (!gl || gl.status !== 'available') return null;
+    const need = LAB.labGoalNeed?.(this.game.state, gl) || '';
+    return need ? { text: `Next goal: the ${gl.node.name}! ${need}`, at: 'lab' } : { text: `You can research the ${gl.node.name}! Open The Lab!`, at: 'lab', mood: 'excited' };
+  }
 
   // ---------------------------------------------------------------- targets
   // screen point of a world point (the follow camera), identity without a camera

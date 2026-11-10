@@ -28,7 +28,7 @@ import { voxelFishIcon } from '../fish/fishicon.js';
 import { SPECIES, SPECIES_BY_ID } from '../fish/species.js';
 import { BOSS_BY_OCEAN, BOSS_BY_ID } from '../fish/bosses.js';
 import { drawAeroBar, drawAeroCoin } from '../ui/aero.js';
-import { drawRays, drawGlow, word3D, letters3D } from './cinematics.js';
+import { drawGlow, word3D, letters3D } from './cinematics.js';
 import { drawGlossArrow } from './hud.js';
 import { drawIcon3d, chestIconId } from './icons3d.js';
 import { gemIcon, rodIcon } from '../gfx/bigicons.js';
@@ -583,7 +583,6 @@ export class BossFight {
     const a = clamp01((1.8 - pc.t) * 3);
     ctx.save();
     ctx.globalAlpha = a;
-    drawRays(ctx, W / 2, H * 0.3, 220, 14, pc.t, pc.n >= 3 ? '#ff8a7a' : '#ffe27a', 0.12 * a);
     letters3D(ctx, 'PHASE ' + pc.n, W / 2, Math.round(H * 0.3), pc.t, { pal: pc.n >= 3 ? 'red' : 'sun', scale: 2.2, stagger: 0.04, drop: 90 });
     ctx.restore();
   }
@@ -672,7 +671,6 @@ class Victory {
       F.fx.celebrate?.(W / 2, H * 0.3, 2.2, { layer: 'fg' });
       F.fx.pixelBurst?.('star', W / 2, H * 0.3, 24, { ramp: 'gold', speed: [120, 300] });
       F.fx.pixelBurst?.('confetti', W / 2, -10, 40, { dir: Math.PI / 2, spread: 1.3, w: W * 0.4, speed: [20, 90] });
-      F.fx.lensFlare?.(W * 0.3, H * 0.22, { cx: W / 2, cy: H / 2, life: 2, scale: 1.3 });
       F.sfx('catch_legendary');
       F.sfx('unlock_biome', { vol: 0.6 });
       F.cam?.flash?.('#fff6c0', 0.6);
@@ -700,8 +698,6 @@ class Victory {
     if (a <= 0.01) return;
     ctx.save();
     ctx.globalAlpha = a;
-    drawRays(ctx, W / 2, H * 0.24, 340, 18, t * 0.6, '#fff2b8', 0.13);
-    drawGlow(ctx, W / 2, H * 0.24, 110, '#fff6c0', 0.4);
     const landed = letters3D(ctx, 'VICTORY!', W / 2, Math.round(H * 0.22), t, { pal: 'sun', scale: W < 700 ? 2.2 : 2.8, stagger: 0.07 });
     for (const [lx, ly, i] of landed) {
       if (this.landed.has(i)) continue;

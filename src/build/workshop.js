@@ -58,16 +58,18 @@ const STATIC = [];
 const add = (o) => STATIC.push({ time: 0, desc: '', req: [{ starter: true }], ...o });
 
 // ---- rods (crafted rods each have a perk; see rods.js PERKS)
+// [balance] priced like the Lab rods of the same tier (lab.js AERO_T x MAIN_MUL, a bit under it since they also eat
+// the ocean's own material), so a perk rod is a real goal of its chapter.
 const ROD_RECIPES = {
-  duck: { aero: 40, items: { driftwood: 4, kelp_fibre: 2, fish_scale: 3 }, time: 20, req: [{ starter: true }] },
-  clover: { aero: 120, items: { clover_leaf: 3, kelp_fibre: 4, fish_scale: 4 }, time: 45, req: [{ lab: 'luck1' }, { ch: 1 }] },
-  frost: { aero: 260, items: { ice_shard: 4, sea_glass: 3, fin_ribbon: 2 }, time: 75, req: [{ ch: 2 }] },
-  magnet: { aero: 300, items: { scrap_metal: 6, spring_coil: 2, gear: 1 }, time: 90, req: [{ lab: 'boat_magnet' }, { ch: 3 }] },
-  sakura: { aero: 450, items: { coral_chunk: 3, fin_ribbon: 3, pearl: 1 }, time: 120, req: [{ lab: 'craft_decor1' }, { ch: 3 }] },
-  pixel: { aero: 600, items: { circuit_board: 2, spring_coil: 3, fish_scale: 6 }, time: 150, req: [{ ch: 4 }] },
-  glow: { aero: 900, items: { sea_glass: 4, glow_bulb: 2, circuit_board: 1 }, time: 180, req: [{ lab: 'sea_lantern' }, { ch: 4 }] },
-  turbo: { aero: 1600, items: { lava_glass: 3, gear: 4, spring_coil: 4 }, time: 240, req: [{ lab: 'reel5' }, { ch: 5 }] },
-  starfish: { aero: 5000, items: { golden_scale: 1, abyss_crystal: 2, pearl: 3, glow_bulb: 3 }, time: 360, req: [{ ch: 6 }] },
+  duck: { aero: 50, items: { driftwood: 4, kelp_fibre: 2, fish_scale: 3 }, time: 20, req: [{ starter: true }] },
+  clover: { aero: 220, items: { clover_leaf: 3, kelp_fibre: 4, fish_scale: 4 }, time: 60, req: [{ lab: 'luck1' }, { ch: 1 }] },
+  frost: { aero: 500, items: { ice_shard: 4, sea_glass: 3, fin_ribbon: 2 }, time: 120, req: [{ ch: 2 }] },
+  magnet: { aero: 800, items: { scrap_metal: 6, spring_coil: 3, gear: 2 }, time: 150, req: [{ lab: 'boat_magnet' }, { ch: 3 }] },
+  sakura: { aero: 1300, items: { coral_chunk: 4, fin_ribbon: 3, pearl: 1 }, time: 180, req: [{ lab: 'craft_decor1' }, { ch: 3 }] },
+  pixel: { aero: 1800, items: { circuit_board: 2, spring_coil: 4, fish_scale: 8 }, time: 240, req: [{ ch: 4 }] },
+  glow: { aero: 3200, items: { sea_glass: 5, glow_bulb: 3, circuit_board: 1 }, time: 300, req: [{ lab: 'sea_lantern' }, { ch: 4 }] },
+  turbo: { aero: 7000, items: { lava_glass: 4, gear: 5, spring_coil: 4 }, time: 480, req: [{ lab: 'reel5' }, { ch: 5 }] },
+  starfish: { aero: 24000, items: { golden_scale: 1, abyss_crystal: 3, pearl: 4, glow_bulb: 4 }, time: 900, req: [{ ch: 6 }] },
 };
 export const WS_ROD_IDS = Object.keys(ROD_RECIPES);
 for (const [id, c] of Object.entries(ROD_RECIPES)) {
@@ -77,20 +79,21 @@ for (const [id, c] of Object.entries(ROD_RECIPES)) {
 }
 
 // ---- tackle
+// [balance] common tackle stays a cheap first craft; rare and epic pieces are mid / late-game goals
 const TK = {
-  reel_spin: [20, { scrap_metal: 1, driftwood: 2 }, 0, [{ starter: true }]],
-  line_braid: [15, { kelp_fibre: 3, fish_scale: 1 }, 0, [{ starter: true }]],
-  lure_spoon: [15, { shell: 2, fish_scale: 2 }, 0, [{ starter: true }]],
-  charm_heart: [20, { shell: 2, fish_scale: 2 }, 0, [{ starter: true }]],
-  lure_frog: [60, { clover_leaf: 1, fish_scale: 3, kelp_fibre: 2 }, 0, [{ lab: 'hook_lucky' }, { ch: 2 }]],
-  charm_clover: [70, { clover_leaf: 3, shell: 2 }, 0, [{ lab: 'luck1' }, { ch: 2 }]],
-  reel_turbo: [160, { spring_coil: 2, gear: 2, scrap_metal: 2 }, 20, [{ lab: 'reel3' }, { ch: 3 }]],
-  line_glow: [150, { fin_ribbon: 2, glow_bulb: 1, kelp_fibre: 3 }, 20, [{ lab: 'sea_lantern' }, { ch: 4 }]],
-  lure_squid: [140, { glow_bulb: 1, fin_ribbon: 2, fish_scale: 3 }, 20, [{ ch: 4 }]],
-  charm_star: [180, { pearl: 1, sea_glass: 3, fish_scale: 3 }, 20, [{ lab: 'luck2' }, { ch: 4 }]],
-  reel_gold: [420, { gear: 3, pearl: 1, lava_glass: 1 }, 45, [{ lab: 'reel5' }, { ch: 5 }]],
-  line_titan: [380, { fin_ribbon: 4, magnet_stone: 1, scrap_metal: 4 }, 45, [{ lab: 'line3' }, { ch: 5 }]],
-  charm_pearl: [500, { pearl: 2, glow_bulb: 1, coral_chunk: 2 }, 45, [{ ch: 6 }]],
+  reel_spin: [25, { scrap_metal: 1, driftwood: 2 }, 0, [{ starter: true }]],
+  line_braid: [20, { kelp_fibre: 3, fish_scale: 1 }, 0, [{ starter: true }]],
+  lure_spoon: [20, { shell: 2, fish_scale: 2 }, 0, [{ starter: true }]],
+  charm_heart: [25, { shell: 2, fish_scale: 2 }, 0, [{ starter: true }]],
+  lure_frog: [120, { clover_leaf: 1, fish_scale: 3, kelp_fibre: 2 }, 0, [{ lab: 'hook_lucky' }, { ch: 2 }]],
+  charm_clover: [140, { clover_leaf: 3, shell: 2 }, 0, [{ lab: 'luck1' }, { ch: 2 }]],
+  reel_turbo: [450, { spring_coil: 2, gear: 2, scrap_metal: 3 }, 30, [{ lab: 'reel3' }, { ch: 3 }]],
+  line_glow: [600, { fin_ribbon: 3, glow_bulb: 1, kelp_fibre: 3 }, 30, [{ lab: 'sea_lantern' }, { ch: 4 }]],
+  lure_squid: [550, { glow_bulb: 1, fin_ribbon: 2, fish_scale: 4 }, 30, [{ ch: 4 }]],
+  charm_star: [700, { pearl: 1, sea_glass: 3, fish_scale: 4 }, 30, [{ lab: 'luck2' }, { ch: 4 }]],
+  reel_gold: [2200, { gear: 4, pearl: 2, lava_glass: 1 }, 90, [{ lab: 'reel5' }, { ch: 5 }]],
+  line_titan: [2000, { fin_ribbon: 5, magnet_stone: 2, scrap_metal: 4 }, 90, [{ lab: 'line3' }, { ch: 5 }]],
+  charm_pearl: [3200, { pearl: 3, glow_bulb: 2, coral_chunk: 3 }, 90, [{ ch: 6 }]],
 };
 for (const t of TACKLE) {
   const c = TK[t.id];
@@ -103,11 +106,11 @@ add({ id: 'ws_bait_sprinkle', cat: 'bait', name: 'Scale Sprinkles', rarity: 'com
 add({ id: 'ws_bait_wormy', cat: 'bait', name: 'Wiggly Worms', rarity: 'uncommon', desc: 'Fresh worms in a ribbon bow.', icon: 'item:worm', cost: { aero: 10, items: { fin_ribbon: 1, kelp_fibre: 2 } }, out: { type: 'item', id: 'worm', qty: 4 }, req: [{ ch: 1 }] });
 
 // ---- boat parts (the Wardrobe's Boat tab equips them)
-const BP_COST = {
-  uncommon: [60, { driftwood: 4, kelp_fibre: 3 }, 15, [{ starter: true }]],
-  rare: [180, { sea_glass: 3, fin_ribbon: 2 }, 30, [{ lab: 'boat_skiff' }, { ch: 3 }]],
-  epic: [500, { gear: 3, circuit_board: 1, spring_coil: 2 }, 60, [{ ch: 4 }]],
-  legendary: [1500, { golden_scale: 1, pearl: 2 }, 120, [{ ch: 5 }]],
+const BP_COST = { // [balance]
+  uncommon: [80, { driftwood: 4, kelp_fibre: 3 }, 15, [{ starter: true }]],
+  rare: [400, { sea_glass: 3, fin_ribbon: 2 }, 30, [{ lab: 'boat_skiff' }, { ch: 3 }]],
+  epic: [1500, { gear: 3, circuit_board: 1, spring_coil: 2 }, 60, [{ ch: 4 }]],
+  legendary: [6000, { golden_scale: 1, pearl: 2 }, 120, [{ ch: 5 }]],
 };
 const SLOT_MAT = { hull: 'shell', sail: 'fin_ribbon', flag: 'kelp_fibre', engine: 'spring_coil', decal: 'shell' };
 const SLOT_ART = { hull: 'boat_hull', sail: 'boat_sail', flag: 'boat_flag', engine: 'boat_engine', decal: 'boat_decal' };
@@ -148,7 +151,8 @@ function upgradeRecipe(state, rod) {
   return {
     id: 'ws_up_' + rod.id, cat: 'upgrade', name: lv >= MAX_ROD_LEVEL ? `${rod.name} +${MAX_ROD_LEVEL}` : `${rod.name} +${next}`, rarity: rod.rarity, maxed: lv >= MAX_ROD_LEVEL,
     desc: lv >= MAX_ROD_LEVEL ? 'Fully tuned. A masterpiece.' : `Tune it to level ${next}: +6% lure, luck and control, +10% strength, more resilience.`,
-    icon: 'rod:' + rod.id, cost: { aero: Math.round(25 * (t + 1) * Math.pow(next, 1.45)), items }, time: 8 + next * 8 + t * 4, out: { type: 'rodlevel', id: rod.id, lv: next }, req: [{ starter: true }], dynamic: true,
+    // [balance] steeper per star (next^1.75) and per rod tier ((t+1)^1.3): +1 on a starter rod is a quick win, +5 on a top rod is a project
+    icon: 'rod:' + rod.id, cost: { aero: Math.round((30 * Math.pow(t + 1, 1.3) * Math.pow(next, 1.75)) / 5) * 5, items }, time: 10 + next * 12 + t * 6, out: { type: 'rodlevel', id: rod.id, lv: next }, req: [{ starter: true }], dynamic: true,
   };
 }
 const GEAR_REQ = [null, { lab: 'tank_bowl' }, { lab: 'tank_small' }, { lab: 'tank_big' }, { lab: 'tank_reef' }];

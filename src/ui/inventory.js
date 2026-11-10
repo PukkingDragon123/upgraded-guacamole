@@ -391,7 +391,7 @@ export class InventoryPanel {
       stats.push(['fish', `${rec.sizeCm} cm  ${rec.weightKg} kg`], [rec.inTank ? 'tank' : 'bubble', rec.inTank ? 'In the tank' : 'In the bucket', rec.inTank ? '#1a7ab8' : '#c8582a']);
       const tr = traitList(rec).map((q) => q.text).join(', ');
       if (tr) stats.push(['sparkle', tr.length > 28 ? tr.slice(0, 27) + '.' : tr, '#8a3ab8']);
-      stats.push(['aero', fmtAero(Math.round((RELEASE_VALUE[sp.rarity] || 4) * valueMultiplier(rec)))]);
+      stats.push(['aero', fmtAero(Math.round((RELEASE_VALUE[sp.rarity] || 4) * valueMultiplier(rec, sp)))]);
       return { stats, desc, uses };
     }
     if (e.kind === 'bait') {

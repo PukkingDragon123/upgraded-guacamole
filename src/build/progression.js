@@ -6,11 +6,13 @@
 //   hit(x, y)        true while a destination scene covers the screen (game.js routes input to 'dest')
 //   command(id)      'workshop' | 'lab' quick access ("sail there instantly": opens the panel)
 //   onCatch(sp, rec) -> [{id, qty}]  fish parts from a catch (called by src/build/build.js onCatch)
+//   goalPing()       [balance] a one-time toast when the next rod / tank / boat Lab upgrade (lab.js labGoal) becomes affordable
 import { rng } from '../core/rng.js';
 import { Destinations } from '../world/destinations.js';
 import { wsTick, ensureWorkshop } from './workshop.js';
 import { setRodContext, hasPerk, ensureRods } from '../game/rods.js';
 import { addItem } from './items.js';
+import { labGoal } from '../game/lab.js'; // [balance] next-goal ping
 
 const DEEP = new Set(['twilight', 'midnight', 'abyss']);
 const BIOME_MAT = { oscean: 'clover_leaf', shallows: 'clover_leaf', fjord: 'ice_shard', junkyard: 'spring_coil', metropolis: 'magnet_stone', volcano: 'lava_glass', abyss: 'glow_bulb' };
@@ -36,6 +38,7 @@ export class Progression {
       const R = ensureRods(g.state);
       const key = R.equipped + '|' + JSON.stringify(R.tackle.on) + '|' + (R.lv[R.equipped] || 0);
       if (key !== this.rodKey) { this.rodKey = key; try { g.recomputeStats?.(); } catch { /* ignore */ } if (g.fishing) g.fishing.rodC = null; }
+      this.goalPing();
     }
     this.magnet(dt);
     this.dest.update(dt, inp);
@@ -58,6 +61,20 @@ export class Progression {
       f.age = Math.max(0, (f.age || 0) - dt * 0.5);
       if (rng.chance(dt * 6)) g.particles?.sparkle?.(f.x + rng.float(-6, 6), f.y + rng.float(-6, 6), '#ff8a8a');
     }
+  }
+
+  // [balance] the next big upgrade (lab.js labGoal: rod / tank / boat) just became affordable: one toast per node
+  goalPing() {
+    const g = this.game, st = g.state;
+    if (!st?.tutorialDone || g.fishing?.fighting || g.ui?.blocking) return;
+    let gl = null;
+    try { gl = labGoal(st); } catch { gl = null; }
+    if (!gl || gl.status !== 'available' || !gl.check.paid || !gl.check.gateOk) return;
+    const L = st.lab;
+    if (!L || L.goalPing === gl.id) return;
+    L.goalPing = gl.id;
+    g.toast?.(`${gl.node.name} is ready in The Lab!`, 'beaker');
+    g.audio?.play?.('sparkle', { vol: 0.5 });
   }
 
   draw(ctx, dt) { this.dest.draw(ctx, dt); }

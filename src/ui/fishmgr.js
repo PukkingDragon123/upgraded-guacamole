@@ -275,7 +275,7 @@ export class FishManagerPanel {
   // ------------------------------------------------------------------ actions
   toast(t, icon = 'fish') { this.game.toast?.(t, icon, 2.6); }
   move(rec, toTank) { const r = this.aq?.moveFish?.(rec, toTank); if (r && !r.ok) { this.toast(r.why, 'tank'); this.game.audio.play('ui_error'); return false; } return true; }
-  value(rec) { const sp = SPECIES_BY_ID[rec.species]; return Math.round((RELEASE_VALUE[sp?.rarity] || 4) * valueMultiplier(rec)); }
+  value(rec) { const sp = SPECIES_BY_ID[rec.species]; return Math.round((RELEASE_VALUE[sp?.rarity] || 4) * valueMultiplier(rec, sp)); }
   release(recs) {
     let total = 0;
     for (const r of recs) total += this.aq?.releaseFish?.(r) || 0;

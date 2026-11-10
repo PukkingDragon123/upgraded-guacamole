@@ -94,37 +94,6 @@ function drawLeaves(ctx, r, t, front, k = 1) {
   }
 }
 
-// Sun flare: hot core, star rays, anamorphic streak and a few ghosts toward the card centre.
-function drawSunFlare(ctx, x, y, t, a, toward, k = 1) {
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  ctx.globalAlpha = a;
-  const g1 = Math.round(38 * k), g2 = Math.round(16 * k);
-  ctx.drawImage(glowSprite(g1, '#fff8d0'), Math.round(x - g1), Math.round(y - g1));
-  ctx.drawImage(glowSprite(g2, '#ffffff'), Math.round(x - g2), Math.round(y - g2));
-  for (let i = 0; i < 12; i++) {
-    const ang = (i / 12) * TAU + t * 0.15;
-    const len = ((i % 2 ? 26 : 46) + Math.sin(t * 3 + i) * 4) * k;
-    for (let k = 4; k < len; k++) {
-      ctx.globalAlpha = a * (1 - k / len) * 0.8;
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(Math.round(x + Math.cos(ang) * k), Math.round(y + Math.sin(ang) * k), 1, 1);
-    }
-  }
-  for (let k = 0; k < 90; k += 2) {
-    ctx.globalAlpha = a * (1 - k / 90) * 0.6;
-    ctx.fillStyle = '#e8fbff';
-    ctx.fillRect(Math.round(x + k), Math.round(y), 2, 1); ctx.fillRect(Math.round(x - k - 2), Math.round(y), 2, 1);
-  }
-  const G = [[0.35, 4, '#9affd8'], [0.6, 9, '#7ad8ff'], [0.9, 3, '#ffe27a'], [1.25, 12, '#c8a8ff']];
-  for (const [k, rr, col] of G) {
-    const gx = Math.round(lerp(x, toward[0], k)), gy = Math.round(lerp(y, toward[1], k));
-    ctx.globalAlpha = a * 0.3;
-    ctx.drawImage(glowSprite(rr, col), gx - rr, gy - rr); // [phase8:ui] soft orbs only, no ghost rings
-  }
-  ctx.restore();
-}
-
 // Water splash across the bottom of the card: rolling crest, foam line, flying droplets.
 // (One gradient-filled crest polygon plus a pixel foam line, so the big card stays cheap to draw.)
 function drawSplash(ctx, x, y, w, t, k = 1) {
@@ -235,7 +204,7 @@ export class RevealPanel {
     // outer rarity halo
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = 0.35 + 0.1 * Math.sin(t * 3);
+    ctx.globalAlpha = 0.2;
     const hr = Math.round(230 * k);
     ctx.drawImage(glowSprite(hr, rar.color), Math.round(pcx - hr), Math.round(pcy - hr));
     ctx.restore();
@@ -249,22 +218,19 @@ export class RevealPanel {
     sky.addColorStop(0, '#1e8fe0'); sky.addColorStop(0.45, '#59c3ff'); sky.addColorStop(0.8, '#bfeaff'); sky.addColorStop(1, '#e8fbff');
     ctx.fillStyle = sky;
     ctx.fillRect(r.x, r.y, W, H);
-    // burst rays from the fish
+    // [catch fx] clean backdrop (no light rays / spotlight): soft drifting bokeh orbs and a faint rarity tint
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    for (let i = 0; i < 20; i++) {
-      const a = (i / 20) * TAU + t * 0.12;
-      ctx.fillStyle = rgba('#ffffff', i % 2 ? 0.07 : 0.13);
-      ctx.beginPath();
-      ctx.moveTo(fcx, fcy);
-      ctx.lineTo(fcx + Math.cos(a - 0.08) * 400 * k, fcy + Math.sin(a - 0.08) * 400 * k);
-      ctx.lineTo(fcx + Math.cos(a + 0.08) * 400 * k, fcy + Math.sin(a + 0.08) * 400 * k);
-      ctx.fill();
+    for (let i = 0; i < 9; i++) {
+      const ph = (t * (0.025 + (i % 3) * 0.012) + i * 0.29) % 1;
+      const bx = r.x + W * ((i * 0.37 + 0.08) % 1) + Math.sin(t * 0.6 + i * 2.1) * 10 * k;
+      const by = r.y + H * (0.95 - ph * 0.9);
+      const br = Math.round((10 + (i % 4) * 7) * k);
+      ctx.globalAlpha = 0.16 * Math.sin(ph * Math.PI);
+      ctx.drawImage(glowSprite(br, i % 3 ? '#e8fbff' : '#c8f56a'), Math.round(bx - br), Math.round(by - br));
     }
-    ctx.globalAlpha = 0.7;
-    const w1 = Math.round(110 * k), w2 = Math.round(70 * k);
-    ctx.drawImage(glowSprite(w1, '#ffffff'), Math.round(fcx - w1), Math.round(fcy - w1));
-    ctx.globalAlpha = 0.5;
+    ctx.globalAlpha = 0.14;
+    const w2 = Math.round(96 * k);
     ctx.drawImage(glowSprite(w2, rar.color), Math.round(fcx - w2), Math.round(fcy - w2));
     ctx.restore();
     // white swoosh arcs (eco wallpaper)
@@ -275,7 +241,6 @@ export class RevealPanel {
         ctx.fillRect(r.x + i, Math.round(yy), k > 1.2 ? 2 : 1, 1);
       }
     }
-    drawSunFlare(ctx, r.x + 64 * k, r.y + 44 * k, t, 1, [fcx, fcy], k);
     drawLeaves(ctx, r, t, false, k);
     // bubbles drifting up behind the fish
     for (let i = 0; i < 12; i++) {
@@ -411,7 +376,6 @@ export class RevealPanel {
     P.hearts?.(x, y - 10, rk === 'common' ? 3 : 6, { layer: 'ui', speed: [60, 160] });
     P.pixelBurst?.('scale', x, y, 10, { layer: 'ui', ramp: 'aqua', speed: [80, 200] });
     P.celebrate?.(x, y - 20, rk === 'legendary' || rk === 'epic' ? 1.6 : 1, { layer: 'ui', ramp: rar.color });
-    P.lensFlare?.(x - 140, y - 80, { layer: 'ui', cx: g.screen.W / 2, cy: g.screen.H / 2, life: 1.6, scale: 1.1 });
     P.glints?.(x, y, 8, { layer: 'ui', w: 120, h: 50 });
   }
 

@@ -2,6 +2,7 @@
 
 import { rng, uid } from '../core/rng.js';
 import { clamp, lerp } from '../core/math.js';
+import { OCEAN_VALUE } from '../game/shopdata.js';
 
 export const MUTATIONS = {
   albino: { name: 'Albino', coin: 1.5, weight: 10 },
@@ -107,8 +108,9 @@ export function personalityOf(rec) {
   return PERSONALITIES.find((q) => q.id === rec.personality) || PERSONALITIES[10];
 }
 
-export function valueMultiplier(rec) {
-  let m = 1;
+// [balance] sp (optional) gives the home ocean of records without rec.biome (bred fish); OCEAN_VALUE = later oceans pay more
+export function valueMultiplier(rec, sp = null) {
+  let m = OCEAN_VALUE[rec?.biome || sp?.biome] || 1;
   if (rec.variant?.mutation) m *= MUTATIONS[rec.variant.mutation]?.coin || 1.3;
   if (rec.variant?.pattern) m *= 1.2;
   if (rec.variant?.shiny) m *= 4;

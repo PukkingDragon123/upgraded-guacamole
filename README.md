@@ -67,6 +67,35 @@ Each chapter's reward opens the next ocean. Research in **The Lab**, a zoomed-in
 black. Sail to the **Workshop** to craft rods, tackle, bait, decor, boat parts and tank gear, and crack open chests
 with a minigame.
 
+### Progression
+
+- **Prices climb steeply.** Lab research costs about 2.5-4 times more per tier:
+  - The first upgrades take a catch or two.
+  - A mid-game rod, boat or tank takes 10-25 minutes of fishing.
+  - The top tier takes about an hour and a Golden Scale.
+  - New rods, boats and tanks cost 1.5 times a tier's price. Workshop rods, tackle, rod tuning, boat parts, tank gear
+    and buildings climb the same way.
+- **Later oceans pay more.** Fish from each new ocean are worth more Aero: from 1x in the (OS)cean up to 4.2x in
+  The Deep Ocean. This covers the catch bonus, the release value and tank income.
+- **Bosses gate the top tiers.** Lab research from tier 6 up needs a boss trophy:
+  - Tier 6: the Frosty Fjord boss.
+  - Tier 7: the Junkyard Reef boss.
+  - Tier 8: the Sunken Metropolis boss.
+  - Tier 9: the Lava Rift boss.
+  Finishing that boss's chapter also counts.
+- **Every upgrade is noticeable.**
+  - Each tank tier adds room, a bigger Aero rate and a longer offline cap.
+  - Each boat adds bait slots, reel speed, Aero magnet range and rare-fish luck, up to the Submarine.
+  - Each ocean pays more.
+- **A next goal is always shown.** It is the next rod, tank or boat (each chapter's reward opens the next ocean):
+  - Each chapter has a quest for the next rod.
+  - The Lab marks the goal with a green tag.
+  - The Lab's centre card names the goal and what it still needs.
+  - Bubbles' tips name it too.
+  - A toast pops up when you can afford it.
+- **Old saves keep everything.** Anything already researched, crafted or bought stays yours. The new prices only
+  apply to what is still ahead.
+
 ## What's inside
 
 - **The opening** is a fully 3D, interactive voxel cinematic with real camera moves, bloom, depth of field,
@@ -111,7 +140,8 @@ with a minigame.
 - **Boats**: seven eco boats with swappable hull, sail, flag, engine and decal.
 - **NPCs**: Bubbles the seal, Professor Fizz, Goldie, Pinch, Marina and Captain Bloat.
 - **The aquarium**:
-  - Six tank tiers, from the Nano Tank to the Mega Tank. Each Lab upgrade makes the tank wider and taller.
+  - Six tank tiers, from the Nano Tank to the Mega Tank. Each Lab upgrade makes the tank wider and taller, holds
+    more fish and earns more Aero.
   - The tank has front, middle and back voxel layers with plants, rocks and light shafts.
   - You can feed fish, breed them, decorate the tank and build in it.
 - **Multiplayer fishing** (opt-in): when the game is opened from its shared claude.ai link, you see other

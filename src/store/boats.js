@@ -27,6 +27,12 @@ export const BOAT_TIERS = [
     perks: { baitSlots: 3, reel: 1.3, depth: 160, coinMagnet: 1.6, rarity: 1.1, netBoost: 1.5 } },
   { id: 'research', name: 'Research Vessel', price: 9000, desc: 'Sonar, cranes and a tiny submarine. SCIENCE!',
     perks: { baitSlots: 5, reel: 1.45, depth: 320, coinMagnet: 2, rarity: 1.25, netBoost: 2 } },
+  // [balance] state.boat.tier follows the Lab's 7 boats (lab.js BOAT_ORDER): the Catamaran and the Submarine used to
+  // stop at the Research Vessel's perks; now each one is a real step up (never lower than before).
+  { id: 'catamaran', name: 'Catamaran', price: 0, desc: 'Two hulls, twice the fun.',
+    perks: { baitSlots: 5, reel: 1.55, depth: 400, coinMagnet: 2.3, rarity: 1.32, netBoost: 2.5 } },
+  { id: 'submarine', name: 'Submarine', price: 0, desc: 'Dive with the fish. Bubble windows!',
+    perks: { baitSlots: 6, reel: 1.65, depth: 480, coinMagnet: 2.6, rarity: 1.4, netBoost: 3 } },
 ];
 
 export function boatTier(state) {

@@ -32,6 +32,7 @@ import * as BAIT from '../store/bait.js';
 import * as CHAR from '../gfx/character.js';
 import * as SPECIES from '../fish/species.js';
 import { BOSS_BY_ID } from '../fish/bosses.js'; // [phase9:fishing] boss quests
+import { OCEAN_VALUE } from './shopdata.js'; // [balance]
 
 export const ZONES = ['sunlit', 'twilight', 'midnight', 'abyss'];
 const CHEST_RANK = ['crate', 'iron', 'golden', 'orb']; // [phase8:prog]
@@ -49,7 +50,7 @@ export const CHAPTERS = [
       { npc: 'fizz', text: 'And I\'m Professor Fizz! Bring me Aero and I\'ll invent you wonderful things!' },
     ],
     outro: { npc: 'marina', text: 'Ahoy! Marina, pier keeper. My old dinghy is yours - the Sunny Shallows await!' },
-    reward: { aero: 60, lab: ['sea_shallows'], cosmetics: ['hat_leafcrown'], unlock: [{ kind: 'recipe', id: 'ws_rod_clover' }] }, // [phase8:prog] + a rod recipe
+    reward: { aero: 80, lab: ['sea_shallows'], cosmetics: ['hat_leafcrown'], unlock: [{ kind: 'recipe', id: 'ws_rod_clover' }] }, // [phase8:prog] + a rod recipe
     quests: [
       Q('c1_lesson', 'seal', 'Fishing 101', 'Hook, reel, shock! I\'ll show you everything.', [{ t: 'tutorial' }], { aero: 10, bait: { crumbs: 5 } }),
       Q('c1_catch', 'seal', 'First Splash', 'Three fish. You can do it!', [{ t: 'catch', n: 3 }], { aero: 15, items: { driftwood: 2 } }),
@@ -68,7 +69,7 @@ export const CHAPTERS = [
       { npc: 'seal', text: 'The Bait Shop is open! Better bait, better fish!' },
     ],
     outro: { npc: 'bloat', text: 'Hrrumph! Captain Bloat. Up north, the Frosty Fjord hides a tale or two...' },
-    reward: { aero: 120, lab: ['sea_fjord'], cosmetics: ['top_sailor'], items: { sea_glass: 2 }, unlock: [{ kind: 'recipe', id: 'ws_rod_frost' }] }, // [phase8:prog]
+    reward: { aero: 250, lab: ['sea_fjord'], cosmetics: ['top_sailor'], items: { sea_glass: 2 }, unlock: [{ kind: 'recipe', id: 'ws_rod_frost' }] }, // [phase8:prog]
     quests: [
       Q('c2_sail', 'marina', 'Set Sail', 'Open the Map and travel to the Sunny Shallows.', [{ t: 'visit', biome: 'shallows' }], { aero: 20 }),
       Q('c2_catch', 'marina', 'Shallow Waters', 'The shallows are teeming. Fill that bucket!', [{ t: 'catch', n: 6, biome: 'shallows' }], { items: { driftwood: 3, sea_glass: 2 } }),
@@ -79,6 +80,7 @@ export const CHAPTERS = [
       Q('c2_rare', 'marina', 'Something Shiny', 'Catch an Uncommon fish or better.', [{ t: 'catch', n: 1, rarity: 'uncommon' }], { aero: 40, items: { coral_chunk: 1 } }),
       Q('c2_rod', 'fizz', 'Wand of Bubbles', 'Research the Bubble Wand rod!', [{ t: 'research', id: 'rod_bubble' }], { aero: 30, items: { kelp_fibre: 3 } }),
       Q('c2_deep', 'seal', 'Twilight Peek', 'Dive down past the sunlight. Spooky... and fun!', [{ t: 'depth', zone: 'twilight', alt: { t: 'catch', n: 4 } }], { aero: 40, items: { pearl: 1 } }),
+      Q('c2_dinghy', 'marina', 'A Real Boat', 'Research the Dinghy in The Lab. Oars included!', [{ t: 'boat', tier: 1 }], { aero: 30, items: { driftwood: 3, kelp_fibre: 2 } }), // [balance] main-track goal
       Q('c2_boss', 'marina', 'Boss: Dragon-Karp', 'A karp that rage-quit the river lives at the bottom. Beat it!', [{ t: 'boss', id: 'dragonkarp' }], { aero: 80, items: { coral_chunk: 2 } }), // [phase9:fishing]
     ],
   },
@@ -89,7 +91,7 @@ export const CHAPTERS = [
       { npc: 'fizz', text: 'And we have SCIENCE now. Let\'s upgrade everything!' },
     ],
     outro: { npc: 'fizz', text: 'A reef made of scrap and glitches? Fascinating! Junkyard Reef unlocked!' },
-    reward: { aero: 250, lab: ['sea_junkyard'], cosmetics: ['face_goggles'], items: { gear: 2, pkg_golden: 1 }, unlock: [{ kind: 'recipe', id: 'ws_rod_magnet' }] }, // [phase8:prog] + a golden chest
+    reward: { aero: 700, lab: ['sea_junkyard'], cosmetics: ['face_goggles'], items: { gear: 2, pkg_golden: 1 }, unlock: [{ kind: 'recipe', id: 'ws_rod_magnet' }] }, // [phase8:prog] + a golden chest
     quests: [
       Q('c3_sail', 'bloat', 'Cold Feet', 'Sail to the Frosty Fjord. Bring a scarf.', [{ t: 'visit', biome: 'fjord' }], { aero: 40 }),
       Q('c3_catch', 'bloat', 'Ice Fishing', 'Eight fjord fish, and not one less!', [{ t: 'catch', n: 8, biome: 'fjord' }], { items: { sea_glass: 3, shell: 3 } }),
@@ -99,6 +101,7 @@ export const CHAPTERS = [
       Q('c3_tune', 'marina', 'Fine Tuning', 'Upgrade any rod to one star at the Workshop.', [{ t: 'rodUp', n: 1 }], { aero: 60, items: { fin_ribbon: 2 } }), // [phase8:prog]
       Q('c3_lab', 'fizz', 'Busy Benches', 'Finish 10 research projects in The Lab.', [{ t: 'research', n: 10 }], { items: { gear: 1, kelp_fibre: 4 } }),
       Q('c3_boat', 'marina', 'Sea Legs', 'Upgrade to the Skiff. Zoom zoom!', [{ t: 'boat', tier: 2 }], { aero: 80 }),
+      Q('c3_glass', 'fizz', 'Clear Thinking', 'Research the Glass Rod. Two shocks per fight!', [{ t: 'research', id: 'rod_glass' }], { aero: 60, items: { sea_glass: 2, coral_chunk: 2 } }), // [balance] main-track goal
       Q('c3_boss', 'bloat', 'Boss: Ok Boomer Shark', 'Hrrumph! The old shark at the bottom of the Fjord. Show it how it\'s done!', [{ t: 'boss', id: 'eldershark' }], { aero: 150, items: { ice_shard: 2 } }), // [phase9:fishing]
     ],
   },
@@ -109,7 +112,7 @@ export const CHAPTERS = [
       { npc: 'seal', text: 'It gets darker down there. Stay close to the bubbles!' },
     ],
     outro: { npc: 'marina', text: 'I found an old chart... a whole city under the sea! Sunken Metropolis unlocked!' },
-    reward: { aero: 500, lab: ['sea_metropolis'], cosmetics: ['shoes_flippers'], items: { circuit_board: 2 }, unlock: [{ kind: 'recipe', id: 'ws_rod_glow' }] }, // [phase8:prog]
+    reward: { aero: 1800, lab: ['sea_metropolis'], cosmetics: ['shoes_flippers'], items: { circuit_board: 2 }, unlock: [{ kind: 'recipe', id: 'ws_rod_glow' }] }, // [phase8:prog]
     quests: [
       Q('c4_sail', 'fizz', 'Scrap Happy', 'Travel to the Junkyard Reef.', [{ t: 'visit', biome: 'junkyard' }], { aero: 60 }),
       Q('c4_catch', 'fizz', 'Glitch Hunt', 'Ten junkyard fish. Some of them are probably printers.', [{ t: 'catch', n: 10, biome: 'junkyard' }], { items: { scrap_metal: 4, gear: 1 } }),
@@ -117,8 +120,9 @@ export const CHAPTERS = [
       Q('c4_deep', 'seal', 'Midnight Snack', 'Reach the Midnight Zone. Bring a light!', [{ t: 'depth', zone: 'midnight', alt: { t: 'catch', n: 3, rarity: 'uncommon' } }], { aero: 100, bait: { lantern: 2 } }),
       Q('c4_golden', 'fizz', 'Golden Glitter', 'Crack open a Golden Chest. Lockpicks ready!', [{ t: 'chest', tier: 'golden', n: 1 }], { aero: 150, items: { pkg_iron: 1 } }), // [phase8:prog]
       Q('c4_magnet', 'fizz', 'Magnetic Personality', 'Craft the Magnet Rod. Boxes will come to YOU.', [{ t: 'craftRod', id: 'magnet' }], { aero: 120, items: { spring_coil: 2 } }), // [phase8:prog]
-      Q('c4_aero', 'fizz', 'Cha-Ching', 'Earn 1,500 Aero.', [{ t: 'aero', n: 1500 }], { items: { circuit_board: 1 } }),
+      Q('c4_aero', 'fizz', 'Cha-Ching', 'Earn 3,000 Aero.', [{ t: 'aero', n: 3000 }], { items: { circuit_board: 1 } }),
       Q('c4_shock', 'fizz', 'Shock Therapy', 'Research the Capacitor in the Shock row.', [{ t: 'research', id: 'shock2' }], { aero: 100 }),
+      Q('c4_chrome', 'fizz', 'Chrome Dome', 'Research the Chrome Caster. Fast, shiny and strong.', [{ t: 'research', id: 'rod_chrome' }], { aero: 100, items: { gear: 2, pearl: 1 } }), // [balance] main-track goal
       Q('c4_boss', 'fizz', 'Boss: Blue Screen Ray', 'A fatal exception lurks in the deep. ZAP it when it\'s dazed!', [{ t: 'boss', id: 'bsod' }], { aero: 250, items: { circuit_board: 1 } }), // [phase9:fishing]
     ],
   },
@@ -129,7 +133,7 @@ export const CHAPTERS = [
       { npc: 'bloat', text: 'Epic fish lurk between the towers. Hrrumph, I\'ve seen them!' },
     ],
     outro: { npc: 'bloat', text: 'Feel that heat? The Lava Rift opens! Only the bravest fish there.' },
-    reward: { aero: 1000, lab: ['sea_volcano'], cosmetics: ['hat_tophat'], items: { pearl: 2 }, unlock: [{ kind: 'recipe', id: 'ws_rod_turbo' }] }, // [phase8:prog]
+    reward: { aero: 4500, lab: ['sea_volcano'], cosmetics: ['hat_tophat'], items: { pearl: 2 }, unlock: [{ kind: 'recipe', id: 'ws_rod_turbo' }] }, // [phase8:prog]
     quests: [
       Q('c5_sail', 'marina', 'City Lights', 'Sail to the Sunken Metropolis.', [{ t: 'visit', biome: 'metropolis' }], { aero: 100 }),
       Q('c5_catch', 'marina', 'Rush Hour', 'Catch 10 Metropolis fish.', [{ t: 'catch', n: 10, biome: 'metropolis' }], { items: { circuit_board: 2, gear: 2 } }),
@@ -138,6 +142,7 @@ export const CHAPTERS = [
       Q('c5_glow', 'seal', 'Night Light', 'Craft the Glow Rod for the deep, dark zones.', [{ t: 'craftRod', id: 'glow' }], { aero: 250, items: { glow_bulb: 1 } }), // [phase8:prog]
       Q('c5_boat', 'marina', 'Flying Fish', 'Get the Hydrofoil.', [{ t: 'boat', tier: 3 }], { items: { gear: 2, sea_glass: 3 } }),
       Q('c5_lab', 'fizz', 'Mad Science', 'Finish 30 research projects.', [{ t: 'research', n: 30 }], { aero: 300 }),
+      Q('c5_dolphin', 'marina', 'Dolphin Talk', 'Research the Dolphin Spinner. The fish come to chat.', [{ t: 'research', id: 'rod_dolphin' }], { aero: 150, items: { pearl: 2, circuit_board: 1 } }), // [balance] main-track goal
       Q('c5_boss', 'marina', 'Boss: Main Character Marlin', 'The Metropolis has a main character. Hook it from the very bottom!', [{ t: 'boss', id: 'mayorgrouper' }], { aero: 400, items: { pearl: 1 } }), // [phase9:fishing]
     ],
   },
@@ -148,16 +153,17 @@ export const CHAPTERS = [
       { npc: 'seal', text: 'The deepest zone is down there somewhere. I can smell it!' },
     ],
     outro: { npc: 'seal', text: 'You did it! The Deep Ocean is waiting. The scariest, most beautiful place of all.' },
-    reward: { aero: 2000, lab: ['sea_abyss'], cosmetics: ['face_heart'], items: { abyss_crystal: 1, pkg_orb: 1 }, unlock: [{ kind: 'recipe', id: 'ws_rod_starfish' }] }, // [phase8:prog]
+    reward: { aero: 10000, lab: ['sea_abyss'], cosmetics: ['face_heart'], items: { abyss_crystal: 1, pkg_orb: 1 }, unlock: [{ kind: 'recipe', id: 'ws_rod_starfish' }] }, // [phase8:prog]
     quests: [
       Q('c6_sail', 'bloat', 'Hot Water', 'Brave the Lava Rift.', [{ t: 'visit', biome: 'volcano' }], { aero: 150 }),
       Q('c6_catch', 'bloat', 'Fire and Fins', 'Catch 12 Lava Rift fish.', [{ t: 'catch', n: 12, biome: 'volcano' }], { items: { ancient_stone: 2 } }),
       Q('c6_deep', 'seal', 'Into the Abyss', 'Reach the Abyssal Zone. Deep breath!', [{ t: 'depth', zone: 'abyss', alt: { t: 'catch', n: 2, rarity: 'rare' } }], { aero: 300, bait: { blackhole: 1 } }),
-      Q('c6_aero', 'seal', 'Big Spender', 'Earn 5,000 Aero.', [{ t: 'aero', n: 5000 }], { items: { circuit_board: 2, pearl: 1 } }),
+      Q('c6_aero', 'seal', 'Big Spender', 'Earn 15,000 Aero.', [{ t: 'aero', n: 15000 }], { items: { circuit_board: 2, pearl: 1 } }),
       Q('c6_dex', 'fizz', 'Encyclopedia', 'Discover 35 species.', [{ t: 'species', n: 35 }], { aero: 400 }),
       Q('c6_turbo', 'bloat', 'Need for Speed', 'Craft the Turbo Reel Rod. Vroom!', [{ t: 'craftRod', id: 'turbo' }], { aero: 400, items: { lava_glass: 1 } }), // [phase8:prog]
       Q('c6_tackle', 'marina', 'Fully Kitted', 'Fill all four tackle slots on your rod.', [{ t: 'tackle', n: 4 }], { aero: 300, items: { pearl: 1 } }), // [phase8:prog]
       Q('c6_rare', 'bloat', 'Hot Rarities', 'Catch 3 Rare fish in the Lava Rift.', [{ t: 'catch', n: 3, rarity: 'rare', biome: 'volcano' }], { items: { abyss_crystal: 1 } }),
+      Q('c6_carbon', 'fizz', 'Featherweight', 'Research the Aero Carbon rod. Light as a bubble!', [{ t: 'research', id: 'rod_aero' }], { aero: 200, items: { circuit_board: 2, ancient_stone: 2 } }), // [balance] main-track goal
       Q('c6_boss', 'bloat', 'Boss: The Final Boss', 'A leviathan of lava at the bottom of the Rift. It is NOT the final boss.', [{ t: 'boss', id: 'moltenleviathan' }], { aero: 700, items: { lava_glass: 2 } }), // [phase9:fishing]
     ],
   },
@@ -168,7 +174,7 @@ export const CHAPTERS = [
       { npc: 'bloat', text: 'They say a legend sleeps at the bottom. Hrrumph. Find it.' },
     ],
     outro: { npc: 'fizz', text: 'A true Legend Hunter! I\'ve never been so proud. More adventures soon!' },
-    reward: { aero: 5000, lab: ['sea_legend'], cosmetics: ['trail_rainbow'], items: { golden_scale: 1 } },
+    reward: { aero: 20000, lab: ['sea_legend'], cosmetics: ['trail_rainbow'], items: { golden_scale: 1 } },
     quests: [
       Q('c7_sail', 'seal', 'Lights Out', 'Dive into The Deep Ocean.', [{ t: 'visit', biome: 'abyss' }], { aero: 300 }),
       Q('c7_catch', 'bloat', 'Deep Haul', 'Catch 12 fish in The Deep.', [{ t: 'catch', n: 12, biome: 'abyss' }], { items: { abyss_crystal: 2 } }),
@@ -178,11 +184,18 @@ export const CHAPTERS = [
       Q('c7_sub', 'marina', 'Yellow Submarine', 'Build the Submarine.', [{ t: 'boat', tier: 6 }], { aero: 600 }),
       Q('c7_orb', 'fizz', 'Orb of Mystery', 'Crack open a Mystery Orb.', [{ t: 'chest', tier: 'orb', n: 1 }], { aero: 500 }), // [phase8:prog]
       Q('c7_star', 'seal', 'Wish Upon a Starfish', 'Craft the Starfish Scepter.', [{ t: 'craftRod', id: 'starfish' }], { aero: 1000 }), // [phase8:prog]
+      Q('c7_trident', 'bloat', 'Sea King', 'Research the Sea King Trident. Giants beware!', [{ t: 'research', id: 'rod_trident' }], { aero: 250, items: { abyss_crystal: 2, ancient_stone: 2 } }), // [balance] main-track goal
       Q('c7_boss', 'seal', 'Boss: The Algorithm', 'It has watched you all along. Face it at the bottom of The Deep!', [{ t: 'boss', id: 'manyeyes' }], { aero: 1500, items: { golden_scale: 1 } }), // [phase9:fishing]
     ],
   },
 ];
 CHAPTERS.forEach((c, i) => { c.n = i + 1; });
+// [balance] quest Aero rewards scale with the chapter ocean's fish value (shopdata OCEAN_VALUE), like the Lab prices
+// they help pay for. Chapter rewards (the milestones) are set by hand above.
+for (const c of CHAPTERS) {
+  const k = OCEAN_VALUE[c.ocean] || 1;
+  for (const q of c.quests) if (q.reward?.aero && k !== 1) q.reward.aero = Math.round((q.reward.aero * k) / 5) * 5;
+}
 export const CHAPTER_BY_ID = Object.fromEntries(CHAPTERS.map((c) => [c.id, c]));
 export const QUEST_BY_ID = {};
 for (const c of CHAPTERS) for (const q of c.quests) { q.chapter = c.id; QUEST_BY_ID[q.id] = q; }

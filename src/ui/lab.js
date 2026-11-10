@@ -344,7 +344,7 @@ export class LabPanel {
         all++;
         const s = labStatus(st, nd.id);
         if (s === 'done') done++;
-        else if (s === 'available' && labCheck(st, nd, g.stats).paid) ready++;
+        else if (s === 'available') { const c = labCheck(st, nd, g.stats); if (c.paid && c.gateOk) ready++; }
       }
       if (ready) drawAeroBadge(ctx, r.x + bs + 2, r.y - 4, ready, t);
       if (hov) ui.tip = `${B.name}: ${done} / ${all} researched${ready ? `, ${ready} ready` : ''}`;

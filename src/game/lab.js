@@ -37,8 +37,11 @@
 // [phase6:lab] Rows (LAB_ROWS, ROW_OF, node.row/col), plans and the queue (state.lab.queue = [{id, paid}]):
 //   canPlan, planCost, planAfford, confirmResearch(game, ids), labQueued; grantLabNode(game, id) for quest rewards.
 //   labStatus() reports a queued node as 'researching' (it is paid for); 'labQueued' {id} when Confirm queues one.
+// [balance] node.main (unlocks a rod / boat / tank: MAIN_MUL x price), node.gate {boss} (LAB_GATE, tiers 6-9),
+//   gateOk(state, node), gateLabel(node); labCheck(...).gateOk / .gate; labGoals(state), labGoal(state), labGoalNeed(state, goal).
 import * as SPECIES_MOD from '../fish/species.js';
 import { giveRod } from './rods.js';
+import { BOSS_BY_ID } from '../fish/bosses.js'; // [balance] boss gates
 
 export const STARTER_UNLOCKS = ['rod:twig', 'tank:jar', 'boat:raft', 'biome:oscean', 'bait:crumbs', 'feature:aquarium', 'recipe:bp_research_lab', 'recipe:decor_rubber_duck'];
 export const ROOT_ID = 'core';
@@ -89,11 +92,17 @@ export const EFFECT_INFO = {
 };
 
 // ---------------------------------------------------------------- costs by tier
-const AERO_T = [0, 10, 30, 80, 200, 480, 1100, 2400, 5200, 11000];
-const TIME_T = [0, 5, 15, 40, 90, 180, 360, 720, 1500, 3000];
+// [balance] Roughly geometric (x2.4-4 per tier): tier 1 is a catch or two, tier 3 ~10 minutes of (OS)cean-era fishing,
+// tier 6+ needs the richer late oceans (shopdata OCEAN_VALUE), boss trophies (LAB_GATE) and rare drops.
+// Main-track unlocks (a new rod, boat or tank: MAIN_KINDS) cost MAIN_MUL x the tier's price and the top tier also
+// wants a Golden Scale. Owned things stay owned: only research not yet done pays the new prices.
+const AERO_T = [0, 15, 60, 220, 650, 1700, 4200, 10000, 22000, 48000];
+const TIME_T = [0, 5, 20, 60, 150, 360, 720, 1500, 2700, 4500];
+const MAIN_KINDS = new Set(['rod', 'boat', 'tank']);
+const MAIN_MUL = 1.5;
 // generic tier materials + branch flavour materials (tier bands 1-3, 4-6, 7-9)
-const MAT_T = [null, { driftwood: 2 }, { kelp_fibre: 2 }, { sea_glass: 2 }, { coral_chunk: 3 }, { gear: 2 }, { pearl: 2 },
-  { circuit_board: 3 }, { ancient_stone: 3 }, { abyss_crystal: 3 }];
+const MAT_T = [null, { driftwood: 2 }, { kelp_fibre: 2 }, { sea_glass: 2 }, { coral_chunk: 3 }, { gear: 3 }, { pearl: 3 },
+  { circuit_board: 4 }, { ancient_stone: 4 }, { abyss_crystal: 4 }];
 // band 0 (tiers 2-3) only asks for common things every ocean's crates and catches give; tier 1 is Aero + driftwood
 const FLAVOUR = {
   rods: ['driftwood', 'sea_glass', 'abyss_crystal'], reel: ['kelp_fibre', 'gear', 'circuit_board'], boats: ['driftwood', 'scrap_metal', 'gear'],
@@ -104,17 +113,24 @@ const FLAVOUR_Q = { common: [3, 5, 8], uncommon: [2, 3, 5], rare: [1, 2, 3], epi
 const MAT_RARITY = { driftwood: 'common', kelp_fibre: 'common', shell: 'common', scrap_metal: 'common', fish_sample: 'common', sea_glass: 'uncommon',
   coral_chunk: 'uncommon', gear: 'uncommon', pearl: 'rare', circuit_board: 'rare', ancient_stone: 'rare', rare_specimen: 'rare', abyss_crystal: 'epic', golden_scale: 'legendary' };
 const FISH_T = [null, null, null, { 'rarity:common': 1 }, { 'rarity:common': 2 }, { 'rarity:uncommon': 2 }, { 'rarity:rare': 1 },
-  { 'rarity:rare': 2 }, { 'rarity:epic': 1 }, { 'rarity:epic': 2 }];
+  { 'rarity:rare': 3 }, { 'rarity:epic': 2 }, { 'rarity:epic': 3 }];
 
-function autoCost(branch, tier, wantFish) {
+function autoCost(branch, tier, wantFish, main = false) {
   const items = {};
   const band = tier <= 3 ? 0 : tier <= 6 ? 1 : 2;
   const fl = tier > 1 ? FLAVOUR[branch]?.[band] : null;
   if (fl) items[fl] = FLAVOUR_Q[MAT_RARITY[fl] || 'common'][band] + (tier % 3 === 0 ? 1 : 0) - (tier === 2 ? 1 : 0);
   for (const [k, v] of Object.entries(MAT_T[tier] || {})) items[k] = (items[k] || 0) + v;
+  if (main && tier >= 9) items.golden_scale = (items.golden_scale || 0) + 1;
   const fish = wantFish && FISH_T[tier] ? { ...FISH_T[tier] } : {};
-  return { aero: AERO_T[tier] || 0, items, fish };
+  const aero = AERO_T[tier] || 0;
+  return { aero: main ? Math.round((aero * MAIN_MUL) / 5) * 5 : aero, items, fish };
 }
+
+// [balance] Boss gates: research of tier 6+ needs the boss of an earlier ocean beaten (or its chapter finished, for
+// saves from before bosses). Tier 6 -> the Fjord's boss (chapter 3), 7 -> Junkyard (4), 8 -> Metropolis (5), 9 -> Lava Rift (6).
+// node.gate = {boss: bossId} | null; gateOk(state, node), gateLabel(node). Quest grants (grantLabNode) skip gates.
+export const LAB_GATE = { 6: 'eldershark', 7: 'bsod', 8: 'mayorgrouper', 9: 'moltenleviathan' };
 
 // ---------------------------------------------------------------- the tree
 // n(id, branch, tier, lane, name, icon, req, opts {effect, unlock, cost (merged), fish, time, desc})
@@ -213,7 +229,7 @@ n('tank_wall', 'aquarium', 8, 0, 'Mega Tank', 'tank:wallaquarium', ['tank_curren
 // ---- Luck & Idle (down-left): luck, idle Aero, lab benches, AppSea internet speed (store/isp.js features)
 n('luck1', 'luck', 1, 0, 'Four-Leaf Kelp', 'clover', [ROOT_ID], { effect: { rarityBoost: 1.05 }, desc: 'A little luck for every cast.' });
 n('offline1', 'luck', 2, -1, 'Night Shift', 'moon', ['luck1'], { effect: { offlineMul: 0.1 }, desc: 'More Aero while you\'re away.' });
-n('lab_slot2', 'luck', 2, 0, 'Second Bench', 'beaker', ['luck1'], { effect: { labSlots: 1 }, desc: 'Research two things at once.', cost: { aero: 120, items: { driftwood: 4, sea_glass: 2 } }, time: 30 });
+n('lab_slot2', 'luck', 2, 0, 'Second Bench', 'beaker', ['luck1'], { effect: { labSlots: 1 }, desc: 'Research two things at once.', cost: { aero: 300, items: { driftwood: 5, sea_glass: 2 } }, time: 45 });
 n('isp2', 'luck', 2, 1, 'Pro Shelf', 'box', ['luck1'], { unlock: [U('feature', 'isp2')], desc: 'Dot stocks better bait at the Bait Shop.' });
 n('autocollect', 'luck', 3, -1, 'Auto-Collect', 'magnet', ['offline1'], { unlock: [U('feature', 'autocollect')], effect: { autoCollect: 1, collectRadius: 6 }, desc: 'Aero drops collect themselves.' });
 n('luck2', 'luck', 3, 0, 'Lucky Charm', 'horseshoe', ['lab_slot2'], { effect: { rarityBoost: 1.06, crateLuck: 0.1 }, desc: 'Luckier fish and crates.' });
@@ -341,13 +357,16 @@ export const LAB_EXTENT = Math.max(...Object.values(LAYOUT).map((p) => p.rad)) +
 export const LAB_NODES = RAW.map((o) => {
   const tier = o.tier;
   const unlockNode = !!o.unlock?.some((u) => u.kind !== 'recipe' || tier >= 3);
-  const auto = o.branch ? autoCost(o.branch, tier, unlockNode ? tier >= 3 : tier >= 5) : { aero: 0, items: {}, fish: {} };
+  const main = !!o.unlock?.some((u) => MAIN_KINDS.has(u.kind));
+  const auto = o.branch ? autoCost(o.branch, tier, unlockNode ? tier >= 3 : tier >= 5, main) : { aero: 0, items: {}, fish: {} };
   const cost = { aero: o.cost?.aero ?? auto.aero, items: { ...(o.cost?.items || auto.items) }, fish: { ...(o.fish || auto.fish) } };
   const { depth, lane, ang, rad, pos } = LAYOUT[o.id];
+  const gate = o.branch && LAB_GATE[tier] && BOSS_BY_ID[LAB_GATE[tier]] ? { boss: LAB_GATE[tier] } : null;
   return {
     id: o.id, name: o.name, branch: o.branch, tier, depth, lane, ang, rad, pos, req: o.req || [],
     cost, time: o.time ?? (TIME_T[tier] || 0), effect: o.effect || {}, unlock: o.unlock || [], desc: o.desc || '', icon: o.icon || 'beaker',
     row: o.row ?? null, col: o.col ?? 0, // [phase6:lab]
+    main, gate, // [balance] main-track unlock (rod / boat / tank); boss gate for tier 6+
   };
 });
 export const LAB_BY_ID = Object.fromEntries(LAB_NODES.map((nd) => [nd.id, nd]));
@@ -518,8 +537,62 @@ export function labCheck(state, nd, stats = null) {
   const reqOk = nd.req.every((r) => L.done[r]);
   const slots = labSlots(state, stats) - L.slots.length;
   const paid = aero.ok && items.every((x) => x.ok) && fish.every((x) => x.ok);
-  const ok = reqOk && paid && slots > 0 && !L.done[nd.id] && !L.slots.some((s) => s.id === nd.id) && !L.queue.some((q) => q.id === nd.id);
-  return { ok, paid, aero, items, fish, slots, reqOk };
+  const gOk = gateOk(state, nd);
+  const ok = reqOk && gOk && paid && slots > 0 && !L.done[nd.id] && !L.slots.some((s) => s.id === nd.id) && !L.queue.some((q) => q.id === nd.id);
+  return { ok, paid, aero, items, fish, slots, reqOk, gateOk: gOk, gate: gOk ? null : gateLabel(nd) };
+}
+
+// ---------------------------------------------------------------- [balance] boss gates + the next goal
+// gateOk(state, node) -> bool: the node's boss beaten (state.bosses.won) or its chapter finished (older saves)
+// gateLabel(node) -> 'Beat <boss> (<ocean>) first.' | ''
+export function gateOk(state, nd) {
+  const id = nd?.gate?.boss;
+  if (!id) return true;
+  if (state?.bosses?.won?.[id]) return true;
+  const b = BOSS_BY_ID[id];
+  const n = Number(String(b?.chapter || '').replace(/\D/g, '')) || 0;
+  return !b || !!state?.quests?.chDone?.[b.chapter] || (state?.quests?.ch | 0) >= n;
+}
+export function gateLabel(nd) {
+  const b = BOSS_BY_ID[nd?.gate?.boss];
+  return b ? `Beat ${b.title} (${OCEAN_NAMES[b.ocean] || b.ocean} boss) first.` : '';
+}
+
+// The main tracks a player should always have a target on: a better rod, a bigger tank, a better boat. (The next ocean
+// is the quest chain's job: every chapter's reward charts it for free.)
+// labGoals(state) -> [{id, node, row, status, check}] the next unfinished node of each GOAL_ROWS row
+// labGoal(state)  -> the best single target: the cheapest one you can research now (requirements + gate met; one you
+//                    can already afford first), else the cheapest one still waiting on its gate. null when all done.
+// labGoalNeed(state, goal) -> one sentence of what is still missing: the boss gate or 'Need 120 more Aero.' ('' = ready)
+export const GOAL_ROWS = ['rods', 'aquarium', 'boats'];
+export function labGoals(state) {
+  const L = ensureLab(state);
+  const out = [];
+  for (const rid of GOAL_ROWS) {
+    const id = ROW_BY_ID[rid]?.nodes.find((n) => !L.done[n]);
+    if (!id) continue;
+    const node = LAB_BY_ID[id];
+    out.push({ id, node, row: rid, status: labStatus(state, id), check: labCheck(state, node) });
+  }
+  return out;
+}
+export function labGoal(state) {
+  const gs = labGoals(state).filter((g) => g.status === 'available' || g.status === 'researching');
+  if (!gs.length) return null;
+  const score = (g) => (g.status === 'researching' ? 3e9 : 0) + (g.check.gateOk ? 0 : 2e9) + (g.check.paid ? 0 : 1e9) + (g.node.cost.aero || 0);
+  return gs.sort((a, b) => score(a) - score(b))[0];
+}
+export function labGoalNeed(state, g) {
+  if (!g) return '';
+  const c = g.check;
+  if (!c.gateOk) return c.gate;
+  const parts = [];
+  if (!c.aero.ok) parts.push(`${(c.aero.need - c.aero.have).toLocaleString('en-US')} more Aero`);
+  const mi = c.items.find((x) => !x.ok);
+  if (mi) parts.push(`${mi.need - mi.have} more ${mi.id.replace(/_/g, ' ')}`);
+  const mf = c.fish.find((x) => !x.ok);
+  if (mf) parts.push(`${mf.need - mf.have} more ${fishLabel(mf.key)}`);
+  return parts.length ? 'Need ' + parts.slice(0, 2).join(' and ') + '.' : '';
 }
 
 // Removes the cheapest matching fish (plain before shiny/mutated, smaller first). Returns the removed records.
@@ -558,6 +631,7 @@ export function startResearch(game, id) {
   if (L.done[id]) return { ok: false, reason: 'Already researched.' };
   if (L.slots.some((s) => s.id === id) || L.queue.some((q) => q.id === id)) return { ok: false, reason: 'Already brewing.' };
   if (!c.reqOk) return { ok: false, reason: 'Research the earlier nodes first.' };
+  if (!c.gateOk) return { ok: false, reason: c.gate };
   if (c.slots <= 0) return { ok: false, reason: 'All lab benches are busy.' };
   if (!c.ok) return { ok: false, reason: 'Missing ingredients.' };
   const paid = payFor(game, nd);
@@ -679,6 +753,7 @@ export function canPlan(state, id, planned = []) {
   if (planned.includes(id)) return { ok: false, reason: 'Already planned.' };
   const ready = (r) => L.done[r] || L.slots.some((s) => s.id === r) || L.queue.some((q) => q.id === r) || planned.includes(r);
   if (!nd.req.every(ready)) return { ok: false, reason: 'Unlock ' + nd.req.filter((r) => !ready(r)).map((r) => LAB_BY_ID[r]?.name || r).join(' + ') + ' first.' };
+  if (!gateOk(state, nd)) return { ok: false, reason: gateLabel(nd) }; // [balance]
   return { ok: true };
 }
 

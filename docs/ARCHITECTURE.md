@@ -411,3 +411,22 @@ that feels hand-made."
   physics (flutter, plunge and bounce, wriggle, kick), rest on the gravel and melt away. Fish dart at food and nibble
   it in bites (crumbs, chomp bubbles, nibble / gulp SFX). The Feed tile opens a food tray (`state.tank.food`) and a
   voxel shaker follows the cursor over the water: click to sprinkle there.
+
+## Economy balance (progression pass) [balance]
+- Lab prices (`src/game/lab.js`): `AERO_T` grows ~x2.4-4 per tier (15 ... 48,000). Nodes that unlock a rod, boat or tank (`node.main`)
+  cost `MAIN_MUL` (1.5) x that, and tier 9 main nodes also want a Golden Scale. `TIME_T` / `MAT_T` / `FISH_T` grow with tier.
+  `LAB_GATE` {tier: bossId}: tier 6-9 research needs that boss beaten (`state.bosses.won`) or its chapter finished (older
+  saves). `node.gate`, `gateOk(state, node)`, `gateLabel(node)`; `labCheck` returns `gateOk` + `gate` (reason) and
+  `canPlan` / `startResearch` refuse gated nodes. Quest grants (`grantLabNode`) skip gates.
+- Next goal: `labGoals(state)` (next node of the rods / aquarium / boats rows; oceans come from the chapters), `labGoal(state)` (the best one),
+  `labGoalNeed(state, goal)` (one sentence of what is missing). Shown by the Lab tree (green tag, root card "Next goal"),
+  Bubbles' hint tips (`tutorial.goalTip()`), a one-time toast when affordable (`progression.goalPing`, `state.lab.goalPing`)
+  and the chapter quests `c2_dinghy`, `c3_glass`, `c4_chrome`, `c5_dolphin`, `c6_carbon`, `c7_trident`.
+- Income: `OCEAN_VALUE` (`src/game/shopdata.js`) scales a fish's value by its ocean (`rec.biome`, else the species' home
+  ocean): `valueMultiplier(rec, sp)` in `src/fish/traits.js` (catch bonus, release value, tank Aero/min). Quest Aero rewards
+  scale by the chapter ocean's `OCEAN_VALUE`; chapter and boss rewards are set by hand.
+- Tank tiers (`TANK_TIERS`): cap / rate / offlineH step up every tier. Boat perks (`src/store/boats.js` `BOAT_TIERS`) now have
+  7 entries, matching the Lab's boats (the Catamaran and the Submarine step past the Research Vessel).
+- Workshop rods, tackle, boat parts, rod tuning (`30 * (tier+1)^1.3 * star^1.75`), tank gear (`GEAR.cost`) and buildings
+  (`BUILDINGS[id].cost` / `upgrades`) follow the same curve. Saves keep everything owned; only unbought things pay new prices.
+

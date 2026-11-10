@@ -22,7 +22,7 @@ import { aeroSurface, aeroCached, toneFrom, drawAeroBubble, drawSparkle, drawAer
 import {
   LAB_NODES, LAB_BY_ID, BRANCHES, BRANCH_ORDER, ROOT_ID, EFFECT_INFO, BOAT_ORDER, LAB_R1, LAB_NODE, LAB_ROOT, LAB_EXTENT,
   ensureLab, labCheck, labTime, labProgress, labRemaining, labQueued, labSlots, instantCost, instantFinish, cancelResearch,
-  confirmResearch, fmtEffect, fmtTime, nodeFor, TANK_ORDER,
+  confirmResearch, fmtEffect, fmtTime, nodeFor, TANK_ORDER, labGoal, labGoalNeed,
 } from '../game/lab.js';
 import { roundRectPath } from './labart.js';
 import { icon, anyIcon, pill, costTiles, costTilesHeight, chip, INK, INK_SOFT, OK, BAD } from './labkit.js';
@@ -31,6 +31,7 @@ import { HI, hiFromBuffer, dualArt, withHi, hiCtx } from '../gfx/hires.js'; // [
 import { drawPop3D } from './pop3d.js'; // [phase9:ui]
 import { drawIcon3D } from '../gfx/icons3d.js'; // [phase9:ui]
 import { nodeTile, qMark, glassware, microBubble, gemTex, pipeJoint, GEM_CUT } from './labtiles.js'; // [phase9:ui]
+const GOAL_MARK = { title: 'Next goal', goal: true }; // [balance] questMarks() value for the next main-track upgrade
 
 const NODES = LAB_NODES.filter((n) => n.id !== ROOT_ID).sort((a, b) => a.depth - b.depth);
 const NODE_R = LAB_NODE / 2, ROOT_R = LAB_ROOT / 2;
@@ -438,7 +439,7 @@ export class LabTree {
     if (!nd) return false;
     const c = labCheck(st, nd, g.stats);
     if (c.ok) return this.p.research(id);
-    if (c.reqOk && c.paid && c.slots <= 0) {
+    if (c.reqOk && c.gateOk && c.paid && c.slots <= 0) {
       const r = confirmResearch(g, [id]);
       if (r.queued.length) {
         g.audio.play('ui_unlock'); this.burst(id, 'start'); this.a(id).pop = 1;
@@ -446,7 +447,7 @@ export class LabTree {
         return true;
       }
     }
-    this.reject(id, !c.reqOk ? 'Research the one before it first.' : !c.aero.ok ? 'Not enough Aero for that one!' : !c.paid ? 'Missing ingredients!' : 'All benches are busy.');
+    this.reject(id, !c.reqOk ? 'Research the one before it first.' : !c.gateOk ? c.gate : !c.aero.ok ? 'Not enough Aero for that one!' : !c.paid ? 'Missing ingredients!' : 'All benches are busy.');
     return false;
   }
 
@@ -967,7 +968,7 @@ export class LabTree {
     const x = Math.round(this.X(nd.pos[0]) + shake), y = Math.round(this.Y(nd.pos[1]) + bob);
     const x0 = x - S / 2, y0 = y - S / 2;
     const f = Math.max(2.5, Math.round(S * 0.135 * 2) / 2), iw = S - f * 2;
-    const afford = s === 'available' && labCheck(st, nd, this.game.stats).paid;
+    const afford = s === 'available' && (() => { const c = labCheck(st, nd, this.game.stats); return c.paid && c.gateOk; })();
     // pixel drop shadow
     ctx.fillStyle = 'rgba(2,20,52,0.32)'; ctx.fillRect(x - Math.round(S * 0.36), y0 + S + 1, Math.round(S * 0.72), Math.max(2, Math.round(S * 0.07)));
     const look = s === 'done' ? 'done' : s === 'researching' || s === 'queued' ? 'brew' : 'open';
@@ -1024,7 +1025,7 @@ export class LabTree {
     if (this.questMark?.[nd.id] && s !== 'done') {
       const ex = getUiIcon('exclaim');
       const by = Math.round(y0 - 6 - Math.abs(Math.sin(t * 4 + A.ph)) * 3);
-      ctx.drawImage(aeroSurface(12, 14, { tone: 'orange', r: 3, gloss: 0.8, glossH: 6, curve: 1, rim: 0.8, glow: 0.6, edge: '#ffffff', edgeA: 1 }), x0 - 4, by);
+      ctx.drawImage(aeroSurface(12, 14, { tone: this.questMark[nd.id] === GOAL_MARK ? 'green' : 'orange', r: 3, gloss: 0.8, glossH: 6, curve: 1, rim: 0.8, glow: 0.6, edge: '#ffffff', edgeA: 1 }), x0 - 4, by);
       if (ex) ctx.drawImage(ex, x0 - 4 + Math.round((12 - ex.width) / 2), by + Math.round((14 - ex.height) / 2));
       else drawText(ctx, '!', x0, by + 3, { font: 'big', color: '#ffffff', shadow: '#843a04' });
     }
@@ -1104,6 +1105,12 @@ export class LabTree {
         }
       }
     } catch { /* quests are optional */ }
+    // [balance] the next main-track upgrade (rod / tank / boat / ocean) gets a green tag when no quest points at it
+    this.goalId = null;
+    try {
+      const gl = labGoal(this.game.state);
+      if (gl && !this.quest[gl.id] && this.revealed(gl.id)) { out[gl.id] ||= GOAL_MARK; this.goalId = gl.id; }
+    } catch { /* optional */ }
     return out;
   }
 
@@ -1184,6 +1191,13 @@ export class LabTree {
         drawText(ctx, `READY ${ready}`, x + IW - measureText(`READY ${ready}`), y + 2, { color: OK });
       });
       buttons.push({ label: 'Show next', tone: 'aqua', icon: getUiIcon('home'), fn: () => this.home() });
+      // [balance] the next main-track upgrade and what it still needs
+      const gl = labGoal(st);
+      if (gl) {
+        const need = labGoalNeed(st, gl);
+        text(`Next goal: ${gl.node.name}${gl.status === 'researching' ? ' (brewing)' : need ? '. ' + need : '. Ready!'}`, '#1d6fa8', 4);
+        buttons.push({ label: 'Go to goal', tone: 'green', icon: getUiIcon('arrow_r'), fn: () => this.select(gl.id) });
+      }
     } else if (hidden) {
       const gt = this.gate(id);
       title = '???'; sub = 'UNDISCOVERED';
@@ -1231,9 +1245,10 @@ export class LabTree {
           costTiles(ctx, ui, cr, x, y + 17, IW, { tileW: 72 });
         });
         const benchFree = c.slots > 0;
-        if (!c.paid) text('Need more ingredients.', BAD, 1);
+        if (!c.gateOk) text(c.gate, BAD, 2); // [balance] boss gate
+        else if (!c.paid) text('Need more ingredients.', BAD, 1);
         else if (!benchFree) text('All benches busy: it will queue.', '#6a3ab8', 2);
-        buttons.push({ kind: 'research', label: benchFree || !c.paid ? 'Research' : 'Queue it', tone: benchFree || !c.paid ? 'green' : 'purple', icon: getUiIcon(benchFree ? 'check' : 'clock'), disabled: !c.paid, sound: 'ui_unlock', tip: 'Start this research (Enter)', fn: () => this.research(id) });
+        buttons.push({ kind: 'research', label: benchFree || !c.paid ? 'Research' : 'Queue it', tone: benchFree || !c.paid ? 'green' : 'purple', icon: getUiIcon(benchFree ? 'check' : 'clock'), disabled: !c.paid || !c.gateOk, sound: 'ui_unlock', tip: 'Start this research (Enter)', fn: () => this.research(id) });
       } else if (s === 'researching') {
         add(30, (x, y) => {
           drawText(ctx, 'BREWING', x, y, { color: '#b8640a' });
@@ -1257,6 +1272,7 @@ export class LabTree {
       }
       const qq = this.quest?.[id];
       if (qq && s !== 'done') text('Quest: ' + qq.title, '#c86a0a', 2);
+      else if (this.goalId === id && s !== 'done') text('Your next big upgrade!', '#1d8a3a', 2); // [balance]
     }
     // ---- measure + place
     const HEAD = 62, BTN = buttons.length ? 34 : 0;

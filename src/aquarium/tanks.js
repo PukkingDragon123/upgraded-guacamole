@@ -20,12 +20,14 @@ export const TANK_IDS = ['jar', 'bowl', 'smalltank', 'bigtank', 'reeftank', 'wal
 
 export const TANK_TIERS = [
   { id: 'jar', name: 'Nano Tank', shape: 'side', cap: 0, rate: 1, offlineH: 3, plants: 4, water: 'aero' },
-  { id: 'bowl', name: 'Bubble Tank', shape: 'side', cap: 1, rate: 1.15, offlineH: 4, plants: 6, water: 'aero' },
-  { id: 'smalltank', name: 'Aqua Tank', shape: 'side', cap: 2, rate: 1.3, offlineH: 5, plants: 9, water: 'aero' },
-  { id: 'bigtank', name: 'Big Tank', shape: 'side', cap: 3, rate: 1.5, offlineH: 6, plants: 13, water: 'aero' },
-  { id: 'reeftank', name: 'Reef Tank', shape: 'side', cap: 4, rate: 1.75, offlineH: 7, plants: 18, water: 'reef' },
-  { id: 'wallaquarium', name: 'Mega Tank', shape: 'side', cap: 5, rate: 2.1, offlineH: 8, plants: 26, water: 'aero' },
+  { id: 'bowl', name: 'Bubble Tank', shape: 'side', cap: 1, rate: 1.2, offlineH: 4, plants: 6, water: 'aero' },
+  { id: 'smalltank', name: 'Aqua Tank', shape: 'side', cap: 2, rate: 1.45, offlineH: 6, plants: 9, water: 'aero' },
+  { id: 'bigtank', name: 'Big Tank', shape: 'side', cap: 4, rate: 1.75, offlineH: 8, plants: 13, water: 'aero' },
+  { id: 'reeftank', name: 'Reef Tank', shape: 'side', cap: 6, rate: 2.1, offlineH: 10, plants: 18, water: 'reef' },
+  { id: 'wallaquarium', name: 'Mega Tank', shape: 'side', cap: 9, rate: 2.6, offlineH: 12, plants: 26, water: 'aero' },
 ];
+
+// [balance] Every tier is a noticeable step: more room, a bigger income multiplier and a longer offline cap.
 
 // Phase 10: the tank is a 2D SIDE VIEW (like the ocean). Inner glass size in tank pixels (zoom 1): W across (the tank
 // scrolls when it is wider than the screen), H tall, D deep (front glass +D/2 .. back glass -D/2: three substrate
@@ -55,16 +57,17 @@ export function tierCapBonus(state) { return TANK_TIERS[tankTier(state)].cap; }
 export function aeroRate(rec, sp, stats = {}, tier = 0, bonus = 1, gm = 1) {
   const base = shop.COIN_RATE?.[sp?.rarity] ?? RATE[sp?.rarity] ?? 2;
   const happy = clamp01(rec.happiness ?? 0.7);
-  return base * valueMultiplier(rec) * (0.6 + 0.8 * happy) * (TANK_TIERS[tier]?.rate || 1) * (stats.coinMul || 1) * bonus * gm;
+  return base * valueMultiplier(rec, sp) * (0.6 + 0.8 * happy) * (TANK_TIERS[tier]?.rate || 1) * (stats.coinMul || 1) * bonus * gm;
 }
 
 // ------------------------------------------------------------------ gear (bought with Aero in the aquarium)
 export const GEAR = [
-  { id: 'filter', name: 'Filter', icon: 'bubble', levels: ['Sponge Filter', 'Hang-on Filter', 'Canister Filter', 'Turbo Aero Filter'], cost: [0, 120, 480, 1800], desc: 'Crystal-clear water. Happier fish.' },
-  { id: 'heater', name: 'Heater', icon: 'sun', levels: ['No Heater', 'Glass Heater', 'Smart Heater'], cost: [0, 90, 650], desc: 'Cosy water. Tropical fish love it.' },
-  { id: 'light', name: 'Lid Light', icon: 'star', levels: ['Basic LED', 'Aero LED', 'Rainbow LED', 'Sunrise Array'], cost: [0, 150, 700, 2400], desc: 'Brighter light, light shafts, plant growth.' },
-  { id: 'air', name: 'Air Stones', icon: 'bubble', levels: ['One Air Stone', 'Twin Stones', 'Bubble Wall', 'Geyser Stones'], cost: [0, 80, 400, 1500], desc: 'More bubbles. Fish play in the stream.' },
-  { id: 'sand', name: 'Substrate', icon: 'coral', levels: ['Aqua Gravel', 'Beach Sand', 'Snow Pebbles', 'Rainbow Gravel', 'Black Sand'], cost: [0, 60, 120, 250, 250], desc: 'A new floor. Pure style.', cosmetic: true },
+  // [balance] roughly x4-5 per level: level 1 is an early treat, the top level is a late-game investment
+  { id: 'filter', name: 'Filter', icon: 'bubble', levels: ['Sponge Filter', 'Hang-on Filter', 'Canister Filter', 'Turbo Aero Filter'], cost: [0, 200, 1100, 5500], desc: 'Crystal-clear water. Happier fish.' },
+  { id: 'heater', name: 'Heater', icon: 'sun', levels: ['No Heater', 'Glass Heater', 'Smart Heater'], cost: [0, 160, 1600], desc: 'Cosy water. Tropical fish love it.' },
+  { id: 'light', name: 'Lid Light', icon: 'star', levels: ['Basic LED', 'Aero LED', 'Rainbow LED', 'Sunrise Array'], cost: [0, 250, 1500, 7000], desc: 'Brighter light, light shafts, plant growth.' },
+  { id: 'air', name: 'Air Stones', icon: 'bubble', levels: ['One Air Stone', 'Twin Stones', 'Bubble Wall', 'Geyser Stones'], cost: [0, 140, 900, 4500], desc: 'More bubbles. Fish play in the stream.' },
+  { id: 'sand', name: 'Substrate', icon: 'coral', levels: ['Aqua Gravel', 'Beach Sand', 'Snow Pebbles', 'Rainbow Gravel', 'Black Sand'], cost: [0, 80, 160, 320, 320], desc: 'A new floor. Pure style.', cosmetic: true },
 ];
 export const GEAR_BY_ID = Object.fromEntries(GEAR.map((g) => [g.id, g]));
 

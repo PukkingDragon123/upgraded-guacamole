@@ -648,11 +648,6 @@ export class Fishing {
     P.scales?.(f.x, f.y, 4, this.scaleColors());
     const surf = this.world.surfaceY;
     if (surf !== null && surf !== undefined && f.y - surf < 40) P.eruption?.(f.x, surf, 0.6);
-    const [sx, sy] = this.toScreen(f.x, f.y);
-    const W = this.W, H = this.H;
-    this.fx.speedLines(W / 2, H / 2, 34, { r0: Math.min(W, H) * 0.35, r1: Math.max(W, H) * 0.6, inward: true, speed: [400, 700], len: [20, 46], color: '#ffffff', life: 0.35 });
-    this.fx.lensFlare(sx, sy, { cx: W / 2, cy: H / 2, life: 0.9, scale: 0.9 });
-    this.fx.bloom(sx, sy, 60, '#e8fbff', { life: 0.5 });
     if (!f.boss) this.titles.add('fishon', auto ? 'AUTO!' : 'FISH ON!', { rarity: f.sp.rarity }); // a boss gets its intro cutscene
     f.feel('surprised', 0.8);
     f.squashV += 10;

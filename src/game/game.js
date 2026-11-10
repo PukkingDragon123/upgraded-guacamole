@@ -276,7 +276,7 @@ export class Game {
     if (rec.variant?.mutation) j.variants[rec.variant.mutation] = true;
     if (rec.variant?.shiny) j.variants.shiny = true;
     fish.carry = null;
-    const bonus = Math.round((CATCH_BONUS[sp.rarity] || 2) * valueMultiplier(rec));
+    const bonus = Math.round((CATCH_BONUS[sp.rarity] || 2) * valueMultiplier(rec, sp));
     this.addCoins(bonus, fish.x, fish.y);
     // buildings: samples, carried crates, bait saves (before the bait is consumed)
     let loot = null;
@@ -317,7 +317,7 @@ export class Game {
 
   releaseFish(rec, x, y) {
     const sp = SPECIES_BY_ID[rec.species];
-    const v = Math.round((RELEASE_VALUE[sp?.rarity] || 4) * valueMultiplier(rec));
+    const v = Math.round((RELEASE_VALUE[sp?.rarity] || 4) * valueMultiplier(rec, sp));
     this.addCoins(v, x ?? this.screen.W / 2, y ?? this.screen.H / 2);
     this.state.stats.released++;
     audio.play('splash_small');

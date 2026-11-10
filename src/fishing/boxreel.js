@@ -16,7 +16,7 @@ import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { drawText } from '../gfx/font.js';
 import { glowSprite, gbubbleSprite } from '../gfx/particles.js';
 import * as ITEMS from '../build/items.js';
-import { drawGlassPill, drawRays, glossText, word3D } from './cinematics.js';
+import { drawGlassPill, glossText, word3D } from './cinematics.js';
 import { drawIcon3d, chestIconId } from './icons3d.js'; // [phase9:fishing] 3D loot pop-up
 import { drawAeroCoin } from '../ui/aero.js';
 
@@ -186,7 +186,6 @@ export class BoxReel {
         const sy = this.surface ?? f.y;
         F.particles.eruption?.(f.x, sy, 0.9);
         F.particles.splashBurst?.(f.x, sy, 1);
-        F.particles.lightStreaks?.(f.x, sy - 4, 8, { dir: -Math.PI / 2, spread: 1, colors: ['#ffffff', '#bff8ff'] });
         F.sfx('splash_big', { vol: 0.7 });
         F.sfx('jump_out', { pitch: 1.2 });
         F.shake(4);
@@ -306,7 +305,6 @@ class LootPop {
     const fx = F.fx;
     fx.aeroConfetti(x, y, 26, { speed: [80, 200] });
     fx.chestOpen?.(x, y, tier === 'golden' || tier === 'orb' ? 'epic' : tier === 'iron' ? 'rare' : 'uncommon', { layer: 'fg' }); // [phase8:ui] pixel chest pop (was a ring wave)
-    fx.lensFlare(x, y, { cx: F.W / 2, cy: F.H / 2, life: 1, scale: 0.8 });
     fx.coins(x, y, 8, { speed: [100, 200] });
   }
 
@@ -338,7 +336,6 @@ class LootPop {
     const pop = ease.outBack(clamp01(t * 3));
     ctx.save();
     ctx.globalAlpha = a;
-    drawRays(ctx, cx, cy, 190, 16, t * 0.6, T.glow, 0.1, 0.09);
     ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.4 * a; ctx.drawImage(glowSprite(90, T.glow), Math.round(cx - 90), Math.round(cy - 90)); ctx.restore();
     ctx.translate(cx, cy);
     ctx.scale(pop, pop);
