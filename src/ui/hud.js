@@ -1,5 +1,5 @@
 // The game HUD (phase 4 Shell, phase 6 UI agent: much bigger and bolder). A glossy Aero hotbar at the bottom centre
-// (glass bubble buttons holding chunky low-poly 3D icons that bob, wobble or spin and sparkle on hover; hover lift +
+// (phase 8: chunky pixel-art tile buttons holding pixelised 3D icons that bob, wobble or spin and sparkle on hover; hover lift +
 // bold label + key hint, press squash, pop on click, badges, an "open" light), an equipped-gear pod at the bottom
 // left (3D rod + bait with its count), a location chip at the top left with the quest-tracker slot below it. The
 // Aero pill stays top right (ui.js). Every metric scales with the UI size setting (uiK(): Normal / Big / Huge).
@@ -27,8 +27,7 @@
 // is registered (e.g. 'quests' appears once the Quests panel exists).
 
 import { clamp, damp, dist, ease, rectContains } from '../core/math.js';
-import { rgba, mix, shade, hexToRgb } from '../core/color.js';
-import { PixelBuffer } from '../gfx/pixel.js';
+import { rgba, mix, shade } from '../core/color.js';
 import { tinted } from '../core/canvas.js';
 import { drawText, measureText } from '../gfx/font.js';
 import { getUiIcon } from '../gfx/uiicons.js';
@@ -61,51 +60,7 @@ const ALIAS = { appsea: 'baitshop', store: 'baitshop', shop: 'baitshop', skills:
 const BIOME_TINT = { oscean: '#5cd04a', shallows: '#3ad0e8', fjord: '#bfe8ff', junkyard: '#c8a050', metropolis: '#b06aff', volcano: '#ff7a3a', abyss: '#3a6aff' };
 const R = Math.round;
 
-// ---------------------------------------------------------------- bubble art (cached)
-function bubbleTex(D, tint, part) {
-  const b = new PixelBuffer(D, D);
-  const r = D / 2, c = D / 2;
-  const T = hexToRgb(tint), L = hexToRgb(mix(tint, '#ffffff', 0.62)), Dk = hexToRgb(shade(tint, -0.5)), Gl = hexToRgb(mix(tint, '#ffffff', 0.85));
-  const put = (x, y, rgb, a) => {
-    if (a <= 0) return;
-    const i = y * D + x, o = b.data[i], oa = (o >>> 24) / 255;
-    const na = a + oa * (1 - a);
-    const f = (k, sh) => Math.round((rgb[k] * a + ((o >>> sh) & 255) * oa * (1 - a)) / Math.max(1e-4, na));
-    b.data[i] = ((Math.round(na * 255) << 24) | (f(2, 16) << 16) | (f(1, 8) << 8) | f(0, 0)) >>> 0;
-  };
-  const rimW = Math.max(1, Math.round(D / 34));
-  for (let y = 0; y < D; y++) for (let x = 0; x < D; x++) {
-    const dx = x + 0.5 - c, dy = y + 0.5 - c, d = Math.hypot(dx, dy);
-    if (d > r) continue;
-    const u = d / r, ang = Math.atan2(dy, dx);
-    if (part === 'back') {
-      const ty = (y + 0.5) / D;
-      put(x, y, [L[0] + (T[0] - L[0]) * ty, L[1] + (T[1] - L[1]) * ty, L[2] + (T[2] - L[2]) * ty], 0.45 + 0.5 * Math.pow(u, 2.2));
-      const pool = Math.max(0, dy / r) * Math.max(0, u - 0.4) * 1.7;
-      if (pool > 0) put(x, y, Gl, Math.min(0.7, pool * 0.75));
-      if (d > r - rimW) {
-        const lit = -Math.cos(ang + 2.36);
-        put(x, y, lit > 0 ? [255, 255, 255] : Dk, lit > 0 ? 0.6 + lit * 0.4 : 0.65 - lit * 0.35);
-      }
-    } else {
-      const ex = (x + 0.5 - (c - r * 0.1)) / (r * 0.66), ey = (y + 0.5 - (c - r * 0.5)) / (r * 0.33);
-      const e = ex * ex + ey * ey;
-      if (e < 1 && d < r - 2) put(x, y, [255, 255, 255], 0.42 * (1 - e) * (1 - Math.max(0, (y + 0.5 - (c - r * 0.75)) / (r * 0.6))));
-      if (d > r - 1.6 - rimW && d <= r - 0.4 - rimW) {
-        if (ang > -2.9 && ang < -1.0) put(x, y, [255, 255, 255], 0.85);
-        else if (ang > 0.25 && ang < 1.25) put(x, y, Gl, 0.45);
-      }
-    }
-  }
-  if (part === 'front') {
-    const gx = Math.round(c - r * 0.52), gy = Math.round(c - r * 0.42);
-    put(gx, gy, [255, 255, 255], 1); put(gx + 1, gy, [255, 255, 255], 0.75); put(gx, gy + 1, [255, 255, 255], 0.75);
-    if (D > 44) { put(gx - 1, gy, [255, 255, 255], 0.5); put(gx, gy - 1, [255, 255, 255], 0.5); put(gx + 2, gy, [255, 255, 255], 0.4); put(gx, gy + 2, [255, 255, 255], 0.4); }
-  }
-  return b.toCanvas();
-}
-const bubble = (D, tint, part) => aeroCached(`hudbub|${D}|${tint}|${part}`, () => bubbleTex(D, tint, part));
-
+// ---------------------------------------------------------------- button art (cached)
 // [phase8:ui] chunky pixel-art tile buttons (rounded square, dark outline, banded dithered gradient, hard gloss)
 function tileTex(D, tint, lit) {
   return aeroCached(`hudtile|${D}|${tint}|${lit}`, () => {
