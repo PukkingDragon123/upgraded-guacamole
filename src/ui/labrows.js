@@ -16,6 +16,7 @@ import {
 import { ROD_BY_ID } from '../game/rods.js';
 import { RECIPE_BY_ID } from '../build/crafting.js';
 import { drawTube, drawRays, roundRectPath } from './labart.js';
+import { drawIcon3D } from '../gfx/icons3d.js'; // [phase9:ui]
 import { icon, anyIcon, pill, costTiles, costTilesHeight, chip, INK, INK_SOFT, OK, BAD } from './labkit.js';
 
 const FEATURE_ICON = { isp2: 'bait:worm', isp3: 'bait:worm', isp4: 'bait:golden', isp5: 'bait:golden', isp6: 'bait:golden', multiplayer: 'people', autocollect: 'magnet', eng1: 'gear', eng2: 'gear', aquarium: 'tank:jar' };
@@ -174,6 +175,17 @@ function drawAnimIcon(ctx, key, cx, cy, px, t, ph, o = {}) {
   }
   const m = o.still ? {} : iconMotion(key, t, ph, o.hover || 0);
   const img = o.ghost ? ghostOf(ic) : ic;
+  // [phase9:ui] 3D icons: a gentle rock while idle, a full spin on hover (plus the kind's bob)
+  if (ic.__icon3d && !o.ghost && ctx.__hi) {
+    if (o.alpha !== undefined) { ctx.save(); ctx.globalAlpha *= o.alpha; }
+    const ok = drawIcon3D(ctx, ic.__icon3d, cx + (m.dx || 0), cy + (m.dy || 0), Math.max(ic.width, ic.height), { t, hover: (o.hover || 0) > 0.6 ? 1 : 0, phase: ph });
+    if (o.alpha !== undefined) ctx.restore();
+    if (ok) {
+      if (!o.still && m.bubbles) for (let i = 0; i < 2; i++) { const q = (t * 0.7 + i * 0.5 + ph * 0.1) % 1; drawAeroBubble(ctx, cx + Math.sin(t * 2 + i * 3) * px * 0.2, cy + px * 0.25 - q * px * 0.8, 1 + q, (1 - q) * 0.9); }
+      if (!o.still && m.twinkle && ((t * 0.8 + ph) % 1) < 0.18) drawSparkle(ctx, cx + px * 0.32, cy - px * 0.3, 2, 1, '#fff6a0');
+      return;
+    }
+  }
   if (m.glow && !o.ghost) drawAeroGlow(ctx, cx, cy, px * 0.6, '#fff6a0', m.glow * 0.55);
   ctx.save();
   ctx.translate(Math.round(cx + (m.dx || 0)), Math.round(cy + (m.dy || 0)));

@@ -18,6 +18,8 @@ import { drawAnimIcon, drawPadlock } from './labrows.js';
 import { drawRays, roundRectPath } from './labart.js';
 import { CHAPTERS, CHAPTER_BY_ID, QUEST_BY_ID, NPC_NAMES, QuestBook, ensureQuests, rewardList } from '../game/quests.js';
 import { OCEAN_NAMES } from '../game/lab.js';
+import { drawPop3D } from './pop3d.js'; // [phase9:ui]
+import { drawIcon3D } from '../gfx/icons3d.js'; // [phase9:ui]
 
 const NPC_COL = { seal: '#8fdcff', fizz: '#7affc8', marina: '#ffd23a', dot: '#59e0ff', bloat: '#ffb44a' };
 const CHEERS = {
@@ -310,24 +312,40 @@ class QuestHud {
     ctx.globalAlpha = a0;
   }
 
+  // [phase9:ui] "QUEST COMPLETE!" is a cinematic 3D moment now: big extruded gold voxel letters that pop and sway
+  // over a burst of light rays, the giver cheering beside them, the quest name in 3D below and the rewards as 3D icons
+  // with 3D numbers. No 2D banner box; it never blocks clicks.
   drawBanners(ctx) {
     const b = this.banners[0];
     if (!b) return;
     const g = this.game, t = this.t;
     const W = g.screen.W;
-    const k = b.t < 0.4 ? ease.outBack(b.t / 0.4) : b.t > 3.9 ? 1 - ease.inCubic(clamp01((b.t - 3.9) / 0.6)) : 1;
-    const w = 300, h = 66;
-    const x = Math.round(W / 2 - w / 2), y = Math.round(-h + (h + 46) * k);
-    drawAeroGlow(ctx, W / 2, y + h / 2, 160, '#fff6c8', 0.35 * k);
-    drawRays(ctx, x + 36, y + h / 2, 70, t, 0.25 * k, 12);
-    ctx.drawImage(aeroSurface(w, h, { top: '#fffbe0', mid: '#ffe08a', bot: '#ffb84a', a: [0.98, 0.98], edge: '#8a4a06', r: 12, gloss: 0.7, glossH: 22, curve: 3, rim: 0.95, glow: 0.7, glowColor: '#fff6c8', streak: true, bubbles: 3, sparkle: 2 }), x, y);
-    drawLeafSprig(ctx, x + w - 4, y + 4, 'tr', 0.7);
-    drawPortrait(ctx, b.q.giver, x + 32, y + h / 2, 24, t, { talk: b.t < 1.6 ? 0.6 : 0, mood: 'excited', key: 'banner' });
-    title(ctx, 'QUEST COMPLETE!', x + 64, y + 4, 16, '#ffffff', '#8a4a06');
-    drawText(ctx, b.q.title, x + 64, y + 26, { color: '#5a3206' });
-    drawText(ctx, `"${b.line}"`, x + 64, y + 37, { font: 'small', color: '#8a5a1e' });
-    rewardChips(ctx, g.ui, b.rw, x + 64, y + h - 20, w - 72, t);
-    for (let i = 0; i < 6; i++) { const a = t * 2 + i; drawSparkle(ctx, x + 32 + Math.cos(a) * 30, y + h / 2 + Math.sin(a) * 26, 1, 0.7 * k); }
+    const kin = b.t < 0.5 ? b.t / 0.5 : 1, kout = b.t > 3.9 ? 1 - ease.inCubic(clamp01((b.t - 3.9) / 0.7)) : 1;
+    const cx = W / 2, cy = 70 - (1 - kout) * 20;
+    ctx.save();
+    ctx.globalAlpha *= kout;
+    drawAeroGlow(ctx, cx, cy + 8, 190, '#fff6c8', 0.4 * kin);
+    drawRays(ctx, cx, cy, 120, t, 0.22 * kin, 14);
+    const head = drawPop3D(ctx, 'QUEST COMPLETE!', cx, cy, { t, pop: kin, palette: 'gold', size: 32, depth: 4, wobble: 0.8, glowColor: '#8a4a06' });
+    const hw = head ? head.w : 220;
+    drawPortrait(ctx, b.q.giver, cx - hw / 2 - 30, cy + 2 + Math.sin(t * 5) * 2, 22, t, { talk: b.t < 1.6 ? 0.6 : 0, mood: 'excited', key: 'banner' });
+    drawPop3D(ctx, b.q.title, cx, cy + 34, { t: t + 0.7, pop: clamp01((b.t - 0.25) / 0.45), palette: 'white', size: 16, depth: 3, wobble: 0.5, sparkle: false });
+    // rewards: 3D icons with 3D amounts, popping in one after another
+    const list = b.rw.slice(0, 5);
+    const step = 58, x0 = cx - ((list.length - 1) * step) / 2;
+    list.forEach((rw, i) => {
+      const k = clamp01((b.t - 0.6 - i * 0.18) / 0.35);
+      if (k <= 0) return;
+      const rx = x0 + i * step, ry = cy + 62;
+      const name = rw.key === 'aero' ? 'coin' : getUiIcon(rw.key)?.__icon3d ? rw.key : null;
+      if (!(name && drawIcon3D(ctx, name, rx - 12, ry, Math.round(22 * (0.6 + 0.4 * ease.outBack(k))), { t, hover: k < 1 ? 1 : 0, phase: i }))) rewardIcon(ctx, rw, rx - 12, ry, 16, t, i);
+      const txt = rw.key === 'aero' ? '+' + rw.n : rw.n ? 'x' + rw.n : '';
+      if (txt) drawPop3D(ctx, txt, rx + 14, ry, { t: t + i, pop: k, palette: rw.key === 'aero' ? 'aqua' : 'leaf', size: 16, depth: 3, wobble: 0.4, glow: false, sparkle: false });
+      if (k < 0.2 && !rw.fx) { rw.fx = true; try { g.particles?.pixelBurst?.('star', rx - 12, ry, 5, { layer: 'ui', ramp: 'gold' }); } catch { /* optional */ } }
+    });
+    if (!b.fx) { b.fx = true; try { g.particles?.celebrate?.(cx, cy, 1, { layer: 'ui' }); } catch { /* optional */ } }
+    for (let i = 0; i < 8; i++) { const a = t * 1.6 + i * 0.8; drawSparkle(ctx, cx + Math.cos(a) * (hw * 0.6), cy + Math.sin(a) * 26, 1 + (i % 2), 0.8 * kin); }
+    ctx.restore();
   }
 }
 

@@ -16,8 +16,9 @@ import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { drawText } from '../gfx/font.js';
 import { glowSprite, gbubbleSprite } from '../gfx/particles.js';
 import * as ITEMS from '../build/items.js';
-import { drawGlassPill, drawRays, glossText } from './cinematics.js';
-import { drawPanel, drawTipCard } from './hud.js';
+import { drawGlassPill, drawRays, glossText, word3D } from './cinematics.js';
+import { drawIcon3d, chestIconId } from './icons3d.js'; // [phase9:fishing] 3D loot pop-up
+import { drawAeroCoin } from '../ui/aero.js';
 
 // ------------------------------------------------------------------ box art (glossy pixel sprites)
 const TIER_COL = {
@@ -123,8 +124,8 @@ export class BoxReel {
     this.kind = f.kind || 'crate';
     this.tier = ITEMS.TIERS?.[f.tier] ? f.tier : 'crate';
     this.progress = 0; this.tension = 0.25; this.reelRate = 0; this.snapT = 0; this.grace = 1;
-    this.zone = { lo: 0.2, hi: 1.3 }; this.heavy = 0; this.reelK = 0;
-    this.canCharge = false; this.charge = null;
+    this.zone = { lo: 0.2, hi: 1.3 }; this.heavy = 0;
+    this.gearMode = 'box'; this.band = { lo: 30, hi: 195 }; this.canCharge = false; this.charge = null;
     this.shockReady = false; this.shockMax = 0; this.charges = 0; this.shockCd = 0; this.shockCdMax = 1;
     this.stunned = false; this.surging = false;
     this.start = { x: f.x, y: f.y };
@@ -154,12 +155,12 @@ export class BoxReel {
   cancel() { this.f.hooked = false; }
 
   update(dt) {
-    const F = this.F, f = this.f;
+    const F = this.F, f = this.f, G = F.gear;
     this.t += dt;
     this.hudIn = Math.min(1, this.hudIn + F.rdt * 3);
-    this.reelK = damp(this.reelK, F.crank.stun > 0 ? 0 : clamp01(F.crank.power), 10, dt);
+    G.load = this.stage === 'reel' ? 12 : 0; G.brake = true;
     if (this.stage === 'reel') {
-      const p = this.reelK;
+      const p = G.p;
       const rate = (Math.min(p, 1.1) * 0.75) / this.need;
       this.reelRate = rate;
       this.progress = Math.min(1, this.progress + rate * dt);
@@ -236,14 +237,20 @@ export class BoxReel {
     }
   }
 
-  drawHud() {}
+  drawHud(ctx) {
+    // a soft crank-loop hint at the cursor until the player starts circling
+    const F = this.F, t = F.t;
+    if (F.gear.p > 0.08) return;
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * TAU + t * 5;
+      ctx.fillStyle = rgba('#ffffff', 0.08 + (i / 12) * 0.6);
+      ctx.fillRect(Math.round(F.input.x + Math.cos(a) * 14) - 1, Math.round(F.input.y + Math.sin(a) * 14) - 1, 2, 2);
+    }
+  }
 
-  // the same panel as a fight, minus the shock: the box rides the catch track, the line stays relaxed
   drawBands(ctx) {
-    const F = this.F, k = clamp01(this.hudIn * 1.2);
-    if (this.stage !== 'reel') return;
-    drawPanel(ctx, F, { k: 1 - Math.pow(1 - k, 3), progress: this.progress, ghost: this.progress, tension: this.tension, reel: this.reelK, box: true, sp: null, icon: boxSprite(this.kind, this.tier) });
-    if (this.reelK < 0.15 && this.t > 0.6) drawTipCard(ctx, F, 'Circle the mouse to reel!', 'circle', this.t - 0.6);
+    const k = clamp01(this.hudIn * 1.2);
+    this.F.gear.draw(ctx, this, 1 - Math.pow(1 - k, 3));
   }
 }
 
@@ -338,8 +345,10 @@ class LootPop {
     // glass tray
     drawGlassPill(ctx, 0, -h / 2, w, h, T.band === '#ffffff' ? '#ffd04a' : T.band, 0.85);
     // header: the box itself on top of the tray
-    const spr = boxSprite('crate', this.tier);
-    ctx.drawImage(spr, Math.round(-spr.width), Math.round(-h / 2 - spr.height * 2 + 6), spr.width * 2, spr.height * 2);
+    if (!drawIcon3d(ctx, chestIconId('pkg_' + this.tier), 0, Math.round(-h / 2 - 16), 40, Math.sin(t * 2))) {
+      const spr = boxSprite('crate', this.tier);
+      ctx.drawImage(spr, Math.round(-spr.width), Math.round(-h / 2 - spr.height * 2 + 6), spr.width * 2, spr.height * 2);
+    }
     for (let i = 0; i < n; i++) {
       const it = this.list[i];
       const ix = Math.round(-w / 2 + 14 + i * cell + cell / 2), iy = 2;
@@ -358,7 +367,7 @@ class LootPop {
       this.drawIcon(ctx, it.id, 0, 0);
       ctx.drawImage(b, -18, -18);
       const label = it.id === 'coins' ? '+' + it.qty : it.qty > 1 ? 'x' + it.qty : '';
-      if (label) drawText(ctx, label, 0, 12, { align: 'center', color: '#ffffff', outline: '#0c3a52' });
+      if (label) word3D(ctx, label, 0, 16, { t: t + i, scale: 0.45, pal: 'white', wobble: 0.5 });
       ctx.restore();
     }
     ctx.restore();
@@ -366,9 +375,7 @@ class LootPop {
 
   drawIcon(ctx, id, x, y) {
     if (id === 'coins') {
-      const g = glossText('A', 2, 'aqua');
-      ctx.drawImage(gbubbleSprite(9), x - 9, y - 12);
-      ctx.drawImage(g.c, Math.round(x - g.w / 2 - g.ox), Math.round(y - 10 - g.oy));
+      drawAeroCoin(ctx, x, y - 2, 9, this.t || 0);
       return;
     }
     let ic = null;

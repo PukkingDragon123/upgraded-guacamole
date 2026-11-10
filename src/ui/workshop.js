@@ -13,6 +13,8 @@ import * as NPC from '../gfx/npcs.js';
 import { ITEMS, countItem } from '../build/items.js';
 import { drawItem, itemIcon } from '../build/itemdraw.js';
 import { pixIcon, rodPix, PixFx, partSprite } from '../build/pixart.js';
+import { drawIcon3D, icon3d } from '../gfx/icons3d.js'; // [phase9:ui] 3D icons
+import { labIcon } from './labicons.js'; // [phase9:ui] 3D rods
 import {
   WS_CATS, ensureWorkshop, workshopUnlocked, recipesFor, wsRecipe, wsUnlocked, wsCheck, wsCraft, wsSlots, wsRemaining, wsProgress, wsRushCost, wsRush, wsTick,
 } from '../build/workshop.js';
@@ -31,6 +33,7 @@ export function drawRef(ctx, ref, cx, cy, size, t = 0) {
   const [kind, id] = [ref.slice(0, ref.indexOf(':')), ref.slice(ref.indexOf(':') + 1)];
   if (kind === 'rod') {
     const rod = ROD_BY_ID[id];
+    { const c3 = rod && labIcon('rod:' + id, Math.round(size)); if (c3) { ctx.drawImage(c3, Math.round(cx - c3.width / 2), Math.round(cy - c3.height / 2)); return; } } // [phase9:ui] 3D rod
     const base = rodPix(rod, 1);
     if (!base) return;
     const k = Math.max(1, Math.floor(size / 16));
@@ -39,6 +42,7 @@ export function drawRef(ctx, ref, cx, cy, size, t = 0) {
     return;
   }
   if (kind === 'pix') {
+    if (drawIcon3D(ctx, id, cx, cy, size, { t })) return; // [phase9:ui] 3D model icon
     const base = pixIcon(id, 1);
     if (!base) return;
     const k = Math.max(1, Math.floor(size / Math.max(base.width, base.height)));
@@ -105,7 +109,7 @@ export class WorkshopPanel {
     const L = this.layout();
     this.rect = L.r;
     try { wsTick(g); } catch (e) { console.error(e); }
-    const FR = drawAeroFrame(ctx, L.r.x, L.r.y, L.r.w, L.r.h, { title: 'Marina\'s Workshop', icon: pixIcon('hammer', 2), seed: 31 });
+    const FR = drawAeroFrame(ctx, L.r.x, L.r.y, L.r.w, L.r.h, { title: 'Marina\'s Workshop', icon: icon3d('hammer', 22, 22) || pixIcon('hammer', 2), seed: 31 });
     // until Marina's quest opens the Workshop, only the Lab's workbench recipes (buildings, decor, bait) are here
     this.limited = !workshopUnlocked(st);
     if (this.limited && !BENCH_CATS.has(this.cat)) { this.cat = 'build'; this.sel = this.firstOf('build'); }
@@ -165,8 +169,8 @@ export class WorkshopPanel {
       const act = this.cat === cat.id, hov = ui.hover(r);
       const tone = act ? 'orange' : hov ? 'white' : 'glass';
       ctx.drawImage(aeroCached(`wstab|${r.w}|${r.h}|${tone}`, () => aeroSurface(r.w, r.h, { tone, r: 9, gloss: 0.7, glossH: Math.round(r.h * 0.42), rim: 0.9, glow: act ? 0.7 : 0.4 })), r.x, r.y);
-      const ic = pixIcon(cat.icon, 2);
-      if (ic) { const bob = act ? Math.round(Math.sin(t * 4) * 1.5) : 0; ctx.drawImage(ic, Math.round(r.x + r.w / 2 - ic.width / 2), Math.round(r.y + r.h / 2 - ic.height / 2) - 4 + bob); }
+      const bob = act ? Math.round(Math.sin(t * 4) * 1.5) : 0;
+      if (!drawIcon3D(ctx, cat.icon, r.x + r.w / 2, r.y + r.h / 2 - 4 + bob, 26, { t, hover: hov || act ? 1 : 0, phase: i })) { const ic = pixIcon(cat.icon, 2); if (ic) ctx.drawImage(ic, Math.round(r.x + r.w / 2 - ic.width / 2), Math.round(r.y + r.h / 2 - ic.height / 2) - 4 + bob); } // [phase9:ui]
       const lbl = cat.short || cat.name;
       drawText(ctx, lbl, r.x + r.w / 2, r.y + r.h - 11, { font: 'small', align: 'center', color: act ? '#ffffff' : INK, shadow: act ? '#7a2a06' : null });
       const n = recipesFor(st, cat.id).filter((rc) => (!this.limited || rc.lab) && !st.workshop.seen[rc.id] && wsUnlocked(st, rc) && wsCheck(st, rc).ok).length;
@@ -242,11 +246,11 @@ export class WorkshopPanel {
     const rod = ROD_BY_ID[rods.equipped];
     const h = 44;
     ctx.drawImage(aeroCached(`wsbench|${R.w}|${h}`, () => aeroSurface(R.w, h, { tone: 'sky', r: 8, gloss: 0.6, glossH: 16, rim: 0.85, glow: 0.4 })), R.x, R.y);
-    const ic = rodPix(rod, 2);
-    if (ic) ctx.drawImage(ic, R.x + 6, R.y + 6);
+    const ic = labIcon('rod:' + rod.id, 32) || rodPix(rod, 2); // [phase9:ui] 3D rod
+    if (ic) ctx.drawImage(ic, R.x + 6 + Math.round((32 - ic.width) / 2), R.y + 6 + Math.round((32 - ic.height) / 2));
     const lv = rodLevel(st, rod.id);
     drawText(ctx, rod.name, R.x + 44, R.y + 8, { font: 'normal', color: '#ffffff', shadow: '#0a3e74' });
-    if (lv) for (let i = 0; i < lv; i++) ctx.drawImage(partSprite('star', '#ffd23a', 1), R.x + 44 + i * 7, R.y + 21);
+    if (lv) for (let i = 0; i < lv; i++) { if (!drawIcon3D(ctx, 'star', R.x + 48 + i * 9, R.y + 25, 10, { t, phase: i })) ctx.drawImage(partSprite('star', '#ffd23a', 1), R.x + 44 + i * 7, R.y + 21); }
     else drawText(ctx, 'equipped', R.x + 44, R.y + 22, { font: 'small', color: '#fff6b0', shadow: '#0a3e74' });
     if (rod.perk) drawText(ctx, PERKS[rod.perk]?.name || '', R.x + 44, R.y + 31, { font: 'small', color: '#c8ffb0', shadow: '#0a3e74' });
     const sw = 38, x0 = R.x + R.w - TACKLE_SLOTS.length * (sw + 4) - 2;
@@ -278,7 +282,7 @@ export class WorkshopPanel {
       if (!e) { drawText(ctx, 'empty bench', x + sw / 2, y + h / 2 - 3, { font: 'small', align: 'center', color: 'rgba(191,234,255,0.6)' }); continue; }
       const k = wsProgress(e), rem = wsRemaining(e);
       // the little hammering animation
-      const ham = pixIcon('hammer', 1);
+      const ham = icon3d('hammer', 14, 14) || pixIcon('hammer', 1); // [phase9:ui]
       const ang = Math.sin(t * 9 + i) > 0.6 ? -0.6 : 0.2;
       drawRef(ctx, e.icon, x + 18, y + h / 2, 28, t);
       if (ham) { ctx.save(); ctx.translate(x + 34, y + 10); ctx.rotate(ang); ctx.drawImage(ham, -4, -12); ctx.restore(); }
@@ -429,7 +433,7 @@ export class WorkshopPanel {
 
   drawAnvil(ctx, x, y, w, h, rc, dt) {
     const t = this.t, A = this.hammer;
-    const anvil = pixIcon('anvil', 2);
+    const anvil = icon3d('anvil', 48, 34) || pixIcon('anvil', 2); // [phase9:ui]
     const ax = Math.round(x + w / 2 - (anvil?.width || 40) / 2), ay = y + h - (anvil?.height || 28) - 6;
     // Marina watching from the side
     try { NPC.drawNPC(ctx, 'marina', { x: x + 34, y: y + h - 6, t, scale: 0.9, pose: A && A.t > 0.9 && A.t < 2 ? 'cheer' : 'idle', mood: 'happy', facing: 1, shadow: false }); } catch { /* npc optional */ }
@@ -448,7 +452,7 @@ export class WorkshopPanel {
     // the hammer swings three times, sparks on each strike
     if (A) {
       A.t += dt;
-      const ham = pixIcon('hammer', 3);
+      const ham = icon3d('hammer', 36, 36) || pixIcon('hammer', 3); // [phase9:ui]
       if (hammering && ham) {
         const ph = (A.t * 3) % 1;
         const ang = ph < 0.55 ? -1.1 + ph * 0.6 : -0.8 + ((ph - 0.55) / 0.45) * 1.25;

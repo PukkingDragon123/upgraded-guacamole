@@ -6,6 +6,7 @@
 // packageParts(tier, scale, frame) -> {body, lid, ox, oy, w, h, lidY}  same framing, lid split for unboxing.
 // ART_IDS: ids with a model. SPIN: number of turntable frames.
 
+import { HI, withHi, fitHi } from '../gfx/hires.js'; // [phase9:ui]
 import { VoxelModel, renderVoxels } from '../gfx/voxel.js';
 import { hash3, clamp } from '../core/math.js';
 import { itemPixel, itemPixelScaled } from './itempix.js'; // [phase8:ui] hand-drawn pixel art for most items
@@ -380,7 +381,8 @@ const cache = new Map();
 // force = render even when over budget (used for one-off large previews)
 export function itemSprite(id, { scale = 1, frame = 0, force = false, voxel = false } = {}) {
   // [phase8:ui] items with hand-made pixel art return it (integer-scaled, same {canvas, ox, oy, w, h} framing)
-  if (!voxel && itemPixel(id)) {
+  // [phase9:ui] 3D first: the voxel model wins whenever one exists (2D pixel items only as a last resort)
+  if (!voxel && itemPixel(id) && !hasItemModel(id)) {
     const k = Math.max(1, Math.round(2 * scale));
     const pk = 'px|' + id + '|' + k;
     let q = cache.get(pk);
@@ -405,7 +407,10 @@ export function itemSprite(id, { scale = 1, frame = 0, force = false, voxel = fa
   const b = modelOf(id);
   if (!b) return null;
   s = timed(() => {
-    const r = renderVoxels(b.m, { scale: 2 * scale * (b.vs ?? 1), yaw: (b.yaw ?? 30) + (frame * 360) / SPIN, pitch: b.pitch ?? 28, glowRadius: 2 });
+    const ro = { scale: 2 * scale * (b.vs ?? 1), yaw: (b.yaw ?? 30) + (frame * 360) / SPIN, pitch: b.pitch ?? 28, glowRadius: 2 };
+    const r = renderVoxels(b.m, ro);
+    // [phase9:ui] the full-res UI layer gets the same model rendered at twice the scale
+    withHi(r.canvas, () => { const r2 = renderVoxels(b.m, { ...ro, scale: ro.scale * HI }); return fitHi(r.canvas, r2.canvas, r.ox, r.oy, r2.ox, r2.oy); });
     return { canvas: r.canvas, glow: r.glow, ox: r.ox, oy: r.oy, w: r.w, h: r.h };
   });
   cache.set(key, s);
@@ -434,5 +439,7 @@ export function packageParts(tier, scale = 1, frame = 0, force = true, full = fa
   pkgCache.set(key, p);
   return p;
 }
+
+export function hasItemModel(id) { return !!(MODELS[id] || PKG[String(id).replace(/^pkg_/, '')]); } // [phase9:ui]
 
 export function clampFrame(f) { return clamp(Math.floor(f), 0, SPIN - 1); }

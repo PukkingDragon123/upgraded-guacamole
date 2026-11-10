@@ -7,6 +7,7 @@
 //   GLYPHS: names of the pixel glyphs (hook, line, star, gear, reel, bolt, battery, eye, music, mouse, heart, ...)
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { HI, withHi, enhanceHi } from '../gfx/hires.js'; // [phase9:ui]
+import { has3D, icon3d } from '../gfx/icons3d.js'; // [phase9:ui]
 import { PixelBuffer, selOut } from '../gfx/pixel.js';
 import { pack, shade, mix } from '../core/color.js';
 import { hash3 } from '../core/math.js';
@@ -334,6 +335,7 @@ function buildIcon(key, px) {
     else if (key === 'globe') c = getBigIcon('map', { size: px })?.canvas || fitVoxel(() => globeModel('oscean'), px);
     else if (key === 'crab' || key === 'snail') c = fitVoxel(() => critterModel(key), px);
     else if (key === 'fish' || kind === 'fish') c = voxelFishIcon(id || 'pixel', px, px); // [phase3:fish] voxel, never a 2D glyph
+    else if (!kind && has3D(key) && (c = icon3d(key, px, px))) { /* [phase9:ui] 3D model icon */ }
     else if (GLYPH_ART[key]) {
       const g = glyphCanvas(key);
       const k = Math.max(1, Math.floor(px / Math.max(g.width, g.height)));

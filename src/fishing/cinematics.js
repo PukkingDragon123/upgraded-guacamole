@@ -11,6 +11,8 @@ import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { glowSprite, gbubbleSprite } from '../gfx/particles.js';
 import { getUiIcon } from '../gfx/uiicons.js';
 import { HOOK } from './baitart.js';
+import { drawText3D, text3dSprite } from '../gfx/text3d.js'; // [phase9:fishing] 3D voxel titles
+import { gemIcon } from '../gfx/bigicons.js';
 import { drawAngler } from './hud.js';
 
 // ------------------------------------------------------------------ glossy jelly text
@@ -134,24 +136,84 @@ function drawGlow(ctx, x, y, r, color, a) {
   ctx.restore();
 }
 
-function drawStars(ctx, cx, y, n, t, k = 1) {
-  const on = getUiIcon('star');
-  if (!on) return;
-  const sw = on.width + 3;
+// Rarity as a row of spinning 3D gems (no 2D pixel stars).
+function drawStars(ctx, cx, y, n, t, k = 1, col = '#59c3ff') {
+  const px = 14, sw = px + 4;
   for (let i = 0; i < n; i++) {
     const kk = ease.outBack(clamp01((k - i * 0.12) * 3));
     if (kk <= 0) continue;
-    const x = Math.round(cx - (n * sw) / 2 + i * sw), yy = Math.round(y + Math.sin(t * 5 + i) * 1.5);
+    const g = gemIcon(col, px);
+    if (!g) continue;
+    const x = Math.round(cx - (n * sw) / 2 + i * sw + sw / 2), yy = Math.round(y + Math.sin(t * 5 + i) * 1.5);
     ctx.save();
-    ctx.translate(x + on.width / 2, yy + on.height / 2);
+    ctx.translate(x, yy);
     ctx.scale(kk, kk);
-    ctx.drawImage(on, -on.width / 2, -on.height / 2);
+    ctx.drawImage(g, -Math.round(g.width / 2), -Math.round(g.height / 2));
     ctx.restore();
   }
 }
 
+// ------------------------------------------------------------------ 3D voxel words ([phase9:fishing])
+// Every fishing / boss pop-up is extruded Alagard voxel lettering (src/gfx/text3d.js): it pops in with a squash,
+// sways in 3D (cached yaw steps), tilts, bobs and throws pixel sparkles. No flat 2D text pop-ups.
+const VIOLET3D = { face: ['#fbf0ff', '#d8a8ff', '#a066f0'], bevelL: '#ffffff', bevelD: '#7a3ad0', side: '#5a2ab0', back: '#3a1a7a', outline: '#ffffff' };
+const RED3D = { face: ['#fff0ec', '#ff8a7a', '#e8303a'], bevelL: '#ffffff', bevelD: '#b81e2a', side: '#8a1020', back: '#5a0a14', outline: '#ffffff' };
+export function pal3d(p) {
+  if (p && typeof p === 'object') return p;
+  return { aqua: 'aqua', lime: 'leaf', leaf: 'leaf', sun: 'gold', gold: 'gold', red: RED3D, coral: 'coral', frost: 'white', white: 'white', violet: VIOLET3D, sky: 'sky' }[p] || 'aqua';
+}
+
+// One 3D word centred on (x, y). o: {t, pop 0..1, scale (screen scale), pal, rot (rad), alpha, wobble, size}
+export function word3D(ctx, text, x, y, o = {}) {
+  const s = o.scale ?? 1;
+  ctx.save();
+  ctx.translate(Math.round(x), Math.round(y));
+  if (o.rot) ctx.rotate(o.rot);
+  if (s !== 1) ctx.scale(s, s);
+  const ok = drawText3D(ctx, text, 0, 0, { t: o.t ?? 0, pop: o.pop ?? 1, palette: pal3d(o.pal), size: o.size ?? 16, depth: o.depth ?? 4, wobble: o.wobble ?? 1, alpha: o.alpha, scale: 2 });
+  ctx.restore();
+  return ok;
+}
+
+// Width (screen px at scale 1) of a 3D word, for laying out letters.
+export function word3DWidth(text, o = {}) {
+  const sp = text3dSprite(text, { size: o.size ?? 16, px: 1, depth: o.depth ?? 4, outline: 1, palette: pal3d(o.pal), scale: 2, yaw: 0, pitch: 14 });
+  return sp ? sp.w : text.length * 18;
+}
+
+// A word made of separately bouncing 3D letters: they drop in one by one with a jelly squash and keep waving.
+export function letters3D(ctx, text, cx, cy, t, o = {}) {
+  const s = o.scale ?? 1, gap = 2;
+  const ws = [...text].map((ch) => (ch === ' ' ? 14 : word3DWidth(ch, o) - 6) * s);
+  const total = ws.reduce((a, w) => a + w + gap, -gap);
+  let x = cx - total / 2;
+  const landed = [];
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i], w = ws[i];
+    if (ch !== ' ') {
+      const lt = t - (o.delay ?? 0.1) - i * (o.stagger ?? 0.06);
+      if (lt > 0) {
+        const k = clamp01(lt / 0.42);
+        const drop = (1 - ease.outBounce(k)) * (o.drop ?? 140);
+        let sx = 1, sy = 1;
+        if (k >= 1) { const e = Math.exp(-(lt - 0.42) * 6) * Math.sin((lt - 0.42) * 26) * 0.22; sx = 1 + e; sy = 1 - e; }
+        const wave = k >= 1 ? Math.sin(t * 6 + i * 0.8) * 3 : 0;
+        ctx.save();
+        ctx.translate(Math.round(x + w / 2), Math.round(cy - drop + wave));
+        ctx.rotate(Math.sin(t * 3 + i) * 0.05 * (o.sway ?? 1));
+        ctx.scale(sx * s, sy * s);
+        drawText3D(ctx, ch, 0, 0, { t: t + i * 0.7, pop: 1, palette: pal3d(o.pal), size: o.size ?? 16, depth: o.depth ?? 5, wobble: 1.4, alpha: o.alpha, scale: 2 });
+        ctx.restore();
+        if (Math.abs(lt - 0.42) < 0.03) landed.push([x + w / 2, cy, i]);
+      }
+    }
+    x += w + gap;
+  }
+  return landed;
+}
+
 // ------------------------------------------------------------------ titles
-const DUR = { fishon: 1.4, banner: 1.35, pop: 0.85, igotit: 2.7, snap: 1.9, escape: 2.0 };
+const DUR = { fishon: 1.5, banner: 1.5, pop: 1.0, igotit: 2.7, snap: 1.9, escape: 2.0 };
 
 export class Titles {
   constructor(F) { this.F = F; this.list = []; }
@@ -167,7 +229,7 @@ export class Titles {
 
   banner(text, color = '#8ff0ff', sub = '', opts = {}) { return this.add('banner', text, { color, sub, ...opts }); }
   pop(text, x, y, color = '#ffffff', opts = {}) {
-    if (this.list.filter((o) => o.kind === 'pop').length > 5) this.list.splice(this.list.findIndex((o) => o.kind === 'pop'), 1);
+    if (this.list.filter((o) => o.kind === 'pop').length > 4) this.list.splice(this.list.findIndex((o) => o.kind === 'pop'), 1);
     return this.add('pop', text, { x, y, color, scale: opts.scale || 1, ...opts });
   }
 
@@ -175,14 +237,25 @@ export class Titles {
   has(kind) { return this.list.some((o) => o.kind === kind); }
 
   update(rdt) {
+    const F = this.F, W = F.W, H = F.H;
     for (const it of this.list) {
       it.t += rdt;
       if (it.kind === 'igotit') this.igotitFx(it);
-      if (it.kind === 'fishon' && !it.fx) {
+      if (!it.fx) {
         it.fx = true;
-        const F = this.F, W = F.W, H = F.H;
-        F.fx.aeroBubbles(W / 2, H * 0.24 + 30, 10, { w: 90, h: 6, speed: [30, 80], sizes: [2, 3, 3, 4, 5] });
-        F.fx.glints(W / 2, H * 0.24, 6, { w: 80, h: 12 });
+        if (it.kind === 'fishon') {
+          F.fx.aeroBubbles(W / 2, H * 0.24 + 30, 10, { w: 90, h: 6, speed: [30, 80], sizes: [2, 3, 3, 4, 5] });
+          F.fx.pixelBurst?.('sparkle', W / 2, H * 0.22, 12, { ramp: 'white', w: 80, h: 14, layer: 'fg' });
+          F.fx.pixelBurst?.('star', W / 2, H * 0.22, 8, { ramp: it.rarity === 'legendary' ? 'gold' : 'aqua', speed: [80, 200], layer: 'fg' });
+        } else if (it.kind === 'pop') {
+          F.fx.pixelBurst?.('sparkle', it.x, it.y, 5, { ramp: palRamp(it), w: 14, h: 6, layer: 'fg', size: 0 });
+        } else if (it.kind === 'banner') {
+          F.fx.pixelBurst?.('sparkle', W / 2, H * 0.18, 8, { ramp: palRamp(it), w: 70, h: 8, layer: 'fg' });
+        } else if (it.kind === 'snap') {
+          F.fx.pixelBurst?.('shard', W / 2, H * 0.28, 14, { ramp: 'red', speed: [80, 220], layer: 'fg' });
+        } else if (it.kind === 'escape') {
+          F.fx.pixelBurst?.('puff', W / 2, H * 0.26, 8, { ramp: 'white', w: 60, layer: 'fg' });
+        }
       }
     }
     this.list = this.list.filter((it) => it.t < it.dur);
@@ -198,11 +271,9 @@ export class Titles {
       fx.confetti(W + 4, H * 0.55, 30, { dir: -Math.PI + 1.0, spread: 0.35, speed: [220, 380] });
       fx.lightStreaks(W * 0.5, cy, 22, { colors: ['#ffffff', '#bff8ff', '#e2ffb0'] });
       fx.stars(W * 0.5, cy, 24, { speed: [80, 220], g: 40, w: 90, h: 10 });
-      fx.hearts?.(W * 0.5, cy, 8, { speed: [80, 200], w: 40 }); // [phase8:ui] cute pixel hearts + scales + ribbons
+      fx.hearts?.(W * 0.5, cy, 8, { speed: [80, 200], w: 40 });
       fx.pixelBurst?.('scale', W * 0.5, cy, 14, { speed: [100, 240], w: 30 });
       fx.pixelBurst?.('ribbon', W * 0.5, cy, 12, { speed: [120, 280], w: 50 });
-      fx.ringWave(W * 0.5, cy + 10, 170, '#bff8ff', { life: 0.7, w: 5 });
-      fx.ringWave(W * 0.5, cy + 10, 120, '#ffffff', { life: 0.5, w: 3, delay: 0.08 });
       fx.lensFlare(W * 0.28, cy - 40, { cx: W / 2, cy: H / 2, life: 1.8, scale: 1.3 });
       fx.bloom(W * 0.5, cy, 140, '#e8fbff', { life: 0.8 });
       fx.splashBurst(W * 0.5, H * 0.62, 2.2, { g: 300 });
@@ -228,163 +299,93 @@ export class Titles {
     }
   }
 
+  // FISH ON!: the word slams in from huge, shakes, then sways in 3D under a ray burst.
   drawFishOn(ctx, it) {
     const W = this.F.W, H = this.F.H, t = it.t;
     const a = clamp01((it.dur - t) * 4);
-    const s = W < 700 ? 4 : 5;
     const k = ease.outBack(clamp01(t * 5));
     const cy = Math.round(H * 0.22);
     ctx.save();
     ctx.globalAlpha = a;
-    drawRays(ctx, W / 2, cy + 14, 240, 16, t * 0.8, '#bff8ff', 0.09 * a);
-    drawGlow(ctx, W / 2, cy + 12, 80, '#bff8ff', 0.35 * a);
-    const jx = t < 0.25 ? rng.int(-2, 2) : 0;
-    ctx.translate(W / 2 + jx, cy + 14);
-    ctx.scale(lerp(2.2, 1, k), lerp(2.2, 1, k));
-    const pal = glossFor(it.rarity);
-    const g = glossText(it.text, s, pal);
-    ctx.drawImage(g.c, Math.round(-g.w / 2 - g.ox), Math.round(-g.h / 2 - g.oy));
+    drawRays(ctx, W / 2, cy + 6, 260, 16, t * 0.8, '#bff8ff', 0.1 * a);
+    drawGlow(ctx, W / 2, cy + 4, 90, '#bff8ff', 0.4 * a);
+    const jx = t < 0.25 ? rng.int(-3, 3) : 0;
+    const big = W < 700 ? 1.6 : 2;
+    word3D(ctx, it.text, W / 2 + jx, cy, { t, pop: clamp01(t * 4), scale: lerp(big * 2.2, big, k), pal: glossFor(it.rarity), rot: Math.sin(t * 2.2) * 0.05, wobble: 1.5 });
     ctx.restore();
-    // a sweep of light across the letters
-    const sweep = (t * 1.6) % 1.6;
-    if (sweep < 1 && a > 0.5) {
-      const g = glossText(it.text, s, pal);
-      const x0 = W / 2 - g.w / 2 + sweep * (g.w + 40) - 20;
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = 0.35 * a;
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(Math.round(x0), Math.round(cy + 14 - g.h / 2), 6, g.h);
-      ctx.restore();
-    }
   }
 
+  // Event banners: a 3D word sweeping in from the right and tilting to a stop.
   drawBanner(ctx, it) {
     const W = this.F.W, H = this.F.H, t = it.t;
     const a = clamp01((it.dur - t) * 5);
-    const k = ease.outBack(clamp01(t * 6));
+    const k = ease.outBack(clamp01(t * 5));
     const cy = Math.round(H * 0.18);
-    const x = lerp(W + 200, W / 2, k);
-    const pal = it.pal || (it.color === '#ffe27a' ? 'sun' : it.color === '#ff9a8a' ? 'red' : it.color === '#7dff9a' ? 'lime' : 'aqua');
-    const g = glossText(it.text, 3, pal);
+    const x = lerp(W + 240, W / 2, k);
     ctx.save();
     ctx.globalAlpha = a;
-    drawGlassPill(ctx, x, cy - 6, g.w + 46, 7 * 3 + 12, it.color || '#59c3ff', 0.75);
-    ctx.drawImage(g.c, Math.round(x - g.w / 2 - g.ox), Math.round(cy - g.oy));
-    // bubbles riding the pill
-    for (let i = 0; i < 3; i++) {
-      const bx = x - g.w / 2 - 14 + i * 5, by = cy + 4 + Math.sin(t * 5 + i) * 2;
-      const b = gbubbleSprite(2 + (i % 2));
-      ctx.drawImage(b, Math.round(bx - b.width / 2), Math.round(by - b.height / 2));
-    }
+    drawGlow(ctx, x, cy, 70, it.color || '#8ff0ff', 0.3 * a);
+    word3D(ctx, it.text, x, cy, { t, pal: it.pal || palOf(it.color), scale: W < 700 ? 1 : 1.25, rot: (1 - k) * -0.25 + Math.sin(t * 3) * 0.03 });
     ctx.restore();
   }
 
+  // Small pops (PERFECT!, x3, TOO SLOW!): a 3D word bounces up out of the action and fades.
   drawPop(ctx, it) {
     const t = it.t, k = t / it.dur;
     const s = Math.max(1, it.scale);
-    const pop = t < 0.1 ? 1 + (0.1 - t) * 6 : 1;
+    const y = it.y - ease.outCubic(clamp01(t * 2)) * 16;
     ctx.save();
     ctx.globalAlpha = clamp01((1 - k) * 3);
-    const y = it.y - ease.outCubic(clamp01(t * 2)) * 14;
-    const pal = it.color === '#c8f56a' || it.color === '#7dff9a' ? 'lime' : it.color === '#ff8a7a' ? 'red' : it.color === '#ffe27a' || it.color === '#ffd0b0' ? 'sun' : 'aqua';
-    if (s >= 2) {
-      const g = glossText(it.text, s, pal);
-      ctx.translate(it.x, y);
-      ctx.scale(pop, pop);
-      ctx.drawImage(g.c, Math.round(-g.w / 2 - g.ox), Math.round(-g.h / 2 - g.oy));
-    } else drawText(ctx, it.text, it.x, y, { align: 'center', color: it.color, outline: '#0c3a52', scale: 1 });
+    word3D(ctx, it.text, it.x, y, { t: t * 2, pop: clamp01(t * 6), scale: 0.45 + s * 0.22, pal: palOf(it.color), rot: Math.sin(t * 5) * 0.06 });
     ctx.restore();
   }
 
+  // I GOT IT!: big 3D voxel letters drop in one by one and bounce, under rays and confetti.
   drawIGotIt(ctx, it) {
     const F = this.F, W = F.W, H = F.H, t = it.t;
     const aIn = clamp01(t * 5) * clamp01((it.dur - t) * 2.2);
     const cx = W / 2, cy = Math.round(H * 0.3);
-    const scale = W < 700 ? 5 : 7;
-    // backdrop: Aero sky rays, a big soft halo and floating bubbles
     drawRays(ctx, cx, cy, Math.max(W, H) * 0.75, 20, t * 0.4, '#bff8ff', 0.09 * aIn, 0.08);
     drawRays(ctx, cx, cy, Math.max(W, H) * 0.5, 12, -t * 0.3, '#e2ffb0', 0.06 * aIn, 0.05);
     drawGlow(ctx, cx, cy, 120, '#bff8ff', 0.5 * aIn);
-    drawGlow(ctx, cx, cy, 60, '#ffffff', 0.35 * aIn);
-    // bouncy jelly letters
-    const text = it.text;
-    const pal = it.pal || 'lime';
-    let total = 0;
-    const widths = [];
-    for (const ch of text) { const w = ch === ' ' ? scale * 4 : measureText(ch, 'normal', scale) + scale * 1.5; widths.push(w); total += w; }
-    let x = cx - total / 2;
-    const h = 7 * scale;
     const out = clamp01((it.dur - t) * 3);
-    for (let i = 0; i < text.length; i++) {
-      const ch = text[i];
-      const w = widths[i];
-      if (ch !== ' ') {
-        const lt = t - 0.1 - i * 0.06;
-        if (lt > 0) {
-          const k = clamp01(lt / 0.42);
-          const drop = (1 - ease.outBounce(k)) * 140;
-          let sx = 1, sy = 1;
-          if (k >= 1) {
-            const e = Math.exp(-(lt - 0.42) * 6) * Math.sin((lt - 0.42) * 26) * 0.22;
-            sx = 1 + e; sy = 1 - e;
-          }
-          const wave = k >= 1 ? Math.sin(t * 6 + i * 0.8) * 3 : 0;
-          const ly = cy - h / 2 - drop + wave - (1 - out) * 30;
-          const g = glossText(ch, scale, pal);
-          ctx.save();
-          ctx.globalAlpha = out;
-          ctx.translate(Math.round(x + w / 2), Math.round(ly + h));
-          ctx.scale(sx, sy);
-          ctx.drawImage(g.c, Math.round(-g.w / 2 - g.ox), Math.round(-h - g.oy));
-          ctx.restore();
-          if (Math.abs(lt - 0.42) < 0.02 && !it['land' + i]) {
-            it['land' + i] = true;
-            F.fx.stars(x + w / 2, cy + h / 2, 3, { speed: [30, 80], g: 60 });
-            F.fx.aeroBubbles(x + w / 2, cy + h / 2, 2, { w: 4, speed: [30, 60] });
-            F.sfx('mash_pop', { pitch: 1 + i * 0.08, vol: 0.5 });
-          }
-        }
-      }
-      x += w;
+    ctx.save();
+    ctx.globalAlpha = out;
+    const landed = letters3D(ctx, it.text, cx, cy - (1 - out) * 30, t, { pal: it.pal || 'lime', scale: W < 700 ? 2 : 2.6 });
+    for (const [lx, ly, i] of landed) {
+      if (it['land' + i]) continue;
+      it['land' + i] = true;
+      F.fx.stars(lx, ly + 20, 3, { speed: [30, 80], g: 60 });
+      F.fx.aeroBubbles(lx, ly + 20, 2, { w: 4, speed: [30, 60] });
+      F.sfx('mash_pop', { pitch: 1 + i * 0.08, vol: 0.5 });
     }
-    // rarity stars + size chip under the title (no names: the reveal card has those)
-    if (t > 0.75) {
-      const k = clamp01((t - 0.75) * 3);
-      ctx.save();
-      ctx.globalAlpha = out;
-      const stars = RARITY[it.rarity]?.stars || 1;
-      drawGlassPill(ctx, cx, cy + h / 2 + 14, stars * 12 + 22, 15, RARITY[it.rarity]?.color || '#59c3ff', 0.9 * k);
-      drawStars(ctx, cx, cy + h / 2 + 17, stars, t, k);
-      ctx.restore();
-    }
+    if (t > 0.75) drawStars(ctx, cx, cy + 46, RARITY[it.rarity]?.stars || 1, t, clamp01((t - 0.75) * 3), RARITY[it.rarity]?.color || '#59c3ff');
+    ctx.restore();
   }
 
+  // SNAP!: a red 3D word that cracks in two and falls apart.
   drawSnap(ctx, it) {
     const W = this.F.W, H = this.F.H, t = it.t;
     const a = clamp01((it.dur - t) * 3);
     const cy = Math.round(H * 0.28);
-    const s = W < 700 ? 5 : 7;
     const j = t < 0.5 ? (0.5 - t) * 10 : 0;
-    const g = glossText(it.text, s, 'red');
+    const split = ease.outCubic(clamp01((t - 0.15) * 3)) * 10;
+    const fall = Math.max(0, t - 0.9) * Math.max(0, t - 0.9) * 120;
+    const sc = W < 700 ? 1.8 : 2.3;
     ctx.save();
     ctx.globalAlpha = a;
-    // the word splits in two along a crack
-    const split = ease.outCubic(clamp01((t - 0.15) * 3)) * 6;
-    const x0 = Math.round(W / 2 - g.w / 2 - g.ox + rng.float(-j, j)), y0 = Math.round(cy - g.h / 2 - g.oy + rng.float(-j, j));
-    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W / 2, H); ctx.clip();
-    ctx.drawImage(g.c, x0 - split, y0 + split * 0.5);
-    ctx.restore();
-    ctx.save(); ctx.beginPath(); ctx.rect(W / 2, 0, W / 2, H); ctx.clip();
-    ctx.drawImage(g.c, x0 + split, y0 - split * 0.5);
-    ctx.restore();
-    // crack zig-zag through the word
-    if (t > 0.05) {
+    for (const side of [-1, 1]) {
+      ctx.save();
+      ctx.beginPath(); ctx.rect(side < 0 ? 0 : W / 2, 0, W / 2, H); ctx.clip();
+      word3D(ctx, it.text, W / 2 + side * split + rng.float(-j, j), cy - side * split * 0.4 + fall + rng.float(-j, j), { t, pal: 'red', scale: sc, rot: side * split * 0.012, wobble: 0.5 });
+      ctx.restore();
+    }
+    if (t > 0.05 && t < 0.6) {
       const r = new SeedRng(it.seed || 7);
-      ctx.fillStyle = rgba('#ffffff', 0.9 * a);
-      let y = cy - g.h / 2 - 6, x = W / 2;
+      ctx.fillStyle = rgba('#ffffff', 0.9 * a * (1 - t / 0.6));
+      let y = cy - 30, x = W / 2;
       for (let i = 0; i < 8; i++) {
-        const ny = y + g.h / 6, nx = W / 2 + (r.next() - 0.5) * 10;
+        const ny = y + 8, nx = W / 2 + (r.next() - 0.5) * 12;
         for (let k = 0; k <= 6; k++) ctx.fillRect(Math.round(lerp(x, nx, k / 6)), Math.round(lerp(y, ny, k / 6)), 2, 2);
         x = nx; y = ny;
       }
@@ -392,27 +393,33 @@ export class Titles {
     ctx.restore();
   }
 
+  // Escape: frosty 3D letters that droop and sag.
   drawEscape(ctx, it) {
     const W = this.F.W, H = this.F.H, t = it.t;
     const a = clamp01((it.dur - t) * 3) * clamp01(t * 6);
-    const s = W < 700 ? 4 : 5;
     const cy = Math.round(H * 0.26);
-    const text = it.text;
-    let total = 0;
-    const ws = [];
-    for (const ch of text) { const w = ch === ' ' ? s * 4 : measureText(ch, 'normal', s) + s * 1.4; ws.push(w); total += w; }
-    let x = W / 2 - total / 2;
     ctx.save();
     ctx.globalAlpha = a;
+    const sc = W < 700 ? 1.5 : 1.9;
+    const text = it.text;
+    const ws = [...text].map((ch) => (ch === ' ' ? 14 : word3DWidth(ch, { pal: 'frost' }) - 6) * sc);
+    let x = W / 2 - ws.reduce((s, w) => s + w + 2, -2) / 2;
     for (let i = 0; i < text.length; i++) {
       const droop = Math.max(0, t - 0.5 - i * 0.05);
-      const y = cy + Math.min(14, droop * droop * 40) + Math.sin(t * 3 + i) * 1.5;
-      if (text[i] !== ' ') { const g = glossText(text[i], s, 'frost'); ctx.drawImage(g.c, Math.round(x + ws[i] / 2 - g.w / 2 - g.ox), Math.round(y - g.oy)); }
-      x += ws[i];
+      const y = cy + Math.min(16, droop * droop * 40) + Math.sin(t * 3 + i) * 1.5;
+      if (text[i] !== ' ') word3D(ctx, text[i], x + ws[i] / 2, y, { t: t + i, pal: 'frost', scale: sc, rot: Math.min(0.3, droop * 0.4) * (i % 2 ? 1 : -1) });
+      x += ws[i] + 2;
     }
-    if (it.icon) drawText(ctx, it.icon, W / 2, cy + 7 * s + 12, { align: 'center', scale: 2 });
     ctx.restore();
   }
+}
+
+function palOf(color) {
+  return color === '#c8f56a' || color === '#7dff9a' || color === '#8be04a' ? 'lime' : color === '#ff8a7a' || color === '#ff9a8a' || color === '#ff6a5a' ? 'red' : color === '#ffe27a' || color === '#ffd0b0' || color === '#fff6c0' ? 'sun' : color === '#c89aff' ? 'violet' : 'aqua';
+}
+function palRamp(it) {
+  const p = it.pal || palOf(it.color);
+  return { lime: 'lime', red: 'red', sun: 'gold', violet: 'purple' }[p] || 'cyan';
 }
 
 class SeedRng {
@@ -514,7 +521,7 @@ export class Finale {
       }
       case 'igotit': {
         const sp = f.sp;
-        if (!F.bossWin) F.titles.add('igotit', 'I GOT IT!', { rarity: sp.rarity, pal: sp.rarity === 'legendary' ? 'sun' : sp.rarity === 'epic' ? 'violet' : 'lime' }); // [phase9:fishing] a boss gets VICTORY! instead
+        if (!F.bossWin) F.titles.add('igotit', 'I GOT IT!', { rarity: sp.rarity, pal: sp.rarity === 'legendary' ? 'sun' : sp.rarity === 'epic' ? 'violet' : 'lime' }); // [phase9:fishing] a boss gets VICTORY!
         F.setPose('hold');
         const [hx, hy] = this.hands();
         F.particles.coins(hx, hy - 6, 10, { speed: [100, 200], floor: this.surface !== null ? this.surface - 1 : null });
@@ -631,6 +638,7 @@ export class EscapeCine {
     fish.alpha = 1;
     fish.feel('smug', 3);
     F.setPose('sad');
+    F.reel.snapped = reason === 'snap' ? 1 : 0;
     if (reason === 'snap') {
       F.titles.add('snap', 'SNAP!', { seed: rng.int(1, 9999) });
       F.shake(9);
@@ -724,14 +732,12 @@ export class EscapeCine {
     if (t > 0.4 && t < 1.6) {
       const [sx, sy] = F.toScreen(f.x, f.y);
       const k = ease.outBack(clamp01((t - 0.4) * 5));
-      const text = this.taunt;
-      const w = measureText(text, 'normal', 1) + 14, h = 15;
-      const bx = Math.round(sx + 16), by = Math.round(sy - 46 - (1 - k) * 8);
+      // the taunt: a cheeky 3D word wobbling over the fish, with a trail of bubbles up to it
+      const bx = Math.round(sx + 30), by = Math.round(sy - 50 - (1 - k) * 10);
       ctx.save();
       ctx.globalAlpha = clamp01((1.6 - t) * 5) * clamp01(k);
-      drawGlassPill(ctx, bx + w / 2, by, w, h, '#bfeaff', 0.95);
-      for (let i = 0; i < 3; i++) { const b = gbubbleSprite(2 - (i > 1 ? 1 : 0)); ctx.drawImage(b, bx + 2 - i * 4, by + h + 1 + i * 3); }
-      drawText(ctx, text, bx + 7, by + 4 + Math.round(Math.sin(t * 20) * 0.6), { color: '#0c3a52' });
+      for (let i = 0; i < 3; i++) { const b = gbubbleSprite(2 + (i > 1 ? 1 : 0)); ctx.drawImage(b, Math.round(sx + 6 + i * 7), Math.round(sy - 14 - i * 10)); }
+      word3D(ctx, this.taunt, bx, by, { t: t * 3, pop: clamp01((t - 0.4) * 5), scale: 0.9, pal: 'white', rot: Math.sin(t * 9) * 0.1 });
       ctx.restore();
     }
   }

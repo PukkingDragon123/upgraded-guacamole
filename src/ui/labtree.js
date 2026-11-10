@@ -28,6 +28,8 @@ import { roundRectPath } from './labart.js';
 import { icon, anyIcon, pill, costTiles, costTilesHeight, chip, INK, INK_SOFT, OK, BAD } from './labkit.js';
 import { drawAnimIcon, unlockInfo } from './labrows.js';
 import { HI, hiFromBuffer, dualArt, withHi, hiCtx } from '../gfx/hires.js'; // [phase9:ui]
+import { drawPop3D } from './pop3d.js'; // [phase9:ui]
+import { drawIcon3D } from '../gfx/icons3d.js'; // [phase9:ui]
 import { nodeTile, qMark, glassware, microBubble, gemTex, pipeJoint, GEM_CUT } from './labtiles.js'; // [phase9:ui]
 
 const NODES = LAB_NODES.filter((n) => n.id !== ROOT_ID).sort((a, b) => a.depth - b.depth);
@@ -1070,9 +1072,12 @@ export class LabTree {
         ctx.fillStyle = rgba(f.col, 1 - k * k); ctx.fillRect(Math.round(x), Math.round(y), w, 2);
       } else if (f.kind === 'label') {
         const yy = y - LAB_NODE * z * 0.75 - ease.outCubic(k) * 16;
-        ctx.globalAlpha = 1 - clamp01((k - 0.6) / 0.4);
-        drawText(ctx, f.text, Math.round(x - measureText(f.text, 'big') / 2), Math.round(yy - 10), { font: 'big', color: '#fff6a0', outline: '#5a3a06' });
-        ctx.globalAlpha = 1;
+        // [phase9:ui] the label pops up as extruded 3D voxel letters
+        if (!drawPop3D(ctx, f.text, x, yy - 4, { t: this.t, pop: clamp01(f.t / 0.35), alpha: 1 - clamp01((k - 0.6) / 0.4), palette: f.text === 'NEW!' ? 'aqua' : 'gold', size: 16, depth: 3, wobble: 0.7, glowColor: '#03142c' })) {
+          ctx.globalAlpha = 1 - clamp01((k - 0.6) / 0.4);
+          drawText(ctx, f.text, Math.round(x - measureText(f.text, 'big') / 2), Math.round(yy - 10), { font: 'big', color: '#fff6a0', outline: '#5a3a06' });
+          ctx.globalAlpha = 1;
+        }
       }
     }
   }
@@ -1299,7 +1304,7 @@ export class LabTree {
     // tier pips: one little gem per tier in the branch's cut
     if (nd && !hidden) {
       const px0 = tx + measureText(sub) + 6;
-      for (let i = 0; i < Math.min(6, nd.tier || 1); i++) { const g = gemTex(2.5, i % 2 ? mix(col, '#ffffff', 0.3) : '#ffe27a', GEM_CUT[nd.branch] || 'round'); ctx.drawImage(g, px0 + i * 7 - 1, ty + 1); }
+      for (let i = 0; i < Math.min(6, nd.tier || 1); i++) drawIcon3D(ctx, 'star', px0 + i * 10 + 3, ty + 4, 11, { t, phase: i * 0.9 }); // [phase9:ui] 3D tier stars
     }
     // body
     ctx.save(); ctx.beginPath(); ctx.rect(x, y + HEAD, W, H - HEAD - BTN - 4); ctx.clip();

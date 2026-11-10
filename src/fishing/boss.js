@@ -21,21 +21,21 @@
 
 import { TAU, clamp, clamp01, lerp, damp, ease } from '../core/math.js';
 import { rng } from '../core/rng.js';
-import { rgba } from '../core/color.js';
-import { drawText, measureText } from '../gfx/font.js';
+import { rgba, shade } from '../core/color.js';
 import { glowSprite } from '../gfx/particles.js';
 import { drawFishRig } from '../gfx/fishrig.js';
 import { voxelFishIcon } from '../fish/fishicon.js';
 import { SPECIES, SPECIES_BY_ID } from '../fish/species.js';
 import { BOSS_BY_OCEAN, BOSS_BY_ID } from '../fish/bosses.js';
-import { drawTitle, drawAeroBar, drawAeroSurface, drawAeroCoin } from '../ui/aero.js';
-import { getUiIcon } from '../gfx/uiicons.js';
-import { glossText, drawGlassPill, drawRays } from './cinematics.js';
-import { drawBigArrow } from './hud.js';
+import { drawAeroBar, drawAeroCoin } from '../ui/aero.js';
+import { drawRays, drawGlow, word3D, letters3D } from './cinematics.js';
+import { drawGlossArrow } from './hud.js';
+import { drawIcon3d, chestIconId } from './icons3d.js';
+import { gemIcon, rodIcon } from '../gfx/bigicons.js';
+import { ROD_BY_ID } from '../game/rods.js';
 import * as ITEMS from '../build/items.js';
 import { grantUnlock } from '../game/lab.js';
 import { giveRod } from '../game/rods.js';
-import { labIcon } from '../ui/labicons.js';
 
 const INK = '#0c3a52';
 
@@ -240,7 +240,10 @@ export class BossFight {
     this.B = B; this.F = B.F; this.def = def; this.fish = B.fish;
     this.tier = def.tier || 1;
     this.t = 0;
-    this.stage = 'intro'; this.stageT = 2.9;
+    this.introDur = 3.8;
+    this.stage = 'intro'; this.stageT = this.introDur;
+    this.landed = new Set();
+    this.palette = { face: [def.glow, def.color, shade(def.color, -0.3)], bevelL: '#ffffff', bevelD: shade(def.color, -0.35), side: shade(def.color, -0.5), back: '#121a2e', outline: '#ffffff' };
     this.phase = 1;
     this.atk = null;
     this.atkT = 4;
@@ -270,7 +273,7 @@ export class BossFight {
   paceMul() { return 1.05 - (this.phase - 1) * 0.15; }
   extraTension() { return this.atk?.kind === 'charge' && this.atk.stage === 'tele' ? 0.08 : 0; }
   canFinish() { return this.stage === 'fight'; }
-  debugWin() { this.stage = 'fight'; this.atk = null; }
+  debugWin() { this.stage = 'fight'; this.atk = null; this.phase = 3; }
 
   update(dt) {
     const B = this.B, F = this.F;
@@ -303,7 +306,7 @@ export class BossFight {
       this.phase = next;
       this.stage = 'phase'; this.stageT = 1.7;
       this.phaseCard = { t: 0, n: next };
-      B.mode = 'rest'; B.nextPull = 2.5;
+      B.mode = 'rest'; B.modeT = 2.5; if (B.qte) B.qte.active = false;
       this.fish.feel('angry', 3); this.fish.say('anger', 1.5);
       F.onBossPhase?.(this.def, next);
       return 'hold';
@@ -332,13 +335,14 @@ export class BossFight {
       const tele = Math.max(0.75, 1.25 - (this.phase - 1) * 0.15 - this.tier * 0.02);
       this.atk = { kind, stage: 'tele', t: 0, tele, dir, x0: F.input.x, best: 0, dodged: false, sx: f.x, sy: f.y };
       f.say('!!', tele); f.feel('angry', 2);
-      B.mode = 'rest';
+      B.mode = 'rest'; B.trick = null;
+      if (B.qte) B.qte.active = false;
       F.onBossAttack?.('charge', this.atk);
     } else if (kind === 'ink') {
       this.atk = { kind, t: 0, dur: 1 };
       F.inkSplat?.(4 + this.phase, { big: true, life: 9 });
       F.particles.ink?.(f.x, f.y, 18, { power: 1.6, scale: 1.6, color: '#140a22' });
-      B.nextPull = Math.min(B.nextPull, 1.2);
+      if (B.mode === 'rest') B.modeT = Math.min(B.modeT, 1.2);
       F.onBossAttack?.('ink', this.atk);
     } else {
       const n = 2 + this.phase + Math.min(2, Math.floor(this.tier / 3));
@@ -492,117 +496,103 @@ export class BossFight {
   }
 
   drawHud(ctx) {
-    const F = this.F, W = F.W, H = F.H, t = this.t;
+    const F = this.F, W = F.W, t = this.t;
     if (this.stage === 'intro') this.drawIntroCard(ctx, this.cardT);
-    // ---- the boss bar
-    const show = this.stage === 'intro' ? clamp01((this.cardT - 1.6) * 3) : 1;
+    // ---- the boss bar: slim glass bar at the top, the boss's own 3D model as its badge, its name in 3D voxels
+    const show = this.stage === 'intro' ? clamp01((this.cardT - 2.4) * 3) : 1;
     if (show > 0.01) {
-      const bw = Math.round(Math.min(W * 0.56, 520)), bh = 18;
-      const bx = Math.round(W / 2 - bw / 2), by = Math.round(18 - (1 - ease.outBack(show)) * 60);
+      const bw = Math.round(Math.min(W * 0.5, 460)), bh = 12;
+      const bx = Math.round(W / 2 - bw / 2), by = Math.round(30 - (1 - ease.outBack(show)) * 70);
       ctx.save();
       ctx.globalAlpha = show;
-      drawAeroSurface(ctx, bx - 10, by - 6, bw + 20, bh + 30, { tone: 'dark', r: 10, gloss: 0.35, glossH: 10, rim: 0.6, glow: 0.4 });
-      const hp = this.hpShown;
       const col = this.rage > 0.5 ? '#ff5a4a' : this.phase === 2 ? '#ff9d2e' : '#ff4f7a';
-      // the bar: a chip of white shows recent damage
-      drawAeroBar(ctx, bx, by + 14, bw, bh, Math.max(hp, this.hp + this.hurt * 0.05), { color: '#ffffff' });
-      drawAeroBar(ctx, bx, by + 14, bw, bh, this.hp, { color: col });
-      // phase notches
+      drawAeroBar(ctx, bx, by, bw, bh, Math.max(this.hpShown, this.hp), { color: '#ffffff' });
+      drawAeroBar(ctx, bx, by, bw, bh, this.hp, { color: col });
       for (const p of PHASE_AT) {
         const nx = Math.round(bx + 1 + (bw - 2) * p);
-        ctx.fillStyle = INK; ctx.fillRect(nx - 1, by + 12, 3, bh + 4);
-        ctx.fillStyle = '#ffffff'; ctx.fillRect(nx, by + 13, 1, bh + 2);
+        ctx.fillStyle = INK; ctx.fillRect(nx - 1, by - 2, 3, bh + 4);
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(nx, by - 1, 1, bh + 2);
       }
-      // name + phase pips
-      const sk = getUiIcon('skull', 1);
-      if (sk) ctx.drawImage(sk, bx, by - 1);
-      drawText(ctx, this.def.title.toUpperCase(), bx + (sk ? sk.width + 4 : 0), by, { color: '#ffffff', outline: INK, scale: 1 });
+      if (this.hurt > 0.3 && Math.floor(t * 20) % 2) { ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fillRect(bx, by, bw, bh); }
+      // the boss itself as the badge (a voxel render), bobbing at the left end
+      const ic = voxelFishIcon(this.def.id, 46, 30, { dir: 1 });
+      if (ic) ctx.drawImage(ic, bx - ic.width - 4, Math.round(by + bh / 2 - ic.height / 2 + Math.sin(t * 3) * 1.5));
+      // phase gems at the right end (3D)
       for (let i = 0; i < 3; i++) {
-        const on = i < this.phase;
-        const px = bx + bw - 3 * 14 + i * 14;
-        ctx.fillStyle = INK; ctx.fillRect(px - 1, by - 1, 12, 9);
-        ctx.fillStyle = on ? (i === 2 ? '#ff5a4a' : '#ffd23a') : '#3a5a72';
-        ctx.fillRect(px, by, 10, 7);
-        if (on) { ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.fillRect(px, by, 10, 2); }
+        const g = gemIcon(i < this.phase ? (i === 2 ? '#ff4f5e' : '#ffd23a') : '#5a6a7c', 12);
+        if (g) ctx.drawImage(g, bx + bw + 4 + i * 13, Math.round(by + bh / 2 - g.height / 2));
       }
-      if (this.hurt > 0.3 && Math.floor(t * 20) % 2) { ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fillRect(bx, by + 14, bw, bh); }
+      word3D(ctx, this.def.title, W / 2, by + bh + 14, { t, scale: 0.6, pal: this.rage > 0.5 ? 'red' : 'white', wobble: 0.6 });
       ctx.restore();
     }
     // ---- attack cues
     const a = this.atk;
     if (a?.kind === 'charge') this.drawChargeCue(ctx, a);
     if (a?.kind === 'charge' && a.stage === 'dazed') this.drawZapCue(ctx, a);
-    if (this.minions.some((m) => m.t >= 0)) {
-      for (const m of this.minions) {
-        if (m.t < 0) continue;
-        const [sx, sy] = F.toScreen(m.x, m.y);
-        drawTarget(ctx, sx, sy, 13, t, '#ff8a7a');
-      }
+    for (const m of this.minions) {
+      if (m.t < 0) continue;
+      const [sx, sy] = F.toScreen(m.x, m.y);
+      drawTarget(ctx, sx, sy, 13, t, '#ff8a7a');
     }
     if (this.phaseCard) this.drawPhaseCard(ctx, this.phaseCard);
   }
 
+  // The intro mini cutscene's titles: "BOSS" slams in, then the name drops in as big 3D voxel letters, the
+  // subtitle sways in under it. (The camera pan, slow-mo, roar and shake come from Fishing.updateFight / onBossIntro.)
   drawIntroCard(ctx, ct) {
     const F = this.F, W = F.W, H = F.H, def = this.def;
-    const inK = ease.outCubic(clamp01(ct * 2.5)), outK = clamp01((2.9 - ct) * 3);
-    const a = Math.min(inK, outK);
-    if (a <= 0.01) return;
-    const cy = Math.round(H * 0.62);
+    const out = clamp01((this.introDur - ct) * 3);
+    if (out <= 0.01) return;
     ctx.save();
-    // darken the world a touch
-    ctx.globalAlpha = 0.35 * a;
-    ctx.fillStyle = '#020a14';
-    ctx.fillRect(0, 0, W, H);
-    // the band
-    ctx.globalAlpha = a;
-    const bh = 96;
-    const slide = Math.round((1 - inK) * W);
-    ctx.fillStyle = rgba('#04121e', 0.82);
-    ctx.fillRect(-slide, cy - bh / 2, W, bh);
-    ctx.fillStyle = def.color; ctx.fillRect(-slide, cy - bh / 2, W, 2); ctx.fillRect(slide, cy + bh / 2 - 2, W, 2);
-    // speed streaks in the band
-    for (let i = 0; i < 14; i++) {
-      const sx = ((i * 137 + ct * 900) % (W + 200)) - 100, sy = cy - bh / 2 + 6 + ((i * 53) % (bh - 12));
-      ctx.fillStyle = rgba(def.color, 0.25);
-      ctx.fillRect(Math.round(W - sx), sy, 40 + (i % 3) * 20, 1);
+    // a soft dark vignette pulls the eye to the boss
+    ctx.globalAlpha = 0.55 * out * clamp01(ct * 2);
+    for (let i = 0; i < 24; i++) {
+      const k = 1 - i / 24;
+      ctx.fillStyle = rgba('#020a14', k * k * 0.9);
+      ctx.fillRect(0, H * 0.12 + i * 3, W, 3); ctx.fillRect(0, H * 0.88 - i * 3 - 3, W, 3);
     }
-    // "BOSS" tag, name, subtitle
-    const tag = glossText('BOSS', 2, 'red');
-    const tx = Math.round(W / 2 - tag.w / 2 + slide * 0.5);
-    ctx.drawImage(tag.c, tx - tag.ox, cy - bh / 2 + 6 - tag.oy);
-    const jit = ct < 0.5 ? rng.int(-1, 1) : 0;
-    drawTitle(ctx, def.title, W / 2 - slide * 0.3 + jit, cy - 16, { scale: 3, color: '#ffffff', outline: '#04121e', align: 'center', glossColor: def.glow });
-    drawText(ctx, def.sub, Math.round(W / 2 + slide * 0.2), cy + 32, { align: 'center', color: def.glow, outline: '#04121e' });
+    ctx.globalAlpha = out;
+    const cy = Math.round(H * 0.6);
+    if (ct > 0.5) {
+      const bt = ct - 0.5;
+      word3D(ctx, 'BOSS', W / 2, cy - 54, { t: bt, pop: clamp01(bt * 4), scale: lerp(4, 1.3, ease.outBack(clamp01(bt * 4))), pal: 'red', rot: Math.sin(bt * 4) * 0.06 });
+    }
+    if (ct > 0.9) {
+      const nt = ct - 0.9;
+      const sc = clamp(W / (def.title.length * 34), 1.4, 2.6);
+      const landed = letters3D(ctx, def.title, W / 2, cy, nt, { pal: this.palette, scale: sc, stagger: 0.05, drop: 180 });
+      for (const [lx, ly, i] of landed) {
+        if (this.landed.has(i)) continue;
+        this.landed.add(i);
+        F.fx.pixelBurst?.('sparkle', lx, ly + 18, 3, { ramp: def.color, layer: 'fg', size: 0 });
+        if (i % 2 === 0) F.sfx('mash_pop', { pitch: 0.7 + i * 0.03, vol: 0.4 });
+      }
+    }
+    if (ct > 1.7) word3D(ctx, def.sub, W / 2, cy + 52, { t: ct, pop: clamp01((ct - 1.7) * 4), scale: 0.75, pal: 'white', wobble: 0.8 });
     ctx.restore();
   }
 
   drawPhaseCard(ctx, pc) {
     const F = this.F, W = F.W, H = F.H;
-    const k = ease.outBack(clamp01(pc.t * 4)), a = clamp01((1.8 - pc.t) * 3);
-    const g = glossText('PHASE ' + pc.n + '!', 4, pc.n >= 3 ? 'red' : 'sun');
+    const a = clamp01((1.8 - pc.t) * 3);
     ctx.save();
     ctx.globalAlpha = a;
-    drawRays(ctx, W / 2, H * 0.3, 200, 14, pc.t, pc.n >= 3 ? '#ff8a7a' : '#ffe27a', 0.1 * a);
-    ctx.translate(W / 2, Math.round(H * 0.3));
-    ctx.scale(lerp(2, 1, k), lerp(2, 1, k));
-    ctx.drawImage(g.c, Math.round(-g.w / 2 - g.ox), Math.round(-g.h / 2 - g.oy));
+    drawRays(ctx, W / 2, H * 0.3, 220, 14, pc.t, pc.n >= 3 ? '#ff8a7a' : '#ffe27a', 0.12 * a);
+    letters3D(ctx, 'PHASE ' + pc.n, W / 2, Math.round(H * 0.3), pc.t, { pal: pc.n >= 3 ? 'red' : 'sun', scale: 2.2, stagger: 0.04, drop: 90 });
     ctx.restore();
   }
 
-  // the charge: a red arrow on the boss (where it rushes) and a big green DRAG arrow (where you pull)
+  // the charge: a red arrow on the boss (where it rushes) and a big green arrow (where you drag) that fills
   drawChargeCue(ctx, a) {
     const F = this.F, W = F.W, H = F.H, t = this.t;
     if (a.stage !== 'tele' && a.stage !== 'rush') return;
     const [fx, fy] = F.toScreen(this.fish.x, this.fish.y);
-    const blink = Math.floor(t * 10) % 2;
-    drawBigArrow(ctx, fx + a.dir * 30, fy - 34, a.dir > 0 ? 0 : Math.PI, 46, a.dodged ? '#8a9aa8' : blink ? '#ff4f5e' : '#ff9a7a');
-    // the counter: green, at the cursor side of the screen, fills as you drag
+    const ra = a.dir > 0 ? 0 : Math.PI;
+    drawGlossArrow(ctx, fx - a.dir * 20, fy - 40, ra, { len: 60, w: 14, kind: a.dodged ? 'ok' : 'surge', alpha: Math.floor(t * 10) % 2 ? 1 : 0.7 });
     const k = clamp01(a.best / CHARGE_NEED);
     const cx = Math.round(W / 2), cy = Math.round(H * 0.3);
-    const label = a.dodged ? 'DODGED!' : 'DRAG!';
-    const g = glossText(label, 3, a.dodged ? 'lime' : 'sun');
-    ctx.drawImage(g.c, Math.round(cx - g.w / 2 - g.ox), Math.round(cy - 40 - g.oy));
-    drawBigArrow(ctx, cx - a.dir * 20, cy + 6, a.dir > 0 ? Math.PI : 0, 90, a.dodged ? '#8be04a' : '#c8f56a', k);
+    word3D(ctx, a.dodged ? 'DODGED!' : 'DRAG!', cx, cy - 34, { t, pop: clamp01(a.t * 6), scale: 1.6, pal: a.dodged ? 'lime' : 'sun', rot: Math.sin(t * 8) * 0.05 });
+    drawGlossArrow(ctx, cx + a.dir * 60, cy + 14, a.dir > 0 ? Math.PI : 0, { len: 120, w: 22, k: a.dodged ? 1 : k, kind: 'pull' });
   }
 
   drawZapCue(ctx, a) {
@@ -612,19 +602,14 @@ export class BossFight {
     drawTarget(ctx, clamp(fx, 80, F.W - 80), clamp(fy, 130, F.H - 150), r, t, '#ffe27a');
     const left = clamp01(1 - a.t / a.dur);
     const cx = Math.round(F.W / 2), cy = Math.round(F.H * 0.3);
-    const g = glossText(this.B.charges > 0 ? 'ZAP NOW!' : 'DAZED! REEL!', 4, 'sun');
-    const k = 1 + Math.max(0, Math.sin(t * 12)) * 0.08;
-    ctx.save();
-    ctx.translate(cx, cy - 18);
-    ctx.scale(k, k);
-    ctx.drawImage(g.c, Math.round(-g.w / 2 - g.ox), Math.round(-g.h / 2 - g.oy));
-    ctx.restore();
-    // the window ticking away
+    word3D(ctx, this.B.charges > 0 ? 'ZAP NOW!' : 'REEL!', cx, cy - 20, { t: t * 2, pop: clamp01(a.t * 5), scale: 1.7 + Math.max(0, Math.sin(t * 12)) * 0.1, pal: 'sun' });
+    drawIcon3d(ctx, 'bolt', cx - 110, cy - 20, 30, Math.sin(t * 4));
+    drawIcon3d(ctx, 'bolt', cx + 110, cy - 20, 30, -Math.sin(t * 4));
     const w = 120;
-    ctx.fillStyle = INK; ctx.fillRect(cx - w / 2 - 1, cy + 6, w + 2, 8);
-    ctx.fillStyle = '#5a4a18'; ctx.fillRect(cx - w / 2, cy + 7, w, 6);
-    ctx.fillStyle = '#ffe27a'; ctx.fillRect(cx - w / 2, cy + 7, Math.round(w * left), 6);
-    ctx.fillStyle = '#fff6c0'; ctx.fillRect(cx - w / 2, cy + 7, Math.round(w * left), 2);
+    ctx.fillStyle = INK; ctx.fillRect(cx - w / 2 - 1, cy + 10, w + 2, 8);
+    ctx.fillStyle = '#5a4a18'; ctx.fillRect(cx - w / 2, cy + 11, w, 6);
+    ctx.fillStyle = '#ffe27a'; ctx.fillRect(cx - w / 2, cy + 11, Math.round(w * left), 6);
+    ctx.fillStyle = '#fff6c0'; ctx.fillRect(cx - w / 2, cy + 11, Math.round(w * left), 2);
   }
 }
 
@@ -653,11 +638,11 @@ export function bossVictory(F, fish, def) {
   const rw = first ? def.reward : def.repeat;
   const items = [];
   try {
-    if (rw.aero) { g.addCoins?.(rw.aero, F.W / 2, F.H * 0.5); items.push({ kind: 'aero', label: rw.aero.toLocaleString('en-US') + ' Aero' }); }
-    if (rw.chest) { ITEMS.addItem(st, rw.chest, 1); items.push({ kind: 'chest', id: rw.chest, label: ITEMS.ITEMS?.[rw.chest]?.name || 'Chest' }); }
+    if (rw.aero) { g.addCoins?.(rw.aero, F.W / 2, F.H * 0.5); items.push({ kind: 'aero', label: '+' + rw.aero.toLocaleString('en-US') }); }
+    if (rw.chest) { ITEMS.addItem(st, rw.chest, 1); items.push({ kind: 'chest', id: rw.chest, label: 'Chest' }); }
     if (first) { rec.trophies[def.id] = Date.now(); items.push({ kind: 'trophy', label: 'Trophy' }); }
-    if (rw.recipe) { grantUnlock(st, 'recipe', rw.recipe); g.emit?.('unlocked', { kind: 'recipe', id: rw.recipe, free: true }); items.push({ kind: 'recipe', id: rw.recipe, label: 'Rod recipe' }); }
-    if (rw.rod) { giveRod(st, rw.rod); items.push({ kind: 'rod', id: rw.rod, label: 'New rod!' }); }
+    if (rw.recipe) { grantUnlock(st, 'recipe', rw.recipe); g.emit?.('unlocked', { kind: 'recipe', id: rw.recipe, free: true }); items.push({ kind: 'recipe', id: rw.recipe, label: 'Recipe' }); }
+    if (rw.rod) { giveRod(st, rw.rod); items.push({ kind: 'rod', id: rw.rod, label: 'New Rod' }); }
   } catch (e) { console.error(e); }
   if (fish?.rec) { fish.rec.boss = def.id; fish.rec.trophy = first; }
   g.emit?.('bossDefeated', { id: def.id, ocean: def.ocean, first });
@@ -670,6 +655,7 @@ class Victory {
     this.F = F; this.def = def; this.items = items; this.first = first;
     this.t = 0; this.dur = 6.5;
     this.burst = false;
+    this.landed = new Set();
   }
 
   update(rdt) {
@@ -680,13 +666,13 @@ class Victory {
       F.fx.celebrate?.(W / 2, H * 0.3, 2.2, { layer: 'fg' });
       F.fx.pixelBurst?.('star', W / 2, H * 0.3, 24, { ramp: 'gold', speed: [120, 300] });
       F.fx.pixelBurst?.('confetti', W / 2, -10, 40, { dir: Math.PI / 2, spread: 1.3, w: W * 0.4, speed: [20, 90] });
+      F.fx.lensFlare?.(W * 0.3, H * 0.22, { cx: W / 2, cy: H / 2, life: 2, scale: 1.3 });
       F.sfx('catch_legendary');
       F.sfx('unlock_biome', { vol: 0.6 });
       F.cam?.flash?.('#fff6c0', 0.6);
     }
-    // chips pop in one by one
     this.items.forEach((it, i) => {
-      if (!it.popped && this.t > 1.4 + i * 0.35) {
+      if (!it.popped && this.t > 1.6 + i * 0.35) {
         it.popped = true;
         const [x, y] = this.chipPos(i);
         F.fx.chestOpen?.(x, y, it.kind === 'trophy' || it.kind === 'rod' ? 'legendary' : 'epic', { layer: 'fg' });
@@ -698,8 +684,8 @@ class Victory {
   }
 
   chipPos(i) {
-    const F = this.F, n = this.items.length, gap = 92;
-    return [Math.round(F.W / 2 - ((n - 1) * gap) / 2 + i * gap), Math.round(F.H * 0.5)];
+    const F = this.F, n = this.items.length, gap = 100;
+    return [Math.round(F.W / 2 - ((n - 1) * gap) / 2 + i * gap), Math.round(F.H * 0.52)];
   }
 
   draw(ctx) {
@@ -708,70 +694,42 @@ class Victory {
     if (a <= 0.01) return;
     ctx.save();
     ctx.globalAlpha = a;
-    drawRays(ctx, W / 2, H * 0.3, 320, 18, t * 0.6, '#fff2b8', 0.12);
-    const k = ease.outBack(clamp01(t * 3));
-    const g = glossText('VICTORY!', 6, 'sun');
-    ctx.save();
-    ctx.translate(W / 2, Math.round(H * 0.22));
-    ctx.scale(lerp(2.4, 1, k), lerp(2.4, 1, k));
-    ctx.drawImage(g.c, Math.round(-g.w / 2 - g.ox), Math.round(-g.h / 2 - g.oy));
-    ctx.restore();
-    const sub = (this.first ? 'BOSS DEFEATED: ' : 'DEFEATED AGAIN: ') + def.title.toUpperCase();
-    const sw = measureText(sub, 'normal', 1) + 30;
-    drawGlassPill(ctx, W / 2, Math.round(H * 0.31), sw, 17, def.color, 0.9);
-    drawText(ctx, sub, Math.round(W / 2), Math.round(H * 0.31) + 5, { align: 'center', color: INK });
-    // reward chips
+    drawRays(ctx, W / 2, H * 0.24, 340, 18, t * 0.6, '#fff2b8', 0.13);
+    drawGlow(ctx, W / 2, H * 0.24, 110, '#fff6c0', 0.4);
+    const landed = letters3D(ctx, 'VICTORY!', W / 2, Math.round(H * 0.22), t, { pal: 'sun', scale: W < 700 ? 2.2 : 2.8, stagger: 0.07 });
+    for (const [lx, ly, i] of landed) {
+      if (this.landed.has(i)) continue;
+      this.landed.add(i);
+      F.fx.pixelBurst?.('star', lx, ly + 24, 4, { ramp: 'gold', layer: 'fg', speed: [40, 110] });
+      F.sfx('mash_pop', { pitch: 1 + i * 0.07, vol: 0.5 });
+    }
+    if (t > 1) word3D(ctx, (this.first ? 'BOSS DEFEATED' : 'DEFEATED AGAIN'), W / 2, Math.round(H * 0.34), { t, pop: clamp01((t - 1) * 4), scale: 0.95, pal: def.color === '#ffd23a' ? 'sun' : 'white' });
+    // the rewards: spinning 3D objects on a glow, each with a small 3D label
     this.items.forEach((it, i) => {
       if (!it.popped) return;
       const [x, y] = this.chipPos(i);
-      const pk = ease.outBack(clamp01((t - 1.4 - i * 0.35) * 4));
-      const bob = Math.round(Math.sin(t * 3 + i) * 2);
+      const pk = ease.outBack(clamp01((t - 1.6 - i * 0.35) * 4));
+      const bob = Math.round(Math.sin(t * 3 + i) * 3);
+      drawGlow(ctx, x, y + bob, 34, it.kind === 'trophy' ? '#fff2b8' : '#bff8ff', 0.45 * pk);
       ctx.save();
       ctx.translate(x, y + bob);
       ctx.scale(pk, pk);
-      drawAeroSurface(ctx, -38, -34, 76, 70, { tone: 'frost', r: 12, gloss: 0.5, glossH: 20, rim: 0.85, glow: 0.5 });
-      drawRewardIcon(ctx, it, 0, -6, t);
-      drawText(ctx, it.label, 0, 22, { align: 'center', color: INK });
+      drawRewardIcon(ctx, it, 0, 0, t + i);
       ctx.restore();
+      word3D(ctx, it.label, x, y + 40, { t: t + i, pop: pk, scale: 0.55, pal: 'white', wobble: 0.6 });
     });
     ctx.restore();
   }
 }
 
 function drawRewardIcon(ctx, it, x, y, t) {
-  if (it.kind === 'aero') { drawAeroCoin(ctx, x, y, 11, t); return; }
-  if (it.kind === 'trophy') { drawTrophy(ctx, x, y, t); return; }
-  let ic = null;
-  try {
-    if (it.kind === 'chest') ic = labIcon('mat:' + it.id, 30);
-    else if (it.kind === 'rod') ic = labIcon('rod:' + it.id, 30);
-    else if (it.kind === 'recipe') ic = labIcon('rod:' + String(it.id).replace(/^ws_rod_/, ''), 30);
-  } catch (e) { ic = null; }
-  if (!ic) ic = it.kind === 'chest' ? chestIcon() : getUiIcon('line', 2);
+  if (it.kind === 'aero') { drawAeroCoin(ctx, x, y, 16, t); return; }
+  if (it.kind === 'trophy') { drawIcon3d(ctx, 'trophy', x, y, 52, Math.sin(t * 1.5)); return; }
+  if (it.kind === 'chest') { drawIcon3d(ctx, chestIconId(it.id), x, y, 50, Math.sin(t * 1.5)); return; }
+  const rod = ROD_BY_ID[it.kind === 'rod' ? it.id : String(it.id).replace(/^ws_rod_/, '')];
+  const ic = rod ? rodIcon(rod, 52) : null;
   if (ic) ctx.drawImage(ic, Math.round(x - ic.width / 2), Math.round(y - ic.height / 2));
 }
 
-let CHEST = null;
-function chestIcon() {
-  if (CHEST) return CHEST;
-  const c = document.createElement('canvas');
-  c.width = 30; c.height = 24;
-  const g = c.getContext('2d');
-  const P = (col, x, y, w, h) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
-  P(INK, 1, 7, 28, 16); P('#c8925a', 2, 8, 26, 14); P('#e8b47a', 2, 8, 26, 3); P('#7a4a24', 2, 19, 26, 3);
-  P(INK, 2, 1, 26, 8); P('#d8a268', 3, 2, 24, 6); P('#ffe2b0', 3, 2, 24, 2);
-  P('#ffd04a', 4, 7, 22, 2); P('#ffd04a', 13, 6, 4, 9); P(INK, 14, 10, 2, 3); P('#fff8c8', 13, 6, 1, 2);
-  CHEST = c;
-  return c;
-}
-
-// A glossy pixel trophy cup (for the victory chips and the catch card).
-export function drawTrophy(ctx, x, y, t = 0, s = 1) {
-  x = Math.round(x); y = Math.round(y);
-  const P = (col, px, py, w, h) => { ctx.fillStyle = col; ctx.fillRect(x + px * s, y + py * s, w * s, h * s); };
-  P(INK, -9, -12, 18, 13); P('#ffd23a', -8, -11, 16, 11); P('#fff6c0', -6, -10, 4, 8); P('#e0901a', 4, -11, 4, 11);
-  P(INK, -13, -10, 5, 7); P('#ffd23a', -12, -9, 3, 5); P(INK, 8, -10, 5, 7); P('#ffd23a', 9, -9, 3, 5);
-  P(INK, -3, 1, 6, 5); P('#e0a020', -2, 1, 4, 4);
-  P(INK, -7, 5, 14, 5); P('#5a8ab8', -6, 6, 12, 3); P('#bfeaff', -6, 6, 12, 1);
-  if (Math.sin(t * 4) > 0.6) { P('#ffffff', -5, -9, 1, 3); P('#ffffff', -6, -8, 3, 1); }
-}
+// The trophy as a 3D model (the catch card shows it for a first boss win).
+export function drawTrophy(ctx, x, y, t = 0, px = 40) { return drawIcon3d(ctx, 'trophy', x, y, px, Math.sin(t * 1.5)); }

@@ -815,7 +815,7 @@ export function pixelize(d, solid, w, h, levels = 7) {
 }
 
 // crisp selective outline + soft drop shadow around a rendered sprite (in place, on a padded canvas)
-function finishSprite(src, w, h) {
+function finishSprite(src, w, h, pix = true) {
   const c = makeCanvas(w, h);
   const g = ctxOf(c);
   g.drawImage(src, 0, 0);
@@ -827,7 +827,7 @@ function finishSprite(src, w, h) {
     if (a > 70) solid[i] = 1; // translucent glass stays translucent; faint fringes are dropped (crisp pixel edges)
     else d[i] = 0;
   }
-  pixelize(d, solid, w, h); // [phase8:ui] posterised, dithered, hue-shifted pixel-art shading
+  if (pix) pixelize(d, solid, w, h); // [phase8:ui] posterised, dithered, hue-shifted pixel-art shading ([phase9:ui] off for the smooth full-res 3D icons)
   const out = new Uint32Array(d);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const i = y * w + x;
@@ -851,7 +851,7 @@ function finishSprite(src, w, h) {
   return sh;
 }
 
-function renderDef(def, px, turn) {
+function renderDef(def, px, turn, pix = true) {
   // fit the static pose into px (cached per size)
   let fit = def.fits.get(px);
   if (!fit) {
@@ -880,7 +880,7 @@ function renderDef(def, px, turn) {
     gm.dispose();
     if (gl) { const c2 = makeCanvas(S, S), g2 = ctxOf(c2); g2.drawImage(base, 0, 0); g2.drawImage(gl, 0, 0); base = c2; }
   }
-  return finishSprite(base, S, S);
+  return finishSprite(base, S, S, pix);
 }
 
 const frameCache = new Map();
@@ -898,11 +898,41 @@ function frameOf(key, make, px, turn) {
   try { canvas = renderDef(def, px, ang); } catch (err) { console.error(err); canvas = null; }
   e = canvas ? { canvas, ox: canvas.width / 2, oy: canvas.height / 2 } : null;
   // [phase9:ui] the full-res UI layer gets a 2x render (more facets, a finer outline), built lazily within a budget
-  if (canvas) withHi(canvas, () => { if (!hiBudget()) return undefined; const t0 = performance.now(); let big = null; try { big = renderDef(def, px * HI, ang); } catch { big = null; } hiSpent += performance.now() - t0; return big ? fitHi(canvas, big) : null; });
+  if (canvas) withHi(canvas, () => { if (!hiBudget()) return undefined; const t0 = performance.now(); let big = null; try { big = renderDef(def, px * HI, ang, false); } catch { big = null; } hiSpent += performance.now() - t0; return big ? fitHi(canvas, big) : null; });
   frameCache.set(k, e);
   if (frameCache.size > 900) frameCache.delete(frameCache.keys().next().value);
   return e;
 }
+
+// [phase9:ui] 3D icons for the full-res UI: rendered smooth (no pixelize) at 2x right away, 1x = a downsample.
+//   modelFrame(key, make, px, turn) -> {canvas (logical, `.hi` twin), ox, oy} | null     (turn as in iconFrame)
+const hiFrames = new Map();
+export function modelFrame(key, make, px, turn = 0) {
+  if (!lpReady()) return null;
+  px = Math.max(6, Math.round(px));
+  const def = prepModel(key, make);
+  if (!def) return null;
+  const steps = def.spin === 'full' ? 24 : 12;
+  const q = def.spin === 'full' ? Math.round((((turn % 1) + 1) % 1) * steps) % steps : Math.round(Math.max(-1, Math.min(1, turn)) * (steps / 2));
+  const k = key + '|' + px + '|' + q;
+  let e = hiFrames.get(k);
+  if (e !== undefined) return e;
+  const ang = def.spin === 'full' ? (q / steps) * Math.PI * 2 : (q / (steps / 2)) * 0.62;
+  let big = null;
+  try { big = renderDef(def, px * HI, ang, false); } catch (err) { console.error('3D icon ' + key, err); big = null; }
+  if (big) {
+    const S = Math.ceil(big.width / HI), c = makeCanvas(S, S), g = c.getContext('2d');
+    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+    const hc = makeCanvas(S * HI, S * HI); ctxOf(hc).drawImage(big, 0, 0);
+    g.drawImage(hc, 0, 0, S, S);
+    Object.defineProperty(c, 'hi', { value: hc, configurable: true });
+    e = { canvas: c, ox: S / 2, oy: S / 2 };
+  } else e = null;
+  hiFrames.set(k, e);
+  if (hiFrames.size > 1500) hiFrames.delete(hiFrames.keys().next().value);
+  return e;
+}
+export function modelSpin(key, make) { const d = lpReady() ? prepModel(key, make) : null; return d?.spin || null; }
 
 export function iconSpinMode(id) {
   if (!ICON_MODELS[id] || !lpReady()) return null;

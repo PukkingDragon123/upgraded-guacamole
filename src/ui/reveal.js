@@ -16,7 +16,7 @@ import { glowSprite, gbubbleSprite } from '../gfx/particles.js';
 import { traitList, valueMultiplier } from '../fish/traits.js';
 import { RELEASE_VALUE } from '../game/shopdata.js';
 import { drawAeroPanel, drawGlossOrb, drawAeroCoin } from './aero.js';
-import { glossText, drawGlassPill, glossFor } from '../fishing/cinematics.js';
+import { glossText, drawGlassPill, glossFor, word3D } from '../fishing/cinematics.js';
 import { centerRect } from './ui.js';
 import { drawTrophy } from '../fishing/boss.js'; // [phase9:fishing] boss catches
 
@@ -365,8 +365,8 @@ export class RevealPanel {
     if (d.record) drawSticker(ctx, r.x + W - 44 * k, r.y + (d.isNew ? 84 : 40) * k, 'BEST', clamp01((t - 1.1) * 5), t, '#ffb02e', ts);
     // [phase9:fishing] a boss catch: a BOSS sticker and, the first time, its trophy
     if (d.rec?.boss) {
-      drawSticker(ctx, r.x + 44 * k, r.y + 40 * k, 'BOSS', clamp01((t - 0.7) * 5), t, '#8a5ae0', ts);
-      if (d.rec.trophy && t > 1.2) drawTrophy(ctx, r.x + 44 * k, r.y + 96 * k, t, Math.max(1, Math.round(ts * 1.5)));
+      word3D(ctx, 'BOSS', r.x + 50 * k, r.y + 40 * k, { t, pop: clamp01((t - 0.7) * 4), scale: 1.1 * k, pal: 'violet', rot: -0.2 + Math.sin(t * 2) * 0.04 });
+      if (d.rec.trophy && t > 1.2) drawTrophy(ctx, r.x + 50 * k, r.y + 96 * k, t, Math.round(48 * k));
     }
     // camera flash when the card appears
     if (t < 0.3) {

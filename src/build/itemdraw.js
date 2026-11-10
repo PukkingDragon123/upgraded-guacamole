@@ -13,10 +13,12 @@ import * as CHAR from '../gfx/character.js';
 import { SPECIES_BY_ID } from '../fish/species.js';
 import { drawFishFit, fitScale } from '../ui/journal.js';
 import { ITEMS } from './items.js';
-import { itemSprite, packageParts, SPIN } from './itemart.js';
+import { itemSprite, packageParts, SPIN, hasItemModel } from './itemart.js';
 import { itemPixel, itemPixelScaled } from './itempix.js'; // [phase8:ui]
 import { buildingSprite } from './buildingmodels.js';
 import { pixIcon } from './pixart.js'; // [phase8:prog] pixel-art items
+import { has3D, icon3d, drawIcon3D } from '../gfx/icons3d.js'; // [phase9:ui]
+const art0 = (it, id) => it?.art || (id === 'coins' ? 'coins' : null); // [phase9:ui]
 
 const propFit = new Map();
 function fittedProp(id, w, h) {
@@ -110,8 +112,9 @@ export function itemIcon(id, size = 14) {
   const it = ITEMS[id];
   const art = it?.art || (id === 'coins' ? 'coins' : null);
   let src = null;
+  if (has3D(id) || (art && has3D(art))) { const c3 = icon3d(has3D(id) ? id : art, size, size); if (c3) { icons.set(key, c3); return c3; } } // [phase9:ui] 3D icons first
   if (it?.pix) src = pixIcon(id, 1); // [phase8:prog]
-  else if (art && itemPixel(art)) { const b = itemPixel(art); src = itemPixelScaled(art, Math.max(1, Math.floor(Math.min(size / b.w, size / b.h)))); } // [phase8:ui]
+  else if (art && itemPixel(art) && !hasItemModel(art)) { const b = itemPixel(art); src = itemPixelScaled(art, Math.max(1, Math.floor(Math.min(size / b.w, size / b.h)))); } // [phase8:ui]
   else if (art && !art.startsWith('pkg_')) src = itemSprite(art, { scale: 0.5, frame: 0, force: true })?.canvas;
   else if (art) src = packageParts(art.slice(4), 0.5, 0, true, true)?.full;
   else if (it?.kind === 'bait') src = baitSprite(id, 0);
@@ -141,6 +144,8 @@ export function drawItem(ctx, id, cx, by, o = {}) {
     return true;
   }
   if (!it && id !== 'coins') return false;
+  { const k3 = has3D(id) ? id : art0(it, id) && has3D(art0(it, id)) ? art0(it, id) : null; // [phase9:ui] 3D model icons, rocking / spinning
+    if (k3 && it?.kind !== 'blueprint' && drawIcon3D(ctx, k3, cx, by - Math.min(bw, bh) / 2 - (o.spin ? Math.abs(Math.sin(t * 3)) * 2 : 0), Math.min(bw, bh), { t, hover: o.spin ? 1 : 0 })) return true; }
   if (it?.pix) { // [phase8:prog] hand-made pixel-art items, integer-scaled to fit
     const b = pixIcon(id, 1);
     if (!b) return false;
@@ -174,7 +179,7 @@ export function drawItem(ctx, id, cx, by, o = {}) {
     ctx.drawImage(sheet, Math.round(cx - w / 2), by - h + bob);
     return true;
   }
-  if (art && itemPixel(art)) {
+  if (art && itemPixel(art) && !hasItemModel(art)) {
     // [phase8:ui] hand-made pixel art: the largest integer scale that fits, a happy bob and a twinkle
     const b = itemPixel(art);
     const k = Math.max(1, Math.min(o.big ? 5 : 3, Math.floor(Math.min(bw / b.w, bh / b.h))));

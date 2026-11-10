@@ -530,7 +530,9 @@ export function drawAeroButton(ctx, x, y, w, h, o = {}) {
   const dis = st === 'disabled';
   if (ic) {
     ctx.globalAlpha = dis ? 0.55 : 1;
-    ctx.drawImage(ic, cx, y + Math.round((h - ic.height) / 2) + dy);
+    // [phase9:ui] 3D icons rock gently and spin while the button is hovered
+    if (!(ic.__icon3d && icon3dDraw && !dis && icon3dDraw(ctx, ic.__icon3d, cx + ic.width / 2, y + h / 2 + dy, Math.max(ic.width, ic.height) + 2, { hover: st === 'hover' ? 1 : 0, phase: x * 0.013 })))
+      ctx.drawImage(ic, cx, y + Math.round((h - ic.height) / 2) + dy);
     ctx.globalAlpha = 1;
     cx += iw;
   }
@@ -687,9 +689,12 @@ function coinTex(r) {
 // [phase6:ui] bigicons.js registers the glossy low-poly 3D drop here (no import cycle); drawAeroCoin uses it from r >= 6.
 let coin3d = null;
 export function setCoinRenderer(fn) { coin3d = fn; }
+// [phase9:ui] src/gfx/uiicons.js registers icons3d.drawIcon3D here (no import cycle): buttons rock / spin 3D icons
+let icon3dDraw = null;
+export function setIcon3DDrawer(fn) { icon3dDraw = fn; }
 
 export function drawAeroCoin(ctx, cx, cy, r = 5, t = 0) {
-  if (coin3d && r >= 6) {
+  if (coin3d && r >= 2) { // [phase9:ui] the 3D drop at every size (the 2D drop is only the pre-WebGL fallback)
     let f = null;
     try { f = coin3d(Math.round(r * 2.3), t ? t * 0.12 + (cx * 0.013 + cy * 0.007) : 0); } catch { f = null; }
     if (f) {

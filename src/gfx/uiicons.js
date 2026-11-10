@@ -10,9 +10,11 @@ import { makeCanvas } from '../core/canvas.js';
 import { PixelBuffer } from './pixel.js';
 import { pack, unpack, shade, mix, rgbToHex } from '../core/color.js';
 import { registerInlineIcon } from './font.js';
-import { drawAeroCoin } from '../ui/aero.js';
+import { drawAeroCoin, setIcon3DDrawer } from '../ui/aero.js';
+setIcon3DDrawer(drawIcon3D); // [phase9:ui]
 import { voxelFishIcon } from '../fish/fishicon.js'; // [phase3:fish]
 import { HI, withHi, autoHi, enhanceHi, dualArt } from './hires.js'; // [phase9:ui]
+import { has3D, icon3d, drawIcon3D } from './icons3d.js'; // [phase9:ui] 3D UI icons
 
 const PAL = {
   h: '#ffffff', w: '#fff8ea', l: '#d3dae6', g: '#97a2b8', d: '#5d6781', x: '#2b2940',
@@ -769,13 +771,21 @@ export const UI_ICON_NAMES = [...new Set([...Object.keys(ICONS), 'aero', 'aero_b
 export const CURSOR_NAMES = [...Object.keys(CURSORS), 'cursor_reel'];
 
 // getUiIcon(name, zoom = 1): zoom 2/3 gives a crisp nearest-neighbour enlargement (bigger UI sizes) [phase6:ui]
+function flatIcon(name) {
+  if (AERO_ICONS[name]) return buildAero(AERO_ICONS[name]);
+  if (ICONS[name]) return build(ICONS[name]);
+  return makeCanvas(9, 9);
+}
+
 export function getUiIcon(name, zoom = 1) {
   zoom = Math.max(1, Math.round(zoom || 1));
   if (zoom > 1) {
     const key = name + '@' + zoom;
     let z = cache.get(key);
+    if (z && !z.__icon3d && has3D(name)) { const b = getUiIcon(name); const z3 = b.__icon3d ? icon3d(name, b.width * zoom, b.height * zoom) : null; if (z3) { cache.set(key, z3); return z3; } }
     if (!z) {
       const src = getUiIcon(name);
+      if (src.__icon3d) { const z3 = icon3d(name, src.width * zoom, src.height * zoom); if (z3) { cache.set(key, z3); return z3; } }
       z = makeCanvas(src.width * zoom, src.height * zoom);
       const g = z.getContext('2d');
       g.imageSmoothingEnabled = false;
@@ -786,6 +796,15 @@ export function getUiIcon(name, zoom = 1) {
     return z;
   }
   let c = cache.get(name);
+  // [phase9:ui] every UI icon with a model is a smooth 3D render now (2x twin for the full-res layer). Until the
+  // WebGL renderer is up the 2D icon stands in (not cached as final); inline {name} text icons follow.
+  if (has3D(name) && (!c || !c.__icon3d)) {
+    const flat = c || flatIcon(name);
+    const c3 = icon3d(name, flat.width, flat.height);
+    if (c3) { cache.set(name, c3); registerInlineIcon(name, c3); return c3; }
+    if (!c) cache.set(name, flat);
+    return flat;
+  }
   if (!c) {
     if (name === 'fish') { c = voxelFishIcon('pixel', 12, 9) || makeCanvas(9, 9); if (!('hi' in c)) { const c0 = c; c = makeCanvas(12, 9); c.getContext('2d').drawImage(c0, 0, 0); withHi(c, () => voxelFishIcon('pixel', 24, 18)); } } // [phase3:fish] voxel, never a 2D glyph
     else if (AERO_ICONS[name]) c = buildAero(AERO_ICONS[name]);

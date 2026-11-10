@@ -27,6 +27,9 @@
 import { rng } from '../core/rng.js';
 import { rgba } from '../core/color.js';
 import { drawText } from './font.js';
+import { drawPop3D } from '../ui/pop3d.js'; // [phase9:ui] 3D pop-up text
+// [phase9:ui] a text colour -> the nearest 3D text palette
+function popPalette(c) { const h = String(c || '').toLowerCase(); if (!h.startsWith('#') || h.length < 7) return 'white'; const r = parseInt(h.slice(1, 3), 16), g = parseInt(h.slice(3, 5), 16), b = parseInt(h.slice(5, 7), 16); if (r > 200 && g > 150 && b < 150) return 'gold'; if (r > 200 && g < 150) return 'coral'; if (g > 180 && r < 180 && b < 160) return 'leaf'; if (b > 200 && r < 160) return 'aqua'; return 'white'; }
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { TAU, bayer } from '../core/math.js';
 import { pxFrames, pixelBubble } from './pxsprites.js'; // [phase8:ui]
@@ -990,7 +993,9 @@ export class Particles {
         }
         case 'text':
           ctx.globalAlpha = a;
-          drawText(ctx, p.text, x, y, { font: p.font, color: p.color, align: 'center', outline: p.outline ?? '#14202c', time, wave: p.wave, scale: p.scale });
+          // [phase9:ui] pop-up words are 3D voxel letters (2D only while the font loads)
+          if (!drawPop3D(ctx, String(p.text), x, y, { t: time + (p.spin || 0), pop: Math.min(1, p.t * 4), palette: popPalette(p.color), size: (p.scale || 1) > 1.4 ? 32 : 16, depth: 3, wobble: 0.6, glow: false, sparkle: false }))
+            drawText(ctx, p.text, x, y, { font: p.font, color: p.color, align: 'center', outline: p.outline ?? '#14202c', time, wave: p.wave, scale: p.scale });
           ctx.globalAlpha = 1;
           break;
         case 'sprite': {

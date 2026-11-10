@@ -13,6 +13,8 @@ import { drawButton, drawSlider, drawToggle, drawTooltip, drawTab, TOGGLE_W, TOG
 import { getUiIcon } from '../gfx/uiicons.js';
 import { AERO, CURRENCY, fmtAero, aeroSurface, aeroCached, drawAeroCoin, drawSparkle, drawAeroGlow, drawAeroLeaf, uiK, uiFont, capH, setUiScale, uiScaleMode } from './aero.js';
 import { iconFrame } from '../gfx/bigicons.js';
+import { drawIcon3D } from '../gfx/icons3d.js'; // [phase9:ui]
+import { drawPop3D, text3dCanvas, POP_PALETTE } from './pop3d.js'; // [phase9:ui]
 
 export class UI {
   constructor(game) {
@@ -286,39 +288,49 @@ export class UI {
     if (a && this.game.input.keyPressed('Escape')) this.close();
   }
 
-  // Glass toasts under the Aero pill: bold text, the icon in a glossy aqua bubble (pixel icons at 2x when big).
+  // [phase9:ui] Toasts are cinematic 3D now: a spinning 3D icon and floating extruded-Alagard voxel text (no 2D text
+  // box), popping in with a squash, swaying and bobbing, a sparkle burst on arrival, drifting up as they fade.
   drawToasts(ctx) {
-    const g = this.game;
-    const k = uiK(), font = uiFont('normal'), big = font === 'big';
-    const isc = k >= 1.5 ? 2 : 1;
-    const lh = big ? 13 : 10;
-    let y = (this.coinRect ? this.coinRect.y + this.coinRect.h : 26) + Math.round(6 * k);
+    const g = this.game, W = g.screen.W, k = uiK();
+    let y = (this.coinRect ? this.coinRect.y + this.coinRect.h : 26) + Math.round(10 * k);
     for (const t of this.toasts) {
-      const a = Math.min(1, t.t * 5, (t.max - t.t) * 3);
-      const lines = wrapText(t.text, Math.round(160 * k), font);
-      const D = Math.round(15 * k);
-      const h = Math.max(D + Math.round(6 * k), lines.length * lh + Math.round(8 * k) + 2);
-      const w = Math.max(...lines.map((l) => measureText(l, font))) + D + Math.round(18 * k);
-      const slide = 1 - ease.outBack(Math.min(1, t.t * 4));
-      const x = g.screen.W - w - Math.round(8 * k) + Math.round(slide * 50 * k);
-      ctx.globalAlpha = a;
-      ctx.fillStyle = 'rgba(3,38,74,0.14)';
-      ctx.fillRect(x + 6, y + h, w - 12, 2);
-      ctx.drawImage(aeroCached(`toast|${w}|${h}`, () => aeroSurface(w, h, { tone: 'frost', r: Math.min(Math.round(9 * k), Math.floor(h / 2)), gloss: 0.6, glossH: Math.min(Math.round(9 * k), Math.round(h * 0.45)), curve: 2, rim: 0.9, glow: 0.45, glowColor: '#bfeaff', sparkle: 1 })), x, y);
-      // icon sits in a little aqua bubble that pops in
-      const pop = 1 + Math.sin(Math.min(1, t.t * 3) * Math.PI) * 0.18;
-      const bx = x + Math.round(4 * k), by = y + Math.round((h - D) / 2);
-      const Dp = Math.round(D * pop);
-      ctx.drawImage(aeroCached(`toastdot|${D}`, () => aeroSurface(D, D, { tone: 'aqua', r: 'pill', gloss: 0.8, glossH: Math.round(D * 0.45), curve: 1, rim: 0.7, glow: 0.6 })), bx + Math.round((D - Dp) / 2), by + Math.round((D - Dp) / 2), Dp, Dp);
-      drawAeroLeaf(ctx, bx + 2, by + D - 1, Math.round(10 * k), Math.round(6 * k), 140, { tone: 'lime', flip: true });
-      const ic = getUiIcon(t.icon) || getUiIcon('info');
-      const iw = ic.width * isc, ih = ic.height * isc;
-      ctx.drawImage(ic, bx + Math.round((D - iw) / 2), by + Math.round((D - ih) / 2), iw, ih);
-      const tx = bx + D + Math.round(6 * k), ty = y + Math.round((h - lines.length * lh) / 2) + (big ? 2 : 1);
-      lines.forEach((l, i) => drawText(ctx, l, tx, ty + i * lh, { font, color: AERO.ink, shadow: big ? '#ffffff' : null }));
-      ctx.globalAlpha = 1;
-      y += h + Math.round(4 * k);
+      const fadeIn = Math.min(1, t.t * 3.2), fadeOut = Math.min(1, (t.max - t.t) * 2.5);
+      const lines = wrapText(t.text, Math.round(92 * k), 'normal').slice(0, 2);
+      const pal = POP_PALETTE[t.icon] || 'white', TS = 1.25;
+      const sizes = lines.map((l) => text3dCanvas(l, { palette: pal, scale: TS }));
+      if (sizes.some((c) => !c)) { this.drawToastFallback(ctx, t, y); y += 22; continue; }
+      const tw = Math.max(...sizes.map((c) => c.width)), th = sizes.reduce((a2, c) => a2 + c.height - 2, 0);
+      const D = Math.round(24 * Math.min(1.3, k));
+      const h = Math.max(D, th), w = tw + D + 6;
+      const lift = (1 - fadeOut) * 14;
+      const right = W - Math.round(10 * k);
+      const x = right - w + (1 - ease.outCubic(fadeIn)) * 40;
+      const cy = y + h / 2 - lift;
+      ctx.save();
+      ctx.globalAlpha = Math.min(fadeIn * 1.5, fadeOut);
+      // the 3D icon spins in, then rocks gently
+      const icon = getUiIcon(t.icon)?.__icon3d ? t.icon : 'info';
+      if (!drawIcon3D(ctx, icon, x + D / 2, cy, D, { t: t.t + this.time, hover: t.t < 0.9 ? 1 : 0, phase: t.max })) { const ic = getUiIcon(t.icon) || getUiIcon('info'); ctx.drawImage(ic, Math.round(x + D / 2 - ic.width / 2), Math.round(cy - ic.height / 2)); }
+      let ly = cy - th / 2;
+      lines.forEach((l, i) => {
+        const c = sizes[i];
+        drawPop3D(ctx, l, x + D + 6 + c.width / 2, ly + c.height / 2, { t: this.time + i * 0.4, pop: Math.min(1, t.t * 2.6 - i * 0.15), palette: pal, scale: TS, phase: t.max * 3 + i, wobble: 0.6, sparkle: i === 0 });
+        ly += c.height - 2;
+      });
+      ctx.restore();
+      if (!t.fx && t.t > 0.05) {
+        t.fx = true;
+        try { const ps = g.particles; ps?.pixelBurst?.('sparkle', x + D / 2, cy, 6, { layer: 'ui', ramp: pal === 'gold' ? 'gold' : pal === 'coral' ? 'pink' : 'aqua' }); ps?.pixelBurst?.('bubble', x + D / 2, cy + 4, 3, { layer: 'ui', size: 0 }); } catch { /* optional */ }
+      }
+      y += h + Math.round(6 * k);
     }
+  }
+
+  // only while the Alagard font is still loading: a plain line of text, no box
+  drawToastFallback(ctx, t, y) {
+    ctx.globalAlpha = Math.min(1, t.t * 4, (t.max - t.t) * 3);
+    drawText(ctx, t.text, this.game.screen.W - 12, y, { align: 'right', color: '#ffffff', outline: '#0a3e74' });
+    ctx.globalAlpha = 1;
   }
 
   drawTip(ctx) {

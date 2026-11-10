@@ -31,6 +31,7 @@ import { HI, hiFromBuffer } from '../gfx/hires.js';
 import { iconFrame } from '../gfx/bigicons.js';
 import { roundRectPath } from './labart.js';
 import { gemTex } from './labtiles.js';
+import { drawIcon3D } from '../gfx/icons3d.js'; // [phase9:ui]
 import { drawFishFit, fitScale } from './journal.js';
 import { panelRect } from './ui.js';
 
@@ -454,9 +455,8 @@ export class FishManagerPanel {
       const rr = { x: bx, y: B.y, w: 18, h: B.h }, on = this.rar === r, dim = this.rar && !on;
       const hov = ui.hover(rr);
       if (on) drawAeroSurface(ctx, rr.x - 1, rr.y, rr.w + 2, rr.h, { tone: toneFrom(RARITY[r].color), r: 6, gloss: 0.8, glossH: 8, rim: 0.85, glow: 0.6 });
-      const gm = gemTex(on || hov ? 5.5 : 4.5, RARITY[r].color, ['round', 'oval', 'diamond', 'hex', 'drop'][RARITY_ORDER.indexOf(r)], false);
       ctx.save(); if (dim) ctx.globalAlpha *= 0.4;
-      ctx.drawImage(gm, Math.round((rr.x + rr.w / 2 - gm.width / 2) * 2) / 2, Math.round((rr.y + rr.h / 2 - gm.height / 2 - (hov ? 1 : 0)) * 2) / 2);
+      drawIcon3D(ctx, 'gem_' + r, rr.x + rr.w / 2, rr.y + rr.h / 2 - (hov ? 1 : 0), on || hov ? 17 : 14, { t: this.t, hover: hov || on ? 1 : 0, phase: RARITY_ORDER.indexOf(r) }); // [phase9:ui] 3D gems
       ctx.restore();
       if (hov) ui.tip = on ? `Showing ${RARITY[r].name} only (click for all)` : `Only ${RARITY[r].name}`;
       if (ui.clicked(rr)) { this.rar = on ? null : r; this.scroll = 0; this.game.audio.play('ui_toggle'); this.fx('sparkle', rr.x + 9, rr.y + 10, 5, { ramp: r === 'legendary' ? 'gold' : undefined }); }
@@ -538,8 +538,7 @@ export class FishManagerPanel {
     }
     if (ri >= 4 && ((this.t * 0.8 + A.ph) % 1) < 0.2) drawSparkle(ctx, x + 4 + ((this.t * 37) % (w - 8)), y + 3, 2, 1, '#fff6a0');
     // rarity gem on the top-right corner of the portrait + the place badge
-    const gm = gemTex(4, rar.color, ['round', 'oval', 'diamond', 'hex', 'drop'][ri] || 'round');
-    ctx.drawImage(gm, x + w - 18, y + 4);
+    drawIcon3D(ctx, 'gem_' + sp.rarity, x + w - 13, y + 10, 12, { t: this.t, hover: A.hov > 0.5 ? 1 : 0, phase: A.ph });
     const pl = rec.inTank ? 'TANK' : 'KEPT';
     const pw = measureText(pl, 'small') + 10;
     drawAeroSurface(ctx, x + 10, y + PH - 6, pw, 11, { tone: rec.inTank ? 'aqua' : 'grey', r: 'pill', gloss: 0.7, glossH: 5, rim: 0.7, glow: 0.4 });
@@ -556,9 +555,8 @@ export class FishManagerPanel {
     // mood face + meters
     const my = ny + 21;
     const mood = moodOf(rec);
-    const face = moodFace(mood, 12);
     const bob = mood === 'love' || mood === 'happy' ? Math.round(Math.abs(Math.sin(this.t * 4 + A.ph)) * 2) / 2 : mood === 'hungry' ? Math.round(Math.sin(this.t * 14) * 0.5 * 2) / 2 : 0;
-    ctx.drawImage(face, x + 7, my - 3 - bob);
+    if (!drawIcon3D(ctx, 'mood_' + mood, x + 14, my + 4 - bob, 15, { t: this.t, hover: A.hov > 0.5 ? 1 : 0, phase: A.ph })) ctx.drawImage(moodFace(mood, 12), x + 7, my - 3 - bob); // [phase9:ui] 3D mood
     if (mood === 'love' && ((this.t * 0.7 + A.ph) % 1) < 0.25) this.fxT(rec, () => this.fx('heart', x + 14, my - 4, 1, { size: 0 }));
     const bw = w - 40;
     meter(ctx, x + 26, my - 1, bw, 5, A.happy, '#ff7aa8', this.t, A.ph);
@@ -595,7 +593,7 @@ export class FishManagerPanel {
     drawAeroSurface(ctx, D.x + 5, D.y + 5, ww + 6, wh + 6, { tone: { top: mix(rar.color, '#ffffff', 0.6), mid: rar.color, bot: rar.dark, edge: shade(rar.dark, -0.4), a: [1, 1], glow: '#ffffff' }, r: 8, gloss: 0.6, glossH: 10, rim: 0.85, glow: 0.4 });
     this.portrait(ctx, rec, D.x + 8, D.y + 8, ww, wh, this.t, { r: 6, max: 3, swim: true, ph: A.ph });
     const ri = RARITY_ORDER.indexOf(sp.rarity);
-    for (let i = 0; i <= ri; i++) { const gm = gemTex(3, rar.color, 'diamond'); ctx.drawImage(gm, D.x + 12 + i * 9, D.y + wh - 4); }
+    for (let i = 0; i <= ri; i++) drawIcon3D(ctx, 'gem_' + sp.rarity, D.x + 17 + i * 12, D.y + wh + 1, 12, { t: this.t, phase: i * 0.7 });
     let y = D.y + wh + 20;
     // name (click Rename to edit in place)
     if (this.edit?.rec === rec) {
@@ -624,9 +622,8 @@ export class FishManagerPanel {
     y += 15;
     // mood + the big meters
     const mood = moodOf(rec);
-    const face = moodFace(mood, 16);
     const bob = Math.round(Math.abs(Math.sin(this.t * 3)) * (mood === 'sad' ? 0 : 1.5) * 2) / 2;
-    ctx.drawImage(face, D.x + 7, y - 4 - bob);
+    if (!drawIcon3D(ctx, 'mood_' + mood, D.x + 16, y + 5 - bob, 22, { t: this.t, hover: 1, phase: 0.3 })) ctx.drawImage(moodFace(mood, 16), D.x + 7, y - 4 - bob);
     drawText(ctx, MOODS[mood].label, D.x + 30, y + 1, { font: 'big', color: shade(MOODS[mood].col, -0.55) });
     if (rec.inTank) { const rt = `${(this.aq?.rateOf?.(rec) || 0).toFixed(1)}/min`; drawText(ctx, rt, D.x + D.w - 10, y + 1, { align: 'right', color: INK }); drawAeroCoin(ctx, D.x + D.w - 16 - measureText(rt), y + 4, 4, this.t); }
     else drawText(ctx, 'earns nothing', D.x + D.w - 10, y + 2, { align: 'right', font: 'small', color: SOFT });
