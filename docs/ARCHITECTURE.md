@@ -430,3 +430,14 @@ that feels hand-made."
 - Workshop rods, tackle, boat parts, rod tuning (`30 * (tier+1)^1.3 * star^1.75`), tank gear (`GEAR.cost`) and buildings
   (`BUILDINGS[id].cost` / `upgrades`) follow the same curve. Saves keep everything owned; only unbought things pay new prices.
 
+
+## Phase 10 bait models + clean catch moment [bait12]
+- Bait art: `src/fishing/baitmodels.js` holds one hand-crafted, detailed voxel model per bait (`BAIT_MODELS`: the 11
+  specials plus one creature per flavour line, picked by `art.line`; creature colours come from `art.color/color2`,
+  `art.tier` adds glitter / glow / gold flecks; creatures take an animation phase). `src/fishing/baitart.js` renders
+  them: `baitIcon(art, px, ph)` = the detailed model (fine `.hi` twin, wriggling at px >= 40) or, below 22 px, the
+  toy-block icon of the same model; `baitHook(art, t)` = the 8-frame wriggling bait drawn at 2x world resolution on
+  the hook (fishing.js draws the hook over it). Dev preview: `node tools/build.mjs --dev baitdetail` (`?page=0|1|2&px=`).
+- The catch moment has no light rays, spotlight glows, lens flares or light streaks (FISH ON, the landing finale,
+  I GOT IT, boss VICTORY / phase cards, box catches, the catch card): `drawRays` is gone. The catch card backdrop is
+  the sky gradient with soft drifting bokeh and a faint rarity tint.

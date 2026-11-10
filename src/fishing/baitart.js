@@ -1,20 +1,24 @@
 // Bait art (phase 3, OWNER: Online & AppSea agent): the hook sprite plus glossy VOXEL bait.
 //   HOOK                         hand-authored hook sprite (used by fishing + tutorial)
 //   TYPE_ART[type] = [c1, c2]    app-bait colours per species bait-pref type
-//   baitVoxel(art, scale)        cached voxel render {canvas, glow, w, h} of a bait art spec
-//   baitMini(art)                ~12-16 px sprite for the hook (cached)
-//   baitIcon(art, px)            inventory-sized sprite (fits ~px)
+//   baitVoxel(art, scale)        cached detailed voxel render {canvas, glow, w, h} (~18 * scale px)
+//   baitMini(art)                ~16 px sprite (fine `.hi` twin) for screen-space effects / legacy callers
+//   baitIcon(art, px, ph)        sprite fitting ~px: the detailed model (fine `.hi` twin, wriggling creatures at
+//                                px >= 40) or, below 22 px, the chunky toy-block icon of the same model
+//   baitHook(art, t)             the animated bait on the hook at 2x world resolution {canvas, glow, w, h}
 //   drawBaitGloss(ctx, art, cx, cy, px, t, {bubble, aura, bob})  sprite in a glass bubble with scent aura
 //   baitSprite(typeOrArt, t)     legacy entry: a bait type/id string or an art object -> mini sprite
+// Models: src/fishing/baitmodels.js (one hand-crafted detailed voxel model per bait; flavour lines by art.line).
 // Art spec: {shape: 'grub'|'crumbs'|'bread'|'worm'|'sugar'|'chip'|'popup'|'flood'|'lantern'|'golden'|'blackhole'|'relic',
-//   color, color2 (grub two-tone / custom tint), tier (0..4 app tier: glitter, glow), charm (star|heart|gem|clover|crown),
+//   line (flavour line id for 'grub'), color, color2 (creature colours / custom tint), tier (0..4 app tier: glitter, glow), charm (star|heart|gem|clover|crown),
 //   scale (custom size 0.8..1.25), scent (aura colour), type}
 
 import { spriteFromAscii } from '../gfx/pixel.js';
 import { VoxelModel, renderVoxels } from '../gfx/voxel.js';
+import { BAIT_MODELS, modelFor, modelKind } from './baitmodels.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
-import { shade, mix, rgba } from '../core/color.js';
-import { TAU, hash1 } from '../core/math.js';
+import { mix, rgba } from '../core/color.js';
+import { TAU } from '../core/math.js';
 import { HI, withHi, fitHi } from '../gfx/hires.js'; // [phase10:ui]
 import { voxelModelFrame } from '../gfx/bigicons.js'; // [phase10:ui]
 import { lpAvailable } from '../gfx/lowpoly.js';
@@ -46,223 +50,208 @@ export const TYPE_ART = {
 };
 const SPECIAL_SHAPES = new Set(['crumbs', 'bread', 'worm', 'sugar', 'chip', 'popup', 'flood', 'lantern', 'golden', 'blackhole', 'relic']);
 
-// ---------------------------------------------------------------- voxel builders
-const GLOSS = { spec: 0.9, specPow: 10, smooth: 0.7 };
+// ---------------------------------------------------------------- models (src/fishing/baitmodels.js)
+// Every bait is a hand-crafted, highly detailed voxel model. Big views render it large (1x canvas + a lazily built
+// `.hi` twin for the 2x UI layer); small hotbar icons (< TOY_PX) use the toy-block voxel icon of the same model.
+const TOY_PX = 22;
 
-function grub(m, a) {
-  const c1 = a.color || '#ffd84a', c2 = a.color2 || mix(c1, '#ffffff', 0.6);
-  const tier = a.tier | 0;
-  const back = m.color(c1, { ...GLOSS, jitter: 0.04 });
-  const belly = m.color(c2, { ...GLOSS, jitter: 0.03 });
-  const rib = m.color(shade(c1, -0.14), { ...GLOSS });
-  const glit = m.color(tier >= 4 ? '#fff2a0' : '#ffffff', { spec: 1, specPow: 6, emissive: tier >= 3 ? 0.6 : 0.2 });
-  const tailC = m.color(tier >= 3 ? mix(c1, '#ffffff', 0.25) : c1, { ...GLOSS, emissive: tier >= 3 ? 0.3 : 0 });
-  const zc = 4.5;
-  // fat segmented body, head to the right
-  for (let i = 0; i < 6; i++) {
-    const x = 8 + i * 1.7, r = 2.7 + Math.sin(((i + 1) / 7) * Math.PI) * 0.8;
-    m.ellipsoid(x, 6, zc, 1.3, r, r, (vx, vy) => (vy < 5.4 ? belly : i % 2 ? rib : back));
-  }
-  m.ellipsoid(18, 6.1, zc, 2.6, 3, 2.9, (vx, vy) => (vy < 5.2 ? belly : back));
-  // curly paddle tail
-  const pts = [[7.4, 6.2], [5.6, 7.6], [3.8, 8.8], [2.2, 8.6], [1.2, 7.2], [1.4, 5.4], [2.8, 4.4]];
-  for (let i = 1; i < pts.length; i++) m.line(pts[i - 1][0], pts[i - 1][1], zc, pts[i][0], pts[i][1], zc, tailC, 1.6 - i * 0.1);
-  m.ellipsoid(3.4, 4.2, zc, 1.8, 1.1, 1.3, tailC);
-  // glossy lure eye
-  const eyeW = m.color('#ffffff', { spec: 1, specPow: 8 }), eyeP = m.color('#101828', { spec: 1, specPow: 10 });
-  m.set(19, 7, zc + 2.4, eyeW); m.set(19, 7, zc + 2.9, eyeW); m.set(20, 7, zc + 2.2, eyeW); m.set(19.6, 7, zc + 3.3, eyeP);
-  if (tier >= 1) for (let i = 0; i < 4 + tier * 3; i++) {
-    const x = 8 + hash1(i, 3) * 10, y = 6.4 + hash1(i, 5) * 2.4;
-    m.set(x, y, zc + 3, glit);
-  }
-}
-
-function crumbs(m, a) {
-  const crust = m.color('#c8904a', { jitter: 0.08, smooth: 0.3 }), soft = m.color('#f6e2b4', { jitter: 0.05 });
-  const c = (x, y, z, s) => m.box(x, y, z, x + s, y + s, z + s, (vx, vy, vz) => (vy === y + s || vx === x || vz === z + s ? crust : soft));
-  c(3, 0, 2, 3); c(8, 0, 3, 2); c(6, 3, 3, 2); c(1, 0, 6, 1);
-}
-
-function bread(m) {
-  const crust = m.color('#b8783a', { jitter: 0.06, smooth: 0.4 }), soft = m.color('#f8e8c0', { jitter: 0.04 });
-  m.box(1, 0, 2, 10, 7, 4, (x, y) => (x === 1 || x === 10 || y === 0 ? crust : soft));
-  m.ellipsoid(3.6, 7.2, 3.5, 2.8, 2.4, 1.6, (x, y) => (y >= 8 || x <= 1 ? crust : soft));
-  m.ellipsoid(8.4, 7.2, 3.5, 2.8, 2.4, 1.6, (x, y) => (y >= 8 || x >= 10 ? crust : soft));
-  m.sub(() => m.box(1, 0, 2, 10, 0, 2));
-}
-
-function worm(m) {
-  const pink = m.color('#ff7ab4', { ...GLOSS, emissive: 0.25 }), band = m.color('#d8508a', { ...GLOSS });
-  const pts = [[2, 2], [4, 4], [6, 5], [8, 4.5], [9.5, 3], [11.5, 2.5], [13, 4], [13.5, 6.5], [12.5, 8.5]];
-  for (let i = 0; i < pts.length; i++) m.sphere(pts[i][0], pts[i][1], 3, 1.6 - (i === 0 ? 0.4 : 0), i % 3 === 1 ? band : pink);
-  for (let i = 0; i < pts.length - 1; i++) {
-    const [x0, y0] = pts[i], [x1, y1] = pts[i + 1];
-    m.line(x0, y0, 3, x1, y1, 3, pink, 1.3);
-  }
-}
-
-function sugar(m) {
-  const w = m.color('#ffffff', { spec: 1, specPow: 8, jitter: 0.06 }), s = m.color('#e8f4ff', { spec: 0.8, jitter: 0.04 });
-  m.box(1, 0, 1, 7, 6, 7, (x, y, z) => ((x + y + z) % 3 ? w : s));
-  for (const [x, y, z] of [[1, 6, 1], [7, 6, 1], [1, 6, 7], [7, 6, 7], [1, 0, 7], [7, 0, 7]]) m.set(x, y, z, 0);
-}
-
-function chip(m) {
-  const pcb = m.color('#2fa860', { jitter: 0.05 }), die = m.color('#262a36', { spec: 0.9, specPow: 12 }), pin = m.color('#ffd25a', { spec: 1, specPow: 6 });
-  const led = m.color('#7affd0', { emissive: 1 });
-  m.box(1, 0, 1, 10, 1, 10, pcb);
-  m.box(3, 2, 3, 8, 3, 8, die);
-  for (let i = 3; i <= 8; i += 1.66) { m.set(i, 1, 0, pin); m.set(i, 1, 11, pin); m.set(0, 1, i, pin); m.set(11, 1, i, pin); }
-  m.set(9, 2, 9, led); m.set(4, 4, 4, led);
-}
-
-function popup(m) {
-  const bar = m.color('#2a7ae8', { ...GLOSS }), body = m.color('#ffffff', { jitter: 0.03 }), x = m.color('#ff4a4a', { emissive: 0.4 }), star = m.color('#ffd23a', { emissive: 0.5 });
-  m.box(0, 0, 2, 11, 8, 3, (vx, vy) => (vy >= 7 ? bar : body));
-  m.set(10, 7, 4, x); m.set(10, 8, 4, x);
-  for (const [sx, sy] of [[5, 2], [5, 3], [5, 4], [4, 3], [6, 3]]) m.set(sx, sy, 4, star);
-}
-
-function flood(m) {
-  const w = m.color('#5ad8ff', { spec: 1, specPow: 7, smooth: 0.9, emissive: 0.15 }), hi = m.color('#d8f8ff', { spec: 1, specPow: 5, emissive: 0.3 });
-  m.sphere(5.5, 3.8, 3.5, 3.4, w);
-  m.cone(5.5, 3.5, 4, 10, 2.6, 0.3, w, 'y');
-  m.set(4, 5, 6, hi); m.set(4, 6, 6, hi);
-}
-
-function lantern(m) {
-  const pearl = m.color('#bffff0', { emissive: 0.9, smooth: 1, spec: 1 }), gold = m.color('#e8b23a', { spec: 1, specPow: 6 });
-  m.sphere(5, 4.2, 4, 3.6, pearl);
-  m.cylinder(5, 4, 7.6, 8.4, 1.8, gold);
-  m.set(5, 9, 4, gold); m.set(5, 10, 4, gold);
-}
-
-function golden(m) {
-  const g = m.color('#ffcc3a', { spec: 1, specPow: 5, smooth: 0.8, emissive: 0.25 }), g2 = m.color('#ffe88a', { spec: 1, specPow: 4, emissive: 0.4 });
-  m.ellipsoid(5.5, 3.2, 4, 4.4, 3.2, 3.4, g);
-  m.sphere(3.5, 5.4, 4.6, 1.8, g2);
-  m.sphere(7.5, 4.4, 5.2, 1.4, g);
-}
-
-function blackhole(m) {
-  const core = m.color('#0a0614', { spec: 0.6 }), ring = m.color('#b07aff', { emissive: 1 }), ring2 = m.color('#ff8ad8', { emissive: 0.9 });
-  m.sphere(6.5, 5, 6.5, 3.4, core);
-  for (let a = 0; a < TAU; a += 0.12) {
-    const r = 5.6;
-    m.set(6.5 + Math.cos(a) * r, 5 + Math.sin(a) * 1.2, 6.5 + Math.sin(a) * r * 0.9, a % 0.5 < 0.25 ? ring : ring2);
-  }
-}
-
-function relic(m) {
-  const stone = m.color('#8a8070', { jitter: 0.12, smooth: 0.2 }), rune = m.color('#6affe8', { emissive: 1 });
-  m.box(1, 0, 2, 8, 10, 4, stone);
-  m.ellipsoid(4.5, 10, 3, 3.6, 1.6, 1.5, stone);
-  for (const [x, y] of [[4, 2], [4, 3], [4, 4], [4, 5], [4, 6], [3, 7], [5, 7], [3, 4], [5, 4], [4, 8]]) m.set(x, y, 5, rune);
-}
-
-const BUILDERS = { grub, crumbs, bread, worm, sugar, chip, popup, flood, lantern, golden, blackhole, relic };
-
-function charm(m, kind, ox, oy) {
-  const z = 4;
+function charm(m, kind, ox, oy, z = 10, k = 2) {
+  const put = (x, y, c, dz = 0) => m.box(ox + x * k, oy + y * k, z + dz * k, ox + x * k + k - 1, oy + y * k + k - 1, z + dz * k + k - 1, c);
   if (kind === 'star') {
-    const c = m.color('#ffd23a', { emissive: 0.5, spec: 1 });
-    for (const [x, y] of [[0, 1], [1, 1], [2, 1], [1, 0], [1, 2], [1, 3], [0, 3], [2, 3]]) m.set(ox + x, oy + y, z, c);
+    const c = m.color('#ffd23a', { emissive: 0.5, spec: 1, specPow: 4 }), d = m.color('#e8961a', { spec: 0.8 });
+    for (const [x, y] of [[2, 4], [1, 3], [2, 3], [3, 3], [0, 2], [1, 2], [2, 2], [3, 2], [4, 2], [1, 1], [2, 1], [3, 1], [1, 0], [3, 0]]) put(x, y, y === 2 && (x === 0 || x === 4) ? d : c);
   } else if (kind === 'heart') {
-    const c = m.color('#ff4a7a', { spec: 1, specPow: 6 });
-    for (const [x, y] of [[0, 2], [1, 2], [3, 2], [4, 2], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1], [1, 0], [2, 0], [3, 0], [2, -1]]) m.set(ox + x - 1, oy + y + 1, z, c);
+    const c = m.color('#ff4a7a', { spec: 1, specPow: 6, smooth: 0.6 }), h = m.color('#ffb0c8', { spec: 1, emissive: 0.3 });
+    for (const [x, y] of [[0, 3], [1, 3], [3, 3], [4, 3], [0, 2], [1, 2], [2, 2], [3, 2], [4, 2], [1, 1], [2, 1], [3, 1], [2, 0]]) put(x, y, c);
+    put(1, 3, h, 1);
   } else if (kind === 'gem') {
-    const c = m.color('#6af0ff', { emissive: 0.4, spec: 1, specPow: 4 });
-    for (const [x, y] of [[1, 0], [0, 1], [1, 1], [2, 1], [0, 2], [1, 2], [2, 2], [1, 3]]) m.set(ox + x, oy + y, z, c);
+    const c = m.color('#6af0ff', { emissive: 0.4, spec: 1, specPow: 4 }), d = m.color('#2ab8e0', { spec: 1, specPow: 4 }), w = m.color('#ffffff', { emissive: 0.6 });
+    for (const [x, y] of [[1, 3], [2, 3], [3, 3], [0, 2], [1, 2], [2, 2], [3, 2], [4, 2], [1, 1], [2, 1], [3, 1], [2, 0]]) put(x, y, y < 2 ? d : c);
+    put(1, 2, w, 1);
   } else if (kind === 'clover') {
-    const c = m.color('#4ad85a', { spec: 0.8 }), s = m.color('#2a8a3a');
-    for (const [x, y] of [[0, 2], [1, 2], [3, 2], [4, 2], [0, 3], [1, 3], [3, 3], [4, 3], [0, 0], [1, 0], [3, 0], [4, 0], [2, 1], [2, 2]]) m.set(ox + x - 1, oy + y, z, c);
-    m.set(ox + 1, oy - 1, z, s);
+    const c = m.color('#4ad85a', { spec: 0.8, smooth: 0.5 }), d = m.color('#2a9a3a'), s = m.color('#2a7a2a');
+    for (const [x, y] of [[0, 3], [1, 3], [3, 3], [4, 3], [0, 4], [1, 4], [3, 4], [4, 4], [0, 1], [1, 1], [3, 1], [4, 1], [0, 0], [1, 0], [3, 0], [4, 0], [2, 2]]) put(x, y + 1, (x + y) % 3 ? c : d);
+    put(2, 0, s); put(2, 1, s);
   } else if (kind === 'crown') {
-    const c = m.color('#ffc83a', { spec: 1, specPow: 5, emissive: 0.3 }), j = m.color('#ff4a6a', { emissive: 0.5 });
-    m.box(ox - 1, oy, z, ox + 3, oy + 1, z, c);
-    for (const x of [-1, 1, 3]) m.set(ox + x, oy + 2, z, c);
-    m.set(ox + 1, oy + 1, z + 1, j);
+    const c = m.color('#ffc83a', { spec: 1, specPow: 5, emissive: 0.3 }), d = m.color('#d8901a', { spec: 1 }), j = m.color('#ff4a6a', { emissive: 0.5, spec: 1 });
+    for (let x = 0; x <= 4; x++) { put(x, 0, d); put(x, 1, c); }
+    for (const x of [0, 2, 4]) put(x, 2, c);
+    put(2, 1, j, 1);
   }
 }
 
-function buildModel(a) {
-  const m = new VoxelModel(22, 16, 13);
-  if (a.shape === 'charm') { charm(m, a.charm, 4, 4); return m; }
-  const shape = BUILDERS[a.shape] ? a.shape : 'grub';
-  if (shape === 'grub') grub(m, a);
-  else BUILDERS[shape](m, a);
-  // custom tint: recolour the main voxels toward the chosen colour (keeps emissive / accent voxels)
-  if (a.custom && a.color && shape !== 'grub') {
+// art -> VoxelModel (at animation phase ph): the bait's own model, an optional custom tint and charm
+function buildModel(a, ph = 0) {
+  if (a.shape === 'charm') {
+    const m = new VoxelModel(12, 14, 6);
+    charm(m, a.charm, 1, 1, 2, 2);
+    return m;
+  }
+  const hasCharm = a.charm && a.charm !== 'none';
+  const { model: m, kind } = modelFor(a, ph, hasCharm ? 12 : 0);
+  // custom tint on special bait: recolour the main voxels toward the chosen colour (keeps glowing accents);
+  // flavour creatures already take their colours from art.color
+  if (a.custom && a.color && a.shape !== 'grub' && kind !== 'grub') {
     const tint = new Map();
     m.recolor((x, y, z, c) => {
       const pe = m.palette[c];
       if (!pe || pe.emissive >= 0.8) return c;
       let t = tint.get(c);
-      if (t === undefined) { t = m.color(mix(pe.color, a.color, 0.45), { ...pe }); tint.set(c, t); }
+      if (t === undefined) { t = m.color(mix(pe.color, a.color, 0.4), { ...pe }); tint.set(c, t); }
       return t;
     });
   }
-  if (a.charm && a.charm !== 'none') {
+  if (hasCharm) {
     const b = m.bounds();
-    charm(m, a.charm, Math.min(m.nx - 4, (b?.x1 ?? 10) - 2), Math.min(m.ny - 5, (b?.y1 ?? 8) + 1));
+    charm(m, a.charm, Math.max(0, Math.min(m.nx - 11, (b?.x1 ?? 20) - 8)), Math.min(m.ny - 11, (b?.y1 ?? 10) + 1), Math.round(m.nz / 2));
   }
   return m;
 }
 
-const VCACHE = new Map();
-function artKey(a, scale) {
-  return [a.shape, a.color, a.color2, a.tier, a.charm, a.custom ? 1 : 0, scale].join('|');
+function artKey(a) {
+  return [a.shape, a.line || '', a.color, a.color2, a.tier, a.charm, a.custom ? 1 : 0].join('|');
 }
 
-export function baitVoxel(art, scale = 2) {
-  const a = art || { shape: 'crumbs' };
-  const key = artKey(a, scale);
-  let r = VCACHE.get(key);
-  if (r) return r;
-  let out;
-  try {
-    const m = buildModel(a);
-    const ro = { scale, yaw: a.shape === 'grub' || a.shape === 'worm' ? -14 : 28, pitch: 24, outline: true, groundAO: false };
-    const v = renderVoxels(m, ro);
-    // [phase10:ui] full-res twin: the same voxel model rendered at twice the scale for the 2x UI layer
-    withHi(v.canvas, () => { const v2 = renderVoxels(m, { ...ro, scale: scale * HI }); return fitHi(v.canvas, v2.canvas, v.ox, v.oy, v2.ox, v2.oy); });
-    out = { canvas: v.canvas, glow: v.glow, w: v.w, h: v.h };
-  } catch (e) {
-    const c = makeCanvas(6, 6);
-    const g = ctxOf(c);
-    g.fillStyle = a.color || '#ffd84a';
-    g.fillRect(1, 1, 4, 4);
-    out = { canvas: c, glow: null, w: 6, h: 6 };
+// models per (art, phase), reused for every size
+const MCACHE = new Map();
+function modelOf(a, ph) {
+  const k = artKey(a) + '@' + ph;
+  let m = MCACHE.get(k);
+  if (!m) {
+    m = buildModel(a, ph);
+    MCACHE.set(k, m);
+    if (MCACHE.size > 72) MCACHE.delete(MCACHE.keys().next().value);
   }
-  VCACHE.set(key, out);
-  if (VCACHE.size > 240) VCACHE.delete(VCACHE.keys().next().value);
+  return m;
+}
+
+function viewOf(a) {
+  const d = BAIT_MODELS[modelKind(a)] || BAIT_MODELS.grub;
+  return { yaw: d.yaw, pitch: d.pitch, anim: d.anim };
+}
+
+// projected extent of a model at scale 1 (the same projection renderVoxels uses)
+function extentOf(m, yaw, pitch) {
+  const b = m.bounds();
+  if (!b) return 1;
+  const Y = yaw * Math.PI / 180, Pt = pitch * Math.PI / 180;
+  const cy = Math.cos(Y), sy = Math.sin(Y), cp = Math.cos(Pt), sp = Math.sin(Pt);
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (let i = 0; i < 8; i++) {
+    const px = i & 1 ? b.x1 + 1 : b.x0, py = i & 2 ? b.y1 + 1 : b.y0, pz = i & 4 ? b.z1 + 1 : b.z0;
+    const X = px * cy - pz * sy;
+    const Yp = -(px * -sp * sy + py * cp + pz * -sp * cy);
+    x0 = Math.min(x0, X); x1 = Math.max(x1, X); y0 = Math.min(y0, Yp); y1 = Math.max(y1, Yp);
+  }
+  return Math.max(x1 - x0, y1 - y0, 1);
+}
+
+// thicker dark outline for the fine 2x render (matches the chunky toy-block icon outlines)
+function thicken(c) {
+  const w = c.width, h = c.height;
+  const out = makeCanvas(w + 2, h + 2), g = ctxOf(out);
+  g.drawImage(c, 1, 1);
+  const id = g.getImageData(0, 0, w + 2, h + 2), d = id.data, src = d.slice();
+  for (let y = 0; y < h + 2; y++) for (let x = 0; x < w + 2; x++) {
+    const i = (y * (w + 2) + x) * 4;
+    if (src[i + 3] > 40) continue;
+    let n = false;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const xx = x + dx, yy = y + dy;
+      if (xx < 0 || yy < 0 || xx >= w + 2 || yy >= h + 2) continue;
+      const j = (yy * (w + 2) + xx) * 4;
+      if (src[j + 3] > 200 && src[j] + src[j + 1] + src[j + 2] < 150) { n = true; break; }
+    }
+    if (n) { d[i] = 20; d[i + 1] = 12; d[i + 2] = 34; d[i + 3] = 255; }
+  }
+  g.putImageData(id, 0, 0);
   return out;
 }
 
-// Small sprite for the hook (trimmed, <= 16 px wide).
-export function baitMini(art) {
-  const a = art || { shape: 'crumbs' };
-  const v = baitVoxel(a, 1);
-  if (v.w <= 18) return v.canvas;
-  const k = 16 / v.w;
-  const c = makeCanvas(16, Math.max(1, Math.round(v.h * k)));
-  const g = ctxOf(c);
-  g.drawImage(v.canvas, 0, 0, c.width, c.height);
-  return c;
+// render budget: new 2x twins wait for a later frame once ~6 ms of renders were spent this frame
+let bWin = 0, bSpent = 0;
+function budget() { const n = performance.now(); if (n - bWin > 16) { bWin = n; bSpent = 0; } return bSpent < 6; }
+function spend(t0) { bSpent += performance.now() - t0; }
+
+function renderFit(a, px, ph = 0, o = {}) {
+  const m = modelOf(a, ph);
+  const v = viewOf(a);
+  const s = (px / extentOf(m, v.yaw, v.pitch)) * (a.scale || 1);
+  const ro = { scale: s, yaw: v.yaw, pitch: v.pitch, outline: true, groundAO: false, glowRadius: o.glowR ?? 2 };
+  const r = renderVoxels(m, ro);
+  const out = { canvas: r.canvas, glow: r.glow, w: r.w || r.canvas.width, h: r.h || r.canvas.height };
+  if (o.hi !== false) {
+    const lazy = (pick) => () => {
+      if (!budget()) return undefined;
+      const t0 = performance.now();
+      let big = null;
+      try {
+        const r2 = renderVoxels(modelOf(a, ph), { ...ro, scale: s * HI, glowRadius: (ro.glowRadius || 2) * HI });
+        big = pick === 'glow' ? (r2.glow ? fitHi(r.glow, r2.glow, r.ox, r.oy, r2.ox, r2.oy) : null) : fitHi(r.canvas, thicken(r2.canvas), r.ox, r.oy, r2.ox + 1, r2.oy + 1);
+      } catch (e) { big = null; }
+      spend(t0);
+      return big;
+    };
+    withHi(out.canvas, lazy('main'));
+    if (out.glow) withHi(out.glow, lazy('glow'));
+  }
+  return out;
 }
 
-// Inventory sprite that fits roughly `px` (picks an integer voxel scale).
-export function baitIcon(art, px = 28) {
+const VCACHE = new Map();
+function cached(key, make) {
+  let r = VCACHE.get(key);
+  if (r) return r;
+  const t0 = performance.now();
+  try { r = make(); } catch (e) {
+    console.error('bait art', e);
+    const c = makeCanvas(6, 6), g = ctxOf(c);
+    g.fillStyle = '#ffd84a'; g.fillRect(1, 1, 4, 4);
+    r = { canvas: c, glow: null, w: 6, h: 6 };
+  }
+  spend(t0);
+  VCACHE.set(key, r);
+  if (VCACHE.size > 400) VCACHE.delete(VCACHE.keys().next().value);
+  return r;
+}
+
+// Detailed render fitting ~px logical pixels (scale = voxel px), kept for older callers.
+export function baitVoxel(art, scale = 2) {
   const a = art || { shape: 'crumbs' };
-  // [phase10:ui] chunky toy-block voxel bait (same style as every UI icon) once the voxel icon renderer is up
-  if (lpAvailable()) {
+  return cached('v|' + artKey(a) + '|' + scale, () => renderFit(a, 18 * scale));
+}
+
+// Small sprite (<= 16 px wide, with a fine `.hi` twin) for screen-space effects and legacy callers.
+export function baitMini(art) {
+  const a = art || { shape: 'crumbs' };
+  return cached('mini|' + artKey(a), () => renderFit(a, 16)).canvas;
+}
+
+// Inventory / shop sprite that fits roughly `px`. ph (0..1) animates creature bait in big views.
+export function baitIcon(art, px = 28, ph = 0) {
+  const a = art || { shape: 'crumbs' };
+  if (px < TOY_PX && a.shape !== 'charm' && lpAvailable()) {
+    // [phase10:ui] chunky toy-block voxel bait (same style as every small UI icon), built from the same model
     let f = null;
-    try { f = voxelModelFrame('bait:' + artKey(a, 0), () => buildModel(a), Math.round(px * 1.15 * (a.scale || 1)), 0, true); } catch { f = null; }
+    try { f = voxelModelFrame('bait:' + artKey(a), () => buildModel(a, 0), Math.round(px * 1.15 * (a.scale || 1)), 0, true); } catch { f = null; }
     if (f) return { canvas: f.canvas, glow: null, w: f.canvas.width, h: f.canvas.height };
   }
-  const one = baitVoxel(a, 1);
-  const s = Math.max(1, Math.min(4, Math.round((px / Math.max(one.w, one.h)) * (a.scale || 1) * 4) / 4));
-  return baitVoxel(a, s);
+  const q = Math.max(8, Math.round(px / 2) * 2);
+  const frames = viewOf(a).anim && q >= 40 ? 6 : 1;
+  const fi = frames > 1 ? Math.floor((((ph % 1) + 1) % 1) * frames) : 0;
+  return cached('i|' + artKey(a) + '|' + q + '|' + fi, () => renderFit(a, q, fi / Math.max(1, frames)));
+}
+
+// The bait on the hook, rendered at twice the world resolution (draw it at half size under the zoomed camera);
+// creature bait wriggles through 8 frames. -> {canvas, w, h} with w / h in world units.
+export function baitHook(art, t = 0) {
+  const a = art || { shape: 'crumbs' };
+  const frames = viewOf(a).anim ? 8 : 1;
+  const fi = frames > 1 ? Math.floor((((t / 1.1) % 1) + 1) % 1 * frames) : 0;
+  return cached('hook|' + artKey(a) + '|' + fi, () => {
+    const r = renderFit(a, 40, fi / frames, { hi: false, glowR: 2 });
+    return { canvas: r.canvas, glow: r.glow, w: r.w / 2, h: r.h / 2 };
+  });
 }
 
 // A bait floating in a glossy glass bubble, with a scent aura and sparkles.
@@ -290,7 +279,7 @@ export function drawBaitGloss(ctx, art, cx, cy, px, t = 0, o = {}) {
       ctx.fillRect(Math.round(cx + Math.cos(ang) * rr) - (s >> 1), Math.round(cy + Math.sin(ang) * rr * 0.8) - (s >> 1), s, s);
     }
   }
-  const spr = baitIcon(a, px * 0.8);
+  const spr = baitIcon(a, px * (o.bubble === false ? 0.9 : 0.8), o.anim === false ? 0 : t * 0.7);
   const bob = o.bob === false ? 0 : Math.round(Math.sin(t * 2.2) * 1.2);
   const x = Math.round(cx - spr.w / 2), y = Math.round(cy - spr.h / 2 + bob);
   if (spr.glow) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.6; ctx.drawImage(spr.glow, x, y); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; }

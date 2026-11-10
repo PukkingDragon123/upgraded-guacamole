@@ -32,7 +32,7 @@ import { rng } from '../core/rng.js';
 import { rgba } from '../core/color.js';
 import { Particles, glowSprite, drawBolt, boltPoints } from '../gfx/particles.js';
 import { drawFishRig } from '../gfx/fishrig.js';
-import { HOOK, baitSprite } from './baitart.js';
+import { HOOK, baitSprite, baitHook } from './baitart.js';
 import { Crank } from './crank.js';
 import { Battle, HookSpin, DEFAULT_ROD } from './battle.js';
 import { BossDirector, bossVictory } from './boss.js'; // [phase9:fishing] boss fights
@@ -1255,25 +1255,40 @@ export class Fishing {
   drawHookAndBait(ctx) {
     const h = this.hook, g = this.game;
     const x = Math.round(h.x), y = Math.round(h.y);
-    ctx.save();
-    ctx.translate(x, y - 5);
-    ctx.rotate(h.angle * 0.6);
-    ctx.drawImage(HOOK, -3, 0);
-    ctx.restore();
     const bait = g.currentBait();
+    const drawHook = () => {
+      ctx.save();
+      ctx.translate(x, y - 5);
+      ctx.rotate(h.angle * 0.6);
+      ctx.drawImage(HOOK, -3, 0);
+      ctx.restore();
+    };
     if (!bait) {
+      drawHook();
       // bare hook: a tiny glint on the point
       if (Math.sin(this.t * 3) > 0.92) { ctx.fillStyle = '#ffffff'; ctx.fillRect(x + 1, y + 2, 1, 1); }
       return;
     }
-    const bx = Math.round(h.x + Math.sin(h.angle * 0.6) * 4 + this.baitSwing * 4), by = Math.round(h.y + 8);
-    const spr = bait.mini || baitSprite(bait.art || bait.type, this.t);
-    if (spr) {
-      ctx.drawImage(spr, bx - Math.floor(spr.width / 2), by - 2 + Math.round(Math.sin(this.t * 3) * 0.6));
-      const fx = bait.effect || bait.type;
-      if (fx === 'golden' || fx === 'lantern') {
-        if (rng.chance(0.15)) this.particles.sparkle(bx + rng.float(-5, 5), by + rng.float(-3, 6), fx === 'golden' ? '#fff3a8' : '#a8fff0');
-      }
+    // [bait12] the detailed voxel bait threaded on the hook bend (2x world resolution, wriggling creatures),
+    // swinging with the hook; the hook is drawn over it so the point pierces the bait
+    const bx = h.x + Math.sin(h.angle * 0.6) * 4 + this.baitSwing * 4, by = h.y + 7;
+    let hk = null;
+    try { hk = bait.art ? baitHook(bait.art, this.t) : null; } catch (e) { hk = null; }
+    if (hk) {
+      ctx.save();
+      ctx.translate(Math.round(bx * 2) / 2, Math.round((by + Math.sin(this.t * 3) * 0.6) * 2) / 2);
+      ctx.rotate(this.baitSwing * 0.35 + h.angle * 0.25);
+      if (hk.glow) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.55; ctx.drawImage(hk.glow, -hk.w / 2, -hk.h / 2, hk.w, hk.h); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; }
+      ctx.drawImage(hk.canvas, -hk.w / 2, -hk.h / 2, hk.w, hk.h);
+      ctx.restore();
+    } else {
+      const spr = bait.mini || baitSprite(bait.art || bait.type, this.t);
+      if (spr) ctx.drawImage(spr, Math.round(bx) - Math.floor(spr.width / 2), Math.round(by) - 2);
+    }
+    drawHook();
+    const fx = bait.effect || bait.type;
+    if (fx === 'golden' || fx === 'lantern') {
+      if (rng.chance(0.15)) this.particles.sparkle(bx + rng.float(-5, 5), by + rng.float(-3, 6), fx === 'golden' ? '#fff3a8' : '#a8fff0');
     }
   }
 

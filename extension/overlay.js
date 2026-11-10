@@ -379,13 +379,13 @@
     const P6 = (x, y) => x < 0 || y < 0 || x >= w || y >= h ? 0 : d[y * w + x];
     const same = (a, b) => a === b || a >>> 24 < 16 && b >>> 24 < 16;
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      const p = P6(x, y), A3 = P6(x, y - 1), B2 = P6(x + 1, y), C2 = P6(x - 1, y), D = P6(x, y + 1);
+      const p = P6(x, y), A3 = P6(x, y - 1), B2 = P6(x + 1, y), C2 = P6(x - 1, y), D2 = P6(x, y + 1);
       let e0 = p, e1 = p, e2 = p, e3 = p;
-      if (!same(A3, D) && !same(C2, B2)) {
+      if (!same(A3, D2) && !same(C2, B2)) {
         if (same(C2, A3)) e0 = C2;
         if (same(A3, B2)) e1 = B2;
-        if (same(C2, D)) e2 = C2;
-        if (same(D, B2)) e3 = B2;
+        if (same(C2, D2)) e2 = C2;
+        if (same(D2, B2)) e3 = B2;
       }
       const i = y * 2 * W4 + x * 2;
       out[i] = e0;
@@ -951,7 +951,7 @@
   function renderVoxels(model, opts = {}) {
     const b = model.bounds();
     if (!b) return { canvas: makeCanvas(1, 1), glow: null, ox: 0, oy: 0, w: 1, h: 1, regions: {}, ids: new Uint8Array(1), project: () => [0, 0] };
-    const { palette } = model;
+    const { palette: palette2 } = model;
     const cam = setupCamera(model, b, opts);
     const { W: W4, H, N: N2 } = cam;
     const vol = buildVolumes(model, opts.groundAO ?? true);
@@ -966,7 +966,7 @@
     const edgeBoost = pooled("edgeBoost", Float32Array, N2).fill(0);
     const sideMark = pooled("sideMark", Uint8Array, N2).fill(0);
     edgeHighlights(cam, opts, hitN, depth, edgeMul, edgeBoost, sideMark);
-    const ramps = palette.map((pe) => pe ? Uint32Array.from((pe.ramp || ramp7(pe.color, pe.contrast ?? 1)).map((h) => pack(h) >>> 0)) : null);
+    const ramps = palette2.map((pe) => pe ? Uint32Array.from((pe.ramp || ramp7(pe.color, pe.contrast ?? 1)).map((h) => pack(h) >>> 0)) : null);
     const out = new Uint32Array(N2);
     const glowBuf = cam.hasEmissive ? new Uint32Array(N2) : null;
     const ids = new Uint8Array(N2);
@@ -984,12 +984,12 @@
         }
       }
     }
-    if (opts.depthLines ?? true) depthLinePass(palette, W4, H, opts.depthThreshold ?? 2.2, hitVox, depth, ids, level, ramps, out);
+    if (opts.depthLines ?? true) depthLinePass(palette2, W4, H, opts.depthThreshold ?? 2.2, hitVox, depth, ids, level, ramps, out);
     if (opts.outline ?? true) outlinePass(W4, H, out);
     const canvas = toCanvas(out, W4, H);
     const glow = glowBuf ? toCanvas(glowHalo(glowBuf, W4, H, cam.glowR), W4, H) : null;
     const track = new Set(opts.track || []);
-    for (let i = 1; i < palette.length; i++) if (palette[i].emissive) track.add(i);
+    for (let i = 1; i < palette2.length; i++) if (palette2[i].emissive) track.add(i);
     const regions = {};
     for (const k of track) {
       let x0 = W4, y0 = H, x1 = -1, y1 = -1, n2 = 0, sx = 0, syy = 0;
@@ -1017,7 +1017,7 @@
     const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
     const R2 = [cy, 0, -sy];
     const C2 = [sy * cp, sp, cy * cp];
-    const D = [-C2[0], -C2[1], -C2[2]];
+    const D2 = [-C2[0], -C2[1], -C2[2]];
     const U2 = [-sp * sy, cp, -sp * cy];
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     for (let i = 0; i < 8; i++) {
@@ -1036,7 +1036,7 @@
     const W4 = Math.ceil((maxX - minX) * s) + pad * 2;
     const H = Math.ceil((maxY - minY) * s) + pad * 2;
     const project = (x, y, z) => [(x * R2[0] + y * R2[1] + z * R2[2] - minX) * s + pad, (-(x * U2[0] + y * U2[1] + z * U2[2]) - minY) * s + pad];
-    return { s, R: R2, C: C2, D, U: U2, minX, minY, W: W4, H, N: W4 * H, pad, glowR, hasEmissive, project };
+    return { s, R: R2, C: C2, D: D2, U: U2, minX, minY, W: W4, H, N: W4 * H, pad, glowR, hasEmissive, project };
   }
   function buildVolumes(model, groundAO) {
     const { nx, ny, nz, data } = model;
@@ -1085,11 +1085,11 @@
   }
   function traceRays(model, b, cam, vol, hitVox, hitN, depth, hitU, hitV) {
     const { nx, ny, data } = model;
-    const { s, R: R2, U: U2, D, minX, minY, W: W4, H, pad } = cam;
+    const { s, R: R2, U: U2, D: D2, minX, minY, W: W4, H, pad } = cam;
     const { bdist, bnx, bny } = vol;
     const R0 = R2[0], R1 = R2[1], R22 = R2[2], U0 = U2[0], U1 = U2[1], U22 = U2[2];
     const bx0 = b.x0, by0 = b.y0, bz0 = b.z0, bx1 = b.x1 + 1, by1 = b.y1 + 1, bz1 = b.z1 + 1;
-    const dx = D[0], dy = D[1], dz = D[2];
+    const dx = D2[0], dy = D2[1], dz = D2[2];
     const zx = Math.abs(dx) < 1e-9, zy = Math.abs(dy) < 1e-9, zz = Math.abs(dz) < 1e-9;
     const idx = zx ? 1e12 : 1 / dx, idy = zy ? 1e12 : 1 / dy, idz = zz ? 1e12 : 1 / dz;
     const stepX = dx > 0 ? 1 : -1, stepY = dy > 0 ? 1 : -1, stepZ = dz > 0 ? 1 : -1;
@@ -1221,7 +1221,7 @@
     }));
   }
   function shadeHits(model, cam, vol, opts, faceTone, hitVox, hitN, hitU, hitV, tone5, edgeMul) {
-    const { nx, ny, nz, data, palette } = model;
+    const { nx, ny, nz, data, palette: palette2 } = model;
     const { occ, SY, SZ } = vol;
     const N2 = cam.N;
     const aoAmt = opts.ao ?? 1.15, jitterDef = opts.jitter ?? 0.22, smoothDef = opts.smooth ?? 0;
@@ -1234,10 +1234,10 @@
       hvy /= l;
       hvz /= l;
     }
-    const P6 = palette.length;
+    const P6 = palette2.length;
     const pJit = new Float32Array(P6), pSmooth = new Float32Array(P6), pSpec = new Float32Array(P6), pPow = new Float32Array(P6), pLight = new Float32Array(P6), pAo = new Float32Array(P6), pEdge = new Float32Array(P6);
     for (let i = 1; i < P6; i++) {
-      const pe = palette[i];
+      const pe = palette2[i];
       pJit[i] = pe.jitter ?? jitterDef;
       pSmooth[i] = pe.smooth ?? smoothDef;
       pSpec[i] = pe.spec || 0;
@@ -1358,13 +1358,13 @@
     }
   }
   function quantize(model, N2, hitVox, hitN, tone5, edgeBoost, ramps, out, glowBuf, ids, level) {
-    const { data, palette } = model;
-    const P6 = palette.length;
+    const { data, palette: palette2 } = model;
+    const P6 = palette2.length;
     const pEm = new Float32Array(P6), pLight = new Float32Array(P6);
     for (let i = 1; i < P6; i++) {
-      const e = palette[i].emissive;
+      const e = palette2[i].emissive;
       pEm[i] = e === true ? 1 : e || 0;
-      pLight[i] = palette[i].light || 0;
+      pLight[i] = palette2[i].light || 0;
     }
     for (let p = 0; p < N2; p++) {
       const hv = hitVox[p];
@@ -1384,7 +1384,7 @@
       if (em > 0 && glowBuf) glowBuf[p] = out[p];
     }
   }
-  function depthLinePass(palette, W4, H, thr, hitVox, depth, ids, level, ramps, out) {
+  function depthLinePass(palette2, W4, H, thr, hitVox, depth, ids, level, ramps, out) {
     for (let py = 0; py < H; py++) for (let px = 0; px < W4; px++) {
       const p = py * W4 + px;
       if (hitVox[p] < 0) continue;
@@ -1392,7 +1392,7 @@
       const jump = px > 0 && hitVox[p - 1] >= 0 && d > depth[p - 1] || px + 1 < W4 && hitVox[p + 1] >= 0 && d > depth[p + 1] || py > 0 && hitVox[p - W4] >= 0 && d > depth[p - W4] || py + 1 < H && hitVox[p + W4] >= 0 && d > depth[p + W4];
       if (!jump) continue;
       const v = ids[p];
-      if (palette[v].emissive) continue;
+      if (palette2[v].emissive) continue;
       out[p] = ramps[v][Math.max(0, Math.min(level[p], 3) - 2)];
     }
   }
@@ -1787,11 +1787,11 @@
     };
   }
   function voxelise(M3, x0, x1, o, P6) {
-    const px = o.px, D = o.depth * px, OL = o.outline * px;
+    const px = o.px, D2 = o.depth * px, OL = o.outline * px;
     const gy0 = M3.y0, gy1 = M3.y1;
     const gw = x1 - x0, gh = gy1 - gy0 + 1;
     const pad = OL + 1;
-    const nx = gw * px + pad * 2, ny = gh * px + pad * 2, nz = D + 2;
+    const nx = gw * px + pad * 2, ny = gh * px + pad * 2, nz = D2 + 2;
     const m = new VoxelModel(nx, ny, nz);
     const ids = paletteIds(m, P6);
     const ink = (gx, gy) => gx >= x0 && gx < x1 && gx >= 0 && gy >= 0 && gx < M3.w && gy < M3.h && M3.mask[gy * M3.w + gx] === 1;
@@ -1813,9 +1813,9 @@
         if (px > 2 && (up || left)) face4 = ids.bevelL;
         else if (px > 2 && (down || right)) face4 = ids.bevelD;
         else if (px > 1 && up) face4 = ids.face[Math.max(0, fi - 1)];
-        for (let z = 1; z <= D; z++) m.set(vx, vy, z, z === D ? face4 : z === 1 ? ids.back : ids.side);
+        for (let z = 1; z <= D2; z++) m.set(vx, vy, z, z === D2 ? face4 : z === 1 ? ids.back : ids.side);
       } else if (OL > 0 && near(vx, vy, OL)) {
-        for (let z = 0; z <= Math.max(1, D - px - 1); z++) m.set(vx, vy, z, ids.outline);
+        for (let z = 0; z <= Math.max(1, D2 - px - 1); z++) m.set(vx, vy, z, ids.outline);
       }
     }
     return { m, pad };
@@ -1911,13 +1911,13 @@
   });
 
   // src/gfx/pixel.js
-  function spriteFromAscii(rows, palette, scale = 1) {
+  function spriteFromAscii(rows, palette2, scale = 1) {
     if (typeof rows === "string") rows = rows.replace(/^\n+|\n+\s*$/g, "").split("\n").map((r) => r.trim());
     const h = rows.length;
     const w = Math.max(...rows.map((r) => r.length));
     const buf = new PixelBuffer(w * scale, h * scale);
     const packed = {};
-    for (const [k, v] of Object.entries(palette)) {
+    for (const [k, v] of Object.entries(palette2)) {
       if (!v) continue;
       if (v.length === 9) {
         const a = parseInt(v.slice(7, 9), 16);
@@ -2682,18 +2682,18 @@
       }
     }
     const face4 = (i, j) => i >= 0 && j >= 0 && i < GW && j < GH && M3[j * GW + i] === 1;
-    const D = new Uint8Array(GW * GH);
-    for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) if (M3[j * GW + i] === 1) D[j * GW + i] = 9;
+    const D2 = new Uint8Array(GW * GH);
+    for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) if (M3[j * GW + i] === 1) D2[j * GW + i] = 9;
     for (let pass = 1; pass <= 4; pass++) for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
       const q = j * GW + i;
-      if (D[q] !== 9) continue;
-      const nb = (a, b2) => a < 0 || b2 < 0 || a >= GW || b2 >= GH ? 0 : D[b2 * GW + a];
-      if (nb(i - 1, j) === pass - 1 || nb(i + 1, j) === pass - 1 || nb(i, j - 1) === pass - 1 || nb(i, j + 1) === pass - 1) D[q] = pass;
+      if (D2[q] !== 9) continue;
+      const nb = (a, b2) => a < 0 || b2 < 0 || a >= GW || b2 >= GH ? 0 : D2[b2 * GW + a];
+      if (nb(i - 1, j) === pass - 1 || nb(i + 1, j) === pass - 1 || nb(i, j - 1) === pass - 1 || nb(i, j + 1) === pass - 1) D2[q] = pass;
     }
     const ringN = o.ring | 0;
     const hole = new Uint8Array(ringN ? GW * GH : 0);
     if (ringN) {
-      for (let q = 0; q < GW * GH; q++) if (M3[q] === 1 && D[q] > ringN) {
+      for (let q = 0; q < GW * GH; q++) if (M3[q] === 1 && D2[q] > ringN) {
         M3[q] = 0;
         hole[q] = 1;
       }
@@ -2740,7 +2740,7 @@
           bl = (sb * sa + bl * a * (1 - sa)) / na;
           a = na;
         };
-        const dd = D[q];
+        const dd = D2[q];
         if (glow > 0 && t > 0.55) {
           const k = (t - 0.55) / 0.45, cx = Math.abs(i + 0.5 - GW / 2) / (GW / 2);
           ov(glowC[0], glowC[1], glowC[2], glow * Math.floor(k * k * (1 - cx * cx * 0.7) * 4 + 0.5) / 4 * 0.55);
@@ -2794,7 +2794,7 @@
     }
     for (const [cx, cy, rr] of bub2) {
       for (let j = Math.floor(cy - rr - 1); j <= cy + rr + 1; j++) for (let i = Math.floor(cx - rr - 1); i <= cx + rr + 1; i++) {
-        if (!face4(i, j) || D[j * GW + i] <= 2) continue;
+        if (!face4(i, j) || D2[j * GW + i] <= 2) continue;
         const dd = Math.hypot(i + 0.5 - cx, j + 0.5 - cy);
         let al = 0;
         if (dd <= rr && dd > rr - 1) al = 0.5;
@@ -2819,7 +2819,7 @@
       if (!m) continue;
       const x0 = bx0(i), x1 = bx0(i + 1), y0 = by0(j), y1 = by0(j + 1);
       const r = BC[q * 4], g = BC[q * 4 + 1], bl = BC[q * 4 + 2], a = BC[q * 4 + 3];
-      const cube = m === 2 || D[q] <= 2;
+      const cube = m === 2 || D2[q] <= 2;
       for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
         let k = 1;
         if (cube) {
@@ -4324,10 +4324,10 @@ void main() {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, t);
   }
-  function setCommon(o, eye, ortho = false) {
+  function setCommon(o, eye2, ortho = false) {
     const u = prog.u, L2 = o.light || [-0.45, 0.8, 0.55];
     gl.uniform3f(u.uLight, L2[0], L2[1], L2[2]);
-    gl.uniform3f(u.uEye, eye[0], eye[1], eye[2]);
+    gl.uniform3f(u.uEye, eye2[0], eye2[1], eye2[2]);
     gl.uniform1f(u.uAmb, o.ambient ?? 0.42);
     const rc = hexRgb(o.rimColor || "#bff4ff");
     gl.uniform3f(u.uRimCol, rc[0], rc[1], rc[2]);
@@ -4977,7 +4977,7 @@ void main() {
   }
   function profileOf(B2, infl) {
     if (B2.top && B2.bot && !infl) return { top: knotFn(B2.top), bot: knotFn(B2.bot) };
-    let D = B2.D ?? 0.24, up = B2.up ?? 0.54, at = B2.at ?? 0.36, atB = B2.atB ?? (B2.at ?? 0.36) + 0.04;
+    let D2 = B2.D ?? 0.24, up = B2.up ?? 0.54, at = B2.at ?? 0.36, atB = B2.atB ?? (B2.at ?? 0.36) + 0.04;
     let ped = B2.ped ?? 0.3, pc = B2.pc ?? 0, tip = B2.tip ?? 0, fore = B2.fore ?? 1.8, chin = B2.chin ?? 1.8;
     let back = B2.back ?? 1, backB = B2.backB ?? back, hump = B2.hump ?? 0, sag = B2.sag ?? 0;
     if (B2.top && B2.bot) {
@@ -4988,8 +4988,8 @@ void main() {
         bot: (u) => lerp(b0(u), Math.min(b0(u), -R2 * Math.sqrt(Math.max(0, 1 - ((u - 0.45) / 0.55) ** 2)) - 0.02), infl)
       };
     }
-    const Dt = D * up, Db = D * (1 - up);
-    const pt = pc + D * ped * 0.5, pb = pc - D * ped * 0.5;
+    const Dt = D2 * up, Db = D2 * (1 - up);
+    const pt = pc + D2 * ped * 0.5, pb = pc - D2 * ped * 0.5;
     const topF = (u) => {
       let y;
       if (u < at) {
@@ -4999,7 +4999,7 @@ void main() {
         const s = (u - at) / (1 - at);
         y = pt + (Dt - pt) * Math.pow(0.5 + 0.5 * Math.cos(Math.PI * s), back);
       }
-      return y + hump * D * Math.sin(Math.PI * clamp01((u - 0.05) / 0.75));
+      return y + hump * D2 * Math.sin(Math.PI * clamp01((u - 0.05) / 0.75));
     };
     const botF = (u) => {
       let y;
@@ -5010,7 +5010,7 @@ void main() {
         const s = (u - atB) / (1 - atB);
         y = pb - (Db + pb) * Math.pow(0.5 + 0.5 * Math.cos(Math.PI * s), backB);
       }
-      return y - sag * D * Math.sin(Math.PI * clamp01((u - 0.1) / 0.75));
+      return y - sag * D2 * Math.sin(Math.PI * clamp01((u - 0.1) / 0.75));
     };
     if (infl > 0) {
       const ball = (u) => 0.43 * Math.sqrt(Math.max(0, 1 - ((u - 0.47) / 0.47) ** 2));
@@ -6090,10 +6090,10 @@ void main() {
         const eyesOut = [];
         for (const sd of [1, -1]) {
           const base = [Dp * 0.86, cy + Hc * 0.42, sd * W4 * 0.3];
-          const eye = [Dp * 0.98, cy + Hc * 0.45 + L2 * 0.075 * stalk, sd * W4 * (0.34 + 0.02 * stalk)];
-          sol.cap(base, eye, L2 * 0.024, L2 * 0.018, { col: (q) => packRGB2(tone3(mix3(o3, legC, under, 0.25), q[3] < -0.2 ? -0.12 : 0.04)) });
+          const eye2 = [Dp * 0.98, cy + Hc * 0.45 + L2 * 0.075 * stalk, sd * W4 * (0.34 + 0.02 * stalk)];
+          sol.cap(base, eye2, L2 * 0.024, L2 * 0.018, { col: (q) => packRGB2(tone3(mix3(o3, legC, under, 0.25), q[3] < -0.2 ? -0.12 : 0.04)) });
           const er = L2 * (S9.eyeR ?? 0.035) * 0.8;
-          const ec = add3(eye, [er * 0.15, er * 0.35 * Math.min(1.6, stalk), 0]);
+          const ec = add3(eye2, [er * 0.15, er * 0.35 * Math.min(1.6, stalk), 0]);
           sol.ell(ec, [er * 0.95, er * (0.9 + 0.35 * Math.max(0, stalk - 1)), er * 0.95], { col: (q) => q[0] > 0.45 && q[1] > 0.45 ? P("#5a5a66") : P(C2.eye || "#141218") });
           eyesOut.push([...ec, er]);
         }
@@ -6533,9 +6533,9 @@ void main() {
           sol.cap(add3(base, n2, d * 0.9), add3(add3(base, n2, d + hgt), [0, 0, zf]), 75e-4 * H, 4e-3 * H, { role: R_FIN, col: (q2) => packRGB2(tone3([...finC], q2[2] > 0.85 ? 0.12 : -0.04)) });
         }
         const mouth = add3(s1, hd, 0.02 * H);
-        const eye = add3(hc, [0.022 * H, 0.012 * H, 0.044 * H]);
+        const eye2 = add3(hc, [0.022 * H, 0.012 * H, 0.044 * H]);
         const tailTip = rings[nR - 1].c;
-        return { sol, anchors: { mouth, top: [cb[0], cb[1] + 0.07 * H, 0], bottom: [cc[0] * H, (cc[1] - r0 - 0.02) * H, 0], tail: tailTip }, eyes: [[...eye, 0.017 * H]], yawBase: 18, finAlpha: 0.6 };
+        return { sol, anchors: { mouth, top: [cb[0], cb[1] + 0.07 * H, 0], bottom: [cc[0] * H, (cc[1] - r0 - 0.02) * H, 0], tail: tailTip }, eyes: [[...eye2, 0.017 * H]], yawBase: 18, finAlpha: 0.6 };
       };
       SOLIDS.chomper = (S9, L2, ph) => {
         const sol = new Solid();
@@ -9847,7 +9847,7 @@ void main() {
         paint(c, part2, buf, glow, ox, oy, s, ph) {
           const Rr = c.L * 0.5 * s;
           const R2 = c.bodyR;
-          const D = rp(c, c.look.col?.back || shade(c.bodyHex, -0.3));
+          const D2 = rp(c, c.look.col?.back || shade(c.bodyHex, -0.3));
           for (let y = Math.floor(oy - Rr * 1.1); y <= Math.ceil(oy + Rr * 1.05); y++) for (let x = Math.floor(ox - Rr * 1.1); x <= Math.ceil(ox + Rr * 1.1); x++) {
             const dx = x + 0.5 - ox, dy = y + 0.5 - oy;
             const d = Math.hypot(dx, dy);
@@ -9858,7 +9858,7 @@ void main() {
             if (d > r) continue;
             const edge = d > r - 1.2;
             let col = rampPick(R2, clamp01(0.62 - dy / Rr * 0.3 - dx / Rr * 0.12 - d / r * 0.15), x, y);
-            if (arm > 0.55 && Math.abs(fract(d / Math.max(2.4, Rr * 0.14)) - 0.5) < 0.18 && d > Rr * 0.3 && hash2(x >> 1, y >> 1, 9) > 0.4) col = D[2];
+            if (arm > 0.55 && Math.abs(fract(d / Math.max(2.4, Rr * 0.14)) - 0.5) < 0.18 && d > Rr * 0.3 && hash2(x >> 1, y >> 1, 9) > 0.4) col = D2[2];
             if (hash2(x, y, 31) > 0.93) col = R2[4];
             if (edge) col = R2[1];
             buf.set(x, y, col);
@@ -9890,7 +9890,7 @@ void main() {
           const r = c.L / 2;
           const body = part2 === "body" || part2 === "all", back = part2 === "back" || part2 === "all";
           const half = 0.05 + 0.74 * (body ? this.open(ph) : 0.3);
-          const T3 = c.T, F2 = c.tail.R7, D = c.fins[0]?.R7 || F2;
+          const T3 = c.T, F2 = c.tail.R7, D2 = c.fins[0]?.R7 || F2;
           const inner = P2("#152448"), tongue = P2("#ff6f9a"), tongueH = P2("#ffb4cc"), blush = P2("#ff8ab8");
           const flap = back ? Math.sin(TAU * ph) * 0.22 : 0;
           const ext3 = this.ext(c);
@@ -9922,10 +9922,10 @@ void main() {
               const fx = -lx - r * 0.05, fy = -ly - r * 0.82;
               if (!col && fy > -1 && fy < r * 0.55) {
                 const t = fy / (r * 0.55);
-                if (fx > -r * 0.35 * (1 - t) && fx < r * 0.45 * (1 - t * 0.55) + t * r * 0.25) col = tone4(D, t > 0.55 ? 4.2 : 3, x, y);
+                if (fx > -r * 0.35 * (1 - t) && fx < r * 0.45 * (1 - t * 0.55) + t * r * 0.25) col = tone4(D2, t > 0.55 ? 4.2 : 3, x, y);
               }
               const px2 = -lx + r * 0.05, py2 = ly - r * 0.86;
-              if (!col && py2 > -1 && py2 < r * 0.28 && Math.abs(px2 - py2 * 0.6) < r * 0.16) col = tone4(D, 3, x, y);
+              if (!col && py2 > -1 && py2 < r * 0.28 && Math.abs(px2 - py2 * 0.6) < r * 0.16) col = tone4(D2, 3, x, y);
             }
             if (col) buf.set(x, y, col);
           }
@@ -9968,7 +9968,7 @@ void main() {
           }
           if (part2 === "body" || part2 === "all") {
             const r = Math.max(2.5, half * 0.32);
-            const GL = rp(c, c.look.glyphColor || "#ffffff");
+            const GL2 = rp(c, c.look.glyphColor || "#ffffff");
             for (let y = Math.floor(oy - half); y < oy + half; y++) for (let x = Math.floor(ox - half); x < ox + half; x++) {
               const dx = Math.abs(x + 0.5 - ox) - (half - r), dy = Math.abs(y + 0.5 - oy) - (half - r);
               if (dx > 0 && dy > 0 && dx * dx + dy * dy > r * r) continue;
@@ -9980,8 +9980,8 @@ void main() {
               buf.set(x, y, col);
             }
             const gx = ox + half * 0.04, gy = oy - half * 0.04;
-            shadedEllipse(buf, gx + half * 0.06, gy, half * 0.42, half * 0.27, GL, { light: 0.75 });
-            buf.fillPoly([[gx - half * 0.3, gy], [gx - half * 0.62, gy - half * 0.27], [gx - half * 0.62, gy + half * 0.27]], GL[3]);
+            shadedEllipse(buf, gx + half * 0.06, gy, half * 0.42, half * 0.27, GL2, { light: 0.75 });
+            buf.fillPoly([[gx - half * 0.3, gy], [gx - half * 0.62, gy - half * 0.27], [gx - half * 0.62, gy + half * 0.27]], GL2[3]);
             const bs = Math.max(5, Math.round(half * 0.5));
             const bx0 = Math.round(ox - half + 1), by0 = Math.round(oy + half - bs - 1);
             buf.rect(bx0, by0, bs, bs, P2("#ffffff"));
@@ -15267,7 +15267,7 @@ void main() {
       const i = f | 0, t = f - i;
       return [T3[0][i] + (T3[0][i + 1] - T3[0][i]) * t, T3[1][i] + (T3[1][i + 1] - T3[1][i]) * t];
     };
-    const D = (p) => {
+    const D2 = (p) => {
       let x = p[0], y = p[1], z = p[2];
       const u = (xN - x) / L2;
       if (flapA) z += flapA * Math.pow(Math.min(1.4, Math.abs(y) / span), 1.6) * Math.sin(P6 - u * flapK);
@@ -15338,7 +15338,7 @@ void main() {
         const Z = hw * Math.sign(sn) * Math.pow(Math.abs(sn), 2 / xs);
         const v = hgt > 1e-6 ? (Y - bot) / hgt : 0.5;
         const rest = jaw([X, Y, Z]);
-        ring.push({ p: D(rest), uv: sk.uvB(X, b0 + (t0 - b0) * v), z: Z });
+        ring.push({ p: D2(rest), uv: sk.uvB(X, b0 + (t0 - b0) * v), z: Z });
       }
       rings.push(ring);
     }
@@ -15370,8 +15370,8 @@ void main() {
       for (let k = 0; k <= n2; k++) {
         const u = k / n2 * mouth.u;
         const X = xN - u * L2, Y = mouthY(u);
-        up.push(D([X, Y + 2e-3 * L2, 0]));
-        lo.push(D(jaw([X, Y - 2e-3 * L2, 0])));
+        up.push(D2([X, Y + 2e-3 * L2, 0]));
+        lo.push(D2(jaw([X, Y - 2e-3 * L2, 0])));
       }
       for (let k = 0; k < n2; k++) {
         body.both(up[k], lo[k], lo[k + 1], "#3a1622", W4, W4, W4);
@@ -15388,7 +15388,7 @@ void main() {
       }
       const R2 = pts.map((q) => Array.from({ length: sides }, (_, j) => {
         const a = j / sides * TAU3;
-        return { p: D([q.X, yc + Math.cos(a) * q.hh, Math.sin(a) * q.hw]), uv: sk.uvB(Math.min(q.X, xN), yc + Math.cos(a) * q.hh * 0.8) };
+        return { p: D2([q.X, yc + Math.cos(a) * q.hh, Math.sin(a) * q.hw]), uv: sk.uvB(Math.min(q.X, xN), yc + Math.cos(a) * q.hh * 0.8) };
       }));
       for (let k = 0; k < n2; k++) for (let j = 0; j < sides; j++) {
         const j2 = (j + 1) % sides, a = R2[k][j], b = R2[k][j2], c2 = R2[k + 1][j2], d = R2[k + 1][j];
@@ -15414,14 +15414,14 @@ void main() {
       const hh = ce.h * L2;
       for (const sd of [1, -1]) for (let iz = 0; iz < nz; iz++) for (let ix = 0; ix < nx; ix++) {
         const q = [grid[iz][ix], grid[iz][ix + 1], grid[iz + 1][ix + 1], grid[iz + 1][ix]];
-        const pts = q.map(([X, Z]) => D([X, yc + sd * hh * (1 - 0.6 * Math.abs(Z) / (ce.w * L2)), Z]));
+        const pts = q.map(([X, Z]) => D2([X, yc + sd * hh * (1 - 0.6 * Math.abs(Z) / (ce.w * L2)), Z]));
         const uvs = q.map(([X]) => sk.uvB(X, yc + sd * hh * 0.5));
         if (sd > 0) body.quad(pts[0], pts[3], pts[2], pts[1], "#ffffff", uvs[0], uvs[3], uvs[2], uvs[1]);
         else body.quad(pts[0], pts[1], pts[2], pts[3], "#ffffff", uvs[0], uvs[1], uvs[2], uvs[3]);
       }
       for (let iz = 0; iz <= nz; iz += nz) for (let ix = 0; ix < nx; ix++) {
         const [X0, Z0] = grid[iz][ix], [X1, Z1] = grid[iz][ix + 1];
-        const a = D([X0, yc + hh * 0.4, Z0]), b = D([X1, yc + hh * 0.4, Z1]), c2 = D([X1, yc - hh * 0.4, Z1]), d = D([X0, yc - hh * 0.4, Z0]);
+        const a = D2([X0, yc + hh * 0.4, Z0]), b = D2([X1, yc + hh * 0.4, Z1]), c2 = D2([X1, yc - hh * 0.4, Z1]), d = D2([X0, yc - hh * 0.4, Z0]);
         body.both(a, b, c2, "#ffffff", sk.uvB(X0, yc), sk.uvB(X1, yc), sk.uvB(X1, yc));
         body.both(a, c2, d, "#ffffff", sk.uvB(X0, yc), sk.uvB(X1, yc), sk.uvB(X0, yc));
       }
@@ -15450,7 +15450,7 @@ void main() {
             const [X, Y] = finPt(M3, t, hf, infl, false);
             const [X0, Y0] = finPt(M0, t, hf, 0, false);
             const z = 0.022 * L2 * Math.max(0, hf) * Math.sin(fl + t * 5 + (top ? 0 : 1.7));
-            return { p: D([X, Y, z]), uv: sk.uvF(X0, Y0) };
+            return { p: D2([X, Y, z]), uv: sk.uvF(X0, Y0) };
           }));
         }
         for (let k = 0; k < nk; k++) for (let r = 0; r < rows.length - 1; r++) {
@@ -15470,8 +15470,8 @@ void main() {
             const ht = Math.max(0, hf);
             const th = Math.max(4e-3 * L2, th0 * (1 - 0.75 * ht) * (1 - 0.4 * Math.abs(t - 0.4)));
             const uv = sk.uvB(X0, Y0);
-            fr.push({ p: D([X, Y, th]), uv });
-            br.push({ p: D([X, Y, -th]), uv });
+            fr.push({ p: D2([X, Y, th]), uv });
+            br.push({ p: D2([X, Y, -th]), uv });
           }
           F2.push(fr);
           B22.push(br);
@@ -15508,7 +15508,7 @@ void main() {
         const hh = Math.max(25e-4 * L2, hb * Math.pow(1 - t, tf.taper ?? 1.4));
         R2.push(Array.from({ length: sides }, (_, j) => {
           const a = j / sides * TAU3;
-          return { p: D([X, yc + Math.cos(a) * hh, Math.sin(a) * hh * (tf.flat ?? 0.8)]), uv: sk.uvB(X, yc) };
+          return { p: D2([X, yc + Math.cos(a) * hh, Math.sin(a) * hh * (tf.flat ?? 0.8)]), uv: sk.uvB(X, yc) };
         }));
       }
       for (let k = 0; k < n2; k++) for (let j = 0; j < sides; j++) {
@@ -15536,7 +15536,7 @@ void main() {
       };
       if (!tf.thick) {
         const rows = [0, 1, 2].map((r) => [tailPts(M3, tf, r, false), tailPts(M0, tf0, r, false)]);
-        const G = rows.map(([g, g0]) => g.map((q, k) => ({ p: D([q.X, q.Y, 0.03 * L2 * q.ht * Math.sin(fl * 1.3 + q.t * 4)]), uv: sk.uvF(g0[k].X, g0[k].Y) })));
+        const G = rows.map(([g, g0]) => g.map((q, k) => ({ p: D2([q.X, q.Y, 0.03 * L2 * q.ht * Math.sin(fl * 1.3 + q.t * 4)]), uv: sk.uvF(g0[k].X, g0[k].Y) })));
         for (let r = 0; r < 2; r++) for (let k = 0; k < G[r].length - 1; k++) {
           const a = G[r][k], b = G[r][k + 1], c2 = G[r + 1][k + 1], d = G[r + 1][k];
           fins.quad(a.p, b.p, c2.p, d.p, "#ffffff", a.uv, b.uv, c2.uv, d.uv);
@@ -15544,7 +15544,7 @@ void main() {
       } else {
         const rows = [0, 1, 2].map((r) => [tailPts(M3, tf, r, true), tailPts(M0, tf0, r, true)]);
         const mk = (sd) => rows.map(([g, g0]) => g.map((q, k) => ({
-          p: D([q.X, q.Y, sd * Math.max(4e-3 * L2, tf.thick * L2 * (1 - 0.8 * q.ht) * (1 - 0.3 * Math.abs(q.s)))]),
+          p: D2([q.X, q.Y, sd * Math.max(4e-3 * L2, tf.thick * L2 * (1 - 0.8 * q.ht) * (1 - 0.3 * Math.abs(q.s)))]),
           uv: sk.uvB(g0[k].X + 4e-3 * L2 * (1 - q.ht), g0[k].Y)
         })));
         const Fg = mk(1), Bg = mk(-1);
@@ -15576,7 +15576,7 @@ void main() {
       for (let k = 0; k < 2 * n2; k++) {
         const kk0 = Math.abs((k - n2) / n2), kk1 = Math.abs((k + 1 - n2) / n2);
         const q = [[lead[k], kk0], [lead[k + 1], kk1], [trail[k + 1], kk1], [trail[k], kk0]];
-        const T3 = q.map(([[X, Z], kk]) => D([X, yc + th(kk), Z])), Bt = q.map(([[X, Z], kk]) => D([X, yc - th(kk), Z]));
+        const T3 = q.map(([[X, Z], kk]) => D2([X, yc + th(kk), Z])), Bt = q.map(([[X, Z], kk]) => D2([X, yc - th(kk), Z]));
         body.quad(T3[0], T3[3], T3[2], T3[1], topC, W4, W4, W4, W4);
         body.quad(Bt[0], Bt[1], Bt[2], Bt[3], botC, W4, W4, W4, W4);
         body.both(T3[0], T3[1], Bt[1], topC, W4, W4, W4);
@@ -15620,7 +15620,7 @@ void main() {
             const px = X + s * Math.cos(spread) * dX + q * pX;
             const py = Y + s * Math.cos(spread) * dY + q * pY;
             const pz = side * (T0 * 0.92 + s * Math.sin(spread) + cup);
-            row2.push({ p: D([px, py, pz]), uv: sk.cell(cellI, kf, (qf + 1) / 2) });
+            row2.push({ p: D2([px, py, pz]), uv: sk.cell(cellI, kf, (qf + 1) / 2) });
           }
           pts.push(row2);
         }
@@ -15656,8 +15656,8 @@ void main() {
           const C2 = [X, Y, sd * Math.max(0, z0 - re * (1 - bulge) * 0.5)];
           if (e.tube) {
             const tb = [C2[0], C2[1], C2[2] * 0.6], tt = [C2[0] + re * 0.3, C2[1] + re * 2.4, C2[2] * 0.6];
-            tubeInto(body, [tb, tt], () => re * 0.8, 7, rgb01(e.tubeCol || "#1a3a2a"), D);
-            ellInto(glow, tt, [re * 0.8, re * 0.35, re * 0.8], 8, 4, rgb01(e.lens || "#3aff8a"), D);
+            tubeInto(body, [tb, tt], () => re * 0.8, 7, rgb01(e.tubeCol || "#1a3a2a"), D2);
+            ellInto(glow, tt, [re * 0.8, re * 0.35, re * 0.8], 8, 4, rgb01(e.lens || "#3aff8a"), D2);
             eyes3.push({ p: tt, r: re, sd });
             continue;
           }
@@ -15666,10 +15666,10 @@ void main() {
           const ring = (rk, hk) => Array.from({ length: 12 }, (_, j) => {
             const a = j / 12 * TAU3;
             const ca = Math.cos(a) * fwd, sa = Math.sin(a);
-            return { p: D([C2[0] + (t1[0] * ca + t2[0] * sa) * re * rk + n2[0] * re * hk, C2[1] + (t1[1] * ca + t2[1] * sa) * re * rk + n2[1] * re * hk, C2[2] + (t1[2] * ca + t2[2] * sa) * re * rk + n2[2] * re * hk]), uv: sk.cell(0, 0.5 + Math.cos(a) * 0.5 * rk, 0.5 - Math.sin(a) * 0.5 * rk) };
+            return { p: D2([C2[0] + (t1[0] * ca + t2[0] * sa) * re * rk + n2[0] * re * hk, C2[1] + (t1[1] * ca + t2[1] * sa) * re * rk + n2[1] * re * hk, C2[2] + (t1[2] * ca + t2[2] * sa) * re * rk + n2[2] * re * hk]), uv: sk.cell(0, 0.5 + Math.cos(a) * 0.5 * rk, 0.5 - Math.sin(a) * 0.5 * rk) };
           });
           const r0 = ring(1, -0.12), r1 = ring(0.62, 0.3);
-          const apex = { p: D([C2[0] + n2[0] * re * 0.44, C2[1] + n2[1] * re * 0.44, C2[2] + n2[2] * re * 0.44]), uv: sk.cell(0, 0.5, 0.5) };
+          const apex = { p: D2([C2[0] + n2[0] * re * 0.44, C2[1] + n2[1] * re * 0.44, C2[2] + n2[2] * re * 0.44]), uv: sk.cell(0, 0.5, 0.5) };
           for (let j = 0; j < 12; j++) {
             const j2 = (j + 1) % 12;
             const A2 = [r0[j], r0[j2], r1[j2], r1[j]];
@@ -15681,9 +15681,9 @@ void main() {
               eyes.tri(r1[j].p, apex.p, r1[j2].p, "#ffffff", r1[j].uv, apex.uv, r1[j2].uv);
             }
           }
-          if (e.glow || e.type === "glow") ellInto(glow, [C2[0] + n2[0] * re * 0.5, C2[1], C2[2] + n2[2] * re * 0.5], [re * 0.4, re * 0.4, re * 0.4], 6, 4, rgb01(e.glowCol || "#9ffcff"), D);
+          if (e.glow || e.type === "glow") ellInto(glow, [C2[0] + n2[0] * re * 0.5, C2[1], C2[2] + n2[2] * re * 0.5], [re * 0.4, re * 0.4, re * 0.4], 6, 4, rgb01(e.glowCol || "#9ffcff"), D2);
           if (sd > 0) eyes3.push({ p: [C2[0] + n2[0] * re * 0.4, C2[1], C2[2] + n2[2] * re * 0.4], r: re, sd });
-          eyeVox.push({ c: D([C2[0] + n2[0] * re * 0.3, C2[1] + n2[1] * re * 0.3, C2[2] + n2[2] * re * 0.3]), n: n2, r: re, iris: e.iris || "#c8a050", pupil: e.pupil, glow: e.glow || e.type === "glow" ? e.glowCol || "#9ffcff" : null });
+          eyeVox.push({ c: D2([C2[0] + n2[0] * re * 0.3, C2[1] + n2[1] * re * 0.3, C2[2] + n2[2] * re * 0.3]), n: n2, r: re, iris: e.iris || "#c8a050", pupil: e.pupil, glow: e.glow || e.type === "glow" ? e.glowCol || "#9ffcff" : null });
         }
       }
     }
@@ -15709,8 +15709,8 @@ void main() {
           pts.push(jaw([px, py, pz]));
         }
         const rad = (t) => Math.max(25e-4 * L2, (b.w ? 9e-3 : 6e-3) * L2 * (1 - 0.7 * t));
-        tubeInto(b.glow ? glow : body, pts, rad, 5, (t) => t > 0.85 ? tip : col, D, W4);
-        if (b.bulb) ellInto(b.glowTip ? glow : body, pts[n2], [b.bulb * L2, b.bulb * L2, b.bulb * L2], 7, 5, tip, D, W4);
+        tubeInto(b.glow ? glow : body, pts, rad, 5, (t) => t > 0.85 ? tip : col, D2, W4);
+        if (b.bulb) ellInto(b.glowTip ? glow : body, pts[n2], [b.bulb * L2, b.bulb * L2, b.bulb * L2], 7, 5, tip, D2, W4);
       }
     }
     let lureTip = null;
@@ -15727,12 +15727,12 @@ void main() {
         py += Math.sin(a + sway) * len / n2;
         pts.push([px, py, 0]);
       }
-      tubeInto(body, pts, (t) => Math.max(3e-3 * L2, 9e-3 * L2 * (1 - 0.6 * t)), 5, rgb01(lu.rod || S9.col.back), D, W4);
+      tubeInto(body, pts, (t) => Math.max(3e-3 * L2, 9e-3 * L2 * (1 - 0.6 * t)), 5, rgb01(lu.rod || S9.col.back), D2, W4);
       const R2 = Math.max(8e-3 * L2, lu.bulb * L2);
-      ellInto(glow, [px, py, 0], [R2, R2, R2], 9, 6, rgb01(lu.col || "#bff8ff"), D, W4);
+      ellInto(glow, [px, py, 0], [R2, R2, R2], 9, 6, rgb01(lu.col || "#bff8ff"), D2, W4);
       if (lu.filaments) for (let k = 0; k < lu.filaments; k++) {
         const fa = -0.6 + k / Math.max(1, lu.filaments - 1) * 2.4;
-        tubeInto(glow, [[px, py, 0], [px + Math.cos(fa) * R2 * 1.5, py + Math.sin(fa) * R2 * 1.5, 0]], (t) => 35e-4 * L2 * (1 - 0.6 * t), 4, rgb01(lu.col || "#bff8ff"), D, W4);
+        tubeInto(glow, [[px, py, 0], [px + Math.cos(fa) * R2 * 1.5, py + Math.sin(fa) * R2 * 1.5, 0]], (t) => 35e-4 * L2 * (1 - 0.6 * t), 4, rgb01(lu.col || "#bff8ff"), D2, W4);
       }
       lureTip = [px, py, 0];
     }
@@ -15750,7 +15750,7 @@ void main() {
         for (const sd of [1, -1]) {
           const base = [[X - w, Y + up * 2e-3 * L2, sd * z], [X + w, Y + up * 2e-3 * L2, sd * z], [X, Y + up * 2e-3 * L2, sd * (z - w)]];
           const tip = [X, Y - up * tl, sd * z * 0.95];
-          const fix = (p) => D(up < 0 ? jaw(p) : p);
+          const fix = (p) => D2(up < 0 ? jaw(p) : p);
           const bb = base.map(fix), tp = fix(tip);
           part3(body, bb, tp, tc, W4);
         }
@@ -15783,18 +15783,18 @@ void main() {
         const u = (g.u0 ?? 0.15) + ((g.u1 ?? 0.97) - (g.u0 ?? 0.15)) * (k / 8);
         pts.push([xN - u * L2, M3.botL(u) + (M3.topL(u) - M3.botL(u)) * (g.spineV ?? 0.55), 0]);
       }
-      tubeInto(body, pts, () => 0.012 * L2, 5, rgb01(g.bone || "#e8f0f4"), D, W4);
+      tubeInto(body, pts, () => 0.012 * L2, 5, rgb01(g.bone || "#e8f0f4"), D2, W4);
     }
     const midU = 0.45;
     const mY = mouth ? mTipY : (M3.topL(0) + M3.botL(0)) / 2;
     const anchors = {
-      mouth: D([xN + (M3.bill ? M3.bill.len * L2 * 0.6 : 0), mY, 0]),
-      top: D([xN - 0.4 * L2, M3.topL(0.4) + 0.02 * L2, 0]),
-      bottom: D([xN - midU * L2, M3.botL(midU) - 0.01 * L2, 0]),
-      tail: D([M3.xmin + 0.02 * L2, (M3.topL(1) + M3.botL(1)) / 2, 0])
+      mouth: D2([xN + (M3.bill ? M3.bill.len * L2 * 0.6 : 0), mY, 0]),
+      top: D2([xN - 0.4 * L2, M3.topL(0.4) + 0.02 * L2, 0]),
+      bottom: D2([xN - midU * L2, M3.botL(midU) - 0.01 * L2, 0]),
+      tail: D2([M3.xmin + 0.02 * L2, (M3.topL(1) + M3.botL(1)) / 2, 0])
     };
-    if (lureTip) anchors.lure = D(lureTip);
-    const eyeA = eyes3.map((e) => ({ p: D(e.p), r: e.r }));
+    if (lureTip) anchors.lure = D2(lureTip);
+    const eyeA = eyes3.map((e) => ({ p: D2(e.p), r: e.r }));
     const parts = [];
     if (!bodyPart.empty && bodyPart !== body) parts.push({ key: "glass", mb: bodyPart.mb, texture: sk.cv, ...mat.body, alpha: 0.5, env: 0.55, cull: false, depthWrite: false });
     if (!body.empty) parts.unshift({ key: "body", mb: body.mb, texture: sk.cv, emitTex: true, ...mat.body });
@@ -15862,7 +15862,7 @@ void main() {
     part2.tri(base[2], base[0], tip, col, W4, W4, W4);
     part2.tri(base[0], base[2], base[1], col, W4, W4, W4);
   }
-  function tubeInto(part2, pts, rad, sides, col, D = null, W4 = [0, 0]) {
+  function tubeInto(part2, pts, rad, sides, col, D2 = null, W4 = [0, 0]) {
     const n2 = pts.length;
     if (n2 < 2) return;
     const rings = [];
@@ -15886,7 +15886,7 @@ void main() {
       for (let s = 0; s < sides; s++) {
         const a2 = s / sides * TAU3, ca = Math.cos(a2) * r, sa = Math.sin(a2) * r;
         const p = [pts[i][0] + nn[0] * ca + bb[0] * sa, pts[i][1] + nn[1] * ca + bb[1] * sa, pts[i][2] + nn[2] * ca + bb[2] * sa];
-        ring.push(D ? D(p) : p);
+        ring.push(D2 ? D2(p) : p);
       }
       rings.push(ring);
     }
@@ -15898,18 +15898,18 @@ void main() {
         part2.quad(rings[i][s], rings[i][s2], rings[i + 1][s2], rings[i + 1][s], k, W4, W4, W4, W4);
       }
     }
-    const c0 = D ? D(pts[0]) : pts[0], c1 = D ? D(pts[n2 - 1]) : pts[n2 - 1];
+    const c0 = D2 ? D2(pts[0]) : pts[0], c1 = D2 ? D2(pts[n2 - 1]) : pts[n2 - 1];
     for (let s = 0; s < sides; s++) {
       const s2 = (s + 1) % sides;
       part2.tri(c0, rings[0][s2], rings[0][s], cf2(0), W4, W4, W4);
       part2.tri(c1, rings[n2 - 1][s], rings[n2 - 1][s2], cf2(1), W4, W4, W4);
     }
   }
-  function ellInto(part2, c, r, seg, rings, col, D = null, W4 = [0, 0]) {
+  function ellInto(part2, c, r, seg, rings, col, D2 = null, W4 = [0, 0]) {
     const P6 = (i, j) => {
       const th = i / rings * Math.PI, ph = j / seg * TAU3;
       const p = [c[0] + Math.sin(th) * Math.cos(ph) * r[0], c[1] + Math.cos(th) * r[1], c[2] + Math.sin(th) * Math.sin(ph) * r[2]];
-      return D ? D(p) : p;
+      return D2 ? D2(p) : p;
     };
     const V = [];
     for (let i = 0; i <= rings; i++) {
@@ -16844,11 +16844,11 @@ void main() {
     const n2 = outer.length, front = o.front || col, side = o.side || shade(col, -0.14), back = shade(col, -0.25);
     for (let i = 0; i < n2; i++) {
       const i2 = (i + 1) % n2;
-      const A2 = outer[i], B2 = outer[i2], C2 = inner[i2], D = inner[i];
-      face(mb, [[A2[0], A2[1], z1], [B2[0], B2[1], z1], [C2[0], C2[1], z1], [D[0], D[1], z1]], typeof front === "function" ? front(i) : front, [A2[0], A2[1], z1 - 1]);
-      face(mb, [[A2[0], A2[1], z0], [B2[0], B2[1], z0], [C2[0], C2[1], z0], [D[0], D[1], z0]], back, [A2[0], A2[1], z0 + 1]);
+      const A2 = outer[i], B2 = outer[i2], C2 = inner[i2], D2 = inner[i];
+      face(mb, [[A2[0], A2[1], z1], [B2[0], B2[1], z1], [C2[0], C2[1], z1], [D2[0], D2[1], z1]], typeof front === "function" ? front(i) : front, [A2[0], A2[1], z1 - 1]);
+      face(mb, [[A2[0], A2[1], z0], [B2[0], B2[1], z0], [C2[0], C2[1], z0], [D2[0], D2[1], z0]], back, [A2[0], A2[1], z0 + 1]);
       face(mb, [[A2[0], A2[1], z0], [B2[0], B2[1], z0], [B2[0], B2[1], z1], [A2[0], A2[1], z1]], side, [0, 0, (z0 + z1) / 2]);
-      face(mb, [[D[0], D[1], z0], [C2[0], C2[1], z0], [C2[0], C2[1], z1], [D[0], D[1], z1]], shade(side, -0.1), [(C2[0] + D[0]) * 3, (C2[1] + D[1]) * 3, (z0 + z1) / 2]);
+      face(mb, [[D2[0], D2[1], z0], [C2[0], C2[1], z0], [C2[0], C2[1], z1], [D2[0], D2[1], z1]], shade(side, -0.1), [(C2[0] + D2[0]) * 3, (C2[1] + D2[1]) * 3, (z0 + z1) / 2]);
     }
     return mb;
   }
@@ -20443,206 +20443,1590 @@ void main() {
     }
   });
 
-  // src/fishing/baitart.js
-  function grub(m, a) {
-    const c1 = a.color || "#ffd84a", c2 = a.color2 || mix(c1, "#ffffff", 0.6);
+  // src/fishing/baitmodels.js
+  function palette(m) {
+    const map2 = /* @__PURE__ */ new Map();
+    return (hex2, o = {}) => {
+      const k = hex2 + "|" + JSON.stringify(o);
+      let c = map2.get(k);
+      if (c === void 0) {
+        c = m.color(hex2, o);
+        map2.set(k, c);
+      }
+      return c;
+    };
+  }
+  function spline(P6, step = 0.3) {
+    const at = (i) => P6[Math.max(0, Math.min(P6.length - 1, i))];
+    const raw = [];
+    for (let i = 0; i < P6.length - 1; i++) {
+      const p0 = at(i - 1), p1 = at(i), p2 = at(i + 1), p3 = at(i + 2);
+      const seg = Math.hypot(p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]);
+      const n2 = Math.max(2, Math.ceil(seg / step));
+      for (let s = 0; s < n2; s++) {
+        const t = s / n2, t2 = t * t, t3 = t2 * t;
+        raw.push([0, 1, 2, 3].map((k) => 0.5 * (2 * p1[k] + (-p0[k] + p2[k]) * t + (2 * p0[k] - 5 * p1[k] + 4 * p2[k] - p3[k]) * t2 + (-p0[k] + 3 * p1[k] - 3 * p2[k] + p3[k]) * t3)));
+      }
+    }
+    raw.push(P6[P6.length - 1].slice());
+    let L2 = 0;
+    const out = raw.map((q, i) => {
+      if (i) L2 += Math.hypot(q[0] - raw[i - 1][0], q[1] - raw[i - 1][1], q[2] - raw[i - 1][2]);
+      return { p: q, l: L2 };
+    });
+    for (let i = 0; i < out.length; i++) {
+      const a = raw[Math.max(0, i - 1)], b = raw[Math.min(raw.length - 1, i + 1)];
+      const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], dl = Math.hypot(...d) || 1;
+      out[i].t = d.map((v) => v / dl);
+      out[i].u = L2 ? out[i].l / L2 : 0;
+    }
+    out.L = L2;
+    return out;
+  }
+  function tube2(m, P6, paint4, o = {}) {
+    const S9 = spline(P6, o.step || 0.3);
+    const best = /* @__PURE__ */ new Map();
+    const ry = o.ry || 1, rz = o.rz || 1;
+    for (const s of S9) {
+      const [cx, cy, cz, r] = s.p;
+      const Ry = r * ry, Rz = r * rz;
+      for (let z = Math.floor(cz - Rz); z <= Math.ceil(cz + Rz); z++) for (let y = Math.floor(cy - Ry); y <= Math.ceil(cy + Ry); y++) for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++) {
+        const dx = x + 0.5 - cx, dy = (y + 0.5 - cy) / ry, dz = (z + 0.5 - cz) / rz;
+        const d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 > r * r) continue;
+        if (!m.inside(x, y, z)) continue;
+        const key = x + 1024 * (y + 1024 * z);
+        const d = Math.sqrt(d2) / r;
+        const prev = best.get(key);
+        if (prev !== void 0 && prev <= d) continue;
+        best.set(key, d);
+        const dl = Math.sqrt(d2) || 1;
+        const c = paint4(s.u, [dx / dl, dy / dl, dz / dl], s, d);
+        if (c) m.set(x, y, z, c);
+      }
+    }
+    return S9;
+  }
+  function limb(m, pts, c, r = 0) {
+    for (let i = 1; i < pts.length; i++) m.line(pts[i - 1][0], pts[i - 1][1], pts[i - 1][2], pts[i][0], pts[i][1], pts[i][2], c, r);
+  }
+  function eye(m, pal2, x, y, z, r = 1.6, col = "#120c1c") {
+    const e = pal2(col, { spec: 1, specPow: 6, smooth: 1 });
+    m.sphere(x, y, z, r, e);
+    const w = pal2("#ffffff", { emissive: 0.3, spec: 1 });
+    m.set(x - r * 0.35, y + r * 0.45, z + r * 0.8, w);
+    if (r >= 2.2) m.set(x - r * 0.35 + 1, y + r * 0.45, z + r * 0.8, w);
+  }
+  function speckle(m, chance2, c, seed = 1, test = null) {
+    const { nx, ny, nz } = m;
+    for (let z = 0; z < nz; z++) for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) {
+      if (!m.get(x, y, z) || !m.exposed(x, y, z)) continue;
+      if (m.get(x, y + 1, z) && m.get(x, y, z + 1)) continue;
+      if (h3(x, y, z, seed) >= chance2) continue;
+      if (test && !test(x, y, z, m.get(x, y, z))) continue;
+      m.set(x, y, z, c);
+    }
+  }
+  function tierFx(m, pal2, a) {
     const tier = a.tier | 0;
-    const back = m.color(c1, { ...GLOSS, jitter: 0.04 });
-    const belly = m.color(c2, { ...GLOSS, jitter: 0.03 });
-    const rib = m.color(shade(c1, -0.14), { ...GLOSS });
-    const glit = m.color(tier >= 4 ? "#fff2a0" : "#ffffff", { spec: 1, specPow: 6, emissive: tier >= 3 ? 0.6 : 0.2 });
-    const tailC = m.color(tier >= 3 ? mix(c1, "#ffffff", 0.25) : c1, { ...GLOSS, emissive: tier >= 3 ? 0.3 : 0 });
-    const zc = 4.5;
-    for (let i = 0; i < 6; i++) {
-      const x = 8 + i * 1.7, r = 2.7 + Math.sin((i + 1) / 7 * Math.PI) * 0.8;
-      m.ellipsoid(x, 6, zc, 1.3, r, r, (vx, vy) => vy < 5.4 ? belly : i % 2 ? rib : back);
+    if (tier >= 1) speckle(m, 0.012 + tier * 8e-3, pal2("#ffffff", { spec: 1, specPow: 4, emissive: tier >= 3 ? 0.55 : 0.25 }), 7 + tier);
+    if (tier >= 4) speckle(m, 0.02, pal2("#ffd84a", { spec: 1, specPow: 4, emissive: 0.7 }), 31);
+  }
+  function worm(m, a, ph, o = {}) {
+    const pal2 = palette(m);
+    const base = o.body || "#ff7aa8";
+    const glow = o.glow ?? 0.22;
+    const C2 = {
+      skin: pal2(base, { ...GL, emissive: glow }),
+      groove: pal2(shade(base, -0.24), { ...GL, emissive: glow * 0.6 }),
+      belly: pal2(mix(base, "#ffe0ea", 0.45), { ...GL, emissive: glow }),
+      vessel: pal2(shade(base, -0.38), { ...GL }),
+      gloss: pal2(mix(base, "#ffffff", 0.75), { spec: 1, specPow: 5, emissive: 0.45 }),
+      clit: pal2(o.clit || mix(base, "#ffb07a", 0.55), { ...GL, emissive: glow }),
+      clitG: pal2(shade(o.clit || mix(base, "#ffb07a", 0.55), -0.18), { ...GL }),
+      tip: pal2(shade(base, -0.12), { ...GL, emissive: glow })
+    };
+    const w = Math.sin(ph * TAU), w2 = Math.cos(ph * TAU);
+    const N2 = 9, P6 = [];
+    for (let i = 0; i < N2; i++) {
+      const u = i / (N2 - 1);
+      const x = 5 + u * 38;
+      const y = 10 + Math.sin(u * 6 + ph * TAU) * (4.4 + w2 * 0.8);
+      const z = 13 + Math.cos(u * 3.4 - ph * TAU * 0.5) * 3 + w * 0.5;
+      const r = 3.9 * (0.55 + 0.45 * Math.sin(Math.min(1, u * 1.15 + 0.08) * Math.PI)) + (u > 0.66 && u < 0.8 ? 0.7 : 0);
+      P6.push([x, y, z, Math.max(1.4, r)]);
     }
-    m.ellipsoid(18, 6.1, zc, 2.6, 3, 2.9, (vx, vy) => vy < 5.2 ? belly : back);
-    const pts = [[7.4, 6.2], [5.6, 7.6], [3.8, 8.8], [2.2, 8.6], [1.2, 7.2], [1.4, 5.4], [2.8, 4.4]];
-    for (let i = 1; i < pts.length; i++) m.line(pts[i - 1][0], pts[i - 1][1], zc, pts[i][0], pts[i][1], zc, tailC, 1.6 - i * 0.1);
-    m.ellipsoid(3.4, 4.2, zc, 1.8, 1.1, 1.3, tailC);
-    const eyeW = m.color("#ffffff", { spec: 1, specPow: 8 }), eyeP = m.color("#101828", { spec: 1, specPow: 10 });
-    m.set(19, 7, zc + 2.4, eyeW);
-    m.set(19, 7, zc + 2.9, eyeW);
-    m.set(20, 7, zc + 2.2, eyeW);
-    m.set(19.6, 7, zc + 3.3, eyeP);
-    if (tier >= 1) for (let i = 0; i < 4 + tier * 3; i++) {
-      const x = 8 + hash1(i, 3) * 10, y = 6.4 + hash1(i, 5) * 2.4;
-      m.set(x, y, zc + 3, glit);
-    }
+    P6[N2 - 1][3] = 2.3;
+    P6[0][3] = 1.3;
+    const rings = 19;
+    tube2(m, P6, (u, n2) => {
+      const f = u * rings % 1;
+      const clit = u > 0.66 && u < 0.8;
+      if (clit) return f < 0.14 || f > 0.5 && f < 0.6 ? C2.clitG : C2.clit;
+      if (f < 0.2 && u > 0.04 && u < 0.97) return C2.groove;
+      if (n2[1] > 0.55 && n2[2] > 0.25 && f > 0.3 && f < 0.85) return C2.gloss;
+      if (n2[1] > 0.88 && Math.abs(n2[2]) < 0.35) return C2.vessel;
+      if (n2[1] < -0.35) return C2.belly;
+      if (u > 0.95) return C2.tip;
+      return C2.skin;
+    });
+    const hp = P6[N2 - 1];
+    m.set(hp[0] + 2, hp[1], hp[2] + 0.5, pal2(shade(base, -0.5), { ...GL }));
+    if (o.after) o.after(m, pal2, P6);
+    if (!o.noTier) tierFx(m, pal2, a);
   }
   function crumbs(m, a) {
-    const crust = m.color("#c8904a", { jitter: 0.08, smooth: 0.3 }), soft = m.color("#f6e2b4", { jitter: 0.05 });
-    const c = (x, y, z, s) => m.box(x, y, z, x + s, y + s, z + s, (vx, vy, vz) => vy === y + s || vx === x || vz === z + s ? crust : soft);
-    c(3, 0, 2, 3);
-    c(8, 0, 3, 2);
-    c(6, 3, 3, 2);
-    c(1, 0, 6, 1);
+    const pal2 = palette(m);
+    const C2 = {
+      crust: pal2("#c47a32", { jitter: 0.1, smooth: 0.35 }),
+      toast: pal2("#94501e", { jitter: 0.08 }),
+      crustL: pal2("#e0a050", { jitter: 0.06 }),
+      soft: pal2("#f8e4b6", { jitter: 0.05, smooth: 0.3 }),
+      soft2: pal2("#efd49c", { jitter: 0.05 }),
+      pore: pal2("#c8a46a", { jitter: 0.04 })
+    };
+    const chunk = (cx, cy, cz, sx, sy, sz, seed, crustTop = true) => {
+      for (let z = Math.floor(cz - sz); z <= cz + sz; z++) for (let y = Math.floor(cy - sy); y <= cy + sy; y++) for (let x = Math.floor(cx - sx); x <= cx + sx; x++) {
+        const dx = (x + 0.5 - cx) / sx, dy = (y + 0.5 - cy) / sy, dz = (z + 0.5 - cz) / sz;
+        const q = dx ** 4 + dy ** 4 + dz ** 4 + (h3(x, y, z, seed) - 0.5) * 0.5;
+        if (q > 1 || y < 0) continue;
+        const top = crustTop ? dy > 0.62 : dx < -0.62;
+        const side = dz < -0.7 || dx > 0.7 && !crustTop;
+        let c;
+        if (top || side) c = h3(x, y, z, seed + 3) < 0.25 ? C2.toast : h3(x, y, z, seed + 4) < 0.2 ? C2.crustL : C2.crust;
+        else c = h3(x, y, z, seed + 1) < 0.16 ? C2.pore : h3(x, y, z, seed + 2) < 0.3 ? C2.soft2 : C2.soft;
+        m.set(x, y, z, c);
+      }
+    };
+    chunk(17, 7, 14, 8.5, 6.6, 7.5, 1, true);
+    chunk(30, 5.2, 18, 6, 5, 5.2, 2, false);
+    chunk(27, 13.6, 9, 4.6, 3.6, 4.6, 3, true);
+    chunk(8, 3.4, 20, 3.6, 3.2, 3.4, 4, false);
+    chunk(36, 3, 9, 3.2, 2.8, 3.2, 5, true);
+    for (let i = 0; i < 9; i++) {
+      const x = 4 + hash1(i, 11) * 38, z = 4 + hash1(i, 13) * 20;
+      const c = i % 3 ? C2.soft : C2.crust;
+      m.set(x, 0, z, c);
+      if (i % 2) m.set(x + 1, 0, z, c);
+      if (i % 4 === 0) m.set(x, 1, z, c);
+    }
   }
   function bread(m) {
-    const crust = m.color("#b8783a", { jitter: 0.06, smooth: 0.4 }), soft = m.color("#f8e8c0", { jitter: 0.04 });
-    m.box(1, 0, 2, 10, 7, 4, (x, y) => x === 1 || x === 10 || y === 0 ? crust : soft);
-    m.ellipsoid(3.6, 7.2, 3.5, 2.8, 2.4, 1.6, (x, y) => y >= 8 || x <= 1 ? crust : soft);
-    m.ellipsoid(8.4, 7.2, 3.5, 2.8, 2.4, 1.6, (x, y) => y >= 8 || x >= 10 ? crust : soft);
-    m.sub(() => m.box(1, 0, 2, 10, 0, 2));
-  }
-  function worm(m) {
-    const pink = m.color("#ff7ab4", { ...GLOSS, emissive: 0.25 }), band = m.color("#d8508a", { ...GLOSS });
-    const pts = [[2, 2], [4, 4], [6, 5], [8, 4.5], [9.5, 3], [11.5, 2.5], [13, 4], [13.5, 6.5], [12.5, 8.5]];
-    for (let i = 0; i < pts.length; i++) m.sphere(pts[i][0], pts[i][1], 3, 1.6 - (i === 0 ? 0.4 : 0), i % 3 === 1 ? band : pink);
-    for (let i = 0; i < pts.length - 1; i++) {
-      const [x0, y0] = pts[i], [x1, y1] = pts[i + 1];
-      m.line(x0, y0, 3, x1, y1, 3, pink, 1.3);
+    const pal2 = palette(m);
+    const C2 = {
+      top: pal2("#b8642a", { smooth: 0.5, jitter: 0.06, spec: 0.3 }),
+      side: pal2("#d48a3e", { smooth: 0.5, jitter: 0.05 }),
+      dark: pal2("#8a4618", { jitter: 0.06 }),
+      score: pal2("#f2c47a", { smooth: 0.4 }),
+      bottom: pal2("#a65a24"),
+      crumb: pal2("#fbecc6", { jitter: 0.04 }),
+      crumb2: pal2("#f2dcaa", { jitter: 0.04 }),
+      hole: pal2("#d4b47e"),
+      seed: pal2("#fff6dc", { spec: 0.6 })
+    };
+    const X0 = 4, X1 = 34, Z0 = 4, Z1 = 22;
+    const prof = (x, z) => {
+      const u = (x + 0.5 - (X0 + X1) / 2) / ((X1 - X0) / 2), v = (z + 0.5 - (Z0 + Z1) / 2) / ((Z1 - Z0) / 2);
+      const e = Math.max(0, 1 - u ** 4) * Math.max(0, 1 - v ** 4);
+      return 10 + Math.sqrt(Math.max(0, 1 - u * u * 0.85)) * Math.sqrt(Math.max(0, 1 - v * v * 0.9)) * 10 * Math.min(1, e * 3);
+    };
+    for (let z = Z0; z <= Z1; z++) for (let x = X0; x <= X1; x++) {
+      const u = (x + 0.5 - (X0 + X1) / 2) / ((X1 - X0) / 2), v = (z + 0.5 - (Z0 + Z1) / 2) / ((Z1 - Z0) / 2);
+      if (u ** 6 + v ** 6 > 1) continue;
+      const H = prof(x, z);
+      for (let y = 0; y <= H; y++) {
+        const shell = y > H - 1.6 || u ** 6 + v ** 6 > 0.72 || y === 0;
+        let c;
+        if (!shell) c = h3(x, y, z, 9) < 0.14 ? C2.hole : h3(x, y, z, 8) < 0.35 ? C2.crumb2 : C2.crumb;
+        else if (y === 0) c = C2.bottom;
+        else if (y > H - 1.6) {
+          const sc = (x - z * 0.6 + 40) % 9.5;
+          c = sc < 1.6 && y > 12 && Math.abs(v) < 0.75 ? C2.score : h3(x, y, z, 2) < 0.12 ? C2.dark : C2.top;
+          if (c === C2.top && h3(x, 7, z, 5) < 0.05) c = C2.seed;
+        } else c = y > H - 4 && h3(x, y, z, 3) < 0.3 ? C2.top : C2.side;
+        m.set(x, y, z, c);
+      }
+    }
+    for (let x = X0; x <= X1; x++) for (let y = 0; y <= 22; y++) {
+      const z = Z1;
+      if (!m.get(x, y, z)) continue;
+      const rim = !m.get(x, y + 1, z) || !m.get(x - 1, y, z) || !m.get(x + 1, y, z) || y === 0;
+      m.set(x, y, z, rim ? y === 0 ? C2.bottom : C2.side : h3(x, y, 1, 4) < 0.15 ? C2.hole : h3(x, y, 2, 5) < 0.3 ? C2.crumb2 : C2.crumb);
+    }
+    for (let y = 0; y <= 15; y++) for (let x = 0; x <= 13; x++) {
+      const u = (x - 6.5) / 6.5, top = 11 + Math.sqrt(Math.max(0, 1 - u * u)) * 4;
+      if (y > top) continue;
+      const lean = Math.round(y * 0.28);
+      for (let d = 0; d < 2; d++) {
+        const z = Z1 + 4 - lean + d, X = X1 - 3 + x;
+        const rim = y >= top - 1 || x === 0 || x === 13 || y === 0;
+        m.set(X, y, z, rim ? C2.top : h3(X, y, z, 6) < 0.14 ? C2.hole : C2.crumb);
+      }
     }
   }
   function sugar(m) {
-    const w = m.color("#ffffff", { spec: 1, specPow: 8, jitter: 0.06 }), s = m.color("#e8f4ff", { spec: 0.8, jitter: 0.04 });
-    m.box(1, 0, 1, 7, 6, 7, (x, y, z) => (x + y + z) % 3 ? w : s);
-    for (const [x, y, z] of [[1, 6, 1], [7, 6, 1], [1, 6, 7], [7, 6, 7], [1, 0, 7], [7, 0, 7]]) m.set(x, y, z, 0);
+    const pal2 = palette(m);
+    const T3 = ["#ffffff", "#f6f9ff", "#eef4fc", "#fbfbfd", "#f2f5fb"];
+    const tints = T3.map((c) => pal2(c, { spec: 0.75, specPow: 8, jitter: 0.03 }));
+    const facet = pal2("#ffffff", { spec: 1, specPow: 3, emissive: 0.4 });
+    const ice = pal2("#e4f2ff", { spec: 1, specPow: 4, emissive: 0.25 });
+    const S0 = 6, S1 = 29;
+    for (let z = S0; z <= S1; z++) for (let y = 0; y <= S1 - S0; y++) for (let x = S0; x <= S1; x++) {
+      const gx = Math.floor(x / 3), gy = Math.floor(y / 3), gz = Math.floor(z / 3);
+      const onX = x <= S0 + 1 || x >= S1 - 1, onY = y >= S1 - S0 - 1, onZ = z <= S0 + 1 || z >= S1 - 1;
+      const edges = onX + onY + onZ + (y <= 1 ? 1 : 0);
+      if (edges >= 2 && h3(gx, gy, gz, 3) < 0.45) continue;
+      if (edges >= 1 && h3(x, y, z, 7) < 0.08) continue;
+      const g = h3(gx, gy, gz, 1);
+      m.set(x, y, z, g > 0.95 ? facet : g > 0.9 ? ice : tints[Math.floor(h3(gx, gy, gz, 2) * tints.length)]);
+    }
+    for (const [x, z, s] of [[1, 15, 2], [32, 9, 2], [32, 19, 1], [2, 23, 1]]) {
+      m.box(x, 0, z, x + s, s, z + s, (vx, vy, vz) => h3(vx, vy, vz, 4) < 0.35 ? facet : tints[1]);
+    }
   }
   function chip(m) {
-    const pcb = m.color("#2fa860", { jitter: 0.05 }), die = m.color("#262a36", { spec: 0.9, specPow: 12 }), pin = m.color("#ffd25a", { spec: 1, specPow: 6 });
-    const led = m.color("#7affd0", { emissive: 1 });
-    m.box(1, 0, 1, 10, 1, 10, pcb);
-    m.box(3, 2, 3, 8, 3, 8, die);
-    for (let i = 3; i <= 8; i += 1.66) {
-      m.set(i, 1, 0, pin);
-      m.set(i, 1, 11, pin);
-      m.set(0, 1, i, pin);
-      m.set(11, 1, i, pin);
+    const pal2 = palette(m);
+    const C2 = {
+      pcb: pal2("#1d8a4c", { jitter: 0.04 }),
+      pcbD: pal2("#14683a"),
+      trace: pal2("#e8be52", { spec: 0.9, specPow: 5 }),
+      silk: pal2("#f0f6f0"),
+      body: pal2("#23262f", { spec: 0.7, specPow: 14 }),
+      etch: pal2("#4a4f5c"),
+      pin: pal2("#ffd25a", METAL),
+      pinD: pal2("#c89a2a", METAL),
+      sink: pal2("#c8d2de", METAL),
+      sinkD: pal2("#8a98aa", METAL),
+      hot: pal2("#ff8a2a", { emissive: 0.75 }),
+      hot2: pal2("#ffd060", { emissive: 0.95 }),
+      led: pal2("#5affd8", { emissive: 1 }),
+      cap: pal2("#c8a070", { jitter: 0.05 }),
+      capE: pal2("#c8ccd4", METAL),
+      res: pal2("#1a1a22"),
+      pad: pal2("#d8dce4", METAL)
+    };
+    m.box(1, 0, 1, 40, 1, 40, (x, y, z) => y === 1 && (x === 1 || x === 40 || z === 1 || z === 40) ? C2.pcbD : C2.pcb);
+    for (let i = 0; i < 8; i++) {
+      const k = 12 + i * 2.4;
+      m.line(k, 2, 4, k, 2, 8, C2.trace);
+      m.line(k, 2, 33, k + (i - 3.5) * 0.8, 2, 38, C2.trace);
+      m.line(4, 2, k, 8, 2, k, C2.trace);
+      m.line(33, 2, k, 38, 2, k + (i - 3.5) * 0.8, C2.trace);
     }
-    m.set(9, 2, 9, led);
-    m.set(4, 4, 4, led);
+    for (const [x, z] of [[4, 4], [37, 4], [4, 37], [37, 37]]) {
+      m.set(x, 2, z, C2.pad);
+      m.set(x + 1, 2, z, C2.pad);
+    }
+    for (let k = 12; k <= 29; k += 2) {
+      for (const [x0, z0, dx, dz] of [[k, 9, 0, -1], [k, 32, 0, 1], [9, k, -1, 0], [32, k, 1, 0]]) {
+        m.set(x0, 4, z0, C2.pin);
+        m.set(x0 + dx, 4, z0 + dz, C2.pin);
+        m.set(x0 + dx * 2, 3, z0 + dz * 2, C2.pinD);
+        m.set(x0 + dx * 3, 2, z0 + dz * 3, C2.pin);
+      }
+    }
+    m.box(10, 2, 10, 31, 5, 31, C2.body);
+    m.set(12, 6, 29, C2.etch);
+    m.set(13, 6, 29, C2.etch);
+    for (let x = 13; x <= 22; x++) if (h3(x, 1, 1) < 0.7) m.set(x, 5, 28, C2.etch);
+    m.box(12, 6, 12, 29, 7, 29, C2.sinkD);
+    for (let x = 12; x <= 29; x += 2) for (let y = 8; y <= 15; y++) for (let z = 13; z <= 28; z++) {
+      m.set(x, y, z, y >= 15 ? h3(x, y, z) < 0.5 ? C2.hot2 : C2.hot : y >= 14 ? C2.hot : z === 13 || z === 28 ? C2.sinkD : C2.sink);
+    }
+    for (const [x, z] of [[5, 14], [5, 20], [35, 26], [21, 35]]) {
+      m.box(x, 2, z, x + 2, 3, z + 1, C2.cap);
+      m.set(x, 3, z, C2.capE);
+      m.set(x + 2, 3, z + 1, C2.capE);
+    }
+    for (const [x, z] of [[6, 26], [34, 12]]) m.box(x, 2, z, x + 1, 2, z + 2, C2.res);
+    m.cylinder(36, 35, 2, 7, 2.2, (x, y) => y === 7 ? C2.capE : C2.sinkD);
+    m.box(35, 2, 6, 36, 3, 7, C2.led);
+    m.set(4, 2, 30, C2.silk);
+    m.set(5, 2, 30, C2.silk);
+    m.set(4, 2, 31, C2.silk);
   }
   function popup(m) {
-    const bar = m.color("#2a7ae8", { ...GLOSS }), body = m.color("#ffffff", { jitter: 0.03 }), x = m.color("#ff4a4a", { emissive: 0.4 }), star = m.color("#ffd23a", { emissive: 0.5 });
-    m.box(0, 0, 2, 11, 8, 3, (vx, vy) => vy >= 7 ? bar : body);
-    m.set(10, 7, 4, x);
-    m.set(10, 8, 4, x);
-    for (const [sx, sy] of [[5, 2], [5, 3], [5, 4], [4, 3], [6, 3]]) m.set(sx, sy, 4, star);
+    const pal2 = palette(m);
+    const C2 = {
+      bar: pal2("#2a6ee0", { spec: 0.7, specPow: 8, smooth: 0.4 }),
+      barL: pal2("#5aa8ff", { spec: 0.8, specPow: 8 }),
+      frame: pal2("#c8d4e8"),
+      body: pal2("#fbfdff", { jitter: 0.02 }),
+      bodyS: pal2("#e4ecf8"),
+      red: pal2("#ff3a4a", { spec: 0.8, emissive: 0.15 }),
+      x: pal2("#ffffff", { emissive: 0.3 }),
+      min: pal2("#ffc83a", { spec: 0.8 }),
+      max: pal2("#4ad86a", { spec: 0.8 }),
+      star: pal2("#ffd23a", { spec: 1, specPow: 4, emissive: 0.45 }),
+      starD: pal2("#e89a1a", { spec: 0.8 }),
+      head: pal2("#ff4a6a", { spec: 0.5 }),
+      line: pal2("#9aa8c0"),
+      btn: pal2("#3ad05a", { spec: 0.9, specPow: 6, smooth: 0.4 }),
+      btnL: pal2("#9af0a0", { spec: 1 }),
+      btnD: pal2("#1f9a3a"),
+      cur: pal2("#ffffff", { spec: 0.6 }),
+      curK: pal2("#16121e"),
+      fish: pal2("#ff9a3a", { spec: 0.8 })
+    };
+    m.box(2, 2, 4, 41, 33, 7, (x, y, z) => x === 2 || x === 41 || y === 2 ? C2.frame : y >= 27 ? y >= 31 ? C2.barL : C2.bar : z === 7 ? C2.body : C2.bodyS);
+    m.box(36, 28, 8, 39, 31, 8, C2.red);
+    for (let i = 0; i < 4; i++) {
+      m.set(36 + i, 28 + i, 9, C2.x);
+      m.set(39 - i, 28 + i, 9, C2.x);
+    }
+    m.box(31, 28, 8, 34, 31, 8, C2.max);
+    m.box(26, 28, 8, 29, 31, 8, C2.min);
+    m.box(5, 29, 8, 16, 30, 8, C2.barL);
+    const sx = 11, sy = 17;
+    for (let y = -6; y <= 6; y++) for (let x = -6; x <= 6; x++) {
+      const ang = Math.atan2(y, x), rr = Math.hypot(x, y);
+      const lim = 3.2 + 2.8 * Math.pow(Math.abs(Math.cos(ang * 2.5)), 3);
+      if (rr <= lim) {
+        m.set(sx + x, sy + y, 8, rr < lim - 1.2 ? C2.star : C2.starD);
+        if (rr < 2.2) m.set(sx + x, sy + y, 9, C2.star);
+      }
+    }
+    m.box(9, 16, 10, 12, 18, 10, C2.fish);
+    m.set(13, 17, 10, C2.fish);
+    m.set(8, 15, 10, C2.fish);
+    m.set(8, 19, 10, C2.fish);
+    m.box(20, 22, 8, 37, 24, 8, C2.head);
+    m.box(20, 18, 8, 34, 18, 8, C2.line);
+    m.box(20, 15, 8, 31, 15, 8, C2.line);
+    m.box(19, 5, 8, 37, 11, 10, (x, y, z) => y === 11 || x === 19 ? C2.btnL : y === 5 || x === 37 ? C2.btnD : C2.btn);
+    for (let x = 22; x <= 34; x += 3) m.box(x, 8, 11, x + 1, 8, 11, C2.btnL);
+    const ax = 31, ay = 9, az = 13;
+    for (let r = 0; r <= 8; r++) for (let c = 0; c <= r; c++) {
+      if (r > 6 && c > 2) continue;
+      const edge = c === 0 || c === r || r === 8 || r === 6 && c > 2;
+      m.set(ax + c, ay - r + 8, az, edge ? C2.curK : C2.cur);
+      m.set(ax + c, ay - r + 8, az + 1, edge ? C2.curK : C2.cur);
+    }
+    m.box(ax + 2, ay - 4, az, ax + 3, ay - 1, az + 1, C2.curK);
   }
   function flood(m) {
-    const w = m.color("#5ad8ff", { spec: 1, specPow: 7, smooth: 0.9, emissive: 0.15 }), hi = m.color("#d8f8ff", { spec: 1, specPow: 5, emissive: 0.3 });
-    m.sphere(5.5, 3.8, 3.5, 3.4, w);
-    m.cone(5.5, 3.5, 4, 10, 2.6, 0.3, w, "y");
-    m.set(4, 5, 6, hi);
-    m.set(4, 6, 6, hi);
+    const pal2 = palette(m);
+    const C2 = {
+      deep: pal2("#1670d0", { spec: 1, specPow: 7, smooth: 1 }),
+      mid: pal2("#2aa0f0", { spec: 1, specPow: 7, smooth: 1, emissive: 0.08 }),
+      lite: pal2("#7ae0ff", { spec: 1, specPow: 6, smooth: 1, emissive: 0.15 }),
+      hi: pal2("#eafcff", { spec: 1, specPow: 4, emissive: 0.5 }),
+      foam: pal2("#ffffff", { spec: 0.8, smooth: 0.8, emissive: 0.2 }),
+      wave: pal2("#bff4ff", { spec: 1, smooth: 1, emissive: 0.25 })
+    };
+    const cx = 18, cz = 15, cy = 14, R2 = 11;
+    for (let y = 2; y <= 40; y++) {
+      let r;
+      if (y <= cy) r = Math.sqrt(Math.max(0, R2 * R2 - (y + 0.5 - cy) ** 2));
+      else {
+        const t = (y - cy) / (40 - cy);
+        r = R2 * Math.pow(1 - t, 1.35) * (1 + 0.15 * Math.sin(t * Math.PI));
+      }
+      for (let z = Math.floor(cz - r); z <= cz + r; z++) for (let x = Math.floor(cx - r); x <= cx + r; x++) {
+        const dx = x + 0.5 - cx, dz = z + 0.5 - cz, d = Math.hypot(dx, dz);
+        if (d > r) continue;
+        const nx = dx / (r || 1), nz = dz / (r || 1);
+        let c = y < cy - 4 ? C2.deep : C2.mid;
+        if (nx < -0.2 && nz > 0.2 && y > cy - 2 && y < cy + 14) c = C2.lite;
+        if (nx < -0.35 && nz > 0.45 && y > cy + 2 && y < cy + 11) c = C2.hi;
+        const wv = cy - 2 + Math.sin((x - cx) * 0.45) * 2.4;
+        if (nz > 0.55 && Math.abs(y - wv) < 0.8) c = C2.wave;
+        m.set(x, y, z, c);
+      }
+    }
+    for (let i = 0; i < 14; i++) {
+      const ang = i / 14 * TAU, rr = R2 + 1.5;
+      const x = cx + Math.cos(ang) * rr, z = cz + Math.sin(ang) * rr;
+      const h = 2 + i % 3 * 1.4;
+      m.line(x, 0, z, x + Math.cos(ang) * 1.6, h, z + Math.sin(ang) * 1.6, i % 2 ? C2.foam : C2.lite, 0.9);
+      if (i % 3 === 0) m.sphere(x + Math.cos(ang) * 2.4, h + 2, z + Math.sin(ang) * 2.4, 0.9, C2.foam);
+    }
+    m.ellipsoid(cx, 0.5, cz, R2 + 1, 1, R2 + 1, C2.lite);
+    for (const [x, y, z, r] of [[33, 22, 16, 2.2], [31, 31, 12, 1.4], [3, 26, 18, 1.8], [5, 9, 26, 1.2]]) {
+      m.sphere(x, y, z, r, C2.mid);
+      m.set(x - r * 0.4, y + r * 0.4, z + r * 0.6, C2.hi);
+    }
   }
   function lantern(m) {
-    const pearl = m.color("#bffff0", { emissive: 0.9, smooth: 1, spec: 1 }), gold = m.color("#e8b23a", { spec: 1, specPow: 6 });
-    m.sphere(5, 4.2, 4, 3.6, pearl);
-    m.cylinder(5, 4, 7.6, 8.4, 1.8, gold);
-    m.set(5, 9, 4, gold);
-    m.set(5, 10, 4, gold);
+    const pal2 = palette(m);
+    const C2 = {
+      pearl: pal2("#c8fff0", { emissive: 0.85, smooth: 1, spec: 1 }),
+      pearlP: pal2("#ffd8f0", { emissive: 0.8, smooth: 1, spec: 1 }),
+      pearlB: pal2("#a8e8ff", { emissive: 0.8, smooth: 1, spec: 1 }),
+      core: pal2("#ffffff", { emissive: 1 }),
+      gold: pal2("#e8b23a", METAL),
+      goldL: pal2("#ffe08a", METAL),
+      goldD: pal2("#a8701a", METAL),
+      gem: pal2("#4af0c8", { emissive: 0.9, spec: 1 })
+    };
+    const cx = 16, cz = 16, py = 19, R2 = 10;
+    m.sphere(cx, py, cz, R2, (x, y, z) => {
+      const nx = (x + 0.5 - cx) / R2, ny = (y + 0.5 - py) / R2, nz = (z + 0.5 - cz) / R2;
+      if (nx < -0.3 && ny > 0.3 && nz > 0.3) return C2.core;
+      const k = Math.sin(nx * 3.1 + ny * 2.3 + nz * 1.7);
+      return k > 0.45 ? C2.pearlP : k < -0.45 ? C2.pearlB : C2.pearl;
+    });
+    for (let i = 0; i < 8; i++) {
+      const ang = i / 8 * TAU + 0.2;
+      const pts = [];
+      for (let k = 0; k <= 10; k++) {
+        const t = -1 + k / 10 * 2, el = t * 1.25;
+        const rr = (R2 + 1.2) * Math.cos(el);
+        pts.push([cx + Math.cos(ang) * rr, py + (R2 + 1.2) * Math.sin(el), cz + Math.sin(ang) * rr]);
+      }
+      limb(m, pts, i % 2 ? C2.gold : C2.goldD, 0.6);
+    }
+    for (let i = 0; i < 40; i++) {
+      const ang = i / 40 * TAU, rr = R2 + 1.6;
+      m.set(cx + Math.cos(ang) * rr, py, cz + Math.sin(ang) * rr, i % 10 === 0 ? C2.gem : C2.goldL);
+    }
+    m.ellipsoid(cx, py + R2 + 1.5, cz, 5.5, 2.6, 5.5, (x, y) => y > py + R2 + 2.5 ? C2.goldL : C2.gold);
+    m.cylinder(cx, cz, py + R2 + 3, py + R2 + 4, 1.6, C2.goldD);
+    for (let i = 0; i < 20; i++) {
+      const ang = i / 20 * TAU;
+      m.set(cx + Math.cos(ang) * 3, py + R2 + 7.5 + Math.sin(ang) * 3, cz, C2.gold);
+    }
+    m.ellipsoid(cx, py - R2 - 1.2, cz, 4.5, 2, 4.5, C2.gold);
+    m.sphere(cx, py - R2 - 4.2, cz, 1.6, C2.goldL);
+    m.set(cx, py - R2 - 6.2, cz, C2.gem);
   }
   function golden(m) {
-    const g = m.color("#ffcc3a", { spec: 1, specPow: 5, smooth: 0.8, emissive: 0.25 }), g2 = m.color("#ffe88a", { spec: 1, specPow: 4, emissive: 0.4 });
-    m.ellipsoid(5.5, 3.2, 4, 4.4, 3.2, 3.4, g);
-    m.sphere(3.5, 5.4, 4.6, 1.8, g2);
-    m.sphere(7.5, 4.4, 5.2, 1.4, g);
+    const pal2 = palette(m);
+    const C2 = {
+      g: pal2("#ffc83a", { ...METAL, emissive: 0.15 }),
+      gD: pal2("#d8901a", METAL),
+      gL: pal2("#fff0a0", { ...METAL, emissive: 0.3 }),
+      back: pal2("#c87a1a", METAL),
+      belly: pal2("#ffe88a", METAL),
+      eye: pal2("#ff2a4a", { spec: 1, specPow: 4, emissive: 0.4 }),
+      eyeW: pal2("#ffffff", { emissive: 0.6 }),
+      pupil: pal2("#1a0a14", { spec: 1 }),
+      lip: pal2("#fff4c8", { spec: 1, specPow: 4, emissive: 0.15 }),
+      wire: pal2("#d8dee8", METAL),
+      wireD: pal2("#8a96a8", METAL),
+      gill: pal2("#b8601a", METAL)
+    };
+    const cx = 21, cy = 18, cz = 11;
+    m.ellipsoid(cx, cy, cz, 16, 7.5, 6, (x, y, z) => {
+      const nx = (x + 0.5 - cx) / 16, ny = (y + 0.5 - cy) / 7.5, nz = (z + 0.5 - cz) / 6;
+      if (ny > 0.62) return C2.back;
+      if (ny < -0.5) return C2.belly;
+      const row2 = Math.floor((y + 40) / 2), col = Math.floor((x + row2 % 2 * 1.5) / 3);
+      const f = (x + row2 % 2 * 1.5) / 3 % 1;
+      if (nx > 0.55) return nz > 0.6 && ny > 0.1 ? C2.gL : C2.g;
+      if (f < 0.25) return C2.gD;
+      return (row2 + col) % 5 === 0 ? C2.gL : C2.g;
+    });
+    m.ellipsoid(4.5, cy, cz, 3.5, 3.2, 2.6, C2.gD);
+    for (let y = cy - 4; y <= cy + 4; y++) m.set(28 - Math.abs(y - cy) * 0.3, y, cz + 5.6, C2.gill);
+    m.sphere(31, cy + 1.6, cz + 4.4, 2.4, C2.eye);
+    m.set(31, cy + 1.6, cz + 6.6, C2.pupil);
+    m.set(30, cy + 2.8, cz + 6.4, C2.eyeW);
+    for (let i = 0; i < 6; i++) m.box(36 + i * 0.9, cy - 3 - i * 0.9, cz - 4, 37 + i * 0.9, cy - 3 - i * 0.9, cz + 4, C2.lip);
+    const treble = (x, y) => {
+      for (let i = 0; i < 8; i++) {
+        const ang = i / 8 * TAU;
+        m.set(x + Math.cos(ang) * 1.3, y + Math.sin(ang) * 1.3, cz, C2.wire);
+      }
+      for (const [dz, sx, c] of [[0, 1, C2.wire], [2.2, -1, C2.wireD]]) {
+        const pts = [[x, y - 1.5, cz + dz * 0.3], [x, y - 7, cz + dz * 0.6]];
+        for (let k = 0; k <= 8; k++) {
+          const ang = Math.PI + k / 8 * Math.PI;
+          pts.push([x + sx * (2.8 + Math.cos(ang) * 2.8), y - 7 + Math.sin(ang) * 2.8, cz + dz]);
+        }
+        pts.push([x + sx * 5.6, y - 3, cz + dz]);
+        limb(m, pts, c, 0.5);
+        m.set(x + sx * 4.6, y - 4.4, cz + dz, c);
+        m.set(x + sx * 4.6, y - 3.6, cz + dz, c);
+      }
+    };
+    treble(25, cy - 8.4);
+    treble(10, cy - 6.6);
+    m.line(2, cy, cz, 0, cy, cz, C2.wire);
   }
   function blackhole(m) {
-    const core = m.color("#0a0614", { spec: 0.6 }), ring = m.color("#b07aff", { emissive: 1 }), ring2 = m.color("#ff8ad8", { emissive: 0.9 });
-    m.sphere(6.5, 5, 6.5, 3.4, core);
-    for (let a = 0; a < TAU; a += 0.12) {
-      const r = 5.6;
-      m.set(6.5 + Math.cos(a) * r, 5 + Math.sin(a) * 1.2, 6.5 + Math.sin(a) * r * 0.9, a % 0.5 < 0.25 ? ring : ring2);
+    const pal2 = palette(m);
+    const C2 = {
+      core: pal2("#040208", { spec: 0.4, specPow: 30 }),
+      rim: pal2("#ffe8b0", { emissive: 1 }),
+      d0: pal2("#fffbe0", { emissive: 1 }),
+      d1: pal2("#ffd060", { emissive: 0.95 }),
+      d2: pal2("#ff8a2a", { emissive: 0.85 }),
+      d3: pal2("#e04a7a", { emissive: 0.75 }),
+      d4: pal2("#8a4ae8", { emissive: 0.65 }),
+      d5: pal2("#4a2a9a", { emissive: 0.45 })
+    };
+    const cx = 24, cy = 14, cz = 24, R2 = 7.5;
+    const band = (r, ang) => {
+      const sw = Math.sin(ang * 3 + r * 0.55);
+      const k = (r - R2 - 1.5) / 13 + sw * 0.06;
+      return k < 0.12 ? C2.d0 : k < 0.28 ? C2.d1 : k < 0.48 ? C2.d2 : k < 0.66 ? C2.d3 : k < 0.84 ? C2.d4 : C2.d5;
+    };
+    for (let z = 0; z < 48; z++) for (let x = 0; x < 48; x++) {
+      const dx = x + 0.5 - cx, dz = z + 0.5 - cz, r = Math.hypot(dx, dz);
+      if (r < R2 + 1.5 || r > 23) continue;
+      const ang = Math.atan2(dz, dx);
+      const th = r < 12 ? 2 : r < 17 ? 1 : 0;
+      if (h3(x, 0, z, 3) < (r - 16) / 14) continue;
+      for (let y = cy - th; y <= cy + (r < 12 ? 1 : 0); y++) m.set(x, y, z, band(r, ang));
+    }
+    for (let i = 0; i <= 120; i++) {
+      const ang = Math.PI * (i / 120);
+      for (let rr = R2 + 1; rr <= R2 + 6.5; rr += 0.5) {
+        const x = cx + Math.cos(ang) * rr, y = cy + 0.5 + Math.sin(ang) * rr * 1.05;
+        const c = band(R2 + 1.5 + (rr - R2 - 1) * 2.2, ang * 2);
+        m.set(x, y, cz - 1, c);
+        m.set(x, y, cz - 2, c);
+      }
+    }
+    m.sphere(cx, cy, cz, R2, C2.core);
+    for (let i = 0; i < 90; i++) {
+      const ang = i / 90 * TAU;
+      m.set(cx + Math.cos(ang) * (R2 + 0.6), cy + Math.sin(ang) * (R2 + 0.6), cz + 1, C2.rim);
     }
   }
   function relic(m) {
-    const stone = m.color("#8a8070", { jitter: 0.12, smooth: 0.2 }), rune2 = m.color("#6affe8", { emissive: 1 });
-    m.box(1, 0, 2, 8, 10, 4, stone);
-    m.ellipsoid(4.5, 10, 3, 3.6, 1.6, 1.5, stone);
-    for (const [x, y] of [[4, 2], [4, 3], [4, 4], [4, 5], [4, 6], [3, 7], [5, 7], [3, 4], [5, 4], [4, 8]]) m.set(x, y, 5, rune2);
+    const pal2 = palette(m);
+    const st = ["#8a8270", "#7a7262", "#968e7a", "#6c6556"].map((c) => pal2(c, { jitter: 0.1, smooth: 0.2 }));
+    const C2 = {
+      groove: pal2("#4e483e"),
+      rune: pal2("#5affe0", { emissive: 1 }),
+      runeE: pal2("#2ac8b0", { emissive: 0.7 }),
+      crack: pal2("#3a342c"),
+      moss: pal2("#5a9a3a", { jitter: 0.12 }),
+      moss2: pal2("#7ac04a", { jitter: 0.1 }),
+      gold: pal2("#c8962a", METAL),
+      goldL: pal2("#f0c860", METAL),
+      barn: pal2("#d8d0c0", { jitter: 0.1 }),
+      rub: pal2("#6a6252", { jitter: 0.1 })
+    };
+    const X0 = 6, X1 = 27, Z0 = 6, Z1 = 12, TOP = 30;
+    for (let x = X0; x <= X1; x++) for (let y = 3; y <= TOP + 6; y++) {
+      const u = (x + 0.5 - (X0 + X1 + 1) / 2) / ((X1 - X0 + 1) / 2);
+      const lim = TOP + Math.sqrt(Math.max(0, 1 - u * u)) * 6;
+      if (y > lim) continue;
+      if (x === X1 && y > TOP + 1) continue;
+      for (let z = Z0; z <= Z1; z++) m.set(x, y, z, st[Math.floor(h3(x >> 1, y >> 1, z, 1) * st.length)]);
+    }
+    const F2 = Z1;
+    for (let x = X0 + 2; x <= X1 - 2; x++) for (let y = 5; y <= TOP + 3; y++) {
+      const u = (x + 0.5 - (X0 + X1 + 1) / 2) / ((X1 - X0 + 1) / 2 - 2);
+      const lim = TOP + Math.sqrt(Math.max(0, 1 - u * u)) * 4;
+      const onB = (x === X0 + 2 || x === X1 - 2 || y === 5 || Math.abs(y - lim) < 0.7) && y <= lim + 0.7;
+      if (onB && m.get(x, y, F2)) m.set(x, y, F2, C2.groove);
+    }
+    const cxr = (X0 + X1) / 2 + 0.5;
+    for (let y = -6; y <= 6; y++) for (let x = -8; x <= 8; x++) {
+      const body = (x / 6.5) ** 2 + (y / 3.6) ** 2;
+      const fish = body < 1 && x > -6.5;
+      const tail = x <= -5 && x >= -8 && Math.abs(y) <= (-5 - x) * 1.3 + 0.6;
+      const dot3 = x === 3 && y === 1;
+      if (fish || tail) {
+        m.set(cxr + x, 22 + y, F2, 0);
+        m.set(cxr + x, 22 + y, F2 - 1, dot3 ? C2.groove : C2.rune);
+      }
+    }
+    for (let w = 0; w < 3; w++) for (let x = -7; x <= 7; x++) {
+      const y = 12 - w * 2.6 + Math.round(Math.sin(x * 0.9) * 0.8);
+      m.set(cxr + x, y, F2, C2.runeE);
+    }
+    limb(m, [[X0 + 1, TOP - 2, F2], [X0 + 4, TOP - 6, F2], [X0 + 3, TOP - 10, F2], [X0 + 6, TOP - 14, F2]], C2.crack);
+    limb(m, [[X1, 10, F2], [X1 - 3, 12, F2], [X1 - 4, 16, F2]], C2.crack);
+    for (let x = X0; x <= X1; x++) for (let y = 3; y <= TOP + 6; y++) for (let z = Z0; z <= Z1; z++) {
+      if (!m.get(x, y, z) || m.get(x, y + 1, z)) continue;
+      const u = h3(x, y, z, 6);
+      if (u < 0.55) m.set(x, y, z, u < 0.25 ? C2.moss2 : C2.moss);
+      if (u < 0.3 && x < X0 + 5) m.set(x, y - 1, z, C2.moss);
+    }
+    for (const [x, y] of [[X1 - 3, 6], [X1 - 1, 8], [X1 - 5, 4]]) {
+      m.sphere(x, y, F2 + 0.6, 1.1, C2.barn);
+      m.set(x, y + 1, F2 + 1, C2.groove);
+    }
+    m.box(X0, 6, Z0, X1, 7, Z1 + 0.4, (x, y, z) => z >= Z1 || z === Z0 || x === X0 || x === X1 ? h3(x, y, z) < 0.3 ? C2.goldL : C2.gold : null);
+    m.box(X0 - 3, 0, Z0 - 2, X1 + 3, 2, Z1 + 3, (x, y, z) => h3(x, y, z, 9) < 0.7 - y * 0.25 ? h3(x, y, z, 2) < 0.5 ? C2.rub : st[1] : null);
   }
-  function charm(m, kind, ox, oy) {
-    const z = 4;
+  function notes(m, a, ph) {
+    const pal2 = palette(m);
+    const c1 = a.color || "#ffd84a", c2 = a.color2 || "#fff6c8";
+    const C2 = {
+      body: pal2(c2, { ...GL }),
+      fold: pal2(shade(c2, -0.2), { ...GL }),
+      back: pal2(mix(c1, c2, 0.35), { ...GL }),
+      line: pal2("#5a8ae8", { ...GL }),
+      margin: pal2("#ff5a6a", { ...GL }),
+      gloss: pal2("#ffffff", { spec: 1, specPow: 5, emissive: 0.3 }),
+      head: pal2("#c8782a", { spec: 0.9, specPow: 8, smooth: 0.6 }),
+      headD: pal2("#8a4a18", { spec: 0.8 }),
+      jaw: pal2("#2a1810", { spec: 1 }),
+      leg: pal2("#b8702a")
+    };
+    const curl = 1 + Math.sin(ph * TAU) * 0.12;
+    const P6 = [];
+    for (let i = 0; i <= 10; i++) {
+      const t = i / 10, ang = Math.PI * 1.15 - t * Math.PI * 1.25 * curl;
+      const R2 = 10;
+      P6.push([22 + Math.cos(ang) * R2 * 1.25, 12 + Math.sin(ang) * R2, 14, 3.4 + Math.sin(t * Math.PI) * 3.2]);
+    }
+    P6[0][3] = 3.2;
+    const segs = 11;
+    const S9 = tube2(m, P6, (u, n2) => {
+      const f = u * segs % 1;
+      if (f < 0.13) return C2.fold;
+      if (n2[2] > 0.45 && Math.abs(f - 0.55) < 0.07) return C2.line;
+      if (n2[2] > 0.3 && n2[1] > 0.45 && f > 0.25 && f < 0.42) return C2.gloss;
+      if (Math.abs(n2[2]) < 0.3 && n2[1] > 0.6) return C2.margin;
+      return n2[1] > 0.35 ? C2.back : C2.body;
+    });
+    const hp = S9[S9.length - 1].p, ht = S9[S9.length - 1].t;
+    const hx = hp[0] + ht[0] * 3, hy = hp[1] + ht[1] * 3, hz = 14;
+    m.ellipsoid(hx, hy, hz, 3.6, 3.4, 3.8, (x, y) => y > hy + 1.5 ? C2.headD : C2.head);
+    m.set(hx + ht[0] * 3.6, hy + ht[1] * 3.6 - 1, hz + 1.5, C2.jaw);
+    m.set(hx + ht[0] * 3.6, hy + ht[1] * 3.6 - 1, hz - 1.5, C2.jaw);
+    m.set(hx + ht[0] * 4.2, hy + ht[1] * 4.2 - 1.5, hz + 1, C2.jaw);
+    eye(m, pal2, hx + ht[0] * 1.5 - 0.5, hy + 1.6, hz + 3.2, 0.9);
+    for (let k = 1; k <= 3; k++) {
+      const s = S9[Math.max(0, S9.length - 1 - k * 9)];
+      const [x, y] = s.p;
+      for (const zs of [-1, 1]) limb(m, [[x, y - 2, 14 + zs * 3], [x + 1.4, y - 4.5, 14 + zs * 4.5], [x + 2.4, y - 5, 14 + zs * 4]], C2.leg);
+    }
+    tierFx(m, pal2, a);
+  }
+  function documents(m, a, ph) {
+    const pal2 = palette(m);
+    const c1 = a.color || "#f0b850", c2 = a.color2 || "#ffe7a8";
+    const C2 = {
+      body: pal2(c1, { ...GL }),
+      ring: pal2(shade(c1, -0.25), { ...GL }),
+      belly: pal2(c2, { ...GL }),
+      pad: pal2(mix(c1, "#ffffff", 0.25), { spec: 0.8, specPow: 8 }),
+      padV: pal2(shade(c1, -0.35)),
+      eye: pal2("#2a3a5a", { spec: 1, specPow: 5, smooth: 1 }),
+      eyeH: pal2("#9ad8ff", { emissive: 0.4, spec: 1 }),
+      leg: pal2(shade(c1, -0.3), { spec: 0.5 }),
+      legL: pal2(mix(c1, c2, 0.5)),
+      gill: pal2(mix(c1, "#ff9a5a", 0.4), { spec: 0.6 }),
+      gloss: pal2("#ffffff", { spec: 1, emissive: 0.25 })
+    };
+    const w = Math.sin(ph * TAU) * 1.4;
+    const P6 = [[5, 9 + w * 0.6, 14, 1.6], [10, 9.5 + w * 0.4, 14, 3.4], [16, 10, 14, 4.3], [22, 10.5, 14, 4.4], [27, 11, 14, 3.6]];
+    tube2(m, P6, (u, n2) => {
+      const f = u * 8 % 1;
+      if (f < 0.15) return C2.ring;
+      if (n2[1] > 0.5 && n2[2] > 0.3 && f > 0.4 && f < 0.6) return C2.gloss;
+      return n2[1] < -0.3 ? C2.belly : C2.body;
+    }, { ry: 0.8 });
+    for (const [dy, dz] of [[0, 0], [1.2, 1.5], [1.2, -1.5]]) m.line(5, 9 + w * 0.6 + dy * 0.5, 14 + dz, 1, 9.6 + w + dy, 14 + dz * 1.4, C2.gill, 0.7);
+    m.ellipsoid(31, 11.5, 14, 4.6, 4, 4.8, (x, y) => y < 10 ? C2.belly : C2.body);
+    for (const s of [-1, 1]) {
+      for (let i = 0; i < 9; i++) for (let j = 0; j <= 2; j++) m.set(29 - i, 15 - i * 0.18, 14 + s * (1.6 + j), i === 8 || j === 2 ? C2.padV : C2.pad);
+    }
+    m.ellipsoid(37, 12, 14, 3.4, 3.2, 4.2, C2.body);
+    for (const s of [-1, 1]) {
+      m.sphere(38, 13.5, 14 + s * 3.6, 2.4, C2.eye);
+      m.set(37.4, 15, 14 + s * 3.6 + (s > 0 ? 1.6 : -1.6), C2.eyeH);
+    }
+    m.set(40.6, 11, 14, C2.ring);
+    m.set(40.6, 10, 14.8, C2.ring);
+    m.set(40.6, 10, 13.2, C2.ring);
+    for (let k = 0; k < 3; k++) {
+      const x = 28 + k * 3.4, kick = Math.sin(ph * TAU + k * 2) * 0.8;
+      for (const s of [-1, 1]) limb(m, [[x, 9.5, 14 + s * 3.5], [x + (k - 1) * 3 + kick, 11, 14 + s * 8], [x + (k - 1) * 4.5 + kick, 1, 14 + s * 10]], k === 1 ? C2.legL : C2.leg, 0.55);
+    }
+    tierFx(m, pal2, a);
+  }
+  function calculator(m, a, ph) {
+    const pal2 = palette(m);
+    const c1 = a.color || "#8a9ab8", c2 = a.color2 || "#ff9a3a";
+    const C2 = {
+      shell: pal2(c1, { spec: 0.8, specPow: 9, smooth: 0.6 }),
+      shellD: pal2(shade(c1, -0.3), { spec: 0.6 }),
+      key: pal2("#eef2f8", { spec: 0.8, specPow: 7 }),
+      keyD: pal2("#b8c2d2"),
+      op: pal2(c2, { spec: 0.9, specPow: 6, emissive: 0.1 }),
+      lcd: pal2("#2a4a2a", { spec: 0.9 }),
+      seg: pal2("#9aff8a", { emissive: 0.9 }),
+      head: pal2("#1e1a24", { spec: 1, specPow: 7 }),
+      leg: pal2("#2a2430"),
+      eye: pal2("#ffffff", { emissive: 0.5 }),
+      belly: pal2(shade(c1, -0.42))
+    };
+    const cx = 20, cy = 6, cz = 14;
+    m.ellipsoid(cx, cy, cz, 13, 9, 10, (x, y) => y < cy - 1 ? C2.belly : C2.shell);
+    m.sub(() => m.box(0, 0, 0, 47, cy - 3, 30));
+    for (let z = 0; z < 30; z++) for (let x = 0; x < 48; x++) for (let y = cy + 7; y < 30; y++) m.set(x, y, z, 0);
+    const keyAt = (kx, kz, c) => {
+      const x = Math.round(cx - 8 + kx * 4.2), z = Math.round(cz - 5.5 + kz * 3.8);
+      for (let dx = 0; dx < 3; dx++) for (let dz = 0; dz < 3; dz++) {
+        const X = x + dx, Z = z + dz;
+        if (!m.get(X, cy + 6, Z)) continue;
+        m.set(X, cy + 7, Z, dz === 0 || dx === 2 ? c === C2.op ? C2.op : C2.keyD : c);
+      }
+    };
+    for (let kx = 0; kx < 4; kx++) for (let kz = 0; kz < 3; kz++) keyAt(kx, kz, kx === 3 || kz === 0 && kx > 1 ? C2.op : C2.key);
+    for (let x = cx - 9; x <= cx + 8; x++) for (let y = cy + 2; y <= cy + 5; y++) {
+      const z = Math.round(cz + 9.6 * Math.sqrt(Math.max(0, 1 - ((x + 0.5 - cx) / 13) ** 2 - ((y + 0.5 - cy) / 9) ** 2)));
+      if (z > 0 && m.get(x, y, z)) {
+        const d = (x - (cx - 8)) % 4;
+        m.set(x, y, z, (y === cy + 3 || y === cy + 4) && d !== 3 && x < cx + 6 && h3(x, y, 1) < 0.75 ? C2.seg : C2.lcd);
+      }
+    }
+    m.ellipsoid(cx + 13.5, cy + 1, cz, 3.8, 3.4, 4.2, C2.head);
+    eye(m, pal2, cx + 15, cy + 2.4, cz + 3, 1.1, "#0a080e");
+    const wv = Math.sin(ph * TAU) * 1.5;
+    for (const s of [-1, 1]) limb(m, [[cx + 15, cy + 3.5, cz + s * 2], [cx + 19, cy + 8 + wv * s, cz + s * 4], [cx + 23, cy + 9 + wv, cz + s * 6]], C2.leg);
+    for (let k = 0; k < 3; k++) {
+      const x = cx - 6 + k * 6;
+      for (const s of [-1, 1]) limb(m, [[x, cy - 1, cz + s * 8], [x + (k - 1) * 2, cy, cz + s * 12], [x + (k - 1) * 3, 0, cz + s * 13]], C2.leg, 0.5);
+    }
+    tierFx(m, pal2, a);
+  }
+  function calendar(m, a, ph) {
+    const pal2 = palette(m);
+    const c1 = a.color || "#ff5a62", c2 = a.color2 || "#ffffff";
+    const C2 = {
+      body: pal2(shade(c1, -0.35), { ...GL }),
+      bodyL: pal2(shade(c1, -0.15), { ...GL }),
+      page: pal2(c2, { spec: 0.4 }),
+      pageS: pal2(shade(c2, -0.12)),
+      head: pal2(c1, { spec: 0.9, specPow: 8 }),
+      ring: pal2("#d8dee8", METAL),
+      dot: pal2("#5a6478"),
+      today: pal2(c1, { emissive: 0.4 }),
+      leg: pal2(shade(c1, -0.5), { spec: 0.5 }),
+      legL: pal2(shade(c1, -0.3)),
+      palp: pal2(shade(c1, -0.45))
+    };
+    const cx = 22, cy = 7, cz = 14;
+    m.ellipsoid(cx, cy, cz, 12, 6.5, 10, (x, y, z) => y > cy + 3 ? C2.bodyL : C2.body);
+    for (let z = 0; z < 30; z++) for (let x = 0; x < 48; x++) {
+      let top = -1;
+      for (let y = 29; y >= 0; y--) if (m.get(x, y, z)) {
+        top = y;
+        break;
+      }
+      if (top < cy + 3) continue;
+      const u = x - (cx - 9), v = z - (cz - 7.5);
+      if (u < 0 || u > 17 || v < 0 || v > 15) continue;
+      const header = v < 4;
+      let c = header ? C2.head : C2.page;
+      if (!header && u % 3 === 1 && (v - 5) % 3 === 0 && v > 4 && u < 17) c = C2.dot;
+      if (!header && u === 10 && v === 11) c = C2.today;
+      if (!header && (u === 9 || u === 11) && v === 11) c = C2.today;
+      if (u === 0 || u === 17 || v === 15) c = header ? C2.head : C2.pageS;
+      m.set(x, top + 1, z, c);
+    }
+    for (const u of [3, 8, 13]) for (let i = 0; i < 10; i++) {
+      const ang = i / 10 * Math.PI;
+      const x = cx - 9 + u, z = cz - 7.5 + 1.5 + Math.cos(ang) * 1.6;
+      m.set(x, cy + 8 + Math.sin(ang) * 2.4, z, C2.ring);
+    }
+    m.ellipsoid(cx + 12.5, cy, cz, 3, 2.4, 2.6, C2.head);
+    for (const s of [-1, 1]) m.line(cx + 14, cy - 0.5, cz + s * 1.2, cx + 17, cy - 1.5, cz + s * 1.4, C2.palp, 0.6);
+    const kick = Math.sin(ph * TAU) * 0.8;
+    for (let k = 0; k < 4; k++) {
+      const x = cx - 5 + k * 4.2, sp = (k - 1.5) * 3;
+      for (const s of [-1, 1]) limb(m, [[x, cy - 1, cz + s * 8], [x + sp + kick * s, cy + 3.5, cz + s * 12], [x + sp * 1.4, 0, cz + s * 14]], k % 2 ? C2.legL : C2.leg, 0.55);
+    }
+    tierFx(m, pal2, a);
+  }
+  function music(m, a, ph) {
+    const pal2 = palette(m);
+    const c1 = a.color || "#ff6ac8", c2 = a.color2 || "#9a6aff";
+    const C2 = {
+      back: pal2(c2, { ...GL }),
+      side: pal2(c1, { ...GL }),
+      sideD: pal2(shade(c1, -0.16), { ...GL }),
+      belly: pal2("#eef4ff", { spec: 1, specPow: 6, smooth: 0.8 }),
+      lat: pal2(shade(c2, -0.3), { ...GL }),
+      fin: pal2(mix(c1, "#ffffff", 0.45), { spec: 0.7 }),
+      finR: pal2(mix(c1, c2, 0.5), { spec: 0.5 }),
+      note: pal2("#1a1430", { spec: 1, specPow: 6 }),
+      gill: pal2(shade(c1, -0.35)),
+      gloss: pal2("#ffffff", { spec: 1, emissive: 0.35 })
+    };
+    const sw = Math.sin(ph * TAU);
+    const cx = 22, cy = 12, cz = 13;
+    const L2 = 15, H = 6.2, Z = 4.4;
+    for (let x = cx - L2; x <= cx + L2; x++) {
+      const t = (x + 0.5 - (cx - L2)) / (2 * L2);
+      const prof = Math.pow(Math.sin(Math.min(1, t * 1.08) * Math.PI), 0.75) * (t > 0.82 ? 1 - (t - 0.82) * 1.6 : 1);
+      const bend = sw * Math.pow(1 - t, 2) * 3.5;
+      const hh = H * prof, zz = Z * prof;
+      for (let y = Math.floor(cy - hh); y <= cy + hh; y++) for (let z = Math.floor(cz - zz + bend); z <= cz + zz + bend; z++) {
+        const ny2 = (y + 0.5 - cy) / (hh || 1), nz2 = (z + 0.5 - cz - bend) / (zz || 1);
+        if (ny2 * ny2 + nz2 * nz2 > 1) continue;
+        let c = ny2 > 0.55 ? C2.back : ny2 < -0.35 ? C2.belly : (Math.floor(x / 2) + Math.floor((y + 30) / 2)) % 2 ? C2.side : C2.sideD;
+        if (Math.abs(ny2 - 0.08) < 0.12 && t > 0.15 && t < 0.8) c = C2.lat;
+        if (ny2 > 0.35 && nz2 > 0.55 && t > 0.4 && t < 0.75) c = C2.gloss;
+        m.set(x, y, z, c);
+      }
+    }
+    for (let y = cy - 4; y <= cy + 3; y++) m.set(cx + 8 - Math.abs(y - cy) * 0.35, y, cz + 4.2, C2.gill);
+    eye(m, pal2, cx + 11, cy + 1.6, cz + 3.4, 1.8);
+    const tb = sw * 4;
+    for (let i = 0; i <= 7; i++) for (const s of [-1, 1]) {
+      const x = cx - L2 - i * 0.9, y = cy + s * (1 + i * 0.9);
+      m.line(x, y, cz + tb * (0.5 + i * 0.08), x, cy + s * 0.5, cz + tb * 0.5, i === 7 ? C2.finR : C2.fin);
+    }
+    for (let i = 0; i < 7; i++) m.line(cx - 2 + i, cy + H - 0.5, cz, cx - 4 + i * 1.2, cy + H + 3 - i * 0.35, cz, i % 2 ? C2.fin : C2.finR);
+    for (let i = 0; i < 5; i++) m.line(cx - 7 + i, cy - H + 1, cz, cx - 9 + i * 1.2, cy - H - 1.8 + i * 0.2, cz, C2.fin);
+    limb(m, [[cx + 6, cy - 2, cz + 4], [cx + 2, cy - 4, cz + 6.5], [cx + 1, cy - 2.5, cz + 6.8]], C2.fin, 0.5);
+    const nx = cx - 3, ny = cy - 1, nz = cz + 4.4;
+    m.set(nx, ny, nz, C2.note);
+    m.set(nx + 1, ny, nz, C2.note);
+    m.set(nx + 4, ny + 1, nz - 0.2, C2.note);
+    m.set(nx + 5, ny + 1, nz - 0.2, C2.note);
+    m.line(nx + 1, ny, nz, nx + 1, ny + 4, nz, C2.note);
+    m.line(nx + 5, ny + 1, nz - 0.2, nx + 5, ny + 5, nz - 0.2, C2.note);
+    m.line(nx + 1, ny + 4, nz, nx + 5, ny + 5, nz - 0.2, C2.note);
+    tierFx(m, pal2, a);
+  }
+  function photos(m, a, ph) {
+    const pal2 = palette(m);
+    const c1 = a.color || "#4ac8ff", c2 = a.color2 || "#7ae05a";
+    const C2 = {
+      shell: pal2(c1, { ...GL }),
+      shellD: pal2(shade(c1, -0.22), { ...GL }),
+      band: pal2(c2, { ...GL }),
+      belly: pal2(mix(c1, "#ffffff", 0.5), { ...GL }),
+      gloss: pal2("#ffffff", { spec: 1, emissive: 0.35 }),
+      leg: pal2(mix(c1, "#ffffff", 0.3)),
+      legD: pal2(shade(c1, -0.3)),
+      ant: pal2(shade(c1, -0.4)),
+      fan: pal2(mix(c1, c2, 0.4), { spec: 0.8, specPow: 6 }),
+      fanE: pal2(c2, { spec: 0.6 }),
+      eye: pal2("#0e0a18", { spec: 1, smooth: 1 })
+    };
+    const fl = Math.sin(ph * TAU);
+    const P6 = [];
+    for (let i = 0; i <= 6; i++) {
+      const t = i / 6, ang = Math.PI * (0.95 - t * 0.62) + fl * 0.08 * (1 - t);
+      P6.push([20 + Math.cos(ang) * 11, 12 + Math.sin(ang) * 6.5 - (1 - t) * 2, 14, 2.4 + t * 2.6]);
+    }
+    tube2(m, P6, (u, n2) => {
+      const f = u * 6 % 1;
+      if (f < 0.14) return C2.shellD;
+      if (n2[1] > 0.55 && f > 0.2 && f < 0.5) return C2.band;
+      if (n2[1] > 0.3 && n2[2] > 0.5 && f > 0.55 && f < 0.75) return C2.gloss;
+      return n2[1] < -0.4 ? C2.belly : C2.shell;
+    });
+    m.ellipsoid(32, 12.6, 14, 6.2, 5, 4.8, (x, y, z) => y > 15.5 && z > 15 ? C2.gloss : y < 10 ? C2.belly : C2.shell);
+    for (let i = 0; i < 8; i++) {
+      m.set(37 + i, 15.5 + i * 0.25, 14, C2.shellD);
+      if (i % 2 === 0) m.set(37 + i, 16.5 + i * 0.25, 14, C2.shell);
+    }
+    for (const s of [-1, 1]) {
+      m.line(36, 14, 14 + s * 2.5, 37.5, 15.5, 14 + s * 3.8, C2.shellD, 0.6);
+      m.sphere(38, 16, 14 + s * 4, 1.4, C2.eye);
+      m.set(37.6, 16.8, 14 + s * 4 + 1, C2.gloss);
+    }
+    for (const s of [-1, 1]) {
+      limb(m, [[38, 13, 14 + s * 2], [44, 18, 14 + s * 4], [40, 26 + fl, 14 + s * 6], [26, 29 + fl * 0.5, 14 + s * 7], [12, 27, 14 + s * 7]], C2.ant);
+      limb(m, [[38, 12, 14 + s], [44, 13, 14 + s * 2], [46, 15, 14 + s * 2]], C2.legD);
+    }
+    for (let k = 0; k < 5; k++) {
+      const x = 28 + k * 2, kick = Math.sin(ph * TAU + k) * 0.6;
+      for (const s of [-1, 1]) limb(m, [[x, 9, 14 + s * 3], [x + 1 + kick, 6, 14 + s * 5.5], [x + 2.5, 1, 14 + s * 6]], k % 2 ? C2.leg : C2.legD);
+    }
+    for (let k = 0; k < 4; k++) {
+      const p = P6[2 + k] || P6[5];
+      for (const s of [-1, 1]) m.line(p[0], p[1] - p[3] + 0.5, 14 + s * 1.5, p[0] - 0.5, p[1] - p[3] - 2, 14 + s * 2.5, C2.leg);
+    }
+    const tp = P6[0];
+    for (let i = -2; i <= 2; i++) {
+      const ang = Math.PI * 0.62 + i * 0.22;
+      for (let r = 1; r <= 6; r++) {
+        const x = tp[0] + Math.cos(ang) * r * 0.9, y = tp[1] - 1 - Math.sin(ang) * r * 0.5 - r * 0.35;
+        const wdt = r < 5 ? 1.6 : 1;
+        m.box(x, y, 14 - wdt + i * 0.6, x, y, 14 + wdt + i * 0.6, r === 6 ? C2.fanE : C2.fan);
+      }
+    }
+    tierFx(m, pal2, a);
+  }
+  function videos(m, a, ph) {
+    const pal2 = palette(m);
+    const c1 = a.color || "#ff4a5a", c2 = a.color2 || "#3a3a52";
+    const C2 = {
+      body: pal2(c1, { ...GL }),
+      ring: pal2(shade(c1, -0.18), { ...GL }),
+      stripe: pal2(c2, { ...GL }),
+      dot: pal2("#ffd84a", { ...GL, emissive: 0.2 }),
+      belly: pal2(mix(c1, "#ffd8c8", 0.45), { ...GL }),
+      play: pal2("#ffffff", { emissive: 0.35, spec: 0.8 }),
+      sucker: pal2(shade(c1, -0.32), { ...GL }),
+      gloss: pal2("#ffffff", { spec: 1, emissive: 0.3 })
+    };
+    const arch = 0.5 + 0.5 * Math.sin(ph * TAU);
+    const P6 = [];
+    for (let i = 0; i <= 8; i++) {
+      const t = i / 8;
+      const x = 5 + t * (36 - arch * 8);
+      const y = 3.5 + Math.sin(t * Math.PI) * (2 + arch * 9);
+      P6.push([x, y, 14, 2.4 + Math.sin(Math.min(1, t * 1.2) * Math.PI) * 2.4]);
+    }
+    P6[0][3] = 3.6;
+    P6[8][3] = 1.8;
+    tube2(m, P6, (u, n2) => {
+      const f = u * 34 % 1;
+      if (n2[1] > 0.4 && Math.abs(Math.abs(n2[2]) - 0.45) < 0.13) return C2.stripe;
+      if (n2[1] > 0.5 && Math.abs(n2[2]) < 0.2 && h3(Math.floor(u * 40), 1, 1) < 0.35) return C2.dot;
+      if (n2[1] > 0.7 && n2[2] > 0.15 && f > 0.4) return C2.gloss;
+      if (f < 0.25) return C2.ring;
+      return n2[1] < -0.3 ? C2.belly : C2.body;
+    }, { ry: 0.7, step: 0.25 });
+    m.ellipsoid(P6[0][0] - 1, 1.5, 14, 4.2, 1.5, 4.2, C2.sucker);
+    m.ellipsoid(P6[8][0] + 1, P6[8][1] - 0.6, 14, 1.8, 1.4, 1.8, C2.sucker);
+    const S9 = spline(P6);
+    const mid = S9[Math.floor(S9.length * 0.5)].p;
+    const top = Math.ceil(mid[1] + mid[3] * 0.7);
+    for (let i = 0; i < 5; i++) for (let j = -i; j <= i; j++) if (Math.abs(j) <= 2) m.set(mid[0] - 2 + (4 - i), top, 14 + j * 0.9, C2.play);
+    tierFx(m, pal2, a);
+  }
+  function paint(m, a, ph) {
+    const c1 = a.color || "#ff8a3a", c2 = a.color2 || "#4ac8ff";
+    const spl = ["#ffd23a", "#ff4ac8", "#7ae05a", "#ffffff"];
+    worm(m, a, ph, {
+      body: c1,
+      glow: 0.05,
+      clit: mix(c1, "#ffffff", 0.35),
+      noTier: true,
+      after: (mm, pal2, P6) => {
+        const cols = [c2, ...spl].map((c) => pal2(c, { ...GL }));
+        for (let i = 0; i < 22; i++) {
+          const k = 1 + Math.floor(hash1(i, 3) * (P6.length - 2)), p = P6[k], q = P6[k + 1];
+          const t = hash1(i, 5), x = p[0] + (q[0] - p[0]) * t, y = p[1] + (q[1] - p[1]) * t, z = p[2] + (q[2] - p[2]) * t;
+          const ang = hash1(i, 7) * TAU, r = p[3] + 0.2;
+          const sx = x, sy = y + Math.sin(ang) * r, sz = z + Math.cos(ang) * r;
+          const c = cols[i % cols.length];
+          mm.paint(() => mm.sphere(sx, sy, sz, 1.4 + hash1(i, 9) * 1.2, c));
+          if (i % 3 === 0) mm.paint(() => mm.line(sx, sy, sz, sx, sy - 3, sz, c, 0.6));
+        }
+        const t0 = P6[0];
+        const fer = pal2("#d8dee8", METAL), bri = pal2("#e8c890"), dip = pal2(c2, { ...GL });
+        mm.cylinder(t0[1], t0[2], t0[0] - 3, t0[0], 1.8, fer, "x");
+        for (let i = 0; i < 9; i++) {
+          const ang = i / 9 * TAU, dy = Math.cos(ang) * 1.3, dz = Math.sin(ang) * 1.3;
+          mm.line(t0[0] - 3, t0[1] + dy, t0[2] + dz, t0[0] - 8, t0[1] + dy * 1.8 - 0.5, t0[2] + dz * 1.8, bri);
+          mm.line(t0[0] - 6.5, t0[1] + dy * 1.6 - 0.4, t0[2] + dz * 1.6, t0[0] - 8.5, t0[1] + dy * 1.9 - 0.6, t0[2] + dz * 1.9, dip);
+        }
+      }
+    });
+    tierFx(m, palette(m), a);
+  }
+  function games(m, a, ph) {
+    const pal2 = palette(m);
+    const c1 = a.color || "#8a5aff", c2 = a.color2 || "#5affa8";
+    const C2 = {
+      body: pal2(c1, { ...GL }),
+      bodyD: pal2(shade(c1, -0.28), { ...GL }),
+      wing: pal2(mix(c1, "#ffffff", 0.35), { spec: 0.8, specPow: 7 }),
+      vein: pal2(shade(c1, -0.4)),
+      leg: pal2(shade(c1, -0.15), { spec: 0.6 }),
+      legD: pal2(shade(c1, -0.45)),
+      btnA: pal2("#ff4a6a", { spec: 1, specPow: 5, emissive: 0.2 }),
+      btnB: pal2("#ffd23a", { spec: 1, specPow: 5, emissive: 0.2 }),
+      acc: pal2(c2, { ...GL, emissive: 0.15 }),
+      ant: pal2(shade(c1, -0.5))
+    };
+    const kick = Math.sin(ph * TAU) * 1.2;
+    m.ellipsoid(16, 9, 14, 9, 4.6, 5, (x, y) => y < 7 ? C2.bodyD : C2.body);
+    m.ellipsoid(27, 10.5, 14, 4.5, 4.6, 5.2, C2.body);
+    m.ellipsoid(33.5, 11, 14, 3.8, 4.2, 4.6, (x, y) => y > 13 ? C2.bodyD : C2.body);
+    eye(m, pal2, 35, 13, 17.5, 1.6);
+    eye(m, pal2, 35, 13, 10.5, 1.6);
+    for (let x = 9; x <= 28; x++) for (let z = 10; z <= 18; z++) {
+      const y = 13.6 - (28 - x) * 0.06 - Math.abs(z - 14) * 0.3;
+      m.set(x, y, z, x % 3 === 0 || z === 14 || z === 10 || z === 18 ? C2.vein : C2.wing);
+    }
+    m.cylinder(26, 12, 15, 16, 1.4, C2.btnA);
+    m.cylinder(28.5, 16, 15, 16, 1.4, C2.btnB);
+    m.box(25, 15, 17, 25, 15, 19, C2.acc);
+    m.box(24, 15, 18, 26, 15, 18, C2.acc);
+    for (const s of [-1, 1]) {
+      const z = 14 + s * 5.4;
+      m.line(22, 9, z, 13, 17 + kick, z + s * 1.5, C2.leg, 1.6);
+      m.line(13, 17 + kick, z + s * 1.5, 7, 1, z + s * 2.5, C2.legD, 0.6);
+      for (let i = 0; i < 4; i++) m.set(12 - i * 1.4, 14 + kick - i * 3.7, z + s * 1.8, C2.acc);
+      limb(m, [[7, 1, z + s * 2.5], [4, 0, z + s * 2.5]], C2.legD);
+    }
+    for (const [x, dx] of [[30, 3], [26, -1]]) for (const s of [-1, 1]) limb(m, [[x, 8, 14 + s * 4], [x + dx, 5, 14 + s * 7], [x + dx * 1.4, 0, 14 + s * 8]], C2.legD, 0.5);
+    for (const s of [-1, 1]) {
+      limb(m, [[36, 14, 14 + s * 2], [42, 20 + kick * s * 0.5, 14 + s * 4], [46, 27, 14 + s * 6]], C2.ant);
+      m.line(7.5, 9, 14 + s, 2, 11, 14 + s * 3, C2.ant);
+    }
+    tierFx(m, pal2, a);
+  }
+  function fishtop(m, a, ph) {
+    const pal2 = palette(m);
+    const c1 = a.color || "#8a5aff", c2 = a.color2 || "#5affa8";
+    const C2 = {
+      body: pal2(c1, { ...GL }),
+      ring: pal2(shade(c1, -0.25), { ...GL }),
+      wing: pal2(mix(c2, "#ffffff", 0.6), { spec: 0.9, specPow: 6, emissive: 0.1 }),
+      wingE: pal2(mix(c2, "#ffffff", 0.25), { spec: 0.7 }),
+      vein: pal2(shade(c2, -0.35)),
+      tail: pal2(shade(c1, -0.35)),
+      leg: pal2(shade(c1, -0.4)),
+      eye: pal2("#1a1a2a", { spec: 1, smooth: 1 }),
+      spot: pal2(c2, { emissive: 0.5 })
+    };
+    const flap = Math.sin(ph * TAU) * 1.5;
+    const P6 = [[28, 9, 14, 2.6], [22, 8.4, 14, 2.4], [16, 9.6, 14, 2], [11, 12, 14, 1.5], [8, 15, 14, 1.1]];
+    tube2(m, P6, (u, n2) => u * 9 % 1 < 0.2 ? C2.ring : n2[1] > 0.5 && u * 9 % 1 > 0.6 ? C2.spot : C2.body);
+    for (const dz of [-1.5, 0, 1.5]) limb(m, [[8, 15, 14 + dz], [3, 19, 14 + dz * 2.2], [0, 25, 14 + dz * 3.2]], C2.tail);
+    m.ellipsoid(31, 10.5, 14, 3.6, 3.6, 3.4, C2.body);
+    m.ellipsoid(35.5, 10.5, 14, 2.4, 2.4, 2.8, C2.body);
+    for (const s of [-1, 1]) {
+      m.sphere(36.2, 11.6, 14 + s * 2.4, 1.8, C2.eye);
+      m.set(35.8, 12.8, 14 + s * 3.4, pal2("#ffffff", { emissive: 0.4 }));
+    }
+    for (const s of [-1, 1]) {
+      for (let r = 0; r <= 18; r++) for (let k = 0; k <= 10; k++) {
+        const t = k / 10, ang = 0.25 + t * 1.15;
+        const x = 31 - Math.cos(ang) * r * 0.85, y = 13 + Math.sin(ang) * r + flap * (r / 18);
+        const z = 14 + s * (1 + r * 0.12);
+        const edge = r === 18 || k === 0 || k === 10;
+        if (r > 18 * (0.75 + 0.25 * Math.sin(t * Math.PI))) continue;
+        m.set(x, y, z, edge ? C2.wingE : k % 3 === 0 || r % 6 === 0 ? C2.vein : C2.wing);
+      }
+      for (let r = 0; r <= 6; r++) for (let k = 0; k <= 4; k++) m.set(28 - r * 0.6, 12 + k * 0.8 + r * 0.3, 14 + s * (1.6 + r * 0.2), k === 4 ? C2.wingE : C2.wing);
+    }
+    for (let k = 0; k < 3; k++) for (const s of [-1, 1]) limb(m, [[29 + k * 2, 8, 14 + s * 2], [30 + k * 3, 5, 14 + s * 5], [31 + k * 3.5, 0, 14 + s * 6]], C2.leg);
+    tierFx(m, pal2, a);
+  }
+  function chat(m, a, ph) {
+    const pal2 = palette(m);
+    const c1 = a.color || "#4ad0ff", c2 = a.color2 || "#ffffff";
+    const C2 = {
+      shell: pal2(mix(c1, "#ffffff", 0.35), { ...GL }),
+      shellD: pal2(c1, { ...GL }),
+      dot: pal2("#ff7a3a", { ...GL }),
+      light: pal2("#6af0ff", { emissive: 1 }),
+      eye: pal2("#0e0a18", { spec: 1, smooth: 1 }),
+      leg: pal2(mix(c1, "#ffffff", 0.55)),
+      bub: pal2(c2, { spec: 0.6, smooth: 0.5 }),
+      bubE: pal2(shade(c2, -0.18)),
+      bubD: pal2(c1, { spec: 0.8, emissive: 0.2 }),
+      gloss: pal2("#ffffff", { spec: 1, emissive: 0.35 }),
+      fan: pal2(mix(c1, "#ffffff", 0.2), { spec: 0.7 })
+    };
+    const fl = Math.sin(ph * TAU);
+    const P6 = [[6, 7, 12, 1.6], [11, 8, 12, 2.6], [17, 9, 12, 3.4], [24, 10, 12, 3.8], [30, 10.5, 12, 3.6], [34, 10.5, 12, 3]];
+    tube2(m, P6, (u, n2) => {
+      const f = u * 9 % 1;
+      if (n2[1] < -0.55 && f > 0.4 && f < 0.6 && u > 0.2) return C2.light;
+      if (n2[1] > 0.2 && h3(Math.floor(u * 30), Math.floor(n2[2] * 4), 2) < 0.18) return C2.dot;
+      if (n2[1] > 0.5 && n2[2] > 0.3 && f > 0.55 && f < 0.8) return C2.gloss;
+      return f < 0.15 ? C2.shellD : C2.shell;
+    });
+    for (const s of [-1, 1]) {
+      m.sphere(35, 12, 12 + s * 3, 2.2, C2.eye);
+      m.set(34.4, 13.4, 12 + s * 3 + (s > 0 ? 1.8 : -1.6), C2.gloss);
+    }
+    for (const s of [-1, 1]) limb(m, [[36, 11, 12 + s], [42, 14 + fl * s, 12 + s * 2], [46, 12, 12 + s * 3]], C2.leg);
+    for (let k = 0; k < 7; k++) {
+      const x = 14 + k * 2.6, kick = Math.sin(ph * TAU + k * 0.8) * 1.2;
+      for (const s of [-1, 1]) {
+        m.line(x, 7, 12 + s * 1.5, x + kick, 2, 12 + s * 3.5, C2.leg);
+        m.set(x + kick - 0.5, 3, 12 + s * 4, C2.leg);
+      }
+    }
+    for (let i = -1; i <= 1; i++) m.line(6, 7, 12 + i, 1, 5 + Math.abs(i), 12 + i * 2.5, C2.fan, 0.6);
+    const bx = 26, by = 22, bz = 14;
+    m.ellipsoid(bx, by, bz, 8, 4.6, 2.2, (x, y, z) => z < bz - 1 ? C2.bubE : C2.bub);
+    m.line(bx - 3, by - 4, bz, bx - 6, by - 7.5, bz, C2.bub, 1);
+    for (let i = 0; i < 3; i++) m.sphere(bx - 3.5 + i * 3.5, by + (Math.floor(ph * 3) % 3 === i ? 1 : 0), bz + 2, 1, C2.bubD);
+    tierFx(m, pal2, a);
+  }
+  function mail(m, a, ph) {
+    const pal2 = palette(m);
+    const c1 = a.color || "#3a8aff", c2 = a.color2 || "#ffffff";
+    const C2 = {
+      glass: pal2("#bfeeff", { spec: 1, specPow: 4, smooth: 1, emissive: 0.05 }),
+      glassD: pal2("#7ac8e0", { spec: 1, smooth: 1 }),
+      glassH: pal2("#ffffff", { spec: 1, emissive: 0.5 }),
+      cork: pal2("#c8925a", { jitter: 0.12 }),
+      corkD: pal2("#9a6a3a"),
+      paper: pal2("#fff6e0"),
+      paperS: pal2("#e8d8b0"),
+      wax: pal2("#ff4a5a", { spec: 0.9 }),
+      shell: pal2(c1, { ...GL }),
+      spot: pal2(c2, { ...GL }),
+      head: pal2("#1a1828", { spec: 1 }),
+      leg: pal2("#2a2838"),
+      ribbon: pal2(c1, { spec: 0.6 })
+    };
+    const cz = 12, cy = 8;
+    for (let x = 4; x <= 40; x++) {
+      const r = x <= 28 ? 7 : x <= 33 ? 7 - (x - 28) * 0.95 : 2.6;
+      for (let y = Math.floor(cy - r); y <= cy + r; y++) for (let z = Math.floor(cz - r); z <= cz + r; z++) {
+        const d = Math.hypot(y + 0.5 - cy, z + 0.5 - cz);
+        if (d > r) continue;
+        const shell = d > r - 1.1 || x === 4;
+        if (!shell) {
+          if (x >= 9 && x <= 30 && Math.hypot(y + 0.5 - cy, z + 0.5 - cz) < 3) m.set(x, y, z, x === 18 || x === 19 ? C2.ribbon : C2.paper);
+          continue;
+        }
+        const ny = (y + 0.5 - cy) / r, nz = (z + 0.5 - cz) / r;
+        if (nz > 0.55 && Math.abs(ny) < 0.55 && x > 7 && x < 27 && x % 6 !== 0) continue;
+        m.set(x, y, z, ny > 0.55 && nz > 0.2 ? C2.glassH : x === 4 || ny < -0.5 ? C2.glassD : C2.glass);
+      }
+    }
+    m.cylinder(cy, cz, 41, 44, 2.6, (x, y, z) => h3(x, y, z) < 0.25 ? C2.corkD : C2.cork, "x");
+    m.set(18.5, cy, cz + 3, C2.wax);
+    m.set(18.5, cy + 1, cz + 3, C2.wax);
+    const bx = 18, by = cy + 8.5, bz = cz;
+    const st = Math.sin(ph * TAU) * 0.6;
+    m.ellipsoid(bx, by, bz, 4.4, 2.8, 3.8, (x, y, z) => Math.abs(z + 0.5 - bz) < 0.6 && y > by ? C2.head : C2.shell);
+    for (const [dx, dz] of [[-2, -2], [1, 2], [-1, 2], [2, -1], [0, 0]]) m.set(bx + dx, by + 2.5, bz + dz, C2.spot);
+    m.ellipsoid(bx + 4.6, by - 0.4, bz, 1.8, 1.6, 2, C2.head);
+    eye(m, pal2, bx + 5.4, by + 0.4, bz + 1.6, 0.7, "#ffffff");
+    for (let k = -1; k <= 1; k++) for (const s of [-1, 1]) limb(m, [[bx + k * 2.4, by - 1.5, bz + s * 3], [bx + k * 3 + st, by - 3, bz + s * 5], [bx + k * 3.4, by - 5.4, bz + s * 5.5]], C2.leg);
+    tierFx(m, pal2, a);
+  }
+  function fishnet(m, a, ph) {
+    const pal2 = palette(m);
+    const c1 = a.color || "#2a9aff", c2 = a.color2 || "#6ad06a";
+    const C2 = {
+      board: pal2("#fff8ec", { spec: 0.9, specPow: 7, smooth: 0.5 }),
+      stripe: pal2(c2, { spec: 0.8 }),
+      rail: pal2(shade(c2, -0.3)),
+      fin: pal2("#2a2a3a"),
+      body: pal2(c1, { ...GL }),
+      bodyD: pal2(shade(c1, -0.25), { ...GL }),
+      spot: pal2(shade(c1, -0.4), { ...GL }),
+      belly: pal2(mix(c1, "#ffffff", 0.5), { ...GL }),
+      gloss: pal2("#ffffff", { spec: 1, emissive: 0.35 }),
+      arm: pal2(mix(c1, "#ffffff", 0.2), { ...GL }),
+      sucker: pal2(mix(c1, "#ffffff", 0.7))
+    };
+    const tilt = Math.sin(ph * TAU) * 1.2;
+    for (let x = 2; x <= 45; x++) for (let z = 6; z <= 22; z++) {
+      const u = (x + 0.5 - 23.5) / 22, v = (z + 0.5 - 14) / 8;
+      if (u * u + v * v / (1 - Math.min(0.9, Math.abs(u) ** 3)) > 1) continue;
+      const y = 2 + Math.round(u * u * 3 + u * tilt);
+      m.set(x, y, z, Math.abs(z + 0.5 - 14) < 1 ? C2.stripe : C2.board);
+      m.set(x, y - 1, z, C2.rail);
+    }
+    m.box(6, -0, 13, 8, 0, 14, C2.fin);
+    const P6 = [[22, 8, 14, 4.6], [19, 13, 14, 4.2], [16, 18, 14, 3.2], [14, 22, 14, 1.6]];
+    tube2(m, P6, (u, n2) => {
+      if (h3(Math.floor(u * 20), Math.floor(n2[2] * 3 + 3), Math.floor(n2[1] * 3 + 3)) < 0.14) return C2.spot;
+      if (n2[0] < -0.3 && n2[2] > 0.4 && u > 0.2 && u < 0.6) return C2.gloss;
+      return n2[0] > 0.4 ? C2.belly : C2.body;
+    });
+    for (const s of [-1, 1]) for (let i = 0; i < 6; i++) m.line(15 - i * 0.3, 18 + i, 14 + s * 2, 13 - i * 0.6, 17 + i * 0.6, 14 + s * (5 - i * 0.4), C2.bodyD);
+    m.ellipsoid(24, 7.5, 14, 4, 3.6, 4.4, C2.body);
+    for (const s of [-1, 1]) eye(m, pal2, 26, 8.6, 14 + s * 3.6, 1.9);
+    for (let i = 0; i < 8; i++) {
+      const ang = -1.1 + i / 7 * 2.2, s = Math.sin(ph * TAU + i) * 0.8;
+      const ex = 26 + Math.cos(ang) * 7, ez = 14 + Math.sin(ang) * 7;
+      limb(m, [[25, 5, 14 + Math.sin(ang) * 2], [ex - 1, 4 + s * 0.4, ez], [ex + 1.5, 4, ez + s * 0.5], [ex + 2.5, 5, ez]], i % 2 ? C2.arm : C2.bodyD, 0.6);
+    }
+    tierFx(m, pal2, a);
+  }
+  function terminal(m, a, ph) {
+    const pal2 = palette(m);
+    const c1 = a.color || "#24343a", c2 = a.color2 || "#5aff8a";
+    const pebbles = [c1, shade(c1, 0.25), shade(c1, -0.2), "#5a6070", "#3a4048"].map((c) => pal2(c, { jitter: 0.08, smooth: 0.3 }));
+    const C2 = {
+      code: pal2(c2, { emissive: 0.95 }),
+      code2: pal2(mix(c2, "#ffffff", 0.4), { emissive: 1 }),
+      larva: pal2("#d8f0c8", { ...GL }),
+      larvaD: pal2("#a8c898", { ...GL }),
+      head: pal2("#6a4a2a", { spec: 0.9, specPow: 8 }),
+      headS: pal2("#2a1a10", { spec: 0.8 }),
+      leg: pal2("#4a3420"),
+      mouth: pal2("#1a1008")
+    };
+    for (let x = 4; x <= 31; x++) {
+      const r = 5.2 + (x - 4) * 0.06;
+      for (let y = 0; y < 20; y++) for (let z = 0; z < 28; z++) {
+        const d = Math.hypot(y + 0.5 - 7, z + 0.5 - 14);
+        if (d > r) continue;
+        if (x > 6 && d < r - 1.8) continue;
+        const bx = Math.floor((x + Math.floor(y / 2) % 2) / 2), by = Math.floor(y / 2), bz = Math.floor(z / 2);
+        const hsh2 = h3(bx, by, bz, 5);
+        if (d > r - 0.7 && hsh2 < 0.12) continue;
+        const isCode = hsh2 > 0.88;
+        m.set(x, y, z, isCode ? hsh2 > 0.95 ? C2.code2 : C2.code : pebbles[Math.floor(h3(bx, by, bz, 2) * pebbles.length)]);
+      }
+    }
+    const out = 0.5 + 0.5 * Math.sin(ph * TAU);
+    const P6 = [[28, 7, 14, 3.4], [33, 7.4, 14, 3], [36 + out, 8, 14, 2.6]];
+    tube2(m, P6, (u) => u * 5 % 1 < 0.2 ? C2.larvaD : C2.larva);
+    const hx = 39 + out;
+    m.ellipsoid(hx, 8.2, 14, 2.6, 2.4, 2.6, (x, y, z) => Math.abs(z + 0.5 - 14) < 0.8 && y > 8.5 ? C2.headS : C2.head);
+    m.set(hx + 2.4, 7.4, 14, C2.mouth);
+    eye(m, pal2, hx + 1, 9, 15.8, 0.6, "#0a0806");
+    eye(m, pal2, hx + 1, 9, 12.2, 0.6, "#0a0806");
+    for (let k = 0; k < 3; k++) for (const s of [-1, 1]) limb(m, [[33 + k * 1.6 + out, 6, 14 + s * 2], [35 + k * 2 + out, 4, 14 + s * 4], [36 + k * 2.5 + out, 2, 14 + s * 4.5]], C2.leg);
+    tierFx(m, pal2, a);
+  }
+  function settings2(m, a, ph) {
+    const pal2 = palette(m);
+    const c1 = a.color || "#9aa8b8", c2 = a.color2 || "#e8f0f8";
+    const C2 = {
+      gear: pal2(c1, METAL),
+      gearD: pal2(shade(c1, -0.3), METAL),
+      gearL: pal2(c2, METAL),
+      hub: pal2("#ffc83a", METAL),
+      rivet: pal2("#fff4c0", { spec: 1, emissive: 0.2 }),
+      head: pal2(mix(c1, c2, 0.5), METAL),
+      visor: pal2("#2a3448", { spec: 1 }),
+      led: pal2("#5affd8", { emissive: 1 }),
+      spring: pal2("#d8a83a", METAL),
+      ball: pal2("#ff5a6a", { spec: 1, emissive: 0.3 }),
+      axle: pal2("#5a6474", METAL)
+    };
+    const turn = ph * TAU / 8;
+    const n2 = 6;
+    for (let i = 0; i < n2; i++) {
+      const x = 6 + i * 4.6, y = 7.6 + Math.sin(i * 0.9 + ph * TAU) * 0.8;
+      const R2 = 4.2 + Math.sin(i / (n2 - 1) * Math.PI) * 2.2;
+      const teeth = 10;
+      for (let z = -10; z <= 10; z++) for (let yy = -10; yy <= 10; yy++) {
+        const r = Math.hypot(yy, z), ang = Math.atan2(yy, z) + turn * (i % 2 ? 1 : -1);
+        const toothed = Math.cos(ang * teeth) > 0.2 ? R2 + 1.2 : R2;
+        if (r > toothed) continue;
+        for (let dx = 0; dx <= 2; dx++) {
+          const edge = dx === 0 || dx === 2;
+          let c = r > R2 - 0.4 ? C2.gearD : edge ? C2.gear : C2.gearL;
+          if (r < 1.5) c = C2.hub;
+          else if (Math.abs(r - R2 * 0.6) < 0.5 && Math.cos(ang * 4) > 0.9) c = C2.rivet;
+          m.set(x + dx, y + yy, 14 + z, c);
+        }
+      }
+      if (i < n2 - 1) m.line(x + 2, y, 14, x + 4.6, 7.6 + Math.sin((i + 1) * 0.9 + ph * TAU) * 0.8, 14, C2.axle, 1.1);
+    }
+    const hx = 6 + n2 * 4.6 + 3;
+    m.ellipsoid(hx, 9.5, 14, 4.8, 5.2, 5.4, (x, y) => y > 12 ? C2.gearL : C2.head);
+    for (let z = 10; z <= 18; z++) for (let y = 9; y <= 11; y++) m.set(hx + 4.2, y, z, y === 10 && z % 2 === 0 ? C2.led : C2.visor);
+    for (const s of [-1, 1]) {
+      const pts = [];
+      for (let k = 0; k <= 12; k++) pts.push([hx - 1 + Math.sin(k * 1.6) * 0.8, 14 + k * 0.7, 14 + s * (2 + k * 0.25) + Math.cos(k * 1.6) * 0.8]);
+      limb(m, pts, C2.spring);
+      m.sphere(pts[12][0], pts[12][1] + 1, pts[12][2], 1.2, C2.ball);
+    }
+    tierFx(m, pal2, a);
+  }
+  function moreram(m, a, ph) {
+    const pal2 = palette(m);
+    const c1 = a.color || "#3ab85a", c2 = a.color2 || "#ffd84a";
+    const C2 = {
+      pcb: pal2(c1, { jitter: 0.04 }),
+      pcbD: pal2(shade(c1, -0.3)),
+      gold: pal2(c2, METAL),
+      chip: pal2("#1c1e26", { spec: 0.8, specPow: 12 }),
+      label: pal2("#e8eef8"),
+      egg: pal2("#ff9a3a", { spec: 1, specPow: 5, smooth: 1, emissive: 0.2 }),
+      egg2: pal2("#ffb85a", { spec: 1, specPow: 5, smooth: 1, emissive: 0.2 }),
+      yolk: pal2("#ff6a1a", { spec: 0.8, smooth: 1, emissive: 0.15 }),
+      spot: pal2("#1a1020"),
+      hi: pal2("#ffffff", { emissive: 0.6 })
+    };
+    m.box(2, 0, 9, 45, 1, 19, (x, y, z) => z === 9 ? C2.pcbD : C2.pcb);
+    for (let x = 3; x <= 44; x += 2) m.box(x, 0, 19, x, 1, 20, C2.gold);
+    m.box(22, 0, 19, 23, 1, 20, 0);
+    for (let k = 0; k < 4; k++) {
+      const x = 4 + k * 10.5;
+      m.box(x, 2, 11, x + 7, 3, 17, C2.chip);
+      m.box(x + 2, 4, 13, x + 5, 4, 14, C2.label);
+    }
+    const eggs = [[14, 7, 14, 3.4], [20, 7.5, 13, 3.6], [26, 7, 15, 3.3], [17, 12.5, 14, 3.2], [23, 12.4, 14.5, 3.3], [31, 6.6, 13, 3], [20, 17, 14, 3], [9, 6.6, 15, 2.8], [28, 11.6, 12, 2.8]];
+    eggs.forEach(([x, y, z, r], i) => {
+      const bob = Math.sin(ph * TAU + i) * 0.3;
+      m.sphere(x, y + bob, z, r, i % 3 === 0 ? C2.egg2 : C2.egg);
+      m.sphere(x + 0.4, y + bob - 0.4, z + 0.8, r * 0.45, C2.yolk);
+      m.set(x + r * 0.2, y + bob - r * 0.1, z + r * 0.95, C2.spot);
+      m.set(x - r * 0.4, y + bob + r * 0.5, z + r * 0.7, C2.hi);
+    });
+    tierFx(m, pal2, a);
+  }
+  function notavirus(m, a, ph) {
+    const c1 = a.color || "#6ad84a", c2 = a.color2 || "#ff5a5a";
+    worm(m, a, ph, {
+      body: c1,
+      glow: 0.08,
+      clit: mix(c1, c2, 0.5),
+      noTier: true,
+      after: (mm, pal2, P6) => {
+        const h = P6[P6.length - 1];
+        const K2 = pal2("#16121e", { spec: 1, specPow: 8 }), lens = pal2("#cfefff", { spec: 1, emissive: 0.3 }), nose = pal2("#ff9ab0", { spec: 1, specPow: 5, smooth: 1 });
+        const stache = pal2("#3a2418", { jitter: 0.1 }), claw2 = pal2(c2, { ...GL }), clawD = pal2(shade(c2, -0.3), { ...GL });
+        const hx = h[0] + 1.5, hy = h[1] + 1, hz = h[2];
+        for (const s of [-1, 1]) {
+          const ex = hx + 0.6, ez = hz + s * 1.6;
+          for (let i = 0; i < 16; i++) {
+            const ang = i / 16 * TAU;
+            mm.set(ex + 1.6, hy + 1.2 + Math.sin(ang) * 1.6, ez + Math.cos(ang) * 1.6, K2);
+          }
+          mm.set(ex + 1.6, hy + 1.2, ez, lens);
+          mm.set(ex + 1.6, hy + 2, ez, lens);
+          mm.set(ex + 1.6, hy + 1.2, ez + 0.8 * s, lens);
+          mm.line(ex + 1.6, hy + 2.6, ez + s * 1.6, ex - 2, hy + 2.4, ez + s * 2.6, K2);
+        }
+        mm.sphere(hx + 3, hy - 0.6, hz, 1.5, nose);
+        for (let i = -4; i <= 4; i++) mm.line(hx + 2.6, hy - 1.8, hz + i * 0.5, hx + 2.6, hy - 2.6 - Math.abs(i) * 0.15, hz + i * 0.8, stache);
+        const t0 = P6[0], wave = Math.sin(ph * TAU) * 0.8;
+        mm.line(t0[0], t0[1], t0[2], t0[0] - 3, t0[1] + 3 + wave, t0[2], clawD, 0.9);
+        const cx = t0[0] - 4.5, cy = t0[1] + 6 + wave, cz = t0[2];
+        mm.ellipsoid(cx, cy, cz, 2.6, 3.2, 2, claw2);
+        mm.line(cx - 1, cy + 2.6, cz, cx - 2.6, cy + 6, cz, claw2, 1);
+        mm.line(cx + 1, cy + 2.6, cz, cx + 1.6, cy + 5.2, cz, clawD, 0.9);
+      }
+    });
+    tierFx(m, palette(m), a);
+  }
+  function grub(m, a, ph) {
+    notes(m, a, ph);
+  }
+  function modelKind(a) {
+    if (!a) return "crumbs";
+    if (a.shape === "grub") return BAIT_MODELS[a.line] ? a.line : "grub";
+    return BAIT_MODELS[a.shape] ? a.shape : "grub";
+  }
+  function modelFor(a, ph = 0, extraY = 0) {
+    const kind = modelKind(a);
+    const def2 = BAIT_MODELS[kind];
+    const m = new VoxelModel(def2.dims[0], def2.dims[1] + extraY, def2.dims[2]);
+    def2.build(m, a || {}, (ph % 1 + 1) % 1);
+    return { model: m, def: def2, kind };
+  }
+  var GL, METAL, h3, D, BAIT_MODELS;
+  var init_baitmodels = __esm({
+    "src/fishing/baitmodels.js"() {
+      init_voxel();
+      init_color();
+      init_math();
+      GL = { spec: 0.85, specPow: 9, smooth: 0.75 };
+      METAL = { spec: 1, specPow: 5, smooth: 0.55 };
+      h3 = (x, y, z, s = 0) => {
+        let h = x * 374761393 + y * 668265263 + z * 1274126177 + s * 2246822519 | 0;
+        h = Math.imul(h ^ h >>> 13, 1274126177);
+        return ((h ^ h >>> 16) >>> 0) / 4294967296;
+      };
+      D = (dims, yaw, pitch, build3, anim = false) => ({ dims, yaw, pitch, build: build3, anim });
+      BAIT_MODELS = {
+        crumbs: D([44, 20, 28], 24, 26, crumbs),
+        bread: D([48, 28, 32], 26, 24, bread),
+        worm: D([48, 22, 28], -16, 22, worm, true),
+        sugar: D([36, 28, 36], 34, 28, sugar),
+        chip: D([44, 18, 44], 30, 34, chip),
+        popup: D([44, 36, 16], 18, 14, popup),
+        flood: D([36, 44, 32], 20, 16, flood),
+        lantern: D([32, 46, 32], 22, 14, lantern),
+        golden: D([46, 30, 22], -14, 14, golden),
+        blackhole: D([48, 32, 48], 14, 11, blackhole),
+        relic: D([34, 40, 18], 22, 12, relic),
+        // flavour lines
+        notes: D([44, 26, 28], -14, 20, notes, true),
+        documents: D([48, 22, 30], -20, 26, documents, true),
+        calculator: D([48, 28, 30], -24, 30, calculator, true),
+        calendar: D([48, 24, 30], -22, 32, calendar, true),
+        music: D([48, 26, 28], -14, 16, music, true),
+        photos: D([48, 32, 28], -16, 20, photos, true),
+        videos: D([48, 22, 28], -16, 24, videos, true),
+        paint: D([48, 24, 28], -16, 22, paint, true),
+        games: D([48, 30, 28], -20, 22, games, true),
+        fishtop: D([44, 34, 28], -20, 18, fishtop, true),
+        chat: D([48, 30, 26], -16, 18, chat, true),
+        mail: D([46, 26, 26], -18, 22, mail, true),
+        fishnet: D([48, 26, 28], -18, 22, fishnet, true),
+        terminal: D([46, 20, 28], -20, 22, terminal, true),
+        settings: D([48, 26, 28], -18, 20, settings2, true),
+        moreram: D([48, 22, 28], -16, 32, moreram, true),
+        notavirus: D([48, 22, 28], -16, 22, notavirus, true),
+        grub: D([44, 26, 28], -14, 20, grub, true)
+      };
+    }
+  });
+
+  // src/fishing/baitart.js
+  function charm(m, kind, ox, oy, z = 10, k = 2) {
+    const put = (x, y, c, dz = 0) => m.box(ox + x * k, oy + y * k, z + dz * k, ox + x * k + k - 1, oy + y * k + k - 1, z + dz * k + k - 1, c);
     if (kind === "star") {
-      const c = m.color("#ffd23a", { emissive: 0.5, spec: 1 });
-      for (const [x, y] of [[0, 1], [1, 1], [2, 1], [1, 0], [1, 2], [1, 3], [0, 3], [2, 3]]) m.set(ox + x, oy + y, z, c);
+      const c = m.color("#ffd23a", { emissive: 0.5, spec: 1, specPow: 4 }), d = m.color("#e8961a", { spec: 0.8 });
+      for (const [x, y] of [[2, 4], [1, 3], [2, 3], [3, 3], [0, 2], [1, 2], [2, 2], [3, 2], [4, 2], [1, 1], [2, 1], [3, 1], [1, 0], [3, 0]]) put(x, y, y === 2 && (x === 0 || x === 4) ? d : c);
     } else if (kind === "heart") {
-      const c = m.color("#ff4a7a", { spec: 1, specPow: 6 });
-      for (const [x, y] of [[0, 2], [1, 2], [3, 2], [4, 2], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1], [1, 0], [2, 0], [3, 0], [2, -1]]) m.set(ox + x - 1, oy + y + 1, z, c);
+      const c = m.color("#ff4a7a", { spec: 1, specPow: 6, smooth: 0.6 }), h = m.color("#ffb0c8", { spec: 1, emissive: 0.3 });
+      for (const [x, y] of [[0, 3], [1, 3], [3, 3], [4, 3], [0, 2], [1, 2], [2, 2], [3, 2], [4, 2], [1, 1], [2, 1], [3, 1], [2, 0]]) put(x, y, c);
+      put(1, 3, h, 1);
     } else if (kind === "gem") {
-      const c = m.color("#6af0ff", { emissive: 0.4, spec: 1, specPow: 4 });
-      for (const [x, y] of [[1, 0], [0, 1], [1, 1], [2, 1], [0, 2], [1, 2], [2, 2], [1, 3]]) m.set(ox + x, oy + y, z, c);
+      const c = m.color("#6af0ff", { emissive: 0.4, spec: 1, specPow: 4 }), d = m.color("#2ab8e0", { spec: 1, specPow: 4 }), w = m.color("#ffffff", { emissive: 0.6 });
+      for (const [x, y] of [[1, 3], [2, 3], [3, 3], [0, 2], [1, 2], [2, 2], [3, 2], [4, 2], [1, 1], [2, 1], [3, 1], [2, 0]]) put(x, y, y < 2 ? d : c);
+      put(1, 2, w, 1);
     } else if (kind === "clover") {
-      const c = m.color("#4ad85a", { spec: 0.8 }), s = m.color("#2a8a3a");
-      for (const [x, y] of [[0, 2], [1, 2], [3, 2], [4, 2], [0, 3], [1, 3], [3, 3], [4, 3], [0, 0], [1, 0], [3, 0], [4, 0], [2, 1], [2, 2]]) m.set(ox + x - 1, oy + y, z, c);
-      m.set(ox + 1, oy - 1, z, s);
+      const c = m.color("#4ad85a", { spec: 0.8, smooth: 0.5 }), d = m.color("#2a9a3a"), s = m.color("#2a7a2a");
+      for (const [x, y] of [[0, 3], [1, 3], [3, 3], [4, 3], [0, 4], [1, 4], [3, 4], [4, 4], [0, 1], [1, 1], [3, 1], [4, 1], [0, 0], [1, 0], [3, 0], [4, 0], [2, 2]]) put(x, y + 1, (x + y) % 3 ? c : d);
+      put(2, 0, s);
+      put(2, 1, s);
     } else if (kind === "crown") {
-      const c = m.color("#ffc83a", { spec: 1, specPow: 5, emissive: 0.3 }), j = m.color("#ff4a6a", { emissive: 0.5 });
-      m.box(ox - 1, oy, z, ox + 3, oy + 1, z, c);
-      for (const x of [-1, 1, 3]) m.set(ox + x, oy + 2, z, c);
-      m.set(ox + 1, oy + 1, z + 1, j);
+      const c = m.color("#ffc83a", { spec: 1, specPow: 5, emissive: 0.3 }), d = m.color("#d8901a", { spec: 1 }), j = m.color("#ff4a6a", { emissive: 0.5, spec: 1 });
+      for (let x = 0; x <= 4; x++) {
+        put(x, 0, d);
+        put(x, 1, c);
+      }
+      for (const x of [0, 2, 4]) put(x, 2, c);
+      put(2, 1, j, 1);
     }
   }
-  function buildModel(a) {
-    const m = new VoxelModel(22, 16, 13);
+  function buildModel(a, ph = 0) {
     if (a.shape === "charm") {
-      charm(m, a.charm, 4, 4);
-      return m;
+      const m2 = new VoxelModel(12, 14, 6);
+      charm(m2, a.charm, 1, 1, 2, 2);
+      return m2;
     }
-    const shape5 = BUILDERS[a.shape] ? a.shape : "grub";
-    if (shape5 === "grub") grub(m, a);
-    else BUILDERS[shape5](m, a);
-    if (a.custom && a.color && shape5 !== "grub") {
+    const hasCharm = a.charm && a.charm !== "none";
+    const { model: m, kind } = modelFor(a, ph, hasCharm ? 12 : 0);
+    if (a.custom && a.color && a.shape !== "grub" && kind !== "grub") {
       const tint = /* @__PURE__ */ new Map();
       m.recolor((x, y, z, c) => {
         const pe = m.palette[c];
         if (!pe || pe.emissive >= 0.8) return c;
         let t = tint.get(c);
         if (t === void 0) {
-          t = m.color(mix(pe.color, a.color, 0.45), { ...pe });
+          t = m.color(mix(pe.color, a.color, 0.4), { ...pe });
           tint.set(c, t);
         }
         return t;
       });
     }
-    if (a.charm && a.charm !== "none") {
+    if (hasCharm) {
       const b = m.bounds();
-      charm(m, a.charm, Math.min(m.nx - 4, (b?.x1 ?? 10) - 2), Math.min(m.ny - 5, (b?.y1 ?? 8) + 1));
+      charm(m, a.charm, Math.max(0, Math.min(m.nx - 11, (b?.x1 ?? 20) - 8)), Math.min(m.ny - 11, (b?.y1 ?? 10) + 1), Math.round(m.nz / 2));
     }
     return m;
   }
-  function artKey(a, scale) {
-    return [a.shape, a.color, a.color2, a.tier, a.charm, a.custom ? 1 : 0, scale].join("|");
+  function artKey(a) {
+    return [a.shape, a.line || "", a.color, a.color2, a.tier, a.charm, a.custom ? 1 : 0].join("|");
   }
-  function baitVoxel(art2, scale = 2) {
-    const a = art2 || { shape: "crumbs" };
-    const key = artKey(a, scale);
+  function modelOf(a, ph) {
+    const k = artKey(a) + "@" + ph;
+    let m = MCACHE.get(k);
+    if (!m) {
+      m = buildModel(a, ph);
+      MCACHE.set(k, m);
+      if (MCACHE.size > 72) MCACHE.delete(MCACHE.keys().next().value);
+    }
+    return m;
+  }
+  function viewOf(a) {
+    const d = BAIT_MODELS[modelKind(a)] || BAIT_MODELS.grub;
+    return { yaw: d.yaw, pitch: d.pitch, anim: d.anim };
+  }
+  function extentOf(m, yaw, pitch) {
+    const b = m.bounds();
+    if (!b) return 1;
+    const Y = yaw * Math.PI / 180, Pt = pitch * Math.PI / 180;
+    const cy = Math.cos(Y), sy = Math.sin(Y), cp = Math.cos(Pt), sp = Math.sin(Pt);
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (let i = 0; i < 8; i++) {
+      const px = i & 1 ? b.x1 + 1 : b.x0, py = i & 2 ? b.y1 + 1 : b.y0, pz = i & 4 ? b.z1 + 1 : b.z0;
+      const X = px * cy - pz * sy;
+      const Yp = -(px * -sp * sy + py * cp + pz * -sp * cy);
+      x0 = Math.min(x0, X);
+      x1 = Math.max(x1, X);
+      y0 = Math.min(y0, Yp);
+      y1 = Math.max(y1, Yp);
+    }
+    return Math.max(x1 - x0, y1 - y0, 1);
+  }
+  function thicken(c) {
+    const w = c.width, h = c.height;
+    const out = makeCanvas(w + 2, h + 2), g = ctxOf(out);
+    g.drawImage(c, 1, 1);
+    const id = g.getImageData(0, 0, w + 2, h + 2), d = id.data, src = d.slice();
+    for (let y = 0; y < h + 2; y++) for (let x = 0; x < w + 2; x++) {
+      const i = (y * (w + 2) + x) * 4;
+      if (src[i + 3] > 40) continue;
+      let n2 = false;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const xx = x + dx, yy = y + dy;
+        if (xx < 0 || yy < 0 || xx >= w + 2 || yy >= h + 2) continue;
+        const j = (yy * (w + 2) + xx) * 4;
+        if (src[j + 3] > 200 && src[j] + src[j + 1] + src[j + 2] < 150) {
+          n2 = true;
+          break;
+        }
+      }
+      if (n2) {
+        d[i] = 20;
+        d[i + 1] = 12;
+        d[i + 2] = 34;
+        d[i + 3] = 255;
+      }
+    }
+    g.putImageData(id, 0, 0);
+    return out;
+  }
+  function budget() {
+    const n2 = performance.now();
+    if (n2 - bWin > 16) {
+      bWin = n2;
+      bSpent = 0;
+    }
+    return bSpent < 6;
+  }
+  function spend(t0) {
+    bSpent += performance.now() - t0;
+  }
+  function renderFit(a, px, ph = 0, o = {}) {
+    const m = modelOf(a, ph);
+    const v = viewOf(a);
+    const s = px / extentOf(m, v.yaw, v.pitch) * (a.scale || 1);
+    const ro = { scale: s, yaw: v.yaw, pitch: v.pitch, outline: true, groundAO: false, glowRadius: o.glowR ?? 2 };
+    const r = renderVoxels(m, ro);
+    const out = { canvas: r.canvas, glow: r.glow, w: r.w || r.canvas.width, h: r.h || r.canvas.height };
+    if (o.hi !== false) {
+      const lazy = (pick2) => () => {
+        if (!budget()) return void 0;
+        const t0 = performance.now();
+        let big = null;
+        try {
+          const r2 = renderVoxels(modelOf(a, ph), { ...ro, scale: s * HI, glowRadius: (ro.glowRadius || 2) * HI });
+          big = pick2 === "glow" ? r2.glow ? fitHi(r.glow, r2.glow, r.ox, r.oy, r2.ox, r2.oy) : null : fitHi(r.canvas, thicken(r2.canvas), r.ox, r.oy, r2.ox + 1, r2.oy + 1);
+        } catch (e) {
+          big = null;
+        }
+        spend(t0);
+        return big;
+      };
+      withHi(out.canvas, lazy("main"));
+      if (out.glow) withHi(out.glow, lazy("glow"));
+    }
+    return out;
+  }
+  function cached(key, make) {
     let r = VCACHE.get(key);
     if (r) return r;
-    let out;
+    const t0 = performance.now();
     try {
-      const m = buildModel(a);
-      const ro = { scale, yaw: a.shape === "grub" || a.shape === "worm" ? -14 : 28, pitch: 24, outline: true, groundAO: false };
-      const v = renderVoxels(m, ro);
-      withHi(v.canvas, () => {
-        const v2 = renderVoxels(m, { ...ro, scale: scale * HI });
-        return fitHi(v.canvas, v2.canvas, v.ox, v.oy, v2.ox, v2.oy);
-      });
-      out = { canvas: v.canvas, glow: v.glow, w: v.w, h: v.h };
+      r = make();
     } catch (e) {
-      const c = makeCanvas(6, 6);
-      const g = ctxOf(c);
-      g.fillStyle = a.color || "#ffd84a";
+      console.error("bait art", e);
+      const c = makeCanvas(6, 6), g = ctxOf(c);
+      g.fillStyle = "#ffd84a";
       g.fillRect(1, 1, 4, 4);
-      out = { canvas: c, glow: null, w: 6, h: 6 };
+      r = { canvas: c, glow: null, w: 6, h: 6 };
     }
-    VCACHE.set(key, out);
-    if (VCACHE.size > 240) VCACHE.delete(VCACHE.keys().next().value);
-    return out;
+    spend(t0);
+    VCACHE.set(key, r);
+    if (VCACHE.size > 400) VCACHE.delete(VCACHE.keys().next().value);
+    return r;
   }
   function baitMini(art2) {
     const a = art2 || { shape: "crumbs" };
-    const v = baitVoxel(a, 1);
-    if (v.w <= 18) return v.canvas;
-    const k = 16 / v.w;
-    const c = makeCanvas(16, Math.max(1, Math.round(v.h * k)));
-    const g = ctxOf(c);
-    g.drawImage(v.canvas, 0, 0, c.width, c.height);
-    return c;
+    return cached("mini|" + artKey(a), () => renderFit(a, 16)).canvas;
+  }
+  function baitHook(art2, t = 0) {
+    const a = art2 || { shape: "crumbs" };
+    const frames = viewOf(a).anim ? 8 : 1;
+    const fi = frames > 1 ? Math.floor((t / 1.1 % 1 + 1) % 1 * frames) : 0;
+    return cached("hook|" + artKey(a) + "|" + fi, () => {
+      const r = renderFit(a, 40, fi / frames, { hi: false, glowR: 2 });
+      return { canvas: r.canvas, glow: r.glow, w: r.w / 2, h: r.h / 2 };
+    });
   }
   function baitSprite(type, t = 0) {
     if (type && typeof type === "object") return baitMini(type);
@@ -20651,11 +22035,12 @@ void main() {
     if (c) return baitMini({ shape: "grub", color: c[0], color2: c[1] });
     return baitMini({ shape: "crumbs" });
   }
-  var P4, HOOK, TYPE_ART, SPECIAL_SHAPES, GLOSS, BUILDERS, VCACHE;
+  var P4, HOOK, TYPE_ART, SPECIAL_SHAPES, MCACHE, bWin, bSpent, VCACHE;
   var init_baitart = __esm({
     "src/fishing/baitart.js"() {
       init_pixel();
       init_voxel();
+      init_baitmodels();
       init_canvas();
       init_color();
       init_math();
@@ -20702,8 +22087,9 @@ kmlmk..
         trash: ["#6ad84a", "#ff5a5a"]
       };
       SPECIAL_SHAPES = /* @__PURE__ */ new Set(["crumbs", "bread", "worm", "sugar", "chip", "popup", "flood", "lantern", "golden", "blackhole", "relic"]);
-      GLOSS = { spec: 0.9, specPow: 10, smooth: 0.7 };
-      BUILDERS = { grub, crumbs, bread, worm, sugar, chip, popup, flood, lantern, golden, blackhole, relic };
+      MCACHE = /* @__PURE__ */ new Map();
+      bWin = 0;
+      bSpent = 0;
       VCACHE = /* @__PURE__ */ new Map();
     }
   });
@@ -22406,11 +23792,11 @@ kmlmk..
         return Math.abs(x - px) < 2 + t * 2.6 && z - pz < 9.4 - Math.abs(x - px) * 0.3 && y < 1;
       }, (x, y, z) => Math.floor(x) & 1 && z > pz + 3 ? flD : fl);
     } else if (s === "slippers") {
-      const b = kit.col("#7ad8ff", { smooth: 0.9, jitter: 0.1 }), w = kit.col("#ffffff", { smooth: 0.9, jitter: 0.08 }), eye = K(kit, "#0c1a3a", { jitter: 0 });
+      const b = kit.col("#7ad8ff", { smooth: 0.9, jitter: 0.1 }), w = kit.col("#ffffff", { smooth: 0.9, jitter: 0.08 }), eye2 = K(kit, "#0c1a3a", { jitter: 0 });
       m.ellipsoid(px, 1.6, pz + 1.2, 2.5, 1.8, 4, (x, y) => y < 1 ? w : b);
       m.line(px, 3, pz - 0.6, px, 4.4, pz - 2, b, 0.8);
       m.line(px, 1.4, pz + 4.6, px, 1.2, pz + 6.2, b, 0.7);
-      for (const sx of [-1, 1]) m.set(px + sx * 1.6, 2, pz + 3.6, eye);
+      for (const sx of [-1, 1]) m.set(px + sx * 1.6, 2, pz + 3.6, eye2);
     } else if (s === "moon") {
       const w = KG(kit, "#f6faff"), g = KG(kit, "#c8d4e4"), o = KG(kit, "#ff8a2a");
       m.cylinder(px, pz, 0.4, 4.2, 2.6, w);
@@ -23104,10 +24490,10 @@ kmlmk..
   }
   function accPixel(id, which, u, v, A2) {
     const th = Math.max(0.12, 1 / A2.px);
-    const eye = which === "eyeL" || which === "eyeR";
+    const eye2 = which === "eyeL" || which === "eyeR";
     const glint = u + v > -0.95 && u + v < -0.55;
     if (id === "shades" || id === "flare") {
-      if (eye) {
+      if (eye2) {
         const inL = Math.abs(u) < 1.32 && v > -0.95 && v < 0.85 && !(Math.abs(u) > 0.9 && v > 0.35 && (Math.abs(u) - 0.9) ** 2 + (v - 0.35) ** 2 > 0.2);
         if (!inL) return null;
         const edge = Math.abs(u) > 1.32 - th || v < -0.95 + th;
@@ -23125,7 +24511,7 @@ kmlmk..
       return null;
     }
     if (id === "round" || id === "goggles" || id === "monocle") {
-      if (eye) {
+      if (eye2) {
         if (id === "monocle" && which !== "eyeL") return null;
         const r = Math.hypot(u, v);
         const R0 = id === "goggles" ? 1.32 : 1.24, w = id === "goggles" ? 0.32 : th;
@@ -23138,7 +24524,7 @@ kmlmk..
       return null;
     }
     if (id === "heart" || id === "star") {
-      if (!eye) return which === "mid" && Math.abs(v + 1) < 0.35 && Math.abs(u) < 2.4 ? "#ff4a8a" : null;
+      if (!eye2) return which === "mid" && Math.abs(v + 1) < 0.35 && Math.abs(u) < 2.4 ? "#ff4a8a" : null;
       const inside = id === "heart" ? heartIn(u, v, 1.45) : Math.hypot(u, v) < starR(u, v) * 1.9;
       const inner = id === "heart" ? heartIn(u, v, 1.2) : Math.hypot(u, v) < starR(u, v) * 1.6;
       if (!inside) return null;
@@ -23168,7 +24554,7 @@ kmlmk..
       if (lobe || curl) return v < -0.55 ? "#7a5a3a" : "#5a3a22";
       return null;
     }
-    if (id === "lashes" && eye) {
+    if (id === "lashes" && eye2) {
       const s = which === "eyeL" ? 1 : -1;
       for (const [lx, ly, dx, dy] of [[0.55, -0.85, 0.45, -0.35], [0.85, -0.55, 0.5, -0.15]]) {
         const t = ((u * s - lx) * dx + (v - ly) * dy) / (dx * dx + dy * dy);
@@ -24367,14 +25753,14 @@ kmlmk..
   function candidates(m, on, facing) {
     const set = on == null ? null : new Set(Array.isArray(on) ? on : [on]);
     const out = [];
-    const { nx, ny, nz, data, palette } = m;
+    const { nx, ny, nz, data, palette: palette2 } = m;
     const SY = nx, SZ = nx * ny;
     for (let z = 0; z < nz; z++) for (let y = 0; y < ny; y++) {
       const row2 = SY * y + SZ * z;
       for (let x = 0; x < nx; x++) {
         const i = row2 + x;
         const v = data[i];
-        if (!v || set && !set.has(v) || palette[v].emissive || palette[v].noDecal) continue;
+        if (!v || set && !set.has(v) || palette2[v].emissive || palette2[v].noDecal) continue;
         const top = y + 1 >= ny || !data[i + SY];
         const front = z + 1 >= nz || !data[i + SZ] || x + 1 >= nx || !data[i + 1];
         const side = front || x === 0 || !data[i - 1] || z === 0 || !data[i - SZ];
@@ -24417,7 +25803,7 @@ kmlmk..
       if (set && !set.has(p)) return null;
       if (p === idx[0] || p === idx[1] || p === idx[2]) return null;
       const up = m.get(x, y + 1, z);
-      return (up === idx[0] || up === idx[1]) && h3(x, y, z, seed) < 0.55 ? idx[2] : null;
+      return (up === idx[0] || up === idx[1]) && h32(x, y, z, seed) < 0.55 ? idx[2] : null;
     });
     scatter(m, rng2, Math.round(m.nx * amount * 0.25), [idx[0], idx[1]], "top", (x, y, z) => {
       m.set(x, y + 1, z, idx[1]);
@@ -24453,7 +25839,7 @@ kmlmk..
       const hh = hgt * (1 - d * d) * (0.7 + 0.6 * noise3(x * 0.12, 3, z * 0.12, seed)) + 0.5;
       return y <= hh;
     }, (x, y, z) => {
-      const r = h3(x, y, z, seed + 4);
+      const r = h32(x, y, z, seed + 4);
       return r < 0.1 ? idx[2] : r < 0.35 ? idx[1] : idx[0];
     });
     return idx;
@@ -24540,7 +25926,7 @@ kmlmk..
     const set = new Set(idx);
     const pick2 = patch(idx, freq, seed);
     m.recolor((x, y, z, p) => set.has(p) ? pick2(x, y, z) : null);
-    m.recolor((x, y, z, p) => set.has(p) && m.exposed(x, y, z) && h3(x, y, z, seed + 1) < 0.03 ? idx[2] : null);
+    m.recolor((x, y, z, p) => set.has(p) && m.exposed(x, y, z) && h32(x, y, z, seed + 1) < 0.03 ? idx[2] : null);
   }
   function starfish(m, cx, cy, cz, R2, col, dot3, rot3 = 0) {
     for (let k = 0; k < 5; k++) {
@@ -24548,7 +25934,7 @@ kmlmk..
       for (let t = 0; t <= R2; t += 0.5) {
         const r = 1.9 * (1 - t / R2) + 0.6;
         const x = cx + Math.cos(a) * t, z = cz + Math.sin(a) * t;
-        m.cylinder(x, z, cy, cy + (t < R2 * 0.5 ? 1 : 0), r, (xx, yy, zz) => h3(xx, yy, zz, 1) < 0.18 ? dot3 : col);
+        m.cylinder(x, z, cy, cy + (t < R2 * 0.5 ? 1 : 0), r, (xx, yy, zz) => h32(xx, yy, zz, 1) < 0.18 ? dot3 : col);
       }
     }
     m.cylinder(cx, cz, cy, cy + 1, 2.6, col);
@@ -24561,14 +25947,14 @@ kmlmk..
       const n2 = fbm3(x * freq, y * freq * 0.8, z * freq, 2, seed);
       if (n2 > 1 - amount * 0.42) return rust[0];
       if (n2 > 1 - amount * 0.5) return rust[2];
-      if (h3(x, 0, z, seed) < amount * 0.1 && fbm3(x * freq, (y + 4) * freq * 0.8, z * freq, 2, seed) > 0.5) return rust[1];
+      if (h32(x, 0, z, seed) < amount * 0.1 && fbm3(x * freq, (y + 4) * freq * 0.8, z * freq, 2, seed) > 0.5) return rust[1];
       return null;
     });
   }
   function junkMound(m, cx, cz, rx, rz, hgt, seed) {
     const sand = sandMound(m, cx, cz, rx, rz, hgt, seed, JUNK_SAND);
     const scrap = [m.color("#6a7184", { jitter: 0.1 }), m.color("#a4552f", { jitter: 0.1 }), m.color("#3c8f6a", { jitter: 0.1 })];
-    m.recolor((x, y, z, p) => sand.includes(p) && !m.get(x, y + 1, z) && h3(x, y, z, seed + 8) < 0.06 ? scrap[h3(z, x, y, 3) * 3 | 0] : null);
+    m.recolor((x, y, z, p) => sand.includes(p) && !m.get(x, y + 1, z) && h32(x, y, z, seed + 8) < 0.06 ? scrap[h32(z, x, y, 3) * 3 | 0] : null);
     return sand;
   }
   function crtPart(m, screenIdx, opts = {}) {
@@ -24598,7 +25984,7 @@ kmlmk..
     const cu = Math.floor(u / 5), cv = Math.floor(v / 6);
     const lu = (u % 5 + 5) % 5, lv = (v % 6 + 6) % 6;
     if (lu > 3 || lv > 4) return false;
-    const g = RUNES[Math.floor(h3(cu, cv, 0, seed) * RUNES.length)];
+    const g = RUNES[Math.floor(h32(cu, cv, 0, seed) * RUNES.length)];
     return g[4 - lv][lu] === "#";
   }
   function abyssStone(m, cols = ABYSS_STONE) {
@@ -24655,7 +26041,7 @@ kmlmk..
       if (y % bh === 0) return mortar;
       const off = row2 % 2 ? bw >> 1 : 0;
       if ((x + z + off) % bw === 0) return mortar;
-      return cols[h3(Math.floor((x + z + off) / bw), row2, 0, 3) * cols.length | 0];
+      return cols[h32(Math.floor((x + z + off) / bw), row2, 0, 3) * cols.length | 0];
     };
   }
   function frameBase(key, build3) {
@@ -24693,13 +26079,13 @@ kmlmk..
     const q = r * r - (x - cx) ** 2 - (y - cy) ** 2;
     return q >= 0 ? Math.floor(cz + Math.sqrt(q) - 0.3) : null;
   }
-  function miniDuck(m, x, y, z, s, yel, beak, eye, face4 = 1) {
+  function miniDuck(m, x, y, z, s, yel, beak, eye2, face4 = 1) {
     m.ellipsoid(x, y + 1.6 * s, z, 3 * s, 2 * s, 2.4 * s, yel);
     m.ellipsoid(x - 2.6 * s * face4, y + 2.7 * s, z, 1.3 * s, 1.3 * s, 1.5 * s, yel);
     m.sphere(x + 1.5 * s * face4, y + 4.3 * s, z, 1.8 * s, yel);
     m.ellipsoid(x + 3.3 * s * face4, y + 4 * s, z, 1.3 * s, 0.6 * s, 1 * s, beak);
-    m.set(x + 2.1 * s * face4, y + 4.9 * s, z + 1.4 * s, eye);
-    m.set(x + 2.1 * s * face4, y + 4.9 * s, z - 1.4 * s, eye);
+    m.set(x + 2.1 * s * face4, y + 4.9 * s, z + 1.4 * s, eye2);
+    m.set(x + 2.1 * s * face4, y + 4.9 * s, z - 1.4 * s, eye2);
   }
   function glyphs(m, text, x, y, z, c, s = 1) {
     for (const ch of text) {
@@ -24729,7 +26115,7 @@ kmlmk..
     for (let y = y0; y < y1; y++) {
       const t = (y - y0) / (y1 - y0);
       const r = (5.2 + Math.sin(t * Math.PI * 0.9 + 0.2) * 2.2 - t * 1.6) * k;
-      m.cylinder(cx, cz, y, y, r, (x, yy, z) => starC && h3(x, yy, z, 3 + frame) < 0.04 ? starC : liquid);
+      m.cylinder(cx, cz, y, y, r, (x, yy, z) => starC && h32(x, yy, z, 3 + frame) < 0.04 ? starC : liquid);
     }
     const blobs = [[22, 4.6, 0, 3], [32, 3.2, 2, 4.5], [40, 3.4, -1.5, 3.5], [49, 2.6, 1, 3], [28, 2.2, -3.5, 3.5], [45, 2, 3, 2]];
     blobs.forEach(([by, br, bx, bz], i) => {
@@ -24819,7 +26205,7 @@ kmlmk..
     cache6.set(key, p);
     return p;
   }
-  var PERM, NVAL, sm, h3, topOpen, unpackIdx, SAND, REEF_ROCK, MOSS, WOOD, RUST, DEFS, INTERACT, CORAL_SCHEMES, JUNK_SAND, GUN, BEIGE, ABYSS_STONE, ABYSS_SILT, BONE, RUNES, GEMS, CASTLE_STONE, LAVA, BASES, GLYPH, PIANO_TUNE, TV_BARS, JUKE, LAMP_INTERACT, ROCKET_SEQ, PROPS, PROP_VARIANTS, ANIMATED_DECOR, MODELS, cache6;
+  var PERM, NVAL, sm, h32, topOpen, unpackIdx, SAND, REEF_ROCK, MOSS, WOOD, RUST, DEFS, INTERACT, CORAL_SCHEMES, JUNK_SAND, GUN, BEIGE, ABYSS_STONE, ABYSS_SILT, BONE, RUNES, GEMS, CASTLE_STONE, LAVA, BASES, GLYPH, PIANO_TUNE, TV_BARS, JUKE, LAMP_INTERACT, ROCKET_SEQ, PROPS, PROP_VARIANTS, ANIMATED_DECOR, MODELS, cache6;
   var init_props = __esm({
     "src/gfx/props.js"() {
       init_voxel();
@@ -24836,7 +26222,7 @@ kmlmk..
         for (let i = 0; i < 256; i++) NVAL[i] = r.next();
       }
       sm = (t) => t * t * (3 - 2 * t);
-      h3 = (x, y, z, s = 0) => hash3(x, y, z, s);
+      h32 = (x, y, z, s = 0) => hash3(x, y, z, s);
       topOpen = (m, x, y, z) => !m.get(x, y + 1, z);
       unpackIdx = (m, i) => [i % m.nx, Math.floor(i / m.nx) % m.ny, Math.floor(i / (m.nx * m.ny))];
       SAND = ["#e8cf96", "#d8ba80", "#f6e4b4"];
@@ -24931,16 +26317,16 @@ kmlmk..
         const st = reefRock(m, rng2);
         facetRock(m, rng2, 28, 2, 20, 9, 5, 8, st[0], 10);
         stoneTex(m, st, 3);
-        const col = (x, y, z) => h3(x, y, z, 2) < 0.12 ? tip : y < 10 ? dk : body;
+        const col = (x, y, z) => h32(x, y, z, 2) < 0.12 ? tip : y < 10 ? dk : body;
         branchCoral(m, rng2, [28, 4, 20], [0, 1, 0], 13, 3.1, 4, col, tip, { spread: 0.75, shrink: 0.72, lenK: 0.8 });
-        surface(m, (x, y, z, p) => p === body && h3(x, y, z, 9) < 0.07 ? tip : null);
+        surface(m, (x, y, z, p) => p === body && h32(x, y, z, 9) < 0.07 ? tip : null);
         return { m, yaw: 32 };
       });
       def("coral_fan", { name: "Sea Fan", biome: "shallows", tags: ["coral"], decor: { price: 70, size: 1 } }, ({ rng: rng2, variant }) => {
         const schemes = [["#c24fd0", "#f2a6ff", "#7e2f9a"], ["#e8475d", "#ffb0b0", "#9c2440"], ["#f2b53c", "#fff1a6", "#b0702a"]];
         const sc = schemes[variant % schemes.length];
-        const W4 = 60, H = 56, D = 14;
-        const m = new VoxelModel(W4, H, D);
+        const W4 = 60, H = 56, D2 = 14;
+        const m = new VoxelModel(W4, H, D2);
         const vein = m.color(sc[0], { jitter: 0.1 });
         const rim = m.color(sc[1], { jitter: 0.1 });
         const trunk = m.color(sc[2], { jitter: 0.1, smooth: 0.4 });
@@ -24973,19 +26359,19 @@ kmlmk..
         m.line(cx, 0, 6, cx, 8, 6.5, trunk, 2.2);
         const st = reefRock(m, rng2);
         facetRock(m, rng2, cx, 1.5, 7, 7, 4, 6, st[0], 9);
-        m.recolor((x, y, z, p) => p === vein && h3(x, y, z, 5) < 0.08 ? rim : null);
+        m.recolor((x, y, z, p) => p === vein && h32(x, y, z, 5) < 0.08 ? rim : null);
         return { m, yaw: 22, pitch: 22 };
       });
       def("coral_brain", { name: "Brain Coral", biome: "shallows", tags: ["coral"], decor: { price: 45, size: 1 } }, ({ rng: rng2, variant }) => {
-        const W4 = 46, H = 26, D = 40;
-        const m = new VoxelModel(W4, H, D);
+        const W4 = 46, H = 26, D2 = 40;
+        const m = new VoxelModel(W4, H, D2);
         const schemes = [["#ee8f62", "#a8463c", "#ffd08a"], ["#b9d65e", "#557f36", "#eef59a"], ["#e07fb4", "#86397a", "#ffc4de"]];
         const sc = schemes[variant % schemes.length];
         const body = m.color(sc[0], { jitter: 0.1, smooth: 0.75 });
         const groove = m.color(sc[1], { jitter: 0.08, smooth: 0.6 });
         const ridge = m.color(sc[2], { jitter: 0.1, smooth: 0.75 });
         const seed = rng2.int(0, 999);
-        blob(m, W4 / 2, 1, D / 2, 20, 22, 17.5, 0.05, 0.08, seed, body, 0);
+        blob(m, W4 / 2, 1, D2 / 2, 20, 22, 17.5, 0.05, 0.08, seed, body, 0);
         const g = (x, y, z) => {
           const f = fbm3(x * 0.07, y * 0.09, z * 0.07, 2, seed + 5) * 6;
           return Math.abs(f - Math.floor(f) - 0.5);
@@ -25029,7 +26415,7 @@ kmlmk..
           m.box(top[0] - 0.5, top[1] - 7, top[2] - 0.5, top[0] + 0.5, top[1] - 7, top[2] + 0.5, inner);
           m.paint(() => m.cylinder(top[0], top[2], top[1] - 6, top[1] - 2.5, r - 1, inner));
         }
-        m.recolor((x, y, z, p) => p === body && m.exposed(x, y, z) && h3(x, y, z, 3) < 0.09 ? pore : null);
+        m.recolor((x, y, z, p) => p === body && m.exposed(x, y, z) && h32(x, y, z, 3) < 0.09 ? pore : null);
         return { m, yaw: 30 };
       });
       def("coral_staghorn", { name: "Staghorn Coral", biome: "shallows", tags: ["coral"], decor: { price: 65, size: 2 } }, ({ rng: rng2, variant }) => {
@@ -25047,7 +26433,7 @@ kmlmk..
           branchCoral(m, rng2, [31 + Math.cos(a) * 3, 1, 23 + Math.sin(a) * 3], [Math.cos(a) * out, 0.75, Math.sin(a) * out], rng2.float(11, 14), 1.9, 2, col, tip, { spread: 0.55, shrink: 0.8, lenK: 0.82, up: 0.16, three: 0.1, tipK: 0.75 });
         }
         m.sphere(31, 1, 23, 5, dk);
-        surface(m, (x, y, z, p) => p === body && h3(x, y, z, 6) < 0.1 ? dk : null);
+        surface(m, (x, y, z, p) => p === body && h32(x, y, z, 6) < 0.1 ? dk : null);
         return { m, yaw: 30 };
       });
       def("anemone_base", { name: "Anemone", biome: "shallows", tags: ["coral", "home"], decor: { price: 90, size: 1 } }, ({ rng: rng2, variant }) => {
@@ -25090,7 +26476,7 @@ kmlmk..
         const pole = m.color("#8a5a3a", { jitter: 0 });
         const shellP = m.color("#ffb0c8", { jitter: 0.05, smooth: 0.4 });
         const shellW = m.color("#fff3e6", { jitter: 0.05, smooth: 0.4 });
-        const tex2 = (x, y, z) => y % 6 === 0 ? sand[1] : h3(x, y, z, 1) < 0.18 ? sand[2] : h3(x, y, z, 2) < 0.18 ? sand[1] : sand[0];
+        const tex2 = (x, y, z) => y % 6 === 0 ? sand[1] : h32(x, y, z, 1) < 0.18 ? sand[2] : h32(x, y, z, 2) < 0.18 ? sand[1] : sand[0];
         shape2(m, 2, 0, 2, 61, 6, 45, (x, y, z) => {
           const d = ((x - 32) / 30) ** 2 + ((z - 24) / 22) ** 2;
           return d < 1 && y < 6 * (1 - d) ** 0.6 + 1;
@@ -25146,8 +26532,8 @@ kmlmk..
         return { m, yaw: 30 };
       });
       def("treasure_chest", { name: "Treasure Chest", biome: "shallows", tags: ["wreck", "treasure"], decor: { price: 250, size: 1 } }, ({ frame, rng: rng2 }) => {
-        const W4 = 46, H = 44, D = 52;
-        const m = new VoxelModel(W4, H, D);
+        const W4 = 46, H = 44, D2 = 52;
+        const m = new VoxelModel(W4, H, D2);
         const plank = [m.color("#8e512c", { jitter: 0.14 }), m.color("#a0602f", { jitter: 0.14 }), m.color("#7c4428", { jitter: 0.14 })];
         const grain2 = m.color("#6a3622", { jitter: 0.06 });
         const gold = m.color("#eab23c", { jitter: 0.08, spec: 1.2 });
@@ -25161,17 +26547,17 @@ kmlmk..
         const gems = [m.color("#ff5b7a", { emissive: 0.7, jitter: 0 }), m.color("#5be0ff", { emissive: 0.7, jitter: 0 }), m.color("#a8ff6b", { emissive: 0.7, jitter: 0 })];
         const inner = m.color("#3e1e18", { jitter: 0.05 });
         const x0 = 3, x1 = 42, z0 = 22, z1 = 47, yTop = 17;
-        const pl = (x, y, z) => h3(x, Math.floor(y / 4), 0, 3) < 0.25 && (x * 7 + y) % 5 === 0 ? grain2 : plank[Math.floor(y / 4) % 3];
+        const pl = (x, y, z) => h32(x, Math.floor(y / 4), 0, 3) < 0.25 && (x * 7 + y) % 5 === 0 ? grain2 : plank[Math.floor(y / 4) % 3];
         m.box(x0, 0, z0, x1, yTop, z1, pl);
         m.sub(() => m.box(x0 + 2, 3, z0 + 2, x1 - 2, yTop, z1 - 2));
         m.box(x0 + 2, 3, z0 + 2, x1 - 2, 3, z1 - 2, inner);
         const bandX = [x0, x0 + 1, x0 + 9, x0 + 10, x1 - 10, x1 - 9, x1 - 1, x1];
         const isEdge = (x) => x === x0 || x === x1 || x === x0 + 1 || x === x1 - 1;
         const bands = (ya, yb) => {
-          for (const bx of bandX) m.paint(() => m.box(bx, ya, 0, bx, yb, D - 1, isEdge(bx) ? goldDk : gold));
+          for (const bx of bandX) m.paint(() => m.box(bx, ya, 0, bx, yb, D2 - 1, isEdge(bx) ? goldDk : gold));
         };
         bands(0, yTop);
-        m.paint(() => m.box(0, 0, 0, W4 - 1, 1, D - 1, goldDk));
+        m.paint(() => m.box(0, 0, 0, W4 - 1, 1, D2 - 1, goldDk));
         for (const bx of [x0 + 9, x1 - 9]) for (let y = 3; y < yTop; y += 4) m.set(bx, y, z1 + 1, rivet);
         if (frame === 0) {
           const zc = (z0 + z1 + 1) / 2, rz = (z1 - z0 + 1) / 2;
@@ -25189,8 +26575,8 @@ kmlmk..
             const d = ((x - cx) / 19) ** 2 + ((z - cz) / 12) ** 2;
             return y < yTop + 6 * (1 - d) + noise3(x * 0.4, 0, z * 0.4, 3) * 2;
           }, (x, y, z) => {
-            const r = h3(x, y, z, 2);
-            return r < 0.04 ? gems[h3(x, z, y, 5) * 3 | 0] : r < 0.25 ? coinL : r < 0.45 ? coinD : coin2;
+            const r = h32(x, y, z, 2);
+            return r < 0.04 ? gems[h32(x, z, y, 5) * 3 | 0] : r < 0.25 ? coinL : r < 0.45 ? coinD : coin2;
           });
           const lid = part(m, W4, 16, 28);
           const zc = 13, rz = 13;
@@ -25200,7 +26586,7 @@ kmlmk..
           lid.paint(() => lid.box(x0 + 2, 0, 0, x1 - 2, 12, 27, (x, y, z) => lid.exposed(x, y, z) && y < 10 ? inner : null));
           stampRot(m, lid, [0, 0, 0], [0, yTop + 1, z0], -104, 0, 0);
           for (let i = 0; i < 12; i++) {
-            const x = 4 + (h3(i, 1, 1, 9) * 36 | 0), z = Math.min(D - 1, z1 + 2 + (h3(i, 2, 1, 9) * 3 | 0));
+            const x = 4 + (h32(i, 1, 1, 9) * 36 | 0), z = Math.min(D2 - 1, z1 + 2 + (h32(i, 2, 1, 9) * 3 | 0));
             m.set(x, 0, z, i % 3 ? coin2 : coinL);
             if (i % 4 === 0) m.set(x + 1, 0, z, coinD);
           }
@@ -25227,7 +26613,7 @@ kmlmk..
         }, shellCol);
         m.sub(() => shape2(m, cx - RX, 4, cz - RZ, cx + RX, RY + 1, cz + RZ, (x, y, z) => ((x - cx) / (RX - 2.5)) ** 2 + ((y - RY) / (RY - 2.5)) ** 2 + ((z - cz) / (RZ - 2.5)) ** 2 <= 1, 0));
         shape2(m, cx - RX, 3, cz - RZ, cx + RX, RY - 2, cz + RZ, (x, y, z) => ((x - cx) / (RX - 2)) ** 2 + ((y - RY) / (RY - 2)) ** 2 + ((z - cz) / (RZ - 2)) ** 2 <= 1 && y <= RY - 3 + Math.sin(x * 0.6) * 0.8, (x, y, z) => {
-          const n2 = h3(x, y, z, 4);
+          const n2 = h32(x, y, z, 4);
           return n2 < 0.12 ? mantle[1] : noise3(x * 0.3, y * 0.3, z * 0.3, 2) < 0.4 ? mantle[2] : mantle[0];
         });
         const top = part(m, 54, 20, 46);
@@ -25338,7 +26724,7 @@ kmlmk..
             return wood[st * 7 % 3];
           });
         }
-        for (const by of [4, 5, 32, 33, 13, 24]) m.paint(() => m.cylinder(cx, cz, by, by, 16, (x, y, z) => h3(x, y, z, 3) < 0.25 ? rust : band));
+        for (const by of [4, 5, 32, 33, 13, 24]) m.paint(() => m.cylinder(cx, cz, by, by, 16, (x, y, z) => h32(x, y, z, 3) < 0.25 ? rust : band));
         m.paint(() => m.box(0, 37, 0, 33, 37, 33, lid));
         m.sub(() => m.cylinder(cx, cz, 37, 37, 10));
         m.paint(() => m.box(0, 36, 0, 33, 36, 33, (x, y, z) => Math.hypot(x + 0.5 - cx, z + 0.5 - cz) < 10.5 ? (x >> 2) % 2 ? lid : lidD : null));
@@ -25469,7 +26855,7 @@ kmlmk..
           for (let y = top; y >= bottom; y--) {
             if (noise3(x * 0.25, y * 0.25, 1, 7) > 0.7) continue;
             const bil = Math.round(Math.sin((x - 36) / 34 * Math.PI) * 2.5 + (top - y) * 0.06);
-            hull.set(x, y, zc + 3 + bil, (y >> 2) % 3 === 0 ? sailStripe : sail[h3(x, y, 2, 1) < 0.3 ? 1 : 0]);
+            hull.set(x, y, zc + 3 + bil, (y >> 2) % 3 === 0 ? sailStripe : sail[h32(x, y, 2, 1) < 0.3 ? 1 : 0]);
           }
         }
         hull.line(50, 66, zc, 98, 34, zc, rope, 0.45);
@@ -25550,7 +26936,7 @@ kmlmk..
             if (c === 4) m.box(x, 5, z, x + 26, 6, z + 2, key[0]);
             continue;
           }
-          if (h3(r, c, 0, 4) < 0.05) continue;
+          if (h32(r, c, 0, 4) < 0.05) continue;
           const col = r === 0 && c === 0 ? keyR : r === 3 && c === 13 ? keyB : c > 12 ? keyD : key[(r + c) % 5 === 0 ? 1 : 0];
           m.box(x, 5, z, x + 2, 6, z + 2, col);
         }
@@ -25631,7 +27017,7 @@ kmlmk..
           if (h >= 5) for (let x = x0 + 5; x < x1 - 8; x += 2) m.box(x, y + 1, z1, x, y + h - 2, z1, vent);
           else for (let x = x0 + 5; x < x1 - 8; x += 3) m.set(x, y + 1, z1, vent);
           for (let k = 0; k < 3; k++) {
-            const on = h3(u, k, frame, 11) < 0.62;
+            const on = h32(u, k, frame, 11) < 0.62;
             m.set(x1 - 4 - k * 2, y + Math.floor(h / 2), z1 + 1, on ? ledOn[(u + k) % 3] : ledOff);
           }
           y += h + 1;
@@ -25679,14 +27065,14 @@ kmlmk..
       def("rusty_barrel", { name: "Toxic Drum", biome: "junkyard", tags: ["junk", "glow"] }, ({ rng: rng2 }) => {
         const m = new VoxelModel(52, 42, 44);
         const d = part(m, 26, 34, 26);
-        const paint3 = [m.color("#3f7a8c", { jitter: 0.08, smooth: 0.55 }), m.color("#35687a", { jitter: 0.08, smooth: 0.55 })];
+        const paint4 = [m.color("#3f7a8c", { jitter: 0.08, smooth: 0.55 }), m.color("#35687a", { jitter: 0.08, smooth: 0.55 })];
         const rust = RUST.map((c) => m.color(c, { jitter: 0.12, smooth: 0.55 }));
         const hazard = m.color("#f2c230", { jitter: 0.05, smooth: 0.55 });
         const blk = m.color("#2a2620", { jitter: 0.03, smooth: 0.55 });
         const goo = [m.color("#9dff4a", { emissive: 0.85, jitter: 0.05, smooth: 0.6 }), m.color("#5fd43a", { emissive: 0.6, jitter: 0.05, smooth: 0.6 })];
-        d.cylinder(13, 13, 0, 31, 11, (x, y, z) => y === 10 || y === 21 ? paint3[1] : paint3[0]);
-        for (const y of [10, 21]) d.cylinder(13, 13, y, y, 11.8, paint3[1]);
-        d.cylinder(13, 13, 31, 31, 10, paint3[1]);
+        d.cylinder(13, 13, 0, 31, 11, (x, y, z) => y === 10 || y === 21 ? paint4[1] : paint4[0]);
+        for (const y of [10, 21]) d.cylinder(13, 13, y, y, 11.8, paint4[1]);
+        d.cylinder(13, 13, 31, 31, 10, paint4[1]);
         d.sub(() => d.cylinder(13, 13, 31, 31, 9));
         d.cylinder(17, 13, 31, 32, 1.6, blk);
         d.paint(() => shape2(d, 0, 12, 0, 25, 19, 25, (x, y, z) => z > 18 && Math.abs(x - 13) < 6, (x, y, z) => Math.abs(x - 13) < 1.5 && y > 14 && y < 18 ? blk : hazard));
@@ -25694,12 +27080,12 @@ kmlmk..
           d.sphere(4, 25, 21, 2.6);
           d.sphere(22, 6, 21, 2.2);
         });
-        rustify(d, paint3, rust, 9, 0.6);
+        rustify(d, paint4, rust, 9, 0.6);
         stampRot(m, d, [13, 0, 13], [20, 0, 22], 0, 15, -78);
         shape2(m, 30, 0, 12, 51, 3, 40, (x, y, z) => {
           const r = ((x - 41) / 10) ** 2 + ((z - 26) / 12) ** 2 + noise3(x * 0.25, 0, z * 0.25, 3) * 0.6;
           return r < 1 && y <= 1.5 - r;
-        }, (x, y, z) => h3(x, y, z, 2) < 0.3 ? goo[0] : goo[1]);
+        }, (x, y, z) => h32(x, y, z, 2) < 0.3 ? goo[0] : goo[1]);
         junkMound(m, 24, 22, 23, 19, 4, 7);
         moss(m, rng2, 2, MOSS, 0.25, 0.2);
         return { m, yaw: 30, light: "#9dff4a" };
@@ -25752,7 +27138,7 @@ kmlmk..
           if (r2 > R2 * R2) return false;
           const zs = -6 + r2 / (R2 * R2) * 9;
           return z >= zs && z <= zs + 2.4;
-        }, (x, y, z) => white[h3(x >> 2, y >> 2, z >> 2, 3) < 0.3 ? 1 : 0]);
+        }, (x, y, z) => white[h32(x >> 2, y >> 2, z >> 2, 3) < 0.3 ? 1 : 0]);
         shapeRot(m, c, R2 + 3, rot3, (x, y, z) => {
           const r = Math.hypot(x, y);
           return r > R2 - 1.2 && r <= R2 + 0.3 && z >= 2.2 && z <= 4.2;
@@ -25846,7 +27232,7 @@ kmlmk..
           if (edge) {
             m.set(x, y, z, pcb[2]);
             if ((x + z) % 3 === 0) {
-              const l = leds[h3(z, x, y, 2) * 3 | 0];
+              const l = leds[h32(z, x, y, 2) * 3 | 0];
               m.set(x, y + 1, z, l);
               m.set(x, y + 2, z, l);
             }
@@ -25891,7 +27277,7 @@ kmlmk..
         const body = [m.color("#d2a24a", { jitter: 0.07, smooth: 0.25 }), m.color("#b8862f", { jitter: 0.07, smooth: 0.25 }), m.color("#e8c46e", { jitter: 0.05, smooth: 0.25 })];
         const joint = [m.color(GUN[1], { jitter: 0.06, smooth: 0.5 }), m.color(GUN[0], { jitter: 0.06, smooth: 0.5 })];
         const dark = m.color("#1f1d26", { jitter: 0.02 });
-        const eye = m.color("#5ff4ff", { emissive: 1, jitter: 0 });
+        const eye2 = m.color("#5ff4ff", { emissive: 1, jitter: 0 });
         const eyeDead = m.color("#3a3440", { jitter: 0 });
         const screen = m.color("#ff6a5a", { emissive: 0.7, jitter: 0.02 });
         const bolt2 = m.color("#f0e0b0", { jitter: 0 });
@@ -25914,7 +27300,7 @@ kmlmk..
         head.box(3, 0, 3, 26, 18, 22, body[0]);
         head.box(2, 18, 2, 27, 20, 23, body[1]);
         head.box(6, 6, 23, 12, 12, 23, dark);
-        head.box(7, 7, 23, 11, 11, 23, eye);
+        head.box(7, 7, 23, 11, 11, 23, eye2);
         head.box(17, 6, 23, 23, 12, 23, dark);
         head.box(18, 7, 23, 22, 11, 23, eyeDead);
         head.line(19, 8, 24, 22, 11, 24, rust[0], 0.4);
@@ -26035,7 +27421,7 @@ kmlmk..
         const glow = m.color("#5ff4ff", { emissive: 1, jitter: 0 });
         const glowV = m.color("#b46bff", { emissive: 1, jitter: 0 });
         const zc = 17;
-        const blockCol = (x, y, z) => y % 8 === 0 || (x + Math.floor(y / 8) % 2 * 5) % 10 === 0 ? seam : st[h3(x >> 3, y >> 3, z >> 3, 2) * 3 | 0];
+        const blockCol = (x, y, z) => y % 8 === 0 || (x + Math.floor(y / 8) % 2 * 5) % 10 === 0 ? seam : st[h32(x >> 3, y >> 3, z >> 3, 2) * 3 | 0];
         m.box(6, 0, zc - 9, 23, 58, zc + 8, blockCol);
         m.box(68, 0, zc - 9, 85, 58, zc + 8, blockCol);
         m.box(4, 0, zc - 11, 25, 3, zc + 10, st[1]);
@@ -26200,7 +27586,7 @@ kmlmk..
             return d <= 1 && yy >= ty - 0.5 - r * 0.12 * (1 - Math.hypot(xx - tx, zz - z) / r);
           }, (xx, yy, zz) => yy < ty + 0.6 ? gill : yy > ty + r * 0.35 ? capL : cap);
         }
-        m.recolor((x, y, z, p) => (p === cap || p === capL) && !m.get(x, y + 1, z) && h3(x >> 1, y, z >> 1, 3) < 0.16 ? spot : null);
+        m.recolor((x, y, z, p) => (p === cap || p === capL) && !m.get(x, y + 1, z) && h32(x >> 1, y, z >> 1, 3) < 0.16 ? spot : null);
         scatter(m, rng2, 8, st, "top", (x, y, z) => {
           m.set(x, y + 1, z, stem[1]);
           m.set(x, y + 2, z, capL);
@@ -26210,7 +27596,7 @@ kmlmk..
       });
       def("tube_worms", { name: "Tube Worms", biome: "abyss", tags: ["plant", "vent"], decor: { price: 150, size: 1 } }, ({ rng: rng2 }) => {
         const m = new VoxelModel(54, 66, 48);
-        const tube2 = [m.color("#ece6da", { smooth: 0.55, jitter: 0.06 }), m.color("#cfc6b6", { smooth: 0.55, jitter: 0.06 }), m.color("#a89e8e", { smooth: 0.55, jitter: 0.05 })];
+        const tube3 = [m.color("#ece6da", { smooth: 0.55, jitter: 0.06 }), m.color("#cfc6b6", { smooth: 0.55, jitter: 0.06 }), m.color("#a89e8e", { smooth: 0.55, jitter: 0.05 })];
         const plume = [m.color("#ff3d5a", { smooth: 0.4, jitter: 0.08, emissive: 0.35 }), m.color("#ff8a9a", { smooth: 0.4, jitter: 0.06, emissive: 0.5 }), m.color("#b8203e", { smooth: 0.4, jitter: 0.06, emissive: 0.2 })];
         const st = [m.color("#2e2b40", { smooth: 0.5, jitter: 0.1 }), m.color("#3c3852", { smooth: 0.5, jitter: 0.1 }), m.color("#5a4a52", { smooth: 0.5, jitter: 0.1 })];
         facetRock(m, rng2, 27, 3, 24, 17, 8, 15, st[0], 12);
@@ -26223,7 +27609,7 @@ kmlmk..
           const lean = [Math.cos(a) * rr * 0.04, Math.sin(a) * rr * 0.04];
           const r = rng2.float(1.3, 2);
           const top = [x + lean[0] * hgt, hgt, z + lean[1] * hgt];
-          m.tube([[x, 3, z, r + 0.3], [x + lean[0] * hgt * 0.5, hgt * 0.5, z + lean[1] * hgt * 0.5, r], top.concat(r)], (xx, yy) => yy % 5 === 0 ? tube2[2] : yy % 5 === 1 ? tube2[1] : tube2[0], 3);
+          m.tube([[x, 3, z, r + 0.3], [x + lean[0] * hgt * 0.5, hgt * 0.5, z + lean[1] * hgt * 0.5, r], top.concat(r)], (xx, yy) => yy % 5 === 0 ? tube3[2] : yy % 5 === 1 ? tube3[1] : tube3[0], 3);
           for (let k = 0; k < 10; k++) {
             const pa = k / 10 * Math.PI * 2, len = rng2.float(2.5, 4.5);
             m.line(top[0], top[1] + 1, top[2], top[0] + Math.cos(pa) * len * 0.6, top[1] + len, top[2] + Math.sin(pa) * len * 0.6, k % 3 ? plume[0] : plume[2], 0.6);
@@ -26269,7 +27655,7 @@ kmlmk..
             const ang = t * Math.PI * 0.92;
             pts.push([x + t * 5, y0 + Math.sin(ang) * H * 0.86, zc + 2 + (1 - Math.cos(ang)) * W4 * 0.62, 2.7 - t * 1.5]);
           }
-          rc.tube(pts, (xx, yy, zz) => h3(xx, yy, zz, 1) < 0.07 ? bone[2] : bone[0], 3);
+          rc.tube(pts, (xx, yy, zz) => h32(xx, yy, zz, 1) < 0.07 ? bone[2] : bone[0], 3);
           const back = pts.slice(0, 7).map(([px, py, pz, pr]) => [px, py, zc - (pz - zc) * 0.85 - 2, pr]);
           rc.tube(back, bone[1], 3);
           if (broken) rc.tube([[x + 10, 2, zc + 32, 1.6], [x + 16, 2, zc + 28, 1.4], [x + 22, 2, zc + 30, 1.2]], bone[1]);
@@ -26287,7 +27673,7 @@ kmlmk..
         const deep = m.color("#1c1830", { jitter: 0.02, light: -0.5 });
         const crack = m.color("#5a5060", { jitter: 0.03 });
         const tooth = m.color("#f2ead8", { smooth: 0.4, jitter: 0.04 });
-        const eye = m.color("#ffd84a", { emissive: 1, jitter: 0 });
+        const eye2 = m.color("#ffd84a", { emissive: 1, jitter: 0 });
         const sk = part(m, 86, 52, 48);
         const zc = 24;
         sk.ellipsoid(22, 26, zc, 20, 20, 19, bone[0]);
@@ -26299,8 +27685,8 @@ kmlmk..
         sk.recolor((x, y, z, p) => !sk.get(x, y + 1, z) ? bone[2] : null);
         sk.sub(() => sk.ellipsoid(30, 30, zc + 14, 9, 8, 9));
         sk.ellipsoid(30, 30, zc + 9, 8, 7, 3, deep);
-        sk.set(28, 31, zc + 12, eye);
-        sk.set(33, 31, zc + 12, eye);
+        sk.set(28, 31, zc + 12, eye2);
+        sk.set(33, 31, zc + 12, eye2);
         sk.sub(() => sk.ellipsoid(72, 26, zc + 10, 4, 3, 4));
         sk.sub(() => sk.ellipsoid(50, 22, zc + 15, 8, 5, 5));
         sk.ellipsoid(50, 22, zc + 10, 7, 4, 2, deep);
@@ -26376,7 +27762,7 @@ kmlmk..
           if (dx > 13 || dz > 5.5) return false;
           if (y > 48 && ((x - 15) / 13) ** 2 + ((y - 48) / 14) ** 2 > 1) return false;
           return dx + dz < 17.5;
-        }, (x, y, z) => st[h3(x >> 2, y >> 2, 0, 3) * 2 | 0]);
+        }, (x, y, z) => st[h32(x >> 2, y >> 2, 0, 3) * 2 | 0]);
         for (let y = 6; y < 56; y++) for (let x = 4; x < 27; x++) {
           if (!slab2.get(x, y, 12)) continue;
           const border = x === 4 || x === 26 || y === 6;
@@ -26650,7 +28036,7 @@ kmlmk..
         const m = new VoxelModel(40, 36, 30);
         const yel = [m.color("#ffd23a", { smooth: 0.85, jitter: 0.03, spec: 1.6, specPow: 14 }), m.color("#f2b42a", { smooth: 0.85, jitter: 0.03 })];
         const beak = m.color("#ff8a2a", { smooth: 0.7, jitter: 0.02 });
-        const eye = m.color("#1a1a22", { jitter: 0 });
+        const eye2 = m.color("#1a1a22", { jitter: 0 });
         const glint = m.color("#ffffff", { jitter: 0 });
         m.ellipsoid(18, 8, 15, 13, 8.5, 10.5, yel[0]);
         m.sub(() => m.box(0, 0, 0, 39, 1, 29));
@@ -26659,7 +28045,7 @@ kmlmk..
         m.ellipsoid(32, 19.5, 15, 4.5, 1.6, 3.4, beak);
         m.ellipsoid(31.5, 17.8, 15, 3.6, 1, 2.6, beak);
         for (const s of [-1, 1]) {
-          m.box(27, 23, 15 + s * 5.5, 28, 24, 15 + s * 5.5, eye);
+          m.box(27, 23, 15 + s * 5.5, 28, 24, 15 + s * 5.5, eye2);
           m.set(28, 24, 15 + s * 5.5 + (s > 0 ? 1 : -1) * 0, glint);
         }
         m.ellipsoid(15, 11, 23.5, 6, 3.5, 2, yel[1]);
@@ -26712,13 +28098,13 @@ kmlmk..
         for (let y = 0; y < 44; y++) {
           const t = y / 44;
           const r = 15 + Math.sin(t * Math.PI) * 4 - t * 3;
-          m.cylinder(cx, cz, y, y, r, (x, yy, z) => h3(x, yy, z, 3) < 0.08 ? stem[1] : stem[0]);
+          m.cylinder(cx, cz, y, y, r, (x, yy, z) => h32(x, yy, z, 3) < 0.08 ? stem[1] : stem[0]);
         }
         shape2(m, cx - 32, 38, cz - 30, cx + 32, 80, cz + 30, (x, y, z) => {
           const d = ((x - cx) / 31) ** 2 + ((y - 42) / 30) ** 2 + ((z - cz) / 28) ** 2;
           return d <= 1 && y >= 42 - Math.hypot(x - cx, z - cz) * 0.12;
         }, (x, y, z) => y < 44 ? gill : cap[0]);
-        m.recolor((x, y, z, p) => p === cap[0] && !m.get(x, y + 1, z) === false && h3(x, y, z, 1) < 0.05 ? cap[1] : null);
+        m.recolor((x, y, z, p) => p === cap[0] && !m.get(x, y + 1, z) === false && h32(x, y, z, 1) < 0.05 ? cap[1] : null);
         const spots = [[cx - 14, 64, cz + 12, 4], [cx + 10, 68, cz + 14, 5], [cx + 2, 74, cz - 2, 4], [cx - 22, 56, cz - 4, 3.5], [cx + 22, 58, cz + 2, 3.5], [cx - 6, 60, cz + 22, 3.5], [cx + 18, 52, cz + 18, 3]];
         for (const [x, y, z, r] of spots) m.paint(() => m.sphere(x, y, z, r, (xx, yy, zz) => m.exposed(xx, yy, zz) ? spot : null));
         const dz = cz + 18;
@@ -26929,7 +28315,7 @@ kmlmk..
         const beard = m.color("#f6f4ee", { smooth: 0.7, jitter: 0.06 });
         const hat = m.color("#e03e3a", { smooth: 0.6, jitter: 0.04 });
         const hatD = m.color("#b82e34", { smooth: 0.6, jitter: 0.04 });
-        const eye = m.color("#1e1a24", { jitter: 0 });
+        const eye2 = m.color("#1e1a24", { jitter: 0 });
         const blush = m.color("#ff9aa8", { jitter: 0, smooth: 0.8 });
         const rod = m.color("#8a5a34", { jitter: 0.04 });
         const line = m.color("#d8e4ec", { jitter: 0 });
@@ -26957,11 +28343,11 @@ kmlmk..
         m.sphere(cx, 26.4, cz + 6.6, 1.9, nose);
         const ez = cz + 6;
         if (frame === 0) {
-          m.box(cx - 3, 28, ez, cx - 2, 29, ez, eye);
-          m.box(cx + 2, 28, ez, cx + 3, 29, ez, eye);
+          m.box(cx - 3, 28, ez, cx - 2, 29, ez, eye2);
+          m.box(cx + 2, 28, ez, cx + 3, 29, ez, eye2);
         } else {
-          m.box(cx - 3, 28, ez, cx - 2, 28, ez, eye);
-          m.box(cx + 2, 28, ez, cx + 3, 29, ez, eye);
+          m.box(cx - 3, 28, ez, cx - 2, 28, ez, eye2);
+          m.box(cx + 2, 28, ez, cx + 3, 29, ez, eye2);
           m.box(cx + 1, 31, ez - 1, cx + 3, 31, ez - 1, beard);
         }
         m.set(cx - 4, 26, ez - 1, blush);
@@ -26996,7 +28382,7 @@ kmlmk..
         const pinkD = m.color("#f2589e", { smooth: 0.75, jitter: 0.03 });
         const beakW = m.color("#ffe2ec", { smooth: 0.5 });
         const beakB = m.color("#2a2228", { jitter: 0 });
-        const eye = m.color("#1a1420", { jitter: 0 });
+        const eye2 = m.color("#1a1420", { jitter: 0 });
         const white = m.color("#ffffff", { jitter: 0 });
         const steel = m.color("#70747e", { spec: 1, jitter: 0.02 });
         const cz = 13;
@@ -27020,7 +28406,7 @@ kmlmk..
         m.line(b0[0], b0[1], cz, b1[0], b1[1], cz, beakW, 1.2);
         m.line(b1[0], b1[1], cz, b2[0], b2[1], cz, beakB, 0.9);
         for (const s of [-1, 1]) {
-          m.set(hx + (peck ? 1 : 0.5), hy + 1, cz + s * 3.4, eye);
+          m.set(hx + (peck ? 1 : 0.5), hy + 1, cz + s * 3.4, eye2);
           m.set(hx + (peck ? 1 : 0.5), hy + 2, cz + s * 3.4, white);
         }
         return { m, yaw: 26, ground: [20, 0, cz], anchors: { head: [hx, hy, cz] } };
@@ -27116,8 +28502,8 @@ kmlmk..
           const fa = lat / LAT, fo = lon / LON;
           if (fa % 1 < 0.14 || fo % 1 < 0.12) return grout;
           const ti = Math.floor(fa), to = Math.floor(fo) % 22;
-          const h = h3(ti, to, 3, 7);
-          if (h3(ti, to, frame, 11) < 0.07) return flash[(ti + to) % 3];
+          const h = h32(ti, to, 3, 7);
+          if (h32(ti, to, frame, 11) < 0.07) return flash[(ti + to) % 3];
           return tiles[Math.floor(h * tiles.length)];
         });
         m.sub(() => m.sphere(cx, by, cz, R2 - 2.2));
@@ -27176,7 +28562,7 @@ kmlmk..
         m.box(X0, 14, KZ0, X0 + W4, 16, KZ1, lac);
         for (let x = X0 + 2; x <= X0 + W4 - 2; x++) {
           const key = Math.floor((x - X0 - 2) / 2);
-          const pressed = frame >= 2 && h3(key, frame, 1, 5) < 0.28;
+          const pressed = frame >= 2 && h32(key, frame, 1, 5) < 0.28;
           m.box(x, pressed ? 16 : 17, KZ0, x, pressed ? 16 : 17, KZ1, (x - X0 - 2) % 2 === 1 ? ivoryD : ivory);
           const b = key % 7;
           if ((x - X0 - 2) % 2 === 1 && b !== 2 && b !== 6) m.box(x, 18, KZ0, x, 18, KZ0 + 3, ebony);
@@ -27246,13 +28632,13 @@ kmlmk..
         const scr = (x, y) => {
           const u = (x - sx0) / (sx1 - sx0), v = (y - sy0) / (sy1 - sy0);
           if (frame === 0) return u + v > 1.1 && u + v < 1.3 || u + v > 1.4 && u + v < 1.48 ? glint : glass;
-          if (frame <= 2) return stat2[Math.floor(h3(x, y, frame, 9) * 4)];
+          if (frame <= 2) return stat2[Math.floor(h32(x, y, frame, 9) * 4)];
           if (frame === 3) return v < 0.75 ? bars[Math.min(6, Math.floor(u * 7))] : bars[6 - Math.min(6, Math.floor(u * 7))];
           const fx = 0.3 + (frame === 5 ? 0.25 : 0), fy = 0.5 + (frame === 5 ? 0.06 : 0);
           const du = (u - fx) / 0.2, dv = (v - fy) / 0.13;
           if (du * du + dv * dv < 1) return Math.abs(du - 0.25) < 0.18 ? fishC[3] : du > 0.45 && dv > -0.1 && dv < 0.4 && du < 0.75 ? fishC[2] : fishC[0];
           if (u < fx - 0.15 && u > fx - 0.32 && Math.abs(v - fy) < (fx - 0.15 - u) * 1.2) return fishC[1];
-          if (h3(x, Math.floor(y + frame * 3), 4, 3) < 0.03) return fishC[3];
+          if (h32(x, Math.floor(y + frame * 3), 4, 3) < 0.03) return fishC[3];
           return sea[Math.min(2, Math.floor((1 - v) * 3))];
         };
         for (let y = sy0; y <= sy1; y++) for (let x = sx0; x <= sx1; x++) {
@@ -27307,7 +28693,7 @@ kmlmk..
         const foam = [m.color("#ffffff", { smooth: 0.9, jitter: 0.02 }), m.color("#e8f4fc", { smooth: 0.9, jitter: 0.02 })];
         const yel = m.color("#ffd23a", { smooth: 0.85, spec: 1.4 });
         const beak = m.color("#ff8a2a", { smooth: 0.6 });
-        const eye = m.color("#1a1a22", { jitter: 0 });
+        const eye2 = m.color("#1a1a22", { jitter: 0 });
         const mat = [m.color("#5ab0e8", { jitter: 0.04 }), m.color("#f4f8fc", { jitter: 0.03 })];
         const stream = m.color("#c8f4ff", { emissive: 0.5, jitter: 0 });
         const cx = 32, cz = 20, rx = 24, rz = 12;
@@ -27321,20 +28707,20 @@ kmlmk..
         }
         const N2 = 26 + frame * 8;
         for (let i = 0; i < N2; i++) {
-          const a = h3(i, 1, 2, 3) * Math.PI * 2, r = Math.sqrt(h3(i, 2, 2, 3)) * 0.8;
+          const a = h32(i, 1, 2, 3) * Math.PI * 2, r = Math.sqrt(h32(i, 2, 2, 3)) * 0.8;
           const x = cx + Math.cos(a) * r * rx * 0.86, z = cz + Math.sin(a) * r * rz * 0.86;
-          const y = 19 + (1 - r) * (4 + frame * 1.5) + h3(i, 3, 2, 3) * 2;
-          m.sphere(x, y, z, 1.6 + h3(i, 4, 2, 3) * 2.2 + frame * 0.2, foam[i % 2]);
+          const y = 19 + (1 - r) * (4 + frame * 1.5) + h32(i, 3, 2, 3) * 2;
+          m.sphere(x, y, z, 1.6 + h32(i, 4, 2, 3) * 2.2 + frame * 0.2, foam[i % 2]);
         }
         const bobY = [0, 1, 2][frame];
-        miniDuck(m, cx - 9, 22 + bobY, cz + 3, 1, yel, beak, eye, 1);
-        miniDuck(m, cx + 6, 23 + (2 - bobY), cz - 2, 0.85, yel, beak, eye, -1);
-        miniDuck(m, cx + 1 + frame, 24 + bobY, cz + 6, 0.75, yel, beak, eye, 1);
+        miniDuck(m, cx - 9, 22 + bobY, cz + 3, 1, yel, beak, eye2, 1);
+        miniDuck(m, cx + 6, 23 + (2 - bobY), cz - 2, 0.85, yel, beak, eye2, -1);
+        miniDuck(m, cx + 1 + frame, 24 + bobY, cz + 6, 0.75, yel, beak, eye2, 1);
         m.tube([[5, 12, cz, 1.1], [5, 26, cz, 1.1], [9, 28, cz, 1.1], [12, 26, cz, 1]], chrome, 4);
         for (const s of [-1, 1]) m.sphere(5, 23, cz + s * 2.6, 1.3, chrome);
         if (frame === 2) m.line(12, 25, cz, 13, 19, cz, stream, 0.6);
         m.box(cx - 10, 0, 34, cx + 10, 0, 40, (x) => mat[x % 4 < 2 ? 0 : 1]);
-        const inner = /* @__PURE__ */ new Set([water, foam[0], foam[1], yel, beak, eye, stream]);
+        const inner = /* @__PURE__ */ new Set([water, foam[0], foam[1], yel, beak, eye2, stream]);
         const front = (x, y, z) => z + 0.5 > cz - 1 && !inner.has(m.get(x, y, z));
         return { m, yaw: 30, ground: [cx, 0, cz + 4], front, anchors: { water: [cx + 2, 21, cz], foam: [cx, 26, cz] } };
       });
@@ -27460,7 +28846,7 @@ kmlmk..
             if (y > 41) return false;
             if (r > Rat(y, Math.atan2(dz, dx))) return false;
             return !(y > 33 && r < (y - 33) * 0.75 + 3.5);
-          }, (x, y, z) => y > 34 && h3(x, y, z, 2) < 0.4 ? rock[3] : rock[Math.floor(fbm3(x * 0.15, y * 0.15, z * 0.15, 2, seed) * 2.99 * 1.2) % 3]);
+          }, (x, y, z) => y > 34 && h32(x, y, z, 2) < 0.4 ? rock[3] : rock[Math.floor(fbm3(x * 0.15, y * 0.15, z * 0.15, 2, seed) * 2.99 * 1.2) % 3]);
           shape2(m2, cx - 9, 33, cz - 9, cx + 9, 35, cz + 9, (x, y, z) => Math.hypot(x - cx, z - cz) < 4 + (y - 33) * 0.75, (x, y, z, p) => p ? null : pool);
           m2.recolor((x, y, z, p) => y > 32 && Math.hypot(x + 0.5 - cx, z + 0.5 - cz) < 8 && m2.exposed(x, y, z) && p !== pool ? ash : null);
           const px = 9, pz = 46;
@@ -27480,7 +28866,7 @@ kmlmk..
         if (frame >= 1) {
           const hot = m.color("#ffb03a", { emissive: 1, jitter: 0.03 });
           m.paint(() => m.box(cx - 9, 33, cz - 9, cx + 9, 35, cz + 9, (x, y, z, p) => p === B2.pool ? hot : null));
-          surface(m, (x, y, z, p) => y < 30 && y > 3 && h3(x, y, z, 7) < 0.025 && p !== B2.pool ? crack : null);
+          surface(m, (x, y, z, p) => y < 30 && y > 3 && h32(x, y, z, 7) < 0.025 && p !== B2.pool ? crack : null);
         }
         if (frame >= 2) {
           const reach = frame === 2 ? 22 : 6;
@@ -27499,7 +28885,7 @@ kmlmk..
           const top = frame === 2 ? 58 : 52;
           for (let i = 0; i < 12; i++) {
             const t = i / 11, y = 40 + t * (top - 40);
-            m.sphere(cx + Math.sin(i * 2.1) * (1 + t * 3), y, cz + Math.cos(i * 1.7) * (1 + t * 2), 2.6 - t * 1.2 + h3(i, frame, 1, 2), t < 0.5 ? core : lava);
+            m.sphere(cx + Math.sin(i * 2.1) * (1 + t * 3), y, cz + Math.cos(i * 1.7) * (1 + t * 2), 2.6 - t * 1.2 + h32(i, frame, 1, 2), t < 0.5 ? core : lava);
           }
         }
         return { m, yaw: 30, ground: [cx, 0, cz], light: "#ff9a3a", anchors: { crater: [cx, 42, cz] } };
@@ -27841,17 +29227,17 @@ kmlmk..
           const y0 = Math.round(2 + lift(r)), top = Math.round(hgt(r) + lift(r));
           if (r > LEN - 3) {
             const ch = top + 3 + Math.round(Math.sin((r - LEN + 3) / 6 * Math.PI) * 3);
-            for (let y = y0; y <= ch; y++) m.set(x, y, z, h3(x, y, z, 4) < 0.15 ? bake : crust);
+            for (let y = y0; y <= ch; y++) m.set(x, y, z, h32(x, y, z, 4) < 0.15 ? bake : crust);
             continue;
           }
           for (let y = y0; y < top; y++) m.set(x, y, z, Math.abs(a) > HALF - 0.04 ? sauce : dough);
-          m.set(x, top, z, h3(x, 0, z, 6) < 0.18 ? melt : cheese);
+          m.set(x, top, z, h32(x, 0, z, 6) < 0.18 ? melt : cheese);
         }
         for (const [r, a] of [[12, 0.05], [22, -0.18], [24, 0.2], [33, 0.02], [36, -0.24], [38, 0.24]]) {
           if (bite && r < 10) continue;
           const x = A2[0] + (dir[0] * Math.cos(a) - dir[1] * Math.sin(a)) * r, z = A2[1] + (dir[1] * Math.cos(a) + dir[0] * Math.sin(a)) * r;
           const y = Math.round(hgt(r) + lift(r)) + 1;
-          m.cylinder(x, z, y, y, 3.4, (xx, yy, zz) => h3(xx, yy, zz, 2) < 0.18 ? pepD : pep);
+          m.cylinder(x, z, y, y, 3.4, (xx, yy, zz) => h32(xx, yy, zz, 2) < 0.18 ? pepD : pep);
         }
         for (const [r, a, c] of [[17, -0.1, olive], [29, 0.14, green], [30, -0.1, olive], [41, -0.05, green], [18, 0.2, green]]) {
           const x = A2[0] + (dir[0] * Math.cos(a) - dir[1] * Math.sin(a)) * r, z = A2[1] + (dir[1] * Math.cos(a) + dir[0] * Math.sin(a)) * r;
@@ -27898,7 +29284,7 @@ kmlmk..
         const flag = m.color("#ff4a5a", { jitter: 0 });
         const cx = 25, cz = 25;
         lathe3(m, cx, cz, 0, 6, (t) => 16 + Math.sin(t * Math.PI * 0.5) * 2, (x, y) => y < 2 ? bunD : bun);
-        lathe3(m, cx, cz, 7, 12, () => 19, (x, y, z) => y === 12 && (x + z) % 5 === 0 ? char : h3(x, y, z, 3) < 0.25 ? char : patty);
+        lathe3(m, cx, cz, 7, 12, () => 19, (x, y, z) => y === 12 && (x + z) % 5 === 0 ? char : h32(x, y, z, 3) < 0.25 ? char : patty);
         m.recolor((x, y, z, p) => p === patty && Math.hypot(x + 0.5 - cx, z + 0.5 - cz) > 18.2 + noise3(x * 0.4, y, z * 0.4, 3) ? 0 : null);
         shape2(m, cx - 22, 11, cz - 22, cx + 22, 13, cz + 22, (x, y, z) => {
           const d = Math.abs(x - cx) + Math.abs(z - cz);
@@ -27908,7 +29294,7 @@ kmlmk..
         shape2(m, cx - 22, 14, cz - 22, cx + 22, 16, cz + 22, (x, y, z) => {
           const a = Math.atan2(z - cz, x - cx), r = Math.hypot(x - cx, z - cz);
           return r < 20.5 + Math.sin(a * 9) * 1.2 && Math.floor(y) === 14 + (Math.sin(a * 9) > 0.3 && r > 17 ? 1 : 0);
-        }, (x, y, z) => lettuce[h3(x, y, z, 5) < 0.4 ? 1 : 0]);
+        }, (x, y, z) => lettuce[h32(x, y, z, 5) < 0.4 ? 1 : 0]);
         lathe3(m, cx, cz, 16, 17, () => 17, tomato);
         const T3 = part(m, 40, 30, 40);
         shape2(T3, 0, 0, 0, 39, 18, 39, (x, y, z) => ((x - 20) / 18) ** 2 + (y / 15) ** 2 + ((z - 20) / 18) ** 2 <= 1, (x, y) => y < 2 ? bunD : bunT);
@@ -27950,7 +29336,7 @@ kmlmk..
         const pebble = m.color("#e8e0d0", { jitter: 0.05 });
         const g = [m.color("#4a9a48", { jitter: 0.04, smooth: 0.5 }), m.color("#7ac860", { jitter: 0.04, smooth: 0.5 })];
         const spine = m.color("#fff6c8", { jitter: 0 });
-        const eye = m.color("#1e2a1e", { jitter: 0 });
+        const eye2 = m.color("#1e2a1e", { jitter: 0 });
         const blush = m.color("#ff9aa8", { jitter: 0 });
         const petal = [m.color("#ff7ab0", { smooth: 0.6 }), m.color("#ffb0d4", { smooth: 0.6 })];
         const yel = m.color("#ffe04a", { smooth: 0.5 });
@@ -27959,7 +29345,7 @@ kmlmk..
         lathe3(m, cx, cz, 14, 17, () => 12.6, terraL);
         m.recolor((x, y, z, p) => p === terra && y >= 5 && y <= 8 && m.exposed(x, y, z) && (Math.floor(Math.atan2(z - cz, x - cx) * 6) + y) % 2 === 0 ? teal : null);
         m.sub(() => m.cylinder(cx, cz, 16, 17, 11));
-        m.cylinder(cx, cz, 16, 16, 11.2, (x, y, z) => h3(x, y, z, 3) < 0.08 ? pebble : soil);
+        m.cylinder(cx, cz, 16, 16, 11.2, (x, y, z) => h32(x, y, z, 3) < 0.08 ? pebble : soil);
         const col = (x, y, z) => Math.cos(Math.atan2(z + 0.5 - cz, x + 0.5 - cx) * 8) > 0.55 ? g[1] : g[0];
         lathe3(m, cx, cz, 17, 49, () => 5.6, col);
         m.sphere(cx, 49, cz, 5.6, col);
@@ -27968,13 +29354,13 @@ kmlmk..
         m.tube(armL, col, 3);
         m.tube(armR, col, 3);
         for (const a of [armL, armR]) m.sphere(a[3][0], a[3][1], a[3][2], a[3][3], col);
-        surface(m, (x, y, z, p) => p === g[1] && y > 18 && y % 3 === 0 && h3(x, y, z, 8) < 0.5 ? spine : null);
+        surface(m, (x, y, z, p) => p === g[1] && y > 18 && y % 3 === 0 && h32(x, y, z, 8) < 0.5 ? spine : null);
         const fz = cz + 5;
-        m.box(cx - 3, 40, fz, cx - 2, 41, fz + 1, eye);
-        m.box(cx + 2, 40, fz, cx + 3, 41, fz + 1, eye);
-        m.box(cx - 1, 37, fz + 1, cx + 1, 37, fz + 1, eye);
-        m.set(cx - 2, 38, fz + 1, eye);
-        m.set(cx + 2, 38, fz + 1, eye);
+        m.box(cx - 3, 40, fz, cx - 2, 41, fz + 1, eye2);
+        m.box(cx + 2, 40, fz, cx + 3, 41, fz + 1, eye2);
+        m.box(cx - 1, 37, fz + 1, cx + 1, 37, fz + 1, eye2);
+        m.set(cx - 2, 38, fz + 1, eye2);
+        m.set(cx + 2, 38, fz + 1, eye2);
         m.set(cx - 4, 38, fz, blush);
         m.set(cx + 4, 38, fz, blush);
         if (frame === 1) m.sphere(cx, 56, cz, 1.8, petal[0]);
@@ -28137,7 +29523,7 @@ kmlmk..
           facetRock(m, rng2, cx + Math.cos(a) * 11.5, 2, cz + Math.sin(a) * 11.5, 3.4, 2.8, 3, stone[k % 2], 9);
         }
         stoneTex(m, stone, 5);
-        m.cylinder(cx, cz, 1, 2, 7.5, (x, y, z) => h3(x, y, z, 4) < 0.2 ? ember : ash);
+        m.cylinder(cx, cz, 1, 2, 7.5, (x, y, z) => h32(x, y, z, 4) < 0.2 ? ember : ash);
         for (let k = 0; k < 4; k++) {
           const a = k * Math.PI / 2 + 0.4;
           m.line(cx + Math.cos(a) * 8.5, 2.5, cz + Math.sin(a) * 8.5, cx + Math.cos(a) * 1.5, 13, cz + Math.sin(a) * 1.5, bark, 1.7);
@@ -28152,7 +29538,7 @@ kmlmk..
           const sway = Math.sin(t * 3 + frame) * t * 2;
           return Math.hypot(x - cx - sway, z - cz) <= W4 * Math.pow(1 - t, 0.75) * (t > 0.35 ? wob : 1);
         }, (x, y, z) => {
-          const k = (y - 3) / H * 0.9 + Math.hypot(x + 0.5 - cx, z + 0.5 - cz) / W4 * 0.7 + h3(x, y, z, frame) * 0.15;
+          const k = (y - 3) / H * 0.9 + Math.hypot(x + 0.5 - cx, z + 0.5 - cz) / W4 * 0.7 + h32(x, y, z, frame) * 0.15;
           return fl[k < 0.45 ? 3 : k < 0.75 ? 2 : k < 1.05 ? 1 : 0];
         });
         m.line(cx + 16, 1, cz + 14, cx + 6, 12, cz + 6, stick, 0.5);
@@ -28230,14 +29616,14 @@ kmlmk..
             if (fu2 >= 0 && fu2 <= 7 && Math.abs(fv2) <= 2 - (fu2 === 0 || fu2 === 7 ? 1 : 0)) return fu2 === 5 && fv2 === -1 ? wht : org;
             if (fu2 === -1 && Math.abs(fv2) <= 2) return org;
             if (v === 17 && u % 3 !== 0 && u > 2 && u < 17) return wht;
-            return h3(u, v, 1, 2) < 0.04 ? star : bg;
+            return h32(u, v, 1, 2) < 0.04 ? star : bg;
           }
           if (v === 0) return u < 8 ? cyan : bg;
           if (v >= 3 && v <= 4 && (u % 6 === 2 || u % 6 === 3)) return v === 3 ? red : grn;
           if (u === 9 && v >= 7 && v <= 12 && v % 2) return wht;
           const fu = u - 6, fv = v - 15;
           if (fu >= 0 && fu <= 6 && Math.abs(fv) <= 1) return fu === 4 && fv === -1 ? wht : org;
-          return h3(u, v, 2, 2) < 0.05 ? star : bg;
+          return h32(u, v, 2, 2) < 0.05 ? star : bg;
         };
         for (let v = 0; v < 20; v++) for (let u = 0; u < 20; u++) m.set(10 + u, 59 - v, 26, pix(u, v));
         m.box(8, 38, 26, 31, 39, 26, black);
@@ -28431,7 +29817,7 @@ kmlmk..
         const gold = m.color("#f0c040", { spec: 2, specPow: 12, smooth: 0.7, jitter: 0.02 });
         const goldL = m.color("#ffe27a", { spec: 2, specPow: 12, smooth: 0.7, jitter: 0.02 });
         const goldD = m.color("#b8862a", { spec: 1, smooth: 0.6 });
-        const eye = m.color("#2a1a10", { jitter: 0 });
+        const eye2 = m.color("#2a1a10", { jitter: 0 });
         const water = m.color("#bff4ff", { emissive: 0.55, smooth: 0.6, jitter: 0 });
         const cx = 26, cz = 22;
         m.box(6, 0, 3, 45, 4, 41, marble);
@@ -28446,7 +29832,7 @@ kmlmk..
         const rad = (t) => t < 0.25 ? 1.6 + t / 0.25 * 3 : t < 0.8 ? 4.6 + Math.sin((t - 0.25) / 0.55 * Math.PI) * 2.4 : 4.6 - ((t - 0.8) / 0.2) ** 2 * 1.8;
         for (let t = 0; t <= 1; t += 0.01) {
           const [x, y, z] = P6(t), r = rad(t);
-          m.ellipsoid(x, y, z, r, r, r * 0.74, (xx, yy, zz) => yy < y - r * 0.3 && xx > x ? goldL : h3(xx, yy, zz, 3) < 0.1 ? goldL : gold);
+          m.ellipsoid(x, y, z, r, r, r * 0.74, (xx, yy, zz) => yy < y - r * 0.3 && xx > x ? goldL : h32(xx, yy, zz, 3) < 0.1 ? goldL : gold);
         }
         const tri = (a, b, c, z0, z1, col) => {
           const minx = Math.min(a[0], b[0], c[0]), maxx = Math.max(a[0], b[0], c[0]), miny = Math.min(a[1], b[1], c[1]), maxy = Math.max(a[1], b[1], c[1]);
@@ -28468,7 +29854,7 @@ kmlmk..
         for (const s of [-1, 1]) m.ellipsoid(P6(0.72)[0] + 2, P6(0.72)[1] - 3, cz + s * 4.6, 3.2, 1.6, 1, goldD);
         const H = P6(0.92);
         m.box(H[0] - 1, H[1] + 1, cz + 3, H[0] + 1, H[1] + 3, cz + 3, goldL);
-        m.box(H[0], H[1] + 1, cz + 4, H[0], H[1] + 2, cz + 4, eye);
+        m.box(H[0], H[1] + 1, cz + 4, H[0], H[1] + 2, cz + 4, eye2);
         const M3 = P6(1);
         m.sub(() => m.sphere(M3[0] + 1.5, M3[1] + 1.5, cz, 1.6));
         if (frame > 0) {
@@ -28648,7 +30034,7 @@ kmlmk..
         const glass = m.color("#d8f4ff", { spec: 2 });
         const drink = m.color("#ff9a3a", { emissive: 0.2 });
         const umb = m.color("#ff4a8a", { smooth: 0.3 });
-        const yel = m.color("#ffd23a", { smooth: 0.85, spec: 1.4 }), beak = m.color("#ff8a2a"), eye = m.color("#1a1a22", { jitter: 0 });
+        const yel = m.color("#ffd23a", { smooth: 0.85, spec: 1.4 }), beak = m.color("#ff8a2a"), eye2 = m.color("#1a1a22", { jitter: 0 });
         const cx = 31, cz = 28, R2 = 22;
         const oct = (x, z, r) => {
           const dx = Math.abs(x - cx), dz = Math.abs(z - cz);
@@ -28660,10 +30046,10 @@ kmlmk..
         shape2(m, cx - R2, 15, cz - R2, cx + R2, 15, cz + R2, (x, y, z) => oct(x, z, R2 - 3.2), water);
         const nb = frame === 0 ? 6 : 22;
         for (let i = 0; i < nb; i++) {
-          const a = h3(i, frame, 1, 4) * Math.PI * 2, r = Math.sqrt(h3(i, frame, 2, 4)) * (R2 - 6);
-          m.sphere(cx + Math.cos(a) * r, 16, cz + Math.sin(a) * r, 0.9 + h3(i, frame, 3, 4) * (frame ? 1.1 : 0.4), foam);
+          const a = h32(i, frame, 1, 4) * Math.PI * 2, r = Math.sqrt(h32(i, frame, 2, 4)) * (R2 - 6);
+          m.sphere(cx + Math.cos(a) * r, 16, cz + Math.sin(a) * r, 0.9 + h32(i, frame, 3, 4) * (frame ? 1.1 : 0.4), foam);
         }
-        miniDuck(m, cx - 6, 15, cz + 6, 0.9, yel, beak, eye, 1);
+        miniDuck(m, cx - 6, 15, cz + 6, 0.9, yel, beak, eye2, 1);
         m.box(cx - 8, 0, cz + R2 + 1, cx + 8, 5, cz + R2 + 7, (x, y, z) => step[z % 3 === 0 ? 1 : 0]);
         m.box(cx - 8, 6, cz + R2 + 1, cx + 8, 11, cz + R2 + 3, (x, y, z) => step[z % 3 === 0 ? 1 : 0]);
         m.box(cx + R2 - 3, 21, cz - 6, cx + R2 + 1, 21, cz + 4, (x, y, z) => towel[(z >> 1) % 2]);
@@ -28674,7 +30060,7 @@ kmlmk..
         m.cone(gx, gz, 24, 26, 0.8, 2.2, drink);
         m.line(gx, 26, gz, gx + 1, 30, gz, glass, 0);
         m.cone(gx + 1, gz, 30, 31, 2.4, 0.3, umb);
-        const inner = /* @__PURE__ */ new Set([water, foam, yel, beak, eye]);
+        const inner = /* @__PURE__ */ new Set([water, foam, yel, beak, eye2]);
         const front = (x, y, z) => z + 0.5 > cz - 2 && !inner.has(m.get(x, y, z));
         return { m, yaw: 30, pitch: 30, ground: [cx, 0, cz], light: "#4ad8e0", front, anchors: { water: [cx, 17, cz], top: [cx, 24, cz] } };
       });
@@ -28813,14 +30199,14 @@ kmlmk..
         m.sphere(cx, cy, cz, 3.2, orb);
         for (let k = 0; k < 7; k++) {
           const th = k / 7 * Math.PI * 2 + frame * 0.45 + Math.sin(k * 3.1 + frame) * 0.3;
-          const ph = (h3(k, frame, 1, 6) - 0.5) * 1.5;
+          const ph = (h32(k, frame, 1, 6) - 0.5) * 1.5;
           let ez = Math.cos(ph) * Math.sin(th);
           if (ez < -0.3) ez = -ez;
           const E = [cx + R2 * 0.92 * Math.cos(ph) * Math.cos(th), cy + R2 * 0.92 * Math.sin(ph), cz + R2 * 0.92 * ez];
           let prev = [cx, cy, cz];
           for (let i = 1; i <= 6; i++) {
             const t = i / 6, j = i < 6 ? 1.3 : 0;
-            const p = [cx + (E[0] - cx) * t + (h3(k, i, frame, 1) - 0.5) * 2 * j, cy + (E[1] - cy) * t + (h3(k, i, frame, 2) - 0.5) * 2 * j, cz + (E[2] - cz) * t + (h3(k, i, frame, 3) - 0.5) * 2 * j];
+            const p = [cx + (E[0] - cx) * t + (h32(k, i, frame, 1) - 0.5) * 2 * j, cy + (E[1] - cy) * t + (h32(k, i, frame, 2) - 0.5) * 2 * j, cz + (E[2] - cz) * t + (h32(k, i, frame, 3) - 0.5) * 2 * j];
             m.line(prev[0], prev[1], prev[2], p[0], p[1], p[2], arc, 0);
             prev = p;
           }
@@ -28859,7 +30245,7 @@ kmlmk..
         m.box(10, 4, 8, 53, 7, 45, stone);
         for (let x = 12; x <= 51; x += 3) m.box(x, 5, 46, x + 1, 6, 46, rune2);
         for (const [dx, len, r, tilt] of [[0, 30, 5, 0], [-7, 24, 4, -0.26], [7, 25, 4, 0.26], [-12, 18, 3.4, -0.55], [12, 19, 3.4, 0.55], [-3, 20, 3, -0.1], [4, 22, 3, 0.12]]) {
-          shaft(m, [cx + dx, 44, 12], [Math.sin(tilt), Math.cos(tilt), -0.12], len, r, 7, (x, y) => y > 44 + len * 0.8 ? cr[1] : h3(x, y, 0, 2) < 0.15 ? cr[2] : cr[0], 6, dx * 0.1);
+          shaft(m, [cx + dx, 44, 12], [Math.sin(tilt), Math.cos(tilt), -0.12], len, r, 7, (x, y) => y > 44 + len * 0.8 ? cr[1] : h32(x, y, 0, 2) < 0.15 ? cr[2] : cr[0], 6, dx * 0.1);
         }
         m.box(17, 8, 12, 46, 19, 38, stone);
         m.box(17, 19, 38, 46, 19, 38, gold);
@@ -28898,7 +30284,7 @@ kmlmk..
         }
       }, ({ frame, rng: rng2 }) => {
         const m = new VoxelModel(92, 50, 54);
-        const paint3 = m.color("#7ad8b8", { smooth: 0.55, spec: 0.7, jitter: 0.04 });
+        const paint4 = m.color("#7ad8b8", { smooth: 0.55, spec: 0.7, jitter: 0.04 });
         const paintD = m.color("#5ab89a", { smooth: 0.55, jitter: 0.04 });
         const glass = m.color("#2a3a4a", { spec: 2, specPow: 10 });
         const tire = m.color("#24242a", { smooth: 0.5 });
@@ -28917,13 +30303,13 @@ kmlmk..
         shape2(m, 6, 7, 8, 82, 34, 44, (x, y, z) => {
           const h = H(x), w = W4(x);
           return h > 0 && w > 0 && ((z - cz) / w) ** 2 + ((y - 7) / h) ** 2 <= 1;
-        }, paint3);
+        }, paint4);
         for (const [fx, fz] of [[22, 10], [68, 10], [22, 42], [68, 42]]) shape2(m, fx - 10, 7, fz - 5, fx + 10, 16, fz + 5, (x, y, z) => ((x - fx) / 9.5) ** 2 + ((y - 9) / 7) ** 2 + ((z - fz) / 4.5) ** 2 <= 1, paintD);
         m.box(28, 7, 8, 60, 8, 10, paintD);
         m.box(28, 7, 42, 60, 8, 44, paintD);
         const glint = m.color("#6a8a9a", { spec: 2 });
         surface(m, (x, y, z, p) => {
-          if (p !== paint3) return null;
+          if (p !== paint4) return null;
           const h = H(x + 0.5), w = W4(x + 0.5);
           if (h <= 0 || w <= 0) return null;
           const ny = (y + 0.5 - 7) / h, nz = Math.abs(z + 0.5 - cz) / w, phi = Math.atan2(ny, nz);
@@ -28935,7 +30321,7 @@ kmlmk..
           return (x + y) % 9 === 0 ? glint : glass;
         });
         const rust = [m.color("#c27840", { jitter: 0.08 }), m.color("#a4552f", { jitter: 0.08 })];
-        m.recolor((x, y, z, p) => (p === paint3 || p === paintD) && fbm3(x * 0.12, y * 0.12, z * 0.12, 2, 7) > 0.64 ? rust[h3(x, y, z, 2) < 0.5 ? 0 : 1] : null);
+        m.recolor((x, y, z, p) => (p === paint4 || p === paintD) && fbm3(x * 0.12, y * 0.12, z * 0.12, 2, 7) > 0.64 ? rust[h32(x, y, z, 2) < 0.5 ? 0 : 1] : null);
         for (const wx of [22, 68]) for (const [z0, z1, hz] of [[5, 10, 5], [42, 47, 47]]) {
           m.cylinder(wx, 7, z0, z1, 7, tire, "z");
           m.cylinder(wx, 7, hz, hz, 3.4, chrome, "z");
@@ -28959,7 +30345,7 @@ kmlmk..
           for (let y = 1; y < 12 + k * 4; y++) m.set(kx + Math.round(Math.sin(y * 0.5 + k) * 1.2), ky + y, kz, kelp2[y % 5 === 0 ? 1 : 0]);
         }
         sandMound(m, 46, cz, 44, 25, 5, 3);
-        barnacles(m, rng2, 6, [paint3, paintD]);
+        barnacles(m, rng2, 6, [paint4, paintD]);
         return { m, yaw: 30, light: "#fff6c0", ground: [46, 0, cz], anchors: { window: [42, 26, 44], exhaust: [5, 8, 36], front: [84, 18, cz] } };
       });
       ROCKET_SEQ = [1, 1, 2, 2, ...Array(29).fill(2), 2, 1, 1, 0];
@@ -29004,7 +30390,7 @@ kmlmk..
         const nozzle = m.color("#3a3a44", { spec: 1 });
         const portF = m.color("#ff9a3a", { emissive: 0.5 });
         const portB = m.color("#9ae8ff", { emissive: 0.5 });
-        const eye = m.color("#1a1420", { jitter: 0 });
+        const eye2 = m.color("#1a1420", { jitter: 0 });
         const fl = ["#ff6a2a", "#ffb04a", "#fff4b0"].map((c) => m.color(c, { emissive: 1, jitter: 0 }));
         const cx = 26, cz = 26, rx = 27, rz = 27;
         lathe3(m, cx, cz, 0, 3, () => 23, con);
@@ -29026,7 +30412,7 @@ kmlmk..
         else m.box(11, 62, 8, 14, 62, 10, grey);
         if (frame === 3) {
           const smoke = [m.color("#d8dce4", { smooth: 0.9, jitter: 0.04 }), m.color("#b8bcc8", { smooth: 0.9, jitter: 0.04 })];
-          for (let y = 6; y <= 88; y += 3) m.sphere(rx + Math.sin(y * 0.3) * 1.5, y, rz + Math.cos(y * 0.23), 4.6 - y * 0.03 + h3(y, 1, 1, 3) * 1.4, smoke[y / 3 % 2]);
+          for (let y = 6; y <= 88; y += 3) m.sphere(rx + Math.sin(y * 0.3) * 1.5, y, rz + Math.cos(y * 0.23), 4.6 - y * 0.03 + h32(y, 1, 1, 3) * 1.4, smoke[y / 3 % 2]);
           return { m, yaw: 30, ground: [cx, 0, cz], anchors: { nozzle: [rx, 8, rz], pad: [cx, 5, 40], top: [rx, 86, rz] } };
         }
         const R2 = part(m, 52, 98, 52);
@@ -29039,7 +30425,7 @@ kmlmk..
           torus2(R2, rx, py, rz + 6.4, 2.6, 0.6, brass, "z");
           R2.cylinder(rx, py, rz + 6, rz + 6.6, 2.1, c, "z");
           if (c === portF) {
-            R2.set(rx + 1, py + 1, rz + 7, eye);
+            R2.set(rx + 1, py + 1, rz + 7, eye2);
             R2.set(rx - 1, py, rz + 7, portF);
           }
         }
@@ -29178,7 +30564,7 @@ kmlmk..
         m.sphere(cx, gy, cz, 11.5, (x, y, z) => {
           const nx = (x + 0.5 - cx) / 11.5, ny = (y + 0.5 - gy) / 11.5, nz = (z + 0.5 - cz) / 11.5;
           if (nz > 0.45 && ny > 0.1 && ny < 0.75 && nx < -0.15 && nx > -0.55) return glint;
-          return gums[Math.floor(h3(Math.floor(x / 2.5), Math.floor(y / 2.5), Math.floor(z / 2.5), 5) * gums.length)];
+          return gums[Math.floor(h32(Math.floor(x / 2.5), Math.floor(y / 2.5), Math.floor(z / 2.5), 5) * gums.length)];
         });
         lathe3(m, cx, cz, 51, 55, (t) => 6.4 - t * 2.4, red);
         m.sphere(cx, 56.5, cz, 1.8, chrome);
@@ -29217,7 +30603,7 @@ kmlmk..
         for (const sy of [14, 28, 42]) {
           m.box(x0 + 2, sy, zb + 3, x1 - 2, sy + 1, zb + 9, wood[2]);
           for (let jx = x0 + 4, k = 0; jx < x1 - 6; jx += 7, k++) {
-            const h = 6 + (h3(jx, sy, 0, 3) * 3 | 0);
+            const h = 6 + (h32(jx, sy, 0, 3) * 3 | 0);
             m.box(jx, sy + 2, zb + 4, jx + 4, sy + 1 + h, zb + 8, glassC);
             m.box(jx + 1, sy + 2, zb + 5, jx + 3, sy + h - 1, zb + 8, contents[(k + sy) % contents.length]);
             m.box(jx, sy + 2 + h, zb + 4, jx + 4, sy + 3 + h, zb + 8, lid[(k + (sy >> 2)) % lid.length]);
@@ -29479,7 +30865,7 @@ kmlmk..
     spent3 += performance.now() - t0;
     return r;
   }
-  function modelOf(id) {
+  function modelOf2(id) {
     let b = built.get(id);
     if (!b) {
       const mk = MODELS2[id] || (PKG[id.replace(/^pkg_/, "")] ? () => ({ ...PKG[id.replace(/^pkg_/, "")](), yaw: 30 }) : null);
@@ -29503,9 +30889,9 @@ kmlmk..
     }
     frame = (frame % SPIN + SPIN) % SPIN;
     if (MODELS2[id] && lpAvailable()) {
-      const b0 = modelOf(id);
+      const b0 = modelOf2(id);
       const px = Math.max(12, Math.round(Math.max(b0.m.nx, b0.m.ny, b0.m.nz) * 2 * scale * (b0.vs ?? 1) * 1.1));
-      const f = voxelModelFrame("item:" + id, () => modelOf(id).m, px, frame / SPIN, force);
+      const f = voxelModelFrame("item:" + id, () => modelOf2(id).m, px, frame / SPIN, force);
       if (f) {
         const tk = "toy|" + id + "|" + px + "|" + frame;
         let q = cache7.get(tk);
@@ -29533,7 +30919,7 @@ kmlmk..
       }
       return null;
     }
-    const b = modelOf(id);
+    const b = modelOf2(id);
     if (!b) return null;
     s = timed(() => {
       const ro = { scale: 2 * scale * (b.vs ?? 1), yaw: (b.yaw ?? 30) + frame * 360 / SPIN, pitch: b.pitch ?? 28, glowRadius: 2 };
@@ -29571,9 +30957,9 @@ kmlmk..
     return !!(MODELS2[id] || PKG[String(id).replace(/^pkg_/, "")]);
   }
   function itemModelOf(id) {
-    return MODELS2[id] ? modelOf(id).m : null;
+    return MODELS2[id] ? modelOf2(id).m : null;
   }
-  var SPIN, h32, MODELS2, PKG, ART_IDS, PACKAGE_ART, winStart, spent3, BUDGET, built, cache7, pkgCache;
+  var SPIN, h33, MODELS2, PKG, ART_IDS, PACKAGE_ART, winStart, spent3, BUDGET, built, cache7, pkgCache;
   var init_itemart = __esm({
     "src/build/itemart.js"() {
       init_hires();
@@ -29584,14 +30970,14 @@ kmlmk..
       init_lowpoly();
       init_canvas();
       SPIN = 16;
-      h32 = (x, y, z, s = 0) => hash3(x, y, z, s);
+      h33 = (x, y, z, s = 0) => hash3(x, y, z, s);
       MODELS2 = {
         driftwood() {
           const m = new VoxelModel(22, 9, 12);
           const wood = [m.color("#a89078", { jitter: 0.12, smooth: 0.6 }), m.color("#8a7460", { jitter: 0.12, smooth: 0.6 }), m.color("#c8b49a", { jitter: 0.08, smooth: 0.6 })];
           const knot = m.color("#5a4636", { jitter: 0.05 });
           const pts = [[1.5, 3.5, 6, 2.6], [6, 4, 5.5, 3.2], [11, 4.2, 6.5, 3.3], [16, 3.8, 6, 2.8], [20.5, 4.6, 5, 2]];
-          m.tube(pts, (x, y, z) => h32(x >> 1, y, z, 3) < 0.25 ? wood[1] : (y + (x >> 2)) % 4 === 0 ? wood[2] : wood[0]);
+          m.tube(pts, (x, y, z) => h33(x >> 1, y, z, 3) < 0.25 ? wood[1] : (y + (x >> 2)) % 4 === 0 ? wood[2] : wood[0]);
           m.line(13, 6, 6, 15, 8, 4, wood[0], 1);
           m.set(8, 7, 7, knot);
           m.set(9, 7, 7, knot);
@@ -29645,7 +31031,7 @@ kmlmk..
           const pieces = [[5, 2.2, 6, 4, 2.2, 3.2, 0], [11, 1.8, 8, 3, 1.8, 2.6, 1], [7, 1.5, 11, 2.4, 1.5, 2, 2]];
           for (const [x, y, z, rx, ry, rz, k] of pieces) {
             const a = m.color(cols[k][0], { smooth: 0.9, spec: 1, specPow: 6, emissive: 0.15 }), b = m.color(cols[k][1], { smooth: 0.9, spec: 1, emissive: 0.2 });
-            m.ellipsoid(x, y, z, rx, ry, rz, (xx, yy, zz) => yy > y && h32(xx, yy, zz, k) < 0.3 ? b : a);
+            m.ellipsoid(x, y, z, rx, ry, rz, (xx, yy, zz) => yy > y && h33(xx, yy, zz, k) < 0.3 ? b : a);
           }
           return { m, yaw: 26, pitch: 38 };
         },
@@ -29659,7 +31045,7 @@ kmlmk..
             m.line(x0, y0, z0, x1, y1, z1, c[0], 1.3);
             m.sphere(x1, y1, z1, 1.5, c[1]);
           }
-          m.recolor((x, y, z, p) => p === c[0] && h32(x, y, z, 2) < 0.15 ? c[2] : null);
+          m.recolor((x, y, z, p) => p === c[0] && h33(x, y, z, 2) < 0.15 ? c[2] : null);
           return { m, yaw: 30 };
         },
         pearl() {
@@ -29680,7 +31066,7 @@ kmlmk..
           shape3(m, 5, 2, 4, 14, 8, 11, (x, y, z) => Math.abs(y - 2 - (x - 5) * 0.55 - 0.5) < 0.9 && z > 4.5 && z < 10.5, steel[1]);
           m.cylinder(10, 3, 8, 9, 1.4, steel[2], "z");
           m.box(9, 2, 3, 11, 4, 4, steel[1]);
-          m.recolor((x, y, z, p) => (p === steel[0] || p === steel[1]) && h32(x >> 1, y, z >> 1, 7) < 0.3 ? h32(x, y, z, 1) < 0.5 ? rust[0] : rust[1] : null);
+          m.recolor((x, y, z, p) => (p === steel[0] || p === steel[1]) && h33(x >> 1, y, z >> 1, 7) < 0.3 ? h33(x, y, z, 1) < 0.5 ? rust[0] : rust[1] : null);
           for (const [x, z] of [[3, 3], [3, 10], [10, 3]]) m.set(x, 2, z, rivet);
           return { m, yaw: 34, pitch: 34 };
         },
@@ -29728,7 +31114,7 @@ kmlmk..
           const m = new VoxelModel(14, 14, 12);
           const st = [m.color("#6a6898", { jitter: 0.12, smooth: 0.3 }), m.color("#55537e", { jitter: 0.12 }), m.color("#8482b4", { jitter: 0.1 })];
           const rune2 = m.color("#5ff4ff", { emissive: 1 });
-          m.box(1, 0, 1, 12, 11, 10, (x, y, z) => h32(x >> 1, y >> 1, z >> 1, 5) < 0.3 ? st[1] : st[0]);
+          m.box(1, 0, 1, 12, 11, 10, (x, y, z) => h33(x >> 1, y >> 1, z >> 1, 5) < 0.3 ? st[1] : st[0]);
           m.sub(() => {
             m.box(0, 9, 0, 3, 13, 3);
             m.box(10, 0, 8, 13, 3, 11);
@@ -29750,7 +31136,7 @@ kmlmk..
           const shard = (x, z, h, r, lx, lz) => {
             for (let y = 0; y < h; y++) {
               const t = y / h, rr = r * (t < 0.75 ? 1 : (1 - t) * 4);
-              m.cylinder(x + lx * y, z + lz * y, y + 1, y + 1, Math.max(0.5, rr), (xx, yy, zz) => xx - x - lx * y < -0.3 ? cr[1] : h32(xx, yy, zz, 9) < 0.2 ? cr[2] : cr[0]);
+              m.cylinder(x + lx * y, z + lz * y, y + 1, y + 1, Math.max(0.5, rr), (xx, yy, zz) => xx - x - lx * y < -0.3 ? cr[1] : h33(xx, yy, zz, 9) < 0.2 ? cr[2] : cr[0]);
             }
           };
           shard(8, 7, 17, 2.4, 0, 0);
@@ -29894,7 +31280,7 @@ kmlmk..
           const rivet = m.color("#ffe8a8", { spec: 1 });
           const rust = m.color("#a4552f", { jitter: 0.15 });
           const lock = m.color("#e0a844", { spec: 1 });
-          m.box(1, 0, 1, 14, 9, 12, (x, y, z) => h32(x >> 1, y, z >> 1, 4) < 0.12 ? rust : ir[0]);
+          m.box(1, 0, 1, 14, 9, 12, (x, y, z) => h33(x >> 1, y, z >> 1, 4) < 0.12 ? rust : ir[0]);
           m.box(0, 10, 0, 15, 12, 13, ir[2]);
           m.box(1, 13, 1, 14, 13, 12, ir[1]);
           for (const y of [2, 7]) m.paint(() => m.box(0, y, 0, 15, y, 13, band));
@@ -29952,7 +31338,7 @@ kmlmk..
           m.sphere(8, 8, 8, 7.2, (x, y, z) => {
             const a = Math.atan2(z - 8, x - 8) + (y - 8) * 0.35;
             const s = Math.sin(a * 3) * Math.cos((y - 8) * 0.5);
-            return s > 0.75 ? swirl[(Math.floor(y / 4) + 3) % 2] : h32(x, y, z, 2) < 0.04 ? swirl[2] : s < -0.6 ? deep : glass;
+            return s > 0.75 ? swirl[(Math.floor(y / 4) + 3) % 2] : h33(x, y, z, 2) < 0.04 ? swirl[2] : s < -0.6 ? deep : glass;
           });
           for (let k = 0; k < 4; k++) {
             const a = k * Math.PI / 2 + 0.4;
@@ -30228,7 +31614,7 @@ kmlmk..
             luck: Math.round(k * 0.1 * 100) / 100,
             pack: PACK_QTY[tier],
             kb: sizeKb(fam.id, tier),
-            art: { shape: "grub", color: c1, color2: c2, tier, type }
+            art: { shape: "grub", line: fam.id, color: c1, color2: c2, tier, type }
           };
         }
       }
@@ -30605,8 +31991,8 @@ kmlmk..
     if (Math.abs(angle) < 0.01) return src;
     const sd = g.getImageData(0, 0, bw, bh).data;
     const a1 = -Math.tan(angle / 2), b1 = Math.sin(angle);
-    const D = Math.ceil(Math.hypot(bw, bh)) + 4, cx = Math.floor(bw / 2), cy = Math.floor(bh / 2), o = Math.floor(D / 2);
-    const out = new PixelBuffer(D, D);
+    const D2 = Math.ceil(Math.hypot(bw, bh)) + 4, cx = Math.floor(bw / 2), cy = Math.floor(bh / 2), o = Math.floor(D2 / 2);
+    const out = new PixelBuffer(D2, D2);
     for (let y = 0; y < bh; y++) {
       for (let x = 0; x < bw; x++) {
         const si = (y * bw + x) * 4;
@@ -30849,7 +32235,7 @@ kmlmk..
     }
     if (o.flowers) {
       m.box(x0 - 1, y0 - 4, z + 1, x1 + 1, y0 - 3, z + 3, o.flowers[0]);
-      for (let x = x0; x <= x1; x++) if (h33(x, y0, z, 4) < 0.7) m.set(x, y0 - 2, z + 2, o.flowers[1 + x * 7 % (o.flowers.length - 1)]);
+      for (let x = x0; x <= x1; x++) if (h34(x, y0, z, 4) < 0.7) m.set(x, y0 - 2, z + 2, o.flowers[1 + x * 7 % (o.flowers.length - 1)]);
     }
   }
   function winX(m, z0, y0, z1, y1, x, glass, frame) {
@@ -30871,7 +32257,7 @@ kmlmk..
       if (x === x0 || x === x1 || d < 0.6 && y - y0 < 1) return trim;
       if ((y - y0) % 2 === 0) return cols[2];
       if ((x + row2 % 2 * 2) % 4 === 0) return cols[1];
-      return h33(x >> 1, y, z, 3) < 0.12 ? cols[3] : cols[0];
+      return h34(x >> 1, y, z, 3) < 0.12 ? cols[3] : cols[0];
     });
     m.box(x0, y0 + rise, zc - 1, x1, y0 + rise + 1, zc, trim);
   }
@@ -30879,17 +32265,17 @@ kmlmk..
     return (x, y, z) => {
       const k = horiz ? y : x;
       if (k % 4 === 0) return cols[1];
-      return h33(horiz ? x >> 2 : x, horiz ? y >> 2 : y >> 2, z, 7) < 0.12 ? cols[2] : cols[0];
+      return h34(horiz ? x >> 2 : x, horiz ? y >> 2 : y >> 2, z, 7) < 0.12 ? cols[2] : cols[0];
     };
   }
   function stoneBase(m, x0, z0, x1, z1, h, cols) {
     m.box(x0, 0, z0, x1, h, z1, (x, y, z) => {
       const brick = (x + y % 2 * 3) % 6 === 0 || y % 3 === 0;
-      return brick ? cols[1] : h33(x >> 1, y, z >> 1, 2) < 0.2 ? cols[2] : cols[0];
+      return brick ? cols[1] : h34(x >> 1, y, z >> 1, 2) < 0.2 ? cols[2] : cols[0];
     });
   }
   function sandPad(m, cx, cz, rx, rz, cols) {
-    shape4(m, cx - rx, 0, cz - rz, cx + rx, 1, cz + rz, (x, y, z) => ((x - cx) / rx) ** 2 + ((z - cz) / rz) ** 2 < 1 - y * 0.35, (x, y, z) => h33(x, y, z, 11) < 0.3 ? cols[1] : cols[0]);
+    shape4(m, cx - rx, 0, cz - rz, cx + rx, 1, cz + rz, (x, y, z) => ((x - cx) / rx) ** 2 + ((z - cz) / rz) ** 2 < 1 - y * 0.35, (x, y, z) => h34(x, y, z, 11) < 0.3 ? cols[1] : cols[0]);
   }
   function kelp(m, x, z, h, cols, seed = 0) {
     for (let y = 0; y < h; y++) m.set(Math.round(x + Math.sin(y * 0.45 + seed) * 1.2), y, z, cols[(y + seed) % 5 === 0 ? 1 : 0]);
@@ -30903,17 +32289,17 @@ kmlmk..
       br(ex, ey, ez, ang + 0.7, l * 0.7, d + 1);
       br(ex, ey, ez, ang - 0.7, l * 0.65, d + 1);
     };
-    br(x, y, z, Math.PI / 2 + (h33(seed, 1, 2) - 0.5), len, 0);
+    br(x, y, z, Math.PI / 2 + (h34(seed, 1, 2) - 0.5), len, 0);
   }
-  function canRender2(budget = 9) {
+  function canRender2(budget2 = 9) {
     const now5 = performance.now();
     if (now5 - winStart2 > 16) {
       winStart2 = now5;
       spent4 = 0;
     }
-    return spent4 < budget;
+    return spent4 < budget2;
   }
-  function modelOf2(id) {
+  function modelOf3(id) {
     let b = built2.get(id);
     if (!b && MODELS3[id]) {
       b = MODELS3[id]();
@@ -30936,7 +32322,7 @@ kmlmk..
       const top = { x: p.ox, y: 0 };
       return { canvas: p.canvas, glow: p.glow, ox: p.ox, oy: p.oy, w: p.w, h: p.h, anchors: { top }, lights: p.lights || [], decor: true };
     }
-    const b = modelOf2(id);
+    const b = modelOf3(id);
     const r = renderVoxels(b.m, { scale: (b.vs ?? 1.6) * scale, yaw: yaw ?? BUILD_YAW, pitch: BUILD_PITCH, glowRadius: 3 });
     const anchors = {};
     for (const [k, a] of Object.entries(b.anchors || {})) {
@@ -30989,14 +32375,14 @@ kmlmk..
     scalesOf.get(sk).add(scale);
     return s;
   }
-  var h33, pal, SAND2, STONE, KELP, MODELS3, MODEL_IDS, WORLD_SCALE, BUILD_YAW, BUILD_PITCH, winStart2, spent4, built2, cache8, scalesOf;
+  var h34, pal, SAND2, STONE, KELP, MODELS3, MODEL_IDS, WORLD_SCALE, BUILD_YAW, BUILD_PITCH, winStart2, spent4, built2, cache8, scalesOf;
   var init_buildingmodels = __esm({
     "src/build/buildingmodels.js"() {
       init_voxel();
       init_props();
       init_math();
       init_canvas();
-      h33 = (x, y, z, s = 0) => hash3(x, y, z, s);
+      h34 = (x, y, z, s = 0) => hash3(x, y, z, s);
       pal = (m, hexes, o = {}) => hexes.map((h) => m.color(h, o));
       SAND2 = ["#e8cf96", "#d8ba80"];
       STONE = ["#9a8f9e", "#7a7088", "#b0a6b2"];
@@ -31095,7 +32481,7 @@ kmlmk..
           m.box(51, 3, 8, 54, 32, 38, planks(wood, false));
           for (const x of [8, 31, 54]) m.box(x - 1, 3, 37, x + 1, 34, 39, wood[1]);
           m.box(7, 32, 36, 55, 34, 40, wood[1]);
-          shape4(m, 4, 34, 4, 58, 44, 46, (x, y, z) => Math.abs(y - (44 - (z - 4) * 0.22)) < 0.9, (x, y, z) => h33(x >> 2, 1, z >> 2, 5) < 0.15 ? tin[3] : x % 3 === 0 ? tin[1] : x % 3 === 1 ? tin[2] : tin[0]);
+          shape4(m, 4, 34, 4, 58, 44, 46, (x, y, z) => Math.abs(y - (44 - (z - 4) * 0.22)) < 0.9, (x, y, z) => h34(x >> 2, 1, z >> 2, 5) < 0.15 ? tin[3] : x % 3 === 0 ? tin[1] : x % 3 === 1 ? tin[2] : tin[0]);
           m.box(14, 3, 26, 46, 13, 34, bench[1]);
           m.box(13, 14, 25, 47, 15, 35, bench[0]);
           m.box(15, 3, 27, 16, 12, 28, wood[1]);
@@ -31153,7 +32539,7 @@ kmlmk..
           }, (x, y, z) => {
             const a = Math.atan2(z - 28, x - 30);
             if (Math.abs(Math.sin(a * 4)) < 0.12 || (y - 8) % 7 === 0) return rib[0];
-            return h33(x, y, z, 2) < 0.05 ? domeB : dome;
+            return h34(x, y, z, 2) < 0.05 ? domeB : dome;
           });
           m.sub(() => shape4(m, 8, 10, 30, 52, 26, 50, (x, y, z) => z - 28 > 9 && Math.abs(x - 30) < 10 && m.get(Math.floor(x), Math.floor(y), Math.floor(z)) === dome, 0));
           m.cylinder(30, 28, 33, 36, 3, rib[0]);
@@ -31188,8 +32574,8 @@ kmlmk..
           const door = pal(m, ["#5a3a22", "#3a2416"]);
           const moss2 = pal(m, ["#5aa85a", "#3a7a46"], { jitter: 0.1 });
           const cx = 24, cz = 24;
-          for (const [x, y, z, r] of [[24, 4, 24, 18], [14, 3, 30, 10], [34, 2, 32, 9], [20, 7, 16, 11]]) shape4(m, x - r, 0, z - r, x + r, y + r * 0.6, z + r, (xx, yy, zz) => Math.hypot(xx - x, (yy - y) * 1.5, zz - z) < r + (h33(xx >> 1, yy >> 1, zz >> 1, 4) - 0.5) * 3, (xx, yy, zz) => h33(xx >> 1, yy, zz >> 1, 1) < 0.25 ? rock[1] : rock[0]);
-          m.recolor((x, y, z, p) => (p === rock[0] || p === rock[1]) && !m.get(x, y + 1, z) && h33(x, y, z, 6) < 0.4 ? moss2[h33(x, y, z, 2) < 0.5 ? 0 : 1] : null);
+          for (const [x, y, z, r] of [[24, 4, 24, 18], [14, 3, 30, 10], [34, 2, 32, 9], [20, 7, 16, 11]]) shape4(m, x - r, 0, z - r, x + r, y + r * 0.6, z + r, (xx, yy, zz) => Math.hypot(xx - x, (yy - y) * 1.5, zz - z) < r + (h34(xx >> 1, yy >> 1, zz >> 1, 4) - 0.5) * 3, (xx, yy, zz) => h34(xx >> 1, yy, zz >> 1, 1) < 0.25 ? rock[1] : rock[0]);
+          m.recolor((x, y, z, p) => (p === rock[0] || p === rock[1]) && !m.get(x, y + 1, z) && h34(x, y, z, 6) < 0.4 ? moss2[h34(x, y, z, 2) < 0.5 ? 0 : 1] : null);
           for (let y = 12; y < 98; y++) {
             const r = 9.5 - (y - 12) * 0.035;
             m.cylinder(cx, cz, y, y, r, Math.floor((y - 12) / 14) % 2 ? red : white);
@@ -31228,7 +32614,7 @@ kmlmk..
           stoneBase(m, 6, 6, 54, 42, 3, st);
           shape4(m, 8, 4, 8, 52, 40, 40, (x, y, z) => y < 30 || Math.hypot((y - 30) * 1.6, z - 24) < 17, (x, y, z) => {
             if (x % 9 === 3 || (y - 4) % 9 === 0) return iron[1];
-            return h33(x >> 2, y >> 2, z, 5) < 0.12 ? iron[3] : iron[0];
+            return h34(x >> 2, y >> 2, z, 5) < 0.12 ? iron[3] : iron[0];
           });
           for (let x = 8; x <= 52; x += 3) for (const y of [4, 13, 22, 31]) {
             if (m.get(x, y, 40)) m.set(x, y, 41, rivet);
@@ -31251,7 +32637,7 @@ kmlmk..
           m.set(dx, dy, dz + 4, gold[2]);
           m.box(9, 33, 37, 12, 36, 40, lamp);
           m.box(48, 33, 37, 51, 36, 40, lamp);
-          for (let i = 0; i < 26; i++) m.sphere(50 + h33(i, 1, 1) * 9, 1 + h33(i, 2, 1) * 4, 40 + h33(i, 3, 1) * 8, 1.6, i % 3 ? coin2[0] : gold[0]);
+          for (let i = 0; i < 26; i++) m.sphere(50 + h34(i, 1, 1) * 9, 1 + h34(i, 2, 1) * 4, 40 + h34(i, 3, 1) * 8, 1.6, i % 3 ? coin2[0] : gold[0]);
           m.set(54, 6, 44, coin2[1]);
           shape4(m, 2, 0, 38, 16, 8, 50, (x, y, z) => Math.hypot((x - 9) / 6.5, (z - 44) / 5.5) < 1 && y < 1 + (1 - Math.hypot((x - 9) / 6.5, (z - 44) / 5.5)) * 7, (x, y, z) => y === 3 ? clam[2] : Math.floor(Math.atan2(z - 44, x - 9) * 4) & 1 ? clam[0] : clam[1]);
           m.sub(() => m.box(3, 3, 49, 15, 3, 50));
@@ -31271,7 +32657,7 @@ kmlmk..
           sandPad(m, 40, 28, 40, 26, sand);
           const beds = [[8, 32, 72, 48, 5], [12, 18, 62, 32, 10], [20, 6, 54, 18, 15]];
           for (const [x0, z0, x1, z1, h] of beds) {
-            m.box(x0, 0, z0, x1, h, z1, (x, y, z) => (x + y % 2 * 2) % 5 === 0 || y === h ? st[1] : h33(x >> 1, y, z >> 1, 4) < 0.2 ? st[2] : st[0]);
+            m.box(x0, 0, z0, x1, h, z1, (x, y, z) => (x + y % 2 * 2) % 5 === 0 || y === h ? st[1] : h34(x >> 1, y, z >> 1, 4) < 0.2 ? st[2] : st[0]);
             m.box(x0 + 1, h, z0 + 1, x1 - 1, h, z1 - 1, soil[0]);
           }
           let k = 0;
@@ -31304,13 +32690,13 @@ kmlmk..
           const awn = pal(m, ["#3ab8a8", "#f4f0e0"]);
           const glass = m.color("#ffd86a", { emissive: 1 });
           const crab = pal(m, ["#e8583a", "#ffb08a"]);
-          const eye = m.color("#1a1020");
+          const eye2 = m.color("#1a1020");
           const sand = pal(m, SAND2, { jitter: 0.08 });
           sandPad(m, 30, 26, 30, 23, sand);
           for (const [x, z] of [[10, 10], [48, 10], [10, 38], [48, 38]]) m.box(x, 0, z, x + 1, 10, z + 1, post);
           m.box(7, 10, 7, 52, 11, 42, (x) => x % 3 === 0 ? wood[1] : wood[0]);
           m.box(10, 12, 10, 48, 34, 38, planks(wood));
-          m.recolor((x, y, z, p) => (p === wood[0] || p === wood[1]) && m.exposed(x, y, z) && y > 13 && y < 33 && h33(x, y, z, 21) < 0.06 ? shell[Math.floor(h33(x, y, z, 3) * 4)] : null);
+          m.recolor((x, y, z, p) => (p === wood[0] || p === wood[1]) && m.exposed(x, y, z) && y > 13 && y < 33 && h34(x, y, z, 21) < 0.06 ? shell[Math.floor(h34(x, y, z, 3) * 4)] : null);
           m.sub(() => m.box(16, 18, 38, 40, 28, 38));
           m.box(16, 18, 36, 40, 28, 36, wood[2]);
           m.box(18, 22, 37, 22, 27, 37, glass);
@@ -31319,8 +32705,8 @@ kmlmk..
           shape4(m, 5, 34, 5, 53, 54, 44, (x, y, z) => {
             const hw = 23 * (1 - (y - 34) / 20);
             return Math.abs(z - 24.5) <= hw && x > 5 + (y - 34) * 0.3 && x < 53 - (y - 34) * 0.3;
-          }, (x, y, z) => (y + x % 2) % 3 === 0 ? straw[1] : h33(x, y, z, 2) < 0.2 ? straw[2] : straw[0]);
-          for (let x = 5; x <= 53; x += 2) if (h33(x, 0, 1, 3) < 0.6) {
+          }, (x, y, z) => (y + x % 2) % 3 === 0 ? straw[1] : h34(x, y, z, 2) < 0.2 ? straw[2] : straw[0]);
+          for (let x = 5; x <= 53; x += 2) if (h34(x, 0, 1, 3) < 0.6) {
             m.set(x, 33, 44, straw[1]);
             m.set(x, 33, 5, straw[1]);
           }
@@ -31337,8 +32723,8 @@ kmlmk..
           m.box(56, 0, 25, 56, 10, 25, post);
           m.ellipsoid(44, 14, 41, 3, 2.5, 2.5, crab[0]);
           m.sphere(46, 17, 40, 3.2, conch[0]);
-          m.set(42, 16, 43, eye);
-          m.set(44, 16, 43, eye);
+          m.set(42, 16, 43, eye2);
+          m.set(44, 16, 43, eye2);
           m.line(41, 14, 42, 39, 15, 44, crab[1], 0.6);
           return { m, yaw: 30, pitch: 26, anchors: { top: [30, 70, 24], door: [28, 10, 42] }, light: "#ffd86a" };
         },
@@ -31358,7 +32744,7 @@ kmlmk..
           const sand = pal(m, SAND2, { jitter: 0.08 });
           sandPad(m, 32, 26, 32, 24, sand);
           stoneBase(m, 6, 6, 58, 42, 2, st);
-          m.box(8, 3, 8, 56, 44, 40, (x, y, z) => y % 6 === 0 ? wall[1] : h33(x >> 2, y >> 2, z, 9) < 0.1 ? wall[2] : wall[0]);
+          m.box(8, 3, 8, 56, 44, 40, (x, y, z) => y % 6 === 0 ? wall[1] : h34(x >> 2, y >> 2, z, 9) < 0.1 ? wall[2] : wall[0]);
           m.box(6, 44, 36, 58, 56, 42, wall[1]);
           m.box(14, 56, 36, 50, 64, 42, wall[1]);
           m.box(24, 64, 36, 40, 68, 42, wall[1]);
@@ -31379,7 +32765,7 @@ kmlmk..
           m.box(14, 10, 33, 28, 13, 37, wall[1]);
           for (const x of [14, 28]) m.box(x, 14, 38, x, 37, 38, claw2[0]);
           m.box(14, 34, 38, 28, 37, 38, neonP);
-          for (let i = 0; i < 18; i++) m.sphere(16 + h33(i, 1, 0) * 11, 14.5 + h33(i, 2, 0) * 2.5 + (i > 11 ? 2 : 0), 34.5 + h33(i, 3, 0) * 3, 1.5, prize[i % 4]);
+          for (let i = 0; i < 18; i++) m.sphere(16 + h34(i, 1, 0) * 11, 14.5 + h34(i, 2, 0) * 2.5 + (i > 11 ? 2 : 0), 34.5 + h34(i, 3, 0) * 3, 1.5, prize[i % 4]);
           m.box(21, 28, 35, 21, 33, 35, claw2[1]);
           m.line(21, 28, 35, 19, 25, 35, claw2[0], 0.6);
           m.line(21, 28, 35, 23, 25, 35, claw2[0], 0.6);
@@ -31418,7 +32804,7 @@ kmlmk..
           const st = pal(m, STONE, { jitter: 0.12 });
           const leaf = pal(m, ["#5ad85a", "#3a9a3a"]);
           const cx = 20, cz = 16, fz = 27;
-          m.cylinder(cx, cz, 0, 4, 15, (x, y, z) => h33(x >> 1, y, z >> 1, 3) < 0.25 ? st[1] : st[0]);
+          m.cylinder(cx, cz, 0, 4, 15, (x, y, z) => h34(x >> 1, y, z >> 1, 3) < 0.25 ? st[1] : st[0]);
           m.cylinder(cx, cz, 5, 92, 10, (x, y, z) => wood[Math.floor((y + (x >> 2)) / 3) % 2]);
           const face4 = (y0, mood) => {
             m.box(cx - 10, y0 + 22, cz + 6, cx + 9, y0 + 25, fz, wood[2]);
@@ -31468,7 +32854,7 @@ kmlmk..
           const pearl = m.color("#fff6fa", { emissive: 0.4, spec: 1 });
           const st = pal(m, STONE, { jitter: 0.12 });
           const cx = 23, cz = 23;
-          shape4(m, 4, 0, 4, 42, 14, 42, (x, y2, z) => Math.hypot(x - cx, (y2 - 2) * 1.6, z - cz) < 17 + (h33(x >> 1, y2 >> 1, z >> 1, 8) - 0.5) * 4, (x, y2, z) => h33(x >> 1, y2 >> 1, z >> 1, 2) < 0.4 ? coral[0] : h33(x, y2, z, 3) < 0.15 ? coral[1] : st[0]);
+          shape4(m, 4, 0, 4, 42, 14, 42, (x, y2, z) => Math.hypot(x - cx, (y2 - 2) * 1.6, z - cz) < 17 + (h34(x >> 1, y2 >> 1, z >> 1, 8) - 0.5) * 4, (x, y2, z) => h34(x >> 1, y2 >> 1, z >> 1, 2) < 0.4 ? coral[0] : h34(x, y2, z, 3) < 0.15 ? coral[1] : st[0]);
           let y = 12;
           const rs2 = [11, 9.5, 8.5, 7.5, 6.5, 5.5];
           rs2.forEach((r, i) => {
@@ -31477,7 +32863,7 @@ kmlmk..
             shape4(m, cx + ox - r - 1, yc - r - 1, cz + oz - r - 1, cx + ox + r + 1, yc + r + 1, cz + oz + r + 1, (x, yy, z) => {
               const d = Math.hypot(x - cx - ox, yy - yc, z - cz - oz);
               return d < r && d > r - 1.3;
-            }, (x, yy, z) => h33(x, yy, z, i) < 0.04 ? glassB : glass);
+            }, (x, yy, z) => h34(x, yy, z, i) < 0.04 ? glassB : glass);
             shape4(m, cx + ox - r + 2, yc - r, cz + oz - r + 2, cx + ox + r - 2, yc - r * 0.2, cz + oz + r - 2, (x, yy, z) => Math.hypot(x - cx - ox, yy - yc, z - cz - oz) < r - 1.5, water);
             m.sphere(cx + ox, yc - r * 0.4, cz + oz, 1.6, pearl);
             m.cylinder(cx + ox, cz + oz, yc + r - 1, yc + r, r * 0.45, brass[0]);
@@ -31644,9 +33030,9 @@ kmlmk..
         const c3 = makeCanvas(size, size);
         ctxOf(c3).drawImage(f.canvas, Math.round(size / 2 - f.ox), Math.round(size / 2 - f.oy));
         if (f.canvas.hi) {
-          const h34 = makeCanvas(size * 2, size * 2);
-          ctxOf(h34).drawImage(f.canvas.hi, Math.round((size / 2 - f.ox) * 2), Math.round((size / 2 - f.oy) * 2));
-          Object.defineProperty(c3, "hi", { value: h34, configurable: true });
+          const h35 = makeCanvas(size * 2, size * 2);
+          ctxOf(h35).drawImage(f.canvas.hi, Math.round((size / 2 - f.ox) * 2), Math.round((size / 2 - f.oy) * 2));
+          Object.defineProperty(c3, "hi", { value: h35, configurable: true });
         }
         icons2.set(key, c3);
         return c3;
@@ -32537,7 +33923,7 @@ kmlmk..
   var droplets = (o, n2, at, spread, vol = 0.04, lo = 1400, hi = 3e3) => {
     for (let i = 0; i < n2; i++) bub(o, at + Math.random() * spread, rand(lo, hi), vol * rand(0.5, 1), rand(-0.6, 0.6), rand(0.03, 0.05));
   };
-  var arp = (o, fn, notes, step, at = 0, vol = 0.1, dur) => notes.forEach((m, i) => fn(o, m2f(m), at + i * step, vol, dur));
+  var arp = (o, fn, notes2, step, at = 0, vol = 0.1, dur) => notes2.forEach((m, i) => fn(o, m2f(m), at + i * step, vol, dur));
   var SFX = {
     // UI
     ui_click: (o) => {
@@ -32699,7 +34085,7 @@ kmlmk..
       noise(o, { at: 0.4, dur: 1, type: "highpass", f: 7500, vol: 0.045, a: 0.2 });
     },
     catch_legendary: (o) => {
-      const stab = (at, notes, d = 0.35) => notes.forEach((m) => tone(o, { at, f: m2f(m), dur: d, type: "sawtooth", unison: [-9, 9], vol: 0.028, a: 0.012, shape: "sus", r: 0.15, filt: { type: "lowpass", f: 2600, f2: 1200, q: 1 } }));
+      const stab = (at, notes2, d = 0.35) => notes2.forEach((m) => tone(o, { at, f: m2f(m), dur: d, type: "sawtooth", unison: [-9, 9], vol: 0.028, a: 0.012, shape: "sus", r: 0.15, filt: { type: "lowpass", f: 2600, f2: 1200, q: 1 } }));
       stab(0, [60, 64, 67, 72], 0.2);
       stab(0.22, [60, 64, 67, 72], 0.2);
       stab(0.45, [65, 69, 72, 77], 0.22);
@@ -33598,11 +34984,11 @@ kmlmk..
       verb: 0.4,
       fadeIn: 3,
       step(tr, i, t) {
-        const o = tr.o(t), notes = [84, 86, 88, 91, 93, 96];
+        const o = tr.o(t), notes2 = [84, 86, 88, 91, 93, 96];
         if (chance(S.night ? 0.08 : 0.16)) {
-          const j = Math.random() * notes.length | 0;
-          INS.musicbox(o, notes[j], 0.05, 0, 1.8, 0.4);
-          if (j >= 2 && chance(0.3)) INS.musicbox(o, notes[j - 2], 0.03, 0.01, 1.6, 0.4);
+          const j = Math.random() * notes2.length | 0;
+          INS.musicbox(o, notes2[j], 0.05, 0, 1.8, 0.4);
+          if (j >= 2 && chance(0.3)) INS.musicbox(o, notes2[j - 2], 0.03, 0.01, 1.6, 0.4);
         }
         if (i % 16 === 0 && chance(0.35)) INS.musicbox(o, pick([60, 67, 72]), 0.035, 0, 2.4, 0.5);
       }
@@ -33690,9 +35076,9 @@ kmlmk..
           wobBass(o, m, sd * (s === 0 || s === 8 ? 2.5 : 1.5), 0.05, 1 / (sd * 2));
         }
         if (night ? s % 4 === 0 : s % 2 === 0 || chance(0.7)) {
-          const notes = [...ch.tones, ...ch.tones.map((x) => x + 12)], n2 = notes.length;
+          const notes2 = [...ch.tones, ...ch.tones.map((x) => x + 12)], n2 = notes2.length;
           const k = st.pat === "up" ? s % n2 : st.pat === "down" ? n2 - 1 - s % n2 : st.pat === "updown" ? [0, 1, 2, 3, 4, 5, 4, 3, 2, 1][s % 10] % n2 : Math.random() * n2 | 0;
-          tone(oc, { f: m2f(notes[k] + 12), dur: sd * 0.9, wave: "pulse25", vol: 0.05, a: 2e-3 });
+          tone(oc, { f: m2f(notes2[k] + 12), dur: sd * 0.9, wave: "pulse25", vol: 0.05, a: 2e-3 });
         }
         if (s === st.glitch) {
           const m = pick(ch.tones) + 24;
@@ -34976,31 +36362,31 @@ kmlmk..
       o = o && typeof o === "object" ? o : {};
       if (kind === "coin" || kind === "coins") return this.coins(x, y, n2, o);
       if (kind === "splash") return this.pixelSplash(x, y, o.power ?? Math.min(2, n2 / 8), o);
-      const D = PXDEF[kind] || PXDEF.sparkle;
-      const sp = o.speed || D.speed, life = o.life || D.life;
-      const dir = o.dir ?? D.dir, spread = o.spread ?? D.spread ?? Math.PI;
+      const D2 = PXDEF[kind] || PXDEF.sparkle;
+      const sp = o.speed || D2.speed, life = o.life || D2.life;
+      const dir = o.dir ?? D2.dir, spread = o.spread ?? D2.spread ?? Math.PI;
       let first = null;
       for (let i = 0; i < n2; i++) {
         const a = dir !== void 0 ? dir + rng.float(-spread, spread) : i / Math.max(1, n2) * TAU + rng.float(-0.4, 0.4);
-        const v = D.one ? 0 : rs(sp);
-        const q = this.pixel(D.sheet, x + rng.float(-(o.w ?? 0), o.w ?? 0), y + rng.float(-(o.h ?? 0), o.h ?? 0), {
-          ramp: o.ramps ? rng.pick(o.ramps) : o.ramp ?? D.ramp,
-          size: o.size ?? pickOf(D.size ?? 1),
+        const v = D2.one ? 0 : rs(sp);
+        const q = this.pixel(D2.sheet, x + rng.float(-(o.w ?? 0), o.w ?? 0), y + rng.float(-(o.h ?? 0), o.h ?? 0), {
+          ramp: o.ramps ? rng.pick(o.ramps) : o.ramp ?? D2.ramp,
+          size: o.size ?? pickOf(D2.size ?? 1),
           scale: o.scale,
           vx: Math.cos(a) * v + (o.vx ?? 0),
-          vy: Math.sin(a) * v - (o.up ?? D.up ?? 0) + (o.vy ?? 0),
-          g: o.g ?? D.g,
-          drag: o.drag ?? D.drag,
+          vy: Math.sin(a) * v - (o.up ?? D2.up ?? 0) + (o.vy ?? 0),
+          g: o.g ?? D2.g,
+          drag: o.drag ?? D2.drag,
           life: rs(life),
-          anim: D.anim,
-          fps: D.fps,
-          sway: o.sway ?? D.sway ?? 0,
+          anim: D2.anim,
+          fps: D2.fps,
+          sway: o.sway ?? D2.sway ?? 0,
           layer: o.layer,
-          blink: o.blink ?? D.blink,
+          blink: o.blink ?? D2.blink,
           delay: o.delay ? o.stagger === false ? o.delay : rng.float(0, o.delay) : 0,
-          pop: D.pop
+          pop: D2.pop
         });
-        if (D.glint && q) q.glint = true;
+        if (D2.glint && q) q.glint = true;
         first || (first = q);
       }
       return first;
@@ -37557,11 +38943,11 @@ kmlmk..
     return discSprite(r, "#0a0614", 0.35, "#1a1030");
   }
   var ART4 = /* @__PURE__ */ new Map();
-  function cached(key, w, h, paint3) {
+  function cached2(key, w, h, paint4) {
     let c = ART4.get(key);
     if (!c) {
       c = makeCanvas(w, h);
-      paint3(ctxOf(c), c);
+      paint4(ctxOf(c), c);
       ART4.set(key, c);
     }
     return c;
@@ -37922,7 +39308,7 @@ kmlmk..
     }
   }
   function portholeRing(r) {
-    return cached("port" + r, r * 2 + 9, r * 2 + 9, (g) => {
+    return cached2("port" + r, r * 2 + 9, r * 2 + 9, (g) => {
       const C2 = r + 4;
       for (let y = 0; y < r * 2 + 9; y++) for (let x = 0; x < r * 2 + 9; x++) {
         const dx = x - C2, dy = y - C2, d = Math.hypot(dx, dy);
@@ -38797,7 +40183,7 @@ kmlmk..
     }
     return c;
   }
-  function paint(w, h, fn) {
+  function paint2(w, h, fn) {
     const c = makeCanvas(w, h), g = ctxOf(c);
     const img = g.createImageData(w, h), d = img.data;
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
@@ -38830,7 +40216,7 @@ kmlmk..
   function tubeRing(r, th, rampName, alpha = 255) {
     return art(`ring${r}|${th}|${rampName}|${alpha}`, () => {
       const C2 = r + th, S9 = C2 * 2 + 1, ramp3 = RAMP_RGB2[rampName], hw = th / 2;
-      return paint(S9, S9, (x, y) => {
+      return paint2(S9, S9, (x, y) => {
         const dx = x - C2, dy = y - C2, d = Math.hypot(dx, dy);
         const u = (d - r) / hw;
         if (Math.abs(u) > 1.12) return null;
@@ -38847,7 +40233,7 @@ kmlmk..
   function plateSprite(r) {
     return art("plate" + r, () => {
       const S9 = r * 2 + 3, C2 = r + 1;
-      return paint(S9, S9, (x, y) => {
+      return paint2(S9, S9, (x, y) => {
         const dx = x - C2, dy = y - C2, d = Math.hypot(dx, dy);
         if (d > r + 0.5) return null;
         if (d > r - 1.2) return [12, 58, 82, 210];
@@ -38866,7 +40252,7 @@ kmlmk..
   function sphere2(r, rampName) {
     return art(`sph${r}|${rampName}`, () => {
       const ramp3 = RAMP_RGB2[rampName], s = r * 2 + 1;
-      return paint(s, s, (x, y) => {
+      return paint2(s, s, (x, y) => {
         const dx = (x - r) / (r + 0.35), dy = (y - r) / (r + 0.35);
         const d2 = dx * dx + dy * dy;
         if (d2 > 1) return null;
@@ -38883,7 +40269,7 @@ kmlmk..
   function tubeGlass(w, h, front) {
     return art(`tube${w}|${h}|${front}`, () => {
       const r = w / 2;
-      return paint(w + 2, h + 2, (x, y) => {
+      return paint2(w + 2, h + 2, (x, y) => {
         const cx = x - 1 - r + 0.5, yy = y - 1;
         const dyc = yy < r ? r - yy - 0.5 : yy > h - r ? yy - (h - r) + 0.5 : 0;
         const d = Math.hypot(cx, dyc);
@@ -42077,7 +43463,7 @@ kmlmk..
     const A2 = hexRgb3(a), B2 = hexRgb3(b);
     return [0, 1, 2].map((i) => Math.round(A2[i] + (B2[i] - A2[i]) * t));
   }
-  function paint2(w, h, fn) {
+  function paint3(w, h, fn) {
     const c = makeCanvas(w, h), g = ctxOf(c);
     const img = g.createImageData(w, h), d = img.data;
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
@@ -42100,7 +43486,7 @@ kmlmk..
     const ink = [12, 58, 82];
     if (kind === "orb" || kind === "capsule") {
       const r = kind === "orb" ? 8 : 7, w = kind === "orb" ? 17 : 21, h = 17;
-      c = paint2(w, h, (x, y) => {
+      c = paint3(w, h, (x, y) => {
         const cx = (w - 1) / 2, cy = (h - 1) / 2;
         const ex = kind === "capsule" ? Math.max(0, Math.abs(x - cx) - 3) : Math.abs(x - cx);
         const d = Math.hypot(ex, y - cy);
@@ -42114,7 +43500,7 @@ kmlmk..
         return [...col, core ? 255 : 210];
       });
     } else if (kind === "bottle") {
-      c = paint2(13, 22, (x, y) => {
+      c = paint3(13, 22, (x, y) => {
         const neck = y < 6, cx = 6;
         const hw = neck ? 2 : y < 8 ? 3 + (y - 6) : 5;
         if (y < 1 || y > 20 || Math.abs(x - cx) > hw) return null;
@@ -42126,7 +43512,7 @@ kmlmk..
         return [...mixRgb("#7ff0c8", "#2fa89a", (y - 3) / 18), 170];
       });
     } else {
-      c = paint2(18, 16, (x, y) => {
+      c = paint3(18, 16, (x, y) => {
         if (x === 0 || x === 17 || y === 0 || y === 15) return (x === 0 || x === 17) && (y === 0 || y === 15) ? null : [...ink, 255];
         const band = y === 7 || y === 8 || x === 8 || x === 9;
         if (band) return [...hexRgb3(T3.band), 255];
@@ -43786,27 +45172,50 @@ kmlmk..
     drawHookAndBait(ctx2) {
       const h = this.hook, g = this.game;
       const x = Math.round(h.x), y = Math.round(h.y);
-      ctx2.save();
-      ctx2.translate(x, y - 5);
-      ctx2.rotate(h.angle * 0.6);
-      ctx2.drawImage(HOOK, -3, 0);
-      ctx2.restore();
       const bait2 = g.currentBait();
+      const drawHook = () => {
+        ctx2.save();
+        ctx2.translate(x, y - 5);
+        ctx2.rotate(h.angle * 0.6);
+        ctx2.drawImage(HOOK, -3, 0);
+        ctx2.restore();
+      };
       if (!bait2) {
+        drawHook();
         if (Math.sin(this.t * 3) > 0.92) {
           ctx2.fillStyle = "#ffffff";
           ctx2.fillRect(x + 1, y + 2, 1, 1);
         }
         return;
       }
-      const bx = Math.round(h.x + Math.sin(h.angle * 0.6) * 4 + this.baitSwing * 4), by = Math.round(h.y + 8);
-      const spr = bait2.mini || baitSprite(bait2.art || bait2.type, this.t);
-      if (spr) {
-        ctx2.drawImage(spr, bx - Math.floor(spr.width / 2), by - 2 + Math.round(Math.sin(this.t * 3) * 0.6));
-        const fx = bait2.effect || bait2.type;
-        if (fx === "golden" || fx === "lantern") {
-          if (rng.chance(0.15)) this.particles.sparkle(bx + rng.float(-5, 5), by + rng.float(-3, 6), fx === "golden" ? "#fff3a8" : "#a8fff0");
+      const bx = h.x + Math.sin(h.angle * 0.6) * 4 + this.baitSwing * 4, by = h.y + 7;
+      let hk = null;
+      try {
+        hk = bait2.art ? baitHook(bait2.art, this.t) : null;
+      } catch (e) {
+        hk = null;
+      }
+      if (hk) {
+        ctx2.save();
+        ctx2.translate(Math.round(bx * 2) / 2, Math.round((by + Math.sin(this.t * 3) * 0.6) * 2) / 2);
+        ctx2.rotate(this.baitSwing * 0.35 + h.angle * 0.25);
+        if (hk.glow) {
+          ctx2.globalCompositeOperation = "lighter";
+          ctx2.globalAlpha = 0.55;
+          ctx2.drawImage(hk.glow, -hk.w / 2, -hk.h / 2, hk.w, hk.h);
+          ctx2.globalCompositeOperation = "source-over";
+          ctx2.globalAlpha = 1;
         }
+        ctx2.drawImage(hk.canvas, -hk.w / 2, -hk.h / 2, hk.w, hk.h);
+        ctx2.restore();
+      } else {
+        const spr = bait2.mini || baitSprite(bait2.art || bait2.type, this.t);
+        if (spr) ctx2.drawImage(spr, Math.round(bx) - Math.floor(spr.width / 2), Math.round(by) - 2);
+      }
+      drawHook();
+      const fx = bait2.effect || bait2.type;
+      if (fx === "golden" || fx === "lantern") {
+        if (rng.chance(0.15)) this.particles.sparkle(bx + rng.float(-5, 5), by + rng.float(-3, 6), fx === "golden" ? "#fff3a8" : "#a8fff0");
       }
     }
     // ------------------------------------------------------------------ screen drawing
@@ -44904,7 +46313,7 @@ kwwwwwwk.
         fish.enterTarget = { x: left ? rng.float(80, this.W * 0.55) : rng.float(this.W * 0.45, this.W - 80), y: fish.y };
       }
       fish.life = rng.float(50, 160);
-      fish.extent = extentOf(sp);
+      fish.extent = extentOf2(sp);
       this.fishes.push(fish);
       return fish;
     }
@@ -45368,7 +46777,7 @@ kwwwwwwk.
       p.y = opts[0][1];
     }
   }
-  function extentOf(sp) {
+  function extentOf2(sp) {
     const b = sp.look.body || {};
     const len = (b.len || 40) + (sp.look.tail?.len || 10);
     const h = (b.h || 24) + Math.max(sp.look.dorsal?.h || 0, 6) + Math.max(sp.look.anal?.h || 0, 4);

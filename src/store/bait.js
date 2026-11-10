@@ -69,7 +69,7 @@ for (const fam of CATALOG) {
       attract: Math.round((1.05 + k * 0.45) * 100) / 100, rarity: Math.round((1 + k * 0.3) * 100) / 100,
       size: Math.round(k * 0.07 * 1000) / 1000, giant: Math.round((1 + k * 0.9) * 100) / 100, luck: Math.round(k * 0.1 * 100) / 100,
       pack: PACK_QTY[tier], kb: sizeKb(fam.id, tier),
-      art: { shape: 'grub', color: c1, color2: c2, tier, type },
+      art: { shape: 'grub', line: fam.id, color: c1, color2: c2, tier, type },
     };
   }
 }
