@@ -1,5 +1,7 @@
-// Procedural WebAudio engine: SFX, loops, biome ambience, generative music and babble.
-// Everything is synthesized at runtime, except a few CC0 recordings layered on top (src/core/samples.js). Every public call is a
+// WebAudio engine: SFX, loops, biome ambience, music and babble.
+// Everything you hear is recorded audio (CC0 / public-domain clips and tracks, src/core/samples.js,
+// credits in assets/sfx/CREDITS.md). The procedural synth below is only an emergency fallback for a clip
+// that has no recording or failed to decode. Every public call is a
 // silent no-op until unlock() has created/resumed the AudioContext on a user gesture;
 // music/ambience/volume/loop requests made earlier are remembered and start on unlock.
 //
@@ -17,7 +19,7 @@
 // Graph: voices -> category bus (sfx | music | amb) -> master -> compressor -> limiter -> out
 //        voices -> per-category reverb send -> convolver (generated impulse) -> master
 
-import { SAMPLE_MAP, playSample, warmSamples } from './samples.js';
+import { SAMPLE_MAP, playSample, warmSamples, playClip, decodeClip, clipBuffer, clipFailed, hasClip, releaseClip } from './samples.js';
 
 const AC = typeof window !== 'undefined' ? (window.AudioContext || window.webkitAudioContext) : null;
 const LOOKAHEAD = 0.12;
@@ -225,7 +227,7 @@ function applyMuffle() {
 }
 
 function applyNightTone() {
-  if (B) ramp(B.musicTone.frequency, S.night ? 3600 : 16000, 0.8);
+  if (B) ramp(B.musicTone.frequency, S.night ? 5200 : 16000, 0.8);
 }
 
 // ---------------------------------------------------------------- voices
@@ -752,10 +754,7 @@ const SFX = {
   },
   coin_bounce: (o) => { tink(o, 2093 * rand(0.96, 1.04), 0, 0.08); },
   coin_collect: (o) => {
-    const t = ctx.currentTime;
-    combo.n = t - combo.t < 0.6 ? Math.min(combo.n + 1, COMBO.length - 1) : 0;
-    combo.t = t;
-    const k = Math.pow(2, COMBO[combo.n] / 12);
+    const k = comboStep();
     chime(o, 988 * k, 0, 0.1, 0.1);
     chime(o, 1318 * k, 0.065, 0.12, 0.45);
     tone(o, { at: 0.065, f: 1318 * k, dur: 0.22, type: 'square', vol: 0.012, filt: { type: 'lowpass', f: 3500, track: false } });
@@ -893,6 +892,13 @@ const SFX = {
 
 const COMBO = [0, 2, 4, 7, 9, 12, 14, 16, 19];
 const combo = { n: 0, t: -1 };
+// quick coin pickups climb a pentatonic ladder
+function comboStep() {
+  const t = ctx.currentTime;
+  combo.n = t - combo.t < 0.6 ? Math.min(combo.n + 1, COMBO.length - 1) : 0;
+  combo.t = t;
+  return Math.pow(2, COMBO[combo.n] / 12);
+}
 // per-name minimum retrigger interval (seconds)
 const MIN_GAP = { reel: 0.25, ui_type: 0.02, reel_tick: 0.012, coin_bounce: 0.02, coin_collect: 0.02, mash_pop: 0.02, ui_hover: 0.04 };
 // default reverb send per SFX (others use 0.12)
@@ -1085,8 +1091,115 @@ const LOOPS = {
   },
 };
 
+// ---------------------------------------------------------------- recorded beds + loops
+// A looping clip inside a group: starts (at a random offset) as soon as it is decoded and
+// keeps its target level/rate until then. Mono clips; wide() spreads two drifting copies L/R.
+function sBed(g, id, { vol = 1, rate = 1, pan = 0, lp = 0, hp = 0 } = {}) {
+  const amp = gainNode(vol, g.fade);
+  g.nodes.push(amp);
+  let head = amp;
+  const b = { amp, rate, src: null, fl: null };
+  if (lp) { b.fl = biquad('lowpass', lp, 0.6, head); g.nodes.push(b.fl); head = b.fl; }
+  if (hp) { const f = biquad('highpass', hp, 0.6, head); g.nodes.push(f); head = f; }
+  if (pan && ctx.createStereoPanner) { const pn = ctx.createStereoPanner(); pn.pan.value = pan; pn.connect(head); g.nodes.push(pn); head = pn; }
+  const start = (buf) => {
+    if (!buf || g.dead || b.src) return;
+    const src = ctx.createBufferSource();
+    src.buffer = buf; src.loop = true;
+    src.playbackRate.value = b.rate;
+    src.connect(head);
+    src.start(ctx.currentTime + 0.02, Math.random() * buf.duration);
+    g.srcs.push(src); g.nodes.push(src); b.src = src;
+  };
+  const buf = clipBuffer(ctx, id);
+  if (buf) start(buf); else decodeClip(ctx, id).then(start);
+  b.setRate = (r, tc = 0.1) => { b.rate = r; if (b.src) ramp(b.src.playbackRate, Math.max(0.05, r), tc); };
+  b.setVol = (v, tc = 0.1) => ramp(amp.gain, Math.max(0, v), tc);
+  b.setLp = (f, tc = 0.1) => { if (b.fl) ramp(b.fl.frequency, cf(f), tc); };
+  return b;
+}
+function sWide(g, id, opts = {}) {
+  const v = (opts.vol ?? 1) * 0.62, r = opts.rate ?? 1;
+  const L = sBed(g, id, { ...opts, vol: v, pan: -0.6, rate: r });
+  const R = sBed(g, id, { ...opts, vol: v, pan: 0.6, rate: r * 1.004 });
+  return {
+    setVol(x, tc) { L.setVol(x * 0.62, tc); R.setVol(x * 0.62, tc); },
+    setRate(x, tc) { L.setRate(x, tc); R.setRate(x * 1.004, tc); },
+    setLp(f, tc) { L.setLp(f, tc); R.setLp(f, tc); },
+  };
+}
+// one-shot clip into a group (ambience / loop events)
+const gClip = (g, ids, at, { vol = 1, rate = 1, pan = 0, verb = 0.1, lp = 0 } = {}) =>
+  playClip(ctx, g.fade, pick(ids), { at, vol, rate, pan, wet: g.wet, verb, lp });
+
+const SLOOPS = {
+  // taut line: creaking wood/rope bed whose pitch and level climb with v, plus random creaks
+  tension(g) {
+    const bed = sBed(g, 'lp_creak', { vol: 0, rate: 0.8, hp: 300 });
+    let v = 0, next = 0;
+    return {
+      set(x) { v = x; bed.setVol(0.04 + 0.42 * Math.pow(x, 1.4), 0.08); bed.setRate(0.7 + 0.75 * x, 0.1); },
+      tick(t0, h) {
+        if (v < 0.25) { next = 0; return; }
+        if (!next || next < t0) next = t0 + rand(0.4, 1.6) / v;
+        if (next < h) {
+          gClip(g, ['creak1', 'creak2', 'creak3', 'wsqueak1', 'wsqueak2'], next, { vol: 0.1 + 0.25 * v, rate: rand(0.85, 1.15) + 0.35 * v, pan: rand(-0.3, 0.3), verb: 0.05 });
+          next += rand(0.4, 1.6) / v;
+        }
+      },
+    };
+  },
+  // spinning reel: recorded ratchet/spool loop, faster and louder with v
+  reel(g) {
+    const bed = sBed(g, 'lp_reel', { vol: 0, rate: 0.6 });
+    return { set(x) { bed.setVol(x < 0.02 ? 0 : 0.12 + 0.4 * x, 0.06); bed.setRate(0.5 + 0.9 * x, 0.06); } };
+  },
+  rain(g) {
+    const bed = sWide(g, 'lp_rain', { vol: 0, lp: 3000 });
+    return { set(x) { bed.setVol(0.25 + 0.75 * x, 0.25); bed.setLp(3000 + 5000 * x, 0.3); } };
+  },
+  storm(g) {
+    const rain = SLOOPS.rain(g);
+    const wind = sWide(g, 'lp_wind', { vol: 0, lp: 2200 });
+    let v = 0, next = 0;
+    return {
+      set(x) { v = x; rain.set(0.6 + 0.4 * x); wind.setVol(0.2 + 0.6 * x, 0.3); },
+      tick(t0, h) {
+        if (!next || next < t0) next = t0 + rand(3, 10);
+        if (next < h) {
+          gClip(g, ['thunder1', 'thunder2'], next, { vol: rand(0.35, 0.8) * (0.4 + 0.6 * v), rate: rand(0.8, 1.05), pan: rand(-0.6, 0.6), verb: 0.25, lp: rand(1500, 5000) });
+          next += rand(6, 18) / (0.3 + v);
+        }
+      },
+    };
+  },
+  static(g) {
+    const bed = sBed(g, 'lp_static', { vol: 0, lp: 6500 });
+    let v = 0, next = 0;
+    return {
+      set(x) { v = x; bed.setVol(0.05 + 0.28 * x, 0.06); },
+      tick(t0, h) {
+        if (!next || next < t0) next = t0 + rand(0.2, 1.5);
+        if (next < h) { gClip(g, ['static1', 'static2'], next, { vol: rand(0.1, 0.3) * (0.3 + v), rate: rand(0.8, 1.3), pan: rand(-0.5, 0.5), verb: 0 }); next += rand(0.3, 2) / (0.3 + v); }
+      },
+    };
+  },
+  // deep beating rumble, deeper and heavier as v rises
+  blackhole(g) {
+    const bed = sWide(g, 'lp_rumble', { vol: 0, lp: 700 });
+    return { set(x) { bed.setVol(0.45 + 0.75 * x, 0.15); bed.setRate(1 - 0.45 * x, 0.2); bed.setLp(500 + 900 * x, 0.2); } };
+  },
+  flood(g) {
+    const bed = sWide(g, 'lp_flow', { vol: 0 });
+    const bub = sBed(g, 'lp_bubbler', { vol: 0 });
+    return { set(x) { bed.setVol(0.3 + 0.6 * x, 0.15); bed.setRate(0.85 + 0.3 * x, 0.2); bub.setVol(0.08 + 0.3 * x, 0.15); } };
+  },
+};
+const SLOOP_CLIPS = { tension: ['lp_creak'], reel: ['lp_reel'], rain: ['lp_rain'], storm: ['lp_rain', 'lp_wind'], static: ['lp_static'], blackhole: ['lp_rumble'], flood: ['lp_flow'] };
+const useSampleLoop = (name) => SLOOPS[name] && (SLOOP_CLIPS[name] || []).every((id) => hasClip(id) && !clipFailed(id));
+
 function makeLoop(name) {
-  const build = LOOPS[name];
+  const build = useSampleLoop(name) ? SLOOPS[name] : LOOPS[name];
   let inst = null, g = null, v = 0.5, dead = false;
   const ensure = () => {
     if (inst || dead || !ready()) return;
@@ -1316,11 +1429,119 @@ const WEATHER = {
   },
 };
 
+// ---------------------------------------------------------------- recorded ambience
+// Biome beds are looping field recordings (mono, spread wide), with recorded one-shots dropped in
+// at random: { beds: [[clipId, vol, opts]], events: [{ids, min, max, vol, rate, pan, lp, verb, first}] }
+const ev = (ids, min, max, o = {}) => ({ ids, min, max, vol: [0.2, 0.4], rate: [0.9, 1.1], pan: [-0.7, 0.7], verb: 0.15, ...o });
+const RAIN_BED = (v) => ['lp_rain', v, { lp: 4500 }];
+const SCENES = {
+  // the old desktop: a computer fan humming along
+  desktop: () => ({ beds: [['lp_fan', 0.28, { lp: 1200 }]], events: [] }),
+  // the tank: bubbler + pump hum, the odd bubble popping at the surface
+  aquarium: () => ({
+    beds: [['lp_bubbler', 0.3, { lp: 5000 }], ['lp_fan', 0.12, { lp: 700 }]],
+    events: [ev(['bub4', 'bub5', 'bubble1', 'bubble3'], 2, 6, { vol: [0.05, 0.12], rate: [0.8, 1.3], lp: 4000 })],
+  }),
+  // sunny shallows: lapping water, waves rolling in, gulls overhead, little bubbles
+  shallows: (n) => ({
+    beds: [['lp_lap', n ? 0.5 : 0.62, {}]],
+    events: [
+      ev(['wave1', 'wave2', 'wave3'], n ? 6 : 4, n ? 12 : 9, { vol: [0.22, 0.45], rate: [0.85, 1.05], lp: n ? 2200 : 7000 }),
+      ev(['gull1', 'gull2', 'gull3'], n ? 70 : 14, n ? 160 : 34, { first: n ? 40 : 6, vol: [0.07, 0.15], rate: [0.92, 1.08], pan: [-0.9, 0.9], verb: 0.25 }),
+      ev(['bub4', 'bub5', 'bubble1'], n ? 4 : 2.5, n ? 9 : 6, { vol: [0.04, 0.09], rate: [0.8, 1.4], lp: 3000 }),
+    ],
+  }),
+  // junkyard reef: machine hum, static crackle, creaking hulls, distant metal clanks
+  junkyard: (n) => ({
+    beds: [['lp_machine', n ? 0.22 : 0.3, { lp: 900 }], ['lp_lap', 0.25, { lp: 1200 }]],
+    events: [
+      ev(['creak1', 'creak2', 'wsqueak1', 'wsqueak2'], n ? 7 : 4, n ? 15 : 10, { vol: [0.1, 0.22], rate: [0.5, 0.8], lp: 1500, verb: 0.4 }),
+      ev(['static1', 'static2'], n ? 10 : 6, n ? 25 : 15, { vol: [0.04, 0.09], lp: 5000 }),
+      ev(['clank1', 'clank2'], n ? 14 : 8, n ? 30 : 20, { vol: [0.08, 0.18], rate: [0.6, 0.9], lp: 1800, verb: 0.5 }),
+    ],
+  }),
+  // the deep: pressure rumble, whale song far away, slow bubbles
+  abyss: (n) => ({
+    beds: [['lp_rumble', n ? 0.7 : 0.8, { lp: 500 }]],
+    events: [
+      ev(['whale1', 'whale2', 'whale3'], n ? 30 : 20, n ? 70 : 45, { first: 8, vol: [0.18, 0.32], rate: [0.7, 0.9], lp: 900, verb: 0.6 }),
+      ev(['bub4', 'bub5', 'bubble2'], 5, 12, { vol: [0.04, 0.08], rate: [0.6, 0.85], lp: 1500, verb: 0.4 }),
+    ],
+  }),
+  // icy fjord: wind over the water, lapping waves, groaning ice, far-off calving
+  fjord: (n) => ({
+    beds: [['lp_wind', n ? 0.35 : 0.45, { lp: 2400 }], ['lp_lap', 0.4, { lp: 1800 }]],
+    events: [
+      ev(['creak1', 'creak2'], n ? 6 : 9, n ? 16 : 22, { vol: [0.08, 0.16], rate: [0.3, 0.45], lp: 900, verb: 0.5 }),
+      ev(['ice_big', 'ice3'], 25, 60, { first: 12, vol: [0.1, 0.2], rate: [0.5, 0.7], lp: 1600, verb: 0.6 }),
+      ev(['k_glass2', 'spk3', 'k_glass1'], 3, 9, { vol: [0.03, 0.07], rate: [1.1, 1.6], verb: 0.6 }),
+    ],
+  }),
+  // lava rift: boiling vents, deep rumble, crackling rock, distant booms and lava gloops
+  volcano: (n) => ({
+    beds: [['lp_rumble', 0.65, { lp: 400, rate: 0.8 }], ['lp_boil', n ? 0.3 : 0.38, { lp: 2500 }]],
+    events: [
+      ev(['boom', 'boom2'], n ? 12 : 16, n ? 30 : 40, { first: 6, vol: [0.15, 0.3], rate: [0.6, 0.85], lp: 700, verb: 0.5 }),
+      ev(['gloop1', 'gloop2'], 3, 8, { vol: [0.08, 0.16], rate: [0.45, 0.7], lp: 1200 }),
+      ev(['steam1'], 6, 16, { vol: [0.05, 0.1], rate: [0.8, 1.1], lp: 4000 }),
+    ],
+  }),
+  // drowned city: muffled traffic, neon buzz, drips, creaking steel
+  metropolis: (n) => ({
+    beds: [['lp_traffic', n ? 0.3 : 0.4, { lp: 800 }], ['lp_drip', 0.18, { lp: 4000 }]],
+    events: [
+      ev(['buzz1', 'buzz2'], n ? 8 : 14, n ? 20 : 40, { vol: [0.03, 0.07], lp: 3000 }),
+      ev(['creak1', 'creak3', 'wsqueak2'], 8, 20, { vol: [0.06, 0.14], rate: [0.45, 0.7], lp: 1200, verb: 0.5 }),
+      ev(['ding2'], 30, 80, { first: 20, vol: [0.05, 0.09], rate: [0.7, 0.8], lp: 1500, verb: 0.6 }),
+    ],
+  }),
+};
+const SWEATHER = {
+  rain: () => ({ beds: [RAIN_BED(0.5)], events: [] }),
+  storm: () => ({ beds: [RAIN_BED(0.75), ['lp_wind', 0.45, { lp: 2000 }]], events: [ev(['thunder1', 'thunder2'], 7, 20, { first: 4, vol: [0.25, 0.6], rate: [0.8, 1.05], lp: 4000, verb: 0.25 })] }),
+  static: () => ({ beds: [['lp_static', 0.12, { lp: 6000 }]], events: [ev(['static1', 'static2'], 0.8, 4, { vol: [0.05, 0.12] })] }),
+  datarain: () => ({ beds: [RAIN_BED(0.25)], events: [ev(['k_select1', 'k_tick4', 'k_glass2'], 0.4, 1.6, { vol: [0.03, 0.07], rate: [0.9, 2.2], verb: 0.35 })] }),
+  oil: () => ({ beds: [['lp_rumble', 0.35, { lp: 250, rate: 0.7 }]], events: [ev(['gloop1', 'gloop2'], 4, 10, { vol: [0.06, 0.12], rate: [0.4, 0.6], lp: 900 })] }),
+  current: () => ({ beds: [['lp_flow', 0.35, { lp: 1500 }]], events: [] }),
+  snow: () => ({ beds: [], events: [ev(['k_glass2', 'spk3'], 0.8, 2.6, { vol: [0.02, 0.05], rate: [1.2, 1.8], pan: [-0.9, 0.9], verb: 0.7 })] }),
+  glowtide: () => ({ beds: [], events: [ev(['shimmer1', 'shimmer2'], 5, 11, { vol: [0.05, 0.1], rate: [0.6, 0.8], verb: 0.8 })] }),
+  snowfall: () => ({ beds: [['lp_wind', 0.15, { lp: 6000, hp: 2000 }]], events: [ev(['k_glass2', 'spk3'], 1.2, 3.5, { vol: [0.02, 0.04], rate: [1.3, 1.9], pan: [-0.8, 0.8], verb: 0.7 })] }),
+  blizzard: () => ({ beds: [['lp_wind', 0.8, { lp: 3500, rate: 1.15 }]], events: [ev(['travel1', 'travel2'], 3, 7, { vol: [0.08, 0.16], rate: [0.5, 0.7], pan: [-0.9, 0.9], lp: 2500 })] }),
+  aurora: () => ({ beds: [], events: [ev(['shimmer1', 'shimmer2', 'k_glass4'], 4, 9, { vol: [0.04, 0.08], rate: [0.7, 1.0], verb: 0.8 })] }),
+  eruption: () => ({ beds: [['lp_fire', 0.25, { lp: 4000 }]], events: [ev(['boom', 'boom2'], 6, 14, { vol: [0.2, 0.4], rate: [0.7, 0.95], lp: 1200, verb: 0.4 })] }),
+  sulfur: () => ({ beds: [['lp_boil', 0.2, { hp: 1500 }]], events: [ev(['steam1'], 2, 6, { vol: [0.05, 0.1] }), ev(['bub4', 'bub5'], 0.3, 1.2, { vol: [0.04, 0.08], rate: [0.6, 1.1], lp: 2000 })] }),
+  magma: () => ({ beds: [['lp_rumble', 0.4, { lp: 300, rate: 0.6 }]], events: [ev(['gloop1', 'gloop2'], 1, 3, { vol: [0.08, 0.15], rate: [0.35, 0.55], lp: 900 })] }),
+  neonstorm: () => ({ beds: [['lp_static', 0.08, { lp: 5000 }]], events: [ev(['buzz1', 'buzz2'], 0.8, 3, { vol: [0.05, 0.1] })] }),
+  rushhour: () => ({ beds: [['lp_traffic', 0.3, { lp: 1400 }]], events: [ev(['travel1', 'travel2'], 0.8, 2.5, { vol: [0.04, 0.09], rate: [0.8, 1.2], pan: [-0.9, 0.9], lp: 2500 })] }),
+  blackout: () => ({ beds: [['lp_rumble', 0.3, { lp: 200 }]], events: [ev(['creak1', 'creak2', 'wsqueak1'], 6, 14, { vol: [0.08, 0.16], rate: [0.4, 0.6], lp: 900, verb: 0.6 })] }),
+};
+SCENES.deep = SCENES.abyss;
+
+function sceneClips(def) {
+  const ids = def.beds.map((b) => b[0]);
+  for (const e of def.events) ids.push(...e.ids);
+  return ids;
+}
+const rr = (r) => (Array.isArray(r) ? rand(r[0], r[1]) : r);
+function startRecorded(g, def) {
+  for (const [id, vol, opts] of def.beds) sWide(g, id, { vol, ...(opts || {}) });
+  return def.events.map((e) => ({
+    min: e.min, max: e.max, first: e.first,
+    fn: (t) => gClip(g, e.ids, t, { vol: rr(e.vol), rate: rr(e.rate), pan: rr(e.pan), verb: e.verb, lp: e.lp || 0 }),
+  }));
+}
+
 let scene = null;
 function buildScene(key, biome, weather, night) {
   const g = group(B.amb.in, B.amb.verb, 1, 2.5);
-  const evs = (AMB[biome] || AMB.desktop)(g, night) || [];
-  const layer = WEATHER[weather] ? WEATHER[weather](g) : null;
+  const sdef = (SCENES[biome] || SCENES.desktop)(night);
+  const wdef = SWEATHER[weather] ? SWEATHER[weather](night) : null;
+  const okRec = (d) => d && sceneClips(d).every((id) => hasClip(id) && !clipFailed(id));
+  // recorded scene normally; the procedural one only if its clips are missing
+  const evs = okRec(sdef) ? startRecorded(g, sdef) : ((AMB[biome] || AMB.desktop)(g, night) || []);
+  let layer = null;
+  if (wdef && okRec(wdef)) { const wevs = startRecorded(g, wdef); layer = { tick: (t0, h) => runEvents(wevs, t0, h) }; }
+  else if (WEATHER[weather]) layer = WEATHER[weather](g);
   return { key, g, tick(t0, h) { runEvents(evs, t0, h); if (layer && layer.tick) layer.tick(t0, h); } };
 }
 
@@ -1752,11 +1973,53 @@ function scheduleTrack(tr, t0, h) {
   }
 }
 
+// recorded tracks (CC0, see CREDITS.md); each is a seamless loop decoded on demand
+const MUSIC_CLIPS = {
+  shallows: 'mu_shallows', aquarium: 'mu_aquarium', desktop: 'mu_aquarium', abyss: 'mu_abyss', fjord: 'mu_fjord',
+  junkyard: 'mu_junkyard', volcano: 'mu_volcano', metropolis: 'mu_metropolis',
+};
+const MUSIC_GAIN = { shallows: 0.8, aquarium: 0.85, desktop: 0.85, abyss: 0.75, fjord: 0.85, junkyard: 0.75, volcano: 0.75, metropolis: 0.75 };
+
+function makeSampleTrack(name, id) {
+  const tr = { name, id, sample: true, dead: false, src: null, fade: gainNode(0, B.music.in) };
+  decodeClip(ctx, id).then((buf) => {
+    if (tr.dead) return;
+    if (!buf) { // could not decode: procedural fallback
+      if (curTrack === tr && TRACKS[name]) { curTrack = makeTrack(name); tracks.push(curTrack); }
+      return;
+    }
+    const t = ctx.currentTime + 0.05;
+    const src = ctx.createBufferSource();
+    src.buffer = buf; src.loop = true;
+    src.connect(tr.fade);
+    src.start(t);
+    tr.fade.gain.setValueAtTime(0, t);
+    tr.fade.gain.linearRampToValueAtTime(MUSIC_GAIN[name] ?? 0.8, t + 2.5);
+    tr.src = src;
+  });
+  return tr;
+}
+
+function stopSampleTrack(tr, fade = 2.5) {
+  if (tr.dead) return;
+  tr.dead = true;
+  const t = ctx.currentTime, g = tr.fade.gain;
+  g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(0, t + fade);
+  if (tr.src) { try { tr.src.stop(t + fade + 0.05); } catch (e) { /* ignore */ } }
+  setTimeout(() => {
+    try { tr.fade.disconnect(); } catch (e) { /* ignore */ }
+    if (!curTrack || curTrack.id !== tr.id) releaseClip(tr.id); // big buffers: keep only what plays
+  }, (fade + 0.5) * 1000);
+}
+
 function applyMusic() {
   const name = S.music;
   if (curTrack && curTrack.name === name) return;
-  if (curTrack) { stopTrack(curTrack, 2.5); curTrack = null; }
-  if (name && TRACKS[name]) { curTrack = makeTrack(name); tracks.push(curTrack); }
+  if (curTrack) { if (curTrack.sample) stopSampleTrack(curTrack, 2.5); else stopTrack(curTrack, 2.5); curTrack = null; }
+  if (!name) return;
+  const id = MUSIC_CLIPS[name];
+  if (id && hasClip(id) && !clipFailed(id)) curTrack = makeSampleTrack(name, id);
+  else if (TRACKS[name]) { curTrack = makeTrack(name); tracks.push(curTrack); }
 }
 
 // ---------------------------------------------------------------- babble
@@ -1768,10 +2031,23 @@ const VOICES = {
   deep: { base: 45, scale: [0, 3, 5, 7, 10], type: 'sawtooth', dur: 0.1, gap: 0.105, vol: 0.075, lp: 800, bend: 0.94, fmul: 0.7 },
   clip: { base: 74, scale: [0, 2, 4, 7, 9, 12, 14], type: 'triangle', dur: 0.05, gap: 0.058, vol: 0.07, lp: 5200, bend: 1.22, fmul: 1.3 }, // [phase5:intro] Clip's chirpy chrome voice
 };
+for (const k in VOICES) VOICES[k].id = k;
 const FORMANT = { a: 850, e: 1900, i: 2500, o: 600, u: 420, y: 2200 };
 const bab = { last: {}, line: null };
 
+// recorded syllable per voice: [clip, playback rate at the voice's middle note, level, lowpass]
+const VOICE_CLIPS = {
+  crab: ['k_pluck1', 0.95, 0.5, 0], fish: ['k_drop3', 0.8, 0.45, 0], tiny: ['k_glass2', 1.2, 0.35, 0],
+  deep: ['k_pluck1', 0.42, 0.6, 1400], clip: ['k_select1', 1.0, 0.4, 0],
+};
 function blip(o, at, f, v, form, accent, cons) {
+  const vc = VOICE_CLIPS[v.id];
+  if (vc && clipBuffer(ctx, vc[0])) {
+    const rate = vc[1] * f / m2f(v.base + 4), t = o.t + at;
+    const s = playClip(ctx, o.out, vc[0], { at: t, vol: vc[2] * (accent ? 1.25 : 1), rate, lp: vc[3], dur: v.gap * 1.6 });
+    if (s && s.endAt > o.end) o.end = s.endAt;
+    return;
+  }
   const t = o.t + at, env = ctx.createGain(), osc = ctx.createOscillator();
   const pk = ctx.createBiquadFilter(), lp = ctx.createBiquadFilter();
   osc.type = v.type;
@@ -1899,23 +2175,45 @@ function unlock() {
 }
 
 let samplesWarm = false;
+// clips the loops and babble need, decoded together with the SFX on unlock (ambience beds and music decode on demand)
+const WARM_EXTRA = ['lp_reel', 'lp_creak', 'creak1', 'creak2', 'creak3', 'wsqueak1', 'wsqueak2', 'k_pluck1', 'k_drop3', 'k_glass2', 'k_select1'];
+const stats = { sample: 0, synth: 0, pending: 0, dropped: 0, synthNames: new Set() };
 function play(name, opts) {
   const fn = SFX[name];
   if (!fn && !SAMPLE_MAP[name]) { warnOnce('sfx:' + name, `unknown sound "${name}"`); return; }
   if (!ready()) return;
-  if (!samplesWarm) { samplesWarm = true; try { warmSamples(ctx); } catch (e) { /* synth only */ } }
+  if (!samplesWarm) { samplesWarm = true; try { warmSamples(ctx, WARM_EXTRA); } catch (e) { /* synth only */ } }
   const { vol = 1, pitch = 1, pan = 0 } = opts || {};
   if (!(vol > 0)) return;
   const now = ctx.currentTime;
   if (now - (lastPlay.get(name) ?? -1) < (MIN_GAP[name] ?? 0.03)) return;
   lastPlay.set(name, now);
-  // a recorded CC0 clip when one is mapped and decoded; otherwise the procedural voice
-  try { if (playSample(ctx, B.sfx.in, name, { vol, pitch, pan })) return; } catch (e) { /* fall back */ }
+  let p = Math.max(0.1, Math.min(+pitch || 1, 8));
+  const o = { vol: Math.min(+vol, 2), pitch: p, pan: +pan || 0 };
+  // the recording (normal case)
+  if (SAMPLE_MAP[name]) {
+    if (name === 'coin_collect') o.pitch = p * comboStep();
+    try {
+      const r = playSample(ctx, B.sfx.in, B.sfx.verb, name, o);
+      if (r === true) { stats.sample++; return; }
+      if (r === 'pending') {
+        // still decoding (first moments after unlock): play it the moment it is ready, if that is soon
+        stats.pending++;
+        Promise.race(SAMPLE_MAP[name].map((v) => decodeClip(ctx, typeof v === 'string' ? v : v.id))).then(() => {
+          if (ctx.currentTime - now < 0.35 && playSample(ctx, B.sfx.in, B.sfx.verb, name, o) === true) stats.sample++;
+          else stats.dropped++;
+        });
+        return;
+      }
+    } catch (e) { /* fall back to the synth */ }
+  }
+  // emergency fallback: procedural voice (no recording mapped, or every variant failed to decode)
   if (!fn) return;
+  stats.synth++; stats.synthNames.add(name);
   try {
     fire(fn, now + 0.005, {
-      dry: B.sfx.in, wet: B.sfx.verb, pool: 'sfx', vol: Math.min(+vol, 2), pan: +pan || 0,
-      p: Math.max(0.1, Math.min(+pitch || 1, 8)), verb: VERB[name] ?? 0.12,
+      dry: B.sfx.in, wet: B.sfx.verb, pool: 'sfx', vol: o.vol, pan: o.pan,
+      p, verb: VERB[name] ?? 0.12,
     });
   } catch (e) {
     warnOnce('err:' + name, `sound "${name}" failed: ${e.message}`);
@@ -1999,4 +2297,6 @@ export const audio = {
   get night() { return S.night; },
   _meter: meter,
   _voices: () => ({ sfx: pools.sfx.length, music: pools.music.length, amb: pools.amb.length }),
+  // dev/test: how many one-shots came from recordings vs the synth fallback, and what is playing
+  _stats: () => ({ ...stats, synthNames: [...stats.synthNames], music: curTrack ? { name: curTrack.name, recorded: !!curTrack.sample, playing: !!(curTrack.src || !curTrack.sample) } : null, scene: scene ? scene.key : null }),
 };

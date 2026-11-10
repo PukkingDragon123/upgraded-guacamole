@@ -105,8 +105,6 @@ export const SAMPLE_MAP = {
   neon_buzz: ['buzz1', 'buzz2'],
   train_ding: ['ding2', 'bell'],
   unlock_biome: ['jin_biome'],
-  // legacy aliases kept for older callers
-  chest_hit: ['hit1', 'hit2'], lock_open: ['key_open'],
 };
 
 // level trim per sound name (clips are loudness-normalised, so this is the mix)
