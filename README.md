@@ -7,7 +7,7 @@ person in a little boat on a glossy, sunlit sea:
 - Zap fish with your rod's shock.
 - Fight surges by pulling against them.
 
-Then fill your goldfish jar with low-poly fish that earn Aero, and research better rods, boats, tanks and
+Then fill your glass cube tank with voxel fish that earn Aero, and research better rods, boats, tanks and
 seven oceans in The Lab.
 
 All art (voxel world, fish, characters and rooms), all music and all sound effects are generated in code. The
@@ -61,8 +61,9 @@ To build from source, run `npm install && npm run build`, which bundles `src/` i
 
 Catch fish and keep them in your 3D tank, where they earn **Aero** (even while you're away). Follow the
 **quest lines**: 7 story chapters told by Bubbles the seal, Professor Fizz, Marina, Dot and Captain Bloat.
-Each chapter's reward opens the next ocean. Research in **The Lab**, laid out as rows of animated glass
-tiles per branch: plan tiles, then Confirm.
+Each chapter's reward opens the next ocean. Research in **The Lab**, a zoomed-in tree that grows out from the middle. Nodes you can't reach yet stay
+black. Sail to the **Workshop** to craft rods, tackle, bait, decor, boat parts and tank gear, and crack open chests
+with a minigame.
 
 ## What's inside
 
@@ -70,7 +71,7 @@ tiles per branch: plan tiles, then Confirm.
   lens flares and splashes on the lens.
   - The camera crash-zooms in at key moments, and floating 3D voxel text appears in the Alagard font.
   - You answer with reply bubbles (click or press 1/2/3): pick your name, your boat paint and your first bait.
-  - **Bubbles**, a chubby low-poly bubble seal, swims around the screen, points at things and guides the opening
+  - **Bubbles**, a fat, jiggly plush voxel seal, swims around the screen, points at things and guides the opening
     and the tutorial. Afterwards it stays on as a hint helper.
 - **Living water**: a wave simulation where casting, bites, jumps, fights, the boat's wake, rain and your mouse all
   make ripples. The boat and boxes float on the waves. A custom water surface and underwater shading add glints,
@@ -85,8 +86,8 @@ tiles per branch: plan tiles, then Confirm.
   - **Sunken Metropolis**
   - **Lava Rift**
   - **The Deep Ocean**
-- **111 low-poly 3D fish** plus dolphins, whales, orcas, seals and turtles, faceted and softly painted, with
-  glossy shine and translucent fins. Their names are internet and meme
+- **111 realistic voxel fish** plus dolphins, whales, orcas, seals and turtles in high-resolution voxel art, with
+  natural eyes, glossy shine and see-through fins. Their names are internet and meme
   puns:
   - Wi-Fish
   - Stonks Salmon
