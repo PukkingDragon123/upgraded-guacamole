@@ -57029,7 +57029,7 @@ void main() {
         }
       };
       BOAT_NAMES = { raft: "Bubble Raft", dinghy: "Dinghy", skiff: "Skiff", hydrofoil: "Hydrofoil", yacht: "Aero Yacht", catamaran: "Catamaran", submarine: "Submarine" };
-      TANK_NAMES = { jar: "Nano Cube", bowl: "Bubble Cube", smalltank: "Aqua Cube", bigtank: "Big Cube", reeftank: "Reef Cube", wallaquarium: "Mega Cube" };
+      TANK_NAMES = { jar: "Nano Tank", bowl: "Bubble Tank", smalltank: "Aqua Tank", bigtank: "Big Tank", reeftank: "Reef Tank", wallaquarium: "Mega Tank" };
       OCEAN_NAMES = { oscean: "(OS)cean", shallows: "Sunny Shallows", fjord: "Frosty Fjord", junkyard: "Junkyard Reef", metropolis: "Sunken Metropolis", volcano: "Lava Rift", abyss: "The Deep Ocean" };
       BRANCHES = {
         rods: { name: "Rods", color: "#35c8ff", angle: -90, icon: "rod:glass" },
@@ -57228,20 +57228,20 @@ void main() {
       n("sea_abyss", "oceans", 6, 0, "The Deep Ocean", "biome:abyss", ["sea_volcano", "sea_lantern"], { unlock: [U("biome", "abyss")], desc: "Into the deep dark.", fish: { "biome:volcano": 2, "rarity:rare": 1 } });
       n("sea_pressure", "oceans", 7, -1, "Pressure Suit", "heart", ["sea_abyss"], { effect: { rodResilience: 0.08, calm: 1.1 }, desc: "Deep fish fight less dirty." });
       n("sea_legend", "oceans", 8, 0, "Legend Hunter", "crown", ["sea_abyss", "sea_sonar"], { effect: { rarityBoost: 1.12, shinyChance: 1.25 }, desc: "Legends sense a worthy angler.", fish: { "biome:abyss": 2, "rarity:epic": 1 } });
-      n("tank_bowl", "aquarium", 1, 0, "Bubble Cube", "tank:bowl", [ROOT_ID], { unlock: [U("tank", "bowl")], effect: { tankCap: 1 }, desc: "Grow your Nano Cube into a roomier Bubble Cube." });
-      n("tank_small", "aquarium", 2, 0, "Aqua Cube", "tank:smalltank", ["tank_bowl"], { unlock: [U("tank", "smalltank")], effect: { tankCap: 2 }, desc: "Room for more fish." });
+      n("tank_bowl", "aquarium", 1, 0, "Bubble Tank", "tank:bowl", [ROOT_ID], { unlock: [U("tank", "bowl")], effect: { tankCap: 1 }, desc: "Grow your Nano Tank into a roomier Bubble Tank." });
+      n("tank_small", "aquarium", 2, 0, "Aqua Tank", "tank:smalltank", ["tank_bowl"], { unlock: [U("tank", "smalltank")], effect: { tankCap: 2 }, desc: "Room for more fish." });
       n("tank_feeder", "aquarium", 2, 1, "Auto-Feeder", "food", ["tank_bowl"], { effect: { feeder: 1 }, desc: "Fish get fed while you work." });
       n("tank_snail", "aquarium", 3, -1, "Snail Janitor", "snail", ["tank_small"], { effect: { autoCollect: 1 }, desc: "A snail collects Aero for you." });
       n("tank_happy", "aquarium", 3, 1, "Happy Water", "heart", ["tank_feeder"], { effect: { coinMul: 1.2 }, desc: "Happy fish make more Aero." });
-      n("tank_big", "aquarium", 4, 0, "Big Cube", "tank:bigtank", ["tank_small"], { unlock: [U("tank", "bigtank")], effect: { tankCap: 3 }, desc: "A big glossy tank." });
+      n("tank_big", "aquarium", 4, 0, "Big Tank", "tank:bigtank", ["tank_small"], { unlock: [U("tank", "bigtank")], effect: { tankCap: 3 }, desc: "A big glossy tank." });
       n("tank_romance", "aquarium", 4, 1, "Fish Romance", "heart", ["tank_happy"], { effect: { breeding: 1 }, desc: "Happy pairs lay eggs." });
       n("tank_crab", "aquarium", 5, -1, "Coin Crab", "crab", ["tank_snail", "tank_big"], { effect: { autoCollect: 1, collectRadius: 4 }, desc: "A greedy crab helps collect." });
       n("tank_nursery", "aquarium", 5, 1, "Warm Nursery", "egg", ["tank_romance"], { effect: { hatchSpeed: 1.5 }, desc: "Eggs hatch faster." });
-      n("tank_reef", "aquarium", 6, 0, "Reef Cube", "tank:reeftank", ["tank_big"], { unlock: [U("tank", "reeftank")], effect: { tankCap: 3, coinMul: 1.1 }, desc: "Living coral, happy fish." });
+      n("tank_reef", "aquarium", 6, 0, "Reef Tank", "tank:reeftank", ["tank_big"], { unlock: [U("tank", "reeftank")], effect: { tankCap: 3, coinMul: 1.1 }, desc: "Living coral, happy fish." });
       n("tank_mutation", "aquarium", 6, 2, "Mutation Lab", "dna", ["tank_nursery"], { effect: { mutationChance: 0.03 }, desc: "More mutations." });
       n("tank_currents", "aquarium", 7, -1, "Treasure Currents", "coin", ["tank_reef"], { effect: { coinMul: 1.3, offlineMul: 0.1 }, desc: "More Aero, even while away." });
       n("tank_sparkle", "aquarium", 7, 1, "Sparkle Genes", "star", ["tank_mutation", "tank_reef"], { effect: { shinyChance: 1.6 }, desc: "Shiny fish more often." });
-      n("tank_wall", "aquarium", 8, 0, "Mega Cube", "tank:wallaquarium", ["tank_currents"], { unlock: [U("tank", "wallaquarium")], effect: { tankCap: 6, coinMul: 1.15 }, desc: "A whole wall of ocean." });
+      n("tank_wall", "aquarium", 8, 0, "Mega Tank", "tank:wallaquarium", ["tank_currents"], { unlock: [U("tank", "wallaquarium")], effect: { tankCap: 6, coinMul: 1.15 }, desc: "A whole wall of ocean." });
       n("luck1", "luck", 1, 0, "Four-Leaf Kelp", "clover", [ROOT_ID], { effect: { rarityBoost: 1.05 }, desc: "A little luck for every cast." });
       n("offline1", "luck", 2, -1, "Night Shift", "moon", ["luck1"], { effect: { offlineMul: 0.1 }, desc: "More Aero while you're away." });
       n("lab_slot2", "luck", 2, 0, "Second Bench", "beaker", ["luck1"], { effect: { labSlots: 1 }, desc: "Research two things at once.", cost: { aero: 120, items: { driftwood: 4, sea_glass: 2 } }, time: 30 });
@@ -57438,12 +57438,12 @@ void main() {
       init_shopdata();
       TANK_IDS = ["jar", "bowl", "smalltank", "bigtank", "reeftank", "wallaquarium"];
       TANK_TIERS = [
-        { id: "jar", name: "Nano Cube", shape: "side", cap: 0, rate: 1, offlineH: 3, plants: 4, water: "aero" },
-        { id: "bowl", name: "Bubble Cube", shape: "side", cap: 1, rate: 1.15, offlineH: 4, plants: 6, water: "aero" },
-        { id: "smalltank", name: "Aqua Cube", shape: "side", cap: 2, rate: 1.3, offlineH: 5, plants: 9, water: "aero" },
-        { id: "bigtank", name: "Big Cube", shape: "side", cap: 3, rate: 1.5, offlineH: 6, plants: 13, water: "aero" },
-        { id: "reeftank", name: "Reef Cube", shape: "side", cap: 4, rate: 1.75, offlineH: 7, plants: 18, water: "reef" },
-        { id: "wallaquarium", name: "Mega Cube", shape: "side", cap: 5, rate: 2.1, offlineH: 8, plants: 26, water: "aero" }
+        { id: "jar", name: "Nano Tank", shape: "side", cap: 0, rate: 1, offlineH: 3, plants: 4, water: "aero" },
+        { id: "bowl", name: "Bubble Tank", shape: "side", cap: 1, rate: 1.15, offlineH: 4, plants: 6, water: "aero" },
+        { id: "smalltank", name: "Aqua Tank", shape: "side", cap: 2, rate: 1.3, offlineH: 5, plants: 9, water: "aero" },
+        { id: "bigtank", name: "Big Tank", shape: "side", cap: 3, rate: 1.5, offlineH: 6, plants: 13, water: "aero" },
+        { id: "reeftank", name: "Reef Tank", shape: "side", cap: 4, rate: 1.75, offlineH: 7, plants: 18, water: "reef" },
+        { id: "wallaquarium", name: "Mega Tank", shape: "side", cap: 5, rate: 2.1, offlineH: 8, plants: 26, water: "aero" }
       ];
       TANK2D = [
         { W: 400, H: 250, D: 120, gravel: 20, rise: 16 },
@@ -87315,7 +87315,7 @@ kmlmk..
             // [phase8:prog]
             Q("c1_lab", "fizz", "Lab Coat On", "Plan a tile in The Lab, then press Confirm!", [{ t: "research", n: 1 }], { items: { driftwood: 3, kelp_fibre: 2 } }),
             Q("c1_dex", "seal", "FishDex Rookie", "Every new fish goes in your FishDex.", [{ t: "species", n: 4 }], { aero: 25 }),
-            Q("c1_bowl", "fizz", "A Bigger Cube", "That Nano Cube is cramped. Research the Bubble Cube!", [{ t: "tank", tier: 1 }], { aero: 30, items: { shell: 3, kelp_fibre: 2 } }),
+            Q("c1_bowl", "fizz", "A Bigger Tank", "That Nano Tank is cramped. Research the Bubble Tank!", [{ t: "tank", tier: 1 }], { aero: 30, items: { shell: 3, kelp_fibre: 2 } }),
             Q("c1_boss", "seal", "Boss: Turbine Shark", "Something HUGE spins at the very bottom. Drop your hook into the Abyssal Zone!", [{ t: "boss", id: "bruce" }], { aero: 40, items: { fish_scale: 4 } })
             // [phase9:fishing]
           ]
@@ -97061,11 +97061,11 @@ kmlmk..
     ctxOf(c).drawImage(src, -x, -y);
     return c;
   }
-  function* planeSteps(shape6, k, Z, sK, pitch, sandLv) {
+  function* planeSteps(shape6, k, Z, sK, pitch, sandLv, wk = 1) {
     const S11 = SANDS[sandLv] || SANDS[0];
     const vs = PXV / (Z * sK);
     const cosP = Math.cos(pitch * DEG10);
-    const W11 = shape6.W, D = shape6.D;
+    const D = shape6.D, W0 = shape6.W, W11 = W0 * wk + 8;
     const slab3 = D / 3;
     const nx = Math.ceil(W11 / vs) + 1;
     const nz = Math.max(4, Math.round(slab3 / vs));
@@ -97073,7 +97073,7 @@ kmlmk..
     let maxH = 1;
     const seed = shape6.seed + k * 101 + sandLv * 7;
     for (let i = 0; i < nx; i++) {
-      const x = -W11 / 2 + (i + 0.5) * vs;
+      const x = clamp(-W11 / 2 + (i + 0.5) * vs, -W0 / 2, W0 / 2);
       const h0 = shape6.planeH(k, x);
       const h1 = k < 2 ? shape6.planeH(k + 1, x) : h0 + 4;
       for (let j = 0; j < nz; j++) {
@@ -97968,7 +97968,7 @@ kmlmk..
           for (const k of [2, 1, 0]) {
             const sK = this.sOf(T5.planeZ[k]);
             const pitch = this.planePitch(k);
-            this.queue("plane" + k, planeSteps(T5, k, Z, sK, pitch, sand), (v) => {
+            this.queue("plane" + k, planeSteps(T5, k, Z, sK, pitch, sand, this.sOf(T5.D / 2) / sK), (v) => {
               this.planes[k] = v;
             });
           }

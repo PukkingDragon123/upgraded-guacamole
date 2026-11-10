@@ -162,7 +162,7 @@ export class TankScene {
     for (const k of [2, 1, 0]) {
       const sK = this.sOf(T.planeZ[k]);
       const pitch = this.planePitch(k);
-      this.queue('plane' + k, planeSteps(T, k, Z, sK, pitch, sand), (v) => { this.planes[k] = v; });
+      this.queue('plane' + k, planeSteps(T, k, Z, sK, pitch, sand, this.sOf(T.D / 2) / sK), (v) => { this.planes[k] = v; });
     }
     if (!this.backdrop) this.queue('backdrop', backdropSteps(T, Z, this.sOf(-T.D / 2 + 1), '#3aa8e0'), (v) => { this.backdrop = v; });
     this.buildScenery();

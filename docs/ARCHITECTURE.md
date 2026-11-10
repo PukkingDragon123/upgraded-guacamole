@@ -391,3 +391,12 @@ that feels hand-made."
 - Chrome: the `.hi` twin of every `aeroSurface` is a voxel slab (`voxelSlab` in src/ui/aero.js: block grid, stepped
   corners, bevelled frame ring, side band `depth`, outline; `ring: n` = frame only). `drawAeroFrame` adds a voxel
   frame ring, a title plaque and voxel ornaments (`drawVoxDecor(ctx, name, cx, cy, px)`); toasts sit on voxel plates.
+
+## Phase 10 tank (2D side-scrolling voxel tank, build only in the tank) [phase10:tank]
+- `src/aquarium/scene2d.js` + `tankart.js` draw the tank as a side-on voxel scene (back / mid / front layers), the
+  same way the ocean is drawn. `sim2d.js` moves fish in 2D. The 3D cube scene, orbit camera and Swim mode are gone.
+- Scrolling: drag, wheel, A/D, arrows, screen edges. Lab tank tiers (`src/aquarium/tanks.js`) grow the tank's width
+  and height with a bouncy grow animation.
+- Building: `src/aquarium/build2d.js` is the only build mode. `src/build/build.js` routes blueprints, U, Move and
+  Demolish into the tank. Old seabed (ocean-world) buildings migrate into the tank once on load, keeping bonuses and
+  production. While build mode is open it consumes Q, E, F, Delete and Esc.

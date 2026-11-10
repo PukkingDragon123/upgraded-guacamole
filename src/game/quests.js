@@ -57,7 +57,7 @@ export const CHAPTERS = [
       Q('c1_chest', 'seal', 'Crack It Open!', 'There\'s a crate in your Satchel. Tap the glowing knots to crack it!', [{ t: 'chest', n: 1 }], { aero: 10, items: { fish_scale: 3 } }), // [phase8:prog]
       Q('c1_lab', 'fizz', 'Lab Coat On', 'Plan a tile in The Lab, then press Confirm!', [{ t: 'research', n: 1 }], { items: { driftwood: 3, kelp_fibre: 2 } }),
       Q('c1_dex', 'seal', 'FishDex Rookie', 'Every new fish goes in your FishDex.', [{ t: 'species', n: 4 }], { aero: 25 }),
-      Q('c1_bowl', 'fizz', 'A Bigger Cube', 'That Nano Cube is cramped. Research the Bubble Cube!', [{ t: 'tank', tier: 1 }], { aero: 30, items: { shell: 3, kelp_fibre: 2 } }),
+      Q('c1_bowl', 'fizz', 'A Bigger Tank', 'That Nano Tank is cramped. Research the Bubble Tank!', [{ t: 'tank', tier: 1 }], { aero: 30, items: { shell: 3, kelp_fibre: 2 } }),
       Q('c1_boss', 'seal', 'Boss: Turbine Shark', 'Something HUGE spins at the very bottom. Drop your hook into the Abyssal Zone!', [{ t: 'boss', id: 'bruce' }], { aero: 40, items: { fish_scale: 4 } }), // [phase9:fishing]
     ],
   },

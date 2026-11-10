@@ -19,12 +19,12 @@ import * as shop from '../game/shopdata.js';
 export const TANK_IDS = ['jar', 'bowl', 'smalltank', 'bigtank', 'reeftank', 'wallaquarium'];
 
 export const TANK_TIERS = [
-  { id: 'jar', name: 'Nano Cube', shape: 'side', cap: 0, rate: 1, offlineH: 3, plants: 4, water: 'aero' },
-  { id: 'bowl', name: 'Bubble Cube', shape: 'side', cap: 1, rate: 1.15, offlineH: 4, plants: 6, water: 'aero' },
-  { id: 'smalltank', name: 'Aqua Cube', shape: 'side', cap: 2, rate: 1.3, offlineH: 5, plants: 9, water: 'aero' },
-  { id: 'bigtank', name: 'Big Cube', shape: 'side', cap: 3, rate: 1.5, offlineH: 6, plants: 13, water: 'aero' },
-  { id: 'reeftank', name: 'Reef Cube', shape: 'side', cap: 4, rate: 1.75, offlineH: 7, plants: 18, water: 'reef' },
-  { id: 'wallaquarium', name: 'Mega Cube', shape: 'side', cap: 5, rate: 2.1, offlineH: 8, plants: 26, water: 'aero' },
+  { id: 'jar', name: 'Nano Tank', shape: 'side', cap: 0, rate: 1, offlineH: 3, plants: 4, water: 'aero' },
+  { id: 'bowl', name: 'Bubble Tank', shape: 'side', cap: 1, rate: 1.15, offlineH: 4, plants: 6, water: 'aero' },
+  { id: 'smalltank', name: 'Aqua Tank', shape: 'side', cap: 2, rate: 1.3, offlineH: 5, plants: 9, water: 'aero' },
+  { id: 'bigtank', name: 'Big Tank', shape: 'side', cap: 3, rate: 1.5, offlineH: 6, plants: 13, water: 'aero' },
+  { id: 'reeftank', name: 'Reef Tank', shape: 'side', cap: 4, rate: 1.75, offlineH: 7, plants: 18, water: 'reef' },
+  { id: 'wallaquarium', name: 'Mega Tank', shape: 'side', cap: 5, rate: 2.1, offlineH: 8, plants: 26, water: 'aero' },
 ];
 
 // Phase 10: the tank is a 2D SIDE VIEW (like the ocean). Inner glass size in tank pixels (zoom 1): W across (the tank

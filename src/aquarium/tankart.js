@@ -54,11 +54,11 @@ function crop(src, x, y, w, h) {
 }
 
 // ------------------------------------------------------------------ substrate planes
-export function* planeSteps(shape, k, Z, sK, pitch, sandLv) {
+export function* planeSteps(shape, k, Z, sK, pitch, sandLv, wk = 1) {
   const S = SANDS[sandLv] || SANDS[0];
   const vs = PXV / (Z * sK);
   const cosP = Math.cos(pitch * DEG);
-  const W = shape.W, D = shape.D;
+  const D = shape.D, W0 = shape.W, W = W0 * wk + 8; // wk: widen so the floor reaches the side glass at the front
   const slab = D / 3;
   const nx = Math.ceil(W / vs) + 1;
   const nz = Math.max(4, Math.round(slab / vs));
@@ -66,7 +66,7 @@ export function* planeSteps(shape, k, Z, sK, pitch, sandLv) {
   let maxH = 1;
   const seed = shape.seed + k * 101 + sandLv * 7;
   for (let i = 0; i < nx; i++) {
-    const x = -W / 2 + (i + 0.5) * vs;
+    const x = clamp(-W / 2 + (i + 0.5) * vs, -W0 / 2, W0 / 2);
     const h0 = shape.planeH(k, x);
     const h1 = k < 2 ? shape.planeH(k + 1, x) : h0 + 4;
     for (let j = 0; j < nz; j++) {

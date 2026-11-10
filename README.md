@@ -7,7 +7,7 @@ person in a little boat on a glossy, sunlit sea:
 - Zap fish with your rod's shock.
 - Fight surges by pulling against them.
 
-Then fill your glass cube tank with voxel fish that earn Aero, and research better rods, boats, tanks and
+Then fill your side-scrolling voxel tank with fish that earn Aero, and research better rods, boats, tanks and
 seven oceans in The Lab.
 
 All art (voxel world, fish, characters and rooms), all music and all sound effects are generated in code. The
@@ -40,7 +40,7 @@ To build from source, run `npm install && npm run build`, which bundles `src/` i
   - Settings
 
   Settings has a Normal / Big / Huge UI size.
-- **Bait**: buy bait packs from Dot at the **Bait Shop** with Aero. Each bait is used up when a fish bites.
+- **Bait**: buy bait packs from Bubbles the seal at the **Bait Shop** with Aero. Each bait is used up when a fish bites.
 - **Fishing**: click the water to cast. Then:
   - **Hook**: when a fish bites, circle your mouse to spin the big 3D gear into the green band before time
     runs out. Too slow and it escapes; past the red line and the line rips.
@@ -51,8 +51,9 @@ To build from source, run `npm install && npm run build`, which bundles `src/` i
 - **Depth**: each ocean drops through sunlit, twilight, midnight and abyss zones. Use `Home`/`End`,
   `PageUp`/`PageDown` or the wheel to dive; a depth meter shows your zone. The camera follows your hook and
   catch; Ctrl/Alt + wheel or `+`/`-` changes the zoom.
-- **Aquarium**: a real 3D tank. Drag to orbit, right-drag to pan, use the wheel to zoom, or press **Swim** to
-  dive in as your bubble person (WASD).
+- **Aquarium**: a 2D side-scrolling voxel tank, like the ocean. Drag, use the wheel, `A`/`D` or the arrow keys,
+  or push the mouse to the edge to scroll. Press **Build** to place decor and buildings: building happens only
+  inside the tank (`Q`/`E` rotate, `F` flips, `Delete` removes, `Esc` leaves build mode).
 - **Keys**:
   - **Panels**: `L` The Lab, `Q` quests, `J` FishDex, `I` Satchel, `W` Wardrobe, `T` map, `B` bait,
     `S` Bait Shop, `O` multiplayer, `A` aquarium.
@@ -60,8 +61,8 @@ To build from source, run `npm install && npm run build`, which bundles `src/` i
 
 ### The loop
 
-Catch fish and keep them in your 3D tank, where they earn **Aero** (even while you're away). Follow the
-**quest lines**: 7 story chapters told by Bubbles the seal, Professor Fizz, Marina, Dot and Captain Bloat.
+Catch fish and keep them in your side-scrolling tank, where they earn **Aero** (even while you're away). Follow the
+**quest lines**: 7 story chapters told by Bubbles the seal, Professor Fizz, Marina and Captain Bloat.
 Each chapter's reward opens the next ocean. Research in **The Lab**, a zoomed-in tree that grows out from the middle. Nodes you can't reach yet stay
 black. Sail to the **Workshop** to craft rods, tackle, bait, decor, boat parts and tank gear, and crack open chests
 with a minigame.
@@ -108,12 +109,11 @@ with a minigame.
   Fish also come with mutations, shinies and giants.
 - **You are a bubble person**, with 140 cosmetics and a glossy wardrobe.
 - **Boats**: seven eco boats with swappable hull, sail, flag, engine and decal.
-- **NPCs**: Professor Fizz, Goldie, Pinch, Dot, Marina and Captain Bloat.
+- **NPCs**: Bubbles the seal, Professor Fizz, Goldie, Pinch, Marina and Captain Bloat.
 - **The aquarium**:
-  - Six tanks, from the goldfish jar to a wall aquarium. One is the "Aqua Lamp", a moving-picture
-    lamp with a rotating voxel reef drum.
-  - The voxel room around the tank looks out on rolling hills.
-  - You can feed fish, breed them and decorate the tank.
+  - Six tank tiers, from the Nano Tank to the Mega Tank. Each Lab upgrade makes the tank wider and taller.
+  - The tank has front, middle and back voxel layers with plants, rocks and light shafts.
+  - You can feed fish, breed them, decorate the tank and build in it.
 - **Multiplayer fishing** (opt-in): when the game is opened from its shared claude.ai link, you see other
   players' bubble people and boats in your ocean, their catches and their emotes. Fishing with other people in
   the same ocean gives up to +30% luck. Windows on one computer can also see each other.
