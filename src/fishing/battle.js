@@ -189,6 +189,11 @@ export class Battle {
     this.pi = 0;
     this.updateBand(0);
     this.boss = f.boss ? new BossFight(this, f.boss) : null;
+    if (this.boss) {
+      // a boss is a long fight: a wide, calm sweet band that drifts slowly, gentler surge kicks
+      this.bandW *= 1.45; this.bandDrift *= 0.45; this.bandAmp *= 0.6; this.shiftAmt *= 0.65;
+      this.updateBand(0);
+    }
   }
 
   // Compatibility with older test drivers: fight.phase.startTrick(kind), fight.phaseName.

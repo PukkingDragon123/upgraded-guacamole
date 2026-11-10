@@ -704,7 +704,7 @@ export class Fishing {
     this.leanY = damp(this.leanY, Math.sin(ld) * lk * 20, 5, dt);
     const ev = B.event?.focus;
     if (ev) this.focusCam(ev.x, ev.y, ev.zoom, 4);
-    else if (B.boss?.stage === 'intro') this.focusCam(f.x, f.y - this.fishLen() * 0.1, zoom, 1.6);
+    else if (B.boss?.stage === 'intro') this.focusCam(f.x, f.y - (this.H * 0.16) / zoom, zoom, 1.6); // the boss sits low: room for its title
     else this.focusCam(f.x + this.leanX / zoom, f.y + this.leanY / zoom, zoom - Math.abs(lk) * 0.12, B.mode === 'hookset' ? 6 : 4);
     // character pose from what the player is doing
     if (!this.poseHold) {

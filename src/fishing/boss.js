@@ -381,7 +381,7 @@ export class BossFight {
       if (rng.chance(dt * 40)) F.particles.bubbleTrail?.(f.x - a.dir * 20, f.y, -a.dir * 120, 0);
       if (u >= 1) {
         if (a.dodged) {
-          a.stage = 'dazed'; a.t = 0; a.dur = 2.8 + Math.max(0, 0.6 - this.tier * 0.06);
+          a.stage = 'dazed'; a.t = 0; a.dur = 3.8 + Math.max(0, 0.8 - this.tier * 0.08) + (this.phase - 1) * 0.4; // a generous stun window
           f.feel('dizzy', a.dur); f.say('zzz', a.dur);
           F.onBossDazed?.(a);
         } else {
@@ -406,7 +406,7 @@ export class BossFight {
 
   onCrit() {
     const B = this.B, a = this.atk;
-    B.progress = Math.min(0.999, B.progress + 0.08 + 0.02 * B.shockPower);
+    B.progress = Math.min(0.999, B.progress + 0.1 + 0.02 * B.shockPower);
     this.hurt = 1;
     if (a) a.crit = true;
     this.F.onBossCrit?.(this.def);
@@ -552,7 +552,13 @@ export class BossFight {
       ctx.fillRect(0, H * 0.12 + i * 3, W, 3); ctx.fillRect(0, H * 0.88 - i * 3 - 3, W, 3);
     }
     ctx.globalAlpha = out;
-    const cy = Math.round(H * 0.6);
+    // the title never covers the boss: the top third when the boss sits low, else below it
+    const [, bsy] = F.toScreen(this.fish.x, this.fish.y);
+    const bh = F.fishLen() * F.zoom() * 0.24;
+    const top = Math.round(H * 0.11) + 70, bottom = Math.round(H * 0.89) - 64;
+    let cy = Math.min(Math.round(H * 0.27), Math.round(bsy - bh - 70));
+    if (cy < top) cy = Math.max(Math.round(bsy + bh + 72), top);
+    cy = Math.min(cy, bottom);
     if (ct > 0.5) {
       const bt = ct - 0.5;
       word3D(ctx, 'BOSS', W / 2, cy - 54, { t: bt, pop: clamp01(bt * 4), scale: lerp(4, 1.3, ease.outBack(clamp01(bt * 4))), pal: 'red', rot: Math.sin(bt * 4) * 0.06 });

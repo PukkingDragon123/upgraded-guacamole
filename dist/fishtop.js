@@ -85170,7 +85170,7 @@ ${hearts} ${status}
               if (a.dodged) {
                 a.stage = "dazed";
                 a.t = 0;
-                a.dur = 2.8 + Math.max(0, 0.6 - this.tier * 0.06);
+                a.dur = 3.8 + Math.max(0, 0.8 - this.tier * 0.08) + (this.phase - 1) * 0.4;
                 f.feel("dizzy", a.dur);
                 f.say("zzz", a.dur);
                 F3.onBossDazed?.(a);
@@ -85197,7 +85197,7 @@ ${hearts} ${status}
         }
         onCrit() {
           const B2 = this.B, a = this.atk;
-          B2.progress = Math.min(0.999, B2.progress + 0.08 + 0.02 * B2.shockPower);
+          B2.progress = Math.min(0.999, B2.progress + 0.1 + 0.02 * B2.shockPower);
           this.hurt = 1;
           if (a) a.crit = true;
           this.F.onBossCrit?.(this.def);
@@ -85338,7 +85338,12 @@ ${hearts} ${status}
             ctx2.fillRect(0, H8 * 0.88 - i * 3 - 3, W11, 3);
           }
           ctx2.globalAlpha = out;
-          const cy = Math.round(H8 * 0.6);
+          const [, bsy] = F3.toScreen(this.fish.x, this.fish.y);
+          const bh = F3.fishLen() * F3.zoom() * 0.24;
+          const top = Math.round(H8 * 0.11) + 70, bottom = Math.round(H8 * 0.89) - 64;
+          let cy = Math.min(Math.round(H8 * 0.27), Math.round(bsy - bh - 70));
+          if (cy < top) cy = Math.max(Math.round(bsy + bh + 72), top);
+          cy = Math.min(cy, bottom);
           if (ct > 0.5) {
             const bt = ct - 0.5;
             word3D(ctx2, "BOSS", W11 / 2, cy - 54, { t: bt, pop: clamp01(bt * 4), scale: lerp(4, 1.3, ease.outBack(clamp01(bt * 4))), pal: "red", rot: Math.sin(bt * 4) * 0.06 });
@@ -85669,6 +85674,13 @@ ${hearts} ${status}
           this.pi = 0;
           this.updateBand(0);
           this.boss = f.boss ? new BossFight(this, f.boss) : null;
+          if (this.boss) {
+            this.bandW *= 1.45;
+            this.bandDrift *= 0.45;
+            this.bandAmp *= 0.6;
+            this.shiftAmt *= 0.65;
+            this.updateBand(0);
+          }
         }
         // Compatibility with older test drivers: fight.phase.startTrick(kind), fight.phaseName.
         get phase() {
@@ -87765,7 +87777,7 @@ ${hearts} ${status}
           this.leanY = damp(this.leanY, Math.sin(ld) * lk * 20, 5, dt);
           const ev = B2.event?.focus;
           if (ev) this.focusCam(ev.x, ev.y, ev.zoom, 4);
-          else if (B2.boss?.stage === "intro") this.focusCam(f.x, f.y - this.fishLen() * 0.1, zoom2, 1.6);
+          else if (B2.boss?.stage === "intro") this.focusCam(f.x, f.y - this.H * 0.16 / zoom2, zoom2, 1.6);
           else this.focusCam(f.x + this.leanX / zoom2, f.y + this.leanY / zoom2, zoom2 - Math.abs(lk) * 0.12, B2.mode === "hookset" ? 6 : 4);
           if (!this.poseHold) {
             const pose2 = q?.holding ? "pull" : this.gear.p > 0.08 || B2.stunned ? "reel" : "pull";
