@@ -425,7 +425,7 @@ export function drawTooltip(ctx, x, y, text, opts = {}) {
   const font = opts.fixedFont ? opts.font || 'normal' : uiFont(opts.font || 'normal');
   const big = font === 'big';
   const { w, h, lines, lh } = tooltipSize(text, opts);
-  const CW = ctx.canvas.width, CH = ctx.canvas.height;
+  const CW = ctx.logicalW ?? ctx.canvas.width, CH = ctx.logicalH ?? ctx.canvas.height; // [phase9:ui] the hi-res layer is 2x
   let tx = Math.round(x + 12), ty = Math.round(y + 14);
   if (tx + w > CW - 3) tx = Math.round(x - w - 6);
   if (ty + h > CH - 4) ty = Math.round(y - h - 8);

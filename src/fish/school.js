@@ -20,6 +20,10 @@ export function presenceOf(sp) {
 }
 
 const HERO_MIN_LEN = 40;
+// [phase9:scale] ocean fish swim a lot smaller: together with the zoomed-out camera (3x -> 2x) they show at about half
+// their old on-screen size (hooked fish get the fight cinematic's closer framing; close-ups / catch cards are separate)
+export const OCEAN_FISH_K = 0.75;
+const HERO_K = 0.8; // scenery heroes shrink a little too
 
 export class School {
   constructor(world) {
@@ -78,7 +82,7 @@ export class School {
     const rec = opts.rec || rollIndividual(sp, { giantChance: 0.04, ...(w.rollMods || {}) });
     const fromFog = opts.fromFog ?? rng.chance(0.45);
     const fish = new Fish(rec, sp, w, { fadeIn: true });
-    fish.scale *= presenceOf(sp);
+    fish.scale *= presenceOf(sp) * OCEAN_FISH_K; // [phase9:scale]
     const [d0, d1] = sp.move?.depth || [0.15, 0.85];
     const top = (w.surfaceY ?? 0) + 20;
     if (opts.x !== undefined) {
@@ -129,7 +133,7 @@ export class School {
     const school = sp.move?.school > 0.4;
     const n = school ? rng.int(3, 5) : 1;
     // on-screen body length: a single hero ~200-290 px, a school of big fish ~95-140 px each
-    const want = school ? rng.float(95, 140) : rng.float(200, 290);
+    const want = (school ? rng.float(95, 140) : rng.float(200, 290)) * HERO_K; // [phase9:scale]
     const scale = want / len / (1 - z * 0.5);
     const top = (w.surfaceY ?? 0) + 40;
     const y0 = lerp(top + want * 0.3, w.floorAt(w.W / 2, z) - want * 0.35, rng.float(0.1, 0.5));

@@ -294,6 +294,7 @@
       g.globalCompositeOperation = "source-in";
       g.fillStyle = color;
       g.fillRect(0, 0, c.width, c.height);
+      if (src.hi !== void 0) Object.defineProperty(c, "hi", { configurable: true, get: () => src.hi ? tinted(src.hi, color) : void 0 });
       m.set(color, c);
     }
     return c;
@@ -302,6 +303,183 @@
   var init_canvas = __esm({
     "src/core/canvas.js"() {
       tintCache = /* @__PURE__ */ new WeakMap();
+    }
+  });
+
+  // src/gfx/hires.js
+  function withHi(c, build3) {
+    if (!c || c.hi !== void 0) return c;
+    let v = null;
+    Object.defineProperty(c, "hi", {
+      configurable: true,
+      get() {
+        if (v === null) {
+          try {
+            v = build3() || false;
+          } catch (e) {
+            console.warn("hi art", e);
+            v = false;
+          }
+        }
+        return v || void 0;
+      }
+    });
+    return c;
+  }
+  function dualArt(w, h, draw) {
+    w = Math.max(1, Math.round(w));
+    h = Math.max(1, Math.round(h));
+    const c = makeCanvas(w, h);
+    draw(ctxOf(c), 1);
+    return withHi(c, () => {
+      const hc = makeCanvas(w * HI, h * HI);
+      const g = hiCtx(hc, HI);
+      draw(g, HI);
+      return hc;
+    });
+  }
+  function fitHi(c, big, x = c.width / 2, y = c.height / 2, bx = big.width / 2, by = big.height / 2) {
+    if (!big) return null;
+    const hc = makeCanvas(c.width * HI, c.height * HI);
+    ctxOf(hc).drawImage(big, Math.round(x * HI - bx), Math.round(y * HI - by));
+    return hc;
+  }
+  function hiCtx(canvas, R2 = HI) {
+    const g = canvas.getContext("2d");
+    if (!g.__hi) installHiCtx(g, R2);
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.imageSmoothingEnabled = false;
+    g.logicalW = canvas.width / R2;
+    g.logicalH = canvas.height / R2;
+    return g;
+  }
+  function tone2(c, k) {
+    const a = c >>> 24;
+    let r = c & 255, g = c >>> 8 & 255, b = c >>> 16 & 255;
+    if (k > 0) {
+      r += (255 - r) * k;
+      g += (252 - g) * k;
+      b += (236 - b) * k;
+    } else {
+      const q = -k;
+      r *= 1 - q * 1.05;
+      g *= 1 - q;
+      b *= 1 - q * 0.75;
+      b += 18 * q;
+    }
+    return (a << 24 | Math.max(0, Math.min(255, Math.round(b))) << 16 | Math.max(0, Math.min(255, Math.round(g))) << 8 | Math.max(0, Math.min(255, Math.round(r)))) >>> 0;
+  }
+  function enhanceHi(src, o = {}) {
+    const w = src.width, h = src.height;
+    if (!w || !h) return null;
+    const d = new Uint32Array(ctxOf(src).getImageData(0, 0, w, h).data.buffer.slice(0));
+    const W3 = w * 2, H = h * 2;
+    const out = new Uint32Array(W3 * H);
+    const P6 = (x, y) => x < 0 || y < 0 || x >= w || y >= h ? 0 : d[y * w + x];
+    const same = (a, b) => a === b || a >>> 24 < 16 && b >>> 24 < 16;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const p = P6(x, y), A3 = P6(x, y - 1), B2 = P6(x + 1, y), C2 = P6(x - 1, y), D = P6(x, y + 1);
+      let e0 = p, e1 = p, e2 = p, e3 = p;
+      if (!same(A3, D) && !same(C2, B2)) {
+        if (same(C2, A3)) e0 = C2;
+        if (same(A3, B2)) e1 = B2;
+        if (same(C2, D)) e2 = C2;
+        if (same(D, B2)) e3 = B2;
+      }
+      const i = y * 2 * W3 + x * 2;
+      out[i] = e0;
+      out[i + 1] = e1;
+      out[i + W3] = e2;
+      out[i + W3 + 1] = e3;
+    }
+    const A2 = (x, y) => x < 0 || y < 0 || x >= W3 || y >= H ? 0 : out[y * W3 + x] >>> 24;
+    const res = out.slice();
+    const dark = (c2) => c2 >>> 24 > 200 && lum(c2) < (o.outlineLum ?? 70);
+    const bevel = o.bevel ?? 1;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W3; x++) {
+      const c2 = out[y * W3 + x];
+      if (c2 >>> 24 < 16) continue;
+      const edge = A2(x - 1, y) < 16 || A2(x + 1, y) < 16 || A2(x, y - 1) < 16 || A2(x, y + 1) < 16;
+      if (edge) continue;
+      if (dark(c2)) {
+        let best = 0, bl = -1;
+        for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+          const xx = x + dx, yy = y + dy;
+          if (xx < 0 || yy < 0 || xx >= W3 || yy >= H) continue;
+          const q = out[yy * W3 + xx];
+          if (q >>> 24 < 200 || dark(q)) continue;
+          const l = lum(q) - (Math.abs(dx) + Math.abs(dy)) * 4;
+          if (l > bl) {
+            bl = l;
+            best = q;
+          }
+        }
+        if (best) {
+          const outerish = A2(x - 2, y) < 16 || A2(x + 2, y) < 16 || A2(x, y - 2) < 16 || A2(x, y + 2) < 16;
+          if (outerish) res[y * W3 + x] = tone2(best, -0.42);
+        }
+        continue;
+      }
+      if (!bevel) continue;
+      const up = out[(y - 1) * W3 + x], lf = out[y * W3 + x - 1], dn = out[(y + 1) * W3 + x], rt = out[y * W3 + x + 1];
+      const tl = dark(up) || dark(lf) || up >>> 24 < 16 || lf >>> 24 < 16;
+      const br = dark(dn) || dark(rt) || dn >>> 24 < 16 || rt >>> 24 < 16;
+      if (tl && !br) res[y * W3 + x] = tone2(c2, 0.22 * bevel);
+      else if (br && !tl) res[y * W3 + x] = tone2(c2, -0.14 * bevel);
+    }
+    if (o.outline) {
+      const src2 = res.slice();
+      for (let y = 0; y < H; y++) for (let x = 0; x < W3; x++) {
+        const i = y * W3 + x;
+        if (src2[i] >>> 24 >= 16) continue;
+        let n2 = 0;
+        if (x > 0 && src2[i - 1] >>> 24 >= 16) n2 = src2[i - 1];
+        else if (x < W3 - 1 && src2[i + 1] >>> 24 >= 16) n2 = src2[i + 1];
+        else if (y > 0 && src2[i - W3] >>> 24 >= 16) n2 = src2[i - W3];
+        else if (y < H - 1 && src2[i + W3] >>> 24 >= 16) n2 = src2[i + W3];
+        if (n2) res[i] = o.outline(n2);
+      }
+    }
+    const c = makeCanvas(W3, H);
+    const g = ctxOf(c);
+    const img = g.createImageData(W3, H);
+    new Uint32Array(img.data.buffer).set(res);
+    g.putImageData(img, 0, 0);
+    return c;
+  }
+  function autoHi(c, o) {
+    if (!c || c.hi !== void 0 || !(c instanceof HTMLCanvasElement)) return c;
+    return withHi(c, () => enhanceHi(c, o));
+  }
+  function installHiCtx(ctx2, R2) {
+    const draw = P2D.drawImage, setT = P2D.setTransform;
+    ctx2.__hi = R2;
+    ctx2.drawImage = function(img, a, b, c, d, e, f, g, h) {
+      const hi = img && img.hi;
+      if (hi) {
+        const n2 = arguments.length;
+        if (n2 <= 3) return draw.call(this, hi, a, b, img.width, img.height);
+        if (n2 <= 5) return draw.call(this, hi, a, b, c, d);
+        const kx = hi.width / img.width, ky = hi.height / img.height;
+        return draw.call(this, hi, a * kx, b * ky, c * kx, d * ky, e, f, g, h);
+      }
+      return draw.apply(this, arguments);
+    };
+    ctx2.setTransform = function(a, b, c, d, e, f) {
+      if (arguments.length < 6 || typeof a === "object") return setT.apply(this, arguments);
+      return setT.call(this, a * R2, b * R2, c * R2, d * R2, e * R2, f * R2);
+    };
+    ctx2.resetTransform = function() {
+      return setT.call(this, R2, 0, 0, R2, 0, 0);
+    };
+  }
+  var HI, lum, P2D;
+  var init_hires = __esm({
+    "src/gfx/hires.js"() {
+      init_canvas();
+      HI = 2;
+      lum = (c) => (c & 255) * 0.3 + (c >>> 8 & 255) * 0.59 + (c >>> 16 & 255) * 0.11;
+      P2D = typeof CanvasRenderingContext2D !== "undefined" ? CanvasRenderingContext2D.prototype : null;
     }
   });
 
@@ -326,6 +504,7 @@
       });
       glyphs2.set(e.ch, { x: e.x, w: e.w, h: e.rows.length });
     }
+    withHi(canvas, () => enhanceHi(canvas, { bevel: 0, outlineLum: -1 }));
     return { ...def2, atlas: canvas, glyphs: glyphs2, tints: /* @__PURE__ */ new Map(), atlasH };
   }
   function bigGlyphs() {
@@ -361,6 +540,16 @@
       g.globalCompositeOperation = "source-in";
       g.fillStyle = color;
       g.fillRect(0, 0, c.width, c.height);
+      withHi(c, () => {
+        const src = font.atlas.hi;
+        if (!src) return null;
+        const h = makeCanvas(src.width, src.height), hg = ctxOf(h);
+        hg.drawImage(src, 0, 0);
+        hg.globalCompositeOperation = "source-in";
+        hg.fillStyle = color;
+        hg.fillRect(0, 0, h.width, h.height);
+        return h;
+      });
       font.tints.set(color, c);
     }
     return c;
@@ -478,6 +667,7 @@
   var init_font = __esm({
     "src/gfx/font.js"() {
       init_canvas();
+      init_hires();
       NORMAL_DEF = {
         height: 7,
         descent: 2,
@@ -1412,120 +1602,145 @@
     return v;
   }
   function surfaceTex(w, h, o) {
+    return withHi(surfaceRaster(w, h, o, 1), () => surfaceRaster(w, h, o, HI));
+  }
+  function surfaceRaster(lw, lh, o, S9) {
+    const w = lw * S9, h = lh * S9;
     const T3 = typeof o.tone === "object" ? o.tone : o.tone ? toneOf(o.tone) : {};
     const top = rgbOf(o.top || T3.top || "#ffffff"), mid = rgbOf(o.mid || T3.mid || o.top || "#d8f0ff"), bot = rgbOf(o.bot || T3.bot || "#8cc8ec");
     const A2 = o.a || T3.a || [1, 1];
     const edge = rgbOf(o.edge || T3.edge || "#0b4a8a"), edgeA = o.edgeA ?? T3.edgeA ?? 1;
     const glowC = rgbOf(o.glowColor || T3.glow || "#ffffff");
-    const R2 = o.r === "pill" ? h / 2 : Math.max(0, Math.min(o.r ?? 6, w / 2, h / 2));
+    const R2 = (o.r === "pill" ? lh / 2 : Math.max(0, Math.min(o.r ?? 6, lw / 2, lh / 2))) * S9;
     const shape5 = o.shape || "rect";
     const gloss = o.gloss ?? 0.6, rim = o.rim ?? 0.8, glow = o.glow ?? 0.5;
-    const glossH = o.glossH ?? Math.min(26, Math.round(h * 0.46));
-    const curve2 = o.curve ?? Math.min(6, glossH * 0.35);
-    const inside = (x, y) => {
-      if (x < 0 || y < 0 || x >= w || y >= h) return false;
-      if (R2 <= 0) return true;
-      const roundTop = shape5 !== "bottom", roundBot = shape5 !== "tab";
-      let cx = null, cy = null;
-      if (x < R2) cx = R2;
-      else if (x >= w - R2) cx = w - R2;
-      if (y < R2 && roundTop) cy = R2;
-      else if (y >= h - R2 && roundBot) cy = h - R2;
-      if (cx === null || cy === null) return true;
-      const dx = x + 0.5 - cx, dy = y + 0.5 - cy;
-      return dx * dx + dy * dy <= R2 * R2 + R2 * 0.35;
-    };
+    const glossH = (o.glossH ?? Math.min(26, Math.round(lh * 0.46))) * S9;
+    const curve2 = (o.curve ?? Math.min(6, glossH / S9 * 0.35)) * S9;
+    const roundTop = shape5 !== "bottom", roundBot = shape5 !== "tab";
+    const mask = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let inn = true;
+        if (R2 > 0) {
+          let cx = null, cy = null;
+          if (x < R2) cx = R2;
+          else if (x >= w - R2) cx = w - R2;
+          if (y < R2 && roundTop) cy = R2;
+          else if (y >= h - R2 && roundBot) cy = h - R2;
+          if (cx !== null && cy !== null) {
+            const dx = x + 0.5 - cx, dy = y + 0.5 - cy;
+            inn = dx * dx + dy * dy <= R2 * R2 + R2 * (S9 > 1 ? 0.15 : 0.35);
+          }
+        }
+        if (inn) mask[y * w + x] = 1;
+      }
+    }
+    const dist2 = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) dist2[i] = mask[i] ? 9 : 0;
+    for (let pass = 1; pass <= 4; pass++) {
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        if (dist2[i] !== 9) continue;
+        const n2 = (x === 0 ? 0 : dist2[i - 1]) === pass - 1 || (x === w - 1 ? 0 : dist2[i + 1]) === pass - 1 || (y === 0 ? 0 : dist2[i - w]) === pass - 1 || (y === h - 1 ? 0 : dist2[i + w]) === pass - 1 || (x === 0 || y === 0 ? 0 : dist2[i - w - 1]) === pass - 1 && pass > 1 || (x === w - 1 || y === h - 1 ? 0 : dist2[i + w + 1]) === pass - 1 && pass > 1;
+        if (n2) dist2[i] = pass;
+      }
+    }
     const b = new PixelBuffer(w, h);
     const d = b.data;
-    const mask = new Uint8Array(w * h);
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (inside(x, y)) mask[y * w + x] = 1;
-    const m = (x, y) => x >= 0 && y >= 0 && x < w && y < h && mask[y * w + x] === 1;
     const midY = 0.52;
-    const seed = o.seed ?? w * 7 + h * 13;
+    const seed = o.seed ?? lw * 7 + lh * 13;
     const px = o.smooth ? 0 : 1;
-    const bands = Math.max(3, Math.min(7, Math.round(h / 12)));
+    const bands = Math.max(3, Math.min(7, Math.round(lh / 12))) * (S9 > 1 ? 2 : 1);
+    const rimRing = S9 > 1 ? 3 : 2;
     for (let y = 0; y < h; y++) {
       const t0 = h > 1 ? y / (h - 1) : 0;
-      let cr, cg, cb;
+      const ly = y / S9;
       for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        if (!mask[i]) continue;
         const t = px ? Math.min(1, Math.floor(t0 * bands + bayer(x, y) * 0.999) / bands) : t0;
+        let r, g, bl;
         if (t < midY) {
           const k = t / midY;
-          cr = top[0] + (mid[0] - top[0]) * k;
-          cg = top[1] + (mid[1] - top[1]) * k;
-          cb = top[2] + (mid[2] - top[2]) * k;
+          r = top[0] + (mid[0] - top[0]) * k;
+          g = top[1] + (mid[1] - top[1]) * k;
+          bl = top[2] + (mid[2] - top[2]) * k;
         } else {
           const k = (t - midY) / (1 - midY);
-          cr = mid[0] + (bot[0] - mid[0]) * k;
-          cg = mid[1] + (bot[1] - mid[1]) * k;
-          cb = mid[2] + (bot[2] - mid[2]) * k;
+          r = mid[0] + (bot[0] - mid[0]) * k;
+          g = mid[1] + (bot[1] - mid[1]) * k;
+          bl = mid[2] + (bot[2] - mid[2]) * k;
         }
-        const ba = A2[0] + (A2[1] - A2[0]) * t;
-        {
-          if (!mask[y * w + x]) continue;
-          let r = cr, g = cg, bl = cb, a = ba;
-          const over = (sr, sg, sb, sa) => {
-            if (sa <= 0) return;
-            const na = sa + a * (1 - sa);
-            r = (sr * sa + r * a * (1 - sa)) / na;
-            g = (sg * sa + g * a * (1 - sa)) / na;
-            bl = (sb * sa + bl * a * (1 - sa)) / na;
-            a = na;
-          };
-          const ring0 = !m(x - 1, y) || !m(x + 1, y) || !m(x, y - 1) || !m(x, y + 1);
-          const ring1 = !ring0 && (!m(x - 2, y) || !m(x + 2, y) || !m(x, y - 2) || !m(x, y + 2) || !m(x - 1, y - 1) || !m(x + 1, y - 1) || !m(x - 1, y + 1) || !m(x + 1, y + 1));
-          if (glow > 0 && t > 0.55) {
-            const k = (t - 0.55) / 0.45;
-            const cx = Math.abs(x + 0.5 - w / 2) / (w / 2);
-            let gk = k * k * (1 - cx * cx * 0.7);
-            if (px) gk = Math.floor(gk * 3 + bayer(x + 1, y) * 0.999) / 3;
-            over(glowC[0], glowC[1], glowC[2], glow * gk * 0.55);
-          }
-          if (o.inset) {
-            if (y < 5) over(4, 20, 40, (5 - y) * 0.07);
-            if (x < 3) over(4, 20, 40, (3 - x) * 0.05);
-          }
-          if (o.streak) {
-            const s = (x + y * 0.75 + seed * 3) % Math.max(60, w * 0.9);
-            if (s > 0 && s < 14) over(255, 255, 255, 0.07);
-            else if (s > 20 && s < 24) over(255, 255, 255, 0.05);
-          }
-          if (gloss > 0) {
-            const nx = (x + 0.5 - w / 2) / (w / 2);
-            const edgeY = glossH - curve2 * (1 - nx * nx);
-            if (y < edgeY) {
-              const k = y / Math.max(1, edgeY);
-              if (!px) over(255, 255, 255, gloss * (0.62 - 0.42 * k));
-              else {
-                const q = k + (bayer(x, y) - 0.5) * 0.34;
-                over(255, 255, 255, gloss * (q < 0.42 ? 0.62 : q < 0.86 ? 0.36 : 0.2));
-              }
-            } else if (px && y < edgeY + 2 && (x + y & 1) === 0) over(255, 255, 255, gloss * 0.14);
-          }
-          if (ring1 && rim > 0) {
-            if (!px) over(255, 255, 255, rim * (y < h * 0.5 ? 0.9 : 0.45));
-            else if (y < h * 0.5 && (x < w * 0.85 || y < 3)) over(255, 255, 255, rim * 0.95);
-            else if (y > h * 0.5) over(edge[0], edge[1], edge[2], rim * 0.22);
-            else over(255, 255, 255, rim * 0.5);
-          }
-          if (ring0) {
-            const er = y < 2 ? edge[0] + (255 - edge[0]) * 0.25 : edge[0], eg = y < 2 ? edge[1] + (255 - edge[1]) * 0.25 : edge[1], eb = y < 2 ? edge[2] + (255 - edge[2]) * 0.25 : edge[2];
-            r = er;
-            g = eg;
-            bl = eb;
-            a = Math.max(a * 0.5, edgeA);
-          }
-          d[y * w + x] = ((Math.round(a * 255) & 255) << 24 | (Math.round(bl) & 255) << 16 | (Math.round(g) & 255) << 8 | Math.round(r) & 255) >>> 0;
+        let a = A2[0] + (A2[1] - A2[0]) * t;
+        const over = (sr, sg, sb, sa) => {
+          if (sa <= 0) return;
+          const na = sa + a * (1 - sa);
+          r = (sr * sa + r * a * (1 - sa)) / na;
+          g = (sg * sa + g * a * (1 - sa)) / na;
+          bl = (sb * sa + bl * a * (1 - sa)) / na;
+          a = na;
+        };
+        const dd = dist2[i];
+        if (glow > 0 && t > 0.55) {
+          const k = (t - 0.55) / 0.45;
+          const cx = Math.abs(x + 0.5 - w / 2) / (w / 2);
+          let gk = k * k * (1 - cx * cx * 0.7);
+          if (px) gk = Math.floor(gk * (S9 > 1 ? 5 : 3) + bayer(x + 1, y) * 0.999) / (S9 > 1 ? 5 : 3);
+          over(glowC[0], glowC[1], glowC[2], glow * gk * 0.55);
         }
+        if (o.inset) {
+          if (ly < 5) over(4, 20, 40, (5 - ly) * 0.07);
+          const lx = x / S9;
+          if (lx < 3) over(4, 20, 40, (3 - lx) * 0.05);
+        }
+        if (o.streak) {
+          const s = (x / S9 + ly * 0.75 + seed * 3) % Math.max(60, lw * 0.9);
+          if (s > 0 && s < 14) over(255, 255, 255, 0.07);
+          else if (s > 20 && s < 24) over(255, 255, 255, 0.05);
+          if (S9 > 1 && (s > 14 && s < 14.6 || s > 24 && s < 24.5)) over(255, 255, 255, 0.12);
+        }
+        if (gloss > 0) {
+          const nx = (x + 0.5 - w / 2) / (w / 2);
+          const edgeY = glossH - curve2 * (1 - nx * nx);
+          if (y < edgeY) {
+            const k = y / Math.max(1, edgeY);
+            if (!px) over(255, 255, 255, gloss * (0.62 - 0.42 * k));
+            else {
+              const q = k + (bayer(x, y) - 0.5) * (S9 > 1 ? 0.22 : 0.34);
+              over(255, 255, 255, gloss * (q < 0.3 ? 0.66 : q < 0.6 ? 0.46 : q < 0.86 ? 0.32 : 0.2));
+            }
+            if (S9 > 1 && dd >= 3 && dd <= 4 && y < h * 0.4) over(255, 255, 255, gloss * 0.5);
+          } else if (px && y < edgeY + 2 * S9 && (x + y & 1) === 0) over(255, 255, 255, gloss * 0.14);
+          else if (S9 > 1 && y < edgeY + 1) over(255, 255, 255, gloss * 0.22);
+        }
+        if (dd === rimRing && rim > 0) {
+          if (!px) over(255, 255, 255, rim * (y < h * 0.5 ? 0.9 : 0.45));
+          else if (y < h * 0.5 && (x < w * 0.85 || ly < 3)) over(255, 255, 255, rim * 0.95);
+          else if (y > h * 0.5) over(edge[0], edge[1], edge[2], rim * 0.22);
+          else over(255, 255, 255, rim * 0.5);
+        }
+        if (S9 > 1 && dd === rimRing + 1 && rim > 0 && y < h * 0.45) over(255, 255, 255, rim * 0.25);
+        if (dd === 2 && S9 > 1) {
+          const lift = y < 2 * S9 ? 0.45 : 0;
+          over(edge[0] + (255 - edge[0]) * lift, edge[1] + (255 - edge[1]) * lift, edge[2] + (255 - edge[2]) * lift, 0.42 * Math.max(edgeA, 0.6));
+        }
+        if (dd === 1) {
+          const lit = y < 2 * S9 ? 0.25 : 0;
+          r = edge[0] + (255 - edge[0]) * lit;
+          g = edge[1] + (255 - edge[1]) * lit;
+          bl = edge[2] + (255 - edge[2]) * lit;
+          a = Math.max(a * 0.5, edgeA);
+        }
+        d[i] = ((Math.round(a * 255) & 255) << 24 | (Math.round(bl) & 255) << 16 | (Math.round(g) & 255) << 8 | Math.round(r) & 255) >>> 0;
       }
     }
     const nb = o.bubbles | 0;
     for (let k = 0; k < nb; k++) {
-      const rr = 2 + Math.floor(hash1(k, seed) * 4);
+      const rr = (2 + Math.floor(hash1(k, seed) * 4)) * S9;
       const bx = Math.round(w * (0.08 + 0.84 * hash1(k + 7, seed + 1))), by = Math.round(h * (0.55 + 0.4 * hash1(k + 3, seed + 2)));
       ringInto(b, mask, w, h, bx, by, rr);
     }
-    if (o.sparkle) sparkleInto(b, mask, w, Math.round(Math.min(w * 0.12, R2 + 6)) + 2, 3, o.sparkle === true ? 2 : o.sparkle);
+    if (o.sparkle) sparkleInto(b, mask, w, Math.round(Math.min(lw * 0.12, R2 / S9 + 6) * S9) + 2 * S9, 3 * S9, (o.sparkle === true ? 2 : o.sparkle) * S9);
     return b.toCanvas();
   }
   function blend(d, i, r, g, bl, sa) {
@@ -1626,7 +1841,10 @@
       }
     }
     r = Math.max(2.5, Math.round(r * 2) / 2);
-    const c = aeroCached(`coin|${r}`, () => coinTex(r));
+    const c = aeroCached(`coin|${r}`, () => {
+      const c1 = coinTex(r);
+      return withHi(c1, () => fitHi(c1, coinTex(r * HI)));
+    });
     const x = Math.round(cx - c.width / 2), y = Math.round(cy - c.height / 2);
     ctx2.drawImage(c, x, y);
     const ph = (t * 0.45 + (cx * 0.013 + cy * 7e-3)) % 1;
@@ -1636,6 +1854,35 @@
     x = Math.round(x);
     y = Math.round(y);
     const ga = ctx2.globalAlpha;
+    if (ctx2.__hi) {
+      const cx = x * 2 + 1, cy = y * 2 + 1, L2 = size * 2 + 1;
+      const P6 = (dx, dy) => ctx2.fillRect((cx + dx) / 2, (cy + dy) / 2, 0.5, 0.5);
+      ctx2.fillStyle = color;
+      ctx2.globalAlpha = ga * alpha;
+      P6(0, 0);
+      P6(1, 0);
+      P6(-1, 0);
+      P6(0, 1);
+      P6(0, -1);
+      for (let i = 2; i <= L2; i++) {
+        ctx2.globalAlpha = ga * alpha * Math.max(0.15, 1 - (i - 1) / (L2 + 0.5));
+        P6(i, 0);
+        P6(-i, 0);
+        if (i < L2) {
+          P6(0, i);
+          P6(0, -i);
+        }
+      }
+      if (size >= 2) {
+        ctx2.globalAlpha = ga * alpha * 0.45;
+        P6(2, 2);
+        P6(-2, -2);
+        P6(2, -2);
+        P6(-2, 2);
+      }
+      ctx2.globalAlpha = ga;
+      return;
+    }
     ctx2.fillStyle = color;
     ctx2.globalAlpha = ga * alpha;
     ctx2.fillRect(x, y, 1, 1);
@@ -1667,6 +1914,7 @@
       init_math();
       init_pxsprites();
       init_alagard();
+      init_hires();
       AERO = {
         sky0: "#1e8fe0",
         sky1: "#59c3ff",
@@ -6552,7 +6800,7 @@ void main() {
     if (n2 !== 4) return R2[clamp(Math.round(b * n2), 0, n2)];
     return R2[b < 0.14 ? 0 : b < 0.4 ? 1 : b < 0.74 ? 2 : b < 0.93 ? 3 : 4];
   }
-  function tone2(R2, idx, x, y) {
+  function tone4(R2, idx, x, y) {
     if (VOXM) return R2[clamp(Math.round(5 + (idx - 3) * 1.5), 0, R2.length - 1)];
     return R2[idx < 1.6 ? 2 : idx < 2.55 ? 4 : idx < 3.85 ? 5 : idx < 4.7 ? 7 : 8];
   }
@@ -8257,9 +8505,9 @@ void main() {
                 if (d < r * 0.36 && half > 0.16) col = ly > r * 0.05 && d > r * 0.12 ? ly > r * 0.16 && lx < r * 0.2 ? tongueH : tongue : inner;
               } else {
                 const belly = ly > r * (0.38 + 0.06 * Math.sin(lx / r * 5));
-                col = tone2(belly ? T3.belly : ly < -r * 0.62 + 0.05 * lx ? T3.back : T3.body, 3, x, y);
+                col = tone4(belly ? T3.belly : ly < -r * 0.62 + 0.05 * lx ? T3.back : T3.body, 3, x, y);
                 if (Math.hypot(lx - r * 0.02, ly + r * 0.02) < r * 0.13 && ly > -r * 0.12) col = blush;
-                if (c.look.freckles !== false && ly < -r * 0.2 && lx < -r * 0.15 && hash2(Math.floor(lx * 0.45), Math.floor(ly * 0.45), 41) > 0.86 && d < r * 0.82) col = tone2(T3.body, 4.4, x, y);
+                if (c.look.freckles !== false && ly < -r * 0.2 && lx < -r * 0.15 && hash2(Math.floor(lx * 0.45), Math.floor(ly * 0.45), 41) > 0.86 && d < r * 0.82) col = tone4(T3.body, 4.4, x, y);
               }
             }
             if (!col && back) {
@@ -8268,15 +8516,15 @@ void main() {
                 const t = tx / (r * 0.9);
                 const outer = r * (0.18 + 0.62 * Math.pow(Math.max(0, t), 0.8));
                 const notch = r * 0.5 * Math.max(0, (t - 0.45) / 0.55);
-                if (Math.abs(ty) < outer && Math.abs(ty) > notch) col = tone2(F, t > 0.6 ? 4.2 : t < 0.15 ? 2.2 : 3, x, y);
+                if (Math.abs(ty) < outer && Math.abs(ty) > notch) col = tone4(F, t > 0.6 ? 4.2 : t < 0.15 ? 2.2 : 3, x, y);
               }
               const fx = -lx - r * 0.05, fy = -ly - r * 0.82;
               if (!col && fy > -1 && fy < r * 0.55) {
                 const t = fy / (r * 0.55);
-                if (fx > -r * 0.35 * (1 - t) && fx < r * 0.45 * (1 - t * 0.55) + t * r * 0.25) col = tone2(D, t > 0.55 ? 4.2 : 3, x, y);
+                if (fx > -r * 0.35 * (1 - t) && fx < r * 0.45 * (1 - t * 0.55) + t * r * 0.25) col = tone4(D, t > 0.55 ? 4.2 : 3, x, y);
               }
               const px2 = -lx + r * 0.05, py2 = ly - r * 0.86;
-              if (!col && py2 > -1 && py2 < r * 0.28 && Math.abs(px2 - py2 * 0.6) < r * 0.16) col = tone2(D, 3, x, y);
+              if (!col && py2 > -1 && py2 < r * 0.28 && Math.abs(px2 - py2 * 0.6) < r * 0.16) col = tone4(D, 3, x, y);
             }
             if (col) buf.set(x, y, col);
           }
@@ -15137,9 +15385,20 @@ void main() {
         else if (PAL[ch]) buf.set(x + m, y + m, pk2(PAL[ch]));
       }
     }
+    const inner = auto ? buf.toCanvas() : null;
     if (auto) buf.outline(outlineFn);
     for (const [x, y] of keep) buf.set(x, y, 0);
-    return buf.toCanvas();
+    const c = buf.toCanvas();
+    if (auto) withHi(c, () => {
+      const hc = enhanceHi(inner, { outline: outlineFn, outlineLum: -1, bevel: 1 });
+      if (hc && keep.length) {
+        const g = hc.getContext("2d");
+        for (const [x, y] of keep) g.clearRect(x * HI, y * HI, HI, HI);
+      }
+      return hc;
+    });
+    else autoHi(c);
+    return c;
   }
   function buildReelCursor() {
     const S9 = 13, c = 6.5;
@@ -15161,13 +15420,11 @@ void main() {
     buf.set(10, 3, pk2(PAL.p));
     buf.set(11, 4, pk2(PAL.R));
     buf.outline(outlineFn);
-    return buf.toCanvas();
+    return autoHi(buf.toCanvas());
   }
   function buildAero(r) {
     const S9 = Math.ceil(r * 2) + 2;
-    const c = makeCanvas(S9, S9);
-    drawAeroCoin(c.getContext("2d"), S9 / 2, S9 / 2, r, 0);
-    return c;
+    return dualArt(S9, S9, (g) => drawAeroCoin(g, S9 / 2, S9 / 2, r, 0));
   }
   function getUiIcon(name, zoom = 1) {
     zoom = Math.max(1, Math.round(zoom || 1));
@@ -15180,14 +15437,29 @@ void main() {
         const g = z.getContext("2d");
         g.imageSmoothingEnabled = false;
         g.drawImage(src, 0, 0, z.width, z.height);
+        if (src.hi !== void 0) withHi(z, () => {
+          const h = src.hi;
+          if (!h) return null;
+          const c2 = makeCanvas(z.width * HI, z.height * HI), g2 = c2.getContext("2d");
+          g2.imageSmoothingEnabled = false;
+          g2.drawImage(h, 0, 0, c2.width, c2.height);
+          return c2;
+        });
         cache.set(key, z);
       }
       return z;
     }
     let c = cache.get(name);
     if (!c) {
-      if (name === "fish") c = voxelFishIcon("pixel", 12, 9) || makeCanvas(9, 9);
-      else if (AERO_ICONS[name]) c = buildAero(AERO_ICONS[name]);
+      if (name === "fish") {
+        c = voxelFishIcon("pixel", 12, 9) || makeCanvas(9, 9);
+        if (c.hi === void 0) {
+          const c0 = c;
+          c = makeCanvas(12, 9);
+          c.getContext("2d").drawImage(c0, 0, 0);
+          withHi(c, () => voxelFishIcon("pixel", 24, 18));
+        }
+      } else if (AERO_ICONS[name]) c = buildAero(AERO_ICONS[name]);
       else if (ICONS[name]) c = build2(ICONS[name]);
       else if (CURSORS[name]) c = build2(CURSORS[name], false);
       else if (name === "cursor_reel") c = buildReelCursor();
@@ -15210,6 +15482,7 @@ void main() {
       init_font();
       init_aero();
       init_fishicon();
+      init_hires();
       PAL = {
         h: "#ffffff",
         w: "#fff8ea",
@@ -16045,9 +16318,9 @@ void main() {
     const depth = pooled("depth", Float32Array, N2);
     const hitU = pooled("hitU", Float32Array, N2), hitV = pooled("hitV", Float32Array, N2);
     traceRays(model, b, cam, vol, hitVox, hitN, depth, hitU, hitV);
-    const tone4 = pooled("tone", Float32Array, N2), edgeMul = pooled("edgeMul", Float32Array, N2);
+    const tone5 = pooled("tone", Float32Array, N2), edgeMul = pooled("edgeMul", Float32Array, N2);
     const faceTone = faceTones(cam, opts.light);
-    shadeHits(model, cam, vol, opts, faceTone, hitVox, hitN, hitU, hitV, tone4, edgeMul);
+    shadeHits(model, cam, vol, opts, faceTone, hitVox, hitN, hitU, hitV, tone5, edgeMul);
     const edgeBoost = pooled("edgeBoost", Float32Array, N2).fill(0);
     const sideMark = pooled("sideMark", Uint8Array, N2).fill(0);
     edgeHighlights(cam, opts, hitN, depth, edgeMul, edgeBoost, sideMark);
@@ -16056,7 +16329,7 @@ void main() {
     const glowBuf = cam.hasEmissive ? new Uint32Array(N2) : null;
     const ids = new Uint8Array(N2);
     const level = pooled("level", Int8Array, N2).fill(-1);
-    quantize(model, N2, hitVox, hitN, tone4, edgeBoost, ramps, out, glowBuf, ids, level);
+    quantize(model, N2, hitVox, hitN, tone5, edgeBoost, ramps, out, glowBuf, ids, level);
     if (opts.keepVoxel) {
       const { nx, ny } = model;
       for (let p = 0; p < N2; p++) {
@@ -16305,7 +16578,7 @@ void main() {
       return light.dark + (light.lit - light.dark) * ((n2[0] * hlx + n2[2] * hlz + 1) / 2);
     }));
   }
-  function shadeHits(model, cam, vol, opts, faceTone, hitVox, hitN, hitU, hitV, tone4, edgeMul) {
+  function shadeHits(model, cam, vol, opts, faceTone, hitVox, hitN, hitU, hitV, tone5, edgeMul) {
     const { nx, ny, nz, data, palette } = model;
     const { occ, SY, SZ } = vol;
     const N2 = cam.N;
@@ -16411,7 +16684,7 @@ void main() {
           if (hd > 0) ft += Math.pow(hd, pPow[v]) * pSpec[v];
         }
       }
-      tone4[p] = ft + pLight[v] + hj - (1 - ao) * pAo[v];
+      tone5[p] = ft + pLight[v] + hj - (1 - ao) * pAo[v];
       edgeMul[p] = pEdge[v];
     }
     for (let i = 0; i < snCount; i++) snCache[snKeys[i]] = 0;
@@ -16442,7 +16715,7 @@ void main() {
       }
     }
   }
-  function quantize(model, N2, hitVox, hitN, tone4, edgeBoost, ramps, out, glowBuf, ids, level) {
+  function quantize(model, N2, hitVox, hitN, tone5, edgeBoost, ramps, out, glowBuf, ids, level) {
     const { data, palette } = model;
     const P6 = palette.length;
     const pEm = new Float32Array(P6), pLight = new Float32Array(P6);
@@ -16456,7 +16729,7 @@ void main() {
       if (hv < 0) continue;
       const v = data[hv];
       ids[p] = v;
-      let tn = tone4[p] + edgeBoost[p];
+      let tn = tone5[p] + edgeBoost[p];
       const em = pEm[v];
       if (em > 0) {
         const nid = hitN[p];
@@ -28997,16 +29270,16 @@ kmlmk..
     const g = ctxOf(c);
     const img = g.createImageData(w, h);
     const o = img.data;
-    const lum = (i) => d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11;
+    const lum2 = (i) => d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11;
     const A2 = (x, y) => x < 0 || y < 0 || x >= w || y >= h ? 0 : d[(y * w + x) * 4 + 3];
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const i = (y * w + x) * 4;
       if (d[i + 3] < 100) continue;
-      const L2 = lum(i);
+      const L2 = lum2(i);
       let edge = A2(x - 1, y) < 100 || A2(x + 1, y) < 100 || A2(x, y - 1) < 100 || A2(x, y + 1) < 100;
       if (!edge) for (const [ox, oy] of [[1, 0], [0, 1]]) {
         const j = ((y + oy) * w + x + ox) * 4;
-        if (Math.abs(lum(j) - L2) > 52) edge = true;
+        if (Math.abs(lum2(j) - L2) > 52) edge = true;
       }
       let r, gg, b;
       if (edge) {

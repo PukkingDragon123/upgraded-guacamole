@@ -253,6 +253,68 @@ function paddle(mb, base, D, Thint, L, widths, thick, paint, twist = 0) {
   return place([L + 0.02, 0, 0]);
 }
 
+// ---- [phase9:seal] cute round GLASSES: voxel rims floating just in front of each eye, a little arched bridge over
+// the snout and temple arms running back along the sides of the head (all in rest space, so they follow the pose's
+// face twist and squash; the voxeliser turns the thin tubes into crisp 1-2 voxel frames)
+const GLASS = { R: 0.182, tube: 0.021, lift: 0.036, armX: 0.42, col: rgb('#1b1f2d'), hi: rgb('#3c4560') };
+const eyeRest = (sd) => { const q = loafPt(FACE.eyeX, FACE.eyeA * sd); return [q[0], q[1] + FACE.eyeY, q[2]]; };
+// tube rows along a polyline (closed: a ring): each row is a small circle around the path
+function tubeRows(pts, r, M = 6, closed = false) {
+  const n = pts.length, rows = [];
+  for (let i = 0; i < n; i++) {
+    const a = closed ? pts[(i - 1 + n) % n] : pts[Math.max(0, i - 1)], b = closed ? pts[(i + 1) % n] : pts[Math.min(n - 1, i + 1)];
+    const T = norm(sub(b, a));
+    let b1 = cross(T, Math.abs(T[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0]);
+    b1 = norm(b1);
+    const b2 = cross(T, b1), row = [];
+    for (let j = 0; j < M; j++) { const f = (j / M) * TAU; row.push(add(pts[i], add(scl(b1, Math.cos(f) * r), scl(b2, Math.sin(f) * r)))); }
+    rows.push(row);
+  }
+  if (closed) rows.push(rows[0]);
+  return rows;
+}
+// rim geometry of the eye on side sd: centre, plane basis (u, v), normal
+function lensOf(sd) {
+  const q = eyeRest(sd), n = loafN(FACE.eyeX, FACE.eyeA * sd);
+  const c = add(q, scl(n, GLASS.lift));
+  const u = norm(cross(n, [0, 1, 0])), v = norm(cross(u, n));
+  return { c, n, u, v };
+}
+// the point on the rim of lens L in the in-plane direction closest to `dir`
+function rimToward(L, dir) {
+  const a = dot(dir, L.u), b = dot(dir, L.v), l = Math.hypot(a, b) || 1;
+  return add(L.c, scl(add(scl(L.u, a / l), scl(L.v, b / l)), GLASS.R));
+}
+function addGlasses(mb, def) {
+  const L = [lensOf(1), lensOf(-1)];
+  const paint = (L0) => (q) => (q[1] > L0.c[1] + GLASS.R * 0.72 ? GLASS.hi : GLASS.col);
+  // rims
+  for (const Lk of L) {
+    const ring = [];
+    for (let i = 0; i < 22; i++) { const f = (i / 22) * TAU; ring.push(add(Lk.c, add(scl(Lk.u, Math.cos(f) * GLASS.R), scl(Lk.v, Math.sin(f) * GLASS.R)))); }
+    sheetMesh(mb, tubeRows(ring, GLASS.tube, 6, true), paint(Lk), def);
+  }
+  // the bridge: a little arch over the top of the snout, pushed forward so it clears the face
+  const a = rimToward(L[0], sub(L[1].c, L[0].c)), b = rimToward(L[1], sub(L[0].c, L[1].c));
+  const k = [Math.max(a[0], b[0]) + 0.05, (a[1] + b[1]) / 2 + 0.035, 0];
+  const br = [];
+  for (let i = 0; i <= 8; i++) { const t = i / 8, s = 1 - t; br.push(add(add(scl(a, s * s), scl(k, 2 * s * t)), scl(b, t * t))); }
+  sheetMesh(mb, tubeRows(br, GLASS.tube * 0.9, 6), () => GLASS.col, def);
+  // temple arms: from the outer edge of each rim back along the side of the head, just above the fur
+  for (const sd of [1, -1]) {
+    const Lk = L[sd > 0 ? 0 : 1];
+    const p0 = rimToward(Lk, [-0.6, 0.05, sd]);
+    const yT = p0[1] - 0.02, pts = [p0];
+    for (let i = 1; i <= 6; i++) {
+      const x = lerp(p0[0] - 0.04, GLASS.armX, i / 6);
+      let best = 0, bd = Infinity;
+      for (let s = 0; s <= 48; s++) { const an = (s / 48) * Math.PI * 0.6 * sd; const d = Math.abs(loafPt(x, an)[1] - yT); if (d < bd) { bd = d; best = an; } }
+      pts.push(add(loafPt(x, best), scl(loafN(x, best), GLASS.lift * 0.8)));
+    }
+    sheetMesh(mb, tubeRows(pts, GLASS.tube * 0.8, 5), () => GLASS.col, def);
+  }
+}
+
 // Build the (voxel) seal for pose P -> {mesh, A (model-space anchors)}
 function buildSeal(P) {
   const mb = new PaintMesh();
@@ -273,6 +335,7 @@ function buildSeal(P) {
   for (const sd of [1, -1]) sheetMesh(mb, ellRows([FACE.muzzle[0], FACE.muzzle[1], FACE.muzzle[2] * sd * (1 + P.cheek * 0.2)], [0.095 * pk, 0.085 * pk, 0.1 * pk], 10, 6), paintMuzzle, def);
   sheetMesh(mb, ellRows([0.785, 0.395, 0], [0.07, 0.05, 0.085], 8, 5), paintMuzzle, def);
   sheetMesh(mb, ellRows(FACE.nose, [0.034, 0.03, 0.05], 8, 5), paintNose, def);
+  addGlasses(mb, def); // [phase9:seal]
   // tiny front flippers under the sides
   const shN = def([SHOULDER[0] + 0.12 * P.shN, SHOULDER[1] + 0.22 * P.shN, SHOULDER[2] + 0.2 * P.shN]);
   const shF = def([SHOULDER[0] + 0.12 * P.shF, SHOULDER[1] + 0.22 * P.shF, -SHOULDER[2] - 0.2 * P.shF]);
@@ -296,7 +359,8 @@ function buildSeal(P) {
   const nrmD = (p, n) => norm(sub(def(add(p, scl(n, 0.05))), def(p)));
   const A = {
     eyes: [1, -1].map((sd) => { const q = eyeP(sd); return { p: def(q), n: nrmD(q, loafN(FACE.eyeX, FACE.eyeA * sd)), side: sd }; }),
-    brows: [1, -1].map((sd) => { const q = eyeP(sd); return def([q[0] - 0.02, q[1] + 0.11, q[2] * 0.97]); }),
+    brows: [1, -1].map((sd) => { const q = eyeP(sd); return def([q[0] - 0.03, q[1] + 0.225, q[2] * 0.97]); }), // [phase9:seal] above the frames
+    lens: [1, -1].map((sd) => { const L = lensOf(sd); return { p: def(L.c), n: nrmD(L.c, L.n), side: sd }; }),
     nose: def(FACE.nose), mouth: def(FACE.mouth), faceN: nrmD(FACE.nose, [1, -0.1, 0]),
     muzzle: [1, -1].map((sd) => def([FACE.muzzle[0] + 0.03, FACE.muzzle[1], FACE.muzzle[2] * sd * (1 + P.cheek * 0.3)])),
     cheeks: [1, -1].map((sd) => def(loafPt(FACE.cheekX, FACE.cheekA * sd))),
@@ -424,9 +488,45 @@ function project(A, o, m) {
   const rot = (n) => [m[0] * n[0] + m[4] * n[1] + m[8] * n[2], m[1] * n[0] + m[5] * n[1] + m[9] * n[2], m[2] * n[0] + m[6] * n[1] + m[10] * n[2]];
   return {
     eyes: A.eyes.map((e) => { const n = rot(e.n); return { p: pr(e.p), nz: n[2], ang: Math.atan2(-n[1], n[0]), side: e.side }; }),
+    lens: A.lens.map((e) => { const n = rot(e.n); return { p: pr(e.p), nz: n[2], ang: Math.atan2(-n[1], n[0]), side: e.side }; }),
     brows: A.brows.map(pr), nose: pr(A.nose), mouth: pr(A.mouth), muzzle: A.muzzle.map(pr), cheeks: A.cheeks.map(pr), cheekZ: A.cheekN.map((n) => rot(n)[2]),
     faceZ: rot(A.faceN)[2], top: pr(A.top), head: pr(A.head), hand: pr(A.hand), hand2: pr(A.hand2), tail: pr(A.tail), bottom: pr(A.bottom),
   };
+}
+
+// [phase9:seal] crisp dark ink outline around the silhouette, baked into the cached sheet once (like the fish's
+// outlineSheet): every transparent pixel touching an opaque one in the same cell turns ink; big sheets get 2 px so
+// the line still reads once scaled down. The jiggle / squash draw the outlined frame, so the line follows them.
+const INK = [14, 16, 28];
+export const SEAL_OUTLINE = (size) => (size >= 52 ? 2 : 1);
+function outlineCells(canvas, cw, ch, passes) {
+  const W = canvas.width, H = canvas.height;
+  if (!W || !H) return;
+  let g;
+  try { g = canvas.getContext('2d', { willReadFrequently: true }); } catch { return; }
+  if (!g) return;
+  let img;
+  try { img = g.getImageData(0, 0, W, H); } catch { return; }
+  const d = img.data, solid = new Uint8Array(W * H);
+  for (let i = 0, j = 3; i < solid.length; i++, j += 4) solid[i] = d[j] > 110 ? 1 : 0;
+  for (let pass = 0; pass < passes; pass++) {
+    const add = [];
+    for (let y = 0; y < H; y++) {
+      const cy0 = Math.floor(y / ch) * ch, cy1 = cy0 + ch - 1;
+      for (let x = 0; x < W; x++) {
+        const i = y * W + x;
+        if (solid[i]) continue;
+        const cx0 = Math.floor(x / cw) * cw, cx1 = cx0 + cw - 1;
+        if ((x > cx0 && solid[i - 1]) || (x < cx1 && solid[i + 1]) || (y > cy0 && solid[i - W]) || (y < cy1 && solid[i + W])) {
+          const j = i * 4;
+          d[j] = INK[0]; d[j + 1] = INK[1]; d[j + 2] = INK[2]; d[j + 3] = 255;
+          add.push(i);
+        }
+      }
+    }
+    for (const i of add) solid[i] = 1;
+  }
+  g.putImageData(img, 0, 0);
 }
 
 function buildSheet(anim, size, view) {
@@ -448,6 +548,7 @@ function buildSheet(anim, size, view) {
   const cols = Math.max(1, Math.min(n, Math.floor(2048 / cw)));
   let canvas = null;
   try { canvas = renderSheet(cells, { ...base, cols }); } catch (e) { canvas = null; }
+  if (canvas) outlineCells(canvas, cw, ch, SEAL_OUTLINE(size)); // [phase9:seal]
   for (const c of cells) c.mesh.dispose?.();
   return { canvas, cw, ch, cols, n, frames, size, anim };
 }
@@ -604,6 +705,24 @@ function drawFace(ctx, F, o, s) {
     ctx.restore();
   }
   ctx.globalAlpha = a0;
+  // [phase9:seal] the glasses' lenses (the rims are voxels in the sheet): a faint glassy tint, a glossy glint at the
+  // upper left and a sparkle dot at the lower right of each lens
+  if (F.lens) for (const E of F.lens) {
+    if (E.nz < 0.08) continue;
+    const R = GLASS.R * s * 0.8;
+    ctx.globalAlpha = a0 * clamp01(E.nz / 0.25);
+    ctx.save();
+    ctx.translate(E.p[0], E.p[1]);
+    ctx.rotate(E.ang); ctx.scale(Math.max(0.35, E.nz), 1); ctx.rotate(-E.ang);
+    ctx.fillStyle = 'rgba(196,238,255,0.13)';
+    ellipse(ctx, 0, 0, R, R); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.92)'; ctx.lineCap = 'round';
+    ctx.lineWidth = Math.max(FPX, R * 0.17);
+    ctx.beginPath(); ctx.arc(0, 0, R * 0.7, 1.06 * Math.PI, 1.36 * Math.PI); ctx.stroke();
+    if (R > FPX * 2.5) { ctx.fillStyle = 'rgba(255,255,255,0.8)'; const d = Math.max(FPX, R * 0.13); ctx.fillRect(R * 0.42 - d / 2, R * 0.42 - d / 2, d, d); }
+    ctx.restore();
+  }
+  ctx.globalAlpha = a0;
   // worried / determined brows
   if ((mood === 'worried' || mood === 'scared' || mood === 'angry' || mood === 'determined' || mood === 'sad') && F.faceZ > 0.1) {
     ctx.strokeStyle = '#59607a'; ctx.lineWidth = Math.max(FPX, er * 0.32); ctx.lineCap = 'round';
@@ -699,9 +818,15 @@ function flatFrame(size) {
   g.beginPath(); g.ellipse(X(-0.3), Y(0.17), 0.85 * s, 0.48 * s, 0, 0, TAU); g.fill();
   g.beginPath(); g.ellipse(X(0.52), Y(0.62), 0.42 * s, 0.42 * s, 0, 0, TAU); g.fill();
   g.fillStyle = '#272c3a'; g.beginPath(); g.ellipse(X(0.9), Y(0.6), 0.06 * s, 0.045 * s, 0, 0, TAU); g.fill();
+  // [phase9:seal] round glasses + the ink outline
+  g.strokeStyle = '#1b1f2d'; g.lineWidth = Math.max(1, 0.05 * s);
+  for (const ex of [0.78, 0.6]) { g.beginPath(); g.ellipse(X(ex), Y(0.75), GLASS.R * s * (ex > 0.7 ? 1 : 0.75), GLASS.R * s, 0, 0, TAU); g.stroke(); }
+  g.beginPath(); g.moveTo(X(0.6) + GLASS.R * s * 0.75, Y(0.77)); g.quadraticCurveTo(X(0.69), Y(0.82), X(0.78) - GLASS.R * s, Y(0.77)); g.stroke();
+  outlineCells(c, w, h, SEAL_OUTLINE(s));
   const F = {
     eyes: [{ p: [X(0.78), Y(0.75)], nz: 0.9, ang: 0, side: 1 }, { p: [X(0.6), Y(0.75)], nz: 0.7, ang: 0, side: -1 }],
-    brows: [[X(0.78), Y(0.9)], [X(0.6), Y(0.9)]], nose: [X(0.9), Y(0.6)], mouth: [X(0.88), Y(0.47)],
+    lens: [{ p: [X(0.78), Y(0.75)], nz: 0.9, ang: 0, side: 1 }, { p: [X(0.6), Y(0.75)], nz: 0.7, ang: 0, side: -1 }],
+    brows: [[X(0.78), Y(0.98)], [X(0.6), Y(0.98)]], nose: [X(0.9), Y(0.6)], mouth: [X(0.88), Y(0.47)],
     muzzle: [[X(0.94), Y(0.53)], [X(0.8), Y(0.53)]], cheeks: [[X(0.72), Y(0.55)], [X(0.5), Y(0.55)]], faceZ: 0.8,
     top: [X(0.5), Y(1.05)], head: [X(0.52), Y(0.62)], hand: [X(0.4), Y(-0.1)], hand2: [X(0.3), Y(-0.1)], tail: [X(-1.1), Y(0.1)], bottom: [X(-0.15), Y(-0.3)], dy: 0, cheek: 0,
   };

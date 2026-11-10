@@ -4,6 +4,7 @@
 // Inline sprite tokens like {aero} / {coin} (the Aero drop) are supported by drawText via registerInlineIcon.
 
 import { makeCanvas, ctxOf } from '../core/canvas.js';
+import { withHi, enhanceHi } from './hires.js'; // [phase9:ui] 2x glyph atlases for the full-res UI layer
 
 const NORMAL_DEF = {
   height: 7, descent: 2, lineHeight: 11, spacing: 1, space: 3,
@@ -149,6 +150,8 @@ function buildFont(def) {
     });
     glyphs.set(e.ch, { x: e.x, w: e.w, h: e.rows.length });
   }
+  // [phase9:ui] the 2x twin: Scale2x rounds the stair-steps of diagonals and curves (crisper, finer letterforms)
+  withHi(canvas, () => enhanceHi(canvas, { bevel: 0, outlineLum: -1 }));
   return { ...def, atlas: canvas, glyphs, tints: new Map(), atlasH };
 }
 
@@ -208,6 +211,7 @@ function tintAtlas(font, color) {
     g.globalCompositeOperation = 'source-in';
     g.fillStyle = color;
     g.fillRect(0, 0, c.width, c.height);
+    withHi(c, () => { const src = font.atlas.hi; if (!src) return null; const h = makeCanvas(src.width, src.height), hg = ctxOf(h); hg.drawImage(src, 0, 0); hg.globalCompositeOperation = 'source-in'; hg.fillStyle = color; hg.fillRect(0, 0, h.width, h.height); return h; });
     font.tints.set(color, c);
   }
   return c;

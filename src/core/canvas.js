@@ -40,6 +40,7 @@ export function tinted(src, color) {
     g.globalCompositeOperation = 'source-in';
     g.fillStyle = color;
     g.fillRect(0, 0, c.width, c.height);
+    if (src.hi !== undefined) Object.defineProperty(c, 'hi', { configurable: true, get: () => (src.hi ? tinted(src.hi, color) : undefined) }); // [phase9:ui] keep the 2x twin
     m.set(color, c);
   }
   return c;

@@ -55,6 +55,7 @@
       g.globalCompositeOperation = "source-in";
       g.fillStyle = color;
       g.fillRect(0, 0, c.width, c.height);
+      if (src.hi !== void 0) Object.defineProperty(c, "hi", { configurable: true, get: () => src.hi ? tinted(src.hi, color) : void 0 });
       m.set(color, c);
     }
     return c;
@@ -90,6 +91,246 @@
     }
   });
 
+  // src/gfx/hires.js
+  function withHi(c, build4) {
+    if (!c || c.hi !== void 0) return c;
+    let v = null;
+    Object.defineProperty(c, "hi", {
+      configurable: true,
+      get() {
+        if (v === null) {
+          try {
+            v = build4() || false;
+          } catch (e) {
+            console.warn("hi art", e);
+            v = false;
+          }
+        }
+        return v || void 0;
+      }
+    });
+    return c;
+  }
+  function dualArt(w, h, draw) {
+    w = Math.max(1, Math.round(w));
+    h = Math.max(1, Math.round(h));
+    const c = makeCanvas(w, h);
+    draw(ctxOf(c), 1);
+    return withHi(c, () => {
+      const hc = makeCanvas(w * HI, h * HI);
+      const g = hiCtx(hc, HI);
+      draw(g, HI);
+      return hc;
+    });
+  }
+  function fitHi(c, big, x = c.width / 2, y = c.height / 2, bx = big.width / 2, by = big.height / 2) {
+    if (!big) return null;
+    const hc = makeCanvas(c.width * HI, c.height * HI);
+    ctxOf(hc).drawImage(big, Math.round(x * HI - bx), Math.round(y * HI - by));
+    return hc;
+  }
+  function hiCtx(canvas, R4 = HI) {
+    const g = canvas.getContext("2d");
+    if (!g.__hi) installHiCtx(g, R4);
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.imageSmoothingEnabled = false;
+    g.logicalW = canvas.width / R4;
+    g.logicalH = canvas.height / R4;
+    return g;
+  }
+  function tone(c, k) {
+    const a = c >>> 24;
+    let r = c & 255, g = c >>> 8 & 255, b = c >>> 16 & 255;
+    if (k > 0) {
+      r += (255 - r) * k;
+      g += (252 - g) * k;
+      b += (236 - b) * k;
+    } else {
+      const q = -k;
+      r *= 1 - q * 1.05;
+      g *= 1 - q;
+      b *= 1 - q * 0.75;
+      b += 18 * q;
+    }
+    return (a << 24 | Math.max(0, Math.min(255, Math.round(b))) << 16 | Math.max(0, Math.min(255, Math.round(g))) << 8 | Math.max(0, Math.min(255, Math.round(r)))) >>> 0;
+  }
+  function enhanceHi(src, o = {}) {
+    const w = src.width, h = src.height;
+    if (!w || !h) return null;
+    const d = new Uint32Array(ctxOf(src).getImageData(0, 0, w, h).data.buffer.slice(0));
+    const W10 = w * 2, H8 = h * 2;
+    const out = new Uint32Array(W10 * H8);
+    const P6 = (x, y) => x < 0 || y < 0 || x >= w || y >= h ? 0 : d[y * w + x];
+    const same = (a, b) => a === b || a >>> 24 < 16 && b >>> 24 < 16;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const p = P6(x, y), A3 = P6(x, y - 1), B2 = P6(x + 1, y), C4 = P6(x - 1, y), D = P6(x, y + 1);
+      let e0 = p, e1 = p, e2 = p, e3 = p;
+      if (!same(A3, D) && !same(C4, B2)) {
+        if (same(C4, A3)) e0 = C4;
+        if (same(A3, B2)) e1 = B2;
+        if (same(C4, D)) e2 = C4;
+        if (same(D, B2)) e3 = B2;
+      }
+      const i = y * 2 * W10 + x * 2;
+      out[i] = e0;
+      out[i + 1] = e1;
+      out[i + W10] = e2;
+      out[i + W10 + 1] = e3;
+    }
+    const A2 = (x, y) => x < 0 || y < 0 || x >= W10 || y >= H8 ? 0 : out[y * W10 + x] >>> 24;
+    const res = out.slice();
+    const dark = (c2) => c2 >>> 24 > 200 && lum(c2) < (o.outlineLum ?? 70);
+    const bevel = o.bevel ?? 1;
+    for (let y = 0; y < H8; y++) for (let x = 0; x < W10; x++) {
+      const c2 = out[y * W10 + x];
+      if (c2 >>> 24 < 16) continue;
+      const edge = A2(x - 1, y) < 16 || A2(x + 1, y) < 16 || A2(x, y - 1) < 16 || A2(x, y + 1) < 16;
+      if (edge) continue;
+      if (dark(c2)) {
+        let best = 0, bl = -1;
+        for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+          const xx = x + dx, yy = y + dy;
+          if (xx < 0 || yy < 0 || xx >= W10 || yy >= H8) continue;
+          const q = out[yy * W10 + xx];
+          if (q >>> 24 < 200 || dark(q)) continue;
+          const l = lum(q) - (Math.abs(dx) + Math.abs(dy)) * 4;
+          if (l > bl) {
+            bl = l;
+            best = q;
+          }
+        }
+        if (best) {
+          const outerish = A2(x - 2, y) < 16 || A2(x + 2, y) < 16 || A2(x, y - 2) < 16 || A2(x, y + 2) < 16;
+          if (outerish) res[y * W10 + x] = tone(best, -0.42);
+        }
+        continue;
+      }
+      if (!bevel) continue;
+      const up = out[(y - 1) * W10 + x], lf = out[y * W10 + x - 1], dn = out[(y + 1) * W10 + x], rt = out[y * W10 + x + 1];
+      const tl = dark(up) || dark(lf) || up >>> 24 < 16 || lf >>> 24 < 16;
+      const br = dark(dn) || dark(rt) || dn >>> 24 < 16 || rt >>> 24 < 16;
+      if (tl && !br) res[y * W10 + x] = tone(c2, 0.22 * bevel);
+      else if (br && !tl) res[y * W10 + x] = tone(c2, -0.14 * bevel);
+    }
+    if (o.outline) {
+      const src2 = res.slice();
+      for (let y = 0; y < H8; y++) for (let x = 0; x < W10; x++) {
+        const i = y * W10 + x;
+        if (src2[i] >>> 24 >= 16) continue;
+        let n2 = 0;
+        if (x > 0 && src2[i - 1] >>> 24 >= 16) n2 = src2[i - 1];
+        else if (x < W10 - 1 && src2[i + 1] >>> 24 >= 16) n2 = src2[i + 1];
+        else if (y > 0 && src2[i - W10] >>> 24 >= 16) n2 = src2[i - W10];
+        else if (y < H8 - 1 && src2[i + W10] >>> 24 >= 16) n2 = src2[i + W10];
+        if (n2) res[i] = o.outline(n2);
+      }
+    }
+    const c = makeCanvas(W10, H8);
+    const g = ctxOf(c);
+    const img = g.createImageData(W10, H8);
+    new Uint32Array(img.data.buffer).set(res);
+    g.putImageData(img, 0, 0);
+    return c;
+  }
+  function autoHi(c, o) {
+    if (!c || c.hi !== void 0 || !(c instanceof HTMLCanvasElement)) return c;
+    return withHi(c, () => enhanceHi(c, o));
+  }
+  function installHiCtx(ctx2, R4) {
+    const draw = P2D.drawImage, setT = P2D.setTransform;
+    ctx2.__hi = R4;
+    ctx2.drawImage = function(img, a, b, c, d, e, f, g, h) {
+      const hi = img && img.hi;
+      if (hi) {
+        const n2 = arguments.length;
+        if (n2 <= 3) return draw.call(this, hi, a, b, img.width, img.height);
+        if (n2 <= 5) return draw.call(this, hi, a, b, c, d);
+        const kx = hi.width / img.width, ky = hi.height / img.height;
+        return draw.call(this, hi, a * kx, b * ky, c * kx, d * ky, e, f, g, h);
+      }
+      return draw.apply(this, arguments);
+    };
+    ctx2.setTransform = function(a, b, c, d, e, f) {
+      if (arguments.length < 6 || typeof a === "object") return setT.apply(this, arguments);
+      return setT.call(this, a * R4, b * R4, c * R4, d * R4, e * R4, f * R4);
+    };
+    ctx2.resetTransform = function() {
+      return setT.call(this, R4, 0, 0, R4, 0, 0);
+    };
+  }
+  var HI, HI_ON, lum, P2D, UiLayer;
+  var init_hires = __esm({
+    "src/gfx/hires.js"() {
+      init_canvas();
+      HI = 2;
+      HI_ON = { on: false };
+      lum = (c) => (c & 255) * 0.3 + (c >>> 8 & 255) * 0.59 + (c >>> 16 & 255) * 0.11;
+      P2D = typeof CanvasRenderingContext2D !== "undefined" ? CanvasRenderingContext2D.prototype : null;
+      UiLayer = class {
+        constructor(screen, R4 = HI) {
+          this.screen = screen;
+          this.R = R4;
+          this.active = false;
+          this.canvas = null;
+          this.ctx = null;
+          if (!P2D || typeof document === "undefined") return;
+          const c = document.createElement("canvas");
+          c.id = "uihi";
+          c.setAttribute("aria-hidden", "true");
+          Object.assign(c.style, { position: "fixed", left: "0", top: "0", pointerEvents: "none", imageRendering: "pixelated", zIndex: "2" });
+          const host2 = screen.canvas;
+          host2.insertAdjacentElement("afterend", c);
+          this.canvas = c;
+          this.ctx = c.getContext("2d");
+          installHiCtx(this.ctx, R4);
+          this.sync();
+        }
+        sync() {
+          const s = this.screen, c = this.canvas;
+          if (!c) return false;
+          const on = s.scale >= 2;
+          HI_ON.on = on;
+          if (!on) {
+            if (this.active) {
+              c.style.display = "none";
+              this.active = false;
+            }
+            return false;
+          }
+          const w = s.W * this.R, h = s.H * this.R;
+          if (c.width !== w || c.height !== h) {
+            c.width = w;
+            c.height = h;
+          }
+          const cs = s.canvas.style;
+          if (c.style.width !== cs.width) c.style.width = cs.width;
+          if (c.style.height !== cs.height) c.style.height = cs.height;
+          if (!this.active) {
+            c.style.display = "";
+            this.active = true;
+          }
+          return true;
+        }
+        // Start a frame: returns the context to draw UI into (the hi-res layer, or null when it is off)
+        begin() {
+          if (!this.sync()) return null;
+          const g = this.ctx;
+          g.setTransform(1, 0, 0, 1, 0, 0);
+          g.globalAlpha = 1;
+          g.globalCompositeOperation = "source-over";
+          g.imageSmoothingEnabled = false;
+          g.clearRect(0, 0, this.screen.W, this.screen.H);
+          g.logicalW = this.screen.W;
+          g.logicalH = this.screen.H;
+          return g;
+        }
+        clear() {
+          if (this.active) this.begin();
+        }
+      };
+    }
+  });
+
   // src/gfx/font.js
   function buildFont(def2) {
     const entries = [];
@@ -111,6 +352,7 @@
       });
       glyphs2.set(e.ch, { x: e.x, w: e.w, h: e.rows.length });
     }
+    withHi(canvas, () => enhanceHi(canvas, { bevel: 0, outlineLum: -1 }));
     return { ...def2, atlas: canvas, glyphs: glyphs2, tints: /* @__PURE__ */ new Map(), atlasH };
   }
   function bigGlyphs() {
@@ -146,6 +388,16 @@
       g.globalCompositeOperation = "source-in";
       g.fillStyle = color;
       g.fillRect(0, 0, c.width, c.height);
+      withHi(c, () => {
+        const src = font.atlas.hi;
+        if (!src) return null;
+        const h = makeCanvas(src.width, src.height), hg = ctxOf(h);
+        hg.drawImage(src, 0, 0);
+        hg.globalCompositeOperation = "source-in";
+        hg.fillStyle = color;
+        hg.fillRect(0, 0, h.width, h.height);
+        return h;
+      });
       font.tints.set(color, c);
     }
     return c;
@@ -285,6 +537,7 @@
   var init_font = __esm({
     "src/gfx/font.js"() {
       init_canvas();
+      init_hires();
       NORMAL_DEF = {
         height: 7,
         descent: 2,
@@ -1550,120 +1803,145 @@
     return v;
   }
   function surfaceTex(w, h, o) {
+    return withHi(surfaceRaster(w, h, o, 1), () => surfaceRaster(w, h, o, HI));
+  }
+  function surfaceRaster(lw, lh, o, S11) {
+    const w = lw * S11, h = lh * S11;
     const T5 = typeof o.tone === "object" ? o.tone : o.tone ? toneOf(o.tone) : {};
     const top = rgbOf(o.top || T5.top || "#ffffff"), mid = rgbOf(o.mid || T5.mid || o.top || "#d8f0ff"), bot = rgbOf(o.bot || T5.bot || "#8cc8ec");
     const A2 = o.a || T5.a || [1, 1];
     const edge = rgbOf(o.edge || T5.edge || "#0b4a8a"), edgeA = o.edgeA ?? T5.edgeA ?? 1;
     const glowC = rgbOf(o.glowColor || T5.glow || "#ffffff");
-    const R4 = o.r === "pill" ? h / 2 : Math.max(0, Math.min(o.r ?? 6, w / 2, h / 2));
+    const R4 = (o.r === "pill" ? lh / 2 : Math.max(0, Math.min(o.r ?? 6, lw / 2, lh / 2))) * S11;
     const shape6 = o.shape || "rect";
     const gloss = o.gloss ?? 0.6, rim = o.rim ?? 0.8, glow = o.glow ?? 0.5;
-    const glossH = o.glossH ?? Math.min(26, Math.round(h * 0.46));
-    const curve2 = o.curve ?? Math.min(6, glossH * 0.35);
-    const inside = (x, y) => {
-      if (x < 0 || y < 0 || x >= w || y >= h) return false;
-      if (R4 <= 0) return true;
-      const roundTop = shape6 !== "bottom", roundBot = shape6 !== "tab";
-      let cx = null, cy = null;
-      if (x < R4) cx = R4;
-      else if (x >= w - R4) cx = w - R4;
-      if (y < R4 && roundTop) cy = R4;
-      else if (y >= h - R4 && roundBot) cy = h - R4;
-      if (cx === null || cy === null) return true;
-      const dx = x + 0.5 - cx, dy = y + 0.5 - cy;
-      return dx * dx + dy * dy <= R4 * R4 + R4 * 0.35;
-    };
+    const glossH = (o.glossH ?? Math.min(26, Math.round(lh * 0.46))) * S11;
+    const curve2 = (o.curve ?? Math.min(6, glossH / S11 * 0.35)) * S11;
+    const roundTop = shape6 !== "bottom", roundBot = shape6 !== "tab";
+    const mask = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let inn = true;
+        if (R4 > 0) {
+          let cx = null, cy = null;
+          if (x < R4) cx = R4;
+          else if (x >= w - R4) cx = w - R4;
+          if (y < R4 && roundTop) cy = R4;
+          else if (y >= h - R4 && roundBot) cy = h - R4;
+          if (cx !== null && cy !== null) {
+            const dx = x + 0.5 - cx, dy = y + 0.5 - cy;
+            inn = dx * dx + dy * dy <= R4 * R4 + R4 * (S11 > 1 ? 0.15 : 0.35);
+          }
+        }
+        if (inn) mask[y * w + x] = 1;
+      }
+    }
+    const dist2 = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) dist2[i] = mask[i] ? 9 : 0;
+    for (let pass = 1; pass <= 4; pass++) {
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        if (dist2[i] !== 9) continue;
+        const n2 = (x === 0 ? 0 : dist2[i - 1]) === pass - 1 || (x === w - 1 ? 0 : dist2[i + 1]) === pass - 1 || (y === 0 ? 0 : dist2[i - w]) === pass - 1 || (y === h - 1 ? 0 : dist2[i + w]) === pass - 1 || (x === 0 || y === 0 ? 0 : dist2[i - w - 1]) === pass - 1 && pass > 1 || (x === w - 1 || y === h - 1 ? 0 : dist2[i + w + 1]) === pass - 1 && pass > 1;
+        if (n2) dist2[i] = pass;
+      }
+    }
     const b = new PixelBuffer(w, h);
     const d = b.data;
-    const mask = new Uint8Array(w * h);
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (inside(x, y)) mask[y * w + x] = 1;
-    const m = (x, y) => x >= 0 && y >= 0 && x < w && y < h && mask[y * w + x] === 1;
     const midY = 0.52;
-    const seed = o.seed ?? w * 7 + h * 13;
+    const seed = o.seed ?? lw * 7 + lh * 13;
     const px2 = o.smooth ? 0 : 1;
-    const bands = Math.max(3, Math.min(7, Math.round(h / 12)));
+    const bands = Math.max(3, Math.min(7, Math.round(lh / 12))) * (S11 > 1 ? 2 : 1);
+    const rimRing = S11 > 1 ? 3 : 2;
     for (let y = 0; y < h; y++) {
       const t03 = h > 1 ? y / (h - 1) : 0;
-      let cr, cg, cb;
+      const ly = y / S11;
       for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        if (!mask[i]) continue;
         const t = px2 ? Math.min(1, Math.floor(t03 * bands + bayer(x, y) * 0.999) / bands) : t03;
+        let r, g, bl;
         if (t < midY) {
           const k = t / midY;
-          cr = top[0] + (mid[0] - top[0]) * k;
-          cg = top[1] + (mid[1] - top[1]) * k;
-          cb = top[2] + (mid[2] - top[2]) * k;
+          r = top[0] + (mid[0] - top[0]) * k;
+          g = top[1] + (mid[1] - top[1]) * k;
+          bl = top[2] + (mid[2] - top[2]) * k;
         } else {
           const k = (t - midY) / (1 - midY);
-          cr = mid[0] + (bot[0] - mid[0]) * k;
-          cg = mid[1] + (bot[1] - mid[1]) * k;
-          cb = mid[2] + (bot[2] - mid[2]) * k;
+          r = mid[0] + (bot[0] - mid[0]) * k;
+          g = mid[1] + (bot[1] - mid[1]) * k;
+          bl = mid[2] + (bot[2] - mid[2]) * k;
         }
-        const ba = A2[0] + (A2[1] - A2[0]) * t;
-        {
-          if (!mask[y * w + x]) continue;
-          let r = cr, g = cg, bl = cb, a = ba;
-          const over = (sr, sg, sb, sa) => {
-            if (sa <= 0) return;
-            const na = sa + a * (1 - sa);
-            r = (sr * sa + r * a * (1 - sa)) / na;
-            g = (sg * sa + g * a * (1 - sa)) / na;
-            bl = (sb * sa + bl * a * (1 - sa)) / na;
-            a = na;
-          };
-          const ring0 = !m(x - 1, y) || !m(x + 1, y) || !m(x, y - 1) || !m(x, y + 1);
-          const ring1 = !ring0 && (!m(x - 2, y) || !m(x + 2, y) || !m(x, y - 2) || !m(x, y + 2) || !m(x - 1, y - 1) || !m(x + 1, y - 1) || !m(x - 1, y + 1) || !m(x + 1, y + 1));
-          if (glow > 0 && t > 0.55) {
-            const k = (t - 0.55) / 0.45;
-            const cx = Math.abs(x + 0.5 - w / 2) / (w / 2);
-            let gk = k * k * (1 - cx * cx * 0.7);
-            if (px2) gk = Math.floor(gk * 3 + bayer(x + 1, y) * 0.999) / 3;
-            over(glowC[0], glowC[1], glowC[2], glow * gk * 0.55);
-          }
-          if (o.inset) {
-            if (y < 5) over(4, 20, 40, (5 - y) * 0.07);
-            if (x < 3) over(4, 20, 40, (3 - x) * 0.05);
-          }
-          if (o.streak) {
-            const s = (x + y * 0.75 + seed * 3) % Math.max(60, w * 0.9);
-            if (s > 0 && s < 14) over(255, 255, 255, 0.07);
-            else if (s > 20 && s < 24) over(255, 255, 255, 0.05);
-          }
-          if (gloss > 0) {
-            const nx = (x + 0.5 - w / 2) / (w / 2);
-            const edgeY = glossH - curve2 * (1 - nx * nx);
-            if (y < edgeY) {
-              const k = y / Math.max(1, edgeY);
-              if (!px2) over(255, 255, 255, gloss * (0.62 - 0.42 * k));
-              else {
-                const q = k + (bayer(x, y) - 0.5) * 0.34;
-                over(255, 255, 255, gloss * (q < 0.42 ? 0.62 : q < 0.86 ? 0.36 : 0.2));
-              }
-            } else if (px2 && y < edgeY + 2 && (x + y & 1) === 0) over(255, 255, 255, gloss * 0.14);
-          }
-          if (ring1 && rim > 0) {
-            if (!px2) over(255, 255, 255, rim * (y < h * 0.5 ? 0.9 : 0.45));
-            else if (y < h * 0.5 && (x < w * 0.85 || y < 3)) over(255, 255, 255, rim * 0.95);
-            else if (y > h * 0.5) over(edge[0], edge[1], edge[2], rim * 0.22);
-            else over(255, 255, 255, rim * 0.5);
-          }
-          if (ring0) {
-            const er = y < 2 ? edge[0] + (255 - edge[0]) * 0.25 : edge[0], eg = y < 2 ? edge[1] + (255 - edge[1]) * 0.25 : edge[1], eb = y < 2 ? edge[2] + (255 - edge[2]) * 0.25 : edge[2];
-            r = er;
-            g = eg;
-            bl = eb;
-            a = Math.max(a * 0.5, edgeA);
-          }
-          d[y * w + x] = ((Math.round(a * 255) & 255) << 24 | (Math.round(bl) & 255) << 16 | (Math.round(g) & 255) << 8 | Math.round(r) & 255) >>> 0;
+        let a = A2[0] + (A2[1] - A2[0]) * t;
+        const over = (sr, sg, sb, sa) => {
+          if (sa <= 0) return;
+          const na = sa + a * (1 - sa);
+          r = (sr * sa + r * a * (1 - sa)) / na;
+          g = (sg * sa + g * a * (1 - sa)) / na;
+          bl = (sb * sa + bl * a * (1 - sa)) / na;
+          a = na;
+        };
+        const dd = dist2[i];
+        if (glow > 0 && t > 0.55) {
+          const k = (t - 0.55) / 0.45;
+          const cx = Math.abs(x + 0.5 - w / 2) / (w / 2);
+          let gk = k * k * (1 - cx * cx * 0.7);
+          if (px2) gk = Math.floor(gk * (S11 > 1 ? 5 : 3) + bayer(x + 1, y) * 0.999) / (S11 > 1 ? 5 : 3);
+          over(glowC[0], glowC[1], glowC[2], glow * gk * 0.55);
         }
+        if (o.inset) {
+          if (ly < 5) over(4, 20, 40, (5 - ly) * 0.07);
+          const lx = x / S11;
+          if (lx < 3) over(4, 20, 40, (3 - lx) * 0.05);
+        }
+        if (o.streak) {
+          const s = (x / S11 + ly * 0.75 + seed * 3) % Math.max(60, lw * 0.9);
+          if (s > 0 && s < 14) over(255, 255, 255, 0.07);
+          else if (s > 20 && s < 24) over(255, 255, 255, 0.05);
+          if (S11 > 1 && (s > 14 && s < 14.6 || s > 24 && s < 24.5)) over(255, 255, 255, 0.12);
+        }
+        if (gloss > 0) {
+          const nx = (x + 0.5 - w / 2) / (w / 2);
+          const edgeY = glossH - curve2 * (1 - nx * nx);
+          if (y < edgeY) {
+            const k = y / Math.max(1, edgeY);
+            if (!px2) over(255, 255, 255, gloss * (0.62 - 0.42 * k));
+            else {
+              const q = k + (bayer(x, y) - 0.5) * (S11 > 1 ? 0.22 : 0.34);
+              over(255, 255, 255, gloss * (q < 0.3 ? 0.66 : q < 0.6 ? 0.46 : q < 0.86 ? 0.32 : 0.2));
+            }
+            if (S11 > 1 && dd >= 3 && dd <= 4 && y < h * 0.4) over(255, 255, 255, gloss * 0.5);
+          } else if (px2 && y < edgeY + 2 * S11 && (x + y & 1) === 0) over(255, 255, 255, gloss * 0.14);
+          else if (S11 > 1 && y < edgeY + 1) over(255, 255, 255, gloss * 0.22);
+        }
+        if (dd === rimRing && rim > 0) {
+          if (!px2) over(255, 255, 255, rim * (y < h * 0.5 ? 0.9 : 0.45));
+          else if (y < h * 0.5 && (x < w * 0.85 || ly < 3)) over(255, 255, 255, rim * 0.95);
+          else if (y > h * 0.5) over(edge[0], edge[1], edge[2], rim * 0.22);
+          else over(255, 255, 255, rim * 0.5);
+        }
+        if (S11 > 1 && dd === rimRing + 1 && rim > 0 && y < h * 0.45) over(255, 255, 255, rim * 0.25);
+        if (dd === 2 && S11 > 1) {
+          const lift = y < 2 * S11 ? 0.45 : 0;
+          over(edge[0] + (255 - edge[0]) * lift, edge[1] + (255 - edge[1]) * lift, edge[2] + (255 - edge[2]) * lift, 0.42 * Math.max(edgeA, 0.6));
+        }
+        if (dd === 1) {
+          const lit2 = y < 2 * S11 ? 0.25 : 0;
+          r = edge[0] + (255 - edge[0]) * lit2;
+          g = edge[1] + (255 - edge[1]) * lit2;
+          bl = edge[2] + (255 - edge[2]) * lit2;
+          a = Math.max(a * 0.5, edgeA);
+        }
+        d[i] = ((Math.round(a * 255) & 255) << 24 | (Math.round(bl) & 255) << 16 | (Math.round(g) & 255) << 8 | Math.round(r) & 255) >>> 0;
       }
     }
     const nb = o.bubbles | 0;
     for (let k = 0; k < nb; k++) {
-      const rr3 = 2 + Math.floor(hash1(k, seed) * 4);
+      const rr3 = (2 + Math.floor(hash1(k, seed) * 4)) * S11;
       const bx = Math.round(w * (0.08 + 0.84 * hash1(k + 7, seed + 1))), by = Math.round(h * (0.55 + 0.4 * hash1(k + 3, seed + 2)));
       ringInto(b, mask, w, h, bx, by, rr3);
     }
-    if (o.sparkle) sparkleInto(b, mask, w, Math.round(Math.min(w * 0.12, R4 + 6)) + 2, 3, o.sparkle === true ? 2 : o.sparkle);
+    if (o.sparkle) sparkleInto(b, mask, w, Math.round(Math.min(lw * 0.12, R4 / S11 + 6) * S11) + 2 * S11, 3 * S11, (o.sparkle === true ? 2 : o.sparkle) * S11);
     return b.toCanvas();
   }
   function blend(d, i, r, g, bl, sa) {
@@ -1829,22 +2107,22 @@
     return { w: W10, h: t.cap * sc };
   }
   function drawAeroPanel(ctx2, x, y, w, h, o = {}) {
-    const tone4 = PANEL_TONE[o.tone || "glass"] || o.tone || "frost";
+    const tone5 = PANEL_TONE[o.tone || "glass"] || o.tone || "frost";
     const r = o.radius ?? 8;
     if (o.glow) {
       ctx2.fillStyle = rgba("#bff4ff", 0.18);
       ctx2.fillRect(Math.round(x) - 2, Math.round(y) + 2, Math.round(w) + 4, Math.round(h) - 4);
       ctx2.fillRect(Math.round(x) + 2, Math.round(y) - 2, Math.round(w) - 4, Math.round(h) + 4);
     }
-    drawAeroSurface(ctx2, x, y, w, h, { tone: tone4, r, gloss: o.gloss ?? (h > 80 ? 0.42 : 0.6), glossH: o.glossH ?? Math.min(24, Math.round(h * 0.4)), rim: 0.85, glow: 0.45, streak: w > 120, bubbles: o.bubbles ?? (w * h > 3e4 ? 4 : 0), sparkle: o.sparkle ?? (w > 60 && h > 40 ? 2 : 0), inset: o.inset });
+    drawAeroSurface(ctx2, x, y, w, h, { tone: tone5, r, gloss: o.gloss ?? (h > 80 ? 0.42 : 0.6), glossH: o.glossH ?? Math.min(24, Math.round(h * 0.4)), rim: 0.85, glow: 0.45, streak: w > 120, bubbles: o.bubbles ?? (w * h > 3e4 ? 4 : 0), sparkle: o.sparkle ?? (w > 60 && h > 40 ? 2 : 0), inset: o.inset });
     if (o.title) {
-      const T5 = toneOf(tone4);
+      const T5 = toneOf(tone5);
       const light = T5.text !== "#ffffff";
       drawText(ctx2, o.title, Math.round(x + 10), Math.round(y + 7), { font: fitFont(o.title, "normal", w - 20), color: light ? AERO.ink : "#ffffff", shadow: light ? "rgba(255,255,255,0.9)" : T5.shadow });
     }
   }
-  function btnLook(tone4, state) {
-    const T5 = typeof tone4 === "object" ? tone4 : toneOf(tone4);
+  function btnLook(tone5, state) {
+    const T5 = typeof tone5 === "object" ? tone5 : toneOf(tone5);
     if (state === "disabled") return { ...toneOf("grey"), a: [0.8, 0.8] };
     if (state === "hover") return { ...T5, top: mix(T5.top, "#ffffff", 0.35), mid: mix(T5.mid, "#ffffff", 0.18), bot: mix(T5.bot, T5.mid, 0.35), glow: mix(T5.glow, "#ffffff", 0.4) };
     if (state === "down") return { ...T5, top: shade(T5.mid, -0.05), mid: shade(T5.mid, -0.18), bot: shade(T5.bot, -0.1), glow: T5.glow };
@@ -1992,13 +2270,20 @@
   }
   function drawGlossOrb(ctx2, cx, cy, r, color = AERO.aqua, t = 0) {
     r = Math.max(1.5, Math.round(r * 2) / 2);
-    const c = aeroCached(`orb|${r}|${color}`, () => orbTex(r, color));
+    const c = aeroCached(`orb|${r}|${color}`, () => {
+      const c1 = orbTex(r, color);
+      return withHi(c1, () => fitHi(c1, orbTex(r * HI, color)));
+    });
     ctx2.drawImage(c, Math.round(cx - c.width / 2), Math.round(cy - c.height / 2));
     void t;
   }
+  function hiBubble(r) {
+    const c1 = pixelBubble(r);
+    return withHi(c1, () => fitHi(c1, pixelBubble(r * HI)));
+  }
   function drawAeroBubble(ctx2, cx, cy, r, alpha = 1) {
     r = Math.max(1.5, Math.round(r * 2) / 2);
-    const c = aeroCached(`pbub|${r}`, () => pixelBubble(r));
+    const c = aeroCached(`pbub|${r}`, () => hiBubble(r));
     if (alpha < 1) {
       const ga = ctx2.globalAlpha;
       ctx2.globalAlpha = ga * alpha;
@@ -2061,7 +2346,10 @@
       }
     }
     r = Math.max(2.5, Math.round(r * 2) / 2);
-    const c = aeroCached(`coin|${r}`, () => coinTex(r));
+    const c = aeroCached(`coin|${r}`, () => {
+      const c1 = coinTex(r);
+      return withHi(c1, () => fitHi(c1, coinTex(r * HI)));
+    });
     const x = Math.round(cx - c.width / 2), y = Math.round(cy - c.height / 2);
     ctx2.drawImage(c, x, y);
     const ph = (t * 0.45 + (cx * 0.013 + cy * 7e-3)) % 1;
@@ -2071,6 +2359,35 @@
     x = Math.round(x);
     y = Math.round(y);
     const ga = ctx2.globalAlpha;
+    if (ctx2.__hi) {
+      const cx = x * 2 + 1, cy = y * 2 + 1, L2 = size * 2 + 1;
+      const P6 = (dx, dy) => ctx2.fillRect((cx + dx) / 2, (cy + dy) / 2, 0.5, 0.5);
+      ctx2.fillStyle = color;
+      ctx2.globalAlpha = ga * alpha;
+      P6(0, 0);
+      P6(1, 0);
+      P6(-1, 0);
+      P6(0, 1);
+      P6(0, -1);
+      for (let i = 2; i <= L2; i++) {
+        ctx2.globalAlpha = ga * alpha * Math.max(0.15, 1 - (i - 1) / (L2 + 0.5));
+        P6(i, 0);
+        P6(-i, 0);
+        if (i < L2) {
+          P6(0, i);
+          P6(0, -i);
+        }
+      }
+      if (size >= 2) {
+        ctx2.globalAlpha = ga * alpha * 0.45;
+        P6(2, 2);
+        P6(-2, -2);
+        P6(2, -2);
+        P6(-2, 2);
+      }
+      ctx2.globalAlpha = ga;
+      return;
+    }
     ctx2.fillStyle = color;
     ctx2.globalAlpha = ga * alpha;
     ctx2.fillRect(x, y, 1, 1);
@@ -2119,9 +2436,9 @@
     const tw = measureText(txt, font), ch = capH(font);
     const h = ch + 6 + (font === "big" ? 2 : 0), w = Math.max(h, tw + 8);
     const x = Math.round(right - w), y = Math.round(top + (Math.sin(t * 5) > 0.85 ? -1 : 0));
-    const tone4 = value === "!" ? "orange" : "red";
-    ctx2.drawImage(aeroCached(`badge|${w}|${h}|${tone4}`, () => surfaceTex(w, h, { tone: tone4, r: "pill", gloss: 0.85, glossH: Math.round(h * 0.45), curve: 1, rim: 0.7, glow: 0.6, edge: "#ffffff", edgeA: 1 })), x, y);
-    drawText(ctx2, txt, x + Math.round((w - tw) / 2), y + Math.round((h - ch) / 2), { font, color: "#ffffff", shadow: toneOf(tone4).shadow });
+    const tone5 = value === "!" ? "orange" : "red";
+    ctx2.drawImage(aeroCached(`badge|${w}|${h}|${tone5}`, () => surfaceTex(w, h, { tone: tone5, r: "pill", gloss: 0.85, glossH: Math.round(h * 0.45), curve: 1, rim: 0.7, glow: 0.6, edge: "#ffffff", edgeA: 1 })), x, y);
+    drawText(ctx2, txt, x + Math.round((w - tw) / 2), y + Math.round((h - ch) / 2), { font, color: "#ffffff", shadow: toneOf(tone5).shadow });
     return { x, y, w, h };
   }
   function drawAeroLabel(ctx2, text, x, y, o = {}) {
@@ -2130,9 +2447,9 @@
     const h = capH(font) + 6 + (font === "big" ? 2 : 0), w = tw + (font === "big" ? 16 : 12);
     let lx = Math.round(o.align === "center" ? x - w / 2 : o.align === "right" ? x - w : x);
     const ly = Math.round(y);
-    const tone4 = o.tone || "glass";
-    ctx2.drawImage(aeroCached(`label|${w}|${h}|${tone4}`, () => surfaceTex(w, h, { tone: tone4, r: "pill", gloss: 0.6, glossH: Math.round(h * 0.45), curve: 1, rim: 0.8, glow: 0.4 })), lx, ly);
-    const T5 = toneOf(tone4);
+    const tone5 = o.tone || "glass";
+    ctx2.drawImage(aeroCached(`label|${w}|${h}|${tone5}`, () => surfaceTex(w, h, { tone: tone5, r: "pill", gloss: 0.6, glossH: Math.round(h * 0.45), curve: 1, rim: 0.8, glow: 0.4 })), lx, ly);
+    const T5 = toneOf(tone5);
     drawText(ctx2, text, lx + Math.round((w - tw) / 2), ly + Math.round((h - capH(font)) / 2), { font, color: T5.text, shadow: T5.text === "#ffffff" ? T5.shadow : null });
     return { x: lx, y: ly, w, h };
   }
@@ -2170,11 +2487,11 @@
     return { content: { x: x + 8, y: y + 32, w: w - 16, h: h - 40 }, close, header: { x, y, w, h: 30 }, finish: finish7 };
   }
   function drawAeroCard(ctx2, x, y, w, h, o = {}) {
-    const tone4 = o.tone || "frost";
-    drawAeroSurface(ctx2, x, y, w, h, { tone: tone4, a: tone4 === "frost" ? [0.9, 0.84] : void 0, r: o.r ?? 7, gloss: o.gloss ?? 0.3, glossH: Math.min(18, Math.round(h * 0.3)), curve: 2, rim: 0.9, glow: 0.35, glowColor: "#bfeaff", inset: o.inset, bubbles: o.bubbles || 0, seed: o.seed });
+    const tone5 = o.tone || "frost";
+    drawAeroSurface(ctx2, x, y, w, h, { tone: tone5, a: tone5 === "frost" ? [0.9, 0.84] : void 0, r: o.r ?? 7, gloss: o.gloss ?? 0.3, glossH: Math.min(18, Math.round(h * 0.3)), curve: 2, rim: 0.9, glow: 0.35, glowColor: "#bfeaff", inset: o.inset, bubbles: o.bubbles || 0, seed: o.seed });
   }
-  function leafTex(len, wid, ang, flip, tone4) {
-    const R4 = LEAF_TONES[tone4] || LEAF_TONES.leaf;
+  function leafTex(len, wid, ang, flip, tone5) {
+    const R4 = LEAF_TONES[tone5] || LEAF_TONES.leaf;
     const P6 = R4.map((h) => rgbOf(h));
     const a = ang * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a);
     const hw = wid / 2;
@@ -2237,7 +2554,13 @@
     len = Math.max(4, Math.round(len));
     wid = Math.max(3, Math.round(wid));
     const ang = Math.round(angleDeg / 10) * 10;
-    const c = aeroCached(`leaf|${len}|${wid}|${ang}|${o.flip ? 1 : 0}|${o.tone || "leaf"}`, () => leafTex(len, wid, ang, !!o.flip, o.tone || "leaf"));
+    const c = aeroCached(`leaf|${len}|${wid}|${ang}|${o.flip ? 1 : 0}|${o.tone || "leaf"}`, () => {
+      const c1 = leafTex(len, wid, ang, !!o.flip, o.tone || "leaf");
+      return withHi(c1, () => {
+        const b = leafTex(len * HI, wid * HI, ang, !!o.flip, o.tone || "leaf");
+        return fitHi(c1, b, c1.ox, c1.oy, b.ox, b.oy);
+      });
+    });
     ctx2.drawImage(c, Math.round(x - c.ox), Math.round(y - c.oy));
   }
   function sprigTex(corner, scale) {
@@ -2265,7 +2588,13 @@
   }
   function drawLeafSprig(ctx2, x, y, corner = "tl", scale = 1) {
     scale = Math.round(scale * 10) / 10;
-    const c = aeroCached(`sprig|${corner}|${scale}`, () => sprigTex(corner, scale));
+    const c = aeroCached(`sprig|${corner}|${scale}`, () => {
+      const c1 = sprigTex(corner, scale);
+      return withHi(c1, () => {
+        const b = sprigTex(corner, scale * HI);
+        return fitHi(c1, b, c1.ox, c1.oy, b.ox, b.oy);
+      });
+    });
     ctx2.drawImage(c, Math.round(x - c.ox), Math.round(y - c.oy));
   }
   function flareTex(r) {
@@ -2291,7 +2620,10 @@
   }
   function drawSunFlare(ctx2, cx, cy, r = 24, alpha = 1) {
     r = Math.max(6, Math.round(r));
-    const c = aeroCached(`flare|${r}`, () => flareTex(r));
+    const c = aeroCached(`flare|${r}`, () => {
+      const c1 = flareTex(r);
+      return withHi(c1, () => fitHi(c1, flareTex(r * HI)));
+    });
     const ga = ctx2.globalAlpha;
     ctx2.globalAlpha = ga * alpha;
     ctx2.drawImage(c, Math.round(cx - r), Math.round(cy - r));
@@ -2352,51 +2684,73 @@
   }
   function drawSplash(ctx2, x, y, w = 48, o = {}) {
     w = Math.max(12, Math.round(w));
-    const c = aeroCached(`splash|${w}|${o.flip ? 1 : 0}`, () => splashTex(w, !!o.flip));
+    const c = aeroCached(`splash|${w}|${o.flip ? 1 : 0}`, () => {
+      const c1 = splashTex(w, !!o.flip);
+      return withHi(c1, () => {
+        const b = splashTex(w * HI, !!o.flip);
+        return fitHi(c1, b, c1.width / 2, c1.height, b.width / 2, b.height);
+      });
+    });
     ctx2.drawImage(c, Math.round(x), Math.round(y - c.height));
   }
   function ecoTex(w, h, o) {
     const R4 = o.r ?? 10;
     const body = surfaceTex(w, h, { top: "#1470d8", mid: "#4cb4f8", bot: "#c8f0ff", edge: "#073c80", r: R4, gloss: 0.38, glossH: Math.min(28, Math.round(h * 0.3)), curve: 6, rim: 0.85, glow: 0.2, streak: true, seed: o.seed });
-    const c = makeCanvas(w, h);
-    const g = ctxOf(c);
-    g.drawImage(body, 0, 0);
-    g.globalCompositeOperation = "source-atop";
-    const sx = Math.round(w * 0.78), sy = -4;
-    drawSunFlare(g, sx, sy + 6, Math.min(46, Math.round(h * 0.18)), 0.85);
-    if (h > 90 && w > 140) {
-      const nC = Math.max(1, Math.round(w / 260));
-      for (let i = 0; i < nC; i++) {
-        const cw = Math.round(Math.min(90, w * 0.16) * (0.7 + hash1(i, o.seed + 41) * 0.5));
-        const cl = pixelCloud(cw, i + (o.seed | 0));
-        const cx = Math.round(w * (0.3 + 0.55 * ((i + 0.5) / nC)) + (hash1(i, o.seed + 42) - 0.5) * 60);
-        g.globalAlpha = 0.5;
-        g.drawImage(cl, cx - (cl.width >> 1), Math.round(10 + hash1(i, o.seed + 43) * 12));
-        g.globalAlpha = 1;
+    return dualArt(w, h, (g, S11) => {
+      const q = 1 / S11;
+      g.drawImage(body, 0, 0);
+      g.globalCompositeOperation = "source-atop";
+      const sx = Math.round(w * 0.78), sy = -4;
+      drawSunFlare(g, sx, sy + 6, Math.min(46, Math.round(h * 0.18)), 0.85);
+      if (h > 90 && w > 140) {
+        const nC = Math.max(1, Math.round(w / 260));
+        for (let i = 0; i < nC; i++) {
+          const cw = Math.round(Math.min(90, w * 0.16) * (0.7 + hash1(i, o.seed + 41) * 0.5));
+          const cl = pixelCloud(cw, i + (o.seed | 0));
+          const cx = Math.round(w * (0.3 + 0.55 * ((i + 0.5) / nC)) + (hash1(i, o.seed + 42) - 0.5) * 60);
+          g.globalAlpha = 0.5;
+          g.drawImage(cl, cx - (cl.width >> 1), Math.round(10 + hash1(i, o.seed + 43) * 12));
+          g.globalAlpha = 1;
+        }
       }
-    }
-    const base = h - 4;
-    for (let x = 0; x < w; x++) {
-      const n2 = (x - w / 2) / (w / 2);
-      const top = Math.round(base - 16 - (1 - n2 * n2) * Math.min(18, h * 0.06));
-      for (let y = top; y < h; y++) {
-        const k = (y - top) / Math.max(1, h - top);
-        const col = y === top ? "#e8ffb0" : y === top + 1 ? "#a8ec5a" : mix("#6cd23c", "#2a8a1c", Math.min(1, k * 1.4));
-        g.fillStyle = col;
-        g.fillRect(x, y, 1, 1);
+      const base = h - 4;
+      for (let x = 0; x < w; x++) {
+        const n2 = (x - w / 2) / (w / 2);
+        const top = Math.round(base - 16 - (1 - n2 * n2) * Math.min(18, h * 0.06));
+        for (let y = top; y < h; y++) {
+          const k = (y - top) / Math.max(1, h - top);
+          const col = y === top ? "#e8ffb0" : y === top + 1 ? "#a8ec5a" : mix("#6cd23c", "#2a8a1c", Math.min(1, k * 1.4));
+          g.fillStyle = col;
+          g.fillRect(x, y, 1, 1);
+        }
+        if (hash1(x, 21) > 0.82) {
+          g.fillStyle = "#c8f878";
+          g.fillRect(x, top - 1, 1, 1);
+        }
+        if (S11 > 1) {
+          g.fillStyle = "#ffffff";
+          g.globalAlpha = 0.55;
+          g.fillRect(x, top, 1, q);
+          g.globalAlpha = 1;
+          if (hash1(x, 22) > 0.55) {
+            g.fillStyle = hash1(x, 23) > 0.5 ? "#d8ff9a" : "#8fe04a";
+            g.fillRect(x + q * (hash1(x, 24) > 0.5 ? 1 : 0), top - q * (1 + Math.floor(hash1(x, 25) * 3)), q, q * (1 + Math.floor(hash1(x, 25) * 3)));
+          }
+          if (hash1(x, 26) > 0.93) {
+            g.fillStyle = "#ffffff";
+            g.fillRect(x, top - 2 - q, q, q);
+            g.fillStyle = hash1(x, 27) > 0.5 ? "#ffe27a" : "#ff9ed2";
+            g.fillRect(x, top - 2, q * 2, q * 2);
+          }
+        }
       }
-      if (hash1(x, 21) > 0.82) {
-        g.fillStyle = "#c8f878";
-        g.fillRect(x, top - 1, 1, 1);
+      for (let i = 0; i < Math.round(w / 60); i++) {
+        const bx = hash1(i, o.seed + 31) < 0.5 ? 6 + hash1(i, 32) * 30 : w - 36 + hash1(i, 33) * 30;
+        const by = h * (0.25 + hash1(i, 34) * 0.55), br = 2 + Math.floor(hash1(i, 35) * 4);
+        g.drawImage(aeroCached(`pbub|${br}`, () => hiBubble(br)), Math.round(bx - br), Math.round(by - br));
       }
-    }
-    for (let i = 0; i < Math.round(w / 60); i++) {
-      const bx = hash1(i, o.seed + 31) < 0.5 ? 6 + hash1(i, 32) * 30 : w - 36 + hash1(i, 33) * 30;
-      const by = h * (0.25 + hash1(i, 34) * 0.55), br = 2 + Math.floor(hash1(i, 35) * 4);
-      g.drawImage(aeroCached(`pbub|${br}`, () => pixelBubble(br)), Math.round(bx - br), Math.round(by - br));
-    }
-    g.globalCompositeOperation = "source-over";
-    return c;
+      g.globalCompositeOperation = "source-over";
+    });
   }
   function ecoBackdrop(w, h, o = {}) {
     w = Math.max(16, Math.round(w));
@@ -2413,6 +2767,7 @@
       init_math();
       init_pxsprites();
       init_alagard();
+      init_hires();
       CURRENCY = "Aero";
       AERO = {
         sky0: "#1e8fe0",
@@ -8186,7 +8541,7 @@ void main() {
     if (n2 !== 4) return R4[clamp(Math.round(b * n2), 0, n2)];
     return R4[b < 0.14 ? 0 : b < 0.4 ? 1 : b < 0.74 ? 2 : b < 0.93 ? 3 : 4];
   }
-  function tone(R4, idx, x, y) {
+  function tone2(R4, idx, x, y) {
     if (VOXM) return R4[clamp(Math.round(5 + (idx - 3) * 1.5), 0, R4.length - 1)];
     return R4[idx < 1.6 ? 2 : idx < 2.55 ? 4 : idx < 3.85 ? 5 : idx < 4.7 ? 7 : 8];
   }
@@ -9906,9 +10261,9 @@ void main() {
                 if (d < r * 0.36 && half > 0.16) col = ly > r * 0.05 && d > r * 0.12 ? ly > r * 0.16 && lx < r * 0.2 ? tongueH : tongue : inner;
               } else {
                 const belly = ly > r * (0.38 + 0.06 * Math.sin(lx / r * 5));
-                col = tone(belly ? T5.belly : ly < -r * 0.62 + 0.05 * lx ? T5.back : T5.body, 3, x, y);
+                col = tone2(belly ? T5.belly : ly < -r * 0.62 + 0.05 * lx ? T5.back : T5.body, 3, x, y);
                 if (Math.hypot(lx - r * 0.02, ly + r * 0.02) < r * 0.13 && ly > -r * 0.12) col = blush;
-                if (c.look.freckles !== false && ly < -r * 0.2 && lx < -r * 0.15 && hash2(Math.floor(lx * 0.45), Math.floor(ly * 0.45), 41) > 0.86 && d < r * 0.82) col = tone(T5.body, 4.4, x, y);
+                if (c.look.freckles !== false && ly < -r * 0.2 && lx < -r * 0.15 && hash2(Math.floor(lx * 0.45), Math.floor(ly * 0.45), 41) > 0.86 && d < r * 0.82) col = tone2(T5.body, 4.4, x, y);
               }
             }
             if (!col && back) {
@@ -9917,15 +10272,15 @@ void main() {
                 const t = tx / (r * 0.9);
                 const outer = r * (0.18 + 0.62 * Math.pow(Math.max(0, t), 0.8));
                 const notch = r * 0.5 * Math.max(0, (t - 0.45) / 0.55);
-                if (Math.abs(ty) < outer && Math.abs(ty) > notch) col = tone(F, t > 0.6 ? 4.2 : t < 0.15 ? 2.2 : 3, x, y);
+                if (Math.abs(ty) < outer && Math.abs(ty) > notch) col = tone2(F, t > 0.6 ? 4.2 : t < 0.15 ? 2.2 : 3, x, y);
               }
               const fx = -lx - r * 0.05, fy = -ly - r * 0.82;
               if (!col && fy > -1 && fy < r * 0.55) {
                 const t = fy / (r * 0.55);
-                if (fx > -r * 0.35 * (1 - t) && fx < r * 0.45 * (1 - t * 0.55) + t * r * 0.25) col = tone(D, t > 0.55 ? 4.2 : 3, x, y);
+                if (fx > -r * 0.35 * (1 - t) && fx < r * 0.45 * (1 - t * 0.55) + t * r * 0.25) col = tone2(D, t > 0.55 ? 4.2 : 3, x, y);
               }
               const px2 = -lx + r * 0.05, py2 = ly - r * 0.86;
-              if (!col && py2 > -1 && py2 < r * 0.28 && Math.abs(px2 - py2 * 0.6) < r * 0.16) col = tone(D, 3, x, y);
+              if (!col && py2 > -1 && py2 < r * 0.28 && Math.abs(px2 - py2 * 0.6) < r * 0.16) col = tone2(D, 3, x, y);
             }
             if (col) buf.set(x, y, col);
           }
@@ -17151,9 +17506,20 @@ void main() {
         else if (PAL[ch]) buf.set(x + m, y + m, pk2(PAL[ch]));
       }
     }
+    const inner = auto ? buf.toCanvas() : null;
     if (auto) buf.outline(outlineFn);
     for (const [x, y] of keep) buf.set(x, y, 0);
-    return buf.toCanvas();
+    const c = buf.toCanvas();
+    if (auto) withHi(c, () => {
+      const hc = enhanceHi(inner, { outline: outlineFn, outlineLum: -1, bevel: 1 });
+      if (hc && keep.length) {
+        const g = hc.getContext("2d");
+        for (const [x, y] of keep) g.clearRect(x * HI, y * HI, HI, HI);
+      }
+      return hc;
+    });
+    else autoHi(c);
+    return c;
   }
   function buildReelCursor() {
     const S11 = 13, c = 6.5;
@@ -17175,13 +17541,11 @@ void main() {
     buf.set(10, 3, pk2(PAL.p));
     buf.set(11, 4, pk2(PAL.R));
     buf.outline(outlineFn);
-    return buf.toCanvas();
+    return autoHi(buf.toCanvas());
   }
   function buildAero(r) {
     const S11 = Math.ceil(r * 2) + 2;
-    const c = makeCanvas(S11, S11);
-    drawAeroCoin(c.getContext("2d"), S11 / 2, S11 / 2, r, 0);
-    return c;
+    return dualArt(S11, S11, (g) => drawAeroCoin(g, S11 / 2, S11 / 2, r, 0));
   }
   function getUiIcon(name, zoom2 = 1) {
     zoom2 = Math.max(1, Math.round(zoom2 || 1));
@@ -17194,14 +17558,29 @@ void main() {
         const g = z.getContext("2d");
         g.imageSmoothingEnabled = false;
         g.drawImage(src, 0, 0, z.width, z.height);
+        if (src.hi !== void 0) withHi(z, () => {
+          const h = src.hi;
+          if (!h) return null;
+          const c2 = makeCanvas(z.width * HI, z.height * HI), g2 = c2.getContext("2d");
+          g2.imageSmoothingEnabled = false;
+          g2.drawImage(h, 0, 0, c2.width, c2.height);
+          return c2;
+        });
         cache3.set(key, z);
       }
       return z;
     }
     let c = cache3.get(name);
     if (!c) {
-      if (name === "fish") c = voxelFishIcon("pixel", 12, 9) || makeCanvas(9, 9);
-      else if (AERO_ICONS[name]) c = buildAero(AERO_ICONS[name]);
+      if (name === "fish") {
+        c = voxelFishIcon("pixel", 12, 9) || makeCanvas(9, 9);
+        if (c.hi === void 0) {
+          const c0 = c;
+          c = makeCanvas(12, 9);
+          c.getContext("2d").drawImage(c0, 0, 0);
+          withHi(c, () => voxelFishIcon("pixel", 24, 18));
+        }
+      } else if (AERO_ICONS[name]) c = buildAero(AERO_ICONS[name]);
       else if (ICONS[name]) c = build2(ICONS[name]);
       else if (CURSORS[name]) c = build2(CURSORS[name], false);
       else if (name === "cursor_reel") c = buildReelCursor();
@@ -17224,6 +17603,7 @@ void main() {
       init_font();
       init_aero();
       init_fishicon();
+      init_hires();
       PAL = {
         h: "#ffffff",
         w: "#fff8ea",
@@ -18416,7 +18796,7 @@ void main() {
     register(o.pool, srcs, nodes, env, start, end);
     if (end > o.end) o.end = end;
   }
-  function tone2(o, {
+  function tone4(o, {
     f = 440,
     f2 = 0,
     glide,
@@ -19121,17 +19501,17 @@ void main() {
       cf = (f) => Math.max(10, Math.min(NYQ, f));
       curve = (v) => Math.pow(clamp013(v), 1.5);
       TRIM = { master: 1.6, sfx: 1.25, music: 0.7, amb: 0.8 };
-      bub = (o, at2, f, vol = 0.1, pan = 0, dur = 0.06) => tone2(o, { at: at2, f, f2: f * 2.3, glide: dur * 0.85, dur, a: 3e-3, vol, pan });
+      bub = (o, at2, f, vol = 0.1, pan = 0, dur = 0.06) => tone4(o, { at: at2, f, f2: f * 2.3, glide: dur * 0.85, dur, a: 3e-3, vol, pan });
       bell = (o, f, at2 = 0, vol = 0.1, dur = 1.4, verb) => fm(o, { f, at: at2, ratio: 3.5, index: 2.2, index2: 0.15, idur: dur * 0.35, dur, a: 2e-3, vol, verb });
       chime = (o, f, at2 = 0, vol = 0.1, dur = 0.8, verb) => fm(o, { f, at: at2, ratio: 2, index: 1.3, index2: 0.1, idur: dur * 0.3, dur, a: 2e-3, vol, verb });
       mallet = (o, f, at2 = 0, vol = 0.1, dur = 0.6, verb) => fm(o, { f, at: at2, ratio: 4, index: 1.8, idur: 0.05, dur, a: 2e-3, vol, verb });
       tink = (o, f, at2 = 0, vol = 0.08, pan = 0) => {
         fm(o, { f, at: at2, ratio: 2.76, index: 1.6, index2: 0.2, idur: 0.05, dur: 0.22, a: 1e-3, vol, pan });
-        tone2(o, { f: f * 1.5, at: at2, dur: 0.08, vol: vol * 0.35, pan });
+        tone4(o, { f: f * 1.5, at: at2, dur: 0.08, vol: vol * 0.35, pan });
       };
       whoosh = (o, at2, dur, f1, f2, vol, q = 1.1, color = "pink") => noise(o, { at: at2, dur, color, type: "bandpass", f: f1, f2, q, a: dur * 0.45, vol, shape: "lin" });
       thump = (o, at2, f, vol) => {
-        tone2(o, { at: at2, f, f2: f * 0.45, glide: 0.09, dur: 0.16, vol, a: 2e-3 });
+        tone4(o, { at: at2, f, f2: f * 0.45, glide: 0.09, dur: 0.16, vol, a: 2e-3 });
         noise(o, { at: at2, dur: 0.05, type: "lowpass", f: 500, color: "pink", vol: vol * 0.5 });
       };
       tick2 = (o, at2, f, vol) => {
@@ -19144,19 +19524,19 @@ void main() {
       SFX = {
         // UI
         ui_click: (o) => {
-          tone2(o, { f: 1250, f2: 820, glide: 0.035, dur: 0.06, type: "triangle", vol: 0.11, a: 1e-3 });
+          tone4(o, { f: 1250, f2: 820, glide: 0.035, dur: 0.06, type: "triangle", vol: 0.11, a: 1e-3 });
           tick2(o, 0, 4500, 0.04);
         },
         ui_hover: (o) => {
-          tone2(o, { f: 2100, f2: 2350, glide: 0.02, dur: 0.035, vol: 0.045, a: 2e-3 });
+          tone4(o, { f: 2100, f2: 2350, glide: 0.02, dur: 0.035, vol: 0.045, a: 2e-3 });
         },
         ui_open: (o) => {
-          tone2(o, { f: 480, f2: 760, glide: 0.07, dur: 0.13, vol: 0.14 });
+          tone4(o, { f: 480, f2: 760, glide: 0.07, dur: 0.13, vol: 0.14 });
           chime(o, 1046, 0.05, 0.06, 0.35);
           bub(o, 0.02, 900, 0.04);
         },
         ui_close: (o) => {
-          tone2(o, { f: 760, f2: 430, glide: 0.08, dur: 0.12, vol: 0.13 });
+          tone4(o, { f: 760, f2: 430, glide: 0.08, dur: 0.12, vol: 0.13 });
           tick2(o, 0.06, 3500, 0.03);
         },
         ui_buy: (o) => {
@@ -19166,7 +19546,7 @@ void main() {
           noise(o, { at: 0.06, dur: 0.3, type: "highpass", f: 6500, vol: 0.04, a: 0.02 });
         },
         ui_error: (o) => {
-          for (const at2 of [0, 0.11]) tone2(o, { at: at2, f: 230, f2: 190, glide: 0.08, dur: 0.1, type: "square", vol: 0.09, filt: { type: "lowpass", f: 900 } });
+          for (const at2 of [0, 0.11]) tone4(o, { at: at2, f: 230, f2: 190, glide: 0.08, dur: 0.1, type: "square", vol: 0.09, filt: { type: "lowpass", f: 900 } });
         },
         ui_unlock: (o) => {
           arp(o, bell, [84, 88, 91, 96], 0.065, 0, 0.07, 1);
@@ -19177,17 +19557,17 @@ void main() {
           noise(o, { at: 0.05, dur: 0.06, type: "highpass", f: 4e3, vol: 0.05 });
         },
         ui_toggle: (o) => {
-          tone2(o, { f: 880, dur: 0.035, type: "triangle", vol: 0.11, a: 1e-3 });
-          tone2(o, { at: 0.045, f: 1320, dur: 0.05, type: "triangle", vol: 0.1, a: 1e-3 });
+          tone4(o, { f: 880, dur: 0.035, type: "triangle", vol: 0.11, a: 1e-3 });
+          tone4(o, { at: 0.045, f: 1320, dur: 0.05, type: "triangle", vol: 0.1, a: 1e-3 });
         },
         ui_tab: (o) => {
-          tone2(o, { f: 1560, f2: 1480, dur: 0.045, vol: 0.09, a: 1e-3 });
+          tone4(o, { f: 1560, f2: 1480, dur: 0.045, vol: 0.09, a: 1e-3 });
           tick2(o, 0, 5e3, 0.035);
         },
         ui_type: (o) => {
           const k = rand(0.9, 1.12);
           noise(o, { dur: 0.025, type: "bandpass", f: 3200 * k, q: 2.5, vol: 0.28, a: 1e-3 });
-          tone2(o, { f: 1900 * k, dur: 0.018, type: "triangle", vol: 0.025, a: 1e-3 });
+          tone4(o, { f: 1900 * k, dur: 0.018, type: "triangle", vol: 0.025, a: 1e-3 });
         },
         notify: (o) => {
           chime(o, 784, 0, 0.09, 0.6, 0.3);
@@ -19195,11 +19575,11 @@ void main() {
         },
         // desktop
         icon_pickup: (o) => {
-          tone2(o, { f: 380, f2: 820, glide: 0.07, dur: 0.1, vol: 0.14 });
-          tone2(o, { f: 760, f2: 1640, glide: 0.07, dur: 0.06, vol: 0.03, type: "triangle" });
+          tone4(o, { f: 380, f2: 820, glide: 0.07, dur: 0.1, vol: 0.14 });
+          tone4(o, { f: 760, f2: 1640, glide: 0.07, dur: 0.06, vol: 0.03, type: "triangle" });
         },
         icon_drop: (o) => {
-          tone2(o, { f: 620, f2: 240, glide: 0.08, dur: 0.11, vol: 0.15 });
+          tone4(o, { f: 620, f2: 240, glide: 0.08, dur: 0.11, vol: 0.15 });
           noise(o, { dur: 0.04, type: "lowpass", f: 1200, vol: 0.12, color: "pink" });
         },
         icon_box: (o) => {
@@ -19210,20 +19590,20 @@ void main() {
         },
         window_open: (o) => {
           whoosh(o, 0, 0.18, 500, 2400, 0.14);
-          tone2(o, { at: 0.05, f: 660, f2: 990, glide: 0.06, dur: 0.12, vol: 0.08 });
+          tone4(o, { at: 0.05, f: 660, f2: 990, glide: 0.06, dur: 0.12, vol: 0.08 });
         },
         window_close: (o) => {
           whoosh(o, 0, 0.15, 2400, 600, 0.12);
-          tone2(o, { f: 880, f2: 520, glide: 0.08, dur: 0.1, vol: 0.08 });
+          tone4(o, { f: 880, f2: 520, glide: 0.08, dur: 0.1, vol: 0.08 });
         },
         window_min: (o) => {
-          tone2(o, { f: 900, f2: 300, glide: 0.12, dur: 0.15, vol: 0.09, type: "triangle" });
+          tone4(o, { f: 900, f2: 300, glide: 0.12, dur: 0.15, vol: 0.09, type: "triangle" });
           whoosh(o, 0, 0.12, 1800, 500, 0.07);
         },
         box_open: (o) => {
           noise(o, { dur: 0.1, type: "lowpass", f: 900, vol: 0.2, color: "pink", a: 8e-3 });
           noise(o, { at: 0.05, dur: 0.16, type: "bandpass", f: 420, q: 1.5, vol: 0.25, color: "brown", a: 0.02 });
-          tone2(o, { at: 0.03, f: 150, f2: 230, glide: 0.1, dur: 0.12, vol: 0.07, type: "triangle" });
+          tone4(o, { at: 0.03, f: 150, f2: 230, glide: 0.1, dur: 0.12, vol: 0.07, type: "triangle" });
         },
         box_close: (o) => {
           thump(o, 0, 150, 0.24);
@@ -19233,7 +19613,7 @@ void main() {
         cast: (o) => {
           whoosh(o, 0, 0.32, 450, 2600, 0.45, 1.4);
           for (let i = 0; i < 12; i++) tick2(o, 0.05 + i * 0.022 * (1 + i * 0.12), 3800, 0.09 * (1 - i / 14));
-          tone2(o, { at: 0.04, f: 1500, f2: 900, glide: 0.4, dur: 0.42, type: "triangle", vol: 0.012, vib: [30, 40] });
+          tone4(o, { at: 0.04, f: 1500, f2: 900, glide: 0.4, dur: 0.42, type: "triangle", vol: 0.012, vib: [30, 40] });
         },
         splash_small: (o) => {
           bub(o, 0, 520, 0.12, 0, 0.07);
@@ -19243,43 +19623,43 @@ void main() {
         splash_big: (o) => {
           noise(o, { dur: 0.55, type: "lowpass", f: 3500, f2: 700, q: 0.6, vol: 0.4, a: 6e-3 });
           noise(o, { dur: 0.45, type: "bandpass", f: 380, q: 0.8, vol: 0.35, color: "brown", a: 0.01 });
-          tone2(o, { f: 260, f2: 75, glide: 0.2, dur: 0.26, vol: 0.18 });
+          tone4(o, { f: 260, f2: 75, glide: 0.2, dur: 0.26, vol: 0.18 });
           droplets(o, 7, 0.1, 0.5, 0.05);
         },
         nibble: (o) => {
-          for (const at2 of [0, 0.08]) tone2(o, { at: at2, f: 760, f2: 520, glide: 0.04, dur: 0.05, vol: 0.09 });
+          for (const at2 of [0, 0.08]) tone4(o, { at: at2, f: 760, f2: 520, glide: 0.04, dur: 0.05, vol: 0.09 });
           noise(o, { dur: 0.04, type: "bandpass", f: 2200, q: 1.5, vol: 0.16 });
         },
         bite: (o) => {
-          tone2(o, { f: 320, f2: 110, glide: 0.12, dur: 0.17, vol: 0.24 });
+          tone4(o, { f: 320, f2: 110, glide: 0.12, dur: 0.17, vol: 0.24 });
           noise(o, { dur: 0.14, type: "bandpass", f: 1300, f2: 600, q: 0.9, vol: 0.3 });
           chime(o, 1318, 0.03, 0.08, 0.35);
           droplets(o, 3, 0.06, 0.15, 0.04);
         },
         hookset: (o) => {
           noise(o, { dur: 0.11, type: "bandpass", f: 1400, f2: 5200, q: 1.2, vol: 0.3 });
-          tone2(o, { f: 280, f2: 900, glide: 0.06, dur: 0.1, vol: 0.12, type: "triangle" });
+          tone4(o, { f: 280, f2: 900, glide: 0.06, dur: 0.1, vol: 0.12, type: "triangle" });
           thump(o, 0.01, 150, 0.22);
         },
         reel: (o) => {
           for (let i = 0; i < 9; i++) {
             const at2 = i * 0.045 * (1 - i * 0.04);
             tick2(o, at2, 3e3 + i % 2 * 600, 0.16);
-            tone2(o, { at: at2, f: i % 2 ? 2700 : 2300, dur: 0.01, type: "triangle", vol: 0.04, a: 8e-4 });
+            tone4(o, { at: at2, f: i % 2 ? 2700 : 2300, dur: 0.01, type: "triangle", vol: 0.04, a: 8e-4 });
           }
           noise(o, { dur: 0.4, type: "bandpass", f: 900, f2: 1600, q: 1.5, color: "pink", vol: 0.12, a: 0.05, shape: "lin" });
         },
         reel_tick: (o) => {
           tick2(o, 0, 3200, 0.2);
-          tone2(o, { f: 2600, dur: 0.012, vol: 0.05, type: "triangle", a: 8e-4 });
+          tone4(o, { f: 2600, dur: 0.012, vol: 0.05, type: "triangle", a: 8e-4 });
         },
         line_snap: (o) => {
           noise(o, { dur: 0.06, type: "highpass", f: 2200, vol: 0.3, a: 1e-3 });
-          tone2(o, { f: 230, f2: 105, glide: 0.45, dur: 0.55, type: "sawtooth", vol: 0.07, vib: [9, 6], filt: { type: "lowpass", f: 1800, f2: 400 } });
-          tone2(o, { at: 0.02, f: 950, f2: 160, glide: 0.3, dur: 0.33, vol: 0.06 });
+          tone4(o, { f: 230, f2: 105, glide: 0.45, dur: 0.55, type: "sawtooth", vol: 0.07, vib: [9, 6], filt: { type: "lowpass", f: 1800, f2: 400 } });
+          tone4(o, { at: 0.02, f: 950, f2: 160, glide: 0.3, dur: 0.33, vol: 0.06 });
         },
         escape: (o) => {
-          [620, 470, 350].forEach((f, i) => tone2(o, { at: i * 0.12, f, f2: f * 0.75, glide: 0.08, dur: 0.11, vol: 0.11 }));
+          [620, 470, 350].forEach((f, i) => tone4(o, { at: i * 0.12, f, f2: f * 0.75, glide: 0.08, dur: 0.11, vol: 0.11 }));
           noise(o, { at: 0.3, dur: 0.2, type: "bandpass", f: 1400, q: 0.8, vol: 0.25 });
           droplets(o, 3, 0.32, 0.2, 0.035);
         },
@@ -19295,14 +19675,14 @@ void main() {
           noise(o, { at: 0.3, dur: 0.8, type: "highpass", f: 7e3, vol: 0.04, a: 0.15 });
         },
         catch_epic: (o) => {
-          [60, 64, 67, 71, 74].forEach((m) => tone2(o, { f: m2f(m), dur: 1.6, type: "sawtooth", unison: [-7, 7], vol: 0.025, a: 0.25, shape: "sus", r: 0.9, filt: { type: "lowpass", f: 500, f2: 2600, glide: 0.8 } }));
+          [60, 64, 67, 71, 74].forEach((m) => tone4(o, { f: m2f(m), dur: 1.6, type: "sawtooth", unison: [-7, 7], vol: 0.025, a: 0.25, shape: "sus", r: 0.9, filt: { type: "lowpass", f: 500, f2: 2600, glide: 0.8 } }));
           arp(o, mallet, [72, 76, 79, 83, 84, 88, 91, 95], 0.055, 0.05, 0.09, 0.6);
           bell(o, m2f(96), 0.5, 0.07, 1.8, 0.5);
           whoosh(o, 0, 0.5, 300, 3e3, 0.18);
           noise(o, { at: 0.4, dur: 1, type: "highpass", f: 7500, vol: 0.045, a: 0.2 });
         },
         catch_legendary: (o) => {
-          const stab = (at2, notes, d = 0.35) => notes.forEach((m) => tone2(o, { at: at2, f: m2f(m), dur: d, type: "sawtooth", unison: [-9, 9], vol: 0.028, a: 0.012, shape: "sus", r: 0.15, filt: { type: "lowpass", f: 2600, f2: 1200, q: 1 } }));
+          const stab = (at2, notes, d = 0.35) => notes.forEach((m) => tone4(o, { at: at2, f: m2f(m), dur: d, type: "sawtooth", unison: [-9, 9], vol: 0.028, a: 0.012, shape: "sus", r: 0.15, filt: { type: "lowpass", f: 2600, f2: 1200, q: 1 } }));
           stab(0, [60, 64, 67, 72], 0.2);
           stab(0.22, [60, 64, 67, 72], 0.2);
           stab(0.45, [65, 69, 72, 77], 0.22);
@@ -19318,7 +19698,7 @@ void main() {
         new_species: (o) => {
           arp(o, chime, [79, 84, 88, 91], 0.09, 0, 0.12, 0.9);
           bell(o, m2f(96), 0.38, 0.08, 1.6, 0.45);
-          [67, 72, 76].forEach((m) => tone2(o, { at: 0.3, f: m2f(m), dur: 1.4, type: "triangle", vol: 0.03, a: 0.2, shape: "sus", r: 0.8 }));
+          [67, 72, 76].forEach((m) => tone4(o, { at: 0.3, f: m2f(m), dur: 1.4, type: "triangle", vol: 0.03, a: 0.2, shape: "sus", r: 0.8 }));
           noise(o, { at: 0.35, dur: 0.9, type: "highpass", f: 7e3, vol: 0.04, a: 0.2 });
         },
         record: (o) => {
@@ -19334,12 +19714,12 @@ void main() {
         },
         mash_pop: (o) => {
           const k = rand(0.95, 1.06);
-          tone2(o, { f: 420 * k, f2: 1150 * k, glide: 0.04, dur: 0.065, vol: 0.15, a: 2e-3 });
+          tone4(o, { f: 420 * k, f2: 1150 * k, glide: 0.04, dur: 0.065, vol: 0.15, a: 2e-3 });
           tick2(o, 0, 3e3, 0.04);
         },
         timing_good: (o) => {
           chime(o, 880, 0, 0.13, 0.35);
-          tone2(o, { f: 1760, dur: 0.12, vol: 0.025 });
+          tone4(o, { f: 1760, dur: 0.12, vol: 0.025 });
         },
         timing_perfect: (o) => {
           chime(o, 1318, 0, 0.12, 0.4);
@@ -19348,86 +19728,86 @@ void main() {
           tink(o, 2637, 0.06, 0.025);
         },
         timing_miss: (o) => {
-          tone2(o, { f: 210, f2: 150, glide: 0.1, dur: 0.13, vol: 0.13, type: "triangle", filt: { type: "lowpass", f: 700 } });
+          tone4(o, { f: 210, f2: 150, glide: 0.1, dur: 0.13, vol: 0.13, type: "triangle", filt: { type: "lowpass", f: 700 } });
           noise(o, { dur: 0.05, type: "lowpass", f: 400, vol: 0.2, color: "pink" });
         },
         dodge_hit: (o) => {
-          tone2(o, { f: 320, f2: 95, glide: 0.11, dur: 0.15, type: "square", vol: 0.07, filt: { type: "lowpass", f: 1400, f2: 400 } });
+          tone4(o, { f: 320, f2: 95, glide: 0.11, dur: 0.15, type: "square", vol: 0.07, filt: { type: "lowpass", f: 1400, f2: 400 } });
           noise(o, { dur: 0.09, type: "bandpass", f: 1100, q: 1, vol: 0.3 });
         },
         slack_warn: (o) => {
-          for (const at2 of [0, 0.15]) tone2(o, { at: at2, f: 640, f2: 540, glide: 0.1, dur: 0.12, type: "triangle", vol: 0.11, vib: [14, 12] });
+          for (const at2 of [0, 0.15]) tone4(o, { at: at2, f: 640, f2: 540, glide: 0.1, dur: 0.12, type: "triangle", vol: 0.11, vib: [14, 12] });
         },
         jump_out: (o) => {
           noise(o, { dur: 0.22, type: "bandpass", f: 1100, f2: 3200, q: 0.9, vol: 0.3, a: 0.01 });
-          tone2(o, { f: 300, f2: 950, glide: 0.15, dur: 0.18, vol: 0.09 });
+          tone4(o, { f: 300, f2: 950, glide: 0.15, dur: 0.18, vol: 0.09 });
           droplets(o, 5, 0.08, 0.35, 0.045);
         },
         // fish voices
         blub: (o) => {
           bub(o, 0, 240, 0.16, 0, 0.09);
           bub(o, 0.1, 210, 0.12, 0, 0.08);
-          tone2(o, { f: 180, f2: 140, dur: 0.12, vol: 0.05, type: "triangle" });
+          tone4(o, { f: 180, f2: 140, dur: 0.12, vol: 0.05, type: "triangle" });
         },
         honk: (o) => {
-          tone2(o, { f: [[0, 300], [0.05, 360], [0.22, 320]], dur: 0.24, type: "sawtooth", unison: [-10, 10], vol: 0.12, a: 0.015, shape: "sus", r: 0.06, vib: [7, 6], filt: { type: "bandpass", f: 1100, q: 1.6 } });
-          tone2(o, { f: 150, dur: 0.22, type: "square", vol: 0.03, a: 0.015, shape: "sus", r: 0.05, filt: { type: "lowpass", f: 600 } });
+          tone4(o, { f: [[0, 300], [0.05, 360], [0.22, 320]], dur: 0.24, type: "sawtooth", unison: [-10, 10], vol: 0.12, a: 0.015, shape: "sus", r: 0.06, vib: [7, 6], filt: { type: "bandpass", f: 1100, q: 1.6 } });
+          tone4(o, { f: 150, dur: 0.22, type: "square", vol: 0.03, a: 0.015, shape: "sus", r: 0.05, filt: { type: "lowpass", f: 600 } });
         },
         puff: (o) => {
           noise(o, { dur: 0.38, type: "bandpass", f: 500, f2: 2200, q: 2, a: 0.25, vol: 0.3, shape: "lin" });
-          tone2(o, { f: 200, f2: 620, glide: 0.36, dur: 0.4, vol: 0.09, a: 0.2, shape: "lin" });
+          tone4(o, { f: 200, f2: 620, glide: 0.36, dur: 0.4, vol: 0.09, a: 0.2, shape: "lin" });
           bub(o, 0.38, 700, 0.08);
         },
         deflate: (o) => {
-          tone2(o, { f: 680, f2: 140, glide: 0.5, dur: 0.55, type: "sawtooth", vol: 0.1, vib: [26, 40], filt: { type: "lowpass", f: 1100, f2: 500 }, a: 0.01, shape: "sus", r: 0.15 });
+          tone4(o, { f: 680, f2: 140, glide: 0.5, dur: 0.55, type: "sawtooth", vol: 0.1, vib: [26, 40], filt: { type: "lowpass", f: 1100, f2: 500 }, a: 0.01, shape: "sus", r: 0.15 });
           noise(o, { dur: 0.5, type: "bandpass", f: 900, f2: 400, q: 1.2, vol: 0.2, a: 0.02, shape: "lin" });
         },
         squeak: (o) => {
-          tone2(o, { f: [[0, 1400], [0.05, 2100], [0.13, 1700]], dur: 0.14, vol: 0.11, a: 6e-3, vib: [22, 60] });
+          tone4(o, { f: [[0, 1400], [0.05, 2100], [0.13, 1700]], dur: 0.14, vol: 0.11, a: 6e-3, vib: [22, 60] });
         },
         grunt: (o) => {
-          tone2(o, { f: 115, f2: 88, glide: 0.18, dur: 0.2, type: "sawtooth", vol: 0.14, a: 0.012, vib: [17, 8], filt: { type: "lowpass", f: 520, q: 2 }, shape: "sus", r: 0.07 });
+          tone4(o, { f: 115, f2: 88, glide: 0.18, dur: 0.2, type: "sawtooth", vol: 0.14, a: 0.012, vib: [17, 8], filt: { type: "lowpass", f: 520, q: 2 }, shape: "sus", r: 0.07 });
         },
         boing: (o) => {
-          tone2(o, { f: 190, f2: 330, glide: 0.07, dur: 0.45, type: "triangle", vol: 0.14, vib: [13, 35], a: 3e-3 });
-          tone2(o, { f: 380, f2: 660, glide: 0.07, dur: 0.2, vol: 0.03 });
+          tone4(o, { f: 190, f2: 330, glide: 0.07, dur: 0.45, type: "triangle", vol: 0.14, vib: [13, 35], a: 3e-3 });
+          tone4(o, { f: 380, f2: 660, glide: 0.07, dur: 0.2, vol: 0.03 });
         },
         glitch: (o) => {
-          for (let i = 0; i < 7; i++) tone2(o, { at: i * 0.028, f: pick([220, 330, 440, 880, 1320, 1760, 2640]) * rand(0.98, 1.02), dur: 0.026, wave: "pulse25", vol: 0.07, a: 1e-3, shape: "sus", r: 4e-3 });
+          for (let i = 0; i < 7; i++) tone4(o, { at: i * 0.028, f: pick([220, 330, 440, 880, 1320, 1760, 2640]) * rand(0.98, 1.02), dur: 0.026, wave: "pulse25", vol: 0.07, a: 1e-3, shape: "sus", r: 4e-3 });
           noise(o, { at: 0.08, dur: 0.06, type: "highpass", f: 3e3, vol: 0.07, a: 1e-3, shape: "sus", r: 0.01 });
         },
         click: (o) => {
           for (let i = 0; i < 3; i++) {
             noise(o, { at: i * 0.032, dur: 8e-3, type: "highpass", f: 3500, vol: 0.2, a: 5e-4 });
-            tone2(o, { at: i * 0.032, f: 3100, dur: 6e-3, vol: 0.04, a: 5e-4 });
+            tone4(o, { at: i * 0.032, f: 3100, dur: 6e-3, vol: 0.04, a: 5e-4 });
           }
         },
         roar: (o) => {
-          tone2(o, { f: 82, f2: 58, glide: 0.8, dur: 0.85, type: "sawtooth", unison: [-12, 12], vol: 0.12, a: 0.09, vib: [7, 4], filt: { type: "lowpass", f: 420, f2: 900, glide: 0.3, q: 2 }, shape: "sus", r: 0.35 });
+          tone4(o, { f: 82, f2: 58, glide: 0.8, dur: 0.85, type: "sawtooth", unison: [-12, 12], vol: 0.12, a: 0.09, vib: [7, 4], filt: { type: "lowpass", f: 420, f2: 900, glide: 0.3, q: 2 }, shape: "sus", r: 0.35 });
           noise(o, { dur: 0.8, type: "lowpass", f: 900, f2: 400, vol: 0.25, a: 0.08, color: "pink", shape: "sus", r: 0.35 });
-          tone2(o, { f: 52, f2: 40, dur: 0.8, vol: 0.12, a: 0.08, shape: "sus", r: 0.3 });
+          tone4(o, { f: 52, f2: 40, dur: 0.8, vol: 0.12, a: 0.08, shape: "sus", r: 0.3 });
         },
         chirp: (o) => {
-          tone2(o, { f: 1800, f2: 3200, glide: 0.07, dur: 0.09, vol: 0.1, a: 5e-3 });
-          tone2(o, { at: 0.1, f: 3e3, f2: 2200, glide: 0.07, dur: 0.08, vol: 0.075 });
+          tone4(o, { f: 1800, f2: 3200, glide: 0.07, dur: 0.09, vol: 0.1, a: 5e-3 });
+          tone4(o, { at: 0.1, f: 3e3, f2: 2200, glide: 0.07, dur: 0.08, vol: 0.075 });
         },
         bell: (o) => {
           bell(o, 1046, 0, 0.09, 1.3, 0.45);
           fm(o, { f: 2093, ratio: 1.41, index: 0.6, idur: 0.1, dur: 0.5, vol: 0.02 });
         },
         gulp: (o) => {
-          tone2(o, { f: 420, f2: 140, glide: 0.08, dur: 0.12, vol: 0.13 });
+          tone4(o, { f: 420, f2: 140, glide: 0.08, dur: 0.12, vol: 0.13 });
           noise(o, { dur: 0.05, type: "lowpass", f: 600, vol: 0.2, color: "pink" });
         },
         snore: (o) => {
           noise(o, { dur: 0.9, type: "bandpass", f: 320, f2: 600, q: 3, a: 0.45, vol: 0.4, shape: "lin", color: "pink" });
-          tone2(o, { dur: 0.9, f: 85, f2: 95, type: "sawtooth", vol: 0.035, a: 0.4, shape: "lin", filt: { type: "lowpass", f: 300 }, vib: [22, 4] });
+          tone4(o, { dur: 0.9, f: 85, f2: 95, type: "sawtooth", vol: 0.035, a: 0.4, shape: "lin", filt: { type: "lowpass", f: 300 }, vib: [22, 4] });
           noise(o, { at: 1, dur: 0.5, type: "bandpass", f: 700, f2: 300, q: 2, a: 0.08, vol: 0.22, shape: "lin" });
         },
         // coins
         coin_spawn: (o) => {
           fm(o, { f: 1568, ratio: 2, index: 1, idur: 0.05, dur: 0.16, vol: 0.06 });
-          tone2(o, { f: 800, f2: 1600, glide: 0.05, dur: 0.06, vol: 0.04 });
+          tone4(o, { f: 800, f2: 1600, glide: 0.05, dur: 0.06, vol: 0.04 });
         },
         coin_bounce: (o) => {
           tink(o, 2093 * rand(0.96, 1.04), 0, 0.08);
@@ -19439,7 +19819,7 @@ void main() {
           const k = Math.pow(2, COMBO[combo.n] / 12);
           chime(o, 988 * k, 0, 0.1, 0.1);
           chime(o, 1318 * k, 0.065, 0.12, 0.45);
-          tone2(o, { at: 0.065, f: 1318 * k, dur: 0.22, type: "square", vol: 0.012, filt: { type: "lowpass", f: 3500, track: false } });
+          tone4(o, { at: 0.065, f: 1318 * k, dur: 0.22, type: "square", vol: 0.012, filt: { type: "lowpass", f: 3500, track: false } });
         },
         coin_pile: (o) => {
           for (let i = 0; i < 9; i++) tink(o, rand(1800, 3200), Math.random() * 0.4, rand(0.04, 0.07), rand(-0.4, 0.4));
@@ -19460,8 +19840,8 @@ void main() {
         },
         whale_call: (o) => {
           const b = rand(0.92, 1.08);
-          tone2(o, { f: [[0, 210 * b], [0.7, 320 * b], [1.6, 290 * b], [2.4, 190 * b]], dur: 2.5, vol: 0.1, a: 0.5, shape: "sus", r: 0.8, vib: [4.5, 5], verb: 0.7 });
-          tone2(o, { f: [[0, 420 * b], [0.7, 640 * b], [1.6, 580 * b], [2.4, 380 * b]], dur: 2.4, type: "triangle", vol: 0.025, a: 0.6, shape: "sus", r: 0.8, verb: 0.8 });
+          tone4(o, { f: [[0, 210 * b], [0.7, 320 * b], [1.6, 290 * b], [2.4, 190 * b]], dur: 2.5, vol: 0.1, a: 0.5, shape: "sus", r: 0.8, vib: [4.5, 5], verb: 0.7 });
+          tone4(o, { f: [[0, 420 * b], [0.7, 640 * b], [1.6, 580 * b], [2.4, 380 * b]], dur: 2.4, type: "triangle", vol: 0.025, a: 0.6, shape: "sus", r: 0.8, verb: 0.8 });
         },
         thunder: (o) => {
           noise(o, { dur: 0.35, type: "lowpass", f: 3200, f2: 400, vol: 0.35, a: 4e-3 });
@@ -19471,11 +19851,11 @@ void main() {
           for (let i = 0; i < 9; i++) {
             const at2 = i * 0.034 + Math.random() * 8e-3, pan = i % 2 ? 0.15 : -0.15;
             noise(o, { at: at2, dur: 0.014, type: "bandpass", f: i % 2 ? 3200 : 2500, q: 3, vol: 0.9, a: 6e-4, pan });
-            tone2(o, { at: at2, f: i % 2 ? 2900 : 2300, dur: 0.012, type: "triangle", vol: 0.05, a: 6e-4, pan });
+            tone4(o, { at: at2, f: i % 2 ? 2900 : 2300, dur: 0.012, type: "triangle", vol: 0.05, a: 6e-4, pan });
           }
         },
         vending: (o) => {
-          tone2(o, { f: 110, dur: 0.6, type: "sawtooth", vol: 0.06, a: 0.05, shape: "sus", r: 0.1, vib: [9, 3], filt: { type: "lowpass", f: 380 } });
+          tone4(o, { f: 110, dur: 0.6, type: "sawtooth", vol: 0.06, a: 0.05, shape: "sus", r: 0.1, vib: [9, 3], filt: { type: "lowpass", f: 380 } });
           noise(o, { dur: 0.6, type: "bandpass", f: 600, q: 1, vol: 0.1, a: 0.05, shape: "sus", r: 0.1 });
           thump(o, 0.62, 130, 0.25);
           noise(o, { at: 0.62, dur: 0.1, type: "lowpass", f: 1500, vol: 0.25, color: "pink" });
@@ -19484,23 +19864,23 @@ void main() {
           chime(o, 1318, 0.9, 0.08, 0.7, 0.25);
         },
         sonar: (o) => {
-          tone2(o, { f: 1180, dur: 1.4, vol: 0.12, a: 4e-3, verb: 0.75 });
-          tone2(o, { at: 4e-3, f: 2360, dur: 0.25, vol: 0.02 });
-          tone2(o, { at: 0.6, f: 1180, dur: 0.9, vol: 0.03, verb: 0.9 });
+          tone4(o, { f: 1180, dur: 1.4, vol: 0.12, a: 4e-3, verb: 0.75 });
+          tone4(o, { at: 4e-3, f: 2360, dur: 0.25, vol: 0.02 });
+          tone4(o, { at: 0.6, f: 1180, dur: 0.9, vol: 0.03, verb: 0.9 });
         },
         static_burst: (o) => {
           for (let i = 0; i < 6; i++) noise(o, { at: i * 0.045 + Math.random() * 0.02, dur: rand(0.03, 0.08), type: "bandpass", f: rand(1800, 4200), q: 0.6, vol: rand(0.1, 0.22), a: 2e-3, shape: "sus", r: 0.01 });
-          tone2(o, { f: 120, dur: 0.32, type: "sawtooth", vol: 0.02, filt: { type: "lowpass", f: 500 }, shape: "sus", r: 0.05 });
+          tone4(o, { f: 120, dur: 0.32, type: "sawtooth", vol: 0.02, filt: { type: "lowpass", f: 500 }, shape: "sus", r: 0.05 });
         },
         crt_on: (o) => {
           thump(o, 0, 90, 0.18);
           noise(o, { dur: 0.15, type: "highpass", f: 2500, vol: 0.12, a: 2e-3 });
-          tone2(o, { f: 180, f2: 1400, glide: 0.25, dur: 0.3, vol: 0.04, type: "triangle" });
-          tone2(o, { at: 0.05, f: 7800, dur: 0.7, vol: 5e-3, a: 0.08, shape: "sus", r: 0.3 });
-          tone2(o, { f: 60, dur: 0.6, type: "sawtooth", vol: 0.025, a: 0.03, filt: { type: "lowpass", f: 300 } });
+          tone4(o, { f: 180, f2: 1400, glide: 0.25, dur: 0.3, vol: 0.04, type: "triangle" });
+          tone4(o, { at: 0.05, f: 7800, dur: 0.7, vol: 5e-3, a: 0.08, shape: "sus", r: 0.3 });
+          tone4(o, { f: 60, dur: 0.6, type: "sawtooth", vol: 0.025, a: 0.03, filt: { type: "lowpass", f: 300 } });
         },
         treasure_open: (o) => {
-          tone2(o, { f: [[0, 110], [0.25, 150], [0.4, 135]], dur: 0.42, type: "sawtooth", vol: 0.05, a: 0.02, vib: [21, 5], filt: { type: "bandpass", f: 800, q: 3 }, shape: "sus", r: 0.06 });
+          tone4(o, { f: [[0, 110], [0.25, 150], [0.4, 135]], dur: 0.42, type: "sawtooth", vol: 0.05, a: 0.02, vib: [21, 5], filt: { type: "bandpass", f: 800, q: 3 }, shape: "sus", r: 0.06 });
           thump(o, 0.42, 160, 0.18);
           arp(o, chime, [79, 83, 86, 91, 95], 0.06, 0.45, 0.075, 0.8);
           bell(o, m2f(98), 0.75, 0.05, 1.5, 0.5);
@@ -19510,7 +19890,7 @@ void main() {
           for (let i = 0; i < 6; i++) fm(o, { at: i * 0.06 + Math.random() * 0.04, f: rand(2200, 4800), ratio: 3.01, index: 1, idur: 0.05, dur: 0.25, vol: rand(0.05, 0.08), verb: 0.4, pan: rand(-0.5, 0.5) });
         },
         magic: (o) => {
-          tone2(o, { f: 380, f2: 1600, glide: 0.6, dur: 0.65, vol: 0.05, a: 0.1, vib: [6, 10], shape: "sus", r: 0.25, verb: 0.4 });
+          tone4(o, { f: 380, f2: 1600, glide: 0.6, dur: 0.65, vol: 0.05, a: 0.1, vib: [6, 10], shape: "sus", r: 0.25, verb: 0.4 });
           arp(o, bell, [79, 81, 84, 88, 91, 93], 0.07, 0.1, 0.05, 0.9);
           whoosh(o, 0, 0.6, 600, 4e3, 0.15);
         },
@@ -19522,7 +19902,7 @@ void main() {
         worm_squish: (o) => {
           for (const at2 of [0, 0.13]) {
             noise(o, { at: at2, dur: 0.12, type: "bandpass", f: 900, f2: 380, q: 4, vol: 0.8, a: 0.01 });
-            tone2(o, { at: at2, f: 320, f2: 190, glide: 0.1, dur: 0.11, vol: 0.1, vib: [32, 25] });
+            tone4(o, { at: at2, f: 320, f2: 190, glide: 0.1, dur: 0.11, vol: 0.1, vib: [32, 25] });
           }
         },
         golden_shimmer: (o) => {
@@ -19534,7 +19914,7 @@ void main() {
         },
         travel_whoosh: (o) => {
           whoosh(o, 0, 1.1, [[0, 280], [0.6, 3200], [1.1, 900]], 0, 0.3, 0.9);
-          tone2(o, { f: 80, f2: 160, glide: 0.9, dur: 1, vol: 0.08, a: 0.4, shape: "lin" });
+          tone4(o, { f: 80, f2: 160, glide: 0.9, dur: 1, vol: 0.08, a: 0.4, shape: "lin" });
           droplets(o, 5, 0.3, 0.6, 0.03, 900, 2200);
         },
         arrive: (o) => {
@@ -19551,19 +19931,19 @@ void main() {
         },
         ice_chime: (o) => {
           fm(o, { f: m2f(86), ratio: 3.5, index: 1.4, index2: 0.1, idur: 0.3, dur: 2.2, a: 2e-3, vol: 0.09, verb: 0.7 });
-          tone2(o, { f: m2f(98), dur: 1.4, vol: 0.02, a: 2e-3, verb: 0.8 });
-          tone2(o, { f: m2f(86) * 2.76, dur: 0.5, vol: 0.015, a: 2e-3 });
+          tone4(o, { f: m2f(98), dur: 1.4, vol: 0.02, a: 2e-3, verb: 0.8 });
+          tone4(o, { f: m2f(86) * 2.76, dur: 0.5, vol: 0.015, a: 2e-3 });
         },
         penguin: (o) => {
-          for (const at2 of [0, 0.16]) tone2(o, { at: at2, f: 760, f2: 520, glide: 0.1, dur: 0.12, type: "square", vol: 0.05, a: 4e-3, vib: [28, 30], filt: { type: "bandpass", f: 1100, q: 2 } });
+          for (const at2 of [0, 0.16]) tone4(o, { at: at2, f: 760, f2: 520, glide: 0.1, dur: 0.12, type: "square", vol: 0.05, a: 4e-3, vib: [28, 30], filt: { type: "bandpass", f: 1100, q: 2 } });
         },
         eruption_boom: (o) => {
-          tone2(o, { f: 70, f2: 32, glide: 0.5, dur: 0.7, vol: 0.35, a: 4e-3 });
+          tone4(o, { f: 70, f2: 32, glide: 0.5, dur: 0.7, vol: 0.35, a: 4e-3 });
           noise(o, { dur: 2.2, type: "lowpass", f: 380, f2: 90, glide: 1.8, color: "brown", vol: 0.55, a: 0.01 });
           for (let i = 0; i < 10; i++) noise(o, { at: 0.15 + Math.random() * 1.4, dur: 0.02, type: "bandpass", f: rand(600, 2400), q: 2, vol: rand(0.04, 0.1), a: 1e-3 });
         },
         neon_buzz: (o) => {
-          tone2(o, { f: 120, dur: 0.35, type: "sawtooth", vol: 0.05, a: 4e-3, vib: [48, 6], filt: { type: "bandpass", f: 900, q: 3 }, shape: "sus", r: 0.05 });
+          tone4(o, { f: 120, dur: 0.35, type: "sawtooth", vol: 0.05, a: 4e-3, vib: [48, 6], filt: { type: "bandpass", f: 900, q: 3 }, shape: "sus", r: 0.05 });
           for (let i = 0; i < 5; i++) noise(o, { at: i * 0.05 + Math.random() * 0.03, dur: 0.012, type: "highpass", f: 3500, vol: 0.12, a: 6e-4 });
         },
         train_ding: (o) => {
@@ -19571,7 +19951,7 @@ void main() {
           bell(o, m2f(72), 0.32, 0.08, 1.6, 0.4);
         },
         unlock_biome: (o) => {
-          [60, 67, 71, 74, 76].forEach((m) => tone2(o, { f: m2f(m), dur: 2.4, type: "sawtooth", unison: [-8, 8], vol: 0.022, a: 0.8, shape: "sus", r: 1.1, filt: { type: "lowpass", f: 300, f2: 3e3, glide: 1.6 }, verb: 0.4 }));
+          [60, 67, 71, 74, 76].forEach((m) => tone4(o, { f: m2f(m), dur: 2.4, type: "sawtooth", unison: [-8, 8], vol: 0.022, a: 0.8, shape: "sus", r: 1.1, filt: { type: "lowpass", f: 300, f2: 3e3, glide: 1.6 }, verb: 0.4 }));
           thump(o, 0, 70, 0.3);
           noise(o, { dur: 2.2, type: "lowpass", f: 200, f2: 1200, color: "brown", vol: 0.3, a: 0.9, shape: "lin" });
           arp(o, bell, [76, 79, 83, 88, 91, 95], 0.09, 0.9, 0.05, 1.5);
@@ -19586,7 +19966,7 @@ void main() {
       activeLoops = /* @__PURE__ */ new Set();
       pendingLoops = /* @__PURE__ */ new Set();
       loopO = (g, pool = "sfx", verb = 0.1) => (t, p = 1) => ({ t, p, out: g.fade, wet: g.wet, verb, pool, end: 0 });
-      creak = (o, v) => tone2(o, {
+      creak = (o, v) => tone4(o, {
         f: rand(90, 150),
         f2: rand(70, 120),
         dur: rand(0.12, 0.25),
@@ -19660,7 +20040,7 @@ void main() {
               while (next < h) {
                 const oo = o(next);
                 tick2(oo, 0, 3e3 + n2 % 2 * 600, 0.1 + 0.06 * v);
-                tone2(oo, { f: n2 % 2 ? 2700 : 2300, dur: 0.01, type: "triangle", vol: 0.03, a: 8e-4 });
+                tone4(oo, { f: n2 % 2 ? 2700 : 2300, dur: 0.01, type: "triangle", vol: 0.03, a: 8e-4 });
                 n2++;
                 next += iv;
               }
@@ -19811,7 +20191,7 @@ void main() {
           };
           const chirps = (o) => {
             const n2 = 2 + (Math.random() * 3 | 0);
-            for (let i = 0; i < n2; i++) tone2(o, { at: i * rand(0.12, 0.2), f: rand(1600, 2200), f2: rand(2600, 3600), glide: 0.07, dur: 0.09, vol: 0.06, vib: [30, 50] });
+            for (let i = 0; i < n2; i++) tone4(o, { at: i * rand(0.12, 0.2), f: rand(1600, 2200), f2: rand(2600, 3600), glide: 0.07, dur: 0.09, vol: 0.06, vib: [30, 50] });
           };
           return [
             { min: night ? 3 : 1.5, max: night ? 8 : 5, fn: (t) => fire(trickle, t, evOut(g, night ? 0.45 : 0.65, rand(-0.7, 0.7), 2600, 0.2)) },
@@ -19827,7 +20207,7 @@ void main() {
           gLfo(g, 0.23, 3e-3, hum.amp.gain);
           const creakEv = (o) => {
             const f = rand(70, 140), d = rand(0.6, 1.4);
-            tone2(o, { f: [[0, f], [d * 0.5, f * 1.3], [d, f * 1.1]], dur: d, type: "sawtooth", vol: 0.05, a: 0.1, shape: "sus", r: 0.25, vib: [rand(15, 30), 6], filt: { type: "bandpass", f: 700, q: 4 } });
+            tone4(o, { f: [[0, f], [d * 0.5, f * 1.3], [d, f * 1.1]], dur: d, type: "sawtooth", vol: 0.05, a: 0.1, shape: "sus", r: 0.25, vib: [rand(15, 30), 6], filt: { type: "bandpass", f: 700, q: 4 } });
           };
           const clank = (o) => {
             fm(o, { f: rand(180, 420), ratio: 1.41, index: 4, index2: 0.3, idur: 0.12, dur: 1.2, vol: 0.06 });
@@ -19862,12 +20242,12 @@ void main() {
           gLfo(g, 0.14, 0.04, lap.amp.gain);
           const groan = (o) => {
             const f = rand(45, 90), d = rand(1.2, 2.6);
-            tone2(o, { f: [[0, f], [d * 0.6, f * rand(1.2, 1.6)], [d, f * 1.1]], dur: d, type: "sawtooth", vol: 0.05, a: 0.3, shape: "sus", r: 0.6, vib: [rand(6, 14), 3], filt: { type: "bandpass", f: 420, q: 5 } });
+            tone4(o, { f: [[0, f], [d * 0.6, f * rand(1.2, 1.6)], [d, f * 1.1]], dur: d, type: "sawtooth", vol: 0.05, a: 0.3, shape: "sus", r: 0.6, vib: [rand(6, 14), 3], filt: { type: "bandpass", f: 420, q: 5 } });
           };
           const calve = (o) => {
             noise(o, { dur: 0.3, type: "highpass", f: 1800, vol: 0.1, a: 2e-3 });
             noise(o, { at: 0.1, dur: 2.4, type: "lowpass", f: 260, color: "brown", vol: 0.3, a: 0.05 });
-            tone2(o, { at: 0.1, f: 60, f2: 38, glide: 1, dur: 1.4, vol: 0.12 });
+            tone4(o, { at: 0.1, f: 60, f2: 38, glide: 1, dur: 1.4, vol: 0.12 });
           };
           const tinkles = (o) => {
             for (let i = 0, n2 = 2 + (Math.random() * 3 | 0); i < n2; i++) tink(o, rand(2600, 4600), i * rand(0.08, 0.2), 0.03, rand(-0.6, 0.6));
@@ -19891,7 +20271,7 @@ void main() {
             thump(o, 0, 55, 0.25);
             noise(o, { dur: 1.8, type: "lowpass", f: 220, f2: 80, color: "brown", vol: 0.3, a: 0.02 });
           };
-          const gloop = (o) => tone2(o, { f: rand(70, 110), f2: rand(160, 240), glide: 0.25, dur: 0.3, vol: 0.08, vib: [rand(18, 30), 12], filt: { type: "lowpass", f: 600 } });
+          const gloop = (o) => tone4(o, { f: rand(70, 110), f2: rand(160, 240), glide: 0.25, dur: 0.3, vol: 0.08, vib: [rand(18, 30), 12], filt: { type: "lowpass", f: 600 } });
           return [
             { min: 0.5, max: 2.2, fn: (t) => fire(boil, t, evOut(g, 0.55, rand(-0.8, 0.8), 1200, 0.3)) },
             { min: night ? 12 : 16, max: night ? 30 : 40, first: rand(4, 12), fn: (t) => fire(boom, t, evOut(g, 0.5, rand(-0.6, 0.6), 600, 0.6)) },
@@ -19911,7 +20291,7 @@ void main() {
             for (let i = 0; i < 12; i++) noise(o, { at: 1.5 + i * 0.32, dur: 0.05, type: "bandpass", f: 700, q: 2, vol: 0.05, a: 2e-3 });
           };
           const horn = (o) => {
-            for (const [at2, m] of [[0, 57], [0.4, 53]]) tone2(o, { at: at2, f: m2f(m), dur: 0.5, type: "triangle", vol: 0.03, a: 0.05, shape: "sus", r: 0.2, filt: { type: "lowpass", f: 700 } });
+            for (const [at2, m] of [[0, 57], [0.4, 53]]) tone4(o, { at: at2, f: m2f(m), dur: 0.5, type: "triangle", vol: 0.03, a: 0.05, shape: "sus", r: 0.2, filt: { type: "lowpass", f: 700 } });
           };
           const drip = (o) => bub(o, 0, rand(1400, 2600), 0.04, 0, 0.05);
           return [
@@ -19934,7 +20314,7 @@ void main() {
       dataBlip = (o) => {
         const base = pick([79, 81, 84, 86, 88]);
         for (let i = 0, n2 = 2 + (Math.random() * 3 | 0); i < n2; i++) {
-          tone2(o, { at: i * 0.06, f: m2f(base + pick([0, 3, 5, 7, 12])), dur: 0.05, wave: "pulse12", vol: 0.04, a: 2e-3 });
+          tone4(o, { at: i * 0.06, f: m2f(base + pick([0, 3, 5, 7, 12])), dur: 0.05, wave: "pulse12", vol: 0.04, a: 2e-3 });
         }
       };
       WEATHER = {
@@ -19950,9 +20330,9 @@ void main() {
           return null;
         },
         current: (g) => withV(LOOPS.flood(subGroup(g, 0.45)), 0.1),
-        snow: (g) => evLayer([{ min: 0.8, max: 2.6, fn: (t) => fire((o) => tone2(o, { f: rand(2400, 4200), dur: 0.5, vol: 0.05, a: 3e-3 }), t, evOut(g, 0.3, rand(-0.9, 0.9), 0, 0.8)) }]),
+        snow: (g) => evLayer([{ min: 0.8, max: 2.6, fn: (t) => fire((o) => tone4(o, { f: rand(2400, 4200), dur: 0.5, vol: 0.05, a: 3e-3 }), t, evOut(g, 0.3, rand(-0.9, 0.9), 0, 0.8)) }]),
         glowtide: (g) => evLayer([{ min: 5, max: 11, fn: (t) => fire((o) => {
-          for (const m of pick([[62, 69, 76], [58, 65, 74], [60, 67, 74]])) tone2(o, { f: m2f(m + 12), dur: 4, vol: 0.03, a: 1.6, shape: "sus", r: 2, vib: [0.3, 1.5] });
+          for (const m of pick([[62, 69, 76], [58, 65, 74], [60, 67, 74]])) tone4(o, { f: m2f(m + 12), dur: 4, vol: 0.03, a: 1.6, shape: "sus", r: 2, vib: [0.3, 1.5] });
         }, t, evOut(g, 0.4, rand(-0.5, 0.5), 0, 0.9)) }]),
         // fjord
         snowfall: (g) => {
@@ -19968,7 +20348,7 @@ void main() {
           return evLayer([{ min: 3, max: 7, fn: (t) => fire(gust, t, evOut(g, 0.5, rand(-0.9, 0.9), 0, 0.3)) }]);
         },
         aurora: (g) => evLayer([{ min: 4, max: 9, fn: (t) => fire((o) => {
-          for (const m of pick([[74, 78, 81, 85], [71, 74, 78, 81], [69, 73, 76, 81]])) tone2(o, { f: m2f(m + 12), dur: 5, vol: 0.022, a: 2, shape: "sus", r: 2.4, vib: [0.25, 2] });
+          for (const m of pick([[74, 78, 81, 85], [71, 74, 78, 81], [69, 73, 76, 81]])) tone4(o, { f: m2f(m + 12), dur: 5, vol: 0.022, a: 2, shape: "sus", r: 2.4, vib: [0.25, 2] });
           for (let i = 0; i < 4; i++) tink(o, m2f(pick([93, 95, 98, 100])), 1 + i * rand(0.3, 0.7), 0.015, rand(-0.6, 0.6));
         }, t, evOut(g, 0.45, rand(-0.5, 0.5), 0, 0.9)) }]),
         // lava rift
@@ -19990,7 +20370,7 @@ void main() {
         magma: (g) => {
           const throb = gOsc(g, "sine", 42, null, 0.05);
           gLfo(g, 0.35, 0.04, throb.amp.gain);
-          return evLayer([{ min: 1, max: 3, fn: (t) => fire((o) => tone2(o, { f: rand(60, 90), f2: rand(200, 320), glide: 0.4, dur: 0.5, vol: 0.07, vib: [22, 14], filt: { type: "lowpass", f: 700 } }), t, evOut(g, 0.5, rand(-0.7, 0.7), 900, 0.5)) }]);
+          return evLayer([{ min: 1, max: 3, fn: (t) => fire((o) => tone4(o, { f: rand(60, 90), f2: rand(200, 320), glide: 0.4, dur: 0.5, vol: 0.07, vib: [22, 14], filt: { type: "lowpass", f: 700 } }), t, evOut(g, 0.5, rand(-0.7, 0.7), 900, 0.5)) }]);
         },
         // sunken metropolis
         neonstorm: (g) => evLayer(
@@ -20013,32 +20393,32 @@ void main() {
         marimba: (o, m, vol, at2 = 0, dur = 0.8) => fm(o, { f: m2f(m), at: at2, ratio: 4, index: 1.4, idur: 0.05, dur, a: 2e-3, vol }),
         kalimba: (o, m, vol, at2 = 0, dur = 1) => fm(o, { f: m2f(m), at: at2, ratio: 7.1, index: 0.8, idur: 0.03, dur, a: 2e-3, vol }),
         glass: (o, m, vol, at2 = 0, dur = 3.5, verb = 0.75) => {
-          tone2(o, { f: m2f(m), at: at2, dur, vol, a: 4e-3, verb });
-          tone2(o, { f: m2f(m) * 2.76, at: at2, dur: dur * 0.3, vol: vol * 0.2, verb });
+          tone4(o, { f: m2f(m), at: at2, dur, vol, a: 4e-3, verb });
+          tone4(o, { f: m2f(m) * 2.76, at: at2, dur: dur * 0.3, vol: vol * 0.2, verb });
         },
         musicbox: (o, m, vol, at2 = 0, dur = 1.6, verb = 0.35) => {
           fm(o, { f: m2f(m), at: at2, ratio: 5, index: 0.5, idur: 0.12, dur, a: 2e-3, vol, verb });
-          tone2(o, { f: m2f(m) * 2, at: at2, dur: 0.3, vol: vol * 0.15 });
+          tone4(o, { f: m2f(m) * 2, at: at2, dur: 0.3, vol: vol * 0.15 });
         },
         celesta: (o, m, vol, at2 = 0, dur = 1.2) => fm(o, { f: m2f(m), at: at2, ratio: 1, index: 0.9, index2: 0.1, idur: 0.25, dur, a: 3e-3, vol }),
-        pad: (o, m, dur, vol, cut, at2 = 0, a = 0.5, r = 0.9, type = "sawtooth") => tone2(o, { f: m2f(m), at: at2, dur, type, unison: [-7, 7], vol, a, shape: "sus", r, filt: { type: "lowpass", f: cut, q: 0.5 } }),
+        pad: (o, m, dur, vol, cut, at2 = 0, a = 0.5, r = 0.9, type = "sawtooth") => tone4(o, { f: m2f(m), at: at2, dur, type, unison: [-7, 7], vol, a, shape: "sus", r, filt: { type: "lowpass", f: cut, q: 0.5 } }),
         bass: (o, m, dur, vol, at2 = 0) => {
-          tone2(o, { f: m2f(m), at: at2, dur, type: "triangle", vol, a: 0.01, shape: "sus", r: Math.min(0.12, dur * 0.5) });
-          tone2(o, { f: m2f(m) * 2, at: at2, dur: dur * 0.6, vol: vol * 0.15, a: 0.01 });
+          tone4(o, { f: m2f(m), at: at2, dur, type: "triangle", vol, a: 0.01, shape: "sus", r: Math.min(0.12, dur * 0.5) });
+          tone4(o, { f: m2f(m) * 2, at: at2, dur: dur * 0.6, vol: vol * 0.15, a: 0.01 });
         },
         kick: (o, vol, at2 = 0) => {
-          tone2(o, { at: at2, f: 125, f2: 44, glide: 0.09, dur: 0.24, vol, a: 2e-3 });
+          tone4(o, { at: at2, f: 125, f2: 44, glide: 0.09, dur: 0.24, vol, a: 2e-3 });
           noise(o, { at: at2, dur: 0.012, type: "lowpass", f: 1500, vol: vol * 0.3, a: 1e-3 });
         },
         shaker: (o, vol, at2 = 0) => noise(o, { at: at2, dur: 0.05, type: "bandpass", f: 7500, q: 1.2, a: 8e-3, vol }),
         hat: (o, vol, at2 = 0, open = false) => noise(o, { at: at2, dur: open ? 0.16 : 0.03, type: "highpass", f: 7500, a: 1e-3, vol }),
         snare: (o, vol, at2 = 0) => {
           noise(o, { at: at2, dur: 0.13, type: "bandpass", f: 1900, q: 0.8, vol, a: 1e-3 });
-          tone2(o, { at: at2, f: 200, f2: 150, glide: 0.05, dur: 0.07, type: "triangle", vol: vol * 0.35 });
+          tone4(o, { at: at2, f: 200, f2: 150, glide: 0.05, dur: 0.07, type: "triangle", vol: vol * 0.35 });
         },
         rim: (o, vol, at2 = 0) => {
           noise(o, { at: at2, dur: 0.035, type: "bandpass", f: 2400, q: 2, vol, a: 1e-3 });
-          tone2(o, { at: at2, f: 1700, dur: 0.02, type: "triangle", vol: vol * 0.15 });
+          tone4(o, { at: at2, f: 1700, dur: 0.02, type: "triangle", vol: vol * 0.15 });
         }
       };
       SH_CH = {
@@ -20184,16 +20564,16 @@ void main() {
             if (night ? s % 4 === 0 : s % 2 === 0 || chance(0.7)) {
               const notes = [...ch.tones, ...ch.tones.map((x) => x + 12)], n2 = notes.length;
               const k = st.pat === "up" ? s % n2 : st.pat === "down" ? n2 - 1 - s % n2 : st.pat === "updown" ? [0, 1, 2, 3, 4, 5, 4, 3, 2, 1][s % 10] % n2 : Math.random() * n2 | 0;
-              tone2(oc, { f: m2f(notes[k] + 12), dur: sd * 0.9, wave: "pulse25", vol: 0.05, a: 2e-3 });
+              tone4(oc, { f: m2f(notes[k] + 12), dur: sd * 0.9, wave: "pulse25", vol: 0.05, a: 2e-3 });
             }
             if (s === st.glitch) {
               const m = pick(ch.tones) + 24;
-              for (let k = 0; k < 4; k++) tone2(oc, { at: k * sd / 2, f: m2f(m + (k === 3 ? 12 : 0)), dur: sd * 0.4, wave: "pulse12", vol: 0.035, shape: "sus", r: 0.01 });
+              for (let k = 0; k < 4; k++) tone4(oc, { at: k * sd / 2, f: m2f(m + (k === 3 ? 12 : 0)), dur: sd * 0.4, wave: "pulse12", vol: 0.035, shape: "sus", r: 0.01 });
             }
             if (st.lead && (s % 4 === 0 || s % 4 === 3 && chance(0.3)) && chance(0.55)) {
               st.li = Math.max(0, Math.min(JY_LEAD.length - 1, st.li + pick([-2, -1, 1, 1, 2])));
               if (s === 0) st.li = snapIdx(JY_LEAD, st.li, ch.tones.map((m) => m % 12));
-              tone2(oc, { f: m2f(JY_LEAD[st.li]), dur: sd * 2, wave: "pulse12", vol: 0.035, vib: [6, 4], a: 4e-3, shape: "sus", r: 0.05 });
+              tone4(oc, { f: m2f(JY_LEAD[st.li]), dur: sd * 2, wave: "pulse12", vol: 0.035, vib: [6, 4], a: 4e-3, shape: "sus", r: 0.05 });
             }
           }
         },
@@ -20227,7 +20607,7 @@ void main() {
               if (chance(0.3)) INS.glass(o, m, 0.022, 0.9, 3, 0.9);
             }
             if (s === 4 && bar % 8 === 6 && chance(0.6)) {
-              tone2(o, { f: m2f(pick([26, 33])), dur: 7, type: "triangle", vol: 0.08, a: 3, shape: "sus", r: 3, verb: 0.3 });
+              tone4(o, { f: m2f(pick([26, 33])), dur: 7, type: "triangle", vol: 0.08, a: 3, shape: "sus", r: 3, verb: 0.3 });
               noise(o, { dur: 7, type: "lowpass", f: 200, color: "brown", vol: 0.15, a: 3, shape: "lin", verb: 0.3 });
             }
           }
@@ -20247,7 +20627,7 @@ void main() {
               }
               st.ch = FJ_CH[st.prog[bar % 4]];
               for (const m of st.ch.pad) INS.pad(tr.o(t, null, 0.6), m, sd * 16 + 1, night ? 0.012 : 0.015, night ? 700 : 1100, 0, 1.4, 1.6, "triangle");
-              tone2(tr.o(t), { f: m2f(st.ch.root), dur: sd * 12, vol: 0.07, a: 0.2, shape: "sus", r: 1 });
+              tone4(tr.o(t), { f: m2f(st.ch.root), dur: sd * 12, vol: 0.07, a: 0.2, shape: "sus", r: 1 });
             }
             const ch = st.ch;
             if (!ch) return;
@@ -20258,7 +20638,7 @@ void main() {
             }
             if (chance(night ? 0.06 : 0.1)) INS.glass(o, pick(ch.arp) + 12, 0.025, 0, 3, 0.85);
             if (s === 8 && chance(0.4)) INS.musicbox(o, pick(ch.arp), 0.04, 0, 2, 0.6);
-            if ((aurora || night) && s === 0 && bar % 2 === 0) for (const m of ch.arp.slice(0, 3)) tone2(tr.o(t, null, 0.9), { f: m2f(m + 12), dur: sd * 30, vol: aurora ? 0.016 : 9e-3, a: 2.4, shape: "sus", r: 2.5, vib: [0.3, 2] });
+            if ((aurora || night) && s === 0 && bar % 2 === 0) for (const m of ch.arp.slice(0, 3)) tone4(tr.o(t, null, 0.9), { f: m2f(m + 12), dur: sd * 30, vol: aurora ? 0.016 : 9e-3, a: 2.4, shape: "sus", r: 2.5, vib: [0.3, 2] });
             if (s === 12 && !night) noise(o, { dur: 0.6, type: "highpass", f: 8e3, vol: 0.02, a: 0.2 });
           }
         },
@@ -20291,16 +20671,16 @@ void main() {
             const o = tr.o(t);
             const pat = erupt ? [1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0] : [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0];
             if (pat[s] && (!night || s === 0 || erupt)) {
-              tone2(o, { f: 90, f2: 42, glide: 0.18, dur: 0.6, vol: s === 0 ? 0.3 : 0.2, a: 2e-3 });
+              tone4(o, { f: 90, f2: 42, glide: 0.18, dur: 0.6, vol: s === 0 ? 0.3 : 0.2, a: 2e-3 });
               noise(o, { dur: 0.08, type: "lowpass", f: 900, color: "pink", vol: 0.12, a: 1e-3 });
             }
             if (s % 2 === 0) {
               const n2 = VO_RIFF[s / 2 % 8];
-              if (n2 !== void 0 && (s % 4 === 0 || chance(0.6))) tone2(o, { f: m2f(ch.root + 12 + n2), dur: sd * 1.8, type: "sawtooth", vol: 0.05, a: 0.01, shape: "sus", r: 0.08, filt: { type: "lowpass", f: 380, f2: 900, glide: sd } });
+              if (n2 !== void 0 && (s % 4 === 0 || chance(0.6))) tone4(o, { f: m2f(ch.root + 12 + n2), dur: sd * 1.8, type: "sawtooth", vol: 0.05, a: 0.01, shape: "sus", r: 0.08, filt: { type: "lowpass", f: 380, f2: 900, glide: sd } });
             }
             if (s === 10 && chance(erupt ? 0.8 : 0.35)) fm(o, { f: m2f(pick([64, 65, 71])), ratio: 1.41, index: 3.5, index2: 0.2, idur: 0.15, dur: 1.8, vol: 0.05, verb: 0.6 });
-            if (s === 4 && bar % 4 === 2 && chance(0.6)) tone2(o, { f: m2f(pick([76, 77, 79])), dur: 3, type: "triangle", vol: 0.025, a: 0.4, shape: "sus", r: 1.2, vib: [4, 6], verb: 0.7 });
-            if (magma && s % 8 === 6) tone2(o, { f: m2f(40), f2: m2f(52), glide: sd * 4, dur: sd * 4, type: "sawtooth", vol: 0.03, filt: { type: "lowpass", f: 600 } });
+            if (s === 4 && bar % 4 === 2 && chance(0.6)) tone4(o, { f: m2f(pick([76, 77, 79])), dur: 3, type: "triangle", vol: 0.025, a: 0.4, shape: "sus", r: 1.2, vib: [4, 6], verb: 0.7 });
+            if (magma && s % 8 === 6) tone4(o, { f: m2f(40), f2: m2f(52), glide: sd * 4, dur: sd * 4, type: "sawtooth", vol: 0.03, filt: { type: "lowpass", f: 600 } });
           }
         },
         // synthwave noir: gated minor-7th pads, octave-jumping saw bass, gated snare, a smoky FM sax lead
@@ -20324,8 +20704,8 @@ void main() {
             const o = tr.o(t);
             if (black) {
               if (s === 0) for (const m of ch.pad) INS.pad(tr.o(t, null, 0.6), m, sd * 16, 0.012, 600, 0, 1, 1.5);
-            } else if (s % 2 === 0) for (const m of ch.pad) tone2(tr.o(t, null, 0.35), { f: m2f(m), dur: sd * 1.4, type: "sawtooth", unison: [-9, 9], vol: night ? 9e-3 : 0.011, a: 0.01, shape: "sus", r: 0.06, filt: { type: "lowpass", f: night ? 1200 : 1800, q: 1.5 } });
-            if (!black && s % 2 === 0) tone2(o, { f: m2f(ch.root - 12 + (s % 4 === 2 ? 12 : 0)), dur: sd * 1.6, type: "sawtooth", vol: 0.07, a: 4e-3, shape: "sus", r: 0.04, filt: { type: "lowpass", f: 520, q: 3 } });
+            } else if (s % 2 === 0) for (const m of ch.pad) tone4(tr.o(t, null, 0.35), { f: m2f(m), dur: sd * 1.4, type: "sawtooth", unison: [-9, 9], vol: night ? 9e-3 : 0.011, a: 0.01, shape: "sus", r: 0.06, filt: { type: "lowpass", f: night ? 1200 : 1800, q: 1.5 } });
+            if (!black && s % 2 === 0) tone4(o, { f: m2f(ch.root - 12 + (s % 4 === 2 ? 12 : 0)), dur: sd * 1.6, type: "sawtooth", vol: 0.07, a: 4e-3, shape: "sus", r: 0.04, filt: { type: "lowpass", f: 520, q: 3 } });
             if (!black) {
               if (s === 0 || s === 8 || s === 11 && !night) INS.kick(o, 0.24);
               if (s === 4 || s === 12) {
@@ -20333,7 +20713,7 @@ void main() {
               }
               if (rush ? true : s % 2 === 0) INS.hat(o, (s % 4 === 2 ? 0.07 : 0.045) * (night ? 0.7 : 1), 0, s === 14 && chance(0.3));
             }
-            if (storm && s === 15 && chance(0.5)) for (let k = 0; k < 4; k++) tone2(o, { at: k * sd / 4, f: m2f(pick(ch.pad) + 24), dur: sd * 0.2, wave: "pulse12", vol: 0.03 });
+            if (storm && s === 15 && chance(0.5)) for (let k = 0; k < 4; k++) tone4(o, { at: k * sd / 4, f: m2f(pick(ch.pad) + 24), dur: sd * 0.2, wave: "pulse12", vol: 0.03 });
             const ri = bar % 2 * 16 + s;
             if (st.rhythm[ri] && (night || black || bar % 4 >= 2)) {
               let idx = st.motif[ri];
@@ -20354,7 +20734,7 @@ void main() {
               st.ch = AQ_CH[st.prog[bar % 4]];
               const po = tr.o(t, null, 0.4);
               for (const m of st.ch) INS.pad(po, m, sd * 6 + 0.8, night ? 0.016 : 0.02, night ? 500 : 850, 0, 0.8, 1.2, "triangle");
-              tone2(tr.o(t), { f: m2f(st.ch[0] - 12), dur: 1.4, vol: 0.09, a: 0.02 });
+              tone4(tr.o(t), { f: m2f(st.ch[0] - 12), dur: 1.4, vol: 0.09, a: 0.02 });
             }
             const ch = st.ch;
             if (!ch) return;
@@ -21729,9 +22109,9 @@ void main() {
     const depth = pooled("depth", Float32Array, N2);
     const hitU = pooled("hitU", Float32Array, N2), hitV = pooled("hitV", Float32Array, N2);
     traceRays(model, b, cam, vol, hitVox, hitN, depth, hitU, hitV);
-    const tone4 = pooled("tone", Float32Array, N2), edgeMul = pooled("edgeMul", Float32Array, N2);
+    const tone5 = pooled("tone", Float32Array, N2), edgeMul = pooled("edgeMul", Float32Array, N2);
     const faceTone = faceTones(cam, opts.light);
-    shadeHits(model, cam, vol, opts, faceTone, hitVox, hitN, hitU, hitV, tone4, edgeMul);
+    shadeHits(model, cam, vol, opts, faceTone, hitVox, hitN, hitU, hitV, tone5, edgeMul);
     const edgeBoost = pooled("edgeBoost", Float32Array, N2).fill(0);
     const sideMark = pooled("sideMark", Uint8Array, N2).fill(0);
     edgeHighlights(cam, opts, hitN, depth, edgeMul, edgeBoost, sideMark);
@@ -21740,7 +22120,7 @@ void main() {
     const glowBuf = cam.hasEmissive ? new Uint32Array(N2) : null;
     const ids = new Uint8Array(N2);
     const level = pooled("level", Int8Array, N2).fill(-1);
-    quantize(model, N2, hitVox, hitN, tone4, edgeBoost, ramps, out, glowBuf, ids, level);
+    quantize(model, N2, hitVox, hitN, tone5, edgeBoost, ramps, out, glowBuf, ids, level);
     if (opts.keepVoxel) {
       const { nx, ny } = model;
       for (let p = 0; p < N2; p++) {
@@ -21989,7 +22369,7 @@ void main() {
       return light.dark + (light.lit - light.dark) * ((n2[0] * hlx + n2[2] * hlz + 1) / 2);
     }));
   }
-  function shadeHits(model, cam, vol, opts, faceTone, hitVox, hitN, hitU, hitV, tone4, edgeMul) {
+  function shadeHits(model, cam, vol, opts, faceTone, hitVox, hitN, hitU, hitV, tone5, edgeMul) {
     const { nx, ny, nz, data, palette: palette3 } = model;
     const { occ, SY, SZ } = vol;
     const N2 = cam.N;
@@ -22095,7 +22475,7 @@ void main() {
           if (hd > 0) ft += Math.pow(hd, pPow[v]) * pSpec[v];
         }
       }
-      tone4[p] = ft + pLight[v] + hj - (1 - ao) * pAo[v];
+      tone5[p] = ft + pLight[v] + hj - (1 - ao) * pAo[v];
       edgeMul[p] = pEdge[v];
     }
     for (let i = 0; i < snCount; i++) snCache[snKeys[i]] = 0;
@@ -22126,7 +22506,7 @@ void main() {
       }
     }
   }
-  function quantize(model, N2, hitVox, hitN, tone4, edgeBoost, ramps, out, glowBuf, ids, level) {
+  function quantize(model, N2, hitVox, hitN, tone5, edgeBoost, ramps, out, glowBuf, ids, level) {
     const { data, palette: palette3 } = model;
     const P6 = palette3.length;
     const pEm = new Float32Array(P6), pLight = new Float32Array(P6);
@@ -22140,7 +22520,7 @@ void main() {
       if (hv < 0) continue;
       const v = data[hv];
       ids[p] = v;
-      let tn = tone4[p] + edgeBoost[p];
+      let tn = tone5[p] + edgeBoost[p];
       const em = pEm[v];
       if (em > 0) {
         const nid = hitN[p];
@@ -36576,8 +36956,8 @@ void main() {
     let c = outCache2.get(n2);
     if (c === void 0) {
       const [r, g, b] = unpack(n2);
-      const lum = (r * 0.3 + g * 0.59 + b * 0.11) / 255;
-      c = pk3(mix(shade(rgbToHex(r, g, b), -0.82), OUT_INK, 0.45 + Math.max(0, lum - 0.6) * 0.9));
+      const lum2 = (r * 0.3 + g * 0.59 + b * 0.11) / 255;
+      c = pk3(mix(shade(rgbToHex(r, g, b), -0.82), OUT_INK, 0.45 + Math.max(0, lum2 - 0.6) * 0.9));
       outCache2.set(n2, c);
     }
     return c;
@@ -47987,7 +48367,7 @@ ${hearts} ${status}
         f = flipped(reefSprite(seed, themeId, opts, k));
         spriteCache.set(key + "|flip", f);
       }
-      return withHi(f, () => reefSprite(seed, themeId, opts, k * 2, true), () => reefSpriteSteps(seed, themeId, opts, k * 2, true));
+      return withHi2(f, () => reefSprite(seed, themeId, opts, k * 2, true), () => reefSpriteSteps(seed, themeId, opts, k * 2, true));
     }
     let s = spriteCache.get(key);
     if (!s) {
@@ -47996,7 +48376,7 @@ ${hearts} ${status}
       s = renderCoral(reefFormation(seed, theme, o), 1, theme);
       spriteCache.set(key, s);
     }
-    return withHi(s, () => reefSprite(seed, themeId, opts, k * 2), () => reefSpriteSteps(seed, themeId, opts, k * 2, false));
+    return withHi2(s, () => reefSprite(seed, themeId, opts, k * 2), () => reefSpriteSteps(seed, themeId, opts, k * 2, false));
   }
   function coralSprite(kind2, seed, themeId, size, k = 1) {
     const key = kind2 + "|" + seed + "|" + themeId + "|" + size + "|" + k;
@@ -48006,7 +48386,7 @@ ${hearts} ${status}
       s = renderCoral(coralModel(kind2, seed, theme, size * k), 1, theme);
       spriteCache.set(key, s);
     }
-    return withHi(s, () => coralSprite(kind2, seed, themeId, size, k * 2), () => coralSpriteSteps(kind2, seed, themeId, size, k * 2));
+    return withHi2(s, () => coralSprite(kind2, seed, themeId, size, k * 2), () => coralSpriteSteps(kind2, seed, themeId, size, k * 2));
   }
   function* coralSpriteSteps(kind2, seed, themeId, size, k) {
     const key = kind2 + "|" + seed + "|" + themeId + "|" + size + "|" + k;
@@ -48035,7 +48415,7 @@ ${hearts} ${status}
     ctx2.globalCompositeOperation = po;
     ctx2.globalAlpha = pa;
   }
-  var THEMES, pickPal, SPECIES2, ANIMATED, animCache, spriteCache, flipped, withHi, CORAL_RENDER;
+  var THEMES, pickPal, SPECIES2, ANIMATED, animCache, spriteCache, flipped, withHi2, CORAL_RENDER;
   var init_coral = __esm({
     "src/world/coral.js"() {
       init_voxel();
@@ -48143,7 +48523,7 @@ ${hearts} ${status}
       animCache = /* @__PURE__ */ new Map();
       spriteCache = /* @__PURE__ */ new Map();
       flipped = (s) => ({ ...s, canvas: flipCanvas(s.canvas), night: s.night ? flipCanvas(s.night) : null, ox: s.canvas.width - s.ox });
-      withHi = (s, fn, steps = null) => {
+      withHi2 = (s, fn, steps = null) => {
         if (s && !s.hi) Object.defineProperty(s, "hi", { value: fn, enumerable: false, configurable: true });
         if (s && steps && !s.hiSteps) Object.defineProperty(s, "hiSteps", { value: steps, enumerable: false, configurable: true });
         return s;
@@ -48711,6 +49091,72 @@ ${hearts} ${status}
     capFan(mb, rows[n2 - 1], [L2 + 0.02, 0, 0], paint5, place, true);
     return place([L2 + 0.02, 0, 0]);
   }
+  function tubeRows(pts, r, M3 = 6, closed = false) {
+    const n2 = pts.length, rows = [];
+    for (let i = 0; i < n2; i++) {
+      const a = closed ? pts[(i - 1 + n2) % n2] : pts[Math.max(0, i - 1)], b = closed ? pts[(i + 1) % n2] : pts[Math.min(n2 - 1, i + 1)];
+      const T5 = norm5(sub2(b, a));
+      let b1 = cross4(T5, Math.abs(T5[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0]);
+      b1 = norm5(b1);
+      const b2 = cross4(T5, b1), row2 = [];
+      for (let j = 0; j < M3; j++) {
+        const f = j / M3 * TAU;
+        row2.push(add7(pts[i], add7(scl2(b1, Math.cos(f) * r), scl2(b2, Math.sin(f) * r))));
+      }
+      rows.push(row2);
+    }
+    if (closed) rows.push(rows[0]);
+    return rows;
+  }
+  function lensOf(sd) {
+    const q = eyeRest(sd), n2 = loafN(FACE.eyeX, FACE.eyeA * sd);
+    const c = add7(q, scl2(n2, GLASS.lift));
+    const u = norm5(cross4(n2, [0, 1, 0])), v = norm5(cross4(u, n2));
+    return { c, n: n2, u, v };
+  }
+  function rimToward(L2, dir) {
+    const a = dot2(dir, L2.u), b = dot2(dir, L2.v), l = Math.hypot(a, b) || 1;
+    return add7(L2.c, scl2(add7(scl2(L2.u, a / l), scl2(L2.v, b / l)), GLASS.R));
+  }
+  function addGlasses(mb, def2) {
+    const L2 = [lensOf(1), lensOf(-1)];
+    const paint5 = (L0) => (q) => q[1] > L0.c[1] + GLASS.R * 0.72 ? GLASS.hi : GLASS.col;
+    for (const Lk of L2) {
+      const ring = [];
+      for (let i = 0; i < 22; i++) {
+        const f = i / 22 * TAU;
+        ring.push(add7(Lk.c, add7(scl2(Lk.u, Math.cos(f) * GLASS.R), scl2(Lk.v, Math.sin(f) * GLASS.R))));
+      }
+      sheetMesh(mb, tubeRows(ring, GLASS.tube, 6, true), paint5(Lk), def2);
+    }
+    const a = rimToward(L2[0], sub2(L2[1].c, L2[0].c)), b = rimToward(L2[1], sub2(L2[0].c, L2[1].c));
+    const k = [Math.max(a[0], b[0]) + 0.05, (a[1] + b[1]) / 2 + 0.035, 0];
+    const br = [];
+    for (let i = 0; i <= 8; i++) {
+      const t = i / 8, s = 1 - t;
+      br.push(add7(add7(scl2(a, s * s), scl2(k, 2 * s * t)), scl2(b, t * t)));
+    }
+    sheetMesh(mb, tubeRows(br, GLASS.tube * 0.9, 6), () => GLASS.col, def2);
+    for (const sd of [1, -1]) {
+      const Lk = L2[sd > 0 ? 0 : 1];
+      const p0 = rimToward(Lk, [-0.6, 0.05, sd]);
+      const yT = p0[1] - 0.02, pts = [p0];
+      for (let i = 1; i <= 6; i++) {
+        const x = lerp(p0[0] - 0.04, GLASS.armX, i / 6);
+        let best = 0, bd = Infinity;
+        for (let s = 0; s <= 48; s++) {
+          const an = s / 48 * Math.PI * 0.6 * sd;
+          const d = Math.abs(loafPt(x, an)[1] - yT);
+          if (d < bd) {
+            bd = d;
+            best = an;
+          }
+        }
+        pts.push(add7(loafPt(x, best), scl2(loafN(x, best), GLASS.lift * 0.8)));
+      }
+      sheetMesh(mb, tubeRows(pts, GLASS.tube * 0.8, 5), () => GLASS.col, def2);
+    }
+  }
   function buildSeal(P6) {
     const mb = new PaintMesh();
     const def2 = bodyDeform(P6);
@@ -48728,6 +49174,7 @@ ${hearts} ${status}
     for (const sd of [1, -1]) sheetMesh(mb, ellRows([FACE.muzzle[0], FACE.muzzle[1], FACE.muzzle[2] * sd * (1 + P6.cheek * 0.2)], [0.095 * pk4, 0.085 * pk4, 0.1 * pk4], 10, 6), paintMuzzle, def2);
     sheetMesh(mb, ellRows([0.785, 0.395, 0], [0.07, 0.05, 0.085], 8, 5), paintMuzzle, def2);
     sheetMesh(mb, ellRows(FACE.nose, [0.034, 0.03, 0.05], 8, 5), paintNose, def2);
+    addGlasses(mb, def2);
     const shN = def2([SHOULDER[0] + 0.12 * P6.shN, SHOULDER[1] + 0.22 * P6.shN, SHOULDER[2] + 0.2 * P6.shN]);
     const shF = def2([SHOULDER[0] + 0.12 * P6.shF, SHOULDER[1] + 0.22 * P6.shF, -SHOULDER[2] - 0.2 * P6.shF]);
     const fw = [0.08, 0.12, 0.13, 0.1, 0.04], ft = [0.06, 0.05, 0.042, 0.034, 0.022];
@@ -48757,7 +49204,12 @@ ${hearts} ${status}
       }),
       brows: [1, -1].map((sd) => {
         const q = eyeP(sd);
-        return def2([q[0] - 0.02, q[1] + 0.11, q[2] * 0.97]);
+        return def2([q[0] - 0.03, q[1] + 0.225, q[2] * 0.97]);
+      }),
+      // [phase9:seal] above the frames
+      lens: [1, -1].map((sd) => {
+        const L2 = lensOf(sd);
+        return { p: def2(L2.c), n: nrmD(L2.c, L2.n), side: sd };
       }),
       nose: def2(FACE.nose),
       mouth: def2(FACE.mouth),
@@ -48801,6 +49253,10 @@ ${hearts} ${status}
         const n2 = rot2(e.n);
         return { p: pr(e.p), nz: n2[2], ang: Math.atan2(-n2[1], n2[0]), side: e.side };
       }),
+      lens: A2.lens.map((e) => {
+        const n2 = rot2(e.n);
+        return { p: pr(e.p), nz: n2[2], ang: Math.atan2(-n2[1], n2[0]), side: e.side };
+      }),
       brows: A2.brows.map(pr),
       nose: pr(A2.nose),
       mouth: pr(A2.mouth),
@@ -48815,6 +49271,46 @@ ${hearts} ${status}
       tail: pr(A2.tail),
       bottom: pr(A2.bottom)
     };
+  }
+  function outlineCells(canvas, cw, ch, passes) {
+    const W10 = canvas.width, H8 = canvas.height;
+    if (!W10 || !H8) return;
+    let g;
+    try {
+      g = canvas.getContext("2d", { willReadFrequently: true });
+    } catch {
+      return;
+    }
+    if (!g) return;
+    let img;
+    try {
+      img = g.getImageData(0, 0, W10, H8);
+    } catch {
+      return;
+    }
+    const d = img.data, solid2 = new Uint8Array(W10 * H8);
+    for (let i = 0, j = 3; i < solid2.length; i++, j += 4) solid2[i] = d[j] > 110 ? 1 : 0;
+    for (let pass = 0; pass < passes; pass++) {
+      const add9 = [];
+      for (let y = 0; y < H8; y++) {
+        const cy0 = Math.floor(y / ch) * ch, cy1 = cy0 + ch - 1;
+        for (let x = 0; x < W10; x++) {
+          const i = y * W10 + x;
+          if (solid2[i]) continue;
+          const cx0 = Math.floor(x / cw) * cw, cx1 = cx0 + cw - 1;
+          if (x > cx0 && solid2[i - 1] || x < cx1 && solid2[i + 1] || y > cy0 && solid2[i - W10] || y < cy1 && solid2[i + W10]) {
+            const j = i * 4;
+            d[j] = INK2[0];
+            d[j + 1] = INK2[1];
+            d[j + 2] = INK2[2];
+            d[j + 3] = 255;
+            add9.push(i);
+          }
+        }
+      }
+      for (const i of add9) solid2[i] = 1;
+    }
+    g.putImageData(img, 0, 0);
   }
   function buildSheet2(anim, size, view) {
     const A2 = SEAL_ANIMS[anim];
@@ -48840,6 +49336,7 @@ ${hearts} ${status}
     } catch (e) {
       canvas = null;
     }
+    if (canvas) outlineCells(canvas, cw, ch, SEAL_OUTLINE(size));
     for (const c of cells) c.mesh.dispose?.();
     return { canvas, cw, ch, cols, n: n2, frames, size, anim };
   }
@@ -49033,6 +49530,32 @@ ${hearts} ${status}
       ctx2.restore();
     }
     ctx2.globalAlpha = a0;
+    if (F.lens) for (const E of F.lens) {
+      if (E.nz < 0.08) continue;
+      const R4 = GLASS.R * s * 0.8;
+      ctx2.globalAlpha = a0 * clamp01(E.nz / 0.25);
+      ctx2.save();
+      ctx2.translate(E.p[0], E.p[1]);
+      ctx2.rotate(E.ang);
+      ctx2.scale(Math.max(0.35, E.nz), 1);
+      ctx2.rotate(-E.ang);
+      ctx2.fillStyle = "rgba(196,238,255,0.13)";
+      ellipse(ctx2, 0, 0, R4, R4);
+      ctx2.fill();
+      ctx2.strokeStyle = "rgba(255,255,255,0.92)";
+      ctx2.lineCap = "round";
+      ctx2.lineWidth = Math.max(FPX, R4 * 0.17);
+      ctx2.beginPath();
+      ctx2.arc(0, 0, R4 * 0.7, 1.06 * Math.PI, 1.36 * Math.PI);
+      ctx2.stroke();
+      if (R4 > FPX * 2.5) {
+        ctx2.fillStyle = "rgba(255,255,255,0.8)";
+        const d = Math.max(FPX, R4 * 0.13);
+        ctx2.fillRect(R4 * 0.42 - d / 2, R4 * 0.42 - d / 2, d, d);
+      }
+      ctx2.restore();
+    }
+    ctx2.globalAlpha = a0;
     if ((mood === "worried" || mood === "scared" || mood === "angry" || mood === "determined" || mood === "sad") && F.faceZ > 0.1) {
       ctx2.strokeStyle = "#59607a";
       ctx2.lineWidth = Math.max(FPX, er * 0.32);
@@ -49159,9 +49682,22 @@ ${hearts} ${status}
     g.beginPath();
     g.ellipse(X(0.9), Y(0.6), 0.06 * s, 0.045 * s, 0, 0, TAU);
     g.fill();
+    g.strokeStyle = "#1b1f2d";
+    g.lineWidth = Math.max(1, 0.05 * s);
+    for (const ex of [0.78, 0.6]) {
+      g.beginPath();
+      g.ellipse(X(ex), Y(0.75), GLASS.R * s * (ex > 0.7 ? 1 : 0.75), GLASS.R * s, 0, 0, TAU);
+      g.stroke();
+    }
+    g.beginPath();
+    g.moveTo(X(0.6) + GLASS.R * s * 0.75, Y(0.77));
+    g.quadraticCurveTo(X(0.69), Y(0.82), X(0.78) - GLASS.R * s, Y(0.77));
+    g.stroke();
+    outlineCells(c, w, h, SEAL_OUTLINE(s));
     const F = {
       eyes: [{ p: [X(0.78), Y(0.75)], nz: 0.9, ang: 0, side: 1 }, { p: [X(0.6), Y(0.75)], nz: 0.7, ang: 0, side: -1 }],
-      brows: [[X(0.78), Y(0.9)], [X(0.6), Y(0.9)]],
+      lens: [{ p: [X(0.78), Y(0.75)], nz: 0.9, ang: 0, side: 1 }, { p: [X(0.6), Y(0.75)], nz: 0.7, ang: 0, side: -1 }],
+      brows: [[X(0.78), Y(0.98)], [X(0.6), Y(0.98)]],
       nose: [X(0.9), Y(0.6)],
       mouth: [X(0.88), Y(0.47)],
       muzzle: [[X(0.94), Y(0.53)], [X(0.8), Y(0.53)]],
@@ -49383,7 +49919,7 @@ ${hearts} ${status}
       ctx2.fillRect(Math.round(from[0]), Math.round(from[1]) - s2, 1, s2 * 2 + 1);
     }
   }
-  var SEAL_INFO, add7, sub2, scl2, dot2, cross4, norm5, rx, ry, rz, h33, rgb2, mixC, lit, C2, LOOK, SEAL_VOXEL, LOAF, BODY_SEG, BODY_ROWS, PIV, HEADP, HEAD_C, EYE_R, FACE, SHOULDER, HIP, C0, CELL_W, CELL_H, PaintMesh, paintMuzzle, paintNose, S10, CO, POINT_E, SEAL_ANIMS, SEAL_ALIAS, SHEETS, budgetT, budgetN, SIZES2, FACESTATE, FPX, RIDE, FLAT, JIG, COMP, SealGuide;
+  var SEAL_INFO, add7, sub2, scl2, dot2, cross4, norm5, rx, ry, rz, h33, rgb2, mixC, lit, C2, LOOK, SEAL_VOXEL, LOAF, BODY_SEG, BODY_ROWS, PIV, HEADP, HEAD_C, EYE_R, FACE, SHOULDER, HIP, C0, CELL_W, CELL_H, PaintMesh, paintMuzzle, paintNose, GLASS, eyeRest, S10, CO, POINT_E, SEAL_ANIMS, SEAL_ALIAS, SHEETS, budgetT, budgetN, SIZES2, INK2, SEAL_OUTLINE, FACESTATE, FPX, RIDE, FLAT, JIG, COMP, SealGuide;
   var init_seal = __esm({
     "src/gfx/seal.js"() {
       init_lowpoly();
@@ -49487,6 +50023,11 @@ ${hearts} ${status}
       };
       paintMuzzle = (q) => lit(mixC(C2.muzzle, C2.chin, clamp01((0.45 - q[1]) * 6)), 1 + (h33(Math.round(q[0] * 30), Math.round(q[1] * 30), Math.round(q[2] * 30)) - 0.5) * 0.03);
       paintNose = (q) => q[1] > 0.545 && q[0] > 0.875 ? C2.noseHi : C2.nose;
+      GLASS = { R: 0.182, tube: 0.021, lift: 0.036, armX: 0.42, col: rgb2("#1b1f2d"), hi: rgb2("#3c4560") };
+      eyeRest = (sd) => {
+        const q = loafPt(FACE.eyeX, FACE.eyeA * sd);
+        return [q[0], q[1] + FACE.eyeY, q[2]];
+      };
       S10 = Math.sin;
       CO = Math.cos;
       POINT_E = [-90, -60, -30, 0, 30, 60, 90].map((d) => d * Math.PI / 180);
@@ -49628,6 +50169,8 @@ ${hearts} ${status}
       budgetT = -1e9;
       budgetN = 0;
       SIZES2 = [16, 20, 24, 28, 32, 36, 40, 44, 48, 56, 64, 72, 80, 96, 112, 128];
+      INK2 = [14, 16, 28];
+      SEAL_OUTLINE = (size) => size >= 52 ? 2 : 1;
       FACESTATE = /* @__PURE__ */ new Map();
       FPX = 1;
       RIDE = /* @__PURE__ */ new Map();
@@ -56066,7 +56609,7 @@ ${hearts} ${status}
           const h = base + 14 - skyY;
           this.skyH = h;
           const N2 = W10 * h;
-          const mat = new Uint8Array(N2), tone4 = new Float32Array(N2);
+          const mat = new Uint8Array(N2), tone5 = new Float32Array(N2);
           const far = ridge(W10, base - 98, 46, 0.012, 2.4, 4, 0.6);
           const peaks = [[0.27, 238, 0.17], [0.385, 158, 0.095], [0.675, 172, 0.11], [0.8, 248, 0.16], [0.555, 122, 0.075]];
           const mid = new Float32Array(W10 + 1), owner = new Int8Array(W10 + 1);
@@ -56107,12 +56650,12 @@ ${hearts} ${status}
                 const prot = nearRel(x, y);
                 if (fall) {
                   mat[i] = 11;
-                  tone4[i] = clamp01(0.55 + (fbm2(x * 0.6, y * 0.04, 2, 45) - 0.5) * 1.2 + (y > base - 6 ? 0.3 : 0));
+                  tone5[i] = clamp01(0.55 + (fbm2(x * 0.6, y * 0.04, 2, 45) - 0.5) * 1.2 + (y > base - 6 ? 0.3 : 0));
                   continue;
                 }
                 if (f < 0.05 && prot > 0.5 && fbm2(x * 0.09, y * 0.05, 2, 47) > 0.45) {
                   mat[i] = 7;
-                  tone4[i] = f < 0.03 ? 1 : 0.7;
+                  tone5[i] = f < 0.03 ? 1 : 0.7;
                   continue;
                 }
                 mat[i] = 6;
@@ -56122,7 +56665,7 @@ ${hearts} ${status}
                   mat[i] = y < base - 30 && hash2(x, y >> 2, 4) < 0.6 ? 7 : 6;
                   tn = left ? 0.75 : 0.95;
                 }
-                tone4[i] = clamp01(tn);
+                tone5[i] = clamp01(tn);
                 continue;
               }
               let berg = false;
@@ -56131,7 +56674,7 @@ ${hearts} ${status}
                 const tY = base - b.h * (1 - Math.pow(dd, 1.6)) - (hash2(Math.floor(x / 3), b.x, 2) < 0.3 ? 1 : 0);
                 if (dd < 1 && y >= tY && y <= base + 1) {
                   mat[i] = y < tY + 2 ? 9 : 8;
-                  tone4[i] = clamp01(0.6 + (x < b.x ? 0.25 : -0.2) + (fbm2(x * 0.3, y * 0.15, 2, 7) - 0.5) * 0.5);
+                  tone5[i] = clamp01(0.6 + (x < b.x ? 0.25 : -0.2) + (fbm2(x * 0.3, y * 0.15, 2, 7) - 0.5) * 0.5);
                   berg = true;
                   break;
                 }
@@ -56150,14 +56693,14 @@ ${hearts} ${status}
                 let snow = top0 < 2.5 || (alt > sl ? !(rc > 0.82 && dR < 0) : rc < 0.2 && alt > 0.12 && hash2(x, y, 53) < 0.9);
                 if (alt > sl && rc > 0.9) snow = false;
                 mat[i] = snow ? 3 : 2;
-                tone4[i] = clamp01((snow ? 0.62 : 0.5) + lit2 + (rc - 0.5) * 0.25 - (snow ? 0 : (1 - alt) * 0.15));
+                tone5[i] = clamp01((snow ? 0.62 : 0.5) + lit2 + (rc - 0.5) * 0.25 - (snow ? 0 : (1 - alt) * 0.15));
                 continue;
               }
               if (inGlacier) {
                 const cl = gCliff(x);
                 if (y >= cl) {
                   mat[i] = 5;
-                  tone4[i] = clamp01(0.5 + (fbm2(x * 0.55, y * 0.05, 2, 11) - 0.5) * 1.1 + (y < cl + 2 ? 0.5 : 0) - (y > base - 3 ? 0.35 : 0) + (x < gc ? 0.08 : -0.08));
+                  tone5[i] = clamp01(0.5 + (fbm2(x * 0.55, y * 0.05, 2, 11) - 0.5) * 1.1 + (y < cl + 2 ? 0.5 : 0) - (y > base - 3 ? 0.35 : 0) + (x < gc ? 0.08 : -0.08));
                 } else {
                   mat[i] = 4;
                   const u = (x - gc) / ghw;
@@ -56166,7 +56709,7 @@ ${hearts} ${status}
                   const fr = cv - Math.floor(cv);
                   const morain = Math.abs(u - Math.sin(k * 3) * 0.05) < 0.012 + k * 0.012 && hash2(x, y, 9) < 0.45;
                   const brk = fbm2(x * 0.09, y * 0.07, 2, 14) > 0.5;
-                  tone4[i] = morain ? -1 : brk && fr < 0.1 ? 0.12 : brk && fr < 0.2 ? 0.98 : clamp01(0.72 - k * 0.22 - u * 0.12 + (fbm2(x * 0.1, y * 0.1, 2, 13) - 0.5) * 0.2);
+                  tone5[i] = morain ? -1 : brk && fr < 0.1 ? 0.12 : brk && fr < 0.2 ? 0.98 : clamp01(0.72 - k * 0.22 - u * 0.12 + (fbm2(x * 0.1, y * 0.1, 2, 13) - 0.5) * 0.2);
                 }
                 continue;
               }
@@ -56174,7 +56717,7 @@ ${hearts} ${status}
                 const d = y - far[x];
                 const fx = ridged(x * 0.04 + y * 0.03, y * 0.012, 61), dF = ridged((x + 1) * 0.04 + y * 0.03, y * 0.012, 61) - ridged((x - 1) * 0.04 + y * 0.03, y * 0.012, 61);
                 mat[i] = d < 5 + fx * 16 ? 10 : 1;
-                tone4[i] = clamp01(0.55 + dF * 5 + (fx - 0.5) * 0.3 - d / 90);
+                tone5[i] = clamp01(0.55 + dF * 5 + (fx - 0.5) * 0.3 - d / 90);
               }
             }
           }
@@ -56232,7 +56775,7 @@ ${hearts} ${status}
             const pal2 = {};
             for (const k of ["far", "rock", "snow", "ice"]) pal2[k] = P6[k].map((c) => pack(c) >>> 0);
             return paint(W10, h, (x, row2) => {
-              const i = row2 * W10 + x, tn = tone4[i];
+              const i = row2 * W10 + x, tn = tone5[i];
               switch (mat[i]) {
                 case 1:
                   return ditherPick(pal2.far, tn * 0.75, x, row2);
@@ -56266,7 +56809,7 @@ ${hearts} ${status}
           const voxOf = (kind2) => {
             const v = voxelize2(mtnOf(kind2), { cell: 2, maxD: 14, alignZ: 6, depth: (r2, g, b, x, y) => {
               const i = y * W10 + x, mm = mat[i];
-              return mm ? DEPTH[mm] + Math.round(tone4[i] * 3) : 0;
+              return mm ? DEPTH[mm] + Math.round(tone5[i] * 3) : 0;
             } });
             const c = makeCanvas(W10, h);
             ctxOf(c).drawImage(v.canvas, -v.ox, -v.oy);
@@ -58550,7 +59093,7 @@ ${hearts} ${status}
           this.skyY = skyY;
           this.skyH = h;
           const N2 = W10 * h;
-          const mat = new Uint8Array(N2), tone4 = new Float32Array(N2);
+          const mat = new Uint8Array(N2), tone5 = new Float32Array(N2);
           const vx2 = W10 * 0.6, vTop = sy - 118, vW = W10 * 0.27;
           this.crater = { x: vx2, y: vTop + 6 };
           const cone = (x) => {
@@ -58575,7 +59118,7 @@ ${hearts} ${status}
                 if (d < 1 && y >= tY) {
                   mat[i] = 3;
                   const col = Math.floor((x - xf * W10 + 40) / 4);
-                  tone4[i] = clamp01(0.45 + (hash2(col, 1, 9) - 0.5) * 0.5 + ((x - xf * W10 + 40) % 4 === 0 ? -0.35 : 0) + (x < xf * W10 ? 0.15 : -0.1) + (y < tY + 2 ? 0.35 : 0));
+                  tone5[i] = clamp01(0.45 + (hash2(col, 1, 9) - 0.5) * 0.5 + ((x - xf * W10 + 40) % 4 === 0 ? -0.35 : 0) + (x < xf * W10 ? 0.15 : -0.1) + (y < tY + 2 ? 0.35 : 0));
                   stack = true;
                   break;
                 }
@@ -58593,18 +59136,18 @@ ${hearts} ${status}
                 }
                 if (lava && y > cy + 2) {
                   mat[i] = 2;
-                  tone4[i] = clamp01(0.75 - (y - vTop) / 260 + (fbm2(x * 0.3, y * 0.2, 2, 4) - 0.5) * 0.9);
+                  tone5[i] = clamp01(0.75 - (y - vTop) / 260 + (fbm2(x * 0.3, y * 0.2, 2, 4) - 0.5) * 0.9);
                   continue;
                 }
                 mat[i] = 1;
                 const R4 = 1 - Math.abs(fbm2((x + (x < vx2 ? 1 : -1) * (y - vTop) * 0.6) * 0.04, y * 0.012, 3, 11) * 2 - 1);
                 const dR = 1 - Math.abs(fbm2((x + 1 + (x < vx2 ? 1 : -1) * (y - vTop) * 0.6) * 0.04, y * 0.012, 3, 11) * 2 - 1) - R4;
-                tone4[i] = clamp01(0.4 + dR * 6 + (x < vx2 ? 0.12 : -0.12) + (R4 - 0.5) * 0.3 + (y < cy + 2 ? 0.25 : 0));
+                tone5[i] = clamp01(0.4 + dR * 6 + (x < vx2 ? 0.12 : -0.12) + (R4 - 0.5) * 0.3 + (y < cy + 2 ? 0.25 : 0));
                 continue;
               }
               if (y >= far[x]) {
                 mat[i] = 4;
-                tone4[i] = clamp01(0.4 - (y - far[x]) / 80 + (fbm2(x * 0.06, y * 0.06, 2, 13) - 0.5) * 0.4);
+                tone5[i] = clamp01(0.4 - (y - far[x]) / 80 + (fbm2(x * 0.06, y * 0.06, 2, 13) - 0.5) * 0.4);
               }
             }
           }
@@ -58630,7 +59173,7 @@ ${hearts} ${status}
             const P6 = VOLC[kind2];
             const rock2 = P6.rock.map((c) => pack(c) >>> 0), lava = P6.lava.map((c) => pack(c) >>> 0);
             return paint(W10, h, (x, row2) => {
-              const i = row2 * W10 + x, tn = tone4[i];
+              const i = row2 * W10 + x, tn = tone5[i];
               switch (mat[i]) {
                 case 1:
                   return ditherPick(rock2, tn, x, row2);
@@ -58650,7 +59193,7 @@ ${hearts} ${status}
           const vday = (() => {
             const v = voxelize2(mtnOf("day"), { cell: 2, maxD: 10, alignZ: 5, depth: (r2, g, b, x, y) => {
               const i = y * W10 + x;
-              return mat[i] ? MD[mat[i]] + Math.round(tone4[i] * 2) : 0;
+              return mat[i] ? MD[mat[i]] + Math.round(tone5[i] * 2) : 0;
             } });
             const c = makeCanvas(W10, h);
             ctxOf(c).drawImage(v.canvas, -v.ox, -v.oy);
@@ -65254,12 +65797,13 @@ ${hearts} ${status}
   });
 
   // src/game/camera.js
-  var ZOOM, CINE_K, SURF_AT, Camera;
+  var ZOOM, ZOOM_V, CINE_K, SURF_AT, Camera;
   var init_camera = __esm({
     "src/game/camera.js"() {
       init_math();
-      ZOOM = { min: 2, max: 4.5, def: 3 };
-      CINE_K = 0.3;
+      ZOOM = { min: 1.5, max: 3.5, def: 2 };
+      ZOOM_V = 9;
+      CINE_K = 0.5;
       SURF_AT = 0.66;
       Camera = class {
         constructor(game) {
@@ -65338,10 +65882,11 @@ ${hearts} ${status}
         // ---- zoom setting
         baseZoom() {
           const st = this.game.state?.settings;
-          if (st && st.zoomV !== 6) {
+          if (st && st.zoomV !== ZOOM_V) {
             const z0 = Number(st.zoom);
-            if (Number.isFinite(z0) && z0 > 0) st.zoom = Math.round(clamp(z0 * 1.5, ZOOM.min, ZOOM.max) * 20) / 20;
-            st.zoomV = 6;
+            if (Number.isFinite(z0) && z0 > 0) st.zoom = Math.round(clamp(st.zoomV === 6 ? z0 * (ZOOM.def / 3) : z0, ZOOM.min, ZOOM.max) * 20) / 20;
+            else delete st.zoom;
+            st.zoomV = ZOOM_V;
           }
           const z = Number(st?.zoom);
           return Number.isFinite(z) && z > 0 ? clamp(z, ZOOM.min, ZOOM.max) : ZOOM.def;
@@ -65964,11 +66509,11 @@ ${hearts} ${status}
   }
   function drawButton(ctx2, x, y, w, h, opts = {}) {
     const style = opts.style || "wood";
-    let tone4 = STYLE_TONE[style] || style;
+    let tone5 = STYLE_TONE[style] || style;
     const closeBtn = !opts.label && opts.icon === "cross";
-    if (closeBtn) tone4 = "red";
+    if (closeBtn) tone5 = "red";
     const ic = iconOf(opts.icon);
-    drawAeroButton(ctx2, x, y, w, h, { label: opts.label, icon: ic, state: opts.state || "normal", tone: tone4, font: opts.font, fixedFont: opts.fixedFont, align: opts.align, radius: closeBtn ? Math.floor(Math.min(w, h) / 2) : void 0 });
+    drawAeroButton(ctx2, x, y, w, h, { label: opts.label, icon: ic, state: opts.state || "normal", tone: tone5, font: opts.font, fixedFont: opts.fixedFont, align: opts.align, radius: closeBtn ? Math.floor(Math.min(w, h) / 2) : void 0 });
   }
   function drawSlider(ctx2, x, y, w, value, opts = {}) {
     x = Math.round(x);
@@ -65999,8 +66544,8 @@ ${hearts} ${status}
     const c = aeroCached(`toggle|${!!on}|${hov}`, () => {
       const cc = makeCanvas(TOGGLE_W, TOGGLE_H);
       const g = ctxOf(cc);
-      const tone4 = on ? hov ? { ...toneOf("green"), top: "#eaffc0" } : "green" : hov ? { ...toneOf("glass"), bot: "#a8d8f0" } : { ...toneOf("glass"), bot: "#9cc4dc", mid: "#d4ecf8" };
-      g.drawImage(aeroSurface(TOGGLE_W, 14, { tone: tone4, r: "pill", gloss: 0.7, glossH: 6, curve: 1, rim: 0.7, glow: 0.6, inset: !on }), 0, 4);
+      const tone5 = on ? hov ? { ...toneOf("green"), top: "#eaffc0" } : "green" : hov ? { ...toneOf("glass"), bot: "#a8d8f0" } : { ...toneOf("glass"), bot: "#9cc4dc", mid: "#d4ecf8" };
+      g.drawImage(aeroSurface(TOGGLE_W, 14, { tone: tone5, r: "pill", gloss: 0.7, glossH: 6, curve: 1, rim: 0.7, glow: 0.6, inset: !on }), 0, 4);
       g.fillStyle = on ? "rgba(255,255,255,0.9)" : "rgba(60,111,136,0.7)";
       if (on) g.fillRect(8, 8, 1, 6);
       else {
@@ -66032,7 +66577,7 @@ ${hearts} ${status}
     const font = opts.fixedFont ? opts.font || "normal" : uiFont(opts.font || "normal");
     const big = font === "big";
     const { w, h, lines, lh } = tooltipSize(text, opts);
-    const CW = ctx2.canvas.width, CH = ctx2.canvas.height;
+    const CW = ctx2.logicalW ?? ctx2.canvas.width, CH = ctx2.logicalH ?? ctx2.canvas.height;
     let tx = Math.round(x + 12), ty = Math.round(y + 14);
     if (tx + w > CW - 3) tx = Math.round(x - w - 6);
     if (ty + h > CH - 4) ty = Math.round(y - h - 8);
@@ -66054,8 +66599,8 @@ ${hearts} ${status}
     const hov = !active && !!opts.hover;
     const dy = active ? 0 : hov ? 2 : 3;
     const th = h - dy;
-    const tone4 = active ? toneFrom(color) : hov ? { ...toneOf("clear"), top: "#ffffff", a: [0.85, 0.7] } : toneOf("clear");
-    const c = aeroCached(`tab|${w}|${th}|${color}|${active}|${hov}`, () => aeroSurface(w, th, { tone: tone4, r: Math.min(6, Math.floor(th / 2)), shape: "tab", gloss: active ? 0.7 : 0.5, glossH: Math.round(th * 0.48), curve: 1, rim: 0.8, glow: 0.4 }));
+    const tone5 = active ? toneFrom(color) : hov ? { ...toneOf("clear"), top: "#ffffff", a: [0.85, 0.7] } : toneOf("clear");
+    const c = aeroCached(`tab|${w}|${th}|${color}|${active}|${hov}`, () => aeroSurface(w, th, { tone: tone5, r: Math.min(6, Math.floor(th / 2)), shape: "tab", gloss: active ? 0.7 : 0.5, glossH: Math.round(th * 0.48), curve: 1, rim: 0.8, glow: 0.4 }));
     ctx2.drawImage(c, x, y + dy);
     const ic = iconOf(opts.icon);
     const label3 = opts.label || "";
@@ -66076,13 +66621,13 @@ ${hearts} ${status}
     y = Math.round(y);
     w = Math.round(w);
     h = Math.round(h);
-    const tone4 = opts.tone === "dark" ? "dark" : "aqua";
+    const tone5 = opts.tone === "dark" ? "dark" : "aqua";
     ctx2.fillStyle = "rgba(191,244,255,0.25)";
     ctx2.fillRect(x + 4, y - 1, w - 8, h + 2);
-    ctx2.drawImage(aeroCached(`plank|${w}|${h}|${tone4}`, () => aeroSurface(w, h, { tone: tone4, r: Math.floor(h / 2), gloss: 0.8, glossH: Math.round(h * 0.46), curve: 2, rim: 0.85, glow: 0.7, sparkle: w > 50 ? 1 : 0 })), x, y);
+    ctx2.drawImage(aeroCached(`plank|${w}|${h}|${tone5}`, () => aeroSurface(w, h, { tone: tone5, r: Math.floor(h / 2), gloss: 0.8, glossH: Math.round(h * 0.46), curve: 2, rim: 0.85, glow: 0.7, sparkle: w > 50 ? 1 : 0 })), x, y);
     if (opts.label) {
       const font = fitFont(opts.label, "normal", w - 12, h - 8);
-      drawText(ctx2, opts.label, x + Math.round(w / 2), y + Math.round((h - capH(font)) / 2), { font, align: "center", color: "#ffffff", shadow: toneOf(tone4).shadow });
+      drawText(ctx2, opts.label, x + Math.round(w / 2), y + Math.round((h - capH(font)) / 2), { font, align: "center", color: "#ffffff", shadow: toneOf(tone5).shadow });
     }
     return { x: x + 4, y: y + 6, w: w - 8, h: h - 9 };
   }
@@ -68643,7 +69188,7 @@ ${hearts} ${status}
     if (font === "big" && measureText(t, font) > w - ic.width - 15) font = "normal";
     while (t.length > 2 && measureText(t, font) > w - ic.width - 15) t = t.slice(0, -1);
     if (t !== String(text)) t = t.slice(0, -1) + ".";
-    drawText(ctx2, t, x + ic.width + 10, y + Math.round((h - capH(font)) / 2), { font, color: o.color || INK2 });
+    drawText(ctx2, t, x + ic.width + 10, y + Math.round((h - capH(font)) / 2), { font, color: o.color || INK3 });
   }
   function heartPip(on) {
     return aeroCached(`hpip|${on}`, () => {
@@ -68682,7 +69227,7 @@ ${hearts} ${status}
     else if (s.requires) bits.push("special bait");
     return `${B2?.name || "Somewhere"}${bits.length ? " - " + bits.join(", ") : ""}`;
   }
-  var BIGUI, F1, F2, BIOMES2, BIOME_BY_ID, INK2, INK_SOFT, INK_FAINT, SIL, TYPE_ICON, TYPE_NAME, PHASES, MUT_COLOR, ACTIVITY, WEATHER_HINT, boxCache, CHIP_H, JournalPanel;
+  var BIGUI, F1, F2, BIOMES2, BIOME_BY_ID, INK3, INK_SOFT, INK_FAINT, SIL, TYPE_ICON, TYPE_NAME, PHASES, MUT_COLOR, ACTIVITY, WEATHER_HINT, boxCache, CHIP_H, JournalPanel;
   var init_journal = __esm({
     "src/ui/journal.js"() {
       init_math();
@@ -68715,7 +69260,7 @@ ${hearts} ${status}
         { id: "abyss", name: "The Deep Ocean", tab: "Deep", color: "#4a5ad8", icon: "moon", water: ["#6a8ae0", "#101a5a"] }
       ];
       BIOME_BY_ID = Object.fromEntries(BIOMES2.map((b) => [b.id, b]));
-      INK2 = AERO.ink;
+      INK3 = AERO.ink;
       INK_SOFT = AERO.inkSoft;
       INK_FAINT = AERO.inkFaint;
       SIL = "#0e3a5e";
@@ -68919,7 +69464,7 @@ ${hearts} ${status}
           const ic = getUiIcon(B2.icon, big ? 2 : 1);
           const hy = L2.y + (big ? 7 : 8);
           ctx2.drawImage(ic, L2.x + 8, hy + Math.round((capH(f1) - ic.height) / 2) + (big ? 1 : 0));
-          drawText(ctx2, B2.name, L2.x + 13 + ic.width, hy + 1, { font: f1, color: INK2, shadow: "#ffffff" });
+          drawText(ctx2, B2.name, L2.x + 13 + ic.width, hy + 1, { font: f1, color: INK3, shadow: "#ffffff" });
           const cw = measureText(`${caught}/${list.length}`, f2);
           drawAeroBar(ctx2, L2.x + L2.w - cw - 70, hy + 1 + Math.round((capH(f1) - 7) / 2), 54, big ? 9 : 7, caught / Math.max(1, list.length), { color: B2.color });
           drawText(ctx2, `${caught}/${list.length}`, L2.x + L2.w - 8, hy + 1 + Math.round((capH(f1) - capH(f2)) / 2), { align: "right", font: f2, color: INK_SOFT });
@@ -69034,7 +69579,7 @@ ${hearts} ${status}
           ctx2.globalAlpha = 0.35 + 0.65 * pop;
           const name = caught ? sp.name : "???";
           const nf = BU2 && measureText(name, "big", 2) <= w - 40 ? ["big", 2] : measureText(name, "normal", 2) <= w - 40 ? ["normal", 2] : [f1, 1];
-          drawText(ctx2, name, x, y, { font: nf[0], scale: nf[1], color: INK2, shadow: "#ffffff", wave: caught && sp.rarity === "legendary" ? 1 : 0, time: this.t });
+          drawText(ctx2, name, x, y, { font: nf[0], scale: nf[1], color: INK3, shadow: "#ffffff", wave: caught && sp.rarity === "legendary" ? 1 : 0, time: this.t });
           const list = this.list(sp.biome);
           drawText(ctx2, `#${String(list.indexOf(sp) + 1).padStart(2, "0")}`, x + w, y + 2, { align: "right", font: f2, color: INK_FAINT });
           y += capH(nf[0]) * nf[1] + 5;
@@ -69052,7 +69597,7 @@ ${hearts} ${status}
             ctx2.drawImage(aeroCached(`dexrar|${rw}|${rh}|${sp.rarity}`, () => aeroSurface(rw, rh, { tone: toneFrom(rar.color), r: "pill", gloss: 0.8, glossH: Math.round(rh * 0.45), curve: 1, rim: 0.7, glow: 0.6 })), x + 60, y - 1);
             if (gem) ctx2.drawImage(gem, x + 60 + 2, y - 1 + Math.round((rh - gem.height) / 2));
             const lightPill = luminance(rar.color) > 0.62;
-            drawText(ctx2, rl, x + 66 + gw, y - 1 + Math.round((rh - capH(rf)) / 2), { font: rf, color: lightPill ? INK2 : "#ffffff", shadow: lightPill ? null : shade(rar.color, -0.6) });
+            drawText(ctx2, rl, x + 66 + gw, y - 1 + Math.round((rh - capH(rf)) / 2), { font: rf, color: lightPill ? INK3 : "#ffffff", shadow: lightPill ? null : shade(rar.color, -0.6) });
             if (j?.variants?.shiny) chip3(ctx2, x + w - (BU2 ? 72 : 58), y - 3, BU2 ? 72 : 58, "sparkle", "Shiny", { tone: "orange", color: "#ffffff" });
           }
           y += BU2 ? 17 : 14;
@@ -69242,16 +69787,16 @@ ${hearts} ${status}
     const g = ctxOf(c);
     const img = g.createImageData(w, h);
     const o = img.data;
-    const lum = (i) => d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11;
+    const lum2 = (i) => d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11;
     const A2 = (x, y) => x < 0 || y < 0 || x >= w || y >= h ? 0 : d[(y * w + x) * 4 + 3];
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const i = (y * w + x) * 4;
       if (d[i + 3] < 100) continue;
-      const L2 = lum(i);
+      const L2 = lum2(i);
       let edge = A2(x - 1, y) < 100 || A2(x + 1, y) < 100 || A2(x, y - 1) < 100 || A2(x, y + 1) < 100;
       if (!edge) for (const [ox, oy] of [[1, 0], [0, 1]]) {
         const j = ((y + oy) * w + x + ox) * 4;
-        if (Math.abs(lum(j) - L2) > 52) edge = true;
+        if (Math.abs(lum2(j) - L2) > 52) edge = true;
       }
       let r, gg, b;
       if (edge) {
@@ -71796,7 +72341,7 @@ ${hearts} ${status}
       ctx2.drawImage(ic, Math.round(cx), Math.round(y + (h - ic.height) / 2));
       cx += ic.width + 3;
     }
-    if (text) drawText(ctx2, text, cx, y + 5, { font: "small", color: o.color || INK3 });
+    if (text) drawText(ctx2, text, cx, y + 5, { font: "small", color: o.color || INK4 });
     return w;
   }
   function costTilesHeight(n2, w, tileW = 58) {
@@ -71896,7 +72441,7 @@ ${hearts} ${status}
       return false;
     }
   }
-  var INK3, INK_SOFT2, OK, BAD, BUCKETS, bucket, budget2, frameStart, now5, warmList, warmI, thumbSp;
+  var INK4, INK_SOFT2, OK, BAD, BUCKETS, bucket, budget2, frameStart, now5, warmList, warmI, thumbSp;
   var init_labkit = __esm({
     "src/ui/labkit.js"() {
       init_font();
@@ -71910,7 +72455,7 @@ ${hearts} ${status}
       init_species();
       init_spritecache();
       init_fishrig();
-      INK3 = "#0c3a52";
+      INK4 = "#0c3a52";
       INK_SOFT2 = "#3c6f88";
       OK = "#1f9a3a";
       BAD = "#e0384a";
@@ -74424,7 +74969,7 @@ ${hearts} ${status}
     }
     return false;
   }
-  var INK4, INK_SOFT3, AQUA4, GRASS3, WA;
+  var INK5, INK_SOFT3, AQUA4, GRASS3, WA;
   var init_aerokit2 = __esm({
     "src/store/aerokit.js"() {
       init_font();
@@ -74432,7 +74977,7 @@ ${hearts} ${status}
       init_canvas();
       init_math();
       init_aero();
-      INK4 = "#0c3a52";
+      INK5 = "#0c3a52";
       INK_SOFT3 = "#3c6f88";
       AQUA4 = "#2fd3e8";
       GRASS3 = "#5cc832";
@@ -79305,8 +79850,8 @@ ${hearts} ${status}
           if (Math.abs(v) > half) continue;
           const px2 = x + ux * u - uy * v, py = y + uy * u + ux * v;
           const zc = 4 + Math.round((1 - (v / lw) ** 2) * 2);
-          const tone4 = Math.abs(v) < 0.6 && u < ll * 0.9 ? mid : v * side > 0 ? tones[1] : Math.abs(v) > half - 0.8 ? tones[2] : tones[0];
-          for (let z = zc - 1; z <= zc; z++) m.set(px2, py, z, tone4);
+          const tone5 = Math.abs(v) < 0.6 && u < ll * 0.9 ? mid : v * side > 0 ? tones[1] : Math.abs(v) > half - 0.8 ? tones[2] : tones[0];
+          for (let z = zc - 1; z <= zc; z++) m.set(px2, py, z, tone5);
         }
       };
       for (let i = 0; i < 6; i++) {
@@ -79516,7 +80061,7 @@ ${hearts} ${status}
     const k = clamp(1.95 - (len - 28) * 0.0125, 1.22, 1.95);
     return sp.rarity === "legendary" ? Math.min(k, 1.3) : k;
   }
-  var HERO_MIN_LEN, School;
+  var HERO_MIN_LEN, OCEAN_FISH_K, HERO_K, School;
   var init_school = __esm({
     "src/fish/school.js"() {
       init_rng();
@@ -79526,6 +80071,8 @@ ${hearts} ${status}
       init_fish();
       init_traits();
       HERO_MIN_LEN = 40;
+      OCEAN_FISH_K = 0.75;
+      HERO_K = 0.8;
       School = class {
         constructor(world) {
           this.world = world;
@@ -79577,7 +80124,7 @@ ${hearts} ${status}
           const rec = opts.rec || rollIndividual(sp, { giantChance: 0.04, ...w.rollMods || {} });
           const fromFog = opts.fromFog ?? rng.chance(0.45);
           const fish = new Fish(rec, sp, w, { fadeIn: true });
-          fish.scale *= presenceOf(sp);
+          fish.scale *= presenceOf(sp) * OCEAN_FISH_K;
           const [d0, d1] = sp.move?.depth || [0.15, 0.85];
           const top = (w.surfaceY ?? 0) + 20;
           if (opts.x !== void 0) {
@@ -79627,7 +80174,7 @@ ${hearts} ${status}
           const z = rng.float(0.7, 0.9);
           const school = sp.move?.school > 0.4;
           const n2 = school ? rng.int(3, 5) : 1;
-          const want = school ? rng.float(95, 140) : rng.float(200, 290);
+          const want = (school ? rng.float(95, 140) : rng.float(200, 290)) * HERO_K;
           const scale = want / len / (1 - z * 0.5);
           const top = (w.surfaceY ?? 0) + 40;
           const y0 = lerp(top + want * 0.3, w.floorAt(w.W / 2, z) - want * 0.35, rng.float(0.1, 0.5));
@@ -80333,12 +80880,12 @@ ${hearts} ${status}
       const aa = dir > 0 ? a : -a + Math.PI;
       pts.push([Math.round(5 + Math.cos(aa) * 4), Math.round(5 + Math.sin(aa) * 4)]);
     }
-    g.fillStyle = INK5;
+    g.fillStyle = INK6;
     for (const [x, y] of pts) g.fillRect(x - 1, y - 1, 3, 3);
     g.fillStyle = "#8ff0ff";
     for (const [x, y] of pts) g.fillRect(x, y, 1, 1);
     const [ex, ey] = pts[pts.length - 1];
-    g.fillStyle = INK5;
+    g.fillStyle = INK6;
     g.fillRect(ex - 2, ey - 2, 5, 5);
     g.fillStyle = "#ffffff";
     g.fillRect(ex - 1, ey - 1, 3, 3);
@@ -80369,7 +80916,7 @@ ${hearts} ${status}
       for (let y = 0; y < rows.length; y++) for (let x = 0; x < 9; x++) {
         const ch = rows[y][x];
         if (ch === "#") {
-          g.fillStyle = INK5;
+          g.fillStyle = INK6;
           g.fillRect(x, y, 1, 1);
         } else if (ch === "L") {
           g.fillStyle = lit2 ? "#8be04a" : "#d8eef8";
@@ -80441,7 +80988,7 @@ ${hearts} ${status}
     ctx2.drawImage(arrowCanvas, 0, 0, S11, S11, Math.round(mx - ox), Math.round(my - oy), S11, S11);
     ctx2.globalAlpha = a0;
   }
-  function drawPill(ctx2, x, y, w, h, top = "#ffffff", bot = "#9fe0ff", edge = INK5, alpha = 0.9) {
+  function drawPill(ctx2, x, y, w, h, top = "#ffffff", bot = "#9fe0ff", edge = INK6, alpha = 0.9) {
     x = Math.round(x);
     y = Math.round(y);
     const r = Math.floor(h / 2);
@@ -80498,7 +81045,7 @@ ${hearts} ${status}
       for (let i = 0; i < 7; i++) {
         const a = a0 - i * 0.07 * (F.gear.dir || 1);
         const rr3 = R4 + 6 * S11;
-        ctx2.fillStyle = INK5;
+        ctx2.fillStyle = INK6;
         ctx2.fillRect(Math.round(cx + Math.cos(a) * rr3) - 2, Math.round(cy + Math.sin(a) * rr3) - 2, i ? 4 : 6, i ? 4 : 6);
         ctx2.fillStyle = rgba(col, 1 - i / 8);
         ctx2.fillRect(Math.round(cx + Math.cos(a) * rr3) - 1, Math.round(cy + Math.sin(a) * rr3) - 1, i ? 2 : 4, i ? 2 : 4);
@@ -80528,7 +81075,7 @@ ${hearts} ${status}
       const gr = Math.round(18 * (F.H / 540));
       for (let i = 0; i < 14; i++) {
         const a = i / 14 * TAU + t * 6;
-        ctx2.fillStyle = rgba(INK5, 0.4);
+        ctx2.fillStyle = rgba(INK6, 0.4);
         ctx2.fillRect(Math.round(F.input.x + Math.cos(a) * gr) - 2, Math.round(F.input.y + Math.sin(a) * gr) - 2, 4, 4);
         ctx2.fillStyle = rgba(col, 0.15 + i / 14 * 0.8);
         ctx2.fillRect(Math.round(F.input.x + Math.cos(a) * gr) - 1, Math.round(F.input.y + Math.sin(a) * gr) - 1, 3, 3);
@@ -80550,7 +81097,7 @@ ${hearts} ${status}
     ctx2.save();
     ctx2.globalAlpha = a;
     drawGlassPill(ctx2, x, y - 4, w, 15, "#bfeaff", 0.92);
-    drawText(ctx2, m.text, x, y, { align: "center", color: INK5 });
+    drawText(ctx2, m.text, x, y, { align: "center", color: INK6 });
     ctx2.restore();
   }
   function drawFightScene(ctx2, F, B2) {
@@ -80592,7 +81139,7 @@ ${hearts} ${status}
       const on = u <= k;
       for (let r = R4 - 2; r <= R4 + 2; r++) {
         const x = Math.round(sx + Math.cos(a) * r), y = Math.round(sy + Math.sin(a) * r);
-        ctx2.fillStyle = r === R4 - 2 || r === R4 + 2 ? rgba(INK5, 0.55) : on ? r === R4 + 1 ? "#fff6e0" : fillCol : "rgba(220,245,255,0.35)";
+        ctx2.fillStyle = r === R4 - 2 || r === R4 + 2 ? rgba(INK6, 0.55) : on ? r === R4 + 1 ? "#fff6e0" : fillCol : "rgba(220,245,255,0.35)";
         ctx2.fillRect(x, y, 1, 1);
       }
     }
@@ -80662,7 +81209,7 @@ ${hearts} ${status}
       const a = i / 10 * TAU + t * 3 * tr.dir;
       const x = cx + Math.cos(a) * R4, y = cy + Math.sin(a) * R4;
       const ta = a + Math.PI / 2 * tr.dir;
-      ctx2.fillStyle = INK5;
+      ctx2.fillStyle = INK6;
       ctx2.fillRect(Math.round(x) - 2, Math.round(y) - 2, 4, 4);
       ctx2.fillStyle = i / 10 < tr.unwound / tr.need ? "#8be04a" : "#ffe27a";
       ctx2.fillRect(Math.round(x) - 1, Math.round(y) - 1, 2, 2);
@@ -80734,10 +81281,10 @@ ${hearts} ${status}
     const starW = ic ? ic.width * ss + 2 : 0;
     const h = 7 * ts + 12, gem = Math.round(h * 0.62);
     const w = gem + 14 + g.w + 12 + stars * starW + 10;
-    drawPill(ctx2, x, y, w, h, "#ffffff", "#bfeaff", INK5, 0.9);
+    drawPill(ctx2, x, y, w, h, "#ffffff", "#bfeaff", INK6, 0.9);
     const gx = x + 6 + Math.round(gem / 2), gy = y + Math.round(h / 2);
     const gr = Math.round(gem / 2);
-    ctx2.fillStyle = INK5;
+    ctx2.fillStyle = INK6;
     ctx2.fillRect(gx - gr - 1, gy - gr - 1, gr * 2 + 3, gr * 2 + 3);
     ctx2.fillStyle = rar.dark;
     ctx2.fillRect(gx - gr, gy - gr, gr * 2 + 1, gr * 2 + 1);
@@ -80752,8 +81299,8 @@ ${hearts} ${status}
       const tag2 = F.fish?.rec?.giant ? "GIANT" : `${Math.round(B2.kg * 10) / 10} kg`;
       const tw = measureText(tag2, "normal", ts) + 16;
       const th = 7 * ts + 8;
-      drawPill(ctx2, x + w + 6, y + Math.round((h - th) / 2), tw, th, B2.heavy > 0 ? "#ffd0c8" : "#fff6c0", B2.heavy > 0 ? "#ff6a5a" : "#ffd23a", INK5, 0.92);
-      drawText(ctx2, tag2, x + w + 14, y + Math.round((h - th) / 2) + 4, { scale: ts, color: INK5 });
+      drawPill(ctx2, x + w + 6, y + Math.round((h - th) / 2), tw, th, B2.heavy > 0 ? "#ffd0c8" : "#fff6c0", B2.heavy > 0 ? "#ff6a5a" : "#ffd23a", INK6, 0.92);
+      drawText(ctx2, tag2, x + w + 14, y + Math.round((h - th) / 2) + 4, { scale: ts, color: INK6 });
     }
   }
   function drawInk(ctx2, F) {
@@ -80792,7 +81339,7 @@ ${hearts} ${status}
         const u = (d - r) / 4.3;
         const lit2 = -(dx + dy) / Math.max(1, d);
         let col;
-        if (u > 0.82 || u < 0.12) col = INK5;
+        if (u > 0.82 || u < 0.12) col = INK6;
         else if (lit2 > 0.4 && u < 0.5) col = "#ffffff";
         else if (lit2 > -0.2) col = "#b4d0e2";
         else col = "#7fa4bc";
@@ -80857,13 +81404,13 @@ ${hearts} ${status}
     const ring = portholeRing(r);
     ctx2.drawImage(ring, cx - r - 4, cy - r - 4);
     if (Math.floor(t * 2) % 2) {
-      ctx2.fillStyle = INK5;
+      ctx2.fillStyle = INK6;
       ctx2.fillRect(cx + r - 9, cy - r + 5, 5, 5);
       ctx2.fillStyle = "#ff4f5e";
       ctx2.fillRect(cx + r - 8, cy - r + 6, 3, 3);
     }
   }
-  var INK5, iconsReady, ART4, arrowCanvas, arrowCtx, ARROW_RAMPS, hexRgb3, RAMP_RGB;
+  var INK6, iconsReady, ART4, arrowCanvas, arrowCtx, ARROW_RAMPS, hexRgb3, RAMP_RGB;
   var init_hud = __esm({
     "src/fishing/hud.js"() {
       init_math();
@@ -80874,7 +81421,7 @@ ${hearts} ${status}
       init_character();
       init_particles();
       init_cinematics();
-      INK5 = "#0c3a52";
+      INK6 = "#0c3a52";
       iconsReady = false;
       ART4 = /* @__PURE__ */ new Map();
       arrowCanvas = null;
@@ -81883,7 +82430,7 @@ ${hearts} ${status}
         const a = i / 40 * TAU * 0.82 - Math.PI * 0.9;
         pts.push([Math.round(8 + Math.cos(a) * 6), Math.round(8 + Math.sin(a) * 6)]);
       }
-      g.fillStyle = INK6;
+      g.fillStyle = INK7;
       for (const [x, y] of pts) g.fillRect(x - 1, y - 1, 3, 3);
       const [ex, ey] = pts[pts.length - 1];
       g.fillRect(ex - 3, ey - 3, 6, 6);
@@ -81903,7 +82450,7 @@ ${hearts} ${status}
       for (let y = 0; y < rows.length; y++) for (let x = 0; x < 9; x++) {
         const ch = rows[y][x];
         const inner = x > rows[y].indexOf("#") && x < rows[y].lastIndexOf("#");
-        if (ch === "#") g.fillStyle = INK6;
+        if (ch === "#") g.fillStyle = INK7;
         else if (ch === "L") g.fillStyle = lit2 ? "#ffd23a" : "#d8eef8";
         else if (inner) g.fillStyle = y < 3 ? "#ffffff" : "#e8f6fc";
         else continue;
@@ -81915,14 +82462,14 @@ ${hearts} ${status}
   function spaceGlyph(lit2) {
     return art("g_space" + lit2, () => {
       const c = makeCanvas(21, 9), g = ctxOf(c);
-      g.fillStyle = INK6;
+      g.fillStyle = INK7;
       g.fillRect(1, 0, 19, 9);
       g.fillRect(0, 1, 21, 7);
       g.fillStyle = lit2 ? "#ffd23a" : "#e8f6fc";
       g.fillRect(1, 1, 19, 6);
       g.fillStyle = lit2 ? "#fff6c0" : "#ffffff";
       g.fillRect(2, 1, 17, 2);
-      g.fillStyle = INK6;
+      g.fillStyle = INK7;
       g.fillRect(5, 5, 11, 1);
       g.fillRect(5, 4, 1, 1);
       g.fillRect(15, 4, 1, 1);
@@ -81981,12 +82528,12 @@ ${hearts} ${status}
       const dy = i < r ? r - i - 0.5 : i >= h - r ? i - (h - r) + 0.5 : 0;
       const inset = dy > 0 ? Math.round(r - Math.sqrt(Math.max(0, r * r - dy * dy))) : 0;
       const k = i / Math.max(1, h - 1);
-      ctx2.fillStyle = INK6;
+      ctx2.fillStyle = INK7;
       ctx2.fillRect(x + inset - 1, y + i, w - inset * 2 + 2, 1);
       ctx2.fillStyle = k < 0.45 ? `rgba(${Math.round(lerp(120, 60, k))},${Math.round(lerp(200, 150, k))},235,0.92)` : `rgba(12,${Math.round(lerp(70, 40, k))},${Math.round(lerp(110, 80, k))},0.92)`;
       ctx2.fillRect(x + inset, y + i, w - inset * 2, 1);
     }
-    ctx2.fillStyle = INK6;
+    ctx2.fillStyle = INK7;
     ctx2.fillRect(x + r, y - 1, w - 2 * r, 1);
     ctx2.fillRect(x + r, y + h, w - 2 * r, 1);
     ctx2.fillStyle = "rgba(255,255,255,0.85)";
@@ -81995,7 +82542,7 @@ ${hearts} ${status}
   function tensionColor(k) {
     return TENSION_COLS[Math.min(TENSION_COLS.length - 1, Math.max(0, Math.floor(k * TENSION_COLS.length * 0.999)))];
   }
-  var RPM_UNIT, RPM_MAX, GRIP, INK6, G0, G1, shadeHex2, N_TEETH, N_SPOKES, SYM, NF2, PITCH3, YAW, R_IN, R_ROOT, R_TIP, MESH, ART5, hex2, RAMPS2, RAMP_RGB2, rampAt, BOLT_ROWS, TENSION_COLS, Gear;
+  var RPM_UNIT, RPM_MAX, GRIP, INK7, G0, G1, shadeHex2, N_TEETH, N_SPOKES, SYM, NF2, PITCH3, YAW, R_IN, R_ROOT, R_TIP, MESH, ART5, hex2, RAMPS2, RAMP_RGB2, rampAt, BOLT_ROWS, TENSION_COLS, Gear;
   var init_gear = __esm({
     "src/fishing/gear.js"() {
       init_math();
@@ -82008,7 +82555,7 @@ ${hearts} ${status}
       RPM_UNIT = 150;
       RPM_MAX = 240;
       GRIP = 7;
-      INK6 = "#0c3a52";
+      INK7 = "#0c3a52";
       G0 = Math.PI * (5 / 6);
       G1 = Math.PI * (13 / 6);
       shadeHex2 = (hex4, k) => {
@@ -82329,7 +82876,7 @@ ${hearts} ${status}
           ctx2.fillStyle = gr;
           ctx2.fill();
           ctx2.lineWidth = 2;
-          ctx2.strokeStyle = INK6;
+          ctx2.strokeStyle = INK7;
           ctx2.stroke();
           ctx2.beginPath();
           ctx2.arc(0, 0, R_IN * R4, 0, TAU);
@@ -82441,7 +82988,7 @@ ${hearts} ${status}
             arcSprite(ctx2, tubeRing(L2.rg, L2.tg, "band", 255), cx, cy, ang(band.lo), ang(band.hi));
             for (const r of [band.lo, band.hi]) {
               const a2 = ang(r);
-              ctx2.fillStyle = INK6;
+              ctx2.fillStyle = INK7;
               pixelLine(ctx2, cx + Math.cos(a2) * (L2.rg - L2.tg * 0.75), cy + Math.sin(a2) * (L2.rg - L2.tg * 0.75), cx + Math.cos(a2) * (L2.rg + L2.tg * 0.75), cy + Math.sin(a2) * (L2.rg + L2.tg * 0.75), 3);
               ctx2.fillStyle = "#ffffff";
               pixelLine(ctx2, cx + Math.cos(a2) * (L2.rg - L2.tg * 0.6), cy + Math.sin(a2) * (L2.rg - L2.tg * 0.6), cx + Math.cos(a2) * (L2.rg + L2.tg * 0.6), cy + Math.sin(a2) * (L2.rg + L2.tg * 0.6), 1);
@@ -82463,7 +83010,7 @@ ${hearts} ${status}
           const a = ang(rpm);
           const ca = Math.cos(a), sa = Math.sin(a);
           const r0 = L2.rg - L2.tg, r1 = L2.rg + L2.tg + 3 * L2.S;
-          ctx2.fillStyle = INK6;
+          ctx2.fillStyle = INK7;
           pixelLine(ctx2, cx + ca * r0, cy + sa * r0, cx + ca * r1, cy + sa * r1, 4);
           ctx2.fillStyle = "#ffffff";
           pixelLine(ctx2, cx + ca * (r0 + 1), cy + sa * (r0 + 1), cx + ca * (r1 - 1), cy + sa * (r1 - 1), 2);
@@ -82554,7 +83101,7 @@ ${hearts} ${status}
             ctx2.drawImage(g.c, x - g.ox, Math.round(y - g.h / 2 - g.oy));
             x += adv(g);
           }
-          drawText(ctx2, "RPM", cx + Math.round(pw / 2) + 3, y - 2, { font: "small", scale: Math.max(1, Math.round(S11)), color: "#e8fbff", outline: INK6 });
+          drawText(ctx2, "RPM", cx + Math.round(pw / 2) + 3, y - 2, { font: "small", scale: Math.max(1, Math.round(S11)), color: "#e8fbff", outline: INK7 });
           if (B2 && (st === "idle" || st === "slow") && !B2.charge && !B2.stunned && B2.gearMode !== "box") {
             const g = spinGlyph();
             const gs = Math.max(2, Math.round(S11 * 2));
@@ -82600,7 +83147,7 @@ ${hearts} ${status}
             }
           }
           const ry2 = Math.round(y + 2 + (h - 4) * 0.1);
-          ctx2.fillStyle = INK6;
+          ctx2.fillStyle = INK7;
           ctx2.fillRect(x - 3, ry2 - 1, w + 6, 3);
           ctx2.fillStyle = "#ff4f5e";
           ctx2.fillRect(x - 2, ry2, w + 4, 1);
@@ -82623,7 +83170,7 @@ ${hearts} ${status}
             ctx2.restore();
           }
           const gx = Math.round(x + w / 2), gy = y + h + Math.round(5 * L2.S);
-          ctx2.fillStyle = INK6;
+          ctx2.fillStyle = INK7;
           ctx2.fillRect(gx - 1, gy - 1, 3, 8);
           ctx2.fillRect(gx - 4, gy + 4, 3, 5);
           ctx2.fillRect(gx - 4, gy + 7, 8, 3);
@@ -82675,7 +83222,7 @@ ${hearts} ${status}
             const s = Math.max(1, Math.round(S11));
             ctx2.drawImage(ms, hx, y - Math.round(ms.height * s / 2), ms.width * s, ms.height * s);
             ctx2.drawImage(sg, hx + ms.width * s + 3, y - Math.round(sg.height * s / 2), sg.width * s, sg.height * s);
-            if (!B2.charge) drawText(ctx2, "HOLD", hx, y + Math.round(7 * s), { font: "small", scale: s, color: "#fff6c0", outline: INK6 });
+            if (!B2.charge) drawText(ctx2, "HOLD", hx, y + Math.round(7 * s), { font: "small", scale: s, color: "#fff6c0", outline: INK7 });
           }
         }
       };
@@ -85742,7 +86289,7 @@ ${hearts} ${status}
       ctx2.lineTo(Math.cos(a) * rr3, Math.sin(a) * rr3);
     }
     ctx2.closePath();
-    ctx2.fillStyle = INK7;
+    ctx2.fillStyle = INK8;
     ctx2.fill();
     ctx2.scale(0.88, 0.88);
     ctx2.fillStyle = col;
@@ -85760,14 +86307,14 @@ ${hearts} ${status}
     if (CHIP_ICONS[icon3]) return CHIP_ICONS[icon3];
     const c = makeCanvas(18, 13), g = ctxOf(c);
     if (icon3 === "ruler") {
-      g.fillStyle = INK7;
+      g.fillStyle = INK8;
       g.fillRect(4, 4, 10, 5);
       g.fillStyle = "#ffe27a";
       g.fillRect(5, 5, 8, 3);
-      g.fillStyle = INK7;
+      g.fillStyle = INK8;
       for (let i = 0; i < 4; i++) g.fillRect(6 + i * 2, 5, 1, i % 2 ? 1 : 2);
     } else {
-      g.fillStyle = INK7;
+      g.fillStyle = INK8;
       g.fillRect(5, 3, 8, 8);
       g.fillRect(7, 2, 4, 1);
       g.fillStyle = "#b4d0e2";
@@ -85782,7 +86329,7 @@ ${hearts} ${status}
     for (let i = 0; i < 22; i++) pts.push({ x: x + 30 * sc - i * 3.2 * sc, y: y + Math.sin(t * 3 - i * 0.5) * 6 * sc });
     return pts;
   }
-  var REACTIONS, INK7, hexRgb5, mixRgb2, LEAVES, LEAF_LAYOUT, RevealPanel, CHIP_ICONS;
+  var REACTIONS, INK8, hexRgb5, mixRgb2, LEAVES, LEAF_LAYOUT, RevealPanel, CHIP_ICONS;
   var init_reveal = __esm({
     "src/ui/reveal.js"() {
       init_math();
@@ -85800,7 +86347,7 @@ ${hearts} ${status}
       init_cinematics();
       init_ui();
       REACTIONS = ["surprised", "happy", "love", "smug", "dizzy", "happy", "surprised"];
-      INK7 = "#0c3a52";
+      INK8 = "#0c3a52";
       hexRgb5 = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
       mixRgb2 = (a, b, t) => {
         const A2 = hexRgb5(a), B2 = hexRgb5(b);
@@ -85945,7 +86492,7 @@ ${hearts} ${status}
           if (nameScale >= 2) {
             const gname = glossText(d.sp.name, nameScale, pal2);
             ctx2.drawImage(gname.c, Math.round(pcx - gname.w / 2 - gname.ox), Math.round(ny - gname.oy));
-          } else drawText(ctx2, d.sp.name, pcx, ny + 3, { align: "center", color: "#ffffff", outline: INK7 });
+          } else drawText(ctx2, d.sp.name, pcx, ny + 3, { align: "center", color: "#ffffff", outline: INK8 });
           const star = getUiIcon("star"), starE = getUiIcon("star_empty");
           if (star) {
             for (let i = 0; i < 5; i++) {
@@ -85971,7 +86518,7 @@ ${hearts} ${status}
               ctx2.save();
               ctx2.globalAlpha = clamp01(kk);
               drawGlassPill(ctx2, bx + tw[i] / 2, r.y + Math.round(214 * k), tw[i], 11 * ts, traits[i].color, 0.95);
-              drawText(ctx2, traits[i].text.toUpperCase(), bx + tw[i] / 2, r.y + Math.round(214 * k) + 3 * ts, { align: "center", font: "small", color: INK7, scale: ts });
+              drawText(ctx2, traits[i].text.toUpperCase(), bx + tw[i] / 2, r.y + Math.round(214 * k) + 3 * ts, { align: "center", font: "small", color: INK8, scale: ts });
               ctx2.restore();
             }
             bx += tw[i] + 4;
@@ -85986,7 +86533,7 @@ ${hearts} ${status}
             const by = cy0 - ch - 6;
             drawGlassPill(ctx2, r.x + Math.round(16 * k) + w / 2, by, w, 14 * ts, "#2fd3e8", 0.95);
             drawAeroCoin(ctx2, r.x + Math.round(16 * k) + 8 * ts, by + 7 * ts, 4.5 * ts, t);
-            drawText(ctx2, label3, r.x + Math.round(16 * k) + 14 * ts, by + 3 * ts, { color: INK7, scale: ts });
+            drawText(ctx2, label3, r.x + Math.round(16 * k) + 14 * ts, by + 3 * ts, { color: INK8, scale: ts });
           }
           ctx2.restore();
           if (d.isNew && t > 0.9) {
@@ -86025,7 +86572,7 @@ ${hearts} ${status}
             const ly = oy + Math.round(20 * k);
             drawGlassPill(ctx2, relX, ly, w, 9 * ts, "#2fd3e8", 0.95);
             drawAeroCoin(ctx2, relX - w / 2 + 6 * ts, ly + 4 * ts, 3 * ts, t);
-            drawText(ctx2, label3, relX - w / 2 + 11 * ts, ly + 2 * ts, { font: "small", color: INK7, scale: ts });
+            drawText(ctx2, label3, relX - w / 2 + 11 * ts, ly + 2 * ts, { font: "small", color: INK8, scale: ts });
           }
         }
         openFx(x, y, rar) {
@@ -86091,7 +86638,7 @@ ${hearts} ${status}
           const w = measureText(text, "normal", ts) + 24 * ts;
           drawGlassPill(ctx2, x + w / 2, y, w, 13 * ts, "#bfeaff", 0.95);
           ctx2.drawImage(chipIcon(icon3), x, y, 18 * ts, 13 * ts);
-          drawText(ctx2, text, x + 18 * ts, y + 3 * ts, { color: INK7, scale: ts });
+          drawText(ctx2, text, x + 18 * ts, y + 3 * ts, { color: INK8, scale: ts });
         }
         // Big glossy icon orb button; returns true when clicked.
         orb(ctx2, ui, cx, cy, color, icon3, tip, id2) {
@@ -86112,7 +86659,7 @@ ${hearts} ${status}
             ctx2.drawImage(glowSprite(R4 + 10, color), -R4 - 10, -R4 - 10);
             ctx2.restore();
           }
-          ctx2.fillStyle = INK7;
+          ctx2.fillStyle = INK8;
           for (let y = -R4 - 1; y <= R4 + 1; y++) {
             const w = Math.round(Math.sqrt(Math.max(0, (R4 + 1.4) ** 2 - y * y)));
             ctx2.fillRect(-w, y, w * 2 + 1, 1);
@@ -86561,7 +87108,7 @@ ${hearts} ${status}
   function shelfTex(w) {
     return aeroSurface(w, 6, { top: "#ffffff", mid: "#cdeefc", bot: "#7cc4e6", edge: "#2a86c4", edgeA: 0.8, r: 3, gloss: 0.8, glossH: 3, curve: 0, rim: 0.6, glow: 0.5, a: [0.95, 0.9] });
   }
-  var INK8, INK_SOFT4, STATS, LIKES, GREET, THANKS, SHELVES, ShopPanel;
+  var INK9, INK_SOFT4, STATS, LIKES, GREET, THANKS, SHELVES, ShopPanel;
   var init_shoppanel = __esm({
     "src/store/shoppanel.js"() {
       init_math();
@@ -86580,7 +87127,7 @@ ${hearts} ${status}
       init_shop();
       init_bait();
       init_species();
-      INK8 = AERO.ink;
+      INK9 = AERO.ink;
       INK_SOFT4 = AERO.inkSoft;
       STATS = [
         ["attract", "LURE", (d) => ((d.attract ?? 1) - 0.8) / 1.6, "#2fc0e8"],
@@ -86707,7 +87254,7 @@ ${hearts} ${status}
           const bump2 = this.flash > 0 ? Math.round(Math.sin(this.flash * 12) * 2) : 0;
           ctx2.drawImage(aeroCached(`shopwallet|${w}`, () => aeroSurface(w, h, { tone: "frost", r: "pill", gloss: 0.75, glossH: 8, curve: 2, rim: 0.9, glow: 0.5, glowColor: "#bfeaff", sparkle: 1 })), x, y - bump2);
           drawAeroCoin(ctx2, x + 10, y + 9 - bump2, 6, this.t);
-          drawText(ctx2, txt, right - 7, y + 6 - bump2, { align: "right", color: INK8, shadow: "#ffffff" });
+          drawText(ctx2, txt, right - 7, y + 6 - bump2, { align: "right", color: INK9, shadow: "#ffffff" });
           this.walletAt = { x: x + 10, y: y + 9 };
           if (ui.hover({ x, y, w, h })) ui.tip = CURRENCY;
         }
@@ -86738,7 +87285,7 @@ ${hearts} ${status}
           lines.forEach((ln, i) => {
             const part2 = left >= ln.length ? ln : ln.slice(0, Math.max(0, left));
             left -= ln.length;
-            drawText(ctx2, part2, bx + bw / 2, by + 6 + i * 10, { align: "center", color: INK8 });
+            drawText(ctx2, part2, bx + bw / 2, by + 6 + i * 10, { align: "center", color: INK9 });
           });
           ctx2.restore();
           const talking = shown < lines.join("").length;
@@ -86760,7 +87307,7 @@ ${hearts} ${status}
           const lvI = shop3.levelIndex(), lv = shop3.level();
           let y = L2.y + 166;
           ctx2.drawImage(aeroCached(`shoplv|${L2.w - 12}`, () => aeroSurface(L2.w - 12, 16, { tone: "white", r: "pill", gloss: 0.7, glossH: 7, curve: 1, rim: 0.8, glow: 0.4, a: [0.92, 0.92] })), L2.x + 6, y);
-          drawText(ctx2, lv.name, L2.x + 12, y + 5, { color: INK8 });
+          drawText(ctx2, lv.name, L2.x + 12, y + 5, { color: INK9 });
           for (let i = 1; i < SHOP_LEVELS.length; i++) drawGlossOrb(ctx2, L2.x + L2.w - 12 - (SHOP_LEVELS.length - 1 - i) * 7, y + 8, 2.5, i <= lvI ? SHOP_LEVELS[i].color : "#c8d6e0");
           y += 21;
           const left0 = shop3.restockIn();
@@ -86887,30 +87434,30 @@ ${hearts} ${status}
           ctx2.drawImage(aeroCached(`packq|${qw}`, () => aeroSurface(qw, 9, { tone: "aqua", r: "pill", gloss: 0.8, glossH: 4, curve: 1, rim: 0.6, glow: 0.4 })), x + cw - qw - 3, y - 3);
           drawText(ctx2, q, x + cw - 3 - Math.round(qw / 2), y - 1, { align: "center", font: "small", color: "#ffffff" });
           const ty = y + 47;
-          let label3, tone4;
+          let label3, tone5;
           if (locked) {
             label3 = "";
-            tone4 = "grey";
+            tone5 = "grey";
           } else if (out) {
             label3 = "SOLD";
-            tone4 = "grey";
+            tone5 = "grey";
           } else if (o.free) {
             label3 = "FREE";
-            tone4 = "green";
+            tone5 = "green";
           } else {
             label3 = String(o.price);
-            tone4 = o.deal ? "orange" : "white";
+            tone5 = o.deal ? "orange" : "white";
           }
           const tw = locked ? 9 : measureText(label3, "small") + (o.free || out ? 10 : 18);
           const tagX = Math.round(cx - tw / 2);
-          ctx2.drawImage(aeroCached(`pricetag|${tw}|${tone4}`, () => aeroSurface(tw, 11, { tone: tone4, r: "pill", gloss: 0.8, glossH: 5, curve: 1, rim: 0.8, glow: 0.4 })), tagX, ty);
+          ctx2.drawImage(aeroCached(`pricetag|${tw}|${tone5}`, () => aeroSurface(tw, 11, { tone: tone5, r: "pill", gloss: 0.8, glossH: 5, curve: 1, rim: 0.8, glow: 0.4 })), tagX, ty);
           if (locked) {
             const lk = getUiIcon("lock");
             if (lk) ctx2.drawImage(lk, cx - Math.floor(lk.width / 2), ty + Math.round((11 - lk.height) / 2));
-          } else if (o.free || out) drawText(ctx2, label3, cx, ty + 3, { align: "center", font: "small", color: "#ffffff", shadow: rgba(INK8, 0.6) });
+          } else if (o.free || out) drawText(ctx2, label3, cx, ty + 3, { align: "center", font: "small", color: "#ffffff", shadow: rgba(INK9, 0.6) });
           else {
             drawAeroCoin(ctx2, tagX + 6, ty + 5, 3.5, 0);
-            drawText(ctx2, label3, tagX + 11, ty + 3, { font: "small", color: o.deal ? "#ffffff" : INK8, shadow: o.deal ? "#843a04" : null });
+            drawText(ctx2, label3, tagX + 11, ty + 3, { font: "small", color: o.deal ? "#ffffff" : INK9, shadow: o.deal ? "#843a04" : null });
           }
           if (o.kind === "line") {
             let mi = null;
@@ -86968,7 +87515,7 @@ ${hearts} ${status}
           if (!o) return;
           const d = o.def || {};
           const nameLines = wrapText(o.name, R4.w - 12).slice(0, 2);
-          nameLines.forEach((ln, i) => drawText(ctx2, ln, R4.x + R4.w / 2, R4.y + 6 + i * 10, { align: "center", color: INK8 }));
+          nameLines.forEach((ln, i) => drawText(ctx2, ln, R4.x + R4.w / 2, R4.y + 6 + i * 10, { align: "center", color: INK9 }));
           let y = R4.y + 8 + nameLines.length * 10;
           const cx = R4.x + R4.w / 2, cy = y + 28;
           drawAeroGlow(ctx2, cx, cy, 34, mix(d.art?.color || "#9fe8ff", "#ffffff", 0.4), 0.5);
@@ -86990,12 +87537,12 @@ ${hearts} ${status}
               const go = lineOffers[i];
               const rr3 = { x: R4.x + 6 + i * bw, y, w: bw - 2, h: 13 };
               const on = i === o.grade, hov = ui.hover(rr3);
-              const tone4 = go?.locked ? "grey" : on ? { top: mix(TIERS[i].color, "#ffffff", 0.6), mid: TIERS[i].color, bot: shade(TIERS[i].color, -0.25), edge: shade(TIERS[i].color, -0.5), a: [1, 1], glow: "#ffffff" } : "white";
-              ctx2.drawImage(aeroCached(`grade|${rr3.w}|${typeof tone4 === "string" ? tone4 : TIERS[i].id}|${hov}`, () => aeroSurface(rr3.w, rr3.h, { tone: tone4, r: 4, gloss: hov ? 0.9 : 0.7, glossH: 6, curve: 1, rim: 0.8, glow: 0.4 })), rr3.x, rr3.y);
+              const tone5 = go?.locked ? "grey" : on ? { top: mix(TIERS[i].color, "#ffffff", 0.6), mid: TIERS[i].color, bot: shade(TIERS[i].color, -0.25), edge: shade(TIERS[i].color, -0.5), a: [1, 1], glow: "#ffffff" } : "white";
+              ctx2.drawImage(aeroCached(`grade|${rr3.w}|${typeof tone5 === "string" ? tone5 : TIERS[i].id}|${hov}`, () => aeroSurface(rr3.w, rr3.h, { tone: tone5, r: 4, gloss: hov ? 0.9 : 0.7, glossH: 6, curve: 1, rim: 0.8, glow: 0.4 })), rr3.x, rr3.y);
               if (go?.locked) {
                 const lk = getUiIcon("lock");
                 if (lk) ctx2.drawImage(lk, rr3.x + Math.round((rr3.w - lk.width) / 2), rr3.y + Math.round((rr3.h - lk.height) / 2));
-              } else drawText(ctx2, TIERS[i].short.slice(0, 4), rr3.x + rr3.w / 2, rr3.y + 4, { align: "center", font: "small", color: on ? "#ffffff" : INK8, shadow: on ? rgba(shade(TIERS[i].color, -0.6), 0.8) : null });
+              } else drawText(ctx2, TIERS[i].short.slice(0, 4), rr3.x + rr3.w / 2, rr3.y + 4, { align: "center", font: "small", color: on ? "#ffffff" : INK9, shadow: on ? rgba(shade(TIERS[i].color, -0.6), 0.8) : null });
               if (hov) ui.tip = go?.locked ? `${TIERS[i].name}: ${go.locked.label} (The Lab)` : `${TIERS[i].name} grade`;
               if (ui.clicked(rr3)) {
                 this.grade[o.line] = i;
@@ -87028,7 +87575,7 @@ ${hearts} ${status}
                 ctx2.drawImage(fi, R4.x + 8, y + 1);
                 ctx2.globalAlpha = 1;
               }
-              drawText(ctx2, f.known ? f.name : "???", R4.x + 20, y + 1, { color: f.known ? INK8 : "#8aa4b8" });
+              drawText(ctx2, f.known ? f.name : "???", R4.x + 20, y + 1, { color: f.known ? INK9 : "#8aa4b8" });
               if (f.here) drawGlossOrb(ctx2, R4.x + R4.w - 12, y + 4, 2, "#5cc832");
               y += 10;
             }
@@ -87037,7 +87584,7 @@ ${hearts} ${status}
           drawAeroCard(ctx2, R4.x + 6, y, R4.w - 12, 20, { tone: "white", inset: true, gloss: 0 });
           const bi = getUiIcon("bait");
           if (bi) ctx2.drawImage(bi, R4.x + 11, y + Math.round((20 - bi.height) / 2));
-          drawText(ctx2, `${o.qty} per pack`, R4.x + 13 + (bi ? bi.width : 0), y + 7, { color: INK8 });
+          drawText(ctx2, `${o.qty} per pack`, R4.x + 13 + (bi ? bi.width : 0), y + 7, { color: INK9 });
           if (!o.locked) {
             if (o.stock > 0) for (let s2 = 0; s2 < Math.min(5, o.max); s2++) drawGlossOrb(ctx2, R4.x + R4.w - 13 - s2 * 6, y + 10, 2.2, s2 < o.stock ? "#5cd8ff" : "#c4d2dc");
             else drawText(ctx2, "SOLD OUT", R4.x + R4.w - 11, y + 8, { align: "right", font: "small", color: "#d04040" });
@@ -87214,13 +87761,13 @@ ${hearts} ${status}
   });
 
   // src/store/ecoart.js
-  function leafTex2(len, ang, tone4) {
+  function leafTex2(len, ang, tone5) {
     const pad = 3, R4 = len + pad * 2;
     const S11 = Math.ceil(R4 * 2);
     const c = makeCanvas(S11, S11), g = ctxOf(c);
     const cx = S11 / 2, cy = S11 / 2;
     const a = ang * Math.PI / 180, wid = len * 0.36;
-    const P6 = LEAF[tone4 % LEAF.length];
+    const P6 = LEAF[tone5 % LEAF.length];
     g.translate(cx, cy);
     g.rotate(a);
     const path = () => {
@@ -87271,8 +87818,8 @@ ${hearts} ${status}
   function leaf(ctx2, x, y, len, ang, o = {}) {
     len = Math.max(6, Math.round(len));
     const q = Math.round(ang / 6) * 6;
-    const tone4 = o.tone | 0;
-    const L2 = aeroCached(`leaf|${len}|${q}|${tone4}`, () => leafTex2(len, q, tone4));
+    const tone5 = o.tone | 0;
+    const L2 = aeroCached(`leaf|${len}|${q}|${tone5}`, () => leafTex2(len, q, tone5));
     ctx2.drawImage(L2.canvas, Math.round(x - L2.ox), Math.round(y - L2.oy));
   }
   function sprayTex(corner, scale) {
@@ -87297,8 +87844,8 @@ ${hearts} ${status}
     g.stroke();
     const leaves = [[0.08, 70, 30, 0], [0.22, -30, 34, 1], [0.38, 85, 32, 2], [0.52, -20, 30, 0], [0.66, 75, 26, 1], [0.8, -10, 24, 2], [0.95, 30, 20, 0], [0.3, 140, 22, 1]];
     const bz = (u, i) => (1 - u) ** 3 * stem[0][i] + 3 * (1 - u) ** 2 * u * stem[1][i] + 3 * (1 - u) * u * u * stem[2][i] + u ** 3 * stem[3][i];
-    for (const [u, ang, len, tone4] of leaves) {
-      const L2 = leafTex2(Math.round(len * k), ang, tone4);
+    for (const [u, ang, len, tone5] of leaves) {
+      const L2 = leafTex2(Math.round(len * k), ang, tone5);
       g.drawImage(L2.canvas, bz(u, 0) - L2.ox, bz(u, 1) - L2.oy);
     }
     return c;
@@ -87695,7 +88242,7 @@ ${hearts} ${status}
           const tw = measureText(String(total)) + 26;
           pill2(ctx2, r.x + W10 - 40 - tw, r.y + 9, tw, 16, { color: "#3ab0e0" });
           drawBaitGloss(ctx2, BAITS2.crumbs.art, r.x + W10 - 40 - tw + 8, r.y + 17, 13, 0, { bubble: false, bob: false });
-          drawText(ctx2, String(total), r.x + W10 - 46, r.y + 13, { align: "right", color: "#ffffff", shadow: rgba(INK4, 0.5) });
+          drawText(ctx2, String(total), r.x + W10 - 46, r.y + 13, { align: "right", color: "#ffffff", shadow: rgba(INK5, 0.5) });
           if (orbButton(ui, ctx2, r.x + W10 - 18, r.y + 17, 8, "#ff6a5a", { glyph: "x", sound: "ui_close" })) {
             ui.close(this.id);
             return;
@@ -87715,7 +88262,7 @@ ${hearts} ${status}
             pill2(ctx2, cx + 14, ly + 66, 30, 12, { color: GRASS3 });
             drawText(ctx2, "x" + cur.count, cx + 29, ly + 69, { align: "center", color: "#ffffff", font: "small" });
             const lines = wrapText(cur.name, lw - 12);
-            lines.slice(0, 2).forEach((l, i) => drawText(ctx2, l, cx, ly + 86 + i * 10, { align: "center", color: INK4 }));
+            lines.slice(0, 2).forEach((l, i) => drawText(ctx2, l, cx, ly + 86 + i * 10, { align: "center", color: INK5 }));
             this.drawStats(ctx2, lx + 10, ly + 110, lw - 20, cur.mods);
             if (cur.effect) {
               tag(ctx2, lx + 10, ly + 158, "SPECIAL: " + (TYPE_LABEL[cur.effect] || cur.effect).toUpperCase(), "#b06aff");
@@ -87760,7 +88307,7 @@ ${hearts} ${status}
             if (ui.clicked(rr3)) this.equip(e2.id);
           }
           if (!list.length) {
-            drawText(ctx2, "No bait left!", gx + gw / 2, gy + gh / 2 - 14, { align: "center", color: INK4, scale: 1 });
+            drawText(ctx2, "No bait left!", gx + gw / 2, gy + gh / 2 - 14, { align: "center", color: INK5, scale: 1 });
             drawText(ctx2, "Buy some at the Bait Shop", gx + gw / 2, gy + gh / 2, { align: "center", color: INK_SOFT3 });
           }
           if (maxScroll > 0) {
@@ -87771,7 +88318,7 @@ ${hearts} ${status}
           glassCard2(ctx2, gx, iy, gw, 32, { r: 8 });
           const e = hover || (cur ? { def: baitDef(st, cur.id), count: cur.count } : null);
           if (e?.def) {
-            drawText(ctx2, e.def.name, gx + 8, iy + 5, { color: INK4 });
+            drawText(ctx2, e.def.name, gx + 8, iy + 5, { color: INK5 });
             const desc = wrapText(e.def.desc || "", gw - 16, "small")[0] || "";
             drawText(ctx2, desc.toUpperCase(), gx + 8, iy + 18, { font: "small", color: INK_SOFT3 });
             if (hover) drawText(ctx2, hover.id === cur?.id ? "ON HOOK" : "CLICK TO EQUIP", gx + gw - 8, iy + 6, { font: "small", align: "right", color: hover.id === cur?.id ? "#3a9a20" : "#2a8ac0" });
@@ -87822,7 +88369,7 @@ ${hearts} ${status}
           const cx = lx + lw / 2;
           drawBaitGloss(ctx2, art2, cx, ly + 46, 78, t, { tint: "#fff6e8", rim: art2.color || "#2fb8e0" });
           const lines = wrapText(rec.name, lw - 12);
-          lines.slice(0, 2).forEach((l, i) => drawText(ctx2, l, cx, ly + 90 + i * 10, { align: "center", color: INK4 }));
+          lines.slice(0, 2).forEach((l, i) => drawText(ctx2, l, cx, ly + 90 + i * 10, { align: "center", color: INK5 }));
           this.drawStats(ctx2, lx + 10, ly + 114, lw - 26, rec.mods, modsOfDef(base));
           const ox = r.x + 160, ow = W10 - 170;
           glassCard2(ctx2, ox, ly, ow, lh, { r: 8, top: "rgba(240,252,255,0.75)", bottom: "rgba(200,236,250,0.7)" });
@@ -87914,7 +88461,7 @@ ${hearts} ${status}
             }
             if (spr2) ctx2.drawImage(spr2.canvas, Math.round(cxp + 9 - spr2.w / 2), Math.round(y + 9 - spr2.h / 2));
             else drawGlossOrb(ctx2, cxp + 9, y + 9, 5, "#9ad8f0");
-            drawText(ctx2, `${Math.min(have, 99)}/${q}`, cxp + 19, y + 6, { font: "small", color: ok ? INK4 : "#c03030" });
+            drawText(ctx2, `${Math.min(have, 99)}/${q}`, cxp + 19, y + 6, { font: "small", color: ok ? INK5 : "#c03030" });
             const rr3 = { x: cxp, y, w: 46, h: 18 };
             if (ui.hover(rr3)) ui.tip = ITEMS[id2]?.name || id2;
             cxp += 50;
@@ -87923,7 +88470,7 @@ ${hearts} ${status}
           const aeroOk = (st.coins || 0) >= cost.aero;
           pill2(ctx2, cxp, y, 46, 18, { color: aeroOk ? "#e8f8ff" : "#ffe0dc" });
           drawAeroCoin(ctx2, cxp + 9, y + 9, 5, t);
-          drawText(ctx2, fmtAero(cost.aero), cxp + 17, y + 6, { font: "small", color: aeroOk ? INK4 : "#c03030" });
+          drawText(ctx2, fmtAero(cost.aero), cxp + 17, y + 6, { font: "small", color: aeroOk ? INK5 : "#c03030" });
           y += 24;
           BATCHES.forEach((b, i) => {
             if (button(ui, ctx2, ox + 10 + i * 36, y, 32, 18, "x" + b, { tone: this.batch === b ? "green" : "glass", active: this.batch === b })) this.batch = b;
@@ -87950,7 +88497,7 @@ ${hearts} ${status}
           drawGlossOrb(ctx2, x + w / 2, y + h / 2 - 34, 20, "#ffd27a");
           const lk = getUiIcon("lock");
           if (lk) ctx2.drawImage(lk, Math.round(x + w / 2 - lk.width / 2), Math.round(y + h / 2 - 34 - lk.height / 2));
-          drawText(ctx2, "Custom Bait", x + w / 2, y + h / 2 - 6, { align: "center", color: INK4, scale: 1 });
+          drawText(ctx2, "Custom Bait", x + w / 2, y + h / 2 - 6, { align: "center", color: INK5, scale: 1 });
           drawText(ctx2, "RESEARCH IT IN THE LAB", x + w / 2, y + h / 2 + 8, { align: "center", font: "small", color: INK_SOFT3 });
           if (splashButton(ui, ctx2, x + w / 2 - 50, y + h / 2 + 22, 100, 20, "The Lab", { tone: "green" })) {
             if (g.ui.panels.lab) {
@@ -89005,7 +89552,7 @@ ${hearts} ${status}
             const tw = measureText(txt, "big"), w = tw + 16, h = 17;
             const px2 = x - Math.round(w / 2), py = y + Math.round(S11 / 2) + 5;
             ctx2.drawImage(aeroSurface(w, h, { tone: "white", r: 6, gloss: 0.6, glossH: 7, curve: 1, rim: 0.8, glow: 0.4 }), px2, py);
-            drawText(ctx2, txt, px2 + 8, py + 4, { font: "big", color: INK3 });
+            drawText(ctx2, txt, px2 + 8, py + 4, { font: "big", color: INK4 });
           }
         }
         drawBranchLabels(ctx2) {
@@ -89317,7 +89864,7 @@ ${hearts} ${status}
             text("Professor Fizz's lab. Every discovery grows out from here.");
             add9(30, (x2, y2) => {
               drawText(ctx2, "RESEARCHED", x2, y2, { color: INK_SOFT2 });
-              drawText(ctx2, `${n2} / ${TOTAL}`, x2 + IW - measureText(`${n2} / ${TOTAL}`, "big"), y2 - 1, { font: "big", color: INK3 });
+              drawText(ctx2, `${n2} / ${TOTAL}`, x2 + IW - measureText(`${n2} / ${TOTAL}`, "big"), y2 - 1, { font: "big", color: INK4 });
               drawAeroBar(ctx2, x2, y2 + 13, IW, 8, n2 / TOTAL, { color: "#5fd23a" });
             });
             add9(18, (x2, y2) => {
@@ -89349,7 +89896,7 @@ ${hearts} ${status}
               const sz = 22, per = Math.floor((IW + 3) / (sz + 3)), nrow = Math.min(2, Math.ceil(unl.length / per));
               add9(14 + nrow * (sz + 3), (x2, y2) => {
                 drawText(ctx2, "UNLOCKS", x2, y2, { color: INK_SOFT2 });
-                if (unl.length === 1) drawText(ctx2, unlockInfo(unl[0]).name.slice(0, 24), x2 + sz + 6, y2 + 19, { color: INK3 });
+                if (unl.length === 1) drawText(ctx2, unlockInfo(unl[0]).name.slice(0, 24), x2 + sz + 6, y2 + 19, { color: INK4 });
                 unl.slice(0, per * 2).forEach((u, i) => {
                   const info = unlockInfo(u), ux = x2 + i % per * (sz + 3), uy = y2 + 12 + Math.floor(i / per) * (sz + 3);
                   ctx2.drawImage(aeroSurface(sz, sz, { tone: "white", r: 5, gloss: 0.6, glossH: 8, curve: 1, rim: 0.8, glow: 0.4 }), ux, uy);
@@ -89370,7 +89917,7 @@ ${hearts} ${status}
                 drawText(ctx2, "COST", x2, y2 + 5, { color: INK_SOFT2 });
                 const tm = fmtTime(labTime(st, nd, g.stats)), ci = getUiIcon("clock");
                 const tw = measureText(tm, "big");
-                drawText(ctx2, tm, x2 + IW - tw, y2 + 4, { font: "big", color: INK3 });
+                drawText(ctx2, tm, x2 + IW - tw, y2 + 4, { font: "big", color: INK4 });
                 if (ci) ctx2.drawImage(ci, x2 + IW - tw - ci.width - 3, y2 + 4);
                 costTiles(ctx2, ui, cr, x2, y2 + 17, IW, { tileW: 72 });
               });
@@ -89382,7 +89929,7 @@ ${hearts} ${status}
               add9(30, (x2, y2) => {
                 drawText(ctx2, "BREWING", x2, y2, { color: "#b8640a" });
                 const rem = fmtTime(labRemaining(st, id2));
-                drawText(ctx2, rem + " left", x2 + IW - measureText(rem + " left", "big"), y2 - 1, { font: "big", color: INK3 });
+                drawText(ctx2, rem + " left", x2 + IW - measureText(rem + " left", "big"), y2 - 1, { font: "big", color: INK4 });
                 drawAeroBar(ctx2, x2, y2 + 14, IW, 9, labProgress(st, id2), { color: "#5fd23a" });
               });
               const cost = instantCost(st, id2);
@@ -89526,9 +90073,9 @@ ${hearts} ${status}
     const oy = view.y + top + Math.max(0, Math.round(free * 0.35));
     return (i) => ({ x: ox + i % cols * (tw + gap), y: oy + Math.floor(i / cols) * (th + gap), cols });
   }
-  function drawBlueprintBg(ctx2, view, t, tone4 = "craft") {
+  function drawBlueprintBg(ctx2, view, t, tone5 = "craft") {
     const g = ctx2.createLinearGradient(0, view.y, 0, view.y + view.h);
-    if (tone4 === "rods") {
+    if (tone5 === "rods") {
       g.addColorStop(0, "#e9f9ff");
       g.addColorStop(1, "#b8e6f8");
     } else {
@@ -89537,14 +90084,14 @@ ${hearts} ${status}
     }
     ctx2.fillStyle = g;
     ctx2.fillRect(view.x, view.y, view.w, view.h);
-    ctx2.fillStyle = tone4 === "rods" ? rgba("#7fc8e8", 0.25) : rgba("#ffffff", 0.12);
+    ctx2.fillStyle = tone5 === "rods" ? rgba("#7fc8e8", 0.25) : rgba("#ffffff", 0.12);
     for (let x = view.x + 8; x < view.x + view.w; x += 16) ctx2.fillRect(x, view.y, 1, view.h);
     for (let y = view.y + 8; y < view.y + view.h; y += 16) ctx2.fillRect(view.x, y, view.w, 1);
-    if (tone4 === "rods") {
+    if (tone5 === "rods") {
       ctx2.fillStyle = rgba("#5aa8cc", 0.25);
       for (let y = view.y + 16; y < view.y + view.h; y += 16) for (let x = view.x + 16; x < view.x + view.w; x += 16) ctx2.fillRect(x - 1, y - 1, 2, 2);
     }
-    drawRays(ctx2, view.x + view.w * 0.85, view.y - 10, view.h * 1.2, t, tone4 === "rods" ? 0.25 : 0.12, 12);
+    drawRays(ctx2, view.x + view.w * 0.85, view.y - 10, view.h * 1.2, t, tone5 === "rods" ? 0.25 : 0.12, 12);
     for (let i = 0; i < 8; i++) {
       const k = (t * (0.05 + hash1(i, 6) * 0.05) + hash1(i, 7)) % 1;
       drawAeroBubble(ctx2, view.x + hash1(i, 8) * view.w, view.y + view.h - k * view.h, 1.5 + hash1(i, 9) * 2.5, 0.7);
@@ -89575,7 +90122,7 @@ ${hearts} ${status}
       ctx2.fill();
       const max = Math.floor((TW2 - 6) / 6);
       const nm = rod.name.length > max ? rod.name.slice(0, max - 1) + "." : rod.name;
-      drawText(ctx2, nm, x + TW2 / 2, y + TH2 - 15, { font: "small", align: "center", color: owned ? INK3 : "#7a90a4" });
+      drawText(ctx2, nm, x + TW2 / 2, y + TH2 - 15, { font: "small", align: "center", color: owned ? INK4 : "#7a90a4" });
       if (eq) {
         const ck = getUiIcon("check");
         ctx2.fillStyle = "#4cc83a";
@@ -89613,7 +90160,7 @@ ${hearts} ${status}
       ctx2.globalAlpha = 1;
     }
     let y = hy + 50;
-    drawText(ctx2, rod.name, cx, y, { align: "center", color: INK3, shadow: "#ffffff" });
+    drawText(ctx2, rod.name, cx, y, { align: "center", color: INK4, shadow: "#ffffff" });
     y += 12;
     drawAeroLabel(ctx2, rod.rarity.toUpperCase(), cx, y, { align: "center", font: "small", tone: { common: "grey", uncommon: "green", rare: "aqua", epic: "purple", legendary: "orange" }[rod.rarity] || "glass" });
     y += 16;
@@ -89630,7 +90177,7 @@ ${hearts} ${status}
       drawText(ctx2, k.label.toUpperCase(), r.x + 24, y + 1, { font: "small", color: INK_SOFT2 });
       statBar(ctx2, r.x + 80, y, r.w - 120, kk, k.key === "shock" ? "#ffd23a" : k.key === "luck" ? "#6fd23f" : "#35c8ff", 7);
       const vt = k.key === "strength" ? `${v}kg` : k.key === "resilience" ? `${Math.round(v * 100)}%` : k.key === "shock" ? `x${rod.stats.shock.charges}` : v.toFixed(2);
-      drawText(ctx2, vt, r.x + r.w - 10, y + 1, { font: "small", align: "right", color: INK3 });
+      drawText(ctx2, vt, r.x + r.w - 10, y + 1, { font: "small", align: "right", color: INK4 });
       if (ui.hover({ x: r.x + 8, y: y - 2, w: r.w - 16, h: 11 })) ui.tip = k.key === "shock" ? `Shock: ${rod.stats.shock.power}s stun, ${rod.stats.shock.charges} per fight, ${rod.stats.shock.cooldown}s recharge` : k.label;
       y += 14;
     }
@@ -89682,7 +90229,7 @@ ${hearts} ${status}
         ctx2.globalAlpha = 1;
       }
       const nm = rc.name.length > 12 ? rc.name.slice(0, 11) + "." : rc.name;
-      drawText(ctx2, nm, x + TW2 / 2, y + TH2 - 13, { font: "small", align: "center", color: open ? INK3 : "#7a90a4" });
+      drawText(ctx2, nm, x + TW2 / 2, y + TH2 - 13, { font: "small", align: "center", color: open ? INK4 : "#7a90a4" });
       if (!open) {
         const lk = getUiIcon("lock");
         if (lk) ctx2.drawImage(lk, x + TW2 - 14, y + 4);
@@ -89716,7 +90263,7 @@ ${hearts} ${status}
       ctx2.globalAlpha = 1;
     }
     let y = hy + 50;
-    drawText(ctx2, rc.name + (rc.out?.qty > 1 ? ` x${rc.out.qty}` : ""), cx, y, { align: "center", color: INK3, shadow: "#ffffff" });
+    drawText(ctx2, rc.name + (rc.out?.qty > 1 ? ` x${rc.out.qty}` : ""), cx, y, { align: "center", color: INK4, shadow: "#ffffff" });
     y += 12;
     const tag2 = { building: "Blueprint", decor: "Aquarium decor", plans: "Seabed decor", bait: "Bait", special: "Bait mixer" }[rc.cat];
     drawText(ctx2, tag2.toUpperCase(), cx, y, { font: "small", align: "center", color: INK_SOFT2 });
@@ -89862,7 +90409,7 @@ ${hearts} ${status}
       ctx2.globalAlpha = 1;
     }
     let y = hy + 56;
-    drawText(ctx2, BOAT_NAMES[id2], cx, y, { align: "center", color: INK3, shadow: "#ffffff" });
+    drawText(ctx2, BOAT_NAMES[id2], cx, y, { align: "center", color: INK4, shadow: "#ffffff" });
     y += 12;
     drawText(ctx2, `TIER ${i + 1}`, cx, y, { font: "small", align: "center", color: INK_SOFT2 });
     y += 10;
@@ -90246,7 +90793,7 @@ ${hearts} ${status}
           const ax = cx - aw - 8;
           ctx2.drawImage(aeroSurface(aw, 20, { tone: "white", r: "pill", gloss: 0.7, glossH: 9, curve: 1, rim: 0.8, glow: 0.4 }), ax, by + 5);
           drawAeroCoin(ctx2, ax + 11, by + 15, 6, t);
-          drawText(ctx2, amt, ax + 21, by + 12, { color: INK3 });
+          drawText(ctx2, amt, ax + 21, by + 12, { color: INK4 });
           if (pill(ui, ctx2, cx, by + 4, cw, 22, "", { tone: "red", icon: getUiIcon("cross"), tip: "Close (Esc)" })) ui.close(this.openId);
         }
         // ------------------------------------------------------------------ footer: research benches + queue | branch focus buttons
@@ -93243,7 +93790,7 @@ ${hearts} ${status}
         } else {
           const dz = SEA - ey + (bq - 0.5) * 2.2;
           const band = dz < ZONE1 ? 0 : dz < ZONE2 ? 1 : 2;
-          const [ca, cb2, a0] = GLASS[band];
+          const [ca, cb2, a0] = GLASS2[band];
           const lo = band === 0 ? 0 : band === 1 ? ZONE1 : ZONE2, hi = band === 0 ? ZONE1 : band === 1 ? ZONE2 : SEA - Y0;
           const kk = clamp01((dz - lo) / (hi - lo));
           wc[0] = lerp(ca[0], cb2[0], kk);
@@ -93665,7 +94212,7 @@ ${hearts} ${status}
     }
     return b;
   }
-  var DEG9, UO, M2, BX, BZ, NX, NZ, NY, MX, XR, ZF, Y0, SEA, PITCH4, MAP_YAWS, YAW0, DEPTH_KNOTS, ZONE1, ZONE2, MAP_LOCATIONS, LOCS, LOC_BY_ID, WEATHER3, angAbs, AUTO, SAND3, GRASS4, ROCK, SNOW, ICE, CREV, BASALT, LAVA2, LAVAHOT, CRUST, RIFT, PLAZA, ROAD, ROADLINE, OSAND, HILL, PATH, OC, TURBINES, BUBBLE, CRACKS, ROAD_U, ROAD_W, VC, SMOKERS, DEBUG, _t0, _t1, _ax, RGB, TOPG, GLASS, SPR3, ROTOR_FRAMES, ROTOR_FACE, packHex, INK9, INK_L, RED, idle, DIO, BAKES, MapPanel, __mapDev;
+  var DEG9, UO, M2, BX, BZ, NX, NZ, NY, MX, XR, ZF, Y0, SEA, PITCH4, MAP_YAWS, YAW0, DEPTH_KNOTS, ZONE1, ZONE2, MAP_LOCATIONS, LOCS, LOC_BY_ID, WEATHER3, angAbs, AUTO, SAND3, GRASS4, ROCK, SNOW, ICE, CREV, BASALT, LAVA2, LAVAHOT, CRUST, RIFT, PLAZA, ROAD, ROADLINE, OSAND, HILL, PATH, OC, TURBINES, BUBBLE, CRACKS, ROAD_U, ROAD_W, VC, SMOKERS, DEBUG, _t0, _t1, _ax, RGB, TOPG, GLASS2, SPR3, ROTOR_FRAMES, ROTOR_FACE, packHex, INK10, INK_L, RED, idle, DIO, BAKES, MapPanel, __mapDev;
   var init_mappanel = __esm({
     "src/ui/mappanel.js"() {
       init_math();
@@ -93863,7 +94410,7 @@ ${hearts} ${status}
       _ax = 0;
       RGB = (h) => hexToRgb(h);
       TOPG = [[0, RGB("#5ef0f0")], [5, RGB("#2fd3e8")], [12, RGB("#22a8e6")], [24, RGB("#1a7ed4")], [40, RGB("#1a5cb4")], [62, RGB("#164494")]];
-      GLASS = [
+      GLASS2 = [
         [RGB("#4ac8ea"), RGB("#2a94d2"), 0.3],
         [RGB("#2068b6"), RGB("#1a4692"), 0.46],
         [RGB("#142c6e"), RGB("#0c1a48"), 0.6]
@@ -93875,7 +94422,7 @@ ${hearts} ${status}
         const [r, g, b] = RGB(h);
         return (255 << 24 | b << 16 | g << 8 | r) >>> 0;
       };
-      INK9 = AERO.ink;
+      INK10 = AERO.ink;
       INK_L = AERO.inkSoft;
       RED = "#e8364a";
       idle = (f) => typeof requestIdleCallback === "function" ? requestIdleCallback(f, { timeout: 400 }) : setTimeout(f, 60);
@@ -94449,8 +94996,8 @@ ${hearts} ${status}
               ctx2.drawImage(lk.canvas, lx, ly);
               top = ly;
             }
-            const tone4 = !open ? "grey" : isH || isS ? toneFrom(L2.color) : "glass";
-            const lr = drawAeroLabel(ctx2, `${L2.name}  ${formatCommas(L2.depth)} m`, x, top - 15, { align: "center", tone: tone4 });
+            const tone5 = !open ? "grey" : isH || isS ? toneFrom(L2.color) : "glass";
+            const lr = drawAeroLabel(ctx2, `${L2.name}  ${formatCommas(L2.depth)} m`, x, top - 15, { align: "center", tone: tone5 });
             if (L2.id === cur) drawAeroLabel(ctx2, "YOU ARE HERE", x, lr.y - 12, { align: "center", tone: "orange", font: "small" });
             hits.push({ id: L2.id, x: lr.x, y: lr.y - 2, w: lr.w, h: Math.max(lr.h + 4, y - lr.y + 4) });
           }
@@ -94555,7 +95102,7 @@ ${hearts} ${status}
           y += 40;
           const row2 = (label3, value, yy) => {
             drawText(ctx2, label3, x, yy, { font: "small", color: INK_L });
-            drawText(ctx2, value, x + w, yy - 1, { align: "right", color: INK9 });
+            drawText(ctx2, value, x + w, yy - 1, { align: "right", color: INK10 });
           };
           row2("DEPTH", `${formatCommas(L2.depth)} m`, y);
           drawAeroBar(ctx2, x, y + 9, w, 6, clamp01(Math.log10(L2.depth + 1) / Math.log10(3201)), { color: "#3a9ef0" });
@@ -94571,7 +95118,7 @@ ${hearts} ${status}
             ctx2.drawImage(getUiIcon(wdef[0]) || getUiIcon("cloud"), x, y);
             let txt = g.ocean.weatherName?.() || wdef[1];
             if (g.stats?.forecast) txt += `  ~${Math.max(1, Math.round((g.ocean.weatherT || 0) / 60))} min`;
-            drawText(ctx2, txt, x + 14, y + 2, { color: INK9 });
+            drawText(ctx2, txt, x + 14, y + 2, { color: INK10 });
             y += 14;
           } else {
             const ws = L2.weathers.map((id2) => WEATHER3[id2] || ["cloud", id2]);
@@ -94609,7 +95156,7 @@ ${hearts} ${status}
               ctx2.drawImage(getUiIcon(q.ok ? "check" : "cross"), x, y - 1);
               const sub4 = q.sub ? ` (${q.sub})` : "";
               const lines = wrapText(q.text + sub4, w - 14);
-              lines.slice(0, 2).forEach((l, i) => drawText(ctx2, l, x + 13, y + 1 + i * 9, { color: q.ok ? "#3a6a2a" : INK9 }));
+              lines.slice(0, 2).forEach((l, i) => drawText(ctx2, l, x + 13, y + 1 + i * 9, { color: q.ok ? "#3a6a2a" : INK10 }));
               y += 9 * Math.min(2, lines.length) + 3;
             }
             y += 2;
@@ -94643,7 +95190,7 @@ ${hearts} ${status}
                 ctx2.fillStyle = mix(D.color, "#ffffff", 0.6);
                 ctx2.fillRect(x + 3, ry2 + 4, 2, 1);
               } else ctx2.drawImage(getUiIcon("lock"), x, ry2 + 1);
-              drawText(ctx2, D.name, x + 12, ry2 + 2, { color: isOpen ? INK9 : AERO.inkFaint });
+              drawText(ctx2, D.name, x + 12, ry2 + 2, { color: isOpen ? INK10 : AERO.inkFaint });
               const right = isHere ? "HERE" : `${formatCommas(D.depth)} M`;
               drawText(ctx2, right, x + w, ry2 + 3, { font: "small", align: "right", color: isHere ? RED : INK_L });
               if (hv && g.input.pressed) {
@@ -94693,7 +95240,7 @@ ${hearts} ${status}
     ctx2.drawImage(ic, Math.round(x), Math.round(cy - ic.height * z / 2), ic.width * z, ic.height * z);
     return ic.width * z;
   }
-  var INK10, INK_SOFT5, KEYS, CYCLES, VOLS, SIZES4, TOGGLES, SettingsPanel;
+  var INK11, INK_SOFT5, KEYS, CYCLES, VOLS, SIZES4, TOGGLES, SettingsPanel;
   var init_settings = __esm({
     "src/ui/settings.js"() {
       init_color();
@@ -94705,7 +95252,7 @@ ${hearts} ${status}
       init_state();
       init_host();
       init_ui();
-      INK10 = AERO.ink;
+      INK11 = AERO.ink;
       INK_SOFT5 = AERO.inkSoft;
       KEYS = [
         ["L", "sparkle", "The Lab"],
@@ -94794,7 +95341,7 @@ ${hearts} ${status}
           {
             const cy = y + Math.round(RH / 2);
             const lw = icon2(ctx2, "expand", L2.x + 8, cy, z);
-            drawText(ctx2, "UI size", L2.x + 14 + lw, cy - Math.round(capH(F12) / 2), { font: F12, color: INK10 });
+            drawText(ctx2, "UI size", L2.x + 14 + lw, cy - Math.round(capH(F12) / 2), { font: F12, color: INK11 });
             const x0 = L2.x + 18 + lw + measureText("UI size", F12);
             const bw2 = Math.floor((L2.x + L2.w - 8 - x0) / 3), bh2 = RH - 3;
             const cur = s.uiScale || "big";
@@ -94821,7 +95368,7 @@ ${hearts} ${status}
               ui.tip = "Fullscreen (F11 / Alt+Enter)";
             }
             const lw = icon2(ctx2, fs ? "minimize" : "expand", L2.x + 8, cy, z);
-            drawText(ctx2, "Fullscreen", L2.x + 14 + lw, cy - Math.round(capH(F12) / 2), { font: F12, color: INK10 });
+            drawText(ctx2, "Fullscreen", L2.x + 14 + lw, cy - Math.round(capH(F12) / 2), { font: F12, color: INK11 });
             drawToggle(ctx2, L2.x + L2.w - TOGGLE_W - 8, cy - Math.round(TOGGLE_H / 2), fs, { hover: hov });
             if (hov && g.input.pressed) {
               g.input.pressed = false;
@@ -94858,7 +95405,7 @@ ${hearts} ${status}
             }
             const lw = icon2(ctx2, ic, row2.x + 4, cy, z);
             const lf = measureText(label3, F12) + lw + 14 + TOGGLE_W > cw ? "normal" : F12;
-            drawText(ctx2, label3, row2.x + 9 + lw, cy - Math.round(capH(lf) / 2), { font: lf, color: INK10 });
+            drawText(ctx2, label3, row2.x + 9 + lw, cy - Math.round(capH(lf) / 2), { font: lf, color: INK11 });
             drawToggle(ctx2, row2.x + row2.w - TOGGLE_W - 4, cy - Math.round(TOGGLE_H / 2), !!s[key], { hover: hov });
             if (hov && g.input.pressed) {
               g.input.pressed = false;
@@ -94938,7 +95485,7 @@ ${hearts} ${status}
           const h = capH(font) + 7;
           const w = Math.max(h + 2, measureText(key, font) + 10);
           ctx2.drawImage(aeroCached(`keycap|${w}|${h}`, () => aeroSurface(w, h, { tone: "white", r: 3, gloss: 0.8, glossH: Math.round(h * 0.45), curve: 1, rim: 0.8, glow: 0.5 })), x, y);
-          drawText(ctx2, key, x + Math.round(w / 2), y + Math.round((h - capH(font)) / 2), { align: "center", font, color: INK10 });
+          drawText(ctx2, key, x + Math.round(w / 2), y + Math.round((h - capH(font)) / 2), { align: "center", font, color: INK11 });
           return w;
         }
         exportSave() {
@@ -96415,7 +96962,7 @@ ${hearts} ${status}
         drawLeft(ctx2, ui, x, y, w, h) {
           const g = this.game, net = this.net, t = this.t;
           glassCard2(ctx2, x, y, w, h, { r: 8 });
-          drawText(ctx2, "Go online", x + 8, y + 9, { color: INK4 });
+          drawText(ctx2, "Go online", x + 8, y + 9, { color: INK5 });
           const on = net.online;
           this.tk = (this.tk ?? (on ? 1 : 0)) + ((on ? 1 : 0) - (this.tk ?? 0)) * Math.min(1, 0.25);
           const tr = toggle(ctx2, x + w - 44, y + 5, on, this.tk);
@@ -96436,7 +96983,7 @@ ${hearts} ${status}
           ctx2.stroke();
           const val = editing ? this.edit.el.value : net.name || "";
           const shown = val || (editing ? "" : "Pick a name");
-          drawText(ctx2, shown, fr.x + 5, fr.y + 5, { color: val ? INK4 : "#9ab8c8" });
+          drawText(ctx2, shown, fr.x + 5, fr.y + 5, { color: val ? INK5 : "#9ab8c8" });
           if (editing && Math.floor(t * 2) % 2 === 0) {
             const sel = this.edit.el.selectionStart ?? val.length;
             const cx = fr.x + 5 + measureText(val.slice(0, sel));
@@ -96472,7 +97019,7 @@ ${hearts} ${status}
             const nw = measureText(nm, "small") + 16;
             pill2(ctx2, px2 - nw / 2, y + 68, nw, 10, { color: "#f4fbff", edge: "#2fb8f0", r: 5 });
             drawGlossOrb(ctx2, px2 - nw / 2 + 6, y + 73, 2.6, "#2fb8f0");
-            drawText(ctx2, nm, px2 - nw / 2 + 11, y + 71, { font: "small", color: INK4 });
+            drawText(ctx2, nm, px2 - nw / 2 + 11, y + 71, { font: "small", color: INK5 });
           }
           const luck = net.partyLuck?.() || 1, k = Math.round((luck - 1) * 10);
           drawText(ctx2, "PARTY LUCK", x + 8, y + 140, { font: "small", color: INK_SOFT3 });
@@ -96498,14 +97045,14 @@ ${hearts} ${status}
           glassCard2(ctx2, x, y, w, h, { r: 8, top: "rgba(240,252,255,0.8)", bottom: "rgba(200,236,250,0.75)" });
           const list = net.online ? net.list() : [];
           drawText(ctx2, "PLAYERS", x + 8, y + 6, { font: "small", color: INK_SOFT3 });
-          drawText(ctx2, String(list.length), x + 44, y + 6, { font: "small", color: INK4 });
+          drawText(ctx2, String(list.length), x + 44, y + 6, { font: "small", color: INK5 });
           const rowH = 19, top = y + 15, rows = Math.floor((h - 18) / rowH);
           const maxS = Math.max(0, list.length - rows);
           if (ui.hover({ x, y, w, h }) && g.input.wheel) this.scroll = Math.max(0, Math.min(maxS, this.scroll + Math.sign(g.input.wheel)));
           this.scroll = Math.min(this.scroll, maxS);
           if (!list.length) {
             const msg = !net.online ? "Go online to see who is fishing." : "Nobody else here yet.";
-            drawText(ctx2, msg, x + w / 2, y + h / 2 - 10, { align: "center", color: INK4 });
+            drawText(ctx2, msg, x + w / 2, y + h / 2 - 10, { align: "center", color: INK5 });
             const tip = !net.online ? "Your boat appears in their ocean, theirs in yours." : "Open FISHTOP in another window, or share the claude.ai link with a friend.";
             wrapText(tip, w - 30, "small").forEach((l, i) => drawText(ctx2, l, x + w / 2, y + h / 2 + 4 + i * 8, { align: "center", font: "small", color: INK_SOFT3 }));
             return;
@@ -96520,7 +97067,7 @@ ${hearts} ${status}
             }
             drawGlossOrb(ctx2, x + 14, ry2 + 8, 6, p.color, t);
             drawText(ctx2, (p.p.name[0] || "?").toUpperCase(), x + 14, ry2 + 5, { align: "center", font: "small", color: "#ffffff" });
-            drawText(ctx2, p.p.name + (p.isMe ? " (you)" : ""), x + 24, ry2 + 2, { color: INK4 });
+            drawText(ctx2, p.p.name + (p.isMe ? " (you)" : ""), x + 24, ry2 + 2, { color: INK5 });
             const oc = OCEAN_NAMES?.[p.p.oc] || p.p.oc;
             let tx = x + 24;
             tx += tag(ctx2, tx, ry2 + 10, p.here ? "HERE" : oc.toUpperCase().slice(0, 18), p.here ? GRASS3 : "#7ab8e0") + 3;
@@ -96583,7 +97130,7 @@ ${hearts} ${status}
             let s = txt;
             while (measureText(s) > w - 60 && s.length > 4) s = s.slice(0, -2);
             if (s !== txt) s = s.slice(0, -1) + "..";
-            drawText(ctx2, s, x + 18, ry2, { color: INK4 });
+            drawText(ctx2, s, x + 18, ry2, { color: INK5 });
             drawText(ctx2, ago(e.at), x + w - 8, ry2 + 1, { font: "small", align: "right", color: "#7aa6bc" });
           });
         }
@@ -96807,7 +97354,7 @@ ${hearts} ${status}
       if (cx + w > x + maxW) break;
       ctx2.drawImage(aeroSurface(w, 16, { tone: rw.big ? "green" : "white", r: "pill", gloss: 0.6, glossH: 6, curve: 1, rim: 0.8, glow: 0.4 }), cx, y);
       rewardIcon(ctx2, rw, cx + 9, y + 8, 12, t, i);
-      if (txt) drawText(ctx2, txt, cx + 16, y + 6, { font: "small", color: rw.big ? "#ffffff" : INK3, shadow: rw.big ? "#1c5a0e" : null });
+      if (txt) drawText(ctx2, txt, cx + 16, y + 6, { font: "small", color: rw.big ? "#ffffff" : INK4, shadow: rw.big ? "#1c5a0e" : null });
       if (ui.hover({ x: cx, y, w, h: 16 })) ui.tip = rw.label;
       cx += w + 3;
     }
@@ -97012,7 +97559,7 @@ ${hearts} ${status}
             let name = q.title;
             while (name.length > 3 && measureText(name, fT) > tw - 26) name = name.slice(0, -1);
             if (name !== q.title) name = name.slice(0, -1) + ".";
-            drawText(ctx2, name, tx, y + 3, { font: fT, color: done ? "#1f7a2c" : INK3, shadow: "#ffffff" });
+            drawText(ctx2, name, tx, y + 3, { font: fT, color: done ? "#1f7a2c" : INK4, shadow: "#ffffff" });
             let lab3 = o.label;
             while (lab3.length > 3 && measureText(lab3, fS) > tw) lab3 = lab3.slice(0, -1);
             if (lab3 !== o.label) lab3 = lab3.slice(0, -1) + ".";
@@ -97143,8 +97690,8 @@ ${hearts} ${status}
             const cur = i === S11.ch, isDone = !!S11.chDone[c2.id], locked = i > S11.ch, sel = this.sel === c2.id;
             const r = { x: lx, y: cy, w: lw, h: 54 };
             const hov = ui.hover(r);
-            const tone4 = sel ? { top: "#ffffff", mid: "#c8f0ff", bot: "#7fd0f4", edge: "#1f6ea8", a: [1, 1] } : locked ? "grey" : isDone ? { top: "#f4ffe0", mid: "#c8f0a0", bot: "#8ad460", edge: "#2f7a1e", a: [1, 1] } : "white";
-            ctx2.drawImage(aeroSurface(r.w, r.h, { tone: tone4, r: 9, gloss: 0.6, glossH: 16, curve: 2, rim: 0.9, glow: 0.5 }), r.x, r.y);
+            const tone5 = sel ? { top: "#ffffff", mid: "#c8f0ff", bot: "#7fd0f4", edge: "#1f6ea8", a: [1, 1] } : locked ? "grey" : isDone ? { top: "#f4ffe0", mid: "#c8f0a0", bot: "#8ad460", edge: "#2f7a1e", a: [1, 1] } : "white";
+            ctx2.drawImage(aeroSurface(r.w, r.h, { tone: tone5, r: 9, gloss: 0.6, glossH: 16, curve: 2, rim: 0.9, glow: 0.5 }), r.x, r.y);
             if (hov && !sel) {
               ctx2.strokeStyle = rgba("#ffffff", 0.9);
               ctx2.lineWidth = 1;
@@ -97156,7 +97703,7 @@ ${hearts} ${status}
               drawPadlock(ctx2, r.x + 26, r.y + 29, 2, 0, Math.sin(t * 2 + i) * 0.1);
             } else drawAnimIcon(ctx2, "biome:" + c2.ocean, r.x + 26, r.y + 27, 30, t, i, { hover: hov ? 0.6 : 0 });
             drawText(ctx2, `CHAPTER ${c2.n}`, r.x + 50, r.y + 9, { font: "small", color: locked ? "#eef2f6" : "#2f8fc8", shadow: locked ? "#5a6a7c" : null });
-            drawText(ctx2, locked ? "???" : c2.title, r.x + 50, r.y + 19, { color: locked ? "#ffffff" : INK3, shadow: locked ? "#5a6a7c" : null });
+            drawText(ctx2, locked ? "???" : c2.title, r.x + 50, r.y + 19, { color: locked ? "#ffffff" : INK4, shadow: locked ? "#5a6a7c" : null });
             const n2 = c2.quests.length, d = c2.quests.filter((q) => S11.done[q.id]).length;
             if (!locked) drawAeroBar(ctx2, r.x + 50, r.y + 34, lw - 62, 6, d / n2, { color: isDone ? "#5fd23a" : "#35c8ff" });
             if (!locked) drawText(ctx2, `${d}/${n2}`, r.x + lw - 10, r.y + 9, { font: "small", align: "right", color: INK_SOFT2 });
@@ -97198,7 +97745,7 @@ ${hearts} ${status}
           ctx2.closePath();
           ctx2.fill();
           drawText(ctx2, npcName(intro.npc).toUpperCase(), R4.x + 88, R4.y + 34, { font: "small", color: shade(NPC_COL[intro.npc] || "#35c8ff", -0.4) });
-          lines.forEach((l, i) => drawText(ctx2, l, R4.x + 88, R4.y + 43 + i * 10, { color: INK3 }));
+          lines.forEach((l, i) => drawText(ctx2, l, R4.x + 88, R4.y + 43 + i * 10, { color: INK4 }));
           const top = R4.y + 84, bottom = R4.y + R4.h - 44;
           const CH = 50, gap = 4;
           const listH = c.quests.length * (CH + gap);
@@ -97218,8 +97765,8 @@ ${hearts} ${status}
             if (y > bottom || y + CH < top) return;
             const isDone = !!S11.done[q.id], active = book.isActive(q.id) && ci === S11.ch, locked = !isDone && !active;
             const r = { x: R4.x + 8, y, w: R4.w - 16, h: CH };
-            const tone4 = isDone ? { top: "#f4ffe0", mid: "#d8f6b8", bot: "#a8e080", edge: "#2f7a1e", a: [0.97, 0.97] } : locked ? { top: "#dce8f0", mid: "#aec2d2", bot: "#8aa2b8", edge: "#4a6078", a: [0.9, 0.9] } : "frost";
-            ctx2.drawImage(aeroSurface(r.w, r.h, { tone: tone4, r: 8, gloss: 0.5, glossH: 14, curve: 2, rim: 0.9, glow: 0.4 }), r.x, r.y);
+            const tone5 = isDone ? { top: "#f4ffe0", mid: "#d8f6b8", bot: "#a8e080", edge: "#2f7a1e", a: [0.97, 0.97] } : locked ? { top: "#dce8f0", mid: "#aec2d2", bot: "#8aa2b8", edge: "#4a6078", a: [0.9, 0.9] } : "frost";
+            ctx2.drawImage(aeroSurface(r.w, r.h, { tone: tone5, r: 8, gloss: 0.5, glossH: 14, curve: 2, rim: 0.9, glow: 0.4 }), r.x, r.y);
             if (active) drawAeroGlow(ctx2, r.x + 22, r.y + CH / 2, 22, "#fff6a0", 0.3 + 0.15 * Math.sin(t * 3 + i));
             if (locked) {
               drawPortrait2(ctx2, q.giver, r.x + 22, r.y + CH / 2, 15, t, { key: "ql" + i });
@@ -97233,7 +97780,7 @@ ${hearts} ${status}
               return;
             }
             drawPortrait2(ctx2, q.giver, r.x + 22, r.y + CH / 2, 16, t, { key: "ql" + i });
-            drawText(ctx2, q.title, r.x + 44, r.y + 6, { color: isDone ? "#1f7a2c" : INK3 });
+            drawText(ctx2, q.title, r.x + 44, r.y + 6, { color: isDone ? "#1f7a2c" : INK4 });
             drawText(ctx2, npcName(q.giver).toUpperCase(), r.x + 48 + measureText(q.title), r.y + 7, { font: "small", color: shade(NPC_COL[q.giver] || "#35c8ff", -0.35) });
             drawText(ctx2, `"${q.text}"`.slice(0, 64), r.x + 44, r.y + 17, { font: "small", color: INK_SOFT2 });
             const objs = book.objectives(q);
@@ -97242,7 +97789,7 @@ ${hearts} ${status}
               const oy = r.y + 28;
               drawAnimIcon(ctx2, o.icon, ox + 6, oy + 7, 12, t, j + i, {});
               const lab3 = o.label;
-              drawText(ctx2, lab3, ox + 15, oy + 1, { color: o.ok ? "#1f7a2c" : INK3 });
+              drawText(ctx2, lab3, ox + 15, oy + 1, { color: o.ok ? "#1f7a2c" : INK4 });
               const lw = measureText(lab3);
               if (!o.ok) {
                 drawAeroBar(ctx2, ox + 15, oy + 11, Math.min(120, lw), 5, o.have / Math.max(1, o.need), { color: "#5fd23a" });
@@ -97393,7 +97940,7 @@ ${hearts} ${status}
           drawAnimIcon(ctx2, globeKey, cx, gy, Math.round(60 * pop), t, 0, { hover: 0.5 });
           if (this.mode === "done") {
             title(ctx2, `CHAPTER ${c.n} COMPLETE!`, cx, P6.y + 104, 22, "#ffe25a", "#8a4a06", "center");
-            drawText(ctx2, c.title, Math.round(cx - measureText(c.title) / 2), P6.y + 134, { color: INK3 });
+            drawText(ctx2, c.title, Math.round(cx - measureText(c.title) / 2), P6.y + 134, { color: INK4 });
             const rl = rewardList(c.reward);
             const tw = 46, gap = 8, rw0 = rl.length * (tw + gap) - gap;
             rl.forEach((rw, i) => {
@@ -97405,7 +97952,7 @@ ${hearts} ${status}
               ctx2.drawImage(aeroSurface(s, s, { tone: rw.big ? "green" : "white", r: 9, gloss: 0.7, glossH: Math.round(s * 0.4), curve: 2, rim: 0.9, glow: 0.6 }), Math.round(x + (tw - s) / 2), Math.round(y + (tw - s) / 2));
               rewardIcon(ctx2, rw, x + tw / 2, y + tw / 2, 30 * k, t, i);
               const lab3 = rw.key === "aero" ? String(rw.n) : rw.n ? "x" + rw.n : "";
-              if (lab3) drawText(ctx2, lab3, Math.round(x + tw / 2 - measureText(lab3, "small") / 2), y + tw + 3, { font: "small", color: INK3 });
+              if (lab3) drawText(ctx2, lab3, Math.round(x + tw / 2 - measureText(lab3, "small") / 2), y + tw + 3, { font: "small", color: INK4 });
               if (ui.hover({ x, y, w: tw, h: tw })) ui.tip = rw.label;
             });
             const nw = rl.find((r) => r.big);
@@ -97435,7 +97982,7 @@ ${hearts} ${status}
               const x = Math.round(cx - 150 + i * 102), y = P6.y + 236;
               ctx2.drawImage(aeroSurface(96, 24, { tone: "white", r: 7, gloss: 0.6, glossH: 9, curve: 1, rim: 0.8, glow: 0.4 }), x, y);
               drawAnimIcon(ctx2, this.game.quests?.book?.objectives?.(q)[0]?.icon || "star", x + 11, y + 12, 14, t, i, {});
-              drawText(ctx2, q.title.length > 13 ? q.title.slice(0, 12) + "." : q.title, x + 20, y + 9, { font: "small", color: INK3 });
+              drawText(ctx2, q.title.length > 13 ? q.title.slice(0, 12) + "." : q.title, x + 20, y + 9, { font: "small", color: INK4 });
             });
             const last = this.line >= c.intro.length - 1;
             if (pill(ui, ctx2, cx - 60, P6.y + h - 34, 120, 24, last ? "Let's go!" : "Next", { tone: last ? "green" : "aqua", icon: getUiIcon("play") || getUiIcon("check"), sound: "ui_click" })) this.next();
@@ -97463,7 +98010,7 @@ ${hearts} ${status}
           let n2 = shown.length;
           lines.forEach((l, i) => {
             if (n2 <= 0) return;
-            drawText(ctx2, l.slice(0, n2), x + 66, y + 20 + i * 10, { color: INK3 });
+            drawText(ctx2, l.slice(0, n2), x + 66, y + 20 + i * 10, { color: INK4 });
             n2 -= l.length + 1;
           });
         }
@@ -97549,7 +98096,7 @@ ${hearts} ${status}
     }
     ui.register(new FishManagerPanel());
   }
-  var SORTS2, PLACES, INK11, SOFT, RELEASE_VALUE2, THUMBS2, budget4, TextEdit, FishManagerPanel;
+  var SORTS2, PLACES, INK12, SOFT, RELEASE_VALUE2, THUMBS2, budget4, TextEdit, FishManagerPanel;
   var init_fishmgr = __esm({
     "src/ui/fishmgr.js"() {
       init_math();
@@ -97574,7 +98121,7 @@ ${hearts} ${status}
         ["species", "Species"]
       ];
       PLACES = [["all", "All"], ["tank", "Tank"], ["storage", "Storage"]];
-      INK11 = AERO.ink || "#0c3a52";
+      INK12 = AERO.ink || "#0c3a52";
       SOFT = "#3c6f88";
       RELEASE_VALUE2 = { common: 4, uncommon: 10, rare: 30, epic: 90, legendary: 300 };
       THUMBS2 = /* @__PURE__ */ new Map();
@@ -97827,11 +98374,11 @@ ${hearts} ${status}
             if (this.btn(ui, ctx2, { x: BK.x + BK.w - 66, y: BK.y + 2, w: 62, h: BK.h - 4 }, "Cancel", { tone: "glass", font: "small" })) this.breedFor = null;
           } else if (this.checked.size) {
             const sel = [...this.checked];
-            drawText(ctx2, `${sel.length} checked`, BK.x + 4, BK.y + 7, { color: INK11 });
+            drawText(ctx2, `${sel.length} checked`, BK.x + 4, BK.y + 7, { color: INK12 });
             let x = BK.x + 70;
-            const b = (label3, icon3, tone4, f, tip) => {
+            const b = (label3, icon3, tone5, f, tip) => {
               const w = measureText(label3, "small") + 30;
-              if (this.btn(ui, ctx2, { x, y: BK.y, w, h: BK.h }, label3, { icon: icon3, tone: tone4, font: "small", tip })) f();
+              if (this.btn(ui, ctx2, { x, y: BK.y, w, h: BK.h }, label3, { icon: icon3, tone: tone5, font: "small", tip })) f();
               x += w + 4;
             };
             b("To tank", "tank", "aqua", () => {
@@ -97905,7 +98452,7 @@ ${hearts} ${status}
           if (rec.variant?.shiny && (this.t * 3 + r.y) % 2 < 0.5) drawSparkle(ctx2, r.x + 58, r.y + 5, 1, 1);
           let x = r.x + 68;
           const nm = rec.name || sp.name;
-          drawText(ctx2, nm.length > 16 ? nm.slice(0, 15) + ".." : nm, x, r.y + 4, { color: INK11 });
+          drawText(ctx2, nm.length > 16 ? nm.slice(0, 15) + ".." : nm, x, r.y + 4, { color: INK12 });
           if (rec.fav) {
             const st = getUiIcon("star");
             if (st) ctx2.drawImage(st, x + measureText(nm.slice(0, 16)) + 3, r.y + 2);
@@ -97913,7 +98460,7 @@ ${hearts} ${status}
           const tag2 = rec.variant?.shiny ? "SHINY " : rec.variant?.mutation ? (MUTATIONS[rec.variant.mutation]?.name || rec.variant.mutation).toUpperCase() + " " : "";
           drawText(ctx2, tag2 + (rec.name ? sp.name : rar.name), x, r.y + 16, { font: "small", color: tag2 ? "#a8389a" : SOFT });
           x = r.x + Math.round(r.w * 0.38);
-          drawText(ctx2, `${(rec.sizeCm || 0).toFixed(1)}cm`, x, r.y + 10, { font: "small", color: INK11 });
+          drawText(ctx2, `${(rec.sizeCm || 0).toFixed(1)}cm`, x, r.y + 10, { font: "small", color: INK12 });
           x += 40;
           const bw = Math.max(30, Math.round(r.w * 0.16));
           const hi = getUiIcon("heart"), fo = getUiIcon("food");
@@ -97924,7 +98471,7 @@ ${hearts} ${status}
           x += bw + 16;
           if (rec.inTank) {
             drawAeroCoin(ctx2, x + 3, r.y + 9, 3.5, this.t);
-            drawText(ctx2, (this.aq?.rateOf?.(rec) || 0).toFixed(1), x + 9, r.y + 6, { font: "small", color: INK11 });
+            drawText(ctx2, (this.aq?.rateOf?.(rec) || 0).toFixed(1), x + 9, r.y + 6, { font: "small", color: INK12 });
           } else drawText(ctx2, "--", x + 4, r.y + 6, { font: "small", color: SOFT });
           const pl = rec.inTank ? "TANK" : "STORE";
           const pw = measureText(pl, "small") + 8, px2 = r.x + r.w - pw - 4;
@@ -97975,11 +98522,11 @@ ${hearts} ${status}
             ctx2.fillRect(D.x + 10, y - 2, D.w - 20, 14);
             ctx2.fillStyle = "#3ac4f8";
             ctx2.fillRect(D.x + 10, y + 11, D.w - 20, 1);
-            drawText(ctx2, this.edit.text + caret, D.x + 13, y + 1, { color: INK11 });
+            drawText(ctx2, this.edit.text + caret, D.x + 13, y + 1, { color: INK12 });
             drawText(ctx2, "Enter: save   Esc: cancel", D.x + 10, y + 15, { font: "small", color: SOFT });
             y += 24;
           } else {
-            drawText(ctx2, rec.name || sp.name, D.x + 10, y, { font: "big", color: INK11 });
+            drawText(ctx2, rec.name || sp.name, D.x + 10, y, { font: "big", color: INK12 });
             y += 14;
             drawText(ctx2, `${sp.name}  -  ${rar.name}`, D.x + 10, y, { font: "small", color: rar.dark });
             y += 10;
@@ -97988,18 +98535,18 @@ ${hearts} ${status}
           if (rec.variant?.shiny) tags.push("SHINY");
           if (rec.variant?.mutation) tags.push((MUTATIONS[rec.variant.mutation]?.name || rec.variant.mutation).toUpperCase());
           if (rec.bred) tags.push("BRED");
-          drawText(ctx2, `${(rec.sizeCm || 0).toFixed(1)} cm   ${tags.join("  ")}`, D.x + 10, y, { font: "small", color: tags.length ? "#a8389a" : INK11 });
+          drawText(ctx2, `${(rec.sizeCm || 0).toFixed(1)} cm   ${tags.join("  ")}`, D.x + 10, y, { font: "small", color: tags.length ? "#a8389a" : INK12 });
           y += 12;
           const bw = D.w - 74;
-          drawText(ctx2, "Happy", D.x + 10, y + 1, { font: "small", color: INK11 });
+          drawText(ctx2, "Happy", D.x + 10, y + 1, { font: "small", color: INK12 });
           drawAeroBar(ctx2, D.x + 56, y, bw, 7, rec.happiness ?? 0.7, { color: "#ff7aa8" });
           y += 11;
-          drawText(ctx2, "Fed", D.x + 10, y + 1, { font: "small", color: INK11 });
+          drawText(ctx2, "Fed", D.x + 10, y + 1, { font: "small", color: INK12 });
           drawAeroBar(ctx2, D.x + 56, y, bw, 7, 1 - (rec.hunger ?? 0.3), { color: (rec.hunger ?? 0) > 0.6 ? "#ff9a3a" : "#7ee07a" });
           y += 12;
           if (rec.inTank) {
             drawAeroCoin(ctx2, D.x + 14, y + 4, 4, this.t);
-            drawText(ctx2, `${(this.aq?.rateOf?.(rec) || 0).toFixed(1)} Aero / min`, D.x + 22, y + 1, { font: "small", color: INK11 });
+            drawText(ctx2, `${(this.aq?.rateOf?.(rec) || 0).toFixed(1)} Aero / min`, D.x + 22, y + 1, { font: "small", color: INK12 });
           } else drawText(ctx2, "In storage: earns nothing", D.x + 10, y + 1, { font: "small", color: SOFT });
           y += 12;
           const cw = Math.floor((D.w - 24) / 2), ch = 18;
@@ -98027,10 +98574,10 @@ ${hearts} ${status}
               this.confirm = { recs: [rec], value: this.value(rec) };
             }, false, "Let it go for Aero"]
           ];
-          A2.forEach(([label3, icon3, tone4, f, dis, tip], i) => {
+          A2.forEach(([label3, icon3, tone5, f, dis, tip], i) => {
             const r = { x: D.x + 8 + i % 2 * (cw + 8), y: y + Math.floor(i / 2) * (ch + 4), w: cw, h: ch };
             if (r.y + r.h > D.y + D.h - 4) return;
-            if (this.btn(ui, ctx2, r, label3, { icon: icon3, tone: tone4, font: "small", dis, tip })) f();
+            if (this.btn(ui, ctx2, r, label3, { icon: icon3, tone: tone5, font: "small", dis, tip })) f();
           });
         }
         drawConfirm(ctx2, ui, R4) {
@@ -98041,7 +98588,7 @@ ${hearts} ${status}
           drawAeroSurface(ctx2, x, y, w, h, { tone: "frost", r: 10, gloss: 0.5, glossH: 20, rim: 0.9, glow: 0.6, streak: true });
           const n2 = c.recs.length;
           const nm = n2 === 1 ? c.recs[0].name || SPECIES_BY_ID[c.recs[0].species]?.name : `${n2} fish`;
-          drawText(ctx2, `Release ${nm}?`, x + w / 2, y + 14, { align: "center", font: "big", color: INK11 });
+          drawText(ctx2, `Release ${nm}?`, x + w / 2, y + 14, { align: "center", font: "big", color: INK12 });
           drawText(ctx2, `They swim back to the ocean.  +${fmtAero(c.value)} Aero`, x + w / 2, y + 34, { align: "center", font: "small", color: SOFT });
           if (this.btn(ui, ctx2, { x: x + 20, y: y + h - 32, w: 110, h: 22 }, "Release", { icon: "check", tone: "red" })) {
             this.confirm = null;
@@ -98077,7 +98624,7 @@ ${hearts} ${status}
     }
     if (kind2 === "item") drawItem(ctx2, id2, cx, Math.round(cy + size / 2), { box: [size, size], t, big: size > 48 });
   }
-  var BENCH_CATS, CAT_ALIAS, INK12, INK_SOFT6, OK2, BAD2, fmtT, WorkshopPanel;
+  var BENCH_CATS, CAT_ALIAS, INK13, INK_SOFT6, OK2, BAD2, fmtT, WorkshopPanel;
   var init_workshop2 = __esm({
     "src/ui/workshop.js"() {
       init_math();
@@ -98094,7 +98641,7 @@ ${hearts} ${status}
       init_ui();
       BENCH_CATS = /* @__PURE__ */ new Set(["build", "decor", "bait"]);
       CAT_ALIAS = { building: "build", plans: "decor", special: "bait" };
-      INK12 = "#0c3a52";
+      INK13 = "#0c3a52";
       INK_SOFT6 = "#3c6f88";
       OK2 = "#1f9a3a";
       BAD2 = "#e0384a";
@@ -98187,7 +98734,7 @@ ${hearts} ${status}
           const cx = L2.r.x + L2.r.w - 34 - cw;
           ctx2.drawImage(aeroCached(`wscoin|${cw}`, () => aeroSurface(cw, 22, { tone: "white", r: "pill", gloss: 0.7, glossH: 9, rim: 0.9 })), cx, L2.r.y + 4);
           drawAeroCoin(ctx2, cx + 12, L2.r.y + 15, 7, this.t);
-          drawText(ctx2, coinTxt, cx + cw - 9, L2.r.y + 10, { font: "big", align: "right", color: INK12 });
+          drawText(ctx2, coinTxt, cx + cw - 9, L2.r.y + 10, { font: "big", align: "right", color: INK13 });
           if (ui.button(ctx2, FR.close.x, FR.close.y, FR.close.w, FR.close.h, "", { icon: "cross", tip: "Close (Esc)" })) ui.close(this.id);
         }
         // ------------------------------------------------------------------ locked
@@ -98196,7 +98743,7 @@ ${hearts} ${status}
           drawAeroCard(ctx2, c.x + 40, c.y + 20, c.w - 80, c.h - 40, { tone: "frost" });
           drawNPC(ctx2, "marina", { x: c.x + 170, y: c.y + c.h - 50, t, scale: 1.6, pose: "wave", talk: (Math.sin(t * 3) + 1) * 0.3, mood: "happy" });
           const tx = c.x + 290;
-          drawText(ctx2, "The Workshop is still a mess!", tx, c.y + 70, { font: "big", scale: 2, color: INK12 });
+          drawText(ctx2, "The Workshop is still a mess!", tx, c.y + 70, { font: "big", scale: 2, color: INK13 });
           const lines = wrapText(`Marina needs a hand fixing up her crafting dock. Finish her Chapter 2 quest "Marina's Workshop" (bring her 8 Driftwood and 3 Shells) and it opens up: rods, tackle, boat parts, tank gear and more!`, c.w - 360, "big");
           lines.forEach((l, i) => drawText(ctx2, l, tx, c.y + 110 + i * 15, { font: "big", color: INK_SOFT6 }));
           [["driftwood", 8], ["shell", 3]].forEach(([id2, n2], i) => {
@@ -98229,15 +98776,15 @@ ${hearts} ${status}
           cats.forEach((cat, i) => {
             const y = R4.y + i * h, r = { x: R4.x, y, w: R4.w, h: h - 4 };
             const act = this.cat === cat.id, hov = ui.hover(r);
-            const tone4 = act ? "orange" : hov ? "white" : "glass";
-            ctx2.drawImage(aeroCached(`wstab|${r.w}|${r.h}|${tone4}`, () => aeroSurface(r.w, r.h, { tone: tone4, r: 9, gloss: 0.7, glossH: Math.round(r.h * 0.42), rim: 0.9, glow: act ? 0.7 : 0.4 })), r.x, r.y);
+            const tone5 = act ? "orange" : hov ? "white" : "glass";
+            ctx2.drawImage(aeroCached(`wstab|${r.w}|${r.h}|${tone5}`, () => aeroSurface(r.w, r.h, { tone: tone5, r: 9, gloss: 0.7, glossH: Math.round(r.h * 0.42), rim: 0.9, glow: act ? 0.7 : 0.4 })), r.x, r.y);
             const ic = pixIcon(cat.icon, 2);
             if (ic) {
               const bob = act ? Math.round(Math.sin(t * 4) * 1.5) : 0;
               ctx2.drawImage(ic, Math.round(r.x + r.w / 2 - ic.width / 2), Math.round(r.y + r.h / 2 - ic.height / 2) - 4 + bob);
             }
             const lbl = cat.short || cat.name;
-            drawText(ctx2, lbl, r.x + r.w / 2, r.y + r.h - 11, { font: "small", align: "center", color: act ? "#ffffff" : INK12, shadow: act ? "#7a2a06" : null });
+            drawText(ctx2, lbl, r.x + r.w / 2, r.y + r.h - 11, { font: "small", align: "center", color: act ? "#ffffff" : INK13, shadow: act ? "#7a2a06" : null });
             const n2 = recipesFor(st, cat.id).filter((rc) => (!this.limited || rc.lab) && !st.workshop.seen[rc.id] && wsUnlocked(st, rc) && wsCheck(st, rc).ok).length;
             if (n2) drawAeroBadge(ctx2, r.x + r.w + 2, r.y - 2, n2, t);
             if (hov) ui.tip = cat.name;
@@ -98255,7 +98802,7 @@ ${hearts} ${status}
           drawAeroCard(ctx2, R4.x, R4.y, R4.w, R4.h, { tone: "frost", inset: true });
           let y0 = R4.y + 8;
           const cat = WS_CATS.find((c) => c.id === this.cat);
-          drawText(ctx2, cat?.name || "", R4.x + 10, y0, { font: "big", scale: 1, color: INK12 });
+          drawText(ctx2, cat?.name || "", R4.x + 10, y0, { font: "big", scale: 1, color: INK13 });
           y0 += 16;
           if (this.cat === "tackle" || this.cat === "rods" || this.cat === "upgrade") y0 = this.drawBench(ctx2, ui, { x: R4.x + 6, y: y0, w: R4.w - 12 }) + 4;
           const list = recipesFor(st, this.cat).filter((rc) => !this.limited || rc.lab).sort((a, b) => (wsUnlocked(st, b) ? 1 : 0) - (wsUnlocked(st, a) ? 1 : 0));
@@ -98281,9 +98828,9 @@ ${hearts} ${status}
             const sel = this.sel === rc.id, r = { x, y, w: TW2, h: TH2 };
             const hov = ui.hover(r) && ui.hover(area);
             const col = RARITY[rc.rarity]?.color || "#c9d4dc";
-            const tone4 = sel ? "aqua" : hov ? "white" : "frost";
+            const tone5 = sel ? "aqua" : hov ? "white" : "frost";
             if (open && chk.ok) drawAeroGlow(ctx2, x + TW2 / 2, y + TH2 / 2, 42, "#c8ff7a", 0.25 + 0.15 * Math.sin(t * 3 + i));
-            ctx2.drawImage(aeroCached(`wstile|${TW2}|${TH2}|${tone4}`, () => aeroSurface(TW2, TH2, { tone: tone4, r: 8, gloss: 0.6, glossH: 16, rim: 0.9, glow: 0.4 })), x, y);
+            ctx2.drawImage(aeroCached(`wstile|${TW2}|${TH2}|${tone5}`, () => aeroSurface(TW2, TH2, { tone: tone5, r: 8, gloss: 0.6, glossH: 16, rim: 0.9, glow: 0.4 })), x, y);
             ctx2.fillStyle = open ? col : "#aab8c6";
             ctx2.fillRect(x + 4, y + TH2 - 7, TW2 - 8, 3);
             ctx2.globalAlpha = open ? 1 : 0.35;
@@ -98297,7 +98844,7 @@ ${hearts} ${status}
             let nm = rc.name;
             while (measureText(nm, "small") > TW2 - 6 && nm.length > 3) nm = nm.slice(0, -1);
             if (nm !== rc.name) nm = nm.trimEnd() + ".";
-            drawText(ctx2, nm, x + TW2 / 2, y + TH2 - 22, { font: "small", align: "center", color: open ? INK12 : "#7a90a4" });
+            drawText(ctx2, nm, x + TW2 / 2, y + TH2 - 22, { font: "small", align: "center", color: open ? INK13 : "#7a90a4" });
             if (open) {
               const owned = chk.owned || rc.out?.type === "rodlevel" && rc.maxed;
               if (owned) {
@@ -98360,7 +98907,7 @@ ${hearts} ${status}
               drawRef(ctx2, "pix:" + { reel: "reel_spin", line: "line_braid", lure: "lure_spoon", charm: "charm_heart" }[slot], x + sw / 2, y + sw / 2 - 2, 32, t);
               ctx2.globalAlpha = 1;
             }
-            drawText(ctx2, TACKLE_SLOT_NAMES[slot], x + sw / 2, y + sw - 8, { font: "small", align: "center", color: INK12 });
+            drawText(ctx2, TACKLE_SLOT_NAMES[slot], x + sw / 2, y + sw - 8, { font: "small", align: "center", color: INK13 });
             if (hov) ui.tip = id2 ? `${TACKLE_SLOT_NAMES[slot]}: ${TACKLE_BY_ID[id2]?.name}` : `${TACKLE_SLOT_NAMES[slot]}: empty (craft one!)`;
             if (ui.clicked(r)) {
               this.cat = "tackle";
@@ -98433,7 +98980,7 @@ ${hearts} ${status}
           drawAeroGlow(ctx2, x + w / 2, y + stH / 2, 70, col, 0.45);
           this.drawAnvil(ctx2, x, y, w, stH, rc, dt);
           y += stH + 8;
-          drawText(ctx2, rc.name, x, y, { font: "big", scale: measureText(rc.name, "big", 2) <= w ? 2 : 1, color: INK12 });
+          drawText(ctx2, rc.name, x, y, { font: "big", scale: measureText(rc.name, "big", 2) <= w ? 2 : 1, color: INK13 });
           y += measureText(rc.name, "big", 2) <= w ? 22 : 13;
           const rn = RARITY[rc.rarity]?.name || "";
           ctx2.fillStyle = col;
@@ -98462,7 +99009,7 @@ ${hearts} ${status}
             let nm = m.aero ? "Aero" : ITEMS[m.id]?.name || m.id;
             const qty = `${m.aero ? fmtAero(m.have) : Math.min(m.have, 999)}/${m.aero ? fmtAero(m.need) : m.need}`;
             while (measureText(nm, "normal") > cw - measureText(qty, "normal") - 24 && nm.length > 3) nm = nm.slice(0, -1);
-            drawText(ctx2, nm, cx + 16, cy + 2, { color: INK12 });
+            drawText(ctx2, nm, cx + 16, cy + 2, { color: INK13 });
             drawText(ctx2, qty, cx + cw - 6, cy + 2, { align: "right", color: m.ok ? OK2 : BAD2 });
             if (ui.hover({ x: cx, y: cy, w: cw, h: rowH }) && !m.aero) ui.tip = `${ITEMS[m.id]?.name}: ${ITEMS[m.id]?.desc || ""}`;
           });
@@ -98527,7 +99074,7 @@ ${hearts} ${status}
                 ctx2.fillRect(bx + Math.round(bw * kk(ve)) - 1, y - 1, 2, 10);
               }
               const fmt = (q) => k.key === "strength" ? `${Math.round(q)}kg` : k.key === "resilience" ? `${Math.round(q * 100)}%` : q.toFixed(2);
-              drawText(ctx2, v2 !== null ? fmt(v2) : fmt(v), x + w, y, { font: "small", align: "right", color: v2 !== null ? OK2 : INK12 });
+              drawText(ctx2, v2 !== null ? fmt(v2) : fmt(v), x + w, y, { font: "small", align: "right", color: v2 !== null ? OK2 : INK13 });
               y += 10;
             }
             const perk = ROD_BY_ID[id2]?.perk;
@@ -98537,7 +99084,7 @@ ${hearts} ${status}
               ctx2.fillStyle = "#fff2c8";
               ctx2.fillRect(x, y - 2, w, 22);
               drawText(ctx2, `PERK: ${p.name}`, x + 4, y, { font: "small", color: "#a8680e" });
-              drawText(ctx2, wrapText(p.desc, w - 8, "small")[0] || "", x + 4, y + 9, { font: "small", color: INK12 });
+              drawText(ctx2, wrapText(p.desc, w - 8, "small")[0] || "", x + 4, y + 9, { font: "small", color: INK13 });
               y += 24;
             }
             if (eq) {
@@ -101242,10 +101789,10 @@ ${hearts} ${status}
           const font = m.font;
           const ph = capH(font) + 7 + (font === "big" ? 1 : 0);
           const pw = measureText(txt, font) + R3(10 * k / 1.6 + 4);
-          const tone4 = n2 > 0 ? n2 <= 2 ? "orange" : "green" : "red";
+          const tone5 = n2 > 0 ? n2 <= 2 ? "orange" : "green" : "red";
           const px2 = Math.min(G.x + G.w - pw - R3(4 * k), b.x + D - R3(8 * k)), py = b.y + b.h - ph + R3(2 * k);
-          ctx2.drawImage(aeroCached(`hudcount|${pw}|${ph}|${tone4}`, () => aeroSurface(pw, ph, { tone: tone4, r: "pill", gloss: 0.85, glossH: R3(ph * 0.45), curve: 1, rim: 0.7, glow: 0.5, edge: "#ffffff", edgeA: 1 })), px2, py);
-          drawText(ctx2, txt, px2 + R3(pw / 2), py + R3((ph - capH(font)) / 2), { align: "center", font, color: "#ffffff", shadow: toneShadow(tone4) });
+          ctx2.drawImage(aeroCached(`hudcount|${pw}|${ph}|${tone5}`, () => aeroSurface(pw, ph, { tone: tone5, r: "pill", gloss: 0.85, glossH: R3(ph * 0.45), curve: 1, rim: 0.7, glow: 0.5, edge: "#ffffff", edgeA: 1 })), px2, py);
+          drawText(ctx2, txt, px2 + R3(pw / 2), py + R3((ph - capH(font)) / 2), { align: "center", font, color: "#ffffff", shadow: toneShadow(tone5) });
           if (!cur && t % 1.4 < 0.7) drawAeroBadge(ctx2, b.x + D + R3(2 * k), b.y - R3(3 * k), "!", t);
           ctx2.globalAlpha = a0;
         }
@@ -103224,6 +103771,7 @@ void main() {
       init_input();
       init_audio();
       init_screen();
+      init_hires();
       init_camera();
       init_state();
       init_skills();
@@ -103934,6 +104482,7 @@ void main() {
           ctx2.setTransform(1, 0, 0, 1, 0, 0);
           ctx2.globalAlpha = 1;
           ctx2.globalCompositeOperation = "source-over";
+          const uctx0 = (this.uiLayer || (this.uiLayer = new UiLayer(this.screen))).begin();
           if (this.tutorial.intro?.opaque) {
             this.tutorial.drawUi(ctx2);
             this.drawCursor(ctx2);
@@ -104038,38 +104587,41 @@ void main() {
               console.error(e);
             }
           }
-          this.hud.draw(ctx2);
-          try {
-            this.quests?.drawHud?.(ctx2, dt);
-          } catch (e) {
-            if (!this.questDrawErr) {
-              this.questDrawErr = true;
-              console.error(e);
+          {
+            const ctx3 = uctx0 || this.screen.ctx;
+            this.hud.draw(ctx3);
+            try {
+              this.quests?.drawHud?.(ctx3, dt);
+            } catch (e) {
+              if (!this.questDrawErr) {
+                this.questDrawErr = true;
+                console.error(e);
+              }
             }
-          }
-          this.fishing.drawHud(ctx2);
-          try {
-            this.build?.drawUi?.(ctx2);
-          } catch (e) {
-            if (!this.buildUiErr) {
-              this.buildUiErr = true;
-              console.error(e);
+            this.fishing.drawHud(ctx3);
+            try {
+              this.build?.drawUi?.(ctx3);
+            } catch (e) {
+              if (!this.buildUiErr) {
+                this.buildUiErr = true;
+                console.error(e);
+              }
             }
+            this.ui.drawHud(ctx3, dt);
+            cam.drawBars(ctx3);
+            this.fishing.drawCinematicHud?.(ctx3);
+            ocean2.drawTitleCard(ctx3, dt);
+            this.ui.drawPanels(ctx3, dt);
+            this.tutorial.drawUi?.(ctx3);
+            this.particles.draw(ctx3, "ui", this.time);
+            this.ui.drawToasts(ctx3);
+            this.hud.drawTooltip(ctx3, this.input);
+            this.ui.drawTip(ctx3);
+            cam.drawFlash(ctx3);
+            if (this.paused) drawText(ctx3, "PAUSED (P)", W10 / 2, 8, { align: "center", color: "#ffffff", shadow: "#0a3e74" });
+            if (this.state.settings.showFps) drawText(ctx3, `${Math.round(this.fps)} fps  ${this.school.fishes.length} fish  ${this.particles.list.length} p  water:${this.water?.active ? this.water.kind : "2d"}`, 4, H8 - 36, { font: "small", color: "#ffffff", outline: "#000" });
+            this.drawCursor(ctx3);
           }
-          this.ui.drawHud(ctx2, dt);
-          cam.drawBars(ctx2);
-          this.fishing.drawCinematicHud?.(ctx2);
-          ocean2.drawTitleCard(ctx2, dt);
-          this.ui.drawPanels(ctx2, dt);
-          this.tutorial.drawUi?.(ctx2);
-          this.particles.draw(ctx2, "ui", this.time);
-          this.ui.drawToasts(ctx2);
-          this.hud.drawTooltip(ctx2, this.input);
-          this.ui.drawTip(ctx2);
-          cam.drawFlash(ctx2);
-          if (this.paused) drawText(ctx2, "PAUSED (P)", W10 / 2, 8, { align: "center", color: "#ffffff", shadow: "#0a3e74" });
-          if (this.state.settings.showFps) drawText(ctx2, `${Math.round(this.fps)} fps  ${this.school.fishes.length} fish  ${this.particles.list.length} p  water:${this.water?.active ? this.water.kind : "2d"}`, 4, H8 - 36, { font: "small", color: "#ffffff", outline: "#000" });
-          this.drawCursor(ctx2);
         }
         drawBuildings(ctx2, env, band) {
           try {

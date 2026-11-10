@@ -514,7 +514,7 @@ export class Finale {
       }
       case 'igotit': {
         const sp = f.sp;
-        F.titles.add('igotit', 'I GOT IT!', { rarity: sp.rarity, pal: sp.rarity === 'legendary' ? 'sun' : sp.rarity === 'epic' ? 'violet' : 'lime' });
+        if (!F.bossWin) F.titles.add('igotit', 'I GOT IT!', { rarity: sp.rarity, pal: sp.rarity === 'legendary' ? 'sun' : sp.rarity === 'epic' ? 'violet' : 'lime' }); // [phase9:fishing] a boss gets VICTORY! instead
         F.setPose('hold');
         const [hx, hy] = this.hands();
         F.particles.coins(hx, hy - 6, 10, { speed: [100, 200], floor: this.surface !== null ? this.surface - 1 : null });
@@ -578,7 +578,7 @@ export class Finale {
       case 'igotit':
         this.rays = Math.max(0, this.rays - rdt * 1.2);
         if (this.hasBoat) { const [hx, hy] = this.hands(); F.focusCam(hx, hy - 36, 2.4, 3); }
-        if (this.st > (this.compact ? 0.05 : 2.4)) return 'caught';
+        if (this.st > (this.compact ? 0.05 : F.bossWin ? 5.2 : 2.4)) return 'caught';
         break;
       default: break;
     }
@@ -631,7 +631,6 @@ export class EscapeCine {
     fish.alpha = 1;
     fish.feel('smug', 3);
     F.setPose('sad');
-    F.reel.snapped = reason === 'snap' ? 1 : 0;
     if (reason === 'snap') {
       F.titles.add('snap', 'SNAP!', { seed: rng.int(1, 9999) });
       F.shake(9);

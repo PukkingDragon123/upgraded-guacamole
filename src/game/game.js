@@ -8,6 +8,7 @@ import { RARITY } from '../core/color.js';
 import { Input } from '../core/input.js';
 import { audio } from '../core/audio.js';
 import { Screen } from './screen.js';
+import { UiLayer } from '../gfx/hires.js'; // [phase9:ui]
 import { Camera } from './camera.js';
 import { loadState, saveState, resetState } from './state.js';
 import { computeStats, SKILL_BY_ID, skillStatus } from './skills.js';
@@ -617,6 +618,7 @@ export class Game {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
+    const uctx0 = (this.uiLayer ||= new UiLayer(this.screen)).begin(); // [phase9:ui] full-res UI layer (null when off)
     if (this.tutorial.intro?.opaque) { this.tutorial.drawUi(ctx); this.drawCursor(ctx); return; } // [phase3:intro] the opening covers the frame
 
     const ocean = this.ocean;
@@ -705,24 +707,26 @@ export class Game {
     this.tutorial.drawWorld?.(ctx);
     this.aquarium.drawWindow?.(ctx, dt);
     try { this.prog?.draw?.(ctx, dt); } catch (e) { if (!this.progDrawErr) { this.progDrawErr = true; console.error(e); } } // [phase8:prog] destination scene
-    this.hud.draw(ctx); // [phase4:shell] hotbar, gear pod, location chip
-    try { this.quests?.drawHud?.(ctx, dt); } catch (e) { if (!this.questDrawErr) { this.questDrawErr = true; console.error(e); } } // [phase6:lab] quest tracker + banners
-    this.fishing.drawHud(ctx);
-    try { this.build?.drawUi?.(ctx); } catch (e) { if (!this.buildUiErr) { this.buildUiErr = true; console.error(e); } }
-    this.ui.drawHud(ctx, dt);
-    cam.drawBars(ctx);
-    this.fishing.drawCinematicHud?.(ctx);
-    ocean.drawTitleCard(ctx, dt);
-    this.ui.drawPanels(ctx, dt);
-    this.tutorial.drawUi?.(ctx);
-    this.particles.draw(ctx, 'ui', this.time);
-    this.ui.drawToasts(ctx);
-    this.hud.drawTooltip(ctx, this.input);
-    this.ui.drawTip(ctx);
-    cam.drawFlash(ctx);
-    if (this.paused) drawText(ctx, 'PAUSED (P)', W / 2, 8, { align: 'center', color: '#ffffff', shadow: '#0a3e74' });
-    if (this.state.settings.showFps) drawText(ctx, `${Math.round(this.fps)} fps  ${this.school.fishes.length} fish  ${this.particles.list.length} p  water:${this.water?.active ? this.water.kind : '2d'}`, 4, H - 36, { font: 'small', color: '#ffffff', outline: '#000' });
-    this.drawCursor(ctx);
+    { const ctx = uctx0 || this.screen.ctx; // [phase9:ui] HUD, panels, toasts, UI particles and the cursor draw at full resolution
+      this.hud.draw(ctx); // [phase4:shell] hotbar, gear pod, location chip
+      try { this.quests?.drawHud?.(ctx, dt); } catch (e) { if (!this.questDrawErr) { this.questDrawErr = true; console.error(e); } } // [phase6:lab] quest tracker + banners
+      this.fishing.drawHud(ctx);
+      try { this.build?.drawUi?.(ctx); } catch (e) { if (!this.buildUiErr) { this.buildUiErr = true; console.error(e); } }
+      this.ui.drawHud(ctx, dt);
+      cam.drawBars(ctx);
+      this.fishing.drawCinematicHud?.(ctx);
+      ocean.drawTitleCard(ctx, dt);
+      this.ui.drawPanels(ctx, dt);
+      this.tutorial.drawUi?.(ctx);
+      this.particles.draw(ctx, 'ui', this.time);
+      this.ui.drawToasts(ctx);
+      this.hud.drawTooltip(ctx, this.input);
+      this.ui.drawTip(ctx);
+      cam.drawFlash(ctx);
+      if (this.paused) drawText(ctx, 'PAUSED (P)', W / 2, 8, { align: 'center', color: '#ffffff', shadow: '#0a3e74' });
+      if (this.state.settings.showFps) drawText(ctx, `${Math.round(this.fps)} fps  ${this.school.fishes.length} fish  ${this.particles.list.length} p  water:${this.water?.active ? this.water.kind : '2d'}`, 4, H - 36, { font: 'small', color: '#ffffff', outline: '#000' });
+      this.drawCursor(ctx);
+    }
   }
 
   drawBuildings(ctx, env, band) {

@@ -6,6 +6,7 @@
 //   labIconCached(key, px) -> canvas | undefined (only when already rendered; cheap)
 //   GLYPHS: names of the pixel glyphs (hook, line, star, gear, reel, bolt, battery, eye, music, mouse, heart, ...)
 import { makeCanvas, ctxOf } from '../core/canvas.js';
+import { HI, withHi, enhanceHi } from '../gfx/hires.js'; // [phase9:ui]
 import { PixelBuffer, selOut } from '../gfx/pixel.js';
 import { pack, shade, mix } from '../core/color.js';
 import { hash3 } from '../core/math.js';
@@ -279,6 +280,37 @@ export function labIcon(key, px = 18) {
   px = Math.max(6, Math.round(px));
   const ck = key + '|' + px;
   if (cache.has(ck)) return cache.get(ck);
+  let c = buildIcon(key, px);
+  if (!c && GLYPH_ART[key] === undefined && key !== 'beaker') c = labIcon('beaker', px);
+  // [phase9:ui] the 2x twin for the full-res UI layer: glyphs are remastered (Scale2x + fine outline + bevel), 3D /
+  // voxel icons are rendered again at twice the size (more detail, not a blow-up)
+  if (c && c.hi === undefined && !c.__shared) {
+    try {
+      if (GLYPH_ART[key]) {
+        const g = glyphCanvas(key), k = Math.round(c.width / g.width);
+        withHi(c, () => { const e = enhanceHi(g); if (!e) return null; const h = makeCanvas(c.width * HI, c.height * HI), hg = ctxOf(h); hg.imageSmoothingEnabled = false; hg.drawImage(e, 0, 0, e.width * k, e.height * k); return h; });
+      } else {
+        const own = c;
+        withHi(own, () => twin(own, buildIcon(key, px * HI)));
+      }
+    } catch { /* plain 1x */ }
+  }
+  cache.set(ck, c);
+  return c;
+}
+
+// The 2x twin of `c` from a bigger render: scaled to fit exactly 2x (nearest, keeps pixels crisp), centred.
+function twin(c, big) {
+  if (!big) return null;
+  const W = c.width * HI, H = c.height * HI, h = makeCanvas(W, H), g = ctxOf(h);
+  const k = Math.min(W / big.width, H / big.height);
+  const w = Math.round(big.width * k), hh = Math.round(big.height * k);
+  g.imageSmoothingEnabled = k < 1;
+  g.drawImage(big, Math.round((W - w) / 2), Math.round((H - hh) / 2), w, hh);
+  return h;
+}
+
+function buildIcon(key, px) {
   let c = null;
   try {
     const [kind, id] = key.includes(':') ? key.split(':') : [null, key];
@@ -307,8 +339,6 @@ export function labIcon(key, px = 18) {
     console.error(e);
     c = null;
   }
-  if (!c && GLYPH_ART[key] === undefined && key !== 'beaker') c = labIcon('beaker', px);
-  cache.set(ck, c);
   return c;
 }
 

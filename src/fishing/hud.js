@@ -1,241 +1,459 @@
-// Fight HUD (screen space), Frutiger Aero and nearly text-free:
-//   bite   the big glossy "!" over the biting fish: bite-window ring, spin arrows, hook-set meter beads
-//   scene  fish stamina arc, the directional surge QTE (glossy surge arrow at the fish, a big glossy
-//          PULL arrow at the cursor that fills as you drag, hold-mouse glyph), the spin loop at the
-//          cursor, species event visuals, ink on the lens
-//   frame  soft Aero vignette, surge edge tint (and a green edge when you pull right), the big glossy name
-//          pill, the round glass "angler cam" porthole, and the 3D gear (gear.js) with its rings and SHOCK.
+// Fight HUD (phase 9: simple and clear). Big, readable, near the action, screen space:
+//   bite     a huge glossy "!" over the fish with a shrinking timer bar and CLICK!
+//   panel    bottom centre, over the cinema bar: the catch track (the fish swimming toward your hook), ONE big
+//            TENSION bar (green / yellow / RED: a snap is coming), the reel you crank by circling (left) and the
+//            SHOCK orb (right: charges, fills while you hold, LET GO! when full)
+//   callouts big glossy words over the fish: REEL! / ! (it braces) / EASE OFF! (it pulls) / NICE! / ZAPPED!
+//   tips     short animated hints on the first few fights (circle to reel, ease off on red, hold + release to zap)
+//   edges    a red pulse at the screen edges while the line is in the red; ink on the lens
+//
+// Exports: drawBiteCue(ctx, F), drawFightScene(ctx, F, B) (under the cinema bars), drawFightHud(ctx, F, B) (over
+// them), drawPanel(ctx, F, o), drawMessage, drawAngler, drawBigArrow, drawInk, inkSplatSprite, panelRect(F).
 
-import { TAU, clamp, clamp01, lerp, damp } from '../core/math.js';
-import { rgba, RARITY } from '../core/color.js';
-import { drawText, measureText, registerInlineIcon } from '../gfx/font.js';
+import { TAU, clamp, clamp01, lerp, damp, ease } from '../core/math.js';
+import { rgba } from '../core/color.js';
+import { drawText, measureText } from '../gfx/font.js';
 import { getUiIcon } from '../gfx/uiicons.js';
-import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { drawCharacter } from '../gfx/character.js';
 import { discSprite, glowSprite, pixelLine, gbubbleSprite } from '../gfx/particles.js';
-import { glossText, drawGlassPill, glossFor } from './cinematics.js';
+import { voxelFishIcon } from '../fish/fishicon.js';
+import { drawAeroSurface, drawGlossOrb } from '../ui/aero.js';
+import { glossText, drawGlassPill } from './cinematics.js';
+import { RED } from './battle.js';
 
 const INK = '#0c3a52';
 
-// ------------------------------------------------------------------ inline icons (used by events)
-let iconsReady = false;
-function crankIcon(dir) {
-  const c = makeCanvas(11, 11);
-  const g = ctxOf(c);
-  const pts = [];
-  for (let i = 0; i < 26; i++) {
-    const a = (i / 26) * TAU * 0.8 - Math.PI / 2;
-    const aa = dir > 0 ? a : -a + Math.PI;
-    pts.push([Math.round(5 + Math.cos(aa) * 4), Math.round(5 + Math.sin(aa) * 4)]);
-  }
-  g.fillStyle = INK;
-  for (const [x, y] of pts) g.fillRect(x - 1, y - 1, 3, 3);
-  g.fillStyle = '#8ff0ff';
-  for (const [x, y] of pts) g.fillRect(x, y, 1, 1);
-  const [ex, ey] = pts[pts.length - 1];
-  g.fillStyle = INK; g.fillRect(ex - 2, ey - 2, 5, 5);
-  g.fillStyle = '#ffffff'; g.fillRect(ex - 1, ey - 1, 3, 3);
-  return c;
-}
-
-export function ensureIcons() {
-  if (iconsReady) return;
-  iconsReady = true;
-  registerInlineIcon('crank_cw', crankIcon(1));
-  registerInlineIcon('crank_ccw', crankIcon(-1));
-  registerInlineIcon('crank', crankIcon(1));
-}
-
 export function inkSplatSprite(r) { return discSprite(r, '#0a0614', 0.35, '#1a1030'); }
 
-// ------------------------------------------------------------------ cached art
-const ART = new Map();
-function cached(key, w, h, paint) {
-  let c = ART.get(key);
-  if (!c) { c = makeCanvas(w, h); paint(ctxOf(c), c); ART.set(key, c); }
-  return c;
-}
-
-// Pixel mouse glyph, left button lit (hold) - 9x13.
-function mouseHold(lit) {
-  return cached('mouse' + lit, 9, 13, (g) => {
-    const rows = ['..#####..', '.#LL#..#.', '#LLL#...#', '#LLL#...#', '#####...#', '#.......#', '#.......#', '#.......#', '#.......#', '#.......#', '.#.....#.', '..#####..', '.........'];
-    for (let y = 0; y < rows.length; y++) for (let x = 0; x < 9; x++) {
-      const ch = rows[y][x];
-      if (ch === '#') { g.fillStyle = INK; g.fillRect(x, y, 1, 1); }
-      else if (ch === 'L') { g.fillStyle = lit ? '#8be04a' : '#d8eef8'; g.fillRect(x, y, 1, 1); }
-      else if (y > 0 && y < 11 && x > 0 && x < 8 && rows[y].indexOf('#') < x && rows[y].lastIndexOf('#') > x) { g.fillStyle = y < 3 ? '#ffffff' : '#e8f6fc'; g.fillRect(x, y, 1, 1); }
-    }
-    if (lit) { g.fillStyle = '#e2ffb0'; g.fillRect(2, 1, 1, 1); }
-  });
-}
-
-// ------------------------------------------------------------------ glossy arrow (per-pixel, any angle)
-let arrowCanvas = null, arrowCtx = null;
-const ARROW_RAMPS = {
-  pull: { fill: ['#2f7a1e', '#3fae2a', '#6cd03a', '#a6ec5a', '#e2ffb0'], empty: ['#3f8fbc', '#7cc8ec', '#b8ecff', '#e2f8ff', '#ffffff'] },
-  surge: { fill: ['#8a1a10', '#d8402a', '#ff6a3a', '#ff9d5a', '#ffe0c0'], empty: ['#8a1a10', '#d8402a', '#ff6a3a', '#ff9d5a', '#ffe0c0'] },
-  ok: { fill: ['#0d6f9a', '#1fb8dc', '#4fe0f0', '#9ff4ff', '#ffffff'], empty: ['#0d6f9a', '#1fb8dc', '#4fe0f0', '#9ff4ff', '#ffffff'] },
-};
-const hexRgb = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
-const RAMP_RGB = {};
-for (const [k, v] of Object.entries(ARROW_RAMPS)) RAMP_RGB[k] = { fill: v.fill.map(hexRgb), empty: v.empty.map(hexRgb) };
-
-// Draws an arrow from tail (x, y) pointing along `ang`. o: {len, w, k (fill 0..1), kind, alpha, emptyAlpha}
-export function drawGlossArrow(ctx, x, y, ang, o = {}) {
-  const len = Math.round(o.len ?? 70), w = Math.max(4, Math.round(o.w ?? 14));
-  const headL = Math.round(w * 1.35), headW = w * 1.15;
-  const ca = Math.cos(ang), sa = Math.sin(ang);
-  const pad = Math.ceil(headW) + 3;
-  const S = len + pad * 2 + 2;
-  if (!arrowCanvas || arrowCanvas.width < S) { arrowCanvas = makeCanvas(S, S); arrowCtx = ctxOf(arrowCanvas); }
-  const g = arrowCtx;
-  const img = g.createImageData(S, S);
-  const d = img.data;
-  const ox = S / 2, oy = S / 2; // arrow midpoint at the canvas centre
-  const k = clamp01(o.k ?? 1);
-  const R = RAMP_RGB[o.kind || 'pull'];
-  const upSign = ca >= 0 ? -1 : 1;
-  const half = (u) => (u <= len - headL ? w / 2 : u <= len ? (headW * (len - u)) / headL : -1);
-  for (let py = 0; py < S; py++) for (let px = 0; px < S; px++) {
-    const rx = px + 0.5 - ox, ry = py + 0.5 - oy;
-    const u = rx * ca + ry * sa + len / 2, v = -rx * sa + ry * ca;
-    const hw = half(u);
-    const inside = u >= 0 && hw > 0 && Math.abs(v) <= hw;
-    const hwo = half(Math.min(len, Math.max(0, u)));
-    const outl = !inside && u >= -1.6 && u <= len + 1.6 && Math.abs(v) <= Math.max(hwo, u < 0 ? w / 2 : 0) + 1.6;
-    if (!inside && !outl) continue;
-    const i = (py * S + px) * 4;
-    if (outl) { d[i] = 12; d[i + 1] = 58; d[i + 2] = 82; d[i + 3] = 230; continue; }
-    const n = (v / Math.max(1, hw)) * upSign; // -1 bottom .. 1 top (screen)
-    const filled = u <= k * len;
-    const ramp = filled ? R.fill : R.empty;
-    let l = 0.45 + n * 0.32;
-    if (n > 0.2 && n < 0.75) l = 0.92; // gloss band
-    if (Math.abs(v) > hw - 1.2) l -= 0.25; // edge
-    l = clamp01(l) * (ramp.length - 1);
-    const li = Math.min(ramp.length - 1, Math.floor(l) + ((l % 1) > ((px * 7 + py * 13) % 16) / 16 ? 1 : 0));
-    const c = ramp[li];
-    d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2];
-    d[i + 3] = filled ? 255 : Math.round(255 * (o.emptyAlpha ?? 0.55));
-  }
-  g.clearRect(0, 0, S, S);
-  g.putImageData(img, 0, 0);
-  const mx = x + ca * len / 2, my = y + sa * len / 2;
-  const a0 = ctx.globalAlpha;
-  ctx.globalAlpha = a0 * (o.alpha ?? 1);
-  ctx.drawImage(arrowCanvas, 0, 0, S, S, Math.round(mx - ox), Math.round(my - oy), S, S);
-  ctx.globalAlpha = a0;
-}
-
-// ------------------------------------------------------------------ glossy pill (pixel rows)
-export function drawPill(ctx, x, y, w, h, top = '#ffffff', bot = '#9fe0ff', edge = INK, alpha = 0.9) {
-  x = Math.round(x); y = Math.round(y);
-  const r = Math.floor(h / 2);
+const gloss = (ctx, text, x, y, scale, pal, o = {}) => {
+  const g = glossText(text, scale, pal);
+  const k = o.k ?? 1;
   ctx.save();
-  ctx.globalAlpha *= alpha;
-  for (let i = -1; i <= h; i++) {
-    const dy = i < r ? r - i - 0.5 : i >= h - r ? i - (h - r) + 0.5 : 0;
-    const inset = dy > 0 ? Math.round(r - Math.sqrt(Math.max(0, r * r - dy * dy))) : 0;
-    if (i === -1 || i === h) { ctx.fillStyle = edge; ctx.fillRect(x + r, y + i, w - 2 * r, 1); continue; }
-    const k = i / Math.max(1, h - 1);
-    ctx.fillStyle = edge; ctx.fillRect(x + inset - 1, y + i, w - 2 * inset + 2, 1);
-    ctx.fillStyle = k < 0.45 ? mixHex(top, bot, k * 0.6) : mixHex(top, bot, 0.3 + k * 0.7);
-    ctx.fillRect(x + inset, y + i, w - 2 * inset, 1);
-  }
-  ctx.fillStyle = 'rgba(255,255,255,0.75)';
-  ctx.fillRect(x + r, y + 1, w - 2 * r, 1);
+  if (o.alpha !== undefined) ctx.globalAlpha *= o.alpha;
+  ctx.translate(Math.round(x), Math.round(y));
+  if (k !== 1) ctx.scale(k, k);
+  ctx.drawImage(g.c, Math.round(-g.w / 2 - g.ox), Math.round(-g.h / 2 - g.oy));
   ctx.restore();
+  return g;
+};
+
+// ------------------------------------------------------------------ big glossy arrow (fill k 0..1)
+// Tail at (x, y), pointing along ang, len px. Drawn with axis-aligned pixel rows (crisp at any angle step of 90).
+export function drawBigArrow(ctx, x, y, ang, len, col, k = 1) {
+  const right = Math.cos(ang) >= 0;
+  const hw = Math.max(5, Math.round(len * 0.11)), hh = Math.max(9, Math.round(len * 0.22)), head = Math.max(10, Math.round(len * 0.28));
+  const x0 = Math.round(x), y0 = Math.round(y);
+  const sx = right ? 1 : -1;
+  const fillTo = Math.round(len * clamp01(k));
+  const col2 = '#ffffff';
+  for (const pass of [0, 1, 2]) {
+    for (let i = 0; i <= len; i++) {
+      const w = i < len - head ? hw : Math.round(hh * (len - i) / head);
+      if (w <= 0) continue;
+      const px = x0 + sx * i;
+      if (pass === 0) { ctx.fillStyle = INK; ctx.fillRect(px - 1, y0 - w - 1, 3, w * 2 + 3); continue; }
+      if (pass === 1) {
+        ctx.fillStyle = i <= fillTo ? col : 'rgba(255,255,255,0.35)';
+        ctx.fillRect(px, y0 - w, 1, w * 2 + 1);
+      } else if (i <= fillTo) {
+        ctx.fillStyle = rgba(col2, 0.55);
+        ctx.fillRect(px, y0 - w + 1, 1, Math.max(1, Math.round(w * 0.6)));
+      }
+    }
+  }
 }
 
-function mixHex(a, b, t) {
-  const A = hexRgb(a), B = hexRgb(b);
-  return `rgb(${Math.round(A[0] + (B[0] - A[0]) * t)},${Math.round(A[1] + (B[1] - A[1]) * t)},${Math.round(A[2] + (B[2] - A[2]) * t)})`;
-}
-
-// ------------------------------------------------------------------ bite cue: a big glossy "!" bubble
-// above the fish, a shrinking timer ring, spin arrows racing round it (green once the gear is in the hook band,
-// gold dots for the hook-set meter) and the spin loop at the cursor. No words.
+// ------------------------------------------------------------------ the bite: a huge "!"
 export function drawBiteCue(ctx, F) {
-  const f = F.fish, hs = F.hs;
-  const k = clamp01(F.biteT / Math.max(0.01, F.biteMax));
+  const f = F.fish, bt = F.bite;
+  if (!f || !bt) return;
+  const k = bt.timeK;
   const [sx, sy] = F.toScreen(f.x, f.y);
-  const z = F.zoom();
   const t = F.t;
-  const S = F.H / 540;
-  const cx = Math.round(sx), cy = Math.round(sy - 22 * f.scale * z - 36 * S);
-  const pop = 1 + Math.max(0, 0.35 - (1 - k) * 2.5) + Math.sin(t * 30) * 0.05;
-  drawSpinLoop(ctx, F, hs?.inBand ? '#8be04a' : '#ffe27a');
+  const len = F.fishLen() * F.zoom();
+  const cx = Math.round(clamp(sx, 60, F.W - 60)), cy = Math.round(clamp(sy - len * 0.35 - 52, 70, F.H - 120));
+  const age = bt.t;
+  const pop = ease.outBack(clamp01(age * 5)) * (1 + Math.max(0, Math.sin(t * 18)) * 0.06);
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
-  ctx.globalAlpha = 0.55 + 0.3 * Math.sin(t * 20);
-  ctx.drawImage(glowSprite(34, '#ffe27a'), cx - 34, cy - 34);
+  ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 20);
+  ctx.drawImage(glowSprite(46, '#ffe27a'), cx - 46, cy - 46);
   ctx.restore();
-  // timer ring
-  const R = Math.round(28 * S), n = 80;
-  for (let i = 0; i < n; i++) {
-    const u = i / n;
-    const a = -Math.PI / 2 + u * TAU;
-    const on = u <= k;
-    ctx.fillStyle = on ? (k < 0.35 ? '#ff6a5a' : '#ffe27a') : 'rgba(12,58,82,0.35)';
-    ctx.fillRect(Math.round(cx + Math.cos(a) * R) - 1, Math.round(cy + Math.sin(a) * R) - 1, 3, 3);
-  }
-  // spin arrows chasing round the ring: the faster the gear, the faster they run
-  const spin = F.gear.angle * -1, col = hs?.inBand ? '#8be04a' : '#ffffff';
-  for (let j = 0; j < 3; j++) {
-    const a0 = spin + (j * TAU) / 3;
-    for (let i = 0; i < 7; i++) {
-      const a = a0 - i * 0.07 * (F.gear.dir || 1);
-      const rr = R + 6 * S;
-      ctx.fillStyle = INK;
-      ctx.fillRect(Math.round(cx + Math.cos(a) * rr) - 2, Math.round(cy + Math.sin(a) * rr) - 2, i ? 4 : 6, i ? 4 : 6);
-      ctx.fillStyle = rgba(col, 1 - i / 8);
-      ctx.fillRect(Math.round(cx + Math.cos(a) * rr) - 1, Math.round(cy + Math.sin(a) * rr) - 1, i ? 2 : 4, i ? 2 : 4);
-    }
-  }
-  // hook-set meter: gold beads filling the inside of the ring
-  if (hs) {
-    const m = Math.round(hs.set * 16);
-    for (let i = 0; i < 16; i++) {
-      const a = -Math.PI / 2 + (i / 16) * TAU, rr = R - 7 * S;
-      ctx.fillStyle = i < m ? '#ffd23a' : 'rgba(255,255,255,0.25)';
-      ctx.fillRect(Math.round(cx + Math.cos(a) * rr) - 1, Math.round(cy + Math.sin(a) * rr) - 1, 3, 3);
-    }
-  }
-  const br = Math.round(18 * S);
+  const br = 26;
   const b = gbubbleSprite(br);
-  ctx.drawImage(b, cx - br, cy - br);
-  const g = glossText('!', Math.max(5, Math.round(5 * S)), hs?.inBand ? 'lime' : 'sun');
   ctx.save();
   ctx.translate(cx, cy);
   ctx.scale(pop, pop);
-  ctx.drawImage(g.c, Math.round(-g.w / 2 - g.ox), Math.round(-g.h / 2 - g.oy));
+  ctx.drawImage(b, -br, -br);
+  ctx.restore();
+  gloss(ctx, '!', cx, cy + 2, 8, k < 0.35 ? 'red' : 'sun', { k: pop });
+  // the window: a bar that runs out
+  const w = 70, h = 6, bx = cx - w / 2, by = cy + br + 8;
+  ctx.fillStyle = INK; ctx.fillRect(bx - 1, by - 1, w + 2, h + 2);
+  ctx.fillStyle = '#1c4a68'; ctx.fillRect(bx, by, w, h);
+  ctx.fillStyle = k < 0.35 ? '#ff6a5a' : '#ffd23a'; ctx.fillRect(bx, by, Math.round(w * k), h);
+  ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fillRect(bx, by, Math.round(w * k), 2);
+  // CLICK! with a mouse glyph
+  const blink = Math.floor(t * 8) % 2;
+  const g = gloss(ctx, 'CLICK!', cx + 8, by + h + 16, 3, blink ? 'sun' : 'aqua');
+  const m = getUiIcon('mouse_l', 2);
+  if (m) ctx.drawImage(m, Math.round(cx + 8 - g.w / 2 - m.width - 6), Math.round(by + h + 16 - m.height / 2 + (blink ? 1 : 0)));
+}
+
+// ------------------------------------------------------------------ ink on the lens
+export function drawInk(ctx, F) {
+  for (const s of F.splats) {
+    const k = s.t / s.max;
+    const a = s.t < 0.15 ? s.t / 0.15 : 1 - Math.max(0, (k - 0.6) / 0.4);
+    const r = Math.round(s.r * (s.t < 0.15 ? 0.6 + (s.t / 0.15) * 0.4 : 1));
+    const spr = inkSplatSprite(r);
+    ctx.globalAlpha = clamp01(a) * 0.94;
+    ctx.drawImage(spr, Math.round(s.x - r), Math.round(s.y - r + k * 12));
+    for (const d of s.drips) {
+      ctx.fillStyle = '#0a0614';
+      ctx.fillRect(Math.round(s.x + d.x), Math.round(s.y + r * 0.6), d.w, Math.round(d.l * k * 1.5 + 2));
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ------------------------------------------------------------------ under the cinema bars: edges, ink, callouts
+export function drawFightScene(ctx, F, B) {
+  const W = F.W, H = F.H, t = F.t;
+  // red pulse at the edges while the line is in the red
+  const T = B.tension;
+  if (T >= RED - 0.04) {
+    const a = clamp01((T - RED + 0.04) * 4) * (0.35 + 0.25 * Math.sin(t * 14));
+    edgeGlow(ctx, W, H, '#ff3a3a', a);
+  } else if (B.stunned) edgeGlow(ctx, W, H, '#7ff4ff', 0.12 + 0.06 * Math.sin(t * 20));
+  drawInk(ctx, F);
+  drawCallouts(ctx, F, B);
+}
+
+function edgeGlow(ctx, W, H, col, a) {
+  if (a <= 0.01) return;
+  const n = 18;
+  for (let i = 0; i < n; i++) {
+    const k = 1 - i / n;
+    ctx.fillStyle = rgba(col, a * k * k * 0.6);
+    ctx.fillRect(0, i * 2, W, 2); ctx.fillRect(0, H - i * 2 - 2, W, 2);
+    ctx.fillRect(i * 2, 0, 2, H); ctx.fillRect(W - i * 2 - 2, 0, 2, H);
+  }
+}
+
+// What the big word over the fish says right now.
+function callout(F, B) {
+  const reeling = B.reel > 0.2;
+  if (B.boss && B.boss.stage !== 'fight') return null;
+  if (B.boss?.atk?.kind === 'charge') return null;
+  if (B.stunned) return { text: B.stunT > B.stunMax - 0.6 ? 'ZAPPED!' : 'REEL!', pal: B.stunT > B.stunMax - 0.6 ? 'aqua' : 'lime', shake: 0 };
+  switch (B.mode) {
+    case 'hookset': return null;
+    case 'warn': return { text: '!', pal: 'sun', big: true, shake: 2 };
+    case 'pull': return reeling || B.tension >= RED ? { text: 'EASE OFF!', pal: 'red', shake: 3 } : { text: 'LET IT RUN', pal: 'aqua', shake: 0 };
+    case 'tired': return { text: 'REEL!', pal: 'lime', shake: 0, pump: true };
+    default: return !reeling && B.t > 1 ? { text: 'REEL!', pal: 'lime', shake: 0, soft: true } : null;
+  }
+}
+
+function drawCallouts(ctx, F, B) {
+  const f = B.fish, t = F.t;
+  const c = callout(F, B);
+  const key = c ? c.text : '';
+  if (key !== F.calloutKey) { F.calloutKey = key; F.calloutT = 0; }
+  F.calloutT = (F.calloutT || 0) + F.rdt;
+  if (!c) return;
+  const [sx, sy] = F.toScreen(f.x, f.y);
+  const len = F.fishLen() * F.zoom();
+  const cx = clamp(sx, 90, F.W - 90), cy = clamp(sy - len * 0.32 - 34, 76, F.H - 150);
+  const pop = ease.outBack(clamp01(F.calloutT * 6));
+  const pump = c.pump ? 1 + Math.max(0, Math.sin(t * 10)) * 0.1 : 1;
+  const sh = c.shake ? Math.round(Math.sin(t * 60) * c.shake) : 0;
+  const alpha = c.soft ? 0.55 + 0.35 * Math.sin(t * 4) : 1;
+  gloss(ctx, c.text, cx + sh, cy, c.big ? 9 : 4, c.pal, { k: pop * pump, alpha });
+}
+
+// ------------------------------------------------------------------ the panel
+export function panelRect(F) {
+  const W = F.W, H = F.H;
+  const w = Math.round(Math.min(W - 40, 470)), h = 70;
+  return { x: Math.round(W / 2 - w / 2), y: H - h - 8, w, h };
+}
+
+// Over the cinema bars: the panel, the tips and the boss layer.
+export function drawFightHud(ctx, F, B) {
+  const k = ease.outCubic(clamp01(B.hudIn));
+  drawPanel(ctx, F, {
+    k, progress: B.boss ? null : B.progress, ghost: B.ghost, tension: B.tension, reel: B.reel, red: B.tension >= RED,
+    pulling: B.mode === 'pull', warn: B.mode === 'warn', stunned: B.stunned, charges: B.charges, shockMax: B.shockMax,
+    shockCd: B.shockCd, shockCdMax: B.shockCdMax, charge: B.charge?.k ?? null, canCharge: B.canCharge, snap: clamp01(B.snapT / Math.max(0.1, B.grace)),
+    sp: B.sp, flash: B.flash,
+  });
+  drawTips(ctx, F, B);
+}
+
+// o: {k, progress (null = hide the catch track), ghost, tension, reel, red, pulling, warn, stunned, charges, shockMax,
+//     shockCd, shockCdMax, charge (0..1 | null), canCharge, snap (0..1), sp, flash, box (no shock orb)}
+export function drawPanel(ctx, F, o) {
+  const R = panelRect(F), t = F.t;
+  const slide = Math.round((1 - o.k) * 110);
+  const x = R.x, y = R.y + slide, w = R.w, h = R.h;
+  ctx.save();
+  // glass plate
+  drawAeroSurface(ctx, x, y, w, h, { tone: 'dark', r: 14, gloss: 0.32, glossH: 16, rim: 0.7, glow: 0.45 });
+  // ---- the reel (left): a spool you crank by circling
+  const rx = x + 34, ry = y + h / 2;
+  F.reelAng = (F.reelAng || 0) + F.rdt * (o.reel || 0) * 14;
+  drawReel(ctx, rx, ry, 22, F.reelAng, o.reel || 0, t);
+  // ---- bars
+  const bx = x + 66, bw = w - (o.box ? 82 : 132);
+  const ty = y + (o.progress === null || o.progress === undefined ? 20 : 30), th = 24;
+  if (o.progress !== null && o.progress !== undefined) drawTrack(ctx, F, bx, y + 10, bw, 12, o);
+  drawTension(ctx, bx, ty, bw, th, o, t);
+  // ---- shock (right)
+  if (!o.box) drawShockOrb(ctx, F, x + w - 34, y + h / 2, o, t);
   ctx.restore();
 }
 
-// The player's spin loop at the cursor: a glossy dotted circle that follows the crank centre.
-function drawSpinLoop(ctx, F, col) {
-  const cr = F.crank, t = F.t;
-  if (!cr.active) {
-    const gr = Math.round(18 * (F.H / 540));
-    for (let i = 0; i < 14; i++) {
-      const a = (i / 14) * TAU + t * 6;
-      ctx.fillStyle = rgba(INK, 0.4);
-      ctx.fillRect(Math.round(F.input.x + Math.cos(a) * gr) - 2, Math.round(F.input.y + Math.sin(a) * gr) - 2, 4, 4);
-      ctx.fillStyle = rgba(col, 0.15 + (i / 14) * 0.8);
-      ctx.fillRect(Math.round(F.input.x + Math.cos(a) * gr) - 1, Math.round(F.input.y + Math.sin(a) * gr) - 1, 3, 3);
-    }
-    return;
+function drawReel(ctx, cx, cy, r, ang, reel, t) {
+  cx = Math.round(cx); cy = Math.round(cy);
+  // glow while reeling
+  if (reel > 0.2) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.25 * reel;
+    ctx.drawImage(glowSprite(r + 10, '#8be04a'), cx - r - 10, cy - r - 10);
+    ctx.restore();
   }
-  const R = Math.round(clamp(cr.radius, 10, 70));
-  const n = Math.max(24, R * 2);
-  for (let i = 0; i < n; i++) {
-    const a = (i / n) * TAU;
-    ctx.fillStyle = rgba(col, i % 2 ? 0.25 : 0.6);
-    ctx.fillRect(Math.round(cr.cx + Math.cos(a) * R), Math.round(cr.cy + Math.sin(a) * R), 2, 2);
+  drawGlossOrb(ctx, cx, cy, r, reel > 0.2 ? '#6cd03a' : '#59c3ff', t);
+  // the spool: line wraps
+  ctx.fillStyle = INK; ctx.fillRect(cx - 9, cy - 9, 18, 18);
+  ctx.fillStyle = '#e8f6fc'; ctx.fillRect(cx - 8, cy - 8, 16, 16);
+  for (let i = 0; i < 7; i++) { ctx.fillStyle = i % 2 ? '#7fd8f4' : '#bff0ff'; ctx.fillRect(cx - 7, cy - 7 + i * 2, 14, 2); }
+  // spokes + handle knob, turning
+  for (let s = 0; s < 3; s++) {
+    const a = ang + (s * TAU) / 3;
+    for (let i = 3; i < 13; i++) { ctx.fillStyle = INK; ctx.fillRect(Math.round(cx + Math.cos(a) * i) - 1, Math.round(cy + Math.sin(a) * i) - 1, 2, 2); }
+  }
+  const hx = Math.round(cx + Math.cos(ang) * 14), hy = Math.round(cy + Math.sin(ang) * 14);
+  ctx.fillStyle = INK; ctx.fillRect(hx - 4, hy - 4, 8, 8);
+  ctx.fillStyle = '#ffd23a'; ctx.fillRect(hx - 3, hy - 3, 6, 6);
+  ctx.fillStyle = '#fff6c0'; ctx.fillRect(hx - 3, hy - 3, 3, 2);
+  ctx.fillStyle = INK; ctx.fillRect(cx - 2, cy - 2, 4, 4);
+  // speed arcs
+  if (reel > 0.15) {
+    for (let j = 0; j < 2; j++) {
+      const a0 = ang * 0.7 + j * Math.PI;
+      for (let i = 0; i < 8; i++) {
+        const a = a0 - i * 0.12;
+        ctx.fillStyle = rgba('#ffffff', reel * (0.8 - i * 0.09));
+        ctx.fillRect(Math.round(cx + Math.cos(a) * (r + 4)) - 1, Math.round(cy + Math.sin(a) * (r + 4)) - 1, 2, 2);
+      }
+    }
   }
 }
 
+// The catch track: a thin glass lane, your hook at the right end, the fish swimming toward it.
+function drawTrack(ctx, F, x, y, w, h, o) {
+  const p = clamp01(o.progress), g = clamp01(o.ghost ?? p);
+  ctx.fillStyle = INK; ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
+  ctx.fillStyle = '#123a56'; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fillRect(x, y, w, 3);
+  const fw = Math.round(w * p);
+  if (g > p) { ctx.fillStyle = '#ff6a5a'; ctx.fillRect(x + fw, y, Math.round(w * (g - p)), h); }
+  ctx.fillStyle = '#2fd3e8'; ctx.fillRect(x, y, fw, h);
+  ctx.fillStyle = '#9ff4ff'; ctx.fillRect(x, y, fw, 3);
+  // bubbles in the lane
+  for (let i = 0; i < 6; i++) {
+    const u = ((F.t * 0.12 + i / 6) % 1);
+    if (u < p) { ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fillRect(Math.round(x + u * w), y + 4 + (i % 3) * 2, 1, 1); }
+  }
+  // the hook at the end
+  const hk = getUiIcon('hook');
+  if (hk) ctx.drawImage(hk, Math.round(x + w - hk.width / 2), Math.round(y + h / 2 - hk.height / 2));
+  // the fish riding the lane
+  const fi = o.icon || (o.sp ? voxelFishIcon(o.sp, 30, 20, { dir: 1 }) : null);
+  const fx = Math.round(x + fw), fy = Math.round(y + h / 2);
+  if (fi) ctx.drawImage(fi, fx - Math.round(fi.width / 2), fy - Math.round(fi.height / 2) + Math.round(Math.sin(F.t * 8) * (o.pulling ? 2 : 1)));
+  else { ctx.fillStyle = '#ffd23a'; ctx.fillRect(fx - 3, fy - 3, 6, 6); }
+}
+
+// THE tension bar. Green safe, yellow tight, red: a snap is coming.
+function drawTension(ctx, x, y, w, h, o, t) {
+  const T = clamp01(o.tension);
+  const red = o.red;
+  const shake = red ? Math.round(Math.sin(t * 70) * 2) : 0;
+  x += shake;
+  // track with the three zones
+  ctx.fillStyle = INK; ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
+  const zG = Math.round(w * 0.6), zR = Math.round(w * RED);
+  ctx.fillStyle = '#1d4a2a'; ctx.fillRect(x, y, zG, h);
+  ctx.fillStyle = '#4a4218'; ctx.fillRect(x + zG, y, zR - zG, h);
+  ctx.fillStyle = '#4a1a22'; ctx.fillRect(x + zR, y, w - zR, h);
+  // the fill
+  const fw = Math.round(w * T);
+  const col = T >= RED ? '#ff4f5e' : T >= 0.6 ? '#ffd23a' : '#6cd03a';
+  const hi = T >= RED ? '#ffb0a8' : T >= 0.6 ? '#fff2a0' : '#c8f56a';
+  const lo = T >= RED ? '#b8202e' : T >= 0.6 ? '#d89a1a' : '#3a9a24';
+  if (fw > 0) {
+    ctx.fillStyle = col; ctx.fillRect(x, y, fw, h);
+    ctx.fillStyle = hi; ctx.fillRect(x, y + 2, fw, Math.round(h * 0.28));
+    ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.fillRect(x, y + 3, fw, 1);
+    ctx.fillStyle = lo; ctx.fillRect(x, y + h - 4, fw, 4);
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(x + fw - 2, y, 2, h);
+  }
+  if (red && Math.floor(t * 12) % 2) { ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fillRect(x, y, w, h); }
+  // zone ticks
+  ctx.fillStyle = INK; ctx.fillRect(x + zG, y, 1, h); ctx.fillRect(x + zR - 1, y, 2, h);
+  // the snap meter: the red end cracks open as the line is about to go
+  const sk = getUiIcon('skull', 2);
+  if (sk) {
+    const jig = red ? Math.round(Math.sin(t * 50) * 1) : 0;
+    ctx.save();
+    ctx.globalAlpha = red ? 1 : 0.55;
+    ctx.drawImage(sk, Math.round(x + w - sk.width - 3 + jig), Math.round(y + h / 2 - sk.height / 2));
+    ctx.restore();
+  }
+  if (o.snap > 0.02) {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(x + zR + 1, y + h - 3, Math.round((w - zR - 2) * o.snap), 2);
+  }
+  // label
+  const label = red ? 'TOO TIGHT!' : o.pulling ? 'PULLING!' : 'TENSION';
+  const lc = red ? '#ffb0a8' : o.pulling ? '#ffd0b0' : '#bfeaff';
+  drawText(ctx, label, x + 6, y + Math.round(h / 2) - 3, { color: lc, outline: INK });
+}
+
+function drawShockOrb(ctx, F, cx, cy, o, t) {
+  cx = Math.round(cx); cy = Math.round(cy);
+  const r = 22;
+  const ch = o.charge;
+  const ready = o.canCharge && o.charges > 0;
+  const col = ch !== null ? (ch >= 1 ? '#fff07a' : '#ffd23a') : ready ? '#59c3ff' : '#7a8a98';
+  if (ch !== null || ready) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = ch !== null ? 0.35 + ch * 0.4 : 0.15 + 0.08 * Math.sin(t * 4);
+    ctx.drawImage(glowSprite(r + 12, ch !== null ? '#fff07a' : '#7ff4ff'), cx - r - 12, cy - r - 12);
+    ctx.restore();
+  }
+  const jit = ch >= 1 ? Math.round(Math.sin(t * 60)) : 0;
+  drawGlossOrb(ctx, cx + jit, cy, r, col, t);
+  // charge fill: rises from the bottom inside the orb
+  if (ch !== null) {
+    const fh = Math.round((r * 2 - 6) * ch);
+    ctx.fillStyle = rgba('#fff6a0', 0.55);
+    for (let yy = 0; yy < fh; yy++) {
+      const ry = r - 3 - yy, half = Math.floor(Math.sqrt(Math.max(0, (r - 3) * (r - 3) - ry * ry)));
+      ctx.fillRect(cx - half + jit, cy + ry, half * 2, 1);
+    }
+  } else if (!ready && o.shockCdMax > 0 && o.charges < o.shockMax) {
+    // recharging: a fill sweep
+    const k = 1 - clamp01(o.shockCd / o.shockCdMax);
+    const fh = Math.round((r * 2 - 6) * k);
+    ctx.fillStyle = 'rgba(191,248,255,0.35)';
+    for (let yy = 0; yy < fh; yy++) {
+      const ry = r - 3 - yy, half = Math.floor(Math.sqrt(Math.max(0, (r - 3) * (r - 3) - ry * ry)));
+      ctx.fillRect(cx - half, cy + ry, half * 2, 1);
+    }
+  }
+  drawBolt16(ctx, cx + jit, cy, ch >= 1 && Math.floor(t * 16) % 2 ? '#ffffff' : ready || ch !== null ? '#fff07a' : '#c8d4dc');
+  // charge pips under the orb
+  const n = o.shockMax || 1;
+  for (let i = 0; i < n; i++) {
+    const px = Math.round(cx - (n * 8) / 2 + i * 8 + 1), py = cy + r + 1;
+    ctx.fillStyle = INK; ctx.fillRect(px - 1, py - 1, 7, 5);
+    ctx.fillStyle = i < o.charges ? '#fff07a' : '#3a5a72'; ctx.fillRect(px, py, 5, 3);
+  }
+  // LET GO! / HOLD
+  if (ch >= 1) gloss(ctx, 'LET GO!', cx - 10, cy - r - 14, 3, 'sun', { k: 1 + Math.max(0, Math.sin(t * 16)) * 0.08 });
+  else if (ch !== null) gloss(ctx, 'HOLD...', cx - 8, cy - r - 12, 2, 'aqua');
+}
+
+// a chunky 16 px lightning bolt
+function drawBolt16(ctx, cx, cy, col) {
+  const rows = ['.....###', '....###.', '...###..', '..###...', '.######.', '....###.', '...###..', '..##....', '.##.....', '#.......'];
+  const ox = Math.round(cx - 8), oy = Math.round(cy - 10);
+  for (const [c, d] of [[INK, 1], [col, 0]]) {
+    ctx.fillStyle = c;
+    for (let y = 0; y < rows.length; y++) for (let x = 0; x < 8; x++) if (rows[y][x] === '#') ctx.fillRect(ox + x * 2 - d, oy + y * 2 - d, 2 + d * 2, 2 + d * 2);
+  }
+}
+
+// ------------------------------------------------------------------ first-play tips
+// A glass card above the panel: an animated glyph + a few words. Shown on the first fights (state.fishTips).
+function tipFor(F, B) {
+  const tips = F.tips();
+  if (B.mode === 'hookset' || B.boss?.stage === 'intro') return null;
+  const n = (k) => tips[k] || 0;
+  if (B.charge && B.charge.k < 1 && n('zap') < 4) return { key: 'zap', text: 'Fill it, then let go!', glyph: 'hold' };
+  if ((B.mode === 'pull' || B.mode === 'warn') && n('pull') < 4) return { key: 'pull', text: 'It pulls! Stop circling', glyph: 'stop' };
+  if (B.tension >= RED && n('red') < 4) return { key: 'red', text: 'Red = ease off!', glyph: 'stop' };
+  if (B.shockReady && B.t > 6 && n('zap') < 3 && !B.zapped) return { key: 'zap', text: 'Hold + let go = ZAP!', glyph: 'hold' };
+  if (B.reel < 0.15 && (B.t < 5 || B.idleT > 1.5) && n('reel') < 4 && B.mode !== 'pull') return { key: 'reel', text: 'Circle the mouse to reel!', glyph: 'circle' };
+  return null;
+}
+
+export function drawTips(ctx, F, B) {
+  const tip = tipFor(F, B);
+  const key = tip?.key || null;
+  if (key !== F.tipKey) {
+    if (F.tipKey && F.tipShown > 0.8) F.countTip(F.tipKey);
+    F.tipKey = key; F.tipShown = 0;
+  }
+  F.tipShown = (F.tipShown || 0) + F.rdt;
+  if (!tip) return;
+  drawTipCard(ctx, F, tip.text, tip.glyph, F.tipShown);
+}
+
+export function drawTipCard(ctx, F, text, glyph, age) {
+  const R = panelRect(F), t = F.t;
+  const tw = measureText(text, 'normal', 2);
+  const w = tw + 70, h = 38;
+  const x = Math.round(F.W / 2 - w / 2), y = R.y - h - 10;
+  const k = ease.outBack(clamp01(age * 4));
+  ctx.save();
+  ctx.globalAlpha = clamp01(age * 5);
+  ctx.translate(x + w / 2, y + h / 2);
+  ctx.scale(k, k);
+  ctx.translate(-w / 2, -h / 2);
+  drawAeroSurface(ctx, 0, 0, w, h, { tone: 'frost', r: 12, gloss: 0.5, glossH: 14, rim: 0.85, glow: 0.4 });
+  drawGlyph(ctx, glyph, 26, h / 2, t);
+  drawText(ctx, text, 50, Math.round(h / 2) - 7, { scale: 2, color: INK });
+  ctx.restore();
+}
+
+// animated glyphs: a mouse circling, a held button filling, a red STOP hand
+function drawGlyph(ctx, kind, cx, cy, t) {
+  cx = Math.round(cx); cy = Math.round(cy);
+  if (kind === 'circle') {
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * TAU;
+      ctx.fillStyle = rgba('#1e8fe0', 0.25 + 0.5 * (((i / 16 - t * 1.6) % 1 + 1) % 1));
+      ctx.fillRect(Math.round(cx + Math.cos(a) * 12) - 1, Math.round(cy + Math.sin(a) * 12) - 1, 3, 3);
+    }
+    const a = t * 1.6 * TAU;
+    const m = getUiIcon('cursor') || getUiIcon('mouse_l');
+    if (m) ctx.drawImage(m, Math.round(cx + Math.cos(a) * 12 - 2), Math.round(cy + Math.sin(a) * 12 - 2));
+  } else if (kind === 'hold') {
+    const m = getUiIcon('mouse_hold', 2) || getUiIcon('mouse_l', 2);
+    const k = (t * 0.9) % 1.4;
+    if (m) ctx.drawImage(m, Math.round(cx - m.width / 2), Math.round(cy - m.height / 2));
+    ctx.fillStyle = INK; ctx.fillRect(cx + 12, cy - 12, 6, 24);
+    ctx.fillStyle = k >= 1 ? (Math.floor(t * 12) % 2 ? '#ffffff' : '#fff07a') : '#ffd23a';
+    const fh = Math.round(22 * Math.min(1, k));
+    ctx.fillRect(cx + 13, cy + 11 - fh, 4, fh);
+  } else {
+    // stop: the tension bar glyph going red with a pause sign
+    ctx.fillStyle = INK; ctx.fillRect(cx - 14, cy - 6, 28, 12);
+    const k = 0.5 + 0.5 * Math.sin(t * 6);
+    ctx.fillStyle = '#6cd03a'; ctx.fillRect(cx - 13, cy - 5, 14, 10);
+    ctx.fillStyle = k > 0.5 ? '#ff4f5e' : '#ffd23a'; ctx.fillRect(cx + 1, cy - 5, Math.round(12 * k), 10);
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(cx - 4, cy - 10, 3, 6); ctx.fillRect(cx + 1, cy - 10, 3, 6);
+  }
+}
+
+// ------------------------------------------------------------------ misc
 // Short message near the cursor (external callers: tutorial, overlay toasts) as a glass pill.
 export function drawMessage(ctx, F, m) {
   const a = Math.min(1, (m.max - m.t) * 3);
@@ -248,247 +466,6 @@ export function drawMessage(ctx, F, m) {
   ctx.restore();
 }
 
-// ------------------------------------------------------------------ in-scene markers
-export function drawFightScene(ctx, F, B) {
-  ensureIcons();
-  ctx.save();
-  ctx.globalAlpha = B.hudIn;
-  if (!B.event) drawStaminaArc(ctx, F, B);
-  if (!B.event || B.event.usesCrank) drawCrankLoop(ctx, F, B);
-  drawQte(ctx, F, B);
-  if (B.trick?.kind === 'wrap') drawWrapHint(ctx, F, B);
-  if (B.event) B.event.drawHud(ctx);
-  drawInk(ctx, F);
-  ctx.restore();
-}
-
-// Overlay frame and the reel (drawn above everything in the scene).
-export function drawFightBands(ctx, F, B) {
-  ensureIcons();
-  ctx.save();
-  ctx.globalAlpha = B.hudIn;
-  drawEdges(ctx, F, B);
-  drawNamePill(ctx, F, B, 10, 10);
-  drawAnglerCam(ctx, F, B);
-  ctx.restore();
-  F.gear.draw(ctx, B, 1); // the gear keeps its own slide-in (it is already up from the hook-set)
-}
-
-export function drawFightHud(ctx, F, B) {
-  drawFightScene(ctx, F, B);
-  drawFightBands(ctx, F, B);
-}
-
-// ------------------------------------------------------------------ stamina arc above the fish
-function drawStaminaArc(ctx, F, B) {
-  const f = F.fish;
-  if (!f || B.mode === 'hookset') return;
-  const [sx, sy] = F.toScreen(f.x, f.y);
-  const R = Math.round(clamp(F.zoneRadius() * 0.72, 30, 120));
-  const a0 = Math.PI * 1.15, a1 = Math.PI * 1.85;
-  const k = clamp01(B.stamina);
-  const n = Math.round(R * (a1 - a0) * 0.9);
-  const t = F.t;
-  const ex = B.exhausted;
-  const fillCol = ex ? (Math.floor(t * 6) % 2 ? '#ffe27a' : '#fff6c0') : B.stunned ? '#9ff4ff' : k < 0.3 ? '#ff5a4a' : '#ff9d2e';
-  for (let i = 0; i <= n; i++) {
-    const u = i / n;
-    const a = a0 + (a1 - a0) * u;
-    const on = u <= k;
-    for (let r = R - 2; r <= R + 2; r++) {
-      const x = Math.round(sx + Math.cos(a) * r), y = Math.round(sy + Math.sin(a) * r);
-      ctx.fillStyle = r === R - 2 || r === R + 2 ? rgba(INK, 0.55) : on ? (r === R + 1 ? '#fff6e0' : fillCol) : 'rgba(220,245,255,0.35)';
-      ctx.fillRect(x, y, 1, 1);
-    }
-  }
-  // fish icon at the start of the arc
-  const fic = getUiIcon('fish');
-  if (fic) ctx.drawImage(fic, Math.round(sx + Math.cos(a0) * R - fic.width - 1), Math.round(sy + Math.sin(a0) * R - fic.height / 2));
-  if (ex && Math.random() < 0.15) F.fx.glint?.(sx + Math.cos(a0 + Math.random()) * R, sy + Math.sin(a0 + Math.random()) * R, { color: '#ffe27a' });
-}
-
-// ------------------------------------------------------------------ spin loop at the cursor
-function drawCrankLoop(ctx, F, B) {
-  if (B.qte?.active && B.qte.holding) return;
-  const st = B.crankState();
-  drawSpinLoop(ctx, F, st === 'sweet' ? '#8be04a' : st === 'over' ? '#ff9d2e' : '#8ff0ff');
-}
-
-// ------------------------------------------------------------------ directional QTE
-function drawQte(ctx, F, B) {
-  const q = B.qte, f = F.fish;
-  if (!q || !f) return;
-  const t = F.t;
-  const [sx, sy] = F.toScreen(f.x, f.y);
-  if (q.active) {
-    const tele = B.mode === 'tele';
-    const surgeA = q.dir, pullA = q.dir + Math.PI;
-    const appear = clamp01(q.t * 5);
-    const flip = q.flip;
-    // surge arrow out of the fish (where it is going)
-    const R0 = clamp(F.zoneRadius() * 0.55, 22, 90);
-    const blink = tele && Math.floor(t * 10) % 2;
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = 0.35 + 0.25 * Math.sin(t * 14);
-    const gx = sx + Math.cos(surgeA) * (R0 + 26), gy = sy + Math.sin(surgeA) * (R0 + 26);
-    ctx.drawImage(glowSprite(26, '#ff6a3a'), Math.round(gx - 26), Math.round(gy - 26));
-    ctx.restore();
-    const S = Math.max(1, F.H / 540);
-    drawGlossArrow(ctx, sx + Math.cos(surgeA) * R0, sy + Math.sin(surgeA) * R0, surgeA, { len: (54 * appear + 4) * S, w: 15 * S, kind: 'surge', alpha: blink ? 0.6 : 0.95 });
-    // the PULL arrow at the cursor: drag along it while holding the button
-    const L = Math.round(112 * S), W = Math.round(26 * S);
-    const ax = F.input.x - Math.cos(pullA) * (q.holding ? q.k * 10 : 0), ay = F.input.y - Math.sin(pullA) * (q.holding ? q.k * 10 : 0);
-    const off = 16;
-    const tx = clamp(ax + Math.cos(pullA) * off, 20, F.W - 20), ty = clamp(ay + Math.sin(pullA) * off, 20, F.H - 20);
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = (q.holding ? 0.55 : 0.3) + 0.2 * Math.sin(t * 10) + flip * 0.5;
-    const hx = tx + Math.cos(pullA) * L * 0.6, hy = ty + Math.sin(pullA) * L * 0.6;
-    ctx.drawImage(glowSprite(40, q.holding ? '#8be04a' : '#59c3ff'), Math.round(hx - 40), Math.round(hy - 40));
-    ctx.restore();
-    const shake = flip > 0 ? Math.round(Math.sin(t * 60) * flip * 3) : 0;
-    drawGlossArrow(ctx, tx + shake, ty, pullA, { len: L * (0.6 + 0.4 * appear), w: W, k: q.k, kind: 'pull', emptyAlpha: 0.78 });
-    // hold glyph by the tail, nudging along the arrow
-    const nud = (t * 1.6) % 1;
-    const mg = mouseHold(q.holding || Math.floor(t * 4) % 2 === 0);
-    const mxp = tx - Math.cos(pullA) * 14 + Math.cos(pullA) * nud * 14 * (q.holding ? 0 : 1), myp = ty - Math.sin(pullA) * 14 + Math.sin(pullA) * nud * 14 * (q.holding ? 0 : 1);
-    ctx.drawImage(mg, Math.round(mxp - 4), Math.round(myp - 6));
-    if (q.holding && q.k > 0.05 && Math.random() < 0.4) {
-      const u = q.k * L;
-      F.fx.glint?.(tx + Math.cos(pullA) * u, ty + Math.sin(pullA) * u, { color: '#e2ffb0', len: 4 });
-    }
-  } else if (q.win && q.t < 0.6) {
-    // a quick ring burst where the arrow was
-    const k = q.t / 0.6;
-    ctx.save();
-    ctx.globalAlpha = 1 - k;
-    const S = Math.max(1, F.H / 540);
-    drawGlossArrow(ctx, F.input.x, F.input.y, q.dir + Math.PI, { len: (112 + k * 40) * S, w: 26 * S, k: 1, kind: q.stunned ? 'ok' : 'pull' });
-    ctx.restore();
-  }
-}
-
-function drawWrapHint(ctx, F, B) {
-  const tr = B.trick, L = F.reel.lay;
-  if (!L) return;
-  const cx = L.cx, cy = L.cy, R = L.R + 20, t = F.t;
-  for (let i = 0; i < 10; i++) {
-    const a = (i / 10) * TAU + t * 3 * tr.dir;
-    const x = cx + Math.cos(a) * R, y = cy + Math.sin(a) * R;
-    const ta = a + (Math.PI / 2) * tr.dir;
-    ctx.fillStyle = INK;
-    ctx.fillRect(Math.round(x) - 2, Math.round(y) - 2, 4, 4);
-    ctx.fillStyle = (i / 10) < tr.unwound / tr.need ? '#8be04a' : '#ffe27a';
-    ctx.fillRect(Math.round(x) - 1, Math.round(y) - 1, 2, 2);
-    ctx.fillRect(Math.round(x + Math.cos(ta) * 2), Math.round(y + Math.sin(ta) * 2), 1, 1);
-  }
-}
-
-// ------------------------------------------------------------------ edges: vignette + surge tint
-function drawEdges(ctx, F, B) {
-  const W = F.W, H = F.H, t = F.t;
-  // soft Aero vignette: pale aqua corners
-  const v = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.45, W / 2, H / 2, Math.max(W, H) * 0.75);
-  v.addColorStop(0, 'rgba(190,240,255,0)');
-  v.addColorStop(1, 'rgba(190,240,255,0.26)');
-  ctx.fillStyle = v;
-  ctx.fillRect(0, 0, W, H);
-  const q = B.qte;
-  if (q?.active) {
-    // the surge pulls the light toward its side; a winning pull glows green on the other side
-    const dx = Math.cos(q.dir), dy = Math.sin(q.dir);
-    const pulse = 0.6 + 0.4 * Math.sin(t * 10);
-    const a = (B.mode === 'surge' ? 0.3 : 0.16) * pulse * (1 - q.k * 0.7);
-    edgeTint(ctx, W, H, dx, dy, '255,140,70', a);
-    if (q.holding && q.k > 0.02) edgeTint(ctx, W, H, -dx, -dy, '160,236,90', 0.12 + q.k * 0.3);
-  }
-  if (B.stunned) {
-    const k = clamp01(B.stunT / B.stunMax);
-    const fl = Math.floor(t * 20) % 3 === 0 ? 1.4 : 1;
-    edgeTint(ctx, W, H, 1, 0, '127,244,255', 0.16 * k * fl);
-    edgeTint(ctx, W, H, -1, 0, '127,244,255', 0.16 * k * fl);
-    edgeTint(ctx, W, H, 0, 1, '255,240,122', 0.08 * k * fl);
-  }
-  if (B.tension > 0.92) {
-    const a = Math.min(0.28, (B.tension - 0.92) * 2.2) * (0.6 + 0.4 * Math.sin(t * 20));
-    edgeTint(ctx, W, H, 0, 1, '255,79,94', a);
-    edgeTint(ctx, W, H, 0, -1, '255,79,94', a * 0.6);
-  }
-}
-
-function edgeTint(ctx, W, H, dx, dy, rgb, a) {
-  if (a <= 0.01) return;
-  const band = Math.round(Math.min(W, H) * 0.2);
-  const sides = [[dx, 'r'], [-dx, 'l'], [dy, 'b'], [-dy, 't']];
-  for (const [w, s] of sides) {
-    if (w <= 0.15) continue;
-    const al = a * Math.min(1, w * 1.2);
-    let g;
-    if (s === 'r') { g = ctx.createLinearGradient(W, 0, W - band, 0); }
-    else if (s === 'l') { g = ctx.createLinearGradient(0, 0, band, 0); }
-    else if (s === 'b') { g = ctx.createLinearGradient(0, H, 0, H - band); }
-    else { g = ctx.createLinearGradient(0, 0, 0, band); }
-    g.addColorStop(0, `rgba(${rgb},${al})`);
-    g.addColorStop(1, `rgba(${rgb},0)`);
-    ctx.fillStyle = g;
-    if (s === 'r') ctx.fillRect(W - band, 0, band, H);
-    else if (s === 'l') ctx.fillRect(0, 0, band, H);
-    else if (s === 'b') ctx.fillRect(0, H - band, W, band);
-    else ctx.fillRect(0, 0, W, band);
-  }
-}
-
-// ------------------------------------------------------------------ name pill
-function drawNamePill(ctx, F, B, x, y) {
-  const sp = F.sp, rar = RARITY[sp.rarity] || RARITY.common;
-  const S = F.H / 540;
-  const ts = Math.max(2, Math.round(2 * S)); // name text scale: big and glossy
-  const g = glossText(sp.name, ts, glossFor(sp.rarity));
-  const stars = rar.stars || 1;
-  const ic = getUiIcon('star');
-  const ss = Math.max(1, Math.round(S * 1.5));
-  const starW = ic ? ic.width * ss + 2 : 0;
-  const h = 7 * ts + 12, gem = Math.round(h * 0.62);
-  const w = gem + 14 + g.w + 12 + stars * starW + 10;
-  drawPill(ctx, x, y, w, h, '#ffffff', '#bfeaff', INK, 0.9);
-  // rarity gem
-  const gx = x + 6 + Math.round(gem / 2), gy = y + Math.round(h / 2);
-  const gr = Math.round(gem / 2);
-  ctx.fillStyle = INK; ctx.fillRect(gx - gr - 1, gy - gr - 1, gr * 2 + 3, gr * 2 + 3);
-  ctx.fillStyle = rar.dark; ctx.fillRect(gx - gr, gy - gr, gr * 2 + 1, gr * 2 + 1);
-  ctx.fillStyle = rar.color; ctx.fillRect(gx - gr, gy - gr, gr * 2, Math.round(gr * 1.4));
-  ctx.fillStyle = '#ffffff'; ctx.fillRect(gx - gr + 1, gy - gr + 1, Math.max(2, Math.round(gr * 0.6)), 2);
-  const tx = x + gem + 14;
-  ctx.drawImage(g.c, Math.round(tx - g.ox), Math.round(y + (h - g.h) / 2 - g.oy));
-  if (ic) for (let i = 0; i < stars; i++) ctx.drawImage(ic, Math.round(tx + g.w + 10 + i * starW), Math.round(y + (h - ic.height * ss) / 2), ic.width * ss, ic.height * ss);
-  if (F.fish?.rec?.giant || B.heavy > 0) {
-    const tag = F.fish?.rec?.giant ? 'GIANT' : `${Math.round(B.kg * 10) / 10} kg`;
-    const tw = measureText(tag, 'normal', ts) + 16;
-    const th = 7 * ts + 8;
-    drawPill(ctx, x + w + 6, y + Math.round((h - th) / 2), tw, th, B.heavy > 0 ? '#ffd0c8' : '#fff6c0', B.heavy > 0 ? '#ff6a5a' : '#ffd23a', INK, 0.92);
-    drawText(ctx, tag, x + w + 14, y + Math.round((h - th) / 2) + 4, { scale: ts, color: INK });
-  }
-}
-
-// ------------------------------------------------------------------ ink splats on the "lens"
-function drawInk(ctx, F) {
-  for (const s of F.splats) {
-    const k = s.t / s.max;
-    const a = s.t < 0.15 ? s.t / 0.15 : 1 - Math.max(0, (k - 0.6) / 0.4);
-    const r = Math.round(s.r * (s.t < 0.15 ? 0.6 + (s.t / 0.15) * 0.4 : 1));
-    const spr = inkSplatSprite(r);
-    ctx.globalAlpha = clamp01(a) * 0.92;
-    ctx.drawImage(spr, Math.round(s.x - r), Math.round(s.y - r + k * 12));
-    for (const d of s.drips) {
-      ctx.fillStyle = '#0a0614';
-      ctx.fillRect(Math.round(s.x + d.x), Math.round(s.y + r * 0.6), d.w, Math.round(d.l * k * 1.5 + 2));
-    }
-    ctx.globalAlpha = 1;
-  }
-}
-
-// ------------------------------------------------------------------ angler cam porthole
 export function drawAngler(ctx, F, x, y, o = {}) {
   const look = F.game.state?.character;
   try {
@@ -499,75 +476,4 @@ export function drawAngler(ctx, F, x, y, o = {}) {
   }
 }
 
-function portholeRing(r) {
-  return cached('port' + r, r * 2 + 9, r * 2 + 9, (g) => {
-    const C = r + 4;
-    for (let y = 0; y < r * 2 + 9; y++) for (let x = 0; x < r * 2 + 9; x++) {
-      const dx = x - C, dy = y - C, d = Math.hypot(dx, dy);
-      if (d < r - 0.5 || d > r + 4.3) continue;
-      const u = (d - r) / 4.3;
-      const lit = -(dx + dy) / Math.max(1, d);
-      let col;
-      if (u > 0.82 || u < 0.12) col = INK;
-      else if (lit > 0.4 && u < 0.5) col = '#ffffff';
-      else if (lit > -0.2) col = '#b4d0e2';
-      else col = '#7fa4bc';
-      g.fillStyle = col;
-      g.fillRect(x, y, 1, 1);
-    }
-  });
-}
-
-function drawAnglerCam(ctx, F, B) {
-  const t = F.t;
-  const r = Math.round(clamp(F.H * 0.11, 34, 80));
-  const cx = r + 14, cy = F.H - r - 14;
-  ctx.save();
-  ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.clip();
-  const biome = F.world.biome;
-  const dark = biome === 'abyss';
-  const sky = ctx.createLinearGradient(0, cy - r, 0, cy + r);
-  sky.addColorStop(0, dark ? '#0a1028' : '#59c3ff');
-  sky.addColorStop(0.6, dark ? '#1e2a50' : '#bfeaff');
-  sky.addColorStop(0.61, dark ? '#0a1a3a' : '#1fb8dc');
-  sky.addColorStop(1, dark ? '#06101e' : '#0d8fb5');
-  ctx.fillStyle = sky; ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
-  // sun + hill
-  if (!dark) {
-    ctx.drawImage(glowSprite(10, '#fffbe0'), cx + r - 26, cy - r + 6);
-    ctx.fillStyle = '#8be04a';
-    for (let x = -r; x <= r; x++) { const h = Math.round(6 + Math.cos((x + t * 3) * 0.05) * 3); ctx.fillRect(cx + x, cy + r * 0.2 - h, 1, h); }
-  }
-  const wl = Math.round(cy + r * 0.2);
-  ctx.fillStyle = 'rgba(255,255,255,0.7)';
-  for (let i = -r; i < r; i += 7) ctx.fillRect(cx + ((i + Math.floor(t * 12) + r) % (2 * r)) - r, wl + Math.round(Math.sin(t * 3 + i) * 0.8), 3, 1);
-  // pose from what the player is doing
-  let pose = 'reel';
-  if (B.event?.name === 'mash' || F.poseHold?.pose === 'yank') pose = 'yank';
-  else if (B.qte?.holding || B.surging) pose = 'pull';
-  else if (F.gear.p < 0.08) pose = 'idle';
-  const bob = Math.round(Math.sin(t * 2.2));
-  ctx.fillStyle = '#ffffff'; ctx.fillRect(cx - r, wl - 2 + bob, r * 2, 3);
-  ctx.fillStyle = '#59c3ff'; ctx.fillRect(cx - r, wl + 1 + bob, r * 2, 2);
-  const anchors = drawAngler(ctx, F, cx - 6, wl - 1 + bob, { pose, t, facing: 1 });
-  const rt = anchors?.rodTip || [cx + 16, wl - 30];
-  const T = B.tension;
-  const col = T > 0.88 ? '#ff6a5a' : T > 0.7 ? '#ffd25a' : '#ffffff';
-  ctx.fillStyle = col;
-  const ex = cx + r, ey = cy + r * 0.7;
-  const vib = T > 0.8 ? Math.sin(t * 60) * 1.2 : 0;
-  for (let i = 0; i <= 30; i++) {
-    const k = i / 30;
-    ctx.fillRect(Math.round(lerp(rt[0], ex, k)), Math.round(lerp(rt[1], ey, k) + Math.sin(k * Math.PI) * ((1 - clamp01(T)) * 8 + vib)), 1, 1);
-  }
-  // glass gloss
-  ctx.fillStyle = 'rgba(255,255,255,0.22)';
-  ctx.beginPath(); ctx.ellipse(cx - r * 0.25, cy - r * 0.5, r * 0.62, r * 0.3, -0.35, 0, TAU); ctx.fill();
-  ctx.restore();
-  const ring = portholeRing(r);
-  ctx.drawImage(ring, cx - r - 4, cy - r - 4);
-  // live dot
-  if (Math.floor(t * 2) % 2) { ctx.fillStyle = INK; ctx.fillRect(cx + r - 9, cy - r + 5, 5, 5); ctx.fillStyle = '#ff4f5e'; ctx.fillRect(cx + r - 8, cy - r + 6, 3, 3); }
-}
-
-export { pixelLine, damp };
+export { pixelLine, damp, lerp };

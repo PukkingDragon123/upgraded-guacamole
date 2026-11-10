@@ -17,6 +17,7 @@ import { drawText } from '../gfx/font.js';
 import { glowSprite, gbubbleSprite } from '../gfx/particles.js';
 import * as ITEMS from '../build/items.js';
 import { drawGlassPill, drawRays, glossText } from './cinematics.js';
+import { drawPanel, drawTipCard } from './hud.js';
 
 // ------------------------------------------------------------------ box art (glossy pixel sprites)
 const TIER_COL = {
@@ -122,8 +123,8 @@ export class BoxReel {
     this.kind = f.kind || 'crate';
     this.tier = ITEMS.TIERS?.[f.tier] ? f.tier : 'crate';
     this.progress = 0; this.tension = 0.25; this.reelRate = 0; this.snapT = 0; this.grace = 1;
-    this.zone = { lo: 0.2, hi: 1.3 }; this.heavy = 0;
-    this.gearMode = 'box'; this.band = { lo: 30, hi: 195 }; this.canCharge = false; this.charge = null;
+    this.zone = { lo: 0.2, hi: 1.3 }; this.heavy = 0; this.reelK = 0;
+    this.canCharge = false; this.charge = null;
     this.shockReady = false; this.shockMax = 0; this.charges = 0; this.shockCd = 0; this.shockCdMax = 1;
     this.stunned = false; this.surging = false;
     this.start = { x: f.x, y: f.y };
@@ -153,12 +154,12 @@ export class BoxReel {
   cancel() { this.f.hooked = false; }
 
   update(dt) {
-    const F = this.F, f = this.f, G = F.gear;
+    const F = this.F, f = this.f;
     this.t += dt;
     this.hudIn = Math.min(1, this.hudIn + F.rdt * 3);
-    G.load = this.stage === 'reel' ? 12 : 0; G.brake = true;
+    this.reelK = damp(this.reelK, F.crank.stun > 0 ? 0 : clamp01(F.crank.power), 10, dt);
     if (this.stage === 'reel') {
-      const p = G.p;
+      const p = this.reelK;
       const rate = (Math.min(p, 1.1) * 0.75) / this.need;
       this.reelRate = rate;
       this.progress = Math.min(1, this.progress + rate * dt);
@@ -235,20 +236,14 @@ export class BoxReel {
     }
   }
 
-  drawHud(ctx) {
-    // a soft crank-loop hint at the cursor until the player starts circling
-    const F = this.F, t = F.t;
-    if (F.gear.p > 0.08) return;
-    for (let i = 0; i < 12; i++) {
-      const a = (i / 12) * TAU + t * 5;
-      ctx.fillStyle = rgba('#ffffff', 0.08 + (i / 12) * 0.6);
-      ctx.fillRect(Math.round(F.input.x + Math.cos(a) * 14) - 1, Math.round(F.input.y + Math.sin(a) * 14) - 1, 2, 2);
-    }
-  }
+  drawHud() {}
 
+  // the same panel as a fight, minus the shock: the box rides the catch track, the line stays relaxed
   drawBands(ctx) {
-    const k = clamp01(this.hudIn * 1.2);
-    this.F.gear.draw(ctx, this, 1 - Math.pow(1 - k, 3));
+    const F = this.F, k = clamp01(this.hudIn * 1.2);
+    if (this.stage !== 'reel') return;
+    drawPanel(ctx, F, { k: 1 - Math.pow(1 - k, 3), progress: this.progress, ghost: this.progress, tension: this.tension, reel: this.reelK, box: true, sp: null, icon: boxSprite(this.kind, this.tier) });
+    if (this.reelK < 0.15 && this.t > 0.6) drawTipCard(ctx, F, 'Circle the mouse to reel!', 'circle', this.t - 0.6);
   }
 }
 

@@ -12,6 +12,7 @@ import { pack, unpack, shade, mix, rgbToHex } from '../core/color.js';
 import { registerInlineIcon } from './font.js';
 import { drawAeroCoin } from '../ui/aero.js';
 import { voxelFishIcon } from '../fish/fishicon.js'; // [phase3:fish]
+import { HI, withHi, autoHi, enhanceHi, dualArt } from './hires.js'; // [phase9:ui]
 
 const PAL = {
   h: '#ffffff', w: '#fff8ea', l: '#d3dae6', g: '#97a2b8', d: '#5d6781', x: '#2b2940',
@@ -717,9 +718,19 @@ function build(rows, auto = true) {
       else if (PAL[ch]) buf.set(x + m, y + m, pk(PAL[ch]));
     }
   }
+  // [phase9:ui] the 2x twin: the interior remastered at device resolution (rounded diagonals, top-left light) with a
+  // fresh 1 device-px outline, so the icon reads finer and more hand-made on the full-res UI layer
+  const inner = auto ? buf.toCanvas() : null;
   if (auto) buf.outline(outlineFn);
   for (const [x, y] of keep) buf.set(x, y, 0);
-  return buf.toCanvas();
+  const c = buf.toCanvas();
+  if (auto) withHi(c, () => {
+    const hc = enhanceHi(inner, { outline: outlineFn, outlineLum: -1, bevel: 1 });
+    if (hc && keep.length) { const g = hc.getContext('2d'); for (const [x, y] of keep) g.clearRect(x * HI, y * HI, HI, HI); }
+    return hc;
+  });
+  else autoHi(c);
+  return c;
 }
 
 // Fight cursor: a little front-view fishing reel (spool of blue line, crank with a red knob).
@@ -743,16 +754,14 @@ function buildReelCursor() {
   buf.set(10, 3, pk(PAL.p));
   buf.set(11, 4, pk(PAL.R));
   buf.outline(outlineFn);
-  return buf.toCanvas();
+  return autoHi(buf.toCanvas());
 }
 
 // The currency icon is the glossy Aero drop ({coin} / {aero} inline, coin_big / aero_big for headlines).
 const AERO_ICONS = { coin: 3.5, aero: 3.5, coin_big: 4.5, aero_big: 4.5 };
 function buildAero(r) {
   const S = Math.ceil(r * 2) + 2;
-  const c = makeCanvas(S, S);
-  drawAeroCoin(c.getContext('2d'), S / 2, S / 2, r, 0);
-  return c;
+  return dualArt(S, S, (g) => drawAeroCoin(g, S / 2, S / 2, r, 0)); // [phase9:ui]
 }
 
 const cache = new Map();
@@ -771,13 +780,14 @@ export function getUiIcon(name, zoom = 1) {
       const g = z.getContext('2d');
       g.imageSmoothingEnabled = false;
       g.drawImage(src, 0, 0, z.width, z.height);
+      if (src.hi !== undefined) withHi(z, () => { const h = src.hi; if (!h) return null; const c2 = makeCanvas(z.width * HI, z.height * HI), g2 = c2.getContext('2d'); g2.imageSmoothingEnabled = false; g2.drawImage(h, 0, 0, c2.width, c2.height); return c2; }); // [phase9:ui]
       cache.set(key, z);
     }
     return z;
   }
   let c = cache.get(name);
   if (!c) {
-    if (name === 'fish') c = voxelFishIcon('pixel', 12, 9) || makeCanvas(9, 9); // [phase3:fish] voxel, never a 2D glyph
+    if (name === 'fish') { c = voxelFishIcon('pixel', 12, 9) || makeCanvas(9, 9); if (c.hi === undefined) { const c0 = c; c = makeCanvas(12, 9); c.getContext('2d').drawImage(c0, 0, 0); withHi(c, () => voxelFishIcon('pixel', 24, 18)); } } // [phase3:fish] voxel, never a 2D glyph
     else if (AERO_ICONS[name]) c = buildAero(AERO_ICONS[name]);
     else if (ICONS[name]) c = build(ICONS[name]);
     else if (CURSORS[name]) c = build(CURSORS[name], false);

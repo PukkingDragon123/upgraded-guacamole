@@ -3,8 +3,8 @@
 //
 // World space: y = 0 is the top of the old full-screen underwater view; negative y goes up toward the surface, the
 // boat and the sky. The world is one logical screen wide (game.screen.W) and spans [ocean.top, H] vertically.
-// In the open ocean the camera sits close: base zoom `state.settings.zoom` (default 3, Ctrl/Alt + wheel or +/-
-// change it between ZOOM.min and ZOOM.max; saves from before phase 6 are scaled up once) and it follows the action:
+// In the open ocean the camera sits close: base zoom `state.settings.zoom` (default 2 since phase 9, Ctrl/Alt + wheel or
+// +/- change it between ZOOM.min and ZOOM.max; older saves are migrated once, see baseZoom) and it follows the action:
 //   - the hook (cursor) while fishing: a soft dead zone; nearing a screen edge pans the camera (edge follow),
 //   - the boat while it is dragged; at the surface view an idle camera drifts back over the boat,
 //   - fights / cinematics: camera.focus(x, y, zoom) - the focus zoom stacks on top of the base zoom.
@@ -22,9 +22,11 @@
 
 import { clamp, damp, lerp } from '../core/math.js';
 
-export const ZOOM = { min: 2, max: 4.5, def: 3 }; // [phase6:oceans] zoomed in a lot more
+// [phase9:scale] zoomed back out: ~2x by default (scenery stays pixel-exact at the 2x hi-res pass), 1.5x .. 3.5x range
+export const ZOOM = { min: 1.5, max: 3.5, def: 2 };
+const ZOOM_V = 9; // settings.zoomV: the save's zoom has been migrated to the phase 9 range
 // how much of a cinematic focus zoom (authored for the old 1x view) stacks on top of the base zoom
-const CINE_K = 0.3;
+const CINE_K = 0.5; // [phase9:scale] 0.3 -> 0.5: the lower base zoom keeps fights / reveals framed close enough
 // surface view: the waterline sits this far down the screen (0..1)
 const SURF_AT = 0.66;
 
@@ -89,10 +91,13 @@ export class Camera {
   // ---- zoom setting
   baseZoom() {
     const st = this.game.state?.settings;
-    if (st && st.zoomV !== 6) { // pre-phase-6 saves: the old ~2x zoom becomes ~3x
+    if (st && st.zoomV !== ZOOM_V) {
+      // [phase9:scale] older saves: a phase 6..8 zoom (default 3) maps onto the new range (3 -> 2), a pre-phase-6 one
+      // (old ~2x) is kept as is; either way clamped once
       const z0 = Number(st.zoom);
-      if (Number.isFinite(z0) && z0 > 0) st.zoom = Math.round(clamp(z0 * 1.5, ZOOM.min, ZOOM.max) * 20) / 20;
-      st.zoomV = 6;
+      if (Number.isFinite(z0) && z0 > 0) st.zoom = Math.round(clamp(st.zoomV === 6 ? z0 * (ZOOM.def / 3) : z0, ZOOM.min, ZOOM.max) * 20) / 20;
+      else delete st.zoom;
+      st.zoomV = ZOOM_V;
     }
     const z = Number(st?.zoom);
     return Number.isFinite(z) && z > 0 ? clamp(z, ZOOM.min, ZOOM.max) : ZOOM.def;
