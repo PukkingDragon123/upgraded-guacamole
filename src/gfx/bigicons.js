@@ -14,6 +14,7 @@
 //     badge: number | '!' | null (glossy pill, top-right), squash: -1..1 (press squash / hop stretch)
 //   drawBadge(ctx, x, y, badge, t) (right edge at x, top at y)
 
+import { HI, withHi, fitHi } from './hires.js'; // [phase9:ui]
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { VoxelModel, renderVoxels } from './voxel.js';
 import { unpack, pack, mix, rgbToHex, rgbToHsl, hslToRgb } from '../core/color.js';
@@ -896,6 +897,8 @@ function frameOf(key, make, px, turn) {
   let canvas = null;
   try { canvas = renderDef(def, px, ang); } catch (err) { console.error(err); canvas = null; }
   e = canvas ? { canvas, ox: canvas.width / 2, oy: canvas.height / 2 } : null;
+  // [phase9:ui] the full-res UI layer gets a 2x render (more facets, a finer outline), built lazily within a budget
+  if (canvas) withHi(canvas, () => { if (!hiBudget()) return undefined; const t0 = performance.now(); let big = null; try { big = renderDef(def, px * HI, ang); } catch { big = null; } hiSpent += performance.now() - t0; return big ? fitHi(canvas, big) : null; });
   frameCache.set(k, e);
   if (frameCache.size > 900) frameCache.delete(frameCache.keys().next().value);
   return e;
@@ -917,8 +920,11 @@ function cropFrame(f, px, pad = 6) {
   const S = Math.min(f.canvas.width, px + pad);
   const c = makeCanvas(S, S);
   ctxOf(c).drawImage(f.canvas, Math.round(S / 2 - f.ox), Math.round(S / 2 - f.oy));
-  return c;
+  return withHi(c, () => { const h = f.canvas.hi; if (!h) return undefined; const c2 = makeCanvas(S * HI, S * HI); ctxOf(c2).drawImage(h, Math.round((S / 2 - f.ox) * HI), Math.round((S / 2 - f.oy) * HI)); return c2; }); // [phase9:ui]
 }
+// [phase9:ui] 2x renders are slow: at most ~4 ms of them per frame (the 1x icon shows meanwhile)
+let hiWin = 0, hiSpent = 0;
+function hiBudget() { const n = performance.now(); if (n - hiWin > 16) { hiWin = n; hiSpent = 0; } return hiSpent < 4; }
 
 export function rodIcon(rod, px = 32) {
   if (!lpReady() || !rod) return null;
@@ -953,7 +959,9 @@ export function getBigIcon(id, opts = {}) {
     if (e) return e;
     const f = frameOf(id, ICON_MODELS[id], px, 0);
     if (f) {
-      const canvas = state === 'normal' ? cropFrame(f, px) : variant(cropFrame(f, px), state);
+      const base = cropFrame(f, px);
+      const vc = state === 'normal' ? base : variant(base, state);
+      const canvas = vc === base ? base : withHi(vc, () => { const h = base.hi; return h ? fitHi(vc, variant(h, state)) : undefined; }); // [phase9:ui]
       const g = ctxOf(canvas);
       const data = g.getImageData(0, 0, canvas.width, canvas.height).data;
       let by = canvas.height;

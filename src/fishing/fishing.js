@@ -698,7 +698,7 @@ export class Fishing {
     const [sx, sy] = this.fishScreen();
     const len = this.fishLen() * this.zoom();
     const col = { lime: '#c8f56a', red: '#ff8a7a', sun: '#ffe27a', aqua: '#bff8ff' }[pal] || '#ffffff';
-    this.titles.pop(text, sx, sy - len * 0.32 - 70, col, { scale });
+    this.titles.pop(text, clamp(sx, 120, this.W - 120), clamp(sy - len * 0.32 - 70, this.battle?.boss ? 150 : 90, this.H - 160), col, { scale });
   }
 
   onRed() {
@@ -752,7 +752,7 @@ export class Fishing {
   onChargeFull() {
     const r = panelRect(this);
     this.sfx('timing_perfect', { vol: 0.6, pitch: 1.6 });
-    this.fx.zapBurst?.(r.x + r.w - 34, r.y + r.h / 2, 4, { layer: 'fg' });
+    this.fx.zapBurst?.(r.x + r.w - 34 * r.S, r.y + r.h / 2, 4, { layer: 'fg' });
   }
 
   onChargeCancel(tap) {
@@ -769,7 +769,7 @@ export class Fishing {
   onShockReady() {
     const r = panelRect(this);
     this.sfx('neon_buzz', { vol: 0.3, pitch: 1.6 });
-    this.fx.pixelBurst?.('sparkle', r.x + r.w - 34, r.y + r.h / 2, 6, { ramp: 'gold', layer: 'fg' });
+    this.fx.pixelBurst?.('sparkle', r.x + r.w - 34 * r.S, r.y + r.h / 2, 6, { ramp: 'gold', layer: 'fg' });
   }
 
   onShockFire(crit) {
@@ -777,8 +777,8 @@ export class Fishing {
     this.zapLine = { t: 0, dur: this.battle?.zap?.dur ?? 0.2, grade: 'perfect' };
     this.sfx('static_burst', { vol: 0.9, pitch: crit ? 0.9 : 1.2 });
     this.sfx('neon_buzz', { vol: 0.5, pitch: 1.6 });
-    this.fx.boltBurst?.(r.x + r.w - 34, r.y + r.h / 2, 50, 8);
-    this.fx.zapBurst?.(r.x + r.w - 34, r.y + r.h / 2, 6, { layer: 'fg' });
+    this.fx.boltBurst?.(r.x + r.w - 34 * r.S, r.y + r.h / 2, 50, 8);
+    this.fx.zapBurst?.(r.x + r.w - 34 * r.S, r.y + r.h / 2, 6, { layer: 'fg' });
     const [rx, ry] = this.rodTip();
     this.particles.electrify?.(rx, ry, 8, 3, { flat: 1 });
   }
@@ -826,7 +826,7 @@ export class Fishing {
 
   onBossAttack(kind) {
     const f = this.fish;
-    if (kind === 'charge') { this.sfx('grunt', { vol: 0.8, pitch: 0.6 }); this.sfx('slack_warn', { pitch: 0.7 }); this.titles.banner('CHARGE!', '#ff9a8a', '', { pal: 'red' }); }
+    if (kind === 'charge') { this.sfx('grunt', { vol: 0.8, pitch: 0.6 }); this.sfx('slack_warn', { pitch: 0.7 }); this.shake(4); }
     else if (kind === 'ink') { this.sfx('blub', { pitch: 0.5, vol: 0.9 }); this.titles.banner('INK! CIRCLE TO WIPE', '#c89aff', '', { pal: 'violet' }); this.shake(5); }
     else { this.sfx('whale_call', { vol: 0.4, pitch: 1.6 }); this.titles.banner('MINIONS! CLICK THEM', '#ffe27a', '', { pal: 'sun' }); }
     if (f) this.particles.pixelBurst?.('sparkle', f.x, f.y, 6, { ramp: 'red' });
@@ -854,7 +854,6 @@ export class Fishing {
     this.sfx('boing', { vol: 0.6, pitch: 0.6 });
     this.shake(9);
     if (f) { this.particles.impact?.(f.x, f.y, 2, { ramp: 'gold' }); this.particles.pixelBurst?.('star', f.x, f.y - 10, 10, { ramp: 'gold' }); }
-    this.popOver('DAZED!', 'sun', 3);
   }
 
   onBossHit() {

@@ -35,6 +35,7 @@ import { drawBigArrow } from './hud.js';
 import * as ITEMS from '../build/items.js';
 import { grantUnlock } from '../game/lab.js';
 import { giveRod } from '../game/rods.js';
+import { labIcon } from '../ui/labicons.js';
 
 const INK = '#0c3a52';
 
@@ -242,7 +243,7 @@ export class BossFight {
     this.stage = 'intro'; this.stageT = 2.9;
     this.phase = 1;
     this.atk = null;
-    this.atkT = 6;
+    this.atkT = 4;
     this.last = null;
     this.minions = [];
     this.hurt = 0; // red flash on the bar
@@ -262,7 +263,8 @@ export class BossFight {
   inWindow() { return this.atk?.kind === 'charge' && this.atk.stage === 'dazed'; }
 
   // multipliers the Battle reads
-  reelMul() { return (0.62 / (this.def.hp || 1)) * (this.inWindow() ? 1.8 : 1); }
+  reelMul() { return (1 / (this.def.hp || 1)) * (this.inWindow() ? 1.8 : this.B.stunned ? 0.6 : 1); }
+  lineOutMul() { return 0.45; }
   pullMul() { return 0.9 + this.tier * 0.04 + (this.phase - 1) * 0.08; }
   durMul() { return 0.9 + (this.phase - 1) * 0.12; }
   paceMul() { return 1.05 - (this.phase - 1) * 0.15; }
@@ -291,9 +293,13 @@ export class BossFight {
       if (this.stageT <= 0) { this.stage = 'fight'; this.atkT = 1.2; }
       return 'hold';
     }
-    // phase changes
+    // phase changes: the health stops at the notch, attacks and stuns end, the boss roars
     const next = this.phase === 1 && this.hp <= PHASE_AT[0] ? 2 : this.phase === 2 && this.hp <= PHASE_AT[1] ? 3 : 0;
-    if (next && !this.atk && !B.stunned) {
+    if (next) {
+      B.progress = 1 - PHASE_AT[next - 2] + 0.002;
+      this.atk = null;
+      this.minions.length = 0;
+      B.stunT = 0; B.charge = null; B.trick = null;
       this.phase = next;
       this.stage = 'phase'; this.stageT = 1.7;
       this.phaseCard = { t: 0, n: next };
@@ -387,7 +393,7 @@ export class BossFight {
       f.vx = 0; f.vy = 0;
       f.feel('dizzy', 0.3);
       if (rng.chance(dt * 6)) F.particles.pixel?.('star', f.x + rng.float(-20, 20), f.y - F.fishLen() * 0.25, { ramp: 'gold', vy: -20, life: 0.6, size: 0 });
-      if (a.t >= a.dur || B.stunned && a.crit) this.endAttack();
+      if (a.t >= a.dur || (B.stunned && a.crit)) this.endAttack();
     } else {
       B.place(damp(f.x, ax, 3, dt), damp(f.y, ay, 3, dt));
       if (a.t > 0.7) this.endAttack();
@@ -549,7 +555,7 @@ export class BossFight {
     ctx.fillRect(0, 0, W, H);
     // the band
     ctx.globalAlpha = a;
-    const bh = 74;
+    const bh = 96;
     const slide = Math.round((1 - inK) * W);
     ctx.fillStyle = rgba('#04121e', 0.82);
     ctx.fillRect(-slide, cy - bh / 2, W, bh);
@@ -565,8 +571,8 @@ export class BossFight {
     const tx = Math.round(W / 2 - tag.w / 2 + slide * 0.5);
     ctx.drawImage(tag.c, tx - tag.ox, cy - bh / 2 + 6 - tag.oy);
     const jit = ct < 0.5 ? rng.int(-1, 1) : 0;
-    drawTitle(ctx, def.title, W / 2 - slide * 0.3 + jit, cy - 12, { scale: 2, color: '#ffffff', outline: '#04121e', align: 'center', glossColor: def.glow });
-    drawText(ctx, def.sub, Math.round(W / 2 + slide * 0.2), cy + 22, { align: 'center', color: def.glow, outline: '#04121e' });
+    drawTitle(ctx, def.title, W / 2 - slide * 0.3 + jit, cy - 16, { scale: 3, color: '#ffffff', outline: '#04121e', align: 'center', glossColor: def.glow });
+    drawText(ctx, def.sub, Math.round(W / 2 + slide * 0.2), cy + 32, { align: 'center', color: def.glow, outline: '#04121e' });
     ctx.restore();
   }
 
@@ -602,20 +608,23 @@ export class BossFight {
   drawZapCue(ctx, a) {
     const F = this.F, t = this.t;
     const [fx, fy] = F.toScreen(this.fish.x, this.fish.y);
-    const r = Math.round(F.fishLen() * F.zoom() * 0.45);
-    drawTarget(ctx, fx, fy, r, t, '#ffe27a');
+    const r = Math.round(clamp(F.fishLen() * F.zoom() * 0.32, 26, 70));
+    drawTarget(ctx, clamp(fx, 80, F.W - 80), clamp(fy, 130, F.H - 150), r, t, '#ffe27a');
     const left = clamp01(1 - a.t / a.dur);
-    const g = glossText(this.B.charges > 0 ? 'ZAP NOW!' : 'REEL!', 3, 'sun');
+    const cx = Math.round(F.W / 2), cy = Math.round(F.H * 0.3);
+    const g = glossText(this.B.charges > 0 ? 'ZAP NOW!' : 'DAZED! REEL!', 4, 'sun');
     const k = 1 + Math.max(0, Math.sin(t * 12)) * 0.08;
     ctx.save();
-    ctx.translate(Math.round(fx), Math.round(fy - r - 22));
+    ctx.translate(cx, cy - 18);
     ctx.scale(k, k);
     ctx.drawImage(g.c, Math.round(-g.w / 2 - g.ox), Math.round(-g.h / 2 - g.oy));
     ctx.restore();
     // the window ticking away
-    const w = 80;
-    ctx.fillStyle = INK; ctx.fillRect(Math.round(fx - w / 2) - 1, Math.round(fy - r - 8) - 1, w + 2, 6);
-    ctx.fillStyle = '#ffe27a'; ctx.fillRect(Math.round(fx - w / 2), Math.round(fy - r - 8), Math.round(w * left), 4);
+    const w = 120;
+    ctx.fillStyle = INK; ctx.fillRect(cx - w / 2 - 1, cy + 6, w + 2, 8);
+    ctx.fillStyle = '#5a4a18'; ctx.fillRect(cx - w / 2, cy + 7, w, 6);
+    ctx.fillStyle = '#ffe27a'; ctx.fillRect(cx - w / 2, cy + 7, Math.round(w * left), 6);
+    ctx.fillStyle = '#fff6c0'; ctx.fillRect(cx - w / 2, cy + 7, Math.round(w * left), 2);
   }
 }
 
@@ -732,7 +741,13 @@ class Victory {
 function drawRewardIcon(ctx, it, x, y, t) {
   if (it.kind === 'aero') { drawAeroCoin(ctx, x, y, 11, t); return; }
   if (it.kind === 'trophy') { drawTrophy(ctx, x, y, t); return; }
-  const ic = it.kind === 'chest' ? getUiIcon('gear') && chestIcon() : it.kind === 'rod' || it.kind === 'recipe' ? getUiIcon('line', 2) : null;
+  let ic = null;
+  try {
+    if (it.kind === 'chest') ic = labIcon('mat:' + it.id, 30);
+    else if (it.kind === 'rod') ic = labIcon('rod:' + it.id, 30);
+    else if (it.kind === 'recipe') ic = labIcon('rod:' + String(it.id).replace(/^ws_rod_/, ''), 30);
+  } catch (e) { ic = null; }
+  if (!ic) ic = it.kind === 'chest' ? chestIcon() : getUiIcon('line', 2);
   if (ic) ctx.drawImage(ic, Math.round(x - ic.width / 2), Math.round(y - ic.height / 2));
 }
 

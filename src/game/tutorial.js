@@ -79,6 +79,7 @@ const SAY = {
   shock: { text: 'Press Space to Shock it!', pose: 'point', mood: 'excited', g: 'key' },
   shockHold: { text: 'Hold, then let go to ZAP it!', pose: 'point', mood: 'excited', g: 'hold' },
   surge: { text: 'Hold and drag against it!', pose: 'bend', mood: 'determined', g: 'hold' },
+  pull: { text: 'It pulls! Stop circling!', pose: 'bend', mood: 'determined' }, // [phase9:fishing] ease off on a pull
   card: { text: 'Look at that! Keep it!', pose: 'cheer', mood: 'love' },
   tank: { text: 'Into your tank it goes! Proud?', pose: 'wave', mood: 'excited', choices: [
     { text: 'So proud!', mood: 'love', reply: 'You should be!' },
@@ -516,9 +517,10 @@ export class Tutorial {
         if (B) {
           if ((B.charges ?? 1) < (B.shockMax ?? 1) || B.stunT > 0 || B.zap) this.shockUsed = true;
           let want = K.gear ? 'crankGear' : 'crank';
-          if (B.mode === 'tele' || B.mode === 'surge' || B.surging || B.qte?.active) want = 'surge';
+          if (B.mode === 'warn' || B.mode === 'pull') want = 'pull'; // [phase9:fishing] the fish pulls: ease off
+          else if (B.mode === 'tele' || B.mode === 'surge' || B.surging || B.qte?.active) want = 'surge';
           else if ((B.shockReady || B.canCharge) && !this.shockUsed && this.fightT > 2.2) want = K.hold ? 'shockHold' : 'shock';
-          if (G.key !== want && (want === 'surge' || this.dlg.t > 0.8)) this.say(want, { silent: true });
+          if (G.key !== want && (want === 'surge' || want === 'pull' || this.dlg.t > 0.8)) this.say(want, { silent: true }); // [phase9:fishing] pull too
           if ((f.tension ?? 0) > 0.88 && !this.seal.emoteA) this.seal.emote('worried', 0.5);
         }
         if (f && f.state === 'idle' && this.t > 2) this.go('cast');
@@ -629,7 +631,7 @@ export class Tutorial {
   // a tip that fits the moment
   hintTip() {
     const g = this.game, f = g.fishing, st = g.state, K = this.fishingKind();
-    if (f?.fighting || f?.state === 'fight') return { text: K.gear ? 'Spin the gear! Hold, let go = ZAP!' : 'Circle to reel! Space = Shock!', mood: 'excited' };
+    if (f?.fighting || f?.state === 'fight') return { text: K.gear ? 'Spin the gear! Hold, let go = ZAP!' : 'Circle to reel! Hold, let go = ZAP!' /* [phase9:fishing] */, mood: 'excited' };
     if (f?.state === 'bite') return { text: K.gear ? 'Spin the gear, {name}!' : 'Click now, {name}!', mood: 'excited' };
     let bait = 1;
     try { bait = BAIT.totalBait(st); } catch (e) { bait = 1; }

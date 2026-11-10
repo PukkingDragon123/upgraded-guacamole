@@ -18,6 +18,7 @@ import { RELEASE_VALUE } from '../game/shopdata.js';
 import { drawAeroPanel, drawGlossOrb, drawAeroCoin } from './aero.js';
 import { glossText, drawGlassPill, glossFor } from '../fishing/cinematics.js';
 import { centerRect } from './ui.js';
+import { drawTrophy } from '../fishing/boss.js'; // [phase9:fishing] boss catches
 
 const REACTIONS = ['surprised', 'happy', 'love', 'smug', 'dizzy', 'happy', 'surprised'];
 const INK = '#0c3a52';
@@ -362,6 +363,11 @@ export class RevealPanel {
       drawSticker(ctx, r.x + W - 44 * k, r.y + 40 * k, 'NEW!', st, t, '#ff4f5e', ts);
     }
     if (d.record) drawSticker(ctx, r.x + W - 44 * k, r.y + (d.isNew ? 84 : 40) * k, 'BEST', clamp01((t - 1.1) * 5), t, '#ffb02e', ts);
+    // [phase9:fishing] a boss catch: a BOSS sticker and, the first time, its trophy
+    if (d.rec?.boss) {
+      drawSticker(ctx, r.x + 44 * k, r.y + 40 * k, 'BOSS', clamp01((t - 0.7) * 5), t, '#8a5ae0', ts);
+      if (d.rec.trophy && t > 1.2) drawTrophy(ctx, r.x + 44 * k, r.y + 96 * k, t, Math.max(1, Math.round(ts * 1.5)));
+    }
     // camera flash when the card appears
     if (t < 0.3) {
       ctx.fillStyle = rgba('#ffffff', (1 - t / 0.3) * 0.7);

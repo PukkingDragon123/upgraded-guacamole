@@ -24,22 +24,26 @@ export const INK = '#0c3a52', INK_SOFT = '#3c6f88', OK = '#1f9a3a', BAD = '#e038
 
 const BUCKETS = [8, 10, 12, 14, 16, 18, 20, 24, 28, 32, 40, 48, 56, 64];
 export const bucket = (px) => { let b = BUCKETS[0]; for (const q of BUCKETS) if (q <= px) b = q; return b; };
-let budget = 6, frameStart = 0;
+let budget = 6, spent = 0;
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 // n new icons per frame at most, and no more than ~7 ms of icon building per frame (voxel icons are slow)
-export function iconBudget(n = 6) { budget = n; frameStart = now(); }
+// [phase9:ui] counts the time spent building, not the time since the frame began (a busy frame no longer starves them)
+export function iconBudget(n = 6) { budget = n; spent = 0; }
 export function icon(key, px) {
   if (!key) return null;
   const b = bucket(px);
   const c = labIconCached(key, b);
   if (c !== undefined) return c;
-  if (budget <= 0 || now() - frameStart > 7) {
+  if (budget <= 0 || spent > 7) {
     // a smaller one that is ready is better than nothing
     for (let i = BUCKETS.indexOf(b) - 1; i >= 0; i--) { const s = labIconCached(key, BUCKETS[i]); if (s) return s; }
     return null;
   }
   budget--;
-  return labIcon(key, b);
+  const t0 = now();
+  const c2 = labIcon(key, b);
+  spent += now() - t0;
+  return c2;
 }
 
 export function anyIcon(name, px = 12) {

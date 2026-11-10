@@ -22,13 +22,13 @@ export const HI = 2;
 export const HI_ON = { on: false }; // true while the full-res UI layer is showing
 
 export function withHi(c, build) {
-  if (!c || c.hi !== undefined) return c;
+  if (!c || 'hi' in c) return c;
   let v = null;
   Object.defineProperty(c, 'hi', {
     configurable: true,
     get() {
-      if (v === null) { try { v = build() || false; } catch (e) { console.warn('hi art', e); v = false; } }
-      return v || undefined;
+      if (v === null) { try { const r = build(); v = r === undefined ? null : r || false; } catch (e) { console.warn('hi art', e); v = false; } }
+      return v || undefined; // build() -> undefined means 'not now' (asked again next draw), null / false = none
     },
   });
   return c;
@@ -181,7 +181,7 @@ export function enhanceHi(src, o = {}) {
 }
 
 export function autoHi(c, o) {
-  if (!c || c.hi !== undefined || !(c instanceof HTMLCanvasElement)) return c;
+  if (!c || 'hi' in c || !(c instanceof HTMLCanvasElement)) return c;
   return withHi(c, () => enhanceHi(c, o));
 }
 

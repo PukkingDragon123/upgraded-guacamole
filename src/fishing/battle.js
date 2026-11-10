@@ -90,7 +90,8 @@ export class Battle {
     this.zap = null;
     this.charge = null; this.prevHeld = false; this.needRelease = false;
     this.chargeDur = 0.75;
-    const d = diffOf(sp);
+    // bosses fight by their tier (their health bar is long enough), everyone else by rarity
+    const d = f.boss ? DIFF[['common', 'uncommon', 'uncommon', 'rare', 'rare', 'epic', 'epic', 'legendary'][clamp(f.boss.tier | 0, 1, 7)]] : diffOf(sp);
     this.d = d;
     this.power = clamp01((fight.power ?? 0.4) * (this.gentle ? 0.4 : 1) * (f.rec?.giant ? 1.2 : 1));
     this.pullK = (this.gentle ? 0.55 : d.power * (0.85 + this.power * 0.3)) * (1 + this.heavy * 0.2);
@@ -228,13 +229,13 @@ export class Battle {
         gain = reel * speed * 0.15;
       } else {
         T = (0.34 + 0.1 * k) * heavyK / lineStr;
-        gain = -this.d.out * k * (1 - this.resil) * (this.gentle ? 0.3 : 1);
+        gain = -this.d.out * k * (1 - this.resil) * (this.gentle ? 0.3 : 1) * (this.boss ? this.boss.lineOutMul() : 1);
       }
     } else {
       T = (0.12 + reel * 0.5) * heavyK / lineStr;
       if (this.mode === 'warn') T += 0.06;
       gain = reel * speed * (this.mode === 'tired' ? 1.8 : 1) * (this.mode === 'hookset' ? 0.4 : 1);
-      if (reel < 0.12 && this.mode !== 'hookset') gain -= 0.012 * (1 - this.resil) * (this.gentle ? 0 : 1); // a slack line lets it creep away
+      if (reel < 0.12 && this.mode !== 'hookset' && !this.boss?.atk) gain -= 0.012 * (1 - this.resil) * (this.gentle ? 0 : 1); // a slack line lets it creep away
     }
     if (this.boss) T += this.boss.extraTension();
     gain *= bossMul;
@@ -253,7 +254,7 @@ export class Battle {
     if (this.tension >= 0.995) this.snapT += dt; else this.snapT = Math.max(0, this.snapT - dt * 1.5);
     if (this.snapT > this.grace) return 'snap';
     if (this.gentle) this.progress = Math.max(this.progress, 0.04);
-    if (this.progress <= 0) return 'run';
+    if (this.progress <= (this.boss ? -0.06 : 0)) return 'run'; // a boss breaks free once it is back past full health
     if (this.progress >= 1) {
       this.progress = 1;
       if (this.boss && !this.boss.canFinish()) { this.progress = 0.995; return 'ok'; }
@@ -374,7 +375,7 @@ export class Battle {
     if (this.shockCd <= 0) this.shockCd = this.shockCdMax;
     const window = this.boss?.inWindow?.() || false;
     let stun = (this.shockPower + 0.7) * (1 - this.resist * 0.5);
-    if (this.boss) stun = window ? 3 + this.shockPower * 0.5 : stun * 0.45;
+    if (this.boss) stun = window ? 2 + this.shockPower * 0.4 : stun * 0.45;
     this.zap = { t: 0, dur: 0.2, stun, window };
     this.F.onShockFire?.(window);
   }

@@ -27,8 +27,8 @@ import {
 import { roundRectPath } from './labart.js';
 import { icon, anyIcon, pill, costTiles, costTilesHeight, chip, INK, INK_SOFT, OK, BAD } from './labkit.js';
 import { drawAnimIcon, unlockInfo } from './labrows.js';
-import { HI, hiFromBuffer, dualArt } from '../gfx/hires.js'; // [phase9:ui]
-import { nodeTile, qMark, glassware, microBubble, gemTex, GEM_CUT } from './labtiles.js'; // [phase9:ui]
+import { HI, hiFromBuffer, dualArt, withHi, hiCtx } from '../gfx/hires.js'; // [phase9:ui]
+import { nodeTile, qMark, glassware, microBubble, gemTex, pipeJoint, GEM_CUT } from './labtiles.js'; // [phase9:ui]
 
 const NODES = LAB_NODES.filter((n) => n.id !== ROOT_ID).sort((a, b) => a.depth - b.depth);
 const NODE_R = LAB_NODE / 2, ROOT_R = LAB_ROOT / 2;
@@ -63,22 +63,37 @@ for (const nd of NODES) {
 
 
 // ------------------------------------------------------------------ [phase9:ui] full-res backdrop + pipe geometry
+// An ornamental divider: a hairline that fades toward both ends with a tiny gem in the middle.
+function divider(ctx, x, y, w, col) {
+  const ga = ctx.globalAlpha;
+  for (let i = 0; i < w; i += 2) {
+    const k = 1 - Math.abs(i / w - 0.5) * 2;
+    ctx.globalAlpha = ga * (0.15 + 0.75 * k);
+    ctx.fillStyle = '#7fbedd'; ctx.fillRect(x + i, y, 2, 0.5);
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(x + i, y + 0.5, 2, 0.5);
+  }
+  ctx.globalAlpha = ga;
+  const g = gemTex(2, col || '#35c8ff', 'diamond');
+  ctx.drawImage(g, Math.round((x + w / 2 - g.width / 2) * 2) / 2, Math.round((y + 0.25 - g.height / 2) * 2) / 2);
+}
+
 // Arc-length sampler over a screen polyline: at(d) -> [x, y, nx, ny] (n = unit normal toward the light, up-left)
 function arc(pts) {
-  const seg = [];
-  let len = 0;
-  for (let i = 1; i < pts.length; i++) { const l = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); seg.push(l); len += l; }
-  return {
-    len,
-    at(d) {
-      let i = 0;
-      while (i < seg.length - 1 && d > seg[i]) { d -= seg[i]; i++; }
-      const a = pts[i], b = pts[i + 1] || pts[i], l = seg[i] || 1, k = Math.max(0, Math.min(1, d / l));
-      let nx = -(b[1] - a[1]) / l, ny = (b[0] - a[0]) / l;
-      if (nx + ny > 0) { nx = -nx; ny = -ny; }
-      return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, nx, ny];
-    },
-  };
+  // resampled once every half pixel along the polyline (stamping then just walks the array)
+  const out = [];
+  let carry = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i], l = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (l <= 0) continue;
+    let nx = -(b[1] - a[1]) / l, ny = (b[0] - a[0]) / l;
+    if (nx + ny > 0) { nx = -nx; ny = -ny; }
+    let d = carry;
+    for (; d < l; d += 0.5) { const k = d / l; out.push([a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, nx, ny]); }
+    carry = d - l;
+  }
+  if (!out.length) out.push([pts[0][0], pts[0][1], 0, -1]);
+  const len = (out.length - 1) / 2;
+  return { len, pts: out, at(d) { return out[Math.max(0, Math.min(out.length - 1, Math.round(d * 2)))]; } };
 }
 
 const SHELF = [
@@ -246,7 +261,20 @@ export function titleBmp(text, color = '#ffffff', outline = '#0a3a6e', size = 16
     const c = makeCanvas(w0.width + 2, h + 4), g = ctxOf(c);
     for (const [dx, dy] of [[0, 1], [2, 1], [1, 0], [1, 2], [0, 0], [2, 0], [0, 2], [2, 2], [1, 3], [0, 3], [2, 3]]) g.drawImage(o, dx, dy - box.top);
     g.drawImage(w0, 1, 1 - box.top);
-    return c;
+    // [phase9:ui] the 2x twin: the same glyphs with a rounder 2 device-px outline, a deeper drop and a hairline gloss
+    return withHi(c, () => {
+      const W2 = alagardBitmap(text, { size: size * 2, color }), O2 = alagardBitmap(text, { size: size * 2, color: outline });
+      const hc = makeCanvas(c.width * HI, c.height * HI), hg = ctxOf(hc), top = box.top * 2;
+      for (let dy = -2; dy <= 4; dy++) for (let dx = -2; dx <= 2; dx++) { if (dx * dx + Math.min(dy, 2) ** 2 > 5 && dy <= 2) continue; hg.drawImage(O2, 2 + dx, 2 + dy - top); }
+      hg.drawImage(W2, 2, 2 - top);
+      hg.globalCompositeOperation = 'source-atop';
+      hg.fillStyle = 'rgba(255,255,255,0.5)';
+      const tmp = makeCanvas(hc.width, hc.height), tg = ctxOf(tmp);
+      tg.drawImage(W2, 2, 2 - top); tg.globalCompositeOperation = 'source-in'; tg.fillStyle = '#e8fbff'; tg.fillRect(0, 0, tmp.width, Math.round((h * 2) * 0.32) + 2);
+      hg.globalCompositeOperation = 'source-over';
+      hg.drawImage(tmp, 0, 0);
+      return hc;
+    });
   });
 }
 
@@ -608,10 +636,15 @@ export class LabTree {
         ctx.fillRect(Math.round((bx + s * 5.5) * 2) / 2, v.y + Math.round(k * v.h), w * (1 + k * 0.6), Math.ceil(v.h / steps) + 1);
       }
     }
-    // the glassware shelf along the bottom (parallax), liquids bubbling
+  }
+
+  // [phase9:ui] the glassware shelf along the bottom (parallax, drawn over the fog, dimmed), liquids bubbling,
+  // rising bubbles and drifting motes
+  drawShelf(ctx, v) {
+    const t = this.t, cam = this.cam;
     const par = -cam.x * cam.z * 0.05, py = -cam.y * cam.z * 0.03;
     ctx.save();
-    ctx.globalAlpha = 0.62;
+    ctx.globalAlpha = 0.42;
     for (const G of SHELF) {
       const h = Math.round(Math.min(v.h * G.h, 170));
       const c = glassware(G.kind, h, G.liq);
@@ -688,15 +721,20 @@ export class LabTree {
     ctx.fillStyle = col;
     const ww = Math.max(0.5, Math.round(w * 2) / 2), h2 = ww / 2;
     const off = o.off || 0;
-    for (let d = L * from; d <= L * to; d += o.step || 1) {
-      if (gap && Math.floor(d / (dash + gap)) * (dash + gap) + dash < d) continue;
-      const p = S.at(d);
-      ctx.fillRect(Math.round((p[0] - h2 + off * p[2]) * 2) / 2, Math.round((p[1] - h2 + off * p[3]) * 2) / 2, ww, ww);
+    const P = S.pts, i0 = Math.round(L * from * 2), i1 = Math.min(P.length - 1, Math.round(L * to * 2)), st = Math.max(1, Math.round((o.step || 1) * 2));
+    let lx = -1e9, ly = -1e9;
+    for (let i = i0; i <= i1; i += st) {
+      if (gap) { const d = i / 2; if (d % (dash + gap) > dash) continue; }
+      const p = P[i];
+      const x = Math.round((p[0] - h2 + off * p[2]) * 2) / 2, y = Math.round((p[1] - h2 + off * p[3]) * 2) / 2;
+      if (x === lx && y === ly) continue;
+      lx = x; ly = y;
+      ctx.fillRect(x, y, ww, ww);
     }
   }
 
   // [phase9:ui] glowing glass pipes: a soft branch glow, dark outline, pale glass, the water running down to the child
-  // (filled when done, rising while brewing), a hairline highlight, chrome collars, bubbles and light flowing along.
+  // (filled when done, rising while brewing), a hairline highlight, chrome joints, bubbles and light flowing along.
   drawEdges(ctx, v) {
     const z = this.cam.z, t = this.t, st = this.game.state;
     for (const e of EDGES) {
@@ -720,32 +758,19 @@ export class LabTree {
       const w = clamp(Math.round(6.5 * z * 2) / 2, 3, 10);
       const water = sTo === 'done' ? 1 : sTo === 'researching' ? 0.1 + 0.9 * labProgress(st, e.to) : sTo === 'queued' ? 0.06 : 0;
       ctx.save(); ctx.globalAlpha *= rk;
-      // soft glow under live pipes
       const pulse = 0.5 + 0.5 * Math.sin(t * 2.4 + A.ph);
-      if (sTo === 'available' || water > 0) {
-        ctx.globalAlpha = rk * (sTo === 'available' ? 0.1 + 0.08 * pulse : 0.16);
-        this.stamp(ctx, S, w + 6, col, { step: 2 });
+      // the static pipe body is cached per edge while the camera zoom holds still (panning just moves it)
+      const still = ctx.__hi && Math.abs(this.cam.z - this.tgt.z) < 0.0015 && (water === 0 || water === 1);
+      if (still) {
+        const sp = this.pipeSprite(e, z, w, col, sTo, water);
+        ctx.drawImage(sp, Math.round((this.X(e.pts[0][0]) + sp.ox) * 2) / 2, Math.round((this.Y(e.pts[0][1]) + sp.oy) * 2) / 2);
+      } else this.pipeBody(ctx, S, w, col, sTo, water);
+      if (water > 0 && water < 1) { const p = S.at(water * S.len); ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round((p[0] - 1) * 2) / 2, Math.round((p[1] - 1) * 2) / 2, 2, 2); }
+      if (sTo === 'available') {
+        // an empty glass pipe waiting: a faint charge of light pulsing through it
+        ctx.globalAlpha = rk * (0.2 + 0.3 * pulse);
+        this.stamp(ctx, S, Math.max(0.5, w - 4.5), mix(col, '#ffffff', 0.6), { step: 1 });
         ctx.globalAlpha = rk;
-      }
-      const deep = shade(col, -0.62);
-      this.stamp(ctx, S, w + 1.5, deep);
-      this.stamp(ctx, S, w, '#cfeefa');
-      this.stamp(ctx, S, w - 1.5, sTo === 'available' ? '#eefcff' : '#e2f7ff');
-      if (water > 0) {
-        this.stamp(ctx, S, w - 1.5, mix(col, '#ffffff', 0.1), { to: water });
-        this.stamp(ctx, S, Math.max(0.5, w - 4), mix(col, '#ffffff', 0.38), { to: water });
-      }
-      // hairline highlight along the upper side of the glass
-      this.stamp(ctx, S, 0.5, '#ffffff', { off: w / 2 - 1.25, step: 0.5 });
-      // chrome collars every ~26 px
-      const nC = Math.floor(S.len / 26);
-      for (let i = 1; i <= nC; i++) {
-        const d = (S.len * i) / (nC + 1), p = S.at(d);
-        const cw = w + 2.5, hx = Math.round((p[0] - cw / 2) * 2) / 2, hy = Math.round((p[1] - cw / 2) * 2) / 2;
-        ctx.fillStyle = deep; ctx.fillRect(hx, hy, cw, cw);
-        ctx.fillStyle = water > d / S.len ? mix(col, '#ffffff', 0.55) : '#e8f4fc'; ctx.fillRect(hx + 0.5, hy + 0.5, cw - 1, cw - 1);
-        ctx.fillStyle = '#ffffff'; ctx.fillRect(hx + 0.5, hy + 0.5, cw - 1.5, 0.5); ctx.fillRect(hx + 0.5, hy + 0.5, 0.5, cw - 1.5);
-        ctx.fillStyle = shade(col, -0.35); ctx.fillRect(hx + 1, hy + cw - 1, cw - 1.5, 0.5);
       }
       // flowing: bubbles riding the water, sparkles of light trickling toward an available node
       const runs = sTo === 'available' ? 3 : water > 0 ? Math.max(2, Math.round(S.len / 40)) : 0;
@@ -763,6 +788,53 @@ export class LabTree {
       }
       ctx.restore();
     }
+  }
+
+  // the pipe body: glow, outline, glass, the water (to `water`), hairline highlight, round chrome joints
+  pipeBody(ctx, S, w, col, sTo, water) {
+    if (sTo === 'available' || water > 0) {
+      const ga = ctx.globalAlpha;
+      ctx.globalAlpha = ga * (sTo === 'available' ? 0.14 : 0.16);
+      this.stamp(ctx, S, w + 6, col, { step: 2 });
+      ctx.globalAlpha = ga;
+    }
+    const deep = shade(col, -0.62);
+    this.stamp(ctx, S, w + 1.5, deep);
+    this.stamp(ctx, S, w, mix(col, '#ffffff', sTo === 'available' ? 0.7 : 0.55));
+    this.stamp(ctx, S, w - 2, mix(col, '#082e5c', 0.5));
+    if (water > 0) {
+      this.stamp(ctx, S, w - 2, mix(col, '#ffffff', 0.08), { to: water });
+      this.stamp(ctx, S, Math.max(0.5, w - 4.5), mix(col, '#ffffff', 0.45), { to: water });
+    }
+    this.stamp(ctx, S, 0.5, '#ffffff', { off: w / 2 - 1.25, step: 0.5 });
+    const jt = pipeJoint(w + 3, col, water >= 1);
+    const joints = [2, S.len - 2];
+    if (S.len > 130) joints.push(S.len / 2);
+    for (const d of joints) { const p = S.at(d); ctx.drawImage(jt, Math.round((p[0] - jt.width / 2) * 2) / 2, Math.round((p[1] - jt.height / 2) * 2) / 2); }
+  }
+
+  pipeSprite(e, z, w, col, sTo, water) {
+    const key = e.to + '|' + sTo + '|' + water;
+    if (!this.pipes || this.pipesZ !== z) { this.pipes = new Map(); this.pipesZ = z; }
+    let c = this.pipes.get(key);
+    if (c) return c;
+    // the edge in screen units relative to its first point (depends on the zoom only)
+    const o = e.pts[0];
+    const rel = e.pts.map(([x, y]) => [(x - o[0]) * z, (y - o[1]) * z]);
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    for (const [x, y] of rel) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+    const pad = w + 8;
+    x0 = Math.floor(x0 - pad); y0 = Math.floor(y0 - pad);
+    const W = Math.ceil(x1 + pad - x0), H = Math.ceil(y1 + pad - y0);
+    c = makeCanvas(W * HI, H * HI);
+    const g = hiCtx(c, HI);
+    const S = arc(rel.map(([x, y]) => [x - x0, y - y0]));
+    this.pipeBody(g, S, w, col, sTo, water);
+    const out = makeCanvas(W, H);
+    Object.defineProperty(out, 'hi', { value: c, configurable: true });
+    out.ox = x0; out.oy = y0;
+    this.pipes.set(key, out);
+    return out;
   }
 
   drawRoot(ctx) {
@@ -977,7 +1049,7 @@ export class LabTree {
     const w = Math.max(...all.map((l, i) => measureText(l, i < lines.length ? 'big' : 'normal'))) + 8;
     const h = lines.length * 12 + (sub ? 10 : 0) + 4;
     const x = Math.round(this.X(nd.pos[0]) - w / 2), y = Math.round(this.Y(nd.pos[1]) + (nd.__S || LAB_NODE * z) / 2 + 4);
-    ctx.fillStyle = 'rgba(3,26,58,0.62)'; ctx.fillRect(x + 1, y, w - 2, h); ctx.fillRect(x, y + 1, w, h - 2);
+    ctx.drawImage(aeroSurface(w, h, { top: '#1c4a7c', mid: '#0c2c56', bot: '#06203f', edge: '#020c1c', a: [0.82, 0.86], r: 4, gloss: 0.18, glossH: 5, curve: 1, rim: 0.4, glow: 0.3, glowColor: '#3ab0ff' }), x, y);
     lines.forEach((l, i) => drawText(ctx, l, x + Math.round((w - measureText(l, 'big')) / 2), y + 3 + i * 12, { font: 'big', color: '#ffffff', shadow: '#03142c' }));
     if (sub) drawText(ctx, sub, x + Math.round((w - measureText(sub, 'normal')) / 2), y + 3 + lines.length * 12, { color: subCol, shadow: '#03142c' });
   }
@@ -1036,6 +1108,7 @@ export class LabTree {
     roundRectPath(ctx, v.x, v.y, v.w, v.h, 8); ctx.clip();
     this.drawBackground(ctx, v);
     this.drawFog(ctx, v);
+    this.drawShelf(ctx, v);
     this.questMark = this.questMarks();
     this.drawEdges(ctx, v);
     this.drawBranchLabels(ctx);
@@ -1054,8 +1127,8 @@ export class LabTree {
       const txt = 'DRAG TO EXPLORE   SCROLL TO ZOOM   CLICK A GLOWING TILE';
       const tw = measureText(txt, 'normal');
       ctx.globalAlpha = this.hintK;
-      const hx = Math.round(v.x + v.w / 2 - tw / 2 - 8 - (this.cardK * (CARD_W + 16)) / 2), hy = v.y + v.h - 22;
-      ctx.fillStyle = 'rgba(3,26,58,0.6)'; ctx.fillRect(hx, hy, tw + 16, 15);
+      const hx = Math.round(v.x + v.w / 2 - tw / 2 - 8 - (this.cardK * (CARD_W + 16)) / 2), hy = v.y + v.h - 26;
+      ctx.drawImage(aeroSurface(tw + 16, 16, { top: '#1c4a7c', mid: '#0c2c56', bot: '#06203f', edge: '#9fe6ff', edgeA: 0.6, a: [0.85, 0.88], r: 'pill', gloss: 0.25, glossH: 6, rim: 0.4, glow: 0.3 }), hx, hy);
       drawText(ctx, txt, hx + 8, hy + 4, { color: '#dff9ff' });
       ctx.globalAlpha = 1;
     }
@@ -1144,7 +1217,7 @@ export class LabTree {
         for (const it of c.items) cr.push({ kind: 'item', ...it });
         for (const fi of c.fish) cr.push({ kind: 'fish', id: fi.key, ...fi });
         add(16 + costTilesHeight(cr.length, IW, 72), (x, y) => {
-          ctx.fillStyle = rgba('#7fbedd', 0.6); ctx.fillRect(x, y, IW, 1);
+          divider(ctx, x, y, IW, col);
           drawText(ctx, 'COST', x, y + 5, { color: INK_SOFT });
           const tm = fmtTime(labTime(st, nd, g.stats)), ci = getUiIcon('clock');
           const tw = measureText(tm, 'big');
@@ -1190,7 +1263,19 @@ export class LabTree {
     ctx.globalAlpha *= k;
     ctx.fillStyle = 'rgba(2,26,56,0.35)'; ctx.fillRect(x + 4, y + 5, W, H);
     ctx.drawImage(aeroSurface(W, H, { tone: 'frost', r: 8, gloss: 0.35, glossH: 30, curve: 2, rim: 0.9, glow: 0.4, glowColor: '#bfeaff', bubbles: 3, seed: 11 }), x, y);
-    ctx.drawImage(aeroSurface(W - 8, HEAD - 4, { tone: hidden ? { top: '#2a3a52', mid: '#121c2c', bot: '#05080e', edge: '#000000', a: [1, 1] } : toneFrom(col), r: 6, gloss: hidden ? 0.25 : 0.75, glossH: 22, curve: 2, rim: 0.85, glow: 0.5 }), x + 4, y + 4);
+    ctx.drawImage(aeroSurface(W - 8, HEAD - 4, { tone: hidden ? { top: '#2a3a52', mid: '#121c2c', bot: '#05080e', edge: '#000000', a: [1, 1] } : toneFrom(col), r: 6, gloss: hidden ? 0.25 : 0.75, glossH: 22, curve: 2, rim: 0.85, glow: 0.5, streak: true, seed: 5 }), x + 4, y + 4);
+    // [phase9:ui] ornate card: a fine branch-coloured inner trim, corner gems, light behind the hero tile
+    {
+      const tc = hidden ? '#3c5a7c' : mix(col, '#ffffff', 0.35);
+      ctx.fillStyle = tc; ctx.globalAlpha *= 0.7;
+      ctx.fillRect(x + 9, y + HEAD + 1.5, W - 18, 0.5);
+      ctx.fillRect(x + 3.5, y + 12, 0.5, H - 24); ctx.fillRect(x + W - 4, y + 12, 0.5, H - 24);
+      ctx.fillRect(x + 12, y + H - 4, W - 24, 0.5);
+      ctx.globalAlpha /= 0.7;
+      const cut = isRoot ? 'round' : GEM_CUT[nd?.branch] || 'round';
+      for (const [gx, gy] of [[x + 3.5, y + H - 4], [x + W - 4, y + H - 4]]) { const g = gemTex(2.5, hidden ? '#2a3a52' : col, cut, hidden); ctx.drawImage(g, Math.round((gx - g.width / 2) * 2) / 2, Math.round((gy - g.height / 2) * 2) / 2); }
+      if (!hidden) drawAeroGlow(ctx, x + 33, y + 31, 34, mix(col, '#ffffff', 0.5), 0.45 + 0.1 * Math.sin(t * 2));
+    }
     // hero tile
     const hs = 46, hx = x + 10, hy = y + 8;
     if (hidden) {
@@ -1200,6 +1285,7 @@ export class LabTree {
     } else {
       const tl = nodeTile(hs, isRoot ? 'root' : s === 'done' ? 'done' : s === 'researching' || s === 'queued' ? 'brew' : 'open', nd?.branch); ctx.drawImage(tl, hx - tl.pad, hy - tl.pad);
       drawAnimIcon(ctx, isRoot ? 'beaker' : nd.icon, hx + hs / 2, hy + hs / 2, 36, t, this.a(id).ph, { hover: 0.5 });
+      this.shine(ctx, hx + hs / 2, hy + hs / 2, hs, 0.7, 3.8);
     }
     // title (Alagard) + subtitle
     const tx = hx + hs + 8, tmax = x + W - 10 - tx;
@@ -1210,6 +1296,11 @@ export class LabTree {
     let ty = y + (tl.length > 1 ? 9 : 14);
     for (const b of tl) { ctx.drawImage(b, tx, ty, Math.min(b.width, tmax), b.height); ty += b.height + 1; }
     drawText(ctx, sub, tx, ty + 3, { color: hidden ? '#7f9ab8' : mix(col, '#ffffff', 0.85), shadow: shade(col, -0.7) });
+    // tier pips: one little gem per tier in the branch's cut
+    if (nd && !hidden) {
+      const px0 = tx + measureText(sub) + 6;
+      for (let i = 0; i < Math.min(6, nd.tier || 1); i++) { const g = gemTex(2.5, i % 2 ? mix(col, '#ffffff', 0.3) : '#ffe27a', GEM_CUT[nd.branch] || 'round'); ctx.drawImage(g, px0 + i * 7 - 1, ty + 1); }
+    }
     // body
     ctx.save(); ctx.beginPath(); ctx.rect(x, y + HEAD, W, H - HEAD - BTN - 4); ctx.clip();
     let yy = y + HEAD + 8;

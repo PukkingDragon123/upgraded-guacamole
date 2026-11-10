@@ -395,6 +395,34 @@ export function titleSize(text, o = {}) {
   return { w: (t.w + 1) * sc, h: t.cap * sc };
 }
 
+function titleComposite(text, size, sc, color, outline, shadow, shadowA, gloss, glossColor) {
+  return aeroCached(`ttl9|${text}|${size}|${sc}|${color}|${outline}|${shadow}|${shadowA}|${gloss}|${glossColor}`, () => {
+    const t = trimmed(text, size, color);
+    const bw = t.canvas.width * sc, bh = t.canvas.height * sc, pad = sc * 2 + 1;
+    const c = hiArt(bw + pad * 2, bh + pad * 2 + sc * 2, (g) => {
+      const D = HI, ox = pad * D, oy = pad * D, w = bw * D, h = bh * D;
+      if (shadow) { g.globalAlpha = shadowA; g.drawImage(trimmed(text, size, shadow).canvas, ox, oy + sc * 2 * D, w, h); g.globalAlpha = 1; }
+      if (outline) {
+        const oc = trimmed(text, size, outline).canvas, R = sc * D;
+        for (let yy = -R; yy <= R; yy++) for (let xx = -R; xx <= R; xx++) if (xx * xx + yy * yy <= R * R + 1) g.drawImage(oc, ox + xx, oy + yy, w, h);
+      }
+      g.drawImage(t.canvas, ox, oy, w, h);
+      if (gloss) {
+        const hl = trimmed(text, size, glossColor).canvas, rows = Math.max(1, Math.round(t.cap * 0.3));
+        g.drawImage(hl, 0, t.top, hl.width, rows, ox, oy + t.top * sc * D, w, rows * sc * D);
+        // a 1 device-px white hairline along the very top of each letter
+        const tmp = makeCanvas(w + 2, h + 2), tg = ctxOf(tmp);
+        tg.drawImage(trimmed(text, size, '#ffffff').canvas, 1, 1, w, h);
+        tg.globalCompositeOperation = 'destination-out';
+        tg.drawImage(trimmed(text, size, '#ffffff').canvas, 1, 2, w, h);
+        g.globalAlpha = 0.9; g.drawImage(tmp, ox - 1, oy - 1); g.globalAlpha = 1;
+      }
+    });
+    c.pad = pad;
+    return c;
+  }, 300);
+}
+
 export function drawTitle(ctx, text, x, y, o = {}) {
   const size = o.size ?? 16, sc = o.scale ?? 2;
   const color = o.color || '#ffffff', outline = o.outline ?? '#0a3e74', shadow = o.shadow ?? '#041e46';
@@ -409,6 +437,13 @@ export function drawTitle(ctx, text, x, y, o = {}) {
   if (o.align === 'center') ax -= Math.round(W / 2); else if (o.align === 'right') ax -= W;
   const dy = Math.round(y) - t.top * sc;
   const bw = t.canvas.width * sc, bh = t.canvas.height * sc;
+  if (ctx.__hi && sc >= 1) {
+    // [phase9:ui] full-res title: one cached composite with a round outline traced per device pixel, a soft drop and
+    // a hairline gloss on the top of the letters
+    const c = titleComposite(text, size, sc, color, outline, shadow, o.shadowA ?? 0.45, o.gloss !== false && sc >= 2, o.glossColor || '#e8fbff');
+    ctx.drawImage(c, ax - c.pad, dy - c.pad);
+    return { w: W, h: t.cap * sc };
+  }
   if (shadow) { const ga = ctx.globalAlpha; ctx.globalAlpha = ga * (o.shadowA ?? 0.45); ctx.drawImage(trimmed(text, size, shadow).canvas, ax, dy + sc * 2, bw, bh); ctx.globalAlpha = ga; }
   if (outline) {
     const oc = trimmed(text, size, outline).canvas;

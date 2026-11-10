@@ -284,20 +284,24 @@ export function labIcon(key, px = 18) {
   if (!c && GLYPH_ART[key] === undefined && key !== 'beaker') c = labIcon('beaker', px);
   // [phase9:ui] the 2x twin for the full-res UI layer: glyphs are remastered (Scale2x + fine outline + bevel), 3D /
   // voxel icons are rendered again at twice the size (more detail, not a blow-up)
-  if (c && c.hi === undefined && !c.__shared) {
+  if (c && !('hi' in c) && !c.__shared) {
     try {
-      if (GLYPH_ART[key]) {
-        const g = glyphCanvas(key), k = Math.round(c.width / g.width);
+      if (c.__glyphK) {
+        const g = glyphCanvas(key), k = c.__glyphK;
         withHi(c, () => { const e = enhanceHi(g); if (!e) return null; const h = makeCanvas(c.width * HI, c.height * HI), hg = ctxOf(h); hg.imageSmoothingEnabled = false; hg.drawImage(e, 0, 0, e.width * k, e.height * k); return h; });
       } else {
         const own = c;
-        withHi(own, () => twin(own, buildIcon(key, px * HI)));
+        withHi(own, () => { if (!hiBudget()) return undefined; const t0 = performance.now(); const r = twin(own, buildIcon(key, px * HI)); hiSpent += performance.now() - t0; return r; });
       }
     } catch { /* plain 1x */ }
   }
   cache.set(ck, c);
   return c;
 }
+
+// 2x voxel / 3D twins are slow to render: at most ~5 ms of them per frame (the 1x icon shows meanwhile)
+let hiWin = 0, hiSpent = 0;
+function hiBudget() { const n = performance.now(); if (n - hiWin > 16) { hiWin = n; hiSpent = 0; } return hiSpent < 5; }
 
 // The 2x twin of `c` from a bigger render: scaled to fit exactly 2x (nearest, keeps pixels crisp), centred.
 function twin(c, big) {
@@ -334,6 +338,7 @@ function buildIcon(key, px) {
       const g = glyphCanvas(key);
       const k = Math.max(1, Math.floor(px / Math.max(g.width, g.height)));
       c = k === 1 ? g : fitCanvas(g, Math.max(g.width, g.height) * k, true);
+      if (c) c.__glyphK = k;
     }
   } catch (e) {
     console.error(e);

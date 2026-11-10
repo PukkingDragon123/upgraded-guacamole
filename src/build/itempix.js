@@ -11,6 +11,7 @@
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { pack, unpack, shade, rgbToHex } from '../core/color.js';
 import { bayer, hash2 } from '../core/math.js';
+import { autoHi, withHi } from '../gfx/hires.js'; // [phase9:ui]
 
 const N = 24;
 // 5-step ramps: [outline, shadow, base, light, highlight]
@@ -361,6 +362,7 @@ export function itemPixel(id) {
   const w = x1 - x0 + 3, h = y1 - y0 + 3;
   const out = makeCanvas(w, h);
   ctxOf(out).drawImage(src, x0 - 1, y0 - 1, w, h, 0, 0, w, h);
+  autoHi(out, { bevel: 0.7 }); // [phase9:ui] lazy 2x remaster (Scale2x curves, 1 device-px outline, rim light) for the hi-res UI
   e = { canvas: out, w, h };
   cache.set(id, e);
   return e;
@@ -376,6 +378,7 @@ export function itemPixelScaled(id, k = 2) {
   if (!s) { scaled.set(key, null); return null; }
   c = makeCanvas(s.w * k, s.h * k);
   ctxOf(c).drawImage(s.canvas, 0, 0, s.w * k, s.h * k);
+  withHi(c, () => { const h = s.canvas.hi; if (!h) return null; const c2 = makeCanvas(c.width * 2, c.height * 2), g2 = ctxOf(c2); g2.drawImage(h, 0, 0, c2.width, c2.height); return c2; }); // [phase9:ui]
   scaled.set(key, c);
   return c;
 }

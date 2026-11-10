@@ -66,7 +66,7 @@ export class Crank {
     const rev = Math.abs(this.omega) / TAU;
     this.speed = rev;
     const rk = clamp01((this.radius - 3) / 9);
-    const target = this.stun > 0 ? 0 : clamp((rev - 0.3) / 2, 0, 1.25) * rk;
+    const target = this.stun > 0 ? 0 : clamp((rev - 0.25) / 1.5, 0, 1.25) * rk; // [phase9:fishing] full power at ~1.75 turns/s
     this.power = damp(this.power, target, target > this.power ? 9 : 6, dt);
     this.dir = rev > 0.3 ? Math.sign(this.omega) : 0;
   }

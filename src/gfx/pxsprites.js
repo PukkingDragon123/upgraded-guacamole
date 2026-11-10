@@ -13,6 +13,7 @@ import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { pack, shade, mix } from '../core/color.js';
 import { bayer, TAU } from '../core/math.js';
 import { PixelBuffer } from './pixel.js';
+import { autoHi, withHi, fitHi } from './hires.js'; // [phase9:ui]
 
 export const RAMPS = {
   gold: ['#7a3a12', '#d8741c', '#ffc23a', '#ffe98a', '#fffbe0'],
@@ -520,7 +521,7 @@ function build(name, ramp, size) {
     case 'zap': return ART.zap.map((r) => fromAscii(r, ramp));
     case 'spark': return ART.spark.map((r) => fromAscii(r, ramp));
     case 'ribbon': return ART.ribbon.map((r) => fromAscii(r, ramp));
-    case 'bubble': return [bubble([2, 3, 4, 5, 7][size] ?? 3)];
+    case 'bubble': { const r = [2, 3, 4, 5, 7][size] ?? 3, c = bubble(r); return [withHi(c, () => fitHi(c, bubble(r * 2)))]; } // [phase9:ui] a true 2x bubble
     case 'puff': case 'smoke': case 'dust': return puffFrames([3, 4.5, 6.5][size] ?? 4.5, ramp, 5, size);
     case 'impact': return impactFrames([9, 13, 20][size] ?? 13, ramp);
     case 'leaf': return leafFrames([7, 9, 12][size] ?? 9, [4, 5, 6][size] ?? 5, ramp, false);
@@ -542,6 +543,7 @@ export function pxFrames(name, ramp = 'white', size = 1) {
   let f = sheets.get(key);
   if (!f) {
     f = build(name, R, size);
+    for (const c of f) autoHi(c); // [phase9:ui] lazy 2x remaster for the full-res UI layer (Scale2x + fine outline + bevel)
     if (sheets.size > 400) sheets.clear();
     sheets.set(key, f);
   }

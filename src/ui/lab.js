@@ -23,6 +23,7 @@ import { iconBudget, icon, pill, INK, bucket } from './labkit.js';
 import { labIconCached, labIcon } from './labicons.js';
 import { drawAnimIcon } from './labrows.js';
 import { LabTree } from './labtree.js';
+import { dualArt, withHi } from '../gfx/hires.js'; // [phase9:ui]
 import { drawRodsView, drawRodCard, drawCraftView, drawCraftCard, drawBoatsView, drawBoatCard } from './labviews.js';
 
 const TABS = [
@@ -213,9 +214,8 @@ export class LabPanel {
     // the round emblem (an eco globe in a chrome ring) overlapping the bar, like the reference's medallion
     const ex = P.x + 28, ey = P.y + 17, R = 23;
     drawAeroGlow(ctx, ex, ey, R + 14, '#ffffff', 0.45 + 0.1 * Math.sin(t * 2));
-    ctx.drawImage(aeroCached(`labemblem|${R}`, () => {
-      const S = R * 2 + 6, c = document.createElement('canvas'); c.width = S; c.height = S;
-      const g2 = c.getContext('2d'); g2.imageSmoothingEnabled = false;
+    ctx.drawImage(aeroCached(`labemblem9|${R}`, () => dualArt(R * 2 + 6, R * 2 + 6, (g2) => { // [phase9:ui] traced again at 2x
+      const S = R * 2 + 6;
       const cx = S / 2;
       const rg = g2.createLinearGradient(0, 0, 0, S);
       rg.addColorStop(0, '#ffffff'); rg.addColorStop(0.45, '#cfe6f4'); rg.addColorStop(0.55, '#8fb4cc'); rg.addColorStop(1, '#e8f6ff');
@@ -224,8 +224,7 @@ export class LabPanel {
       // little bubble studs around the ring
       for (let i = 0; i < 12; i++) { const a = (i / 12) * TAU; g2.fillStyle = 'rgba(255,255,255,0.95)'; g2.beginPath(); g2.arc(cx + Math.cos(a) * (R - 1.5), cx + Math.sin(a) * (R - 1.5), 1.1, 0, TAU); g2.fill(); }
       g2.fillStyle = '#0a3f7a'; g2.beginPath(); g2.arc(cx, cx, R - 4, 0, TAU); g2.fill();
-      return c;
-    }), Math.round(ex - R - 3), Math.round(ey - R - 3));
+    })), Math.round(ex - R - 3), Math.round(ey - R - 3));
     const orb = ecoOrb(R - 5, '#4cc83a', 'done');
     ctx.drawImage(orb, Math.round(ex - orb.width / 2), Math.round(ey - orb.height / 2));
     // a twinkle + the beaker bubbling on top
@@ -243,7 +242,18 @@ export class LabPanel {
         const g2 = c.getContext('2d');
         for (const [dx, dy] of [[0, 3], [1, 3], [2, 3], [0, 1], [2, 1], [1, 0], [1, 2], [0, 0], [2, 0], [0, 2], [2, 2]]) g2.drawImage(o, dx, dy);
         g2.drawImage(w0, 1, 1);
-        return c;
+        // [phase9:ui] 2x twin: Alagard at 44 px, a rounder outline traced per device pixel, a hairline gloss
+        return withHi(c, () => {
+          const W2 = alagardBitmap(title, { size: 44, color: '#ffffff' }), O2 = alagardBitmap(title, { size: 44, color: '#0a3a6e' });
+          const h = document.createElement('canvas'); h.width = c.width * 2; h.height = c.height * 2;
+          const hg = h.getContext('2d'); hg.imageSmoothingEnabled = false;
+          for (let dy = -2; dy <= 6; dy++) for (let dx = -2; dx <= 2; dx++) if (dx * dx + Math.min(dy, 2) ** 2 <= 5 || dy > 2) hg.drawImage(O2, 2 + dx, 2 + dy);
+          hg.drawImage(W2, 2, 2);
+          const L = document.createElement('canvas'); L.width = h.width; L.height = h.height;
+          const lg = L.getContext('2d'); lg.drawImage(W2, 2, 2); lg.globalCompositeOperation = 'source-in'; lg.fillStyle = '#d8f6ff'; lg.fillRect(0, Math.round(h.height * 0.55), h.width, h.height);
+          hg.drawImage(L, 0, 0);
+          return h;
+        });
       });
       ctx.drawImage(bmp, Math.round(tx), Math.round(by + bh / 2 - bmp.height / 2 + 1));
       tx += bmp.width + 12;

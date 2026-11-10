@@ -780,14 +780,14 @@ export function getUiIcon(name, zoom = 1) {
       const g = z.getContext('2d');
       g.imageSmoothingEnabled = false;
       g.drawImage(src, 0, 0, z.width, z.height);
-      if (src.hi !== undefined) withHi(z, () => { const h = src.hi; if (!h) return null; const c2 = makeCanvas(z.width * HI, z.height * HI), g2 = c2.getContext('2d'); g2.imageSmoothingEnabled = false; g2.drawImage(h, 0, 0, c2.width, c2.height); return c2; }); // [phase9:ui]
+      if ('hi' in src) withHi(z, () => { const h = src.hi; if (!h) return null; const c2 = makeCanvas(z.width * HI, z.height * HI), g2 = c2.getContext('2d'); g2.imageSmoothingEnabled = false; g2.drawImage(h, 0, 0, c2.width, c2.height); return c2; }); // [phase9:ui]
       cache.set(key, z);
     }
     return z;
   }
   let c = cache.get(name);
   if (!c) {
-    if (name === 'fish') { c = voxelFishIcon('pixel', 12, 9) || makeCanvas(9, 9); if (c.hi === undefined) { const c0 = c; c = makeCanvas(12, 9); c.getContext('2d').drawImage(c0, 0, 0); withHi(c, () => voxelFishIcon('pixel', 24, 18)); } } // [phase3:fish] voxel, never a 2D glyph
+    if (name === 'fish') { c = voxelFishIcon('pixel', 12, 9) || makeCanvas(9, 9); if (!('hi' in c)) { const c0 = c; c = makeCanvas(12, 9); c.getContext('2d').drawImage(c0, 0, 0); withHi(c, () => voxelFishIcon('pixel', 24, 18)); } } // [phase3:fish] voxel, never a 2D glyph
     else if (AERO_ICONS[name]) c = buildAero(AERO_ICONS[name]);
     else if (ICONS[name]) c = build(ICONS[name]);
     else if (CURSORS[name]) c = build(CURSORS[name], false);

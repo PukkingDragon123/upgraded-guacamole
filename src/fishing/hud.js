@@ -174,10 +174,12 @@ function drawCallouts(ctx, F, B) {
 }
 
 // ------------------------------------------------------------------ the panel
+// The HUD grows with taller logical screens (1280x720 at 1x) in half steps (crisp on the 2x UI layer).
+export function panelScale(F) { return Math.max(1, Math.round((F.H / 540) * 2) / 2); }
 export function panelRect(F) {
-  const W = F.W, H = F.H;
-  const w = Math.round(Math.min(W - 40, 470)), h = 70;
-  return { x: Math.round(W / 2 - w / 2), y: H - h - 8, w, h };
+  const W = F.W, H = F.H, S = panelScale(F);
+  const w = Math.round(Math.min(W - 40, 470 * S)), h = Math.round(70 * S);
+  return { x: Math.round(W / 2 - w / 2), y: H - h - Math.round(8 * S), w, h, S };
 }
 
 // Over the cinema bars: the panel, the tips and the boss layer.
@@ -195,10 +197,12 @@ export function drawFightHud(ctx, F, B) {
 // o: {k, progress (null = hide the catch track), ghost, tension, reel, red, pulling, warn, stunned, charges, shockMax,
 //     shockCd, shockCdMax, charge (0..1 | null), canCharge, snap (0..1), sp, flash, box (no shock orb)}
 export function drawPanel(ctx, F, o) {
-  const R = panelRect(F), t = F.t;
-  const slide = Math.round((1 - o.k) * 110);
-  const x = R.x, y = R.y + slide, w = R.w, h = R.h;
+  const R = panelRect(F), t = F.t, S = R.S;
+  const slide = Math.round((1 - o.k) * 110 * S);
+  const x = 0, y = 0, w = Math.round(R.w / S), h = 70;
   ctx.save();
+  ctx.translate(R.x, R.y + slide);
+  ctx.scale(S, S);
   // glass plate
   drawAeroSurface(ctx, x, y, w, h, { tone: 'dark', r: 14, gloss: 0.32, glossH: 16, rim: 0.7, glow: 0.45 });
   // ---- the reel (left): a spool you crank by circling
@@ -226,20 +230,28 @@ function drawReel(ctx, cx, cy, r, ang, reel, t) {
     ctx.restore();
   }
   drawGlossOrb(ctx, cx, cy, r, reel > 0.2 ? '#6cd03a' : '#59c3ff', t);
-  // the spool: line wraps
-  ctx.fillStyle = INK; ctx.fillRect(cx - 9, cy - 9, 18, 18);
-  ctx.fillStyle = '#e8f6fc'; ctx.fillRect(cx - 8, cy - 8, 16, 16);
-  for (let i = 0; i < 7; i++) { ctx.fillStyle = i % 2 ? '#7fd8f4' : '#bff0ff'; ctx.fillRect(cx - 7, cy - 7 + i * 2, 14, 2); }
-  // spokes + handle knob, turning
-  for (let s = 0; s < 3; s++) {
-    const a = ang + (s * TAU) / 3;
-    for (let i = 3; i < 13; i++) { ctx.fillStyle = INK; ctx.fillRect(Math.round(cx + Math.cos(a) * i) - 1, Math.round(cy + Math.sin(a) * i) - 1, 2, 2); }
+  // the spool: a round chrome reel face with line wound on it (wraps shimmer while it turns)
+  const R0 = 12;
+  for (let y = -R0; y <= R0; y++) for (let x = -R0; x <= R0; x++) {
+    const d = Math.hypot(x + 0.5, y + 0.5);
+    if (d > R0) continue;
+    let col;
+    if (d > R0 - 1.2) col = INK;
+    else if (d > R0 - 3) col = (x + y) < -4 ? '#ffffff' : (x + y) < 6 ? '#c8dcea' : '#7fa4bc';
+    else if (d > 4.5) col = (Math.floor(d * 1.2 + ang * 2) % 2) ? '#7fd8f4' : '#c8f4ff';
+    else if (d > 3.2) col = INK;
+    else col = '#e8f6fc';
+    ctx.fillStyle = col;
+    ctx.fillRect(cx + x, cy + y, 1, 1);
   }
-  const hx = Math.round(cx + Math.cos(ang) * 14), hy = Math.round(cy + Math.sin(ang) * 14);
-  ctx.fillStyle = INK; ctx.fillRect(hx - 4, hy - 4, 8, 8);
-  ctx.fillStyle = '#ffd23a'; ctx.fillRect(hx - 3, hy - 3, 6, 6);
+  // the crank arm + knob, turning
+  const hx = Math.round(cx + Math.cos(ang) * 13), hy = Math.round(cy + Math.sin(ang) * 13);
+  for (let i = 0; i <= 12; i++) { ctx.fillStyle = INK; ctx.fillRect(Math.round(cx + Math.cos(ang) * i) - 1, Math.round(cy + Math.sin(ang) * i) - 1, 3, 3); }
+  for (let i = 0; i <= 12; i++) { ctx.fillStyle = '#e8eef4'; ctx.fillRect(Math.round(cx + Math.cos(ang) * i), Math.round(cy + Math.sin(ang) * i), 1, 1); }
+  ctx.fillStyle = INK; ctx.fillRect(hx - 4, hy - 4, 9, 9);
+  ctx.fillStyle = '#ffd23a'; ctx.fillRect(hx - 3, hy - 3, 7, 7);
   ctx.fillStyle = '#fff6c0'; ctx.fillRect(hx - 3, hy - 3, 3, 2);
-  ctx.fillStyle = INK; ctx.fillRect(cx - 2, cy - 2, 4, 4);
+  ctx.fillStyle = '#e0901a'; ctx.fillRect(hx + 1, hy + 2, 3, 2);
   // speed arcs
   if (reel > 0.15) {
     for (let j = 0; j < 2; j++) {
@@ -384,12 +396,13 @@ function drawBolt16(ctx, cx, cy, col) {
 // A glass card above the panel: an animated glyph + a few words. Shown on the first fights (state.fishTips).
 function tipFor(F, B) {
   const tips = F.tips();
-  if (B.mode === 'hookset' || B.boss?.stage === 'intro') return null;
+  if (B.gentle) return null; // the guide teaches the tutorial fight itself
+  if (B.mode === 'hookset' || (B.boss && B.boss.stage !== 'fight')) return null;
   const n = (k) => tips[k] || 0;
   if (B.charge && B.charge.k < 1 && n('zap') < 4) return { key: 'zap', text: 'Fill it, then let go!', glyph: 'hold' };
   if ((B.mode === 'pull' || B.mode === 'warn') && n('pull') < 4) return { key: 'pull', text: 'It pulls! Stop circling', glyph: 'stop' };
   if (B.tension >= RED && n('red') < 4) return { key: 'red', text: 'Red = ease off!', glyph: 'stop' };
-  if (B.shockReady && B.t > 6 && n('zap') < 3 && !B.zapped) return { key: 'zap', text: 'Hold + let go = ZAP!', glyph: 'hold' };
+  if (B.shockReady && B.t > 6 && n('zap') < 3 && !B.zapped) return { key: 'zap', text: 'Hold, then let go = ZAP!', glyph: 'hold' };
   if (B.reel < 0.15 && (B.t < 5 || B.idleT > 1.5) && n('reel') < 4 && B.mode !== 'pull') return { key: 'reel', text: 'Circle the mouse to reel!', glyph: 'circle' };
   return null;
 }
@@ -407,14 +420,14 @@ export function drawTips(ctx, F, B) {
 }
 
 export function drawTipCard(ctx, F, text, glyph, age) {
-  const R = panelRect(F), t = F.t;
+  const R = panelRect(F), t = F.t, S = R.S;
   const tw = measureText(text, 'normal', 2);
   const w = tw + 70, h = 38;
-  const x = Math.round(F.W / 2 - w / 2), y = R.y - h - 10;
-  const k = ease.outBack(clamp01(age * 4));
+  const cx = Math.round(F.W / 2), cy = Math.round(R.y - (h / 2 + 10) * S);
+  const k = ease.outBack(clamp01(age * 4)) * S;
   ctx.save();
   ctx.globalAlpha = clamp01(age * 5);
-  ctx.translate(x + w / 2, y + h / 2);
+  ctx.translate(cx, cy);
   ctx.scale(k, k);
   ctx.translate(-w / 2, -h / 2);
   drawAeroSurface(ctx, 0, 0, w, h, { tone: 'frost', r: 12, gloss: 0.5, glossH: 14, rim: 0.85, glow: 0.4 });

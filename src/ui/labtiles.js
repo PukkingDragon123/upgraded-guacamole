@@ -189,7 +189,7 @@ export function nodeTile(S, look, branch) {
       const ndl = -(nx + ny) * 0.707;
       let k = p < 0.46 ? 2 + ndl * 1.7 : 2 - ndl * 1.25;
       const groove = Math.abs(p - 0.5) < 0.09;
-      if (groove) k = 0.7 + (ndl > 0 ? 0 : 0.5);
+      if (groove) k = 0.35 + (ndl > 0 ? 0 : 0.45);
       else if (p > 0.5 && p < 0.66) k += 0.45;
       k += (hash2(x >> 1, y, 7) - 0.5) * 0.35 + (bayer(x, y) - 0.5) * 0.45;
       const [r, g, bl] = lerpHex(FR, k);
@@ -231,7 +231,7 @@ export function nodeTile(S, look, branch) {
     // the crest gem (branch cut) sitting on the top edge, mounted in a little claw setting
     const gr = Math.max(3, Math.round(f * (look === 'root' ? 0.95 : 0.78)));
     const gcx = o + T / 2, gcy = o + f * 0.42;
-    {
+    if (look !== 'root') {
       const SR = dark ? ['#000000', '#0b1424', '#1e3048'] : look === 'done' || look === 'root' ? ['#5a3404', '#e8a82a', '#fff0a8'] : ['#2a3c52', '#b8ccdc', '#ffffff'];
       const mr = gr + Math.max(2, Math.round(f * 0.22));
       for (let y = Math.floor(gcy - mr - 1); y <= gcy + mr + 1; y++) for (let x = Math.floor(gcx - mr - 1); x <= gcx + mr + 1; x++) {
@@ -243,7 +243,12 @@ export function nodeTile(S, look, branch) {
         over(b, x, y, r, g, bl, 1);
       }
     }
-    gemInto(b, gcx, gcy, gr, look === 'root' ? '#ffd23a' : col, cut, dark);
+    if (look !== 'root') gemInto(b, gcx, gcy, gr, col, cut, dark);
+    // small inlaid side gems on the left, right and bottom bands (bigger tiles only)
+    if (T >= 76) {
+      const sr = Math.max(2.2, f * 0.3), mid = o + T / 2, bc = f * 0.46;
+      for (const [sx2, sy2] of [[o + bc, mid], [o + T - bc - 1, mid], [mid, o + T - bc - 1]]) gemInto(b, sx2, sy2, sr, look === 'root' ? '#ffd23a' : mix(col, '#ffffff', 0.15), 'diamond', dark);
+    }
     return withPad(hiFromBuffer(b), pad);
   });
 }
@@ -317,6 +322,30 @@ export function glassware(kind, h, liquid = '#5fe08a') {
     const c = hiFromBuffer(b);
     c.liq = { x: (cx - hw * 0.8) / HI, y: liqY / HI, w: (hw * 1.6) / HI, h: (bot - liqY) / HI, cx: cx / HI, top: top / HI };
     return c;
+  });
+}
+
+// A round chrome pipe joint (diameter d logical): dark rim, bevelled chrome ring, a coloured glass core
+export function pipeJoint(d, color, full = false) {
+  return cached(`joint|${d}|${color}|${full}`, () => {
+    const L = Math.ceil(d + 2), D = L * HI, R = (d * HI) / 2, cx = D / 2;
+    const b = new PixelBuffer(D, D);
+    const ring = ['#2a3c52', '#7f98b0', '#d4e4f0', '#ffffff'];
+    const core = full ? [shade(color, -0.3), color, mix(color, '#ffffff', 0.55)] : [shade(color, -0.55), mix(color, '#0b3a6e', 0.4), mix(color, '#ffffff', 0.3)];
+    for (let y = 0; y < D; y++) for (let x = 0; x < D; x++) {
+      const dx = x + 0.5 - cx, dy = y + 0.5 - cx, r = Math.hypot(dx, dy);
+      if (r > R) continue;
+      const lit = -(dx + dy) / (r * 1.414 || 1);
+      let c;
+      if (r > R - 1.2) c = shade(color, -0.7);
+      else if (r > R * 0.58) c = ring[Math.max(0, Math.min(3, Math.round(1.5 + lit * 1.4 + (r > R * 0.8 ? 0 : -0.6) + (bayer(x, y) - 0.5) * 0.5)))];
+      else if (r > R * 0.58 - 1) c = '#1c2c40';
+      else c = core[Math.max(0, Math.min(2, Math.round(1 + lit * 0.9 + (bayer(x, y) - 0.5) * 0.6)))];
+      const [rr, gg, bb] = C(c);
+      b.data[y * D + x] = P(rr, gg, bb);
+    }
+    over(b, Math.round(cx - R * 0.5), Math.round(cx - R * 0.55), 255, 255, 255, 1);
+    return hiFromBuffer(b);
   });
 }
 
