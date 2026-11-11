@@ -30,7 +30,8 @@ import { drawAnimIcon, unlockInfo } from './labrows.js';
 import { HI, hiFromBuffer, dualArt, withHi, hiCtx } from '../gfx/hires.js'; // [phase9:ui]
 import { drawPop3D } from './pop3d.js'; // [phase9:ui]
 import { drawIcon3D } from '../gfx/icons3d.js'; // [phase9:ui]
-import { nodeTile, qMark, glassware, microBubble, gemTex, pipeJoint, GEM_CUT } from './labtiles.js'; // [phase9:ui]
+import { nodeTile, qMark, microBubble, gemTex, pipeJoint, GEM_CUT } from './labtiles.js'; // [phase9:ui]
+import { drawLabRoom } from './labroom.js'; // [lab13]
 const GOAL_MARK = { title: 'Next goal', goal: true }; // [balance] questMarks() value for the next main-track upgrade
 
 const NODES = LAB_NODES.filter((n) => n.id !== ROOT_ID).sort((a, b) => a.depth - b.depth);
@@ -97,50 +98,6 @@ function arc(pts) {
   if (!out.length) out.push([pts[0][0], pts[0][1], 0, -1]);
   const len = (out.length - 1) / 2;
   return { len, pts: out, at(d) { return out[Math.max(0, Math.min(out.length - 1, Math.round(d * 2)))]; } };
-}
-
-const SHELF = [
-  { kind: 'erlen', x: 0.03, h: 0.3, liq: '#5fe08a', dy: 0, steam: true },
-  { kind: 'tube', x: 0.115, h: 0.2, liq: '#ff74b4', dy: 0 },
-  { kind: 'tube', x: 0.14, h: 0.17, liq: '#ffc23a', dy: 0 },
-  { kind: 'round', x: 0.27, h: 0.24, liq: '#35c8ff', dy: 0, steam: true },
-  { kind: 'beaker', x: 0.45, h: 0.15, liq: '#a98aff', dy: 0 },
-  { kind: 'bottle', x: 0.6, h: 0.22, liq: '#19c7a2', dy: 0 },
-  { kind: 'erlen', x: 0.74, h: 0.19, liq: '#ff9330', dy: 0, steam: true },
-  { kind: 'tube', x: 0.85, h: 0.18, liq: '#6fd23f', dy: 0 },
-  { kind: 'round', x: 0.93, h: 0.3, liq: '#ff74b4', dy: 0 },
-];
-
-// The cached deep-water base, authored per device pixel: posterised bands with a fine bayer dither, a glow from the
-// surface, a soft vignette, tiny caustic speckles.
-function labBackdrop(w, h) {
-  const W = w * HI, H = h * HI;
-  const b = new PixelBuffer(W, H);
-  const ramp = ['#36aef0', '#2596e2', '#1a80d0', '#136cbc', '#0e5aa6', '#0a4a90', '#073c7a', '#052e64'];
-  const rr = ramp.map((c) => hexToRgb(c));
-  const bands = 16;
-  for (let y = 0; y < H; y++) {
-    const ty = y / (H - 1);
-    for (let x = 0; x < W; x++) {
-      let k = Math.floor((ty * bands + bayer(x, y) * 0.999)) / bands * (rr.length - 1);
-      const i = Math.min(rr.length - 2, Math.floor(k)), f = k - i;
-      let r = rr[i][0] + (rr[i + 1][0] - rr[i][0]) * f, g = rr[i][1] + (rr[i + 1][1] - rr[i][1]) * f, bl = rr[i][2] + (rr[i + 1][2] - rr[i][2]) * f;
-      // vignette: darker toward the sides and the bottom corners
-      const vx = (x / W - 0.5) * 2, vy = ty;
-      const vig = Math.min(0.42, Math.max(0, vx * vx * 0.32 + vy * vy * 0.12 - 0.04));
-      const q = Math.floor((vig * 6 + bayer(x + 2, y + 1) * 0.999)) / 6;
-      r *= 1 - q; g *= 1 - q * 0.9; bl *= 1 - q * 0.6;
-      b.data[y * W + x] = ((255 << 24) | (Math.round(bl) << 16) | (Math.round(g) << 8) | Math.round(r)) >>> 0;
-    }
-  }
-  for (let i = 0; i < W * H / 900; i++) {
-    const x = Math.floor(hash1(i, 31) * W), y = Math.floor(hash1(i, 32) ** 2 * H * 0.7);
-    const a = 0.12 + hash1(i, 33) * 0.2;
-    const c = b.data[y * W + x];
-    const r = c & 255, g = (c >>> 8) & 255, bl = (c >>> 16) & 255;
-    b.data[y * W + x] = ((255 << 24) | (Math.round(bl + (255 - bl) * a) << 16) | (Math.round(g + (250 - g) * a) << 8) | Math.round(r + (220 - r) * a)) >>> 0;
-  }
-  return hiFromBuffer(b);
 }
 
 // A web of caustic light lines (transparent), brightest at the top, for the upper part of the view.
@@ -618,70 +575,35 @@ export class LabTree {
   }
 
   // ---------------------------------------------------------------- drawing
-  // [phase9:ui] a rich animated lab backdrop at full resolution: dithered deep-water gradient with a caustic web and a
-  // vignette (cached), drifting light shafts, a shelf of glassware with bubbling liquids (parallax), rising bubbles.
+  // [lab13] the lab room behind the tree (src/ui/labroom.js): a layered voxel laboratory (wall with portholes, tank,
+  // shelves of jars, bubbling columns, a console, the bench in front) with parallax from the camera, a soft caustic
+  // shimmer on the wall, then rising bubbles and drifting motes. No light shafts.
   drawBackground(ctx, v) {
     const t = this.t, cam = this.cam;
-    ctx.drawImage(aeroCached(`labtreebg9|${v.w}|${v.h}`, () => labBackdrop(v.w, v.h)), v.x, v.y);
-    // caustic shimmer: the cached web drifts sideways a little
-    const sh = Math.round(Math.sin(t * 0.35) * 6 * 2) / 2;
-    ctx.save(); ctx.globalAlpha = 0.35 + 0.15 * Math.sin(t * 0.8);
-    ctx.drawImage(aeroCached(`labcaus9|${v.w}`, () => causticWeb(v.w, Math.round(v.h * 0.45))), v.x + sh, v.y);
-    ctx.restore();
-    // light shafts from the surface: stepped, slowly swaying beams
-    for (let i = 0; i < 6; i++) {
-      const bx = v.x + ((hash1(i, 41) * v.w + t * (3 + i) - cam.x * cam.z * 0.08) % (v.w + 160) + v.w + 160) % (v.w + 160) - 80;
-      const w = 12 + Math.round(hash1(i, 42) * 22), a = 0.045 + 0.035 * Math.sin(t * 0.6 + i * 2);
-      const steps = 14;
-      for (let s = 0; s < steps; s++) {
-        const k = s / steps;
-        ctx.fillStyle = rgba(i % 2 ? '#dff9ff' : '#fffbe0', a * (1 - k * 0.85));
-        ctx.fillRect(Math.round((bx + s * 5.5) * 2) / 2, v.y + Math.round(k * v.h), w * (1 + k * 0.6), Math.ceil(v.h / steps) + 1);
-      }
-    }
+    drawLabRoom(ctx, v, t, { x: cam.x * cam.z, y: cam.y * cam.z, z: cam.z - Z_HOME }, 'tree', {
+      afterFar: (c, x0, y0) => { // soft caustic light on the upper wall (baked into the room's still composite)
+        c.save(); c.globalAlpha = 0.2;
+        c.drawImage(aeroCached(`labcaus9|${v.w}`, () => causticWeb(v.w, Math.round(v.h * 0.45))), x0, y0);
+        c.restore();
+      },
+    });
   }
 
-  // [phase9:ui] the glassware shelf along the bottom (parallax, drawn over the fog, dimmed), liquids bubbling,
-  // rising bubbles and drifting motes
+  // rising bubbles (two depths) and drifting motes over the room, under the fog
   drawShelf(ctx, v) {
     const t = this.t, cam = this.cam;
-    const par = -cam.x * cam.z * 0.05, py = -cam.y * cam.z * 0.03;
-    ctx.save();
-    ctx.globalAlpha = 0.42;
-    for (const G of SHELF) {
-      const h = Math.round(Math.min(v.h * G.h, 170));
-      const c = glassware(G.kind, h, G.liq);
-      const gx = Math.round(v.x + ((G.x * v.w + par) % (v.w + 120) + v.w + 120) % (v.w + 120) - 60), gy = Math.round(v.y + v.h - c.height + 6 + G.dy + py);
-      ctx.drawImage(c, gx, gy);
-      const q = c.liq;
-      for (let j = 0; j < 3; j++) {
-        const ph = (t * (0.35 + hash1(j, G.x * 100) * 0.4) + hash1(j, 3) + G.x) % 1;
-        const bx = gx + q.x + (hash1(j, G.h * 99) * 0.8 + 0.1) * q.w + Math.sin(t * 3 + j) * 1.5, by = gy + q.y + q.h - 3 - ph * (q.h - 4);
-        ctx.drawImage(microBubble(j === 0 ? 1.5 : 1), Math.round(bx * 2) / 2, Math.round(by * 2) / 2);
-      }
-      // steam bubbles escaping the neck
-      const ph = (t * 0.3 + G.x * 3) % 1;
-      if (G.steam) drawAeroBubble(ctx, gx + q.cx + Math.sin(t * 2 + G.x * 9) * 3, gy + q.top - ph * 40, 1.5 + ph * 2, (1 - ph) * 0.8);
-    }
-    // the glass shelf itself
-    ctx.fillStyle = 'rgba(200,244,255,0.35)'; ctx.fillRect(v.x, v.y + v.h - 6, v.w, 1);
-    ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.fillRect(v.x, v.y + v.h - 6, v.w, 0.5);
-    ctx.fillStyle = 'rgba(4,30,64,0.4)'; ctx.fillRect(v.x, v.y + v.h - 5, v.w, 5);
-    ctx.restore();
-    // rising bubbles (two depths)
-    for (let i = 0; i < 26; i++) {
+    for (let i = 0; i < 18; i++) {
       const far = i % 3 === 0;
       const q = (t * (0.02 + hash1(i, 6) * 0.04) * (far ? 0.6 : 1) + hash1(i, 7)) % 1;
       const px = ((hash1(i, 8) * v.w - cam.x * cam.z * (far ? 0.08 : 0.22)) % v.w + v.w) % v.w;
       const bx = v.x + px + Math.sin(t * (far ? 0.8 : 1.3) + i) * 3, by = v.y + v.h + 10 - q * (v.h + 30);
       if (far) { ctx.save(); ctx.globalAlpha = 0.35; ctx.drawImage(microBubble(1 + (i % 2) * 0.5), Math.round(bx * 2) / 2, Math.round(by * 2) / 2); ctx.restore(); }
-      else drawAeroBubble(ctx, bx, by, 1.5 + hash1(i, 9) * 3, 0.55);
+      else drawAeroBubble(ctx, bx, by, 1.5 + hash1(i, 9) * 2.5, 0.45);
     }
-    // drifting motes in the light
     ctx.fillStyle = '#e8fbff';
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 24; i++) {
       const mx = v.x + ((hash1(i, 51) * v.w + t * (2 + hash1(i, 52) * 4) - cam.x * cam.z * 0.15) % v.w + v.w) % v.w, my = v.y + ((hash1(i, 53) * v.h + Math.sin(t * 0.5 + i) * 8) % v.h);
-      ctx.globalAlpha = 0.25 + 0.35 * Math.max(0, Math.sin(t * 1.4 + i * 1.7));
+      ctx.globalAlpha = 0.2 + 0.3 * Math.max(0, Math.sin(t * 1.4 + i * 1.7));
       ctx.fillRect(Math.round(mx * 2) / 2, Math.round(my * 2) / 2, 0.5, 0.5);
     }
     ctx.globalAlpha = 1;
@@ -695,7 +617,7 @@ export class LabTree {
     f.globalCompositeOperation = 'source-over';
     f.clearRect(0, 0, fw, fh);
     const fg = f.createLinearGradient(0, 0, 0, fh);
-    fg.addColorStop(0, 'rgba(3,14,34,0.84)'); fg.addColorStop(1, 'rgba(1,6,18,0.9)');
+    fg.addColorStop(0, 'rgba(3,14,34,0.5)'); fg.addColorStop(1, 'rgba(1,6,18,0.6)'); // [lab13] the lab shows through, dimmed
     f.fillStyle = fg;
     f.fillRect(0, 0, fw, fh);
     f.globalCompositeOperation = 'destination-out';
@@ -706,12 +628,23 @@ export class LabTree {
       gr.addColorStop(0, `rgba(0,0,0,${a})`); gr.addColorStop(0.5, `rgba(0,0,0,${a * 0.94})`); gr.addColorStop(0.78, `rgba(0,0,0,${a * 0.5})`); gr.addColorStop(1, 'rgba(0,0,0,0)');
       f.fillStyle = gr; f.fillRect(x - rr, y - rr, rr * 2, rr * 2);
     };
-    light(0, 0, 280);
+    light(0, 0, 280, 0.55);
     for (const nd of NODES) {
       if (!this.revealed(nd.id)) continue;
       const A = this.a(nd.id), k = A.delay > 0 && A.rv === 0 ? 0 : ease.outCubic(clamp01(A.rv));
-      if (k > 0) light(nd.pos[0], nd.pos[1], (this.S[nd.id] === 'done' ? 125 : 150) * k);
+      if (k > 0) light(nd.pos[0], nd.pos[1], (this.S[nd.id] === 'done' ? 125 : 150) * k, 0.55);
     }
+    // [lab13] a soft vignette in the same pass: darker edges, the tree's middle stays clear
+    f.globalCompositeOperation = 'source-over';
+    if (!this.vig || this.vig.w !== fw || this.vig.h !== fh) {
+      const r = f.createRadialGradient(fw / 2, fh * 0.48, Math.min(fw, fh) * 0.25, fw / 2, fh * 0.48, Math.max(fw, fh) * 0.7);
+      r.addColorStop(0, 'rgba(3,14,32,0)'); r.addColorStop(0.6, 'rgba(3,14,32,0.14)'); r.addColorStop(1, 'rgba(2,8,22,0.42)');
+      const l = f.createLinearGradient(0, 0, 0, fh);
+      l.addColorStop(0, 'rgba(2,10,26,0.3)'); l.addColorStop(0.12, 'rgba(2,10,26,0)'); l.addColorStop(0.85, 'rgba(2,10,26,0)'); l.addColorStop(1, 'rgba(2,10,26,0.26)');
+      this.vig = { w: fw, h: fh, r, l };
+    }
+    f.fillStyle = this.vig.r; f.fillRect(0, 0, fw, fh);
+    f.fillStyle = this.vig.l; f.fillRect(0, 0, fw, fh);
     ctx.drawImage(this.fog, v.x, v.y, fw * F, fh * F);
   }
 

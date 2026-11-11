@@ -9,8 +9,8 @@ import { RODS, ROD_BY_ID, ROD_STAT_KEYS, ensureRods, equipRod } from '../game/ro
 import { BOAT_ORDER, BOAT_NAMES, BRANCHES, EFFECT_INFO, fmtEffect, unlocked, nodeFor, labStatus } from '../game/lab.js';
 import { RECIPES, RECIPE_BY_ID, CRAFT_CATS, recipeUnlocked, recipeNode, craftCheck, craft } from '../build/crafting.js';
 import { ITEMS, countItem } from '../build/items.js';
-import { drawRays, drawSplash, roundRectPath } from './labart.js';
-import { seaScene, drawPiece } from './labvox.js';
+import { drawSplash, roundRectPath } from './labart.js';
+import { drawLabRoom, labRoomScene } from './labroom.js'; // [lab13] the lab room behind the Rods / Boats tabs
 import { icon, anyIcon, glassCard, pill, costTiles, costTilesHeight, pedestal, chip, statBar, orbIcon, INK, INK_SOFT } from './labkit.js';
 
 const rarityCol = (r) => RARITY[r]?.color || '#9fb4c8';
@@ -20,7 +20,7 @@ function tile(ctx, ui, x, y, w, h, o = {}) {
   ctx.save();
   if (o.glow) drawAeroGlow(ctx, x + w / 2, y + h / 2, Math.max(w, h) * 0.75, o.glow, 0.55);
   const g = ctx.createLinearGradient(0, y, 0, y + h);
-  g.addColorStop(0, rgba('#ffffff', 0.95)); g.addColorStop(1, rgba(o.bottom || '#d9f2fc', 0.9));
+  g.addColorStop(0, rgba('#ffffff', 0.98)); g.addColorStop(1, rgba(o.bottom || '#d9f2fc', 0.96)); // [lab13] solid over the lab room
   ctx.fillStyle = g; roundRectPath(ctx, x, y, w, h, 8); ctx.fill();
   ctx.fillStyle = rgba('#ffffff', 0.7); ctx.fillRect(x + 6, y + 2, w - 12, 2);
   ctx.strokeStyle = o.sel ? '#ffffff' : o.edge || rgba('#7fbedd', 0.9); ctx.lineWidth = o.sel ? 2.5 : 1;
@@ -54,7 +54,6 @@ function drawBlueprintBg(ctx, view, t, tone = 'craft') {
     ctx.fillStyle = rgba('#5aa8cc', 0.25);
     for (let y = view.y + 16; y < view.y + view.h; y += 16) for (let x = view.x + 16; x < view.x + view.w; x += 16) ctx.fillRect(x - 1, y - 1, 2, 2);
   }
-  drawRays(ctx, view.x + view.w * 0.85, view.y - 10, view.h * 1.2, t, tone === 'rods' ? 0.25 : 0.12, 12);
   for (let i = 0; i < 8; i++) {
     const k = (t * (0.05 + hash1(i, 6) * 0.05) + hash1(i, 7)) % 1;
     drawAeroBubble(ctx, view.x + hash1(i, 8) * view.w, view.y + view.h - k * view.h, 1.5 + hash1(i, 9) * 2.5, 0.7);
@@ -66,7 +65,7 @@ export function drawRodsView(ctx, ui, panel, view) {
   const st = panel.game.state, t = panel.t;
   const R = ensureRods(st);
   ctx.save(); roundRectPath(ctx, view.x, view.y, view.w, view.h, 10); ctx.clip();
-  drawBlueprintBg(ctx, view, t, 'rods');
+  drawLabRoom(ctx, view, t, undefined, 'rods'); // [lab13]
   const TW = view.w >= 480 ? 86 : 70, TH = TW - 6;
   const at = grid(view, RODS.length, TW, TH, 7, 14);
   RODS.forEach((rod, i) => {
@@ -101,7 +100,6 @@ export function drawRodCard(ctx, ui, panel, r) {
   const owned = R.owned.includes(rod.id), eq = R.equipped === rod.id;
   const cx = r.x + r.w / 2, hy = r.y + 46;
   pedestal(ctx, cx, hy, 80, t, mix(rarityCol(rod.rarity), '#ffffff', 0.4));
-  drawRays(ctx, cx, hy, 56, t, owned ? 0.4 : 0.15, 12);
   drawAeroGlow(ctx, cx, hy, 44, mix(rarityCol(rod.rarity), '#ffffff', 0.4), 0.6);
   const ic = icon('rod:' + rod.id, 64);
   if (ic) { ctx.globalAlpha = owned ? 1 : 0.5; ctx.drawImage(ic, Math.round(cx - ic.width / 2), Math.round(hy - ic.height / 2 + Math.sin(t * 2) * 2)); ctx.globalAlpha = 1; }
@@ -180,7 +178,6 @@ export function drawCraftCard(ctx, ui, panel, r) {
   const cx = r.x + r.w / 2, hy = r.y + 46;
   pedestal(ctx, cx, hy, 80, t);
   drawAeroGlow(ctx, cx, hy, 44, '#bff6ff', 0.6);
-  drawRays(ctx, cx, hy, 56, t, open ? 0.35 : 0.1, 12);
   const ic = icon(rc.icon, 64);
   if (ic) { ctx.globalAlpha = open ? 1 : 0.45; ctx.drawImage(ic, Math.round(cx - ic.width / 2), Math.round(hy - ic.height / 2 + Math.sin(t * 2) * 1.5)); ctx.globalAlpha = 1; }
   let y = hy + 50;
@@ -233,21 +230,9 @@ export function drawCraftCard(ctx, ui, panel, r) {
 export function drawBoatsView(ctx, ui, panel, view) {
   const g = panel.game, st = g.state, t = panel.t;
   ctx.save(); roundRectPath(ctx, view.x, view.y, view.w, view.h, 10); ctx.clip();
-  // the voxel dock: sky, sun, clouds, an island and the open sea (built once per size)
-  const sea = seaScene(view.w, view.h);
-  let wl = view.y + Math.round(view.h * 0.5), near = view.y + view.h;
-  if (sea?.canvas) {
-    drawPiece(ctx, sea, view.x, view.y, 0, sea.ny, 0);
-    const [, oy] = sea.project(0, sea.ny, 0);
-    wl = view.y + sea.project(0, sea.horizon, 6)[1] - oy;
-    near = Math.min(view.y + view.h, view.y + sea.project(0, sea.horizon, sea.nz)[1] - oy);
-    const [sx, sy] = sea.project(...sea.sun);
-    drawRays(ctx, view.x + sx, view.y + sy - oy, view.h, t, 0.2, 16);
-  } else {
-    const sky = ctx.createLinearGradient(0, view.y, 0, view.y + view.h);
-    sky.addColorStop(0, '#1468dc'); sky.addColorStop(0.5, '#7fd0ff'); sky.addColorStop(1, '#2fb8ee');
-    ctx.fillStyle = sky; ctx.fillRect(view.x, view.y, view.w, view.h);
-  }
+  // [lab13] the Lab's boat dock: a hangar with a sea gate, bunting, life rings, a crane hook and the pool the boats float in
+  drawLabRoom(ctx, view, t, undefined, 'boats');
+  const wl = view.y + labRoomScene(view, 'boats').wl + 4, near = view.y + view.h - 4;
   const cur = st.boat?.tier | 0;
   const n = BOAT_ORDER.length, sp = view.w / n;
   BOAT_ORDER.forEach((id, i) => {
@@ -280,7 +265,6 @@ export function drawBoatCard(ctx, ui, panel, r) {
   const nd = nodeFor('boat', id);
   const cx = r.x + r.w / 2, hy = r.y + 48;
   pedestal(ctx, cx, hy, 96, t);
-  drawRays(ctx, cx, hy, 60, t, has ? 0.4 : 0.12, 12);
   drawAeroGlow(ctx, cx, hy, 46, '#bff6ff', 0.6);
   const ic = icon('boat:' + id, 80);
   if (ic) { ctx.globalAlpha = has ? 1 : 0.45; ctx.drawImage(ic, Math.round(cx - ic.width / 2), Math.round(hy - ic.height / 2 + Math.sin(t * 1.6) * 1.5)); ctx.globalAlpha = 1; }
