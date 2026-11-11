@@ -526,7 +526,7 @@ function consoleUnit(g, x, y, w, h, S) {
   const wx = x + w - 22, wy = y + 30 + Math.round((h - 40) * 0.45);
   disk(g, wx, wy, 13, OUT);
   blob(g, wx, wy, 12, 12, (u, v) => { const d = Math.hypot(u, v); return d > 0.72 ? rampAt('#c4e8f6', lit(u, v)) : v < -0.15 ? '!#bff4ff' : (u < -0.3 && v < 0.2 ? '!#bfff8a' : '!#6fd83a'); });
-  disk(g, wx, wy, 9, '#000000@0'); R(g, wx - 5, wy - 6, 3, 2, '#ffffff@0.8');
+  R(g, wx - 5, wy - 6, 3, 2, '#ffffff@0.8');
   S.flasks.push({ x: wx - 6, y: wy - 2, w: 12, h: 8, top: wy - 9, cx: wx });
   // control deck
   for (let i = 0; i < 12; i++) R(g, x - 2 + Math.round(i * 0.25), y + 16 - i, w + 4 - Math.round(i * 0.5), 1, OUT);
@@ -728,7 +728,7 @@ function buildTree(w, h) {
   const mfx = (f) => Math.round(mmx + f * w), mfy = (f) => Math.round(mmy + f * h);
   const M = { leds: [], cols: [], jars: [], flasks: [], screens: [], lamps: [], bowls: [], flames: [], tank: null, dome: null };
   const mid = art(MW, MH, (g) => {
-    // a big potted plant at the far left, behind the tank stand
+    // the glowing tank (left), two bubbling columns, the console, the shelving (right), lamps, tubes, cylinders
     tank(g, mfx(0.035) - 30, mfy(0.52), Math.round(w * 0.2) + 30, Math.round(h * 0.25), M);
     column(g, mfx(0.265), mfy(0.12), mfy(0.86), 12, '#35d8ff', M);
     column(g, mfx(0.735) - 12, mfy(0.12), mfy(0.86), 12, '#ff74b4', M);
@@ -1065,7 +1065,6 @@ function lifeRing(g, cx, cy, r) {
     const a = Math.atan2(v, u), seg = Math.floor(((a + Math.PI) / TAU) * 8) % 2;
     return rampAt(seg ? '#ffffff' : '#ff5a3a', lit(u, v) * (d > 0.75 ? 1 : -1));
   });
-  disk(g, cx, cy, Math.round(r * 0.5), '#000000@0');
   g.save(); g.globalCompositeOperation = 'destination-out'; disk(g, cx, cy, Math.round(r * 0.5) - 1, '#000000'); g.restore();
   ellipseLine(g, cx, cy, Math.round(r * 0.5) - 0.5, Math.round(r * 0.5) - 0.5, OUT);
 }

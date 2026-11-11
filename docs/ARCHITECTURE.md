@@ -392,6 +392,14 @@ that feels hand-made."
   corners, bevelled frame ring, side band `depth`, outline; `ring: n` = frame only). `drawAeroFrame` adds a voxel
   frame ring, a title plaque and voxel ornaments (`drawVoxDecor(ctx, name, cx, cy, px)`); toasts sit on voxel plates.
 
+- Lab room [lab13]: `src/ui/labroom.js` draws a layered voxel laboratory behind the Lab: `drawLabRoom(ctx, view, t, cam,
+  kind)` with kind 'tree' (wall with portholes onto the sea, glowing tank, shelves of jars, bubbling columns, console,
+  bench in front; parallax from the tree camera, the bench drops away when zooming in), 'rods' (tackle workshop) and
+  'boats' (dock hangar with a sea gate; `labRoomScene(view, 'boats').wl` = the pool's water line). Layers are authored
+  once per size at 2x (`.hi` twins); palettes are pulled toward night-navy by depth ('!#hex' = emissive) and the still
+  layers are cached into one composite while the camera holds still. The tree's vignette lives in its fog canvas.
+  No light rays / spotlights in the Lab (the old shafts and the Rods / Boats `drawRays` fans are gone).
+
 ## Phase 10 tank (2D side-scrolling voxel tank, build only in the tank) [phase10:tank]
 - `src/aquarium/scene2d.js` + `tankart.js` draw the tank as a side-on voxel scene (back / mid / front layers), the
   same way the ocean is drawn. `sim2d.js` moves fish in 2D. The 3D cube scene, orbit camera and Swim mode are gone.
