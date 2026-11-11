@@ -14,7 +14,7 @@
 // After the first chest of a tier: hold the skip pill (or Enter) to crack it at once; intros get shorter.
 // Smoke-test hooks: phase ('intro' | 'play' | 'burst' | 'loot' | 'empty'), spots[0] = {x, y} to click, hits, loot.
 import { clamp, clamp01, lerp, ease } from '../core/math.js';
-import { RARITY, mix, shade, rgba } from '../core/color.js';
+import { RARITY, mix, shade } from '../core/color.js';
 import { makeCanvas } from '../core/canvas.js';
 import { drawText, measureText } from '../gfx/font.js';
 import { hiArt } from '../gfx/hires.js';
@@ -26,14 +26,15 @@ import { aeroSurface, aeroCached, drawAeroCoin, fmtAero } from './aero.js';
 import { drawPop3D } from './pop3d.js';
 import { drawCharacter, warmCharacter } from '../gfx/character.js';
 import { CHEST_TOOL, CHEST_POSES, poseT, poseFrameT } from '../gfx/chesttools.js';
-import { chestModel, damageChest, ChestSprite } from '../gfx/chestvox.js';
+import { chestModel, damageChest, slumpStraw, ChestSprite } from '../gfx/chestvox.js';
 import { drawSeal } from '../gfx/seal.js';
 import { voxelFishIcon } from '../fish/fishicon.js';
+import { pixelBubble } from '../gfx/pxsprites.js';
 import { GAMES } from './chestgames.js';
 
 const REVEAL_SFX = { common: 'click', uncommon: 'timing_good', rare: 'sparkle', epic: 'magic', legendary: 'golden_shimmer' };
 const CHEST_S = 3.1, CHAR_S = 1.9, SEAL_S = 54;
-const GAP = { crate: 0, iron: 0, golden: 12, orb: 6 };
+export const GAP = { crate: 0, iron: 0, golden: 22, orb: 6 };
 const TITLE_PAL = { crate: 'white', iron: 'aqua', golden: 'gold', orb: 'white' };
 const BURST_WORD = { crate: 'SMASHED!', iron: 'POPPED!', golden: 'UNSEALED!', orb: 'SHATTERED!' };
 const CHIPS = {
@@ -91,7 +92,7 @@ export class ChestPanel {
     this.beat = null; this.mood = null; this.moodT = 0;
     this.seal = { anim: 'swim', mood: 'happy', until: 0, x: null, bob: 0 };
     this.fish = null; this.skipHold = 0; this.peekT = rnd(4, 7); this.hideOrb = false;
-    this.reach = this.reach || null;
+    this.reachMap ||= {};
     this.entered = again;
     this.introLen = again ? 0.55 : this.seen ? 0.95 : 1.75;
     this.dropT = again ? 0.05 : 0.15;
@@ -107,7 +108,7 @@ export class ChestPanel {
     const floorY = Math.round(Math.min(H * 0.74, hudTop - 74 * k));
     const cx = Math.round(W / 2);
     const chestX = Math.round(cx + 40 * k);
-    const reach = (this.reach ?? Math.round(118 * k)) + Math.round((GAP[this.tier] || 0) * k);
+    const reach = (this.reachMap?.[this.tier + k] ?? Math.round(118 * k)) + Math.round((GAP[this.tier] || 0) * k);
     const charX = Math.round(this.hitX(chestX, floorY) - reach);
     return { W, H, k, hudTop, floorY, cx, chestX, charX, sealX: Math.round(chestX + 168 * k) };
   }
@@ -140,6 +141,7 @@ export class ChestPanel {
   charBeat(kind, dur) {
     const start = kind === 'chisel' ? poseFrameT('ck_chisel', 2) : kind === 'tap' ? poseFrameT('ck_tap', 2) : 0;
     this.beat = { kind, t: start, dur: dur + start };
+    if (kind === 'wipe') { this.sweat(); this.sweat(); }
   }
   sealSay(anim, mood, secs) { this.seal.anim = anim; this.seal.mood = mood; this.seal.until = this.t + secs; }
   sealBob() { this.seal.bob = 1; }
@@ -152,6 +154,12 @@ export class ChestPanel {
     this.pops = this.pops.filter((q) => q.text !== text || q.t > 0.6);
     this.pops.push({ text, palette, size, x: p[0] + rnd(-8, 8), y: p[1] - 18 * this.k, t: 0, life: size >= 1.2 ? 1.2 : 0.85 });
     if (this.pops.length > 5) this.pops.shift();
+  }
+  sweat() {
+    const h = this.heroA?.head;
+    if (!h) return;
+    const side = R() < 0.5 ? -1 : 1;
+    this.fx.add({ x: h[0] + side * 14 * this.k, y: h[1] + 16 * this.k, vx: side * rnd(20, 50), vy: -rnd(40, 80), g: 420, life: 0.6, kind: 'spark', color: '#bfe8ff' });
   }
   finish(delay) { if (!this.finishAt) this.finishAt = this.t + delay; }
 
@@ -192,7 +200,7 @@ export class ChestPanel {
     this.glow = Math.min(1, this.glow + 0.18);
     if (o.lid != null) this.lidTarget = o.lid;
     const top = this.chestTop();
-    this.pop(o.text, o.palette, o.last ? 1.7 : o.small ? 1 : o.quality === 'perfect' ? 1.55 : o.quality === 'weak' ? 0.95 : 1.25, lerp(x, top[0], 0.35), Math.min(y, top[1]) - 14 * k);
+    if (!o.last) this.pop(o.text, o.palette, o.last ? 1.7 : o.small ? 1 : o.quality === 'perfect' ? 1.55 : o.quality === 'weak' ? 0.95 : 1.25, lerp(x, top[0], 0.35), Math.min(y, top[1]) - 14 * k);
     // reactions
     if (o.quality === 'perfect') { this.sealSay('clap', 'excited', 0.75); this.mood = 'excited'; this.moodT = 0.6; }
     else if (o.quality === 'weak') { if (R() < 0.7) this.sealSay('wiggle', 'laugh', 0.8); this.mood = 'surprised'; this.moodT = 0.5; }
@@ -208,7 +216,7 @@ export class ChestPanel {
   // a fish flops out of the crate (a joke) and Bubbles snaps it up
   fishJoke() {
     const [x, y] = this.spr.toScreen(this.chestX, this.chestY, this.cm.hits[Math.max(0, this.dmgI - 1)] || this.impactPoint());
-    this.fish = { x, y, vx: rnd(60, 110), vy: -rnd(300, 360), t: 0, state: 'fly', rot: 0, face: 1, hops: 0 };
+    this.fish = { x, y, vx: rnd(250, 300) * this.k, vy: -rnd(360, 410) * this.k, t: 0, state: 'fly', rot: 0, face: 1, hops: 0 };
     this.sfx('jump_out', { vol: 0.5 }); this.sfx('blub', { vol: 0.5, pitch: 1.3 });
     this.sealSay('idle', 'surprised', 0.9);
   }
@@ -276,7 +284,7 @@ export class ChestPanel {
         this.warm = 1;
         const m = drawCharacter(scratch(), 0, 0, { pose: ip, t: this.tier === 'iron' ? poseT('ck_pry', 0.5) : poseFrameT(ip, 3), facing: 1, scale, look, trail: false, shadow: false, id: 'measure' });
         const tip = this.tier === 'golden' ? m.tool2 : m.rodTip;
-        if (tip && Number.isFinite(tip[0])) this.reach = Math.round(tip[0] + (this.tier === 'orb' ? 2 : this.tier === 'golden' ? 1 : 3) * k);
+        if (tip && Number.isFinite(tip[0])) this.reachMap[this.tier + k] = Math.round(tip[0] + (this.tier === 'orb' ? 2 : this.tier === 'golden' ? 1 : 3) * k);
       } else if (this.warm === 1 && warmCharacter(look, { poses: CHEST_POSES(this.kind), scale, facing: 1, ms: 7 })) this.warm = 2;
     }
     if (this.phase === 'intro') {
@@ -348,7 +356,10 @@ export class ChestPanel {
       this.pieces.push({ r: lid, py: Math.round(top[1] - this.chestY), x: 0, y: 0, vx: rnd(-40, 60) * k, vy: -420 * k, rot: 0, vr: rnd(-5, 5), t: 0 });
       for (const p of [3, 4, 5]) this.shatter(p, 0.3);
       for (const p of [3, 4, 5, 2]) cm.detached.add(p);
-      cm.ver++;
+      for (const v of slumpStraw(cm).slice(0, 90)) {
+        const [vx, vy] = this.spr.toScreen(this.chestX, this.chestY, [v.x, v.y, v.z]);
+        this.addDebris(vx, vy, v.col, { vx: Math.sign(v.x - 21) * rnd(20, 120), vy: -rnd(40, 160), life: rnd(2.5, 4) });
+      }
       this.sfx('wood_crack', { vol: 0.9, pitch: 0.8 }); this.sfx('chest_thud', { vol: 0.8 });
     } else if (tier === 'orb') {
       this.hideOrb = true;
@@ -390,7 +401,6 @@ export class ChestPanel {
       const out = p === 4 ? -1 : p === 5 ? 1 : 0;
       this.addDebris(sx, sy, col, { vx: radial ? (dx / d) * sp : out * rnd(60, 200) + (dx / d) * sp * 0.5, vy: radial ? (dy / d) * sp - rnd(80, 200) : -rnd(60, 260) + (p === 3 ? 0 : -40), size: R() < 0.25 ? 4 : R() < 0.5 ? 3 : 2, life: rnd(2.4, 4) });
     }
-    void k;
   }
 
   updatePieces(dt) {
@@ -445,10 +455,10 @@ export class ChestPanel {
     f.t += dt;
     if (f.state === 'fly' || f.state === 'flop') {
       f.vy += 1000 * k * dt; f.x += f.vx * dt; f.y += f.vy * dt; f.rot += (f.state === 'fly' ? 10 : 0) * dt;
-      const fy = S.floorY + 4 * k;
+      const fy = S.floorY + 6 * k;
       if (f.y > fy) {
         f.y = fy; f.state = 'flop'; f.rot = 0;
-        if (f.hops < 3) { f.vy = -rnd(140, 200) * k; f.vx = rnd(-50, 50); f.face = -f.face; f.hops++; this.sfx('splash_small', { vol: 0.25, pitch: 1.4 }); }
+        if (f.hops < 3) { f.vy = -rnd(140, 200) * k; f.vx = rnd(-30, 50) * k; f.face = -f.face; f.hops++; this.sfx('splash_small', { vol: 0.25, pitch: 1.4 }); this.fx.burst(f.x, f.y, 3, { kind: 'spark', colors: ['#bfe8ff', '#ffffff'], speed: 60, g: 300, life: 0.4 }); }
         else { f.vy = 0; f.vx = 0; f.state = 'wait'; f.t = 0; }
       }
     } else if (f.state === 'wait' && f.t > 0.35) {
@@ -470,7 +480,7 @@ export class ChestPanel {
     const f = this.fish;
     if (!f) return;
     const k = this.k;
-    const c = voxelFishIcon(null, Math.round(26 * k), Math.round(16 * k), { dir: f.face });
+    const c = voxelFishIcon(null, Math.round(60 * k), Math.round(36 * k), { dir: f.face });
     if (!c) return;
     ctx.save();
     ctx.translate(Math.round(f.x), Math.round(f.y - 6 * k));
@@ -482,11 +492,29 @@ export class ChestPanel {
 
   // ------------------------------------------------------------------ scene drawing
   drawBackdrop(ctx, S) {
-    const k = this.k;
-    // a soft dusk wash over the world, deeper at the bottom
-    ctx.fillStyle = 'rgba(8,26,52,0.35)';
-    ctx.fillRect(0, 0, S.W, S.H);
-    for (let i = 0; i < 6; i++) { ctx.fillStyle = `rgba(6,20,44,${0.05 + i * 0.03})`; ctx.fillRect(0, Math.round(S.floorY - 40 * k + i * 16 * k), S.W, Math.round(S.H)); }
+    const k = this.k, t = this.t;
+    // a dusky stage over the world: dithered bands, darker toward the edges
+    ctx.drawImage(aeroCached(`chestbg|${S.W}|${S.H}|${S.floorY}`, () => stageArt(S.W, S.H, S.floorY, k)), 0, 0);
+    // calm water under the dock: drifting pixel glints
+    const wy = Math.round(S.floorY + 26 * k);
+    for (let i = 0; i < 26; i++) {
+      const sp = 6 + (i % 5) * 3, row = i % 6;
+      const x = Math.round(((i * 173 + t * sp * (row % 2 ? 1 : -1)) % (S.W + 40) + S.W + 40) % (S.W + 40) - 20);
+      const y = wy + Math.round(row * 9 * k + (i % 3) * 3);
+      if (y > S.H) continue;
+      ctx.fillStyle = row < 2 ? 'rgba(170,230,255,0.35)' : 'rgba(120,200,240,0.18)';
+      ctx.fillRect(x, y, Math.round((6 + (i % 4) * 4) * k), 1);
+    }
+    // a few bubbles rising behind the stage
+    for (let i = 0; i < 9; i++) {
+      const life = 7 + (i % 4);
+      const q = ((t + i * 1.37) % life) / life;
+      const x = Math.round(((i * 211) % (S.W - 60)) + 30 + Math.sin(t * 1.3 + i) * 6);
+      const y = Math.round(S.floorY + 20 * k - q * (S.floorY * 0.9));
+      ctx.globalAlpha = Math.sin(q * Math.PI) * 0.55;
+      ctx.drawImage(pixelBubble(2 + (i % 3)), x, y);
+    }
+    ctx.globalAlpha = 1;
     // the dock
     const dw = Math.min(S.W - 40, Math.round(720 * k));
     const dock = aeroCached(`chestdock|${dw}|${k}`, () => dockArt(dw, k));
@@ -549,7 +577,7 @@ export class ChestPanel {
     const top = this.chestTop();
     const mood = this.moodT > 0 ? this.mood : this.phase === 'loot' ? 'happy' : null;
     try {
-      drawCharacter(ctx, this.heroX(S), S.floorY, { pose, t, facing: 1, scale: CHAR_S * k, look: g.state.character, lookAt: this.phase === 'loot' ? [top[0], top[1] - 60 * k] : top, id: 'chest', mood, trail: false });
+      this.heroA = drawCharacter(ctx, this.heroX(S), S.floorY, { pose, t, facing: 1, scale: CHAR_S * k, look: g.state.character, lookAt: this.phase === 'loot' ? [top[0], top[1] - 60 * k] : top, id: 'chest', mood, trail: false });
     } catch (e) { if (!this.charErr) { this.charErr = true; console.warn('chest hero', e); } }
   }
   drawSealGuide(ctx, S) {
@@ -812,6 +840,27 @@ function cardBack(w, h, col) {
   });
 }
 
+// the stage: a deep dusk wash (the world stays faintly visible), dithered bands, a dark vignette, a water band
+function stageArt(W, H, floorY, k) {
+  const c = makeCanvas(W, H), g = c.getContext('2d');
+  const wy = Math.round(floorY + 20 * k);
+  for (let y = 0; y < H; y++) {
+    const q = y / H, water = y > wy;
+    const a = water ? 0.9 : 0.74 + q * 0.12;
+    const col = water ? '8,40,74' : `${(10 + q * 6) | 0},${(26 + q * 18) | 0},${(52 + q * 22) | 0}`;
+    g.fillStyle = `rgba(${col},${a.toFixed(3)})`;
+    g.fillRect(0, y, W, 1);
+    // dithered vignette toward the sides
+    for (let b = 0; b < 10; b++) {
+      const w = Math.round((W * 0.3 * (10 - b)) / 10), off = (y + b) % 2;
+      g.fillStyle = `rgba(4,12,30,${0.03 + (off ? 0.005 : 0)})`;
+      g.fillRect(0, y, w, 1); g.fillRect(W - w, y, w, 1);
+    }
+  }
+  g.fillStyle = 'rgba(140,220,255,0.35)'; g.fillRect(0, wy, W, 1);
+  return c;
+}
+
 // the wooden dock the scene stands on: top boards, a front beam with post caps, posts into the water
 function dockArt(w, k) {
   const top = Math.round(30 * k), face = Math.round(10 * k), posts = Math.round(26 * k), h = top + face + posts;
@@ -880,5 +929,4 @@ function drawHintIcon(ctx, icon, x, y, t, k) {
     ctx.fillStyle = '#ff5a4a';
     for (let i = -3; i <= 3; i++) { ctx.fillRect(x + i * s, y + i * s, 2 * s, 2 * s); ctx.fillRect(x + i * s, y - i * s, 2 * s, 2 * s); }
   }
-  void rgba;
 }

@@ -8,7 +8,9 @@
 // a Shock, holding against surges), the catch card, the fish going into the goldfish jar, collecting the jar's Aero,
 // opening The Lab and starting the first research, the 'tutorialDone' event (quest lines start), then asks the
 // seal's hint helper for a tip. Then it opens every panel, travels to all seven oceans and checks that the console
-// stayed clean. Optional systems are feature-detected so the test only fails on real breakage. Screenshots land in
+// stayed clean. [tut16] The fight is the forced fishing lesson (reel, ease off, surge, zap, land: each step waits
+// until it is done; a missed zap is handed back, so the scripted fight zaps again during the zap step).
+// Optional systems are feature-detected so the test only fails on real breakage. Screenshots land in
 // tests/out/. Ownership: Guide agent; the Fishing agent may edit the scripted fight (marked below).
 import { createRequire } from 'node:module';
 import { createServer } from 'node:http';

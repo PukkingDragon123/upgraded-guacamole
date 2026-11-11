@@ -94,7 +94,7 @@ const smooth = (k) => k * k * (3 - 2 * k);
 const REST = {
   hammer: { hand: [-2.2, 5.6, 5.0], pitch: 64, yaw: -18, two: true, walk: 118 },
   crowbar: { hand: [-2.6, 5.0, 4.8], pitch: 70, yaw: -10, two: false, walk: 112 },
-  mallet: { hand: [-3.0, 5.0, 4.6], pitch: 80, yaw: -8, two: false, chisel: true, walk: 100 },
+  mallet: { hand: [-3.4, 3.8, 3.4], pitch: 34, yaw: -24, two: false, chisel: true, walk: 100 },
   tapper: { hand: [-2.8, 6.0, 5.6], pitch: 40, yaw: -10, two: false, walk: 96 },
 };
 
@@ -194,7 +194,7 @@ registerPose('ck_tap', { n: 6, dur: 0.26, loop: false, fn: (u, i) => {
 // a bonk sends you onto your bum (any tool; the tool is dropped)
 registerPose('ck_slip', { n: 6, dur: 0.5, loop: false, fn: (u, i) => {
   const k = smooth(u);
-  return { off: [0, -6.2 * k + (i === 2 ? 1.6 : 0), -2.4 * k], offAbs: false, spine: [-18 * k, 0, 0], neck: [10 * k, -10, 8 * k], hipL: [-80 * k, 0, 10], knL: [70 * k, 0, 0], hipR: [-74 * k, 0, -10], knR: [60 * k, 0, 0],
+  return { off: [0, -6.4 * k + (i === 2 ? 1.2 : 0), -1.6 * k], offAbs: true, spine: [-18 * k, 0, 0], neck: [10 * k, -10, 8 * k], hipL: [-80 * k, 0, 10], knL: [70 * k, 0, 0], hipR: [-74 * k, 0, -10], knR: [60 * k, 0, 0],
     shL: [0, -30, 90 * k], elL: [-20, 0, 0], shR: [0, 30, -90 * k], elR: [-20, 0, 0], mouth: 'o', eyeMode: null, squint: 0, gaze: [0, -0.6], wobble: 1 };
 } });
 
@@ -203,4 +203,5 @@ export const POSE_N = { ck_wind: [8, 1], ck_smash: [6, 0.3], ck_pry: [8, 1], ck_
 export const IMPACT = { ck_smash: 3, ck_chisel: 3, ck_tap: 3 };
 export function poseT(pose, k) { const [n, d] = POSE_N[pose] || [8, 1]; return frameT(n, k, d); }
 export function poseFrameT(pose, fi) { const [n, d] = POSE_N[pose] || [8, 1]; return ((fi + 0.5) / n) * d; }
-export const CHEST_POSES = (k) => ['ck_walk_' + k, 'ck_ready_' + k, 'ck_wipe_' + k, 'ck_cheer_' + k, ...(k === 'hammer' ? ['ck_wind', 'ck_smash', 'ck_buzz'] : k === 'crowbar' ? ['ck_pry', 'ck_slip'] : k === 'mallet' ? ['ck_chisel', 'ck_ouch'] : ['ck_tap'])];
+// warm-up order: the minigame's own poses first (the funny beats included), then the stance, the breather and the cheer
+export const CHEST_POSES = (k) => [...(k === 'hammer' ? ['ck_smash', 'ck_wind', 'ck_buzz'] : k === 'crowbar' ? ['ck_pry', 'ck_slip'] : k === 'mallet' ? ['ck_chisel', 'ck_ouch'] : ['ck_tap']), 'ck_ready_' + k, 'ck_cheer_' + k, 'ck_wipe_' + k, 'ck_walk_' + k];

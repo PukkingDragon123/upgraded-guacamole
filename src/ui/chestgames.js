@@ -15,15 +15,15 @@
 //                       tap cracks the glass further (the cracks are painted into the voxel orb and turn with it).
 // interface: start(), update(dt, inp, click), draw(ctx, s), pose() -> {pose, t} | null, bonus() -> 0..2,
 //            hint() -> {text, icon}, progress() -> 0..1
-import { clamp, clamp01, lerp, TAU } from '../core/math.js';
-import { mix, shade, rgba } from '../core/color.js';
-import { drawText, measureText } from '../gfx/font.js';
-import { poseT, poseFrameT } from '../gfx/chesttools.js';
+import { clamp01, lerp } from '../core/math.js';
+import { mix } from '../core/color.js';
+import { poseT } from '../gfx/chesttools.js';
 import { aeroCached, aeroSurface, drawPixelBrackets } from './aero.js';
 import { partSprite } from '../build/pixart.js';
 
 const R = Math.random;
 const rnd = (a, b) => a + R() * (b - a);
+const pick = (a) => a[Math.floor(R() * a.length)];
 
 // ================================================================ crate: the high-striker hammer
 export class HammerGame {
@@ -86,9 +86,10 @@ export class HammerGame {
     if (q === 'perfect') { this.bell = 1; this.puckFly = 1; P.sfx('bell', { vol: 0.55, pitch: 1.0 + this.n * 0.04 }); }
     const dmg = q === 'perfect' ? 2 : q === 'good' ? 1.25 : 0.6;
     this.hp -= dmg; this.n++;
+    P.hits = this.n;
     const last = this.hp <= 0;
     P.impact({ power: q === 'perfect' ? 1.7 : q === 'good' ? 1 : 0.4, quality: q, last,
-      text: last ? 'SMASH!' : q === 'perfect' ? 'CRACK!' : q === 'good' ? 'THWACK!' : 'tink', palette: q === 'perfect' || last ? 'gold' : q === 'good' ? 'white' : 'sky' });
+      text: last ? 'SMASH!' : q === 'perfect' ? pick(['CRACK!', 'WHAM!', 'KRAK!']) : q === 'good' ? pick(['THWACK!', 'THUNK!', 'WHUMP!']) : pick(['tink', 'tonk', 'plink']), palette: q === 'perfect' || last ? 'gold' : q === 'good' ? 'white' : 'sky' });
     if (this.n - 1 === this.fishAt) P.fishJoke();
     if (q === 'weak') P.sfx('boing', { vol: 0.45, pitch: 1.2 });
     if (last) P.finish(0.35);
@@ -170,6 +171,7 @@ export class PryGame {
     P.spots = [P.chestCentre()];
     this.F = Math.max(0, this.F - (0.16 + this.F * 0.14) * dt);
     this.Fs = lerp(this.Fs, this.F, Math.min(1, dt * 14));
+    if (this.Fs > 0.7 && R() < dt * 5) P.sweat();
     B.t -= dt;
     if (B.state === 'calm' && B.t <= 0 && this.stage < this.need) { B.state = 'warn'; B.t = rnd(0.5, 0.65); P.sfx('grunt', { vol: 0.55, pitch: 0.55 }); P.sfx('slack_warn', { vol: 0.5, pitch: 0.7 }); P.sealSay('worried', 'worried', 0.9); }
     else if (B.state === 'warn') { P.lidShudder(0.6); if (B.t <= 0) { B.state = 'buck'; B.t = 0.45; this.clickedInBuck = false; P.lidKick(); P.sfx('box_close', { vol: 0.8, pitch: 0.8 }); P.shakeBy(3); this.F = Math.max(0, this.F - 0.1); } }
@@ -200,7 +202,7 @@ export class PryGame {
     this.F = 0.25; this.Fs = 0.6;
     this.stage++;
     P.hits = this.stage;
-    P.impact({ power: 1.2, quality: 'good', last: this.stage >= this.need, text: this.stage >= this.need ? 'POPPED!' : 'POP!', palette: 'gold', lid: this.stage * 6 });
+    P.impact({ power: 1.2, quality: 'good', last: this.stage >= this.need, text: this.stage >= this.need ? 'POPPED!' : pick(['POP!', 'PING!', 'SPROING!']), palette: 'gold', lid: this.stage * 6 });
     if (this.stage >= this.need) P.finish(0.25);
     else if (this.stage === 2 && R() < 0.6) P.charBeat('wipe', 0.8);
   }
@@ -285,7 +287,7 @@ export class ChiselGame {
         P.sfx('ice_chime', { vol: 0.5, pitch: Math.pow(2, semi / 12) * 0.9 });
         P.charBeat('chisel', 0.2);
         const last = this.hits >= this.need;
-        P.impact({ power: q === 'perfect' ? 1.3 : 0.9, quality: q, last, text: last ? 'UNSEALED!' : q === 'perfect' ? 'PERFECT!' : 'NICE!', palette: q === 'perfect' || last ? 'gold' : 'white', small: !last });
+        P.impact({ power: q === 'perfect' ? 1.3 : 0.9, quality: q, last, text: last ? 'UNSEALED!' : q === 'perfect' ? pick(['PERFECT!', 'SHINY!', 'GOLDEN!']) : pick(['NICE!', 'OK!', 'TAK!']), palette: q === 'perfect' || last ? 'gold' : 'white', small: !last });
         if (last) P.finish(0.4);
       } else {
         this.score.whiff++;
@@ -304,8 +306,8 @@ export class ChiselGame {
     const P = this.P, cm = P.cm;
     const A = P.spr.toScreen(P.chestX, P.chestY, cm.laneA), B = P.spr.toScreen(P.chestX, P.chestY, cm.laneB);
     const dx = B[0] - A[0], dy = B[1] - A[1], L = Math.hypot(dx, dy) || 1;
-    const ext = 120 * P.k;
-    return { ax: A[0], ay: A[1], ux: dx / L, uy: dy / L, len: L + ext, seam: L };
+    const ext = 120 * P.k, G = 20 * P.k; // the chisel tip sits a little left of the corner
+    return { ax: A[0] - (dx / L) * G, ay: A[1] - (dy / L) * G, ux: dx / L, uy: dy / L, len: L + ext + G, seam: L + G };
   }
   draw(ctx, s) {
     const L = this.lane(), k = s.k, t = this.t;
@@ -400,7 +402,7 @@ export class OrbGame {
       this.score[q]++;
       this.hits++; P.hits = this.hits;
       const last = this.hits >= this.need;
-      P.impact({ power: q === 'perfect' ? 1.4 : 1, quality: q, last, at: this.P.cm.weak[(this.hits - 1) % this.P.cm.weak.length].p, text: last ? 'SHATTER!' : q === 'perfect' ? 'CRACK!' : 'tik!', palette: q === 'perfect' || last ? 'gold' : 'white', small: !last && q !== 'perfect' });
+      P.impact({ power: q === 'perfect' ? 1.4 : 1, quality: q, last, at: this.P.cm.weak[(this.hits - 1) % this.P.cm.weak.length].p, text: last ? 'SHATTER!' : q === 'perfect' ? pick(['CRACK!', 'KRIIK!', 'TING!']) : pick(['tik!', 'tak!']), palette: q === 'perfect' || last ? 'gold' : 'white', small: !last && q !== 'perfect' });
       this.vel = (R() < 0.5 ? -1 : 1) * rnd(60, 120);
       if (last) P.finish(0.35);
     } else if (P.onOrb(x, y)) {
@@ -440,9 +442,7 @@ export class OrbGame {
       ctx.fillStyle = i < this.hits ? '#ff9ae8' : '#5a4a8a'; ctx.fillRect(x - 3, y - 3, 7, 7);
       ctx.fillStyle = i < this.hits ? '#ffffff' : '#7a6aaa'; ctx.fillRect(x - 3, y - 3, 3, 2);
     }
-    void shade; void rgba; void drawText; void measureText; void TAU;
   }
 }
 
 export const GAMES = { crate: HammerGame, iron: PryGame, golden: ChiselGame, orb: OrbGame };
-void poseFrameT;

@@ -2,8 +2,8 @@
 // 'crate'). Chests come from floating boxes (iron and better boxes land in the Satchel as chests), quest rewards
 // (ITEMS 'pkg_<tier>') and the deep zones (deeper boxes are higher tiers, see src/world/floaters.js).
 //
-//   CHESTS {tier: {name, game, hits, color, glow, desc}}   game: 'tap' (weak points) | 'timing' (moving marker)
-//                                                            | 'lock' (pick the lock) | 'whack' (catch the cracks)
+//   CHESTS {tier: {name, game, color, glow, hint}}   game ([chest16], src/ui/chestgames.js): 'hammer' (crate: the
+//                  high-striker) | 'pry' (iron: crowbar mash) | 'chisel' (golden: rhythm) | 'orb' (spin + tap the cracks)
 //   chestOf(tier) -> CHESTS entry (unknown tiers fall back to the crate)
 //   boxToChest(game, f) -> pkg | null   a fished-up floating box of tier iron+ becomes a chest in the Satchel
 //   crackChest(game, pkg, {bonus}) -> [{id, qty}]   removes the chest, rolls + grants its loot ('coins' = Aero),
@@ -13,10 +13,10 @@ import { RARITY_ORDER } from '../core/color.js';
 import { ITEMS, TIERS, inventory, addPackage, rollCrate, grantLoot } from './items.js';
 
 export const CHESTS = {
-  crate: { name: 'Driftwood Crate', game: 'tap', hits: 6, color: '#c8925a', glow: '#ffe2a8', hint: 'Tap the glowing knots!' },
-  iron: { name: 'Iron Crate', game: 'timing', hits: 4, color: '#7a8094', glow: '#bfe8ff', hint: 'Hit when the marker is in the zone!' },
-  golden: { name: 'Golden Chest', game: 'lock', hits: 3, color: '#f0b83c', glow: '#fff2b8', hint: 'Circle the lock to find the sweet spot, then click!' },
-  orb: { name: 'Mystery Orb', game: 'whack', hits: 7, color: '#a46aff', glow: '#ff9ae8', hint: 'Catch the cracks before they fade!' },
+  crate: { name: 'Driftwood Crate', game: 'hammer', hits: 6, color: '#c8925a', glow: '#ffe2a8', hint: 'Click when the puck is in the gold!' },
+  iron: { name: 'Iron Crate', game: 'pry', hits: 4, color: '#7a8094', glow: '#bfe8ff', hint: 'MASH to lever the lid!' },
+  golden: { name: 'Golden Chest', game: 'chisel', hits: 10, color: '#f0b83c', glow: '#fff2b8', hint: 'Tap when the glints reach the chisel!' },
+  orb: { name: 'Mystery Orb', game: 'orb', hits: 5, color: '#a46aff', glow: '#ff9ae8', hint: 'Drag to spin, tap the crack while it shines!' },
 };
 export function chestOf(tier) { return CHESTS[tier] || CHESTS.crate; }
 

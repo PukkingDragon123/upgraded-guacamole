@@ -1,8 +1,10 @@
 // [chest16] Dev preview of the chest-cracking scene: dist/dev/chest.html
 //   ?view=poses (&tool=hammer&scale=1.6)   every chest pose frame of one tool on a grid
 //   ?view=models (&s=2.5)                   the four chest models (+ damage steps &dmg=N)
+//   ?view=seal                              Bubbles in a few views / moods
 //   ?view=panel&tier=crate|iron|golden|orb (default) the real ChestPanel on a stub game, 1920x1080 hi-res layer
-//        &look=json  &seen=1 (shows hold-to-skip)  &n=3 (chests in the satchel)
+//        &look=json  &seen=1 (shows hold-to-skip)  &n=3 (chests in the satchel)  &auto=1 (plays itself perfectly)
+//        &slow=0.2 (time scale)  &stats=1 (character frame cache stats)
 import { ctxOf, makeCanvas } from '../core/canvas.js';
 import { hiCtx } from '../gfx/hires.js';
 import { drawText } from '../gfx/font.js';
@@ -16,6 +18,7 @@ import { defaultState } from '../game/state.js';
 import { UI } from '../ui/ui.js';
 import { ChestPanel } from '../ui/chest.js';
 import { chestModel, damageChest, ChestSprite } from '../gfx/chestvox.js';
+import { drawSeal as _drawSeal } from '../gfx/seal.js';
 
 function lookOf(params) { try { if (params.get('look')) return JSON.parse(params.get('look')); } catch { /* ignore */ } return DEFAULT_CHARACTER; }
 
@@ -145,9 +148,8 @@ export function run(params) {
   return runPanel(params, cv);
 }
 
-// ?view=seal : Bubbles at a few sizes / views / moods
-import { drawSeal as _drawSeal } from '../gfx/seal.js';
-export function runSeal(cv) {
+// ?view=seal : Bubbles at a few views / moods
+function runSeal(cv) {
   const W = 960, H = 540;
   cv.width = W * 2; cv.height = H * 2; cv.style.width = W * 2 + 'px'; cv.style.height = H * 2 + 'px';
   const g = hiCtx(cv, 2);

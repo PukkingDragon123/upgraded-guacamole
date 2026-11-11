@@ -40,7 +40,7 @@ function builder(nx, ny, nz) {
 
 
 // a heap of treasure inside a chest: gold coins with glints, a few gems and pearls, on a velvet lining
-function treasure(B, x0, x1, z0, z1, y0, yTop, velvet) {
+function treasure(B, x0, x1, z0, z1, y0, yTop, velvet, lining = true) {
   const { col, put } = B;
   const coin = [col('#ffd23a', { ...METAL, emissive: 0.3 }), col('#f0b83c', { ...METAL, emissive: 0.25 }), col('#ffe98a', { ...METAL, emissive: 0.35 }), col('#d8961e', { ...METAL, emissive: 0.15 })];
   const glint = col('#ffffff', { emissive: 1, jitter: 0 });
@@ -56,7 +56,7 @@ function treasure(B, x0, x1, z0, z1, y0, yTop, velvet) {
     else if (r > 0.975) { const gm = gems[Math.floor(h3(x, z, 3, 64) * 4)]; put(x, h + 1, z, gm, 1); put(x, h, z, gm, 1); }
   }
   // velvet lining on the inner walls above the heap
-  for (let y = y0 - 2; y <= yTop + 1; y++) for (let z = z0 - 1; z <= z1 + 1; z++) for (let x = x0 - 1; x <= x1 + 1; x++) {
+  if (lining) for (let y = y0 - 2; y <= yTop + 1; y++) for (let z = z0 - 1; z <= z1 + 1; z++) for (let x = x0 - 1; x <= x1 + 1; x++) {
     if (x !== x0 - 1 && x !== x1 + 1 && z !== z0 - 1 && z !== z1 + 1) continue;
     put(x, y, z, vel, 1);
   }
@@ -64,25 +64,24 @@ function treasure(B, x0, x1, z0, z1, y0, yTop, velvet) {
 
 // ================================================================ crate: a driftwood shipping crate
 function crate() {
-  const B = builder(42, 38, 34), { m, pid, col, put, get } = B;
+  const B = builder(42, 38, 34), { pid, col, put, get } = B;
   const wd = [col('#c8925a', WOOD), col('#b98450', WOOD), col('#d6a066', WOOD), col('#c08a52', WOOD)];
   const gap = col('#4a2c16', { jitter: 0.03 }), post = col('#a06a3a', WOOD), postD = col('#83522a', WOOD), postL = col('#bf8a52', WOOD);
   const batt = col('#b07a44', WOOD), battL = col('#cf9a62', WOOD), nail = col('#e6eef6', METAL), nailD = col('#8a96a8', METAL);
   const sten = col('#5a3820', { jitter: 0.02 }), label = col('#f6ead0', { jitter: 0.02 }), labelR = col('#ff5a4a', { jitter: 0 }), labelL = col('#8aa0b8', { jitter: 0 });
   const algae = col('#6aa84a', { jitter: 0.08 }), algaeL = col('#9ad86a', { jitter: 0.06 }), barn = col('#eef0e6', { spec: 0.6 });
   const straw = [col('#f2cf6a', { jitter: 0.1 }), col('#e0b450', { jitter: 0.1 }), col('#fff0a0', { jitter: 0.08 })];
-  const glow = col('#ffd070', { emissive: 0.85, jitter: 0 }), glowL = col('#fff4c8', { emissive: 1, jitter: 0 });
   const X0 = 2, X1 = 39, Z0 = 2, Z1 = 31, YT = 30;
   const pieceOf = (x, y, z) => (y >= 31 ? 2 : x <= 4 ? 4 : x >= 37 ? 5 : z >= 30 ? 3 : 1);
   const plank = (u, y, s) => { const row = Math.floor(y / 6); return wd[(Math.floor(h3(row, Math.floor(u / 9), s, 4) * 4)) % 4]; };
-  // interior: glowing treasure under straw
-  for (let y = 2; y <= 29; y++) for (let z = Z0 + 2; z <= Z1 - 2; z++) for (let x = X0 + 2; x <= X1 - 2; x++) {
-    const dx = (x - 21) / 13, dy = (y - 13) / 9, dz = (z - 16.5) / 11;
-    const top = 24 + Math.floor(h3(x >> 1, 0, z >> 1, 8) * 4) - (Math.abs(x - 21) > 14 ? 1 : 0);
-    if (dx * dx + dy * dy + dz * dz < 1) put(x, y, z, dx * dx + dy * dy + dz * dz < 0.35 ? glowL : glow, 1);
-    else if (y >= 17 && y <= top) put(x, y, z, straw[Math.floor(h3(x, y, z, 7) * 3)], 1);
-    else if (y === top + 1 && h3(x, z, 5, 9) < 0.06) put(x, y, z, straw[2], 1);
+  // interior: a straw nest with a little heap of treasure on top
+  for (let y = 2; y <= 22; y++) for (let z = Z0 + 2; z <= Z1 - 2; z++) for (let x = X0 + 2; x <= X1 - 2; x++) {
+    const dx = (x - 21) / 17, dz = (z - 16.5) / 13.5;
+    const bowl = 13 + Math.round((dx * dx + dz * dz) * 7 + (h3(x >> 1, 1, z >> 1, 8) - 0.5) * 3);
+    if (y <= Math.min(22, bowl)) put(x, y, z, straw[Math.floor(h3(x, y, z, 7) * 3)], 1);
+    else if (y === Math.min(22, bowl) + 1 && h3(x, z, 5, 9) < 0.08) put(x, y, z, straw[2], 1);
   }
+  treasure(B, 13, 29, 10, 23, 14, 19, '#e0b450', false);
   // walls: two layers, horizontal planks with recessed gaps
   for (let y = 0; y <= YT; y++) for (let z = Z0; z <= Z1; z++) for (let x = X0; x <= X1; x++) {
     const outerX = x === X0 || x === X1, outerZ = z === Z0 || z === Z1, innerX = x === X0 + 1 || x === X1 - 1, innerZ = z === Z0 + 1 || z === Z1 - 1;
@@ -137,7 +136,7 @@ function crate() {
   }
   for (const [x, y, z] of [[0, 1, 9], [0, 2, 21], [12, 0, 33], [30, 2, 33], [0, 0, 15], [20, 1, 33]]) put(x, y, z, barn, x === 0 ? 4 : 3);
   return {
-    tier: 'crate', ...B, lidY: 31, hinge: [31, 1], anchor: [21, 0, 17], nails,
+    tier: 'crate', ...B, lidY: 31, hinge: [31, 1], anchor: [21, 0, 17], nails, straw,
     hits: [[1, 20, 20], [1, 14, 11], [1, 20, 8], [1, 26, 16], [1, 14, 24], [1, 8, 18], [1, 32, 13], [1, 26, 26]],
     splinter: col('#f4cf94', WOOD), splinterD: col('#d8a868', WOOD), crack: gap,
   };
@@ -145,16 +144,14 @@ function crate() {
 
 // ================================================================ iron: a riveted steel strongbox with a padlock
 function iron() {
-  const B = builder(44, 36, 34), { pid, col, put, get } = B;
+  const B = builder(44, 36, 34), { col, put } = B;
   const st = col('#6f7f9a', METAL), stD = col('#56647e', METAL), stL = col('#93a4bf', METAL), panel = col('#5f6e88', METAL), lidT = col('#5a6984', METAL);
   const br = col('#d08a3a', METAL), brL = col('#f2b866', METAL), brD = col('#9a5a22', METAL), rivet = col('#ffe2a8', { ...METAL, spec: 1.6 });
   const rust = col('#b0603a', { jitter: 0.12 }), rustD = col('#8a4226', { jitter: 0.1 });
   const lockB = col('#ffc23a', { ...METAL, spec: 1.6 }), lockD = col('#c8862a', METAL), hole = col('#1a1424', { jitter: 0 }), shackle = col('#dfe8f2', { ...METAL, spec: 1.8 });
-  const glow = col('#bfe8ff', { emissive: 0.9, jitter: 0 }), glowL = col('#ffffff', { emissive: 1, jitter: 0 });
   const X0 = 2, X1 = 41, Z0 = 2, Z1 = 31, YB = 22, YT = 30;
   // interior glow (seen through the gap as the lid lifts)
   treasure(B, X0 + 3, X1 - 3, Z0 + 3, Z1 - 3, 12, YB + 1, '#3a4aa8');
-  void glow; void glowL;
   const bodyCol = (x, y, z, face) => {
     const u = face === 'x' ? z : x;
     const band = u <= 4 || u >= (face === 'x' ? 29 : 39) || (face !== 'x' && (u === 13 || u === 14 || u === 29 || u === 30)) || (face === 'x' && (u === 16 || u === 17)) || y <= 2 || y >= YB - 1;
@@ -169,7 +166,6 @@ function iron() {
     put(x, y, z, ox ? bodyCol(x, y, z, 'x') : oz ? bodyCol(x, y, z, 'z') : stD, 1);
   }
   // rivets on the bands
-  const rivets = [];
   for (let x = 4; x <= 39; x += 5) for (const y of [1, YB - 1]) { put(x, y, Z1 + 1, rivet, 1); }
   for (let z = 4; z <= 29; z += 5) put(X0 - 1, 1, z, rivet, 1);
   // lid: a bevelled steel slab with brass edging
@@ -198,21 +194,18 @@ function iron() {
   for (let z = 12; z <= 21; z++) put(X0 - 1, 12, z, z === 12 || z === 21 ? brD : shackle, 1);
   for (let y = 9; y <= 12; y++) { put(X0 - 1, y, 12, brD, 1); put(X0 - 1, y, 21, brD, 1); }
   for (let z = 12; z <= 21; z++) put(X0 - 2, 9, z, shackle, 1);
-  void get; void rivets; void pid;
   return { tier: 'iron', ...B, lidY: YB + 1, hinge: [YB + 1, Z0 - 1], anchor: [21.5, 0, 17], bolts, pry: [X0 - 2, YB + 1, 17], hits: bolts };
 }
 
 // ================================================================ golden: an ornate domed treasure chest
 function golden() {
-  const B = builder(46, 42, 34), { col, put, get, pid } = B;
+  const B = builder(46, 42, 34), { col, put, get } = B;
   const wd = [col('#8a3a2a', WOOD), col('#76301f', WOOD), col('#9a4632', WOOD)], wdD = col('#4e1c14', WOOD);
   const g = col('#f0b83c', { ...METAL, spec: 1.6, specPow: 5 }), gL = col('#fff2b8', { ...METAL, spec: 1.8 }), gD = col('#c08024', METAL), gDD = col('#8a5414', METAL);
   const ruby = col('#ff3a6a', { ...GLOSS, emissive: 0.55 }), sap = col('#3ad8ff', { ...GLOSS, emissive: 0.6 }), emer = col('#4ae87a', { ...GLOSS, emissive: 0.5 });
   const hole = col('#2a0a10', { jitter: 0 }), seamC = col('#fff6d0', { emissive: 1, jitter: 0 });
-  const glow = col('#ffe7a0', { emissive: 0.9, jitter: 0 });
   const X0 = 2, X1 = 43, Z0 = 2, Z1 = 31, YB = 21;
   treasure(B, X0 + 3, X1 - 3, Z0 + 3, Z1 - 3, 11, YB + 3, '#a8243a');
-  void glow;
   const trim = (u, y, uMax) => u <= 3 || u >= uMax - 3 || y <= 2 || y >= YB - 1;
   for (let y = 0; y <= YB; y++) for (let z = Z0; z <= Z1; z++) for (let x = X0; x <= X1; x++) {
     const ox = x === X0 || x === X1, oz = z === Z0 || z === Z1, ix = x === X0 + 1 || x === X1 - 1, iz = z === Z0 + 1 || z === Z1 - 1;
@@ -270,7 +263,6 @@ function golden() {
   for (let z = Z0; z <= Z1; z++) seam.push([X0 - (get(X0 - 1, YB, z) ? 1 : 0), YB, z]);
   const corner = seam.length - 1;
   for (let x = X0 + 1; x <= X1; x++) seam.push([x, YB, Z1 + (get(x, YB, Z1 + 1) ? 1 : 0)]);
-  void pid;
   return { tier: 'golden', ...B, lidY: YB + 1, hinge: [YB + 1, Z0 - 1], anchor: [22.5, 0, 17], seam, corner, seamC, chiselAt: [X0 - 1, YB, Z1 + 1], laneA: [X0, YB, Z1 + 1], laneB: [X1, YB, Z1 + 1], flake: [g, gL, gD, gDD],
     hits: [[X0, YB, Z1 - 2], [X0, YB, Z1 - 6], [X0 + 4, YB, Z1], [X0, YB, Z1 - 10]] };
 }
@@ -320,7 +312,7 @@ function orb() {
     weak.push({ n, p: [C[0] + n[0] * (Rr - 0.3), C[1] + n[1] * (Rr - 0.3), C[2] + n[2] * (Rr - 0.3)] });
   }
   return { tier: 'orb', ...B, lidY: 99, hinge: [99, 0], anchor: [20, 0, 20], centre: C, R: Rr, weak,
-    crackC: col('#ffffff', { emissive: 1, jitter: 0 }), crackE: col('#ff9ae8', { emissive: 0.85, jitter: 0 }), shards: ['#6a4ad0', '#a68aff', '#ff8ae8', '#8ae8ff', '#3a2490'] };
+    crackC: col('#fff4ff', { emissive: 1, jitter: 0 }), crackE: col('#e86ad8', { emissive: 0.7, jitter: 0 }), shards: ['#6a4ad0', '#a68aff', '#ff8ae8', '#8ae8ff', '#3a2490'] };
 }
 
 const MAKERS = { crate, iron, golden, orb };
@@ -421,12 +413,11 @@ export function damageChest(cm, i, power = 1) {
       for (const [ox, oy, oz] of [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1], [-1, 0, 0], [0, -1, 0], [0, 0, -1]]) {
         const c = m.get(x + ox, y + oy, z + oz);
         if (!c || pid[idx(x + ox, y + oy, z + oz)] !== 7) continue;
-        if (ox || oy || oz) { if (m.data[idx(x + ox, y + oy, z + oz)] !== cm.crackC) m.data[idx(x + ox, y + oy, z + oz)] = cm.crackE; } else m.data[idx(x, y, z)] = core ? cm.crackC : cm.crackE;
+        if (ox || oy || oz) { if (m.data[idx(x + ox, y + oy, z + oz)] !== cm.crackC && h3(x + ox, y + oy, z + oz, 77) < 0.3) m.data[idx(x + ox, y + oy, z + oz)] = cm.crackE; } else m.data[idx(x, y, z)] = core ? cm.crackC : cm.crackE;
       }
     };
     const walk = (n0, steps, seed) => {
       let n = n0.slice();
-      let tx = -n[2], tz = n[0];
       let ang = h3(seed, 1, 2) * Math.PI * 2;
       for (let k = 0; k < steps; k++) {
         ang += (h3(seed, k, 5) - 0.5) * 1.2;
@@ -436,10 +427,24 @@ export function damageChest(cm, i, power = 1) {
         paint([C[0] + n[0] * (R - 0.6), C[1] + n[1] * (R - 0.6), C[2] + n[2] * (R - 0.6)], true);
         if (k === Math.floor(steps / 2) && seed < 50) walk(n, Math.floor(steps * 0.6), seed + 50);
       }
-      void tx; void tz;
     };
-    walk(w.n, 9 + Math.floor(power * 4), i * 7 + 1);
-    walk(w.n, 7 + Math.floor(power * 3), i * 7 + 3);
+    walk(w.n, 11 + Math.floor(power * 4), i * 7 + 1);
+    walk(w.n, 8 + Math.floor(power * 3), i * 7 + 3);
+    walk(w.n, 5 + Math.floor(power * 2), i * 7 + 5);
+  }
+  cm.ver++;
+  return out;
+}
+// when the crate's walls fall away the straw nest slumps into a rounded heap (the spilled bits are returned)
+export function slumpStraw(cm) {
+  const out = [];
+  const { m, pid } = cm, nx = m.nx, ny = m.ny;
+  const straw = new Set(cm.straw || []);
+  for (let z = 0; z < m.nz; z++) for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) {
+    const i = x + nx * (y + ny * z), c = m.data[i];
+    if (!straw.has(c)) continue;
+    const dx = (x - 21) / 19, dy = (y + 3) / 24, dz = (z - 16.5) / 14;
+    if (dx * dx + dy * dy + dz * dz > 1 - h3(x, y, z, 70) * 0.12) { if (h3(x, y, z, 71) < 0.25) out.push({ x, y, z, col: m.palette[c].color }); m.data[i] = 0; pid[i] = 0; }
   }
   cm.ver++;
   return out;
