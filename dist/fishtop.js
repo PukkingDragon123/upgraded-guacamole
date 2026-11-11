@@ -74176,6 +74176,30 @@ kmlmk..
     const get = (x, y, z) => m.get(x, y, z);
     return { m, pid, col, put, get, idx };
   }
+  function treasure(B2, x0, x1, z0, z1, y0, yTop, velvet) {
+    const { col, put } = B2;
+    const coin2 = [col("#ffd23a", { ...METAL3, emissive: 0.3 }), col("#f0b83c", { ...METAL3, emissive: 0.25 }), col("#ffe98a", { ...METAL3, emissive: 0.35 }), col("#d8961e", { ...METAL3, emissive: 0.15 })];
+    const glint2 = col("#ffffff", { emissive: 1, jitter: 0 });
+    const gems = [col("#ff3a6a", { ...GLOSS, emissive: 0.6 }), col("#3ad8ff", { ...GLOSS, emissive: 0.6 }), col("#4ae87a", { ...GLOSS, emissive: 0.5 }), col("#f6f2ff", { ...GLOSS, emissive: 0.4 })];
+    const vel = col(velvet, { smooth: 0.6, jitter: 0.04 });
+    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, rx2 = (x1 - x0) / 2 + 1, rz2 = (z1 - z0) / 2 + 1;
+    for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
+      const d = ((x - cx) / rx2) ** 2 + ((z - cz) / rz2) ** 2;
+      const h = Math.floor(y0 + (yTop - y0) * Math.max(0, 1 - d * 0.85) + (h38(x, z, 1, 61) - 0.5) * 2.2);
+      for (let y = y0 - 3; y <= h; y++) put(x, y, z, y <= y0 - 2 ? vel : coin2[Math.floor(h38(x, y, z, 62) * 4)], 1);
+      const r = h38(x, z, 2, 63);
+      if (r < 0.05) put(x, h, z, glint2, 1);
+      else if (r > 0.975) {
+        const gm = gems[Math.floor(h38(x, z, 3, 64) * 4)];
+        put(x, h + 1, z, gm, 1);
+        put(x, h, z, gm, 1);
+      }
+    }
+    for (let y = y0 - 2; y <= yTop + 1; y++) for (let z = z0 - 1; z <= z1 + 1; z++) for (let x = x0 - 1; x <= x1 + 1; x++) {
+      if (x !== x0 - 1 && x !== x1 + 1 && z !== z0 - 1 && z !== z1 + 1) continue;
+      put(x, y, z, vel, 1);
+    }
+  }
   function crate() {
     const B2 = builder(42, 38, 34), { m, pid, col, put, get } = B2;
     const wd = [col("#c8925a", WOOD4), col("#b98450", WOOD4), col("#d6a066", WOOD4), col("#c08a52", WOOD4)];
@@ -74193,8 +74217,10 @@ kmlmk..
     };
     for (let y = 2; y <= 29; y++) for (let z = Z0 + 2; z <= Z1 - 2; z++) for (let x = X0 + 2; x <= X1 - 2; x++) {
       const dx = (x - 21) / 13, dy = (y - 13) / 9, dz = (z - 16.5) / 11;
+      const top = 24 + Math.floor(h38(x >> 1, 0, z >> 1, 8) * 4) - (Math.abs(x - 21) > 14 ? 1 : 0);
       if (dx * dx + dy * dy + dz * dz < 1) put(x, y, z, dx * dx + dy * dy + dz * dz < 0.35 ? glowL : glow, 1);
-      else if (y >= 17) put(x, y, z, straw[Math.floor(h38(x, y, z, 7) * 3)], 1);
+      else if (y >= 17 && y <= top) put(x, y, z, straw[Math.floor(h38(x, y, z, 7) * 3)], 1);
+      else if (y === top + 1 && h38(x, z, 5, 9) < 0.06) put(x, y, z, straw[2], 1);
     }
     for (let y = 0; y <= YT; y++) for (let z = Z0; z <= Z1; z++) for (let x = X0; x <= X1; x++) {
       const outerX = x === X0 || x === X1, outerZ = z === Z0 || z === Z1, innerX = x === X0 + 1 || x === X1 - 1, innerZ = z === Z0 + 1 || z === Z1 - 1;
@@ -74292,7 +74318,9 @@ kmlmk..
     const lockB = col("#ffc23a", { ...METAL3, spec: 1.6 }), lockD = col("#c8862a", METAL3), hole = col("#1a1424", { jitter: 0 }), shackle = col("#dfe8f2", { ...METAL3, spec: 1.8 });
     const glow = col("#bfe8ff", { emissive: 0.9, jitter: 0 }), glowL = col("#ffffff", { emissive: 1, jitter: 0 });
     const X0 = 2, X1 = 41, Z0 = 2, Z1 = 31, YB = 22, YT = 30;
-    for (let z = Z0 + 2; z <= Z1 - 2; z++) for (let x = X0 + 2; x <= X1 - 2; x++) for (let y = 14; y <= YB - 1; y++) put(x, y, z, y >= YB - 2 ? glowL : glow, 1);
+    treasure(B2, X0 + 3, X1 - 3, Z0 + 3, Z1 - 3, 12, YB + 1, "#3a4aa8");
+    void glow;
+    void glowL;
     const bodyCol = (x, y, z, face4) => {
       const u = face4 === "x" ? z : x;
       const band = u <= 4 || u >= (face4 === "x" ? 29 : 39) || face4 !== "x" && (u === 13 || u === 14 || u === 29 || u === 30) || face4 === "x" && (u === 16 || u === 17) || y <= 2 || y >= YB - 1;
@@ -74353,7 +74381,8 @@ kmlmk..
     const hole = col("#2a0a10", { jitter: 0 }), seamC = col("#fff6d0", { emissive: 1, jitter: 0 });
     const glow = col("#ffe7a0", { emissive: 0.9, jitter: 0 });
     const X0 = 2, X1 = 43, Z0 = 2, Z1 = 31, YB = 21;
-    for (let z = Z0 + 2; z <= Z1 - 2; z++) for (let x = X0 + 2; x <= X1 - 2; x++) for (let y = 12; y <= YB; y++) put(x, y, z, glow, 1);
+    treasure(B2, X0 + 3, X1 - 3, Z0 + 3, Z1 - 3, 11, YB + 3, "#a8243a");
+    void glow;
     const trim = (u, y, uMax) => u <= 3 || u >= uMax - 3 || y <= 2 || y >= YB - 1;
     for (let y = 0; y <= YB; y++) for (let z = Z0; z <= Z1; z++) for (let x = X0; x <= X1; x++) {
       const ox = x === X0 || x === X1, oz = z === Z0 || z === Z1, ix = x === X0 + 1 || x === X1 - 1, iz = z === Z0 + 1 || z === Z1 - 1;
@@ -75625,7 +75654,7 @@ kmlmk..
     }
     void rgba;
   }
-  var REVEAL_SFX2, CHEST_S, CHAR_S, SEAL_S, TITLE_PAL, BURST_WORD, CHIPS, HIT_SFX, R4, rnd2, ChestPanel, SCR2, CUBES;
+  var REVEAL_SFX2, CHEST_S, CHAR_S, SEAL_S, GAP, TITLE_PAL, BURST_WORD, CHIPS, HIT_SFX, R4, rnd2, ChestPanel, SCR2, CUBES;
   var init_chest = __esm({
     "src/ui/chest.js"() {
       init_math();
@@ -75649,6 +75678,7 @@ kmlmk..
       CHEST_S = 3.1;
       CHAR_S = 1.9;
       SEAL_S = 54;
+      GAP = { crate: 0, iron: 0, golden: 12, orb: 6 };
       TITLE_PAL = { crate: "white", iron: "aqua", golden: "gold", orb: "white" };
       BURST_WORD = { crate: "SMASHED!", iron: "POPPED!", golden: "UNSEALED!", orb: "SHATTERED!" };
       CHIPS = {
@@ -75754,7 +75784,7 @@ kmlmk..
           const floorY = Math.round(Math.min(H8 * 0.74, hudTop - 74 * k));
           const cx = Math.round(W11 / 2);
           const chestX = Math.round(cx + 40 * k);
-          const reach = this.reach ?? Math.round(118 * k);
+          const reach = (this.reach ?? Math.round(118 * k)) + Math.round((GAP[this.tier] || 0) * k);
           const charX = Math.round(this.hitX(chestX, floorY) - reach);
           return { W: W11, H: H8, k, hudTop, floorY, cx, chestX, charX, sealX: Math.round(chestX + 168 * k) };
         }
@@ -75837,6 +75867,7 @@ kmlmk..
         }
         pop(text, palette3 = "white", size = 1, x, y) {
           const p = this.S ? x == null ? this.chestTop() : [x, y] : [0, 0];
+          this.pops = this.pops.filter((q) => q.text !== text || q.t > 0.6);
           this.pops.push({ text, palette: palette3, size, x: p[0] + rnd2(-8, 8), y: p[1] - 18 * this.k, t: 0, life: size >= 1.2 ? 1.2 : 0.85 });
           if (this.pops.length > 5) this.pops.shift();
         }
@@ -76074,7 +76105,7 @@ kmlmk..
           this.fx.burst(top[0], top[1], 34, { kinds: ["confetti", "confetti", "star", "sparkle", "heart"], colors: ["#ffffff", "#ffe27a", "#ff9ad0", "#8ae8ff", "#8ae84a", CHIPS[tier][0]], speed: 320, speedMin: 90, g: 260, life: 1.8, up: 140, scale: 2, a0: -Math.PI * 0.95, arc: Math.PI * 0.9 });
           this.fx.burst(cc.x, cc.y, 12, { kind: "puff", colors: ["#ffffff", "#e8f4ff"], speed: 110, g: -30, life: 1, scale: 2 });
           this.pop(BURST_WORD[tier], "gold", 1.6, cc.x, top[1] - 12 * k);
-          if (this.bonus) this.bonusPopAt = this.t + 0.55;
+          if (this.bonus) this.bonusPopAt = this.t + 0.9;
           this.beat = { kind: "cheer", t: 0, dur: 1.5 };
           this.sealSay("spin", "excited", 0.85);
           this.sealNext = { anim: "clap", mood: "love", at: this.t + 0.85, secs: 1.2 };
@@ -76086,12 +76117,13 @@ kmlmk..
           const cc = this.chestCentre(), k = this.k;
           const yawOff = p === 7 ? this.orbYawShown() : 0;
           const [ox, oy] = p === 7 ? this.orbCentre() : [cc.x, cc.y];
-          let n2 = 0;
+          let total = 0;
+          for (let i = 0; i < pid.length; i++) if (pid[i] === p && m.data[i]) total++;
+          keep = Math.min(keep, 240 / Math.max(1, total));
           for (let z = 0; z < m.nz; z++) for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) {
             const i = x + nx * (y + ny * z);
             if (pid[i] !== p || !m.data[i]) continue;
             if (R4() > keep) continue;
-            if (n2++ > 360) break;
             const [sx, sy] = this.spr.toScreen(this.chestX, this.chestY, [x, y, z], yawOff);
             const col = m.palette[m.data[i]]?.color || "#ffffff";
             const dx = sx - ox, dy = sy - oy, d = Math.hypot(dx, dy) || 1;
@@ -76332,7 +76364,7 @@ kmlmk..
           if (this.bonusPopAt && this.t >= this.bonusPopAt) {
             this.bonusPopAt = 0;
             const top = this.chestTop();
-            this.pops.push({ text: this.bonus > 1 ? "+2 BONUS!" : "+1 BONUS!", palette: "leaf", size: 1.2, x: top[0], y: top[1] - 52 * this.k, t: 0, life: 1.6 });
+            this.pops.push({ text: this.bonus > 1 ? "+2 BONUS!" : "+1 BONUS!", palette: "leaf", size: 1.1, x: top[0] + 90 * this.k, y: top[1] - 10 * this.k, t: 0, life: 1.8 });
             this.sfx("timing_perfect", { vol: 0.6 });
           }
         }

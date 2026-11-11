@@ -33,6 +33,7 @@ import { GAMES } from './chestgames.js';
 
 const REVEAL_SFX = { common: 'click', uncommon: 'timing_good', rare: 'sparkle', epic: 'magic', legendary: 'golden_shimmer' };
 const CHEST_S = 3.1, CHAR_S = 1.9, SEAL_S = 54;
+const GAP = { crate: 0, iron: 0, golden: 12, orb: 6 };
 const TITLE_PAL = { crate: 'white', iron: 'aqua', golden: 'gold', orb: 'white' };
 const BURST_WORD = { crate: 'SMASHED!', iron: 'POPPED!', golden: 'UNSEALED!', orb: 'SHATTERED!' };
 const CHIPS = {
@@ -106,7 +107,7 @@ export class ChestPanel {
     const floorY = Math.round(Math.min(H * 0.74, hudTop - 74 * k));
     const cx = Math.round(W / 2);
     const chestX = Math.round(cx + 40 * k);
-    const reach = this.reach ?? Math.round(118 * k);
+    const reach = (this.reach ?? Math.round(118 * k)) + Math.round((GAP[this.tier] || 0) * k);
     const charX = Math.round(this.hitX(chestX, floorY) - reach);
     return { W, H, k, hudTop, floorY, cx, chestX, charX, sealX: Math.round(chestX + 168 * k) };
   }
@@ -148,6 +149,7 @@ export class ChestPanel {
   spark([x, y], n, colors) { this.fx.burst(x, y, n, { kind: 'spark', colors, speed: 120, g: 300, life: 0.4 }); }
   pop(text, palette = 'white', size = 1, x, y) {
     const p = this.S ? (x == null ? this.chestTop() : [x, y]) : [0, 0];
+    this.pops = this.pops.filter((q) => q.text !== text || q.t > 0.6);
     this.pops.push({ text, palette, size, x: p[0] + rnd(-8, 8), y: p[1] - 18 * this.k, t: 0, life: size >= 1.2 ? 1.2 : 0.85 });
     if (this.pops.length > 5) this.pops.shift();
   }
@@ -374,12 +376,13 @@ export class ChestPanel {
     const cc = this.chestCentre(), k = this.k;
     const yawOff = p === 7 ? this.orbYawShown() : 0;
     const [ox, oy] = p === 7 ? this.orbCentre() : [cc.x, cc.y];
-    let n = 0;
+    let total = 0;
+    for (let i = 0; i < pid.length; i++) if (pid[i] === p && m.data[i]) total++;
+    keep = Math.min(keep, 240 / Math.max(1, total));
     for (let z = 0; z < m.nz; z++) for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) {
       const i = x + nx * (y + ny * z);
       if (pid[i] !== p || !m.data[i]) continue;
       if (R() > keep) continue;
-      if (n++ > 360) break;
       const [sx, sy] = this.spr.toScreen(this.chestX, this.chestY, [x, y, z], yawOff);
       const col = m.palette[m.data[i]]?.color || '#ffffff';
       const dx = sx - ox, dy = sy - oy, d = Math.hypot(dx, dy) || 1;
