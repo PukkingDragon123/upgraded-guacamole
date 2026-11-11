@@ -1501,6 +1501,9 @@ function sheetKeyOf(vid, sb, yawI, infl, mouth, tilt) { return vid + '|' + sb + 
 // A crisp 1-pixel black outline around every creature in a sprite sheet (user request): any transparent pixel
 // touching a solid one in the same cell turns into a dark ink pixel. Faint glass fins (low alpha) do not count as solid.
 const OUTLINE_INK = [10, 14, 26];
+// Bright, saturated creature sprites (user: "make fish bright"): a higher ambient floor and the renderer's vivid mode
+// (saturation lift, brighter exposure, colour-keeping gloss, hue-tinted rim sheen).
+const VIVID = { ambient: 0.54, vivid: 1 };
 function outlineSheet(canvas, cols, w, h) {
   const W = canvas.width, H = canvas.height;
   if (!W || !H) return;
@@ -1558,7 +1561,7 @@ function buildSheet(c, sb, yawI, infl, mouth, tilt, hi = false, only = null) {
   const bx = (x0 + x1) / 2, by = (y0 + y1) / 2;
   const center = [V[0] * bx + V[1] * by, V[4] * bx + V[5] * by, V[8] * bx + V[9] * by];
   const radius = Math.sqrt(R2) + 1;
-  const o = { w, h, scale: Sb, matrix: V, center, radius, light: [-0.42, 0.82, 0.62], ambient: 0.46, rimColor: '#c8f6ff', sky: '#f2fdff', ground: '#2a6a9a' };
+  const o = { w, h, scale: Sb, matrix: V, center, radius, light: [-0.42, 0.82, 0.62], ambient: VIVID.ambient, vivid: VIVID.vivid, rimColor: '#c8f6ff', sky: '#f2fdff', ground: '#2a6a9a' };
   const cells = frames.map((f) => ({ parts: f.parts.map((pt) => ({ ...pt })) }));
   const cols = Math.max(1, Math.min(LP_SWIM, Math.floor(4096 / w)));
   const tg = now();
@@ -1571,7 +1574,7 @@ function buildSheet(c, sb, yawI, infl, mouth, tilt, hi = false, only = null) {
   let glow = null;
   if (c.glow) {
     const gcells = frames.map((f) => ({ parts: f.parts.filter((p) => p.key !== 'fins' && p.key !== 'finrays' && p.key !== 'glass').map((p) => ({ ...p, ambient: 0, spec: 0, env: 0, rim: 0, iri: 0 })) }));
-    const raw = renderSheet(gcells, { ...o, cols, light: [0, 0, -1], ambient: 0 });
+    const raw = renderSheet(gcells, { ...o, cols, light: [0, 0, -1], ambient: 0, vivid: 0 });
     if (raw) {
       glow = makeCanvas(raw.width, raw.height);
       const g = glow.getContext('2d');
@@ -1782,7 +1785,7 @@ export function lpBall(c, rPx, fin = false) {
   const mesh = mb.build();
   const sz = Math.ceil(rb * 2 + 4);
   const glowOn = !!g.glow && !fin;
-  const cv = renderSheet([{ mesh }], { w: sz, h: sz, scale: rb, center: [0, 0, 0], radius: 1.2, matrix: viewMatrix(0, 0), spec: 0.55, shine: 30, env: 0.45, iri: 0.1, rim: 0.35, emit: glowOn ? 0.3 : 0, light: [-0.42, 0.82, 0.62], sky: '#f2fdff', ground: '#2a6a9a' });
+  const cv = renderSheet([{ mesh }], { w: sz, h: sz, scale: rb, center: [0, 0, 0], radius: 1.2, matrix: viewMatrix(0, 0), spec: 0.55, shine: 30, env: 0.45, iri: 0.1, rim: 0.35, emit: glowOn ? 0.3 : 0, light: [-0.42, 0.82, 0.62], sky: '#f2fdff', ground: '#2a6a9a', ambient: VIVID.ambient, vivid: VIVID.vivid });
   mesh.dispose();
   if (!cv) return null;
   b = { canvas: cv, ax: sz / 2, ay: sz / 2 };
@@ -1993,7 +1996,7 @@ export function lpTube(c, rPx) {
   }
   const w = Math.ceil(rb * 4) + 2, h = Math.ceil(rb * 2) + 2;
   const cy = h / 2;
-  const cv = renderSheet([{ mesh }], { w, h, scale: rb, center: [0, 0, 0], radius: 2.4, matrix: viewMatrix(0, 0, 0), spec: 0.6, shine: 26, env: 0.5, iri: 0.12, rim: 0.4, emit: g.glow ? 0.25 : 0, light: [-0.3, 0.9, 0.5], sky: '#f2fdff', ground: '#2a6a9a' });
+  const cv = renderSheet([{ mesh }], { w, h, scale: rb, center: [0, 0, 0], radius: 2.4, matrix: viewMatrix(0, 0, 0), spec: 0.6, shine: 26, env: 0.5, iri: 0.12, rim: 0.4, emit: g.glow ? 0.25 : 0, light: [-0.3, 0.9, 0.5], sky: '#f2fdff', ground: '#2a6a9a', ambient: VIVID.ambient, vivid: VIVID.vivid });
   mesh.dispose();
   b = cv ? { canvas: cv, ax: w / 2, ay: cy, r: rb, w, h } : null;
   tubes.set(key, b);

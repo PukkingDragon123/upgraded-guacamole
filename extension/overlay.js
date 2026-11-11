@@ -4335,6 +4335,7 @@ void main() {
     gl.uniform3f(u.uFogCol, fc[0], fc[1], fc[2]);
     gl.uniform1f(u.uFog, o.fog ?? 0);
     gl.uniform1f(u.uOrtho, ortho ? 1 : 0);
+    gl.uniform1f(u.uVivid, o.vivid ?? 0);
     const sk = hexRgb(o.sky || "#eafcff"), gr = hexRgb(o.ground || "#1f5f8a");
     gl.uniform3f(u.uSky, sk[0], sk[1], sk[2]);
     gl.uniform3f(u.uGround, gr[0], gr[1], gr[2]);
@@ -4605,8 +4606,13 @@ void main() {
             else a *= t[3];
           }
           if (a < 0.02) continue;
+          const viv = po.vivid ?? 0;
+          if (viv > 0) {
+            const lu = col[0] * 0.299 + col[1] * 0.587 + col[2] * 0.114;
+            col = col.map((v) => Math.max(0, lu + (v - lu) * (1 + 0.3 * viv)));
+          }
           const dd = Math.max(0, nx * L2[0] + ny * L2[1] + nz * L2[2]), wrap = Math.max(0, (nx * L2[0] + ny * L2[1] + nz * L2[2] + 0.35) / 1.35);
-          const k = amb + (1 - amb) * (dd + wrap) / 2;
+          const k = (amb + (1 - amb) * (dd + wrap) / 2) * (1 + 0.14 * viv);
           const sp = spec * Math.pow(Math.max(0, nx * H[0] + ny * H[1] + nz * H[2]), shine), rr2 = rim * Math.pow(1 - nz, 3) * 0.8;
           const lit = col.map((v) => v * k + sp + rr2 * 0.8);
           const fin2 = lit.map((v, j) => Math.min(1, v + (col[j] * 1.15 + 0.06 - v) * emit));
@@ -4673,7 +4679,7 @@ uniform vec3 uLight; uniform vec3 uEye; uniform float uAmb; uniform float uSpec;
 uniform float uRim; uniform vec3 uRimCol; uniform sampler2D uTex; uniform float uUseTex; uniform float uAlpha;
 uniform vec4 uTint; uniform vec3 uFogCol; uniform float uFog; uniform float uOrtho;
 uniform float uEnv; uniform float uIri; uniform float uEmit; uniform float uEmitTex; uniform vec3 uSky; uniform vec3 uGround;
-uniform float uSmoothN; uniform float uSoft; uniform vec3 uSoftCol;
+uniform float uSmoothN; uniform float uSoft; uniform vec3 uSoftCol; uniform float uVivid;
 out vec4 frag;
 void main() {
   vec3 n = normalize(vNrm);
@@ -4695,9 +4701,11 @@ void main() {
     else { base *= trgb; a *= t.a; }
   }
   if (a < 0.02) discard;
+  // vivid (creature sprites): a saturation lift of the painted colour before lighting
+  if (uVivid > 0.0) base = max(mix(vec3(dot(base, vec3(0.299, 0.587, 0.114))), base, 1.0 + 0.3 * uVivid), 0.0);
   float d = max(dot(n, l), 0.0);
   float wrap = max((dot(n, l) + 0.35) / 1.35, 0.0);
-  vec3 col = base * (uAmb + (1.0 - uAmb) * mix(d, wrap, 0.5));
+  vec3 col = base * (uAmb + (1.0 - uAmb) * mix(d, wrap, 0.5)) * (1.0 + 0.14 * uVivid);
   float nv = max(dot(n, v), 0.0);
   if (uSoft > 0.0) {
     // plush, subsurface-ish: a wide smooth wrap, sky / ground tinted ambient, warm light bleeding into the terminator
@@ -4715,8 +4723,9 @@ void main() {
     vec3 r = reflect(-v, n);
     vec3 env = mix(uGround, uSky, smoothstep(-0.25, 0.75, r.y));
     float fres = 0.12 + 0.88 * pow(1.0 - nv, 2.5);
-    col = mix(col, col * 0.55 + env * 0.6, uEnv * fres);
-    col += uSky * uEnv * 0.5 * pow(max(r.y, 0.0), 6.0);
+    // vivid keeps the body colour under the glossy reflection instead of greying it toward the sky / ground
+    col = mix(col, col * (0.55 + 0.33 * uVivid) + env * (0.6 - 0.32 * uVivid), uEnv * fres * (1.0 - 0.4 * uVivid));
+    col += uSky * uEnv * 0.5 * (1.0 - 0.3 * uVivid) * pow(max(r.y, 0.0), 6.0);
   }
   if (uIri > 0.0) {
     vec3 iri = 0.5 + 0.5 * cos(6.2831 * (nv * 1.4 + vec3(0.0, 0.33, 0.67)));
@@ -4725,14 +4734,16 @@ void main() {
   vec3 h = normalize(l + v);
   col += vec3(1.0) * uSpec * pow(max(dot(n, h), 0.0), uShine);
   float rim = pow(1.0 - nv, 3.0);
-  col += uRimCol * uRim * rim;
+  // vivid: the rim / sheen takes the surface's own hue (a coloured glossy edge, not a white haze)
+  vec3 rimC = mix(uRimCol, clamp(base * 1.35 + vec3(0.1), 0.0, 1.0), 0.6 * clamp(uVivid, 0.0, 1.0));
+  col += rimC * uRim * rim;
   col = mix(col, base * 1.15 + vec3(0.06), clamp(emit, 0.0, 1.0));
   col = mix(col, uTint.rgb, uTint.a);
   float fogK = clamp(uFog * length(uEye - vWorld) * 0.002, 0.0, 1.0);
   col = mix(col, uFogCol, fogK);
   frag = vec4(col * a, a);
 }`;
-      UNIFORMS = ["uMVP", "uModel", "uLight", "uEye", "uAmb", "uSpec", "uShine", "uRim", "uRimCol", "uTex", "uUseTex", "uAlpha", "uTint", "uFogCol", "uFog", "uOrtho", "uEnv", "uIri", "uEmit", "uEmitTex", "uSky", "uGround", "uSmoothN", "uSoft", "uSoftCol"];
+      UNIFORMS = ["uMVP", "uModel", "uLight", "uEye", "uAmb", "uSpec", "uShine", "uRim", "uRimCol", "uTex", "uUseTex", "uAlpha", "uTint", "uFogCol", "uFog", "uOrtho", "uEnv", "uIri", "uEmit", "uEmitTex", "uSky", "uGround", "uSmoothN", "uSoft", "uSoftCol", "uVivid"];
       softOn = true;
       LPMesh = class {
         constructor(data, count, bounds2) {
@@ -7449,7 +7460,7 @@ void main() {
         pec: { u: 0.3, v: 0.52, len: 0.09, w: 0.035, ang: 5, spread: 15, rays: 8, opaque: true, flap: 0.6 },
         pel: null,
         tail: { type: "clavus", len: 0.085, spread: 0.27, rays: 1, focus: 0.04, thick: 0.028, lobes: 9 },
-        col: { back: "#5e6c7c", flank: "#aab6c2", belly: "#e6ecf0", fin: "#66748a", vb: 0.7, vbel: 0.3, soft: 0.08 },
+        col: { back: "#4e6c8e", flank: "#a8c0d8", belly: "#eef4fa", fin: "#56749a", vb: 0.7, vbel: 0.3, soft: 0.08 },
         pat: [{ type: "mottle", color: "#dfe6ec", scale: 7, thresh: 0.56, amt: 0.5 }, { type: "speckle", tone: -0.12, density: 0.05 }],
         mat: { iri: 0.12, gloss: 0.75 },
         wave: 0.08,
@@ -7783,7 +7794,7 @@ void main() {
       S2("porpoise", "porpoise");
       S2("puffer", "puffer", { col: C("#e8a800", "#ffd418", "#fff4b0", "#ffd860"), pat: [{ type: "spots", color: "#3a2c10", size: 0.014, density: 0.22, vmin: 0.3, seed: 5 }], eye: { iris: "#3ab070" } });
       S2("briefcase", "salmon", { body: { hump: 0.05, D: 0.25 }, col: C("#b81414", "#e02a22", "#f0a088", "#4a6a30", { head: "#3a5a26", headU: 0.24 }), mouth: { drop: -0.03, curve: -0.01 }, tail: { col: "#4a6a30" }, fins: [fin("top", 0.4, 0.53, 0.11, "tri", 0.45, 11, { col: "#a82020" }), fin("top", 0.79, 0.85, 0.035, "tri", 0.3, 1, { adipose: true, col: "#a82020" }), fin("bot", 0.68, 0.79, 0.08, "tri", 0.4, 9, { col: "#4a6a30" })] });
-      S2("flounder", "flatfish", { col: C("#4c3c28", "#5c4932", "#5c4932", "#4a3a28"), op: { dark: 0.03 }, pat: [{ type: "mottle", color: "#30241a", scale: 10, thresh: 0.53, amt: 0.7 }, { type: "mottle", color: "#7a6646", scale: 20, thresh: 0.62, amt: 0.45 }, { type: "ocelli", color: "#241a10", ring: "#806848", size: 0.03, density: 0.22, seed: 9 }, { type: "spots", color: "#8a7656", size: 6e-3, density: 0.18, seed: 4 }], fins: [fin("top", 0.1, 0.95, 0.085, "low", 0.3, 46, { spots: "#2e2218", edge: "#2a2016", thick: 0.012 }), fin("bot", 0.22, 0.95, 0.085, "low", 0.3, 38, { spots: "#2e2218", edge: "#2a2016", thick: 0.012 })], tail: { type: "round", len: 0.15, spread: 0.12, thick: 0.012, col: "#4a3a28", edge: "#2a2016" } });
+      S2("flounder", "flatfish", { col: C("#6e5232", "#8a6a40", "#8a6a40", "#6a5030"), op: { dark: 0.03 }, pat: [{ type: "mottle", color: "#4a3420", scale: 10, thresh: 0.53, amt: 0.7 }, { type: "mottle", color: "#b08e58", scale: 20, thresh: 0.62, amt: 0.45 }, { type: "ocelli", color: "#3a2614", ring: "#c09a5c", size: 0.03, density: 0.22, seed: 9 }, { type: "spots", color: "#d0aa70", size: 6e-3, density: 0.18, seed: 4 }], fins: [fin("top", 0.1, 0.95, 0.085, "low", 0.3, 46, { spots: "#2e2218", edge: "#2a2016", thick: 0.012 }), fin("bot", 0.22, 0.95, 0.085, "low", 0.3, 38, { spots: "#2e2218", edge: "#2a2016", thick: 0.012 })], tail: { type: "round", len: 0.15, spread: 0.12, thick: 0.012, col: "#4a3a28", edge: "#2a2016" } });
       S2("angel", "angelfw", { col: C("#d8b8f0", "#f6e0fa", "#fff6fc", "#ecd4fc"), pat: [{ type: "bars", at: [0.15, 0.48, 0.82], width: 0.06, color: "#5ad8f0", slant: -0.05, alpha: 0.55 }, { type: "vgrad", v0: 0.7, v1: 1, color: "#ff9ad8", amt: 0.5 }], fins: [fin("top", 0.42, 0.86, 0.55, "rise", 1.5, 13, { col: "#f0d0fa", edge: "#5ad8f0" }), fin("bot", 0.42, 0.86, 0.55, "rise", 1.5, 13, { col: "#f0d0fa", edge: "#5ad8f0" })], mat: { iri: 0.7 } });
       S2("parrot", "parrot", { col: C("#0e9a84", "#22d0a8", "#8ef0d4", "#ff78b0"), pat: [{ type: "scalenet", color: "#ff8ac4", size: 0.05, inner: 0.5, umin: 0.25, alpha: 0.3 }, { type: "lines", color: "#ff9ad0", umax: 0.22, freq: 30, width: 0.18, slope: 0.4, wavy: 0.2 }], fins: [fin("top", 0.24, 0.84, 0.08, "low", 0.4, 20, { col: "#ff78b0", edge: "#3af0ff" }), fin("bot", 0.56, 0.84, 0.075, "low", 0.4, 12, { col: "#ff78b0", edge: "#3af0ff" })], tail: { col: "#ff78b0", edge: "#3af0ff" } });
       S2("gourami", "gourami", { col: C("#2e4e90", "#6c9ce0", "#d4e4f8", "#5a84c4"), pat: [{ type: "mottle", color: "#2a3e78", scale: 12, thresh: 0.55, amt: 0.6 }, { type: "blotch", u: 0.5, v: 0.5, rx: 0.03, ry: 0.07, color: "#141c3a" }, { type: "blotch", u: 0.96, v: 0.5, rx: 0.03, ry: 0.12, color: "#141c3a" }] });
@@ -10664,7 +10675,7 @@ void main() {
     if (builders[2]) res.push({ key: "eyes", mesh: builders[2].build(), spec: 1.2, shine: 70, env: 0.45, rim: 0.05, ambient: 0.62, ...strip(mats[2]), alpha: 1 });
     if (builders[3]) res.push({ key: "glow", mesh: builders[3].build(), ...mats[3] ? strip(mats[3]) : bodyM, emit: Math.max(0.8, mats[3]?.emit ?? 1), alpha: 1 });
     if (builders[6]) res.push({ key: "finrays", mesh: builders[6].build(), ...finM, alpha: Math.min(0.92, (finM.alpha ?? 0.7) + 0.2), cull: true });
-    if (builders[5]) res.push({ key: "fins", mesh: builders[5].build(), ...finM, alpha: Math.min(0.62, finM.alpha ?? 0.6), cull: true });
+    if (builders[5]) res.push({ key: "fins", mesh: builders[5].build(), ...finM, alpha: Math.min(0.7, finM.alpha ?? 0.6), cull: true });
     if (builders[4]) res.push({ key: "glass", mesh: builders[4].build(), ...strip(mats[4]), cull: false, depthWrite: false });
     STAT.grids++;
     STAT.ms += now2() - t0;
@@ -16332,7 +16343,7 @@ void main() {
     const bx = (x0 + x1) / 2, by = (y0 + y1) / 2;
     const center = [V2[0] * bx + V2[1] * by, V2[4] * bx + V2[5] * by, V2[8] * bx + V2[9] * by];
     const radius = Math.sqrt(R2) + 1;
-    const o = { w, h, scale: Sb, matrix: V2, center, radius, light: [-0.42, 0.82, 0.62], ambient: 0.46, rimColor: "#c8f6ff", sky: "#f2fdff", ground: "#2a6a9a" };
+    const o = { w, h, scale: Sb, matrix: V2, center, radius, light: [-0.42, 0.82, 0.62], ambient: VIVID.ambient, vivid: VIVID.vivid, rimColor: "#c8f6ff", sky: "#f2fdff", ground: "#2a6a9a" };
     const cells = frames.map((f) => ({ parts: f.parts.map((pt) => ({ ...pt })) }));
     const cols = Math.max(1, Math.min(LP_SWIM, Math.floor(4096 / w)));
     const tg = now3();
@@ -16343,7 +16354,7 @@ void main() {
     let glow = null;
     if (c.glow) {
       const gcells = frames.map((f) => ({ parts: f.parts.filter((p) => p.key !== "fins" && p.key !== "finrays" && p.key !== "glass").map((p) => ({ ...p, ambient: 0, spec: 0, env: 0, rim: 0, iri: 0 })) }));
-      const raw = renderSheet(gcells, { ...o, cols, light: [0, 0, -1], ambient: 0 });
+      const raw = renderSheet(gcells, { ...o, cols, light: [0, 0, -1], ambient: 0, vivid: 0 });
       if (raw) {
         glow = makeCanvas(raw.width, raw.height);
         const g = glow.getContext("2d");
@@ -16637,14 +16648,14 @@ void main() {
     }
     const w = Math.ceil(rb * 4) + 2, h = Math.ceil(rb * 2) + 2;
     const cy = h / 2;
-    const cv = renderSheet([{ mesh }], { w, h, scale: rb, center: [0, 0, 0], radius: 2.4, matrix: viewMatrix(0, 0, 0), spec: 0.6, shine: 26, env: 0.5, iri: 0.12, rim: 0.4, emit: g.glow ? 0.25 : 0, light: [-0.3, 0.9, 0.5], sky: "#f2fdff", ground: "#2a6a9a" });
+    const cv = renderSheet([{ mesh }], { w, h, scale: rb, center: [0, 0, 0], radius: 2.4, matrix: viewMatrix(0, 0, 0), spec: 0.6, shine: 26, env: 0.5, iri: 0.12, rim: 0.4, emit: g.glow ? 0.25 : 0, light: [-0.3, 0.9, 0.5], sky: "#f2fdff", ground: "#2a6a9a", ambient: VIVID.ambient, vivid: VIVID.vivid });
     mesh.dispose();
     b = cv ? { canvas: cv, ax: w / 2, ay: cy, r: rb, w, h } : null;
     tubes.set(key, b);
     if (tubes.size > 400) tubes.delete(tubes.keys().next().value);
     return b;
   }
-  var LP_SWIM, TAU3, DEG5, YAW_STEP, SCALE_STEP, CAM_TILT, TEX_LO, TEX_HI, SHEET_PX_MAX, POSE_MAX, FORCE_MS, MAX_SPRITE, clamp3, clamp013, smooth2, now3, norm, cross, rgb01, unpack2, toneRGB, mixRGB, budgetMs, spent, forceSpent, syncAll, rafOn, stat, canSpend, Part, US, R_FIN2, R_EYE2, R_SPEC, R_GLASS2, QV, spow, poses, poseKey, poseBytes, POSE_BYTES, poseSize, VOXEL, sheets2, byVid, sheetPx, scaleBucket, bucketScale, OUTLINE_INK, stills, icons, meshCache, orbs, tubes;
+  var LP_SWIM, TAU3, DEG5, YAW_STEP, SCALE_STEP, CAM_TILT, TEX_LO, TEX_HI, SHEET_PX_MAX, POSE_MAX, FORCE_MS, MAX_SPRITE, clamp3, clamp013, smooth2, now3, norm, cross, rgb01, unpack2, toneRGB, mixRGB, budgetMs, spent, forceSpent, syncAll, rafOn, stat, canSpend, Part, US, R_FIN2, R_EYE2, R_SPEC, R_GLASS2, QV, spow, poses, poseKey, poseBytes, POSE_BYTES, poseSize, VOXEL, sheets2, byVid, sheetPx, scaleBucket, bucketScale, OUTLINE_INK, VIVID, stills, icons, meshCache, orbs, tubes;
   var init_lowpolyfish = __esm({
     "src/fish/lowpolyfish.js"() {
       init_lowpoly();
@@ -16735,6 +16746,7 @@ void main() {
       scaleBucket = (S9) => Math.round(Math.log(Math.max(0.03, S9)) / Math.log(SCALE_STEP));
       bucketScale = (b) => Math.pow(SCALE_STEP, b);
       OUTLINE_INK = [10, 14, 26];
+      VIVID = { ambient: 0.54, vivid: 1 };
       stills = /* @__PURE__ */ new Map();
       icons = /* @__PURE__ */ new Map();
       meshCache = /* @__PURE__ */ new Map();
@@ -47449,9 +47461,9 @@ kwwwwwwk.
       for (const f of list) {
         if (f.alpha <= 0) continue;
         if (f.wiggle) f.wiggle = Math.max(0, f.wiggle - 0.02);
-        const haze = clamp01((f.z - 0.3) * 0.9) * 0.45;
+        const haze = clamp01((f.z - 0.3) * 0.9) * 0.3;
         const st = f.rigState({ wash: haze > 0.03 ? { color: "#8ab8d8", alpha: haze } : null, glow: this.world.glowLevel, time: this.time });
-        let alpha = f.alpha * (1 - f.z * 0.25);
+        let alpha = f.alpha * (1 - f.z * 0.15);
         if (f.camo > 0.05) alpha *= 1 - f.camo * 0.8;
         if (f.rec.variant?.mutation === "ghost") alpha *= 0.65;
         const hiding = !f.controlled && f.state === "hide";

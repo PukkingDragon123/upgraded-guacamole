@@ -31,6 +31,8 @@
 //       build({smooth}) overrides. smoothNormals(data, crease?, from?, to?) does it on raw vertex floats.
 //   LPMesh.smooth = true for smoothed meshes: the shader then trusts interpolated normals (front faces keep them, two-
 //       sided back faces flip by gl_FrontFacing) instead of flipping per pixel, so silhouettes stay clean.
+//   render option vivid (0..1, creature sprites): saturation lift of the painted colour, a brighter exposure, a glossy
+//       reflection that keeps the body colour, and a rim / sheen tinted by the surface hue (0 = unchanged).
 //   render options soft (0..1) + softColor: plush subsurface-ish shading (wrapped smooth diffuse, hemisphere sky /
 //       ground ambient, a warm scatter band at the terminator, a soft velvet rim); 0 = the classic look.
 // Textures: any canvas (uploaded premultiplied, filtered without fringes); emitTex reads texture alpha 0.5..1 as
@@ -66,7 +68,7 @@ uniform vec3 uLight; uniform vec3 uEye; uniform float uAmb; uniform float uSpec;
 uniform float uRim; uniform vec3 uRimCol; uniform sampler2D uTex; uniform float uUseTex; uniform float uAlpha;
 uniform vec4 uTint; uniform vec3 uFogCol; uniform float uFog; uniform float uOrtho;
 uniform float uEnv; uniform float uIri; uniform float uEmit; uniform float uEmitTex; uniform vec3 uSky; uniform vec3 uGround;
-uniform float uSmoothN; uniform float uSoft; uniform vec3 uSoftCol;
+uniform float uSmoothN; uniform float uSoft; uniform vec3 uSoftCol; uniform float uVivid;
 out vec4 frag;
 void main() {
   vec3 n = normalize(vNrm);
@@ -88,9 +90,11 @@ void main() {
     else { base *= trgb; a *= t.a; }
   }
   if (a < 0.02) discard;
+  // vivid (creature sprites): a saturation lift of the painted colour before lighting
+  if (uVivid > 0.0) base = max(mix(vec3(dot(base, vec3(0.299, 0.587, 0.114))), base, 1.0 + 0.3 * uVivid), 0.0);
   float d = max(dot(n, l), 0.0);
   float wrap = max((dot(n, l) + 0.35) / 1.35, 0.0);
-  vec3 col = base * (uAmb + (1.0 - uAmb) * mix(d, wrap, 0.5));
+  vec3 col = base * (uAmb + (1.0 - uAmb) * mix(d, wrap, 0.5)) * (1.0 + 0.14 * uVivid);
   float nv = max(dot(n, v), 0.0);
   if (uSoft > 0.0) {
     // plush, subsurface-ish: a wide smooth wrap, sky / ground tinted ambient, warm light bleeding into the terminator
@@ -108,8 +112,9 @@ void main() {
     vec3 r = reflect(-v, n);
     vec3 env = mix(uGround, uSky, smoothstep(-0.25, 0.75, r.y));
     float fres = 0.12 + 0.88 * pow(1.0 - nv, 2.5);
-    col = mix(col, col * 0.55 + env * 0.6, uEnv * fres);
-    col += uSky * uEnv * 0.5 * pow(max(r.y, 0.0), 6.0);
+    // vivid keeps the body colour under the glossy reflection instead of greying it toward the sky / ground
+    col = mix(col, col * (0.55 + 0.33 * uVivid) + env * (0.6 - 0.32 * uVivid), uEnv * fres * (1.0 - 0.4 * uVivid));
+    col += uSky * uEnv * 0.5 * (1.0 - 0.3 * uVivid) * pow(max(r.y, 0.0), 6.0);
   }
   if (uIri > 0.0) {
     vec3 iri = 0.5 + 0.5 * cos(6.2831 * (nv * 1.4 + vec3(0.0, 0.33, 0.67)));
@@ -118,7 +123,9 @@ void main() {
   vec3 h = normalize(l + v);
   col += vec3(1.0) * uSpec * pow(max(dot(n, h), 0.0), uShine);
   float rim = pow(1.0 - nv, 3.0);
-  col += uRimCol * uRim * rim;
+  // vivid: the rim / sheen takes the surface's own hue (a coloured glossy edge, not a white haze)
+  vec3 rimC = mix(uRimCol, clamp(base * 1.35 + vec3(0.1), 0.0, 1.0), 0.6 * clamp(uVivid, 0.0, 1.0));
+  col += rimC * uRim * rim;
   col = mix(col, base * 1.15 + vec3(0.06), clamp(emit, 0.0, 1.0));
   col = mix(col, uTint.rgb, uTint.a);
   float fogK = clamp(uFog * length(uEye - vWorld) * 0.002, 0.0, 1.0);
@@ -126,7 +133,7 @@ void main() {
   frag = vec4(col * a, a);
 }`;
 
-const UNIFORMS = ['uMVP', 'uModel', 'uLight', 'uEye', 'uAmb', 'uSpec', 'uShine', 'uRim', 'uRimCol', 'uTex', 'uUseTex', 'uAlpha', 'uTint', 'uFogCol', 'uFog', 'uOrtho', 'uEnv', 'uIri', 'uEmit', 'uEmitTex', 'uSky', 'uGround', 'uSmoothN', 'uSoft', 'uSoftCol'];
+const UNIFORMS = ['uMVP', 'uModel', 'uLight', 'uEye', 'uAmb', 'uSpec', 'uShine', 'uRim', 'uRimCol', 'uTex', 'uUseTex', 'uAlpha', 'uTint', 'uFogCol', 'uFog', 'uOrtho', 'uEnv', 'uIri', 'uEmit', 'uEmitTex', 'uSky', 'uGround', 'uSmoothN', 'uSoft', 'uSoftCol', 'uVivid'];
 
 function init() {
   if (gl || failed) return gl;
@@ -398,6 +405,7 @@ function setCommon(o, eye, ortho = false) {
   gl.uniform3f(u.uFogCol, fc[0], fc[1], fc[2]);
   gl.uniform1f(u.uFog, o.fog ?? 0);
   gl.uniform1f(u.uOrtho, ortho ? 1 : 0);
+  gl.uniform1f(u.uVivid, o.vivid ?? 0);
   const sk = hexRgb(o.sky || '#eafcff'), gr = hexRgb(o.ground || '#1f5f8a');
   gl.uniform3f(u.uSky, sk[0], sk[1], sk[2]);
   gl.uniform3f(u.uGround, gr[0], gr[1], gr[2]);
@@ -771,8 +779,10 @@ function softRender(cells, o, colsIn) {
           if (po.emitTex) emit = Math.max(emit, Math.min(1, (1 - t[3]) * 2)); else a *= t[3];
         }
         if (a < 0.02) continue;
+        const viv = po.vivid ?? 0;
+        if (viv > 0) { const lu = col[0] * 0.299 + col[1] * 0.587 + col[2] * 0.114; col = col.map((v) => Math.max(0, lu + (v - lu) * (1 + 0.3 * viv))); }
         const dd = Math.max(0, nx * L[0] + ny * L[1] + nz * L[2]), wrap = Math.max(0, (nx * L[0] + ny * L[1] + nz * L[2] + 0.35) / 1.35);
-        const k = amb + (1 - amb) * (dd + wrap) / 2;
+        const k = (amb + (1 - amb) * (dd + wrap) / 2) * (1 + 0.14 * viv);
         const sp = spec * Math.pow(Math.max(0, nx * H[0] + ny * H[1] + nz * H[2]), shine), rr = rim * Math.pow(1 - nz, 3) * 0.8;
         const lit = col.map((v) => v * k + sp + rr * 0.8);
         const fin = lit.map((v, j) => Math.min(1, v + (col[j] * 1.15 + 0.06 - v) * emit));

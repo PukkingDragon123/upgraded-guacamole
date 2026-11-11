@@ -747,9 +747,10 @@ export class Game {
     for (const f of list) {
       if (f.z < z0 || f.z >= z1) continue;
       let wash = null;
-      const fog = clamp(f.z * (ocean.biome.fogAmount ?? 0.75), 0, 0.85);
+      // [fish14] fish stay bright: only a mild depth fog on far fish and a mild darkness tint on near ones
+      const fog = clamp(f.z * (ocean.biome.fogAmount ?? 0.75) * 0.55, 0, 0.45);
       const lit = ocean.lightAt(f.x, f.y, L);
-      if (z0 < 0 && L.dark > 0.02) wash = { color: L.tint || '#0a1030', alpha: clamp01((1 - lit) * 0.9) };
+      if (z0 < 0 && L.dark > 0.02) wash = { color: L.tint || '#0a1030', alpha: clamp01((1 - lit) * 0.5) };
       else if (fog > 0.03) wash = { color: fogColor, alpha: fog };
       f.draw(ctx, wash, this.time);
       this.drawFishExtras(ctx, f);

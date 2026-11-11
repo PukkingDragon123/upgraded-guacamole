@@ -575,9 +575,11 @@ export class LabTree {
   }
 
   // ---------------------------------------------------------------- drawing
-  // plain backdrop behind the tree (src/ui/labroom.js): a clean gradient with a soft vignette, no scenery
+  // [lab14] the underwater voxel scene behind the tree (src/ui/labroom.js): seabed, reefs, kelp, fish, caustics,
+  // with parallax from the tree camera (pan in screen px, zoom delta)
   drawBackground(ctx, v) {
-    drawLabRoom(ctx, v, this.t);
+    const cam = this.cam;
+    drawLabRoom(ctx, v, this.t, { x: cam.x * cam.z, y: cam.y * cam.z, z: cam.z - Z_HOME }, 'tree');
   }
 
   // rising bubbles (two depths) and drifting motes over the room, under the fog

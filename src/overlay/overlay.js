@@ -657,9 +657,9 @@ export class Overlay {
     for (const f of list) {
       if (f.alpha <= 0) continue;
       if (f.wiggle) f.wiggle = Math.max(0, f.wiggle - 0.02);
-      const haze = clamp01((f.z - 0.3) * 0.9) * 0.45;
+      const haze = clamp01((f.z - 0.3) * 0.9) * 0.3; // [fish14] fish stay bright: a light depth haze only
       const st = f.rigState({ wash: haze > 0.03 ? { color: '#8ab8d8', alpha: haze } : null, glow: this.world.glowLevel, time: this.time });
-      let alpha = f.alpha * (1 - f.z * 0.25);
+      let alpha = f.alpha * (1 - f.z * 0.15);
       if (f.camo > 0.05) alpha *= 1 - f.camo * 0.8;
       if (f.rec.variant?.mutation === 'ghost') alpha *= 0.65;
       const hiding = !f.controlled && f.state === 'hide';
