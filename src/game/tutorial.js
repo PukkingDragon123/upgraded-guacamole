@@ -520,7 +520,7 @@ export class Tutorial {
         break;
       case 'lessonDone':
         this.say('lessonDone');
-        this.pop('GO FISH!', 'aqua');
+        this.pop('GO FISH!', 'aqua', { delay: 0.8 });
         this.seal.emote('spin');
         g.audio?.play?.('ui_unlock', { vol: 0.6 });
         g.particles?.aeroConfetti?.(g.screen.W / 2, g.screen.H * 0.3, 40, { layer: 'ui' });
@@ -1042,9 +1042,10 @@ export class Tutorial {
         // the catch card's Keep orb (reveal.js draws it at the card's bottom right in the tutorial)
         const r = g.ui?.isOpen?.('reveal') ? g.ui.panels?.reveal?.rect : null;
         if (r && Number.isFinite(r.x)) {
-          const w = r.w || 470, h = r.h || 304;
-          const k = { x: r.x + w - 66, y: r.y + h - 50, w: 40, h: 40 };
-          return { rect: k, aim: ctr(k), avoid: [r], outside: r };
+          // (reveal.js lays the card out on a 470 x 304 grid scaled by w / 470: Keep at the right, or Keep + Release)
+          const w = r.w || 470, h = r.h || 304, q = w / 470, both = this.mode === 'lesson';
+          const k = { x: r.x + w - (both ? 118 : 68) * q, y: r.y + h - 52 * q, w: (both ? 94 : 44) * q, h: 44 * q };
+          return { rect: k, aim: ctr(k), avoid: [r], outside: r, noRing: true, hl: [k] };
         }
         return { edge: true };
       }
