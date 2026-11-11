@@ -11,7 +11,8 @@
     "serve": "node tools/serve.mjs",
     "test": "node tools/build.mjs && node tests/smoke.mjs",
     "app": "node tools/build.mjs && electron .",
-    "desktop": "node tools/build.mjs && electron ."
+    "desktop": "node tools/build.mjs && electron .",
+    "itch": "node tools/build.mjs && node tools/itch.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",
