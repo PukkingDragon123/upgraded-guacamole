@@ -35196,7 +35196,7 @@ kmlmk..
     }
   };
   var SLOOP_CLIPS = { tension: ["lp_creak"], reel: ["lp_reel"], rain: ["lp_rain"], storm: ["lp_rain", "lp_wind"], static: ["lp_static"], blackhole: ["lp_rumble"], flood: ["lp_flow"] };
-  var useSampleLoop = (name) => SLOOPS[name] && (SLOOP_CLIPS[name] || []).every((id) => hasClip(id) && !clipFailed(id));
+  var useSampleLoop = (name) => !synthOnly && SLOOPS[name] && (SLOOP_CLIPS[name] || []).every((id) => hasClip(id) && !clipFailed(id));
   function makeLoop(name) {
     const build3 = useSampleLoop(name) ? SLOOPS[name] : LOOPS[name];
     let inst = null, g = null, v = 0.5, dead = false;
@@ -35484,7 +35484,7 @@ kmlmk..
     }),
     // junkyard reef: machine hum, static crackle, creaking hulls, distant metal clanks
     junkyard: (n2) => ({
-      beds: [["lp_machine", n2 ? 0.22 : 0.3, { lp: 900 }], ["lp_lap", 0.25, { lp: 1200 }]],
+      beds: [["lp_machine", n2 ? 0.35 : 0.48, { lp: 900 }], ["lp_lap", 0.4, { lp: 1200 }]],
       events: [
         ev(["creak1", "creak2", "wsqueak1", "wsqueak2"], n2 ? 7 : 4, n2 ? 15 : 10, { vol: [0.1, 0.22], rate: [0.5, 0.8], lp: 1500, verb: 0.4 }),
         ev(["static1", "static2"], n2 ? 10 : 6, n2 ? 25 : 15, { vol: [0.04, 0.09], lp: 5e3 }),
@@ -35519,7 +35519,7 @@ kmlmk..
     }),
     // drowned city: muffled traffic, neon buzz, drips, creaking steel
     metropolis: (n2) => ({
-      beds: [["lp_traffic", n2 ? 0.3 : 0.4, { lp: 800 }], ["lp_drip", 0.18, { lp: 4e3 }]],
+      beds: [["lp_traffic", n2 ? 0.5 : 0.65, { lp: 800 }], ["lp_drip", 0.3, { lp: 4e3 }]],
       events: [
         ev(["buzz1", "buzz2"], n2 ? 8 : 14, n2 ? 20 : 40, { vol: [0.03, 0.07], lp: 3e3 }),
         ev(["creak1", "creak3", "wsqueak2"], 8, 20, { vol: [0.06, 0.14], rate: [0.45, 0.7], lp: 1200, verb: 0.5 }),
@@ -35567,7 +35567,7 @@ kmlmk..
     const g = group(B.amb.in, B.amb.verb, 1, 2.5);
     const sdef = (SCENES[biome] || SCENES.desktop)(night);
     const wdef = SWEATHER[weather] ? SWEATHER[weather](night) : null;
-    const okRec = (d) => d && sceneClips(d).every((id) => hasClip(id) && !clipFailed(id));
+    const okRec = (d) => d && !synthOnly && sceneClips(d).every((id) => hasClip(id) && !clipFailed(id));
     const evs = okRec(sdef) ? startRecorded(g, sdef) : (AMB[biome] || AMB.desktop)(g, night) || [];
     let layer = null;
     if (wdef && okRec(wdef)) {
@@ -36051,7 +36051,7 @@ kmlmk..
     volcano: "mu_volcano",
     metropolis: "mu_metropolis"
   };
-  var MUSIC_GAIN = { shallows: 0.8, aquarium: 0.85, desktop: 0.85, abyss: 0.75, fjord: 0.85, junkyard: 0.75, volcano: 0.75, metropolis: 0.75 };
+  var MUSIC_GAIN = { shallows: 0.55, aquarium: 0.65, desktop: 0.65, abyss: 0.5, fjord: 0.65, junkyard: 0.55, volcano: 0.5, metropolis: 0.6 };
   function makeSampleTrack(name, id) {
     const tr = { name, id, sample: true, dead: false, src: null, fade: gainNode(0, B.music.in) };
     decodeClip(ctx, id).then((buf) => {
@@ -36106,7 +36106,7 @@ kmlmk..
     }
     if (!name) return;
     const id = MUSIC_CLIPS[name];
-    if (id && hasClip(id) && !clipFailed(id)) curTrack = makeSampleTrack(name, id);
+    if (id && hasClip(id) && !clipFailed(id) && !synthOnly) curTrack = makeSampleTrack(name, id);
     else if (TRACKS[name]) {
       curTrack = makeTrack(name);
       tracks.push(curTrack);
@@ -36291,6 +36291,7 @@ kmlmk..
   var samplesWarm = false;
   var WARM_EXTRA = ["lp_reel", "lp_creak", "creak1", "creak2", "creak3", "wsqueak1", "wsqueak2", "k_pluck1", "k_drop3", "k_glass2", "k_select1"];
   var stats = { sample: 0, synth: 0, pending: 0, dropped: 0, synthNames: /* @__PURE__ */ new Set() };
+  var synthOnly = false;
   function play(name, opts) {
     const fn = SFX[name];
     if (!fn && !SAMPLE_MAP[name]) {
@@ -36312,7 +36313,7 @@ kmlmk..
     lastPlay.set(name, now5);
     let p = Math.max(0.1, Math.min(+pitch || 1, 8));
     const o = { vol: Math.min(+vol, 2), pitch: p, pan: +pan || 0 };
-    if (SAMPLE_MAP[name]) {
+    if (SAMPLE_MAP[name] && !synthOnly) {
       if (name === "coin_collect") o.pitch = p * comboStep();
       try {
         const r = playSample(ctx, B.sfx.in, B.sfx.verb, name, o);
@@ -36452,6 +36453,9 @@ kmlmk..
     _meter: meter,
     _voices: () => ({ sfx: pools.sfx.length, music: pools.music.length, amb: pools.amb.length }),
     // dev/test: how many one-shots came from recordings vs the synth fallback, and what is playing
+    _synthOnly: (on) => {
+      synthOnly = !!on;
+    },
     _stats: () => ({ ...stats, synthNames: [...stats.synthNames], music: curTrack ? { name: curTrack.name, recorded: !!curTrack.sample, playing: !!(curTrack.src || !curTrack.sample) } : null, scene: scene ? scene.key : null })
   };
 

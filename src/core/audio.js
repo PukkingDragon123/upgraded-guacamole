@@ -1453,7 +1453,7 @@ const SCENES = {
   }),
   // junkyard reef: machine hum, static crackle, creaking hulls, distant metal clanks
   junkyard: (n) => ({
-    beds: [['lp_machine', n ? 0.22 : 0.3, { lp: 900 }], ['lp_lap', 0.25, { lp: 1200 }]],
+    beds: [['lp_machine', n ? 0.35 : 0.48, { lp: 900 }], ['lp_lap', 0.4, { lp: 1200 }]],
     events: [
       ev(['creak1', 'creak2', 'wsqueak1', 'wsqueak2'], n ? 7 : 4, n ? 15 : 10, { vol: [0.1, 0.22], rate: [0.5, 0.8], lp: 1500, verb: 0.4 }),
       ev(['static1', 'static2'], n ? 10 : 6, n ? 25 : 15, { vol: [0.04, 0.09], lp: 5000 }),
@@ -1488,7 +1488,7 @@ const SCENES = {
   }),
   // drowned city: muffled traffic, neon buzz, drips, creaking steel
   metropolis: (n) => ({
-    beds: [['lp_traffic', n ? 0.3 : 0.4, { lp: 800 }], ['lp_drip', 0.18, { lp: 4000 }]],
+    beds: [['lp_traffic', n ? 0.5 : 0.65, { lp: 800 }], ['lp_drip', 0.3, { lp: 4000 }]],
     events: [
       ev(['buzz1', 'buzz2'], n ? 8 : 14, n ? 20 : 40, { vol: [0.03, 0.07], lp: 3000 }),
       ev(['creak1', 'creak3', 'wsqueak2'], 8, 20, { vol: [0.06, 0.14], rate: [0.45, 0.7], lp: 1200, verb: 0.5 }),
@@ -1978,7 +1978,7 @@ const MUSIC_CLIPS = {
   shallows: 'mu_shallows', aquarium: 'mu_aquarium', desktop: 'mu_aquarium', abyss: 'mu_abyss', fjord: 'mu_fjord',
   junkyard: 'mu_junkyard', volcano: 'mu_volcano', metropolis: 'mu_metropolis',
 };
-const MUSIC_GAIN = { shallows: 0.8, aquarium: 0.85, desktop: 0.85, abyss: 0.75, fjord: 0.85, junkyard: 0.75, volcano: 0.75, metropolis: 0.75 };
+const MUSIC_GAIN = { shallows: 0.55, aquarium: 0.65, desktop: 0.65, abyss: 0.5, fjord: 0.65, junkyard: 0.55, volcano: 0.5, metropolis: 0.6 };
 
 function makeSampleTrack(name, id) {
   const tr = { name, id, sample: true, dead: false, src: null, fade: gainNode(0, B.music.in) };

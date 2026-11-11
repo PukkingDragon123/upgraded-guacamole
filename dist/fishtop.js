@@ -2040,7 +2040,7 @@
     const g = group(B.amb.in, B.amb.verb, 1, 2.5);
     const sdef = (SCENES[biome] || SCENES.desktop)(night);
     const wdef = SWEATHER[weather] ? SWEATHER[weather](night) : null;
-    const okRec = (d) => d && sceneClips(d).every((id2) => hasClip(id2) && !clipFailed(id2));
+    const okRec = (d) => d && !synthOnly && sceneClips(d).every((id2) => hasClip(id2) && !clipFailed(id2));
     const evs = okRec(sdef) ? startRecorded(g, sdef) : (AMB[biome] || AMB.desktop)(g, night) || [];
     let layer3 = null;
     if (wdef && okRec(wdef)) {
@@ -2207,7 +2207,7 @@
     }
     if (!name) return;
     const id2 = MUSIC_CLIPS[name];
-    if (id2 && hasClip(id2) && !clipFailed(id2)) curTrack = makeSampleTrack(name, id2);
+    if (id2 && hasClip(id2) && !clipFailed(id2) && !synthOnly) curTrack = makeSampleTrack(name, id2);
     else if (TRACKS[name]) {
       curTrack = makeTrack(name);
       tracks.push(curTrack);
@@ -2390,7 +2390,7 @@
     lastPlay.set(name, now9);
     let p = Math.max(0.1, Math.min(+pitch || 1, 8));
     const o = { vol: Math.min(+vol, 2), pitch: p, pan: +pan || 0 };
-    if (SAMPLE_MAP[name]) {
+    if (SAMPLE_MAP[name] && !synthOnly) {
       if (name === "coin_collect") o.pitch = p * comboStep();
       try {
         const r = playSample(ctx, B.sfx.in, B.sfx.verb, name, o);
@@ -2502,7 +2502,7 @@
       }
     };
   }
-  var AC, LOOKAHEAD, LIMITS, ctx, B, NYQ, pools, NB, WAVES, warned, lastPlay, vols, S, rand, pick, chance, clamp01, m2f, ready, cf, curve, TRIM, bub, bell, chime, mallet, tink, whoosh, thump, tick, droplets, arp, SFX, COMBO, combo, MIN_GAP, VERB2, LOOP_CAT, activeLoops, pendingLoops, loopO, creak, LOOPS, gClip, SLOOPS, SLOOP_CLIPS, useSampleLoop, MINPENTA, evOut, AMB, withV, evLayer, dataBlip, WEATHER, ev, RAIN_BED, SCENES, SWEATHER, rr, scene, INS, SH_CH, SH_PROGS, SH_MEL, JY_CH, JY_PROGS, JY_LEAD, AB_CH, AQ_CH, AQ_PROGS, AQ_MEL, FJ_CH, FJ_PROGS, VO_CH, VO_RIFF, ME_CH, ME_PROGS, ME_LEAD, TRACKS, tracks, curTrack, MUSIC_CLIPS, MUSIC_GAIN, VOICES, FORMANT, bab, VOICE_CLIPS, timer, failed, samplesWarm, WARM_EXTRA, stats, NOOP_LOOP, SFX_NAMES, LOOP_NAMES, MUSIC_TRACKS, BABBLE_VOICES, audio;
+  var AC, LOOKAHEAD, LIMITS, ctx, B, NYQ, pools, NB, WAVES, warned, lastPlay, vols, S, rand, pick, chance, clamp01, m2f, ready, cf, curve, TRIM, bub, bell, chime, mallet, tink, whoosh, thump, tick, droplets, arp, SFX, COMBO, combo, MIN_GAP, VERB2, LOOP_CAT, activeLoops, pendingLoops, loopO, creak, LOOPS, gClip, SLOOPS, SLOOP_CLIPS, useSampleLoop, MINPENTA, evOut, AMB, withV, evLayer, dataBlip, WEATHER, ev, RAIN_BED, SCENES, SWEATHER, rr, scene, INS, SH_CH, SH_PROGS, SH_MEL, JY_CH, JY_PROGS, JY_LEAD, AB_CH, AQ_CH, AQ_PROGS, AQ_MEL, FJ_CH, FJ_PROGS, VO_CH, VO_RIFF, ME_CH, ME_PROGS, ME_LEAD, TRACKS, tracks, curTrack, MUSIC_CLIPS, MUSIC_GAIN, VOICES, FORMANT, bab, VOICE_CLIPS, timer, failed, samplesWarm, WARM_EXTRA, stats, synthOnly, NOOP_LOOP, SFX_NAMES, LOOP_NAMES, MUSIC_TRACKS, BABBLE_VOICES, audio;
   var init_audio = __esm({
     "src/core/audio.js"() {
       init_samples();
@@ -3284,7 +3284,7 @@
         }
       };
       SLOOP_CLIPS = { tension: ["lp_creak"], reel: ["lp_reel"], rain: ["lp_rain"], storm: ["lp_rain", "lp_wind"], static: ["lp_static"], blackhole: ["lp_rumble"], flood: ["lp_flow"] };
-      useSampleLoop = (name) => SLOOPS[name] && (SLOOP_CLIPS[name] || []).every((id2) => hasClip(id2) && !clipFailed(id2));
+      useSampleLoop = (name) => !synthOnly && SLOOPS[name] && (SLOOP_CLIPS[name] || []).every((id2) => hasClip(id2) && !clipFailed(id2));
       MINPENTA = [0, 3, 5, 7, 10];
       evOut = (g, vol, pan, lp, verb, p = 1) => ({ dry: g.fade, wet: g.wet, pool: "amb", vol, pan, lp, verb, p });
       AMB = {
@@ -3530,7 +3530,7 @@
         }),
         // junkyard reef: machine hum, static crackle, creaking hulls, distant metal clanks
         junkyard: (n2) => ({
-          beds: [["lp_machine", n2 ? 0.22 : 0.3, { lp: 900 }], ["lp_lap", 0.25, { lp: 1200 }]],
+          beds: [["lp_machine", n2 ? 0.35 : 0.48, { lp: 900 }], ["lp_lap", 0.4, { lp: 1200 }]],
           events: [
             ev(["creak1", "creak2", "wsqueak1", "wsqueak2"], n2 ? 7 : 4, n2 ? 15 : 10, { vol: [0.1, 0.22], rate: [0.5, 0.8], lp: 1500, verb: 0.4 }),
             ev(["static1", "static2"], n2 ? 10 : 6, n2 ? 25 : 15, { vol: [0.04, 0.09], lp: 5e3 }),
@@ -3565,7 +3565,7 @@
         }),
         // drowned city: muffled traffic, neon buzz, drips, creaking steel
         metropolis: (n2) => ({
-          beds: [["lp_traffic", n2 ? 0.3 : 0.4, { lp: 800 }], ["lp_drip", 0.18, { lp: 4e3 }]],
+          beds: [["lp_traffic", n2 ? 0.5 : 0.65, { lp: 800 }], ["lp_drip", 0.3, { lp: 4e3 }]],
           events: [
             ev(["buzz1", "buzz2"], n2 ? 8 : 14, n2 ? 20 : 40, { vol: [0.03, 0.07], lp: 3e3 }),
             ev(["creak1", "creak3", "wsqueak2"], 8, 20, { vol: [0.06, 0.14], rate: [0.45, 0.7], lp: 1200, verb: 0.5 }),
@@ -3966,7 +3966,7 @@
         volcano: "mu_volcano",
         metropolis: "mu_metropolis"
       };
-      MUSIC_GAIN = { shallows: 0.8, aquarium: 0.85, desktop: 0.85, abyss: 0.75, fjord: 0.85, junkyard: 0.75, volcano: 0.75, metropolis: 0.75 };
+      MUSIC_GAIN = { shallows: 0.55, aquarium: 0.65, desktop: 0.65, abyss: 0.5, fjord: 0.65, junkyard: 0.55, volcano: 0.5, metropolis: 0.6 };
       VOICES = {
         crab: { base: 62, scale: [0, 2, 4, 7, 9, 12], type: "square", dur: 0.05, gap: 0.068, vol: 0.055, lp: 2400, bend: 1.12, fmul: 1 },
         fish: { base: 69, scale: [0, 2, 4, 7, 9, 12], type: "sine", dur: 0.075, gap: 0.08, vol: 0.075, lp: 3e3, bend: 1.45, fmul: 1.1 },
@@ -3990,6 +3990,7 @@
       samplesWarm = false;
       WARM_EXTRA = ["lp_reel", "lp_creak", "creak1", "creak2", "creak3", "wsqueak1", "wsqueak2", "k_pluck1", "k_drop3", "k_glass2", "k_select1"];
       stats = { sample: 0, synth: 0, pending: 0, dropped: 0, synthNames: /* @__PURE__ */ new Set() };
+      synthOnly = false;
       NOOP_LOOP = { set() {
       }, stop() {
       }, value: 0 };
@@ -4018,6 +4019,9 @@
         _meter: meter,
         _voices: () => ({ sfx: pools.sfx.length, music: pools.music.length, amb: pools.amb.length }),
         // dev/test: how many one-shots came from recordings vs the synth fallback, and what is playing
+        _synthOnly: (on) => {
+          synthOnly = !!on;
+        },
         _stats: () => ({ ...stats, synthNames: [...stats.synthNames], music: curTrack ? { name: curTrack.name, recorded: !!curTrack.sample, playing: !!(curTrack.src || !curTrack.sample) } : null, scene: scene ? scene.key : null })
       };
     }
