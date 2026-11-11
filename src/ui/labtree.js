@@ -575,18 +575,9 @@ export class LabTree {
   }
 
   // ---------------------------------------------------------------- drawing
-  // [lab13] the lab room behind the tree (src/ui/labroom.js): a layered voxel laboratory (wall with portholes, tank,
-  // shelves of jars, bubbling columns, a console, the bench in front) with parallax from the camera, a soft caustic
-  // shimmer on the wall, then rising bubbles and drifting motes. No light shafts.
+  // plain backdrop behind the tree (src/ui/labroom.js): a clean gradient with a soft vignette, no scenery
   drawBackground(ctx, v) {
-    const t = this.t, cam = this.cam;
-    drawLabRoom(ctx, v, t, { x: cam.x * cam.z, y: cam.y * cam.z, z: cam.z - Z_HOME }, 'tree', {
-      afterFar: (c, x0, y0) => { // soft caustic light on the upper wall (baked into the room's still composite)
-        c.save(); c.globalAlpha = 0.2;
-        c.drawImage(aeroCached(`labcaus9|${v.w}`, () => causticWeb(v.w, Math.round(v.h * 0.45))), x0, y0);
-        c.restore();
-      },
-    });
+    drawLabRoom(ctx, v, this.t);
   }
 
   // rising bubbles (two depths) and drifting motes over the room, under the fog

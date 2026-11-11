@@ -230,7 +230,7 @@ export function drawCraftCard(ctx, ui, panel, r) {
 export function drawBoatsView(ctx, ui, panel, view) {
   const g = panel.game, st = g.state, t = panel.t;
   ctx.save(); roundRectPath(ctx, view.x, view.y, view.w, view.h, 10); ctx.clip();
-  // [lab13] the Lab's boat dock: a hangar with a sea gate, bunting, life rings, a crane hook and the pool the boats float in
+  // Lab backdrop (src/ui/labroom.js); the boats float in two rows
   drawLabRoom(ctx, view, t, undefined, 'boats');
   const wl = view.y + labRoomScene(view, 'boats').wl + 4, near = view.y + view.h - 4;
   const cur = st.boat?.tier | 0;
