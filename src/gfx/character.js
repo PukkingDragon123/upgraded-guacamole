@@ -1155,6 +1155,33 @@ const POSES = {
 };
 export const POSE_NAMES = ['idle', 'cast', 'reel', 'pull', 'yank', 'hold', 'cheer', 'sad', 'sit', 'wave', 'dance', 'flex', 'laugh', 'chat', 'think'];
 
+// [chest16] external poses + held tools (src/gfx/chestvox.js registers the chest-cracking set: hammer, pry bar ...).
+// registerPose(name, {n, dur, loop, fn(u, i) -> partial pose}): the partial pose is merged over BASE_POSE (noRod
+// defaults to true); extra fields: tool / tool2 = {kind, pitch, yaw, roll} (degrees, body frame like rod) held in
+// the right / left hand, handL: 'tool' grips the tool's second grip. registerTool(kind, build(tk) -> {m, pivot,
+// anchors: {head, grip2}}) where tk = {model(nx, ny, nz), col(hex, o), gloss(hex, o), glow(hex, a)}.
+// drawCharacter returns rodTip = the tool head while a tool is held.
+const TOOLS = new Map();
+export function registerTool(kind, build) { TOOLS.set(kind, build); }
+export function registerPose(name, def) {
+  POSES[name] = { n: def.n, dur: def.dur, loop: !!def.loop, fn: (u, i) => P({ noRod: true, ...def.fn(u, i) }) };
+}
+function toolKit(kit) {
+  return { model: (nx, ny, nz) => kit.model(nx, ny, nz), col: (h, o = {}) => K(kit, h, o), gloss: (h, o = {}) => KG(kit, h, o), glow: (h, a = 0.8) => kit.col(h, { emissive: a, jitter: 0 }) };
+}
+function placeTool(kit, tp, at0, bodyR, place, at) {
+  const build = TOOLS.get(tp.kind);
+  if (!build) return null;
+  const pr = (tp.pitch || 0) * DEG, yr = (tp.yaw || 0) * DEG, rr = (tp.roll || 0) * DEG;
+  const dir = mv(bodyR, [Math.sin(yr) * Math.cos(pr), Math.sin(pr), Math.cos(yr) * Math.cos(pr)]);
+  let hint = [Math.sin(yr) * Math.sin(pr), -Math.cos(pr), Math.cos(yr) * Math.sin(pr)];
+  if (rr) { const side = [Math.cos(yr), 0, -Math.sin(yr)]; hint = add(scl(hint, Math.cos(rr)), scl(side, Math.sin(rr))); }
+  const part = kit.part('tool:' + tp.kind, () => build(toolKit(kit)));
+  const W = place(part, M(alignY(dir, mv(bodyR, hint)), at0));
+  at('tool', part, W);
+  return { part, W };
+}
+
 function poseFrame(pose, t) {
   const pd = POSES[pose] || POSES.idle;
   const k = (t || 0) / pd.dur;
@@ -1230,7 +1257,10 @@ function solve(kit, p, fi, hideRod) {
     at('rod', rod, Wr);
     rodTip = ap(Wr, rod.anchors.tip);
   }
+  const tool = p.tool ? placeTool(kit, p.tool, gripR, bodyR, place, at) : null; // [chest16]
+  if (tool) rodTip = ap(tool.W, tool.part.anchors.head);
   let target = p.handL;
+  if (target === 'tool') target = tool ? ap(tool.W, tool.part.anchors.grip2 || tool.part.anchors.head) : null; // [chest16]
   if (target === 'knob') target = rod ? ap(Wr, rod.anchors.knob) : toWorld(conv([2, 8.6, 7.4], 'shL'));
   else if (target === 'fore') target = rod ? ap(Wr, rod.anchors.fore) : toWorld(conv([2, 10.6, 7], 'shL'));
   else if (Array.isArray(target)) target = toWorld(conv(target, 'shL'));
@@ -1239,11 +1269,12 @@ function solve(kit, p, fi, hideRod) {
   at('upper', upper, place(upper, Lh.Mu));
   at('fore', fore, place(fore, Lh.Mf));
   const gripL = ap(Lh.Mf, gripLocal);
+  const tool2 = p.tool2 ? placeTool(kit, p.tool2, gripL, bodyR, place, at) : null; // [chest16]
   const center = ap(Wh, head.anchors.center);
   const top = hatTop || ap(Wh, head.anchors.top);
   return {
     items, head: { C: center, R: head.R, Rm: Wh.R },
-    anchors: { rodTip, handR: gripR, handL: gripL, hands: noRod ? scl(add(gripR, gripL), 0.5) : gripR, head: top, mouth: ap(Wh, add(head.anchors.center, [0, -0.3 * HEAD.R, 0.95 * HEAD.R])) },
+    anchors: { rodTip, tool2: tool2 ? ap(tool2.W, tool2.part.anchors.head) : gripL, handR: gripR, handL: gripL, hands: noRod ? scl(add(gripR, gripL), 0.5) : gripR, head: top, mouth: ap(Wh, add(head.anchors.center, [0, -0.3 * HEAD.R, 0.95 * HEAD.R])) },
   };
 }
 
@@ -1483,7 +1514,7 @@ function buildFrame(kit, pose, fi, yaw, vs, mx, hideRod) {
   const [fx, fy] = proj(toGrid([0, 0, 0]));
   const rel = (w) => { const q = proj(toGrid(w)); return [q[0] - fx, q[1] - fy]; };
   const A = sol.anchors;
-  const anchors = { rodTip: rel(A.rodTip), hands: rel(A.hands), handL: rel(A.handL), handR: rel(A.handR), head: rel(A.head), mouth: rel(A.mouth) };
+  const anchors = { rodTip: rel(A.rodTip), tool2: rel(A.tool2), hands: rel(A.hands), handL: rel(A.handL), handR: rel(A.handR), head: rel(A.head), mouth: rel(A.mouth) };
   let front = null;
   if (pose === 'hold') {
     const hs = kit.handSet;
@@ -2020,7 +2051,7 @@ export function drawCharacter(ctx, x, y, o = {}) {
   const k = vs / BASE_VS;
   if (o.trail !== false && look.trail !== 'none') drawTrail(ctx, look.trail, Math.round(x), Math.round(y), o, k, 'tr:' + (o.id ?? 'main'));
   if (o.pose === 'emote') { const fx = EMOTES[look.emote]?.fx; if (fx) drawEmoteFx(ctx, fx, x + A.head[0], y + A.head[1], t, k); }
-  return { rodTip: ax(A.rodTip), hands: ax(A.hands), head: ax(A.head), handL: ax(A.handL), handR: ax(A.handR), mouth: ax(A.mouth) };
+  return { rodTip: ax(A.rodTip), tool2: ax(A.tool2 || A.handL), hands: ax(A.hands), head: ax(A.head), handL: ax(A.handL), handR: ax(A.handR), mouth: ax(A.mouth) };
 }
 
 // ====================================================================== wardrobe thumbnails

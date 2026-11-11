@@ -194,7 +194,7 @@ export function letters3D(ctx, text, cx, cy, t, o = {}) {
 }
 
 // ------------------------------------------------------------------ titles
-const DUR = { fishon: 1.5, banner: 1.5, pop: 1.0, igotit: 2.7, snap: 1.9, escape: 2.0 };
+const DUR = { fishon: 2.0, banner: 2.2, pop: 1.35, igotit: 2.9, snap: 2.3, escape: 2.4 }; // [pace16] were 1.5 / 1.5 / 1.0 / 2.7 / 1.9 / 2.0 s
 
 export class Titles {
   constructor(F) { this.F = F; this.list = []; }

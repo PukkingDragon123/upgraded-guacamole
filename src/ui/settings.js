@@ -196,6 +196,21 @@ export class SettingsPanel {
       else this.resetSave();
     }
     ry += bh + 7;
+    // [tut16] the fishing lesson: replay it (or end a replay that is running)
+    const tut = g.tutorial;
+    if (tut?.startLesson) {
+      const running = tut.active && tut.mode === 'lesson';
+      if (running || tut.canReplay?.()) {
+        const label = running ? 'End fishing lesson' : 'Replay fishing tutorial';
+        const tip = running ? 'Stop the lesson and fish freely' : 'Bubbles shows you how to fish, step by step';
+        if (ui.button(ctx, R.x + 7, ry, R.w - 14, bh, label, { icon: running ? 'cross' : 'fish', style: running ? 'white' : 'green', font: 'small', tip })) {
+          ui.close(this.id);
+          if (running) tut.endLesson(false); else tut.startLesson('replay');
+          return;
+        }
+        ry += bh + 7;
+      }
+    }
     if (this.code) {
       const bx = R.x + 7, bwid = R.w - 14, ch = big ? 28 : 22;
       drawAeroCard(ctx, bx, ry, bwid, ch, { tone: 'white', inset: true, gloss: 0 });

@@ -323,7 +323,18 @@ User direction (latest, overrides earlier phases where they conflict):
 - Creatures API (`src/fish/lowpolyfish.js`): `fishMesh(sp, rec, {phase, frames})`, `creatureMesh(kind, {phase})`,
   `addFishToScene(scene, mesh, model)`, cached sprites `lpFrame`, `lpStill`, `lpFishIcon`. 8 swim frames x 10-degree yaw steps.
 - Oceans API: `game.ocean.depthZone()` -> {id, name, depthM}, event 'depthZone'; species may set `zone`/`depthM`.
-- Quests: `src/game/quests.js` (7 chapters, 42 quests), panel 'quests' (Q), tracker in `game.hud.questSlot()`.
+- Quests: `src/game/quests.js` (7 chapters, 68 main quests), panel 'quests' (Q), tracker in `game.hud.questSlot()`.
+  [quests16] + `src/game/questdata.js`: 107 side stories (`chapter.side`, optional, open with their chapter or `after`
+  quest), 79 milestones in 23 lines (`MILESTONES`, lifetime `{t:'total', k}` goals) and the "Today's orders" pool
+  (`ORDER_POOL`, 3 orders a day + a board bonus, refreshed at local midnight, `state.quests.daily`, one swap a day).
+  Main quests complete by themselves; side stories / orders / milestones become ready (`S.ready`, event 'questReady')
+  and are paid by `book.claim(id)` / `claimAll()` (event 'questDone' {claimed}). Lifetime counters: `S.life`.
+  New objective types: catch filters (weather, time, bait, trophy, giant, shiny, mutant, flawless, party), zap, feed,
+  build, hatch, evolve, collect, tankFish, gearLv, dress, box, labDone, online, total, ordersToday, species {biome},
+  craft {cat}. PERFECT / bad zaps come from a 'shockFired' {grade} game event that QuestBook adds by wrapping
+  `game.fishing.onShockFire` / `onBackfire` (feature-detected; if Fishing ever emits it itself, drop the wrapper).
+  The Quest Log has Story / Orders / Milestones tabs with scrolling lists, CLAIM buttons, "Claim all" and a TRACK pin
+  (`S.pin`, shown first on the HUD tracker). Save v2 migration keeps all progress; claimables appear with their chapter.
 - Aquarium: one LPScene per frame; swim mode; gear panel (Aero) for filter/heater/light/air/substrate.
 
 ## Phase 7 (cute seal, detailed voxel environment, centre-out Lab with fog of war, cube tank, management, polish)

@@ -592,7 +592,7 @@ export class Fish {
     if (this.stateT > 14) { this.setState('wander'); this.cooldown = 5; }
     // hurry over from afar, then approach the bait carefully
     const near = this.cruise * (0.6 + this.greed * 0.6);
-    const far = Math.max(near, this.burst * (0.45 + this.greed * 0.25), 80) * (this.quirks.has('intro') ? 1.8 : 1);
+    const far = Math.max(near, this.burst * (0.45 + this.greed * 0.25), 80) * (this.quirks.has('intro') ? 1.35 : 1); // [pace16] the tutorial fish glides in (was 1.8)
     return this.steer(tx, ty, lerp(near, far, clamp01((d - 50) / 220)), 25);
   }
 

@@ -488,7 +488,7 @@ export class Game {
       let bh = false;
       try { bh = !!(this.build?.active || this.build?.hit?.(cur.x, cur.y)); } catch (e) { bh = false; }
       if (bh) layer = 'build';
-      else if (this.boat.dragging || (!this.fishing.busy && this.boat.hit(cur.x, cur.y))) layer = 'boat';
+      else if (this.boat.dragging || (!this.fishing.busy && !this.tutorial.lessonLock?.() && this.boat.hit(cur.x, cur.y))) layer = 'boat'; // [tut16] the fishing lesson locks the boat
     }
     if (this.boat.dragging && !fighting) layer = 'boat';
     this.layer = layer;

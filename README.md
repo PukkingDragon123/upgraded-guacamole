@@ -65,7 +65,16 @@ To build from source, run `npm install && npm run build`, which bundles `src/` i
 
 Catch fish and keep them in your side-scrolling tank, where they earn **Aero** (even while you're away). Follow the
 **quest lines**: 7 story chapters told by Bubbles the seal, Professor Fizz, Marina and Captain Bloat.
-Each chapter's reward opens the next ocean. Research in **The Lab**, a zoomed-in tree that grows out from the middle. Nodes you can't reach yet stay
+Each chapter's reward opens the next ocean. The Quest Log (`Q`) has three tabs:
+- **Story**: each chapter's main quests, plus about 15 optional side stories per chapter. Side stories cover species,
+  weather, night fishing, depth zones, bait, flawless fights, the tank, the Workshop and the Lab.
+- **Orders**: three new requests from the NPCs every day, with a bonus chest for filling all three. You can swap one
+  order a day.
+- **Milestones**: lifetime goals in tiers, such as fish caught, FishDex pages, perfect zaps and bosses beaten.
+
+Side stories, orders and milestones are claimed with a **Claim** button. Pin one to the HUD tracker with **Track**.
+
+Research in **The Lab**, a zoomed-in tree that grows out from the middle. Nodes you can't reach yet stay
 black. Sail to the **Workshop** to craft rods, tackle, bait, decor, boat parts and tank gear, and crack open chests
 with a minigame.
 

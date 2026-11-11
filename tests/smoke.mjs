@@ -194,7 +194,8 @@ async function spinGear(each, ms) {
       s = await G(`(() => { const f = g.fishing, B = f.state === 'bite' ? f.hs : f.battle, gr = f.gear, band = B && B.band;
         return { st: f.state, T: f.tension, rpm: gr && typeof gr.rpm === 'number' ? gr.rpm : null, gt: gr ? gr.t : 0, hand: gr ? gr.hand : 0, lo: band ? band.lo : null, hi: band ? band.hi : null,
           hint: f.crankHint ? f.crankHint() : [g.input.x, g.input.y], ready: !!(B && B.shockReady), holdShock: !!(B && 'chargeWin' in B),
-          surge: !!(B && ((B.qte && B.qte.active) || (B.mode === 'surge' && typeof B.pullDir === 'number'))), pull: B ? (B.qte && B.qte.active ? B.qte.dir : B.pullDir) : null }; })()`);
+          surge: !!(B && ((B.qte && B.qte.active) || (B.mode === 'surge' && typeof B.pullDir === 'number'))), pull: B ? (B.qte && B.qte.active ? B.qte.dir : B.pullDir) : null,
+          tstep: g.tutorial && g.tutorial.step }; })()`);
       const now = Date.now();
       if (prevW && s.gt > prevT) spinCtl.dil = spinCtl.dil * 0.8 + Math.max(0.7, Math.min(5, (now - prevW) / 1000 / (s.gt - prevT))) * 0.2;
       prevW = now; prevT = s.gt;
@@ -259,7 +260,8 @@ async function fishOnce(attempt) {
   await spinGear(async (s) => {
     if (s.st !== 'fight') return true;
     if (!fightShot && Date.now() - ft0 > 2500) { fightShot = true; await shot('11_fight.png'); }
-    if (!shocked && s.ready && Date.now() - ft0 > 1500) {
+    // (the forced fishing lesson's zap step hands a missed zap back: try again until it stuns)
+    if ((!shocked || s.tstep === 'zap') && s.ready && Date.now() - ft0 > 1500) {
       if (s.holdShock) {
         // hold Space (the gear keeps spinning) and let go early in the PERFECT window
         await page.keyboard.down('Space');

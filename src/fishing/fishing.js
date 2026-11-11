@@ -260,6 +260,7 @@ export class Fishing {
   // Called by fish AI when it wants to start nibbling.
   requestNibble(fish) {
     if (this.state !== 'idle' || this.cine || !this.world.hook.active) return false;
+    if (fish.boss && this.game.tutorialActive) return false; // [tut16] no boss during the fishing lesson
     this.fish = fish;
     fish.controlled = true;
     fish.allowTurn = true;
@@ -267,7 +268,9 @@ export class Fishing {
     const sp = fish.sp, lure = this.lureK();
     const [n0, n1] = sp.fight?.nibbles || [1, 3];
     this.nibblesLeft = fish.boss ? 0 : Math.max(0, Math.round(rng.int(n0, n1) / Math.sqrt(lure)));
-    this.nibbleT = fish.boss ? 0.3 : rng.float(0.35, 0.8) / lure;
+    // [pace16] a calmer nibble: the first touch after 0.6-1.2 s (was 0.35-0.8 s), so the bite reads as a moment
+    this.nibbleT = fish.boss ? 0.3 : rng.float(0.6, 1.2) / lure;
+    if (this.game.tutorialActive && !fish.boss) { this.nibblesLeft = Math.max(2, this.nibblesLeft); this.nibbleT = 1.1; } // the lesson: watch it nibble
     this.nibblePhase = 0;
     this.fakeBite = !fish.boss && rng.chance((sp.fight?.fakeBite ?? 0.15) / lure);
     return true;
@@ -303,7 +306,7 @@ export class Fishing {
 
   resetCamera() {
     const c = this.cam, g = this.game;
-    c?.release?.(3);
+    c?.release?.(2.4); // [pace16] a softer glide back (was 3)
     c?.setLetterbox?.(false);
     this.restoreScroll();
     if (g.timeScaleTarget !== undefined) g.timeScaleTarget = 1;
@@ -312,7 +315,7 @@ export class Fishing {
     this.setPose('idle');
   }
 
-  message(text, color = '#ffffff', time = 1.6, big = false) {
+  message(text, color = '#ffffff', time = 2.2, big = false) { // [pace16] prompts linger (was 1.6 s)
     this.msg = { text, color, t: 0, max: time, big };
   }
 
@@ -396,7 +399,7 @@ export class Fishing {
 
     // floating boxes under the hook
     this.boxHover = null;
-    if (this.state === 'idle' && canHook && inWater && g.floaters?.hitHook) {
+    if (this.state === 'idle' && canHook && inWater && g.floaters?.hitHook && !g.tutorialActive) { // [tut16] no box detours in the lesson
       try { this.boxHover = g.floaters.hitHook(h.x, h.y, 7) || null; } catch (e) { this.boxHover = null; }
       if (this.boxHover?.hooked) this.boxHover = null;
     }
@@ -495,7 +498,7 @@ export class Fishing {
     const f = this.fish, h = this.hook, g = this.game, inp = this.input;
     if (!f || !canHook || !this.world.hook.inWater) { this.releaseFish(true); return; }
     // spooked by big movements
-    if (!f.boss && this.cursor.speed > 260 * (this.stats?.calm ?? 1)) {
+    if (!f.boss && this.cursor.speed > 260 * (this.stats?.calm ?? 1) * (g.tutorialActive ? 2.5 : 1)) {
       this.iconPop('spook', ...this.toScreen(f.x, f.y));
       this.releaseFish(true, '!');
       return;
@@ -529,9 +532,9 @@ export class Fishing {
     if (this.nibbleT <= 0) {
       if (this.nibblesLeft > 0) {
         this.nibblesLeft--;
-        this.nibblePhase = 0.25;
+        this.nibblePhase = 0.32;
         this.nibbled = false;
-        this.nibbleT = rng.float(0.45, 1.1) / this.lureK();
+        this.nibbleT = rng.float(0.75, 1.5) / this.lureK(); // [pace16] was 0.45-1.1 s between nibbles
         if (this.fakeBite && this.nibblesLeft === 1) { h.dip = 8; f.say('!', 0.4); this.sfx('nibble', { pitch: 0.7 }); this.fakeBite = false; }
       } else {
         this.state = 'bite';
@@ -550,7 +553,7 @@ export class Fishing {
         if (rng.chance(this.stats?.autoHook ?? 0)) { this.setHook(true); return; }
       }
     }
-    if (inp.pressed && !g.ui?.blocking && this.state === 'nibble') {
+    if (inp.pressed && !g.ui?.blocking && this.state === 'nibble' && !g.tutorialActive) { // (the lesson never punishes an early click)
       this.iconPop('early', inp.x, inp.y);
       this.sfx('escape', { vol: 0.5 });
       this.releaseFish(true, 'cross');
@@ -571,7 +574,7 @@ export class Fishing {
     f.y = damp(f.y, h.y + 2 + Math.sin(this.t * 23) * 1.2, 16, dt);
     f.facing = -side;
     f.feel(hs.inBand ? 'scared' : 'determined', 0.2);
-    this.focusCam(lerp(f.x, h.x, 0.5), f.y, this.fightZoom() * 0.9, 2.5); // a gentle push-in on the strike
+    this.focusCam(lerp(f.x, h.x, 0.5), f.y, this.fightZoom() * 0.9, 1.8); // a gentle push-in on the strike [pace16] was 2.5
     h.dip = Math.max(h.dip, 4 + tug + Math.sin(this.t * 40) * 2 + hs.set * 4);
     if (rng.chance(dt * (12 + hs.set * 20))) this.particles.bubbles(h.x, h.y, 1, { size: 1 });
     if (hs.inBand && rng.chance(dt * 8)) this.particles.glint?.(h.x + rng.float(-4, 4), h.y + rng.float(-3, 3), { len: 3 });
@@ -631,9 +634,9 @@ export class Fishing {
     // cinematic: slow-mo punch-in with letterbox
     const cam = this.cam;
     const zoomIn = f.boss ? this.bossZoom() + 0.5 : this.fightZoom() + 0.3;
-    this.focusCam(f.x, f.y, zoomIn, f.boss ? 2 : 6);
+    this.focusCam(f.x, f.y, zoomIn, f.boss ? 2 : 4.2); // [pace16] was 6
     cam?.setLetterbox?.(true);
-    cam?.slowmo?.(f.boss ? 0.35 : 0.22, f.boss ? 1.4 : 0.55);
+    cam?.slowmo?.(f.boss ? 0.35 : 0.3, f.boss ? 1.4 : 0.85); // [pace16] a longer, softer hook-set beat (was 0.22 for 0.55 s)
     cam?.flash?.('#e8fbff', 0.35);
     this.shake(5);
     this.sfx('hookset');
@@ -695,12 +698,12 @@ export class Fishing {
     const back = q?.active ? clamp01(q.k * 1.6) : 0;
     const lk = B.lean * (1 - back * 1.8);
     const ld = this.leanDir ?? 0;
-    this.leanX = damp(this.leanX, Math.cos(ld) * lk * 34, 5, dt);
-    this.leanY = damp(this.leanY, Math.sin(ld) * lk * 20, 5, dt);
+    this.leanX = damp(this.leanX, Math.cos(ld) * lk * 34, 3.6, dt);
+    this.leanY = damp(this.leanY, Math.sin(ld) * lk * 20, 3.6, dt);
     const ev = B.event?.focus;
-    if (ev) this.focusCam(ev.x, ev.y, ev.zoom, 4);
+    if (ev) this.focusCam(ev.x, ev.y, ev.zoom, 3.2); // [pace16] camera moves a little slower (was 4)
     else if (B.boss?.stage === 'intro') this.focusCam(f.x, f.y - (this.H * 0.16) / zoom, zoom, 1.6); // the boss sits low: room for its title
-    else this.focusCam(f.x + this.leanX / zoom, f.y + this.leanY / zoom, zoom - Math.abs(lk) * 0.12, B.mode === 'hookset' ? 6 : 4);
+    else this.focusCam(f.x + this.leanX / zoom, f.y + this.leanY / zoom, zoom - Math.abs(lk) * 0.12, B.mode === 'hookset' ? 4.5 : 3); // [pace16] was 6 / 4
     // character pose from what the player is doing
     if (!this.poseHold) {
       const pose = q?.holding ? 'pull' : this.gear.p > 0.08 || B.stunned ? 'reel' : 'pull';

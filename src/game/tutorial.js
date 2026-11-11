@@ -18,13 +18,29 @@
 //    (step ids 'tank' / 'coin' are what aquarium.js checks to keep jar clicks as drop grabs)
 //    Big glossy 3D Alagard words pop up at the key moments (FISH ON!, NICE CATCH!, GO FISH!).
 //    A row of glossy dots at the top shows the progress. The HUD asks dockVisible(id) which buttons to show.
+// [tut16] The fishing part is a FORCED step-by-step lesson ("How to fish"): each step waits until the player has
+//    done it, Bubbles explains it in one short line, the HUD part it is about gets the pixel focus brackets (never
+//    rings or rays), the rest of the HUD and the boat are locked, and the fight itself follows the lesson (battle.js
+//    reads tutorial.lesson): one calm intro beat per step (the fish holds still, the world dims softly), then
+//      cast   move the mouse into the water (a 3D mouse glides to the spot)    wait  hold still, watch the bait nibble
+//      hook   spin the gear into the band                 reel  circle to crank, needle in the green (to 30 %)
+//      ease   the line spikes tight: slow down until the tube is calm         surge hold + drag against the pull (won)
+//      zap    hold, release on the gold: a stun (a miss is refunded)          land  reel the dizzy fish all the way in
+//      card   keep it (new game; release too in a replay)
+//    Every step is saved (state.tutorialStep, state.fishLesson = {step, stages, done, offered, active}) so a reload
+//    resumes: the opening is not replayed, a fight step resumes at the cast (a fight cannot be resumed) and keeps the
+//    fight steps already learnt. Older saves that finished the tutorial are offered the lesson once (Bubbles asks,
+//    "I'm a pro" declines); Settings has "Fishing lesson" (replay) and, during a replay, "End lesson".
+//    Big step titles are 3D voxel words (text3d.js), never 2D text pop-ups.
 // 3. Afterwards Bubbles stays as an optional hint helper: it rests on its bubble near the bottom right edge (the left
 //    edge during a fight); click it for a tip that fits the moment and it swims over to point at the right button
 //    (state.clip.hints, and the Settings 'hints' switch, turn it off). skip() ends everything (+ the starter bait).
 //
 // Used by game.js: start(), skip(), update(dt), drawWorld(ctx), drawUi(ctx), onCaught(fish, data) -> handled,
 //   capturesInput(), boxVisible(), boxOffset(), dockVisible(id), active, step, allowFishing, intro (.opaque),
-//   waterSpot(), researchId, dialogue (the Dialogue), helperRect(), seal (the SealGuide).
+//   waterSpot(), researchId, dialogue (the Dialogue), helperRect(), seal (the SealGuide), lessonLock().
+// [tut16] startLesson(kind) / endLesson(done) / canReplay() (Settings), lesson (the fight step battle.js follows),
+//   mode ('full' = the first session, 'lesson' = a replay of the fishing lesson only).
 
 import { clamp, clamp01, TAU } from '../core/math.js';
 import { rgba } from '../core/color.js';
@@ -33,6 +49,7 @@ import * as UIC from '../gfx/uiicons.js';
 import * as AE from '../ui/aero.js';
 import { SealGuide, SEAL_INFO, sealSize, warmSeal } from '../gfx/seal.js';
 import { drawText3D } from '../gfx/text3d.js';
+import { drawIcon3d } from '../fishing/icons3d.js';
 import { Intro3D } from './intro3d.js';
 import { Dialogue } from './dialogue.js';
 import * as BAIT from '../store/bait.js';
@@ -45,17 +62,28 @@ import * as BM from '../world/boatmodels.js';
 const START_BIOME = 'oscean';
 const START_BAIT = 'crumbs';
 const ALIAS = { skills: 'lab', tank: 'aquarium', store: 'baitshop', shop: 'baitshop', appsea: 'baitshop' };
-// HUD buttons revealed so far, per step
+// [tut16] the forced fishing lesson: its steps, the fight steps (battle.js follows tutorial.lesson), how far each
+// fight step may reel the fish (progress cap), the calm intro beat (s) and the 3D step titles
+export const LESSON_STEPS = ['cast', 'wait', 'hook', 'reel', 'ease', 'surge', 'zap', 'land', 'card'];
+export const FIGHT_STEPS = ['reel', 'ease', 'surge', 'zap', 'land'];
+const FISHING_STEPS = ['cast', 'wait', 'hook', ...FIGHT_STEPS];
+const LESSON_CAP = { reel: 0.3, ease: 0.42, surge: 0.56, zap: 0.7, land: 1 };
+const LESSON_HOLD = { reel: 1.6, ease: 1.5, surge: 1.5, zap: 1.5, land: 0.7 };
+const LESSON_POP = {
+  cast: ['CAST!', 'aqua'], hook: ['BITE!', 'gold'], reel: ['REEL!', 'leaf'], ease: ['EASE OFF!', 'coral'],
+  surge: ['PULL BACK!', 'gold'], zap: ['ZAP IT!', 'gold'], land: ['LAND IT!', 'leaf'],
+};
+// HUD buttons revealed so far, per step (the lesson shows only the loaded bait)
 const SHOWN = {
   intro: [],
   bait: ['baitshop'],
-  cast: ['baitshop', 'bait'], wait: ['baitshop', 'bait'], hook: ['baitshop', 'bait'], fight: ['baitshop', 'bait'],
   card: ['baitshop', 'bait', 'aquarium'], tank: ['baitshop', 'bait', 'aquarium'], coin: ['baitshop', 'bait', 'aquarium'],
   lab: ['baitshop', 'bait', 'aquarium', 'lab'], research: ['baitshop', 'bait', 'aquarium', 'lab'],
 };
-// the progress dots (wait and hook share the cast/hook-set dots)
-const DOTS = ['bait', 'cast', 'hook', 'fight', 'card', 'tank', 'coin', 'lab', 'research'];
-const DOT_OF = { bait: 0, cast: 1, wait: 1, hook: 2, fight: 3, card: 4, tank: 5, coin: 6, lab: 7, research: 8, done: 9 };
+for (const s of FISHING_STEPS) SHOWN[s] = ['bait'];
+// the progress dots: the first session, or a replayed lesson
+const DOTS_FULL = ['bait', ...LESSON_STEPS, 'tank', 'coin', 'lab', 'research'];
+const DOTS_LESSON = LESSON_STEPS;
 // what the intro's bait choice puts in the satchel
 const BAIT_GIFT = { crumbs: 5, worm: 2, sugar: 2 };
 export const GUIDE_NAME = SEAL_INFO.name;
@@ -67,13 +95,31 @@ const SAY = {
   baitPick: { text: 'Grab the free crumbs!', pose: 'point', mood: 'excited' },
   gift: { text: 'Here, some crumbs on me!', pose: 'cheer', mood: 'excited' },
   loaded: { text: 'Your bait sits here. Loaded!', pose: 'point', mood: 'happy' },
-  cast: { text: 'Now drop your hook in the water!', pose: 'point', mood: 'happy' },
-  again: { text: 'No worries! Cast again.', pose: 'talk', mood: 'happy' },
-  wait: { text: 'Wiggle the lure... wait for a bite!', pose: 'think', mood: 'think' },
-  nibble: { text: 'Steady... steady...', pose: 'think', mood: 'surprised' },
-  hook: { text: 'NOW! Click to hook it!', pose: 'point', mood: 'surprised', big: true },
-  hookGear: { text: 'A bite! Spin the gear to hook it!', pose: 'point', mood: 'surprised', big: true, g: 'crank' },
-  missed: { text: 'Too slow! Try again.', pose: 'sad', mood: 'worried' },
+  // [tut16] the fishing lesson: one short line per step; `stay` lines wait until the step is done
+  cast: { text: 'Move your mouse into the water to cast!', pose: 'point', mood: 'happy', stay: true, g: 'move' },
+  again: { text: 'No worries! Cast again.', pose: 'talk', mood: 'happy', stay: true, g: 'move' },
+  wait: { text: 'Hold still... watch your bait!', pose: 'think', mood: 'think', stay: true },
+  nibble: { text: 'Nibble, nibble... not yet!', pose: 'think', mood: 'surprised', stay: true },
+  hook: { text: 'NOW! Click to hook it!', pose: 'point', mood: 'surprised', big: true, stay: true },
+  hookGear: { text: 'A BITE! Circle the mouse to spin the gear!', pose: 'point', mood: 'surprised', big: true, g: 'crank', stay: true },
+  missed: { text: 'Too slow! Try again.', pose: 'sad', mood: 'worried', stay: true },
+  reel: { text: 'Keep circling! Keep the needle in the green!', pose: 'point', mood: 'excited', g: 'crank', stay: true },
+  easeIntro: { text: 'Now watch this tube: the line tension!', pose: 'point', mood: 'think', stay: true },
+  easeTight: { text: 'Too tight! Slow down, ease off!', pose: 'bend', mood: 'worried', g: 'slow', stay: true },
+  ease: { text: 'Easy... keep the tube low and calm.', pose: 'point', mood: 'happy', g: 'slow', stay: true },
+  surgeIntro: { text: 'Uh oh, it wants to swim away...', pose: 'think', mood: 'surprised', stay: true },
+  surgeGo: { text: 'Hold the button, drag against the arrow!', pose: 'bend', mood: 'determined', g: 'hold', stay: true },
+  zap: { text: 'Zap time! Hold, then let go on the gold!', pose: 'point', mood: 'excited', g: 'hold', stay: true },
+  zapMiss: { text: 'Almost! Let go when the ring glows gold!', pose: 'talk', mood: 'happy', g: 'hold', stay: true },
+  land: { text: "It's dizzy! Reel it all the way in!", pose: 'point', mood: 'excited', g: 'crank', stay: true },
+  cardLesson: { text: 'Keep it in your tank, or let it go!', pose: 'cheer', mood: 'love', stay: true },
+  lessonHi: { text: "Fishing lesson! I'll show you, step by step.", pose: 'wave', mood: 'excited' },
+  lessonBack: { text: "Welcome back! Let's finish the lesson.", pose: 'wave', mood: 'happy' },
+  lessonDone: { text: "That's how to fish, {name}! Go get 'em!", pose: 'cheer', mood: 'excited' },
+  offer: { text: 'Psst! Want a quick fishing lesson?', pose: 'wave', mood: 'excited', choices: [
+    { text: 'Teach me!', value: true, mood: 'love', reply: 'Yay! Follow me!' },
+    { text: "I'm a pro", value: false, mood: 'smug', reply: "Okay! It's in Settings any time." },
+  ] },
   crank: { text: 'Circle the mouse to reel it in!', pose: 'point', mood: 'excited', g: 'crank' },
   crankGear: { text: 'Spin the gear! Keep it in the green!', pose: 'point', mood: 'excited', g: 'crank' },
   shock: { text: 'Press Space to Shock it!', pose: 'point', mood: 'excited', g: 'key' },
@@ -126,12 +172,16 @@ export class Tutorial {
     this.perchI = -1;
     this.helper = { show: 0, t: 0, tipI: 0, open: 0, at: null };
     this.doneSent = false;
+    this.mode = 'full'; // [tut16] 'full' = the first session, 'lesson' = a replayed fishing lesson
+    this.lesson = null; // [tut16] the fight step battle.js follows
+    this.offering = false; this.offerT = 0; this.bootT = 0; this.resumed = false;
     this.dlg = new Dialogue({ audio: game.audio, voice: 'fish', name: '', vars: { name: 'Angler' } });
     game.on?.('baitBought', () => this.onBait());
     game.on?.('baitDownloaded', () => this.onBait());
-    game.on?.('hooked', () => { if (['cast', 'wait', 'hook'].includes(this.step)) { this.go('fight'); this.pop('FISH ON!', 'gold'); this.seal.emote('spin'); } });
+    // (the fishing HUD shows FISH ON! itself)
+    game.on?.('hooked', () => { if (this.active && ['cast', 'wait', 'hook'].includes(this.step)) { this.go(this.firstFightStep()); this.seal.emote('spin'); } });
     game.on?.('escaped', () => this.onEscape());
-    game.on?.('revealDone', () => { if (this.step === 'card') this.go('tank'); });
+    game.on?.('revealDone', () => { if (this.step === 'card') this.go(this.mode === 'lesson' ? 'lessonDone' : 'tank'); });
     game.on?.('coinCollected', () => { if (this.step === 'coin' || this.step === 'tank') { this.seal.emote('wiggle'); this.go('lab'); } });
     game.on?.('labStarted', () => { if (this.step === 'lab' || this.step === 'research') this.go('done'); });
     game.on?.('panelOpen', (id) => { if (this.step === 'bait' && id === 'baitshop') this.focusShop(); });
@@ -139,7 +189,18 @@ export class Tutorial {
   }
 
   get dialogue() { return this.dlg; }
-  get tutorialActive() { return this.active && ['cast', 'wait', 'hook', 'fight'].includes(this.step); }
+  get tutorialActive() { return this.active && FISHING_STEPS.includes(this.step); }
+  // [tut16] the lesson locks the world around the fishing (no boat dragging, no HUD panels)
+  lessonLock() { return this.active && (FISHING_STEPS.includes(this.step) || this.step === 'card'); }
+  // the persistent lesson record (created on demand: older saves have none)
+  lessonState() {
+    const st = this.game.state;
+    const L = (st.fishLesson && typeof st.fishLesson === 'object') ? st.fishLesson : (st.fishLesson = {});
+    L.stages ||= {};
+    return L;
+  }
+  // Settings may replay the lesson (not during the first session or the opening)
+  canReplay() { return !this.intro && !(this.active && this.mode === 'full'); }
   get allowFishing() { return this.active && !this.intro; }
 
   sealSize() {
@@ -153,8 +214,17 @@ export class Tutorial {
   start() {
     const g = this.game;
     this.active = true;
+    this.mode = 'full';
     g.tutorialActive = true;
     this.prepareOcean();
+    // [tut16] a reload mid-tutorial resumes at the saved step (the opening is not replayed)
+    const resume = this.resumeStep();
+    if (resume) {
+      this.enterSeal();
+      this.go(resume);
+      if (resume === 'cast') { this.say('lessonBack', { force: true }); this.lineAt = 2.6; }
+      return;
+    }
     this.intro = new Intro3D({
       W: g.screen.W, H: g.screen.H, input: g.input, audio: g.audio, look: g.state.character, boat: g.state.boat || { tier: 0 },
       music: g.ocean?.biome?.music || 'oscean', state: g.state, lowPower: !!g.state.settings?.lowPower,
@@ -163,6 +233,63 @@ export class Tutorial {
       onDone: () => { this.intro = null; this.enterSeal(); this.go('bait'); },
     });
     this.go('intro');
+  }
+
+  // [tut16] Where a saved first session picks up again (null: from the opening).
+  resumeStep() {
+    const st = this.game.state, s = st.tutorialStep;
+    if (typeof s !== 'string' || !s || s === 'intro') return null;
+    if (s === 'bait') return 'bait';
+    if (FISHING_STEPS.includes(s)) return 'cast';
+    if (s === 'card') return (st.fish || []).some((f) => f.inTank) ? 'tank' : 'cast';
+    if (s === 'tank' || s === 'coin') return 'tank';
+    if (s === 'lab' || s === 'research') return 'lab';
+    if (s === 'done') return 'done';
+    return null;
+  }
+
+  // [tut16] Replay the fishing lesson on its own (Settings, the one-time offer, or a saved replay after a reload).
+  startLesson(kind = 'replay') {
+    const g = this.game, st = g.state;
+    if (!this.canReplay()) return false;
+    if (this.active && this.mode === 'lesson') return true;
+    try { if (g.fishing?.busy) g.fishing.releaseFish(false); } catch (e) { /* optional */ }
+    try { if (g.ui?.isOpen?.('settings')) g.ui.close('settings'); } catch (e) { /* optional */ }
+    if (st.view !== 'ocean') g.setView?.('ocean');
+    const L = this.lessonState();
+    if (kind !== 'resume') L.stages = {};
+    L.active = true; L.offered = true;
+    this.mode = 'lesson';
+    this.active = true;
+    g.tutorialActive = true;
+    this.offering = false;
+    this.helper.open = 0;
+    this.dlg.clear();
+    this.guide.key = null;
+    this.doneSent = true; // quests started with the first session already
+    try { warmSeal(this.sealSize(), ['idle', 'swim', 'point']); } catch (e) { /* optional */ }
+    this.go('cast');
+    this.say(kind === 'resume' ? 'lessonBack' : 'lessonHi', { force: true });
+    this.lineAt = 2.8;
+    this.seal.emote('wave', 1.4);
+    return true;
+  }
+
+  // [tut16] The replayed lesson is over (done) or was stopped from Settings.
+  endLesson(done = false) {
+    if (!this.active || this.mode !== 'lesson') return;
+    const g = this.game, L = this.lessonState();
+    L.active = false; L.step = null;
+    if (done) L.done = true;
+    this.active = false;
+    this.lesson = null;
+    this.step = 'done';
+    this.mode = 'full';
+    g.tutorialActive = false;
+    try { if (!done && g.fishing?.busy) g.fishing.releaseFish(false); } catch (e) { /* optional */ }
+    if (!done) this.dlg.clear();
+    this.guide.key = null;
+    g.save?.();
   }
 
   // Bubbles swims in from the left edge after the opening
@@ -230,6 +357,9 @@ export class Tutorial {
     g.tutorialActive = false;
     this.prepareOcean();
     g.state.tutorialDone = true;
+    this.lesson = null;
+    this.mode = 'full';
+    { const L = this.lessonState(); L.offered = true; L.active = false; } // skipping everything: no lesson offer later
     try { BAIT.ensureBait(g.state); if (this.baitCount() <= 0) BAIT.addBait(g.state, START_BAIT, 10); } catch (e) { /* bait module optional */ }
     if (g.ui) g.ui.stack = [];
     try { g.audio?.setMusic?.(g.musicFor?.()); } catch (e) { /* optional */ }
@@ -248,7 +378,26 @@ export class Tutorial {
     const prev = this.step;
     this.step = step;
     this.t = 0;
+    this.lineAt = null;
+    if (!FIGHT_STEPS.includes(step)) this.lesson = null;
     this.enter(step, prev);
+    this.persist(step, prev);
+  }
+
+  // [tut16] save the step (a reload resumes there) and the fight steps already learnt
+  persist(step, prev) {
+    const g = this.game, st = g.state, L = this.lessonState();
+    if (FIGHT_STEPS.includes(prev) && prev !== step && (FIGHT_STEPS.includes(step) || step === 'card')) L.stages[prev] = true;
+    if (this.mode === 'full' && step !== 'intro') st.tutorialStep = step;
+    if (LESSON_STEPS.includes(step)) L.step = step;
+    if (step === 'card') { L.done = true; L.offered = true; }
+    if (step !== 'intro') g.save?.();
+  }
+
+  // the first fight step not learnt yet (a resumed lesson skips the ones already done)
+  firstFightStep() {
+    const S = this.lessonState().stages;
+    return FIGHT_STEPS.find((s) => !S[s]) || 'land';
   }
 
   // Bubbles says a line (typed, with voice blips); the same key is not repeated.
@@ -261,7 +410,7 @@ export class Tutorial {
     this.dlg.vars.name = this.anglerName();
     const mood = this.guideMood() === 'smug' && s.mood === 'happy' ? 'smug' : s.mood;
     this.dlg.now(s.text, {
-      mood, pose: s.pose, big: s.big, silent: opts.silent, hold: s.choices ? 0 : opts.hold ?? 6, cps: 46,
+      mood, pose: s.pose, big: s.big, silent: opts.silent, hold: s.choices || s.stay ? 0 : opts.hold ?? 6, cps: 46,
       choices: s.choices, autoPick: s.choices ? (key === 'done' ? 9 : 20) : undefined,
       onChoose: (c) => this.onChoose(key, c),
       onShow: () => { const e = EMOTE[s.pose]; if (e && !opts.silent) this.seal.emote(e[0], e[1]); },
@@ -276,12 +425,16 @@ export class Tutorial {
     this.game.particles?.aeroConfetti?.(A?.top?.[0] ?? this.seal.x, A?.top?.[1] ?? this.seal.y - 30, 10, { layer: 'ui' });
   }
 
-  pop(text, palette = 'aqua') { this.pops.push({ text, palette, t0: this.game.time ?? 0 }); try { this.game.audio?.play?.('sparkle', { vol: 0.5 }); } catch (e) { /* optional */ } }
+  pop(text, palette = 'aqua', o = {}) {
+    // (a step title replaces the one before it)
+    if (o.step) this.pops = this.pops.filter((p) => !p.step);
+    this.pops.push({ text, palette, t0: (this.game.time ?? 0) + (o.delay || 0), step: !!o.step, sound: false });
+  }
 
   // Which HUD buttons may show (the HUD asks this; alias ids are asked too).
   dockVisible(id) {
     if (!this.active) return this.game.state.tutorialDone ? true : !this.intro;
-    if (this.step === 'done') return true;
+    if (this.step === 'done' || this.step === 'lessonDone') return true;
     const set = SHOWN[this.step] || [];
     return set.includes(ALIAS[id] || id);
   }
@@ -296,7 +449,7 @@ export class Tutorial {
     const over = !!(h && inp.x >= h.x && inp.y >= h.y && inp.x < h.x + h.w && inp.y < h.y + h.h);
     // game.js asks this before anything else uses the pointer: latch a click on the helper here, so a busy line
     // (a bite or fight takes the pointer first) cannot swallow it
-    if (over && inp.pressed && !this.active) this.helperClick = true;
+    if (over && inp.pressed && !this.active && !this.offering) this.helperClick = true;
     return over;
   }
   boxVisible() { return !this.intro; }
@@ -333,24 +486,44 @@ export class Tutorial {
         this.podT = prev === 'bait' && this.iconRect('bait-slot') ? 2.2 : 0;
         // tidy up: the shop panel would sit over the water
         if (g.ui?.isOpen?.('baitshop')) setTimeout(() => { if (this.step === 'cast' && g.ui?.isOpen?.('baitshop')) g.ui.close('baitshop'); }, 900);
-        this.say(prev === 'fight' || prev === 'hook' ? 'again' : this.podT ? 'loaded' : 'cast');
+        this.say(FISHING_STEPS.includes(prev) && prev !== 'cast' ? 'again' : this.podT ? 'loaded' : 'cast');
+        this.castPop = !FISHING_STEPS.includes(prev); // the CAST! title once per attempt series
+        if (this.castPop && !this.podT) this.stepPop('cast');
         break;
       case 'wait':
         this.say('wait');
         break;
       case 'hook':
         this.say(K.gear ? 'hookGear' : 'hook');
+        this.stepPop('hook');
         this.seal.emote('wiggle', 0.6);
         g.audio?.play?.('bite', { vol: 0.5 });
         break;
-      case 'fight':
+      case 'reel': case 'ease': case 'surge': case 'zap': case 'land': {
+        // [tut16] a fight step: a calm intro beat (the fish holds, the world dims), then the step goes live
+        const B = g.fishing?.battle;
         this.fightT = 0;
-        this.say(K.gear ? 'crankGear' : 'crank');
+        this.lesson = {
+          stage: step, hold: LESSON_HOLD[step] + (step === 'reel' && prev !== 'reel' ? 0.9 : 0), cap: LESSON_CAP[step],
+          floor: Math.max(-0.05, (B?.progress ?? 0) - 0.04), spike: 0, calmT: 0, won: false, stunned: false, miss: 0, missSeen: 0,
+          surgeStarted: false, t: 0,
+        };
+        this.say({ reel: 'reel', ease: 'easeIntro', surge: 'surgeIntro', zap: 'zap', land: 'land' }[step]);
+        // the reel title waits for the fishing HUD's FISH ON!
+        this.stepPop(step, step === 'reel' && ['hook', 'wait', 'cast'].includes(prev) ? 1.9 : 0);
+        if (FIGHT_STEPS.includes(prev)) this.cheer();
         break;
+      }
       case 'card':
-        this.say('card');
-        this.pop('NICE CATCH!', 'leaf');
+        this.say(this.mode === 'lesson' ? 'cardLesson' : 'card'); // (the catch card is its own big 3D celebration)
         this.seal.emote('flop');
+        break;
+      case 'lessonDone':
+        this.say('lessonDone');
+        this.pop('GO FISH!', 'aqua');
+        this.seal.emote('spin');
+        g.audio?.play?.('ui_unlock', { vol: 0.6 });
+        g.particles?.aeroConfetti?.(g.screen.W / 2, g.screen.H * 0.3, 40, { layer: 'ui' });
         break;
       case 'tank':
         g.setView?.('ocean');
@@ -448,28 +621,46 @@ export class Tutorial {
   }
 
   onCaught(fish, data) {
-    if (!this.active || !['cast', 'wait', 'hook', 'fight'].includes(this.step)) return false;
+    if (!this.active || !FISHING_STEPS.includes(this.step)) return false;
     const g = this.game;
     this.go('card');
-    if (g.ui?.panels?.reveal) { g.ui.open('reveal', { ...data, tutorial: true }); return true; }
+    // the first session keeps its first fish (Keep only); a replayed lesson offers Keep or Release
+    if (g.ui?.panels?.reveal) { g.ui.open('reveal', { ...data, tutorial: this.mode === 'full' }); return true; }
     // no catch card: keep it and move on
     try { g.keepFish?.(data.rec); } catch (e) { /* ignore */ }
-    this.go('tank');
+    this.go(this.mode === 'lesson' ? 'lessonDone' : 'tank');
     return true;
   }
 
   onEscape() {
-    if (!this.active || !['fight', 'wait', 'hook'].includes(this.step)) return;
+    const steps = FISHING_STEPS.filter((s) => s !== 'cast');
+    if (!this.active || !steps.includes(this.step)) return;
     this.fishTries++;
     this.seal.emote('worried', 1.2);
-    setTimeout(() => { if (this.active && ['fight', 'wait', 'hook'].includes(this.step)) this.go('cast'); }, 700);
+    setTimeout(() => { if (this.active && steps.includes(this.step)) this.go('cast'); }, 700);
+  }
+
+  // [tut16] a step done: a little cheer (sparkles at Bubbles, a chime)
+  cheer() {
+    const g = this.game, A = this.seal.anchors;
+    g.particles?.aeroConfetti?.(A?.top?.[0] ?? this.seal.x, A?.top?.[1] ?? this.seal.y - 30, 12, { layer: 'ui' });
+    g.audio?.play?.('timing_perfect', { vol: 0.35, pitch: 1.3 });
+    this.seal.emote('clap', 0.9);
+  }
+
+  // [tut16] the step's big 3D title (after `delay` s)
+  stepPop(step, delay = 0) {
+    const p = LESSON_POP[step];
+    if (p) this.pop(p[0], p[1], { delay, step: true });
   }
 
   // ---------------------------------------------------------------- update
   update(dt) {
     const g = this.game;
-    this.pops = this.pops.filter((p) => (g.time ?? 0) - p.t0 < 1.9);
-    if (!this.active) { this.updateHelper(dt); return; }
+    const now = g.time ?? 0;
+    this.pops = this.pops.filter((p) => now - p.t0 < (p.step ? 2.4 : 1.9));
+    for (const p of this.pops) if (!p.sound && now >= p.t0) { p.sound = true; try { g.audio?.play?.('sparkle', { vol: 0.5 }); } catch (e) { /* optional */ } }
+    if (!this.active) { this.updateHelper(dt); this.updateOffer(dt); return; }
     this.t += dt;
     this.dotAnim += dt;
     const G = this.guide;
@@ -496,36 +687,30 @@ export class Tutorial {
         if (this.t > 40 && !this.done.bait) { this.done.bait = true; this.giveStarterBait(); }
         break;
       case 'cast':
-        if (this.podT && this.t > this.podT && G.key === 'loaded') this.say('cast');
+        // (a replay / resume greets first, then explains the cast)
+        if (this.lineAt != null && this.t > this.lineAt) { this.lineAt = null; this.say('cast', { force: true }); if (this.castPop) this.stepPop('cast'); }
+        if (this.podT && this.t > this.podT && G.key === 'loaded') { this.say('cast'); if (this.castPop) this.stepPop('cast'); }
         if ((g.state.stats?.casts || 0) > this.castBase || (f && f.state !== 'idle') || (this.t > 1.2 && f?.wasInWater)) this.go('wait');
         break;
       case 'wait':
         if (f?.state === 'bite') this.go('hook');
-        else if (f?.state === 'fight') this.go('fight');
+        else if (f?.state === 'fight') this.go(this.firstFightStep());
         else if (f?.state === 'nibble') this.say('nibble', { silent: true });
         else if ((G.key === 'nibble' || G.key === 'missed') && this.t > 1.6 && !this.dlg.typing) this.say('wait', { silent: true, force: G.key !== 'wait' });
         if (f && !f.wasInWater && f.state === 'idle') { this.outT = (this.outT || 0) + dt; if (this.outT > 1.5) { this.outT = 0; this.go('cast'); } } else this.outT = 0;
         break;
       case 'hook':
-        if (f?.state === 'fight') this.go('fight');
+        if (f?.state === 'fight') this.go(this.firstFightStep());
         else if (f && f.state !== 'bite' && this.t > 0.2) { this.go('wait'); this.say('missed'); this.seal.emote('worried', 1); }
         break;
-      case 'fight': {
-        this.fightT += dt;
-        const B = f?.battle;
-        if (B) {
-          if ((B.charges ?? 1) < (B.shockMax ?? 1) || B.stunT > 0 || B.zap) this.shockUsed = true;
-          let want = K.gear ? 'crankGear' : 'crank';
-          if (B.mode === 'tele' || B.mode === 'surge' || B.surging || B.qte?.active) want = 'surge';
-          else if ((B.shockReady || B.canCharge) && !this.shockUsed && this.fightT > 2.2) want = K.hold ? 'shockHold' : 'shock';
-          if (G.key !== want && (want === 'surge' || this.dlg.t > 0.8)) this.say(want, { silent: true });
-          if ((f.tension ?? 0) > 0.88 && !this.seal.emoteA) this.seal.emote('worried', 0.5);
-        }
-        if (f && f.state === 'idle' && this.t > 2) this.go('cast');
+      case 'reel': case 'ease': case 'surge': case 'zap': case 'land':
+        this.updateLesson(dt, f);
         break;
-      }
       case 'card':
-        if (this.t > 1 && !g.ui?.isOpen?.('reveal')) this.go('tank');
+        if (this.t > 1 && !g.ui?.isOpen?.('reveal')) this.go(this.mode === 'lesson' ? 'lessonDone' : 'tank');
+        break;
+      case 'lessonDone':
+        if (this.t > 4.2 && !this.dlg.typing) this.endLesson(true);
         break;
       case 'tank':
         if (this.t > 2.6) this.go('coin');
@@ -552,6 +737,96 @@ export class Tutorial {
     if (this.active) this.steer(dt);
   }
 
+  // [tut16] The fight steps of the lesson: each waits for the player to do it.
+  updateLesson(dt, f) {
+    const L = this.lesson, B = f?.battle;
+    this.fightT += dt;
+    if (!f || (f.state === 'idle' && !f.cine)) { if (this.t > 2) this.go('cast'); return; } // it got away
+    if (!L || f.state !== 'fight' || !B) return; // (landing: the catch moves on)
+    if (L.hold > 0) {
+      L.hold -= dt;
+      if (L.hold <= 0) this.lessonLive(L, B);
+      return;
+    }
+    L.t += dt;
+    switch (L.stage) {
+      case 'reel':
+        if (B.progress >= L.cap - 0.025) this.go('ease');
+        break;
+      case 'ease': {
+        if (L.spike > 0) { L.spike -= dt; if (L.spike <= 0) this.say('ease'); break; }
+        const calm = B.tension < 0.5 && f.gear.rpm <= B.band.hi + 5;
+        L.calmT = calm ? L.calmT + dt : Math.max(0, L.calmT - dt * 0.6);
+        if (L.calmT > 1.1) this.go('surge');
+        else if (B.tension > 0.75 && this.guide.key === 'ease' && L.t > 3) this.say('easeTight', { silent: true });
+        else if (B.tension < 0.5 && this.guide.key === 'easeTight' && L.t > 2.4) this.say('ease', { silent: true });
+        break;
+      }
+      case 'surge':
+        if (L.won) this.go('zap');
+        else if (B.mode === 'surge' && this.guide.key !== 'surgeGo') this.say('surgeGo');
+        break;
+      case 'zap':
+        if (L.stunned) this.go('land');
+        else if (L.miss !== L.missSeen) { L.missSeen = L.miss; this.say('zapMiss', { force: true }); this.seal.emote('worried', 0.8); }
+        break;
+      default: break;
+    }
+    if ((f.tension ?? 0) > 0.88 && !this.seal.emoteA) this.seal.emote('worried', 0.5);
+  }
+
+  // the step's intro beat is over: it goes live
+  lessonLive(L, B) {
+    const g = this.game;
+    if (L.stage === 'ease') {
+      L.spike = 1.4; // the fish digs in: the line goes tight
+      this.say('easeTight');
+      this.seal.emote('worried', 1);
+      g.audio?.play?.('slack_warn', { vol: 0.5 });
+      g.camera?.shake?.(3);
+    } else if (L.stage === 'surge') {
+      this.say('surgeGo');
+    } else if (L.stage === 'zap') {
+      // a charge ready to go (a rod without one borrows one for the lesson)
+      B.shockMax = Math.max(1, B.shockMax || 0);
+      B.charges = Math.max(1, B.charges || 0);
+      B.shockCd = 0;
+    }
+  }
+
+  // [tut16] Older saves that finished the tutorial before the lesson existed: Bubbles offers it once. A replay that
+  // was running when the page closed resumes.
+  updateOffer(dt) {
+    const g = this.game, st = g.state;
+    if (!st?.tutorialDone || this.intro) return;
+    this.bootT += dt;
+    const L = this.lessonState();
+    if (L.active && !this.resumed) { if (this.bootT > 1.2 && !g.fishing?.busy) { this.resumed = true; this.startLesson('resume'); } return; }
+    if (this.offering) {
+      this.offerT += dt;
+      // no answer for a long while: Bubbles lets it go (the lesson stays in Settings)
+      if (this.offerT > 30 && this.dlg.choosing) { this.dlg.clear(); this.offering = false; }
+      else if (!this.dlg.active && this.offerT > 2) this.offering = false;
+      return;
+    }
+    if (L.done || L.offered) return;
+    if (this.bootT < 7 || g.fishing?.busy || g.ui?.active || st.view !== 'ocean' || g.ocean?.travelState || this.dlg.active) return;
+    this.offering = true;
+    this.offerT = 0;
+    L.offered = true;
+    g.save?.();
+    this.dlg.vars.name = this.anglerName();
+    const s = SAY.offer;
+    this.dlg.now(s.text, {
+      mood: s.mood, pose: s.pose, hold: 0, cps: 46, choices: s.choices,
+      onChoose: (c) => {
+        this.onChoose('offer', c);
+        if (c.value) setTimeout(() => { this.offering = false; this.startLesson('offer'); }, 1500);
+      },
+    });
+    this.seal.emote('wave', 1.6);
+  }
+
   // Swim Bubbles to the perch for the current target and point at it.
   steer(dt) {
     const g = this.game, S = this.seal;
@@ -563,12 +838,13 @@ export class Tutorial {
     S.goTo(px, py);
     S.pointAt(tg.aim || null);
     const inp = g.input;
-    S.update(dt, { W: g.screen.W, H: g.screen.H, cursor: inp ? [inp.x, inp.y] : null, talk: this.dlg.typing, excited: this.dlg.mood === 'excited', fast: this.step === 'fight' || this.step === 'hook' });
+    S.update(dt, { W: g.screen.W, H: g.screen.H, cursor: inp ? [inp.x, inp.y] : null, talk: this.dlg.typing, excited: this.dlg.mood === 'excited', fast: FIGHT_STEPS.includes(this.step) || this.step === 'hook' });
   }
 
   // ---------------------------------------------------------------- the hint helper (after the tutorial)
   helperOn() {
     const st = this.game.state;
+    if (this.offering && !this.intro && st.view !== 'aquarium') return true; // [tut16] the lesson offer
     return !!st?.tutorialDone && !this.intro && st.clip?.hints !== false && st.settings?.hints !== false && st.view !== 'aquarium';
   }
 
@@ -597,7 +873,8 @@ export class Tutorial {
     Hh.t += dt;
     Hh.open = Math.max(0, Hh.open - dt);
     if (!on) { if (this.dlg.active && !this.active) this.dlg.clear(); if (Hh.show <= 0) { S.anchors = null; } return; }
-    this.dlg.update(dt, g.input, { mouse: false, keys: false });
+    const choosing = this.dlg.choosing; // [tut16] (the lesson offer's response bubbles)
+    this.dlg.update(dt, g.input, { mouse: choosing && this.capturesInput(), keys: choosing });
     // swim: to the button the tip is about while it talks, then home
     S.size = sealSize(this.sealSize() * 0.85);
     let spot = this.helperHome(), aim = null;
@@ -606,13 +883,14 @@ export class Tutorial {
       if (r) { const tg = { rect: r, aim: [r.x + r.w / 2, r.y + r.h / 2] }; spot = this.perch(tg); aim = tg.aim; }
     } else Hh.at = null;
     if (Hh.show < 0.05 && !S.anchors) S.goTo(spot[0] + S.size * 2.5, spot[1], { snap: true });
+    if (this.offering) { const { W, H } = g.screen; spot = [W - Math.round(S.size * 2.4), Math.round(H * 0.5)]; } // [tut16] asks from the middle right
     S.goTo(spot[0], spot[1]);
     S.pointAt(aim);
     const inp = g.input;
     S.update(dt, { W: g.screen.W, H: g.screen.H, cursor: inp && !this.helperHover ? [inp.x, inp.y] : null, talk: this.dlg.typing, noShy: true });
     const r = this.helperRect();
     this.helperHover = !!(r && inp && inp.x >= r.x && inp.y >= r.y && inp.x < r.x + r.w && inp.y < r.y + r.h);
-    const click = this.helperClick || (this.helperHover && inp?.pressed);
+    const click = !this.offering && (this.helperClick || (this.helperHover && inp?.pressed));
     this.helperClick = false;
     if (click) {
       inp?.consume?.();
@@ -684,6 +962,22 @@ export class Tutorial {
     return null;
   }
 
+  // [tut16] a gear HUD part on screen (gear.js partRect), else the whole gear
+  partRect(kind) {
+    const f = this.game.fishing;
+    try { const r = f?.gear?.partRect?.(kind, f.battle); if (r && Number.isFinite(r.x)) return r; } catch (e) { /* older gear */ }
+    return null;
+  }
+
+  // a box around the hooked fish on screen (sized by its length at the current zoom)
+  fishBox(p) {
+    const F = this.game.fishing;
+    let len = 40;
+    try { len = clamp((F.fishLen?.() ?? 30) * (F.zoom?.() ?? 1), 30, 220); } catch (e) { len = 40; }
+    const w = Math.round(len * 1.1 + 16), h = Math.round(len * 0.6 + 16);
+    return { x: Math.round(p[0] - w / 2), y: Math.round(p[1] - h / 2), w, h };
+  }
+
   // the hooked fish on screen
   fishPoint() {
     const B = this.game.fishing?.battle;
@@ -714,31 +1008,35 @@ export class Tutorial {
       case 'cast': {
         if (this.podT && this.t < this.podT) { const r = this.iconRect('bait-slot') || this.iconRect('gear'); if (r) return R(r); }
         const p = this.waterSpot();
-        return { point: p, aim: p, avoid: [{ x: p[0] - 24, y: p[1] - 24, w: 48, h: 48 }] };
+        return { point: p, aim: p, avoid: [{ x: p[0] - 24, y: p[1] - 24, w: 48, h: 48 }], ghost: true };
       }
       case 'wait': case 'hook': {
         const h = f?.hook;
         if (this.step === 'hook' && this.fishingKind().gear) {
           const gr = this.gearRect();
           // rest at the far screen edge and point at the gear, so Bubbles never covers its dial
-          if (gr) return { edge: true, aim: ctr(gr), action: ctr(gr), avoid: [gr], noRing: true };
+          if (gr) return { edge: true, aim: ctr(gr), action: ctr(gr), avoid: [gr], noRing: true, hl: [gr] };
         }
         if (h?.visible) {
           const p = this.ws(h.x, h.y);
           const zone = { x: p[0] - 30, y: p[1] - 30, w: 60, h: 60 };
           // after explaining, rest at the edge so the fish can find the lure; keep pointing at it
-          if (this.step === 'wait' && this.t > 3.5) return { edge: true, aim: p, action: p, avoid: [zone], ring: p, small: true };
+          // (the left edge: the gear flips in at the bottom right when it bites)
+          if (this.step === 'wait' && this.t > 3.5) return { edge: true, side: -1, aim: p, action: p, avoid: [zone], ring: p, small: true };
           return { point: p, aim: p, small: this.step === 'wait', bang: this.step === 'hook', avoid: [zone] };
         }
         const p = this.waterSpot();
         return { point: p, aim: p };
       }
-      case 'fight': {
-        // rest at the edge (the action owns the middle); point at the gear UI, or at the fish during a surge
+      case 'reel': case 'ease': case 'surge': case 'zap': case 'land': {
+        // [tut16] rest at the edge (the action owns the middle); bracket and point at what this step is about
         const gr = this.gearRect(), fp = this.fishPoint();
-        const surge = this.guide.key === 'surge';
-        const aim = surge && fp ? fp : gr ? ctr(gr) : fp;
-        return { edge: true, aim, avoid: [gr, fp && { x: fp[0] - 40, y: fp[1] - 40, w: 80, h: 80 }].filter(Boolean), action: fp, noRing: true };
+        const fr = fp && this.fishBox(fp);
+        const part = this.partRect({ ease: 'tension', zap: 'shock' }[this.step] || 'gauge');
+        let hl = part || gr, aim = hl ? ctr(hl) : fp;
+        if (this.step === 'surge' && fr) { hl = fr; aim = fp; }
+        if (this.step === 'zap' && part && gr) hl = part; // the bolt orbs (the charge ring then shows on the gear)
+        return { edge: true, aim, avoid: [gr, part, fr].filter(Boolean), action: fp, noRing: true, hl: hl ? [hl] : [] };
       }
       case 'card': {
         // the catch card's Keep orb (reveal.js draws it at the card's bottom right in the tutorial)
@@ -769,7 +1067,7 @@ export class Tutorial {
         if (r) return { rect: r, aim: ctr(r), avoid: [r, pr].filter(Boolean), outside: pr };
         return { edge: true, avoid: pr ? [pr] : [] };
       }
-      case 'done': return { edge: true, center: true };
+      case 'done': case 'lessonDone': return { edge: true, center: true };
       default: return { edge: true };
     }
   }
@@ -800,6 +1098,7 @@ export class Tutorial {
       if (act) side = act[0] > W * 0.55 ? -1 : act[0] < W * 0.45 ? 1 : side;
       const gr = tg.avoid?.[0];
       if (gr && gr.x > W * 0.6 && side > 0) side = -1;
+      if (tg.side) side = tg.side;
       this.edgeSide = side;
       if (tg.center) return [W * 0.5 + side * W * 0.18, H * 0.42];
       const y = clamp(act ? act[1] - 40 * u : H * 0.45, top + 20 * u, bot - 30 * u);
@@ -844,19 +1143,65 @@ export class Tutorial {
     if (!this.active) { this.drawHelper(ctx); return; }
     const g = this.game, G = this.guide, t = this.t;
     const tg = this.tg || this.target();
+    this.drawSoften(ctx, tg);
     this.drawDots(ctx);
     if (this.step === 'card' && !g.ui?.isOpen?.('reveal')) return;
-    // the target: a pulsing glossy ring (the seal's flipper is the arrow now)
+    // the target: bouncing pixel focus brackets (the seal's flipper is the arrow)
     if (!tg.noRing) {
       if (tg.rect) this.drawPointer(ctx, tg.rect.x + tg.rect.w / 2, tg.rect.y + tg.rect.h / 2, Math.max(tg.rect.w, tg.rect.h) * 0.6, false);
-      else if (tg.point || tg.ring) { const p = tg.point || tg.ring; this.drawPointer(ctx, p[0], p[1], tg.small ? 10 : 18, false, tg.bang); }
+      else if (tg.point || tg.ring) { const p = tg.point || tg.ring; this.drawPointer(ctx, p[0], p[1], tg.small ? 10 : tg.ghost ? 26 : 18, false, tg.bang); }
     }
-    if (this.step === 'fight') this.drawFightCue(ctx);
+    // [tut16] the HUD part this step is about: pixel brackets hugging its rect
+    for (const r of tg.hl || []) this.drawHighlight(ctx, r);
+    if (tg.ghost) this.drawCastGhost(ctx, tg.point);
+    if (FIGHT_STEPS.includes(this.step)) this.drawFightCue(ctx);
     G.show = Math.min(1, G.show + (1 / 60) * 2.5);
     const fade = this.step === 'done' ? 1 - clamp01((t - 30) / 0.8) : 1;
     const a = fade;
     if (a <= 0.01) return;
     this.drawSealAndSpeech(ctx, a, tg, { maxW: Math.round(230 * this.dlg.fontSize / 16) });
+  }
+
+  // [tut16] pixel focus brackets around a rect (thicker on the big 1280-wide canvas), with a sparkle
+  drawHighlight(ctx, r) {
+    const t = this.t, W = this.game.screen.W;
+    const k = W >= 1200 ? 2 : 1;
+    AE.drawPixelBrackets?.(ctx, r.x - 2, r.y - 2, r.w + 4, r.h + 4, t, { gap: 2 * k, bounce: true, k });
+    if (Math.sin(t * 4) > 0.4) AE.drawSparkle?.(ctx, r.x + r.w + 4, r.y - 4, 2, 1);
+  }
+
+  // [tut16] During a lesson step's intro beat the world softens: a light navy dim everywhere except the part
+  // being explained (a plain fade, no rings or light effects).
+  drawSoften(ctx, tg) {
+    const L = this.lesson;
+    const want = L && L.hold > 0 ? 1 : 0;
+    this.softK = clamp01((this.softK || 0) + (want ? 1 : -1) * (1 / 60) * 3.5);
+    if (this.softK <= 0.01) return;
+    const { W, H } = this.game.screen;
+    ctx.save();
+    ctx.fillStyle = rgba('#06223e', 0.3 * this.softK);
+    ctx.beginPath();
+    ctx.rect(0, 0, W, H);
+    for (const r of tg?.hl || []) { const m = 6; ctx.rect(r.x - m, r.y - m, r.w + 2 * m, r.h + 2 * m); } // holes
+    ctx.fill('evenodd');
+    ctx.restore();
+  }
+
+  // [tut16] the cast: a 3D mouse glides from the boat down into the water spot, again and again
+  drawCastGhost(ctx, p) {
+    if (!p) return;
+    const g = this.game, b = g.boat;
+    let from = [p[0] - 60, p[1] - 90];
+    try { if (b?.rodTip) { const r = b.rodTip(); const s = this.ws(r[0], r[1]); if (s && Number.isFinite(s[0])) from = [s[0], s[1] + 10]; } } catch (e) { /* default */ }
+    const T = 2.2, q = (this.t % T) / T;
+    const k = clamp01(q / 0.6), e = 1 - (1 - k) * (1 - k);
+    const x = from[0] + (p[0] - from[0]) * e, y = from[1] + (p[1] - from[1]) * e - Math.sin(k * Math.PI) * 18;
+    const a = q < 0.08 ? q / 0.08 : q > 0.85 ? (1 - q) / 0.15 : 1;
+    const px = Math.round(clamp(36 * (g.screen.H / 540), 32, 60));
+    ctx.save();
+    ctx.globalAlpha *= clamp01(a) * 0.95;
+    drawIcon3d(ctx, k >= 1 ? 'mouse_lit' : 'mouse', Math.round(x + px * 0.35), Math.round(y + px * 0.45), px, Math.sin(this.t * 3) * 0.4);
+    ctx.restore();
   }
 
   // the seal, then its speech bubble (on the side that keeps clear of what it points at), then the glyph
@@ -909,8 +1254,12 @@ export class Tutorial {
     const g = this.game;
     for (const p of this.pops) {
       const age = (g.time ?? 0) - p.t0;
-      const a = clamp01((1.9 - age) / 0.4);
-      drawText3D(ctx, p.text, g.screen.W / 2, g.screen.H * 0.24 - age * 6, { t: g.time ?? 0, pop: clamp01(age / 0.45), palette: p.palette, size: 16, px: 1, depth: 4, scale: 2, alpha: a });
+      if (age < 0) continue;
+      const life = p.step ? 2.4 : 1.9;
+      const a = clamp01((life - age) / 0.4);
+      // [tut16] step titles sit higher, clear of the fishing HUD's FISH ON! / banners
+      const y = g.screen.H * (p.step ? 0.13 : 0.24) + (g.screen.H >= 700 ? 10 : 0) - age * (p.step ? 3 : 6);
+      drawText3D(ctx, p.text, g.screen.W / 2, y, { t: g.time ?? 0, pop: clamp01(age / 0.45), palette: p.palette, size: 16, px: 1, depth: 4, scale: g.screen.W >= 1200 ? 3 : 2, alpha: a });
     }
   }
 
@@ -982,6 +1331,21 @@ export class Tutorial {
       ctx.fillStyle = '#d8eefa'; ctx.fillRect(x + 1, y + h - 4, w - 2, 3);
       drawText(ctx, 'SPACE', cx, y + 3, { font: 'small', align: 'center', color: ink });
       if (Math.sin(t * 8) > 0.6) AE.drawSparkle?.(ctx, x + w - 2, y, 2, 1, '#7ff0ff');
+    } else if (kind === 'move') {
+      // [tut16] the mouse sliding down into the water
+      const m = UIC.getUiIcon?.('mouse_l');
+      const q = (t * 0.9) % 1, dy = Math.round((q < 0.7 ? q / 0.7 : 1) * R * 0.8 - R * 0.4);
+      ctx.fillStyle = rgba('#2fb8e8', 0.8); ctx.fillRect(Math.round(cx - R * 0.6), Math.round(cy + R * 0.35), Math.round(R * 1.2), 2);
+      if (m) ctx.drawImage(m, Math.round(cx - m.width / 2), Math.round(cy - m.height / 2 + dy));
+    } else if (kind === 'slow') {
+      // [tut16] ease off: a little gauge whose needle swings back down into the green
+      const rr = R * 0.66, a0 = Math.PI * 0.85, a1 = Math.PI * 2.15;
+      ctx.fillStyle = rgba(ink, 0.3);
+      for (let i = 0; i <= 12; i++) { const a = a0 + ((a1 - a0) * i) / 12; ctx.fillRect(Math.round(cx + Math.cos(a) * rr) - 1, Math.round(cy + Math.sin(a) * rr) - 1, 2, 2); }
+      for (let i = 2; i <= 6; i++) { const a = a0 + ((a1 - a0) * i) / 12; ctx.fillStyle = '#5ad84a'; ctx.fillRect(Math.round(cx + Math.cos(a) * rr) - 1, Math.round(cy + Math.sin(a) * rr) - 1, 3, 3); }
+      const sw = 0.5 + 0.5 * Math.cos(t * 2.4), na = a0 + (a1 - a0) * (0.3 + sw * 0.6);
+      ctx.fillStyle = sw > 0.6 ? '#ff5a4a' : ink;
+      for (let i = 0; i < 5; i++) ctx.fillRect(Math.round(cx + Math.cos(na) * rr * i / 5) - 1, Math.round(cy + Math.sin(na) * rr * i / 5) - 1, 2, 2);
     } else if (kind === 'hold') {
       const m = UIC.getUiIcon?.('mouse_hold') || UIC.getUiIcon?.('mouse_l');
       const press = (t * 0.8) % 1 < 0.7;
@@ -992,8 +1356,10 @@ export class Tutorial {
 
   // Progress: a row of glossy dots at the top centre.
   drawDots(ctx) {
-    const i = DOT_OF[this.step];
-    if (i == null || (this.step === 'done' && this.t > 2.5)) return;
+    const DOTS = this.mode === 'lesson' ? DOTS_LESSON : DOTS_FULL;
+    const end = this.step === 'done' || this.step === 'lessonDone';
+    const i = end ? DOTS.length : DOTS.indexOf(this.step);
+    if (i < 0 || (end && this.t > 2.5)) return;
     const W = this.game.screen.W;
     const k = Math.min(1.6, this.dlg.fontSize / 16);
     const n = DOTS.length, gap = Math.round(11 * k), x0 = Math.round(W / 2 - ((n - 1) * gap) / 2), y = Math.round(14 * k);

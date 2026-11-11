@@ -17,6 +17,14 @@
 //   [phase9:fishing] {t: 'boss', id} beat that boss fish (event 'bossDefeated' {id}; src/fish/bosses.js). Every chapter
 //     ends with a Boss quest (cN_boss): while it is active (or done) the ocean's boss lurks in its deepest zone.
 //   QUEST_BY_ID, ZONES (depth zone order), CHAPTER_BY_ID
+//   [quests16] Side stories (questdata.js SIDE_STORIES, chapter.side, kind 'side'), milestones (MILESTONES, kind 'mile')
+//     and "Today's orders" (kind 'order' + the board bonus 'orderBonus', S.daily) are CLAIMED: when their objectives are
+//     met they become ready (S.ready[id], event 'questReady' {ids}) and book.claim(id) pays the reward (event
+//     'questDone' {id, claimed: true}). Main chapter quests (kind 'main') still complete by themselves.
+//     New objectives: catch filters (weather, time, bait, trophy, giant, shiny, mutant, flawless, party), zap, feed,
+//     build, hatch, evolve, collect, tankFish, gearLv, dress, box, labDone, online, total {k}, ordersToday,
+//     species {biome}, craft {cat}. Lifetime counters live in S.life. PERFECT / bad zaps come from a 'shockFired'
+//     {grade} game event that QuestBook adds by wrapping game.fishing.onShockFire / onBackfire (no fishing edits).
 //   ensureQuests(state) -> state.quests = {v, ch, started:{qid:{at, coins}}, prog:{qid:[n]}, done:{qid:ts},
 //                          chDone:{chId:ts}, visited:{biome:1}, zones:{zone:1}, intro: chId|null, outro: chId|null}
 //   class QuestBook (game.quests.book): check(), active(), objectives(q) -> [{label, have, need, ok, icon}],
@@ -33,6 +41,10 @@ import * as CHAR from '../gfx/character.js';
 import * as SPECIES from '../fish/species.js';
 import { BOSS_BY_ID } from '../fish/bosses.js'; // [phase9:fishing] boss quests
 import { OCEAN_VALUE } from './shopdata.js'; // [balance]
+
+import { SIDE_STORIES, MILESTONES, MILESTONE_LINES, ORDER_POOL, DAILY_AERO, ORDER_MATS } from './questdata.js'; // [quests16]
+import { gearLevel, GEAR_BY_ID } from '../aquarium/tanks.js'; // [quests16] tank gear goals
+import { RNG } from '../core/rng.js'; // [quests16] the daily order board's seed
 
 export const ZONES = ['sunlit', 'twilight', 'midnight', 'abyss'];
 const CHEST_RANK = ['crate', 'iron', 'golden', 'orb']; // [phase8:prog]
@@ -190,18 +202,32 @@ export const CHAPTERS = [
   },
 ];
 CHAPTERS.forEach((c, i) => { c.n = i + 1; });
+// [quests16] every chapter carries its side stories (optional, claimed; the main line still opens the next ocean)
+for (const c of CHAPTERS) {
+  c.side = SIDE_STORIES[c.id] || [];
+  for (const q of c.quests) q.kind = 'main';
+  for (const q of c.side) q.kind = 'side';
+}
 // [balance] quest Aero rewards scale with the chapter ocean's fish value (shopdata OCEAN_VALUE), like the Lab prices
 // they help pay for. Chapter rewards (the milestones) are set by hand above.
 for (const c of CHAPTERS) {
   const k = OCEAN_VALUE[c.ocean] || 1;
-  for (const q of c.quests) if (q.reward?.aero && k !== 1) q.reward.aero = Math.round((q.reward.aero * k) / 5) * 5;
+  for (const q of [...c.quests, ...c.side]) if (q.reward?.aero && k !== 1) q.reward.aero = Math.round((q.reward.aero * k) / 5) * 5;
 }
 export const CHAPTER_BY_ID = Object.fromEntries(CHAPTERS.map((c) => [c.id, c]));
 export const QUEST_BY_ID = {};
-for (const c of CHAPTERS) for (const q of c.quests) { q.chapter = c.id; QUEST_BY_ID[q.id] = q; }
+for (const c of CHAPTERS) for (const q of [...c.quests, ...c.side]) { q.chapter = c.id; QUEST_BY_ID[q.id] = q; }
+for (const q of MILESTONES) { q.kind = 'mile'; q.chapter = null; QUEST_BY_ID[q.id] = q; }
+export { MILESTONES, MILESTONE_LINES };
+export const MILESTONE_BY_LINE = {};
+for (const q of MILESTONES) (MILESTONE_BY_LINE[q.line] ||= []).push(q);
+for (const l in MILESTONE_BY_LINE) MILESTONE_BY_LINE[l].sort((a, b) => a.tier - b.tier);
+export const STORY_QUESTS = CHAPTERS.flatMap((c) => [...c.quests, ...c.side]);
 const ACTIVE_MAX = 3;
+export const ORDERS_PER_DAY = 3;
 
 export const NPC_NAMES = { seal: 'Bubbles', fizz: 'Professor Fizz', marina: 'Marina', dot: 'Dot', bloat: 'Captain Bloat' };
+export const isClaimable = (q) => !!q && q.kind !== 'main';
 
 // ---------------------------------------------------------------- save
 export function ensureQuests(state) {
@@ -213,24 +239,79 @@ export function ensureQuests(state) {
   S.dests ||= {}; // [phase8:prog] destinations sailed to
   if (S.intro === undefined) S.intro = CHAPTERS[0].id;
   if (S.outro === undefined) S.outro = null;
+  // [quests16] claims, lifetime counters, the order board, the pinned quest
+  if (!S.ready || typeof S.ready !== 'object') S.ready = {};
+  if (!S.life || typeof S.life !== 'object') S.life = {};
+  if (!S.flags || typeof S.flags !== 'object') S.flags = {};
+  if (S.pin === undefined) S.pin = null;
+  if (!S.daily || typeof S.daily !== 'object' || !Array.isArray(S.daily.list)) S.daily = { day: null, next: 0, list: [], swaps: 1 };
+  if (S.v < 2) {
+    // older saves: seed the lifetime counters we can rebuild from the FishDex (shinies, mutations seen)
+    S.v = 2;
+    let shiny = 0, mutant = 0;
+    for (const id in state.journal || {}) { const v = state.journal[id]?.variants || {}; if (v.shiny) shiny++; for (const k in v) if (k !== 'shiny') mutant++; }
+    S.life.shiny = Math.max(S.life.shiny | 0, shiny);
+    S.life.mutant = Math.max(S.life.mutant | 0, mutant);
+  }
+  for (const q of S.daily.list) if (q && q.id && !QUEST_BY_ID[q.id]) QUEST_BY_ID[q.id] = q; // today's orders live in the save
   return S;
 }
 
 // ---------------------------------------------------------------- labels and icons
 const speciesName = (id) => { try { return SPECIES.SPECIES_BY_ID?.[id]?.name || id; } catch { return id; } };
+export const WEATHER_NAMES = {
+  sunny: 'Sunny', bubbles: 'Bubble Breeze', glossyrain: 'Glossy Rain', aurora: 'Aurora', cloudy: 'Cloudy', rain: 'Rain', storm: 'Storm',
+  clear: 'Clear Skies', snowfall: 'Snowfall', blizzard: 'Blizzard', murky: 'Murky', static: 'Static Storm', oil: 'Oil Slick', datarain: 'Data Rain',
+  still: 'Still Water', neonstorm: 'Neon Storm', rushhour: 'Rush Hour', blackout: 'Blackout', calm: 'Calm', eruption: 'Eruption',
+  sulfur: 'Sulfur Haze', magma: 'Magma Bloom', snow: 'Marine Snow', current: 'Deep Current', glowtide: 'Glow Tide',
+};
+const TIME_NAMES = { night: 'at night', day: 'in daylight', dusk: 'at dawn or dusk' };
+const CRAFT_CATS = { rods: 'rods', tackle: 'pieces of tackle', bait: 'bait batches', boat: 'boat parts', upgrade: 'rod upgrades', tank: 'tank upgrades' };
+const TOTAL_LABELS = {
+  caught: (n) => `Catch ${fmt(n)} fish in total`, species: (n) => `Discover ${n} species`, aero: (n) => `Earn ${fmt(n)} Aero in total`,
+  research: (n) => `Finish ${n} research projects`, bosses: (n) => n > 1 ? `Beat ${n} different bosses` : 'Beat a boss',
+  zaps: (n) => `Land ${fmt(n)} PERFECT zaps`, flawless: (n) => `Make ${n} flawless catches`, chests: (n) => `Crack open ${n} chests`,
+  fed: (n) => `Feed your tank ${n} times`, built: (n) => `Place ${n} things in your tank`, crafted: (n) => `Craft ${n} things`,
+  oceans: (n) => n >= 7 ? 'Visit all seven oceans' : `Visit ${n} oceans`, released: (n) => `Release ${n} fish`,
+  shiny: (n) => n > 1 ? `Catch ${n} shiny fish` : 'Catch a shiny fish', mutant: (n) => n > 1 ? `Catch ${n} mutated fish` : 'Catch a mutated fish',
+  giant: (n) => n > 1 ? `Catch ${n} giant fish` : 'Catch a giant fish', cosmetics: (n) => `Own ${n} Wardrobe items`, rods: (n) => `Own ${n} rods`,
+  orders: (n) => `Fill ${n} orders`, quests: (n) => `Finish ${n} quests`, boxes: (n) => `Reel in ${n} floating boxes`,
+  hatched: (n) => n > 1 ? `Hatch ${n} eggs` : 'Hatch an egg', zones: (n) => `Reach the ${ZONE_NAMES[ZONES[Math.max(0, n - 1)]] || 'deep'}`,
+};
+const TOTAL_ICONS = {
+  caught: 'hook', species: 'book', aero: 'coin', research: 'beaker', bosses: 'trophy', zaps: 'bolt', flawless: 'star', chests: 'mat:pkg_golden',
+  fed: 'food', built: 'decor', crafted: 'hammer', oceans: 'compass', released: 'heart', shiny: 'sparkle', mutant: 'dna', giant: 'crown',
+  cosmetics: 'people', rods: 'rod:duck', orders: 'shop', quests: 'trophy', boxes: 'box', hatched: 'egg', zones: 'sonar',
+};
+const fmt = (n) => Number(n).toLocaleString('en-US');
+const an = (w) => (/^[AEIOU]/i.test(w) ? 'an ' : 'a ');
+const plural = (w) => (/(fish|s)$/i.test(w) ? w : /[^aeiou]y$/i.test(w) ? w.slice(0, -1) + 'ies' : w + 's');
+
+function catchLabel(o) {
+  const adj = [o.giant ? 'giant' : o.trophy ? 'trophy-size' : '', o.shiny ? 'shiny' : '', o.mutant ? 'mutated' : ''].filter(Boolean).join(' ');
+  const noun = o.species ? (o.n > 1 ? plural(speciesName(o.species)) : speciesName(o.species)) : o.rarity ? `${cap(o.rarity)}${o.rarity === 'legendary' ? '' : '+'} fish` : 'fish';
+  const what = (adj ? adj + ' ' : '') + noun;
+  const n = o.n > 1 ? o.n + ' ' : o.species || o.rarity || adj ? an(what) : 'a ';
+  let s = `Catch ${n}${what}`;
+  if (o.biome) s += ' in ' + (OCEAN_NAMES[o.biome] || o.biome);
+  if (o.zone) s += ` (${ZONE_NAMES[o.zone] || o.zone})`;
+  if (o.weather) s += o.weather === 'any' ? ' in wild weather' : ' during ' + [].concat(o.weather).map((w) => WEATHER_NAMES[w] || w).join(' or ');
+  if (o.time) s += ' ' + (TIME_NAMES[o.time] || o.time);
+  if (o.bait) s += o.bait === 'any' ? ' with proper bait' : o.bait === 'app' ? ' with Bait Shop bait' : o.bait === 'custom' ? ' with custom bait' : ' with ' + (BAIT.BAITS?.[o.bait]?.name || o.bait);
+  if (o.flawless) s += ' flawlessly';
+  if (o.party) s += ' with friends online';
+  return s;
+}
+
 export function objLabel(o) {
   switch (o.t) {
-    case 'catch': {
-      const what = o.species ? speciesName(o.species) : o.rarity ? `${cap(o.rarity)}+ fish` : 'fish';
-      const n = o.species || o.rarity ? (o.n > 1 ? o.n + ' ' : 'a' + (/^[AEIOU]/i.test(what) ? 'n ' : ' ')) : o.n + ' ';
-      return `Catch ${n}${what}${o.biome ? ' in ' + (OCEAN_NAMES[o.biome] || o.biome) : ''}${o.zone ? ' (' + (ZONE_NAMES[o.zone] || o.zone) + ')' : ''}`;
-    }
+    case 'catch': return catchLabel(o); // [quests16] filters
     case 'keep': return o.n > 1 ? `Keep ${o.n} fish in your tank` : 'Keep a fish in your tank';
     case 'release': return `Release ${o.n} fish`;
     case 'bait': return o.n > 1 ? `Buy ${o.n} bait packs` : 'Buy bait at the Bait Shop';
-    case 'craft': return `Craft ${o.n} thing${o.n > 1 ? 's' : ''}`;
+    case 'craft': return o.cat ? (o.n > 1 ? `Craft ${o.n} ${CRAFT_CATS[o.cat] || o.cat}` : `Craft ${an(CRAFT_CATS[o.cat] || o.cat).trim()} ${(CRAFT_CATS[o.cat] || o.cat).replace(/s$/, '').replace(/^pieces of/, 'piece of')}`) : `Craft ${o.n} thing${o.n > 1 ? 's' : ''}`;
     case 'equip': return 'Equip a new rod';
-    case 'species': return `Discover ${o.n} species`;
+    case 'species': return o.biome ? `Discover ${o.n} species from ${OCEAN_NAMES[o.biome] || o.biome}` : `Discover ${o.n} species`;
     case 'research': return o.id ? `Research ${LAB_BY_ID[o.id]?.name || o.id}` : o.n > 1 ? `Finish ${o.n} research projects` : 'Finish a research project';
     case 'tank': return `Upgrade to the ${TANK_NAMES[TANK_ORDER[o.tier]] || 'next tank'}`;
     case 'boat': return `Get the ${BOAT_NAMES[BOAT_ORDER[o.tier]] || 'next boat'}`;
@@ -239,21 +320,48 @@ export function objLabel(o) {
     case 'aero': return `Earn ${o.n.toLocaleString('en-US')} Aero`;
     case 'tutorial': return 'Finish Bubbles\' fishing lesson';
     case 'open': return `Open the ${o.panel}`;
-    case 'chest': return o.tier ? `Crack open a ${CHEST_NAMES[o.tier] || o.tier}` : o.n > 1 ? `Crack open ${o.n} chests` : 'Crack open a chest'; // [phase8:prog]
+    case 'chest': return o.tier ? (o.n > 1 ? `Crack open ${o.n} ${CHEST_NAMES[o.tier] || o.tier}s (or better)` : `Crack open a ${CHEST_NAMES[o.tier] || o.tier}`) : o.n > 1 ? `Crack open ${o.n} chests` : 'Crack open a chest'; // [phase8:prog]
     case 'have': return `Bring ${o.n} ${ITEMS.ITEMS?.[o.id]?.name || o.id}`;
     case 'dest': return `Sail to ${o.id === 'lab' ? 'Fizz Lab Island' : 'Marina\'s Workshop'}`;
     case 'craftRod': return o.id ? `Craft the ${ROD_BY_ID[o.id]?.name || o.id}` : o.n > 1 ? `Craft ${o.n} rods at the Workshop` : 'Craft a rod at the Workshop';
     case 'rodUp': return `Upgrade a rod to ${o.n} star${o.n > 1 ? 's' : ''}`;
-    case 'tackle': return `Equip ${o.n} pieces of tackle`;
+    case 'tackle': return o.n > 1 ? `Equip ${o.n} pieces of tackle` : 'Equip a piece of tackle';
     case 'boss': return `Defeat the boss: ${BOSS_BY_ID[o.id]?.title || 'a boss'}`; // [phase9:fishing]
+    // [quests16]
+    case 'zap': return `Land ${o.n} PERFECT zap${o.n > 1 ? 's' : ''}`;
+    case 'feed': return o.n > 1 ? `Feed your tank ${o.n} times` : 'Feed your tank';
+    case 'build': return o.n > 1 ? `Place ${o.n} things in your tank` : 'Place something in your tank';
+    case 'hatch': return o.n > 1 ? `Hatch ${o.n} eggs` : 'Hatch an egg';
+    case 'evolve': return 'Raise a tank fish until it evolves';
+    case 'collect': return `Pop ${o.n} Aero bubbles in your tank`;
+    case 'tankFish': return `Have ${o.n} fish swimming in your tank`;
+    case 'gearLv': { const g = GEAR_BY_ID[o.id]; return `Get the ${g?.levels?.[o.lv] || (g?.name || o.id) + ' level ' + o.lv} for your tank`; }
+    case 'dress': return o.n > 1 ? `Change your look ${o.n} times` : 'Change your look in the Wardrobe';
+    case 'box': return `Reel in ${o.n > 1 ? o.n + ' floating boxes' : 'a floating box'}${o.biome ? ' in ' + (OCEAN_NAMES[o.biome] || o.biome) : ''}`;
+    case 'labDone': return o.n > 1 ? `Finish ${o.n} research projects` : 'Finish a research project';
+    case 'online': return 'Go online with Multiplayer (optional)';
+    case 'total': return (TOTAL_LABELS[o.k] || ((n) => `${o.k} ${n}`))(o.n);
+    case 'ordersToday': return `Fill all ${o.n} of today's orders`;
     default: return o.t;
   }
 }
+const WEATHER_ICON = { rain: 'rain', glossyrain: 'rain', datarain: 'rain', storm: 'storm', static: 'storm', neonstorm: 'storm', blizzard: 'storm', aurora: 'star', glowtide: 'sparkle', eruption: 'bolt', magma: 'bolt', rushhour: 'clock' };
 export function objIcon(o) {
   switch (o.t) {
-    case 'catch': return o.biome ? 'biome:' + o.biome : 'hook';
+    case 'catch': // [quests16] the most telling filter
+      if (o.species) return 'fish:' + o.species;
+      if (o.shiny) return 'sparkle';
+      if (o.giant || o.trophy) return 'crown';
+      if (o.mutant) return 'dna';
+      if (o.party) return 'people';
+      if (o.flawless) return 'star';
+      if (o.bait) return 'bait:' + (BAIT.BAITS?.[o.bait] ? o.bait : 'worm');
+      if (o.weather) return WEATHER_ICON[[].concat(o.weather)[0]] || 'cloud';
+      if (o.time) return o.time === 'night' ? 'moon' : 'sun';
+      if (o.zone) return 'sonar';
+      return o.biome ? 'biome:' + o.biome : 'hook';
     case 'keep': return 'tank:jar';
-    case 'species': return 'eye';
+    case 'species': return o.biome ? 'biome:' + o.biome : 'eye';
     case 'research': return o.id ? LAB_BY_ID[o.id]?.icon || 'beaker' : 'beaker';
     case 'tank': return 'tank:' + (TANK_ORDER[o.tier] || 'bowl');
     case 'boat': return 'boat:' + (BOAT_ORDER[o.tier] || 'dinghy');
@@ -266,8 +374,24 @@ export function objIcon(o) {
     case 'have': return 'mat:' + o.id;
     case 'dest': return o.id === 'lab' ? 'beaker' : 'hammer';
     case 'craftRod': return o.id ? 'rod:' + o.id : 'rod:duck';
-    case 'rodUp': case 'tackle': return 'hammer';
+    case 'rodUp': case 'tackle': case 'craft': return 'hammer';
     case 'boss': return 'fish:' + (o.id || 'bruce'); // [phase9:fishing]
+    case 'zap': return 'bolt';
+    case 'feed': return 'food';
+    case 'build': return 'decor';
+    case 'hatch': return 'egg';
+    case 'evolve': return 'dna';
+    case 'collect': return 'coin';
+    case 'tankFish': return 'tank:smalltank';
+    case 'gearLv': return o.id === 'light' ? 'star' : o.id === 'heater' ? 'sun' : 'bubble';
+    case 'dress': return 'people';
+    case 'box': return 'box';
+    case 'labDone': return 'beaker';
+    case 'online': return 'wifi';
+    case 'total': return TOTAL_ICONS[o.k] || 'star';
+    case 'ordersToday': return 'shop';
+    case 'release': return 'heart';
+    case 'equip': return 'rod:bubble';
     default: return 'star';
   }
 }
@@ -314,18 +438,28 @@ export function grantReward(game, rw = {}, reason = 'quest') {
   return { bonus };
 }
 
+// ---------------------------------------------------------------- today's orders [quests16]
+const dayKey = (d = new Date()) => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+const nextMidnight = () => { const d = new Date(); d.setHours(24, 0, 0, 0); return d.getTime(); };
+const hashStr = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return h >>> 0; };
+const round5 = (n) => Math.max(5, Math.round(n / 5) * 5);
+const PKG_BY_CH = ['pkg_crate', 'pkg_crate', 'pkg_iron', 'pkg_iron', 'pkg_iron', 'pkg_golden', 'pkg_golden'];
+
 // ---------------------------------------------------------------- the engine
 export class QuestBook {
   constructor(game) {
     this.game = game;
     this.pollT = 0;
     this.listeners = [];
+    this.fight = null; // [quests16] the current fight: {perfect, bad, bait}
     this.wire();
   }
 
   get S() { return ensureQuests(this.game.state); }
   chapter() { return CHAPTERS[this.S.ch] || null; }
   isDone(id) { return !!this.S.done[id]; }
+  isReady(id) { return !!this.S.ready[id] && !this.S.done[id]; } // [quests16] waiting for a claim
+  quest(id) { return QUEST_BY_ID[id] || null; }
 
   // the first few unfinished quests of the current chapter (in order)
   active() {
@@ -334,7 +468,45 @@ export class QuestBook {
     return c.quests.filter((q) => !this.S.done[q.id]).slice(0, ACTIVE_MAX);
   }
   isActive(id) { return this.active().some((q) => q.id === id); }
-  isLocked(id) { const q = QUEST_BY_ID[id]; if (!q) return true; const ci = CHAPTERS.findIndex((c) => c.id === q.chapter); return ci > this.S.ch || (ci === this.S.ch && !this.isDone(id) && !this.isActive(id)); }
+  isLocked(id) {
+    const q = QUEST_BY_ID[id];
+    if (!q) return true;
+    if (q.kind !== 'main') return !this.isDone(id) && !this.available(q);
+    const ci = CHAPTERS.findIndex((c) => c.id === q.chapter);
+    return ci > this.S.ch || (ci === this.S.ch && !this.isDone(id) && !this.isActive(id));
+  }
+
+  // [quests16] side stories open with their chapter (and after their `after` quest); milestones always; orders today
+  chapterReached(chId) { const ci = CHAPTERS.findIndex((c) => c.id === chId); return ci >= 0 && ci <= this.S.ch; }
+  available(q) {
+    if (!q || this.S.done[q.id]) return false;
+    if (q.kind === 'side') return this.chapterReached(q.chapter) && (!q.after || !!this.S.done[q.after]);
+    if (q.kind === 'mile') return true;
+    if (q.kind === 'order' || q.kind === 'orderBonus') return this.S.daily.list.includes(q);
+    return false;
+  }
+  sideQuests(chId) { return CHAPTER_BY_ID[chId]?.side || []; }
+  orders() { return this.S.daily.list.filter((q) => q && q.kind === 'order'); }
+  orderBonus() { return this.S.daily.list.find((q) => q && q.kind === 'orderBonus') || null; }
+  // every claimable quest that is open and not claimed yet
+  claimables() {
+    const out = [];
+    const S = this.S;
+    for (const c of CHAPTERS) { if (!this.chapterReached(c.id)) break; for (const q of c.side) if (!S.done[q.id] && this.available(q)) out.push(q); }
+    for (const q of S.daily.list) if (q && !S.done[q.id]) out.push(q);
+    for (const q of MILESTONES) if (!S.done[q.id]) out.push(q);
+    return out;
+  }
+  readyList(kind = null) {
+    const S = this.S, out = [];
+    for (const id in S.ready) { const q = QUEST_BY_ID[id]; if (q && !S.done[id] && (!kind || q.kind === kind || (kind === 'order' && q.kind === 'orderBonus'))) out.push(q); }
+    return out;
+  }
+  readyCount(kind = null) { return this.readyList(kind).length; }
+  // quests whose counters move with game events
+  tracked() { return [...this.active(), ...this.claimables().filter((q) => !this.S.ready[q.id])]; }
+  pinned() { const id = this.S.pin; const q = id && QUEST_BY_ID[id]; return q && !this.S.done[id] && (q.kind === 'main' || this.available(q)) ? q : null; }
+  setPin(id) { this.S.pin = this.S.pin === id ? null : id; this.game.save?.(); return this.S.pin; }
 
   depthApi() { return typeof this.game.ocean?.depthZone === 'function'; }
   // depth goals fall back to their `alt` objective while the oceans have no depth zones
@@ -345,7 +517,26 @@ export class QuestBook {
     if (S.started[q.id]) return;
     S.started[q.id] = { at: Date.now(), coins: this.game.state.totalCoins || 0 };
     S.prog[q.id] = q.objectives.map(() => 0);
-    this.game.emit?.('questStarted', { id: q.id });
+    if (q.kind === 'main') this.game.emit?.('questStarted', { id: q.id }); // [quests16] (side stories / orders open quietly)
+  }
+
+  // [quests16] lifetime totals for {t: 'total', k}
+  total(k) {
+    const st = this.game.state, S = this.S, L = S.life;
+    switch (k) {
+      case 'caught': return st.stats?.caught | 0;
+      case 'released': return st.stats?.released | 0;
+      case 'species': { let n = 0; for (const id in st.journal || {}) if (st.journal[id]?.caught > 0) n++; return n; }
+      case 'aero': return Math.floor(st.totalCoins || 0);
+      case 'research': return Object.keys(ensureLab(st).done).filter((id) => id !== ROOT_ID && LAB_BY_ID[id]).length;
+      case 'bosses': return Object.keys(st.bosses?.won || {}).filter((id) => st.bosses.won[id]).length;
+      case 'oceans': return Object.keys(S.visited).length;
+      case 'zones': return this.maxZone() + 1;
+      case 'cosmetics': { let n = 0; try { for (const w of CHAR.WARDROBE || []) if (CHAR.ownsCosmetic(st, w)) n++; } catch { /* wardrobe not ready */ } return n; }
+      case 'rods': { try { return ensureRods(st).owned.length; } catch { return 0; } }
+      case 'quests': { let n = 0; for (const q of STORY_QUESTS) if (S.done[q.id]) n++; return n; }
+      default: return L[k] | 0;
+    }
   }
 
   // progress of one objective: {have, need}
@@ -356,7 +547,11 @@ export class QuestBook {
     const L = ensureLab(st);
     switch (o.t) {
       case 'catch': case 'keep': case 'release': case 'bait': case 'craft': case 'equip': case 'open': return { have: cnt, need: o.n || 1 };
-      case 'species': { let n = 0; for (const id in st.journal || {}) if (st.journal[id]?.caught > 0) n++; return { have: n, need: o.n }; }
+      case 'species': {
+        let n = 0;
+        for (const id in st.journal || {}) if (st.journal[id]?.caught > 0 && (!o.biome || SPECIES.SPECIES_BY_ID?.[id]?.biome === o.biome)) n++;
+        return { have: n, need: o.n };
+      }
       case 'research': {
         if (o.id) return { have: L.done[o.id] ? 1 : 0, need: 1 };
         return { have: Object.keys(L.done).filter((id) => id !== ROOT_ID && LAB_BY_ID[id]).length, need: o.n || 1 };
@@ -379,73 +574,172 @@ export class QuestBook {
       case 'rodUp': { const R = ensureRods(st); return { have: Math.min(o.n, Math.max(0, ...R.owned.map((id) => R.lv[id] | 0))), need: o.n }; }
       case 'tackle': { const R = ensureRods(st); return { have: Object.values(R.tackle.on).filter(Boolean).length, need: o.n }; }
       case 'boss': return { have: cnt || st.bosses?.won?.[o.id] ? 1 : 0, need: 1 }; // [phase9:fishing]
+      // [quests16] counted from events since the quest opened
+      case 'zap': case 'feed': case 'build': case 'hatch': case 'evolve': case 'collect': case 'dress': case 'box': case 'labDone': return { have: cnt, need: o.n || 1 };
+      case 'online': return { have: S.flags.online || this.game.net?.online ? 1 : 0, need: 1 };
+      case 'tankFish': return { have: (st.fish || []).filter((f) => f.inTank).length, need: o.n };
+      case 'gearLv': { let lv = 0; try { lv = gearLevel(st, o.id); } catch { lv = 0; } return { have: Math.min(o.lv, lv), need: o.lv }; }
+      case 'total': return { have: Math.min(o.n, this.total(o.k)), need: o.n };
+      case 'ordersToday': return { have: this.orders().filter((x) => S.done[x.id]).length, need: o.n || ORDERS_PER_DAY };
       default: return { have: 0, need: 1 };
     }
   }
   maxZone() { let m = -1; for (const z in this.S.zones) m = Math.max(m, ZONES.indexOf(z)); return m; }
 
   objectives(q) {
+    const fin = this.isDone(q.id) || this.isReady(q.id);
     return q.objectives.map((o0, i) => {
       const o = this.realObj(o0);
-      const m = this.isDone(q.id) ? { have: 1, need: 1 } : this.measure(q, i);
-      const ok = this.isDone(q.id) || m.have >= m.need;
+      const m = fin ? { have: 1, need: 1 } : this.measure(q, i);
+      const ok = fin || m.have >= m.need;
       return { label: objLabel(o), icon: objIcon(o), have: Math.min(m.have, m.need), need: m.need, ok, obj: o };
     });
+  }
+  // 0..1 over all objectives (for bars)
+  progress(q) {
+    if (this.isDone(q.id) || this.isReady(q.id)) return 1;
+    const objs = this.objectives(q);
+    return objs.reduce((a, o) => a + (o.ok ? 1 : o.have / Math.max(1, o.need)), 0) / Math.max(1, objs.length);
   }
 
   bump(pred, by = 1) {
     let any = false;
-    for (const q of this.active()) {
+    for (const q of this.tracked()) {
       this.start(q);
       q.objectives.forEach((o0, i) => {
         const o = this.realObj(o0);
-        if (pred(o)) { this.S.prog[q.id][i] = (this.S.prog[q.id][i] || 0) + by; any = true; }
+        if (pred(o)) { const p = (this.S.prog[q.id] ||= q.objectives.map(() => 0)); p[i] = (p[i] || 0) + by; any = true; }
       });
     }
     if (any) this.check();
+  }
+  life(k, by = 1) { const L = this.S.life; L[k] = (L[k] | 0) + by; }
+
+  // [quests16] PERFECT / weak / fizzled / backfired zaps: wrap the fishing controller's callbacks (feature-detected)
+  hookFishing() {
+    const g = this.game, F = g.fishing;
+    if (!F || F.__questHook) return;
+    F.__questHook = true;
+    for (const [name, fixed] of [['onShockFire', null], ['onBackfire', 'backfire']]) {
+      const orig = F[name];
+      if (typeof orig !== 'function') continue;
+      F[name] = function (...a) {
+        try { g.emit?.('shockFired', { grade: fixed || a[0] || 'perfect' }); } catch (e) { console.error(e); }
+        return orig.apply(this, a);
+      };
+    }
+  }
+
+  // [quests16] does a catch match a catch objective?
+  catchMatch(o, c) {
+    if (o.t !== 'catch') return false;
+    if (o.rarity && c.rar < RAR.indexOf(o.rarity)) return false;
+    if (o.biome && o.biome !== c.biome) return false;
+    if (o.species && o.species !== c.sp.id) return false;
+    if (o.zone && ZONES.indexOf(c.zone) < ZONES.indexOf(o.zone)) return false;
+    if (o.weather) {
+      if (o.weather === 'any') { if (!c.weather || c.weather === c.calm) return false; } else if (![].concat(o.weather).includes(c.weather)) return false;
+    }
+    if (o.time && !c.time[o.time]) return false;
+    if (o.bait) {
+      const b = c.bait, def = b?.def || {};
+      if (!b) return false;
+      if (o.bait === 'any') { if (b.id === 'crumbs') return false; } else if (o.bait === 'custom') { if (!def.custom) return false; } else if (o.bait === 'app') { if (!def.app || def.custom) return false; } else if (b.id !== o.bait && def.recipe?.base !== o.bait) return false;
+    }
+    if (o.trophy && !(c.rec.giant || (c.rec.sizeT ?? 0) >= 0.75)) return false;
+    if (o.giant && !c.rec.giant) return false;
+    if (o.shiny && !c.rec.variant?.shiny) return false;
+    if (o.mutant && !c.rec.variant?.mutation) return false;
+    if (o.flawless && !c.flawless) return false;
+    if (o.party && !c.party) return false;
+    return true;
   }
 
   wire() {
     const g = this.game;
     const on = (ev, fn) => { g.on?.(ev, fn); };
+    this.hookFishing();
+    on('hooked', () => { this.fight = { perfect: 0, bad: 0, bait: g.fishing?.usedBait || null }; }); // [quests16]
+    on('escaped', () => { this.fight = null; });
+    on('shockFired', (d) => {
+      const perfect = d?.grade === 'perfect';
+      if (this.fight) { if (perfect) this.fight.perfect++; else this.fight.bad++; }
+      if (perfect) { this.life('zaps'); this.bump((o) => o.t === 'zap'); }
+    });
     on('caught', (d) => {
       const rec = d?.rec || {}, sp = d?.sp || {};
       const rar = RAR.indexOf(rec.rarity || sp.rarity || 'common');
       const biome = rec.biome || g.ocean?.biome?.id;
       let zone = rec.zone ?? d?.zone ?? null;
       if (!zone && this.depthApi()) { try { zone = zoneId(g.ocean.depthZone()); } catch { zone = null; } }
-      this.bump((o) => o.t === 'catch' && (!o.rarity || rar >= RAR.indexOf(o.rarity)) && (!o.biome || o.biome === biome) && (!o.species || o.species === sp.id) && (!o.zone || ZONES.indexOf(zone) >= ZONES.indexOf(o.zone)));
+      // [quests16] weather, clock, bait and how clean the fight was
+      const f = this.fight;
+      this.fight = null;
+      const flawless = !!f && f.perfect > 0 && f.bad === 0;
+      let time = {};
+      try { const ck = g.clock; time = { night: !!ck?.isNight?.(), dusk: !!ck?.isDusk?.(), day: (ck?.daylight?.() ?? 1) > 0.6 && !ck?.isDusk?.() }; } catch { time = {}; }
+      let party = false;
+      try { party = (g.net?.partyLuck?.() || 1) > 1; } catch { party = false; }
+      const c = { rec, sp, rar, biome, zone, weather: g.ocean?.weather || null, calm: g.ocean?.biome?.weathers?.[0]?.id || null, time, bait: f?.bait || null, flawless, party };
+      if (flawless) this.life('flawless');
+      if (rec.variant?.shiny) this.life('shiny');
+      if (rec.variant?.mutation) this.life('mutant');
+      if (rec.giant) this.life('giant');
+      this.bump((o) => this.catchMatch(o, c));
     });
     on('kept', () => this.bump((o) => o.t === 'keep'));
     on('released', () => this.bump((o) => o.t === 'release'));
     on('baitBought', (d) => { if (!d?.gift) this.bump((o) => o.t === 'bait'); });
-    on('crafted', () => this.bump((o) => o.t === 'craft'));
-    on('baitCrafted', () => this.bump((o) => o.t === 'craft'));
+    on('crafted', (d) => { this.life('crafted'); this.bump((o) => o.t === 'craft' && (!o.cat || o.cat === d?.cat)); });
+    on('baitCrafted', () => { this.life('crafted'); this.bump((o) => o.t === 'craft' && (!o.cat || o.cat === 'bait')); });
     on('rodEquipped', () => this.bump((o) => o.t === 'equip'));
     on('panelOpen', (id) => this.bump((o) => o.t === 'open' && o.panel === id));
-    on('chestOpened', (d) => { const r = CHEST_RANK.indexOf(d?.tier); this.bump((o) => o.t === 'chest' && (!o.tier || r >= CHEST_RANK.indexOf(o.tier))); }); // [phase8:prog]
+    on('chestOpened', (d) => { this.life('chests'); const r = CHEST_RANK.indexOf(d?.tier); this.bump((o) => o.t === 'chest' && (!o.tier || r >= CHEST_RANK.indexOf(o.tier))); }); // [phase8:prog]
     on('bossDefeated', (d) => this.bump((o) => o.t === 'boss' && (!o.id || o.id === d?.id))); // [phase9:fishing]
     on('destVisit', (d) => { if (d?.id) { this.S.dests[d.id] = 1; this.check(); } });
-    for (const ev of ['rodCrafted', 'rodUpgraded', 'tackleEquipped', 'crafted']) on(ev, () => this.check());
+    // [quests16] tank, wardrobe, boxes, Lab
+    on('tankFed', () => { this.life('fed'); this.bump((o) => o.t === 'feed'); });
+    on('tankBuilt', () => { this.life('built'); this.bump((o) => o.t === 'build'); });
+    on('hatched', () => { this.life('hatched'); this.bump((o) => o.t === 'hatch'); });
+    on('fishEvolved', () => this.bump((o) => o.t === 'evolve'));
+    on('coinCollected', () => this.bump((o) => o.t === 'collect'));
+    on('character', () => this.bump((o) => o.t === 'dress'));
+    on('wardrobe', () => this.bump((o) => o.t === 'dress'));
+    on('boxLoot', () => { const b = g.ocean?.biome?.id; this.life('boxes'); this.bump((o) => o.t === 'box' && (!o.biome || o.biome === b)); });
+    on('labDone', (d) => { if (!d?.free) this.bump((o) => o.t === 'labDone'); });
+    on('netOnline', (on1) => { if (on1) { this.S.flags.online = 1; this.check(); } });
+    for (const ev of ['rodCrafted', 'rodUpgraded', 'tackleEquipped', 'crafted', 'gearBought', 'kept', 'tankUpgraded']) on(ev, () => this.check());
     on('travel', (d) => { const id = typeof d === 'string' ? d : d?.to || d?.id || d?.biome; if (id) this.S.visited[id] = 1; this.check(); });
     on('depthZone', (d) => { const z = zoneId(d); if (z) { this.S.zones[z] = 1; this.check(); } }); // the Oceans agent's zone changes
     for (const ev of ['labDone', 'unlocked', 'tankUpgraded', 'tutorialDone', 'boatUpgraded']) on(ev, () => this.check());
   }
 
-  // light poll: oceans, depth, absolute goals
+  // light poll: oceans, depth, absolute goals, the order board's day
   update(dt) {
     this.pollT -= dt;
     if (this.pollT > 0) return;
     this.pollT = 0.5;
     const g = this.game, S = this.S;
+    this.hookFishing();
     const here = g.ocean?.biome?.id;
     if (here && !g.ocean?.travelState && g.state.view !== 'aquarium' && here === g.state.biome) S.visited[here] = 1;
     if (this.depthApi()) { try { const z = zoneId(g.ocean.depthZone()); if (z && ZONES.includes(z)) S.zones[z] = 1; } catch { /* ignore */ } }
+    if (g.state.tutorialDone) this.refreshDaily();
     this.check();
   }
 
   check() {
     const g = this.game, S = this.S;
+    // [quests16] claimables: mark the ones whose goals are met as ready (claimed in the Quest Log)
+    if (g.state.tutorialDone) {
+      const fresh = [];
+      for (const q of this.claimables()) {
+        if (S.ready[q.id]) continue;
+        this.start(q);
+        if (q.objectives.every((_, i) => { const m = this.measure(q, i); return m.have >= m.need; })) { S.ready[q.id] = Date.now(); fresh.push(q.id); }
+      }
+      if (fresh.length) { g.emit?.('questReady', { ids: fresh }); g.save?.(); }
+    }
     const c = this.chapter();
     if (!c) return;
     for (const q of this.active()) {
@@ -474,6 +768,99 @@ export class QuestBook {
     g.emit?.('questDone', { id: q.id, bonus: r.bonus });
     g.save?.();
   }
+
+  // [quests16] pay a ready side story / milestone / order. Items asked for ('have' + take) must still be in the Satchel.
+  claim(id, o = {}) {
+    const g = this.game, S = this.S, q = QUEST_BY_ID[id];
+    if (!q || !isClaimable(q) || S.done[id] || !S.ready[id]) return false;
+    for (const ob of q.objectives) {
+      if (ob.t === 'have' && ob.take && (ITEMS.countItem?.(g.state, ob.id) || 0) < ob.n) { delete S.ready[id]; g.toast?.(`Bring ${ob.n} ${ITEMS.ITEMS?.[ob.id]?.name || ob.id} first!`, 'lock'); return false; }
+    }
+    S.done[id] = Date.now();
+    delete S.ready[id];
+    if (S.pin === id) S.pin = null;
+    for (const ob of q.objectives) if (ob.t === 'have' && ob.take) { try { ITEMS.removeItem?.(g.state, ob.id, ob.n); } catch { /* ignore */ } }
+    if (q.kind === 'order') this.life('orders');
+    const r = grantReward(g, q.reward, 'quest');
+    g.emit?.('questDone', { id, bonus: r.bonus, claimed: true, quiet: !!o.quiet });
+    if (!o.noCheck) this.check();
+    g.save?.();
+    return true;
+  }
+  claimAll(kind = null) {
+    let n = 0;
+    for (const q of this.readyList(kind)) if (this.claim(q.id, { quiet: n > 0, noCheck: true })) n++;
+    if (n) this.check();
+    return n;
+  }
+
+  // ------------------------------------------------------------ today's orders [quests16]
+  orderContext(salt = 0) {
+    const st = this.game.state, S = this.S;
+    const ch = Math.max(0, Math.min(CHAPTERS.length - 1, S.ch));
+    const oceans = [...new Set([...(st.unlockedBiomes || []), ...Object.keys(S.visited)])].filter((id) => OCEAN_NAMES[id]);
+    const rng = new RNG(hashStr(S.daily.day + ':' + salt));
+    return { ch, oceans: oceans.length ? oceans : ['oscean'], here: this.game.ocean?.biome?.id || st.biome, mat: rng.pick(ORDER_MATS[ch]), rng };
+  }
+  orderOk(t, c) {
+    if (t.minCh > c.ch) return false;
+    if (t.needs === 'workshop' && !(this.S.done.c2_workshop || c.ch >= 2)) return false;
+    return true;
+  }
+  makeOrder(t, c, slot) {
+    const r = c.rng;
+    const k = t.k * r.float(0.9, 1.15);
+    const base = DAILY_AERO[c.ch];
+    const objectives = t.make(c, r);
+    const mats = ORDER_MATS[c.ch].filter((m) => !objectives.some((o) => o.t === 'have' && o.id === m));
+    const reward = { aero: round5(base * k), items: { [r.pick(mats)]: c.ch >= 3 ? 2 : 1 } };
+    return { id: `o_${this.S.daily.day}_${slot}_${t.id}`, kind: 'order', pool: t.id, giver: t.giver, title: t.title, text: t.text, objectives, reward };
+  }
+  refreshDaily(force = false) {
+    const S = this.S, D = S.daily, key = dayKey();
+    if (!force && D.day === key && D.list.length) return false;
+    // anything already earned on the old board is paid out, never lost
+    for (const q of D.list) if (q && S.ready[q.id] && !S.done[q.id]) this.claim(q.id, { quiet: true, noCheck: true });
+    for (const k of [S.started, S.prog, S.ready, S.done]) for (const id in k) if (id.startsWith('o_')) delete k[id];
+    for (const id in QUEST_BY_ID) if (id.startsWith('o_')) delete QUEST_BY_ID[id];
+    if (S.pin && String(S.pin).startsWith('o_')) S.pin = null;
+    D.day = key; D.next = nextMidnight(); D.swaps = 1; D.list = [];
+    const c = this.orderContext(0);
+    const pool = ORDER_POOL.filter((t) => this.orderOk(t, c));
+    const picks = [];
+    while (picks.length < ORDERS_PER_DAY && picks.length < pool.length) { const t = c.rng.pick(pool); if (!picks.includes(t)) picks.push(t); }
+    picks.forEach((t, i) => D.list.push(this.makeOrder(t, c, i)));
+    const ch = c.ch;
+    D.list.push({
+      id: `o_${key}_bonus`, kind: 'orderBonus', giver: 'dot', title: 'Board Cleared!',
+      text: 'BEEP BOOP! All three orders filled. Bonus protocol engaged: one shiny chest, freshly dusted.',
+      objectives: [{ t: 'ordersToday', n: ORDERS_PER_DAY }], reward: { aero: round5(DAILY_AERO[ch] * 1.5), items: { [PKG_BY_CH[ch]]: 1 } },
+    });
+    for (const q of D.list) QUEST_BY_ID[q.id] = q;
+    this.game.emit?.('ordersRefreshed', { day: key });
+    this.game.save?.();
+    return true;
+  }
+  // swap one open order for another (once a day)
+  swapOrder(id) {
+    const S = this.S, D = S.daily;
+    const i = D.list.findIndex((q) => q.id === id && q.kind === 'order');
+    if (i < 0 || (D.swaps | 0) <= 0 || S.done[id] || S.ready[id]) return false;
+    const c = this.orderContext(7 + (D.swaps | 0) * 31 + i);
+    const used = new Set(D.list.map((q) => q.pool));
+    const pool = ORDER_POOL.filter((t) => this.orderOk(t, c) && !used.has(t.id));
+    if (!pool.length) return false;
+    const q = this.makeOrder(c.rng.pick(pool), c, i + 'x');
+    delete QUEST_BY_ID[id]; delete S.started[id]; delete S.prog[id];
+    if (S.pin === id) S.pin = q.id;
+    D.list[i] = q;
+    QUEST_BY_ID[q.id] = q;
+    D.swaps = (D.swaps | 0) - 1;
+    this.start(q);
+    this.game.save?.();
+    return true;
+  }
+  msToNewOrders() { return Math.max(0, (this.S.daily.next || nextMidnight()) - Date.now()); }
 
   // dev / test helper: finish the current chapter's quests right now
   debugFinishChapter() { const c = this.chapter(); if (!c) return; for (const q of c.quests) this.complete(q); this.check(); }

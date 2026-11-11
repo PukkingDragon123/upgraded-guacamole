@@ -24856,6 +24856,24 @@ kmlmk..
     }
     return { m, pivot: [ax, gy, az], anchors: { tip: tipA, knob: [kx + 0.9, ky, kz], fore: [ax, gy + 6.4, az] } };
   }
+  function toolKit(kit) {
+    return { model: (nx, ny, nz) => kit.model(nx, ny, nz), col: (h, o = {}) => K(kit, h, o), gloss: (h, o = {}) => KG(kit, h, o), glow: (h, a = 0.8) => kit.col(h, { emissive: a, jitter: 0 }) };
+  }
+  function placeTool(kit, tp, at0, bodyR, place2, at) {
+    const build4 = TOOLS.get(tp.kind);
+    if (!build4) return null;
+    const pr = (tp.pitch || 0) * DEG7, yr = (tp.yaw || 0) * DEG7, rr2 = (tp.roll || 0) * DEG7;
+    const dir = mv(bodyR, [Math.sin(yr) * Math.cos(pr), Math.sin(pr), Math.cos(yr) * Math.cos(pr)]);
+    let hint = [Math.sin(yr) * Math.sin(pr), -Math.cos(pr), Math.cos(yr) * Math.sin(pr)];
+    if (rr2) {
+      const side = [Math.cos(yr), 0, -Math.sin(yr)];
+      hint = add5(scl(hint, Math.cos(rr2)), scl(side, Math.sin(rr2)));
+    }
+    const part2 = kit.part("tool:" + tp.kind, () => build4(toolKit(kit)));
+    const W4 = place2(part2, M2(alignY(dir, mv(bodyR, hint)), at0));
+    at("tool", part2, W4);
+    return { part: part2, W: W4 };
+  }
   function poseFrame(pose, t) {
     const pd = POSES[pose] || POSES.idle;
     const k = (t || 0) / pd.dur;
@@ -24940,7 +24958,10 @@ kmlmk..
       at("rod", rod, Wr);
       rodTip = ap(Wr, rod.anchors.tip);
     }
+    const tool = p.tool ? placeTool(kit, p.tool, gripR, bodyR, place2, at) : null;
+    if (tool) rodTip = ap(tool.W, tool.part.anchors.head);
     let target = p.handL;
+    if (target === "tool") target = tool ? ap(tool.W, tool.part.anchors.grip2 || tool.part.anchors.head) : null;
     if (target === "knob") target = rod ? ap(Wr, rod.anchors.knob) : toWorld(conv([2, 8.6, 7.4], "shL"));
     else if (target === "fore") target = rod ? ap(Wr, rod.anchors.fore) : toWorld(conv([2, 10.6, 7], "shL"));
     else if (Array.isArray(target)) target = toWorld(conv(target, "shL"));
@@ -24949,12 +24970,13 @@ kmlmk..
     at("upper", upper2, place2(upper2, Lh.Mu));
     at("fore", fore, place2(fore, Lh.Mf));
     const gripL = ap(Lh.Mf, gripLocal);
+    const tool2 = p.tool2 ? placeTool(kit, p.tool2, gripL, bodyR, place2, at) : null;
     const center = ap(Wh, head.anchors.center);
     const top = hatTop || ap(Wh, head.anchors.top);
     return {
       items,
       head: { C: center, R: head.R, Rm: Wh.R },
-      anchors: { rodTip, handR: gripR, handL: gripL, hands: noRod ? scl(add5(gripR, gripL), 0.5) : gripR, head: top, mouth: ap(Wh, add5(head.anchors.center, [0, -0.3 * HEAD2.R, 0.95 * HEAD2.R])) }
+      anchors: { rodTip, tool2: tool2 ? ap(tool2.W, tool2.part.anchors.head) : gripL, handR: gripR, handL: gripL, hands: noRod ? scl(add5(gripR, gripL), 0.5) : gripR, head: top, mouth: ap(Wh, add5(head.anchors.center, [0, -0.3 * HEAD2.R, 0.95 * HEAD2.R])) }
     };
   }
   function stamp(dst, part2, W4, gmin, mx) {
@@ -25213,7 +25235,7 @@ kmlmk..
       return [q[0] - fx, q[1] - fy];
     };
     const A2 = sol.anchors;
-    const anchors = { rodTip: rel(A2.rodTip), hands: rel(A2.hands), handL: rel(A2.handL), handR: rel(A2.handR), head: rel(A2.head), mouth: rel(A2.mouth) };
+    const anchors = { rodTip: rel(A2.rodTip), tool2: rel(A2.tool2), hands: rel(A2.hands), handL: rel(A2.handL), handR: rel(A2.handR), head: rel(A2.head), mouth: rel(A2.mouth) };
     let front = null;
     if (pose === "hold") {
       const hs = kit.handSet;
@@ -25827,7 +25849,7 @@ kmlmk..
       const fx = EMOTES[look.emote]?.fx;
       if (fx) drawEmoteFx(ctx2, fx, x + A2.head[0], y + A2.head[1], t, k);
     }
-    return { rodTip: ax(A2.rodTip), hands: ax(A2.hands), head: ax(A2.head), handL: ax(A2.handL), handR: ax(A2.handR), mouth: ax(A2.mouth) };
+    return { rodTip: ax(A2.rodTip), tool2: ax(A2.tool2 || A2.handL), hands: ax(A2.hands), head: ax(A2.head), handL: ax(A2.handL), handR: ax(A2.handR), mouth: ax(A2.mouth) };
   }
   function itemPreview(look, item, size = 1, force = false) {
     if (!item || item.slot === "boat") return null;
@@ -25893,7 +25915,7 @@ kmlmk..
     if (PREVIEWS.size > 400) PREVIEWS.delete(PREVIEWS.keys().next().value);
     return pv;
   }
-  var TINTS, skinOfTint, it, pkg, lab2, WARDROBE, WARDROBE_BY_ID, EMOTES, DEFAULT_CHARACTER, SLOT_KEYS, VALID, _a, LEGACY, ROD_SKINS, TWIG, lookKey, DEG7, I3, M2, mv, mul, ap, add5, sub2, scl, dot2, cross2, norm2, Tr, Ro, hsh, KITS, K, KG, HEAD2, HAT_SEAT, HAT_TILT, TORSO, WAIST, TOPS, BOTTOMS, topCol, botCol, ARM, LEG, ROD, HIP_Y, J, OLD_SH, AK, conv, BASE_POSE, P5, S8, POSES, FEATS, fract3, HUE, BASE_VS, PITCH, FACE_YAW, YAW_STEP2, MAX_FRAMES, MAX_PIXELS, framePx, FRAMES, FAMS, budgetMs2, spent2, windowStart, statBuilt, statFallback, statMs, now4, PROF, RENDER, vsFor, INK, inE, MOOD_FACE, EYESTATE, TRAILS, PREVIEWS, HEAD_SLOTS;
+  var TINTS, skinOfTint, it, pkg, lab2, WARDROBE, WARDROBE_BY_ID, EMOTES, DEFAULT_CHARACTER, SLOT_KEYS, VALID, _a, LEGACY, ROD_SKINS, TWIG, lookKey, DEG7, I3, M2, mv, mul, ap, add5, sub2, scl, dot2, cross2, norm2, Tr, Ro, hsh, KITS, K, KG, HEAD2, HAT_SEAT, HAT_TILT, TORSO, WAIST, TOPS, BOTTOMS, topCol, botCol, ARM, LEG, ROD, HIP_Y, J, OLD_SH, AK, conv, BASE_POSE, P5, S8, POSES, TOOLS, FEATS, fract3, HUE, BASE_VS, PITCH, FACE_YAW, YAW_STEP2, MAX_FRAMES, MAX_PIXELS, framePx, FRAMES, FAMS, budgetMs2, spent2, windowStart, statBuilt, statFallback, statMs, now4, PROF, RENDER, vsFor, INK, inE, MOOD_FACE, EYESTATE, TRAILS, PREVIEWS, HEAD_SLOTS;
   var init_character = __esm({
     "src/gfx/character.js"() {
       init_voxel();
@@ -26485,6 +26507,7 @@ kmlmk..
           });
         } }
       };
+      TOOLS = /* @__PURE__ */ new Map();
       FEATS = {
         eyeL: { d: [0.37, 0.1, 0.92], size: 3.3 },
         eyeR: { d: [-0.37, 0.1, 0.92], size: 3.3 },
@@ -34509,7 +34532,15 @@ kmlmk..
     eruption_boom: ["boom", "boom2"],
     neon_buzz: ["buzz1", "buzz2"],
     train_ding: ["ding2", "bell"],
-    unlock_biome: ["jin_biome"]
+    unlock_biome: ["jin_biome"],
+    // [chest16] cracking chests open (src/ui/chest.js)
+    wood_hit: ["box_thud", V("wood_close2", 0.8), V("hit1", 0.8)],
+    wood_crack: ["crunch1", V("ice2", 0.6, 0.7), V("crunch1", 0.82)],
+    chest_thud: ["box_thud", V("wood_close1", 0.85)],
+    chest_hit: ["clank1", "clank2"],
+    nail_ping: [V("k_glass2", 1.5, 0.8), V("clank2", 1.9, 0.6), V("k_glass4", 1.3, 0.7)],
+    glass_crack: ["ice1", "ice2", "ice3", V("ice_big", 1.1, 0.8)],
+    lock_open: ["chest_creak", V("k_confirm1", 0.9)]
   };
   var GAIN = {
     ui_click: 0.32,
@@ -34598,7 +34629,15 @@ kmlmk..
     eruption_boom: 0.7,
     neon_buzz: 0.3,
     train_ding: 0.45,
-    unlock_biome: 0.6
+    unlock_biome: 0.6,
+    wood_hit: 0.6,
+    wood_crack: 0.5,
+    chest_thud: 0.6,
+    chest_hit: 0.5,
+    nail_ping: 0.32,
+    glass_crack: 0.5,
+    lock_open: 0.55
+    // [chest16]
   };
   var VERB = {
     whale_call: 0.35,
@@ -39621,7 +39660,7 @@ kmlmk..
         this.cooldown = 5;
       }
       const near = this.cruise * (0.6 + this.greed * 0.6);
-      const far = Math.max(near, this.burst * (0.45 + this.greed * 0.25), 80) * (this.quirks.has("intro") ? 1.8 : 1);
+      const far = Math.max(near, this.burst * (0.45 + this.greed * 0.25), 80) * (this.quirks.has("intro") ? 1.35 : 1);
       return this.steer(tx, ty, lerp(near, far, clamp01((d - 50) / 220)), 25);
     }
     thinkSniff(dt) {
@@ -41298,7 +41337,7 @@ kmlmk..
     }
     return landed;
   }
-  var DUR = { fishon: 1.5, banner: 1.5, pop: 1, igotit: 2.7, snap: 1.9, escape: 2 };
+  var DUR = { fishon: 2, banner: 2.2, pop: 1.35, igotit: 2.9, snap: 2.3, escape: 2.4 };
   var Titles = class {
     constructor(F2) {
       this.F = F2;
@@ -42232,6 +42271,24 @@ kmlmk..
       if (this.show < 0.5 || !this.lay) return null;
       const L2 = this.lay, r = L2.rg + L2.tg;
       return { x: L2.cx - r, y: L2.cy - r, w: r * 2, h: r * 2 };
+    }
+    // [tut16] Screen rects of the gear HUD's parts (the fishing lesson brackets them): 'gauge' (the RPM gauge and
+    // gear), 'tension' (the glass tube), 'shock' (the bolt orbs and the hold hint), 'readout' (the RPM pill).
+    partRect(kind, B2 = null) {
+      if (this.show < 0.5 || !this.lay) return null;
+      const L2 = this.lay, S9 = L2.S;
+      if (kind === "tension") return { x: L2.tx - 4, y: L2.ty - 4, w: L2.tw + 8, h: L2.th + Math.round(16 * S9) + 8 };
+      if (kind === "shock") {
+        const n2 = Math.max(1, B2?.shockMax ?? 1), r = Math.max(8, Math.round(12 * S9)), gap = r * 2 + Math.round(6 * S9);
+        const y = Math.round(L2.cy - L2.rg - L2.tg - r - 10 * S9), x0 = Math.round(L2.cx - (n2 - 1) * gap / 2);
+        const x1 = x0 + (n2 - 1) * gap + r + Math.round(46 * S9 + 13 * S9);
+        return { x: x0 - r - 3, y: y - r - 3, w: x1 - (x0 - r - 3), h: r * 2 + Math.round(14 * S9) + 6 };
+      }
+      if (kind === "readout") {
+        const y = Math.round(L2.cy + L2.rg + L2.tg * 0.2), w = Math.round(84 * S9);
+        return { x: L2.cx - w / 2, y: y - Math.round(14 * S9), w, h: Math.round(28 * S9) };
+      }
+      return this.rect();
     }
     // ---------------------------------------------------------------- physics + fx
     update(dt, B2) {
@@ -44153,11 +44210,20 @@ kmlmk..
   };
   var DEFAULT_ROD = { lureSpeed: 1, luck: 1, control: 1, resilience: 0.1, strength: 6, shock: { power: 0.8, charges: 1, cooldown: 6 } };
   var DIFF = {
-    common: { i: 0, base: 96, amp: 16, drift: 0.32, width: 27, shift: 26, surge: 1, resist: 0, hookC: 98, hookW: 30, hookWin: 2.1, hookNeed: 0.35 },
-    uncommon: { i: 1, base: 104, amp: 22, drift: 0.45, width: 24, shift: 32, surge: 1.12, resist: 0.12, hookC: 106, hookW: 27, hookWin: 1.95, hookNeed: 0.4 },
-    rare: { i: 2, base: 112, amp: 28, drift: 0.6, width: 21, shift: 38, surge: 1.26, resist: 0.25, hookC: 115, hookW: 24, hookWin: 1.8, hookNeed: 0.45 },
-    epic: { i: 3, base: 120, amp: 34, drift: 0.8, width: 18, shift: 44, surge: 1.42, resist: 0.4, hookC: 125, hookW: 21, hookWin: 1.7, hookNeed: 0.5 },
-    legendary: { i: 4, base: 128, amp: 40, drift: 1.05, width: 16, shift: 50, surge: 1.6, resist: 0.55, hookC: 136, hookW: 18, hookWin: 1.6, hookNeed: 0.55 }
+    common: { i: 0, base: 96, amp: 16, drift: 0.32, width: 27, shift: 26, surge: 1, resist: 0, hookC: 98, hookW: 30, hookWin: 2.8, hookNeed: 0.35 },
+    uncommon: { i: 1, base: 104, amp: 22, drift: 0.45, width: 24, shift: 32, surge: 1.12, resist: 0.12, hookC: 106, hookW: 27, hookWin: 2.55, hookNeed: 0.4 },
+    rare: { i: 2, base: 112, amp: 28, drift: 0.6, width: 21, shift: 38, surge: 1.26, resist: 0.25, hookC: 115, hookW: 24, hookWin: 2.3, hookNeed: 0.45 },
+    epic: { i: 3, base: 120, amp: 34, drift: 0.8, width: 18, shift: 44, surge: 1.42, resist: 0.4, hookC: 125, hookW: 21, hookWin: 2.05, hookNeed: 0.5 },
+    legendary: { i: 4, base: 128, amp: 40, drift: 1.05, width: 16, shift: 50, surge: 1.6, resist: 0.55, hookC: 136, hookW: 18, hookWin: 1.85, hookNeed: 0.55 }
+  };
+  var PACE = {
+    tele: [1, 0.92, 0.82, 0.72, 0.62],
+    rest: [1.5, 1.38, 1.25, 1.12, 1],
+    dart: [0.72, 0.78, 0.85, 0.92, 1],
+    drift: [0.75, 0.8, 0.86, 0.93, 1],
+    shift: 2.6,
+    tUp: 1.85,
+    tDown: 3.4
   };
   var diffOf = (sp) => DIFF[sp?.rarity] || DIFF.common;
   var angleOf = (x, y) => Math.atan2(y, x);
@@ -44184,6 +44250,7 @@ kmlmk..
         this.window *= 1.8;
         this.need *= 0.8;
       }
+      if (this.gentle) this.window = Math.max(this.window, 10);
       this.t = 0;
       this.got = 0;
       this.ripT = 0;
@@ -44261,12 +44328,13 @@ kmlmk..
       this.power = clamp01((fight3.power ?? 0.4) * (this.gentle ? 0.25 : 1) * (f.rec?.giant ? 1.25 : 1) * (1 + this.heavy * 0.15));
       const d = f.boss ? DIFF[["common", "uncommon", "uncommon", "rare", "rare", "epic", "epic", "legendary"][clamp(f.boss.tier | 0, 1, 7)]] : diffOf(sp), giant = f.rec?.giant ? 1 : 0, ctl = this.control;
       this.d = d;
+      this.pi4 = f.boss ? -1 : clamp(d.i | 0, 0, 4);
       this.gearMode = "fight";
       this.resist = this.gentle ? 0 : clamp(d.resist + giant * 0.1, 0, 0.8);
       this.bandBase = clamp(d.base + this.power * 14 + giant * 6, 70, 170);
       this.bandW = d.width * Math.pow(ctl, 0.7) * (this.gentle ? 1.7 : 1);
       this.bandAmp = d.amp * (this.gentle ? 0.45 : 1) / Math.sqrt(ctl);
-      this.bandDrift = d.drift * (this.gentle ? 0.5 : 1) / Math.sqrt(ctl);
+      this.bandDrift = d.drift * (this.gentle ? 0.5 : 1) * this.pace("drift") / Math.sqrt(ctl);
       this.shiftAmt = (d.shift + this.power * 16) * (this.gentle ? 0.6 : 1);
       this.bandShift = 0;
       this.shiftDir = 1;
@@ -44335,6 +44403,10 @@ kmlmk..
         this.updateBand(0);
       }
     }
+    // [pace16] PACE factor for this fight (1 for a boss)
+    pace(k) {
+      return this.pi4 < 0 ? 1 : PACE[k][this.pi4];
+    }
     // Compatibility with older test drivers: fight.phase.startTrick(kind), fight.phaseName.
     get phase() {
       return this;
@@ -44353,7 +44425,18 @@ kmlmk..
     }
     // a charge can start (hold); shockReady (older drivers, the tutorial) also wants the fish not already stunned
     get canCharge() {
-      return this.charges > 0 && this.shockCd <= 0 && !this.zap && !this.event && this.trick?.kind !== "jump" && !this.boss?.blocksShock;
+      return this.charges > 0 && this.shockCd <= 0 && !this.zap && !this.event && this.trick?.kind !== "jump" && !this.boss?.blocksShock && this.lessonShock();
+    }
+    // [tut16] The forced fishing lesson (game/tutorial.js sets tutorial.lesson while a fight step runs:
+    // {stage: 'reel' | 'ease' | 'surge' | 'zap' | 'land', hold (s of a calm intro beat), cap, floor, spike, ...}).
+    // The fight then follows the lesson: no surges until the surge step (which waits for the player to win it),
+    // the shock only from the zap step (a missed zap is refunded), no snapping, progress capped per step.
+    get lesson() {
+      return this.gentle ? this.F.game?.tutorial?.lesson || null : null;
+    }
+    lessonShock() {
+      const L2 = this.lesson;
+      return !L2 || L2.hold <= 0 && (L2.stage === "zap" || L2.stage === "land");
     }
     get shockReady() {
       return this.canCharge && this.stunT <= 0 && !this.charge;
@@ -44403,6 +44486,14 @@ kmlmk..
       this.lean = damp(this.lean, leanT, 5, dt);
       this.updateBand(dt);
       this.driveGear();
+      const LS = this.lesson;
+      if (LS && LS.hold > 0 && this.mode !== "hookset") {
+        this.F.gear.load = 0;
+        this.tension = damp(this.tension, 0.22, 3, dt);
+        if (this.qte?.active && !LS.surgeStarted) this.qte.active = false;
+        if (!this.stunned) this.drift(dt * 0.6);
+        return "ok";
+      }
       if (this.boss) {
         const bm = this.boss.update(dt);
         if (bm === "hold") {
@@ -44451,7 +44542,12 @@ kmlmk..
             break;
           case "rest":
             this.drift(dt);
-            if (this.modeT <= 0 && !this.exhausted) this.toTele();
+            if (LS) {
+              if (LS.stage === "surge" && !LS.surgeStarted) {
+                LS.surgeStarted = true;
+                this.toTele();
+              }
+            } else if (this.modeT <= 0 && !this.exhausted) this.toTele();
             break;
           case "tele":
             this.brace(dt);
@@ -44459,7 +44555,7 @@ kmlmk..
             break;
           case "surge":
             this.swimSurge(dt);
-            if (this.modeT <= 0) this.endSurge();
+            if (this.modeT <= 0 && !(LS && this.qte?.active)) this.endSurge();
             break;
           default:
             this.toRest();
@@ -44472,7 +44568,7 @@ kmlmk..
     }
     checks(dt, inEvent) {
       const F2 = this.F, st = F2.stats;
-      if (this.tension >= 1) this.snapT += dt;
+      if (this.tension >= 1 && !this.lesson) this.snapT += dt;
       else this.snapT = Math.max(0, this.snapT - dt * 1.5);
       if (this.snapT > this.grace) return "snap";
       if (inEvent) return "ok";
@@ -44528,9 +44624,15 @@ kmlmk..
         else if (this.surging) target = this.shiftAmt * Math.min(1.6, this.surgeMul) * this.shiftDir;
       }
       this.bandDir = Math.abs(target - this.bandShift) > 6 ? Math.sign(target - this.bandShift) : 0;
-      this.bandShift = damp(this.bandShift, target, this.surging ? 3.5 : 2.2, dt);
-      const c = clamp(this.bandBase + this.bandAmp * n2 + this.bandShift, 62, 200);
-      const w = this.bandW * (this.stunned ? 1.45 : this.exhausted ? 1.3 : 1);
+      this.bandShift = damp(this.bandShift, target, this.surging ? this.pi4 < 0 ? 3.5 : PACE.shift : 2.2, dt);
+      let c = clamp(this.bandBase + this.bandAmp * n2 + this.bandShift, 62, 200);
+      let w = this.bandW * (this.stunned ? 1.45 : this.exhausted ? 1.3 : 1);
+      const LE = this.lesson;
+      this.easeK = damp(this.easeK || 0, LE?.stage === "ease" && LE.hold <= 0 ? 1 : 0, 2.2, dt);
+      if (this.easeK > 1e-3) {
+        c = lerp(c, 58, this.easeK);
+        w = lerp(w, 24, this.easeK);
+      }
       const b = this.band;
       b.c = c;
       b.lo = Math.max(20, c - w);
@@ -44581,7 +44683,7 @@ kmlmk..
       this.progress += (reel - (payout + back) * bossOut) * dt;
       this.reelRate = reel - (payout + back) * bossOut;
       this.inBand = inBand;
-      let T3 = 0.13 + eff * 0.14 + over * 2.3;
+      let T3 = 0.13 + eff * 0.14 + over * (this.pi4 < 0 ? 2.3 : 2);
       if (surging) T3 += pull * 0.42 + (inBand ? 0.1 : 0) + (holding ? 0.06 : 0);
       if (this.trick?.extraT) T3 += this.trick.extraT;
       if (this.boss) T3 += this.boss.extraTension();
@@ -44589,13 +44691,23 @@ kmlmk..
       T3 /= st.lineStrength * (this.gentle ? 1.6 : 1);
       if (this.exhausted) T3 *= 0.7;
       if (this.stunned) T3 *= 0.5;
+      const LP = this.lesson;
+      if (LP?.stage === "ease" && LP.hold <= 0) {
+        T3 = 0.16 + over * 5 + (G.rpm > this.band.hi + 4 ? 0.2 : 0) + ((LP.spike || 0) > 0 ? 0.75 : 0);
+        if (this.tension < 0.9 && (LP.spike || 0) > 0) this.tension = damp(this.tension, 0.95, 3, dt);
+      }
       this.Ttarget = T3;
-      this.tension = clamp(damp(this.tension, T3, T3 > this.tension ? 2.6 : 4, dt), 0, 1.25);
+      const boss = this.pi4 < 0;
+      this.tension = clamp(damp(this.tension, T3, T3 > this.tension ? boss ? 2.6 : PACE.tUp : boss ? 4 : PACE.tDown, dt), 0, 1.25);
       let drain = p * 0.2 * (inBand ? 1.4 : 0.7) + (this.stunned ? 0.35 : 0);
       if (surging) drain *= 0.3;
       drain *= st.staminaDrain / this.stamSecs * (opts.stamMul ?? 1);
       if (this.mode === "hookset") drain *= 0.3;
       this.stamina = clamp01(this.stamina - drain * dt + (drain === 0 && !this.exhausted ? 0.02 * dt : 0));
+      if (LP) {
+        this.progress = clamp(this.progress, LP.floor ?? -0.05, LP.cap ?? 1);
+        if (LP.stage !== "land") this.stamina = Math.max(this.stamina, 0.35);
+      }
       if (this.stamina <= 1e-3 && !this.exhausted) this.exhaust();
     }
     // Air time during a jump: any reeling strains the line.
@@ -44676,6 +44788,7 @@ kmlmk..
       this.surgeMul = 1;
       this.modeT = rng.float(1, 1.8) * (1.2 - this.power * 0.4) * (this.gentle ? 1.4 : 1);
       F2.onCounter?.(true, q.dir, this.combo);
+      if (this.lesson) this.lesson.won = true;
       if (this.stamina <= 1e-3 && !this.exhausted) this.exhaust();
     }
     counterFail() {
@@ -44775,6 +44888,7 @@ kmlmk..
       this.fish.feel("smug", 1.5);
       if (this.mode === "rest" && !this.exhausted && !this.gentle) this.modeT = Math.min(this.modeT, 0.15);
       F2.onBackfire?.();
+      this.lessonRefund("backfire");
     }
     updateZap(dt) {
       if (!this.zap) return;
@@ -44785,10 +44899,27 @@ kmlmk..
       if (z.stun > 0) {
         this.stun(z.stun, z.grade);
         if (z.window) this.boss?.onCrit?.();
-      } else this.F.onShrug?.(z.grade);
+      } else if (this.lesson && (this.lesson.miss || 0) >= 2) this.stun(3.2, "weak");
+      else {
+        this.F.onShrug?.(z.grade);
+        this.lessonRefund(z.grade);
+      }
+    }
+    // [tut16] a zap that did not stun during the lesson: the charge comes straight back, try again
+    lessonRefund(why) {
+      const L2 = this.lesson;
+      if (!L2) return;
+      this.charges = Math.max(this.charges, 1);
+      this.shockCd = 0;
+      L2.miss = (L2.miss || 0) + 1;
+      L2.missWhy = why;
     }
     stun(dur = this.shockPower + 0.3, grade = "perfect") {
       const F2 = this.F, f = this.fish;
+      if (this.lesson) {
+        dur = Math.max(dur, 3.2);
+        this.lesson.stunned = true;
+      }
       this.stunMax = this.stunT = Math.max(this.stunT, dur);
       if (this.qte?.active) {
         this.qte.active = false;
@@ -44826,13 +44957,13 @@ kmlmk..
       this.mode = "rest";
       this.surgeMul = 1;
       this.shiftDir = 1;
-      this.modeT = this.exhausted ? 99 : rng.float(0.9, 1.8) * (1.25 - p * 0.5) * (this.gentle ? 1.6 : 1) * (this.boss ? this.boss.paceMul() * 1.3 : 1);
+      this.modeT = this.exhausted ? 99 : rng.float(0.9, 1.8) * (1.25 - p * 0.5) * (this.gentle ? 1.6 : 1) * (this.boss ? this.boss.paceMul() * 1.3 : this.pace("rest"));
       this.fish.feel(this.stamina < 0.45 ? "tired" : "determined", 1);
     }
     toTele() {
       const F2 = this.F, f = this.fish, p = this.power;
       this.mode = "tele";
-      this.modeT = this.gentle ? 1.1 : (0.62 - p * 0.14) * (0.85 + 0.15 * this.control);
+      this.modeT = this.gentle ? 1.6 : (this.boss ? 0.62 - p * 0.14 : this.pace("tele") - p * 0.1) * (0.85 + 0.15 * this.control);
       this.teleDir = this.away + rng.float(-1.35, 1.35);
       this.pullDir = this.teleDir;
       this.pending = null;
@@ -44914,7 +45045,7 @@ kmlmk..
       const [ax, ay] = this.anchor();
       const R2 = (44 + this.power * 40) * (this.surgeMul > 1.5 ? 1.4 : 1);
       const hold = this.qte?.holding ? 0.45 : 1;
-      const sp = (55 + this.power * 70) * this.surgeMul * hold;
+      const sp = (55 + this.power * 70) * this.surgeMul * hold * this.pace("dart") * (this.lesson ? 0.7 : 1);
       const tx = Math.cos(this.pullDir) * R2, ty = Math.sin(this.pullDir) * R2;
       const dx = tx - this.offX, dy = ty - this.offY, d = Math.hypot(dx, dy) || 1;
       const step = Math.min(d, sp * dt);
@@ -45894,6 +46025,7 @@ kmlmk..
     // Called by fish AI when it wants to start nibbling.
     requestNibble(fish) {
       if (this.state !== "idle" || this.cine || !this.world.hook.active) return false;
+      if (fish.boss && this.game.tutorialActive) return false;
       this.fish = fish;
       fish.controlled = true;
       fish.allowTurn = true;
@@ -45901,7 +46033,11 @@ kmlmk..
       const sp = fish.sp, lure = this.lureK();
       const [n0, n1] = sp.fight?.nibbles || [1, 3];
       this.nibblesLeft = fish.boss ? 0 : Math.max(0, Math.round(rng.int(n0, n1) / Math.sqrt(lure)));
-      this.nibbleT = fish.boss ? 0.3 : rng.float(0.35, 0.8) / lure;
+      this.nibbleT = fish.boss ? 0.3 : rng.float(0.6, 1.2) / lure;
+      if (this.game.tutorialActive && !fish.boss) {
+        this.nibblesLeft = Math.max(2, this.nibblesLeft);
+        this.nibbleT = 1.1;
+      }
       this.nibblePhase = 0;
       this.fakeBite = !fish.boss && rng.chance((sp.fight?.fakeBite ?? 0.15) / lure);
       return true;
@@ -45939,7 +46075,7 @@ kmlmk..
     }
     resetCamera() {
       const c = this.cam, g = this.game;
-      c?.release?.(3);
+      c?.release?.(2.4);
       c?.setLetterbox?.(false);
       this.restoreScroll();
       if (g.timeScaleTarget !== void 0) g.timeScaleTarget = 1;
@@ -45949,7 +46085,7 @@ kmlmk..
       this.poseHold = null;
       this.setPose("idle");
     }
-    message(text, color = "#ffffff", time = 1.6, big = false) {
+    message(text, color = "#ffffff", time = 2.2, big = false) {
       this.msg = { text, color, t: 0, max: time, big };
     }
     // A small icon pop at a screen point (instead of text): kind 'miss' | 'early' | 'spook' | 'zap'.
@@ -46040,7 +46176,7 @@ kmlmk..
       if (w.hook.active && inWater) this.lureAssist(dt);
       if (g.tutorialActive) this.tutorialBite(dt, w.hook.active && inWater);
       this.boxHover = null;
-      if (this.state === "idle" && canHook && inWater && g.floaters?.hitHook) {
+      if (this.state === "idle" && canHook && inWater && g.floaters?.hitHook && !g.tutorialActive) {
         try {
           this.boxHover = g.floaters.hitHook(h.x, h.y, 7) || null;
         } catch (e) {
@@ -46177,7 +46313,7 @@ kmlmk..
         this.releaseFish(true);
         return;
       }
-      if (!f.boss && this.cursor.speed > 260 * (this.stats?.calm ?? 1)) {
+      if (!f.boss && this.cursor.speed > 260 * (this.stats?.calm ?? 1) * (g.tutorialActive ? 2.5 : 1)) {
         this.iconPop("spook", ...this.toScreen(f.x, f.y));
         this.releaseFish(true, "!");
         return;
@@ -46213,9 +46349,9 @@ kmlmk..
       if (this.nibbleT <= 0) {
         if (this.nibblesLeft > 0) {
           this.nibblesLeft--;
-          this.nibblePhase = 0.25;
+          this.nibblePhase = 0.32;
           this.nibbled = false;
-          this.nibbleT = rng.float(0.45, 1.1) / this.lureK();
+          this.nibbleT = rng.float(0.75, 1.5) / this.lureK();
           if (this.fakeBite && this.nibblesLeft === 1) {
             h.dip = 8;
             f.say("!", 0.4);
@@ -46242,7 +46378,7 @@ kmlmk..
           }
         }
       }
-      if (inp.pressed && !g.ui?.blocking && this.state === "nibble") {
+      if (inp.pressed && !g.ui?.blocking && this.state === "nibble" && !g.tutorialActive) {
         this.iconPop("early", inp.x, inp.y);
         this.sfx("escape", { vol: 0.5 });
         this.releaseFish(true, "cross");
@@ -46264,7 +46400,7 @@ kmlmk..
       f.y = damp(f.y, h.y + 2 + Math.sin(this.t * 23) * 1.2, 16, dt);
       f.facing = -side;
       f.feel(hs.inBand ? "scared" : "determined", 0.2);
-      this.focusCam(lerp(f.x, h.x, 0.5), f.y, this.fightZoom() * 0.9, 2.5);
+      this.focusCam(lerp(f.x, h.x, 0.5), f.y, this.fightZoom() * 0.9, 1.8);
       h.dip = Math.max(h.dip, 4 + tug + Math.sin(this.t * 40) * 2 + hs.set * 4);
       if (rng.chance(dt * (12 + hs.set * 20))) this.particles.bubbles(h.x, h.y, 1, { size: 1 });
       if (hs.inBand && rng.chance(dt * 8)) this.particles.glint?.(h.x + rng.float(-4, 4), h.y + rng.float(-3, 3), { len: 3 });
@@ -46331,9 +46467,9 @@ kmlmk..
       this.leanY = 0;
       const cam = this.cam;
       const zoomIn = f.boss ? this.bossZoom() + 0.5 : this.fightZoom() + 0.3;
-      this.focusCam(f.x, f.y, zoomIn, f.boss ? 2 : 6);
+      this.focusCam(f.x, f.y, zoomIn, f.boss ? 2 : 4.2);
       cam?.setLetterbox?.(true);
-      cam?.slowmo?.(f.boss ? 0.35 : 0.22, f.boss ? 1.4 : 0.55);
+      cam?.slowmo?.(f.boss ? 0.35 : 0.3, f.boss ? 1.4 : 0.85);
       cam?.flash?.("#e8fbff", 0.35);
       this.shake(5);
       this.sfx("hookset");
@@ -46391,12 +46527,12 @@ kmlmk..
       const back = q?.active ? clamp01(q.k * 1.6) : 0;
       const lk = B2.lean * (1 - back * 1.8);
       const ld = this.leanDir ?? 0;
-      this.leanX = damp(this.leanX, Math.cos(ld) * lk * 34, 5, dt);
-      this.leanY = damp(this.leanY, Math.sin(ld) * lk * 20, 5, dt);
+      this.leanX = damp(this.leanX, Math.cos(ld) * lk * 34, 3.6, dt);
+      this.leanY = damp(this.leanY, Math.sin(ld) * lk * 20, 3.6, dt);
       const ev2 = B2.event?.focus;
-      if (ev2) this.focusCam(ev2.x, ev2.y, ev2.zoom, 4);
+      if (ev2) this.focusCam(ev2.x, ev2.y, ev2.zoom, 3.2);
       else if (B2.boss?.stage === "intro") this.focusCam(f.x, f.y - this.H * 0.16 / zoom, zoom, 1.6);
-      else this.focusCam(f.x + this.leanX / zoom, f.y + this.leanY / zoom, zoom - Math.abs(lk) * 0.12, B2.mode === "hookset" ? 6 : 4);
+      else this.focusCam(f.x + this.leanX / zoom, f.y + this.leanY / zoom, zoom - Math.abs(lk) * 0.12, B2.mode === "hookset" ? 4.5 : 3);
       if (!this.poseHold) {
         const pose = q?.holding ? "pull" : this.gear.p > 0.08 || B2.stunned ? "reel" : "pull";
         if (pose !== this.pose) this.setPose(pose);

@@ -368,6 +368,22 @@ export class Gear {
     return { x: L.cx - r, y: L.cy - r, w: r * 2, h: r * 2 };
   }
 
+  // [tut16] Screen rects of the gear HUD's parts (the fishing lesson brackets them): 'gauge' (the RPM gauge and
+  // gear), 'tension' (the glass tube), 'shock' (the bolt orbs and the hold hint), 'readout' (the RPM pill).
+  partRect(kind, B = null) {
+    if (this.show < 0.5 || !this.lay) return null;
+    const L = this.lay, S = L.S;
+    if (kind === 'tension') return { x: L.tx - 4, y: L.ty - 4, w: L.tw + 8, h: L.th + Math.round(16 * S) + 8 };
+    if (kind === 'shock') {
+      const n = Math.max(1, B?.shockMax ?? 1), r = Math.max(8, Math.round(12 * S)), gap = r * 2 + Math.round(6 * S);
+      const y = Math.round(L.cy - L.rg - L.tg - r - 10 * S), x0 = Math.round(L.cx - ((n - 1) * gap) / 2);
+      const x1 = x0 + (n - 1) * gap + r + Math.round(46 * S + 13 * S);
+      return { x: x0 - r - 3, y: y - r - 3, w: x1 - (x0 - r - 3), h: r * 2 + Math.round(14 * S) + 6 };
+    }
+    if (kind === 'readout') { const y = Math.round(L.cy + L.rg + L.tg * 0.2), w = Math.round(84 * S); return { x: L.cx - w / 2, y: y - Math.round(14 * S), w, h: Math.round(28 * S) }; }
+    return this.rect();
+  }
+
   // ---------------------------------------------------------------- physics + fx
   update(dt, B) {
     const F = this.F, cr = F.crank;

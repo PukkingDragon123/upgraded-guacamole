@@ -105,6 +105,14 @@ export const SAMPLE_MAP = {
   neon_buzz: ['buzz1', 'buzz2'],
   train_ding: ['ding2', 'bell'],
   unlock_biome: ['jin_biome'],
+  // [chest16] cracking chests open (src/ui/chest.js)
+  wood_hit: ['box_thud', V('wood_close2', 0.8), V('hit1', 0.8)],
+  wood_crack: ['crunch1', V('ice2', 0.6, 0.7), V('crunch1', 0.82)],
+  chest_thud: ['box_thud', V('wood_close1', 0.85)],
+  chest_hit: ['clank1', 'clank2'],
+  nail_ping: [V('k_glass2', 1.5, 0.8), V('clank2', 1.9, 0.6), V('k_glass4', 1.3, 0.7)],
+  glass_crack: ['ice1', 'ice2', 'ice3', V('ice_big', 1.1, 0.8)],
+  lock_open: ['chest_creak', V('k_confirm1', 0.9)],
 };
 
 // level trim per sound name (clips are loudness-normalised, so this is the mix)
@@ -122,6 +130,7 @@ const GAIN = {
   static_burst: 0.3, crt_on: 0.4, treasure_open: 0.6, sparkle: 0.35, magic: 0.45, flood_rush: 0.6, worm_squish: 0.5,
   golden_shimmer: 0.45, travel_whoosh: 0.55, arrive: 0.5, ice_crack: 0.5, ice_chime: 0.4, penguin: 0.45,
   eruption_boom: 0.7, neon_buzz: 0.3, train_ding: 0.45, unlock_biome: 0.6,
+  wood_hit: 0.6, wood_crack: 0.5, chest_thud: 0.6, chest_hit: 0.5, nail_ping: 0.32, glass_crack: 0.5, lock_open: 0.55, // [chest16]
 };
 // reverb send per name (recordings already carry their own room; keep sends small)
 const VERB = { whale_call: 0.35, sonar: 0.3, bell: 0.2, notify: 0.12, thunder: 0.2, golden_shimmer: 0.25, magic: 0.18, sparkle: 0.15,

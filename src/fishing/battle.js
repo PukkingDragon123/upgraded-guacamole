@@ -37,12 +37,27 @@ export const DEFAULT_ROD = { lureSpeed: 1, luck: 1, control: 1, resilience: 0.1,
 // Difficulty by rarity (RPM values). base/amp/drift: where the sweet band sits, how far and how fast it wanders;
 // width: band half-width; shift: how far a surge kicks it; surge: drag + line stripping; resist: shock resistance;
 // hook*: the spin-to-hook band centre / half-width, window (s) and the time in the band needed (s).
+// [pace16] hookWin was 2.1 / 1.95 / 1.8 / 1.7 / 1.6 s: longer bite windows, the rarest fish stay the snappiest
 export const DIFF = {
-  common: { i: 0, base: 96, amp: 16, drift: 0.32, width: 27, shift: 26, surge: 1, resist: 0, hookC: 98, hookW: 30, hookWin: 2.1, hookNeed: 0.35 },
-  uncommon: { i: 1, base: 104, amp: 22, drift: 0.45, width: 24, shift: 32, surge: 1.12, resist: 0.12, hookC: 106, hookW: 27, hookWin: 1.95, hookNeed: 0.4 },
-  rare: { i: 2, base: 112, amp: 28, drift: 0.6, width: 21, shift: 38, surge: 1.26, resist: 0.25, hookC: 115, hookW: 24, hookWin: 1.8, hookNeed: 0.45 },
-  epic: { i: 3, base: 120, amp: 34, drift: 0.8, width: 18, shift: 44, surge: 1.42, resist: 0.4, hookC: 125, hookW: 21, hookWin: 1.7, hookNeed: 0.5 },
-  legendary: { i: 4, base: 128, amp: 40, drift: 1.05, width: 16, shift: 50, surge: 1.6, resist: 0.55, hookC: 136, hookW: 18, hookWin: 1.6, hookNeed: 0.55 },
+  common: { i: 0, base: 96, amp: 16, drift: 0.32, width: 27, shift: 26, surge: 1, resist: 0, hookC: 98, hookW: 30, hookWin: 2.8, hookNeed: 0.35 },
+  uncommon: { i: 1, base: 104, amp: 22, drift: 0.45, width: 24, shift: 32, surge: 1.12, resist: 0.12, hookC: 106, hookW: 27, hookWin: 2.55, hookNeed: 0.4 },
+  rare: { i: 2, base: 112, amp: 28, drift: 0.6, width: 21, shift: 38, surge: 1.26, resist: 0.25, hookC: 115, hookW: 24, hookWin: 2.3, hookNeed: 0.45 },
+  epic: { i: 3, base: 120, amp: 34, drift: 0.8, width: 18, shift: 44, surge: 1.42, resist: 0.4, hookC: 125, hookW: 21, hookWin: 2.05, hookNeed: 0.5 },
+  legendary: { i: 4, base: 128, amp: 40, drift: 1.05, width: 16, shift: 50, surge: 1.6, resist: 0.55, hookC: 136, hookW: 18, hookWin: 1.85, hookNeed: 0.55 },
+};
+// [pace16] Calmer, readable fight pacing for regular fish, per rarity tier (common .. legendary): commons get the
+// most breathing room, rarer fish stay quicker. Bosses keep their own tuning (boss.js paceMul / durMul).
+//   tele   telegraph before a surge (s; was 0.62 - power * 0.14, ~0.55 s)
+//   rest   x the calm time between surges (was 0.9..1.8 s x (1.25 - power * 0.5))
+//   dart   x the fish's swim speed while it surges (was 55 + power * 70 px/s)
+//   drift  x how fast the sweet band wanders        shift: how fast the band jumps on a surge (was 3.5 / s)
+//   tUp / tDown  tension rise / ease rates (were 2.6 / 4 per s): the tube climbs slower, so there is time to react
+export const PACE = {
+  tele: [1.0, 0.92, 0.82, 0.72, 0.62],
+  rest: [1.5, 1.38, 1.25, 1.12, 1.0],
+  dart: [0.72, 0.78, 0.85, 0.92, 1],
+  drift: [0.75, 0.8, 0.86, 0.93, 1],
+  shift: 2.6, tUp: 1.85, tDown: 3.4,
 };
 export const diffOf = (sp) => DIFF[sp?.rarity] || DIFF.common;
 
@@ -66,6 +81,7 @@ export class HookSpin {
     this.window = (d.hookWin + (fight.biteWindow ?? 0.6) * 0.6) * (F.stats?.biteWindow ?? 1) * (this.gentle ? 2.4 : 1);
     this.need = d.hookNeed * (this.gentle ? 0.7 : 1);
     if (f.boss) { this.c0 = 104; this.w *= 1.5; this.ripGap *= 1.4; this.window *= 1.8; this.need *= 0.8; } // [phase9:fishing] a boss bite is a moment, not a test
+    if (this.gentle) this.window = Math.max(this.window, 10); // [tut16] the fishing lesson: plenty of time to learn the hook-set
     this.t = 0; this.got = 0; this.ripT = 0; this.ripMax = 0.3;
     this.ph = rng.float(0, TAU);
     this.band = { lo: 0, hi: 0, rip: 0, c: 0 };
@@ -134,12 +150,13 @@ export class Battle {
     // bosses fight by their tier (their health bar is long enough), everyone else by rarity
     const d = f.boss ? DIFF[['common', 'uncommon', 'uncommon', 'rare', 'rare', 'epic', 'epic', 'legendary'][clamp(f.boss.tier | 0, 1, 7)]] : diffOf(sp), giant = f.rec?.giant ? 1 : 0, ctl = this.control;
     this.d = d;
+    this.pi4 = f.boss ? -1 : clamp(d.i | 0, 0, 4); // [pace16] PACE row (-1: a boss keeps its own tuning)
     this.gearMode = 'fight';
     this.resist = this.gentle ? 0 : clamp(d.resist + giant * 0.1, 0, 0.8);
     this.bandBase = clamp(d.base + this.power * 14 + giant * 6, 70, 170);
     this.bandW = d.width * Math.pow(ctl, 0.7) * (this.gentle ? 1.7 : 1);
     this.bandAmp = (d.amp * (this.gentle ? 0.45 : 1)) / Math.sqrt(ctl);
-    this.bandDrift = (d.drift * (this.gentle ? 0.5 : 1)) / Math.sqrt(ctl);
+    this.bandDrift = (d.drift * (this.gentle ? 0.5 : 1) * this.pace('drift')) / Math.sqrt(ctl);
     this.shiftAmt = (d.shift + this.power * 16) * (this.gentle ? 0.6 : 1);
     this.bandShift = 0; this.shiftDir = 1; this.bandDir = 0; this.bandT = 0;
     this.bph = [rng.float(0, TAU), rng.float(0, TAU), rng.float(0, TAU)];
@@ -196,6 +213,9 @@ export class Battle {
     }
   }
 
+  // [pace16] PACE factor for this fight (1 for a boss)
+  pace(k) { return this.pi4 < 0 ? 1 : PACE[k][this.pi4]; }
+
   // Compatibility with older test drivers: fight.phase.startTrick(kind), fight.phaseName.
   get phase() { return this; }
   get phaseName() { return this.event ? this.event.name : 'tension'; }
@@ -204,7 +224,13 @@ export class Battle {
   get stunned() { return this.stunT > 0; }
   get grace() { return this.F.stats.snapGrace * this.control * (this.gentle ? 3 : 1) + 0.15; }
   // a charge can start (hold); shockReady (older drivers, the tutorial) also wants the fish not already stunned
-  get canCharge() { return this.charges > 0 && this.shockCd <= 0 && !this.zap && !this.event && this.trick?.kind !== 'jump' && !this.boss?.blocksShock; }
+  get canCharge() { return this.charges > 0 && this.shockCd <= 0 && !this.zap && !this.event && this.trick?.kind !== 'jump' && !this.boss?.blocksShock && this.lessonShock(); }
+  // [tut16] The forced fishing lesson (game/tutorial.js sets tutorial.lesson while a fight step runs:
+  // {stage: 'reel' | 'ease' | 'surge' | 'zap' | 'land', hold (s of a calm intro beat), cap, floor, spike, ...}).
+  // The fight then follows the lesson: no surges until the surge step (which waits for the player to win it),
+  // the shock only from the zap step (a missed zap is refunded), no snapping, progress capped per step.
+  get lesson() { return this.gentle ? this.F.game?.tutorial?.lesson || null : null; }
+  lessonShock() { const L = this.lesson; return !L || (L.hold <= 0 && (L.stage === 'zap' || L.stage === 'land')); }
   get shockReady() { return this.canCharge && this.stunT <= 0 && !this.charge; }
 
   anchor() {
@@ -250,6 +276,15 @@ export class Battle {
 
     this.updateBand(dt);
     this.driveGear();
+    // [tut16] the lesson's intro beat for a step: the fish settles, the line goes calm while Bubbles explains
+    const LS = this.lesson;
+    if (LS && LS.hold > 0 && this.mode !== 'hookset') {
+      this.F.gear.load = 0;
+      this.tension = damp(this.tension, 0.22, 3, dt);
+      if (this.qte?.active && !LS.surgeStarted) this.qte.active = false;
+      if (!this.stunned) this.drift(dt * 0.6);
+      return 'ok';
+    }
     // a boss: its intro / phase changes hold the fight; its attacks take the fish over
     if (this.boss) {
       const bm = this.boss.update(dt);
@@ -293,7 +328,8 @@ export class Battle {
           break;
         case 'rest':
           this.drift(dt);
-          if (this.modeT <= 0 && !this.exhausted) this.toTele();
+          if (LS) { if (LS.stage === 'surge' && !LS.surgeStarted) { LS.surgeStarted = true; this.toTele(); } } // [tut16] one surge, on cue
+          else if (this.modeT <= 0 && !this.exhausted) this.toTele();
           break;
         case 'tele':
           this.brace(dt);
@@ -301,7 +337,7 @@ export class Battle {
           break;
         case 'surge':
           this.swimSurge(dt);
-          if (this.modeT <= 0) this.endSurge();
+          if (this.modeT <= 0 && !(LS && this.qte?.active)) this.endSurge(); // [tut16] the lesson's surge lasts until it is won
           break;
         default: this.toRest();
       }
@@ -314,7 +350,7 @@ export class Battle {
 
   checks(dt, inEvent) {
     const F = this.F, st = F.stats;
-    if (this.tension >= 1) this.snapT += dt; else this.snapT = Math.max(0, this.snapT - dt * 1.5);
+    if (this.tension >= 1 && !this.lesson) this.snapT += dt; else this.snapT = Math.max(0, this.snapT - dt * 1.5);
     if (this.snapT > this.grace) return 'snap';
     if (inEvent) return 'ok';
     // slack: doing nothing while the fish rests lets it spit the hook
@@ -362,9 +398,13 @@ export class Battle {
       else if (this.surging) target = this.shiftAmt * Math.min(1.6, this.surgeMul) * this.shiftDir;
     }
     this.bandDir = Math.abs(target - this.bandShift) > 6 ? Math.sign(target - this.bandShift) : 0;
-    this.bandShift = damp(this.bandShift, target, this.surging ? 3.5 : 2.2, dt);
-    const c = clamp(this.bandBase + this.bandAmp * n + this.bandShift, 62, 200);
-    const w = this.bandW * (this.stunned ? 1.45 : this.exhausted ? 1.3 : 1);
+    this.bandShift = damp(this.bandShift, target, this.surging ? (this.pi4 < 0 ? 3.5 : PACE.shift) : 2.2, dt); // [pace16]
+    let c = clamp(this.bandBase + this.bandAmp * n + this.bandShift, 62, 200);
+    let w = this.bandW * (this.stunned ? 1.45 : this.exhausted ? 1.3 : 1);
+    // [tut16] the lesson's ease-off step: the fish digs in, the sweet band sinks low and narrows (slow down!)
+    const LE = this.lesson;
+    this.easeK = damp(this.easeK || 0, LE?.stage === 'ease' && LE.hold <= 0 ? 1 : 0, 2.2, dt);
+    if (this.easeK > 0.001) { c = lerp(c, 58, this.easeK); w = lerp(w, 24, this.easeK); }
     const b = this.band;
     b.c = c; b.lo = Math.max(20, c - w); b.hi = c + w;
     this.zone = { lo: b.lo / RPM_UNIT, hi: b.hi / RPM_UNIT };
@@ -417,7 +457,7 @@ export class Battle {
     this.reelRate = reel - (payout + back) * bossOut;
     this.inBand = inBand;
     // tension: the line strains when the gear outruns the band, and while the fish runs
-    let T = 0.13 + eff * 0.14 + over * 2.3;
+    let T = 0.13 + eff * 0.14 + over * (this.pi4 < 0 ? 2.3 : 2.0); // [pace16] a gentler climb past the band
     if (surging) T += pull * 0.42 + (inBand ? 0.1 : 0) + (holding ? 0.06 : 0);
     if (this.trick?.extraT) T += this.trick.extraT;
     if (this.boss) T += this.boss.extraTension();
@@ -425,14 +465,26 @@ export class Battle {
     T /= st.lineStrength * (this.gentle ? 1.6 : 1);
     if (this.exhausted) T *= 0.7;
     if (this.stunned) T *= 0.5;
+    const LP = this.lesson;
+    if (LP?.stage === 'ease' && LP.hold <= 0) {
+      // [tut16] the line goes tight (a spike), then follows the player: over the band = tight, slow down = calm
+      T = 0.16 + over * 5 + (G.rpm > this.band.hi + 4 ? 0.2 : 0) + ((LP.spike || 0) > 0 ? 0.75 : 0);
+      if (this.tension < 0.9 && (LP.spike || 0) > 0) this.tension = damp(this.tension, 0.95, 3, dt);
+    }
     this.Ttarget = T;
-    this.tension = clamp(damp(this.tension, T, T > this.tension ? 2.6 : 4, dt), 0, 1.25);
+    const boss = this.pi4 < 0; // [pace16] gentler tension curves (bosses as tuned)
+    this.tension = clamp(damp(this.tension, T, T > this.tension ? (boss ? 2.6 : PACE.tUp) : (boss ? 4 : PACE.tDown), dt), 0, 1.25);
     // stamina: spinning in the band tires it; counters and shocks do the real work
     let drain = p * 0.2 * (inBand ? 1.4 : 0.7) + (this.stunned ? 0.35 : 0);
     if (surging) drain *= 0.3;
     drain *= (st.staminaDrain / this.stamSecs) * (opts.stamMul ?? 1);
     if (this.mode === 'hookset') drain *= 0.3;
     this.stamina = clamp01(this.stamina - drain * dt + (drain === 0 && !this.exhausted ? 0.02 * dt : 0));
+    if (LP) {
+      // [tut16] each lesson step reels the fish only so far; it never takes back more than a little
+      this.progress = clamp(this.progress, LP.floor ?? -0.05, LP.cap ?? 1);
+      if (LP.stage !== 'land') this.stamina = Math.max(this.stamina, 0.35);
+    }
     if (this.stamina <= 0.001 && !this.exhausted) this.exhaust();
   }
 
@@ -509,6 +561,7 @@ export class Battle {
     this.surgeMul = 1;
     this.modeT = rng.float(1.0, 1.8) * (1.2 - this.power * 0.4) * (this.gentle ? 1.4 : 1);
     F.onCounter?.(true, q.dir, this.combo);
+    if (this.lesson) this.lesson.won = true; // [tut16]
     if (this.stamina <= 0.001 && !this.exhausted) this.exhaust();
   }
 
@@ -596,6 +649,7 @@ export class Battle {
     this.fish.feel('smug', 1.5);
     if (this.mode === 'rest' && !this.exhausted && !this.gentle) this.modeT = Math.min(this.modeT, 0.15); // free surge
     F.onBackfire?.();
+    this.lessonRefund('backfire');
   }
 
   updateZap(dt) {
@@ -605,11 +659,23 @@ export class Battle {
     const z = this.zap;
     this.zap = null;
     if (z.stun > 0) { this.stun(z.stun, z.grade); if (z.window) this.boss?.onCrit?.(); }
-    else this.F.onShrug?.(z.grade);
+    else if (this.lesson && (this.lesson.miss || 0) >= 2) this.stun(3.2, 'weak'); // [tut16] third time lucky: the lesson lets it count
+    else { this.F.onShrug?.(z.grade); this.lessonRefund(z.grade); }
+  }
+
+  // [tut16] a zap that did not stun during the lesson: the charge comes straight back, try again
+  lessonRefund(why) {
+    const L = this.lesson;
+    if (!L) return;
+    this.charges = Math.max(this.charges, 1);
+    this.shockCd = 0;
+    L.miss = (L.miss || 0) + 1;
+    L.missWhy = why;
   }
 
   stun(dur = this.shockPower + 0.3, grade = 'perfect') {
     const F = this.F, f = this.fish;
+    if (this.lesson) { dur = Math.max(dur, 3.2); this.lesson.stunned = true; } // [tut16] a long, easy stun to reel in
     this.stunMax = this.stunT = Math.max(this.stunT, dur);
     if (this.qte?.active) { this.qte.active = false; this.qte.win = true; this.qte.stunned = true; this.qte.t = 0; }
     if (this.trick && this.trick.kind !== 'jump') { this.trick = null; f.alpha = 1; }
@@ -639,14 +705,15 @@ export class Battle {
     this.mode = 'rest';
     this.surgeMul = 1;
     this.shiftDir = 1;
-    this.modeT = this.exhausted ? 99 : rng.float(0.9, 1.8) * (1.25 - p * 0.5) * (this.gentle ? 1.6 : 1) * (this.boss ? this.boss.paceMul() * 1.3 : 1);
+    this.modeT = this.exhausted ? 99 : rng.float(0.9, 1.8) * (1.25 - p * 0.5) * (this.gentle ? 1.6 : 1) * (this.boss ? this.boss.paceMul() * 1.3 : this.pace('rest'));
     this.fish.feel(this.stamina < 0.45 ? 'tired' : 'determined', 1);
   }
 
   toTele() {
     const F = this.F, f = this.fish, p = this.power;
     this.mode = 'tele';
-    this.modeT = this.gentle ? 1.1 : (0.62 - p * 0.14) * (0.85 + 0.15 * this.control);
+    // [pace16] a readable telegraph: the fish braces ~1 s (commons) before it surges (bosses as tuned)
+    this.modeT = this.gentle ? 1.6 : (this.boss ? 0.62 - p * 0.14 : this.pace('tele') - p * 0.1) * (0.85 + 0.15 * this.control);
     // pull roughly away from the boat, sometimes sideways
     this.teleDir = this.away + rng.float(-1.35, 1.35);
     this.pullDir = this.teleDir;
@@ -731,7 +798,7 @@ export class Battle {
     const [ax, ay] = this.anchor();
     const R = (44 + this.power * 40) * (this.surgeMul > 1.5 ? 1.4 : 1);
     const hold = this.qte?.holding ? 0.45 : 1;
-    const sp = (55 + this.power * 70) * this.surgeMul * hold;
+    const sp = (55 + this.power * 70) * this.surgeMul * hold * this.pace('dart') * (this.lesson ? 0.7 : 1); // [pace16] slower darts
     const tx = Math.cos(this.pullDir) * R, ty = Math.sin(this.pullDir) * R;
     const dx = tx - this.offX, dy = ty - this.offY, d = Math.hypot(dx, dy) || 1;
     const step = Math.min(d, sp * dt);
