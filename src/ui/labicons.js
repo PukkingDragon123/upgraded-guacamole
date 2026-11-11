@@ -259,7 +259,7 @@ function critterModel(kind) {
 // ---------------------------------------------------------------- render + cache
 const cache = new Map();
 function fitVoxel(build, px, key = null) {
-  // [phase10:ui] toy-block voxel render (bigicons.voxelModelFrame) cropped into px x px, with a full-res twin
+  // [icons15] detailed voxel render (bigicons.voxelModelFrame) cropped into px x px, with a full-res twin
   if (key && lpAvailable()) {
     let f = null;
     try { f = voxelModelFrame('lab:' + key, () => build().m, px + 2, 0, true); } catch { f = null; }

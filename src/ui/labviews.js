@@ -10,7 +10,7 @@ import { BOAT_ORDER, BOAT_NAMES, BRANCHES, EFFECT_INFO, fmtEffect, unlocked, nod
 import { RECIPES, RECIPE_BY_ID, CRAFT_CATS, recipeUnlocked, recipeNode, craftCheck, craft } from '../build/crafting.js';
 import { ITEMS, countItem } from '../build/items.js';
 import { drawSplash, roundRectPath } from './labart.js';
-import { drawLabRoom, labRoomScene } from './labroom.js'; // [lab13] the lab room behind the Rods / Boats tabs
+import { drawLabRoom, labRoomScene, drawOrbitPad } from './labroom.js'; // [lab15] the space backdrop behind the Rods / Boats tabs
 import { icon, anyIcon, glassCard, pill, costTiles, costTilesHeight, pedestal, chip, statBar, orbIcon, INK, INK_SOFT } from './labkit.js';
 
 const rarityCol = (r) => RARITY[r]?.color || '#9fb4c8';
@@ -230,26 +230,24 @@ export function drawCraftCard(ctx, ui, panel, r) {
 export function drawBoatsView(ctx, ui, panel, view) {
   const g = panel.game, st = g.state, t = panel.t;
   ctx.save(); roundRectPath(ctx, view.x, view.y, view.w, view.h, 10); ctx.clip();
-  // [lab14] the Lab's underwater scene (src/ui/labroom.js) seen from just under the surface: the boats float in a row
-  // on the water line, hulls dipping into the rippling surface
+  // [lab15] the Lab's space scene (src/ui/labroom.js): the boats float in orbit on a glowing orbit line above the
+  // limb of an ocean planet, gently bobbing, each on a little stepped pixel hover glow
   drawLabRoom(ctx, view, t, undefined, 'boats');
-  const wl = view.y + labRoomScene(view, 'boats').wl + 2;
+  const sc = labRoomScene(view, 'boats');
   const cur = st.boat?.tier | 0;
   const n = BOAT_ORDER.length, sp = view.w / n;
   BOAT_ORDER.forEach((id, i) => {
     const has = i === 0 || unlocked(st, 'boat', id);
-    const x = view.x + sp * (i + 0.5), bob = Math.sin(t * 1.6 + i) * 1.5;
-    const y = wl + (i % 2 ? 3 : 0) + bob;
+    const x = view.x + sp * (i + 0.5), line = view.y + sc.orbit(x - view.x);
+    const y = line - 3 + Math.sin(t * 1.6 + i) * 1.5;
     const sel = (panel.boatSel ?? cur) === i;
-    if (i === cur) drawAeroGlow(ctx, x, y - 8, 34, '#fff6a0', 0.6);
-    if (sel) { ctx.fillStyle = rgba('#ffffff', 0.35); ctx.beginPath(); ctx.ellipse(x, y + 6, sp * 0.42, 7, 0, 0, TAU); ctx.fill(); }
+    drawOrbitPad(ctx, x, line, sp * 0.3, t + i, { sel, cur: i === cur });
     const ic = icon('boat:' + id, Math.min(80, sp * 1.6));
-    if (ic) { ctx.globalAlpha = has ? 1 : 0.35; ctx.drawImage(ic, Math.round(x - ic.width / 2), Math.round(y - ic.height + 6)); ctx.globalAlpha = 1; }
-    ctx.strokeStyle = rgba('#ffffff', 0.8); ctx.beginPath(); ctx.ellipse(x, y + 7, sp * 0.3, 2.5, 0, 0, TAU); ctx.stroke();
+    if (ic) { ctx.globalAlpha = has ? 1 : 0.5; ctx.drawImage(ic, Math.round(x - ic.width / 2), Math.round(y - ic.height + 6)); ctx.globalAlpha = 1; }
     if (!has) { const lk = getUiIcon('lock'); if (lk) ctx.drawImage(lk, Math.round(x - 4), Math.round(y - 46)); }
     if (i === cur) { const ck = getUiIcon('check'); ctx.fillStyle = '#4cc83a'; ctx.beginPath(); ctx.arc(x + 22, y - 46, 6, 0, TAU); ctx.fill(); if (ck) ctx.drawImage(ck, Math.round(x + 22 - ck.width / 2), Math.round(y - 46 - ck.height / 2)); }
     const nm = BOAT_NAMES[id];
-    drawText(ctx, nm, x, y + 14, { font: 'small', align: 'center', color: has ? '#ffffff' : '#cfeefa', outline: has ? '#0a5a9a' : '#2a6a96' });
+    drawText(ctx, nm, x, line + 12, { font: 'small', align: 'center', color: has ? '#ffffff' : '#c8d6ff', outline: has ? '#1a2a7a' : '#2a2a6a' });
     const rr = { x: x - sp / 2, y: y - 60, w: sp, h: 72 };
     if (ui.hover(rr)) ui.tip = BOAT_NAMES[id];
     if (ui.clicked(rr)) { panel.boatSel = i; g.audio.play('ui_click'); }

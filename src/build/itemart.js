@@ -10,7 +10,7 @@ import { HI, withHi, fitHi } from '../gfx/hires.js'; // [phase9:ui]
 import { VoxelModel, renderVoxels } from '../gfx/voxel.js';
 import { hash3, clamp } from '../core/math.js';
 import { itemPixel, itemPixelScaled } from './itempix.js'; // [phase8:ui] hand-drawn pixel art for most items
-import { voxelModelFrame } from '../gfx/bigicons.js'; // [phase10:ui] toy-block voxel items
+import { voxelModelFrame } from '../gfx/bigicons.js'; // [icons15] detailed voxel items
 import { lpAvailable } from '../gfx/lowpoly.js';
 import { ctxOf } from '../core/canvas.js';
 
@@ -397,11 +397,11 @@ export function itemSprite(id, { scale = 1, frame = 0, force = false, voxel = fa
     return q;
   }
   frame = ((frame % SPIN) + SPIN) % SPIN;
-  // [phase10:ui] the voxel models render as chunky toy blocks (bigicons.voxelModelFrame, same style as every icon)
+  // [icons15] the voxel models render as detailed voxel icons (bigicons.voxelModelFrame, same style as every icon)
   if (MODELS[id] && lpAvailable()) {
     const b0 = modelOf(id);
     const px = Math.max(12, Math.round(Math.max(b0.m.nx, b0.m.ny, b0.m.nz) * 2 * scale * (b0.vs ?? 1) * 1.1));
-    const f = voxelModelFrame('item:' + id, () => modelOf(id).m, px, frame / SPIN, force);
+    const f = voxelModelFrame('item:' + id, () => modelOf(id), px, frame / SPIN, force); // [icons15] with its authored 3/4 view
     if (f) {
       const tk = 'toy|' + id + '|' + px + '|' + frame;
       let q = cache.get(tk);

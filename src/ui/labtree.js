@@ -11,7 +11,7 @@
 //   tree.focus(id, {highlight, zoom})  tree.select(id)  tree.focusBranch(branch)  tree.home(instant)  tree.zoomBy(f)
 //   tree.tileRect(id) -> screen rect | null      tree.btnRect: the card's Research button (panel.confirmRect)
 //   tree.plan -> [selected id] while its Research button shows (the tutorial then points at panel.confirmRect)
-import { clamp, clamp01, TAU, hash1, ease, lerp, bayer } from '../core/math.js';
+import { clamp, clamp01, TAU, hash1, ease, lerp } from '../core/math.js';
 import { rgba, mix, shade, pack, hexToRgb } from '../core/color.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { PixelBuffer } from '../gfx/pixel.js';
@@ -27,11 +27,11 @@ import {
 import { roundRectPath } from './labart.js';
 import { icon, anyIcon, pill, costTiles, costTilesHeight, chip, INK, INK_SOFT, OK, BAD } from './labkit.js';
 import { drawAnimIcon, unlockInfo } from './labrows.js';
-import { HI, hiFromBuffer, dualArt, withHi, hiCtx } from '../gfx/hires.js'; // [phase9:ui]
+import { HI, dualArt, withHi, hiCtx } from '../gfx/hires.js'; // [phase9:ui]
 import { drawPop3D } from './pop3d.js'; // [phase9:ui]
 import { drawIcon3D } from '../gfx/icons3d.js'; // [phase9:ui]
 import { nodeTile, qMark, microBubble, gemTex, pipeJoint, GEM_CUT } from './labtiles.js'; // [phase9:ui]
-import { drawLabRoom } from './labroom.js'; // [lab13]
+import { drawLabRoom } from './labroom.js'; // [lab15] the space backdrop
 const GOAL_MARK = { title: 'Next goal', goal: true }; // [balance] questMarks() value for the next main-track upgrade
 
 const NODES = LAB_NODES.filter((n) => n.id !== ROOT_ID).sort((a, b) => a.depth - b.depth);
@@ -98,26 +98,6 @@ function arc(pts) {
   if (!out.length) out.push([pts[0][0], pts[0][1], 0, -1]);
   const len = (out.length - 1) / 2;
   return { len, pts: out, at(d) { return out[Math.max(0, Math.min(out.length - 1, Math.round(d * 2)))]; } };
-}
-
-// A web of caustic light lines (transparent), brightest at the top, for the upper part of the view.
-function causticWeb(w, h) {
-  const W = w * HI, H = h * HI;
-  const b = new PixelBuffer(W, H);
-  for (let y = 0; y < H; y++) {
-    const fade = 1 - y / H;
-    for (let x = 0; x < W; x++) {
-      const X = x / HI, Y = y / HI;
-      const n1 = Math.sin(X * 0.052 + Math.sin(Y * 0.041) * 2.4), n2 = Math.sin(Y * 0.067 + Math.sin(X * 0.033) * 2.1);
-      const n3 = Math.sin((X + Y) * 0.029 + Math.sin(X * 0.071) * 1.3);
-      const web = Math.max(0, 1 - Math.abs(n1 + n2) * 3.2) * 0.7 + Math.max(0, 1 - Math.abs(n3 + n1 * 0.6) * 4) * 0.5;
-      const a = web * fade * fade;
-      const q = Math.floor(a * 3 + bayer(x, y) * 0.999) / 3;
-      if (q <= 0) continue;
-      b.data[y * W + x] = ((Math.round(q * 0.42 * 255) << 24) | (255 << 16) | (252 << 8) | 225) >>> 0;
-    }
-  }
-  return hiFromBuffer(b);
 }
 
 // ------------------------------------------------------------------ pixel-art tile textures
@@ -575,42 +555,22 @@ export class LabTree {
   }
 
   // ---------------------------------------------------------------- drawing
-  // [lab14] the underwater voxel scene behind the tree (src/ui/labroom.js): seabed, reefs, kelp, fish, caustics,
+  // [lab15] the pixel-art space scene behind the tree (src/ui/labroom.js): stars, nebulae, planets, sparkles,
   // with parallax from the tree camera (pan in screen px, zoom delta)
   drawBackground(ctx, v) {
     const cam = this.cam;
     drawLabRoom(ctx, v, this.t, { x: cam.x * cam.z, y: cam.y * cam.z, z: cam.z - Z_HOME }, 'tree');
   }
 
-  // rising bubbles (two depths) and drifting motes over the room, under the fog
-  drawShelf(ctx, v) {
-    const t = this.t, cam = this.cam;
-    for (let i = 0; i < 18; i++) {
-      const far = i % 3 === 0;
-      const q = (t * (0.02 + hash1(i, 6) * 0.04) * (far ? 0.6 : 1) + hash1(i, 7)) % 1;
-      const px = ((hash1(i, 8) * v.w - cam.x * cam.z * (far ? 0.08 : 0.22)) % v.w + v.w) % v.w;
-      const bx = v.x + px + Math.sin(t * (far ? 0.8 : 1.3) + i) * 3, by = v.y + v.h + 10 - q * (v.h + 30);
-      if (far) { ctx.save(); ctx.globalAlpha = 0.35; ctx.drawImage(microBubble(1 + (i % 2) * 0.5), Math.round(bx * 2) / 2, Math.round(by * 2) / 2); ctx.restore(); }
-      else drawAeroBubble(ctx, bx, by, 1.5 + hash1(i, 9) * 2.5, 0.45);
-    }
-    ctx.fillStyle = '#e8fbff';
-    for (let i = 0; i < 24; i++) {
-      const mx = v.x + ((hash1(i, 51) * v.w + t * (2 + hash1(i, 52) * 4) - cam.x * cam.z * 0.15) % v.w + v.w) % v.w, my = v.y + ((hash1(i, 53) * v.h + Math.sin(t * 0.5 + i) * 8) % v.h);
-      ctx.globalAlpha = 0.2 + 0.3 * Math.max(0, Math.sin(t * 1.4 + i * 1.7));
-      ctx.fillRect(Math.round(mx * 2) / 2, Math.round(my * 2) / 2, 0.5, 0.5);
-    }
-    ctx.globalAlpha = 1;
-  }
-
   drawFog(ctx, v) {
-    // the fog of war: a half-res dark-sea layer (nearest, 4 device px blocks) with light where you have explored
+    // the fog of war: a half-res dark-space layer (nearest, 4 device px blocks) with light where you have explored
     const F = 2, fw = Math.ceil(v.w / F), fh = Math.ceil(v.h / F);
     if (!this.fog || this.fog.width !== fw || this.fog.height !== fh) this.fog = makeCanvas(fw, fh);
     const f = ctxOf(this.fog), z = this.cam.z;
     f.globalCompositeOperation = 'source-over';
     f.clearRect(0, 0, fw, fh);
     const fg = f.createLinearGradient(0, 0, 0, fh);
-    fg.addColorStop(0, 'rgba(2,20,56,0.28)'); fg.addColorStop(1, 'rgba(1,12,40,0.36)'); // [lab14] the sea shows through, dimmed
+    fg.addColorStop(0, 'rgba(6,6,30,0.24)'); fg.addColorStop(1, 'rgba(4,4,24,0.32)'); // [lab15] space shows through, dimmed
     f.fillStyle = fg;
     f.fillRect(0, 0, fw, fh);
     f.globalCompositeOperation = 'destination-out';
@@ -631,9 +591,9 @@ export class LabTree {
     f.globalCompositeOperation = 'source-over';
     if (!this.vig || this.vig.w !== fw || this.vig.h !== fh) {
       const r = f.createRadialGradient(fw / 2, fh * 0.48, Math.min(fw, fh) * 0.25, fw / 2, fh * 0.48, Math.max(fw, fh) * 0.7);
-      r.addColorStop(0, 'rgba(3,14,32,0)'); r.addColorStop(0.6, 'rgba(3,14,32,0.14)'); r.addColorStop(1, 'rgba(2,8,22,0.42)');
+      r.addColorStop(0, 'rgba(6,6,28,0)'); r.addColorStop(0.6, 'rgba(6,6,28,0.12)'); r.addColorStop(1, 'rgba(4,4,20,0.36)');
       const l = f.createLinearGradient(0, 0, 0, fh);
-      l.addColorStop(0, 'rgba(2,10,26,0.3)'); l.addColorStop(0.12, 'rgba(2,10,26,0)'); l.addColorStop(0.85, 'rgba(2,10,26,0)'); l.addColorStop(1, 'rgba(2,10,26,0.26)');
+      l.addColorStop(0, 'rgba(4,4,22,0.26)'); l.addColorStop(0.12, 'rgba(4,4,22,0)'); l.addColorStop(0.85, 'rgba(4,4,22,0)'); l.addColorStop(1, 'rgba(4,4,22,0.22)');
       this.vig = { w: fw, h: fh, r, l };
     }
     f.fillStyle = this.vig.r; f.fillRect(0, 0, fw, fh);
@@ -1046,7 +1006,6 @@ export class LabTree {
     roundRectPath(ctx, v.x, v.y, v.w, v.h, 8); ctx.clip();
     this.drawBackground(ctx, v);
     this.drawFog(ctx, v);
-    this.drawShelf(ctx, v);
     this.questMark = this.questMarks();
     this.drawEdges(ctx, v);
     this.drawBranchLabels(ctx);

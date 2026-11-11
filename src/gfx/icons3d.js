@@ -1,6 +1,6 @@
 // [phase9:ui] 3D icons for the whole UI (no 2D pixel icons): glossy low-poly models for every small UI icon name
 // (src/gfx/uiicons.js) and the Lab's stat glyphs, rendered smooth at full resolution through bigicons.modelFrame
-// (lowpoly.js WebGL, 2x twins). Units -1..1, y up, +z toward the camera.
+// ([icons15] detailed voxel renders, hand-built src/gfx/iconvox.js models first). Units -1..1, y up, +z toward the camera.
 //   ICON3D { name: () => model }        model = {mesh, over?, glass?, glassAlpha?, yaw, pitch, spin: 'full'|'wobble'}
 //   has3D(name) -> bool
 //   icon3d(name, w, h) -> canvas | null           a still (logical w x h, `.hi` twin, `.__icon3d = name`)
@@ -9,6 +9,7 @@
 import { MeshBuilder } from './lowpoly.js';
 import { lathe, prism, ringPrism, sphere, tube, box, jit, ICON_MODELS, GEM_MODEL } from './iconmeshes.js';
 import { modelFrame, modelSpin } from './bigicons.js';
+import { UI3D_VOX } from './iconvox.js';
 import { mix, shade } from '../core/color.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { HI } from './hires.js';
@@ -205,7 +206,7 @@ export function has3D(name) { return !!ICON3D[name]; }
 // still render fitted into a w x h logical box (no layout changes for callers that sized around the 2D icons)
 const stills = new Map();
 export function icon3d(name, w, h = w) {
-  const make = ICON3D[name];
+  const make = UI3D_VOX[name] || ICON3D[name]; // [icons15] hand-built detailed models first
   if (!make) return null;
   const key = name + '|' + w + 'x' + h;
   let c = stills.get(key);
@@ -226,13 +227,13 @@ export function icon3d(name, w, h = w) {
 }
 
 export function icon3dFrame(name, px, turn = 0) {
-  const make = ICON3D[name];
+  const make = UI3D_VOX[name] || ICON3D[name]; // [icons15] hand-built detailed models first
   return make ? modelFrame('ui3d:' + name, make, px, turn) : null;
 }
 
 // Gentle idle rock (wobble models) or slow turn (round ones), a full spin while hovered.
 export function drawIcon3D(ctx, name, cx, cy, px, o = {}) {
-  const make = ICON3D[name];
+  const make = UI3D_VOX[name] || ICON3D[name]; // [icons15] hand-built detailed models first
   if (!make) return false;
   const t = o.t ?? performance.now() / 1000, hov = o.hover || 0, ph = o.phase || 0;
   const mode = modelSpin('ui3d:' + name, make);

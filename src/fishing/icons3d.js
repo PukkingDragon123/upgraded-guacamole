@@ -3,6 +3,7 @@
 //   icon3d(id, px, turn = 0) -> {canvas, ox, oy} | null   ids: bolt, bolt_off, mouse, mouse_lit, space, space_lit,
 //                                                         trophy, chest, chest_gold, chest_orb, skull, heart
 //   drawIcon3d(ctx, id, x, y, px, turn = 0, alpha = 1) -> bool   (centred on x, y)
+import { CHEST_VOX } from '../gfx/iconvox.js';
 import { MeshBuilder } from '../gfx/lowpoly.js';
 import { lathe, prism, box, sphere, tube, jit } from '../gfx/iconmeshes.js';
 import { modelFrame } from '../gfx/bigicons.js';
@@ -45,16 +46,6 @@ function trophy() {
   return { mesh: mb.build(), yaw: 0.2, pitch: 0.18, spin: 'wobble', look: { spec: 1, shine: 30 } };
 }
 
-function chest(tier = 'iron') {
-  const mb = new MeshBuilder();
-  const body = tier === 'golden' ? '#ffc23a' : tier === 'orb' ? '#9a6ae0' : tier === 'iron' ? '#9aaabc' : '#c8925a';
-  const band = tier === 'golden' ? '#fff2a0' : tier === 'orb' ? '#ff9ae8' : '#59c3ff';
-  box(mb, -0.9, -0.7, -0.55, 0.9, 0.2, 0.55, { top: body, front: body, side: '#7a5a3a', back: '#5a4030' });
-  lathe(mb, [[0.55, 0], [0.58, 0.25], [0.5, 0.45], [0.3, 0.58], [0, 0.62]], 10, (i, j) => jit(body, i * 10 + j, 0.06), { x: 0, y: 0.2, z: 0 });
-  box(mb, -0.92, -0.15, -0.57, 0.92, 0.05, 0.57, band);
-  box(mb, -0.16, -0.3, 0.55, 0.16, 0.14, 0.64, '#ffe46a');
-  return { mesh: mb.build(), yaw: -0.4, pitch: 0.28, spin: 'wobble', look: { spec: 0.7, shine: 18 } };
-}
 
 function skull() {
   const mb = new MeshBuilder();
@@ -75,8 +66,8 @@ function heart() {
 
 const MAKERS = {
   bolt: () => bolt(true), bolt_off: () => bolt(false), mouse: () => mouse(false), mouse_lit: () => mouse(true),
-  space: () => space(false), space_lit: () => space(true), trophy, chest: () => chest('iron'), chest_crate: () => chest('crate'),
-  chest_gold: () => chest('golden'), chest_orb: () => chest('orb'), skull, heart,
+  space: () => space(false), space_lit: () => space(true), trophy, chest: () => CHEST_VOX('iron'), chest_crate: () => CHEST_VOX('crate'),
+  chest_gold: () => CHEST_VOX('golden'), chest_orb: () => CHEST_VOX('orb'), skull, heart, // [icons15] detailed voxel chests
 };
 
 export function icon3d(id, px, turn = 0) {

@@ -380,28 +380,54 @@ that feels hand-made."
     opts out). Text: while UI size is Big/Huge the 'small' face renders with the 7 px glyphs in capitals
     (`faceOf`, `setTextBump` in font.js); measure with measureText / lineHeight rather than hard-coded 7 px rows.
 
-## Phase 10 UI (toy-block voxel icons + voxel chrome) [phase10:ui]
-- Icons: every model icon (bigicons.modelFrame / iconFrame / getBigIcon / rodIcon / gemIcon, icons3d, fishing icons3d)
-  is voxelised by `src/gfx/voxicon.js` into a LOW-RES toy-block model (9..16 voxels), rendered in a 3/4 view with flat
-  2-3 shade faces, a thick dark outline and a soft drop shadow (`finishToy`). VoxelModel art (items via `itemSprite` /
-  `itemIcon`, bait via `baitIcon`, Lab boats / tanks / globes) goes through `voxelModelFrame(key, make, px, turn)`.
-  Spins step through 8 (full) or 5 (wobble) chunky angles; new frames are built within ~7 ms per frame
-  (`voxMisses()` lets callers that cache skip deferred results). Extra models: `DECOR_MODELS` (leaves, leaves_l,
-  shell, starfish, bubbles, pearl, coral), `CUT_GEM_MODEL` (Lab gem cuts), `ORB_MODEL`.
+## Phase 10 UI (detailed voxel icons + voxel chrome) [phase10:ui] [icons15]
+- Icons [icons15] (replaces the low-res toy-block icons): every model icon (bigicons.modelFrame / iconFrame / getBigIcon /
+  rodIcon / gemIcon / decorFrame / cutGemFrame / voxelModelFrame, icons3d / getUiIcon, fishing icons3d, items via `itemSprite` /
+  `itemIcon`, bait via `baitIcon`, Lab icons) is DETAILED VOXEL PIXEL ART in the bait-art style: `src/gfx/voxicon.js`
+  voxelises low-poly meshes at ~1 voxel per 2 device px (`iconRes(px)`, 10..60 voxels; bilateral colour smoothing melts
+  facet jitter, quantised glossy palette) or takes VoxelModels at their own resolution (integer majority downsample only
+  when far too big for the size), and renders them with `renderVoxels` (7-step hue-shifted ramps, smooth glossy normals +
+  specular glint, AO, edge highlights, depth lines) plus a dark outline (2 device px on big renders) and a soft drop
+  shadow (`renderLayers`). `over` layers draw on top (with their own outline), `glass` shells composite translucent
+  (faint body, opaque rim + glints). Light comes from the camera's upper front-left for every icon and every spin angle.
+- Hand-built models: `src/gfx/iconvox.js` `ICON_VOX` (lab flask with glass + bubbling potion, quest scroll with wax seal,
+  fishbowl + cube tank with a goldfish overlay, FishDex book, satchel, striped tee on a hanger, desk globe, market stall,
+  worm on a hook, two seal pups, settings cogs, hammer + wrench, Aero drop; same aliases as ICON_MODELS), `UI3D_VOX`
+  (the same models for icons3d names: beaker, book, globe, shop, hammer, scroll, coin / aero ...), `ROD_VOX(rod)` (cork
+  grip, reel seat, spinning reel with line, wrapped guides, tip, bobber; trident / glow kinds). Defs: `{vm, vmOver?,
+  vmGlass?, yaw, pitch, spin}` (layers share dimensions; y up, z toward the viewer). Mesh models without a hand-built twin
+  (iconmeshes / icons3d / fishing icons3d / decor / gems) are voxelised automatically at the same density.
+- Views / spins: a 3/4 view (yaw ~0.42..0.66 rad, pitch 0.3..0.52; < 52 device px a flatter front view); `full` spins
+  step through 12 baked angles, `wobble` through 5; z-axis spins re-voxelise per roll. Frames are cached per (key, px,
+  angle); new frames are built within ~7 ms per frame (`voxMisses()` counts deferred builds for callers that cache);
+  `iconFrame` / `getBigIcon` / `rodIcon` / `gemIcon` build their `.hi` twin lazily (~5 ms a frame), `modelFrame` eagerly.
+  Item VoxelModels keep their authored yaw / pitch (`voxelModelFrame(key, () => ({m, yaw, pitch}))`).
+- Dev preview: `node tools/build.mjs --dev icongallery` (`?page=0` menu icons at 44 / 32 / 22 px + rods, gems, decor;
+  `1` icons3d; `2` items + fishing icons; `3` Lab icons; `&spin=1` turns them, `&bench=1` -> `window.__bench` ms per frame).
 - Chrome: the `.hi` twin of every `aeroSurface` is a voxel slab (`voxelSlab` in src/ui/aero.js: block grid, stepped
   corners, bevelled frame ring, side band `depth`, outline; `ring: n` = frame only). `drawAeroFrame` adds a voxel
   frame ring, a title plaque and voxel ornaments (`drawVoxDecor(ctx, name, cx, cy, px)`); toasts sit on voxel plates.
 
-- Lab backdrop [lab14]: `src/ui/labroom.js` draws an UNDERWATER VOXEL SCENE behind the Lab: `drawLabRoom(ctx, view, t,
-  cam, kind)` (kind 'tree' | 'rods' | 'boats'; cam = {x, y, z} pan / zoom delta from the tree camera for parallax, omitted
-  = a slow idle drift). Layers back to front: aqua water gradient, far blue silhouettes (farvox spires / mesa / arch on
-  rock hills), a coral garden on dunes, reef bommies + a sunken boat, the near seabed slab with animated caustics, big
-  edge reefs, anchor / chest / clam / helmet props, swaying voxel kelp and sea grass, small distant fish schools,
-  bubbles, a per-kind readability veil, and the rippling underside of the surface. Reefs / corals come from
-  src/world/coral.js, props via `getPropSteps`; everything is built once per view size by a step generator (~7 ms a
-  frame, layers fade in) into HI canvases with `.hi` twins. Boats: `labRoomScene(view, 'boats').wl` = the water line;
-  a strip of sky with voxel clouds sits above it and the boats float in one row on the surface.
-  No light rays / spotlights / ring effects in the Lab.
+- Lab backdrop [lab15]: `src/ui/labroom.js` draws a SPACE SCENE in crisp 2D pixel art behind the Lab: `drawLabRoom(ctx,
+  view, t, cam, kind)` (kind 'tree' | 'rods' | 'boats'; cam = {x, y, z} pan / zoom delta from the tree camera for parallax,
+  omitted = a slow idle drift). Art grid: 1 art px = 1 logical px (2 device px on the hi-res layer); the tiniest stars,
+  sparkle tips and glitter use single device px; ramps are posterised with 4x4 Bayer dithering, discs are hard pixel
+  circles. Layers back to front (parallax rates far 0.018 .. near 0.1, softly capped by each layer's padding): `bg` sky
+  gradient (navy -> indigo -> violet) with glow pools at the edges and a darker, calmer middle; `far` 1 device px star
+  field; `neb` dithered nebula clouds (violet / pink / aqua / periwinkle ramps, ridged filaments, dark dust lanes, brighter
+  toward the edges via `edgeOf`) + a pixel spiral galaxy; `mid` brighter stars, little star clusters, a fish-shaped
+  constellation, a comet; `near` a ringed planet (ring passes behind / in front, ring shadow) and a tiny planet, on Boats
+  the limb of an ocean planet with a stepped atmosphere. Animated on top: twinkles (4 sparkle sprite sizes incl. big
+  4-point glints), a space whale drifting by, shooting stars (2:1 stair-step trails), a rotating ocean planet with little
+  continents and clouds (96 pre-rendered frames from a seamless 3D-noise texture) with an orbiting moon, and ~100-260
+  drifting stardust specks. Planets get a glossy pixel highlight. Layouts per kind (`layout(S)`): the tree keeps the
+  planets / galaxy in the corners; Rods gathers them in the free bottom-right; Boats has them along the top.
+  Every static layer is built once per view size + kind by a step generator (~6 ms a frame, ~350 ms total; layers fade in)
+  into HI canvases with `.hi` twins; a frame is ~6 big blits + a few hundred tiny sprites / rects, no allocations.
+  Boats: `labRoomScene(view, 'boats')` -> `{wl, orbit(x)}`: a glowing orbit line (concentric with the planet limb, no
+  parallax) that the boats float on, gently bobbing, each on a stepped pixel hover glow (`drawOrbitPad`; gold = sailing,
+  white = selected) with labels under the line; light pulses run along the line. The tree's fog of war (labtree.js) is a
+  dark-indigo tint. No light rays / spotlights / ring effects / text pop-ups in the Lab.
 
 ## Phase 10 tank (2D side-scrolling voxel tank, build only in the tank) [phase10:tank]
 - `src/aquarium/scene2d.js` + `tankart.js` draw the tank as a side-on voxel scene (back / mid / front layers), the
@@ -447,7 +473,7 @@ that feels hand-made."
   specials plus one creature per flavour line, picked by `art.line`; creature colours come from `art.color/color2`,
   `art.tier` adds glitter / glow / gold flecks; creatures take an animation phase). `src/fishing/baitart.js` renders
   them: `baitIcon(art, px, ph)` = the detailed model (fine `.hi` twin, wriggling at px >= 40) or, below 22 px, the
-  toy-block icon of the same model; `baitHook(art, t)` = the 8-frame wriggling bait drawn at 2x world resolution on
+  detailed voxel icon of the same model (bigicons.voxelModelFrame); `baitHook(art, t)` = the 8-frame wriggling bait drawn at 2x world resolution on
   the hook (fishing.js draws the hook over it). Dev preview: `node tools/build.mjs --dev baitdetail` (`?page=0|1|2&px=`).
 - The catch moment has no light rays, spotlight glows, lens flares or light streaks (FISH ON, the landing finale,
   I GOT IT, boss VICTORY / phase cards, box catches, the catch card): `drawRays` is gone. The catch card backdrop is

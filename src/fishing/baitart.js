@@ -4,7 +4,7 @@
 //   baitVoxel(art, scale)        cached detailed voxel render {canvas, glow, w, h} (~18 * scale px)
 //   baitMini(art)                ~16 px sprite (fine `.hi` twin) for screen-space effects / legacy callers
 //   baitIcon(art, px, ph)        sprite fitting ~px: the detailed model (fine `.hi` twin, wriggling creatures at
-//                                px >= 40) or, below 22 px, the chunky toy-block icon of the same model
+//                                px >= 40) or, below 22 px, the detailed voxel icon of the same model (bigicons)
 //   baitHook(art, t)             the animated bait on the hook at 2x world resolution {canvas, glow, w, h}
 //   drawBaitGloss(ctx, art, cx, cy, px, t, {bubble, aura, bob})  sprite in a glass bubble with scent aura
 //   baitSprite(typeOrArt, t)     legacy entry: a bait type/id string or an art object -> mini sprite
@@ -52,7 +52,7 @@ const SPECIAL_SHAPES = new Set(['crumbs', 'bread', 'worm', 'sugar', 'chip', 'pop
 
 // ---------------------------------------------------------------- models (src/fishing/baitmodels.js)
 // Every bait is a hand-crafted, highly detailed voxel model. Big views render it large (1x canvas + a lazily built
-// `.hi` twin for the 2x UI layer); small hotbar icons (< TOY_PX) use the toy-block voxel icon of the same model.
+// `.hi` twin for the 2x UI layer); small hotbar icons (< TOY_PX) use the bigicons detailed voxel icon of the same model.
 const TOY_PX = 22;
 
 function charm(m, kind, ox, oy, z = 10, k = 2) {
@@ -146,7 +146,7 @@ function extentOf(m, yaw, pitch) {
   return Math.max(x1 - x0, y1 - y0, 1);
 }
 
-// thicker dark outline for the fine 2x render (matches the chunky toy-block icon outlines)
+// thicker dark outline for the fine 2x render (matches the detailed voxel icon outlines)
 function thicken(c) {
   const w = c.width, h = c.height;
   const out = makeCanvas(w + 2, h + 2), g = ctxOf(out);
@@ -231,7 +231,7 @@ export function baitMini(art) {
 export function baitIcon(art, px = 28, ph = 0) {
   const a = art || { shape: 'crumbs' };
   if (px < TOY_PX && a.shape !== 'charm' && lpAvailable()) {
-    // [phase10:ui] chunky toy-block voxel bait (same style as every small UI icon), built from the same model
+    // [icons15] detailed voxel bait icon (same pipeline as every UI icon), built from the same model
     let f = null;
     try { f = voxelModelFrame('bait:' + artKey(a), () => buildModel(a, 0), Math.round(px * 1.15 * (a.scale || 1)), 0, true); } catch { f = null; }
     if (f) return { canvas: f.canvas, glow: null, w: f.canvas.width, h: f.canvas.height };
