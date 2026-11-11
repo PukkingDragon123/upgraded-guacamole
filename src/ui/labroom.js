@@ -1,30 +1,31 @@
 // [lab14] THE LAB's backdrop: an UNDERWATER VOXEL SCENE, like looking into the sea (OWNER: Lab agent). Used behind the
 // research tree and the Rods / Boats tabs. Everything solid is a real voxel model rendered with src/gfx/voxel.js:
-// the coral reefs come from the world's reef kit (src/world/coral.js), the far pinnacles / arches / kelp columns from
-// src/world/farvox.js, the relics from the prop library (src/gfx/props.js via worldProp); the seabed slab, the
-// swaying kelp and the little distant fish are modelled here.
+// the coral reefs come from the world's reef kit (src/world/coral.js), the far pinnacles / mesa / arch / kelp columns
+// from src/world/farvox.js, the relics from the prop library (src/gfx/props.js, getPropSteps); the dune heightfields,
+// the seabed slab, the swaying kelp, the clouds and the little distant fish are modelled here.
 //
 // Depth, back to front (each layer has its own parallax and is pulled toward the water's haze colour by depth):
-//   water gradient (bright aqua under the surface -> deep blue) + the surface's rippling underside (animated)
-//   far2  : faint blue silhouettes (pinnacles, mesas, an arch)                  far fish school
-//   far1  : a coral garden on a sand ridge (reefs, corals, kelp columns)        mid kelp (sways), mid fish school
-//   mid   : reef bommies, a sunken boat, rocks
-//   floor : the near seabed slab (sand ripples, pebbles, shells, starfish)     + animated caustics on the sand
-//   props : big detailed reefs at the edges, the anchor and the open chest      near kelp + sea grass (sway)
-//   bubbles rising from the chest / clam, then a readability veil (dim, cool centre; brighter edges)
+//   water gradient (bright aqua under the surface -> deep blue); Boats: a strip of sky with voxel clouds on top
+//   far2  : faint blue silhouettes (pinnacles, a mesa, an arch) on rock hills    far fish schools
+//   far1  : a coral garden on sand dunes (reefs, corals, kelp columns)           mid kelp (sways), mid fish school
+//   mid   : reef bommies, a sunken boat, rocks on dunes
+//   floor : the near seabed slab (sand ripples, pebbles, shells, starfish)      + animated caustics on the sand
+//   props : big detailed reefs at the edges, the anchor, the open chest, a clam  near kelp + sea grass (sway)
+//   bubbles rising from the chest / clam / helmet, a readability veil per kind (the tree: a dim, cool middle band,
+//   brighter edges), then the rippling underside of the surface along the top (Boats: the water line).
 // No light rays / god rays / spotlights, no ring effects.
 //
-// Every static layer is built ONCE per view size (as a step generator, a few ms per frame, layers fade in as they
-// finish) at the hi-res factor into an offscreen canvas with a `.hi` twin (src/gfx/hires.js), so a frame is a dozen
-// big drawImage calls plus small animated bits.
+// Every static layer is built ONCE per view size (a step generator run ~7 ms per frame; layers fade in as they
+// finish; sprites are cached across sizes) at the hi-res factor into an offscreen canvas with a `.hi` twin
+// (src/gfx/hires.js), so a frame is a few big drawImage calls plus small animated bits.
 //   drawLabRoom(ctx, v, t, cam, kind)   v = view rect, cam = {x, y, z} (pan in screen px, zoom delta) for parallax
 //                                       (omitted: a slow idle drift), kind 'tree' | 'rods' | 'boats'
-//   labRoomScene(v, kind) -> {wl}       the Boats tab's water line (view-relative): boats float on the surface
+//   labRoomScene(v, kind) -> {wl}       Boats: the water line (view-relative) the boats float on
 import { VoxelModel, renderVoxels } from '../gfx/voxel.js';
 import { THEMES, reefFormationSteps, coralModel, voxAnim } from '../world/coral.js';
 import { renderSteps } from '../world/slabrender.js';
 import { spire, mesa, rockArch, kelpColumn, render as farRender } from '../world/farvox.js';
-import { worldProp } from '../world/voxkit.js';
+import { getPropSteps } from '../gfx/props.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { HI } from '../gfx/hires.js';
 import { mix, shade, hexToRgb } from '../core/color.js';
@@ -33,7 +34,7 @@ import { clamp, hash1, hash2, fbm2, TAU } from '../core/math.js';
 import { microBubble } from './labtiles.js';
 
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
-const BUDGET = 7; let BUDGET_DBG = () => globalThis.__labBudget || BUDGET; // DEBUG
+const BUDGET = 7; // ms of scene building per frame
 
 // ------------------------------------------------------------------ palette (Frutiger Aero aqua)
 const WATER = [[0, '#8ff0ff'], [0.1, '#55d8f6'], [0.32, '#2cb2e6'], [0.58, '#1a8cd2'], [0.8, '#136cb8'], [1, '#0d4f98']];
@@ -50,7 +51,12 @@ function waterAt(k) {
 
 // ------------------------------------------------------------------ canvases: authored at HI, logical twin
 function twin(hc) {
-  const c = makeCanvas(Math.ceil(hc.width / HI), Math.ceil(hc.height / HI));
+  if (hc.width % HI || hc.height % HI) { // pad to whole logical px so the twin draws 1:1 (no resampling)
+    const p = makeCanvas(Math.ceil(hc.width / HI) * HI, Math.ceil(hc.height / HI) * HI);
+    ctxOf(p).drawImage(hc, 0, 0);
+    hc = p;
+  }
+  const c = makeCanvas(hc.width / HI, hc.height / HI);
   const g = c.getContext('2d');
   g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
   g.drawImage(hc, 0, 0, c.width, c.height);
@@ -126,8 +132,7 @@ function* coralSteps(kind, seed, size) {
 }
 function* propSteps(id, scale, o = {}) {
   return yield* cachedSteps('prop|' + id + '|' + scale + '|' + JSON.stringify(o), function* () {
-    yield;
-    try { return spr(worldProp(id, { scale, ...o })); } catch { return null; }
+    try { return spr(yield* getPropSteps(id, { scale, yaw: 0, pitch: 24, ...o })); } catch { return null; }
   });
 }
 function* farSteps(key, make) {
@@ -178,7 +183,7 @@ function kelpModel(seed, H, ph) {
   return m;
 }
 const KELP_R = { scale: 1, yaw: 0, pitch: 12, outline: true, groundAO: false, jitter: 0.06, ao: 1, edges: 0.6 };
-function* kelpSteps(seed, H, n = 8) {
+function* kelpSteps(seed, H, n = 12) {
   return yield* cachedSteps('kelp|' + seed + '|' + H + '|' + n, function* () {
     const fr = [];
     for (let f = 0; f < n; f++) {
@@ -382,7 +387,7 @@ function surfaceFrame(TW, TH, f, n) {
       let col, a;
       const cell = Math.sin(x * K * 9 + ph + Math.sin(y * 0.2 + ph) * 1.5) + Math.sin(x * K * 5 - ph * 2 + y * 0.31) + Math.sin(x * K * 13 + ph * 3 - y * 0.12);
       if (y < edge) {
-        col = cell > 1.3 ? [255, 255, 255] : cell > 0.2 ? [210, 252, 255] : [160, 236, 252];
+        col = cell > 1.3 ? [240, 255, 255] : cell > 0.2 ? [180, 246, 255] : [120, 222, 248];
         a = cell > 1.3 ? 0.95 : 0.7;
       } else {
         const k = (y - edge) / (H - edge);
@@ -407,7 +412,7 @@ function sceneFor(w, h, kind) {
   if (!S) {
     S = makeScene(w, h, boats);
     scenes.set(key, S);
-    if (scenes.size > 3) scenes.delete(scenes.keys().next().value);
+    if (scenes.size > 2) scenes.delete(scenes.keys().next().value);
   }
   return S;
 }
@@ -448,18 +453,18 @@ function veils(S) {
   return {
     tree: mk((g) => {
       const r = g.createRadialGradient(w / 2, h * 0.47, Math.min(w, h) * 0.08, w / 2, h * 0.47, Math.max(w, h) * 0.62);
-      r.addColorStop(0, 'rgba(4,30,66,0.3)'); r.addColorStop(0.45, 'rgba(4,30,66,0.2)'); r.addColorStop(1, 'rgba(4,30,66,0)');
+      r.addColorStop(0, 'rgba(0,40,104,0.34)'); r.addColorStop(0.45, 'rgba(0,40,104,0.22)'); r.addColorStop(1, 'rgba(0,40,104,0)');
       g.fillStyle = r; g.fillRect(0, 0, w, h);
     }),
     rods: mk((g) => {
-      g.fillStyle = 'rgba(4,24,56,0.32)'; g.fillRect(0, 0, w, h);
+      g.fillStyle = 'rgba(0,44,110,0.3)'; g.fillRect(0, 0, w, h);
       const r = g.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.3, w / 2, h / 2, Math.max(w, h) * 0.7);
-      r.addColorStop(0, 'rgba(4,22,52,0.12)'); r.addColorStop(1, 'rgba(2,12,34,0.3)');
+      r.addColorStop(0, 'rgba(0,36,96,0.1)'); r.addColorStop(1, 'rgba(0,20,64,0.3)');
       g.fillStyle = r; g.fillRect(0, 0, w, h);
     }),
     boats: mk((g) => {
       const r = g.createRadialGradient(w / 2, h * 0.55, Math.min(w, h) * 0.3, w / 2, h * 0.55, Math.max(w, h) * 0.75);
-      r.addColorStop(0, 'rgba(4,22,52,0)'); r.addColorStop(1, 'rgba(2,12,34,0.32)');
+      r.addColorStop(0, 'rgba(0,36,96,0)'); r.addColorStop(1, 'rgba(0,20,64,0.3)');
       g.fillStyle = r; g.fillRect(0, S.top, w, h - S.top);
     }),
   };
@@ -488,7 +493,6 @@ function* buildScene(S) {
     S.ready.sky = -1;
   }
 
-  S.cur = '---- far2'; // DEBUG
   // ---- far2: faint silhouettes (pinnacles, a mesa, an arch) on rolling rock hills
   {
     const P = PAD.far2, LW = w + P * 2, y0 = top + U * 0.16, base = S.far2Y - y0, L = layer(LW, base + 40);
@@ -513,7 +517,6 @@ function* buildScene(S) {
   }
   yield;
 
-  S.cur = '---- far1'; // DEBUG
   // ---- far1: the coral garden on sand dunes, kelp columns
   {
     const P = PAD.far1, LW = w + P * 2, y0 = top + U * 0.3, base = S.far1Y - y0, L = layer(LW, base + 40);
@@ -543,7 +546,6 @@ function* buildScene(S) {
   }
   yield;
 
-  S.cur = 'fish scho'; // DEBUG
   // fish schools (far and mid water)
   {
     const kinds = [0, 1, 2];
@@ -563,7 +565,6 @@ function* buildScene(S) {
   }
   yield;
 
-  S.cur = '---- mid:'; // DEBUG
   // ---- mid: reef bommies, a sunken boat and rocks on sand dunes
   {
     const P = PAD.mid, LW = w + P * 2, y0 = top + U * 0.28, base = S.midY - y0, L = layer(LW, S.floorY + 40 - y0);
@@ -596,7 +597,6 @@ function* buildScene(S) {
   }
   yield;
 
-  S.cur = 'mid kelp'; // DEBUG
   // mid kelp (fogged sway frames)
   {
     const P = PAD.far1;
@@ -609,7 +609,6 @@ function* buildScene(S) {
   }
   yield;
 
-  S.cur = '---- floo'; // DEBUG
   // ---- floor: the near seabed slab
   {
     const P = PAD.floor, LW = w + P * 2, band = h - S.floorY + 24;
@@ -627,7 +626,6 @@ function* buildScene(S) {
   }
   yield;
 
-  S.cur = 'caustics'; // DEBUG
   // caustics (tile frames over the floor band)
   {
     const TH = Math.round(h + 20 - S.floorY), TW = 128, n = 12, fr = [];
@@ -635,11 +633,10 @@ function* buildScene(S) {
     S.caus = { frames: fr, TW, TH };
   }
 
-  S.cur = '---- prop'; // DEBUG
   // ---- props: big detailed reefs at the edges, relics, rocks (sit on the floor)
   {
     const P = PAD.props, LW = w + P * 2, y0 = top + U * 0.06, L = layer(LW, h + 30 - y0);
-    const gy = (xL, d) => S.floorY + (h - S.floorY) * d; // d: 0 = back edge .. 1 = bottom of the view
+    const gy = (_, d) => S.floorY + (h - S.floorY) * d; // view y on the floor; d: 0 = back edge .. 1 = bottom of the view
     const items = [];
     const left = yield* reefSteps(371, { w: Math.round(clamp(w * 0.2, 120, 220)), h: 120, d: 64, rock: 0.55, sizes: [10, 26] });
     const right = yield* reefSteps(372, { w: Math.round(clamp(w * 0.18, 110, 200)), h: 110, d: 60, rock: 0.5, sizes: [10, 24] });
@@ -658,8 +655,7 @@ function* buildScene(S) {
       if (s) items.push([s, P + w * xf, gy(0, d), 2, 1 - d, id]);
     }
     items.sort((a, b) => b[4] - a[4]);
-    for (const [s, x, y, k] of items) put(L, s, x, y, k);
-    // soft contact shade at the very back of the props so they sit in the sand, light fog on the farthest ones
+    for (const [s, x, y, k] of items) put(L, s, x, y - y0, k); // items hold view y
     S.L.props = { c: twin(L.c), x: -P, y: y0, P };
     S.ready.props = -1;
     // bubble sources: the chest, the clam, the diver's helmet
@@ -671,7 +667,6 @@ function* buildScene(S) {
   }
   yield;
 
-  S.cur = 'near kelp'; // DEBUG
   // near kelp forests at both edges + sea grass (sway frames)
   {
     const P = PAD.props;
@@ -697,14 +692,10 @@ function* buildScene(S) {
 function stepScene(S) {
   if (S.done || !S.gen) return;
   const t0 = now();
-  globalThis.__labScenes = scenes; // DEBUG
   do {
-    const a = now();
-    const r = S.gen.next(); S.sec ||= {}; S.sec[S.cur || '?'] = (S.sec[S.cur || '?'] || 0) + (now() - a);
-    const d = now() - a; (S.prof ||= { n: 0, total: 0, max: 0, frames: 0 }); S.prof.n++; S.prof.total += d; S.prof.max = Math.max(S.prof.max, d); // DEBUG
+    const r = S.gen.next();
     if (r.done) { S.done = true; S.gen = null; break; }
-  } while (now() - t0 < BUDGET_DBG());
-  S.prof.frames++; // DEBUG
+  } while (now() - t0 < BUDGET);
 }
 
 // ------------------------------------------------------------------ drawing
@@ -741,13 +732,6 @@ export function drawLabRoom(ctx, v, t, cam, kind = 'tree') {
 
   ctx.drawImage(S.bg, x0, y0, w, h);
   lay('sky');
-  // the rippling underside of the surface (top of the water)
-  if (S.surf) {
-    const fr = S.surf[Math.floor(t * 5) % S.surf.length], TW = 160, sx = ((t * 6) % TW + TW) % TW;
-    const [dx] = off('far2');
-    const yy = y0 + S.top - (S.top ? 4 : 2);
-    for (let x = -TW - sx + (dx % TW); x < w + TW; x += TW) ctx.drawImage(fr, Math.round((x0 + x) * 2) / 2, yy);
-  }
   lay('far2');
   drawFish(ctx, S, t, x0, y0, 'far', off('far2'));
   lay('far1');
@@ -765,7 +749,7 @@ export function drawLabRoom(ctx, v, t, cam, kind = 'tree') {
     const fa = fade('floor');
     for (const [fi, a] of [[i0, 1 - k], [(i0 + 1) % n, k]]) {
       if (a < 0.02) continue;
-      ctx.globalAlpha = ga * a * 0.34 * fa;
+      ctx.globalAlpha = ga * a * 0.28 * fa;
       for (let x = (dx % TW) - TW; x < w + TW; x += TW) ctx.drawImage(frames[fi], Math.round((x0 + x) * 2) / 2, yy);
     }
     ctx.globalCompositeOperation = po; ctx.globalAlpha = ga;
@@ -777,12 +761,22 @@ export function drawLabRoom(ctx, v, t, cam, kind = 'tree') {
   // readability veil
   const veil = S.veil[kind] || S.veil.tree;
   ctx.drawImage(veil, x0, y0, w, h);
+  // the rippling underside of the surface (top of the water), over the veil so it stays a bright aqua-white
+  if (S.surf) {
+    const fr = S.surf[Math.floor(t * 5) % S.surf.length], TW = 160, sx = ((t * 6) % TW + TW) % TW;
+    const [dx] = off('far2');
+    const yy = y0 + S.top - (S.top ? 4 : 2);
+    const ga = ctx.globalAlpha;
+    ctx.globalAlpha = ga * (kind === 'boats' ? 1 : 0.8);
+    for (let x = -TW - sx + (dx % TW); x < w + TW; x += TW) ctx.drawImage(fr, Math.round((x0 + x) * 2) / 2, yy);
+    ctx.globalAlpha = ga;
+  }
 }
 
 function drawKelp(ctx, S, t, x0, y0, layerName, [dx, dy]) {
   for (const k of S.kelp) {
     if (k.layer !== layerName) continue;
-    const n = k.frames.length, f = k.frames[Math.floor(t * 2 + k.off) % n];
+    const n = k.frames.length, f = k.frames[Math.floor(t * 3 + k.off) % n];
     ctx.drawImage(f, Math.round((x0 + k.x + dx - k.ox) * 2) / 2, Math.round((y0 + k.y + dy - k.oy) * 2) / 2);
   }
 }
@@ -820,7 +814,7 @@ function drawBubbles(ctx, S, t, x0, y0, [dx, dy]) {
       if (yy < S.top + 8) continue;
       const xx = B.x + Math.sin(t * 2.2 + i * 1.7 + s) * (1 + q * 3);
       ctx.globalAlpha = ga * (q < 0.1 ? q * 10 : q > 0.8 ? (1 - q) * 5 : 1) * 0.85;
-      ctx.drawImage(microBubble(0.8 + ((i + s) % 3) * 0.45 + q * 0.6), Math.round((x0 + xx + dx) * 2) / 2, Math.round((y0 + yy + dy) * 2) / 2);
+      ctx.drawImage(microBubble(Math.min(2, 1 + ((i + s) % 3) * 0.5 + (q > 0.5 ? 0.5 : 0))), Math.round((x0 + xx + dx) * 2) / 2, Math.round((y0 + yy + dy) * 2) / 2);
     }
   }
   ctx.globalAlpha = ga;
@@ -829,5 +823,3 @@ function drawBubbles(ctx, S, t, x0, y0, [dx, dy]) {
 // Where the Boats tab floats its boats: on the water surface (view-relative y)
 export function labRoomScene(v, kind) { return { wl: kind === 'boats' ? Math.round(v.h * 0.3) : 0 }; }
 
-import { hiCtx as __hiCtx } from '../gfx/hires.js'; // DEBUG
-globalThis.__labDraw = (n) => { const c = makeCanvas(1920, 1080); const g = __hiCtx(c); const v = { x: 16, y: 40, w: 928, h: 456 }; const t0 = now(); for (let i = 0; i < n; i++) drawLabRoom(g, v, i * 0.016, { x: i, y: 0, z: 0 }, 'tree'); return (now() - t0) / n; }; // DEBUG

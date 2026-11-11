@@ -392,13 +392,16 @@ that feels hand-made."
   corners, bevelled frame ring, side band `depth`, outline; `ring: n` = frame only). `drawAeroFrame` adds a voxel
   frame ring, a title plaque and voxel ornaments (`drawVoxDecor(ctx, name, cx, cy, px)`); toasts sit on voxel plates.
 
-- Lab room [lab13]: `src/ui/labroom.js` draws a layered voxel laboratory behind the Lab: `drawLabRoom(ctx, view, t, cam,
-  kind)` with kind 'tree' (wall with portholes onto the sea, glowing tank, shelves of jars, bubbling columns, console,
-  bench in front; parallax from the tree camera, the bench drops away when zooming in), 'rods' (tackle workshop) and
-  'boats' (dock hangar with a sea gate; `labRoomScene(view, 'boats').wl` = the pool's water line). Layers are authored
-  once per size at 2x (`.hi` twins); palettes are pulled toward night-navy by depth ('!#hex' = emissive) and the still
-  layers are cached into one composite while the camera holds still. The tree's vignette lives in its fog canvas.
-  No light rays / spotlights in the Lab (the old shafts and the Rods / Boats `drawRays` fans are gone).
+- Lab backdrop [lab14]: `src/ui/labroom.js` draws an UNDERWATER VOXEL SCENE behind the Lab: `drawLabRoom(ctx, view, t,
+  cam, kind)` (kind 'tree' | 'rods' | 'boats'; cam = {x, y, z} pan / zoom delta from the tree camera for parallax, omitted
+  = a slow idle drift). Layers back to front: aqua water gradient, far blue silhouettes (farvox spires / mesa / arch on
+  rock hills), a coral garden on dunes, reef bommies + a sunken boat, the near seabed slab with animated caustics, big
+  edge reefs, anchor / chest / clam / helmet props, swaying voxel kelp and sea grass, small distant fish schools,
+  bubbles, a per-kind readability veil, and the rippling underside of the surface. Reefs / corals come from
+  src/world/coral.js, props via `getPropSteps`; everything is built once per view size by a step generator (~7 ms a
+  frame, layers fade in) into HI canvases with `.hi` twins. Boats: `labRoomScene(view, 'boats').wl` = the water line;
+  a strip of sky with voxel clouds sits above it and the boats float in one row on the surface.
+  No light rays / spotlights / ring effects in the Lab.
 
 ## Phase 10 tank (2D side-scrolling voxel tank, build only in the tank) [phase10:tank]
 - `src/aquarium/scene2d.js` + `tankart.js` draw the tank as a side-on voxel scene (back / mid / front layers), the

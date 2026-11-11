@@ -610,7 +610,7 @@ export class LabTree {
     f.globalCompositeOperation = 'source-over';
     f.clearRect(0, 0, fw, fh);
     const fg = f.createLinearGradient(0, 0, 0, fh);
-    fg.addColorStop(0, 'rgba(3,14,34,0.26)'); fg.addColorStop(1, 'rgba(1,6,18,0.34)'); // [lab14] the sea shows through, dimmed
+    fg.addColorStop(0, 'rgba(2,20,56,0.28)'); fg.addColorStop(1, 'rgba(1,12,40,0.36)'); // [lab14] the sea shows through, dimmed
     f.fillStyle = fg;
     f.fillRect(0, 0, fw, fh);
     f.globalCompositeOperation = 'destination-out';
