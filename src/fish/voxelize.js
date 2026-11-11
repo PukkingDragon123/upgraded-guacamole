@@ -236,7 +236,7 @@ export function voxelizeParts(parts, vs, o = {}) {
   if (builders[3]) res.push({ key: 'glow', mesh: builders[3].build(), ...(mats[3] ? strip(mats[3]) : bodyM), emit: Math.max(0.8, mats[3]?.emit ?? 1), alpha: 1 });
   // voxel fins are closed boxes: back faces culled, so the alpha is the real see-through amount
   if (builders[6]) res.push({ key: 'finrays', mesh: builders[6].build(), ...finM, alpha: Math.min(0.92, (finM.alpha ?? 0.7) + 0.2), cull: true });
-  if (builders[5]) res.push({ key: 'fins', mesh: builders[5].build(), ...finM, alpha: Math.min(0.7, finM.alpha ?? 0.6), cull: true });
+  if (builders[5]) res.push({ key: 'fins', mesh: builders[5].build(), ...finM, alpha: Math.min(0.84, (finM.alpha ?? 0.6) + 0.12), cull: true });
   if (builders[4]) res.push({ key: 'glass', mesh: builders[4].build(), ...strip(mats[4]), cull: false, depthWrite: false });
   STAT.grids++;
   STAT.ms += now() - t0;

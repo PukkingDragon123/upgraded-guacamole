@@ -230,15 +230,16 @@ export function drawCraftCard(ctx, ui, panel, r) {
 export function drawBoatsView(ctx, ui, panel, view) {
   const g = panel.game, st = g.state, t = panel.t;
   ctx.save(); roundRectPath(ctx, view.x, view.y, view.w, view.h, 10); ctx.clip();
-  // Lab backdrop (src/ui/labroom.js); the boats float in two rows
+  // [lab14] the Lab's underwater scene (src/ui/labroom.js) seen from just under the surface: the boats float in a row
+  // on the water line, hulls dipping into the rippling surface
   drawLabRoom(ctx, view, t, undefined, 'boats');
-  const wl = view.y + labRoomScene(view, 'boats').wl + 4, near = view.y + view.h - 4;
+  const wl = view.y + labRoomScene(view, 'boats').wl + 2;
   const cur = st.boat?.tier | 0;
   const n = BOAT_ORDER.length, sp = view.w / n;
   BOAT_ORDER.forEach((id, i) => {
     const has = i === 0 || unlocked(st, 'boat', id);
-    const x = view.x + sp * (i + 0.5), bob = Math.sin(t * 1.6 + i) * 2;
-    const y = wl + (near - wl) * (i % 2 ? 0.66 : 0.34) + bob;
+    const x = view.x + sp * (i + 0.5), bob = Math.sin(t * 1.6 + i) * 1.5;
+    const y = wl + (i % 2 ? 3 : 0) + bob;
     const sel = (panel.boatSel ?? cur) === i;
     if (i === cur) drawAeroGlow(ctx, x, y - 8, 34, '#fff6a0', 0.6);
     if (sel) { ctx.fillStyle = rgba('#ffffff', 0.35); ctx.beginPath(); ctx.ellipse(x, y + 6, sp * 0.42, 7, 0, 0, TAU); ctx.fill(); }
@@ -248,7 +249,7 @@ export function drawBoatsView(ctx, ui, panel, view) {
     if (!has) { const lk = getUiIcon('lock'); if (lk) ctx.drawImage(lk, Math.round(x - 4), Math.round(y - 46)); }
     if (i === cur) { const ck = getUiIcon('check'); ctx.fillStyle = '#4cc83a'; ctx.beginPath(); ctx.arc(x + 22, y - 46, 6, 0, TAU); ctx.fill(); if (ck) ctx.drawImage(ck, Math.round(x + 22 - ck.width / 2), Math.round(y - 46 - ck.height / 2)); }
     const nm = BOAT_NAMES[id];
-    drawText(ctx, nm, x, y + 14, { font: 'small', align: 'center', color: has ? '#ffffff' : rgba('#ffffff', 0.6), outline: has ? '#0a5a9a' : null });
+    drawText(ctx, nm, x, y + 14, { font: 'small', align: 'center', color: has ? '#ffffff' : '#cfeefa', outline: has ? '#0a5a9a' : '#2a6a96' });
     const rr = { x: x - sp / 2, y: y - 60, w: sp, h: 72 };
     if (ui.hover(rr)) ui.tip = BOAT_NAMES[id];
     if (ui.clicked(rr)) { panel.boatSel = i; g.audio.play('ui_click'); }

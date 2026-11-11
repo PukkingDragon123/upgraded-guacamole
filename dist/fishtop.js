@@ -12793,7 +12793,7 @@ void main() {
     if (builders[2]) res.push({ key: "eyes", mesh: builders[2].build(), spec: 1.2, shine: 70, env: 0.45, rim: 0.05, ambient: 0.62, ...strip2(mats[2]), alpha: 1 });
     if (builders[3]) res.push({ key: "glow", mesh: builders[3].build(), ...mats[3] ? strip2(mats[3]) : bodyM, emit: Math.max(0.8, mats[3]?.emit ?? 1), alpha: 1 });
     if (builders[6]) res.push({ key: "finrays", mesh: builders[6].build(), ...finM, alpha: Math.min(0.92, (finM.alpha ?? 0.7) + 0.2), cull: true });
-    if (builders[5]) res.push({ key: "fins", mesh: builders[5].build(), ...finM, alpha: Math.min(0.7, finM.alpha ?? 0.6), cull: true });
+    if (builders[5]) res.push({ key: "fins", mesh: builders[5].build(), ...finM, alpha: Math.min(0.84, (finM.alpha ?? 0.6) + 0.12), cull: true });
     if (builders[4]) res.push({ key: "glass", mesh: builders[4].build(), ...strip2(mats[4]), cull: false, depthWrite: false });
     STAT.grids++;
     STAT.ms += now2() - t02;
@@ -88756,8 +88756,8 @@ void main() {
     const nx = 72, nz = 16;
     const m = new VoxelModel(nx, H8 + 8, nz);
     const C5 = (c, o = {}) => m.color(c, { jitter: 0.08, ...o });
-    const stipe = C5("#2f7a3a"), stipeL = C5("#4a9a44");
-    const blade = [C5("#2e8a3e"), C5("#46b04a"), C5("#7fda5c"), C5("#c8ff8a", { light: 0.4 })];
+    const stipe = C5("#2a8048"), stipeL = C5("#4aa858");
+    const blade = [C5("#2a9a50"), C5("#44c062"), C5("#86ea6e"), C5("#d8ffa0", { light: 0.4 })];
     const float = C5("#e8c84a", { spec: 0.8 }), floatL = C5("#fff2a0", { light: 0.5 });
     const lean = r.float(-0.06, 0.06), w0 = r.float(0, TAU);
     const sway = (y) => {
@@ -88817,6 +88817,22 @@ void main() {
     });
     return { frames, ox: -minX, oy: -minY };
   }
+  function* cloudSteps(i) {
+    return yield* cachedSteps("cloud|" + i, function* () {
+      const r = new RNG(900 + i);
+      const W11 = 70 + r.int(0, 30), m = new VoxelModel(W11 + 8, 30, 16);
+      const wht = m.color("#ffffff", { jitter: 0.02, smooth: 0.8 }), sh = m.color("#d4f4ff", { jitter: 0.02, smooth: 0.8 });
+      const n2 = r.int(4, 6);
+      for (let k = 0; k < n2; k++) {
+        const cx = 6 + (k + 0.5) / n2 * W11, rr4 = W11 / n2 * r.float(0.7, 1.05) * (1 - Math.abs(k - (n2 - 1) / 2) / n2 * 0.6);
+        m.ellipsoid(cx, rr4 * 0.65 + 2, 8, rr4, rr4 * 0.75, 6, (x, y) => y < 5 ? sh : wht);
+      }
+      m.box(4, 1, 4, W11 + 2, 3, 11, sh);
+      yield;
+      const rv = renderVoxels(m, { scale: 1, yaw: 0, pitch: 14, outline: false, groundAO: false, jitter: 0.02 });
+      return { canvas: rv.canvas, ox: rv.ox, oy: rv.oy };
+    });
+  }
   function fishModel2(f, body, belly) {
     const m = new VoxelModel(16, 8, 6);
     const B2 = m.color(body, { spec: 0.7, jitter: 0.04 }), L2 = m.color(belly, { jitter: 0.04 }), D2 = m.color(shade(body, -0.28)), E = m.color("#081428");
@@ -88845,16 +88861,17 @@ void main() {
       const ny = 16;
       const m = new VoxelModel(nx, ny, nz);
       const C5 = (c, o = {}) => m.color(c, { jitter: 0.07, ...o });
-      const sand = [C5("#c49a62"), C5("#d8b47a"), C5("#e8cc94"), C5("#f4e0b0"), C5("#fff0cc", { light: 0.3 })];
-      const wet = C5("#b88c58"), peb = [C5("#8a92b0"), C5("#a4aec8"), C5("#6e7898")], shellC = [C5("#ffd0dc", { spec: 0.6 }), C5("#ffffff", { spec: 0.8 }), C5("#ffb48a", { spec: 0.6 })];
+      const sand = [C5("#d2ae7c"), C5("#e6c896"), C5("#f4deb0"), C5("#fdecc8"), C5("#fff8e4", { light: 0.3 })];
+      const wet = C5("#c09a68"), peb = [C5("#8a92b0"), C5("#a4aec8"), C5("#6e7898")], shellC = [C5("#ffd0dc", { spec: 0.6 }), C5("#ffffff", { spec: 0.8 }), C5("#ffb48a", { spec: 0.6 })];
       const star = C5("#ff7a3a"), starL = C5("#ffb066"), grass = [C5("#2e8a3e"), C5("#58b84a"), C5("#9ae070")], rubble = [C5("#ff9ab4"), C5("#ffd0a0"), C5("#c8a0ff")];
       const r = new RNG(seed);
       const hAt = new Float32Array(nx * nz);
       for (let z = 0; z < nz; z++) {
         for (let x = 0; x < nx; x++) {
           const dune = fbm2(x * 0.012, z * 0.02, 3, seed) * 6;
-          const rip = Math.sin(z * 0.55 + x * 0.04 + fbm2(x * 0.03, z * 0.03, 2, seed + 4) * 5) > 0.55 ? 1 : 0;
-          const h = 4 + dune + rip;
+          const rv = Math.sin(z * 0.42 + x * 0.035 + fbm2(x * 0.02, z * 0.03, 2, seed + 4) * 6);
+          const rip = rv > 0.62 ? 1 : rv < -0.8 ? -1 : 0;
+          const h = 4 + dune;
           hAt[x + z * nx] = h;
           const top = Math.floor(h);
           for (let y = 0; y <= top; y++) {
@@ -88862,8 +88879,8 @@ void main() {
             let c;
             if (d === 0) {
               const n2 = hash2(x, z, seed + 1);
-              c = rip ? sand[3] : n2 < 0.12 ? sand[1] : n2 > 0.93 ? sand[4] : sand[2];
-              if (!rip && fbm2(x * 0.05, z * 0.08, 2, seed + 9) < 0.3) c = sand[1];
+              c = rip > 0 ? sand[3] : rip < 0 ? sand[1] : n2 > 0.95 ? sand[4] : n2 < 0.04 ? sand[1] : sand[2];
+              if (!rip && fbm2(x * 0.04, z * 0.07, 2, seed + 9) < 0.28) c = n2 > 0.5 ? sand[1] : sand[2];
             } else c = d < 2 ? sand[1] : d < 4 ? sand[0] : wet;
             m.set(x, y, z, c);
           }
@@ -88871,7 +88888,7 @@ void main() {
         if ((z & 15) === 15) yield;
       }
       const ground = (x, z) => Math.floor(hAt[clamp(Math.round(x), 0, nx - 1) + clamp(Math.round(z), 0, nz - 1) * nx]) + 1;
-      for (let i = 0; i < nx * nz * 16e-4; i++) {
+      for (let i = 0; i < nx * nz * 9e-4; i++) {
         const x = r.float(2, nx - 3), z = r.float(2, nz - 3), y = ground(x, z);
         const s = r.float(0.8, 2.4);
         m.ellipsoid(x, y - 0.3, z, s * 1.3, s * 0.8, s, r.pick(peb));
@@ -88888,9 +88905,9 @@ void main() {
         }
         m.set(Math.round(x), y + 1, Math.round(z), starL);
       }
-      for (let i = 0; i < nx * nz * 8e-4; i++) {
+      for (let i = 0; i < nx * nz * 5e-4; i++) {
         const x = Math.round(r.float(2, nx - 3)), z = Math.round(r.float(2, nz - 3)), y = ground(x, z);
-        if (r.chance(0.55)) {
+        if (r.chance(0.35)) {
           const c = r.pick(rubble);
           m.set(x, y, z, c);
           m.set(x + 1, y, z, c);
@@ -88901,22 +88918,50 @@ void main() {
         }
       }
       yield;
-      const rr4 = yield* renderSteps(m, { scale: 1, yaw: 0, pitch: 24, outline: false, groundAO: false, jitter: 0.05, ao: 1.1, edges: 0.5, depthLines: true });
+      const rr4 = yield* renderSteps(m, { scale: 1, yaw: 0, pitch: 24, outline: false, groundAO: false, jitter: 0.04, ao: 0.9, edges: 0.35, depthLines: false });
       return { canvas: rr4.canvas, ox: rr4.ox, oy: rr4.oy, project: rr4.project, ny, nz, ground };
+    });
+  }
+  function* hillsSteps(key, nx, nz, o) {
+    return yield* cachedSteps("hills|" + key + "|" + nx + "|" + nz, function* () {
+      const { seed, base, amp, cols, speck = [] } = o;
+      const ny = base + amp + 4;
+      const m = new VoxelModel(nx, ny, nz);
+      const C5 = cols.map((c) => m.color(c, { jitter: 0.08 }));
+      const SP = speck.map((c) => m.color(c, { jitter: 0.1 }));
+      const crest = new Float32Array(nx);
+      for (let x = 0; x < nx; x++) crest[x] = base + amp * clamp(fbm2(x * 0.011, 0.5, 3, seed) * 1.25 - 0.1 + Math.sin(x * 6e-3 + seed) * 0.15, 0, 1);
+      for (let z = 0; z < nz; z++) {
+        const k = z / nz, fall = Math.pow(1 - k, 1.6);
+        for (let x = 0; x < nx; x++) {
+          const hh = Math.max(1, Math.round(crest[x] * fall + 2 + fbm2(x * 0.05, z * 0.08, 2, seed + 3) * 2));
+          for (let y = 0; y < hh; y++) {
+            const d = hh - 1 - y;
+            let c = C5[d === 0 ? 0 : d < 3 ? 1 : d < 7 ? 2 : 3];
+            if (d === 0 && SP.length && hash2(x, z, seed + 7) < 0.012) c = SP[Math.floor(hash2(x, z, seed + 8) * SP.length)];
+            m.set(x, y, z, c);
+          }
+        }
+        if ((z & 7) === 7) yield;
+      }
+      const rr4 = yield* renderSteps(m, { scale: 1, yaw: 0, pitch: 24, outline: true, groundAO: false, jitter: 0.05, ao: 1, edges: 0.4, depthLines: false });
+      const [ax, ay] = rr4.project(0, 0, 0);
+      return { canvas: rr4.canvas, ox: Math.round(ax), oy: Math.round(ay) };
     });
   }
   function causticFrame(TW2, TH2, f, n2) {
     const W11 = TW2 * HI, H8 = TH2 * HI, c = makeCanvas(W11, H8), g = ctxOf(c);
     const img = g.createImageData(W11, H8), d = img.data;
-    const CX2 = 5, CY2 = 6, cw = W11 / CX2, ch = H8 * 2.4 / CY2;
+    const CX2 = 7, CY2 = Math.max(4, Math.round(H8 * 2.4 / (W11 / 7))), cw = W11 / CX2, ch = H8 * 2.4 / CY2;
     const ph = f / n2 * TAU;
     const pts = [];
     for (let j = -1; j <= CY2; j++) for (let i = -1; i <= CX2; i++) {
       const ii = (i % CX2 + CX2) % CX2, h1 = hash2(ii, j, 71), h2 = hash2(ii, j, 72), h38 = hash2(ii, j, 73);
       pts.push([(i + 0.2 + h1 * 0.6) * cw + Math.cos(ph + h38 * TAU) * cw * 0.16, (j + 0.2 + h2 * 0.6) * ch + Math.sin(ph * (h38 > 0.5 ? 1 : -1) + h1 * TAU) * ch * 0.16]);
     }
+    const KX = TAU / W11;
     for (let y = 0; y < H8; y += 2) for (let x = 0; x < W11; x += 2) {
-      const px3 = x + 1, py = (y + 1) * 2.4;
+      const px3 = x + 1 + Math.sin((y + 1) * 0.11 + ph) * 3 + Math.sin(x * KX * 2 + ph) * 2, py = (y + 1) * 2.4 + Math.sin(x * KX * 3 - ph) * 5;
       let d1 = 1e9, d2 = 1e9;
       for (const p of pts) {
         const dx = px3 - p[0], dy = py - p[1], q = dx * dx + dy * dy;
@@ -88928,7 +88973,7 @@ void main() {
       const e = Math.sqrt(d2) - Math.sqrt(d1);
       const depth = y / H8;
       const fade = clamp(depth * 3, 0, 1) * (0.45 + 0.55 * depth);
-      const v = e < 2.2 ? 1 : e < 5 ? 0.45 : 0;
+      const v = e < 1.8 ? 1 : e < 3.6 ? 0.4 : 0;
       if (!v) continue;
       const a = Math.round(255 * v * fade);
       for (let yy = 0; yy < 2; yy++) for (let xx = 0; xx < 2; xx++) {
@@ -89045,9 +89090,9 @@ void main() {
     return {
       tree: mk((g) => {
         const r = g.createRadialGradient(w / 2, h * 0.47, Math.min(w, h) * 0.08, w / 2, h * 0.47, Math.max(w, h) * 0.62);
-        r.addColorStop(0, "rgba(4,22,52,0.42)");
-        r.addColorStop(0.55, "rgba(4,22,52,0.3)");
-        r.addColorStop(1, "rgba(4,22,52,0.06)");
+        r.addColorStop(0, "rgba(4,30,66,0.3)");
+        r.addColorStop(0.45, "rgba(4,30,66,0.2)");
+        r.addColorStop(1, "rgba(4,30,66,0)");
         g.fillStyle = r;
         g.fillRect(0, 0, w, h);
       }),
@@ -89072,64 +89117,68 @@ void main() {
   function* buildScene2(S11) {
     const { w, h, top, U: U2 } = S11;
     const r = new RNG(77);
-    const hazeFar = waterAt2(0.5), hazeMid = waterAt2(0.6);
+    const hazeFar = waterAt2(0.42), hazeMid = waterAt2(0.5);
     S11.surf = [];
     for (let f = 0; f < 8; f++) {
-      S11.surf.push(surfaceFrame(160, 26, f, 8));
+      S11.surf.push(surfaceFrame(160, 34, f, 8));
     }
     yield;
+    if (top > 0) {
+      const P7 = PAD3.far2, L2 = layer2(w + P7 * 2, top);
+      for (let i = 0; i < 4; i++) {
+        const s = yield* cloudSteps(i);
+        put(L2, s, P7 + w * (0.06 + i * 0.22 + hash1(i, 41) * 0.05), top * (0.3 + hash1(i, 42) * 0.22), 2);
+      }
+      S11.L.sky = { c: twin2(L2.c), x: -P7, y: 0, P: P7 };
+      S11.ready.sky = -1;
+    }
     S11.cur = "---- far2";
     {
-      const P7 = PAD3.far2, LW = w + P7 * 2, y0 = top + U2 * 0.2, base = S11.far2Y - y0, L2 = layer2(LW, base + 10);
+      const P7 = PAD3.far2, LW = w + P7 * 2, y0 = top + U2 * 0.16, base = S11.far2Y - y0, L2 = layer2(LW, base + 40);
+      const hills = yield* hillsSteps("h2", Math.ceil(LW), 60, { seed: 54, base: 10, amp: 26, cols: ["#8a9cc0", "#7484aa", "#5e6c94", "#4c5a80"], speck: ROCK });
+      put(L2, hills, 0, base, 2);
       const items = [];
-      const sp = [[0.03, 70, 9], [0.14, 104, 12], [0.27, 58, 8], [0.72, 96, 11], [0.86, 120, 13], [0.97, 64, 9], [0.42, 44, 7], [0.58, 52, 8]];
+      const sp = [[0.03, 70, 9], [0.14, 110, 12], [0.27, 58, 8], [0.72, 100, 11], [0.86, 128, 13], [0.97, 64, 9], [0.45, 46, 7], [0.6, 56, 8]];
       for (let i = 0; i < sp.length; i++) {
         const [xf, hh, ww] = sp[i];
         const s = yield* farSteps("sp|" + i + "|" + hh, () => render2(spire(400 + i, { h: hh, w: ww, d: 16, lean: hash1(i, 3) * 0.14 - 0.07, cols: ROCK, crown: CROWN }), { scale: 1.5, yaw: i % 2 ? 22 : -22 }));
-        items.push([s, xf * LW, base + 2]);
+        items.push([s, xf * LW, base + 8 + i % 3 * 3]);
       }
       const ms = yield* farSteps("mesa|a", () => render2(mesa(52, { h: 34, w: 38, d: 18, cols: ROCK, crown: CROWN }), { scale: 1.5, yaw: -16 }));
-      items.push([ms, LW * 0.5, base + 4]);
+      items.push([ms, LW * 0.52, base + 10]);
       const ar = yield* farSteps("arch|a", () => render2(rockArch(51, { span: 56, h: 72, th: 8, d: 14, cols: ROCK, crown: CROWN }), { scale: 1.5, yaw: 18 }));
-      items.push([ar, LW * 0.36, base + 3]);
+      items.push([ar, LW * 0.36, base + 12]);
+      items.sort((a, b) => a[2] - b[2]);
       for (const [s, x, y] of items) put(L2, s, x, y);
-      L2.g.fillStyle = "#5a7aa8";
-      L2.g.fillRect(0, (base - 1) * HI, L2.c.width, 12 * HI);
-      fog(L2, hazeFar, 0.8, 0.66);
+      fog(L2, hazeFar, 0.62, 0.5);
       S11.L.far2 = { c: twin2(L2.c), x: -P7, y: y0, P: P7 };
       S11.ready.far2 = -1;
     }
     yield;
     S11.cur = "---- far1";
     {
-      const P7 = PAD3.far1, LW = w + P7 * 2, y0 = top + U2 * 0.3, base = S11.far1Y - y0, L2 = layer2(LW, base + 14);
+      const P7 = PAD3.far1, LW = w + P7 * 2, y0 = top + U2 * 0.3, base = S11.far1Y - y0, L2 = layer2(LW, base + 40);
+      const hills = yield* hillsSteps("h1", Math.ceil(LW), 64, { seed: 55, base: 6, amp: 16, cols: ["#f2deb0", "#e2c898", "#d0b482", "#b89c6c"], speck: ["#8a92b0", "#a4aec8", "#ff9ab4"] });
+      put(L2, hills, 0, base, 2);
       const items = [];
       const kinds = ["staghorn", "fan", "brain", "tube", "table", "pillar", "fan", "whip"];
-      for (let i = 0; i < 9; i++) {
+      for (let i = 0; i < 10; i++) {
         const k = kinds[i % kinds.length];
         const s = yield* coralSteps(k, 300 + i, [9, 12, 10][i % 3]);
-        items.push([s, r.float(0, LW), base + r.int(0, 3), r.next()]);
+        items.push([s, r.float(0, LW), base + r.float(10, 22)]);
       }
       for (let i = 0; i < 4; i++) {
         const s = yield* reefSteps(330 + i % 2, { w: 96, h: 56, d: 34, sizes: [7, 14] });
-        items.push([i % 2 ? s : S11.flip330 || (S11.flip330 = flipS(s)), LW * (0.1 + i * 0.27) + r.int(-20, 20), base + 3, r.next()]);
+        items.push([i % 2 ? s : S11.flip330 || (S11.flip330 = flipS(s)), LW * (0.1 + i * 0.27) + r.int(-20, 20), base + r.float(12, 20)]);
       }
       for (let i = 0; i < 9; i++) {
         const hh = r.int(46, 90);
-        const s = yield* farSteps("kc|" + i + "|" + hh, () => kelpColumn(60 + i, hh, ["#3a7a3a", "#56a044", "#8ad05a"], 1));
-        items.push([s, r.float(0, LW), base + 1, 0.5 + r.next() * 0.5]);
+        const s = yield* farSteps("kc|" + i + "|" + hh, () => kelpColumn(60 + i, hh, ["#3a8a4a", "#56b04c", "#8ae060"], 1));
+        items.push([s, r.float(0, LW), base + r.float(8, 16)]);
       }
-      items.sort((a, b) => b[3] - a[3]);
-      const g = L2.g;
-      for (let x = 0; x < L2.c.width; x += 2) {
-        const yy = (base - 2 + Math.sin(x * 4e-3) * 2 + Math.sin(x * 0.011) * 1.5) * HI;
-        g.fillStyle = "#d8c08a";
-        g.fillRect(x, yy, 2, 20 * HI);
-        g.fillStyle = "#efdcae";
-        g.fillRect(x, yy, 2, 2);
-      }
+      items.sort((a, b) => a[2] - b[2]);
       for (const [s, x, y] of items) put(L2, s, x, y);
-      fog(L2, hazeMid, 0.62, 0.48);
+      fog(L2, hazeMid, 0.56, 0.42);
       S11.L.far1 = { c: twin2(L2.c), x: -P7, y: y0, P: P7 };
       S11.ready.far1 = -1;
     }
@@ -89154,35 +89203,31 @@ void main() {
     yield;
     S11.cur = "---- mid:";
     {
-      const P7 = PAD3.mid, LW = w + P7 * 2, y0 = top + U2 * 0.28, base = S11.midY - y0, L2 = layer2(LW, base + 16);
+      const P7 = PAD3.mid, LW = w + P7 * 2, y0 = top + U2 * 0.28, base = S11.midY - y0, L2 = layer2(LW, S11.floorY + 40 - y0);
+      const hills = yield* hillsSteps("hm", Math.ceil(LW), 80, { seed: 56, base: 5, amp: 12, cols: ["#f6e6be", "#e8d0a2", "#d6bc8a", "#c0a274"], speck: ["#8a92b0", "#a4aec8", "#ffb48a", "#ff9ab4"] });
+      put(L2, hills, 0, base, 2);
       const items = [];
-      const reefs = [[0.16, 341], [0.5, 342], [0.83, 343]];
-      for (const [xf, seed] of reefs) {
-        const s = yield* reefSteps(seed, { w: 120, h: 72, d: 44, sizes: [8, 18] });
-        items.push([s, LW * xf + r.int(-24, 24), base + 4, 1, 0.6]);
+      const reefs = [[0.15, 341], [0.5, 342], [0.85, 341]];
+      for (let i = 0; i < reefs.length; i++) {
+        const [xf, seed] = reefs[i];
+        let s = yield* reefSteps(seed, { w: 120, h: 72, d: 44, sizes: [8, 18] });
+        if (i === 2) s = S11.flip341 || (S11.flip341 = flipS(s));
+        items.push([s, LW * xf + r.int(-24, 24), base + r.float(16, 24), 1]);
       }
       const boat = yield* propSteps("sunken_boat", 0.9);
-      if (boat) items.push([boat, LW * 0.68, base + 6, 1, 0.9]);
-      for (const [id2, xf, sc] of [["rock_big", 0.3, 0.8], ["rock_arch", 0.06, 0.9], ["rock_small", 0.94, 0.9], ["rock_big", 0.4, 0.6]]) {
+      if (boat) items.push([boat, LW * 0.68, base + 24, 1]);
+      for (const [id2, xf, sc] of [["rock_big", 0.3, 0.8], ["rock_arch", 0.04, 0.9], ["rock_small", 0.94, 0.9], ["rock_big", 0.4, 0.6]]) {
         const s = yield* propSteps(id2, sc);
-        if (s) items.push([s, LW * xf, base + 5, 1, r.next()]);
+        if (s) items.push([s, LW * xf, base + r.float(14, 26), 1]);
       }
       for (let i = 0; i < 6; i++) {
         const k = ["fan", "staghorn", "tube", "brain", "whip", "table"][i];
         const s = yield* coralSteps(k, 360 + i, [12, 14, 10][i % 3]);
-        items.push([s, r.float(0, LW), base + 6, 1, r.next() * 0.5]);
+        items.push([s, r.float(0, LW), base + r.float(14, 28), 1]);
       }
-      items.sort((a, b) => b[4] - a[4]);
-      const g = L2.g;
-      for (let x = 0; x < L2.c.width; x += 2) {
-        const yy = (base + Math.sin(x * 3e-3 + 1) * 3 + Math.sin(x * 9e-3) * 1.5) * HI;
-        g.fillStyle = "#d4b884";
-        g.fillRect(x, yy, 2, 30 * HI);
-        g.fillStyle = "#ecd8a8";
-        g.fillRect(x, yy, 2, 3);
-      }
+      items.sort((a, b) => a[2] - b[2]);
       for (const [s, x, y, k] of items) put(L2, s, x, y, k);
-      fog(L2, hazeMid, 0.42, 0.3);
+      fog(L2, hazeMid, 0.4, 0.26);
       S11.L.mid = { c: twin2(L2.c), x: -P7, y: y0, P: P7 };
       S11.ready.mid = -1;
     }
@@ -89207,7 +89252,7 @@ void main() {
       const [, by] = F3.project(0, 7, 0);
       const sh = Math.round(S11.floorY - y0 - by);
       L2.g.drawImage(F3.canvas, 0, sh * HI, F3.canvas.width * HI, F3.canvas.height * HI);
-      fog(L2, hazeMid, 0.5, 0, 0, Math.min(L2.hL, 70));
+      fog(L2, waterAt2(0.55), 0.34, 0, 0, Math.min(L2.hL, 60));
       S11.L.floor = { c: twin2(L2.c), x: -P7, y: y0, P: P7 };
       S11.floorMap = { F: F3, y0: y0 + sh, P: P7 };
       S11.ready.floor = -1;
@@ -89327,10 +89372,11 @@ void main() {
       ctx3.globalAlpha = ga;
     };
     ctx3.drawImage(S11.bg, x0, y0, w, h);
+    lay("sky");
     if (S11.surf) {
       const fr = S11.surf[Math.floor(t * 5) % S11.surf.length], TW2 = 160, sx = (t * 6 % TW2 + TW2) % TW2;
       const [dx] = off("far2");
-      const yy = y0 + S11.top - (S11.top ? 6 : 4);
+      const yy = y0 + S11.top - (S11.top ? 4 : 2);
       for (let x = -TW2 - sx + dx % TW2; x < w + TW2; x += TW2) ctx3.drawImage(fr, Math.round((x0 + x) * 2) / 2, yy);
     }
     lay("far2");
@@ -89396,7 +89442,9 @@ void main() {
       const B2 = S11.bubbles[s];
       for (let i = 0; i < B2.n; i++) {
         const q = (t * (B2.sp / 140) + i / B2.n + hash1(s, 3)) % 1;
-        const yy = B2.y - q * 140, xx = B2.x + Math.sin(t * 2.2 + i * 1.7 + s) * (1 + q * 3);
+        const yy = B2.y - q * 140;
+        if (yy < S11.top + 8) continue;
+        const xx = B2.x + Math.sin(t * 2.2 + i * 1.7 + s) * (1 + q * 3);
         ctx3.globalAlpha = ga * (q < 0.1 ? q * 10 : q > 0.8 ? (1 - q) * 5 : 1) * 0.85;
         ctx3.drawImage(microBubble(0.8 + (i + s) % 3 * 0.45 + q * 0.6), Math.round((x0 + xx + dx) * 2) / 2, Math.round((y0 + yy + dy) * 2) / 2);
       }
@@ -89420,6 +89468,7 @@ void main() {
       init_rng();
       init_math();
       init_labtiles();
+      init_hires();
       now8 = () => typeof performance !== "undefined" ? performance.now() : Date.now();
       BUDGET2 = 7;
       BUDGET_DBG = () => globalThis.__labBudget || BUDGET2;
@@ -89432,8 +89481,16 @@ void main() {
       spr2 = (r) => ({ canvas: r.canvas, ox: r.ox, oy: r.oy });
       KELP_R = { scale: 1, yaw: 0, pitch: 12, outline: true, groundAO: false, jitter: 0.06, ao: 1, edges: 0.6 };
       scenes = /* @__PURE__ */ new Map();
-      PAD3 = { far2: 26, far1: 40, mid: 60, floor: 96, props: 96 };
-      PAR2 = { far2: 0.03, far1: 0.05, mid: 0.085, floor: 0.14, props: 0.14 };
+      PAD3 = { sky: 26, far2: 26, far1: 40, mid: 60, floor: 96, props: 96 };
+      PAR2 = { sky: 0.015, far2: 0.03, far1: 0.05, mid: 0.085, floor: 0.14, props: 0.14 };
+      globalThis.__labDraw = (n2) => {
+        const c = makeCanvas(1920, 1080);
+        const g = hiCtx(c);
+        const v = { x: 16, y: 40, w: 928, h: 456 };
+        const t02 = now8();
+        for (let i = 0; i < n2; i++) drawLabRoom(g, v, i * 0.016, { x: i, y: 0, z: 0 }, "tree");
+        return (now8() - t02) / n2;
+      };
     }
   });
 
@@ -90026,8 +90083,8 @@ void main() {
           f.globalCompositeOperation = "source-over";
           f.clearRect(0, 0, fw, fh);
           const fg = f.createLinearGradient(0, 0, 0, fh);
-          fg.addColorStop(0, "rgba(3,14,34,0.5)");
-          fg.addColorStop(1, "rgba(1,6,18,0.6)");
+          fg.addColorStop(0, "rgba(3,14,34,0.26)");
+          fg.addColorStop(1, "rgba(1,6,18,0.34)");
           f.fillStyle = fg;
           f.fillRect(0, 0, fw, fh);
           f.globalCompositeOperation = "destination-out";
@@ -91095,13 +91152,13 @@ void main() {
     rr3(ctx3, view.x, view.y, view.w, view.h, 10);
     ctx3.clip();
     drawLabRoom(ctx3, view, t, void 0, "boats");
-    const wl = view.y + labRoomScene(view, "boats").wl + 4, near = view.y + view.h - 4;
+    const wl = view.y + labRoomScene(view, "boats").wl + 2;
     const cur = st.boat?.tier | 0;
     const n2 = BOAT_ORDER.length, sp = view.w / n2;
     BOAT_ORDER.forEach((id2, i) => {
       const has = i === 0 || unlocked(st, "boat", id2);
-      const x = view.x + sp * (i + 0.5), bob = Math.sin(t * 1.6 + i) * 2;
-      const y = wl + (near - wl) * (i % 2 ? 0.66 : 0.34) + bob;
+      const x = view.x + sp * (i + 0.5), bob = Math.sin(t * 1.6 + i) * 1.5;
+      const y = wl + (i % 2 ? 3 : 0) + bob;
       const sel = (panel.boatSel ?? cur) === i;
       if (i === cur) drawAeroGlow(ctx3, x, y - 8, 34, "#fff6a0", 0.6);
       if (sel) {
@@ -91133,7 +91190,7 @@ void main() {
         if (ck) ctx3.drawImage(ck, Math.round(x + 22 - ck.width / 2), Math.round(y - 46 - ck.height / 2));
       }
       const nm = BOAT_NAMES[id2];
-      drawText(ctx3, nm, x, y + 14, { font: "small", align: "center", color: has ? "#ffffff" : rgba("#ffffff", 0.6), outline: has ? "#0a5a9a" : null });
+      drawText(ctx3, nm, x, y + 14, { font: "small", align: "center", color: has ? "#ffffff" : "#cfeefa", outline: has ? "#0a5a9a" : "#2a6a96" });
       const rr4 = { x: x - sp / 2, y: y - 60, w: sp, h: 72 };
       if (ui.hover(rr4)) ui.tip = BOAT_NAMES[id2];
       if (ui.clicked(rr4)) {

@@ -141,8 +141,8 @@ function kelpModel(seed, H, ph) {
   const nx = 72, nz = 16;
   const m = new VoxelModel(nx, H + 8, nz);
   const C = (c, o = {}) => m.color(c, { jitter: 0.08, ...o });
-  const stipe = C('#2f7a3a'), stipeL = C('#4a9a44');
-  const blade = [C('#2e8a3e'), C('#46b04a'), C('#7fda5c'), C('#c8ff8a', { light: 0.4 })];
+  const stipe = C('#2a8048'), stipeL = C('#4aa858');
+  const blade = [C('#2a9a50'), C('#44c062'), C('#86ea6e'), C('#d8ffa0', { light: 0.4 })];
   const float = C('#e8c84a', { spec: 0.8 }), floatL = C('#fff2a0', { light: 0.5 });
   const lean = r.float(-0.06, 0.06), w0 = r.float(0, TAU);
   const sway = (y) => { const k = y / H; return Math.sin(ph + w0 + k * 2.2) * 7 * Math.pow(k, 1.3) + Math.sin(y * 0.07 + seed) * 1.4 + lean * y; };
@@ -203,6 +203,24 @@ function boxFrames(fr) {
   return { frames, ox: -minX, oy: -minY };
 }
 
+// A soft cumulus puff (white tops, pale aqua undersides).
+function* cloudSteps(i) {
+  return yield* cachedSteps('cloud|' + i, function* () {
+    const r = new RNG(900 + i);
+    const W = 70 + r.int(0, 30), m = new VoxelModel(W + 8, 30, 16);
+    const wht = m.color('#ffffff', { jitter: 0.02, smooth: 0.8 }), sh = m.color('#d4f4ff', { jitter: 0.02, smooth: 0.8 });
+    const n = r.int(4, 6);
+    for (let k = 0; k < n; k++) {
+      const cx = 6 + ((k + 0.5) / n) * W, rr = (W / n) * r.float(0.7, 1.05) * (1 - Math.abs(k - (n - 1) / 2) / n * 0.6);
+      m.ellipsoid(cx, rr * 0.65 + 2, 8, rr, rr * 0.75, 6, (x, y) => (y < 5 ? sh : wht));
+    }
+    m.box(4, 1, 4, W + 2, 3, 11, sh);
+    yield;
+    const rv = renderVoxels(m, { scale: 1, yaw: 0, pitch: 14, outline: false, groundAO: false, jitter: 0.02 });
+    return { canvas: rv.canvas, ox: rv.ox, oy: rv.oy };
+  });
+}
+
 // A little distant fish (side view), two tail frames.
 function fishModel(f, body, belly) {
   const m = new VoxelModel(16, 8, 6);
@@ -229,16 +247,17 @@ function* floorSteps(nx, nz, seed) {
     const ny = 16;
     const m = new VoxelModel(nx, ny, nz);
     const C = (c, o = {}) => m.color(c, { jitter: 0.07, ...o });
-    const sand = [C('#c49a62'), C('#d8b47a'), C('#e8cc94'), C('#f4e0b0'), C('#fff0cc', { light: 0.3 })];
-    const wet = C('#b88c58'), peb = [C('#8a92b0'), C('#a4aec8'), C('#6e7898')], shellC = [C('#ffd0dc', { spec: 0.6 }), C('#ffffff', { spec: 0.8 }), C('#ffb48a', { spec: 0.6 })];
+    const sand = [C('#d2ae7c'), C('#e6c896'), C('#f4deb0'), C('#fdecc8'), C('#fff8e4', { light: 0.3 })];
+    const wet = C('#c09a68'), peb = [C('#8a92b0'), C('#a4aec8'), C('#6e7898')], shellC = [C('#ffd0dc', { spec: 0.6 }), C('#ffffff', { spec: 0.8 }), C('#ffb48a', { spec: 0.6 })];
     const star = C('#ff7a3a'), starL = C('#ffb066'), grass = [C('#2e8a3e'), C('#58b84a'), C('#9ae070')], rubble = [C('#ff9ab4'), C('#ffd0a0'), C('#c8a0ff')];
     const r = new RNG(seed);
     const hAt = new Float32Array(nx * nz);
     for (let z = 0; z < nz; z++) {
       for (let x = 0; x < nx; x++) {
         const dune = fbm2(x * 0.012, z * 0.02, 3, seed) * 6;
-        const rip = Math.sin(z * 0.55 + x * 0.04 + fbm2(x * 0.03, z * 0.03, 2, seed + 4) * 5) > 0.55 ? 1 : 0;
-        const h = 4 + dune + rip;
+        const rv = Math.sin(z * 0.42 + x * 0.035 + fbm2(x * 0.02, z * 0.03, 2, seed + 4) * 6);
+        const rip = rv > 0.62 ? 1 : rv < -0.8 ? -1 : 0;
+        const h = 4 + dune;
         hAt[x + z * nx] = h;
         const top = Math.floor(h);
         for (let y = 0; y <= top; y++) {
@@ -246,8 +265,8 @@ function* floorSteps(nx, nz, seed) {
           let c;
           if (d === 0) {
             const n = hash2(x, z, seed + 1);
-            c = rip ? sand[3] : n < 0.12 ? sand[1] : n > 0.93 ? sand[4] : sand[2];
-            if (!rip && fbm2(x * 0.05, z * 0.08, 2, seed + 9) < 0.3) c = sand[1];
+            c = rip > 0 ? sand[3] : rip < 0 ? sand[1] : n > 0.95 ? sand[4] : n < 0.04 ? sand[1] : sand[2];
+            if (!rip && fbm2(x * 0.04, z * 0.07, 2, seed + 9) < 0.28) c = n > 0.5 ? sand[1] : sand[2];
           } else c = d < 2 ? sand[1] : d < 4 ? sand[0] : wet;
           m.set(x, y, z, c);
         }
@@ -256,7 +275,7 @@ function* floorSteps(nx, nz, seed) {
     }
     const ground = (x, z) => Math.floor(hAt[clamp(Math.round(x), 0, nx - 1) + clamp(Math.round(z), 0, nz - 1) * nx]) + 1;
     // pebbles
-    for (let i = 0; i < nx * nz * 0.0016; i++) {
+    for (let i = 0; i < nx * nz * 0.0009; i++) {
       const x = r.float(2, nx - 3), z = r.float(2, nz - 3), y = ground(x, z);
       const s = r.float(0.8, 2.4);
       m.ellipsoid(x, y - 0.3, z, s * 1.3, s * 0.8, s, r.pick(peb));
@@ -275,14 +294,44 @@ function* floorSteps(nx, nz, seed) {
       m.set(Math.round(x), y + 1, Math.round(z), starL);
     }
     // coral rubble and sea-grass tufts
-    for (let i = 0; i < nx * nz * 0.0008; i++) {
+    for (let i = 0; i < nx * nz * 0.0005; i++) {
       const x = Math.round(r.float(2, nx - 3)), z = Math.round(r.float(2, nz - 3)), y = ground(x, z);
-      if (r.chance(0.55)) { const c = r.pick(rubble); m.set(x, y, z, c); m.set(x + 1, y, z, c); if (r.chance(0.5)) m.set(x, y + 1, z, c); }
+      if (r.chance(0.35)) { const c = r.pick(rubble); m.set(x, y, z, c); m.set(x + 1, y, z, c); if (r.chance(0.5)) m.set(x, y + 1, z, c); }
       else for (let b = 0; b < 4; b++) { const bx = x + r.int(-2, 2), hh = r.int(2, 5); for (let k = 0; k < hh; k++) m.set(bx + (k > 2 ? (b % 2 ? 1 : -1) : 0), y + k, z, grass[Math.min(2, Math.floor((k / hh) * 3))]); }
     }
     yield;
-    const rr = yield* renderSteps(m, { scale: 1, yaw: 0, pitch: 24, outline: false, groundAO: false, jitter: 0.05, ao: 1.1, edges: 0.5, depthLines: true });
+    const rr = yield* renderSteps(m, { scale: 1, yaw: 0, pitch: 24, outline: false, groundAO: false, jitter: 0.04, ao: 0.9, edges: 0.35, depthLines: false });
     return { canvas: rr.canvas, ox: rr.ox, oy: rr.oy, project: rr.project, ny, nz, ground };
+  });
+}
+
+// Rolling dunes / rock hills as a voxel heightfield: tall at the back (the skyline), flattening toward the front so
+// things can stand on the visible top. Anchor (ox, oy) = the back-left foot (x 0, y 0, z 0); 1 sprite px per voxel.
+function* hillsSteps(key, nx, nz, o) {
+  return yield* cachedSteps('hills|' + key + '|' + nx + '|' + nz, function* () {
+    const { seed, base, amp, cols, speck = [] } = o;
+    const ny = base + amp + 4;
+    const m = new VoxelModel(nx, ny, nz);
+    const C = cols.map((c) => m.color(c, { jitter: 0.08 }));
+    const SP = speck.map((c) => m.color(c, { jitter: 0.1 }));
+    const crest = new Float32Array(nx);
+    for (let x = 0; x < nx; x++) crest[x] = base + amp * clamp(fbm2(x * 0.011, 0.5, 3, seed) * 1.25 - 0.1 + Math.sin(x * 0.006 + seed) * 0.15, 0, 1);
+    for (let z = 0; z < nz; z++) {
+      const k = z / nz, fall = Math.pow(1 - k, 1.6);
+      for (let x = 0; x < nx; x++) {
+        const hh = Math.max(1, Math.round(crest[x] * fall + 2 + fbm2(x * 0.05, z * 0.08, 2, seed + 3) * 2));
+        for (let y = 0; y < hh; y++) {
+          const d = hh - 1 - y;
+          let c = C[d === 0 ? 0 : d < 3 ? 1 : d < 7 ? 2 : 3];
+          if (d === 0 && SP.length && hash2(x, z, seed + 7) < 0.012) c = SP[Math.floor(hash2(x, z, seed + 8) * SP.length)];
+          m.set(x, y, z, c);
+        }
+      }
+      if ((z & 7) === 7) yield;
+    }
+    const rr = yield* renderSteps(m, { scale: 1, yaw: 0, pitch: 24, outline: true, groundAO: false, jitter: 0.05, ao: 1, edges: 0.4, depthLines: false });
+    const [ax, ay] = rr.project(0, 0, 0);
+    return { canvas: rr.canvas, ox: Math.round(ax), oy: Math.round(ay) };
   });
 }
 
@@ -292,15 +341,17 @@ function* floorSteps(nx, nz, seed) {
 function causticFrame(TW, TH, f, n) {
   const W = TW * HI, H = TH * HI, c = makeCanvas(W, H), g = ctxOf(c);
   const img = g.createImageData(W, H), d = img.data;
-  const CX = 5, CY = 6, cw = W / CX, ch = (H * 2.4) / CY;
+  const CX = 7, CY = Math.max(4, Math.round((H * 2.4) / (W / 7))), cw = W / CX, ch = (H * 2.4) / CY;
   const ph = (f / n) * TAU;
   const pts = [];
   for (let j = -1; j <= CY; j++) for (let i = -1; i <= CX; i++) {
     const ii = ((i % CX) + CX) % CX, h1 = hash2(ii, j, 71), h2 = hash2(ii, j, 72), h3 = hash2(ii, j, 73);
     pts.push([(i + 0.2 + h1 * 0.6) * cw + Math.cos(ph + h3 * TAU) * cw * 0.16, (j + 0.2 + h2 * 0.6) * ch + Math.sin(ph * (h3 > 0.5 ? 1 : -1) + h1 * TAU) * ch * 0.16]);
   }
+  const KX = TAU / W;
   for (let y = 0; y < H; y += 2) for (let x = 0; x < W; x += 2) {
-    const px = x + 1, py = (y + 1) * 2.4;
+    // a gentle domain warp (periodic in x) keeps the web organic, not tiled
+    const px = x + 1 + Math.sin((y + 1) * 0.11 + ph) * 3 + Math.sin(x * KX * 2 + ph) * 2, py = (y + 1) * 2.4 + Math.sin(x * KX * 3 - ph) * 5;
     let d1 = 1e9, d2 = 1e9;
     for (const p of pts) {
       const dx = px - p[0], dy = py - p[1], q = dx * dx + dy * dy;
@@ -309,7 +360,7 @@ function causticFrame(TW, TH, f, n) {
     const e = Math.sqrt(d2) - Math.sqrt(d1);
     const depth = y / H; // 0 = back of the floor
     const fade = clamp(depth * 3, 0, 1) * (0.45 + 0.55 * depth);
-    const v = e < 2.2 ? 1 : e < 5 ? 0.45 : 0;
+    const v = e < 1.8 ? 1 : e < 3.6 ? 0.4 : 0;
     if (!v) continue;
     const a = Math.round(255 * v * fade);
     for (let yy = 0; yy < 2; yy++) for (let xx = 0; xx < 2; xx++) {
@@ -397,7 +448,7 @@ function veils(S) {
   return {
     tree: mk((g) => {
       const r = g.createRadialGradient(w / 2, h * 0.47, Math.min(w, h) * 0.08, w / 2, h * 0.47, Math.max(w, h) * 0.62);
-      r.addColorStop(0, 'rgba(4,22,52,0.42)'); r.addColorStop(0.55, 'rgba(4,22,52,0.3)'); r.addColorStop(1, 'rgba(4,22,52,0.06)');
+      r.addColorStop(0, 'rgba(4,30,66,0.3)'); r.addColorStop(0.45, 'rgba(4,30,66,0.2)'); r.addColorStop(1, 'rgba(4,30,66,0)');
       g.fillStyle = r; g.fillRect(0, 0, w, h);
     }),
     rods: mk((g) => {
@@ -415,72 +466,78 @@ function veils(S) {
 }
 
 // layer paddings (logical px) = the parallax room on each side
-const PAD = { far2: 26, far1: 40, mid: 60, floor: 96, props: 96 };
-const PAR = { far2: 0.03, far1: 0.05, mid: 0.085, floor: 0.14, props: 0.14 };
+const PAD = { sky: 26, far2: 26, far1: 40, mid: 60, floor: 96, props: 96 };
+const PAR = { sky: 0.015, far2: 0.03, far1: 0.05, mid: 0.085, floor: 0.14, props: 0.14 };
 
 function* buildScene(S) {
   const { w, h, top, U } = S;
   const r = new RNG(77);
-  const hazeFar = waterAt(0.5), hazeMid = waterAt(0.6);
+  const hazeFar = waterAt(0.42), hazeMid = waterAt(0.5);
   // animated textures first (cheap, they make the scene feel alive while the rest builds)
   S.surf = [];
-  for (let f = 0; f < 8; f++) { S.surf.push(surfaceFrame(160, 26, f, 8)); }
+  for (let f = 0; f < 8; f++) { S.surf.push(surfaceFrame(160, 34, f, 8)); }
   yield;
+  // Boats: soft voxel clouds in the strip of sky above the surface
+  if (top > 0) {
+    const P = PAD.far2, L = layer(w + P * 2, top);
+    for (let i = 0; i < 4; i++) {
+      const s = yield* cloudSteps(i);
+      put(L, s, P + w * (0.06 + i * 0.22 + hash1(i, 41) * 0.05), top * (0.3 + hash1(i, 42) * 0.22), 2);
+    }
+    S.L.sky = { c: twin(L.c), x: -P, y: 0, P };
+    S.ready.sky = -1;
+  }
 
   S.cur = '---- far2'; // DEBUG
-  // ---- far2: faint silhouettes
+  // ---- far2: faint silhouettes (pinnacles, a mesa, an arch) on rolling rock hills
   {
-    const P = PAD.far2, LW = w + P * 2, y0 = top + U * 0.2, base = S.far2Y - y0, L = layer(LW, base + 10);
+    const P = PAD.far2, LW = w + P * 2, y0 = top + U * 0.16, base = S.far2Y - y0, L = layer(LW, base + 40);
+    const hills = yield* hillsSteps('h2', Math.ceil(LW), 60, { seed: 54, base: 10, amp: 26, cols: ['#8a9cc0', '#7484aa', '#5e6c94', '#4c5a80'], speck: ROCK });
+    put(L, hills, 0, base, 2);
     const items = [];
-    const sp = [[0.03, 70, 9], [0.14, 104, 12], [0.27, 58, 8], [0.72, 96, 11], [0.86, 120, 13], [0.97, 64, 9], [0.42, 44, 7], [0.58, 52, 8]];
+    const sp = [[0.03, 70, 9], [0.14, 110, 12], [0.27, 58, 8], [0.72, 100, 11], [0.86, 128, 13], [0.97, 64, 9], [0.45, 46, 7], [0.6, 56, 8]];
     for (let i = 0; i < sp.length; i++) {
       const [xf, hh, ww] = sp[i];
       const s = yield* farSteps('sp|' + i + '|' + hh, () => farRender(spire(400 + i, { h: hh, w: ww, d: 16, lean: hash1(i, 3) * 0.14 - 0.07, cols: ROCK, crown: CROWN }), { scale: 1.5, yaw: i % 2 ? 22 : -22 }));
-      items.push([s, xf * LW, base + 2]);
+      items.push([s, xf * LW, base + 8 + (i % 3) * 3]);
     }
     const ms = yield* farSteps('mesa|a', () => farRender(mesa(52, { h: 34, w: 38, d: 18, cols: ROCK, crown: CROWN }), { scale: 1.5, yaw: -16 }));
-    items.push([ms, LW * 0.5, base + 4]);
+    items.push([ms, LW * 0.52, base + 10]);
     const ar = yield* farSteps('arch|a', () => farRender(rockArch(51, { span: 56, h: 72, th: 8, d: 14, cols: ROCK, crown: CROWN }), { scale: 1.5, yaw: 18 }));
-    items.push([ar, LW * 0.36, base + 3]);
+    items.push([ar, LW * 0.36, base + 12]);
+    items.sort((a, b) => a[2] - b[2]);
     for (const [s, x, y] of items) put(L, s, x, y);
-    // a soft ridge foot so nothing floats
-    L.g.fillStyle = '#5a7aa8'; L.g.fillRect(0, (base - 1) * HI, L.c.width, 12 * HI);
-    fog(L, hazeFar, 0.8, 0.66);
+    fog(L, hazeFar, 0.62, 0.5);
     S.L.far2 = { c: twin(L.c), x: -P, y: y0, P };
     S.ready.far2 = -1;
   }
   yield;
 
   S.cur = '---- far1'; // DEBUG
-  // ---- far1: the coral garden on a sand ridge, kelp columns
+  // ---- far1: the coral garden on sand dunes, kelp columns
   {
-    const P = PAD.far1, LW = w + P * 2, y0 = top + U * 0.3, base = S.far1Y - y0, L = layer(LW, base + 14);
+    const P = PAD.far1, LW = w + P * 2, y0 = top + U * 0.3, base = S.far1Y - y0, L = layer(LW, base + 40);
+    const hills = yield* hillsSteps('h1', Math.ceil(LW), 64, { seed: 55, base: 6, amp: 16, cols: ['#f2deb0', '#e2c898', '#d0b482', '#b89c6c'], speck: ['#8a92b0', '#a4aec8', '#ff9ab4'] });
+    put(L, hills, 0, base, 2);
     const items = [];
     const kinds = ['staghorn', 'fan', 'brain', 'tube', 'table', 'pillar', 'fan', 'whip'];
-    for (let i = 0; i < 9; i++) {
+    for (let i = 0; i < 10; i++) {
       const k = kinds[i % kinds.length];
       const s = yield* coralSteps(k, 300 + i, [9, 12, 10][i % 3]);
-      items.push([s, r.float(0, LW), base + r.int(0, 3), r.next()]);
+      items.push([s, r.float(0, LW), base + r.float(10, 22)]);
     }
     for (let i = 0; i < 4; i++) {
       const s = yield* reefSteps(330 + (i % 2), { w: 96, h: 56, d: 34, sizes: [7, 14] });
-      items.push([i % 2 ? s : (S.flip330 ||= flipS(s)), LW * (0.1 + i * 0.27) + r.int(-20, 20), base + 3, r.next()]);
+      items.push([i % 2 ? s : (S.flip330 ||= flipS(s)), LW * (0.1 + i * 0.27) + r.int(-20, 20), base + r.float(12, 20)]);
     }
     for (let i = 0; i < 9; i++) {
       const hh = r.int(46, 90);
-      const s = yield* farSteps('kc|' + i + '|' + hh, () => kelpColumn(60 + i, hh, ['#3a7a3a', '#56a044', '#8ad05a'], 1));
-      items.push([s, r.float(0, LW), base + 1, 0.5 + r.next() * 0.5]);
+      const s = yield* farSteps('kc|' + i + '|' + hh, () => kelpColumn(60 + i, hh, ['#3a8a4a', '#56b04c', '#8ae060'], 1));
+      items.push([s, r.float(0, LW), base + r.float(8, 16)]);
     }
-    items.sort((a, b) => b[3] - a[3]);
-    // sand ridge under them
-    const g = L.g;
-    for (let x = 0; x < L.c.width; x += 2) {
-      const yy = (base - 2 + Math.sin(x * 0.004) * 2 + Math.sin(x * 0.011) * 1.5) * HI;
-      g.fillStyle = '#d8c08a'; g.fillRect(x, yy, 2, 20 * HI);
-      g.fillStyle = '#efdcae'; g.fillRect(x, yy, 2, 2);
-    }
+    items.sort((a, b) => a[2] - b[2]);
     for (const [s, x, y] of items) put(L, s, x, y);
-    fog(L, hazeMid, 0.62, 0.48);
+    fog(L, hazeMid, 0.56, 0.42);
     S.L.far1 = { c: twin(L.c), x: -P, y: y0, P };
     S.ready.far1 = -1;
   }
@@ -507,35 +564,33 @@ function* buildScene(S) {
   yield;
 
   S.cur = '---- mid:'; // DEBUG
-  // ---- mid: reef bommies, a sunken boat, rocks
+  // ---- mid: reef bommies, a sunken boat and rocks on sand dunes
   {
-    const P = PAD.mid, LW = w + P * 2, y0 = top + U * 0.28, base = S.midY - y0, L = layer(LW, base + 16);
+    const P = PAD.mid, LW = w + P * 2, y0 = top + U * 0.28, base = S.midY - y0, L = layer(LW, S.floorY + 40 - y0);
+    const hills = yield* hillsSteps('hm', Math.ceil(LW), 80, { seed: 56, base: 5, amp: 12, cols: ['#f6e6be', '#e8d0a2', '#d6bc8a', '#c0a274'], speck: ['#8a92b0', '#a4aec8', '#ffb48a', '#ff9ab4'] });
+    put(L, hills, 0, base, 2);
     const items = [];
-    const reefs = [[0.16, 341], [0.5, 342], [0.83, 343]];
-    for (const [xf, seed] of reefs) {
-      const s = yield* reefSteps(seed, { w: 120, h: 72, d: 44, sizes: [8, 18] });
-      items.push([s, LW * xf + r.int(-24, 24), base + 4, 1, 0.6]);
+    const reefs = [[0.15, 341], [0.5, 342], [0.85, 341]];
+    for (let i = 0; i < reefs.length; i++) {
+      const [xf, seed] = reefs[i];
+      let s = yield* reefSteps(seed, { w: 120, h: 72, d: 44, sizes: [8, 18] });
+      if (i === 2) s = S.flip341 ||= flipS(s);
+      items.push([s, LW * xf + r.int(-24, 24), base + r.float(16, 24), 1]);
     }
     const boat = yield* propSteps('sunken_boat', 0.9);
-    if (boat) items.push([boat, LW * 0.68, base + 6, 1, 0.9]);
-    for (const [id, xf, sc] of [['rock_big', 0.3, 0.8], ['rock_arch', 0.06, 0.9], ['rock_small', 0.94, 0.9], ['rock_big', 0.4, 0.6]]) {
+    if (boat) items.push([boat, LW * 0.68, base + 24, 1]);
+    for (const [id, xf, sc] of [['rock_big', 0.3, 0.8], ['rock_arch', 0.04, 0.9], ['rock_small', 0.94, 0.9], ['rock_big', 0.4, 0.6]]) {
       const s = yield* propSteps(id, sc);
-      if (s) items.push([s, LW * xf, base + 5, 1, r.next()]);
+      if (s) items.push([s, LW * xf, base + r.float(14, 26), 1]);
     }
     for (let i = 0; i < 6; i++) {
       const k = ['fan', 'staghorn', 'tube', 'brain', 'whip', 'table'][i];
       const s = yield* coralSteps(k, 360 + i, [12, 14, 10][i % 3]);
-      items.push([s, r.float(0, LW), base + 6, 1, r.next() * 0.5]);
+      items.push([s, r.float(0, LW), base + r.float(14, 28), 1]);
     }
-    items.sort((a, b) => b[4] - a[4]);
-    const g = L.g;
-    for (let x = 0; x < L.c.width; x += 2) {
-      const yy = (base + Math.sin(x * 0.003 + 1) * 3 + Math.sin(x * 0.009) * 1.5) * HI;
-      g.fillStyle = '#d4b884'; g.fillRect(x, yy, 2, 30 * HI);
-      g.fillStyle = '#ecd8a8'; g.fillRect(x, yy, 2, 3);
-    }
+    items.sort((a, b) => a[2] - b[2]);
     for (const [s, x, y, k] of items) put(L, s, x, y, k);
-    fog(L, hazeMid, 0.42, 0.3);
+    fog(L, hazeMid, 0.4, 0.26);
     S.L.mid = { c: twin(L.c), x: -P, y: y0, P };
     S.ready.mid = -1;
   }
@@ -565,7 +620,7 @@ function* buildScene(S) {
     const [, by] = F.project(0, 7, 0); // z = 0 is the back (z runs toward the viewer)
     const sh = Math.round(S.floorY - y0 - by);
     L.g.drawImage(F.canvas, 0, sh * HI, F.canvas.width * HI, F.canvas.height * HI);
-    fog(L, hazeMid, 0.5, 0, 0, Math.min(L.hL, 70));
+    fog(L, waterAt(0.55), 0.34, 0, 0, Math.min(L.hL, 60));
     S.L.floor = { c: twin(L.c), x: -P, y: y0, P };
     S.floorMap = { F, y0: y0 + sh, P };
     S.ready.floor = -1;
@@ -685,11 +740,12 @@ export function drawLabRoom(ctx, v, t, cam, kind = 'tree') {
   };
 
   ctx.drawImage(S.bg, x0, y0, w, h);
+  lay('sky');
   // the rippling underside of the surface (top of the water)
   if (S.surf) {
     const fr = S.surf[Math.floor(t * 5) % S.surf.length], TW = 160, sx = ((t * 6) % TW + TW) % TW;
     const [dx] = off('far2');
-    const yy = y0 + S.top - (S.top ? 6 : 4);
+    const yy = y0 + S.top - (S.top ? 4 : 2);
     for (let x = -TW - sx + (dx % TW); x < w + TW; x += TW) ctx.drawImage(fr, Math.round((x0 + x) * 2) / 2, yy);
   }
   lay('far2');
@@ -760,7 +816,9 @@ function drawBubbles(ctx, S, t, x0, y0, [dx, dy]) {
     const B = S.bubbles[s];
     for (let i = 0; i < B.n; i++) {
       const q = (t * (B.sp / 140) + i / B.n + hash1(s, 3)) % 1;
-      const yy = B.y - q * 140, xx = B.x + Math.sin(t * 2.2 + i * 1.7 + s) * (1 + q * 3);
+      const yy = B.y - q * 140;
+      if (yy < S.top + 8) continue;
+      const xx = B.x + Math.sin(t * 2.2 + i * 1.7 + s) * (1 + q * 3);
       ctx.globalAlpha = ga * (q < 0.1 ? q * 10 : q > 0.8 ? (1 - q) * 5 : 1) * 0.85;
       ctx.drawImage(microBubble(0.8 + ((i + s) % 3) * 0.45 + q * 0.6), Math.round((x0 + xx + dx) * 2) / 2, Math.round((y0 + yy + dy) * 2) / 2);
     }
@@ -771,3 +829,5 @@ function drawBubbles(ctx, S, t, x0, y0, [dx, dy]) {
 // Where the Boats tab floats its boats: on the water surface (view-relative y)
 export function labRoomScene(v, kind) { return { wl: kind === 'boats' ? Math.round(v.h * 0.3) : 0 }; }
 
+import { hiCtx as __hiCtx } from '../gfx/hires.js'; // DEBUG
+globalThis.__labDraw = (n) => { const c = makeCanvas(1920, 1080); const g = __hiCtx(c); const v = { x: 16, y: 40, w: 928, h: 456 }; const t0 = now(); for (let i = 0; i < n; i++) drawLabRoom(g, v, i * 0.016, { x: i, y: 0, z: 0 }, 'tree'); return (now() - t0) / n; }; // DEBUG
