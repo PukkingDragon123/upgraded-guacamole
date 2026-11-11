@@ -89292,7 +89292,6 @@ void main() {
       const d = Math.hypot(u, v);
       return d > 0.72 ? rampAt2("#c4e8f6", lit2(u, v)) : v < -0.15 ? "!#bff4ff" : u < -0.3 && v < 0.2 ? "!#bfff8a" : "!#6fd83a";
     });
-    disk(g, wx, wy, 9, "#000000@0");
     R3(g, wx - 5, wy - 6, 3, 2, "#ffffff@0.8");
     S11.flasks.push({ x: wx - 6, y: wy - 2, w: 12, h: 8, top: wy - 9, cx: wx });
     for (let i = 0; i < 12; i++) R3(g, x - 2 + Math.round(i * 0.25), y + 16 - i, w + 4 - Math.round(i * 0.5), 1, OUT);
@@ -89911,7 +89910,6 @@ void main() {
       const a = Math.atan2(v, u), seg = Math.floor((a + Math.PI) / TAU * 8) % 2;
       return rampAt2(seg ? "#ffffff" : "#ff5a3a", lit2(u, v) * (d > 0.75 ? 1 : -1));
     });
-    disk(g, cx, cy, Math.round(r * 0.5), "#000000@0");
     g.save();
     g.globalCompositeOperation = "destination-out";
     disk(g, cx, cy, Math.round(r * 0.5) - 1, "#000000");
