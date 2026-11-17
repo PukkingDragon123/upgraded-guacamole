@@ -18427,7 +18427,7 @@ void main() {
         const q = S13.at(x, z);
         if (q.kind < 2) y += clamp3((q.gx - x) * 0.09 + 0.25, 0, 0.75);
       }
-      if (i < NR && rho > 0.2 && seamAt(x, z, 0.36)) y -= 0.42;
+      if (i < NR && rho > 0.06 && seamAt(x, z, 0.36)) y -= 0.42;
       return [x, y, z];
     };
     const V2 = [];
@@ -18722,7 +18722,7 @@ void main() {
       if (sd > 0) eyesA.push({ p: cE, r: E.r });
       if (!VOXEL) ellInto(eyes, cE, [E.r, E.r, E.r * 0.6], 8, 5, [0.04, 0.03, 0.03]);
     }
-    const parts = [{ key: "body", mb: body.mb, spec: 0.6, shine: 34, env: 0.38, iri: 0.04, rim: 0.32, ambient: 0.5 }];
+    const parts = [{ key: "body", mb: body.mb, spec: 0.5, shine: 34, env: 0.26, iri: 0.03, rim: 0.3, ambient: 0.5 }];
     if (!eyes.empty) parts.push({ key: "eyes", mb: eyes.mb, spec: 1.1, shine: 90, env: 0.3, ambient: 0.6 });
     const topY = tRimY(0) + T_HD;
     return {
@@ -19633,7 +19633,7 @@ void main() {
       };
       tDome = (rho, a) => {
         const c = Math.cos(a);
-        const f = Math.pow(Math.max(0, 1 - Math.pow(rho, 2.3)), 0.72);
+        const f = Math.pow(Math.max(0, 1 - Math.pow(rho, 1.75)), 0.8);
         return T_HD * f * (1 - 0.18 * Math.max(0, -c) * rho) * (1 + 0.05 * Math.max(0, c));
       };
       tmix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
