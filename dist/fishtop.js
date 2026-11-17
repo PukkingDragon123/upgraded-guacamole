@@ -70803,7 +70803,11 @@ kmlmk..
           s.B = B2;
           s.X = B2 - C5;
           s.u = 0.85 + 0.15 * smoothstep(0, 0.6, e);
-          if (!s.titleT && e > 0.35) this.showTitle(s);
+          const clash = s.hzD && Math.abs(s.hzD - this.game.screen.H * 0.34) < this.game.screen.H * 0.14;
+          if (!s.titleT && e > (clash ? 0.98 : 0.35)) {
+            this.showTitle(s);
+            if (clash && this.title) this.title.t = -1.1;
+          }
           if (e >= 1) this.handoff(s);
         }
         // live again: the real boat takes over at the puppet's spot, the postcard dissolves into the live scene
@@ -71834,6 +71838,7 @@ kmlmk..
         drawTitle(ctx3, dt, W11, H8) {
           const T5 = this.title;
           T5.t += dt;
+          if (T5.t < 0) return;
           const t = T5.t, hold = T5.first ? 4.4 : 3.4;
           if (t > hold + 0.8) {
             this.title = null;

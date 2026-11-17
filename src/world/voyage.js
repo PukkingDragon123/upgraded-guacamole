@@ -539,7 +539,9 @@ export class Voyage {
     s.Cv = dt > 0 ? (C - s.C) / dt : 0; s.Bv = dt > 0 ? Math.max(0, (B - s.B) / dt) : 0;
     s.C = C; s.B = B; s.X = B - C;
     s.u = 0.85 + 0.15 * smoothstep(0, 0.6, e);
-    if (!s.titleT && e > 0.35) this.showTitle(s);
+    // the title drops in mid-glide, unless the waterline sits where it goes (the Deep Ocean): then once the camera settles
+    const clash = s.hzD && Math.abs(s.hzD - this.game.screen.H * 0.34) < this.game.screen.H * 0.14;
+    if (!s.titleT && e > (clash ? 0.98 : 0.35)) { this.showTitle(s); if (clash && this.title) this.title.t = -1.1; }
     if (e >= 1) this.handoff(s);
   }
 
@@ -1368,6 +1370,7 @@ export class Voyage {
   drawTitle(ctx, dt, W, H) {
     const T = this.title;
     T.t += dt;
+    if (T.t < 0) return; // waiting for the camera to settle below the title
     const t = T.t, hold = T.first ? 4.4 : 3.4;
     if (t > hold + 0.8) { this.title = null; return; }
     if (!T.def) {
