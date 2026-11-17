@@ -908,7 +908,7 @@
     c = document.createElement("canvas");
     c.width = w;
     c.height = h;
-    const g = c.getContext("2d");
+    const g = c.getContext("2d", { willReadFrequently: true });
     g.font = font;
     g.textBaseline = "top";
     g.fillStyle = color;
@@ -41388,12 +41388,15 @@ kmlmk..
     const cr = F2.crank, t = F2.t;
     if (!cr.active) {
       const gr = Math.round(18 * (F2.H / 540));
-      for (let i = 0; i < 14; i++) {
-        const a = i / 14 * TAU + t * 6;
-        ctx2.fillStyle = rgba(INK2, 0.4);
-        ctx2.fillRect(Math.round(F2.input.x + Math.cos(a) * gr) - 2, Math.round(F2.input.y + Math.sin(a) * gr) - 2, 4, 4);
-        ctx2.fillStyle = rgba(col, 0.15 + i / 14 * 0.8);
-        ctx2.fillRect(Math.round(F2.input.x + Math.cos(a) * gr) - 1, Math.round(F2.input.y + Math.sin(a) * gr) - 1, 3, 3);
+      for (let j = 0; j < 2; j++) {
+        for (let i = 0; i < 6; i++) {
+          const a = t * 6 + j * Math.PI - i * 0.22, q = 1 - i / 6, sz = i ? 3 : 4;
+          const px = Math.round(F2.input.x + Math.cos(a) * gr), py = Math.round(F2.input.y + Math.sin(a) * gr);
+          ctx2.fillStyle = rgba(INK2, 0.45 * q);
+          ctx2.fillRect(px - (sz >> 1) - 1, py - (sz >> 1) - 1, sz + 2, sz + 2);
+          ctx2.fillStyle = rgba(col, 0.25 + 0.75 * q);
+          ctx2.fillRect(px - (sz >> 1), py - (sz >> 1), sz, sz);
+        }
       }
       return;
     }
@@ -44639,6 +44642,13 @@ kmlmk..
         F2.sfx("mash_pop", { pitch: 1 + i * 0.07, vol: 0.5 });
       }
       if (t > 1) word3D(ctx2, this.first ? "BOSS DEFEATED" : "DEFEATED AGAIN", W4 / 2, Math.round(H * 0.34), { t, pop: clamp01((t - 1) * 4), scale: 0.95, pal: def2.color === "#ffd23a" ? "sun" : "white" });
+      if (this.items.length && this.items[0].popped) {
+        const n2 = this.items.length, [x0, y0] = this.chipPos(0);
+        const pw = Math.round((n2 - 1) * 100 + 96), ph = 96, pk3 = ease.outBack(clamp01((t - 1.5) * 4));
+        const plate = aeroCached(`bossrw|${pw}|${ph}`, () => aeroSurface(pw, ph, { tone: "deep", a: [0.78, 0.86], r: 12, gloss: 0.4, glossH: 30, curve: 2, rim: 0.9, glow: 0.5, depth: 2, block: 4 }));
+        const sw = Math.max(1, Math.round(pw * pk3)), sh = Math.max(1, Math.round(ph * pk3));
+        ctx2.drawImage(plate, Math.round(x0 - 48 + (pw - sw) / 2), Math.round(y0 - 40 + (ph - sh) / 2), sw, sh);
+      }
       this.items.forEach((it2, i) => {
         if (!it2.popped) return;
         const [x, y] = this.chipPos(i);

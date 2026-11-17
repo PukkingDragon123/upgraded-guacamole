@@ -121,18 +121,35 @@ export class UI {
       try { g.hud?.drawOverlay?.(ctx, this.inp, false); } catch { /* optional */ }
     }
     const real = this.inp, tip = this.tip, hot = this.hot;
-    const stub = { x: -1e5, y: -1e5, pressed: false, down: false, released: false, wheel: 0, keyPressed: () => false, consume() {} };
+    const base = { x: -1e5, y: -1e5, pressed: false, down: false, released: false, wheel: 0, keyPressed: () => false, consume() {} };
+    // anything else a panel reads from the input is inert while it fades out (no keys, no clicks)
+    const stub = new Proxy(base, { get: (o, k) => (k in o ? o[k] : typeof real[k] === 'function' ? () => false : undefined), set: () => true });
     this.inp = stub;
-    for (const gh of this.ghosts) {
-      const p = gh.p, r = p.rect, k = ease.inCubic ? 1 - ease.inCubic(1 - gh.k) : gh.k;
-      ctx.save();
-      const cx = r.x + r.w / 2, cy = r.y + r.h / 2, s = 0.9 + 0.1 * k;
-      ctx.translate(cx, cy + (1 - k) * 10); ctx.scale(s, s); ctx.translate(-cx, -cy);
-      ctx.globalAlpha = Math.max(0, k);
-      try { p.draw(ctx, this, 0); } catch { gh.k = 0; }
-      ctx.restore();
+    const gin = g.input;
+    g.input = stub;
+    this.ghosting = true;
+    // panels reset ctx.globalAlpha = 1 all over the place: scale every alpha they set by the fade while ghosting
+    const AD = typeof CanvasRenderingContext2D !== 'undefined' ? Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, 'globalAlpha') : null;
+    let mul = 1;
+    const patched = !!(AD && ctx instanceof CanvasRenderingContext2D);
+    if (patched) Object.defineProperty(ctx, 'globalAlpha', { configurable: true, get() { return AD.get.call(this) / (mul || 1); }, set(v) { AD.set.call(this, Math.max(0, Math.min(1, v)) * mul); } });
+    try {
+      for (const gh of this.ghosts) {
+        const p = gh.p, r = p.rect, k = Math.max(0, 1 - ease.inCubic(1 - gh.k));
+        ctx.save();
+        const cx = r.x + r.w / 2, cy = r.y + r.h / 2, s = 0.92 + 0.08 * k;
+        ctx.translate(cx, cy + (1 - k) * 10); ctx.scale(s, s); ctx.translate(-cx, -cy);
+        mul = Math.max(0.001, gh.k); // linear fade, eased shrink
+        ctx.globalAlpha = 1;
+        try { p.draw(ctx, this, 0); } catch { gh.k = 0; }
+        ctx.restore();
+      }
+    } finally {
+      if (patched) delete ctx.globalAlpha;
+      this.inp = real; this.tip = tip; this.hot = hot;
+      g.input = gin;
+      this.ghosting = false;
     }
-    this.inp = real; this.tip = tip; this.hot = hot;
   }
 
   // ---------------------------------------------------------------- immediate-mode widgets
@@ -359,7 +376,9 @@ export class UI {
       const lift = (1 - fadeOut) * 14;
       const right = W - Math.round(10 * k) - 6; // [polish17] room inside the plate so 3D letters never touch its edge
       const x = right - w + (1 - ease.outCubic(fadeIn)) * 40;
-      const cy = y + h / 2 - lift;
+      // [polish17] toasts glide to a new slot (a panel opening / closing, an older toast leaving) instead of jumping
+      t.yy = t.yy == null ? y : t.yy + (y - t.yy) * Math.min(1, (this.dtLast || 1 / 60) * 12);
+      const cy = t.yy + h / 2 - lift;
       ctx.save();
       ctx.globalAlpha = Math.min(fadeIn * 1.5, fadeOut);
       // [phase10:ui] a bevelled voxel plate under the toast (deep glass slab, pops in with a little squash)

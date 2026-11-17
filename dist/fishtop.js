@@ -24465,7 +24465,7 @@ void main() {
     c = document.createElement("canvas");
     c.width = w;
     c.height = h;
-    const g = c.getContext("2d");
+    const g = c.getContext("2d", { willReadFrequently: true });
     g.font = font;
     g.textBaseline = "top";
     g.fillStyle = color;
@@ -25502,7 +25502,9 @@ void main() {
       if (fits) drawTitle(ctx3, o.title, tx, y + 5, { scale: 2 });
       else drawText(ctx3, o.title, tx, y + 8, { font: "normal", scale: 2, color: "#ffffff", shadow: "#0a3e74" });
     }
-    if (deco && !drawVoxDecor(ctx3, "leaves", x + w + 12, y - 10, Math.round(56 * k), { t, phase: x * 0.01 })) drawLeafSprig(ctx3, x + w + 4, y - 2, "tr", k);
+    const SW = ctx3.canvas ? ctx3.canvas.width / (ctx3.__hi || 1) : Infinity;
+    const nearHud = y < 84 && x + w > SW - 220;
+    if (deco && !nearHud && !drawVoxDecor(ctx3, "leaves", x + w + 12, y - 10, Math.round(56 * k), { t, phase: x * 0.01 })) drawLeafSprig(ctx3, x + w + 4, y - 2, "tr", k);
     const close = { x: x + w - 25, y: y + 6, w: 18, h: 18 };
     const finish7 = (c2 = ctx3) => {
       if (!deco) return;
@@ -69265,6 +69267,33 @@ kmlmk..
       for (let y = 26; y > 6; y--) m.set(25 + Math.round(Math.sin(y * 0.6) * 1.5) + Math.round((26 - y) * 0.35), y, 16, lava);
       return { m, yaw: 18, pitch: 12 };
     }
+    if (kind2 === "sail") {
+      const m = new VoxelModel(24, 22, 8), C5 = (h, o) => m.color(h, { jitter: 0.05, ...o });
+      const hull2 = [C5(seed ? "#e8583a" : "#3a8ad8"), C5("#f4ecd8")], sail = C5("#ffffff", { spec: 0.5 }), sail2 = C5(seed ? "#ffd23a" : "#7affc8"), mast = C5("#7a5432");
+      for (let x = 2; x < 22; x++) {
+        const d = Math.abs(x - 12) > 7 ? 1 : 0;
+        m.box(x, d, 2, x, 3, 5, x % 5 === 0 ? hull2[1] : hull2[0]);
+      }
+      m.box(11, 4, 3, 11, 20, 3, mast);
+      for (let y = 6; y < 20; y++) {
+        const w = Math.round((20 - y) * 0.55);
+        m.box(12, y, 3, 12 + w, y, 3, y % 5 === 0 ? sail2 : sail);
+      }
+      for (let y = 6; y < 16; y++) {
+        const w = Math.round((16 - y) * 0.45);
+        m.box(10 - w, y, 3, 10, y, 3, sail);
+      }
+      return { m, yaw: 10, pitch: 8 };
+    }
+    if (kind2 === "buoy") {
+      const m = new VoxelModel(12, 22, 12), C5 = (h, o) => m.color(h, { jitter: 0.04, ...o });
+      const red = C5("#e8443a", { spec: 0.6 }), white = C5("#f6f6f0", { spec: 0.6 }), dark = C5("#3a3a48"), lamp = C5("#ffe27a", { emissive: 1 });
+      m.cone(6, 6, 0, 6, 5.5, 4.2, (x, y) => y < 2 ? dark : red);
+      for (let y = 6; y < 17; y++) m.cylinder(6, 6, y, y, 2.2, (y >> 2) % 2 ? white : red);
+      m.box(4, 17, 4, 7, 17, 7, dark);
+      m.box(5, 18, 5, 6, 20, 6, lamp);
+      return { m, yaw: 24, pitch: 14 };
+    }
     if (kind2 === "abyss") {
       const m = new VoxelModel(40, 40, 16), C5 = (h, o) => m.color(h, { jitter: 0.08, ...o });
       const rock = [C5("#262a3a"), C5("#1a1c28"), C5("#3a3e52")], glow = C5("#5affea", { emissive: 1 }), glow2 = C5("#a88aff", { emissive: 1 });
@@ -69297,11 +69326,11 @@ kmlmk..
     return CLOUDS[i];
   }
   function* buildClouds() {
-    const dims = [[34, 14, 14, 1], [46, 16, 16, 2], [28, 12, 12, 3], [52, 18, 16, 4], [38, 15, 14, 5]];
-    for (const [w, h, d, seed] of dims) {
-      if (CLOUDS.length >= dims.length) return;
+    const dims = [[34, 14, 14, 1, 1], [46, 16, 16, 2, 1], [28, 12, 12, 3, 1], [52, 18, 16, 4, 1], [38, 15, 14, 5, 1], [40, 16, 16, 6, 2], [52, 18, 18, 7, 2], [34, 14, 14, 8, 2]];
+    for (let i = CLOUDS.length; i < dims.length; i++) {
+      const [w, h, d, seed, sc] = dims[i];
       try {
-        CLOUDS.push(cloudSprites(seed * 31 + 7, w, h, d, 1));
+        CLOUDS.push(cloudSprites(seed * 31 + 7, w, h, d, sc));
       } catch (e) {
         console.warn("voyage cloud", e);
         CLOUDS.push(null);
@@ -69359,6 +69388,34 @@ kmlmk..
     ctxOf(tile3).putImageData(id2, 0, 0);
     return tile3;
   }
+  function caustTile() {
+    if (CAUST) return CAUST;
+    const w = 96, h = 26, c = makeCanvas(w, h), g = ctxOf(c), id2 = g.createImageData(w, h), d = id2.data;
+    const pts = [];
+    for (let j = -1; j <= 3; j++) for (let i = -1; i <= 8; i++) pts.push([(i + 8) % 8 * 12 + hash2(i & 7, j, 5) * 10, j * 9 + hash2(i & 7, j, 9) * 7]);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      let a = 1e9, b = 1e9;
+      for (const [px3, py] of pts) for (const ox of [-w, 0, w]) {
+        const dd = Math.hypot(x - px3 - ox, y - py);
+        if (dd < a) {
+          b = a;
+          a = dd;
+        } else if (dd < b) b = dd;
+      }
+      const edge = b - a;
+      const fade = 1 - y / h;
+      if (edge < 1.3 && bayer(x, y) < fade * 0.95) {
+        const i = (y * w + x) * 4;
+        d[i] = 255;
+        d[i + 1] = 255;
+        d[i + 2] = 236;
+        d[i + 3] = 255;
+      }
+    }
+    g.putImageData(id2, 0, 0);
+    CAUST = c;
+    return c;
+  }
   function maskEdge(src, side, W11, H8) {
     const c = makeCanvas(W11, H8), g = ctxOf(c);
     g.drawImage(src, 0, 0);
@@ -69408,7 +69465,7 @@ kmlmk..
     }
     c.globalAlpha = 1;
   }
-  var KIND, LOOK2, NEON2, DEEP2, TITLE_PAL, CUE, rgbOf2, mixRGB3, css, lookPal, copyPal, hermite, GULLS, GLOWS, ISLANDS, CLOUDS, TITLES, Voyage, TILE_W;
+  var LOCKED2, KIND, LOOK2, NEON2, DEEP2, TITLE_PAL, CUE, rgbOf2, mixRGB3, css, lookPal, copyPal, hermite, GULLS, GLOWS, ISLANDS, CLOUDS, TITLES, Voyage, TILE_W, CAUST;
   var init_voyage = __esm({
     "src/world/voyage.js"() {
       init_math();
@@ -69424,6 +69481,7 @@ kmlmk..
       init_boatmodels();
       init_sky();
       init_mappanel();
+      LOCKED2 = /* @__PURE__ */ new Set(["fjord", "metropolis"]);
       KIND = { oscean: "hill", shallows: "palm", fjord: "ice", junkyard: "junk", metropolis: "city", volcano: "volcano", abyss: "abyss", lab: "lab", workshop: "workshop" };
       LOOK2 = {
         hill: { sky: ["#2a8fe8", "#69c3ff", "#d8f4ff"], sea: ["#3aa8e0", "#0d4f8a"], cloud: "day", sun: 1, fx: "bubbles", wave: 1 },
@@ -69434,7 +69492,9 @@ kmlmk..
         volcano: { sky: ["#3a1612", "#8a3416", "#ffa050"], sea: ["#5a3430", "#1a0a0a"], cloud: "dusk", sun: 0.4, fx: "embers", wave: 1.3 },
         abyss: { sky: ["#04060e", "#0e1830", "#2a426a"], sea: ["#123050", "#02050c"], cloud: "rain", sun: 0, fx: "drizzle", wave: 1.6 },
         lab: { sky: ["#2a88d8", "#8fd8ff", "#e4f8ff"], sea: ["#7ad8f8", "#1a7ed0"], cloud: "day", sun: 1, fx: "bubbles", wave: 0.8 },
-        workshop: { sky: ["#2a88d8", "#8fd8ff", "#e4f8ff"], sea: ["#7ad8f8", "#1a7ed0"], cloud: "day", sun: 1, fx: "glints", wave: 0.8 }
+        workshop: { sky: ["#2a88d8", "#8fd8ff", "#e4f8ff"], sea: ["#7ad8f8", "#1a7ed0"], cloud: "day", sun: 1, fx: "glints", wave: 0.8 },
+        open: { sky: ["#3a96e6", "#7ccaff", "#e2f6ff"], sea: ["#3cb8e8", "#0b5694"] }
+        // the open sea between two oceans
       };
       NEON2 = { face: ["#fff2ff", "#ff9ae8", "#e04ad0"], bevelL: "#ffffff", bevelD: "#b02ab0", side: "#7a1a8a", back: "#4a0a5a", outline: "#ffffff" };
       DEEP2 = { face: ["#eef4ff", "#a8b8ff", "#6272f0"], bevelL: "#ffffff", bevelD: "#4a52c8", side: "#2e3494", back: "#1a1e5a", outline: "#c8f4ff" };
@@ -69544,7 +69604,8 @@ kmlmk..
             B: 0,
             Bv: 0,
             X: 0,
-            Xs: W11 * 0.3,
+            Xs: W11 * 0.36,
+            Z: 1,
             hz: Math.round(H8 * 0.66),
             u: 0,
             orig: null,
@@ -69553,6 +69614,7 @@ kmlmk..
             capPending: null,
             palO: lookPal(fromK, night),
             palD: lookPal(toK, night),
+            palM: lookPal("open", night),
             pal: null,
             palDGot: false,
             clouds: [],
@@ -69562,6 +69624,8 @@ kmlmk..
             bubbles: [],
             spray: [],
             fx: [],
+            cols: [],
+            floats: [],
             nextIsl: 0,
             nextCloud: 0,
             nextFar: 0,
@@ -69608,10 +69672,10 @@ kmlmk..
             const b = g.boat;
             if (b?.model) {
               const M6 = b.model();
-              for (let ri = 0; ri < 7; ri++) {
-                const k = b.modelKey + ":1:" + ri + ":1";
+              for (const R7 of [1, 2]) for (const ri of [3, 2, 4, 1, 5, 0, 6]) {
+                const k = b.modelKey + ":1:" + ri + ":" + R7;
                 if (!b.sprites.has(k)) {
-                  b.sprites.set(k, b.buildSprite(M6, 1, ri, 1));
+                  b.sprites.set(k, b.buildSprite(M6, 1, ri, R7));
                   yield;
                 }
               }
@@ -69620,7 +69684,7 @@ kmlmk..
             console.warn("voyage boat", e);
           }
           yield* buildClouds();
-          for (const k of [s.fromK, s.toK]) for (let i = 0; i < 2; i++) {
+          for (const k of [s.fromK, s.toK, "sail", "buoy"]) for (let i = 0; i < 2; i++) {
             islandSprite(k, i);
             yield;
           }
@@ -69728,7 +69792,7 @@ kmlmk..
         updSea(s, dt) {
           const g = this.game, W11 = g.screen.W;
           this.cruise(s, dt, W11);
-          s.u = Math.max(s.u, 0.85 * smoothstep(0, s.D.sea, s.pt));
+          s.u = Math.max(s.u, 0.85 * clamp012(s.pt / s.D.sea));
           if (!s.sfx.music && s.pt > 0.15) {
             s.sfx.music = 1;
             if (s.kind === "ocean") {
@@ -69769,7 +69833,7 @@ kmlmk..
           s.Bv = damp(s.Bv, Bc, 1.6, dt);
           s.B += s.Bv * dt;
           const om = 3.2, T5 = s.B - s.Xs;
-          const acc2 = om * om * (T5 - s.C) - 2 * om * s.Cv;
+          const acc2 = om * om * (T5 - s.C) + 2 * om * (s.Bv - s.Cv);
           s.Cv += acc2 * dt;
           s.C += s.Cv * dt;
           s.X = s.B - s.C;
@@ -69836,6 +69900,7 @@ kmlmk..
           s.Va = Math.max(s.Cv, s.Bv * 0.6);
           s.Ba = s.B;
           s.VBa = s.Bv;
+          s.Za = s.Z || 1;
           s.Dist = s.Va * s.D.arrive / 2;
           s.Cend = s.Ca + s.Dist;
           s.Bend = s.Cend + s.Xf;
@@ -69953,37 +70018,41 @@ kmlmk..
           if (s.kind !== "ocean" || !s.target) return;
           this.title = { t: 0, def: s.titleDef, name: (s.target.name || "").toUpperCase(), sub: s.target.subtitle || "", first: s.first, to: s.to, played: false };
         }
-        // ------------------------------------------------------------ particles of the sea scene (screen space)
+        // ------------------------------------------------------------ particles of the sea scene
+        // Sea-space things (wake, stern bubbles, bow spray) keep x in sea space (B units) and y relative to the waterline,
+        // so the virtual zoom (s.Z, anchored on the boat) scales them with the boat. Weather lives in screen space.
         updParts(s, dt) {
           const g = this.game, W11 = g.screen.W, H8 = g.screen.H;
           if (s.phase !== "sea" && s.phase !== "arrive") return;
-          const hz = s.hz, bx = s.X, sp = s.Bv;
+          const sp = s.Bv;
           s.wakeT = (s.wakeT || 0) - dt;
-          if (sp > 40 && s.wakeT <= 0) {
-            s.wakeT = 0.02;
-            s.wake.push({ x: s.B - 34 + Math.random() * 6, t: 0, life: 0.9 + Math.random() * 0.6, w: 2 + Math.round(Math.random() * 4) });
-            if (Math.random() < 0.7) s.bubbles.push({ x: s.B - 30 + Math.random() * 10, y: hz + 4 + Math.random() * 14, vy: -6 - Math.random() * 10, t: 0, life: 0.8 + Math.random() * 0.9, r: Math.random() < 0.3 ? 2 : 1 });
-            if (Math.random() < clamp012(sp / 700) * 0.9) s.spray.push({ x: bx + 34 + Math.random() * 4, y: hz - 2, vx: 30 + Math.random() * 60, vy: -60 - Math.random() * sp * 0.18, t: 0, life: 0.5 + Math.random() * 0.3 });
+          if (sp > 30 && s.wakeT <= 0) {
+            s.wakeT = 0.016;
+            const k = clamp012(sp / 700);
+            s.wake.push({ x: s.B - 30 + Math.random() * 6, t: 0, life: 0.8 + Math.random() * 0.8 * (0.5 + k), w: 2 + Math.round(Math.random() * 4) });
+            if (Math.random() < 0.85) s.bubbles.push({ x: s.B - 26 + Math.random() * 14, y: 3 + Math.random() * 12 * (0.4 + k), vy: -4 - Math.random() * 8, vx: -6 - Math.random() * 14, t: 0, life: 0.7 + Math.random() * 1.1, r: Math.random() < 0.3 ? 2 : 1 });
+            if (Math.random() < k * 1.1) s.spray.push({ x: s.B + 28 + Math.random() * 6, y: -2, vx: sp * (0.55 + Math.random() * 0.25), vy: -40 - Math.random() * (40 + sp * 0.1), t: 0, life: 0.55 + Math.random() * 0.35 });
           }
           for (const p of s.wake) p.t += dt;
           for (const p of s.bubbles) {
             p.t += dt;
-            p.y = Math.max(hz + 2, p.y + p.vy * dt);
+            p.x += p.vx * dt;
+            p.y = Math.max(1.5, p.y + p.vy * dt);
           }
           for (const p of s.spray) {
             p.t += dt;
             p.x += p.vx * dt;
             p.y += p.vy * dt;
-            p.vy += 420 * dt;
+            p.vy += 380 * dt;
           }
           s.wake = s.wake.filter((p) => p.t < p.life);
           s.bubbles = s.bubbles.filter((p) => p.t < p.life);
-          s.spray = s.spray.filter((p) => p.t < p.life && p.y < hz + 4);
+          s.spray = s.spray.filter((p) => p.t < p.life && p.y < 3);
           const wO = 1 - s.u, wD = s.u;
           for (const [kind2, w] of [[s.fromK, wO], [s.toK, wD]]) {
             const fx = LOOK2[kind2]?.fx;
             if (!fx || w < 0.05) continue;
-            const rate = { snow: 70, embers: 40, neon: 60, specks: 26, drizzle: 70, bubbles: 7, glints: 22 }[fx] || 0;
+            const rate = { snow: 90, embers: 55, neon: 70, specks: 30, drizzle: 90, bubbles: 9, glints: 26 }[fx] || 0;
             let n2 = rate * w * dt;
             while (n2 > 0) {
               if (Math.random() < n2) this.spawnFx(s, fx, W11, H8);
@@ -69992,34 +70061,36 @@ kmlmk..
           }
           for (const p of s.fx) {
             p.t += dt;
-            p.x += (p.vx - s.Cv * p.par) * dt;
+            p.x += (p.vx - s.Cv * (s.Z || 1) * p.par) * dt;
             p.y += p.vy * dt;
-            if (p.kind === "bubbles") p.vx += Math.sin(p.t * 3 + p.ph) * 4 * dt;
+            if (p.bubble || p.kind === "snow") p.x += Math.sin(p.t * 2.6 + p.ph) * 10 * dt;
           }
-          s.fx = s.fx.filter((p) => p.t < p.life && p.x > -20 && p.x < W11 + 40 && p.y < H8 + 10 && p.y > -10);
-          const gullW = (s.fromK === "abyss" || s.fromK === "city" ? 0 : wO) + (s.toK === "abyss" || s.toK === "city" ? 0 : wD);
-          s.gullT = (s.gullT || 0.2) - dt;
-          if (s.gullT <= 0 && s.gulls.length < 4 && gullW > 0.3) {
-            s.gullT = 0.7 + Math.random() * 1.2;
-            s.gulls.push({ x: -20 - Math.random() * 40, y: hz - 60 - Math.random() * (hz * 0.45), vx: 40 + Math.random() * 70, ph: Math.random() * TAU, fl: 6 + Math.random() * 3, t: 0 });
+          s.fx = s.fx.filter((p) => p.t < p.life && p.x > -30 && p.x < W11 + 60 && p.y < H8 + 10 && p.y > -10);
+          const gullW = (["abyss", "city", "volcano"].includes(s.fromK) ? 0 : wO) + (["abyss", "city", "volcano"].includes(s.toK) ? 0 : wD);
+          s.gullT = (s.gullT ?? 0.3) - dt;
+          if (s.gullT <= 0 && s.gulls.length < 5 && gullW > 0.3) {
+            s.gullT = 0.5 + Math.random() * 1.1;
+            const sc = (s.Z || 1) > 1.3 ? 2 : 1;
+            s.gulls.push({ x: -24 * sc - Math.random() * 40, y: s.hz * (0.25 + Math.random() * 0.5), vx: 50 + Math.random() * 90, ph: Math.random() * 3, fl: 7 + Math.random() * 4, t: 0, sc });
           }
           for (const q of s.gulls) {
             q.t += dt;
             q.x += q.vx * dt;
-            q.y += Math.sin(q.t * 1.3 + q.ph) * 6 * dt;
+            q.y += Math.sin(q.t * 1.4 + q.ph) * 8 * dt;
           }
-          s.gulls = s.gulls.filter((q) => q.x < W11 + 30);
+          s.gulls = s.gulls.filter((q) => q.x < W11 + 40);
         }
         spawnFx(s, fx, W11, H8) {
           const hz = s.hz, r = Math.random;
           const P7 = (o) => s.fx.push({ t: 0, ph: r() * TAU, par: 0, ...o, kind: fx });
-          if (fx === "snow") P7({ x: r() * (W11 + 120), y: -4, vx: -30 - r() * 30, vy: 40 + r() * 40, life: 6, c: r() < 0.3 ? "#cfeeff" : "#ffffff", sz: r() < 0.25 ? 2 : 1, par: 0.25 });
-          else if (fx === "embers") P7({ x: r() * (W11 + 160), y: hz - r() * 30, vx: -10 + r() * 20, vy: -30 - r() * 50, life: 2.5 + r() * 2, c: r() < 0.5 ? "#ffb43c" : "#ff6a2a", sz: r() < 0.2 ? 2 : 1, par: 0.35, flick: 1 });
-          else if (fx === "neon") P7({ x: r() * (W11 + 200), y: -6, vx: -60, vy: 320 + r() * 120, life: 2, c: r() < 0.5 ? "#ff7ae0" : "#5affea", sz: 1, len: 4, par: 0.2 });
-          else if (fx === "drizzle") P7({ x: r() * (W11 + 200), y: -6, vx: -80, vy: 360 + r() * 100, life: 2, c: "#7a8aaa", sz: 1, len: 5, par: 0.2 });
-          else if (fx === "specks") P7({ x: r() * (W11 + 100), y: hz + 6 + r() * (H8 - hz - 10), vx: 0, vy: -4 - r() * 6, life: 1.6 + r(), c: r() < 0.5 ? "#7affb0" : "#c8ff6a", sz: 1, par: 0.8, flick: 1 });
-          else if (fx === "bubbles") P7({ x: r() * (W11 + 100), y: hz - 4, vx: 6, vy: -18 - r() * 18, life: 5, c: "#ffffff", sz: 2 + Math.floor(r() * 3), par: 0.15, bubble: 1 });
-          else if (fx === "glints") P7({ x: r() * (W11 + 100), y: hz + 2 + r() * 8, vx: 0, vy: 0, life: 0.5 + r() * 0.4, c: "#ffffff", sz: 1, par: 1, glint: 1 });
+          if (fx === "snow") P7({ x: r() * (W11 + 160), y: -4, vx: -24 - r() * 30, vy: 34 + r() * 40, life: 8, c: r() < 0.3 ? "#dff4ff" : "#ffffff", sz: r() < 0.35 ? 3 : 2, par: 0.3, flake: 1 });
+          else if (fx === "embers") P7({ x: r() * (W11 + 160), y: hz - r() * 20, vx: -10 + r() * 20, vy: -40 - r() * 60, life: 2.5 + r() * 2, c: r() < 0.5 ? "#ffc23a" : "#ff6a2a", sz: r() < 0.3 ? 2 : 1, par: 0.35, flick: 1 });
+          else if (fx === "neon") P7({ x: r() * (W11 + 220), y: -8, vx: -50, vy: 340 + r() * 120, life: 2, c: r() < 0.5 ? "#ff7ae0" : "#5affea", sz: 1, len: 6, par: 0.2 });
+          else if (fx === "drizzle") P7({ x: r() * (W11 + 220), y: -8, vx: -90, vy: 380 + r() * 100, life: 2, c: "#8a9ac0", sz: 1, len: 7, par: 0.2 });
+          else if (fx === "specks") P7({ x: r() * (W11 + 100), y: hz + 8 + r() * (H8 - hz - 12), vx: 0, vy: -4 - r() * 6, life: 1.6 + r(), c: r() < 0.5 ? "#7affb0" : "#c8ff6a", sz: r() < 0.3 ? 2 : 1, par: 0.8, flick: 1 });
+          else if (fx === "bubbles") P7({ x: r() * (W11 + 100), y: hz - 4 - r() * 30, vx: 6, vy: -16 - r() * 18, life: 6, c: "#ffffff", sz: 2 + Math.floor(r() * 4), par: 0.15, bubble: 1 });
+          else if (fx === "glints") P7({ x: r() * (W11 + 100), y: hz + 3 + r() * 10, vx: 0, vy: 0, life: 0.5 + r() * 0.4, c: "#ffffff", sz: 1, par: 1, glint: 1 });
+          if (fx === "embers" && r() < 0.6) s.fx.push({ t: 0, ph: r() * TAU, kind: "ash", x: r() * (W11 + 160), y: -4, vx: -20 - r() * 20, vy: 30 + r() * 30, life: 7, c: r() < 0.5 ? "#6a5a5a" : "#9a8a84", sz: 2, par: 0.3 });
         }
         // ------------------------------------------------------------ drawing
         // Main canvas, after the world: grabs the postcards and draws the sea scene over everything while away.
@@ -70027,6 +70098,7 @@ kmlmk..
           const s = this.s;
           if (!s) return;
           const g = this.game, W11 = g.screen.W, H8 = g.screen.H;
+          s.drawDt = clamp(dt || 1 / 60, 0, 0.05) * s.speed;
           if (s.capPending === "origin") {
             s.capPending = null;
             this.grabOrigin(s, ctx3);
@@ -70037,25 +70109,24 @@ kmlmk..
             }
           }
           if (s.phase === "depart") return;
+          const L4 = this.ensureLayer(W11, H8), lc = ctxOf(L4);
           if (s.phase === "settle") {
             const a = 1 - smoothstep(0, 0.4, s.pt);
-            if (s.dest && a > 0.01) {
-              const L5 = this.ensureLayer(W11, H8), lc = L5.getContext("2d");
-              lc.setTransform(1, 0, 0, 1, 0, 0);
-              lc.globalAlpha = 1;
-              lc.clearRect(0, 0, W11, H8);
-              lc.drawImage(s.dest.canvas, 0, 0, W11, H8);
-              this.drawPuppet(lc, s, s.hz);
-              ctx3.save();
-              ctx3.setTransform(1, 0, 0, 1, 0, 0);
-              ctx3.globalAlpha = a;
-              ctx3.drawImage(L5, 0, 0);
-              ctx3.restore();
-            }
+            if (!s.dest || a <= 0.01) return;
+            lc.setTransform(1, 0, 0, 1, 0, 0);
+            lc.globalAlpha = 1;
+            lc.clearRect(0, 0, W11, H8);
+            lc.drawImage(s.dest.canvas, 0, 0, W11, H8);
+            s.Z = 1;
+            this.drawPuppet(lc, s, s.hz);
+            ctx3.save();
+            ctx3.setTransform(1, 0, 0, 1, 0, 0);
+            ctx3.globalAlpha = a;
+            ctx3.drawImage(L4, 0, 0);
+            ctx3.restore();
             return;
           }
-          const L4 = this.ensureLayer(W11, H8);
-          this.drawScene(L4.getContext("2d"), s, W11, H8);
+          this.drawScene(lc, s, W11, H8);
           ctx3.save();
           ctx3.setTransform(1, 0, 0, 1, 0, 0);
           ctx3.globalAlpha = 1;
@@ -70085,6 +70156,7 @@ kmlmk..
           const c = this.grab(ctx3);
           s.orig = { canvas: c, masked: maskEdge(c, "right", W11, H8), hz };
           s.hz = hz;
+          s.hzF = hz;
           const sampled = samplePal(c, hz, W11, H8);
           if (sampled) {
             s.palO = sampled;
@@ -70097,6 +70169,7 @@ kmlmk..
           s.B = s.X;
           s.Bv = Math.max(60, s.v1 || 300);
           s.roll = 0;
+          s.Z = 1;
           s.phase = "sea";
           s.pt = 0;
           if (s.ts) {
@@ -70122,19 +70195,40 @@ kmlmk..
             s.ts.live = false;
           }
         }
+        // zoom of a layer (k = 0 infinitely far .. 1 at the boat's distance) and the screen spot of a 1x point
+        zl(s, k) {
+          return 1 + ((s.Z || 1) - 1) * k;
+        }
+        zx(s, x, k) {
+          return s.X + (x - s.X) * this.zl(s, k);
+        }
+        zy(s, y, k) {
+          return s.hz + (y - s.hz) * this.zl(s, k);
+        }
         drawScene(c, s, W11, H8) {
-          const g = this.game, t = s.t;
-          for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) s.palD.sky[i][j] = damp(s.palD.sky[i][j], s.palDT.sky[i][j], 3, 1 / 60);
-          for (let i = 0; i < 2; i++) for (let j = 0; j < 3; j++) s.palD.sea[i][j] = damp(s.palD.sea[i][j], s.palDT.sea[i][j], 3, 1 / 60);
-          const u = s.u;
-          for (let i = 0; i < 3; i++) mixRGB3(s.palO.sky[i], s.palD.sky[i], u, s.pal.sky[i]);
-          for (let i = 0; i < 2; i++) mixRGB3(s.palO.sea[i], s.palD.sea[i], u, s.pal.sea[i]);
+          const t = s.t, dt = s.drawDt || 1 / 60;
+          for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) s.palD.sky[i][j] = damp(s.palD.sky[i][j], s.palDT.sky[i][j], 4, dt);
+          for (let i = 0; i < 2; i++) for (let j = 0; j < 3; j++) s.palD.sea[i][j] = damp(s.palD.sea[i][j], s.palDT.sea[i][j], 4, dt);
+          const u = s.u, M6 = s.palM, a = smoothstep(0, 0.5, u), b = smoothstep(0.45, 1, u);
+          const tmp2 = this.tmpC || (this.tmpC = [0, 0, 0]);
+          for (let i = 0; i < 3; i++) {
+            mixRGB3(s.palO.sky[i], M6.sky[i], a, tmp2);
+            mixRGB3(tmp2, s.palD.sky[i], b, s.pal.sky[i]);
+          }
+          for (let i = 0; i < 2; i++) {
+            mixRGB3(s.palO.sea[i], M6.sea[i], a, tmp2);
+            mixRGB3(tmp2, s.palD.sea[i], b, s.pal.sea[i]);
+          }
           s.hzF ?? (s.hzF = s.hz);
-          if (s.dest) {
-            s.hzF = damp(s.hzF, s.hzD, 4, 1 / 60);
-            if (s.phase === "arrive" && s.pt / s.D.arrive > 0.6) s.hzF = s.hzD;
+          if (s.phase === "sea") s.hzF = damp(s.hzF, Math.round(H8 * 0.73), 2.2, dt);
+          else if (s.phase === "arrive" && s.dest) {
+            s.hzA ?? (s.hzA = s.hzF);
+            const e = s.pt / s.D.arrive;
+            s.hzF = e >= 0.6 ? s.hzD : lerp(s.hzA, s.hzD, smoothstep(0, 0.6, e));
           }
           s.hz = Math.round(s.hzF);
+          if (s.phase === "sea") s.Z = s.kind === "dest" ? 1 + 0.5 * smoothstep(0.05, s.D.sea, s.pt) : 1 + 0.65 * smoothstep(0.1, Math.max(0.6, s.D.sea * 0.75), s.pt);
+          else if (s.phase === "arrive") s.Z = lerp(s.Za ?? s.Z, 1, smoothstep(0.05, 0.75, s.pt / s.D.arrive));
           const hz = s.hz;
           c.setTransform(1, 0, 0, 1, 0, 0);
           c.globalAlpha = 1;
@@ -70143,7 +70237,8 @@ kmlmk..
           this.drawSun(c, s, W11, hz);
           const aw = this.kindW(s, "ice");
           if (aw > 0.05) {
-            if (!this.aur || this.aur.width !== W11 || (s.aurT = (s.aurT || 0) + 1) % 4 === 0 || Math.abs((this.aurW || 0) - aw) > 0.08) {
+            s.aurT = (s.aurT || 0) + 1;
+            if (!this.aur || this.aur.width !== W11 || this.aur.height !== hz || s.aurT % 3 === 0 || Math.abs((this.aurW || 0) - aw) > 0.06) {
               if (!this.aur || this.aur.width !== W11 || this.aur.height !== hz) this.aur = makeCanvas(W11, Math.max(1, hz));
               const ac = ctxOf(this.aur);
               ac.clearRect(0, 0, W11, hz);
@@ -70153,53 +70248,53 @@ kmlmk..
             c.drawImage(this.aur, 0, 0);
           }
           this.drawClouds(c, s, W11, hz, 0);
-          this.drawIslands(c, s, W11, hz);
+          this.drawIslands(c, s, W11, hz, 0);
           this.drawClouds(c, s, W11, hz, 1);
+          this.drawIslands(c, s, W11, hz, 1);
           this.drawSea(c, s, W11, H8, hz);
           if (s.orig) {
-            const fo = 1 - smoothstep(s.D.sea * 0.35, s.D.sea * 0.95, s.phase === "sea" ? s.pt : 99);
-            if (fo > 0.01) {
-              const o = s.orig;
-              c.globalAlpha = fo;
-              c.save();
-              c.beginPath();
-              c.rect(0, 0, W11, hz);
-              c.clip();
-              c.drawImage(o.masked, Math.round(-s.C * 0.42), hz - o.hz);
-              c.restore();
-              c.save();
-              c.beginPath();
-              c.rect(0, hz, W11, H8 - hz);
-              c.clip();
-              c.drawImage(o.masked, Math.round(-s.C), hz - o.hz);
-              c.restore();
-              c.globalAlpha = 1;
-            }
+            const fo = 1 - smoothstep(s.D.sea * 0.3, s.D.sea * 0.9, s.phase === "sea" ? s.pt : 99);
+            if (fo > 0.01) this.drawPost(c, s, s.orig.masked, s.orig.hz, -s.C, 0, fo, W11, H8, hz, LOCKED2.has(s.from));
           }
           if (s.dest && s.phase === "arrive") {
-            const d = s.dest, e = clamp012(s.pt / s.D.arrive);
+            const e = clamp012(s.pt / s.D.arrive);
             const rem = Math.max(0, s.Cend - s.C);
-            const a = smoothstep(0, 0.4, e);
-            const rise = Math.round(Math.pow(1 - e, 1.6) * Math.min(90, hz * 0.3));
-            c.globalAlpha = a;
-            c.save();
-            c.beginPath();
-            c.rect(0, 0, W11, hz);
-            c.clip();
-            c.drawImage(d.masked, Math.round(rem * 0.42), hz - d.hz + rise);
-            c.restore();
-            c.save();
-            c.beginPath();
-            c.rect(0, hz, W11, H8 - hz);
-            c.clip();
-            c.drawImage(d.masked, Math.round(rem), hz - d.hz);
-            c.restore();
-            c.globalAlpha = 1;
+            const rise = Math.pow(1 - e, 1.6) * Math.min(90, hz * 0.3);
+            const lk = LOCKED2.has(s.to);
+            this.drawPost(c, s, s.dest.masked, s.dest.hz, rem, lk ? 0 : rise, smoothstep(0, 0.4, e), W11, H8, hz, lk);
           }
+          this.drawFloats(c, s, W11, hz);
           this.drawWake(c, s, hz);
           this.drawPuppet(c, s, hz);
+          this.drawSpray(c, s, hz);
           this.drawFx(c, s, W11, H8, hz);
           this.drawGulls(c, s, t);
+        }
+        // a postcard in two bands: the sky band far (slower, barely zoomed, may sink below the horizon), the water near
+        drawPost(c, s, img, phz, offX, rise, alpha, W11, H8, hz, locked = false) {
+          if (alpha <= 0.01) return;
+          c.globalAlpha = alpha;
+          if (locked) {
+            const zW2 = this.zl(s, 1);
+            c.drawImage(img, Math.round(this.zx(s, offX, 1)), Math.round(this.zy(s, hz - phz, 1)), Math.round(W11 * zW2), Math.round(H8 * zW2));
+            c.globalAlpha = 1;
+            return;
+          }
+          const kS = 0.3, zS = this.zl(s, kS), zW = this.zl(s, 1);
+          c.save();
+          c.beginPath();
+          c.rect(0, 0, W11, hz);
+          c.clip();
+          const sx = this.zx(s, offX * 0.42, kS), sy = this.zy(s, hz - phz + rise, kS);
+          c.drawImage(img, Math.round(sx), Math.round(sy), Math.round(W11 * zS), Math.round(H8 * zS));
+          c.restore();
+          c.save();
+          c.beginPath();
+          c.rect(0, hz, W11, H8 - hz);
+          c.clip();
+          c.drawImage(img, Math.round(this.zx(s, offX, 1)), Math.round(this.zy(s, hz - phz, 1)), Math.round(W11 * zW), Math.round(H8 * zW));
+          c.restore();
+          c.globalAlpha = 1;
         }
         kindW(s, kind2) {
           return (s.fromK === kind2 ? 1 - s.u : 0) + (s.toK === kind2 ? s.u : 0);
@@ -70207,166 +70302,287 @@ kmlmk..
         // sky / water: posterised gradients with ordered dithering, rendered into a 32 px tile and repeated
         drawSky(c, s, W11, hz) {
           const [a, b, d] = s.pal.sky;
-          this.tileSky = gradTile(this.tileSky, hz, (k, out) => k < 0.6 ? mixRGB3(a, b, k / 0.6, out) : mixRGB3(b, d, (k - 0.6) / 0.4, out), 18);
+          this.tileSky = gradTile(this.tileSky, hz, (k, out) => k < 0.55 ? mixRGB3(a, b, k / 0.55, out) : mixRGB3(b, d, (k - 0.55) / 0.45, out), 20);
           c.fillStyle = c.createPattern(this.tileSky, "repeat-x");
           c.fillRect(0, 0, W11, hz);
         }
         drawSun(c, s, W11, hz) {
           const day = 1 - s.night;
           const sunA = ((LOOK2[s.fromK]?.sun ?? 1) * (1 - s.u) + (LOOK2[s.toK]?.sun ?? 1) * s.u) * day;
-          const x = Math.round(W11 * 0.8 - s.C * 0.01), y = Math.round(hz * 0.26);
+          const x = Math.round(W11 * 0.78 - s.C * 6e-3), y = Math.round(hz * 0.24);
           if (sunA > 0.04) {
             const lava = this.kindW(s, "volcano");
             c.globalAlpha = clamp012(sunA);
-            c.drawImage(glowDisc(11, lava > 0.5 ? "#ffb070" : "#fff2b0", "#ffffff"), x - 33, y - 33);
+            const g = glowDisc(12, lava > 0.5 ? "#ffb070" : "#fff2b0", "#ffffff");
+            c.drawImage(g, x - (g.width >> 1), y - (g.height >> 1));
             c.globalAlpha = 1;
           }
           const moonA = clamp012(1 - sunA * 1.6) * 0.9;
           if (moonA > 0.04) {
             c.globalAlpha = moonA;
-            c.drawImage(glowDisc(8, "#cfe0ff", "#ffffff"), Math.round(W11 * 0.22) - 24, Math.round(hz * 0.2) - 24);
+            const g = glowDisc(8, "#cfe0ff", "#ffffff");
+            c.drawImage(g, Math.round(W11 * 0.22) - (g.width >> 1), Math.round(hz * 0.2) - (g.height >> 1));
             c.globalAlpha = 1;
+            const st = moonA * (1 - s.pal.sky[0][2] / 400);
+            if (st > 0.1) {
+              c.fillStyle = "#ffffff";
+              for (let i = 0; i < 40; i++) {
+                const sx = ((i * 233 + 17 - s.C * 0.01) % W11 + W11) % W11, sy = i * 97 % Math.max(20, Math.round(hz * 0.7));
+                c.globalAlpha = st * (0.4 + 0.6 * Math.abs(Math.sin(s.t * 2 + i)));
+                c.fillRect(Math.round(sx), sy, 1, 1);
+              }
+              c.globalAlpha = 1;
+            }
           }
         }
         drawClouds(c, s, W11, hz, layer4) {
-          const par = layer4 ? 0.16 : 0.07;
+          const par = layer4 ? 0.2 : 0.07, k = layer4 ? 0.3 : 0.08;
           const key = layer4 ? "nextCloud" : "nextFar";
-          const span = W11 + 160;
+          const span = W11 + 200;
           const edge = s.C * par + span;
-          if (s[key] < edge - span * 1.2) s[key] = edge - span * 1.2 + Math.random() * 60;
+          if (s[key] < edge - span * 1.25) s[key] = edge - span * 1.25 + Math.random() * 60;
           while (s[key] < edge) {
-            const i = Math.floor(Math.random() * 5), set = cloudSet(i);
+            const set = cloudSet(layer4 ? 5 + Math.floor(Math.random() * 3) : Math.floor(Math.random() * 5));
             if (!set) {
               s[key] = edge;
               break;
             }
             const pick4 = Math.random() < s.u ? s.toK : s.fromK;
             const pal3 = LOOK2[pick4]?.cloud || "day";
-            s.clouds.push({ x: s[key], y: Math.round(hz * (layer4 ? lerp(0.12, 0.62, Math.random()) : lerp(0.08, 0.45, Math.random()))), set, pal: s.night > 0.6 && pal3 === "day" ? "night" : pal3, layer: layer4, sc: layer4 ? 2 : 1 });
-            s[key] += (layer4 ? 220 : 160) + Math.random() * (layer4 ? 260 : 200);
+            s.clouds.push({ x: s[key], y: Math.round(hz * (layer4 ? lerp(0.06, 0.36, Math.random()) : lerp(0.05, 0.45, Math.random()))), set, pal: s.night > 0.6 && pal3 === "day" ? "night" : pal3, layer: layer4, kind: pick4 });
+            s[key] += (layer4 ? 190 : 95) + Math.random() * (layer4 ? 240 : 140);
           }
           for (const cl of s.clouds) {
             if (cl.layer !== layer4) continue;
             const spr3 = cl.set[cl.pal] || cl.set.day;
             if (!spr3) continue;
-            const x = Math.round(cl.x - s.C * par);
-            if (x > W11 + 10 || x + spr3.width * cl.sc < -10) continue;
-            c.globalAlpha = layer4 ? 0.95 : 0.75;
-            c.drawImage(spr3, x, cl.y, spr3.width * cl.sc, spr3.height * cl.sc);
+            const z = this.zl(s, k);
+            const x = Math.round(this.zx(s, cl.x - s.C * par, k)), y = Math.round(this.zy(s, cl.y, k));
+            const w = Math.round(spr3.width * z), h = Math.round(spr3.height * z);
+            if (x > W11 + 10 || x + w < -10) continue;
+            c.globalAlpha = layer4 ? 0.96 : 0.8;
+            c.drawImage(spr3, x, y, w, h);
           }
           c.globalAlpha = 1;
-          s.clouds = s.clouds.filter((cl) => cl.x - s.C * (cl.layer ? 0.16 : 0.07) + 140 > -40);
+          s.clouds = s.clouds.filter((cl) => cl.x - s.C * (cl.layer ? 0.2 : 0.07) + 300 > -60);
         }
-        drawIslands(c, s, W11, hz) {
-          const par = 0.24;
-          const edge = s.C * par + W11 + 60;
-          if (s.nextIsl === 0) s.nextIsl = edge - 40;
-          while (s.nextIsl < edge) {
-            const kind2 = Math.random() < s.u ? s.toK : s.fromK;
+        // islands on the horizon: a far row (small, hazy) and a nearer row (bigger, clearer), both oceans' kinds
+        drawIslands(c, s, W11, hz, layer4) {
+          const par = layer4 ? 0.5 : 0.22, k = layer4 ? 0.45 : 0.18, sc = layer4 ? 2 : 1;
+          const key = layer4 ? "nextIslN" : "nextIsl";
+          const edge = s.C * par + W11 + 80;
+          if (!s[key]) s[key] = layer4 ? edge + 200 : edge - 60;
+          while (s[key] < edge) {
+            const kind2 = !layer4 && Math.random() < 0.3 ? "sail" : Math.random() < s.u ? s.toK : s.fromK;
             const spr3 = islandSprite(kind2, Math.floor(Math.random() * 2));
-            if (spr3) s.islands.push({ x: s.nextIsl, spr: spr3, kind: kind2, sc: 1 + Math.round(Math.random()) });
-            s.nextIsl += 240 + Math.random() * 300;
+            if (spr3) s.islands.push({ x: s[key], spr: spr3, kind: kind2, sc, layer: layer4, bob: Math.random() * 6 });
+            s[key] += (layer4 ? 520 : 230) + Math.random() * (layer4 ? 520 : 280);
           }
           const haze = s.pal.sky[2];
           for (const is of s.islands) {
-            const sc = is.sc, x = Math.round(is.x - s.C * par), sp = is.spr;
-            if (x > W11 + 10 || x + sp.w * sc < -10) continue;
-            const y = hz + 2;
-            c.drawImage(sp.canvas, x, y - sp.oy * sc, sp.w * sc, sp.h * sc);
+            if (is.layer !== layer4) continue;
+            const sp = is.spr, z = this.zl(s, k) * is.sc;
+            const x = Math.round(this.zx(s, is.x - s.C * par, k)), y = hz + 2 + (is.kind === "sail" ? Math.round(Math.sin(s.t * 1.6 + is.bob)) : 0);
+            const w = Math.round(sp.w * z), h = Math.round(sp.h * z), top = Math.round(y - sp.oy * z);
+            if (x > W11 + 10 || x + w < -10) continue;
+            c.drawImage(sp.canvas, x, top, w, h);
             if (sp.glow) {
               c.globalCompositeOperation = "lighter";
-              c.globalAlpha = 0.5;
-              c.drawImage(sp.glow, x, y - sp.oy * sc, sp.w * sc, sp.h * sc);
+              c.globalAlpha = 0.45;
+              c.drawImage(sp.glow, x, top, w, h);
               c.globalCompositeOperation = "source-over";
               c.globalAlpha = 1;
             }
-            c.fillStyle = css(haze, 0.35);
-            c.fillRect(x, y - sp.oy * sc, sp.w * sc, sp.h * sc);
+            const hzA = layer4 ? 0.18 : 0.42;
+            if (!this.hazeC || this.hazeC.width < w || this.hazeC.height < h) this.hazeC = makeCanvas(Math.max(w, 64), Math.max(h, 64));
+            const hc = ctxOf(this.hazeC);
+            hc.globalCompositeOperation = "source-over";
+            hc.clearRect(0, 0, w, h);
+            hc.drawImage(sp.canvas, 0, 0, w, h);
+            hc.globalCompositeOperation = "source-atop";
+            hc.fillStyle = css(haze);
+            hc.fillRect(0, 0, w, h);
+            c.globalAlpha = hzA;
+            c.drawImage(this.hazeC, 0, 0, w, h, x, top, w, h);
+            c.globalAlpha = 1;
           }
-          s.islands = s.islands.filter((is) => is.x - s.C * par + is.spr.w * is.sc > -40);
+          s.islands = s.islands.filter((is) => is.x - s.C * (is.layer ? 0.5 : 0.22) + is.spr.w * is.sc * 2 > -80);
         }
         drawSea(c, s, W11, H8, hz) {
-          const [top, deep] = s.pal.sea, t = s.t;
-          this.tileSea = gradTile(this.tileSea, H8 - hz, (k, out) => mixRGB3(top, deep, Math.pow(k, 0.8), out), 16);
+          const [top, deep] = s.pal.sea, t = s.t, Z = s.Z || 1, dt = s.drawDt || 1 / 60;
+          this.tileSea = gradTile(this.tileSea, H8 - hz, (k, out) => mixRGB3(top, deep, Math.pow(k, 0.75), out), 16);
           c.save();
           c.translate(0, hz);
           c.fillStyle = c.createPattern(this.tileSea, "repeat-x");
           c.fillRect(0, 0, W11, H8 - hz);
           c.restore();
-          c.fillStyle = css(mixRGB3(top, [255, 255, 255], 0.25), 0.5);
-          c.fillRect(0, hz + 1, W11, 3);
-          const amp = 1.4 * ((LOOK2[s.fromK]?.wave ?? 1) * (1 - s.u) + (LOOK2[s.toK]?.wave ?? 1) * s.u);
+          const sheen = mixRGB3(top, [255, 255, 255], 0.3);
+          c.fillStyle = css(sheen, 0.55);
+          c.fillRect(0, hz + 1, W11, Math.round(2 * Z));
+          c.fillStyle = css(sheen, 0.25);
+          c.fillRect(0, hz + 1 + Math.round(2 * Z), W11, Math.round(3 * Z));
+          const amp = this.amp(s) * Z;
+          const sea = (x) => s.B + (x - s.X) / Z;
           const skyLow = s.pal.sky[2];
           c.fillStyle = css(skyLow);
           for (let x = 0; x < W11; x += 2) {
-            const wy = Math.round(waveY(x + s.C, t, amp));
+            const wy = Math.round(waveY(sea(x), t, amp));
             if (wy < 0) c.fillRect(x, hz + wy, 2, -wy);
           }
-          c.fillStyle = css(mixRGB3(top, [255, 255, 255], 0.55));
+          const crest = mixRGB3(top, [255, 255, 255], 0.6);
+          c.fillStyle = css(crest);
           for (let x = 0; x < W11; x += 2) {
-            const wy = Math.round(waveY(x + s.C, t, amp));
+            const sx = sea(x), wy = Math.round(waveY(sx, t, amp));
             c.fillRect(x, hz + wy, 2, 1);
+            if (waveY(sx + 3, t, amp) - waveY(sx - 3, t, amp) < -1.2 * Z && hash2(Math.floor(sx / 6), 7, 3) > 0.45) {
+              c.fillStyle = "#ffffff";
+              c.fillRect(x, hz + wy - 1, 2, 1);
+              c.fillStyle = css(crest);
+            }
           }
-          c.fillStyle = "rgba(255,255,255,0.22)";
-          for (let i = 0; i < 46; i++) {
-            const row2 = hz + 6 + i * 37 % Math.max(10, H8 - hz - 12);
-            const k = (row2 - hz) / Math.max(1, H8 - hz);
-            const sp = 1 - k * 0.55;
-            const len = 3 + i % 4 * 3;
-            const x = ((i * 173 - s.C * sp) % (W11 + 40) + W11 + 40) % (W11 + 40) - 20;
-            c.globalAlpha = 0.9 - k * 0.7;
-            c.fillRect(Math.round(x), row2, len, 1);
+          const rows = 40;
+          c.fillStyle = "#ffffff";
+          for (let i = 0; i < rows; i++) {
+            const dy = 5 + i * 37 % Math.max(10, H8 - hz - 10);
+            const kk = dy / Math.max(1, H8 - hz);
+            const y = hz + Math.round(dy);
+            const len = Math.round((3 + i % 4 * 3) * Z * (1 - kk * 0.4));
+            const sp = 1 - kk * 0.5;
+            const span = W11 + 60;
+            const x = ((i * 173 - s.C * sp * Z) % span + span) % span - 30;
+            c.globalAlpha = 0.3 - kk * 0.24;
+            c.fillRect(Math.round(x), y, len, 1);
+          }
+          c.fillStyle = "#fffff0";
+          for (let i = 0; i < 30; i++) {
+            const span = W11 + 40;
+            const x = ((i * 211 - s.C * Z) % span + span) % span - 20;
+            const y = hz + Math.round((7 + i % 6 * 6) * Z + Math.sin(t * 2 + i) * 1.5);
+            c.globalAlpha = 0.16;
+            c.fillRect(Math.round(x), y, Math.round((4 + i % 3 * 2) * Z), 1);
+            c.fillRect(Math.round(x + 2 * Z), y + 1, Math.round(2 * Z), 1);
+          }
+          const cz = caustTile();
+          const cw2 = cz.width, chh = cz.height;
+          for (const [sp2, al, oy2] of [[1, 0.2, 0], [0.7, 0.12, 5]]) {
+            const off = ((-(s.C * sp2 * Z) - t * 9 * sp2) % cw2 + cw2) % cw2;
+            c.globalAlpha = al;
+            for (let x = -cw2 + off; x < W11; x += cw2) c.drawImage(cz, Math.round(x), hz + 3 + oy2, cw2, chh);
           }
           c.globalAlpha = 1;
-          c.fillStyle = "rgba(255,255,240,0.18)";
-          for (let i = 0; i < 26; i++) {
-            const x = ((i * 211 - s.C) % (W11 + 30) + W11 + 30) % (W11 + 30) - 15;
-            const y = hz + 8 + i % 5 * 6 + Math.round(Math.sin(t * 2 + i) * 1.5);
-            c.fillRect(Math.round(x), y, 4 + i % 3 * 2, 1);
-            c.fillRect(Math.round(x) + 2, y + 1, 2, 1);
+          s.colT = (s.colT ?? 0.4) - dt;
+          if (s.colT <= 0) {
+            s.colT = 0.35 + Math.random() * 0.6;
+            s.cols.push({ x: s.B + W11 * (0.6 + Math.random() * 0.6) / Z, t: 0, ph: Math.random() * 9 });
           }
+          c.fillStyle = "rgba(230,250,255,0.55)";
+          for (const col of s.cols) {
+            col.t += dt;
+            const bx0 = s.X + (col.x - s.B) * Z;
+            if (bx0 < -20 || bx0 > W11 + 20) continue;
+            for (let i = 0; i < 7; i++) {
+              const yy = H8 - (col.t * 40 + i * 23 + col.ph * 7) % Math.max(30, H8 - hz - 10);
+              if (yy < hz + 8) continue;
+              const xx = Math.round(bx0 + Math.sin(col.t * 3 + i) * 2), r = i % 3 === 0 ? 2 : 1;
+              if (r > 1) {
+                c.fillRect(xx, yy - 2, 2, 1);
+                c.fillRect(xx - 1, yy - 1, 1, 2);
+                c.fillRect(xx + 2, yy - 1, 1, 2);
+                c.fillRect(xx, yy + 1, 2, 1);
+              } else c.fillRect(xx, Math.round(yy), 1, 1);
+            }
+          }
+          s.cols = s.cols.filter((col) => col.t < 6 && s.X + (col.x - s.B) * Z > -40);
+          c.fillStyle = css(mixRGB3(top, [255, 255, 255], 0.5));
+          for (let i = 0; i < 36; i++) {
+            const span = W11 + 20;
+            const x = ((i * 149 - s.C * 0.7) % span + span) % span - 10;
+            const y = hz + 20 + (i * 59 + Math.floor(t * 6 + i)) % Math.max(20, H8 - hz - 24);
+            c.globalAlpha = 0.25 + 0.2 * Math.sin(t * 3 + i);
+            c.fillRect(Math.round(x), y, 1, 1);
+          }
+          c.globalAlpha = 1;
+        }
+        amp(s) {
+          return 1.2 * ((LOOK2[s.fromK]?.wave ?? 1) * (1 - s.u) + (LOOK2[s.toK]?.wave ?? 1) * s.u);
+        }
+        // channel buoys bobbing past on the near water (they ride with the water: the best speed cue)
+        drawFloats(c, s, W11, hz) {
+          const Z = s.Z || 1, amp = this.amp(s) * Z, t = s.t;
+          if (s.phase === "sea") {
+            s.nextFloat ?? (s.nextFloat = s.B + W11 * 0.9);
+            if (s.nextFloat < s.B + W11 * 1.1 / Z) {
+              s.floats.push({ x: s.nextFloat, ph: Math.random() * 6 });
+              s.nextFloat += W11 * (0.8 + Math.random() * 0.9);
+            }
+          }
+          const spr3 = islandSprite("buoy", 0);
+          if (!spr3) return;
+          for (const f of s.floats) {
+            const x = s.X + (f.x - s.B) * Z;
+            if (x < -40 || x > W11 + 40) continue;
+            const wy = waveY(f.x, t, amp), tilt = Math.sin(t * 2.2 + f.ph) * 1.2;
+            const w = Math.round(spr3.w * Z), h = Math.round(spr3.h * Z);
+            c.drawImage(spr3.canvas, Math.round(x - w / 2 + tilt), Math.round(hz + wy - (spr3.oy - 4) * Z), w, h);
+            if (spr3.glow) {
+              c.globalCompositeOperation = "lighter";
+              c.globalAlpha = 0.5 + 0.5 * Math.sin(t * 4 + f.ph);
+              c.drawImage(spr3.glow, Math.round(x - w / 2 + tilt), Math.round(hz + wy - (spr3.oy - 4) * Z), w, h);
+              c.globalCompositeOperation = "source-over";
+              c.globalAlpha = 1;
+            }
+            c.fillStyle = "rgba(255,255,255,0.8)";
+            c.fillRect(Math.round(x - w / 2 - 2 * Z), Math.round(hz + wy), Math.round(w + 4 * Z), 1);
+          }
+          s.floats = s.floats.filter((f) => s.X + (f.x - s.B) * Z > -60);
         }
         drawWake(c, s, hz) {
-          const t = s.t, amp = 1.4;
+          const t = s.t, Z = s.Z || 1, amp = this.amp(s) * Z;
+          const X = (x) => Math.round(s.X + (x - s.B) * Z);
           c.fillStyle = "#ffffff";
           for (const p of s.wake) {
-            const k = p.t / p.life, x = Math.round(p.x - s.C - p.t * 26);
-            c.globalAlpha = (1 - k) * 0.85;
-            c.fillRect(x, hz + Math.round(waveY(p.x, t, amp)) - (k < 0.3 ? 1 : 0), Math.max(1, Math.round(p.w * (1 - k * 0.5))), 1);
+            const k = p.t / p.life, x = X(p.x - p.t * 18);
+            c.globalAlpha = (1 - k) * 0.9;
+            c.fillRect(x, hz + Math.round(waveY(p.x, t, amp)) - (k < 0.3 ? 1 : 0), Math.max(1, Math.round(p.w * Z * (1 - k * 0.5))), 1);
           }
           for (const p of s.bubbles) {
-            const k = p.t / p.life, x = Math.round(p.x - s.C);
-            c.globalAlpha = (1 - k) * 0.7;
-            if (p.r > 1) {
-              c.fillRect(x, Math.round(p.y) - 1, 2, 1);
-              c.fillRect(x - 1, Math.round(p.y), 1, 2);
-              c.fillRect(x + 2, Math.round(p.y), 1, 2);
-              c.fillRect(x, Math.round(p.y) + 2, 2, 1);
-            } else c.fillRect(x, Math.round(p.y), 1, 1);
-          }
-          const drop = pxFrames("drop", "aqua", 0);
-          for (const p of s.spray) {
-            const k = p.t / p.life;
-            c.globalAlpha = 1 - k * 0.6;
-            const f = drop[Math.min(drop.length - 1, Math.floor(k * drop.length))];
-            if (f) c.drawImage(f, Math.round(p.x - f.width / 2), Math.round(p.y - f.height / 2));
+            const k = p.t / p.life, x = X(p.x), y = Math.round(hz + p.y * Z), r = p.r * (Z > 1.4 ? 2 : 1);
+            c.globalAlpha = (1 - k) * 0.75;
+            if (r > 1) {
+              c.fillRect(x, y - r, r, 1);
+              c.fillRect(x - 1, y - r + 1, 1, r);
+              c.fillRect(x + r, y - r + 1, 1, r);
+              c.fillRect(x, y + 1, r, 1);
+            } else c.fillRect(x, y, 1, 1);
           }
           c.globalAlpha = 1;
         }
-        // the boat with the player on deck (the real Boat's sprites, drawn at the puppet's spot)
+        drawSpray(c, s, hz) {
+          const Z = s.Z || 1;
+          const drop = pxFrames("drop", "aqua", Z > 1.4 ? 1 : 0);
+          for (const p of s.spray) {
+            const k = p.t / p.life;
+            const f = drop[Math.min(drop.length - 1, Math.floor(k * drop.length))];
+            if (!f) continue;
+            c.globalAlpha = 1 - k * 0.5;
+            c.drawImage(f, Math.round(s.X + (p.x - s.B) * Z - f.width / 2), Math.round(hz + p.y * Z - f.height / 2));
+          }
+          c.globalAlpha = 1;
+        }
+        // the boat with the player on deck (the real Boat's sprites, drawn at the puppet's spot and the shot's zoom)
         drawPuppet(c, s, hz) {
           const g = this.game, boat = g.boat;
           if (!boat?.model) return;
-          const t = s.t;
+          const t = s.t, Z = s.Z || 1, amp = this.amp(s) * Z;
+          const R7 = Z >= 1.4 ? 2 : 1;
           const bx = Math.round(s.X);
-          const amp = 1.4;
           const half = 30;
           const yl = waveY(s.B - half, t, amp), ym = waveY(s.B, t, amp), yr = waveY(s.B + half, t, amp);
           const by = Math.round(hz + (yl + ym * 2 + yr) / 4);
-          const slope = (yr - yl) / (half * 2);
-          const accel = s.phase === "arrive" ? -0.8 : 0.25;
-          const roll = clamp(-Math.atan(slope) * 57.3 * 1.2 - clamp(s.Bv / 900, 0, 1) * 2.5 * accel - Math.sin(t * 2.1) * 0.8, -8, 8);
-          s.roll = damp(s.roll || 0, roll, 8, 1 / 60);
+          const slope = (yr - yl) / (half * 2 * Z);
+          const pitch = s.phase === "arrive" ? -1 : s.phase === "sea" && s.pt < 0.6 ? 1 : 0.3;
+          const roll = clamp(-Math.atan(slope) * 57.3 * 1.2 - clamp(s.Bv / 900, 0, 1) * 2.4 * pitch - Math.sin(t * 2.1) * 0.9, -8, 8);
+          s.roll = damp(s.roll || 0, roll, 8, s.drawDt || 1 / 60);
           let ri = 3, bd = 1e9;
           [-8, -5.3, -2.7, 0, 2.7, 5.3, 8].forEach((r, i) => {
             const d = Math.abs(r - s.roll);
@@ -70381,17 +70597,26 @@ kmlmk..
             return;
           }
           const M6 = boat.M;
-          let spr3 = boat.sprites.get(boat.modelKey + ":1:" + ri + ":1");
-          if (!spr3) for (let d = 1; d < 7 && !spr3; d++) spr3 = boat.sprites.get(boat.modelKey + ":1:" + (ri - d) + ":1") || boat.sprites.get(boat.modelKey + ":1:" + (ri + d) + ":1");
+          const get = (rr4, RR) => boat.sprites.get(boat.modelKey + ":1:" + rr4 + ":" + RR);
+          let spr3 = null, SR = R7;
+          for (const RR of R7 === 2 ? [2, 1] : [1, 2]) {
+            spr3 = get(ri, RR);
+            for (let d = 1; d < 7 && !spr3; d++) spr3 = get(ri - d, RR) || get(ri + d, RR);
+            if (spr3) {
+              SR = RR;
+              break;
+            }
+          }
           if (!spr3) {
             try {
               spr3 = boat.buildSprite(M6, 1, 3, 1);
               boat.sprites.set(boat.modelKey + ":1:3:1", spr3);
+              SR = 1;
             } catch {
               return;
             }
           }
-          const A2 = spr3.A, pad = 40;
+          const A2 = spr3.A, pad = 40 * SR;
           const w = spr3.canvas.width + pad * 2, h = spr3.canvas.height + pad * 2;
           if (!this.pl || this.pl.width < w || this.pl.height < h) this.pl = makeCanvas(w + 20, h + 20);
           const lc = ctxOf(this.pl);
@@ -70400,80 +70625,98 @@ kmlmk..
           lc.globalAlpha = 1;
           lc.clearRect(0, 0, this.pl.width, this.pl.height);
           lc.drawImage(spr3.canvas, pad, pad);
-          const sx = spr3.px + pad + Math.round(A2.stand[0]), sy = spr3.py + pad + Math.round(A2.stand[1]);
-          const pose2 = s.phase === "arrive" && clamp012(s.pt / s.D.arrive) > 0.55 ? "wave" : "idle";
+          const sx = spr3.px + pad + Math.round(A2.stand[0] * SR), sy = spr3.py + pad + Math.round(A2.stand[1] * SR);
+          const pose2 = s.phase === "arrive" && clamp012(s.pt / s.D.arrive) > 0.5 ? "wave" : s.phase === "sea" && s.kind === "dest" && s.pt > s.D.sea * 0.6 ? "wave" : "idle";
           try {
-            drawCharacter(lc, sx, sy, { pose: pose2, t, facing: 1, look: g.state.character, scale: 0.62, id: "boat", shadow: true });
+            drawCharacter(lc, sx, sy, { pose: pose2, t, facing: 1, look: g.state.character, scale: 0.62 * SR, id: "boat", shadow: true });
           } catch {
           }
           if (spr3.front) lc.drawImage(spr3.front, pad, pad);
-          const ox = bx - (spr3.px + pad), oy = by - (spr3.py + pad);
+          const k = Z / SR;
+          const ox = bx - (spr3.px + pad) * k, oy = by - (spr3.py + pad) * k;
           lc.globalCompositeOperation = "source-atop";
           lc.fillStyle = css(s.pal.sea[0]);
           for (const [al, dy] of [[0.45, 1], [0.25, 7]]) {
             lc.globalAlpha = al;
             for (let x = 0; x < w; x += 2) {
-              const yy = Math.round(hz + waveY(s.B + (ox + x - bx), t, amp) - oy + dy);
+              const scrX = ox + x * k;
+              const wy = hz + waveY(s.B + (scrX - s.X) / Z, t, amp) + dy * Z;
+              const yy = Math.round((wy - oy) / k);
               if (yy < h) lc.fillRect(x, Math.max(0, yy), 2, h - Math.max(0, yy));
             }
           }
           lc.globalCompositeOperation = "source-over";
           lc.globalAlpha = 1;
-          c.drawImage(this.pl, 0, 0, w, h, ox, oy, w, h);
+          c.drawImage(this.pl, 0, 0, w, h, Math.round(ox), Math.round(oy), Math.round(w * k), Math.round(h * k));
           const vx0 = boat.vx, dir0 = boat.dir;
           boat.vx = s.Bv * 0.4;
           boat.dir = 1;
+          c.save();
+          c.translate(bx, by);
+          c.scale(Z, Z);
           try {
-            if (A2.flag) boat.drawFlag(c, bx + A2.flag[0], by + A2.flag[1]);
+            if (A2.flag) boat.drawFlag(c, A2.flag[0], A2.flag[1]);
           } catch {
           }
           try {
-            drawBoatAnim?.(c, M6?.T, A2, bx, by, t, 1, 2);
+            drawBoatAnim?.(c, M6?.T, A2, 0, 0, t, 1, 2);
           } catch {
           }
+          c.restore();
           boat.vx = vx0;
           boat.dir = dir0;
           c.fillStyle = "#f4fffc";
           const sp = s.Bv;
           for (const [ex, side] of [[A2.stern[0], -1], [A2.bow[0], 1]]) {
-            const n2 = 2 + Math.round(Math.min(7, sp / 60));
+            const n2 = 2 + Math.round(Math.min(8, sp / 50));
             for (let i = 0; i < n2; i++) {
-              const fx = Math.round(bx + ex + side * (i * 2 + (t * 9 + i) % 2));
-              const k = hash2(i, Math.floor(t * 10), side + 3);
-              if (k < 0.3) continue;
-              c.globalAlpha = 0.95 - i * 0.1;
-              c.fillRect(fx, Math.round(hz + waveY(s.B + (fx - bx), t, amp)) - (k > 0.75 ? 1 : 0), 2, 1);
+              const fx = Math.round(bx + ex * Z + side * (i * 2 + (t * 9 + i) % 2) * Z);
+              const q = hash2(i, Math.floor(t * 10), side + 3);
+              if (q < 0.3) continue;
+              c.globalAlpha = 0.95 - i * 0.09;
+              c.fillRect(fx, Math.round(hz + waveY(s.B + (fx - s.X) / Z, t, amp)) - (q > 0.75 ? Math.round(Z) : 0), Math.round(2 * Z), Math.max(1, Math.round(Z * 0.8)));
             }
           }
           c.globalAlpha = 1;
         }
         drawFx(c, s, W11, H8, hz) {
-          const t = s.t;
           for (const p of s.fx) {
             const k = p.t / p.life;
             let a = Math.min(1, p.t * 4, (1 - k) * 3);
             if (p.flick) a *= 0.6 + 0.4 * Math.sin(p.t * 20 + p.ph);
             if (p.glint) a = Math.sin(k * Math.PI);
             c.globalAlpha = clamp012(a);
-            c.fillStyle = p.c;
             const x = Math.round(p.x), y = Math.round(p.y);
-            if (p.len) c.fillRect(x, y, 1, p.len);
-            else if (p.bubble) {
-              const r = p.sz;
-              c.fillStyle = "rgba(255,255,255,0.8)";
-              c.fillRect(x - r + 1, y - r, r * 2 - 1, 1);
-              c.fillRect(x - r + 1, y + r, r * 2 - 1, 1);
-              c.fillRect(x - r, y - r + 1, 1, r * 2 - 1);
-              c.fillRect(x + r, y - r + 1, 1, r * 2 - 1);
-              c.fillStyle = "#ffffff";
-              c.fillRect(x - r + 2, y - r + 2, 1, 1);
+            if (p.len) {
+              c.fillStyle = p.c;
+              c.fillRect(x, y, 1, p.len);
+              c.globalAlpha *= 0.5;
+              c.fillRect(x + 1, y - 2, 1, 2);
+            } else if (p.bubble) {
+              const b = pixelBubble(p.sz + 1);
+              if (b) c.drawImage(b, x - (b.width >> 1), y - (b.height >> 1));
+            } else if (p.flake) {
+              c.fillStyle = "#8ab8d8";
+              if (p.sz >= 3) {
+                c.fillRect(x - 1, y + 1, 3, 1);
+                c.fillStyle = p.c;
+                c.fillRect(x, y - 1, 1, 3);
+                c.fillRect(x - 1, y, 3, 1);
+              } else {
+                c.fillRect(x, y + 1, 2, 1);
+                c.fillStyle = p.c;
+                c.fillRect(x, y, 2, 1);
+              }
             } else if (p.glint) {
+              c.fillStyle = p.c;
               c.fillRect(x - 1, y, 3, 1);
               c.fillRect(x, y - 1, 1, 3);
-            } else c.fillRect(x, y, p.sz, p.sz);
+            } else {
+              c.fillStyle = p.c;
+              c.fillRect(x, y, p.sz, p.sz);
+            }
           }
           c.globalAlpha = 1;
-          void t;
           void W11;
           void H8;
           void hz;
@@ -70482,8 +70725,9 @@ kmlmk..
           const F3 = gullFrames2();
           for (const q of s.gulls) {
             const f = F3[Math.floor((q.t * q.fl + q.ph) % 3)];
-            c.drawImage(f, Math.round(q.x), Math.round(q.y));
+            c.drawImage(f, Math.round(q.x), Math.round(q.y), f.width * q.sc, f.height * q.sc);
           }
+          void t;
         }
         // ------------------------------------------------------------ UI layer: route chart, skip hint, the title
         drawUi(ctx3, dt) {
@@ -70507,97 +70751,134 @@ kmlmk..
           }
           if (this.title) this.drawTitle(ctx3, dt, W11, H8);
         }
-        // a little glass chart card in the lower letterbox: every ocean as a dot, the dotted route, the boat on it
+        // a little glass chart card in the lower letterbox: every ocean as a pin, the dotted route, the boat on it
         drawChart(ctx3, s, W11, H8, a) {
           const bars = Math.round(H8 * 0.11 * (this.game.camera?.bars ?? 1));
-          if (bars < 20) return;
+          if (bars < 24) return;
           const L4 = MAP_LOCATIONS;
-          const at = (id2) => {
-            const l = L4.find((q2) => q2.id === id2);
-            return l ? l.sea : null;
-          };
-          let A2 = at(s.from), B2 = s.kind === "ocean" ? at(s.to) : null;
+          const loc = (id2) => L4.find((q2) => q2.id === id2);
+          let A2 = loc(s.from)?.sea, B2 = s.kind === "ocean" ? loc(s.to)?.sea : null;
           if (!A2) A2 = [0, 50];
-          if (!B2) B2 = s.to === "lab" ? [A2[0] - 22, A2[1] - 26] : [A2[0] + 20, A2[1] + 28];
-          const cw = Math.min(300, Math.round(W11 * 0.3)), ch = Math.max(24, bars - 14);
-          const x0 = Math.round(W11 / 2 - cw / 2), y0 = H8 - bars + Math.round((bars - ch) / 2);
+          if (!B2) B2 = s.to === "lab" ? [A2[0] - 26, A2[1] - 22] : [A2[0] + 24, A2[1] + 26];
+          const cw = Math.min(360, Math.round(W11 * 0.36)), ch = bars - 12;
+          const x0 = Math.round(W11 / 2 - cw / 2), y0 = H8 - bars + 6, t = s.t;
           ctx3.save();
           ctx3.globalAlpha = a;
-          ctx3.fillStyle = "rgba(8,40,78,0.55)";
-          ctx3.fillRect(x0, y0, cw, ch);
-          ctx3.fillStyle = "rgba(160,230,255,0.16)";
-          ctx3.fillRect(x0 + 1, y0 + 1, cw - 2, Math.round(ch * 0.42));
-          ctx3.fillStyle = "rgba(210,248,255,0.85)";
-          ctx3.fillRect(x0, y0, cw, 1);
-          ctx3.fillRect(x0, y0 + ch - 1, cw, 1);
-          ctx3.fillRect(x0, y0, 1, ch);
-          ctx3.fillRect(x0 + cw - 1, y0, 1, ch);
-          const xs = L4.map((l) => l.sea[0]).concat([A2[0], B2[0]]), ys = L4.map((l) => l.sea[1]).concat([A2[1], B2[1]]);
-          const mnx = Math.min(...xs) - 6, mxx = Math.max(...xs) + 6, mny = Math.min(...ys) - 6, mxy = Math.max(...ys) + 6;
-          const ix = x0 + 34, iw = cw - 46, iy = y0 + 5, ih = ch - 10;
-          const P7 = (p) => [ix + (p[0] - mnx) / (mxx - mnx) * iw, iy + (p[1] - mny) / (mxy - mny) * ih];
-          const cx = x0 + 17, cy = y0 + Math.round(ch / 2), t = s.t;
-          ctx3.fillStyle = "rgba(255,255,255,0.25)";
-          ctx3.fillRect(cx - 9, cy, 19, 1);
-          ctx3.fillRect(cx, cy - 9, 1, 19);
-          const ang = -0.6 + Math.sin(t * 2.3) * 0.12 + Math.sin(t * 5.1) * 0.04;
-          for (let i = -7; i <= 7; i++) {
+          const plate = (x, y, w, h, col) => {
+            ctx3.fillStyle = col;
+            ctx3.fillRect(x + 2, y, w - 4, h);
+            ctx3.fillRect(x + 1, y + 1, w - 2, h - 2);
+            ctx3.fillRect(x, y + 2, w, h - 4);
+          };
+          plate(x0 - 1, y0 - 1, cw + 2, ch + 2, "#04182e");
+          plate(x0, y0, cw, ch, "#bff4ff");
+          plate(x0 + 1, y0 + 1, cw - 2, ch - 2, "#0c3a68");
+          const gl2 = ctx3.createLinearGradient(0, y0, 0, y0 + ch);
+          gl2.addColorStop(0, "#2a78b8");
+          gl2.addColorStop(0.5, "#155896");
+          gl2.addColorStop(1, "#0a3a70");
+          plate(x0 + 2, y0 + 2, cw - 4, ch - 4, gl2);
+          ctx3.fillStyle = "rgba(255,255,255,0.14)";
+          ctx3.fillRect(x0 + 3, y0 + 3, cw - 6, Math.round((ch - 6) * 0.38));
+          const cx = x0 + Math.round(ch / 2) + 2, cy = y0 + Math.round(ch / 2), R7 = Math.max(8, Math.round(ch * 0.36));
+          ctx3.fillStyle = "rgba(190,240,255,0.35)";
+          for (let i = -R7; i <= R7; i++) {
+            ctx3.fillRect(cx + i, cy, 1, 1);
+            ctx3.fillRect(cx, cy + i, 1, 1);
+          }
+          for (let i = -Math.round(R7 * 0.6); i <= Math.round(R7 * 0.6); i++) {
+            ctx3.fillRect(cx + i, cy + i, 1, 1);
+            ctx3.fillRect(cx + i, cy - i, 1, 1);
+          }
+          ctx3.fillStyle = "#e8fbff";
+          ctx3.fillRect(cx - 1, cy - R7 - 2, 3, 2);
+          const ang = -Math.PI / 2 + 0.75 + Math.sin(t * 2.3) * 0.18 + Math.sin(t * 5.1) * 0.05;
+          for (let i = -R7 + 2; i <= R7 - 2; i++) {
             const px4 = Math.round(cx + Math.cos(ang) * i), py2 = Math.round(cy + Math.sin(ang) * i);
             ctx3.fillStyle = i > 0 ? "#ff6a5a" : "#ffffff";
-            ctx3.fillRect(px4, py2, 1, 1);
+            ctx3.fillRect(px4, py2, 2, 2);
           }
           ctx3.fillStyle = "#ffe27a";
-          ctx3.fillRect(cx, cy, 1, 1);
-          for (const l of L4) {
-            if (l.id === s.from || l.id === s.to) continue;
-            const [px4, py2] = P7(l.sea);
-            ctx3.fillStyle = "rgba(200,236,255,0.45)";
-            ctx3.fillRect(Math.round(px4) - 1, Math.round(py2) - 1, 2, 2);
-          }
-          const [ax, ay] = P7(A2), [bx2, by2] = P7(B2);
-          const mx = (ax + bx2) / 2 + (by2 - ay) * 0.25, my = (ay + by2) / 2 - (bx2 - ax) * 0.25;
-          const q = (k) => [(1 - k) * (1 - k) * ax + 2 * (1 - k) * k * mx + k * k * bx2, (1 - k) * (1 - k) * ay + 2 * (1 - k) * k * my + k * k * by2];
-          const prog2 = s.phase === "depart" ? 0.08 * (s.pt / s.D.depart) : s.phase === "sea" ? lerp(0.08, 0.85, clamp012(s.pt / s.D.sea)) : lerp(0.85, 1, clamp012(s.pt / s.D.arrive));
-          for (let i = 0; i <= 24; i++) {
-            const k = i / 24, [px4, py2] = q(k);
-            const done = k <= prog2;
-            if (!done && i % 2) continue;
-            ctx3.fillStyle = done ? "#ffffff" : "rgba(255,255,255,0.5)";
-            ctx3.fillRect(Math.round(px4), Math.round(py2), done ? 2 : 1, done ? 1 : 1);
-          }
-          const dot4 = (p, col, big) => {
-            const x = Math.round(p[0]), y = Math.round(p[1]), r = big ? 3 : 2;
-            ctx3.fillStyle = "#06203a";
+          ctx3.fillRect(cx - 1, cy - 1, 3, 3);
+          const xs = L4.map((l) => l.sea[0]).concat([A2[0], B2[0]]), ys = L4.map((l) => l.sea[1]).concat([A2[1], B2[1]]);
+          const mnx = Math.min(...xs) - 8, mxx = Math.max(...xs) + 8, mny = Math.min(...ys) - 8, mxy = Math.max(...ys) + 8;
+          const ix = cx + R7 + 14, iw = x0 + cw - 30 - ix, iy = y0 + 7, ih = ch - 14;
+          const P7 = (p) => [ix + (p[0] - mnx) / (mxx - mnx) * iw, iy + (p[1] - mny) / (mxy - mny) * ih];
+          ctx3.fillStyle = "rgba(190,240,255,0.12)";
+          for (let gx = ix; gx < ix + iw; gx += 12) for (let gy = iy; gy < iy + ih; gy += 3) ctx3.fillRect(gx, gy, 1, 1);
+          const colOf = (id2) => loc(id2)?.color || (id2 === "lab" ? "#7affc8" : "#ffb43c");
+          const pin = (p, col, r) => {
+            const x = Math.round(p[0]), y = Math.round(p[1]);
+            ctx3.fillStyle = "#04182e";
             ctx3.fillRect(x - r - 1, y - r, r * 2 + 2, r * 2);
             ctx3.fillRect(x - r, y - r - 1, r * 2, r * 2 + 2);
             ctx3.fillStyle = col;
             ctx3.fillRect(x - r, y - r, r * 2, r * 2);
-            ctx3.fillStyle = "rgba(255,255,255,0.75)";
-            ctx3.fillRect(x - r + 1, y - r + 1, 1, 1);
+            ctx3.fillStyle = "rgba(255,255,255,0.8)";
+            ctx3.fillRect(x - r, y - r, Math.max(1, r - 1), 1);
           };
-          const colOf = (id2) => L4.find((l) => l.id === id2)?.color || (id2 === "lab" ? "#7affc8" : "#ffb43c");
-          dot4([ax, ay], colOf(s.from), false);
-          dot4([bx2, by2], colOf(s.to), true);
+          for (const l of L4) if (l.id !== s.from && l.id !== s.to) {
+            ctx3.globalAlpha = a * 0.55;
+            pin(P7(l.sea), l.color, 1);
+          }
+          ctx3.globalAlpha = a;
+          const [ax, ay] = P7(A2), [bx2, by2] = P7(B2);
+          const mx = clamp((ax + bx2) / 2 + (by2 - ay) * 0.22, ix, ix + iw), my = clamp((ay + by2) / 2 - (bx2 - ax) * 0.22, iy + 2, iy + ih - 2);
+          const q = (k) => [(1 - k) * (1 - k) * ax + 2 * (1 - k) * k * mx + k * k * bx2, (1 - k) * (1 - k) * ay + 2 * (1 - k) * k * my + k * k * by2];
+          const prog2 = s.phase === "depart" ? 0.08 * (s.pt / s.D.depart) : s.phase === "sea" ? lerp(0.08, 0.86, clamp012(s.pt / s.D.sea)) : lerp(0.86, 1, clamp012(s.pt / s.D.arrive));
+          const N2 = Math.max(16, Math.round(Math.hypot(bx2 - ax, by2 - ay) / 3));
+          for (let i = 0; i <= N2; i++) {
+            const k = i / N2, [px4, py2] = q(k);
+            const done = k <= prog2;
+            if (!done && i % 2) continue;
+            ctx3.fillStyle = done ? "#ffffff" : "rgba(220,248,255,0.55)";
+            ctx3.fillRect(Math.round(px4), Math.round(py2), done ? 2 : 1, done ? 2 : 1);
+          }
+          pin([ax, ay], colOf(s.from), 2);
+          pin([bx2, by2], colOf(s.to), 3);
+          const fxp = Math.round(bx2) + 3, fyp = Math.round(by2) - 12;
+          ctx3.fillStyle = "#04182e";
+          ctx3.fillRect(fxp - 1, fyp - 1, 3, 12);
           ctx3.fillStyle = "#ffffff";
-          ctx3.fillRect(Math.round(bx2) + 2, Math.round(by2) - 9, 1, 7);
+          ctx3.fillRect(fxp, fyp, 1, 10);
+          const wv = Math.sin(t * 7) > 0 ? 1 : 0;
           ctx3.fillStyle = colOf(s.to);
-          const wv = Math.round(Math.sin(t * 6));
-          ctx3.fillRect(Math.round(bx2) + 3, Math.round(by2) - 9 + wv * 0, 4, 2);
-          ctx3.fillRect(Math.round(bx2) + 3, Math.round(by2) - 7, 3 + (wv > 0 ? 1 : 0), 1);
-          const [px3, py] = q(prog2);
+          ctx3.fillRect(fxp + 1, fyp, 5, 2);
+          ctx3.fillRect(fxp + 1, fyp + 2, 4 + wv, 2);
+          ctx3.fillStyle = "rgba(255,255,255,0.7)";
+          ctx3.fillRect(fxp + 1, fyp, 5, 1);
+          const [px3, py] = q(Math.min(1, prog2));
           const bxx = Math.round(px3), byy = Math.round(py + Math.sin(t * 5) * 0.8);
-          ctx3.fillStyle = "#06203a";
-          ctx3.fillRect(bxx - 4, byy - 1, 9, 4);
+          ctx3.fillStyle = "rgba(255,255,255,0.6)";
+          for (let i = 1; i < 5; i++) {
+            const [wx, wy] = q(Math.max(0, prog2 - i * 0.025));
+            ctx3.fillRect(Math.round(wx), Math.round(wy) + 2, 1, 1);
+          }
+          ctx3.fillStyle = "#04182e";
+          ctx3.fillRect(bxx - 5, byy - 1, 11, 5);
+          ctx3.fillRect(bxx - 1, byy - 8, 6, 7);
           ctx3.fillStyle = "#ff7a5a";
-          ctx3.fillRect(bxx - 3, byy, 7, 2);
+          ctx3.fillRect(bxx - 4, byy, 9, 2);
+          ctx3.fillStyle = "#c8462e";
+          ctx3.fillRect(bxx - 3, byy + 2, 7, 1);
           ctx3.fillStyle = "#ffffff";
-          ctx3.fillRect(bxx, byy - 5, 1, 5);
-          ctx3.fillRect(bxx + 1, byy - 4, 2, 3);
+          ctx3.fillRect(bxx, byy - 7, 1, 7);
+          ctx3.fillRect(bxx + 1, byy - 6, 3, 5);
+          ctx3.fillStyle = "#bfe8ff";
+          ctx3.fillRect(bxx + 1, byy - 2, 3, 1);
           if (s.skippable && !s.skipped && s.phase !== "arrive") {
-            const sx = x0 + cw + 12, sy = cy - 3;
-            ctx3.globalAlpha = a * (0.55 + 0.25 * Math.sin(t * 3));
-            ctx3.fillStyle = "#ffffff";
-            for (const ox2 of [0, 6]) for (let i = 0; i < 4; i++) ctx3.fillRect(sx + ox2 + i, sy + i, 1, 7 - i * 2);
+            const sx = x0 + cw - 22, sy = cy - 4;
+            ctx3.globalAlpha = a * (0.6 + 0.3 * Math.sin(t * 3));
+            for (const ox2 of [0, 7]) {
+              for (let i = 0; i < 5; i++) {
+                ctx3.fillStyle = "#04182e";
+                ctx3.fillRect(sx + ox2 + i, sy + i - 1, 2, 11 - i * 2);
+              }
+              for (let i = 0; i < 5; i++) {
+                ctx3.fillStyle = "#ffffff";
+                ctx3.fillRect(sx + ox2 + i, sy + i, 1, 9 - i * 2);
+              }
+            }
           }
           ctx3.restore();
         }
@@ -70649,12 +70930,13 @@ kmlmk..
           }
           ctx3.globalAlpha = a;
           const hh = T5.def ? T5.def.h : 40;
-          if (T5.sub) drawPop3D(ctx3, T5.sub, W11 / 2, cy + Math.round(hh / 2) + 16, { t: t + 0.4, pop: clamp012((t - 0.55) * 2.4), alpha: a, palette: "white", size: 12, depth: 2, wobble: 0.3, sparkle: false, glow: false });
-          if (T5.first) drawPop3D(ctx3, "NEW OCEAN!", W11 / 2, cy - Math.round(hh / 2) - 16, { t: t + 0.2, pop: clamp012((t - 0.3) * 2.2), alpha: a, palette: "gold", size: 12, depth: 3, wobble: 0.6, glow: false });
+          if (T5.sub) drawPop3D(ctx3, T5.sub, W11 / 2, cy + Math.round(hh / 2) + 14, { t: t + 0.4, pop: clamp012((t - 0.55) * 2.4), alpha: a, palette: "white", size: 12, depth: 2, wobble: 0.3, sparkle: false, glow: false });
+          if (T5.first) drawPop3D(ctx3, "NEW OCEAN!", W11 / 2, cy - Math.round(hh / 2) - 18, { t: t + 0.2, pop: clamp012((t - 0.3) * 2.2), alpha: a, palette: "gold", size: 16, depth: 3, wobble: 0.6, glow: false });
           ctx3.restore();
         }
       };
       TILE_W = 32;
+      CAUST = null;
     }
   });
 
@@ -73771,27 +74053,46 @@ kmlmk..
             }
           }
           const real = this.inp, tip = this.tip, hot = this.hot;
-          const stub = { x: -1e5, y: -1e5, pressed: false, down: false, released: false, wheel: 0, keyPressed: () => false, consume() {
+          const base = { x: -1e5, y: -1e5, pressed: false, down: false, released: false, wheel: 0, keyPressed: () => false, consume() {
           } };
+          const stub = new Proxy(base, { get: (o, k) => k in o ? o[k] : typeof real[k] === "function" ? () => false : void 0, set: () => true });
           this.inp = stub;
-          for (const gh of this.ghosts) {
-            const p = gh.p, r = p.rect, k = ease.inCubic ? 1 - ease.inCubic(1 - gh.k) : gh.k;
-            ctx3.save();
-            const cx = r.x + r.w / 2, cy = r.y + r.h / 2, s = 0.9 + 0.1 * k;
-            ctx3.translate(cx, cy + (1 - k) * 10);
-            ctx3.scale(s, s);
-            ctx3.translate(-cx, -cy);
-            ctx3.globalAlpha = Math.max(0, k);
-            try {
-              p.draw(ctx3, this, 0);
-            } catch {
-              gh.k = 0;
+          const gin = g.input;
+          g.input = stub;
+          this.ghosting = true;
+          const AD = typeof CanvasRenderingContext2D !== "undefined" ? Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, "globalAlpha") : null;
+          let mul3 = 1;
+          const patched = !!(AD && ctx3 instanceof CanvasRenderingContext2D);
+          if (patched) Object.defineProperty(ctx3, "globalAlpha", { configurable: true, get() {
+            return AD.get.call(this) / (mul3 || 1);
+          }, set(v) {
+            AD.set.call(this, Math.max(0, Math.min(1, v)) * mul3);
+          } });
+          try {
+            for (const gh of this.ghosts) {
+              const p = gh.p, r = p.rect, k = Math.max(0, 1 - ease.inCubic(1 - gh.k));
+              ctx3.save();
+              const cx = r.x + r.w / 2, cy = r.y + r.h / 2, s = 0.92 + 0.08 * k;
+              ctx3.translate(cx, cy + (1 - k) * 10);
+              ctx3.scale(s, s);
+              ctx3.translate(-cx, -cy);
+              mul3 = Math.max(1e-3, gh.k);
+              ctx3.globalAlpha = 1;
+              try {
+                p.draw(ctx3, this, 0);
+              } catch {
+                gh.k = 0;
+              }
+              ctx3.restore();
             }
-            ctx3.restore();
+          } finally {
+            if (patched) delete ctx3.globalAlpha;
+            this.inp = real;
+            this.tip = tip;
+            this.hot = hot;
+            g.input = gin;
+            this.ghosting = false;
           }
-          this.inp = real;
-          this.tip = tip;
-          this.hot = hot;
         }
         // ---------------------------------------------------------------- immediate-mode widgets
         hover(r) {
@@ -74046,7 +74347,8 @@ kmlmk..
             const lift = (1 - fadeOut) * 14;
             const right = W11 - Math.round(10 * k) - 6;
             const x = right - w + (1 - ease.outCubic(fadeIn)) * 40;
-            const cy = y + h / 2 - lift;
+            t.yy = t.yy == null ? y : t.yy + (y - t.yy) * Math.min(1, (this.dtLast || 1 / 60) * 12);
+            const cy = t.yy + h / 2 - lift;
             ctx3.save();
             ctx3.globalAlpha = Math.min(fadeIn * 1.5, fadeOut);
             {
@@ -80317,21 +80619,22 @@ kmlmk..
           this.t += dt;
           this.openT = Math.min(1, (this.openT || 0) + dt * 2.2);
           const SW = g.screen.W, SH = g.screen.H;
-          const W11 = Math.min(SW - 16, 780), H8 = Math.min(SH - 40, 468);
+          const top = Math.min(SH, g.hud?.topY?.() ?? SH);
+          const W11 = Math.min(SW - 16, 780), H8 = Math.min(SH - 40, 468, Math.max(360, top - 14));
           const k = ease.outBack ? ease.outBack(this.openT) : this.openT;
-          const r = { x: Math.round((SW - W11) / 2), y: Math.round((SH - H8) / 2 + (1 - k) * 16), w: W11, h: H8 };
+          const r = { x: Math.round((SW - W11) / 2), y: Math.round(Math.max(4, Math.min((SH - H8) / 2, top - 6 - H8)) + (1 - k) * 16), w: W11, h: H8 };
           this.rect = r;
           const F3 = drawAeroFrame(ctx3, r.x, r.y, W11, H8, { title: "Wardrobe", icon: getBigIcon("wardrobe", { size: "small" }).canvas, seed: 29 });
           this.frameClose = F3.close;
           this.drawHeader(ctx3, ui, { x: r.x + 10, y: r.y + 4, w: W11 - 20, h: 26 });
-          if (!ui.isOpen(this.id)) return;
+          if (!ui.isOpen(this.id) && !ui.ghosting) return;
           const stage = { x: r.x + 10, y: r.y + 38, w: Math.round(W11 * 0.4), h: H8 - 38 - 44 };
           this.drawStage(ctx3, ui, stage, dt);
           this.drawStageBar(ctx3, ui, { x: stage.x, y: stage.y + stage.h + 6, w: stage.w, h: 30 });
           const rx2 = stage.x + stage.w + 10, rw = r.x + W11 - 10 - rx2;
           const tabs = { x: rx2, y: r.y + 38, w: rw, h: 62 };
           this.drawTabs(ctx3, ui, tabs);
-          if (!ui.isOpen(this.id)) return;
+          if (!ui.isOpen(this.id) && !ui.ghosting) return;
           const info = { x: rx2, y: r.y + H8 - 10 - 62, w: rw, h: 62 };
           const grid2 = { x: rx2, y: tabs.y + tabs.h + 6, w: rw, h: info.y - 6 - (tabs.y + tabs.h + 6) };
           if (this.tab === "boat") {
@@ -91071,12 +91374,15 @@ void main() {
     const cr = F3.crank, t = F3.t;
     if (!cr.active) {
       const gr = Math.round(18 * (F3.H / 540));
-      for (let i = 0; i < 14; i++) {
-        const a = i / 14 * TAU + t * 6;
-        ctx3.fillStyle = rgba(INK7, 0.4);
-        ctx3.fillRect(Math.round(F3.input.x + Math.cos(a) * gr) - 2, Math.round(F3.input.y + Math.sin(a) * gr) - 2, 4, 4);
-        ctx3.fillStyle = rgba(col, 0.15 + i / 14 * 0.8);
-        ctx3.fillRect(Math.round(F3.input.x + Math.cos(a) * gr) - 1, Math.round(F3.input.y + Math.sin(a) * gr) - 1, 3, 3);
+      for (let j = 0; j < 2; j++) {
+        for (let i = 0; i < 6; i++) {
+          const a = t * 6 + j * Math.PI - i * 0.22, q = 1 - i / 6, sz = i ? 3 : 4;
+          const px3 = Math.round(F3.input.x + Math.cos(a) * gr), py = Math.round(F3.input.y + Math.sin(a) * gr);
+          ctx3.fillStyle = rgba(INK7, 0.45 * q);
+          ctx3.fillRect(px3 - (sz >> 1) - 1, py - (sz >> 1) - 1, sz + 2, sz + 2);
+          ctx3.fillStyle = rgba(col, 0.25 + 0.75 * q);
+          ctx3.fillRect(px3 - (sz >> 1), py - (sz >> 1), sz, sz);
+        }
       }
       return;
     }
@@ -93901,6 +94207,13 @@ void main() {
             F3.sfx("mash_pop", { pitch: 1 + i * 0.07, vol: 0.5 });
           }
           if (t > 1) word3D(ctx3, this.first ? "BOSS DEFEATED" : "DEFEATED AGAIN", W11 / 2, Math.round(H8 * 0.34), { t, pop: clamp012((t - 1) * 4), scale: 0.95, pal: def2.color === "#ffd23a" ? "sun" : "white" });
+          if (this.items.length && this.items[0].popped) {
+            const n2 = this.items.length, [x0, y0] = this.chipPos(0);
+            const pw = Math.round((n2 - 1) * 100 + 96), ph = 96, pk4 = ease.outBack(clamp012((t - 1.5) * 4));
+            const plate = aeroCached(`bossrw|${pw}|${ph}`, () => aeroSurface(pw, ph, { tone: "deep", a: [0.78, 0.86], r: 12, gloss: 0.4, glossH: 30, curve: 2, rim: 0.9, glow: 0.5, depth: 2, block: 4 }));
+            const sw = Math.max(1, Math.round(pw * pk4)), sh = Math.max(1, Math.round(ph * pk4));
+            ctx3.drawImage(plate, Math.round(x0 - 48 + (pw - sw) / 2), Math.round(y0 - 40 + (ph - sh) / 2), sw, sh);
+          }
           this.items.forEach((it2, i) => {
             if (!it2.popped) return;
             const [x, y] = this.chipPos(i);

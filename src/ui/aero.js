@@ -1020,7 +1020,10 @@ export function drawAeroFrame(ctx, x, y, w, h, o = {}) {
     else drawText(ctx, o.title, tx, y + 8, { font: 'normal', scale: 2, color: '#ffffff', shadow: '#0a3e74' });
   }
   // [polish17] the leaves sit up and out past the corner so they never crowd the close orb
-  if (deco && !drawVoxDecor(ctx, 'leaves', x + w + 12, y - 10, Math.round(56 * k), { t, phase: x * 0.01 })) drawLeafSprig(ctx, x + w + 4, y - 2, 'tr', k);
+  // (skipped when the window reaches the top-right HUD corner: they would sit on the Aero counter)
+  const SW = ctx.canvas ? ctx.canvas.width / (ctx.__hi || 1) : Infinity;
+  const nearHud = y < 84 && x + w > SW - 220;
+  if (deco && !nearHud && !drawVoxDecor(ctx, 'leaves', x + w + 12, y - 10, Math.round(56 * k), { t, phase: x * 0.01 })) drawLeafSprig(ctx, x + w + 4, y - 2, 'tr', k);
   const close = { x: x + w - 25, y: y + 6, w: 18, h: 18 };
   // finish(ctx): call after drawing the panel's content so the ornaments and the splash sit on top
   const finish = (c2 = ctx) => {

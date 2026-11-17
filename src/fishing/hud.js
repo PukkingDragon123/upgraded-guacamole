@@ -215,13 +215,17 @@ export function drawBiteCue(ctx, F) {
 function drawSpinLoop(ctx, F, col) {
   const cr = F.crank, t = F.t;
   if (!cr.active) {
+    // [polish17] two pixel comets chasing round the cursor (reads as "circle the mouse", not as a dotted ring)
     const gr = Math.round(18 * (F.H / 540));
-    for (let i = 0; i < 14; i++) {
-      const a = (i / 14) * TAU + t * 6;
-      ctx.fillStyle = rgba(INK, 0.4);
-      ctx.fillRect(Math.round(F.input.x + Math.cos(a) * gr) - 2, Math.round(F.input.y + Math.sin(a) * gr) - 2, 4, 4);
-      ctx.fillStyle = rgba(col, 0.15 + (i / 14) * 0.8);
-      ctx.fillRect(Math.round(F.input.x + Math.cos(a) * gr) - 1, Math.round(F.input.y + Math.sin(a) * gr) - 1, 3, 3);
+    for (let j = 0; j < 2; j++) {
+      for (let i = 0; i < 6; i++) {
+        const a = t * 6 + j * Math.PI - i * 0.22, q = 1 - i / 6, sz = i ? 3 : 4;
+        const px = Math.round(F.input.x + Math.cos(a) * gr), py = Math.round(F.input.y + Math.sin(a) * gr);
+        ctx.fillStyle = rgba(INK, 0.45 * q);
+        ctx.fillRect(px - (sz >> 1) - 1, py - (sz >> 1) - 1, sz + 2, sz + 2);
+        ctx.fillStyle = rgba(col, 0.25 + 0.75 * q);
+        ctx.fillRect(px - (sz >> 1), py - (sz >> 1), sz, sz);
+      }
     }
     return;
   }

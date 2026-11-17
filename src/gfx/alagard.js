@@ -36,7 +36,7 @@ export function alagardBitmap(text, { size = 16, color = '#ffffff' } = {}) {
   const w = Math.max(1, Math.ceil(m.measureText(text).width) + 2), h = Math.ceil(size * 1.4) + 2;
   c = document.createElement('canvas');
   c.width = w; c.height = h;
-  const g = c.getContext('2d');
+  const g = c.getContext('2d', { willReadFrequently: true }); // [polish17] read back again by text3d / titles: no readback warnings
   g.font = font; g.textBaseline = 'top'; g.fillStyle = color;
   g.fillText(text, 1, 1);
   // threshold the antialiased edges so the pixel font stays crisp when scaled up

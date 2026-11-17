@@ -27,7 +27,7 @@ import { drawFishRig } from '../gfx/fishrig.js';
 import { voxelFishIcon } from '../fish/fishicon.js';
 import { SPECIES, SPECIES_BY_ID } from '../fish/species.js';
 import { BOSS_BY_OCEAN, BOSS_BY_ID } from '../fish/bosses.js';
-import { drawAeroBar, drawAeroCoin } from '../ui/aero.js';
+import { drawAeroBar, drawAeroCoin, aeroCached, aeroSurface } from '../ui/aero.js';
 import { drawGlow, word3D, letters3D } from './cinematics.js';
 import { drawGlossArrow } from './hud.js';
 import { drawIcon3d, chestIconId } from './icons3d.js';
@@ -706,6 +706,15 @@ class Victory {
       F.sfx('mash_pop', { pitch: 1 + i * 0.07, vol: 0.5 });
     }
     if (t > 1) word3D(ctx, (this.first ? 'BOSS DEFEATED' : 'DEFEATED AGAIN'), W / 2, Math.round(H * 0.34), { t, pop: clamp01((t - 1) * 4), scale: 0.95, pal: def.color === '#ffd23a' ? 'sun' : 'white' });
+    // [polish17] a deep glass voxel plate behind the reward row so the icons and labels read over the busy scene
+    // (the boat sits right there at the surface)
+    if (this.items.length && this.items[0].popped) {
+      const n = this.items.length, [x0, y0] = this.chipPos(0);
+      const pw = Math.round((n - 1) * 100 + 96), ph = 96, pk = ease.outBack(clamp01((t - 1.5) * 4));
+      const plate = aeroCached(`bossrw|${pw}|${ph}`, () => aeroSurface(pw, ph, { tone: 'deep', a: [0.78, 0.86], r: 12, gloss: 0.4, glossH: 30, curve: 2, rim: 0.9, glow: 0.5, depth: 2, block: 4 }));
+      const sw = Math.max(1, Math.round(pw * pk)), sh = Math.max(1, Math.round(ph * pk));
+      ctx.drawImage(plate, Math.round(x0 - 48 + (pw - sw) / 2), Math.round(y0 - 40 + (ph - sh) / 2), sw, sh);
+    }
     // the rewards: spinning 3D objects on a glow, each with a small 3D label
     this.items.forEach((it, i) => {
       if (!it.popped) return;

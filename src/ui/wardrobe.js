@@ -258,22 +258,24 @@ export class WardrobePanel {
     this.t += dt;
     this.openT = Math.min(1, (this.openT || 0) + dt * 2.2);
     const SW = g.screen.W, SH = g.screen.H;
-    const W = Math.min(SW - 16, 780), H = Math.min(SH - 40, 468);
+    // [polish17] keep clear of the hotbar (it peeked out under the window on the 960 x 540 canvas)
+    const top = Math.min(SH, g.hud?.topY?.() ?? SH);
+    const W = Math.min(SW - 16, 780), H = Math.min(SH - 40, 468, Math.max(360, top - 14));
     const k = ease.outBack ? ease.outBack(this.openT) : this.openT;
-    const r = { x: Math.round((SW - W) / 2), y: Math.round((SH - H) / 2 + (1 - k) * 16), w: W, h: H };
+    const r = { x: Math.round((SW - W) / 2), y: Math.round(Math.max(4, Math.min((SH - H) / 2, top - 6 - H)) + (1 - k) * 16), w: W, h: H };
     this.rect = r;
     // [polish17] the shared voxel window frame (title plaque, voxel ring, ornaments) like every other panel
     const F = drawAeroFrame(ctx, r.x, r.y, W, H, { title: 'Wardrobe', icon: getBigIcon('wardrobe', { size: 'small' }).canvas, seed: 29 });
     this.frameClose = F.close;
     this.drawHeader(ctx, ui, { x: r.x + 10, y: r.y + 4, w: W - 20, h: 26 });
-    if (!ui.isOpen(this.id)) return;
+    if (!ui.isOpen(this.id) && !ui.ghosting) return;
     const stage = { x: r.x + 10, y: r.y + 38, w: Math.round(W * 0.4), h: H - 38 - 44 };
     this.drawStage(ctx, ui, stage, dt);
     this.drawStageBar(ctx, ui, { x: stage.x, y: stage.y + stage.h + 6, w: stage.w, h: 30 });
     const rx = stage.x + stage.w + 10, rw = r.x + W - 10 - rx;
     const tabs = { x: rx, y: r.y + 38, w: rw, h: 62 };
     this.drawTabs(ctx, ui, tabs);
-    if (!ui.isOpen(this.id)) return;
+    if (!ui.isOpen(this.id) && !ui.ghosting) return;
     const info = { x: rx, y: r.y + H - 10 - 62, w: rw, h: 62 };
     const grid = { x: rx, y: tabs.y + tabs.h + 6, w: rw, h: info.y - 6 - (tabs.y + tabs.h + 6) };
     if (this.tab === 'boat') { this.drawBoatGrid(ctx, ui, grid); this.drawBoatInfo(ctx, ui, info); }
