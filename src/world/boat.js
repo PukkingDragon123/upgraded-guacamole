@@ -212,7 +212,8 @@ export class Boat {
     this.poseT += dt;
     const g = this.game;
     const lvl = this.level();
-    this.visible = lvl !== null && g.state.view === 'ocean' && !g.ocean?.travelState && !g.mini;
+    const ts = g.ocean?.travelState; // [travel17] visible during the voyage's live beats unless the voyage hides it
+    this.visible = lvl !== null && g.state.view === 'ocean' && (!ts || (ts.live && !ts.hideBoat)) && !g.mini;
     if (lvl === null) { this.dragging = false; return; }
     this.model();
     if (this.visible) this.warm();
@@ -250,6 +251,7 @@ export class Boat {
     this.x += this.vx * dt;
     if (this.x < lo) { this.x = lo; this.vx = Math.abs(this.vx) * 0.3; }
     if (this.x > hi) { this.x = hi; this.vx = -Math.abs(this.vx) * 0.3; }
+    if (this.pilot) { this.x = this.pilot.x; this.vx = this.pilot.vx; this.dragging = false; } // [travel17] the voyage steers
     // turn to face the direction of travel
     if (Math.abs(this.vx) > 40 && Math.sign(this.vx) !== this.dir) {
       this.turnT += dt;

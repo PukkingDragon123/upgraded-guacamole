@@ -316,7 +316,8 @@ export class ShallowsBiome extends Biome {
     this.farBY = yB;
     // giants
     this.whaleV = new VoxelGiant('whale');
-    this.turtleV = new VoxelGiant('turtle');
+    this.turtleV = new VoxelGiant('turtle', { lazy: true }); // [turtle17] sea turtles: green, hawksbill, loggerhead
+    this.giantVs = {};
     this.giantFog = new FogCache();
     this.giant = { kind: 'turtle', x: W * 0.62, y: H * 0.36, dir: -1, v: 11, ph: 0, s: 0.8 };
     this.giantT = 0;
@@ -465,8 +466,9 @@ export class ShallowsBiome extends Biome {
     // distant giants
     const gi = this.giant;
     if (gi) {
-      (gi.kind === 'whale' ? this.whaleV : this.turtleV).warm();
-      gi.x += gi.dir * gi.v * dt;
+      this.giantV(gi.kind).warm();
+      // [turtle17] turtles surge with each flipper power stroke and glide through the recovery
+      gi.x += gi.dir * gi.v * dt * (gi.kind === 'whale' ? 1 : 0.7 + 0.6 * Math.max(0, Math.sin(gi.ph)));
       gi.ph += dt * (gi.kind === 'whale' ? 0.9 : 1.6);
       gi.y += Math.sin(t * 0.3) * dt * 2;
       if (gi.x < -300 || gi.x > W + 300) { this.giant = null; this.giantT = 25 + Math.random() * 50; }
@@ -475,7 +477,8 @@ export class ShallowsBiome extends Biome {
       if (this.giantT <= 0) {
         const whale = Math.random() < 0.4;
         const dir = Math.random() < 0.5 ? 1 : -1;
-        this.giant = { kind: whale ? 'whale' : 'turtle', dir, x: dir > 0 ? -260 : W + 260, y: H * (whale ? 0.26 + Math.random() * 0.1 : 0.3 + Math.random() * 0.14), v: whale ? 7 : 10, ph: 0, s: whale ? 0.75 + Math.random() * 0.2 : 0.65 + Math.random() * 0.25 };
+        const tk = Math.random();
+        this.giant = { kind: whale ? 'whale' : tk < 0.6 ? 'turtle' : tk < 0.8 ? 'hawksbill' : 'loggerhead', dir, x: dir > 0 ? -260 : W + 260, y: H * (whale ? 0.26 + Math.random() * 0.1 : 0.3 + Math.random() * 0.14), v: whale ? 7 : 10, ph: 0, s: whale ? 0.75 + Math.random() * 0.2 : 0.65 + Math.random() * 0.25 };
       }
     }
     // sandcastle collapse animation
@@ -662,11 +665,17 @@ export class ShallowsBiome extends Biome {
     };
   }
 
+  giantV(kind) {
+    if (kind === 'whale') return this.whaleV;
+    if (kind === 'turtle') return this.turtleV;
+    return this.giantVs[kind] || (this.giantVs[kind] = new VoxelGiant(kind, { lazy: true }));
+  }
+
   drawGiant(ctx) {
     const gi = this.giant;
     if (!gi) return;
-    const G = gi.kind === 'whale' ? this.whaleV : this.turtleV;
-    const f = G.frame(gi.ph, gi.dir);
+    const f = this.giantV(gi.kind).frame(gi.ph, gi.dir);
+    if (!f) return;
     const col = waterColorAt(WATER, this.tod, gi.y, this.base - 2, this.H);
     const c = this.giantFog.get(f.canvas, col, gi.kind === 'whale' ? 0.66 : 0.58);
     ctx.drawImage(c, Math.round(gi.x - f.ox + this.par.x * 1.1), Math.round(gi.y - f.oy + this.par.y * 0.5), f.w, f.h); // [phase6:creatures] hi-res low-poly frame

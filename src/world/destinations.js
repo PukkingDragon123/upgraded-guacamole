@@ -209,9 +209,20 @@ export class Destinations {
     if (!destUnlocked(g, id)) { g.toast?.(destLockText(id), 'lock'); g.audio?.play('ui_error'); return false; }
     if (g.fishing?.fighting) { g.toast?.('Land your fish first!', 'hook'); return false; }
     if (g.fishing?.busy) try { g.fishing.releaseFish(false); } catch { /* ignore */ }
+    if (g.tutorial?.lessonLock?.() || g.ocean?.travelState) return false; // [travel17]
     if (g.state.view !== 'ocean') try { g.setView('ocean'); } catch { /* ignore */ }
     for (const p of (g.ui?.stack || []).slice()) g.ui.close(p.id);
+    // [travel17] from the open ocean: the voyage sails off (live), a short sea beat, then this scene glides in
+    if (!this.phase && g.voyage && !g.state.settings?.reducedMotion && g.voyage.sail(id, (h) => this.arrive(id, h))) return true;
+    this.arrive(id, null);
+    return true;
+  }
+
+  // the scene starts: the place glides in, the boat sails up to the dock (h = hand-off from the voyage: {boatX, boatY})
+  arrive(id, h) {
+    const g = this.game, D = DESTS[id];
     const reduced = !!g.state.settings?.reducedMotion;
+    this.fromVoyage = h || null; // [travel17]
     this.from = this.at;
     this.at = id;
     this.phase = 'out';
@@ -219,7 +230,7 @@ export class Destinations {
     this.dur = reduced ? 0.3 : 1.7;
     this.line = D.lines[Math.floor(Math.random() * D.lines.length)];
     this.fx.list = [];
-    g.audio?.play('travel_whoosh', { vol: 0.7 });
+    if (!h) g.audio?.play('travel_whoosh', { vol: 0.7 });
     try { destSprite(id, SCENE_SCALE); } catch (e) { console.error(e); }
     return true;
   }
@@ -338,7 +349,7 @@ export class Destinations {
     if (this.phase === 'docked' && !g.ui?.blocking) this.drawDockUi(ctx, sc, D);
     // sailing transitions: soft white wipe at the start of 'out' and the end of 'back'
     let wipe = 0;
-    if (this.phase === 'out') wipe = 1 - clamp01(this.pt / 0.35);
+    if (this.phase === 'out' && !this.fromVoyage) wipe = 1 - clamp01(this.pt / 0.35); // [travel17] the voyage cross-fades in instead
     if (this.phase === 'back') wipe = clamp01((this.pt - this.dur * 0.55) / (this.dur * 0.45));
     if (wipe > 0) { ctx.fillStyle = rgba('#e8fbff', wipe); ctx.fillRect(0, 0, W, H); }
   }
@@ -350,7 +361,7 @@ export class Destinations {
     if (!pv) return;
     const W = sc.W, dockX = Math.round(W * 0.24), y = sc.hz + 92;
     let x = dockX;
-    if (this.phase === 'out') x = Math.round(lerp(-160, dockX, ease.outCubic(clamp01(this.pt / this.dur))));
+    if (this.phase === 'out') x = Math.round(lerp(this.fromVoyage ? clamp(this.fromVoyage.boatX, -160, W) : -160, dockX, ease.outCubic(clamp01(this.pt / this.dur)))); // [travel17] glides on from the voyage
     if (this.phase === 'back') x = Math.round(lerp(dockX, -200, ease.inCubic(clamp01(this.pt / this.dur))));
     const bob = reduced ? 0 : Math.round(Math.sin(this.t * 2.2) * 2);
     const moving = this.phase === 'out' || this.phase === 'back';

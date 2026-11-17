@@ -360,7 +360,7 @@ export class Net {
   draw(ctx, layer) {
     if (!this.online || !this.peers.size) return;
     const g = this.game;
-    if (g.state.view !== 'ocean' || g.ocean?.travelState) return;
+    if (g.state.view !== 'ocean' || (g.ocean?.travelState && !g.ocean.travelState.live)) return; // [travel17] peers stay through the live beats
     const here = this.peersHere();
     try {
       if (layer === 'boats') drawPeerBoats(ctx, this, here);

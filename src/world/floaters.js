@@ -175,7 +175,7 @@ export class Floaters {
 
   live() {
     const g = this.game, o = g.ocean;
-    return !!o?.biome && !o.travelState && (g.state?.view ?? 'ocean') === 'ocean' && !g.mini;
+    return !!o?.biome && (!o.travelState || !!o.travelState.live) && (g.state?.view ?? 'ocean') === 'ocean' && !g.mini; // [travel17]
   }
 
   surfaceY() {
@@ -271,7 +271,7 @@ export class Floaters {
     this.t += dt;
     const o = this.game.ocean;
     if (!o?.biome) return;
-    if (o.biome.id !== this.biomeId && !o.travelState) this.reset();
+    if (o.biome.id !== this.biomeId && (!o.travelState || o.travelState.live)) this.reset(); // [travel17]
     if (!this.live()) return;
     const W = this.W, s = this.surfaceY(), boat = this.game.boat;
     const [lo, hi] = this.span();

@@ -16233,7 +16233,7 @@ void main() {
     const col = (k) => rgb01(sp[k]);
     const BASE = col("base"), DARK = col("dark"), OLV = col("olive"), AMB2 = col("amber"), OCH = col("ochre"), SEAM = col("seam");
     const RIM = col("rimEdge"), UND = col("under"), PL = col("plast"), PLS = col("plastSeam");
-    const NA = 200, NR = 52;
+    const NA = 168, NR = 44;
     const seamAt = (x, z, d) => {
       const s0 = S9.at(x, z).id;
       return S9.at(x + d, z).id !== s0 || S9.at(x - d, z).id !== s0 || S9.at(x, z + d).id !== s0 || S9.at(x, z - d).id !== s0;
@@ -16242,7 +16242,7 @@ void main() {
       const a = j / NA * TAU3, rho = Math.pow(i / NR, 0.85);
       const R2 = tOutline(a, sp);
       const x = T_C0 + Math.cos(a) * R2 * rho, z = Math.sin(a) * R2 * rho;
-      let y = tRimY(a) + tDome(rho, a);
+      let y = tRimY(a, rho) + tDome(rho, a);
       if (sp.imbricate) {
         const q = S9.at(x, z);
         if (q.kind < 2) y += clamp3((q.gx - x) * 0.09 + 0.25, 0, 0.75);
@@ -16291,7 +16291,7 @@ void main() {
       const R2 = tOutline(a, sp);
       const x = T_C0 + Math.cos(a) * R2 * rho, z = Math.sin(a) * R2 * rho;
       const pl = Math.pow(Math.max(0, 1 - Math.pow(rho / 0.94, 2.4)), 0.55);
-      return [x, tRimY(a) - T_RIM - T_HB * Math.min(1, pl * 1.15) * (1 - 0.25 * Math.max(0, -Math.cos(a))), z];
+      return [x, tRimY(a, rho) - T_RIM - T_HB * Math.min(1, pl * 1.15) * (1 - 0.25 * Math.max(0, -Math.cos(a))), z];
     };
     const U2 = [];
     for (let i = 0; i <= NR; i++) {
@@ -16387,7 +16387,7 @@ void main() {
     const s = stAt(eyeT), th = Math.asin(eyeTh);
     const ct = Math.cos(th), stt = Math.sin(th);
     const ec = [eyeT * Lh, s.cy + Math.pow(stt, 2 / EX) * s.rt, Math.pow(ct, 2 / EX) * s.rz];
-    return { tpl, eye: { c: ec, n: norm(0.35, 0.3, 1), r: 1.08 * (0.85 + 0.15 * K2) }, snout: [Lh + 0.2, stAt(1).cy - 0.2, 0], Lh };
+    return { tpl, eye: { c: ec, n: norm(0.35, 0.3, 1), r: 1.2 * (0.85 + 0.15 * K2) }, snout: [Lh + 0.2, stAt(1).cy - 0.2, 0], Lh };
   }
   function turtleFlipperTpl(sp, rear) {
     const Lf = rear ? 9.5 : 22.5, Wm = rear ? 5.4 : 6.6;
@@ -16544,7 +16544,7 @@ void main() {
     }
     const parts = [{ key: "body", mb: body.mb, spec: 0.5, shine: 34, env: 0.26, iri: 0.03, rim: 0.3, ambient: 0.5 }];
     if (!eyes.empty) parts.push({ key: "eyes", mb: eyes.mb, spec: 1.1, shine: 90, env: 0.3, ambient: 0.6 });
-    const topY = tRimY(0) + T_HD;
+    const topY = tRimY(0, 0) + T_HD;
     return {
       parts,
       eyeVox,
@@ -16588,7 +16588,7 @@ void main() {
     }) };
     if (VOXEL) {
       const src = p.parts;
-      p = { ...p, parts: voxelizeParts(src, voxelSize(c, p), { ao: 1, eyes: p.eyeVox, density: c.real?.plan === "solid" ? 1.35 : 1.8 }) };
+      p = { ...p, parts: voxelizeParts(src, voxelSize(c, p), { ao: 1, eyes: p.eyeVox, density: c.real?.plan === "solid" || c.turtle ? 1.35 : 1.8 }) };
       for (const q of src) q.mesh.dispose?.();
     }
     poses.set(key, p);
@@ -17176,9 +17176,9 @@ void main() {
         const k = (a / TAU3 * 25 + 100.5) % 1;
         return r * (1 + sp.serr * back * (Math.abs(k - 0.5) * 2 - 0.5));
       };
-      tRimY = (a) => {
+      tRimY = (a, rho = 1) => {
         const c = Math.cos(a);
-        return -1.3 + 1.7 * Math.pow(Math.max(0, c), 3) - 0.4 * Math.pow(Math.max(0, -c), 2);
+        return -1.1 + (-0.2 + 1.7 * Math.pow(Math.max(0, c), 3) - 0.4 * Math.pow(Math.max(0, -c), 2)) * Math.pow(Math.min(1, rho), 1.5);
       };
       tDome = (rho, a) => {
         const c = Math.cos(a);

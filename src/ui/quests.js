@@ -22,6 +22,7 @@ import { CHAPTERS, CHAPTER_BY_ID, QUEST_BY_ID, NPC_NAMES, QuestBook, ensureQuest
 import { OCEAN_NAMES } from '../game/lab.js';
 import { drawPop3D } from './pop3d.js'; // [phase9:ui]
 import { drawIcon3D } from '../gfx/icons3d.js'; // [phase9:ui]
+import { drawIcon3d as drawChest3d, chestIconId } from '../fishing/icons3d.js'; // [polish17]
 
 const NPC_COL = { seal: '#8fdcff', fizz: '#7affc8', marina: '#ffd23a', dot: '#59e0ff', bloat: '#ffb44a' };
 const CHEERS = {
@@ -477,8 +478,10 @@ export class QuestPanel {
 
   layout() {
     const g = this.game, W = g.screen.W, H = g.screen.H;
-    const w = Math.min(W - 24, 800), h = Math.min(H - 36, 480);
-    return { x: Math.round((W - w) / 2), y: Math.round((H - h) / 2) - 6, w, h };
+    // [polish17] keep clear of the hotbar (it half-peeked out under the log on the 960 x 540 canvas)
+    const top = Math.min(H, g.hud?.topY?.() ?? H);
+    const w = Math.min(W - 24, 800), h = Math.min(H - 36, 480, Math.max(380, top - 14));
+    return { x: Math.round((W - w) / 2), y: Math.max(4, Math.min(Math.round((H - h) / 2) - 6, Math.round(top - 6 - h))), w, h };
   }
 
   tabReady(id) {
@@ -896,7 +899,8 @@ export class QuestPanel {
       ctx.drawImage(aeroSurface(r.w, r.h, { tone: ready ? TONE_READY : done ? TONE_DONE : { top: '#fffbe0', mid: '#ffe08a', bot: '#ffb84a', edge: '#8a4a06', a: [0.97, 0.97] }, r: 9, gloss: 0.6, glossH: 16, curve: 2, rim: 0.9, glow: 0.5 }), r.x, r.y);
       const pk = Object.keys(bq.reward.items || {})[0] || 'pkg_crate';
       if (ready) drawAeroGlow(ctx, r.x + 30, r.y + 28, 30, '#fff6a0', 0.4 + 0.2 * Math.sin(t * 4));
-      drawAnimIcon(ctx, 'mat:' + pk, r.x + 30, r.y + 28, 36, t, 0, { hover: ready ? 0.8 : 0 });
+      // [polish17] the bonus chest as a big turning voxel chest (the item icon came out tiny here)
+      if (!drawChest3d(ctx, chestIconId(pk), r.x + 30, r.y + 30, 40, Math.sin(t * 0.9) * 0.35 + (ready ? t * 0.8 : 0))) drawAnimIcon(ctx, 'mat:' + pk, r.x + 30, r.y + 28, 36, t, 0, { hover: ready ? 0.8 : 0 });
       drawText(ctx, 'BOARD BONUS', r.x + 58, r.y + 8, { font: 'small', color: '#8a4a06' });
       drawText(ctx, done ? 'Bonus collected! See you tomorrow.' : 'Fill all three orders for a bonus chest!', r.x + 58, r.y + 18, { color: INK });
       const o = book.objectives(bq)[0];

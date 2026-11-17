@@ -6,6 +6,7 @@ import { rgba, mix, hexToRgb } from '../core/color.js';
 import { makeLayer, resizeLayer } from '../core/canvas.js';
 import { drawText } from '../gfx/font.js';
 import { drawPop3D } from '../ui/pop3d.js'; // [polish17] 3D zone card
+import { aeroCached, aeroSurface } from '../ui/aero.js'; // [polish17] voxel slab loading pill
 import { BIOMES, BIOME_DEPTH } from './biomes/index.js';
 import { worldTop } from './biomes/base.js';
 import { installAero } from './aerokit.js';
@@ -14,6 +15,7 @@ import { installZoomSky } from './zoomsky.js';
 import { installWater } from './watersheet.js'; // [phase5:water] simulated surface + water sheet
 import { installDeep, ZoneSpawner } from './deepsea.js'; // [phase6:oceans] depth zones under every ocean
 import { ZONE_IDS } from './depthzones.js';
+import { Voyage } from './voyage.js'; // [travel17] the cinematic ocean-to-ocean voyage
 
 export class Ocean {
   constructor(game) {
@@ -34,6 +36,7 @@ export class Ocean {
     this.zones = new ZoneSpawner(this);
     game.world.zones = this.zones;
     this.zoneNow = null; this.zoneCard = null; this.meterA = 0;
+    game.voyage = this.voyage = new Voyage(game); // [travel17]
   }
 
   // The ocean is always fully there (the old "wallpaper floods" reveal is gone); kept for older callers.
@@ -91,7 +94,7 @@ export class Ocean {
 
   // Still water level the boat floats on (the abyss keeps a distant surface far above its view).
   waterLevel() {
-    if (this.travelState) return null;
+    if (this.travelState && !this.travelState.live) return null; // [travel17] the voyage's live beats keep the surface
     const b = this.biome;
     if (b.boatLevel) return b.boatLevel(this.env);
     return this.surfaceY();
@@ -247,7 +250,8 @@ export class Ocean {
     if (!this.hiGen) return;
     // [phase7:env] a bigger slice while the trip / the loading shimmer covers it, the usual few ms afterwards
     const fresh = early || (this.hiT0 != null && performance.now() - this.hiT0 < (b.hiFirst !== D ? 8000 : 2500));
-    const t0 = performance.now(), budget = this.game.lowPower ? 5 : fresh ? 28 : 7;
+    const vy = ts?.voyage || this.game.voyage?.title; // [travel17] the voyage animates on: thin slices, no hitches
+    const t0 = performance.now(), budget = this.game.lowPower ? 5 : vy ? 8 : fresh ? 28 : 7;
     try {
       while (performance.now() - t0 < budget) if (this.hiGen.next().done) { this.hiGen = null; break; }
     } catch (e) { console.error(e); this.hiGen = null; }
@@ -341,6 +345,7 @@ export class Ocean {
   // ------------------------------------------------------------- travel cinematic
   travel(to, done) {
     if (this.travelState || to === this.biome.id) return;
+    if (this.voyage?.start(to, done)) return; // [travel17] the cinematic voyage (the old scroll stays as a fallback)
     const from = this.biome;
     // biomes that expose steps(W, H) build over the first frames of the trip instead of stalling it
     const target = this.cache[to] || this.make(to);
@@ -357,6 +362,7 @@ export class Ocean {
 
   updateTravel(dt) {
     const s = this.travelState;
+    if (s.voyage) { this.voyage.update(dt); return; } // [travel17]
     s.t += dt;
     const k = s.t / s.dur;
     if (s.gen) {
@@ -388,6 +394,7 @@ export class Ocean {
   // Draws the travel transition (replaces drawBack/drawSeabed while active).
   drawTravel(ctx) {
     const s = this.travelState;
+    if (s.voyage) return; // [travel17] the voyage draws its scene over the world (Voyage.drawOver)
     const k = clamp01(s.t / s.dur);
     const W = this.W, H = this.H;
     const off = ease.inOutCubic(k) * H * 1.15 * s.dir;
@@ -483,21 +490,15 @@ export class Ocean {
   // [phase7:env] while the zoomed-in voxel detail is still being built: a small glossy loading pill with a shimmer
   // sweep and pixel sparkles (bottom centre, above the hotbar), fading out when the pass completes
   drawShimmer(ctx, dt) {
-    const b = this.biome, busy = !!(this.hiGen && b && b.hiFirst !== b.D && !this.travelState && this.game.state?.view === 'ocean');
+    const b = this.biome, busy = !!(this.hiGen && b && b.hiFirst !== b.D && !this.travelState && !this.game.voyage?.title && this.game.state?.view === 'ocean'); // [travel17] not under the arrival title
     this.shimA = clamp01((this.shimA || 0) + (busy ? dt * 3 : -dt * 2));
     if (this.shimA < 0.02 || this.game.ui?.blocking) return;
     const W = this.W, H = this.H, a = this.shimA, t = performance.now() / 1000;
     const w = 96, h = 14, x = Math.round(W / 2 - w / 2), y = Math.round(H * 0.8);
     ctx.save();
     ctx.globalAlpha = a;
-    ctx.fillStyle = 'rgba(6,30,58,0.55)';
-    ctx.fillRect(x - 1, y + 1, w + 2, h + 1);
-    const g = ctx.createLinearGradient(0, y, 0, y + h);
-    g.addColorStop(0, '#c8f4ff'); g.addColorStop(0.5, '#4ab8f0'); g.addColorStop(1, '#1a6ab8');
-    ctx.fillStyle = g;
-    ctx.fillRect(x, y, w, h);
-    ctx.fillStyle = 'rgba(255,255,255,0.55)';
-    ctx.fillRect(x + 1, y + 1, w - 2, 4);
+    // [polish17] the same glossy voxel slab as the rest of the HUD (was a flat gradient box with a stroke)
+    ctx.drawImage(aeroCached(`shimpill|${w}|${h}`, () => aeroSurface(w, h, { tone: 'aqua', r: 'pill', gloss: 0.7, glossH: 5, curve: 1, rim: 0.85, glow: 0.6, depth: 1 })), x, y);
     // the shimmer: a bright diagonal band sweeping across
     const sx = x + ((t * 70) % (w + 30)) - 15;
     ctx.save();
@@ -505,8 +506,6 @@ export class Ocean {
     ctx.fillStyle = 'rgba(255,255,255,0.6)';
     for (let i = 0; i < h; i++) ctx.fillRect(Math.round(sx - i * 0.5), y + i, 6, 1);
     ctx.restore();
-    ctx.strokeStyle = 'rgba(230,252,255,0.95)'; ctx.lineWidth = 1;
-    ctx.strokeRect(x - 0.5, y - 0.5, w + 1, h + 1);
     drawText(ctx, 'Polishing voxels', W / 2, y + 4, { align: 'center', font: 'small', color: '#ffffff', outline: '#0a3a6a' });
     // pixel sparkles hopping off the pill
     ctx.fillStyle = '#ffffff';
@@ -547,6 +546,7 @@ export class Ocean {
   drawTitleCard(ctx, dt) {
     this.drawDepthHud(ctx, dt); // [phase6:oceans]
     this.drawShimmer(ctx, dt); // [phase7:env]
+    try { this.voyage?.drawUi(ctx, dt); } catch (e) { if (!this.voyErr) { this.voyErr = true; console.error(e); } } // [travel17] route chart, 3D title
     const c = this.titleCard;
     if (!c || this.game.ui.blocking) return;
     c.t += dt;

@@ -212,7 +212,7 @@ export class Camera {
   isOpen() {
     const g = this.game;
     if (g.mini || g.state?.view !== 'ocean') return false;
-    if (g.ocean?.travelState) return false;
+    if (g.ocean?.travelState && !g.ocean.travelState.live) return false; // [travel17] the voyage's live beats keep it open
     if (g.tutorial?.intro?.opaque) return false;
     return true;
   }
@@ -270,6 +270,15 @@ export class Camera {
       return;
     }
 
+    // [travel17] the voyage flies the camera itself (departure pull-back, arrival framing)
+    const dv = this.drive;
+    if (dv && Number.isFinite(dv.cx) && Number.isFinite(dv.cy) && dv.z > 0) {
+      this.cx = this.tx = dv.cx; this.cy = this.ty = dv.cy;
+      this.z = this.base = dv.z; this.fz = 1; this.focusOn = false;
+      this.leadX = 0; this.leadY = 0; this.pin = null;
+      this.wasOpen = true;
+      return;
+    }
     // ---- zoom: base (setting) x cinematic focus on top
     const baseT = this.baseZoom();
     this.base = damp(this.base, baseT, 3.2, dt);

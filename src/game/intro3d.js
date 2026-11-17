@@ -1311,13 +1311,13 @@ export class Intro3D {
         const edge = Math.min(sx, 1 - sx, sy, 1 - sy);
         const inside = clamp01((edge + 0.08) / 0.2);
         flares.push([sx, 1 - sy, vis * inside, 1.1]);
-        P.raysSrc = [sx, 1 - sy]; P.rays = 0.3 * inside; P.raysDensity = 0.8;
+        P.raysSrc = [sx, 1 - sy]; P.rays = 0; P.raysDensity = 0.8; // [polish17] no god-ray fan from the sun
       }
     }
     if (under) {
       // light shafts streaming down from the bright surface
       const lp = E.project(add3(cam.eye, [SUN[0] * 260, 400, SUN[2] * 260]));
-      if (lp) { P.raysSrc = [lp[0] / this.W, 1 - lp[1] / this.H]; P.rays = 0.95; P.raysDensity = 1.0; P.raysDecay = 0.97; }
+      if (lp) { P.raysSrc = [lp[0] / this.W, 1 - lp[1] / this.H]; P.rays = 0; P.raysDensity = 1.0; P.raysDecay = 0.97; } // [polish17] no ray fan
       P.bloom = 0.7; P.chroma = 0.5; P.saturation = 1.1;
     }
     // a glint flare riding the glint band across fresh 3D text (drawTexts stores each text's screen span)

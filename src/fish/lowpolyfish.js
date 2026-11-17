@@ -34,7 +34,7 @@
 //       LPMesh, same texture: {texture, alpha: mesh.finAlpha, cull: false}), mesh.glow (LPMesh | null, {emit: 1}),
 //       mesh.L (body length in model units; models face +x, y up, origin = body centre), mesh.anchors (3D points);
 //       chain species (eels) come with their whole undulating body (head at the origin, body trailing along -x)
-//   creatureMesh(kind, {phase, frames}) -> LPMesh | null   kinds: dolphin, whale, beluga, orca, seal, turtle, shark,
+//   creatureMesh(kind, {phase, frames}) -> LPMesh | null   kinds: dolphin, whale, beluga, orca, seal, turtle (+ hawksbill, loggerhead), shark,
 //       hammerhead, manta, stingray, crab, jelly, octopus, squid, seahorse, starfish, penguin, restseal (same fields)
 //   addFishToScene(scene, mesh, model4x4, o?)  adds a fishMesh / creatureMesh with the right per-part options
 //   lpFrame(c, req) -> {canvas, sx, sy, w, h, ax, ay, k, anchors, eyes} | null       (sprite frames, fishrig.js)
@@ -1261,7 +1261,7 @@ function creatureOf(kind) {
   if (c) return c;
   const def = CREATURES[kind];
   // [turtle17] sea turtles (green 'turtle', 'hawksbill', 'loggerhead'): custom realistic build, finer voxels
-  if (TURTLE_SP[kind]) { c = { id: 'cr:' + kind, kind, turtle: true, L: 60, H: 30, voxK: 1.5, real: { plan: 'turtle' } }; creatureC.set(kind, c); return c; }
+  if (TURTLE_SP[kind]) { c = { id: 'cr:' + kind, kind, turtle: true, L: 60, H: 30, voxK: 1.35, real: { plan: 'turtle' } }; creatureC.set(kind, c); return c; }
   if (kind === 'penguin') { c = { id: 'cr:penguin', kind: 'penguin', custom: buildPenguin, L: 12, H: 12, real: { plan: 'custom' } }; creatureC.set(kind, c); return c; }
   if (kind === 'restseal') { c = { id: 'cr:restseal', kind: 'restseal', custom: buildRestSeal, L: 28, H: 10, real: { plan: 'custom' } }; creatureC.set(kind, c); return c; }
   if (!def) return null;
@@ -1318,7 +1318,8 @@ const tOutline = (a, sp) => {
   const k = ((a / TAU) * 25 + 100.5) % 1;
   return r * (1 + sp.serr * back * (Math.abs(k - 0.5) * 2 - 0.5));
 };
-const tRimY = (a) => { const c = Math.cos(a); return -1.3 + 1.7 * Math.pow(Math.max(0, c), 3) - 0.4 * Math.pow(Math.max(0, -c), 2); };
+// rim height by angle, eased toward a common height at the centre (no tear at the pole)
+const tRimY = (a, rho = 1) => { const c = Math.cos(a); return -1.1 + (-0.2 + 1.7 * Math.pow(Math.max(0, c), 3) - 0.4 * Math.pow(Math.max(0, -c), 2)) * Math.pow(Math.min(1, rho), 1.5); };
 const tDome = (rho, a) => {
   const c = Math.cos(a);
   const f = Math.pow(Math.max(0, 1 - Math.pow(rho, 1.75)), 0.8);
@@ -1421,7 +1422,7 @@ function turtleShellTpl(sp) {
   const col = (k) => rgb01(sp[k]);
   const BASE = col('base'), DARK = col('dark'), OLV = col('olive'), AMB = col('amber'), OCH = col('ochre'), SEAM = col('seam');
   const RIM = col('rimEdge'), UND = col('under'), PL = col('plast'), PLS = col('plastSeam');
-  const NA = 200, NR = 52;
+  const NA = 168, NR = 44;
   // grid points (top surface), with seams sunk a little
   const seamAt = (x, z, d) => {
     const s0 = S.at(x, z).id;
@@ -1431,7 +1432,7 @@ function turtleShellTpl(sp) {
     const a = (j / NA) * TAU, rho = Math.pow(i / NR, 0.85);
     const R = tOutline(a, sp);
     const x = T_C0 + Math.cos(a) * R * rho, z = Math.sin(a) * R * rho;
-    let y = tRimY(a) + tDome(rho, a);
+    let y = tRimY(a, rho) + tDome(rho, a);
     if (sp.imbricate) {
       // overlapping scutes: each scute rises toward its rear edge and steps down onto the next one
       const q = S.at(x, z);
@@ -1476,7 +1477,7 @@ function turtleShellTpl(sp) {
     const R = tOutline(a, sp);
     const x = T_C0 + Math.cos(a) * R * rho, z = Math.sin(a) * R * rho;
     const pl = Math.pow(Math.max(0, 1 - Math.pow(rho / 0.94, 2.4)), 0.55);
-    return [x, tRimY(a) - T_RIM - T_HB * Math.min(1, pl * 1.15) * (1 - 0.25 * Math.max(0, -Math.cos(a))), z];
+    return [x, tRimY(a, rho) - T_RIM - T_HB * Math.min(1, pl * 1.15) * (1 - 0.25 * Math.max(0, -Math.cos(a))), z];
   };
   const U = [];
   for (let i = 0; i <= NR; i++) { const row = []; for (let j = 0; j <= NA; j++) row.push(ptBot(Math.min(i, NR), j % NA)); U.push(row); }
@@ -1566,7 +1567,7 @@ function turtleHeadTpl(sp) {
   const s = stAt(eyeT), th = Math.asin(eyeTh);
   const ct = Math.cos(th), stt = Math.sin(th);
   const ec = [eyeT * Lh, s.cy + Math.pow(stt, 2 / EX) * s.rt, Math.pow(ct, 2 / EX) * s.rz];
-  return { tpl, eye: { c: ec, n: norm(0.35, 0.3, 1), r: 1.08 * (0.85 + 0.15 * K) }, snout: [Lh + 0.2, stAt(1).cy - 0.2, 0], Lh };
+  return { tpl, eye: { c: ec, n: norm(0.35, 0.3, 1), r: 1.2 * (0.85 + 0.15 * K) }, snout: [Lh + 0.2, stAt(1).cy - 0.2, 0], Lh };
 }
 
 // ---- flipper templates: param grid (span t, chord c) -> local (S along span, O along chord, H thickness)
@@ -1736,7 +1737,7 @@ function buildTurtle(c, ph) {
   }
   const parts = [{ key: 'body', mb: body.mb, spec: 0.5, shine: 34, env: 0.26, iri: 0.03, rim: 0.3, ambient: 0.5 }];
   if (!eyes.empty) parts.push({ key: 'eyes', mb: eyes.mb, spec: 1.1, shine: 90, env: 0.3, ambient: 0.6 });
-  const topY = tRimY(0) + T_HD;
+  const topY = tRimY(0, 0) + T_HD;
   return {
     parts, eyeVox, eyes: eyesA, L: c.L, flatRoll: 0,
     anchors: { mouth: hxf(T.head.snout), top: xf([T_C0, topY, 0]), bottom: xf([0, -T_HB - 1, 0]), tail: xf(tailEnd) },
@@ -1862,7 +1863,7 @@ function poseOf(c, sw, infl, mouth, frames = LP_SWIM, hi = false, eel3d = false)
   if (VOXEL) {
     // phase 8: the anatomical mesh becomes a real voxel model (fine voxels, baked AO, translucent fin voxels)
     const src = p.parts;
-    p = { ...p, parts: voxelizeParts(src, voxelSize(c, p), { ao: 1, eyes: p.eyeVox, density: c.real?.plan === 'solid' ? 1.35 : 1.8 }) };
+    p = { ...p, parts: voxelizeParts(src, voxelSize(c, p), { ao: 1, eyes: p.eyeVox, density: c.real?.plan === 'solid' || c.turtle ? 1.35 : 1.8 }) };
     for (const q of src) q.mesh.dispose?.();
   }
   poses.set(key, p);

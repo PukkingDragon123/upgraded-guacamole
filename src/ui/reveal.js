@@ -313,8 +313,9 @@ export class RevealPanel {
     this.chip(ctx, r.x + Math.round(16 * k), cy0 + ch, 'weight', `${d.rec.weightKg} kg`, ts);
     // Aero bonus (above the chips)
     if (d.bonus) {
-      const label = '+' + d.bonus;
-      const w = measureText(label, 'normal', ts) + 22 * ts;
+      // [polish17] the bonus ticks up from 0 (the pill is sized for the final amount so it does not wobble)
+      const label = '+' + Math.round(d.bonus * ease.outCubic(clamp01((t - 0.45) / 0.7)));
+      const w = measureText('+' + d.bonus, 'normal', ts) + 22 * ts;
       const by = cy0 - ch - 6;
       drawGlassPill(ctx, r.x + Math.round(16 * k) + w / 2, by, w, 14 * ts, '#2fd3e8', 0.95);
       drawAeroCoin(ctx, r.x + Math.round(16 * k) + 8 * ts, by + 7 * ts, 4.5 * ts, t);

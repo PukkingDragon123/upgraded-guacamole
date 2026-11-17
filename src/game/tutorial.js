@@ -91,7 +91,7 @@ export const GUIDE_NAME = SEAL_INFO.name;
 // Bubbles' lines: short, with a mood, a gesture (pose -> a seal emote), an optional animated glyph (g) and choices.
 // Fishing prompts stay generic; the gear / hold-to-charge variants are picked by feature detection (fishingKind()).
 const SAY = {
-  bait: { text: "First, bait! Dot's shop has free crumbs.", pose: 'point', mood: 'happy' },
+  bait: { text: 'First, bait! The Bait Shop has free crumbs.', pose: 'point', mood: 'happy' }, // [polish17] Bubbles runs the counter now
   baitPick: { text: 'Grab the free crumbs!', pose: 'point', mood: 'excited' },
   gift: { text: 'Here, some crumbs on me!', pose: 'cheer', mood: 'excited' },
   loaded: { text: 'Your bait sits here. Loaded!', pose: 'point', mood: 'happy' },
@@ -845,7 +845,8 @@ export class Tutorial {
   helperOn() {
     const st = this.game.state;
     if (this.offering && !this.intro && st.view !== 'aquarium') return true; // [tut16] the lesson offer
-    return !!st?.tutorialDone && !this.intro && st.clip?.hints !== false && st.settings?.hints !== false && st.view !== 'aquarium';
+    // [polish17] it ducks away while a window is open (it was drawn on top of the Lab / Quest Log)
+    return !!st?.tutorialDone && !this.intro && st.clip?.hints !== false && st.settings?.hints !== false && st.view !== 'aquarium' && !this.game.ui?.blocking && !this.game.ocean?.travelState; // [travel17] and during a voyage
   }
 
   helperRect() {
@@ -911,7 +912,7 @@ export class Tutorial {
     if (f?.state === 'bite') return { text: K.gear ? 'Spin the gear, {name}!' : 'Click now, {name}!', mood: 'excited' };
     let bait = 1;
     try { bait = BAIT.totalBait(st); } catch (e) { bait = 1; }
-    if (bait <= 0) return { text: "Out of bait? Visit Dot's Bait Shop!", at: 'baitshop' };
+    if (bait <= 0) return { text: 'Out of bait? Visit the Bait Shop!', at: 'baitshop' };
     // [balance] every other tip: the next big upgrade (rod / tank / boat) and what it still needs
     if (this.helper.tipI % 2 === 0) { const gt = this.goalTip(); if (gt) { this.helper.tipI++; return gt; } }
     for (let n = 0; n < TIPS.length; n++) {

@@ -1,9 +1,10 @@
 // [phase8:creatures] Distant giants that cruise through the far water, now VOXEL models (phase 8: the lowpolyfish.js
 // poses are voxelised by src/fish/voxelize.js; phase 6 built them LOW-POLY 3D, src/fish/lowpolyfish.js): a humpback
-// whale, a green sea turtle, a glossy bottlenose dolphin, a beluga, a harbour seal and an orca. Frames are cached
+// whale, sea turtles (green, hawksbill, loggerhead), a glossy bottlenose dolphin, a beluga, a harbour seal and an orca. Frames are cached
 // low-poly sprites (one swim cycle, the mesh bends: vertical fluke beats, flipper strokes), built lazily; warm()
 // builds at most one missing frame per call so the first sighting never stalls a frame.
-//   new VoxelGiant(kind)   (name kept for callers) .n, .warm(), .frame(ph rad, dir) -> {canvas, ox, oy, w, h}
+//   new VoxelGiant(kind, {lazy})   (name kept for callers) .n, .warm(), .frame(ph rad, dir) -> {canvas, ox, oy, w, h}
+//   (lazy: null until warm() has built the first frame)
 //   The canvas is rendered at RES device px per world px: draw it at (x - ox, y - oy) with size (w, h).
 //   lpCrabFrames(color) -> [idle, walk1, walk2] {canvas, ox (bottom centre), oy, w, h} low-poly seabed crabs
 //   lpPenguinFrames(dir), lpRestSealFrames() -> canvases with world size .w / .h (fjord critters)
@@ -15,7 +16,9 @@ import { makeCanvas } from '../core/canvas.js';
 const RES = 3;
 // world length (px) and view of each giant
 const SIZE = {
-  whale: { len: 190, yaw: 18 }, turtle: { len: 78, yaw: 22 }, dolphin: { len: 92, yaw: 14 },
+  whale: { len: 190, yaw: 18 }, turtle: { len: 78, yaw: 22, tilt: 18 }, dolphin: { len: 92, yaw: 14 },
+  // [turtle17] sea turtles: a slightly higher view shows the scutes of the carapace
+  hawksbill: { len: 70, yaw: 22, tilt: 18 }, loggerhead: { len: 84, yaw: 22, tilt: 18 },
   beluga: { len: 104, yaw: 14 }, seal: { len: 66, yaw: 16 }, orca: { len: 120, yaw: 14 },
 };
 
@@ -30,8 +33,11 @@ function crop(f, flip) {
 }
 
 export class VoxelGiant {
-  constructor(kind) {
+  // o.lazy [turtle17]: build the pose meshes a few per frame under the creature budget (warm()), and draw nothing
+  // (frame() -> null) until the first frame exists, instead of building the whole sheet in one long frame
+  constructor(kind, o = {}) {
     this.kind = kind;
+    this.lazy = !!o.lazy;
     this.B = SIZE[kind] || SIZE.dolphin;
     this.frames = new Array(LP_SWIM).fill(null);
     this.flipped = new Array(LP_SWIM).fill(null);
@@ -39,11 +45,15 @@ export class VoxelGiant {
 
   get n() { return LP_SWIM; }
 
-  build(i) {
+  req(i, force) {
     const c = creatureLook(this.kind);
-    if (!c) return;
-    const S = (RES * this.B.len) / (c.L || 60);
-    const f = creatureFrame(this.kind, { S, yaw: this.B.yaw, sw: i, force: true });
+    return c ? { S: (RES * this.B.len) / (c.L || 60), yaw: this.B.yaw, tilt: this.B.tilt, sw: i, force } : null;
+  }
+
+  build(i) {
+    const req = this.req(i, true);
+    if (!req) return;
+    const f = creatureFrame(this.kind, req);
     if (!f) return;
     const k = f.k * RES; // sprite px -> canvas px is f.k; canvas px -> world px is 1 / RES
     this.frames[i] = { canvas: crop(f, false), ox: (f.ax * f.k) / RES, oy: (f.ay * f.k) / RES, w: (f.w * f.k) / RES, h: (f.h * f.k) / RES, res: RES, f, k };
@@ -52,14 +62,16 @@ export class VoxelGiant {
   // Build at most one missing frame (call once per update).
   warm() {
     const i = this.frames.indexOf(null);
-    if (i >= 0) this.build(i);
+    if (i < 0) return;
+    if (this.lazy && this.frames.every((f) => !f)) { const req = this.req(i, false); if (!req || !creatureFrame(this.kind, req)) return; }
+    this.build(i);
   }
 
   frame(ph, dir) {
     const n = LP_SWIM;
     let i = Math.floor(((ph / TAU) * n) % n + n) % n;
     if (!this.frames[i]) {
-      if (this.frames.every((f) => !f)) this.build(i);
+      if (this.frames.every((f) => !f)) { if (this.lazy) return null; this.build(i); }
       else { for (let d = 1; d < n; d++) { const j = (i + d) % n; if (this.frames[j]) { i = j; break; } } }
     }
     const f = this.frames[i];

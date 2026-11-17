@@ -33,7 +33,7 @@ import { compiled } from '../gfx/spritecache.js';
 import { SPECIES_BY_ID } from '../fish/species.js';
 import { rollIndividual, sizeScaleOf } from '../fish/traits.js';
 import { nodeFor } from '../game/lab.js';
-import { AERO, fmtAero, drawAeroCoin, drawAeroSurface, drawAeroButton, drawSparkle, drawAeroPanel, uiK, drawPixelBrackets, aeroCached, aeroSurface, drawAeroGlow, drawVoxDecor } from '../ui/aero.js';
+import { AERO, fmtAero, drawAeroCoin, drawAeroSurface, drawAeroButton, drawSparkle, drawAeroPanel, uiK, drawPixelBrackets, aeroCached, aeroSurface, drawAeroGlow, drawVoxDecor, drawTitle } from '../ui/aero.js';
 import { TANK_TIERS, TANK_IDS, tankTier, aeroRate, GEAR, gearLevel, gearCost, gearMul, gearHappy } from './tanks.js';
 import { SideShape, TankFish, Drops3D, Ripples, DENOMS } from './sim2d.js';
 import { TankScene } from './scene2d.js';
@@ -1726,7 +1726,10 @@ export class Aquarium {
 
   drawGearPanel(ctx) {
     const r = this.gearPanelRect(), k = r.k;
-    drawAeroPanel(ctx, r.x, r.y, r.w, r.h, { tone: 'glass', radius: 10, title: 'Tank Gear' });
+    // [polish17] a voxel slab panel with an Alagard title and the gear icon (was a plain glass box with a tiny label)
+    ctx.drawImage(aeroCached(`gearpan|${r.w}|${r.h}`, () => aeroSurface(r.w, r.h, { tone: 'glass', r: 10, gloss: 0.4, glossH: Math.round(22 * k), rim: 0.9, glow: 0.4, depth: 2, block: 4, a: [0.95, 0.93] })), r.x, r.y);
+    this.drawIcon(ctx, 'gear', r.x + Math.round(18 * k), r.y + Math.round(17 * k), Math.round(20 * k), { phase: 0.4 });
+    drawTitle(ctx, 'Tank Gear', r.x + Math.round(32 * k), r.y + Math.round(6 * k), { scale: k >= 1.4 ? 2 : 1 });
     const ink = AERO.ink;
     const big = k >= 1.4, f1 = big ? 'big' : 'normal', f2 = big ? 'normal' : 'small';
     const L = (v) => Math.round(v * k);

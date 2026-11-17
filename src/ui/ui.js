@@ -16,6 +16,8 @@ import { iconFrame } from '../gfx/bigicons.js';
 import { drawIcon3D } from '../gfx/icons3d.js'; // [phase9:ui]
 import { drawPop3D, text3dCanvas, POP_PALETTE } from './pop3d.js'; // [phase9:ui]
 
+const GHOST_IDS = new Set(['journal', 'inventory', 'wardrobe', 'settings', 'bait', 'baitshop', 'multiplayer', 'workshop', 'quests', 'lab', 'fishmgr']);
+
 export class UI {
   constructor(game) {
     this.game = game;
@@ -32,6 +34,7 @@ export class UI {
     this.dockHover = -1; // legacy readers
     this.flyers = []; // Aero drops flying to the counter
     this.anim = 0;
+    this.ghosts = []; // [polish17] panels easing out after close: {p, k 1 -> 0}
     try { this.hookPixelFx(game); } catch { /* optional juice */ } // [phase8:ui]
   }
 
@@ -53,6 +56,7 @@ export class UI {
     if (p.replace !== false) this.stack = this.stack.filter((q) => q.keep);
     p.anim = 0;
     p.closing = false;
+    this.ghosts = this.ghosts.filter((gh) => gh.p !== p);
     this.stack.push(p);
     p.open?.(data);
     this.game.audio.play(p.sound || 'ui_open');
@@ -63,6 +67,8 @@ export class UI {
     const p = id ? this.panels[id] : this.active;
     if (!p || !this.isOpen(p.id)) return;
     this.stack = this.stack.filter((q) => q !== p);
+    // [polish17] a short ease-out (shrink + fade) instead of vanishing; only for the plain window panels
+    if (GHOST_IDS.has(p.id) && p.rect && (p.anim ?? 1) > 0.5 && !this.game.state?.settings?.reducedMotion) this.ghosts.push({ p, k: 1 });
     p.close?.();
     this.game.audio.play('ui_close');
     this.game.emit('panelClose', p.id);
@@ -88,7 +94,9 @@ export class UI {
     setUiScale(this.game.state?.settings?.uiScale || 'big'); // [phase6:ui]
     for (const t of this.toasts) t.t += dt;
     this.toasts = this.toasts.filter((t) => t.t < t.max);
+    this.hoverPrev = this.hoverKey; this.hoverKey = null; // [polish17] hover tick bookkeeping (one frame of memory)
     const g = this.game;
+    if (!this.coinInit) { this.coinInit = true; this.coinShown = g.state.coins || 0; } // [polish17] no count-up from 0 on boot
     const diff = g.state.coins - this.coinShown;
     this.coinShown += Math.abs(diff) < 1 ? diff : diff * Math.min(1, dt * 8);
     this.coinBump = Math.max(0, this.coinBump - dt * 3);
@@ -98,6 +106,33 @@ export class UI {
       return true;
     });
     for (const p of this.stack) p.anim = Math.min(1, (p.anim || 0) + dt * 5);
+    for (const gh of this.ghosts) gh.k -= dt * 7;
+    this.ghosts = this.ghosts.filter((gh) => gh.k > 0 && !this.isOpen(gh.p.id));
+  }
+
+  // [polish17] closing panels: redrawn for ~0.15 s with input switched off, shrinking a little and fading out
+  drawGhosts(ctx) {
+    if (!this.ghosts.length) return;
+    const g = this.game;
+    if (!this.blocking) {
+      const k = Math.max(...this.ghosts.map((gh) => gh.k));
+      ctx.fillStyle = rgba('#04304e', 0.36 * k);
+      ctx.fillRect(0, 0, g.screen.W, g.screen.H);
+      try { g.hud?.drawOverlay?.(ctx, this.inp, false); } catch { /* optional */ }
+    }
+    const real = this.inp, tip = this.tip, hot = this.hot;
+    const stub = { x: -1e5, y: -1e5, pressed: false, down: false, released: false, wheel: 0, keyPressed: () => false, consume() {} };
+    this.inp = stub;
+    for (const gh of this.ghosts) {
+      const p = gh.p, r = p.rect, k = ease.inCubic ? 1 - ease.inCubic(1 - gh.k) : gh.k;
+      ctx.save();
+      const cx = r.x + r.w / 2, cy = r.y + r.h / 2, s = 0.9 + 0.1 * k;
+      ctx.translate(cx, cy + (1 - k) * 10); ctx.scale(s, s); ctx.translate(-cx, -cy);
+      ctx.globalAlpha = Math.max(0, k);
+      try { p.draw(ctx, this, 0); } catch { gh.k = 0; }
+      ctx.restore();
+    }
+    this.inp = real; this.tip = tip; this.hot = hot;
   }
 
   // ---------------------------------------------------------------- immediate-mode widgets
@@ -116,9 +151,19 @@ export class UI {
     const hov = !opts.disabled && this.hover(r);
     const down = hov && this.inp.down;
     if (hov) this.markHot(label + x + y);
+    // [polish17] a springy squash for ~0.25 s after a click (keyed by label + position: immediate-mode buttons)
+    const pk = label + '|' + x + '|' + y, p0 = this.btnPops?.get(pk);
+    const pt = p0 != null ? this.time - p0 : 1;
+    const sq = pt < 0.25 ? Math.sin((pt / 0.25) * Math.PI) * (1 - pt / 0.25) : 0;
+    if (sq > 0.01) { ctx.save(); const cx = x + w / 2, cy = y + h / 2; ctx.translate(cx, cy); ctx.scale(1 + sq * 0.1, 1 - sq * 0.12); ctx.translate(-cx, -cy); }
     drawButton(ctx, x, y, w, h, { label, icon: opts.icon ? getUiIcon(opts.icon) : opts.iconCanvas, state: opts.disabled ? 'disabled' : down ? 'down' : hov ? 'hover' : opts.active ? 'down' : 'normal', style: opts.style || 'wood', font: opts.font, align: opts.align, fixedFont: opts.fixedFont });
+    if (sq > 0.01) ctx.restore();
     if (hov && opts.tip) this.tip = opts.tip;
+    // [polish17] a soft hover tick when the pointer lands on a new button
+    if (hov) { if (pk !== this.hoverKey && pk !== this.hoverPrev) this.game.audio.play('ui_hover', { vol: 0.35 }); this.hoverKey = pk; }
     if (!opts.disabled && this.clicked(r)) {
+      (this.btnPops ||= new Map()).set(pk, this.time);
+      if (this.btnPops.size > 24) this.btnPops.delete(this.btnPops.keys().next().value);
       this.game.audio.play(opts.sound || 'ui_click');
       this.splash(this.inp.x, this.inp.y, w > 40 ? 1 : 0.6);
       return true;
@@ -255,6 +300,7 @@ export class UI {
 
   drawPanels(ctx, dt) {
     const g = this.game;
+    this.drawGhosts(ctx);
     if (this.blocking) {
       ctx.fillStyle = rgba('#04304e', 0.36 * Math.min(1, (this.active?.anim ?? 1) * 2));
       ctx.fillRect(0, 0, g.screen.W, g.screen.H);
@@ -293,6 +339,14 @@ export class UI {
   drawToasts(ctx) {
     const g = this.game, W = g.screen.W, k = uiK();
     let y = (this.coinRect ? this.coinRect.y + this.coinRect.h : 26) + Math.round(10 * k);
+    // [polish17] while a window is open, toasts sit in the free strip under it (above the hotbar) instead of on top
+    // of its header buttons (close, wallet); when there is no room there they keep the top-right spot
+    const a = this.blocking ? this.active : null;
+    if (a?.rect && this.toasts.length) {
+      const need = this.toasts.length * Math.round(34 * Math.min(1.3, k)) + 8;
+      const below = a.rect.y + a.rect.h + Math.round(8 * k), floor = Math.min(g.screen.H, g.hud?.topY?.() ?? g.screen.H) - 4;
+      if (below + need <= floor && y + need > a.rect.y) y = below;
+    }
     for (const t of this.toasts) {
       const fadeIn = Math.min(1, t.t * 3.2), fadeOut = Math.min(1, (t.max - t.t) * 2.5);
       const lines = wrapText(t.text, Math.round(92 * k), 'normal').slice(0, 2);

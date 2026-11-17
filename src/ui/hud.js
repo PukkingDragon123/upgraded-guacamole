@@ -407,6 +407,9 @@ export class Hud {
     this.rodPop = Math.max(0, (this.rodPop || 0) - dt * 2.5);
     // while a modal is open the hotbar works as tabs above the dim (drawOverlay picks its hovered button)
     const hotNow = this.hot || (g.ui?.blocking ? this.overlayHot : null);
+    // [polish17] a soft tick when the pointer moves onto a new hotbar button
+    if (hotNow && hotNow !== this.lastHot) g.audio?.play?.('ui_hover', { vol: 0.4, pitch: 0.92 + (this.items.indexOf(hotNow) % 7) * 0.03 });
+    this.lastHot = hotNow;
     for (const it of this.items) {
       it.hover = damp(it.hover, hotNow === it ? 1 : 0, 16, dt);
       if (this.pressed !== it) it.press = damp(it.press, 0, 18, dt);

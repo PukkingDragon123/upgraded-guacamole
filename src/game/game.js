@@ -388,10 +388,12 @@ export class Game {
 
   travel(id) {
     if (!this.state.unlockedBiomes.includes(id) || this.ocean.travelState) return false;
+    if (this.fishing.fighting || this.tutorial.lessonLock?.()) return false; // [travel17] land the fish / finish the lesson first
     if (this.fishing.busy) this.fishing.releaseFish(false);
     this.ui.stack = [];
-    this.setView('ocean');
-    this.camera.scrollTo(0, true);
+    if (this.state.view !== 'ocean') this.setView('ocean'); // [travel17] the voyage sails off from the live ocean
+    if (this.dest?.active) { this.dest.end(); this.camera.flash('#e8fbff', 0.7); } // [travel17] leaving a dock scene
+    if (!this.voyage) this.camera.scrollTo(0, true);
     this.ocean.travel(id, () => {
       this.state.biome = id;
       this.world.biome = id;
@@ -541,7 +543,7 @@ export class Game {
   updateWater(dt) {
     const water = this.water, ocean = this.ocean;
     if (!water) return;
-    const live = this.state.view === 'ocean' && ocean.reveal >= 1 && !ocean.travelState;
+    const live = this.state.view === 'ocean' && ocean.reveal >= 1 && (!ocean.travelState || ocean.travelState.live); // [travel17]
     const level = live ? ocean.waterLevel() : null;
     water.update(dt, { surfaceY: level, top: ocean.top, W: this.screen.W, H: this.screen.H, waveAt: (x) => ocean.waveAt(x) });
     if (!live) return;
@@ -595,7 +597,7 @@ export class Game {
     const map = { j: 'journal', l: 'lab', k: 'lab', t: 'map', b: 'bait', s: 'baitshop', w: 'wardrobe', o: 'multiplayer', p: 'pause', a: 'tank', q: 'quests', c: 'workshop' }; // [phase8:prog] c: Workshop // [phase6:lab] q: Quest Log
     for (const [k, cmd] of Object.entries(map)) {
       if (inp.keyPressed(k)) {
-        if (this.tutorial.active && cmd !== 'pause') continue;
+        if ((this.tutorial.active || this.ocean.travelState) && cmd !== 'pause') continue; // [travel17] no panels mid-voyage
         this.command(cmd);
       }
     }
@@ -625,7 +627,8 @@ export class Game {
     const view = this.state.view;
     const cam = this.camera;
     if (view === 'ocean') { ctx.fillStyle = '#0b1622'; ctx.fillRect(0, 0, W, H); }
-    const liveOcean = view === 'ocean' && !ocean.travelState && ocean.reveal >= 1;
+    const voyLive = !ocean.travelState || !!ocean.travelState.live; // [travel17] the voyage's departure / arrival render live
+    const liveOcean = view === 'ocean' && voyLive && ocean.reveal >= 1;
     const shader = liveOcean && !this.lowPower && this.water?.available;
     let wctx = ctx;
     if (shader) {
@@ -642,7 +645,7 @@ export class Game {
     const env = ocean.env;
     if (view === 'aquarium') {
       this.aquarium.drawFull(wctx, dt);
-    } else if (ocean.travelState) {
+    } else if (ocean.travelState && !voyLive) {
       ocean.drawTravel(wctx);
     } else {
       env.view = cam.view();
@@ -680,7 +683,7 @@ export class Game {
       cam.reset(ctx);
       if (L.dark > 0.02) L.lights.push(...this.boat.lights());
     }
-    if (view === 'ocean' && !ocean.travelState && ocean.reveal > 0) ocean.applyLighting(ctx, L);
+    if (view === 'ocean' && voyLive && ocean.reveal > 0) ocean.applyLighting(ctx, L);
     if (liveOcean) {
       cam.apply(ctx);
       this.boat.drawLights(ctx, L.dark);
@@ -691,7 +694,7 @@ export class Game {
     if (view === 'ocean') this.baitFx.drawUnderIcons(ctx);
 
     cam.apply(ctx);
-    if (view === 'ocean' && !ocean.travelState) {
+    if (view === 'ocean' && voyLive) {
       this.drawFishRange(ctx, this.sortedCache || [], -1, 0.33, L);
       this.particles.draw(ctx, 'fg', this.time);
       if (ocean.reveal > 0) ocean.biome.drawFront(ctx, env);
@@ -703,6 +706,7 @@ export class Game {
     }
     cam.reset(ctx);
     if (view === 'ocean') this.water?.drawLens?.(ctx); // [phase5:water] lens drops after the camera surfaces
+    if (ocean.travelState?.voyage) try { this.voyage?.drawOver(ctx, dt); } catch (e) { if (!this.voyDrawErr) { this.voyDrawErr = true; console.error(e); } } // [travel17] the voyage scene
 
     this.tutorial.drawWorld?.(ctx);
     this.aquarium.drawWindow?.(ctx, dt);
