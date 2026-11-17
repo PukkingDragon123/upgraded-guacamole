@@ -99727,15 +99727,18 @@ void main() {
           const g = this.game;
           ctx3.save();
           rrect(ctx3, x, y, w, h, 8);
-          ctx3.fillStyle = "rgba(225,245,255,0.82)";
+          ctx3.fillStyle = "rgba(225,245,255,0.95)";
           ctx3.fill();
           ctx3.restore();
-          drawGlossOrb(ctx3, x + w / 2, y + h / 2 - 34, 20, "#ffd27a");
+          const cw = 170, chh = 104, cx0 = Math.round(x + w / 2 - cw / 2), cy0 = Math.round(y + h / 2 - chh / 2 + 4);
+          glassCard2(ctx3, cx0, cy0, cw, chh, { r: 10, top: "rgba(255,255,255,0.96)", bottom: "rgba(214,242,255,0.94)" });
+          drawGlossOrb(ctx3, x + w / 2, cy0 - 2, 18, "#ffd27a");
           const lk = getUiIcon("lock");
-          if (lk) ctx3.drawImage(lk, Math.round(x + w / 2 - lk.width / 2), Math.round(y + h / 2 - 34 - lk.height / 2));
-          drawText(ctx3, "Custom Bait", x + w / 2, y + h / 2 - 6, { align: "center", color: INK6, scale: 1 });
-          drawText(ctx3, "RESEARCH IT IN THE LAB", x + w / 2, y + h / 2 + 8, { align: "center", font: "small", color: INK_SOFT3 });
-          if (splashButton(ui, ctx3, x + w / 2 - 50, y + h / 2 + 22, 100, 20, "The Lab", { tone: "green" })) {
+          if (lk) ctx3.drawImage(lk, Math.round(x + w / 2 - lk.width / 2), Math.round(cy0 - 2 - lk.height / 2));
+          const wa = wordArt("Custom Bait", { scale: 1 });
+          ctx3.drawImage(wa, Math.round(x + w / 2 - wa.width / 2), cy0 + 24);
+          drawText(ctx3, "RESEARCH IT IN THE LAB", x + w / 2, cy0 + 30 + wa.height, { align: "center", font: "small", color: INK_SOFT3 });
+          if (splashButton(ui, ctx3, x + w / 2 - 50, cy0 + chh - 28, 100, 20, "The Lab", { tone: "green" })) {
             if (g.ui.panels.lab) {
               g.ui.close(this.id);
               g.ui.open("lab", { focus: "custombait" });

@@ -312,16 +312,20 @@ export class BaitPanel {
 
   drawLocked(ctx, ui, x, y, w, h) {
     const g = this.game;
+    // [polish17] a near-solid veil and one tidy card (the faded builder no longer shows through the text)
     ctx.save();
     rrect(ctx, x, y, w, h, 8);
-    ctx.fillStyle = 'rgba(225,245,255,0.82)'; ctx.fill();
+    ctx.fillStyle = 'rgba(225,245,255,0.95)'; ctx.fill();
     ctx.restore();
-    drawGlossOrb(ctx, x + w / 2, y + h / 2 - 34, 20, '#ffd27a');
+    const cw = 170, chh = 104, cx0 = Math.round(x + w / 2 - cw / 2), cy0 = Math.round(y + h / 2 - chh / 2 + 4);
+    glassCard(ctx, cx0, cy0, cw, chh, { r: 10, top: 'rgba(255,255,255,0.96)', bottom: 'rgba(214,242,255,0.94)' });
+    drawGlossOrb(ctx, x + w / 2, cy0 - 2, 18, '#ffd27a');
     const lk = getUiIcon('lock');
-    if (lk) ctx.drawImage(lk, Math.round(x + w / 2 - lk.width / 2), Math.round(y + h / 2 - 34 - lk.height / 2));
-    drawText(ctx, 'Custom Bait', x + w / 2, y + h / 2 - 6, { align: 'center', color: INK, scale: 1 });
-    drawText(ctx, 'RESEARCH IT IN THE LAB', x + w / 2, y + h / 2 + 8, { align: 'center', font: 'small', color: INK_SOFT });
-    if (splashButton(ui, ctx, x + w / 2 - 50, y + h / 2 + 22, 100, 20, 'The Lab', { tone: 'green' })) {
+    if (lk) ctx.drawImage(lk, Math.round(x + w / 2 - lk.width / 2), Math.round(cy0 - 2 - lk.height / 2));
+    const wa = wordArt('Custom Bait', { scale: 1 });
+    ctx.drawImage(wa, Math.round(x + w / 2 - wa.width / 2), cy0 + 24);
+    drawText(ctx, 'RESEARCH IT IN THE LAB', x + w / 2, cy0 + 30 + wa.height, { align: 'center', font: 'small', color: INK_SOFT });
+    if (splashButton(ui, ctx, x + w / 2 - 50, cy0 + chh - 28, 100, 20, 'The Lab', { tone: 'green' })) {
       if (g.ui.panels.lab) { g.ui.close(this.id); g.ui.open('lab', { focus: 'custombait' }); } else g.toast?.('The Lab is being built. Check back soon!', 'info');
     }
   }
