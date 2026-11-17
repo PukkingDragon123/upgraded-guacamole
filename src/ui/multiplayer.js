@@ -6,14 +6,15 @@
 import { drawText, wrapText, measureText, lineHeight } from '../gfx/font.js';
 import { getUiIcon } from '../gfx/uiicons.js';
 import { RARITY } from '../core/color.js';
-import { drawAeroPanel, drawGlossOrb, drawSparkle } from './aero.js';
+import { drawAeroFrame, drawGlossOrb, drawSparkle } from './aero.js';
+import { getBigIcon } from '../gfx/bigicons.js';
 import { centerRect } from './ui.js';
 import { pill, glassCard, button, orbButton, wordArt, toggle, tag, rrect, INK, INK_SOFT, GRASS } from '../store/aerokit.js';
 import { installNet, EMOTES, NAME_MAX, randomName } from '../net/index.js';
 import { OCEAN_NAMES } from '../game/lab.js';
 import { SPECIES_BY_ID } from '../fish/species.js';
 import * as Character from '../gfx/character.js';
-import { ecoBand, ecoCorners, ecoGlobe, ecoSky, splashButton } from '../store/ecoart.js';
+import { ecoGlobe, ecoSky, splashButton } from '../store/ecoart.js';
 
 const PRIVACY = 'Only your chosen name, look, boat, ocean and catches are shared, and only while you are online. No accounts, no chat, no files.';
 
@@ -43,25 +44,23 @@ export class MultiplayerPanel {
     const W = 456, H = 296;
     const r = centerRect(g, W, H);
     this.rect = r;
-    drawAeroPanel(ctx, r.x, r.y, W, H, { tone: 'glass', radius: 12 });
-    // eco header: sky band, green glass globe emblem, glossy title
-    ecoBand(ctx, r.x + 3, r.y + 3, W - 6, 28, this.t, { sun: [0.55, 0.15] });
-    ecoCorners(ctx, r.x, r.y, W, H, this.t, 0.72);
-    ecoGlobe(ctx, r.x + 19, r.y + 17, 10, this.t);
-    ctx.drawImage(wordArt('Multiplayer', { scale: 2, top: '#ffffff', bottom: '#8ee04a', edge: '#1d5a12' }), r.x + 34, r.y + 6);
+    // [polish17] the shared voxel window frame (title plaque, voxel ring, close orb) like every other panel
+    const F = drawAeroFrame(ctx, r.x, r.y, W, H, { title: 'Multiplayer', icon: getBigIcon('multiplayer', { size: 'small' }).canvas, seed: 23 });
     const n = net.list ? net.list().length : 0;
     const label = net.status === 'online' ? `ONLINE  ${n + 1} HERE` : net.status === 'connecting' ? 'CONNECTING' : 'OFFLINE';
     const sw = measureText(label, 'small') + 22;
     const sc = net.status === 'online' ? GRASS : net.status === 'connecting' ? '#ffb02e' : '#9aaab8';
-    pill(ctx, r.x + W - 40 - sw, r.y + 10, sw, 14, { color: sc });
-    drawGlossOrb(ctx, r.x + W - 40 - sw + 8, r.y + 17, 3, net.status === 'online' ? '#d8ffb0' : '#ffffff');
-    drawText(ctx, label, r.x + W - 40 - sw + 14, r.y + 14, { font: 'small', color: '#ffffff' });
-    if (orbButton(ui, ctx, r.x + W - 18, r.y + 17, 8, '#ff6a5a', { glyph: 'x', sound: 'ui_close' })) { ui.close(this.id); return; }
+    const sx = F.close.x - 6 - sw;
+    pill(ctx, sx, r.y + 8, sw, 14, { color: sc });
+    drawGlossOrb(ctx, sx + 8, r.y + 15, 3, net.status === 'online' ? '#d8ffb0' : '#ffffff');
+    drawText(ctx, label, sx + 14, r.y + 12, { font: 'small', color: '#ffffff' });
+    if (ui.button(ctx, F.close.x, F.close.y, F.close.w, F.close.h, '', { icon: 'cross', tip: 'Close (Esc)', sound: 'ui_close' })) { ui.close(this.id); return; }
     this.drawLeft(ctx, ui, r.x + 10, r.y + 34, 156, H - 44);
     this.drawPlayers(ctx, ui, r.x + 174, r.y + 34, W - 184, 112);
     this.drawEmotes(ctx, ui, r.x + 174, r.y + 152, W - 184, 30);
     this.drawFeed(ctx, ui, r.x + 174, r.y + 188, W - 184, H - 198);
     if (!net.unlocked?.()) this.drawLocked(ctx, ui, r.x + 8, r.y + 32, W - 16, H - 40);
+    F.finish(ctx);
     if (this.edit) this.placeEdit();
   }
 
@@ -142,7 +141,7 @@ export class MultiplayerPanel {
     glassCard(ctx, x, y, w, h, { r: 8, top: 'rgba(240,252,255,0.8)', bottom: 'rgba(200,236,250,0.75)' });
     const list = net.online ? net.list() : [];
     drawText(ctx, 'PLAYERS', x + 8, y + 6, { font: 'small', color: INK_SOFT });
-    drawText(ctx, String(list.length), x + 44, y + 6, { font: 'small', color: INK });
+    drawText(ctx, String(list.length), x + 13 + measureText('PLAYERS', 'small'), y + 6, { font: 'small', color: INK });
     const rowH = 19, top = y + 15, rows = Math.floor((h - 18) / rowH);
     const maxS = Math.max(0, list.length - rows);
     if (ui.hover({ x, y, w, h }) && g.input.wheel) this.scroll = Math.max(0, Math.min(maxS, this.scroll + Math.sign(g.input.wheel)));
@@ -226,16 +225,22 @@ export class MultiplayerPanel {
 
   drawLocked(ctx, ui, x, y, w, h) {
     const g = this.game;
+    // [polish17] a solid frosted veil over the locked content and one tidy card (the message wraps inside it)
     rrect(ctx, x, y, w, h, 10);
-    ctx.fillStyle = 'rgba(225,245,255,0.86)'; ctx.fill();
+    ctx.fillStyle = 'rgba(225,245,255,0.94)'; ctx.fill();
     const cx = x + w / 2, cy = y + h / 2;
-    ecoGlobe(ctx, cx, cy - 40, 22, this.t);
-    drawGlossOrb(ctx, cx + 16, cy - 26, 8, '#ffd27a', this.t);
+    const msg = wrapText('Fish together with friends. Research it in The Lab!', 210, 'small');
+    const LH = lineHeight('small') + 2;
+    const cw = 250, chh = 96 + msg.length * LH, cyy = Math.round(cy - chh / 2 + 6);
+    glassCard(ctx, Math.round(cx - cw / 2), cyy, cw, chh, { r: 10, top: 'rgba(255,255,255,0.96)', bottom: 'rgba(214,242,255,0.94)' });
+    ecoGlobe(ctx, cx, cyy - 2, 22, this.t);
+    drawGlossOrb(ctx, cx + 16, cyy + 12, 8, '#ffd27a', this.t);
     const lk = getUiIcon('lock');
-    if (lk) ctx.drawImage(lk, Math.round(cx + 16 - lk.width / 2), Math.round(cy - 26 - lk.height / 2));
-    ctx.drawImage(wordArt('Friendly Seas', { scale: 2 }), Math.round(cx - wordArt('Friendly Seas', { scale: 2 }).width / 2), Math.round(cy - 10));
-    drawText(ctx, 'FISH TOGETHER WITH FRIENDS. RESEARCH IT IN THE LAB!', cx, cy + 14, { align: 'center', font: 'small', color: INK_SOFT });
-    if (splashButton(ui, ctx, cx - 50, cy + 26, 100, 20, 'The Lab', { tone: 'green' })) {
+    if (lk) ctx.drawImage(lk, Math.round(cx + 16 - lk.width / 2), Math.round(cyy + 12 - lk.height / 2));
+    const wa = wordArt('Friendly Seas', { scale: 2 });
+    ctx.drawImage(wa, Math.round(cx - wa.width / 2), cyy + 28);
+    msg.forEach((l, i) => drawText(ctx, l.toUpperCase(), cx, cyy + 34 + wa.height + i * LH, { align: 'center', font: 'small', color: INK_SOFT }));
+    if (splashButton(ui, ctx, cx - 50, cyy + chh - 28, 100, 20, 'The Lab', { tone: 'green' })) {
       if (g.ui.panels.lab) { g.ui.close(this.id); g.ui.open('lab', { focus: 'sea_multi' }); } else g.toast?.('The Lab is being built. Check back soon!', 'info');
     }
   }

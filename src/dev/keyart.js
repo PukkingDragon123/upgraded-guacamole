@@ -2,7 +2,9 @@
 // water shader, the voxel boat + bubble-person fisherman, voxel fish, voxel kelp / coral and the 3D voxel title.
 //   node tools/build.mjs --dev keyart && PW_PATH=/opt/node-tools/node_modules/playwright node tools/keyart.mjs
 //     -> release/itch/fishtop-{cover-630x500, cover-1260x1000, banner-1920x480, keyart-1920x1080}.png
-//   dist/dev/keyart.html?preset=cover|banner|key   (&title=0 hides the title, &grid=1 shows a composition grid,
+//     -> the "swim" set (Sunny Shallows reef full of fish): fishtop-{cover-swim-630x500, cover-swim-1260x1000,
+//        banner-swim-1920x480}.png + fishtop-{cover,banner}-swim.gif (seamless loops, window.__ka.frame(u))
+//   dist/dev/keyart.html?preset=cover|banner|key|swimcover|swimbanner   (&title=0 hides the title, &grid=1 shows a composition grid,
 //     &tv={...} overrides logo options, &hide=boat,line); dev aids: ?preset=titletest&v=[...], ?preset=fishtest&ids=..
 // No light-ray fans, spotlight beams or ring effects: the biome's sun rays, underwater shafts, lens flare, sky arcs
 // and the water shader's god rays are switched off on the biome instance (game code untouched).
@@ -15,7 +17,6 @@ import { biomesReady } from '../world/biomes/index.js';
 import { Boat } from '../world/boat.js';
 import { WaterFX } from '../gfx/watergl.js';
 import { compiled } from '../gfx/spritecache.js';
-import { drawFishRig } from '../gfx/fishrig.js';
 import { setLowpolySync } from '../fish/lowpolyfish.js';
 import { SPECIES_BY_ID } from '../fish/species.js';
 import { loadAlagard } from '../gfx/alagard.js';
@@ -25,6 +26,8 @@ import { voxAnim, reefSprite } from '../world/coral.js';
 import { pixelBubble, pxFrames } from '../gfx/pxsprites.js';
 import { baitHook, HOOK } from '../fishing/baitart.js';
 import { hash2 } from '../core/math.js';
+import { VoxelGiant } from '../world/giants.js';
+import { drawFishRig, voxelWash } from '../gfx/fishrig.js';
 
 // World layout reference (960 x 540 world, zoom 1): surface ~y 65, sky up to ~-400, meadow seabed ~430..540.
 // Scene coordinates: x = world x, d = depth below the still surface (world units; negative = above it).
@@ -86,6 +89,65 @@ const PRESETS = {
     jump: [{ id: 'mayorgrouper', x: 470, h: 40, sx: 446, s: 0.42, f: 1, ang: -0.55 }],
     title: { y: 0.2, px: 2, scale: 4, ink: 3, rim: 3, shadow: 6, bounce: 4 },
   },
+  // ---- "swim" set: an underwater reef view (Sunny Shallows, squeezed so the surface and the sand both fit) full of
+  // fish streaming past, layered by depth (far = smaller and washed into the water colour); the stills are the loop's
+  // u = 0 frame. Fish: {id, x, d, s, f, ph, far, ay (bob px), ax (surge px), front (over the logo)}; lanes stream
+  // across (seamless); giants are the low-poly sea turtle / dolphin; bubbles [x, d, n, gap].
+  swimbanner: {
+    w: 960, h: 240, z: 1, cx: 480, surf: 0.04, biome: 'shallows', wh: 450, bareHorizon: true, fog: '#86dcf0',
+    depthSort: true, bob: 1.5, surge: 2.5, tilt: 0.04, bgFar: 0.35,
+    boat: { x: 104, tier: 1, pose: 'idle' }, hook: { x: 236, d: 86 },
+    giants: [{ kind: 'turtle', x: 300, d: 30, s: 0.8, f: 1, far: 0.45, ph: 0.2 }],
+    lanes: [
+      { id: 'pixel', x: 300, d: 15, n: 6, w: 120, h: 16, s: 0.55, f: 1, gap: 480, far: 0.06, seed: 3 },
+      { id: 'hydrated', x: 640, d: 150, n: 6, w: 90, h: 16, s: 0.7, f: -1, gap: 480, far: 0.08, seed: 7 },
+    ],
+    fish: [
+      { id: 'bsod', x: 850, d: 36, s: 0.8, f: -1, far: 0.5, ph: 0.4 },
+      { id: 'koi', x: 118, d: 100, s: 1.3, f: 1, emo: 'happy', ph: 0.1 },
+      { id: 'honk', x: 60, d: 194, s: 1.05, f: 1, ph: 0.45 },
+      { id: 'betta', x: 214, d: 172, s: 1.0, f: 1, ph: 0.7 },
+      { id: 'guppy', x: 34, d: 34, s: 0.7, f: 1, ph: 0.55, far: 0.12 },
+      { id: 'conefish', x: 330, d: 198, s: 0.9, f: 1, ph: 0.3 },
+      { id: 'chefsnapper', x: 462, d: 174, s: 0.85, f: 1, ph: 0.35 },
+      { id: 'goldbar', x: 590, d: 200, s: 0.85, f: -1, ph: 0.6 },
+      { id: 'jalapeno', x: 664, d: 160, s: 0.75, f: -1, ph: 0.9, far: 0.12 },
+      { id: 'angel', x: 732, d: 46, s: 0.95, f: -1, ph: 0.15 },
+      { id: 'parrot', x: 842, d: 114, s: 1.3, f: -1, ph: 0.85 },
+      { id: 'lionfish', x: 750, d: 188, s: 1.0, f: -1, ph: 0.25 },
+      { id: 'puffer', x: 912, d: 198, s: 0.95, f: -1, ph: 0.5 },
+    ],
+    kelp: [{ x: 8, seed: 3, size: 9, fg: true }, { x: 954, seed: 5, size: 9, fg: true }],
+    bubbles: [[290, 230, 10, 22], [530, 230, 10, 22], [880, 230, 8, 24]],
+    title: { y: 0.4, px: 2, scale: 3, ink: 2, rim: 3, shadow: 4, bounce: 3 },
+  },
+  // itch cover 630 x 500 (+ 2x): the swim scene framed tall, title big for the thumbnail grid
+  swimcover: {
+    w: 630, h: 500, z: 1, cx: 480, surf: 0.05, biome: 'shallows', wh: 620, bareHorizon: true, fog: '#86dcf0',
+    depthSort: true, bob: 2.5, surge: 3, tilt: 0.04, bgFar: 0.35,
+    boat: { x: 236, tier: 1, pose: 'idle' }, hook: { x: 438, d: 182 },
+    giants: [{ kind: 'turtle', x: 486, d: 236, s: 1.2, f: 1, far: 0.28, ph: 0.2 }],
+    lanes: [
+      { id: 'pixel', x: 400, d: 16, n: 6, w: 120, h: 16, s: 0.6, f: 1, gap: 300, far: 0.06, seed: 3 },
+      { id: 'hydrated', x: 360, d: 132, n: 5, w: 100, h: 14, s: 0.7, f: 1, gap: 300, far: 0.1, seed: 11 },
+      { id: 'neonpunk', x: 400, d: 258, n: 6, w: 110, h: 18, s: 0.7, f: -1, gap: 300, far: 0.12, seed: 7 },
+    ],
+    fish: [
+      { id: 'chefsnapper', x: 716, d: 136, s: 0.8, f: -1, far: 0.3, ph: 0.4 },
+      { id: 'koi', x: 330, d: 190, s: 1.7, f: 1, emo: 'happy', ph: 0.1 },
+      { id: 'parrot', x: 650, d: 212, s: 1.6, f: -1, ph: 0.85 },
+      { id: 'honk', x: 272, d: 306, s: 1.35, f: 1, ph: 0.45 },
+      { id: 'betta', x: 500, d: 296, s: 1.3, f: 1, ph: 0.7 },
+      { id: 'puffer', x: 728, d: 326, s: 1.2, f: -1, ph: 0.5 },
+      { id: 'lionfish', x: 600, d: 398, s: 1.2, f: -1, ph: 0.25 },
+      { id: 'angel', x: 392, d: 398, s: 1.2, f: 1, ph: 0.15 },
+      { id: 'goldbar', x: 212, d: 420, s: 1.0, f: 1, ph: 0.6 },
+      { id: 'conefish', x: 770, d: 428, s: 1.0, f: -1, ph: 0.3 },
+    ],
+    kelp: [{ x: 170, seed: 3, size: 11, fg: true }, { x: 792, seed: 5, size: 11, fg: true }],
+    bubbles: [[322, 468, 9, 30], [552, 462, 8, 32], [694, 470, 7, 34]],
+    title: { y: 0.2, px: 2, scale: 3, ink: 2, rim: 3, shadow: 5, bounce: 3 },
+  },
 };
 
 export function run(params) {
@@ -97,10 +159,13 @@ export function run(params) {
 
 function start(params) {
   const P = JSON.parse(JSON.stringify(PRESETS[params.get('preset') || 'key']));
-  for (const k of ['w', 'h', 'z', 'cx', 'surf']) if (params.has(k)) P[k] = Number(params.get(k));
+  for (const k of ['w', 'h', 'z', 'cx', 'surf', 'ww', 'wh']) if (params.has(k)) P[k] = Number(params.get(k));
+  if (params.has('biome')) P.biome = params.get('biome');
   if (params.has('tier')) P.boat.tier = Number(params.get('tier'));
   const W = P.w, H = P.h, z = P.z;
-  const WW = 960, WH = 540; // the world is always built at the reference size
+  // the world is built at the reference size unless a preset squeezes it (ww / wh: e.g. a shorter shallows reef so
+  // the surface and the sand both fit a banner)
+  const WW = P.ww || 960, WH = P.wh || 540;
   const cv = document.getElementById('screen');
   cv.width = W; cv.height = H;
   const css = Number(params.get('css') || 2);
@@ -113,8 +178,8 @@ function start(params) {
     screen: { W: WW, H: WH }, camera: cam, lowPower: false, mini: false, stats: {},
     world: { cursor: { x: -999, y: -999, vx: 0, vy: 0, speed: 0, inWorld: false } },
     audio: new Proxy({}, { get: (_, k) => (k === 'loop' ? () => ({ set: noop, stop: noop }) : noop) }),
-    state: { view: 'ocean', secrets: {}, boat: { tier: P.boat.tier }, settings: { dayCycle: 'day' }, character: undefined },
-    fishing: { hook: { visible: true, x: P.hook.x, y: 0 }, busy: false },
+    state: { view: 'ocean', secrets: {}, boat: { tier: P.boat?.tier ?? 1 }, settings: { dayCycle: 'day' }, character: undefined },
+    fishing: { hook: { visible: !!P.hook, x: P.hook?.x ?? 0, y: 0 }, busy: false },
     school: { fishes: [] },
     particles: new Proxy({}, { get: () => noop }),
     toast: noop, addCoins: noop, save: noop, musicFor: () => null,
@@ -124,7 +189,7 @@ function start(params) {
   const ocean = new Ocean(game);
   game.ocean = ocean;
   ocean.onResize();
-  ocean.setBiome('oscean');
+  ocean.setBiome(P.biome || 'oscean');
   ocean.weather = 'sunny';
   ocean.weatherT = 1e9;
   const b = ocean.biome;
@@ -138,6 +203,12 @@ function start(params) {
   if (!P.globe) b.drawGlobe = () => {}; // the floating glass globe would sit behind the logo
   const wl = b.waterLook.bind(b);
   b.waterLook = (env) => ({ ...wl(env), rays: 0 });
+  if ('giant' in b) { b.giant = null; b.giantT = 1e9; } // shallows' wandering whale / turtle: the preset places its own
+  if (P.bareHorizon) { // only the boat on the strip of sky (no islands, lighthouse, sailboat or buoy)
+    if (b.horizon) b.horizon = [];
+    if (b.sail) Object.assign(b.sail, { x: -1e4, v: 0 });
+    b.buoy = null;
+  }
 
   // camera: the still surface at P.surf of the height, world P.cx at the centre
   const S0 = ocean.waterLevel();
@@ -155,9 +226,11 @@ function start(params) {
 
   game.water = new WaterFX(game, { force: true });
   game.boat = new Boat(game);
-  game.boat.pose = P.boat.pose;
+  if (P.boat) game.boat.pose = P.boat.pose;
   const layer = makeLayer(W, H);
   const hide = new Set((params.get('hide') || '').split(','));
+  if (!P.boat) hide.add('boat');
+  if (!P.hook) hide.add('line');
 
   const env = ocean.env;
   env.scroll = env.ref = -Math.round(WH * 0.62);
@@ -169,9 +242,18 @@ function start(params) {
   for (const sc of P.school || []) for (let i = 0; i < sc.n; i++) {
     (P.fish ||= []).push({ id: sc.id, x: sc.x + (hash2(i, 11) - 0.5) * sc.w, d: sc.d + (hash2(i, 23) - 0.5) * sc.h, s: sc.s * (0.9 + hash2(i, 5) * 0.2), f: sc.f, ph: hash2(i, 7), far: sc.far });
   }
-  const fishes = (P.fish || []).filter((f) => SPECIES_BY_ID[f.id]).map((f) => ({ ...f, sp: SPECIES_BY_ID[f.id], c: compiled(SPECIES_BY_ID[f.id].look, null, f.id) }));
+  const look = (id) => compiled(SPECIES_BY_ID[id].look, null, id);
+  const fishes = (P.fish || []).filter((f) => SPECIES_BY_ID[f.id]).map((f, i) => ({ ...f, i, sp: SPECIES_BY_ID[f.id], c: look(f.id) }));
+  // lanes: a school (a cluster of n fish in a w x h box) repeated every `gap` px, streaming across; one loop moves
+  // the lane exactly one gap, so the animated loop is seamless
+  const lanes = (P.lanes || []).filter((l) => SPECIES_BY_ID[l.id]).map((l) => ({
+    ...l, sp: SPECIES_BY_ID[l.id], c: look(l.id),
+    cl: Array.from({ length: l.n }, (_, j) => ({ dx: (hash2(j, l.seed) - 0.5) * l.w, dy: (hash2(j, l.seed + 5) - 0.5) * l.h, s: l.s * (0.88 + hash2(j, l.seed + 9) * 0.24), ph: hash2(j, l.seed + 13) })),
+  }));
+  // big swimmers that are not catchable species: the low-poly sea turtle / dolphin / whale of the giants module
+  const giants = (P.giants || []).map((gi) => ({ ...gi, G: new VoxelGiant(gi.kind) }));
   // a fish leaping out of the water: splash crown under it, droplets streaming off the tail
-  const jumps = (P.jump || []).filter((j) => SPECIES_BY_ID[j.id]).map((j) => ({ ...j, sp: SPECIES_BY_ID[j.id], c: compiled(SPECIES_BY_ID[j.id].look, null, j.id) }));
+  const jumps = (P.jump || []).filter((j) => SPECIES_BY_ID[j.id]).map((j) => ({ ...j, sp: SPECIES_BY_ID[j.id], c: look(j.id) }));
   const drops = pxFrames('drop', 'aqua', 1);
   const drawJump = (g, j) => {
     const fy = S0 - j.h;
@@ -189,15 +271,38 @@ function start(params) {
   const dt = 1 / 30;
   let frame = 0, T = 0;
   const warm = Number(params.get('warm') ?? 90);
-  window.__ka = { ready: false, preset: P, capture: (k = 1) => capture(cv, k) };
+  // loop time u (0..1): the stills are u = P.u (0); the animated loop steps u through one period with the scene
+  // frozen except for the fish, lanes, giants, bubbles, kelp sway and the seabed caustics (all periodic in u)
+  let U = P.u ?? 0, looping = false;
+  const TAU2 = Math.PI * 2;
+  const cyc = P.cycles ?? 3; // tail beats per loop
+  window.__ka = {
+    ready: false, preset: P, capture: (k = 1) => capture(cv, k),
+    frame: (u, k = 1) => {
+      if (!looping) {
+        looping = true;
+        if (b.bubbles) b.bubbles.draw = noop; // the biome's free bubbles would hang frozen
+        if (b.caustics) {
+          const cd = b.caustics.draw.bind(b.caustics), n = b.caustics.frames?.length || 16;
+          b.caustics.draw = (g, m, mx, my, t, a, o = {}) => cd(g, m, mx, my, (U * n) / (o.fps ?? 9), a, { ...o, drift: 0 });
+        }
+      }
+      U = u;
+      draw();
+      return capture(cv, k);
+    },
+  };
 
   function step() {
     T += dt;
     env.view = view; env.top = ocean.top;
     ocean.update(dt);
-    game.boat.x = P.boat.x; game.boat.vx = 0;
-    game.boat.update(dt, null);
-    game.boat.x = P.boat.x;
+    if (P.boat) {
+      game.boat.x = P.boat.x; game.boat.vx = 0;
+      game.boat.update(dt, null);
+      game.boat.x = P.boat.x;
+    }
+    for (const gi of giants) gi.G.warm();
     game.water.update(dt, { surfaceY: ocean.waterLevel(), top: ocean.top, W: WW, H: WH, waveAt: (x) => ocean.waveAt(x) });
   }
 
@@ -206,17 +311,45 @@ function start(params) {
     const f = A.frames[i];
     g.drawImage(f, Math.round((x - A.ox / HD) * HD) / HD, Math.round((y - A.oy / HD) * HD) / HD, f.width / HD, f.height / HD);
   };
-  const drawKelp = (g, k) => drawAnim(g, k.A, k.x, view.y1 + 4, T + k.seed);
+  const kelpT = (k) => (looping ? U * 3 : T) + k.seed;
+  const drawKelp = (g, k) => drawAnim(g, k.A, k.x, view.y1 + 4 + (k.dy || 0), kelpT(k));
   const drawReef = (g, r) => {
     const s = r.spr;
-    g.drawImage(s.canvas, Math.round(r.x - s.ox / HD), Math.round(view.y1 + 6 - s.oy / HD), s.canvas.width / HD, s.canvas.height / HD);
+    g.drawImage(s.canvas, Math.round(r.x - s.ox / HD), Math.round(view.y1 + 6 + (r.dy || 0) - s.oy / HD), s.canvas.width / HD, s.canvas.height / HD);
   };
+  const wave = (a, ph, n = 1) => a * Math.sin(TAU2 * (U * n + ph));
+  const fishWash = (far) => (far ? { color: P.fog || b.fogColor || '#2a8ab0', alpha: far } : null);
   const drawFish = (g, f, wash) => {
+    const by = wave(f.ay ?? P.bob ?? 0, f.ph ?? 0), bx = wave(f.ax ?? P.surge ?? 0, (f.ph ?? 0) + 0.25);
     drawFishRig(g, f.c, {
-      x: f.x, y: yOf(f.d), facing: f.f ?? 1, scale: f.s * (f.sp.scale || 1), time: T, swimPhase: f.ph ?? 0, tailPhase: f.ph ?? 0, finPhase: f.ph ?? 0,
-      speed01: 0.3, emotion: f.emo || 'neutral', angle: f.ang || 0, wash, noCull: true, pri: 3,
+      x: f.x + bx, y: yOf(f.d) + by, facing: f.f ?? 1, scale: f.s * (f.sp.scale || 1), time: T,
+      swimPhase: (f.ph ?? 0) + U * cyc, tailPhase: (f.ph ?? 0) + U * cyc, finPhase: (f.ph ?? 0) + U * cyc,
+      speed01: 0.3, emotion: f.emo || 'neutral', angle: (f.ang || 0) + wave(f.tilt ?? P.tilt ?? 0, (f.ph ?? 0) + 0.25) * (f.f ?? 1), wash, noCull: true, pri: 3,
     });
   };
+  const drawLane = (g, l) => {
+    const dir = l.f ?? 1, x0 = l.x + dir * U * l.gap;
+    const k0 = Math.floor((view.x0 - 120 - x0) / l.gap), k1 = Math.ceil((view.x1 + 120 - x0) / l.gap);
+    for (let k = k0; k <= k1; k++) for (const m of l.cl) {
+      drawFishRig(g, l.c, {
+        x: x0 + k * l.gap + m.dx, y: yOf(l.d + m.dy) + Math.sin(TAU2 * (U + m.ph)) * 1.2, facing: dir, scale: m.s * (l.sp.scale || 1), time: T,
+        swimPhase: m.ph + U * (l.cycles ?? 4), tailPhase: m.ph + U * (l.cycles ?? 4), finPhase: m.ph + U * (l.cycles ?? 4),
+        speed01: 0.6, emotion: 'neutral', wash: fishWash(l.far), noCull: true, pri: l.far ? 1 : 3,
+      });
+    }
+  };
+  const drawGiant = (g, gi) => {
+    const f = gi.G.frame(TAU2 * ((gi.ph ?? 0) + U * (gi.cycles ?? 2)), gi.f ?? 1);
+    const s = gi.s ?? 1, x = gi.x + wave(gi.ax ?? 0, (gi.ph ?? 0) + 0.25), y = yOf(gi.d) + wave(gi.ay ?? 2, gi.ph ?? 0);
+    const src = gi.far ? voxelWash(f.canvas, P.fog || b.fogColor || '#2a8ab0', gi.far) : f.canvas;
+    g.drawImage(src, Math.round(x - f.ox * s), Math.round(y - f.oy * s), Math.round(f.w * s), Math.round(f.h * s));
+  };
+  // depth order: farthest first, then smaller before bigger
+  const ord = (a, c) => (c.far || 0) - (a.far || 0) || (P.depthSort ? (a.z ?? a.s) - (c.z ?? c.s) : 0);
+  const bodies = [...fishes.map((f) => ({ ...f, k: 'fish' })), ...lanes.map((l) => ({ ...l, k: 'lane' })), ...giants.map((gi) => ({ ...gi, k: 'giant' }))].sort(ord);
+  // washed (far) swimmers go under the water shader, unless the preset keeps faint washes above it (P.bgFar)
+  const isBg = (o) => !o.front && (o.far || 0) > (P.bgFar ?? 0);
+  const drawBody = (g, o) => (o.k === 'fish' ? drawFish(g, o, fishWash(o.far)) : o.k === 'lane' ? drawLane(g, o) : drawGiant(g, o));
 
   function draw() {
     const g = layer.ctx;
@@ -227,8 +360,8 @@ function start(params) {
     const L = ocean.lighting();
     b.drawSeabed(g, env);
     b.drawNear?.(g, env);
-    // background scenery and far fish get the water shader (caustics, refraction, depth tint)
-    for (const f of fishes) if (f.far) drawFish(g, f, { color: b.fogColor || '#2a8ab0', alpha: f.far });
+    // background scenery and far swimmers get the water shader (caustics, refraction, depth tint)
+    for (const o of bodies) if (isBg(o)) drawBody(g, o);
     for (const r of reefs) drawReef(g, r);
     for (const k of kelps) if (!k.fg) drawKelp(g, k);
     cam.reset(g);
@@ -241,25 +374,29 @@ function start(params) {
     cam.reset(ctx);
     ocean.applyLighting(ctx, L);
     cam.apply(ctx);
-    if (!hide.has('line')) drawLine(ctx, game.boat.rodTip(), [P.hook.x, yOf(P.hook.d)], S0, T);
-    for (const f of fishes) if (!f.far) drawFish(ctx, f, null);
+    if (!hide.has('line')) drawLine(ctx, P.hook.from || game.boat.rodTip(), [P.hook.x, yOf(P.hook.d)], S0, T);
+    for (const o of bodies) if (!isBg(o) && !o.front) drawBody(ctx, o);
     for (const k of kelps) if (k.fg) drawKelp(ctx, k);
     b.drawFront(ctx, env);
-    for (const [x, d, n] of P.bubbles || []) bubbleStream(ctx, x, yOf(d), n, S0, x * 7 + d);
+    for (const [x, d, n, gap] of P.bubbles || []) bubbleStream(ctx, x, yOf(d), n, S0, x * 7 + d, gap ? U : null, gap);
     for (const j of jumps) drawJump(ctx, j);
     cam.reset(ctx);
     if (logo) {
       const tx = Math.round(W * (P.title.x ?? 0.5) - logo.width / 2), ty = Math.round(H * P.title.y - logo.height / 2);
       ctx.drawImage(logo, tx, ty);
-      sparkles(ctx, tx, ty, logo.width, logo.height, P.title.scale);
+      sparkles(ctx, tx, ty, logo.width, logo.height, P.title.scale, U);
     }
+    // swimmers in front of the logo
+    cam.apply(ctx);
+    for (const o of bodies) if (o.front) drawBody(ctx, o);
+    cam.reset(ctx);
     if (params.get('grid') === '1') { ctx.fillStyle = 'rgba(255,0,0,0.5)'; for (const f of [1 / 3, 2 / 3]) { ctx.fillRect(Math.round(W * f), 0, 1, H); ctx.fillRect(0, Math.round(H * f), W, 1); } }
   }
 
   function loop() {
     step();
     frame++;
-    if (frame < warm) { if (frame % 10 === 0) draw(); requestAnimationFrame(loop); return; }
+    if (frame < warm || giants.some((gi) => gi.G.frames.includes(null))) { if (frame % 10 === 0) draw(); requestAnimationFrame(loop); return; }
     draw();
     window.__ka.ready = true;
   }
@@ -325,25 +462,39 @@ function pixelSplash(g, x, surf, k, seed) {
   }
 }
 
-// A short column of glossy pixel bubbles rising toward the surface.
-function bubbleStream(ctx, x, y, n, surf, seed) {
-  for (let i = 0; i < n; i++) {
-    const h = hash2(seed, i);
-    const by = y - i * (6 + h * 7) - 2;
+// A short column of glossy pixel bubbles rising toward the surface. With a loop time u (and a gap), the column
+// rises one gap per loop; the bubbles' size and wobble follow their height so the loop is seamless.
+function bubbleStream(ctx, x, y, n, surf, seed, u = null, gap = 0) {
+  if (u == null) {
+    for (let i = 0; i < n; i++) {
+      const h = hash2(seed, i);
+      const by = y - i * (6 + h * 7) - 2;
+      if (by < surf + 4) break;
+      const r = 1 + Math.floor(hash2(i, seed + 3) * 3) + (i % 4 === 0 ? 1 : 0);
+      const bx = x + Math.sin(i * 1.3 + seed) * 3;
+      const spr = pixelBubble(r);
+      ctx.drawImage(spr, Math.round(bx - spr.width / 2), Math.round(by - spr.height / 2));
+    }
+    return;
+  }
+  for (let i = -1; i < n; i++) {
+    const rise = (i + u) * gap; // height above the source
+    if (rise < 0) continue;
+    const by = y - rise;
     if (by < surf + 4) break;
-    const r = 1 + Math.floor(hash2(i, seed + 3) * 3) + (i % 4 === 0 ? 1 : 0);
-    const bx = x + Math.sin(i * 1.3 + seed) * 3;
+    const r = Math.min(4, 1 + Math.floor(rise / (gap * 1.6)));
+    const bx = x + Math.sin(rise * 0.09 + seed) * 2.5;
     const spr = pixelBubble(r);
     ctx.drawImage(spr, Math.round(bx - spr.width / 2), Math.round(by - spr.height / 2));
   }
 }
 
 // Twinkling 4-point pixel stars on the title's upper edges.
-function sparkles(ctx, x, y, w, h, s) {
+function sparkles(ctx, x, y, w, h, s, t = 0) {
   const frames = pxFrames('sparkle', 'white', Math.max(1, Math.round(s / 2)));
   const spots = [[0.06, 0.18], [0.36, 0.08], [0.63, 0.14], [0.93, 0.3], [0.2, 0.86]];
   spots.forEach(([u, v], i) => {
-    const f = frames[(i * 2) % frames.length];
+    const f = frames[(i * 2 + Math.floor(t * frames.length)) % frames.length];
     ctx.drawImage(f, Math.round(x + u * w - f.width / 2), Math.round(y + v * h - f.height / 2));
   });
 }

@@ -22,14 +22,14 @@
 //   drawAeroLabel(ctx, text, x, y, {align, tone, font}) -> rect   small glass pill with text (hover labels)
 //   drawAeroGlow(ctx, cx, cy, r, color, alpha)  soft round light (cached radial)
 //   aeroText(ctx, text, x, y, o)            drawText with a soft Aero glow halo (o.glow color, default white)
-//   drawAeroFrame(ctx, x, y, w, h, {title, icon (canvas), leaves=true, seed}) -> {content, close, header, finish(ctx)}
+//   drawAeroFrame(ctx, x, y, w, h, {title, icon (canvas), leaves=true, seed}) -> {content, close, header, plaque, finish(ctx)}
 //                                           (call finish(ctx) after the content: lower leaves + splash go on top)
 //                                           the shared panel window: glass body, big icon + title, red close orb
 //   drawAeroCard(ctx, x, y, w, h, {tone='frost', inset})   frosted inner card
 // Eco accents (reference look: 2000s eco wallpapers):
 //   drawAeroLeaf(ctx, x, y, len, wid, angleDeg, {flip, tone})   one glossy pixel leaf, base at (x, y)
 //   drawLeafSprig(ctx, x, y, corner 'tl'|'tr'|'bl'|'br', scale=1)  a twig of 4-5 glossy leaves spilling from a corner
-//   drawSunFlare(ctx, cx, cy, r, alpha=1)       sun bloom with rays, a star glint and lens rings
+//   drawSunFlare(ctx, cx, cy, r, alpha=1)       soft pixel sun bloom with a star glint (no rays)
 //   drawArcLines(ctx, cx, cy, r0, n, {gap, a0, a1, alpha, w, h})   thin white arcs (clipped to w x h from 0,0 of ctx)
 //   drawSplash(ctx, x, y, w, {flip})            a curling water splash with droplets (base line at y)
 //   ecoBackdrop(w, h, o) -> cached canvas      sky gradient + sun + white arcs + curved grass horizon + bubbles
@@ -1002,8 +1002,10 @@ export function drawAeroFrame(ctx, x, y, w, h, o = {}) {
   let tx = x + 12;
   const tw = o.title ? Math.min(w - 120, (titleSize(o.title, { scale: 2 }).w || measureText(o.title, 'normal', 2)) + 22) : 0;
   const iw = o.icon ? o.icon.width + 4 : 0;
+  let plaque = { x: x + 5, y: y + 3, w: 0, h: 0 };
   if (o.title || o.icon) {
     const pw = Math.round(iw + tw + 14), ph = 28;
+    plaque = { x: x + 5, y: y + 3, w: pw, h: ph };
     ctx.drawImage(aeroCached(`vplaque|${pw}|${ph}`, () => surfaceTex(pw, ph, { tone: 'aqua', r: 8, gloss: 0.75, glossH: 12, curve: 2, rim: 0.9, glow: 0.6, depth: 1, block: 4 })), x + 5, y + 3);
   }
   if (o.icon) {
@@ -1017,20 +1019,20 @@ export function drawAeroFrame(ctx, x, y, w, h, o = {}) {
     if (fits) drawTitle(ctx, o.title, tx, y + 5, { scale: 2 });
     else drawText(ctx, o.title, tx, y + 8, { font: 'normal', scale: 2, color: '#ffffff', shadow: '#0a3e74' });
   }
-  if (deco && !drawVoxDecor(ctx, 'leaves', x + w + 4, y - 8, Math.round(64 * k), { t, phase: x * 0.01 })) drawLeafSprig(ctx, x + w - 6, y + 5, 'tr', k);
+  // [polish17] the leaves sit up and out past the corner so they never crowd the close orb
+  if (deco && !drawVoxDecor(ctx, 'leaves', x + w + 12, y - 10, Math.round(56 * k), { t, phase: x * 0.01 })) drawLeafSprig(ctx, x + w + 4, y - 2, 'tr', k);
   const close = { x: x + w - 25, y: y + 6, w: 18, h: 18 };
   // finish(ctx): call after drawing the panel's content so the ornaments and the splash sit on top
   const finish = (c2 = ctx) => {
     if (!deco) return;
-    drawSplash(c2, x + w - 96 * k, y + h + 9, Math.round(84 * k), { flip: true });
+    // [polish17] corner ornaments only: no splash swoosh across the bottom edge, no bubble blob on the left edge
     const ok = drawVoxDecor(c2, 'shell', x + 16, y + h - 10, Math.round(34 * k), { t, phase: 1.3 });
     if (ok) {
       drawVoxDecor(c2, 'starfish', x + 42, y + h - 4, Math.round(26 * k), { t, phase: 2.1, sway: 0.25 });
-      drawVoxDecor(c2, 'bubbles', x + 8, y + h * 0.55, Math.round(24 * k), { t, phase: 0.4 });
       drawVoxDecor(c2, 'coral', x + w - 14, y + h - 18, Math.round(30 * k), { t, phase: 0.8 });
     } else drawLeafSprig(c2, x + 5, y + h - 6, 'bl', k);
   };
-  return { content: { x: x + 8, y: y + 32, w: w - 16, h: h - 40 }, close, header: { x, y, w, h: 30 }, finish };
+  return { content: { x: x + 8, y: y + 32, w: w - 16, h: h - 40 }, close, header: { x, y, w, h: 30 }, plaque, finish };
 }
 
 export function drawAeroCard(ctx, x, y, w, h, o = {}) {
@@ -1150,7 +1152,7 @@ export function drawLeafSprig(ctx, x, y, corner = 'tl', scale = 1) {
   ctx.drawImage(c, Math.round(x - c.ox), Math.round(y - c.oy));
 }
 
-// [phase8:ui] pixel sun: a bayer-dithered bloom in three steps and chunky 2 px rays of alternating length
+// [phase8:ui] pixel sun: a bayer-dithered bloom in three steps (rays removed in polish17)
 function flareTex(r) {
   const S = r * 2, c = makeCanvas(S, S), g = ctxOf(c);
   for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
@@ -1161,15 +1163,7 @@ function flareTex(r) {
     g.fillStyle = k > 0.62 ? '#ffffff' : k > 0.36 ? 'rgba(255,253,236,0.8)' : k > 0.18 ? 'rgba(232,250,255,0.5)' : 'rgba(210,244,255,0.28)';
     g.fillRect(x, y, 1, 1);
   }
-  for (let i = 0; i < 12; i++) {
-    const a = (i / 12) * Math.PI * 2 + 0.26, L = r * (i % 2 ? 0.6 : 0.98);
-    for (let d = r * 0.3; d < L; d += 0.8) {
-      const k = 1 - d / L;
-      g.fillStyle = k > 0.55 ? 'rgba(255,255,255,0.75)' : k > 0.25 ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.22)';
-      const px = Math.round(r + Math.cos(a) * d), py = Math.round(r + Math.sin(a) * d);
-      g.fillRect(px, py, i % 2 ? 1 : 2, i % 2 ? 1 : 2);
-    }
-  }
+  // [polish17] no rays: just the soft dithered bloom (the user does not want light-ray fans anywhere)
   return c;
 }
 

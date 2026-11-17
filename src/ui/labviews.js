@@ -2,7 +2,7 @@
 // Each view draws into the dome rect and its own detail card; `panel` is the LabPanel (game, t, tree, setTab).
 import { clamp, TAU, hash1 } from '../core/math.js';
 import { rgba, mix, shade, RARITY } from '../core/color.js';
-import { drawText, measureText, wrapText } from '../gfx/font.js';
+import { drawText, measureText, wrapText, lineHeight } from '../gfx/font.js';
 import { getUiIcon } from '../gfx/uiicons.js';
 import { drawAeroGlow, drawAeroBubble, drawSparkle, drawAeroLabel, drawAeroBadge } from './aero.js';
 import { RODS, ROD_BY_ID, ROD_STAT_KEYS, ensureRods, equipRod } from '../game/rods.js';
@@ -60,6 +60,19 @@ function drawBlueprintBg(ctx, view, t, tone = 'craft') {
   }
 }
 
+// [polish17] a tile caption that fits: the full name, else the name without a trailing ' Rod', else two lines, and
+// only clipped as a last resort (no more 'RUBBER DUCK .'). Returns the number of lines drawn.
+function tileName(ctx, name, cx, baseY, maxW, color) {
+  const f = 'small';
+  let nm = name;
+  if (measureText(nm, f) > maxW && / Rod$/.test(nm)) nm = nm.replace(/ Rod$/, '');
+  if (measureText(nm, f) <= maxW) { drawText(ctx, nm, cx, baseY, { font: f, align: 'center', color }); return 1; }
+  const lines = wrapText(nm, maxW, f).slice(0, 2).map((l) => { let o = l; while (o.length > 2 && measureText(o, f) > maxW) o = o.slice(0, -1); return o; });
+  const lh = lineHeight(f) - 1;
+  lines.forEach((l, i) => drawText(ctx, l, cx, baseY - (lines.length - 1 - i) * lh, { font: f, align: 'center', color }));
+  return lines.length;
+}
+
 // ================================================================== rods
 export function drawRodsView(ctx, ui, panel, view) {
   const st = panel.game.state, t = panel.t;
@@ -72,17 +85,17 @@ export function drawRodsView(ctx, ui, panel, view) {
     const { x, y } = at(i);
     const owned = R.owned.includes(rod.id), eq = R.equipped === rod.id, sel = panel.rodSel === rod.id;
     const hov = tile(ctx, ui, x, y, TW, TH, { sel, glow: eq ? '#b8ff7a' : null, bottom: owned ? mix(rarityCol(rod.rarity), '#ffffff', 0.65) : '#dde8f0' });
-    const ic = icon('rod:' + rod.id, TW - 26);
+    const short = rod.name.replace(/ Rod$/, '');
+    const two = measureText(short, 'small') > TW - 8;
+    const ic = icon('rod:' + rod.id, TW - (two ? 32 : 26));
     if (ic) {
       ctx.globalAlpha = owned ? 1 : 0.45;
       const bob = hov || sel ? Math.sin(t * 5) * 1.5 : 0;
-      ctx.drawImage(ic, Math.round(x + TW / 2 - ic.width / 2), Math.round(y + TH * 0.42 - ic.height / 2 + bob));
+      ctx.drawImage(ic, Math.round(x + TW / 2 - ic.width / 2), Math.round(y + TH * (two ? 0.37 : 0.42) - ic.height / 2 + bob));
       ctx.globalAlpha = 1;
     }
     ctx.fillStyle = rarityCol(rod.rarity); roundRectPath(ctx, x + 8, y + TH - 5, TW - 16, 3, 1.5); ctx.fill();
-    const max = Math.floor((TW - 6) / 6);
-    const nm = rod.name.length > max ? rod.name.slice(0, max - 1) + '.' : rod.name;
-    drawText(ctx, nm, x + TW / 2, y + TH - 15, { font: 'small', align: 'center', color: owned ? INK : '#7a90a4' });
+    tileName(ctx, rod.name, x + TW / 2, y + TH - 15, TW - 8, owned ? INK : '#7a90a4');
     if (eq) { const ck = getUiIcon('check'); ctx.fillStyle = '#4cc83a'; ctx.beginPath(); ctx.arc(x + TW - 8, y + 8, 6, 0, TAU); ctx.fill(); if (ck) ctx.drawImage(ck, x + TW - 8 - Math.floor(ck.width / 2), y + 8 - Math.floor(ck.height / 2)); }
     else if (!owned) { const lk = getUiIcon('lock'); if (lk) ctx.drawImage(lk, x + TW - 14, y + 4); }
     if (hov) ui.tip = rod.name;
@@ -158,8 +171,7 @@ export function drawCraftView(ctx, ui, panel, view) {
     const hov = tile(ctx, ui, x, y, TW, TH, { sel, glow: ok && rc.cat !== 'special' ? '#c8ff7a' : null, bottom: open ? '#d9f2fc' : '#c8d8e4' });
     const ic = icon(rc.icon, 44);
     if (ic) { ctx.globalAlpha = open ? 1 : 0.4; ctx.drawImage(ic, Math.round(x + TW / 2 - ic.width / 2), Math.round(y + 30 - ic.height / 2 + (hov || sel ? Math.sin(t * 5) * 1.5 : 0))); ctx.globalAlpha = 1; }
-    const nm = rc.name.length > 12 ? rc.name.slice(0, 11) + '.' : rc.name;
-    drawText(ctx, nm, x + TW / 2, y + TH - 13, { font: 'small', align: 'center', color: open ? INK : '#7a90a4' });
+    tileName(ctx, rc.name, x + TW / 2, y + TH - 13, TW - 8, open ? INK : '#7a90a4');
     if (!open) { const lk = getUiIcon('lock'); if (lk) ctx.drawImage(lk, x + TW - 14, y + 4); }
     else if (rc.out) { const n = countItem(st, rc.out.id); if (n) drawAeroBadge(ctx, x + TW + 2, y - 3, n, t); }
     if (hov) ui.tip = rc.name;

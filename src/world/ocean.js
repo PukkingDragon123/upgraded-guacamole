@@ -5,7 +5,7 @@ import { rng } from '../core/rng.js';
 import { rgba, mix, hexToRgb } from '../core/color.js';
 import { makeLayer, resizeLayer } from '../core/canvas.js';
 import { drawText } from '../gfx/font.js';
-import { alagardBitmap, alagardReady } from '../gfx/alagard.js';
+import { drawPop3D } from '../ui/pop3d.js'; // [polish17] 3D zone card
 import { BIOMES, BIOME_DEPTH } from './biomes/index.js';
 import { worldTop } from './biomes/base.js';
 import { installAero } from './aerokit.js';
@@ -532,15 +532,15 @@ export class Ocean {
     const sh = c.id === 'abyss' ? Math.round(Math.sin(c.t * 40) * Math.max(0, 0.5 - c.t) * 4) : 0;
     ctx.save();
     ctx.globalAlpha = Math.max(0, a);
-    if (alagardReady()) {
-      const bm = alagardBitmap(c.name.toUpperCase(), { size: 16, color: col });
-      const bs = alagardBitmap(c.name.toUpperCase(), { size: 16, color: '#06121e' });
-      const s = 2, w = bm.width * s, h = bm.height * s, x0 = Math.round(this.W / 2 - w / 2) + sh;
-      for (const [dx, dy] of [[-2, 0], [2, 0], [0, -2], [0, 2], [2, 2]]) ctx.drawImage(bs, x0 + dx, y + dy, w, h);
-      ctx.drawImage(bm, x0, y, w, h);
-    } else drawText(ctx, c.name.toUpperCase(), this.W / 2 + sh, y + 6, { align: 'center', scale: 3, color: col, outline: '#06121e' });
+    // [polish17] the zone name is a 3D voxel word (no flat 2D text pop-ups), the depth a small 3D tag under it
     const m = c.m >= 1000 ? (c.m / 1000).toFixed(1) + ' km' : c.m + ' m';
-    drawText(ctx, '- ' + m + ' -', this.W / 2, y + 40, { align: 'center', color: '#e8fbff', outline: '#06121e' });
+    const pal = ZONE_POP[c.id] || 'white', pop = clamp01(c.t * 2.2);
+    const head = drawPop3D(ctx, c.name.toUpperCase(), this.W / 2 + sh, y + 16, { t: c.t, pop, palette: pal, size: 24, depth: 3, wobble: 0.5, phase: 1.7 });
+    if (head) drawPop3D(ctx, m, this.W / 2, y + 16 + Math.round(head.h * 0.5) + 14, { t: c.t + 0.6, pop: clamp01(c.t * 2.2 - 0.3), palette: 'white', size: 12, depth: 2, wobble: 0.3, sparkle: false, glowA: 0.3 });
+    else {
+      drawText(ctx, c.name.toUpperCase(), this.W / 2 + sh, y + 6, { align: 'center', scale: 3, color: col, outline: '#06121e' });
+      drawText(ctx, '- ' + m + ' -', this.W / 2, y + 40, { align: 'center', color: '#e8fbff', outline: '#06121e' });
+    }
     ctx.restore();
   }
 
@@ -561,6 +561,7 @@ export class Ocean {
 }
 
 // [phase6:oceans] depth meter colours per zone: [top, bottom, accent]
+const ZONE_POP = { sunlit: 'sky', twilight: 'white', midnight: 'white', abyss: 'coral' }; // [polish17] 3D zone card palettes
 const ZONE_COLORS = {
   sunlit: ['#8ae8ff', '#1e8ad8', '#bff6ff'],
   twilight: ['#4a5ac0', '#2a2470', '#c8b8ff'],

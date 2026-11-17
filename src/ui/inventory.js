@@ -295,16 +295,11 @@ export class InventoryPanel {
     ctx.save();
     ctx.beginPath(); ctx.rect(sc.x + 2, sc.y + 2, sc.w - 4, sc.h - 4); ctx.clip();
     drawAeroGlow(ctx, cx, cy, 56, mix(R.color, '#ffffff', 0.55), 0.55 + 0.1 * Math.sin(t * 2));
-    ctx.globalCompositeOperation = 'lighter';
-    for (let k = 0; k < 10; k++) {
-      const a = t * 0.3 + (k / 10) * TAU;
-      ctx.fillStyle = rgba('#ffffff', 0.05);
-      ctx.beginPath(); ctx.moveTo(cx, cy);
-      ctx.lineTo(cx + Math.cos(a - 0.1) * 140, cy + Math.sin(a - 0.1) * 140);
-      ctx.lineTo(cx + Math.cos(a + 0.1) * 140, cy + Math.sin(a + 0.1) * 140);
-      ctx.fill();
+    // [polish17] (the turning ray fan behind the item is gone: a soft glow and a few rising sparkles instead)
+    for (let k = 0; k < 4; k++) {
+      const q = (t * 0.35 + k * 0.25) % 1;
+      drawSparkle(ctx, Math.round(cx + Math.sin(k * 2.3 + t * 0.6) * 40), Math.round(cy + 26 - q * 60), q > 0.3 && q < 0.7 ? 2 : 1, Math.sin(q * Math.PI) * 0.9);
     }
-    ctx.globalCompositeOperation = 'source-over';
     const py = sc.y + sc.h - 22;
     ctx.drawImage(aeroCached('satped', () => aeroSurface(64, 12, { tone: 'aqua', r: 'pill', gloss: 0.8, glossH: 5, curve: 2, rim: 0.85, glow: 0.7 })), Math.round(cx - 32), py + 2);
     if (e) {

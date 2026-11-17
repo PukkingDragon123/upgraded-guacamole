@@ -240,8 +240,10 @@ class QuestHud {
     this.book.update(dt);
     for (const id in this.flash) { this.flash[id] += dt; if (this.flash[id] > 2.4) delete this.flash[id]; }
     const head = this.banners[0];
-    if (head) head.t += dt;
-    for (const b of this.banners.slice(1)) if (b.kind !== 'ready') b.t += dt;
+    // [polish17] banners wait while a modal panel is open (they are hidden then, never drawn over a window)
+    const held = !!g.ui?.blocking;
+    if (head && !held) head.t += dt;
+    if (!held) for (const b of this.banners.slice(1)) if (b.kind !== 'ready') b.t += dt;
     this.banners = this.banners.filter((b) => b.t < (b.kind === 'ready' ? 2.6 : 4.6));
     if (this.banners.length > 1 && this.banners[0].t > (this.banners[0].kind === 'ready' ? 1.4 : 2.2)) this.banners.shift();
     this.hov = damp(this.hov, inp && this.rect && inp.x >= this.rect.x && inp.y >= this.rect.y && inp.x < this.rect.x + this.rect.w && inp.y < this.rect.y + this.rect.h ? 1 : 0, 14, dt);
@@ -271,7 +273,7 @@ class QuestHud {
     const s = this.slot();
     const S = ensureQuests(g.state);
     if (s && !g.ui?.blocking) this.drawTracker(ctx, s, S);
-    this.drawBanners(ctx);
+    if (!g.ui?.blocking) this.drawBanners(ctx);
     void dt;
   }
 
@@ -361,7 +363,7 @@ class QuestHud {
       this.pills.push(pr);
       py -= 3;
     };
-    if (pending) drawPill(S.outro ? 'CHAPTER COMPLETE! CLICK' : 'NEW CHAPTER! CLICK', 'orange', '#843a04', 'story');
+    if (pending) drawPill(S.outro ? 'CHAPTER COMPLETE! OPEN IT' : 'NEW CHAPTER! READ IT', 'orange', '#843a04', 'story');
     if (ready) {
       const first = book.readyList()[0];
       drawPill(ready > 1 ? `${ready} REWARDS TO CLAIM!` : 'REWARD TO CLAIM!', 'green', '#1c5a0e', 'claim', first?.kind === 'mile' ? 'miles' : first?.kind === 'side' ? 'story' : 'orders');
@@ -380,11 +382,13 @@ class QuestHud {
     const W = g.screen.W;
     const dur = b.kind === 'ready' ? 2.6 : 4.6;
     const kin = b.t < 0.5 ? b.t / 0.5 : 1, kout = b.t > dur - 0.7 ? 1 - ease.inCubic(clamp01((b.t - (dur - 0.7)) / 0.7)) : 1;
-    const cx = W / 2, cy = 70 - (1 - kout) * 20;
+    // (in the tank the banner drops below the tank's top plate)
+    let cy0 = 70;
+    if (g.state?.view === 'aquarium') { try { cy0 = Math.max(70, Math.round(g.aquarium.fullLayout().top + 40)); } catch { cy0 = 110; } }
+    const cx = W / 2, cy = cy0 - (1 - kout) * 20;
     ctx.save();
     ctx.globalAlpha *= kout;
     if (b.kind === 'ready') {
-      drawAeroGlow(ctx, cx, cy + 4, 120, '#eaffc8', 0.3 * kin);
       const txt = b.n > 1 ? `${b.n} QUESTS READY!` : 'QUEST READY!';
       const head = drawPop3D(ctx, txt, cx, cy, { t, pop: kin, palette: 'leaf', size: 24, depth: 3, wobble: 0.7 });
       const hw = head ? head.w : 160;
@@ -393,8 +397,8 @@ class QuestHud {
       ctx.restore();
       return;
     }
-    drawAeroGlow(ctx, cx, cy + 8, 190, '#fff6c8', 0.4 * kin);
-    const head = drawPop3D(ctx, b.head || 'QUEST COMPLETE!', cx, cy, { t, pop: kin, palette: 'gold', size: 32, depth: 4, wobble: 0.8, glowColor: '#8a4a06' });
+    // [polish17] no light pool behind the words: just the 3D letters with their usual soft dark backing
+    const head = drawPop3D(ctx, b.head || 'QUEST COMPLETE!', cx, cy, { t, pop: kin, palette: 'gold', size: 32, depth: 4, wobble: 0.8 });
     const hw = head ? head.w : 220;
     drawPortrait(ctx, b.q.giver, cx - hw / 2 - 30, cy + 2 + Math.sin(t * 5) * 2, 22, t, { talk: b.t < 1.6 ? 0.6 : 0, mood: 'excited', key: 'banner' });
     drawPop3D(ctx, b.q.title, cx, cy + 34, { t: t + 0.7, pop: clamp01((b.t - 0.25) / 0.45), palette: 'white', size: 16, depth: 3, wobble: 0.5, sparkle: false });
@@ -406,9 +410,9 @@ class QuestHud {
       if (k <= 0) return;
       const rx = x0 + i * step, ry = cy + 62;
       const name = rw.key === 'aero' ? 'coin' : getUiIcon(rw.key)?.__icon3d ? rw.key : null;
-      if (!(name && drawIcon3D(ctx, name, rx - 12, ry, Math.round(22 * (0.6 + 0.4 * ease.outBack(k))), { t, hover: k < 1 ? 1 : 0, phase: i }))) rewardIcon(ctx, rw, rx - 12, ry, 16, t, i);
+      if (!(name && drawIcon3D(ctx, name, rx - 12, ry, Math.round(22 * (0.6 + 0.4 * ease.outBack(k))), { t, hover: k < 1 ? 1 : 0, phase: i }))) rewardIcon(ctx, rw, rx - 12, ry, 24, t, i); // [polish17] bigger fallback icons
       const txt = rw.key === 'aero' ? '+' + rw.n : rw.n ? 'x' + rw.n : '';
-      if (txt) drawPop3D(ctx, txt, rx + 14, ry, { t: t + i, pop: k, palette: rw.key === 'aero' ? 'aqua' : 'leaf', size: 16, depth: 3, wobble: 0.4, glow: false, sparkle: false });
+      if (txt) drawPop3D(ctx, txt, rx + 16, ry, { t: t + i, pop: k, palette: 'white', size: 16, depth: 2, wobble: 0.3, glowA: 0.3, sparkle: false });
       if (k < 0.2 && !rw.fx) { rw.fx = true; try { g.particles?.pixelBurst?.('star', rx - 12, ry, 5, { layer: 'ui', ramp: 'gold' }); } catch { /* optional */ } }
     });
     if (!b.fx) { b.fx = true; try { g.particles?.celebrate?.(cx, cy, 1, { layer: 'ui' }); } catch { /* optional */ } }

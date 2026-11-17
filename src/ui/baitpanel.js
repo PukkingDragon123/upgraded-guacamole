@@ -7,7 +7,8 @@ import { drawText, wrapText, measureText } from '../gfx/font.js';
 import { rgba } from '../core/color.js';
 import { getMiniIcon } from '../desktop/icons.js';
 import { getUiIcon } from '../gfx/uiicons.js';
-import { drawAeroPanel, drawGlossOrb, drawAeroCoin, fmtAero, drawPixelBrackets } from './aero.js';
+import { drawAeroFrame, drawGlossOrb, drawAeroCoin, fmtAero, drawPixelBrackets } from './aero.js';
+import { getBigIcon } from '../gfx/bigicons.js';
 import { centerRect } from './ui.js';
 import {
   BAITS, ensureBait, baitList, equipBait, totalBait, currentBait, baitDef, craftBases, customRecipe, customCost, canCraft, craftCustom,
@@ -20,7 +21,7 @@ import { pill, glassCard, statBar, button, orbButton, wordArt, tag, INK, INK_SOF
 import { unlocked } from '../game/lab.js';
 import { ITEMS, countItem, takeItems } from '../build/items.js';
 import { itemSprite } from '../build/itemart.js';
-import { ecoBand, ecoCorners, splashButton } from '../store/ecoart.js';
+import { splashButton } from '../store/ecoart.js';
 
 const DEPS = {
   unlocked: (s) => { try { return !!unlocked(s, 'recipe', 'custombait'); } catch { return false; } },
@@ -71,28 +72,25 @@ export class BaitPanel {
     const W = 456, H = 296;
     const r = centerRect(g, W, H);
     this.rect = r;
-    drawAeroPanel(ctx, r.x, r.y, W, H, { tone: 'glass', radius: 12 });
-    // eco header: sky band, title bubble, tabs, total, close
-    ecoBand(ctx, r.x + 3, r.y + 3, W - 6, 28, this.t, { sun: [0.45, 0.15] });
-    ecoCorners(ctx, r.x, r.y, W, H, this.t, 0.72);
-    drawBaitGloss(ctx, BAITS.worm.art, r.x + 20, r.y + 17, 24, this.t, { tint: '#d8f8ff' });
-    ctx.drawImage(wordArt('Bait', { scale: 2, top: '#ffffff', bottom: '#ffb02e', edge: '#7a3a06' }), r.x + 36, r.y + 6);
+    // [polish17] the shared voxel window frame (title plaque, voxel ring, close orb) like every other panel
+    const F = drawAeroFrame(ctx, r.x, r.y, W, H, { title: 'Bait', icon: getBigIcon('bait', { size: 'small' }).canvas, seed: 19 });
     const tabs = [['inv', 'Bait Box'], ['craft', 'Customize']];
-    let tx = r.x + 98;
+    let tx = F.plaque.x + F.plaque.w + 8;
     for (const [id, label] of tabs) {
       const locked = id === 'craft' && !DEPS.unlocked(st);
       const w = measureText(label) + 26 + (locked ? 12 : 0);
-      if (button(ui, ctx, tx, r.y + 8, w, 18, label, { tone: this.tab === id ? 'green' : 'glass', active: this.tab === id, icon: locked ? getUiIcon('lock') : null })) { this.tab = id; }
+      if (button(ui, ctx, tx, r.y + 7, w, 18, label, { tone: this.tab === id ? 'green' : 'glass', active: this.tab === id, icon: locked ? getUiIcon('lock') : null })) { this.tab = id; }
       tx += w + 6;
     }
     const total = totalBait(st);
-    const tw = measureText(String(total)) + 26;
-    pill(ctx, r.x + W - 40 - tw, r.y + 9, tw, 16, { color: '#3ab0e0' });
-    drawBaitGloss(ctx, BAITS.crumbs.art, r.x + W - 40 - tw + 8, r.y + 17, 13, 0, { bubble: false, bob: false });
-    drawText(ctx, String(total), r.x + W - 46, r.y + 13, { align: 'right', color: '#ffffff', shadow: rgba(INK, 0.5) });
-    if (orbButton(ui, ctx, r.x + W - 18, r.y + 17, 8, '#ff6a5a', { glyph: 'x', sound: 'ui_close' })) { ui.close(this.id); return; }
+    const tw = measureText(String(total)) + 26, px = F.close.x - 6 - tw;
+    pill(ctx, px, r.y + 8, tw, 16, { color: '#3ab0e0' });
+    drawBaitGloss(ctx, BAITS.crumbs.art, px + 8, r.y + 16, 13, 0, { bubble: false, bob: false });
+    drawText(ctx, String(total), px + tw - 6, r.y + 12, { align: 'right', color: '#ffffff', shadow: rgba(INK, 0.5) });
+    if (ui.button(ctx, F.close.x, F.close.y, F.close.w, F.close.h, '', { icon: 'cross', tip: 'Close (Esc)', sound: 'ui_close' })) { ui.close(this.id); return; }
     if (this.tab === 'craft') this.drawCraft(ctx, ui, r, W, H);
     else this.drawInventory(ctx, ui, r, W, H);
+    F.finish(ctx);
   }
 
   // ---------------------------------------------------------------- inventory

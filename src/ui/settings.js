@@ -102,7 +102,7 @@ export class SettingsPanel {
     // ------------------------------------------------ UI size: three glossy segments
     {
       const cy = y + Math.round(RH / 2);
-      const lw = icon(ctx, 'expand', L.x + 8, cy, z);
+      const lw = icon(ctx, 'eye', L.x + 8, cy, z); // [polish17] (fullscreen keeps the 'expand' icon)
       drawText(ctx, 'UI size', L.x + 14 + lw, cy - Math.round(capH(F1) / 2), { font: F1, color: INK });
       const x0 = L.x + 18 + lw + measureText('UI size', F1);
       const bw = Math.floor((L.x + L.w - 8 - x0) / 3), bh = RH - 3;
@@ -141,9 +141,13 @@ export class SettingsPanel {
       }
       y += RH + 2;
     }
-    // day cycle: four glossy orbs
+    // day cycle: a labelled row of four glossy buttons [polish17: it had no label]
     {
-      const bw = big ? 34 : 26, bh = big ? 26 : 21, gap = big ? 8 : 6, x0 = L.x + Math.round((L.w - (bw * 4 + gap * 3)) / 2);
+      const bw = big ? 34 : 26, bh = big ? 26 : 21, gap = big ? 8 : 6;
+      const cy = y + Math.round(bh / 2);
+      const lw = icon(ctx, 'sun', L.x + 8, cy, z);
+      drawText(ctx, 'Sky', L.x + 14 + lw, cy - Math.round(capH(F1) / 2), { font: F1, color: INK });
+      const x0 = L.x + L.w - 8 - (bw * 4 + gap * 3);
       CYCLES.forEach(([id, ic, tip], i) => {
         const on = s.dayCycle === id;
         if (ui.button(ctx, x0 + i * (bw + gap), y, bw, bh, '', { icon: ic, style: on ? 'green' : 'glass', active: on, tip, sound: 'ui_toggle' }) && !on) {

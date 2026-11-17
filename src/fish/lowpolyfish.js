@@ -1260,7 +1260,8 @@ function creatureOf(kind) {
   let c = creatureC.get(kind);
   if (c) return c;
   const def = CREATURES[kind];
-  if (def === 'turtle' || kind === 'turtle') { c = { id: 'cr:turtle', kind: 'turtle', turtle: true, L: 60, H: 30, real: { plan: 'turtle' } }; creatureC.set(kind, c); return c; }
+  // [turtle17] sea turtles (green 'turtle', 'hawksbill', 'loggerhead'): custom realistic build, finer voxels
+  if (TURTLE_SP[kind]) { c = { id: 'cr:' + kind, kind, turtle: true, L: 60, H: 30, voxK: 1.5, real: { plan: 'turtle' } }; creatureC.set(kind, c); return c; }
   if (kind === 'penguin') { c = { id: 'cr:penguin', kind: 'penguin', custom: buildPenguin, L: 12, H: 12, real: { plan: 'custom' } }; creatureC.set(kind, c); return c; }
   if (kind === 'restseal') { c = { id: 'cr:restseal', kind: 'restseal', custom: buildRestSeal, L: 28, H: 10, real: { plan: 'custom' } }; creatureC.set(kind, c); return c; }
   if (!def) return null;
@@ -1272,59 +1273,474 @@ function creatureOf(kind) {
   return c;
 }
 
-// Green sea turtle: a domed carapace of faceted scutes, a pale plastron, a scaly head on a neck, front flippers
-// that sweep in strokes and paddling rear flippers.
+// [turtle17] REALISTIC SEA TURTLES (user: "the turtle don't look realistic"). Units = model units (L 60), +x = head,
+// y up, origin = carapace centre. Anatomy after the green turtle (Chelonia mydas): a streamlined teardrop carapace
+// (longer than wide, widest a little ahead of the middle, pointed behind), domed but flattish, with the real scute
+// layout (5 vertebrals, 4 costal pairs, a ring of 25 marginals with the nuchal over the neck) painted per scute with
+// radiating amber / ochre streaks from each scute's growth centre and slightly sunken seams (AO darkens them); a pale
+// plastron; a short blunt head of yellow-rimmed plates (one pair of big prefrontals) with a horny beak, a dark eye
+// stamped by the voxeliser and a pale throat; long, flat, scimitar-curved fore flippers (thick leading edge, a claw,
+// dark scales with cream borders, pale underside and trailing margin), small rounded rear flippers and a short tail.
+// Swimming is underwater FLIGHT: the fore flippers sweep down and back (leading edge slightly down, the tips flexing
+// up), then feather edge-on and recover up and forward; the rear flippers trim like rudders; the body pitches and
+// lifts gently with each power stroke and the head bobs against it. Static pieces (shell, head) are built once per
+// species as local templates; each of the 8 swim frames only transforms them and rebuilds the flippers and neck.
+// Species palettes: 'turtle' (green turtle), 'hawksbill' (overlapping tortoiseshell scutes, serrated rear margin,
+// narrow hawk beak), 'loggerhead' (reddish-brown shell, big broad head).
+const TURTLE_SP = {
+  turtle: {
+    base: '#45361a', dark: '#22160a', olive: '#3e4420', amber: '#9a6a24', ochre: '#c8963e',
+    seam: '#24160a', rimEdge: '#b89048', under: '#e6d090', plast: '#f0e8cc', plastSeam: '#c8b488',
+    scale: '#2e1e0c', scale2: '#443016', scaleB: '#b49a5c', skinL: '#ece4c8', neck: '#a09482', claw: '#2a1e12',
+    iris: '#3a2410', serr: 0.006, streak: 1, imbricate: 0, headK: 1, beak: 0, shellLen: 1, costals: 4,
+  },
+  hawksbill: {
+    base: '#7a4a1c', dark: '#24140a', olive: '#5a3414', amber: '#d89a3a', ochre: '#f0c060',
+    seam: '#1c1008', rimEdge: '#e0b058', under: '#f0d88c', plast: '#f4e4ae', plastSeam: '#caa868',
+    scale: '#3a2410', scale2: '#5a3818', scaleB: '#e8c070', skinL: '#f2e0aa', neck: '#c0a474', claw: '#2a1c10',
+    iris: '#3a2010', serr: 0.045, streak: 1.35, imbricate: 1, headK: 0.92, beak: 1, shellLen: 1.04, costals: 4,
+  },
+  loggerhead: {
+    base: '#8a4a1e', dark: '#4a2410', olive: '#7a4a20', amber: '#b4642a', ochre: '#cc8a44',
+    seam: '#3a1c0c', rimEdge: '#d89850', under: '#f0d088', plast: '#f2deaa', plastSeam: '#c8a46c',
+    scale: '#7a4a22', scale2: '#93602c', scaleB: '#e8b868', skinL: '#f0d8a4', neck: '#c49a6c', claw: '#3a2414',
+    iris: '#3a2410', serr: 0.012, streak: 0.55, imbricate: 0, headK: 1.32, beak: 0, shellLen: 1.02, costals: 5,
+  },
+};
+
+// carapace plan (model units): polar outline about (T_C0, 0); front / side / rear radii
+const T_C0 = 2, T_RF = 17.5, T_RS = 16.6, T_RB = 24.5, T_HD = 9.6, T_HB = 3.4, T_RIM = 0.8, T_RM = 0.83;
+const tOutline = (a, sp) => {
+  const c = Math.cos(a);
+  const r = T_RS + (T_RF - T_RS) * Math.pow(Math.max(0, c), 2) + (T_RB * sp.shellLen - T_RS) * Math.pow(Math.max(0, -c), 4.2);
+  // serrated rear marginals (hawksbill): one tooth per marginal scute behind the bridge
+  const back = Math.max(0, -c - 0.25) / 0.75;
+  const k = ((a / TAU) * 25 + 100.5) % 1;
+  return r * (1 + sp.serr * back * (Math.abs(k - 0.5) * 2 - 0.5));
+};
+const tRimY = (a) => { const c = Math.cos(a); return -1.3 + 1.7 * Math.pow(Math.max(0, c), 3) - 0.4 * Math.pow(Math.max(0, -c), 2); };
+const tDome = (rho, a) => {
+  const c = Math.cos(a);
+  const f = Math.pow(Math.max(0, 1 - Math.pow(rho, 1.75)), 0.8);
+  return T_HD * f * (1 - 0.18 * Math.max(0, -c) * rho) * (1 + 0.05 * Math.max(0, c));
+};
+const tmix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+const tsc = (a, k) => [a[0] * k, a[1] * k, a[2] * k];
+const tclampC = (a) => [clamp01(a[0]), clamp01(a[1]), clamp01(a[2])];
+
+// Voronoi cells (2D / 3D) for skin scales: {d1, d2, id}
+function tVor2(x, y, sp, seed) {
+  const gx = Math.floor(x / sp), gy = Math.floor(y / sp);
+  let d1 = 1e9, d2 = 1e9, id = 0;
+  for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+    const cx = gx + i, cy = gy + j;
+    const px = (cx + 0.15 + 0.7 * hash2(cx, cy, seed)) * sp, py = (cy + 0.15 + 0.7 * hash2(cx, cy, seed + 1)) * sp;
+    const d = Math.hypot(x - px, y - py);
+    if (d < d1) { d2 = d1; d1 = d; id = cx * 7919 + cy * 104729; } else if (d < d2) d2 = d;
+  }
+  return { d1, d2, id };
+}
+function tVor3(x, y, z, sp, seed) {
+  const gx = Math.floor(x / sp), gy = Math.floor(y / sp), gz = Math.floor(z / sp);
+  let d1 = 1e9, d2 = 1e9, id = 0;
+  for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (let k = -1; k <= 1; k++) {
+    const cx = gx + i, cy = gy + j, cz = gz + k;
+    const h = hash2(cx * 31 + cz * 977, cy, seed);
+    const px = (cx + 0.15 + 0.7 * h) * sp, py = (cy + 0.15 + 0.7 * hash2(cx, cy * 13 + cz, seed + 1)) * sp, pz = (cz + 0.15 + 0.7 * hash2(cz, cx + cy * 7, seed + 2)) * sp;
+    const d = Math.hypot(x - px, y - py, z - pz);
+    if (d < d1) { d2 = d1; d1 = d; id = cx * 7919 + cy * 104729 + cz * 15485863; } else if (d < d2) d2 = d;
+  }
+  return { d1, d2, id };
+}
+
+// A static triangle list (template) in local coordinates with one colour per triangle.
+class TTpl {
+  constructor() { this.P = []; this.C = []; }
+  tri(a, b, c, col) { this.P.push(a, b, c); this.C.push(col); }
+  quad(a, b, c, d, col) { this.tri(a, b, c, col); this.tri(a, c, d, col); }
+  emit(part, xf) {
+    const P = this.P, C = this.C;
+    for (let i = 0, k = 0; k < C.length; i += 3, k++) part.tri(xf(P[i]), xf(P[i + 1]), xf(P[i + 2]), C[k]);
+  }
+}
+
+// ---- carapace + plastron template (and the scute layout)
+function turtleScutes(sp) {
+  // interior half width per x (for vertebral widths): sample the outline scaled by T_RM
+  const XS = [], x0 = -30, x1 = 24, n = 216;
+  for (let i = 0; i <= n; i++) XS.push(0);
+  for (let k = 0; k < 2000; k++) {
+    const a = (k / 2000) * Math.PI, r = tOutline(a, sp) * T_RM;
+    const x = T_C0 + Math.cos(a) * r, z = Math.sin(a) * r;
+    const i = Math.round(((x - x0) / (x1 - x0)) * n);
+    if (i >= 0 && i <= n && z > XS[i]) XS[i] = z;
+  }
+  for (let pass = 0; pass < 2; pass++) for (let i = 1; i < n; i++) if (!XS[i]) XS[i] = Math.max(XS[i - 1], XS[i + 1]) * 0.5;
+  const halfIn = (x) => { const f = ((x - x0) / (x1 - x0)) * n; const i = clamp(Math.floor(f), 0, n - 1); return XS[i] + (XS[i + 1] - XS[i]) * (f - i); };
+  const xF = T_C0 + T_RM * T_RF, xB = T_C0 - T_RM * T_RB * sp.shellLen;
+  const NC = sp.costals;
+  // vertebral seams (V1..V5) and costal seams (meeting the vertebrals' lateral corners, i.e. their middles)
+  const VB = [0, 0.2, 0.46, 0.68, 0.86, 1];
+  const cSeams = NC === 5 ? [0.16, 0.33, 0.57, 0.77] : [0.33, 0.57, 0.77];
+  const NM = 25;
+  const vOf = (u) => { let i = 0; while (i < 4 && u > VB[i + 1]) i++; return i; };
+  const vhwAt = (x, u) => { const i = vOf(u), pk = 1 - Math.abs((u - VB[i]) / (VB[i + 1] - VB[i]) - 0.5) * 2; return halfIn(x) * (0.34 + 0.08 * pk) + 0.6; };
+  // scute at plan point -> {id, gx, gz, kind}
+  const at = (x, z) => {
+    const dx = x - T_C0, a = Math.atan2(z, dx), rho = Math.hypot(dx, z) / tOutline(a, sp);
+    if (rho > T_RM) {
+      const k = Math.round((a / TAU) * NM);
+      const idx = ((k % NM) + NM) % NM;
+      const ac = (k / NM) * TAU + (Math.sign(a) || 1) * 0.02;
+      const rc = tOutline(ac, sp) * 0.985;
+      return { id: 100 + idx, gx: T_C0 + Math.cos(ac) * rc - Math.cos(ac) * 0.6, gz: Math.sin(ac) * rc, kind: 2, rho, a };
+    }
+    const u = clamp((xF - x) / (xF - xB), 0, 1);
+    const vhw = vhwAt(x, u);
+    if (Math.abs(z) < vhw) {
+      const i = vOf(u);
+      return { id: 10 + i, gx: xF - (VB[i] + 0.64 * (VB[i + 1] - VB[i])) * (xF - xB), gz: 0, kind: 0, rho, a };
+    }
+    const hw = halfIn(x);
+    const lf = clamp((Math.abs(z) - vhw) / Math.max(0.5, hw - vhw), 0, 1);
+    const ua = u - 0.07 * lf;
+    let i = 0;
+    while (i < cSeams.length && ua > cSeams[i]) i++;
+    const lo = i ? cSeams[i - 1] : 0, hi = i < cSeams.length ? cSeams[i] : 1;
+    const uc = lo + (hi - lo) * 0.62;
+    const xc = xF - uc * (xF - xB);
+    const s = z >= 0 ? 1 : -1;
+    return { id: (s > 0 ? 20 : 40) + i, gx: xc, gz: s * (vhwAt(xc, uc) + 0.22 * (halfIn(xc) - vhwAt(xc, uc))), kind: 1, rho, a };
+  };
+  return { at, halfIn, xF, xB };
+}
+
+function turtleShellTpl(sp) {
+  const S = turtleScutes(sp);
+  const top = new TTpl();
+  const col = (k) => rgb01(sp[k]);
+  const BASE = col('base'), DARK = col('dark'), OLV = col('olive'), AMB = col('amber'), OCH = col('ochre'), SEAM = col('seam');
+  const RIM = col('rimEdge'), UND = col('under'), PL = col('plast'), PLS = col('plastSeam');
+  const NA = 200, NR = 52;
+  // grid points (top surface), with seams sunk a little
+  const seamAt = (x, z, d) => {
+    const s0 = S.at(x, z).id;
+    return S.at(x + d, z).id !== s0 || S.at(x - d, z).id !== s0 || S.at(x, z + d).id !== s0 || S.at(x, z - d).id !== s0;
+  };
+  const ptTop = (i, j) => {
+    const a = (j / NA) * TAU, rho = Math.pow(i / NR, 0.85);
+    const R = tOutline(a, sp);
+    const x = T_C0 + Math.cos(a) * R * rho, z = Math.sin(a) * R * rho;
+    let y = tRimY(a) + tDome(rho, a);
+    if (sp.imbricate) {
+      // overlapping scutes: each scute rises toward its rear edge and steps down onto the next one
+      const q = S.at(x, z);
+      if (q.kind < 2) y += clamp((q.gx - x) * 0.09 + 0.25, 0, 0.75);
+    }
+    if (i < NR && rho > 0.06 && seamAt(x, z, 0.36)) y -= 0.42;
+    return [x, y, z];
+  };
+  const V = [];
+  for (let i = 0; i <= NR; i++) { const row = []; for (let j = 0; j <= NA; j++) row.push(ptTop(i, j % NA)); V.push(row); }
+  const shellCol = (x, z) => {
+    const q = S.at(x, z);
+    if (seamAt(x, z, 0.42)) return SEAM;
+    const band = seamAt(x, z, 0.95);
+    const dx = x - q.gx, dz = z - q.gz, d = Math.hypot(dx, dz), phi = Math.atan2(dz, dx);
+    const h1 = hash2(q.id, 3, 71), h2 = hash2(q.id, 5, 72), h3 = hash2(q.id, 7, 73);
+    const st = sp.streak;
+    let s = 0.6 * Math.sin(3 * phi + h1 * TAU) + 0.4 * Math.sin(6 * phi + h2 * TAU) + 0.16 * Math.sin(11 * phi + h3 * TAU) + 0.12 * Math.sin(d * 1.3 + h1 * 5);
+    s *= st;
+    let c = tmix(BASE, OLV, 0.35 + 0.3 * h2);
+    if (s > 0.5) c = tmix(c, AMB, clamp01((s - 0.5) * 3));
+    if (s > 0.9) c = tmix(c, OCH, clamp01((s - 0.9) * 3));
+    if (s < -0.3) c = tmix(c, DARK, clamp01((-s - 0.3) * 1.8));
+    // the areola (growth centre) is darker, the young growth near the seams a touch lighter
+    if (d < 1.4) c = tmix(c, DARK, 0.45 * (1 - d / 1.4));
+    // hawksbill tortoiseshell: bold dark flames on amber
+    if (sp.imbricate) { const fl = Math.sin(4 * phi + h3 * TAU + d * 0.35); if (fl > 0.55) c = tmix(c, DARK, 0.75); else if (fl < -0.6) c = tmix(c, OCH, 0.5); }
+    if (band) c = tmix(c, OCH, 0.22);
+    // marginals: lighter outer rim
+    if (q.kind === 2 && q.rho > 0.965) c = tmix(c, RIM, 0.55);
+    return tclampC(toneRGB(c, (hash2(Math.floor(x * 1.9), Math.floor(z * 1.9), 77) - 0.5) * 0.12));
+  };
+  for (let i = 0; i < NR; i++) for (let j = 0; j < NA; j++) {
+    const a = V[i][j], b = V[i][j + 1], c2 = V[i + 1][j + 1], d = V[i + 1][j];
+    const mx = (a[0] + b[0] + c2[0] + d[0]) / 4, mz = (a[2] + b[2] + c2[2] + d[2]) / 4;
+    const k = shellCol(mx, mz);
+    if (i > 0) top.tri(a, c2, b, k); top.tri(a, d, c2, k);
+  }
+  // rim band + plastron (flat underside)
+  const ptBot = (i, j) => {
+    const a = (j / NA) * TAU, rho = i / NR;
+    const R = tOutline(a, sp);
+    const x = T_C0 + Math.cos(a) * R * rho, z = Math.sin(a) * R * rho;
+    const pl = Math.pow(Math.max(0, 1 - Math.pow(rho / 0.94, 2.4)), 0.55);
+    return [x, tRimY(a) - T_RIM - T_HB * Math.min(1, pl * 1.15) * (1 - 0.25 * Math.max(0, -Math.cos(a))), z];
+  };
+  const U = [];
+  for (let i = 0; i <= NR; i++) { const row = []; for (let j = 0; j <= NA; j++) row.push(ptBot(Math.min(i, NR), j % NA)); U.push(row); }
+  const plCol = (x, z, rho) => {
+    if (rho > 0.9) return UND;
+    // plastral scutes: a midline seam and 5 transverse seams
+    const u = (S.xF - x) / (S.xF - S.xB);
+    if (Math.abs(z) < 0.32 || [0.12, 0.3, 0.5, 0.7, 0.86].some((s) => Math.abs(u - s) < 0.012)) return PLS;
+    if (rho > 0.74) return tmix(PL, UND, 0.5);
+    return PL;
+  };
+  for (let i = 0; i < NR; i++) for (let j = 0; j < NA; j++) {
+    const a = U[i][j], b = U[i][j + 1], c2 = U[i + 1][j + 1], d = U[i + 1][j];
+    const k = plCol((a[0] + c2[0]) / 2, (a[2] + c2[2]) / 2, (i + 0.5) / NR);
+    if (i > 0) top.tri(a, b, c2, k); top.tri(a, c2, d, k);
+  }
+  for (let j = 0; j < NA; j++) {
+    const a = V[NR][j], b = V[NR][j + 1], c2 = U[NR][j + 1], d = U[NR][j];
+    const k = tmix(RIM, DARK, 0.25 + 0.2 * hash2(j, 1, 79));
+    top.quad(a, b, c2, d, (Math.round((j / NA) * 25 * 2) % 2) ? k : tmix(k, SEAM, 0.35));
+  }
+  return { tpl: top, S };
+}
+
+// ---- head template (local: origin = neck joint, +x forward), returns {tpl, eye: {c, n, r}, snout}
+function turtleHeadTpl(sp) {
+  const K = sp.headK, tpl = new TTpl();
+  const Lh = 8.6 * (0.85 + 0.15 * K) * (sp.beak ? 1.12 : 1);
+  // stations: t, cy, rTop, rBot, rz
+  const ST = [
+    [0, 0, 2.5, 2.5, 2.55], [0.14, 0.15, 2.75, 2.6, 2.8], [0.36, 0.3, 2.95, 2.6, 2.95], [0.56, 0.22, 2.7, 2.45, 2.6],
+    [0.74, 0.0, 2.15, 2.15, 2.0], [0.87, -0.25, 1.55, 1.8, 1.45], [0.95, -0.45, 1.0, 1.35, 0.95], [1, -0.6, 0.3, 0.55, 0.35],
+  ];
+  const stAt = (t) => {
+    let i = 0; while (i < ST.length - 2 && t > ST[i + 1][0]) i++;
+    const A = ST[i], B = ST[i + 1], f = (t - A[0]) / (B[0] - A[0]);
+    const r = A.map((v, k) => v + (B[k] - v) * clamp01(f));
+    // hawksbill: a narrow, pointed snout; loggerhead: a big broad head
+    const w = K * (sp.beak ? 1 - 0.35 * smooth(0.55, 1, t) : 1);
+    return { cy: r[1] * K - (sp.beak ? 0.5 * smooth(0.8, 1, t) : 0), rt: r[2] * K, rb: r[3] * K * (sp.beak ? 1 - 0.3 * smooth(0.7, 1, t) : 1), rz: r[4] * w };
+  };
+  const NT = 30, NS = 40, EX = 2.5;
+  const pt = (i, j) => {
+    const t = i / NT, s = stAt(t), th = (j / NS) * TAU;
+    const ct = Math.cos(th), st = Math.sin(th);
+    const pz = Math.sign(ct) * Math.pow(Math.abs(ct), 2 / EX) * s.rz;
+    const py = Math.sign(st) * Math.pow(Math.abs(st), 2 / EX) * (st > 0 ? s.rt : s.rb);
+    return [t * Lh, s.cy + py, pz];
+  };
+  const V = [];
+  for (let i = 0; i <= NT; i++) { const row = []; for (let j = 0; j <= NS; j++) row.push(pt(i, j % NS)); V.push(row); }
+  const SC = rgb01(sp.scale), SC2 = rgb01(sp.scale2), SB = rgb01(sp.scaleB), SL = rgb01(sp.skinL), HORN = tmix(rgb01(sp.scaleB), rgb01('#9a8a6a'), 0.35), MOUTH = rgb01('#2a1c12');
+  const eyeT = 0.58, eyeTh = 0.42;
+  const colAt = (t, th, p) => {
+    const st = Math.sin(th);
+    // mouth line along the lower jaw, horny beak at the snout
+    const mouthS = -0.32 - 0.12 * (1 - t);
+    if (t > 0.5 && Math.abs(st - mouthS) < 0.09) return MOUTH;
+    if (st < mouthS) return t > 0.84 ? tmix(SL, HORN, 0.55) : SL;
+    if (t > 0.88 && st < 0.25) return HORN;
+    // eyelid ring (pale) around the eye
+    const de = Math.hypot((t - eyeT) * Lh, (st - eyeTh) * 2.6);
+    if (Math.abs(Math.cos(th)) > 0.3 && de < 1.55 && de > 1.0) return tmix(SL, SC2, 0.3);
+    // head plates: one big prefrontal pair on the snout, polygonal plates elsewhere, cream borders
+    let v;
+    if (t > 0.6 && t < 0.86 && st > 0.55) {
+      const mid = Math.abs(p[2]) < 0.16 || Math.abs(t - 0.6) < 0.03;
+      if (mid) return SB;
+      v = { d1: 0, d2: 1, id: p[2] > 0 ? 1 : 2 };
+    } else v = tVor3(p[0], p[1], p[2], 1.6 * sp.headK, 91);
+    if (v.d2 - v.d1 < 0.2) return SB;
+    const h = hash2(v.id, 1, 93);
+    const c = tmix(SC, SC2, h);
+    // lighter cheeks (upper sides fade toward the cream jaw)
+    return st < 0.1 ? tmix(c, SB, 0.35) : c;
+  };
+  for (let i = 0; i < NT; i++) for (let j = 0; j < NS; j++) {
+    const a = V[i][j], b = V[i][j + 1], c2 = V[i + 1][j + 1], d = V[i + 1][j];
+    const m = [(a[0] + c2[0]) / 2, (a[1] + c2[1]) / 2, (a[2] + c2[2]) / 2];
+    const k = colAt((i + 0.5) / NT, ((j + 0.5) / NS) * TAU, m);
+    tpl.tri(a, b, c2, k); tpl.tri(a, c2, d, k);
+  }
+  // caps
+  const tip = [Lh, stAt(1).cy, 0];
+  for (let j = 0; j < NS; j++) tpl.tri(V[NT][j], tip, V[NT][j + 1], HORN);
+  // eye (on the right side, +z; mirrored for the left)
+  const s = stAt(eyeT), th = Math.asin(eyeTh);
+  const ct = Math.cos(th), stt = Math.sin(th);
+  const ec = [eyeT * Lh, s.cy + Math.pow(stt, 2 / EX) * s.rt, Math.pow(ct, 2 / EX) * s.rz];
+  return { tpl, eye: { c: ec, n: norm(0.35, 0.3, 1), r: 1.08 * (0.85 + 0.15 * K) }, snout: [Lh + 0.2, stAt(1).cy - 0.2, 0], Lh };
+}
+
+// ---- flipper templates: param grid (span t, chord c) -> local (S along span, O along chord, H thickness)
+function turtleFlipperTpl(sp, rear) {
+  const Lf = rear ? 9.5 : 22.5, Wm = rear ? 5.4 : 6.6;
+  const NT = rear ? 16 : 40, NC = rear ? 10 : 14;
+  const plan = (t) => {
+    let w, back;
+    if (rear) {
+      w = Wm * (0.42 + 0.58 * Math.sin((Math.PI / 2) * Math.min(1, t / 0.5))) * (t > 0.5 ? Math.sqrt(Math.max(0, 1 - Math.pow((t - 0.5) / 0.5, 2))) : 1);
+      back = 0.8 * t * t;
+      return { le: back - w * 0.4, te: back + w * 0.6, th: 0.75 * (1 - 0.55 * t) };
+    }
+    // fore flipper: a narrow wrist out of the shell, widest a third of the way out, a long curved tip
+    w = t < 0.36 ? Wm * (0.5 + 0.5 * Math.sin((Math.PI / 2) * (t / 0.36))) : Wm * Math.pow(Math.max(0, 1 - Math.pow((t - 0.36) / 0.64, 1.7)), 0.75);
+    back = Lf * 0.26 * Math.pow(t, 2.1);
+    return { le: back - w * 0.18, te: back + w * 0.82, th: 1.05 * (1 - 0.72 * t) };
+  };
+  // one record per grid node: [S, O, Hhalf]
+  const nodes = [];
+  for (let i = 0; i <= NT; i++) {
+    const t = i / NT, p = plan(t), row = [];
+    for (let j = 0; j <= NC; j++) {
+      const c = j / NC;
+      const prof = Math.pow(1 - c, 0.65) * (0.45 + 0.55 * Math.sqrt(Math.min(1, c * 5 + 0.05)));
+      row.push([t * Lf, p.le + (p.te - p.le) * c, Math.max(0.12, p.th * prof)]);
+    }
+    nodes.push(row);
+  }
+  const SC = rgb01(sp.scale), SC2 = rgb01(sp.scale2), SB = rgb01(sp.scaleB), SL = rgb01(sp.skinL);
+  const colTop = [], colBot = [];
+  for (let i = 0; i < NT; i++) {
+    const rt = [], rb = [];
+    for (let j = 0; j < NC; j++) {
+      const n = nodes[i][j], n2 = nodes[i + 1][j + 1];
+      const S = (n[0] + n2[0]) / 2, O = (n[1] + n2[1]) / 2, c = (j + 0.5) / NC, t = (i + 0.5) / NT;
+      // leading-edge scales are bigger, the tip's smaller
+      const v = tVor2(S, O * 1.15, (rear ? 1.5 : 1.95) * (1.15 - 0.45 * t), rear ? 31 : 37);
+      let k;
+      if (v.d2 - v.d1 < 0.22 * (1.1 - 0.4 * t)) k = SB;
+      else k = tmix(SC, SC2, hash2(v.id, 2, 41) * 0.9);
+      if (c > 0.86) k = tmix(k, SL, 0.7);
+      if (t < 0.12) k = tmix(k, rgb01(sp.neck), 0.6);
+      rt.push(k);
+      const vb = tVor2(S, O, 1.7, 53);
+      rb.push(vb.d2 - vb.d1 < 0.22 ? tmix(SL, SB, 0.6) : SL);
+    }
+    colTop.push(rt); colBot.push(rb);
+  }
+  return { nodes, NT, NC, colTop, colBot, Lf, rear, plan };
+}
+
+// Emit a flipper: root, span dir d, chord dir ch (toward the trailing edge), normal n (dorsal), tip flex (units)
+function emitFlipper(part, F, root, d, ch, n, flex, xf, claw) {
+  const P = (nd, side, t) => {
+    const f = flex * t * t;
+    return xf([root[0] + d[0] * nd[0] + ch[0] * nd[1] + n[0] * (nd[2] * side + f), root[1] + d[1] * nd[0] + ch[1] * nd[1] + n[1] * (nd[2] * side + f), root[2] + d[2] * nd[0] + ch[2] * nd[1] + n[2] * (nd[2] * side + f)]);
+  };
+  const T = [], B = [];
+  for (let i = 0; i <= F.NT; i++) { const t = i / F.NT; T.push(F.nodes[i].map((nd) => P(nd, 1, t))); B.push(F.nodes[i].map((nd) => P(nd, -1, t))); }
+  for (let i = 0; i < F.NT; i++) for (let j = 0; j < F.NC; j++) {
+    part.quad(T[i][j], T[i + 1][j], T[i + 1][j + 1], T[i][j + 1], F.colTop[i][j]);
+    part.quad(B[i][j], B[i][j + 1], B[i + 1][j + 1], B[i + 1][j], F.colBot[i][j]);
+  }
+  // leading / trailing edges and the tip
+  for (let i = 0; i < F.NT; i++) {
+    part.quad(T[i][0], B[i][0], B[i + 1][0], T[i + 1][0], F.colTop[i][0]);
+    const e = F.NC;
+    part.quad(T[i][e], T[i + 1][e], B[i + 1][e], B[i][e], F.colBot[i][F.NC - 1]);
+  }
+  for (let j = 0; j < F.NC; j++) part.quad(T[F.NT][j], T[F.NT][j + 1], B[F.NT][j + 1], B[F.NT][j], F.colTop[F.NT - 1][j]);
+  if (claw) {
+    // a dark claw on the leading edge, pointing forward and out
+    const t = claw.t, i = Math.round(t * F.NT), nd = F.nodes[i][0];
+    const base = P([nd[0], nd[1] + 0.25, 0], 1, t);
+    const tipP = P([nd[0] + 0.7, nd[1] - 1.0, 0.1], 1, t);
+    tubeInto(part, [base, tipP], (q) => 0.42 * (1 - 0.8 * q), 5, claw.col);
+  }
+}
+
+const turtleTpl = new Map();
+function turtleTemplates(kind) {
+  let T = turtleTpl.get(kind);
+  if (T) return T;
+  const sp = TURTLE_SP[kind] || TURTLE_SP.turtle;
+  const shell = turtleShellTpl(sp);
+  T = { sp, shell, head: turtleHeadTpl(sp), fore: turtleFlipperTpl(sp, false), rear: turtleFlipperTpl(sp, true) };
+  turtleTpl.set(kind, T);
+  return T;
+}
+
 function buildTurtle(c, ph) {
-  const L = c.L;
+  const T = turtleTemplates(c.kind);
+  const sp = T.sp;
   const body = new Part(), eyes = new Part();
   const P = TAU * ph;
-  const shellA = rgb01('#7a6436'), shellB = rgb01('#5e4c2a'), seam = rgb01('#3a2e1c'), plast = rgb01('#e0d0a0'), skin = rgb01('#7a9a62'), skinD = rgb01('#4e6a44'), spot = rgb01('#d0d8a8');
-  // carapace: a dome (upper half ellipsoid) with per-face scute colours
-  const cx = 0, cy = 0, R = [L * 0.36, L * 0.16, L * 0.28];
-  const seg = 16, rings = 8;
-  const dome = (th, phi) => [cx + Math.sin(th) * Math.cos(phi) * R[0], cy + Math.cos(th) * R[1], Math.sin(th) * Math.sin(phi) * R[2]];
-  for (let i = 0; i < rings; i++) for (let j = 0; j < seg; j++) {
-    const t0 = (i / rings) * Math.PI * 0.5, t1 = ((i + 1) / rings) * Math.PI * 0.5;
-    const p0 = (j / seg) * TAU, p1 = ((j + 1) / seg) * TAU;
-    const a = dome(t0, p0), b = dome(t0, p1), d = dome(t1, p0), e = dome(t1, p1);
-    const scute = (Math.floor(i / 3) * 7 + Math.floor(j / 2)) % 2;
-    const isSeam = i % 3 === 2 && j % 2 === 0;
-    let col = isSeam ? seam : scute ? shellA : shellB;
-    col = toneRGB(col, (hash2(i, j, 7) - 0.5) * 0.18 + (i < 2 ? 0.12 : 0));
-    if (i > 0) body.tri(a, b, e, col); else body.tri(a, b, e, col);
-    body.tri(a, e, d, col);
+  // whole-body motion: a little lift and nose-up with each power stroke
+  const pitch = 0.045 * Math.sin(P + 0.2), bob = 0.55 * Math.sin(P - 0.5);
+  const cp = Math.cos(pitch), spn = Math.sin(pitch);
+  const xf = (p) => [p[0] * cp - p[1] * spn, p[0] * spn + p[1] * cp + bob, p[2]];
+  T.shell.tpl.emit(body, xf);
+  // head on a short neck: it bobs against the body's pitch and pushes forward slightly on the power stroke
+  const K = sp.headK;
+  const hj = [T_C0 + T_RF + 2.2 + 0.45 * Math.cos(P - 0.4), -1.3 + 0.35 * Math.sin(P + 2.0), 0];
+  const hp = -0.75 * pitch + 0.06 * Math.sin(P + 1.6) - 0.05;
+  const ch = Math.cos(hp), sh = Math.sin(hp);
+  const hxf = (p) => xf([hj[0] + p[0] * ch - p[1] * sh, hj[1] + p[0] * sh + p[1] * ch, p[2]]);
+  T.head.tpl.emit(body, hxf);
+  // neck: a wrinkled, pale tube from under the nuchal to the head
+  const NK = rgb01(sp.neck), SL = rgb01(sp.skinL), SC = rgb01(sp.scale);
+  const n0 = [T_C0 + T_RF - 6, -2.0, 0], n1 = [hj[0] + 0.6, hj[1], 0];
+  const NR = 8, NSd = 18, ring = [];
+  for (let i = 0; i <= NR; i++) {
+    const t = i / NR, x = n0[0] + (n1[0] - n0[0]) * t, y = n0[1] + (n1[1] - n0[1]) * t + Math.sin(Math.PI * t) * 0.3;
+    const r = (3.1 - 0.5 * t) * K, rw = (3.3 - 0.6 * t) * K;
+    const row = [];
+    for (let j = 0; j <= NSd; j++) { const a = (j / NSd) * TAU; row.push(xf([x, y + Math.sin(a) * r, Math.cos(a) * rw])); }
+    ring.push(row);
   }
-  // shell rim + plastron (flat underside)
-  for (let j = 0; j < seg; j++) {
-    const p0 = (j / seg) * TAU, p1 = ((j + 1) / seg) * TAU;
-    const a = dome(Math.PI / 2, p0), b = dome(Math.PI / 2, p1);
-    const a2 = [a[0] * 0.95, -L * 0.04, a[2] * 0.95], b2 = [b[0] * 0.95, -L * 0.04, b[2] * 0.95];
-    body.quad(a, b, b2, a2, toneRGB(shellB, -0.15));
-    body.tri(a2, b2, [0, -L * 0.05, 0], plast);
+  for (let i = 0; i < NR; i++) for (let j = 0; j < NSd; j++) {
+    const a = ((j + 0.5) / NSd) * TAU, st = Math.sin(a);
+    const wr = i % 2 ? 0.9 : 1.04;
+    const k = st > 0.35 ? tsc(tmix(SC, NK, 0.45 + 0.3 * hash2(i, j, 5)), wr) : tsc(tmix(NK, SL, st < -0.3 ? 0.7 : 0.25), wr);
+    body.quad(ring[i][j], ring[i][j + 1], ring[i + 1][j + 1], ring[i + 1][j], tclampC(k));
   }
-  // head + neck
-  const hx = R[0] + L * 0.1, hy = L * 0.0 + Math.sin(P) * L * 0.01;
-  tubeInto(body, [[R[0] * 0.8, -L * 0.01, 0], [hx - L * 0.06, hy, 0]], () => L * 0.055, 7, skinD);
-  ellInto(body, [hx, hy + L * 0.01, 0], [L * 0.09, L * 0.06, L * 0.065], 10, 6, (i, j) => (hash2(i, j, 3) > 0.7 ? spot : skin));
+  // tail: short and conical, just past the rear of the shell
+  const tailEnd = [T_C0 - T_RB * sp.shellLen - 2.2, -2.7 + 0.25 * Math.sin(P + 1), 0.3 * Math.sin(P * 1)];
+  tubeInto({ quad: (a, b2, c2, d, k) => body.quad(xf(a), xf(b2), xf(c2), xf(d), k), tri: (a, b2, c2, k) => body.tri(xf(a), xf(b2), xf(c2), k) }, [[T_C0 - T_RB * 0.7, -2.4, 0], [T_C0 - T_RB * sp.shellLen - 0.4, -2.5, 0], tailEnd], (t) => 1.7 * (1 - 0.8 * t) + 0.15, 7, (t) => (t > 0.5 ? tmix(SC, NK, 0.4) : NK));
+  // flippers
+  const dirOf = (s, e, sd) => [-Math.sin(s) * Math.cos(e), Math.sin(e), sd * Math.cos(s) * Math.cos(e)];
+  const frame = (d, sd, f) => {
+    let chd = norm(...tsc(cross(d, [0, 1, 0]), sd));
+    let n = norm(...tsc(cross(chd, d), sd));
+    const cf = Math.cos(f), sf = Math.sin(f);
+    return [[chd[0] * cf - n[0] * sf, chd[1] * cf - n[1] * sf, chd[2] * cf - n[2] * sf], [n[0] * cf + chd[0] * sf, n[1] * cf + chd[1] * sf, n[2] * cf + chd[2] * sf]];
+  };
+  const CLAW = rgb01(sp.claw);
   for (const sd of [1, -1]) {
-    ellInto(eyes, [hx + L * 0.04, hy + L * 0.03, sd * L * 0.05], [L * 0.016, L * 0.016, L * 0.012], 8, 5, (i) => (i < 2 ? [0.9, 0.95, 1] : [0.04, 0.05, 0.07]));
+    // fore flippers: underwater flight (down-and-back power stroke, feathered recovery up and forward)
+    const e = -0.13 + 0.5 * Math.cos(P);
+    const s = 0.42 - 0.62 * Math.cos(P - 0.55);
+    const up = Math.max(0, Math.sin(P - Math.PI));
+    const f = -0.22 + 1.3 * Math.pow(up, 0.75);
+    const d = dirOf(s, e, sd);
+    const [chd, n] = frame(d, sd, f);
+    const root = [T_C0 + 7.5, -2.5, sd * 14.2];
+    emitFlipper(body, T.fore, root, d, chd, n, 1.6 * Math.sin(P), xf, { t: 0.42, col: CLAW });
+    // rear flippers: trailing rudders that trim and paddle a little
+    const er = -0.14 + 0.16 * Math.sin(P + 1.3 + sd * 0.4);
+    const sr = 1.12 + 0.1 * Math.sin(P + 0.4 * sd);
+    const dr = dirOf(sr, er, sd);
+    const [chr, nr] = frame(dr, sd, 0.28 + 0.22 * Math.sin(P + 0.5));
+    emitFlipper(body, T.rear, [T_C0 - 16, -2.6, sd * 9.6], dr, chr, nr, 0.5 * Math.sin(P + 1.3), xf, null);
+    // soft skin at the shoulders and hips, between carapace and plastron
+    const skinE = (c0, r) => ellInto({ tri: (a, b2, c2, k) => body.tri(xf(a), xf(b2), xf(c2), k) }, c0, r, 10, 6, (i) => (i < 3 ? tmix(NK, SC, 0.3) : tmix(NK, SL, 0.5)));
+    skinE([T_C0 + 7, -2.9, sd * 12.2], [3.6, 1.8, 3.0]);
+    skinE([T_C0 - 15.5, -2.9, sd * 8.6], [2.8, 1.5, 2.4]);
   }
-  // front flippers: sweep down and back; rear flippers paddle
-  const a = 0.25 + (Math.sin(P) * 0.5 + 0.5) * 1.05;
+  // eyes: dark natural eyes stamped by the voxeliser (an eye mesh only for the smooth debug mode)
+  const E = T.head.eye, eyeVox = [], eyesA = [];
   for (const sd of [1, -1]) {
-    const root = [R[0] * 0.55, -L * 0.02, sd * R[2] * 0.75];
-    const mid = [root[0] - Math.cos(a) * L * 0.16, root[1] - Math.sin(a) * L * 0.1, root[2] + sd * L * 0.14];
-    const tip = [root[0] - Math.cos(a) * L * 0.36, root[1] - Math.sin(a) * L * 0.2, root[2] + sd * L * 0.22];
-    flipper(body, root, mid, tip, L * 0.07, skin, skinD, sd);
-    const b = Math.sin(P + 2) * 0.35;
-    const rr = [-R[0] * 0.75, -L * 0.03, sd * R[2] * 0.55];
-    flipper(body, rr, [rr[0] - L * 0.08, rr[1] + b * L * 0.04, rr[2] + sd * L * 0.05], [rr[0] - L * 0.15, rr[1] + b * L * 0.08, rr[2] + sd * L * 0.08], L * 0.05, skin, skinD, sd);
+    const cE = hxf([E.c[0], E.c[1], sd * E.c[2]]);
+    const nE = [E.n[0] * ch - E.n[1] * sh, E.n[0] * sh + E.n[1] * ch, sd * E.n[2]];
+    eyeVox.push({ c: cE, n: nE, r: E.r, iris: sp.iris, pupil: 0.62 });
+    if (sd > 0) eyesA.push({ p: cE, r: E.r });
+    if (!VOXEL) ellInto(eyes, cE, [E.r, E.r, E.r * 0.6], 8, 5, [0.04, 0.03, 0.03]);
   }
-  const parts = [
-    { key: 'body', mb: body.mb, spec: 0.55, shine: 30, env: 0.35, iri: 0.05, rim: 0.3, ambient: 0.48 },
-    { key: 'eyes', mb: eyes.mb, spec: 1.1, shine: 90, env: 0.3, ambient: 0.6 },
-  ];
-  return { parts, anchors: { mouth: [hx + L * 0.09, hy, 0], top: [0, R[1], 0], bottom: [0, -L * 0.05, 0], tail: [-R[0], 0, 0] }, eyes: [{ p: [hx + L * 0.04, hy + L * 0.03, L * 0.05], r: L * 0.016 }], L, flatRoll: 0 };
+  const parts = [{ key: 'body', mb: body.mb, spec: 0.5, shine: 34, env: 0.26, iri: 0.03, rim: 0.3, ambient: 0.5 }];
+  if (!eyes.empty) parts.push({ key: 'eyes', mb: eyes.mb, spec: 1.1, shine: 90, env: 0.3, ambient: 0.6 });
+  const topY = tRimY(0) + T_HD;
+  return {
+    parts, eyeVox, eyes: eyesA, L: c.L, flatRoll: 0,
+    anchors: { mouth: hxf(T.head.snout), top: xf([T_C0, topY, 0]), bottom: xf([0, -T_HB - 1, 0]), tail: xf(tailEnd) },
+  };
 }
 
 // Penguin (fjord): units = world px, feet at the origin, facing +x. Poses (sw): 0 stand, 1-2 waddle, 3 flap,
@@ -1408,24 +1824,6 @@ function buildRestSeal(c, sw) {
     { key: 'eyes', mb: eyes.mb, spec: 1.1, shine: 90, env: 0.3, ambient: 0.6 },
   ];
   return { parts, anchors: { mouth: [hx + 4.2, hy - 0.8, 0], top: [0, 8, 0], bottom: [0, 0, 0], tail: [-16, 1.5, 0] }, eyes: [{ p: [hx + 1.3, hy + 0.8, 1.95], r: 0.55 }], L: 28, flatRoll: 0 };
-}
-
-function flipper(part, a, b, c, w, col, colD, sd) {
-  // a flat, tapering paddle through a -> b -> c (two faces, thin)
-  const seg = [a, b, c];
-  const th = w * 0.18;
-  const pts = seg.map((p, i) => {
-    const ww = w * [1, 0.85, 0.25][i];
-    return [[p[0] + ww * 0.5, p[1] + th, p[2]], [p[0] - ww * 0.5, p[1] + th, p[2]], [p[0] - ww * 0.5, p[1] - th, p[2]], [p[0] + ww * 0.5, p[1] - th, p[2]]];
-  });
-  for (let i = 0; i < 2; i++) {
-    const A = pts[i], B = pts[i + 1];
-    part.both(A[0], A[1], B[1], col); part.both(A[0], B[1], B[0], col);
-    part.both(A[3], A[2], B[2], colD); part.both(A[3], B[2], B[3], colD);
-    part.both(A[0], A[3], B[3], colD); part.both(A[0], B[3], B[0], colD);
-    part.both(A[1], A[2], B[2], colD); part.both(A[1], B[2], B[1], colD);
-  }
-  void sd;
 }
 
 // ------------------------------------------------------------------------------------------------ pose cache

@@ -91,19 +91,7 @@ export class PackagePanel {
     bg.addColorStop(0, mix(T.color, '#1a1030', 0.75)); bg.addColorStop(1, '#06040c');
     ctx.fillStyle = bg; ctx.fillRect(r.x, r.y, r.w, r.h);
     const cx = Math.round(r.x + r.w / 2), floor = Math.round(r.y + r.h * 0.56);
-    // god rays behind the crate (spin faster as it opens)
-    ctx.globalCompositeOperation = 'lighter';
-    const spin = this.phase === 'reveal' ? 1.4 : this.phase === 'shake' ? 0.6 + this.pt : 0.25;
-    const rayA = this.phase === 'reveal' ? 0.12 : 0.05 + (this.phase === 'shake' ? this.pt * 0.06 : 0);
-    for (let k = 0; k < 12; k++) {
-      const a = t * spin + (k / 12) * TAU;
-      ctx.fillStyle = rgba(T.glow, rayA);
-      ctx.beginPath(); ctx.moveTo(cx, floor - 30);
-      ctx.lineTo(cx + Math.cos(a - 0.09) * 500, floor - 30 + Math.sin(a - 0.09) * 500);
-      ctx.lineTo(cx + Math.cos(a + 0.09) * 500, floor - 30 + Math.sin(a + 0.09) * 500);
-      ctx.fill();
-    }
-    ctx.globalCompositeOperation = 'source-over';
+    // [polish17] (no god-ray fan behind the crate any more; the stage glow above carries the tier colour)
     // floor + a round wooden pedestal trimmed in the tier colour
     ctx.fillStyle = '#1a1018'; ctx.fillRect(r.x, floor + 8, r.w, r.h);
     for (let i = 0; i < 10; i++) { ctx.fillStyle = rgba('#000000', 0.04 * (10 - i)); ctx.fillRect(r.x, floor + 8 + i * 2, r.w, 2); }

@@ -872,7 +872,8 @@ export class Aquarium {
     for (const b of this.fullButtons()) {
       if (!rectContains(b, inp.x, inp.y)) continue;
       this.hoverBtn = b.id;
-      if (b.tip) tip(b.tip);
+      // [polish17] no tooltip for the tile whose own tray / panel is already open (it would cover that panel)
+      if (b.tip && !(this.panel && b.id === this.panel)) tip(b.tip);
       if (inp.pressed) { inp.consume(); this.press = null; b.run(); }
       this.prevCur = null;
       return;

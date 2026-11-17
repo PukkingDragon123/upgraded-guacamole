@@ -19,8 +19,9 @@ import {
   itemPreview, drawItemPreview, emotePose,
 } from '../gfx/character.js';
 import { BOAT_TIERS, BOAT_PARTS, BOAT_PART_SLOTS, renderBoatPreview, resolveParts, ensureBoat } from '../world/boatmodels.js';
-import { drawAeroPanel, drawAeroButton, drawGlossOrb, drawAeroBubble, drawAeroCoin, drawSparkle, drawAeroGlow, aeroText, fmtAero, AERO, CURRENCY } from './aero.js';
+import { drawAeroFrame, drawAeroPanel, drawAeroButton, drawGlossOrb, drawAeroBubble, drawAeroCoin, drawSparkle, drawAeroGlow, aeroText, fmtAero, AERO, CURRENCY } from './aero.js';
 import { wordArt } from '../store/aerokit.js';
+import { getBigIcon } from '../gfx/bigicons.js';
 import { unlocked as labUnlocked } from '../game/lab.js';
 
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
@@ -89,13 +90,8 @@ function stageBg(w, h) {
   for (let x = 0; x < w; x++) { const y = hy - 8 + ((x - w * 0.55) / w) ** 2 * 26; g.fillRect(x, Math.round(y), 1, Math.round(hy + 30 - y)); }
   g.fillStyle = 'rgba(255,255,255,0.35)';
   for (let x = 0; x < w; x++) { const y = hy - 8 + ((x - w * 0.55) / w) ** 2 * 26; g.fillRect(x, Math.round(y), 1, 2); }
-  // sun rays from the top-left
+  // a soft sun glow in the top-left (no ray fan) [polish17]
   g.globalCompositeOperation = 'lighter';
-  for (let i = 0; i < 9; i++) {
-    const a = 0.1 + i * 0.16;
-    g.fillStyle = `rgba(255,255,240,${0.05 + (i % 2) * 0.03})`;
-    g.beginPath(); g.moveTo(w * 0.12, h * 0.1); g.lineTo(w * 0.12 + Math.cos(a) * w * 1.4, h * 0.1 + Math.sin(a) * w * 1.4); g.lineTo(w * 0.12 + Math.cos(a + 0.07) * w * 1.4, h * 0.1 + Math.sin(a + 0.07) * w * 1.4); g.fill();
-  }
   const sg = g.createRadialGradient(w * 0.12, h * 0.1, 0, w * 0.12, h * 0.1, w * 0.3);
   sg.addColorStop(0, 'rgba(255,255,255,0.95)'); sg.addColorStop(0.15, 'rgba(255,255,220,0.5)'); sg.addColorStop(1, 'rgba(255,255,255,0)');
   g.fillStyle = sg; g.fillRect(0, 0, w, h);
@@ -266,8 +262,11 @@ export class WardrobePanel {
     const k = ease.outBack ? ease.outBack(this.openT) : this.openT;
     const r = { x: Math.round((SW - W) / 2), y: Math.round((SH - H) / 2 + (1 - k) * 16), w: W, h: H };
     this.rect = r;
-    drawAeroPanel(ctx, r.x, r.y, W, H, { tone: 'glass', radius: 10, glow: true });
-    this.drawHeader(ctx, ui, { x: r.x + 10, y: r.y + 6, w: W - 20, h: 26 });
+    // [polish17] the shared voxel window frame (title plaque, voxel ring, ornaments) like every other panel
+    const F = drawAeroFrame(ctx, r.x, r.y, W, H, { title: 'Wardrobe', icon: getBigIcon('wardrobe', { size: 'small' }).canvas, seed: 29 });
+    this.frameClose = F.close;
+    this.drawHeader(ctx, ui, { x: r.x + 10, y: r.y + 4, w: W - 20, h: 26 });
+    if (!ui.isOpen(this.id)) return;
     const stage = { x: r.x + 10, y: r.y + 38, w: Math.round(W * 0.4), h: H - 38 - 44 };
     this.drawStage(ctx, ui, stage, dt);
     this.drawStageBar(ctx, ui, { x: stage.x, y: stage.y + stage.h + 6, w: stage.w, h: 30 });
@@ -279,6 +278,7 @@ export class WardrobePanel {
     const grid = { x: rx, y: tabs.y + tabs.h + 6, w: rw, h: info.y - 6 - (tabs.y + tabs.h + 6) };
     if (this.tab === 'boat') { this.drawBoatGrid(ctx, ui, grid); this.drawBoatInfo(ctx, ui, info); }
     else { this.drawGrid(ctx, ui, grid, dt); this.drawInfo(ctx, ui, info); }
+    F.finish(ctx);
     this.drawPops(ctx, dt);
     if (inp.keyPressed?.('r')) this.randomize();
     if (inp.keyPressed?.('ArrowLeft')) { this.yawV += 260; this.idleT = 0; }
@@ -287,26 +287,15 @@ export class WardrobePanel {
 
   drawHeader(ctx, ui, h) {
     const g = this.game, st = g.state;
-    drawGlossOrb(ctx, h.x + 11, h.y + 13, 11, '#59d8ff', this.t);
-    ctx.drawImage(glyph('tint'), h.x + 1, h.y + 3);
-    let wa = null;
-    try { wa = wordArt('Wardrobe', { scale: 2 }); } catch { wa = null; }
-    if (wa) ctx.drawImage(wa, h.x + 28, h.y + Math.round((26 - wa.height) / 2));
-    else aeroText(ctx, 'Wardrobe', h.x + 28, h.y + 9, { color: AERO.ink });
-    // Aero balance pill
+    // Aero balance pill (left of the frame's close orb)
     const amt = fmtAero(st.coins || 0), tw = measureText(amt, 'normal');
-    const pw = tw + 30, px = h.x + h.w - 34 - pw;
+    const pw = tw + 30, px = (this.frameClose ? this.frameClose.x - 6 : h.x + h.w - 34) - pw;
     drawAeroButton(ctx, px, h.y + 3, pw, 20, { tone: 'sky', label: '' });
     drawAeroCoin(ctx, px + 11, h.y + 13, 6, this.t);
     drawText(ctx, amt, px + 21, h.y + 9, { color: '#ffffff', shadow: '#0a3e74' });
     // close orb
-    const cr = { x: h.x + h.w - 24, y: h.y + 1, w: 24, h: 24 };
-    const hov = ui.hover(cr);
-    drawGlossOrb(ctx, cr.x + 12, cr.y + 12, hov ? 11 : 10, '#ff5a5e', this.t);
-    const cx = getUiIcon('cross');
-    if (cx) ctx.drawImage(cx, Math.round(cr.x + 12 - cx.width / 2), Math.round(cr.y + 12 - cx.height / 2));
-    if (hov) ui.tip = 'Close (Esc)';
-    if (ui.clicked(cr)) { g.audio?.play?.('ui_click'); ui.close(this.id); }
+    const cr = this.frameClose;
+    if (cr && ui.button(ctx, cr.x, cr.y, cr.w, cr.h, '', { icon: 'cross', tip: 'Close (Esc)', sound: 'ui_close' })) ui.close(this.id);
   }
 
   // ---------------------------------------------------------------- stage

@@ -94,6 +94,29 @@ export function run(params) {
         if (f) g.drawImage(f.canvas, f.sx, f.sy, f.w, f.h, cx - (f.ax * f.k) / Z, cy - (f.ay * f.k) / Z, (f.w * f.k) / Z, (f.h * f.k) / Z);
         g.fillText(k, cx - LW / 8 + 4, cy - LH / 8 + 6);
       });
+    } else if (mode === 'turtle') {
+      // [turtle17] the sea turtle: hero close-ups at several yaws, the 8-frame swim cycle, game-size giants, tiny sizes
+      const kind = P('kind', 'turtle');
+      const put = (f, x, y, s = 1) => { if (f) g.drawImage(f.canvas, f.sx, f.sy, f.w, f.h, x - (f.ax * f.k * s) / Z, y - (f.ay * f.k * s) / Z, (f.w * f.k * s) / Z, (f.h * f.k * s) / Z); };
+      const swA = anim ? Math.floor(time / 110) % 8 : Number(P('sw', 1));
+      if (P('hero', '')) {
+        // one big close-up: hero=yaw,tilt
+        const [hy, ht] = P('hero').split(',').map(Number);
+        put(creatureFrame(kind, { S: Z * Number(P('hs', 6)), yaw: hy, tilt: ht || 13, sw: swA, force: true }), LW / 2, LH / 2);
+        g.restore();
+        window.__done = true;
+        return;
+      }
+      [[22, 165, 120, 13], [0, 480, 120, 13], [20, 790, 120, 62]].forEach(([yaw, x, y, tilt]) => put(creatureFrame(kind, { S: Z * Number(P('hs', 3.6)), yaw, tilt, sw: swA, force: true }), x, y));
+      for (let i = 0; i < 8; i++) { put(creatureFrame(kind, { S: Z * 1.7, yaw: 22, sw: i, force: true }), 60 + i * 116, 285); g.fillText('sw' + i, 30 + i * 116, 252); }
+      for (let i = 0; i < 4; i++) put(creatureFrame(kind, { S: Z * 1.7, yaw: [90, 60, -40, -90][i], tilt: [13, 30, 13, 13][i], sw: [2, 0, 4, 6][i], force: true }), 90 + i * 150, 375);
+      // tiny sizes (icons / far)
+      [0.35, 0.55, 0.8].forEach((s, i) => put(creatureFrame(kind, { S: Z * s, yaw: 22, sw: 2, force: true }), 700 + i * 75, 380));
+      // world giant at game zoom (shallows draws it at world size; screen zoom ~2-3)
+      const G = window.__tg || (window.__tg = new VoxelGiant(kind));
+      for (let k = 0; k < G.n; k++) G.warm();
+      g.restore(); g.save(); g.scale(Z * 1.5, Z * 1.5);
+      [1, -1].forEach((d, i) => { const f = G.frame(time / 300 + i * 2, d); g.drawImage(f.canvas, Math.round(60 + i * 220 + 40 - f.ox), Math.round(320 - f.oy), f.w, f.h); });
     } else if (mode === 'vg') {
       // world giants through the biome API (frame(ph, dir) -> hi-res canvas drawn at world size), at game zoom 3
       g.restore(); g.save(); g.scale(3, 3);

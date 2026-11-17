@@ -191,23 +191,11 @@ export function ecoSky(ctx, x, y, w, h, t = 0, o = {}) {
   w = Math.round(w); h = Math.round(h);
   const c = aeroCached(`sky|${w}|${h}|${opt.sun}|${opt.arcs}|${opt.clouds}|${opt.grass}`, () => skyTex(w, h, opt));
   ctx.drawImage(c, Math.round(x), Math.round(y));
-  // slowly turning flare rays
+  // [polish17] a gentle sun twinkle only: no turning ray fan, no lens-flare ghosts
   const sx = x + opt.sun[0] * w, sy = y + opt.sun[1] * h;
   ctx.save();
   ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
-  ctx.globalCompositeOperation = 'lighter';
-  for (let i = 0; i < 10; i++) {
-    const a = t * 0.05 + (i / 10) * TAU, len = Math.max(w, h) * (0.35 + 0.25 * hash1(i, 2)), half = 0.035;
-    ctx.fillStyle = `rgba(255,255,230,${0.07 + 0.05 * Math.sin(t * 0.7 + i)})`;
-    ctx.beginPath(); ctx.moveTo(sx, sy);
-    ctx.lineTo(sx + Math.cos(a - half) * len, sy + Math.sin(a - half) * len);
-    ctx.lineTo(sx + Math.cos(a + half) * len, sy + Math.sin(a + half) * len);
-    ctx.closePath(); ctx.fill();
-  }
-  ctx.globalCompositeOperation = 'source-over';
-  drawSparkle(ctx, sx, sy, 4, 0.9);
-  // lens-flare ghosts along the diagonal
-  for (const [k, r, a] of [[0.35, 4, 0.25], [0.6, 2.5, 0.3], [0.85, 6, 0.15]]) drawAeroGlow(ctx, sx + (x + w * 0.85 - sx) * k, sy + (y + h * 0.8 - sy) * k, r, '#e8fff0', a);
+  drawSparkle(ctx, sx, sy, 3, 0.75 + 0.2 * Math.sin(t * 1.3));
   if (o.globe) ecoGlobe(ctx, x + w - o.globe - 10, y + h * 0.48, o.globe, t);
   ctx.restore();
 }

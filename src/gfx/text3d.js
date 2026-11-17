@@ -36,10 +36,12 @@ function measure(text, size) {
 }
 
 // Alpha mask of the text (1 = ink), plus per-letter column ranges.
+const maskPixels = new WeakMap();
 function textMask(text, size) {
   const bm = alagardBitmap(text, { size, color: '#ffffff' });
   const w = bm.width, h = bm.height;
-  const d = bm.getContext('2d').getImageData(0, 0, w, h).data;
+  let d = maskPixels.get(bm); // [polish17] read each cached Alagard bitmap once
+  if (!d || d.length !== w * h * 4) { d = bm.getContext('2d').getImageData(0, 0, w, h).data; maskPixels.set(bm, d); }
   const mask = new Uint8Array(w * h);
   let y0 = h, y1 = -1;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 127) { mask[y * w + x] = 1; if (y < y0) y0 = y; if (y > y1) y1 = y; }

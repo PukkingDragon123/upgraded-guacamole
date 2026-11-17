@@ -20,9 +20,11 @@ export const CLOUD_PALS = {
 };
 
 // Re-colour a rendered sprite through a 5-step ramp by luminance (keeps the voxel shading and the alpha).
+const pixelsOf = new WeakMap(); // [polish17] one readback per source sprite (no repeated getImageData warnings)
 export function recolor(src, ramp, gamma = 1, vshade = 0) {
   const w = src.width, h = src.height;
-  const s = ctxOf(src).getImageData(0, 0, w, h).data;
+  let s = pixelsOf.get(src);
+  if (!s || s.length !== w * h * 4) { s = ctxOf(src).getImageData(0, 0, w, h).data; pixelsOf.set(src, s); }
   const R = ramp.map(hexToRgb);
   const n = R.length - 1;
   let lo = 1, hi = 0;

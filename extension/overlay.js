@@ -1756,7 +1756,11 @@
   function textMask(text, size) {
     const bm = alagardBitmap(text, { size, color: "#ffffff" });
     const w = bm.width, h = bm.height;
-    const d = bm.getContext("2d").getImageData(0, 0, w, h).data;
+    let d = maskPixels.get(bm);
+    if (!d || d.length !== w * h * 4) {
+      d = bm.getContext("2d").getImageData(0, 0, w, h).data;
+      maskPixels.set(bm, d);
+    }
     const mask = new Uint8Array(w * h);
     let y0 = h, y1 = -1;
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 127) {
@@ -1888,7 +1892,7 @@
     ctx2.globalAlpha = a;
     return true;
   }
-  var TEXT3D_PALETTES, measurer, CACHE, SPR;
+  var TEXT3D_PALETTES, measurer, maskPixels, CACHE, SPR;
   var init_text3d = __esm({
     "src/gfx/text3d.js"() {
       init_alagard();
@@ -1905,6 +1909,7 @@
       };
       loadAlagard();
       measurer = null;
+      maskPixels = /* @__PURE__ */ new WeakMap();
       CACHE = /* @__PURE__ */ new Map();
       SPR = /* @__PURE__ */ new Map();
     }
@@ -16134,74 +16139,420 @@ void main() {
       }
     }
   }
+  function tVor2(x, y, sp, seed) {
+    const gx = Math.floor(x / sp), gy = Math.floor(y / sp);
+    let d1 = 1e9, d2 = 1e9, id = 0;
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+      const cx = gx + i, cy = gy + j;
+      const px = (cx + 0.15 + 0.7 * hash2(cx, cy, seed)) * sp, py = (cy + 0.15 + 0.7 * hash2(cx, cy, seed + 1)) * sp;
+      const d = Math.hypot(x - px, y - py);
+      if (d < d1) {
+        d2 = d1;
+        d1 = d;
+        id = cx * 7919 + cy * 104729;
+      } else if (d < d2) d2 = d;
+    }
+    return { d1, d2, id };
+  }
+  function tVor3(x, y, z, sp, seed) {
+    const gx = Math.floor(x / sp), gy = Math.floor(y / sp), gz = Math.floor(z / sp);
+    let d1 = 1e9, d2 = 1e9, id = 0;
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (let k = -1; k <= 1; k++) {
+      const cx = gx + i, cy = gy + j, cz = gz + k;
+      const h = hash2(cx * 31 + cz * 977, cy, seed);
+      const px = (cx + 0.15 + 0.7 * h) * sp, py = (cy + 0.15 + 0.7 * hash2(cx, cy * 13 + cz, seed + 1)) * sp, pz = (cz + 0.15 + 0.7 * hash2(cz, cx + cy * 7, seed + 2)) * sp;
+      const d = Math.hypot(x - px, y - py, z - pz);
+      if (d < d1) {
+        d2 = d1;
+        d1 = d;
+        id = cx * 7919 + cy * 104729 + cz * 15485863;
+      } else if (d < d2) d2 = d;
+    }
+    return { d1, d2, id };
+  }
+  function turtleScutes(sp) {
+    const XS = [], x0 = -30, x1 = 24, n2 = 216;
+    for (let i = 0; i <= n2; i++) XS.push(0);
+    for (let k = 0; k < 2e3; k++) {
+      const a = k / 2e3 * Math.PI, r = tOutline(a, sp) * T_RM;
+      const x = T_C0 + Math.cos(a) * r, z = Math.sin(a) * r;
+      const i = Math.round((x - x0) / (x1 - x0) * n2);
+      if (i >= 0 && i <= n2 && z > XS[i]) XS[i] = z;
+    }
+    for (let pass = 0; pass < 2; pass++) for (let i = 1; i < n2; i++) if (!XS[i]) XS[i] = Math.max(XS[i - 1], XS[i + 1]) * 0.5;
+    const halfIn = (x) => {
+      const f = (x - x0) / (x1 - x0) * n2;
+      const i = clamp3(Math.floor(f), 0, n2 - 1);
+      return XS[i] + (XS[i + 1] - XS[i]) * (f - i);
+    };
+    const xF = T_C0 + T_RM * T_RF, xB = T_C0 - T_RM * T_RB * sp.shellLen;
+    const NC = sp.costals;
+    const VB = [0, 0.2, 0.46, 0.68, 0.86, 1];
+    const cSeams = NC === 5 ? [0.16, 0.33, 0.57, 0.77] : [0.33, 0.57, 0.77];
+    const NM = 25;
+    const vOf = (u) => {
+      let i = 0;
+      while (i < 4 && u > VB[i + 1]) i++;
+      return i;
+    };
+    const vhwAt = (x, u) => {
+      const i = vOf(u), pk3 = 1 - Math.abs((u - VB[i]) / (VB[i + 1] - VB[i]) - 0.5) * 2;
+      return halfIn(x) * (0.34 + 0.08 * pk3) + 0.6;
+    };
+    const at = (x, z) => {
+      const dx = x - T_C0, a = Math.atan2(z, dx), rho = Math.hypot(dx, z) / tOutline(a, sp);
+      if (rho > T_RM) {
+        const k = Math.round(a / TAU3 * NM);
+        const idx = (k % NM + NM) % NM;
+        const ac = k / NM * TAU3 + (Math.sign(a) || 1) * 0.02;
+        const rc = tOutline(ac, sp) * 0.985;
+        return { id: 100 + idx, gx: T_C0 + Math.cos(ac) * rc - Math.cos(ac) * 0.6, gz: Math.sin(ac) * rc, kind: 2, rho, a };
+      }
+      const u = clamp3((xF - x) / (xF - xB), 0, 1);
+      const vhw = vhwAt(x, u);
+      if (Math.abs(z) < vhw) {
+        const i2 = vOf(u);
+        return { id: 10 + i2, gx: xF - (VB[i2] + 0.64 * (VB[i2 + 1] - VB[i2])) * (xF - xB), gz: 0, kind: 0, rho, a };
+      }
+      const hw = halfIn(x);
+      const lf = clamp3((Math.abs(z) - vhw) / Math.max(0.5, hw - vhw), 0, 1);
+      const ua = u - 0.07 * lf;
+      let i = 0;
+      while (i < cSeams.length && ua > cSeams[i]) i++;
+      const lo = i ? cSeams[i - 1] : 0, hi = i < cSeams.length ? cSeams[i] : 1;
+      const uc = lo + (hi - lo) * 0.62;
+      const xc = xF - uc * (xF - xB);
+      const s = z >= 0 ? 1 : -1;
+      return { id: (s > 0 ? 20 : 40) + i, gx: xc, gz: s * (vhwAt(xc, uc) + 0.22 * (halfIn(xc) - vhwAt(xc, uc))), kind: 1, rho, a };
+    };
+    return { at, halfIn, xF, xB };
+  }
+  function turtleShellTpl(sp) {
+    const S9 = turtleScutes(sp);
+    const top = new TTpl();
+    const col = (k) => rgb01(sp[k]);
+    const BASE = col("base"), DARK = col("dark"), OLV = col("olive"), AMB2 = col("amber"), OCH = col("ochre"), SEAM = col("seam");
+    const RIM = col("rimEdge"), UND = col("under"), PL = col("plast"), PLS = col("plastSeam");
+    const NA = 200, NR = 52;
+    const seamAt = (x, z, d) => {
+      const s0 = S9.at(x, z).id;
+      return S9.at(x + d, z).id !== s0 || S9.at(x - d, z).id !== s0 || S9.at(x, z + d).id !== s0 || S9.at(x, z - d).id !== s0;
+    };
+    const ptTop = (i, j) => {
+      const a = j / NA * TAU3, rho = Math.pow(i / NR, 0.85);
+      const R2 = tOutline(a, sp);
+      const x = T_C0 + Math.cos(a) * R2 * rho, z = Math.sin(a) * R2 * rho;
+      let y = tRimY(a) + tDome(rho, a);
+      if (sp.imbricate) {
+        const q = S9.at(x, z);
+        if (q.kind < 2) y += clamp3((q.gx - x) * 0.09 + 0.25, 0, 0.75);
+      }
+      if (i < NR && rho > 0.2 && seamAt(x, z, 0.36)) y -= 0.42;
+      return [x, y, z];
+    };
+    const V2 = [];
+    for (let i = 0; i <= NR; i++) {
+      const row2 = [];
+      for (let j = 0; j <= NA; j++) row2.push(ptTop(i, j % NA));
+      V2.push(row2);
+    }
+    const shellCol = (x, z) => {
+      const q = S9.at(x, z);
+      if (seamAt(x, z, 0.42)) return SEAM;
+      const band = seamAt(x, z, 0.95);
+      const dx = x - q.gx, dz = z - q.gz, d = Math.hypot(dx, dz), phi = Math.atan2(dz, dx);
+      const h1 = hash2(q.id, 3, 71), h2 = hash2(q.id, 5, 72), h37 = hash2(q.id, 7, 73);
+      const st = sp.streak;
+      let s = 0.6 * Math.sin(3 * phi + h1 * TAU3) + 0.4 * Math.sin(6 * phi + h2 * TAU3) + 0.16 * Math.sin(11 * phi + h37 * TAU3) + 0.12 * Math.sin(d * 1.3 + h1 * 5);
+      s *= st;
+      let c = tmix(BASE, OLV, 0.35 + 0.3 * h2);
+      if (s > 0.5) c = tmix(c, AMB2, clamp013((s - 0.5) * 3));
+      if (s > 0.9) c = tmix(c, OCH, clamp013((s - 0.9) * 3));
+      if (s < -0.3) c = tmix(c, DARK, clamp013((-s - 0.3) * 1.8));
+      if (d < 1.4) c = tmix(c, DARK, 0.45 * (1 - d / 1.4));
+      if (sp.imbricate) {
+        const fl = Math.sin(4 * phi + h37 * TAU3 + d * 0.35);
+        if (fl > 0.55) c = tmix(c, DARK, 0.75);
+        else if (fl < -0.6) c = tmix(c, OCH, 0.5);
+      }
+      if (band) c = tmix(c, OCH, 0.22);
+      if (q.kind === 2 && q.rho > 0.965) c = tmix(c, RIM, 0.55);
+      return tclampC(toneRGB(c, (hash2(Math.floor(x * 1.9), Math.floor(z * 1.9), 77) - 0.5) * 0.12));
+    };
+    for (let i = 0; i < NR; i++) for (let j = 0; j < NA; j++) {
+      const a = V2[i][j], b = V2[i][j + 1], c2 = V2[i + 1][j + 1], d = V2[i + 1][j];
+      const mx = (a[0] + b[0] + c2[0] + d[0]) / 4, mz = (a[2] + b[2] + c2[2] + d[2]) / 4;
+      const k = shellCol(mx, mz);
+      if (i > 0) top.tri(a, c2, b, k);
+      top.tri(a, d, c2, k);
+    }
+    const ptBot = (i, j) => {
+      const a = j / NA * TAU3, rho = i / NR;
+      const R2 = tOutline(a, sp);
+      const x = T_C0 + Math.cos(a) * R2 * rho, z = Math.sin(a) * R2 * rho;
+      const pl = Math.pow(Math.max(0, 1 - Math.pow(rho / 0.94, 2.4)), 0.55);
+      return [x, tRimY(a) - T_RIM - T_HB * Math.min(1, pl * 1.15) * (1 - 0.25 * Math.max(0, -Math.cos(a))), z];
+    };
+    const U2 = [];
+    for (let i = 0; i <= NR; i++) {
+      const row2 = [];
+      for (let j = 0; j <= NA; j++) row2.push(ptBot(Math.min(i, NR), j % NA));
+      U2.push(row2);
+    }
+    const plCol = (x, z, rho) => {
+      if (rho > 0.9) return UND;
+      const u = (S9.xF - x) / (S9.xF - S9.xB);
+      if (Math.abs(z) < 0.32 || [0.12, 0.3, 0.5, 0.7, 0.86].some((s) => Math.abs(u - s) < 0.012)) return PLS;
+      if (rho > 0.74) return tmix(PL, UND, 0.5);
+      return PL;
+    };
+    for (let i = 0; i < NR; i++) for (let j = 0; j < NA; j++) {
+      const a = U2[i][j], b = U2[i][j + 1], c2 = U2[i + 1][j + 1], d = U2[i + 1][j];
+      const k = plCol((a[0] + c2[0]) / 2, (a[2] + c2[2]) / 2, (i + 0.5) / NR);
+      if (i > 0) top.tri(a, b, c2, k);
+      top.tri(a, c2, d, k);
+    }
+    for (let j = 0; j < NA; j++) {
+      const a = V2[NR][j], b = V2[NR][j + 1], c2 = U2[NR][j + 1], d = U2[NR][j];
+      const k = tmix(RIM, DARK, 0.25 + 0.2 * hash2(j, 1, 79));
+      top.quad(a, b, c2, d, Math.round(j / NA * 25 * 2) % 2 ? k : tmix(k, SEAM, 0.35));
+    }
+    return { tpl: top, S: S9 };
+  }
+  function turtleHeadTpl(sp) {
+    const K2 = sp.headK, tpl = new TTpl();
+    const Lh = 8.6 * (0.85 + 0.15 * K2) * (sp.beak ? 1.12 : 1);
+    const ST = [
+      [0, 0, 2.5, 2.5, 2.55],
+      [0.14, 0.15, 2.75, 2.6, 2.8],
+      [0.36, 0.3, 2.95, 2.6, 2.95],
+      [0.56, 0.22, 2.7, 2.45, 2.6],
+      [0.74, 0, 2.15, 2.15, 2],
+      [0.87, -0.25, 1.55, 1.8, 1.45],
+      [0.95, -0.45, 1, 1.35, 0.95],
+      [1, -0.6, 0.3, 0.55, 0.35]
+    ];
+    const stAt = (t) => {
+      let i = 0;
+      while (i < ST.length - 2 && t > ST[i + 1][0]) i++;
+      const A2 = ST[i], B2 = ST[i + 1], f = (t - A2[0]) / (B2[0] - A2[0]);
+      const r = A2.map((v, k) => v + (B2[k] - v) * clamp013(f));
+      const w = K2 * (sp.beak ? 1 - 0.35 * smooth2(0.55, 1, t) : 1);
+      return { cy: r[1] * K2 - (sp.beak ? 0.5 * smooth2(0.8, 1, t) : 0), rt: r[2] * K2, rb: r[3] * K2 * (sp.beak ? 1 - 0.3 * smooth2(0.7, 1, t) : 1), rz: r[4] * w };
+    };
+    const NT = 30, NS = 40, EX = 2.5;
+    const pt = (i, j) => {
+      const t = i / NT, s2 = stAt(t), th2 = j / NS * TAU3;
+      const ct2 = Math.cos(th2), st = Math.sin(th2);
+      const pz = Math.sign(ct2) * Math.pow(Math.abs(ct2), 2 / EX) * s2.rz;
+      const py = Math.sign(st) * Math.pow(Math.abs(st), 2 / EX) * (st > 0 ? s2.rt : s2.rb);
+      return [t * Lh, s2.cy + py, pz];
+    };
+    const V2 = [];
+    for (let i = 0; i <= NT; i++) {
+      const row2 = [];
+      for (let j = 0; j <= NS; j++) row2.push(pt(i, j % NS));
+      V2.push(row2);
+    }
+    const SC = rgb01(sp.scale), SC2 = rgb01(sp.scale2), SB = rgb01(sp.scaleB), SL = rgb01(sp.skinL), HORN = tmix(rgb01(sp.scaleB), rgb01("#9a8a6a"), 0.35), MOUTH = rgb01("#2a1c12");
+    const eyeT = 0.58, eyeTh = 0.42;
+    const colAt = (t, th2, p) => {
+      const st = Math.sin(th2);
+      const mouthS = -0.32 - 0.12 * (1 - t);
+      if (t > 0.5 && Math.abs(st - mouthS) < 0.09) return MOUTH;
+      if (st < mouthS) return t > 0.84 ? tmix(SL, HORN, 0.55) : SL;
+      if (t > 0.88 && st < 0.25) return HORN;
+      const de = Math.hypot((t - eyeT) * Lh, (st - eyeTh) * 2.6);
+      if (Math.abs(Math.cos(th2)) > 0.3 && de < 1.55 && de > 1) return tmix(SL, SC2, 0.3);
+      let v;
+      if (t > 0.6 && t < 0.86 && st > 0.55) {
+        const mid = Math.abs(p[2]) < 0.16 || Math.abs(t - 0.6) < 0.03;
+        if (mid) return SB;
+        v = { d1: 0, d2: 1, id: p[2] > 0 ? 1 : 2 };
+      } else v = tVor3(p[0], p[1], p[2], 1.6 * sp.headK, 91);
+      if (v.d2 - v.d1 < 0.2) return SB;
+      const h = hash2(v.id, 1, 93);
+      const c = tmix(SC, SC2, h);
+      return st < 0.1 ? tmix(c, SB, 0.35) : c;
+    };
+    for (let i = 0; i < NT; i++) for (let j = 0; j < NS; j++) {
+      const a = V2[i][j], b = V2[i][j + 1], c2 = V2[i + 1][j + 1], d = V2[i + 1][j];
+      const m = [(a[0] + c2[0]) / 2, (a[1] + c2[1]) / 2, (a[2] + c2[2]) / 2];
+      const k = colAt((i + 0.5) / NT, (j + 0.5) / NS * TAU3, m);
+      tpl.tri(a, b, c2, k);
+      tpl.tri(a, c2, d, k);
+    }
+    const tip = [Lh, stAt(1).cy, 0];
+    for (let j = 0; j < NS; j++) tpl.tri(V2[NT][j], tip, V2[NT][j + 1], HORN);
+    const s = stAt(eyeT), th = Math.asin(eyeTh);
+    const ct = Math.cos(th), stt = Math.sin(th);
+    const ec = [eyeT * Lh, s.cy + Math.pow(stt, 2 / EX) * s.rt, Math.pow(ct, 2 / EX) * s.rz];
+    return { tpl, eye: { c: ec, n: norm(0.35, 0.3, 1), r: 1.08 * (0.85 + 0.15 * K2) }, snout: [Lh + 0.2, stAt(1).cy - 0.2, 0], Lh };
+  }
+  function turtleFlipperTpl(sp, rear) {
+    const Lf = rear ? 9.5 : 22.5, Wm = rear ? 5.4 : 6.6;
+    const NT = rear ? 16 : 40, NC = rear ? 10 : 14;
+    const plan = (t) => {
+      let w, back;
+      if (rear) {
+        w = Wm * (0.42 + 0.58 * Math.sin(Math.PI / 2 * Math.min(1, t / 0.5))) * (t > 0.5 ? Math.sqrt(Math.max(0, 1 - Math.pow((t - 0.5) / 0.5, 2))) : 1);
+        back = 0.8 * t * t;
+        return { le: back - w * 0.4, te: back + w * 0.6, th: 0.75 * (1 - 0.55 * t) };
+      }
+      w = t < 0.36 ? Wm * (0.5 + 0.5 * Math.sin(Math.PI / 2 * (t / 0.36))) : Wm * Math.pow(Math.max(0, 1 - Math.pow((t - 0.36) / 0.64, 1.7)), 0.75);
+      back = Lf * 0.26 * Math.pow(t, 2.1);
+      return { le: back - w * 0.18, te: back + w * 0.82, th: 1.05 * (1 - 0.72 * t) };
+    };
+    const nodes = [];
+    for (let i = 0; i <= NT; i++) {
+      const t = i / NT, p = plan(t), row2 = [];
+      for (let j = 0; j <= NC; j++) {
+        const c = j / NC;
+        const prof = Math.pow(1 - c, 0.65) * (0.45 + 0.55 * Math.sqrt(Math.min(1, c * 5 + 0.05)));
+        row2.push([t * Lf, p.le + (p.te - p.le) * c, Math.max(0.12, p.th * prof)]);
+      }
+      nodes.push(row2);
+    }
+    const SC = rgb01(sp.scale), SC2 = rgb01(sp.scale2), SB = rgb01(sp.scaleB), SL = rgb01(sp.skinL);
+    const colTop = [], colBot = [];
+    for (let i = 0; i < NT; i++) {
+      const rt = [], rb = [];
+      for (let j = 0; j < NC; j++) {
+        const n2 = nodes[i][j], n22 = nodes[i + 1][j + 1];
+        const S9 = (n2[0] + n22[0]) / 2, O = (n2[1] + n22[1]) / 2, c = (j + 0.5) / NC, t = (i + 0.5) / NT;
+        const v = tVor2(S9, O * 1.15, (rear ? 1.5 : 1.95) * (1.15 - 0.45 * t), rear ? 31 : 37);
+        let k;
+        if (v.d2 - v.d1 < 0.22 * (1.1 - 0.4 * t)) k = SB;
+        else k = tmix(SC, SC2, hash2(v.id, 2, 41) * 0.9);
+        if (c > 0.86) k = tmix(k, SL, 0.7);
+        if (t < 0.12) k = tmix(k, rgb01(sp.neck), 0.6);
+        rt.push(k);
+        const vb = tVor2(S9, O, 1.7, 53);
+        rb.push(vb.d2 - vb.d1 < 0.22 ? tmix(SL, SB, 0.6) : SL);
+      }
+      colTop.push(rt);
+      colBot.push(rb);
+    }
+    return { nodes, NT, NC, colTop, colBot, Lf, rear, plan };
+  }
+  function emitFlipper(part2, F2, root, d, ch, n2, flex, xf, claw2) {
+    const P6 = (nd, side, t) => {
+      const f = flex * t * t;
+      return xf([root[0] + d[0] * nd[0] + ch[0] * nd[1] + n2[0] * (nd[2] * side + f), root[1] + d[1] * nd[0] + ch[1] * nd[1] + n2[1] * (nd[2] * side + f), root[2] + d[2] * nd[0] + ch[2] * nd[1] + n2[2] * (nd[2] * side + f)]);
+    };
+    const T3 = [], B2 = [];
+    for (let i = 0; i <= F2.NT; i++) {
+      const t = i / F2.NT;
+      T3.push(F2.nodes[i].map((nd) => P6(nd, 1, t)));
+      B2.push(F2.nodes[i].map((nd) => P6(nd, -1, t)));
+    }
+    for (let i = 0; i < F2.NT; i++) for (let j = 0; j < F2.NC; j++) {
+      part2.quad(T3[i][j], T3[i + 1][j], T3[i + 1][j + 1], T3[i][j + 1], F2.colTop[i][j]);
+      part2.quad(B2[i][j], B2[i][j + 1], B2[i + 1][j + 1], B2[i + 1][j], F2.colBot[i][j]);
+    }
+    for (let i = 0; i < F2.NT; i++) {
+      part2.quad(T3[i][0], B2[i][0], B2[i + 1][0], T3[i + 1][0], F2.colTop[i][0]);
+      const e = F2.NC;
+      part2.quad(T3[i][e], T3[i + 1][e], B2[i + 1][e], B2[i][e], F2.colBot[i][F2.NC - 1]);
+    }
+    for (let j = 0; j < F2.NC; j++) part2.quad(T3[F2.NT][j], T3[F2.NT][j + 1], B2[F2.NT][j + 1], B2[F2.NT][j], F2.colTop[F2.NT - 1][j]);
+    if (claw2) {
+      const t = claw2.t, i = Math.round(t * F2.NT), nd = F2.nodes[i][0];
+      const base = P6([nd[0], nd[1] + 0.25, 0], 1, t);
+      const tipP = P6([nd[0] + 0.7, nd[1] - 1, 0.1], 1, t);
+      tubeInto(part2, [base, tipP], (q) => 0.42 * (1 - 0.8 * q), 5, claw2.col);
+    }
+  }
+  function turtleTemplates(kind) {
+    let T3 = turtleTpl.get(kind);
+    if (T3) return T3;
+    const sp = TURTLE_SP[kind] || TURTLE_SP.turtle;
+    const shell = turtleShellTpl(sp);
+    T3 = { sp, shell, head: turtleHeadTpl(sp), fore: turtleFlipperTpl(sp, false), rear: turtleFlipperTpl(sp, true) };
+    turtleTpl.set(kind, T3);
+    return T3;
+  }
   function buildTurtle(c, ph) {
-    const L2 = c.L;
+    const T3 = turtleTemplates(c.kind);
+    const sp = T3.sp;
     const body = new Part(), eyes = new Part();
     const P6 = TAU3 * ph;
-    const shellA = rgb01("#7a6436"), shellB = rgb01("#5e4c2a"), seam = rgb01("#3a2e1c"), plast = rgb01("#e0d0a0"), skin2 = rgb01("#7a9a62"), skinD = rgb01("#4e6a44"), spot = rgb01("#d0d8a8");
-    const cx = 0, cy = 0, R2 = [L2 * 0.36, L2 * 0.16, L2 * 0.28];
-    const seg = 16, rings = 8;
-    const dome = (th, phi) => [cx + Math.sin(th) * Math.cos(phi) * R2[0], cy + Math.cos(th) * R2[1], Math.sin(th) * Math.sin(phi) * R2[2]];
-    for (let i = 0; i < rings; i++) for (let j = 0; j < seg; j++) {
-      const t0 = i / rings * Math.PI * 0.5, t1 = (i + 1) / rings * Math.PI * 0.5;
-      const p0 = j / seg * TAU3, p1 = (j + 1) / seg * TAU3;
-      const a2 = dome(t0, p0), b = dome(t0, p1), d = dome(t1, p0), e = dome(t1, p1);
-      const scute = (Math.floor(i / 3) * 7 + Math.floor(j / 2)) % 2;
-      const isSeam = i % 3 === 2 && j % 2 === 0;
-      let col = isSeam ? seam : scute ? shellA : shellB;
-      col = toneRGB(col, (hash2(i, j, 7) - 0.5) * 0.18 + (i < 2 ? 0.12 : 0));
-      if (i > 0) body.tri(a2, b, e, col);
-      else body.tri(a2, b, e, col);
-      body.tri(a2, e, d, col);
+    const pitch = 0.045 * Math.sin(P6 + 0.2), bob = 0.55 * Math.sin(P6 - 0.5);
+    const cp = Math.cos(pitch), spn = Math.sin(pitch);
+    const xf = (p) => [p[0] * cp - p[1] * spn, p[0] * spn + p[1] * cp + bob, p[2]];
+    T3.shell.tpl.emit(body, xf);
+    const K2 = sp.headK;
+    const hj = [T_C0 + T_RF + 2.2 + 0.45 * Math.cos(P6 - 0.4), -1.3 + 0.35 * Math.sin(P6 + 2), 0];
+    const hp = -0.75 * pitch + 0.06 * Math.sin(P6 + 1.6) - 0.05;
+    const ch = Math.cos(hp), sh = Math.sin(hp);
+    const hxf = (p) => xf([hj[0] + p[0] * ch - p[1] * sh, hj[1] + p[0] * sh + p[1] * ch, p[2]]);
+    T3.head.tpl.emit(body, hxf);
+    const NK = rgb01(sp.neck), SL = rgb01(sp.skinL), SC = rgb01(sp.scale);
+    const n0 = [T_C0 + T_RF - 6, -2, 0], n1 = [hj[0] + 0.6, hj[1], 0];
+    const NR = 8, NSd = 18, ring = [];
+    for (let i = 0; i <= NR; i++) {
+      const t = i / NR, x = n0[0] + (n1[0] - n0[0]) * t, y = n0[1] + (n1[1] - n0[1]) * t + Math.sin(Math.PI * t) * 0.3;
+      const r = (3.1 - 0.5 * t) * K2, rw = (3.3 - 0.6 * t) * K2;
+      const row2 = [];
+      for (let j = 0; j <= NSd; j++) {
+        const a = j / NSd * TAU3;
+        row2.push(xf([x, y + Math.sin(a) * r, Math.cos(a) * rw]));
+      }
+      ring.push(row2);
     }
-    for (let j = 0; j < seg; j++) {
-      const p0 = j / seg * TAU3, p1 = (j + 1) / seg * TAU3;
-      const a2 = dome(Math.PI / 2, p0), b = dome(Math.PI / 2, p1);
-      const a22 = [a2[0] * 0.95, -L2 * 0.04, a2[2] * 0.95], b2 = [b[0] * 0.95, -L2 * 0.04, b[2] * 0.95];
-      body.quad(a2, b, b2, a22, toneRGB(shellB, -0.15));
-      body.tri(a22, b2, [0, -L2 * 0.05, 0], plast);
+    for (let i = 0; i < NR; i++) for (let j = 0; j < NSd; j++) {
+      const a = (j + 0.5) / NSd * TAU3, st = Math.sin(a);
+      const wr = i % 2 ? 0.9 : 1.04;
+      const k = st > 0.35 ? tsc(tmix(SC, NK, 0.45 + 0.3 * hash2(i, j, 5)), wr) : tsc(tmix(NK, SL, st < -0.3 ? 0.7 : 0.25), wr);
+      body.quad(ring[i][j], ring[i][j + 1], ring[i + 1][j + 1], ring[i + 1][j], tclampC(k));
     }
-    const hx = R2[0] + L2 * 0.1, hy = L2 * 0 + Math.sin(P6) * L2 * 0.01;
-    tubeInto(body, [[R2[0] * 0.8, -L2 * 0.01, 0], [hx - L2 * 0.06, hy, 0]], () => L2 * 0.055, 7, skinD);
-    ellInto(body, [hx, hy + L2 * 0.01, 0], [L2 * 0.09, L2 * 0.06, L2 * 0.065], 10, 6, (i, j) => hash2(i, j, 3) > 0.7 ? spot : skin2);
+    const tailEnd = [T_C0 - T_RB * sp.shellLen - 2.2, -2.7 + 0.25 * Math.sin(P6 + 1), 0.3 * Math.sin(P6 * 1)];
+    tubeInto({ quad: (a, b2, c2, d, k) => body.quad(xf(a), xf(b2), xf(c2), xf(d), k), tri: (a, b2, c2, k) => body.tri(xf(a), xf(b2), xf(c2), k) }, [[T_C0 - T_RB * 0.7, -2.4, 0], [T_C0 - T_RB * sp.shellLen - 0.4, -2.5, 0], tailEnd], (t) => 1.7 * (1 - 0.8 * t) + 0.15, 7, (t) => t > 0.5 ? tmix(SC, NK, 0.4) : NK);
+    const dirOf = (s, e, sd) => [-Math.sin(s) * Math.cos(e), Math.sin(e), sd * Math.cos(s) * Math.cos(e)];
+    const frame = (d, sd, f) => {
+      let chd = norm(...tsc(cross(d, [0, 1, 0]), sd));
+      let n2 = norm(...tsc(cross(chd, d), sd));
+      const cf2 = Math.cos(f), sf = Math.sin(f);
+      return [[chd[0] * cf2 - n2[0] * sf, chd[1] * cf2 - n2[1] * sf, chd[2] * cf2 - n2[2] * sf], [n2[0] * cf2 + chd[0] * sf, n2[1] * cf2 + chd[1] * sf, n2[2] * cf2 + chd[2] * sf]];
+    };
+    const CLAW = rgb01(sp.claw);
     for (const sd of [1, -1]) {
-      ellInto(eyes, [hx + L2 * 0.04, hy + L2 * 0.03, sd * L2 * 0.05], [L2 * 0.016, L2 * 0.016, L2 * 0.012], 8, 5, (i) => i < 2 ? [0.9, 0.95, 1] : [0.04, 0.05, 0.07]);
+      const e = -0.13 + 0.5 * Math.cos(P6);
+      const s = 0.42 - 0.62 * Math.cos(P6 - 0.55);
+      const up = Math.max(0, Math.sin(P6 - Math.PI));
+      const f = -0.22 + 1.3 * Math.pow(up, 0.75);
+      const d = dirOf(s, e, sd);
+      const [chd, n2] = frame(d, sd, f);
+      const root = [T_C0 + 7.5, -2.5, sd * 14.2];
+      emitFlipper(body, T3.fore, root, d, chd, n2, 1.6 * Math.sin(P6), xf, { t: 0.42, col: CLAW });
+      const er = -0.14 + 0.16 * Math.sin(P6 + 1.3 + sd * 0.4);
+      const sr = 1.12 + 0.1 * Math.sin(P6 + 0.4 * sd);
+      const dr = dirOf(sr, er, sd);
+      const [chr, nr] = frame(dr, sd, 0.28 + 0.22 * Math.sin(P6 + 0.5));
+      emitFlipper(body, T3.rear, [T_C0 - 16, -2.6, sd * 9.6], dr, chr, nr, 0.5 * Math.sin(P6 + 1.3), xf, null);
+      const skinE = (c0, r) => ellInto({ tri: (a, b2, c2, k) => body.tri(xf(a), xf(b2), xf(c2), k) }, c0, r, 10, 6, (i) => i < 3 ? tmix(NK, SC, 0.3) : tmix(NK, SL, 0.5));
+      skinE([T_C0 + 7, -2.9, sd * 12.2], [3.6, 1.8, 3]);
+      skinE([T_C0 - 15.5, -2.9, sd * 8.6], [2.8, 1.5, 2.4]);
     }
-    const a = 0.25 + (Math.sin(P6) * 0.5 + 0.5) * 1.05;
+    const E = T3.head.eye, eyeVox = [], eyesA = [];
     for (const sd of [1, -1]) {
-      const root = [R2[0] * 0.55, -L2 * 0.02, sd * R2[2] * 0.75];
-      const mid = [root[0] - Math.cos(a) * L2 * 0.16, root[1] - Math.sin(a) * L2 * 0.1, root[2] + sd * L2 * 0.14];
-      const tip = [root[0] - Math.cos(a) * L2 * 0.36, root[1] - Math.sin(a) * L2 * 0.2, root[2] + sd * L2 * 0.22];
-      flipper(body, root, mid, tip, L2 * 0.07, skin2, skinD, sd);
-      const b = Math.sin(P6 + 2) * 0.35;
-      const rr2 = [-R2[0] * 0.75, -L2 * 0.03, sd * R2[2] * 0.55];
-      flipper(body, rr2, [rr2[0] - L2 * 0.08, rr2[1] + b * L2 * 0.04, rr2[2] + sd * L2 * 0.05], [rr2[0] - L2 * 0.15, rr2[1] + b * L2 * 0.08, rr2[2] + sd * L2 * 0.08], L2 * 0.05, skin2, skinD, sd);
+      const cE = hxf([E.c[0], E.c[1], sd * E.c[2]]);
+      const nE = [E.n[0] * ch - E.n[1] * sh, E.n[0] * sh + E.n[1] * ch, sd * E.n[2]];
+      eyeVox.push({ c: cE, n: nE, r: E.r, iris: sp.iris, pupil: 0.62 });
+      if (sd > 0) eyesA.push({ p: cE, r: E.r });
+      if (!VOXEL) ellInto(eyes, cE, [E.r, E.r, E.r * 0.6], 8, 5, [0.04, 0.03, 0.03]);
     }
-    const parts = [
-      { key: "body", mb: body.mb, spec: 0.55, shine: 30, env: 0.35, iri: 0.05, rim: 0.3, ambient: 0.48 },
-      { key: "eyes", mb: eyes.mb, spec: 1.1, shine: 90, env: 0.3, ambient: 0.6 }
-    ];
-    return { parts, anchors: { mouth: [hx + L2 * 0.09, hy, 0], top: [0, R2[1], 0], bottom: [0, -L2 * 0.05, 0], tail: [-R2[0], 0, 0] }, eyes: [{ p: [hx + L2 * 0.04, hy + L2 * 0.03, L2 * 0.05], r: L2 * 0.016 }], L: L2, flatRoll: 0 };
-  }
-  function flipper(part2, a, b, c, w, col, colD, sd) {
-    const seg = [a, b, c];
-    const th = w * 0.18;
-    const pts = seg.map((p, i) => {
-      const ww = w * [1, 0.85, 0.25][i];
-      return [[p[0] + ww * 0.5, p[1] + th, p[2]], [p[0] - ww * 0.5, p[1] + th, p[2]], [p[0] - ww * 0.5, p[1] - th, p[2]], [p[0] + ww * 0.5, p[1] - th, p[2]]];
-    });
-    for (let i = 0; i < 2; i++) {
-      const A2 = pts[i], B2 = pts[i + 1];
-      part2.both(A2[0], A2[1], B2[1], col);
-      part2.both(A2[0], B2[1], B2[0], col);
-      part2.both(A2[3], A2[2], B2[2], colD);
-      part2.both(A2[3], B2[2], B2[3], colD);
-      part2.both(A2[0], A2[3], B2[3], colD);
-      part2.both(A2[0], B2[3], B2[0], colD);
-      part2.both(A2[1], A2[2], B2[2], colD);
-      part2.both(A2[1], B2[2], B2[1], colD);
-    }
-    void sd;
+    const parts = [{ key: "body", mb: body.mb, spec: 0.6, shine: 34, env: 0.38, iri: 0.04, rim: 0.32, ambient: 0.5 }];
+    if (!eyes.empty) parts.push({ key: "eyes", mb: eyes.mb, spec: 1.1, shine: 90, env: 0.3, ambient: 0.6 });
+    const topY = tRimY(0) + T_HD;
+    return {
+      parts,
+      eyeVox,
+      eyes: eyesA,
+      L: c.L,
+      flatRoll: 0,
+      anchors: { mouth: hxf(T3.head.snout), top: xf([T_C0, topY, 0]), bottom: xf([0, -T_HB - 1, 0]), tail: xf(tailEnd) }
+    };
   }
   function vidOf(c) {
     return c._lpVid || (c._lpVid = "v" + (c.id ?? Math.random().toString(36).slice(2)));
@@ -16655,7 +17006,7 @@ void main() {
     if (tubes.size > 400) tubes.delete(tubes.keys().next().value);
     return b;
   }
-  var LP_SWIM, TAU3, DEG5, YAW_STEP, SCALE_STEP, CAM_TILT, TEX_LO, TEX_HI, SHEET_PX_MAX, POSE_MAX, FORCE_MS, MAX_SPRITE, clamp3, clamp013, smooth2, now3, norm, cross, rgb01, unpack2, toneRGB, mixRGB, budgetMs, spent, forceSpent, syncAll, rafOn, stat, canSpend, Part, US, R_FIN2, R_EYE2, R_SPEC, R_GLASS2, QV, spow, poses, poseKey, poseBytes, POSE_BYTES, poseSize, VOXEL, sheets2, byVid, sheetPx, scaleBucket, bucketScale, OUTLINE_INK, VIVID, stills, icons, meshCache, orbs, tubes;
+  var LP_SWIM, TAU3, DEG5, YAW_STEP, SCALE_STEP, CAM_TILT, TEX_LO, TEX_HI, SHEET_PX_MAX, POSE_MAX, FORCE_MS, MAX_SPRITE, clamp3, clamp013, smooth2, now3, norm, cross, rgb01, unpack2, toneRGB, mixRGB, budgetMs, spent, forceSpent, syncAll, rafOn, stat, canSpend, Part, US, R_FIN2, R_EYE2, R_SPEC, R_GLASS2, QV, spow, TURTLE_SP, T_C0, T_RF, T_RS, T_RB, T_HD, T_HB, T_RIM, T_RM, tOutline, tRimY, tDome, tmix, tsc, tclampC, TTpl, turtleTpl, poses, poseKey, poseBytes, POSE_BYTES, poseSize, VOXEL, sheets2, byVid, sheetPx, scaleBucket, bucketScale, OUTLINE_INK, VIVID, stills, icons, meshCache, orbs, tubes;
   var init_lowpolyfish = __esm({
     "src/fish/lowpolyfish.js"() {
       init_lowpoly();
@@ -16730,6 +17081,132 @@ void main() {
       R_GLASS2 = 7;
       QV = [0, 0, 0, 1];
       spow = (v, e) => v < 0 ? -Math.pow(-v, e) : Math.pow(v, e);
+      TURTLE_SP = {
+        turtle: {
+          base: "#45361a",
+          dark: "#22160a",
+          olive: "#3e4420",
+          amber: "#9a6a24",
+          ochre: "#c8963e",
+          seam: "#24160a",
+          rimEdge: "#b89048",
+          under: "#e6d090",
+          plast: "#f0e8cc",
+          plastSeam: "#c8b488",
+          scale: "#2e1e0c",
+          scale2: "#443016",
+          scaleB: "#b49a5c",
+          skinL: "#ece4c8",
+          neck: "#a09482",
+          claw: "#2a1e12",
+          iris: "#3a2410",
+          serr: 6e-3,
+          streak: 1,
+          imbricate: 0,
+          headK: 1,
+          beak: 0,
+          shellLen: 1,
+          costals: 4
+        },
+        hawksbill: {
+          base: "#7a4a1c",
+          dark: "#24140a",
+          olive: "#5a3414",
+          amber: "#d89a3a",
+          ochre: "#f0c060",
+          seam: "#1c1008",
+          rimEdge: "#e0b058",
+          under: "#f0d88c",
+          plast: "#f4e4ae",
+          plastSeam: "#caa868",
+          scale: "#3a2410",
+          scale2: "#5a3818",
+          scaleB: "#e8c070",
+          skinL: "#f2e0aa",
+          neck: "#c0a474",
+          claw: "#2a1c10",
+          iris: "#3a2010",
+          serr: 0.045,
+          streak: 1.35,
+          imbricate: 1,
+          headK: 0.92,
+          beak: 1,
+          shellLen: 1.04,
+          costals: 4
+        },
+        loggerhead: {
+          base: "#8a4a1e",
+          dark: "#4a2410",
+          olive: "#7a4a20",
+          amber: "#b4642a",
+          ochre: "#cc8a44",
+          seam: "#3a1c0c",
+          rimEdge: "#d89850",
+          under: "#f0d088",
+          plast: "#f2deaa",
+          plastSeam: "#c8a46c",
+          scale: "#7a4a22",
+          scale2: "#93602c",
+          scaleB: "#e8b868",
+          skinL: "#f0d8a4",
+          neck: "#c49a6c",
+          claw: "#3a2414",
+          iris: "#3a2410",
+          serr: 0.012,
+          streak: 0.55,
+          imbricate: 0,
+          headK: 1.32,
+          beak: 0,
+          shellLen: 1.02,
+          costals: 5
+        }
+      };
+      T_C0 = 2;
+      T_RF = 17.5;
+      T_RS = 16.6;
+      T_RB = 24.5;
+      T_HD = 9.6;
+      T_HB = 3.4;
+      T_RIM = 0.8;
+      T_RM = 0.83;
+      tOutline = (a, sp) => {
+        const c = Math.cos(a);
+        const r = T_RS + (T_RF - T_RS) * Math.pow(Math.max(0, c), 2) + (T_RB * sp.shellLen - T_RS) * Math.pow(Math.max(0, -c), 4.2);
+        const back = Math.max(0, -c - 0.25) / 0.75;
+        const k = (a / TAU3 * 25 + 100.5) % 1;
+        return r * (1 + sp.serr * back * (Math.abs(k - 0.5) * 2 - 0.5));
+      };
+      tRimY = (a) => {
+        const c = Math.cos(a);
+        return -1.3 + 1.7 * Math.pow(Math.max(0, c), 3) - 0.4 * Math.pow(Math.max(0, -c), 2);
+      };
+      tDome = (rho, a) => {
+        const c = Math.cos(a);
+        const f = Math.pow(Math.max(0, 1 - Math.pow(rho, 2.3)), 0.72);
+        return T_HD * f * (1 - 0.18 * Math.max(0, -c) * rho) * (1 + 0.05 * Math.max(0, c));
+      };
+      tmix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+      tsc = (a, k) => [a[0] * k, a[1] * k, a[2] * k];
+      tclampC = (a) => [clamp013(a[0]), clamp013(a[1]), clamp013(a[2])];
+      TTpl = class {
+        constructor() {
+          this.P = [];
+          this.C = [];
+        }
+        tri(a, b, c, col) {
+          this.P.push(a, b, c);
+          this.C.push(col);
+        }
+        quad(a, b, c, d, col) {
+          this.tri(a, b, c, col);
+          this.tri(a, c, d, col);
+        }
+        emit(part2, xf) {
+          const P6 = this.P, C2 = this.C;
+          for (let i = 0, k = 0; k < C2.length; i += 3, k++) part2.tri(xf(P6[i]), xf(P6[i + 1]), xf(P6[i + 2]), C2[k]);
+        }
+      };
+      turtleTpl = /* @__PURE__ */ new Map();
       poses = /* @__PURE__ */ new Map();
       poseKey = (c, sw, infl, mouth, frames, hi) => vidOf(c) + "|" + sw + "/" + frames + "|" + infl + "|" + mouth + (hi ? "|h" : "");
       poseBytes = 0;

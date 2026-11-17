@@ -7,7 +7,7 @@
 // before/after stat bars. While the Workshop is locked the panel shows Marina's quest instead.
 import { clamp, clamp01, lerp, ease, TAU } from '../core/math.js';
 import { rgba, RARITY, mix, shade } from '../core/color.js';
-import { drawText, measureText, wrapText } from '../gfx/font.js';
+import { drawText, measureText, wrapText, lineHeight } from '../gfx/font.js';
 import { getUiIcon } from '../gfx/uiicons.js';
 import * as NPC from '../gfx/npcs.js';
 import { ITEMS, countItem } from '../build/items.js';
@@ -216,10 +216,15 @@ export class WorkshopPanel {
       drawRef(ctx, rc.icon, x + TW / 2, y + 30 + bob, 40, t);
       ctx.globalAlpha = 1;
       if (!open) { const lk = getUiIcon('lock'); if (lk) ctx.drawImage(lk, Math.round(x + TW / 2 - lk.width / 2), y + 24); }
+      // [polish17] the full name (minus a trailing ' Rod' when tight), wrapping onto a second line before clipping
       let nm = rc.name;
-      while (measureText(nm, 'small') > TW - 6 && nm.length > 3) nm = nm.slice(0, -1);
-      if (nm !== rc.name) nm = nm.trimEnd() + '.';
-      drawText(ctx, nm, x + TW / 2, y + TH - 22, { font: 'small', align: 'center', color: open ? INK : '#7a90a4' });
+      if (measureText(nm, 'small') > TW - 6 && / Rod$/.test(nm)) nm = nm.replace(/ Rod$/, '');
+      const nls = measureText(nm, 'small') > TW - 6 ? wrapText(nm, TW - 6, 'small').slice(0, 2) : [nm];
+      const nlh = lineHeight('small') - 1;
+      nls.forEach((l, li) => {
+        while (measureText(l, 'small') > TW - 6 && l.length > 3) l = l.slice(0, -1);
+        drawText(ctx, l, x + TW / 2, y + TH - 22 - (nls.length - 1) * Math.round(nlh * 0.5) + li * nlh, { font: 'small', align: 'center', color: open ? INK : '#7a90a4' });
+      });
       if (open) {
         const owned = chk.owned || (rc.out?.type === 'rodlevel' && rc.maxed);
         if (owned) { const ic = getUiIcon('check'); if (ic) ctx.drawImage(ic, x + TW - 14, y + 4); }
