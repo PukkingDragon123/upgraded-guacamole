@@ -30202,6 +30202,14 @@ kmlmk..
     const s = day + dusk + night || 1;
     return { day: day / s, dusk: dusk / s, night: night / s };
   }
+  function stripPixels(strip2) {
+    let d = STRIP_PX.get(strip2);
+    if (!d) {
+      d = ctxOf(strip2).getImageData(0, 0, strip2.width, strip2.height).data;
+      STRIP_PX.set(strip2, d);
+    }
+    return d;
+  }
   function qscale(s, step = 0.1, min = 0.25) {
     return Math.max(min, Math.round(s / step) * step);
   }
@@ -30229,7 +30237,7 @@ kmlmk..
       return q <= 0 ? 0 : packRGB(255, 255, 255, Math.round(Math.min(1, q) * 255));
     });
   }
-  var quality, Blend, FogLayer, glowCache, Caustics, Motes, bubbleSprites, Bubbles, Mask, FogCache, DepthScene, HI_RES, HI_TWIN, zoomOf, BandSet, DepthDecor;
+  var quality, Blend, FogLayer, glowCache, Caustics, Motes, bubbleSprites, Bubbles, Mask, FogCache, STRIP_PX, DepthScene, HI_RES, HI_TWIN, zoomOf, BandSet, DepthDecor;
   var init_scenery = __esm({
     "src/world/scenery.js"() {
       init_canvas();
@@ -30714,6 +30722,7 @@ kmlmk..
           return e.c;
         }
       };
+      STRIP_PX = /* @__PURE__ */ new WeakMap();
       DepthScene = class {
         constructor(W11, H8, o = {}) {
           this.W = W11;
@@ -30977,7 +30986,7 @@ kmlmk..
           this.bandOf = bandOf;
           this.variants = variants;
           for (const v of variants) {
-            const sd = ctxOf(v.strip).getImageData(0, 0, v.strip.width, v.strip.height).data;
+            const sd = stripPixels(v.strip);
             const sw = v.strip.width;
             const out = bands.map((B2) => {
               const c = makeCanvas(LW, B2.h);
@@ -31249,7 +31258,7 @@ kmlmk..
         const order2 = prefer ? this.variants.slice().sort((a, b) => (prefer.indexOf(a.key) + 99) % 99 - (prefer.indexOf(b.key) + 99) % 99) : this.variants;
         let vi = 0;
         for (const v of order2) {
-          const sd = ctxOf(v.strip).getImageData(0, 0, v.strip.width, v.strip.height).data;
+          const sd = stripPixels(v.strip);
           const sw = v.strip.width, sh = v.strip.height;
           for (let b = 0; b < 2; b++) {
             const B2 = out[b];
@@ -67117,8 +67126,8 @@ kmlmk..
           npc: "marina",
           panel: "workshop",
           color: "#ffb43c",
-          desc: "A cosy dock where Marina and Dot craft rods, tackle, boat parts, tank gear and decor from your materials.",
-          lines: ["Ahoy! Welcome to my Workshop. Let's build something cute!", "Hammer time! Got materials? I've got ideas!", "Dot polished the anvil just for you!"],
+          desc: "A cosy dock where Marina crafts rods, tackle, boat parts, tank gear and decor from your materials.",
+          lines: ["Ahoy! Welcome to my Workshop. Let's build something cute!", "Hammer time! Got materials? I've got ideas!", "Bubbles polished the anvil just for you!"],
           feats: ["Craft new rods", "Tackle & upgrades", "Boat & tank gear"]
         }
       };

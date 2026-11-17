@@ -1057,6 +1057,14 @@ export class FogCache {
 // The floor is a voxel heightfield ray-marched per screen column (voxel-space style, front to back with a
 // y-buffer); props are placed at (screen x, z), scaled by perspective, depth sorted and fog tinted, then
 // everything is baked into near / mid / far band canvases (one set per time-of-day variant).
+// [travel17] the fog strips are static: their pixels are read back once and shared (render + hi-res pass)
+const STRIP_PX = new WeakMap();
+function stripPixels(strip) {
+  let d = STRIP_PX.get(strip);
+  if (!d) { d = ctxOf(strip).getImageData(0, 0, strip.width, strip.height).data; STRIP_PX.set(strip, d); }
+  return d;
+}
+
 export class DepthScene {
   constructor(W, H, o = {}) {
     this.W = W; this.H = H;
@@ -1270,7 +1278,7 @@ export class DepthScene {
     this.bandOf = bandOf; // 1x band per pixel (3 = empty): the hi-res pass fills its band seams from it
     this.variants = variants;
     for (const v of variants) {
-      const sd = ctxOf(v.strip).getImageData(0, 0, v.strip.width, v.strip.height).data;
+      const sd = stripPixels(v.strip); // [travel17] read back once per strip
       const sw = v.strip.width;
       const out = bands.map((B) => {
         const c = makeCanvas(LW, B.h);
@@ -1495,7 +1503,7 @@ DepthScene.prototype.hiSteps = function* hiSteps(R = HI_RES, prefer = null) {
   const order = prefer ? this.variants.slice().sort((a, b) => (prefer.indexOf(a.key) + 99) % 99 - (prefer.indexOf(b.key) + 99) % 99) : this.variants;
   let vi = 0;
   for (const v of order) {
-    const sd = ctxOf(v.strip).getImageData(0, 0, v.strip.width, v.strip.height).data;
+    const sd = stripPixels(v.strip); // [travel17] read back once per strip
     const sw = v.strip.width, sh = v.strip.height;
     for (let b = 0; b < 2; b++) {
       const B = out[b];

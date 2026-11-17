@@ -1,5 +1,5 @@
 // Destinations you SAIL to (phase 8, OWNER: Progression agent): Fizz Lab Island (a cute floating research station,
-// Professor Fizz, opens ui 'lab') and Marina's Workshop dock (Marina + Dot, opens ui 'workshop', unlocked by a quest).
+// Professor Fizz, opens ui 'lab') and Marina's Workshop dock (Marina, opens ui 'workshop', unlocked by a quest).
 // They are places on the World Map (floating voxel sprites in the map's sky, see the [phase8:prog] hooks in
 // src/ui/mappanel.js). Choosing one sails your boat there with a short travel transition, then a voxel scene of the
 // place plays (the building, its NPC waving, a greeting) and the panel opens on top. Closing the panel leaves you
@@ -35,8 +35,8 @@ export const DESTS = {
   },
   workshop: {
     id: 'workshop', name: 'Marina\'s Workshop', sub: 'Crafting dock', npc: 'marina', panel: 'workshop', color: '#ffb43c',
-    desc: 'A cosy dock where Marina and Dot craft rods, tackle, boat parts, tank gear and decor from your materials.',
-    lines: ['Ahoy! Welcome to my Workshop. Let\'s build something cute!', 'Hammer time! Got materials? I\'ve got ideas!', 'Dot polished the anvil just for you!'],
+    desc: 'A cosy dock where Marina crafts rods, tackle, boat parts, tank gear and decor from your materials.',
+    lines: ['Ahoy! Welcome to my Workshop. Let\'s build something cute!', 'Hammer time! Got materials? I\'ve got ideas!', 'Bubbles polished the anvil just for you!'],
     feats: ['Craft new rods', 'Tackle & upgrades', 'Boat & tank gear'],
   },
 };
