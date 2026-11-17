@@ -30756,6 +30756,11 @@ kmlmk..
         // Heightfield + colour grid in world space, then the column ray-march.
         // o.height(X, z) -> world px; o.color(X, z, h) -> [r, g, b] (0..255, unshaded); o.glow(X, z) -> [r,g,b] | null
         terrain(o) {
+          const it2 = this.terrain$(o);
+          while (!it2.next().done) ;
+        }
+        // [travel17] the same, a slice at a time (a voyage builds the next ocean over many frames)
+        *terrain$(o) {
           this.terrainOpts = o;
           const { W: W11, H: H8, pad, cx, K: K2, hz } = this;
           const cw = o.cell ?? 2, dz = o.dz ?? 0.02, hstep = o.hstep ?? 2;
@@ -30780,6 +30785,7 @@ kmlmk..
               base[i * 3 + 1] = c[1];
               base[i * 3 + 2] = c[2];
             }
+            if ((iz & 3) === 3) yield;
           }
           const col = new Uint32Array(N2);
           const blur = new Float32Array(N2), tmp2 = new Float32Array(N2);
@@ -30794,6 +30800,7 @@ kmlmk..
               }
             }
             tmp2[iz * nx + ix] = s / n2;
+            if (ix === nx - 1 && (iz & 15) === 15) yield;
           }
           for (let iz = 0; iz < nz; iz++) for (let ix = 0; ix < nx; ix++) {
             let s = 0, n2 = 0;
@@ -30805,6 +30812,7 @@ kmlmk..
               }
             }
             blur[iz * nx + ix] = s / n2;
+            if (ix === nx - 1 && (iz & 15) === 15) yield;
           }
           const L4 = [-0.42, 0.85, -0.32];
           {
@@ -30828,6 +30836,7 @@ kmlmk..
             let k = glow[i] ? 1.25 : (amb + dif * lam) * (1 - ao * 0.55) + (hash2(ix, iz, 71) - 0.5) * 2 * jit2;
             const r = base[i * 3] * k, g = base[i * 3 + 1] * k, b = base[i * 3 + 2] * k;
             col[i] = (clamp(Math.round(r), 0, 255) | clamp(Math.round(g), 0, 255) << 8 | clamp(Math.round(b), 0, 255) << 16 | (glow[i] ? 1 << 24 : 0) | 1 << 25) >>> 0;
+            if (ix === nx - 1 && (iz & 7) === 7) yield;
           }
           this.grid = { nx, nz, X0, z0, cw, dz, hgt, col };
           const top = o.fullHeight ? 0 : Math.floor(hz) - 2;
@@ -30841,6 +30850,7 @@ kmlmk..
           this.floorHeight = o.floorHeight || null;
           const shadeP = (c, f) => (clamp(Math.round((c & 255) * f), 0, 255) | clamp(Math.round((c >> 8 & 255) * f), 0, 255) << 8 | clamp(Math.round((c >> 16 & 255) * f), 0, 255) << 16 | c & 3 << 24) >>> 0;
           for (let px3 = 0; px3 < LW; px3++) {
+            if ((px3 & 15) === 15) yield;
             const sx = px3 - pad + 0.5;
             let ybuf = TH2;
             let prevCell = -1, prevH = -1e9, prevIz = -1;
@@ -30934,6 +30944,14 @@ kmlmk..
         }
         // variants: [{key, strip}] (strip = water gradient strip canvas used as the fog colour per screen y).
         render(variants) {
+          const it2 = this.render$(variants);
+          for (; ; ) {
+            const n2 = it2.next();
+            if (n2.done) return n2.value;
+          }
+        }
+        // [travel17] the same, a slice at a time
+        *render$(variants) {
           const { LW, pad, TH: TH2, top, pc, pz } = this;
           this.items.sort((a, b) => b.z - a.z);
           const bands = [0, 1, 2].map((b) => {
@@ -30942,6 +30960,7 @@ kmlmk..
             return { y: Math.floor(bt), canvases: {}, h: this.H - Math.floor(bt) };
           });
           const tmp2 = makeLayer(8, 8);
+          this.rn = 0;
           const N2 = TH2 * LW;
           const bandOf = new Uint8Array(N2), fogOf = new Float32Array(N2);
           for (let i = 0; i < N2; i++) {
@@ -30953,6 +30972,7 @@ kmlmk..
             const z = pz[i];
             bandOf[i] = this.band(z);
             fogOf[i] = this.fog(z) * (cc >>> 24 & 1 ? 0.5 : 1);
+            if ((i & 65535) === 65535) yield;
           }
           this.bandOf = bandOf;
           this.variants = variants;
@@ -30977,6 +30997,7 @@ kmlmk..
                 const r = lerp(cc & 255, sd[si], f), gg = lerp(cc >> 8 & 255, sd[si + 1], f), bb = lerp(cc >> 16 & 255, sd[si + 2], f);
                 o.d[(y + o.off) * LW + x] = dpack(r, gg, bb, x, y, 4);
               }
+              if ((y & 31) === 31) yield;
             }
             for (let b = 0; b < 3; b++) {
               const B2 = bands[b];
@@ -31012,6 +31033,7 @@ kmlmk..
                 tg.globalAlpha = 1;
                 g.drawImage(tmp2.canvas, 0, 0, sp.canvas.width, sp.canvas.height, dx, dy, sp.canvas.width, sp.canvas.height);
                 it2.painted?.(g, dx, dy, v.key);
+                if ((++this.rn & 7) === 0) yield;
               }
               B2.canvases[v.key] = c;
             }
@@ -46720,6 +46742,13 @@ kmlmk..
         }
         // ------------------------------------------------------------------ build
         build(W11, H8) {
+          const it2 = this.steps(W11, H8);
+          while (!it2.next().done) ;
+        }
+        // [travel17] sync build = all the steps
+        // [travel17] the build a slice at a time (a voyage builds the next ocean over many frames)
+        *steps(W11, H8) {
+          this.ready = false;
           this.W = W11;
           this.H = H8;
           this.base = this.baseSurface(H8);
@@ -46729,41 +46758,63 @@ kmlmk..
           this.ocBlend = new Blend();
           this.waterBlend = new Blend();
           const t02 = performance.now();
-          this.buildSky();
+          yield* this.buildSky$();
           const t1 = performance.now();
           const wo = { y0: this.base - 2, y1: H8, levels: 24 };
           this.water = { day: gradientStrip(H8, WATER2.day, wo), dusk: gradientStrip(H8, WATER2.dusk, wo), night: gradientStrip(H8, WATER2.night, wo) };
-          this.buildDepth();
+          yield;
+          yield* this.buildDepth$();
           const t2 = performance.now();
-          this.buildLayers();
+          yield* this.buildLayers$();
           const t3 = performance.now();
           const rh = H8 - this.base;
           this.raysA = new FogLayer(makeRays(W11, rh, { seed: 4, count: 8, sunX: W11 * 0.78, sunY: -H8 * 0.8, minW: 10, maxW: 34, len: 0.95, color: "#ffffff", alpha: 0.5, levels: 5 }));
+          yield;
           this.raysB = new FogLayer(makeRays(W11, rh, { seed: 9, count: 14, sunX: W11 * 0.74, sunY: -H8 * 0.7, minW: 3, maxW: 9, len: 0.75, color: "#ffffff", alpha: 0.6, levels: 4 }));
+          yield;
           this.caustics = new Caustics({ tw: 150, th: 44, cx: 11, cy: 5, seed: 11, color: "#fffbe2", thick: 0.65, core: 0.75, rim: 0.22 });
+          yield;
           this.shimmer = this.makeShimmer();
-          this.buildLife();
+          yield;
+          yield* this.buildLife$();
           this.buildMs = { sky: Math.round(t1 - t02), depth: Math.round(t2 - t1), layers: Math.round(t3 - t2), life: Math.round(performance.now() - t3) };
           this.fresh = true;
+          this.ready = true;
         }
         buildSky() {
+          const it2 = this.buildSky$();
+          for (; ; ) {
+            const n2 = it2.next();
+            if (n2.done) return n2.value;
+          }
+        }
+        // [travel17]
+        *buildSky$() {
           const W11 = this.W, base = this.base, top = this.top;
           this.sky = new SkyDome({ W: W11, top, base, seed: 5, stops: SKY2, stars: 70, haze: 0.18, clouds: { n: 14, size: [20, 58], y: [top + 26, base - 22], scale: 2 } });
+          yield;
           const so = { levels: 10, y0: 0, y1: base + 4 - top };
           const oh = this.sky.h;
           this.overcast = { day: gradientStrip(oh, OVERCAST2.day, so), dusk: gradientStrip(oh, OVERCAST2.dusk, so), night: gradientStrip(oh, OVERCAST2.night, so) };
+          yield;
           const hz = (k) => ({ day: [SKYHZ2.day, k], dusk: [SKYHZ2.dusk, k + 0.08], night: [SKYHZ2.night, Math.min(0.85, k + 0.3)] });
           this.horizon = [
             { spr: seaStacks(12, hz(0.42)), x: Math.round(W11 * 0.07), y: base + 1, blend: new Blend() },
             { spr: palmIsland(4, hz(0.16)), x: Math.round(W11 * 0.36), y: base + 3, blend: new Blend() },
             { spr: lighthouseIslet(7, hz(0.3)), x: Math.round(W11 * 0.86), y: base + 2, blend: new Blend(), lighthouse: true }
           ];
+          yield;
           this.sail = { spr: sailboat(9, hz(0.4)), x: W11 * 0.62, v: 1.6, blend: new Blend() };
+          yield;
           this.buoy = { spr: markerBuoy("#e2483a"), x: Math.round(W11 * 0.2) };
+          yield;
           const cr = new RNG(51);
           this.gulls = [0, 1, 2, 3, 4, 5].map((i) => ({ x: cr.float(0, W11), y: cr.float(top + 40, base - 12), v: cr.float(10, 18) * (i % 2 ? -1 : 1), ph: cr.float(0, TAU), s: i < 2 ? 2 : 1 }));
+          yield;
           this.rainTile = { day: streakTile(96, 48, 22, "#dce6f0", { seed: 3, alpha: 0.8 }), night: streakTile(96, 48, 22, "#7a8aa0", { seed: 3, alpha: 0.8 }) };
+          yield;
           this.rainTile2 = streakTile(128, 64, 14, "#ffffff", { seed: 8, len: [4, 8], alpha: 0.6 });
+          yield;
         }
         makeShimmer() {
           const W11 = this.W + 256, h = 16;
@@ -46784,11 +46835,20 @@ kmlmk..
         }
         // Perspective voxel seabed + props at many depths, baked into near / mid / far bands.
         buildDepth() {
+          const it2 = this.buildDepth$();
+          for (; ; ) {
+            const n2 = it2.next();
+            if (n2.done) return n2.value;
+          }
+        }
+        // [travel17]
+        *buildDepth$() {
           const W11 = this.W, H8 = this.H;
           const D2 = new DepthScene(W11, H8, { yFront: H8 - 72, yFar: H8 - 166, pad: 24, zFar: 1.85, fogStart: -0.3, fog: 0.9 });
+          yield;
           this.D = D2;
           const dockX = W11 - 260;
-          D2.terrain({
+          yield* D2.terrain$({
             micro: { ripple: 1, pebble: 1, shell: 1.4 },
             // [phase7:env]
             cell: 2,
@@ -46832,23 +46892,30 @@ kmlmk..
             const p = worldProp(id2, { scale: qscale(base * D2.s(z)), variant: variant2 });
             return D2.add({ sprite: p, x: Math.round(xf * W11), z, id: id2, ...extra });
           };
+          yield;
           this.coralGlow = [];
           const glowOf = (it2) => {
             if (it2.sprite.night) this.coralGlow.push({ night: it2.sprite.night, x: it2.x - it2.sprite.ox, y: it2.y - it2.sprite.oy, band: it2.band, z: it2.z });
             return it2;
           };
           const reef = (seed, xf, z, opts = {}, flip = false) => glowOf(D2.add({ sprite: reefSprite(seed, "shallows", opts, qscale(1.5 * D2.s(z), 0.1, 0.3), flip), x: Math.round(xf * W11), z, id: "reef" }));
+          yield;
           const coral = (kind2, seed, xf, z, size) => glowOf(D2.add({ sprite: coralSprite(kind2, seed, "shallows", size, qscale(1.5 * D2.s(z), 0.1, 0.3)), x: Math.round(xf * W11), z, id: "coral_" + kind2 }));
+          yield;
           reef(101, 0.335, 0.26, { w: 116, h: 74, d: 46 });
+          yield;
           reef(102, 0.085, 0.18, { w: 84, h: 60, d: 38 });
+          yield;
           coral("brain", 111, 0.452, 0.05, 15);
           coral("staghorn", 112, 0.47, 0.22, 20);
           coral("fan", 113, 0.268, 0.07, 18);
           coral("tube", 114, 0.41, 0.31, 16);
+          yield;
           coral("staghorn", 115, 0.635, 0.3, 17);
           coral("bubble", 116, 0.505, -0.06, 12);
           coral("pillar", 117, 0.705, 0.24, 14);
           coral("whip", 118, 0.2, -0.04, 12);
+          yield;
           for (const [kind2, seed, xf, z, size] of [
             ["brain", 151, 0.565, -0.2, 7],
             ["bubble", 152, 0.665, 0.12, 7],
@@ -46861,17 +46928,32 @@ kmlmk..
             ["bubble", 159, 0.29, -0.18, 6],
             ["brain", 160, 0.425, -0.16, 6],
             ["whip", 161, 0.62, 0.2, 9]
-          ]) coral(kind2, seed, xf, z, size);
+          ]) {
+            coral(kind2, seed, xf, z, size);
+            yield;
+          }
           reef(121, 0.17, 0.5, { w: 140, h: 84, d: 54 });
+          yield;
           reef(122, 0.48, 0.47, { w: 124, h: 80, d: 50 });
+          yield;
           reef(123, 0.92, 0.6, { w: 132, h: 86, d: 52 });
+          yield;
           coral("fan", 124, 0.065, 0.45, 24);
           coral("staghorn", 125, 0.57, 0.6, 24);
           coral("table", 126, 0.31, 0.64, 22);
           coral("tube", 127, 0.8, 0.52, 18);
           coral("fan", 128, 0.72, 0.63, 22);
-          for (const [seed, xf, z, fl] of [[131, 0.13, 0.92, 0], [132, 0.42, 1, 0], [133, 0.75, 0.94, 1], [131, 0.6, 1.38, 1], [132, 0.25, 1.42, 1], [133, 0.92, 1.34, 0]]) reef(seed, xf, z, { w: 150, h: 90, d: 56 }, !!fl);
-          for (const [kind2, seed, xf, z, size] of [["staghorn", 141, 0.33, 0.76, 26], ["fan", 142, 0.68, 0.8, 26], ["table", 143, 0.86, 0.84, 24], ["fan", 144, 0.985, 0.76, 26], ["staghorn", 145, 0.2, 1.06, 28], ["tube", 146, 0.55, 1.12, 22]]) coral(kind2, seed, xf, z, size);
+          yield;
+          for (const [seed, xf, z, fl] of [[131, 0.13, 0.92, 0], [132, 0.42, 1, 0], [133, 0.75, 0.94, 1], [131, 0.6, 1.38, 1], [132, 0.25, 1.42, 1], [133, 0.92, 1.34, 0]]) {
+            reef(seed, xf, z, { w: 150, h: 90, d: 56 }, !!fl);
+            yield;
+          }
+          yield;
+          for (const [kind2, seed, xf, z, size] of [["staghorn", 141, 0.33, 0.76, 26], ["fan", 142, 0.68, 0.8, 26], ["table", 143, 0.86, 0.84, 24], ["fan", 144, 0.985, 0.76, 26], ["staghorn", 145, 0.2, 1.06, 28], ["tube", 146, 0.55, 1.12, 22]]) {
+            coral(kind2, seed, xf, z, size);
+            yield;
+          }
+          yield;
           const P7 = [
             // near (in front of the mid fish)
             ["rock_small", 0.035, 0.12, 0.9],
@@ -46890,33 +46972,57 @@ kmlmk..
             ["rock_big", 0.22, 1.5, 1.7],
             ["rock_arch", 0.82, 1.5, 1.8]
           ];
-          for (const e of [["diver_helmet", 0.155, 0.02, 0.6], ["tiki_head", 0.905, 0.52, 0.75], ["moai_head", 0.27, 1.28, 1.3], ["pirate_ship", 0.6, 1.62, 1.4], ["fish_statue", 0.975, 1.12, 0.9]]) if (PROPS[e[0]]) P7.push(e);
-          const placed2 = P7.map(([id2, xf, z, base, v]) => place2(id2, xf, z, base, v || 0));
+          for (const e of [["diver_helmet", 0.155, 0.02, 0.6], ["tiki_head", 0.905, 0.52, 0.75], ["moai_head", 0.27, 1.28, 1.3], ["pirate_ship", 0.6, 1.62, 1.4], ["fish_statue", 0.975, 1.12, 0.9]]) {
+            if (PROPS[e[0]]) P7.push(e);
+            yield;
+          }
+          const placed2 = [];
+          for (const [id2, xf, z, base, v] of P7) {
+            placed2.push(place2(id2, xf, z, base, v || 0));
+            yield;
+          }
+          yield;
           const find = (id2, band) => placed2.find((q) => q.id === id2 && (band === void 0 || q.band === band));
+          yield;
           const rock = find("rock_big", 0);
+          yield;
           const rs2 = D2.s(rock.z);
           this.cave = { cx: Math.round(rock.x + 4 * rs2), cy: Math.round(rock.y - 8 * rs2) };
           rock.painted = (g, dx, dy) => this.paintCave(g, dx + rock.sprite.ox + 4 * rs2, dy + rock.sprite.oy - 8 * rs2);
+          yield;
           this.cave.rect = { x: this.cave.cx - 6, y: this.cave.cy - 5, w: 12, h: 10 };
           const bottle = find("message_bottle");
+          yield;
           this.bottle = { x: bottle.x - 14, y: bottle.y - 14, w: 28, h: 16, cx: bottle.x, cy: bottle.y - 8 };
           const boat = find("sunken_boat");
+          yield;
           const bs = D2.s(boat.z);
           this.lantern = { x: Math.round(boat.x + 30 * bs), y: Math.round(boat.y - 58 * bs), z: boat.z };
           this.vent = { x: Math.round(boat.x - 40 * bs), y: boat.y - 4 };
           const cz = 0.1, cxp = Math.round(W11 * 0.545);
           this.castleProp = worldProp("sandcastle", { scale: qscale(0.75 * D2.s(cz)) });
+          yield;
           const cy = Math.round(D2.floorAt(cxp, cz)) + 1, cp = this.castleProp;
+          yield;
           this.castle = { x: cxp, y: cy, z: cz, rect: { x: cxp - cp.ox + 8, y: cy - cp.oy + 4, w: cp.w - 16, h: cp.oy - 6 }, clicks: 0, shake: 0, state: "intact", t: 0 };
           this.chest = worldProp("treasure_chest", { scale: 0.6, frame: 1 });
+          yield;
           this.heap = voxRelief(this.makeHeap(), { cell: 1, maxD: 5, depth: () => 5 });
-          D2.render([{ key: "day", strip: this.water.day }, { key: "dusk", strip: this.water.dusk }, { key: "night", strip: this.water.night }]);
+          yield;
+          yield* D2.render$([{ key: "day", strip: this.water.day }, { key: "dusk", strip: this.water.dusk }, { key: "night", strip: this.water.night }]);
           this.bands = new BandSet(D2);
+          yield;
           this.hazeY = Math.round(D2.hz - 26);
           this.haze = new FogLayer(hazeMask(W11, 70, { peak: 0.55, alpha: 0.75 }), 0, this.hazeY);
+          yield;
           this.masks = [0, 1].map((b) => lumaMask(D2.bands[b].canvases.day, { gamma: 2.2, gain: 1.1 }));
+          yield;
           this.floor = new Float32Array(W11 + 1);
-          for (let x = 0; x <= W11; x++) this.floor[x] = D2.floorAt(x, 0);
+          for (let x = 0; x <= W11; x++) {
+            this.floor[x] = D2.floorAt(x, 0);
+            yield;
+          }
+          yield;
         }
         floorAt(x, z = 0) {
           return this.D ? this.D.floorAt(x, z) : super.floorAt(x);
@@ -46949,6 +47055,14 @@ kmlmk..
         }
         // Far reef walls & coral silhouettes behind the floor's foggy horizon.
         buildLayers() {
+          const it2 = this.buildLayers$();
+          for (; ; ) {
+            const n2 = it2.next();
+            if (n2.done) return n2.value;
+          }
+        }
+        // [travel17]
+        *buildLayers$() {
           const W11 = this.W, H8 = this.H, pad = 28, D2 = this.D;
           this.pad = pad;
           const LW = W11 + pad * 2;
@@ -46961,11 +47075,17 @@ kmlmk..
           const A2 = [];
           const spires = [[0.04, 46, 8], [0.17, 70, 10], [0.3, 40, 7], [0.78, 76, 11], [0.9, 52, 9], [0.99, 38, 7], [0.44, 34, 6]];
           spires.forEach(([xf, h, w], i) => A2.push({ spr: render2(spire(40 + i, { h, w, d: 16, lean: r.float(-0.08, 0.08), cols: ROCK2, crown: CORAL }), { yaw: i % 2 ? 22 : -22 }), x: xf * LW, y: baseA + r.int(-2, 4), z: 1 + r.next() * 0.1 }));
+          yield;
           A2.push({ spr: render2(rockArch(51, { span: 46, h: 58, th: 7, d: 14, cols: ROCK2, crown: CORAL }), { yaw: 18 }), x: LW * 0.6, y: baseA + 2, z: 0.95 });
+          yield;
           A2.push({ spr: render2(mesa(52, { h: 26, w: 30, d: 18, cols: ROCK2, crown: CORAL }), { yaw: -16 }), x: LW * 0.35, y: baseA + 4, z: 0.9 });
+          yield;
           A2.push({ spr: render2(mesa(53, { h: 18, w: 22, d: 16, cols: ROCK2, crown: CORAL }), { yaw: 20 }), x: LW * 0.69, y: baseA + 6, z: 0.4 });
+          yield;
           const ridgeA = ridgeStrip(54, LW, { amp: 8, base: 7, d: 14, cols: ["#8a9ab4", "#7a8aa6", "#6a7a98"], rocks: { cols: ROCK2 } });
+          yield;
           this.farA = new FogLayer(strip(LW, hA, A2, { canvas: ridgeA.canvas, x: Math.round(LW / 2 - ridgeA.ox), y: Math.round(baseA + 14 - ridgeA.oy) }), -pad, yA);
+          yield;
           this.farAY = yA;
           const yB = Math.round(hz - 130), hB = H8 - yB;
           const baseB = hz - yB + 22;
@@ -46975,39 +47095,67 @@ kmlmk..
             const j = r.int(0, kinds.length - 1);
             B2.push({ spr: coralSprite(kinds[j], 200 + j, "shallows", r.pick([12, 18]), 0.7), x: r.float(0, LW), y: baseB + r.int(-3, 3), z: r.next() });
           }
-          for (let i = 0; i < 5; i++) B2.push({ spr: reefSprite(220, "shallows", { w: 110, h: 64, d: 40 }, 0.6, i % 2 === 1), x: r.float(0, LW), y: baseB + r.int(0, 3), z: r.next() });
+          yield;
+          for (let i = 0; i < 5; i++) {
+            B2.push({ spr: reefSprite(220, "shallows", { w: 110, h: 64, d: 40 }, 0.6, i % 2 === 1), x: r.float(0, LW), y: baseB + r.int(0, 3), z: r.next() });
+            yield;
+          }
+          yield;
           for (const [id2, nv] of [["rock_big", 1], ["rock_small", 1], ["starfish_rock", 1], ["rock_big", 1]]) {
             const sp = propSprite(id2, r.pick([0.4, 0.5]), r.int(0, nv - 1));
             if (sp) B2.push({ spr: sp, x: r.float(0, LW), y: baseB + r.int(-3, 3), z: r.next() });
           }
-          for (let i = 0; i < 10; i++) B2.push({ spr: kelpColumn(60 + i, r.int(30, 60), ["#3e6a2a", "#5a8a34", "#86b048"], 1), x: r.float(0, LW), y: baseB + r.int(-2, 2), z: r.float(0.6, 1) });
+          yield;
+          for (let i = 0; i < 10; i++) {
+            B2.push({ spr: kelpColumn(60 + i, r.int(30, 60), ["#3e6a2a", "#5a8a34", "#86b048"], 1), x: r.float(0, LW), y: baseB + r.int(-2, 2), z: r.float(0.6, 1) });
+            yield;
+          }
+          yield;
           const ridgeB = ridgeStrip(55, LW, { amp: 6, base: 5, d: 12, cols: ["#e2cc98", "#d0b884", "#bca674"], rocks: { cols: ["#8a8a9a", "#a09aa8"] } });
+          yield;
           this.farB = new FogLayer(strip(LW, hB, B2, { canvas: ridgeB.canvas, x: Math.round(LW / 2 - ridgeB.ox), y: Math.round(baseB + 10 - ridgeB.oy) }), -pad, yB);
+          yield;
           this.farBY = yB;
           this.whaleV = new VoxelGiant("whale");
+          yield;
           this.turtleV = new VoxelGiant("turtle", { lazy: true });
+          yield;
           this.giantVs = {};
           this.giantFog = new FogCache();
+          yield;
           this.giant = { kind: "turtle", x: W11 * 0.62, y: H8 * 0.36, dir: -1, v: 11, ph: 0, s: 0.8 };
           this.giantT = 0;
         }
         buildLife() {
+          const it2 = this.buildLife$();
+          for (; ; ) {
+            const n2 = it2.next();
+            if (n2.done) return n2.value;
+          }
+        }
+        // [travel17]
+        *buildLife$() {
           const W11 = this.W, H8 = this.H, D2 = this.D;
           const r = new RNG(9);
           this.decor = new DepthDecor(D2);
+          yield;
           const sc = (z, step = 0.2) => qscale(1.5 * D2.s(z), step, 0.3);
+          yield;
           const life = (kind2, seed, size, z, x, palKey = null, frames = 8) => {
             const A2 = voxAnim(kind2, seed, "shallows", size, sc(z), frames, palKey);
             const it2 = this.decor.add({ anim: placeAnim(A2, x, Math.round(D2.floorAt(x, z)) + 1), z, off: r.int(0, A2.n - 1) });
             if (A2.nights[0]) this.coralGlow.push({ anim: it2.anim, off: it2.off, band: it2.band, z });
             return it2;
           };
+          yield;
           for (const [xf, z, n2] of [[0.03, 0.78, 3], [0.07, 0.92, 3], [0.115, 0.72, 2], [0.83, 0.82, 3], [0.875, 0.7, 3], [0.93, 0.95, 2], [0.56, 1.02, 3], [0.5, 0.86, 2], [0.62, 0.68, 2], [0.075, 0.4, 2], [0.905, 0.42, 2], [0.25, 1.1, 3], [0.4, 1.25, 3]]) {
             for (let i = 0; i < n2; i++) {
               const zz = z + (i - (n2 - 1) / 2) * 0.03, x = Math.round(xf * W11 + (i - (n2 - 1) / 2) * 9 * D2.s(z) + r.int(-2, 2));
               life("kelp", 1 + (i + Math.round(xf * 10)) % 2, 14, zz, x);
             }
+            yield;
           }
+          yield;
           const spots = [
             [0.06, -0.12],
             [0.15, -0.15],
@@ -47038,21 +47186,37 @@ kmlmk..
             [0.8, 0.75],
             [0.9, 0.85]
           ];
-          for (const [xf, z] of spots) life("seagrass", 1 + r.int(0, 1), 8, z, Math.round(xf * W11));
+          for (const [xf, z] of spots) {
+            life("seagrass", 1 + r.int(0, 1), 8, z, Math.round(xf * W11));
+            yield;
+          }
+          yield;
           this.anemones = [];
           for (const [xf, z, pal3, glow] of [[0.385, 0.02, "pink", "#ff7ab0"], [0.18, -0.08, "teal", "#5affea"], [0.79, 0.1, "orange", "#ffb070"], [0.56, 0.5, "purple", "#c08aff"], [0.66, -0.16, "magenta", "#ff8af0"], [0.28, 0.36, "yellow", "#ffe27a"]]) {
             const x = Math.round(xf * W11);
             const it2 = life("anemone", 3 + Math.round(xf * 20), 9, z, x, pal3);
             this.anemones.push({ x, y: it2.anim.y + it2.anim.frames[0].height - 4, z, glow });
+            yield;
           }
-          for (const [xf, z, pal3] of [[0.125, 0.1, "red"], [0.548, 0.28, "orange"], [0.745, 0.32, "pink"], [0.43, 0.58, "cream"], [0.99, 0.08, "purple"], [0.3, 0.86, "yellow"]]) life("soft", 7 + Math.round(xf * 30), 12, z, Math.round(xf * W11), pal3);
+          yield;
+          for (const [xf, z, pal3] of [[0.125, 0.1, "red"], [0.548, 0.28, "orange"], [0.745, 0.32, "pink"], [0.43, 0.58, "cream"], [0.99, 0.08, "purple"], [0.3, 0.86, "yellow"]]) {
+            life("soft", 7 + Math.round(xf * 30), 12, z, Math.round(xf * W11), pal3);
+            yield;
+          }
+          yield;
           this.crabSpr = [lpCrabFrames("#e0502e"), lpCrabFrames("#f09a3a")];
+          yield;
           this.crabs = [[0.52, -0.05], [0.86, 0.06], [0.25, -0.2]].map(([xf, z], i) => ({ x: xf * W11, z, dir: i % 2 ? -1 : 1, state: "walk", t: r.float(1, 4), f: 0, kind: i % 2, ft: 0 }));
+          yield;
           const sy = this.base;
           this.plankton = new Motes(110, { x0: 0, y0: sy + 4, x1: W11, y1: H8 - 60 }, { seed: 3, vx: [-3, 3], vy: [-2.5, 1.5], sizes: [1, 1, 1, 2], colors: ["#d8fff4", "#ffffff", "#b8f0ff", "#fff6c8"], alpha: [0.25, 0.75], wob: 5 });
+          yield;
           this.nearMotes = new Motes(26, { x0: 0, y0: sy + 10, x1: W11, y1: H8 - 30 }, { seed: 8, vx: [-5, 5], vy: [-3, 3], sizes: [2, 2, 3], colors: ["#e8fff8", "#c8f4ff"], alpha: [0.12, 0.3], wob: 8 });
+          yield;
           this.glowPlankton = new Motes(34, { x0: 0, y0: sy + 20, x1: W11, y1: H8 - 50 }, { seed: 12, vx: [-4, 4], vy: [-2, 2], sizes: [1], colors: ["#7affea", "#9ad8ff", "#c8ff9a"], alpha: [0.5, 1], wob: 6 });
+          yield;
           this.bubbles = new Bubbles(90);
+          yield;
           this.emitT = { cave: 1, boat: 2, anem: 3, sand: 1.5 };
           this.drops = [];
           this.hint = { t: 0 };
@@ -47923,6 +48087,13 @@ kmlmk..
         }
         // ------------------------------------------------------------------ build
         build(W11, H8) {
+          const it2 = this.steps(W11, H8);
+          while (!it2.next().done) ;
+        }
+        // [travel17] sync build = all the steps
+        // [travel17] the build a slice at a time (a voyage builds the next ocean over many frames)
+        *steps(W11, H8) {
+          this.ready = false;
           this.W = W11;
           this.H = H8;
           this.base = this.baseSurface(H8);
@@ -47930,22 +48101,37 @@ kmlmk..
           this.ys = new Int16Array(W11 + 2);
           this.ys.fill(this.base);
           this.waterBlend = new Blend();
-          this.buildSky();
+          yield* this.buildSky$();
           const wo = { y0: this.base - 2, y1: H8, levels: 24 };
           this.water = { day: gradientStrip(H8, WATER3.day, wo), dusk: gradientStrip(H8, WATER3.dusk, wo), night: gradientStrip(H8, WATER3.night, wo) };
+          yield;
           this.fx = new ScreenFX();
-          this.buildDepth();
-          this.buildLayers();
+          yield;
+          yield* this.buildDepth$();
+          yield* this.buildLayers$();
           const rh = H8 - this.base;
           this.rays = new FogLayer(makeRays(W11, rh, { seed: 14, count: 7, sunX: W11 * 0.35, sunY: -H8 * 0.9, minW: 8, maxW: 26, len: 0.7, color: "#ffffff", alpha: 0.45, levels: 4 }));
+          yield;
           this.sheen = this.makeSheen();
+          yield;
           this.caustics = new Caustics({ tw: 128, th: 40, cx: 8, cy: 4, seed: 6, color: "#e8ffd8", thick: 0.6, core: 0.6, rim: 0.2 });
-          this.buildLife();
+          yield;
+          yield* this.buildLife$();
           this.fresh = true;
+          this.ready = true;
         }
         buildSky() {
+          const it2 = this.buildSky$();
+          for (; ; ) {
+            const n2 = it2.next();
+            if (n2.done) return n2.value;
+          }
+        }
+        // [travel17]
+        *buildSky$() {
           const W11 = this.W, base = this.base, top = this.top;
           this.sky = new SkyDome({ W: W11, top, base, seed: 17, stops: SKY3, stars: 24, haze: 0.12, clouds: { n: 11, size: [26, 64], y: [top + 30, base - 26], scale: 2, speed: 0.8, pals: ["day", "dusk", "night", "rain"] } });
+          yield;
           const hz = (k) => ({ day: [SKYHZ3.day, k], dusk: [SKYHZ3.dusk, k + 0.08], night: [SKYHZ3.night, Math.min(0.85, k + 0.32)] });
           this.horizon = [
             { spr: junkRidge(W11, 27, hz(0.34)), x: -12, y: base + 3, full: true },
@@ -47953,17 +48139,23 @@ kmlmk..
             { spr: gantryCrane(23, hz(0.36)), x: Math.round(W11 * 0.52), y: base + 2, crane: true },
             { spr: containerStack(25, hz(0.32)), x: Math.round(W11 * 0.8), y: base + 2 }
           ];
+          yield;
           for (const h of this.horizon) {
             h.blend = new Blend();
             if (h.full) h.x = h.spr.ox - 12;
           }
           const f = this.horizon[1];
           this.stacks = Object.entries(f.spr.anchors).filter(([k]) => k.startsWith("stack")).map(([, a]) => ({ x: f.x - f.spr.ox + a[0], y: f.y - f.spr.oy + a[1] }));
+          yield;
           const c = this.horizon[2];
           this.blinkers = ["lampL", "lampR"].map((k) => ({ x: c.x - c.spr.ox + c.spr.anchors[k][0], y: c.y - c.spr.oy + c.spr.anchors[k][1] }));
           this.smoke = [];
           const r = new RNG(17);
-          for (let i = 0; i < 60; i++) this.smoke.push({ s: i % this.stacks.length, k: r.next(), ph: r.float(0, TAU), w: r.float(0.7, 1.3) });
+          for (let i = 0; i < 60; i++) {
+            this.smoke.push({ s: i % this.stacks.length, k: r.next(), ph: r.float(0, TAU), w: r.float(0.7, 1.3) });
+            yield;
+          }
+          yield;
         }
         makeSheen() {
           const W11 = this.W + 256, h = 10;
@@ -47980,12 +48172,21 @@ kmlmk..
         }
         // Perspective voxel silt / circuit-board floor rising into voxel junk hills, junk props at many depths.
         buildDepth() {
+          const it2 = this.buildDepth$();
+          for (; ; ) {
+            const n2 = it2.next();
+            if (n2.done) return n2.value;
+          }
+        }
+        // [travel17]
+        *buildDepth$() {
           const W11 = this.W, H8 = this.H;
           const D2 = new DepthScene(W11, H8, { yFront: H8 - 70, yFar: H8 - 164, pad: 24, zFar: 1.85, fogStart: -0.3, fog: 0.84 });
+          yield;
           this.D = D2;
           const dockX = W11 - 260;
           const JUNK = [[138, 86, 52], [112, 116, 124], [60, 62, 70], [196, 186, 156], [70, 96, 150], [150, 60, 54], [96, 120, 90], [168, 150, 96]];
-          D2.terrain({
+          yield* D2.terrain$({
             micro: { ripple: 0.7, pebble: 1.5, shell: 2, pebbles: [[120, 124, 132], [160, 150, 120], [96, 80, 64], [70, 74, 82]], shells: [[220, 60, 50], [60, 140, 220], [230, 200, 60]] },
             // [phase7:env] bolts, washers, bottle caps
             cell: 2,
@@ -48034,19 +48235,28 @@ kmlmk..
             const p = worldProp(id2, { scale: qscale(base * D2.s(z)), variant: variant2 });
             return D2.add({ sprite: p, x: Math.round(xf * W11), z, id: id2 });
           };
+          yield;
           this.coralGlow = [];
           const glowOf = (it2) => {
             if (it2.sprite.night) this.coralGlow.push({ night: it2.sprite.night, x: it2.x - it2.sprite.ox, y: it2.y - it2.sprite.oy, band: it2.band, z: it2.z });
             return it2;
           };
           const kz = (z) => qscale(1.5 * D2.s(z), 0.1, 0.3);
+          yield;
           const reef = (seed, xf, z, o, flip = false) => glowOf(D2.add({ sprite: reefSprite(seed, "junkyard", o, kz(z), flip), x: Math.round(xf * W11), z, id: "reef" }));
+          yield;
           const coral = (kind2, seed, xf, z, size) => glowOf(D2.add({ sprite: coralSprite(kind2, seed, "junkyard", size, kz(z)), x: Math.round(xf * W11), z, id: "coral_" + kind2 }));
+          yield;
           reef(301, 0.515, 0.22, { w: 104, h: 70, d: 42 });
+          yield;
           reef(302, 0.745, 0.38, { w: 120, h: 78, d: 48 });
+          yield;
           reef(303, 0.8, 0.76, { w: 140, h: 86, d: 52 });
+          yield;
           reef(301, 0.33, 1.2, { w: 104, h: 70, d: 42 }, true);
+          yield;
           reef(302, 0.66, 1.42, { w: 120, h: 78, d: 48 }, true);
+          yield;
           for (const [kind2, seed, xf, z, size] of [
             ["circuit", 311, 0.618, 0.1, 15],
             ["circuit", 312, 0.31, 0.24, 13],
@@ -48059,7 +48269,10 @@ kmlmk..
             ["circuit", 319, 0.93, 0.6, 18],
             ["fan", 320, 0.37, 0.92, 20],
             ["circuit", 321, 0.15, 1.05, 22]
-          ]) coral(kind2, seed, xf, z, size);
+          ]) {
+            coral(kind2, seed, xf, z, size);
+            yield;
+          }
           const P7 = [
             // near
             ["crt_monitor", 0.375, 0.12, 0.85],
@@ -48104,7 +48317,12 @@ kmlmk..
             ["jukebox", 0.94, 0.8, 0.9],
             ["sunken_pc", 0.06, 0.62, 0.8]
           ]) if (PROPS[e[0]]) P7.push(e);
-          const placed2 = P7.map(([id2, xf, z, base, v]) => place2(id2, xf, z, base, v || 0));
+          const placed2 = [];
+          for (const [id2, xf, z, base, v] of P7) {
+            placed2.push(place2(id2, xf, z, base, v || 0));
+            yield;
+          }
+          yield;
           for (const q of placed2) {
             q.left = q.x - q.sprite.ox;
             q.top = q.y - q.sprite.oy;
@@ -48113,8 +48331,11 @@ kmlmk..
           }
           this.placed = placed2;
           const find = (id2, band) => placed2.find((q) => q.id === id2 && (band === void 0 || q.band === band));
+          yield;
           const pile = find("crt_pile", 1), rack = find("server_rack", 1), robot = find("broken_robot", 1), vend = find("vending_machine", 1), barrel = find("rusty_barrel", 1), mon = find("crt_monitor", 0);
+          yield;
           const cab = makeCanvas(W11, H8), cg = ctxOf(cab);
+          yield;
           const cables = [
             [[-10, H8 * 0.55], [pile.left + 30, pile.top + 36], 40, "#24242c", 2],
             [[rack.x - 10, rack.top + 6], [pile.x + 26, pile.top + 30], 22, "#c8a040", 1],
@@ -48127,16 +48348,26 @@ kmlmk..
             const pts = catenary(a[0], a[1], b[0], b[1], sag, 30);
             for (const p of pts) cTop = Math.min(cTop, p[1]);
             drawCable(cg, pts, col, w, "#0a0c10", w >= 2 ? mix(col, "#ffffff", 0.35) : null);
+            yield;
           }
+          yield;
           D2.items.push({ abs: true, absTop: Math.floor(cTop) - 4, z: 0.47, band: 1, sprite: { canvas: cab, ox: 0, oy: 0 }, x: 0, y: 0 });
-          D2.render([{ key: "day", strip: this.water.day }, { key: "dusk", strip: this.water.dusk }, { key: "night", strip: this.water.night }]);
+          yield* D2.render$([{ key: "day", strip: this.water.day }, { key: "dusk", strip: this.water.dusk }, { key: "night", strip: this.water.night }]);
           this.bands = new BandSet(D2);
+          yield;
           this.hazeY = Math.round(D2.hz - 26);
           this.haze = new FogLayer(hazeMask(W11, 70, { peak: 0.55, alpha: 0.8 }), 0, this.hazeY);
+          yield;
           this.masks = [0, 1].map((b) => lumaMask(D2.bands[b].canvases.day, { gamma: 2, gain: 1.05 }));
+          yield;
           this.floor = new Float32Array(W11 + 1);
-          for (let x = 0; x <= W11; x++) this.floor[x] = D2.floorAt(x, 0);
+          for (let x = 0; x <= W11; x++) {
+            this.floor[x] = D2.floorAt(x, 0);
+            yield;
+          }
+          yield;
           this.glows = placed2.filter((q) => q.p.glow).map((q) => ({ c: q.p.glow, x: q.left, y: q.top, id: q.id, band: q.band, a: 1 - D2.fog(q.z) * 0.8, ph: hash2(q.x, 1, 9) * TAU }));
+          yield;
           this.screens = [];
           const modes = ["text", "fish", "static"];
           let si = 0;
@@ -48146,20 +48377,26 @@ kmlmk..
               const secret = q === mon;
               this.screens.push({ x: q.left + sc.x, y: q.top + sc.y, w: sc.w, h: sc.h, band: q.band, mode: secret ? "off" : modes[si++ % 3], secret, a: 1 - D2.fog(q.z) * 0.85, z: q.z });
             }
+            yield;
           }
           this.crt = this.screens.find((sc) => sc.secret);
+          yield;
           this.leds = [];
           for (const q of placed2) {
             if (q.id !== "server_rack" || !q.p.glow) continue;
             const gd = ctxOf(q.p.glow).getImageData(0, 0, q.p.w, q.p.h).data;
             for (let y = 0; y < q.p.h; y++) for (let x = 0; x < q.p.w; x++) if (gd[(y * q.p.w + x) * 4 + 3] === 255 && this.leds.length < 200) this.leds.push({ x: q.left + x, y: q.top + y, k: hash2(x, y, 3), band: q.band });
+            yield;
           }
+          yield;
           this.propLights = [];
           for (const q of placed2) {
             if (q.id === "crt_pile" || q.id === "crt_monitor") continue;
             const l = q.p.lights.slice().sort((a, b) => b.r - a.r)[0];
             if (l && q.z < 1.2) this.propLights.push({ x: q.left + l.x, y: q.top + l.y, r: Math.min(64, l.r * 0.9 + 8 * q.s), color: l.color, a: 1 - D2.fog(q.z) * 0.7, id: q.id });
+            yield;
           }
+          yield;
           this.vend = { x: vend.x, y: vend.y, rect: { x: vend.left + 6, y: vend.top + 6, w: vend.p.w - 12, h: vend.p.oy - 8 }, tray: { x: vend.x - 5, y: vend.y - 16 }, t: 9, item: null, cool: 0 };
           this.monRect = { x: this.crt.x - 4, y: this.crt.y - 4, w: this.crt.w + 8, h: this.crt.h + 10 };
           this.rack = rack;
@@ -48187,7 +48424,9 @@ kmlmk..
                 }
               }
             }
+            yield;
           }
+          yield;
         }
         floorAt(x, z = 0) {
           return this.D ? this.D.floorAt(x, z) : super.floorAt(x);
@@ -48209,6 +48448,14 @@ kmlmk..
           };
         }
         buildLayers() {
+          const it2 = this.buildLayers$();
+          for (; ; ) {
+            const n2 = it2.next();
+            if (n2.done) return n2.value;
+          }
+        }
+        // [travel17]
+        *buildLayers$() {
           const W11 = this.W, H8 = this.H, pad = 28, D2 = this.D;
           this.pad = pad;
           const LW = W11 + pad * 2;
@@ -48218,48 +48465,81 @@ kmlmk..
           const baseA = hz - yA + 14;
           const A2 = [];
           [[0.08, 58, 40], [0.33, 46, 30], [0.92, 64, 46], [0.6, 34, 22]].forEach(([xf, w, h], i) => A2.push({ spr: render2(junkHeap(70 + i, { w, h, d: 22 }), { yaw: i % 2 ? 14 : -14, pitch: 18 }), x: xf * LW, y: baseA + 6, z: 1 - i * 0.02 }));
+          yield;
           A2.push({ spr: render2(freighter(71), { yaw: -12, pitch: 14 }), x: LW * 0.64, y: baseA + 4, z: 0.97 });
+          yield;
           A2.push({ spr: render2(latticeCrane(72, 84), { yaw: 18, pitch: 12 }), x: LW * 0.2, y: baseA + 2, z: 0.99 });
+          yield;
           const ridgeA = ridgeStrip(73, LW, { amp: 9, base: 7, d: 16, cols: ["#6a6a58", "#5a5a4a", "#4a4a3e"], rocks: { cols: ["#6a5a4a", "#5a6066", "#7a4a34", "#4a5a6a"] } });
+          yield;
           this.farA = new FogLayer(strip(LW, hA, A2, { canvas: ridgeA.canvas, x: Math.round(LW / 2 - ridgeA.ox), y: Math.round(baseA + 16 - ridgeA.oy) }), -pad, yA);
+          yield;
           this.farAY = yA;
           const yB = Math.round(hz - 130), hB = H8 - yB;
           const baseB = hz - yB + 22;
           const B2 = [];
-          for (const [xf, c, rw] of [[0.13, 3, 2], [0.48, 4, 3], [0.84, 3, 3]]) B2.push({ spr: render2(containerStackModel(80 + c + rw, c, rw), { scale: 1, yaw: 20, pitch: 14 }), x: xf * LW, y: baseB + 2, z: 0.8 });
+          for (const [xf, c, rw] of [[0.13, 3, 2], [0.48, 4, 3], [0.84, 3, 3]]) {
+            B2.push({ spr: render2(containerStackModel(80 + c + rw, c, rw), { scale: 1, yaw: 20, pitch: 14 }), x: xf * LW, y: baseB + 2, z: 0.8 });
+            yield;
+          }
+          yield;
           const poles = [];
           for (let i = 0; i < 6; i++) {
             const x = LW * (0.06 + i * 0.18) + r.float(-10, 10);
             const sp = render2(utilityPole(90 + i, r.int(56, 70)), { scale: 1, yaw: 0, pitch: 6 });
             B2.push({ spr: sp, x, y: baseB + 4, z: 0.7 });
             poles.push([x, baseB + 4 - sp.oy + 6]);
+            yield;
           }
+          yield;
           const junk = ["crt_pile", "tire", "shopping_cart", "satellite_dish", "gear_big", "server_rack", "rusty_barrel", "crt_monitor", "toilet", "bathtub", "traffic_cone", "phone_booth", "retro_tv", "giant_sneaker", "arcade_cabinet", "broken_robot"];
           for (let i = 0; i < 46; i++) {
             const sp = propSprite(r.pick(junk), r.pick([0.38, 0.46, 0.55]));
             if (sp) B2.push({ spr: sp, x: r.float(0, LW), y: baseB + r.int(-2, 4), z: r.next() * 0.9 });
+            yield;
           }
-          for (let i = 0; i < 6; i++) B2.push({ spr: render2(junkHeap(100 + i, { w: r.int(14, 24), h: r.int(8, 14), d: 12 }), { scale: 1, yaw: 10, pitch: 16 }), x: r.float(0, LW), y: baseB + 4, z: 0.95 });
+          yield;
+          for (let i = 0; i < 6; i++) {
+            B2.push({ spr: render2(junkHeap(100 + i, { w: r.int(14, 24), h: r.int(8, 14), d: 12 }), { scale: 1, yaw: 10, pitch: 16 }), x: r.float(0, LW), y: baseB + 4, z: 0.95 });
+            yield;
+          }
+          yield;
           const ridgeB = ridgeStrip(74, LW, { amp: 5, base: 5, d: 12, cols: ["#7a7660", "#6a6652", "#5a5644"], rocks: { cols: ["#8a5a3e", "#5a6a7a", "#6a6a6a"] } });
+          yield;
           const cB = strip(LW, hB, B2, { canvas: ridgeB.canvas, x: Math.round(LW / 2 - ridgeB.ox), y: Math.round(baseB + 10 - ridgeB.oy) });
+          yield;
           const g = ctxOf(cB);
+          yield;
           for (let i = 0; i + 1 < poles.length; i++) {
             for (const dy of [0, 7]) {
               const pts = catenary(poles[i][0] - 9, poles[i][1] + dy, poles[i + 1][0] - 9, poles[i + 1][1] + dy, 16 + dy, 40);
               drawCable(g, pts, "#3a3e3a", 1);
             }
+            yield;
           }
+          yield;
           this.farB = new FogLayer(cB, -pad, yB);
+          yield;
           this.farBY = yB;
         }
         buildLife() {
+          const it2 = this.buildLife$();
+          for (; ; ) {
+            const n2 = it2.next();
+            if (n2.done) return n2.value;
+          }
+        }
+        // [travel17]
+        *buildLife$() {
           const W11 = this.W, H8 = this.H, D2 = this.D;
           const r = new RNG(19);
           this.decor = new DepthDecor(D2);
+          yield;
           const life = (kind2, seed, size, z, x, palKey = null) => {
             const A2 = voxAnim(kind2, seed, "junkyard", size, qscale(1.5 * D2.s(z), 0.2, 0.3), 8, palKey);
             return this.decor.add({ anim: placeAnim(A2, x, Math.round(D2.floorAt(x, z)) + 1), z, off: r.int(0, A2.n - 1) });
           };
+          yield;
           for (const [xf, z] of [
             [0.08, -0.12],
             [0.17, 0],
@@ -48281,33 +48561,67 @@ kmlmk..
             [0.12, 0.85],
             [0.46, 0.8],
             [0.7, 0.95]
-          ]) life("seagrass", 11 + r.int(0, 1), 8, z, Math.round(xf * W11));
-          for (const [xf, z, pal3] of [[0.335, 0.06, "rust"], [0.68, 0.22, "oxide"], [0.2, 0.46, "copper"], [0.88, 0.7, "wire"]]) life("soft", 31 + Math.round(xf * 20), 11, z, Math.round(xf * W11), pal3);
+          ]) {
+            life("seagrass", 11 + r.int(0, 1), 8, z, Math.round(xf * W11));
+            yield;
+          }
+          for (const [xf, z, pal3] of [[0.335, 0.06, "rust"], [0.68, 0.22, "oxide"], [0.2, 0.46, "copper"], [0.88, 0.7, "wire"]]) {
+            life("soft", 31 + Math.round(xf * 20), 11, z, Math.round(xf * W11), pal3);
+            yield;
+          }
+          yield;
           const s0 = this.base;
           for (const [xf, n2, col, z] of [[0.18, 30, "#2a2a34", 0.5], [0.585, 22, "#3a3a48", 0.85], [0.79, 13, "#b83a3a", 0.6], [0.36, 26, "#2a2a34", 1.1]]) {
             const sc = D2.s(z);
             this.decor.add({ anim: voxCableAnim(Math.round(n2 * Math.max(2, Math.round(4 * sc + 1))), col, "#c8c8d0", Math.round(xf * W11), s0 + 1, 8, sc > 0.7 ? 2 : 1), z, off: Math.round(xf * 30), fy: s0 + 60 });
+            yield;
           }
+          yield;
           this.murk = cloudTile(480, 240, "#a8c8b0", { seed: 3, alpha: 0.13, scale: 0.016, bias: 0.5, levels: 3 });
+          yield;
           this.murk2 = cloudTile(400, 200, "#0e2420", { seed: 9, alpha: 0.16, scale: 0.02, bias: 0.5, levels: 3 });
+          yield;
           this.duck = worldProp("rubber_duck", { scale: 0.45 });
+          yield;
           this.bottle = voxPixelSprite(bottleSprite(), 4);
+          yield;
           this.can = voxPixelSprite(canSprite(), 4);
+          yield;
           this.floaters = [[0.3, "duck"], [0.52, "bottle"], [0.68, "can"], [0.9, "bottle"]].map(([xf, k], i) => ({ x: xf * W11, k, v: 2 + i, ph: i * 1.7 }));
           const s = this.base;
           this.silt = new Motes(120, { x0: 0, y0: s + 4, x1: W11, y1: H8 - 50 }, { seed: 4, vx: [-2, 2], vy: [-1.5, 1.5], sizes: [1, 1, 2], colors: ["#a8c8a0", "#c8d8b0", "#8aa890"], alpha: [0.2, 0.55], wob: 4 });
+          yield;
           this.nearSilt = new Motes(22, { x0: 0, y0: s + 10, x1: W11, y1: H8 - 30 }, { seed: 9, vx: [-3, 3], vy: [-2, 2], sizes: [2, 3], colors: ["#b8d8b0"], alpha: [0.08, 0.2], wob: 7 });
+          yield;
           this.bits = [];
           const bc = ["#5affb0", "#7affea", "#b8ff7a"];
           this.glyphs = { 0: bc.map((c) => glyphSprite(0, c)), 1: bc.map((c) => glyphSprite(1, c)) };
-          for (let i = 0; i < 40; i++) this.bits.push({ x: r.float(0, W11), y: r.float(s + 20, H8 - 60), vy: -r.float(2, 6), ch: r.int(0, 1), c: r.int(0, 2), ph: r.float(0, TAU), sq: r.chance(0.35) });
+          yield;
+          for (let i = 0; i < 40; i++) {
+            this.bits.push({ x: r.float(0, W11), y: r.float(s + 20, H8 - 60), vy: -r.float(2, 6), ch: r.int(0, 1), c: r.int(0, 2), ph: r.float(0, TAU), sq: r.chance(0.35) });
+            yield;
+          }
+          yield;
           this.streams = [];
-          for (let i = 0; i < 6; i++) this.streams.push(streamTex(100 + i, 14 + i * 3));
+          for (let i = 0; i < 6; i++) {
+            this.streams.push(streamTex(100 + i, 14 + i * 3));
+            yield;
+          }
+          yield;
           this.rain = [];
-          for (let i = 0; i < 56; i++) this.rain.push({ x: Math.round(r.float(0, W11) / 4) * 4, y: r.float(-200, H8), v: r.float(50, 110), tex: r.int(0, 5) });
+          for (let i = 0; i < 56; i++) {
+            this.rain.push({ x: Math.round(r.float(0, W11) / 4) * 4, y: r.float(-200, H8), v: r.float(50, 110), tex: r.int(0, 5) });
+            yield;
+          }
+          yield;
           this.oilBlobs = [];
-          for (let i = 0; i < 14; i++) this.oilBlobs.push({ x: r.float(0, W11), y: r.float(s + 30, H8 - 80), v: -r.float(3, 8), ph: r.float(0, TAU), s: r.int(2, 4) });
+          for (let i = 0; i < 14; i++) {
+            this.oilBlobs.push({ x: r.float(0, W11), y: r.float(s + 30, H8 - 80), v: -r.float(3, 8), ph: r.float(0, TAU), s: r.int(2, 4) });
+            yield;
+          }
+          yield;
           this.bubbles = new Bubbles(60, "#d8f0e0");
+          yield;
           this.emitT = 1;
           this.tear = null;
           this.hint = 0;
@@ -48835,6 +49149,13 @@ kmlmk..
         }
         // ------------------------------------------------------------------ build
         build(W11, H8) {
+          const it2 = this.steps(W11, H8);
+          while (!it2.next().done) ;
+        }
+        // [travel17] sync build = all the steps
+        // [travel17] the build a slice at a time (a voyage builds the next ocean over many frames)
+        *steps(W11, H8) {
+          this.ready = false;
           this.W = W11;
           this.H = H8;
           this.top = worldTop(H8);
@@ -48842,25 +49163,45 @@ kmlmk..
           this.ys = new Int16Array(W11 + 2);
           this.ys.fill(this.level);
           this.waterStrip = gradientStrip(H8, WATER4, { levels: 22 });
-          this.buildAbove();
-          this.buildDepth();
-          this.buildLayers();
+          yield;
+          yield* this.buildAbove$();
+          yield* this.buildDepth$();
+          yield* this.buildLayers$();
           this.rays = makeRays(W11, H8, { seed: 31, count: 6, sunX: W11 * 0.48, sunY: -H8 * 1.5, minW: 14, maxW: 40, len: 0.8, color: "#6a8ae0", alpha: 0.3, levels: 3 });
-          this.buildLife();
+          yield;
+          yield* this.buildLife$();
           this.fresh = true;
+          this.ready = true;
         }
         // The dim surface far above the abyss: night sky, moon, voxel rock spires, a marker buoy, upper water.
         buildAbove() {
+          const it2 = this.buildAbove$();
+          for (; ; ) {
+            const n2 = it2.next();
+            if (n2.done) return n2.value;
+          }
+        }
+        // [travel17]
+        *buildAbove$() {
           const W11 = this.W, top = this.top, level = this.level;
           this.sky = new SkyDome({ W: W11, top, base: level, seed: 41, stops: SKY_NIGHT, nightOnly: true, stars: 110, sun: false, clouds: { n: 6, size: [26, 60], y: [top + 20, level - 30], scale: 2, speed: 0.6, pals: ["night"] } });
+          yield;
           this.upper = gradientStrip(-level + 4, UPPER, { levels: 16 });
+          yield;
           this.spires = rockSpires(31, { night: ["#0c1838", 0.45] });
+          yield;
           this.spireX = Math.round(W11 * 0.74);
           this.buoy = { spr: markerBuoy("#2a3a5a"), x: Math.round(W11 * 0.26) };
+          yield;
           const jr = new RNG(44);
           this.jellies = [];
-          for (let i = 0; i < 9; i++) this.jellies.push({ x: jr.float(20, W11 - 20), y: jr.float(level + 30, -14), ph: jr.float(0, TAU), r: jr.int(2, 4), c: jr.pick(["#7affff", "#c87aff", "#7affb0", "#ff8ad8"]), v: jr.float(2, 5) });
+          for (let i = 0; i < 9; i++) {
+            this.jellies.push({ x: jr.float(20, W11 - 20), y: jr.float(level + 30, -14), ph: jr.float(0, TAU), r: jr.int(2, 4), c: jr.pick(["#7affff", "#c87aff", "#7affb0", "#ff8ad8"]), v: jr.float(2, 5) });
+            yield;
+          }
+          yield;
           this.moonRays = makeRays(W11, -level, { seed: 52, count: 7, sunX: W11 * 0.6, sunY: level * 1.6, minW: 6, maxW: 22, len: 0.9, color: "#8aa8ff", alpha: 0.35, levels: 3 });
+          yield;
         }
         // [phase5:water] called by installWater (watersheet.js) after the water sheet, under the world camera
         drawOverSheet(ctx3, env) {
@@ -48951,11 +49292,21 @@ kmlmk..
           ctx3.globalAlpha = 1;
         }
         buildDepth() {
+          const it2 = this.buildDepth$();
+          for (; ; ) {
+            const n2 = it2.next();
+            if (n2.done) return n2.value;
+          }
+        }
+        // [travel17]
+        *buildDepth$() {
           const W11 = this.W, H8 = this.H;
           const D2 = new DepthScene(W11, H8, { yFront: H8 - 68, yFar: H8 - 160, pad: 24, zFar: 1.9, fogStart: -0.2, fog: 0.95 });
+          yield;
           this.D = D2;
           const cx = D2.cx;
           const edge = (z, side) => W11 * (side < 0 ? 0.37 : 0.36) + Math.sin(z * 3.1 + side) * W11 * 0.025 + (fbm2(z * 2.3, 5.5 + side, 2, 61) - 0.5) * W11 * 0.07;
+          yield;
           this.edge = edge;
           const floorH = (X, z) => {
             let h = (fbm2(X * 5e-3, z * 1.4, 3, 41) - 0.45) * 12;
@@ -48964,6 +49315,7 @@ kmlmk..
             if (rp2 > 0.7) h += 2;
             return Math.max(-2, h * (0.45 + 0.55 * smoothstep(0, 0.5, z)));
           };
+          yield;
           const cliff = (X, z) => {
             const side = X < cx ? -1 : 1;
             const over2 = Math.abs(X - cx) - edge(z, side) - (fbm2(z * 7, side * 3, 2, 62) - 0.5) * 18;
@@ -48973,7 +49325,8 @@ kmlmk..
             if (over2 < 44) return 132;
             return 560;
           };
-          D2.terrain({
+          yield;
+          yield* D2.terrain$({
             micro: { ripple: 0.6, pebble: 1, shell: 1, pebbles: [[50, 54, 76], [70, 74, 100], [40, 42, 58]], shells: [[200, 196, 180], [150, 220, 255]] },
             // [phase7:env] bone chips
             cell: 2,
@@ -49026,6 +49379,7 @@ kmlmk..
             it2.s = D2.s(z);
             return it2;
           };
+          yield;
           const P7 = [
             // near
             ["crystal_cluster", 0.19, 0.2, 0.85, 0],
@@ -49058,20 +49412,35 @@ kmlmk..
             ["pillar_ruin", 0.47, 1.4, 1.4, 0],
             ["glow_mushroom", 0.68, 0.95, 0.8, 1]
           ];
-          for (const e of [["moai_head", 0.415, 0.66, 0.85], ["fish_statue", 0.535, 1.16, 1.2], ["diver_helmet", 0.665, 0.18, 0.5]]) if (PROPS[e[0]]) P7.push(e);
-          const placed2 = P7.map(([id2, xf, z, base, v]) => place2(id2, xf, z, base, v || 0));
+          for (const e of [["moai_head", 0.415, 0.66, 0.85], ["fish_statue", 0.535, 1.16, 1.2], ["diver_helmet", 0.665, 0.18, 0.5]]) {
+            if (PROPS[e[0]]) P7.push(e);
+            yield;
+          }
+          const placed2 = [];
+          for (const [id2, xf, z, base, v] of P7) {
+            placed2.push(place2(id2, xf, z, base, v || 0));
+            yield;
+          }
+          yield;
           this.coralGlow = [];
           const glowOf = (it2) => {
             if (it2.sprite.night) this.coralGlow.push({ night: it2.sprite.night, x: it2.x - it2.sprite.ox, y: it2.y - it2.sprite.oy, band: it2.band, z: it2.z });
             return it2;
           };
           const kz = (z) => qscale(1.5 * D2.s(z), 0.1, 0.3);
+          yield;
           const reef = (seed, xf, z, o, flip = false) => glowOf(D2.add({ sprite: reefSprite(seed, "abyss", o, kz(z), flip), x: Math.round(xf * W11), z, id: "reef" }));
+          yield;
           const coral = (kind2, seed, xf, z, size) => glowOf(D2.add({ sprite: coralSprite(kind2, seed, "abyss", size, kz(z)), x: Math.round(xf * W11), z, id: "coral_" + kind2 }));
+          yield;
           reef(401, 0.1, 0.3, { w: 96, h: 70, d: 40 });
+          yield;
           reef(402, 0.885, 0.36, { w: 100, h: 72, d: 42 });
+          yield;
           reef(403, 0.21, 0.6, { w: 116, h: 80, d: 46 });
+          yield;
           reef(404, 0.79, 0.66, { w: 116, h: 80, d: 46 }, true);
+          yield;
           for (const [kind2, seed, xf, z, size] of [
             ["glass", 411, 0.045, 0.04, 15],
             ["bamboo", 412, 0.335, 0.2, 17],
@@ -49086,7 +49455,10 @@ kmlmk..
             ["glass", 421, 0.4, 1, 20],
             ["fan", 422, 0.62, 1.1, 22],
             ["bamboo", 423, 0.36, 1.3, 24]
-          ]) coral(kind2, seed, xf, z, size);
+          ]) {
+            coral(kind2, seed, xf, z, size);
+            yield;
+          }
           this.ledges = [];
           const lr = new RNG(77);
           for (const z of [0.08, 0.36, 0.62, 0.9, 1.15]) {
@@ -49099,7 +49471,9 @@ kmlmk..
               const it2 = place2(kind2, x / W11, z, 0.45, lr.int(0, 4), { y: y + 1 });
               this.ledges.push({ x, y: y - 6 * s, z, c: lr.pick(["#5affff", "#c87aff", "#7affb0", "#ff7ab0", "#7aa8ff"]), ph: lr.float(0, TAU), it: it2 });
             }
+            yield;
           }
+          yield;
           this.stones = [[0.245, 0.06, 0], [0.385, 0.12, 1], [0.5, 0.04, 2], [0.625, 0.1, 0]].map(([xf, z, v], i) => {
             const it2 = place2("glyph_stone", xf, z, 0.45, v);
             it2.glyph = i;
@@ -49109,33 +49483,58 @@ kmlmk..
             it2.rect = { x: it2.left + 2, y: it2.top + 2, w: it2.p.w - 4, h: it2.p.oy - 2 };
             return it2;
           });
-          D2.render([{ key: "day", strip: this.waterStrip }]);
+          yield;
+          yield* D2.render$([{ key: "day", strip: this.waterStrip }]);
           this.bands = new BandSet(D2);
+          yield;
           this.hazeY = Math.round(D2.hz - 30);
           this.haze = new FogLayer(hazeMask(W11, 76, { peak: 0.5, alpha: 0.8 }), 0, this.hazeY);
+          yield;
           this.floor = new Float32Array(W11 + 1);
-          for (let x = 0; x <= W11; x++) this.floor[x] = D2.floorAt(x, 0);
+          for (let x = 0; x <= W11; x++) {
+            this.floor[x] = D2.floorAt(x, 0);
+            yield;
+          }
+          yield;
           const all = D2.items;
           this.glows = all.filter((q) => q.p?.glow).map((q) => ({ c: q.p.glow, x: q.left, y: q.top, id: q.id, band: q.band, a: 1 - D2.fog(q.z) * 0.75, ph: hash2(q.x, 2, 9) * TAU }));
+          yield;
           this.propLights = [];
           for (const q of all) {
             if (!q.p || q.id === "glyph_stone" || q.z > 0.7 || this.ledges.some((lp) => lp.it === q)) continue;
             const ls = q.p.lights.slice().sort((a, b) => b.r - a.r).slice(0, q.id === "statue_head" && q.z < 1 ? 2 : 1);
             for (const l of ls) this.propLights.push({ x: q.left + l.x, y: q.top + l.y, r: clamp(l.r * 1.2 + 14, 26, 70) * (0.55 + 0.45 * q.s), color: l.color, id: q.id, a: 1 - D2.fog(q.z) * 0.8, ph: hash2(q.x, l.x, 3) * TAU, z: q.z });
+            yield;
           }
+          yield;
           this.propLights.sort((a, b) => b.r * b.a - a.r * a.a);
+          yield;
           this.propLights.length = Math.min(this.propLights.length, 11);
           const find = (id2, band) => placed2.find((q) => q.id === id2 && (band === void 0 || q.band === band));
+          yield;
           this.statue = find("statue_head", 1);
+          yield;
           this.vent = find("vent_chimney");
+          yield;
           this.pillar = find("pillar_ruin", 1);
+          yield;
           this.glyphSpr = GLYPH_IDS.map((n2) => glyphSprite2(n2, "#7affff"));
+          yield;
           this.glyphDim = GLYPH_IDS.map((n2) => glyphSprite2(n2, "#3a7a9a"));
+          yield;
           const pl = this.pillar;
           this.pillarGlyphs = ORDER.map((gi, k) => ({ gi, x: pl.x - 3, y: Math.round(pl.top + 16 * pl.s + k * 9) }));
           this.statueRect = { x: this.statue.left + 12, y: this.statue.top + 8, w: this.statue.p.w - 24, h: this.statue.p.oy - 14 };
         }
         buildLayers() {
+          const it2 = this.buildLayers$();
+          for (; ; ) {
+            const n2 = it2.next();
+            if (n2.done) return n2.value;
+          }
+        }
+        // [travel17]
+        *buildLayers$() {
           const W11 = this.W, H8 = this.H, pad = 30, D2 = this.D;
           this.pad = pad;
           const LW = W11 + pad * 2;
@@ -49148,12 +49547,19 @@ kmlmk..
           const baseA = hz - yA + 10;
           const A2 = [];
           A2.push({ spr: render2(ziggurat(81, { w: 60, steps: 6, stepH: 7, d: 30, cols: STONE2, glow: "#5affff" }), { yaw: 22, pitch: 16 }), x: LW * 0.52, y: baseA + 2, z: 1 });
+          yield;
           A2.push({ spr: render2(colonnade(82, { n: 7, h: 36, gap: 12, cols: STONE2 }), { yaw: -18, pitch: 14 }), x: LW * 0.3, y: baseA + 4, z: 0.9 });
+          yield;
           A2.push({ spr: render2(colonnade(83, { n: 5, h: 30, gap: 12, cols: STONE2, broken: 0.5 }), { yaw: 18, pitch: 14 }), x: LW * 0.74, y: baseA + 4, z: 0.9 });
+          yield;
           [[0.38, 52], [0.66, 46], [0.14, 40], [0.86, 58]].forEach(([xf, h], i) => A2.push({ spr: render2(obelisk(84 + i, { h, cols: STONE2, glow: "#5affff" }), { yaw: 30 }), x: xf * LW, y: baseA + 3, z: 0.95 }));
+          yield;
           [[0.04, 70, 9], [0.95, 80, 10], [0.22, 50, 7]].forEach(([xf, h, w], i) => A2.push({ spr: render2(spire(88 + i, { h, w, d: 14, cols: ROCK2, crown: CRYST }), { yaw: i % 2 ? 20 : -20 }), x: xf * LW, y: baseA + 4, z: 1.05 }));
+          yield;
           const ridgeA = ridgeStrip(89, LW, { amp: 8, base: 6, d: 14, cols: ["#3a4472", "#323a64", "#2a3258"], rocks: { cols: ROCK2 } });
+          yield;
           this.farA = new FogLayer(strip(LW, hA, A2, { canvas: ridgeA.canvas, x: Math.round(LW / 2 - ridgeA.ox), y: Math.round(baseA + 14 - ridgeA.oy) }), -pad, yA);
+          yield;
           this.farAY = yA;
           const yB = Math.round(hz - 120), hB = H8 - yB;
           const baseB = hz - yB + 16;
@@ -49163,22 +49569,44 @@ kmlmk..
             const [id2, sc] = ruins[r.int(0, ruins.length - 1)];
             const sp = propSprite(id2, sc * r.float(0.8, 1.15), r.int(0, 4));
             if (sp) B2.push({ spr: sp, x: LW * r.float(0.22, 0.8), y: baseB + r.int(-2, 3), z: r.next() });
+            yield;
           }
+          yield;
           const ridgeB = ridgeStrip(90, LW, { amp: 5, base: 4, d: 10, cols: ["#4a5488", "#3e4878", "#343e6a"] });
+          yield;
           this.farB = new FogLayer(strip(LW, hB, B2, { canvas: ridgeB.canvas, x: Math.round(LW / 2 - ridgeB.ox), y: Math.round(baseB + 8 - ridgeB.oy) }), -pad, yB);
+          yield;
           this.farBY = yB;
         }
         buildLife() {
+          const it2 = this.buildLife$();
+          for (; ; ) {
+            const n2 = it2.next();
+            if (n2.done) return n2.value;
+          }
+        }
+        // [travel17]
+        *buildLife$() {
           const W11 = this.W, H8 = this.H, D2 = this.D;
           const r = new RNG(29);
           this.decor = new DepthDecor(D2);
+          yield;
           this.snow = new Motes(210, { x0: 0, y0: this.level, x1: W11, y1: H8 }, { seed: 5, vx: [-1.5, 1.5], vy: [5, 11], sizes: [1, 1, 1, 2], colors: ["#c8d4f0", "#a8b8e0", "#e8eeff"], alpha: [0.25, 0.7], wob: 3 });
+          yield;
           this.nearSnow = new Motes(40, { x0: 0, y0: -10, x1: W11, y1: H8 }, { seed: 6, vx: [-2, 2], vy: [8, 16], sizes: [2, 2, 3], colors: ["#c8d4f0", "#e8eeff"], alpha: [0.12, 0.35], wob: 5 });
+          yield;
           this.sparks = new Motes(70, { x0: 0, y0: 20, x1: W11, y1: H8 - 40 }, { seed: 7, vx: [-1, 1], vy: [-1.5, 1], sizes: [1], colors: ["#5affff", "#c87aff", "#7affb0", "#7aa8ff"], alpha: [0.5, 1], wob: 6 });
+          yield;
           this.bubbles = new Bubbles(50, "#c8d8ff");
+          yield;
           this.smoke = [];
-          for (let i = 0; i < 18; i++) this.smoke.push({ k: i / 18, ph: r.float(0, TAU), s: r.float(0.7, 1.3) });
+          for (let i = 0; i < 18; i++) {
+            this.smoke.push({ k: i / 18, ph: r.float(0, TAU), s: r.float(0.7, 1.3) });
+            yield;
+          }
+          yield;
           this.puff = [2, 3, 4, 5, 6, 7, 8].map((rr4) => tinted(discSprite(rr4), "#0a0a12"));
+          yield;
           this.tendrils = [];
           for (const [side, yf, n2, z] of [[-1, 0.12, 16, 0.12], [-1, 0.22, 11, 0.2], [1, 0.1, 14, 0.14], [1, 0.2, 9, 0.24], [-1, 0.3, 12, 0.55], [1, 0.32, 10, 0.6]]) {
             const s = D2.s(z), X = D2.cx + side * (this.edge(z, side) + 50), x = Math.round(D2.cx + (X - D2.cx) * s), y = Math.round(H8 * yf);
@@ -49186,12 +49614,17 @@ kmlmk..
             const seg = Math.max(2, Math.round(4 * s));
             this.decor.add({ anim: voxCableAnim(n2 * seg, "#3a7aaa", "#bfffff", x, y, 8, 1), z, off: x % 20, fogMul: 0.5 });
             this.tendrils.push({ tip: { x, y: y + n2 * seg }, z });
+            yield;
           }
+          yield;
           this.decor.refog(() => "#1a2c5c", "k");
+          yield;
           this.levi = { x: W11 * 0.62, y: D2.hz - 120, dir: 1, v: 6, len: 420, rmax: 11, ph: 0 };
           this.leviT = 0;
           this.current = cloudTile(320, 120, "#8aa8e8", { seed: 4, alpha: 0.12, scale: 0.03, bias: 0.55, levels: 3 });
+          yield;
           this.glowCloud = cloudTile(320, 200, "#5affe0", { seed: 8, alpha: 0.18, scale: 0.025, bias: 0.55, levels: 3 });
+          yield;
           this.hint = 0;
         }
         // ------------------------------------------------------------------ update
@@ -49921,6 +50354,13 @@ kmlmk..
         }
         // ------------------------------------------------------------------ build
         build(W11, H8) {
+          const it2 = this.steps(W11, H8);
+          while (!it2.next().done) ;
+        }
+        // [travel17] sync build = all the steps
+        // [travel17] the build a slice at a time (a voyage builds the next ocean over many frames)
+        *steps(W11, H8) {
+          this.ready = false;
           this.W = W11;
           this.H = H8;
           this.top = worldTop(H8);
@@ -49928,23 +50368,37 @@ kmlmk..
           this.ys = new Int16Array(W11 + 2).fill(this.base);
           const tOf = (y) => clamp012((y - (this.base - 2)) / (H8 - this.base + 2));
           this.water = { day: worldStrip(H8, this.top, WATER5.day, tOf), dusk: worldStrip(H8, this.top, WATER5.dusk, tOf), night: worldStrip(H8, this.top, WATER5.night, tOf) };
+          yield;
           this.waterBlend = new Blend();
           this.skyBlend = new Blend();
           this.ocBlend = new Blend();
-          this.buildSky();
-          this.buildDepth();
-          this.buildLayers();
+          yield* this.buildSky$();
+          yield* this.buildDepth$();
+          yield* this.buildLayers$();
           const rh = H8 - this.base;
           this.raysA = new FogLayer(makeRays(W11, rh, { seed: 7, count: 8, sunX: W11 * 0.72, sunY: -H8 * 0.7, minW: 10, maxW: 30, len: 0.95, color: "#ffffff", alpha: 0.5, levels: 5 }));
+          yield;
           this.raysB = new FogLayer(makeRays(W11, rh, { seed: 12, count: 14, sunX: W11 * 0.68, sunY: -H8 * 0.6, minW: 3, maxW: 9, len: 0.75, color: "#ffffff", alpha: 0.55, levels: 4 }));
+          yield;
           this.caustics = new Caustics({ tw: 140, th: 44, cx: 10, cy: 5, seed: 17, color: "#f0ffff", thick: 0.6, core: 0.7, rim: 0.2 });
+          yield;
           this.shimmer = this.makeShimmer();
-          this.buildLife();
+          yield;
+          yield* this.buildLife$();
           this.fresh = true;
+          this.ready = true;
         }
         // Sky (gradient, sun/moon, baked stars) and a separate mountain canvas (fjord walls, peaks, glacier, icebergs)
         // per time of day, both spanning world y skyY .. base + 14. Aurora, clouds and birds are drawn between the two.
         buildSky() {
+          const it2 = this.buildSky$();
+          for (; ; ) {
+            const n2 = it2.next();
+            if (n2.done) return n2.value;
+          }
+        }
+        // [travel17]
+        *buildSky$() {
           const W11 = this.W, base = this.base, top = this.top;
           const skyY = top - 12;
           this.skyY = skyY;
@@ -49953,8 +50407,10 @@ kmlmk..
           const N2 = W11 * h;
           const mat = new Uint8Array(N2), tone5 = new Float32Array(N2);
           const far = ridge(W11, base - 98, 46, 0.012, 2.4, 4, 0.6);
+          yield;
           const peaks = [[0.27, 238, 0.17], [0.385, 158, 0.095], [0.675, 172, 0.11], [0.8, 248, 0.16], [0.555, 122, 0.075]];
           const mid = new Float32Array(W11 + 1), owner = new Int8Array(W11 + 1);
+          yield;
           for (let x = 0; x <= W11; x++) {
             let y = base + 4, o = -1;
             peaks.forEach(([pxf, ph, hw], k) => {
@@ -49966,17 +50422,25 @@ kmlmk..
             });
             mid[x] = y + (fbm2(x * 0.06, 3.3, 3, 21) - 0.5) * 12 + Math.abs(Math.sin(x * 0.13)) * 2;
             owner[x] = o;
+            yield;
           }
+          yield;
           const gx0 = W11 * 0.425, gx1 = W11 * 0.67, gc = (gx0 + gx1) / 2, ghw = (gx1 - gx0) / 2;
           const gSaddle = base - 116;
           const gTop = (x) => gSaddle + Math.pow(Math.abs((x - gc) / ghw), 2.2) * 34 + (fbm2(x * 0.08, 1, 2, 5) - 0.5) * 4;
+          yield;
           const gCliff = (x) => base - 20 + Math.round((fbm2(x * 0.07, 2, 2, 9) - 0.5) * 8);
+          yield;
           const wallL = (y) => W11 * 0.135 + (fbm2(2.1, y * 0.018, 3, 31) - 0.5) * 50 + smoothstep(base - 70, base, y) * W11 * 0.035;
+          yield;
           const wallR = (y) => W11 * 0.865 + (fbm2(7.7, y * 0.018, 3, 33) - 0.5) * 46 - smoothstep(base - 60, base, y) * W11 * 0.03;
+          yield;
           this.bergs = [[0.34, 26, 18], [0.735, 18, 12], [0.58, 10, 7]].map(([xf, w, hh]) => ({ x: Math.round(xf * W11), w, h: hh }));
           const icefalls = [[W11 * 0.055, 7, base - 300], [W11 * 0.95, 9, base - 250], [W11 * 0.115, 4, base - 160]];
           const nearRel = (x, y) => fbm2(x * 0.05, y * 9e-3, 3, 41);
+          yield;
           const ridged = (u, v, seed) => 1 - Math.abs(fbm2(u, v, 3, seed) * 2 - 1);
+          yield;
           for (let row2 = 0; row2 < h; row2++) {
             const y = row2 + skyY;
             if (y > base + 1) continue;
@@ -50062,7 +50526,9 @@ kmlmk..
                 tone5[i] = clamp012(0.55 + dF * 5 + (fx - 0.5) * 0.3 - d / 90);
               }
             }
+            yield;
           }
+          yield;
           const sunPos = { day: [0.7, base - 196], dusk: [0.62, base - 64], night: [0.27, base - 300] };
           this.sun = sunPos;
           const skyOf = (kind2) => {
@@ -50112,6 +50578,7 @@ kmlmk..
             }
             return c;
           };
+          yield;
           const mtnOf = (kind2) => {
             const P7 = MT[kind2];
             const pal3 = {};
@@ -50146,7 +50613,13 @@ kmlmk..
               }
             });
           };
-          this.sky = { day: skyOf("day"), dusk: skyOf("dusk"), night: skyOf("night") };
+          yield;
+          this.sky = {};
+          for (const k of ["day", "dusk", "night"]) {
+            this.sky[k] = skyOf(k);
+            yield;
+          }
+          yield;
           const DEPTH = [0, 2, 6, 7, 5, 6, 11, 12, 7, 8, 3, 9];
           const voxOf2 = (kind2) => {
             const v = voxelize(mtnOf(kind2), { cell: 2, maxD: 14, alignZ: 6, depth: (r2, g, b, x, y) => {
@@ -50157,24 +50630,36 @@ kmlmk..
             ctxOf(c).drawImage(v.canvas, -v.ox, -v.oy);
             return c;
           };
+          yield;
           const mday = voxOf2("day");
+          yield;
           this.mtn = { day: mday, dusk: tinted2(mday, "#b0587a", 0.3), night: tinted2(mday, "#0a1638", 0.6) };
+          yield;
           this.mtnBlend = new Blend();
           this.overcast = {};
           for (const k of ["day", "dusk", "night"]) {
             const pal3 = stopPalette(OVERCAST3[k], 10);
             this.overcast[k] = paint2(8, h, (x, y) => ditherPick(pal3, y / h, x, y));
           }
+          yield;
           const r = new RNG(31);
           this.stars = [];
           for (let i = 0; i < 46; i++) {
             const x = r.int(4, W11 - 4), y = r.int(top + 6, base - 120);
             if (!mat[(y - skyY) * W11 + x]) this.stars.push({ x, y, f: r.float(0.8, 3), ph: r.float(0, TAU), c: r.pick(["#ffffff", "#e8f0ff", "#c8dcff", "#fff4d8"]) });
+            yield;
           }
+          yield;
           this.aurora = [this.auroraTex(Math.round(W11 * 1.7), 170, 3, ["#5affa8", "#2ae0c8", "#a66aff"]), this.auroraTex(Math.round(W11 * 1.7), 120, 9, ["#8aff7a", "#3ac8ff", "#ff6ad0"])];
+          yield;
           this.clouds = [];
-          for (let i = 0; i < 6; i++) this.clouds.push({ x: r.float(0, W11), y: r.int(top + 30, base - 170), v: r.float(1.5, 4), tile: voxCloudSprite(40 + i, r.int(110, 190), r.int(26, 38), "day") });
+          for (let i = 0; i < 6; i++) {
+            this.clouds.push({ x: r.float(0, W11), y: r.int(top + 30, base - 170), v: r.float(1.5, 4), tile: voxCloudSprite(40 + i, r.int(110, 190), r.int(26, 38), "day") });
+            yield;
+          }
+          yield;
           this.blizTile = streakTile(160, 96, 46, "#f4faff", { seed: 9, len: [4, 9], slant: 1, alpha: 0.75 });
+          yield;
         }
         // A wide aurora curtain: folded hem, fine vertical rays, green at the hem fading up through teal to violet.
         auroraTex(w, h, seed, cols) {
@@ -50216,11 +50701,21 @@ kmlmk..
         }
         // Perspective fjord floor between granite / blue-ice walls, props at many depths.
         buildDepth() {
+          const it2 = this.buildDepth$();
+          for (; ; ) {
+            const n2 = it2.next();
+            if (n2.done) return n2.value;
+          }
+        }
+        // [travel17]
+        *buildDepth$() {
           const W11 = this.W, H8 = this.H;
           const D2 = new DepthScene(W11, H8, { yFront: H8 - 70, yFar: H8 - 158, pad: 24, zFar: 1.9, fogStart: -0.25, fog: 0.9 });
+          yield;
           this.D = D2;
           const cx = D2.cx, surf = this.base + 3;
           const edge = (z, side) => W11 * (side < 0 ? 0.385 : 0.375) + Math.sin(z * 2.6 + side) * W11 * 0.03 + (fbm2(z * 2.1, 3.3 + side, 2, 71) - 0.5) * W11 * 0.08 + smoothstep(0.9, 1.9, z) * W11 * 0.12;
+          yield;
           this.edge = edge;
           const floorH = (X, z) => {
             let h = (fbm2(X * 45e-4, z * 1.3, 3, 72) - 0.45) * 12;
@@ -50233,6 +50728,7 @@ kmlmk..
             if (rp2 > 0.72) h += 2;
             return Math.max(-2, h);
           };
+          yield;
           const cap2 = (z) => D2.K - (surf - D2.hz) / D2.s(z);
           const cliff = (X, z) => {
             const side = X < cx ? -1 : 1;
@@ -50245,7 +50741,8 @@ kmlmk..
             else h = z > 0.3 + fbm2(X * 0.01, 5, 2, 93) * 0.25 ? 900 : 150 + Math.round(fbm2(X * 0.03, z * 3, 2, 95) * 4) * 2;
             return Math.min(h, cap2(z));
           };
-          D2.terrain({
+          yield;
+          yield* D2.terrain$({
             micro: { ripple: 0.6, pebble: 1, shell: 0.6, pebbles: [[130, 138, 152], [160, 168, 180], [110, 116, 130], [188, 194, 202]], shells: [[230, 236, 244], [200, 150, 160]] },
             // [phase7:env]
             cell: 2,
@@ -50308,32 +50805,57 @@ kmlmk..
             }
           });
           const S13 = (key, build4, xf, z, base, extra = {}) => placeSprite(D2, W11, voxSprite(key, build4, { scale: qscale(base * D2.s(z)) }), xf, z, extra);
+          yield;
           const P7 = (id2, xf, z, base, variant2 = 0) => placeSprite(D2, W11, worldProp(id2, { scale: qscale(base * D2.s(z)), variant: variant2 }), xf, z, { id: id2 });
+          yield;
           S13("fj_boulder1", () => boulderModel(11, 1), 0.205, 0.2, 0.8);
+          yield;
           S13("fj_crystal0", () => crystalModel(5, 1, 0), 0.815, 0.22, 0.7);
+          yield;
           S13("fj_coral0", () => softCoralModel(3), 0.58, 0.06, 0.75);
+          yield;
           S13("fj_coral1", () => softCoralModel(8), 0.655, 0.2, 0.7);
+          yield;
           S13("fj_boulder2", () => boulderModel(19, 0.7), 0.735, 0.03, 0.7);
+          yield;
           S13("fj_crystal2", () => crystalModel(23, 0.7, 2), 0.415, 0.28, 0.65);
+          yield;
           const ship = S13("fj_ship", shipModel, 0.6, 0.47, 1.12);
+          yield;
           S13("fj_crystal1", () => crystalModel(9, 1, 1), 0.285, 0.5, 0.95);
+          yield;
           S13("fj_boulder3", () => boulderModel(27, 1.2), 0.39, 0.62, 1);
+          yield;
           P7("anchor", 0.795, 0.44, 0.8);
+          yield;
           S13("fj_coral2", () => softCoralModel(14), 0.47, 0.42, 0.9);
+          yield;
           S13("fj_crystal3", () => crystalModel(31, 0.8, 0), 0.735, 0.6, 0.9);
+          yield;
           S13("fj_boulder4", () => boulderModel(35, 0.8), 0.17, 0.4, 0.9);
+          yield;
           S13("fj_arch", iceArchModel, 0.47, 1.18, 1.3);
+          yield;
           S13("fj_crystal4", () => crystalModel(41, 1.2, 1), 0.33, 0.9, 1.1);
+          yield;
           S13("fj_crystal5", () => crystalModel(43, 1, 2), 0.66, 0.96, 1.1);
+          yield;
           S13("fj_boulder5", () => boulderModel(47, 1.4), 0.56, 0.84, 1.2);
+          yield;
           S13("fj_boulder6", () => boulderModel(53, 1.2), 0.26, 1.3, 1.5);
+          yield;
           S13("fj_coral3", () => softCoralModel(21), 0.43, 0.8, 1);
+          yield;
           S13("fj_crystal6", () => crystalModel(57, 1.3, 0), 0.6, 1.4, 1.6);
+          yield;
           this.ship = ship;
           const chz = 0.08, chx = Math.round(W11 * 0.505);
           this.chestProp = worldProp("treasure_chest", { scale: qscale(0.62 * D2.s(chz)), frame: 0 });
+          yield;
           this.chestOpen = worldProp("treasure_chest", { scale: qscale(0.62 * D2.s(chz)), frame: 1 });
+          yield;
           const cy = Math.round(D2.floorAt(chx, chz)) + 1, cp = this.chestProp;
+          yield;
           this.chest = { x: chx, y: cy, w: cp.w + 10, h: cp.oy + 10, cracks: 0, shake: 0, t: 0, open: false };
           this.chest.rect = { x: chx - cp.ox - 5, y: cy - cp.oy - 8, w: cp.w + 10, h: cp.oy + 10 };
           const sizes = [2, 0, 3, 1];
@@ -50344,22 +50866,40 @@ kmlmk..
             const y = Math.round(D2.floorAt(x, z)) + 1;
             return { size: sz, x, y, z, spr: spr3, lit: 0, rect: { x: x - spr3.ox, y: y - spr3.oy, w: spr3.w, h: spr3.oy }, cx: x, cy: y - Math.round(spr3.oy * 0.6) };
           });
-          D2.render([{ key: "day", strip: this.water.day }, { key: "dusk", strip: this.water.dusk }, { key: "night", strip: this.water.night }]);
+          yield;
+          yield* D2.render$([{ key: "day", strip: this.water.day }, { key: "dusk", strip: this.water.dusk }, { key: "night", strip: this.water.night }]);
           this.bands = new BandSet(D2);
+          yield;
           this.hazeY = Math.round(D2.hz - 28);
           this.haze = new FogLayer(hazeMask(W11, 72, { peak: 0.55, alpha: 0.75 }), 0, this.hazeY);
+          yield;
           this.masks = [0, 1].map((b) => lumaMask(D2.bands[b].canvases.day, { gamma: 2.2, gain: 1.05 }));
+          yield;
           this.floor = new Float32Array(W11 + 1);
-          for (let x = 0; x <= W11; x++) this.floor[x] = D2.floorAt(x, 0);
+          for (let x = 0; x <= W11; x++) {
+            this.floor[x] = D2.floorAt(x, 0);
+            yield;
+          }
+          yield;
           this.glints = [];
           const gr = new RNG(61);
           for (const q of D2.items) {
             if (!q.p?.glow) continue;
             for (let k = 0; k < 4; k++) this.glints.push({ x: q.left + gr.float(0.2, 0.8) * q.p.w, y: q.top + gr.float(0.1, 0.6) * q.p.oy, band: q.band, ph: gr.float(0, 9), p: gr.float(3, 7) });
+            yield;
           }
+          yield;
         }
         // Far layers: glacier front and moraine at the end of the fjord; iceberg keels hanging from the surface.
         buildLayers() {
+          const it2 = this.buildLayers$();
+          for (; ; ) {
+            const n2 = it2.next();
+            if (n2.done) return n2.value;
+          }
+        }
+        // [travel17]
+        *buildLayers$() {
           const W11 = this.W, H8 = this.H, pad = 28, D2 = this.D;
           this.pad = pad;
           const LW = W11 + pad * 2;
@@ -50367,65 +50907,97 @@ kmlmk..
           const hz = D2.hz;
           const yA = this.base, hA = H8 - yA;
           const mA = new Mask(LW, hA);
+          yield;
           const baseA = hz - yA + 14;
           const rA = ridge(LW, baseA - 44, 26, 8e-3, 4.4, 4, 0.3);
+          yield;
           mA.below((x) => rA[x]);
+          yield;
           const gx0 = LW * 0.36, gx1 = LW * 0.68;
           for (let x = Math.round(gx0); x < gx1; x++) {
             const u = (x - gx0) / (gx1 - gx0);
             const bottom = baseA - 60 - Math.sin(u * Math.PI) * 30 + (fbm2(x * 0.05, 2, 2, 3) - 0.5) * 14;
             for (let y = 0; y < bottom; y++) mA.set(x, y, 2);
+            yield;
           }
+          yield;
           for (let i = 0; i < 5; i++) {
             const px0 = r.float(0.08, 0.92) * LW, top0 = r.float(baseA - 120, baseA - 60);
             mA.poly([[px0 - 26, baseA], [px0 - 4, top0], [px0 + 6, top0 + 6], [px0 + 30, baseA]]);
           }
+          yield;
           const palA = stopPalette([[0, "#0c4a6a"], [1, "#3a9ab8"]], 6);
+          yield;
           const palG = stopPalette([[0, "#2a7aa0"], [1, "#a8eef8"]], 6);
+          yield;
           this.farA = new FogLayer(voxRelief(mA.toCanvas((x, y, v, up) => {
             if (v === 2) return ditherPick(palG, 0.85 - y / 160 + (fbm2(x * 0.4, y * 0.03, 2, 7) - 0.5) * 0.7, x, y);
             if (up <= 1) return pack("#8ae0ee");
             return ditherPick(palA, 0.72 - Math.min(1, up / 70) * 0.55 + (fbm2(x * 0.05, y * 0.05, 2, 2) - 0.5) * 0.35, x, y);
           })), -pad, yA);
+          yield;
           this.farAY = yA;
           const yB = this.base, hB = H8 - yB;
           const mB = new Mask(LW, hB);
+          yield;
           const baseB = hz - yB + 22;
           const rB = ridge(LW, baseB - 8, 10, 0.012, 6.2, 3);
+          yield;
           mB.below((x) => rB[x]);
+          yield;
           for (let i = 0; i < 26; i++) {
             const px0 = r.float(0, LW), by = rB[Math.round(clamp(px0, 0, LW))] + 4;
             mB.ellipse(px0, by - 3, r.float(6, 16), r.float(4, 9));
           }
+          yield;
           const keels = [...this.bergs.map((b) => [b.x + pad, b.w * 1.6, b.h * 5.5]), [LW * 0.1, 30, 70], [LW * 0.88, 40, 95]];
           for (const [kx, kw, kd] of keels) {
             mB.poly([[kx - kw, 0], [kx + kw, 0], [kx + kw * 0.6, kd * 0.45], [kx + kw * 0.2, kd * 0.85], [kx - kw * 0.1, kd], [kx - kw * 0.5, kd * 0.6], [kx - kw * 0.9, kd * 0.3]], 3);
+            yield;
           }
+          yield;
           const palB = stopPalette([[0, "#0a3c56"], [1, "#2e8aa6"]], 6);
+          yield;
           const palK = stopPalette([[0, "#4ab2d0"], [1, "#c8f6ff"]], 6);
+          yield;
           this.farB = new FogLayer(voxRelief(mB.toCanvas((x, y, v, up, left, right) => {
             if (v === 3) return ditherPick(palK, 0.9 - y / 140 + (left ? 0.2 : right ? -0.25 : 0) + (fbm2(x * 0.2, y * 0.05, 2, 9) - 0.5) * 0.5, x, y);
             if (up <= 1) return pack("#9ae4ee");
             if (up === 2) return pack("#4aa0b8");
             return ditherPick(palB, 0.7 - Math.min(1, up / 40) * 0.5 + (fbm2(x * 0.08, y * 0.08, 2, 6) - 0.5) * 0.4, x, y);
           })), -pad, yB);
+          yield;
           this.farBY = yB;
           this.belugaV = new VoxelGiant("beluga");
           this.sealV = new VoxelGiant("seal");
+          yield;
           this.giantFog = /* @__PURE__ */ new Map();
           this.giant = { kind: "seal", x: W11 * 0.3, y: H8 * 0.4, dir: 1, v: 16, ph: 0, s: 0.8 };
           this.giantT = 0;
         }
         buildLife() {
+          const it2 = this.buildLife$();
+          for (; ; ) {
+            const n2 = it2.next();
+            if (n2.done) return n2.value;
+          }
+        }
+        // [travel17]
+        *buildLife$() {
           const W11 = this.W, H8 = this.H, D2 = this.D;
           const r = new RNG(29);
           this.decor = new DepthDecor(D2);
+          yield;
           const kq = (z) => qscale(D2.s(z), 0.2, 0.4);
+          yield;
           const put = (A2, x, z) => this.decor.add({ anim: placeAnim(A2, x, Math.round(D2.floorAt(x, z)) + 2), z, off: r.int(0, A2.n - 1) });
+          yield;
           for (const [xf, z, n2] of [[0.17, 0.62, 40], [0.215, 0.74, 34], [0.85, 0.66, 38], [0.8, 0.8, 30], [0.52, 1, 30], [0.375, 0.92, 28], [0.68, 0.88, 26], [0.12, 0.3, 46], [0.88, 0.32, 42], [0.46, 1.2, 30], [0.27, 1.1, 26], [0.7, 1.25, 26]]) {
             const x = Math.round(xf * W11);
             put(voxAnim("kelp", 1 + n2 % 3, "fjord", n2 > 36 ? 20 : 15, kq(z), 8), x, z);
+            yield;
           }
+          yield;
           for (const [xf, z] of [
             [0.08, -0.1],
             [0.16, 0.05],
@@ -50450,15 +51022,21 @@ kmlmk..
             const x0 = Math.round(xf * W11);
             put(voxAnim("seagrass", 1 + r.int(0, 2), r.chance(0.6) ? "fjord" : "shallows", 9, kq(z) * 1.3, 8), x0, z);
           }
+          yield;
           this.anemones = [];
           for (const [xf, z, pk4] of [[0.13, 0.04, "cream"], [0.88, 0.16, "orange"], [0.33, 0.56, "cream"], [0.7, 0.3, "orange"]]) {
             const x = Math.round(xf * W11), y = Math.round(D2.floorAt(x, z)) + 1, s = D2.s(z);
             put(voxAnim("anemone", 7 + Math.round(xf * 10), "shallows", 14, kq(z) * 1.3, 8, pk4), x, z);
             this.anemones.push({ x, y: y - Math.round(16 * s), z });
+            yield;
           }
+          yield;
           this.penguin = lpPenguinFrames(1);
+          yield;
           this.penguinL = lpPenguinFrames(-1);
+          yield;
           this.seal = lpRestSealFrames();
+          yield;
           this.floes = [];
           const fr = new RNG(71);
           const spec = [[0.08, 16, 0], [0.3, 11, 0], [0.47, 22, 3], [0.66, 9, 0], [0.82, 18, 2], [0.94, 8, 0], [0.2, 7, 0]];
@@ -50466,19 +51044,29 @@ kmlmk..
             const p = voxSprite("fj_floe" + R7, () => floeModel(R7 * 13, R7), { scale: 1 });
             const keel = this.keelSprite(p.w, Math.round(R7 * 1.4), R7);
             this.floes.push({ x: xf * W11, v: fr.float(1.2, 2.6), spr: p, keel, R: R7, who, ph: fr.float(0, TAU) });
+            yield;
           }
+          yield;
           const fl = this.floes.find((f) => f.who === 3);
+          yield;
           this.penguins = [-12, -3, 7].map((dx, i) => ({ floe: fl, dx, dir: i === 1 ? -1 : 1, state: "stand", t: fr.float(1, 4), f: 0, secret: i === 1, y: 0, vx: 0, vy: 0, wx: 0, wy: 0 }));
+          yield;
           const sy = this.base;
           this.slush = new Motes(200, { x0: 0, y0: sy + 4, x1: W11, y1: H8 - 40 }, { seed: 3, vx: [-2, 2], vy: [3, 9], sizes: [1, 1, 1, 2], colors: ["#ffffff", "#e8faff", "#c8f0ff"], alpha: [0.3, 0.8], wob: 4 });
+          yield;
           this.iceMotes = new Motes(40, { x0: 0, y0: sy + 10, x1: W11, y1: H8 - 40 }, { seed: 8, vx: [-3, 3], vy: [-2, 2], sizes: [1], colors: ["#ffffff", "#c8fbff", NEON_ICE], alpha: [0.5, 1], wob: 6 });
+          yield;
           this.nearMotes = new Motes(24, { x0: 0, y0: sy + 10, x1: W11, y1: H8 - 30 }, { seed: 9, vx: [-4, 4], vy: [1, 5], sizes: [2, 2, 3], colors: ["#f0fcff", "#d0f4ff"], alpha: [0.12, 0.3], wob: 8 });
+          yield;
           this.airSnow = new Motes(160, { x0: 0, y0: this.top - 10, x1: W11, y1: sy + 4 }, { seed: 11, vx: [-6, 6], vy: [12, 26], sizes: [1, 1, 1, 2], colors: ["#ffffff", "#eef6ff"], alpha: [0.5, 1], wob: 5 });
+          yield;
           this.bubbles = new Bubbles(70, "#e8ffff");
+          yield;
           this.emitT = 1;
           this.flock = null;
           this.flockT = 6;
           this.birds = [0, 1, 2, 3].map((i) => ({ x: r.float(0, W11), y: r.float(this.top + 80, sy - 120), v: r.float(10, 18) * (i % 2 ? -1 : 1), ph: r.float(0, TAU) }));
+          yield;
         }
         // Translucent underwater part of an ice floe: an inverted, ragged block with a few brinicles.
         keelSprite(w, d, seed) {
@@ -51437,23 +52025,41 @@ kmlmk..
         }
         // ------------------------------------------------------------------ build
         build(W11, H8) {
+          const it2 = this.steps(W11, H8);
+          while (!it2.next().done) ;
+        }
+        // [travel17] sync build = all the steps
+        // [travel17] the build a slice at a time (a voyage builds the next ocean over many frames)
+        *steps(W11, H8) {
+          this.ready = false;
           this.W = W11;
           this.H = H8;
           this.top = worldTop(H8);
           const sy = this.surfY();
           this.ys = new Int16Array(W11 + 2).fill(sy);
           this.water = worldStrip(H8, this.top, WATER6, (y) => clamp012((y - sy) / (H8 - sy)), 24);
+          yield;
           this.skyBlend = new Blend();
           this.mtnBlend = new Blend();
-          this.buildTowers();
-          this.buildDepth();
-          this.buildLayers();
+          yield* this.buildTowers$();
+          yield* this.buildDepth$();
+          yield* this.buildLayers$();
           this.rays = makeRays(W11, H8 - sy, { seed: 41, count: 9, sunX: W11 * 0.4, sunY: -H8, minW: 6, maxW: 22, len: 0.7, color: "#b8c8ff", alpha: 0.35, levels: 3 });
-          this.buildLife();
+          yield;
+          yield* this.buildLife$();
           this.fresh = true;
+          this.ready = true;
         }
         // The tallest towers: underwater bodies (a fogged far layer) and crowns above the surface (in the sky canvas).
         buildTowers() {
+          const it2 = this.buildTowers$();
+          for (; ; ) {
+            const n2 = it2.next();
+            if (n2.done) return n2.value;
+          }
+        }
+        // [travel17]
+        *buildTowers$() {
           const W11 = this.W, H8 = this.H, top = this.top, sy = this.surfY();
           const skyY = top - 12, sh = sy + 14 - skyY;
           this.skyY = skyY;
@@ -51461,9 +52067,11 @@ kmlmk..
           const r = new RNG(77);
           const T5 = [[0.09, 46, sy - 96, 0], [0.2, 30, sy - 30, 1], [0.33, 38, sy + 40, 2], [0.47, 54, sy - 128, 3], [0.62, 34, sy - 52, 1], [0.74, 44, sy + 10, 0], [0.86, 40, sy - 78, 2], [0.95, 26, sy + 60, 1]];
           this.towers = T5.map(([xf, w, tp, st]) => ({ x: Math.round(xf * W11), w, top: tp, st, ant: tp < sy ? r.int(14, 30) : 0 }));
+          yield;
           const yBot = Math.round(H8 * 0.55);
           const hT = yBot - skyY;
           const m = new Mask(W11, hT);
+          yield;
           const shapeOf = (tw, x, y) => {
             const dx = Math.abs(x - tw.x), k = y - tw.top;
             if (k < 0) return tw.ant && dx < 1 && k > -tw.ant ? 3 : 0;
@@ -51484,7 +52092,9 @@ kmlmk..
                 break;
               }
             }
+            if (x === 0 && (y & 7) === 7) yield;
           }
+          yield;
           this.towerMask = m;
           const winAt = (x, y) => (x + 300) % 4 < 2 && (y + 300) % 5 < 3;
           const yU = sy + 2;
@@ -51495,7 +52105,9 @@ kmlmk..
             if (winAt(x, y)) return hash2(x >> 2, Math.floor(y / 5), 9) < 0.18 ? pack("#ffe0a0") : pack("#1a2240");
             return pack(v === 2 ? "#4a5478" : x % 9 === 0 ? "#1e2440" : "#2a3254");
           });
+          yield;
           this.towerFar = new FogLayer(voxRelief(under, { depth: lumDepth(3, 7), maxD: 7 }), 0, yU);
+          yield;
           this.towerY = yU;
           const skyOf = (kind2) => paint2(W11, sh, (x, row2) => {
             const y = row2 + skyY;
@@ -51507,6 +52119,7 @@ kmlmk..
             }
             return dpack(rr4, g, b, x, row2, 5);
           });
+          yield;
           const crownOf = (kind2) => {
             const C5 = { day: ["#5a6070", "#7a8294", "#9aa4b4", "#2a3040", "#c8b070"], dusk: ["#2a2238", "#4a3a58", "#a86a7a", "#1a1424", "#ffb070"], night: ["#0c1020", "#141a30", "#2a3456", "#05060c", "#ffd890"] }[kind2];
             return paint2(W11, sh, (x, row2) => {
@@ -51523,14 +52136,32 @@ kmlmk..
               return pack(v === 2 ? C5[2] : lit2 ? C5[1] : C5[0]);
             });
           };
-          this.sky = { day: skyOf("day"), dusk: skyOf("dusk"), night: skyOf("night") };
+          yield;
+          this.sky = {};
+          for (const k of ["day", "dusk", "night"]) {
+            this.sky[k] = skyOf(k);
+            yield;
+          }
+          yield;
           const vc = (k) => voxRelief(crownOf(k), { depth: lumDepth(4, 8), maxD: 8 });
+          yield;
           this.mtn = { day: vc("day"), dusk: vc("dusk"), night: vc("night") };
+          yield;
           this.beacons = this.towers.filter((tw) => tw.ant).map((tw) => ({ x: tw.x, y: tw.top - tw.ant, ph: r.float(0, TAU) }));
+          yield;
         }
         buildDepth() {
+          const it2 = this.buildDepth$();
+          for (; ; ) {
+            const n2 = it2.next();
+            if (n2.done) return n2.value;
+          }
+        }
+        // [travel17]
+        *buildDepth$() {
           const W11 = this.W, H8 = this.H;
           const D2 = new DepthScene(W11, H8, { yFront: H8 - 66, yFar: H8 - 162, pad: 24, zFar: 1.9, fogStart: -0.2, fog: 0.92 });
+          yield;
           this.D = D2;
           const cx = D2.cx;
           const road = W11 * 0.2, curb = W11 * 0.215;
@@ -51551,6 +52182,7 @@ kmlmk..
             }
             return h;
           };
+          yield;
           const cap2 = (z, rimY) => D2.K - (rimY - D2.hz) / D2.s(z);
           const bldg = (X, z) => {
             const side = X < cx ? -1 : 1;
@@ -51561,7 +52193,8 @@ kmlmk..
             const rimY = 14 + hash2(b, side, 204) * 110;
             return Math.round(Math.min(bh, cap2(z, rimY)) / 2) * 2;
           };
-          D2.terrain({
+          yield;
+          yield* D2.terrain$({
             micro: { ripple: 0.5, pebble: 1.2, shell: 1, pebbles: [[110, 124, 150], [150, 166, 190], [80, 90, 120], [190, 200, 220]], shells: [[140, 220, 255], [255, 140, 220]] },
             // [phase7:env] glass shards
             cell: 2,
@@ -51621,33 +52254,53 @@ kmlmk..
             }
           });
           const S13 = (key, build4, xf, z, base) => placeSprite(D2, W11, voxSprite(key, build4, { scale: qscale(base * D2.s(z)) }), xf, z, { id: key });
+          yield;
           const P7 = (id2, xf, z, base, variant2 = 0) => placeSprite(D2, W11, worldProp(id2, { scale: qscale(base * D2.s(z)), variant: variant2 }), xf, z, { id: id2 });
+          yield;
           this.subway = S13("me_subway", subwayModel, 0.37, 0.44, 1.05);
+          yield;
           S13("me_car0", () => carModel(5, "#3a7ad8"), 0.6, 0.12, 0.85);
+          yield;
           S13("me_car1", () => carModel(9, "#e8c040"), 0.6, 0.66, 0.95);
+          yield;
           S13("me_car2", () => carModel(13, "#d83a3a"), 0.45, 1.05, 1.05);
+          yield;
           this.tlights = [S13("me_tl", trafficLightModel, 0.715, 0.3, 1), S13("me_tl", trafficLightModel, 0.3, 0.74, 1)];
+          yield;
           this.lamps = [S13("me_lamp", lampModel, 0.235, 0.14, 1), S13("me_lamp", lampModel, 0.745, 0.42, 1), S13("me_lamp", lampModel, 0.285, 0.6, 1), S13("me_lamp", lampModel, 0.69, 0.95, 1)];
+          yield;
           this.boards = [S13("me_board", billboardModel, 0.66, 0.6, 1), S13("me_board", billboardModel, 0.5, 1.28, 1.25)];
+          yield;
           S13("me_hydrant", hydrantModel, 0.765, 0.04, 0.8);
+          yield;
           P7("coral_brain", 0.53, 0.02, 0.6, 1);
           P7("coral_fan", 0.42, 0.2, 0.8, 0);
           P7("coral_tube", 0.83, 0.24, 0.7, 2);
           P7("coral_staghorn", 0.25, 0.35, 0.8, 1);
+          yield;
           P7("coral_brain", 0.62, 0.36, 0.7, 2);
           P7("coral_fan", 0.71, 0.82, 1, 2);
           P7("coral_tube", 0.35, 0.92, 1, 1);
           P7("coral_staghorn", 0.55, 0.85, 0.9, 0);
+          yield;
           P7("coral_brain", 0.42, 0.62, 0.8, 0);
           P7("anemone_base", 0.47, 0.05, 0.6, 1);
+          yield;
           const atm = S13("me_atm", atmModel, 0.215, 0.04, 0.9);
+          yield;
           this.atm = { it: atm, rect: { x: atm.left + 2, y: atm.top + 2, w: atm.p.w - 4, h: atm.p.oy - 2 }, msg: "INSERT CARD", t: 0 };
-          D2.render([{ key: "day", strip: this.water }]);
+          yield* D2.render$([{ key: "day", strip: this.water }]);
           this.bands = new BandSet(D2);
+          yield;
           this.hazeY = Math.round(D2.hz - 30);
           this.haze = new FogLayer(hazeMask(W11, 76, { peak: 0.5, alpha: 0.8 }), 0, this.hazeY);
+          yield;
           this.floor = new Float32Array(W11 + 1);
-          for (let x = 0; x <= W11; x++) this.floor[x] = D2.floorAt(x, 0);
+          for (let x = 0; x <= W11; x++) {
+            this.floor[x] = D2.floorAt(x, 0);
+            yield;
+          }
+          yield;
           this.signs = SIGNS.map(([text, side, z, hgt, ci, vert], i) => {
             const s = D2.s(z), small = s < 0.72;
             const spr3 = signSprites(text, NEON[ci], small, vert);
@@ -51656,9 +52309,13 @@ kmlmk..
             const y = Math.round(D2.y(z, hgt) - spr3.h / 2);
             return { text, x, y, z, w: spr3.w, h: spr3.h, spr: spr3, color: NEON[ci], band: D2.band(z), on: 1, fl: 0, ph: hash2(i, 3, 7) * TAU, broken: i === 0, fog: D2.fog(z) };
           });
+          yield;
           this.brokenSign = this.signs[0];
           this.screens = [];
-          for (const b of [...this.boards, atm]) for (const sc of b.p.screens) this.screens.push({ x: b.left + sc.x, y: b.top + sc.y, w: sc.w, h: sc.h, band: b.band, atm: b === atm, ad: this.screens.length % ADS.length, fog: D2.fog(b.z) });
+          for (const b of [...this.boards, atm]) {
+            for (const sc of b.p.screens) this.screens.push({ x: b.left + sc.x, y: b.top + sc.y, w: sc.w, h: sc.h, band: b.band, atm: b === atm, ad: this.screens.length % ADS.length, fog: D2.fog(b.z) });
+            yield;
+          }
           this.lampL = this.lamps.map((l) => ({ x: l.left + l.p.anchors.bulb.x, y: l.top + l.p.anchors.bulb.y, s: l.s, band: l.band, fog: D2.fog(l.z), ph: Math.random() * TAU }));
           this.tl = this.tlights.map((l, i) => ({ x: l.left, y: l.top, a: l.p.anchors, s: l.s, band: l.band, off: i * 4 }));
           const sw = this.subway;
@@ -51667,6 +52324,14 @@ kmlmk..
           this.glows = D2.items.filter((q) => q.p?.glow && q.id !== "me_board" && q.id !== "me_atm").map((q) => ({ c: q.p.glow, x: q.left, y: q.top, band: q.band, a: 1 - D2.fog(q.z) * 0.7, id: q.id }));
         }
         buildLayers() {
+          const it2 = this.buildLayers$();
+          for (; ; ) {
+            const n2 = it2.next();
+            if (n2.done) return n2.value;
+          }
+        }
+        // [travel17]
+        *buildLayers$() {
           const W11 = this.W, H8 = this.H, pad = 30, D2 = this.D;
           this.pad = pad;
           const LW = W11 + pad * 2;
@@ -51674,59 +52339,94 @@ kmlmk..
           const hz = D2.hz;
           const yA = Math.round(hz - H8 * 0.4), hA = H8 - yA;
           const mA = new Mask(LW, hA);
+          yield;
           const baseA = hz - yA + 8;
           mA.rect(0, baseA - 6, LW, hA);
+          yield;
           const lit2 = [];
           for (let i = 0; i < 34; i++) {
             const x = r.float(0, LW), w = r.float(10, 30), hh = r.float(30, Math.min(baseA - 10, 200));
             mA.rect(x - w / 2, baseA - hh, w, hh);
             if (r.chance(0.3)) mA.rect(x - 1, baseA - hh - r.float(6, 16), 2, 16);
             for (let k = 0; k < hh / 6; k++) if (r.chance(0.25)) lit2.push([x - w / 2 + 2 + r.int(0, Math.max(1, w - 4)), baseA - hh + 4 + k * 6]);
+            yield;
           }
+          yield;
           const palA = stopPalette([[0, "#0a0c22"], [1, "#22284e"]], 5);
+          yield;
           const cA = mA.toCanvas((x, y, v, up) => up <= 1 ? pack("#4a5288") : ditherPick(palA, 0.6 - Math.min(1, up / 80) * 0.4 + (x % 7 === 0 ? -0.15 : 0), x, y));
+          yield;
           const gA = ctxOf(cA);
+          yield;
           for (const [x, y] of lit2) {
             gA.fillStyle = r.pick(["#ffd890", "#9ae8ff", "#ffd890", "#ff9ad8"]);
             gA.fillRect(Math.round(x), Math.round(y), 1, 2);
           }
+          yield;
           this.farA = new FogLayer(voxRelief(cA, { depth: lumDepth(2, 6) }), -pad, yA);
+          yield;
           this.farAY = yA;
           const yB = Math.round(hz - 120), hB = H8 - yB;
           const mB = new Mask(LW, hB);
+          yield;
           const baseB = hz - yB + 14;
           const rB = ridge(LW, baseB - 4, 6, 0.01, 4.2, 2);
+          yield;
           mB.below((x) => rB[x]);
+          yield;
           const trackY = 34;
           this.trackY = yB + trackY;
           mB.rect(0, trackY, LW, 4);
+          yield;
           mB.rect(0, trackY + 4, LW, 1);
+          yield;
           for (let x = 20; x < LW; x += 70) {
             mB.rect(x, trackY + 4, 4, baseB - trackY);
             mB.rect(x - 6, trackY + 4, 16, 2);
           }
+          yield;
           for (let i = 0; i < 16; i++) {
             const x = r.float(0, LW), w = r.float(16, 40), hh = r.float(14, 50);
             mB.rect(x, baseB - hh, w, hh);
           }
+          yield;
           const palB = stopPalette([[0, "#0a0a1e"], [1, "#262c50"]], 5);
+          yield;
           this.farB = new FogLayer(voxRelief(mB.toCanvas((x, y, v, up) => up <= 1 ? pack("#5a62a0") : ditherPick(palB, 0.6 - Math.min(1, up / 40) * 0.4, x, y)), { depth: lumDepth(2, 5) }), -pad, yB);
+          yield;
           this.farBY = yB;
           this.train = null;
           this.trainT = 4;
         }
         buildLife() {
+          const it2 = this.buildLife$();
+          for (; ; ) {
+            const n2 = it2.next();
+            if (n2.done) return n2.value;
+          }
+        }
+        // [travel17]
+        *buildLife$() {
           const W11 = this.W, H8 = this.H, D2 = this.D, sy = this.surfY();
           const r = new RNG(31);
           this.decor = new DepthDecor(D2);
+          yield;
           for (const [xf, z, tall] of [[0.33, 0.02, 0], [0.48, 0.16, 0], [0.56, -0.08, 0], [0.4, 0.3, 0], [0.64, 0.24, 0], [0.5, 0.5, 0], [0.43, 0.8, 0], [0.57, 0.95, 0], [0.24, 0.24, 1], [0.79, 0.12, 1], [0.27, 0.86, 1], [0.73, 0.7, 1], [0.21, 0.5, 1]]) {
             const x0 = Math.round(xf * W11), k = qscale(D2.s(z), 0.2, 0.4);
             const A2 = tall ? voxAnim("kelp", 2 + r.int(0, 1), "metropolis", 16, k, 8) : voxAnim("seagrass", 1 + r.int(0, 2), "metropolis", 8, k * 1.3, 8);
             this.decor.add({ anim: placeAnim(A2, x0, Math.round(D2.floorAt(x0, z)) + 2), z, off: r.int(0, A2.n - 1) });
+            yield;
           }
+          yield;
           this.decor.refog(() => "#1e2450", "k");
+          yield;
           const cols = ["#ff9a5a", "#5ad8ff", "#ffd25a", "#c88aff", "#7aff9a", "#ff6a8a"];
-          this.fishSpr = cols.map((c, i) => fishSprite(c, i));
+          this.fishSpr = [];
+          for (let i = 0; i < cols.length; i++) {
+            this.fishSpr.push(fishSprite(cols[i], i));
+            yield;
+          }
+          yield;
           this.fishSprL = this.fishSpr.map((c) => {
             const o = makeCanvas(c.width, c.height), g = ctxOf(o);
             g.translate(c.width, 0);
@@ -51734,14 +52434,20 @@ kmlmk..
             g.drawImage(c, 0, 0);
             return o;
           });
+          yield;
           this.lanes = [[0.18, 1, 46], [0.3, -1, 40], [0.5, 1, 34], [0.62, -1, 30], [0.85, 1, 24], [1.05, -1, 20]].map(([z, dir, sp], i) => {
             const s = D2.s(z);
             return { z, dir, sp: sp * (0.8 + 0.4 * s), y: Math.round(D2.y(z, 26 + i * 6)), band: D2.band(z), s, fish: Array.from({ length: 14 }, (_, k) => ({ o: k * 41 + r.float(0, 30), c: r.int(0, 5), dy: r.int(-4, 4) })) };
           });
+          yield;
           this.silt = new Motes(110, { x0: 0, y0: sy, x1: W11, y1: H8 - 40 }, { seed: 3, vx: [-2, 2], vy: [-1, 2], sizes: [1, 1, 2], colors: ["#8a9ac8", "#aab4e0", "#6a7aaa"], alpha: [0.2, 0.6], wob: 4 });
+          yield;
           this.neonMotes = new Motes(40, { x0: 0, y0: 30, x1: W11, y1: H8 - 40 }, { seed: 7, vx: [-2, 2], vy: [-2, 1], sizes: [1], colors: NEON, alpha: [0.5, 1], wob: 6 });
+          yield;
           this.nearSilt = new Motes(22, { x0: 0, y0: sy, x1: W11, y1: H8 }, { seed: 9, vx: [-3, 3], vy: [-2, 2], sizes: [2, 3], colors: ["#aab4e0"], alpha: [0.08, 0.2], wob: 7 });
+          yield;
           this.bubbles = new Bubbles(60, "#d8e0ff");
+          yield;
           this.emitT = 1;
         }
         // ------------------------------------------------------------------ update
@@ -52414,22 +53120,40 @@ kmlmk..
         }
         // ------------------------------------------------------------------ build
         build(W11, H8) {
+          const it2 = this.steps(W11, H8);
+          while (!it2.next().done) ;
+        }
+        // [travel17] sync build = all the steps
+        // [travel17] the build a slice at a time (a voyage builds the next ocean over many frames)
+        *steps(W11, H8) {
+          this.ready = false;
           this.W = W11;
           this.H = H8;
           this.top = worldTop(H8);
           const sy = this.surfY();
           this.ys = new Int16Array(W11 + 2).fill(sy);
           this.water = worldStrip(H8, this.top, WATER7, (y) => clamp012((y - sy) / (H8 - sy)), 26);
+          yield;
           this.skyBlend = new Blend();
           this.mtnBlend = new Blend();
-          this.buildSky();
-          this.buildDepth();
-          this.buildLayers();
+          yield* this.buildSky$();
+          yield* this.buildDepth$();
+          yield* this.buildLayers$();
           this.rays = makeRays(W11, H8 - sy, { seed: 33, count: 7, sunX: W11 * 0.55, sunY: -H8 * 1.2, minW: 10, maxW: 30, len: 0.75, color: "#ff9a6a", alpha: 0.3, levels: 3 });
-          this.buildLife();
+          yield;
+          yield* this.buildLife$();
           this.fresh = true;
+          this.ready = true;
         }
         buildSky() {
+          const it2 = this.buildSky$();
+          for (; ; ) {
+            const n2 = it2.next();
+            if (n2.done) return n2.value;
+          }
+        }
+        // [travel17]
+        *buildSky$() {
           const W11 = this.W, top = this.top, sy = this.surfY();
           const skyY = top - 12, h = sy + 14 - skyY;
           this.skyY = skyY;
@@ -52445,7 +53169,9 @@ kmlmk..
             if (Math.abs(x - vx2) < 14) y += 6 - Math.abs(x - vx2) * 0.2;
             return y;
           };
+          yield;
           const far = ridge(W11, sy - 40, 26, 0.013, 3.3, 3, 0.4);
+          yield;
           const stacks = [[0.12, 70, 20], [0.2, 44, 14], [0.86, 90, 22], [0.93, 56, 16], [0.36, 26, 12]];
           const rivers = [[-0.25, 1.1], [0.18, 0.8], [0.42, 1.3], [-0.6, 0.9]];
           for (let row2 = 0; row2 < h; row2++) {
@@ -52492,7 +53218,9 @@ kmlmk..
                 tone5[i] = clamp012(0.4 - (y - far[x]) / 80 + (fbm2(x * 0.06, y * 0.06, 2, 13) - 0.5) * 0.4);
               }
             }
+            yield;
           }
+          yield;
           const skyOf = (kind2) => paint2(W11, h, (x, row2) => {
             const y = row2 + skyY;
             let [r2, g, b] = lerpStops(SKY6[kind2], clamp012((y - top) / (sy - top)));
@@ -52511,6 +53239,7 @@ kmlmk..
             }
             return dpack(r2, g, b, x, row2, 5);
           });
+          yield;
           const mtnOf = (kind2) => {
             const P7 = VOLC[kind2];
             const rock = P7.rock.map((c) => pack(c) >>> 0), lava = P7.lava.map((c) => pack(c) >>> 0);
@@ -52530,7 +53259,13 @@ kmlmk..
               }
             });
           };
-          this.sky = { day: skyOf("day"), dusk: skyOf("dusk"), night: skyOf("night") };
+          yield;
+          this.sky = {};
+          for (const k of ["day", "dusk", "night"]) {
+            this.sky[k] = skyOf(k);
+            yield;
+          }
+          yield;
           const MD = [0, 6, 7, 8, 2];
           const vday = (() => {
             const v = voxelize(mtnOf("day"), { cell: 2, maxD: 10, alignZ: 5, depth: (r2, g, b, x, y) => {
@@ -52541,6 +53276,7 @@ kmlmk..
             ctxOf(c).drawImage(v.canvas, -v.ox, -v.oy);
             return c;
           })();
+          yield;
           const tint = (src, col, a) => {
             const c = makeCanvas(src.width, src.height), g = ctxOf(c);
             g.drawImage(src, 0, 0);
@@ -52550,11 +53286,18 @@ kmlmk..
             g.fillRect(0, 0, c.width, c.height);
             return c;
           };
+          yield;
           this.mtn = { day: vday, dusk: tint(vday, "#6a1a3a", 0.35), night: tint(vday, "#0a0410", 0.6) };
+          yield;
           this.lavaMask = paint2(W11, h, (x, row2) => mat[row2 * W11 + x] === 2 ? pack("#ffffff") : 0);
+          yield;
           this.plume = [];
           const r = new RNG(5);
-          for (let i = 0; i < 26; i++) this.plume.push({ k: i / 26, ph: r.float(0, TAU), s: r.float(0.7, 1.4), dx: r.float(-1, 1) });
+          for (let i = 0; i < 26; i++) {
+            this.plume.push({ k: i / 26, ph: r.float(0, TAU), s: r.float(0.7, 1.4), dx: r.float(-1, 1) });
+            yield;
+          }
+          yield;
           this.puff = [3, 5, 7, 9, 12, 15, 18, 22].map((rr4) => paint2(rr4 * 2 + 1, rr4 * 2 + 1, (x, y) => {
             const d = Math.hypot(x - rr4, y - rr4) / rr4;
             if (d > 1) return 0;
@@ -52562,18 +53305,32 @@ kmlmk..
             if (d > 0.75 + n2 * 0.3) return 0;
             return pack(y < rr4 * 0.7 ? "#ffffff" : "#c8c8c8");
           }));
+          yield;
           this.bombs = [];
           this.ashTile = cloudTile(320, 140, "#3a3036", { seed: 4, alpha: 0.5, scale: 0.03, bias: 0.5, levels: 3 });
+          yield;
           this.sulfTile = cloudTile(360, 180, "#c8c060", { seed: 12, alpha: 0.3, scale: 0.02, bias: 0.5, levels: 4 });
+          yield;
         }
         buildDepth() {
+          const it2 = this.buildDepth$();
+          for (; ; ) {
+            const n2 = it2.next();
+            if (n2.done) return n2.value;
+          }
+        }
+        // [travel17]
+        *buildDepth$() {
           const W11 = this.W, H8 = this.H;
           const D2 = new DepthScene(W11, H8, { yFront: H8 - 68, yFar: H8 - 160, pad: 24, zFar: 1.9, fogStart: -0.2, fog: 0.94 });
+          yield;
           this.D = D2;
           const cx = D2.cx;
           const edge = (z, side) => W11 * (side < 0 ? 0.36 : 0.355) + Math.sin(z * 3.4 + side * 2) * W11 * 0.03 + (fbm2(z * 2.4, 5.1 + side, 2, 101) - 0.5) * W11 * 0.07;
+          yield;
           this.edge = edge;
           const crackN = (X, z) => fbm2(X * 0.011, z * 2.6, 3, 102);
+          yield;
           const floorH = (X, z) => {
             let h = (fbm2(X * 5e-3, z * 1.4, 3, 103) - 0.45) * 12;
             h += Math.max(0, fbm2(X * 0.03, z * 5, 2, 104) - 0.64) * 34;
@@ -52583,11 +53340,13 @@ kmlmk..
             h *= 1 - front * 0.6;
             return Math.max(-4, h);
           };
+          yield;
           const hexH = (X, z) => {
             const gx = X / 9, gz = z * 34;
             const q = Math.round(gx - gz * 0.5), s = Math.round(gz);
             return hash2(q, s, 105);
           };
+          yield;
           const cliff = (X, z) => {
             const side = X < cx ? -1 : 1;
             const over2 = Math.abs(X - cx) - edge(z, side) - (fbm2(z * 7, side * 3, 2, 106) - 0.5) * 18;
@@ -52599,7 +53358,8 @@ kmlmk..
             const rimY = 26 + fbm2(z * 5, side * 2, 2, 114) * 50;
             return Math.min(560, D2.K - (rimY - D2.hz) / D2.s(z)) + Math.round(hx2 * 4) * 2;
           };
-          D2.terrain({
+          yield;
+          yield* D2.terrain$({
             micro: { ripple: 0.4, pebble: 1.8, shell: 1, pebbles: [[46, 40, 44], [70, 58, 58], [34, 30, 34], [96, 70, 60]], shells: [[255, 130, 50], [255, 200, 90]] },
             // [phase7:env] basalt and embers
             cell: 2,
@@ -52652,54 +53412,90 @@ kmlmk..
             }
           });
           const S13 = (key, build4, xf, z, base) => placeSprite(D2, W11, voxSprite(key, build4, { scale: qscale(base * D2.s(z)) }), xf, z);
+          yield;
           const P7 = (id2, xf, z, base, variant2 = 0) => placeSprite(D2, W11, worldProp(id2, { scale: qscale(base * D2.s(z)), variant: variant2 }), xf, z, { id: id2 });
+          yield;
           const vents = [], chimneys = [];
           S13("vo_basalt0", () => basaltModel(3, 1), 0.2, 0.22, 0.85);
+          yield;
           S13("vo_rock0", () => lavaRockModel(5, 1), 0.65, 0.08, 0.8);
+          yield;
           S13("vo_obsid0", () => obsidianModel(7, 0.9), 0.77, 0.24, 0.85);
+          yield;
           P7("tube_worms", 0.405, 0.27, 0.6, 0);
+          yield;
           S13("vo_rock1", () => lavaRockModel(9, 0.7), 0.3, 0.05, 0.7);
+          yield;
           vents.push(S13("vo_vent0", () => ventModel(11, 1), 0.45, 0.46, 1.05));
+          yield;
           chimneys.push(S13("vo_sulfur0", () => sulfurModel(13, 1), 0.31, 0.5, 1));
+          yield;
           S13("vo_obsid1", () => obsidianModel(17, 1.1), 0.62, 0.42, 1);
+          yield;
           S13("vo_basalt1", () => basaltModel(19, 1.2), 0.72, 0.56, 1);
+          yield;
           P7("vent_chimney", 0.555, 0.6, 0.85);
+          yield;
           P7("tube_worms", 0.53, 0.52, 0.55, 1);
+          yield;
           S13("vo_rock2", () => lavaRockModel(21, 1.2), 0.24, 0.44, 0.9);
+          yield;
           vents.push(S13("vo_vent1", () => ventModel(23, 1.3), 0.56, 1, 1.25));
+          yield;
           chimneys.push(S13("vo_sulfur1", () => sulfurModel(29, 1.2), 0.66, 0.86, 1.15));
+          yield;
           S13("vo_obsid2", () => obsidianModel(31, 1.4), 0.38, 0.9, 1.3);
+          yield;
           S13("vo_obsid3", () => obsidianModel(37, 1.2), 0.47, 1.25, 1.5);
+          yield;
           S13("vo_basalt2", () => basaltModel(41, 1.4), 0.3, 1.15, 1.4);
+          yield;
           S13("vo_basalt3", () => basaltModel(43, 1.2), 0.62, 1.35, 1.6);
+          yield;
           vents.push(S13("vo_vent2", () => ventModel(47, 1.5), 0.42, 1.5, 1.8));
+          yield;
           chimneys.push(S13("vo_sulfur2", () => sulfurModel(53, 1.3), 0.53, 0.78, 1));
+          yield;
           const pz = 0.06, pxx = Math.round(W11 * 0.53);
           this.plugOpen = voxSprite("vo_plugvent_open", () => ventModel(61, 0.8, false), { scale: qscale(0.8 * D2.s(pz)) });
+          yield;
           this.plugShut = voxSprite("vo_plugvent_shut", () => ventModel(61, 0.8, true), { scale: qscale(0.8 * D2.s(pz)) });
+          yield;
           const py = Math.round(D2.floorAt(pxx, pz)) + 1;
+          yield;
           const pv = this.plugShut;
           this.plug = { x: pxx, y: py, knocks: 0, shake: 0, t: 9, rect: { x: pxx - pv.ox + 8, y: py - pv.oy, w: pv.w - 16, h: pv.oy }, top: py - pv.oy + Math.round(pv.h * 0.12) };
           const ez = 0, ex = Math.round(W11 * 0.385);
           this.eggSpr = voxSprite("vo_egg", eggModel, { scale: qscale(1.1 * D2.s(ez)) });
+          yield;
           const ey = Math.round(D2.floorAt(ex, ez)) + 1;
+          yield;
           this.egg = { x: ex, y: ey, warmth: 0, wob: 0, rect: { x: ex - 9, y: ey - this.eggSpr.oy - 2, w: 18, h: this.eggSpr.oy + 4 } };
           const mz = 0.14, mx = Math.round(W11 * 0.465);
           this.mallow = { x: mx, y: Math.round(D2.floorAt(mx, mz)), toast: 0, eaten: false, t: 0 };
+          yield;
           this.mallow.rect = { x: mx - 4, y: this.mallow.y - 30, w: 22, h: 30 };
-          D2.render([{ key: "day", strip: this.water }]);
+          yield* D2.render$([{ key: "day", strip: this.water }]);
           this.bands = new BandSet(D2);
+          yield;
           this.hazeY = Math.round(D2.hz - 30);
           this.haze = new FogLayer(hazeMask(W11, 76, { peak: 0.5, alpha: 0.8 }), 0, this.hazeY);
+          yield;
           this.floor = new Float32Array(W11 + 1);
-          for (let x = 0; x <= W11; x++) this.floor[x] = D2.floorAt(x, 0);
+          for (let x = 0; x <= W11; x++) {
+            this.floor[x] = D2.floorAt(x, 0);
+            yield;
+          }
+          yield;
           this.vents = vents.map((v) => ({ it: v, x: v.x, y: v.top + Math.round(v.p.h * 0.18), s: v.s, z: v.z, band: v.band, ph: Math.random() * TAU }));
           this.chimneys = chimneys.map((c) => ({ it: c, x: c.x + 1, y: c.top + 3, s: c.s, z: c.z, band: c.band }));
           this.glows = D2.items.filter((q) => q.p?.glow).map((q) => ({ c: q.p.glow, x: q.left, y: q.top, band: q.band, a: 1 - D2.fog(q.z) * 0.6, ph: hash2(q.x, 2, 9) * TAU }));
+          yield;
           this.crackLights = [];
           const cell = 40, gw = Math.ceil(D2.LW / cell), gh = Math.ceil(D2.TH / cell);
           const acc2 = new Float32Array(gw * gh * 3);
           for (let y = 0; y < D2.TH; y++) for (let x = 0; x < D2.LW; x++) {
+            if (x === 0 && (y & 15) === 15) yield;
             const c = D2.pc[y * D2.LW + x];
             if (!c || !(c >>> 24 & 1)) continue;
             const k = Math.floor(y / cell) * gw + Math.floor(x / cell);
@@ -52713,19 +53509,33 @@ kmlmk..
             const lx = acc2[k * 3 + 1] / n2 - D2.pad, ly = acc2[k * 3 + 2] / n2 + D2.top;
             const z = D2.zAt(ly);
             this.crackLights.push({ x: lx, y: ly, r: clamp(14 + Math.sqrt(n2) * 3.2, 18, 64) * (1 - clamp012(z) * 0.4), n: n2, a: clamp012(0.3 + n2 / 120) * (1 - D2.fog(z) * 0.7), ph: hash2(k, 3, 7) * TAU });
+            yield;
           }
+          yield;
           this.crackLights.sort((a, b) => b.n - a.n);
+          yield;
           this.crackLights.length = Math.min(this.crackLights.length, 16);
           this.propLights = [];
           for (const q of D2.items) {
             if (!q.p?.lights?.length || q.z > 1.2) continue;
             const l = q.p.lights.slice().sort((a, b) => b.r - a.r)[0];
             this.propLights.push({ x: q.left + l.x, y: q.top + l.y, r: clamp(l.r * 0.9 + 10, 22, 70) * (0.6 + 0.4 * q.s), color: l.color, a: 1 - D2.fog(q.z) * 0.75 });
+            yield;
           }
+          yield;
           this.propLights.sort((a, b) => b.r * b.a - a.r * a.a);
+          yield;
           this.propLights.length = Math.min(this.propLights.length, 8);
         }
         buildLayers() {
+          const it2 = this.buildLayers$();
+          for (; ; ) {
+            const n2 = it2.next();
+            if (n2.done) return n2.value;
+          }
+        }
+        // [travel17]
+        *buildLayers$() {
           const W11 = this.W, H8 = this.H, pad = 30, D2 = this.D;
           this.pad = pad;
           const LW = W11 + pad * 2;
@@ -52733,18 +53543,23 @@ kmlmk..
           const hz = D2.hz;
           const yA = Math.round(hz - H8 * 0.42), hA = H8 - yA;
           const mA = new Mask(LW, hA);
+          yield;
           const baseA = hz - yA + 10;
           const rA = ridge(LW, baseA - 40, 24, 8e-3, 6.1, 4, 0.4);
+          yield;
           mA.below((x) => rA[x]);
+          yield;
           for (let i = 0; i < 9; i++) {
             const px0 = r.float(0.25, 0.75) * LW, tp = r.float(10, baseA - 110), w = r.float(6, 16);
             mA.poly([[px0 - w * 1.4, baseA], [px0 - w * 0.3, tp + 10], [px0, tp], [px0 + w * 0.4, tp + 14], [px0 + w * 1.5, baseA]]);
           }
+          yield;
           for (const side of [0, 1]) for (let x = 0; x < LW * 0.3; x++) {
             const xx = side ? LW - 1 - x : x;
             const tp = baseA - 260 + x * 0.6 + (fbm2(x * 0.03, side, 2, 3) - 0.5) * 60;
             for (let y = Math.max(0, Math.round(tp)); y < baseA; y++) mA.set(xx, y, 1);
           }
+          yield;
           this.falls = [];
           for (const fxf of [0.34, 0.43, 0.59, 0.68]) {
             const fx = Math.round(fxf * LW);
@@ -52752,15 +53567,22 @@ kmlmk..
               this.falls.push({ x: fx - pad, y0: yA + y, y1: yA + baseA - 6, w: 2 + (fxf * 10 % 2 > 1 ? 1 : 0) });
               break;
             }
+            yield;
           }
+          yield;
           const palA = stopPalette([[0, "#0a0608"], [1, "#2a1a1e"]], 5);
+          yield;
           this.farA = new FogLayer(voxRelief(mA.toCanvas((x, y, v, up) => up <= 1 ? pack("#6a3a30") : ditherPick(palA, 0.6 - Math.min(1, up / 70) * 0.45 + (fbm2(x * 0.05, y * 0.05, 2, 2) - 0.5) * 0.3, x, y)), { depth: lumDepth(3, 7), maxD: 7 }), -pad, yA);
+          yield;
           this.farAY = yA;
           const yB = Math.round(hz - 110), hB = H8 - yB;
           const mB = new Mask(LW, hB);
+          yield;
           const baseB = hz - yB + 16;
           const rB = ridge(LW, baseB - 6, 9, 0.012, 2.9, 3);
+          yield;
           mB.below((x) => rB[x]);
+          yield;
           this.farVents = [];
           for (let i = 0; i < 14; i++) {
             const px0 = r.float(0.08, 0.92) * LW, b = rB[Math.round(px0)] + 2;
@@ -52772,25 +53594,42 @@ kmlmk..
               const hh = r.float(24, 60);
               mB.poly([[px0 - 5, b], [px0, b - hh], [px0 + 4, b]]);
             }
+            yield;
           }
+          yield;
           const palB = stopPalette([[0, "#0e0808"], [1, "#2e1a1a"]], 5);
+          yield;
           this.farB = new FogLayer(voxRelief(mB.toCanvas((x, y, v, up) => up <= 1 ? pack("#8a4030") : up === 2 ? pack("#4a2420") : ditherPick(palB, 0.6 - Math.min(1, up / 40) * 0.45 + (fbm2(x * 0.08, y * 0.08, 2, 5) - 0.5) * 0.35, x, y)), { depth: lumDepth(2, 6) }), -pad, yB);
+          yield;
           this.farBY = yB;
           this.disc = null;
           this.levi = null;
           this.leviT = 12;
         }
         buildLife() {
+          const it2 = this.buildLife$();
+          for (; ; ) {
+            const n2 = it2.next();
+            if (n2.done) return n2.value;
+          }
+        }
+        // [travel17]
+        *buildLife$() {
           const W11 = this.W, H8 = this.H, D2 = this.D, sy = this.surfY();
           const r = new RNG(23);
           this.decor = new DepthDecor(D2);
+          yield;
           for (const [xf, z, cols] of [[0.36, 0.05, ["#4a1a14", "#7a2a1a", "#b84a2a", "#ff8a4a"]], [0.58, 0.2, ["#3a2a14", "#6a4a1a", "#a87a2a", "#e8c04a"]], [0.71, -0.05, ["#4a1a14", "#7a2a1a", "#b84a2a", "#ff8a4a"]], [0.27, 0.55, ["#3a2a14", "#6a4a1a", "#a87a2a", "#e8c04a"]], [0.5, 0.7, ["#4a1a14", "#7a2a1a", "#b84a2a", "#ff8a4a"]], [0.8, 0.45, ["#3a2a14", "#6a4a1a", "#a87a2a", "#e8c04a"]], [0.13, 0.12, ["#4a1a14", "#7a2a1a", "#b84a2a", "#ff8a4a"]]]) {
             const s = D2.s(z), x0 = Math.round(xf * W11), y0 = Math.round(D2.floorAt(x0, z)) + 1;
             const A2 = voxAnim("seagrass", 1 + r.int(0, 2), "volcano", 8, qscale(s, 0.2, 0.4) * 1.3, 8);
             this.decor.add({ anim: placeAnim(A2, x0, y0 + 1), z, off: r.int(0, A2.n - 1) });
+            yield;
           }
+          yield;
           this.decor.refog(() => "#2a1a1e", "k");
+          yield;
           this.sal = salamanderFrames();
+          yield;
           this.salL = this.sal.map((c) => {
             const o = makeCanvas(c.width, c.height), g = ctxOf(o);
             g.translate(c.width, 0);
@@ -52798,19 +53637,36 @@ kmlmk..
             g.drawImage(c, 0, 0);
             return o;
           });
+          yield;
           this.baby = null;
           this.embers = new Motes(90, { x0: 0, y0: sy, x1: W11, y1: H8 - 30 }, { seed: 3, vx: [-2, 2], vy: [-14, -5], sizes: [1, 1, 2], colors: ["#ff8a2a", "#ffc04a", "#ff5a1a", "#fff0a0"], alpha: [0.5, 1], wob: 5 });
+          yield;
           this.ash = new Motes(140, { x0: 0, y0: sy, x1: W11, y1: H8 }, { seed: 5, vx: [-3, 3], vy: [4, 10], sizes: [1, 1, 2], colors: ["#5a5054", "#7a7074", "#3a3438", "#9a9094"], alpha: [0.3, 0.8], wob: 4 });
+          yield;
           this.sulfur = new Motes(70, { x0: 0, y0: sy, x1: W11, y1: H8 }, { seed: 7, vx: [-2, 2], vy: [-3, 2], sizes: [1, 2], colors: ["#d8e05a", "#c8c040", "#e8f08a"], alpha: [0.2, 0.6], wob: 6 });
+          yield;
           this.nearAsh = new Motes(24, { x0: 0, y0: sy, x1: W11, y1: H8 }, { seed: 9, vx: [-4, 4], vy: [3, 8], sizes: [2, 3], colors: ["#6a6064"], alpha: [0.15, 0.35], wob: 7 });
+          yield;
           this.bubbles = new Bubbles(140, "#ffd8b0");
+          yield;
           this.lavaBlobs = [];
-          for (let i = 0; i < 16; i++) this.lavaBlobs.push({ x: r.float(0, W11), y: r.float(0, H8), v: -r.float(6, 16), ph: r.float(0, TAU), s: r.int(2, 4) });
+          for (let i = 0; i < 16; i++) {
+            this.lavaBlobs.push({ x: r.float(0, W11), y: r.float(0, H8), v: -r.float(6, 16), ph: r.float(0, TAU), s: r.int(2, 4) });
+            yield;
+          }
+          yield;
           this.smoke = [];
-          for (let i = 0; i < 16; i++) this.smoke.push({ k: i / 16, ph: r.float(0, TAU), s: r.float(0.7, 1.3) });
+          for (let i = 0; i < 16; i++) {
+            this.smoke.push({ k: i / 16, ph: r.float(0, TAU), s: r.float(0.7, 1.3) });
+            yield;
+          }
+          yield;
           this.puffS = [2, 3, 4, 5, 6, 7, 8, 9].map((rr4) => paint2(rr4 * 2 + 1, rr4 * 2 + 1, (x, y) => Math.hypot(x - rr4, y - rr4) <= rr4 + 0.2 ? pack("#ffffff") : 0));
+          yield;
           this.puffY = this.puffS.map((c) => tinted(c, "#b8b46a"));
+          yield;
           this.puffK = this.puffS.map((c) => tinted(c, "#2a2220"));
+          yield;
         }
         // ------------------------------------------------------------------ update
         update(dt, env) {
@@ -69306,9 +70162,10 @@ kmlmk..
     }
     return null;
   }
-  function islandSprite(kind2, seed) {
+  function islandSprite(kind2, seed, peek = false) {
     const key = kind2 + seed;
     if (ISLANDS.has(key)) return ISLANDS.get(key);
+    if (peek) return null;
     let s = null;
     try {
       const def2 = islandModel(kind2, seed);
@@ -69481,6 +70338,7 @@ kmlmk..
       init_boatmodels();
       init_sky();
       init_mappanel();
+      init_destinations();
       LOCKED2 = /* @__PURE__ */ new Set(["fjord", "metropolis"]);
       KIND = { oscean: "hill", shallows: "palm", fjord: "ice", junkyard: "junk", metropolis: "city", volcano: "volcano", abyss: "abyss", lab: "lab", workshop: "workshop" };
       LOOK2 = {
@@ -69633,7 +70491,9 @@ kmlmk..
             titleDef: null,
             flood: null,
             sfx: {},
-            total: D2.depart + D2.sea + D2.arrive + 0.4
+            total: D2.depart + D2.sea + D2.arrive + 0.4,
+            W0: W11,
+            H0: H8
           };
           s.pal = copyPal(s.palO);
           s.palDT = copyPal(s.palD);
@@ -69668,24 +70528,37 @@ kmlmk..
         }
         *jobs(s) {
           const g = this.game, o = g.ocean;
-          try {
-            const b = g.boat;
-            if (b?.model) {
+          const boatSprites = function* (Rs) {
+            try {
+              const b = g.boat;
+              if (!b?.model) return;
               const M6 = b.model();
-              for (const R7 of [1, 2]) for (const ri of [3, 2, 4, 1, 5, 0, 6]) {
+              for (const R7 of Rs) for (const ri of [3, 2, 4, 1, 5, 0, 6]) {
                 const k = b.modelKey + ":1:" + ri + ":" + R7;
                 if (!b.sprites.has(k)) {
                   b.sprites.set(k, b.buildSprite(M6, 1, ri, R7));
                   yield;
                 }
               }
+            } catch (e) {
+              console.warn("voyage boat", e);
             }
-          } catch (e) {
-            console.warn("voyage boat", e);
-          }
+          };
+          yield* boatSprites([1]);
+          while (s.phase === "depart") yield "wait";
+          yield* boatSprites([2]);
           yield* buildClouds();
           for (const k of [s.fromK, s.toK, "sail", "buoy"]) for (let i = 0; i < 2; i++) {
             islandSprite(k, i);
+            yield;
+          }
+          if (s.kind === "dest") {
+            try {
+              destSprite(s.to, 2);
+              s.placeReady = true;
+            } catch (e) {
+              console.warn(e);
+            }
             yield;
           }
           if (s.gen) {
@@ -69698,7 +70571,7 @@ kmlmk..
                 r = { done: true };
               }
               if (r.done) break;
-              yield "build";
+              yield r.value ?? "build";
             }
             s.gen = null;
             if (s.ts) s.ts.gen = null;
@@ -69718,6 +70591,7 @@ kmlmk..
                 s.jobs = null;
                 break;
               }
+              if (r.value === "wait") break;
             }
           } catch (e) {
             console.error(e);
@@ -69738,6 +70612,10 @@ kmlmk..
               g.audio?.play("ui_click");
             }
             if (inp.pressed) inp.consume?.();
+          }
+          if (g.screen.W !== s.W0 || g.screen.H !== s.H0) {
+            this.abort(s);
+            return;
           }
           const dt = Math.min(0.05, dtIn) * s.speed;
           s.t += dt;
@@ -69948,6 +70826,40 @@ kmlmk..
           s.flood?.stop();
           s.flood = null;
         }
+        // cut straight to the destination (window resized mid-trip)
+        abort(s) {
+          const g = this.game, o = g.ocean, boat = g.boat;
+          if (s.kind === "dest") {
+            this.fade = null;
+            this.layer = null;
+            this.handToDest(s);
+            this.fade = null;
+            return;
+          }
+          try {
+            if (s.gen) {
+              while (!s.gen.next().done) ;
+              s.gen = null;
+            }
+            o.get(s.to);
+          } catch (e) {
+            console.error(e);
+          }
+          if (o.biome !== s.target) {
+            o.biome = s.target;
+            o.pickWeather(true);
+          }
+          if (boat) {
+            boat.pilot = null;
+            boat.placed = false;
+            boat.dir = 1;
+          }
+          s.dest = null;
+          s.flood?.stop();
+          s.flood = null;
+          if (!this.title) this.showTitle(s);
+          this.finish(s);
+        }
         updSettle(s, dt) {
           if (s.pt >= 0.4) this.finish(s);
         }
@@ -70016,6 +70928,7 @@ kmlmk..
         showTitle(s) {
           s.titleT = 1;
           if (s.kind !== "ocean" || !s.target) return;
+          if (s.titleDef) for (const L4 of s.titleDef.letters) L4.landed = false;
           this.title = { t: 0, def: s.titleDef, name: (s.target.name || "").toUpperCase(), sub: s.target.subtitle || "", first: s.first, to: s.to, played: false };
         }
         // ------------------------------------------------------------ particles of the sea scene
@@ -70251,6 +71164,7 @@ kmlmk..
           this.drawIslands(c, s, W11, hz, 0);
           this.drawClouds(c, s, W11, hz, 1);
           this.drawIslands(c, s, W11, hz, 1);
+          if (s.kind === "dest") this.drawPlace(c, s, W11, hz);
           this.drawSea(c, s, W11, H8, hz);
           if (s.orig) {
             const fo = 1 - smoothstep(s.D.sea * 0.3, s.D.sea * 0.9, s.phase === "sea" ? s.pt : 99);
@@ -70374,7 +71288,7 @@ kmlmk..
           if (!s[key]) s[key] = layer4 ? edge + 200 : edge - 60;
           while (s[key] < edge) {
             const kind2 = !layer4 && Math.random() < 0.3 ? "sail" : Math.random() < s.u ? s.toK : s.fromK;
-            const spr3 = islandSprite(kind2, Math.floor(Math.random() * 2));
+            const spr3 = islandSprite(kind2, Math.floor(Math.random() * 2), true);
             if (spr3) s.islands.push({ x: s[key], spr: spr3, kind: kind2, sc, layer: layer4, bob: Math.random() * 6 });
             s[key] += (layer4 ? 520 : 230) + Math.random() * (layer4 ? 520 : 280);
           }
@@ -70407,6 +71321,32 @@ kmlmk..
             c.globalAlpha = 1;
           }
           s.islands = s.islands.filter((is) => is.x - s.C * (is.layer ? 0.5 : 0.22) + is.spr.w * is.sc * 2 > -80);
+        }
+        // the Lab island / the Workshop dock appears on the horizon and grows as the boat closes in
+        drawPlace(c, s, W11, hz) {
+          const k = smoothstep(0.25, 1, s.pt / s.D.sea);
+          if (k <= 0 || !s.placeReady) return;
+          let S13 = null;
+          try {
+            S13 = destSprite(s.to, 2);
+          } catch {
+            S13 = null;
+          }
+          if (!S13) return;
+          const z = lerp(0.35, 0.8, k) * this.zl(s, 0.3);
+          const lab3 = s.to === "lab";
+          const x = Math.round(lerp(W11 * 1.08, W11 * 0.8, ease.outCubic(k))), bob = lab3 ? Math.sin(s.t * 1.3) * 3 : 0;
+          const w = Math.round(S13.w * z), h = Math.round(S13.h * z);
+          const y = Math.round(hz + 2 - S13.oy * z + (lab3 ? -26 * z + bob : 0));
+          c.globalAlpha = smoothstep(0, 0.3, k);
+          c.drawImage(S13.canvas, x - Math.round(S13.ox * z), y, w, h);
+          if (S13.glow) {
+            c.globalCompositeOperation = "lighter";
+            c.globalAlpha *= 0.5;
+            c.drawImage(S13.glow, x - Math.round(S13.ox * z), y, w, h);
+            c.globalCompositeOperation = "source-over";
+          }
+          c.globalAlpha = 1;
         }
         drawSea(c, s, W11, H8, hz) {
           const [top, deep] = s.pal.sea, t = s.t, Z = s.Z || 1, dt = s.drawDt || 1 / 60;
@@ -70516,7 +71456,7 @@ kmlmk..
               s.nextFloat += W11 * (0.8 + Math.random() * 0.9);
             }
           }
-          const spr3 = islandSprite("buoy", 0);
+          const spr3 = islandSprite("buoy", 0, true);
           if (!spr3) return;
           for (const f of s.floats) {
             const x = s.X + (f.x - s.B) * Z;
@@ -70895,7 +71835,7 @@ kmlmk..
           }
           const out = clamp012((t - hold) / 0.8);
           const a = 1 - out;
-          const cy = Math.round(H8 * 0.24);
+          const cy = Math.round(H8 * 0.34);
           if (!T5.played && t > 0.05) {
             T5.played = true;
             this.game.audio?.play("sparkle", { vol: 0.4 });
@@ -70920,6 +71860,13 @@ kmlmk..
               const bob = Math.sin(t * 2.2 + i * 0.55) * 1.5;
               const lift = out * -12;
               const c = L4.canvas, w = c.width / sq, h = c.height * sq;
+              if (li >= 0.55 && !L4.landed && t < 3) {
+                L4.landed = true;
+                try {
+                  this.game.particles?.pixelBurst?.("drop", W11 / 2 + L4.x, cy + c.height * 0.45, 2, { layer: "ui", ramp: "aqua", size: 0, dir: -Math.PI / 2, spread: 1.1, speed: [30, 70] });
+                } catch {
+                }
+              }
               ctx3.globalAlpha = a * clamp012(li * 3);
               ctx3.drawImage(c, Math.round((W11 / 2 + L4.x - w / 2) * 2) / 2, Math.round((cy - h / 2 + fall + bob + lift) * 2) / 2, Math.round(w * 2) / 2, Math.round(h * 2) / 2);
             });
@@ -71502,7 +72449,7 @@ kmlmk..
         // [phase7:env] while the zoomed-in voxel detail is still being built: a small glossy loading pill with a shimmer
         // sweep and pixel sparkles (bottom centre, above the hotbar), fading out when the pass completes
         drawShimmer(ctx3, dt) {
-          const b = this.biome, busy = !!(this.hiGen && b && b.hiFirst !== b.D && !this.travelState && !this.game.voyage?.title && this.game.state?.view === "ocean");
+          const b = this.biome, busy = !!(this.hiGen && b && b.hiFirst !== b.D && !this.travelState && !this.game.voyage?.title && !this.game.dest?.active && this.game.state?.view === "ocean");
           this.shimA = clamp012((this.shimA || 0) + (busy ? dt * 3 : -dt * 2));
           if (this.shimA < 0.02 || this.game.ui?.blocking) return;
           const W11 = this.W, H8 = this.H, a = this.shimA, t = performance.now() / 1e3;

@@ -1084,7 +1084,9 @@ export class DepthScene {
 
   // Heightfield + colour grid in world space, then the column ray-march.
   // o.height(X, z) -> world px; o.color(X, z, h) -> [r, g, b] (0..255, unshaded); o.glow(X, z) -> [r,g,b] | null
-  terrain(o) {
+  terrain(o) { const it = this.terrain$(o); while (!it.next().done); }
+  // [travel17] the same, a slice at a time (a voyage builds the next ocean over many frames)
+  *terrain$(o) {
     this.terrainOpts = o; // kept for the hi-res pass (hiSteps)
     const { W, H, pad, cx, K, hz } = this;
     const cw = o.cell ?? 2, dz = o.dz ?? 0.02, hstep = o.hstep ?? 2;
@@ -1106,6 +1108,7 @@ export class DepthScene {
         if (c) glow[i] = 1; else c = o.color(X, z, h, ix, iz);
         base[i * 3] = c[0]; base[i * 3 + 1] = c[1]; base[i * 3 + 2] = c[2];
       }
+      if ((iz & 3) === 3) yield;
     }
     // shading: lambert from the height gradient + ambient occlusion from a blurred height + voxel jitter
     const col = new Uint32Array(N);
@@ -1115,11 +1118,13 @@ export class DepthScene {
       let s = 0, n = 0;
       for (let k = -R; k <= R; k++) { const j = ix + k; if (j >= 0 && j < nx) { s += hgt[iz * nx + j]; n++; } }
       tmp[iz * nx + ix] = s / n;
+      if (ix === nx - 1 && (iz & 15) === 15) yield;
     }
     for (let iz = 0; iz < nz; iz++) for (let ix = 0; ix < nx; ix++) {
       let s = 0, n = 0;
       for (let k = -R; k <= R; k++) { const j = iz + k; if (j >= 0 && j < nz) { s += tmp[j * nx + ix]; n++; } }
       blur[iz * nx + ix] = s / n;
+      if (ix === nx - 1 && (iz & 15) === 15) yield;
     }
     const L = [-0.42, 0.85, -0.32];
     { const l = Math.hypot(...L); L[0] /= l; L[1] /= l; L[2] /= l; }
@@ -1136,6 +1141,7 @@ export class DepthScene {
       let k = glow[i] ? 1.25 : (amb + dif * lam) * (1 - ao * 0.55) + (hash2(ix, iz, 71) - 0.5) * 2 * jit;
       const r = base[i * 3] * k, g = base[i * 3 + 1] * k, b = base[i * 3 + 2] * k;
       col[i] = ((clamp(Math.round(r), 0, 255)) | (clamp(Math.round(g), 0, 255) << 8) | (clamp(Math.round(b), 0, 255) << 16) | (glow[i] ? 1 << 24 : 0) | (1 << 25)) >>> 0;
+      if (ix === nx - 1 && (iz & 7) === 7) yield;
     }
     this.grid = { nx, nz, X0, z0, cw, dz, hgt, col };
     // ray-march every screen column front to back (tall terrain may rise above the horizon)
@@ -1150,6 +1156,7 @@ export class DepthScene {
     this.floorHeight = o.floorHeight || null;
     const shadeP = (c, f) => ((clamp(Math.round((c & 255) * f), 0, 255)) | (clamp(Math.round(((c >> 8) & 255) * f), 0, 255) << 8) | (clamp(Math.round(((c >> 16) & 255) * f), 0, 255) << 16) | (c & (3 << 24))) >>> 0;
     for (let px = 0; px < LW; px++) {
+      if ((px & 15) === 15) yield;
       const sx = px - pad + 0.5;
       let ybuf = TH;
       let prevCell = -1, prevH = -1e9, prevIz = -1;
@@ -1237,7 +1244,9 @@ export class DepthScene {
   }
 
   // variants: [{key, strip}] (strip = water gradient strip canvas used as the fog colour per screen y).
-  render(variants) {
+  render(variants) { const it = this.render$(variants); for (;;) { const n = it.next(); if (n.done) return n.value; } }
+  // [travel17] the same, a slice at a time
+  *render$(variants) {
     const { LW, pad, TH, top, pc, pz } = this;
     this.items.sort((a, b) => b.z - a.z);
     const bands = [0, 1, 2].map((b) => {
@@ -1246,6 +1255,7 @@ export class DepthScene {
       return { y: Math.floor(bt), canvases: {}, h: this.H - Math.floor(bt) };
     });
     const tmp = makeLayer(8, 8);
+    this.rn = 0;
     // band + fog per pixel once (shared by every variant), then one pass per variant fills all three bands
     const N = TH * LW;
     const bandOf = new Uint8Array(N), fogOf = new Float32Array(N);
@@ -1255,6 +1265,7 @@ export class DepthScene {
       const z = pz[i];
       bandOf[i] = this.band(z);
       fogOf[i] = this.fog(z) * (((cc >>> 24) & 1) ? 0.5 : 1);
+      if ((i & 65535) === 65535) yield;
     }
     this.bandOf = bandOf; // 1x band per pixel (3 = empty): the hi-res pass fills its band seams from it
     this.variants = variants;
@@ -1279,6 +1290,7 @@ export class DepthScene {
           const r = lerp(cc & 255, sd[si], f), gg = lerp((cc >> 8) & 255, sd[si + 1], f), bb = lerp((cc >> 16) & 255, sd[si + 2], f);
           o.d[(y + o.off) * LW + x] = dpack(r, gg, bb, x, y, 4);
         }
+        if ((y & 31) === 31) yield;
       }
       for (let b = 0; b < 3; b++) {
         const B = bands[b];
@@ -1309,6 +1321,7 @@ export class DepthScene {
           tg.globalAlpha = 1;
           g.drawImage(tmp.canvas, 0, 0, sp.canvas.width, sp.canvas.height, dx, dy, sp.canvas.width, sp.canvas.height);
           it.painted?.(g, dx, dy, v.key);
+          if ((++this.rn & 7) === 0) yield;
         }
         B.canvases[v.key] = c;
       }

@@ -490,7 +490,7 @@ export class Ocean {
   // [phase7:env] while the zoomed-in voxel detail is still being built: a small glossy loading pill with a shimmer
   // sweep and pixel sparkles (bottom centre, above the hotbar), fading out when the pass completes
   drawShimmer(ctx, dt) {
-    const b = this.biome, busy = !!(this.hiGen && b && b.hiFirst !== b.D && !this.travelState && !this.game.voyage?.title && this.game.state?.view === 'ocean'); // [travel17] not under the arrival title
+    const b = this.biome, busy = !!(this.hiGen && b && b.hiFirst !== b.D && !this.travelState && !this.game.voyage?.title && !this.game.dest?.active && this.game.state?.view === 'ocean'); // [travel17] not under the arrival title
     this.shimA = clamp01((this.shimA || 0) + (busy ? dt * 3 : -dt * 2));
     if (this.shimA < 0.02 || this.game.ui?.blocking) return;
     const W = this.W, H = this.H, a = this.shimA, t = performance.now() / 1000;

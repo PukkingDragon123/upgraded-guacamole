@@ -494,29 +494,39 @@ export class FjordBiome extends Biome {
   }
 
   // ------------------------------------------------------------------ build
-  build(W, H) {
+  build(W, H) { const it = this.steps(W, H); while (!it.next().done); } // [travel17] sync build = all the steps
+  // [travel17] the build a slice at a time (a voyage builds the next ocean over many frames)
+  *steps(W, H) {
+    this.ready = false;
     this.W = W; this.H = H;
     this.top = worldTop(H);
     this.base = this.baseSurface(H);
     this.ys = new Int16Array(W + 2).fill(this.base);
     const tOf = (y) => clamp01((y - (this.base - 2)) / (H - this.base + 2));
     this.water = { day: worldStrip(H, this.top, WATER.day, tOf), dusk: worldStrip(H, this.top, WATER.dusk, tOf), night: worldStrip(H, this.top, WATER.night, tOf) };
+    yield;
     this.waterBlend = new Blend(); this.skyBlend = new Blend(); this.ocBlend = new Blend();
-    this.buildSky();
-    this.buildDepth();
-    this.buildLayers();
+    yield* this.buildSky$();
+    yield* this.buildDepth$();
+    yield* this.buildLayers$();
     const rh = H - this.base;
     this.raysA = new FogLayer(makeRays(W, rh, { seed: 7, count: 8, sunX: W * 0.72, sunY: -H * 0.7, minW: 10, maxW: 30, len: 0.95, color: '#ffffff', alpha: 0.5, levels: 5 }));
+    yield;
     this.raysB = new FogLayer(makeRays(W, rh, { seed: 12, count: 14, sunX: W * 0.68, sunY: -H * 0.6, minW: 3, maxW: 9, len: 0.75, color: '#ffffff', alpha: 0.55, levels: 4 }));
+    yield;
     this.caustics = new Caustics({ tw: 140, th: 44, cx: 10, cy: 5, seed: 17, color: '#f0ffff', thick: 0.6, core: 0.7, rim: 0.2 });
+    yield;
     this.shimmer = this.makeShimmer();
-    this.buildLife();
+    yield;
+    yield* this.buildLife$();
     this.fresh = true;
+    this.ready = true;
   }
 
   // Sky (gradient, sun/moon, baked stars) and a separate mountain canvas (fjord walls, peaks, glacier, icebergs)
   // per time of day, both spanning world y skyY .. base + 14. Aurora, clouds and birds are drawn between the two.
-  buildSky() {
+  buildSky() { const it = this.buildSky$(); for (;;) { const n = it.next(); if (n.done) return n.value; } } // [travel17]
+  *buildSky$() {
     const W = this.W, base = this.base, top = this.top;
     const skyY = top - 12;
     this.skyY = skyY;
@@ -526,8 +536,10 @@ export class FjordBiome extends Biome {
     // mat: 0 sky, 1 far range, 2 rock, 3 snow, 4 glacier, 5 glacier cliff, 6 wall rock, 7 wall snow, 8 berg ice, 9 berg top, 10 far snow, 11 icefall
     const mat = new Uint8Array(N), tone = new Float32Array(N);
     const far = ridge(W, base - 98, 46, 0.012, 2.4, 4, 0.6);
+    yield;
     const peaks = [[0.27, 238, 0.17], [0.385, 158, 0.095], [0.675, 172, 0.11], [0.8, 248, 0.16], [0.555, 122, 0.075]];
     const mid = new Float32Array(W + 1), owner = new Int8Array(W + 1);
+    yield;
     for (let x = 0; x <= W; x++) {
       let y = base + 4, o = -1;
       peaks.forEach(([pxf, ph, hw], k) => {
@@ -536,17 +548,25 @@ export class FjordBiome extends Biome {
       });
       mid[x] = y + (fbm2(x * 0.06, 3.3, 3, 21) - 0.5) * 12 + Math.abs(Math.sin(x * 0.13)) * 2;
       owner[x] = o;
+      yield;
     }
+    yield;
     const gx0 = W * 0.425, gx1 = W * 0.67, gc = (gx0 + gx1) / 2, ghw = (gx1 - gx0) / 2;
     const gSaddle = base - 116;
     const gTop = (x) => gSaddle + Math.pow(Math.abs((x - gc) / ghw), 2.2) * 34 + (fbm2(x * 0.08, 1, 2, 5) - 0.5) * 4;
+    yield;
     const gCliff = (x) => base - 20 + Math.round((fbm2(x * 0.07, 2, 2, 9) - 0.5) * 8);
+    yield;
     const wallL = (y) => W * 0.135 + (fbm2(2.1, y * 0.018, 3, 31) - 0.5) * 50 + smoothstep(base - 70, base, y) * W * 0.035;
+    yield;
     const wallR = (y) => W * 0.865 + (fbm2(7.7, y * 0.018, 3, 33) - 0.5) * 46 - smoothstep(base - 60, base, y) * W * 0.03;
+    yield;
     this.bergs = [[0.34, 26, 18], [0.735, 18, 12], [0.58, 10, 7]].map(([xf, w, hh]) => ({ x: Math.round(xf * W), w, h: hh }));
     const icefalls = [[W * 0.055, 7, base - 300], [W * 0.95, 9, base - 250], [W * 0.115, 4, base - 160]];
     const nearRel = (x, y) => fbm2(x * 0.05, y * 0.009, 3, 41);
+    yield;
     const ridged = (u, v, seed) => 1 - Math.abs(fbm2(u, v, 3, seed) * 2 - 1);
+    yield;
     for (let row = 0; row < h; row++) {
       const y = row + skyY;
       if (y > base + 1) continue;
@@ -626,7 +646,9 @@ export class FjordBiome extends Biome {
           tone[i] = clamp01(0.55 + dF * 5 + (fx - 0.5) * 0.3 - d / 90);
         }
       }
+      yield;
     }
+    yield;
     const sunPos = { day: [0.7, base - 196], dusk: [0.62, base - 64], night: [0.27, base - 300] };
     this.sun = sunPos;
     const skyOf = (kind) => {
@@ -660,6 +682,7 @@ export class FjordBiome extends Biome {
       }
       return c;
     };
+    yield;
     const mtnOf = (kind) => {
       const P = MT[kind];
       const pal = {};
@@ -682,7 +705,10 @@ export class FjordBiome extends Biome {
         }
       });
     };
-    this.sky = { day: skyOf('day'), dusk: skyOf('dusk'), night: skyOf('night') };
+    yield;
+    this.sky = {};
+    for (const k of ['day', 'dusk', 'night']) { this.sky[k] = skyOf(k); yield; } // [travel17] one time of day a slice
+    yield;
     // voxel relief: the painted material map is extruded into voxels (near walls deepest, the far range shallow)
     const DEPTH = [0, 2, 6, 7, 5, 6, 11, 12, 7, 8, 3, 9];
     const voxOf = (kind) => {
@@ -691,22 +717,31 @@ export class FjordBiome extends Biome {
       ctxOf(c).drawImage(v.canvas, -v.ox, -v.oy);
       return c;
     };
+    yield;
     // one voxel render (day palette); dusk and night are tinted copies of it (the relief is the same)
     const mday = voxOf('day');
+    yield;
     this.mtn = { day: mday, dusk: tinted2(mday, '#b0587a', 0.3), night: tinted2(mday, '#0a1638', 0.6) };
+    yield;
     this.mtnBlend = new Blend();
     this.overcast = {};
     for (const k of ['day', 'dusk', 'night']) { const pal = stopPalette(OVERCAST[k], 10); this.overcast[k] = paint(8, h, (x, y) => ditherPick(pal, y / h, x, y)); }
+    yield;
     const r = new RNG(31);
     this.stars = [];
     for (let i = 0; i < 46; i++) {
       const x = r.int(4, W - 4), y = r.int(top + 6, base - 120);
       if (!mat[(y - skyY) * W + x]) this.stars.push({ x, y, f: r.float(0.8, 3), ph: r.float(0, TAU), c: r.pick(['#ffffff', '#e8f0ff', '#c8dcff', '#fff4d8']) });
+      yield;
     }
+    yield;
     this.aurora = [this.auroraTex(Math.round(W * 1.7), 170, 3, ['#5affa8', '#2ae0c8', '#a66aff']), this.auroraTex(Math.round(W * 1.7), 120, 9, ['#8aff7a', '#3ac8ff', '#ff6ad0'])];
+    yield;
     this.clouds = [];
-    for (let i = 0; i < 6; i++) this.clouds.push({ x: r.float(0, W), y: r.int(top + 30, base - 170), v: r.float(1.5, 4), tile: voxCloudSprite(40 + i, r.int(110, 190), r.int(26, 38), 'day') });
+    for (let i = 0; i < 6; i++) { this.clouds.push({ x: r.float(0, W), y: r.int(top + 30, base - 170), v: r.float(1.5, 4), tile: voxCloudSprite(40 + i, r.int(110, 190), r.int(26, 38), 'day') }); yield; }
+    yield;
     this.blizTile = streakTile(160, 96, 46, '#f4faff', { seed: 9, len: [4, 9], slant: 1, alpha: 0.75 });
+    yield;
   }
 
   // A wide aurora curtain: folded hem, fine vertical rays, green at the hem fading up through teal to violet.
@@ -747,12 +782,15 @@ export class FjordBiome extends Biome {
   }
 
   // Perspective fjord floor between granite / blue-ice walls, props at many depths.
-  buildDepth() {
+  buildDepth() { const it = this.buildDepth$(); for (;;) { const n = it.next(); if (n.done) return n.value; } } // [travel17]
+  *buildDepth$() {
     const W = this.W, H = this.H;
     const D = new DepthScene(W, H, { yFront: H - 70, yFar: H - 158, pad: 24, zFar: 1.9, fogStart: -0.25, fog: 0.9 });
+    yield;
     this.D = D;
     const cx = D.cx, surf = this.base + 3;
     const edge = (z, side) => W * (side < 0 ? 0.385 : 0.375) + Math.sin(z * 2.6 + side) * W * 0.03 + (fbm2(z * 2.1, 3.3 + side, 2, 71) - 0.5) * W * 0.08 + smoothstep(0.9, 1.9, z) * W * 0.12;
+    yield;
     this.edge = edge;
     const floorH = (X, z) => {
       let h = (fbm2(X * 0.0045, z * 1.3, 3, 72) - 0.45) * 12;
@@ -765,6 +803,7 @@ export class FjordBiome extends Biome {
       if (rp > 0.72) h += 2;
       return Math.max(-2, h);
     };
+    yield;
     const cap = (z) => D.K - (surf - D.hz) / D.s(z);
     const cliff = (X, z) => {
       const side = X < cx ? -1 : 1;
@@ -777,7 +816,8 @@ export class FjordBiome extends Biome {
       else h = z > 0.3 + fbm2(X * 0.01, 5, 2, 93) * 0.25 ? 900 : 150 + Math.round(fbm2(X * 0.03, z * 3, 2, 95) * 4) * 2;
       return Math.min(h, cap(z));
     };
-    D.terrain({
+    yield;
+    yield* D.terrain$({
       micro: { ripple: 0.6, pebble: 1, shell: 0.6, pebbles: [[130, 138, 152], [160, 168, 180], [110, 116, 130], [188, 194, 202]], shells: [[230, 236, 244], [200, 150, 160]] }, // [phase7:env]
       cell: 2, dz: 0.02, hstep: 2, ambient: 0.66, diffuse: 0.46, ao: 0.07, jitter: 0.06, wall: 0.8, side: 0.9, crest: 1.14, wallMin: 28, fullHeight: true,
       height: (X, z) => cliff(X, z) ?? floorH(X, z),
@@ -830,36 +870,61 @@ export class FjordBiome extends Biome {
       },
     });
     const S = (key, build, xf, z, base, extra = {}) => placeSprite(D, W, voxSprite(key, build, { scale: qscale(base * D.s(z)) }), xf, z, extra);
+    yield;
     const P = (id, xf, z, base, variant = 0) => placeSprite(D, W, worldProp(id, { scale: qscale(base * D.s(z)), variant }), xf, z, { id });
+    yield;
     // near
     S('fj_boulder1', () => boulderModel(11, 1), 0.205, 0.2, 0.8);
+    yield;
     S('fj_crystal0', () => crystalModel(5, 1, 0), 0.815, 0.22, 0.7);
+    yield;
     S('fj_coral0', () => softCoralModel(3), 0.58, 0.06, 0.75);
+    yield;
     S('fj_coral1', () => softCoralModel(8), 0.655, 0.2, 0.7);
+    yield;
     S('fj_boulder2', () => boulderModel(19, 0.7), 0.735, 0.03, 0.7);
+    yield;
     S('fj_crystal2', () => crystalModel(23, 0.7, 2), 0.415, 0.28, 0.65);
+    yield;
     // mid
     const ship = S('fj_ship', shipModel, 0.6, 0.47, 1.12);
+    yield;
     S('fj_crystal1', () => crystalModel(9, 1, 1), 0.285, 0.5, 0.95);
+    yield;
     S('fj_boulder3', () => boulderModel(27, 1.2), 0.39, 0.62, 1.0);
+    yield;
     P('anchor', 0.795, 0.44, 0.8);
+    yield;
     S('fj_coral2', () => softCoralModel(14), 0.47, 0.42, 0.9);
+    yield;
     S('fj_crystal3', () => crystalModel(31, 0.8, 0), 0.735, 0.6, 0.9);
+    yield;
     S('fj_boulder4', () => boulderModel(35, 0.8), 0.17, 0.4, 0.9);
+    yield;
     // far
     S('fj_arch', iceArchModel, 0.47, 1.18, 1.3);
+    yield;
     S('fj_crystal4', () => crystalModel(41, 1.2, 1), 0.33, 0.9, 1.1);
+    yield;
     S('fj_crystal5', () => crystalModel(43, 1, 2), 0.66, 0.96, 1.1);
+    yield;
     S('fj_boulder5', () => boulderModel(47, 1.4), 0.56, 0.84, 1.2);
+    yield;
     S('fj_boulder6', () => boulderModel(53, 1.2), 0.26, 1.3, 1.5);
+    yield;
     S('fj_coral3', () => softCoralModel(21), 0.43, 0.8, 1.0);
+    yield;
     S('fj_crystal6', () => crystalModel(57, 1.3, 0), 0.6, 1.4, 1.6);
+    yield;
     this.ship = ship;
     // iced-in chest (secret) and the singing crystals, drawn live in the near band
     const chz = 0.08, chx = Math.round(W * 0.505);
     this.chestProp = worldProp('treasure_chest', { scale: qscale(0.62 * D.s(chz)), frame: 0 });
+    yield;
     this.chestOpen = worldProp('treasure_chest', { scale: qscale(0.62 * D.s(chz)), frame: 1 });
+    yield;
     const cy = Math.round(D.floorAt(chx, chz)) + 1, cp = this.chestProp;
+    yield;
     this.chest = { x: chx, y: cy, w: cp.w + 10, h: cp.oy + 10, cracks: 0, shake: 0, t: 0, open: false };
     this.chest.rect = { x: chx - cp.ox - 5, y: cy - cp.oy - 8, w: cp.w + 10, h: cp.oy + 10 };
     const sizes = [2, 0, 3, 1];
@@ -870,24 +935,32 @@ export class FjordBiome extends Biome {
       const y = Math.round(D.floorAt(x, z)) + 1;
       return { size: sz, x, y, z, spr, lit: 0, rect: { x: x - spr.ox, y: y - spr.oy, w: spr.w, h: spr.oy }, cx: x, cy: y - Math.round(spr.oy * 0.6) };
     });
-    D.render([{ key: 'day', strip: this.water.day }, { key: 'dusk', strip: this.water.dusk }, { key: 'night', strip: this.water.night }]);
+    yield;
+    yield* D.render$([{ key: 'day', strip: this.water.day }, { key: 'dusk', strip: this.water.dusk }, { key: 'night', strip: this.water.night }]);
     this.bands = new BandSet(D);
+    yield;
     this.hazeY = Math.round(D.hz - 28);
     this.haze = new FogLayer(hazeMask(W, 72, { peak: 0.55, alpha: 0.75 }), 0, this.hazeY);
+    yield;
     this.masks = [0, 1].map((b) => lumaMask(D.bands[b].canvases.day, { gamma: 2.2, gain: 1.05 }));
+    yield;
     this.floor = new Float32Array(W + 1);
-    for (let x = 0; x <= W; x++) this.floor[x] = D.floorAt(x, 0);
+    for (let x = 0; x <= W; x++) { this.floor[x] = D.floorAt(x, 0); yield; }
+    yield;
     // sparkle points on crystals and the ship's ice (glints drawn per frame)
     this.glints = [];
     const gr = new RNG(61);
     for (const q of D.items) {
       if (!q.p?.glow) continue;
       for (let k = 0; k < 4; k++) this.glints.push({ x: q.left + gr.float(0.2, 0.8) * q.p.w, y: q.top + gr.float(0.1, 0.6) * q.p.oy, band: q.band, ph: gr.float(0, 9), p: gr.float(3, 7) });
+      yield;
     }
+    yield;
   }
 
   // Far layers: glacier front and moraine at the end of the fjord; iceberg keels hanging from the surface.
-  buildLayers() {
+  buildLayers() { const it = this.buildLayers$(); for (;;) { const n = it.next(); if (n.done) return n.value; } } // [travel17]
+  *buildLayers$() {
     const W = this.W, H = this.H, pad = 28, D = this.D;
     this.pad = pad;
     const LW = W + pad * 2;
@@ -896,77 +969,108 @@ export class FjordBiome extends Biome {
     // --- far A: glacier terminus wall continuing underwater + side walls
     const yA = this.base, hA = H - yA;
     const mA = new Mask(LW, hA);
+    yield;
     const baseA = hz - yA + 14;
     const rA = ridge(LW, baseA - 44, 26, 0.008, 4.4, 4, 0.3);
+    yield;
     mA.below((x) => rA[x]);
+    yield;
     const gx0 = LW * 0.36, gx1 = LW * 0.68;
     for (let x = Math.round(gx0); x < gx1; x++) {
       const u = (x - gx0) / (gx1 - gx0);
       const bottom = baseA - 60 - Math.sin(u * Math.PI) * 30 + (fbm2(x * 0.05, 2, 2, 3) - 0.5) * 14;
       for (let y = 0; y < bottom; y++) mA.set(x, y, 2);
+      yield;
     }
+    yield;
     for (let i = 0; i < 5; i++) { const px0 = r.float(0.08, 0.92) * LW, top0 = r.float(baseA - 120, baseA - 60); mA.poly([[px0 - 26, baseA], [px0 - 4, top0], [px0 + 6, top0 + 6], [px0 + 30, baseA]]); }
+    yield;
     const palA = stopPalette([[0, '#0c4a6a'], [1, '#3a9ab8']], 6);
+    yield;
     const palG = stopPalette([[0, '#2a7aa0'], [1, '#a8eef8']], 6);
+    yield;
     this.farA = new FogLayer(voxRelief(mA.toCanvas((x, y, v, up) => {
       if (v === 2) return ditherPick(palG, 0.85 - y / 160 + (fbm2(x * 0.4, y * 0.03, 2, 7) - 0.5) * 0.7, x, y);
       if (up <= 1) return pack('#8ae0ee');
       return ditherPick(palA, 0.72 - Math.min(1, up / 70) * 0.55 + (fbm2(x * 0.05, y * 0.05, 2, 2) - 0.5) * 0.35, x, y);
     })), -pad, yA);
+    yield;
     this.farAY = yA;
     // --- far B: iceberg keels hanging from the surface + seabed boulders on the horizon
     const yB = this.base, hB = H - yB;
     const mB = new Mask(LW, hB);
+    yield;
     const baseB = hz - yB + 22;
     const rB = ridge(LW, baseB - 8, 10, 0.012, 6.2, 3);
+    yield;
     mB.below((x) => rB[x]);
+    yield;
     for (let i = 0; i < 26; i++) { const px0 = r.float(0, LW), by = rB[Math.round(clamp(px0, 0, LW))] + 4; mB.ellipse(px0, by - 3, r.float(6, 16), r.float(4, 9)); }
+    yield;
     const keels = [...this.bergs.map((b) => [b.x + pad, b.w * 1.6, b.h * 5.5]), [LW * 0.1, 30, 70], [LW * 0.88, 40, 95]];
     for (const [kx, kw, kd] of keels) {
       mB.poly([[kx - kw, 0], [kx + kw, 0], [kx + kw * 0.6, kd * 0.45], [kx + kw * 0.2, kd * 0.85], [kx - kw * 0.1, kd], [kx - kw * 0.5, kd * 0.6], [kx - kw * 0.9, kd * 0.3]], 3);
+      yield;
     }
+    yield;
     const palB = stopPalette([[0, '#0a3c56'], [1, '#2e8aa6']], 6);
+    yield;
     const palK = stopPalette([[0, '#4ab2d0'], [1, '#c8f6ff']], 6);
+    yield;
     this.farB = new FogLayer(voxRelief(mB.toCanvas((x, y, v, up, left, right) => {
       if (v === 3) return ditherPick(palK, 0.9 - y / 140 + (left ? 0.2 : right ? -0.25 : 0) + (fbm2(x * 0.2, y * 0.05, 2, 9) - 0.5) * 0.5, x, y);
       if (up <= 1) return pack('#9ae4ee');
       if (up === 2) return pack('#4aa0b8');
       return ditherPick(palB, 0.7 - Math.min(1, up / 40) * 0.5 + (fbm2(x * 0.08, y * 0.08, 2, 6) - 0.5) * 0.4, x, y);
     })), -pad, yB);
+    yield;
     this.farBY = yB;
     // giants
     this.belugaV = new VoxelGiant('beluga'); this.sealV = new VoxelGiant('seal');
+    yield;
     this.giantFog = new Map();
     this.giant = { kind: 'seal', x: W * 0.3, y: H * 0.4, dir: 1, v: 16, ph: 0, s: 0.8 };
     this.giantT = 0;
   }
 
-  buildLife() {
+  buildLife() { const it = this.buildLife$(); for (;;) { const n = it.next(); if (n.done) return n.value; } } // [travel17]
+  *buildLife$() {
     const W = this.W, H = this.H, D = this.D;
     const r = new RNG(29);
     this.decor = new DepthDecor(D);
+    yield;
     // kelp under the ice, red & green seaweed tufts and plumose anemones: animated voxel models (coral.js)
     const kq = (z) => qscale(D.s(z), 0.2, 0.4);
+    yield;
     const put = (A, x, z) => this.decor.add({ anim: placeAnim(A, x, Math.round(D.floorAt(x, z)) + 2), z, off: r.int(0, A.n - 1) });
+    yield;
     for (const [xf, z, n] of [[0.17, 0.62, 40], [0.215, 0.74, 34], [0.85, 0.66, 38], [0.8, 0.8, 30], [0.52, 1.0, 30], [0.375, 0.92, 28], [0.68, 0.88, 26], [0.12, 0.3, 46], [0.88, 0.32, 42], [0.46, 1.2, 30], [0.27, 1.1, 26], [0.7, 1.25, 26]]) {
       const x = Math.round(xf * W);
       put(voxAnim('kelp', 1 + (n % 3), 'fjord', n > 36 ? 20 : 15, kq(z), 8), x, z);
+      yield;
     }
+    yield;
     for (const [xf, z] of [[0.08, -0.1], [0.16, 0.05], [0.32, 0.16], [0.37, -0.12], [0.45, 0.12], [0.55, -0.15], [0.62, 0.0], [0.7, 0.14], [0.78, -0.1], [0.9, 0.08], [0.97, -0.05],
       [0.22, 0.5], [0.35, 0.44], [0.52, 0.56], [0.66, 0.5], [0.8, 0.46], [0.3, 0.8], [0.5, 0.7], [0.62, 0.8]]) {
       const x0 = Math.round(xf * W);
       put(voxAnim('seagrass', 1 + r.int(0, 2), r.chance(0.6) ? 'fjord' : 'shallows', 9, kq(z) * 1.3, 8), x0, z);
     }
+    yield;
     this.anemones = [];
     for (const [xf, z, pk] of [[0.13, 0.04, 'cream'], [0.88, 0.16, 'orange'], [0.33, 0.56, 'cream'], [0.7, 0.3, 'orange']]) {
       const x = Math.round(xf * W), y = Math.round(D.floorAt(x, z)) + 1, s = D.s(z);
       put(voxAnim('anemone', 7 + Math.round(xf * 10), 'shallows', 14, kq(z) * 1.3, 8, pk), x, z);
       this.anemones.push({ x, y: y - Math.round(16 * s), z });
+      yield;
     }
+    yield;
     // life above water
     this.penguin = lpPenguinFrames(1); // [phase6:creatures] low-poly penguins + resting seal (canvases carry world .w/.h)
+    yield;
     this.penguinL = lpPenguinFrames(-1);
+    yield;
     this.seal = lpRestSealFrames();
+    yield;
     // ice floes drifting on the surface
     this.floes = [];
     const fr = new RNG(71);
@@ -975,21 +1079,31 @@ export class FjordBiome extends Biome {
       const p = voxSprite('fj_floe' + R, () => floeModel(R * 13, R), { scale: 1 });
       const keel = this.keelSprite(p.w, Math.round(R * 1.4), R);
       this.floes.push({ x: xf * W, v: fr.float(1.2, 2.6), spr: p, keel, R, who, ph: fr.float(0, TAU) });
+      yield;
     }
+    yield;
     // penguins (who 3: three penguins incl. the secret one; who 2: seal)
     const fl = this.floes.find((f) => f.who === 3);
+    yield;
     this.penguins = [-12, -3, 7].map((dx, i) => ({ floe: fl, dx, dir: i === 1 ? -1 : 1, state: 'stand', t: fr.float(1, 4), f: 0, secret: i === 1, y: 0, vx: 0, vy: 0, wx: 0, wy: 0 }));
+    yield;
     // particles
     const sy = this.base;
     this.slush = new Motes(200, { x0: 0, y0: sy + 4, x1: W, y1: H - 40 }, { seed: 3, vx: [-2, 2], vy: [3, 9], sizes: [1, 1, 1, 2], colors: ['#ffffff', '#e8faff', '#c8f0ff'], alpha: [0.3, 0.8], wob: 4 });
+    yield;
     this.iceMotes = new Motes(40, { x0: 0, y0: sy + 10, x1: W, y1: H - 40 }, { seed: 8, vx: [-3, 3], vy: [-2, 2], sizes: [1], colors: ['#ffffff', '#c8fbff', NEON_ICE], alpha: [0.5, 1], wob: 6 });
+    yield;
     this.nearMotes = new Motes(24, { x0: 0, y0: sy + 10, x1: W, y1: H - 30 }, { seed: 9, vx: [-4, 4], vy: [1, 5], sizes: [2, 2, 3], colors: ['#f0fcff', '#d0f4ff'], alpha: [0.12, 0.3], wob: 8 });
+    yield;
     this.airSnow = new Motes(160, { x0: 0, y0: this.top - 10, x1: W, y1: sy + 4 }, { seed: 11, vx: [-6, 6], vy: [12, 26], sizes: [1, 1, 1, 2], colors: ['#ffffff', '#eef6ff'], alpha: [0.5, 1], wob: 5 });
+    yield;
     this.bubbles = new Bubbles(70, '#e8ffff');
+    yield;
     this.emitT = 1;
     // penguin flock diving through the water
     this.flock = null; this.flockT = 6;
     this.birds = [0, 1, 2, 3].map((i) => ({ x: r.float(0, W), y: r.float(this.top + 80, sy - 120), v: r.float(10, 18) * (i % 2 ? -1 : 1), ph: r.float(0, TAU) }));
+    yield;
   }
 
   // Translucent underwater part of an ice floe: an inverted, ragged block with a few brinicles.

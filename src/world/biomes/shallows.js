@@ -83,7 +83,10 @@ export class ShallowsBiome extends Biome {
   }
 
   // ------------------------------------------------------------------ build
-  build(W, H) {
+  build(W, H) { const it = this.steps(W, H); while (!it.next().done); } // [travel17] sync build = all the steps
+  // [travel17] the build a slice at a time (a voyage builds the next ocean over many frames)
+  *steps(W, H) {
+    this.ready = false;
     this.W = W; this.H = H;
     this.base = this.baseSurface(H);
     this.top = worldTop(H);
@@ -91,30 +94,39 @@ export class ShallowsBiome extends Biome {
     this.ys.fill(this.base);
     this.ocBlend = new Blend(); this.waterBlend = new Blend();
     const t0 = performance.now();
-    this.buildSky();
+    yield* this.buildSky$();
     const t1 = performance.now();
     const wo = { y0: this.base - 2, y1: H, levels: 24 };
     this.water = { day: gradientStrip(H, WATER.day, wo), dusk: gradientStrip(H, WATER.dusk, wo), night: gradientStrip(H, WATER.night, wo) };
-    this.buildDepth();
+    yield;
+    yield* this.buildDepth$();
     const t2 = performance.now();
-    this.buildLayers();
+    yield* this.buildLayers$();
     const t3 = performance.now();
     const rh = H - this.base;
     this.raysA = new FogLayer(makeRays(W, rh, { seed: 4, count: 8, sunX: W * 0.78, sunY: -H * 0.8, minW: 10, maxW: 34, len: 0.95, color: '#ffffff', alpha: 0.5, levels: 5 }));
+    yield;
     this.raysB = new FogLayer(makeRays(W, rh, { seed: 9, count: 14, sunX: W * 0.74, sunY: -H * 0.7, minW: 3, maxW: 9, len: 0.75, color: '#ffffff', alpha: 0.6, levels: 4 }));
+    yield;
     this.caustics = new Caustics({ tw: 150, th: 44, cx: 11, cy: 5, seed: 11, color: '#fffbe2', thick: 0.65, core: 0.75, rim: 0.22 });
+    yield;
     this.shimmer = this.makeShimmer();
-    this.buildLife();
+    yield;
+    yield* this.buildLife$();
     this.buildMs = { sky: Math.round(t1 - t0), depth: Math.round(t2 - t1), layers: Math.round(t3 - t2), life: Math.round(performance.now() - t3) }; // build profile (debug)
     this.fresh = true;
+    this.ready = true;
   }
 
-  buildSky() {
+  buildSky() { const it = this.buildSky$(); for (;;) { const n = it.next(); if (n.done) return n.value; } } // [travel17]
+  *buildSky$() {
     const W = this.W, base = this.base, top = this.top;
     this.sky = new SkyDome({ W, top, base, seed: 5, stops: SKY, stars: 70, haze: 0.18, clouds: { n: 14, size: [20, 58], y: [top + 26, base - 22], scale: 2 } });
+    yield;
     const so = { levels: 10, y0: 0, y1: base + 4 - top };
     const oh = this.sky.h;
     this.overcast = { day: gradientStrip(oh, OVERCAST.day, so), dusk: gradientStrip(oh, OVERCAST.dusk, so), night: gradientStrip(oh, OVERCAST.night, so) };
+    yield;
     // voxel horizon: palm island, lighthouse islet, sea stacks, a sailboat drifting far out, a channel buoy
     const hz = (k) => ({ day: [SKYHZ.day, k], dusk: [SKYHZ.dusk, k + 0.08], night: [SKYHZ.night, Math.min(0.85, k + 0.3)] });
     this.horizon = [
@@ -122,12 +134,18 @@ export class ShallowsBiome extends Biome {
       { spr: palmIsland(4, hz(0.16)), x: Math.round(W * 0.36), y: base + 3, blend: new Blend() },
       { spr: lighthouseIslet(7, hz(0.3)), x: Math.round(W * 0.86), y: base + 2, blend: new Blend(), lighthouse: true },
     ];
+    yield;
     this.sail = { spr: sailboat(9, hz(0.4)), x: W * 0.62, v: 1.6, blend: new Blend() };
+    yield;
     this.buoy = { spr: markerBuoy('#e2483a'), x: Math.round(W * 0.2) };
+    yield;
     const cr = new RNG(51);
     this.gulls = [0, 1, 2, 3, 4, 5].map((i) => ({ x: cr.float(0, W), y: cr.float(top + 40, base - 12), v: cr.float(10, 18) * (i % 2 ? -1 : 1), ph: cr.float(0, TAU), s: i < 2 ? 2 : 1 }));
+    yield;
     this.rainTile = { day: streakTile(96, 48, 22, '#dce6f0', { seed: 3, alpha: 0.8 }), night: streakTile(96, 48, 22, '#7a8aa0', { seed: 3, alpha: 0.8 }) };
+    yield;
     this.rainTile2 = streakTile(128, 64, 14, '#ffffff', { seed: 8, len: [4, 8], alpha: 0.6 });
+    yield;
   }
 
   makeShimmer() {
@@ -149,12 +167,14 @@ export class ShallowsBiome extends Biome {
   }
 
   // Perspective voxel seabed + props at many depths, baked into near / mid / far bands.
-  buildDepth() {
+  buildDepth() { const it = this.buildDepth$(); for (;;) { const n = it.next(); if (n.done) return n.value; } } // [travel17]
+  *buildDepth$() {
     const W = this.W, H = this.H;
     const D = new DepthScene(W, H, { yFront: H - 72, yFar: H - 166, pad: 24, zFar: 1.85, fogStart: -0.3, fog: 0.9 });
+    yield;
     this.D = D;
     const dockX = W - 260;
-    D.terrain({
+    yield* D.terrain$({
       micro: { ripple: 1, pebble: 1, shell: 1.4 }, // [phase7:env]
       cell: 2, dz: 0.02, hstep: 2, ambient: 0.66, diffuse: 0.42, ao: 0.07, jitter: 0.05, wall: 0.86, side: 0.92, crest: 1.06,
       height: (X, z) => {
@@ -188,28 +208,41 @@ export class ShallowsBiome extends Biome {
       const p = worldProp(id, { scale: qscale(base * D.s(z)), variant });
       return D.add({ sprite: p, x: Math.round(xf * W), z, id, ...extra });
     };
+    yield;
     // living reef: voxel coral bommies and single corals at many depths (all front-facing, world camera)
     this.coralGlow = [];
     const glowOf = (it) => { if (it.sprite.night) this.coralGlow.push({ night: it.sprite.night, x: it.x - it.sprite.ox, y: it.y - it.sprite.oy, band: it.band, z: it.z }); return it; };
     const reef = (seed, xf, z, opts = {}, flip = false) => glowOf(D.add({ sprite: reefSprite(seed, 'shallows', opts, qscale(1.5 * D.s(z), 0.1, 0.3), flip), x: Math.round(xf * W), z, id: 'reef' }));
+    yield;
     const coral = (kind, seed, xf, z, size) => glowOf(D.add({ sprite: coralSprite(kind, seed, 'shallows', size, qscale(1.5 * D.s(z), 0.1, 0.3)), x: Math.round(xf * W), z, id: 'coral_' + kind }));
+    yield;
     // near
     reef(101, 0.335, 0.26, { w: 116, h: 74, d: 46 });
+    yield;
     reef(102, 0.085, 0.18, { w: 84, h: 60, d: 38 });
+    yield;
     coral('brain', 111, 0.452, 0.05, 15); coral('staghorn', 112, 0.47, 0.22, 20); coral('fan', 113, 0.268, 0.07, 18); coral('tube', 114, 0.41, 0.31, 16);
+    yield;
     coral('staghorn', 115, 0.635, 0.3, 17); coral('bubble', 116, 0.505, -0.06, 12); coral('pillar', 117, 0.705, 0.24, 14); coral('whip', 118, 0.2, -0.04, 12);
+    yield;
     // small colonies scattered over the near sand (fish-scale variety)
     for (const [kind, seed, xf, z, size] of [['brain', 151, 0.565, -0.2, 7], ['bubble', 152, 0.665, 0.12, 7], ['staghorn', 153, 0.775, -0.06, 9], ['tube', 154, 0.84, 0.16, 8], ['brain', 155, 0.73, 0.24, 8],
-      ['pillar', 156, 0.515, 0.2, 7], ['fan', 157, 0.86, -0.14, 9], ['staghorn', 158, 0.02, 0.0, 9], ['bubble', 159, 0.29, -0.18, 6], ['brain', 160, 0.425, -0.16, 6], ['whip', 161, 0.62, 0.2, 9]]) coral(kind, seed, xf, z, size);
+      ['pillar', 156, 0.515, 0.2, 7], ['fan', 157, 0.86, -0.14, 9], ['staghorn', 158, 0.02, 0.0, 9], ['bubble', 159, 0.29, -0.18, 6], ['brain', 160, 0.425, -0.16, 6], ['whip', 161, 0.62, 0.2, 9]]) { coral(kind, seed, xf, z, size); yield; }
     // mid
     reef(121, 0.17, 0.5, { w: 140, h: 84, d: 54 });
+    yield;
     reef(122, 0.48, 0.47, { w: 124, h: 80, d: 50 });
+    yield;
     reef(123, 0.92, 0.6, { w: 132, h: 86, d: 52 });
+    yield;
     coral('fan', 124, 0.065, 0.45, 24); coral('staghorn', 125, 0.57, 0.6, 24); coral('table', 126, 0.31, 0.64, 22); coral('tube', 127, 0.8, 0.52, 18); coral('fan', 128, 0.72, 0.63, 22);
+    yield;
     // far
     // (far bommies share three models at two sizes, mirrored for variety)
-    for (const [seed, xf, z, fl] of [[131, 0.13, 0.92, 0], [132, 0.42, 1.0, 0], [133, 0.75, 0.94, 1], [131, 0.6, 1.38, 1], [132, 0.25, 1.42, 1], [133, 0.92, 1.34, 0]]) reef(seed, xf, z, { w: 150, h: 90, d: 56 }, !!fl);
-    for (const [kind, seed, xf, z, size] of [['staghorn', 141, 0.33, 0.76, 26], ['fan', 142, 0.68, 0.8, 26], ['table', 143, 0.86, 0.84, 24], ['fan', 144, 0.985, 0.76, 26], ['staghorn', 145, 0.2, 1.06, 28], ['tube', 146, 0.55, 1.12, 22]]) coral(kind, seed, xf, z, size);
+    for (const [seed, xf, z, fl] of [[131, 0.13, 0.92, 0], [132, 0.42, 1.0, 0], [133, 0.75, 0.94, 1], [131, 0.6, 1.38, 1], [132, 0.25, 1.42, 1], [133, 0.92, 1.34, 0]]) { reef(seed, xf, z, { w: 150, h: 90, d: 56 }, !!fl); yield; }
+    yield;
+    for (const [kind, seed, xf, z, size] of [['staghorn', 141, 0.33, 0.76, 26], ['fan', 142, 0.68, 0.8, 26], ['table', 143, 0.86, 0.84, 24], ['fan', 144, 0.985, 0.76, 26], ['staghorn', 145, 0.2, 1.06, 28], ['tube', 146, 0.55, 1.12, 22]]) { coral(kind, seed, xf, z, size); yield; }
+    yield;
     const P = [
       // near (in front of the mid fish)
       ['rock_small', 0.035, 0.12, 0.9], ['rock_big', 0.235, 0.22, 1.0],
@@ -220,35 +253,50 @@ export class ShallowsBiome extends Biome {
       ['rock_arch', 0.13, 0.98, 1.3], ['rock_big', 0.455, 1.18, 1.5], ['rock_small', 0.635, 1.32, 1.6], ['rock_big', 0.22, 1.5, 1.7], ['rock_arch', 0.82, 1.5, 1.8],
     ];
     // newer decor props join the reef when the prop library has them
-    for (const e of [['diver_helmet', 0.155, 0.02, 0.6], ['tiki_head', 0.905, 0.52, 0.75], ['moai_head', 0.27, 1.28, 1.3], ['pirate_ship', 0.6, 1.62, 1.4], ['fish_statue', 0.975, 1.12, 0.9]]) if (PROPS[e[0]]) P.push(e);
-    const placed = P.map(([id, xf, z, base, v]) => place(id, xf, z, base, v || 0));
+    for (const e of [['diver_helmet', 0.155, 0.02, 0.6], ['tiki_head', 0.905, 0.52, 0.75], ['moai_head', 0.27, 1.28, 1.3], ['pirate_ship', 0.6, 1.62, 1.4], ['fish_statue', 0.975, 1.12, 0.9]]) { if (PROPS[e[0]]) P.push(e); yield; }
+    const placed = [];
+    for (const [id, xf, z, base, v] of P) { placed.push(place(id, xf, z, base, v || 0)); yield; } // [travel17] one prop a slice
+    yield;
     const find = (id, band) => placed.find((q) => q.id === id && (band === undefined || q.band === band));
+    yield;
     // the hidden cave: a dark crevice painted at the foot of the near boulder
     const rock = find('rock_big', 0);
+    yield;
     const rs = D.s(rock.z);
     this.cave = { cx: Math.round(rock.x + 4 * rs), cy: Math.round(rock.y - 8 * rs) };
     rock.painted = (g, dx, dy) => this.paintCave(g, dx + rock.sprite.ox + 4 * rs, dy + rock.sprite.oy - 8 * rs);
+    yield;
     this.cave.rect = { x: this.cave.cx - 6, y: this.cave.cy - 5, w: 12, h: 10 };
     const bottle = find('message_bottle');
+    yield;
     this.bottle = { x: bottle.x - 14, y: bottle.y - 14, w: 28, h: 16, cx: bottle.x, cy: bottle.y - 8 };
     const boat = find('sunken_boat');
+    yield;
     const bs = D.s(boat.z);
     this.lantern = { x: Math.round(boat.x + 30 * bs), y: Math.round(boat.y - 58 * bs), z: boat.z };
     this.vent = { x: Math.round(boat.x - 40 * bs), y: boat.y - 4 };
     // the sandcastle secret (drawn live in the near band)
     const cz = 0.1, cxp = Math.round(W * 0.545);
     this.castleProp = worldProp('sandcastle', { scale: qscale(0.75 * D.s(cz)) });
+    yield;
     const cy = Math.round(D.floorAt(cxp, cz)) + 1, cp = this.castleProp;
+    yield;
     this.castle = { x: cxp, y: cy, z: cz, rect: { x: cxp - cp.ox + 8, y: cy - cp.oy + 4, w: cp.w - 16, h: cp.oy - 6 }, clicks: 0, shake: 0, state: 'intact', t: 0 };
     this.chest = worldProp('treasure_chest', { scale: 0.6, frame: 1 });
+    yield;
     this.heap = voxRelief(this.makeHeap(), { cell: 1, maxD: 5, depth: () => 5 });
-    D.render([{ key: 'day', strip: this.water.day }, { key: 'dusk', strip: this.water.dusk }, { key: 'night', strip: this.water.night }]);
+    yield;
+    yield* D.render$([{ key: 'day', strip: this.water.day }, { key: 'dusk', strip: this.water.dusk }, { key: 'night', strip: this.water.night }]);
     this.bands = new BandSet(D);
+    yield;
     this.hazeY = Math.round(D.hz - 26);
     this.haze = new FogLayer(hazeMask(W, 70, { peak: 0.55, alpha: 0.75 }), 0, this.hazeY);
+    yield;
     this.masks = [0, 1].map((b) => lumaMask(D.bands[b].canvases.day, { gamma: 2.2, gain: 1.1 }));
+    yield;
     this.floor = new Float32Array(W + 1);
-    for (let x = 0; x <= W; x++) this.floor[x] = D.floorAt(x, 0);
+    for (let x = 0; x <= W; x++) { this.floor[x] = D.floorAt(x, 0); yield; }
+    yield;
   }
 
   floorAt(x, z = 0) { return this.D ? this.D.floorAt(x, z) : super.floorAt(x); }
@@ -282,7 +330,8 @@ export class ShallowsBiome extends Biome {
   }
 
   // Far reef walls & coral silhouettes behind the floor's foggy horizon.
-  buildLayers() {
+  buildLayers() { const it = this.buildLayers$(); for (;;) { const n = it.next(); if (n.done) return n.value; } } // [travel17]
+  *buildLayers$() {
     const W = this.W, H = this.H, pad = 28, D = this.D;
     this.pad = pad;
     const LW = W + pad * 2;
@@ -296,11 +345,17 @@ export class ShallowsBiome extends Biome {
     const A = [];
     const spires = [[0.04, 46, 8], [0.17, 70, 10], [0.3, 40, 7], [0.78, 76, 11], [0.9, 52, 9], [0.99, 38, 7], [0.44, 34, 6]];
     spires.forEach(([xf, h, w], i) => A.push({ spr: render(spire(40 + i, { h, w, d: 16, lean: r.float(-0.08, 0.08), cols: ROCK, crown: CORAL }), { yaw: i % 2 ? 22 : -22 }), x: xf * LW, y: baseA + r.int(-2, 4), z: 1 + r.next() * 0.1 }));
+    yield;
     A.push({ spr: render(rockArch(51, { span: 46, h: 58, th: 7, d: 14, cols: ROCK, crown: CORAL }), { yaw: 18 }), x: LW * 0.6, y: baseA + 2, z: 0.95 });
+    yield;
     A.push({ spr: render(mesa(52, { h: 26, w: 30, d: 18, cols: ROCK, crown: CORAL }), { yaw: -16 }), x: LW * 0.35, y: baseA + 4, z: 0.9 });
+    yield;
     A.push({ spr: render(mesa(53, { h: 18, w: 22, d: 16, cols: ROCK, crown: CORAL }), { yaw: 20 }), x: LW * 0.69, y: baseA + 6, z: 0.4 });
+    yield;
     const ridgeA = ridgeStrip(54, LW, { amp: 8, base: 7, d: 14, cols: ['#8a9ab4', '#7a8aa6', '#6a7a98'], rocks: { cols: ROCK } });
+    yield;
     this.farA = new FogLayer(strip(LW, hA, A, { canvas: ridgeA.canvas, x: Math.round(LW / 2 - ridgeA.ox), y: Math.round(baseA + 14 - ridgeA.oy) }), -pad, yA);
+    yield;
     this.farAY = yA;
     // --- far B: the horizon coral garden: voxel corals, sea fans, boulders and kelp columns on a sand ridge
     const yB = Math.round(hz - 130), hB = H - yB;
@@ -308,60 +363,85 @@ export class ShallowsBiome extends Biome {
     const B = [];
     const kinds = ['staghorn', 'fan', 'brain', 'tube', 'table', 'pillar', 'staghorn', 'fan'];
     for (let i = 0; i < 46; i++) { const j = r.int(0, kinds.length - 1); B.push({ spr: coralSprite(kinds[j], 200 + j, 'shallows', r.pick([12, 18]), 0.7), x: r.float(0, LW), y: baseB + r.int(-3, 3), z: r.next() }); }
-    for (let i = 0; i < 5; i++) B.push({ spr: reefSprite(220, 'shallows', { w: 110, h: 64, d: 40 }, 0.6, i % 2 === 1), x: r.float(0, LW), y: baseB + r.int(0, 3), z: r.next() });
+    yield;
+    for (let i = 0; i < 5; i++) { B.push({ spr: reefSprite(220, 'shallows', { w: 110, h: 64, d: 40 }, 0.6, i % 2 === 1), x: r.float(0, LW), y: baseB + r.int(0, 3), z: r.next() }); yield; }
+    yield;
     for (const [id, nv] of [['rock_big', 1], ['rock_small', 1], ['starfish_rock', 1], ['rock_big', 1]]) { const sp = propSprite(id, r.pick([0.4, 0.5]), r.int(0, nv - 1)); if (sp) B.push({ spr: sp, x: r.float(0, LW), y: baseB + r.int(-3, 3), z: r.next() }); }
-    for (let i = 0; i < 10; i++) B.push({ spr: kelpColumn(60 + i, r.int(30, 60), ['#3e6a2a', '#5a8a34', '#86b048'], 1), x: r.float(0, LW), y: baseB + r.int(-2, 2), z: r.float(0.6, 1) });
+    yield;
+    for (let i = 0; i < 10; i++) { B.push({ spr: kelpColumn(60 + i, r.int(30, 60), ['#3e6a2a', '#5a8a34', '#86b048'], 1), x: r.float(0, LW), y: baseB + r.int(-2, 2), z: r.float(0.6, 1) }); yield; }
+    yield;
     const ridgeB = ridgeStrip(55, LW, { amp: 6, base: 5, d: 12, cols: ['#e2cc98', '#d0b884', '#bca674'], rocks: { cols: ['#8a8a9a', '#a09aa8'] } });
+    yield;
     this.farB = new FogLayer(strip(LW, hB, B, { canvas: ridgeB.canvas, x: Math.round(LW / 2 - ridgeB.ox), y: Math.round(baseB + 10 - ridgeB.oy) }), -pad, yB);
+    yield;
     this.farBY = yB;
     // giants
     this.whaleV = new VoxelGiant('whale');
+    yield;
     this.turtleV = new VoxelGiant('turtle', { lazy: true }); // [turtle17] sea turtles: green, hawksbill, loggerhead
+    yield;
     this.giantVs = {};
     this.giantFog = new FogCache();
+    yield;
     this.giant = { kind: 'turtle', x: W * 0.62, y: H * 0.36, dir: -1, v: 11, ph: 0, s: 0.8 };
     this.giantT = 0;
   }
 
-  buildLife() {
+  buildLife() { const it = this.buildLife$(); for (;;) { const n = it.next(); if (n.done) return n.value; } } // [travel17]
+  *buildLife$() {
     const W = this.W, H = this.H, D = this.D;
     const r = new RNG(9);
     this.decor = new DepthDecor(D);
+    yield;
     // voxel kelp forests at several depths (pre-rendered sway frames, fog tinted per depth)
     const sc = (z, step = 0.2) => qscale(1.5 * D.s(z), step, 0.3);
+    yield;
     const life = (kind, seed, size, z, x, palKey = null, frames = 8) => {
       const A = voxAnim(kind, seed, 'shallows', size, sc(z), frames, palKey);
       const it = this.decor.add({ anim: placeAnim(A, x, Math.round(D.floorAt(x, z)) + 1), z, off: r.int(0, A.n - 1) });
       if (A.nights[0]) this.coralGlow.push({ anim: it.anim, off: it.off, band: it.band, z });
       return it;
     };
+    yield;
     for (const [xf, z, n] of [[0.03, 0.78, 3], [0.07, 0.92, 3], [0.115, 0.72, 2], [0.83, 0.82, 3], [0.875, 0.7, 3], [0.93, 0.95, 2], [0.56, 1.02, 3], [0.5, 0.86, 2], [0.62, 0.68, 2], [0.075, 0.4, 2], [0.905, 0.42, 2], [0.25, 1.1, 3], [0.4, 1.25, 3]]) {
       for (let i = 0; i < n; i++) {
         const zz = z + (i - (n - 1) / 2) * 0.03, x = Math.round(xf * W + (i - (n - 1) / 2) * 9 * D.s(z) + r.int(-2, 2));
         life('kelp', 1 + ((i + Math.round(xf * 10)) % 2), 14, zz, x);
       }
+      yield;
     }
+    yield;
     // sea grass meadows at many depths
     const spots = [[0.06, -0.12], [0.15, -0.15], [0.2, 0.05], [0.248, 0.16], [0.285, 0.1], [0.4, 0.12], [0.447, -0.05], [0.505, -0.18], [0.585, 0.15], [0.62, 0.0], [0.735, 0.14], [0.77, -0.1], [0.83, 0.02], [0.9, -0.12], [0.96, 0.2], [0.69, -0.2],
       [0.12, 0.42], [0.27, 0.5], [0.41, 0.4], [0.58, 0.55], [0.72, 0.48], [0.97, 0.5], [0.2, 0.8], [0.35, 0.9], [0.48, 0.75], [0.66, 0.9], [0.8, 0.75], [0.9, 0.85]];
-    for (const [xf, z] of spots) life('seagrass', 1 + r.int(0, 1), 8, z, Math.round(xf * W));
+    for (const [xf, z] of spots) { life('seagrass', 1 + r.int(0, 1), 8, z, Math.round(xf * W)); yield; }
+    yield;
     // anemones and soft tree corals sway in the current
     this.anemones = [];
     for (const [xf, z, pal, glow] of [[0.385, 0.02, 'pink', '#ff7ab0'], [0.18, -0.08, 'teal', '#5affea'], [0.79, 0.1, 'orange', '#ffb070'], [0.56, 0.5, 'purple', '#c08aff'], [0.66, -0.16, 'magenta', '#ff8af0'], [0.28, 0.36, 'yellow', '#ffe27a']]) {
       const x = Math.round(xf * W);
       const it = life('anemone', 3 + Math.round(xf * 20), 9, z, x, pal);
       this.anemones.push({ x, y: it.anim.y + it.anim.frames[0].height - 4, z, glow });
+      yield;
     }
-    for (const [xf, z, pal] of [[0.125, 0.1, 'red'], [0.548, 0.28, 'orange'], [0.745, 0.32, 'pink'], [0.43, 0.58, 'cream'], [0.99, 0.08, 'purple'], [0.3, 0.86, 'yellow']]) life('soft', 7 + Math.round(xf * 30), 12, z, Math.round(xf * W), pal);
+    yield;
+    for (const [xf, z, pal] of [[0.125, 0.1, 'red'], [0.548, 0.28, 'orange'], [0.745, 0.32, 'pink'], [0.43, 0.58, 'cream'], [0.99, 0.08, 'purple'], [0.3, 0.86, 'yellow']]) { life('soft', 7 + Math.round(xf * 30), 12, z, Math.round(xf * W), pal); yield; }
+    yield;
     // critters
     this.crabSpr = [lpCrabFrames('#e0502e'), lpCrabFrames('#f09a3a')]; // [phase6:creatures] low-poly crabs
+    yield;
     this.crabs = [[0.52, -0.05], [0.86, 0.06], [0.25, -0.2]].map(([xf, z], i) => ({ x: xf * W, z, dir: i % 2 ? -1 : 1, state: 'walk', t: r.float(1, 4), f: 0, kind: i % 2, ft: 0 }));
+    yield;
     // particles
     const sy = this.base;
     this.plankton = new Motes(110, { x0: 0, y0: sy + 4, x1: W, y1: H - 60 }, { seed: 3, vx: [-3, 3], vy: [-2.5, 1.5], sizes: [1, 1, 1, 2], colors: ['#d8fff4', '#ffffff', '#b8f0ff', '#fff6c8'], alpha: [0.25, 0.75], wob: 5 });
+    yield;
     this.nearMotes = new Motes(26, { x0: 0, y0: sy + 10, x1: W, y1: H - 30 }, { seed: 8, vx: [-5, 5], vy: [-3, 3], sizes: [2, 2, 3], colors: ['#e8fff8', '#c8f4ff'], alpha: [0.12, 0.3], wob: 8 });
+    yield;
     this.glowPlankton = new Motes(34, { x0: 0, y0: sy + 20, x1: W, y1: H - 50 }, { seed: 12, vx: [-4, 4], vy: [-2, 2], sizes: [1], colors: ['#7affea', '#9ad8ff', '#c8ff9a'], alpha: [0.5, 1], wob: 6 });
+    yield;
     this.bubbles = new Bubbles(90);
+    yield;
     this.emitT = { cave: 1, boat: 2, anem: 3, sand: 1.5 };
     this.drops = [];
     this.hint = { t: 0 };

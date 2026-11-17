@@ -489,3 +489,20 @@ that feels hand-made."
 - The catch moment has no light rays, spotlight glows, lens flares or light streaks (FISH ON, the landing finale,
   I GOT IT, boss VICTORY / phase cards, box catches, the catch card): `drawRays` is gone. The catch card backdrop is
   the sky gradient with soft drifting bokeh and a faint rarity tint.
+
+## Ocean voyage transition [travel17]
+- `src/world/voyage.js` (`game.voyage`, made by Ocean): `ocean.travel(id, done)` hands the trip to `voyage.start()`; the old
+  vertical scroll stays as a fallback. `ocean.travelState` gains `{voyage: true, live, hideBoat}`: while `live` the normal
+  world pipeline renders (departure, the hidden arrival capture, the settle) and `waterLevel()`, `Boat.visible`, the camera,
+  floaters and peer boats treat it as open water; input, HUD, quests, boss and the seal guide stay blocked for the whole trip.
+- Beats: depart (live: `boat.pilot` steers the real boat off to the right, `camera.drive = {cx, cy, z}` pulls back to the
+  whole-world wide shot), sea (screen-space scene drawn by `Voyage.drawOver` after the world: origin postcard leaves with
+  parallax, palette origin -> open sea -> destination, voxel clouds / islands / sailboats / buoys, gulls, weather, a virtual
+  close-up zoom on the boat; the destination builds through `biome.steps()` and is grabbed live under the overlay), arrive
+  (destination postcard glides in, landmarks rise), settle (live again, postcard dissolves, camera eases to the fishing zoom).
+  `Voyage.drawUi` (UI layer): route chart + compass in the letterbox, skip glyph, the 3D voxel title (letters drop in;
+  gold "NEW OCEAN!" + confetti on a first visit). Skippable (click / Esc / Space fast-forward) after the first trip ever;
+  repeat trips are shorter. `voyage.sail(destId, onArrive)` is the Lab / Workshop variant (cross-fades into the dock scene).
+- Biome builds are time-sliced: every biome has `*steps(W, H)` (sync `build()` runs all steps; sub-builders have `$`
+  generator twins), `DepthScene.terrain$` / `render$` in scenery.js yield inside their loops. `state.voyage = {trips, seen}`.
+  Event 'travel' {to, from, first} fires on arrival.

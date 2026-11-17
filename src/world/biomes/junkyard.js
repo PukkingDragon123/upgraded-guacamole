@@ -187,30 +187,41 @@ export class JunkyardBiome extends Biome {
   secrets() { return this.game?.state?.secrets || {}; }
 
   // ------------------------------------------------------------------ build
-  build(W, H) {
+  build(W, H) { const it = this.steps(W, H); while (!it.next().done); } // [travel17] sync build = all the steps
+  // [travel17] the build a slice at a time (a voyage builds the next ocean over many frames)
+  *steps(W, H) {
+    this.ready = false;
     this.W = W; this.H = H;
     this.base = this.baseSurface(H);
     this.top = worldTop(H);
     this.ys = new Int16Array(W + 2);
     this.ys.fill(this.base);
     this.waterBlend = new Blend();
-    this.buildSky();
+    yield* this.buildSky$();
     const wo = { y0: this.base - 2, y1: H, levels: 24 };
     this.water = { day: gradientStrip(H, WATER.day, wo), dusk: gradientStrip(H, WATER.dusk, wo), night: gradientStrip(H, WATER.night, wo) };
+    yield;
     this.fx = new ScreenFX();
-    this.buildDepth();
-    this.buildLayers();
+    yield;
+    yield* this.buildDepth$();
+    yield* this.buildLayers$();
     const rh = H - this.base;
     this.rays = new FogLayer(makeRays(W, rh, { seed: 14, count: 7, sunX: W * 0.35, sunY: -H * 0.9, minW: 8, maxW: 26, len: 0.7, color: '#ffffff', alpha: 0.45, levels: 4 }));
+    yield;
     this.sheen = this.makeSheen();
+    yield;
     this.caustics = new Caustics({ tw: 128, th: 40, cx: 8, cy: 4, seed: 6, color: '#e8ffd8', thick: 0.6, core: 0.6, rim: 0.2 });
-    this.buildLife();
+    yield;
+    yield* this.buildLife$();
     this.fresh = true;
+    this.ready = true;
   }
 
-  buildSky() {
+  buildSky() { const it = this.buildSky$(); for (;;) { const n = it.next(); if (n.done) return n.value; } } // [travel17]
+  *buildSky$() {
     const W = this.W, base = this.base, top = this.top;
     this.sky = new SkyDome({ W, top, base, seed: 17, stops: SKY, stars: 24, haze: 0.12, clouds: { n: 11, size: [26, 64], y: [top + 30, base - 26], scale: 2, speed: 0.8, pals: ['day', 'dusk', 'night', 'rain'] } });
+    yield;
     // (phase 3: the smog has cleared - eco tech reclaimed the scrapyard, so the clouds are plain white again)
     const hz = (k) => ({ day: [SKYHZ.day, k], dusk: [SKYHZ.dusk, k + 0.08], night: [SKYHZ.night, Math.min(0.85, k + 0.32)] });
     this.horizon = [
@@ -219,14 +230,17 @@ export class JunkyardBiome extends Biome {
       { spr: gantryCrane(23, hz(0.36)), x: Math.round(W * 0.52), y: base + 2, crane: true },
       { spr: containerStack(25, hz(0.32)), x: Math.round(W * 0.8), y: base + 2 },
     ];
+    yield;
     for (const h of this.horizon) { h.blend = new Blend(); if (h.full) h.x = h.spr.ox - 12; }
     const f = this.horizon[1];
     this.stacks = Object.entries(f.spr.anchors).filter(([k]) => k.startsWith('stack')).map(([, a]) => ({ x: f.x - f.spr.ox + a[0], y: f.y - f.spr.oy + a[1] }));
+    yield;
     const c = this.horizon[2];
     this.blinkers = ['lampL', 'lampR'].map((k) => ({ x: c.x - c.spr.ox + c.spr.anchors[k][0], y: c.y - c.spr.oy + c.spr.anchors[k][1] }));
     this.smoke = [];
     const r = new RNG(17);
-    for (let i = 0; i < 60; i++) this.smoke.push({ s: i % this.stacks.length, k: r.next(), ph: r.float(0, TAU), w: r.float(0.7, 1.3) });
+    for (let i = 0; i < 60; i++) { this.smoke.push({ s: i % this.stacks.length, k: r.next(), ph: r.float(0, TAU), w: r.float(0.7, 1.3) }); yield; }
+    yield;
   }
 
   makeSheen() {
@@ -244,13 +258,15 @@ export class JunkyardBiome extends Biome {
   }
 
   // Perspective voxel silt / circuit-board floor rising into voxel junk hills, junk props at many depths.
-  buildDepth() {
+  buildDepth() { const it = this.buildDepth$(); for (;;) { const n = it.next(); if (n.done) return n.value; } } // [travel17]
+  *buildDepth$() {
     const W = this.W, H = this.H;
     const D = new DepthScene(W, H, { yFront: H - 70, yFar: H - 164, pad: 24, zFar: 1.85, fogStart: -0.3, fog: 0.84 });
+    yield;
     this.D = D;
     const dockX = W - 260;
     const JUNK = [[138, 86, 52], [112, 116, 124], [60, 62, 70], [196, 186, 156], [70, 96, 150], [150, 60, 54], [96, 120, 90], [168, 150, 96]];
-    D.terrain({
+    yield* D.terrain$({
       micro: { ripple: 0.7, pebble: 1.5, shell: 2, pebbles: [[120, 124, 132], [160, 150, 120], [96, 80, 64], [70, 74, 82]], shells: [[220, 60, 50], [60, 140, 220], [230, 200, 60]] }, // [phase7:env] bolts, washers, bottle caps
       cell: 2, dz: 0.02, hstep: 2, ambient: 0.74, diffuse: 0.48, ao: 0.08, jitter: 0.08, wall: 0.78, side: 0.88, crest: 1.1,
       height: (X, z) => {
@@ -289,19 +305,28 @@ export class JunkyardBiome extends Biome {
       const p = worldProp(id, { scale: qscale(base * D.s(z)), variant });
       return D.add({ sprite: p, x: Math.round(xf * W), z, id });
     };
+    yield;
     // rusty circuit-coral reefs grown over the scrap (front-facing voxel bommies with LED growth tips)
     this.coralGlow = [];
     const glowOf = (it) => { if (it.sprite.night) this.coralGlow.push({ night: it.sprite.night, x: it.x - it.sprite.ox, y: it.y - it.sprite.oy, band: it.band, z: it.z }); return it; };
     const kz = (z) => qscale(1.5 * D.s(z), 0.1, 0.3);
+    yield;
     const reef = (seed, xf, z, o, flip = false) => glowOf(D.add({ sprite: reefSprite(seed, 'junkyard', o, kz(z), flip), x: Math.round(xf * W), z, id: 'reef' }));
+    yield;
     const coral = (kind, seed, xf, z, size) => glowOf(D.add({ sprite: coralSprite(kind, seed, 'junkyard', size, kz(z)), x: Math.round(xf * W), z, id: 'coral_' + kind }));
+    yield;
     reef(301, 0.515, 0.22, { w: 104, h: 70, d: 42 });
+    yield;
     reef(302, 0.745, 0.38, { w: 120, h: 78, d: 48 });
+    yield;
     reef(303, 0.8, 0.76, { w: 140, h: 86, d: 52 });
+    yield;
     reef(301, 0.33, 1.2, { w: 104, h: 70, d: 42 }, true);
+    yield;
     reef(302, 0.66, 1.42, { w: 120, h: 78, d: 48 }, true);
+    yield;
     for (const [kind, seed, xf, z, size] of [['circuit', 311, 0.618, 0.1, 15], ['circuit', 312, 0.31, 0.24, 13], ['whip', 313, 0.7, 0.02, 12], ['tube', 314, 0.9, 0.3, 13], ['circuit', 315, 0.07, 0.36, 14],
-      ['circuit', 316, 0.25, 0.62, 18], ['staghorn', 317, 0.555, 0.66, 18], ['table', 318, 0.06, 0.48, 16], ['circuit', 319, 0.93, 0.6, 18], ['fan', 320, 0.37, 0.92, 20], ['circuit', 321, 0.15, 1.05, 22]]) coral(kind, seed, xf, z, size);
+      ['circuit', 316, 0.25, 0.62, 18], ['staghorn', 317, 0.555, 0.66, 18], ['table', 318, 0.06, 0.48, 16], ['circuit', 319, 0.93, 0.6, 18], ['fan', 320, 0.37, 0.92, 20], ['circuit', 321, 0.15, 1.05, 22]]) { coral(kind, seed, xf, z, size); yield; }
     const P = [
       // near
       ['crt_monitor', 0.375, 0.12, 0.85], ['keyboard_slab', 0.255, 0.04, 0.6],
@@ -316,13 +341,18 @@ export class JunkyardBiome extends Biome {
     ];
     for (const e of [['phone_booth', 0.255, 0.5, 0.8], ['retro_tv', 0.585, 0.58, 0.7], ['toilet', 0.47, 0.64, 0.7], ['arcade_cabinet', 0.12, 0.96, 0.95], ['bathtub', 0.8, 1.14, 1.0],
       ['traffic_cone', 0.37, 0.72, 0.65], ['giant_sneaker', 0.69, 0.08, 0.55], ['toaster', 0.315, 0.16, 0.5], ['jukebox', 0.94, 0.8, 0.9], ['sunken_pc', 0.06, 0.62, 0.8]]) if (PROPS[e[0]]) P.push(e);
-    const placed = P.map(([id, xf, z, base, v]) => place(id, xf, z, base, v || 0));
+    const placed = [];
+    for (const [id, xf, z, base, v] of P) { placed.push(place(id, xf, z, base, v || 0)); yield; } // [travel17] one prop a slice
+    yield;
     for (const q of placed) { q.left = q.x - q.sprite.ox; q.top = q.y - q.sprite.oy; q.p = q.sprite; q.s = D.s(q.z); }
     this.placed = placed;
     const find = (id, band) => placed.find((q) => q.id === id && (band === undefined || q.band === band));
+    yield;
     const pile = find('crt_pile', 1), rack = find('server_rack', 1), robot = find('broken_robot', 1), vend = find('vending_machine', 1), barrel = find('rusty_barrel', 1), mon = find('crt_monitor', 0);
+    yield;
     // sagging cables between the mid-depth junk, baked as one overlay
     const cab = makeCanvas(W, H), cg = ctxOf(cab);
+    yield;
     const cables = [
       [[-10, H * 0.55], [pile.left + 30, pile.top + 36], 40, '#24242c', 2],
       [[rack.x - 10, rack.top + 6], [pile.x + 26, pile.top + 30], 22, '#c8a040', 1],
@@ -335,17 +365,24 @@ export class JunkyardBiome extends Biome {
       const pts = catenary(a[0], a[1], b[0], b[1], sag, 30);
       for (const p of pts) cTop = Math.min(cTop, p[1]);
       drawCable(cg, pts, col, w, '#0a0c10', w >= 2 ? mix(col, '#ffffff', 0.35) : null);
+      yield;
     }
+    yield;
     D.items.push({ abs: true, absTop: Math.floor(cTop) - 4, z: 0.47, band: 1, sprite: { canvas: cab, ox: 0, oy: 0 }, x: 0, y: 0 });
-    D.render([{ key: 'day', strip: this.water.day }, { key: 'dusk', strip: this.water.dusk }, { key: 'night', strip: this.water.night }]);
+    yield* D.render$([{ key: 'day', strip: this.water.day }, { key: 'dusk', strip: this.water.dusk }, { key: 'night', strip: this.water.night }]);
     this.bands = new BandSet(D);
+    yield;
     this.hazeY = Math.round(D.hz - 26);
     this.haze = new FogLayer(hazeMask(W, 70, { peak: 0.55, alpha: 0.8 }), 0, this.hazeY);
+    yield;
     this.masks = [0, 1].map((b) => lumaMask(D.bands[b].canvases.day, { gamma: 2, gain: 1.05 }));
+    yield;
     this.floor = new Float32Array(W + 1);
-    for (let x = 0; x <= W; x++) this.floor[x] = D.floorAt(x, 0);
+    for (let x = 0; x <= W; x++) { this.floor[x] = D.floorAt(x, 0); yield; }
+    yield;
     // glowing bits: prop glow layers (bloom), screens, LEDs, lights
     this.glows = placed.filter((q) => q.p.glow).map((q) => ({ c: q.p.glow, x: q.left, y: q.top, id: q.id, band: q.band, a: 1 - D.fog(q.z) * 0.8, ph: hash2(q.x, 1, 9) * TAU }));
+    yield;
     this.screens = [];
     const modes = ['text', 'fish', 'static'];
     let si = 0;
@@ -355,20 +392,26 @@ export class JunkyardBiome extends Biome {
         const secret = q === mon;
         this.screens.push({ x: q.left + sc.x, y: q.top + sc.y, w: sc.w, h: sc.h, band: q.band, mode: secret ? 'off' : modes[si++ % 3], secret, a: 1 - D.fog(q.z) * 0.85, z: q.z });
       }
+      yield;
     }
     this.crt = this.screens.find((sc) => sc.secret);
+    yield;
     this.leds = [];
     for (const q of placed) {
       if (q.id !== 'server_rack' || !q.p.glow) continue;
       const gd = ctxOf(q.p.glow).getImageData(0, 0, q.p.w, q.p.h).data;
       for (let y = 0; y < q.p.h; y++) for (let x = 0; x < q.p.w; x++) if (gd[(y * q.p.w + x) * 4 + 3] === 255 && this.leds.length < 200) this.leds.push({ x: q.left + x, y: q.top + y, k: hash2(x, y, 3), band: q.band });
+      yield;
     }
+    yield;
     this.propLights = [];
     for (const q of placed) {
       if (q.id === 'crt_pile' || q.id === 'crt_monitor') continue;
       const l = q.p.lights.slice().sort((a, b) => b.r - a.r)[0];
       if (l && q.z < 1.2) this.propLights.push({ x: q.left + l.x, y: q.top + l.y, r: Math.min(64, l.r * 0.9 + 8 * q.s), color: l.color, a: 1 - D.fog(q.z) * 0.7, id: q.id });
+      yield;
     }
+    yield;
     this.vend = { x: vend.x, y: vend.y, rect: { x: vend.left + 6, y: vend.top + 6, w: vend.p.w - 12, h: vend.p.oy - 8 }, tray: { x: vend.x - 5, y: vend.y - 16 }, t: 9, item: null, cool: 0 };
     this.monRect = { x: this.crt.x - 4, y: this.crt.y - 4, w: this.crt.w + 8, h: this.crt.h + 10 };
     this.rack = rack; this.robot = robot; this.barrel = barrel; this.pile = pile; this.mon = mon;
@@ -390,7 +433,9 @@ export class JunkyardBiome extends Biome {
           }
         }
       }
+      yield;
     }
+    yield;
   }
 
   floorAt(x, z = 0) { return this.D ? this.D.floorAt(x, z) : super.floorAt(x); }
@@ -408,7 +453,8 @@ export class JunkyardBiome extends Biome {
     };
   }
 
-  buildLayers() {
+  buildLayers() { const it = this.buildLayers$(); for (;;) { const n = it.next(); if (n.done) return n.value; } } // [travel17]
+  *buildLayers$() {
     const W = this.W, H = this.H, pad = 28, D = this.D;
     this.pad = pad;
     const LW = W + pad * 2;
@@ -419,83 +465,119 @@ export class JunkyardBiome extends Biome {
     const baseA = hz - yA + 14;
     const A = [];
     [[0.08, 58, 40], [0.33, 46, 30], [0.92, 64, 46], [0.6, 34, 22]].forEach(([xf, w, h], i) => A.push({ spr: render(junkHeap(70 + i, { w, h, d: 22 }), { yaw: i % 2 ? 14 : -14, pitch: 18 }), x: xf * LW, y: baseA + 6, z: 1 - i * 0.02 }));
+    yield;
     A.push({ spr: render(freighter(71), { yaw: -12, pitch: 14 }), x: LW * 0.64, y: baseA + 4, z: 0.97 });
+    yield;
     A.push({ spr: render(latticeCrane(72, 84), { yaw: 18, pitch: 12 }), x: LW * 0.2, y: baseA + 2, z: 0.99 });
+    yield;
     const ridgeA = ridgeStrip(73, LW, { amp: 9, base: 7, d: 16, cols: ['#6a6a58', '#5a5a4a', '#4a4a3e'], rocks: { cols: ['#6a5a4a', '#5a6066', '#7a4a34', '#4a5a6a'] } });
+    yield;
     this.farA = new FogLayer(strip(LW, hA, A, { canvas: ridgeA.canvas, x: Math.round(LW / 2 - ridgeA.ox), y: Math.round(baseA + 16 - ridgeA.oy) }), -pad, yA);
+    yield;
     this.farAY = yA;
     // --- far B: container stacks, utility poles with sagging wires, small junk on the horizon
     const yB = Math.round(hz - 130), hB = H - yB;
     const baseB = hz - yB + 22;
     const B = [];
-    for (const [xf, c, rw] of [[0.13, 3, 2], [0.48, 4, 3], [0.84, 3, 3]]) B.push({ spr: render(containerStackModel(80 + c + rw, c, rw), { scale: 1, yaw: 20, pitch: 14 }), x: xf * LW, y: baseB + 2, z: 0.8 });
+    for (const [xf, c, rw] of [[0.13, 3, 2], [0.48, 4, 3], [0.84, 3, 3]]) { B.push({ spr: render(containerStackModel(80 + c + rw, c, rw), { scale: 1, yaw: 20, pitch: 14 }), x: xf * LW, y: baseB + 2, z: 0.8 }); yield; }
+    yield;
     const poles = [];
     for (let i = 0; i < 6; i++) {
       const x = LW * (0.06 + i * 0.18) + r.float(-10, 10);
       const sp = render(utilityPole(90 + i, r.int(56, 70)), { scale: 1, yaw: 0, pitch: 6 });
       B.push({ spr: sp, x, y: baseB + 4, z: 0.7 });
       poles.push([x, baseB + 4 - sp.oy + 6]);
+      yield;
     }
+    yield;
     const junk = ['crt_pile', 'tire', 'shopping_cart', 'satellite_dish', 'gear_big', 'server_rack', 'rusty_barrel', 'crt_monitor', 'toilet', 'bathtub', 'traffic_cone', 'phone_booth', 'retro_tv', 'giant_sneaker', 'arcade_cabinet', 'broken_robot'];
     for (let i = 0; i < 46; i++) {
       const sp = propSprite(r.pick(junk), r.pick([0.38, 0.46, 0.55]));
       if (sp) B.push({ spr: sp, x: r.float(0, LW), y: baseB + r.int(-2, 4), z: r.next() * 0.9 });
+      yield;
     }
-    for (let i = 0; i < 6; i++) B.push({ spr: render(junkHeap(100 + i, { w: r.int(14, 24), h: r.int(8, 14), d: 12 }), { scale: 1, yaw: 10, pitch: 16 }), x: r.float(0, LW), y: baseB + 4, z: 0.95 });
+    yield;
+    for (let i = 0; i < 6; i++) { B.push({ spr: render(junkHeap(100 + i, { w: r.int(14, 24), h: r.int(8, 14), d: 12 }), { scale: 1, yaw: 10, pitch: 16 }), x: r.float(0, LW), y: baseB + 4, z: 0.95 }); yield; }
+    yield;
     const ridgeB = ridgeStrip(74, LW, { amp: 5, base: 5, d: 12, cols: ['#7a7660', '#6a6652', '#5a5644'], rocks: { cols: ['#8a5a3e', '#5a6a7a', '#6a6a6a'] } });
+    yield;
     const cB = strip(LW, hB, B, { canvas: ridgeB.canvas, x: Math.round(LW / 2 - ridgeB.ox), y: Math.round(baseB + 10 - ridgeB.oy) });
+    yield;
     const g = ctxOf(cB);
+    yield;
     for (let i = 0; i + 1 < poles.length; i++) {
       for (const dy of [0, 7]) {
         const pts = catenary(poles[i][0] - 9, poles[i][1] + dy, poles[i + 1][0] - 9, poles[i + 1][1] + dy, 16 + dy, 40);
         drawCable(g, pts, '#3a3e3a', 1);
       }
+      yield;
     }
+    yield;
     this.farB = new FogLayer(cB, -pad, yB);
+    yield;
     this.farBY = yB;
   }
 
-  buildLife() {
+  buildLife() { const it = this.buildLife$(); for (;;) { const n = it.next(); if (n.done) return n.value; } } // [travel17]
+  *buildLife$() {
     const W = this.W, H = this.H, D = this.D;
     const r = new RNG(19);
     this.decor = new DepthDecor(D);
+    yield;
     // voxel weed clumps and soft corals swaying among the scrap
     const life = (kind, seed, size, z, x, palKey = null) => {
       const A = voxAnim(kind, seed, 'junkyard', size, qscale(1.5 * D.s(z), 0.2, 0.3), 8, palKey);
       return this.decor.add({ anim: placeAnim(A, x, Math.round(D.floorAt(x, z)) + 1), z, off: r.int(0, A.n - 1) });
     };
+    yield;
     for (const [xf, z] of [[0.08, -0.12], [0.17, 0.0], [0.27, -0.15], [0.42, 0.25], [0.49, 0.02], [0.56, -0.18], [0.61, 0.1], [0.75, -0.08], [0.8, 0.2], [0.92, -0.1], [0.995, 0.1],
-      [0.05, 0.5], [0.22, 0.62], [0.38, 0.55], [0.6, 0.6], [0.77, 0.66], [0.9, 0.5], [0.12, 0.85], [0.46, 0.8], [0.7, 0.95]]) life('seagrass', 11 + r.int(0, 1), 8, z, Math.round(xf * W));
-    for (const [xf, z, pal] of [[0.335, 0.06, 'rust'], [0.68, 0.22, 'oxide'], [0.2, 0.46, 'copper'], [0.88, 0.7, 'wire']]) life('soft', 31 + Math.round(xf * 20), 11, z, Math.round(xf * W), pal);
+      [0.05, 0.5], [0.22, 0.62], [0.38, 0.55], [0.6, 0.6], [0.77, 0.66], [0.9, 0.5], [0.12, 0.85], [0.46, 0.8], [0.7, 0.95]]) { life('seagrass', 11 + r.int(0, 1), 8, z, Math.round(xf * W)); yield; }
+    for (const [xf, z, pal] of [[0.335, 0.06, 'rust'], [0.68, 0.22, 'oxide'], [0.2, 0.46, 'copper'], [0.88, 0.7, 'wire']]) { life('soft', 31 + Math.round(xf * 20), 11, z, Math.round(xf * W), pal); yield; }
+    yield;
     // long cables dangling from the surface with plugs
     const s0 = this.base;
     // voxel cables hanging from the surface buoys
     for (const [xf, n, col, z] of [[0.18, 30, '#2a2a34', 0.5], [0.585, 22, '#3a3a48', 0.85], [0.79, 13, '#b83a3a', 0.6], [0.36, 26, '#2a2a34', 1.1]]) {
       const sc = D.s(z);
       this.decor.add({ anim: voxCableAnim(Math.round(n * Math.max(2, Math.round(4 * sc + 1))), col, '#c8c8d0', Math.round(xf * W), s0 + 1, 8, sc > 0.7 ? 2 : 1), z, off: Math.round(xf * 30), fy: s0 + 60 });
+      yield;
     }
+    yield;
     this.murk = cloudTile(480, 240, '#a8c8b0', { seed: 3, alpha: 0.13, scale: 0.016, bias: 0.5, levels: 3 });
+    yield;
     this.murk2 = cloudTile(400, 200, '#0e2420', { seed: 9, alpha: 0.16, scale: 0.02, bias: 0.5, levels: 3 });
+    yield;
     // floating trash at the surface
     this.duck = worldProp('rubber_duck', { scale: 0.45 });
+    yield;
     this.bottle = voxPixelSprite(bottleSprite(), 4);
+    yield;
     this.can = voxPixelSprite(canSprite(), 4);
+    yield;
     this.floaters = [[0.3, 'duck'], [0.52, 'bottle'], [0.68, 'can'], [0.9, 'bottle']].map(([xf, k], i) => ({ x: xf * W, k, v: 2 + i, ph: i * 1.7 }));
     // particles
     const s = this.base;
     this.silt = new Motes(120, { x0: 0, y0: s + 4, x1: W, y1: H - 50 }, { seed: 4, vx: [-2, 2], vy: [-1.5, 1.5], sizes: [1, 1, 2], colors: ['#a8c8a0', '#c8d8b0', '#8aa890'], alpha: [0.2, 0.55], wob: 4 });
+    yield;
     this.nearSilt = new Motes(22, { x0: 0, y0: s + 10, x1: W, y1: H - 30 }, { seed: 9, vx: [-3, 3], vy: [-2, 2], sizes: [2, 3], colors: ['#b8d8b0'], alpha: [0.08, 0.2], wob: 7 });
+    yield;
     this.bits = [];
     const bc = ['#5affb0', '#7affea', '#b8ff7a'];
     this.glyphs = { 0: bc.map((c) => glyphSprite(0, c)), 1: bc.map((c) => glyphSprite(1, c)) };
-    for (let i = 0; i < 40; i++) this.bits.push({ x: r.float(0, W), y: r.float(s + 20, H - 60), vy: -r.float(2, 6), ch: r.int(0, 1), c: r.int(0, 2), ph: r.float(0, TAU), sq: r.chance(0.35) });
+    yield;
+    for (let i = 0; i < 40; i++) { this.bits.push({ x: r.float(0, W), y: r.float(s + 20, H - 60), vy: -r.float(2, 6), ch: r.int(0, 1), c: r.int(0, 2), ph: r.float(0, TAU), sq: r.chance(0.35) }); yield; }
+    yield;
     this.streams = [];
-    for (let i = 0; i < 6; i++) this.streams.push(streamTex(100 + i, 14 + i * 3));
+    for (let i = 0; i < 6; i++) { this.streams.push(streamTex(100 + i, 14 + i * 3)); yield; }
+    yield;
     this.rain = [];
-    for (let i = 0; i < 56; i++) this.rain.push({ x: Math.round(r.float(0, W) / 4) * 4, y: r.float(-200, H), v: r.float(50, 110), tex: r.int(0, 5) });
+    for (let i = 0; i < 56; i++) { this.rain.push({ x: Math.round(r.float(0, W) / 4) * 4, y: r.float(-200, H), v: r.float(50, 110), tex: r.int(0, 5) }); yield; }
+    yield;
     this.oilBlobs = [];
-    for (let i = 0; i < 14; i++) this.oilBlobs.push({ x: r.float(0, W), y: r.float(s + 30, H - 80), v: -r.float(3, 8), ph: r.float(0, TAU), s: r.int(2, 4) });
+    for (let i = 0; i < 14; i++) { this.oilBlobs.push({ x: r.float(0, W), y: r.float(s + 30, H - 80), v: -r.float(3, 8), ph: r.float(0, TAU), s: r.int(2, 4) }); yield; }
+    yield;
     this.bubbles = new Bubbles(60, '#d8f0e0');
+    yield;
     this.emitT = 1;
     this.tear = null;
     this.hint = 0;

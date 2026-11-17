@@ -201,22 +201,29 @@ export class VolcanoBiome extends Biome {
   waterLook() { return { refract: 10, caustic: 3, foamColor: '#a8a0a0', causticColor: '#3a1408', crestColor: '#d8c8c0' }; }
 
   // ------------------------------------------------------------------ build
-  build(W, H) {
+  build(W, H) { const it = this.steps(W, H); while (!it.next().done); } // [travel17] sync build = all the steps
+  // [travel17] the build a slice at a time (a voyage builds the next ocean over many frames)
+  *steps(W, H) {
+    this.ready = false;
     this.W = W; this.H = H;
     this.top = worldTop(H);
     const sy = this.surfY();
     this.ys = new Int16Array(W + 2).fill(sy);
     this.water = worldStrip(H, this.top, WATER, (y) => clamp01((y - sy) / (H - sy)), 26);
+    yield;
     this.skyBlend = new Blend(); this.mtnBlend = new Blend();
-    this.buildSky();
-    this.buildDepth();
-    this.buildLayers();
+    yield* this.buildSky$();
+    yield* this.buildDepth$();
+    yield* this.buildLayers$();
     this.rays = makeRays(W, H - sy, { seed: 33, count: 7, sunX: W * 0.55, sunY: -H * 1.2, minW: 10, maxW: 30, len: 0.75, color: '#ff9a6a', alpha: 0.3, levels: 3 });
-    this.buildLife();
+    yield;
+    yield* this.buildLife$();
     this.fresh = true;
+    this.ready = true;
   }
 
-  buildSky() {
+  buildSky() { const it = this.buildSky$(); for (;;) { const n = it.next(); if (n.done) return n.value; } } // [travel17]
+  *buildSky$() {
     const W = this.W, top = this.top, sy = this.surfY();
     const skyY = top - 12, h = sy + 14 - skyY;
     this.skyY = skyY; this.skyH = h;
@@ -232,7 +239,9 @@ export class VolcanoBiome extends Biome {
       if (Math.abs(x - vx) < 14) y += 6 - Math.abs(x - vx) * 0.2;
       return y;
     };
+    yield;
     const far = ridge(W, sy - 40, 26, 0.013, 3.3, 3, 0.4);
+    yield;
     const stacks = [[0.12, 70, 20], [0.2, 44, 14], [0.86, 90, 22], [0.93, 56, 16], [0.36, 26, 12]];
     const rivers = [[-0.25, 1.1], [0.18, 0.8], [0.42, 1.3], [-0.6, 0.9]];
     for (let row = 0; row < h; row++) {
@@ -272,7 +281,9 @@ export class VolcanoBiome extends Biome {
         }
         if (y >= far[x]) { mat[i] = 4; tone[i] = clamp01(0.4 - (y - far[x]) / 80 + (fbm2(x * 0.06, y * 0.06, 2, 13) - 0.5) * 0.4); }
       }
+      yield;
     }
+    yield;
     const skyOf = (kind) => paint(W, h, (x, row) => {
       const y = row + skyY;
       let [r, g, b] = lerpStops(SKY[kind], clamp01((y - top) / (sy - top)));
@@ -282,6 +293,7 @@ export class VolcanoBiome extends Biome {
       if (kind === 'night' && y < sy - 120 && hash2(x, row, 71) < 0.0025) { r = 200; g = 190; b = 210; }
       return dpack(r, g, b, x, row, 5);
     });
+    yield;
     const mtnOf = (kind) => {
       const P = VOLC[kind];
       const rock = P.rock.map((c) => pack(c) >>> 0), lava = P.lava.map((c) => pack(c) >>> 0);
@@ -296,20 +308,28 @@ export class VolcanoBiome extends Biome {
         }
       });
     };
-    this.sky = { day: skyOf('day'), dusk: skyOf('dusk'), night: skyOf('night') };
+    yield;
+    this.sky = {};
+    for (const k of ['day', 'dusk', 'night']) { this.sky[k] = skyOf(k); yield; } // [travel17] one time of day a slice
+    yield;
     // the volcano, its lava rivers, the sea stacks and the far range as voxel relief (one render, tinted per time)
     const MD = [0, 6, 7, 8, 2];
     const vday = (() => {
       const v = voxelize(mtnOf('day'), { cell: 2, maxD: 10, alignZ: 5, depth: (r, g, b, x, y) => { const i = y * W + x; return mat[i] ? MD[mat[i]] + Math.round(tone[i] * 2) : 0; } });
       const c = makeCanvas(W, h); ctxOf(c).drawImage(v.canvas, -v.ox, -v.oy); return c;
     })();
+    yield;
     const tint = (src, col, a) => { const c = makeCanvas(src.width, src.height), g = ctxOf(c); g.drawImage(src, 0, 0); g.globalCompositeOperation = 'source-atop'; g.globalAlpha = a; g.fillStyle = col; g.fillRect(0, 0, c.width, c.height); return c; };
+    yield;
     this.mtn = { day: vday, dusk: tint(vday, '#6a1a3a', 0.35), night: tint(vday, '#0a0410', 0.6) };
+    yield;
     this.lavaMask = paint(W, h, (x, row) => (mat[row * W + x] === 2 ? pack('#ffffff') : 0));
+    yield;
     // ash plume puffs and lava bombs above the crater
     this.plume = [];
     const r = new RNG(5);
-    for (let i = 0; i < 26; i++) this.plume.push({ k: i / 26, ph: r.float(0, TAU), s: r.float(0.7, 1.4), dx: r.float(-1, 1) });
+    for (let i = 0; i < 26; i++) { this.plume.push({ k: i / 26, ph: r.float(0, TAU), s: r.float(0.7, 1.4), dx: r.float(-1, 1) }); yield; }
+    yield;
     this.puff = [3, 5, 7, 9, 12, 15, 18, 22].map((rr) => paint(rr * 2 + 1, rr * 2 + 1, (x, y) => {
       const d = Math.hypot(x - rr, y - rr) / rr;
       if (d > 1) return 0;
@@ -317,19 +337,26 @@ export class VolcanoBiome extends Biome {
       if (d > 0.75 + n * 0.3) return 0;
       return pack(y < rr * 0.7 ? '#ffffff' : '#c8c8c8');
     }));
+    yield;
     this.bombs = [];
     this.ashTile = cloudTile(320, 140, '#3a3036', { seed: 4, alpha: 0.5, scale: 0.03, bias: 0.5, levels: 3 });
+    yield;
     this.sulfTile = cloudTile(360, 180, '#c8c060', { seed: 12, alpha: 0.3, scale: 0.02, bias: 0.5, levels: 4 });
+    yield;
   }
 
-  buildDepth() {
+  buildDepth() { const it = this.buildDepth$(); for (;;) { const n = it.next(); if (n.done) return n.value; } } // [travel17]
+  *buildDepth$() {
     const W = this.W, H = this.H;
     const D = new DepthScene(W, H, { yFront: H - 68, yFar: H - 160, pad: 24, zFar: 1.9, fogStart: -0.2, fog: 0.94 });
+    yield;
     this.D = D;
     const cx = D.cx;
     const edge = (z, side) => W * (side < 0 ? 0.36 : 0.355) + Math.sin(z * 3.4 + side * 2) * W * 0.03 + (fbm2(z * 2.4, 5.1 + side, 2, 101) - 0.5) * W * 0.07;
+    yield;
     this.edge = edge;
     const crackN = (X, z) => fbm2(X * 0.011, z * 2.6, 3, 102);
+    yield;
     const floorH = (X, z) => {
       let h = (fbm2(X * 0.005, z * 1.4, 3, 103) - 0.45) * 12;
       h += Math.max(0, fbm2(X * 0.03, z * 5, 2, 104) - 0.64) * 34;
@@ -339,12 +366,14 @@ export class VolcanoBiome extends Biome {
       h *= 1 - front * 0.6;
       return Math.max(-4, h);
     };
+    yield;
     // hexagonal basalt causeway along the rift walls
     const hexH = (X, z) => {
       const gx = X / 9, gz = z * 34;
       const q = Math.round(gx - gz * 0.5), s = Math.round(gz);
       return hash2(q, s, 105);
     };
+    yield;
     const cliff = (X, z) => {
       const side = X < cx ? -1 : 1;
       const over = Math.abs(X - cx) - edge(z, side) - (fbm2(z * 7, side * 3, 2, 106) - 0.5) * 18;
@@ -356,7 +385,8 @@ export class VolcanoBiome extends Biome {
       const rimY = 26 + fbm2(z * 5, side * 2, 2, 114) * 50;
       return Math.min(560, D.K - (rimY - D.hz) / D.s(z)) + Math.round(hx * 4) * 2;
     };
-    D.terrain({
+    yield;
+    yield* D.terrain$({
       micro: { ripple: 0.4, pebble: 1.8, shell: 1, pebbles: [[46, 40, 44], [70, 58, 58], [34, 30, 34], [96, 70, 60]], shells: [[255, 130, 50], [255, 200, 90]] }, // [phase7:env] basalt and embers
       cell: 2, dz: 0.02, hstep: 2, ambient: 0.66, diffuse: 0.5, ao: 0.08, jitter: 0.06, wall: 0.78, side: 0.9, crest: 1.18, wallMin: 22, fullHeight: true,
       height: (X, z) => cliff(X, z) ?? floorH(X, z),
@@ -395,59 +425,92 @@ export class VolcanoBiome extends Biome {
       },
     });
     const S = (key, build, xf, z, base) => placeSprite(D, W, voxSprite(key, build, { scale: qscale(base * D.s(z)) }), xf, z);
+    yield;
     const P = (id, xf, z, base, variant = 0) => placeSprite(D, W, worldProp(id, { scale: qscale(base * D.s(z)), variant }), xf, z, { id });
+    yield;
     const vents = [], chimneys = [];
     // near
     S('vo_basalt0', () => basaltModel(3, 1), 0.2, 0.22, 0.85);
+    yield;
     S('vo_rock0', () => lavaRockModel(5, 1), 0.65, 0.08, 0.8);
+    yield;
     S('vo_obsid0', () => obsidianModel(7, 0.9), 0.77, 0.24, 0.85);
+    yield;
     P('tube_worms', 0.405, 0.27, 0.6, 0);
+    yield;
     S('vo_rock1', () => lavaRockModel(9, 0.7), 0.3, 0.05, 0.7);
+    yield;
     // mid
     vents.push(S('vo_vent0', () => ventModel(11, 1), 0.45, 0.46, 1.05));
+    yield;
     chimneys.push(S('vo_sulfur0', () => sulfurModel(13, 1), 0.31, 0.5, 1.0));
+    yield;
     S('vo_obsid1', () => obsidianModel(17, 1.1), 0.62, 0.42, 1.0);
+    yield;
     S('vo_basalt1', () => basaltModel(19, 1.2), 0.72, 0.56, 1.0);
+    yield;
     P('vent_chimney', 0.555, 0.6, 0.85);
+    yield;
     P('tube_worms', 0.53, 0.52, 0.55, 1);
+    yield;
     S('vo_rock2', () => lavaRockModel(21, 1.2), 0.24, 0.44, 0.9);
+    yield;
     // far
     vents.push(S('vo_vent1', () => ventModel(23, 1.3), 0.56, 1.0, 1.25));
+    yield;
     chimneys.push(S('vo_sulfur1', () => sulfurModel(29, 1.2), 0.66, 0.86, 1.15));
+    yield;
     S('vo_obsid2', () => obsidianModel(31, 1.4), 0.38, 0.9, 1.3);
+    yield;
     S('vo_obsid3', () => obsidianModel(37, 1.2), 0.47, 1.25, 1.5);
+    yield;
     S('vo_basalt2', () => basaltModel(41, 1.4), 0.3, 1.15, 1.4);
+    yield;
     S('vo_basalt3', () => basaltModel(43, 1.2), 0.62, 1.35, 1.6);
+    yield;
     vents.push(S('vo_vent2', () => ventModel(47, 1.5), 0.42, 1.5, 1.8));
+    yield;
     chimneys.push(S('vo_sulfur2', () => sulfurModel(53, 1.3), 0.53, 0.78, 1.0));
+    yield;
     // secrets: plugged vent (near), the egg in an ember nest, the marshmallow stick
     const pz = 0.06, pxx = Math.round(W * 0.53);
     this.plugOpen = voxSprite('vo_plugvent_open', () => ventModel(61, 0.8, false), { scale: qscale(0.8 * D.s(pz)) });
+    yield;
     this.plugShut = voxSprite('vo_plugvent_shut', () => ventModel(61, 0.8, true), { scale: qscale(0.8 * D.s(pz)) });
+    yield;
     const py = Math.round(D.floorAt(pxx, pz)) + 1;
+    yield;
     const pv = this.plugShut;
     this.plug = { x: pxx, y: py, knocks: 0, shake: 0, t: 9, rect: { x: pxx - pv.ox + 8, y: py - pv.oy, w: pv.w - 16, h: pv.oy }, top: py - pv.oy + Math.round(pv.h * 0.12) };
     const ez = 0.0, ex = Math.round(W * 0.385);
     this.eggSpr = voxSprite('vo_egg', eggModel, { scale: qscale(1.1 * D.s(ez)) });
+    yield;
     const ey = Math.round(D.floorAt(ex, ez)) + 1;
+    yield;
     this.egg = { x: ex, y: ey, warmth: 0, wob: 0, rect: { x: ex - 9, y: ey - this.eggSpr.oy - 2, w: 18, h: this.eggSpr.oy + 4 } };
     const mz = 0.14, mx = Math.round(W * 0.465);
     this.mallow = { x: mx, y: Math.round(D.floorAt(mx, mz)), toast: 0, eaten: false, t: 0 };
+    yield;
     this.mallow.rect = { x: mx - 4, y: this.mallow.y - 30, w: 22, h: 30 };
-    D.render([{ key: 'day', strip: this.water }]);
+    yield* D.render$([{ key: 'day', strip: this.water }]);
     this.bands = new BandSet(D);
+    yield;
     this.hazeY = Math.round(D.hz - 30);
     this.haze = new FogLayer(hazeMask(W, 76, { peak: 0.5, alpha: 0.8 }), 0, this.hazeY);
+    yield;
     this.floor = new Float32Array(W + 1);
-    for (let x = 0; x <= W; x++) this.floor[x] = D.floorAt(x, 0);
+    for (let x = 0; x <= W; x++) { this.floor[x] = D.floorAt(x, 0); yield; }
+    yield;
     this.vents = vents.map((v) => ({ it: v, x: v.x, y: v.top + Math.round(v.p.h * 0.18), s: v.s, z: v.z, band: v.band, ph: Math.random() * TAU }));
     this.chimneys = chimneys.map((c) => ({ it: c, x: c.x + 1, y: c.top + 3, s: c.s, z: c.z, band: c.band }));
     this.glows = D.items.filter((q) => q.p?.glow).map((q) => ({ c: q.p.glow, x: q.left, y: q.top, band: q.band, a: 1 - D.fog(q.z) * 0.6, ph: hash2(q.x, 2, 9) * TAU }));
+    yield;
     // light sources clustered from the glowing terrain pixels (magma seams and pools)
     this.crackLights = [];
     const cell = 40, gw = Math.ceil(D.LW / cell), gh = Math.ceil(D.TH / cell);
     const acc = new Float32Array(gw * gh * 3);
     for (let y = 0; y < D.TH; y++) for (let x = 0; x < D.LW; x++) {
+      if (x === 0 && (y & 15) === 15) yield;
       const c = D.pc[y * D.LW + x];
       if (!c || !((c >>> 24) & 1)) continue;
       const k = Math.floor(y / cell) * gw + Math.floor(x / cell);
@@ -459,20 +522,27 @@ export class VolcanoBiome extends Biome {
       const lx = acc[k * 3 + 1] / n - D.pad, ly = acc[k * 3 + 2] / n + D.top;
       const z = D.zAt(ly);
       this.crackLights.push({ x: lx, y: ly, r: clamp(14 + Math.sqrt(n) * 3.2, 18, 64) * (1 - clamp01(z) * 0.4), n, a: clamp01(0.3 + n / 120) * (1 - D.fog(z) * 0.7), ph: hash2(k, 3, 7) * TAU });
+      yield;
     }
+    yield;
     this.crackLights.sort((a, b) => b.n - a.n);
+    yield;
     this.crackLights.length = Math.min(this.crackLights.length, 16);
     this.propLights = [];
     for (const q of D.items) {
       if (!q.p?.lights?.length || q.z > 1.2) continue;
       const l = q.p.lights.slice().sort((a, b) => b.r - a.r)[0];
       this.propLights.push({ x: q.left + l.x, y: q.top + l.y, r: clamp(l.r * 0.9 + 10, 22, 70) * (0.6 + 0.4 * q.s), color: l.color, a: 1 - D.fog(q.z) * 0.75 });
+      yield;
     }
+    yield;
     this.propLights.sort((a, b) => b.r * b.a - a.r * a.a);
+    yield;
     this.propLights.length = Math.min(this.propLights.length, 8);
   }
 
-  buildLayers() {
+  buildLayers() { const it = this.buildLayers$(); for (;;) { const n = it.next(); if (n.done) return n.value; } } // [travel17]
+  *buildLayers$() {
     const W = this.W, H = this.H, pad = 30, D = this.D;
     this.pad = pad;
     const LW = W + pad * 2;
@@ -481,33 +551,49 @@ export class VolcanoBiome extends Biome {
     // far A: towering rift walls with lava falls, spires at the rift's end
     const yA = Math.round(hz - H * 0.42), hA = H - yA;
     const mA = new Mask(LW, hA);
+    yield;
     const baseA = hz - yA + 10;
     const rA = ridge(LW, baseA - 40, 24, 0.008, 6.1, 4, 0.4);
+    yield;
     mA.below((x) => rA[x]);
+    yield;
     for (let i = 0; i < 9; i++) { const px0 = r.float(0.25, 0.75) * LW, tp = r.float(10, baseA - 110), w = r.float(6, 16); mA.poly([[px0 - w * 1.4, baseA], [px0 - w * 0.3, tp + 10], [px0, tp], [px0 + w * 0.4, tp + 14], [px0 + w * 1.5, baseA]]); }
+    yield;
     for (const side of [0, 1]) for (let x = 0; x < LW * 0.3; x++) { const xx = side ? LW - 1 - x : x; const tp = baseA - 260 + x * 0.6 + (fbm2(x * 0.03, side, 2, 3) - 0.5) * 60; for (let y = Math.max(0, Math.round(tp)); y < baseA; y++) mA.set(xx, y, 1); }
+    yield;
     this.falls = [];
     for (const fxf of [0.34, 0.43, 0.59, 0.68]) {
       const fx = Math.round(fxf * LW);
       for (let y = 0; y < baseA; y++) if (mA.get(fx, y)) { this.falls.push({ x: fx - pad, y0: yA + y, y1: yA + baseA - 6, w: 2 + (fxf * 10 % 2 > 1 ? 1 : 0) }); break; }
+      yield;
     }
+    yield;
     const palA = stopPalette([[0, '#0a0608'], [1, '#2a1a1e']], 5);
+    yield;
     this.farA = new FogLayer(voxRelief(mA.toCanvas((x, y, v, up) => (up <= 1 ? pack('#6a3a30') : ditherPick(palA, 0.6 - Math.min(1, up / 70) * 0.45 + (fbm2(x * 0.05, y * 0.05, 2, 2) - 0.5) * 0.3, x, y))), { depth: lumDepth(3, 7), maxD: 7 }), -pad, yA);
+    yield;
     this.farAY = yA;
     // far B: the rift horizon dotted with distant vents and spires
     const yB = Math.round(hz - 110), hB = H - yB;
     const mB = new Mask(LW, hB);
+    yield;
     const baseB = hz - yB + 16;
     const rB = ridge(LW, baseB - 6, 9, 0.012, 2.9, 3);
+    yield;
     mB.below((x) => rB[x]);
+    yield;
     this.farVents = [];
     for (let i = 0; i < 14; i++) {
       const px0 = r.float(0.08, 0.92) * LW, b = rB[Math.round(px0)] + 2;
       if (r.chance(0.5)) { const hh = r.float(14, 34); mB.poly([[px0 - hh * 0.7, b], [px0 - 2, b - hh], [px0 + 2, b - hh], [px0 + hh * 0.7, b]]); this.farVents.push({ x: px0 - pad, y: yB + b - hh, ph: r.float(0, TAU) }); }
       else { const hh = r.float(24, 60); mB.poly([[px0 - 5, b], [px0, b - hh], [px0 + 4, b]]); }
+      yield;
     }
+    yield;
     const palB = stopPalette([[0, '#0e0808'], [1, '#2e1a1a']], 5);
+    yield;
     this.farB = new FogLayer(voxRelief(mB.toCanvas((x, y, v, up) => (up <= 1 ? pack('#8a4030') : up === 2 ? pack('#4a2420') : ditherPick(palB, 0.6 - Math.min(1, up / 40) * 0.45 + (fbm2(x * 0.08, y * 0.08, 2, 5) - 0.5) * 0.35, x, y))), { depth: lumDepth(2, 6) }), -pad, yB);
+    yield;
     this.farBY = yB;
     // the molten leviathan's silhouette in the far haze
     // (its body segments are voxel spheres of dark magma rock, built on first sighting)
@@ -515,33 +601,50 @@ export class VolcanoBiome extends Biome {
     this.levi = null; this.leviT = 12;
   }
 
-  buildLife() {
+  buildLife() { const it = this.buildLife$(); for (;;) { const n = it.next(); if (n.done) return n.value; } } // [travel17]
+  *buildLife$() {
     const W = this.W, H = this.H, D = this.D, sy = this.surfY();
     const r = new RNG(23);
     this.decor = new DepthDecor(D);
+    yield;
     // heat-loving bacterial mats & red "tube" filaments swaying near vents
     for (const [xf, z, cols] of [[0.36, 0.05, ['#4a1a14', '#7a2a1a', '#b84a2a', '#ff8a4a']], [0.58, 0.2, ['#3a2a14', '#6a4a1a', '#a87a2a', '#e8c04a']], [0.71, -0.05, ['#4a1a14', '#7a2a1a', '#b84a2a', '#ff8a4a']], [0.27, 0.55, ['#3a2a14', '#6a4a1a', '#a87a2a', '#e8c04a']], [0.5, 0.7, ['#4a1a14', '#7a2a1a', '#b84a2a', '#ff8a4a']], [0.8, 0.45, ['#3a2a14', '#6a4a1a', '#a87a2a', '#e8c04a']], [0.13, 0.12, ['#4a1a14', '#7a2a1a', '#b84a2a', '#ff8a4a']]]) {
       const s = D.s(z), x0 = Math.round(xf * W), y0 = Math.round(D.floorAt(x0, z)) + 1;
       const A = voxAnim('seagrass', 1 + r.int(0, 2), 'volcano', 8, qscale(s, 0.2, 0.4) * 1.3, 8);
       this.decor.add({ anim: placeAnim(A, x0, y0 + 1), z, off: r.int(0, A.n - 1) });
+      yield;
     }
+    yield;
     this.decor.refog(() => '#2a1a1e', 'k');
+    yield;
     this.sal = salamanderFrames();
+    yield;
     this.salL = this.sal.map((c) => { const o = makeCanvas(c.width, c.height), g = ctxOf(o); g.translate(c.width, 0); g.scale(-1, 1); g.drawImage(c, 0, 0); return o; });
+    yield;
     this.baby = null;
     // particles
     this.embers = new Motes(90, { x0: 0, y0: sy, x1: W, y1: H - 30 }, { seed: 3, vx: [-2, 2], vy: [-14, -5], sizes: [1, 1, 2], colors: ['#ff8a2a', '#ffc04a', '#ff5a1a', '#fff0a0'], alpha: [0.5, 1], wob: 5 });
+    yield;
     this.ash = new Motes(140, { x0: 0, y0: sy, x1: W, y1: H }, { seed: 5, vx: [-3, 3], vy: [4, 10], sizes: [1, 1, 2], colors: ['#5a5054', '#7a7074', '#3a3438', '#9a9094'], alpha: [0.3, 0.8], wob: 4 });
+    yield;
     this.sulfur = new Motes(70, { x0: 0, y0: sy, x1: W, y1: H }, { seed: 7, vx: [-2, 2], vy: [-3, 2], sizes: [1, 2], colors: ['#d8e05a', '#c8c040', '#e8f08a'], alpha: [0.2, 0.6], wob: 6 });
+    yield;
     this.nearAsh = new Motes(24, { x0: 0, y0: sy, x1: W, y1: H }, { seed: 9, vx: [-4, 4], vy: [3, 8], sizes: [2, 3], colors: ['#6a6064'], alpha: [0.15, 0.35], wob: 7 });
+    yield;
     this.bubbles = new Bubbles(140, '#ffd8b0');
+    yield;
     this.lavaBlobs = [];
-    for (let i = 0; i < 16; i++) this.lavaBlobs.push({ x: r.float(0, W), y: r.float(0, H), v: -r.float(6, 16), ph: r.float(0, TAU), s: r.int(2, 4) });
+    for (let i = 0; i < 16; i++) { this.lavaBlobs.push({ x: r.float(0, W), y: r.float(0, H), v: -r.float(6, 16), ph: r.float(0, TAU), s: r.int(2, 4) }); yield; }
+    yield;
     this.smoke = [];
-    for (let i = 0; i < 16; i++) this.smoke.push({ k: i / 16, ph: r.float(0, TAU), s: r.float(0.7, 1.3) });
+    for (let i = 0; i < 16; i++) { this.smoke.push({ k: i / 16, ph: r.float(0, TAU), s: r.float(0.7, 1.3) }); yield; }
+    yield;
     this.puffS = [2, 3, 4, 5, 6, 7, 8, 9].map((rr) => paint(rr * 2 + 1, rr * 2 + 1, (x, y) => (Math.hypot(x - rr, y - rr) <= rr + 0.2 ? pack('#ffffff') : 0)));
+    yield;
     this.puffY = this.puffS.map((c) => tinted(c, '#b8b46a'));
+    yield;
     this.puffK = this.puffS.map((c) => tinted(c, '#2a2220'));
+    yield;
   }
 
   // ------------------------------------------------------------------ update

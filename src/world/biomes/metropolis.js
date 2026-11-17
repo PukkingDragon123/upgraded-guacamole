@@ -217,32 +217,41 @@ export class MetropolisBiome extends Biome {
   waterLook() { return { refract: 12, caustic: 4, foamColor: '#e8f0ff', causticColor: '#2a1a4a', crestColor: '#e8f0ff' }; }
 
   // ------------------------------------------------------------------ build
-  build(W, H) {
+  build(W, H) { const it = this.steps(W, H); while (!it.next().done); } // [travel17] sync build = all the steps
+  // [travel17] the build a slice at a time (a voyage builds the next ocean over many frames)
+  *steps(W, H) {
+    this.ready = false;
     this.W = W; this.H = H;
     this.top = worldTop(H);
     const sy = this.surfY();
     this.ys = new Int16Array(W + 2).fill(sy);
     this.water = worldStrip(H, this.top, WATER, (y) => clamp01((y - sy) / (H - sy)), 24);
+    yield;
     this.skyBlend = new Blend(); this.mtnBlend = new Blend();
-    this.buildTowers();
-    this.buildDepth();
-    this.buildLayers();
+    yield* this.buildTowers$();
+    yield* this.buildDepth$();
+    yield* this.buildLayers$();
     this.rays = makeRays(W, H - sy, { seed: 41, count: 9, sunX: W * 0.4, sunY: -H, minW: 6, maxW: 22, len: 0.7, color: '#b8c8ff', alpha: 0.35, levels: 3 });
-    this.buildLife();
+    yield;
+    yield* this.buildLife$();
     this.fresh = true;
+    this.ready = true;
   }
 
   // The tallest towers: underwater bodies (a fogged far layer) and crowns above the surface (in the sky canvas).
-  buildTowers() {
+  buildTowers() { const it = this.buildTowers$(); for (;;) { const n = it.next(); if (n.done) return n.value; } } // [travel17]
+  *buildTowers$() {
     const W = this.W, H = this.H, top = this.top, sy = this.surfY();
     const skyY = top - 12, sh = sy + 14 - skyY;
     this.skyY = skyY; this.skyH = sh;
     const r = new RNG(77);
     const T = [[0.09, 46, sy - 96, 0], [0.2, 30, sy - 30, 1], [0.33, 38, sy + 40, 2], [0.47, 54, sy - 128, 3], [0.62, 34, sy - 52, 1], [0.74, 44, sy + 10, 0], [0.86, 40, sy - 78, 2], [0.95, 26, sy + 60, 1]];
     this.towers = T.map(([xf, w, tp, st]) => ({ x: Math.round(xf * W), w, top: tp, st, ant: tp < sy ? r.int(14, 30) : 0 }));
+    yield;
     const yBot = Math.round(H * 0.55);
     const hT = yBot - skyY;
     const m = new Mask(W, hT);
+    yield;
     const shapeOf = (tw, x, y) => {
       const dx = Math.abs(x - tw.x), k = y - tw.top;
       if (k < 0) return tw.ant && dx < 1 && k > -tw.ant ? 3 : 0;
@@ -254,7 +263,9 @@ export class MetropolisBiome extends Biome {
     };
     for (let y = 0; y < hT; y++) for (let x = 0; x < W; x++) {
       for (const tw of this.towers) { const v = shapeOf(tw, x, y + skyY); if (v) { m.d[y * W + x] = v; break; } }
+      if (x === 0 && (y & 7) === 7) yield;
     }
+    yield;
     this.towerMask = m;
     // windows hash per tower cell
     const winAt = (x, y) => (((x + 300) % 4) < 2 && ((y + 300) % 5) < 3);
@@ -267,7 +278,9 @@ export class MetropolisBiome extends Biome {
       if (winAt(x, y)) return hash2(x >> 2, Math.floor(y / 5), 9) < 0.18 ? pack('#ffe0a0') : pack('#1a2240');
       return pack(v === 2 ? '#4a5478' : (x % 9 === 0 ? '#1e2440' : '#2a3254'));
     });
+    yield;
     this.towerFar = new FogLayer(voxRelief(under, { depth: lumDepth(3, 7), maxD: 7 }), 0, yU);
+    yield;
     this.towerY = yU;
     // sky + crowns above water per time of day
     const skyOf = (kind) => paint(W, sh, (x, row) => {
@@ -276,6 +289,7 @@ export class MetropolisBiome extends Biome {
       if (kind === 'night' && y < sy - 40 && hash2(x, row, 61) < 0.003) { rr = 210; g = 220; b = 255; }
       return dpack(rr, g, b, x, row, 5);
     });
+    yield;
     const crownOf = (kind) => {
       const C = { day: ['#5a6070', '#7a8294', '#9aa4b4', '#2a3040', '#c8b070'], dusk: ['#2a2238', '#4a3a58', '#a86a7a', '#1a1424', '#ffb070'], night: ['#0c1020', '#141a30', '#2a3456', '#05060c', '#ffd890'] }[kind];
       return paint(W, sh, (x, row) => {
@@ -292,16 +306,24 @@ export class MetropolisBiome extends Biome {
         return pack(v === 2 ? C[2] : lit ? C[1] : C[0]);
       });
     };
-    this.sky = { day: skyOf('day'), dusk: skyOf('dusk'), night: skyOf('night') };
+    yield;
+    this.sky = {};
+    for (const k of ['day', 'dusk', 'night']) { this.sky[k] = skyOf(k); yield; } // [travel17] one time of day a slice
+    yield;
     // the tower crowns above the water as voxel relief (lit windows stand out at night)
     const vc = (k) => voxRelief(crownOf(k), { depth: lumDepth(4, 8), maxD: 8 });
+    yield;
     this.mtn = { day: vc('day'), dusk: vc('dusk'), night: vc('night') };
+    yield;
     this.beacons = this.towers.filter((tw) => tw.ant).map((tw) => ({ x: tw.x, y: tw.top - tw.ant, ph: r.float(0, TAU) }));
+    yield;
   }
 
-  buildDepth() {
+  buildDepth() { const it = this.buildDepth$(); for (;;) { const n = it.next(); if (n.done) return n.value; } } // [travel17]
+  *buildDepth$() {
     const W = this.W, H = this.H;
     const D = new DepthScene(W, H, { yFront: H - 66, yFar: H - 162, pad: 24, zFar: 1.9, fogStart: -0.2, fog: 0.92 });
+    yield;
     this.D = D;
     const cx = D.cx;
     const road = W * 0.2, curb = W * 0.215;
@@ -319,6 +341,7 @@ export class MetropolisBiome extends Biome {
       }
       return h;
     };
+    yield;
     const cap = (z, rimY) => D.K - (rimY - D.hz) / D.s(z);
     const bldg = (X, z) => {
       const side = X < cx ? -1 : 1;
@@ -329,7 +352,8 @@ export class MetropolisBiome extends Biome {
       const rimY = 14 + hash2(b, side, 204) * 110;
       return Math.round(Math.min(bh, cap(z, rimY)) / 2) * 2;
     };
-    D.terrain({
+    yield;
+    yield* D.terrain$({
       micro: { ripple: 0.5, pebble: 1.2, shell: 1, pebbles: [[110, 124, 150], [150, 166, 190], [80, 90, 120], [190, 200, 220]], shells: [[140, 220, 255], [255, 140, 220]] }, // [phase7:env] glass shards
       cell: 2, dz: 0.02, hstep: 2, ambient: 0.68, diffuse: 0.45, ao: 0.07, jitter: 0.04, wall: 0.82, side: 0.9, crest: 1.2, wallMin: 20, fullHeight: true,
       height: (X, z) => bldg(X, z) ?? floorH(X, z),
@@ -374,26 +398,43 @@ export class MetropolisBiome extends Biome {
       },
     });
     const S = (key, build, xf, z, base) => placeSprite(D, W, voxSprite(key, build, { scale: qscale(base * D.s(z)) }), xf, z, { id: key });
+    yield;
     const P = (id, xf, z, base, variant = 0) => placeSprite(D, W, worldProp(id, { scale: qscale(base * D.s(z)), variant }), xf, z, { id });
+    yield;
     this.subway = S('me_subway', subwayModel, 0.37, 0.44, 1.05);
+    yield;
     S('me_car0', () => carModel(5, '#3a7ad8'), 0.6, 0.12, 0.85);
+    yield;
     S('me_car1', () => carModel(9, '#e8c040'), 0.6, 0.66, 0.95);
+    yield;
     S('me_car2', () => carModel(13, '#d83a3a'), 0.45, 1.05, 1.05);
+    yield;
     this.tlights = [S('me_tl', trafficLightModel, 0.715, 0.3, 1.0), S('me_tl', trafficLightModel, 0.3, 0.74, 1.0)];
+    yield;
     this.lamps = [S('me_lamp', lampModel, 0.235, 0.14, 1.0), S('me_lamp', lampModel, 0.745, 0.42, 1.0), S('me_lamp', lampModel, 0.285, 0.6, 1.0), S('me_lamp', lampModel, 0.69, 0.95, 1.0)];
+    yield;
     this.boards = [S('me_board', billboardModel, 0.66, 0.6, 1.0), S('me_board', billboardModel, 0.5, 1.28, 1.25)];
+    yield;
     S('me_hydrant', hydrantModel, 0.765, 0.04, 0.8);
+    yield;
     P('coral_brain', 0.53, 0.02, 0.6, 1); P('coral_fan', 0.42, 0.2, 0.8, 0); P('coral_tube', 0.83, 0.24, 0.7, 2); P('coral_staghorn', 0.25, 0.35, 0.8, 1);
+    yield;
     P('coral_brain', 0.62, 0.36, 0.7, 2); P('coral_fan', 0.71, 0.82, 1.0, 2); P('coral_tube', 0.35, 0.92, 1.0, 1); P('coral_staghorn', 0.55, 0.85, 0.9, 0);
+    yield;
     P('coral_brain', 0.42, 0.62, 0.8, 0); P('anemone_base', 0.47, 0.05, 0.6, 1);
+    yield;
     const atm = S('me_atm', atmModel, 0.215, 0.04, 0.9);
+    yield;
     this.atm = { it: atm, rect: { x: atm.left + 2, y: atm.top + 2, w: atm.p.w - 4, h: atm.p.oy - 2 }, msg: 'INSERT CARD', t: 0 };
-    D.render([{ key: 'day', strip: this.water }]);
+    yield* D.render$([{ key: 'day', strip: this.water }]);
     this.bands = new BandSet(D);
+    yield;
     this.hazeY = Math.round(D.hz - 30);
     this.haze = new FogLayer(hazeMask(W, 76, { peak: 0.5, alpha: 0.8 }), 0, this.hazeY);
+    yield;
     this.floor = new Float32Array(W + 1);
-    for (let x = 0; x <= W; x++) this.floor[x] = D.floorAt(x, 0);
+    for (let x = 0; x <= W; x++) { this.floor[x] = D.floorAt(x, 0); yield; }
+    yield;
     // neon signs on the facades
     this.signs = SIGNS.map(([text, side, z, hgt, ci, vert], i) => {
       const s = D.s(z), small = s < 0.72;
@@ -403,9 +444,10 @@ export class MetropolisBiome extends Biome {
       const y = Math.round(D.y(z, hgt) - spr.h / 2);
       return { text, x, y, z, w: spr.w, h: spr.h, spr, color: NEON[ci], band: D.band(z), on: 1, fl: 0, ph: hash2(i, 3, 7) * TAU, broken: i === 0, fog: D.fog(z) };
     });
+    yield;
     this.brokenSign = this.signs[0];
     this.screens = [];
-    for (const b of [...this.boards, atm]) for (const sc of b.p.screens) this.screens.push({ x: b.left + sc.x, y: b.top + sc.y, w: sc.w, h: sc.h, band: b.band, atm: b === atm, ad: this.screens.length % ADS.length, fog: D.fog(b.z) });
+    for (const b of [...this.boards, atm]) { for (const sc of b.p.screens) this.screens.push({ x: b.left + sc.x, y: b.top + sc.y, w: sc.w, h: sc.h, band: b.band, atm: b === atm, ad: this.screens.length % ADS.length, fog: D.fog(b.z) }); yield; }
     // light anchors
     this.lampL = this.lamps.map((l) => ({ x: l.left + l.p.anchors.bulb.x, y: l.top + l.p.anchors.bulb.y, s: l.s, band: l.band, fog: D.fog(l.z), ph: Math.random() * TAU }));
     this.tl = this.tlights.map((l, i) => ({ x: l.left, y: l.top, a: l.p.anchors, s: l.s, band: l.band, off: i * 4 }));
@@ -415,7 +457,8 @@ export class MetropolisBiome extends Biome {
     this.glows = D.items.filter((q) => q.p?.glow && q.id !== 'me_board' && q.id !== 'me_atm').map((q) => ({ c: q.p.glow, x: q.left, y: q.top, band: q.band, a: 1 - D.fog(q.z) * 0.7, id: q.id }));
   }
 
-  buildLayers() {
+  buildLayers() { const it = this.buildLayers$(); for (;;) { const n = it.next(); if (n.done) return n.value; } } // [travel17]
+  *buildLayers$() {
     const W = this.W, H = this.H, pad = 30, D = this.D;
     this.pad = pad;
     const LW = W + pad * 2;
@@ -424,64 +467,95 @@ export class MetropolisBiome extends Biome {
     // far A: the skyline at the end of the avenue
     const yA = Math.round(hz - H * 0.4), hA = H - yA;
     const mA = new Mask(LW, hA);
+    yield;
     const baseA = hz - yA + 8;
     mA.rect(0, baseA - 6, LW, hA);
+    yield;
     const lit = [];
     for (let i = 0; i < 34; i++) {
       const x = r.float(0, LW), w = r.float(10, 30), hh = r.float(30, Math.min(baseA - 10, 200));
       mA.rect(x - w / 2, baseA - hh, w, hh);
       if (r.chance(0.3)) mA.rect(x - 1, baseA - hh - r.float(6, 16), 2, 16);
       for (let k = 0; k < hh / 6; k++) if (r.chance(0.25)) lit.push([x - w / 2 + 2 + r.int(0, Math.max(1, w - 4)), baseA - hh + 4 + k * 6]);
+      yield;
     }
+    yield;
     const palA = stopPalette([[0, '#0a0c22'], [1, '#22284e']], 5);
+    yield;
     const cA = mA.toCanvas((x, y, v, up) => (up <= 1 ? pack('#4a5288') : ditherPick(palA, 0.6 - Math.min(1, up / 80) * 0.4 + (x % 7 === 0 ? -0.15 : 0), x, y)));
+    yield;
     const gA = ctxOf(cA);
+    yield;
     for (const [x, y] of lit) { gA.fillStyle = r.pick(['#ffd890', '#9ae8ff', '#ffd890', '#ff9ad8']); gA.fillRect(Math.round(x), Math.round(y), 1, 2); }
+    yield;
     this.farA = new FogLayer(voxRelief(cA, { depth: lumDepth(2, 6) }), -pad, yA);
+    yield;
     this.farAY = yA;
     // far B: an elevated railway across the avenue + low buildings
     const yB = Math.round(hz - 120), hB = H - yB;
     const mB = new Mask(LW, hB);
+    yield;
     const baseB = hz - yB + 14;
     const rB = ridge(LW, baseB - 4, 6, 0.01, 4.2, 2);
+    yield;
     mB.below((x) => rB[x]);
+    yield;
     const trackY = 34;
     this.trackY = yB + trackY;
     mB.rect(0, trackY, LW, 4);
+    yield;
     mB.rect(0, trackY + 4, LW, 1);
+    yield;
     for (let x = 20; x < LW; x += 70) { mB.rect(x, trackY + 4, 4, baseB - trackY); mB.rect(x - 6, trackY + 4, 16, 2); }
+    yield;
     for (let i = 0; i < 16; i++) { const x = r.float(0, LW), w = r.float(16, 40), hh = r.float(14, 50); mB.rect(x, baseB - hh, w, hh); }
+    yield;
     const palB = stopPalette([[0, '#0a0a1e'], [1, '#262c50']], 5);
+    yield;
     this.farB = new FogLayer(voxRelief(mB.toCanvas((x, y, v, up) => (up <= 1 ? pack('#5a62a0') : ditherPick(palB, 0.6 - Math.min(1, up / 40) * 0.4, x, y))), { depth: lumDepth(2, 5) }), -pad, yB);
+    yield;
     this.farBY = yB;
     this.train = null; this.trainT = 4;
   }
 
-  buildLife() {
+  buildLife() { const it = this.buildLife$(); for (;;) { const n = it.next(); if (n.done) return n.value; } } // [travel17]
+  *buildLife$() {
     const W = this.W, H = this.H, D = this.D, sy = this.surfY();
     const r = new RNG(31);
     this.decor = new DepthDecor(D);
+    yield;
     // seagrass in the cracks and kelp growing out of the sidewalks
     for (const [xf, z, tall] of [[0.33, 0.02, 0], [0.48, 0.16, 0], [0.56, -0.08, 0], [0.4, 0.3, 0], [0.64, 0.24, 0], [0.5, 0.5, 0], [0.43, 0.8, 0], [0.57, 0.95, 0], [0.24, 0.24, 1], [0.79, 0.12, 1], [0.27, 0.86, 1], [0.73, 0.7, 1], [0.21, 0.5, 1]]) {
       // voxel seagrass in the cracks and voxel kelp growing out of the sidewalks
       const x0 = Math.round(xf * W), k = qscale(D.s(z), 0.2, 0.4);
       const A = tall ? voxAnim('kelp', 2 + (r.int(0, 1)), 'metropolis', 16, k, 8) : voxAnim('seagrass', 1 + r.int(0, 2), 'metropolis', 8, k * 1.3, 8);
       this.decor.add({ anim: placeAnim(A, x0, Math.round(D.floorAt(x0, z)) + 2), z, off: r.int(0, A.n - 1) });
+      yield;
     }
+    yield;
     this.decor.refog(() => '#1e2450', 'k');
+    yield;
     // rush-hour fish traffic lanes
     const cols = ['#ff9a5a', '#5ad8ff', '#ffd25a', '#c88aff', '#7aff9a', '#ff6a8a'];
-    this.fishSpr = cols.map((c, i) => fishSprite(c, i)); // [phase3:fish]
+    this.fishSpr = [];
+    for (let i = 0; i < cols.length; i++) { this.fishSpr.push(fishSprite(cols[i], i)); yield; } // [phase3:fish] [travel17] one a slice
+    yield;
     this.fishSprL = this.fishSpr.map((c) => { const o = makeCanvas(c.width, c.height), g = ctxOf(o); g.translate(c.width, 0); g.scale(-1, 1); g.drawImage(c, 0, 0); return o; });
+    yield;
     this.lanes = [[0.18, 1, 46], [0.3, -1, 40], [0.5, 1, 34], [0.62, -1, 30], [0.85, 1, 24], [1.05, -1, 20]].map(([z, dir, sp], i) => {
       const s = D.s(z);
       return { z, dir, sp: sp * (0.8 + 0.4 * s), y: Math.round(D.y(z, 26 + i * 6)), band: D.band(z), s, fish: Array.from({ length: 14 }, (_, k) => ({ o: k * 41 + r.float(0, 30), c: r.int(0, 5), dy: r.int(-4, 4) })) };
     });
+    yield;
     // particles
     this.silt = new Motes(110, { x0: 0, y0: sy, x1: W, y1: H - 40 }, { seed: 3, vx: [-2, 2], vy: [-1, 2], sizes: [1, 1, 2], colors: ['#8a9ac8', '#aab4e0', '#6a7aaa'], alpha: [0.2, 0.6], wob: 4 });
+    yield;
     this.neonMotes = new Motes(40, { x0: 0, y0: 30, x1: W, y1: H - 40 }, { seed: 7, vx: [-2, 2], vy: [-2, 1], sizes: [1], colors: NEON, alpha: [0.5, 1], wob: 6 });
+    yield;
     this.nearSilt = new Motes(22, { x0: 0, y0: sy, x1: W, y1: H }, { seed: 9, vx: [-3, 3], vy: [-2, 2], sizes: [2, 3], colors: ['#aab4e0'], alpha: [0.08, 0.2], wob: 7 });
+    yield;
     this.bubbles = new Bubbles(60, '#d8e0ff');
+    yield;
     this.emitT = 1;
   }
 

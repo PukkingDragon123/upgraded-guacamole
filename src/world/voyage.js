@@ -39,6 +39,7 @@ import * as Character from '../gfx/character.js';
 import * as BM from './boatmodels.js';
 import { cloudSprites } from './sky.js';
 import { MAP_LOCATIONS } from '../ui/mappanel.js';
+import { destSprite } from './destinations.js';
 
 // oceans whose sky pass paints near walls that continue under the water: their postcards move in one piece
 const LOCKED = new Set(['fjord', 'metropolis']);
@@ -213,9 +214,10 @@ function islandModel(kind, seed) {
   return null;
 }
 const ISLANDS = new Map();
-function islandSprite(kind, seed) {
+function islandSprite(kind, seed, peek = false) {
   const key = kind + seed;
   if (ISLANDS.has(key)) return ISLANDS.get(key);
+  if (peek) return null; // drawing never builds: the jobs do, a few ms a frame
   let s = null;
   try {
     const def = islandModel(kind, seed);
@@ -329,7 +331,7 @@ export class Voyage {
       orig: null, dest: null, capWait: 0, capPending: null,
       palO: lookPal(fromK, night), palD: lookPal(toK, night), palM: lookPal('open', night), pal: null, palDGot: false,
       clouds: [], islands: [], gulls: [], wake: [], bubbles: [], spray: [], fx: [], cols: [], floats: [], nextIsl: 0, nextCloud: 0, nextFar: 0,
-      jobs: null, titleDef: null, flood: null, sfx: {}, total: D.depart + D.sea + D.arrive + 0.4,
+      jobs: null, titleDef: null, flood: null, sfx: {}, total: D.depart + D.sea + D.arrive + 0.4, W0: W, H0: H,
     };
     s.pal = copyPal(s.palO);
     s.palDT = copyPal(s.palD);
@@ -357,20 +359,26 @@ export class Voyage {
 
   *jobs(s) {
     const g = this.game, o = g.ocean;
-    // 1) puppet boat sprites (facing right, every roll) at 1x
-    try {
-      const b = g.boat;
-      if (b?.model) {
+    // 1) puppet boat sprites (facing right, every roll): 1x during the departure, the close-up 2x ones once at sea
+    const boatSprites = function* (Rs) {
+      try {
+        const b = g.boat;
+        if (!b?.model) return;
         const M = b.model();
-        for (const R of [1, 2]) for (const ri of [3, 2, 4, 1, 5, 0, 6]) { const k = b.modelKey + ':1:' + ri + ':' + R; if (!b.sprites.has(k)) { b.sprites.set(k, b.buildSprite(M, 1, ri, R)); yield; } }
-      }
-    } catch (e) { console.warn('voyage boat', e); }
+        for (const R of Rs) for (const ri of [3, 2, 4, 1, 5, 0, 6]) { const k = b.modelKey + ':1:' + ri + ':' + R; if (!b.sprites.has(k)) { b.sprites.set(k, b.buildSprite(M, 1, ri, R)); yield; } }
+      } catch (e) { console.warn('voyage boat', e); }
+    };
+    yield* boatSprites([1]);
+    // the rest waits for the sea beat (the departure renders the live world: keep its frames light)
+    while (s.phase === 'depart') yield 'wait';
+    yield* boatSprites([2]);
     // 2) clouds and the islands of both oceans
     yield* buildClouds();
     for (const k of [s.fromK, s.toK, 'sail', 'buoy']) for (let i = 0; i < 2; i++) { islandSprite(k, i); yield; }
+    if (s.kind === 'dest') { try { destSprite(s.to, 2); s.placeReady = true; } catch (e) { console.warn(e); } yield; }
     // 3) the destination biome
     if (s.gen) {
-      for (;;) { let r; try { r = s.gen.next(); } catch (e) { console.error(e); r = { done: true }; } if (r.done) break; yield 'build'; }
+      for (;;) { let r; try { r = s.gen.next(); } catch (e) { console.error(e); r = { done: true }; } if (r.done) break; yield r.value ?? 'build'; }
       s.gen = null;
       if (s.ts) s.ts.gen = null;
     }
@@ -385,7 +393,7 @@ export class Voyage {
     if (!s.jobs) return;
     const t0 = performance.now();
     try {
-      while (performance.now() - t0 < budget) { const r = s.jobs.next(); if (r.done) { s.jobs = null; break; } }
+      while (performance.now() - t0 < budget) { const r = s.jobs.next(); if (r.done) { s.jobs = null; break; } if (r.value === 'wait') break; }
     } catch (e) { console.error(e); s.jobs = null; }
   }
 
@@ -401,6 +409,8 @@ export class Voyage {
       if (s.skippable && !s.skipped && (key || inp.pressed)) { s.skipped = true; s.speed = Math.max(s.speed, 3.6); g.audio?.play('ui_click'); }
       if (inp.pressed) inp.consume?.();
     }
+    // the window changed size mid-trip: the postcards no longer fit; land at once
+    if (g.screen.W !== s.W0 || g.screen.H !== s.H0) { this.abort(s); return; }
     const dt = Math.min(0.05, dtIn) * s.speed;
     s.t += dt; s.pt += dt;
     if (s.ts) s.ts.t = s.t;
@@ -551,6 +561,22 @@ export class Voyage {
     s.flood?.stop(); s.flood = null;
   }
 
+  // cut straight to the destination (window resized mid-trip)
+  abort(s) {
+    const g = this.game, o = g.ocean, boat = g.boat;
+    if (s.kind === 'dest') { this.fade = null; this.layer = null; this.handToDest(s); this.fade = null; return; }
+    try { if (s.gen) { while (!s.gen.next().done); s.gen = null; } o.get(s.to); } catch (e) { console.error(e); }
+    if (o.biome !== s.target) {
+      o.biome = s.target;
+      o.pickWeather(true);
+    }
+    if (boat) { boat.pilot = null; boat.placed = false; boat.dir = 1; }
+    s.dest = null;
+    s.flood?.stop(); s.flood = null;
+    if (!this.title) this.showTitle(s);
+    this.finish(s);
+  }
+
   updSettle(s, dt) {
     if (s.pt >= 0.4) this.finish(s);
   }
@@ -599,6 +625,7 @@ export class Voyage {
   showTitle(s) {
     s.titleT = 1;
     if (s.kind !== 'ocean' || !s.target) return;
+    if (s.titleDef) for (const L of s.titleDef.letters) L.landed = false;
     this.title = { t: 0, def: s.titleDef, name: (s.target.name || '').toUpperCase(), sub: s.target.subtitle || '', first: s.first, to: s.to, played: false };
   }
 
@@ -793,6 +820,7 @@ export class Voyage {
     this.drawIslands(c, s, W, hz, 0);
     this.drawClouds(c, s, W, hz, 1);
     this.drawIslands(c, s, W, hz, 1);
+    if (s.kind === 'dest') this.drawPlace(c, s, W, hz);
     this.drawSea(c, s, W, H, hz);
     // the origin postcard leaves to the left (water at the water's speed, sky slower) and fades
     if (s.orig) {
@@ -916,7 +944,7 @@ export class Voyage {
     if (!s[key]) s[key] = layer ? edge + 200 : edge - 60;
     while (s[key] < edge) {
       const kind = !layer && Math.random() < 0.3 ? 'sail' : Math.random() < s.u ? s.toK : s.fromK;
-      const spr = islandSprite(kind, Math.floor(Math.random() * 2));
+      const spr = islandSprite(kind, Math.floor(Math.random() * 2), true);
       if (spr) s.islands.push({ x: s[key], spr, kind, sc, layer, bob: Math.random() * 6 });
       s[key] += (layer ? 520 : 230) + Math.random() * (layer ? 520 : 280);
     }
@@ -941,6 +969,24 @@ export class Voyage {
       c.globalAlpha = 1;
     }
     s.islands = s.islands.filter((is) => is.x - s.C * (is.layer ? 0.5 : 0.22) + is.spr.w * is.sc * 2 > -80);
+  }
+
+  // the Lab island / the Workshop dock appears on the horizon and grows as the boat closes in
+  drawPlace(c, s, W, hz) {
+    const k = smoothstep(0.25, 1, s.pt / s.D.sea);
+    if (k <= 0 || !s.placeReady) return;
+    let S = null;
+    try { S = destSprite(s.to, 2); } catch { S = null; }
+    if (!S) return;
+    const z = lerp(0.35, 0.8, k) * this.zl(s, 0.3);
+    const lab = s.to === 'lab';
+    const x = Math.round(lerp(W * 1.08, W * 0.8, ease.outCubic(k))), bob = lab ? Math.sin(s.t * 1.3) * 3 : 0;
+    const w = Math.round(S.w * z), h = Math.round(S.h * z);
+    const y = Math.round(hz + 2 - S.oy * z + (lab ? -26 * z + bob : 0));
+    c.globalAlpha = smoothstep(0, 0.3, k);
+    c.drawImage(S.canvas, x - Math.round(S.ox * z), y, w, h);
+    if (S.glow) { c.globalCompositeOperation = 'lighter'; c.globalAlpha *= 0.5; c.drawImage(S.glow, x - Math.round(S.ox * z), y, w, h); c.globalCompositeOperation = 'source-over'; }
+    c.globalAlpha = 1;
   }
 
   drawSea(c, s, W, H, hz) {
@@ -1045,7 +1091,7 @@ export class Voyage {
       s.nextFloat ??= s.B + W * 0.9;
       if (s.nextFloat < s.B + (W * 1.1) / Z) { s.floats.push({ x: s.nextFloat, ph: Math.random() * 6 }); s.nextFloat += W * (0.8 + Math.random() * 0.9); }
     }
-    const spr = islandSprite('buoy', 0);
+    const spr = islandSprite('buoy', 0, true);
     if (!spr) return;
     for (const f of s.floats) {
       const x = s.X + (f.x - s.B) * Z;
@@ -1330,7 +1376,7 @@ export class Voyage {
     }
     const out = clamp01((t - hold) / 0.8);
     const a = 1 - out;
-    const cy = Math.round(H * 0.24);
+    const cy = Math.round(H * 0.34); // clear of the top banners and of the boat
     if (!T.played && t > 0.05) {
       T.played = true;
       this.game.audio?.play('sparkle', { vol: 0.4 });
@@ -1350,6 +1396,8 @@ export class Voyage {
         const bob = Math.sin(t * 2.2 + i * 0.55) * 1.5;
         const lift = out * -12;
         const c = L.canvas, w = c.width / sq, h = c.height * sq;
+        // each letter lands with a little splash of pixel droplets
+        if (li >= 0.55 && !L.landed && t < 3) { L.landed = true; try { this.game.particles?.pixelBurst?.('drop', W / 2 + L.x, cy + c.height * 0.45, 2, { layer: 'ui', ramp: 'aqua', size: 0, dir: -Math.PI / 2, spread: 1.1, speed: [30, 70] }); } catch { /* fx optional */ } }
         ctx.globalAlpha = a * clamp01(li * 3);
         ctx.drawImage(c, Math.round((W / 2 + L.x - w / 2) * 2) / 2, Math.round((cy - h / 2 + fall + bob + lift) * 2) / 2, Math.round(w * 2) / 2, Math.round(h * 2) / 2);
       });
