@@ -364,9 +364,12 @@ that feels hand-made."
   (`voxelSize(c, pose)`: ~48 voxels along small fish .. ~140 along giants), skin colours, stamped natural eyes, translucent
   fin voxels + denser rays (`'finrays'` part), glow voxels, baked AO. All APIs are unchanged (drawFishRig, lpFrame,
   lpFishIcon/voxelFishIcon, fishMesh/creatureMesh/addFishToScene give voxel meshes for the tank). `setVoxelMode(false)` = old
-  smooth meshes. Bubbles (`src/gfx/seal.js`) is a seal pup built from glossy 3D soap bubbles with a striped party cone hat and
-  round glasses, ray-cast per pixel by `src/gfx/bubblegl.js` (WebGL2, JS fallback), baked per animation/size and cached;
-  each bubble wobbles on its own, the head layer turns toward `lookAt`; same anims / `drawNPC(ctx, 'seal', ...)`
+  smooth meshes. Bubbles (`src/gfx/seal.js`) [seal20] is a fat, round, jiggly PLUSH VOXEL seal pup (voxelised painted
+  mesh, black ink outline): a chubby loaf with a big round head merging into it, dappled grey-white fur, white muzzle
+  pads with whisker dots, round glasses, rosy blush and a small tilted voxel party cone hat (aqua / white stripes, pink
+  pom-pom). Big shiny eyes, blush, mouth and lens glints are drawn live at voxel resolution; squash spring, voxel-row
+  ripple and belly wobble make it jiggle; little pixel bubbles bud off its back and pop. Posed voxel meshes are cached
+  per animation and rendered once per device size into a sprite sheet; same anims / options / `drawNPC(ctx, 'seal', ...)`
   (dev page: `node tools/build.mjs --dev seal`).
   Dev: `node tools/build.mjs --dev lowpoly` -> `dev/lowpoly.html?mode=gallery&page=N | giants | vg | seal | icons | scene |
   turn&ids=puffer | perf`.

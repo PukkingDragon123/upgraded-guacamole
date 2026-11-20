@@ -18997,43 +18997,56 @@ void main() {
     m.set(31, 42, 11, p("#2a1428", MATTE));
     return { vm: m, yaw: 0.3, pitch: 0.24, spin: "wobble" };
   }
-  function bubblePup(m, p, cx, cy, cz, k, o) {
-    const pearl = p(o.pearl, GL), pearlD = p(o.pearlD, GL), white = p("#ffffff", { ...GL, emissive: 0.55 });
-    const film = ["#ffc8ee", "#fff4bc", "#c0ffe6", "#b4e2ff"].map((c) => p(c, { ...GL, light: 0.3 }));
-    const aqua = p("#7cc8ff", GL), aquaL = p("#c4ecff", GL);
-    const bub2 = (x0, y02, z0, r) => (x, y, z) => {
-      const dx = (x + 0.5 - x0) / r, dy = (y + 0.5 - y02) / r, dz = (z + 0.5 - z0) / r;
-      if (Math.hypot(dx, dy) > 0.88 && dz > -0.2) return film[(Math.floor((Math.atan2(dy, dx) / TAU4 + 1) * 6) % 4 + 4) % 4];
-      if (dx < -0.2 && dx > -0.62 && dy > 0.25 && dy < 0.66 && dz > 0.45) return white;
-      return dy < -0.4 ? pearlD : pearl;
-    };
-    m.ellipsoid(cx - 2 * k, cy - 9 * k, cz - 2, 10 * k, 7 * k, 8.5 * k, bub2(cx - 2 * k, cy - 9 * k, cz - 2, 9 * k));
-    m.sphere(cx - 11 * k, cy - 12 * k, cz - 3, 4 * k, bub2(cx - 11 * k, cy - 12 * k, cz - 3, 4 * k));
-    m.sphere(cx - 15.5 * k, cy - 12 * k, cz - 3, 2.4 * k, aqua);
-    for (const [x, y, z, r] of [[5, -15, 6, 2.8], [7.5, -17, 7, 2.1], [-6, -15, 6, 2.6]]) m.sphere(cx + x * k, cy + y * k, cz + z * k, r * k, (xx, yy) => yy > cy + y * k + r * k * 0.3 ? aquaL : aqua);
-    m.sphere(cx, cy, cz, 9.5 * k, bub2(cx, cy, cz, 9.5 * k));
-    const muz = p("#fdfeff", SOFT), nose = p("#2a1e30", GL), eye2 = p("#0e1222", GL), wh = p("#ffffff", { emissive: 0.75 }), blush = p("#ff9ac0", SOFT);
-    for (const s of [-1, 1]) m.ellipsoid(cx + s * 2.5 * k, cy - 3.2 * k, cz + 8 * k, 3 * k, 2.6 * k, 2.4 * k, muz);
-    m.ellipsoid(cx, cy - 1 * k, cz + 9.6 * k, 1.9 * k, 1.4 * k, 1.3 * k, nose);
-    for (const s of [-1, 1]) {
-      m.ellipsoid(cx + s * 4.3 * k, cy + 2.3 * k, cz + 8 * k, 1.45 * k, 2 * k, 1.5 * k, eye2);
-      m.set(Math.floor(cx + s * 4.3 * k - 0.6 * k), Math.floor(cy + 3.3 * k), Math.floor(cz + 9.3 * k), wh);
-      m.ellipsoid(cx + s * 7.2 * k, cy - 1.6 * k, cz + 6.6 * k, 1.8 * k, 1.1 * k, 1, blush);
-      if (o.glasses) torus(m, cx + s * 4.4 * k, cy + 2.3 * k, cz + 9.6 * k, 3.3 * k, 0.55, "z", p("#141a2c", METAL));
+  function tiltCone(m, base, ax, H, R2, col) {
+    const l = Math.hypot(ax[0], ax[1], ax[2]), A2 = [ax[0] / l, ax[1] / l, ax[2] / l], E = Math.max(H, R2) + 1;
+    for (let z = Math.floor(base[2] - E); z <= Math.ceil(base[2] + E); z++) for (let y = Math.floor(base[1] - 1); y <= Math.ceil(base[1] + E); y++) for (let x = Math.floor(base[0] - E); x <= Math.ceil(base[0] + E); x++) {
+      const dx = x + 0.5 - base[0], dy = y + 0.5 - base[1], dz = z + 0.5 - base[2];
+      const h = dx * A2[0] + dy * A2[1] + dz * A2[2];
+      if (h < 0 || h > H) continue;
+      const rx = dx - A2[0] * h, ry = dy - A2[1] * h, rz = dz - A2[2] * h, r = Math.hypot(rx, ry, rz);
+      if (r > R2 * (1 - h / H) + 0.35) continue;
+      m.put(x, y, z, col(h / H, Math.atan2(rz, rx)));
     }
-    if (o.glasses) m.box(cx - 1.2 * k, cy + 3.2 * k, cz + 9.6 * k, cx + 1.2 * k, cy + 3.2 * k, cz + 9.6 * k, p("#141a2c", METAL));
-    const hA = p(o.hatA, GL), hB = p(o.hatB, GL), brim = p("#ffffff", SOFT), pom = p(o.pom, { ...GL, emissive: 0.15 });
-    const hx = cx - 1.2 * k, hz = cz - 0.5, y0 = cy + 6.5 * k, y1 = y0 + 13 * k;
-    m.cone(hx, hz, y0, y1, 5.2 * k, 0.6, (x, y, z) => (((y - y0) / (2.6 * k) + Math.atan2(z + 0.5 - hz, x + 0.5 - hx) / TAU4) % 1 + 1) % 1 < 0.5 ? hA : hB, "y");
-    torus(m, hx, y0 + 0.5, hz, 5.2 * k, 1.5 * k, "y", brim);
-    m.sphere(hx, y1 + 1.4 * k, hz, 2.3 * k, pom);
+  }
+  function plushPup(m, p, cx, cy, cz, k, o) {
+    const fur = p(o.fur, SOFT), furD = p(o.furD, SOFT), spot = p(o.spot, SOFT), belly = p("#ffffff", SOFT);
+    const furAt = (x, y, z) => {
+      const face4 = z > cz + 5 * k && Math.abs(x + 0.5 - cx) < 7 * k && y > cy - 7 * k && y < cy + 5 * k;
+      if (y + 0.5 < cy - 11 * k && z > cz - 2) return belly;
+      if (!face4 && h3(x >> 2, y >> 2, z >> 2, o.seed) > 0.8 && h3(x, y, z, o.seed) > 0.25) return spot;
+      return y + 0.5 > cy + 4 * k ? furD : fur;
+    };
+    m.ellipsoid(cx, cy - 8 * k, cz - 1.5, 11.5 * k, 8.5 * k, 10 * k, furAt);
+    m.sphere(cx, cy, cz, 9.6 * k, furAt);
+    const flip = p("#9aa2b0", SOFT);
+    for (const s of [-1, 1]) m.ellipsoid(cx + s * 10.5 * k, cy - 14 * k, cz + 2.5 * k, 3.4 * k, 1.6 * k, 2.6 * k, flip);
+    const muz = p("#ffffff", SOFT), nose = p("#2a2430", GL), eye2 = p("#10131d", GL), iris = p("#3d62a8", GL), wh = p("#ffffff", { emissive: 0.8 });
+    const blush = p("#ff94b8", SOFT), dotC = p("#8b8fa0", MATTE);
+    for (const s of [-1, 1]) {
+      m.ellipsoid(cx + s * 2.5 * k, cy - 3.6 * k, cz + 8.3 * k, 3.1 * k, 2.5 * k, 2.4 * k, muz);
+      for (const [dx, dy] of [[1.2, 0.6], [2.4, -0.4], [0.6, -0.9]]) m.set(cx + s * (2.5 + dx) * k, cy - 3.6 * k + dy * k, cz + 10.4 * k, dotC);
+    }
+    m.ellipsoid(cx, cy - 1.2 * k, cz + 9.9 * k, 1.5 * k, 1 * k, 1.1 * k, nose);
+    for (const s of [-1, 1]) {
+      const ex = cx + s * 4.4 * k, ey = cy + 2 * k;
+      m.ellipsoid(ex, ey, cz + 7.9 * k, 1.7 * k, 2.2 * k, 1.6 * k, (x, y) => y + 0.5 < ey - 0.8 * k ? iris : eye2);
+      m.set(ex - 0.6 * k, ey + 0.8 * k, cz + 9.4 * k, wh);
+      m.ellipsoid(cx + s * 7.1 * k, cy - 2.2 * k, cz + 6.8 * k, 2 * k, 1.2 * k, 1.2, blush);
+      if (o.glasses) torus(m, ex, ey, cz + 9.8 * k, 3.6 * k, 0.5, "z", p("#2a3146", METAL));
+    }
+    if (o.glasses) m.box(cx - 0.9 * k, cy + 2.8 * k, cz + 10 * k, cx + 0.9 * k, cy + 2.8 * k, cz + 10 * k, p("#2a3146", METAL));
+    const hA = p(o.hatA, GL), hB = p(o.hatB, GL), hD = p(o.hatD, GL), pom = p(o.pom, SOFT), pomL = p(o.pomL, SOFT);
+    const ax = o.tilt || [-0.3, 1, -0.1], base = [cx - 1.5 * k, cy + 7.6 * k, cz - 0.5];
+    tiltCone(m, base, ax, 12 * k, 4.8 * k, (h, a) => h < 0.1 ? hD : (Math.floor(h * 4.5 + a / TAU4) % 2 + 2) % 2 ? hB : hA);
+    const l = Math.hypot(ax[0], ax[1], ax[2]), tip = [base[0] + ax[0] / l * 13 * k, base[1] + ax[1] / l * 13 * k, base[2] + ax[2] / l * 13 * k];
+    m.sphere(tip[0], tip[1], tip[2], 2.3 * k, (x, y) => y + 0.5 > tip[1] + 0.6 && h3(x, y, 1) > 0.4 ? pomL : pom);
   }
   function friends() {
-    const m = new VoxelModel(54, 50, 36), p = palOf(m);
-    bubblePup(m, p, 36, 22, 13, 0.88, { pearl: "#ffe6f4", pearlD: "#e8bcd8", hatA: "#ff6aa8", hatB: "#fff4a0", pom: "#7ae04a" });
-    bubblePup(m, p, 20, 19, 21, 1, { pearl: "#e4f6ff", pearlD: "#b4dcf6", hatA: "#2a9aff", hatB: "#ffffff", pom: "#8ae84a", glasses: true });
+    const m = new VoxelModel(56, 54, 38), p = palOf(m);
+    plushPup(m, p, 37, 23, 13, 0.86, { fur: "#e4e9f0", furD: "#cdd5e0", spot: "#97a0b2", hatA: "#ff6aa8", hatB: "#fff4a0", hatD: "#e04c8c", pom: "#8ae84a", pomL: "#c4ff8a", tilt: [0.3, 1, -0.1], seed: 3 });
+    plushPup(m, p, 20, 20, 21, 1, { fur: "#f2f4f8", furD: "#dfe3ea", spot: "#a3abba", hatA: "#33c4e6", hatB: "#ffffff", hatD: "#1d9fca", pom: "#ff8db4", pomL: "#ffc2d8", glasses: true, tilt: [-0.32, 1, 0.05], seed: 7 });
     const ht = p("#ff4a7a", { ...GL, emissive: 0.25 });
-    for (const [x, y] of [[0, 2], [1, 2], [3, 2], [4, 2], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1], [1, 0], [2, 0], [3, 0], [2, -1]]) m.box(25 + x, 42 + y, 20, 25 + x, 42 + y, 21, ht);
+    for (const [x, y] of [[0, 2], [1, 2], [3, 2], [4, 2], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1], [1, 0], [2, 0], [3, 0], [2, -1]]) m.box(26 + x, 43 + y, 20, 26 + x, 43 + y, 21, ht);
     return { vm: m, yaw: 0.3, pitch: 0.24, spin: "wobble" };
   }
   function cog(m, p, cx, cy, z0, z1, R2, r0, teeth, base, hub, holes = 0) {

@@ -70,7 +70,7 @@ const C = {
   spot: rgb('#a3abba'), spotD: rgb('#7d8698'), muzzle: rgb('#ffffff'), chin: rgb('#f4f2ee'), whisk: rgb('#8b8fa0'),
   flip: rgb('#a2a9b6'), flipTip: rgb('#7c8391'), nose: rgb('#2b2733'), noseHi: rgb('#5a5468'),
   hatA: rgb('#33c4e6'), hatAD: rgb('#1d9fca'), hatB: rgb('#f8fdff'), pom: rgb('#ff8db4'), pomD: rgb('#f2679a'), pomL: rgb('#ffc2d8'),
-  glass: rgb('#1e2232'), glassHi: rgb('#4a5372'),
+  glass: rgb('#252b3e'), glassHi: rgb('#56618a'),
 };
 // the look (lowpoly shader options): soft plush shading with a glossy Aero rim and sky sheen
 const LOOK = { ambient: 0.64, spec: 0.2, shine: 20, soft: 0.5, softColor: '#ffd8e0', rim: 0.4, rimColor: '#c4f2ff', env: 0.1, iri: 0.04, sky: '#f2fdff', ground: '#a8d4ee', light: [-0.42, 0.72, 0.75] };
@@ -82,17 +82,17 @@ export const SEAL_VOXEL = 0.04;
 // head (HEAD) swelling out of its front: every cross-section along x is the smooth union of both, so the head flows
 // into the body with no neck. The face sits on the front of the head, tiny flippers under the sides, a small tail
 // flipper pair at the back and the party hat on top of the head.
-const BODY = { xc: -0.2, a: 0.8, cy: 0.52, hy: 0.62, hz: 0.78, e: 2.3 };
+const BODY = { xc: -0.2, a: 0.8, cy: 0.54, hy: 0.64, hz: 0.78, e: 2.0 };
 const HEAD = { x: 0.36, y: 0.9, r: 0.52, rz: 0.55 };
 const X0 = BODY.xc - BODY.a, X1 = HEAD.x + HEAD.r;
 const BODY_SEG = 30, BODY_ROWS = 34;
 const PIV = [-0.15, 0.0, 0];           // squash pivot (bottom centre)
 const HPIV = [0.24, 0.64, 0];          // the head twists about this point (soft weighted, no neck)
 const HEAD_C = [HEAD.x + 0.06, HEAD.y, 0]; // "head" anchor
-const EYE_R = 0.118;
-const FACE = { eyeX: 0.75, eyeA: 0.86, nose: [0.905, 0.835, 0], mouth: [0.878, 0.715, 0], muzzle: [0.835, 0.77, 0.085], cheekX: 0.68, cheekA: 1.28 };
+const EYE_R = 0.138;
+const FACE = { eyeX: 0.76, eyeA: 0.98, nose: [0.912, 0.84, 0], mouth: [0.885, 0.705, 0], muzzle: [0.84, 0.77, 0.09], cheekX: 0.66, cheekA: 1.38 };
 const SHOULDER = [0.3, 0.2, 0.64];
-const HIP = [-0.9, 0.32, 0.08];
+const HIP = [-0.84, 0.4, 0.24];
 const C0 = [-0.05, 0.84, 0];           // sprite centre (model point at the sheet cell centre)
 const CELL_W = 3.1, CELL_H = 3.0;      // cell size in model units
 // party hat: base centre on the head, tilted back and a little toward the far side
@@ -104,7 +104,7 @@ const hatApex = () => add(hatBase(), scl(HAT.axis, HAT.H));
 function loafAt(x) {
   const t = clamp((x - BODY.xc) / BODY.a, -1, 1);
   let f = Math.pow(Math.max(0, 1 - Math.pow(Math.abs(t), BODY.e)), 1 / BODY.e);
-  if (t < 0) f *= 1 - 0.12 * t * t;      // a softly tapering rear
+  if (t < 0) f *= 1 - 0.1 * t * t;       // a softly tapering rear
   const bTop = BODY.cy + BODY.hy * f, bBot = BODY.cy - BODY.hy * f - 0.03 * Math.max(0, t), bZ = BODY.hz * f;
   const u = clamp((x - HEAD.x) / HEAD.r, -1, 1), g = Math.sqrt(Math.max(0, 1 - u * u));
   const hTop = HEAD.y + HEAD.r * g, hBot = HEAD.y - HEAD.r * 0.94 * g, hZ = HEAD.rz * g;
@@ -118,9 +118,9 @@ function loafAt(x) {
 function loafPt(x, a) {
   const [cy, hy, hz] = loafAt(x);
   const c = Math.cos(a), s = Math.sin(a);
-  let y = Math.sign(c) * Math.pow(Math.abs(c), 0.82) * hy;
+  let y = Math.sign(c) * Math.pow(Math.abs(c), 0.9) * hy;
   if (y < 0) { y *= 0.94; if (y < -0.74 * hy) y = -0.74 * hy + (y + 0.74 * hy) * 0.35; } // sits flat on its belly
-  return [x, cy + y, Math.sign(s) * Math.pow(Math.abs(s), 0.82) * hz];
+  return [x, cy + y, Math.sign(s) * Math.pow(Math.abs(s), 0.9) * hz];
 }
 function loafN(x, a) {
   const e = 0.01;
@@ -160,8 +160,8 @@ function triV(mb, a, b, c, ca, cb, cc) {
 }
 // grid of rest points -> painted + deformed quads (rows i, columns j wrap)
 function sheetMesh(mb, rows, paint, deform) {
-  const col = rows.map((r) => r.map(paint));
-  const pos = rows.map((r) => r.map(deform));
+  const col = rows.map((r) => r.map((p) => paint(p)));
+  const pos = rows.map((r) => r.map((p) => deform(p)));
   for (let i = 0; i < rows.length - 1; i++) {
     const n = rows[i].length;
     for (let j = 0; j < n; j++) {
@@ -174,7 +174,7 @@ function sheetMesh(mb, rows, paint, deform) {
 // an end cap fan (closing a ring) toward point c; flip reverses the winding
 function capFan(mb, ring, c, paint, deform, flip) {
   const pc = deform(c), cc = paint(c);
-  const P = ring.map(deform), K = ring.map(paint);
+  const P = ring.map((p) => deform(p)), K = ring.map((p) => paint(p));
   for (let j = 0; j < ring.length; j++) {
     const j2 = (j + 1) % ring.length;
     if (flip) triV(mb, pc, P[j], P[j2], cc, K[j], K[j2]);
@@ -216,7 +216,7 @@ function paintBody(p) {
   const face = clamp01((1.25 - fd) / 0.35);
   c = mixC(c, C.belly, face * 0.7);
   const d = dapple(p);
-  const th = 0.6 + 0.08 * clamp01(-up * 1.5) + face * 0.3;
+  const th = 0.56 + 0.08 * clamp01(-up * 1.5) + face * 0.3;
   if (d > th) c = mixC(c, d > th + 0.07 ? C.spotD : C.spot, 0.85 - 0.4 * clamp01(-up));
   return lit(c, 1 + (h3(Math.round(p[0] * 25), Math.round(p[1] * 25), Math.round(p[2] * 25)) - 0.5) * 0.04);
 }
@@ -303,7 +303,7 @@ function paddle(mb, base, D, Thint, L, widths, thick, paint, twist = 0) {
 
 // ---- round GLASSES: voxel rims floating just in front of each eye, a little bridge over the snout and temple arms
 // running back along the sides of the head (rest space: they follow the head twist and squash)
-const GLASS = { R: 0.168, tube: 0.02, lift: 0.04, armX: 0.42 };
+const GLASS = { R: 0.19, tube: 0.018, lift: 0.04, armX: 0.44 };
 const eyeRest = (sd) => loafPt(FACE.eyeX, FACE.eyeA * sd);
 function tubeRows(pts, r, M = 6, closed = false) {
   const n = pts.length, rows = [];
@@ -403,9 +403,9 @@ function buildSeal(P) {
   capFan(mb, rows[rows.length - 1], [X1 + 0.005, loafAt(X1)[0], 0], paintBody, def, true);
   // the face: two puffy muzzle pads (puff out when blowing), a little chin, the tiny nose
   const pk = 1 + P.cheek * 0.35;
-  for (const sd of [1, -1]) sheetMesh(mb, ellRows([FACE.muzzle[0], FACE.muzzle[1], FACE.muzzle[2] * sd * (1 + P.cheek * 0.2)], [0.095 * pk, 0.08 * pk, 0.1 * pk], 10, 6), paintMuzzle, def);
+  for (const sd of [1, -1]) sheetMesh(mb, ellRows([FACE.muzzle[0], FACE.muzzle[1], FACE.muzzle[2] * sd * (1 + P.cheek * 0.2)], [0.1 * pk, 0.085 * pk, 0.105 * pk], 10, 6), paintMuzzle, def);
   sheetMesh(mb, ellRows([0.8, 0.69, 0], [0.07, 0.05, 0.085], 8, 5), paintChin, def);
-  sheetMesh(mb, ellRows(FACE.nose, [0.036, 0.03, 0.052], 8, 5), paintNose, def);
+  sheetMesh(mb, ellRows(FACE.nose, [0.045, 0.038, 0.066], 8, 5), paintNose, def);
   addGlasses(mb, def);
   addHat(mb, def);
   // tiny front flippers under the sides
@@ -420,9 +420,10 @@ function buildSeal(P) {
   const slope = Math.atan2(t1[1] - t0[1], t0[0] - t1[0]);
   for (const sd of [1, -1]) {
     const base = def([HIP[0], HIP[1], HIP[2] * sd]);
-    const ang = P.tail + 0.1 + slope * 0.8 + P.flap * sd * 0.5 + P.flap;
-    const D = [-Math.cos(ang) * Math.cos(P.spread * 0.8), Math.sin(ang), Math.sin(P.spread * 0.8) * sd];
-    paddle(mb, base, D, [0, 1, 0], 0.27, [0.06, 0.1, 0.14, 0.16, 0.11], [0.05, 0.04, 0.032, 0.026, 0.018], paintFlip(0.27));
+    const ang = P.tail + 0.32 + slope * 0.8 + P.flap * sd * 0.5 + P.flap;
+    const spr = Math.min(1.6, P.spread + 0.7) * 0.8; // splayed wide, so the little tail peeks out beside the rear
+    const D = [-Math.cos(ang) * Math.cos(spr), Math.sin(ang), Math.sin(spr) * sd];
+    paddle(mb, base, D, [0, 1, 0], 0.34, [0.07, 0.11, 0.15, 0.17, 0.12], [0.055, 0.045, 0.036, 0.028, 0.02], paintFlip(0.34));
   }
   const raw = mb.build();
   const mesh = voxelizeMesh(raw, SEAL_VOXEL, { jitter: 0.012, ao: 0.42 }) || raw;
@@ -569,16 +570,15 @@ function pose(anim, k, b, view) {
   const P = P0();
   if (view === 'front') { P.yaw = -1.2; P.tilt = 0.18; }
   SEAL_ANIMS[anim].fn(P, k, b);
-  if (globalThis.__SEAL_YAW != null) { P.yaw = globalThis.__SEAL_YAW; P.tilt = globalThis.__SEAL_TILT ?? 0; }
   return P;
 }
 
 // ------------------------------------------------------------------------------------------------ caches
 // POSES: the voxel meshes of every frame of an animation (model space, compact faces; shared by all sizes).
 // SHEETS: one rendered sprite sheet per animation / device size / view.
-const POSES = new Map(), SHEETS = new Map();
+const POSES = new Map(), SHEETS = new Map(), WANT = new Map();
 let totalPx = 0, poseFaces = 0;
-const PX_CAP = 26e6, FACE_CAP = 2.4e6;
+const PX_CAP = 22e6, FACE_CAP = 1.2e6;
 const SIZES = [16, 20, 24, 28, 32, 36, 40, 44, 48, 56, 64, 72, 80, 96, 112, 128];
 export function sealSize(s) { for (const z of SIZES) if (z >= s - 1.5) return z; return SIZES[SIZES.length - 1]; }
 const DEV = [12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 44, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128, 144, 160, 176, 192];
@@ -597,18 +597,19 @@ function mayBuild() {
   return budN < 1;
 }
 
+// (the meshes do not depend on the view, except the pointing flipper, which is aimed in screen space)
 function poseSet(anim, view) {
-  const key = anim + '|' + (anim === 'spin' || view !== 'front' ? 'side' : 'front');
+  const key = anim + (anim === 'point' ? '|' + view : '');
   let ps = POSES.get(key);
   if (ps) { ps.used = performance.now(); return ps; }
   const A = SEAL_ANIMS[anim];
   const n = A.n * (A.buckets || 1);
-  ps = { meshes: [], As: [], Ps: [], faces: 0, used: performance.now() };
+  ps = { meshes: [], As: [], faces: 0, used: performance.now() };
   for (let i = 0; i < n; i++) {
     const b = Math.floor(i / A.n), k = (i % A.n) / A.n;
     const P = pose(anim, k, b, view);
     const { mesh, A: an } = buildSeal(P);
-    ps.meshes.push(mesh); ps.As.push(an); ps.Ps.push(P);
+    ps.meshes.push(mesh); ps.As.push(an);
     ps.faces += mesh.nFaces || mesh.count / 6 || 0;
   }
   POSES.set(key, ps);
@@ -672,12 +673,12 @@ function outlineCells(canvas, cw, ch, passes) {
 
 function buildSheet(anim, size, view) {
   const ps = poseSet(anim, view);
-  const n = ps.meshes.length;
+  const n = ps.meshes.length, AN = SEAL_ANIMS[anim];
   const cw = Math.ceil(CELL_W * size), ch = Math.ceil(CELL_H * size);
   const base = { w: cw, h: ch, center: C0, scale: size, radius: 2.4, ...LOOK };
   const cells = [], frames = [];
   for (let i = 0; i < n; i++) {
-    const P = ps.Ps[i];
+    const P = pose(anim, (i % AN.n) / AN.n, Math.floor(i / AN.n), view);
     const matrix = T4.rot(P.tilt, P.yaw, P.rz);
     cells.push({ mesh: ps.meshes[i], matrix });
     const F = project(ps.As[i], { ...base, matrix }, matrix);
@@ -709,15 +710,20 @@ function sheet(anim, size, view, force) {
   const key = anim + '|' + size + '|' + view;
   let sh = SHEETS.get(key);
   if (sh) { sh.used = performance.now(); return sh; }
-  // a cached sheet of a close size (preferably bigger) is used as is: zoom-ins and other transient scales must not
-  // bake a new sheet for every size bucket they pass through
+  // a cached sheet of a close size stands in: zoom-ins and other transient scales must not bake a new sheet for
+  // every size bucket they pass through; a size that stays wanted for a while (~40 draws) gets its own crisp sheet
   if (!force) {
     let near = null;
     for (const s of SHEETS.values()) {
-      if (s.anim !== anim || s.view !== view || s.size < size * 0.88 || s.size > size * 1.45) continue;
+      if (s.anim !== anim || s.view !== view || s.size < size * 0.8 || s.size > size * 1.5) continue;
       if (!near || Math.abs(Math.log(s.size / size)) < Math.abs(Math.log(near.size / size))) near = s;
     }
-    if (near) { near.used = performance.now(); return near; }
+    if (near) {
+      const w = (WANT.get(key) || 0) + 1;
+      WANT.set(key, w);
+      if (WANT.size > 64) WANT.delete(WANT.keys().next().value);
+      if (w < 40 || !mayBuild()) { near.used = performance.now(); return near; }
+    }
   }
   if (!force && !mayBuild()) {
     // over budget this frame: the nearest cached sheet stands in
@@ -912,7 +918,7 @@ function drawFace(ctx, F, o, s) {
   if (F.faceZ < 0.05) return;
   // mouth: a tiny 'w' smile, opening while talking
   const [mx, my] = F.mouth;
-  const w = s * 0.05, talk = clamp01(o.talk || 0);
+  const w = s * 0.06, talk = clamp01(o.talk || 0);
   ctx.strokeStyle = '#4a4458'; ctx.lineWidth = Math.max(FPX, s * 0.026); ctx.lineCap = 'round';
   if (talk > 0.06 || mood === 'surprised' || mood === 'excited' || em === 'joy') {
     const open = Math.max(talk, mood === 'surprised' ? 0.6 : mood === 'excited' || em === 'joy' ? 0.3 : 0);
@@ -1159,10 +1165,10 @@ export function drawSeal(ctx, o = {}) {
   ctx.scale(facing * sk, sk);
   ctx.translate(-cw / 2, -ch / 2);
   const smooth = ctx.imageSmoothingEnabled;
-  ctx.imageSmoothingEnabled = sk * ds < 0.99; // voxels stay crisp when scaled up
+  ctx.imageSmoothingEnabled = sk * ds < 0.72; // voxels stay crisp (a stand-in sheet a little too big is drawn nearest too)
   const rows = Math.max(1, Math.round(ch / (q * 2)));
   const rh = ch / rows;
-  const amp = J.rip * q * 0.9;
+  const amp = J.rip * q * 0.65;
   const ripple = amp > 0.05 || Math.abs(J.s) > 0.004;
   if (!ripple) ctx.drawImage(SC.a, 0, 0);
   else {

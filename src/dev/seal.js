@@ -3,7 +3,7 @@
 //                      hi-res canvas, plus a big front portrait and a size ladder (16 .. 112 px per unit)
 //   ?page=1            moods / expressions (side + front), the eyes following a target circling around, portraits
 //   ?page=2            in-game style backdrops (ocean, dark panel, light panel) with the guide at its real sizes
-//   ?page=3            close-up: a big side view and a big front view (art check)
+//   ?page=3            close-up: a big side view and a big front view (&anim=NAME, &marks=1 shows the anchors)
 //   &t=SECONDS freeze time   &bench=1 window.__bench (ms per frame, sheet build ms)
 import { hiCtx } from '../gfx/hires.js';
 import { drawText } from '../gfx/font.js';
@@ -15,7 +15,6 @@ export function run(params) {
   cv.width = W * 2; cv.height = H * 2; cv.style.width = W * 2 + 'px'; cv.style.height = H * 2 + 'px';
   const g = hiCtx(cv, 2);
   const page = Number(params.get('page') || 0);
-  if (params.get('yaw') != null) { globalThis.__SEAL_YAW = Number(params.get('yaw')); globalThis.__SEAL_TILT = Number(params.get('tilt') || 0); }
   const tFix = params.get('t') != null ? Number(params.get('t')) : null;
   const t0 = performance.now();
   const anims = Object.keys(SEAL_ANIMS);
@@ -68,7 +67,8 @@ export function run(params) {
         g.restore();
       });
     } else if (page === 3) {
-      drawSeal(g, { x: 260, y: 480, base: 'bottom', t, size: 120, anim: params.get('anim') || 'idle', mood: 'happy', id: 'cu0', point: [520, 120] });
+      const A3 = drawSeal(g, { x: 260, y: 480, base: 'bottom', t, size: 120, anim: params.get('anim') || 'idle', mood: 'happy', id: 'cu0', point: [520, 120] });
+      if (params.get('marks') && A3) { g.fillStyle = '#ffe14a'; for (const k of ['head', 'top', 'bottom', 'nose', 'mouth', 'hand', 'tail']) g.fillRect(A3[k][0] - 2, A3[k][1] - 2, 4, 4); window.__A3 = A3; }
       drawSeal(g, { x: 700, y: 480, base: 'bottom', t, size: 120, anim: params.get('anim') || 'idle', view: 'front', mood: 'happy', id: 'cu1' });
     } else {
       // game-like backdrops and the swimming guide
