@@ -7,12 +7,16 @@
 //   command(id)      'workshop' | 'lab' quick access ("sail there instantly": opens the panel)
 //   onCatch(sp, rec) -> [{id, qty}]  fish parts from a catch (called by src/build/build.js onCatch)
 //   goalPing()       [balance] a one-time toast when the next rod / tank / boat Lab upgrade (lab.js labGoal) becomes affordable
+//                    ([prog18] also the next ocean expedition once its boss quest has charted it)
+//   [prog18] 'labNodeUnlockedByQuest' {nodeId, questId} (quests.js) -> one toast per quest naming the research it opened
+//                    (only without the quest cinematic, which stages its own beat for it); 'labDone' of an ocean
+//                    expedition -> "set sail" toast
 import { rng } from '../core/rng.js';
 import { Destinations } from '../world/destinations.js';
 import { wsTick, ensureWorkshop } from './workshop.js';
 import { setRodContext, hasPerk, ensureRods } from '../game/rods.js';
 import { addItem } from './items.js';
-import { labGoal } from '../game/lab.js'; // [balance] next-goal ping
+import { labGoal, LAB_BY_ID } from '../game/lab.js'; // [balance] next-goal ping
 
 const DEEP = new Set(['twilight', 'midnight', 'abyss']);
 const BIOME_MAT = { oscean: 'clover_leaf', shallows: 'clover_leaf', fjord: 'ice_shard', junkyard: 'spring_coil', metropolis: 'magnet_stone', volcano: 'lava_glass', abyss: 'glow_bulb' };
@@ -24,6 +28,31 @@ export class Progression {
     this.pollT = 0;
     this.rodKey = '';
     try { ensureWorkshop(game.state); } catch { /* ignore */ }
+    // [prog18] a quest opened sealed Lab research: one toast per quest (several nodes may open at once)
+    this.opened = null;
+    game.on?.('labNodeUnlockedByQuest', (d) => {
+      const nd = LAB_BY_ID[d?.nodeId];
+      if (!nd || game.quests?.cine) return; // the quest cinematic (src/ui/questcine.js) stages its own "NEW RESEARCH!" beat
+      if (!this.opened || this.opened.q !== d.questId) {
+        this.opened = { q: d.questId, names: [] };
+        const o = this.opened;
+        setTimeout(() => {
+          if (this.opened === o) this.opened = null;
+          const n = o.names;
+          const txt = n.length === 1 ? `${n[0]} can now be researched in The Lab!` : `New in The Lab: ${n.slice(0, -1).join(', ')} and ${n[n.length - 1]}!`;
+          game.toast?.(txt, 'beaker', 5);
+          game.audio?.play?.('ui_unlock', { vol: 0.5 });
+        }, 1800);
+      }
+      this.opened.names.push(nd.ocean ? `The ${nd.name} expedition` : nd.name);
+    });
+    // [prog18] an ocean expedition finished brewing: point at the Map (the voyage plays its NEW OCEAN! moment on arrival)
+    game.on?.('labDone', (d) => {
+      const nd = LAB_BY_ID[d?.id];
+      if (!nd?.ocean) return;
+      game.toast?.(`The ${nd.name} expedition is ready! Open the Map and set sail.`, 'map');
+      game.audio?.play?.('unlock_biome', { vol: 0.7 });
+    });
   }
 
   update(dt, inp) {
@@ -73,7 +102,7 @@ export class Progression {
     const L = st.lab;
     if (!L || L.goalPing === gl.id) return;
     L.goalPing = gl.id;
-    g.toast?.(`${gl.node.name} is ready in The Lab!`, 'beaker');
+    g.toast?.(gl.node.ocean ? `You can fund the ${gl.node.name} expedition in The Lab!` : `${gl.node.name} is ready in The Lab!`, gl.node.ocean ? 'map' : 'beaker');
     g.audio?.play?.('sparkle', { vol: 0.5 });
   }
 

@@ -178,6 +178,7 @@ export class Hud {
     if (g.fishing?.fighting || g.fishing?.cine || g.fishing?.finale) return false;
     if (g.ocean?.travelState) return false;
     if (g.aquarium?.editing) return false; // [phase7:tank] [phase10:tank] the tank's build mode uses the whole screen
+    if (g.quests?.cine?.hidesHud?.()) return false; // [questcine18] a quest cinematic's letterbox
     return true;
   }
 

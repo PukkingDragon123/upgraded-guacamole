@@ -65,7 +65,7 @@ To build from source, run `npm install && npm run build`, which bundles `src/` i
 
 Catch fish and keep them in your side-scrolling tank, where they earn **Aero** (even while you're away). Follow the
 **quest lines**: 7 story chapters told by Bubbles the seal, Professor Fizz, Marina and Captain Bloat.
-Each chapter's reward opens the next ocean. The Quest Log (`Q`) has three tabs:
+Each chapter's boss charts the next ocean, and you fund the expedition in The Lab. The Quest Log (`Q`) has three tabs:
 - **Story**: each chapter's main quests, plus about 15 optional side stories per chapter. Side stories cover species,
   weather, night fishing, depth zones, bait, flawless fights, the tank, the Workshop and the Lab.
 - **Orders**: three new requests from the NPCs every day, with a bonus chest for filling all three. You can swap one
@@ -75,7 +75,8 @@ Each chapter's reward opens the next ocean. The Quest Log (`Q`) has three tabs:
 Side stories, orders and milestones are claimed with a **Claim** button. Pin one to the HUD tracker with **Track**.
 
 Research in **The Lab**, a zoomed-in tree that grows out from the middle. Nodes you can't reach yet stay
-black. Sail to the **Workshop** to craft rods, tackle, bait, decor, boat parts and tank gear, and crack open chests
+black. Some key nodes are **sealed by a quest**: they show a padlock, chains and a quest scroll, and their card names the
+quest, who gives it and a **Track quest** button. Finishing the quest breaks the seal. Sail to the **Workshop** to craft rods, tackle, bait, decor, boat parts and tank gear, and crack open chests
 with a minigame.
 
 ### Progression
@@ -86,6 +87,29 @@ with a minigame.
   - The top tier takes about an hour and a Golden Scale.
   - New rods, boats and tanks cost 1.5 times a tier's price. Workshop rods, tackle, rod tuning, boat parts, tank gear
     and buildings climb the same way.
+- **New oceans are big, expensive expeditions.** Beating an ocean's boss charts the next ocean. Then you fund the trip in
+  The Lab with a lot of Aero, rare materials from the ocean you're leaving and a few of its fish:
+
+  | Ocean | Aero | Also needs |
+  | --- | --- | --- |
+  | Sunny Shallows | 600 | Turbine Shark beaten, driftwood, shells |
+  | Frosty Fjord | 2,000 | Dragon-Karp beaten, sea glass, coral, a pearl, 2 Shallows fish |
+  | Junkyard Reef | 5,000 | Ok Boomer Shark beaten, ice shards, pearls, sea glass, 2 Fjord fish |
+  | Sunken Metropolis | 12,000 | Blue Screen Ray beaten, spring coils, gears, circuit boards, 3 fish |
+  | Lava Rift | 28,000 | Main Character Marlin beaten, magnet stones, circuit boards, pearls, 3 fish |
+  | The Deep Ocean | 65,000 | The Final Boss beaten, lava glass, ancient stones, an abyss crystal, 3 fish |
+
+  The chapter's reward pays a big part of it (250 to 24,000 Aero). Fishing the rest takes about 5 minutes for the first
+  trip and up to about an hour for The Deep Ocean.
+- **Quests unlock research.** 39 Lab nodes need a quest finished as well as Aero and materials. For example:
+  - The Glass Rod needs the Dragon-Karp beaten.
+  - The Chrome Caster needs Marina's "Rust Bucket" job.
+  - The Capacitor needs Fizz's "Spark Joy" zap study.
+  - The Skiff needs Marina's Workshop fixed.
+  - The Big Tank needs a filter ("Crystal Clear").
+
+  Every sealed node's quest opens before or alongside that node's tier, and `node tools/progcheck.mjs` checks that
+  nothing is a dead end.
 - **Later oceans pay more.** Fish from each new ocean are worth more Aero: from 1x in the (OS)cean up to 4.2x in
   The Deep Ocean. This covers the catch bonus, the release value and tank income.
 - **Bosses gate the top tiers.** Lab research from tier 6 up needs a boss trophy:
@@ -98,10 +122,10 @@ with a minigame.
   - Each tank tier adds room, a bigger Aero rate and a longer offline cap.
   - Each boat adds bait slots, reel speed, Aero magnet range and rare-fish luck, up to the Submarine.
   - Each ocean pays more.
-- **A next goal is always shown.** It is the next rod, tank or boat (each chapter's reward opens the next ocean):
+- **A next goal is always shown.** It is the next rod, tank or boat. Once the next ocean is charted, its expedition is the goal:
   - Each chapter has a quest for the next rod.
   - The Lab marks the goal with a green tag.
-  - The Lab's centre card names the goal and what it still needs.
+  - The Lab's centre card names the goal and what it still needs, including the quest that seals it (with Track quest).
   - Bubbles' tips name it too.
   - A toast pops up when you can afford it.
 - **Old saves keep everything.** Anything already researched, crafted or bought stays yours. The new prices only

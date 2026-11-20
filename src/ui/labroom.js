@@ -1,72 +1,71 @@
-// [lab15] THE LAB's backdrop: a SPACE SCENE in crisp 2D pixel art (OWNER: Lab agent). Used behind the research tree
-// and the Rods / Boats tabs. Glossy and cute (Frutiger Aero night sky), never grim.
+// [lab18] THE LAB's backdrop: an UNDERWATER VOXEL SCENE, like looking into a sunny reef (OWNER: Lab agent). Used
+// behind the research tree and the Rods / Boats tabs. Everything solid is a real voxel model rendered with
+// src/gfx/voxel.js: the coral reefs come from the world's reef kit (src/world/coral.js, with a low-growing species mix:
+// no sea whips / pillar corals), the far pinnacles / mesa / arch from src/world/farvox.js, the relics from the prop
+// library (src/gfx/props.js, getPropSteps); the dune heightfields, the seabed slab, the clouds and the little fish are
+// modelled here. There are NO kelp stalks or other tall, tree-like plants: the space is filled with low reef life
+// (bommies, sea fans, barrel sponges, brain / bubble corals, swaying anemones, short sea-grass tufts).
 //
-// Art grid: 1 art pixel = 1 logical px (2 device px on the hi-res UI layer, src/gfx/hires.js); the tiniest stars,
-// sparkle tips and glitter use single device px. No smooth gradients: colour ramps are posterised with 4x4 Bayer
-// dithering, every disc is a hard pixel circle.
+// Depth, back to front (each layer has its own parallax and is pulled toward the water's haze colour by depth):
+//   water gradient (bright aqua under the surface -> deep blue); Boats: a strip of sky with voxel clouds
+//   far3  : the faintest reef ridge on the horizon
+//   far2  : faint blue silhouettes (pinnacles, a mesa, an arch) on rock hills    far fish schools
+//   far1  : a coral garden on sand dunes (bommies, fans, sponges, rocks)          a sea turtle gliding by, mid fish
+//   mid   : reef bommies, a sunken boat, rocks, tube worms on dunes               swaying anemones (hazed)
+//   floor : the near seabed slab (sand ripples, pebbles, shells, starfish, urchins, sand dollars) + caustics + grass
+//   props : big reef walls at both edges, sea fans, the anchor, the open chest, a clam, the diver's helmet, swaying
+//           anemones, a little crab scuttling about
+//   bubbles rising from the chest / clam / helmet and from the sand, drifting marine snow, a readability veil per
+//   kind (the tree: a darker, calmer middle band, brighter edges), then the rippling underside of the surface along
+//   the top (Boats: the water line the boats float on).
+// No light rays / god rays / spotlights, no expanding ring effects, no text pop-ups.
 //
-// Depth, back to front (each layer has its own parallax, softly capped by its padding):
-//   bg    : deep space gradient (navy -> indigo -> violet), dithered glow pools at the edges, a calmer middle
-//   far   : 1 device px star field, a distant pixel spiral galaxy           twinkles, a space whale drifting by
-//   neb   : dithered nebula clouds (violet / pink / aqua, dust lanes) bright toward the edges   shooting stars
-//   mid   : brighter stars, a fish-shaped constellation, a comet              twinkles + big 4-point glints
-//   near  : a ringed planet, a tiny pink planet; Boats: the limb of an ocean planet with its atmosphere
-//           a rotating ocean planet with little continents + an orbiting moon, drifting stardust / glitter
-//   Boats : a glowing orbit line (no parallax) the boats float on, with light pulses running along it
-// No light rays / god rays / spotlights, no expanding ring effects.
-//
-// Every static layer is built ONCE per view size (a step generator run ~6 ms per frame; layers fade in as they
-// finish) at the hi-res factor into an offscreen canvas with a `.hi` twin, so a frame is a few big drawImage calls
-// plus a few hundred tiny particles (no per-frame allocations).
+// Every static layer is built ONCE per view size (a step generator run ~7 ms per frame; layers fade in as they
+// finish; sprites are cached across sizes) at the hi-res factor into an offscreen canvas with a `.hi` twin
+// (src/gfx/hires.js), so a frame is a few big drawImage calls plus small animated bits (no per-frame allocations).
 //   drawLabRoom(ctx, v, t, cam, kind)   v = view rect, cam = {x, y, z} (pan in screen px, zoom delta) for parallax
 //                                       (omitted: a slow idle drift), kind 'tree' | 'rods' | 'boats'
-//   labRoomScene(v, kind) -> {wl, orbit}  Boats: the orbit line (view-relative): wl = its y at the centre,
-//                                       orbit(x) = its y at view-relative x
+//   labRoomScene(v, kind) -> {wl}       Boats: the water line (view-relative) the boats float on
+//   drawBoatFloat(ctx, x, y, hw, t, o)  Boats: the pixel water ripple / highlight under a floating boat
+import { VoxelModel, renderVoxels } from '../gfx/voxel.js';
+import { THEMES, reefFormationSteps, coralModel, voxAnimSteps, voxCrab } from '../world/coral.js';
+import { renderSteps } from '../world/slabrender.js';
+import { spire, mesa, rockArch, render as farRender } from '../world/farvox.js';
+import { getPropSteps } from '../gfx/props.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { HI } from '../gfx/hires.js';
+import { mix, shade, hexToRgb } from '../core/color.js';
 import { RNG } from '../core/rng.js';
-import { clamp, hash1, hash2, hash3, fbm2, TAU, bayer } from '../core/math.js';
+import { clamp, hash1, hash2, fbm2, TAU } from '../core/math.js';
+import { microBubble } from './labtiles.js';
 
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
-const BUDGET = 6; // ms of scene building per frame
-const sstep = (a, b, x) => { const k = clamp((x - a) / (b - a), 0, 1); return k * k * (3 - 2 * k); };
+const BUDGET = 7; // ms of scene building per frame
+const snap = (v) => Math.round(v * 2) / 2; // to whole device px
 
-// ------------------------------------------------------------------ palette (glossy aero night)
-const SKY = [[0, [10, 16, 52]], [0.3, [17, 26, 86]], [0.62, [30, 34, 112]], [0.85, [46, 36, 128]], [1, [62, 40, 140]]];
-const NEB_A = [null, [62, 30, 134, 0.36], [102, 44, 172, 0.5], [162, 62, 202, 0.6], [230, 102, 214, 0.72], [255, 178, 234, 0.86]]; // violet -> pink
-const NEB_B = [null, [14, 50, 146, 0.34], [14, 84, 196, 0.48], [18, 132, 226, 0.58], [36, 186, 244, 0.7], [130, 232, 255, 0.84]]; // aqua
-const NEB_M = [null, [56, 50, 162, 0.38], [92, 84, 216, 0.52], [136, 126, 246, 0.62], [188, 168, 255, 0.74], [232, 214, 255, 0.86]]; // periwinkle
-const STAR_COLS = [[236, 248, 255], [176, 236, 255], [255, 206, 238], [255, 240, 186], [214, 200, 255]];
-const TINTS = [[176, 240, 255], [255, 168, 228], [255, 228, 150], [204, 184, 255]];
+// ------------------------------------------------------------------ palette (Frutiger Aero aqua)
+const WATER = [[0, '#8ff0ff'], [0.1, '#55d8f6'], [0.32, '#2cb2e6'], [0.58, '#1a8cd2'], [0.8, '#136cb8'], [1, '#0d4f98']];
+const ROCK = ['#5a6a92', '#6c7ea2', '#4c5a80', '#7e8eae', '#5e6e8c'];
+const CROWN = { cols: ['#ff7aa0', '#ffa45a', '#ffe070', '#7ae08a', '#b48aff', '#5ae0e0'], density: 0.55, blobs: 14, ledge: 0.16, branch: true };
+const CORAL_R = { scale: 1, outline: true, jitter: 0.06, ao: 1.3, edges: 0.7, sideEdges: 0.4, light: { top: 4.8, lit: 3.4, dark: 2.1, bottom: 1 }, yaw: 0, pitch: 24 };
+// the reef kit's shallows palettes with a low-growing species mix (no sea whips / pillar corals, few table corals)
+const LAB = { ...THEMES.shallows, weights: { staghorn: 4, fan: 3, brain: 3.5, tube: 3, bubble: 2.5, table: 0.5 } };
+const LOW_KINDS = ['fan', 'brain', 'staghorn', 'tube', 'bubble', 'brain', 'fan', 'tube'];
 
-// ------------------------------------------------------------------ pixel art buffer (device px), logical twin
-// Art(w, h): w x h logical px; px() paints one art pixel (HI x HI device px), dot() one device px.
-class Art {
-  constructor(w, h) {
-    this.w = Math.max(1, Math.round(w)); this.h = Math.max(1, Math.round(h));
-    this.W = this.w * HI; this.H = this.h * HI;
-    this.img = new ImageData(this.W, this.H); this.d = this.img.data;
+function waterAt(k) {
+  for (let i = 1; i < WATER.length; i++) {
+    if (k <= WATER[i][0]) { const [a, ca] = WATER[i - 1], [b, cb] = WATER[i]; return mix(ca, cb, (k - a) / (b - a)); }
   }
-  dot(X, Y, c, a = 1) {
-    X |= 0; Y |= 0;
-    if (X < 0 || Y < 0 || X >= this.W || Y >= this.H || a <= 0.004) return;
-    const d = this.d, i = (Y * this.W + X) * 4;
-    if (a >= 1) { d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = 255; return; }
-    const da = d[i + 3] / 255, oa = a + da * (1 - a), k = a / oa;
-    d[i] = c[0] * k + d[i] * (1 - k); d[i + 1] = c[1] * k + d[i + 1] * (1 - k); d[i + 2] = c[2] * k + d[i + 2] * (1 - k);
-    d[i + 3] = oa * 255;
-  }
-  px(x, y, c, a = 1) {
-    x = Math.floor(x); y = Math.floor(y);
-    for (let j = 0; j < HI; j++) for (let i = 0; i < HI; i++) this.dot(x * HI + i, y * HI + j, c, a);
-  }
-  canvas() {
-    const hc = makeCanvas(this.W, this.H);
-    ctxOf(hc).putImageData(this.img, 0, 0);
-    return twin(hc);
-  }
+  return WATER[WATER.length - 1][1];
 }
+
+// ------------------------------------------------------------------ canvases: authored at HI, logical twin
 function twin(hc) {
+  if (hc.width % HI || hc.height % HI) { // pad to whole logical px so the twin draws 1:1 (no resampling)
+    const p = makeCanvas(Math.ceil(hc.width / HI) * HI, Math.ceil(hc.height / HI) * HI);
+    ctxOf(p).drawImage(hc, 0, 0);
+    hc = p;
+  }
   const c = makeCanvas(hc.width / HI, hc.height / HI);
   const g = c.getContext('2d');
   g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
@@ -74,670 +73,708 @@ function twin(hc) {
   Object.defineProperty(c, 'hi', { value: hc, configurable: true });
   return c;
 }
-
-// 3D value noise (seamless planet textures)
-const sm = (t) => t * t * (3 - 2 * t);
-function noise3(x, y, z, s) {
-  const ix = Math.floor(x), iy = Math.floor(y), iz = Math.floor(z);
-  const fx = sm(x - ix), fy = sm(y - iy), fz = sm(z - iz);
-  const L = (a, b, k) => a + (b - a) * k;
-  const h = (i, j, k) => hash3(ix + i, iy + j, iz + k, s);
-  return L(L(L(h(0, 0, 0), h(1, 0, 0), fx), L(h(0, 1, 0), h(1, 1, 0), fx), fy), L(L(h(0, 0, 1), h(1, 0, 1), fx), L(h(0, 1, 1), h(1, 1, 1), fx), fy), fz);
+function layer(wL, hL) {
+  wL = Math.max(1, Math.round(wL)); hL = Math.max(1, Math.round(hL));
+  const c = makeCanvas(wL * HI, hL * HI);
+  const g = ctxOf(c);
+  g.imageSmoothingEnabled = false;
+  return { c, g, wL, hL };
 }
-function fbm3(x, y, z, o, s) {
-  let v = 0, a = 0.5, n = 0, f = 1;
-  for (let i = 0; i < o; i++) { v += noise3(x * f, y * f, z * f, s + i * 13) * a; n += a; a *= 0.5; f *= 2; }
-  return v / n;
+// a sprite {canvas, ox, oy} at logical (x, y) = its ground anchor; k = device px per sprite px
+function put(L, s, x, y, k = 1) {
+  if (!s?.canvas) return;
+  L.g.drawImage(s.canvas, Math.round(x * HI - s.ox * k), Math.round(y * HI - s.oy * k), s.canvas.width * k, s.canvas.height * k);
 }
-
-// ------------------------------------------------------------------ planet shading (stepped, dithered terminator)
-const LIGHT = (() => { const l = [-0.56, -0.62, 0.55], m = Math.hypot(...l); return l.map((v) => v / m); })();
-const SHADE_K = [0.34, 0.52, 0.72, 0.92, 1.1];
-const NIGHT = [36, 26, 104];
-function shadeCol(c, nx, ny, nz, x, y, out) {
-  const diff = nx * LIGHT[0] + ny * LIGHT[1] + nz * LIGHT[2];
-  const lvl = clamp(Math.floor(diff * 3.4 + 1.5 + (bayer(x, y) - 0.5) * 0.9), 0, 4);
-  const k = SHADE_K[lvl], nm = lvl < 2 ? 0.45 - lvl * 0.2 : 0;
-  for (let i = 0; i < 3; i++) out[i] = clamp(c[i] * k * (1 - nm) + NIGHT[i] * nm + (lvl === 4 ? 14 : 0), 0, 255);
-  return lvl;
+// pull a layer toward the haze colour: fog alpha aTop at the top -> aBot at the bottom (only where it has pixels)
+function fog(L, col, aTop, aBot, y0 = 0, y1 = L.hL) {
+  const g = L.g, [r, gg, b] = hexToRgb(col);
+  g.save();
+  g.globalCompositeOperation = 'source-atop';
+  const gr = g.createLinearGradient(0, y0 * HI, 0, y1 * HI);
+  gr.addColorStop(0, `rgba(${r},${gg},${b},${aTop})`); gr.addColorStop(1, `rgba(${r},${gg},${b},${aBot})`);
+  g.fillStyle = gr; g.fillRect(0, 0, L.c.width, L.c.height);
+  g.restore();
 }
-// glossy Frutiger highlight: a crisp pixel crescent near the top-left of a sphere of radius r
-function gloss(A, cx, cy, r, ox = 0, oy = 0) {
-  const hx = -0.42 * r, hy = -0.46 * r, ax = 0.34 * r, ay = 0.17 * r, ca = Math.cos(-0.7), sa = Math.sin(-0.7);
-  for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++) {
-    const px = x + 0.5, py = y + 0.5;
-    if (px * px + py * py > (r - 1.2) * (r - 1.2)) continue;
-    const u = (px - hx) * ca - (py - hy) * sa, v = (px - hx) * sa + (py - hy) * ca;
-    const e = (u / ax) ** 2 + (v / ay) ** 2;
-    if (e < 1) A.px(cx + x + ox, cy + y + oy, [255, 255, 255], e < 0.35 ? 0.62 : 0.34);
-  }
+function tintCanvas(src, col, a) {
+  const c = makeCanvas(src.width, src.height), g = ctxOf(c);
+  g.drawImage(src, 0, 0);
+  g.globalCompositeOperation = 'source-atop';
+  const [r, gg, b] = hexToRgb(col);
+  g.fillStyle = `rgba(${r},${gg},${b},${a})`; g.fillRect(0, 0, c.width, c.height);
+  return c;
 }
-const inDisc = (x, y, r) => (x + 0.5) ** 2 + (y + 0.5) ** 2 <= r * r;
+function flipCanvas(src) {
+  const c = makeCanvas(src.width, src.height), g = ctxOf(c);
+  g.translate(src.width, 0); g.scale(-1, 1); g.drawImage(src, 0, 0);
+  return c;
+}
+const flipS = (s) => ({ canvas: flipCanvas(s.canvas), ox: s.canvas.width - s.ox, oy: s.oy });
+// a sprite as a logical-size canvas with a `.hi` twin, scaled by k device px per sprite px (nearest)
+function spriteTwin(src, k) {
+  if (k === 1) return twin(src);
+  const hc = makeCanvas(src.width * k, src.height * k), g = ctxOf(hc);
+  g.imageSmoothingEnabled = false;
+  g.drawImage(src, 0, 0, hc.width, hc.height);
+  return twin(hc);
+}
 
 // ------------------------------------------------------------------ sprite cache (size independent)
 const SPR = new Map();
-function cached(key, make) { let s = SPR.get(key); if (!s) { s = make(); SPR.set(key, s); } return s; }
-
-// sparkle sprites, authored in device px on an odd N x N grid; kind 0 = tiny plus .. 3 = big 4-point glint
-const SPARK_N = [3, 7, 11, 21];
-function sparkShape(kind, ax, ay) { // -> [white?, alpha] at |dx|, |dy| device px from the centre
-  const d = ax + ay, on = ax === 0 || ay === 0, m = Math.max(ax, ay);
-  if (kind === 0) return d === 0 ? [1, 1] : d === 1 ? [0, 0.75] : null;
-  if (kind === 1) {
-    if (d === 0) return [1, 1];
-    if (on) return m === 1 ? [1, 0.95] : m === 2 ? [0, 0.8] : m === 3 ? [0, 0.35] : null;
-    return ax === 1 && ay === 1 ? [0, 0.4] : null;
-  }
-  if (kind === 2) {
-    if (d === 0) return [1, 1];
-    if (on) return m <= 2 ? [1, 1] : m === 3 ? [0, 0.9] : m === 4 ? [0, 0.55] : m === 5 ? [0, 0.25] : null;
-    if (ax === 1 && ay === 1) return [1, 0.6];
-    if (ax === 2 && ay === 2) return [0, 0.3];
-    return null;
-  }
-  // big glint: long tapered axis arms (3 px thick near the core), short diagonals
-  const mn = Math.min(ax, ay);
-  if (mn === 0) return m <= 2 ? [1, 1] : m <= 5 ? [0, 0.95] : m <= 7 ? [0, 0.6] : m <= 10 ? [0, 0.26] : null;
-  if (mn === 1) return m === 1 ? [1, 0.95] : m <= 3 ? [1, 0.7] : m <= 5 ? [0, 0.38] : null;
-  if (ax === 2 && ay === 2) return [0, 0.6];
-  if (ax === 3 && ay === 3) return [0, 0.28];
-  return null;
+function* cachedSteps(key, make) {
+  let s = SPR.get(key);
+  if (s) return s;
+  s = yield* make();
+  SPR.set(key, s);
+  if (SPR.size > 160) SPR.delete(SPR.keys().next().value);
+  return s;
 }
-function sparkSprite(kind, ti) {
-  return cached('spark|' + kind + '|' + ti, () => {
-    const N = SPARK_N[kind], D = N + 1, c0 = (N - 1) / 2, tint = TINTS[ti];
-    const hc = makeCanvas(D, D), g = ctxOf(hc), img = g.createImageData(D, D), d = img.data;
-    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
-      const s = sparkShape(kind, Math.abs(x - c0), Math.abs(y - c0));
-      if (!s) continue;
-      const c = s[0] ? [255, 255, 255] : tint, i = (y * D + x) * 4;
-      d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = Math.round(s[1] * 255);
+const spr = (r) => ({ canvas: r.canvas, ox: r.ox, oy: r.oy });
+
+function* reefSteps(seed, o) {
+  return yield* cachedSteps('reef|' + seed + '|' + JSON.stringify(o), function* () {
+    const m = yield* reefFormationSteps(seed, LAB, o);
+    return spr(yield* renderSteps(m, CORAL_R));
+  });
+}
+function* coralSteps(kind, seed, size) {
+  return yield* cachedSteps('coral|' + kind + '|' + seed + '|' + size, function* () {
+    const m = coralModel(kind, seed, LAB, size);
+    yield;
+    return spr(yield* renderSteps(m, CORAL_R));
+  });
+}
+function* propSteps(id, scale, o = {}) {
+  return yield* cachedSteps('prop|' + id + '|' + scale + '|' + JSON.stringify(o), function* () {
+    try { return spr(yield* getPropSteps(id, { scale, yaw: 0, pitch: 24, ...o })); } catch { return null; }
+  });
+}
+function* farSteps(key, make) {
+  return yield* cachedSteps('far|' + key, function* () { yield; return make(); });
+}
+// swaying reef life (anemones, sea grass): voxel frames over one sway cycle (the reef kit's VoxAnim)
+function* animSteps(kind, seed, size, frames, pal) {
+  return yield* cachedSteps('anim|' + kind + '|' + seed + '|' + size + '|' + frames + '|' + pal, function* () {
+    return yield* voxAnimSteps(kind, seed, 'shallows', size, 1, frames, pal);
+  });
+}
+
+// ------------------------------------------------------------------ hand-made models
+// A soft cumulus puff (white tops, pale aqua undersides).
+function* cloudSteps(i) {
+  return yield* cachedSteps('cloud|' + i, function* () {
+    const r = new RNG(900 + i);
+    const W = 70 + r.int(0, 30), m = new VoxelModel(W + 8, 30, 16);
+    const wht = m.color('#ffffff', { jitter: 0.02, smooth: 0.8 }), sh = m.color('#d4f4ff', { jitter: 0.02, smooth: 0.8 });
+    const n = r.int(4, 6);
+    for (let k = 0; k < n; k++) {
+      const cx = 6 + ((k + 0.5) / n) * W, rr = (W / n) * r.float(0.7, 1.05) * (1 - Math.abs(k - (n - 1) / 2) / n * 0.6);
+      m.ellipsoid(cx, rr * 0.65 + 2, 8, rr, rr * 0.75, 6, (x, y) => (y < 5 ? sh : wht));
     }
-    g.putImageData(img, 0, 0);
-    const c = twin(hc);
-    c.o = c0 / HI; // logical offset of the centre
+    m.box(4, 1, 4, W + 2, 3, 11, sh);
+    yield;
+    const rv = renderVoxels(m, { scale: 1, yaw: 0, pitch: 14, outline: false, groundAO: false, jitter: 0.02 });
+    return { canvas: rv.canvas, ox: rv.ox, oy: rv.oy };
+  });
+}
+
+// A little reef fish (side view), two tail frames. Kinds: 0 silver-blue, 1 yellow, 2 coral, 3 clownfish (white
+// bands), 4 blue tang (yellow tail), 5 purple / gold gramma.
+const FISH = [['#9fdcff', '#e8fbff'], ['#ffd24a', '#fff2b0'], ['#ff8a5a', '#ffe0c8'], ['#ff7a2a', '#ffc08a'], ['#3a7af0', '#8ac0ff'], ['#b46aff', '#ffd24a']];
+function fishModel(f, kind) {
+  const [body, belly] = FISH[kind];
+  const m = new VoxelModel(16, 8, 6);
+  const B = m.color(body, { spec: 0.7, jitter: 0.04 }), L = m.color(belly, { jitter: 0.04 }), D = m.color(shade(body, -0.28)), E = m.color('#081428');
+  const W = m.color('#ffffff', { jitter: 0.02 }), T = kind === 4 ? m.color('#ffd24a') : kind === 5 ? L : D;
+  m.ellipsoid(9, 3.6, 3, 5.6, 2.6, 2, (x, y) => {
+    if (kind === 3 && (x === 8 || x === 11)) return W;
+    if (kind === 5) return x < 8 ? L : B;
+    return y < 3 ? L : B;
+  });
+  m.box(7, 6, 3, 9, 6, 3, D); // dorsal fin
+  const tw = f ? 1 : 2;
+  m.box(2, 3.6 - tw, 3, 3, 3.6 + tw, 3, T); m.box(1, 3.6 - tw - 1, 3, 1, 3.6 - tw, 3, T); m.box(1, 3.6 + tw, 3, 1, 3.6 + tw + 1, 3, T);
+  m.set(12, 4, 4, E);
+  return m;
+}
+function* fishSteps(kind) {
+  return yield* cachedSteps('fish|' + kind, function* () {
+    const fr = [0, 1].map((f) => renderVoxels(fishModel(f, kind), { scale: 1, yaw: 0, pitch: 10, outline: true, groundAO: false }).canvas);
+    yield;
+    return fr;
+  });
+}
+
+// A green sea turtle (3/4 view from a little above, head to +x): domed carapace with scutes, pale plastron, spotted
+// head, long front flippers that sweep up and down over one stroke (ph), little rear flippers that trail.
+function turtleModel(ph) {
+  const m = new VoxelModel(46, 22, 40);
+  const C = (c, o = {}) => m.color(c, { jitter: 0.05, ...o });
+  const sh = [C('#2e6a4a'), C('#4f8f52', { spec: 0.4 }), C('#7cba5e', { spec: 0.5 }), C('#b6dc84', { spec: 0.6 })], rim = C('#d8c27a');
+  const skin = C('#6aa884'), skinD = C('#3e7a5e'), spot = C('#d4ecb8'), belly = C('#f2e2a6'), eye = C('#0a1420'), shine = C('#ffffff');
+  const cx = 21, cy = 9, cz = 20, RX = 12, RZ = 9.5;
+  m.ellipsoid(cx, cy - 1, cz, RX - 1, 1.6, RZ - 1, belly);
+  m.ellipsoid(cx, cy, cz, RX, 5.2, RZ, (x, y, z) => {
+    if (y < cy - 1) return belly;
+    const d = Math.hypot((x - cx) / RX, (z - cz) / RZ);
+    if (d > 0.86) return rim;
+    const u = x - cx + 30, v = z - cz + 30 + ((Math.floor(u / 6) & 1) ? 3 : 0);
+    if (u % 6 === 0 || v % 6 === 0) return sh[0];
+    return y >= cy + 4 ? sh[3] : y >= cy + 2 ? sh[2] : sh[1];
+  });
+  // neck + head
+  m.ellipsoid(cx + RX - 0.5, cy, cz, 3.2, 2.2, 2.6, skinD);
+  m.ellipsoid(cx + RX + 3.2, cy + 0.6, cz, 3.2, 2.5, 2.6, (x, y, z) => ((x * 7 + y * 3 + z * 5) % 5 === 0 ? spot : skin));
+  m.set(cx + RX + 4, cy + 1, cz + 2, eye); m.set(cx + RX + 4, cy + 2, cz + 2, shine);
+  m.set(cx + RX + 4, cy + 1, cz - 2, eye);
+  // flippers: flat blades rotating about the body axis
+  const blade = (x0, y0, z0, side, L, wd, ang, back) => {
+    const dx = -back, dy = Math.sin(ang), dz = side * Math.cos(ang), l = Math.hypot(dx, dy, dz);
+    for (let k = 0; k <= L; k++) {
+      const t = k / L, w = wd * (1 - t * 0.75) + 0.6;
+      const px = x0 + (dx / l) * k, py = y0 + (dy / l) * k, pz = z0 + (dz / l) * k;
+      for (let q = -w; q <= w; q += 0.5) m.set(Math.round(px + q * 0.9), Math.round(py), Math.round(pz), Math.abs(q) > w - 0.7 ? skinD : (k + Math.round(q)) % 4 === 0 ? spot : skin);
+    }
+  };
+  // the stroke: mostly a downward sweep (a < 0 dips toward the sand), only a little lift above the shell line
+  const a = -0.25 + Math.sin(ph) * 0.5, a2 = Math.sin(ph + 1.2) * 0.35;
+  for (const side of [-1, 1]) {
+    blade(cx + 6, cy, cz + side * (RZ - 2), side, 15, 2.1, a, 0.85 + Math.cos(ph) * 0.25);
+    blade(cx - 8, cy - 0.5, cz + side * (RZ - 3), side, 5, 1.4, a2, 1.1);
+  }
+  return m;
+}
+function* turtleSteps(n) {
+  return yield* cachedSteps('turtle|' + n, function* () {
+    const fr = [];
+    for (let f = 0; f < n; f++) {
+      const m = turtleModel((f / n) * TAU);
+      const r = renderVoxels(m, { scale: 1, yaw: -8, pitch: 34, outline: true, groundAO: false, jitter: 0.05, ao: 0.9, edges: 0.6 });
+      const [ax, ay] = r.project(21, 9, 20);
+      fr.push({ canvas: r.canvas, ox: Math.round(ax), oy: Math.round(ay) });
+      yield;
+    }
+    return boxFrames(fr);
+  });
+}
+// align animation frames on a shared box (anchor = the model's centre)
+function boxFrames(fr) {
+  const minX = Math.min(...fr.map((q) => -q.ox)), minY = Math.min(...fr.map((q) => -q.oy));
+  const maxX = Math.max(...fr.map((q) => q.canvas.width - q.ox)), maxY = Math.max(...fr.map((q) => q.canvas.height - q.oy));
+  const frames = fr.map((q) => {
+    const c = makeCanvas(maxX - minX, maxY - minY);
+    ctxOf(c).drawImage(q.canvas, -minX - q.ox, -minY - q.oy);
     return c;
   });
+  return { frames, ox: -minX, oy: -minY };
 }
 
-// the rotating ocean planet: an equirectangular texture (seamless 3D noise) sampled per frame
-const OCEAN = { deep: [28, 92, 204], sea: [44, 140, 236], shal: [96, 214, 244], sand: [246, 230, 168], grass: [112, 214, 102], wood: [46, 160, 96], ice: [236, 248, 255] };
-function oceanTex() {
-  return cached('otex', () => {
-    const TW = 160, TH = 80, land = new Uint8Array(TW * TH), cloud = new Uint8Array(TW * TH);
-    for (let j = 0; j < TH; j++) for (let i = 0; i < TW; i++) {
-      const lon = (i / TW) * TAU, lat = (j / TH - 0.5) * Math.PI;
-      const x = Math.cos(lat) * Math.cos(lon), y = Math.sin(lat), z = Math.cos(lat) * Math.sin(lon);
-      const n = fbm3(x * 2.1 + 5, y * 2.1, z * 2.1, 4, 31);
-      const ice = Math.abs(lat) > 1.18 + (fbm3(x * 4, y * 4, z * 4, 2, 9) - 0.5) * 0.3;
-      land[j * TW + i] = ice ? 6 : n > 0.69 ? 5 : n > 0.645 ? 4 : n > 0.625 ? 3 : n > 0.585 ? 2 : n > 0.43 ? 1 : 0;
-      const cn = fbm3(x * 2.6 + 1, y * 5.2, z * 2.6, 4, 77);
-      cloud[j * TW + i] = cn > 0.64 ? 2 : cn > 0.6 ? 1 : 0;
-    }
-    return { TW, TH, land, cloud };
-  });
-}
-const OCEAN_IDX = ['deep', 'sea', 'shal', 'sand', 'grass', 'wood', 'ice'];
-function oceanFrame(r, f, NF) {
-  const T = oceanTex(), pad = 2, D = r * 2 + pad * 2, A = new Art(D, D), c = r + pad, out = [0, 0, 0];
-  const rot = (f / NF) * TAU, crot = rot * 2;
-  for (let y = -r; y < r; y++) for (let x = -r; x < r; x++) {
-    if (!inDisc(x, y, r)) continue;
-    const nx = (x + 0.5) / r, ny = (y + 0.5) / r, nz = Math.sqrt(Math.max(0, 1 - nx * nx - ny * ny));
-    const lat = Math.asin(clamp(ny, -1, 1)), lon = Math.atan2(nx, nz);
-    const tj = clamp(Math.floor((lat / Math.PI + 0.5) * T.TH), 0, T.TH - 1);
-    const ti = (((Math.floor(((lon + rot) / TAU) * T.TW) % T.TW) + T.TW) % T.TW);
-    const tc = (((Math.floor(((lon + crot) / TAU) * T.TW) % T.TW) + T.TW) % T.TW);
-    let col = OCEAN[OCEAN_IDX[T.land[tj * T.TW + ti]]];
-    const cl = T.cloud[tj * T.TW + tc];
-    if (cl === 2 || (cl === 1 && bayer(x + 64, y + 64) < 0.5)) col = [246, 252, 255];
-    const lvl = shadeCol(col, nx, ny, nz, x + 64, y + 64, out);
-    A.px(c + x, c + y, out);
-    // rim: aqua atmosphere on the lit side, a pink back-light on the night side
-    if (!inDisc(x, y, r - 1.1)) {
-      if (lvl >= 2) A.px(c + x, c + y, [150, 244, 255], 0.75);
-      else if (nx + ny > 0.3) A.px(c + x, c + y, [255, 140, 220], 0.55);
-    }
-  }
-  // 1 px atmosphere halo outside the disc (lit side only)
-  for (let y = -r - 1; y <= r; y++) for (let x = -r - 1; x <= r; x++) {
-    if (inDisc(x, y, r) || !inDisc(x, y, r + 1)) continue;
-    const k = -((x + 0.5) * LIGHT[0] + (y + 0.5) * LIGHT[1]) / r;
-    if (k < -0.1) A.px(c + x, c + y, [110, 220, 255], 0.45);
-  }
-  gloss(A, c, c, r);
-  const cv = A.canvas(); cv.o = c;
-  return cv;
-}
-function ringedPlanet(r) {
-  return cached('ringed|' + r, () => {
-    const RO = r * 2.05, RI = r * 1.32, FL = 0.3, TILT = -0.32, pad = 2;
-    const D = Math.ceil(RO * 2 + pad * 2), A = new Art(D, Math.ceil(r * 2 + pad * 2 + RO * 0.5)), cx = Math.floor(D / 2), cy = Math.floor(A.h / 2), out = [0, 0, 0];
-    const BANDS = [[255, 186, 146], [255, 150, 186], [206, 162, 255], [255, 224, 186], [255, 168, 150], [190, 150, 240]];
-    const RING = [[255, 236, 200, 0.9], [196, 236, 255, 0.85], null, [214, 186, 255, 0.85], [255, 206, 236, 0.75], [176, 150, 240, 0.6]];
-    const ca = Math.cos(TILT), sa = Math.sin(TILT);
-    const ringAt = (x, y) => {
-      const px = x + 0.5, py = y + 0.5, u = px * ca + py * sa, v = -px * sa + py * ca;
-      const rr = Math.hypot(u, v / FL);
-      if (rr < RI || rr > RO) return null;
-      const k = Math.floor(((rr - RI) / (RO - RI)) * RING.length);
-      const rc = RING[clamp(k, 0, RING.length - 1)];
-      return rc ? { c: rc, front: v > 0, u } : null;
-    };
-    for (let y = -cy; y < A.h - cy; y++) for (let x = -cx; x < D - cx; x++) {
-      const ring = ringAt(x, y), inP = inDisc(x, y, r);
-      if (inP && !(ring && ring.front)) {
-        const nx = (x + 0.5) / r, ny = (y + 0.5) / r, nz = Math.sqrt(Math.max(0, 1 - nx * nx - ny * ny));
-        // bands follow the ring's tilt, wobbling a little
-        const bl = (-nx * sa + ny * ca) * 3.1 + Math.sin(nx * 5 + ny * 3) * 0.12 + hash2(x, y, 4) * 0.08;
-        const col = BANDS[((Math.floor(bl * 2 + 6) % BANDS.length) + BANDS.length) % BANDS.length];
-        let lvl = shadeCol(col, nx, ny, nz, x + 64, y + 64, out);
-        // the ring's shadow across the planet: a darker stripe just under the ring
-        const sv = -(x + 0.5) * sa + (y + 0.5) * ca, su = (x + 0.5) * ca + (y + 0.5) * sa;
-        const sr = Math.hypot(su, (sv - r * 0.22) / FL);
-        if (sv > 0 && sr > RI && sr < RO && lvl > 0) { shadeCol(col, nx, ny, nz * 0.2 - 0.3, x + 64, y + 64, out); lvl = 1; }
-        A.px(cx + x, cy + y, out);
-        if (!inDisc(x, y, r - 1.1)) {
-          if (lvl >= 2) A.px(cx + x, cy + y, [255, 236, 214], 0.6);
-          else if (nx + ny > 0.3) A.px(cx + x, cy + y, [150, 236, 255], 0.5);
+// The near seabed: a wide slab of rippled sand with pebbles, shells, starfish, urchins, sand dollars, coral rubble
+// and short sea-grass tufts.
+function* floorSteps(nx, nz, seed) {
+  return yield* cachedSteps('floor|' + nx + '|' + nz + '|' + seed, function* () {
+    const ny = 16;
+    const m = new VoxelModel(nx, ny, nz);
+    const C = (c, o = {}) => m.color(c, { jitter: 0.07, ...o });
+    const sand = [C('#d2ae7c'), C('#e6c896'), C('#f4deb0'), C('#fdecc8'), C('#fff8e4', { light: 0.3 })];
+    const wet = C('#c09a68'), peb = [C('#8a92b0'), C('#a4aec8'), C('#6e7898')], shellC = [C('#ffd0dc', { spec: 0.6 }), C('#ffffff', { spec: 0.8 }), C('#ffb48a', { spec: 0.6 })];
+    const star = [C('#ff7a3a'), C('#ff5a8a'), C('#b07aff')], starL = C('#ffd0a0'), grass = [C('#2e8a3e'), C('#58b84a'), C('#9ae070')], rubble = [C('#ff9ab4'), C('#ffd0a0'), C('#c8a0ff')];
+    const urch = C('#3a2a5a', { spec: 0.4 }), urchS = C('#6a4a9a'), urchT = C('#c8a0ff'), dollar = C('#f4ecd8'), dollarM = C('#d8c8a8');
+    const r = new RNG(seed);
+    const hAt = new Float32Array(nx * nz);
+    for (let z = 0; z < nz; z++) {
+      for (let x = 0; x < nx; x++) {
+        const dune = fbm2(x * 0.012, z * 0.02, 3, seed) * 6;
+        const rv = Math.sin(z * 0.42 + x * 0.035 + fbm2(x * 0.02, z * 0.03, 2, seed + 4) * 6);
+        const rip = rv > 0.62 ? 1 : rv < -0.8 ? -1 : 0;
+        const h = 4 + dune;
+        hAt[x + z * nx] = h;
+        const top = Math.floor(h);
+        for (let y = 0; y <= top; y++) {
+          const d = top - y;
+          let c;
+          if (d === 0) {
+            const n = hash2(x, z, seed + 1);
+            c = rip > 0 ? sand[3] : rip < 0 ? sand[1] : n > 0.95 ? sand[4] : n < 0.04 ? sand[1] : sand[2];
+            if (!rip && fbm2(x * 0.04, z * 0.07, 2, seed + 9) < 0.28) c = n > 0.5 ? sand[1] : sand[2];
+          } else c = d < 2 ? sand[1] : d < 4 ? sand[0] : wet;
+          m.set(x, y, z, c);
         }
-      } else if (ring) {
-        // ring brightness: lit on the left, dimmer on the right; the planet shades the far right of the back half
-        const lit = ring.u < r * 0.4 ? 1 : 0.72;
-        const shadow = !ring.front && ring.u > 0 && Math.abs(-(x + 0.5) * sa + (y + 0.5) * ca) < r * 0.9 && ring.u < r * 1.6;
-        const k = shadow ? 0.45 : lit;
-        A.px(cx + x, cy + y, [ring.c[0] * k, ring.c[1] * k, ring.c[2] * k + (1 - k) * 60], ring.c[3]);
+      }
+      if ((z & 15) === 15) yield;
+    }
+    const ground = (x, z) => Math.floor(hAt[clamp(Math.round(x), 0, nx - 1) + clamp(Math.round(z), 0, nz - 1) * nx]) + 1;
+    // pebbles
+    for (let i = 0; i < nx * nz * 0.001; i++) {
+      const x = r.float(2, nx - 3), z = r.float(2, nz - 3), y = ground(x, z);
+      const s = r.float(0.8, 2.4);
+      m.ellipsoid(x, y - 0.3, z, s * 1.3, s * 0.8, s, r.pick(peb));
+    }
+    // shells (little fans) and starfish
+    for (let i = 0; i < nx * nz * 0.0007; i++) {
+      const x = Math.round(r.float(3, nx - 4)), z = Math.round(r.float(3, nz - 4)), y = ground(x, z), c = r.pick(shellC);
+      for (let k = -2; k <= 2; k++) for (let j = 0; j <= 2 - Math.abs(k) * 0.5; j++) m.set(x + k, y + (j > 1 ? 1 : 0), z + j, c);
+    }
+    for (let i = 0; i < nx * nz * 0.0003; i++) {
+      const x = r.float(6, nx - 7), z = r.float(5, nz - 6), y = ground(x, z), a0 = r.float(0, TAU), sc = r.pick(star);
+      for (let a = 0; a < 5; a++) {
+        const ang = a0 + (a / 5) * TAU;
+        for (let k = 0; k < 4.5; k += 0.5) m.set(Math.round(x + Math.cos(ang) * k), y, Math.round(z + Math.sin(ang) * k * 0.8), k < 1.5 ? starL : sc);
+      }
+      m.set(Math.round(x), y + 1, Math.round(z), starL);
+    }
+    yield;
+    // sea urchins (dark spiny balls) and sand dollars
+    for (let i = 0; i < nx * nz * 0.00014; i++) {
+      const x = r.float(6, nx - 7), z = r.float(5, nz - 6), y = ground(x, z);
+      m.sphere(x, y + 1, z, 2.2, urch);
+      for (let a = 0; a < 10; a++) {
+        const ang = (a / 10) * TAU + r.float(-0.2, 0.2), up = r.float(0.1, 1);
+        for (let k = 2; k < 5; k++) m.set(Math.round(x + Math.cos(ang) * k * (1 - up * 0.5)), Math.round(y + 1 + up * k), Math.round(z + Math.sin(ang) * k * 0.6), k > 3 ? urchT : urchS);
       }
     }
-    gloss(A, cx, cy, r);
-    const cv = A.canvas(); cv.ox = cx; cv.oy = cy;
-    return cv;
-  });
-}
-function moonSprite(r) {
-  return cached('moon|' + r, () => {
-    const D = r * 2 + 2, A = new Art(D, D), c = r + 1, out = [0, 0, 0];
-    const craters = [[-0.3, -0.1, 0.32], [0.35, 0.3, 0.26], [0.1, -0.5, 0.18], [-0.2, 0.5, 0.2]];
-    for (let y = -r; y < r; y++) for (let x = -r; x < r; x++) {
-      if (!inDisc(x, y, r)) continue;
-      const nx = (x + 0.5) / r, ny = (y + 0.5) / r, nz = Math.sqrt(Math.max(0, 1 - nx * nx - ny * ny));
-      let col = [206, 202, 236];
-      for (const [qx, qy, qr] of craters) { const d = Math.hypot(nx - qx, ny - qy); if (d < qr) col = d > qr * 0.6 ? [226, 224, 250] : [160, 152, 206]; }
-      shadeCol(col, nx, ny, nz, x + 64, y + 64, out);
-      A.px(c + x, c + y, out);
+    for (let i = 0; i < nx * nz * 0.00016; i++) {
+      const x = r.float(6, nx - 7), z = r.float(5, nz - 6), y = ground(x, z);
+      for (let dz = -2; dz <= 2; dz++) for (let dx = -3; dx <= 3; dx++) if (dx * dx + dz * dz * 2.2 <= 9.5) m.set(Math.round(x + dx), y, Math.round(z + dz), (dx === 0 || Math.abs(dx) === Math.abs(dz) * 2) && dx * dx + dz * dz > 0 ? dollarM : dollar);
     }
-    A.px(c - Math.round(r * 0.45), c - Math.round(r * 0.5), [255, 255, 255], 0.8);
-    const cv = A.canvas(); cv.o = c;
-    return cv;
-  });
-}
-function smallPlanet(r, cols, seed) {
-  return cached('sp|' + r + '|' + seed, () => {
-    const D = r * 2 + 2, A = new Art(D, D), c = r + 1, out = [0, 0, 0];
-    for (let y = -r; y < r; y++) for (let x = -r; x < r; x++) {
-      if (!inDisc(x, y, r)) continue;
-      const nx = (x + 0.5) / r, ny = (y + 0.5) / r, nz = Math.sqrt(Math.max(0, 1 - nx * nx - ny * ny));
-      const n = fbm3(nx * 2 + seed, ny * 2, nz * 2, 3, seed);
-      shadeCol(cols[n > 0.55 ? 1 : 0], nx, ny, nz, x + 64, y + 64, out);
-      A.px(c + x, c + y, out);
+    // coral rubble and short sea-grass tufts
+    for (let i = 0; i < nx * nz * 0.0005; i++) {
+      const x = Math.round(r.float(2, nx - 3)), z = Math.round(r.float(2, nz - 3)), y = ground(x, z);
+      if (r.chance(0.4)) { const c = r.pick(rubble); m.set(x, y, z, c); m.set(x + 1, y, z, c); if (r.chance(0.5)) m.set(x, y + 1, z, c); }
+      else for (let b = 0; b < 4; b++) { const bx = x + r.int(-2, 2), hh = r.int(2, 4); for (let k = 0; k < hh; k++) m.set(bx + (k > 2 ? (b % 2 ? 1 : -1) : 0), y + k, z, grass[Math.min(2, Math.floor((k / hh) * 3))]); }
     }
-    if (r >= 5) gloss(A, c, c, r);
-    const cv = A.canvas(); cv.o = c;
-    return cv;
+    yield;
+    const rr = yield* renderSteps(m, { scale: 1, yaw: 0, pitch: 24, outline: false, groundAO: false, jitter: 0.04, ao: 0.9, edges: 0.35, depthLines: false });
+    return { canvas: rr.canvas, ox: rr.ox, oy: rr.oy, project: rr.project, ny, nz, ground };
   });
 }
 
-// a cute space whale (2 tail frames), pixel art built from a body profile: dark indigo with a glossy top rim,
-// a pale belly with grooves, a little fin, an eye and a few glitter freckles
-function whaleSprite(fr) {
-  return cached('whale|' + fr, () => {
-    const W = 60, H = 28, A = new Art(W, H), M = new Uint8Array(W * H), cy = 13, L = 41;
-    const set = (x, y, v) => { if (x >= 0 && y >= 0 && x < W && y < H) M[y * W + x] = v; };
-    for (let x = 1; x < L; x++) {
-      const u = x / L;
-      // a big round head tapering into the tail stalk; the belly sags a little
-      const top = Math.max(1.4, 9 * (u < 0.27 ? Math.sqrt(Math.max(0, 1 - ((0.27 - u) / 0.28) ** 2)) : Math.pow(1 - (u - 0.27) / 0.73, 0.85)));
-      const bot = Math.max(1, 7 * (u < 0.22 ? Math.sqrt(Math.max(0, 1 - ((0.22 - u) / 0.23) ** 2)) : Math.pow(1 - (u - 0.22) / 0.78, 1.05)));
-      for (let y = Math.round(cy - top); y <= Math.round(cy + bot); y++) set(x, y, y > cy + bot * 0.2 ? 2 : 1);
-    }
-    for (let x = L; x < L + 5; x++) for (let y = cy - 1; y <= cy + (x < L + 2 ? 1 : 0); y++) set(x, y, 1); // tail stalk
-    const lift = fr ? -2 : 1; // the fluke flaps
-    for (let i = 0; i < 11; i++) {
-      const x = L + 4 + i, up = Math.round(cy - 1 + lift - i * 0.62 - (i > 6 ? (i - 6) * 0.5 : 0)), dn = Math.round(cy + lift * 0.5 + i * 0.5);
-      for (let y = up; y <= Math.min(dn, up + 3 + (i < 4 ? 2 : 0)); y++) set(x, y, 1);
-      if (i > 3) for (let y = dn - 1; y <= dn; y++) set(x, y, 1);
-    }
-    for (const [dy, a, b] of [[0, 0, 4], [1, 1, 5], [2, 2, 6], [3, 4, 7], [4, 6, 8]]) for (let x = 13 + a; x <= 13 + b; x++) set(x, cy + 5 + dy, 3); // flipper
-    const COL = { 1: [44, 42, 122], 2: [92, 104, 196], 3: [64, 62, 156] };
-    const OUT = [22, 18, 70];
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      const v = M[y * W + x];
-      if (!v) {
-        const nb = (x > 0 && M[y * W + x - 1]) || (x < W - 1 && M[y * W + x + 1]) || (y > 0 && M[(y - 1) * W + x]) || (y < H - 1 && M[(y + 1) * W + x]);
-        if (nb) A.px(x, y, OUT, 0.9);
-        continue;
+// Rolling dunes / rock hills as a voxel heightfield: tall at the back (the skyline), flattening toward the front so
+// things can stand on the visible top. Anchor (ox, oy) = the back-left foot (x 0, y 0, z 0); 1 sprite px per voxel.
+function* hillsSteps(key, nx, nz, o) {
+  return yield* cachedSteps('hills|' + key + '|' + nx + '|' + nz, function* () {
+    const { seed, base, amp, cols, speck = [], outline = true } = o;
+    const ny = base + amp + 4;
+    const m = new VoxelModel(nx, ny, nz);
+    const C = cols.map((c) => m.color(c, { jitter: 0.08 }));
+    const SP = speck.map((c) => m.color(c, { jitter: 0.1 }));
+    const crest = new Float32Array(nx);
+    for (let x = 0; x < nx; x++) crest[x] = base + amp * clamp(fbm2(x * 0.011, 0.5, 3, seed) * 1.25 - 0.1 + Math.sin(x * 0.006 + seed) * 0.15, 0, 1);
+    for (let z = 0; z < nz; z++) {
+      const k = z / nz, fall = Math.pow(1 - k, 1.6);
+      for (let x = 0; x < nx; x++) {
+        const hh = Math.max(1, Math.round(crest[x] * fall + 2 + fbm2(x * 0.05, z * 0.08, 2, seed + 3) * 2));
+        for (let y = 0; y < hh; y++) {
+          const d = hh - 1 - y;
+          let c = C[d === 0 ? 0 : d < 3 ? 1 : d < 7 ? 2 : 3];
+          if (d === 0 && SP.length && hash2(x, z, seed + 7) < 0.012) c = SP[Math.floor(hash2(x, z, seed + 8) * SP.length)];
+          m.set(x, y, z, c);
+        }
       }
-      let c = COL[v];
-      const above = y > 0 && M[(y - 1) * W + x];
-      if (v === 1 && !above) c = [120, 140, 236]; // glossy top rim
-      else if (v === 1 && y > 0 && !(y > 1 && M[(y - 2) * W + x])) c = [72, 76, 170];
-      if (v === 2 && (y + Math.floor(x / 3)) % 3 === 0 && x > 6 && x < L - 8) c = [70, 80, 172]; // belly grooves
-      A.px(x, y, c);
+      if ((z & 7) === 7) yield;
     }
-    for (let x = 2; x < 11; x++) A.px(x, cy + 1 + (x > 7 ? 1 : 0), [34, 30, 96]); // smile
-    A.px(7, cy - 2, [30, 24, 80]); A.px(8, cy - 2, [30, 24, 80]); A.px(7, cy - 1, [30, 24, 80]); A.px(8, cy - 1, [30, 24, 80]); // eye
-    A.dot(7 * HI, (cy - 2) * HI, [240, 252, 255]); A.dot(7 * HI + 1, (cy - 2) * HI, [240, 252, 255]);
-    A.px(9, cy + 3, [255, 150, 210], 0.75); A.px(10, cy + 3, [255, 150, 210], 0.5); // blush
-    for (const [x, y] of [[18, cy - 5], [24, cy - 6], [30, cy - 4], [14, cy - 6], [27, cy - 1], [20, cy - 2], [34, cy - 2]]) A.dot(x * HI + 1, y * HI, [190, 240, 255], 0.95);
-    return A.canvas();
+    const rr = yield* renderSteps(m, { scale: 1, yaw: 0, pitch: 24, outline, groundAO: false, jitter: 0.05, ao: 1, edges: 0.4, depthLines: false });
+    const [ax, ay] = rr.project(0, 0, 0);
+    return { canvas: rr.canvas, ox: Math.round(ax), oy: Math.round(ay) };
   });
 }
 
-// ------------------------------------------------------------------ scene geometry (shared with labRoomScene)
-function boatsGeo(w, h) {
-  const limb = Math.round(h * 0.82), R = w * 1.5, cx = w / 2, cy = limb + R, wl = Math.round(h * 0.58), RO = cy - wl;
-  return { limb, R, cx, cy, wl, RO, orbit: (x) => cy - Math.sqrt(Math.max(0, RO * RO - (x - cx) * (x - cx))) };
-}
-// how "edge" a point is: 0 in the calm middle (where the tree / tiles / boats live), 1 at the bright edges
-function edgeOf(S, x, y) {
-  const { w, h } = S;
-  if (S.boats) {
-    const band = Math.abs(y - h * 0.47) / (h * 0.26);
-    return clamp(Math.max(sstep(0.55, 1.2, band) * (y < h * 0.47 ? 1 : 0.4), sstep(0.3, 0.5, Math.abs(x / w - 0.5)) * 0.8), 0, 1);
+// ------------------------------------------------------------------ procedural animated textures
+// Caustic web over the sand: a periodic Voronoi edge net with drifting points (loops over n frames), squashed for
+// the floor's perspective and faded toward the back. Blocky 2 device px cells.
+function causticFrame(TW, TH, f, n) {
+  const W = TW * HI, H = TH * HI, c = makeCanvas(W, H), g = ctxOf(c);
+  const img = g.createImageData(W, H), d = img.data;
+  const CX = 7, CY = Math.max(4, Math.round((H * 2.4) / (W / 7))), cw = W / CX, ch = (H * 2.4) / CY;
+  const ph = (f / n) * TAU;
+  const pts = [];
+  for (let j = -1; j <= CY; j++) for (let i = -1; i <= CX; i++) {
+    const ii = ((i % CX) + CX) % CX, h1 = hash2(ii, j, 71), h2 = hash2(ii, j, 72), h3 = hash2(ii, j, 73);
+    pts.push([(i + 0.2 + h1 * 0.6) * cw + Math.cos(ph + h3 * TAU) * cw * 0.16, (j + 0.2 + h2 * 0.6) * ch + Math.sin(ph * (h3 > 0.5 ? 1 : -1) + h1 * TAU) * ch * 0.16]);
   }
-  const ex = (x - w / 2) / (w * 0.4), ey = (y - h * 0.48) / (h * 0.5);
-  return sstep(0.45, 1.25, Math.sqrt(ex * ex + ey * ey));
+  const KX = TAU / W;
+  for (let y = 0; y < H; y += 2) for (let x = 0; x < W; x += 2) {
+    // a gentle domain warp (periodic in x) keeps the web organic, not tiled
+    const px = x + 1 + Math.sin((y + 1) * 0.11 + ph) * 3 + Math.sin(x * KX * 2 + ph) * 2, py = (y + 1) * 2.4 + Math.sin(x * KX * 3 - ph) * 5;
+    let d1 = 1e9, d2 = 1e9;
+    for (const p of pts) {
+      const dx = px - p[0], dy = py - p[1], q = dx * dx + dy * dy;
+      if (q < d1) { d2 = d1; d1 = q; } else if (q < d2) d2 = q;
+    }
+    const e = Math.sqrt(d2) - Math.sqrt(d1);
+    const depth = y / H; // 0 = back of the floor
+    const fade = clamp(depth * 3, 0, 1) * (0.45 + 0.55 * depth);
+    const v = e < 1.8 ? 1 : e < 3.6 ? 0.4 : 0;
+    if (!v) continue;
+    const a = Math.round(255 * v * fade);
+    for (let yy = 0; yy < 2; yy++) for (let xx = 0; xx < 2; xx++) {
+      const o = ((y + yy) * W + x + xx) * 4;
+      d[o] = 220; d[o + 1] = 255; d[o + 2] = 250; d[o + 3] = a;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  return twin(c);
+}
+// The underside of the water surface: a bright rippling band with a wavy lower edge (periodic, loops over n frames).
+function surfaceFrame(TW, TH, f, n) {
+  const W = TW * HI, H = TH * HI, c = makeCanvas(W, H), g = ctxOf(c);
+  const img = g.createImageData(W, H), d = img.data;
+  const ph = (f / n) * TAU, K = TAU / W;
+  for (let x = 0; x < W; x += 2) {
+    const edge = H * 0.36 + Math.sin(x * K * 3 + ph) * 3 + Math.sin(x * K * 7 - ph * 2) * 2 + Math.sin(x * K * 2 - ph) * 2;
+    for (let y = 0; y < H; y += 2) {
+      let col, a;
+      const cell = Math.sin(x * K * 9 + ph + Math.sin(y * 0.2 + ph) * 1.5) + Math.sin(x * K * 5 - ph * 2 + y * 0.31) + Math.sin(x * K * 13 + ph * 3 - y * 0.12);
+      if (y < edge) {
+        col = cell > 1.3 ? [240, 255, 255] : cell > 0.2 ? [180, 246, 255] : [120, 222, 248];
+        a = cell > 1.3 ? 0.95 : 0.7;
+      } else {
+        const k = (y - edge) / (H - edge);
+        if (y < edge + 2) { col = [255, 255, 255]; a = 0.9; } else if (cell > 1.5 && k < 0.6) { col = [220, 252, 255]; a = 0.45 * (1 - k); } else { col = [170, 238, 255]; a = 0.32 * (1 - k) * (1 - k); }
+      }
+      for (let yy = 0; yy < 2; yy++) for (let xx = 0; xx < 2; xx++) {
+        const o = ((y + yy) * W + x + xx) * 4;
+        d[o] = col[0]; d[o + 1] = col[1]; d[o + 2] = col[2]; d[o + 3] = Math.round(255 * a);
+      }
+    }
+  }
+  g.putImageData(img, 0, 0);
+  return twin(c);
 }
 
 // ------------------------------------------------------------------ the scene
 const scenes = new Map();
 function sceneFor(w, h, kind) {
-  const v = kind === 'boats' || kind === 'rods' ? kind : 'tree';
-  const key = w + '|' + h + '|' + v;
+  const boats = kind === 'boats';
+  const key = w + '|' + h + '|' + (boats ? 'b' : 'u');
   let S = scenes.get(key);
   if (!S) {
-    S = makeScene(w, h, v);
+    S = makeScene(w, h, boats);
     scenes.set(key, S);
     if (scenes.size > 3) scenes.delete(scenes.keys().next().value);
-  }
+  } else if (scenes.size > 1) { scenes.delete(key); scenes.set(key, S); } // keep the most recent last
   return S;
 }
 
-// layer paddings (logical px) = the parallax room on each side; parallax rates
-const PAD = { far: 18, neb: 30, mid: 44, near: 70 };
-const PAR = { far: 0.018, neb: 0.034, mid: 0.06, near: 0.1 };
-
-function makeScene(w, h, kind) {
-  const boats = kind === 'boats';
+function makeScene(w, h, boats) {
+  const top = boats ? Math.round(h * 0.3) : 0, U = h - top;
   const S = {
-    w, h, kind, boats, L: {}, ready: {}, done: false, gen: null, bg: null,
-    tw: [], dust: null, ocean: null, moon: null, whale: null, orbit: null,
-    off: { far: { x: 0, y: 0 }, neb: { x: 0, y: 0 }, mid: { x: 0, y: 0 }, near: { x: 0, y: 0 }, dust: { x: 0, y: 0 } },
+    w, h, boats, top, U,
+    far3Y: top + U * 0.56, far2Y: top + U * 0.6, far1Y: top + U * 0.68, midY: top + U * 0.76, floorY: top + U * 0.79,
+    L: {}, ready: {}, anim: [], fish: [], bubbles: [], crab: null, caus: null, surf: null, done: false, gen: null,
   };
-  if (boats) S.geo = boatsGeo(w, h);
-  S.lay = layout(S);
+  S.bg = backdrop(S);
+  S.veil = veils(S);
+  S.motes = motes(S);
   S.gen = buildScene(S);
   return S;
 }
 
-// where things go (view-relative logical px)
-function layout(S) {
-  const { w, h, boats } = S;
-  const pr = Math.round(clamp(h * 0.072, 18, 32)), po = Math.round(clamp(h * 0.056, 14, 26));
-  if (boats) return {
-    galaxy: [w * 0.1, h * 0.15], ringed: [w * 0.87, h * 0.19, Math.round(pr * 0.85)], ocean: null,
-    tiny: [w * 0.24, h * 0.36, 4], comet: [w * 0.6, h * 0.1], fish: [w * 0.38, h * 0.13, 0.8],
-    whaleY: h * 0.3,
-    neb: [[0.08, 0.1, 0.32, 0.34, 'A'], [0.86, 0.06, 0.3, 0.3, 'B'], [0.5, 0.0, 0.3, 0.16, 'A'], [0.98, 0.5, 0.18, 0.3, 'A'], [0.02, 0.56, 0.16, 0.3, 'B']],
-  };
-  // Rods: the rod grid fills the top-left, so the planets gather in the free bottom-right
-  if (S.kind === 'rods') return {
-    galaxy: [w * 0.68, h * 0.73], ringed: [w * 0.57, h * 0.87, Math.round(pr * 0.8)], ocean: [w * 0.885, h * 0.74, po],
-    tiny: [w * 0.97, h * 0.5, 4], comet: [w * 0.8, h * 0.06], fish: [w * 0.78, h * 0.9, 0.75],
-    whaleY: h * 0.95,
-    neb: [[0.04, 0.9, 0.3, 0.3, 'A'], [0.5, 1.02, 0.3, 0.16, 'A'], [0.96, 0.95, 0.3, 0.3, 'B'], [0.98, 0.3, 0.16, 0.3, 'B'], [0.3, -0.02, 0.3, 0.14, 'A'], [0.8, -0.02, 0.24, 0.14, 'B']],
+// water gradient (and, for the Boats tab, the bright air above the surface)
+function backdrop(S) {
+  const { w, h, top, U } = S;
+  const c = makeCanvas(w, h), g = c.getContext('2d');
+  const gr = g.createLinearGradient(0, top, 0, h);
+  for (let i = 0; i <= 20; i++) gr.addColorStop(i / 20, waterAt(i / 20));
+  g.fillStyle = gr; g.fillRect(0, top, w, U);
+  if (top > 0) {
+    const sky = g.createLinearGradient(0, 0, 0, top);
+    sky.addColorStop(0, '#5cc4f4'); sky.addColorStop(0.55, '#a8e8ff'); sky.addColorStop(1, '#e6fcff');
+    g.fillStyle = sky; g.fillRect(0, 0, w, top);
+  }
+  return c;
+}
+
+// readability veils: the tree gets a darker, calm band through the middle (the tiles, links and labels live there),
+// the Rods grid a softer overall dim; every kind a soft vignette. The edges stay bright and lively.
+function veils(S) {
+  const { w, h, top } = S;
+  const mk = (draw) => { const c = makeCanvas(w, h); draw(c.getContext('2d')); return c; };
+  const band = (g, y0, y1, a, col) => {
+    const l = g.createLinearGradient(0, y0, 0, y1);
+    l.addColorStop(0, `rgba(${col},0)`); l.addColorStop(0.25, `rgba(${col},${a})`); l.addColorStop(0.7, `rgba(${col},${a})`); l.addColorStop(1, `rgba(${col},${a * 0.35})`);
+    g.fillStyle = l; g.fillRect(0, y0, w, y1 - y0);
   };
   return {
-    galaxy: [w * 0.12, h * 0.18], ringed: [w * 0.065, h * 0.78, pr], ocean: [w * 0.925, h * 0.27, po],
-    tiny: [w * 0.79, h * 0.9, 5], comet: [w * 0.78, h * 0.06], fish: [w * 0.875, h * 0.68, 1],
-    whaleY: h * 0.9,
-    neb: [[0.06, 0.82, 0.3, 0.36, 'A'], [0.1, 0.12, 0.24, 0.26, 'A'], [0.84, 0.0, 0.24, 0.2, 'B'], [0.94, 0.8, 0.26, 0.3, 'B'], [1.02, 0.42, 0.1, 0.2, 'B'], [0.5, 1.02, 0.34, 0.14, 'A'], [0.5, -0.04, 0.3, 0.12, 'B']],
+    tree: mk((g) => {
+      band(g, h * 0.04, h, 0.2, '2,34,92');
+      const r = g.createRadialGradient(w / 2, h * 0.5, Math.min(w, h) * 0.1, w / 2, h * 0.5, Math.max(w, h) * 0.6);
+      r.addColorStop(0, 'rgba(2,30,84,0.3)'); r.addColorStop(0.5, 'rgba(2,30,84,0.18)'); r.addColorStop(1, 'rgba(2,30,84,0)');
+      g.fillStyle = r; g.fillRect(0, 0, w, h);
+    }),
+    rods: mk((g) => {
+      g.fillStyle = 'rgba(0,44,110,0.22)'; g.fillRect(0, 0, w, h);
+      const r = g.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.3, w / 2, h / 2, Math.max(w, h) * 0.7);
+      r.addColorStop(0, 'rgba(0,36,96,0.1)'); r.addColorStop(1, 'rgba(0,20,64,0.3)');
+      g.fillStyle = r; g.fillRect(0, 0, w, h);
+    }),
+    boats: mk((g) => {
+      const r = g.createRadialGradient(w / 2, h * 0.55, Math.min(w, h) * 0.3, w / 2, h * 0.55, Math.max(w, h) * 0.75);
+      r.addColorStop(0, 'rgba(0,36,96,0)'); r.addColorStop(1, 'rgba(0,20,64,0.26)');
+      g.fillStyle = r; g.fillRect(0, top, w, h - top);
+    }),
   };
 }
 
-// the sky: posterised, Bayer-dithered gradient + soft glow pools at the edges, darker / calmer in the middle
-function* skySteps(S) {
-  const { w, h } = S, A = new Art(w, h);
-  const pools = S.boats
-    ? [[0.08, 0.12, 0.36, 0.42, [70, 30, 120]], [0.9, 0.1, 0.34, 0.4, [10, 70, 120]], [0.5, 0.78, 0.6, 0.22, [20, 80, 150]]]
-    : [[0.04, 0.86, 0.4, 0.5, [80, 30, 120]], [0.96, 0.14, 0.36, 0.44, [12, 74, 128]], [0.08, 0.1, 0.3, 0.3, [50, 24, 100]], [0.96, 0.9, 0.3, 0.36, [20, 60, 120]]];
-  const sky = new Float32Array(3);
-  const Q = 6;
-  for (let y = 0; y < h; y++) {
-    const k = y / h;
-    for (let i = 1; i < SKY.length; i++) if (k <= SKY[i][0] || i === SKY.length - 1) {
-      const [a, ca] = SKY[i - 1], [b, cb] = SKY[i], q = clamp((k - a) / (b - a), 0, 1);
-      for (let c = 0; c < 3; c++) sky[c] = ca[c] + (cb[c] - ca[c]) * q;
-      break;
-    }
-    for (let x = 0; x < w; x++) {
-      let r = sky[0], g = sky[1], b = sky[2];
-      for (const [px, py, rx, ry, col] of pools) {
-        const dx = (x / w - px) / rx, dy = (y / h - py) / ry, d = 1 - (dx * dx + dy * dy);
-        if (d > 0) { const f = d * d; r += col[0] * f; g += col[1] * f; b += col[2] * f; }
-      }
-      const calm = 1 - (1 - edgeOf(S, x, y)) * 0.22;
-      const bd = bayer(x, y);
-      const R = Math.floor((r * calm) / Q + bd) * Q, G = Math.floor((g * calm) / Q + bd) * Q, B = Math.floor((b * calm) / Q + bd) * Q;
-      const c = [clamp(R, 0, 255), clamp(G, 0, 255), clamp(B, 0, 255)];
-      A.px(x, y, c);
-    }
-    if ((y & 15) === 15) yield;
-  }
-  S.bg = A.canvas();
-  S.ready.bg = -1;
+// marine snow: tiny specks that drift and twinkle (fixed seeds, no allocation per frame)
+function motes(S) {
+  const n = Math.round(clamp((S.w * S.U) / 4200, 40, 140)), out = new Float32Array(n * 5);
+  for (let i = 0; i < n; i++) out.set([hash1(i, 51), hash1(i, 53), 1.5 + hash1(i, 52) * 3.5, hash1(i, 54) * TAU, hash1(i, 55)], i * 5);
+  return out;
 }
 
-// the far star field + a pixel spiral galaxy
-function* farSteps(S, r) {
-  const { w, h } = S, P = PAD.far, LW = w + P * 2, A = new Art(LW, h);
-  const n = Math.round((LW * h) / 170);
-  for (let i = 0; i < n; i++) {
-    const x = r.float(0, LW), y = r.float(0, h), e = edgeOf(S, x - P, y);
-    const c = STAR_COLS[r.int(0, STAR_COLS.length - 1)], a = r.float(0.35, 1) * (0.6 + 0.4 * e);
-    if (r.chance(0.07)) { A.px(x, y, c, Math.min(1, a + 0.2)); }
-    else A.dot(x * HI, y * HI, c, a);
-    if ((i & 511) === 511) yield;
-  }
-  S.L.far = { c: A.canvas(), x: -P, y: 0 };
-  S.ready.far = -1;
-}
-
-// a distant spiral galaxy: two arms splatted into a density grid, posterised into a cool -> warm ramp, bright core
-function galaxy(A, gx, gy) {
-  const GW = 110, GH = 64, G = new Float32Array(GW * GH), rr = new RNG(9);
-  const tilt = -0.38, ct = Math.cos(tilt), st = Math.sin(tilt);
-  for (let i = 0; i < 2600; i++) {
-    const arm = i & 1, tt = Math.pow(rr.next(), 0.75) * 3.3 * Math.PI, rad = 2 + tt * 3.1;
-    const sc = (rr.next() + rr.next() + rr.next() - 1.5) * (1.1 + rad * 0.09);
-    const th = tt + arm * Math.PI + sc * 0.06;
-    let x = Math.cos(th) * (rad + sc), y = Math.sin(th) * (rad + sc) * 0.42;
-    [x, y] = [x * ct - y * st, x * st + y * ct];
-    const ix = Math.round(GW / 2 + x), iy = Math.round(GH / 2 + y);
-    if (ix >= 0 && iy >= 0 && ix < GW && iy < GH) G[iy * GW + ix] += 1 / (1 + rad * 0.02);
-  }
-  for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) {
-    const dx = (x - GW / 2) / 7, dy = (y - GH / 2) / 3.6;
-    G[y * GW + x] += 9 * Math.exp(-(dx * dx + dy * dy));
-  }
-  const RAMP = [[60, 70, 180, 0.32], [96, 96, 214, 0.45], [150, 130, 240, 0.58], [214, 160, 250, 0.72], [255, 196, 236, 0.85], [255, 236, 214, 0.95], [255, 255, 244, 1]];
-  for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) {
-    const v = G[y * GW + x];
-    if (v < 0.25) continue;
-    const lv = Math.log2(1 + v) * 1.55 + bayer(x, y) - 0.75;
-    const k = Math.floor(clamp(lv, -1, RAMP.length - 1));
-    if (k < 0) continue;
-    const c = RAMP[k];
-    A.px(gx - GW / 2 + x, gy - GH / 2 + y, c, c[3]);
-  }
-  for (let i = 0; i < 26; i++) {
-    const x = gx + rr.float(-30, 30), y = gy + rr.float(-12, 12);
-    A.dot(x * HI, y * HI, [255, 255, 255], rr.float(0.5, 1));
-  }
-}
-
-// nebula clouds: domain-warped fbm on a coarse grid, bilinear per art pixel, posterised + Bayer dithered
-function* nebSteps(S) {
-  const { w, h } = S, P = PAD.neb, LW = w + P * 2, A = new Art(LW, h);
-  const CS = 3, gw = Math.ceil(LW / CS) + 2, gh = Math.ceil(h / CS) + 2;
-  const GA = new Float32Array(gw * gh), GB = new Float32Array(gw * gh), GL = new Float32Array(gw * gh);
-  const regs = S.lay.neb;
-  const sc = 1 / Math.max(260, Math.min(w, h * 1.6));
-  for (let j = 0; j < gh; j++) {
-    for (let i = 0; i < gw; i++) {
-      const X = i * CS, Y = j * CS;
-      const wx = X + (fbm2(X * 0.005, Y * 0.005, 3, 7) - 0.5) * 110, wy = Y + (fbm2(X * 0.005 + 9, Y * 0.005 + 3, 3, 8) - 0.5) * 70;
-      const a = fbm2(wx * sc * 2.4, wy * sc * 3.4, 5, 11), b = fbm2(wx * sc * 2.6 + 20, wy * sc * 3.6, 5, 12);
-      const dust = fbm2(wx * 0.022, wy * 0.034, 3, 13);
-      let ra = 0, rb = 0;
-      for (const [px, py, rx, ry, k] of regs) {
-        const dx = ((X - P) / w - px) / rx, dy = (Y / h - py) / ry, d = Math.max(0, 1 - Math.sqrt(dx * dx + dy * dy));
-        if (k === 'A') ra = Math.max(ra, d); else rb = Math.max(rb, d);
-      }
-      const e = edgeOf(S, X - P, Y), lane = Math.max(0, dust - 0.55) * 2.6;
-      // ridged filaments add bright wisps inside the clouds
-      const fil = Math.pow(1 - Math.abs(2 * fbm2(wx * 0.011, wy * 0.017, 4, 15) - 1), 5) * 0.42;
-      const va = sstep(0.42, 0.84, a * 0.72 + ra * 0.56 + fil * ra) * (0.25 + 0.75 * e), vb = sstep(0.42, 0.84, b * 0.72 + rb * 0.56 + fil * rb) * (0.25 + 0.75 * e);
-      GA[j * gw + i] = clamp(va - lane, 0, 1);
-      GB[j * gw + i] = clamp(vb - lane, 0, 1);
-      GL[j * gw + i] = Math.max(va, vb) > 0.25 ? clamp(lane * 1.4, 0, 1) : 0;
-    }
-    if ((j & 7) === 7) yield;
-  }
-  const smp = (G, x, y) => {
-    const fx = x / CS, fy = y / CS, ix = Math.floor(fx), iy = Math.floor(fy), kx = fx - ix, ky = fy - iy, o = iy * gw + ix;
-    return (G[o] * (1 - kx) + G[o + 1] * kx) * (1 - ky) + (G[o + gw] * (1 - kx) + G[o + gw + 1] * kx) * ky;
-  };
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < LW; x++) {
-      const da = smp(GA, x, y), db = smp(GB, x, y), dl = smp(GL, x, y), bd = bayer(x, y);
-      // dark dust lanes cutting through the clouds
-      if (dl > 0.12 && bd < dl * 1.6) A.px(x, y, [18, 10, 52], 0.42);
-      if (da < 0.04 && db < 0.04) continue;
-      const la = clamp(Math.floor(Math.pow(da, 1.25) * 5.4 + bd - 0.2), 0, 5), lb = clamp(Math.floor(Math.pow(db, 1.25) * 5.4 + bd - 0.2), 0, 5);
-      if (!la && !lb) continue;
-      let c = la >= 2 && lb >= 2 ? NEB_M[Math.min(5, Math.max(la, lb))] : la >= lb ? NEB_A[la] : NEB_B[lb];
-      A.px(x, y, c, c[3]);
-      // bright glitter specks in the dense parts
-      if (Math.max(la, lb) >= 4 && hash2(x, y, 21) < 0.05) A.dot(x * HI + (hash2(x, y, 22) < 0.5 ? 0 : 1), y * HI, [255, 255, 255], 0.9);
-    }
-    if ((y & 7) === 7) yield;
-  }
-  galaxy(A, S.lay.galaxy[0] + P, S.lay.galaxy[1]);
-  S.L.neb = { c: A.canvas(), x: -P, y: 0 };
-  S.ready.neb = -1;
-}
-
-// brighter mid stars, the fish constellation and a comet; registers the twinkles / glints
-function* midSteps(S, r) {
-  const { w, h } = S, P = PAD.mid, LW = w + P * 2, A = new Art(LW, h);
-  const n = Math.round((LW * h) / 1500);
-  for (let i = 0; i < n; i++) {
-    const x = Math.floor(r.float(0, LW)), y = Math.floor(r.float(0, h)), e = edgeOf(S, x - P, y);
-    if (r.next() > 0.35 + 0.65 * e) continue;
-    const c = STAR_COLS[r.int(0, STAR_COLS.length - 1)], a = r.float(0.55, 1);
-    A.px(x, y, c, a);
-    if (r.chance(0.18)) { for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) A.px(x + dx, y + dy, c, a * 0.35); }
-  }
-  // a few little open star clusters toward the edges
-  for (let i = 0; i < (S.boats ? 3 : 4); i++) {
-    let cx, cy, k = 0;
-    do { cx = r.float(0.04, 0.96) * w; cy = r.float(0.05, 0.95) * h; } while (edgeOf(S, cx, cy) < 0.75 && ++k < 30);
-    for (let j = 0; j < 16; j++) {
-      const a = r.float(0, TAU), d = Math.pow(r.next(), 1.6) * 16, x = Math.round(cx + Math.cos(a) * d + P), y = Math.round(cy + Math.sin(a) * d * 0.8);
-      const c = STAR_COLS[r.int(0, 2)];
-      if (j < 4) { A.px(x, y, [255, 255, 255]); for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) A.px(x + dx, y + dy, c, 0.5); }
-      else if (j < 9) A.px(x, y, c, 0.9);
-      else A.dot(x * HI + (j & 1), y * HI, c, 0.9);
-    }
-    S.tw.push({ x: cx, y: cy, d: 'mid', big: 0, ti: i % 4, sp: 1.3, ph: i * 2, k: 2 });
-  }
-  yield;
-  // twinkles (drawn animated on top; a dim base dot stays in the layer) and the big glints
-  const nt = Math.round(clamp((w * h) / 2800, 60, 170));
-  for (let i = 0; i < nt; i++) {
-    let x = r.float(0, w), y = r.float(0, h);
-    for (let k = 0; k < 4 && r.next() > 0.25 + 0.75 * edgeOf(S, x, y); k++) { x = r.float(0, w); y = r.float(0, h); }
-    const far = i % 3 === 0;
-    S.tw.push({ x, y, d: far ? 'far' : 'mid', big: 0, ti: r.int(0, 3), sp: r.float(0.5, 1.6), ph: r.float(0, TAU), k: far ? 1 : r.chance(0.4) ? 2 : 1 });
-    if (!far) A.dot((x + P) * HI, y * HI, [220, 240, 255], 0.6);
-  }
-  const ng = S.boats ? 5 : 8;
-  for (let i = 0; i < ng; i++) {
-    let x, y, k = 0;
-    do { x = r.float(0.03, 0.97) * w; y = r.float(0.04, 0.96) * h; } while (edgeOf(S, x, y) < 0.7 && ++k < 30);
-    S.tw.push({ x, y, d: 'mid', big: 1, ti: i % 4, sp: r.float(0.35, 0.7), ph: r.float(0, TAU), k: 3 });
-  }
-  // the fish constellation (facing left): stars joined by faint dotted device-px lines
-  {
-    const [fx, fy, fs] = S.lay.fish, W = 92 * fs, H = 46 * fs;
-    const pts = [[0, 0.52], [0.24, 0.14], [0.56, 0.08], [0.76, 0.42], [1, 0.06], [0.95, 0.94], [0.76, 0.6], [0.52, 0.94], [0.22, 0.86]];
-    const P2 = pts.map(([u, v]) => [Math.round(fx - W / 2 + u * W) + P, Math.round(fy - H / 2 + v * H)]);
-    const seg = [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 3], [6, 7], [7, 8], [8, 0], [2, 7]];
-    for (const [a, b] of seg) {
-      const [x0, y0] = P2[a], [x1, y1] = P2[b], L = Math.hypot(x1 - x0, y1 - y0) * HI;
-      for (let s = 3; s < L - 3; s += 3) A.dot((x0 * HI + 1) + ((x1 - x0) * HI * s) / L, (y0 * HI + 1) + ((y1 - y0) * HI * s) / L, [150, 226, 255], 0.5);
-    }
-    P2.forEach(([x, y], i) => {
-      A.px(x, y, [236, 250, 255]);
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) A.px(x + dx, y + dy, [160, 230, 255], 0.45);
-      if (i % 2 === 0) S.tw.push({ x: x - P + 0.5, y: y + 0.5, d: 'mid', big: 0, ti: 0, sp: 0.9 + i * 0.13, ph: i * 1.7, k: 2 });
-    });
-    // its eye
-    const ex = Math.round(fx - W / 2 + 0.17 * W) + P, ey = Math.round(fy - H / 2 + 0.42 * H);
-    A.px(ex, ey, [255, 220, 150]);
-  }
-  yield;
-  // a comet (tail up-right, falling down-left)
-  {
-    const [cx0, cy0] = S.lay.comet, hx = cx0 + P, hy = cy0, dir = [0.86, -0.5], nrm = [0.5, 0.86];
-    for (let s = 0; s < 52; s++) {
-      const wdt = 0.6 + s * 0.085, f = s / 52;
-      for (let o = -Math.ceil(wdt); o <= Math.ceil(wdt); o++) {
-        const x = Math.round(hx + dir[0] * s + nrm[0] * o), y = Math.round(hy + dir[1] * s + nrm[1] * o);
-        const dens = (1 - f) * (1 - Math.abs(o) / (wdt + 1));
-        if (dens < bayer(x, y) * 0.9 + 0.05) continue;
-        const c = f < 0.12 ? [236, 252, 255] : f < 0.4 ? [130, 226, 255] : f < 0.7 ? [140, 150, 250] : [190, 130, 240];
-        A.px(x, y, c, 0.35 + dens * 0.6);
-      }
-    }
-    A.px(hx, hy, [255, 255, 255]); A.px(hx + 1, hy, [255, 255, 255]); A.px(hx, hy + 1, [255, 255, 255]); A.px(hx + 1, hy + 1, [220, 250, 255]);
-    for (const [dx, dy] of [[-1, 0], [-1, 1], [0, 2], [1, 2], [0, -1], [2, 1]]) A.px(hx + dx, hy + dy, [150, 236, 255], 0.6);
-    S.tw.push({ x: cx0 + 1, y: cy0 + 1, d: 'mid', big: 0, ti: 0, sp: 2.2, ph: 0, k: 2 });
-  }
-  S.L.mid = { c: A.canvas(), x: -P, y: 0 };
-  S.ready.mid = -1;
-}
-
-// the near layer: the ringed planet, a tiny planet; Boats: the ocean planet's limb with its stepped atmosphere
-function* nearSteps(S) {
-  const { w, h } = S, P = PAD.near, LW = w + P * 2;
-  const L = makeCanvas(LW * HI, h * HI), g = ctxOf(L);
-  const put = (c, x, y, ox, oy) => g.drawImage(c.hi, Math.round((x + P - ox) * HI), Math.round((y - oy) * HI));
-  const [rx, ry, rr] = S.lay.ringed;
-  const rp = ringedPlanet(rr);
-  yield;
-  put(rp, rx, ry, rp.ox, rp.oy);
-  const [tx, ty, trr] = S.lay.tiny, tp = smallPlanet(trr, [[255, 150, 196], [255, 214, 150]], 5);
-  put(tp, tx, ty, tp.o, tp.o);
-  yield;
-  if (S.boats) {
-    const { limb, R, cx, cy } = S.geo, A = new Art(LW, h - limb + 12), y0 = limb - 10, out = [0, 0, 0];
-    for (let yy = 0; yy < A.h; yy++) {
-      const Y = y0 + yy;
-      for (let x = 0; x < LW; x++) {
-        const X = x - P, dx = X + 0.5 - cx, dy = Y + 0.5 - cy, dist = Math.sqrt(dx * dx + dy * dy) - R;
-        if (dist > 0) {
-          // stepped, dithered atmosphere above the limb
-          const bd = bayer(x, Y);
-          if (dist < 1) A.px(x, yy, [200, 252, 255], 0.95);
-          else if (dist < 2.5) A.px(x, yy, [120, 230, 255], 0.75);
-          else if (dist < 4.5) A.px(x, yy, [70, 170, 250], 0.45);
-          else if (dist < 8 && bd < 0.5) A.px(x, yy, [80, 130, 240], 0.32);
-          else if (dist < 11 && bd < 0.25) A.px(x, yy, [90, 110, 230], 0.25);
-          continue;
-        }
-        const nx = dx / R, ny = dy / R, nz = Math.sqrt(Math.max(0, 1 - nx * nx - ny * ny));
-        const s = -dist; // depth below the limb
-        const v = Math.sqrt(2 * R * s), u = X;
-        const n = fbm2(u * 0.02 + 3, v * 0.055, 5, 41), cl = fbm2(u * 0.016 + 40, v * 0.05 + u * 0.004, 4, 42);
-        let col = n > 0.7 ? OCEAN.wood : n > 0.655 ? OCEAN.grass : n > 0.635 ? OCEAN.sand : n > 0.6 ? OCEAN.shal : n > 0.44 ? OCEAN.sea : OCEAN.deep;
-        if (cl > 0.67 || (cl > 0.64 && bayer(x, Y) < 0.5)) col = [246, 252, 255];
-        else if (cl > 0.62 && cl < 0.66 && n <= 0.6) col = [32, 104, 210]; // cloud shadow on the sea
-        // haze toward the limb, light from the left, the far right turning toward night
-        const lit = -nx * 1.5 + 0.3 * nz + 0.42;
-        const lvl = clamp(Math.floor(lit * 3 + 1.6 + (bayer(x, Y) - 0.5) * 0.9), 0, 4);
-        const k = SHADE_K[lvl];
-        for (let i = 0; i < 3; i++) out[i] = clamp(col[i] * k + (lvl === 4 ? 12 : 0), 0, 255);
-        const haze = s < 1.5 ? 0.7 : s < 3.5 ? 0.45 : s < 7 ? (bayer(x, Y) < 0.5 ? 0.3 : 0.15) : 0;
-        if (haze) for (let i = 0; i < 3; i++) out[i] += ([170, 240, 255][i] - out[i]) * haze;
-        A.px(x, yy, out);
-      }
-      if ((yy & 7) === 7) yield;
-    }
-    // little sparkling sea glints on the lit side
-    const rr2 = new RNG(5);
-    for (let i = 0; i < 40; i++) {
-      const X = rr2.float(0, w * 0.6), Y = limb + rr2.float(6, h - limb), dx = X - cx, dy = Y - cy;
-      if (Math.hypot(dx, dy) > R - 4) continue;
-      A.dot((X + P) * HI, (Y - y0) * HI, [255, 255, 255], 0.8);
-    }
-    const cv = A.canvas();
-    g.drawImage(cv.hi, 0, y0 * HI);
-  }
-  S.L.near = { c: twin(L), x: -P, y: 0 };
-  S.ready.near = -1;
-}
-
-// the Boats' glowing orbit line (no parallax: the boats sit on it)
-function orbitLine(S) {
-  const { w, h } = S, { orbit } = S.geo, A = new Art(w, h);
-  let py = orbit(0);
-  for (let X = 0; X < w * HI; X++) {
-    const x = (X + 0.5) / HI, y = orbit(x), Y = Math.round(y * HI);
-    const y0 = Math.round(py * HI);
-    // core 2 device px (plus fill between steps), stepped glow above / below
-    for (let yy = Math.min(Y, y0); yy <= Math.max(Y, y0); yy++) { A.dot(X, yy, [226, 252, 255], 1); A.dot(X, yy + 1, [150, 236, 255], 1); }
-    A.dot(X, Y - 1, [110, 220, 255], 0.55); A.dot(X, Y + 2, [110, 220, 255], 0.55);
-    A.dot(X, Y - 2, [120, 150, 255], 0.3); A.dot(X, Y + 3, [120, 150, 255], 0.3);
-    if (((X >> 1) & 3) === 0) { A.dot(X, Y - 3, [170, 140, 255], 0.22); A.dot(X, Y + 4, [170, 140, 255], 0.22); }
-    py = y;
-  }
-  return A.canvas();
-}
+// layer paddings (logical px) = the parallax room on each side
+const PAD = { sky: 26, far3: 20, far2: 26, far1: 40, mid: 60, floor: 96, props: 96 };
+const PAR = { sky: 0.015, far3: 0.02, far2: 0.03, far1: 0.05, mid: 0.085, floor: 0.14, props: 0.14 };
 
 function* buildScene(S) {
-  const r = new RNG(1977);
-  yield* skySteps(S);
-  yield* farSteps(S, r);
-  yield* nebSteps(S);
-  yield* midSteps(S, r);
-  yield* nearSteps(S);
-  // animated sprites
-  if (S.lay.ocean) {
-    const [, , po] = S.lay.ocean, NF = 96, fr = [];
-    oceanTex();
-    yield;
-    for (let f = 0; f < NF; f++) { fr.push(cached('ocean|' + po + '|' + f, () => oceanFrame(po, f, NF))); if ((f & 7) === 7) yield; }
-    S.ocean = fr;
-  }
-  S.moon = moonSprite(S.boats ? 5 : 6);
-  S.whale = [whaleSprite(0), whaleSprite(1)];
-  for (let k = 0; k < 4; k++) for (let ti = 0; ti < 4; ti++) sparkSprite(k, ti);
-  yield;
-  // stardust / glitter: drifting device-px specks (a few bigger), colours pre-baked as style strings per alpha step
-  {
-    const N = Math.round(clamp((S.w * S.h) / 1700, 90, 260));
-    const D = { n: N, x: new Float32Array(N), y: new Float32Array(N), vx: new Float32Array(N), vy: new Float32Array(N), ph: new Float32Array(N), sp: new Float32Array(N), c: new Uint8Array(N), big: new Uint8Array(N) };
-    for (let i = 0; i < N; i++) {
-      let x = r.float(0, S.w), y = r.float(0, S.h);
-      for (let k = 0; k < 3 && r.next() > 0.3 + 0.7 * edgeOf(S, x, y); k++) { x = r.float(0, S.w); y = r.float(0, S.h); }
-      D.x[i] = x; D.y[i] = y; D.vx[i] = r.float(-5, -1.5); D.vy[i] = r.float(-1.2, 1.2);
-      D.ph[i] = r.float(0, TAU); D.sp[i] = r.float(1, 3.5); D.c[i] = r.int(0, 3); D.big[i] = r.chance(0.3) ? 1 : 0;
+  const { w, h, top, U } = S;
+  const r = new RNG(77);
+  const hazeDeep = waterAt(0.36), hazeFar = waterAt(0.42), hazeMid = waterAt(0.5);
+  // animated textures first (cheap, they make the scene feel alive while the rest builds)
+  S.surf = [];
+  for (let f = 0; f < 12; f++) { S.surf.push(surfaceFrame(160, 34, f, 12)); if (f % 3 === 2) yield; }
+  // Boats: soft voxel clouds in the strip of sky above the surface
+  if (top > 0) {
+    const P = PAD.sky, LW = w + P * 2, L = layer(LW, top);
+    for (let i = 0; i < 4; i++) {
+      const s = yield* cloudSteps(i);
+      put(L, s, P + w * (0.06 + i * 0.22 + hash1(i, 41) * 0.05), top * (0.3 + hash1(i, 42) * 0.2), 2);
     }
-    D.styles = TINTS.map((c) => [0.15, 0.35, 0.6, 0.9].map((a) => `rgba(${Math.round(c[0] + (255 - c[0]) * 0.4)},${Math.round(c[1] + (255 - c[1]) * 0.4)},${Math.round(c[2] + (255 - c[2]) * 0.4)},${a})`));
-    S.dust = D;
+    S.L.sky = { c: twin(L.c), x: -P, y: 0, P };
+    S.ready.sky = -1;
   }
-  // shooting-star trail styles (white head -> aqua -> violet)
-  S.trail = [];
-  for (let k = 0; k < 30; k++) {
-    const f = k / 30, a = (1 - f) * (1 - f) * 0.95;
-    const c = f < 0.15 ? [255, 255, 255] : f < 0.5 ? [150, 236, 255] : [176, 150, 255];
-    S.trail.push(`rgba(${c[0]},${c[1]},${c[2]},${a.toFixed(3)})`);
+
+  // ---- far3: the faintest reef ridge on the horizon
+  {
+    const P = PAD.far3, LW = w + P * 2, y0 = top + U * 0.3, base = S.far3Y - y0, L = layer(LW, base + 30);
+    const hills = yield* hillsSteps('h3', Math.ceil(LW), 40, { seed: 53, base: 18, amp: 34, cols: ['#7aa8d0', '#6a96c2', '#5c86b4', '#5078a6'], speck: ['#8ab0e0', '#9ab8d8'] });
+    put(L, hills, 0, base, 2);
+    fog(L, hazeDeep, 0.74, 0.66);
+    S.L.far3 = { c: twin(L.c), x: -P, y: y0, P };
+    S.ready.far3 = -1;
   }
-  if (S.boats) {
-    S.orbit = orbitLine(S);
-    S.ready.orbit = -1;
+  yield;
+
+  // ---- far2: faint silhouettes (pinnacles, a mesa, an arch) on rolling rock hills
+  {
+    const P = PAD.far2, LW = w + P * 2, y0 = top + U * 0.16, base = S.far2Y - y0, L = layer(LW, base + 40);
+    const hills = yield* hillsSteps('h2', Math.ceil(LW), 60, { seed: 54, base: 10, amp: 26, cols: ['#8a9cc0', '#7484aa', '#5e6c94', '#4c5a80'], speck: ROCK });
+    put(L, hills, 0, base, 2);
+    const items = [];
+    const sp = [[0.03, 58, 10], [0.15, 84, 13], [0.27, 48, 9], [0.73, 76, 12], [0.87, 96, 14], [0.97, 54, 10], [0.6, 44, 9]];
+    for (let i = 0; i < sp.length; i++) {
+      const [xf, hh, ww] = sp[i];
+      const s = yield* farSteps('sp|' + i + '|' + hh, () => farRender(spire(400 + i, { h: hh, w: ww, d: 16, lean: hash1(i, 3) * 0.14 - 0.07, cols: ROCK, crown: CROWN }), { scale: 1.5, yaw: i % 2 ? 22 : -22 }));
+      items.push([s, xf * LW, base + 8 + (i % 3) * 3]);
+    }
+    const ms = yield* farSteps('mesa|a', () => farRender(mesa(52, { h: 34, w: 38, d: 18, cols: ROCK, crown: CROWN }), { scale: 1.5, yaw: -16 }));
+    items.push([ms, LW * 0.5, base + 10]);
+    const ar = yield* farSteps('arch|a', () => farRender(rockArch(51, { span: 56, h: 72, th: 8, d: 14, cols: ROCK, crown: CROWN }), { scale: 1.5, yaw: 18 }));
+    items.push([ar, LW * 0.36, base + 12]);
+    items.sort((a, b) => a[2] - b[2]);
+    for (const [s, x, y] of items) put(L, s, x, y);
+    fog(L, hazeFar, 0.62, 0.5);
+    S.L.far2 = { c: twin(L.c), x: -P, y: y0, P };
+    S.ready.far2 = -1;
+  }
+  yield;
+
+  // ---- far1: the coral garden on sand dunes (bommies, fans, sponges, rocks)
+  {
+    const P = PAD.far1, LW = w + P * 2, y0 = top + U * 0.3, base = S.far1Y - y0, L = layer(LW, base + 40);
+    const hills = yield* hillsSteps('h1', Math.ceil(LW), 64, { seed: 55, base: 6, amp: 16, cols: ['#f2deb0', '#e2c898', '#d0b482', '#b89c6c'], speck: ['#8a92b0', '#a4aec8', '#ff9ab4'] });
+    put(L, hills, 0, base, 2);
+    const items = [];
+    const nC = Math.round(clamp(LW / 60, 10, 22));
+    for (let i = 0; i < nC; i++) {
+      const s = yield* coralSteps(LOW_KINDS[i % LOW_KINDS.length], 300 + (i % 12), [9, 12, 10, 8][i % 4]);
+      items.push([s, ((i + r.float(0.1, 0.9)) / nC) * LW, base + r.float(10, 22)]);
+    }
+    const nR = Math.round(clamp(LW / 220, 4, 7));
+    for (let i = 0; i < nR; i++) {
+      const s = yield* reefSteps(330 + (i % 3), { w: 96, h: 56, d: 34, sizes: [7, 14] });
+      items.push([i % 2 ? s : (S['flip33' + (i % 3)] ||= flipS(s)), LW * ((i + 0.5) / nR) + r.int(-24, 24), base + r.float(12, 20)]);
+    }
+    for (const [id, xf, sc] of [['rock_big', 0.22, 0.5], ['rock_small', 0.58, 0.6], ['rock_big', 0.82, 0.45], ['coral_brain', 0.42, 0.5]]) {
+      const s = yield* propSteps(id, sc);
+      if (s) items.push([s, LW * xf, base + r.float(12, 20)]);
+    }
+    items.sort((a, b) => a[2] - b[2]);
+    for (const [s, x, y] of items) put(L, s, x, y);
+    fog(L, hazeMid, 0.56, 0.42);
+    S.L.far1 = { c: twin(L.c), x: -P, y: y0, P };
+    S.ready.far1 = -1;
+  }
+  yield;
+
+  // fish schools (far and mid water)
+  {
+    const fr = [];
+    for (let k = 0; k < FISH.length; k++) fr.push(yield* fishSteps(k));
+    const mkSchool = (k, n, depth, y, speed, dir, scale, spread = 1) => {
+      const fogA = depth === 'far' ? 0.6 : depth === 'mid' ? 0.36 : 0.12, col = depth === 'far' ? hazeFar : hazeMid;
+      const frames = fr[k].map((c) => tintCanvas(c, col, fogA));
+      const pair = frames.map((c) => (dir < 0 ? flipCanvas(c) : c)).map((c) => spriteTwin(c, scale));
+      const members = [];
+      for (let i = 0; i < n; i++) members.push([(hash1(i, 11 + k) * 46 - 23) * spread, (hash1(i, 13 + k) * 18 - 9) * spread, hash1(i, 17 + k) * TAU]);
+      return { frames: pair, members, y, speed, dir, depth, off: hash1(k, 5) * 1000, span: w + 160 };
+    };
+    S.fish.push(mkSchool(0, 13, 'far', top + U * 0.42, 6, 1, 1));
+    S.fish.push(mkSchool(1, 8, 'far', top + U * 0.27, 4.5, -1, 1));
+    S.fish.push(mkSchool(4, 6, 'far', top + U * 0.52, 5.5, -1, 1, 0.8));
+    S.fish.push(mkSchool(2, 5, 'mid', top + U * 0.58, 9, 1, 2));
+    S.fish.push(mkSchool(5, 3, 'mid', top + U * 0.36, 7, -1, 2, 1.2));
+    S.fish.push(mkSchool(3, 2, 'near', top + U * 0.7, 11, 1, 2, 0.6));
+  }
+  yield;
+  // a sea turtle gliding through the mid water (hazed), facing either way
+  {
+    const T = yield* turtleSteps(16);
+    const mk = (flip) => T.frames.map((c) => spriteTwin(tintCanvas(flip ? flipCanvas(c) : c, hazeMid, 0.32), 2));
+    const R = mk(false);
+    yield;
+    S.turtle = { R, L: mk(true), ox: T.ox, oy: T.oy, w: T.frames[0].width };
+  }
+
+  // ---- mid: reef bommies, a sunken boat, rocks and tube worms on sand dunes
+  {
+    const P = PAD.mid, LW = w + P * 2, y0 = top + U * 0.28, base = S.midY - y0, L = layer(LW, S.floorY + 40 - y0);
+    const hills = yield* hillsSteps('hm', Math.ceil(LW), 80, { seed: 56, base: 5, amp: 12, cols: ['#f6e6be', '#e8d0a2', '#d6bc8a', '#c0a274'], speck: ['#8a92b0', '#a4aec8', '#ffb48a', '#ff9ab4'] });
+    put(L, hills, 0, base, 2);
+    const items = [];
+    const reefs = [[0.04, 344, 1.25], [0.2, 341, 1], [0.5, 342, 1], [0.84, 341, 1], [0.97, 345, 1.25]];
+    for (let i = 0; i < reefs.length; i++) {
+      const [xf, seed, sz] = reefs[i];
+      let s = yield* reefSteps(seed, { w: Math.round(120 * sz), h: Math.round(72 * sz), d: 44, rock: sz > 1 ? 0.55 : 0.42, sizes: [8, 18] });
+      if (i === 3 || i === 4) s = S['flipm' + i] ||= flipS(s);
+      items.push([s, LW * xf + (i % 4 ? r.int(-24, 24) : 0), base + r.float(16, 24), 1]);
+    }
+    const boat = yield* propSteps('sunken_boat', 0.9);
+    if (boat) items.push([boat, LW * 0.68, base + 24, 1]);
+    for (const [id, xf, sc] of [['rock_big', 0.3, 0.8], ['rock_arch', 0.1, 0.9], ['rock_small', 0.9, 0.9], ['rock_big', 0.4, 0.6], ['starfish_rock', 0.6, 0.7], ['coral_brain', 0.76, 0.8], ['coral_brain', 0.26, 0.6]]) {
+      const s = yield* propSteps(id, sc);
+      if (s) items.push([s, LW * xf, base + r.float(14, 26), 1]);
+    }
+    for (let i = 0; i < 9; i++) {
+      const s = yield* coralSteps(LOW_KINDS[(i + 3) % LOW_KINDS.length], 360 + i, [12, 14, 10][i % 3]);
+      items.push([s, ((i + r.float(0.15, 0.85)) / 9) * LW, base + r.float(14, 28), 1]);
+    }
+    items.sort((a, b) => a[2] - b[2]);
+    for (const [s, x, y, k] of items) put(L, s, x, y, k);
+    fog(L, hazeMid, 0.4, 0.26);
+    S.L.mid = { c: twin(L.c), x: -P, y: y0, P };
+    S.ready.mid = -1;
+  }
+  yield;
+
+  // mid reef life: anemones swaying on the dunes (hazed like the mid layer)
+  {
+    const P = PAD.mid, spots = [[0.07, 'pink'], [0.16, 'purple'], [0.33, 'teal'], [0.45, 'orange'], [0.57, 'magenta'], [0.79, 'orange'], [0.88, 'red'], [0.95, 'yellow']];
+    for (let i = 0; i < spots.length; i++) {
+      const [xf, pal] = spots[i];
+      const A = yield* animSteps('anemone', 610 + i, 14 + (i % 3) * 2, 16, pal);
+      const key = 'animm|' + i;
+      const frames = SPR.get(key) || A.frames.map((c) => spriteTwin(tintCanvas(c, hazeMid, 0.3), 1));
+      SPR.set(key, frames);
+      S.anim.push({ frames, ox: A.ox / HI, oy: A.oy / HI, x: -P + (w + P * 2) * xf, y: S.midY + 18 + hash1(i, 9) * 8, layer: 'mid', P: 3 + hash1(i, 7) * 1.4, off: hash1(i, 8) * 16 });
+      yield;
+    }
+  }
+
+  // ---- floor: the near seabed slab
+  {
+    const P = PAD.floor, LW = w + P * 2, band = h - S.floorY + 24;
+    const nz = Math.ceil(band / Math.sin((24 * Math.PI) / 180)) + 4;
+    const F = yield* floorSteps(Math.ceil(LW), nz, 91);
+    const y0 = S.floorY - 4, L = layer(LW, h + 30 - y0);
+    // the slab's back edge lands on floorY
+    const [, by] = F.project(0, 7, 0); // z = 0 is the back (z runs toward the viewer)
+    const sh = Math.round(S.floorY - y0 - by);
+    L.g.drawImage(F.canvas, 0, sh * HI, F.canvas.width * HI, F.canvas.height * HI);
+    fog(L, waterAt(0.55), 0.34, 0, 0, Math.min(L.hL, 60));
+    S.L.floor = { c: twin(L.c), x: -P, y: y0, P };
+    S.ready.floor = -1;
+  }
+  yield;
+
+  // caustics (tile frames over the floor band)
+  {
+    const TH = Math.round(h + 20 - S.floorY), TW = 128, n = 16, fr = [];
+    for (let f = 0; f < n; f++) { fr.push(causticFrame(TW, TH, f, n)); yield; }
+    S.caus = { frames: fr, TW, TH };
+  }
+
+  // ---- props: big reef walls at the edges, sea fans, relics, rocks (sit on the floor)
+  const gy = (d) => S.floorY + (h - S.floorY) * d; // view y on the floor; d: 0 = back edge .. 1 = bottom of the view
+  {
+    const P = PAD.props, LW = w + P * 2, y0 = top + U * 0.06, L = layer(LW, h + 30 - y0);
+    const items = [];
+    const ew = Math.round(clamp(w * 0.22, 130, 240));
+    // tall coral-covered rock walls frame both sides (a little canyon) where open water would be
+    const left = yield* reefSteps(371, { w: ew, h: Math.round(clamp(U * 0.46, 120, 230)), d: 64, rock: 0.76, sizes: [10, 24] });
+    const right = yield* reefSteps(372, { w: Math.round(ew * 0.92), h: Math.round(clamp(U * 0.4, 110, 210)), d: 60, rock: 0.74, sizes: [10, 24] });
+    items.push([left, P + w * 0.05, gy(0.8), 2, 0.2]);
+    items.push([S.flip372 ||= flipS(right), P + w * 0.96, gy(0.74), 2, 0.26]);
+    // sea fans standing up behind the edge reefs (flat lace, not trees)
+    for (const [seed, size, xf, d] of [[391, 22, 0.02, 0.36], [392, 18, 0.11, 0.3], [393, 20, 0.9, 0.32], [394, 24, 0.985, 0.4]]) {
+      const s = yield* coralSteps('fan', seed, size);
+      items.push([s, P + w * xf, gy(d), 2, 1 - d]);
+    }
+    const back = yield* reefSteps(373, { w: 90, h: 60, d: 40, sizes: [7, 14] });
+    items.push([back, P + w * 0.22, gy(0.22), 2, 0.8]);
+    items.push([S.flip373 ||= flipS(back), P + w * 0.79, gy(0.18), 2, 0.85]);
+    const corals = [['fan', 381, 14, 0.15, 0.5], ['staghorn', 382, 12, 0.3, 0.58], ['brain', 383, 9, 0.66, 0.7], ['tube', 384, 12, 0.86, 0.45], ['bubble', 385, 8, 0.44, 0.85], ['brain', 386, 10, 0.56, 0.38], ['tube', 387, 10, 0.76, 0.6], ['bubble', 388, 9, 0.12, 0.95], ['staghorn', 389, 11, 0.93, 0.97]];
+    for (const [k, seed, size, xf, d] of corals) {
+      const s = yield* coralSteps(k, seed, size);
+      items.push([s, P + w * xf, gy(d), 2, 1 - d]);
+    }
+    for (const [id, xf, d, sc, o] of [['anchor', 0.33, 0.62, 0.7, {}], ['treasure_chest', 0.71, 0.66, 0.55, { frame: 1 }], ['clam_pearl', 0.53, 0.8, 0.55, {}], ['starfish_rock', 0.22, 0.86, 0.5, {}], ['rock_small', 0.62, 0.95, 0.6, {}], ['diver_helmet', 0.9, 0.9, 0.5, {}], ['message_bottle', 0.47, 0.5, 0.5, {}], ['coral_brain', 0.8, 0.84, 0.55, { variant: 2 }]]) {
+      const s = yield* propSteps(id, sc, o);
+      if (s) items.push([s, P + w * xf, gy(d), 2, 1 - d, id]);
+    }
+    items.sort((a, b) => b[4] - a[4]);
+    for (const [s, x, y, k] of items) put(L, s, x, y - y0, k); // items hold view y
+    S.L.props = { c: twin(L.c), x: -P, y: y0, P };
+    S.ready.props = -1;
+    // view-space boxes of the props (for ordering the swaying life against them)
+    S.boxes = items.map(([s, x, y, k, back]) => { const l = x - P - (s.ox * k) / HI, tp = y - (s.oy * k) / HI; return [l, tp, l + (s.canvas.width * k) / HI, tp + (s.canvas.height * k) / HI, 1 - back]; });
+    // bubble sources: the chest, the clam, the diver's helmet, a couple of vents in the sand
+    for (const it of items) {
+      if (it[5] === 'treasure_chest') S.bubbles.push({ x: it[1] - P - 4, y: it[2] - 18, n: 7, sp: 20, h: 150 });
+      if (it[5] === 'clam_pearl') S.bubbles.push({ x: it[1] - P, y: it[2] - 10, n: 5, sp: 16, h: 130 });
+      if (it[5] === 'diver_helmet') S.bubbles.push({ x: it[1] - P + 2, y: it[2] - 22, n: 6, sp: 24, h: 170 });
+    }
+    S.bubbles.push({ x: w * 0.4, y: gy(0.3), n: 4, sp: 14, h: 110, small: true }, { x: w * 0.61, y: gy(0.24), n: 4, sp: 12, h: 100, small: true });
+  }
+  yield;
+
+  // near reef life: anemones (sway) and short sea-grass tufts on the sand; a little crab
+  {
+    const spots = [[0.035, 0.97, 'pink', 18], [0.1, 0.9, 'purple', 16], [0.17, 0.72, 'teal', 13], [0.83, 0.93, 'orange', 16], [0.905, 0.6, 'red', 13], [0.975, 0.99, 'magenta', 18], [0.38, 0.92, 'yellow', 12], [0.64, 0.78, 'teal', 12], [0.27, 0.42, 'orange', 11], [0.645, 0.44, 'pink', 11]];
+    for (let i = 0; i < spots.length; i++) {
+      const [xf, d, pal, size] = spots[i];
+      const A = yield* animSteps('anemone', 640 + i, size, 16, pal);
+      const key = 'animp|' + (640 + i) + '|' + size;
+      const frames = SPR.get(key) || A.frames.map((c) => spriteTwin(c, 2));
+      SPR.set(key, frames);
+      // one that a prop in front of it overlaps sways behind the props layer, the rest over it
+      const ax = w * xf, ay = gy(d), l = ax - A.ox, tp = ay - A.oy, r = l + frames[0].width;
+      const hidden = S.boxes.some((b) => b[4] > d && b[0] < r - 2 && b[2] > l + 2 && b[1] < ay - 2 && b[3] > tp + 2);
+      S.anim.push({ frames, ox: A.ox, oy: A.oy, x: ax, y: ay, layer: hidden ? 'propsB' : 'props', P: 2.8 + hash1(i, 17) * 1.4, off: hash1(i, 18) * 16, d });
+      yield;
+    }
+    for (let i = 0; i < 9; i++) {
+      const A = yield* animSteps('seagrass', 40 + (i % 3), 6 + (i % 2), 12, null);
+      const key = 'grass|' + (40 + (i % 3)) + '|' + (6 + (i % 2));
+      const frames = SPR.get(key) || A.frames.map((c) => spriteTwin(c, 2));
+      SPR.set(key, frames);
+      const xf = [0.08, 0.27, 0.4, 0.47, 0.6, 0.69, 0.78, 0.86, 0.24][i], d = [0.62, 0.92, 0.6, 0.98, 0.72, 0.99, 0.95, 0.7, 0.5][i];
+      S.anim.push({ frames, ox: A.ox, oy: A.oy, x: w * xf, y: gy(d), layer: 'floor', P: 3.2 + hash1(i, 27) * 1.2, off: i * 3, d });
+    }
+    S.anim.sort((a, b) => (a.d || 0) - (b.d || 0));
+    const cf = voxCrab('#ff6a3a', 1);
+    yield;
+    S.crab = { frames: cf.map((q) => ({ c: spriteTwin(q.canvas, 1), ox: q.ox / HI, oy: q.oy / HI })), x0: w * 0.35, x1: w * 0.5, y: gy(0.97) };
   }
   S.done = true;
 }
@@ -752,192 +789,212 @@ function stepScene(S) {
 }
 
 // ------------------------------------------------------------------ drawing
-const snap = (v) => Math.round(v * 2) / 2;
-
+const OFF = { sky: [0, 0], far3: [0, 0], far2: [0, 0], far1: [0, 0], mid: [0, 0], floor: [0, 0], props: [0, 0] };
 export function drawLabRoom(ctx, v, t, cam, kind = 'tree') {
   const w = Math.round(v.w), h = Math.round(v.h);
   if (w < 8 || h < 8) return;
   const S = sceneFor(w, h, kind);
   stepScene(S);
   // parallax: pan in screen px -> softly clamped layer offsets; zoom pushes the near layers outward a touch
-  const cx = cam ? cam.x || 0 : Math.sin(t * 0.06) * 240, cy = cam ? cam.y || 0 : Math.sin(t * 0.045) * 70, cz = cam ? cam.z || 0 : 0;
-  for (const name in PAD) {
-    const P = PAD[name], f = PAR[name], o = S.off[name];
-    o.x = P * 0.92 * Math.tanh((-cx * f) / P);
-    o.y = 8 * Math.tanh((-cy * f * 0.5) / 8) + cz * f * 30;
+  const cx = cam ? cam.x || 0 : Math.sin(t * 0.07) * 260, cy = cam ? cam.y || 0 : Math.sin(t * 0.05) * 60, cz = cam ? cam.z || 0 : 0;
+  for (const name in OFF) {
+    const P = PAD[name], f = PAR[name], o = OFF[name];
+    o[0] = P * 0.92 * Math.tanh((-cx * f) / P);
+    o[1] = 10 * Math.tanh((-cy * f * 0.5) / 10) + cz * f * 40;
   }
-  S.off.dust.x = S.off.near.x * 1.4; S.off.dust.y = S.off.near.y * 1.4;
   const x0 = v.x, y0 = v.y;
   const fade = (name) => {
     if (S.ready[name] === undefined) return 0;
     if (S.ready[name] < 0) S.ready[name] = t;
-    return clamp((t - S.ready[name]) / 0.5, 0, 1);
+    return clamp((t - S.ready[name]) / 0.45, 0, 1);
   };
   const ga = ctx.globalAlpha;
   const lay = (name) => {
     const Lr = S.L[name];
-    if (!Lr) return 0;
+    if (!Lr) return;
     const a = fade(name);
-    if (a <= 0) return 0;
-    const o = S.off[name];
-    ctx.globalAlpha = ga * a;
-    ctx.drawImage(Lr.c, snap(x0 + Lr.x + o.x), snap(y0 + Lr.y + o.y));
+    if (a <= 0) return;
+    const [dx, dy] = OFF[name];
+    if (a < 1) ctx.globalAlpha = ga * a;
+    ctx.drawImage(Lr.c, snap(x0 + Lr.x + dx), snap(y0 + Lr.y + dy));
     ctx.globalAlpha = ga;
-    return a;
   };
 
-  ctx.fillStyle = '#121a52'; ctx.fillRect(x0, y0, w, h);
-  if (S.bg) { const a = fade('bg'); ctx.globalAlpha = ga * a; ctx.drawImage(S.bg, x0, y0); ctx.globalAlpha = ga; }
-  const aFar = lay('far');
-  if (aFar) drawTwinkles(ctx, S, t, x0, y0, 'far', aFar * ga);
-  if (S.whale && aFar) drawWhale(ctx, S, t, x0, y0, aFar * ga);
-  const aNeb = lay('neb');
-  if (aNeb && S.trail) drawShooting(ctx, S, t, x0, y0, aNeb * ga);
-  const aMid = lay('mid');
-  if (aMid) drawTwinkles(ctx, S, t, x0, y0, 'mid', aMid * ga);
-  const aNear = lay('near');
-  if (aNear) drawPlanets(ctx, S, t, x0, y0, aNear * ga);
-  if (S.dust && aNear) drawDust(ctx, S, t, x0, y0, aNear * ga);
-  if (S.orbit) {
-    const a = fade('orbit');
-    ctx.globalAlpha = ga * a; ctx.drawImage(S.orbit, x0, y0);
-    drawPulses(ctx, S, t, x0, y0, ga * a);
+  ctx.drawImage(S.bg, x0, y0, w, h);
+  lay('sky');
+  lay('far3');
+  lay('far2');
+  drawFish(ctx, S, t, x0, y0, 'far', OFF.far2);
+  lay('far1');
+  drawFish(ctx, S, t, x0, y0, 'mid', OFF.far1);
+  drawTurtle(ctx, S, t, x0, y0, OFF.far1);
+  lay('mid');
+  if (S.ready.mid !== undefined) drawAnim(ctx, S, t, x0, y0, 'mid', OFF.mid);
+  lay('floor');
+  // caustics drift over the sand
+  if (S.caus && S.L.floor) {
+    const { frames, TW } = S.caus, n = frames.length, q = (t * 4) % n, i0 = Math.floor(q), k = q - i0;
+    const [dx, dy] = OFF.floor;
+    const yy = snap(y0 + S.floorY + dy);
+    const po = ctx.globalCompositeOperation;
+    ctx.globalCompositeOperation = 'lighter';
+    const fa = fade('floor');
+    for (let j = 0; j < 2; j++) {
+      const fi = j ? (i0 + 1) % n : i0, a = j ? k : 1 - k;
+      if (a < 0.02) continue;
+      ctx.globalAlpha = ga * a * 0.28 * fa;
+      for (let x = (dx % TW) - TW; x < w + TW; x += TW) ctx.drawImage(frames[fi], snap(x0 + x), yy);
+    }
+    ctx.globalCompositeOperation = po; ctx.globalAlpha = ga;
+  }
+  if (S.ready.floor !== undefined) drawAnim(ctx, S, t, x0, y0, 'floor', OFF.floor);
+  if (S.ready.props !== undefined) drawAnim(ctx, S, t, x0, y0, 'propsB', OFF.props, 'props');
+  lay('props');
+  if (S.ready.props !== undefined) { drawAnim(ctx, S, t, x0, y0, 'props', OFF.props); drawCrab(ctx, S, t, x0, y0, OFF.props); }
+  drawFish(ctx, S, t, x0, y0, 'near', OFF.props);
+  drawBubbles(ctx, S, t, x0, y0, OFF.props);
+  drawMotes(ctx, S, t, x0, y0, OFF.far1);
+  // readability veil
+  ctx.drawImage(S.veil[kind] || S.veil.tree, x0, y0, w, h);
+  // the rippling underside of the surface (top of the water), over the veil so it stays a bright aqua-white
+  if (S.surf) {
+    const fr = S.surf[Math.floor(t * 5) % S.surf.length], TW = 160, sx = ((t * 6) % TW + TW) % TW;
+    const dx = OFF.far2[0];
+    const yy = y0 + S.top - (S.top ? 4 : 2);
+    ctx.globalAlpha = ga * (kind === 'boats' ? 1 : 0.8);
+    for (let x = -TW - sx + (dx % TW); x < w + TW; x += TW) ctx.drawImage(fr, snap(x0 + x), yy);
+    ctx.globalAlpha = ga;
+  }
+}
+
+// swaying reef life: frame = phase of its own slow cycle
+function drawAnim(ctx, S, t, x0, y0, layerName, [dx, dy], fadeOf = layerName) {
+  const fa = clamp((t - (S.ready[fadeOf] > 0 ? S.ready[fadeOf] : t)) / 0.45, 0, 1), ga = ctx.globalAlpha;
+  if (fa < 1) ctx.globalAlpha = ga * fa;
+  for (const a of S.anim) {
+    if (a.layer !== layerName) continue;
+    const n = a.frames.length, f = a.frames[(Math.floor((t / a.P) * n + a.off) % n + n) % n];
+    ctx.drawImage(f, snap(x0 + a.x + dx - a.ox), snap(y0 + a.y + dy - a.oy));
   }
   ctx.globalAlpha = ga;
 }
 
-function drawTwinkles(ctx, S, t, x0, y0, d, a0) {
-  const o = S.off[d];
-  for (let i = 0; i < S.tw.length; i++) {
-    const T = S.tw[i];
-    if (T.d !== d) continue;
-    const q = 0.5 + 0.5 * Math.sin(t * T.sp + T.ph);
-    let k;
-    if (T.big) k = q < 0.3 ? 1 : q < 0.6 ? 2 : 3;
-    else { if (q < 0.4) continue; k = Math.min(T.k, q < 0.65 ? 0 : q < 0.88 ? 1 : 2); }
-    const sp = sparkSprite(k, T.ti);
-    ctx.globalAlpha = a0 * (T.big ? 0.85 + q * 0.15 : 0.55 + q * 0.45);
-    ctx.drawImage(sp, snap(x0 + T.x + o.x - sp.o), snap(y0 + T.y + o.y - sp.o));
-  }
-  ctx.globalAlpha = a0;
+// the sea turtle: one slow pass across the view every 80 s, alternating direction and depth, a lazy flipper stroke
+// with a little lift on each down-beat
+function drawTurtle(ctx, S, t, x0, y0, [dx, dy]) {
+  const T = S.turtle;
+  if (!T) return;
+  if (T.t0 === undefined) T.t0 = t - 8;
+  const cyc = 80, k = (t - T.t0) / cyc, pass = Math.floor(k), q = k - pass, dur = 0.8;
+  if (q > dur) return;
+  const dir = pass & 1 ? -1 : 1, u = q / dur, span = S.w + T.w + 40;
+  const x = dir > 0 ? -T.w / 2 - 20 + u * span : S.w + T.w / 2 + 20 - u * span;
+  const st = (t / 3.4) % 1, fi = Math.floor(st * 16) % 16;
+  const y = S.top + S.U * (pass & 1 ? 0.34 : 0.44) + Math.sin(t * 0.13) * 10 - Math.sin(st * TAU) * 1.5;
+  const f = (dir > 0 ? T.R : T.L)[fi];
+  ctx.drawImage(f, snap(x0 + x + dx - (dir > 0 ? T.ox : f.width - T.ox)), snap(y0 + y + dy - T.oy));
 }
 
-function drawWhale(ctx, S, t, x0, y0, a0) {
-  const o = S.off.neb, span = S.w + 200;
-  const x = span - ((t * 5 + 40) % span) - 100, y = S.lay.whaleY + Math.sin(t * 0.4) * 3 - 13;
-  const fr = S.whale[Math.floor(t * 1.4) & 1];
-  ctx.globalAlpha = a0 * 0.9;
-  ctx.drawImage(fr, snap(x0 + x + o.x), snap(y0 + y + o.y));
-  // glitter trail behind the tail
-  ctx.fillStyle = '#bff4ff';
-  for (let i = 0; i < 6; i++) {
-    const q = (t * 0.7 + i / 6) % 1;
-    ctx.globalAlpha = a0 * (1 - q) * 0.8;
-    ctx.fillRect(snap(x0 + x + o.x + 58 + q * 26), snap(y0 + y + o.y + 12 + Math.sin(q * 7 + i) * 2), 0.5, 0.5);
-  }
-  ctx.globalAlpha = a0;
+// a little crab: scuttles sideways along the sand, pauses with its claws up, scuttles back
+function drawCrab(ctx, S, t, x0, y0, [dx, dy]) {
+  const C = S.crab;
+  if (!C) return;
+  const cyc = 14, q = (t % cyc) / cyc; // 0..0.3 walk right, 0.3..0.5 idle, 0.5..0.8 walk left, 0.8..1 idle
+  let k, walking = true;
+  if (q < 0.3) k = q / 0.3; else if (q < 0.5) { k = 1; walking = false; } else if (q < 0.8) k = 1 - (q - 0.5) / 0.3; else { k = 0; walking = false; }
+  k = k * k * (3 - 2 * k);
+  const fr = C.frames[walking ? 1 + (Math.floor(t * 8) & 1) : 0];
+  const x = C.x0 + (C.x1 - C.x0) * k;
+  ctx.drawImage(fr.c, snap(x0 + x + dx - fr.ox), snap(y0 + C.y + dy - fr.oy - (walking ? (Math.floor(t * 8) & 1) * 0.5 : 0)));
 }
 
-// shooting stars: each slot fires once per period at a hashed spot, a 2:1 stair-step pixel trail
-const SHOOT = [[6.7, 0], [9.3, 1], [13.1, 2]];
-function drawShooting(ctx, S, t, x0, y0, a0) {
-  const o = S.off.neb, w = S.w, h = S.h;
-  for (const [per, s] of SHOOT) {
-    const n = Math.floor((t + s * 2.3) / per), q = (t + s * 2.3) - n * per, life = 1.15;
-    if (q > life) continue;
-    const sx = (0.15 + hash1(n, 40 + s) * 0.95) * w, sy = (hash1(n, 50 + s) * 0.45 - 0.05) * h, dir = hash1(n, 60 + s) < 0.7 ? -1 : 1;
-    const dist = q * 300, hx = Math.round(sx + dir * dist), hy = Math.round(sy + dist * 0.5);
-    const fa = q < 0.12 ? q / 0.12 : q > life - 0.3 ? (life - q) / 0.3 : 1;
-    ctx.globalAlpha = a0 * fa;
-    const len = Math.min(S.trail.length, Math.floor(dist / 2)), bx = snap(x0 + o.x), by = snap(y0 + o.y);
-    for (let k = len - 1; k >= 0; k--) {
-      ctx.fillStyle = S.trail[k];
-      ctx.fillRect(bx + hx - dir * (k * 2) - (dir < 0 ? 0 : 1), by + hy - k, 2, 1);
+function drawFish(ctx, S, t, x0, y0, depth, [dx, dy]) {
+  for (const sc of S.fish) {
+    if (sc.depth !== depth) continue;
+    const span = sc.span;
+    const cx = ((sc.off + t * sc.speed * sc.dir) % span + span) % span - 80;
+    const cy = sc.y + Math.sin(t * 0.3 + sc.off) * 8;
+    for (let i = 0; i < sc.members.length; i++) {
+      const [ox, oy, ph] = sc.members[i];
+      // each fish weaves gently around its slot (slow figure-eight), the tail beats a little out of phase
+      const fx = cx + ox + Math.sin(t * 0.7 + ph) * 4, fy = cy + oy + Math.sin(t * 1.1 + ph * 1.7) * 2.5;
+      const f = sc.frames[Math.floor(t * 4.5 + ph * 3) & 1];
+      ctx.drawImage(f, snap(x0 + fx + dx), snap(y0 + fy + dy));
     }
-    const sp = sparkSprite(1, 0);
-    ctx.drawImage(sp, snap(x0 + o.x + hx + 0.5 - sp.o), snap(y0 + o.y + hy + 0.5 - sp.o));
   }
-  ctx.globalAlpha = a0;
 }
 
-function drawPlanets(ctx, S, t, x0, y0, a0) {
-  const o = S.off.near;
-  ctx.globalAlpha = a0;
-  const [cx, cy, r0] = S.ocean ? S.lay.ocean : S.lay.ringed, r = S.ocean ? r0 : r0 * 1.5;
-  const ang = t * 0.22, mx = cx + Math.cos(ang) * r * 1.75, my = cy + Math.sin(ang) * r * 0.42 - r * 0.15;
-  const behind = Math.sin(ang) < 0;
-  if (!S.ocean && behind && Math.hypot(mx - cx, my - cy) < r0 + 7) return; // hidden behind the ringed planet
-  const moon = () => { if (S.moon) ctx.drawImage(S.moon, snap(x0 + o.x + Math.round(mx) - S.moon.o), snap(y0 + o.y + Math.round(my) - S.moon.o)); };
-  if (behind) moon();
-  if (S.ocean) {
-    const f = S.ocean[Math.floor(t * 1.6) % S.ocean.length];
-    ctx.drawImage(f, snap(x0 + o.x + Math.round(cx) - f.o), snap(y0 + o.y + Math.round(cy) - f.o));
-  }
-  if (!behind) moon();
-}
-
-function drawDust(ctx, S, t, x0, y0, a0) {
-  const D = S.dust, o = S.off.dust, W = S.w + 16, H = S.h + 16;
-  ctx.globalAlpha = a0;
-  for (let i = 0; i < D.n; i++) {
-    const q = 0.5 + 0.5 * Math.sin(t * D.sp[i] + D.ph[i]);
-    const lv = q < 0.25 ? 0 : q < 0.55 ? 1 : q < 0.85 ? 2 : 3;
-    const x = ((((D.x[i] + D.vx[i] * t + o.x) % W) + W) % W) - 8, y = ((((D.y[i] + D.vy[i] * t + Math.sin(t * 0.3 + D.ph[i]) * 4 + o.y) % H) + H) % H) - 8;
-    ctx.fillStyle = D.styles[D.c[i]][lv];
-    const sx = snap(x0 + x), sy = snap(y0 + y);
-    if (D.big[i] && lv >= 2) { // a tiny device-px plus
-      ctx.fillRect(sx - 0.5, sy, 1.5, 0.5); ctx.fillRect(sx, sy - 0.5, 0.5, 1.5);
-      if (lv === 3) { ctx.fillRect(sx - 1, sy, 0.5, 0.5); ctx.fillRect(sx + 1, sy, 0.5, 0.5); ctx.fillRect(sx, sy - 1, 0.5, 0.5); ctx.fillRect(sx, sy + 1, 0.5, 0.5); }
-    } else ctx.fillRect(sx, sy, 0.5, 0.5);
-  }
-  ctx.globalAlpha = a0;
-}
-
-// light pulses running along the Boats' orbit line
-function drawPulses(ctx, S, t, x0, y0, a0) {
-  const { orbit } = S.geo, w = S.w;
-  for (let i = 0; i < 3; i++) {
-    const x = ((t * 34 + (i * w) / 3) % (w + 40)) - 20;
-    for (let k = 0; k < 10; k++) {
-      const xx = x - k * 1.5, yy = orbit(xx);
-      ctx.globalAlpha = a0 * (1 - k / 10) * 0.9;
-      ctx.fillStyle = k < 2 ? '#ffffff' : '#bff6ff';
-      ctx.fillRect(snap(x0 + xx), snap(y0 + yy) - 0.5, 1, 1.5);
+function drawBubbles(ctx, S, t, x0, y0, [dx, dy]) {
+  if (!S.ready.props) return;
+  const ga = ctx.globalAlpha;
+  for (let s = 0; s < S.bubbles.length; s++) {
+    const B = S.bubbles[s];
+    for (let i = 0; i < B.n; i++) {
+      const q = (t * (B.sp / B.h) + i / B.n + hash1(s, 3)) % 1;
+      const yy = B.y - q * B.h;
+      if (yy < S.top + 8) continue;
+      const xx = B.x + Math.sin(t * 2.2 + i * 1.7 + s) * (1 + q * 3);
+      ctx.globalAlpha = ga * (q < 0.1 ? q * 10 : q > 0.8 ? (1 - q) * 5 : 1) * (B.small ? 0.6 : 0.85);
+      ctx.drawImage(microBubble(B.small ? 1 : Math.min(2, 1 + ((i + s) % 3) * 0.5 + (q > 0.5 ? 0.5 : 0))), snap(x0 + xx + dx), snap(y0 + yy + dy));
     }
-    const sp = sparkSprite(1, 0);
-    ctx.globalAlpha = a0;
-    ctx.drawImage(sp, snap(x0 + x + 0.25 - sp.o), snap(y0 + orbit(x) + 0.25 - sp.o));
   }
-  ctx.globalAlpha = a0;
+  ctx.globalAlpha = ga;
 }
 
-// Where the Boats tab floats its boats: the orbit line (view-relative)
-export function labRoomScene(v, kind) {
-  if (kind !== 'boats') return { wl: 0, orbit: () => 0 };
-  const G = boatsGeo(Math.round(v.w), Math.round(v.h));
-  return { wl: G.wl, orbit: G.orbit };
+// marine snow: single device px specks drifting down and sideways, softly twinkling
+function drawMotes(ctx, S, t, x0, y0, [dx, dy]) {
+  const M = S.motes, n = M.length / 5, ga = ctx.globalAlpha, H = S.h - S.top;
+  ctx.fillStyle = '#e8fbff';
+  for (let i = 0; i < n; i++) {
+    const o = i * 5, sp = M[o + 2], ph = M[o + 3];
+    const x = ((M[o] * S.w + Math.sin(t * 0.21 + ph) * 10 + t * sp * 0.6 + dx * 1.4) % S.w + S.w) % S.w;
+    const y = S.top + ((M[o + 1] * H + t * sp + Math.sin(t * 0.5 + ph) * 3 + dy) % H + H) % H;
+    ctx.globalAlpha = ga * (0.18 + 0.32 * Math.max(0, Math.sin(t * 1.3 + ph * 3)));
+    ctx.fillRect(snap(x0 + x), snap(y0 + y), 0.5, 0.5);
+  }
+  ctx.globalAlpha = ga;
 }
 
-// A boat's hover glow on the orbit line: stepped pixel rows (no soft gradient) brightening toward the line; the
-// sailing boat's is golden with two little twinkles, the selected one white.
-export function drawOrbitPad(ctx, x, y, hw, t, o = {}) {
+// Where the Boats tab floats its boats: on the water surface (view-relative y)
+export function labRoomScene(v, kind) { return { wl: kind === 'boats' ? Math.round(v.h * 0.3) : 0 }; }
+
+// A floating boat's water: a darker stepped pool under the hull (it sits IN the water), little foam dashes lapping
+// at its sides, a bright pixel highlight band (white = selected, gold = the boat you sail) with two twinkling glints.
+// No soft gradients and no rings. (x, y) = the hull centre on the water line.
+export function drawBoatFloat(ctx, x, y, hw, t, o = {}) {
   x = snap(x); y = snap(y);
-  const col = o.cur ? '#fff0a0' : o.sel ? '#ffffff' : '#9ff0ff', a0 = ctx.globalAlpha, k = o.sel || o.cur ? 1 : 0.6;
-  ctx.fillStyle = col;
-  for (let i = 0; i < 4; i++) {
-    const ww = snap(hw * (1 - i * 0.24) * (o.sel ? 1.15 : 1));
-    ctx.globalAlpha = a0 * k * (0.5 - i * 0.1);
-    ctx.fillRect(x - ww, y - 1 - i, ww * 2, 1);
+  const a0 = ctx.globalAlpha;
+  ctx.fillStyle = '#0a4a8a';
+  for (let i = 0; i < 3; i++) {
+    const ww = snap(hw * (0.9 - i * 0.22));
+    ctx.globalAlpha = a0 * (0.22 - i * 0.05);
+    ctx.fillRect(x - ww, y + 1 + i, ww * 2, 1);
   }
-  ctx.globalAlpha = a0 * k * 0.8;
-  ctx.fillRect(x - snap(hw * 0.5), y - 0.5, snap(hw * 0.5) * 2, 1.5);
-  if (o.cur || o.sel) {
+  const hl = o.cur ? '#fff0a0' : o.sel ? '#ffffff' : null;
+  if (hl) {
+    ctx.fillStyle = hl;
+    for (let i = 0; i < 3; i++) {
+      const ww = snap(hw * (1.05 - i * 0.25) * (o.sel ? 1.1 : 1));
+      ctx.globalAlpha = a0 * (0.55 - i * 0.14);
+      ctx.fillRect(x - ww, y - 0.5 + i, ww * 2, 0.5);
+    }
+  }
+  // foam lapping at the hull: short dashes drifting out and back
+  ctx.fillStyle = '#ffffff';
+  for (const s of [-1, 1]) for (let j = 0; j < 3; j++) {
+    const q = (t * 0.8 + j * 0.33 + (s > 0 ? 0.5 : 0)) % 1;
+    ctx.globalAlpha = a0 * 0.85 * (1 - q);
+    ctx.fillRect(snap(x + s * (hw * 0.62 + q * 7) - (s < 0 ? 2.5 - j * 0.5 : 0)), y - 0.5 + (j & 1) * 0.5, snap(2.5 - j * 0.5), 0.5);
+  }
+  if (hl) {
+    ctx.fillStyle = hl === '#fff0a0' ? '#fff6c8' : '#ffffff';
     for (let i = 0; i < 2; i++) {
       const q = 0.5 + 0.5 * Math.sin(t * 2.4 + i * 2.1);
       if (q < 0.3) continue;
-      const sp = sparkSprite(q > 0.75 ? 2 : 1, o.cur ? 2 : 0);
-      ctx.globalAlpha = a0;
-      ctx.drawImage(sp, snap(x + (i ? hw * 0.9 : -hw * 0.85) - sp.o), snap(y - 6 - i * 5 - sp.o));
+      const gx = snap(x + (i ? hw * 0.95 : -hw * 0.9)), gy2 = snap(y - 5 - i * 5), arm = q > 0.75 ? 2 : 1;
+      ctx.globalAlpha = a0 * q;
+      ctx.fillRect(gx - arm, gy2, arm * 2 + 0.5, 0.5);
+      ctx.fillRect(gx, gy2 - arm, 0.5, arm * 2 + 0.5);
     }
   }
   ctx.globalAlpha = a0;

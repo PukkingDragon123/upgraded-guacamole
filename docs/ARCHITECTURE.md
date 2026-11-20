@@ -419,26 +419,30 @@ that feels hand-made."
   corners, bevelled frame ring, side band `depth`, outline; `ring: n` = frame only). `drawAeroFrame` adds a voxel
   frame ring, a title plaque and voxel ornaments (`drawVoxDecor(ctx, name, cx, cy, px)`); toasts sit on voxel plates.
 
-- Lab backdrop [lab15]: `src/ui/labroom.js` draws a SPACE SCENE in crisp 2D pixel art behind the Lab: `drawLabRoom(ctx,
-  view, t, cam, kind)` (kind 'tree' | 'rods' | 'boats'; cam = {x, y, z} pan / zoom delta from the tree camera for parallax,
-  omitted = a slow idle drift). Art grid: 1 art px = 1 logical px (2 device px on the hi-res layer); the tiniest stars,
-  sparkle tips and glitter use single device px; ramps are posterised with 4x4 Bayer dithering, discs are hard pixel
-  circles. Layers back to front (parallax rates far 0.018 .. near 0.1, softly capped by each layer's padding): `bg` sky
-  gradient (navy -> indigo -> violet) with glow pools at the edges and a darker, calmer middle; `far` 1 device px star
-  field; `neb` dithered nebula clouds (violet / pink / aqua / periwinkle ramps, ridged filaments, dark dust lanes, brighter
-  toward the edges via `edgeOf`) + a pixel spiral galaxy; `mid` brighter stars, little star clusters, a fish-shaped
-  constellation, a comet; `near` a ringed planet (ring passes behind / in front, ring shadow) and a tiny planet, on Boats
-  the limb of an ocean planet with a stepped atmosphere. Animated on top: twinkles (4 sparkle sprite sizes incl. big
-  4-point glints), a space whale drifting by, shooting stars (2:1 stair-step trails), a rotating ocean planet with little
-  continents and clouds (96 pre-rendered frames from a seamless 3D-noise texture) with an orbiting moon, and ~100-260
-  drifting stardust specks. Planets get a glossy pixel highlight. Layouts per kind (`layout(S)`): the tree keeps the
-  planets / galaxy in the corners; Rods gathers them in the free bottom-right; Boats has them along the top.
-  Every static layer is built once per view size + kind by a step generator (~6 ms a frame, ~350 ms total; layers fade in)
-  into HI canvases with `.hi` twins; a frame is ~6 big blits + a few hundred tiny sprites / rects, no allocations.
-  Boats: `labRoomScene(view, 'boats')` -> `{wl, orbit(x)}`: a glowing orbit line (concentric with the planet limb, no
-  parallax) that the boats float on, gently bobbing, each on a stepped pixel hover glow (`drawOrbitPad`; gold = sailing,
-  white = selected) with labels under the line; light pulses run along the line. The tree's fog of war (labtree.js) is a
-  dark-indigo tint. No light rays / spotlights / ring effects / text pop-ups in the Lab.
+- Lab backdrop [lab18]: `src/ui/labroom.js` draws an UNDERWATER VOXEL SCENE behind the Lab (it replaced the [lab15]
+  pixel-art space scene, which is gone): `drawLabRoom(ctx, view, t, cam, kind)` (kind 'tree' | 'rods' | 'boats'; cam =
+  {x, y, z} pan / zoom delta from the tree camera for parallax, omitted = a slow idle drift). Every solid thing is a
+  voxel model: reefs from the reef kit (`src/world/coral.js`, with a low-growing species mix: no sea whips / pillar
+  corals), pinnacles / mesa / arch from `src/world/farvox.js`, relics from the prop library (`getPropSteps`), and the
+  dunes, seabed slab, clouds, fish, sea turtle here. NO kelp or other tall tree-like plants: the space is filled with
+  low reef life. Layers back to front (each with its own parallax, softly capped by its padding, and hazed toward the
+  water colour by depth): water gradient (Boats: a strip of sky with voxel clouds on top); `far3` the faintest reef
+  ridge; `far2` hazy pinnacles, a mesa and an arch on rock hills (+ far fish schools); `far1` a coral garden on dunes
+  (bommies, fans, sponges, rocks; + mid fish schools and a sea turtle gliding by every 80 s with a 16-frame flipper
+  stroke); `mid` reef bommies, the sunken boat, rocks, brain corals (+ hazed swaying anemones); `floor` the seabed slab
+  (sand ripples, pebbles, shells, starfish, urchins, sand dollars, rubble; + looping caustics and short swaying
+  sea-grass tufts); `props` tall coral-covered rock walls at both edges, sea fans, the anchor, the open chest, the
+  clam, the diver's helmet, a message bottle (+ swaying anemones, ordered against the props by their boxes, and a
+  crab that scuttles and pauses). On top: bubble streams (chest, clam, helmet, sand vents), drifting marine snow
+  (1 device px), a readability veil per kind (the tree: a darker, calmer middle band and centre, brighter edges), then
+  the rippling underside of the surface (12 frames). Swaying life uses the reef kit's `voxAnimSteps` (16 frames).
+  Every static layer is built once per view size by a step generator (7 ms a frame, ~1.7 s CPU for the first tree
+  view; the sprites are cached across sizes, so the Rods / Boats views then take ~0.3-0.6 s; layers fade in) into HI
+  canvases with `.hi` twins; scenes are kept for the 3 most recent sizes. Boats: `labRoomScene(view, 'boats')` ->
+  `{wl}` the water line; the boats float on it in a row, bobbing, hulls dipping into the surface band, names below
+  it, each on `drawBoatFloat` (a darker stepped pool under the hull, foam dashes lapping at its sides, a pixel
+  highlight band: white = selected, gold = sailing, with two twinkling glints). The tree's fog of war (labtree.js)
+  is a dark-sea tint. No light rays / spotlights / ring effects / text pop-ups in the Lab.
 
 ## Phase 10 tank (2D side-scrolling voxel tank, build only in the tank) [phase10:tank]
 - `src/aquarium/scene2d.js` + `tankart.js` draw the tank as a side-on voxel scene (back / mid / front layers), the
@@ -466,7 +470,7 @@ that feels hand-made."
   `LAB_GATE` {tier: bossId}: tier 6-9 research needs that boss beaten (`state.bosses.won`) or its chapter finished (older
   saves). `node.gate`, `gateOk(state, node)`, `gateLabel(node)`; `labCheck` returns `gateOk` + `gate` (reason) and
   `canPlan` / `startResearch` refuse gated nodes. Quest grants (`grantLabNode`) skip gates.
-- Next goal: `labGoals(state)` (next node of the rods / aquarium / boats rows; oceans come from the chapters), `labGoal(state)` (the best one),
+- Next goal: `labGoals(state)` (next node of the rods / aquarium / boats / [prog18] oceans rows), `labGoal(state)` (the best one),
   `labGoalNeed(state, goal)` (one sentence of what is missing). Shown by the Lab tree (green tag, root card "Next goal"),
   Bubbles' hint tips (`tutorial.goalTip()`), a one-time toast when affordable (`progression.goalPing`, `state.lab.goalPing`)
   and the chapter quests `c2_dinghy`, `c3_glass`, `c4_chrome`, `c5_dolphin`, `c6_carbon`, `c7_trident`.
@@ -477,6 +481,30 @@ that feels hand-made."
   7 entries, matching the Lab's boats (the Catamaran and the Submarine step past the Research Vessel).
 - Workshop rods, tackle, boat parts, rod tuning (`30 * (tier+1)^1.3 * star^1.75`), tank gear (`GEAR.cost`) and buildings
   (`BUILDINGS[id].cost` / `upgrades`) follow the same curve. Saves keep everything owned; only unbought things pay new prices.
+
+## Quest-sealed research + ocean expeditions [prog18]
+- Quest gates (`src/game/lab.js`): `LAB_QUEST_GATE {nodeId: questId}` (`node.qgate`) seals 39 key nodes (new rod / boat / tank
+  tiers, big perks, every ocean) behind a story quest, side story or boss quest. `gateOk` = boss gate (`bossGateOk`) AND quest
+  gate (`questGateOk`: quest done, or its chapter finished for main quests; a researched node never re-locks).
+  `questGateInfo(node)` -> {id, title, giver, npc, chapter, chN, kind, boss}; `nodesGatedBy(qid)`, `QUEST_GATED`;
+  `gateLabel(node, state)` names the quest first. `labCheck` adds `bossOk`, `questOk`, `quest` (info while sealed).
+  quests.js registers its table with `setLabQuestInfo(lookup)` (no import cycle), sets `reward.opens` on gating quests
+  (rewardList: "New research: X") and on completion / claim (`book.gatesOpened`) emits `'labNodeUnlockedByQuest'`
+  {nodeId, questId, name, ocean} per node not yet researched and marks `state.lab.qgNew[nodeId]`.
+- `tools/progcheck.mjs` builds the node + quest dependency graph (rows, quest gates, boss gates, chapter order, the 3-quest
+  active window, side-story `after`, objectives) and fails on unknown ids, order / milestone / online-only gates, cycles,
+  anything unreachable from a fresh save, or a gate that opens after the main quest that needs the node (optional nodes:
+  no later than one chapter after their price tier). Run it after touching gates, chapters or the Lab rows.
+- Oceans: `OCEAN_COST` (600 / 2,000 / 5,000 / 12,000 / 28,000 / 65,000 Aero + rare materials from the ocean you leave + a few
+  of its fish), gated by the previous ocean's boss quest (its trophy). Chapter rewards no longer grant the ocean:
+  `reward.chart = oceanId` (display only) plus a bigger Aero cheque (250 / 800 / 2,000 / 4,500 / 10,000 / 24,000); the
+  `cN_sail` quests ask to research the ocean first. `node.ocean`; `GOAL_ROWS` includes 'oceans' and a charted ocean is THE
+  `labGoal`. The map's locked-ocean checklist shows the boss trophy row.
+- UI (`src/ui/labtree.js`): `tree.QG[id]` = sealed. Sealed tiles keep their art under a pixel seal (dithered indigo veil,
+  chain X, gold padlock: `sealTex` / `padlockTex`, PixelBuffer at HI) + a voxel scroll badge and the quest title under the
+  name; the card shows the giver portrait, quest title, chapter, progress and Track quest (`book.setPin`) / Quest log.
+  Breaking a seal (qgNew on open, or live): chain bits, the padlock drops, 3D voxel "UNSEALED!". `progression.js` toasts
+  the research a quest opened (one toast per quest).
 
 
 ## Phase 10 bait models + clean catch moment [bait12]

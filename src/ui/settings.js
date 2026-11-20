@@ -215,6 +215,23 @@ export class SettingsPanel {
         ry += bh + 7;
       }
     }
+    // [questcine18] quest cutscenes: Full / Short / Off (state.settings.questCine)
+    {
+      const cur = s.questCine === 'short' || s.questCine === 'off' ? s.questCine : 'full';
+      const lw = icon(ctx, 'camera', R.x + 8, ry + bh / 2, 1);
+      const lab = 'Cutscenes';
+      drawText(ctx, lab, R.x + 13 + lw, ry + Math.round((bh - capH(F2)) / 2), { font: F2, color: INK });
+      const x0 = R.x + 18 + lw + measureText(lab, F2), cw = Math.floor((R.x + R.w - 7 - x0) / 3);
+      [['full', 'Full', 'Quest cutscenes: camera, NPCs, dialogue'], ['short', 'Short', 'Quick quest moments, no dialogue'], ['off', 'Off', 'Just banners, no cutscenes']].forEach(([id, label, tip], i) => {
+        const on = cur === id;
+        if (ui.button(ctx, x0 + i * cw, ry, cw - 2, bh, label, { style: on ? 'green' : 'white', active: on, tip, sound: 'ui_toggle', font: 'small' }) && !on) {
+          s.questCine = id;
+          g.emit?.('settings', 'questCine');
+          g.save?.();
+        }
+      });
+      ry += bh + 7;
+    }
     if (this.code) {
       const bx = R.x + 7, bwid = R.w - 14, ch = big ? 28 : 22;
       drawAeroCard(ctx, bx, ry, bwid, ch, { tone: 'white', inset: true, gloss: 0 });

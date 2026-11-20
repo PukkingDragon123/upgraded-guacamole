@@ -1,7 +1,8 @@
 // The Lab (phase 3, rows in phase 6, centre-out tree in phase 7): the ONE progression system. OWNER: Lab+Quests agent.
 // Everything is unlocked by researching nodes laid out as skill-tree ROWS (LAB_ROWS; src/ui/labrows.js draws them):
 // rods, boat upgrades, aquarium tiers, crafting recipes (buildings, bait, decor), oceans, features, stat boosts.
-// Quests (src/game/quests.js) also grant nodes for free (grantLabNode), e.g. the next ocean at each chapter's end.
+// Quests (src/game/quests.js) also grant nodes for free (grantLabNode), e.g. Legend Hunter at the last chapter's end;
+// [prog18] other oceans are expeditions bought here once the previous boss quest charts them.
 // Research costs Aero + materials + fish, takes real time, and shows a waiting widget (src/ui/labwidget.js).
 //
 //   LAB_NODES: [{id, name, branch, tier, depth, lane, pos:[x,y], ang, rad, req:[ids], cost:{aero, items:{matId:n}, fish:{key:n}},
@@ -39,6 +40,13 @@
 //   labStatus() reports a queued node as 'researching' (it is paid for); 'labQueued' {id} when Confirm queues one.
 // [balance] node.main (unlocks a rod / boat / tank: MAIN_MUL x price), node.gate {boss} (LAB_GATE, tiers 6-9),
 //   gateOk(state, node), gateLabel(node); labCheck(...).gateOk / .gate; labGoals(state), labGoal(state), labGoalNeed(state, goal).
+// [prog18] Quest gates: LAB_QUEST_GATE {nodeId: questId} (node.qgate). Research of those nodes also needs that quest
+//   finished (main / boss quest done, side story claimed). gateOk() checks the boss AND the quest gate; questGateOk(state,
+//   node), questGateInfo(node) -> {id, title, giver, npc, chapter, chN, kind, boss} | null, nodesGatedBy(questId) -> [ids];
+//   labCheck(...).bossOk / .questOk / .quest (info while unmet). quests.js registers its quest table with
+//   setLabQuestInfo(lookup) (no import cycle) and emits 'labNodeUnlockedByQuest' {nodeId, questId} when a gate opens.
+//   Oceans are expensive expeditions now (node.ocean, OCEAN_COST): big Aero + rare materials + the previous ocean's boss
+//   quest (its trophy); the chapter reward only CHARTS the ocean (reward.chart). labGoals() includes the oceans row.
 import * as SPECIES_MOD from '../fish/species.js';
 import { giveRod } from './rods.js';
 import { BOSS_BY_ID } from '../fish/bosses.js'; // [balance] boss gates
@@ -131,6 +139,70 @@ function autoCost(branch, tier, wantFish, main = false) {
 // saves from before bosses). Tier 6 -> the Fjord's boss (chapter 3), 7 -> Junkyard (4), 8 -> Metropolis (5), 9 -> Lava Rift (6).
 // node.gate = {boss: bossId} | null; gateOk(state, node), gateLabel(node). Quest grants (grantLabNode) skip gates.
 export const LAB_GATE = { 6: 'eldershark', 7: 'bsod', 8: 'mayorgrouper', 9: 'moltenleviathan' };
+
+// [prog18] Quest gates: key nodes of every branch need a story quest, a side story or a boss quest finished first, picked
+// so the quest tells you where the idea comes from ("the Chrome Caster after Marina's Rust Bucket job"). Rules (checked by
+// tools/progcheck.mjs): the gating quest opens before or alongside the node's tier, never needs the node (or anything
+// after it), and a main quest that asks for a node is never gated by a quest that comes after it.
+export const LAB_QUEST_GATE = {
+  // Rods: Fizz builds them from what the story brings back
+  rod_glass: 'c2_boss', // the Dragon-Karp's crystal scales make the glass
+  rod_chrome: 's4_scrap', // Marina's "Rust Bucket" scrap job: chrome plating
+  rod_dolphin: 'c5_epic', // Bloat's tale of an epic catch
+  rod_aero: 'c5_boss', // the Main Character Marlin's carbon bill
+  rod_trident: 'c6_boss', // only a Sea King beats the Lava Rift's leviathan
+  rod_leviathan: 'c7_legend', // a line that held a legend
+  rod_kelp: 's2_seahorse', // braided from the sea-horse's seagrass
+  rod_aurora: 's3_aurora', // northern lights in a bottle
+  rod_prism: 's5_light', // Aero LED science: split the light
+  // Reel & Shock: Fizz's zap studies
+  shock2: 's2_zap', // ten PERFECT zaps
+  rod_volt: 's4_zap', // twenty-five PERFECT zaps
+  focus1: 's3_flawless', // three flawless catches
+  shock5: 's6_zap', // sixty PERFECT zaps
+  // Boats: Marina's dock jobs
+  boat_skiff: 'c2_workshop', // fix Marina's Workshop and she builds you a skiff
+  boat_hydrofoil: 'c3_tune', // tune a rod, then tune a hull
+  boat_yacht: 's5_part', // a custom hull part first
+  boat_catamaran: 'c6_tackle', // fully kitted out
+  boat_sub: 'c6_deep', // you have seen the Abyssal Zone
+  boat_engine: 's7_seven', // sailed all seven seas
+  // Aquarium: tank keeping
+  tank_big: 's3_filter', // a big tank needs a filter
+  tank_reef: 's4_heater', // reefs like warm water
+  tank_wall: 's6_air', // a Bubble Wall for the whole wall
+  tank_mutation: 's3_mutant', // study a mutated fish first
+  tank_sparkle: 's5_babies', // three hatchlings later
+  // Luck & Idle
+  lab_slot3: 'c5_lab', // thirty projects earn a third bench
+  luck3: 's4_loot', // a loot goblin's luck
+  luck4: 's7_legends', // three legends caught
+  // Bait
+  bait_golden: 'c4_golden', // a Golden Chest cracked open
+  bait_blackhole: 's6_bottom', // fished the Rift's rock bottom
+  bait_relic: 's7_abyss', // stared into the abyss
+  // Crafting
+  craft_lighthouse: 's3_midnight', // lights for the Fjord's Midnight Zone
+  craft_vault: 'c6_aero', // 15,000 Aero earned needs a vault
+  craft_totem: 's6_bosses', // a wall of boss trophies
+  // Oceans: the previous ocean's boss quest is the trophy that charts the way
+  sea_shallows: 'c1_boss', sea_fjord: 'c2_boss', sea_junkyard: 'c3_boss', sea_metropolis: 'c4_boss', sea_volcano: 'c5_boss', sea_abyss: 'c6_boss',
+};
+// [prog18] New oceans are big, expensive expeditions (on top of the boss trophy above): ~2.3-3x per ocean, rare materials
+// from the ocean you leave, and a few of its fish. The chapter's reward Aero is a big cheque toward it.
+export const OCEAN_COST = {
+  sea_shallows: { aero: 600, items: { driftwood: 4, shell: 3 }, fish: {} },
+  sea_fjord: { aero: 2000, items: { sea_glass: 4, coral_chunk: 3, pearl: 1 }, fish: { 'biome:shallows': 2 } },
+  sea_junkyard: { aero: 5000, items: { ice_shard: 3, pearl: 2, sea_glass: 3 }, fish: { 'biome:fjord': 2 } },
+  sea_metropolis: { aero: 12000, items: { spring_coil: 3, gear: 4, circuit_board: 2 }, fish: { 'biome:junkyard': 2, 'rarity:uncommon': 1 } },
+  sea_volcano: { aero: 28000, items: { magnet_stone: 2, circuit_board: 3, pearl: 3 }, fish: { 'biome:metropolis': 2, 'rarity:rare': 1 } },
+  sea_abyss: { aero: 65000, items: { lava_glass: 3, ancient_stone: 3, abyss_crystal: 1 }, fish: { 'biome:volcano': 2, 'rarity:rare': 1 } },
+};
+const OCEAN_TIME = { sea_shallows: 20, sea_fjord: 60, sea_junkyard: 150, sea_metropolis: 300, sea_volcano: 480, sea_abyss: 720 };
+// The quest table (quests.js calls setLabQuestInfo(id => quest)); kept as a lookup so lab.js imports nothing from quests.
+let QUEST_LOOKUP = () => null;
+export function setLabQuestInfo(fn) { if (typeof fn === 'function') QUEST_LOOKUP = fn; }
+const NPC_NAME = { seal: 'Bubbles', fizz: 'Professor Fizz', marina: 'Marina', dot: 'Dot', bloat: 'Captain Bloat' };
 
 // ---------------------------------------------------------------- the tree
 // n(id, branch, tier, lane, name, icon, req, opts {effect, unlock, cost (merged), fish, time, desc})
@@ -359,17 +431,23 @@ export const LAB_NODES = RAW.map((o) => {
   const unlockNode = !!o.unlock?.some((u) => u.kind !== 'recipe' || tier >= 3);
   const main = !!o.unlock?.some((u) => MAIN_KINDS.has(u.kind));
   const auto = o.branch ? autoCost(o.branch, tier, unlockNode ? tier >= 3 : tier >= 5, main) : { aero: 0, items: {}, fish: {} };
-  const cost = { aero: o.cost?.aero ?? auto.aero, items: { ...(o.cost?.items || auto.items) }, fish: { ...(o.fish || auto.fish) } };
+  const oc = OCEAN_COST[o.id]; // [prog18] ocean expeditions
+  const cost = oc ? { aero: oc.aero, items: { ...oc.items }, fish: { ...oc.fish } } : { aero: o.cost?.aero ?? auto.aero, items: { ...(o.cost?.items || auto.items) }, fish: { ...(o.fish || auto.fish) } };
   const { depth, lane, ang, rad, pos } = LAYOUT[o.id];
   const gate = o.branch && LAB_GATE[tier] && BOSS_BY_ID[LAB_GATE[tier]] ? { boss: LAB_GATE[tier] } : null;
   return {
     id: o.id, name: o.name, branch: o.branch, tier, depth, lane, ang, rad, pos, req: o.req || [],
-    cost, time: o.time ?? (TIME_T[tier] || 0), effect: o.effect || {}, unlock: o.unlock || [], desc: o.desc || '', icon: o.icon || 'beaker',
+    cost, time: OCEAN_TIME[o.id] ?? o.time ?? (TIME_T[tier] || 0), effect: o.effect || {}, unlock: o.unlock || [], desc: o.desc || '', icon: o.icon || 'beaker',
     row: o.row ?? null, col: o.col ?? 0, // [phase6:lab]
     main, gate, // [balance] main-track unlock (rod / boat / tank); boss gate for tier 6+
+    qgate: LAB_QUEST_GATE[o.id] || null, ocean: !!o.unlock?.some((u) => u.kind === 'biome'), // [prog18]
   };
 });
 export const LAB_BY_ID = Object.fromEntries(LAB_NODES.map((nd) => [nd.id, nd]));
+// [prog18] questId -> [node ids it opens]
+export const QUEST_GATED = {};
+for (const nd of LAB_NODES) if (nd.qgate) (QUEST_GATED[nd.qgate] ||= []).push(nd.id);
+export function nodesGatedBy(questId) { return QUEST_GATED[questId] || []; }
 // children lists (for glow paths / "unlocks next")
 export const LAB_CHILDREN = {};
 for (const nd of LAB_NODES) for (const r of nd.req) (LAB_CHILDREN[r] ||= []).push(nd.id);
@@ -537,15 +615,16 @@ export function labCheck(state, nd, stats = null) {
   const reqOk = nd.req.every((r) => L.done[r]);
   const slots = labSlots(state, stats) - L.slots.length;
   const paid = aero.ok && items.every((x) => x.ok) && fish.every((x) => x.ok);
-  const gOk = gateOk(state, nd);
+  const bossOk = bossGateOk(state, nd), questOk = questGateOk(state, nd), gOk = bossOk && questOk;
   const ok = reqOk && gOk && paid && slots > 0 && !L.done[nd.id] && !L.slots.some((s) => s.id === nd.id) && !L.queue.some((q) => q.id === nd.id);
-  return { ok, paid, aero, items, fish, slots, reqOk, gateOk: gOk, gate: gOk ? null : gateLabel(nd) };
+  return { ok, paid, aero, items, fish, slots, reqOk, gateOk: gOk, gate: gOk ? null : gateLabel(nd, state), bossOk, questOk, quest: questOk ? null : questGateInfo(nd) };
 }
 
 // ---------------------------------------------------------------- [balance] boss gates + the next goal
 // gateOk(state, node) -> bool: the node's boss beaten (state.bosses.won) or its chapter finished (older saves)
 // gateLabel(node) -> 'Beat <boss> (<ocean>) first.' | ''
-export function gateOk(state, nd) {
+export function gateOk(state, nd) { return bossGateOk(state, nd) && questGateOk(state, nd); }
+export function bossGateOk(state, nd) {
   const id = nd?.gate?.boss;
   if (!id) return true;
   if (state?.bosses?.won?.[id]) return true;
@@ -553,18 +632,43 @@ export function gateOk(state, nd) {
   const n = Number(String(b?.chapter || '').replace(/\D/g, '')) || 0;
   return !b || !!state?.quests?.chDone?.[b.chapter] || (state?.quests?.ch | 0) >= n;
 }
-export function gateLabel(nd) {
+// [prog18] the quest gate: done (main quests complete by themselves, side stories once claimed), or its chapter finished
+export function questGateOk(state, nd) {
+  const qid = nd?.qgate;
+  if (!qid || state?.lab?.done?.[nd.id]) return true;
+  const Q = state?.quests;
+  if (Q?.done?.[qid]) return true;
+  const q = QUEST_LOOKUP(qid);
+  return !!(q && q.kind === 'main' && q.chapter && Q?.chDone?.[q.chapter]);
+}
+// {id, title, giver, npc, chapter, chN, kind, boss} of a node's gating quest (null when it has none)
+export function questGateInfo(nd) {
+  const qid = nd?.qgate;
+  if (!qid) return null;
+  const q = QUEST_LOOKUP(qid) || {};
+  const boss = (q.objectives || []).find((o) => o.t === 'boss')?.id || null;
+  const chN = Number(String(q.chapter || '').replace(/\D/g, '')) || 0;
+  return { id: qid, title: q.title || qid, giver: q.giver || 'fizz', npc: NPC_NAME[q.giver] || 'Professor Fizz', chapter: q.chapter || null, chN, kind: q.kind || 'main', boss };
+}
+export function gateLabel(nd, state = null) {
+  if (state && !questGateOk(state, nd)) {
+    const qi = questGateInfo(nd);
+    if (qi.boss) return `Beat ${BOSS_BY_ID[qi.boss]?.title || 'the boss'} first (${qi.npc}'s boss quest).`;
+    return qi.kind === 'side' ? `Finish ${qi.npc}'s side story "${qi.title}" first.` : `Finish ${qi.npc}'s quest "${qi.title}" first.`;
+  }
+  if (state && bossGateOk(state, nd)) return '';
   const b = BOSS_BY_ID[nd?.gate?.boss];
   return b ? `Beat ${b.title} (${OCEAN_NAMES[b.ocean] || b.ocean} boss) first.` : '';
 }
 
-// The main tracks a player should always have a target on: a better rod, a bigger tank, a better boat. (The next ocean
-// is the quest chain's job: every chapter's reward charts it for free.)
+// The main tracks a player should always have a target on: a better rod, a bigger tank, a better boat and [prog18] the next
+// ocean (charted by the chapter's boss quest, then bought as a big expedition: once charted it is THE goal).
 // labGoals(state) -> [{id, node, row, status, check}] the next unfinished node of each GOAL_ROWS row
 // labGoal(state)  -> the best single target: the cheapest one you can research now (requirements + gate met; one you
-//                    can already afford first), else the cheapest one still waiting on its gate. null when all done.
-// labGoalNeed(state, goal) -> one sentence of what is still missing: the boss gate or 'Need 120 more Aero.' ('' = ready)
-export const GOAL_ROWS = ['rods', 'aquarium', 'boats'];
+//                    can already afford first; a charted ocean beats the rest), else the cheapest one still waiting on its
+//                    gate (boss or quest). null when all done.
+// labGoalNeed(state, goal) -> one sentence of what is still missing: the quest / boss gate or 'Need 120 more Aero.' ('' = ready)
+export const GOAL_ROWS = ['rods', 'aquarium', 'boats', 'oceans'];
 export function labGoals(state) {
   const L = ensureLab(state);
   const out = [];
@@ -579,7 +683,8 @@ export function labGoals(state) {
 export function labGoal(state) {
   const gs = labGoals(state).filter((g) => g.status === 'available' || g.status === 'researching');
   if (!gs.length) return null;
-  const score = (g) => (g.status === 'researching' ? 3e9 : 0) + (g.check.gateOk ? 0 : 2e9) + (g.check.paid ? 0 : 1e9) + (g.node.cost.aero || 0);
+  const charted = (g) => g.node.ocean && g.check.gateOk && g.status !== 'researching';
+  const score = (g) => (g.status === 'researching' ? 3e9 : 0) + (g.check.gateOk ? 0 : 2e9) + (g.check.paid ? 0 : 1e9) - (charted(g) ? 1.5e9 : 0) + (g.node.cost.aero || 0);
   return gs.sort((a, b) => score(a) - score(b))[0];
 }
 export function labGoalNeed(state, g) {
@@ -753,7 +858,7 @@ export function canPlan(state, id, planned = []) {
   if (planned.includes(id)) return { ok: false, reason: 'Already planned.' };
   const ready = (r) => L.done[r] || L.slots.some((s) => s.id === r) || L.queue.some((q) => q.id === r) || planned.includes(r);
   if (!nd.req.every(ready)) return { ok: false, reason: 'Unlock ' + nd.req.filter((r) => !ready(r)).map((r) => LAB_BY_ID[r]?.name || r).join(' + ') + ' first.' };
-  if (!gateOk(state, nd)) return { ok: false, reason: gateLabel(nd) }; // [balance]
+  if (!gateOk(state, nd)) return { ok: false, reason: gateLabel(nd, state) }; // [balance] [prog18] boss + quest gates
   return { ok: true };
 }
 

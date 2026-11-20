@@ -318,7 +318,7 @@ export class UI {
   drawPanels(ctx, dt) {
     const g = this.game;
     this.drawGhosts(ctx);
-    if (this.blocking) {
+    if (this.blocking && !this.active?.cinematic) { // [questcine18] a cinematic panel (quest cutscenes) has no dim and no hotbar overlay
       ctx.fillStyle = rgba('#04304e', 0.36 * Math.min(1, (this.active?.anim ?? 1) * 2));
       ctx.fillRect(0, 0, g.screen.W, g.screen.H);
       // the HUD hotbar stays above the dim and keeps working as tabs
@@ -356,6 +356,7 @@ export class UI {
   drawToasts(ctx) {
     const g = this.game, W = g.screen.W, k = uiK();
     let y = (this.coinRect ? this.coinRect.y + this.coinRect.h : 26) + Math.round(10 * k);
+    if (this.active?.cinematic) y += Math.round(g.screen.H * 0.105); // [questcine18] below a quest cutscene's letterbox
     // [polish17] while a window is open, toasts sit in the free strip under it (above the hotbar) instead of on top
     // of its header buttons (close, wallet); when there is no room there they keep the top-right spot
     const a = this.blocking ? this.active : null;

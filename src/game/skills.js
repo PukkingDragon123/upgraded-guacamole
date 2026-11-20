@@ -7,7 +7,7 @@
 //                          space, aquarium/tanks.js tierCapBonus). Accepts the whole save (preferred:
 //                          game.recomputeStats passes this.state) or an old {skillId: true} map.
 //   skillStatus(sk, state, speciesFound) -> {status: 'owned'|'available'|'locked', reason}
-import { LAB_NODES, LAB_BY_ID, BRANCHES as LAB_BRANCHES, MULT_KEYS, ensureLab, computeLabStats, labStatus, unlocked, ROOT_ID } from './lab.js';
+import { LAB_NODES, LAB_BY_ID, BRANCHES as LAB_BRANCHES, MULT_KEYS, ensureLab, computeLabStats, labStatus, unlocked, ROOT_ID, gateOk, gateLabel } from './lab.js';
 import { tierCapBonus } from '../aquarium/tanks.js';
 import { buildingBonus } from '../build/buildings.js';
 
@@ -60,7 +60,7 @@ export function skillStatus(sk, state, speciesFound) {
   if (state?.skills?.[sk.id]) return { status: 'owned' };
   const st = labStatus(state, sk.id);
   if (st === 'done') return { status: 'owned' };
-  if (st === 'available') return { status: 'available' };
+  if (st === 'available') return gateOk(state, LAB_BY_ID[sk.id]) ? { status: 'available' } : { status: 'locked', reason: gateLabel(LAB_BY_ID[sk.id], state) }; // [prog18] boss + quest gates
   if (st === 'researching') return { status: 'locked', reason: 'Researching in the Lab...' };
   const node = LAB_BY_ID[sk.id];
   const missing = (node?.req || []).filter((r) => labStatus(state, r) !== 'done');

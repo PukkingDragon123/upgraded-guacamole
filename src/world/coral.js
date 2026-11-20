@@ -13,6 +13,7 @@
 //   coralModel(kind, seed, theme, size) -> VoxelModel                 one coral on its own
 //   renderCoral(model, scale) -> {canvas, ox, oy, w, h, night}        (cached by the caller)
 //   voxAnim(kind, seed, theme, size, scale, frames) -> {frames, ox, oy, n, P, nights}
+//   voxAnimSteps(...)  the same as a step generator (one frame per step; the Lab backdrop builds with it)
 //   placeAnim(anim, x, y) -> DepthDecor-compatible animation (frame(t, off), x, y, frames)
 
 import { VoxelModel } from '../gfx/voxel.js';
@@ -632,7 +633,7 @@ export function voxAnim(kind, seed, themeId, size0, k, frames = 8, palKey = null
   return runSteps(voxAnimSteps(kind, seed, themeId, size0, k, frames, palKey));
 }
 // The same as a step generator (one frame per step). A.hiSteps() builds the double-detail twin (zoomed camera).
-function* voxAnimSteps(kind, seed, themeId, size0, k, frames = 8, palKey = null) {
+export function* voxAnimSteps(kind, seed, themeId, size0, k, frames = 8, palKey = null) {
   const key = [kind, seed, themeId, size0, k, frames, palKey].join('|');
   const size = size0 * k;
   let A = animCache.get(key);

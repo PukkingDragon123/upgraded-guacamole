@@ -19,7 +19,7 @@ import { drawButton } from './panels.js';
 import { AERO, fmtAero, aeroCached, aeroSurface, drawAeroFrame, toneFrom, drawSunFlare, drawArcLines, drawAeroBubble, drawAeroLabel, drawAeroCard, drawAeroBar, drawSparkle } from './aero.js';
 import { getUiIcon } from '../gfx/uiicons.js';
 import { SKILLS } from '../game/skills.js';
-import { LAB_BY_ID, ROOT_ID, nodeFor, labStatus, labCheck, labProgress, fishLabel } from '../game/lab.js';
+import { LAB_BY_ID, ROOT_ID, nodeFor, labStatus, labCheck, labProgress, fishLabel, questGateInfo } from '../game/lab.js';
 import { ITEMS } from '../build/items.js';
 import { SPECIES } from '../fish/species.js';
 import { mapDestInput, drawMapDests, drawDestCard } from '../world/destinations.js'; // [phase8:prog] Lab island + Workshop dock on the map
@@ -1635,6 +1635,9 @@ export class MapPanel {
     if (!nd) return [{ text: 'Research in The Lab', sub: 'soon', ok: false }];
     const status = labStatus(st, nd.id), c = labCheck(st, nd, this.game.stats);
     const out = nd.req.filter((r) => r !== ROOT_ID).map((r) => ({ text: LAB_BY_ID[r]?.name || r, sub: '', ok: labStatus(st, r) === 'done' }));
+    // [prog18] the boss trophy (quest gate) that charts the ocean
+    const qi = questGateInfo(nd);
+    if (qi) out.push({ text: qi.boss ? 'Boss trophy: ' + qi.title.replace(/^Boss:\s*/, '') : `Quest: ${qi.title}`, sub: qi.npc, ok: c.questOk });
     if (c.aero.need) out.push({ text: `${fmtAero(c.aero.need)} {aero}`, sub: '', ok: c.aero.ok });
     for (const f of c.fish) out.push({ text: fishLabel(f.key), sub: `${Math.min(f.have, f.need)}/${f.need}`, ok: f.ok });
     for (const it of c.items) out.push({ text: ITEMS[it.id]?.name || it.id, sub: `${Math.min(it.have, it.need)}/${it.need}`, ok: it.ok });

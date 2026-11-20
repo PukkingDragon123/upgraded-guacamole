@@ -11,6 +11,11 @@
 //   tree.focus(id, {highlight, zoom})  tree.select(id)  tree.focusBranch(branch)  tree.home(instant)  tree.zoomBy(f)
 //   tree.tileRect(id) -> screen rect | null      tree.btnRect: the card's Research button (panel.confirmRect)
 //   tree.plan -> [selected id] while its Research button shows (the tutorial then points at panel.confirmRect)
+// [prog18] QUEST SEALS: a node whose quest gate (lab.js LAB_QUEST_GATE) is still closed is drawn as a revealed tile under
+// a pixel-art seal (dithered indigo veil, an X of chain links, a gold padlock) with a voxel quest scroll badge and the
+// quest's title under its name. Its card names the quest (NPC portrait, quest title, chapter, progress) with Track quest
+// (pins it on the HUD tracker) and Quest log buttons. When the quest is finished (state.lab.qgNew, set by quests.js, or
+// live while open) the seal breaks: chain bits fly off, the padlock drops, a 3D voxel "UNSEALED!" pops (no rings / rays).
 import { clamp, clamp01, TAU, hash1, ease, lerp } from '../core/math.js';
 import { rgba, mix, shade, pack, hexToRgb } from '../core/color.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
@@ -23,15 +28,17 @@ import {
   LAB_NODES, LAB_BY_ID, BRANCHES, BRANCH_ORDER, ROOT_ID, EFFECT_INFO, BOAT_ORDER, LAB_R1, LAB_NODE, LAB_ROOT, LAB_EXTENT,
   ensureLab, labCheck, labTime, labProgress, labRemaining, labQueued, labSlots, instantCost, instantFinish, cancelResearch,
   confirmResearch, fmtEffect, fmtTime, nodeFor, TANK_ORDER, labGoal, labGoalNeed,
+  questGateOk, gateLabel, // [prog18]
 } from '../game/lab.js';
 import { roundRectPath } from './labart.js';
 import { icon, anyIcon, pill, costTiles, costTilesHeight, chip, INK, INK_SOFT, OK, BAD } from './labkit.js';
 import { drawAnimIcon, unlockInfo } from './labrows.js';
-import { HI, dualArt, withHi, hiCtx } from '../gfx/hires.js'; // [phase9:ui]
+import { HI, dualArt, withHi, hiCtx, hiFromBuffer } from '../gfx/hires.js'; // [phase9:ui]
 import { drawPop3D } from './pop3d.js'; // [phase9:ui]
 import { drawIcon3D } from '../gfx/icons3d.js'; // [phase9:ui]
 import { nodeTile, qMark, microBubble, gemTex, pipeJoint, GEM_CUT } from './labtiles.js'; // [phase9:ui]
-import { drawLabRoom } from './labroom.js'; // [lab15] the space backdrop
+import * as NPC from '../gfx/npcs.js'; // [prog18] quest-giver portraits on sealed nodes
+import { drawLabRoom } from './labroom.js'; // [lab18] the underwater backdrop
 const GOAL_MARK = { title: 'Next goal', goal: true }; // [balance] questMarks() value for the next main-track upgrade
 
 const NODES = LAB_NODES.filter((n) => n.id !== ROOT_ID).sort((a, b) => a.depth - b.depth);
@@ -219,6 +226,112 @@ export function titleBmp(text, color = '#ffffff', outline = '#0a3a6e', size = 16
 }
 
 // ------------------------------------------------------------------ the view
+// ------------------------------------------------------------------ [prog18] quest seals (pixel art at device resolution)
+const SEAL = new Map();
+const sealCached = (k, build) => { let c = SEAL.get(k); if (!c) { c = build(); SEAL.set(k, c); if (SEAL.size > 120) SEAL.delete(SEAL.keys().next().value); } return c; };
+const PK = (hex, a = 1) => pack(hex, Math.round(a * 255));
+// the veil + chains over a tile's glass window (S = logical tile size)
+function sealTex(S) {
+  return sealCached('veil|' + S, () => {
+    const D = S * HI, b = new PixelBuffer(D, D);
+    const f = Math.max(5, Math.round(D * 0.135)), iw = D - f * 2, ri = Math.max(3, Math.round(D * 0.24) - f + 2);
+    const inRR = (x, y, x0, y0, w, h, r) => { const cx = Math.max(x0 + r, Math.min(x0 + w - r - 1, x)), cy = Math.max(y0 + r, Math.min(y0 + h - r - 1, y)); return x >= x0 && y >= y0 && x < x0 + w && y < y0 + h && (x - cx) ** 2 + (y - cy) ** 2 <= r * r; };
+    // a dithered indigo veil: the glass reads as sealed, not as fog
+    for (let y = f; y < f + iw; y++) for (let x = f; x < f + iw; x++) {
+      if (!inRR(x, y, f, f, iw, iw, ri)) continue;
+      const k = (y - f) / iw, d = ((x * 3 + y * 5) & 3) === 0;
+      b.set(x, y, PK(d ? '#2a1d62' : k < 0.5 ? '#1c1450' : '#140e3e', 0.5 + k * 0.12 + (d ? 0.08 : 0)));
+    }
+    if (S < 20) return hiFromBuffer(b);
+    // an X of chain links (oval rings and side-on bars in turn), steel with a cool outline, lit from the top-left
+    const C = { o: PK('#141c2c'), d: PK('#55657e'), m: PK('#a9b9cd'), l: PK('#f2f8ff') };
+    const L = Math.max(6, Math.round(D * 0.105)), rx = L * 0.62, ry = L * 0.4, th = Math.max(1.6, D * 0.022);
+    const link = (cx, cy, a, ring) => {
+      const ca = Math.cos(a), sa = Math.sin(a), R = Math.ceil(rx + th + 2);
+      for (let y = Math.floor(cy - R); y <= cy + R; y++) for (let x = Math.floor(cx - R); x <= cx + R; x++) {
+        const dx = x + 0.5 - cx, dy = y + 0.5 - cy, u = dx * ca + dy * sa, v = -dx * sa + dy * ca;
+        if (ring) {
+          const e = Math.hypot(u / rx, v / ry), w = th / Math.min(rx, ry);
+          if (e > 1 + w * 0.5 + 0.12 || e < 1 - w * 0.5 - 0.12) continue;
+          const edge = e > 1 + w * 0.5 - 0.1 || e < 1 - w * 0.5 + 0.1;
+          const lit = -(dx + dy) / (rx * 1.4);
+          b.set(x, y, edge ? C.o : lit > 0.35 ? C.l : lit > -0.25 ? C.m : C.d);
+        } else {
+          if (Math.abs(u) > rx * 0.92 || Math.abs(v) > th * 0.85) continue;
+          const edge = Math.abs(u) > rx * 0.92 - 1 || Math.abs(v) > th * 0.85 - 1;
+          b.set(x, y, edge ? C.o : v < 0 ? C.l : C.m);
+        }
+      }
+    };
+    const m = Math.round(f * 0.7);
+    for (const [x0, y0, x1, y1] of [[m, m, D - m, D - m], [D - m, m, m, D - m]]) {
+      const a = Math.atan2(y1 - y0, x1 - x0), len = Math.hypot(x1 - x0, y1 - y0), n = Math.max(3, Math.floor(len / (L * 0.95)));
+      for (let i = 0; i <= n; i++) link(x0 + (x1 - x0) * (i / n), y0 + (y1 - y0) * (i / n), a, i % 2 === 0);
+    }
+    return hiFromBuffer(b);
+  });
+}
+// a chunky gold padlock with a steel shackle and a keyhole; .cy = its body's centre (logical px from the top)
+function padlockTex(S) {
+  return sealCached('lock|' + S, () => {
+    const W = Math.max(8, Math.round(S * 0.42)) * HI, H = Math.round(W * 1.12), b = new PixelBuffer(W, H);
+    const bw = Math.round(W * 0.86), bh = Math.round(H * 0.52), bx = Math.round((W - bw) / 2), by = H - bh - 1;
+    const G = ['#5a3204', '#a8620e', '#e09a22', '#f8c84a', '#fff2b0'], ST = ['#1c2436', '#5a6a82', '#b4c4d8', '#f2f8ff'];
+    // shackle: a thick arch, lit on its left
+    const sr = bw * 0.33, scx = W / 2, scy = by + 1, st = Math.max(2, Math.round(W * 0.11));
+    for (let y = 0; y < by + 3; y++) for (let x = 0; x < W; x++) {
+      const dx = x + 0.5 - scx, dy = y + 0.5 - scy, r = Math.hypot(dx, Math.min(0, dy));
+      const legs = dy >= 0 && Math.abs(Math.abs(dx) - sr) <= st / 2;
+      if (!(legs || (dy < 0 && Math.abs(r - sr) <= st / 2))) continue;
+      const rr = dy < 0 ? r - sr : Math.abs(dx) - sr;
+      const edge = Math.abs(rr) > st / 2 - 1;
+      b.set(x, y, PK(edge ? ST[0] : dx < -sr * 0.3 || (dy < -sr * 0.5 && dx < 0) ? ST[3] : rr < 0 ? ST[2] : ST[1]));
+    }
+    // body: rounded block with a voxel bevel (top lip, left light, bottom shade) and rivets
+    const rc = Math.max(2, Math.round(bw * 0.16));
+    const inB = (x, y) => { const cx = Math.max(bx + rc, Math.min(bx + bw - rc - 1, x)), cy = Math.max(by + rc, Math.min(by + bh - rc - 1, y)); return x >= bx && y >= by && x < bx + bw && y < by + bh && (x - cx) ** 2 + (y - cy) ** 2 <= rc * rc; };
+    for (let y = by; y < by + bh; y++) for (let x = bx; x < bx + bw; x++) {
+      if (!inB(x, y)) continue;
+      const edge = !inB(x - 1, y) || !inB(x + 1, y) || !inB(x, y - 1) || !inB(x, y + 1);
+      const ky = (y - by) / bh, kx = (x - bx) / bw;
+      let c = G[2];
+      if (ky < 0.16) c = G[4]; else if (ky < 0.3) c = G[3]; else if (ky > 0.82) c = G[1];
+      if (kx < 0.12 && ky < 0.82) c = G[3];
+      if (kx > 0.9) c = G[1];
+      if (((x >> 1) + (y >> 1)) % 7 === 0 && ky > 0.3 && ky < 0.82) c = G[3];
+      b.set(x, y, PK(edge ? G[0] : c));
+    }
+    // keyhole: a dark round top and a slot, with a lit lip under it
+    const kx = Math.round(W / 2), ky = Math.round(by + bh * 0.46), kr = Math.max(1.5, bw * 0.1);
+    b.fillCircle(kx, ky, kr, PK('#2a1402'));
+    b.rect(Math.round(kx - kr * 0.45), ky, Math.max(1, Math.round(kr * 0.9)), Math.round(kr * 2.2), PK('#2a1402'));
+    b.rect(Math.round(kx - kr * 0.45), Math.round(ky + kr * 2.2), Math.max(1, Math.round(kr * 0.9)), 1, PK(G[4]));
+    for (const rx of [bx + Math.round(bw * 0.16), bx + bw - Math.round(bw * 0.16) - 1]) { b.set(rx, by + Math.round(bh * 0.72), PK(G[4])); b.set(rx, by + Math.round(bh * 0.72) + 1, PK(G[1])); }
+    const c = hiFromBuffer(b);
+    c.cy = (by + bh / 2) / HI;
+    return c;
+  });
+}
+// a quest-giver portrait in a little glass medallion (cx, cy, radius r)
+const PORT_OFF = new Map();
+function drawGiver(ctx, id, cx, cy, r, t) {
+  const col = { seal: '#8fd8ff', fizz: '#7affc8', marina: '#ffb43c', dot: '#c8a0ff', bloat: '#ff8a7a' }[id] || '#bff6ff';
+  ctx.drawImage(aeroSurface(r * 2 + 4, r * 2 + 4, { top: '#ffffff', mid: mix(col, '#ffffff', 0.55), bot: shade(col, -0.1), edge: shade(col, -0.6), a: [1, 1], r: 'pill', gloss: 0.6, glossH: r, curve: 1, rim: 0.8, glow: 0.3 }), Math.round(cx - r - 2), Math.round(cy - r - 2));
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx, cy, r - 1, 0, TAU); ctx.clip();
+  try {
+    if (id === 'seal') NPC.drawNPC(ctx, 'seal', { portrait: true, x: cx, y: cy, r: r - 1, t, mood: 'happy', id: 'lab-qg-seal' });
+    else if (NPC.NPCS?.[id]) {
+      const sc = Math.max(0.3, Math.round(r * (id === 'dot' ? 0.042 : id === 'bloat' ? 0.04 : 0.034) * 20) / 20), key = id + '|' + r;
+      const off = PORT_OFF.get(key) || { dx: 0, dy: r * 1.6 };
+      const a = NPC.drawNPC(ctx, id, { x: cx + off.dx, y: cy + off.dy, t, scale: sc, mood: 'happy', pose: 'idle', id: 'lab-qg-' + id, shadow: false });
+      const m = a?.mouth || a?.head;
+      if (m && Number.isFinite(m[0])) { off.dx = clamp(off.dx + (cx - m[0]) * 0.5, -r, r); off.dy = clamp(off.dy + (cy + r * 0.22 - m[1]) * 0.5, -r, r * 4); PORT_OFF.set(key, off); }
+    }
+  } catch { /* NPC art is optional */ }
+  ctx.restore();
+}
+
 export class LabTree {
   constructor(panel) {
     this.p = panel;
@@ -247,6 +360,7 @@ export class LabTree {
     this.hintK = 1;
     this.used = false;
     this.fog = null;
+    this.QG = {}; // [prog18] node id -> sealed by its quest gate
   }
 
   get game() { return this.p.game; }
@@ -352,8 +466,25 @@ export class LabTree {
       const s = L.done[id] ? 'done' : queue.has(id) ? 'queued' : slots.has(id) ? 'researching' : nd.req.every((r) => L.done[r]) ? 'available' : 'locked';
       S[id] = s;
       hd[id] = s !== 'locked' ? 0 : 1 + Math.min(...nd.req.map((r) => hd[r] ?? 9));
+      this.QG[id] = s === 'available' && !!nd.qgate && !questGateOk(this.game.state, nd); // [prog18] sealed by a quest
     }
     return L;
+  }
+
+  // [prog18] quest seals: can the gating quest be worked on now? pin it on the HUD tracker
+  questTrackable(qi) {
+    const book = this.game.quests?.book, q = qi && book?.quest?.(qi.id);
+    if (!q || book.isDone?.(qi.id)) return false;
+    return q.kind === 'main' ? !!book.chapterReached?.(q.chapter) : !!book.available?.(q);
+  }
+  trackQuest(qi) {
+    const g = this.game, book = g.quests?.book;
+    if (!book || !qi) return;
+    if (!this.questTrackable(qi)) { g.audio.play('ui_error'); g.toast?.(qi.chN ? `That quest opens in Chapter ${qi.chN}.` : 'That quest is not open yet.', 'lock'); return; }
+    if (book.S.pin === qi.id) { book.setPin(qi.id); g.toast?.('Stopped tracking it.', 'scroll'); return; }
+    book.setPin(qi.id);
+    g.audio.play('ui_unlock', { vol: 0.6 });
+    g.toast?.(`Tracking "${qi.title}" on your HUD.`, 'scroll');
   }
 
   revealed(id) { return REVEALED.has(this.S[id]); }
@@ -414,6 +545,12 @@ export class LabTree {
       for (let i = 0; i < 14; i++) { const a = (i / 14) * TAU + hash1(i, 11), v = 40 + hash1(i, 12) * 60; add({ kind: 'ink', dur: 0.6 + hash1(i, 13) * 0.5, vx: Math.cos(a) * v, vy: Math.sin(a) * v, g: 70, size: 2 + (i % 3) }); }
       for (let i = 0; i < 12; i++) { const a = (i / 12) * TAU + 0.2, v = 30 + hash1(i, 9) * 40; add({ kind: 'spark', dur: 0.8, delay: 0.25 + hash1(i, 2) * 0.2, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 10, g: 30, col: i % 2 ? '#ffffff' : mix(col, '#ffffff', 0.5), size: 1 + (i % 4 === 0) }); }
       if (o.label) add({ kind: 'label', dur: 1.4, delay: 0.3, text: 'NEW!' });
+    } else if (kind === 'unseal') {
+      // [prog18] the quest seal breaks: steel chain bits scatter, gold glints, a 3D voxel UNSEALED! pops (no rings)
+      add({ kind: 'label', dur: 1.9, delay: 0.15, text: 'UNSEALED!' });
+      for (let i = 0; i < 18; i++) { const a = (i / 18) * TAU + hash1(i, 21) * 0.4, v = 45 + hash1(i, 22) * 70; add({ kind: 'chain', dur: 0.8 + hash1(i, 23) * 0.6, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 40, g: 160, size: 2 + (i % 3 === 0), rot: hash1(i, 24) * 6 }); }
+      for (let i = 0; i < 14; i++) { const a = (i / 14) * TAU + 0.3, v = 30 + hash1(i, 25) * 50; add({ kind: 'spark', dur: 0.9, delay: 0.1 + hash1(i, 26) * 0.25, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 20, g: 40, col: i % 3 ? '#fff6a0' : '#ffffff', size: 1 + (i % 4 === 0) }); }
+      for (let i = 0; i < 10; i++) add({ kind: 'confetti', dur: 1.3 + hash1(i, 27) * 0.6, delay: 0.1, vx: (hash1(i, 28) - 0.5) * 120, vy: -80 - hash1(i, 29) * 50, g: 160, col: [col, '#ffd23a', '#ffffff', '#c8a0ff'][i % 4], rot: hash1(i, 30) * 6 });
     } else if (kind === 'nope') {
       for (let i = 0; i < 6; i++) add({ kind: 'ink', dur: 0.4, vx: (hash1(i, 5) - 0.5) * 50, vy: -20 - hash1(i, 6) * 30, g: 120, size: 2 });
     }
@@ -438,6 +575,14 @@ export class LabTree {
         L.seen[nd.id] = 1;
         this.unveil(nd.id, 0.35 + n++ * 0.11);
       }
+      // [prog18] seals: sealed nodes start sealed; nodes a quest opened while the Lab was closed break their seal now
+      let u = 0, first = null;
+      for (const nd of NODES) this.a(nd.id).seal = this.QG[nd.id] ? 1 : 0;
+      for (const id in L.qgNew || {}) {
+        if (LAB_BY_ID[id] && !this.QG[id] && this.revealed(id) && S[id] === 'available') { const A = this.a(id); A.seal = 1; A.usDelay = 0.7 + u++ * 0.55; A.usOn = false; first ||= id; }
+        delete L.qgNew[id];
+      }
+      if (first && !this.pending.focus && !this.hl) { this.pending.home = false; this.pending.focus = { id: first, zoom: 1.1, highlight: false }; }
     }
     if (this.pending.home) { this.pending.home = false; this.home(true); }
     if (this.pending.focus) { const f = this.pending.focus; this.pending.focus = null; this.focus(f.id, f); }
@@ -450,6 +595,9 @@ export class LabTree {
         else if (a === 'locked') { (L.seen ||= {})[nd.id] = 1; this.unveil(nd.id, 0.55, true); }
       }
     }
+    // [prog18] a seal that opened while the Lab is open breaks right away
+    if (this.prevQG) for (const nd of NODES) if (this.prevQG[nd.id] && !this.QG[nd.id] && S[nd.id] === 'available') { const A = this.a(nd.id); A.seal = 1; A.usDelay = 0.25; A.usOn = false; }
+    this.prevQG = { ...this.QG };
     this.prev = { ...S };
     // ---- input
     const over = (r) => r && inp.x >= r.x && inp.y >= r.y && inp.x < r.x + r.w && inp.y < r.y + r.h;
@@ -507,6 +655,14 @@ export class LabTree {
           A.rv = Math.min(1, A.rv + dt / 1.1);
         }
       }
+      // [prog18] the seal: held while the quest gate is closed, then it breaks (chain bits, the padlock drops)
+      if (this.QG[nd.id]) { A.seal = 1; A.usOn = false; } else if (A.seal > 0) {
+        if (A.usDelay > 0) A.usDelay -= dt;
+        else {
+          if (!A.usOn) { A.usOn = true; this.burst(nd.id, 'unseal'); A.pop = 1.2; g.audio.play('ui_unlock', { vol: 0.6 }); g.audio.play('sparkle', { vol: 0.5, pitch: 1.3 }); }
+          A.seal = Math.max(0, A.seal - dt / 0.9);
+        }
+      }
       const hd = this.hd[nd.id];
       const want = hd === 0 ? 0 : SIL_ALPHA[Math.min(4, hd)];
       A.sa += (want - A.sa) * Math.min(1, dt * 3);
@@ -555,7 +711,7 @@ export class LabTree {
   }
 
   // ---------------------------------------------------------------- drawing
-  // [lab15] the pixel-art space scene behind the tree (src/ui/labroom.js): stars, nebulae, planets, sparkles,
+  // [lab18] the underwater voxel scene behind the tree (src/ui/labroom.js): seabed, reefs, fish, bubbles, caustics,
   // with parallax from the tree camera (pan in screen px, zoom delta)
   drawBackground(ctx, v) {
     const cam = this.cam;
@@ -563,14 +719,14 @@ export class LabTree {
   }
 
   drawFog(ctx, v) {
-    // the fog of war: a half-res dark-space layer (nearest, 4 device px blocks) with light where you have explored
+    // the fog of war: a half-res dark-sea layer (nearest, 4 device px blocks) with light where you have explored
     const F = 2, fw = Math.ceil(v.w / F), fh = Math.ceil(v.h / F);
     if (!this.fog || this.fog.width !== fw || this.fog.height !== fh) this.fog = makeCanvas(fw, fh);
     const f = ctxOf(this.fog), z = this.cam.z;
     f.globalCompositeOperation = 'source-over';
     f.clearRect(0, 0, fw, fh);
     const fg = f.createLinearGradient(0, 0, 0, fh);
-    fg.addColorStop(0, 'rgba(6,6,30,0.24)'); fg.addColorStop(1, 'rgba(4,4,24,0.32)'); // [lab15] space shows through, dimmed
+    fg.addColorStop(0, 'rgba(2,20,56,0.28)'); fg.addColorStop(1, 'rgba(1,12,40,0.36)'); // [lab18] the sea shows through, dimmed
     f.fillStyle = fg;
     f.fillRect(0, 0, fw, fh);
     f.globalCompositeOperation = 'destination-out';
@@ -591,9 +747,9 @@ export class LabTree {
     f.globalCompositeOperation = 'source-over';
     if (!this.vig || this.vig.w !== fw || this.vig.h !== fh) {
       const r = f.createRadialGradient(fw / 2, fh * 0.48, Math.min(fw, fh) * 0.25, fw / 2, fh * 0.48, Math.max(fw, fh) * 0.7);
-      r.addColorStop(0, 'rgba(6,6,28,0)'); r.addColorStop(0.6, 'rgba(6,6,28,0.12)'); r.addColorStop(1, 'rgba(4,4,20,0.36)');
+      r.addColorStop(0, 'rgba(3,14,32,0)'); r.addColorStop(0.6, 'rgba(3,14,32,0.14)'); r.addColorStop(1, 'rgba(2,8,22,0.4)');
       const l = f.createLinearGradient(0, 0, 0, fh);
-      l.addColorStop(0, 'rgba(4,4,22,0.26)'); l.addColorStop(0.12, 'rgba(4,4,22,0)'); l.addColorStop(0.85, 'rgba(4,4,22,0)'); l.addColorStop(1, 'rgba(4,4,22,0.22)');
+      l.addColorStop(0, 'rgba(2,10,26,0.28)'); l.addColorStop(0.12, 'rgba(2,10,26,0)'); l.addColorStop(0.85, 'rgba(2,10,26,0)'); l.addColorStop(1, 'rgba(2,10,26,0.24)');
       this.vig = { w: fw, h: fh, r, l };
     }
     f.fillStyle = this.vig.r; f.fillRect(0, 0, fw, fh);
@@ -850,7 +1006,8 @@ export class LabTree {
     S += S % 2;
     if (S < 6) return;
     const shake = A.shake > 0 ? Math.sin(A.shake * 40) * 2.5 * A.shake : 0;
-    const bob = s === 'available' ? Math.round(Math.sin(t * 2.2 + A.ph) * 1.2 * z) : 0;
+    const sealed = !!this.QG[nd.id], sealK = s === 'available' ? (sealed ? 1 : clamp01(A.seal || 0)) : 0; // [prog18]
+    const bob = s === 'available' && !sealed ? Math.round(Math.sin(t * 2.2 + A.ph) * 1.2 * z) : 0;
     const x = Math.round(this.X(nd.pos[0]) + shake), y = Math.round(this.Y(nd.pos[1]) + bob);
     const x0 = x - S / 2, y0 = y - S / 2;
     const f = Math.max(2.5, Math.round(S * 0.135 * 2) / 2), iw = S - f * 2;
@@ -858,7 +1015,7 @@ export class LabTree {
     // pixel drop shadow
     ctx.fillStyle = 'rgba(2,20,52,0.32)'; ctx.fillRect(x - Math.round(S * 0.36), y0 + S + 1, Math.round(S * 0.72), Math.max(2, Math.round(S * 0.07)));
     const look = s === 'done' ? 'done' : s === 'researching' || s === 'queued' ? 'brew' : 'open';
-    if (s === 'available') drawAeroGlow(ctx, x, y, S * 0.85, col, (afford ? 0.22 : 0.12) + 0.08 * Math.sin(t * 2.4 + A.ph));
+    if (s === 'available' && !sealed) drawAeroGlow(ctx, x, y, S * 0.85, col, (afford ? 0.22 : 0.12) + 0.08 * Math.sin(t * 2.4 + A.ph));
     else if (s === 'done') drawAeroGlow(ctx, x, y, S * 0.7, col, 0.14);
     const tile = nodeTile(S, look, nd.branch);
     ctx.drawImage(tile, x0 - tile.pad, y0 - tile.pad);
@@ -877,7 +1034,20 @@ export class LabTree {
       for (let i = 0; i < 4; i++) { const q = (t * 0.8 + i * 0.25 + A.ph) % 1; ctx.save(); ctx.globalAlpha *= 1 - q * 0.6; ctx.drawImage(microBubble(i % 2 ? 1 : 1.5), Math.round((x + Math.sin(t * 3 + i * 2) * iw * 0.28 - 2) * 2) / 2, Math.round((y0 + S - f - 4 - q * iw * 0.6) * 2) / 2); ctx.restore(); }
     }
     // the icon
-    drawAnimIcon(ctx, nd.icon, x, y, Math.round(iw * 0.86), t, A.ph, { hover: A.hov + (afford ? 0.25 : 0), still: s === 'queued' });
+    drawAnimIcon(ctx, nd.icon, x, y, Math.round(iw * 0.86), t, A.ph, { hover: A.hov + (afford ? 0.25 : 0), still: s === 'queued' || sealed });
+    // [prog18] the quest seal: veil + chains over the glass, the padlock (drops away while it breaks), a voxel scroll badge
+    if (sealK > 0.01) {
+      const ga = ctx.globalAlpha;
+      const veil = sealTex(S);
+      ctx.globalAlpha = ga * (sealed ? 1 : Math.pow(sealK, 1.6));
+      ctx.drawImage(veil, x0, y0);
+      ctx.globalAlpha = ga * clamp01(sealK * 1.4);
+      const lk = padlockTex(S), drop = sealed ? 0 : (1 - sealK) * (1 - sealK) * S * 0.9;
+      const wig = sealed && A.hov > 0.2 ? Math.round(Math.sin(t * 18) * A.hov) : 0;
+      ctx.drawImage(lk, Math.round(x - lk.width / 2) + wig, Math.round(y + S * 0.06 - lk.cy + drop));
+      if (S >= 18) drawIcon3D(ctx, 'scroll', Math.round(x0 + S - S * 0.1), Math.round(y0 + S * 0.12 + Math.sin(t * 2 + A.ph) * 1.2), Math.round(S * 0.46), { t, phase: A.ph, hover: A.hov });
+      ctx.globalAlpha = ga;
+    }
     // the unveil: black ink shrinking away from the middle of the tile
     if (A.rv < 1) {
       const holeR = Math.round(S * 0.72 * k);
@@ -891,7 +1061,7 @@ export class LabTree {
       ctx.drawImage(sil, x0 - sil.pad, y0 - sil.pad);
       ctx.restore();
     }
-    if (s === 'available' || s === 'done') this.shine(ctx, x, y, S, A.ph, s === 'done' ? 5.5 : 3.2);
+    if ((s === 'available' && !sealed) || s === 'done') this.shine(ctx, x, y, S, A.ph, s === 'done' ? 5.5 : 3.2);
     // the crest gem twinkles now and then
     if (((t * 0.33 + A.ph * 0.1) % 1) < 0.07 && s !== 'queued') drawSparkle(ctx, x - S * 0.03, y0 + S * 0.03, 1, 1);
     // affordable + available: twinkling pixel sparkles around the tile (no rings)
@@ -934,6 +1104,7 @@ export class LabTree {
     let sub = null, subCol = '#a6ffcf';
     if (s === 'researching') sub = fmtTime(labRemaining(st, nd.id));
     else if (s === 'queued') { sub = 'QUEUED #' + labQueued(st, nd.id); subCol = '#e0c8ff'; }
+    else if (this.QG[nd.id]) { const qi = labCheck(st, nd).quest; if (qi) { sub = (qi.boss ? 'BEAT ' + qi.title.replace(/^Boss:\s*/, '') : qi.title).toUpperCase().slice(0, 26); subCol = '#ffd98a'; } } // [prog18]
     const all = sub ? [...lines, sub] : lines;
     const w = Math.max(...all.map((l, i) => measureText(l, i < lines.length ? 'big' : 'normal'))) + 8;
     const h = lines.length * 12 + (sub ? 10 : 0) + 4;
@@ -954,13 +1125,20 @@ export class LabTree {
         const s = Math.max(1, Math.round((f.size || 2) * (1 - k * 0.6) * Math.max(0.7, z)));
         ctx.fillStyle = rgba('#02050b', 1 - k * k); ctx.fillRect(Math.round(x - s / 2), Math.round(y - s / 2), s, s);
         ctx.fillStyle = rgba('#3a5878', (1 - k) * 0.6); ctx.fillRect(Math.round(x - s / 2), Math.round(y - s / 2), 1, 1);
+      } else if (f.kind === 'chain') { // [prog18] a steel chain bit (2-3 px link, outline + lit top)
+        const s = Math.max(1, Math.round((f.size || 2) * Math.max(0.7, z))), w = Math.abs(Math.cos(f.rot)) > 0.5 ? s + 1 : s;
+        ctx.globalAlpha = 1 - k * k;
+        ctx.fillStyle = '#141c2c'; ctx.fillRect(Math.round(x - w / 2) - 0.5, Math.round(y - s / 2) - 0.5, w + 1, s + 1);
+        ctx.fillStyle = '#a9b9cd'; ctx.fillRect(Math.round(x - w / 2), Math.round(y - s / 2), w, s);
+        ctx.fillStyle = '#f2f8ff'; ctx.fillRect(Math.round(x - w / 2), Math.round(y - s / 2), w, 0.5);
+        ctx.globalAlpha = 1;
       } else if (f.kind === 'confetti') {
         const w = Math.abs(Math.cos(f.rot)) > 0.5 ? 3 : 1;
         ctx.fillStyle = rgba(f.col, 1 - k * k); ctx.fillRect(Math.round(x), Math.round(y), w, 2);
       } else if (f.kind === 'label') {
         const yy = y - LAB_NODE * z * 0.75 - ease.outCubic(k) * 16;
         // [phase9:ui] the label pops up as extruded 3D voxel letters
-        if (!drawPop3D(ctx, f.text, x, yy - 4, { t: this.t, pop: clamp01(f.t / 0.35), alpha: 1 - clamp01((k - 0.6) / 0.4), palette: f.text === 'NEW!' ? 'aqua' : 'gold', size: 16, depth: 3, wobble: 0.7, glowColor: '#03142c' })) {
+        if (!drawPop3D(ctx, f.text, x, yy - 4, { t: this.t, pop: clamp01(f.t / 0.35), alpha: 1 - clamp01((k - 0.6) / 0.4), palette: f.text === 'NEW!' ? 'aqua' : 'gold', size: f.text === 'UNSEALED!' ? 18 : 16, depth: f.text === 'UNSEALED!' ? 4 : 3, wobble: 0.7, glowColor: '#03142c' })) {
           ctx.globalAlpha = 1 - clamp01((k - 0.6) / 0.4);
           drawText(ctx, f.text, Math.round(x - measureText(f.text, 'big') / 2), Math.round(yy - 10), { font: 'big', color: '#fff6a0', outline: '#5a3a06' });
           ctx.globalAlpha = 1;
@@ -1063,7 +1241,7 @@ export class LabTree {
     let title, sub;
     if (isRoot) {
       const L = ensureLab(st), n = NODES.reduce((a, q) => a + (L.done[q.id] ? 1 : 0), 0);
-      const ready = NODES.filter((q) => this.S[q.id] === 'available').length;
+      const ready = NODES.filter((q) => this.S[q.id] === 'available' && !this.QG[q.id]).length; // [prog18] sealed ones wait
       title = 'The Lab'; sub = 'RESEARCH HQ';
       text('Professor Fizz\'s lab. Every discovery grows out from here.');
       add(30, (x, y) => {
@@ -1075,12 +1253,15 @@ export class LabTree {
         drawText(ctx, `BENCHES ${labSlots(st, g.stats)}`, x, y + 2, { color: INK_SOFT });
         drawText(ctx, `READY ${ready}`, x + IW - measureText(`READY ${ready}`), y + 2, { color: OK });
       });
-      buttons.push({ label: 'Show next', tone: 'aqua', icon: getUiIcon('home'), fn: () => this.home() });
-      // [balance] the next main-track upgrade and what it still needs
+      // [balance] the next main-track upgrade (rod / tank / boat / [prog18] ocean expedition) and what it still needs
       const gl = labGoal(st);
+      const gq = gl?.check?.quest && this.questTrackable(gl.check.quest) ? gl.check.quest : null; // [prog18] sealed by a quest
+      if (gq) buttons.push({ label: g.quests?.book?.S?.pin === gq.id ? 'Tracked' : 'Track quest', tone: 'orange', icon: getUiIcon('scroll') || getUiIcon('star'), tip: `Pin "${gq.title}" on your HUD`, fn: () => this.trackQuest(gq) });
+      else buttons.push({ label: 'Show next', tone: 'aqua', icon: getUiIcon('home'), fn: () => this.home() });
       if (gl) {
         const need = labGoalNeed(st, gl);
-        text(`Next goal: ${gl.node.name}${gl.status === 'researching' ? ' (brewing)' : need ? '. ' + need : '. Ready!'}`, '#1d6fa8', 4);
+        const what = gl.node.ocean ? `the ${gl.node.name} expedition` : gl.node.name;
+        text(`Next goal: ${what}${gl.status === 'researching' ? ' (brewing)' : need ? '. ' + need : '. Ready!'}`, '#1d6fa8', 4);
         buttons.push({ label: 'Go to goal', tone: 'green', icon: getUiIcon('arrow_r'), fn: () => this.select(gl.id) });
       }
     } else if (hidden) {
@@ -1090,7 +1271,7 @@ export class LabTree {
       if (gt) text((this.S[gt.id] === 'available' ? 'Research ' : 'Finish ') + gt.name + ' to light the way.', '#1d6fa8', 3);
       if (gt) buttons.push({ label: 'Go there', tone: 'aqua', icon: getUiIcon('arrow_r'), fn: () => this.select(gt.id) });
     } else {
-      title = nd.name; sub = `${(BRANCHES[nd.branch]?.name || '').toUpperCase()}  TIER ${nd.tier}`;
+      title = nd.name; sub = this.QG[id] ? `SEALED  TIER ${nd.tier}` : `${(BRANCHES[nd.branch]?.name || '').toUpperCase()}  TIER ${nd.tier}`;
       text(nd.desc);
       const effects = Object.entries(nd.effect);
       if (effects.length) {
@@ -1115,6 +1296,30 @@ export class LabTree {
         });
       }
       const c = labCheck(st, nd, g.stats);
+      const qi = s === 'available' ? c.quest : null; // [prog18] the quest that seals it
+      if (qi) {
+        const book = g.quests?.book, q = book?.quest?.(qi.id) || null;
+        const ready = !!book?.isReady?.(qi.id), open = this.questTrackable(qi);
+        const prog = q && book && open ? clamp01(book.progress(q)) : 0;
+        const kind = qi.boss ? 'BOSS QUEST' : qi.kind === 'side' ? 'SIDE STORY' : 'STORY QUEST';
+        const tl = wrapText(qi.title, IW - 52, 'big').slice(0, 2);
+        const live = open && (q?.kind !== 'main' || !!book?.isActive?.(qi.id)); // a main quest counts once it is active
+        const status = ready ? 'Done! Claim it in the Quest Log.' : live ? (prog > 0.001 ? `${Math.round(prog * 100)}% done` : 'Open now: go for it!') : open ? `Coming up in Chapter ${qi.chN}` : qi.chN ? `Opens in Chapter ${qi.chN}` : 'Opens later';
+        const h = 44 + tl.length * 12;
+        add(h + 2, (x, y) => {
+          // a parchment slip with the quest giver's portrait: whose quest unlocks this research
+          ctx.drawImage(aeroSurface(IW, h, { top: '#fffaf0', mid: '#f8e8c4', bot: '#ecd29c', edge: '#8a5a1a', a: [1, 1], r: 6, gloss: 0.45, glossH: 10, curve: 1, rim: 0.6, glow: 0.2 }), x, y);
+          drawGiver(ctx, qi.giver, x + 22, y + 24, 17, t);
+          const tx2 = x + 46;
+          drawText(ctx, 'UNLOCKED BY ' + kind, tx2, y + 5, { color: '#a0621a' });
+          tl.forEach((l, i) => drawText(ctx, l, tx2, y + 15 + i * 12, { font: 'big', color: '#5a2e04' }));
+          const ly = y + 16 + tl.length * 12;
+          drawText(ctx, `${qi.npc}${qi.chN ? '  -  Chapter ' + qi.chN : ''}`, tx2, ly, { color: '#8a5a1a' });
+          drawAeroBar(ctx, tx2, ly + 11, IW - 52, 6, ready ? 1 : prog, { color: ready ? '#5fd23a' : '#ffb43a' });
+          drawText(ctx, status, tx2, ly + 19, { color: ready ? OK : live ? '#a0621a' : '#8a7a6a' });
+          drawIcon3D(ctx, 'scroll', x + IW - 11, y + 11, 18, { t, phase: 0.6 });
+        });
+      }
       if (s === 'available') {
         const cr = [];
         if (c.aero.need) cr.push({ kind: 'aero', id: 'aero', ...c.aero });
@@ -1130,10 +1335,16 @@ export class LabTree {
           costTiles(ctx, ui, cr, x, y + 17, IW, { tileW: 72 });
         });
         const benchFree = c.slots > 0;
-        if (!c.gateOk) text(c.gate, BAD, 2); // [balance] boss gate
+        if (!c.bossOk) text(gateLabel(nd), BAD, 2); // [balance] boss gate
+        else if (qi) { if (!c.paid) text('Save up for it while you do the quest!', '#6a3ab8', 2); } // [prog18]
         else if (!c.paid) text('Need more ingredients.', BAD, 1);
         else if (!benchFree) text('All benches busy: it will queue.', '#6a3ab8', 2);
-        buttons.push({ kind: 'research', label: benchFree || !c.paid ? 'Research' : 'Queue it', tone: benchFree || !c.paid ? 'green' : 'purple', icon: getUiIcon(benchFree ? 'check' : 'clock'), disabled: !c.paid || !c.gateOk, sound: 'ui_unlock', tip: 'Start this research (Enter)', fn: () => this.research(id) });
+        if (qi) {
+          // [prog18] sealed: track the quest instead of researching
+          const pinned = g.quests?.book?.S?.pin === qi.id, open = this.questTrackable(qi);
+          buttons.push({ label: pinned ? 'Tracked' : 'Track quest', tone: pinned ? 'green' : 'orange', icon: getUiIcon(pinned ? 'check' : 'scroll') || getUiIcon('star'), disabled: !open, sound: 'ui_click', tip: open ? (pinned ? 'Stop tracking it' : 'Pin this quest on your HUD tracker') : `Opens in Chapter ${qi.chN}`, fn: () => this.trackQuest(qi) });
+          if (g.ui?.panels?.quests) buttons.push({ label: 'Quest log', tone: 'aqua', icon: getUiIcon('book') || getUiIcon('star'), tip: 'Open the Quest Log', fn: () => { const q = g.quests?.book?.quest?.(qi.id); g.ui.open('quests', q?.chapter ? { tab: 'story', chapter: q.chapter } : undefined); } });
+        } else buttons.push({ kind: 'research', label: benchFree || !c.paid ? 'Research' : 'Queue it', tone: benchFree || !c.paid ? 'green' : 'purple', icon: getUiIcon(benchFree ? 'check' : 'clock'), disabled: !c.paid || !c.gateOk, sound: 'ui_unlock', tip: 'Start this research (Enter)', fn: () => this.research(id) });
       } else if (s === 'researching') {
         add(30, (x, y) => {
           drawText(ctx, 'BREWING', x, y, { color: '#b8640a' });
@@ -1191,7 +1402,8 @@ export class LabTree {
     } else {
       const tl = nodeTile(hs, isRoot ? 'root' : s === 'done' ? 'done' : s === 'researching' || s === 'queued' ? 'brew' : 'open', nd?.branch); ctx.drawImage(tl, hx - tl.pad, hy - tl.pad);
       drawAnimIcon(ctx, isRoot ? 'beaker' : nd.icon, hx + hs / 2, hy + hs / 2, 36, t, this.a(id).ph, { hover: 0.5 });
-      this.shine(ctx, hx + hs / 2, hy + hs / 2, hs, 0.7, 3.8);
+      if (!isRoot && this.QG[id]) { const lk = padlockTex(hs); ctx.drawImage(sealTex(hs), hx, hy); ctx.drawImage(lk, Math.round(hx + hs / 2 - lk.width / 2), Math.round(hy + hs * 0.56 - lk.cy)); } // [prog18]
+      else this.shine(ctx, hx + hs / 2, hy + hs / 2, hs, 0.7, 3.8);
     }
     // title (Alagard) + subtitle
     const tx = hx + hs + 8, tmax = x + W - 10 - tx;
@@ -1219,7 +1431,7 @@ export class LabTree {
         const bx = x + pad + i * (bw + 6);
         if (B.kind === 'research') { this.btnRect = { x: bx, y: by, w: bw, h: 28 }; this.btnKind = 'research'; }
         if (B.kind === 'research' && !B.disabled && ((t * 0.8) % 1) < 0.3) drawSparkle(ctx, bx + bw - 6, by + 4, 2, 1, '#fff6a0');
-        if (pill(ui, ctx, bx, by, bw, 28, B.label, { tone: B.tone, icon: B.icon, disabled: B.disabled, tip: B.tip, sound: B.sound, onDisabled: () => g.toast?.('Missing ingredients!', 'cross') })) B.fn();
+        if (pill(ui, ctx, bx, by, bw, 28, B.label, { tone: B.tone, icon: B.icon, disabled: B.disabled, tip: B.tip, sound: B.sound, onDisabled: () => g.toast?.(B.kind === 'research' || !B.tip ? 'Missing ingredients!' : B.tip, 'cross') })) B.fn();
       });
     }
     // close x

@@ -22,6 +22,7 @@ import { CHAPTERS, CHAPTER_BY_ID, QUEST_BY_ID, NPC_NAMES, QuestBook, ensureQuest
 import { OCEAN_NAMES } from '../game/lab.js';
 import { drawPop3D } from './pop3d.js'; // [phase9:ui]
 import { drawIcon3D } from '../gfx/icons3d.js'; // [phase9:ui]
+import { QuestCine, CinePanel } from './questcine.js'; // [questcine18] quest cinematics
 import { drawIcon3d as drawChest3d, chestIconId } from '../fishing/icons3d.js'; // [polish17]
 
 const NPC_COL = { seal: '#8fdcff', fizz: '#7affc8', marina: '#ffd23a', dot: '#59e0ff', bloat: '#ffb44a' };
@@ -185,11 +186,23 @@ class QuestHud {
     this.pendingChapter = null;
     this.introT = 0;
     this.pills = [];
+    // [questcine18] cinematic director + tracker hand-off (cards fly into rows: incoming -> landed)
+    this.incoming = {}; this.landT = {}; this.rowRects = {};
+    this.cine = new QuestCine(game, this, { drawPortrait, rewardIcon, npcName, NPC_COL, CHEERS });
     try { loadAlagard(); } catch { /* fallback font */ }
     game.on?.('questDone', (d) => {
       const q = QUEST_BY_ID[d.id];
       if (!q) return;
       if (q.kind === 'main') this.flash[q.id] = 0;
+      // [questcine18] claims (Quest Log): rewards fly out of the button; main quests get a cinematic beat
+      if (d.claimed) { this.cine.noteClaim(q, d.bonus); return; }
+      if (this.cine.mode() !== 'off') {
+        const b = { kind: 'done', q, bonus: d.bonus };
+        const aero = (q.reward?.aero || 0) + (d.bonus || 0);
+        if (aero > 0) { this.cine.takeAero(aero); b.aero = true; }
+        this.cine.enqueue(b);
+        return;
+      }
       if (d.quiet) return; // [quests16] "claim all" / a refreshed board: one banner is enough
       const lines = CHEERS[q.giver] || CHEERS.seal;
       this.banners = this.banners.filter((b) => b.kind !== 'ready' || b.t > 0);
@@ -208,8 +221,29 @@ class QuestHud {
       this.banners.push({ kind: 'ready', q: QUEST_BY_ID[ids[0]], n: ids.length, t: 0, rw: [] });
       game.audio?.play?.('sparkle', { vol: 0.6 });
     });
-    game.on?.('chapterDone', (d) => { this.pendingChapter = d.id; this.introT = 0; });
+    game.on?.('chapterDone', (d) => {
+      this.pendingChapter = d.id; this.introT = 0;
+      if (this.cine.mode() !== 'off') { // [questcine18] the finale (its Aero lands with the reward reveal)
+        const c = CHAPTER_BY_ID[d.id], aero = (c?.reward?.aero || 0) + (d.bonus || 0);
+        if (aero > 0) this.cine.takeAero(aero);
+        this.cine.enqueue({ kind: 'finale', ch: d.id, aero: aero > 0 });
+      }
+    });
+    // [questcine18] a new main quest: its giver hands you the objective card (chapter openings deal their own)
+    game.on?.('questStarted', (d) => {
+      const q = QUEST_BY_ID[d?.id];
+      if (!q || !game.state.tutorialDone) return;
+      if (ensureQuests(game.state).intro === q.chapter) return;
+      this.cine.enqueue({ kind: 'start', qs: [q] });
+    });
+    // [questcine18] the progression's quest-granted research (the event may never fire: nothing depends on it)
+    game.on?.('labNodeUnlockedByQuest', (d) => { if (d && d.nodeId) this.cine.enqueue({ kind: 'lab', nodeId: d.nodeId, questId: d.questId }); });
   }
+
+  // [questcine18] tracker hand-off: a card is on its way to this quest's row / it just landed there
+  expectCard(id) { this.incoming[id] = this.t; delete this.landT[id]; }
+  landCard(id) { if (this.incoming[id] !== undefined) { delete this.incoming[id]; this.landT[id] = this.t; } }
+  trackerRowRect(id) { return this.rowRects[id] || (this.rect ? { x: this.rect.x, y: this.rect.y + 14, w: this.rect.w, h: 26 } : null); }
 
   slot() {
     const g = this.game;
@@ -222,11 +256,12 @@ class QuestHud {
     return s;
   }
 
-  hit(x, y) { const r = this.rect; return !!r && !this.game.ui?.blocking && x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h; }
+  hit(x, y) { if (this.cine.hit(x, y)) return true; const r = this.rect; return !!r && !this.game.ui?.blocking && x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h; }
 
   open(tab = null) {
     const ui = this.game.ui;
     const S = ensureQuests(this.game.state);
+    if ((S.outro || S.intro) && !tab && this.cine.mode() !== 'off') { if (ui.blocking) for (const p of ui.stack.slice()) ui.close(p.id); this.cine.playChapterNow(); return; } // [questcine18]
     if ((S.outro || S.intro) && ui.panels.chapter && !tab) ui.open('chapter', S.outro ? { mode: 'done', id: S.outro } : { mode: 'intro', id: S.intro });
     else if (ui.panels.quests) {
       // [quests16] land on the tab with something to claim
@@ -239,10 +274,11 @@ class QuestHud {
     const g = this.game;
     this.t += dt;
     this.book.update(dt);
+    try { this.cine.update(dt, inp); } catch (e) { if (!this.cineErr) { this.cineErr = true; console.error(e); } } // [questcine18]
     for (const id in this.flash) { this.flash[id] += dt; if (this.flash[id] > 2.4) delete this.flash[id]; }
     const head = this.banners[0];
     // [polish17] banners wait while a modal panel is open (they are hidden then, never drawn over a window)
-    const held = !!g.ui?.blocking;
+    const held = !!g.ui?.blocking || this.cine.busy(); // [questcine18] and while a quest cinematic plays
     if (head && !held) head.t += dt;
     if (!held) for (const b of this.banners.slice(1)) if (b.kind !== 'ready') b.t += dt;
     this.banners = this.banners.filter((b) => b.t < (b.kind === 'ready' ? 2.6 : 4.6));
@@ -261,7 +297,7 @@ class QuestHud {
     const S = ensureQuests(g.state);
     const calm = g.state.tutorialDone && !g.ui?.blocking && !g.fishing?.busy && !g.tutorial?.intro && !g.ocean?.travelState && !g.tutorial?.active;
     // (chapter intros wait for a click on the tracker's NEW CHAPTER pill; the earned celebration opens by itself)
-    if (S.outro && calm && g.ui?.panels?.chapter) {
+    if (S.outro && calm && g.ui?.panels?.chapter && this.cine.mode() === 'off') {
       this.introT += dt;
       if (this.introT > 2.6 && !this.banners.length) { this.introT = 0; this.open(); }
     } else this.introT = 0;
@@ -273,8 +309,10 @@ class QuestHud {
     if (!g.ui?.isOpen?.('lab')) iconBudget(2);
     const s = this.slot();
     const S = ensureQuests(g.state);
-    if (s && !g.ui?.blocking) this.drawTracker(ctx, s, S);
-    if (!g.ui?.blocking) this.drawBanners(ctx);
+    const cineUp = !!g.ui?.active?.cinematic; // [questcine18] the tracker stays visible under a quest cinematic (cards fly into it)
+    if (s && (!g.ui?.blocking || cineUp)) this.drawTracker(ctx, s, S);
+    if (!g.ui?.blocking && !this.cine.busy()) this.drawBanners(ctx);
+    try { this.cine.drawLight(ctx); } catch (e) { if (!this.cineDrawErr) { this.cineDrawErr = true; console.error(e); } }
     void dt;
   }
 
@@ -313,8 +351,32 @@ class QuestHud {
       for (let i = 0; i < n; i++) { ctx.fillStyle = i < d ? '#4cc83a' : rgba('#0c3a52', 0.16); ctx.fillRect(r.x + 18 + i * 7, r.y + HH - 4, 5, 2); }
     }
     let y = r.y + HH;
+    this.rowRects = {};
     rows.forEach((q, i) => {
       if (y + RHt > r.y + h - pills * (pendH + 3)) return;
+      this.rowRects[q.id] = { x: r.x + 5, y, w: w - 10, h: RHt - 3 };
+      // [questcine18] a card is flying in: an empty glass slot with ticking brackets waits for it
+      if (this.incoming[q.id] !== undefined) {
+        if (this.t - this.incoming[q.id] < 25) {
+          ctx.drawImage(aeroSurface(w - 10, RHt - 3, { tone: 'glass', r: 7, gloss: 0.4, glossH: 6, rim: 0.5, glow: 0.2, a: [0.5, 0.5] }), r.x + 5, y);
+          drawPixelBrackets(ctx, r.x + 7, y + 2, w - 14, RHt - 7, t, { col: '#fff6a0', ink: '#0a3e74' });
+          this.rowsK[q.id] = 1;
+          y += RHt;
+          return;
+        }
+        delete this.incoming[q.id];
+      }
+      const lt = this.landT[q.id];
+      const lk = lt !== undefined ? clamp01((this.t - lt) / 0.55) : 1;
+      if (lt !== undefined && lk >= 1) delete this.landT[q.id];
+      if (lk < 1) {
+        // it just landed: a squashy pop, a green flash and sparkles
+        ctx.save();
+        const cxr = r.x + w / 2, cyr = y + RHt / 2, sq = Math.sin(lk * Math.PI) * 0.1;
+        ctx.translate(cxr, cyr); ctx.scale(1 + sq, 1 - sq * 0.6); ctx.translate(-cxr, -cyr);
+        ctx.drawImage(aeroSurface(w - 10, RHt - 3, { tone: 'green', r: 7, gloss: 0.6, glossH: 8, curve: 1, rim: 0.8, glow: 0.5, a: [1 - lk, 1 - lk] }), r.x + 5, y);
+        for (let j = 0; j < 3; j++) drawSparkle(ctx, r.x + 14 + j * (w - 30) / 2, y + 3 + (j % 2) * 9, 2, 1 - lk);
+      }
       const fl = this.flash[q.id];
       const done = !!S.done[q.id];
       const kin = this.rowsK[q.id] = Math.min(1, (this.rowsK[q.id] ?? 0) + 0.05);
@@ -349,6 +411,7 @@ class QuestHud {
         miniBar(ctx, tx, y + capT + capS + 9, Math.max(24, tw), 3, o.have / Math.max(1, o.need));
       }
       ctx.globalAlpha = a0 * (s.a ?? 1);
+      if (lk < 1) ctx.restore();
       y += RHt;
     });
     // pills at the bottom: rewards waiting (green), a chapter story waiting (orange)
@@ -428,6 +491,7 @@ export function installQuests(game) {
   return {
     book: hud.book,
     hud,
+    cine: hud.cine, // [questcine18]
     update: (dt, inp) => hud.update(dt, inp),
     hit: (x, y) => hud.hit(x, y),
     drawHud: (ctx, dt) => hud.drawHud(ctx, dt),
@@ -538,6 +602,7 @@ export class QuestPanel {
       if (pill(ui, ctx, x, hb.y + 4, w, 22, lab, { tone: 'orange', icon: icon('star', 14), sound: 'ui_unlock', tip: 'Collect every reward waiting' })) {
         const n = book.claimAll();
         if (n > 1) this.claimFx(P.x + P.w / 2, P.y + 60);
+        g.quests?.cine?.claimFx?.(null, x + w / 2, hb.y + 15); // [questcine18] the rewards fly from the button
       }
     }
     const body = { x: P.x + 10, y: P.y + 42, w: P.w - 20, h: P.h - 52 };
@@ -545,6 +610,7 @@ export class QuestPanel {
     else if (this.tab === 'miles') this.drawMilestones(ctx, ui, body);
     else this.drawStory(ctx, ui, body);
     if (ui.inp.pressed && ui.hover(P)) ui.inp.pressed = false;
+    try { g.quests?.cine?.drawOver?.(ctx); } catch { /* optional */ } // [questcine18] rewards flying out of CLAIM buttons
   }
 
   claimFx(x, y) {
@@ -555,7 +621,7 @@ export class QuestPanel {
 
   // a claim from a card: pay it, burst some pixel stars at the button
   doClaim(q, x, y) {
-    if (this.book.claim(q.id)) { this.claimFx(x, y); return true; }
+    if (this.book.claim(q.id)) { this.claimFx(x, y); this.game.quests?.cine?.claimFx?.(q, x, y + 8); return true; } // [questcine18]
     this.game.audio?.play?.('ui_error');
     return false;
   }
@@ -1139,6 +1205,7 @@ export class ChapterPanel {
 export function registerQuestPanels(ui) {
   ui.register(new QuestPanel());
   ui.register(new ChapterPanel());
+  ui.register(new CinePanel()); // [questcine18] 'questcine': hosts the heavy quest cinematics
 }
 
 void hash1; void AERO; void drawAeroBadge; void OK; void OCEAN_NAMES;

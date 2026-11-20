@@ -24191,14 +24191,14 @@ kmlmk..
 
   // src/game/rods.js
   function ensureRods(state) {
-    var _a2, _b;
+    var _a3, _b;
     const r = state.rods || (state.rods = { owned: ["twig"], equipped: "twig", skins: {} });
     if (!Array.isArray(r.owned)) r.owned = ["twig"];
     if (!r.owned.includes("twig")) r.owned.unshift("twig");
     r.skins || (r.skins = {});
     if (!r.lv || typeof r.lv !== "object") r.lv = {};
     if (!r.tackle || typeof r.tackle !== "object") r.tackle = {};
-    (_a2 = r.tackle).owned || (_a2.owned = {});
+    (_a3 = r.tackle).owned || (_a3.owned = {});
     (_b = r.tackle).on || (_b.on = {});
     for (const s of TACKLE_SLOTS) {
       const id = r.tackle.on[s];
@@ -33129,7 +33129,7 @@ kmlmk..
     return inv;
   }
   function addItem(state, id, qty = 1) {
-    var _a2;
+    var _a3;
     if (!id || qty <= 0) return;
     const it2 = ITEMS[id];
     if (it2?.kind === "bait") {
@@ -33150,7 +33150,7 @@ kmlmk..
     if (it2?.kind === "cosmetic" && !ownsWardrobe(state, id)) {
       if (typeof grantCosmetic === "function") grantCosmetic(state, it2.wardrobe);
       else (state.cosmetics || (state.cosmetics = {}))[it2.wardrobe] = true;
-      ((_a2 = inventory2(state)).fresh || (_a2.fresh = {}))[id] = Date.now();
+      ((_a3 = inventory2(state)).fresh || (_a3.fresh = {}))[id] = Date.now();
       if (--qty <= 0) return;
     }
     const inv = inventory2(state);
@@ -43538,6 +43538,97 @@ kmlmk..
     return { aero: main ? Math.round(aero * MAIN_MUL / 5) * 5 : aero, items, fish };
   }
   var LAB_GATE = { 6: "eldershark", 7: "bsod", 8: "mayorgrouper", 9: "moltenleviathan" };
+  var LAB_QUEST_GATE = {
+    // Rods: Fizz builds them from what the story brings back
+    rod_glass: "c2_boss",
+    // the Dragon-Karp's crystal scales make the glass
+    rod_chrome: "s4_scrap",
+    // Marina's "Rust Bucket" scrap job: chrome plating
+    rod_dolphin: "c5_epic",
+    // Bloat's tale of an epic catch
+    rod_aero: "c5_boss",
+    // the Main Character Marlin's carbon bill
+    rod_trident: "c6_boss",
+    // only a Sea King beats the Lava Rift's leviathan
+    rod_leviathan: "c7_legend",
+    // a line that held a legend
+    rod_kelp: "s2_seahorse",
+    // braided from the sea-horse's seagrass
+    rod_aurora: "s3_aurora",
+    // northern lights in a bottle
+    rod_prism: "s5_light",
+    // Aero LED science: split the light
+    // Reel & Shock: Fizz's zap studies
+    shock2: "s2_zap",
+    // ten PERFECT zaps
+    rod_volt: "s4_zap",
+    // twenty-five PERFECT zaps
+    focus1: "s3_flawless",
+    // three flawless catches
+    shock5: "s6_zap",
+    // sixty PERFECT zaps
+    // Boats: Marina's dock jobs
+    boat_skiff: "c2_workshop",
+    // fix Marina's Workshop and she builds you a skiff
+    boat_hydrofoil: "c3_tune",
+    // tune a rod, then tune a hull
+    boat_yacht: "s5_part",
+    // a custom hull part first
+    boat_catamaran: "c6_tackle",
+    // fully kitted out
+    boat_sub: "c6_deep",
+    // you have seen the Abyssal Zone
+    boat_engine: "s7_seven",
+    // sailed all seven seas
+    // Aquarium: tank keeping
+    tank_big: "s3_filter",
+    // a big tank needs a filter
+    tank_reef: "s4_heater",
+    // reefs like warm water
+    tank_wall: "s6_air",
+    // a Bubble Wall for the whole wall
+    tank_mutation: "s3_mutant",
+    // study a mutated fish first
+    tank_sparkle: "s5_babies",
+    // three hatchlings later
+    // Luck & Idle
+    lab_slot3: "c5_lab",
+    // thirty projects earn a third bench
+    luck3: "s4_loot",
+    // a loot goblin's luck
+    luck4: "s7_legends",
+    // three legends caught
+    // Bait
+    bait_golden: "c4_golden",
+    // a Golden Chest cracked open
+    bait_blackhole: "s6_bottom",
+    // fished the Rift's rock bottom
+    bait_relic: "s7_abyss",
+    // stared into the abyss
+    // Crafting
+    craft_lighthouse: "s3_midnight",
+    // lights for the Fjord's Midnight Zone
+    craft_vault: "c6_aero",
+    // 15,000 Aero earned needs a vault
+    craft_totem: "s6_bosses",
+    // a wall of boss trophies
+    // Oceans: the previous ocean's boss quest is the trophy that charts the way
+    sea_shallows: "c1_boss",
+    sea_fjord: "c2_boss",
+    sea_junkyard: "c3_boss",
+    sea_metropolis: "c4_boss",
+    sea_volcano: "c5_boss",
+    sea_abyss: "c6_boss"
+  };
+  var OCEAN_COST = {
+    sea_shallows: { aero: 600, items: { driftwood: 6, shell: 4 }, fish: {} },
+    sea_fjord: { aero: 2e3, items: { sea_glass: 4, coral_chunk: 3, pearl: 1 }, fish: { "biome:shallows": 2 } },
+    sea_junkyard: { aero: 5e3, items: { ice_shard: 3, pearl: 2, sea_glass: 3 }, fish: { "biome:fjord": 2 } },
+    sea_metropolis: { aero: 12e3, items: { spring_coil: 3, gear: 4, circuit_board: 2 }, fish: { "biome:junkyard": 2, "rarity:uncommon": 1 } },
+    sea_volcano: { aero: 28e3, items: { magnet_stone: 2, circuit_board: 3, pearl: 3 }, fish: { "biome:metropolis": 2, "rarity:rare": 1 } },
+    sea_abyss: { aero: 65e3, items: { lava_glass: 3, ancient_stone: 3, abyss_crystal: 1 }, fish: { "biome:volcano": 2, "rarity:rare": 1 } }
+  };
+  var OCEAN_TIME = { sea_shallows: 20, sea_fjord: 60, sea_junkyard: 150, sea_metropolis: 300, sea_volcano: 480, sea_abyss: 720 };
   var RAW = [];
   function n(id, branch, tier, lane, name, icon, req, o = {}) {
     RAW.push({ id, branch, tier, lane, name, icon, req, ...o });
@@ -43738,7 +43829,8 @@ kmlmk..
     const unlockNode = !!o.unlock?.some((u) => u.kind !== "recipe" || tier >= 3);
     const main = !!o.unlock?.some((u) => MAIN_KINDS.has(u.kind));
     const auto = o.branch ? autoCost(o.branch, tier, unlockNode ? tier >= 3 : tier >= 5, main) : { aero: 0, items: {}, fish: {} };
-    const cost = { aero: o.cost?.aero ?? auto.aero, items: { ...o.cost?.items || auto.items }, fish: { ...o.fish || auto.fish } };
+    const oc = OCEAN_COST[o.id];
+    const cost = oc ? { aero: oc.aero, items: { ...oc.items }, fish: { ...oc.fish } } : { aero: o.cost?.aero ?? auto.aero, items: { ...o.cost?.items || auto.items }, fish: { ...o.fish || auto.fish } };
     const { depth, lane, ang, rad, pos } = LAYOUT[o.id];
     const gate = o.branch && LAB_GATE[tier] && BOSS_BY_ID[LAB_GATE[tier]] ? { boss: LAB_GATE[tier] } : null;
     return {
@@ -43753,7 +43845,7 @@ kmlmk..
       pos,
       req: o.req || [],
       cost,
-      time: o.time ?? (TIME_T[tier] || 0),
+      time: OCEAN_TIME[o.id] ?? o.time ?? (TIME_T[tier] || 0),
       effect: o.effect || {},
       unlock: o.unlock || [],
       desc: o.desc || "",
@@ -43762,11 +43854,17 @@ kmlmk..
       col: o.col ?? 0,
       // [phase6:lab]
       main,
-      gate
+      gate,
       // [balance] main-track unlock (rod / boat / tank); boss gate for tier 6+
+      qgate: LAB_QUEST_GATE[o.id] || null,
+      ocean: !!o.unlock?.some((u) => u.kind === "biome")
+      // [prog18]
     };
   });
   var LAB_BY_ID = Object.fromEntries(LAB_NODES.map((nd) => [nd.id, nd]));
+  var QUEST_GATED = {};
+  var _a2;
+  for (const nd of LAB_NODES) if (nd.qgate) (QUEST_GATED[_a2 = nd.qgate] || (QUEST_GATED[_a2] = [])).push(nd.id);
   var LAB_CHILDREN = {};
   for (const nd of LAB_NODES) for (const r of nd.req) (LAB_CHILDREN[r] || (LAB_CHILDREN[r] = [])).push(nd.id);
   function grantNode(state, id, seen = /* @__PURE__ */ new Set()) {
@@ -43827,8 +43925,8 @@ kmlmk..
   }
   var UNLOCK_INDEX = {};
   function nodeFor(kind, id) {
-    var _a2;
-    if (!Object.keys(UNLOCK_INDEX).length) for (const nd of LAB_NODES) for (const u of nd.unlock) UNLOCK_INDEX[_a2 = u.kind + ":" + u.id] || (UNLOCK_INDEX[_a2] = nd);
+    var _a3;
+    if (!Object.keys(UNLOCK_INDEX).length) for (const nd of LAB_NODES) for (const u of nd.unlock) UNLOCK_INDEX[_a3 = u.kind + ":" + u.id] || (UNLOCK_INDEX[_a3] = nd);
     return UNLOCK_INDEX[kind + ":" + id] || null;
   }
   function applyUnlock(state, kind, id) {
