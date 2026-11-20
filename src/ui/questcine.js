@@ -251,6 +251,7 @@ export class QuestCine {
       head: { palette: 'gold', size: 32, depth: 4, scale: big * 0.8 },
       chap: { palette: 'aqua', size: 32, depth: 4, scale: big },
       sub: { palette: 'white', size: 16, depth: 3, scale: 1 },
+      ocean: { palette: 'sky', size: 16, depth: 3, scale: 1.5 },
       small: { palette: 'gold', size: 16, depth: 3, scale: 1 },
       num: { palette: 'white', size: 16, depth: 3, scale: 1.25 },
       stamp: { palette: 'leaf', size: 16, depth: 3, scale: 1 },
@@ -284,7 +285,7 @@ export class QuestCine {
       this.prep.push(prepWord('DONE!', T.stamp));
       this.prep.push(prepWord('NEXT OCEAN', T.small));
       const nx = CHAPTERS[ch.n];
-      if (nx) this.prep.push(prepWord(OCEAN_NAMES[nx.ocean] || nx.ocean, T.sub));
+      if (nx) this.prep.push(prepWord(OCEAN_NAMES[nx.ocean] || nx.ocean, T.ocean));
       for (const r of rewardList(ch.reward)) if (r.n) this.prep.push(prepWord((r.key === 'aero' ? '+' : 'x') + r.n, T.num));
       if (this.mode() === 'full' && ch.outro) this.warmNpc(ch.outro.npc);
     } else if (b.kind === 'done' && b.q) {
@@ -326,10 +327,12 @@ export class QuestCine {
 
     const calm = this.calm();
     if (!g.fishing?.fighting && this.prep.length) this.stepPrep();
+    // safety: the cutscene panel never stays open (blocking the game) without a heavy beat playing in it
+    if (g.ui?.isOpen?.('questcine') && (!this.cur || !this.cur.heavy)) { this.closing = true; g.ui.close('questcine'); this.closing = false; this.barsTo = 0; this.hudHidden = false; }
     if (this.cur) {
       if (this.cur.heavy) {
-        // another window took over (or the panel was closed by hand): wrap up cleanly
-        if (!g.ui?.isOpen?.('questcine')) this.finish(true);
+        // another window took over (or the panel was closed by hand): wrap up cleanly; a beat never runs away
+        if (!g.ui?.isOpen?.('questcine') || this.cur.t > 45) this.finish(!g.ui?.isOpen?.('questcine'));
       } else {
         if (!calm) this.cur.t = Math.max(this.cur.t, this.cur.end - 0.25); // a fight starts: let the light beat go
         this.cur.t += dt;
@@ -812,6 +815,7 @@ export class QuestCine {
       try { this.art.rewardIcon(ctx, r, px, py, Math.round(s * 0.74), t, i); } catch { /* optional */ }
       if (r.n && k > 0.5) {
         const txt = (r.key === 'aero' ? '+' : 'x') + r.n;
+        wordNow(txt, T.num);
         if (!drawWord(ctx, txt, T.num, px + s / 2 + S * 0.42, py + 1, backOut((k - 0.5) * 2))) drawText(ctx, txt, Math.round(px + s / 2 + 4), Math.round(py - 3), { color: '#ffffff', shadow: '#04264e' });
       }
       if (((t * 0.9 + i * 0.3) % 1) < 0.12) drawSparkle(ctx, px + s * 0.3, py - s * 0.3, 2, 1);
@@ -1081,7 +1085,7 @@ export class QuestCine {
     c.icon ??= this.hud.book.objectives(q)[0]?.icon || 'star';
     ctx.drawImage(aeroSurface(w - 16, 22, { tone: done ? 'white' : 'aqua', r: 'pill', gloss: 0.7, glossH: 8, curve: 1, rim: 0.8, glow: 0.4 }), -w / 2 + 8, h / 2 - 28);
     drawAnimIcon(ctx, c.icon, 0, h / 2 - 17, 18, t, i, {});
-    if (done) this.drawStamp(ctx, 0, 4, 1, -0.22);
+    if (done) this.drawStamp(ctx, w * 0.08, h * 0.16, 1, -0.22);
   }
   // a rubber "DONE!" stamp in 3D voxel letters on an inked plate
   drawStamp(ctx, x, y, k, rot = -0.2) {
@@ -1150,7 +1154,7 @@ export class QuestCine {
         this.drawCardFace(ctx, c, cw0, ch0, t, i, false);
         const sk = (b.pt - S0 - i * 0.17) / 0.16;
         if (sk > 0) {
-          this.drawStamp(ctx, 0, 6, sk < 1 ? 2.4 - 1.4 * ease.inCubic(sk) : 1, -0.18 + (i % 3) * 0.08);
+          this.drawStamp(ctx, cw0 * 0.08, ch0 * 0.16, sk < 1 ? 2.4 - 1.4 * ease.inCubic(sk) : 1, -0.18 + (i % 3) * 0.08);
           if (sk >= 1 && !c.stamped) {
             c.stamped = 1;
             g.audio?.play?.(i === n - 1 ? 'timing_perfect' : 'timing_good', { vol: 0.55, pitch: 0.85 + i * 0.04 });
@@ -1175,12 +1179,12 @@ export class QuestCine {
           ctx.save();
           ctx.globalAlpha *= nk * fade;
           drawAeroGlow(ctx, b.cx, ny, Math.round(H * 0.16), '#bff6ff', 0.3);
-          drawWord(ctx, 'NEXT OCEAN', T.small, b.cx, ny - 18, backOut(nk));
+          drawWord(ctx, 'NEXT OCEAN', T.small, b.cx, ny - 20, backOut(nk));
           const nm = OCEAN_NAMES[b.next.ocean] || b.next.ocean;
-          const c = word(nm, T.sub);
-          const gx = b.cx - (c ? c.width / 2 : 60) - 22;
-          drawAnimIcon(ctx, 'biome:' + b.next.ocean, gx, ny + 6, Math.round(32 * backOut(nk)), t, 0, { hover: 0.7 });
-          drawWord(ctx, nm, T.sub, b.cx, ny + 6, 1);
+          const c = word(nm, T.ocean);
+          const gx = b.cx - (c ? c.width / 2 : 60) - 26;
+          drawAnimIcon(ctx, 'biome:' + b.next.ocean, gx, ny + 6, Math.round(40 * backOut(nk)), t, 0, { hover: 0.7 });
+          drawWord(ctx, nm, T.ocean, b.cx, ny + 6, 1);
           if (!b.fx.teaser) { b.fx.teaser = 1; g.audio?.play?.('magic', { vol: 0.45 }); try { g.particles?.pixelBurst?.('sparkle', gx, ny + 6, 6, { layer: 'ui', ramp: 'aqua' }); } catch { /* optional */ } }
           ctx.restore();
         }
@@ -1190,7 +1194,7 @@ export class QuestCine {
         if (this.dlg.active) { this.dlg.update(dt, null); this.drawBox(ctx, b, { w: Math.min(W - 40, 520), cx: b.cx }); }
         const ready = outro ? b.fx.say && !this.dlg.active : tk > 2.4;
         b.phaseEnd = b.pt;
-        if (ready && tk > 1.6) { b.phase = 'out'; b.pt = 0; b.exitAt = b.t; b.flyAt = b.t + 0.3; this.barsTo = 0; this.hudHidden = false; if (b.cam) try { g.camera.release(2.2); } catch { /* optional */ } }
+        if (ready && tk > 1.6) { const S = ensureQuests(g.state); if (S.outro === b.ch) { S.outro = null; g.save?.(); } b.phase = 'out'; b.pt = 0; b.exitAt = b.t; b.flyAt = b.t + 0.3; this.barsTo = 0; this.hudHidden = false; if (b.cam) try { g.camera.release(2.2); } catch { /* optional */ } }
       } else {
         b.phaseEnd = 1.4;
         if (b.pt > 1.5) b.end = b.t;

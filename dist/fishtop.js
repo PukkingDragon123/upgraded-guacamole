@@ -107429,6 +107429,7 @@ void main() {
             head: { palette: "gold", size: 32, depth: 4, scale: big * 0.8 },
             chap: { palette: "aqua", size: 32, depth: 4, scale: big },
             sub: { palette: "white", size: 16, depth: 3, scale: 1 },
+            ocean: { palette: "sky", size: 16, depth: 3, scale: 1.5 },
             small: { palette: "gold", size: 16, depth: 3, scale: 1 },
             num: { palette: "white", size: 16, depth: 3, scale: 1.25 },
             stamp: { palette: "leaf", size: 16, depth: 3, scale: 1 }
@@ -107475,7 +107476,7 @@ void main() {
             this.prep.push(prepWord("DONE!", T5.stamp));
             this.prep.push(prepWord("NEXT OCEAN", T5.small));
             const nx = CHAPTERS[ch.n];
-            if (nx) this.prep.push(prepWord(OCEAN_NAMES[nx.ocean] || nx.ocean, T5.sub));
+            if (nx) this.prep.push(prepWord(OCEAN_NAMES[nx.ocean] || nx.ocean, T5.ocean));
             for (const r of rewardList(ch.reward)) if (r.n) this.prep.push(prepWord((r.key === "aero" ? "+" : "x") + r.n, T5.num));
             if (this.mode() === "full" && ch.outro) this.warmNpc(ch.outro.npc);
           } else if (b.kind === "done" && b.q) {
@@ -107518,9 +107519,16 @@ void main() {
           if (this.claims.length && !g.ui?.isOpen?.("quests")) this.flushClaims(this.W / 2, this.H * 0.4);
           const calm = this.calm();
           if (!g.fishing?.fighting && this.prep.length) this.stepPrep();
+          if (g.ui?.isOpen?.("questcine") && (!this.cur || !this.cur.heavy)) {
+            this.closing = true;
+            g.ui.close("questcine");
+            this.closing = false;
+            this.barsTo = 0;
+            this.hudHidden = false;
+          }
           if (this.cur) {
             if (this.cur.heavy) {
-              if (!g.ui?.isOpen?.("questcine")) this.finish(true);
+              if (!g.ui?.isOpen?.("questcine") || this.cur.t > 45) this.finish(!g.ui?.isOpen?.("questcine"));
             } else {
               if (!calm) this.cur.t = Math.max(this.cur.t, this.cur.end - 0.25);
               this.cur.t += dt;
@@ -108158,6 +108166,7 @@ void main() {
             }
             if (r.n && k > 0.5) {
               const txt = (r.key === "aero" ? "+" : "x") + r.n;
+              wordNow(txt, T5.num);
               if (!drawWord(ctx3, txt, T5.num, px3 + s / 2 + S13 * 0.42, py + 1, backOut2((k - 0.5) * 2))) drawText(ctx3, txt, Math.round(px3 + s / 2 + 4), Math.round(py - 3), { color: "#ffffff", shadow: "#04264e" });
             }
             if ((t * 0.9 + i * 0.3) % 1 < 0.12) drawSparkle(ctx3, px3 + s * 0.3, py - s * 0.3, 2, 1);
@@ -108519,7 +108528,7 @@ void main() {
           c.icon ?? (c.icon = this.hud.book.objectives(q)[0]?.icon || "star");
           ctx3.drawImage(aeroSurface(w - 16, 22, { tone: done ? "white" : "aqua", r: "pill", gloss: 0.7, glossH: 8, curve: 1, rim: 0.8, glow: 0.4 }), -w / 2 + 8, h / 2 - 28);
           drawAnimIcon(ctx3, c.icon, 0, h / 2 - 17, 18, t, i, {});
-          if (done) this.drawStamp(ctx3, 0, 4, 1, -0.22);
+          if (done) this.drawStamp(ctx3, w * 0.08, h * 0.16, 1, -0.22);
         }
         // a rubber "DONE!" stamp in 3D voxel letters on an inked plate
         drawStamp(ctx3, x, y, k, rot3 = -0.2) {
@@ -108601,7 +108610,7 @@ void main() {
               this.drawCardFace(ctx3, c, cw0, ch0, t, i, false);
               const sk = (b.pt - S0 - i * 0.17) / 0.16;
               if (sk > 0) {
-                this.drawStamp(ctx3, 0, 6, sk < 1 ? 2.4 - 1.4 * ease.inCubic(sk) : 1, -0.18 + i % 3 * 0.08);
+                this.drawStamp(ctx3, cw0 * 0.08, ch0 * 0.16, sk < 1 ? 2.4 - 1.4 * ease.inCubic(sk) : 1, -0.18 + i % 3 * 0.08);
                 if (sk >= 1 && !c.stamped) {
                   c.stamped = 1;
                   g.audio?.play?.(i === n2 - 1 ? "timing_perfect" : "timing_good", { vol: 0.55, pitch: 0.85 + i * 0.04 });
@@ -108634,12 +108643,12 @@ void main() {
                 ctx3.save();
                 ctx3.globalAlpha *= nk * fade;
                 drawAeroGlow(ctx3, b.cx, ny, Math.round(H8 * 0.16), "#bff6ff", 0.3);
-                drawWord(ctx3, "NEXT OCEAN", T5.small, b.cx, ny - 18, backOut2(nk));
+                drawWord(ctx3, "NEXT OCEAN", T5.small, b.cx, ny - 20, backOut2(nk));
                 const nm = OCEAN_NAMES[b.next.ocean] || b.next.ocean;
-                const c = word(nm, T5.sub);
-                const gx = b.cx - (c ? c.width / 2 : 60) - 22;
-                drawAnimIcon(ctx3, "biome:" + b.next.ocean, gx, ny + 6, Math.round(32 * backOut2(nk)), t, 0, { hover: 0.7 });
-                drawWord(ctx3, nm, T5.sub, b.cx, ny + 6, 1);
+                const c = word(nm, T5.ocean);
+                const gx = b.cx - (c ? c.width / 2 : 60) - 26;
+                drawAnimIcon(ctx3, "biome:" + b.next.ocean, gx, ny + 6, Math.round(40 * backOut2(nk)), t, 0, { hover: 0.7 });
+                drawWord(ctx3, nm, T5.ocean, b.cx, ny + 6, 1);
                 if (!b.fx.teaser) {
                   b.fx.teaser = 1;
                   g.audio?.play?.("magic", { vol: 0.45 });
@@ -108665,6 +108674,11 @@ void main() {
               const ready3 = outro ? b.fx.say && !this.dlg.active : tk > 2.4;
               b.phaseEnd = b.pt;
               if (ready3 && tk > 1.6) {
+                const S13 = ensureQuests(g.state);
+                if (S13.outro === b.ch) {
+                  S13.outro = null;
+                  g.save?.();
+                }
                 b.phase = "out";
                 b.pt = 0;
                 b.exitAt = b.t;
@@ -109403,7 +109417,7 @@ void main() {
           const flashIds = Object.keys(this.flash).filter((id2) => QUEST_BY_ID[id2]);
           const rows = [...pin && !act.includes(pin) ? [pin] : [], ...flashIds.map((id2) => QUEST_BY_ID[id2]).filter((q) => !act.includes(q) && q !== pin), ...act].slice(0, 3);
           const RHt = capT + capS + 16, HH = capS + 11;
-          const pending2 = !!(S13.outro || S13.intro);
+          const pending2 = !!(S13.outro || S13.intro) && !(this.cine.busy() && this.cine.cur?.heavy);
           const ready3 = book2.readyCount();
           const pendH = capS + 10;
           const pills = (pending2 ? 1 : 0) + (ready3 ? 1 : 0);
@@ -109610,6 +109624,8 @@ void main() {
           this.sel = d?.chapter || CHAPTERS[Math.min(S13.ch, CHAPTERS.length - 1)]?.id;
           if (d?.tab && TABS4.some((x) => x.id === d.tab)) this.tab = d.tab;
           this.scroll = { story: 0, orders: 0, miles: 0 };
+          this.tabT = 1;
+          this.pageT = 0;
           this.drag = null;
           try {
             if (this.game.state.tutorialDone) this.book.refreshDaily();
@@ -109677,10 +109693,14 @@ void main() {
             const on = this.tab === tb.id;
             if (pill(ui, ctx3, tx, hb.y + 4, w, 22, lab3, { tone: on ? "white" : "grass", active: on, icon: icon(tb.icon, 14), sound: "ui_page", tip: tb.id === "orders" ? "Today's orders: refresh every day" : tb.id === "miles" ? "Lifetime goals" : "Chapters and side stories" })) {
               if (this.tab !== tb.id) {
+                this.tabDir = TABS4.findIndex((x) => x.id === tb.id) > TABS4.findIndex((x) => x.id === this.tab) ? 1 : -1;
                 this.tab = tb.id;
                 this.drag = null;
+                this.tabT = 0;
+                this.pageT = 0;
               }
             }
+            if (on) this.tabSlot = { x: tx, w };
             const n2 = this.tabReady(tb.id);
             if (n2) drawAeroBadge(ctx3, tx + w + 2, hb.y - 3, n2, t);
             tx += w + 14;
@@ -109699,10 +109719,36 @@ void main() {
               g.quests?.cine?.claimFx?.(null, x + w / 2, hb.y + 15);
             }
           }
+          if (this.tabSlot) {
+            const k = 1 - Math.exp(-dt * 16);
+            this.tabX = this.tabX == null ? this.tabSlot.x : this.tabX + (this.tabSlot.x - this.tabX) * k;
+            this.tabW = this.tabW == null ? this.tabSlot.w : this.tabW + (this.tabSlot.w - this.tabW) * k;
+            const ux = Math.round(this.tabX + 6), uw = Math.round(this.tabW - 12), uy = hb.y + 27;
+            ctx3.fillStyle = "#1a5e12";
+            ctx3.fillRect(ux - 1, uy - 1, uw + 2, 5);
+            ctx3.fillStyle = "#ffd23a";
+            ctx3.fillRect(ux, uy, uw, 3);
+            ctx3.fillStyle = "#fff6c8";
+            ctx3.fillRect(ux, uy, uw, 1);
+            for (let i = 0; i < 3; i++) {
+              const sx = ux + (t * 40 + i * uw / 3) % uw;
+              ctx3.fillStyle = "#ffffff";
+              ctx3.fillRect(Math.round(sx), uy, 2, 1);
+            }
+          }
+          this.tabT = Math.min(1, (this.tabT ?? 1) + dt * 4.5);
+          this.pageT = Math.min(5, (this.pageT ?? 5) + dt);
           const body = { x: P7.x + 10, y: P7.y + 42, w: P7.w - 20, h: P7.h - 52 };
+          const te = ease.outCubic(this.tabT);
+          ctx3.save();
+          if (te < 1) {
+            ctx3.translate(Math.round((1 - te) * 28 * (this.tabDir || 1)), 0);
+            ctx3.globalAlpha *= 0.25 + 0.75 * te;
+          }
           if (this.tab === "orders") this.drawOrders(ctx3, ui, body);
           else if (this.tab === "miles") this.drawMilestones(ctx3, ui, body);
           else this.drawStory(ctx3, ui, body);
+          ctx3.restore();
           if (ui.inp.pressed && ui.hover(P7)) ui.inp.pressed = false;
           try {
             g.quests?.cine?.drawOver?.(ctx3);
@@ -109797,7 +109843,47 @@ void main() {
           const h = Math.max(52, objY + nObj * 17 + 4);
           return { rl, rwW, lines, LH, objY, h };
         }
+        // [questcine18] card juice: cards cascade in (tab / chapter change), lift on hover with ticking brackets, sink when
+        // pressed; READY cards get a gold ribbon + bouncing arrow at CLAIM; the body is drawCardBody
         drawCard(ctx3, ui, q, r, i, L4, clipR) {
+          const st = this.cardState(q);
+          const vis = { x: r.x, y: Math.max(r.y, clipR.y), w: r.w, h: Math.min(r.y + r.h, clipR.y + clipR.h) - Math.max(r.y, clipR.y) };
+          const hov = vis.h > 4 && ui.hover(vis) && !st.locked;
+          const H8 = this.cardHov || (this.cardHov = /* @__PURE__ */ new Map());
+          const hk = H8.get(q.id) ?? 0, nk = hk + ((hov ? 1 : 0) - hk) * 0.3;
+          H8.set(q.id, nk);
+          if (H8.size > 300) H8.clear();
+          const down = hov && ui.inp.down ? 1 : 0;
+          const ck = ease.outCubic(clamp012(((this.pageT ?? 1) * 1 - Math.min(i, 8) * 0.045) / 0.3));
+          ctx3.save();
+          if (ck < 1) {
+            ctx3.translate(Math.round((1 - ck) * 36), 0);
+            ctx3.globalAlpha *= ck;
+          }
+          ctx3.translate(0, Math.round(-nk * 2 + down));
+          this.drawCardBody(ctx3, ui, q, r, i, L4, clipR);
+          if (nk > 0.3 && !down) drawPixelBrackets(ctx3, r.x + 1, r.y + 1, r.w - 2, r.h - 2, this.t, { col: st.ready ? "#fff6a0" : "#ffffff", ink: "#0a3e74" });
+          if (st.ready) {
+            const rx2 = r.x - 3, ry2 = r.y + 4;
+            ctx3.drawImage(aeroSurface(46, 13, { tone: TONE_READY, r: 3, gloss: 0.7, glossH: 5, curve: 1, rim: 0.8, glow: 0.5 }), rx2, ry2);
+            ctx3.fillStyle = "#9a5a08";
+            ctx3.fillRect(rx2, ry2 + 13, 3, 3);
+            drawText(ctx3, "READY!", rx2 + 6, ry2 + 4, { font: "small", color: "#7a4204" });
+            if ((this.t * 1.3 + i * 0.3) % 1 < 0.3) drawSparkle(ctx3, rx2 + 42, ry2 + 1, 2, 1, "#fff6a0");
+            const ax = r.x + r.w - 92 + Math.round(Math.abs(Math.sin(this.t * 7)) * 4), ay = r.y + r.h - 14;
+            ctx3.fillStyle = "#7a4204";
+            ctx3.fillRect(ax - 1, ay - 4, 3, 9);
+            ctx3.fillRect(ax + 2, ay - 3, 2, 7);
+            ctx3.fillRect(ax + 4, ay - 2, 2, 5);
+            ctx3.fillRect(ax + 6, ay - 1, 2, 3);
+            ctx3.fillStyle = "#ffd23a";
+            ctx3.fillRect(ax, ay - 3, 2, 7);
+            ctx3.fillRect(ax + 2, ay - 2, 2, 5);
+            ctx3.fillRect(ax + 4, ay - 1, 2, 3);
+          }
+          ctx3.restore();
+        }
+        drawCardBody(ctx3, ui, q, r, i, L4, clipR) {
           const g = this.game, t = this.t, S13 = ensureQuests(g.state), book2 = this.book;
           const { isDone, ready: ready3, main, active, locked } = this.cardState(q);
           const tone5 = ready3 ? TONE_READY : isDone ? TONE_DONE : locked ? TONE_LOCK : "frost";
@@ -109856,11 +109942,20 @@ void main() {
           const sx = r.x + r.w - statusW - 4, sy = r.y + r.h - 22;
           const vis = (rr4) => rr4.y >= clipR.y - 1 && rr4.y + rr4.h <= clipR.y + clipR.h + 1;
           if (isDone) {
+            const lab3 = main ? "DONE!" : "CLAIMED", sw = measureText(lab3, "small") + 14;
             ctx3.save();
             ctx3.translate(r.x + r.w - 40, r.y + r.h - 14);
             ctx3.rotate(-0.15);
-            ctx3.drawImage(aeroSurface(52, 15, { tone: "green", r: "pill", gloss: 0.7, glossH: 6, curve: 1, rim: 0.8, glow: 0.5 }), -26, -7);
-            drawText(ctx3, main ? "DONE!" : "CLAIMED", -measureText(main ? "DONE!" : "CLAIMED", "small") / 2, -3, { font: "small", color: "#ffffff", shadow: "#1c5a0e" });
+            ctx3.fillStyle = rgba("#0e4a1e", 0.85);
+            ctx3.fillRect(-sw / 2, -8, sw, 16);
+            ctx3.fillStyle = "#7ae65a";
+            ctx3.fillRect(-sw / 2 + 1, -7, sw - 2, 1);
+            ctx3.fillRect(-sw / 2 + 1, 6, sw - 2, 1);
+            ctx3.fillRect(-sw / 2 + 1, -7, 1, 14);
+            ctx3.fillRect(sw / 2 - 2, -7, 1, 14);
+            ctx3.fillStyle = rgba("#0e4a1e", 0.85);
+            for (let k = 0; k < 4; k++) ctx3.fillRect(-sw / 2 + 3 + (k * 13 + q.id.length * 7) % (sw - 6), k % 2 ? 6 : -7, 2, 1);
+            drawText(ctx3, lab3, Math.round(-measureText(lab3, "small") / 2), -3, { font: "small", color: "#e8ffd8", shadow: "#0e4a1e" });
             ctx3.restore();
           } else if (ready3) {
             drawAeroGlow(ctx3, sx + statusW / 2, sy + 9, statusW * 0.7, "#fff6a0", 0.35 + 0.2 * Math.sin(t * 6 + i));
@@ -109919,6 +110014,7 @@ void main() {
               } else {
                 this.sel = c2.id;
                 this.scroll.story = 0;
+                this.pageT = 0;
                 g.audio.play("ui_page");
               }
             }
@@ -109939,6 +110035,11 @@ void main() {
             const sw = measureText(txt) + 40, sx = R7.x + R7.w - sw - 8, sy2 = R7.y + 6;
             drawAeroGlow(ctx3, sx + sw / 2, sy2 + 10, sw * 0.6, "#fff6a0", 0.35 + 0.2 * Math.sin(t * 5));
             if (pill(ui, ctx3, sx, sy2, sw, 20, txt, { tone: "orange", icon: icon("star", 14), tip: "Hear the story", sound: "ui_unlock" })) {
+              if (g.quests?.cine && g.quests.cine.mode() !== "off") {
+                ui.close(this.id);
+                g.quests.cine.playChapterNow();
+                return;
+              }
               ui.open("chapter", S13.outro ? { mode: "done", id: S13.outro, then: "quests" } : { mode: "intro", id: S13.intro, then: "quests" });
               return;
             }

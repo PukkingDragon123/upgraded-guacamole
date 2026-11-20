@@ -353,6 +353,14 @@ check('full HUD after the tutorial', !!(await iconRect('lab')) && !!(await iconR
 // the seal's "keep me around?" question auto-answers yes; then the hint helper gives a tip on click
 await until(() => !window.FISHTOP.tutorial.active, 20000);
 check("'tutorialDone' emitted (quests can start)", (await ev('tutorialDone')) === 1, String(await ev('tutorialDone')));
+// [questcine18] chapter 1 opens with a quest cutscene (letterbox, Bubbles + Fizz, title, cards), then "Fishing 101"
+// completes on screen; the hint helper ducks away while a cutscene holds the screen, so wait for them to finish
+if (await G('!!(g.quests && g.quests.cine)')) {
+  const sawCine = await until(() => { const c = window.FISHTOP.quests.cine; return !!c.cur || !window.FISHTOP.state.quests.intro; }, 30000);
+  const drained = await until(() => { const c = window.FISHTOP.quests.cine; return !c.pending() && !window.FISHTOP.ui.isOpen('questcine'); }, 90000);
+  check('quest cutscenes play and finish (chapter 1 opening)', sawCine && drained && !(await G('g.state.quests.intro')), JSON.stringify(await G('[g.state.quests.intro, g.quests.cine.cur && g.quests.cine.cur.kind, g.quests.cine.queue.length, g.ui.blocking]')));
+  await shot('16a_after_cutscenes.png');
+}
 // the helper swims to its corner and settles on its bubble
 await until(() => { const T = window.FISHTOP.tutorial; return !T.seal || (T.helperRect() && T.seal.settled); }, 20000);
 const hr = await G('g.tutorial.helperRect && g.tutorial.helperRect()');

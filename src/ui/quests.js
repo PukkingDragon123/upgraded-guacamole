@@ -331,7 +331,7 @@ class QuestHud {
     const flashIds = Object.keys(this.flash).filter((id) => QUEST_BY_ID[id]);
     const rows = [...(pin && !act.includes(pin) ? [pin] : []), ...flashIds.map((id) => QUEST_BY_ID[id]).filter((q) => !act.includes(q) && q !== pin), ...act].slice(0, 3);
     const RHt = capT + capS + 16, HH = capS + 11;
-    const pending = !!(S.outro || S.intro);
+    const pending = !!(S.outro || S.intro) && !(this.cine.busy() && this.cine.cur?.heavy); // [questcine18]
     const ready = book.readyCount();
     const pendH = capS + 10;
     const pills = (pending ? 1 : 0) + (ready ? 1 : 0);
@@ -536,6 +536,7 @@ export class QuestPanel {
     this.sel = d?.chapter || CHAPTERS[Math.min(S.ch, CHAPTERS.length - 1)]?.id;
     if (d?.tab && TABS.some((x) => x.id === d.tab)) this.tab = d.tab;
     this.scroll = { story: 0, orders: 0, miles: 0 };
+    this.tabT = 1; this.pageT = 0; // [questcine18] the cards cascade in on open
     this.drag = null;
     try { if (this.game.state.tutorialDone) this.book.refreshDaily(); } catch (e) { console.error(e); }
   }
@@ -587,8 +588,9 @@ export class QuestPanel {
       const w = measureText(lab, 'normal') + 40;
       const on = this.tab === tb.id;
       if (pill(ui, ctx, tx, hb.y + 4, w, 22, lab, { tone: on ? 'white' : 'grass', active: on, icon: icon(tb.icon, 14), sound: 'ui_page', tip: tb.id === 'orders' ? "Today's orders: refresh every day" : tb.id === 'miles' ? 'Lifetime goals' : 'Chapters and side stories' })) {
-        if (this.tab !== tb.id) { this.tab = tb.id; this.drag = null; }
+        if (this.tab !== tb.id) { this.tabDir = TABS.findIndex((x) => x.id === tb.id) > TABS.findIndex((x) => x.id === this.tab) ? 1 : -1; this.tab = tb.id; this.drag = null; this.tabT = 0; this.pageT = 0; } // [questcine18] slide
       }
+      if (on) this.tabSlot = { x: tx, w };
       const n = this.tabReady(tb.id);
       if (n) drawAeroBadge(ctx, tx + w + 2, hb.y - 3, n, t);
       tx += w + 14;
@@ -605,10 +607,27 @@ export class QuestPanel {
         g.quests?.cine?.claimFx?.(null, x + w / 2, hb.y + 15); // [questcine18] the rewards fly from the button
       }
     }
+    // [questcine18] a voxel marker slides under the active tab; the page slides in from the side it was picked on
+    if (this.tabSlot) {
+      const k = 1 - Math.exp(-dt * 16);
+      this.tabX = this.tabX == null ? this.tabSlot.x : this.tabX + (this.tabSlot.x - this.tabX) * k;
+      this.tabW = this.tabW == null ? this.tabSlot.w : this.tabW + (this.tabSlot.w - this.tabW) * k;
+      const ux = Math.round(this.tabX + 6), uw = Math.round(this.tabW - 12), uy = hb.y + 27;
+      ctx.fillStyle = '#1a5e12'; ctx.fillRect(ux - 1, uy - 1, uw + 2, 5);
+      ctx.fillStyle = '#ffd23a'; ctx.fillRect(ux, uy, uw, 3);
+      ctx.fillStyle = '#fff6c8'; ctx.fillRect(ux, uy, uw, 1);
+      for (let i = 0; i < 3; i++) { const sx = ux + ((t * 40 + i * uw / 3) % uw); ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(sx), uy, 2, 1); }
+    }
+    this.tabT = Math.min(1, (this.tabT ?? 1) + dt * 4.5);
+    this.pageT = Math.min(5, (this.pageT ?? 5) + dt);
     const body = { x: P.x + 10, y: P.y + 42, w: P.w - 20, h: P.h - 52 };
+    const te = ease.outCubic(this.tabT);
+    ctx.save();
+    if (te < 1) { ctx.translate(Math.round((1 - te) * 28 * (this.tabDir || 1)), 0); ctx.globalAlpha *= 0.25 + 0.75 * te; }
     if (this.tab === 'orders') this.drawOrders(ctx, ui, body);
     else if (this.tab === 'miles') this.drawMilestones(ctx, ui, body);
     else this.drawStory(ctx, ui, body);
+    ctx.restore();
     if (ui.inp.pressed && ui.hover(P)) ui.inp.pressed = false;
     try { g.quests?.cine?.drawOver?.(ctx); } catch { /* optional */ } // [questcine18] rewards flying out of CLAIM buttons
   }
@@ -688,7 +707,38 @@ export class QuestPanel {
     return { rl, rwW, lines, LH, objY, h };
   }
 
+  // [questcine18] card juice: cards cascade in (tab / chapter change), lift on hover with ticking brackets, sink when
+  // pressed; READY cards get a gold ribbon + bouncing arrow at CLAIM; the body is drawCardBody
   drawCard(ctx, ui, q, r, i, L, clipR) {
+    const st = this.cardState(q);
+    const vis = { x: r.x, y: Math.max(r.y, clipR.y), w: r.w, h: Math.min(r.y + r.h, clipR.y + clipR.h) - Math.max(r.y, clipR.y) };
+    const hov = vis.h > 4 && ui.hover(vis) && !st.locked;
+    const H = (this.cardHov ||= new Map());
+    const hk = H.get(q.id) ?? 0, nk = hk + ((hov ? 1 : 0) - hk) * 0.3;
+    H.set(q.id, nk);
+    if (H.size > 300) H.clear();
+    const down = hov && ui.inp.down ? 1 : 0;
+    const ck = ease.outCubic(clamp01(((this.pageT ?? 1) * 1 - Math.min(i, 8) * 0.045) / 0.3));
+    ctx.save();
+    if (ck < 1) { ctx.translate(Math.round((1 - ck) * 36), 0); ctx.globalAlpha *= ck; }
+    ctx.translate(0, Math.round(-nk * 2 + down));
+    this.drawCardBody(ctx, ui, q, r, i, L, clipR);
+    if (nk > 0.3 && !down) drawPixelBrackets(ctx, r.x + 1, r.y + 1, r.w - 2, r.h - 2, this.t, { col: st.ready ? '#fff6a0' : '#ffffff', ink: '#0a3e74' });
+    if (st.ready) {
+      // a gold ribbon tag on the corner and an arrow bouncing toward CLAIM
+      const rx = r.x - 3, ry = r.y + 4;
+      ctx.drawImage(aeroSurface(46, 13, { tone: TONE_READY, r: 3, gloss: 0.7, glossH: 5, curve: 1, rim: 0.8, glow: 0.5 }), rx, ry);
+      ctx.fillStyle = '#9a5a08'; ctx.fillRect(rx, ry + 13, 3, 3);
+      drawText(ctx, 'READY!', rx + 6, ry + 4, { font: 'small', color: '#7a4204' });
+      if (((this.t * 1.3 + i * 0.3) % 1) < 0.3) drawSparkle(ctx, rx + 42, ry + 1, 2, 1, '#fff6a0');
+      const ax = r.x + r.w - 92 + Math.round(Math.abs(Math.sin(this.t * 7)) * 4), ay = r.y + r.h - 14;
+      ctx.fillStyle = '#7a4204'; ctx.fillRect(ax - 1, ay - 4, 3, 9); ctx.fillRect(ax + 2, ay - 3, 2, 7); ctx.fillRect(ax + 4, ay - 2, 2, 5); ctx.fillRect(ax + 6, ay - 1, 2, 3);
+      ctx.fillStyle = '#ffd23a'; ctx.fillRect(ax, ay - 3, 2, 7); ctx.fillRect(ax + 2, ay - 2, 2, 5); ctx.fillRect(ax + 4, ay - 1, 2, 3);
+    }
+    ctx.restore();
+  }
+
+  drawCardBody(ctx, ui, q, r, i, L, clipR) {
     const g = this.game, t = this.t, S = ensureQuests(g.state), book = this.book;
     const { isDone, ready, main, active, locked } = this.cardState(q);
     const tone = ready ? TONE_READY : isDone ? TONE_DONE : locked ? TONE_LOCK : 'frost';
@@ -741,9 +791,13 @@ export class QuestPanel {
     const sx = r.x + r.w - statusW - 4, sy = r.y + r.h - 22;
     const vis = (rr) => rr.y >= clipR.y - 1 && rr.y + rr.h <= clipR.y + clipR.h + 1;
     if (isDone) {
+      // [questcine18] an inked rubber stamp (double pixel border, slightly worn) instead of a pill
+      const lab = main ? 'DONE!' : 'CLAIMED', sw = measureText(lab, 'small') + 14;
       ctx.save(); ctx.translate(r.x + r.w - 40, r.y + r.h - 14); ctx.rotate(-0.15);
-      ctx.drawImage(aeroSurface(52, 15, { tone: 'green', r: 'pill', gloss: 0.7, glossH: 6, curve: 1, rim: 0.8, glow: 0.5 }), -26, -7);
-      drawText(ctx, main ? 'DONE!' : 'CLAIMED', -measureText(main ? 'DONE!' : 'CLAIMED', 'small') / 2, -3, { font: 'small', color: '#ffffff', shadow: '#1c5a0e' });
+      ctx.fillStyle = rgba('#0e4a1e', 0.85); ctx.fillRect(-sw / 2, -8, sw, 16);
+      ctx.fillStyle = '#7ae65a'; ctx.fillRect(-sw / 2 + 1, -7, sw - 2, 1); ctx.fillRect(-sw / 2 + 1, 6, sw - 2, 1); ctx.fillRect(-sw / 2 + 1, -7, 1, 14); ctx.fillRect(sw / 2 - 2, -7, 1, 14);
+      ctx.fillStyle = rgba('#0e4a1e', 0.85); for (let k = 0; k < 4; k++) ctx.fillRect(-sw / 2 + 3 + ((k * 13 + q.id.length * 7) % (sw - 6)), k % 2 ? 6 : -7, 2, 1);
+      drawText(ctx, lab, Math.round(-measureText(lab, 'small') / 2), -3, { font: 'small', color: '#e8ffd8', shadow: '#0e4a1e' });
       ctx.restore();
     } else if (ready) {
       drawAeroGlow(ctx, sx + statusW / 2, sy + 9, statusW * 0.7, '#fff6a0', 0.35 + 0.2 * Math.sin(t * 6 + i));
@@ -797,7 +851,7 @@ export class QuestPanel {
         if (rd && g.state.tutorialDone) drawAeroBadge(ctx, r.x + lw + 2, r.y - 4, rd, t);
       }
       if (isDone) { const ck = getUiIcon('check'); if (ck) ctx.drawImage(ck, r.x + 6, r.y + 4); }
-      if (ui.clicked(r)) { if (locked) { g.audio.play('ui_error'); g.toast?.('Finish the chapter before it first!', 'lock'); } else { this.sel = c.id; this.scroll.story = 0; g.audio.play('ui_page'); } }
+      if (ui.clicked(r)) { if (locked) { g.audio.play('ui_error'); g.toast?.('Finish the chapter before it first!', 'lock'); } else { this.sel = c.id; this.scroll.story = 0; this.pageT = 0; g.audio.play('ui_page'); } }
     });
     // chapter page (right)
     const c = CHAPTER_BY_ID[this.sel] || CHAPTERS[0];
@@ -819,6 +873,7 @@ export class QuestPanel {
       const sw = measureText(txt) + 40, sx = R.x + R.w - sw - 8, sy = R.y + 6;
       drawAeroGlow(ctx, sx + sw / 2, sy + 10, sw * 0.6, '#fff6a0', 0.35 + 0.2 * Math.sin(t * 5));
       if (pill(ui, ctx, sx, sy, sw, 20, txt, { tone: 'orange', icon: icon('star', 14), tip: 'Hear the story', sound: 'ui_unlock' })) {
+        if (g.quests?.cine && g.quests.cine.mode() !== 'off') { ui.close(this.id); g.quests.cine.playChapterNow(); return; } // [questcine18] replay as a cutscene
         ui.open('chapter', S.outro ? { mode: 'done', id: S.outro, then: 'quests' } : { mode: 'intro', id: S.intro, then: 'quests' });
         return;
       }
