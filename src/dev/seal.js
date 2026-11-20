@@ -1,21 +1,21 @@
-// [seal19] Dev preview of Bubbles, the bubble seal: node tools/build.mjs --dev seal -> dist/dev/seal.html
+// [seal20] Dev preview of Bubbles, the fat voxel plush seal: node tools/build.mjs --dev seal -> dist/dev/seal.html
 //   ?page=0 (default)  every animation (side view, mixed moods, talking, pointing at a target) on a 1920x1080
 //                      hi-res canvas, plus a big front portrait and a size ladder (16 .. 112 px per unit)
-//   ?page=1            moods / expressions (side + front), the head turning to follow a target circling around
+//   ?page=1            moods / expressions (side + front), the eyes following a target circling around, portraits
 //   ?page=2            in-game style backdrops (ocean, dark panel, light panel) with the guide at its real sizes
-//   &cpu=1             force the Canvas2D fallback renderer   &t=SECONDS freeze time   &bench=1 window.__bench
+//   ?page=3            close-up: a big side view and a big front view (art check)
+//   &t=SECONDS freeze time   &bench=1 window.__bench (ms per frame, sheet build ms)
 import { hiCtx } from '../gfx/hires.js';
 import { drawText } from '../gfx/font.js';
 import { drawSeal, SEAL_ANIMS, warmSeal, SealGuide } from '../gfx/seal.js';
-import { bubbleForceCPU, bubbleStats } from '../gfx/bubblegl.js';
 
 export function run(params) {
   const cv = document.getElementById('screen');
   const W = 960, H = 540;
   cv.width = W * 2; cv.height = H * 2; cv.style.width = W * 2 + 'px'; cv.style.height = H * 2 + 'px';
   const g = hiCtx(cv, 2);
-  if (params.get('cpu')) bubbleForceCPU(true);
   const page = Number(params.get('page') || 0);
+  if (params.get('yaw') != null) { globalThis.__SEAL_YAW = Number(params.get('yaw')); globalThis.__SEAL_TILT = Number(params.get('tilt') || 0); }
   const tFix = params.get('t') != null ? Number(params.get('t')) : null;
   const t0 = performance.now();
   const anims = Object.keys(SEAL_ANIMS);
@@ -67,6 +67,9 @@ export function run(params) {
         drawSeal(g, { x: cx, y: cy + r * 0.22, anchor: 'head', t, size: r * 1.3, view: 'front', anim: 'idle', mood: 'happy', talk: 0.5 + 0.5 * Math.sin(t * 12), lookAt: [cx + r * 3, cy + r], id: 'pt' + i });
         g.restore();
       });
+    } else if (page === 3) {
+      drawSeal(g, { x: 260, y: 480, base: 'bottom', t, size: 120, anim: params.get('anim') || 'idle', mood: 'happy', id: 'cu0', point: [520, 120] });
+      drawSeal(g, { x: 700, y: 480, base: 'bottom', t, size: 120, anim: params.get('anim') || 'idle', view: 'front', mood: 'happy', id: 'cu1' });
     } else {
       // game-like backdrops and the swimming guide
       g.fillStyle = '#0f2a4a'; g.fillRect(40, 40, 260, 200);
@@ -81,9 +84,10 @@ export function run(params) {
     }
     const ms = performance.now() - tA;
     frames++; if (frames > 30) msSum += ms;
-    if (params.get('bench')) window.__bench = { ms: msSum / Math.max(1, frames - 30), frames, stats: bubbleStats() };
+    if (params.get('bench')) window.__bench = { ms: msSum / Math.max(1, frames - 30), frames, warm: warmMs };
     window.__ready = true;
   };
-  try { warmSeal(40, ['idle']); } catch (e) { console.error(e); }
+  let warmMs = 0;
+  try { const tw = performance.now(); warmSeal(40, ['idle']); warmMs = performance.now() - tw; } catch (e) { console.error(e); }
   requestAnimationFrame(frame);
 }
