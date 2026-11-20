@@ -194,13 +194,14 @@ export class QuestCine {
   // ---------------------------------------------------------------- queue
   enqueue(b, front = false) {
     if (this.mode() === 'off') return false;
-    b.heavy = !!HEAVY[b.kind] && !(b.kind === 'done' && this.mode() === 'short');
+    b.heavy = this.heavyOf(b);
     // merge starts into one beat; drop starts covered by a chapter opening
     if (b.kind === 'start') {
       const intro = [this.cur, ...this.queue].find((x) => x && x.kind === 'intro');
       const S = ensureQuests(this.game.state);
       b.qs = b.qs.filter((q) => !(q.kind === 'main' && ((intro && q.chapter === intro.ch) || S.intro === q.chapter)));
       if (!b.qs.length) return false;
+      for (const q of b.qs) this.hud.expectCard?.(q.id); // its tracker row waits for the card
       const s = this.queue.find((x) => x.kind === 'start');
       if (s) { for (const q of b.qs) if (!s.qs.includes(q)) s.qs.push(q); return true; }
     }
@@ -216,6 +217,8 @@ export class QuestCine {
     this.warmBeat(b);
     return true;
   }
+
+  heavyOf(b) { return !!HEAVY[b.kind] && !(b.kind === 'done' && this.mode() === 'short'); }
 
   // the waiting chapter opening / finale, right now (a click on the tracker pill: the player asked for it)
   playChapterNow() {
@@ -241,8 +244,8 @@ export class QuestCine {
   warmIdle() {
     const T = this.titleO();
     for (const s of ['QUEST COMPLETE!', 'CHAPTER COMPLETE!']) this.prep.push(prepRow(s, s.startsWith('CH') ? T.big : T.head));
-    for (const s of ['QUEST COMPLETE!', 'MILESTONE!', 'ORDER FILLED!', 'BOARD CLEARED!']) this.prep.push(prepWord(s, { palette: 'gold', size: 16, depth: 3 }));
-    this.prep.push(prepWord('NEW RESEARCH!', { palette: 'leaf', size: 16, depth: 3 }));
+    for (const s of ['QUEST COMPLETE!', 'MILESTONE!', 'ORDER FILLED!', 'BOARD CLEARED!']) this.prep.push(prepWord(s, { palette: 'gold', size: 16, depth: 3, scale: 1.25 }));
+    this.prep.push(prepWord('NEW RESEARCH!', { palette: 'leaf', size: 16, depth: 3, scale: 2 }));
   }
   titleO() {
     const big = this.H >= 600 ? 1.75 : 1.4;
@@ -294,7 +297,7 @@ export class QuestCine {
       for (const r of rewardList(b.q.reward)) if (r.n) this.prep.push(prepWord((r.key === 'aero' ? '+' : 'x') + r.n, T.num));
       if (b.heavy) this.warmNpc(b.q.giver);
     } else if (b.kind === 'lab') {
-      this.prep.push(prepWord('NEW RESEARCH!', { palette: 'leaf', size: 16, depth: 3 }));
+      this.prep.push(prepWord('NEW RESEARCH!', { palette: 'leaf', size: 16, depth: 3, scale: 2 }));
     }
   }
   stepPrep() {
@@ -312,6 +315,7 @@ export class QuestCine {
     const g = this.game;
     this.t += dt;
     const mode = this.mode();
+    if (mode === 'off' && this.queue.length) this.queue = []; // switched off in Settings: drop what waits
     // chapter openings / finales that wait in the save (a reload, the end of the tutorial) get their moment
     if (mode !== 'off' && g.state?.tutorialDone) {
       const S = ensureQuests(g.state);
@@ -346,7 +350,7 @@ export class QuestCine {
     this.calmT = calm ? this.calmT + dt : 0;
     this.forceT = Math.max(0, (this.forceT || 0) - dt);
     const next = this.queue[0];
-    const wait = next.heavy ? 0.9 : 0.5;
+    const wait = this.heavyOf(next) ? 0.9 : 0.5;
     if (calm && this.calmT >= wait && (!this.prep.length || this.calmT > 2 || this.forceT > 0)) this.begin(this.queue.shift());
   }
   has(kind, ch) { return [this.cur, ...this.queue].some((b) => b && b.kind === kind && b.ch === ch); }
@@ -382,7 +386,9 @@ export class QuestCine {
     if (this.held <= 0 || !ui) { this.held = 0; return; }
     const flying = this.flights.some((f) => f.aero) || (this.cur && this.cur.aero) || this.queue.some((b) => b.aero);
     this.holdT = flying ? 0 : this.holdT + dt;
-    if (this.holdT > 1.5 || this.t - (this.holdStart ?? this.t) > 12) { this.held = 0; return; }
+    // (a window that shows prices never sees a held-back counter unless coins are flying into it right now)
+    const window = this.game.ui?.blocking && !this.game.ui?.isOpen?.('questcine') && !this.flights.some((f) => f.aero);
+    if (window || this.holdT > 1.5 || this.t - (this.holdStart ?? this.t) > 12) { this.held = 0; return; }
     const cap = (this.game.state.coins || 0) - this.held;
     if (Number.isFinite(ui.coinShown) && ui.coinShown > cap) ui.coinShown = Math.max(0, cap);
   }
@@ -393,7 +399,8 @@ export class QuestCine {
     b.t = 0;
     b.fx = {};
     // several completions at once play as one beat (the first giver cheers, the rewards are pooled)
-    if (b.kind === 'done') while (this.queue[0]?.kind === 'done' && !!this.queue[0].heavy === !!b.heavy) (b.more ||= []).push(this.queue.shift());
+    b.heavy = this.heavyOf(b); // (the Settings switch may have changed while it waited)
+    if (b.kind === 'done') while (this.queue[0]?.kind === 'done') (b.more ||= []).push(this.queue.shift());
     this.cur = b;
     const S = ensureQuests(g.state);
     if (b.kind === 'intro' && S.intro !== b.ch) { this.cur = null; return; }
@@ -600,7 +607,7 @@ export class QuestCine {
     const tx = o.out != null ? b.t - o.out : -1;
     if (tx > 0.7) return null;
     let x = P.x, y = P.y, k = P.k, alpha = 1, bubble = 0, sq = 0, spin = false;
-    const facing = b.side > 0 ? 1 : -1;
+    const facing = (b.side > 0 ? 1 : -1) * (slot > 0 ? -1 : 1); // the second NPC turns to face the first
     // entrances: the seal leaps out of the water, bubble people float down in a soap bubble that pops, Dot zips in,
     // Captain Bloat bobs up and puffs. Exits: back into the water (or a poof on the plain stage).
     const E = 0.85;
@@ -1178,7 +1185,7 @@ export class QuestCine {
         if (nk > 0) {
           ctx.save();
           ctx.globalAlpha *= nk * fade;
-          drawAeroGlow(ctx, b.cx, ny, Math.round(H * 0.16), '#bff6ff', 0.3);
+          drawAeroGlow(ctx, b.cx, ny, Math.round(H * 0.2), '#06264e', 0.55);
           drawWord(ctx, 'NEXT OCEAN', T.small, b.cx, ny - 20, backOut(nk));
           const nm = OCEAN_NAMES[b.next.ocean] || b.next.ocean;
           const c = word(nm, T.ocean);
@@ -1220,6 +1227,7 @@ export class QuestCine {
     } else if (b.kind === 'done') {
       // the Short version of a quest completion: a quick 3D pop, the giver's face and the rewards flying in
       b.rewards = this.pooledRewards(b);
+      b.cx = Math.round(this.W / 2);
       b.end = 2.4;
       g.audio?.play?.('ui_unlock');
       try { g.particles?.celebrate?.(this.W / 2, this.H * 0.18, 0.6, { layer: 'ui' }); } catch { /* optional */ }
@@ -1321,38 +1329,44 @@ export class QuestCine {
   }
 
   drawLab(ctx, b) {
-    const g = this.game, H = this.H, t = this.t;
+    const g = this.game, W = this.W, H = this.H, t = this.t;
     let r = null;
     try { r = g.hud?.iconRect?.('lab'); } catch { r = null; }
     if (!r || r.y > H) { b.end = Math.min(b.end, b.t + 0.1); return; }
     const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
     const kout = 1 - clamp01((b.t - (b.end - 0.45)) / 0.45);
+    const LO = { palette: 'leaf', size: 16, depth: 3, scale: 2 };
+    const wc = wordNow('NEW RESEARCH!', LO);
+    const tw = wc ? wc.width : 180;
+    const ax = clamp(cx, tw / 2 + 60, W - tw / 2 - 70), ay = Math.round(r.y - H * 0.11);
     ctx.save();
     ctx.globalAlpha *= kout;
-    // the node icon flies from the middle of the screen into the Lab button
-    const fk = clamp01((b.t - 0.5) / 0.8);
-    const sx = this.W / 2, sy = H * 0.4;
-    const e = ease.inOutCubic(fk);
-    const ix = lerp(sx, cx, e), iy = lerp(sy, cy, e) - Math.sin(fk * Math.PI) * 60;
+    const pk = backOut(b.t / 0.35);
+    drawAeroGlow(ctx, ax, ay, Math.round(tw * 0.62), '#06264e', 0.55 * clamp01(b.t * 4));
+    drawWord(ctx, 'NEW RESEARCH!', LO, ax, ay + Math.sin(t * 3) * 1.5, pk, 1);
+    if (b.node?.name) { const nm = b.node.name; drawText(ctx, nm, Math.round(ax - measureText(nm) / 2), ay + Math.round((wc?.height || 30) / 2) + 2, { color: '#ffffff', shadow: '#0a3e74' }); }
+    if (this.mode() === 'full') try { this.art.drawPortrait(ctx, 'fizz', ax - tw / 2 - 30, ay + Math.sin(t * 5) * 2, Math.round(22 * pk), t, { talk: b.t < 1.6 ? 0.6 : 0, mood: 'excited', key: 'lab' }); } catch { /* optional */ }
+    // the node's icon waits in a bubble beside the words, then drops into the Lab button
+    const hx = ax + tw / 2 + 30, hy = ay;
+    const fk = clamp01((b.t - 1.3) / 0.75);
     if (fk < 1) {
-      const pk = backOut(b.t / 0.4);
-      drawAeroGlow(ctx, ix, iy, 26, '#eaffb4', 0.5);
-      ctx.drawImage(aeroSurface(38, 38, { tone: 'green', r: 'pill', gloss: 0.7, glossH: 14, curve: 1, rim: 0.8, glow: 0.6 }), Math.round(ix - 19 * pk), Math.round(iy - 19 * pk), Math.round(38 * pk), Math.round(38 * pk));
-      drawAnimIcon(ctx, b.node?.icon || 'beaker', ix, iy, Math.round(26 * pk * (1 - fk * 0.4)), t, 0, {});
+      const e = ease.inOutCubic(fk);
+      const ix = lerp(hx, cx, e), iy = lerp(hy, cy, e) - Math.sin(fk * Math.PI) * 40;
+      const s = Math.round(40 * pk * (1 - fk * 0.4));
+      drawAeroGlow(ctx, ix, iy, s, '#eaffb4', 0.5);
+      if (s > 4) ctx.drawImage(aeroSurface(s, s, { tone: 'green', r: 'pill', gloss: 0.7, glossH: Math.round(s * 0.38), curve: 1, rim: 0.8, glow: 0.6 }), Math.round(ix - s / 2), Math.round(iy - s / 2));
+      drawAnimIcon(ctx, b.node?.icon || 'beaker', ix, iy, Math.round(s * 0.72), t, 0, {});
+      if (fk > 0.05) for (let j = 1; j < 4; j++) { const f2 = Math.max(0, fk - j * 0.07), e2 = ease.inOutCubic(f2); drawSparkle(ctx, lerp(hx, cx, e2), lerp(hy, cy, e2) - Math.sin(f2 * Math.PI) * 40, 1, 1 - j * 0.25); }
     } else if (!b.fx.land) {
       b.fx.land = 1;
       g.audio?.play?.('ui_unlock', { vol: 0.6 });
       try { g.particles?.unlock?.(cx, cy, { layer: 'ui', ramp: 'lime' }); } catch { /* optional */ }
     }
-    // the words over the button, brackets around it, Fizz peeking in
-    const wk = backOut((b.t - 0.1) / 0.35);
-    drawWord(ctx, 'NEW RESEARCH!', { palette: 'leaf', size: 16, depth: 3 }, cx, r.y - 30 + Math.sin(t * 3) * 1.5, wk, 1);
-    if (b.node?.name) drawText(ctx, b.node.name, Math.round(cx - measureText(b.node.name, 'small') / 2), r.y - 16, { font: 'small', color: '#ffffff', shadow: '#0a3e74' });
-    if (b.t > 1) drawFocusBrackets(ctx, cx, cy, Math.max(r.w, r.h) * 0.62, t, {});
-    const ay = r.y - 6 + Math.round(Math.abs(Math.sin(t * 6)) * 3);
-    ctx.fillStyle = '#0a3e74'; ctx.fillRect(Math.round(cx - 4), ay - 1, 9, 3); ctx.fillRect(Math.round(cx - 2), ay + 2, 5, 2);
-    ctx.fillStyle = '#b6ff7a'; ctx.fillRect(Math.round(cx - 3), ay, 7, 1); ctx.fillRect(Math.round(cx - 1), ay + 2, 3, 1);
-    if (this.mode() === 'full') try { this.art.drawPortrait(ctx, 'fizz', r.x - 22, r.y - 28, 16, t, { talk: b.t < 1.4 ? 0.6 : 0, mood: 'excited', key: 'lab' }); } catch { /* optional */ }
+    // brackets ticking on the button and a pixel arrow bouncing down at it
+    if (b.t > 0.6) drawFocusBrackets(ctx, cx, cy, Math.max(r.w, r.h) * 0.6, t, { col: '#b6ff7a' });
+    const by = r.y - 10 + Math.round(Math.abs(Math.sin(t * 6)) * 4), bx = Math.round(cx);
+    ctx.fillStyle = '#0a3e74'; ctx.fillRect(bx - 6, by - 2, 13, 4); ctx.fillRect(bx - 4, by + 2, 9, 2); ctx.fillRect(bx - 2, by + 4, 5, 2); ctx.fillRect(bx - 2, by - 8, 5, 6);
+    ctx.fillStyle = '#b6ff7a'; ctx.fillRect(bx - 5, by - 1, 11, 2); ctx.fillRect(bx - 3, by + 1, 7, 2); ctx.fillRect(bx - 1, by + 3, 3, 2); ctx.fillRect(bx - 1, by - 7, 3, 6);
     ctx.restore();
   }
 
@@ -1384,9 +1398,11 @@ export class QuestCine {
       ctx.globalAlpha *= 1 - out;
       const T = this.titleO();
       const label = p.q.kind === 'mile' ? 'MILESTONE!' : p.q.kind === 'order' ? 'ORDER FILLED!' : p.q.kind === 'orderBonus' ? 'BOARD CLEARED!' : 'QUEST COMPLETE!';
-      const o = { palette: 'gold', size: 16, depth: 3 };
+      const o = { palette: 'gold', size: 16, depth: 3, scale: 1.25 };
       wordNow(label, o);
-      drawWord(ctx, label, o, p.x, p.y - 26 - p.t * 10, k, 1);
+      const ly = p.y - 48 - p.t * 12;
+      drawAeroGlow(ctx, p.x, ly, 70, '#06264e', 0.55);
+      drawWord(ctx, label, o, p.x, ly, k, 1);
       // a side story's giver pops up beside the button and cheers
       if (p.side) {
         const px = p.x - 70, py = p.y - 20 + Math.sin(t * 6) * 2;

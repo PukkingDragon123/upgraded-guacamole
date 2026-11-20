@@ -25,7 +25,7 @@
 // the arrival jingle (the unlock fanfare on a first visit).
 //
 // API: start(to, done) -> bool (an ocean id), sail(destId, onArrive) -> bool, active, update(dt), drawOver(ctx, dt)
-// (main canvas, after the world), drawUi(ctx, dt) (UI layer: route chart in the letterbox, the title, skip hint).
+// (main canvas, after the world), drawUi(ctx, dt) (UI layer: the title, skip hint).
 import { clamp, clamp01, lerp, damp, ease, smoothstep, hash2, bayer, TAU } from '../core/math.js';
 import { hexToRgb, rgba } from '../core/color.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
@@ -345,7 +345,7 @@ export class Voyage {
       const W2 = W;
       s.xEnd = Math.min(W2 - 90, Math.max(s.x0 + 50, Math.min(W2 * 0.8, Math.max(s.x0 + W2 * 0.25, W2 * 0.7))));
     }
-    cam.setLetterbox(true);
+    // no letterbox bars or route chart during a voyage: the screen stays clean (user request)
     // background work, a few ms a frame: the destination build, puppet boat sprites, clouds, islands, the title
     s.jobs = this.jobs(s);
     // audio: whoosh, the lurch splash, the water-rush loop; open-sea ambience
@@ -1264,107 +1264,7 @@ export class Voyage {
       if (a <= 0.01) this.fade = null;
       else { ctx.save(); ctx.globalAlpha = a; ctx.drawImage(f.canvas, 0, 0, W, H); ctx.restore(); }
     }
-    const s = this.s;
-    if (s && s.phase !== 'settle' && !(s.phase === 'depart' && s.pt < 0.25)) {
-      const a = s.phase === 'depart' ? smoothstep(0.25, 0.7, s.pt) : s.phase === 'arrive' ? 1 - smoothstep(0.55, 0.95, s.pt / s.D.arrive) : 1;
-      if (a > 0.01) this.drawChart(ctx, s, W, H, a);
-    }
     if (this.title) this.drawTitle(ctx, dt, W, H);
-  }
-
-  // a little glass chart card in the lower letterbox: every ocean as a pin, the dotted route, the boat on it
-  drawChart(ctx, s, W, H, a) {
-    const bars = Math.round(H * 0.11 * (this.game.camera?.bars ?? 1));
-    if (bars < 24) return;
-    const L = MAP_LOCATIONS;
-    const loc = (id) => L.find((q) => q.id === id);
-    let A = loc(s.from)?.sea, B = s.kind === 'ocean' ? loc(s.to)?.sea : null;
-    if (!A) A = [0, 50];
-    if (!B) B = s.to === 'lab' ? [A[0] - 26, A[1] - 22] : [A[0] + 24, A[1] + 26];
-    const cw = Math.min(360, Math.round(W * 0.36)), ch = bars - 12;
-    const x0 = Math.round(W / 2 - cw / 2), y0 = H - bars + 6, t = s.t;
-    ctx.save();
-    ctx.globalAlpha = a;
-    // card: a stepped-corner glass plate with a gloss band, a bright rim and a dark outline
-    const plate = (x, y, w, h, col) => { ctx.fillStyle = col; ctx.fillRect(x + 2, y, w - 4, h); ctx.fillRect(x + 1, y + 1, w - 2, h - 2); ctx.fillRect(x, y + 2, w, h - 4); };
-    plate(x0 - 1, y0 - 1, cw + 2, ch + 2, '#04182e');
-    plate(x0, y0, cw, ch, '#bff4ff');
-    plate(x0 + 1, y0 + 1, cw - 2, ch - 2, '#0c3a68');
-    const gl = ctx.createLinearGradient(0, y0, 0, y0 + ch);
-    gl.addColorStop(0, '#2a78b8'); gl.addColorStop(0.5, '#155896'); gl.addColorStop(1, '#0a3a70');
-    plate(x0 + 2, y0 + 2, cw - 4, ch - 4, gl);
-    ctx.fillStyle = 'rgba(255,255,255,0.14)';
-    ctx.fillRect(x0 + 3, y0 + 3, cw - 6, Math.round((ch - 6) * 0.38));
-    // compass rose (left): 8 points, a swinging needle
-    const cx = x0 + Math.round(ch / 2) + 2, cy = y0 + Math.round(ch / 2), R = Math.max(8, Math.round(ch * 0.36));
-    ctx.fillStyle = 'rgba(190,240,255,0.35)';
-    for (let i = -R; i <= R; i++) { ctx.fillRect(cx + i, cy, 1, 1); ctx.fillRect(cx, cy + i, 1, 1); }
-    for (let i = -Math.round(R * 0.6); i <= Math.round(R * 0.6); i++) { ctx.fillRect(cx + i, cy + i, 1, 1); ctx.fillRect(cx + i, cy - i, 1, 1); }
-    ctx.fillStyle = '#e8fbff'; ctx.fillRect(cx - 1, cy - R - 2, 3, 2); // north tick
-    const ang = -Math.PI / 2 + 0.75 + Math.sin(t * 2.3) * 0.18 + Math.sin(t * 5.1) * 0.05;
-    for (let i = -R + 2; i <= R - 2; i++) {
-      const px = Math.round(cx + Math.cos(ang) * i), py = Math.round(cy + Math.sin(ang) * i);
-      ctx.fillStyle = i > 0 ? '#ff6a5a' : '#ffffff';
-      ctx.fillRect(px, py, 2, 2);
-    }
-    ctx.fillStyle = '#ffe27a'; ctx.fillRect(cx - 1, cy - 1, 3, 3);
-    // the map: every ocean as a small pin, a dotted arc for the route, the boat on it
-    const xs = L.map((l) => l.sea[0]).concat([A[0], B[0]]), ys = L.map((l) => l.sea[1]).concat([A[1], B[1]]);
-    const mnx = Math.min(...xs) - 8, mxx = Math.max(...xs) + 8, mny = Math.min(...ys) - 8, mxy = Math.max(...ys) + 8;
-    const ix = cx + R + 14, iw = x0 + cw - 30 - ix, iy = y0 + 7, ih = ch - 14;
-    const P = (p) => [ix + ((p[0] - mnx) / (mxx - mnx)) * iw, iy + ((p[1] - mny) / (mxy - mny)) * ih];
-    // faint chart grid
-    ctx.fillStyle = 'rgba(190,240,255,0.12)';
-    for (let gx = ix; gx < ix + iw; gx += 12) for (let gy = iy; gy < iy + ih; gy += 3) ctx.fillRect(gx, gy, 1, 1);
-    const colOf = (id) => loc(id)?.color || (id === 'lab' ? '#7affc8' : '#ffb43c');
-    const pin = (p, col, r) => {
-      const x = Math.round(p[0]), y = Math.round(p[1]);
-      ctx.fillStyle = '#04182e'; ctx.fillRect(x - r - 1, y - r, r * 2 + 2, r * 2); ctx.fillRect(x - r, y - r - 1, r * 2, r * 2 + 2);
-      ctx.fillStyle = col; ctx.fillRect(x - r, y - r, r * 2, r * 2);
-      ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.fillRect(x - r, y - r, Math.max(1, r - 1), 1);
-    };
-    for (const l of L) if (l.id !== s.from && l.id !== s.to) { ctx.globalAlpha = a * 0.55; pin(P(l.sea), l.color, 1); }
-    ctx.globalAlpha = a;
-    const [ax, ay] = P(A), [bx2, by2] = P(B);
-    const mx = clamp((ax + bx2) / 2 + (by2 - ay) * 0.22, ix, ix + iw), my = clamp((ay + by2) / 2 - (bx2 - ax) * 0.22, iy + 2, iy + ih - 2);
-    const q = (k) => [(1 - k) * (1 - k) * ax + 2 * (1 - k) * k * mx + k * k * bx2, (1 - k) * (1 - k) * ay + 2 * (1 - k) * k * my + k * k * by2];
-    const prog = s.phase === 'depart' ? 0.08 * (s.pt / s.D.depart) : s.phase === 'sea' ? lerp(0.08, 0.86, clamp01(s.pt / s.D.sea)) : lerp(0.86, 1, clamp01(s.pt / s.D.arrive));
-    const N = Math.max(16, Math.round(Math.hypot(bx2 - ax, by2 - ay) / 3));
-    for (let i = 0; i <= N; i++) {
-      const k = i / N, [px, py] = q(k);
-      const done = k <= prog;
-      if (!done && i % 2) continue;
-      ctx.fillStyle = done ? '#ffffff' : 'rgba(220,248,255,0.55)';
-      ctx.fillRect(Math.round(px), Math.round(py), done ? 2 : 1, done ? 2 : 1);
-    }
-    pin([ax, ay], colOf(s.from), 2);
-    pin([bx2, by2], colOf(s.to), 3);
-    // destination flag
-    const fxp = Math.round(bx2) + 3, fyp = Math.round(by2) - 12;
-    ctx.fillStyle = '#04182e'; ctx.fillRect(fxp - 1, fyp - 1, 3, 12);
-    ctx.fillStyle = '#ffffff'; ctx.fillRect(fxp, fyp, 1, 10);
-    const wv = Math.sin(t * 7) > 0 ? 1 : 0;
-    ctx.fillStyle = colOf(s.to); ctx.fillRect(fxp + 1, fyp, 5, 2); ctx.fillRect(fxp + 1, fyp + 2, 4 + wv, 2);
-    ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.fillRect(fxp + 1, fyp, 5, 1);
-    // the boat on the route: hull + sail, bobbing, a little wake behind it
-    const [px, py] = q(Math.min(1, prog));
-    const bxx = Math.round(px), byy = Math.round(py + Math.sin(t * 5) * 0.8);
-    ctx.fillStyle = 'rgba(255,255,255,0.6)';
-    for (let i = 1; i < 5; i++) { const [wx, wy] = q(Math.max(0, prog - i * 0.025)); ctx.fillRect(Math.round(wx), Math.round(wy) + 2, 1, 1); }
-    ctx.fillStyle = '#04182e'; ctx.fillRect(bxx - 5, byy - 1, 11, 5); ctx.fillRect(bxx - 1, byy - 8, 6, 7);
-    ctx.fillStyle = '#ff7a5a'; ctx.fillRect(bxx - 4, byy, 9, 2); ctx.fillStyle = '#c8462e'; ctx.fillRect(bxx - 3, byy + 2, 7, 1);
-    ctx.fillStyle = '#ffffff'; ctx.fillRect(bxx, byy - 7, 1, 7); ctx.fillRect(bxx + 1, byy - 6, 3, 5);
-    ctx.fillStyle = '#bfe8ff'; ctx.fillRect(bxx + 1, byy - 2, 3, 1);
-    // skip hint: a small fast-forward glyph at the card's right end
-    if (s.skippable && !s.skipped && s.phase !== 'arrive') {
-      const sx = x0 + cw - 22, sy = cy - 4;
-      ctx.globalAlpha = a * (0.6 + 0.3 * Math.sin(t * 3));
-      for (const ox2 of [0, 7]) {
-        for (let i = 0; i < 5; i++) { ctx.fillStyle = '#04182e'; ctx.fillRect(sx + ox2 + i, sy + i - 1, 2, 11 - i * 2); }
-        for (let i = 0; i < 5; i++) { ctx.fillStyle = '#ffffff'; ctx.fillRect(sx + ox2 + i, sy + i, 1, 9 - i * 2); }
-      }
-    }
-    ctx.restore();
   }
 
   drawTitle(ctx, dt, W, H) {
