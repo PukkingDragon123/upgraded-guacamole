@@ -289,7 +289,7 @@ export function warmNPC(id, { scale = 1, facing = 1 } = {}) {
 
 
 // ====================================================================== [phase6:guide] Bubbles, the seal guide
-// The guide is Bubbles, a chubby, jiggly VOXEL plush seal (phase 8, src/gfx/seal.js); 'clip' is kept as an alias.
+// The guide is Bubbles, a chubby seal pup made of 3D soap bubbles in a party hat ([seal19], src/gfx/seal.js); 'clip' is kept as an alias.
 //   drawNPC(ctx, 'seal', {x, y /* bottom (or body centre with base: 'center') */, t, scale | size, facing, talk, mood,
 //                         pose|anim, lookAt, point, ride, id})  -> {head, mouth, top, hand, ...}
 //   drawNPC(ctx, 'seal', {portrait: true, x, y, r, ...}) head and shoulders filling a portrait orb of radius r
@@ -297,7 +297,8 @@ function drawSealNPC(ctx, o) {
   const t = o.t ?? 0;
   if (o.portrait) {
     const r = o.r || 30;
-    return drawSeal(ctx, { x: o.x - r * 0.45, y: o.y + r * 0.2, t, size: r * 1.5, view: 'front', anim: o.pose === 'wave' ? 'wave' : 'idle', mood: o.mood, talk: o.talk, lookAt: o.lookAt || [o.x + r * 3, o.y + r], id: o.id ?? 'portrait' });
+    // [seal19] the bubble head (and most of its party hat) fills the orb
+    return drawSeal(ctx, { x: o.x, y: o.y + r * 0.2, anchor: 'head', t, size: r * 1.3, view: 'front', anim: o.pose === 'wave' ? 'wave' : 'idle', mood: o.mood, talk: o.talk, lookAt: o.lookAt || [o.x + r * 3, o.y + r], id: o.id ?? 'portrait', floaters: false });
   }
   const size = o.size ?? (o.scale ?? 1) * 40;
   return drawSeal(ctx, {

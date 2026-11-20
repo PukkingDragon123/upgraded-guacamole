@@ -369,27 +369,50 @@ function baitHook() {
   return { vm: m, yaw: 0.3, pitch: 0.24, spin: 'wobble' };
 }
 
-// ---------------------------------------------------------------- Multiplayer: two seal-pup friends
-function sealHead(m, p, cx, cy, cz, k, fur, furD) {
-  const f = p(fur, SOFT), fd = p(furD, SOFT), muz = p('#fbf6f0', SOFT), nose = p('#2a1e2e', GL), eye = p('#1a1226', GL), wh = p('#ffffff', { emissive: 0.7 }), blush = p('#ff9ab4', SOFT);
-  m.ellipsoid(cx, cy - 7 * k, cz - 1, 10.5 * k, 7 * k, 9 * k, fd); // body
-  m.ellipsoid(cx, cy, cz, 11 * k, 10 * k, 10 * k, (x, y) => (y < cy - 6 * k ? fd : f));
-  for (const s of [-1, 1]) m.ellipsoid(cx + s * 2.6 * k, cy - 3 * k, cz + 8.4 * k, 3.4 * k, 2.7 * k, 2.6 * k, muz);
-  m.ellipsoid(cx, cy - 0.8 * k, cz + 10 * k, 2.2 * k, 1.5 * k, 1.4 * k, nose);
+// ---------------------------------------------------------------- Multiplayer: two bubble-seal pups in party hats [seal19]
+// Bubbles (glasses, blue candy-striped cone hat) and a friend (pink hat): pearly soap-bubble heads and bodies with an
+// iridescent film rim and a window glint, whisker-pad bubbles, glossy cartoon eyes, a fluffy brim and a pom-pom.
+function bubblePup(m, p, cx, cy, cz, k, o) {
+  const pearl = p(o.pearl, GL), pearlD = p(o.pearlD, GL), white = p('#ffffff', { ...GL, emissive: 0.55 });
+  const film = ['#ffc8ee', '#fff4bc', '#c0ffe6', '#b4e2ff'].map((c) => p(c, { ...GL, light: 0.3 }));
+  const aqua = p('#7cc8ff', GL), aquaL = p('#c4ecff', GL);
+  const bub = (x0, y0, z0, r) => (x, y, z) => {
+    const dx = (x + 0.5 - x0) / r, dy = (y + 0.5 - y0) / r, dz = (z + 0.5 - z0) / r;
+    if (Math.hypot(dx, dy) > 0.88 && dz > -0.2) return film[(((Math.floor((Math.atan2(dy, dx) / TAU + 1) * 6)) % 4) + 4) % 4];
+    if (dx < -0.2 && dx > -0.62 && dy > 0.25 && dy < 0.66 && dz > 0.45) return white;
+    return dy < -0.4 ? pearlD : pearl;
+  };
+  // body bubbles, tail bubble and little flipper bubbles
+  m.ellipsoid(cx - 2 * k, cy - 9 * k, cz - 2, 10 * k, 7 * k, 8.5 * k, bub(cx - 2 * k, cy - 9 * k, cz - 2, 9 * k));
+  m.sphere(cx - 11 * k, cy - 12 * k, cz - 3, 4 * k, bub(cx - 11 * k, cy - 12 * k, cz - 3, 4 * k));
+  m.sphere(cx - 15.5 * k, cy - 12 * k, cz - 3, 2.4 * k, aqua);
+  for (const [x, y, z, r] of [[5, -15, 6, 2.8], [7.5, -17, 7, 2.1], [-6, -15, 6, 2.6]]) m.sphere(cx + x * k, cy + y * k, cz + z * k, r * k, (xx, yy) => (yy > cy + y * k + r * k * 0.3 ? aquaL : aqua));
+  // the head bubble
+  m.sphere(cx, cy, cz, 9.5 * k, bub(cx, cy, cz, 9.5 * k));
+  const muz = p('#fdfeff', SOFT), nose = p('#2a1e30', GL), eye = p('#0e1222', GL), wh = p('#ffffff', { emissive: 0.75 }), blush = p('#ff9ac0', SOFT);
+  for (const s of [-1, 1]) m.ellipsoid(cx + s * 2.5 * k, cy - 3.2 * k, cz + 8 * k, 3 * k, 2.6 * k, 2.4 * k, muz);
+  m.ellipsoid(cx, cy - 1 * k, cz + 9.6 * k, 1.9 * k, 1.4 * k, 1.3 * k, nose);
   for (const s of [-1, 1]) {
-    m.ellipsoid(cx + s * 4.6 * k, cy + 2.4 * k, cz + 8 * k, 1.9 * k, 2.4 * k, 1.6 * k, eye);
-    m.set(Math.floor(cx + s * 4.6 * k - 0.6 * k), Math.floor(cy + 3.4 * k), Math.floor(cz + 9.4 * k), wh);
-    m.ellipsoid(cx + s * 7.4 * k, cy - 1.5 * k, cz + 7 * k, 1.8 * k, 1.1 * k, 1, blush);
-    for (const dy of [-0.6, 1.4]) m.set(Math.floor(cx + s * 4.2 * k + s), Math.floor(cy - 3 * k + dy), Math.floor(cz + 10.2 * k), fd); // whisker dots
+    m.ellipsoid(cx + s * 4.3 * k, cy + 2.3 * k, cz + 8 * k, 1.45 * k, 2 * k, 1.5 * k, eye);
+    m.set(Math.floor(cx + s * 4.3 * k - 0.6 * k), Math.floor(cy + 3.3 * k), Math.floor(cz + 9.3 * k), wh);
+    m.ellipsoid(cx + s * 7.2 * k, cy - 1.6 * k, cz + 6.6 * k, 1.8 * k, 1.1 * k, 1, blush);
+    if (o.glasses) torus(m, cx + s * 4.4 * k, cy + 2.3 * k, cz + 9.6 * k, 3.3 * k, 0.55, 'z', p('#141a2c', METAL));
   }
+  if (o.glasses) m.box(cx - 1.2 * k, cy + 3.2 * k, cz + 9.6 * k, cx + 1.2 * k, cy + 3.2 * k, cz + 9.6 * k, p('#141a2c', METAL));
+  // the party hat: candy-striped cone, a fluffy bubble brim and a pom-pom
+  const hA = p(o.hatA, GL), hB = p(o.hatB, GL), brim = p('#ffffff', SOFT), pom = p(o.pom, { ...GL, emissive: 0.15 });
+  const hx = cx - 1.2 * k, hz = cz - 0.5, y0 = cy + 6.5 * k, y1 = y0 + 13 * k;
+  m.cone(hx, hz, y0, y1, 5.2 * k, 0.6, (x, y, z) => ((((y - y0) / (2.6 * k) + Math.atan2(z + 0.5 - hz, x + 0.5 - hx) / TAU) % 1 + 1) % 1 < 0.5 ? hA : hB), 'y');
+  torus(m, hx, y0 + 0.5, hz, 5.2 * k, 1.5 * k, 'y', brim);
+  m.sphere(hx, y1 + 1.4 * k, hz, 2.3 * k, pom);
 }
 function friends() {
-  const m = new VoxelModel(52, 42, 36), p = palOf(m);
-  sealHead(m, p, 33, 23, 14, 0.92, '#a8c4dc', '#7898b8');
-  sealHead(m, p, 19, 18, 22, 1, '#f2f4f8', '#c8d0dc');
-  // a little heart between them
+  const m = new VoxelModel(54, 50, 36), p = palOf(m);
+  bubblePup(m, p, 36, 22, 13, 0.88, { pearl: '#ffe6f4', pearlD: '#e8bcd8', hatA: '#ff6aa8', hatB: '#fff4a0', pom: '#7ae04a' });
+  bubblePup(m, p, 20, 19, 21, 1, { pearl: '#e4f6ff', pearlD: '#b4dcf6', hatA: '#2a9aff', hatB: '#ffffff', pom: '#8ae84a', glasses: true });
+  // a little heart floating between their hats
   const ht = p('#ff4a7a', { ...GL, emissive: 0.25 });
-  for (const [x, y] of [[0, 2], [1, 2], [3, 2], [4, 2], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1], [1, 0], [2, 0], [3, 0], [2, -1]]) m.box(25 + x, 36 + y, 26, 25 + x, 36 + y, 27, ht);
+  for (const [x, y] of [[0, 2], [1, 2], [3, 2], [4, 2], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1], [1, 0], [2, 0], [3, 0], [2, -1]]) m.box(25 + x, 42 + y, 20, 25 + x, 42 + y, 21, ht);
   return { vm: m, yaw: 0.3, pitch: 0.24, spin: 'wobble' };
 }
 

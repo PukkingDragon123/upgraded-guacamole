@@ -364,8 +364,10 @@ that feels hand-made."
   (`voxelSize(c, pose)`: ~48 voxels along small fish .. ~140 along giants), skin colours, stamped natural eyes, translucent
   fin voxels + denser rays (`'finrays'` part), glow voxels, baked AO. All APIs are unchanged (drawFishRig, lpFrame,
   lpFishIcon/voxelFishIcon, fishMesh/creatureMesh/addFishToScene give voxel meshes for the tank). `setVoxelMode(false)` = old
-  smooth meshes. Bubbles (`src/gfx/seal.js`) is a voxel plush seal (round dappled loaf, small dark eyes drawn at voxel
-  resolution) with a soft-body jiggle (squash spring + row ripple) in `drawSeal`; same anims / `drawNPC(ctx, 'seal', ...)`.
+  smooth meshes. Bubbles (`src/gfx/seal.js`) is a seal pup built from glossy 3D soap bubbles with a striped party cone hat and
+  round glasses, ray-cast per pixel by `src/gfx/bubblegl.js` (WebGL2, JS fallback), baked per animation/size and cached;
+  each bubble wobbles on its own, the head layer turns toward `lookAt`; same anims / `drawNPC(ctx, 'seal', ...)`
+  (dev page: `node tools/build.mjs --dev seal`).
   Dev: `node tools/build.mjs --dev lowpoly` -> `dev/lowpoly.html?mode=gallery&page=N | giants | vg | seal | icons | scene |
   turn&ids=puffer | perf`.
 - Creatures remake (phase 8b): solid creatures (realvox SOLIDS) are tessellated into ~2-voxel facets (per-face colour
