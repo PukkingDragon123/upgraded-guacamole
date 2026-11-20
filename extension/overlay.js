@@ -43621,7 +43621,7 @@ kmlmk..
     sea_abyss: "c6_boss"
   };
   var OCEAN_COST = {
-    sea_shallows: { aero: 600, items: { driftwood: 6, shell: 4 }, fish: {} },
+    sea_shallows: { aero: 600, items: { driftwood: 4, shell: 3 }, fish: {} },
     sea_fjord: { aero: 2e3, items: { sea_glass: 4, coral_chunk: 3, pearl: 1 }, fish: { "biome:shallows": 2 } },
     sea_junkyard: { aero: 5e3, items: { ice_shard: 3, pearl: 2, sea_glass: 3 }, fish: { "biome:fjord": 2 } },
     sea_metropolis: { aero: 12e3, items: { spring_coil: 3, gear: 4, circuit_board: 2 }, fish: { "biome:junkyard": 2, "rarity:uncommon": 1 } },

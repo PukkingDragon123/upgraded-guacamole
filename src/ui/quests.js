@@ -372,8 +372,8 @@ class QuestHud {
       if (lk < 1) {
         // it just landed: a squashy pop, a green flash and sparkles
         ctx.save();
-        const cxr = r.x + w / 2, cyr = y + RHt / 2, sq = Math.sin(lk * Math.PI) * 0.1;
-        ctx.translate(cxr, cyr); ctx.scale(1 + sq, 1 - sq * 0.6); ctx.translate(-cxr, -cyr);
+        const cxr = r.x + w / 2, cyr = y + RHt / 2, sq = Math.sin(lk * Math.PI) * 0.16;
+        ctx.translate(cxr, cyr); ctx.scale(1 + sq * 0.05, 1 + sq); ctx.translate(-cxr, -cyr);
         ctx.drawImage(aeroSurface(w - 10, RHt - 3, { tone: 'green', r: 7, gloss: 0.6, glossH: 8, curve: 1, rim: 0.8, glow: 0.5, a: [1 - lk, 1 - lk] }), r.x + 5, y);
         for (let j = 0; j < 3; j++) drawSparkle(ctx, r.x + 14 + j * (w - 30) / 2, y + 3 + (j % 2) * 9, 2, 1 - lk);
       }

@@ -63189,7 +63189,7 @@ kmlmk..
         sea_abyss: "c6_boss"
       };
       OCEAN_COST = {
-        sea_shallows: { aero: 600, items: { driftwood: 6, shell: 4 }, fish: {} },
+        sea_shallows: { aero: 600, items: { driftwood: 4, shell: 3 }, fish: {} },
         sea_fjord: { aero: 2e3, items: { sea_glass: 4, coral_chunk: 3, pearl: 1 }, fish: { "biome:shallows": 2 } },
         sea_junkyard: { aero: 5e3, items: { ice_shard: 3, pearl: 2, sea_glass: 3 }, fish: { "biome:fjord": 2 } },
         sea_metropolis: { aero: 12e3, items: { spring_coil: 3, gear: 4, circuit_board: 2 }, fish: { "biome:junkyard": 2, "rarity:uncommon": 1 } },
@@ -107220,6 +107220,16 @@ void main() {
   function word(text, o) {
     return WORDS.get(rowKey(text, o)) || null;
   }
+  function wordNow(text, o) {
+    if (!word(text, o) && alagardReady()) {
+      const gen = prepWord(text, o);
+      let r;
+      do {
+        r = gen.next();
+      } while (!r.done);
+    }
+    return word(text, o);
+  }
   function drawWord(ctx3, text, o, cx, cy, k = 1, alpha = 1) {
     const c = word(text, o);
     if (!c) return null;
@@ -107413,10 +107423,10 @@ void main() {
           this.prep.push(prepWord("NEW RESEARCH!", { palette: "leaf", size: 16, depth: 3 }));
         }
         titleO() {
-          const big = this.H >= 600 ? 1.5 : 1.25;
+          const big = this.H >= 600 ? 1.75 : 1.4;
           return {
             big: { palette: "gold", size: 32, depth: 4, scale: big },
-            head: { palette: "gold", size: 32, depth: 4, scale: big * 0.95 },
+            head: { palette: "gold", size: 32, depth: 4, scale: big * 0.8 },
             chap: { palette: "aqua", size: 32, depth: 4, scale: big },
             sub: { palette: "white", size: 16, depth: 3, scale: 1 },
             small: { palette: "gold", size: 16, depth: 3, scale: 1 },
@@ -107583,6 +107593,7 @@ void main() {
           const g = this.game;
           b.t = 0;
           b.fx = {};
+          if (b.kind === "done") while (this.queue[0]?.kind === "done" && !!this.queue[0].heavy === !!b.heavy) (b.more || (b.more = [])).push(this.queue.shift());
           this.cur = b;
           const S13 = ensureQuests(g.state);
           if (b.kind === "intro" && S13.intro !== b.ch) {
@@ -107699,7 +107710,7 @@ void main() {
             } catch {
             }
             g.audio?.play?.("sparkle", { vol: 0.7 });
-            b.rewards = this.rewardTiles(rewardList(b.q.reward), b.bonus);
+            b.rewards = this.pooledRewards(b);
             b.line = this.art.CHEERS[b.q.giver] || this.art.CHEERS.seal;
             b.line = b.line[Math.floor(Math.random() * b.line.length)];
             b.marks = { head: 0.15, npc: 0.3, talk: 0.95, rw: 1.2 };
@@ -107731,6 +107742,23 @@ void main() {
           const act = new Set(book2.active().map((q) => q.id));
           b.cards = ch.quests.map((q, i) => ({ q, i, face: !!S13.done[q.id] || act.has(q.id), done: !!S13.done[q.id], fly: act.has(q.id) && !S13.done[q.id] }));
           for (const c of b.cards) if (c.fly) this.hud.expectCard?.(c.q.id);
+        }
+        pooledRewards(b) {
+          const all = [b, ...b.more || []];
+          const map2 = /* @__PURE__ */ new Map();
+          let bonus = 0;
+          for (const x of all) {
+            bonus += x.bonus || 0;
+            for (const r of rewardList(x.q.reward)) {
+              const m = map2.get(r.key);
+              if (m && r.n && m.n) m.n += r.n;
+              else if (!m) map2.set(r.key, { ...r });
+            }
+          }
+          return this.rewardTiles([...map2.values()], bonus);
+        }
+        subtitle(b) {
+          return b.q.title.toUpperCase() + (b.more?.length ? ` +${b.more.length} MORE` : "");
         }
         rewardTiles(list, bonus) {
           const out = [];
@@ -108059,7 +108087,8 @@ void main() {
             b.fx.chime = 1;
             g.audio?.play?.("timing_perfect", { vol: 0.6 });
           }
-          const sub4 = b.q.title.toUpperCase();
+          const sub4 = this.subtitle(b);
+          wordNow(sub4, T5.sub);
           drawWord(ctx3, sub4, T5.sub, b.cx, hy + Math.round(H8 * 0.075), backOut2((b.t - M6.head - 0.5) / 0.4), clamp012((b.t - M6.head - 0.5) * 4));
           ctx3.restore();
           if (b.t > M6.talk && !b.fx.talk && M6.npc >= 0) {
@@ -108320,6 +108349,7 @@ void main() {
           if (b.phase === "cards" || b.phase === "fly") this.drawCards(ctx3, b);
           if (b.phase === "cards") {
             const n2 = b.cards.length;
+            if (b.exitAt == null) b.exitAt = b.t;
             b.phaseEnd = 0.25 + n2 * 0.08 + 0.5;
             if (b.pt > 0.25 + n2 * 0.08 + 1.5) {
               b.phase = "fly";
@@ -108329,7 +108359,12 @@ void main() {
           if (b.phase === "fly") {
             if (!b.fx.fly) {
               b.fx.fly = 1;
-              b.exitAt = b.t;
+              b.exitAt ?? (b.exitAt = b.t);
+              const S13 = ensureQuests(g.state);
+              if (S13.intro === b.ch) {
+                S13.intro = null;
+                g.save?.();
+              }
               this.barsTo = 0;
               this.hudHidden = false;
               if (b.cam) try {
@@ -108666,7 +108701,7 @@ void main() {
             b.end = 99;
             g.audio?.play?.("notify", { vol: 0.45 });
           } else if (b.kind === "done") {
-            b.rewards = this.rewardTiles(rewardList(b.q.reward), b.bonus);
+            b.rewards = this.pooledRewards(b);
             b.end = 2.4;
             g.audio?.play?.("ui_unlock");
             try {
@@ -108734,15 +108769,15 @@ void main() {
           }
           const n2 = b.cards.length;
           const { w: cw0, h: ch0 } = this.cardSize();
-          const sc = 0.72, cw = cw0 * sc;
+          const sc = 0.86, cw = cw0 * sc;
           const baseX = box2 ? box2.x + box2.w + cw / 2 + 10 : W11 / 2 - (n2 - 1) * (cw + 8) / 2;
           const baseY = box2 ? box2.y + box2.h / 2 - 8 : H8 * 0.42;
           let allLanded = true;
           b.cards.forEach((c, i) => {
             const k = clamp012((b.t - 0.15 - i * 0.12) / 0.35);
             if (c.rx == null) {
-              c.rx = box2 ? Math.min(W11 - cw / 2 - 6, baseX + i * 12) : baseX + i * (cw + 8);
-              c.ry = box2 ? baseY - i * 8 : baseY;
+              c.rx = box2 ? Math.min(W11 - cw / 2 - 6 - (n2 - 1 - i) * cw * 0.55, baseX + i * cw * 0.55) : baseX + i * (cw + 8);
+              c.ry = box2 ? baseY - 6 : baseY;
             }
             const rx2 = c.rx, ry2 = c.ry;
             let x = rx2, y = ry2, s = sc * backOut2(k), a = (i - (n2 - 1) / 2) * 0.06;
@@ -108798,7 +108833,8 @@ void main() {
             this.art.drawPortrait(ctx3, b.q.giver, W11 / 2 - hw / 2 - 30, y + Math.sin(t * 5) * 2, 20, t, { talk: b.t < 1.2 ? 0.6 : 0, mood: "excited", key: "sdone" });
           } catch {
           }
-          drawWord(ctx3, b.q.title.toUpperCase(), T5.sub, W11 / 2, y + Math.round(H8 * 0.07), backOut2((b.t - 0.3) / 0.35), 1);
+          wordNow(this.subtitle(b), T5.sub);
+          drawWord(ctx3, this.subtitle(b), T5.sub, W11 / 2, y + Math.round(H8 * 0.07), backOut2((b.t - 0.3) / 0.35), 1);
           ctx3.restore();
           this.drawTiles(ctx3, b, [W11 / 2, y], y + Math.round(H8 * 0.14), 0.35, 1.25);
           b.cx ?? (b.cx = W11 / 2);
@@ -108887,13 +108923,7 @@ void main() {
             const T5 = this.titleO();
             const label3 = p.q.kind === "mile" ? "MILESTONE!" : p.q.kind === "order" ? "ORDER FILLED!" : p.q.kind === "orderBonus" ? "BOARD CLEARED!" : "QUEST COMPLETE!";
             const o = { palette: "gold", size: 16, depth: 3 };
-            if (!word(label3, o)) {
-              const gen = prepWord(label3, o);
-              let r;
-              do {
-                r = gen.next();
-              } while (!r.done && alagardReady());
-            }
+            wordNow(label3, o);
             drawWord(ctx3, label3, o, p.x, p.y - 26 - p.t * 10, k, 1);
             if (p.side) {
               const px3 = p.x - 70, py = p.y - 20 + Math.sin(t * 6) * 2;
@@ -109414,9 +109444,9 @@ void main() {
             if (lt !== void 0 && lk >= 1) delete this.landT[q.id];
             if (lk < 1) {
               ctx3.save();
-              const cxr = r.x + w / 2, cyr = y + RHt / 2, sq = Math.sin(lk * Math.PI) * 0.1;
+              const cxr = r.x + w / 2, cyr = y + RHt / 2, sq = Math.sin(lk * Math.PI) * 0.16;
               ctx3.translate(cxr, cyr);
-              ctx3.scale(1 + sq, 1 - sq * 0.6);
+              ctx3.scale(1 + sq * 0.05, 1 + sq);
               ctx3.translate(-cxr, -cyr);
               ctx3.drawImage(aeroSurface(w - 10, RHt - 3, { tone: "green", r: 7, gloss: 0.6, glossH: 8, curve: 1, rim: 0.8, glow: 0.5, a: [1 - lk, 1 - lk] }), r.x + 5, y);
               for (let j = 0; j < 3; j++) drawSparkle(ctx3, r.x + 14 + j * (w - 30) / 2, y + 3 + j % 2 * 9, 2, 1 - lk);
@@ -120545,6 +120575,12 @@ ${hearts} ${status}
               }, 1800);
             }
             this.opened.names.push(nd.ocean ? `The ${nd.name} expedition` : nd.name);
+          });
+          game.on?.("labDone", (d) => {
+            const nd = LAB_BY_ID[d?.id];
+            if (!nd?.ocean) return;
+            game.toast?.(`The ${nd.name} expedition is ready! Open the Map and set sail.`, "map");
+            game.audio?.play?.("unlock_biome", { vol: 0.7 });
           });
         }
         update(dt, inp) {

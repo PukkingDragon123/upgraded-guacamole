@@ -90,6 +90,8 @@ function* prepWord(text, o) {
   if (WORDS.size > 120) WORDS.delete(WORDS.keys().next().value);
 }
 function word(text, o) { return WORDS.get(rowKey(text, o)) || null; }
+// build it now if it is missing (a one-off cost; most words are prepared ahead)
+function wordNow(text, o) { if (!word(text, o) && alagardReady()) { const gen = prepWord(text, o); let r; do { r = gen.next(); } while (!r.done); } return word(text, o); }
 function drawWord(ctx, text, o, cx, cy, k = 1, alpha = 1) {
   const c = word(text, o);
   if (!c) return null;
@@ -243,10 +245,10 @@ export class QuestCine {
     this.prep.push(prepWord('NEW RESEARCH!', { palette: 'leaf', size: 16, depth: 3 }));
   }
   titleO() {
-    const big = this.H >= 600 ? 1.5 : 1.25;
+    const big = this.H >= 600 ? 1.75 : 1.4;
     return {
       big: { palette: 'gold', size: 32, depth: 4, scale: big },
-      head: { palette: 'gold', size: 32, depth: 4, scale: big * 0.95 },
+      head: { palette: 'gold', size: 32, depth: 4, scale: big * 0.8 },
       chap: { palette: 'aqua', size: 32, depth: 4, scale: big },
       sub: { palette: 'white', size: 16, depth: 3, scale: 1 },
       small: { palette: 'gold', size: 16, depth: 3, scale: 1 },
@@ -387,6 +389,8 @@ export class QuestCine {
     const g = this.game;
     b.t = 0;
     b.fx = {};
+    // several completions at once play as one beat (the first giver cheers, the rewards are pooled)
+    if (b.kind === 'done') while (this.queue[0]?.kind === 'done' && !!this.queue[0].heavy === !!b.heavy) (b.more ||= []).push(this.queue.shift());
     this.cur = b;
     const S = ensureQuests(g.state);
     if (b.kind === 'intro' && S.intro !== b.ch) { this.cur = null; return; }
@@ -461,7 +465,7 @@ export class QuestCine {
     if (b.kind === 'done') {
       try { g.camera.slowmo(0.12, 0.45); } catch { /* optional */ }
       g.audio?.play?.('sparkle', { vol: 0.7 });
-      b.rewards = this.rewardTiles(rewardList(b.q.reward), b.bonus);
+      b.rewards = this.pooledRewards(b);
       b.line = this.art.CHEERS[b.q.giver] || this.art.CHEERS.seal;
       b.line = b.line[Math.floor(Math.random() * b.line.length)];
       b.marks = { head: 0.15, npc: 0.3, talk: 0.95, rw: 1.2 };
@@ -492,6 +496,21 @@ export class QuestCine {
     b.cards = ch.quests.map((q, i) => ({ q, i, face: !!S.done[q.id] || act.has(q.id), done: !!S.done[q.id], fly: act.has(q.id) && !S.done[q.id] }));
     for (const c of b.cards) if (c.fly) this.hud.expectCard?.(c.q.id);
   }
+
+  pooledRewards(b) {
+    const all = [b, ...(b.more || [])];
+    const map = new Map();
+    let bonus = 0;
+    for (const x of all) {
+      bonus += x.bonus || 0;
+      for (const r of rewardList(x.q.reward)) {
+        const m = map.get(r.key);
+        if (m && r.n && m.n) m.n += r.n; else if (!m) map.set(r.key, { ...r });
+      }
+    }
+    return this.rewardTiles([...map.values()], bonus);
+  }
+  subtitle(b) { return b.q.title.toUpperCase() + (b.more?.length ? ` +${b.more.length} MORE` : ''); }
 
   rewardTiles(list, bonus) {
     const out = [];
@@ -753,7 +772,8 @@ export class QuestCine {
     drawAeroGlow(ctx, b.cx, hy, 120, '#06264e', 0.35 * clamp01(b.t * 3));
     drawRow(ctx, b.head, b.cx, hy, b.t - M.head, { id: 'h', fx: b.fx, onLand: (x, y, i) => { if (i % 3 === 0) try { g.particles?.pixelBurst?.('sparkle', x, y + 8, 2, { layer: 'ui', ramp: 'gold', size: 0 }); } catch { /* optional */ } } });
     if (!b.fx.chime && b.t > M.head + 0.2) { b.fx.chime = 1; g.audio?.play?.('timing_perfect', { vol: 0.6 }); }
-    const sub = b.q.title.toUpperCase();
+    const sub = this.subtitle(b);
+    wordNow(sub, T.sub);
     drawWord(ctx, sub, T.sub, b.cx, hy + Math.round(H * 0.075), backOut((b.t - M.head - 0.5) / 0.4), clamp01((b.t - M.head - 0.5) * 4));
     ctx.restore();
     // the cheer line
@@ -943,13 +963,16 @@ export class QuestCine {
     if (b.phase === 'cards' || b.phase === 'fly') this.drawCards(ctx, b);
     if (b.phase === 'cards') {
       const n = b.cards.length;
+      if (b.exitAt == null) b.exitAt = b.t; // the cast dives away while the cards are dealt
       b.phaseEnd = 0.25 + n * 0.08 + 0.5;
       if (b.pt > 0.25 + n * 0.08 + 1.5) { b.phase = 'fly'; b.pt = 0; }
     }
     if (b.phase === 'fly') {
       if (!b.fx.fly) {
         b.fx.fly = 1;
-        b.exitAt = b.t;
+        b.exitAt ??= b.t;
+        const S = ensureQuests(g.state);
+        if (S.intro === b.ch) { S.intro = null; g.save?.(); }
         this.barsTo = 0; this.hudHidden = false;
         if (b.cam) try { g.camera.release(2.2); } catch { /* optional */ }
         g.audio?.play?.('travel_whoosh', { vol: 0.3, pitch: 1.4 });
@@ -1192,7 +1215,7 @@ export class QuestCine {
       g.audio?.play?.('notify', { vol: 0.45 });
     } else if (b.kind === 'done') {
       // the Short version of a quest completion: a quick 3D pop, the giver's face and the rewards flying in
-      b.rewards = this.rewardTiles(rewardList(b.q.reward), b.bonus);
+      b.rewards = this.pooledRewards(b);
       b.end = 2.4;
       g.audio?.play?.('ui_unlock');
       try { g.particles?.celebrate?.(this.W / 2, this.H * 0.18, 0.6, { layer: 'ui' }); } catch { /* optional */ }
@@ -1243,13 +1266,13 @@ export class QuestCine {
     // the objective cards: pop up beside the box (or in the middle), then fly into the tracker
     const n = b.cards.length;
     const { w: cw0, h: ch0 } = this.cardSize();
-    const sc = 0.72, cw = cw0 * sc;
+    const sc = 0.86, cw = cw0 * sc;
     const baseX = box ? box.x + box.w + cw / 2 + 10 : W / 2 - ((n - 1) * (cw + 8)) / 2;
     const baseY = box ? box.y + box.h / 2 - 8 : H * 0.42;
     let allLanded = true;
     b.cards.forEach((c, i) => {
       const k = clamp01((b.t - 0.15 - i * 0.12) / 0.35);
-      if (c.rx == null) { c.rx = box ? Math.min(W - cw / 2 - 6, baseX + i * 12) : baseX + i * (cw + 8); c.ry = box ? baseY - i * 8 : baseY; }
+      if (c.rx == null) { c.rx = box ? Math.min(W - cw / 2 - 6 - (n - 1 - i) * cw * 0.55, baseX + i * cw * 0.55) : baseX + i * (cw + 8); c.ry = box ? baseY - 6 : baseY; }
       const rx = c.rx, ry = c.ry;
       let x = rx, y = ry, s = sc * backOut(k), a = (i - (n - 1) / 2) * 0.06;
       const fk = clamp01((b.t - b.flyAt - i * 0.14) / 0.65);
@@ -1286,7 +1309,8 @@ export class QuestCine {
     drawRow(ctx, b.head, W / 2, y, b.t, { id: 's', stagger: 0.035, dur: 0.32, drop: 40 });
     const hw = b.head ? b.head.w : 240;
     try { this.art.drawPortrait(ctx, b.q.giver, W / 2 - hw / 2 - 30, y + Math.sin(t * 5) * 2, 20, t, { talk: b.t < 1.2 ? 0.6 : 0, mood: 'excited', key: 'sdone' }); } catch { /* optional */ }
-    drawWord(ctx, b.q.title.toUpperCase(), T.sub, W / 2, y + Math.round(H * 0.07), backOut((b.t - 0.3) / 0.35), 1);
+    wordNow(this.subtitle(b), T.sub);
+    drawWord(ctx, this.subtitle(b), T.sub, W / 2, y + Math.round(H * 0.07), backOut((b.t - 0.3) / 0.35), 1);
     ctx.restore();
     this.drawTiles(ctx, b, [W / 2, y], y + Math.round(H * 0.14), 0.35, 1.25);
     b.cx ??= W / 2;
@@ -1357,7 +1381,7 @@ export class QuestCine {
       const T = this.titleO();
       const label = p.q.kind === 'mile' ? 'MILESTONE!' : p.q.kind === 'order' ? 'ORDER FILLED!' : p.q.kind === 'orderBonus' ? 'BOARD CLEARED!' : 'QUEST COMPLETE!';
       const o = { palette: 'gold', size: 16, depth: 3 };
-      if (!word(label, o)) { const gen = prepWord(label, o); let r; do { r = gen.next(); } while (!r.done && alagardReady()); }
+      wordNow(label, o);
       drawWord(ctx, label, o, p.x, p.y - 26 - p.t * 10, k, 1);
       // a side story's giver pops up beside the button and cheers
       if (p.side) {
