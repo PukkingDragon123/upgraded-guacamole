@@ -43080,7 +43080,7 @@ kmlmk..
   }
   function pump2() {
     const now10 = performance.now();
-    if (now10 - pumpT < 12 || !JOBS.size) return;
+    if (now10 - pumpT < 24 || !JOBS.size) return;
     pumpT = now10;
     for (const J2 of JOBS.values()) {
       stepJob(J2);
@@ -43123,10 +43123,6 @@ kmlmk..
       if (!GROUPER_ANIMS[A2]) continue;
       const nl = A2 === "idle" ? JAW_LV(GROUPER_ANIMS[A2]) : 1;
       for (let l = 0; l < nl; l++) sheet(A2, z, view, l, true);
-      for (let l = nl; l < JAW_LV(GROUPER_ANIMS[A2]); l++) {
-        const key = A2 + "|" + z + "|" + view + "|" + l;
-        if (!SHEETS.has(key) && !JOBS.has(key)) startJob(key, A2, z, view, l);
-      }
     }
     return true;
   }
@@ -108662,8 +108658,8 @@ void main() {
       STAGE_H = 0.2;
       CINE_K2 = 0.5;
       ENTRY_T = { leap: 0.85, bob: 0.95, bubble: 0.95, swim: 1.7, zip: 0.85, pop: 0.45 };
-      SEAL_ANIMS = /* @__PURE__ */ new Set(["idle", "swim", "wiggle", "wave", "point", "flop", "spin", "worried", "clap", "think", "blow", "cheer", "sad", "sleep"]);
-      SEAL_MAP = { talk: "idle", laugh: "wiggle", jump: "cheer", nod: "idle", excited: "wiggle", dance: "wiggle", flex: "cheer" };
+      SEAL_ANIMS = /* @__PURE__ */ new Set(["idle", "swim", "wiggle", "wave", "point", "flop", "spin", "worried", "clap", "think", "blow", "cheer", "sad", "sleep", "surprised", "scared", "look", "laugh"]);
+      SEAL_MAP = { talk: "idle", jump: "cheer", nod: "idle", excited: "wiggle", dance: "wiggle", flex: "cheer" };
       BUBBLE_MAP = { clap: "cheer", wiggle: "laugh", worried: "sad", blow: "talk", flop: "sad", spin: "cheer", swim: "idle", sleep: "think", dance: "cheer", flex: "cheer", jump: "cheer", nod: "talk", excited: "cheer" };
       MOOD = { worried: "surprised", flop: "surprised", sad: "sad", cheer: "excited", clap: "excited", wiggle: "excited", laugh: "excited", jump: "excited", spin: "excited", think: "happy" };
       PLAYER_POSE = { wave: "wave", cheer: "cheer", think: "think", laugh: "laugh", chat: "chat", nod: "chat", jump: "cheer", dance: "dance", flex: "flex", sad: "sad" };
@@ -121093,7 +121089,7 @@ ${hearts} ${status}
           { text: "I've got this", value: false, mood: "smug", reply: "Okay, champ! Go fish!" }
         ] }
       };
-      EMOTE = { cheer: ["clap", 1.4], wave: ["wave", 1.8], sad: ["worried", 1.2], bend: ["worried", 0.8], think: ["think", 2.2] };
+      EMOTE = { cheer: ["cheer", 1.2], wave: ["wave", 1.8], sad: ["sad", 1.4], bend: ["worried", 0.8], think: ["think", 2.2] };
       TIPS = [
         { text: "Rare fish love special bait.", at: "bait" },
         { text: "Floating boxes hide loot. Fish them up!" },
