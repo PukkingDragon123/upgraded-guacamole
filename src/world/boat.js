@@ -299,6 +299,7 @@ export class Boat {
     const tx = h && h.visible ? h.x : null;
     if (tx !== null && Math.abs(tx - this.x) > 12) this.facing = Math.sign(tx - this.x);
     else if (!h?.visible) this.facing = this.dir;
+    if (this.faceOverride) this.facing = this.faceOverride; // [cine21] a quest cutscene turns the angler to the cast
   }
 
   // ---------------------------------------------------------------- queries
@@ -372,7 +373,7 @@ export class Boat {
     const sx = s.px + pad + Math.round(s.A.stand[0] * R), sy = s.py + pad + Math.round(s.A.stand[1] * R);
     let an = null;
     try {
-      an = Character.drawCharacter(lc, sx, sy, { pose: this.pose || 'idle', t: this.poseT, facing: this.facing, look: g.state.character, fish: this.holdFish, scale: CHAR_SCALE * R, id: 'boat', shadow: true });
+      an = Character.drawCharacter(lc, sx, Math.round(sy - (this.hopY || 0) * R), { pose: this.pose || 'idle', t: this.poseT, facing: this.facing, look: g.state.character, fish: this.holdFish, scale: CHAR_SCALE * R, id: 'boat', shadow: true }); // [cine21] hopY: a cutscene hop
     } catch (e) {
       if (!this.charErr) { this.charErr = true; console.warn('drawCharacter failed', e); }
     }

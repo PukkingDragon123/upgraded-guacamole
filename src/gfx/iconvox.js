@@ -369,10 +369,10 @@ function baitHook() {
   return { vm: m, yaw: 0.3, pitch: 0.24, spin: 'wobble' };
 }
 
-// ---------------------------------------------------------------- Multiplayer: two fat plush seal pups in party hats [seal20]
-// Bubbles (round glasses, aqua / white candy-striped cone hat) and a friend (pink / lemon hat): round dappled plush
-// bodies with the head swelling out of the front, white muzzle pads with whisker dots, big shiny eyes, rosy blush,
-// tiny side flippers, and a small heart between them.
+// ---------------------------------------------------------------- Multiplayer: two round ball seal pups in party hats [seal21]
+// Bubbles (round glasses, aqua / white candy-striped cone hat) and a friend (pink / lemon hat): each one fat, round,
+// bubbly BALL of dappled plush whose front is the face (white muzzle pads with whisker dots, big shiny eyes, rosy
+// blush), a glossy white highlight on the upper ball, tiny flippers poking out of the sides, and a small heart between them.
 function tiltCone(m, base, ax, H, R, col) {
   const l = Math.hypot(ax[0], ax[1], ax[2]), A = [ax[0] / l, ax[1] / l, ax[2] / l], E = Math.max(H, R) + 1;
   for (let z = Math.floor(base[2] - E); z <= Math.ceil(base[2] + E); z++) for (let y = Math.floor(base[1] - 1); y <= Math.ceil(base[1] + E); y++) for (let x = Math.floor(base[0] - E); x <= Math.ceil(base[0] + E); x++) {
@@ -386,40 +386,55 @@ function tiltCone(m, base, ax, H, R, col) {
 }
 function plushPup(m, p, cx, cy, cz, k, o) {
   const fur = p(o.fur, SOFT), furD = p(o.furD, SOFT), spot = p(o.spot, SOFT), belly = p('#ffffff', SOFT);
+  // the ball: centre a little below and behind the face reference (cx, cy, cz)
+  const R = 11.6 * k, bx = cx, by = cy - 2.6 * k, bz = cz - 1.6 * k;
   const furAt = (x, y, z) => {
-    const face = z > cz + 5 * k && Math.abs(x + 0.5 - cx) < 7 * k && y > cy - 7 * k && y < cy + 5 * k;
-    if (y + 0.5 < cy - 11 * k && z > cz - 2) return belly;
-    if (!face && h3(x >> 2, y >> 2, z >> 2, o.seed) > 0.8 && h3(x, y, z, o.seed) > 0.25) return spot;
-    return y + 0.5 > cy + 4 * k ? furD : fur;
+    const face = z > bz + 6 * k && Math.abs(x + 0.5 - cx) < 7.5 * k && y > cy - 7.5 * k && y < cy + 5 * k;
+    if (y + 0.5 < by - 6.5 * k && z > bz - 2) return belly;
+    if (face) return belly;
+    if (h3(x >> 2, y >> 2, z >> 2, o.seed) > 0.8 && h3(x, y, z, o.seed) > 0.25) return spot;
+    return y + 0.5 > by + 4 * k ? furD : fur;
   };
-  // the fat round loaf and the big head swelling out of its front
-  m.ellipsoid(cx, cy - 8 * k, cz - 1.5, 11.5 * k, 8.5 * k, 10 * k, furAt);
-  m.sphere(cx, cy, cz, 9.6 * k, furAt);
-  // tiny side flippers
+  m.sphere(bx, by, bz, R, furAt);
+  // the bubbly shine: a white glossy patch and a sparkle on the upper left of the ball
+  const shine = p('#ffffff', { ...GL, emissive: 0.55 }), sheen = p(mix(o.fur, '#ffffff', 0.6), { ...GL, emissive: 0.25 });
+  const hd = [-0.5, 0.62, 0.6], hl = Math.hypot(...hd), H = hd.map((v) => v / hl);
+  m.paint(() => {
+    for (let y = Math.floor(by); y <= by + R + 1; y++) for (let x = Math.floor(bx - R - 1); x <= bx; x++) for (let z = Math.floor(bz); z <= bz + R + 1; z++) {
+      const dx = x + 0.5 - bx, dy = y + 0.5 - by, dz = z + 0.5 - bz, d = Math.hypot(dx, dy, dz) || 1;
+      const c = (dx * H[0] + dy * H[1] + dz * H[2]) / d;
+      if (c > 0.965) m.put(x, y, z, shine); else if (c > 0.93) m.put(x, y, z, sheen);
+    }
+  });
+  // where the face sits on the ball (z of the surface at x, y)
+  const fz = (x, y) => bz + Math.sqrt(Math.max(0, R * R - (x - bx) ** 2 - (y - by) ** 2));
+  // tiny flippers poking out of the sides, tilted down
   const flip = p('#9aa2b0', SOFT);
-  for (const s of [-1, 1]) m.ellipsoid(cx + s * 10.5 * k, cy - 14 * k, cz + 2.5 * k, 3.4 * k, 1.6 * k, 2.6 * k, flip);
+  for (const s of [-1, 1]) m.ellipsoid(bx + s * (R - 0.6 * k), by - 5 * k, bz + 2.5 * k, 2.7 * k, 1.5 * k, 2.4 * k, flip);
   // the face: muzzle pads with whisker dots, a dark nose, big shiny eyes and rosy blush
   const muz = p('#ffffff', SOFT), nose = p('#2a2430', GL), eye = p('#10131d', GL), iris = p('#3d62a8', GL), wh = p('#ffffff', { emissive: 0.8 });
   const blush = p('#ff94b8', SOFT), dotC = p('#8b8fa0', MATTE);
   for (const s of [-1, 1]) {
-    m.ellipsoid(cx + s * 2.5 * k, cy - 3.6 * k, cz + 8.3 * k, 3.1 * k, 2.5 * k, 2.4 * k, muz);
-    for (const [dx, dy] of [[1.2, 0.6], [2.4, -0.4], [0.6, -0.9]]) m.set(cx + s * (2.5 + dx) * k, cy - 3.6 * k + dy * k, cz + 10.4 * k, dotC);
+    const mx = cx + s * 2.5 * k, my = cy - 3.6 * k, mz = fz(mx, my) - 1.3 * k;
+    m.ellipsoid(mx, my, mz, 3.1 * k, 2.5 * k, 2.4 * k, muz);
+    for (const [dx, dy] of [[1.2, 0.6], [2.4, -0.4], [0.6, -0.9]]) m.set(mx + s * dx * k, my + dy * k, mz + 2.1 * k, dotC);
   }
-  m.ellipsoid(cx, cy - 1.2 * k, cz + 9.9 * k, 1.5 * k, 1.0 * k, 1.1 * k, nose);
+  m.ellipsoid(cx, cy - 1.2 * k, fz(cx, cy - 1.2 * k) + 0.2 * k, 1.5 * k, 1.0 * k, 1.1 * k, nose);
   for (const s of [-1, 1]) {
-    const ex = cx + s * 4.4 * k, ey = cy + 2 * k;
-    m.ellipsoid(ex, ey, cz + 7.9 * k, 1.7 * k, 2.2 * k, 1.6 * k, (x, y) => (y + 0.5 < ey - 0.8 * k ? iris : eye));
-    m.set(ex - 0.6 * k, ey + 0.8 * k, cz + 9.4 * k, wh);
-    m.ellipsoid(cx + s * 7.1 * k, cy - 2.2 * k, cz + 6.8 * k, 2 * k, 1.2 * k, 1.2, blush);
-    if (o.glasses) torus(m, ex, ey, cz + 9.8 * k, 3.6 * k, 0.5, 'z', p('#2a3146', METAL));
+    const ex = cx + s * 4.6 * k, ey = cy + 2 * k, ez = fz(ex, ey);
+    m.ellipsoid(ex, ey, ez, 1.6 * k, 2.1 * k, 1.6 * k, (x, y) => (y + 0.5 < ey - 0.8 * k ? iris : eye));
+    m.set(ex - 0.6 * k, ey + 0.8 * k, ez + 1.5 * k, wh);
+    const bxx = cx + s * 7.6 * k, byy = cy - 2.4 * k;
+    m.ellipsoid(bxx, byy, fz(bxx, byy) - 0.6, 2 * k, 1.2 * k, 1.2, blush);
+    if (o.glasses) torus(m, ex, ey, ez + 1.9 * k, 3.9 * k, 0.5, 'z', p('#2a3146', METAL));
   }
-  if (o.glasses) m.box(cx - 0.9 * k, cy + 2.8 * k, cz + 10 * k, cx + 0.9 * k, cy + 2.8 * k, cz + 10 * k, p('#2a3146', METAL));
-  // the party hat: a small candy-striped cone tilted on the head, a snug brim and a fluffy pom-pom
+  if (o.glasses) m.box(cx - 0.9 * k, cy + 2.8 * k, fz(cx, cy + 2.8 * k) + 1.4 * k, cx + 0.9 * k, cy + 2.8 * k, fz(cx, cy + 2.8 * k) + 1.4 * k, p('#2a3146', METAL));
+  // the party hat: a small candy-striped cone tilted on top of the ball, a snug brim and a fluffy pom-pom
   const hA = p(o.hatA, GL), hB = p(o.hatB, GL), hD = p(o.hatD, GL), pom = p(o.pom, SOFT), pomL = p(o.pomL, SOFT);
-  const ax = o.tilt || [-0.3, 1, -0.1], base = [cx - 1.5 * k, cy + 7.6 * k, cz - 0.5];
-  tiltCone(m, base, ax, 12 * k, 4.8 * k, (h, a) => (h < 0.1 ? hD : ((Math.floor(h * 4.5 + a / TAU) % 2) + 2) % 2 ? hB : hA));
-  const l = Math.hypot(ax[0], ax[1], ax[2]), tip = [base[0] + (ax[0] / l) * 13 * k, base[1] + (ax[1] / l) * 13 * k, base[2] + (ax[2] / l) * 13 * k];
-  m.sphere(tip[0], tip[1], tip[2], 2.3 * k, (x, y) => (y + 0.5 > tip[1] + 0.6 && h3(x, y, 1) > 0.4 ? pomL : pom));
+  const ax = o.tilt || [-0.3, 1, -0.1], base = [bx + 1.2 * k, by + R - 1.6 * k, bz - 0.5];
+  tiltCone(m, base, ax, 11 * k, 4.4 * k, (h, a) => (h < 0.1 ? hD : ((Math.floor(h * 4.5 + a / TAU) % 2) + 2) % 2 ? hB : hA));
+  const l = Math.hypot(ax[0], ax[1], ax[2]), tip = [base[0] + (ax[0] / l) * 12 * k, base[1] + (ax[1] / l) * 12 * k, base[2] + (ax[2] / l) * 12 * k];
+  m.sphere(tip[0], tip[1], tip[2], 2.2 * k, (x, y) => (y + 0.5 > tip[1] + 0.6 && h3(x, y, 1) > 0.4 ? pomL : pom));
 }
 function friends() {
   const m = new VoxelModel(56, 54, 38), p = palOf(m);

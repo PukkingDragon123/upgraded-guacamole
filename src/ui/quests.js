@@ -878,6 +878,17 @@ export class QuestPanel {
         return;
       }
     }
+    // [cine21] cutscene gallery: rewatch this chapter's opening (and its finale once it is done)
+    if (!(S.outro || S.intro) && g.quests?.cine?.replay && CHAPTERS.indexOf(c) <= S.ch && g.state.tutorialDone) {
+      const opts = S.chDone[c.id] ? [['FINALE', 'finale'], ['OPENING', 'intro']] : [['OPENING', 'intro']];
+      let px = R.x + R.w - 6;
+      for (const [lbl, kind] of opts) {
+        const w = measureText(lbl) + 30;
+        px -= w;
+        if (pill(ui, ctx, px, R.y + 5, w, 19, lbl, { tone: kind === 'intro' ? 'aqua' : 'green', icon: getUiIcon('play'), tip: kind === 'intro' ? 'Watch the chapter opening again' : 'Watch the chapter finale again', sound: 'ui_click' })) { ui.close(this.id); g.quests.cine.replay(c.id, kind); return; }
+        px -= 5;
+      }
+    }
     const bw = R.w - 92, lines = wrapText(intro.text, bw - 16).slice(0, 2);
     const bh = lines.length * 10 + 16;
     ctx.drawImage(aeroSurface(bw, bh, { tone: 'white', r: 8, gloss: 0.5, glossH: 8, curve: 1, rim: 0.8, glow: 0.3 }), R.x + 80, R.y + 30);

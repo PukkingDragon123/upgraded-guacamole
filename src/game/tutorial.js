@@ -1,7 +1,7 @@
 // The opening and the first-session tutorial (phase 5 Intro agent; phase 6 Guide agent: Bubbles the seal).
 // 1. The cinematic 3D opening (intro3d.js) plays over the live game. Its response choices (the guide's mood, your
 //    angler name, the boat's paint, a first bait) are applied to the save here (applyChoice).
-// 2. Bubbles, a fat voxel plush seal pup (gfx/seal.js SealGuide), SWIMS AROUND THE SCREEN with smooth physics
+// 2. Bubbles, a round, bubbly voxel ball of a seal (gfx/seal.js SealGuide), SWIMS AROUND THE SCREEN with smooth physics
 //    to whatever it is explaining and POINTS at it with a flipper (a stream of tiny bubbles flows to the target),
 //    talking through the dialogue system (game/dialogue.js: typed Alagard speech bubbles with voice blips and
 //    response bubbles that keep clear of the target). Targets: HUD buttons (game.hud.iconRect), the bait pod, the

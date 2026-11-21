@@ -29,6 +29,16 @@
 //           the tracker. Several starts merge into one beat.
 //   lab     'labNodeUnlockedByQuest' {nodeId, questId} (light): "NEW RESEARCH!" over the Lab button, the node icon
 //           flies in, pixel focus brackets bounce on the button.
+//   boss    [cine21] a boss quest starts (heavy, Full only): the camera pans down into the water, the boss's silhouette
+//           glides past with a glowing eye, a rumble, 3D voxel "BOSS SIGHTED!" + its title, the giver's warning.
+// [cine21] Bespoke staging (src/ui/cinestage.js, sets + scripts in src/ui/cinescript.js, voxel props in
+// src/ui/cineprops.js): each chapter opening is a shot list on a dressed set (the ocean's voxel platform, the NPCs'
+// props, critters, weather and a time-of-day grade): an establishing wide shot with a 3D location card, entrances,
+// 3-6 acted lines (one / two / group / prop / reaction shots, eased moves or cuts with a dissolve, a handheld drift,
+// depth-of-field dimming), gestures on *emphasised* words, emotes, the angler reacting on the boat, and a reveal pan
+// to the boss's silhouette. Finales get a party shot, the cast's payoff lines and the next-ocean teaser.
+//   .replay(chId, 'intro' | 'finale')   the Quest Log's cutscene gallery (plays even when cutscenes are Off; changes
+//                                       nothing in the save; reopens the log on that chapter afterwards)
 // Art rules: 3D voxel text for every big word (text3d.js), pixel particles only (no light rays, no ring effects).
 import { clamp, clamp01, lerp, ease, TAU } from '../core/math.js';
 import { mix, shade } from '../core/color.js';
@@ -37,20 +47,27 @@ import { getUiIcon } from '../gfx/uiicons.js';
 import { buildText3D } from '../gfx/text3d.js';
 import { alagardReady, loadAlagard } from '../gfx/alagard.js';
 import { hiArt } from '../gfx/hires.js';
-import { drawAlagard, wrapAlagard, alagardWidth, Dialogue, dialogueFontSize } from '../game/dialogue.js';
+import { drawAlagard, alagardWidth, dialogueFontSize } from '../game/dialogue.js';
 import * as NPC from '../gfx/npcs.js';
-import { warmSeal, sealSize, drawSoapBubble } from '../gfx/seal.js';
+import { warmSeal, sealSize } from '../gfx/seal.js';
+import { Stage, Typer, VOICE } from './cinestage.js'; // [cine21]
+import { SETS, SCRIPTS, KEY_ACT, TIME_ICON } from './cinescript.js'; // [cine21]
+import { prepProps } from './cineprops.js'; // [cine21]
+import { BOSS_BY_ID, BOSS_BY_OCEAN } from '../fish/bosses.js'; // [cine21]
+import { SPECIES_BY_ID } from '../fish/species.js'; // [cine21]
+import { drawFishFit } from './journal.js'; // [cine21]
 import { aeroSurface, drawAeroGlow, drawSparkle, drawFocusBrackets, drawPixelBrackets, drawAeroCoin } from './aero.js';
 import { drawAnimIcon, drawPadlock } from './labrows.js';
 import { text3dCanvas } from './pop3d.js';
 import { CHAPTERS, CHAPTER_BY_ID, QUEST_BY_ID, ensureQuests, rewardList } from '../game/quests.js';
 import { LAB_BY_ID, OCEAN_NAMES } from '../game/lab.js';
 
-const VOICE = { seal: 'fish', fizz: 'tiny', marina: 'clip', dot: 'crab', bloat: 'deep' };
 // stage height of each NPC as a fraction of the screen height
 const NPC_H = { fizz: 72, marina: 74, dot: 56, bloat: 60 };
 const STAGE_H = 0.2;
-const HEAVY = { intro: 1, finale: 1, done: 1 };
+const HEAVY = { intro: 1, finale: 1, done: 1, boss: 1 };
+const BOSS_O = { palette: 'coral', size: 32, depth: 4 }; // [cine21] "BOSS SIGHTED!"
+const isBossQ = (q) => !!q?.objectives?.some?.((o) => o.t === 'boss');
 const backOut = (k) => ease.outBack(clamp01(k));
 const k01 = (t, a, d) => clamp01((t - a) / d);
 
@@ -176,7 +193,7 @@ export class QuestCine {
     this.sideT = 0;
     this.claims = [];      // claimed in the log this frame: flights spawn from the button
     this.box = null;       // light beat dialogue box rect (click = skip)
-    this.dlg = new Dialogue({ audio: game.audio, voice: 'fish', name: '' });
+    this.dlg = new Typer(game.audio); // [cine21] the cutscene typewriter (emphasis, punctuation pauses, blips)
     this.scratch = null;
     this.warmIdle();
   }
@@ -193,32 +210,48 @@ export class QuestCine {
 
   // ---------------------------------------------------------------- queue
   enqueue(b, front = false) {
-    if (this.mode() === 'off') return false;
+    if (this.mode() === 'off' && !b.replay) return false;
     b.heavy = this.heavyOf(b);
     // merge starts into one beat; drop starts covered by a chapter opening
     if (b.kind === 'start') {
-      const intro = [this.cur, ...this.queue].find((x) => x && x.kind === 'intro');
+      const intro = [this.cur, ...this.queue].find((x) => x && x.kind === 'intro' && !x.replay);
       const S = ensureQuests(this.game.state);
       b.qs = b.qs.filter((q) => !(q.kind === 'main' && ((intro && q.chapter === intro.ch) || S.intro === q.chapter)));
+      // [cine21] a boss quest gets its own "BOSS SIGHTED!" beat in Full
+      if (this.mode() === 'full') for (const q of b.qs.filter(isBossQ)) { b.qs = b.qs.filter((x) => x !== q); this.hud.expectCard?.(q.id); this.enqueue({ kind: 'boss', q }); }
       if (!b.qs.length) return false;
       for (const q of b.qs) this.hud.expectCard?.(q.id); // its tracker row waits for the card
       const s = this.queue.find((x) => x.kind === 'start');
       if (s) { for (const q of b.qs) if (!s.qs.includes(q)) s.qs.push(q); return true; }
     }
-    if (b.kind === 'intro' && [this.cur, ...this.queue].some((x) => x && x.kind === 'intro' && x.ch === b.ch)) return false;
-    if (b.kind === 'finale' && [this.cur, ...this.queue].some((x) => x && x.kind === 'finale' && x.ch === b.ch)) return false;
+    if (b.kind === 'boss' && [this.cur, ...this.queue].some((x) => x && x.kind === 'boss' && x.q === b.q)) return false;
+    if (!b.replay && b.kind === 'intro' && [this.cur, ...this.queue].some((x) => x && x.kind === 'intro' && x.ch === b.ch && !x.replay)) return false;
+    if (!b.replay && b.kind === 'finale' && [this.cur, ...this.queue].some((x) => x && x.kind === 'finale' && x.ch === b.ch && !x.replay)) return false;
     if (front) this.queue.unshift(b); else this.queue.push(b);
     // order: finale before the next chapter's opening before quest starts; completions keep their order
     // (a completion inside a chapter whose opening has not played yet waits for that opening)
     const S = ensureQuests(this.game.state);
-    const rank = { done: 0, finale: 1, intro: 2, lab: 3, start: 4 };
-    const rk = (x) => (x.kind === 'done' && x.q && S.intro === x.q.chapter ? 2.5 : rank[x.kind] ?? 5);
+    const rank = { done: 0, finale: 1, intro: 2, lab: 3, boss: 3.5, start: 4 };
+    const rk = (x) => (x.replay ? -1 : x.kind === 'done' && x.q && S.intro === x.q.chapter ? 2.5 : rank[x.kind] ?? 5);
     this.queue.sort((a, c) => rk(a) - rk(c));
     this.warmBeat(b);
     return true;
   }
 
-  heavyOf(b) { return !!HEAVY[b.kind] && !(b.kind === 'done' && this.mode() === 'short'); }
+  heavyOf(b) { return b.replay || (!!HEAVY[b.kind] && !((b.kind === 'done' || b.kind === 'boss') && this.mode() === 'short')); }
+
+  // [cine21] the Quest Log's cutscene gallery: rewatch a chapter opening / finale (no save changes)
+  replay(ch, kind = 'intro') {
+    if (!CHAPTER_BY_ID[ch]) return false;
+    const g = this.game;
+    if (this.cur?.replay) this.finish(true);
+    this.queue = this.queue.filter((x) => !x.replay);
+    this.enqueue({ kind: kind === 'finale' ? 'finale' : 'intro', ch, replay: true }, true);
+    this.calmT = 99;
+    this.forceT = 0.6;
+    g.audio?.play?.('ui_unlock', { vol: 0.5 });
+    return true;
+  }
 
   // the waiting chapter opening / finale, right now (a click on the tracker pill: the player asked for it)
   playChapterNow() {
@@ -246,6 +279,47 @@ export class QuestCine {
     for (const s of ['QUEST COMPLETE!', 'CHAPTER COMPLETE!']) this.prep.push(prepRow(s, s.startsWith('CH') ? T.big : T.head));
     for (const s of ['QUEST COMPLETE!', 'MILESTONE!', 'ORDER FILLED!', 'BOARD CLEARED!']) this.prep.push(prepWord(s, { palette: 'gold', size: 16, depth: 3, scale: 1.25 }));
     this.prep.push(prepWord('NEW RESEARCH!', { palette: 'leaf', size: 16, depth: 3, scale: 2 }));
+    this.prep.push(prepRow('BOSS SIGHTED!', this.bossO())); // [cine21]
+  }
+  bossO() { return { ...BOSS_O, scale: this.H >= 600 ? 1.5 : 1.2 }; }
+  // [cine21] everything a chapter's set needs: its props, the cast's poses, the 3D words, the boss
+  warmSet(chId) {
+    const ch = CHAPTER_BY_ID[chId], S = SETS[chId];
+    if (!ch || !S) return;
+    const T = this.titleO();
+    const list = [];
+    if (S.plat) list.push([S.plat, 0]);
+    for (const [id] of S.props || []) list.push([id, 0]);
+    if ((S.props || []).length > 1) list.push(['raft', 0]);
+    if (S.gulls) list.push(['gull', 0]);
+    if (S.penguins) list.push(['penguin', 0]);
+    if (S.jellies) list.push(['jelly', 0]);
+    if (S.plat) list.push(['crab', S.crab || 0]);
+    this.prep.push(prepProps(list, this.H));
+    this.prep.push(prepWord(OCEAN_NAMES[ch.ocean] || ch.ocean, T.ocean));
+    const boss = this.bossFor(chId);
+    if (boss) { this.prep.push(prepRow('BOSS SIGHTED!', this.bossO())); this.prep.push(prepWord(boss.title.toUpperCase(), T.sub)); }
+    const sc = SCRIPTS[chId];
+    const cast = new Set([...(sc?.intro || []), ...(sc?.finale || [])].map((x) => x.n || x.enter).filter(Boolean));
+    for (const id of cast) this.warmNpc(id, ['idle', 'talk', 'cheer', 'wave', 'point', 'think', 'laugh', 'sad']);
+    // the jumping fish and the boss silhouette compile their models now (not in the middle of a shot)
+    const self = this;
+    this.prep.push((function* () {
+      const c = self.scratch ||= document.createElement('canvas');
+      c.width = 4; c.height = 4;
+      for (const id of [...(S.jumpers || []), boss?.id].filter(Boolean)) {
+        const sp = SPECIES_BY_ID[id];
+        if (!sp) continue;
+        try { drawFishFit(c.getContext('2d'), sp, 2, 2, 0.5, 0, { silhouette: id === boss?.id ? '#02081a' : undefined }); } catch { /* optional */ }
+        yield;
+      }
+    })());
+  }
+  bossFor(chId) {
+    const ch = CHAPTER_BY_ID[chId];
+    const q = ch?.quests?.find(isBossQ);
+    const id = q?.objectives.find((o) => o.t === 'boss')?.id;
+    return BOSS_BY_ID[id] || BOSS_BY_OCEAN[ch?.ocean] || null;
   }
   titleO() {
     const big = this.H >= 600 ? 1.75 : 1.4;
@@ -263,7 +337,7 @@ export class QuestCine {
   warmNpc(id, poses = ['idle', 'talk', 'cheer', 'wave']) {
     const self = this;
     this.prep.push((function* () {
-      if (id === 'seal') { for (const a of ['idle', 'clap', 'wave', 'wiggle', 'swim']) { try { warmSeal(self.sealSz(), [a], 'side'); } catch { /* optional */ } yield; } return; }
+      if (id === 'seal') { for (const a of ['idle', 'clap', 'wave', 'wiggle', 'swim', 'spin', 'point', 'worried', 'blow', 'cheer', 'think', 'flop']) { try { warmSeal(self.sealSz(), [a], 'side'); } catch { /* optional */ } yield; } return; }
       if (!NPC.NPCS?.[id]) return;
       const c = self.scratch ||= document.createElement('canvas');
       c.width = 4; c.height = 4;
@@ -281,7 +355,7 @@ export class QuestCine {
       this.prep.push(prepRow(ch.title.toUpperCase(), T.chap));
       this.prep.push(prepWord(`CHAPTER ${ch.n}`, T.small));
       this.prep.push(prepWord(OCEAN_NAMES[ch.ocean] || ch.ocean, T.sub));
-      if (this.mode() === 'full') for (const L of ch.intro) this.warmNpc(L.npc);
+      if (this.mode() === 'full' || b.replay) { if (SCRIPTS[ch.id]) this.warmSet(ch.id); else for (const L of ch.intro) this.warmNpc(L.npc); }
     } else if (b.kind === 'finale' && ch) {
       this.prep.push(prepRow('CHAPTER COMPLETE!', T.big));
       this.prep.push(prepWord(ch.title.toUpperCase(), T.sub));
@@ -290,7 +364,8 @@ export class QuestCine {
       const nx = CHAPTERS[ch.n];
       if (nx) this.prep.push(prepWord(OCEAN_NAMES[nx.ocean] || nx.ocean, T.ocean));
       for (const r of rewardList(ch.reward)) if (r.n) this.prep.push(prepWord((r.key === 'aero' ? '+' : 'x') + r.n, T.num));
-      if (this.mode() === 'full' && ch.outro) this.warmNpc(ch.outro.npc);
+      if (this.mode() === 'full' || b.replay) { if (SCRIPTS[ch.id]) this.warmSet(ch.id); if (ch.outro) this.warmNpc(ch.outro.npc); }
+      if (nx && this.mode() === 'full' && !b.replay) this.warmSet(nx.id); // the next opening follows right away
     } else if (b.kind === 'done' && b.q) {
       this.prep.push(prepRow('QUEST COMPLETE!', T.head));
       this.prep.push(prepWord(b.q.title.toUpperCase(), T.sub));
@@ -298,6 +373,11 @@ export class QuestCine {
       if (b.heavy) this.warmNpc(b.q.giver);
     } else if (b.kind === 'lab') {
       this.prep.push(prepWord('NEW RESEARCH!', { palette: 'leaf', size: 16, depth: 3, scale: 2 }));
+    } else if (b.kind === 'boss' && b.q) {
+      const boss = this.bossFor(b.q.chapter);
+      this.prep.push(prepRow('BOSS SIGHTED!', this.bossO()));
+      if (boss) this.prep.push(prepWord(boss.title.toUpperCase(), T.sub));
+      this.warmNpc(b.q.giver);
     }
   }
   stepPrep() {
@@ -336,7 +416,7 @@ export class QuestCine {
     if (this.cur) {
       if (this.cur.heavy) {
         // another window took over (or the panel was closed by hand): wrap up cleanly; a beat never runs away
-        if (!g.ui?.isOpen?.('questcine') || this.cur.t > 45) this.finish(!g.ui?.isOpen?.('questcine'));
+        if (!g.ui?.isOpen?.('questcine') || this.cur.t > 150) this.finish(!g.ui?.isOpen?.('questcine'));
       } else {
         if (!calm) this.cur.t = Math.max(this.cur.t, this.cur.end - 0.25); // a fight starts: let the light beat go
         this.cur.t += dt;
@@ -353,7 +433,7 @@ export class QuestCine {
     const wait = this.heavyOf(next) ? 0.9 : 0.5;
     if (calm && this.calmT >= wait && (!this.prep.length || this.calmT > 2 || this.forceT > 0)) this.begin(this.queue.shift());
   }
-  has(kind, ch) { return [this.cur, ...this.queue].some((b) => b && b.kind === kind && b.ch === ch); }
+  has(kind, ch) { return [this.cur, ...this.queue].some((b) => b && b.kind === kind && b.ch === ch && !b.replay); }
 
   // side stories that open while you play (after their `after` quest) get a start beat; a chapter's batch is quiet
   watchSide(dt) {
@@ -403,14 +483,15 @@ export class QuestCine {
     if (b.kind === 'done') while (this.queue[0]?.kind === 'done') (b.more ||= []).push(this.queue.shift());
     this.cur = b;
     const S = ensureQuests(g.state);
-    if (b.kind === 'intro' && S.intro !== b.ch) { this.cur = null; return; }
-    if (b.kind === 'finale' && S.outro !== b.ch) { this.cur = null; return; }
+    if (!b.replay && b.kind === 'intro' && S.intro !== b.ch) { this.cur = null; return; }
+    if (!b.replay && b.kind === 'finale' && S.outro !== b.ch) { this.cur = null; return; }
+    if (b.kind === 'boss' && (!b.q || S.done[b.q.id])) { if (b.q) this.hud.landCard?.(b.q.id); this.cur = null; return; }
     if (b.heavy) {
       this.plan(b);
       if (!g.ui?.isOpen?.('questcine')) {
         const p = g.ui?.panels?.questcine;
         if (!p) { this.cur = null; return; }
-        p.sound = b.kind === 'intro' ? 'whale_call' : b.kind === 'finale' ? 'catch_legendary' : 'ui_unlock';
+        p.sound = b.kind === 'intro' ? 'whale_call' : b.kind === 'finale' ? 'catch_legendary' : b.kind === 'boss' ? 'roar' : 'ui_unlock';
         g.ui.open('questcine');
       }
     } else this.planLight(b);
@@ -422,21 +503,27 @@ export class QuestCine {
     if (!b) return;
     const g = this.game, S = ensureQuests(g.state);
     this.cur = null;
-    if (b.kind === 'intro' && S.intro === b.ch && (!cut || b.t > 1)) { S.intro = null; g.save?.(); }
-    if (b.kind === 'finale' && S.outro === b.ch && (!cut || b.t > 1)) { S.outro = null; g.save?.(); }
-    if (b.kind === 'intro' && cut && b.t <= 1) (this.skipIntro ||= {})[b.ch] = true; // do not loop back into it this session
-    // anything still to hand over goes now
-    if (b.rewards && !b.flew) this.launch(b);
-    if (b.cards) for (const c of b.cards) if (c.fly && !c.landed) { c.landed = true; this.hud.landCard?.(c.q.id); }
-    if (b.kind === 'finale' && S.intro && this.mode() !== 'off') this.enqueue({ kind: 'intro', ch: S.intro }, true);
+    try { b.stage?.end(); } catch { /* optional */ } // [cine21] the angler gets its boat back
+    if (!b.replay) {
+      if (b.kind === 'intro' && S.intro === b.ch && (!cut || b.t > 1)) { S.intro = null; g.save?.(); }
+      if (b.kind === 'finale' && S.outro === b.ch && (!cut || b.t > 1)) { S.outro = null; g.save?.(); }
+      if (b.kind === 'intro' && cut && b.t <= 1) (this.skipIntro ||= {})[b.ch] = true; // do not loop back into it this session
+      // anything still to hand over goes now
+      if (b.rewards && !b.flew) this.launch(b);
+      if (b.cards) for (const c of b.cards) if (c.fly && !c.landed) { c.landed = true; this.hud.landCard?.(c.q.id); }
+      if (b.kind === 'boss' && b.q) this.hud.landCard?.(b.q.id);
+      if (b.kind === 'finale' && S.intro && this.mode() !== 'off') this.enqueue({ kind: 'intro', ch: S.intro }, true);
+    }
     if (b.heavy) {
       this.hudHidden = false;
       // the next heavy beat continues in the same panel (bars and camera stay)
       const nx = this.queue[0];
-      if (!cut && b.kind === 'finale' && nx && nx.kind === 'intro' && this.calmIgnoringUs()) { this.begin(this.queue.shift()); if (this.cur) return; }
+      if (!cut && !b.replay && b.kind === 'finale' && nx && nx.kind === 'intro' && this.calmIgnoringUs()) { this.begin(this.queue.shift()); if (this.cur) return; }
       this.barsTo = 0;
       if (b.cam) { try { g.camera.release(2.2); } catch { /* optional */ } }
       if (g.ui?.isOpen?.('questcine')) { this.closing = true; g.ui.close('questcine'); this.closing = false; }
+      // [cine21] a gallery replay hands back to the Quest Log, on that chapter
+      if (b.replay && g.ui?.panels?.quests && !g.ui.blocking) { try { g.ui.open('quests', { tab: 'story', chapter: b.ch }); } catch { /* optional */ } }
     }
     this.box = null;
     this.dlg.clear();
@@ -453,25 +540,27 @@ export class QuestCine {
 
   plan(b) {
     const g = this.game, W = this.W, H = this.H, cam = g.camera, boat = g.boat;
-    const full = this.mode() === 'full';
+    const full = b.replay || this.mode() === 'full';
     b.cam = false;
     let side = 1;
     if (full && cam?.open && boat?.visible && Number.isFinite(boat.x) && Number.isFinite(boat.y)) {
       side = boat.x < W / 2 ? 1 : -1;
       const zT = (cam.baseZoom?.() || 2) * 1.5;
       b.world = { x: boat.x + side * 64, y: boat.y, zT, side };
-      const fx = b.world.x + side * (W * 0.16) / zT, fy = boat.y - (H * 0.17) / zT;
-      try { cam.focus(fx, fy, 2, 2.6); b.cam = true; } catch { b.cam = false; }
+      b.cam = true;
     } else b.world = null;
     b.side = side;
     b.cx = Math.round(side > 0 ? W * 0.64 : W * 0.36); // content column, opposite the NPC
     if (!b.world) b.cx = Math.round(W / 2);
-    b.stage = {}; // npc id -> {in, out, slot}
     b.full = full;
     this.hudHidden = true;
     this.barsTo = 1;
     const T = this.titleO();
     const ch = CHAPTER_BY_ID[b.ch];
+    // [cine21] the stage: a dressed set for chapter openings / finales, a bare one for completions and bosses
+    const setCh = b.kind === 'intro' || b.kind === 'finale' ? b.ch : null;
+    b.stage = new Stage(this, b, setCh || b.q?.chapter || 'ch1', { bare: !(full && setCh && SETS[setCh]) });
+    if (b.cam) b.stage.shot('stage', { cut: false });
     if (b.kind === 'done') {
       try { g.camera.slowmo(0.12, 0.45); } catch { /* optional */ }
       g.audio?.play?.('sparkle', { vol: 0.7 });
@@ -482,28 +571,45 @@ export class QuestCine {
       b.end = 4.4;
       b.head = row('QUEST COMPLETE!', T.head);
     } else if (b.kind === 'intro') {
-      const lines = full ? ch.intro.slice() : [];
-      b.lines = lines.map((L, i) => ({ ...L, at: 0 }));
-      b.li = -1;
-      b.phase = full ? 'enter' : 'title';
+      const sc = full ? SCRIPTS[ch.id] : null;
+      b.steps = sc ? sc.intro.slice() : full ? [...ch.intro.map((L) => ({ n: L.npc, s: L.text }))] : [];
+      if (sc && !this.bossFor(ch.id)) b.steps = b.steps.filter((x) => !x.boss);
+      b.si = 0;
+      b.phase = full ? 'script' : 'title';
       b.pt = 0;
       b.title = row(ch.title.toUpperCase(), T.chap);
       this.introCards(b, ch);
     } else if (b.kind === 'finale') {
       try { g.camera.slowmo(0.2, 0.6); } catch { /* optional */ }
       b.title = row('CHAPTER COMPLETE!', T.big);
-      b.phase = 'stamp';
+      b.phase = 'party';
       b.pt = 0;
       b.cards = ch.quests.map((q, i) => ({ q, i, face: true, done: true }));
       b.rewards = this.rewardTiles(rewardList(ch.reward), 0);
       b.next = CHAPTERS[ch.n] || null;
+      const sc = full ? SCRIPTS[ch.id] : null;
+      b.steps = sc ? sc.finale.slice() : [];
+      b.si = 0;
+      if (b.cam) b.stage.shot('stage', { cut: true });
+      // the cast of the payoff lines pops up for the party
+      const cast = [...new Set(b.steps.map((x) => x.n).filter(Boolean))];
+      if (full) cast.forEach((id, i) => b.stage.events.push({ at: 0.15 + i * 0.35, fn: () => b.stage.enter(id) }));
+      if (full) b.stage.events.push({ at: 0.9, fn: () => b.stage.player('cheer', 2.4) });
+    } else if (b.kind === 'boss') {
+      b.boss = this.bossFor(b.q.chapter);
+      b.phase = 'reveal';
+      b.pt = 0;
+      b.cards = [{ q: b.q, i: 0, face: true, fly: true }];
+      this.hud.expectCard?.(b.q.id);
+      b.title = row('BOSS SIGHTED!', this.bossO());
+      if (b.cam) b.stage.shot('stage', { cut: false });
     }
   }
 
   introCards(b, ch) {
     const S = ensureQuests(this.game.state), book = this.hud.book;
     const act = new Set(book.active().map((q) => q.id));
-    b.cards = ch.quests.map((q, i) => ({ q, i, face: !!S.done[q.id] || act.has(q.id), done: !!S.done[q.id], fly: act.has(q.id) && !S.done[q.id] }));
+    b.cards = ch.quests.map((q, i) => ({ q, i, face: !!S.done[q.id] || act.has(q.id), done: !!S.done[q.id], fly: !b.replay && act.has(q.id) && !S.done[q.id] }));
     for (const c of b.cards) if (c.fly) this.hud.expectCard?.(c.q.id);
   }
 
@@ -531,32 +637,22 @@ export class QuestCine {
     return out.slice(0, 6);
   }
 
-  // where the npc stands on screen: its slot next to the boat (world space), or a stage spot when there is no ocean view
-  npcPos(b, slot) {
-    const g = this.game, W = this.W, H = this.H;
-    if (b.world) {
-      const wx = b.world.x + b.world.side * slot * 60, wy = b.world.y;
-      const [sx, sy] = g.camera.worldToScreen(wx, wy);
-      const k = clamp((g.camera.z || b.world.zT) / b.world.zT, 0.55, 1.15);
-      return { x: sx, y: sy, k, water: true };
-    }
-    const x = b.side > 0 ? W * (0.2 + slot * 0.12) : W * (0.8 - slot * 0.12);
-    return { x, y: H * 0.7, k: 1, water: false };
-  }
-
   // ---------------------------------------------------------------- drawing heavy beats (CinePanel.draw)
   drawHeavy(ctx, ui, dt) {
     const b = this.cur;
-    const g = this.game, W = this.W, H = this.H;
+    const g = this.game;
     if (!b || !b.heavy) { this.drawBars(ctx); return; }
     b.t += dt;
     // input: click = next / fast-forward; Esc is handled by the ui (it closes the panel -> skip)
     const click = ui.inp.pressed || g.input?.keyPressed?.(' ') || g.input?.keyPressed?.('Enter');
     if (ui.inp.pressed) ui.inp.pressed = false;
     if (click) this.advance(b);
+    this.dlg.update(dt);
+    try { b.stage?.update(dt); } catch (e) { if (!this.stageErr) { this.stageErr = true; console.error(e); } }
     if (b.kind === 'done') this.drawDone(ctx, b, dt);
     else if (b.kind === 'intro') this.drawIntro(ctx, b, dt);
     else if (b.kind === 'finale') this.drawFinale(ctx, b, dt);
+    else if (b.kind === 'boss') this.drawBossBeat(ctx, b, dt);
     this.drawFlights(ctx);
     this.drawSkipHint(ctx, b);
     if (this.cur === b && b.t >= b.end) this.finish(false);
@@ -566,9 +662,16 @@ export class QuestCine {
     const d = this.dlg;
     if (d.active) { if (d.typing) d.finishTyping(); else d.next(); return; }
     if (b.wait > b.t) { b.wait = b.t; return; }
+    if (b.stepOn && b.stepEnd > b.t) { b.stepEnd = b.t; return; } // [cine21] skip the rest of a staged step
+    if (b.pendingSay) { b.sayAt = b.t; return; }
     // fast-forward to the next beat mark
     if (b.kind === 'done') { const m = [b.marks.rw + 0.6, b.end - 1.4, b.end]; const n = m.find((x) => x > b.t + 0.05); if (n !== undefined) b.t = n; }
     else if (b.phase) b.pt = Math.max(b.pt, b.phaseEnd ?? b.pt);
+  }
+  // the camera goes back to the player (the stage stops steering it)
+  releaseCam(b, speed = 2.2) {
+    if (b.stage) b.stage.camFree = true;
+    if (b.cam) { try { this.game.camera.release(speed); } catch { /* optional */ } }
   }
 
   drawBars(ctx) {
@@ -581,94 +684,35 @@ export class QuestCine {
   }
   barH() { return Math.round(this.H * 0.105 * ease.outCubic(this.bars)); }
 
+  // [cine21] the bottom bar: glass key caps (CLICK = next / fast-forward, ESC = skip) and the scene's progress pips
   drawSkipHint(ctx, b) {
     if (this.bars < 0.6) return;
     const W = this.W, H = this.H, bh = Math.round(H * 0.105);
     const y = H - Math.round(bh / 2) - 4 + Math.round((1 - this.bars) * bh);
-    const txt = 'SKIP';
-    const kw = measureText('ESC', 'small') + 8;
-    const x = W - 14 - kw - measureText(txt, 'small') - 6;
-    ctx.globalAlpha *= 0.85;
-    ctx.drawImage(aeroSurface(kw, 11, { tone: 'white', r: 3, gloss: 0.6, glossH: 4, curve: 1, rim: 0.6, glow: 0.2 }), x, y - 3);
-    drawText(ctx, 'ESC', x + 4, y - 1, { font: 'small', color: '#0a3e74' });
-    drawText(ctx, txt, x + kw + 5, y, { font: 'small', color: '#9fdcff' });
-    // a little "click for more" arrow while it plays
-    if (Math.sin(this.t * 5) > -0.2) { ctx.fillStyle = '#9fdcff'; const ax = x - 12; ctx.fillRect(ax, y, 2, 6); ctx.fillRect(ax + 2, y + 1, 2, 4); ctx.fillRect(ax + 4, y + 2, 2, 2); }
-    ctx.globalAlpha /= 0.85;
-    void b;
-  }
-
-  // one NPC on stage. st = {in: time it entered, out: time it leaves (or null)}
-  drawStageNpc(ctx, b, id, slot, o = {}) {
-    const g = this.game, t = this.t;
-    const P = this.npcPos(b, slot);
-    const te = b.t - (o.in ?? 0);
-    if (te < 0) return null;
-    const tx = o.out != null ? b.t - o.out : -1;
-    if (tx > 0.7) return null;
-    let x = P.x, y = P.y, k = P.k, alpha = 1, bubble = 0, sq = 0, spin = false;
-    const facing = (b.side > 0 ? 1 : -1) * (slot > 0 ? -1 : 1); // the second NPC turns to face the first
-    // entrances: the seal leaps out of the water, bubble people float down in a soap bubble that pops, Dot zips in,
-    // Captain Bloat bobs up and puffs. Exits: back into the water (or a poof on the plain stage).
-    const E = 0.85;
-    const ke = clamp01(te / E);
-    const fx = b.fx;
-    const key = id + slot;
-    if (P.water) {
-      if (id === 'seal' || id === 'bloat') {
-        if (ke < 1) {
-          const j = ke;
-          y = P.y + 40 * k - Math.sin(j * Math.PI) * 70 * k - j * 40 * k;
-          spin = id === 'seal' && j > 0.15 && j < 0.85;
-          if (!fx['out' + key]) { fx['out' + key] = 1; this.splash(P.x, P.y, 1); g.audio?.play?.('splash_small', { vol: 0.7 }); }
-          if (j > 0.92 && !fx['land' + key]) { fx['land' + key] = 1; this.splash(P.x, P.y, 0.7); g.audio?.play?.(id === 'bloat' ? 'puff' : 'boing', { vol: 0.6 }); }
-          if (id === 'bloat' && j > 0.7) sq = Math.sin((j - 0.7) / 0.3 * Math.PI) * 0.35;
-        }
-      } else {
-        // descend in a soap bubble
-        if (ke < 1) { y = P.y - (1 - ease.outCubic(ke)) * this.H * 0.45; bubble = 1; }
-        if (ke >= 1 && !fx['pop' + key]) {
-          fx['pop' + key] = 1;
-          try { g.particles?.pixelBurst?.('bubble', P.x, P.y - this.H * 0.1 * k, 8, { layer: 'ui', speed: [30, 90] }); g.particles?.pixelBurst?.('sparkle', P.x, P.y - this.H * 0.1 * k, 5, { layer: 'ui', ramp: 'white' }); } catch { /* optional */ }
-          this.splash(P.x, P.y, 0.6);
-          g.audio?.play?.('bubble', { vol: 0.8, pitch: 1.2 });
-        }
-        if (ke >= 1 && te < E + 0.25) sq = Math.sin(((te - E) / 0.25) * Math.PI) * 0.18;
+    const a0 = ctx.globalAlpha;
+    ctx.globalAlpha = a0 * 0.9;
+    const cap = (key, label, x) => {
+      const kw = measureText(key, 'small') + 8, lw = measureText(label, 'small');
+      ctx.drawImage(aeroSurface(kw, 11, { tone: 'white', r: 3, gloss: 0.6, glossH: 4, curve: 1, rim: 0.6, glow: 0.2 }), Math.round(x - kw - lw - 5), y - 3);
+      drawText(ctx, key, Math.round(x - kw - lw - 1), y - 1, { font: 'small', color: '#0a3e74' });
+      drawText(ctx, label, Math.round(x - lw), y, { font: 'small', color: '#9fdcff' });
+      return x - kw - lw - 16;
+    };
+    let x = W - 14;
+    x = cap('ESC', 'SKIP', x);
+    cap('CLICK', this.dlg.active && this.dlg.typing ? 'FAST' : 'NEXT', x);
+    // progress pips: one per spoken line of the scene
+    const steps = (b.steps || []).filter((s) => s.n);
+    if (steps.length > 1) {
+      const done = (b.steps || []).slice(0, b.si ?? 0).filter((s) => s.n).length + (this.dlg.active ? 1 : 0);
+      for (let i = 0; i < steps.length; i++) {
+        const px = 16 + i * 9, on = i < done;
+        ctx.fillStyle = '#04182e'; ctx.fillRect(px - 1, y - 1, 7, 7);
+        ctx.fillStyle = on ? (i === done - 1 ? '#ffe066' : '#7ad8ff') : '#1d4f86'; ctx.fillRect(px, y, 5, 5);
+        if (on) { ctx.fillStyle = '#ffffff'; ctx.fillRect(px, y, 2, 1); }
       }
-      if (tx > 0) {
-        y = P.y + ease.inCubic(clamp01(tx / 0.5)) * this.H * 0.25 * k;
-        if (!fx['dive' + key]) { fx['dive' + key] = 1; this.splash(P.x, P.y, 0.8); g.audio?.play?.('splash_small', { vol: 0.5, pitch: 1.2 }); }
-      }
-    } else {
-      if (ke < 1) { k *= ease.outBack(ke); alpha = clamp01(ke * 3); }
-      if (!fx['poofin' + key] && te > 0) { fx['poofin' + key] = 1; try { g.particles?.poof?.(P.x, P.y - 30, { layer: 'ui' }); } catch { /* optional */ } g.audio?.play?.('bubble', { vol: 0.6 }); }
-      if (tx > 0) { k *= 1 - ease.inBack(clamp01(tx / 0.45)); alpha = 1 - clamp01(tx / 0.45); }
     }
-    if (k <= 0.02) return null;
-    const pose = spin ? 'spin' : o.pose || 'idle';
-    const talk = o.talk || 0;
-    ctx.save();
-    ctx.globalAlpha *= alpha;
-    if (P.water) { ctx.beginPath(); ctx.rect(0, 0, this.W, Math.round(P.y + 3 * k)); ctx.clip(); }
-    const foot = P.water ? 9 : 0;
-    ctx.translate(Math.round(x), Math.round(y));
-    if (sq) ctx.scale(k * (1 + sq), k * (1 - sq)); else ctx.scale(k, k);
-    let A = null;
-    try {
-      if (id === 'seal') {
-        const anim = pose === 'cheer' ? 'clap' : pose === 'wave' ? 'wave' : pose === 'spin' ? 'swim' : pose === 'excited' ? 'wiggle' : 'idle';
-        A = NPC.drawNPC(ctx, 'seal', { x: 0, y: foot, t, size: this.sealSz(), facing, anim, talk, mood: o.mood || 'happy', ride: 0, id: 'qc-seal', lookAt: o.lookAt });
-      } else {
-        A = NPC.drawNPC(ctx, id, { x: 0, y: foot, t, scale: this.npcScale(id), facing, pose: pose === 'excited' ? 'cheer' : pose, talk, mood: o.mood || 'happy', id: 'qc-' + id, shadow: false });
-      }
-    } catch { A = null; }
-    if (bubble) drawSoapBubble(ctx, 0, -this.H * STAGE_H * 0.5, Math.round(this.H * STAGE_H * 0.62), Math.sin(t * 6) * 0.3);
-    ctx.restore();
-    if (P.water && te > 0.2 && tx < 0) this.drawFoam(ctx, P.x, P.y, k);
-    // emote over the head
-    const top = A?.top ? [x + A.top[0] * k, y + A.top[1] * k] : [x, y - this.H * STAGE_H * k];
-    if (o.emote && o.emoteT != null) this.drawEmote(ctx, top[0], top[1] - 6, o.emote, b.t - o.emoteT);
-    return { x, y, k, top, mouth: A?.mouth ? [x + A.mouth[0] * k, y + A.mouth[1] * k] : top };
+    ctx.globalAlpha = a0;
   }
 
   drawFoam(ctx, x, y, k) {
@@ -707,44 +751,73 @@ export class QuestCine {
     const fs = dialogueFontSize();
     return small ? 16 : clamp(fs, 16, this.H >= 700 ? 24 : 20);
   }
-  say(npc, text, o = {}) {
-    const d = this.dlg;
-    d.voice = VOICE[npc] || 'fish';
-    d.now(text, { hold: o.hold ?? 1.1 + text.length * 0.012, cps: o.cps ?? 46, onDone: o.onDone });
-    d.npc = npc;
+  say(npc, text, o = {}) { this.dlg.now(npc, text, o); }
+  // word wrap that keeps character indices (for the typewriter and the *emphasis* colouring)
+  wrapEm(text, maxW, fs) {
+    const lines = [];
+    let s = 0, e = 0, i = 0;
+    const words = [];
+    const re = /\S+/g;
+    let m;
+    while ((m = re.exec(text))) words.push([m.index, m.index + m[0].length]);
+    for (const [a, z] of words) {
+      if (i === 0) { s = a; e = z; i = 1; continue; }
+      if (alagardWidth(text.slice(s, z), fs) > maxW) { lines.push({ s, e }); s = a; }
+      e = z;
+    }
+    if (i) lines.push({ s, e });
+    return lines;
   }
   drawBox(ctx, b, o = {}) {
-    const d = this.dlg, l = d.line;
-    const g = this.game, W = this.W, H = this.H, t = this.t;
-    if (!l) return null;
-    const fs = this.fontSize(o.small), LH = Math.round(fs * 0.86) + 3;
-    const w = Math.round(Math.min(W - 40, o.w || Math.max(420, W * 0.56)));
-    const tx0 = 66;
-    const lines = wrapAlagard(l.text, w - tx0 - 22, fs);
-    const h = Math.max(64, lines.length * LH + 26);
+    const d = this.dlg;
+    if (!d.active) return null;
+    const W = this.W, H = this.H, t = this.t;
+    let fs = this.fontSize(o.small);
+    const w = Math.round(Math.min(W - 32, o.w || Math.max(440, W * 0.58)));
+    const tx0 = 70, maxTW = w - tx0 - 28;
+    let lines = this.wrapEm(d.text, maxTW, fs);
+    // never overflow: a smaller face before a fourth line
+    while (lines.length > 3 && fs > 14) { fs -= 2; lines = this.wrapEm(d.text, maxTW, fs); }
+    const LH = Math.round(fs * 0.86) + 4;
+    const h = Math.max(70, lines.length * LH + 30);
     const kin = backOut(d.t * 4.5);
-    const x = Math.round(o.x ?? (o.cx != null ? clamp(o.cx - w / 2, 12, W - w - 12) : (W - w) / 2)), y0 = Math.round(o.y ?? H - Math.round(H * 0.105) - h + 12);
+    const x = Math.round(o.x ?? (o.cx != null ? clamp(o.cx - w / 2, 12, W - w - 12) : (W - w) / 2));
+    const y0 = Math.round(o.y ?? H - Math.round(H * 0.105) - h + 12);
     const y = Math.round(y0 + (1 - kin) * 30);
     const a0 = ctx.globalAlpha;
     ctx.globalAlpha = a0 * clamp01(d.t * 6);
     const col = this.art.NPC_COL[d.npc] || '#8fdcff';
     ctx.drawImage(aeroSurface(w, h, { top: '#3aa4f0', mid: '#1468c0', bot: '#0a3f86', a: [0.97, 0.98], edge: '#04264e', r: 12, gloss: 0.35, glossH: 18, curve: 2, rim: 0.85, glow: 0.5, glowColor: '#7ad8ff', bubbles: 4, seed: 61 }), x, y);
+    // a speaker-coloured stripe down the portrait side
+    ctx.fillStyle = shade(col, -0.25); ctx.fillRect(x + 6, y + 10, 3, h - 20);
+    ctx.fillStyle = mix(col, '#ffffff', 0.4); ctx.fillRect(x + 6, y + 10, 1, h - 20);
     // name plate (in the speaker's colour) on the top edge
     const name = this.art.npcName(d.npc).toUpperCase();
-    const nfs = 16, nw = Math.ceil(alagardWidth(name, nfs)) + 22, nh = 19;
+    const nfs = 16, nw = Math.min(w - tx0, Math.ceil(alagardWidth(name, nfs)) + 22), nh = 19;
     const plate = { top: mix(col, '#ffffff', 0.6), mid: col, bot: shade(col, -0.3), edge: shade(col, -0.6), a: [1, 1] };
     ctx.drawImage(aeroSurface(nw, nh, { tone: plate, r: 'pill', gloss: 0.8, glossH: 7, curve: 1, rim: 0.8, glow: 0.4 }), x + tx0 - 6, y - 11);
     drawAlagard(ctx, name, x + tx0 + 5, y - 10, { size: nfs, color: '#ffffff', shadow: shade(col, -0.65) });
     // portrait, overlapping the left edge
     const pr = Math.round(Math.min(32, h * 0.46));
-    try { this.art.drawPortrait(ctx, d.npc, x + 34, y + h / 2, pr, t, { talk: d.talk, mood: o.mood || 'happy', key: 'cine' }); } catch { /* optional */ }
-    // typed text
-    let left = Math.floor(d.shown);
+    try { this.art.drawPortrait(ctx, d.npc, x + 36, y + h / 2, pr, t, { talk: d.talk, mood: o.mood || 'happy', key: 'cine' }); } catch { /* optional */ }
+    // typed text, *emphasis* in the speaker's colour with a little bob
+    const shown = Math.floor(d.shown);
     const ty = y + Math.round((h - lines.length * LH) / 2) - 1;
-    lines.forEach((ln, i) => {
-      if (left <= 0) return;
-      drawAlagard(ctx, ln, x + tx0 + 4, ty + i * LH, { size: fs, chars: left, color: '#ffffff', shadow: '#04264e' });
-      left -= ln.length + 1;
+    const emC = mix(col, '#ffffff', 0.3), emS = shade(col, -0.7);
+    const isEm = (i) => d.emph.some(([a, z]) => i >= a && i < z);
+    lines.forEach((ln, li) => {
+      const e = Math.min(ln.e, shown);
+      if (e <= ln.s) return;
+      let i = ln.s;
+      while (i < e) {
+        const em = isEm(i);
+        let j = i + 1;
+        while (j < e && isEm(j) === em) j++;
+        const px = x + tx0 + 4 + alagardWidth(d.text.slice(ln.s, i), fs);
+        const bob = em ? Math.round(Math.sin(t * 6 + i * 0.5) * 1) : 0;
+        drawAlagard(ctx, d.text.slice(i, j), Math.round(px), ty + li * LH + bob, { size: fs, color: em ? emC : '#ffffff', shadow: em ? emS : '#04264e' });
+        i = j;
+      }
     });
     if (d.waiting) {
       const bob = Math.round(Math.sin(t * 7) * 2), ax = x + w - 18, ay = y + h - 13 + bob;
@@ -752,7 +825,6 @@ export class QuestCine {
       ctx.fillStyle = '#ffffff'; ctx.fillRect(ax - 4, ay - 3, 9, 2); ctx.fillRect(ax - 2, ay - 1, 5, 2); ctx.fillRect(ax, ay + 1, 1, 2);
     }
     ctx.globalAlpha = a0;
-    void g;
     return { x, y, w, h };
   }
   emoteFor(text, cheer) {
@@ -762,15 +834,166 @@ export class QuestCine {
     return 'heart';
   }
 
+  // ---------------------------------------------------------------- [cine21] the scene runner (scripted steps)
+  // -> true when every step has played
+  runScript(b) {
+    const st = b.stage;
+    if (b.pendingSay && b.t >= b.sayAt) { const f = b.pendingSay; b.pendingSay = null; f(); }
+    for (let guard = 0; guard < 8; guard++) {
+      const S = b.steps?.[b.si];
+      if (!S) return true;
+      if (!b.stepOn) { b.stepOn = true; b.lineDone = false; b.stepEnd = b.t; this.startStep(b, S); }
+      if (S.n ? !b.lineDone : b.t < b.stepEnd) return false;
+      if (S.boss) { b.reveal = null; st.shot('group'); }
+      b.si++; b.stepOn = false; b.sp = null;
+    }
+    return false;
+  }
+  startStep(b, S) {
+    const st = b.stage;
+    if (S.wide) { st.shot('wide', { cut: true }); b.card = b.t; b.cardEnd = b.t + S.wide; b.stepEnd = b.t + S.wide; return; }
+    if (S.enter) {
+      const a = st.enter(S.enter, S.how);
+      if (!b.firstIn) { b.firstIn = 1; st.shot('stage'); } else st.shot('group');
+      b.stepEnd = b.t + st.entryT(a) + 0.2;
+      return;
+    }
+    if (S.prop) {
+      st.bringProp(S.prop);
+      const p = st.props.find((q) => q.id === S.prop);
+      st.shot('prop', { id: p?.owner });
+      b.stepEnd = b.t + 1.05;
+      return;
+    }
+    if (S.fx) {
+      st.fx(S.fx, { at: S.at });
+      if (S.shot) st.shot(S.shot, { id: S.at });
+      else if (['penguin', 'spark', 'neon', 'crab'].includes(S.fx)) st.shot('set');
+      else if (S.fx === 'gull') st.shot('prop', { id: 'marina' });
+      b.stepEnd = b.t + (S.wait ?? 1);
+      return;
+    }
+    if (S.boss) { b.reveal = { t0: b.t, boss: this.bossFor(b.ch), fx: {} }; st.shot('boss'); b.stepEnd = b.t + 5; return; }
+    if (S.n) this.startLine(b, S);
+  }
+  startLine(b, L) {
+    const st = b.stage, g = this.game;
+    let a = st.actors.get(L.n);
+    let delay = 0;
+    if (!a || a.state === 'gone') { a = st.enter(L.n); delay = st.entryT(a); }
+    const kind = L.shot || (L.to && L.to !== 'player' ? 'two' : 'one');
+    const prevK = st.shotK?.kind;
+    b.lineN = (b.lineN || 0) + 1;
+    // mostly eased camera moves; every third change of framing is a cut with a dissolve
+    const cut = kind !== prevK && prevK !== 'wide' && prevK !== 'boss' && b.lineN % 3 === 0;
+    st.shot(kind, { id: L.n, to: L.to || (kind === 'two' ? 'player' : undefined), cut });
+    st.faceAll(L.n, L.to);
+    if (L.fx) st.fx(L.fx, { at: L.n });
+    if (L.emote) st.events.push({ at: st.t + delay + 0.15, fn: () => st.emote(L.n, L.emote) });
+    for (const [id, an] of Object.entries(L.re || {})) st.events.push({ at: st.t + delay + 0.8, fn: () => st.act(id, an, 1.5) });
+    if (L.pl) st.events.push({ at: st.t + delay + (L.pl === 'jump' ? 0.35 : 0.9), fn: () => st.player(L.pl, 2.2) });
+    // a big reaction gets a reaction close-up on the angler, then back to the speaker
+    if ((L.pl === 'jump' || L.pl === 'laugh') && kind === 'one' && st.world) {
+      st.events.push({ at: st.t + delay + 1.25, fn: () => { if (b.si < b.steps.length && b.steps[b.si] === L) st.shot('player', { cut: true, dissolve: false }); } });
+      st.events.push({ at: st.t + delay + 2.55, fn: () => { if (b.steps[b.si] === L && st.shotK?.kind === 'player') st.shot(kind, { id: L.n, to: L.to, cut: true, dissolve: false }); } });
+    }
+    b.sp = { id: L.n, act: L.act || 'talk', after: L.after, line: L };
+    const say = () => this.say(L.n, L.s, {
+      onDone: () => { b.lineDone = true; },
+      onKey: () => {
+        const ac = st.actors.get(L.n);
+        if (ac) ac.key = { anim: L.key || KEY_ACT[L.n] || 'cheer', until: st.t + 0.9 };
+        g.audio?.play?.('ui_tab', { vol: 0.22, pitch: 1.5 });
+        if (ac?.scr) try { g.particles?.pixelBurst?.('sparkle', ac.scr.top[0], ac.scr.top[1], 3, { layer: 'ui', ramp: 'gold', size: 0 }); } catch { /* optional */ }
+      },
+    });
+    if (delay > 0) { b.sayAt = b.t + delay; b.pendingSay = say; } else say();
+  }
+  speaker(b) {
+    if (!b.sp) return null;
+    const d = this.dlg;
+    return { ...b.sp, typing: d.active && d.npc === b.sp.id && d.typing };
+  }
+
+  // [cine21] location card: the ocean's name in 3D voxel letters + the time of day, during the establishing shot
+  drawLocCard(ctx, b, ch) {
+    if (b.card == null) return;
+    const H = this.H, t = this.t;
+    const u = b.t - b.card, out = clamp01((b.t - (b.cardEnd ?? b.card + 2.8) + 0.45) / 0.45);
+    const kin = clamp01(u / 0.55);
+    if (kin <= 0 || out >= 1) return;
+    const T = this.titleO(), name = OCEAN_NAMES[ch.ocean] || ch.ocean;
+    const c = wordNow(name, T.ocean);
+    const cw = c ? c.width : 160;
+    const bh = Math.round(H * 0.105);
+    const x0 = 28 + cw / 2, y = H - bh - Math.round(H * 0.09);
+    const x = lerp(-cw, x0, ease.outCubic(kin)) - out * 40;
+    ctx.save();
+    ctx.globalAlpha *= 1 - out;
+    drawAeroGlow(ctx, x, y, cw * 0.7, '#06264e', 0.45);
+    drawWord(ctx, name, T.ocean, x, y, 1, 1);
+    const rw = Math.round(cw * ease.outCubic(clamp01((u - 0.3) / 0.5)));
+    ctx.fillStyle = '#04264e'; ctx.fillRect(Math.round(x - cw / 2) - 1, y + Math.round((c?.height || 30) / 2) + 2, rw + 2, 4);
+    ctx.fillStyle = '#ffd23a'; ctx.fillRect(Math.round(x - cw / 2), y + Math.round((c?.height || 30) / 2) + 3, rw, 2);
+    const time = SETS[ch.id]?.time || '';
+    if (time && u > 0.45) {
+      const ic = getUiIcon(TIME_ICON[SETS[ch.id]?.weather] || 'sun');
+      const ty = y + Math.round((c?.height || 30) / 2) + 10;
+      if (ic) ctx.drawImage(ic, Math.round(x - cw / 2), ty - 2);
+      drawText(ctx, `CHAPTER ${ch.n}  -  ${time}`, Math.round(x - cw / 2 + (ic ? ic.width + 5 : 0)), ty, { font: 'small', color: '#ffffff', shadow: '#04264e' });
+    }
+    ctx.restore();
+    void t;
+  }
+
+  // [cine21] "BOSS SIGHTED!" + the boss's name, the rumble and everyone's reaction; u = seconds into the reveal
+  drawBossTitle(ctx, b, R, u) {
+    const g = this.game, H = this.H, st = b.stage;
+    const boss = R?.boss;
+    if (!boss) return;
+    if (u > 1.15 && !R.fx.rumble) {
+      R.fx.rumble = 1;
+      try { g.camera.shake(g.state.settings.reducedMotion ? 1 : 6); } catch { /* optional */ }
+      g.audio?.play?.('roar', { vol: 0.6, pitch: 0.6 }); g.audio?.play?.('thunder', { vol: 0.35 });
+      st.scareGulls();
+      for (const a of st.actors.values()) { st.act(a.id, a.id === 'seal' ? 'flop' : 'worried', 1.4); st.emote(a.id, 'exclaim'); a.hop = 6; }
+      st.player('jump', 1.4, 'exclaim');
+    }
+    const out = clamp01((u - 4.3) / 0.5);
+    if (out >= 1) return;
+    const bh = this.barH();
+    const hy = Math.round(Math.max(bh, H * 0.06) + H * 0.1);
+    ctx.save();
+    ctx.globalAlpha *= 1 - out;
+    const R2 = b.bossRow ||= row('BOSS SIGHTED!', this.bossO());
+    if (u > 1.25) {
+      drawAeroGlow(ctx, this.W / 2, hy, Math.round(H * 0.3), '#2a0612', 0.45);
+      drawRow(ctx, R2, this.W / 2, hy, u - 1.3, { id: 'bs', fx: R.fx, stagger: 0.045, drop: 60, onLand: (x, y, i) => { if (i % 3 === 0) try { g.particles?.pixelBurst?.('dust', x, y + 6, 2, { layer: 'ui', speed: [14, 40] }); } catch { /* optional */ } if (i === 0) g.audio?.play?.('timing_perfect', { vol: 0.4, pitch: 0.6 }); } });
+      const T = this.titleO();
+      const nm = boss.title.toUpperCase();
+      wordNow(nm, T.sub);
+      const tk = clamp01((u - 2.1) / 0.35);
+      if (tk > 0) {
+        drawWord(ctx, nm, T.sub, this.W / 2, hy + Math.round(H * 0.08), backOut(tk), tk);
+        if (boss.sub) drawText(ctx, boss.sub.toUpperCase(), Math.round(this.W / 2 - measureText(boss.sub.toUpperCase(), 'small') / 2), hy + Math.round(H * 0.08) + 14, { font: 'small', color: '#ffd0c8', shadow: '#2a0612' });
+      }
+    }
+    ctx.restore();
+  }
+
   // ---------------------------------------------------------------- beat: main quest complete (heavy)
   drawDone(ctx, b, dt) {
-    const g = this.game, W = this.W, H = this.H, t = this.t, M = b.marks;
+    const g = this.game, W = this.W, H = this.H, M = b.marks, st = b.stage;
     const T = this.titleO();
     const outT = b.end - 1.35;
-    if (b.t > outT && !b.fx.out) { b.fx.out = 1; this.barsTo = this.chainNext() ? 1 : 0; this.hudHidden = !!this.chainNext(); if (b.cam && !this.chainNext()) try { g.camera.release(2.2); } catch { /* optional */ } }
-    // the NPC (behind the bars): pops out of the water and cheers
-    let npc = null;
-    if (M.npc >= 0) npc = this.drawStageNpc(ctx, b, b.q.giver, 0, { in: M.npc, out: b.fx.out ? outT : null, pose: b.t > M.talk ? (this.dlg.typing ? 'talk' : 'cheer') : 'wave', talk: this.dlg.talk, mood: 'excited', emote: b.emote, emoteT: b.emoteT });
+    if (b.t > outT && !b.fx.out) { b.fx.out = 1; this.barsTo = this.chainNext() ? 1 : 0; this.hudHidden = !!this.chainNext(); if (!this.chainNext()) this.releaseCam(b); st.exitAll(); }
+    // the giver (behind the bars): pops out of the water, waves, then cheers; the angler cheers along
+    if (b.t > M.npc && !b.fx.npcIn) { b.fx.npcIn = 1; st.enter(b.q.giver); st.act(b.q.giver, 'wave', 1); }
+    st.drawBack(ctx);
+    const sp = b.fx.talk && !b.fx.out ? { id: b.q.giver, act: 'talk', after: 'cheer', typing: this.dlg.typing } : null;
+    const cast = st.drawCast(ctx, sp);
+    const npc = cast[b.q.giver] || null;
+    st.drawFront(ctx);
     this.drawBars(ctx);
     const bh = this.barH();
     // headline: gold voxel letters dropping in, the quest name under it
@@ -787,14 +1010,48 @@ export class QuestCine {
     drawWord(ctx, sub, T.sub, b.cx, hy + Math.round(H * 0.075), backOut((b.t - M.head - 0.5) / 0.4), clamp01((b.t - M.head - 0.5) * 4));
     ctx.restore();
     // the cheer line
-    if (b.t > M.talk && !b.fx.talk && M.npc >= 0) { b.fx.talk = 1; this.say(b.q.giver, b.line, { hold: 1.1 }); b.emote = this.emoteFor(b.line, true); b.emoteT = b.t; try { g.particles?.hearts?.(npc?.top?.[0] ?? b.cx, npc?.top?.[1] ?? H / 2, 3, { layer: 'ui' }); } catch { /* optional */ } }
-    if (this.dlg.active) { this.dlg.update(dt, null); if (b.fx.out) this.dlg.clear(); else this.drawBox(ctx, b, { w: Math.min(W - 40, 460), cx: b.cx }); }
+    if (b.t > M.talk && !b.fx.talk && M.npc >= 0) {
+      b.fx.talk = 1;
+      this.say(b.q.giver, b.line, { hold: 1.1 });
+      st.emote(b.q.giver, this.emoteFor(b.line, true));
+      st.player('cheer', 2);
+      try { g.particles?.hearts?.(npc?.top?.[0] ?? b.cx, npc?.top?.[1] ?? H / 2, 3, { layer: 'ui' }); } catch { /* optional */ }
+    }
+    if (this.dlg.active) { if (b.fx.out) this.dlg.clear(); else this.drawBox(ctx, b, { w: Math.min(W - 40, 460), cx: b.cx }); }
     // reward reveal: tiles burst from the NPC (or the title) into a row, then fly into the HUD
     const from = npc ? [npc.x, npc.y - H * 0.08] : [b.cx, hy];
     this.drawTiles(ctx, b, from, hy + Math.round(H * 0.17), M.rw, outT + 0.25);
     if (!b.fx.conf && b.t > M.head + 0.35) { b.fx.conf = 1; try { g.particles?.celebrate?.(b.cx, hy, 0.9, { layer: 'ui' }); } catch { /* optional */ } }
+    void dt;
   }
   chainNext() { return false; } // a completion always hands its rewards over in the open (bars out, HUD back)
+
+  // ---------------------------------------------------------------- [cine21] beat: a boss quest starts (heavy)
+  drawBossBeat(ctx, b, dt) {
+    const g = this.game, W = this.W, st = b.stage;
+    b.pt += dt;
+    b.end ??= 999;
+    if (!b.reveal) { b.reveal = { t0: b.t, boss: b.boss, fx: {} }; st.shot('boss'); g.audio?.play?.('sonar', { vol: 0.4 }); }
+    st.drawBack(ctx);
+    if (b.phase === 'reveal') st.drawBoss(ctx, b.reveal.boss, b.t - b.reveal.t0, 5);
+    st.drawCast(ctx, this.speaker(b));
+    st.drawFront(ctx);
+    this.drawBars(ctx);
+    if (b.phase === 'reveal') {
+      this.drawBossTitle(ctx, b, b.reveal, b.t - b.reveal.t0);
+      b.phaseEnd = 5;
+      if (b.pt > 5) { b.phase = 'warn'; b.pt = 0; st.shot('stage'); b.steps = [{ n: b.q.giver, s: b.q.text, shot: 'one', to: 'player', act: 'point', key: KEY_ACT[b.q.giver], emote: 'exclaim', pl: 'flex' }]; b.si = 0; }
+    }
+    if (b.phase === 'warn') {
+      if (this.runScript(b)) { b.phase = 'cards'; b.pt = 0; this.dlg.clear(); st.shot('stage'); st.exitAll(0.6); }
+      if (this.dlg.active) this.drawBox(ctx, b);
+      b.phaseEnd = b.pt;
+    }
+    if (b.phase === 'cards' || b.phase === 'fly') this.drawCards(ctx, b);
+    if (b.phase === 'cards') { b.phaseEnd = 0.8; if (b.pt > 1.4) { b.phase = 'fly'; b.pt = 0; this.barsTo = 0; this.hudHidden = false; this.releaseCam(b); g.audio?.play?.('travel_whoosh', { vol: 0.3, pitch: 1.4 }); } }
+    if (b.phase === 'fly') { b.phaseEnd = 1.4; if (b.pt > 1.3) b.end = b.t; }
+    void W;
+  }
 
   // the reward row: tiles pop out from `from`, line up at y, and launch at `flyAt`
   drawTiles(ctx, b, from, y, at, flyAt) {
@@ -833,6 +1090,7 @@ export class QuestCine {
   launch(b) {
     if (b.flew) return;
     b.flew = true;
+    if (b.replay) { for (const r of b.rewards || []) r.gone = true; return; } // [cine21] a gallery replay grants nothing
     const list = b.rewards || [];
     list.forEach((r, i) => {
       r.gone = true;
@@ -919,79 +1177,52 @@ export class QuestCine {
 
   // ---------------------------------------------------------------- beat: chapter opening (heavy)
   drawIntro(ctx, b, dt) {
-    const g = this.game, W = this.W, H = this.H, t = this.t;
+    const g = this.game;
     const ch = CHAPTER_BY_ID[b.ch];
     if (!ch) { b.t = b.end = 0; return; }
     const T = this.titleO();
+    const st = b.stage;
     b.pt += dt;
-    b.end ??= 99;
-    // ---- NPCs: everyone who speaks enters once, the speaker talks, the others listen
-    const speakers = [...new Set((b.lines || []).map((l) => l.npc))];
-    const exitAt = b.exitAt ?? null;
-    if (b.world || b.full) {
-      speakers.forEach((id, s) => {
-        const st = (b.stage[id] ||= { in: null });
-        if (st.in == null) return;
-        const L = b.lines[b.li];
-        const speaking = L && L.npc === id && this.dlg.active;
-        this.drawStageNpc(ctx, b, id, s, { in: st.in, out: exitAt, pose: speaking ? (this.dlg.typing ? 'talk' : 'wave') : 'idle', talk: speaking ? this.dlg.talk : 0, mood: speaking ? 'excited' : 'happy', emote: st.emote, emoteT: st.emoteT });
-      });
-    }
+    b.end ??= 999;
+    // ---- the stage: set, boss silhouette, the cast, critters and weather
+    st.drawBack(ctx);
+    if (b.reveal) st.drawBoss(ctx, b.reveal.boss, b.t - b.reveal.t0, 5);
+    st.drawCast(ctx, this.speaker(b));
+    st.drawFront(ctx);
     this.drawBars(ctx);
     // ---- phases
-    if (b.phase === 'enter') {
-      // the first speaker makes an entrance, then the lines play
-      b.phaseEnd = 0.2;
-      if (b.pt > 0.45) { b.phase = 'talk'; b.pt = 0; }
-    }
-    if (b.phase === 'talk') {
-      if (!this.dlg.active && (b.li < 0 || b.lineDone)) {
-        b.li++;
-        b.lineDone = false;
-        const L = b.lines[b.li];
-        if (!L) { b.phase = 'title'; b.pt = 0; this.dlg.clear(); }
-        else {
-          const st = (b.stage[L.npc] ||= { in: null });
-          if (st.in == null) { st.in = b.t; b.wait = b.t + (b.world ? 0.95 : 0.4); }
-          else b.wait = b.t + 0.15;
-        }
-      }
-      const L = b.lines[b.li];
-      if (L && !this.dlg.active && !b.lineDone && b.t >= b.wait) {
-        this.say(L.npc, L.text, { onDone: () => { b.lineDone = true; } });
-        const st = b.stage[L.npc];
-        st.emote = this.emoteFor(L.text); st.emoteT = b.t;
-        g.audio?.play?.('notify', { vol: 0.35, pitch: 1.3 });
-      }
-      if (this.dlg.active) { this.dlg.update(dt, null); this.drawBox(ctx, b); }
+    if (b.phase === 'script') {
+      if (this.runScript(b)) { b.phase = 'title'; b.pt = 0; this.dlg.clear(); b.reveal = null; st.shot('stage'); }
+      this.drawLocCard(ctx, b, ch);
+      if (b.reveal) this.drawBossTitle(ctx, b, b.reveal, b.t - b.reveal.t0);
+      if (this.dlg.active) this.drawBox(ctx, b);
       b.phaseEnd = b.pt;
     }
     if (b.phase === 'title' || b.phase === 'cards' || b.phase === 'fly') this.drawChapterTitle(ctx, b, ch, T);
     if (b.phase === 'title') {
       b.phaseEnd = 1.3;
+      if (b.pt > 0.3 && !b.fx.plCheer) { b.fx.plCheer = 1; st.player('cheer', 1.8); for (const a of st.actors.values()) st.act(a.id, a.id === 'seal' ? 'clap' : 'cheer', 1.6); }
       if (b.pt > 1.5) { b.phase = 'cards'; b.pt = 0; }
     }
     if (b.phase === 'cards' || b.phase === 'fly') this.drawCards(ctx, b);
     if (b.phase === 'cards') {
       const n = b.cards.length;
-      if (b.exitAt == null) b.exitAt = b.t; // the cast dives away while the cards are dealt
+      if (!b.fx.exit) { b.fx.exit = 1; st.exitAll(0.2); } // the cast dives away while the cards are dealt
       b.phaseEnd = 0.25 + n * 0.08 + 0.5;
       if (b.pt > 0.25 + n * 0.08 + 1.5) { b.phase = 'fly'; b.pt = 0; }
     }
     if (b.phase === 'fly') {
       if (!b.fx.fly) {
         b.fx.fly = 1;
-        b.exitAt ??= b.t;
         const S = ensureQuests(g.state);
-        if (S.intro === b.ch) { S.intro = null; g.save?.(); }
+        if (!b.replay && S.intro === b.ch) { S.intro = null; g.save?.(); }
         this.barsTo = 0; this.hudHidden = false;
-        if (b.cam) try { g.camera.release(2.2); } catch { /* optional */ }
+        this.releaseCam(b);
         g.audio?.play?.('travel_whoosh', { vol: 0.3, pitch: 1.4 });
       }
       b.phaseEnd = 2;
       if (b.pt > 1.9) b.end = b.t;
     }
-    void W; void t;
   }
 
   drawChapterTitle(ctx, b, ch, T) {
@@ -1121,19 +1352,24 @@ export class QuestCine {
     const ch = CHAPTER_BY_ID[b.ch];
     if (!ch) { b.end = 0; return; }
     const T = this.titleO();
+    const st = b.stage;
     b.pt += dt;
-    b.end ??= 99;
+    b.end ??= 999;
     const n = b.cards.length;
     const outro = b.full && ch.outro ? ch.outro : null;
     const S0 = 1.05, stampEnd = S0 + n * 0.17 + 0.35;
-    // the farewell NPC
-    if (outro) this.drawStageNpc(ctx, b, outro.npc, 0, { in: 0.4, out: b.exitAt ?? null, pose: this.dlg.active ? (this.dlg.typing ? 'talk' : 'wave') : 'cheer', talk: this.dlg.talk, mood: 'excited', emote: b.emote, emoteT: b.emoteT });
+    // [cine21] the stage: the chapter's set, the cast partying, then their payoff lines and the farewell
+    st.drawBack(ctx);
+    st.drawCast(ctx, this.speaker(b));
+    st.drawFront(ctx);
     this.drawBars(ctx);
     const bh = Math.round(H * 0.105);
     const hy = Math.round(bh + H * 0.1);
     const fade = b.phase === 'out' ? 1 - clamp01(b.pt / 0.5) : 1;
+    // the title and the rewards step back while the cast talks
+    b.dim = lerp(b.dim ?? 1, b.phase === 'talk' ? 0.35 : 1, 1 - Math.exp(-dt * 6));
     ctx.save();
-    ctx.globalAlpha *= fade;
+    ctx.globalAlpha *= fade * b.dim;
     drawAeroGlow(ctx, b.cx, hy, Math.round(H * 0.32), '#06264e', 0.4 * clamp01(b.t * 3));
     b.title ||= row('CHAPTER COMPLETE!', T.big);
     drawRow(ctx, b.title, b.cx, hy, b.t - 0.25, { id: 'f', fx: b.fx, stagger: 0.05, onLand: (x, y, i) => { if (i % 2 === 0) try { g.particles?.pixelBurst?.('star', x, y, 2, { layer: 'ui', ramp: 'gold', size: 0 }); } catch { /* optional */ } } });
@@ -1142,7 +1378,9 @@ export class QuestCine {
       b.fx.conf = 1;
       try { g.particles?.aeroConfetti?.(b.cx, hy - 10, 40, { layer: 'ui' }); g.particles?.celebrate?.(b.cx - 120, hy, 1, { layer: 'ui' }); g.particles?.celebrate?.(b.cx + 120, hy, 1, { layer: 'ui' }); } catch { /* optional */ }
       g.audio?.play?.('golden_shimmer', { vol: 0.5 });
+      for (const a of st.actors.values()) st.act(a.id, a.id === 'seal' ? 'clap' : 'cheer', 2);
     }
+    if (b.phase === 'party') { b.phaseEnd = 1.3; if (b.pt > 1.5) { b.phase = 'stamp'; b.pt = 0; } }
     // phase 'stamp': the chapter's quest cards in a grid, each gets a DONE stamp slammed on
     if (b.phase === 'stamp') {
       const cols = Math.min(n, 4), rows = Math.ceil(n / cols);
@@ -1155,8 +1393,10 @@ export class QuestCine {
         const x = b.cx + (cI - (cols - 1) / 2) * (cw + 8), y = gy + r * (chh + 8) + chh / 2;
         const k = clamp01((b.pt - 0.5 - i * 0.05) / 0.3);
         if (k <= 0) return;
+        const out = clamp01((b.pt - stampEnd - 0.3) / 0.3);
         ctx.save();
-        ctx.translate(Math.round(x), Math.round(y + (1 - ease.outCubic(k)) * 20));
+        ctx.globalAlpha *= 1 - out;
+        ctx.translate(Math.round(x), Math.round(y + (1 - ease.outCubic(k)) * 20 + out * 20));
         ctx.scale(sc * backOut(k), sc * backOut(k));
         this.drawCardFace(ctx, c, cw0, ch0, t, i, false);
         const sk = (b.pt - S0 - i * 0.17) / 0.16;
@@ -1166,6 +1406,7 @@ export class QuestCine {
             c.stamped = 1;
             g.audio?.play?.(i === n - 1 ? 'timing_perfect' : 'timing_good', { vol: 0.55, pitch: 0.85 + i * 0.04 });
             try { g.camera.shake(g.state.settings.reducedMotion ? 0 : 1.2); g.particles?.pixelBurst?.('dust', x, y + 8, 4, { layer: 'ui', speed: [20, 50] }); g.particles?.pixelBurst?.('sparkle', x, y, 3, { layer: 'ui', ramp: 'lime', size: 0 }); } catch { /* optional */ }
+            if (i === n - 1) { st.player('jump', 1.2, 'star'); for (const a of st.actors.values()) st.act(a.id, a.id === 'seal' ? 'wiggle' : 'cheer', 1.2); }
           }
         }
         ctx.restore();
@@ -1174,11 +1415,37 @@ export class QuestCine {
       if (b.pt > stampEnd + 0.6) { b.phase = 'reward'; b.pt = 0; b.rwAt = b.t; }
     }
     ctx.restore();
-    // phase 'reward': the chapter reward pops out, the farewell line, the next-ocean teaser
-    if (b.phase === 'reward' || b.phase === 'out') {
-      const from = [b.cx, hy];
-      this.drawTiles(ctx, b, from, Math.round(hy + H * 0.2), b.rwAt, b.flyAt ?? 1e9);
-      const tk = b.t - b.rwAt;
+    // the chapter reward pops out (it stays until the bars go)
+    if (b.rwAt != null) {
+      ctx.save();
+      ctx.globalAlpha *= b.dim;
+      this.drawTiles(ctx, b, [b.cx, hy], Math.round(hy + H * 0.2), b.rwAt, b.flyAt ?? 1e9);
+      ctx.restore();
+    }
+    if (b.phase === 'reward') {
+      b.phaseEnd = 1.4;
+      if (b.pt > 1.7) { b.phase = b.steps?.length ? 'talk' : 'teaser'; b.pt = 0; }
+    }
+    // phase 'talk': the cast's payoff lines (acted, with their own shots)
+    if (b.phase === 'talk') {
+      if (this.runScript(b)) { b.phase = 'teaser'; b.pt = 0; this.dlg.clear(); st.shot('stage'); }
+      if (this.dlg.active) this.drawBox(ctx, b);
+      b.phaseEnd = b.pt;
+    }
+    // phase 'teaser': the farewell line and the next ocean
+    if (b.phase === 'teaser' || b.phase === 'out') {
+      if (b.teaseAt == null) {
+        b.teaseAt = b.t;
+        if (outro) {
+          let delay = 0;
+          const a = st.actors.get(outro.npc);
+          if (!a || a.state === 'gone') delay = st.entryT(st.enter(outro.npc));
+          st.faceAll(outro.npc, 'player');
+          if (st.world) st.shot('two', { id: outro.npc, to: 'player' });
+          st.events.push({ at: st.t + delay + 0.1, fn: () => { this.say(outro.npc, outro.text, { hold: 1.8, onDone: () => { b.outroDone = true; } }); b.sp = { id: outro.npc, act: 'talk', after: 'wave' }; st.emote(outro.npc, 'heart'); } });
+        }
+      }
+      const tk = b.t - b.teaseAt;
       if (b.next) {
         const ny = Math.round(hy + H * 0.36);
         const nk = clamp01((tk - 0.8) / 0.4);
@@ -1196,12 +1463,18 @@ export class QuestCine {
           ctx.restore();
         }
       }
-      if (b.phase === 'reward') {
-        if (outro && !b.fx.say && tk > 0.6) { b.fx.say = 1; this.say(outro.npc, outro.text, { hold: 1.6 }); b.emote = 'heart'; b.emoteT = b.t; }
-        if (this.dlg.active) { this.dlg.update(dt, null); this.drawBox(ctx, b, { w: Math.min(W - 40, 520), cx: b.cx }); }
-        const ready = outro ? b.fx.say && !this.dlg.active : tk > 2.4;
+      if (b.phase === 'teaser') {
+        if (this.dlg.active) this.drawBox(ctx, b, { w: Math.min(W - 40, 560) });
+        const ready = outro ? b.outroDone : tk > 2.4;
         b.phaseEnd = b.pt;
-        if (ready && tk > 1.6) { const S = ensureQuests(g.state); if (S.outro === b.ch) { S.outro = null; g.save?.(); } b.phase = 'out'; b.pt = 0; b.exitAt = b.t; b.flyAt = b.t + 0.3; this.barsTo = 0; this.hudHidden = false; if (b.cam) try { g.camera.release(2.2); } catch { /* optional */ } }
+        if (ready && tk > 1.6) {
+          const S = ensureQuests(g.state);
+          if (!b.replay && S.outro === b.ch) { S.outro = null; g.save?.(); }
+          b.phase = 'out'; b.pt = 0; b.flyAt = b.t + 0.3; b.sp = null;
+          st.exitAll(0.1);
+          this.barsTo = 0; this.hudHidden = false;
+          this.releaseCam(b);
+        }
       } else {
         b.phaseEnd = 1.4;
         if (b.pt > 1.5) b.end = b.t;
@@ -1213,6 +1486,7 @@ export class QuestCine {
   planLight(b) {
     const g = this.game;
     b.fx = {};
+    if (b.kind === 'boss') { b.kind = 'start'; b.qs = [b.q]; } // [cine21] Short mode: the boss quest's card only
     if (b.kind === 'start') {
       b.qs = b.qs.filter((q) => q && !ensureQuests(g.state).done[q.id]).slice(0, 3);
       if (!b.qs.length) { this.cur = null; return; }
