@@ -546,3 +546,23 @@ that feels hand-made."
 - Biome builds are time-sliced: every biome has `*steps(W, H)` (sync `build()` runs all steps; sub-builders have `$`
   generator twins), `DepthScene.terrain$` / `render$` in scenery.js yield inside their loops. `state.voyage = {trips, seen}`.
   Event 'travel' {to, from, first} fires on arrival.
+
+## Detailed quest cutscenes [cine21]
+- `src/ui/questcine.js` (director) stages its heavy beats on a `Stage` (`src/ui/cinestage.js`): the cast's marks along the
+  surface next to the boat (world space; a plain screen stage when the ocean camera is not open), camera shots
+  (`wide | stage | group | one | two | player | prop | set | boss`: eased `camera.focus` moves with a subtle handheld drift,
+  or cuts with a dissolve from a snapshot of the world canvas), depth-of-field-like dimming (a soft vignette + darker sky
+  band around the subject), the angler's reactions (`boat.pose`, `boat.faceOverride`, `boat.hopY` tagged hooks in
+  boat.js), critters (gulls that land and flee, leaping ocean fish, a crab on the set, penguins, jellies, eyes in the
+  dark) and pixel weather (petals, glints, snow, sparks, rain, embers, plankton) under a time-of-day grade.
+- `src/ui/cinescript.js`: `SETS[chId]` (platform, props + owners, weather, grade / night grade, captions, critters) and
+  `SCRIPTS[chId].intro / .finale` (steps: `{wide}`, `{enter, how}`, `{prop}`, `{fx}`, `{boss}`, lines
+  `{n, s, shot, to, act, key, emote, pl, re, fx}`; `*word*` = emphasis in the speaker colour + a gesture when typed).
+- `src/ui/cineprops.js`: hand-built voxel set dressing rendered once per screen height (+ `.hi` twins) and prepared during
+  idle frames (`prepProps`): Fizz's lab bench, Marina's anvil + toolbox, Captain Bloat's helm + sea chart, one platform per
+  ocean (islet, pier, ice floe with a snowman, scrap barge with a CRT, neon pontoon, basalt columns with lava, glow rock),
+  a raft, gulls, penguins, crabs (per-ocean colours), jellies. Dev preview: `node tools/build.mjs --dev cineprops`.
+- `Typer` (cinestage.js) replaces the Dialogue class in cutscenes: punctuation pauses, a voice blip per letter, emphasis.
+- Beats added: `boss` (a boss quest starts, Full only: pan down to its silhouette, rumble, 3D "BOSS SIGHTED!", the giver's
+  warning, the card flies into the tracker). Gallery: the Quest Log's chapter page has OPENING / FINALE pills that call
+  `cine.replay(chId, kind)` (plays even with cutscenes Off, changes nothing in the save, reopens the log afterwards).

@@ -50,9 +50,9 @@ import { hiArt } from '../gfx/hires.js';
 import { drawAlagard, alagardWidth, dialogueFontSize } from '../game/dialogue.js';
 import * as NPC from '../gfx/npcs.js';
 import { warmSeal, sealSize } from '../gfx/seal.js';
-import { Stage, Typer, VOICE } from './cinestage.js'; // [cine21]
+import { Stage, Typer } from './cinestage.js'; // [cine21]
 import { SETS, SCRIPTS, KEY_ACT, TIME_ICON } from './cinescript.js'; // [cine21]
-import { prepProps } from './cineprops.js'; // [cine21]
+import { prepProps, propsReady } from './cineprops.js'; // [cine21]
 import { BOSS_BY_ID, BOSS_BY_OCEAN } from '../fish/bosses.js'; // [cine21]
 import { SPECIES_BY_ID } from '../fish/species.js'; // [cine21]
 import { drawFishFit } from './journal.js'; // [cine21]
@@ -283,11 +283,9 @@ export class QuestCine {
   }
   bossO() { return { ...BOSS_O, scale: this.H >= 600 ? 1.5 : 1.2 }; }
   // [cine21] everything a chapter's set needs: its props, the cast's poses, the 3D words, the boss
-  warmSet(chId) {
-    const ch = CHAPTER_BY_ID[chId], S = SETS[chId];
-    if (!ch || !S) return;
-    const T = this.titleO();
-    const list = [];
+  setList(chId) {
+    const S = SETS[chId], list = [];
+    if (!S) return list;
     if (S.plat) list.push([S.plat, 0]);
     for (const [id] of S.props || []) list.push([id, 0]);
     if ((S.props || []).length > 1) list.push(['raft', 0]);
@@ -295,10 +293,18 @@ export class QuestCine {
     if (S.penguins) list.push(['penguin', 0]);
     if (S.jellies) list.push(['jelly', 0]);
     if (S.plat) list.push(['crab', S.crab || 0]);
-    this.prep.push(prepProps(list, this.H));
-    this.prep.push(prepWord(OCEAN_NAMES[ch.ocean] || ch.ocean, T.ocean));
+    return list;
+  }
+  // front = a cutscene is about to need it: its props jump the warm-up queue
+  warmSet(chId, front = false) {
+    const ch = CHAPTER_BY_ID[chId], S = SETS[chId];
+    if (!ch || !S) return;
+    const T = this.titleO();
+    if (front) this.prep.unshift(prepProps(this.setList(chId), this.H));
+    else this.prep.push(prepProps(this.setList(chId), this.H));
+    this.prep.push(prepWord(OCEAN_NAMES[ch.ocean] || ch.ocean, T.card));
     const boss = this.bossFor(chId);
-    if (boss) { this.prep.push(prepRow('BOSS SIGHTED!', this.bossO())); this.prep.push(prepWord(boss.title.toUpperCase(), T.sub)); }
+    if (boss) { this.prep.push(prepRow('BOSS SIGHTED!', this.bossO())); this.prep.push(prepWord(boss.title.toUpperCase(), T.boss)); }
     const sc = SCRIPTS[chId];
     const cast = new Set([...(sc?.intro || []), ...(sc?.finale || [])].map((x) => x.n || x.enter).filter(Boolean));
     for (const id of cast) this.warmNpc(id, ['idle', 'talk', 'cheer', 'wave', 'point', 'think', 'laugh', 'sad']);
@@ -329,6 +335,8 @@ export class QuestCine {
       chap: { palette: 'aqua', size: 32, depth: 4, scale: big },
       sub: { palette: 'white', size: 16, depth: 3, scale: 1 },
       ocean: { palette: 'sky', size: 16, depth: 3, scale: 1.5 },
+      card: { palette: 'sky', size: 32, depth: 4, scale: big * 0.62 },
+      boss: { palette: 'white', size: 32, depth: 4, scale: big * 0.5 },
       small: { palette: 'gold', size: 16, depth: 3, scale: 1 },
       num: { palette: 'white', size: 16, depth: 3, scale: 1.25 },
       stamp: { palette: 'leaf', size: 16, depth: 3, scale: 1 },
@@ -337,7 +345,11 @@ export class QuestCine {
   warmNpc(id, poses = ['idle', 'talk', 'cheer', 'wave']) {
     const self = this;
     this.prep.push((function* () {
-      if (id === 'seal') { for (const a of ['idle', 'clap', 'wave', 'wiggle', 'swim', 'spin', 'point', 'worried', 'blow', 'cheer', 'think', 'flop']) { try { warmSeal(self.sealSz(), [a], 'side'); } catch { /* optional */ } yield; } return; }
+      if (id === 'seal') {
+        for (const a of ['idle', 'clap', 'wave', 'wiggle', 'swim', 'spin', 'point', 'worried', 'blow', 'cheer', 'think', 'flop']) { try { warmSeal(self.sealSz(), [a], 'side'); } catch { /* optional */ } yield; }
+        for (const r of [31, 20]) { try { warmSeal(r * 1.3, ['idle', 'wave'], 'front'); } catch { /* optional */ } yield; } // the dialogue / card portraits
+        return;
+      }
       if (!NPC.NPCS?.[id]) return;
       const c = self.scratch ||= document.createElement('canvas');
       c.width = 4; c.height = 4;
@@ -355,7 +367,7 @@ export class QuestCine {
       this.prep.push(prepRow(ch.title.toUpperCase(), T.chap));
       this.prep.push(prepWord(`CHAPTER ${ch.n}`, T.small));
       this.prep.push(prepWord(OCEAN_NAMES[ch.ocean] || ch.ocean, T.sub));
-      if (this.mode() === 'full' || b.replay) { if (SCRIPTS[ch.id]) this.warmSet(ch.id); else for (const L of ch.intro) this.warmNpc(L.npc); }
+      if (this.mode() === 'full' || b.replay) { if (SCRIPTS[ch.id]) this.warmSet(ch.id, true); else for (const L of ch.intro) this.warmNpc(L.npc); }
     } else if (b.kind === 'finale' && ch) {
       this.prep.push(prepRow('CHAPTER COMPLETE!', T.big));
       this.prep.push(prepWord(ch.title.toUpperCase(), T.sub));
@@ -364,7 +376,7 @@ export class QuestCine {
       const nx = CHAPTERS[ch.n];
       if (nx) this.prep.push(prepWord(OCEAN_NAMES[nx.ocean] || nx.ocean, T.ocean));
       for (const r of rewardList(ch.reward)) if (r.n) this.prep.push(prepWord((r.key === 'aero' ? '+' : 'x') + r.n, T.num));
-      if (this.mode() === 'full' || b.replay) { if (SCRIPTS[ch.id]) this.warmSet(ch.id); if (ch.outro) this.warmNpc(ch.outro.npc); }
+      if (this.mode() === 'full' || b.replay) { if (SCRIPTS[ch.id]) this.warmSet(ch.id, true); if (ch.outro) this.warmNpc(ch.outro.npc); }
       if (nx && this.mode() === 'full' && !b.replay) this.warmSet(nx.id); // the next opening follows right away
     } else if (b.kind === 'done' && b.q) {
       this.prep.push(prepRow('QUEST COMPLETE!', T.head));
@@ -376,7 +388,7 @@ export class QuestCine {
     } else if (b.kind === 'boss' && b.q) {
       const boss = this.bossFor(b.q.chapter);
       this.prep.push(prepRow('BOSS SIGHTED!', this.bossO()));
-      if (boss) this.prep.push(prepWord(boss.title.toUpperCase(), T.sub));
+      if (boss) this.prep.push(prepWord(boss.title.toUpperCase(), T.boss));
       this.warmNpc(b.q.giver);
     }
   }
@@ -385,7 +397,7 @@ export class QuestCine {
     while (this.prep.length && performance.now() - t0 < 6) {
       const gen = this.prep[0];
       let r;
-      try { r = gen.next(); } catch (e) { r = { done: true }; }
+      try { r = gen.next(); } catch { r = { done: true }; }
       if (r.done) this.prep.shift();
     }
   }
@@ -395,7 +407,7 @@ export class QuestCine {
     const g = this.game;
     this.t += dt;
     const mode = this.mode();
-    if (mode === 'off' && this.queue.length) this.queue = []; // switched off in Settings: drop what waits
+    if (mode === 'off' && this.queue.some((x) => !x.replay)) this.queue = this.queue.filter((x) => x.replay); // switched off in Settings: drop what waits (gallery replays stay)
     // chapter openings / finales that wait in the save (a reload, the end of the tutorial) get their moment
     if (mode !== 'off' && g.state?.tutorialDone) {
       const S = ensureQuests(g.state);
@@ -410,7 +422,18 @@ export class QuestCine {
     if (this.claims.length && !g.ui?.isOpen?.('quests')) this.flushClaims(this.W / 2, this.H * 0.4);
 
     const calm = this.calm();
-    if (!g.fishing?.fighting && this.prep.length) this.stepPrep();
+    // [cine21] warm-ups run while the game is calm (never mid-cast or mid-fight); a playing cutscene only lets its
+    // own leftovers through during its opening seconds (the establishing shot)
+    const needs = this.cur?.stage && !this.cur.stage.bare && !propsReady(this.cur.stage.propList(), this.H);
+    if (this.prep.length && !g.fishing?.fighting && (calm && !this.cur ? true : !!this.cur && (this.cur.t < 2.5 || needs))) this.stepPrep();
+    // [cine21] build the current and the next chapter's sets long before their cutscenes, in calm idle moments
+    if (calm && !this.cur && !this.queue.length && mode === 'full' && g.state?.tutorialDone) {
+      this.idleT = (this.idleT || 0) + dt;
+      if (this.idleT > 4) {
+        const S = ensureQuests(g.state);
+        for (const c of [CHAPTERS[S.ch], CHAPTERS[S.ch + 1]]) if (c && !(this.warmed ||= {})[c.id]) { this.warmed[c.id] = 1; this.warmSet(c.id); break; }
+      }
+    } else this.idleT = 0;
     // safety: the cutscene panel never stays open (blocking the game) without a heavy beat playing in it
     if (g.ui?.isOpen?.('questcine') && (!this.cur || !this.cur.heavy)) { this.closing = true; g.ui.close('questcine'); this.closing = false; this.barsTo = 0; this.hudHidden = false; }
     if (this.cur) {
@@ -539,7 +562,7 @@ export class QuestCine {
   npcScale(id) { return Math.max(0.8, Math.round(((this.H * STAGE_H) / (NPC_H[id] || 64)) * 4) / 4); }
 
   plan(b) {
-    const g = this.game, W = this.W, H = this.H, cam = g.camera, boat = g.boat;
+    const g = this.game, W = this.W, cam = g.camera, boat = g.boat;
     const full = b.replay || this.mode() === 'full';
     b.cam = false;
     let side = 1;
@@ -559,7 +582,7 @@ export class QuestCine {
     const ch = CHAPTER_BY_ID[b.ch];
     // [cine21] the stage: a dressed set for chapter openings / finales, a bare one for completions and bosses
     const setCh = b.kind === 'intro' || b.kind === 'finale' ? b.ch : null;
-    b.stage = new Stage(this, b, setCh || b.q?.chapter || 'ch1', { bare: !(full && setCh && SETS[setCh]) });
+    b.stage = new Stage(this, b, setCh || b.q?.chapter || 'ch1', { bare: !(full && setCh && SETS[setCh] && b.world) });
     if (b.cam) b.stage.shot('stage', { cut: false });
     if (b.kind === 'done') {
       try { g.camera.slowmo(0.12, 0.45); } catch { /* optional */ }
@@ -591,6 +614,7 @@ export class QuestCine {
       b.steps = sc ? sc.finale.slice() : [];
       b.si = 0;
       if (b.cam) b.stage.shot('stage', { cut: true });
+      for (const p of b.stage.props) { p.on = -9; p.landed = 1; } // the set is already dressed for the party
       // the cast of the payoff lines pops up for the party
       const cast = [...new Set(b.steps.map((x) => x.n).filter(Boolean))];
       if (full) cast.forEach((id, i) => b.stage.events.push({ at: 0.15 + i * 0.35, fn: () => b.stage.enter(id) }));
@@ -851,6 +875,7 @@ export class QuestCine {
   }
   startStep(b, S) {
     const st = b.stage;
+    if (S.n) { this.startLine(b, S); return; }
     if (S.wide) { st.shot('wide', { cut: true }); b.card = b.t; b.cardEnd = b.t + S.wide; b.stepEnd = b.t + S.wide; return; }
     if (S.enter) {
       const a = st.enter(S.enter, S.how);
@@ -873,8 +898,7 @@ export class QuestCine {
       b.stepEnd = b.t + (S.wait ?? 1);
       return;
     }
-    if (S.boss) { b.reveal = { t0: b.t, boss: this.bossFor(b.ch), fx: {} }; st.shot('boss'); b.stepEnd = b.t + 5; return; }
-    if (S.n) this.startLine(b, S);
+    if (S.boss) { b.reveal = { t0: b.t, boss: this.bossFor(b.ch), fx: {} }; st.shot('boss'); b.stepEnd = b.t + 4.6; }
   }
   startLine(b, L) {
     const st = b.stage, g = this.game;
@@ -923,7 +947,7 @@ export class QuestCine {
     const kin = clamp01(u / 0.55);
     if (kin <= 0 || out >= 1) return;
     const T = this.titleO(), name = OCEAN_NAMES[ch.ocean] || ch.ocean;
-    const c = wordNow(name, T.ocean);
+    const c = wordNow(name, T.card);
     const cw = c ? c.width : 160;
     const bh = Math.round(H * 0.105);
     const x0 = 28 + cw / 2, y = H - bh - Math.round(H * 0.09);
@@ -931,13 +955,14 @@ export class QuestCine {
     ctx.save();
     ctx.globalAlpha *= 1 - out;
     drawAeroGlow(ctx, x, y, cw * 0.7, '#06264e', 0.45);
-    drawWord(ctx, name, T.ocean, x, y, 1, 1);
+    drawWord(ctx, name, T.card, x, y, 1, 1);
     const rw = Math.round(cw * ease.outCubic(clamp01((u - 0.3) / 0.5)));
     ctx.fillStyle = '#04264e'; ctx.fillRect(Math.round(x - cw / 2) - 1, y + Math.round((c?.height || 30) / 2) + 2, rw + 2, 4);
     ctx.fillStyle = '#ffd23a'; ctx.fillRect(Math.round(x - cw / 2), y + Math.round((c?.height || 30) / 2) + 3, rw, 2);
-    const time = SETS[ch.id]?.time || '';
+    const night = !!b.stage?.night?.();
+    const time = (night && SETS[ch.id]?.nightTime) || SETS[ch.id]?.time || '';
     if (time && u > 0.45) {
-      const ic = getUiIcon(TIME_ICON[SETS[ch.id]?.weather] || 'sun');
+      const ic = getUiIcon(night ? 'moon' : TIME_ICON[SETS[ch.id]?.weather] || 'sun');
       const ty = y + Math.round((c?.height || 30) / 2) + 10;
       if (ic) ctx.drawImage(ic, Math.round(x - cw / 2), ty - 2);
       drawText(ctx, `CHAPTER ${ch.n}  -  ${time}`, Math.round(x - cw / 2 + (ic ? ic.width + 5 : 0)), ty, { font: 'small', color: '#ffffff', shadow: '#04264e' });
@@ -959,7 +984,7 @@ export class QuestCine {
       for (const a of st.actors.values()) { st.act(a.id, a.id === 'seal' ? 'flop' : 'worried', 1.4); st.emote(a.id, 'exclaim'); a.hop = 6; }
       st.player('jump', 1.4, 'exclaim');
     }
-    const out = clamp01((u - 4.3) / 0.5);
+    const out = clamp01((u - 3.95) / 0.5);
     if (out >= 1) return;
     const bh = this.barH();
     const hy = Math.round(Math.max(bh, H * 0.06) + H * 0.1);
@@ -971,11 +996,12 @@ export class QuestCine {
       drawRow(ctx, R2, this.W / 2, hy, u - 1.3, { id: 'bs', fx: R.fx, stagger: 0.045, drop: 60, onLand: (x, y, i) => { if (i % 3 === 0) try { g.particles?.pixelBurst?.('dust', x, y + 6, 2, { layer: 'ui', speed: [14, 40] }); } catch { /* optional */ } if (i === 0) g.audio?.play?.('timing_perfect', { vol: 0.4, pitch: 0.6 }); } });
       const T = this.titleO();
       const nm = boss.title.toUpperCase();
-      wordNow(nm, T.sub);
+      const wc = wordNow(nm, T.boss);
       const tk = clamp01((u - 2.1) / 0.35);
       if (tk > 0) {
-        drawWord(ctx, nm, T.sub, this.W / 2, hy + Math.round(H * 0.08), backOut(tk), tk);
-        if (boss.sub) drawText(ctx, boss.sub.toUpperCase(), Math.round(this.W / 2 - measureText(boss.sub.toUpperCase(), 'small') / 2), hy + Math.round(H * 0.08) + 14, { font: 'small', color: '#ffd0c8', shadow: '#2a0612' });
+        const ny = hy + Math.round(H * 0.085);
+        drawWord(ctx, nm, T.boss, this.W / 2, ny, backOut(tk), tk);
+        if (boss.sub) drawText(ctx, boss.sub.toUpperCase(), Math.round(this.W / 2 - measureText(boss.sub.toUpperCase(), 'small') / 2), ny + Math.round((wc?.height || 20) / 2) + 4, { font: 'small', color: '#ffd0c8', shadow: '#2a0612' });
       }
     }
     ctx.restore();
@@ -1186,7 +1212,7 @@ export class QuestCine {
     b.end ??= 999;
     // ---- the stage: set, boss silhouette, the cast, critters and weather
     st.drawBack(ctx);
-    if (b.reveal) st.drawBoss(ctx, b.reveal.boss, b.t - b.reveal.t0, 5);
+    if (b.reveal) st.drawBoss(ctx, b.reveal.boss, b.t - b.reveal.t0, 4.6);
     st.drawCast(ctx, this.speaker(b));
     st.drawFront(ctx);
     this.drawBars(ctx);
@@ -1368,8 +1394,10 @@ export class QuestCine {
     const fade = b.phase === 'out' ? 1 - clamp01(b.pt / 0.5) : 1;
     // the title and the rewards step back while the cast talks
     b.dim = lerp(b.dim ?? 1, b.phase === 'talk' ? 0.35 : 1, 1 - Math.exp(-dt * 6));
+    // the title makes room for the next-ocean teaser
+    const tOut = b.teaseAt != null ? clamp01((b.t - b.teaseAt - 0.3) / 0.4) : 0;
     ctx.save();
-    ctx.globalAlpha *= fade * b.dim;
+    ctx.globalAlpha *= fade * b.dim * (1 - tOut);
     drawAeroGlow(ctx, b.cx, hy, Math.round(H * 0.32), '#06264e', 0.4 * clamp01(b.t * 3));
     b.title ||= row('CHAPTER COMPLETE!', T.big);
     drawRow(ctx, b.title, b.cx, hy, b.t - 0.25, { id: 'f', fx: b.fx, stagger: 0.05, onLand: (x, y, i) => { if (i % 2 === 0) try { g.particles?.pixelBurst?.('star', x, y, 2, { layer: 'ui', ramp: 'gold', size: 0 }); } catch { /* optional */ } } });
@@ -1437,18 +1465,20 @@ export class QuestCine {
       if (b.teaseAt == null) {
         b.teaseAt = b.t;
         if (outro) {
+          // the rest of the cast bows out; the farewell speaker takes the front mark
           let delay = 0;
+          for (const x of st.actors.values()) if (x.id !== outro.npc && x.out == null) x.out = st.t;
           const a = st.actors.get(outro.npc);
-          if (!a || a.state === 'gone') delay = st.entryT(st.enter(outro.npc));
+          if (!a || a.state === 'gone') delay = st.entryT(st.enter(outro.npc, null, { slot: 0 }));
           st.faceAll(outro.npc, 'player');
-          if (st.world) st.shot('two', { id: outro.npc, to: 'player' });
+          if (st.world) st.shot('stage');
           st.events.push({ at: st.t + delay + 0.1, fn: () => { this.say(outro.npc, outro.text, { hold: 1.8, onDone: () => { b.outroDone = true; } }); b.sp = { id: outro.npc, act: 'talk', after: 'wave' }; st.emote(outro.npc, 'heart'); } });
         }
       }
       const tk = b.t - b.teaseAt;
       if (b.next) {
-        const ny = Math.round(hy + H * 0.36);
-        const nk = clamp01((tk - 0.8) / 0.4);
+        const ny = Math.round(hy + H * 0.025);
+        const nk = clamp01((tk - 0.7) / 0.4);
         if (nk > 0) {
           ctx.save();
           ctx.globalAlpha *= nk * fade;

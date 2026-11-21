@@ -6,7 +6,7 @@
 //   props       [[propId, owner npc]]: the owner's prop sits on the platform (the first) or on a raft by the boat
 //   weather     petals | glints | snow | sparks | rain | embers | plankton (pixel particles over the scene)
 //   grade       [top rgba, bottom rgba] time-of-day colour grade over the world
-//   time        location card sub line (the ocean name is the card's 3D title)
+//   time        location card sub line (the ocean name is the card's 3D title); nightTime / nightGrade after dark
 //   jumpers     species ids of the fish that leap out of the water now and then
 //   gulls, penguins, jellies, eyes   background critters
 // }
@@ -25,19 +25,19 @@
 //        re    {npc: anim}: listeners react;  fx: an event at the start of the line
 export const SETS = {
   ch1: {
-    plat: 'islet', crab: 0, props: [['bench', 'fizz']], weather: 'petals', time: 'SUNNY MORNING',
+    plat: 'islet', crab: 0, props: [['bench', 'fizz']], weather: 'petals', time: 'SUNNY MORNING', nightTime: 'STARRY NIGHT', nightGrade: ['rgba(40,50,140,0.14)', 'rgba(0,0,0,0)'],
     grade: ['rgba(255,214,170,0.16)', 'rgba(255,255,255,0)'], jumpers: ['pixel', 'googly', 'zebrafish'], gulls: 2,
   },
   ch2: {
-    plat: 'pier', crab: 0, props: [['workshop', 'marina']], weather: 'glints', time: 'GOLDEN HOUR',
+    plat: 'pier', crab: 0, props: [['workshop', 'marina']], weather: 'glints', time: 'GOLDEN HOUR', nightTime: 'BALMY NIGHT', nightGrade: ['rgba(60,40,120,0.16)', 'rgba(255,140,60,0.06)'],
     grade: ['rgba(255,186,90,0.22)', 'rgba(255,150,70,0.10)'], jumpers: ['honk', 'bananafish', 'flounder'], gulls: 3,
   },
   ch3: {
-    plat: 'floe', crab: 1, props: [['captain', 'bloat'], ['bench', 'fizz']], weather: 'snow', time: 'FRESH SNOWFALL',
+    plat: 'floe', crab: 1, props: [['captain', 'bloat'], ['bench', 'fizz']], weather: 'snow', time: 'FRESH SNOWFALL', nightTime: 'SNOWY NIGHT',
     grade: ['rgba(190,230,255,0.28)', 'rgba(230,246,255,0.16)'], jumpers: ['nootfish', 'icebabycod'], penguins: 3,
   },
   ch4: {
-    plat: 'scrap', crab: 2, props: [['bench', 'fizz']], weather: 'sparks', time: 'RUSTY DUSK',
+    plat: 'scrap', crab: 2, props: [['bench', 'fizz']], weather: 'sparks', time: 'RUSTY DUSK', nightTime: 'STATIC NIGHT', nightGrade: ['rgba(120,40,90,0.22)', 'rgba(40,20,90,0.26)'],
     grade: ['rgba(255,120,70,0.26)', 'rgba(70,30,120,0.30)'], jumpers: ['bitfish', 'glitchminnow'], gulls: 1,
   },
   ch5: {
@@ -57,7 +57,7 @@ export const SETS = {
 export const SCRIPTS = {
   ch1: {
     intro: [
-      { wide: 2.8 },
+      { wide: 2.5 },
       { enter: 'seal', how: 'swim' },
       { n: 'seal', s: 'Good morning, (OS)cean! Fresh water, fresh fish and a fresh *angler*!', to: 'player', act: 'wave', key: 'wiggle', emote: 'heart', pl: 'wave' },
       { fx: 'jump', at: 'seal', wait: 1.4 },
@@ -77,7 +77,7 @@ export const SCRIPTS = {
   },
   ch2: {
     intro: [
-      { wide: 2.8 },
+      { wide: 2.5 },
       { enter: 'marina', how: 'bubble' },
       { prop: 'workshop' },
       { n: 'marina', s: 'Ahoy! Welcome to the Shallows: warm water, bright fish and zero *sharks*. Mostly.', to: 'player', act: 'wave', key: 'point', emote: 'heart', pl: 'wave' },
@@ -98,7 +98,7 @@ export const SCRIPTS = {
   },
   ch3: {
     intro: [
-      { wide: 2.8 },
+      { wide: 2.5 },
       { fx: 'penguin', wait: 1.2 },
       { enter: 'bloat', how: 'bob' },
       { prop: 'captain' },
@@ -119,7 +119,7 @@ export const SCRIPTS = {
   },
   ch4: {
     intro: [
-      { wide: 2.8 },
+      { wide: 2.5 },
       { fx: 'spark', wait: 0.9 },
       { enter: 'fizz', how: 'bubble' },
       { prop: 'bench' },
@@ -138,7 +138,7 @@ export const SCRIPTS = {
   },
   ch5: {
     intro: [
-      { wide: 2.8 },
+      { wide: 2.5 },
       { fx: 'neon', wait: 1.1 },
       { enter: 'marina', how: 'bubble' },
       { prop: 'workshop' },
@@ -178,7 +178,7 @@ export const SCRIPTS = {
   },
   ch7: {
     intro: [
-      { wide: 3 },
+      { wide: 2.7 },
       { fx: 'eyes', wait: 1.4 },
       { enter: 'seal', how: 'swim' },
       { n: 'seal', s: 'This is it. The *Deep* Ocean. Glowing eyes everywhere...', to: 'player', act: 'worried', key: 'flop', emote: 'sweat', pl: 'think' },

@@ -15,6 +15,7 @@ import { mix } from '../core/color.js';
 import * as NPC from '../gfx/npcs.js';
 import { sealSize, drawSoapBubble } from '../gfx/seal.js';
 import { drawAeroGlow } from './aero.js';
+import { isHi, HI } from '../gfx/hires.js';
 import { SPECIES_BY_ID } from '../fish/species.js';
 import { BOSS_BY_ID, BOSS_BY_OCEAN } from '../fish/bosses.js';
 import { drawFishFit, fitScale } from './journal.js';
@@ -53,8 +54,8 @@ export class Typer {
   now(npc, raw, o = {}) {
     const P = parseEmph(raw);
     Object.assign(this, { npc, voice: VOICE[npc] || 'fish', text: P.text, emph: P.emph, shown: 0, t: 0, doneT: 0, pause: 0.12, active: true });
-    this.hold = o.hold ?? 1.05 + P.text.length * 0.026;
-    this.cps = o.cps ?? 40;
+    this.hold = o.hold ?? 0.85 + P.text.length * 0.019;
+    this.cps = o.cps ?? 44;
     this.onKey = o.onKey || null;
     this.onDone = o.onDone || null;
     this.keys = new Set();
@@ -127,7 +128,7 @@ export class Stage {
 
   // ---------------------------------------------------------------- layout: marks along the surface next to the boat
   layout() {
-    const g = this.g, b = this.b, W = this.W, H = this.H;
+    const g = this.g, b = this.b, W = this.W;
     const cam = g.camera, boat = g.boat;
     this.world = !!b.world;
     this.side = b.side || 1;
@@ -135,9 +136,9 @@ export class Stage {
     if (this.world) { this.X0 = boat.x; this.Y0 = boat.y; }
     else { this.X0 = 0; this.Y0 = 0; }
     const room = this.world ? (this.side > 0 ? W - this.X0 : this.X0) - 24 : 999;
-    this.sp = clamp(room / 330, 0.55, 1);
-    this.slotX = (s) => this.X0 + this.side * (72 + 58 * s) * this.sp;
-    this.platX = this.X0 + this.side * 286 * this.sp;
+    this.sp = clamp(room / 300, 0.55, 1);
+    this.slotX = (s) => this.X0 + this.side * (70 + 54 * s) * this.sp;
+    this.platX = this.X0 + this.side * 250 * this.sp;
     const back = this.world ? (this.side > 0 ? this.X0 : W - this.X0) : 999;
     this.raftX = back > 150 ? this.X0 - this.side * 104 : null;
     this.midX = this.X0 + this.side * 150 * this.sp;
@@ -169,6 +170,7 @@ export class Stage {
     void H;
   }
   plat() { return this.set.plat || null; }
+  night() { const e = this.g.ocean?.env; return !!(e && (e.night || e.dark > 0.5)); }
   propList() {
     const S = this.set, out = [];
     if (S.plat) out.push([S.plat, 0]);
@@ -193,7 +195,7 @@ export class Stage {
   enter(id, how, o = {}) {
     let a = this.actors.get(id);
     if (a && a.state !== 'gone') return a;
-    const slot = o.slot ?? this.actors.size;
+    const slot = o.slot ?? this.freeSlot();
     how = how || ENTRY[id] || 'pop';
     if (!this.world) how = 'pop';
     const tx = this.slotX(slot);
@@ -204,6 +206,12 @@ export class Stage {
     return a;
   }
   entryT(a) { return ENTRY_T[a.how] || 0.6; }
+  // the first mark along the surface nobody stands on (an owner who walked over to its prop frees its mark)
+  freeSlot() {
+    const taken = [...this.actors.values()].filter((a) => a.state !== 'gone').map((a) => a.tx);
+    for (let s = 0; s < 5; s++) if (!taken.some((x) => Math.abs(x - this.slotX(s)) < 30 * this.sp)) return s;
+    return this.actors.size;
+  }
   entered(id) { const a = this.actors.get(id); return !!a && this.t - a.t0 >= this.entryT(a); }
   exitAll(at = 0) { for (const a of this.actors.values()) if (a.state !== 'gone' && a.out == null) a.out = this.t + at; }
   act(id, anim, secs = 1.1) { const a = this.actors.get(id); if (a && anim) a.react = { anim, until: this.t + secs }; }
@@ -234,6 +242,12 @@ export class Stage {
     const p = this.props.find((q) => q.id === id && q.on == null);
     if (!p) return false;
     p.on = this.t;
+    // its owner glides over to stand beside it
+    const a = this.actors.get(p.owner);
+    if (a && !p.raft && this.world) {
+      const spr = propSprite(p.id, 0, 0, this.H), half = spr ? spr.w / this.zT / 2 : 30;
+      a.tx = p.x - this.side * (half + 14); a.face = this.side;
+    }
     return true;
   }
   propOf(owner) { return this.props.find((p) => p.owner === owner && p.on != null) || this.props.find((p) => p.on != null); }
@@ -425,7 +439,6 @@ export class Stage {
   }
 
   updateCritters(dt) {
-    const t = this.t;
     if (this.bare) return;
     // gulls: glide in, flap, land on a perch, hop now and then; fly off when scared
     for (const gl of this.gulls) {
@@ -535,9 +548,10 @@ export class Stage {
     const S = this.set;
     const wy = this.waterY();
     // time-of-day grade (and the rumble's hot flash in the rift)
-    if (S.grade) {
+    const grade = this.night() && S.nightGrade ? S.nightGrade : S.grade;
+    if (grade) {
       const gr = ctx.createLinearGradient(0, 0, 0, H);
-      gr.addColorStop(0, S.grade[0]); gr.addColorStop(1, S.grade[1]);
+      gr.addColorStop(0, grade[0]); gr.addColorStop(1, grade[1]);
       ctx.fillStyle = gr; ctx.fillRect(0, 0, W, H);
     }
     const k = this.k(), H0 = this.H;
@@ -561,7 +575,7 @@ export class Stage {
     }
     // the owners' props (dropped onto the platform, or floated in on a raft)
     for (const p of this.props) {
-      if (p.on == null) continue;
+      if (p.on == null || (!p.raft && S.plat && !this.platA)) continue; // (the platform is still being built)
       const te = t - p.on;
       const [x0, y0] = this.toS(p.x, this.Y0);
       let y = y0;
@@ -735,25 +749,36 @@ export class Stage {
     y -= a.hop * k;
     const talk = sp ? this.cine.dlg.talk : 0;
     const mood = MOOD[anim] || (sp ? 'excited' : 'happy');
-    ctx.save();
-    ctx.globalAlpha *= alpha;
-    if (water) { ctx.beginPath(); ctx.rect(0, 0, W, Math.round(sy + 3 * k)); ctx.clip(); }
-    ctx.translate(Math.round(x), Math.round(y));
-    if (sq) ctx.scale(k * (1 + sq), k * (1 - sq)); else ctx.scale(k, k);
+    // the actor renders at a FIXED scale into its own canvas, which is then blitted at the camera's scale: the NPC
+    // sprite sheets (baked per device size) are built once per pose instead of once per zoom step
+    const D = isHi(ctx) ? HI : 1;
+    const off = this.offscreen(a.id, D);
+    const og = off.g;
+    const dyl = (y - sy) / k;
+    og.setTransform(D, 0, 0, D, 0, 0);
+    og.clearRect(0, 0, off.w, off.h);
+    og.save();
+    og.translate(off.ox, Math.round(off.oy + dyl));
+    if (sq) og.scale(1 + sq, 1 - sq);
     const foot = water ? 9 : 0;
     let A = null;
     try {
       if (a.id === 'seal') {
         const an = SEAL_ANIMS.has(anim) ? anim : SEAL_MAP[anim] || 'idle';
-        A = NPC.drawNPC(ctx, 'seal', { x: 0, y: foot, t, size: this.cine.sealSz(), facing: a.face, anim: an, talk, mood, ride: 0, id: 'qc-seal', noseBubble: a.nose || 0 });
+        A = NPC.drawNPC(og, 'seal', { x: 0, y: foot, t, size: this.cine.sealSz(), facing: a.face, anim: an, talk, mood, ride: 0, id: 'qc-seal', noseBubble: a.nose || 0 });
       } else {
         let pose = anim;
         if (a.id === 'fizz' || a.id === 'marina') pose = BUBBLE_MAP[anim] || anim;
         else pose = ['cheer', 'clap', 'wiggle', 'spin', 'laugh', 'wave', 'jump', 'dance', 'flex'].includes(anim) ? 'cheer' : ['talk', 'point', 'think', 'blow'].includes(anim) ? 'talk' : 'idle';
-        A = NPC.drawNPC(ctx, a.id, { x: 0, y: foot, t, scale: this.cine.npcScale(a.id), facing: a.face, pose, talk, mood, id: 'qc-' + a.id, shadow: false });
+        A = NPC.drawNPC(og, a.id, { x: 0, y: foot, t, scale: this.cine.npcScale(a.id), facing: a.face, pose, talk, mood, id: 'qc-' + a.id, shadow: false });
       }
     } catch { A = null; }
-    if (bubble) drawSoapBubble(ctx, 0, -H * STAGE_H * 0.5, Math.round(H * STAGE_H * 0.62), Math.sin(t * 6) * 0.3);
+    if (bubble) drawSoapBubble(og, 0, -H * STAGE_H * 0.5, Math.round(H * STAGE_H * 0.62), Math.sin(t * 6) * 0.3);
+    og.restore();
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    if (water) { ctx.beginPath(); ctx.rect(0, 0, W, Math.round(sy + 3 * k)); ctx.clip(); }
+    ctx.drawImage(off.c, Math.round(sx - off.ox * k), Math.round(sy - off.oy * k), Math.round(off.w * k), Math.round(off.h * k));
     ctx.restore();
     if (water && te > 0.2 && !(a.out != null && t > a.out)) this.cine.drawFoam(ctx, sx, sy, k);
     const top = A?.top ? [x + A.top[0] * k, y + A.top[1] * k] : [x, y - H * STAGE_H * k];
@@ -823,6 +848,20 @@ export class Stage {
   }
 
   // ---------------------------------------------------------------- small art helpers
+  offscreen(id, D) {
+    const H = this.H;
+    const w = Math.round(H * 0.5), h = Math.round(H * 0.82);
+    const pool = this.cine.offs ||= {};
+    let o = pool[id];
+    if (!o || o.D !== D || o.w !== w || o.h !== h) {
+      const c = document.createElement('canvas');
+      c.width = w * D; c.height = h * D;
+      const g = c.getContext('2d');
+      g.imageSmoothingEnabled = false;
+      o = pool[id] = { c, g, D, w, h, ox: Math.round(w / 2), oy: Math.round(h * 0.8) };
+    }
+    return o;
+  }
   clipWater(ctx, y, fn) { ctx.save(); ctx.beginPath(); ctx.rect(0, 0, this.W, Math.round(y)); ctx.clip(); try { fn(); } finally { ctx.restore(); } }
   drawFoamLine(ctx, x, y, w) {
     const t = this.t;
@@ -909,22 +948,22 @@ export class Stage {
   drawBoss(ctx, boss, u, dur) {
     // u = seconds since the reveal began
     const W = this.W, H = this.H, t = this.t;
-    if (!boss) return;
+    if (!boss || !this.world) return;
     const wy = this.waterY();
     // the water below darkens: the deep holds its breath
     const dk = clamp01(u / 0.8) * (1 - clamp01((u - dur + 0.6) / 0.6));
     if (dk > 0) {
       const gr = ctx.createLinearGradient(0, Math.max(0, wy), 0, H);
-      gr.addColorStop(0, `rgba(2,12,34,${(0.25 * dk).toFixed(3)})`);
-      gr.addColorStop(1, `rgba(1,4,16,${(0.7 * dk).toFixed(3)})`);
+      gr.addColorStop(0, `rgba(2,12,34,${(0.42 * dk).toFixed(3)})`);
+      gr.addColorStop(1, `rgba(1,4,16,${(0.82 * dk).toFixed(3)})`);
       ctx.fillStyle = gr; ctx.fillRect(0, Math.max(0, Math.round(wy)), W, H);
     }
     const sp = SPECIES_BY_ID[boss.id];
     const su = clamp01((u - 0.6) / (dur - 0.9));
     if (!sp || su <= 0 || su >= 1) return;
     const dir = this.side;
-    const wx = this.midX - dir * 170 + dir * 340 * ease.inOutQuad(su);
-    const wyy = this.Y0 + 120 + Math.sin(su * Math.PI * 2) * 8;
+    const wx = this.midX - dir * 230 + dir * 460 * ease.inOutQuad(su);
+    const wyy = this.Y0 + 128 + Math.sin(su * Math.PI * 2) * 8;
     const [x, y] = this.toS(wx, wyy);
     const zz = this.world ? this.g.camera.z || 2 : this.zT * 0.8;
     const fade = Math.min(clamp01(su * 6), clamp01((1 - su) * 6));
@@ -932,7 +971,7 @@ export class Stage {
     ctx.globalAlpha *= 0.9 * fade;
     ctx.beginPath(); ctx.rect(0, Math.round(wy + 2), W, H); ctx.clip();
     let A = null;
-    try { A = drawFishFit(ctx, sp, x, y, fitScale(sp, boss.len * 0.8 * zz, boss.len * 0.6 * zz, 12), t, { facing: dir, turn: dir, silhouette: '#02081a', speed01: 0.3 }); } catch { A = null; }
+    try { A = drawFishFit(ctx, sp, x, y, fitScale(sp, boss.len * 1.7 * zz, boss.len * 1.1 * zz, 16), t, { facing: dir, turn: dir, silhouette: '#02081a', speed01: 0.3 }); } catch { A = null; }
     // a glowing eye in the dark
     const e = A?.eyes?.[0];
     if (e) { drawAeroGlow(ctx, e.x, e.y, 12, boss.glow || '#ffffff', 0.5); ctx.fillStyle = boss.color || '#ffffff'; ctx.fillRect(Math.round(e.x - 2), Math.round(e.y - 1), 4, 3); ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(e.x - 1), Math.round(e.y - 1), 1, 1); }

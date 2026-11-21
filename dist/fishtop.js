@@ -261,6 +261,9 @@
     if (!c || "hi" in c || !(c instanceof HTMLCanvasElement)) return c;
     return withHi(c, () => enhanceHi(c, o));
   }
+  function isHi(ctx3) {
+    return ctx3 && ctx3.__hi || 0;
+  }
   function installHiCtx(ctx3, R7) {
     const draw = P2D.drawImage, setT = P2D.setTransform;
     ctx3.__hi = R7;
@@ -86395,11 +86398,30 @@ kmlmk..
     }
     return { m, anchors: { top: [10, 28, 10] } };
   }
-  function renderOne(id2, f, v, H8) {
+  function addHi(s, key) {
+    const M6 = MODELS7.get(key);
+    MODELS7.delete(key);
+    if (!s || !M6 || s.c.hi || !HI_ON.on) return;
+    try {
+      const hi = renderVoxels(M6.m, { ...M6.opt, scale: M6.vs * 2, outline: true });
+      const hc = makeCanvas(s.c.width * 2, s.c.height * 2);
+      const hg = ctxOf(hc);
+      const dx = Math.round(M6.lox * 2 - hi.ox), dy = Math.round(M6.loy * 2 - hi.oy);
+      hg.drawImage(hi.canvas, dx, dy);
+      if (hi.glow) {
+        hg.globalCompositeOperation = "lighter";
+        hg.globalAlpha = 0.55;
+        hg.drawImage(hi.glow, dx, dy);
+      }
+      Object.defineProperty(s.c, "hi", { value: hc, configurable: true });
+    } catch {
+    }
+  }
+  function renderOne(id2, f, v, H8, key) {
     const def2 = PROP_DEFS[id2];
     const B2 = def2.build(f, v);
     const vs = vsFor2(def2, H8);
-    const opt = { yaw: def2.yaw, pitch: def2.pitch, ao: 1, edges: 0.75, sideEdges: 0.5, jitter: 0.06, glowRadius: 2 };
+    const opt = optOf(def2);
     const lo = renderVoxels(B2.m, { ...opt, scale: vs });
     const c = makeCanvas(lo.canvas.width, lo.canvas.height);
     const g = ctxOf(c);
@@ -86409,20 +86431,7 @@ kmlmk..
       g.globalAlpha = 0.55;
       g.drawImage(lo.glow, 0, 0);
     }
-    try {
-      const hi = renderVoxels(B2.m, { ...opt, scale: vs * 2, outline: true });
-      const hc = makeCanvas(c.width * 2, c.height * 2);
-      const hg = ctxOf(hc);
-      const dx = Math.round(lo.ox * 2 - hi.ox), dy = Math.round(lo.oy * 2 - hi.oy);
-      hg.drawImage(hi.canvas, dx, dy);
-      if (hi.glow) {
-        hg.globalCompositeOperation = "lighter";
-        hg.globalAlpha = 0.55;
-        hg.drawImage(hi.glow, dx, dy);
-      }
-      Object.defineProperty(c, "hi", { value: hc, configurable: true });
-    } catch {
-    }
+    if (key) MODELS7.set(key, { m: B2.m, opt, vs, lox: lo.ox, loy: lo.oy });
     const A2 = {};
     const [gx, gy] = lo.project(B2.m.nx / 2, 0, B2.m.nz / 2);
     for (const [k, p] of Object.entries(B2.anchors || {})) {
@@ -86442,20 +86451,21 @@ kmlmk..
     if (!PROP_DEFS[id2]) return null;
     return SPR4.get(keyOf(id2, f % PROP_DEFS[id2].n, v, H8)) || null;
   }
-  function propNow(id2, f = 0, v = 0, H8 = 720) {
+  function propNow(id2, f = 0, v = 0, H8 = 720, o = {}) {
     const def2 = PROP_DEFS[id2];
     if (!def2) return null;
     const key = keyOf(id2, f % def2.n, v, H8);
     let s = SPR4.get(key);
     if (!s) {
       try {
-        s = renderOne(id2, f % def2.n, v, H8);
+        s = renderOne(id2, f % def2.n, v, H8, key);
       } catch (e) {
         console.warn("cine prop", id2, e);
         s = null;
       }
       SPR4.set(key, s);
       if (SPR4.size > 160) SPR4.delete(SPR4.keys().next().value);
+      if (!o.lazyHi) addHi(s, key);
     }
     return s;
   }
@@ -86464,11 +86474,17 @@ kmlmk..
       const def2 = PROP_DEFS[id2];
       if (!def2) continue;
       for (let f = 0; f < def2.n; f++) {
-        if (SPR4.has(keyOf(id2, f, v, H8))) continue;
-        propNow(id2, f, v, H8);
+        const key = keyOf(id2, f, v, H8);
+        if (SPR4.has(key)) continue;
+        const spr4 = propNow(id2, f, v, H8, { lazyHi: true });
+        yield;
+        addHi(spr4, key);
         yield;
       }
     }
+  }
+  function propsReady(list, H8) {
+    return list.every(([id2, v = 0]) => !PROP_DEFS[id2] || SPR4.has(keyOf(id2, 0, v, H8)));
   }
   function drawProp(ctx3, id2, f, v, x, y, k, H8, o = {}) {
     const s = propSprite2(id2, f, v, H8) || (o.build ? propNow(id2, f, v, H8) : null);
@@ -86491,27 +86507,28 @@ kmlmk..
     A2.h = h;
     return A2;
   }
-  var glossy, glass, CRAB_COL, PROP_DEFS, SPR4, vsFor2, keyOf;
+  var glossy, glass, CRAB_COL, PROP_DEFS, SPR4, vsFor2, keyOf, MODELS7, optOf;
   var init_cineprops = __esm({
     "src/ui/cineprops.js"() {
       init_voxel();
       init_canvas();
       init_math();
+      init_hires();
       glossy = { spec: 1.2, specPow: 12, smooth: 0.8, jitter: 0.02 };
       glass = { spec: 1.5, specPow: 14, smooth: 1, jitter: 0, light: 0.25 };
       CRAB_COL = [["#ff5a3a", "#ff9a6a"], ["#bfe8ff", "#ffffff"], ["#8a9aae", "#c8d4e0"], ["#ffd23a", "#fff2a0"], ["#3a3040", "#ff7a2a"], ["#8a5aff", "#5af0ff"]];
       PROP_DEFS = {
-        bench: { build: buildBench, n: 4, vs: 2.3, yaw: 18, pitch: 20 },
-        workshop: { build: buildWorkshop, n: 1, vs: 2.3, yaw: 20, pitch: 20 },
-        captain: { build: buildCaptain, n: 1, vs: 2.3, yaw: -18, pitch: 18 },
-        islet: { build: buildIslet, n: 1, vs: 2.2, yaw: 10, pitch: 24 },
-        pier: { build: buildPier, n: 1, vs: 2.2, yaw: 10, pitch: 24 },
-        floe: { build: buildFloe, n: 1, vs: 2.2, yaw: 10, pitch: 24 },
-        scrap: { build: buildScrap, n: 2, vs: 2.2, yaw: 12, pitch: 22 },
-        pontoon: { build: buildPontoon, n: 3, vs: 2.2, yaw: 8, pitch: 20 },
-        basalt: { build: buildBasalt, n: 2, vs: 2.2, yaw: 10, pitch: 24 },
-        glowrock: { build: buildGlowrock, n: 2, vs: 2.2, yaw: 10, pitch: 24 },
-        raft: { build: buildRaft, n: 1, vs: 2.2, yaw: 10, pitch: 24 },
+        bench: { build: buildBench, n: 4, vs: 2.9, yaw: 18, pitch: 20 },
+        workshop: { build: buildWorkshop, n: 1, vs: 2.9, yaw: 20, pitch: 20 },
+        captain: { build: buildCaptain, n: 1, vs: 2.9, yaw: -18, pitch: 18 },
+        islet: { build: buildIslet, n: 1, vs: 2.9, yaw: 10, pitch: 24 },
+        pier: { build: buildPier, n: 1, vs: 2.9, yaw: 10, pitch: 24 },
+        floe: { build: buildFloe, n: 1, vs: 2.9, yaw: 10, pitch: 24 },
+        scrap: { build: buildScrap, n: 2, vs: 2.9, yaw: 12, pitch: 22 },
+        pontoon: { build: buildPontoon, n: 3, vs: 2.9, yaw: 8, pitch: 20 },
+        basalt: { build: buildBasalt, n: 2, vs: 2.9, yaw: 10, pitch: 24 },
+        glowrock: { build: buildGlowrock, n: 2, vs: 2.9, yaw: 10, pitch: 24 },
+        raft: { build: buildRaft, n: 1, vs: 2.9, yaw: 10, pitch: 24 },
         gull: { build: buildGull, n: 3, vs: 1.6, yaw: 0, pitch: 8, side: true },
         penguin: { build: buildPenguin2, n: 4, vs: 2, yaw: 14, pitch: 12 },
         crab: { build: buildCrab, n: 2, vs: 1.8, yaw: 0, pitch: 26 },
@@ -86520,6 +86537,8 @@ kmlmk..
       SPR4 = /* @__PURE__ */ new Map();
       vsFor2 = (def2, H8) => Math.max(1, Math.round(def2.vs * (H8 / 720) * 8) / 8);
       keyOf = (id2, f, v, H8) => `${id2}|${f}|${v}|${vsFor2(PROP_DEFS[id2], H8)}`;
+      MODELS7 = /* @__PURE__ */ new Map();
+      optOf = (def2) => ({ yaw: def2.yaw, pitch: def2.pitch, ao: 1, edges: 0.75, sideEdges: 0.5, jitter: 0.06, glowRadius: 2 });
     }
   });
 
@@ -108005,6 +108024,8 @@ void main() {
           props: [["bench", "fizz"]],
           weather: "petals",
           time: "SUNNY MORNING",
+          nightTime: "STARRY NIGHT",
+          nightGrade: ["rgba(40,50,140,0.14)", "rgba(0,0,0,0)"],
           grade: ["rgba(255,214,170,0.16)", "rgba(255,255,255,0)"],
           jumpers: ["pixel", "googly", "zebrafish"],
           gulls: 2
@@ -108015,6 +108036,8 @@ void main() {
           props: [["workshop", "marina"]],
           weather: "glints",
           time: "GOLDEN HOUR",
+          nightTime: "BALMY NIGHT",
+          nightGrade: ["rgba(60,40,120,0.16)", "rgba(255,140,60,0.06)"],
           grade: ["rgba(255,186,90,0.22)", "rgba(255,150,70,0.10)"],
           jumpers: ["honk", "bananafish", "flounder"],
           gulls: 3
@@ -108025,6 +108048,7 @@ void main() {
           props: [["captain", "bloat"], ["bench", "fizz"]],
           weather: "snow",
           time: "FRESH SNOWFALL",
+          nightTime: "SNOWY NIGHT",
           grade: ["rgba(190,230,255,0.28)", "rgba(230,246,255,0.16)"],
           jumpers: ["nootfish", "icebabycod"],
           penguins: 3
@@ -108035,6 +108059,8 @@ void main() {
           props: [["bench", "fizz"]],
           weather: "sparks",
           time: "RUSTY DUSK",
+          nightTime: "STATIC NIGHT",
+          nightGrade: ["rgba(120,40,90,0.22)", "rgba(40,20,90,0.26)"],
           grade: ["rgba(255,120,70,0.26)", "rgba(70,30,120,0.30)"],
           jumpers: ["bitfish", "glitchminnow"],
           gulls: 1
@@ -108073,7 +108099,7 @@ void main() {
       SCRIPTS = {
         ch1: {
           intro: [
-            { wide: 2.8 },
+            { wide: 2.5 },
             { enter: "seal", how: "swim" },
             { n: "seal", s: "Good morning, (OS)cean! Fresh water, fresh fish and a fresh *angler*!", to: "player", act: "wave", key: "wiggle", emote: "heart", pl: "wave" },
             { fx: "jump", at: "seal", wait: 1.4 },
@@ -108093,7 +108119,7 @@ void main() {
         },
         ch2: {
           intro: [
-            { wide: 2.8 },
+            { wide: 2.5 },
             { enter: "marina", how: "bubble" },
             { prop: "workshop" },
             { n: "marina", s: "Ahoy! Welcome to the Shallows: warm water, bright fish and zero *sharks*. Mostly.", to: "player", act: "wave", key: "point", emote: "heart", pl: "wave" },
@@ -108114,7 +108140,7 @@ void main() {
         },
         ch3: {
           intro: [
-            { wide: 2.8 },
+            { wide: 2.5 },
             { fx: "penguin", wait: 1.2 },
             { enter: "bloat", how: "bob" },
             { prop: "captain" },
@@ -108135,7 +108161,7 @@ void main() {
         },
         ch4: {
           intro: [
-            { wide: 2.8 },
+            { wide: 2.5 },
             { fx: "spark", wait: 0.9 },
             { enter: "fizz", how: "bubble" },
             { prop: "bench" },
@@ -108154,7 +108180,7 @@ void main() {
         },
         ch5: {
           intro: [
-            { wide: 2.8 },
+            { wide: 2.5 },
             { fx: "neon", wait: 1.1 },
             { enter: "marina", how: "bubble" },
             { prop: "workshop" },
@@ -108194,7 +108220,7 @@ void main() {
         },
         ch7: {
           intro: [
-            { wide: 3 },
+            { wide: 2.7 },
             { fx: "eyes", wait: 1.4 },
             { enter: "seal", how: "swim" },
             { n: "seal", s: "This is it. The *Deep* Ocean. Glowing eyes everywhere...", to: "player", act: "worried", key: "flop", emote: "sweat", pl: "think" },
@@ -108244,6 +108270,7 @@ void main() {
       init_npcs();
       init_seal();
       init_aero();
+      init_hires();
       init_species();
       init_bosses();
       init_journal();
@@ -108283,8 +108310,8 @@ void main() {
         now(npc, raw, o = {}) {
           const P7 = parseEmph(raw);
           Object.assign(this, { npc, voice: VOICE[npc] || "fish", text: P7.text, emph: P7.emph, shown: 0, t: 0, doneT: 0, pause: 0.12, active: true });
-          this.hold = o.hold ?? 1.05 + P7.text.length * 0.026;
-          this.cps = o.cps ?? 40;
+          this.hold = o.hold ?? 0.85 + P7.text.length * 0.019;
+          this.cps = o.cps ?? 44;
           this.onKey = o.onKey || null;
           this.onDone = o.onDone || null;
           this.keys = /* @__PURE__ */ new Set();
@@ -108393,7 +108420,7 @@ void main() {
         }
         // ---------------------------------------------------------------- layout: marks along the surface next to the boat
         layout() {
-          const g = this.g, b = this.b, W11 = this.W, H8 = this.H;
+          const g = this.g, b = this.b, W11 = this.W;
           const cam = g.camera, boat = g.boat;
           this.world = !!b.world;
           this.side = b.side || 1;
@@ -108406,9 +108433,9 @@ void main() {
             this.Y0 = 0;
           }
           const room = this.world ? (this.side > 0 ? W11 - this.X0 : this.X0) - 24 : 999;
-          this.sp = clamp(room / 330, 0.55, 1);
-          this.slotX = (s) => this.X0 + this.side * (72 + 58 * s) * this.sp;
-          this.platX = this.X0 + this.side * 286 * this.sp;
+          this.sp = clamp(room / 300, 0.55, 1);
+          this.slotX = (s) => this.X0 + this.side * (70 + 54 * s) * this.sp;
+          this.platX = this.X0 + this.side * 250 * this.sp;
           const back = this.world ? this.side > 0 ? this.X0 : W11 - this.X0 : 999;
           this.raftX = back > 150 ? this.X0 - this.side * 104 : null;
           this.midX = this.X0 + this.side * 150 * this.sp;
@@ -108443,6 +108470,10 @@ void main() {
         plat() {
           return this.set.plat || null;
         }
+        night() {
+          const e = this.g.ocean?.env;
+          return !!(e && (e.night || e.dark > 0.5));
+        }
         propList() {
           const S13 = this.set, out = [];
           if (S13.plat) out.push([S13.plat, 0]);
@@ -108466,7 +108497,7 @@ void main() {
         enter(id2, how, o = {}) {
           let a = this.actors.get(id2);
           if (a && a.state !== "gone") return a;
-          const slot = o.slot ?? this.actors.size;
+          const slot = o.slot ?? this.freeSlot();
           how = how || ENTRY[id2] || "pop";
           if (!this.world) how = "pop";
           const tx = this.slotX(slot);
@@ -108478,6 +108509,12 @@ void main() {
         }
         entryT(a) {
           return ENTRY_T[a.how] || 0.6;
+        }
+        // the first mark along the surface nobody stands on (an owner who walked over to its prop frees its mark)
+        freeSlot() {
+          const taken = [...this.actors.values()].filter((a) => a.state !== "gone").map((a) => a.tx);
+          for (let s = 0; s < 5; s++) if (!taken.some((x) => Math.abs(x - this.slotX(s)) < 30 * this.sp)) return s;
+          return this.actors.size;
         }
         entered(id2) {
           const a = this.actors.get(id2);
@@ -108525,6 +108562,12 @@ void main() {
           const p = this.props.find((q) => q.id === id2 && q.on == null);
           if (!p) return false;
           p.on = this.t;
+          const a = this.actors.get(p.owner);
+          if (a && !p.raft && this.world) {
+            const spr4 = propSprite2(p.id, 0, 0, this.H), half = spr4 ? spr4.w / this.zT / 2 : 30;
+            a.tx = p.x - this.side * (half + 14);
+            a.face = this.side;
+          }
           return true;
         }
         propOf(owner) {
@@ -108849,7 +108892,6 @@ void main() {
           }
         }
         updateCritters(dt) {
-          const t = this.t;
           if (this.bare) return;
           for (const gl2 of this.gulls) {
             gl2.t += dt;
@@ -109016,10 +109058,11 @@ void main() {
           }
           const S13 = this.set;
           const wy = this.waterY();
-          if (S13.grade) {
+          const grade = this.night() && S13.nightGrade ? S13.nightGrade : S13.grade;
+          if (grade) {
             const gr = ctx3.createLinearGradient(0, 0, 0, H8);
-            gr.addColorStop(0, S13.grade[0]);
-            gr.addColorStop(1, S13.grade[1]);
+            gr.addColorStop(0, grade[0]);
+            gr.addColorStop(1, grade[1]);
             ctx3.fillStyle = gr;
             ctx3.fillRect(0, 0, W11, H8);
           }
@@ -109055,7 +109098,7 @@ void main() {
             }
           }
           for (const p of this.props) {
-            if (p.on == null) continue;
+            if (p.on == null || !p.raft && S13.plat && !this.platA) continue;
             const te = t - p.on;
             const [x0, y0] = this.toS(p.x, this.Y0);
             let y = y0;
@@ -109308,6 +109351,32 @@ void main() {
           y -= a.hop * k;
           const talk = sp ? this.cine.dlg.talk : 0;
           const mood = MOOD[anim] || (sp ? "excited" : "happy");
+          const D2 = isHi(ctx3) ? HI : 1;
+          const off = this.offscreen(a.id, D2);
+          const og = off.g;
+          const dyl = (y - sy) / k;
+          og.setTransform(D2, 0, 0, D2, 0, 0);
+          og.clearRect(0, 0, off.w, off.h);
+          og.save();
+          og.translate(off.ox, Math.round(off.oy + dyl));
+          if (sq) og.scale(1 + sq, 1 - sq);
+          const foot = water ? 9 : 0;
+          let A2 = null;
+          try {
+            if (a.id === "seal") {
+              const an2 = SEAL_ANIMS2.has(anim) ? anim : SEAL_MAP[anim] || "idle";
+              A2 = drawNPC(og, "seal", { x: 0, y: foot, t, size: this.cine.sealSz(), facing: a.face, anim: an2, talk, mood, ride: 0, id: "qc-seal", noseBubble: a.nose || 0 });
+            } else {
+              let pose2 = anim;
+              if (a.id === "fizz" || a.id === "marina") pose2 = BUBBLE_MAP[anim] || anim;
+              else pose2 = ["cheer", "clap", "wiggle", "spin", "laugh", "wave", "jump", "dance", "flex"].includes(anim) ? "cheer" : ["talk", "point", "think", "blow"].includes(anim) ? "talk" : "idle";
+              A2 = drawNPC(og, a.id, { x: 0, y: foot, t, scale: this.cine.npcScale(a.id), facing: a.face, pose: pose2, talk, mood, id: "qc-" + a.id, shadow: false });
+            }
+          } catch {
+            A2 = null;
+          }
+          if (bubble2) drawSoapBubble(og, 0, -H8 * STAGE_H * 0.5, Math.round(H8 * STAGE_H * 0.62), Math.sin(t * 6) * 0.3);
+          og.restore();
           ctx3.save();
           ctx3.globalAlpha *= alpha;
           if (water) {
@@ -109315,25 +109384,7 @@ void main() {
             ctx3.rect(0, 0, W11, Math.round(sy + 3 * k));
             ctx3.clip();
           }
-          ctx3.translate(Math.round(x), Math.round(y));
-          if (sq) ctx3.scale(k * (1 + sq), k * (1 - sq));
-          else ctx3.scale(k, k);
-          const foot = water ? 9 : 0;
-          let A2 = null;
-          try {
-            if (a.id === "seal") {
-              const an2 = SEAL_ANIMS2.has(anim) ? anim : SEAL_MAP[anim] || "idle";
-              A2 = drawNPC(ctx3, "seal", { x: 0, y: foot, t, size: this.cine.sealSz(), facing: a.face, anim: an2, talk, mood, ride: 0, id: "qc-seal", noseBubble: a.nose || 0 });
-            } else {
-              let pose2 = anim;
-              if (a.id === "fizz" || a.id === "marina") pose2 = BUBBLE_MAP[anim] || anim;
-              else pose2 = ["cheer", "clap", "wiggle", "spin", "laugh", "wave", "jump", "dance", "flex"].includes(anim) ? "cheer" : ["talk", "point", "think", "blow"].includes(anim) ? "talk" : "idle";
-              A2 = drawNPC(ctx3, a.id, { x: 0, y: foot, t, scale: this.cine.npcScale(a.id), facing: a.face, pose: pose2, talk, mood, id: "qc-" + a.id, shadow: false });
-            }
-          } catch {
-            A2 = null;
-          }
-          if (bubble2) drawSoapBubble(ctx3, 0, -H8 * STAGE_H * 0.5, Math.round(H8 * STAGE_H * 0.62), Math.sin(t * 6) * 0.3);
+          ctx3.drawImage(off.c, Math.round(sx - off.ox * k), Math.round(sy - off.oy * k), Math.round(off.w * k), Math.round(off.h * k));
           ctx3.restore();
           if (water && te > 0.2 && !(a.out != null && t > a.out)) this.cine.drawFoam(ctx3, sx, sy, k);
           const top = A2?.top ? [x + A2.top[0] * k, y + A2.top[1] * k] : [x, y - H8 * STAGE_H * k];
@@ -109424,6 +109475,22 @@ void main() {
           ctx3.globalAlpha = 1;
         }
         // ---------------------------------------------------------------- small art helpers
+        offscreen(id2, D2) {
+          var _a4;
+          const H8 = this.H;
+          const w = Math.round(H8 * 0.5), h = Math.round(H8 * 0.82);
+          const pool = (_a4 = this.cine).offs || (_a4.offs = {});
+          let o = pool[id2];
+          if (!o || o.D !== D2 || o.w !== w || o.h !== h) {
+            const c = document.createElement("canvas");
+            c.width = w * D2;
+            c.height = h * D2;
+            const g = c.getContext("2d");
+            g.imageSmoothingEnabled = false;
+            o = pool[id2] = { c, g, D: D2, w, h, ox: Math.round(w / 2), oy: Math.round(h * 0.8) };
+          }
+          return o;
+        }
         clipWater(ctx3, y, fn) {
           ctx3.save();
           ctx3.beginPath();
@@ -109536,13 +109603,13 @@ void main() {
         }
         drawBoss(ctx3, boss, u, dur) {
           const W11 = this.W, H8 = this.H, t = this.t;
-          if (!boss) return;
+          if (!boss || !this.world) return;
           const wy = this.waterY();
           const dk = clamp012(u / 0.8) * (1 - clamp012((u - dur + 0.6) / 0.6));
           if (dk > 0) {
             const gr = ctx3.createLinearGradient(0, Math.max(0, wy), 0, H8);
-            gr.addColorStop(0, `rgba(2,12,34,${(0.25 * dk).toFixed(3)})`);
-            gr.addColorStop(1, `rgba(1,4,16,${(0.7 * dk).toFixed(3)})`);
+            gr.addColorStop(0, `rgba(2,12,34,${(0.42 * dk).toFixed(3)})`);
+            gr.addColorStop(1, `rgba(1,4,16,${(0.82 * dk).toFixed(3)})`);
             ctx3.fillStyle = gr;
             ctx3.fillRect(0, Math.max(0, Math.round(wy)), W11, H8);
           }
@@ -109550,8 +109617,8 @@ void main() {
           const su = clamp012((u - 0.6) / (dur - 0.9));
           if (!sp || su <= 0 || su >= 1) return;
           const dir = this.side;
-          const wx = this.midX - dir * 170 + dir * 340 * ease.inOutQuad(su);
-          const wyy = this.Y0 + 120 + Math.sin(su * Math.PI * 2) * 8;
+          const wx = this.midX - dir * 230 + dir * 460 * ease.inOutQuad(su);
+          const wyy = this.Y0 + 128 + Math.sin(su * Math.PI * 2) * 8;
           const [x, y] = this.toS(wx, wyy);
           const zz = this.world ? this.g.camera.z || 2 : this.zT * 0.8;
           const fade = Math.min(clamp012(su * 6), clamp012((1 - su) * 6));
@@ -109562,7 +109629,7 @@ void main() {
           ctx3.clip();
           let A2 = null;
           try {
-            A2 = drawFishFit(ctx3, sp, x, y, fitScale(sp, boss.len * 0.8 * zz, boss.len * 0.6 * zz, 12), t, { facing: dir, turn: dir, silhouette: "#02081a", speed01: 0.3 });
+            A2 = drawFishFit(ctx3, sp, x, y, fitScale(sp, boss.len * 1.7 * zz, boss.len * 1.1 * zz, 16), t, { facing: dir, turn: dir, silhouette: "#02081a", speed01: 0.3 });
           } catch {
             A2 = null;
           }
@@ -109863,11 +109930,9 @@ void main() {
           return { ...BOSS_O, scale: this.H >= 600 ? 1.5 : 1.2 };
         }
         // [cine21] everything a chapter's set needs: its props, the cast's poses, the 3D words, the boss
-        warmSet(chId) {
-          const ch = CHAPTER_BY_ID[chId], S13 = SETS[chId];
-          if (!ch || !S13) return;
-          const T5 = this.titleO();
-          const list = [];
+        setList(chId) {
+          const S13 = SETS[chId], list = [];
+          if (!S13) return list;
           if (S13.plat) list.push([S13.plat, 0]);
           for (const [id2] of S13.props || []) list.push([id2, 0]);
           if ((S13.props || []).length > 1) list.push(["raft", 0]);
@@ -109875,12 +109940,20 @@ void main() {
           if (S13.penguins) list.push(["penguin", 0]);
           if (S13.jellies) list.push(["jelly", 0]);
           if (S13.plat) list.push(["crab", S13.crab || 0]);
-          this.prep.push(prepProps(list, this.H));
-          this.prep.push(prepWord(OCEAN_NAMES[ch.ocean] || ch.ocean, T5.ocean));
+          return list;
+        }
+        // front = a cutscene is about to need it: its props jump the warm-up queue
+        warmSet(chId, front = false) {
+          const ch = CHAPTER_BY_ID[chId], S13 = SETS[chId];
+          if (!ch || !S13) return;
+          const T5 = this.titleO();
+          if (front) this.prep.unshift(prepProps(this.setList(chId), this.H));
+          else this.prep.push(prepProps(this.setList(chId), this.H));
+          this.prep.push(prepWord(OCEAN_NAMES[ch.ocean] || ch.ocean, T5.card));
           const boss = this.bossFor(chId);
           if (boss) {
             this.prep.push(prepRow("BOSS SIGHTED!", this.bossO()));
-            this.prep.push(prepWord(boss.title.toUpperCase(), T5.sub));
+            this.prep.push(prepWord(boss.title.toUpperCase(), T5.boss));
           }
           const sc = SCRIPTS[chId];
           const cast = new Set([...sc?.intro || [], ...sc?.finale || []].map((x) => x.n || x.enter).filter(Boolean));
@@ -109915,6 +109988,8 @@ void main() {
             chap: { palette: "aqua", size: 32, depth: 4, scale: big },
             sub: { palette: "white", size: 16, depth: 3, scale: 1 },
             ocean: { palette: "sky", size: 16, depth: 3, scale: 1.5 },
+            card: { palette: "sky", size: 32, depth: 4, scale: big * 0.62 },
+            boss: { palette: "white", size: 32, depth: 4, scale: big * 0.5 },
             small: { palette: "gold", size: 16, depth: 3, scale: 1 },
             num: { palette: "white", size: 16, depth: 3, scale: 1.25 },
             stamp: { palette: "leaf", size: 16, depth: 3, scale: 1 }
@@ -109927,6 +110002,13 @@ void main() {
               for (const a of ["idle", "clap", "wave", "wiggle", "swim", "spin", "point", "worried", "blow", "cheer", "think", "flop"]) {
                 try {
                   warmSeal(self.sealSz(), [a], "side");
+                } catch {
+                }
+                yield;
+              }
+              for (const r of [31, 20]) {
+                try {
+                  warmSeal(r * 1.3, ["idle", "wave"], "front");
                 } catch {
                 }
                 yield;
@@ -109955,7 +110037,7 @@ void main() {
             this.prep.push(prepWord(`CHAPTER ${ch.n}`, T5.small));
             this.prep.push(prepWord(OCEAN_NAMES[ch.ocean] || ch.ocean, T5.sub));
             if (this.mode() === "full" || b.replay) {
-              if (SCRIPTS[ch.id]) this.warmSet(ch.id);
+              if (SCRIPTS[ch.id]) this.warmSet(ch.id, true);
               else for (const L4 of ch.intro) this.warmNpc(L4.npc);
             }
           } else if (b.kind === "finale" && ch) {
@@ -109967,7 +110049,7 @@ void main() {
             if (nx) this.prep.push(prepWord(OCEAN_NAMES[nx.ocean] || nx.ocean, T5.ocean));
             for (const r of rewardList(ch.reward)) if (r.n) this.prep.push(prepWord((r.key === "aero" ? "+" : "x") + r.n, T5.num));
             if (this.mode() === "full" || b.replay) {
-              if (SCRIPTS[ch.id]) this.warmSet(ch.id);
+              if (SCRIPTS[ch.id]) this.warmSet(ch.id, true);
               if (ch.outro) this.warmNpc(ch.outro.npc);
             }
             if (nx && this.mode() === "full" && !b.replay) this.warmSet(nx.id);
@@ -109981,7 +110063,7 @@ void main() {
           } else if (b.kind === "boss" && b.q) {
             const boss = this.bossFor(b.q.chapter);
             this.prep.push(prepRow("BOSS SIGHTED!", this.bossO()));
-            if (boss) this.prep.push(prepWord(boss.title.toUpperCase(), T5.sub));
+            if (boss) this.prep.push(prepWord(boss.title.toUpperCase(), T5.boss));
             this.warmNpc(b.q.giver);
           }
         }
@@ -109992,7 +110074,7 @@ void main() {
             let r;
             try {
               r = gen.next();
-            } catch (e) {
+            } catch {
               r = { done: true };
             }
             if (r.done) this.prep.shift();
@@ -110003,7 +110085,7 @@ void main() {
           const g = this.game;
           this.t += dt;
           const mode = this.mode();
-          if (mode === "off" && this.queue.length) this.queue = [];
+          if (mode === "off" && this.queue.some((x) => !x.replay)) this.queue = this.queue.filter((x) => x.replay);
           if (mode !== "off" && g.state?.tutorialDone) {
             const S13 = ensureQuests(g.state);
             if (S13.outro && !this.has("finale", S13.outro)) this.enqueue({ kind: "finale", ch: S13.outro });
@@ -110016,7 +110098,19 @@ void main() {
           if (Math.abs(this.bars - this.barsTo) < 4e-3) this.bars = this.barsTo;
           if (this.claims.length && !g.ui?.isOpen?.("quests")) this.flushClaims(this.W / 2, this.H * 0.4);
           const calm = this.calm();
-          if (!g.fishing?.fighting && this.prep.length) this.stepPrep();
+          const needs = this.cur?.stage && !this.cur.stage.bare && !propsReady(this.cur.stage.propList(), this.H);
+          if (this.prep.length && !g.fishing?.fighting && (calm && !this.cur ? true : !!this.cur && (this.cur.t < 2.5 || needs))) this.stepPrep();
+          if (calm && !this.cur && !this.queue.length && mode === "full" && g.state?.tutorialDone) {
+            this.idleT = (this.idleT || 0) + dt;
+            if (this.idleT > 4) {
+              const S13 = ensureQuests(g.state);
+              for (const c of [CHAPTERS[S13.ch], CHAPTERS[S13.ch + 1]]) if (c && !(this.warmed || (this.warmed = {}))[c.id]) {
+                this.warmed[c.id] = 1;
+                this.warmSet(c.id);
+                break;
+              }
+            }
+          } else this.idleT = 0;
           if (g.ui?.isOpen?.("questcine") && (!this.cur || !this.cur.heavy)) {
             this.closing = true;
             g.ui.close("questcine");
@@ -110205,7 +110299,7 @@ void main() {
           return Math.max(0.8, Math.round(this.H * STAGE_H2 / (NPC_H[id2] || 64) * 4) / 4);
         }
         plan(b) {
-          const g = this.game, W11 = this.W, H8 = this.H, cam = g.camera, boat = g.boat;
+          const g = this.game, W11 = this.W, cam = g.camera, boat = g.boat;
           const full = b.replay || this.mode() === "full";
           b.cam = false;
           let side = 1;
@@ -110224,7 +110318,7 @@ void main() {
           const T5 = this.titleO();
           const ch = CHAPTER_BY_ID[b.ch];
           const setCh = b.kind === "intro" || b.kind === "finale" ? b.ch : null;
-          b.stage = new Stage(this, b, setCh || b.q?.chapter || "ch1", { bare: !(full && setCh && SETS[setCh]) });
+          b.stage = new Stage(this, b, setCh || b.q?.chapter || "ch1", { bare: !(full && setCh && SETS[setCh] && b.world) });
           if (b.cam) b.stage.shot("stage", { cut: false });
           if (b.kind === "done") {
             try {
@@ -110262,6 +110356,10 @@ void main() {
             b.steps = sc ? sc.finale.slice() : [];
             b.si = 0;
             if (b.cam) b.stage.shot("stage", { cut: true });
+            for (const p of b.stage.props) {
+              p.on = -9;
+              p.landed = 1;
+            }
             const cast = [...new Set(b.steps.map((x) => x.n).filter(Boolean))];
             if (full) cast.forEach((id2, i) => b.stage.events.push({ at: 0.15 + i * 0.35, fn: () => b.stage.enter(id2) }));
             if (full) b.stage.events.push({ at: 0.9, fn: () => b.stage.player("cheer", 2.4) });
@@ -110585,6 +110683,10 @@ void main() {
         }
         startStep(b, S13) {
           const st = b.stage;
+          if (S13.n) {
+            this.startLine(b, S13);
+            return;
+          }
           if (S13.wide) {
             st.shot("wide", { cut: true });
             b.card = b.t;
@@ -110619,10 +110721,8 @@ void main() {
           if (S13.boss) {
             b.reveal = { t0: b.t, boss: this.bossFor(b.ch), fx: {} };
             st.shot("boss");
-            b.stepEnd = b.t + 5;
-            return;
+            b.stepEnd = b.t + 4.6;
           }
-          if (S13.n) this.startLine(b, S13);
         }
         startLine(b, L4) {
           const st = b.stage, g = this.game;
@@ -110683,7 +110783,7 @@ void main() {
           const kin = clamp012(u / 0.55);
           if (kin <= 0 || out >= 1) return;
           const T5 = this.titleO(), name = OCEAN_NAMES[ch.ocean] || ch.ocean;
-          const c = wordNow(name, T5.ocean);
+          const c = wordNow(name, T5.card);
           const cw = c ? c.width : 160;
           const bh = Math.round(H8 * 0.105);
           const x0 = 28 + cw / 2, y = H8 - bh - Math.round(H8 * 0.09);
@@ -110691,15 +110791,16 @@ void main() {
           ctx3.save();
           ctx3.globalAlpha *= 1 - out;
           drawAeroGlow(ctx3, x, y, cw * 0.7, "#06264e", 0.45);
-          drawWord(ctx3, name, T5.ocean, x, y, 1, 1);
+          drawWord(ctx3, name, T5.card, x, y, 1, 1);
           const rw = Math.round(cw * ease.outCubic(clamp012((u - 0.3) / 0.5)));
           ctx3.fillStyle = "#04264e";
           ctx3.fillRect(Math.round(x - cw / 2) - 1, y + Math.round((c?.height || 30) / 2) + 2, rw + 2, 4);
           ctx3.fillStyle = "#ffd23a";
           ctx3.fillRect(Math.round(x - cw / 2), y + Math.round((c?.height || 30) / 2) + 3, rw, 2);
-          const time = SETS[ch.id]?.time || "";
+          const night = !!b.stage?.night?.();
+          const time = night && SETS[ch.id]?.nightTime || SETS[ch.id]?.time || "";
           if (time && u > 0.45) {
-            const ic = getUiIcon(TIME_ICON[SETS[ch.id]?.weather] || "sun");
+            const ic = getUiIcon(night ? "moon" : TIME_ICON[SETS[ch.id]?.weather] || "sun");
             const ty = y + Math.round((c?.height || 30) / 2) + 10;
             if (ic) ctx3.drawImage(ic, Math.round(x - cw / 2), ty - 2);
             drawText(ctx3, `CHAPTER ${ch.n}  -  ${time}`, Math.round(x - cw / 2 + (ic ? ic.width + 5 : 0)), ty, { font: "small", color: "#ffffff", shadow: "#04264e" });
@@ -110728,7 +110829,7 @@ void main() {
             }
             st.player("jump", 1.4, "exclaim");
           }
-          const out = clamp012((u - 4.3) / 0.5);
+          const out = clamp012((u - 3.95) / 0.5);
           if (out >= 1) return;
           const bh = this.barH();
           const hy = Math.round(Math.max(bh, H8 * 0.06) + H8 * 0.1);
@@ -110746,11 +110847,12 @@ void main() {
             } });
             const T5 = this.titleO();
             const nm = boss.title.toUpperCase();
-            wordNow(nm, T5.sub);
+            const wc = wordNow(nm, T5.boss);
             const tk = clamp012((u - 2.1) / 0.35);
             if (tk > 0) {
-              drawWord(ctx3, nm, T5.sub, this.W / 2, hy + Math.round(H8 * 0.08), backOut2(tk), tk);
-              if (boss.sub) drawText(ctx3, boss.sub.toUpperCase(), Math.round(this.W / 2 - measureText(boss.sub.toUpperCase(), "small") / 2), hy + Math.round(H8 * 0.08) + 14, { font: "small", color: "#ffd0c8", shadow: "#2a0612" });
+              const ny = hy + Math.round(H8 * 0.085);
+              drawWord(ctx3, nm, T5.boss, this.W / 2, ny, backOut2(tk), tk);
+              if (boss.sub) drawText(ctx3, boss.sub.toUpperCase(), Math.round(this.W / 2 - measureText(boss.sub.toUpperCase(), "small") / 2), ny + Math.round((wc?.height || 20) / 2) + 4, { font: "small", color: "#ffd0c8", shadow: "#2a0612" });
             }
           }
           ctx3.restore();
@@ -111054,7 +111156,7 @@ void main() {
           b.pt += dt;
           b.end ?? (b.end = 999);
           st.drawBack(ctx3);
-          if (b.reveal) st.drawBoss(ctx3, b.reveal.boss, b.t - b.reveal.t0, 5);
+          if (b.reveal) st.drawBoss(ctx3, b.reveal.boss, b.t - b.reveal.t0, 4.6);
           st.drawCast(ctx3, this.speaker(b));
           st.drawFront(ctx3);
           this.drawBars(ctx3);
@@ -111302,8 +111404,9 @@ void main() {
           const hy = Math.round(bh + H8 * 0.1);
           const fade = b.phase === "out" ? 1 - clamp012(b.pt / 0.5) : 1;
           b.dim = lerp(b.dim ?? 1, b.phase === "talk" ? 0.35 : 1, 1 - Math.exp(-dt * 6));
+          const tOut = b.teaseAt != null ? clamp012((b.t - b.teaseAt - 0.3) / 0.4) : 0;
           ctx3.save();
-          ctx3.globalAlpha *= fade * b.dim;
+          ctx3.globalAlpha *= fade * b.dim * (1 - tOut);
           drawAeroGlow(ctx3, b.cx, hy, Math.round(H8 * 0.32), "#06264e", 0.4 * clamp012(b.t * 3));
           b.title || (b.title = row2("CHAPTER COMPLETE!", T5.big));
           drawRow(ctx3, b.title, b.cx, hy, b.t - 0.25, { id: "f", fx: b.fx, stagger: 0.05, onLand: (x, y, i) => {
@@ -111404,10 +111507,11 @@ void main() {
               b.teaseAt = b.t;
               if (outro) {
                 let delay = 0;
+                for (const x of st.actors.values()) if (x.id !== outro.npc && x.out == null) x.out = st.t;
                 const a = st.actors.get(outro.npc);
-                if (!a || a.state === "gone") delay = st.entryT(st.enter(outro.npc));
+                if (!a || a.state === "gone") delay = st.entryT(st.enter(outro.npc, null, { slot: 0 }));
                 st.faceAll(outro.npc, "player");
-                if (st.world) st.shot("two", { id: outro.npc, to: "player" });
+                if (st.world) st.shot("stage");
                 st.events.push({ at: st.t + delay + 0.1, fn: () => {
                   this.say(outro.npc, outro.text, { hold: 1.8, onDone: () => {
                     b.outroDone = true;
@@ -111419,8 +111523,8 @@ void main() {
             }
             const tk = b.t - b.teaseAt;
             if (b.next) {
-              const ny = Math.round(hy + H8 * 0.36);
-              const nk = clamp012((tk - 0.8) / 0.4);
+              const ny = Math.round(hy + H8 * 0.025);
+              const nk = clamp012((tk - 0.7) / 0.4);
               if (nk > 0) {
                 ctx3.save();
                 ctx3.globalAlpha *= nk * fade;
@@ -123078,7 +123182,7 @@ ${hearts} ${status}
       s = { canvas: b.canvas, ox: b.ox, oy: b.oy, w: b.w, h: b.h };
     } else {
       const M6 = cache19.get("model|" + kind2 + "|" + tier) || (() => {
-        const mm = (MODELS7[kind2] || crateModel)(F3);
+        const mm = (MODELS8[kind2] || crateModel)(F3);
         cache19.set("model|" + kind2 + "|" + tier, mm);
         return mm;
       })();
@@ -123111,7 +123215,7 @@ ${hearts} ${status}
     byS.set(key, c);
     return c;
   }
-  var TIERS_FALLBACK, tierOrder, FINISH, finishOf, KINDS2, BASE_W, ROLLS2, SCALES, MODELS7, cache19, fogCache, nextId2, Floaters;
+  var TIERS_FALLBACK, tierOrder, FINISH, finishOf, KINDS2, BASE_W, ROLLS2, SCALES, MODELS8, cache19, fogCache, nextId2, Floaters;
   var init_floaters = __esm({
     "src/world/floaters.js"() {
       init_voxel();
@@ -123138,7 +123242,7 @@ ${hearts} ${status}
       BASE_W = [70, 22, 6.5, 1.5];
       ROLLS2 = [-14, -7, 0, 7, 14];
       SCALES = [2, 1.5, 1];
-      MODELS7 = { crate: crateModel, capsule: capsuleModel, bottle: bottleModel };
+      MODELS8 = { crate: crateModel, capsule: capsuleModel, bottle: bottleModel };
       cache19 = /* @__PURE__ */ new Map();
       fogCache = /* @__PURE__ */ new Map();
       nextId2 = 1;

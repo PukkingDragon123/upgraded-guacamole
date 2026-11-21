@@ -20,6 +20,7 @@
 import { VoxelModel, renderVoxels } from '../gfx/voxel.js';
 import { makeCanvas, ctxOf } from '../core/canvas.js';
 import { hash3, TAU } from '../core/math.js';
+import { HI_ON } from '../gfx/hires.js';
 
 function palette(m) {
   const memo = new Map();
@@ -399,17 +400,17 @@ function buildJelly(f) {
 
 // ------------------------------------------------------------------ registry, rendering, cache
 export const PROP_DEFS = {
-  bench: { build: buildBench, n: 4, vs: 2.3, yaw: 18, pitch: 20 },
-  workshop: { build: buildWorkshop, n: 1, vs: 2.3, yaw: 20, pitch: 20 },
-  captain: { build: buildCaptain, n: 1, vs: 2.3, yaw: -18, pitch: 18 },
-  islet: { build: buildIslet, n: 1, vs: 2.2, yaw: 10, pitch: 24 },
-  pier: { build: buildPier, n: 1, vs: 2.2, yaw: 10, pitch: 24 },
-  floe: { build: buildFloe, n: 1, vs: 2.2, yaw: 10, pitch: 24 },
-  scrap: { build: buildScrap, n: 2, vs: 2.2, yaw: 12, pitch: 22 },
-  pontoon: { build: buildPontoon, n: 3, vs: 2.2, yaw: 8, pitch: 20 },
-  basalt: { build: buildBasalt, n: 2, vs: 2.2, yaw: 10, pitch: 24 },
-  glowrock: { build: buildGlowrock, n: 2, vs: 2.2, yaw: 10, pitch: 24 },
-  raft: { build: buildRaft, n: 1, vs: 2.2, yaw: 10, pitch: 24 },
+  bench: { build: buildBench, n: 4, vs: 2.9, yaw: 18, pitch: 20 },
+  workshop: { build: buildWorkshop, n: 1, vs: 2.9, yaw: 20, pitch: 20 },
+  captain: { build: buildCaptain, n: 1, vs: 2.9, yaw: -18, pitch: 18 },
+  islet: { build: buildIslet, n: 1, vs: 2.9, yaw: 10, pitch: 24 },
+  pier: { build: buildPier, n: 1, vs: 2.9, yaw: 10, pitch: 24 },
+  floe: { build: buildFloe, n: 1, vs: 2.9, yaw: 10, pitch: 24 },
+  scrap: { build: buildScrap, n: 2, vs: 2.9, yaw: 12, pitch: 22 },
+  pontoon: { build: buildPontoon, n: 3, vs: 2.9, yaw: 8, pitch: 20 },
+  basalt: { build: buildBasalt, n: 2, vs: 2.9, yaw: 10, pitch: 24 },
+  glowrock: { build: buildGlowrock, n: 2, vs: 2.9, yaw: 10, pitch: 24 },
+  raft: { build: buildRaft, n: 1, vs: 2.9, yaw: 10, pitch: 24 },
   gull: { build: buildGull, n: 3, vs: 1.6, yaw: 0, pitch: 8, side: true },
   penguin: { build: buildPenguin, n: 4, vs: 2, yaw: 14, pitch: 12 },
   crab: { build: buildCrab, n: 2, vs: 1.8, yaw: 0, pitch: 26 },
@@ -420,26 +421,34 @@ const SPR = new Map();
 const vsFor = (def, H) => Math.max(1, Math.round(def.vs * (H / 720) * 8) / 8);
 const keyOf = (id, f, v, H) => `${id}|${f}|${v}|${vsFor(PROP_DEFS[id], H)}`;
 
-function renderOne(id, f, v, H) {
+const MODELS = new Map(); // built models waiting for their 2x twin
+const optOf = (def) => ({ yaw: def.yaw, pitch: def.pitch, ao: 1, edges: 0.75, sideEdges: 0.5, jitter: 0.06, glowRadius: 2 });
+// the 2x twin for the full-res UI layer (aligned on the ground point); a separate step so no single step is long
+function addHi(s, key) {
+  const M = MODELS.get(key);
+  MODELS.delete(key);
+  if (!s || !M || s.c.hi || !HI_ON.on) return; // (only the full-res UI layer ever draws the twin)
+  try {
+    const hi = renderVoxels(M.m, { ...M.opt, scale: M.vs * 2, outline: true });
+    const hc = makeCanvas(s.c.width * 2, s.c.height * 2);
+    const hg = ctxOf(hc);
+    const dx = Math.round(M.lox * 2 - hi.ox), dy = Math.round(M.loy * 2 - hi.oy);
+    hg.drawImage(hi.canvas, dx, dy);
+    if (hi.glow) { hg.globalCompositeOperation = 'lighter'; hg.globalAlpha = 0.55; hg.drawImage(hi.glow, dx, dy); }
+    Object.defineProperty(s.c, 'hi', { value: hc, configurable: true });
+  } catch { /* the logical sprite is enough */ }
+}
+function renderOne(id, f, v, H, key) {
   const def = PROP_DEFS[id];
   const B = def.build(f, v);
   const vs = vsFor(def, H);
-  const opt = { yaw: def.yaw, pitch: def.pitch, ao: 1, edges: 0.75, sideEdges: 0.5, jitter: 0.06, glowRadius: 2 };
+  const opt = optOf(def);
   const lo = renderVoxels(B.m, { ...opt, scale: vs });
   const c = makeCanvas(lo.canvas.width, lo.canvas.height);
   const g = ctxOf(c);
   g.drawImage(lo.canvas, 0, 0);
   if (lo.glow) { g.globalCompositeOperation = 'lighter'; g.globalAlpha = 0.55; g.drawImage(lo.glow, 0, 0); }
-  // the 2x twin for the full-res UI layer (aligned on the ground point)
-  try {
-    const hi = renderVoxels(B.m, { ...opt, scale: vs * 2, outline: true });
-    const hc = makeCanvas(c.width * 2, c.height * 2);
-    const hg = ctxOf(hc);
-    const dx = Math.round(lo.ox * 2 - hi.ox), dy = Math.round(lo.oy * 2 - hi.oy);
-    hg.drawImage(hi.canvas, dx, dy);
-    if (hi.glow) { hg.globalCompositeOperation = 'lighter'; hg.globalAlpha = 0.55; hg.drawImage(hi.glow, dx, dy); }
-    Object.defineProperty(c, 'hi', { value: hc, configurable: true });
-  } catch { /* the logical sprite is enough */ }
+  if (key) MODELS.set(key, { m: B.m, opt, vs, lox: lo.ox, loy: lo.oy });
   // the waterline row and the named anchors, relative to the ground point
   const A = {};
   const [gx, gy] = lo.project(B.m.nx / 2, 0, B.m.nz / 2);
@@ -454,15 +463,16 @@ export function propSprite(id, f = 0, v = 0, H = 720) {
   if (!PROP_DEFS[id]) return null;
   return SPR.get(keyOf(id, f % PROP_DEFS[id].n, v, H)) || null;
 }
-export function propNow(id, f = 0, v = 0, H = 720) {
+export function propNow(id, f = 0, v = 0, H = 720, o = {}) {
   const def = PROP_DEFS[id];
   if (!def) return null;
   const key = keyOf(id, f % def.n, v, H);
   let s = SPR.get(key);
   if (!s) {
-    try { s = renderOne(id, f % def.n, v, H); } catch (e) { console.warn('cine prop', id, e); s = null; }
+    try { s = renderOne(id, f % def.n, v, H, key); } catch (e) { console.warn('cine prop', id, e); s = null; }
     SPR.set(key, s);
     if (SPR.size > 160) SPR.delete(SPR.keys().next().value);
+    if (!o.lazyHi) addHi(s, key);
   }
   return s;
 }
@@ -471,8 +481,11 @@ export function* prepProps(list, H) {
     const def = PROP_DEFS[id];
     if (!def) continue;
     for (let f = 0; f < def.n; f++) {
-      if (SPR.has(keyOf(id, f, v, H))) continue;
-      propNow(id, f, v, H);
+      const key = keyOf(id, f, v, H);
+      if (SPR.has(key)) continue;
+      const spr = propNow(id, f, v, H, { lazyHi: true });
+      yield;
+      addHi(spr, key);
       yield;
     }
   }
