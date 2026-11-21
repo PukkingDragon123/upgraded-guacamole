@@ -34,6 +34,7 @@ import { gemTex } from './labtiles.js';
 import { drawIcon3D } from '../gfx/icons3d.js'; // [phase9:ui]
 import { drawFishFit, fitScale } from './journal.js';
 import { panelRect } from './ui.js';
+import { FOOD_DATA } from '../game/foods.js'; // [food24] the food Feed all uses
 
 const SORTS = [
   ['rarity', 'Rarity'], ['aero', 'Aero/min'], ['size', 'Size'], ['happy', 'Happiness'], ['hunger', 'Hunger'], ['name', 'Name'], ['newest', 'Newest'], ['species', 'Species'],
@@ -363,7 +364,7 @@ export class FishManagerPanel {
     chip(70, (r) => { const hi = getUiIcon('home'); if (hi) ctx.drawImage(hi, r.x + 7, r.y + 5); drawText(ctx, `${all.length - inTank}`, r.x + 22, r.y + 6, { color: INK }); drawText(ctx, 'kept', r.x + 22 + measureText(`${all.length - inTank}`) + 4, r.y + 7, { font: 'small', color: SOFT }); }, 'Fish in storage (the holding bucket)');
     chip(Math.max(78, measureText(`${rate.toFixed(1)}/min`) + 30), (r) => { drawAeroCoin(ctx, r.x + 12, r.y + 10, 5, this.t); drawText(ctx, `${rate.toFixed(1)}/min`, r.x + 21, r.y + 6, { color: INK }); }, 'Aero your tank earns per minute');
     if (this.btn(ui, ctx, { x: H.x + H.w - 30, y: H.y + 6, w: 24, h: 22 }, '', { icon: 'cross', tone: 'red', tip: 'Close (Esc)' })) { ui.close(this.id); return; }
-    if (this.btn(ui, ctx, { x: H.x + H.w - 124, y: H.y + 6, w: 88, h: 22 }, 'Feed all', { icon: 'food', tone: 'green', tip: 'Sprinkle food for every fish in the tank', dis: !inTank })) {
+    if (this.btn(ui, ctx, { x: H.x + H.w - 124, y: H.y + 6, w: 88, h: 22 }, 'Feed all', { icon: 'food', tone: 'green', tip: `Sprinkle ${FOOD_DATA[aq?.foodType]?.name || 'food'} for every fish in the tank`, dis: !inTank })) {
       aq?.feedAll?.(); this.toast('Dinner time!', 'food');
       this.fx('drop', H.x + H.w - 80, H.y + 26, 10, { ramp: 'gold', spread: 1.2, dir: Math.PI / 2 }); this.fx('sparkle', H.x + H.w - 80, H.y + 18, 6);
     }

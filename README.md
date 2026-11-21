@@ -3,9 +3,8 @@
 FISHTOP is a zoomed-in, skill-based Frutiger Aero fishing game built entirely from voxels. You play as a bubble
 person in a little boat on a glossy, sunlit sea:
 - Cast with the mouse.
-- Crank a big glossy reel.
-- Zap fish with your rod's shock.
-- Fight surges by pulling against them.
+- Spin a big glossy reel to keep the fish in the middle of the meter.
+- Hit the big SHOCK button at the right moment for a critical zap.
 
 Then fill your side-scrolling voxel tank with fish that earn Aero, and research better rods, boats, tanks and
 seven oceans in The Lab.
@@ -45,12 +44,20 @@ To build from source, run `npm install && npm run build`, which bundles `src/` i
   Settings has a Normal / Big / Huge UI size.
 - **Bait**: buy bait packs from Bubbles the toy grouper at the **Bait Shop** with Aero. Each bait is used up when a fish bites.
 - **Fishing**: click the water to cast. Then:
-  - **Hook**: when a fish bites, circle your mouse to spin the big 3D gear into the green band before time
-    runs out. Too slow and it escapes; past the red line and the line rips.
-  - **Reel**: keep the gear's RPM needle in the drifting green band. Surges push it up; fakes drop it.
-  - **Shock**: hold the mouse button (or Space or right-click) to charge, and let go in the PERFECT window to
-    stun the fish. Overcharging fizzles or backfires.
-  - **Surge**: when the fish bolts, hold and drag against the pull.
+  - **Hook**: wait for the big "!" and click (or press Space). If you click while the fish is only nibbling,
+    you scare it off.
+  - **Spin**: the fish pulls its marker to the left of the meter. To push it back to the right, spin the reel:
+    circle the mouse, roll the wheel, or hold or tap `W`, `Up` or `R`. Keep the marker in the green middle zone
+    to fill the catch bar. The longer you stay steady and the closer you stay to the centre, the faster the bar
+    fills. Outside the zone the bar drains slowly. If you spin too slowly, the fish runs off to the left; if you
+    spin too fast, the line goes tight on the right. Rare fish jitter and lunge, and arrows warn you first.
+  - **Shock**: the big SHOCK button recharges by itself. When it's ready, the fish freezes and a spark sweeps
+    across the meter, so you can stop spinning. Press `Space` (or click) as the spark crosses the gold notch for
+    a CRITICAL hit: a big chunk of progress and a long stun. A press in the green zone is a weaker zap, and a
+    press in the red ends backfires. Rod and Lab Reel & Shock upgrades give more power, more charges, faster
+    recharge and a wider gold notch. At high tiers your shock also arcs as chain lightning.
+  - **Bosses**: you fight bosses the same way, in three phases. In phase 2 the boss raises shields that only a
+    shock can break. In phase 3 it enrages and critical hits do extra damage.
 - **Depth**: each ocean drops through sunlit, twilight, midnight and abyss zones. Use `Home`/`End`,
   `PageUp`/`PageDown` or the wheel to dive; a depth meter shows your zone. The camera follows your hook and
   catch; Ctrl/Alt + wheel or `+`/`-` changes the zoom.
@@ -129,8 +136,23 @@ with a minigame.
   - The Lab's centre card names the goal and what it still needs, including the quest that seals it (with Track quest).
   - Bubbles' tips name it too.
   - A toast pops up when you can afford it.
+- **Fish food is unlocked as you go.** Reef Flakes are free. The other foods each have their own effect for about
+  10 minutes after a fish eats them:
+
+  | Food | How to unlock | Effect |
+  | --- | --- | --- |
+  | Reef Flakes | You start with them | Everyday food |
+  | Pop Pellets | Research Pellet Press (Lab, Tank Life, tier 2) | Fills 35% more, hunger grows a third slower |
+  | Bloodworms | Marina's side story "Worm Wrangler" (chapter 2) | Much happier fish, evolve 1.5x faster |
+  | Brine Shrimp | Research Brine Hatchery (Lab, Tank Life, tier 4) | +10% Aero/min, romance at lower happiness, shorter rest between clutches |
+  | Golden Krill | Professor Fizz's side story "Golden Krill" (chapter 5) | +15% Aero/min, eggs from a krill-fed parent mutate 2x (shiny 1.5x) |
+
+  Locked foods are sealed in the Feed tray. Hover one to see how to unlock it; click it to open the Lab on its node or
+  to track its quest. Feed all and the auto-feeder use your chosen food if you have it, else Reef Flakes. Feeding by
+  hand counts for feeding quests too.
 - **Old saves keep everything.** Anything already researched, crafted or bought stays yours. The new prices only
-  apply to what is still ahead.
+  apply to what is still ahead. Saves from before food unlocks keep the food they had picked, get Pop Pellets and
+  Brine Shrimp if they researched past those nodes, and get Bloodworms once past chapter 2.
 
 ## What's inside
 
@@ -181,7 +203,8 @@ with a minigame.
   - Six tank tiers, from the Nano Tank to the Mega Tank. Each Lab upgrade makes the tank wider and taller, holds
     more fish and earns more Aero.
   - The tank has front, middle and back voxel layers with plants, rocks and light shafts.
-  - You can feed fish, breed them, decorate the tank and build in it.
+  - You can feed fish, breed them, decorate the tank and build in it. Five voxel foods (four of them unlocked as you
+    progress) each have their own effect.
 - **Multiplayer fishing** (opt-in): when the game is opened from its shared claude.ai link, you see other
   players' bubble people and boats in your ocean, their catches and their emotes. Fishing with other people in
   the same ocean gives up to +30% luck. Windows on one computer can also see each other.

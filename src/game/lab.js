@@ -16,12 +16,13 @@
 //   BRANCHES {id: {name, color, angle, icon}}, BRANCH_ORDER, LAB_BY_ID, ROOT_ID, BOAT_ORDER, TANK_ORDER, OCEAN_ORDER,
 //   BOAT_NAMES, TANK_NAMES, OCEAN_NAMES, STARTER_UNLOCKS, DECOR_SETS (decor recipes per crafting node), EFFECT_INFO, MULT_KEYS
 //   Unlock ids: rod:<rods.js id>, boat:<BOAT_ORDER> (sets state.boat.tier), tank:<TANK_ORDER> (sets state.tank.tier),
-//   biome:<OCEAN_ORDER> (pushed to state.unlockedBiomes), recipe:<src/build/crafting.js id>, bait:<store bait id>
+//   biome:<OCEAN_ORDER> (pushed to state.unlockedBiomes), recipe:<src/build/crafting.js id>, bait:<store bait id>,
+//   [food24] food:<src/game/foods.js id> (tank food tray; Reef Flakes need no unlock)
 //   (sold at the Bait Shop), feature:isp2..isp6 (Bait Shop shelves/discounts) | multiplayer | autocollect | eng1 | eng2 | aquarium.
 //   ensureLab(state) -> state.lab = {done:{id:ts}, active:{id,start,end}|null, slots:[{id,start,end,paid}], unlocks:{'kind:id':true}}
 //   labHas(state, nodeId) -> bool
 //   labStatus(state, nodeId) -> 'done'|'researching'|'available'|'locked'
-//   unlocked(state, kind, id) -> bool      kind: 'rod'|'boat'|'tank'|'recipe'|'biome'|'bait'|'cosmetic'|'feature'
+//   unlocked(state, kind, id) -> bool      kind: 'rod'|'boat'|'tank'|'recipe'|'biome'|'bait'|'cosmetic'|'feature'|'food'
 //   grantUnlock(state, kind, id)           (also used by loot/cosmetic grants; applies rods/boat/tank/biome side effects)
 //   computeLabStats(state) -> combined effects of finished nodes {key: value} (MULT_KEYS multiply, others add);
 //                             skills.computeStats() merges them into BASE_STATS for game.recomputeStats().
@@ -296,6 +297,10 @@ n('tank_reef', 'aquarium', 6, 0, 'Reef Tank', 'tank:reeftank', ['tank_big'], { u
 n('tank_mutation', 'aquarium', 6, 2, 'Mutation Lab', 'dna', ['tank_nursery'], { effect: { mutationChance: 0.03 }, desc: 'More mutations.' });
 n('tank_currents', 'aquarium', 7, -1, 'Treasure Currents', 'coin', ['tank_reef'], { effect: { coinMul: 1.3, offlineMul: 0.1 }, desc: 'More Aero, even while away.' });
 n('tank_sparkle', 'aquarium', 7, 1, 'Sparkle Genes', 'star', ['tank_mutation', 'tank_reef'], { effect: { shinyChance: 1.6 }, desc: 'Shiny fish more often.' });
+// [food24] fish food research (Tank Life row): Pop Pellets and Brine Shrimp (src/game/foods.js; Bloodworms and Golden
+// Krill are side-story rewards). Unlock kind 'food:<id>'.
+n('food_pellets', 'aquarium', 2, 1, 'Pellet Press', 'food:pellets', ['tank_feeder'], { unlock: [U('food', 'pellets')], desc: 'Press Pop Pellets: hearty food that keeps fish full for longer.' });
+n('food_shrimp', 'aquarium', 4, 1, 'Brine Hatchery', 'food:shrimp', ['tank_romance'], { unlock: [U('food', 'shrimp')], desc: 'Hatch Brine Shrimp: lively fish make more Aero and fall in love easier.' });
 n('tank_wall', 'aquarium', 8, 0, 'Mega Tank', 'tank:wallaquarium', ['tank_currents'], { unlock: [U('tank', 'wallaquarium')], effect: { tankCap: 6, coinMul: 1.15 }, desc: 'A whole wall of ocean.' });
 
 // ---- Luck & Idle (down-left): luck, idle Aero, lab benches, AppSea internet speed (store/isp.js features)
@@ -372,7 +377,7 @@ row('boats', 'boats', 'Boats', null, 'below', ['boat_dinghy', 'boat_skiff', 'boa
 row('oceans', 'oceans', 'Oceans', null, 'below', ['sea_shallows', 'sea_fjord', 'sea_junkyard', 'sea_metropolis', 'sea_volcano', 'sea_abyss', 'sea_legend']);
 row('expedition', 'oceans', 'Expedition', 'sea_fjord', 'below', ['sea_compass', 'sea_multi', 'sea_forecast', 'sea_lantern', 'sea_sonar', 'sea_pressure']);
 row('aquarium', 'aquarium', 'Aquarium', null, 'below', ['tank_bowl', 'tank_small', 'tank_snail', 'tank_big', 'tank_crab', 'tank_reef', 'tank_currents', 'tank_wall']);
-row('tanklife', 'aquarium', 'Tank Life', 'tank_small', 'below', ['tank_feeder', 'tank_happy', 'tank_romance', 'tank_nursery', 'tank_mutation', 'tank_sparkle']);
+row('tanklife', 'aquarium', 'Tank Life', 'tank_small', 'below', ['tank_feeder', 'food_pellets', 'tank_happy', 'tank_romance', 'food_shrimp', 'tank_nursery', 'tank_mutation', 'tank_sparkle']); // [food24] + foods
 row('bait', 'bait', 'Bait', null, 'below', ['bait_worm', 'bait_sugar', 'bait_chip', 'bait_popup', 'bait_golden', 'bait_lantern', 'bait_flood', 'bait_blackhole', 'bait_relic', 'bait_master']);
 row('baitlab', 'bait', 'Bait Lab', 'bait_sugar', 'below', ['bait_custom', 'bait_slots1', 'bait_potent', 'bait_slots2']);
 row('crafting', 'crafting', 'Crafting', null, 'below', ['craft_coral', 'craft_shell', 'craft_bubble', 'craft_workshop', 'craft_hatchery', 'craft_arcade', 'craft_lighthouse', 'craft_vault', 'craft_totem']);

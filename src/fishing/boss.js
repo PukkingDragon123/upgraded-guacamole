@@ -3,19 +3,17 @@
 // abyss's Ancient Relic still summons The Algorithm too). It is the normal fish renderer at a huge scale, with an aura,
 // an outline glow and drifting pixel embers.
 //
-// The fight is the normal one (circle to reel, ease off on pulls, hold + release to ZAP) plus:
+// [simple24] The fight is the normal one (spin to keep the marker in the middle, SHOCK on the beat) plus:
 //   intro    letterbox, the camera on the boss, a title card with its name, a roar
-//   health   a boss bar at the top (health = 1 - progress); 3 phases (at 66% and 33%: roar + PHASE banner, faster)
-//   attacks  CHARGE: it backs up and charges sideways; drag the mouse the OPPOSITE way (green arrow) to dodge.
-//              A dodge leaves it dazed: the STUN WINDOW ("ZAP NOW!"); a zap in it is a critical hit.
-//            INK: the lens gets inked; circling wipes it.  MINIONS: little fish bite at the line; click them.
+//   health   a boss bar at the top (health = 1 - progress); 3 phases (at 66% and 33%: roar + PHASE card)
+//   phases   1 a heavy pull + lunges; 2 faster + SHIELD (only a shock cracks it) + ink; 3 RAGE + WEAK POINT (crits x1.6)
 //   victory  slow-mo, VICTORY title, rewards (Aero, a chest, a trophy, a rod recipe; smaller on rematches)
 //
 //   bossUnlocked(game, def), bossRecord(state) -> {won: {id: n}, trophies: {id: ts}}
 //   new BossDirector(F)  update(dt), summon(id?), fish (the boss swimming in, or null), drawWorld(ctx), drawHud(ctx)
-//   new BossFight(B, def) (built by Battle when fish.boss is set): update(dt) -> 'hold' | null, busy, blocksShock,
-//     reelMul(), pullMul(), durMul(), paceMul(), extraTension(), canFinish(), inWindow(), onCrit(), hp, phase,
-//     drawWorld(ctx), drawHud(ctx), hitMinion(sx, sy)
+//   new BossFight(B, def) (built by Battle when fish.boss is set): update(dt) -> 'hold' | null, blocksShock, shielded,
+//     mods() (pull modifiers), fillMul(), dmgMul(), sweepMul(), weakPoint(), onShock(grade), canFinish(), hp, phase,
+//     drawWorld(ctx), drawHud(ctx)
 //   bossVictory(F, fish, def) -> overlay {update(rdt), draw(ctx)} (grants the rewards, emits 'bossDefeated')
 //   drawBossAura(ctx, F, fish, def, k, t)
 
@@ -29,7 +27,6 @@ import { SPECIES, SPECIES_BY_ID } from '../fish/species.js';
 import { BOSS_BY_OCEAN, BOSS_BY_ID } from '../fish/bosses.js';
 import { drawAeroBar, drawAeroCoin, aeroCached, aeroSurface } from '../ui/aero.js';
 import { drawGlow, word3D, letters3D } from './cinematics.js';
-import { drawGlossArrow } from './hud.js';
 import { drawIcon3d, chestIconId } from './icons3d.js';
 import { gemIcon, rodIcon } from '../gfx/bigicons.js';
 import { ROD_BY_ID } from '../game/rods.js';
@@ -232,8 +229,13 @@ export function drawBossAura(ctx, F, f, def, k = 1, t = 0, rage = 0) {
 
 
 // ================================================================== the fight layer
+// [simple24] The boss fights on the same meter + SHOCK button as every fish, in 3 phases (health notches at 66 / 33 %):
+//   phase 1  a steady, heavy pull with the odd LUNGE (arrow on the meter first)
+//   phase 2  faster, jitterier; SHIELD: the boss armours up (bubble plates, the zone turns steel blue) and the catch
+//            bar stops filling until a shock (GOOD or CRITICAL) cracks it. A charge is always handed over for it.
+//            Bosses with 'ink' squirt ink on the lens (spinning wipes it).
+//   phase 3  RAGE: fastest pull, more lunges; WEAK POINT: critical zaps hit 1.6x harder.
 const PHASE_AT = [0.66, 0.33];
-const CHARGE_NEED = 54; // logical px of mouse drag (the opposite way) to dodge
 
 export class BossFight {
   constructor(B, def) {
@@ -245,35 +247,40 @@ export class BossFight {
     this.landed = new Set();
     this.palette = { face: [def.glow, def.color, shade(def.color, -0.3)], bevelL: '#ffffff', bevelD: shade(def.color, -0.35), side: shade(def.color, -0.5), back: '#121a2e', outline: '#ffffff' };
     this.phase = 1;
-    this.atk = null;
-    this.atkT = 4;
-    this.last = null;
-    this.minions = [];
-    this.hurt = 0; // red flash on the bar
+    this.shield = null; this.shieldT = 7; this.shieldK = 0;
+    this.inkT = 9;
+    this.hurt = 0;
     this.hpShown = 1;
     this.cardT = 0;
     this.phaseCard = null;
     this.rage = 0;
-    B.shockCdMax *= 0.7;
+    this.minions = [];
+    B.shockCdMax *= 0.75;
     B.progress = 0;
     B.ghost = 0;
     this.F.onBossIntro?.(def);
   }
 
   get hp() { return clamp01(1 - this.B.progress); }
-  get busy() { return this.atk?.kind === 'charge'; }
+  get busy() { return false; }
+  get atk() { return this.shield; }
+  get shielded() { return !!this.shield; }
   get blocksShock() { return this.stage !== 'fight'; }
-  inWindow() { return this.atk?.kind === 'charge' && this.atk.stage === 'dazed'; }
-
-  // multipliers the Battle reads
-  reelMul() { return (1 / (this.def.hp || 1)) * (this.inWindow() ? 1.8 : this.B.stunned ? 0.6 : 1); }
-  lineOutMul() { return 0.45; }
-  pullMul() { return 0.9 + this.tier * 0.04 + (this.phase - 1) * 0.08; }
-  durMul() { return 0.9 + (this.phase - 1) * 0.12; }
-  paceMul() { return 1.05 - (this.phase - 1) * 0.15; }
-  extraTension() { return this.atk?.kind === 'charge' && this.atk.stage === 'tele' ? 0.08 : 0; }
-  canFinish() { return this.stage === 'fight'; }
-  debugWin() { this.stage = 'fight'; this.atk = null; this.phase = 3; }
+  weakPoint() { return this.phase >= 3; }
+  inWindow() { return this.weakPoint(); }
+  // the Battle's pull modifiers for this phase (spin units)
+  mods() {
+    const k = this.tier - 1, ph = this.phase;
+    if (ph === 1) return { base: 0.04 + k * 0.015, amp: 1, speed: 1, jit: 0, lunge: 0.05 + k * 0.01, tele: 1.1 };
+    if (ph === 2) return { base: 0.06 + k * 0.02, amp: 1.12, speed: 1.25, jit: 0.04 + k * 0.012, lunge: 0.07 + k * 0.012, tele: 1 };
+    return { base: 0.08 + k * 0.02, amp: 1.22, speed: 1.45, jit: 0.07 + k * 0.015, lunge: 0.12 + k * 0.015, tele: 0.9 };
+  }
+  fillMul() { return this.shield ? 0 : 1; }
+  dmgMul() { return 1 / Math.sqrt(this.def.hp || 1); }
+  sweepMul() { return 1 + Math.max(0, 0.15 - this.tier * 0.02); }
+  canFinish() { return this.stage === 'fight' && !this.shield; }
+  debugWin() { this.stage = 'fight'; this.shield = null; this.phase = 3; }
+  hitMinion() { return false; }
 
   update(dt) {
     const B = this.B, F = this.F;
@@ -281,8 +288,8 @@ export class BossFight {
     this.hurt = Math.max(0, this.hurt - F.rdt * 2);
     this.hpShown = damp(this.hpShown, this.hp, 6, F.rdt);
     this.rage = damp(this.rage, this.phase >= 3 ? 1 : 0, 2, dt);
+    this.shieldK = damp(this.shieldK, this.shield ? 1 : 0, 6, dt);
     if (this.phaseCard) { this.phaseCard.t += F.rdt; if (this.phaseCard.t > 1.8) this.phaseCard = null; }
-    this.updateMinions(dt);
     if (this.stage === 'intro') {
       this.stageT -= F.rdt;
       this.cardT += F.rdt;
@@ -293,206 +300,82 @@ export class BossFight {
     if (this.stage === 'phase') {
       this.stageT -= F.rdt;
       B.thrash(dt, 4);
-      if (this.stageT <= 0) { this.stage = 'fight'; this.atkT = 1.2; }
+      if (this.stageT <= 0) { this.stage = 'fight'; if (this.phase === 2) this.shieldT = 1.2; }
       return 'hold';
     }
-    // phase changes: the health stops at the notch, attacks and stuns end, the boss roars
+    // phase changes: the health stops at the notch, the beat and stun end, the boss roars
     const next = this.phase === 1 && this.hp <= PHASE_AT[0] ? 2 : this.phase === 2 && this.hp <= PHASE_AT[1] ? 3 : 0;
     if (next) {
       B.progress = 1 - PHASE_AT[next - 2] + 0.002;
-      this.atk = null;
-      this.minions.length = 0;
-      B.stunT = 0; B.charge = null; B.trick = null;
+      this.shield = null;
+      B.stunT = 0; B.beat = null; B.lunge = null;
       this.phase = next;
       this.stage = 'phase'; this.stageT = 1.7;
       this.phaseCard = { t: 0, n: next };
-      B.mode = 'rest'; B.modeT = 2.5; if (B.qte) B.qte.active = false;
       this.fish.feel('angry', 3); this.fish.say('anger', 1.5);
       F.onBossPhase?.(this.def, next);
       return 'hold';
     }
-    if (this.atk) { this.updateAttack(dt); return null; }
-    if (!B.stunned && (B.mode === 'rest' || B.mode === 'tired')) {
-      this.atkT -= dt;
-      if (this.atkT <= 0) this.startAttack();
+    // shields (phase 2+): up every so often, until a shock cracks it
+    if (this.phase >= 2) {
+      if (this.shield) {
+        this.shield.t += dt;
+        if (B.charges <= 0 && this.shield.t > 1.4 && !this.shield.gift) { this.shield.gift = true; B.charges = 1; B.shockCd = 0; F.onShockReady?.(); }
+        if (this.shield.t > 16) this.dropShield(false);
+      } else if (!B.stunned && !B.beat) {
+        this.shieldT -= dt;
+        if (this.shieldT <= 0) this.raiseShield();
+      }
+    }
+    // ink on the lens (bosses that have it), phase 2+
+    if (this.phase >= 2 && (this.def.attacks || []).includes('ink')) {
+      this.inkT -= dt;
+      if (this.inkT <= 0) {
+        this.inkT = rng.float(11, 15);
+        F.inkSplat?.(2 + this.phase, { big: true, life: 6 });
+        F.particles.ink?.(this.fish.x, this.fish.y, 16, { power: 1.5, scale: 1.5, color: '#140a22' });
+        F.onBossAttack?.('ink');
+      }
     }
     return null;
   }
 
-  pickAttack() {
-    const all = this.def.attacks || ['charge'];
-    const pool = this.phase === 1 ? all.filter((a) => a === 'charge') : all.filter((a) => a !== this.last || all.length === 1);
-    return rng.pick(pool.length ? pool : ['charge']);
-  }
-
-  startAttack() {
-    const B = this.B, F = this.F, f = this.fish;
-    const kind = this.pickAttack();
-    this.last = kind;
-    if (kind === 'charge') {
-      const px = F.input.x;
-      const dir = px > F.W * 0.6 ? 1 : px < F.W * 0.4 ? -1 : rng.sign();
-      const tele = Math.max(0.75, 1.25 - (this.phase - 1) * 0.15 - this.tier * 0.02);
-      this.atk = { kind, stage: 'tele', t: 0, tele, dir, x0: F.input.x, best: 0, dodged: false, sx: f.x, sy: f.y };
-      f.say('!!', tele); f.feel('angry', 2);
-      B.mode = 'rest'; B.trick = null;
-      if (B.qte) B.qte.active = false;
-      F.onBossAttack?.('charge', this.atk);
-    } else if (kind === 'ink') {
-      this.atk = { kind, t: 0, dur: 1 };
-      F.inkSplat?.(4 + this.phase, { big: true, life: 9 });
-      F.particles.ink?.(f.x, f.y, 18, { power: 1.6, scale: 1.6, color: '#140a22' });
-      if (B.mode === 'rest') B.modeT = Math.min(B.modeT, 1.2);
-      F.onBossAttack?.('ink', this.atk);
-    } else {
-      const n = 2 + this.phase + Math.min(2, Math.floor(this.tier / 3));
-      this.atk = { kind: 'minions', t: 0, dur: 1 };
-      this.spawnMinions(n);
-      F.onBossAttack?.('minions', this.atk);
-    }
-  }
-
-  endAttack() {
-    this.atk = null;
-    this.atkT = rng.float(5.5, 8) * (1.1 - (this.phase - 1) * 0.15);
-    if (this.B.mode !== 'stun') this.B.toRest();
-  }
-
-  updateAttack(dt) {
-    const a = this.atk, B = this.B, F = this.F, f = this.fish;
-    a.t += dt;
-    if (a.kind !== 'charge') { if (a.t > a.dur) this.endAttack(); return; }
-    // dodge: net mouse drag the opposite way (screen x) since the warning began
-    const drag = (F.input.x - a.x0) * -a.dir;
-    a.best = Math.max(a.best, drag);
-    if (!a.dodged && a.best >= CHARGE_NEED && (a.stage === 'tele' || a.stage === 'rush')) { a.dodged = true; F.onBossDodge?.(a); }
-    const [ax, ay] = B.anchor();
-    if (a.stage === 'tele') {
-      // back up and shake
-      const back = Math.min(1, a.t / a.tele);
-      B.place(ax - a.dir * 40 * back + Math.sin(this.t * 50) * 2, ay + Math.sin(this.t * 37));
-      f.facing = a.dir; f.vx = a.dir * 20; f.vy = 0;
-      f.wiggle = 0.8;
-      if (a.t >= a.tele) { a.stage = 'rush'; a.t = 0; F.onBossCharge?.(a); }
-    } else if (a.stage === 'rush') {
-      const u = clamp01(a.t / 0.45);
-      B.place(ax - a.dir * 40 + a.dir * 150 * ease.outCubic(u), ay, false);
-      f.facing = a.dir; f.vx = a.dir * 300; f.vy = 0;
-      if (rng.chance(dt * 40)) F.particles.bubbleTrail?.(f.x - a.dir * 20, f.y, -a.dir * 120, 0);
-      if (u >= 1) {
-        if (a.dodged) {
-          a.stage = 'dazed'; a.t = 0; a.dur = 3.8 + Math.max(0, 0.8 - this.tier * 0.08) + (this.phase - 1) * 0.4; // a generous stun window
-          f.feel('dizzy', a.dur); f.say('zzz', a.dur);
-          F.onBossDazed?.(a);
-        } else {
-          a.stage = 'hit'; a.t = 0;
-          B.kick(0.45 + this.tier * 0.02);
-          B.progress = Math.max(0.005, B.progress - 0.04);
-          this.hurt = 0;
-          F.onBossHit?.(a);
-        }
-      }
-    } else if (a.stage === 'dazed') {
-      B.place(damp(f.x, ax + a.dir * 60, 2, dt) + (Math.floor(this.t * 20) % 2 ? 1 : -1), damp(f.y, ay, 2, dt));
-      f.vx = 0; f.vy = 0;
-      f.feel('dizzy', 0.3);
-      if (rng.chance(dt * 6)) F.particles.pixel?.('star', f.x + rng.float(-20, 20), f.y - F.fishLen() * 0.25, { ramp: 'gold', vy: -20, life: 0.6, size: 0 });
-      if (a.t >= a.dur || (B.stunned && a.crit)) this.endAttack();
-    } else {
-      B.place(damp(f.x, ax, 3, dt), damp(f.y, ay, 3, dt));
-      if (a.t > 0.7) this.endAttack();
-    }
-  }
-
-  onCrit() {
-    const B = this.B, a = this.atk;
-    B.progress = Math.min(0.999, B.progress + 0.1 + 0.02 * B.shockPower);
-    this.hurt = 1;
-    if (a) a.crit = true;
-    this.F.onBossCrit?.(this.def);
-  }
-
-  // ---------------------------------------------------------------- minions
-  minionSpecies() {
-    const oc = this.def.ocean;
-    if (this.def.minion && SPECIES_BY_ID[this.def.minion]) return SPECIES_BY_ID[this.def.minion];
-    const pool = SPECIES.filter((s) => s.biome === oc && (s.rarity === 'common' || s.rarity === 'uncommon') && s.look?.kind !== 'chain' && !s.spawn?.never);
-    return pool.length ? rng.pick(pool) : SPECIES[0];
-  }
-
-  spawnMinions(n) {
-    const F = this.F, sp = this.minionSpecies();
-    for (let i = 0; i < n; i++) {
-      const left = i % 2 === 0;
-      const [wx, wy] = F.toWorld(left ? -20 : F.W + 20, F.H * rng.float(0.25, 0.75));
-      this.minions.push({ x: wx, y: wy, u: rng.float(0.45, 0.75), sp, t: -i * 0.45, speed: rng.float(42, 58) + this.tier * 3, dir: left ? 1 : -1, hp: 1, wob: rng.float(0, TAU) });
-    }
-  }
-
-  linePoint(u) {
-    const F = this.F, f = this.fish;
-    const [rx, ry] = F.rodTip();
-    const m = f.anchors?.mouth || [f.x, f.y];
-    return [lerp(rx, m[0], u), lerp(ry, m[1], u)];
-  }
-
-  updateMinions(dt) {
-    const F = this.F, B = this.B;
-    for (const m of this.minions) {
-      m.t += dt;
-      if (m.t < 0 || m.dead) continue;
-      const [tx, ty] = this.linePoint(m.u);
-      const dx = tx - m.x, dy = ty - m.y, d = Math.hypot(dx, dy) || 1;
-      m.dir = dx >= 0 ? 1 : -1;
-      m.x += (dx / d) * m.speed * dt;
-      m.y += (dy / d) * m.speed * dt + Math.sin(m.t * 6 + m.wob) * 10 * dt;
-      if (d < 8) {
-        m.dead = true;
-        B.kick(0.22);
-        F.shake(4);
-        F.particles.impact?.(m.x, m.y, 0, { ramp: 'red' });
-        F.sfx('gulp', { pitch: 1.4 });
-        F.sfx('timing_miss', { vol: 0.5 });
-        F.onMinionBite?.(m);
-      }
-    }
-    this.minions = this.minions.filter((m) => !m.dead);
-  }
-
-  // A click at screen (sx, sy): bonk the minion under it. Returns true when one was hit.
-  hitMinion(sx, sy) {
+  raiseShield() {
     const F = this.F;
-    for (const m of this.minions) {
-      if (m.t < 0 || m.dead) continue;
-      const [mx, my] = F.toScreen(m.x, m.y);
-      if (Math.hypot(mx - sx, my - sy) < 22) {
-        m.dead = true;
-        F.particles.impact?.(m.x, m.y, 1, { ramp: 'gold' });
-        F.particles.pixelBurst?.('star', m.x, m.y, 5, { ramp: 'gold' });
-        F.particles.poof?.(m.x, m.y);
-        F.sfx('mash_pop', { pitch: 1.2 });
-        F.sfx('boing', { vol: 0.4, pitch: 1.4 });
-        F.shake(2);
-        F.onMinionBonk?.(m);
-        return true;
-      }
+    this.shield = { t: 0, gift: false };
+    F.sfx('neon_buzz', { vol: 0.6, pitch: 0.6 });
+    F.sfx('grunt', { vol: 0.6, pitch: 0.6 });
+    F.popOver?.('SHIELD UP! SHOCK IT!', 'aqua', 3);
+    F.shake(4);
+    this.fish.feel('smug', 2);
+    F.onBossAttack?.('shield');
+  }
+
+  dropShield(broken) {
+    const F = this.F, f = this.fish;
+    this.shield = null;
+    this.shieldT = rng.float(8, 11) * (1.1 - (this.phase - 2) * 0.12);
+    if (broken) {
+      F.sfx('glass_crack', { vol: 0.8 }); F.sfx('ice_crack', { vol: 0.5 });
+      F.particles.pixelBurst?.('shard', f.x, f.y, 18, { ramp: 'cyan', speed: [80, 220] });
+      F.popOver?.('SHIELD BROKEN!', 'aqua', 3);
+      F.shake(8);
+      this.hurt = 1;
     }
-    return false;
+  }
+
+  // the Battle landed a shock
+  onShock(grade) {
+    this.hurt = 1;
+    if (this.shield) this.dropShield(true);
+    if (grade === 'perfect') this.F.onBossCrit?.(this.def, this.weakPoint());
   }
 
   // ---------------------------------------------------------------- drawing
   drawWorld(ctx) {
-    const F = this.F;
-    drawBossAura(ctx, F, this.fish, this.def, 1, this.t, this.rage);
-    for (const m of this.minions) {
-      if (m.t < 0) continue;
-      const spr = voxelFishIcon(m.sp, 26, 18, { dir: m.dir });
-      if (!spr) continue;
-      const bob = Math.round(Math.sin(m.t * 8) * 1);
-      ctx.drawImage(spr, Math.round(m.x - spr.width / 2), Math.round(m.y - spr.height / 2 + bob));
-      // angry red pip over its head
-      if (Math.floor(m.t * 4) % 2) { ctx.fillStyle = '#ff4f5e'; ctx.fillRect(Math.round(m.x) - 1, Math.round(m.y - spr.height / 2 - 4), 2, 2); }
-    }
+    const F = this.F, f = this.fish;
+    drawBossAura(ctx, F, f, this.def, 1, this.t, this.rage);
+    if (this.shieldK > 0.02) drawShield(ctx, F, f, this.shieldK, this.t);
   }
 
   drawHud(ctx) {
@@ -501,11 +384,12 @@ export class BossFight {
     // ---- the boss bar: slim glass bar at the top, the boss's own 3D model as its badge, its name in 3D voxels
     const show = this.stage === 'intro' ? clamp01((this.cardT - 2.4) * 3) : 1;
     if (show > 0.01) {
-      const bw = Math.round(Math.min(W * 0.5, 460)), bh = 12;
-      const bx = Math.round(W / 2 - bw / 2), by = Math.round(30 - (1 - ease.outBack(show)) * 70);
+      const S = Math.max(1, F.H / 540);
+      const bw = Math.round(Math.min(W * 0.5, 460 * S)), bh = Math.round(12 * S);
+      const bx = Math.round(W / 2 - bw / 2), by = Math.round(30 * S - (1 - ease.outBack(show)) * 70);
       ctx.save();
       ctx.globalAlpha = show;
-      const col = this.rage > 0.5 ? '#ff5a4a' : this.phase === 2 ? '#ff9d2e' : '#ff4f7a';
+      const col = this.shield ? '#9ad8ff' : this.rage > 0.5 ? '#ff5a4a' : this.phase === 2 ? '#ff9d2e' : '#ff4f7a';
       drawAeroBar(ctx, bx, by, bw, bh, Math.max(this.hpShown, this.hp), { color: '#ffffff' });
       drawAeroBar(ctx, bx, by, bw, bh, this.hp, { color: col });
       for (const p of PHASE_AT) {
@@ -514,25 +398,16 @@ export class BossFight {
         ctx.fillStyle = '#ffffff'; ctx.fillRect(nx, by - 1, 1, bh + 2);
       }
       if (this.hurt > 0.3 && Math.floor(t * 20) % 2) { ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fillRect(bx, by, bw, bh); }
-      // the boss itself as the badge (a voxel render), bobbing at the left end
-      const ic = voxelFishIcon(this.def.id, 46, 30, { dir: 1 });
+      const ic = voxelFishIcon(this.def.id, Math.round(46 * S), Math.round(30 * S), { dir: 1 });
       if (ic) ctx.drawImage(ic, bx - ic.width - 4, Math.round(by + bh / 2 - ic.height / 2 + Math.sin(t * 3) * 1.5));
-      // phase gems at the right end (3D)
       for (let i = 0; i < 3; i++) {
-        const g = gemIcon(i < this.phase ? (i === 2 ? '#ff4f5e' : '#ffd23a') : '#5a6a7c', 12);
-        if (g) ctx.drawImage(g, bx + bw + 4 + i * 13, Math.round(by + bh / 2 - g.height / 2));
+        const g = gemIcon(i < this.phase ? (i === 2 ? '#ff4f5e' : '#ffd23a') : '#5a6a7c', Math.round(12 * S));
+        if (g) ctx.drawImage(g, bx + bw + 4 + i * Math.round(13 * S), Math.round(by + bh / 2 - g.height / 2));
       }
-      word3D(ctx, this.def.title, W / 2, by + bh + 14, { t, scale: 0.6, pal: this.rage > 0.5 ? 'red' : 'white', wobble: 0.6 });
+      const tag = this.shield ? 'SHIELDED' : this.phase >= 3 ? 'WEAK POINT: CRITS x1.6' : '';
+      word3D(ctx, this.def.title, W / 2, by + bh + Math.round(14 * S), { t, scale: 0.6 * S, pal: this.rage > 0.5 ? 'red' : 'white', wobble: 0.6 });
+      if (tag) word3D(ctx, tag, W / 2, by + bh + Math.round(34 * S), { t: t + 1, scale: 0.42 * S, pal: this.shield ? 'aqua' : 'sun', wobble: 0.5, alpha: 0.75 + 0.25 * Math.sin(t * 6) });
       ctx.restore();
-    }
-    // ---- attack cues
-    const a = this.atk;
-    if (a?.kind === 'charge') this.drawChargeCue(ctx, a);
-    if (a?.kind === 'charge' && a.stage === 'dazed') this.drawZapCue(ctx, a);
-    for (const m of this.minions) {
-      if (m.t < 0) continue;
-      const [sx, sy] = F.toScreen(m.x, m.y);
-      drawTarget(ctx, sx, sy, 13, t, '#ff8a7a');
     }
     if (this.phaseCard) this.drawPhaseCard(ctx, this.phaseCard);
   }
@@ -589,35 +464,62 @@ export class BossFight {
     ctx.restore();
   }
 
-  // the charge: a red arrow on the boss (where it rushes) and a big green arrow (where you drag) that fills
-  drawChargeCue(ctx, a) {
-    const F = this.F, W = F.W, H = F.H, t = this.t;
-    if (a.stage !== 'tele' && a.stage !== 'rush') return;
-    const [fx, fy] = F.toScreen(this.fish.x, this.fish.y);
-    const ra = a.dir > 0 ? 0 : Math.PI;
-    drawGlossArrow(ctx, fx - a.dir * 20, fy - 40, ra, { len: 60, w: 14, kind: a.dodged ? 'ok' : 'surge', alpha: Math.floor(t * 10) % 2 ? 1 : 0.7 });
-    const k = clamp01(a.best / CHARGE_NEED);
-    const cx = Math.round(W / 2), cy = Math.round(H * 0.3);
-    word3D(ctx, a.dodged ? 'DODGED!' : 'DRAG!', cx, cy - 34, { t, pop: clamp01(a.t * 6), scale: 1.6, pal: a.dodged ? 'lime' : 'sun', rot: Math.sin(t * 8) * 0.05 });
-    drawGlossArrow(ctx, cx + a.dir * 60, cy + 14, a.dir > 0 ? Math.PI : 0, { len: 120, w: 22, k: a.dodged ? 1 : k, kind: 'pull' });
-  }
+}
 
-  drawZapCue(ctx, a) {
-    const F = this.F, t = this.t;
-    const [fx, fy] = F.toScreen(this.fish.x, this.fish.y);
-    const r = Math.round(clamp(F.fishLen() * F.zoom() * 0.32, 26, 70));
-    drawTarget(ctx, clamp(fx, 80, F.W - 80), clamp(fy, 130, F.H - 150), r, t, '#ffe27a');
-    const left = clamp01(1 - a.t / a.dur);
-    const cx = Math.round(F.W / 2), cy = Math.round(F.H * 0.3);
-    word3D(ctx, this.B.charges > 0 ? 'ZAP NOW!' : 'REEL!', cx, cy - 20, { t: t * 2, pop: clamp01(a.t * 5), scale: 1.7 + Math.max(0, Math.sin(t * 12)) * 0.1, pal: 'sun' });
-    drawIcon3d(ctx, 'bolt', cx - 110, cy - 20, 30, Math.sin(t * 4));
-    drawIcon3d(ctx, 'bolt', cx + 110, cy - 20, 30, -Math.sin(t * 4));
-    const w = 120;
-    ctx.fillStyle = INK; ctx.fillRect(cx - w / 2 - 1, cy + 10, w + 2, 8);
-    ctx.fillStyle = '#5a4a18'; ctx.fillRect(cx - w / 2, cy + 11, w, 6);
-    ctx.fillStyle = '#ffe27a'; ctx.fillRect(cx - w / 2, cy + 11, Math.round(w * left), 6);
-    ctx.fillStyle = '#fff6c0'; ctx.fillRect(cx - w / 2, cy + 11, Math.round(w * left), 2);
+// The boss's shield: a steel-blue outline hugging its silhouette and glossy pixel armour plates (tiny voxel hexes)
+// orbiting it on a flat ellipse, with a shimmer running across. No rings or circles.
+const PLATE = new Map();
+function plateSprite(s) {
+  let c = PLATE.get(s);
+  if (c) return c;
+  c = document.createElement('canvas');
+  c.width = c.height = s * 2 + 3;
+  const g = c.getContext('2d');
+  const C = s + 1;
+  for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
+    const dx = Math.abs(x - C), dy = Math.abs(y - C);
+    const inside = dx <= s && dy <= s * 0.87 && dx * 0.5 + dy * 0.87 <= s * 0.87; // a hexagon
+    if (!inside) continue;
+    const edge = dx >= s - 1 || dy >= s * 0.87 - 1 || dx * 0.5 + dy * 0.87 >= s * 0.87 - 1;
+    g.fillStyle = edge ? INK : y < C - 1 ? (x < C ? '#ffffff' : '#d8f4ff') : y < C + 1 ? '#9ad8ff' : '#4fa8e8';
+    g.fillRect(x, y, 1, 1);
   }
+  PLATE.set(s, c);
+  return c;
+}
+
+export function drawShield(ctx, F, f, k, t) {
+  if (!f || !f.c) return;
+  const len = F.fishLen(f);
+  try {
+    const base = f.rigState({ silhouette: '#9ad8ff' });
+    ctx.save();
+    ctx.globalAlpha = 0.85 * k;
+    const o = 2;
+    for (const [dx, dy] of [[-o, 0], [o, 0], [0, -o], [0, o]]) drawFishRig(ctx, f.c, { ...base, x: base.x + dx, y: base.y + dy });
+    ctx.globalAlpha = 1;
+    f.anchors = drawFishRig(ctx, f.c, f.rigState({ wash: { color: '#bfe8ff', alpha: 0.28 * k } }));
+    ctx.restore();
+  } catch (e) { /* silhouettes unsupported */ }
+  // honeycomb armour plates over the body (a shimmer band sweeps across them)
+  const s = Math.max(3, Math.round(len * 0.035));
+  const spr = plateSprite(s);
+  const rx = len * 0.46, ry = len * 0.17, dx = s * 1.8, dy = s * 1.6;
+  const sweep = ((t * 0.6) % 1.6) - 0.3;
+  ctx.save();
+  for (let j = -Math.ceil(ry / dy); j <= Math.ceil(ry / dy); j++) {
+    for (let i = -Math.ceil(rx / dx); i <= Math.ceil(rx / dx); i++) {
+      const x = i * dx + (j % 2 ? dx / 2 : 0), y = j * dy;
+      const e = (x / rx) ** 2 + (y / ry) ** 2;
+      if (e > 1) continue;
+      const u = (x / rx + 1) / 2;
+      const lit = Math.abs(u - sweep) < 0.12;
+      ctx.globalAlpha = k * (lit ? 0.95 : 0.45 + 0.2 * (1 - e));
+      ctx.drawImage(spr, Math.round(f.x + x - s - 1), Math.round(f.y + y - s - 1));
+    }
+  }
+  ctx.restore();
+  if (rng.chance(0.3 * k)) F.particles.pixel?.('sparkle', f.x + rng.float(-rx, rx), f.y + rng.float(-ry, ry), { ramp: 'cyan', life: 0.4, size: 0 });
 }
 
 // chunky pixel corner brackets that pulse (a 'hit this' marker; no rings)

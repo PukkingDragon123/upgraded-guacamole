@@ -3,9 +3,9 @@
 // beat a response bubble is clicked with the mouse and the name is picked with key 2 through the dialogue system,
 // then the glossy Skip pill is clicked and the choices must reach the save), Bubbles the low-poly seal guide
 // swimming around the screen and pointing at things while it talks in (bigger) speech bubbles, the free starter
-// bait at Dot's Bait Shop (the HUD's only button), casting into the (OS)cean, the hook-set (spinning the 3D gear
-// into its band when the gear minigame is there, else a click), winning the fight (spinning / cranking by circling,
-// a Shock, holding against surges), the catch card, the fish going into the goldfish jar, collecting the jar's Aero,
+// bait at Dot's Bait Shop (the HUD's only button), casting into the (OS)cean, the hook-set (a click on the bite),
+// winning the fight ([simple24] spinning the reel by circling the mouse to keep the meter's marker in the middle,
+// a SHOCK on the beat with Space), the catch card, the fish going into the goldfish jar, collecting the jar's Aero,
 // opening The Lab and starting the first research, the 'tutorialDone' event (quest lines start), then asks the
 // seal's hint helper for a tip. Then it opens every panel, travels to all seven oceans and checks that the console
 // stayed clean. [tut16] The fight is the forced fishing lesson (reel, ease off, surge, zap, land: each step waits
@@ -161,21 +161,27 @@ check('more HUD buttons revealed', !!(await iconRect('bait')) || !!(await iconRe
 await shot('09_tut_cast.png');
 
 // ---------------------------------------------------------------- cast, hook-set, fight (the Fishing agent may edit this section)
+// [simple24] The fight is ONE meter: the fish drags its marker left, spinning the reel (circling the mouse) pushes it
+// right; keep it in the green zone. When a shock is ready the marker freezes and a spark sweeps the meter: press
+// Space as it crosses the gold notch. The forced lesson's steps are spin -> shock -> land.
 const W = await G('g.screen.W'), H = await G('g.screen.H');
 const pxPerL = await page.evaluate(() => { const g = window.FISHTOP; return g.canvas.getBoundingClientRect().width / g.screen.W; });
 const clampX = (x) => Math.max(30, Math.min(W - 30, x)), clampY = (y) => Math.max(60, Math.min(H - 60, y));
-let shocked = false, held = 0;
-// Circle the mouse (the gear / crank). each(s) -> true (stop) | 'skip' (it handled this tick) | false.
+let shocks = 0;
+const stepsSeen = new Set();
+await G(`(window.__zaps = [], g.on('shockFired', (d) => window.__zaps.push(d && d.grade)), true)`);
+// Circle the mouse (the reel). each(s) -> true (stop) | 'skip' (it handled this tick) | false.
 // A background mover circles the mouse at a wall-clock angular speed, so the game sees smooth circling at any frame
 // rate; this loop steers that speed from the game's own clock (slow headless frames run the game slower than the
-// wall clock) and from gear.rpm vs the band (a feedback loop), so the gear stays inside the band.
+// wall clock) and from the meter (a feedback loop on the marker), so the marker stays in the middle zone.
 const spinCtl = { omega: 0, paused: false, dil: 0, slip: 10 };
 async function spinGear(each, ms) {
-  const [pcx, pcy] = await toPage(W * 0.42, H * 0.55);
+  const hint = await G('(() => { const L = g.fishing.gear.layout(g.screen.W, g.screen.H); return [L.cx, L.cy]; })()');
+  const [pcx, pcy] = await toPage(hint[0], hint[1]);
   if (!spinCtl.dil) { // calibrate: how much game time passes per wall-clock second right now
-    const g0 = await G('g.fishing.gear ? g.fishing.gear.t : 0'), w0 = Date.now();
+    const g0 = await G('g.fishing.t'), w0 = Date.now();
     await wait(700);
-    const g1 = await G('g.fishing.gear ? g.fishing.gear.t : 0');
+    const g1 = await G('g.fishing.t');
     spinCtl.dil = g1 > g0 ? Math.max(0.8, Math.min(6, (Date.now() - w0) / 1000 / (g1 - g0))) : 2;
     note(`game clock: ${(1 / spinCtl.dil).toFixed(2)}x wall time`);
   }
@@ -193,22 +199,22 @@ async function spinGear(each, ms) {
   })();
   try {
     while (Date.now() - t0 < ms) {
-      s = await G(`(() => { const f = g.fishing, B = f.state === 'bite' ? f.hs : f.battle, gr = f.gear, band = B && B.band;
-        return { st: f.state, T: f.tension, rpm: gr && typeof gr.rpm === 'number' ? gr.rpm : null, gt: gr ? gr.t : 0, hand: gr ? gr.hand : 0, lo: band ? band.lo : null, hi: band ? band.hi : null,
-          hint: f.crankHint ? f.crankHint() : [g.input.x, g.input.y], ready: !!(B && B.shockReady), holdShock: !!(B && 'chargeWin' in B),
-          surge: !!(B && ((B.qte && B.qte.active) || (B.mode === 'surge' && typeof B.pullDir === 'number'))), pull: B ? (B.qte && B.qte.active ? B.qte.dir : B.pullDir) : null,
-          tstep: g.tutorial && g.tutorial.step }; })()`);
+      s = await G(`(() => { const f = g.fishing, B = f.battle, gr = f.gear;
+        return { st: f.state, rpm: gr ? gr.rpm : 0, gt: f.t, hand: gr ? gr.hand : 0, m: B ? B.marker : null, need: B ? B.need : null, zone: B ? B.zoneW : 0,
+          beat: B && B.beat ? B.beat.stage : null, bx: B && B.beat ? B.beat.x : null, dur: B && B.beat ? B.beat.dur : 1, crit: B ? B.critW : 0,
+          stun: !!(B && B.stunned), tstep: g.tutorial && g.tutorial.step }; })()`);
+      if (s.tstep) stepsSeen.add(s.tstep);
       const now = Date.now();
       if (prevW && s.gt > prevT) spinCtl.dil = spinCtl.dil * 0.8 + Math.max(0.7, Math.min(5, (now - prevW) / 1000 / (s.gt - prevT))) * 0.2;
       prevW = now; prevT = s.gt;
       const r = await each(s);
       if (r === true) return s;
       if (r === 'skip') { last = Date.now(); continue; }
-      let tgt = 120; // rpm (or a steady crank without a gear)
-      if (s.rpm != null && s.lo != null) {
-        tgt = s.lo * 0.55 + s.hi * 0.45;
-        // learn the fish's drag (slip) only once the hand really turns at the commanded speed
-        if (s.hand > 0.75 * (tgt + spinCtl.slip)) spinCtl.slip = Math.max(-30, Math.min(80, spinCtl.slip + 0.2 * (tgt - s.rpm)));
+      let tgt = 90; // rpm
+      if (s.m != null && s.need != null) {
+        tgt = Math.max(0, (s.need - s.m * 0.9) * 150);
+        // learn the gear's drag (slip) only once the hand really turns at the commanded speed
+        if (s.hand > 0.75 * (tgt + spinCtl.slip) && !s.beat && !s.stun) spinCtl.slip = Math.max(-30, Math.min(80, spinCtl.slip + 0.15 * (tgt - s.rpm)));
       }
       spinCtl.omega = ((Math.min(260, tgt + spinCtl.slip) / 60) * Math.PI * 2) / spinCtl.dil;
       await wait(40);
@@ -225,7 +231,7 @@ async function fishOnce(attempt) {
   const spot = await G('g.tutorial.waterSpot ? g.tutorial.waterSpot() : null') || [W * 0.56, H * 0.62];
   await moveL(clampX(spot[0]), clampY(spot[1]), 20);
   await wait(600);
-  if (attempt === 0) check('cast into the water', ['wait', 'hook', 'fight'].includes(await step()), String(await step()));
+  if (attempt === 0) { check('cast into the water', ['wait', 'hook', 'spin'].includes(await step()), String(await step())); await shot('09b_tut_wait.png'); }
   // jiggle near the closest fish until one bites
   let bit = false, assisted = false;
   const t0 = Date.now();
@@ -247,55 +253,37 @@ async function fishOnce(attempt) {
     }
   }
   if (!bit) return 'nobite';
-  const gearMode = await G(`!!(g.fishing.gear && 'hs' in g.fishing)`); // the 3D gear minigame (spin to hook / reel)
   if ((await G('g.fishing.state')) === 'bite') {
+    // the bite: CLICK (a click while it only nibbles would scare it off; the bite has the big "!")
     if (attempt === 0) { await shot('10_tut_hookset.png'); check('hook-set cue', (await step()) === 'hook', String(await step())); }
-    if (gearMode) await spinGear((s) => s.st !== 'bite', 20000 * SLOW); // spin the gear up into the hook band (until hooked or lost)
-    else { await page.mouse.down(); await page.mouse.up(); await wait(120); }
+    await page.mouse.down(); await wait(40); await page.mouse.up();
+    await until(() => window.FISHTOP.fishing.state !== 'bite', 8000);
   }
   if (!['fight', 'landing'].includes(await G('g.fishing.state'))) return 'nohook';
-  // reel: spin the gear (or crank) by circling the mouse, keeping the gear's RPM inside the sweet band when there is
-  // one (a feedback loop on gear.rpm vs band); hold + drag against surges; one Shock (hold-and-release when the
-  // shock charges, else a Space tap); ease off when the line gets too tight.
+  // spin (a feedback loop on the meter's marker); stop spinning during a shock beat and press Space as the spark
+  // reaches the gold notch (aiming slightly early for the input latency)
   const ft0 = Date.now();
-  let fightShot = false;
+  let fightShot = false, beatShot = false;
+  const lessonShots = new Set(), lessonShotT = {};
   await spinGear(async (s) => {
     if (s.st !== 'fight') return true;
-    if (!fightShot && Date.now() - ft0 > 2500) { fightShot = true; await shot('11_fight.png'); }
-    // (the forced fishing lesson's zap step hands a missed zap back: try again until it stuns)
-    if ((!shocked || s.tstep === 'zap') && s.ready && Date.now() - ft0 > 1500) {
-      if (s.holdShock) {
-        // hold Space (the gear keeps spinning) and let go early in the PERFECT window
-        await page.keyboard.down('Space');
-        let k = -1;
-        for (let i = 0; i < 300; i++) {
-          const c = await G('(() => { const B = g.fishing.battle; return B && B.charge ? { k: B.charge.k, w: B.chargeWin } : null; })()');
-          if (!c) { if (i > 8) break; continue; }
-          k = c.k;
-          if (k >= c.w.lo + (c.w.hi - c.w.lo) * 0.2) break;
-        }
-        await page.keyboard.up('Space');
-        note(`shock released at charge ${k.toFixed(2)}`);
-      } else await page.keyboard.press('Space');
-      shocked = true; await wait(150);
-      return false;
-    }
-    if (s.surge && typeof s.pull === 'number') {
-      // hold the button and drag against the surge (the circling pauses)
-      spinCtl.paused = true;
-      const [ox, oy] = await toPage(clampX(s.hint[0]), clampY(s.hint[1]));
-      await page.mouse.move(ox, oy); await page.mouse.down();
-      for (let k = 1; k <= 7; k++) await page.mouse.move(ox - Math.cos(s.pull) * k * 9 * pxPerL, oy - Math.sin(s.pull) * k * 9 * pxPerL);
-      await page.mouse.up();
-      spinCtl.paused = false;
-      held++;
+    if (!fightShot && s.tstep === 'spin' && Date.now() - ft0 > 2500) { fightShot = true; await shot('11_fight.png'); }
+    if (s.tstep && !lessonShots.has(s.tstep) && ['spin', 'shock', 'land'].includes(s.tstep)) { lessonShots.add(s.tstep); lessonShotT[s.tstep] = Date.now(); }
+    for (const k of Object.keys(lessonShotT)) if (lessonShotT[k] && Date.now() - lessonShotT[k] > 1800) { lessonShotT[k] = 0; await shot(`11_lesson_${k}.png`); }
+    if (s.beat) {
+      spinCtl.omega = 0;
+      if (s.beat === 'sweep' && s.bx != null) {
+        if (!beatShot) { beatShot = true; await shot('11b_shock_beat.png'); }
+        const v = 2.24 / Math.max(0.3, s.dur); // meter units per game second
+        const lead = v * (0.08 / spinCtl.dil);
+        if (s.bx >= -s.crit * 0.5 - lead) { await page.keyboard.press('Space'); shocks++; await wait(120); }
+      }
       return 'skip';
     }
-    if (s.T > 0.9 && s.lo == null) { await wait(80); return 'skip'; }
     return false;
-  }, 100000 * SLOW);
+  }, 120000 * SLOW);
   const st = await G('g.fishing.state');
-  note(`fight ended in ${((Date.now() - ft0) / 1000).toFixed(1)}s (${st}; shock ${shocked ? 'used' : 'not used'}, ${held} surge holds)`);
+  note(`fight ended in ${((Date.now() - ft0) / 1000).toFixed(1)}s (${st}; ${shocks} shock presses, zaps ${JSON.stringify(await G('window.__zaps'))})`);
   return (await until(() => ['card', 'tank', 'coin'].includes(window.FISHTOP.tutorial.step), 15000)) ? 'caught' : 'lost';
 }
 let result = 'none';
@@ -305,6 +293,8 @@ for (let attempt = 0; attempt < 3 && result !== 'caught'; attempt++) {
 }
 check('hooked a fish', (await ev('hooked')) > 0);
 check('fight won -> catch', result === 'caught', result);
+check('lesson steps: spin -> shock -> land', ['spin', 'shock', 'land'].every((s) => stepsSeen.has(s)), [...stepsSeen].join(','));
+check("shock fired ('shockFired' event)", (await G('window.__zaps.length')) > 0, JSON.stringify(await G('window.__zaps')));
 if (result !== 'caught' && (await G(`g.fishing.state === 'fight' && !!g.fishing.battle`))) {
   // keep testing the rest of the first session: finish the fight through the battle's progress (reported above)
   note('test assist: landing the hooked fish so the rest of the session can be checked');

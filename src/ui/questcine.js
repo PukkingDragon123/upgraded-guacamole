@@ -1141,6 +1141,7 @@ export class QuestCine {
     if (k === 'aero') return 'aero';
     if (k.startsWith('bait:')) return 'bait';
     if (k.startsWith('cosmetic:')) return 'wardrobe';
+    if (k.startsWith('food:')) return 'aquarium'; // [food24] a new tank food flies to the Aquarium button
     if (k.startsWith('rod:') || k === 'hammer') return 'workshop';
     if (r.label?.startsWith?.('New ocean')) return 'map';
     if (r.label?.startsWith?.('Lab:')) return 'lab';

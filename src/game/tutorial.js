@@ -9,8 +9,8 @@
 //    card, the jar, The Lab. It idles near the screen edge whenever the action needs the middle (the fight).
 //      bait     grab the free starter bait at Dot's Bait Shop (HUD 'baitshop'), or a gift when there is no shop
 //      cast     (the bait pod: loaded!) drop the hook into the water       wait  wiggle until something bites
-//      hook     set the hook (spin the gear into the band when the gear minigame is there, else click)
-//      fight    reel (spin / crank), Shock (hold-release or Space), hold + drag against surges (feature-detected)
+//      hook     click when it bites
+//      fight    spin to keep the fish in the middle of the meter, SHOCK on the beat (Space), land it
 //      card     the catch card: keep it              tank  it swims into the goldfish jar (a response choice)
 //      coin     collect the jar's Aero               lab   open The Lab       research  start the first research
 //      done     "keep me around for tips?" (a response choice: the hint helper on or off), then
@@ -22,10 +22,13 @@
 //    done it, Bubbles explains it in one short line, the HUD part it is about gets the pixel focus brackets (never
 //    rings or rays), the rest of the HUD and the boat are locked, and the fight itself follows the lesson (battle.js
 //    reads tutorial.lesson): one calm intro beat per step (the fish holds still, the world dims softly), then
+//    [simple24] the new, simpler fight:
 //      cast   move the mouse into the water (a 3D mouse glides to the spot)    wait  hold still, watch the bait nibble
-//      hook   spin the gear into the band                 reel  circle to crank, needle in the green (to 30 %)
-//      ease   the line spikes tight: slow down until the tube is calm         surge hold + drag against the pull (won)
-//      zap    hold, release on the gold: a stun (a miss is refunded)          land  reel the dizzy fish all the way in
+//      hook   CLICK when it bites (the big "!")
+//      spin   spin the reel (circle the mouse / wheel / W) to keep the fish's marker in the green middle (to 40 %)
+//      shock  a charge is ready: the marker freezes, a spark sweeps the meter; press SPACE as it crosses the gold
+//             (a miss or backfire is handed back; the third try gets a very wide notch)
+//      land   keep it in the green until the catch bar is full
 //      card   keep it (new game; release too in a replay)
 //    Every step is saved (state.tutorialStep, state.fishLesson = {step, stages, done, offered, active}) so a reload
 //    resumes: the opening is not replayed, a fight step resumes at the cast (a fight cannot be resumed) and keeps the
@@ -64,14 +67,14 @@ const START_BAIT = 'crumbs';
 const ALIAS = { skills: 'lab', tank: 'aquarium', store: 'baitshop', shop: 'baitshop', appsea: 'baitshop' };
 // [tut16] the forced fishing lesson: its steps, the fight steps (battle.js follows tutorial.lesson), how far each
 // fight step may reel the fish (progress cap), the calm intro beat (s) and the 3D step titles
-export const LESSON_STEPS = ['cast', 'wait', 'hook', 'reel', 'ease', 'surge', 'zap', 'land', 'card'];
-export const FIGHT_STEPS = ['reel', 'ease', 'surge', 'zap', 'land'];
+export const LESSON_STEPS = ['cast', 'wait', 'hook', 'spin', 'shock', 'land', 'card'];
+export const FIGHT_STEPS = ['spin', 'shock', 'land'];
 const FISHING_STEPS = ['cast', 'wait', 'hook', ...FIGHT_STEPS];
-const LESSON_CAP = { reel: 0.3, ease: 0.42, surge: 0.56, zap: 0.7, land: 1 };
-const LESSON_HOLD = { reel: 1.6, ease: 1.5, surge: 1.5, zap: 1.5, land: 0.7 };
+const OLD_FIGHT_STEPS = ['reel', 'ease', 'surge', 'zap']; // [simple24] saves from the old gear lesson resume at the cast
+const LESSON_CAP = { spin: 0.4, shock: 0.66, land: 1 };
+const LESSON_HOLD = { spin: 1.8, shock: 1.4, land: 0.8 };
 const LESSON_POP = {
-  cast: ['CAST!', 'aqua'], hook: ['BITE!', 'gold'], reel: ['REEL!', 'leaf'], ease: ['EASE OFF!', 'coral'],
-  surge: ['PULL BACK!', 'gold'], zap: ['ZAP IT!', 'gold'], land: ['LAND IT!', 'leaf'],
+  cast: ['CAST!', 'aqua'], hook: ['BITE!', 'gold'], spin: ['SPIN!', 'leaf'], shock: ['SHOCK!', 'gold'], land: ['LAND IT!', 'leaf'],
 };
 // HUD buttons revealed so far, per step (the lesson shows only the loaded bait)
 const SHOWN = {
@@ -100,18 +103,16 @@ const SAY = {
   again: { text: 'No worries! Cast again.', pose: 'talk', mood: 'happy', stay: true, g: 'move' },
   wait: { text: 'Hold still... watch your bait!', pose: 'think', mood: 'think', stay: true },
   nibble: { text: 'Nibble, nibble... not yet!', pose: 'think', mood: 'surprised', stay: true },
-  hook: { text: 'NOW! Click to hook it!', pose: 'point', mood: 'surprised', big: true, stay: true },
-  hookGear: { text: 'A BITE! Circle the mouse to spin the gear!', pose: 'point', mood: 'surprised', big: true, g: 'crank', stay: true },
+  hook: { text: 'A BITE! Click to hook it!', pose: 'point', mood: 'surprised', big: true, stay: true },
   missed: { text: 'Too slow! Try again.', pose: 'sad', mood: 'worried', stay: true },
-  reel: { text: 'Keep circling! Keep the needle in the green!', pose: 'point', mood: 'excited', g: 'crank', stay: true },
-  easeIntro: { text: 'Now watch this tube: the line tension!', pose: 'point', mood: 'think', stay: true },
-  easeTight: { text: 'Too tight! Slow down, ease off!', pose: 'bend', mood: 'worried', g: 'slow', stay: true },
-  ease: { text: 'Easy... keep the tube low and calm.', pose: 'point', mood: 'happy', g: 'slow', stay: true },
-  surgeIntro: { text: 'Uh oh, it wants to swim away...', pose: 'think', mood: 'surprised', stay: true },
-  surgeGo: { text: 'Hold the button, drag against the arrow!', pose: 'bend', mood: 'determined', g: 'hold', stay: true },
-  zap: { text: 'Zap time! Hold, then let go on the gold!', pose: 'point', mood: 'excited', g: 'hold', stay: true },
-  zapMiss: { text: 'Almost! Let go when the ring glows gold!', pose: 'talk', mood: 'happy', g: 'hold', stay: true },
-  land: { text: "It's dizzy! Reel it all the way in!", pose: 'point', mood: 'excited', g: 'crank', stay: true },
+  // [simple24] the meter fight
+  spin: { text: 'Spin the reel! Keep your fish in the green!', pose: 'point', mood: 'excited', g: 'crank', stay: true },
+  spinMore: { text: 'It is swimming off! Spin faster!', pose: 'bend', mood: 'determined', g: 'crank', stay: true },
+  spinLess: { text: 'Too tight! Spin a bit slower.', pose: 'bend', mood: 'worried', g: 'slow', stay: true },
+  spinGood: { text: 'Perfect! Right in the middle!', pose: 'point', mood: 'happy', g: 'crank', stay: true },
+  shock: { text: 'Shock ready! Press SPACE when the spark hits the gold!', pose: 'point', mood: 'excited', g: 'key', stay: true },
+  shockMiss: { text: 'Almost! Wait for the spark on the gold!', pose: 'talk', mood: 'happy', g: 'key', stay: true },
+  land: { text: 'Zapped! Keep it in the green to land it!', pose: 'point', mood: 'excited', g: 'crank', stay: true },
   cardLesson: { text: 'Keep it in your tank, or let it go!', pose: 'cheer', mood: 'love', stay: true },
   lessonHi: { text: "Fishing lesson! I'll show you, step by step.", pose: 'wave', mood: 'excited' },
   lessonBack: { text: "Welcome back! Let's finish the lesson.", pose: 'wave', mood: 'happy' },
@@ -122,9 +123,6 @@ const SAY = {
   ] },
   crank: { text: 'Circle the mouse to reel it in!', pose: 'point', mood: 'excited', g: 'crank' },
   crankGear: { text: 'Spin the gear! Keep it in the green!', pose: 'point', mood: 'excited', g: 'crank' },
-  shock: { text: 'Press Space to Shock it!', pose: 'point', mood: 'excited', g: 'key' },
-  shockHold: { text: 'Hold, then let go to ZAP it!', pose: 'point', mood: 'excited', g: 'hold' },
-  surge: { text: 'Hold and drag against it!', pose: 'bend', mood: 'determined', g: 'hold' },
   card: { text: 'Look at that! Keep it!', pose: 'cheer', mood: 'love' },
   tank: { text: 'Into your tank it goes! Proud?', pose: 'wave', mood: 'excited', choices: [
     { text: 'So proud!', mood: 'love', reply: 'You should be!' },
@@ -240,7 +238,7 @@ export class Tutorial {
     const st = this.game.state, s = st.tutorialStep;
     if (typeof s !== 'string' || !s || s === 'intro') return null;
     if (s === 'bait') return 'bait';
-    if (FISHING_STEPS.includes(s)) return 'cast';
+    if (FISHING_STEPS.includes(s) || OLD_FIGHT_STEPS.includes(s)) return 'cast';
     if (s === 'card') return (st.fish || []).some((f) => f.inTank) ? 'tank' : 'cast';
     if (s === 'tank' || s === 'coin') return 'tank';
     if (s === 'lab' || s === 'research') return 'lab';
@@ -455,13 +453,10 @@ export class Tutorial {
   boxVisible() { return !this.intro; }
   boxOffset() { return 0; }
 
-  // What kind of fishing minigame is running (the Fishing agent's 3D gear, hold-to-charge shock), feature-detected.
+  // What kind of fishing minigame is running, feature-detected ([simple24] the meter fight).
   fishingKind() {
     const f = this.game.fishing, B = f?.battle;
-    return {
-      gear: !!(f && (f.gear?.lay || 'hs' in f)),
-      hold: !!(B && ('chargeWin' in B || 'canCharge' in B)),
-    };
+    return { gear: !!f?.gear, meter: !!(B && 'marker' in B) };
   }
 
   // ---------------------------------------------------------------- step entry
@@ -494,23 +489,22 @@ export class Tutorial {
         this.say('wait');
         break;
       case 'hook':
-        this.say(K.gear ? 'hookGear' : 'hook');
+        this.say('hook');
         this.stepPop('hook');
         this.seal.emote('wiggle', 0.6);
         g.audio?.play?.('bite', { vol: 0.5 });
         break;
-      case 'reel': case 'ease': case 'surge': case 'zap': case 'land': {
+      case 'spin': case 'shock': case 'land': {
         // [tut16] a fight step: a calm intro beat (the fish holds, the world dims), then the step goes live
         const B = g.fishing?.battle;
         this.fightT = 0;
         this.lesson = {
-          stage: step, hold: LESSON_HOLD[step] + (step === 'reel' && prev !== 'reel' ? 0.9 : 0), cap: LESSON_CAP[step],
-          floor: Math.max(-0.05, (B?.progress ?? 0) - 0.04), spike: 0, calmT: 0, won: false, stunned: false, miss: 0, missSeen: 0,
-          surgeStarted: false, t: 0,
+          stage: step, hold: LESSON_HOLD[step] + (step === 'spin' && prev !== 'spin' ? 0.9 : 0), cap: LESSON_CAP[step],
+          floor: Math.max(0, (B?.progress ?? 0) - 0.04), hit: false, miss: 0, missSeen: 0, t: 0, side: 0,
         };
-        this.say({ reel: 'reel', ease: 'easeIntro', surge: 'surgeIntro', zap: 'zap', land: 'land' }[step]);
-        // the reel title waits for the fishing HUD's FISH ON!
-        this.stepPop(step, step === 'reel' && ['hook', 'wait', 'cast'].includes(prev) ? 1.9 : 0);
+        this.say(step);
+        // the spin title waits for the fishing HUD's FISH ON!
+        this.stepPop(step, step === 'spin' && ['hook', 'wait', 'cast'].includes(prev) ? 1.9 : 0);
         if (FIGHT_STEPS.includes(prev)) this.cheer();
         break;
       }
@@ -703,7 +697,7 @@ export class Tutorial {
         if (f?.state === 'fight') this.go(this.firstFightStep());
         else if (f && f.state !== 'bite' && this.t > 0.2) { this.go('wait'); this.say('missed'); this.seal.emote('worried', 1); }
         break;
-      case 'reel': case 'ease': case 'surge': case 'zap': case 'land':
+      case 'spin': case 'shock': case 'land':
         this.updateLesson(dt, f);
         break;
       case 'card':
@@ -750,47 +744,35 @@ export class Tutorial {
     }
     L.t += dt;
     switch (L.stage) {
-      case 'reel':
-        if (B.progress >= L.cap - 0.025) this.go('ease');
-        break;
-      case 'ease': {
-        if (L.spike > 0) { L.spike -= dt; if (L.spike <= 0) this.say('ease'); break; }
-        const calm = B.tension < 0.5 && f.gear.rpm <= B.band.hi + 5;
-        L.calmT = calm ? L.calmT + dt : Math.max(0, L.calmT - dt * 0.6);
-        if (L.calmT > 1.1) this.go('surge');
-        else if (B.tension > 0.75 && this.guide.key === 'ease' && L.t > 3) this.say('easeTight', { silent: true });
-        else if (B.tension < 0.5 && this.guide.key === 'easeTight' && L.t > 2.4) this.say('ease', { silent: true });
+      case 'spin': {
+        if (B.progress >= L.cap - 0.025) { this.go('shock'); break; }
+        // coach by where the marker is (after the first line had time to be read)
+        if (L.t < 2.5 || this.dlg.typing) break;
+        const side = B.inZone ? 0 : B.marker < 0 ? -1 : 1;
+        L.sideT = side === L.side ? (L.sideT || 0) + dt : 0;
+        L.side = side;
+        if (L.sideT > 0.9) {
+          const want = side < 0 ? 'spinMore' : side > 0 ? 'spinLess' : 'spinGood';
+          if (this.guide.key !== want && (L.t - (L.lineT || 0)) > 2.2) { L.lineT = L.t; this.say(want, { silent: true }); }
+        }
         break;
       }
-      case 'surge':
-        if (L.won) this.go('zap');
-        else if (B.mode === 'surge' && this.guide.key !== 'surgeGo') this.say('surgeGo');
-        break;
-      case 'zap':
-        if (L.stunned) this.go('land');
-        else if (L.miss !== L.missSeen) { L.missSeen = L.miss; this.say('zapMiss', { force: true }); this.seal.emote('worried', 0.8); }
+      case 'shock':
+        if (L.hit) this.go('land');
+        else if (L.miss !== L.missSeen) { L.missSeen = L.miss; this.say('shockMiss', { force: true }); this.seal.emote('worried', 0.8); }
         break;
       default: break;
     }
-    if ((f.tension ?? 0) > 0.88 && !this.seal.emoteA) this.seal.emote('worried', 0.5);
+    if (Math.abs(B.marker ?? 0) > 0.85 && !this.seal.emoteA) this.seal.emote('worried', 0.5);
   }
 
   // the step's intro beat is over: it goes live
   lessonLive(L, B) {
-    const g = this.game;
-    if (L.stage === 'ease') {
-      L.spike = 1.4; // the fish digs in: the line goes tight
-      this.say('easeTight');
-      this.seal.emote('worried', 1);
-      g.audio?.play?.('slack_warn', { vol: 0.5 });
-      g.camera?.shake?.(3);
-    } else if (L.stage === 'surge') {
-      this.say('surgeGo');
-    } else if (L.stage === 'zap') {
-      // a charge ready to go (a rod without one borrows one for the lesson)
-      B.shockMax = Math.max(1, B.shockMax || 0);
+    if (L.stage === 'shock') {
+      // a charge ready to go, and the beat comes quickly
       B.charges = Math.max(1, B.charges || 0);
       B.shockCd = 0;
+      B.beatCool = Math.min(B.beatCool ?? 0, 0.6);
     }
   }
 
@@ -908,8 +890,9 @@ export class Tutorial {
   // a tip that fits the moment
   hintTip() {
     const g = this.game, f = g.fishing, st = g.state, K = this.fishingKind();
-    if (f?.fighting || f?.state === 'fight') return { text: K.gear ? 'Spin the gear! Hold, let go = ZAP!' : 'Circle to reel! Space = Shock!', mood: 'excited' };
-    if (f?.state === 'bite') return { text: K.gear ? 'Spin the gear, {name}!' : 'Click now, {name}!', mood: 'excited' };
+    if (f?.fighting || f?.state === 'fight') return { text: 'Spin to keep it in the green! SPACE on the gold!', mood: 'excited' };
+    if (f?.state === 'bite') return { text: 'Click now, {name}!', mood: 'excited' };
+    void K;
     let bait = 1;
     try { bait = BAIT.totalBait(st); } catch (e) { bait = 1; }
     if (bait <= 0) return { text: 'Out of bait? Visit the Bait Shop!', at: 'baitshop' };
@@ -963,10 +946,10 @@ export class Tutorial {
     return null;
   }
 
-  // [tut16] a gear HUD part on screen (gear.js partRect), else the whole gear
+  // [simple24] a fight HUD part on screen (fishing.partRect: 'meter' | 'bar' | 'shock' | 'gear')
   partRect(kind) {
     const f = this.game.fishing;
-    try { const r = f?.gear?.partRect?.(kind, f.battle); if (r && Number.isFinite(r.x)) return r; } catch (e) { /* older gear */ }
+    try { const r = f?.partRect?.(kind); if (r && Number.isFinite(r.x)) return r; } catch (e) { /* older fishing */ }
     return null;
   }
 
@@ -1013,11 +996,6 @@ export class Tutorial {
       }
       case 'wait': case 'hook': {
         const h = f?.hook;
-        if (this.step === 'hook' && this.fishingKind().gear) {
-          const gr = this.gearRect();
-          // rest at the far screen edge and point at the gear, so Bubbles never covers its dial
-          if (gr) return { edge: true, aim: ctr(gr), action: ctr(gr), avoid: [gr], noRing: true, hl: [gr] };
-        }
         if (h?.visible) {
           const p = this.ws(h.x, h.y);
           const zone = { x: p[0] - 30, y: p[1] - 30, w: 60, h: 60 };
@@ -1029,15 +1007,16 @@ export class Tutorial {
         const p = this.waterSpot();
         return { point: p, aim: p };
       }
-      case 'reel': case 'ease': case 'surge': case 'zap': case 'land': {
+      case 'spin': case 'shock': case 'land': {
         // [tut16] rest at the edge (the action owns the middle); bracket and point at what this step is about
+        // [simple24] spin: the meter (+ the gear you spin); shock: the SHOCK button; land: the catch bar
         const gr = this.gearRect(), fp = this.fishPoint();
-        const fr = fp && this.fishBox(fp);
-        const part = this.partRect({ ease: 'tension', zap: 'shock' }[this.step] || 'gauge');
-        let hl = part || gr, aim = hl ? ctr(hl) : fp;
-        if (this.step === 'surge' && fr) { hl = fr; aim = fp; }
-        if (this.step === 'zap' && part && gr) hl = part; // the bolt orbs (the charge ring then shows on the gear)
-        return { edge: true, aim, avoid: [gr, part, fr].filter(Boolean), action: fp, noRing: true, hl: hl ? [hl] : [] };
+        const meter = this.partRect('meter'), btn = this.partRect('shock'), bar = this.partRect('bar');
+        let hl = [], aim = fp;
+        if (this.step === 'spin') { hl = [meter, gr].filter(Boolean); aim = gr ? ctr(gr) : meter ? ctr(meter) : fp; }
+        else if (this.step === 'shock') { hl = [btn, meter].filter(Boolean); aim = btn ? ctr(btn) : fp; }
+        else { hl = [bar].filter(Boolean); aim = bar ? ctr(bar) : fp; }
+        return { edge: true, side: -1, aim, avoid: [gr, meter, btn, bar].filter(Boolean), action: fp, noRing: true, hl };
       }
       case 'card': {
         // the catch card's Keep orb (reveal.js draws it at the card's bottom right in the tutorial)
@@ -1156,7 +1135,6 @@ export class Tutorial {
     // [tut16] the HUD part this step is about: pixel brackets hugging its rect
     for (const r of tg.hl || []) this.drawHighlight(ctx, r);
     if (tg.ghost) this.drawCastGhost(ctx, tg.point);
-    if (FIGHT_STEPS.includes(this.step)) this.drawFightCue(ctx);
     G.show = Math.min(1, G.show + (1 / 60) * 2.5);
     const fade = this.step === 'done' ? 1 - clamp01((t - 30) / 0.8) : 1;
     const a = fade;
@@ -1263,37 +1241,6 @@ export class Tutorial {
       const y = g.screen.H * (p.step ? 0.13 : 0.24) + (g.screen.H >= 700 ? 10 : 0) - age * (p.step ? 3 : 6);
       drawText3D(ctx, p.text, g.screen.W / 2, y, { t: g.time ?? 0, pop: clamp01(age / 0.45), palette: p.palette, size: 16, px: 1, depth: 4, scale: g.screen.W >= 1200 ? 3 : 2, alpha: a });
     }
-  }
-
-  // The fight: an arrow against the surge, drawn at the fish.
-  drawFightCue(ctx) {
-    const f = this.game.fishing, B = f?.battle;
-    if (!B || !B.fish) return;
-    const surging = B.mode === 'tele' || B.mode === 'surge' || B.surging;
-    if (!surging) return;
-    const [x, y] = this.ws(B.fish.x, B.fish.y);
-    const dir = (B.mode === 'tele' ? B.teleDir : B.pullDir) ?? B.qte?.dir ?? B.away ?? 0;
-    const a = dir + Math.PI; // drag AGAINST the surge
-    const t = this.t;
-    const pulse = 0.5 + 0.5 * Math.sin(t * 10);
-    const L = 34 + pulse * 6;
-    ctx.save();
-    ctx.translate(Math.round(x), Math.round(y));
-    ctx.rotate(a);
-    ctx.globalAlpha = B.mode === 'tele' ? 0.55 + 0.45 * pulse : 0.95;
-    ctx.fillStyle = rgba('#063a6a', 0.5);
-    this.arrowPath(ctx, 14, L + 2, 7, 13); ctx.fill();
-    ctx.fillStyle = B.mode === 'tele' ? '#ffd23a' : '#7ff0ff';
-    this.arrowPath(ctx, 14, L, 5, 11); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    ctx.fillRect(16, -4, Math.round(L * 0.6), 2);
-    ctx.restore();
-  }
-
-  arrowPath(ctx, x0, L, hw, hh) {
-    ctx.beginPath();
-    ctx.moveTo(x0, -hw); ctx.lineTo(x0 + L - hh, -hw); ctx.lineTo(x0 + L - hh, -hh); ctx.lineTo(x0 + L, 0);
-    ctx.lineTo(x0 + L - hh, hh); ctx.lineTo(x0 + L - hh, hw); ctx.lineTo(x0, hw); ctx.closePath();
   }
 
   drawPointer(ctx, x, y, r, arrow, bang = false) {

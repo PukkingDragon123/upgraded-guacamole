@@ -62,6 +62,8 @@ export const SIDE_STORIES = {
     S('s2_halibut', 'marina', 'Smile Through It', "The Hide-the-Pain Halibut smiles through everything. Bring me a trophy-sized one. It'll smile even harder.", [{ t: 'catch', n: 1, species: 'flounder', trophy: true }], { aero: 13, items: { coral_chunk: 1 } }),
     S('s2_dex', 'fizz', 'Shallow Scholar', "The Shallows are bursting with new species! Discover six of them. My notebook is SO ready.", [{ t: 'species', n: 6, biome: 'shallows' }], { aero: 14, items: { sea_glass: 2 } }),
     S('s2_twilight', 'seal', 'Twilight Treats', "The colourful fish hide deeper down. Catch two Uncommon fish in the Twilight Zone. Wheee!", [{ t: 'catch', n: 2, rarity: 'uncommon', zone: 'twilight' }], { aero: 13, bait: { sugar: 1 } }),
+    // [food24] Bloodworms for the tank's food tray (src/game/foods.js)
+    S('s2_worms', 'marina', 'Worm Wrangler', "Ahoy! Bloodworms keep wriggling out of my bait bucket and down the deck drain. Keep three fish in your tank and feed 'em four times, and the whole wriggly colony is yours!", [{ t: 'tankFish', n: 3 }, { t: 'feed', n: 4 }], { aero: 9, unlock: [{ kind: 'food', id: 'worms' }] }),
   ],
   ch3: [
     S('s3_noot', 'bloat', 'Noot Noot', "Hrrumph! Tuxfish. Fancy fellows. In my day they wore bow ties to breakfast. Catch three.", [{ t: 'catch', n: 3, species: 'nootfish' }], { aero: 16, items: { ice_shard: 1 } }),
@@ -111,6 +113,8 @@ export const SIDE_STORIES = {
     S('s5_giant', 'bloat', 'Absolute Unit', "They call me a teller of tall tales! Bring me a GIANT fish and we'll see who's exaggerating.", [{ t: 'catch', n: 1, giant: true }], { aero: 85, items: { pearl: 2 } }),
     S('s5_golden', 'dot', 'Golden Investment', "BEEP. Golden Bait detected. Use it to catch a Rare fish. Return on investment: guaranteed. Probably.", [{ t: 'catch', n: 1, rarity: 'rare', bait: 'golden' }], { aero: 65, bait: { golden: 1 } }, { after: 'c5_epic' }),
     S('s5_babies', 'seal', 'Baby Boom', "More eggs, more babies, more tiny fins! Hatch three eggs. I've already knitted three tiny hats.", [{ t: 'hatch', n: 3 }], { aero: 65, items: { fish_egg: 1 } }, { after: 's4_egg' }),
+    // [food24] Golden Krill: the premium tank food (eggs from krill-fed parents mutate more often)
+    S('s5_krill', 'fizz', 'Golden Krill', "Golden Krill! They glitter like Aero and do FASCINATING things to fish genes. Hatch two eggs and bring me one mutated fish, and I'll share my secret culture. For science!", [{ t: 'hatch', n: 2 }, { t: 'catch', n: 1, mutant: true }], { aero: 60, items: { pearl: 1 }, unlock: [{ kind: 'food', id: 'krill' }] }, { after: 's4_egg' }),
     S('s5_dex', 'fizz', 'City Directory', "Discover six species of the Sunken Metropolis. Most of them have business cards.", [{ t: 'species', n: 6, biome: 'metropolis' }], { aero: 65, items: { circuit_board: 1 } }),
     S('s5_party', 'seal', 'Party Boat', "Fishing with friends gives everyone luck! Catch three fish while another player shares your ocean. Optional and extra fun!", [{ t: 'catch', n: 3, party: true }], { aero: 40, items: { pearl: 1 } }, { online: true }),
   ],

@@ -21,6 +21,13 @@
 // 'tankUpgraded' ({from, to}), 'gearBought', 'tankFed', 'tankBuilt'.
 // state.tank: {tier, decor: [{id, u, l, h, f, v}], stored: [ids], eggs, coins, gear, lampOff}. l: 0 front, 1 mid,
 // 2 back, 3 the back glass (h = height 0..1).
+// [food24] Foods are progression unlocks (src/game/foods.js): state.tank.food = the chosen food (only an unlocked one is
+// used: foodType falls back to Reef Flakes), state.tank.foodSeen = foods the tray has shown unlocked (an unlock not seen
+// yet breaks its seal the next time the tray is open). Locked tray tiles are sealed (Lab seal look); clicking one opens
+// the Lab on its node or tracks its side story. A fish that eats a food gets its meal (rec.meal = {f, until}): fuller
+// (hunger), happier (mood), faster evolution, more Aero/min, easier romance, mutation-rich eggs (foods.js FOOD_DATA.meal).
+// An unlock ('unlocked' {kind: 'food'}) pops a 3D voxel toast "NEW FOOD: <NAME>!". Manual feeding counts for 'feed'
+// quests (event 'tankFed', at most once per FEED_COUNT_GAP s).
 
 import { clamp, clamp01, lerp, rectContains, smoothstep, TAU } from '../core/math.js';
 import { rng } from '../core/rng.js';
@@ -33,6 +40,8 @@ import { compiled } from '../gfx/spritecache.js';
 import { SPECIES_BY_ID } from '../fish/species.js';
 import { rollIndividual, sizeScaleOf } from '../fish/traits.js';
 import { nodeFor } from '../game/lab.js';
+import { hasFood, FOOD_DATA, FOOD_ORDER, ensureFoods, foodLock, mealOf } from '../game/foods.js'; // [food24]
+import { sealTex, padlockTex } from '../ui/labtree.js'; // [food24] the Lab's sealed-tile look for locked foods
 import { AERO, fmtAero, drawAeroCoin, drawAeroSurface, drawAeroButton, drawSparkle, drawAeroPanel, uiK, drawPixelBrackets, aeroCached, aeroSurface, drawAeroGlow, drawVoxDecor, drawTitle } from '../ui/aero.js';
 import { TANK_TIERS, TANK_IDS, tankTier, aeroRate, GEAR, gearLevel, gearCost, gearMul, gearHappy } from './tanks.js';
 import { SideShape, TankFish, Drops3D, Ripples, DENOMS } from './sim2d.js';
@@ -45,6 +54,7 @@ import { drawPop3D, text3dCanvas } from '../ui/pop3d.js';
 import { mix, shade, rgba } from '../core/color.js';
 
 const HUNGER_RATE = 1 / 2000; // 0 -> 0.6 ("hungry") in 20 minutes
+const FEED_COUNT_GAP = 20; // [food24] seconds between manual feedings that count for 'feed' quests
 const AUTO_POP = [Infinity, 14, 7, 3.5, 2];
 const ICONS = new Set(UI_ICON_NAMES);
 const EMOTE_ICON = { '!': 'exclaim', '!!': 'exclaim', '?': 'question', $: 'dollar' };
@@ -79,6 +89,8 @@ export class Aquarium {
     // compat: the old 3D view object (workshop.js calls view.rebuild(); fxAt / overlays use project)
     this.view = { rebuild: () => this.scene.invalidate(), invalidate: () => this.scene.invalidate(), ok: true, project: (p) => this.project(p), ppu: () => this.scene.Z };
     this.load();
+    // [food24] a new food: a 3D voxel toast, and its tray tile breaks its seal the next time the tray is open
+    game.on?.('unlocked', (d) => { if (d?.kind === 'food' && FOOD_DATA[d.id]) this.foodUnlocked(d.id); });
   }
 
   // ------------------------------------------------------------------ state
@@ -89,7 +101,7 @@ export class Aquarium {
   get editing() { return this.visibleKey === 'full' && this.build.on; }
   get swim() { return null; } // swimming retired in phase 10
   get food() { return this.feed.items; }
-  get foodType() { const f = this.st.tank?.food; return FOODS[f] ? f : 'flakes'; }
+  get foodType() { const f = this.st.tank?.food; return FOODS[f] && hasFood(this.st, f) ? f : 'flakes'; } // [food24] unlocked only
 
   ensureState() {
     const st = this.st;
@@ -107,6 +119,8 @@ export class Aquarium {
       d.l = clamp(d.l | 0, 0, 3);
     }
     delete tk.paint; delete tk.baseOff;
+    try { ensureFoods(st); } catch (e) { console.warn('food migration', e); } // [food24]
+    tk.foodSeen ||= {};
     st.tankWindow ||= { open: false, x: 0, y: 0 };
   }
 
@@ -285,7 +299,7 @@ export class Aquarium {
       const ev = f.sp?.evolve;
       if (!ev || !ev.into || !SPECIES_BY_ID[ev.into]) continue;
       const rec = f.rec;
-      rec.tankAge = (rec.tankAge || 0) + dt;
+      rec.tankAge = (rec.tankAge || 0) + dt * (mealOf(rec)?.grow || 1); // [food24] Bloodworms: faster growth
       if (rec.tankAge < (ev.afterMinutes ?? 30) * 60) continue;
       const g = this.game, into = SPECIES_BY_ID[ev.into];
       rec.species = into.id; rec.tankAge = 0;
@@ -421,7 +435,7 @@ export class Aquarium {
 
   // ------------------------------------------------------------------ economy
   gearMul() { return gearMul(this.st); }
-  fishRate(f) { return aeroRate(f.rec, f.sp, this.stats, this.tier, this.game.coinMulBonus || 1, this.gearMul()); }
+  fishRate(f) { return aeroRate(f.rec, f.sp, this.stats, this.tier, this.game.coinMulBonus || 1, this.gearMul()) * (mealOf(f.rec)?.aero || 1); } // [food24] meal
   ratePerMin() { return this.fish.reduce((a, f) => a + this.fishRate(f), 0); }
 
   // Tutorial: a drop that hovers low in the water until it is popped.
@@ -474,8 +488,10 @@ export class Aquarium {
     f.biteT = this.t + rng.float(0.28, 0.46);
     const F = FOODS[food.type] || FOODS.flakes;
     const rec = f.rec;
-    rec.hunger = Math.max(0, (rec.hunger ?? 0.5) - F.feed / F.bites);
-    rec.happiness = Math.min(1, (rec.happiness ?? 0.7) + 0.012);
+    const M = FOOD_DATA[food.type]?.meal; // [food24] the food's meal: fill, happiness, a lasting effect
+    rec.hunger = Math.max(0, (rec.hunger ?? 0.5) - (F.feed / F.bites) * (M?.fill || 1));
+    rec.happiness = Math.min(1, (rec.happiness ?? 0.7) + (M?.happy ?? 0.012));
+    if (M) rec.meal = { f: food.type, until: Date.now() + (M.min || 10) * 60000 };
     const done = this.feed.bite(f, food);
     f.poke(done ? 7 : 4);
     f.chomp = 0.3;
@@ -525,7 +541,7 @@ export class Aquarium {
     const s = this.stats;
     if (!s.breeding || this.nightK > 0.5) return false;
     const rec = f.rec;
-    if ((rec.happiness ?? 0) < 0.62 || (rec.hunger ?? 1) > 0.6 || f.baby > 0) return false;
+    if ((rec.happiness ?? 0) < (mealOf(rec)?.court ? 0.5 : 0.62) || (rec.hunger ?? 1) > 0.6 || f.baby > 0) return false; // [food24] shrimp
     if ((rec.breedAt || 0) > Date.now()) return false;
     return this.st.tank.eggs.length < 2;
   }
@@ -536,8 +552,12 @@ export class Aquarium {
     const species = a.breedSp || b.breedSp || a.sp.id;
     a.breedSp = b.breedSp = null;
     const egg = { species, x: u, z: v, t: 0, dur: 180 / (this.stats.hatchSpeed || 1), n: rng.int(3, 6), color: a.sp.look?.col?.belly || '#ffd8a8', parents: [a.rec.uid, b.rec.uid] };
+    // [food24] Golden Krill parents lay mutation-rich eggs; Brine Shrimp shortens the rest before the next clutch
+    const ma = mealOf(a.rec), mb = mealOf(b.rec);
+    const mut = Math.max(ma?.mutate || 1, mb?.mutate || 1), shi = Math.max(ma?.shiny || 1, mb?.shiny || 1);
+    if (mut > 1 || shi > 1) { egg.mutate = mut; egg.shiny = shi; }
     this.st.tank.eggs.push(egg);
-    const later = Date.now() + 6 * 60 * 1000;
+    const later = Date.now() + (ma?.court || mb?.court ? 4 : 6) * 60 * 1000;
     a.rec.breedAt = later; b.rec.breedAt = later;
     a.say('heart', 1.5); b.say('heart', 1.5);
     this.sfx('magic', { vol: 0.5 });
@@ -549,7 +569,7 @@ export class Aquarium {
     const sp = SPECIES_BY_ID[egg.species];
     if (!sp) return;
     const s = this.stats;
-    const rolled = rollIndividual(sp, { mutationChance: (s.mutationChance ?? 0.05) * 3, shinyChance: (s.shinyChance ?? 1 / 220) * 3, sizeBonus: -0.05 });
+    const rolled = rollIndividual(sp, { mutationChance: (s.mutationChance ?? 0.05) * 3 * (egg.mutate || 1), shinyChance: (s.shinyChance ?? 1 / 220) * 3 * (egg.shiny || 1), sizeBonus: -0.05 }); // [food24] krill eggs
     const inTank = this.fish.length < this.capacity();
     const rec = { ...rolled, inTank, happiness: 0.85, hunger: 0.2, coinT: 0, bornAt: Date.now(), caughtAt: Date.now(), rarity: sp.rarity, bred: true, parents: egg.parents };
     (g.state.fish ||= []).push(rec);
@@ -609,7 +629,7 @@ export class Aquarium {
   // ------------------------------------------------------------------ fish management (src/ui/fishmgr.js)
   fishOf(rec) { return this.fish.find((f) => f.rec === rec) || null; }
   tankCount() { return (this.st.fish || []).filter((r) => r.inTank).length; }
-  rateOf(rec) { const sp = SPECIES_BY_ID[rec.species]; return sp ? aeroRate(rec, sp, this.stats, this.tier, this.game.coinMulBonus || 1, this.gearMul()) : 0; }
+  rateOf(rec) { const sp = SPECIES_BY_ID[rec.species]; return sp ? aeroRate(rec, sp, this.stats, this.tier, this.game.coinMulBonus || 1, this.gearMul()) * (rec.inTank ? mealOf(rec)?.aero || 1 : 1) : 0; }
   moveFish(rec, toTank) {
     if (!!rec.inTank === !!toTank) return { ok: true };
     if (toTank && this.tankCount() >= this.capacity()) return { ok: false, why: `The tank is full (${this.capacity()} fish). Upgrade it in The Lab!` };
@@ -631,8 +651,11 @@ export class Aquarium {
   }
   feedAll() {
     const T = this.shape;
-    for (let i = 0; i < 4; i++) this.feed.drop(this.foodType, (0.15 + i * 0.23 - 0.5) * T.W * 0.8 + this.camX * 0.5, rng.float(-0.2, 0.2) * T.D, null, { delay: i * 0.18 });
-    for (const f of this.fish) f.rec.hunger = Math.max(0, (f.rec.hunger ?? 0.4) - 0.3);
+    const type = this.foodType; // [food24] the chosen food if it is unlocked, else Reef Flakes
+    for (let i = 0; i < 4; i++) this.feed.drop(type, (0.15 + i * 0.23 - 0.5) * T.W * 0.8 + this.camX * 0.5, rng.float(-0.2, 0.2) * T.D, null, { delay: i * 0.18 });
+    const fill = FOOD_DATA[type]?.meal?.fill || 1;
+    for (const f of this.fish) f.rec.hunger = Math.max(0, (f.rec.hunger ?? 0.4) - 0.3 * fill);
+    this.fedCountT = this.t;
     this.sfx('bubble', { vol: 0.5, pitch: 1.2 });
     this.game.emit?.('tankFed', { n: this.fish.length });
   }
@@ -943,6 +966,7 @@ export class Aquarium {
     if (this.panel === 'feed' && this.inWater(x, y, cam)) {
       const [wx] = this.scene.unproj(x, y, 0, cam);
       this.sprinkle(clamp(wx, -this.shape.W / 2 + 6, this.shape.W / 2 - 6), rng.float(-0.25, 0.25) * this.shape.D);
+      this.countFeeding();
       return;
     }
     const f = this.pickFish(x, y);
@@ -955,7 +979,7 @@ export class Aquarium {
     }
     // in the water: sprinkle food where you clicked
     const [wx, wy] = this.scene.unproj(x, y, 0, cam);
-    if (wy > 0 && Math.abs(wx) < this.shape.W / 2) this.sprinkle(wx, rng.float(-0.25, 0.25) * this.shape.D);
+    if (wy > 0 && Math.abs(wx) < this.shape.W / 2) { this.sprinkle(wx, rng.float(-0.25, 0.25) * this.shape.D); this.countFeeding(); }
   }
 
   // drops pop when the cursor passes over them (a held button sweeps a wider path)
@@ -1127,15 +1151,47 @@ export class Aquarium {
     const x = clamp(cx + rng.float(-0.15, 0.15) * vw, this.camX - vw * 0.8, this.camX + vw * 0.8);
     this.sprinkle(clamp(x, -T.W / 2 + 10, T.W / 2 - 10), rng.float(-0.2, 0.2) * T.D, null, type);
     this.shakeAt = null;
+    this.countFeeding();
+  }
+  // [food24] a hand feeding counts for 'feed' quests and the feeding milestones (at most once per FEED_COUNT_GAP s)
+  countFeeding() {
+    if (!this.fish.length || (this.fedCountT != null && this.t - this.fedCountT < FEED_COUNT_GAP)) return;
+    this.fedCountT = this.t;
+    this.game.emit?.('tankFed', { n: this.fish.length, hand: true });
+  }
+  // [food24] a locked food tile: open the Lab on its node, or pin its side story on the HUD and open the Quest Log there
+  lockedFoodClick(id, lk = foodLock(this.game, id)) {
+    const g = this.game;
+    if (lk.src.kind === 'lab') {
+      this.sfx('ui_click', { vol: 0.5 });
+      this.panel = null;
+      g.ui?.open?.('lab', { focus: lk.src.node.id });
+      return;
+    }
+    const q = lk.quest, book = g.quests?.book;
+    if (!q || !book || !lk.open) { this.sfx('ui_error', { vol: 0.5 }); this.lockShake = { id, t: this.t }; g.toast?.(lk.why || lk.how, 'lock'); return; }
+    if (book.S?.pin !== q.id) book.setPin?.(q.id);
+    this.sfx('ui_unlock', { vol: 0.5 });
+    g.toast?.(`Tracking "${q.title}" on your HUD.`, 'scroll');
+    this.panel = null;
+    g.ui?.open?.('quests', { tab: 'story', chapter: q.chapter });
+  }
+  // [food24] 'unlocked' {kind: 'food'}: a 3D voxel toast; the tray tile breaks its seal when it is next shown
+  foodUnlocked(id) {
+    const name = FOOD_DATA[id].name.toUpperCase();
+    const ui = this.game.ui;
+    if (ui?.toast) ui.toast(`NEW FOOD:\n${name}!`, 'food', 4.5, { palette: 'gold' });
+    else this.game.toast?.(`NEW FOOD: ${name}!`, 'food');
+    this.game.audio?.play?.('ui_unlock', { vol: 0.55 });
   }
   feedPanelRect() {
     const L = this.fullLayout(), D = L.dock, kd = D.kd;
     const R = Math.round;
     const fb = this.fullButtons().find((b) => b.id === 'feed');
     const pad = R(6 * kd), gap = R(5 * kd), B = D.B, titleH = R(12 * kd);
-    const w = pad * 2 + FOOD_IDS.length * (B + gap) - gap, h = pad * 2 + titleH + B + D.lab;
+    const w = pad * 2 + FOOD_ORDER.length * (B + gap) - gap, h = pad * 2 + titleH + B + D.lab;
     const x = D.x - R(8 * kd) - w, y = R(clamp(fb.y + fb.h / 2 - h / 2 - titleH / 2, L.top + 4, this.game.screen.H - h - 10));
-    const chips = FOOD_IDS.map((id, i) => ({ id, x: x + pad + i * (B + gap), y: y + pad + titleH, w: B, h: B + D.lab, B }));
+    const chips = FOOD_ORDER.map((id, i) => ({ id, x: x + pad + i * (B + gap), y: y + pad + titleH, w: B, h: B + D.lab, B, locked: !hasFood(this.st, id) }));
     return { x, y, w, h, kd, pad, titleH, chips };
   }
   feedPanelInput(inp, tip) {
@@ -1144,7 +1200,14 @@ export class Aquarium {
     for (const c of r.chips) {
       if (!rectContains(c, inp.x, inp.y)) continue;
       this.hoverBtn = 'food:' + c.id;
-      tip(`${FOODS[c.id].name}\n${FOODS[c.id].tip}`);
+      const FD = FOOD_DATA[c.id];
+      if (c.locked) { // [food24] a sealed food: how to unlock it; a click points there
+        const lk = foodLock(this.game, c.id);
+        tip(`{lock} ${FD.name}\n${FD.perk}\n${lk.how}${lk.why ? '\n' + lk.why : ''}\n${lk.src.kind === 'lab' ? '{mouse_l} Open the Lab' : lk.open ? '{mouse_l} Track the quest' : ''}`.trim());
+        if (inp.pressed) { inp.consume(); this.lockedFoodClick(c.id, lk); }
+        return true;
+      }
+      tip(`${FD.name}\n${FOODS[c.id].tip}\n${FD.perk}`);
       if (inp.pressed) {
         inp.consume();
         this.st.tank.food = c.id;
@@ -1269,7 +1332,9 @@ export class Aquarium {
     const n = this.fish.length;
     for (const f of this.fish) {
       const rec = f.rec;
-      rec.hunger = Math.min(1, (rec.hunger ?? 0.3) + dt * HUNGER_RATE);
+      const meal = mealOf(rec); // [food24]
+      rec.hunger = Math.min(1, (rec.hunger ?? 0.3) + dt * HUNGER_RATE * (meal?.hunger || 1));
+      if (meal?.mutate && this.visibleKey && rng.chance(dt * 0.6)) { const q = this.project(f.p); if (q) this.px('sparkle', q[0] + rng.float(-6, 6), q[1] + rng.float(-4, 4), 1, { ramps: ['#ffd84a', 'white'], speed: [4, 12], w: 2, h: 2 }); } // golden glints
       const rate = this.fishRate(f);
       const d = rate < 6 ? 0 : rate < 30 ? 1 : 2;
       const val = DENOMS[d];
@@ -1293,7 +1358,7 @@ export class Aquarium {
         const fed = 1 - smoothstep(0.35, 1, rec.hunger ?? 0.3);
         const same = this.fish.filter((o) => o.sp === f.sp).length - 1;
         const comp = same >= 1 ? 1 : f.sp.move?.school > 0 ? 0.3 : 0.6;
-        const target = clamp01(0.38 * fed + 0.2 * crowd + 0.24 * decor + 0.18 * comp + gh);
+        const target = clamp01(0.38 * fed + 0.2 * crowd + 0.24 * decor + 0.18 * comp + gh + (mealOf(rec)?.mood || 0)); // [food24] worms
         rec.happiness = clamp01((rec.happiness ?? 0.7) + (target - (rec.happiness ?? 0.7)) * k);
       }
     }
@@ -1688,7 +1753,7 @@ export class Aquarium {
       const px = R(b.tile * 0.62);
       this.drawIcon(ctx, b.icon, b.x + b.tile / 2, b.y + b.tile / 2 + lift, px, { hover: hov, phase: i * 1.7 });
       if (b.on) drawPixelBrackets(ctx, b.x - 1, b.y - 1 + lift, b.tile + 2, b.tile + 2, this.t, { k: kd >= 1.4 ? 2 : 1 });
-      if (b.id === 'feed' && this.fish.some((f) => (f.rec.hunger ?? 0) > 0.62) && !b.on) {
+      if (b.id === 'feed' && !b.on && (this.fish.some((f) => (f.rec.hunger ?? 0) > 0.62) || FOOD_ORDER.some((id) => id !== 'flakes' && hasFood(this.st, id) && !this.st.tank.foodSeen?.[id]))) { // [food24] + a new food
         // hungry fish: the feed tile bobs a little voxel bubble with a "!"
         const bx = b.x + b.tile - 2, by = b.y + 2 + Math.sin(this.t * 5) * 1.5;
         this.drawIcon(ctx, 'exclaim', bx, by, R(9 * kd), {});
@@ -1697,7 +1762,9 @@ export class Aquarium {
     });
   }
 
-  // the feeding tray: four foods as voxel tiles; the chosen one glows
+  // the feeding tray: the foods as voxel tiles; the chosen one glows. [food24] Locked foods are sealed like the Lab's
+  // quest-sealed tiles (dithered indigo veil, chain X, gold padlock) over their dimmed voxel food; a food unlocked since
+  // the tray last showed it breaks its seal (the padlock drops, the colour floods back, a sparkle burst).
   drawFeedPanel(ctx) {
     const r = this.feedPanelRect(), R = Math.round, kd = r.kd;
     ctx.fillStyle = 'rgba(3,38,74,0.2)';
@@ -1708,19 +1775,50 @@ export class Aquarium {
     if (fb) { const py = R(fb.y + fb.tile / 2); ctx.fillStyle = '#86c4e6'; for (let i = 0; i < 4; i++) ctx.fillRect(r.x + r.w + i, py - 4 + i, 1, 8 - i * 2); }
     const lf = kd >= 1.2 ? 'normal' : 'small';
     drawText(ctx, 'Pick a food, then click the water', r.x + r.w / 2, r.y + r.pad - 1, { font: 'small', align: 'center', color: AERO.ink });
+    const seen = (this.st.tank.foodSeen ||= {});
+    const us = (this.unseal ||= {});
     for (const c of r.chips) {
-      const F = FOODS[c.id], on = this.foodType === c.id, hov = this.hoverBtn === 'food:' + c.id;
-      const lift = this.drawTile(ctx, c.x, c.y, c.B, on ? '#ff9a3a' : '#6ac8f0', { hover: hov, on });
+      const F = FOODS[c.id], on = !c.locked && this.foodType === c.id, hov = this.hoverBtn === 'food:' + c.id;
+      if (!c.locked && !seen[c.id]) { // a new food: break its seal now
+        seen[c.id] = 1;
+        if (c.id !== 'flakes') {
+          us[c.id] = this.t;
+          this.sfx('ui_unlock', { vol: 0.5 });
+          this.px('sparkle', c.x + c.B / 2, c.y + c.B / 2, 10, { ramps: ['#ffd84a', 'white'], speed: [20, 60] });
+          this.px('star', c.x + c.B / 2, c.y + c.B / 2, 4, { ramp: 'gold', speed: [30, 70] });
+          this.game.save?.();
+        }
+      }
+      const uk = us[c.id] != null ? clamp01((this.t - us[c.id]) / 0.85) : 1;
+      if (uk >= 1) delete us[c.id];
+      const sealK = c.locked ? 1 : 1 - uk; // 1 = sealed
+      const sh = this.lockShake?.id === c.id ? Math.sin((this.t - this.lockShake.t) * 50) * 2 * clamp01(1 - (this.t - this.lockShake.t) / 0.35) : 0;
+      const x = R(c.x + sh);
+      const lift = this.drawTile(ctx, x, c.y, c.B, sealK > 0.5 ? '#8a94c8' : on ? '#ff9a3a' : '#6ac8f0', { hover: hov, on });
       const ic = foodIcon(c.id, clamp(Math.round((c.B * 2 * 0.72) / 13), 3, 7));
       if (ic) {
-        const pop = this.chipPop?.id === c.id ? clamp01((this.t - this.chipPop.t) * 5) : 1;
+        const pop = this.chipPop?.id === c.id ? clamp01((this.t - this.chipPop.t) * 5) : uk < 1 ? uk : 1;
         const s = 0.5 * (pop < 1 ? 1 + Math.sin(pop * Math.PI) * 0.25 : 1);
         const w = ic.width * s, h = ic.height * s;
-        const bob = hov ? Math.sin(this.t * 6) * 1 : 0;
-        ctx.drawImage(ic, Math.round((c.x + c.B / 2 - w / 2) * 2) / 2, Math.round((c.y + c.B / 2 - h / 2 + lift + bob) * 2) / 2, w, h);
+        const bob = hov && !c.locked ? Math.sin(this.t * 6) * 1 : 0;
+        const prevF = ctx.filter, prevA = ctx.globalAlpha;
+        if (sealK > 0) { ctx.filter = `saturate(${(1 - sealK * 0.55).toFixed(2)}) brightness(${(1 - sealK * 0.12).toFixed(2)})`; ctx.globalAlpha = prevA * (1 - sealK * 0.15); }
+        ctx.drawImage(ic, Math.round((x + c.B / 2 - w / 2) * 2) / 2, Math.round((c.y + c.B / 2 - h / 2 + lift + bob) * 2) / 2, w, h);
+        ctx.filter = prevF || 'none'; ctx.globalAlpha = prevA;
       }
-      if (on) drawPixelBrackets(ctx, c.x - 1, c.y - 1 + lift, c.B + 2, c.B + 2, this.t, { k: kd >= 1.4 ? 2 : 1 });
-      drawText(ctx, F.short, c.x + c.B / 2, R(c.y + c.B + 2), { font: lf, align: 'center', color: on ? '#c0500a' : AERO.ink });
+      if (sealK > 0) {
+        const prevA = ctx.globalAlpha;
+        // the veil stays see-through enough to show the dimmed food; a smaller padlock hangs low on the chains
+        ctx.globalAlpha = prevA * Math.min(1, sealK * 1.4) * 0.5;
+        ctx.drawImage(sealTex(c.B), x, R(c.y + lift));
+        ctx.globalAlpha = prevA * Math.min(1, sealK * 2);
+        const lk = padlockTex(R(c.B * 0.7)), drop = (1 - sealK) * (1 - sealK) * c.B * 0.9;
+        const wig = c.locked && hov ? Math.sin(this.t * 9) * 1 : 0;
+        ctx.drawImage(lk, R(x + c.B * 0.72 - lk.width / 2 + wig), R(c.y + lift + c.B * 0.7 - lk.cy + drop));
+        ctx.globalAlpha = prevA;
+      }
+      if (on) drawPixelBrackets(ctx, x - 1, c.y - 1 + lift, c.B + 2, c.B + 2, this.t, { k: kd >= 1.4 ? 2 : 1 });
+      drawText(ctx, F.short, x + c.B / 2, R(c.y + c.B + 2), { font: lf, align: 'center', color: on ? '#c0500a' : c.locked ? '#6a7298' : AERO.ink });
     }
   }
 

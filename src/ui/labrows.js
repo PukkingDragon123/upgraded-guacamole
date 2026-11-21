@@ -15,6 +15,7 @@ import {
 } from '../game/lab.js';
 import { ROD_BY_ID } from '../game/rods.js';
 import { RECIPE_BY_ID } from '../build/crafting.js';
+import { FOOD_DATA } from '../game/foods.js'; // [food24]
 import { drawTube, drawRays, roundRectPath } from './labart.js';
 import { drawIcon3D } from '../gfx/icons3d.js'; // [phase9:ui]
 import { icon, anyIcon, pill, costTiles, costTilesHeight, chip, INK, INK_SOFT, OK, BAD } from './labkit.js';
@@ -31,6 +32,7 @@ export function unlockInfo(u) {
     case 'recipe': return { key: RECIPE_BY_ID[u.id]?.icon || 'hammer', name: 'Recipe: ' + (RECIPE_BY_ID[u.id]?.name || u.id) };
     case 'bait': return { key: 'bait:' + u.id, name: 'Bait Shop: ' + u.id };
     case 'feature': return { key: FEATURE_ICON[u.id] || 'sparkle', name: FEATURE_NAME[u.id] || u.id };
+    case 'food': return { key: 'food:' + u.id, name: 'Tank food: ' + (FOOD_DATA[u.id]?.name || u.id) }; // [food24]
     default: return { key: 'star', name: u.id };
   }
 }

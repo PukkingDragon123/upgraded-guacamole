@@ -2,7 +2,7 @@
 // tanks and ocean globes, voxel buildings / bait (from their own
 // modules), and a set of hand-made pixel glyphs for stat nodes. Every icon is cached per (key, size).
 //   labIcon(key, px) -> canvas (fits a px x px box) | null
-//     key: 'rod:<id>' | 'boat:<id>' | 'tank:<id>' | 'biome:<id>' | 'bait:<id>' | 'bp:<buildingId>' | 'mat:<itemId>' | glyph name
+//     key: 'rod:<id>' | 'boat:<id>' | 'tank:<id>' | 'biome:<id>' | 'bait:<id>' | 'bp:<buildingId>' | 'mat:<itemId>' | 'food:<id>' | glyph name
 //   labIconCached(key, px) -> canvas | undefined (only when already rendered; cheap)
 //   GLYPHS: names of the pixel glyphs (hook, line, star, gear, reel, bolt, battery, eye, music, mouse, heart, ...)
 import { makeCanvas, ctxOf } from '../core/canvas.js';
@@ -17,6 +17,7 @@ import { buildingSprite } from '../build/buildingmodels.js';
 import { itemIcon } from '../build/itemdraw.js';
 import { baitIcon } from '../fishing/baitart.js';
 import { voxelFishIcon } from '../fish/fishicon.js'; // [phase3:fish]
+import { foodIcon } from '../aquarium/food.js'; // [food24] tank foods
 import { rodIcon, getBigIcon, voxMisses, voxelModelFrame } from '../gfx/bigicons.js'; // [phase6:ui] glossy low-poly 3D rods / globe
 import { lpAvailable } from '../gfx/lowpoly.js'; // [phase10:ui]
 
@@ -342,6 +343,7 @@ function buildIcon(key, px) {
     else if (kind === 'tank') c = fitVoxel(() => tankModel(id), px, key);
     else if (kind === 'biome') c = fitVoxel(() => globeModel(id), px, key);
     else if (kind === 'bait') c = fitCanvas(baitIcon({ shape: id }, px).canvas, px, false);
+    else if (kind === 'food') c = fitCanvas(foodIcon(id, Math.max(1, Math.round(px / 12))), px, false); // [food24] a heap of the voxel food
     else if (kind === 'bp') {
       const s = buildingSprite(id, { scale: 0.2, force: true });
       if (s) {

@@ -1,26 +1,27 @@
-// Fishing controller: hook & line, one-time bait, nibbles, bites, SPIN TO HOOK (battle.js HookSpin), the reel
-// fight (battle.js: spin the 3D gear inside the moving sweet band, directional surge QTE, hold-and-release SHOCK;
-// species events in minigames.js), floating boxes (boxreel.js), the slow-motion landing finale and the escape
-// cutscene (cinematics.js), and the fight HUD (hud.js + the big 3D gear in gear.js).
+// Fishing controller [simple24]: hook & line, one-time bait, nibbles, a bite you CLICK to hook (battle.js HookBite),
+// the meter fight (battle.js: spin the 3D gear to keep the fish's marker in the middle of the meter; press the big
+// SHOCK button on the beat), floating boxes (boxreel.js), the slow-motion landing finale and the escape cutscene
+// (cinematics.js), and the fight HUD (hud.js + meter.js + the big 3D gear in gear.js).
 //
-// Controls: circle the mouse anywhere to spin the gear (spin it into the band when a fish bites to set the hook;
-// keep it in the sweet band to reel). Hold the mouse button / Space / right button to charge a shock and let go
-// in the PERFECT window to stun the fish. During a surge, hold the mouse button and drag against the pull.
+// Controls: move the mouse into the water to cast, click to jig. When the fish bites (the big "!"), click (or Space).
+// Then SPIN: circle the mouse (anywhere), roll the wheel, or hold / tap W / Up / R. The fish drags the marker left,
+// spinning pushes it right: keep it in the green zone. When a shock is ready the marker freezes and a spark sweeps the
+// meter: press Space / click as it crosses the gold notch (CRITICAL), in the green (GOOD); the red ends backfire.
 //
 // Rod stats (src/game/rods.js rodStats(state, game.stats)) drive everything:
 //   lureSpeed -> bite wait (fish notice / sniff / nibble faster, bigger lure radius)
 //   luck      -> rarity (luckMul(); game.js multiplies world.rarityBoost by it)
-//   control   -> sweet zone width, QTE forgiveness       resilience -> progress kept when the fish wins
-//   strength  -> fish heavier than this put the line at risk         shock -> charges / stun / cooldown
+//   control   -> zone width, calmer pull, a wider gold notch     resilience -> less catch bar lost outside the zone
+//   strength  -> fish heavier than this pull harder              shock -> power (damage + stun), charges, recharge
 // Bait is ONE-TIME USE (src/store/bait.js via game.currentBait()/consumeBait()): one is used at hook-set.
 // No bait = a bare hook: fish still bite, attraction is weaker.
 //
 // Public API (game.js, tutorial, browser overlay): update(dt, worldInput), drawWorld(ctx) [world
 // space], drawHud(ctx) [screen space], drawCinematic(ctx) [world space, after fish],
 // drawCinematicHud(ctx) [screen space, above the HUD], requestNibble(fish), releaseFish(flee),
-// setHook(auto), message(text), crankHint(), luckMul(), landBox(f), and the fields state ('idle'|'nibble'|
-// 'bite'|'fight'|'landing'|'box'), busy, fighting, hook {x, y, visible}, tension, rod, gear (alias reel),
-// hs (the HookSpin while a fish bites).
+// setHook(auto), message(text), crankHint(), luckMul(), landBox(f), partRect(kind) ('meter' | 'bar' | 'shock' | 'gear'),
+// and the fields state ('idle'|'nibble'|'bite'|'fight'|'landing'|'box'), busy, fighting, hook {x, y, visible},
+// tension, rod, gear (alias reel), hs (the HookBite while a fish bites).
 // If the host never calls drawCinematic/drawCinematicHud, drawWorld/drawHud draw them instead.
 // Emits through game.onHooked / onFishCaught / onFishEscaped (game.emit 'hooked' | 'caught' | 'escaped').
 // [phase9:fishing] Bosses (boss.js): a BossDirector (this.boss) brings each ocean's boss to a hook in the deepest zone
@@ -34,9 +35,9 @@ import { Particles, glowSprite, drawBolt, boltPoints } from '../gfx/particles.js
 import { drawFishRig } from '../gfx/fishrig.js';
 import { HOOK, baitSprite, baitHook } from './baitart.js';
 import { Crank } from './crank.js';
-import { Battle, HookSpin, DEFAULT_ROD } from './battle.js';
+import { Battle, HookBite, DEFAULT_ROD } from './battle.js';
 import { BossDirector, bossVictory } from './boss.js'; // [phase9:fishing] boss fights
-import { drawShots, drawCircle } from './minigames.js';
+import { meterLayout, meterRect, hitShockButton } from './meter.js'; // [simple24] the meter + SHOCK button
 import { Titles, Finale, EscapeCine, Outro } from './cinematics.js';
 import { drawFightScene, drawFightBands, drawBiteCue, drawMessage } from './hud.js';
 import { Gear } from './gear.js';
@@ -242,17 +243,19 @@ export class Fishing {
     this.titles.pop(text, clamp(sx, 120, this.W - 120), clamp(sy - len * 0.32 - 60, this.battle?.boss ? 150 : 90, this.H - 160), col, { scale });
   }
 
-  // Start the current species event now (debug / older test drivers).
-  startPhase() {
-    const B = this.battle;
-    if (!B) return;
-    const name = B.phases[B.pi];
-    if (name && name !== 'tension') B.startEvent(name);
+  startPhase() { /* [simple24] species events are gone: one meter, one spin */ }
+
+  // [simple24] Screen rects of the fight HUD (the fishing lesson brackets them): 'meter', 'bar', 'shock', 'all', 'gear'.
+  partRect(kind = 'meter') {
+    if (kind === 'gear') return this.gear.rect?.() || null;
+    if (this.state !== 'fight' || !this.battle) return null;
+    const r = meterRect(this, kind);
+    return r && Number.isFinite(r.x) ? r : null;
   }
 
   crankHint() {
     if (this.box) return this.box.crankHint();
-    if (this.state === 'bite') return [Math.round(this.W * 0.42), Math.round(this.H * 0.55)];
+    if (this.state === 'bite') return this.fishScreen();
     return this.battle ? this.battle.crankHint() : [this.input.x, this.input.y];
   }
 
@@ -427,7 +430,7 @@ export class Fishing {
       default: break;
     }
     if (this.zapLine) { this.zapLine.t += rdt; if (this.zapLine.t > this.zapLine.dur + 0.15) this.zapLine = null; }
-    this.gear.update(rdt, this.state === 'fight' ? this.battle : this.state === 'box' ? this.box : this.state === 'bite' ? this.hs : null);
+    this.gear.update(rdt, this.state === 'fight' ? this.battle : this.state === 'box' ? this.box : null);
     if ((this.state === 'idle' && h.visible) || this.state === 'nibble') this.gear.warm(1); // cache the spin frames before a bite
     try { this.boss.update(dt); } catch (e) { if (!this.bossErr) { this.bossErr = true; console.error(e); } }
     if (this.bossWin && this.bossWin.update(rdt) === 'done') this.bossWin = null;
@@ -539,10 +542,9 @@ export class Fishing {
       } else {
         this.state = 'bite';
         this.game.water?.disturb?.(h.x, h.y, 0.9, 8); // [phase5:water] the strike
-        this.hs = new HookSpin(this, f);
+        this.hs = new HookBite(this, f);
         this.biteT = this.biteMax = this.hs.window;
         this.gear.reset();
-        this.gear.flashOn('#ffe27a', 0.8);
         h.dip = 10;
         f.feel('determined', 1);
         f.chompT = 0.3;
@@ -560,49 +562,37 @@ export class Fishing {
     }
   }
 
-  // The fish has the bait: spin the gear up into the hook band (HookSpin) before the window closes.
+  // The fish has the bait: click (or Space) before the window closes.
   updateBite(dt, canHook) {
-    const f = this.fish, h = this.hook, hs = this.hs;
+    const f = this.fish, h = this.hook, hs = this.hs, inp = this.input, g = this.game;
     if (!f || !hs) { this.releaseFish(true); return; }
     const r = hs.update(dt);
     this.biteT = hs.window - hs.t;
     this.tension = hs.tension;
-    // the fish tugs and shakes on the hook; the line tightens as the gear spins up
+    // the fish tugs and shakes on the hook
     const side = f.x < h.x ? -1 : 1;
     const tug = Math.max(0, Math.sin(this.t * 11)) * 3;
     f.x = damp(f.x, h.x + side * ((f.boss ? this.fishLen(f) * 0.42 : 8 * f.scale + 3) + tug), 16, dt);
     f.y = damp(f.y, h.y + 2 + Math.sin(this.t * 23) * 1.2, 16, dt);
     f.facing = -side;
-    f.feel(hs.inBand ? 'scared' : 'determined', 0.2);
-    this.focusCam(lerp(f.x, h.x, 0.5), f.y, this.fightZoom() * 0.9, 1.8); // a gentle push-in on the strike [pace16] was 2.5
-    h.dip = Math.max(h.dip, 4 + tug + Math.sin(this.t * 40) * 2 + hs.set * 4);
-    if (rng.chance(dt * (12 + hs.set * 20))) this.particles.bubbles(h.x, h.y, 1, { size: 1 });
-    if (hs.inBand && rng.chance(dt * 8)) this.particles.glint?.(h.x + rng.float(-4, 4), h.y + rng.float(-3, 3), { len: 3 });
-    void canHook;
-    if (r === 'hooked') { this.setHook(false); return; }
-    if (r === 'rip') { this.hookFail('rip'); return; }
+    f.feel('determined', 0.2);
+    this.focusCam(lerp(f.x, h.x, 0.5), f.y, this.fightZoom() * 0.9, 1.8);
+    h.dip = Math.max(h.dip, 4 + tug + Math.sin(this.t * 40) * 2);
+    if (rng.chance(dt * 14)) this.particles.bubbles(h.x, h.y, 1, { size: 1 });
+    const click = (inp.pressed || inp.keyPressed?.(' ')) && !g.ui?.blocking && canHook !== false;
+    if (click) { inp.consume?.(); this.setHook(false); return; }
     if (r === 'slow') this.hookFail('slow');
   }
 
-  // Spin-to-hook failed: too slow (the fish lets go) or the hook ripped out (spun far too fast).
+  // Too slow: the fish lets go.
   hookFail(kind) {
-    const f = this.fish, h = this.hook;
+    const f = this.fish;
     const [sx, sy] = this.toScreen(f.x, f.y);
-    if (kind === 'rip') {
-      this.sfx('line_snap', { pitch: 1.25 });
-      this.shake(6);
-      this.cam?.flash?.('#ff9a8a', 0.2);
-      this.titles.add('snap', 'RIPPED!', { seed: rng.int(1, 9999) });
-      this.particles.sparks(h.x, h.y, 12, { speed: [40, 140], colors: ['#ffffff', '#ffd25a', '#ff9a3a'] });
-      this.gear.strain = 1;
-      this.gear.flashOn('#ff4f5e', 1);
-      this.releaseFish(true, 'anger');
-    } else {
-      this.iconPop('miss', sx, sy);
-      this.titles.pop('TOO SLOW!', sx, sy - 34, '#ff8a7a', { scale: 2 });
-      this.sfx('escape', { vol: 0.6 });
-      this.releaseFish(true, 'music');
-    }
+    this.iconPop('miss', sx, sy);
+    this.titles.pop('TOO SLOW!', sx, sy - 34, '#ff8a7a', { scale: 2 });
+    this.sfx('escape', { vol: 0.6 });
+    this.releaseFish(true, 'music');
+    void kind;
   }
 
   // ------------------------------------------------------------------ hook-set
@@ -627,6 +617,7 @@ export class Fishing {
     this.tension = this.battle.tension;
     this.splats = [];
     this.holdKind = null;
+    this.btnPress = 0; this.btnBad = 0; this.btnDenied = 0; this.meterShake = 0; this.tickT = 0; this.chainArcs = [];
     this.gear.reset();
     this.gear.flashOn('#ffffff', 1);
     this.gear.kick(1);
@@ -642,9 +633,7 @@ export class Fishing {
     this.sfx('hookset');
     this.sfx('splash_small', { vol: 0.6, pitch: 0.8 });
     const P = this.particles;
-    P.ringWave?.(f.x, f.y, 34, '#ffffff', { life: 0.5, w: 3 });
-    P.ringWave?.(f.x, f.y, 22, '#8ff0ff', { life: 0.35, w: 2, delay: 0.06 });
-    P.speedLines?.(f.x, f.y, 18, { r0: 26, r1: 60, inward: true, len: [8, 18], color: '#ffffff' });
+    P.impact?.(f.x, f.y, 2, { ramp: 'aqua' });
     P.burst(f.x, f.y, 14, { colors: ['#ffffff', '#bff8ff', '#c8f56a'], speed: 80, g: 0, life: 0.45 });
     P.splashBurst?.(f.x, f.y, 1.1);
     g.water?.disturb?.(f.x, f.y, 1.4, 12); // [phase5:water] hook-set shock wave
@@ -660,7 +649,7 @@ export class Fishing {
     g.onHooked?.(f);
   }
 
-  // Instant shock for older drivers (fires as a PERFECT release).
+  // Instant shock for older drivers (fires as a PERFECT press).
   tryShock() {
     const B = this.battle;
     if (!B) return false;
@@ -670,43 +659,40 @@ export class Fishing {
   updateFight(dt) {
     const g = this.game, B = this.battle, f = this.fish, inp = this.input;
     if (!B || !f) { this.releaseFish(false); return; }
-    // SHOCK: hold the mouse button (unless a surge is on: then the hold is a pull), Space or the right button
-    // to charge; let go to zap. What a mouse hold is for is decided when it starts.
-    if (inp.pressed) this.holdKind = B.boss?.hitMinion?.(inp.x, inp.y) ? 'bonk' : !B.qte?.active && B.canCharge && !B.event ? 'charge' : 'pull';
-    if (!inp.down) this.holdKind = null;
-    const held = (inp.down && this.holdKind === 'charge') || !!inp.key?.(' ') || !!inp.rdown;
-    B.updateCharge(this.rdt, held);
-    this.shockGrab = this.holdKind === 'charge';
+    const rdt = this.rdt;
+    this.btnPress = Math.max(0, (this.btnPress || 0) - rdt * 5);
+    this.btnBad = Math.max(0, (this.btnBad || 0) - rdt * 2.5);
+    this.btnDenied = Math.max(0, (this.btnDenied || 0) - rdt * 3);
+    this.meterShake = Math.max(0, (this.meterShake || 0) - rdt * 3);
+    for (const c of this.chainArcs || []) c.t += rdt;
+    if (this.chainArcs?.length) this.chainArcs = this.chainArcs.filter((c) => c.t < c.delay + 0.35);
+    // SHOCK: Space, or a click (anywhere during a beat, or on the button), or the right button
+    const onBtn = inp.pressed && hitShockButton(this, inp.x, inp.y);
+    const fire = inp.keyPressed?.(' ') || inp.rpressed || onBtn || (inp.pressed && !!B.beat);
+    if (fire && !g.ui?.blocking) { B.pressShock(); if (inp.pressed) inp.consume?.(); }
     g.timeScaleTarget = 1;
     const r = B.update(dt);
     this.tension = B.tension;
     f.controlled = true;
+    // centred: soft ticks that climb with the steady streak
+    if (B.inZone && !B.beat && !B.stunned && B.mode !== 'hookset') {
+      this.tickT -= rdt;
+      if (this.tickT <= 0) { this.tickT = 0.42 - B.steady * 0.14; this.sfx('reel_tick', { vol: 0.22 + B.steady * 0.12, pitch: 1 + B.steady * 0.6 + (B.centre ? 0.15 : 0) }); }
+    }
     // the stunned fish crackles
     if (B.stunned && rng.chance(dt * 26)) {
       const R = this.fishLen() * 0.45;
       this.particles.electrify?.(f.x + rng.float(-R, R) * 0.5, f.y + rng.float(-3, 3), R, 1, { sparks: rng.chance(0.5) ? 2 : 0 });
     }
-    // camera: follows the fish (or what the event wants to show), leaning into a surge
-    const q = B.qte;
-    if (q) this.leanDir = q.dir;
+    // camera: follows the fish; the boss intro pushes in
     let zoom = f.boss ? this.bossZoom() : this.fightZoom();
     if (B.mode === 'hookset') zoom += 0.3;
-    // the boss intro: a slow push in on the boss, then a pull back to the fight
     if (B.boss?.stage === 'intro') zoom += 0.45 * clamp01((B.boss.stageT - 0.8) / 1.5);
-    if (B.trick?.kind === 'jump') zoom = 1.55;
-    if (B.mode === 'surge' && B.surgeMul > 1.5) zoom -= 0.15;
-    const back = q?.active ? clamp01(q.k * 1.6) : 0;
-    const lk = B.lean * (1 - back * 1.8);
-    const ld = this.leanDir ?? 0;
-    this.leanX = damp(this.leanX, Math.cos(ld) * lk * 34, 3.6, dt);
-    this.leanY = damp(this.leanY, Math.sin(ld) * lk * 20, 3.6, dt);
-    const ev = B.event?.focus;
-    if (ev) this.focusCam(ev.x, ev.y, ev.zoom, 3.2); // [pace16] camera moves a little slower (was 4)
-    else if (B.boss?.stage === 'intro') this.focusCam(f.x, f.y - (this.H * 0.16) / zoom, zoom, 1.6); // the boss sits low: room for its title
-    else this.focusCam(f.x + this.leanX / zoom, f.y + this.leanY / zoom, zoom - Math.abs(lk) * 0.12, B.mode === 'hookset' ? 4.5 : 3); // [pace16] was 6 / 4
-    // character pose from what the player is doing
+    if (B.beat) zoom += 0.12;
+    if (B.boss?.stage === 'intro') this.focusCam(f.x, f.y - (this.H * 0.16) / zoom, zoom, 1.6);
+    else this.focusCam(f.x, f.y + (this.H * 0.08) / zoom, zoom, B.mode === 'hookset' ? 4.5 : 3); // the fish sits a bit high: room for the meter
     if (!this.poseHold) {
-      const pose = q?.holding ? 'pull' : this.gear.p > 0.08 || B.stunned ? 'reel' : 'pull';
+      const pose = B.stunned || this.gear.p > 0.08 ? 'reel' : 'pull';
       if (pose !== this.pose) this.setPose(pose);
     }
     if (r === 'ok') return;
@@ -714,198 +700,136 @@ export class Fishing {
     else this.fail(r);
   }
 
-  // ------------------------------------------------------------------ battle callbacks (juice)
+  // ------------------------------------------------------------------ battle callbacks (juice) [simple24]
   fishScreen() { const f = this.fish; return f ? this.toScreen(f.x, f.y) : [this.W / 2, this.H / 2]; }
+  btnPos() { const b = meterLayout(this).btn; return [b.cx, b.cy]; }
 
-  onCounter(win, dir, combo) {
-    const f = this.fish, P = this.particles, fx = this.fx;
-    if (!f) return;
+  // the marker entered / left the sweet zone
+  onZone(inside) {
+    if (inside) { this.sfx('timing_good', { vol: 0.3, pitch: 1.4 }); this.gear.flashOn('#8be04a', 0.35); }
+    else this.sfx('reel_tick', { vol: 0.35, pitch: 0.6 });
+  }
+
+  onLungeWarn(L) {
     const [sx, sy] = this.fishScreen();
-    const px = this.input.x, py = this.input.y;
-    if (win) {
-      this.sfx(combo > 1 ? 'timing_perfect' : 'timing_good', { pitch: 1 + Math.min(0.5, combo * 0.08) });
-      this.sfx('splash_small', { vol: 0.5, pitch: 1.2 });
-      this.shake(3 + Math.min(3, combo));
-      P.splashBurst?.(f.x, f.y, 0.8, { color: '#c8f56a' });
-      P.stars?.(f.x, f.y, 8 + combo * 2, { speed: [30, 90], colors: ['#ffffff', '#e2ffb0', '#8be04a'] });
-      fx.ringWave(px, py, 34, '#8be04a', { life: 0.4, w: 4 });
-      fx.lightStreaks(px, py, 10, { dir: dir + Math.PI, spread: 0.5, colors: ['#e2ffb0', '#ffffff', '#8be04a'] });
-      fx.glints(px, py, 4, { w: 20, h: 14, color: '#e2ffb0' });
-      if (combo > 1) this.titles.pop('x' + combo, sx, sy - this.zoneRadius() * 0.6, '#c8f56a', { scale: 2 });
-      this.setPose('yank', 0.3);
-      this.gear.kick(1);
-    } else {
-      this.sfx('timing_miss');
-      this.sfx('reel_tick', { pitch: 0.5, vol: 0.5 });
-      this.shake(5);
-      this.cam?.flash?.('#ff9a8a', 0.18);
-      const [rx, ry] = this.rodTip();
-      P.sparks?.(rx, ry, 8, { speed: [40, 120], colors: ['#ffffff', '#ffd23a', '#ff9a3a'] });
-      fx.ringWave(px, py, 24, '#ff6a5a', { life: 0.35, w: 3 });
-      this.gear.strain = 1;
+    this.titles.pop(L.dir < 0 ? 'RUN!' : 'RUSH!', sx, sy - this.zoneRadius() * 0.7, '#ffd23a', { scale: 2 });
+    this.sfx('slack_warn', { vol: 0.5, pitch: 1.2 });
+  }
+
+  onLunge(L) {
+    const f = this.fish;
+    if (!f) return;
+    this.sfx('splash_small', { vol: 0.6, pitch: 0.8 });
+    this.particles.bubbleTrail?.(f.x, f.y, Math.cos(this.battle?.away ?? 0) * -L.dir * 90, 0, { n: 6 });
+    this.particles.wake?.(f.x, f.y, this.battle?.away ?? 0, 4);
+    this.shake(3);
+    this.meterShake = 0.6;
+  }
+
+  // a charge is ready
+  onShockReady() {
+    this.sfx('neon_buzz', { vol: 0.35, pitch: 1.5 });
+    const [bx, by] = this.btnPos();
+    this.fx.pixelBurst?.('spark', bx, by, 6, { ramp: 'gold', layer: 'fg' });
+  }
+
+  // the beat begins: the fish braces, the marker freezes
+  onBeat() {
+    this.sfx('magic', { vol: 0.5, pitch: 1.3 });
+    this.sfx('neon_buzz', { vol: 0.45, pitch: 0.8 });
+    const f = this.fish;
+    if (f) this.particles.pixelBurst?.('sparkle', f.x, f.y, 8, { ramp: 'gold', w: this.fishLen() * 0.4, h: 6 });
+  }
+  onBeatSweep() { this.sfx('reel_tick', { vol: 0.5, pitch: 1.6 }); }
+  onBeatCrit() { this.sfx('reel_tick', { vol: 0.7, pitch: 2 }); }
+  onBeatMiss() {
+    const L = meterLayout(this);
+    this.titles.pop('MISSED', L.cx, L.cy - L.h - 30 * L.S, '#bfeaff', { scale: 1.5 });
+    this.sfx('timing_miss', { vol: 0.4 });
+  }
+
+  // a press outside the beat: the button wobbles (no charge spent)
+  onShockFizzle(why) {
+    this.btnDenied = 1;
+    this.sfx('ui_error', { vol: 0.3 });
+    if (why === 'wait' && this.battle?.charges > 0) {
+      const [bx, by] = this.btnPos();
+      this.titles.pop('WAIT FOR IT', bx, by - 60 * (this.H / 540), '#ffe27a', { scale: 1.4 });
     }
   }
 
-  // ---- shock charge feedback
-  onChargeStart() {
-    this.sfx('neon_buzz', { vol: 0.35, pitch: 0.8 });
-  }
-
-  onChargePerfect() {
-    const G = this.gear, L = G.lay;
-    this.sfx('timing_perfect', { vol: 0.6, pitch: 1.5 });
-    G.flashOn('#ffffff', 0.7);
-    if (L) { this.fx.ringWave(L.cx, L.cy, L.R * 0.6, '#fff6c0', { life: 0.25, w: 3 }); this.fx.glints(L.cx, L.cy, 3, { w: L.R * 0.5, h: L.R * 0.5, color: '#fff6c0' }); }
-  }
-
-  onChargeOver() {
-    this.sfx('slack_warn', { vol: 0.5, pitch: 1.6 });
-    this.gear.denied = 0.6;
-  }
-
-  // tap: a quick press does nothing; show that the shock wants a HOLD
-  onChargeCancel(tap) {
-    if (!tap) return;
-    const L = this.gear.lay;
-    this.gear.denied = 0.5;
-    if (L) this.titles.pop('HOLD!', L.cx, L.cy - L.rg - 30 * L.S, '#ffe27a', { scale: 2 });
-  }
-
-  onBackfire() {
-    const G = this.gear, L = G.lay;
-    this.sfx('static_burst', { vol: 0.8, pitch: 0.6 });
-    this.sfx('timing_miss');
-    this.shake(7);
-    this.cam?.flash?.('#ff9a8a', 0.25);
-    G.flashOn('#ff4f5e', 1);
-    G.strain = 1;
-    if (L) {
-      this.fx.boltBurst(L.cx, L.cy, L.R + 30, 10, { color: '#ff9a7a' });
-      this.fx.sparks(L.cx, L.cy, 16, { speed: [80, 220], colors: ['#ffffff', '#ffd23a', '#ff5a4a'], g: 260 });
-      this.titles.pop('BACKFIRE!', L.cx, L.cy - L.rg - 30 * L.S, '#ff8a7a', { scale: 2 });
-    }
-  }
-
+  // The zap leaves the button (muzzle flash) and runs down the line. grade 'perfect' | 'good'.
+  // (QuestBook wraps this and onBackfire: 'shockFired' {grade}.)
   onShockFire(grade = 'perfect') {
-    const B = this.battle, G = this.gear, L = G.lay;
+    const B = this.battle, strong = grade === 'perfect';
     this.zapLine = { t: 0, dur: B?.zap?.dur ?? 0.2, grade };
-    G.fire = 1;
-    G.flashOn(grade === 'perfect' ? '#ffffff' : grade === 'fizzle' ? '#c8d4dc' : '#fff07a', grade === 'perfect' ? 1 : 0.6);
-    G.kick(grade === 'perfect' ? 1 : 0.4);
-    const strong = grade === 'perfect';
-    this.sfx('static_burst', { vol: strong ? 0.9 : 0.5, pitch: strong ? 1.2 : 0.9 });
-    this.sfx('neon_buzz', { vol: 0.5, pitch: 1.6 });
-    if (L) {
-      if (grade === 'fizzle') {
-        this.fx.burst(L.cx, L.cy, 10, { colors: ['#c8d4dc', '#ffffff', '#8a9aa8'], speed: 60, g: 0, life: 0.35 });
-        this.fx.aeroBubbles(L.cx, L.cy, 4, { w: L.R * 0.4, speed: [20, 50] });
-      } else {
-        this.fx.boltBurst(L.cx, L.cy, L.R + (strong ? 40 : 16), strong ? 12 : 6);
-        this.fx.ringWave(L.cx, L.cy, L.rg + (strong ? 20 : 6), strong ? '#fff07a' : '#bff8ff', { life: 0.35, w: strong ? 4 : 2 });
-      }
-      const label = { perfect: 'PERFECT!', weak: 'WEAK', fizzle: 'FIZZLE...', shrug: 'WEAK' }[grade];
-      if (label) this.titles.pop(label, L.cx, L.cy - L.rg - 30 * L.S, strong ? '#ffe27a' : grade === 'fizzle' ? '#bfeaff' : '#ffe27a', { scale: strong ? 3 : 2 });
-    }
+    this.btnPress = 1;
+    this.gear.kick(strong ? 1 : 0.5);
+    this.sfx('static_burst', { vol: strong ? 1 : 0.6, pitch: strong ? 1.25 : 0.95 });
+    this.sfx('thunder', { vol: strong ? 0.4 : 0.2, pitch: 1.8 });
+    const [bx, by] = this.btnPos();
+    // muzzle flash: a burst of pixel zaps and sparks off the button
+    this.fx.zapBurst?.(bx, by, strong ? 8 : 4, { layer: 'fg', r: 14, ramp: strong ? 'gold' : 'cyan' });
+    this.fx.sparks(bx, by, strong ? 18 : 8, { speed: [80, 240], colors: ['#ffffff', '#fff6a0', '#ffd23a', '#7ff4ff'], g: 200 });
+    this.fx.impact?.(bx, by, strong ? 2 : 1, { ramp: 'gold', layer: 'fg' });
     const [rx, ry] = this.rodTip();
     this.particles.electrify?.(rx, ry, 8, strong ? 3 : 1, { flat: 1 });
+    this.meterShake = strong ? 1 : 0.5;
   }
 
-  // A zap that did not stun: fizzled, or the fish shrugged it off (shock resistance).
-  onShrug(grade) {
-    const f = this.fish;
+  // the zap arrives: impact, knockback, 3D words. dmg = catch bar gained, chain = extra arcs.
+  onShockHit(grade, dmg, chain = 0, weak = false) {
+    const f = this.fish, P = this.particles;
     if (!f) return;
-    const [sx, sy] = this.fishScreen();
-    if (grade === 'shrug') { this.titles.pop('RESISTED!', sx, sy - this.zoneRadius() * 0.7, '#bfeaff', { scale: 2 }); f.say('!', 0.5); f.feel('smug', 1.2); }
-    this.particles.electrify?.(f.x, f.y, this.fishLen() * 0.4, 2, { sparks: 2 });
-  }
-
-  onStun(grade = 'perfect') {
-    const f = this.fish, P = this.particles, B = this.battle;
-    if (!f) return;
-    const R = this.fishLen() * (grade === 'perfect' ? 0.7 : 0.45);
-    P.electrify?.(f.x, f.y, R, 7, { sparks: 10 });
-    P.boltBurst?.(f.x, f.y, R + 14, 9);
-    P.ringWave?.(f.x, f.y, R + 16, '#bff8ff', { life: 0.45, w: 3 });
-    P.ringWave?.(f.x, f.y, R + 6, '#fff07a', { life: 0.3, w: 2, delay: 0.05 });
-    P.aeroBubbles?.(f.x, f.y, 8, { w: R * 0.6, sizes: [2, 2, 3, 4] });
-    P.glints?.(f.x, f.y, 5, { w: R, h: R * 0.5, color: '#bff8ff' });
-    this.cam?.flash?.('#bff8ff', 0.4);
-    this.cam?.punch?.(f.x, f.y, 0.08, 0.3);
-    this.shake(6);
-    this.sfx('thunder', { vol: 0.35, pitch: 1.6 });
-    this.sfx('glitch', { vol: 0.5 });
+    const crit = grade === 'perfect';
+    const R = this.fishLen() * (crit ? 0.7 : 0.45);
+    P.impact?.(f.x, f.y, crit ? 2 : 1, { ramp: crit ? 'gold' : 'cyan', sparkles: crit ? 10 : 5 });
+    P.zapBurst?.(f.x, f.y, crit ? 8 : 4, { r: R * 0.5 });
+    P.electrify?.(f.x, f.y, R, crit ? 7 : 4, { sparks: crit ? 10 : 4 });
+    P.scales?.(f.x, f.y, crit ? 6 : 3, this.scaleColors());
+    P.aeroBubbles?.(f.x, f.y, crit ? 8 : 4, { w: R * 0.6, sizes: [2, 2, 3, 4] });
+    this.cam?.flash?.(crit ? '#fff6c0' : '#bff8ff', crit ? 0.4 : 0.22);
+    this.cam?.punch?.(f.x, f.y, crit ? 0.1 : 0.05, 0.3);
+    if (crit) this.cam?.slowmo?.(0.35, 0.35);
+    this.shake(crit ? 10 : 5);
+    this.sfx(crit ? 'thunder' : 'glitch', { vol: crit ? 0.6 : 0.5, pitch: crit ? 1.3 : 1.2 });
+    if (crit) this.sfx('timing_perfect', { pitch: 1.2 });
+    // chain lightning: arcs leap to bubbles beside the fish
+    this.chainArcs = [];
+    for (let i = 0; i < chain; i++) {
+      const a = (i ? -1 : 1) * rng.float(0.5, 1.2) + (i ? Math.PI : 0);
+      const d = this.fishLen() * rng.float(0.8, 1.2);
+      const tx = f.x + Math.cos(a) * d, ty = f.y + Math.sin(a) * d * 0.5;
+      this.chainArcs.push({ x0: f.x, y0: f.y, x1: tx, y1: ty, t: 0, delay: 0.08 + i * 0.1 });
+    }
+    // the words pop right above the meter, where the eyes are when you press
+    const ML = meterLayout(this);
+    const x = ML.cx, y = Math.round(ML.cy - ML.h / 2 - 96 * ML.S);
+    if (crit) this.titles.pop(weak ? 'WEAK POINT!' : 'CRITICAL!', x, y, '#ffe27a', { scale: 6 });
+    else this.titles.pop('ZAP!', x, y, '#bff8ff', { scale: 4 });
+    const S = this.H / 540;
+    this.titles.pop('+' + Math.round(dmg * 100) + '%', x + 90 * S, y + 34 * S, '#c8f56a', { scale: 1.8 });
+    if (chain) this.titles.pop('CHAIN x' + (chain + 1), x - 90 * S, y + 34 * S, '#8ff0ff', { scale: 1.8 });
+    if ((this.battle?.combo || 0) > 1 && crit) this.titles.pop('COMBO x' + this.battle.combo, x, y + 60 * S, '#ffd23a', { scale: 1.6 });
     f.say('!!', 0.6);
-    const [sx, sy] = this.fishScreen();
-    this.fx.lensFlare(sx, sy, { cx: this.W / 2, cy: this.H / 2, life: 0.6, scale: 0.6, tint: '#bff8ff' });
-    this.fx.bloom(sx, sy, 50, '#bff8ff', { life: 0.35 });
-    void B;
   }
 
-  onShockFizzle() {
-    this.sfx('ui_error', { vol: 0.4 });
-    this.gear.denied = 1;
-  }
+  onStun() { this.sfx('glitch', { vol: 0.35 }); }
 
-  onTele() {
-    const f = this.fish;
-    if (!f) return;
-    this.particles.glints?.(f.x, f.y, 2, { w: 8, h: 6, color: '#ffd0b0' });
-  }
-
-  onSurge(dir) {
-    const f = this.fish;
-    if (!f) return;
-    this.particles.ringWave?.(f.x, f.y, 20, '#ffb08a', { life: 0.3, w: 2, flat: 0.6 });
-    this.gear.strain = Math.max(this.gear.strain, 0.6);
-    this.gear.tiltVY += Math.cos(dir) * 2.5; this.gear.tiltVX += Math.sin(dir) * 1.5; // the surge yanks the gear
-    void dir;
-  }
-
-  onTrick(kind, title) {
-    const f = this.fish;
-    if (!f || !title) return;
-    const [sx, sy] = this.fishScreen();
-    this.titles.pop(title, sx, sy - this.zoneRadius() * 0.7, kind === 'jump' ? '#8ff0ff' : '#ffd0b0', { scale: 2 });
-  }
-
-  onTrickDone(ok) {
-    const [sx, sy] = this.fishScreen();
-    if (ok) { this.fx.stars(sx, sy, 10, { speed: [40, 120] }); this.fx.ringWave(sx, sy, 30, '#c8f56a', { life: 0.35, w: 3 }); }
-    else this.fx.ringWave(sx, sy, 26, '#ff6a5a', { life: 0.35, w: 3 });
-  }
-
-  onJumpLand(ok) {
-    const [sx, sy] = this.fishScreen();
-    if (ok) this.fx.aeroBubbles(sx, sy, 8, { w: 20, speed: [40, 90] });
-    else { this.gear.strain = 1; this.cam?.flash?.('#ff9a8a', 0.2); }
-  }
-
-  onExhausted() {
-    const f = this.fish;
-    if (!f) return;
-    this.particles.stars?.(f.x, f.y - 6, 10, { speed: [20, 60], g: -10 });
-    this.particles.ringWave?.(f.x, f.y, 24, '#ffe27a', { life: 0.5, w: 2 });
-    this.sfx('magic', { vol: 0.5 });
-  }
-
-  onRecovered() {
-    const f = this.fish;
-    if (f) this.particles.ringWave?.(f.x, f.y, 22, '#ff8a7a', { life: 0.4, w: 2 });
-    this.sfx('grunt', { vol: 0.5 });
-  }
-
-  onLineOut() { this.gear.strain = 1; }
-
-  onEventStart(ev) {
-    this.titles.banner(ev.title || '', ev.color || '#8ff0ff', '', { icon: ev.name });
-  }
-
-  onEventEnd(ev, ok) {
-    const [sx, sy] = this.fishScreen();
-    if (ok) {
-      this.titles.pop(ev.winText || 'NICE!', sx, sy - this.zoneRadius() * 0.7, '#c8f56a', { scale: 2 });
-      this.fx.aeroConfetti(sx, sy, 18, { speed: [60, 160] });
-    } else this.fx.ringWave(sx, sy, 30, '#ff6a5a', { life: 0.4, w: 3 });
+  // a bad press: the charge discharges into your own reel
+  onBackfire() {
+    const [bx, by] = this.btnPos();
+    this.sfx('static_burst', { vol: 0.7, pitch: 0.6 });
+    this.sfx('timing_miss');
+    this.shake(5);
+    this.cam?.flash?.('#ff9a8a', 0.18);
+    this.btnBad = 1; this.btnPress = 0.6;
+    this.gear.flashOn('#ff4f5e', 1);
+    this.gear.strain = 1;
+    this.fx.sparks(bx, by, 14, { speed: [80, 200], colors: ['#ffffff', '#ffd23a', '#ff5a4a'], g: 260 });
+    this.fx.pixelBurst?.('smoke', bx, by - 10, 4, { layer: 'fg' });
+    this.titles.pop('BACKFIRE!', bx, by - 66 * (this.H / 540), '#ff8a7a', { scale: 2 });
+    this.meterShake = 0.8;
   }
 
   // [phase9:fishing] boss callbacks (boss.js BossFight)
@@ -931,58 +855,14 @@ export class Fishing {
   }
 
   onBossAttack(kind) {
-    const f = this.fish;
-    if (kind === 'charge') { this.sfx('grunt', { vol: 0.8, pitch: 0.6 }); this.sfx('slack_warn', { pitch: 0.7 }); this.shake(4); }
-    else if (kind === 'ink') { this.sfx('blub', { pitch: 0.5, vol: 0.9 }); this.titles.banner('INK! CIRCLE TO WIPE', '#c89aff', '', { pal: 'violet' }); this.shake(5); }
-    else { this.sfx('whale_call', { vol: 0.4, pitch: 1.6 }); this.titles.banner('MINIONS! CLICK THEM', '#ffe27a', '', { pal: 'sun' }); }
-    if (f) this.particles.pixelBurst?.('sparkle', f.x, f.y, 6, { ramp: 'red' });
+    if (kind === 'ink') { this.sfx('blub', { pitch: 0.5, vol: 0.9 }); this.titles.banner('INK! KEEP SPINNING', '#c89aff', '', { pal: 'violet' }); this.shake(5); }
   }
 
-  onBossCharge(a) {
-    const f = this.fish;
-    this.sfx('jump_out', { pitch: 0.6 });
-    this.sfx('splash_big', { vol: 0.6, pitch: 0.7 });
-    if (f) this.particles.speedLines?.(f.x, f.y, 14, { r0: 10, r1: 40, color: '#ffffff', len: [8, 20] });
-    void a;
-  }
-
-  onBossDodge() {
-    this.sfx('timing_perfect', { pitch: 1.2 });
-    this.sfx('dodge_hit', { vol: 0.4, pitch: 1.5 });
-    const [sx, sy] = this.fishScreen();
-    this.fx.pixelBurst?.('star', this.W / 2, this.H * 0.3, 10, { ramp: 'lime', layer: 'fg' });
-    void sx; void sy;
-  }
-
-  onBossDazed() {
-    const f = this.fish;
-    this.sfx('eruption_boom', { vol: 0.7, pitch: 1.2 });
-    this.sfx('boing', { vol: 0.6, pitch: 0.6 });
-    this.shake(9);
-    if (f) { this.particles.impact?.(f.x, f.y, 2, { ramp: 'gold' }); this.particles.pixelBurst?.('star', f.x, f.y - 10, 10, { ramp: 'gold' }); }
-  }
-
-  onBossHit() {
-    const f = this.fish;
-    this.sfx('dodge_hit');
-    this.sfx('timing_miss');
-    this.shake(12);
-    this.cam?.flash?.('#ff8a7a', 0.35);
-    if (f) this.particles.impact?.(f.x, f.y, 2, { ramp: 'red' });
-    this.popOver('OUCH!', 'red', 3);
-  }
-
-  onBossCrit() {
-    const f = this.fish;
+  onBossCrit(def, weak) {
     this.sfx('catch_rare', { vol: 0.6 });
-    this.sfx('thunder', { vol: 0.6, pitch: 1.2 });
-    this.cam?.slowmo?.(0.3, 0.5);
-    if (f) { this.particles.pixelBurst?.('star', f.x, f.y, 16, { ramp: 'gold', speed: [80, 220] }); this.particles.pixelBurst?.('shard', f.x, f.y, 10, { ramp: 'cyan' }); }
-    this.popOver('CRITICAL!', 'sun', 4);
+    const f = this.fish;
+    if (f) { this.particles.pixelBurst?.('star', f.x, f.y, 16, { ramp: 'gold', speed: [80, 220] }); this.particles.pixelBurst?.('shard', f.x, f.y, 10, { ramp: weak ? 'red' : 'cyan' }); }
   }
-
-  onMinionBite() { this.popOver('CHOMP!', 'red', 2); }
-  onMinionBonk() { this.sfx('mash_pop', { pitch: 1.3 }); }
 
   // ------------------------------------------------------------------ outcomes
   fail(reason) {
@@ -1114,7 +994,7 @@ export class Fishing {
       this.box.drawWorld(ctx);
     } else if (h.visible) {
       const [rx, ry] = this.rodTip();
-      this.drawRope(ctx, rx, ry, h.x, h.y - 5, this.state === 'bite' && this.hs ? 0.2 + this.hs.set * 0.7 : 0.2, false);
+      this.drawRope(ctx, rx, ry, h.x, h.y - 5, this.state === 'bite' && this.hs ? 0.5 : 0.2, false);
       this.drawHookAndBait(ctx);
       if (this.boxHover) drawBoxHover(ctx, this, this.boxHover);
     }
@@ -1132,17 +1012,15 @@ export class Fishing {
       this.boss.drawWorld(ctx); // a boss swimming in
       if (this.state === 'fight') B?.boss?.drawWorld(ctx); // the hooked boss: aura, minions
     } catch (e) { if (!this.bossDrawErr) { this.bossDrawErr = true; console.error(e); } }
-    if (B?.trick?.kind === 'spit') drawShots(ctx, B.trick.shots, 'bubble');
-    if (B?.trick?.kind === 'hop' && this.fish) {
-      const f = this.fish;
-      drawCircle(ctx, f.x, f.y, 10 + Math.sin(this.t * 12) * 2, '#9ad8ff', 0.8, 1, 8, this.t * 3);
-    }
-    if (B?.glitchT > 0 && this.fish) {
-      const f = this.fish;
-      ctx.fillStyle = rgba('#ff3a7a', 0.5); ctx.fillRect(Math.round(f.x - 10), Math.round(f.y - 4), 20, 2);
-      ctx.fillStyle = rgba('#3affd8', 0.5); ctx.fillRect(Math.round(f.x - 8), Math.round(f.y + 3), 16, 2);
-    }
     if (B && this.fish && (B.stunned || B.zap)) this.drawStunnedFish(ctx, B);
+    // [simple24] chain lightning: arcs leaping from the fish to bubbles beside it
+    for (const c of this.chainArcs || []) {
+      if (c.t < c.delay) continue;
+      const k = clamp01((c.t - c.delay) / 0.12);
+      const x1 = lerp(c.x0, c.x1, k), y1 = lerp(c.y0, c.y1, k);
+      drawBolt(ctx, boltPoints(c.x0, c.y0, x1, y1, 5, (this.t * 911 + c.delay * 1e4) >>> 0), 1 - clamp01((c.t - c.delay - 0.12) / 0.23));
+      if (k >= 1 && !c.hit) { c.hit = true; this.particles.zapBurst?.(c.x1, c.y1, 4); this.particles.aeroBubbles?.(c.x1, c.y1, 3, { w: 3 }); }
+    }
     this.finale?.drawWorld(ctx);
     this.cine?.drawWorld?.(ctx);
   }
@@ -1312,7 +1190,6 @@ export class Fishing {
 
   drawCinematicHudInner(ctx) {
     if (this.state === 'fight' && this.battle && this.fish && this.battle.boss?.stage !== 'intro') drawFightBands(ctx, this, this.battle);
-    else if (this.state === 'bite' && this.hs) this.gear.draw(ctx, this.hs, 1);
     else if (this.state !== 'box' && this.gear.show > 0.01) this.gear.draw(ctx, null, 1);
     if (this.state === 'box' && this.box) this.box.drawBands(ctx);
     if (this.state === 'fight' && this.battle?.boss) { try { this.battle.boss.drawHud(ctx); } catch (e) { if (!this.bossHudErr) { this.bossHudErr = true; console.error(e); } } }
@@ -1342,4 +1219,4 @@ export class Fishing {
   }
 }
 
-export { drawCircle, TAU };
+export { TAU };

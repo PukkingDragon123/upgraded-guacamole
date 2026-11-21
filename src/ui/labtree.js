@@ -231,7 +231,7 @@ const SEAL = new Map();
 const sealCached = (k, build) => { let c = SEAL.get(k); if (!c) { c = build(); SEAL.set(k, c); if (SEAL.size > 120) SEAL.delete(SEAL.keys().next().value); } return c; };
 const PK = (hex, a = 1) => pack(hex, Math.round(a * 255));
 // the veil + chains over a tile's glass window (S = logical tile size)
-function sealTex(S) {
+export function sealTex(S) {
   return sealCached('veil|' + S, () => {
     const D = S * HI, b = new PixelBuffer(D, D);
     const f = Math.max(5, Math.round(D * 0.135)), iw = D - f * 2, ri = Math.max(3, Math.round(D * 0.24) - f + 2);
@@ -272,7 +272,7 @@ function sealTex(S) {
   });
 }
 // a chunky gold padlock with a steel shackle and a keyhole; .cy = its body's centre (logical px from the top)
-function padlockTex(S) {
+export function padlockTex(S) {
   return sealCached('lock|' + S, () => {
     const W = Math.max(8, Math.round(S * 0.42)) * HI, H = Math.round(W * 1.12), b = new PixelBuffer(W, H);
     const bw = Math.round(W * 0.86), bh = Math.round(H * 0.52), bx = Math.round((W - bw) / 2), by = H - bh - 1;

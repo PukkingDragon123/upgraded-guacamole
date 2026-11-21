@@ -40,6 +40,7 @@
 // Progress: game events ('caught', 'labDone', 'unlocked', 'tankUpgraded', 'travel', 'tutorialDone', 'depthZone', 'kept', 'released',
 // 'baitBought', 'crafted', 'rodEquipped', 'panelOpen', 'boatUpgraded') plus a light poll of the save (oceans, tiers,
 // tutorial) and the depth zone (game.ocean.depthZone(), feature-detected; without it depth goals use their `alt`).
+import { FOOD_DATA } from './foods.js'; // [food24]
 import { LAB_BY_ID, OCEAN_NAMES, TANK_NAMES, BOAT_NAMES, BOAT_ORDER, TANK_ORDER, ensureLab, grantLabNode, ROOT_ID, grantUnlock, setLabQuestInfo, nodesGatedBy, QUEST_GATED } from './lab.js';
 import { ROD_BY_ID, ensureRods } from './rods.js'; // [phase8:prog]
 import * as ITEMS from '../build/items.js';
@@ -422,6 +423,7 @@ export function rewardList(rw = {}) {
   for (const u of rw.unlock || []) { // [phase8:prog] readable unlock rewards
     if (u.kind === 'recipe' && u.id.startsWith('ws_rod_')) out.push({ key: 'rod:' + u.id.slice(7), label: 'New rod recipe: ' + (ROD_BY_ID[u.id.slice(7)]?.name || u.id), big: true });
     else if (u.kind === 'feature' && u.id === 'workshop') out.push({ key: 'hammer', label: 'Marina\'s Workshop opens!', big: true });
+    else if (u.kind === 'food') out.push({ key: 'food:' + u.id, label: 'New food: ' + (FOOD_DATA[u.id]?.name || u.id), big: true }); // [food24]
     else out.push({ key: u.kind + ':' + u.id, label: u.id });
   }
   return out;

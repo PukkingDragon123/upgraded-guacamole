@@ -1,4 +1,7 @@
-// The 3D GEAR (phase 6): the heart of the fishing minigame. A big low-poly chrome Frutiger Aero gear (15 bevelled
+// The 3D GEAR (phase 6): the heart of the fishing minigame. [simple24] In a meter fight (B.gearMode 'meter') it is
+// just the spin control: the gear, its glass plate and a spin hint (the meter, catch bar and SHOCK button live in
+// meter.js); circling the mouse, the mouse wheel and holding / tapping W / Up / R all spin it. Box reels keep the
+// full gauge HUD below. A big low-poly chrome Frutiger Aero gear (15 bevelled
 // teeth, five ridged spokes, a glossy bevelled rim with lime bolts, an aqua glow ring and a glowing gem hub behind
 // clear aqua glass) rendered with the shared low-poly renderer in the lower-right corner. The gear repeats every
 // 72 degrees, so its spin is a ring of cached renderMesh frames (warmed up while you wait for a bite); it is
@@ -395,13 +398,25 @@ export class Gear {
     this.pop = active ? Math.min(1, this.pop + dt * 2.2) : 0;
     // the hand: circling speed (rpm) while the circle is big enough to count
     const rk = clamp01((cr.radius - 3) / 9);
-    const hand = cr.stun > 0 || this.jam > 0 ? 0 : (cr.speed || 0) * 60 * rk;
+    const jammed = cr.stun > 0 || this.jam > 0;
+    let hand = jammed ? 0 : (cr.speed || 0) * 60 * rk;
+    // [simple24] other ways to spin: hold W / Up / R (a steady crank), tap them, or roll the mouse wheel
+    const inp = F.input;
+    const meter = B?.gearMode === 'meter';
+    if (meter && !jammed && inp) {
+      const keys = ['w', 'ArrowUp', 'r'];
+      if (keys.some((k) => inp.key?.(k))) hand = Math.max(hand, 135);
+      if (keys.some((k) => inp.keyPressed?.(k))) this.rpm += 26;
+      if (inp.wheel) { this.rpm += Math.min(3, Math.abs(inp.wheel)) * 20; this.wheelT = 0.25; }
+    }
+    this.wheelT = Math.max(0, (this.wheelT || 0) - dt);
     this.hand = hand;
     const drive = active && hand > 14;
     if (drive && cr.dir) this.dir = cr.dir;
-    let acc = -this.rpm * (drive ? 0.15 : 0.7) - (active ? this.load : 0);
+    let acc = -this.rpm * (drive ? 0.15 : this.wheelT > 0 ? 0.3 : 0.7) - (active ? this.load : 0);
     if (drive) acc += GRIP * (hand - this.rpm);
     this.rpm += acc * dt;
+    if (meter && this.rpm < 0) this.rpm = damp(this.rpm, 0, 8, dt); // the meter fight never spins the gear backwards
     if (!active) this.rpm = damp(this.rpm, 0, 3, dt);
     if (this.brake && this.rpm < 0) this.rpm = damp(this.rpm, 0, 14, dt);
     this.rpm = clamp(this.rpm, -180, 330);
@@ -565,6 +580,7 @@ export class Gear {
   }
 
   state(B) {
+    if (B?.gearMode === 'meter') return Math.abs(this.rpm) < 8 ? 'idle' : B.inZone ? 'sweet' : B.marker > B.zoneW ? 'over' : 'slow';
     const band = B?.band;
     if (!band || Math.abs(this.rpm) < 8) return 'idle';
     if (band.rip !== undefined && this.rpm > band.rip) return 'rip';
@@ -587,7 +603,7 @@ export class Gear {
     ctx.save();
     ctx.globalAlpha = clamp01(vis * 1.4);
     // ---- glass backplate + state glow
-    const plate = plateSprite(L.rg + L.tg + Math.round(8 * S));
+    const plate = plateSprite(B?.gearMode === 'meter' ? R + Math.round(12 * S) : L.rg + L.tg + Math.round(8 * S));
     ctx.drawImage(plate, cx - (plate.width - 1) / 2, cy - (plate.height - 1) / 2);
     const gcol = this.heat > 0.4 || st === 'rip' ? '#ff4f5e' : B?.stunned ? '#7ff4ff' : B?.charge ? '#fff07a' : st === 'sweet' ? '#8be04a' : st === 'over' ? '#ff9d2e' : '#59c3ff';
     const gA = this.heat > 0.4 ? 0.45 + 0.3 * Math.sin(t * 22) : B?.charge ? 0.35 + B.charge.k * 0.5 : st === 'sweet' ? 0.4 + 0.12 * Math.sin(t * 9) : 0.22;
@@ -597,9 +613,12 @@ export class Gear {
     const gr = Math.round(R * 1.45);
     ctx.drawImage(glowSprite(gr, gcol), cx - gr, cy - gr);
     ctx.restore();
-    // ---- rings
-    this.drawGauge(ctx, cx, cy, L, B, st);
-    this.drawProgress(ctx, cx, cy, L, B);
+    // ---- rings (the meter fight has its own meter: just the gear and a spin hint)
+    const meter = B?.gearMode === 'meter';
+    if (!meter) {
+      this.drawGauge(ctx, cx, cy, L, B, st);
+      this.drawProgress(ctx, cx, cy, L, B);
+    }
     // ---- the gear itself
     const img = this.render3D(L, B);
     if (img) ctx.drawImage(img, Math.round(cx - L.size / 2), Math.round(cy - L.size / 2));
@@ -624,6 +643,7 @@ export class Gear {
       const a0 = Math.random() * TAU, a1 = a0 + 0.8 + Math.random() * 1.5;
       drawBolt(ctx, boltPoints(cx + Math.cos(a0) * R * 0.3, cy + Math.sin(a0) * R * 0.3, cx + Math.cos(a1) * R * 0.85, cy + Math.sin(a1) * R * 0.85, 4, (Math.random() * 1e9) >>> 0), 0.85);
     }
+    if (meter) { this.drawSpinHint(ctx, cx, cy, L, B); ctx.restore(); return; }
     if (B?.charge) this.drawCharge(ctx, cx, cy, L, B);
     this.drawReadout(ctx, cx, cy, L, B, st);
     if (B && B.gearMode !== 'hook') this.drawTension(ctx, L.tx + slide, L.ty + Math.round(slide * 0.4), L, B, T);
@@ -763,6 +783,20 @@ export class Gear {
     // RELEASE! / overcharge warning over the hub
     const label = inWin ? 'NOW!' : c.k > w.hi ? 'TOO MUCH!' : '';
     if (label) word3D(ctx, label, cx, cy, { t, scale: (inWin ? 1.1 : 0.8) * L.S, pal: inWin ? 'sun' : 'red', wobble: 1.2 });
+  }
+
+  // [simple24] Meter fights: a 3D mouse circling the gear (and the wheel / W hint) while the gear is slow, a speed
+  // streak of pixel chevrons along the rim while it spins; during a beat the gear rests ('STOP' is the meter's job).
+  drawSpinHint(ctx, cx, cy, L, B) {
+    const t = this.t, S = L.S, R = L.R;
+    const slow = this.rpm < 40 && !B.beat && !B.stunned;
+    if (slow) {
+      const a = t * 6;
+      const rr = R * 0.62;
+      drawIcon3d(ctx, 'mouse', cx + Math.cos(a) * rr, cy + Math.sin(a) * rr, Math.round(28 * S), Math.sin(t * 5) * 0.6);
+      word3D(ctx, 'SPIN ME!', cx, Math.round(cy - R - 18 * S), { t, scale: 0.7 * S, pal: 'aqua', wobble: 1.2, alpha: 0.75 + 0.25 * Math.sin(t * 6) });
+    }
+    word3D(ctx, 'CIRCLE  WHEEL  W', cx, Math.round(cy + R + 12 * S), { t: 0, scale: 0.34 * S, pal: 'white', wobble: 0, alpha: 0.8 });
   }
 
   // Big glossy RPM number on a glass pill in the gauge's gap, with a spin prompt while the gear is too slow.

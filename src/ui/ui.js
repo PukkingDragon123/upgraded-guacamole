@@ -84,8 +84,8 @@ export class UI {
     return false;
   }
 
-  toast(text, icon = 'info', time = 3.5) {
-    this.toasts.push({ text, icon, t: 0, max: time });
+  toast(text, icon = 'info', time = 3.5, o = {}) {
+    this.toasts.push({ text, icon, t: 0, max: time, pal: o.palette || null }); // [food24] o.palette: the 3D letters' palette
     if (this.toasts.length > 4) this.toasts.shift();
   }
 
@@ -368,7 +368,7 @@ export class UI {
     for (const t of this.toasts) {
       const fadeIn = Math.min(1, t.t * 3.2), fadeOut = Math.min(1, (t.max - t.t) * 2.5);
       const lines = wrapText(t.text, Math.round(92 * k), 'normal').slice(0, 2);
-      const pal = POP_PALETTE[t.icon] || 'white', TS = 1.25;
+      const pal = t.pal || POP_PALETTE[t.icon] || 'white', TS = 1.25;
       const sizes = lines.map((l) => text3dCanvas(l, { palette: pal, scale: TS }));
       if (sizes.some((c) => !c)) { this.drawToastFallback(ctx, t, y); y += 22; continue; }
       const tw = Math.max(...sizes.map((c) => c.width)), th = sizes.reduce((a2, c) => a2 + c.height - 2, 0);

@@ -1,8 +1,11 @@
-// Fish food for the tank (phase 10 polish). Four detailed voxel foods, each with its own look and physics:
+// Fish food for the tank (phase 10 polish). Five detailed voxel foods, each with its own look and physics:
 //   flakes   Reef Flakes    thin speckled flakes in three colours: float a moment, then flutter down, tumbling
 //   pellets  Pop Pellets    round speckled pellets: plunge, tumble and bounce once on the gravel (2 bites)
 //   worms    Bloodworms     segmented red worms that wriggle all the way down and keep squirming (3 bites)
 //   shrimp   Brine Shrimp   curled pink shrimp with eyes and a tail fan that kick upward as they sink (2 bites)
+//   krill    Golden Krill   [food24] slim glittering gold krill with long feelers: drift slowly, kick and glint (2 bites)
+// [food24] Only Reef Flakes are free: the rest are progression unlocks with their own tank effects (names, perks, how
+// to unlock and the meal effects live in src/game/foods.js).
 // Every piece is a tiny VoxelModel re-voxelised per tumble / wriggle frame and rendered by the voxel renderer
 // (outline, AO, edge light) at 2 device px per voxel, so it is crisp on the full-res UI layer.
 //
@@ -26,7 +29,10 @@ export const FOODS = {
   pellets: { name: 'Pop Pellets', short: 'Pellets', tip: 'Crunchy pellets that sink fast', n: [5, 7], bites: 2, feed: 0.16, sink: [20, 27], r: 1.8, frames: 6, cols: ['#d8743a', '#7ac23a', '#e8b43a'] },
   worms: { name: 'Bloodworms', short: 'Worms', tip: 'Wriggly worms - a feast!', n: [3, 4], bites: 3, feed: 0.24, sink: [9, 13], r: 2.6, frames: 6, cols: ['#d8283a'] },
   shrimp: { name: 'Brine Shrimp', short: 'Shrimp', tip: 'Tiny shrimp that kick as they sink', n: [5, 6], bites: 2, feed: 0.18, sink: [4, 7], r: 2, frames: 4, cols: ['#ff8a6a'] },
+  krill: { name: 'Golden Krill', short: 'Krill', tip: 'Glittering krill that drift and kick', n: [5, 6], bites: 2, feed: 0.2, sink: [5, 8], r: 2, frames: 4, cols: ['#ffc83a', '#fff0a0'] },
 };
+// the shrimp-like foods (kick as they sink, twitch on the gravel)
+const KICKS = new Set(['shrimp', 'krill']);
 export const FOOD_IDS = Object.keys(FOODS);
 
 // ------------------------------------------------------------------ voxel sprites
@@ -109,6 +115,35 @@ function wormShape(m, len, ph) {
     return seg ? P.b : P.a;
   };
 }
+const KRILL_PAL = { a: ['#ffc23a', 0.9], b: ['#fff2a8', 1, { emissive: 0.25 }], c: ['#e88a1a', 0.6], e: ['#1a1020', 1], t: ['#fff0c0', 0.9, { emissive: 0.2 }], g: ['#ffffff', 1, { emissive: 0.6 }] };
+// [food24] Golden Krill: a slim, gently arched gold body in amber segments, a glossy back with glints, a big black
+// eye, long feelers swept forward, little dangling legs and a tail fan
+function krillShape(m, bend, scale = 1) {
+  const P = pal(m, KRILL_PAL);
+  const L = 4.2 * scale;
+  const cyOf = (x) => bend * 0.6 - bend * (x / L) ** 2 * 1.5 * scale;
+  return (x, y, z) => {
+    const u = (L - x) / (2 * L); // 0 = head, 1 = tail
+    const cy = cyOf(Math.max(-L, Math.min(L, x))), dy = y - cy;
+    if (u >= 0 && u <= 1) {
+      const r = (1.15 - u * 0.62) * scale;
+      if (dy * dy + z * z <= r * r) {
+        if (u < 0.16 && z > 0 && dy > -0.5) return P.e; // eye
+        if (z > 0 && h3(Math.round(x), Math.round(y), Math.round(z)) < 0.1) return P.g; // glints
+        if (dy > r * 0.45) return P.b; // glossy back
+        return Math.floor(u * 9) % 2 ? P.c : P.a; // segments
+      }
+      if (u > 0.18 && u < 0.62 && Math.abs(z) < 0.6 && dy < -r && dy > -r - 1.1 * scale && Math.floor(u * 14) % 2 === 0) return P.t; // legs
+      return 0;
+    }
+    if (u > 1 && u < 1.22 && Math.abs(z) < 1.2 * scale && Math.abs(dy) < (u - 1) * 7 * scale + 0.45) return P.t; // tail fan
+    if (u < 0 && x < L + 3.4 * scale && Math.abs(z) < 0.6) { // feelers
+      const ay = cy + 0.5 + (x - L) * 0.5;
+      if (Math.abs(y - ay) < 0.45 || Math.abs(y - (ay - (x - L) * 0.4)) < 0.45) return P.c;
+    }
+    return 0;
+  };
+}
 function shrimpShape(m, curl, scale = 1) {
   const P = pal(m, { a: ['#ff8a6a', 0.7], b: ['#ffc0a0', 0.9], c: ['#e8604a', 0.5], e: ['#1a1020', 1], t: ['#ffd8c0', 0.8] });
   // a curled body: points along an arc from head (x > 0) to tail
@@ -157,7 +192,7 @@ function sprite(type, v, frame, size) {
   if (c !== undefined) return c;
   if (!canBuild()) return null;
   budgetN++;
-  const G = type === 'worms' ? 22 : type === 'crumb' ? 6 : type === 'shrimp' ? 17 : 14;
+  const G = type === 'worms' ? 22 : type === 'crumb' ? 6 : KICKS.has(type) ? 17 : 14;
   const m = new VoxelModel(G, G, G);
   const F = FOODS[type]?.frames || 1;
   const a = (frame / F) * TAU;
@@ -166,6 +201,7 @@ function sprite(type, v, frame, size) {
     else if (type === 'pellets') voxelize(G, mul(rotY(a), rotZ(a * 0.5 + v)), pelletShape(m, v, size < 2), m);
     else if (type === 'worms') voxelize(G, rotY(0.25), wormShape(m, 6 + size * 4, a), m);
     else if (type === 'shrimp') voxelize(G, rotY(-0.3), shrimpShape(m, Math.sin(a) * 0.5 + 0.5, size < 2 ? 0.95 : 1.25), m);
+    else if (type === 'krill') voxelize(G, rotY(-0.3), krillShape(m, 0.25 + Math.sin(a) * 0.4, size < 2 ? 0.82 : 1), m);
     else if (type === 'crumb') {
       const P = pal(m, { a: [v, 0.5], b: [shadeHex(v, -0.3), 0.3] });
       voxelize(G, rotY(frame), (x, y, z) => (Math.abs(x) < 1 && Math.abs(y) < 0.6 && Math.abs(z) < 1 && x + z < 0.9 ? (y > 0 ? P.a : P.b) : 0), m);
@@ -186,6 +222,7 @@ export function foodIcon(type, scale = 3) {
   if (type === 'flakes') { put(flakeShape(m, 0), rotX(0.35), -2, -1, 1); put(flakeShape(m, 1), rotX(-0.5), 2.5, 1.5, -1); put(flakeShape(m, 2), rotZ(0.6), 0.5, 3.6, 1.5); }
   else if (type === 'pellets') { put(pelletShape(m, 0, false), rotY(0), -2.6, -1.5, 0); put(pelletShape(m, 1, false), rotY(1), 2.6, -1.5, 0.5); put(pelletShape(m, 2, false), rotY(2), 0, 2.2, 0); }
   else if (type === 'worms') { put(wormShape(m, 13, 0.6), rotZ(0.25), 0, 0, 0); put(wormShape(m, 9, 2.4), mul(rotY(1.2), rotZ(-0.2)), 0, -2.5, 0); }
+  else if (type === 'krill') { put(krillShape(m, 0.5, 1.05), mul(rotY(-0.25), rotZ(0.12)), -0.5, -2.2, 1); put(krillShape(m, 0.2, 0.95), mul(rotY(2.9), rotZ(-0.25)), 0.5, 2.4, -1); }
   else put(shrimpShape(m, 0.6, 1.35), rotY(-0.25), 0, 0, 0);
   let c = null;
   try { c = render(m, { scale, yaw: 24, pitch: 30, ao: 0.5 }); } catch (e) { console.warn('food icon', e); }
@@ -294,9 +331,9 @@ export class FoodSim {
           v[0] *= Math.exp(-dt * 2); v[0] += Math.sin(p.t * 3 + p.ph) * 1.2 * dt;
         } else if (p.type === 'worms') {
           v[0] = Math.sin(p.t * 3 + p.ph) * 4 + p.dir * 2;
-        } else if (p.type === 'shrimp') {
+        } else if (KICKS.has(p.type)) {
           p.hopT -= dt;
-          if (p.hopT <= 0) { p.hopT = rng.float(0.7, 1.5); v[1] = rng.float(9, 15); v[0] = p.dir * rng.float(6, 12); if (rng.chance(0.3)) p.dir *= -1; }
+          if (p.hopT <= 0) { p.hopT = rng.float(0.7, 1.5) * (p.type === 'krill' ? 1.3 : 1); v[1] = rng.float(9, 15) * (p.type === 'krill' ? 0.6 : 1); v[0] = p.dir * rng.float(6, 12); if (rng.chance(0.3)) p.dir *= -1; }
           v[0] *= Math.exp(-dt * 2.5);
         }
         p.p[0] += v[0] * dt; p.p[1] += v[1] * dt; p.p[2] += (v[2] || 0) * dt;
@@ -311,7 +348,7 @@ export class FoodSim {
       } else {
         // resting on the gravel: worms keep squirming, shrimp twitch, then the food slowly melts away
         p.rest += dt;
-        if (p.type === 'shrimp') { p.hopT -= dt; if (p.hopT <= 0) { p.hopT = rng.float(1.5, 3.5); p.rest = 0; v[1] = rng.float(5, 9); v[0] = p.dir * rng.float(3, 6); } }
+        if (KICKS.has(p.type)) { p.hopT -= dt; if (p.hopT <= 0) { p.hopT = rng.float(1.5, 3.5); p.rest = 0; v[1] = rng.float(5, 9); v[0] = p.dir * rng.float(3, 6); } }
         if (p.type === 'flakes' || p.type === 'pellets') p.rot += (Math.round(p.rot / Math.PI) * Math.PI - p.rot) * Math.min(1, dt * 4);
         p.alpha = clamp01(1 - (p.rest - 26) / 4);
         if (p.rest > 30) continue;
@@ -382,7 +419,7 @@ export class FoodSim {
       if (!s) { ctx.fillStyle = F.cols[0]; ctx.fillRect(Math.round(q.x) - 1, Math.round(q.y) - 1, 2, 2); continue; }
       const w = s.width * half, h = s.height * half;
       if (p.alpha < 1) ctx.globalAlpha = p.alpha;
-      const flip = (p.type === 'worms' || p.type === 'shrimp') && p.dir < 0;
+      const flip = (p.type === 'worms' || KICKS.has(p.type)) && p.dir < 0;
       const x = Math.round((q.x - w / 2) * 2) / 2, y = Math.round((q.y - h / 2) * 2) / 2;
       if (flip) { ctx.save(); ctx.translate(x + w, y); ctx.scale(-1, 1); ctx.drawImage(s, 0, 0, w, h); ctx.restore(); }
       else ctx.drawImage(s, x, y, w, h);

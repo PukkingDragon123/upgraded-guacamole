@@ -344,7 +344,7 @@ User direction (latest, overrides earlier phases where they conflict):
   `addFishToScene(scene, mesh, model)`, cached sprites `lpFrame`, `lpStill`, `lpFishIcon`. 8 swim frames x 10-degree yaw steps.
 - Oceans API: `game.ocean.depthZone()` -> {id, name, depthM}, event 'depthZone'; species may set `zone`/`depthM`.
 - Quests: `src/game/quests.js` (7 chapters, 68 main quests), panel 'quests' (Q), tracker in `game.hud.questSlot()`.
-  [quests16] + `src/game/questdata.js`: 107 side stories (`chapter.side`, optional, open with their chapter or `after`
+  [quests16] + `src/game/questdata.js`: 109 side stories (`chapter.side`, optional, open with their chapter or `after`
   quest), 79 milestones in 23 lines (`MILESTONES`, lifetime `{t:'total', k}` goals) and the "Today's orders" pool
   (`ORDER_POOL`, 3 orders a day + a board bonus, refreshed at local midnight, `state.quests.daily`, one swap a day).
   Main quests complete by themselves; side stories / orders / milestones become ready (`S.ready`, event 'questReady')
@@ -483,6 +483,23 @@ that feels hand-made."
   physics (flutter, plunge and bounce, wriggle, kick), rest on the gravel and melt away. Fish dart at food and nibble
   it in bites (crumbs, chomp bubbles, nibble / gulp SFX). The Feed tile opens a food tray (`state.tank.food`) and a
   voxel shaker follows the cursor over the water: click to sprinkle there.
+- [food24] Foods are progression unlocks (`src/game/foods.js`, data + rules; a fifth food, Golden Krill, was added to
+  `food.js`). Unlock kind `food:<id>` (`lab.unlocked(state, 'food', id)`; Reef Flakes need none):
+  - Pop Pellets: Lab `food_pellets` "Pellet Press" (Tank Life row, tier 2, after Auto-Feeder).
+  - Brine Shrimp: Lab `food_shrimp` "Brine Hatchery" (Tank Life row, tier 4, after Fish Romance).
+  - Bloodworms: side story `s2_worms` (Marina, ch2: 3 fish in the tank + 4 feedings), `reward.unlock`.
+  - Golden Krill: side story `s5_krill` (Fizz, ch5, after `s4_egg`: hatch 2 + a mutant catch), `reward.unlock`.
+  `FOOD_DATA[id].meal` = what a fish gets for `min` minutes after eating it (`rec.meal = {f, until}`, `mealOf(rec)`):
+  `fill` (hunger per bite / Feed all), `hunger` (x hunger growth), `happy` (per bite), `mood` (+ happiness target),
+  `grow` (x evolution), `aero` (x Aero/min in `fishRate` / `rateOf`; not offline), `court` (romance from 0.5 happiness,
+  4 min rest), `mutate` / `shiny` (stored on the egg: `egg.mutate`, `egg.shiny`, multiply the hatch roll).
+  `Aquarium.foodType` only returns an unlocked food (else flakes), so Feed all (`feedAll`), the auto-feeder and clicks
+  never use a locked one. Tray: locked tiles = the Lab seal (`sealTex` / `padlockTex`, exported from labtree.js) over the
+  dimmed voxel food; tooltip = `foodLock(game, id)` (how + why not yet); click = `ui.open('lab', {focus})` or pin the
+  side story + open the Quest Log. `'unlocked'` {kind: 'food'} -> 3D voxel toast "NEW FOOD: X!" (`ui.toast(text, icon,
+  time, {palette})`); the tile breaks its seal next time the tray shows it (`state.tank.foodSeen`). Hand feeding emits
+  `'tankFed'` at most every 20 s (so feed quests work without Feed all). Save migration `ensureFoods` (once,
+  `state.tank.foodV`): food nodes a save researched past are granted, the picked food stays, Bloodworms past ch2.
 
 ## Economy balance (progression pass) [balance]
 - Lab prices (`src/game/lab.js`): `AERO_T` grows ~x2.4-4 per tier (15 ... 48,000). Nodes that unlock a rod, boat or tank (`node.main`)
@@ -609,3 +626,44 @@ that feels hand-made."
   `'seal'` (quest givers, cutscenes); `drawNPC(ctx, 'grouper' | 'seal' | 'clip', ...)` all draw it. Portraits frame its face.
 - Dev preview: `node tools/build.mjs --dev grouper` -> `dev/grouper.html?mode=all | talk | close (&a=<anim>&m=<mood>&talk) |
   moods | portrait | guide` (`&t=<s>` freezes the clock; `window.__bench`, `window.__busy` = sheet jobs still running).
+
+## Simple fishing: one meter, one spin, one SHOCK button [simple24]
+User direction: "fishing a lot more simple, just spin, try to keep it in the middle" and "the shock is like a full
+button ... more simple but more skill based, and do not need to do a lot of things at once". Only ONE input matters at
+a time; the skill is steadiness in the middle zone and precise shock timing. This replaces the gear-RPM band, the tension
+tube, surges / directional QTEs, hold-and-release charging, species events (minigames.js is no longer used by fights)
+and the boss charge-dodge / minion clicks.
+- Bite (`battle.js` `HookBite`, alias `HookSpin`): nibbles as before (a click while it only nibbles scares it off), then
+  the big "!" with a draining window: CLICK (or Space). `DIFF[rarity].hookWin` x `stats.biteWindow`; the lesson gives 10 s.
+- Fight (`battle.js` `Battle`, `gearMode 'meter'`): `marker` -1..1 on a horizontal meter, `zoneW` = sweet zone half-width.
+  The fish's pull `need` (spin units, 1 = `RPM_UNIT` rpm) wanders (base / amp / speed), jitters and LUNGES (telegraphed:
+  chevrons + RUN! / RUSH!). Spin `= gear.rpm / RPM_UNIT`; marker velocity -> `(spin - need) * GAIN - marker * spring`.
+  Spinning: circle the mouse (crank.js), roll the wheel, or hold / tap W / Up / R (`gear.js` update). In the zone the catch
+  bar (`progress`) fills over `DIFF.secs` (x1.35 when steady, x1.15 dead centre, x1.3 stunned; rod reelSpeed / Lab
+  staminaDrain speed it up); outside it drains (`drain`, less with resilience). Lost only when the bar is empty AND the
+  marker sits at an edge for 2.6 s (`run` left / `snap` right). `PACE` = spring, reaction, lunge warning, beat gap per tier.
+  Commons ~10-16 s; legendaries ~25-35 s, jittery, narrow zone, quick spark.
+- SHOCK button (`meter.js`, big voxel dome left of the meter, Space / click / right click): charges (`rod.shock.charges`)
+  recharge over `rod.shock.cooldown` s (x1.35 faster while in the zone). With a charge ready (and the marker held in the
+  zone 0.6 s, or after 3.4 s) the fight gives a BEAT: GET READY (the marker freezes, nothing to spin), then a spark sweeps
+  the meter in `DIFF.sweep` s. Press as it crosses the gold notch (`critW`: rarity, `stats.timingWindow`, control, power)
+  = CRITICAL ('shockFired' {grade 'perfect'}: big damage, long stun, the marker snaps home, combo); inside the green
+  zone = GOOD ('good'); the red ends = BACKFIRE (`onBackfire`: the marker kicks out, the reel jams, -2 %). No press =
+  MISSED, nothing lost. Damage `0.08 + 0.045 * power` (crit) / `0.035 + 0.02 * power`; stun `1.1 + 0.75 * power` s.
+  Weapon level MK I..V (`shockLevel(shock)`), chain lightning arcs (+35 % each) at power >= 1.8 (crits) / 2.4 (all hits).
+  Upgrades come from the rod and the Lab's Reel & Shock row as before (shockPower, shockCharges, shockCooldown,
+  timingWindow, reelSpeed, staminaDrain, rodControl, rodResilience). Feedback: muzzle burst at the button, the bolt down the
+  line, impact + zap sprites + scales at the fish, screen shake, camera punch, 3D voxel CRITICAL! / ZAP! / +N% / CHAIN.
+- Quests: `Fishing.onShockFire(grade)` ('perfect' | 'good') and `onBackfire()` stay the hooks QuestBook wraps for
+  'shockFired' (flawless = at least one perfect, no good / backfire).
+- Bosses (`boss.js` `BossFight`): same meter + button. Phase 1 heavy pull + lunges; phase 2 faster, SHIELD (the boss wears
+  orbiting voxel hex plates, the zone turns steel blue and LOCKED, the bar does not fill until a GOOD / CRITICAL shock
+  cracks it; a charge is handed over if you have none) and ink on the lens (spinning wipes it); phase 3 RAGE + WEAK POINT
+  (crits x1.6). Intro card, phase cards and the victory overlay are unchanged.
+- HUD (`hud.js` + `meter.js` + `gear.js`): name pill, the meter (voxel-block track coral | aqua | green zone | aqua |
+  orange, the fish's own voxel icon as the marker, SPIN! / EASY! coaching words), the catch bar under it, the SHOCK
+  button left, the 3D gear right (just the gear + SPIN ME! hint in meter fights; box reels keep the old gauge).
+  `fishing.partRect('meter' | 'bar' | 'shock' | 'all' | 'gear')` for the lesson brackets. No rings, no light rays.
+- Lesson (`tutorial.js`): cast -> wait -> hook (click) -> spin (to 40 %, Bubbles coaches spin faster / slower) -> shock
+  (a hit; misses / backfires are handed back, the third try gets a very wide notch) -> land -> card. Old saved steps
+  (reel / ease / surge / zap) resume at the cast. Smoke test drives it with real mouse circling and Space.
