@@ -364,20 +364,9 @@ that feels hand-made."
   (`voxelSize(c, pose)`: ~48 voxels along small fish .. ~140 along giants), skin colours, stamped natural eyes, translucent
   fin voxels + denser rays (`'finrays'` part), glow voxels, baked AO. All APIs are unchanged (drawFishRig, lpFrame,
   lpFishIcon/voxelFishIcon, fishMesh/creatureMesh/addFishToScene give voxel meshes for the tank). `setVoxelMode(false)` = old
-  smooth meshes. Bubbles (`src/gfx/seal.js`) [seal21] is a round, bubbly BALL of a PLUSH VOXEL seal (voxelised painted
-  mesh, black ink outline): one fat, nearly perfect sphere (softly flattened where it sits) whose front IS the face (no
-  neck / loaf), dappled grey-white fur, a white face mask with puffy muzzle pads and whisker dots, prominent round
-  glasses, rosy blush, tiny flippers on the sides of the ball, a little tail flipper pair out of the lower back and a
-  small tilted voxel party cone hat (aqua / white stripes, pink pom-pom). A blocky voxel-grid specular patch + sparkles
-  on the upper-left of the ball is baked into each sheet cell (fixed to the light, so it stays put while it rolls).
-  Big shiny eyes, blush, 'w' mouth and lens glints are drawn live at voxel resolution; face "head" motions are
-  rotations about the ball centre (the face slides around, the silhouette stays round); gestures are authored in view
-  space (`vdir`) so the tiny flippers poke out of the silhouette. It bounces like a ball: idle = soft hop with contact
-  squash / stretch (anims may give `dy(k)`, evaluated continuously when drawing), cheer = big bounce, flop = splat
-  flat, spin = forward roll, swim = bobbing / rocking ball; the squash spring, voxel-row ripple and tummy wobble add
-  jiggle; little pixel bubbles bud off its back and pop. Posed voxel meshes are cached
-  per animation and rendered once per device size into a sprite sheet; same anims / options / `drawNPC(ctx, 'seal', ...)`
-  (dev page: `node tools/build.mjs --dev seal`).
+  smooth meshes. Bubbles (`src/gfx/seal.js`) is the original voxel plush seal (round dappled loaf, small dark eyes drawn at voxel
+  resolution, round glasses, black ink outline) with a soft-body jiggle (squash spring + row ripple) in `drawSeal`; same
+  anims / `drawNPC(ctx, 'seal', ...)`; extra pose names used by newer callers map through `SEAL_ALIAS`.
   Dev: `node tools/build.mjs --dev lowpoly` -> `dev/lowpoly.html?mode=gallery&page=N | giants | vg | seal | icons | scene |
   turn&ids=puffer | perf`.
 - Creatures remake (phase 8b): solid creatures (realvox SOLIDS) are tessellated into ~2-voxel facets (per-face colour

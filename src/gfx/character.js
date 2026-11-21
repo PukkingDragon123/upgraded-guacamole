@@ -1525,33 +1525,6 @@ function buildFrame(kit, pose, fi, yaw, vs, mx, hideRod) {
   return { canvas: r.canvas, glow: r.glow, front, fx, fy, anchors, face, p, vs };
 }
 
-// [seal22] The player's bubble head on its own (Bubbles the seal wears it as a helmet): the same voxel sphere, bubble
-// palette entry, renderer settings and shadeBubble pass as the player's head, so the two bubbles match exactly.
-// R = radius in voxels, vs = px per voxel; accent(m, col, {cx, cy, cz, R}) may add voxels (a sprout, a hat) on top
-// (col(hex, opts) registers a palette entry). -> {canvas, hc: [x, y] (the bubble centre on the canvas), hr (px)}
-export function renderBubbleHead(R, vs, { tint = 'aqua', facing = 1, accent = null } = {}) {
-  const T = TINTS[tint] || TINTS.aqua;
-  const n = Math.ceil(R * 2 + 4), up = accent ? Math.ceil(R * 0.9) : 0;
-  const m = new VoxelModel(n, n + up, n);
-  const isBub = new Uint8Array(256), isGlass = new Uint8Array(256), memo = new Map();
-  const col = (hex, opts = {}) => {
-    const k = hex + '|' + JSON.stringify(opts);
-    let i = memo.get(k);
-    if (i === undefined) { i = m.color(hex, { jitter: 0.05, ...opts }); memo.set(k, i); }
-    return i;
-  };
-  const bub = col(T.tint, { smooth: 1, jitter: 0, spec: 1, specPow: 14, edge: 0.6, aoMul: 0.3, light: 0.15, bub: 1 });
-  isBub[bub] = 1;
-  const c = n / 2;
-  m.sphere(c, c, c, R, bub);
-  if (accent) accent(m, col, { cx: c, cy: c, cz: c, R });
-  const { yaw, mx } = yawFor({ facing });
-  const r = renderVoxels(m, { scale: vs, yaw, pitch: PITCH, ...RENDER });
-  const hc = r.project(c, c, c);
-  shadeBubble(r, isBub, isGlass, T, { hc, hr: R * vs, Rinv: null, mx, cam: cameraBasis(yaw, PITCH) });
-  return { canvas: r.canvas, hc, hr: R * vs };
-}
-
 function yawFor(o) {
   if (o.yaw != null) return { yaw: Math.round(o.yaw / YAW_STEP) * YAW_STEP, mx: 1 };
   const f = (o.facing ?? 1) < 0 ? -1 : 1;

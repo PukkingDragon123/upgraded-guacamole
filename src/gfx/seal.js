@@ -1,49 +1,40 @@
-// Bubbles, the guide [seal20]: a FAT, CUTE PLUSH SEAL PUP in high-resolution VOXEL art (back from the soap-bubble
-// remake, after the user: "the game is voxel, make seal more fat and cute like old design"). One very round, squishy
-// loaf with a big round head swelling out of its front (no neck: the head merges into the body), soft grey-white
-// fur dappled with grey spots, a cream belly, puffy white muzzle pads with whisker dots, a tiny dark nose, tiny side
-// flippers and a little tail flipper pair, round black glasses and a small candy-striped aqua / white VOXEL PARTY
-// CONE HAT with a pink pom-pom sitting tilted on its head. Each pose is modelled as a smooth painted mesh, VOXELISED
-// (src/fish/voxelize.js: fine voxels, soft baked AO) and rendered with plush shading + a crisp black ink outline.
-// The big shiny eyes (two catchlights), rosy blush, the tiny smile / talking mouth and the lens glints are drawn
-// live on top AT VOXEL RESOLUTION (a low-res layer scaled up crisp), so blinking, gaze and lip-sync cost nothing.
-// It is BOUNCY and JIGGLY: a per-seal squash spring (kicked by acceleration, landings, animation changes and talking)
-// squashes and stretches it about its bottom, and the frame is drawn in voxel rows with a ripple travelling through
-// the body and a belly wobble. Little pixel bubbles now and then bud off its back, float up and pop.
+// Bubbles, the guide (phase 8, Creatures agent): a chubby PLUSH SEAL in high-resolution VOXEL art (after the user's
+// plush reference): an almost round, squishy loaf with no neck, soft grey-white fur dappled with darker grey spots, a
+// small flat face on the front (puffy muzzle pads, a tiny nose), tiny side flippers and a little tail flipper pair. Each
+// pose is modelled as a smooth painted mesh and then VOXELISED (src/fish/voxelize.js: fine voxels, soft baked AO) and
+// rendered with plush shading + a glossy Aero rim. The small dark eyes (with a sparkle), blush, the talking mouth,
+// whisker dots and moods are drawn live on top AT VOXEL RESOLUTION (a low-res layer scaled up crisp), so blinking,
+// gaze and lip-sync cost nothing. It is BOUNCY and JIGGLY: a per-seal squash spring (kicked by acceleration, landings,
+// animation changes and talking) squashes and stretches it about its bottom, and the frame is drawn in voxel rows with
+// a ripple travelling through the body and a belly wobble. A subtle soap bubble seat (ride) and a little bubble on its
+// nose remain optional extras.
 //
-// Frames are CACHED: the posed voxel meshes of an animation are built once (compact faces) and every cycle is
-// rendered once per device size into one sprite sheet (lowpoly renderSheet: one GL pass + one readback), at most one
-// new sheet per frame (otherwise the nearest cached sheet stands in). Sheets are baked at DEVICE resolution (the
-// context's transform scale), so the hi-res UI layer gets crisp voxels and a crisp 1 logical px outline.
+// Frames are CACHED: every animation cycle is rendered once per size into one sprite sheet (lowpoly renderSheet: one
+// GL pass + one readback), at most one new sheet per frame (otherwise the nearest cached sheet stands in).
 //
 //   SEAL_INFO                          {id: 'seal', name: 'Bubbles', role, desc, color, h}
-//   SEAL_ANIMS                         idle swim wiggle wave point flop spin worried clap think blow cheer sad sleep
-//   SEAL_ALIAS                         talk, laugh, excited, happy, love, surprised, ride, bend, sleepy, celebrate ...
-//   drawSeal(ctx, o) -> anchors        o: {x, y (body centre; o.base = 'bottom' -> y is the bottom; o.anchor = 'head'
-//       -> x, y is the head centre), t, size (logical px per model unit), k (extra draw scale), facing (1 right /
-//       -1 left), anim, phase (0..1 override), point: [sx, sy] (the flipper points there), tilt (rad), mood, talk 0..1,
-//       lookAt [sx, sy], blink, ride 0..1 (the soap bubble under it), noseBubble 0..1, view: 'side' | 'front'
-//       (portrait), id (per-seal state: blink, gaze, jiggle, floating bubbles), alpha, floaters (false = none)}
-//     anchors: {head, top (hat tip), mouth, nose, hand (pointing flipper tip), tail, bottom, center, rect {x, y, w, h}}
-//   warmSeal(size, anims, view)         pre-render sheets (call from a loading step)
-//   sealReady(size, view)               the idle sheet exists
-//   sealSize(s)                         the logical size bucket
-//   drawSoapBubble(ctx, x, y, r, sq)    a pixel-art soap bubble (the one it rides on)
-//   drawPointStream(ctx, from, to, t, u) tiny pixel bubbles flowing from the pointing flipper to the target
+//   SEAL_ANIMS                         idle talk swim wiggle wave point flop spin worried clap think blow
+//   drawSeal(ctx, o) -> anchors        o: {x, y (body centre; o.base = 'bottom' -> y is the bottom), t, size (px per
+//       model unit, bucketed), k (extra draw scale, smoothed), facing (1 right / -1 left), anim, phase (0..1 override),
+//       point: [sx, sy] (the flipper points there), tilt (rad), mood, talk 0..1, lookAt [sx, sy], blink, ride 0..1
+//       (the soap bubble under it), noseBubble 0..1, view: 'side' | 'front' (portrait), id (blink/gaze state), alpha}
+//     anchors: {head, top, mouth, nose, hand (pointing flipper tip), tail, bottom, rect {x, y, w, h}} (screen)
+//   warmSeal(size, anims)               pre-render sheets (call from a loading step)
+//   sealReady(size)                     the idle sheet exists
 //   new SealGuide({x, y, size, audio, id})  a screen-space swimmer with smooth physics:
 //       .goTo(x, y, {snap}) .pointAt([sx, sy] | null) .emote(anim, secs) .update(dt, {W, H, cursor, talk})
 //       .draw(ctx, {t, talk, mood, lookAt, alpha}) -> anchors .rect() .hit(x, y) .settled .speed .anim
+//       swims with paddle strokes, tilts with its heading, faces its target, points when it arrives, rides a
+//       bubble when it rests (pops it when it leaves), shies away from the cursor, trails bubbles, blows bubbles.
 
 import { LPMesh, renderSheet, lpProject, lpAvailable, T4 } from './lowpoly.js';
 import { voxelizeMesh } from '../fish/voxelize.js';
 import { clamp, clamp01, lerp, TAU } from '../core/math.js';
 import { drawAeroBubble } from '../ui/aero.js';
-import { HI, HI_ON } from './hires.js';
-import { renderBubbleHead } from './character.js';
 
 export const SEAL_INFO = {
   id: 'seal', name: 'Bubbles', role: 'Guide', color: '#bfefff', h: 56,
-  desc: 'A round, squishy, very jiggly plush seal pup in a party hat and round glasses who blows bubbles and knows every fish in the sea (by smell).',
+  desc: 'A round, squishy, very jiggly seal pup who blows bubbles and knows every fish in the sea (by smell).',
 };
 
 // ------------------------------------------------------------------------------------------------ small math
@@ -60,66 +51,47 @@ const h3 = (x, y, z) => { const n = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) *
 const rgb = (hex) => { const n = parseInt(hex.slice(1), 16); return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255]; };
 const mixC = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
 const lit = (c, k) => [clamp01(c[0] * k), clamp01(c[1] * k), clamp01(c[2] * k)];
-const sstep = (a, b, v) => { const t = clamp01((v - a) / (b - a)); return t * t * (3 - 2 * t); };
-const smax = (a, b, k) => (a + b + Math.sqrt((a - b) * (a - b) + k * k)) / 2;
-const smin = (a, b, k) => (a + b - Math.sqrt((a - b) * (a - b) + k * k)) / 2;
 
 // ------------------------------------------------------------------------------------------------ palette
-// soft grey-white plush fur dappled with grey spots, a cream belly, white muzzle, slate flippers
+// (phase 8) the chubby plush seal: soft grey-white fur dappled with grey spots, a cream belly and muzzle, slate flippers
 const C = {
-  fur: rgb('#f1f3f7'), furMid: rgb('#e2e6ee'), belly: rgb('#fbf9f4'), back: rgb('#d6dbe4'),
-  spot: rgb('#a3abba'), spotD: rgb('#7d8698'), muzzle: rgb('#ffffff'), chin: rgb('#f4f2ee'), whisk: rgb('#8b8fa0'),
-  flip: rgb('#a2a9b6'), flipTip: rgb('#7c8391'), nose: rgb('#2b2733'), noseHi: rgb('#5a5468'),
-  hatA: rgb('#33c4e6'), hatAD: rgb('#1d9fca'), hatB: rgb('#f8fdff'), pom: rgb('#ff8db4'), pomD: rgb('#f2679a'), pomL: rgb('#ffc2d8'),
-  glass: rgb('#252b3e'), glassHi: rgb('#56618a'),
+  fur: rgb('#eef0f4'), furMid: rgb('#dfe2e9'), belly: rgb('#f8f7f3'), back: rgb('#d3d7df'),
+  spot: rgb('#8d95a5'), spotD: rgb('#646c7d'), muzzle: rgb('#fafaf7'), chin: rgb('#f1efea'),
+  flip: rgb('#9aa1ad'), flipTip: rgb('#747b88'), nose: rgb('#2b2d35'), noseHi: rgb('#4c5060'),
 };
-// the look (lowpoly shader options): soft plush shading with a glossy Aero rim and sky sheen
-const LOOK = { ambient: 0.64, spec: 0.2, shine: 20, soft: 0.5, softColor: '#ffd8e0', rim: 0.4, rimColor: '#c4f2ff', env: 0.1, iri: 0.04, sky: '#f2fdff', ground: '#a8d4ee', light: [-0.42, 0.72, 0.75] };
-// voxel edge in model units (the seal is ~1.9 units long: ~48 voxels nose to tail)
-export const SEAL_VOXEL = 0.04;
+// the look (lowpoly shader options): soft plush shading with a glossy Frutiger Aero rim and sky sheen
+const LOOK = { ambient: 0.62, spec: 0.22, shine: 20, soft: 0.5, softColor: '#ffd8e0', rim: 0.45, rimColor: '#c4f2ff', env: 0.12, iri: 0.05, sky: '#f2fdff', ground: '#a8d4ee', light: [-0.42, 0.72, 0.75] };
+// voxel edge in model units (the body is ~2 units long: ~45 voxels nose to tail)
+export const SEAL_VOXEL = 0.043;
 
 // ------------------------------------------------------------------------------------------------ geometry
-// Model space: x forward (the face), y up, z toward the near (+z) side. One fat, round loaf (BODY) and a big round
-// head (HEAD) swelling out of its front: every cross-section along x is the smooth union of both, so the head flows
-// into the body with no neck. The face sits on the front of the head, tiny flippers under the sides, a small tail
-// flipper pair at the back and the party hat on top of the head.
-const BODY = { xc: -0.2, a: 0.8, cy: 0.54, hy: 0.64, hz: 0.78, e: 2.0 };
-const HEAD = { x: 0.36, y: 0.9, r: 0.52, rz: 0.55 };
-// the bubble helmet around the head (a screen-space sprite drawn over the posed head: centre c follows the head)
-const BUB = { c: [0.44, 0.98, 0], R: 0.74, hat: 0.62 };
-const X0 = BODY.xc - BODY.a, X1 = HEAD.x + HEAD.r;
-const BODY_SEG = 30, BODY_ROWS = 34;
-const PIV = [-0.15, 0.0, 0];           // squash pivot (bottom centre)
-const HPIV = [0.24, 0.64, 0];          // the head twists about this point (soft weighted, no neck)
-const HEAD_C = BUB.c;                 // "head" anchor: the middle of the bubble helmet
-const EYE_R = 0.138;
-const FACE = { eyeX: 0.76, eyeA: 0.98, nose: [0.912, 0.84, 0], mouth: [0.885, 0.705, 0], muzzle: [0.84, 0.77, 0.09], cheekX: 0.66, cheekA: 1.38 };
-const SHOULDER = [0.3, 0.2, 0.64];
-const HIP = [-0.84, 0.4, 0.24];
-const C0 = [-0.05, 0.84, 0];           // sprite centre (model point at the sheet cell centre)
-const CELL_W = 3.1, CELL_H = 3.0;      // cell size in model units
-
+// Model space: x forward (the face), y up, z toward the near (+z) side. One fat, almost round loaf (no neck): the face
+// sits on its front, tiny flippers under its sides and a small tail flipper pair at the back.
+const LOAF = { x0: -0.94, x1: 0.84, xc: -0.05, a: 0.89, hy: 0.66, hz: 0.68, cy: 0.46 };
+const BODY_SEG = 26, BODY_ROWS = 28;
+const PIV = [-0.1, 0.0, 0];             // squash pivot (bottom centre)
+const HEADP = [0.12, 0.44, 0];          // the face region pivots here (no neck: a soft weighted twist)
+const HEAD_C = [0.55, 0.56, 0];           // "head" anchor (centre of the face region)
+const EYE_R = 0.1;
+const FACE = { eyeX: 0.775, eyeA: 0.66, eyeY: 0.0, nose: [0.862, 0.535, 0], mouth: [0.85, 0.4, 0], muzzle: [0.8, 0.465, 0.08], cheekX: 0.72, cheekA: 1.12, top: [0.2, 1.12, 0] };
+const SHOULDER = [0.3, 0.12, 0.6];
+const HIP = [-0.87, 0.36, 0.07];
+const C0 = [-0.1, 0.42, 0];             // sprite centre (model point at the sheet cell centre)
+const CELL_W = 3.0, CELL_H = 2.5;      // cell size in model units
 // rest body section at x: [centre y, half height, half width]
 function loafAt(x) {
-  const t = clamp((x - BODY.xc) / BODY.a, -1, 1);
-  let f = Math.pow(Math.max(0, 1 - Math.pow(Math.abs(t), BODY.e)), 1 / BODY.e);
-  if (t < 0) f *= 1 - 0.1 * t * t;       // a softly tapering rear
-  const bTop = BODY.cy + BODY.hy * f, bBot = BODY.cy - BODY.hy * f - 0.03 * Math.max(0, t), bZ = BODY.hz * f;
-  const u = clamp((x - HEAD.x) / HEAD.r, -1, 1), g = Math.sqrt(Math.max(0, 1 - u * u));
-  const hTop = HEAD.y + HEAD.r * g, hBot = HEAD.y - HEAD.r * 0.94 * g, hZ = HEAD.rz * g;
-  // where one shape ends (its section shrinks to a point) it fades out of the union instead of leaving a ridge
-  const fb = sstep(0, 0.4, f), fh = sstep(0, 0.4, g);
-  const bT = lerp(hTop - 0.3, bTop, fb), bB = lerp(hBot + 0.3, bBot, fb), hT = lerp(bTop - 0.3, hTop, fh), hB = lerp(bBot + 0.3, hBot, fh);
-  const top = smax(bT, hT, 0.2), bot = smin(bB, hB, 0.12), hz = smax(bZ, hZ, 0.16);
-  return [(top + bot) / 2, Math.max(0.01, (top - bot) / 2), Math.max(0.01, hz)];
+  const t = clamp((x - LOAF.xc) / LOAF.a, -1, 1);
+  let f = Math.pow(Math.max(0, 1 - Math.pow(Math.abs(t), 2.5)), 1 / 2.5);
+  if (t < 0) f *= 1 - 0.1 * t * t;      // a softly tapering rear
+  return [LOAF.cy + 0.035 * Math.max(0, t) - 0.04 * Math.max(0, -t) * Math.max(0, -t), LOAF.hy * f, LOAF.hz * f];
 }
 // surface point of the rest loaf at x and section angle a (0 = top, PI/2 = +z flank, PI = bottom); pillowy sections
 function loafPt(x, a) {
   const [cy, hy, hz] = loafAt(x);
   const c = Math.cos(a), s = Math.sin(a);
-  let y = Math.sign(c) * Math.pow(Math.abs(c), 0.9) * hy;
-  if (y < 0) { y *= 0.94; if (y < -0.74 * hy) y = -0.74 * hy + (y + 0.74 * hy) * 0.35; } // sits flat on its belly
-  return [x, cy + y, Math.sign(s) * Math.pow(Math.abs(s), 0.9) * hz];
+  let y = Math.sign(c) * Math.pow(Math.abs(c), 0.8) * hy;
+  if (y < 0) { y *= 0.92; if (y < -0.72 * hy) y = -0.72 * hy + (y + 0.72 * hy) * 0.35; } // sits flat on its belly
+  return [x, cy + y, Math.sign(s) * Math.pow(Math.abs(s), 0.8) * hz];
 }
 function loafN(x, a) {
   const e = 0.01;
@@ -130,10 +102,10 @@ function loafN(x, a) {
   return n;
 }
 
-// A tiny builder with PER-VERTEX colours (the painted look), producing the shared renderer's LPMesh (11 floats per
-// vertex: position, flat normal, colour, uv).
+// A tiny builder with PER-VERTEX colours (the painted look: colours blend across a facet, lighting stays faceted),
+// producing the shared renderer's LPMesh (11 floats per vertex: position, flat normal, colour, uv).
 class PaintMesh {
-  constructor() { this.buf = new Float32Array(33 * 2400); this.n = 0; }
+  constructor() { this.buf = new Float32Array(33 * 1400); this.n = 0; }
   push(v) {
     if (this.n + 11 > this.buf.length) { const nb = new Float32Array(this.buf.length * 2); nb.set(this.buf); this.buf = nb; }
     this.buf.set(v, this.n); this.n += 11;
@@ -159,8 +131,8 @@ function triV(mb, a, b, c, ca, cb, cc) {
 }
 // grid of rest points -> painted + deformed quads (rows i, columns j wrap)
 function sheetMesh(mb, rows, paint, deform) {
-  const col = rows.map((r) => r.map((p) => paint(p)));
-  const pos = rows.map((r) => r.map((p) => deform(p)));
+  const col = rows.map((r) => r.map(paint));
+  const pos = rows.map((r) => r.map(deform));
   for (let i = 0; i < rows.length - 1; i++) {
     const n = rows[i].length;
     for (let j = 0; j < n; j++) {
@@ -173,7 +145,7 @@ function sheetMesh(mb, rows, paint, deform) {
 // an end cap fan (closing a ring) toward point c; flip reverses the winding
 function capFan(mb, ring, c, paint, deform, flip) {
   const pc = deform(c), cc = paint(c);
-  const P = ring.map((p) => deform(p)), K = ring.map((p) => paint(p));
+  const P = ring.map(deform), K = ring.map(paint);
   for (let j = 0; j < ring.length; j++) {
     const j2 = (j + 1) % ring.length;
     if (flip) triV(mb, pc, P[j], P[j2], cc, K[j], K[j2]);
@@ -203,79 +175,60 @@ function vnoise(x, y, z) {
     L(L(h3(X, Y, Z + 1), h3(X + 1, Y, Z + 1), u), L(h3(X, Y + 1, Z + 1), h3(X + 1, Y + 1, Z + 1), u), v), w);
 }
 function dapple(p, scale = 1) {
-  return vnoise(p[0] * 8 * scale + 3.1, p[1] * 8 * scale, p[2] * 8 * scale + 7.7) * 0.7 + vnoise(p[0] * 19 * scale, p[1] * 19 * scale + 4.2, p[2] * 19 * scale) * 0.3;
+  const n = vnoise(p[0] * 9 * scale + 3.1, p[1] * 9 * scale, p[2] * 9 * scale + 7.7) * 0.7 + vnoise(p[0] * 21 * scale, p[1] * 21 * scale + 4.2, p[2] * 21 * scale) * 0.3;
+  return n;
 }
 function paintBody(p) {
   const [cy, hy] = loafAt(p[0]);
   const up = clamp((p[1] - cy) / Math.max(0.05, hy), -1, 1);
-  let c = up < -0.2 ? mixC(C.fur, C.belly, clamp01((-up - 0.2) * 2)) : mixC(C.fur, C.back, clamp01(up) * 0.7);
-  c = mixC(c, C.furMid, clamp01((-p[0] - 0.35) / 0.6) * 0.45);
-  // the face: a clean white mask on the front of the head (no spots around the eyes and muzzle)
-  const fd = Math.hypot((p[0] - 0.92) / 0.42, (p[1] - 0.86) / 0.36, p[2] / 0.46);
-  const face = clamp01((1.25 - fd) / 0.35);
-  c = mixC(c, C.belly, face * 0.7);
-  const d = dapple(p);
-  const th = 0.56 + 0.08 * clamp01(-up * 1.5) + face * 0.3;
-  if (d > th) c = mixC(c, d > th + 0.07 ? C.spotD : C.spot, 0.85 - 0.4 * clamp01(-up));
-  return lit(c, 1 + (h3(Math.round(p[0] * 25), Math.round(p[1] * 25), Math.round(p[2] * 25)) - 0.5) * 0.04);
+  let c = up < -0.25 ? mixC(C.fur, C.belly, clamp01((-up - 0.25) * 2)) : mixC(C.fur, C.back, clamp01(up) * 0.75);
+  c = mixC(c, C.furMid, clamp01((-p[0] - 0.3) / 0.7) * 0.5);
+  // the face: a clean pale mask around the muzzle, finer freckles toward the eyes
+  const face = clamp01((p[0] - 0.5) / 0.25) * clamp01(1 - Math.abs(p[2]) / 0.4) * clamp01(1 - Math.abs(p[1] - 0.5) / 0.3);
+  const d = dapple(p, 1 + face * 0.8);
+  const th = 0.56 + 0.1 * clamp01(-up * 1.5) + face * 0.12;
+  if (d > th) c = mixC(c, d > th + 0.06 ? C.spotD : C.spot, 1 - 0.4 * clamp01(-up));
+  return lit(c, 1 + (h3(Math.round(p[0] * 23), Math.round(p[1] * 23), Math.round(p[2] * 23)) - 0.5) * 0.04);
 }
-// muzzle pads: white with three little grey whisker dots each
-function paintMuzzle(q) {
-  const sd = q[2] >= 0 ? 1 : -1;
-  const c0 = [FACE.muzzle[0], FACE.muzzle[1], FACE.muzzle[2] * sd];
-  let c = mixC(C.muzzle, C.chin, clamp01((0.72 - q[1]) * 8));
-  for (const [dy, dz] of [[0.035, 0.035], [-0.01, 0.06], [0.0, 0.015]]) {
-    if (Math.hypot(q[1] - (c0[1] + dy), q[2] - (c0[2] + dz * sd)) < 0.017 && q[0] > c0[0] + 0.03) c = C.whisk;
-  }
-  return c;
-}
-const paintChin = (q) => lit(mixC(C.muzzle, C.chin, 0.6), 1 + (h3(Math.round(q[0] * 30), Math.round(q[1] * 30), Math.round(q[2] * 30)) - 0.5) * 0.03);
-const paintNose = (q) => (q[1] > FACE.nose[1] + 0.012 && q[0] > FACE.nose[0] + 0.01 ? C.noseHi : C.nose);
-function paintFlip(t) { return (q) => { const c = mixC(C.flip, C.flipTip, clamp01((q[0] / t - 0.4) * 1.5)); return lit(c, dapple(q, 2) > 0.62 ? 0.9 : 1); }; }
+const paintMuzzle = (q) => lit(mixC(C.muzzle, C.chin, clamp01((0.45 - q[1]) * 6)), 1 + (h3(Math.round(q[0] * 30), Math.round(q[1] * 30), Math.round(q[2] * 30)) - 0.5) * 0.03);
+const paintNose = (q) => (q[1] > 0.545 && q[0] > 0.875 ? C.noseHi : C.nose);
+function paintFlip(t) { return (q) => { const c = mixC(C.flip, C.flipTip, clamp01((q[0] / t - 0.4) * 1.5)); return lit(c, dapple(q, 2) > 0.62 ? 0.88 : 1); }; }
 
 // ---- the pose
-// head: [nod (about z, + = nose up), yaw (about y), roll (about x, the cute head tilt)]
 function P0() {
   return {
-    yaw: -0.9, tilt: 0.24, rz: 0, sq: [1, 1, 1], bend: 0, wave: 0, wph: 0, side: 0,
-    head: [0, 0, 0], hdy: 0, hsq: 1, fl: [-0.45, -0.62, 0.64], fr: [-0.45, -0.62, -0.64], flLen: 1, frLen: 1,
-    flTw: 0, frTw: 0, shN: 0, shF: 0, tail: 0.14, spread: 0.45, flap: 0, cheek: 0, dy: 0, belly: 0, closed: false,
+    yaw: -0.88, tilt: 0.22, rz: 0, sq: [1, 1, 1], bend: 0, wave: 0, wph: 0, side: 0,
+    head: [0, -0.22, 0], hdy: 0, hsq: 1, fl: [-0.5, -0.6, 0.62], fr: [-0.5, -0.6, -0.62], flLen: 1, frLen: 1,
+    flTw: 0, frTw: 0, shN: 0, shF: 0, tail: 0.12, spread: 0.45, flap: 0, cheek: 0, dy: 0,
   };
 }
 
-// how much a rest point belongs to the head (1 = moves with it)
-function headW(p) {
-  const d = Math.hypot(p[0] - HEAD.x, p[1] - HEAD.y, p[2] / 1.05) / HEAD.r;
-  return sstep(1.32, 0.95, d) * sstep(-0.15, 0.25, p[0]);
-}
-// body deformation: the head twists softly (weighted), then squash about the bottom, swim wave, sway, belly bulge
+// body deformation: squash about the bottom, swim wave, sway; then the face region twists softly (no neck)
 function bodyDeform(P) {
   const [sx, sy, sz] = P.sq;
-  const [hn, hyw, hr] = P.head;
-  const turn = hn || hyw || hr || P.hdy || P.hsq !== 1;
-  return (p, wf) => {
+  const [hp0, hy0, hr0] = P.head;
+  const hp = hp0 * 0.55, hyw = (hy0 + 0.22) * 0.6, hr = hr0 * 0.6;
+  return (p) => {
+    // the face twist first (rest coordinates), weighted toward the front
     let q = p;
-    const ww = wf ?? headW(p);
-    if (ww > 0 && turn) {
-      let v = sub(p, HPIV);
+    const w = clamp01((p[0] - HEADP[0]) / 0.6);
+    const ww = w * w * (3 - 2 * w);
+    if (ww > 0 && (hp || hyw || hr || P.hdy || P.hsq !== 1)) {
+      let v = sub(p, HEADP);
       v = [v[0], v[1] * (1 + (P.hsq - 1) * ww), v[2]];
-      v = rx(v, hr * ww); v = rz(v, hn * ww); v = ry(v, hyw * ww);
-      q = add(add(HPIV, v), [0, P.hdy * ww, 0]);
-    }
-    if (P.belly) { // the round tummy swells out sideways and down
-      const b = sstep(0.9, 0.1, Math.hypot((q[0] + 0.1) / 0.8, (q[1] - 0.35) / 0.5)) * (1 - ww);
-      q = [q[0], q[1] - P.belly * b * 0.25 * Math.max(0, 0.5 - q[1]), q[2] * (1 + P.belly * b)];
+      v = rx(v, hr * ww); v = rz(v, hp * ww); v = ry(v, hyw * ww);
+      q = add(add(HEADP, v), [0, P.hdy * ww, 0]);
     }
     let x = PIV[0] + (q[0] - PIV[0]) * sx, y = PIV[1] + (q[1] - PIV[1]) * sy, z = q[2] * sz;
     const u = q[0] - PIV[0];
     y += P.bend * u * u * 0.5;
-    if (P.wave) y += P.wave * Math.sin(P.wph - (q[0] - 0.4) * 3.0) * Math.pow(clamp01((0.3 - q[0]) / 1.3), 1.1);
+    if (P.wave) y += P.wave * Math.sin(P.wph - (q[0] - 0.4) * 3.0) * Math.pow(clamp01((0.35 - q[0]) / 1.4), 1.1);
     if (P.side) z += P.side * Math.sign(u) * u * u * 0.6;
     return [x, y, z];
   };
 }
 
-// a flattened paddle along D of length L (broad-face hint T)
+// a flattened paddle along +x of length L in local space, oriented with direction D (and broad-face hint T)
 function paddle(mb, base, D, Thint, L, widths, thick, paint, twist = 0) {
   D = norm(D);
   let Wd = cross(D, norm(Thint));
@@ -300,16 +253,19 @@ function paddle(mb, base, D, Thint, L, widths, thick, paint, twist = 0) {
   return place([L + 0.02, 0, 0]);
 }
 
-// ---- round GLASSES: voxel rims floating just in front of each eye, a little bridge over the snout and temple arms
-// running back along the sides of the head (rest space: they follow the head twist and squash)
-const GLASS = { R: 0.19, tube: 0.018, lift: 0.04, armX: 0.44 };
-const eyeRest = (sd) => loafPt(FACE.eyeX, FACE.eyeA * sd);
+// ---- [phase9:seal] cute round GLASSES: voxel rims floating just in front of each eye, a little arched bridge over
+// the snout and temple arms running back along the sides of the head (all in rest space, so they follow the pose's
+// face twist and squash; the voxeliser turns the thin tubes into crisp 1-2 voxel frames)
+const GLASS = { R: 0.182, tube: 0.021, lift: 0.036, armX: 0.42, col: rgb('#1b1f2d'), hi: rgb('#3c4560') };
+const eyeRest = (sd) => { const q = loafPt(FACE.eyeX, FACE.eyeA * sd); return [q[0], q[1] + FACE.eyeY, q[2]]; };
+// tube rows along a polyline (closed: a ring): each row is a small circle around the path
 function tubeRows(pts, r, M = 6, closed = false) {
   const n = pts.length, rows = [];
   for (let i = 0; i < n; i++) {
     const a = closed ? pts[(i - 1 + n) % n] : pts[Math.max(0, i - 1)], b = closed ? pts[(i + 1) % n] : pts[Math.min(n - 1, i + 1)];
     const T = norm(sub(b, a));
-    const b1 = norm(cross(T, Math.abs(T[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0]));
+    let b1 = cross(T, Math.abs(T[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0]);
+    b1 = norm(b1);
     const b2 = cross(T, b1), row = [];
     for (let j = 0; j < M; j++) { const f = (j / M) * TAU; row.push(add(pts[i], add(scl(b1, Math.cos(f) * r), scl(b2, Math.sin(f) * r)))); }
     rows.push(row);
@@ -317,41 +273,45 @@ function tubeRows(pts, r, M = 6, closed = false) {
   if (closed) rows.push(rows[0]);
   return rows;
 }
+// rim geometry of the eye on side sd: centre, plane basis (u, v), normal
 function lensOf(sd) {
   const q = eyeRest(sd), n = loafN(FACE.eyeX, FACE.eyeA * sd);
   const c = add(q, scl(n, GLASS.lift));
   const u = norm(cross(n, [0, 1, 0])), v = norm(cross(u, n));
   return { c, n, u, v };
 }
+// the point on the rim of lens L in the in-plane direction closest to `dir`
 function rimToward(L, dir) {
   const a = dot(dir, L.u), b = dot(dir, L.v), l = Math.hypot(a, b) || 1;
   return add(L.c, scl(add(scl(L.u, a / l), scl(L.v, b / l)), GLASS.R));
 }
 function addGlasses(mb, def) {
   const L = [lensOf(1), lensOf(-1)];
-  const d1 = (p) => def(p, 1);
-  const paint = (L0) => (q) => (q[1] > L0.c[1] + GLASS.R * 0.7 ? C.glassHi : C.glass);
+  const paint = (L0) => (q) => (q[1] > L0.c[1] + GLASS.R * 0.72 ? GLASS.hi : GLASS.col);
+  // rims
   for (const Lk of L) {
     const ring = [];
-    for (let i = 0; i < 24; i++) { const f = (i / 24) * TAU; ring.push(add(Lk.c, add(scl(Lk.u, Math.cos(f) * GLASS.R), scl(Lk.v, Math.sin(f) * GLASS.R)))); }
-    sheetMesh(mb, tubeRows(ring, GLASS.tube, 6, true), paint(Lk), d1);
+    for (let i = 0; i < 22; i++) { const f = (i / 22) * TAU; ring.push(add(Lk.c, add(scl(Lk.u, Math.cos(f) * GLASS.R), scl(Lk.v, Math.sin(f) * GLASS.R)))); }
+    sheetMesh(mb, tubeRows(ring, GLASS.tube, 6, true), paint(Lk), def);
   }
+  // the bridge: a little arch over the top of the snout, pushed forward so it clears the face
   const a = rimToward(L[0], sub(L[1].c, L[0].c)), b = rimToward(L[1], sub(L[0].c, L[1].c));
-  const k = [Math.max(a[0], b[0]) + 0.05, (a[1] + b[1]) / 2 + 0.03, 0];
+  const k = [Math.max(a[0], b[0]) + 0.05, (a[1] + b[1]) / 2 + 0.035, 0];
   const br = [];
   for (let i = 0; i <= 8; i++) { const t = i / 8, s = 1 - t; br.push(add(add(scl(a, s * s), scl(k, 2 * s * t)), scl(b, t * t))); }
-  sheetMesh(mb, tubeRows(br, GLASS.tube * 0.9, 6), () => C.glass, d1);
+  sheetMesh(mb, tubeRows(br, GLASS.tube * 0.9, 6), () => GLASS.col, def);
+  // temple arms: from the outer edge of each rim back along the side of the head, just above the fur
   for (const sd of [1, -1]) {
     const Lk = L[sd > 0 ? 0 : 1];
     const p0 = rimToward(Lk, [-0.6, 0.05, sd]);
-    const yT = p0[1] - 0.01, pts = [p0];
+    const yT = p0[1] - 0.02, pts = [p0];
     for (let i = 1; i <= 6; i++) {
       const x = lerp(p0[0] - 0.04, GLASS.armX, i / 6);
       let best = 0, bd = Infinity;
       for (let s = 0; s <= 48; s++) { const an = (s / 48) * Math.PI * 0.6 * sd; const d = Math.abs(loafPt(x, an)[1] - yT); if (d < bd) { bd = d; best = an; } }
-      pts.push(add(loafPt(x, best), scl(loafN(x, best), GLASS.lift * 0.6)));
+      pts.push(add(loafPt(x, best), scl(loafN(x, best), GLASS.lift * 0.8)));
     }
-    sheetMesh(mb, tubeRows(pts, GLASS.tube * 0.8, 5), () => C.glass, d1);
+    sheetMesh(mb, tubeRows(pts, GLASS.tube * 0.8, 5), () => GLASS.col, def);
   }
 }
 
@@ -359,56 +319,54 @@ function addGlasses(mb, def) {
 function buildSeal(P) {
   const mb = new PaintMesh();
   const def = bodyDeform(P);
-  // the loaf + head: rows of pillowy sections, denser toward the round ends
+  // the loaf: rows of pillowy sections, denser toward the round ends
   const rows = [];
   for (let i = 0; i <= BODY_ROWS; i++) {
-    const k = i / BODY_ROWS, x = X0 + (X1 - X0) * (0.5 - 0.5 * Math.cos(k * Math.PI));
+    const k = i / BODY_ROWS, x = LOAF.x0 + (LOAF.x1 - LOAF.x0) * (0.5 - 0.5 * Math.cos(k * Math.PI));
     const row = [];
     for (let j = 0; j < BODY_SEG; j++) row.push(loafPt(x, (j / BODY_SEG) * TAU));
     rows.push(row);
   }
   sheetMesh(mb, rows, paintBody, def);
-  capFan(mb, rows[0], [X0 - 0.005, loafAt(X0)[0], 0], paintBody, def, false);
-  capFan(mb, rows[rows.length - 1], [X1 + 0.005, loafAt(X1)[0], 0], paintBody, def, true);
+  capFan(mb, rows[0], [LOAF.x0 - 0.005, loafAt(LOAF.x0)[0], 0], paintBody, def, false);
+  capFan(mb, rows[rows.length - 1], [LOAF.x1 + 0.005, loafAt(LOAF.x1)[0], 0], paintBody, def, true);
   // the face: two puffy muzzle pads (puff out when blowing), a little chin, the tiny nose
   const pk = 1 + P.cheek * 0.35;
-  for (const sd of [1, -1]) sheetMesh(mb, ellRows([FACE.muzzle[0], FACE.muzzle[1], FACE.muzzle[2] * sd * (1 + P.cheek * 0.2)], [0.1 * pk, 0.085 * pk, 0.105 * pk], 10, 6), paintMuzzle, def);
-  sheetMesh(mb, ellRows([0.8, 0.69, 0], [0.07, 0.05, 0.085], 8, 5), paintChin, def);
-  sheetMesh(mb, ellRows(FACE.nose, [0.045, 0.038, 0.066], 8, 5), paintNose, def);
-  addGlasses(mb, def);
+  for (const sd of [1, -1]) sheetMesh(mb, ellRows([FACE.muzzle[0], FACE.muzzle[1], FACE.muzzle[2] * sd * (1 + P.cheek * 0.2)], [0.095 * pk, 0.085 * pk, 0.1 * pk], 10, 6), paintMuzzle, def);
+  sheetMesh(mb, ellRows([0.785, 0.395, 0], [0.07, 0.05, 0.085], 8, 5), paintMuzzle, def);
+  sheetMesh(mb, ellRows(FACE.nose, [0.034, 0.03, 0.05], 8, 5), paintNose, def);
+  addGlasses(mb, def); // [phase9:seal]
   // tiny front flippers under the sides
-  const shN = def([SHOULDER[0] + 0.12 * P.shN, SHOULDER[1] + 0.24 * P.shN, SHOULDER[2] + 0.12 * P.shN]);
-  const shF = def([SHOULDER[0] + 0.12 * P.shF, SHOULDER[1] + 0.24 * P.shF, -SHOULDER[2] - 0.12 * P.shF]);
-  const fw = [0.08, 0.12, 0.13, 0.1, 0.045], ft = [0.065, 0.055, 0.045, 0.036, 0.024];
-  const lF = 0.3 * P.frLen * (1 + 0.4 * P.shF), lN = 0.3 * P.flLen * (1 + 0.4 * P.shN);
-  const tipF = paddle(mb, shF, P.fr, [0.1, 0.3, -1], lF, fw, ft, paintFlip(lF), P.frTw);
-  const tipN = paddle(mb, shN, P.fl, [0.1, 0.3, 1], lN, fw, ft, paintFlip(lN), P.flTw);
+  const shN = def([SHOULDER[0] + 0.12 * P.shN, SHOULDER[1] + 0.22 * P.shN, SHOULDER[2] + 0.2 * P.shN]);
+  const shF = def([SHOULDER[0] + 0.12 * P.shF, SHOULDER[1] + 0.22 * P.shF, -SHOULDER[2] - 0.2 * P.shF]);
+  const fw = [0.08, 0.12, 0.13, 0.1, 0.04], ft = [0.06, 0.05, 0.042, 0.034, 0.022];
+  const tipF = paddle(mb, shF, P.fr, [0.1, 0.3, -1], 0.34 * P.frLen * (1 + 0.4 * P.shF), fw, ft, paintFlip(0.34 * P.frLen * (1 + 0.4 * P.shF)), P.frTw);
+  const tipN = paddle(mb, shN, P.fl, [0.1, 0.3, 1], 0.34 * P.flLen * (1 + 0.4 * P.shN), fw, ft, paintFlip(0.34 * P.flLen * (1 + 0.4 * P.shN)), P.flTw);
   // the tail flipper pair follows the rear's slope
-  const t0 = def([-0.8, 0.36, 0]), t1 = def([-0.95, 0.36, 0]);
+  const t0 = def([-0.75, 0.38, 0]), t1 = def([-0.9, 0.38, 0]);
   const slope = Math.atan2(t1[1] - t0[1], t0[0] - t1[0]);
   for (const sd of [1, -1]) {
     const base = def([HIP[0], HIP[1], HIP[2] * sd]);
-    const ang = P.tail + 0.32 + slope * 0.8 + P.flap * sd * 0.5 + P.flap;
-    const spr = Math.min(1.6, P.spread + 0.7) * 0.8; // splayed wide, so the little tail peeks out beside the rear
-    const D = [-Math.cos(ang) * Math.cos(spr), Math.sin(ang), Math.sin(spr) * sd];
-    paddle(mb, base, D, [0, 1, 0], 0.34, [0.07, 0.11, 0.15, 0.17, 0.12], [0.055, 0.045, 0.036, 0.028, 0.02], paintFlip(0.34));
+    const ang = P.tail + 0.1 + slope * 0.8 + P.flap * sd * 0.5 + P.flap;
+    const D = [-Math.cos(ang) * Math.cos(P.spread * 0.8), Math.sin(ang), Math.sin(P.spread * 0.8) * sd];
+    paddle(mb, base, D, [0, 1, 0], 0.3, [0.06, 0.1, 0.15, 0.17, 0.12], [0.05, 0.04, 0.032, 0.026, 0.018], paintFlip(0.3));
   }
   const raw = mb.build();
-  const mesh = voxelizeMesh(raw, SEAL_VOXEL, { jitter: 0.012, ao: 0.42 }) || raw;
+  const mesh = voxelizeMesh(raw, SEAL_VOXEL, { jitter: 0.015, ao: 0.4 }) || raw;
   if (mesh !== raw) raw.dispose?.();
   // anchors (posed)
-  const nrmD = (p, n) => norm(sub(def(add(p, scl(n, 0.05)), 1), def(p, 1)));
+  const eyeP = (sd) => { const a = FACE.eyeA * sd; const q = loafPt(FACE.eyeX, a); return [q[0], q[1] + FACE.eyeY, q[2]]; };
+  const nrmD = (p, n) => norm(sub(def(add(p, scl(n, 0.05))), def(p)));
   const A = {
-    eyes: [1, -1].map((sd) => { const q = eyeRest(sd); return { p: def(q, 1), n: nrmD(q, loafN(FACE.eyeX, FACE.eyeA * sd)), side: sd }; }),
-    brows: [1, -1].map((sd) => { const q = eyeRest(sd); return def([q[0] - 0.03, q[1] + 0.21, q[2] * 0.97], 1); }),
-    lens: [1, -1].map((sd) => { const L = lensOf(sd); return { p: def(L.c, 1), n: nrmD(L.c, L.n), side: sd }; }),
-    nose: def(FACE.nose, 1), mouth: def(FACE.mouth, 1), faceN: nrmD(FACE.nose, [1, -0.05, 0]),
-    muzzle: [1, -1].map((sd) => def([FACE.muzzle[0] + 0.03, FACE.muzzle[1], FACE.muzzle[2] * sd * (1 + P.cheek * 0.3)], 1)),
-    cheeks: [1, -1].map((sd) => def(loafPt(FACE.cheekX, FACE.cheekA * sd), 1)),
+    eyes: [1, -1].map((sd) => { const q = eyeP(sd); return { p: def(q), n: nrmD(q, loafN(FACE.eyeX, FACE.eyeA * sd)), side: sd }; }),
+    brows: [1, -1].map((sd) => { const q = eyeP(sd); return def([q[0] - 0.03, q[1] + 0.225, q[2] * 0.97]); }), // [phase9:seal] above the frames
+    lens: [1, -1].map((sd) => { const L = lensOf(sd); return { p: def(L.c), n: nrmD(L.c, L.n), side: sd }; }),
+    nose: def(FACE.nose), mouth: def(FACE.mouth), faceN: nrmD(FACE.nose, [1, -0.1, 0]),
+    muzzle: [1, -1].map((sd) => def([FACE.muzzle[0] + 0.03, FACE.muzzle[1], FACE.muzzle[2] * sd * (1 + P.cheek * 0.3)])),
+    cheeks: [1, -1].map((sd) => def(loafPt(FACE.cheekX, FACE.cheekA * sd))),
     cheekN: [1, -1].map((sd) => nrmD(loafPt(FACE.cheekX, FACE.cheekA * sd), loafN(FACE.cheekX, FACE.cheekA * sd))),
-    top: def(add(BUB.c, [0, BUB.R * (1 + BUB.hat), 0]), 1), crown: def(add(BUB.c, [0, BUB.R, 0]), 1), head: def(HEAD_C, 1), bub: def(BUB.c, 1),
-    hand: tipN, hand2: tipF, tail: def([-1.12, 0.38, 0]), bottom: def([-0.12, -0.02, 0]),
-    back: [def([-0.45, 1.05, 0.15]), def([-0.1, 1.12, -0.1]), def([-0.7, 0.85, 0.2])],
+    top: def(FACE.top), head: def(HEAD_C), hand: tipN, hand2: tipF, tail: def([-1.08, 0.38, 0]),
+    bottom: def([-0.1, -0.05, 0]),
   };
   return { mesh, A };
 }
@@ -420,25 +378,25 @@ const POINT_E = [-90, -60, -30, 0, 30, 60, 90].map((d) => (d * Math.PI) / 180);
 export const SEAL_ANIMS = {
   idle: { n: 12, dur: 2.6, fn(P, k) {
     const s = S(k * TAU);
-    P.sq = [1 - 0.014 * s, 1 + 0.034 * s, 1 + 0.018 * s];
-    P.head = [0.03 * S(k * TAU + 0.7), 0.03 * s, 0.07 * S(k * TAU + 0.4)];
-    P.hdy = 0.014 * s; P.belly = 0.03 * (1 - s);
-    P.fl = [-0.45 + 0.16 * S(k * TAU), -0.62, 0.64]; P.fr = [-0.45 + 0.16 * S(k * TAU + 1), -0.62, -0.64];
-    P.tail = 0.16 + 0.08 * S(k * TAU + 1.3);
+    P.sq = [1 - 0.012 * s, 1 + 0.03 * s, 1 + 0.015 * s];
+    P.head = [0.06 + 0.04 * S(k * TAU + 0.7), -0.24, 0.04 * s];
+    P.hdy = 0.012 * s;
+    P.fl = [-0.5 + 0.14 * S(k * TAU), -0.6, 0.62]; P.fr = [-0.5 + 0.14 * S(k * TAU + 1), -0.6, -0.62];
+    P.tail = 0.14 + 0.07 * S(k * TAU + 1.3);
   } },
   swim: { n: 12, dur: 0.72, fn(P, k) {
     const a = k * TAU;
-    P.wave = 0.07; P.wph = a;
+    P.wave = 0.075; P.wph = a;
     P.sq = [1.05, 0.97, 0.98];
-    P.head = [-0.06 + 0.04 * S(a + 1.2), 0, 0.04 * S(a)];
+    P.head = [-0.08 + 0.05 * S(a + 1.2), -0.16, 0];
     const st = 0.5 + 0.5 * S(a);
     P.fl = norm([lerp(0.35, -0.85, st), lerp(-0.75, -0.25, st), 0.55]); P.fr = norm([lerp(0.35, -0.85, st), lerp(-0.75, -0.25, st), -0.55]);
     P.flTw = P.frTw = 0.4 * CO(a);
-    P.tail = 0.06; P.flap = 0.34 * S(a - 1.4); P.spread = 0.3;
+    P.tail = 0.05; P.flap = 0.32 * S(a - 1.4); P.spread = 0.3;
   } },
   wiggle: { n: 8, dur: 0.55, fn(P, k) {
     const s = S(k * TAU);
-    P.side = 0.16 * s; P.head = [0.05, 0.05 * s, -0.2 * s]; P.dy = 0.06 * Math.abs(s); P.belly = 0.05;
+    P.side = 0.16 * s; P.head = [0.1, -0.26, -0.16 * s]; P.dy = 0.05 * Math.abs(S(k * TAU));
     P.fl = [0.1, -0.25 + 0.5 * s, 0.9]; P.fr = [0.1, -0.25 - 0.5 * s, -0.9];
     P.tail = 0.25; P.flap = 0.25 * s; P.spread = 0.6;
   } },
@@ -446,85 +404,63 @@ export const SEAL_ANIMS = {
     SEAL_ANIMS.idle.fn(P, k);
     const s = S(k * TAU);
     P.fl = norm([0.15 + 0.42 * s, 0.95, 0.55]); P.shN = 0.9;
-    P.head = [0.06, 0.08, 0.16]; P.flLen = 1.35;
+    P.head = [0.12, -0.32, 0.13]; P.flLen = 1.3;
   } },
   point: { n: 4, dur: 1.1, buckets: 7, fn(P, k, b) {
     SEAL_ANIMS.idle.fn(P, k * 0.5);
     const e = POINT_E[b];
-    P.rz = clamp(e, -1.2, 1.2) * 0.22;
-    P.head = [e * 0.16, 0.03, 0.05];
+    P.rz = clamp(e, -1.2, 1.2) * 0.26;
+    P.head = [e * 0.22, -0.2, 0.05];
     P.shN = 1;
     P.fl = solvePoint(P, e);
     P.flTw = 0.5;
-    P.flLen = 1.65 + 0.1 * S(k * TAU) + 0.25 * Math.max(0, Math.sin(e));
+    P.flLen = 1.6 + 0.1 * S(k * TAU) + 0.25 * Math.max(0, Math.sin(e));
   } },
   flop: { n: 14, dur: 1.15, fn(P, k) {
-    if (k < 0.16) { const q = k / 0.16; P.sq = [1 + 0.08 * q, 1 - 0.13 * q, 1 + 0.05 * q]; P.belly = 0.1 * q; }
+    if (k < 0.16) { const q = k / 0.16; P.sq = [1 + 0.08 * q, 1 - 0.13 * q, 1 + 0.05 * q]; P.fl = [-0.5, -0.6, 0.6]; P.fr = [-0.5, -0.6, -0.6]; }
     else if (k < 0.5) {
       const q = (k - 0.16) / 0.34;
       P.dy = S(q * Math.PI) * 0.62; P.sq = [0.94, 1.1, 0.96]; P.rz = 0.25 - q * 0.45;
-      P.fl = [0.2, 0.8, 0.7]; P.fr = [0.2, 0.8, -0.7]; P.tail = 0.5; P.head = [0.12 - q * 0.18, 0, 0];
+      P.fl = [0.2, 0.8, 0.7]; P.fr = [0.2, 0.8, -0.7]; P.tail = 0.5; P.head = [0.2 - q * 0.3, -0.2, 0];
     } else if (k < 0.62) {
       const q = (k - 0.5) / 0.12;
-      P.sq = [1 + 0.18 * q, 1 - 0.27 * q, 1 + 0.16 * q]; P.bend = -0.1 * q; P.belly = 0.2 * q;
-      P.fl = [0.15, 0.05, 1]; P.fr = [0.15, 0.05, -1]; P.tail = 0.3; P.spread = 0.8; P.head = [-0.05, 0, 0]; P.hdy = -0.04 * q;
+      P.sq = [1 + 0.18 * q, 1 - 0.27 * q, 1 + 0.16 * q]; P.bend = -0.1 * q;
+      P.fl = [0.15, 0.05, 1]; P.fr = [0.15, 0.05, -1]; P.tail = 0.3; P.spread = 0.8; P.head = [-0.08, -0.22, 0];
     } else {
       const q = (k - 0.62) / 0.38, j = S(q * Math.PI * 3) * (1 - q);
       P.sq = [1 + 0.18 * (1 - q) * 0.6 + 0.05 * j, 1 - 0.27 * (1 - q) * 0.6 - 0.08 * j, 1 + 0.1 * (1 - q)];
-      P.belly = 0.2 * (1 - q) + 0.06 * j;
-      P.fl = [lerp(0.15, -0.45, q), lerp(0.05, -0.62, q), lerp(1, 0.64, q)]; P.fr = [lerp(0.15, -0.45, q), lerp(0.05, -0.62, q), -lerp(1, 0.64, q)];
-      P.spread = lerp(0.8, 0.45, q); P.head = [0.03 * j, 0, 0.07 * j];
+      P.fl = [lerp(0.15, -0.5, q), lerp(0.05, -0.6, q), lerp(1, 0.62, q)]; P.fr = [lerp(0.15, -0.5, q), lerp(0.05, -0.6, q), -lerp(1, 0.62, q)];
+      P.spread = lerp(0.8, 0.45, q); P.head = [0.05 * j, -0.24, 0.06 * j];
     }
   } },
   spin: { n: 16, dur: 0.85, fn(P, k) {
-    P.yaw -= k * TAU;
+    P.yaw = -0.88 - k * TAU;
     P.dy = S(k * Math.PI) * 0.14; P.sq = [0.97, 1.05, 0.97];
-    P.fl = [0.05, 0.3, 0.95]; P.fr = [0.05, 0.3, -0.95]; P.head = [0.06, 0, 0]; P.tail = 0.3; P.spread = 0.7;
+    P.fl = [0.05, 0.3, 0.95]; P.fr = [0.05, 0.3, -0.95]; P.head = [0.12, -0.15, 0]; P.tail = 0.3; P.spread = 0.7;
   } },
   worried: { n: 8, dur: 0.5, fn(P, k) {
     const j = (Math.floor(k * 8) % 2 ? 1 : -1);
-    P.sq = [0.97, 0.94, 0.98]; P.head = [-0.06, 0, 0.04 * j]; P.hdy = -0.03; P.hsq = 0.97;
+    P.sq = [0.97, 0.94, 0.98]; P.head = [-0.1, -0.24, 0.035 * j]; P.hdy = -0.03; P.hsq = 0.97;
     P.fl = [0.6, 0.62, -0.25]; P.fr = [0.6, 0.62, 0.25]; P.shN = P.shF = 0.7; P.flLen = P.frLen = 0.95; P.tail = 0.05; P.spread = 0.25;
   } },
   clap: { n: 6, dur: 0.34, fn(P, k) {
     const open = 0.5 + 0.5 * CO(k * TAU);
-    P.head = [0.1, 0, 0.05 * (open - 0.5)]; P.dy = 0.03 * (1 - open); P.belly = 0.05 * (1 - open);
+    P.head = [0.2, -0.25, 0]; P.dy = 0.03 * (1 - open);
     P.fl = norm([0.85, 0.3, -0.25 + open * 0.95]); P.fr = norm([0.85, 0.3, 0.25 - open * 0.95]); P.shN = P.shF = 0.6; P.flLen = P.frLen = 1.15;
     P.tail = 0.3 + 0.1 * open; P.flap = 0.15 * open;
   } },
   think: { n: 8, dur: 2.2, fn(P, k) {
     SEAL_ANIMS.idle.fn(P, k);
-    P.fl = [0.72, 0.5, -0.4]; P.shN = 0.8; P.flLen = 1.0; P.head = [0.08, 0.04, 0.2 + 0.03 * S(k * TAU)];
+    P.fl = [0.72, 0.5, -0.4]; P.shN = 0.8; P.flLen = 1.0; P.head = [0.14, -0.3, 0.2 + 0.03 * S(k * TAU)];
   } },
   blow: { n: 8, dur: 1.4, fn(P, k) {
     SEAL_ANIMS.idle.fn(P, k);
-    P.cheek = S(clamp01(k / 0.8) * Math.PI) ** 0.6; P.head = [0.08, 0, 0];
-  } },
-  cheer: { n: 8, dur: 0.62, fn(P, k) {
-    const s = S(k * TAU), air = S(k * Math.PI);
-    P.dy = 0.16 * air;
-    P.sq = air < 0.25 ? [1.07, 0.91, 1.05] : [0.96, 1.06, 0.97]; P.belly = air < 0.25 ? 0.12 : 0;
-    P.fl = norm([0.3, 0.9, 0.5 + 0.25 * s]); P.fr = norm([0.3, 0.9, -0.5 + 0.25 * s]); P.shN = P.shF = 0.9; P.flLen = P.frLen = 1.25;
-    P.tail = 0.5; P.flap = 0.2 * s; P.spread = 0.65; P.head = [0.1, 0, 0.1 * s];
-  } },
-  sad: { n: 8, dur: 2.6, fn(P, k) {
-    const s = S(k * TAU);
-    P.sq = [1.03, 0.95 + 0.012 * s, 1.02]; P.hdy = -0.05 + 0.01 * s; P.head = [-0.14, 0, -0.08]; P.belly = 0.06;
-    P.fl = [0.12, -0.95, 0.4]; P.fr = [0.12, -0.95, -0.4]; P.tail = 0.02; P.spread = 0.3;
-  } },
-  sleep: { n: 12, dur: 3.2, fn(P, k) {
-    const s = S(k * TAU);
-    P.sq = [1.05, 0.93 + 0.025 * s, 1.04]; P.hdy = -0.06 - 0.015 * s; P.head = [-0.18, 0, -0.14]; P.belly = 0.08 + 0.05 * s;
-    P.fl = [-0.3, -0.6, 0.75]; P.fr = [-0.3, -0.6, -0.75]; P.tail = 0.08; P.spread = 0.35;
-    P.closed = true;
+    P.cheek = S(clamp01(k / 0.8) * Math.PI) ** 0.6; P.head = [0.16, -0.22, 0];
   } },
 };
 // old guide poses / moods -> seal animations
-export const SEAL_ALIAS = {
-  talk: 'idle', laugh: 'wiggle', bend: 'worried', excited: 'wiggle', happy: 'idle', love: 'wiggle', surprised: 'idle', ride: 'idle',
-  sleepy: 'sleep', tired: 'sleep', celebrate: 'cheer', dance: 'wiggle', jump: 'flop', hop: 'flop', scared: 'worried', cry: 'sad', stand: 'idle', chat: 'idle',
-};
-const animOf = (a) => (SEAL_ANIMS[a] ? a : SEAL_ALIAS[a] || 'idle');
+export const SEAL_ALIAS = { talk: 'idle', cheer: 'clap', laugh: 'wiggle', sad: 'worried', bend: 'worried', excited: 'wiggle', happy: 'idle', love: 'wiggle', surprised: 'idle',
+  celebrate: 'clap', sleep: 'idle', sleepy: 'idle', scared: 'worried', cry: 'worried', ride: 'idle', bounce: 'wiggle' };
 
 // near flipper direction (model space) that points at screen elevation e (rad, up = +) and comes out in front of
 // the body (toward the viewer), so the gesture reads clearly
@@ -536,62 +472,17 @@ function solvePoint(P, e) {
 
 function pose(anim, k, b, view) {
   const P = P0();
-  if (view === 'front') { P.yaw = -1.2; P.tilt = 0.18; }
+  if (view === 'front') { P.yaw = -1.15; P.tilt = 0.16; }
   SEAL_ANIMS[anim].fn(P, k, b);
+  if (view === 'front' && anim !== 'spin') P.yaw = -1.15;
   return P;
 }
 
-// ------------------------------------------------------------------------------------------------ caches
-// POSES: the voxel meshes of every frame of an animation (model space, compact faces; shared by all sizes).
-// SHEETS: one rendered sprite sheet per animation / device size / view.
-const POSES = new Map(), SHEETS = new Map(), WANT = new Map();
-let totalPx = 0, poseFaces = 0;
-const PX_CAP = 22e6, FACE_CAP = 1.2e6;
+// ------------------------------------------------------------------------------------------------ sheets (cache)
+const SHEETS = new Map();
+let budgetT = -1e9, budgetN = 0;
 const SIZES = [16, 20, 24, 28, 32, 36, 40, 44, 48, 56, 64, 72, 80, 96, 112, 128];
 export function sealSize(s) { for (const z of SIZES) if (z >= s - 1.5) return z; return SIZES[SIZES.length - 1]; }
-const DEV = [12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 44, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128, 144, 160, 176, 192];
-function devSize(s) { for (const z of DEV) if (z >= s - 1.5) return z; return DEV[DEV.length - 1]; }
-function devScale(ctx) {
-  try { const m = ctx?.getTransform?.(); if (m) { const s = Math.hypot(m.a, m.b); if (s > 0.05 && Number.isFinite(s)) return s; } } catch (e) { /* plain */ }
-  return ctx?.__hi || 1;
-}
-const hiScale = () => (HI_ON.on ? HI : 1);
-
-// build budget: at most one new sheet per frame (forced builds aside)
-let budT = -1e9, budN = 0;
-function mayBuild() {
-  const now = performance.now();
-  if (now - budT > 14) { budT = now; budN = 0; }
-  return budN < 1;
-}
-
-// (the meshes do not depend on the view, except the pointing flipper, which is aimed in screen space)
-function poseSet(anim, view) {
-  const key = anim + (anim === 'point' ? '|' + view : '');
-  let ps = POSES.get(key);
-  if (ps) { ps.used = performance.now(); return ps; }
-  const A = SEAL_ANIMS[anim];
-  const n = A.n * (A.buckets || 1);
-  ps = { meshes: [], As: [], faces: 0, used: performance.now() };
-  for (let i = 0; i < n; i++) {
-    const b = Math.floor(i / A.n), k = (i % A.n) / A.n;
-    const P = pose(anim, k, b, view);
-    const { mesh, A: an } = buildSeal(P);
-    ps.meshes.push(mesh); ps.As.push(an);
-    ps.faces += mesh.nFaces || mesh.count / 6 || 0;
-  }
-  POSES.set(key, ps);
-  poseFaces += ps.faces;
-  if (poseFaces > FACE_CAP) {
-    const all = [...POSES].filter(([k2]) => k2 !== key).sort((a, b) => a[1].used - b[1].used);
-    for (const [k2, v] of all) {
-      if (poseFaces <= FACE_CAP * 0.75) break;
-      for (const m of v.meshes) m.dispose?.();
-      POSES.delete(k2); poseFaces -= v.faces;
-    }
-  }
-  return ps;
-}
 
 function project(A, o, m) {
   const pr = (p) => lpProject(p, o);
@@ -600,15 +491,15 @@ function project(A, o, m) {
     eyes: A.eyes.map((e) => { const n = rot(e.n); return { p: pr(e.p), nz: n[2], ang: Math.atan2(-n[1], n[0]), side: e.side }; }),
     lens: A.lens.map((e) => { const n = rot(e.n); return { p: pr(e.p), nz: n[2], ang: Math.atan2(-n[1], n[0]), side: e.side }; }),
     brows: A.brows.map(pr), nose: pr(A.nose), mouth: pr(A.mouth), muzzle: A.muzzle.map(pr), cheeks: A.cheeks.map(pr), cheekZ: A.cheekN.map((n) => rot(n)[2]),
-    faceZ: rot(A.faceN)[2], top: pr(A.top), crown: pr(A.crown), head: pr(A.head), hand: pr(A.hand), hand2: pr(A.hand2), tail: pr(A.tail), bottom: pr(A.bottom),
-    back: A.back.map(pr), bub: pr(A.bub), bubR: BUB.R * o.scale,
+    faceZ: rot(A.faceN)[2], top: pr(A.top), head: pr(A.head), hand: pr(A.hand), hand2: pr(A.hand2), tail: pr(A.tail), bottom: pr(A.bottom),
   };
 }
 
-// crisp dark ink outline around the silhouette, baked into the cached sheet once: every transparent pixel touching
-// an opaque one in the same cell turns ink (more passes on big device sizes so it stays ~1 logical px)
+// [phase9:seal] crisp dark ink outline around the silhouette, baked into the cached sheet once (like the fish's
+// outlineSheet): every transparent pixel touching an opaque one in the same cell turns ink; big sheets get 2 px so
+// the line still reads once scaled down. The jiggle / squash draw the outlined frame, so the line follows them.
 const INK = [14, 16, 28];
-export const SEAL_OUTLINE = (size) => (size >= 150 ? 3 : size >= 52 ? 2 : 1);
+export const SEAL_OUTLINE = (size) => (size >= 52 ? 2 : 1);
 function outlineCells(canvas, cw, ch, passes) {
   const W = canvas.width, H = canvas.height;
   if (!W || !H) return;
@@ -620,7 +511,7 @@ function outlineCells(canvas, cw, ch, passes) {
   const d = img.data, solid = new Uint8Array(W * H);
   for (let i = 0, j = 3; i < solid.length; i++, j += 4) solid[i] = d[j] > 110 ? 1 : 0;
   for (let pass = 0; pass < passes; pass++) {
-    const addL = [];
+    const add = [];
     for (let y = 0; y < H; y++) {
       const cy0 = Math.floor(y / ch) * ch, cy1 = cy0 + ch - 1;
       for (let x = 0; x < W; x++) {
@@ -630,211 +521,98 @@ function outlineCells(canvas, cw, ch, passes) {
         if ((x > cx0 && solid[i - 1]) || (x < cx1 && solid[i + 1]) || (y > cy0 && solid[i - W]) || (y < cy1 && solid[i + W])) {
           const j = i * 4;
           d[j] = INK[0]; d[j + 1] = INK[1]; d[j + 2] = INK[2]; d[j + 3] = 255;
-          addL.push(i);
+          add.push(i);
         }
       }
     }
-    for (const i of addL) solid[i] = 1;
+    for (const i of add) solid[i] = 1;
   }
   g.putImageData(img, 0, 0);
 }
 
 function buildSheet(anim, size, view) {
-  const ps = poseSet(anim, view);
-  const n = ps.meshes.length, AN = SEAL_ANIMS[anim];
+  const A = SEAL_ANIMS[anim];
+  const n = A.n * (A.buckets || 1);
   const cw = Math.ceil(CELL_W * size), ch = Math.ceil(CELL_H * size);
-  const base = { w: cw, h: ch, center: C0, scale: size, radius: 2.4, ...LOOK };
+  const base = { w: cw, h: ch, center: C0, scale: size, radius: 2.2, ...LOOK };
   const cells = [], frames = [];
   for (let i = 0; i < n; i++) {
-    const P = pose(anim, (i % AN.n) / AN.n, Math.floor(i / AN.n), view);
+    const b = Math.floor(i / A.n), k = (i % A.n) / A.n;
+    const P = pose(anim, k, b, view);
+    const { mesh, A: an } = buildSeal(P);
     const matrix = T4.rot(P.tilt, P.yaw, P.rz);
-    cells.push({ mesh: ps.meshes[i], matrix });
-    const F = project(ps.As[i], { ...base, matrix }, matrix);
-    F.dy = P.dy; F.cheek = P.cheek; F.closed = P.closed;
+    cells.push({ mesh, matrix });
+    const F = project(an, { ...base, matrix }, matrix);
+    F.dy = P.dy; F.cheek = P.cheek;
     frames.push(F);
   }
-  let cols = Math.max(1, Math.min(n, Math.floor(4096 / cw)));
-  while (Math.ceil(n / cols) * ch > 4096 && cols < n) cols++;
+  const cols = Math.max(1, Math.min(n, Math.floor(2048 / cw)));
   let canvas = null;
   try { canvas = renderSheet(cells, { ...base, cols }); } catch (e) { canvas = null; }
-  if (canvas) outlineCells(canvas, cw, ch, SEAL_OUTLINE(size));
-  for (const m of ps.meshes) m.release?.();
-  const px = canvas ? canvas.width * canvas.height : 0;
-  totalPx += px;
-  return { canvas, cw, ch, cols, n, frames, size, anim, view, px };
-}
-
-function evict(keep) {
-  if (totalPx <= PX_CAP) return;
-  const all = [...SHEETS].filter(([k]) => k !== keep).sort((a, b) => a[1].used - b[1].used);
-  for (const [k, v] of all) {
-    if (totalPx <= PX_CAP * 0.75) break;
-    if (performance.now() - v.used < 1000) continue;
-    SHEETS.delete(k); totalPx -= v.px || 0;
-  }
+  if (canvas) outlineCells(canvas, cw, ch, SEAL_OUTLINE(size)); // [phase9:seal]
+  for (const c of cells) c.mesh.dispose?.();
+  return { canvas, cw, ch, cols, n, frames, size, anim };
 }
 
 function sheet(anim, size, view, force) {
   const key = anim + '|' + size + '|' + view;
   let sh = SHEETS.get(key);
   if (sh) { sh.used = performance.now(); return sh; }
-  // a cached sheet of a close size stands in: zoom-ins and other transient scales must not bake a new sheet for
-  // every size bucket they pass through; a size that stays wanted for a while (~40 draws) gets its own crisp sheet
-  if (!force) {
-    let near = null;
-    for (const s of SHEETS.values()) {
-      if (s.anim !== anim || s.view !== view || s.size < size * 0.8 || s.size > size * 1.5) continue;
-      if (!near || Math.abs(Math.log(s.size / size)) < Math.abs(Math.log(near.size / size))) near = s;
-    }
-    if (near) {
-      const w = (WANT.get(key) || 0) + 1;
-      WANT.set(key, w);
-      if (WANT.size > 64) WANT.delete(WANT.keys().next().value);
-      if (w < 40 || !mayBuild()) { near.used = performance.now(); return near; }
-    }
+  const now = performance.now();
+  if (now - budgetT > 14) { budgetT = now; budgetN = 0; }
+  if (!force && budgetN >= 1) {
+    // over budget this frame: the idle cycle stands in (any size as a last resort)
+    const alt = SHEETS.get('idle|' + size + '|' + view) || [...SHEETS.values()].find((s) => s.anim === anim && s.view === view);
+    if (alt) return alt;
   }
-  if (!force && !mayBuild()) {
-    // over budget this frame: the nearest cached sheet stands in
-    let best = null, bs = Infinity;
-    for (const s of SHEETS.values()) {
-      const score = (s.anim === anim ? 0 : s.anim === 'idle' ? 2000 : 4000) + (s.view === view ? 0 : 8000) + Math.abs(Math.log(s.size / size)) * 300;
-      if (score < bs) { bs = score; best = s; }
-    }
-    if (best) { best.used = performance.now(); return best; }
-  }
-  budN++;
+  budgetN++;
   sh = buildSheet(anim, size, view);
-  sh.used = performance.now();
+  sh.view = view; sh.used = now;
   SHEETS.set(key, sh);
-  evict(key);
+  if (SHEETS.size > 48) {
+    let old = null;
+    for (const [k, s] of SHEETS) if (!old || s.used < old[1].used) old = [k, s];
+    if (old) SHEETS.delete(old[0]);
+  }
   return sh;
 }
 
 export function warmSeal(size = 40, anims = ['idle', 'swim', 'point'], view = 'side') {
-  if (typeof document === 'undefined' || !lpAvailable()) return true;
-  const z = devSize(sealSize(size) * hiScale());
-  for (const a of anims) if (SEAL_ANIMS[animOf(a)]) sheet(animOf(a), z, view, true);
+  if (!lpAvailable()) return true;
+  const z = sealSize(size);
+  for (const a of anims) sheet(a, z, view, true);
   return true;
 }
-export function sealReady(size = 40, view = 'side') { return SHEETS.has('idle|' + devSize(sealSize(size) * hiScale()) + '|' + view); }
-
-// ------------------------------------------------------------------------------------------------ per-seal state
-// blink / gaze, the soft-body jiggle (squash spring + ripple) and the floating bubbles
-const ST = new Map();
-function stateOf(id, t, x, y, anim) {
-  let s = ST.get(id);
-  if (!s || t < s.t - 1 || t - s.t > 2) {
-    s = {
-      t, x, y, vx: 0, vy: 0, s: 0, v: 0, anim, rip: 0, talk: 0, dt: 0,
-      next: t + 1.5 + Math.random() * 2, until: -1, gx: 0, gy: 0,
-      floats: [], pops: [], floatNext: t + 1 + Math.random() * 2,
-      hb: null,
-    };
-    ST.set(id, s);
-    if (ST.size > 40) ST.delete(ST.keys().next().value);
-  }
-  s.dt = clamp(t - s.t, 0, 0.05);
-  if (t > s.next) { s.until = t + 0.13; s.next = t + 2.2 + Math.random() * 3.5; if (Math.random() < 0.18) s.next = t + 0.3; }
-  return s;
-}
-function updateJiggle(j, t, x, y, anim, talk) {
-  const dt = j.dt;
-  if (dt > 0) {
-    const vx = (x - j.x) / dt, vy = (y - j.y) / dt;
-    const ay = (vy - j.vy) / Math.max(dt, 1 / 60), ax = (vx - j.vx) / Math.max(dt, 1 / 60);
-    // spring: stiff enough to snap back, soft enough to wobble a few times
-    let f = -150 * j.s - 7.5 * j.v;
-    f += clamp(-ay * 0.0012, -6, 6) + clamp(Math.abs(ax) * 0.0004, 0, 3);
-    if (anim !== j.anim) { j.v += anim === 'flop' ? -2.4 : 1.3; j.anim = anim; }
-    j.talk += ((talk || 0) - j.talk) * Math.min(1, dt * 10);
-    f += j.talk * Math.sin(t * 17) * 10;
-    j.v += f * dt; j.s = clamp(j.s + j.v * dt, -0.24, 0.24);
-    const sp = Math.hypot(vx, vy);
-    j.rip += ((clamp(sp / 300, 0, 1) * 0.6 + Math.abs(j.v) * 0.6 + j.talk * 0.8 + 0.2) - j.rip) * Math.min(1, dt * 4);
-    j.vx = vx; j.vy = vy;
-  }
-  j.t = t; j.x = x; j.y = y;
-}
-
-// ------------------------------------------------------------------------------------------------ the bubble helmet
-// Bubbles wears the PLAYER'S bubble head: character.js renderBubbleHead (the same voxel sphere, palette entry, voxel
-// renderer settings and shadeBubble pass: aqua tint, thin-film rainbow rim, fresnel transparency, the glossy window
-// highlight, pin glint and bounce light, the deep-tint rim line), with a tiny tilted candy-striped party-hat tip on
-// top where the player has its sprout. One sprite per device radius / voxel size (built on the seal's own voxel grid,
-// so its voxels match the body's), drawn over the posed head every frame.
-const HELM = new Map();
-function hatAccent(m, col, { cx, cy, cz, R }) {
-  const gl = { smooth: 0.8, jitter: 0.02, spec: 1.1, specPow: 12 };
-  const a = col('#33c4e6', gl), ad = col('#1d9fca', gl), w = col('#f8fdff', gl);
-  const pom = col('#ff8db4', { smooth: 0.9, jitter: 0.12, spec: 0.9 }), pomL = col('#ffc2d8', { smooth: 0.9, jitter: 0.1, spec: 1 });
-  // a small cone leaning back (screen left in the player's 3/4 camera), seated on the top of the bubble
-  const ax = norm([-0.28, 1, 0.1]);
-  const H = Math.max(4, R * BUB.hat), rb = Math.max(1.8, R * 0.3), pr = Math.max(1.2, R * 0.12);
-  const b0 = [cx + ax[0] * (R - 1.2), cy + ax[1] * (R - 1.2), cz + ax[2] * (R - 1.2)];
-  const pc = [b0[0] + ax[0] * (H + pr * 0.3), b0[1] + ax[1] * (H + pr * 0.3), b0[2] + ax[2] * (H + pr * 0.3)];
-  const E = Math.ceil(H + pr * 2 + 3);
-  for (let y = Math.floor(b0[1] - 3); y <= Math.ceil(b0[1] + E); y++) for (let z = Math.floor(b0[2] - E); z <= Math.ceil(b0[2] + E); z++) for (let x = Math.floor(b0[0] - E); x <= Math.ceil(b0[0] + E); x++) {
-    const X = x + 0.5, Y = y + 0.5, Z = z + 0.5;
-    if (Math.hypot(X - pc[0], Y - pc[1], Z - pc[2]) <= pr) { m.set(x, y, z, Y > pc[1] + pr * 0.25 ? pomL : pom); continue; }
-    const p = [X - b0[0], Y - b0[1], Z - b0[2]];
-    const h = dot(p, ax), r = Math.hypot(p[0] - ax[0] * h, p[1] - ax[1] * h, p[2] - ax[2] * h);
-    if (h < -2 || h > H || r > rb * (1 - Math.max(0, h) / H) + 0.3) continue;
-    if (Math.hypot(X - cx, Y - cy, Z - cz) < R - 0.4) continue; // seated on the bubble, not inside it
-    // candy stripes: a darker brim band, then aqua / white rings
-    m.set(x, y, z, h < 0.9 ? ad : Math.floor((h / H) * 4.2) % 2 ? w : a);
-  }
-}
-function helmet(Rpx, q) {
-  if (typeof document === 'undefined' || !(Rpx > 2)) return null;
-  const Rv = Math.max(4, Math.round((Rpx / q) * 2) / 2), key = Rv + '|' + q.toFixed(3);
-  let hb = HELM.get(key);
-  if (hb !== undefined) return hb;
-  try { hb = renderBubbleHead(Rv, q, { tint: 'aqua', accent: hatAccent }); } catch (e) { hb = null; }
-  HELM.set(key, hb);
-  if (HELM.size > 24) HELM.delete(HELM.keys().next().value);
-  return hb;
-}
-// the helmet's own soft-body spring: it lags behind the head when the seal moves (a little offset) and squashes /
-// stretches (kicked by the body's squash spring, landings, animation changes and talking), plus a slow breathing wobble
-function updateHelmet(j, t, at, u, anim, talk) {
-  let h = j.hb;
-  if (!h) h = j.hb = { x: at[0], y: at[1], vx: 0, vy: 0, ox: 0, oy: 0, ovx: 0, ovy: 0, w: 0, wv: 0, anim };
-  const dt = j.dt;
-  if (dt > 0) {
-    const vx = (at[0] - h.x) / dt, vy = (at[1] - h.y) / dt;
-    const ax = clamp((vx - h.vx) / Math.max(dt, 1 / 60), -6000, 6000), ay = clamp((vy - h.vy) / Math.max(dt, 1 / 60), -6000, 6000);
-    const k = 1 / Math.max(8, u * 0.68); // per bubble radius
-    h.ovx += (-110 * h.ox - 9 * h.ovx - ax * k * 0.012) * dt; h.ovy += (-110 * h.oy - 9 * h.ovy - ay * k * 0.012) * dt;
-    h.ox = clamp(h.ox + h.ovx * dt, -0.08, 0.08); h.oy = clamp(h.oy + h.ovy * dt, -0.08, 0.08);
-    let f = -170 * h.w - 6 * h.wv + j.v * 2.2 + clamp(Math.abs(ay) * k * 0.0016, 0, 4) * Math.sign(ay || 1);
-    if (anim !== h.anim) { h.wv += 0.9; h.anim = anim; }
-    f += (talk || 0) * Math.sin(t * 15) * 3;
-    h.wv += f * dt; h.w = clamp(h.w + h.wv * dt, -0.1, 0.1);
-    h.vx = vx; h.vy = vy;
-  }
-  h.x = at[0]; h.y = at[1];
-  const br = 0.014 * Math.sin(t * 2.3);
-  return { ox: h.ox, oy: h.oy, sx: 1 + h.w + br, sy: 1 - h.w * 0.9 - br };
-}
+export function sealReady(size = 40, view = 'side') { return SHEETS.has('idle|' + sealSize(size) + '|' + view); }
 
 // ------------------------------------------------------------------------------------------------ the live face
-let FPX = 1; // the face is drawn at voxel resolution: one face pixel = FPX sprite px
-function ellipse(ctx, x, y, rx2, ry2, rot = 0) { ctx.beginPath(); ctx.ellipse(x, y, Math.max(0.3, rx2), Math.max(0.3, ry2), rot, 0, TAU); }
-const dotPx = (ctx, x, y, n = 1) => ctx.fillRect(Math.round(x / FPX - n / 2) * FPX, Math.round(y / FPX - n / 2) * FPX, FPX * n, FPX * n);
+const FACESTATE = new Map();
+function faceState(id, t) {
+  let s = FACESTATE.get(id);
+  if (!s || t < s.t - 1) { s = { t, next: t + 1.5 + Math.random() * 2, until: -1, gx: 0, gy: 0 }; FACESTATE.set(id, s); }
+  const dt = clamp(t - s.t, 0, 0.1);
+  s.dt = dt; s.t = t;
+  if (t > s.next) { s.until = t + 0.13; s.next = t + 2.2 + Math.random() * 3.5; if (Math.random() < 0.18) s.next = t + 0.3; }
+  if (FACESTATE.size > 40) FACESTATE.delete(FACESTATE.keys().next().value);
+  return s;
+}
 
-// one eye in its own upright frame (radius r): a big, shiny, dark cartoon eye with two catchlights, moods
+let FPX = 1; // the face is drawn at voxel resolution: one face pixel = FPX sprite px
+function ellipse(ctx, x, y, rx, ry, rot = 0) { ctx.beginPath(); ctx.ellipse(x, y, Math.max(0.3, rx), Math.max(0.3, ry), rot, 0, TAU); }
+
+// one eye in its own upright frame (radius r): big dark glossy Aero eye, moods
 function drawEye(ctx, r, o) {
   const { mood, blink, gx, gy, side } = o;
   const ink = '#141a2a';
   ctx.lineCap = 'round';
-  if (blink > 0.5 || mood === 'happy-closed' || mood === 'sleepy') {
-    ctx.strokeStyle = ink; ctx.lineWidth = Math.max(FPX, r * 0.32);
-    ctx.beginPath(); ctx.arc(0, -r * 0.15, r * 0.75, 0.2 * Math.PI, 0.8 * Math.PI); ctx.stroke();
+  if (blink > 0.5 || mood === 'happy-closed') {
+    ctx.strokeStyle = ink; ctx.lineWidth = Math.max(FPX, r * 0.34);
+    ctx.beginPath(); ctx.arc(0, -r * 0.1, r * 0.8, 0.25 * Math.PI, 0.75 * Math.PI); ctx.stroke();
     return;
   }
   if (mood === 'laugh' || mood === 'joy') {
-    ctx.strokeStyle = ink; ctx.lineWidth = Math.max(FPX, r * 0.34);
-    ctx.beginPath(); ctx.arc(0, r * 0.35, r * 0.72, 1.15 * Math.PI, 1.85 * Math.PI); ctx.stroke();
+    ctx.strokeStyle = ink; ctx.lineWidth = Math.max(FPX, r * 0.36);
+    ctx.beginPath(); ctx.arc(0, r * 0.35, r * 0.75, 1.15 * Math.PI, 1.85 * Math.PI); ctx.stroke();
     return;
   }
   if (mood === 'love') {
@@ -845,38 +623,38 @@ function drawEye(ctx, r, o) {
     ctx.bezierCurveTo(-k * 1.25, -k * 0.05, -k * 0.55, -k * 1.0, 0, -k * 0.35);
     ctx.bezierCurveTo(k * 0.55, -k * 1.0, k * 1.25, -k * 0.05, 0, k * 0.85);
     ctx.fill();
-    ctx.fillStyle = '#ffffff'; dotPx(ctx, -k * 0.4, -k * 0.35, 1);
+    ctx.fillStyle = 'rgba(255,255,255,0.9)'; ellipse(ctx, -k * 0.38, -k * 0.38, k * 0.2, k * 0.13, -0.6); ctx.fill();
     return;
   }
-  let rxe = r * 0.9, rye = r * 1.04;
-  if (mood === 'surprised' || mood === 'excited') { rxe *= 1.1; rye *= 1.1; }
-  const ox = gx * r * 0.14, oy = gy * r * 0.12;
+  let rx = r * 1.05, ry = r * 0.8;
+  if (mood === 'surprised' || mood === 'excited') { rx *= 1.12; ry *= 1.12; }
+  const ox = gx * r * 0.16, oy = gy * r * 0.14;
   ctx.save();
   // the lid line for sad / smug / determined (clip away the top)
   if (mood === 'sad' || mood === 'smug' || mood === 'angry' || mood === 'determined' || mood === 'tired') {
     ctx.beginPath();
     const tiltA = mood === 'sad' ? -0.45 * side : mood === 'smug' || mood === 'tired' ? 0 : 0.45 * side;
-    const cut = mood === 'smug' || mood === 'tired' ? -rye * 0.05 : -rye * 0.4;
+    const cut = mood === 'smug' || mood === 'tired' ? -ry * 0.05 : -ry * 0.35;
     ctx.save(); ctx.rotate(tiltA); ctx.rect(-r * 3, cut, r * 6, r * 6); ctx.restore();
     ctx.clip();
   }
-  // a dark glossy eye with a deep blue glow in its lower half
-  ctx.fillStyle = '#10131d';
-  ellipse(ctx, ox, oy, rxe, rye); ctx.fill();
-  ctx.fillStyle = '#2b3f6e';
-  ellipse(ctx, ox, oy + rye * 0.42, rxe * 0.72, rye * 0.42); ctx.fill();
-  ctx.fillStyle = '#4f7fc0';
-  ellipse(ctx, ox, oy + rye * 0.62, rxe * 0.42, rye * 0.2); ctx.fill();
-  // catchlights: a big one up front and a small one below
+  const g = ctx.createLinearGradient(0, -ry, 0, ry);
+  g.addColorStop(0, '#0b0c12'); g.addColorStop(0.7, '#191c27'); g.addColorStop(1, '#2c3346');
+  ctx.fillStyle = g;
+  ellipse(ctx, ox, oy, rx, ry, 0.12 * side); ctx.fill();
+  // glassy aqua bounce light along the bottom
+  ctx.strokeStyle = 'rgba(120,200,240,0.3)'; ctx.lineWidth = Math.max(FPX, r * 0.16);
+  ctx.beginPath(); ctx.ellipse(ox, oy, rx * 0.78, ry * 0.8, 0, 0.18 * Math.PI, 0.82 * Math.PI); ctx.stroke();
+  // catchlights
   ctx.fillStyle = '#ffffff';
-  const big = r > FPX * 2.4 ? 2 : 1;
-  dotPx(ctx, ox - rxe * 0.32, oy - rye * 0.36, big);
-  if (r > FPX * 1.6) dotPx(ctx, ox + rxe * 0.36, oy + rye * 0.3, 1);
-  if ((mood === 'excited' || mood === 'surprised') && r > FPX * 2.4) dotPx(ctx, ox + rxe * 0.2, oy - rye * 0.62, 1);
+  ctx.fillRect(Math.round((ox - rx * 0.32) / FPX - 0.5) * FPX, Math.round((oy - ry * 0.4) / FPX - 0.5) * FPX, FPX * (r > FPX * 2.2 ? 2 : 1), FPX * (r > FPX * 2.2 ? 2 : 1));
+  ctx.globalAlpha *= 0.9;
+  ellipse(ctx, ox + rx * 0.34, oy + ry * 0.32, rx * 0.15, ry * 0.13); ctx.fill();
+  if (mood === 'excited' || mood === 'surprised') { ellipse(ctx, ox + rx * 0.05, oy - ry * 0.62, rx * 0.11, ry * 0.09); ctx.fill(); }
   ctx.restore();
   if (blink > 0.05) { // half-closed
-    ctx.fillStyle = 'rgba(236,239,246,1)';
-    ctx.fillRect(-r * 1.3, -rye * 1.2, r * 2.6, rye * 2.2 * blink);
+    ctx.fillStyle = 'rgba(232,236,246,0.95)';
+    ctx.fillRect(-r * 1.3, -ry * 1.2, r * 2.6, ry * 2.2 * blink);
   }
 }
 
@@ -888,38 +666,48 @@ function drawFace(ctx, F, o, s) {
   if (o.look) { const l = Math.hypot(o.look[0], o.look[1]) || 1, k = Math.min(1, l / 30); gx = (o.look[0] / l) * k; gy = (o.look[1] / l) * k; }
   if (mood === 'think') { gx = 0.6; gy = -0.8; }
   st.gx += (gx - st.gx) * Math.min(1, st.dt * 9); st.gy += (gy - st.gy) * Math.min(1, st.dt * 9);
-  let blink = o.blink ?? (t < st.until ? 1 : 0);
-  if (F.closed) blink = 1;
+  const blink = o.blink ?? (t < st.until ? 1 : 0);
   let em = mood;
   if (mood === 'happy' && (o.talk || 0) < 0.05 && Math.sin(t * 0.8) > 0.93) em = 'joy';
   if (mood === 'worried' || mood === 'scared') em = 'sad';
   const a0 = ctx.globalAlpha;
-  // rosy blush (pixel ovals at voxel resolution)
-  if (F.faceZ > 0.0) {
-    const bk = mood === 'love' || mood === 'excited' ? 0.85 : mood === 'sad' || mood === 'angry' ? 0.35 : 0.62;
-    ctx.fillStyle = '#ff8fb2';
+  // glossy Aero highlight on the crown + a wet-nose glint
+  if (s >= 18) {
+    const hx = F.head[0] - s * 0.14, hy = F.head[1] - s * 0.27;
+    const gg = ctx.createRadialGradient(hx, hy, 0, hx, hy, s * 0.2);
+    gg.addColorStop(0, 'rgba(255,255,255,0.55)'); gg.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = gg;
+    ellipse(ctx, hx, hy, s * 0.2, s * 0.11, -0.45); ctx.fill();
+  }
+  if (F.faceZ > 0.1) {
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ellipse(ctx, F.nose[0] - s * 0.018, F.nose[1] - s * 0.02, Math.max(0.6, s * 0.018), Math.max(0.5, s * 0.012), -0.4); ctx.fill();
+  }
+  // blush
+  if (F.faceZ > 0.05 && s >= 18) {
+    const bk = mood === 'love' || mood === 'excited' ? 0.55 : mood === 'sad' || mood === 'angry' ? 0.15 : 0.32;
+    ctx.fillStyle = `rgba(255,130,170,${bk})`;
     F.cheeks.forEach((c, i) => {
       const z = F.cheekZ ? F.cheekZ[i] : 1;
-      if (z < 0.08) return;
-      ctx.globalAlpha = a0 * bk * clamp01((z - 0.08) / 0.3);
-      ellipse(ctx, c[0], c[1], er * 1.0 * Math.max(0.45, z), er * 0.52); ctx.fill();
+      if (z < 0.15) return;
+      ctx.globalAlpha = a0 * clamp01((z - 0.15) / 0.3);
+      ellipse(ctx, c[0], c[1], er * 1.05 * Math.max(0.4, z), er * 0.55); ctx.fill();
     });
     ctx.globalAlpha = a0;
   }
-  // a wet-nose glint
-  if (F.faceZ > 0.1) { ctx.fillStyle = 'rgba(255,255,255,0.9)'; dotPx(ctx, F.nose[0] - s * 0.012, F.nose[1] - s * 0.016, 1); }
   // eyes
   for (const E of F.eyes) {
     if (E.nz < 0.06) continue;
     ctx.globalAlpha = a0 * clamp01(E.nz / 0.22);
     ctx.save();
     ctx.translate(E.p[0], E.p[1]);
-    ctx.rotate(E.ang); ctx.scale(Math.max(0.4, E.nz), 1); ctx.rotate(-E.ang);
+    ctx.rotate(E.ang); ctx.scale(Math.max(0.35, E.nz), 1); ctx.rotate(-E.ang);
     drawEye(ctx, er, { mood: em, blink, gx: st.gx, gy: st.gy, side: E.side });
     ctx.restore();
   }
   ctx.globalAlpha = a0;
-  // the glasses' lenses (the rims are voxels in the sheet): a faint glassy tint and a glint at the upper left
+  // [phase9:seal] the glasses' lenses (the rims are voxels in the sheet): a faint glassy tint, a glossy glint at the
+  // upper left and a sparkle dot at the lower right of each lens
   if (F.lens) for (const E of F.lens) {
     if (E.nz < 0.08) continue;
     const R = GLASS.R * s * 0.8;
@@ -927,36 +715,55 @@ function drawFace(ctx, F, o, s) {
     ctx.save();
     ctx.translate(E.p[0], E.p[1]);
     ctx.rotate(E.ang); ctx.scale(Math.max(0.35, E.nz), 1); ctx.rotate(-E.ang);
-    ctx.fillStyle = 'rgba(196,238,255,0.12)';
+    ctx.fillStyle = 'rgba(196,238,255,0.13)';
     ellipse(ctx, 0, 0, R, R); ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineCap = 'round';
-    ctx.lineWidth = Math.max(FPX, R * 0.15);
-    ctx.beginPath(); ctx.arc(0, 0, R * 0.78, 1.08 * Math.PI, 1.32 * Math.PI); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.92)'; ctx.lineCap = 'round';
+    ctx.lineWidth = Math.max(FPX, R * 0.17);
+    ctx.beginPath(); ctx.arc(0, 0, R * 0.7, 1.06 * Math.PI, 1.36 * Math.PI); ctx.stroke();
+    if (R > FPX * 2.5) { ctx.fillStyle = 'rgba(255,255,255,0.8)'; const d = Math.max(FPX, R * 0.13); ctx.fillRect(R * 0.42 - d / 2, R * 0.42 - d / 2, d, d); }
     ctx.restore();
   }
   ctx.globalAlpha = a0;
   // worried / determined brows
   if ((mood === 'worried' || mood === 'scared' || mood === 'angry' || mood === 'determined' || mood === 'sad') && F.faceZ > 0.1) {
-    ctx.strokeStyle = '#59607a'; ctx.lineWidth = Math.max(FPX, er * 0.3); ctx.lineCap = 'round';
+    ctx.strokeStyle = '#59607a'; ctx.lineWidth = Math.max(FPX, er * 0.32); ctx.lineCap = 'round';
     const up = mood === 'angry' || mood === 'determined' ? -1 : 1;
     F.brows.forEach((b, i) => {
       if (F.eyes[i].nz < 0.15) return;
       const inner = F.eyes[i].side * -1;
-      ctx.beginPath(); ctx.moveTo(b[0] - er * 0.8, b[1] + er * 0.25 * up * -inner); ctx.lineTo(b[0] + er * 0.8, b[1] + er * 0.25 * up * inner); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(b[0] - er * 0.9, b[1] + er * 0.25 * up * -inner); ctx.lineTo(b[0] + er * 0.9, b[1] + er * 0.25 * up * inner); ctx.stroke();
     });
   }
   if (F.faceZ < 0.05) return;
-  // mouth: a tiny 'w' smile, opening while talking
+  // whiskers (twitch while talking)
+  if (s >= 22) {
+    ctx.strokeStyle = 'rgba(150,156,176,0.45)'; ctx.lineWidth = FPX * 0.7;
+    const tw = (o.talk || 0) * 0.25 * Math.sin(t * 30);
+    const cx = (F.muzzle[0][0] + F.muzzle[1][0]) / 2;
+    for (const m of F.muzzle) {
+      const dir = m[0] >= cx ? 1 : -1;
+      for (let i = -1; i <= 1; i++) {
+        const a = i * 0.22 + tw + (i === 0 ? 0.05 : 0);
+        const L = s * (0.3 - Math.abs(i) * 0.04);
+        ctx.beginPath(); ctx.moveTo(m[0] + dir * er * 0.4, m[1] + i * er * 0.25);
+        ctx.lineTo(m[0] + dir * (er * 0.4 + Math.cos(a) * L), m[1] + i * er * 0.25 + Math.sin(a) * L * 0.6);
+        ctx.stroke();
+      }
+      ctx.fillStyle = 'rgba(96,100,118,0.75)';
+      for (let i = 0; i < 3; i++) ctx.fillRect(m[0] - dir * er * (0.1 + i * 0.45) - FPX / 2, m[1] - er * 0.2 + (i % 2) * er * 0.45, FPX, FPX);
+    }
+  }
+  // mouth: the little omega, opening while talking
   const [mx, my] = F.mouth;
   const w = s * 0.06, talk = clamp01(o.talk || 0);
-  ctx.strokeStyle = '#4a4458'; ctx.lineWidth = Math.max(FPX, s * 0.026); ctx.lineCap = 'round';
+  ctx.strokeStyle = '#4a4458'; ctx.lineWidth = Math.max(FPX, s * 0.03); ctx.lineCap = 'round';
   if (talk > 0.06 || mood === 'surprised' || mood === 'excited' || em === 'joy') {
     const open = Math.max(talk, mood === 'surprised' ? 0.6 : mood === 'excited' || em === 'joy' ? 0.3 : 0);
-    const oh = s * (0.02 + open * 0.042), ow = s * (mood === 'surprised' ? 0.036 : 0.045);
+    const oh = s * (0.022 + open * 0.045), ow = s * (mood === 'surprised' ? 0.04 : 0.05);
     ctx.fillStyle = '#5b2238';
-    ellipse(ctx, mx, my - s * 0.005 + oh * 0.5, ow, oh); ctx.fill();
+    ellipse(ctx, mx, my - s * 0.01 + oh * 0.5, ow, oh); ctx.fill();
     ctx.fillStyle = '#ff7f9f';
-    ellipse(ctx, mx, my - s * 0.005 + oh * 0.95, ow * 0.6, oh * 0.42); ctx.fill();
+    ellipse(ctx, mx, my - s * 0.01 + oh * 0.95, ow * 0.62, oh * 0.42); ctx.fill();
   }
   ctx.beginPath();
   if (mood === 'sad' || mood === 'worried' || mood === 'scared') {
@@ -969,88 +776,35 @@ function drawFace(ctx, F, o, s) {
   ctx.stroke();
 }
 
-// ------------------------------------------------------------------------------------------------ bubbles (pixel art)
-// A pixel-art soap bubble (cached per device radius): a dark aqua rim, a faint dithered aqua body, a pink / gold /
-// mint film band along the lower rim and a chunky white highlight at the upper left.
-const SOAP = new Map();
-function soapBubble(R) {
-  let c = SOAP.get(R);
+// ------------------------------------------------------------------------------------------------ bubbles (2D)
+const RIDE = new Map();
+function rideBubble(r) {
+  r = Math.max(4, Math.round(r));
+  let c = RIDE.get(r);
   if (c) return c;
-  const S2 = R * 2 + 3;
+  const S2 = r * 2 + 4;
   c = document.createElement('canvas');
   c.width = c.height = S2;
-  const g = c.getContext('2d');
-  const img = g.createImageData(S2, S2), d = img.data, m = S2 / 2;
-  const put = (x, y, r2, g2, b2, a) => { const i = (y * S2 + x) * 4; d[i] = r2; d[i + 1] = g2; d[i + 2] = b2; d[i + 3] = a; };
-  const film = [[255, 150, 214], [255, 230, 140], [150, 255, 210], [130, 210, 255]];
-  const rimW = R > 14 ? 2 : 1;
-  for (let y = 0; y < S2; y++) for (let x = 0; x < S2; x++) {
-    const dx = x + 0.5 - m, dy = y + 0.5 - m, dd = Math.hypot(dx, dy);
-    if (dd > R) continue;
-    const a = Math.atan2(dy, dx);
-    if (dd > R - rimW) {
-      if (a > 0.1 && a < 2.9) { const f = film[Math.floor(((a - 0.1) / 2.8) * 4) % 4]; put(x, y, f[0], f[1], f[2], 220); }
-      else put(x, y, 70, 160, 210, 230);
-      continue;
-    }
-    const k = dd / R;
-    // the faint body: denser near the rim, ordered dithering
-    const bay = ((x & 1) * 2 + (y & 1) * 3) % 4 / 4;
-    if (k > 0.78 && bay < (k - 0.7) * 2.5) put(x, y, 170, 232, 255, 150);
-    else if ((x + y) % 2 === 0 && k > 0.55) put(x, y, 190, 240, 255, 50);
-    else put(x, y, 200, 244, 255, 26);
-    // the highlight crescent at the upper left
-    const hl = Math.hypot(dx + R * 0.38, dy + R * 0.4);
-    if (hl < R * 0.24 && dx < -R * 0.15 && dy < -R * 0.15) put(x, y, 255, 255, 255, 235);
-  }
-  // a little sparkle at the lower right
-  const sx = Math.round(m + R * 0.45), sy = Math.round(m + R * 0.42);
-  if (sx < S2 && sy < S2) put(sx, sy, 255, 255, 255, 230);
-  g.putImageData(img, 0, 0);
-  SOAP.set(R, c);
-  if (SOAP.size > 48) SOAP.delete(SOAP.keys().next().value);
+  const g = c.getContext('2d'), m = S2 / 2;
+  const fill = g.createRadialGradient(m - r * 0.3, m - r * 0.35, r * 0.1, m, m, r);
+  fill.addColorStop(0, 'rgba(255,255,255,0.10)'); fill.addColorStop(0.7, 'rgba(170,236,255,0.16)'); fill.addColorStop(1, 'rgba(120,214,255,0.42)');
+  g.fillStyle = fill; g.beginPath(); g.arc(m, m, r, 0, TAU); g.fill();
+  // iridescent soap-film rim
+  const cols = ['rgba(255,150,220,0.55)', 'rgba(255,236,140,0.5)', 'rgba(140,255,200,0.5)', 'rgba(120,200,255,0.6)'];
+  g.lineWidth = Math.max(1, r * 0.06);
+  cols.forEach((cl, i) => { g.strokeStyle = cl; g.beginPath(); g.arc(m, m, r - g.lineWidth * 0.5, 0.15 * Math.PI + i * 0.32, 0.15 * Math.PI + i * 0.32 + 0.4); g.stroke(); });
+  g.strokeStyle = 'rgba(255,255,255,0.85)'; g.lineWidth = 1;
+  g.beginPath(); g.arc(m, m, r - 0.5, 0.95 * Math.PI, 1.75 * Math.PI); g.stroke();
+  g.fillStyle = 'rgba(255,255,255,0.85)';
+  g.beginPath(); g.ellipse(m - r * 0.42, m - r * 0.45, r * 0.26, r * 0.13, -0.75, 0, TAU); g.fill();
+  g.beginPath(); g.arc(m + r * 0.45, m + r * 0.42, Math.max(0.8, r * 0.06), 0, TAU); g.fill();
+  RIDE.set(r, c);
   return c;
 }
 export function drawSoapBubble(ctx, x, y, r, sq = 0) {
-  if (typeof document === 'undefined' || !(r > 0)) return;
-  const ds = clamp(devScale(ctx), 0.25, 4);
-  const R = clamp(Math.round(r * ds), 2, 400);
-  const c = soapBubble(R);
-  const k = r / R, w = c.width * k * (1 + sq * 0.12), h = c.height * k * (1 - sq * 0.1);
-  const sm = ctx.imageSmoothingEnabled;
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(c, Math.round((x - w / 2) * ds) / ds, Math.round((y - h / 2) * ds) / ds, w, h);
-  ctx.imageSmoothingEnabled = sm;
-}
-
-// little pixel bubbles bud off the seal's back, float up wobbling and pop into a few droplet pixels
-function updateFloaters(st, t, emit, size, on, toScreen) {
-  const dt = st.dt, u = size / 40;
-  if (on && t > st.floatNext && emit.length) {
-    st.floatNext = t + 1.6 + Math.random() * 2.6;
-    st.floats.push({ ei: Math.floor(Math.random() * emit.length), x: 0, y: 0, r: Math.max(1.2, size * (0.035 + 0.03 * Math.random())), t: 0, life: 1.4 + Math.random() * 1.2, vx: (Math.random() - 0.5) * 8 * u, vy: -(9 + Math.random() * 9) * u, ph: Math.random() * 9, free: false });
-  }
-  for (const b of st.floats) {
-    b.t += dt;
-    if (!b.free) { const e = emit[b.ei % emit.length]; if (e) { const q = toScreen(e); b.x = q[0]; b.y = q[1] - b.r * Math.min(1, b.t / 0.3); } if (b.t > 0.3) b.free = true; continue; }
-    b.vy -= 7 * u * dt;
-    b.x += (b.vx + Math.sin(b.t * 4.2 + b.ph) * 7 * u) * dt; b.y += b.vy * dt;
-    if (b.t > b.life) for (let i = 0; i < 4; i++) { const a = (i / 4) * TAU + b.ph; st.pops.push({ x: b.x + Math.cos(a) * b.r, y: b.y + Math.sin(a) * b.r, vx: Math.cos(a) * 30 * u, vy: Math.sin(a) * 30 * u - 6 * u, t: 0, life: 0.22 }); }
-  }
-  st.floats = st.floats.filter((b) => b.t <= b.life);
-  if (st.floats.length > 6) st.floats.splice(0, st.floats.length - 6);
-  for (const p of st.pops) { p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 60 * u * dt; }
-  st.pops = st.pops.filter((p) => p.t < p.life);
-}
-function drawFloaters(ctx, st) {
-  const a0 = ctx.globalAlpha;
-  for (const b of st.floats) {
-    const grow = Math.min(1, b.t / 0.3);
-    drawAeroBubble(ctx, b.x, b.y, Math.max(1.2, b.r * (0.45 + 0.55 * grow)), clamp01((b.life - b.t) / 0.25 + 0.4) * clamp01(b.t * 8));
-  }
-  ctx.fillStyle = '#dff8ff';
-  for (const p of st.pops) { ctx.globalAlpha = a0 * (1 - p.t / p.life); ctx.fillRect(Math.round(p.x), Math.round(p.y), 1, 1); }
-  ctx.globalAlpha = a0;
+  const c = rideBubble(r);
+  const w = c.width * (1 + sq * 0.12), h = c.height * (1 - sq * 0.1);
+  ctx.drawImage(c, Math.round(x - w / 2), Math.round(y - h / 2), Math.round(w), Math.round(h));
 }
 
 // ------------------------------------------------------------------------------------------------ the 2D fallback
@@ -1059,24 +813,23 @@ function flatFrame(size) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const g = c.getContext('2d');
   const X = (x) => w / 2 + (x - C0[0]) * s, Y = (y) => h / 2 - (y - C0[1]) * s;
-  const body = g.createLinearGradient(0, Y(1.3), 0, Y(0));
+  const body = g.createLinearGradient(0, Y(0.8), 0, Y(-0.4));
   body.addColorStop(0, '#dfe3ef'); body.addColorStop(1, '#fbf6ec');
   g.fillStyle = body;
-  g.beginPath(); g.ellipse(X(-0.2), Y(0.5), 0.8 * s, 0.52 * s, 0, 0, TAU); g.fill();
-  g.beginPath(); g.ellipse(X(0.4), Y(0.88), 0.5 * s, 0.5 * s, 0, 0, TAU); g.fill();
-  g.fillStyle = '#272c3a'; g.beginPath(); g.ellipse(X(0.9), Y(0.84), 0.05 * s, 0.04 * s, 0, 0, TAU); g.fill();
-  g.fillStyle = '#33c4e6'; g.beginPath(); g.moveTo(X(0.12), Y(1.3)); g.lineTo(X(0.42), Y(1.32)); g.lineTo(X(0.1), Y(1.78)); g.fill();
-  g.fillStyle = '#ff8db4'; g.beginPath(); g.arc(X(0.09), Y(1.82), 0.08 * s, 0, TAU); g.fill();
-  g.strokeStyle = '#1b1f2d'; g.lineWidth = Math.max(1, 0.04 * s);
-  for (const ex of [0.78, 0.6]) { g.beginPath(); g.ellipse(X(ex), Y(1.0), GLASS.R * s * (ex > 0.7 ? 1 : 0.75), GLASS.R * s, 0, 0, TAU); g.stroke(); }
+  g.beginPath(); g.ellipse(X(-0.3), Y(0.17), 0.85 * s, 0.48 * s, 0, 0, TAU); g.fill();
+  g.beginPath(); g.ellipse(X(0.52), Y(0.62), 0.42 * s, 0.42 * s, 0, 0, TAU); g.fill();
+  g.fillStyle = '#272c3a'; g.beginPath(); g.ellipse(X(0.9), Y(0.6), 0.06 * s, 0.045 * s, 0, 0, TAU); g.fill();
+  // [phase9:seal] round glasses + the ink outline
+  g.strokeStyle = '#1b1f2d'; g.lineWidth = Math.max(1, 0.05 * s);
+  for (const ex of [0.78, 0.6]) { g.beginPath(); g.ellipse(X(ex), Y(0.75), GLASS.R * s * (ex > 0.7 ? 1 : 0.75), GLASS.R * s, 0, 0, TAU); g.stroke(); }
+  g.beginPath(); g.moveTo(X(0.6) + GLASS.R * s * 0.75, Y(0.77)); g.quadraticCurveTo(X(0.69), Y(0.82), X(0.78) - GLASS.R * s, Y(0.77)); g.stroke();
   outlineCells(c, w, h, SEAL_OUTLINE(s));
   const F = {
-    eyes: [{ p: [X(0.78), Y(1.0)], nz: 0.9, ang: 0, side: 1 }, { p: [X(0.6), Y(1.0)], nz: 0.7, ang: 0, side: -1 }],
-    lens: [{ p: [X(0.78), Y(1.0)], nz: 0.9, ang: 0, side: 1 }, { p: [X(0.6), Y(1.0)], nz: 0.7, ang: 0, side: -1 }],
-    brows: [[X(0.78), Y(1.2)], [X(0.6), Y(1.2)]], nose: [X(0.9), Y(0.84)], mouth: [X(0.88), Y(0.72)],
-    muzzle: [[X(0.94), Y(0.77)], [X(0.8), Y(0.77)]], cheeks: [[X(0.72), Y(0.78)], [X(0.5), Y(0.78)]], faceZ: 0.8,
-    top: [X(0.09), Y(1.9)], crown: [X(0.35), Y(1.4)], head: [X(0.42), Y(0.9)], hand: [X(0.4), Y(0.05)], hand2: [X(0.3), Y(0.05)], tail: [X(-1.1), Y(0.35)], bottom: [X(-0.12), Y(0)],
-    back: [[X(-0.4), Y(1.0)]], dy: 0, cheek: 0,
+    eyes: [{ p: [X(0.78), Y(0.75)], nz: 0.9, ang: 0, side: 1 }, { p: [X(0.6), Y(0.75)], nz: 0.7, ang: 0, side: -1 }],
+    lens: [{ p: [X(0.78), Y(0.75)], nz: 0.9, ang: 0, side: 1 }, { p: [X(0.6), Y(0.75)], nz: 0.7, ang: 0, side: -1 }],
+    brows: [[X(0.78), Y(0.98)], [X(0.6), Y(0.98)]], nose: [X(0.9), Y(0.6)], mouth: [X(0.88), Y(0.47)],
+    muzzle: [[X(0.94), Y(0.53)], [X(0.8), Y(0.53)]], cheeks: [[X(0.72), Y(0.55)], [X(0.5), Y(0.55)]], faceZ: 0.8,
+    top: [X(0.5), Y(1.05)], head: [X(0.52), Y(0.62)], hand: [X(0.4), Y(-0.1)], hand2: [X(0.3), Y(-0.1)], tail: [X(-1.1), Y(0.1)], bottom: [X(-0.15), Y(-0.3)], dy: 0, cheek: 0,
   };
   return { canvas: c, cw: w, ch: h, cols: 1, n: 1, frames: [F], size, anim: 'flat' };
 }
@@ -1084,6 +837,31 @@ const FLAT = new Map();
 
 // ------------------------------------------------------------------------------------------------ drawSeal
 export function pointBucket(ex, ey) { return clamp(Math.round(Math.atan2(-ey, Math.max(1, ex)) / (Math.PI / 6)) + 3, 0, 6); }
+
+// Soft-body state per seal id: a squash spring (kicked by vertical acceleration, landings, animation changes and
+// talking) and a travelling ripple across the voxel rows (belly jiggle).
+const JIG = new Map();
+function jiggle(id, t, x, y, anim, talk) {
+  let j = JIG.get(id);
+  if (!j || t < j.t - 1 || t - j.t > 1) { j = { t, x, y, vx: 0, vy: 0, s: 0, v: 0, anim, rip: 0, talk: 0 }; JIG.set(id, j); if (JIG.size > 40) JIG.delete(JIG.keys().next().value); }
+  const dt = clamp(t - j.t, 0, 0.05);
+  if (dt > 0) {
+    const vx = (x - j.x) / dt, vy = (y - j.y) / dt;
+    const ay = (vy - j.vy) / Math.max(dt, 1 / 60), ax = (vx - j.vx) / Math.max(dt, 1 / 60);
+    // spring: stiff enough to snap back, soft enough to wobble a few times
+    let f = -170 * j.s - 9 * j.v;
+    f += clamp(-ay * 0.0011, -6, 6) + clamp(Math.abs(ax) * 0.0004, 0, 3);
+    if (anim !== j.anim) { j.v += anim === 'flop' ? -2.2 : 1.1; j.anim = anim; }
+    j.talk += ((talk || 0) - j.talk) * Math.min(1, dt * 10);
+    f += j.talk * Math.sin(t * 17) * 9;
+    j.v += f * dt; j.s = clamp(j.s + j.v * dt, -0.22, 0.22);
+    const sp = Math.hypot(vx, vy);
+    j.rip += ((clamp(sp / 300, 0, 1) * 0.6 + Math.abs(j.v) * 0.6 + j.talk * 0.8 + 0.18) - j.rip) * Math.min(1, dt * 4);
+    j.vx = vx; j.vy = vy;
+  }
+  j.t = t; j.x = x; j.y = y;
+  return j;
+}
 
 // per-seal scratch canvases: the composited frame (body + pixel face) and the low-res face layer
 const COMP = new Map();
@@ -1095,12 +873,10 @@ function scratch(id, w, h) {
 }
 
 export function drawSeal(ctx, o = {}) {
-  if (typeof document === 'undefined') return null;
+  const size = sealSize(o.size ?? 40);
   const view = o.view === 'front' ? 'front' : 'side';
-  let anim = animOf(o.anim);
-  const t = o.t ?? 0, facing = (o.facing ?? 1) < 0 ? -1 : 1, kk = o.k ?? 1, tilt = o.tilt || 0;
-  const size = Math.max(4, o.size ?? 40);
-  const ds = devScale(ctx);
+  let anim = SEAL_ANIMS[o.anim] ? o.anim : SEAL_ALIAS[o.anim] || 'idle';
+  const t = o.t ?? 0, facing = (o.facing ?? 1) < 0 ? -1 : 1, k = o.k ?? 1, tilt = o.tilt || 0;
   let x = o.x ?? 0, y = o.y ?? 0;
   // pointing: elevation bucket from the target (in the facing frame, tilt removed)
   let bucket = 0;
@@ -1112,38 +888,35 @@ export function drawSeal(ctx, o = {}) {
     } else bucket = 4;
   }
   let sh = null;
-  if (lpAvailable()) sh = sheet(anim, devSize(size * kk * ds), view, SHEETS.size === 0);
+  if (lpAvailable()) sh = sheet(anim, size, view, false);
   if (!sh || !sh.canvas) {
-    const fz = sealSize(size);
-    sh = FLAT.get(fz) || (FLAT.set(fz, flatFrame(fz)), FLAT.get(fz));
+    sh = FLAT.get(size) || (FLAT.set(size, flatFrame(size)), FLAT.get(size));
     anim = 'flat';
   }
   const A = SEAL_ANIMS[sh.anim] || { n: 1, dur: 1 };
   const ph = o.phase != null ? o.phase : t / A.dur;
   let fi = ((Math.floor(ph * A.n) % A.n) + A.n) % A.n;
-  if (sh.anim === 'point') fi += clamp(bucket, 0, (A.buckets || 1) - 1) * A.n;
+  if (sh.anim === 'point') fi += bucket * A.n;
   fi = Math.min(fi, sh.n - 1);
   const F = sh.frames[fi];
-  const sk = (kk * size) / sh.size; // context units per sheet px (the stand-in sheet may be another size)
+  const sk = (k * size) / sh.size; // the stand-in sheet may be another size
   const cw = sh.cw, ch = sh.ch;
   const ride = clamp01(o.ride || 0);
-  const rideR = size * kk * 0.55 * (0.35 + 0.65 * ride);
+  const rideR = size * k * 0.5 * (0.35 + 0.65 * ride);
+  if (o.base === 'bottom') y -= (F.bottom[1] - ch / 2) * sk + (ride ? rideR * 1.5 : 0);
   const lift = (F.dy || 0) * sh.size * sk;
-  if (o.anchor === 'head') { x -= (F.head[0] - cw / 2) * sk * facing; y -= (F.head[1] - ch / 2) * sk - lift; }
-  else if (o.base === 'bottom') y -= (F.bottom[1] - ch / 2) * sk + (ride ? rideR * 1.4 : 0);
   // soft body: squash spring about the bottom + ripple
   const id = o.id ?? 'seal';
-  const J = stateOf(id, t, x, y, anim);
-  updateJiggle(J, t, x, y, anim, o.talk);
+  const J = jiggle(id, t, x, y, anim, o.talk);
   const sqY = 1 + J.s, sqX = 1 - J.s * 0.7;
   const bY = F.bottom[1], cX = cw / 2;
   const sqp = (p) => [cX + (p[0] - cX) * sqX, bY + (p[1] - bY) * sqY];
   // screen transform of a sprite-local point
-  const ct = Math.cos(tilt), stn = Math.sin(tilt);
+  const ct = Math.cos(tilt), st = Math.sin(tilt);
   const toScreen = (p0) => {
     const p = sqp(p0);
     const lx = (p[0] - cw / 2) * facing * sk, ly = (p[1] - ch / 2) * sk - lift;
-    return [x + lx * ct - ly * stn, y + lx * stn + ly * ct];
+    return [x + lx * ct - ly * st, y + lx * st + ly * ct];
   };
   const a0 = ctx.globalAlpha;
   if (o.alpha != null) ctx.globalAlpha = a0 * o.alpha;
@@ -1152,8 +925,8 @@ export function drawSeal(ctx, o = {}) {
   if (ride > 0.02) {
     const sq = ride * (0.5 + 0.5 * Math.sin(t * 2.2));
     const ga = ctx.globalAlpha;
-    ctx.globalAlpha = ga * 0.75;
-    drawSoapBubble(ctx, bot[0], bot[1] + rideR * 0.5, rideR, sq);
+    ctx.globalAlpha = ga * 0.7;
+    drawSoapBubble(ctx, bot[0], bot[1] + rideR * 0.55, rideR, sq);
     ctx.globalAlpha = ga;
   }
   // ---- composite the frame: voxel body + a pixel-art face drawn at voxel resolution
@@ -1170,59 +943,44 @@ export function drawSeal(ctx, o = {}) {
   gf.clearRect(0, 0, fw, fh);
   gf.setTransform(1 / q, 0, 0, 1 / q, 0, 0);
   FPX = q;
+  const state = faceState(id, t);
   let look = null;
   if (o.lookAt) {
     const hd = toScreen(F.head);
     look = [(o.lookAt[0] - hd[0]) * facing, o.lookAt[1] - hd[1]];
   }
-  const mood = o.mood || (sh.anim === 'sad' ? 'sad' : sh.anim === 'worried' ? 'worried' : sh.anim === 'cheer' ? 'excited' : sh.anim === 'sleep' ? 'sleepy' : 'happy');
-  drawFace(gf, F, { mood, talk: o.talk, t, state: J, look, blink: o.blink }, sh.size);
+  drawFace(gf, F, { mood: o.mood, talk: o.talk, t, state, look, blink: o.blink, facing }, sh.size);
   // a glossy sweat drop when it is worried
-  if (sh.anim === 'worried' || mood === 'worried' || mood === 'scared') {
-    const s2 = sh.size, dx = F.crown[0] - s2 * 0.3, dy = F.crown[1] + s2 * 0.16 + ((t * 2) % 1) * s2 * 0.08;
+  if (sh.anim === 'worried' || o.mood === 'worried' || o.mood === 'scared') {
+    const s2 = sh.size, dx = F.top[0] - s2 * 0.32, dy = F.top[1] + s2 * 0.12 + ((t * 2) % 1) * s2 * 0.08;
     gf.fillStyle = '#7fdcff';
     gf.beginPath(); gf.moveTo(dx, dy - s2 * 0.12); gf.quadraticCurveTo(dx + s2 * 0.08, dy, dx, dy + s2 * 0.05); gf.quadraticCurveTo(dx - s2 * 0.08, dy, dx, dy - s2 * 0.12); gf.fill();
     gf.fillStyle = '#ffffff'; gf.fillRect(dx - q * 0.5, dy - s2 * 0.04, q, q);
   }
   g.imageSmoothingEnabled = false;
-  // ---- the bubble helmet over the head (the player's bubble head: translucent, iridescent, glossy), jiggling
-  const HB = F.bub ? helmet(F.bubR, q) : null;
-  let bubC = null, bubR = 0;
-  if (HB) {
-    const W2 = updateHelmet(J, t, toScreen(F.bub), sh.size * sk, anim, o.talk);
-    bubC = [F.bub[0] + W2.ox * F.bubR, F.bub[1] + W2.oy * F.bubR];
-    bubR = F.bubR;
-    g.save();
-    g.translate(Math.round(bubC[0]), Math.round(bubC[1]));
-    // the helmet's light stays at the upper left whichever way the seal faces (the frame is mirrored for facing -1)
-    g.scale(facing * W2.sx * (F.bubR / HB.hr), W2.sy * (F.bubR / HB.hr));
-    g.drawImage(HB.canvas, -HB.hc[0], -HB.hc[1]);
-    g.restore();
-  }
-  // the live face goes on top (like the player's face on its bubble), so the eyes stay big, dark and shiny
   g.drawImage(SC.f, 0, 0, fw * q, fh * q);
   // ---- draw it in voxel rows: squash-and-stretch about the bottom, a ripple travelling through the rows and a
   // belly jiggle (rows below the middle sway wider)
   ctx.save();
-  ctx.translate(x, y);
+  ctx.translate(Math.round(x), Math.round(y));
   if (tilt) ctx.rotate(tilt);
-  ctx.translate(0, -lift);
+  ctx.translate(0, -Math.round(lift));
   ctx.scale(facing * sk, sk);
   ctx.translate(-cw / 2, -ch / 2);
   const smooth = ctx.imageSmoothingEnabled;
-  ctx.imageSmoothingEnabled = sk * ds < 0.72; // voxels stay crisp (a stand-in sheet a little too big is drawn nearest too)
+  ctx.imageSmoothingEnabled = sk < 0.99; // voxels stay crisp when scaled up
   const rows = Math.max(1, Math.round(ch / (q * 2)));
   const rh = ch / rows;
-  const amp = J.rip * q * 0.65;
+  const amp = J.rip * q * 0.9;
   const ripple = amp > 0.05 || Math.abs(J.s) > 0.004;
   if (!ripple) ctx.drawImage(SC.a, 0, 0);
   else {
-    const mid = (F.crown[1] + bY) / 2;
+    const mid = (F.top[1] + bY) / 2;
     for (let r = 0; r < rows; r++) {
       const y0 = r * rh, yc = y0 + rh / 2;
       const belly = clamp01((yc - mid) / Math.max(1, bY - mid));
       const dxr = amp * Math.sin(t * 8.5 - (yc / q) * 0.55) * (0.4 + 0.6 * clamp01((bY - yc) / (bY - F.top[1] + 1) + 0.3));
-      const wob = 1 + J.talk * 0.035 * belly * Math.sin(t * 17) + belly * J.s * 0.3;
+      const wob = 1 + J.talk * 0.035 * belly * Math.sin(t * 17) + belly * J.s * 0.25;
       const w = cw * sqX * wob;
       const dy0 = bY + (y0 - bY) * sqY, dh = rh * sqY;
       ctx.drawImage(SC.a, 0, y0, cw, rh, cX - w / 2 + dxr, dy0, w, dh + 0.6);
@@ -1230,33 +988,26 @@ export function drawSeal(ctx, o = {}) {
   }
   ctx.imageSmoothingEnabled = smooth;
   ctx.restore();
-  // little bubbles budding off its back, floating up and popping
-  // (tiny pixel bubbles now and then bud off the top of the helmet)
-  const emit = bubC ? [[-0.55, -0.72], [-0.15, -0.95], [-0.82, -0.4], [0.3, -0.9]].map(([u, v]) => [bubC[0] + u * bubR * facing, bubC[1] + v * bubR]) : F.back || [];
-  updateFloaters(J, t, emit, size * kk, o.floaters !== false && sh.anim !== 'swim' && sh.anim !== 'flat', toScreen);
-  drawFloaters(ctx, J);
-  // the little bubble on its nose (thrilled) / the sleepy snot bubble
-  let nb = clamp01(o.noseBubble || 0);
-  if (sh.anim === 'sleep' && o.noseBubble == null) nb = 0.45 + 0.4 * Math.sin((t / A.dur) * TAU);
+  // the little bubble balanced on its nose
+  const nb = clamp01(o.noseBubble || 0);
   if (nb > 0.02 && F.faceZ > 0) {
     const nz = toScreen(F.nose);
-    const r = size * kk * 0.11 * nb;
-    drawSoapBubble(ctx, nz[0] + facing * r * 1.2 + Math.sin(t * 3.1) * r * 0.15, nz[1] - r * 0.1 - Math.abs(Math.sin(t * 3.1)) * r * 0.2, r, 0);
+    const r = size * k * 0.11 * nb;
+    // a little bubble bobbing on the tip of its nose (clear of the eyes)
+    drawSoapBubble(ctx, nz[0] + facing * r * 1.25 + Math.sin(t * 3.1) * r * 0.15, nz[1] - r * 0.15 - Math.abs(Math.sin(t * 3.1)) * r * 0.25, r, 0);
   }
   ctx.globalAlpha = a0;
-  const out = {
+  const pts = [F.top, F.bottom, F.tail, F.head, F.nose].map(toScreen);
+  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+  const rx0 = Math.min(...xs) - size * k * 0.1, ry0 = Math.min(...ys) - size * k * 0.08;
+  return {
     head: toScreen(F.head), top: toScreen(F.top), mouth: toScreen(F.mouth), nose: toScreen(F.nose), hand: toScreen(F.hand),
     tail: toScreen(F.tail), bottom: bot, center: [x, y],
+    rect: { x: rx0, y: ry0, w: Math.max(...xs) - rx0 + size * k * 0.1, h: Math.max(...ys) - ry0 + size * k * 0.1 + (ride > 0.1 ? rideR * 1.2 : 0) },
   };
-  const pts = [out.top, out.bottom, out.tail, out.head, out.nose, toScreen(F.crown)];
-  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
-  const m = size * kk * 0.1;
-  const rx0 = Math.min(...xs) - m, ry0 = Math.min(...ys) - m * 0.6;
-  out.rect = { x: rx0, y: ry0, w: Math.max(...xs) - rx0 + m, h: Math.max(...ys) - ry0 + m + (ride > 0.1 ? rideR * 1.2 : 0) };
-  return out;
 }
 
-// A stream of tiny pixel bubbles flowing from the pointing flipper to the target (makes the gesture unmistakable).
+// A stream of tiny glossy bubbles flowing from the pointing flipper to the target (makes the gesture unmistakable).
 export function drawPointStream(ctx, from, to, t, u = 1) {
   const dx = to[0] - from[0], dy = to[1] - from[1], d = Math.hypot(dx, dy);
   if (d < 18 * u) return;

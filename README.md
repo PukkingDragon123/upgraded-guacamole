@@ -137,7 +137,7 @@ with a minigame.
   lens flares and splashes on the lens.
   - The camera crash-zooms in at key moments, and floating 3D voxel text appears in the Alagard font.
   - You answer with reply bubbles (click or press 1/2/3): pick your name, your boat paint and your first bait.
-  - **Bubbles**, a round, bubbly ball of a plush seal in chunky voxel art (fat, squishy and shiny, with big eyes behind round glasses, rosy cheeks and a little striped party cone hat) who bounces like a ball, swims around the screen, points at things and guides the opening
+  - **Bubbles**, a fat, jiggly plush voxel seal with glasses, swims around the screen, points at things and guides the opening
     and the tutorial. Afterwards it stays on as a hint helper.
 - **Living water**: a wave simulation where casting, bites, jumps, fights, the boat's wake, rain and your mouse all
   make ripples. The boat and boxes float on the waves. A custom water surface and underwater shading add glints,

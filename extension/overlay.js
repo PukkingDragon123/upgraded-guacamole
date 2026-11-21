@@ -18997,70 +18997,25 @@ void main() {
     m.set(31, 42, 11, p("#2a1428", MATTE));
     return { vm: m, yaw: 0.3, pitch: 0.24, spin: "wobble" };
   }
-  function tiltCone(m, base, ax, H, R2, col) {
-    const l = Math.hypot(ax[0], ax[1], ax[2]), A2 = [ax[0] / l, ax[1] / l, ax[2] / l], E = Math.max(H, R2) + 1;
-    for (let z = Math.floor(base[2] - E); z <= Math.ceil(base[2] + E); z++) for (let y = Math.floor(base[1] - 1); y <= Math.ceil(base[1] + E); y++) for (let x = Math.floor(base[0] - E); x <= Math.ceil(base[0] + E); x++) {
-      const dx = x + 0.5 - base[0], dy = y + 0.5 - base[1], dz = z + 0.5 - base[2];
-      const h = dx * A2[0] + dy * A2[1] + dz * A2[2];
-      if (h < 0 || h > H) continue;
-      const rx = dx - A2[0] * h, ry = dy - A2[1] * h, rz = dz - A2[2] * h, r = Math.hypot(rx, ry, rz);
-      if (r > R2 * (1 - h / H) + 0.35) continue;
-      m.put(x, y, z, col(h / H, Math.atan2(rz, rx)));
-    }
-  }
-  function plushPup(m, p, cx, cy, cz, k, o) {
-    const fur = p(o.fur, SOFT), furD = p(o.furD, SOFT), spot = p(o.spot, SOFT), belly = p("#ffffff", SOFT);
-    const R2 = 11.6 * k, bx = cx, by = cy - 2.6 * k, bz = cz - 1.6 * k;
-    const furAt = (x, y, z) => {
-      const face4 = z > bz + 6 * k && Math.abs(x + 0.5 - cx) < 7.5 * k && y > cy - 7.5 * k && y < cy + 5 * k;
-      if (y + 0.5 < by - 6.5 * k && z > bz - 2) return belly;
-      if (face4) return belly;
-      if (h3(x >> 2, y >> 2, z >> 2, o.seed) > 0.8 && h3(x, y, z, o.seed) > 0.25) return spot;
-      return y + 0.5 > by + 4 * k ? furD : fur;
-    };
-    m.sphere(bx, by, bz, R2, furAt);
-    const shine = p("#ffffff", { ...GL, emissive: 0.55 }), sheen = p(mix(o.fur, "#ffffff", 0.6), { ...GL, emissive: 0.25 });
-    const hd = [-0.5, 0.62, 0.6], hl = Math.hypot(...hd), H = hd.map((v) => v / hl);
-    m.paint(() => {
-      for (let y = Math.floor(by); y <= by + R2 + 1; y++) for (let x = Math.floor(bx - R2 - 1); x <= bx; x++) for (let z = Math.floor(bz); z <= bz + R2 + 1; z++) {
-        const dx = x + 0.5 - bx, dy = y + 0.5 - by, dz = z + 0.5 - bz, d = Math.hypot(dx, dy, dz) || 1;
-        const c = (dx * H[0] + dy * H[1] + dz * H[2]) / d;
-        if (c > 0.965) m.put(x, y, z, shine);
-        else if (c > 0.93) m.put(x, y, z, sheen);
-      }
-    });
-    const fz = (x, y) => bz + Math.sqrt(Math.max(0, R2 * R2 - (x - bx) ** 2 - (y - by) ** 2));
-    const flip = p("#9aa2b0", SOFT);
-    for (const s of [-1, 1]) m.ellipsoid(bx + s * (R2 - 0.6 * k), by - 5 * k, bz + 2.5 * k, 2.7 * k, 1.5 * k, 2.4 * k, flip);
-    const muz = p("#ffffff", SOFT), nose = p("#2a2430", GL), eye2 = p("#10131d", GL), iris = p("#3d62a8", GL), wh = p("#ffffff", { emissive: 0.8 });
-    const blush = p("#ff94b8", SOFT), dotC = p("#8b8fa0", MATTE);
+  function sealHead(m, p, cx, cy, cz, k, fur, furD) {
+    const f = p(fur, SOFT), fd = p(furD, SOFT), muz = p("#fbf6f0", SOFT), nose = p("#2a1e2e", GL), eye2 = p("#1a1226", GL), wh = p("#ffffff", { emissive: 0.7 }), blush = p("#ff9ab4", SOFT);
+    m.ellipsoid(cx, cy - 7 * k, cz - 1, 10.5 * k, 7 * k, 9 * k, fd);
+    m.ellipsoid(cx, cy, cz, 11 * k, 10 * k, 10 * k, (x, y) => y < cy - 6 * k ? fd : f);
+    for (const s of [-1, 1]) m.ellipsoid(cx + s * 2.6 * k, cy - 3 * k, cz + 8.4 * k, 3.4 * k, 2.7 * k, 2.6 * k, muz);
+    m.ellipsoid(cx, cy - 0.8 * k, cz + 10 * k, 2.2 * k, 1.5 * k, 1.4 * k, nose);
     for (const s of [-1, 1]) {
-      const mx = cx + s * 2.5 * k, my = cy - 3.6 * k, mz = fz(mx, my) - 1.3 * k;
-      m.ellipsoid(mx, my, mz, 3.1 * k, 2.5 * k, 2.4 * k, muz);
-      for (const [dx, dy] of [[1.2, 0.6], [2.4, -0.4], [0.6, -0.9]]) m.set(mx + s * dx * k, my + dy * k, mz + 2.1 * k, dotC);
+      m.ellipsoid(cx + s * 4.6 * k, cy + 2.4 * k, cz + 8 * k, 1.9 * k, 2.4 * k, 1.6 * k, eye2);
+      m.set(Math.floor(cx + s * 4.6 * k - 0.6 * k), Math.floor(cy + 3.4 * k), Math.floor(cz + 9.4 * k), wh);
+      m.ellipsoid(cx + s * 7.4 * k, cy - 1.5 * k, cz + 7 * k, 1.8 * k, 1.1 * k, 1, blush);
+      for (const dy of [-0.6, 1.4]) m.set(Math.floor(cx + s * 4.2 * k + s), Math.floor(cy - 3 * k + dy), Math.floor(cz + 10.2 * k), fd);
     }
-    m.ellipsoid(cx, cy - 1.2 * k, fz(cx, cy - 1.2 * k) + 0.2 * k, 1.5 * k, 1 * k, 1.1 * k, nose);
-    for (const s of [-1, 1]) {
-      const ex = cx + s * 4.6 * k, ey = cy + 2 * k, ez = fz(ex, ey);
-      m.ellipsoid(ex, ey, ez, 1.6 * k, 2.1 * k, 1.6 * k, (x, y) => y + 0.5 < ey - 0.8 * k ? iris : eye2);
-      m.set(ex - 0.6 * k, ey + 0.8 * k, ez + 1.5 * k, wh);
-      const bxx = cx + s * 7.6 * k, byy = cy - 2.4 * k;
-      m.ellipsoid(bxx, byy, fz(bxx, byy) - 0.6, 2 * k, 1.2 * k, 1.2, blush);
-      if (o.glasses) torus(m, ex, ey, ez + 1.9 * k, 3.9 * k, 0.5, "z", p("#2a3146", METAL));
-    }
-    if (o.glasses) m.box(cx - 0.9 * k, cy + 2.8 * k, fz(cx, cy + 2.8 * k) + 1.4 * k, cx + 0.9 * k, cy + 2.8 * k, fz(cx, cy + 2.8 * k) + 1.4 * k, p("#2a3146", METAL));
-    const hA = p(o.hatA, GL), hB = p(o.hatB, GL), hD = p(o.hatD, GL), pom = p(o.pom, SOFT), pomL = p(o.pomL, SOFT);
-    const ax = o.tilt || [-0.3, 1, -0.1], base = [bx + 1.2 * k, by + R2 - 1.6 * k, bz - 0.5];
-    tiltCone(m, base, ax, 11 * k, 4.4 * k, (h, a) => h < 0.1 ? hD : (Math.floor(h * 4.5 + a / TAU4) % 2 + 2) % 2 ? hB : hA);
-    const l = Math.hypot(ax[0], ax[1], ax[2]), tip = [base[0] + ax[0] / l * 12 * k, base[1] + ax[1] / l * 12 * k, base[2] + ax[2] / l * 12 * k];
-    m.sphere(tip[0], tip[1], tip[2], 2.2 * k, (x, y) => y + 0.5 > tip[1] + 0.6 && h3(x, y, 1) > 0.4 ? pomL : pom);
   }
   function friends() {
-    const m = new VoxelModel(56, 54, 38), p = palOf(m);
-    plushPup(m, p, 37, 23, 13, 0.86, { fur: "#e4e9f0", furD: "#cdd5e0", spot: "#97a0b2", hatA: "#ff6aa8", hatB: "#fff4a0", hatD: "#e04c8c", pom: "#8ae84a", pomL: "#c4ff8a", tilt: [0.3, 1, -0.1], seed: 3 });
-    plushPup(m, p, 20, 20, 21, 1, { fur: "#f2f4f8", furD: "#dfe3ea", spot: "#a3abba", hatA: "#33c4e6", hatB: "#ffffff", hatD: "#1d9fca", pom: "#ff8db4", pomL: "#ffc2d8", glasses: true, tilt: [-0.32, 1, 0.05], seed: 7 });
+    const m = new VoxelModel(52, 42, 36), p = palOf(m);
+    sealHead(m, p, 33, 23, 14, 0.92, "#a8c4dc", "#7898b8");
+    sealHead(m, p, 19, 18, 22, 1, "#f2f4f8", "#c8d0dc");
     const ht = p("#ff4a7a", { ...GL, emissive: 0.25 });
-    for (const [x, y] of [[0, 2], [1, 2], [3, 2], [4, 2], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1], [1, 0], [2, 0], [3, 0], [2, -1]]) m.box(26 + x, 43 + y, 20, 26 + x, 43 + y, 21, ht);
+    for (const [x, y] of [[0, 2], [1, 2], [3, 2], [4, 2], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1], [1, 0], [2, 0], [3, 0], [2, -1]]) m.box(25 + x, 36 + y, 26, 25 + x, 36 + y, 27, ht);
     return { vm: m, yaw: 0.3, pitch: 0.24, spin: "wobble" };
   }
   function cog(m, p, cx, cy, z0, z1, R2, r0, teeth, base, hub, holes = 0) {
