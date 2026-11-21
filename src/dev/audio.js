@@ -106,7 +106,7 @@ export function run(params) {
         } else if (it.kind === 'misc') {
           await step(i, async () => {
             audio.setMusic('shallows'); audio.setNight(true); audio.setMuffle(0.8);
-            for (const c of 'typing!') { audio.babble(c, 'tiny'); audio.play('ui_type'); await wait(70); }
+            for (const c of 'typing!') { audio.babble(c, 'fizz'); audio.play('ui_type'); await wait(70); }
             for (let k = 0; k < 6; k++) { audio.play('coin_collect'); await wait(110); }
             audio.setVolumes({ master: 0.8, music: 0.5, sfx: 0.8, ambience: 0.6 });
             audio.setMuffle(0); audio.setNight(false); audio.setMusic(null);

@@ -80,7 +80,7 @@ try {
   for (const [b, w] of scenes) { await A(`a.setAmbience(${JSON.stringify(b)}, { weather: ${JSON.stringify(w)} })`); await page.waitForTimeout(350); }
   const sc = await A('a._stats().scene');
   check('ambience scenes switch', !!sc, sc);
-  await A('a.babble("Hello there, angler! Ready to fish?", "fish")');
+  await A('a.babble("Hello there, angler! Ready to fish?", "guide")'); // the 8-bit voice (synth by design, not counted as fallback)
   await page.waitForTimeout(1500);
   const final = await A('a._stats()');
   check('no synth fallback anywhere', final.synth === 0, final.synthNames.join(' '));

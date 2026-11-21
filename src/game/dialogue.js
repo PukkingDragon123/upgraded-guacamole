@@ -4,7 +4,7 @@
 // follows the UI size setting (Alagard 16 / 20 / 24 / 32 px for ui scale normal / big / huge), and speech bubbles
 // pick the side of the speaker that keeps clear of what the guide is pointing at.
 //
-//   const d = new Dialogue({audio, voice: 'fish', name: 'Bubbles', portrait(ctx, cx, cy, r, d), vars: {name}, size})
+//   const d = new Dialogue({audio, voice: 'guide' (an 8-bit voice id, src/core/audio.js), name: 'Bubbles', portrait(ctx, cx, cy, r, d), vars: {name}, size})
 //   d.say(text, o)         queue a line; o: {mood, pose, choices: [{text, value, mood, reply}], onChoose(choice, i),
 //                          onShow(line), onDone(line), hold (s after typing before auto-advance; 0 = wait for a
 //                          click), wait (always wait for a click), big, cps (chars/s), silent (no voice blips),
@@ -175,6 +175,8 @@ export class Dialogue {
     this.picked = i;
     this.pickT = 0;
     try { this.audio?.play?.('ui_click', { vol: 0.5, pitch: 1.2 }); this.audio?.play?.('bubble', { vol: 0.45 }); } catch (e) { /* optional */ }
+    // [voices23] the angler blurts the first words of the answer in the player's 8-bit voice
+    try { this.audio?.babble?.(String(c.text || '').split(/\s+/).slice(0, 3).join(' ') + ' ', 'player'); } catch (e) { /* optional */ }
     if (c.mood) this.mood = c.mood;
     l.onChoose?.(c, i);
     // the reply line (if any) follows the choice
@@ -206,7 +208,9 @@ export class Dialogue {
       const after = Math.floor(this.shown);
       for (let i = before; i < after; i++) {
         const c = l.text[i];
-        if (!l.silent && /[a-z0-9]/i.test(c) && this.blipN++ % 2 === 0) { try { this.audio?.babble?.(c, this.voice); } catch (e) { /* optional */ } }
+        // [voices23] 8-bit voice: a blip every other letter, an arpeggio on the first ! ? . , ~ of a run
+        const pun = /[!?.,~]/.test(c) && l.text[i - 1] !== c;
+        if (!l.silent && (pun || (/[a-z0-9]/i.test(c) && this.blipN++ % 2 === 0))) { try { this.audio?.babble?.(c, l.voice || this.voice); } catch (e) { /* optional */ } }
       }
       const c2 = l.text[after] || '';
       const open = /[.,!?]/.test(c2) ? 0.1 : VOWEL.test(c2) ? 1 : 0.55;

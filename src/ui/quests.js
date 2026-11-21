@@ -23,6 +23,7 @@ import { OCEAN_NAMES } from '../game/lab.js';
 import { drawPop3D } from './pop3d.js'; // [phase9:ui]
 import { drawIcon3D } from '../gfx/icons3d.js'; // [phase9:ui]
 import { QuestCine, CinePanel } from './questcine.js'; // [questcine18] quest cinematics
+import { VOICE } from './cinestage.js'; // [voices23] each NPC's 8-bit voice
 import { drawIcon3d as drawChest3d, chestIconId } from '../fishing/icons3d.js'; // [polish17]
 
 const NPC_COL = { seal: '#8fdcff', fizz: '#7affc8', marina: '#ffd23a', dot: '#59e0ff', bloat: '#ffb44a' };
@@ -1255,6 +1256,8 @@ export class ChapterPanel {
   say(ctx, npc, text, P, k = 1, big = false) {
     if (k <= 0) return;
     const t = this.t;
+    // [voices23] a new line is spoken once in the speaker's 8-bit voice
+    if (this.voiced !== npc + '|' + text) { this.voiced = npc + '|' + text; try { this.game?.audio?.babble?.(text, VOICE[npc] || 'default'); } catch { /* optional */ } }
     const x = P.x + 24, y = P.y + (big ? 150 : 236);
     const shown = text.slice(0, Math.floor(clamp01((t - (big ? 0.3 : 1.6)) * 1.4) * text.length + 1));
     drawPortrait(ctx, npc, x + 24, y + 26, 26, t, { talk: shown.length < text.length ? 0.7 : 0, mood: 'happy', key: 'chap' });

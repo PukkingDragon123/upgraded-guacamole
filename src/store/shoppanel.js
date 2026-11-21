@@ -112,6 +112,8 @@ export class ShopPanel {
 
   talk(text, mood = 'happy', pose = 'talk') {
     this.say = { text, t: 0, mood, pose };
+    // [voices23] the shopkeeper (the guide at the counter) speaks the line in its 8-bit voice
+    try { this.game?.audio?.babble?.(text, 'guide'); } catch { /* optional */ }
   }
 
   // the offer currently shown in the detail card

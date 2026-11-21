@@ -232,6 +232,25 @@ export class SettingsPanel {
       });
       ry += bh + 7;
     }
+    // [voices23] character voices: 8-bit chiptune babble / Off (state.settings.voices)
+    {
+      const cur = s.voices === 'off' ? 'off' : 'chip';
+      const lw = icon(ctx, 'music', R.x + 8, ry + bh / 2, 1);
+      const lab = 'Voices';
+      drawText(ctx, lab, R.x + 13 + lw, ry + Math.round((bh - capH(F2)) / 2), { font: F2, color: INK });
+      const x0 = R.x + 18 + lw + Math.max(measureText(lab, F2), measureText('Cutscenes', F2)), cw = Math.floor((R.x + R.w - 7 - x0) / 2);
+      [['chip', '8-bit', 'Characters talk in retro 8-bit voices'], ['off', 'Off', 'Silent dialogue (text only)']].forEach(([id, label, tip], i) => {
+        const on = cur === id;
+        if (ui.button(ctx, x0 + i * cw, ry, cw - 2, bh, label, { style: on ? 'green' : 'white', active: on, tip, sound: 'ui_toggle', font: 'small' }) && !on) {
+          s.voices = id;
+          g.audio?.setVoices?.(id !== 'off');
+          if (id !== 'off') g.audio?.babble?.('Hello there!', 'guide');
+          g.emit?.('settings', 'voices');
+          g.save?.();
+        }
+      });
+      ry += bh + 7;
+    }
     if (this.code) {
       const bx = R.x + 7, bwid = R.w - 14, ch = big ? 28 : 22;
       drawAeroCard(ctx, bx, ry, bwid, ch, { tone: 'white', inset: true, gloss: 0 });

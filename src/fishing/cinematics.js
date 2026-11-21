@@ -632,7 +632,7 @@ export class EscapeCine {
       f.y += Math.sin(t * 14) * 0.4;
       f.wiggle = 0.4;
       f.feel('smug', 0.5);
-      if (!this.said) { this.said = true; F.sfx(f.sp?.sound || 'blub', { pitch: 1.3 }); f.say(rng.pick(['music', 'heart', 'anger', 'sweat']), 1.1); }
+      if (!this.said) { this.said = true; F.sfx(f.sp?.sound || 'blub', { pitch: 1.3 }); f.say(rng.pick(['music', 'heart', 'anger', 'sweat']), 1.1); try { F.game?.audio?.babble?.(this.taunt + ' ', f.boss ? 'boss' : 'default', { pitch: 0.85 + Math.random() * 0.4 }); } catch { /* optional */ } } // [voices23] the fish taunts in 8-bit
       F.focusCam(f.x, f.y - 4, 2.4, 4);
     } else {
       // zip away

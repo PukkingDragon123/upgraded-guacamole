@@ -55,7 +55,7 @@ export async function run(params) {
 }
 
 function gallery(kind, g, W, H, input) {
-  const d = new Dialogue({ name: 'Bubbles', voice: 'fish', portrait: (ctx, cx, cy, r, dd) => drawNPC(ctx, 'seal', { portrait: true, x: cx, y: cy, r, t: performance.now() / 1000, talk: dd.talk, mood: dd.mood, id: 'portrait' }), vars: { name: 'Finn' } });
+  const d = new Dialogue({ name: 'Bubbles', voice: 'guide', portrait: (ctx, cx, cy, r, dd) => drawNPC(ctx, 'seal', { portrait: true, x: cx, y: cy, r, t: performance.now() / 1000, talk: dd.talk, mood: dd.mood, id: 'portrait' }), vars: { name: 'Finn' } });
   d.say('Whoa! A new angler in the (OS)cean! I\'m Bubbles, the fluffiest guide in the sea.', { hold: 99 });
   const guide = new SealGuide({ x: 200, y: 200, size: 44 });
   const targets = [[80, 470], [880, 470], [480, 60], [900, 120], [480, 300], [60, 140]];

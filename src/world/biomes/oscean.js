@@ -2,7 +2,7 @@
 // blue sky with soft cumulus - has flooded, styled after an eco Aero wallpaper. An original landscape (no photo, no
 // logos), voxel on the shared world camera. Above the surface: a saturated Aero sky (sun rays, a big lens flare, white
 // arc lines, voxel cumulus, aurora ribbons, a rainbow after the rain), the CURVED grass horizon of a little planet with
-// spinning white wind turbines, a lone round tree and a glass city inside a giant water bubble, a floating green glass
+// spinning white wind turbines (no trees: the hill is bare grass and flowers) and a glass city inside a giant water bubble, a floating green glass
 // globe dripping into the sea, glossy leafy branches framing the top corners, splashes on the surface and a glossy pier
 // where NPCs hang out. Underwater: the glossy grass hill continues as the seabed under vivid aquarium-lamp blue, with
 // a grass-and-flower meadow, clouds made of bubbles, light shafts, wind turbines turning in the current, glass orbs
@@ -34,7 +34,7 @@ import {
 import {
   AeroOverlay, AERO_LOOKS, glassOrb, chromeDrop, soapBubble, bubbleCloud, rainbowArc, auroraRibbon, turbineTower, rotorFrames,
   swayAnim, buildLeaves, buildFlowers, pierModel, sparkleStar, bloomStrip, waterGloss,
-  skyArcs, sunRays, GlassGlobe, voxWaterBubble, voxDrop, glassCity, roundTree, splashFrames, leafBranch, planetEdge,
+  skyArcs, sunRays, GlassGlobe, voxWaterBubble, voxDrop, glassCity, splashFrames, leafBranch, planetEdge,
 } from '../aerokit.js';
 
 const SKY = {
@@ -175,14 +175,15 @@ export class OsceanBiome extends Biome {
     lap('rest');
   }
 
-  // Curved planet-edge horizon + glass city in a water bubble + lone tree + turbines, composed into one sprite with
+  // Curved planet-edge horizon + glass city in a water bubble + turbines (no tree), composed into one sprite with
   // day / dusk / night haze variants. Returns {w, h, ox, oy (waterline at the left end), hubs, day, dusk, night}.
   buildEdge(haze) {
     const W = this.W;
     const E = planetEdge(W, { peak: 0.38, height: 46, chord: 0.58 });
     const items = [];
-    const city = glassCity(3, 2), tree = roundTree(2, 5);
-    const towers = [[0.29, 34], [0.62, 40], [0.73, 30]].map(([xf, th]) => ({ xf, T: turbineTower(th, 1) }));
+    const city = glassCity(3, 2);
+    // [notrees23] the lone tree is gone: a small turbine stands on the crest in its place
+    const towers = [[0.29, 34], [0.48, 26], [0.62, 40], [0.73, 30]].map(([xf, th]) => ({ xf, T: turbineTower(th, 1) }));
     let minX = 0, minY = 0, maxX = E.w, maxY = E.h;
     const put = (spr, xf, dy = 0) => {
       const [cx, cy] = E.crest(xf);
@@ -192,7 +193,6 @@ export class OsceanBiome extends Biome {
       return it;
     };
     const cityIt = put(city, 0.13, 4);
-    const treeIt = put(tree, 0.5, 3);
     const tw = towers.map((t) => ({ ...t, it: put({ canvas: t.T.canvas, ox: t.T.ox, oy: t.T.oy, w: t.T.w, h: t.T.h }, t.xf, 2) }));
     const bubR = Math.round(city.w * 0.62);
     const bub = voxWaterBubble(bubR);
@@ -216,7 +216,6 @@ export class OsceanBiome extends Biome {
     g.globalCompositeOperation = 'source-over';
     g.globalAlpha = 1;
     g.drawImage(E.canvas, -minX, -minY);
-    g.drawImage(tree.canvas, treeIt.x - minX, treeIt.y - minY);
     const hubs = [];
     const r = new RNG(12);
     for (const t of tw) {
@@ -608,7 +607,7 @@ export class OsceanBiome extends Biome {
     }
     // the floating green glass globe (drips into the sea)
     this.drawGlobe(g, scroll, ref);
-    // the curved grass horizon with its city bubble, tree and turbines
+    // the curved grass horizon with its city bubble and turbines
     const E = this.edge;
     {
       const c = E.blend.get([[E.day, tod.day], [E.dusk, tod.dusk], [E.night, tod.night]]);

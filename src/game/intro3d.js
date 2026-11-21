@@ -372,7 +372,7 @@ export class Intro3D {
     this.fish = null;
     loadAlagard();
     this.dlg = new Dialogue({
-      audio: this.audio, voice: 'fish', name: SEAL_INFO.name, vars: { name: 'Angler' },
+      audio: this.audio, voice: 'guide', name: SEAL_INFO.name, vars: { name: 'Angler' },
       portrait: (ctx, cx, cy, r, d) => NPC.drawNPC(ctx, 'seal', { portrait: true, x: cx, y: cy, r, t: this.wall, talk: d.talk, mood: d.mood, pose: d.pose, id: 'portrait' }),
     });
     this.resize(o.W || 960, o.H || 540);

@@ -181,6 +181,7 @@ export class Game {
   applyVolumes() {
     const s = this.state.settings;
     audio.setVolumes({ master: this.muted ? 0 : s.master, music: s.music, sfx: s.sfx, ambience: s.ambience });
+    audio.setVoices?.(s.voices !== 'off'); // [voices23] Settings: Voices 8-bit / Off
   }
 
   save() { saveState(this.state); }

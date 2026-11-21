@@ -999,6 +999,8 @@ export class QuestCine {
       const wc = wordNow(nm, T.boss);
       const tk = clamp01((u - 2.1) / 0.35);
       if (tk > 0) {
+        // [voices23] the boss growls its title in the deep, distorted boss voice
+        if (!R.fx.growl) { R.fx.growl = 1; try { g.audio?.babble?.(boss.sub || boss.title, 'boss'); } catch { /* optional */ } }
         const ny = hy + Math.round(H * 0.085);
         drawWord(ctx, nm, T.boss, this.W / 2, ny, backOut(tk), tk);
         if (boss.sub) drawText(ctx, boss.sub.toUpperCase(), Math.round(this.W / 2 - measureText(boss.sub.toUpperCase(), 'small') / 2), ny + Math.round((wc?.height || 20) / 2) + 4, { font: 'small', color: '#ffd0c8', shadow: '#2a0612' });

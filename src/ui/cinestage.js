@@ -23,7 +23,8 @@ import { drawProp, propSprite, PROP_DEFS } from './cineprops.js';
 import { SETS, ENTRY } from './cinescript.js';
 import { CHAPTER_BY_ID } from '../game/quests.js';
 
-export const VOICE = { seal: 'fish', fizz: 'tiny', marina: 'clip', dot: 'crab', bloat: 'deep' };
+// [voices23] each speaker's 8-bit voice (src/core/audio.js CHIP); unknown speakers use 'default'
+export const VOICE = { seal: 'guide', grouper: 'guide', fizz: 'fizz', marina: 'marina', dot: 'dot', bloat: 'bloat', player: 'player' };
 const NPC_H = { fizz: 72, marina: 74, dot: 56, bloat: 60 };
 const STAGE_H = 0.2;
 const CINE_K = 0.5; // camera.js: how much of a focus zoom stacks on the base zoom
@@ -33,6 +34,7 @@ const SEAL_MAP = { talk: 'idle', laugh: 'wiggle', jump: 'cheer', nod: 'idle', ex
 const BUBBLE_MAP = { clap: 'cheer', wiggle: 'laugh', worried: 'sad', blow: 'talk', flop: 'sad', spin: 'cheer', swim: 'idle', sleep: 'think', dance: 'cheer', flex: 'cheer', jump: 'cheer', nod: 'talk', excited: 'cheer' };
 const MOOD = { worried: 'surprised', flop: 'surprised', sad: 'sad', cheer: 'excited', clap: 'excited', wiggle: 'excited', laugh: 'excited', jump: 'excited', spin: 'excited', think: 'happy' };
 const PLAYER_POSE = { wave: 'wave', cheer: 'cheer', think: 'think', laugh: 'laugh', chat: 'chat', nod: 'chat', jump: 'cheer', dance: 'dance', flex: 'flex', sad: 'sad' };
+const PLAYER_SAY = { wave: 'hiya!', cheer: 'yay!', think: 'hmm?', laugh: 'haha!', jump: 'whoa!', sad: 'aww.', flex: 'yeah!', dance: 'la la~' };
 const PLAYER_EMOTE = { jump: 'exclaim', laugh: 'music', cheer: 'heart', think: 'question', flex: 'star', dance: 'music' };
 
 // ------------------------------------------------------------------ typewriter
@@ -53,7 +55,7 @@ export class Typer {
   get waiting() { return this.active && !this.typing; }
   now(npc, raw, o = {}) {
     const P = parseEmph(raw);
-    Object.assign(this, { npc, voice: VOICE[npc] || 'fish', text: P.text, emph: P.emph, shown: 0, t: 0, doneT: 0, pause: 0.12, active: true });
+    Object.assign(this, { npc, voice: VOICE[npc] || 'default', text: P.text, emph: P.emph, shown: 0, t: 0, doneT: 0, pause: 0.12, active: true });
     this.hold = o.hold ?? 0.85 + P.text.length * 0.019;
     this.cps = o.cps ?? 44;
     this.onKey = o.onKey || null;
@@ -75,7 +77,8 @@ export class Typer {
       for (let i = before; i < after; i++) {
         const c = this.text[i];
         for (const [a] of this.emph) if (a === i && !this.keys.has(a)) { this.keys.add(a); this.onKey?.(a); }
-        if (/[a-z0-9]/i.test(c)) { try { this.audio?.babble?.(c, this.voice); } catch { /* optional */ } }
+        // [voices23] a chip blip per letter, a little arpeggio on ! ? . , ~ (the first of a run)
+        if (/[a-z0-9]/i.test(c) || (/[!?.,~]/.test(c) && this.text[i - 1] !== c)) { try { this.audio?.babble?.(c, this.voice); } catch { /* optional */ } }
         // punctuation pauses: a beat after sentences, a breath after commas, a long one on an ellipsis
         const nx = this.text[i + 1];
         let p = 0;
@@ -220,6 +223,9 @@ export class Stage {
     if (!pose) return;
     this.pl = { pose, until: this.t + secs, t0: this.t, emote: emote ?? PLAYER_EMOTE[pose] ?? null };
     if (pose === 'jump') this.g.audio?.play?.('boing', { vol: 0.4, pitch: 1.3 });
+    // [voices23] the angler's reaction, in the player's 8-bit voice
+    const say = PLAYER_SAY[pose];
+    if (say) { try { this.g.audio?.babble?.(say, 'player'); } catch { /* optional */ } }
   }
   speakerFacing(id, to) {
     const a = this.actors.get(id);

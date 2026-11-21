@@ -574,6 +574,8 @@ export class BossFight {
         if (i % 2 === 0) F.sfx('mash_pop', { pitch: 0.7 + i * 0.03, vol: 0.4 });
       }
     }
+    // [voices23] the boss growls its subtitle in the deep, distorted 8-bit boss voice
+    if (ct > 1.7 && !this.growled) { this.growled = true; try { F.game?.audio?.babble?.(def.sub || def.title, 'boss'); } catch { /* optional */ } }
     if (ct > 1.7) word3D(ctx, def.sub, W / 2, cy + 52, { t: ct, pop: clamp01((ct - 1.7) * 4), scale: 0.75, pal: 'white', wobble: 0.8 });
     ctx.restore();
   }

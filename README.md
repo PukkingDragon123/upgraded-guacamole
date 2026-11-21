@@ -11,8 +11,9 @@ Then fill your side-scrolling voxel tank with fish that earn Aero, and research 
 seven oceans in The Lab.
 
 All art (voxel world, fish, characters and rooms) is generated in code. The Alagard pixel font by Hewett Tsoi
-(`assets/fonts/alagard.ttf`, embedded in the build) is used for titles, dialogue and 3D text. All sound is recorded
-audio embedded in the build: sound effects, jingles and ambience from CC0 packs on OpenGameArt.org (Kenney, rubberduck
+(`assets/fonts/alagard.ttf`, embedded in the build) is used for titles, dialogue and 3D text. Every sound effect,
+loop, ambience bed and music track is recorded audio embedded in the build (only the characters' dialogue voices are
+synthesised: retro 8-bit chiptune voices, see below): sound effects, jingles and ambience from CC0 packs on OpenGameArt.org (Kenney, rubberduck
 and many others) plus public-domain US National Park Service field recordings (whales, otters, geese, thunder), and
 music by Memoraphile, Peachtea, cynicmusic, joth, TAD, umplix and Zane Little Music, all CC0; full list in
 `assets/sfx/CREDITS.md`. Multiplayer is opt-in, and the game is fully playable offline.
@@ -182,9 +183,13 @@ with a minigame.
 - **Multiplayer fishing** (opt-in): when the game is opened from its shared claude.ai link, you see other
   players' bubble people and boats in your ocean, their catches and their emotes. Fishing with other people in
   the same ocean gives up to +30% luck. Windows on one computer can also see each other.
-- **Recorded audio** in WebAudio: CC0 / public-domain clips for every sound (variants, pitch jitter, no
+- **Recorded audio** in WebAudio: CC0 / public-domain clips for every sound effect (variants, pitch jitter, no
   machine-gunning), seamless looping ambience beds per ocean and weather, and a looping CC0 track per ocean
   with crossfades (a procedural synth remains only as a fallback).
+- **8-bit voices**: everyone talks in a synthesised retro chiptune voice (pulse waves with duty cycles, triangle,
+  LFSR noise for consonants, little arpeggios on punctuation), one voice per character: the goofy, wobbly low guide,
+  Professor Fizz's fast high bleeps, Marina's warm mid pulse, Captain Bloat's gruff growl, Dot's bit-crushed robot
+  square, the player's bright chirp, the bosses' deep distorted rumble. Settings: Voices 8-bit / Off.
 
 ## Safety and privacy
 
@@ -220,4 +225,6 @@ src/store     Bait Shop, bait, custom bait               src/build    buildings,
 - Audio: after changing `assets/sfx` or `assets/music`, run `node tools/gen-samples.mjs` (embeds the OGGs) and
   then `node tests/audio-samples.mjs`, which checks that every sound name used in `src/` has a recording and plays
   them all, plus every loop, music track and ambience scene, headlessly without touching the synth fallback.
+  `node tests/voices.mjs` makes every 8-bit character voice talk headlessly (lines, typed letters, arpeggios, the
+  Voices: Off switch, channel reuse and release).
 - Module contracts live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

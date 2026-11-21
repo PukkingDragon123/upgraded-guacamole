@@ -911,23 +911,6 @@ function fineModel(m, scale, grit = 0.1) {
   return [runSteps(refineSteps(m, { grit })), scale / 2];
 }
 
-// Round glossy voxel tree (the lone tree on the wallpaper hill).
-export function roundTree(scale = 2, seed = 5) {
-  return memo('tree|' + scale + '|' + seed, () => {
-    const r = new RNG(seed);
-    const m = new VoxelModel(30, 34, 24);
-    const bark = m.color('#8a5a32', { jitter: 0.08 }), leaf = m.color('#3cbf3a', { jitter: 0.06, spec: 0.5 }), leafL = m.color('#8ef05a', { jitter: 0.05, spec: 0.7 }), leafD = m.color('#1f8a32', { jitter: 0.05 });
-    m.cylinder(15, 12, 0, 12, 1.6, bark, 'y');
-    for (let i = 0; i < 9; i++) {
-      const cx = 15 + r.float(-7, 7), cy = 21 + r.float(-5, 7), cz = 12 + r.float(-5, 5), rr = r.float(5, 8);
-      m.sphere(cx, cy, cz, rr, (x, y, z) => (y > cy + rr * 0.35 && x < cx + 2 ? leafL : y < cy - rr * 0.4 ? leafD : leaf));
-    }
-    const [mm, sc] = fineModel(m, scale, 0.16);
-    const o = renderModel(mm, { scale: sc, outline: true, jitter: 0.05, ao: 1, edges: 0.6, light: { top: 5.2, lit: 4, dark: 2.4, bottom: 1.4 } });
-    return { canvas: o.canvas, w: o.w, h: o.h, ox: o.ox, oy: o.oy };
-  });
-}
-
 // Crown splash at the waterline: n frames {canvas, ox (centre), oy (waterline)}.
 export function splashFrames(size = 12, n = 6, seed = 2) {
   return memo('spl|' + size + '|' + n + '|' + seed, () => {

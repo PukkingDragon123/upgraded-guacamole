@@ -117,7 +117,23 @@ animated content; `lights` = suggested light sources relative to the canvas). `P
 `audio.unlock()` (call on first user gesture), `audio.play(name, {vol, pitch, pan})`,
 `audio.loop(name) -> {set(value 0..1), stop()}`, `audio.setMusic(track)` (`desktop|shallows|junkyard|abyss|aquarium|null`),
 `audio.setAmbience(biome, {weather, night})`, `audio.setVolumes({master, music, sfx, ambience})`,
-`audio.setMuffle(0..1)`, `audio.babble(text, voice)`.
+`audio.setMuffle(0..1)`, `audio.babble(text, voice, {pitch})`, `audio.setVoices(bool)`.
+SFX, loops, ambience and music are RECORDED clips (src/core/samples.js; the synth is only a fallback). The dialogue
+voices are the one deliberate synth [voices23]: `babble` speaks in a retro 8-bit chiptune voice per character (`CHIP` in
+audio.js; ids `guide` (the goofy, low, wobbly toy-grouper guide), `fizz` (high fast 12.5% bleeps), `marina` (warm 25% pulse
++ triangle, gentle vibrato), `bloat` (low gruff square with noise grit), `dot` (robotic bit-crushed square hopping octaves,
+metallic LFSR noise; also the `shop` alias), `player` (bright mid chirp; peers pitched per name), `boss` (deep overdriven
+square + triangle, growl noise), `default`; old names / NPC ids alias: seal grouper fish tiny crab deep clip ...;
+`voiceId(name)`). One channel per character (two pulse oscillators of different duty sharing a pitch, an optional
+triangle an octave down, a looped NES-style LFSR noise source, envelope, optional shaper and LFO on detune) is built on
+its first line and reused: letters only schedule AudioParam automation (pitch from the letter, falling contour, rising
+questions; vowels = main duty, consonants = other duty + a noise tick), punctuation plays an arpeggio (! up, ? rise,
+. fall, , blip, ~ wobble); a new line cuts the old one; idle channels are released after ~4 s. 1-2 char calls are
+rate-limited typewriter blips. Routed to the SFX bus (master / SFX volume / mute apply). `state.settings.voices`
+'chip' | 'off' (Settings: Voices 8-bit / Off; `game.applyVolumes` calls `setVoices`). Speakers: cutscenes (`VOICE` map in
+cinestage.js, Typer; the angler's reactions in `player`), Dialogue (tutorial / intro: `guide`; a picked answer in
+`player`), the Quest Log chapter talks, the shop counter (`guide`, who keeps the shop), the chest scene's cheers, boss
+title cards (`boss`), escaping fish taunts, multiplayer emotes. Test: `tests/voices.mjs`.
 
 ### Desktop icons (`src/desktop/icons.js`) and UI art (`src/gfx/uiicons.js`, `src/ui/panels.js`)
 See those files' headers once written.
@@ -286,6 +302,10 @@ Other agents: tiny tagged edits (`// [phase4:<agent>]`) only. Never revert other
 - `src/gfx/alagard.js`: `loadAlagard()`, `alagardBitmap(text, {size, color})` (Alagard pixel font, embedded). Use it for
   titles, the guide's dialogue and extruded 3D voxel text.
 - The (OS)cean meadow is ONLY grass and flowers (no coral, kelp or crystal plants).
+- [notrees23] NO TREES in any background (user rule: "remove the tree from background"): no land trees, palms, bushes
+  or shrub-trees on hills, islands or shores (the (OS)cean's grass horizon carries turbines, the city bubble and flowers;
+  the Shallows horizon island is a bare sandy hut island; voyage islands are bare hills / cays). Underwater plants
+  (kelp, sea grass, corals, glossy Aero leaf sprigs framing the corners) are not trees and stay.
 - Intro agent owns `src/game/intro3d.js`, `tutorial.js`, new `src/game/dialogue.js`, new `src/gfx/text3d.js`, the 'clip' NPC
   (tagged additions in `src/gfx/npcs.js`), `tests/smoke.mjs`. Water agent owns `src/gfx/watergl.js`, new `src/world/watersim.js`,
   water/surface parts of `src/world/ocean.js` and biomes (tagged), splash additions in `src/gfx/particles.js` (tagged).
@@ -551,7 +571,8 @@ that feels hand-made."
   idle frames (`prepProps`): Fizz's lab bench, Marina's anvil + toolbox, Captain Bloat's helm + sea chart, one platform per
   ocean (islet, pier, ice floe with a snowman, scrap barge with a CRT, neon pontoon, basalt columns with lava, glow rock),
   a raft, gulls, penguins, crabs (per-ocean colours), jellies. Dev preview: `node tools/build.mjs --dev cineprops`.
-- `Typer` (cinestage.js) replaces the Dialogue class in cutscenes: punctuation pauses, a voice blip per letter, emphasis.
+- `Typer` (cinestage.js) replaces the Dialogue class in cutscenes: punctuation pauses, an 8-bit voice blip per letter
+  (an arpeggio on punctuation, the speaker's voice from `VOICE`), emphasis.
 - Beats added: `boss` (a boss quest starts, Full only: pan down to its silhouette, rumble, 3D "BOSS SIGHTED!", the giver's
   warning, the card flies into the tracker). Gallery: the Quest Log's chapter page has OPENING / FINALE pills that call
   `cine.replay(chId, kind)` (plays even with cutscenes Off, changes nothing in the save, reopens the log afterwards).

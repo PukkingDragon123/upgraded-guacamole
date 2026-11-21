@@ -175,7 +175,7 @@ export class Tutorial {
     this.mode = 'full'; // [tut16] 'full' = the first session, 'lesson' = a replayed fishing lesson
     this.lesson = null; // [tut16] the fight step battle.js follows
     this.offering = false; this.offerT = 0; this.bootT = 0; this.resumed = false;
-    this.dlg = new Dialogue({ audio: game.audio, voice: 'fish', name: '', vars: { name: 'Angler' } });
+    this.dlg = new Dialogue({ audio: game.audio, voice: 'guide', name: '', vars: { name: 'Angler' } });
     game.on?.('baitBought', () => this.onBait());
     game.on?.('baitDownloaded', () => this.onBait());
     // (the fishing HUD shows FISH ON! itself)

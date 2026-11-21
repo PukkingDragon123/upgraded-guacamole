@@ -1,7 +1,8 @@
-// WebAudio engine: SFX, loops, biome ambience, music and babble.
-// Everything you hear is recorded audio (CC0 / public-domain clips and tracks, src/core/samples.js,
-// credits in assets/sfx/CREDITS.md). The procedural synth below is only an emergency fallback for a clip
-// that has no recording or failed to decode. Every public call is a
+// WebAudio engine: SFX, loops, biome ambience, music and the characters' 8-bit voices.
+// SFX, loops, ambience and music are recorded audio (CC0 / public-domain clips and tracks, src/core/samples.js,
+// credits in assets/sfx/CREDITS.md); the procedural synth below is only an emergency fallback for a clip
+// that has no recording or failed to decode. The dialogue voices (babble) are the one deliberate synth: retro
+// chiptune pulse / triangle / noise voices, one per character (see "8-bit voices"). Every public call is a
 // silent no-op until unlock() has created/resumed the AudioContext on a user gesture;
 // music/ambience/volume/loop requests made earlier are remembered and start on unlock.
 //
@@ -14,7 +15,10 @@
 //     rain storm (any biome), static datarain oil (junkyard), current snow glowtide (abyss),
 //     snowfall blizzard aurora (fjord), eruption sulfur magma (volcano), neonstorm rushhour blackout (metropolis)
 //   setNight(bool), setVolumes({master, music, sfx, ambience}), getVolumes(), setMuffle(0..1)
-//   babble(text, voice='crab'|'fish'|'tiny'|'deep')  1-2 char calls = rate-limited typewriter blips
+//   babble(text, voice, {pitch})                 8-bit character voice: guide fizz marina bloat dot player boss default
+//                                                (old names / NPC ids alias: seal grouper fish tiny crab deep clip shop ...);
+//                                                1-2 char calls = rate-limited typewriter blips (punctuation = arpeggio)
+//   setVoices(bool), voicesOn, voiceId(name)     the Settings "Voices: 8-bit / Off" switch
 //
 // Graph: voices -> category bus (sfx | music | amb) -> master -> compressor -> limiter -> out
 //        voices -> per-category reverb send -> convolver (generated impulse) -> master
@@ -2022,94 +2026,264 @@ function applyMusic() {
   else if (TRACKS[name]) { curTrack = makeTrack(name); tracks.push(curTrack); }
 }
 
-// ---------------------------------------------------------------- babble
-// Animal-Crossing-style syllable blips: pitch from the letter, vowel formant, voice timbre.
-const VOICES = {
-  crab: { base: 62, scale: [0, 2, 4, 7, 9, 12], type: 'square', dur: 0.05, gap: 0.068, vol: 0.055, lp: 2400, bend: 1.12, fmul: 1 },
-  fish: { base: 69, scale: [0, 2, 4, 7, 9, 12], type: 'sine', dur: 0.075, gap: 0.08, vol: 0.075, lp: 3000, bend: 1.45, fmul: 1.1 },
-  tiny: { base: 81, scale: [0, 2, 4, 7, 9, 12, 14], type: 'triangle', dur: 0.04, gap: 0.052, vol: 0.065, lp: 6000, bend: 1.08, fmul: 1.4 },
-  deep: { base: 45, scale: [0, 3, 5, 7, 10], type: 'sawtooth', dur: 0.1, gap: 0.105, vol: 0.075, lp: 800, bend: 0.94, fmul: 0.7 },
-  clip: { base: 74, scale: [0, 2, 4, 7, 9, 12, 14], type: 'triangle', dur: 0.05, gap: 0.058, vol: 0.07, lp: 5200, bend: 1.22, fmul: 1.3 }, // [phase5:intro] Clip's chirpy chrome voice
+// ---------------------------------------------------------------- 8-bit voices (babble)
+// The one place synthesis is wanted: every character "talks" in a retro chiptune voice (the SFX stay recorded).
+// Each character speaks through its own CHANNEL, built once on its first line and reused for every letter: two
+// pulse oscillators with different duty cycles (12.5 / 25 / 50 %) sharing one pitch, an optional triangle an octave
+// below, a looped 1-bit LFSR noise source for consonants (the short 93-step loop sounds metallic), an envelope gain,
+// an optional bit-crush / overdrive shaper and a vibrato / wobble LFO on the oscillators' detune. A letter only
+// schedules AudioParam automation on those nodes (no per-letter node allocation); a new line cancels what is still
+// queued; a channel idle for a few seconds is stopped and released. Output: the SFX bus (master / SFX volume and
+// mute apply) plus a touch of reverb. setVoices(false) silences every voice ("Voices: Off" in Settings).
+//   letters  pitch = a scale degree hashed from the letter (per character scale), a falling contour over the line,
+//            questions rise at the end; vowels play the main duty, consonants the other duty plus a noise tick
+//            (sibilants hiss high, plosives thump low, l m n r w v stay soft)
+//   punctuation  a tiny arpeggio: ! up, ? rising, . falling two-note, , a soft low blip, ~ a wobble
+const CHIP = {
+  // base = MIDI note, scale = degrees, duty = [vowel, consonant] wave, tri = triangle level (octave below),
+  // gap = seconds per letter, dur = note length, vol, slide = semitones over a note, lfo = [Hz, cents],
+  // noise = consonant tick level, grit = noise under every note, nf = noise filter Hz, nrate = LFSR clock (0..1),
+  // short = metallic LFSR loop, lp = lowpass Hz, drive = 'crush' | 'drive', quant = robotic octave hops
+  // the guide (Bubbles, a toy grouper): goofy, low and wobbly, droopy "bwomp" slides
+  guide: { base: 50, scale: [0, 3, 5, 7, 10, 12], duty: ['p50', 'p25'], tri: 0.55, gap: 0.074, dur: 0.064, vol: 0.085, slide: -3, lfo: [6.5, 55], noise: 0.22, nf: 1700, nrate: 0.3, lp: 2600 },
+  // Professor Fizz: high, fast, excitable bleeps
+  fizz: { base: 81, scale: [0, 2, 4, 7, 9, 12, 14, 16], duty: ['p12', 'p25'], tri: 0, gap: 0.042, dur: 0.032, vol: 0.06, slide: 2, noise: 0.3, nf: 7500, nrate: 1, lp: 11000 },
+  // Marina: a warm mid pulse with a soft triangle under it and a gentle vibrato
+  marina: { base: 64, scale: [0, 2, 4, 5, 7, 9, 11, 12], duty: ['p25', 'p50'], tri: 0.45, gap: 0.062, dur: 0.054, vol: 0.07, slide: 0.4, lfo: [5, 14], noise: 0.18, nf: 5200, nrate: 0.7, lp: 4200 },
+  // Captain Bloat: low, gruff, gravelly (noise grit under every syllable)
+  bloat: { base: 41, scale: [0, 3, 5, 7, 10], duty: ['p50', 'p12'], tri: 0.5, gap: 0.09, dur: 0.078, vol: 0.085, slide: -2, lfo: [9, 22], noise: 0.5, grit: 0.16, nf: 950, nrate: 0.16, lp: 1900 },
+  // Dot (and the shop voice): a robotic square, flat notes hopping octaves, bit-crushed, metallic noise
+  dot: { base: 67, scale: [0, 0, 7, 12, 5, 0], duty: ['p50', 'p50'], tri: 0, gap: 0.056, dur: 0.042, vol: 0.06, slide: 0, quant: true, noise: 0.28, short: true, nf: 3200, nrate: 0.5, lp: 6500, drive: 'crush' },
+  // the player's bubble person: bright, friendly, mid-high
+  player: { base: 62, scale: [0, 2, 4, 7, 9, 12], duty: ['p25', 'p12'], tri: 0.2, gap: 0.058, dur: 0.046, vol: 0.065, slide: 1, noise: 0.26, nf: 5200, nrate: 0.8, lp: 6500 },
+  // bosses: deep, distorted, menacing (overdrive, a sinister scale, a growl of noise)
+  boss: { base: 33, scale: [0, 1, 3, 6, 7, 12], duty: ['p50', 'p25'], tri: 0.8, gap: 0.12, dur: 0.105, vol: 0.075, slide: -4, lfo: [12, 35], noise: 0.55, grit: 0.22, nf: 520, nrate: 0.09, lp: 1500, drive: 'drive' },
+  // anyone else (fish taunts, other NPCs)
+  default: { base: 69, scale: [0, 2, 4, 7, 9, 12], duty: ['p25', 'p50'], tri: 0.15, gap: 0.06, dur: 0.05, vol: 0.06, slide: 1.2, noise: 0.24, nf: 4800, nrate: 0.7, lp: 6500 },
 };
-for (const k in VOICES) VOICES[k].id = k;
-const FORMANT = { a: 850, e: 1900, i: 2500, o: 600, u: 420, y: 2200 };
-const bab = { last: {}, line: null };
+for (const k in CHIP) CHIP[k].id = k;
+// old voice names and NPC ids -> the character voice
+const VOICE_ALIAS = {
+  fish: 'guide', seal: 'guide', grouper: 'guide', bubbles: 'guide', clip: 'default', tiny: 'fizz', crab: 'dot', shop: 'dot',
+  deep: 'bloat', captain: 'bloat', angler: 'player', me: 'player', peer: 'player', goldie: 'default', pinch: 'dot',
+};
+const voiceId = (v) => (CHIP[v] ? v : CHIP[VOICE_ALIAS[v]] ? VOICE_ALIAS[v] : 'default');
+const WAVE_OF = { p12: 'pulse12', p25: 'pulse25', p50: 'square' };
+const VOWELS = 'aeiouy', SIBIL = 'szxcfjh', PLOS = 'ptkbdgq';
+// punctuation arpeggios: [semitones, seconds] steps, level, slide
+const ARP = {
+  '!': { n: [[0, 0.028], [4, 0.028], [7, 0.028], [12, 0.05]], vol: 0.95 },
+  '?': { n: [[0, 0.04], [5, 0.04], [10, 0.06]], vol: 0.85, slide: 2 },
+  '.': { n: [[5, 0.045], [0, 0.07]], vol: 0.6 },
+  ',': { n: [[-5, 0.035]], vol: 0.45 },
+  '~': { n: [[0, 0.045], [2, 0.045], [0, 0.045], [-2, 0.06]], vol: 0.7 },
+};
+ARP['…'] = ARP['.'];
+const VO = { on: true, ch: new Map(), last: {}, punct: {}, hop: 0, walk: {}, notes: 0, lines: 0, made: 0 };
+const LFSR = {};
 
-// recorded syllable per voice: [clip, playback rate at the voice's middle note, level, lowpass]
-const VOICE_CLIPS = {
-  crab: ['k_pluck1', 0.95, 0.5, 0], fish: ['k_drop3', 0.8, 0.45, 0], tiny: ['k_glass2', 1.2, 0.35, 0],
-  deep: ['k_pluck1', 0.42, 0.6, 1400], clip: ['k_select1', 1.0, 0.4, 0],
-};
-function blip(o, at, f, v, form, accent, cons) {
-  const vc = VOICE_CLIPS[v.id];
-  if (vc && clipBuffer(ctx, vc[0])) {
-    const rate = vc[1] * f / m2f(v.base + 4), t = o.t + at;
-    const s = playClip(ctx, o.out, vc[0], { at: t, vol: vc[2] * (accent ? 1.25 : 1), rate, lp: vc[3], dur: v.gap * 1.6 });
-    if (s && s.endAt > o.end) o.end = s.endAt;
-    return;
-  }
-  const t = o.t + at, env = ctx.createGain(), osc = ctx.createOscillator();
-  const pk = ctx.createBiquadFilter(), lp = ctx.createBiquadFilter();
-  osc.type = v.type;
-  osc.frequency.setValueAtTime(f, t);
-  osc.frequency.exponentialRampToValueAtTime(f * v.bend, t + v.dur * 0.8);
-  pk.type = 'peaking'; pk.frequency.value = cf(form * v.fmul); pk.Q.value = 2.5; pk.gain.value = 6;
-  lp.type = 'lowpass'; lp.frequency.value = v.lp;
-  osc.connect(pk); pk.connect(lp); lp.connect(env);
-  const nodes = [env, osc, pk, lp];
-  osc.start(t);
-  const end = envAt(env, t, v.dur * (accent ? 1.2 : 1), v.vol * (accent ? 1.25 : 1), 0.004);
-  route(o, env, nodes, 0.05, 0);
-  finishVoice(o, [osc], nodes, env, t, end);
-  if (cons) noise(o, { at, dur: 0.014, type: 'highpass', f: 4200, vol: v.vol * 0.9, a: 0.001 });
+// NES-style 15-bit LFSR noise, one step per sample (playbackRate clocks it slower); short = tap 6 (metallic loop)
+function lfsrBuffer(short) {
+  const key = short ? 's' : 'l';
+  if (LFSR[key]) return LFSR[key];
+  const n = short ? 93 * 48 : 32767, buf = ctx.createBuffer(1, n, ctx.sampleRate), d = buf.getChannelData(0);
+  let r = 1;
+  for (let i = 0; i < n; i++) { const b = (r ^ (r >> (short ? 6 : 1))) & 1; r = (r >> 1) | (b << 14); d[i] = r & 1 ? 0.5 : -0.5; }
+  return (LFSR[key] = buf);
 }
 
-function babble(text, voice = 'crab') {
-  if (!ready()) return;
-  const v = VOICES[voice] || VOICES.crab;
+function chipChannel(id) {
+  let c = VO.ch.get(id);
+  if (c) return c;
+  const v = CHIP[id], t = ctx.currentTime, nodes = [], srcs = [];
+  const out = gainNode(v.vol, B.sfx.in);
+  const send = gainNode(0.07, B.sfx.verb);
+  out.connect(send);
+  const lp = biquad('lowpass', v.lp, 0.7, out);
+  let head = lp;
+  nodes.push(out, send, lp);
+  if (v.drive) {
+    const sh = ctx.createWaveShaper();
+    sh.curve = v.drive === 'crush' ? WAVES.crushHard : WAVES.drive;
+    sh.connect(lp); head = sh; nodes.push(sh);
+  }
+  const env = gainNode(0, head);
+  nodes.push(env);
+  const osc = (wave, mul, level) => {
+    const o = ctx.createOscillator();
+    if (WAVES[wave]) o.setPeriodicWave(WAVES[wave]); else o.type = wave;
+    o.frequency.value = 220 * mul;
+    const g = gainNode(level, env);
+    o.connect(g); o.start(t);
+    srcs.push(o); nodes.push(o, g);
+    return { o, g, mul };
+  };
+  const A = osc(WAVE_OF[v.duty[0]] || 'square', 1, 1), Bo = osc(WAVE_OF[v.duty[1]] || 'square', 1, 0);
+  const oscs = [A, Bo];
+  if (v.tri > 0) oscs.push(osc('triangle', 0.5, v.tri));
+  if (v.lfo) {
+    const l = ctx.createOscillator();
+    l.frequency.value = v.lfo[0];
+    const lg = gainNode(v.lfo[1]);
+    l.connect(lg); l.start(t);
+    for (const O of oscs) lg.connect(O.o.detune);
+    srcs.push(l); nodes.push(l, lg);
+  }
+  const ns = ctx.createBufferSource();
+  ns.buffer = lfsrBuffer(!!v.short); ns.loop = true; ns.playbackRate.value = v.nrate;
+  const nf = biquad(v.nf >= 3000 ? 'highpass' : 'bandpass', v.nf, v.nf >= 3000 ? 0.7 : 1.2);
+  const gN = gainNode(0, head);
+  ns.connect(nf); nf.connect(gN); ns.start(t);
+  srcs.push(ns); nodes.push(ns, nf, gN);
+  c = { id, v, A, B: Bo, oscs, env, gN, ns, nf, nodes, srcs, until: t, lineUntil: 0 };
+  c.params = [env.gain, gN.gain, A.g.gain, Bo.g.gain, ns.playbackRate, nf.frequency, ...oscs.map((O) => O.o.frequency)];
+  VO.ch.set(id, c);
+  VO.made++;
+  return c;
+}
+
+function chipRelease(c) {
+  VO.ch.delete(c.id);
+  for (const s of c.srcs) { try { s.stop(); } catch (e) { /* ignore */ } }
+  disconnectAll(c.nodes);
+}
+
+// idle channels are released (called by the scheduler); also caps live channels
+function chipGc(now) {
+  for (const c of VO.ch.values()) if (now > c.until + 4) chipRelease(c);
+  if (VO.ch.size > 6) { const old = [...VO.ch.values()].sort((a, b) => a.until - b.until)[0]; if (old.until < now) chipRelease(old); }
+}
+
+// drop whatever is still queued on a channel and fade it out (a new line interrupts the old one)
+function chipCut(c, t) {
+  for (const p of c.params) {
+    if (p.cancelAndHoldAtTime) p.cancelAndHoldAtTime(t);
+    else { p.cancelScheduledValues(t); p.setValueAtTime(p.value, t); }
+  }
+  c.env.gain.linearRampToValueAtTime(0, t + 0.01);
+  c.gN.gain.linearRampToValueAtTime(0, t + 0.01);
+  c.lineUntil = 0;
+}
+
+// one chip note: f Hz at time t. duty 0 / 1 = which pulse; noise = consonant tick level (0 = none)
+function chipNote(c, t, f, o = {}) {
+  const v = c.v, dur = o.dur ?? v.dur, s = o.slide ?? v.slide, vol = o.vol ?? 1;
+  for (const O of c.oscs) {
+    const p = O.o.frequency, f0 = cf(f * O.mul);
+    p.setValueAtTime(f0, t);
+    if (s) p.exponentialRampToValueAtTime(cf(f0 * Math.pow(2, s / 12)), t + dur);
+  }
+  c.A.g.gain.setValueAtTime(o.duty ? 0 : 1, t);
+  c.B.g.gain.setValueAtTime(o.duty ? 1 : 0, t);
+  const e = c.env.gain;
+  e.setValueAtTime(0, t);
+  e.linearRampToValueAtTime(vol, t + 0.004);
+  e.linearRampToValueAtTime(vol * 0.62, t + dur * 0.55);
+  e.linearRampToValueAtTime(0, t + dur);
+  const nz = o.noise || 0, grit = (v.grit || 0) * vol;
+  if (nz > 0 || grit > 0) {
+    const n = c.gN.gain;
+    if (o.nrate) c.ns.playbackRate.setValueAtTime(o.nrate, t);
+    if (o.nf) c.nf.frequency.setValueAtTime(cf(o.nf), t);
+    n.setValueAtTime(0, t);
+    n.linearRampToValueAtTime(Math.max(nz, grit), t + 0.002);
+    n.linearRampToValueAtTime(grit, t + Math.min(dur * 0.6, 0.028));
+    n.linearRampToValueAtTime(0, t + dur);
+  }
+  if (t + dur > c.until) c.until = t + dur;
+  VO.notes++;
+  return t + dur;
+}
+
+// one letter / digit -> one note. k = 0..1 position in the line, P = pitch multiplier, rise = semitones added
+function chipLetter(c, ch, t, k, P, rise = 0) {
+  const v = c.v, code = ch.charCodeAt(0);
+  const isV = VOWELS.includes(ch), isD = code >= 48 && code <= 57;
+  let semis = v.scale[(code * 7 + v.base) % v.scale.length] - k * 2 + rise;
+  if (v.quant) semis += (VO.hop++ % 3 === 2) ? 12 : 0;
+  if (isV && 'eiy'.includes(ch)) semis += 2;
+  const o = { duty: isV ? 0 : 1 };
+  if (!isV && !isD) {
+    if (SIBIL.includes(ch)) Object.assign(o, { noise: v.noise, nrate: Math.min(1, v.nrate * 2.2), nf: v.nf * 1.6 });
+    else if (PLOS.includes(ch)) Object.assign(o, { noise: v.noise * 0.9, nrate: v.nrate * 0.6, nf: v.nf * 0.7, dur: v.dur * 0.8 });
+    else o.vol = 0.75;
+  }
+  return chipNote(c, t, m2f(v.base + semis) * P, o);
+}
+
+function chipArp(c, p, t, P, rise = 0) {
+  const A = ARP[p];
+  if (!A) return t;
+  const v = c.v;
+  let at = t;
+  for (const [s, d] of A.n) { chipNote(c, at, m2f(v.base + v.scale[0] + s + rise + 2) * P, { dur: d * 0.92, vol: A.vol, slide: A.slide ?? 0, duty: 0 }); at += d; }
+  return at;
+}
+
+// babble(text, voice, {pitch, vol}): 1-2 char calls = typewriter blips (rate limited per voice; punctuation plays its
+// arpeggio); longer text = the whole line scheduled at once (replacing whatever that voice still had queued).
+function babble(text, voice = 'default', opts) {
+  if (!ready() || !VO.on) return;
+  const id = voiceId(voice), v = CHIP[id];
   const str = String(text ?? '').toLowerCase();
-  const letters = str.replace(/[^a-z0-9]/g, '');
-  if (!letters.length) return;
+  if (!str.trim()) return;
+  let c;
+  try { c = chipChannel(id); } catch (e) { warnOnce('chip', 'voice failed: ' + (e && e.message)); return; }
+  const P = Math.max(0.25, Math.min(4, +(opts?.pitch) || 1));
   const now = ctx.currentTime;
-  const dest = { dry: B.sfx.in, wet: B.sfx.verb, pool: 'sfx', vol: 1, verb: 0.05 };
-  const pitchOf = (c) => v.scale[(c.charCodeAt(0) * 7) % v.scale.length];
-  if (str.length <= 2) {
-    // typewriter-style per-character calls: rate-limited single blips
-    if (now - (bab.last[voice] ?? -1) < v.gap * 0.9) return;
-    bab.last[voice] = now;
-    const c = letters[0];
-    fire((o) => blip(o, 0, m2f(v.base + pitchOf(c)) * rand(0.98, 1.02), v, FORMANT[c] || 1200, false, 'stkpcfxz'.includes(c)), now + 0.005, dest);
-    return;
-  }
-  // a new line replaces whatever is still queued from the previous one
-  if (bab.line) {
-    const g = bab.line.gain;
-    g.cancelScheduledValues(now); g.setValueAtTime(g.value, now); g.linearRampToValueAtTime(0, now + 0.03);
-  }
-  const q = /\?\s*$/.test(str), ex = /!\s*$/.test(str);
-  const o = fire((oo) => {
-    let at = 0, count = 0, prevCons = false;
-    const total = Math.min(48, letters.length);
-    for (let i = 0; i < str.length && count < 48; i++) {
-      const c = str[i];
-      if (c === ' ' || c === '\n') { at += v.gap * 0.5; prevCons = false; continue; }
-      if (',.;:!?-'.includes(c)) { at += v.gap * 2.2; continue; }
-      if (!/[a-z0-9]/.test(c)) continue;
-      const isV = c in FORMANT;
-      if (!isV && prevCons && chance(0.5)) { prevCons = false; continue; } // merge consonant clusters
+  try {
+    if (str.length <= 2) {
+      const ch = str[0];
+      if (/[a-z0-9]/.test(ch)) {
+        if (now - (VO.last[id] ?? -1) < v.gap * 0.8) return;
+        VO.last[id] = now;
+        if (c.lineUntil > now) chipCut(c, now);
+        // a slow random walk keeps typed lines from sounding like a fixed tune
+        const w = (VO.walk[id] = Math.max(-2, Math.min(2, (VO.walk[id] || 0) + (Math.random() - 0.5) * 0.8)));
+        chipLetter(c, ch, now + 0.005, 0.3, P, w);
+      } else if (ARP[ch]) {
+        if (now - (VO.punct[id] ?? -1) < 0.22) return;
+        VO.punct[id] = now; VO.last[id] = now;
+        if (c.lineUntil > now) chipCut(c, now);
+        chipArp(c, ch, now + 0.005, P);
+      }
+      return;
+    }
+    // a whole line
+    chipCut(c, now);
+    VO.lines++;
+    const letters = str.replace(/[^a-z0-9]/g, '');
+    const total = Math.max(1, Math.min(56, letters.length));
+    const q = /\?\s*$/.test(str), ex = /!\s*$/.test(str);
+    let at = now + 0.02, count = 0, prevCons = false, lastP = '';
+    for (let i = 0; i < str.length && count < 56; i++) {
+      const ch = str[i];
+      if (ch === ' ' || ch === '\n') { at += v.gap * 0.5; prevCons = false; lastP = ''; continue; }
+      if (ARP[ch]) {
+        if (lastP !== ch) at = chipArp(c, ch, at, P) + v.gap * 1.2;
+        lastP = ch;
+        continue;
+      }
+      if (';:-'.includes(ch)) { at += v.gap * 1.5; continue; }
+      if (!/[a-z0-9]/.test(ch)) continue;
+      lastP = '';
+      const isV = VOWELS.includes(ch);
+      if (!isV && prevCons && Math.random() < 0.5) { prevCons = false; continue; } // merge consonant clusters
       prevCons = !isV;
-      let vow = c;
-      for (let k = i; k < str.length && k < i + 4; k++) if (str[k] in FORMANT) { vow = str[k]; break; }
-      const pos = count / total;
-      let semis = pitchOf(c) - pos * 2;
-      if (q && pos > 0.7) semis += (pos - 0.7) * 22;
-      if (ex) semis += 2;
-      blip(oo, at, m2f(v.base + semis) * rand(0.98, 1.02), v, FORMANT[vow] || 1200, ex && count === 0, 'stkpcfxz'.includes(c));
+      const k = count / total;
+      let rise = ex ? 2 : 0;
+      if (q && k > 0.7) rise += (k - 0.7) * 20;
+      chipLetter(c, ch, at, k, P, rise);
       at += v.gap * rand(0.9, 1.1);
       count++;
     }
-  }, now + 0.01, dest);
-  bab.line = o.out;
+    c.lineUntil = at;
+  } catch (e) { warnOnce('chipline', 'voice line failed: ' + (e && e.message)); }
+}
+
+function setVoices(on) {
+  VO.on = on !== false && on !== 'off';
+  if (!VO.on && ctx) for (const c of [...VO.ch.values()]) chipRelease(c);
 }
 
 // ---------------------------------------------------------------- scheduler + lifecycle
@@ -2125,6 +2299,7 @@ function pump() {
     }
     if (scene) scene.tick(t0, h);
     for (const l of activeLoops) if (l.tick) l.tick(t0, h);
+    if (VO.ch.size) chipGc(t0);
   } catch (e) {
     warnOnce('pump', 'scheduler error: ' + (e && e.message));
   }
@@ -2175,8 +2350,8 @@ function unlock() {
 }
 
 let samplesWarm = false;
-// clips the loops and babble need, decoded together with the SFX on unlock (ambience beds and music decode on demand)
-const WARM_EXTRA = ['lp_reel', 'lp_creak', 'creak1', 'creak2', 'creak3', 'wsqueak1', 'wsqueak2', 'k_pluck1', 'k_drop3', 'k_glass2', 'k_select1'];
+// clips the loops need, decoded together with the SFX on unlock (ambience beds and music decode on demand)
+const WARM_EXTRA = ['lp_reel', 'lp_creak', 'creak1', 'creak2', 'creak3', 'wsqueak1', 'wsqueak2'];
 const stats = { sample: 0, synth: 0, pending: 0, dropped: 0, synthNames: new Set() };
 let synthOnly = false; // dev: A/B the recordings against the procedural fallback
 function play(name, opts) {
@@ -2280,7 +2455,9 @@ function meter() {
 export const SFX_NAMES = Object.keys(SFX);
 export const LOOP_NAMES = Object.keys(LOOPS);
 export const MUSIC_TRACKS = Object.keys(TRACKS);
-export const BABBLE_VOICES = Object.keys(VOICES);
+export const BABBLE_VOICES = Object.keys(CHIP);
+export const VOICE_IDS = BABBLE_VOICES;
+export { voiceId };
 
 export const audio = {
   unlock,
@@ -2294,10 +2471,15 @@ export const audio = {
   getVolumes: () => ({ ...vols }),
   setMuffle,
   babble,
+  setVoices,
+  get voicesOn() { return VO.on; },
+  voiceId,
   get music() { return S.music; },
   get night() { return S.night; },
   _meter: meter,
   _voices: () => ({ sfx: pools.sfx.length, music: pools.music.length, amb: pools.amb.length }),
+  // dev/test: the 8-bit character voices (live channels, notes / lines scheduled, channels built)
+  _chip: () => ({ on: VO.on, channels: [...VO.ch.keys()], notes: VO.notes, lines: VO.lines, made: VO.made }),
   // dev/test: how many one-shots came from recordings vs the synth fallback, and what is playing
   _synthOnly: (on) => { synthOnly = !!on; },
   _stats: () => ({ ...stats, synthNames: [...stats.synthNames], music: curTrack ? { name: curTrack.name, recorded: !!curTrack.sample, playing: !!(curTrack.src || !curTrack.sample) } : null, scene: scene ? scene.key : null }),

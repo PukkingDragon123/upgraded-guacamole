@@ -29,6 +29,7 @@ export function defaultState() {
       master: 0.8, music: 0.55, sfx: 0.8, ambience: 0.6,
       oceanOpacity: 1, overlayOpacity: 0.25, dayCycle: 'real', reducedMotion: false, lowPower: false,
       showFps: false, wallpaper: 'ocean', browserFish: true, hints: true,
+      voices: 'chip', // [voices23] 'chip' (8-bit character voices) | 'off'
     },
     view: 'ocean', // 'ocean' | 'aquarium'
     tankWindow: { open: false, x: 0, y: 0 },

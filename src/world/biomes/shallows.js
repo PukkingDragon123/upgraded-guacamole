@@ -5,7 +5,7 @@
 
 import { Biome, worldTop } from './base.js';
 import { SkyDome, skyBodies } from '../sky.js';
-import { palmIsland, lighthouseIslet, sailboat, seaStacks, markerBuoy } from '../horizon.js';
+import { hutIsland, lighthouseIslet, sailboat, seaStacks, markerBuoy } from '../horizon.js';
 import { render, strip, spire, mesa, rockArch, ridgeStrip, kelpColumn, propSprite } from '../farvox.js';
 import { VoxelGiant, lpCrabFrames } from '../giants.js'; // [phase6:creatures] low-poly giants + crabs
 import { reefSprite, coralSprite, voxAnim, placeAnim, drawCoralGlow, voxCrab } from '../coral.js';
@@ -127,11 +127,11 @@ export class ShallowsBiome extends Biome {
     const oh = this.sky.h;
     this.overcast = { day: gradientStrip(oh, OVERCAST.day, so), dusk: gradientStrip(oh, OVERCAST.dusk, so), night: gradientStrip(oh, OVERCAST.night, so) };
     yield;
-    // voxel horizon: palm island, lighthouse islet, sea stacks, a sailboat drifting far out, a channel buoy
+    // voxel horizon: a sandy hut island (no trees), lighthouse islet, sea stacks, a sailboat drifting far out, a channel buoy
     const hz = (k) => ({ day: [SKYHZ.day, k], dusk: [SKYHZ.dusk, k + 0.08], night: [SKYHZ.night, Math.min(0.85, k + 0.3)] });
     this.horizon = [
       { spr: seaStacks(12, hz(0.42)), x: Math.round(W * 0.07), y: base + 1, blend: new Blend() },
-      { spr: palmIsland(4, hz(0.16)), x: Math.round(W * 0.36), y: base + 3, blend: new Blend() },
+      { spr: hutIsland(4, hz(0.16)), x: Math.round(W * 0.36), y: base + 3, blend: new Blend() },
       { spr: lighthouseIslet(7, hz(0.3)), x: Math.round(W * 0.86), y: base + 2, blend: new Blend(), lighthouse: true },
     ];
     yield;

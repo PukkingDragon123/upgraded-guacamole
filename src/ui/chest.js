@@ -32,6 +32,8 @@ import { voxelFishIcon } from '../fish/fishicon.js';
 import { pixelBubble } from '../gfx/pxsprites.js';
 import { GAMES } from './chestgames.js';
 
+// [voices23] what the guide blurts when it reacts (anim or anim:mood)
+const GUIDE_SAY = { clap: ['yay!', 'woo!'], 'wiggle:laugh': ['hehe!', 'pfft!'], 'wiggle:love': 'ooh, shiny!', wiggle: 'ooh!', 'idle:surprised': ['oh!', 'whoa!'], worried: 'uh oh...', spin: 'wheee!' };
 const REVEAL_SFX = { common: 'click', uncommon: 'timing_good', rare: 'sparkle', epic: 'magic', legendary: 'golden_shimmer' };
 const CHEST_S = 3.1, CHAR_S = 1.9, SEAL_S = 54;
 export const GAP = { crate: 0, iron: 0, golden: 22, orb: 6 };
@@ -143,7 +145,12 @@ export class ChestPanel {
     this.beat = { kind, t: start, dur: dur + start };
     if (kind === 'wipe') { this.sweat(); this.sweat(); }
   }
-  sealSay(anim, mood, secs) { this.seal.anim = anim; this.seal.mood = mood; this.seal.until = this.t + secs; }
+  sealSay(anim, mood, secs) {
+    this.seal.anim = anim; this.seal.mood = mood; this.seal.until = this.t + secs;
+    // [voices23] the guide cheers along in its 8-bit voice
+    const w = GUIDE_SAY[anim + ':' + mood] || GUIDE_SAY[anim];
+    if (w && this.t - (this.saidT ?? -9) > 0.5) { this.saidT = this.t; try { this.game.audio?.babble?.(Array.isArray(w) ? w[Math.floor(Math.random() * w.length)] : w, 'guide'); } catch { /* optional */ } }
+  }
   sealBob() { this.seal.bob = 1; }
   shakeBy(a) { if (!this.game.state.settings?.reducedMotion) this.shake = Math.max(this.shake, a); }
   lidShudder(a) { this.lidWob = Math.max(this.lidWob, a); }

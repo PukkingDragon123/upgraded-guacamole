@@ -150,6 +150,7 @@ export class Net {
     this.emit('emote', { id, n: this.n.em });
     this.pushPresence();
     this.game.audio?.play('ui_click');
+    try { this.game.audio?.babble?.(e.label + ' ', 'player'); } catch { /* optional */ } // [voices23] the emote, said in 8-bit
     return true;
   }
 
@@ -286,8 +287,13 @@ export class Net {
   }
 
   showEmote(peer, id) {
-    if (!EMOTE_BY_ID[id]) return;
+    const e = EMOTE_BY_ID[id];
+    if (!e) return;
     peer.emote = { id, t0: this.t };
+    // [voices23] a peer's emote in the player voice, pitched per peer (from their name) so friends sound different
+    let h = 7;
+    for (const ch of String(peer.p?.name || '')) h = (h * 31 + ch.charCodeAt(0)) % 9973;
+    try { this.game.audio?.babble?.(e.label + ' ', 'player', { pitch: 0.78 + (h % 100) / 100 * 0.5 }); } catch { /* optional */ }
   }
 
   showCatch(peer, c) {

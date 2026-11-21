@@ -10,7 +10,7 @@ import { drawText } from '../gfx/font.js';
 import { Boat } from '../world/boat.js';
 import { BOAT_TIERS } from '../world/boatmodels.js';
 import { THEMES, coralModel, reefFormation, renderCoral, voxAnim, placeAnim } from '../world/coral.js';
-import { palmIsland, lighthouseIslet, sailboat, seaStacks, markerBuoy, factory, gantryCrane, containerStack, rockSpires } from '../world/horizon.js';
+import { hutIsland, lighthouseIslet, sailboat, seaStacks, markerBuoy, factory, gantryCrane, containerStack, rockSpires } from '../world/horizon.js';
 import { lerp } from '../core/math.js';
 import { makeLayer } from '../core/canvas.js';
 import { Clock } from '../world/clock.js';
@@ -190,7 +190,7 @@ export function run(params) {
   if (view === 'horizon') {
     ctx.fillStyle = night ? '#0a1430' : '#8ccff0';
     ctx.fillRect(0, 0, W, H);
-    const items = [palmIsland(4, {}), lighthouseIslet(7, {}), sailboat(9, {}), seaStacks(12, {}), markerBuoy('#e2483a'), factory(21, {}), gantryCrane(23, {}), containerStack(25, {}), rockSpires(31, {})];
+    const items = [hutIsland(4, {}), lighthouseIslet(7, {}), sailboat(9, {}), seaStacks(12, {}), markerBuoy('#e2483a'), factory(21, {}), gantryCrane(23, {}), containerStack(25, {}), rockSpires(31, {})];
     let x = 10, y = 150, rowH = 0;
     for (const it of items) {
       if (x + it.w > W - 10) { x = 10; y += rowH + 20; rowH = 0; }

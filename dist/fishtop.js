@@ -2232,94 +2232,239 @@
       tracks.push(curTrack);
     }
   }
-  function blip(o, at, f, v, form, accent, cons) {
-    const vc = VOICE_CLIPS[v.id];
-    if (vc && clipBuffer(ctx, vc[0])) {
-      const rate = vc[1] * f / m2f(v.base + 4), t2 = o.t + at;
-      const s = playClip(ctx, o.out, vc[0], { at: t2, vol: vc[2] * (accent ? 1.25 : 1), rate, lp: vc[3], dur: v.gap * 1.6 });
-      if (s && s.endAt > o.end) o.end = s.endAt;
-      return;
+  function lfsrBuffer(short) {
+    const key = short ? "s" : "l";
+    if (LFSR[key]) return LFSR[key];
+    const n2 = short ? 93 * 48 : 32767, buf = ctx.createBuffer(1, n2, ctx.sampleRate), d = buf.getChannelData(0);
+    let r = 1;
+    for (let i = 0; i < n2; i++) {
+      const b = (r ^ r >> (short ? 6 : 1)) & 1;
+      r = r >> 1 | b << 14;
+      d[i] = r & 1 ? 0.5 : -0.5;
     }
-    const t = o.t + at, env = ctx.createGain(), osc = ctx.createOscillator();
-    const pk4 = ctx.createBiquadFilter(), lp = ctx.createBiquadFilter();
-    osc.type = v.type;
-    osc.frequency.setValueAtTime(f, t);
-    osc.frequency.exponentialRampToValueAtTime(f * v.bend, t + v.dur * 0.8);
-    pk4.type = "peaking";
-    pk4.frequency.value = cf(form * v.fmul);
-    pk4.Q.value = 2.5;
-    pk4.gain.value = 6;
-    lp.type = "lowpass";
-    lp.frequency.value = v.lp;
-    osc.connect(pk4);
-    pk4.connect(lp);
-    lp.connect(env);
-    const nodes = [env, osc, pk4, lp];
-    osc.start(t);
-    const end = envAt(env, t, v.dur * (accent ? 1.2 : 1), v.vol * (accent ? 1.25 : 1), 4e-3);
-    route(o, env, nodes, 0.05, 0);
-    finishVoice(o, [osc], nodes, env, t, end);
-    if (cons) noise(o, { at, dur: 0.014, type: "highpass", f: 4200, vol: v.vol * 0.9, a: 1e-3 });
+    return LFSR[key] = buf;
   }
-  function babble(text, voice = "crab") {
-    if (!ready()) return;
-    const v = VOICES[voice] || VOICES.crab;
+  function chipChannel(id2) {
+    let c = VO.ch.get(id2);
+    if (c) return c;
+    const v = CHIP[id2], t = ctx.currentTime, nodes = [], srcs = [];
+    const out = gainNode(v.vol, B.sfx.in);
+    const send = gainNode(0.07, B.sfx.verb);
+    out.connect(send);
+    const lp = biquad("lowpass", v.lp, 0.7, out);
+    let head = lp;
+    nodes.push(out, send, lp);
+    if (v.drive) {
+      const sh = ctx.createWaveShaper();
+      sh.curve = v.drive === "crush" ? WAVES.crushHard : WAVES.drive;
+      sh.connect(lp);
+      head = sh;
+      nodes.push(sh);
+    }
+    const env = gainNode(0, head);
+    nodes.push(env);
+    const osc = (wave, mul3, level) => {
+      const o = ctx.createOscillator();
+      if (WAVES[wave]) o.setPeriodicWave(WAVES[wave]);
+      else o.type = wave;
+      o.frequency.value = 220 * mul3;
+      const g = gainNode(level, env);
+      o.connect(g);
+      o.start(t);
+      srcs.push(o);
+      nodes.push(o, g);
+      return { o, g, mul: mul3 };
+    };
+    const A2 = osc(WAVE_OF[v.duty[0]] || "square", 1, 1), Bo = osc(WAVE_OF[v.duty[1]] || "square", 1, 0);
+    const oscs = [A2, Bo];
+    if (v.tri > 0) oscs.push(osc("triangle", 0.5, v.tri));
+    if (v.lfo) {
+      const l = ctx.createOscillator();
+      l.frequency.value = v.lfo[0];
+      const lg = gainNode(v.lfo[1]);
+      l.connect(lg);
+      l.start(t);
+      for (const O of oscs) lg.connect(O.o.detune);
+      srcs.push(l);
+      nodes.push(l, lg);
+    }
+    const ns = ctx.createBufferSource();
+    ns.buffer = lfsrBuffer(!!v.short);
+    ns.loop = true;
+    ns.playbackRate.value = v.nrate;
+    const nf = biquad(v.nf >= 3e3 ? "highpass" : "bandpass", v.nf, v.nf >= 3e3 ? 0.7 : 1.2);
+    const gN = gainNode(0, head);
+    ns.connect(nf);
+    nf.connect(gN);
+    ns.start(t);
+    srcs.push(ns);
+    nodes.push(ns, nf, gN);
+    c = { id: id2, v, A: A2, B: Bo, oscs, env, gN, ns, nf, nodes, srcs, until: t, lineUntil: 0 };
+    c.params = [env.gain, gN.gain, A2.g.gain, Bo.g.gain, ns.playbackRate, nf.frequency, ...oscs.map((O) => O.o.frequency)];
+    VO.ch.set(id2, c);
+    VO.made++;
+    return c;
+  }
+  function chipRelease(c) {
+    VO.ch.delete(c.id);
+    for (const s of c.srcs) {
+      try {
+        s.stop();
+      } catch (e) {
+      }
+    }
+    disconnectAll(c.nodes);
+  }
+  function chipGc(now10) {
+    for (const c of VO.ch.values()) if (now10 > c.until + 4) chipRelease(c);
+    if (VO.ch.size > 6) {
+      const old = [...VO.ch.values()].sort((a, b) => a.until - b.until)[0];
+      if (old.until < now10) chipRelease(old);
+    }
+  }
+  function chipCut(c, t) {
+    for (const p of c.params) {
+      if (p.cancelAndHoldAtTime) p.cancelAndHoldAtTime(t);
+      else {
+        p.cancelScheduledValues(t);
+        p.setValueAtTime(p.value, t);
+      }
+    }
+    c.env.gain.linearRampToValueAtTime(0, t + 0.01);
+    c.gN.gain.linearRampToValueAtTime(0, t + 0.01);
+    c.lineUntil = 0;
+  }
+  function chipNote(c, t, f, o = {}) {
+    const v = c.v, dur = o.dur ?? v.dur, s = o.slide ?? v.slide, vol = o.vol ?? 1;
+    for (const O of c.oscs) {
+      const p = O.o.frequency, f0 = cf(f * O.mul);
+      p.setValueAtTime(f0, t);
+      if (s) p.exponentialRampToValueAtTime(cf(f0 * Math.pow(2, s / 12)), t + dur);
+    }
+    c.A.g.gain.setValueAtTime(o.duty ? 0 : 1, t);
+    c.B.g.gain.setValueAtTime(o.duty ? 1 : 0, t);
+    const e = c.env.gain;
+    e.setValueAtTime(0, t);
+    e.linearRampToValueAtTime(vol, t + 4e-3);
+    e.linearRampToValueAtTime(vol * 0.62, t + dur * 0.55);
+    e.linearRampToValueAtTime(0, t + dur);
+    const nz = o.noise || 0, grit = (v.grit || 0) * vol;
+    if (nz > 0 || grit > 0) {
+      const n2 = c.gN.gain;
+      if (o.nrate) c.ns.playbackRate.setValueAtTime(o.nrate, t);
+      if (o.nf) c.nf.frequency.setValueAtTime(cf(o.nf), t);
+      n2.setValueAtTime(0, t);
+      n2.linearRampToValueAtTime(Math.max(nz, grit), t + 2e-3);
+      n2.linearRampToValueAtTime(grit, t + Math.min(dur * 0.6, 0.028));
+      n2.linearRampToValueAtTime(0, t + dur);
+    }
+    if (t + dur > c.until) c.until = t + dur;
+    VO.notes++;
+    return t + dur;
+  }
+  function chipLetter(c, ch, t, k, P7, rise = 0) {
+    const v = c.v, code = ch.charCodeAt(0);
+    const isV = VOWELS.includes(ch), isD = code >= 48 && code <= 57;
+    let semis = v.scale[(code * 7 + v.base) % v.scale.length] - k * 2 + rise;
+    if (v.quant) semis += VO.hop++ % 3 === 2 ? 12 : 0;
+    if (isV && "eiy".includes(ch)) semis += 2;
+    const o = { duty: isV ? 0 : 1 };
+    if (!isV && !isD) {
+      if (SIBIL.includes(ch)) Object.assign(o, { noise: v.noise, nrate: Math.min(1, v.nrate * 2.2), nf: v.nf * 1.6 });
+      else if (PLOS.includes(ch)) Object.assign(o, { noise: v.noise * 0.9, nrate: v.nrate * 0.6, nf: v.nf * 0.7, dur: v.dur * 0.8 });
+      else o.vol = 0.75;
+    }
+    return chipNote(c, t, m2f(v.base + semis) * P7, o);
+  }
+  function chipArp(c, p, t, P7, rise = 0) {
+    const A2 = ARP[p];
+    if (!A2) return t;
+    const v = c.v;
+    let at = t;
+    for (const [s, d] of A2.n) {
+      chipNote(c, at, m2f(v.base + v.scale[0] + s + rise + 2) * P7, { dur: d * 0.92, vol: A2.vol, slide: A2.slide ?? 0, duty: 0 });
+      at += d;
+    }
+    return at;
+  }
+  function babble(text, voice = "default", opts) {
+    if (!ready() || !VO.on) return;
+    const id2 = voiceId(voice), v = CHIP[id2];
     const str = String(text ?? "").toLowerCase();
-    const letters = str.replace(/[^a-z0-9]/g, "");
-    if (!letters.length) return;
-    const now10 = ctx.currentTime;
-    const dest = { dry: B.sfx.in, wet: B.sfx.verb, pool: "sfx", vol: 1, verb: 0.05 };
-    const pitchOf = (c) => v.scale[c.charCodeAt(0) * 7 % v.scale.length];
-    if (str.length <= 2) {
-      if (now10 - (bab.last[voice] ?? -1) < v.gap * 0.9) return;
-      bab.last[voice] = now10;
-      const c = letters[0];
-      fire((o2) => blip(o2, 0, m2f(v.base + pitchOf(c)) * rand(0.98, 1.02), v, FORMANT[c] || 1200, false, "stkpcfxz".includes(c)), now10 + 5e-3, dest);
+    if (!str.trim()) return;
+    let c;
+    try {
+      c = chipChannel(id2);
+    } catch (e) {
+      warnOnce("chip", "voice failed: " + (e && e.message));
       return;
     }
-    if (bab.line) {
-      const g = bab.line.gain;
-      g.cancelScheduledValues(now10);
-      g.setValueAtTime(g.value, now10);
-      g.linearRampToValueAtTime(0, now10 + 0.03);
-    }
-    const q = /\?\s*$/.test(str), ex = /!\s*$/.test(str);
-    const o = fire((oo) => {
-      let at = 0, count = 0, prevCons = false;
-      const total = Math.min(48, letters.length);
-      for (let i = 0; i < str.length && count < 48; i++) {
-        const c = str[i];
-        if (c === " " || c === "\n") {
+    const P7 = Math.max(0.25, Math.min(4, +opts?.pitch || 1));
+    const now10 = ctx.currentTime;
+    try {
+      if (str.length <= 2) {
+        const ch = str[0];
+        if (/[a-z0-9]/.test(ch)) {
+          if (now10 - (VO.last[id2] ?? -1) < v.gap * 0.8) return;
+          VO.last[id2] = now10;
+          if (c.lineUntil > now10) chipCut(c, now10);
+          const w = VO.walk[id2] = Math.max(-2, Math.min(2, (VO.walk[id2] || 0) + (Math.random() - 0.5) * 0.8));
+          chipLetter(c, ch, now10 + 5e-3, 0.3, P7, w);
+        } else if (ARP[ch]) {
+          if (now10 - (VO.punct[id2] ?? -1) < 0.22) return;
+          VO.punct[id2] = now10;
+          VO.last[id2] = now10;
+          if (c.lineUntil > now10) chipCut(c, now10);
+          chipArp(c, ch, now10 + 5e-3, P7);
+        }
+        return;
+      }
+      chipCut(c, now10);
+      VO.lines++;
+      const letters = str.replace(/[^a-z0-9]/g, "");
+      const total = Math.max(1, Math.min(56, letters.length));
+      const q = /\?\s*$/.test(str), ex = /!\s*$/.test(str);
+      let at = now10 + 0.02, count = 0, prevCons = false, lastP = "";
+      for (let i = 0; i < str.length && count < 56; i++) {
+        const ch = str[i];
+        if (ch === " " || ch === "\n") {
           at += v.gap * 0.5;
           prevCons = false;
+          lastP = "";
           continue;
         }
-        if (",.;:!?-".includes(c)) {
-          at += v.gap * 2.2;
+        if (ARP[ch]) {
+          if (lastP !== ch) at = chipArp(c, ch, at, P7) + v.gap * 1.2;
+          lastP = ch;
           continue;
         }
-        if (!/[a-z0-9]/.test(c)) continue;
-        const isV = c in FORMANT;
-        if (!isV && prevCons && chance(0.5)) {
+        if (";:-".includes(ch)) {
+          at += v.gap * 1.5;
+          continue;
+        }
+        if (!/[a-z0-9]/.test(ch)) continue;
+        lastP = "";
+        const isV = VOWELS.includes(ch);
+        if (!isV && prevCons && Math.random() < 0.5) {
           prevCons = false;
           continue;
         }
         prevCons = !isV;
-        let vow = c;
-        for (let k = i; k < str.length && k < i + 4; k++) if (str[k] in FORMANT) {
-          vow = str[k];
-          break;
-        }
-        const pos = count / total;
-        let semis = pitchOf(c) - pos * 2;
-        if (q && pos > 0.7) semis += (pos - 0.7) * 22;
-        if (ex) semis += 2;
-        blip(oo, at, m2f(v.base + semis) * rand(0.98, 1.02), v, FORMANT[vow] || 1200, ex && count === 0, "stkpcfxz".includes(c));
+        const k = count / total;
+        let rise = ex ? 2 : 0;
+        if (q && k > 0.7) rise += (k - 0.7) * 20;
+        chipLetter(c, ch, at, k, P7, rise);
         at += v.gap * rand(0.9, 1.1);
         count++;
       }
-    }, now10 + 0.01, dest);
-    bab.line = o.out;
+      c.lineUntil = at;
+    } catch (e) {
+      warnOnce("chipline", "voice line failed: " + (e && e.message));
+    }
+  }
+  function setVoices(on) {
+    VO.on = on !== false && on !== "off";
+    if (!VO.on && ctx) for (const c of [...VO.ch.values()]) chipRelease(c);
   }
   function pump() {
     if (!ready()) return;
@@ -2335,6 +2480,7 @@
       }
       if (scene) scene.tick(t02, h);
       for (const l of activeLoops) if (l.tick) l.tick(t02, h);
+      if (VO.ch.size) chipGc(t02);
     } catch (e) {
       warnOnce("pump", "scheduler error: " + (e && e.message));
     }
@@ -2521,7 +2667,7 @@
       }
     };
   }
-  var AC, LOOKAHEAD, LIMITS, ctx, B, NYQ, pools, NB, WAVES, warned, lastPlay, vols, S, rand, pick, chance, clamp01, m2f, ready, cf, curve, TRIM, bub, bell, chime, mallet, tink, whoosh, thump, tick, droplets, arp, SFX, COMBO, combo, MIN_GAP, VERB2, LOOP_CAT, activeLoops, pendingLoops, loopO, creak, LOOPS, gClip, SLOOPS, SLOOP_CLIPS, useSampleLoop, MINPENTA, evOut, AMB, withV, evLayer, dataBlip, WEATHER, ev, RAIN_BED, SCENES, SWEATHER, rr, scene, INS, SH_CH, SH_PROGS, SH_MEL, JY_CH, JY_PROGS, JY_LEAD, AB_CH, AQ_CH, AQ_PROGS, AQ_MEL, FJ_CH, FJ_PROGS, VO_CH, VO_RIFF, ME_CH, ME_PROGS, ME_LEAD, TRACKS, tracks, curTrack, MUSIC_CLIPS, MUSIC_GAIN, VOICES, FORMANT, bab, VOICE_CLIPS, timer, failed, samplesWarm, WARM_EXTRA, stats, synthOnly, NOOP_LOOP, SFX_NAMES, LOOP_NAMES, MUSIC_TRACKS, BABBLE_VOICES, audio;
+  var AC, LOOKAHEAD, LIMITS, ctx, B, NYQ, pools, NB, WAVES, warned, lastPlay, vols, S, rand, pick, chance, clamp01, m2f, ready, cf, curve, TRIM, bub, bell, chime, mallet, tink, whoosh, thump, tick, droplets, arp, SFX, COMBO, combo, MIN_GAP, VERB2, LOOP_CAT, activeLoops, pendingLoops, loopO, creak, LOOPS, gClip, SLOOPS, SLOOP_CLIPS, useSampleLoop, MINPENTA, evOut, AMB, withV, evLayer, dataBlip, WEATHER, ev, RAIN_BED, SCENES, SWEATHER, rr, scene, INS, SH_CH, SH_PROGS, SH_MEL, JY_CH, JY_PROGS, JY_LEAD, AB_CH, AQ_CH, AQ_PROGS, AQ_MEL, FJ_CH, FJ_PROGS, VO_CH, VO_RIFF, ME_CH, ME_PROGS, ME_LEAD, TRACKS, tracks, curTrack, MUSIC_CLIPS, MUSIC_GAIN, CHIP, VOICE_ALIAS, voiceId, WAVE_OF, VOWELS, SIBIL, PLOS, ARP, VO, LFSR, timer, failed, samplesWarm, WARM_EXTRA, stats, synthOnly, NOOP_LOOP, SFX_NAMES, LOOP_NAMES, MUSIC_TRACKS, BABBLE_VOICES, audio;
   var init_audio = __esm({
     "src/core/audio.js"() {
       init_samples();
@@ -3986,28 +4132,65 @@
         metropolis: "mu_metropolis"
       };
       MUSIC_GAIN = { shallows: 0.55, aquarium: 0.65, desktop: 0.65, abyss: 0.5, fjord: 0.65, junkyard: 0.55, volcano: 0.5, metropolis: 0.6 };
-      VOICES = {
-        crab: { base: 62, scale: [0, 2, 4, 7, 9, 12], type: "square", dur: 0.05, gap: 0.068, vol: 0.055, lp: 2400, bend: 1.12, fmul: 1 },
-        fish: { base: 69, scale: [0, 2, 4, 7, 9, 12], type: "sine", dur: 0.075, gap: 0.08, vol: 0.075, lp: 3e3, bend: 1.45, fmul: 1.1 },
-        tiny: { base: 81, scale: [0, 2, 4, 7, 9, 12, 14], type: "triangle", dur: 0.04, gap: 0.052, vol: 0.065, lp: 6e3, bend: 1.08, fmul: 1.4 },
-        deep: { base: 45, scale: [0, 3, 5, 7, 10], type: "sawtooth", dur: 0.1, gap: 0.105, vol: 0.075, lp: 800, bend: 0.94, fmul: 0.7 },
-        clip: { base: 74, scale: [0, 2, 4, 7, 9, 12, 14], type: "triangle", dur: 0.05, gap: 0.058, vol: 0.07, lp: 5200, bend: 1.22, fmul: 1.3 }
-        // [phase5:intro] Clip's chirpy chrome voice
+      CHIP = {
+        // base = MIDI note, scale = degrees, duty = [vowel, consonant] wave, tri = triangle level (octave below),
+        // gap = seconds per letter, dur = note length, vol, slide = semitones over a note, lfo = [Hz, cents],
+        // noise = consonant tick level, grit = noise under every note, nf = noise filter Hz, nrate = LFSR clock (0..1),
+        // short = metallic LFSR loop, lp = lowpass Hz, drive = 'crush' | 'drive', quant = robotic octave hops
+        // the guide (Bubbles, a toy grouper): goofy, low and wobbly, droopy "bwomp" slides
+        guide: { base: 50, scale: [0, 3, 5, 7, 10, 12], duty: ["p50", "p25"], tri: 0.55, gap: 0.074, dur: 0.064, vol: 0.085, slide: -3, lfo: [6.5, 55], noise: 0.22, nf: 1700, nrate: 0.3, lp: 2600 },
+        // Professor Fizz: high, fast, excitable bleeps
+        fizz: { base: 81, scale: [0, 2, 4, 7, 9, 12, 14, 16], duty: ["p12", "p25"], tri: 0, gap: 0.042, dur: 0.032, vol: 0.06, slide: 2, noise: 0.3, nf: 7500, nrate: 1, lp: 11e3 },
+        // Marina: a warm mid pulse with a soft triangle under it and a gentle vibrato
+        marina: { base: 64, scale: [0, 2, 4, 5, 7, 9, 11, 12], duty: ["p25", "p50"], tri: 0.45, gap: 0.062, dur: 0.054, vol: 0.07, slide: 0.4, lfo: [5, 14], noise: 0.18, nf: 5200, nrate: 0.7, lp: 4200 },
+        // Captain Bloat: low, gruff, gravelly (noise grit under every syllable)
+        bloat: { base: 41, scale: [0, 3, 5, 7, 10], duty: ["p50", "p12"], tri: 0.5, gap: 0.09, dur: 0.078, vol: 0.085, slide: -2, lfo: [9, 22], noise: 0.5, grit: 0.16, nf: 950, nrate: 0.16, lp: 1900 },
+        // Dot (and the shop voice): a robotic square, flat notes hopping octaves, bit-crushed, metallic noise
+        dot: { base: 67, scale: [0, 0, 7, 12, 5, 0], duty: ["p50", "p50"], tri: 0, gap: 0.056, dur: 0.042, vol: 0.06, slide: 0, quant: true, noise: 0.28, short: true, nf: 3200, nrate: 0.5, lp: 6500, drive: "crush" },
+        // the player's bubble person: bright, friendly, mid-high
+        player: { base: 62, scale: [0, 2, 4, 7, 9, 12], duty: ["p25", "p12"], tri: 0.2, gap: 0.058, dur: 0.046, vol: 0.065, slide: 1, noise: 0.26, nf: 5200, nrate: 0.8, lp: 6500 },
+        // bosses: deep, distorted, menacing (overdrive, a sinister scale, a growl of noise)
+        boss: { base: 33, scale: [0, 1, 3, 6, 7, 12], duty: ["p50", "p25"], tri: 0.8, gap: 0.12, dur: 0.105, vol: 0.075, slide: -4, lfo: [12, 35], noise: 0.55, grit: 0.22, nf: 520, nrate: 0.09, lp: 1500, drive: "drive" },
+        // anyone else (fish taunts, other NPCs)
+        default: { base: 69, scale: [0, 2, 4, 7, 9, 12], duty: ["p25", "p50"], tri: 0.15, gap: 0.06, dur: 0.05, vol: 0.06, slide: 1.2, noise: 0.24, nf: 4800, nrate: 0.7, lp: 6500 }
       };
-      for (const k in VOICES) VOICES[k].id = k;
-      FORMANT = { a: 850, e: 1900, i: 2500, o: 600, u: 420, y: 2200 };
-      bab = { last: {}, line: null };
-      VOICE_CLIPS = {
-        crab: ["k_pluck1", 0.95, 0.5, 0],
-        fish: ["k_drop3", 0.8, 0.45, 0],
-        tiny: ["k_glass2", 1.2, 0.35, 0],
-        deep: ["k_pluck1", 0.42, 0.6, 1400],
-        clip: ["k_select1", 1, 0.4, 0]
+      for (const k in CHIP) CHIP[k].id = k;
+      VOICE_ALIAS = {
+        fish: "guide",
+        seal: "guide",
+        grouper: "guide",
+        bubbles: "guide",
+        clip: "default",
+        tiny: "fizz",
+        crab: "dot",
+        shop: "dot",
+        deep: "bloat",
+        captain: "bloat",
+        angler: "player",
+        me: "player",
+        peer: "player",
+        goldie: "default",
+        pinch: "dot"
       };
+      voiceId = (v) => CHIP[v] ? v : CHIP[VOICE_ALIAS[v]] ? VOICE_ALIAS[v] : "default";
+      WAVE_OF = { p12: "pulse12", p25: "pulse25", p50: "square" };
+      VOWELS = "aeiouy";
+      SIBIL = "szxcfjh";
+      PLOS = "ptkbdgq";
+      ARP = {
+        "!": { n: [[0, 0.028], [4, 0.028], [7, 0.028], [12, 0.05]], vol: 0.95 },
+        "?": { n: [[0, 0.04], [5, 0.04], [10, 0.06]], vol: 0.85, slide: 2 },
+        ".": { n: [[5, 0.045], [0, 0.07]], vol: 0.6 },
+        ",": { n: [[-5, 0.035]], vol: 0.45 },
+        "~": { n: [[0, 0.045], [2, 0.045], [0, 0.045], [-2, 0.06]], vol: 0.7 }
+      };
+      ARP["\u2026"] = ARP["."];
+      VO = { on: true, ch: /* @__PURE__ */ new Map(), last: {}, punct: {}, hop: 0, walk: {}, notes: 0, lines: 0, made: 0 };
+      LFSR = {};
       timer = null;
       failed = false;
       samplesWarm = false;
-      WARM_EXTRA = ["lp_reel", "lp_creak", "creak1", "creak2", "creak3", "wsqueak1", "wsqueak2", "k_pluck1", "k_drop3", "k_glass2", "k_select1"];
+      WARM_EXTRA = ["lp_reel", "lp_creak", "creak1", "creak2", "creak3", "wsqueak1", "wsqueak2"];
       stats = { sample: 0, synth: 0, pending: 0, dropped: 0, synthNames: /* @__PURE__ */ new Set() };
       synthOnly = false;
       NOOP_LOOP = { set() {
@@ -4016,7 +4199,7 @@
       SFX_NAMES = Object.keys(SFX);
       LOOP_NAMES = Object.keys(LOOPS);
       MUSIC_TRACKS = Object.keys(TRACKS);
-      BABBLE_VOICES = Object.keys(VOICES);
+      BABBLE_VOICES = Object.keys(CHIP);
       audio = {
         unlock,
         isUnlocked: ready,
@@ -4029,6 +4212,11 @@
         getVolumes: () => ({ ...vols }),
         setMuffle,
         babble,
+        setVoices,
+        get voicesOn() {
+          return VO.on;
+        },
+        voiceId,
         get music() {
           return S.music;
         },
@@ -4037,6 +4225,8 @@
         },
         _meter: meter,
         _voices: () => ({ sfx: pools.sfx.length, music: pools.music.length, amb: pools.amb.length }),
+        // dev/test: the 8-bit character voices (live channels, notes / lines scheduled, channels built)
+        _chip: () => ({ on: VO.on, channels: [...VO.ch.keys()], notes: VO.notes, lines: VO.lines, made: VO.made }),
         // dev/test: how many one-shots came from recordings vs the synth fallback, and what is playing
         _synthOnly: (on) => {
           synthOnly = !!on;
@@ -38256,65 +38446,42 @@ kmlmk..
     out.base = r.canvas;
     return out;
   }
-  function palm(m, x, z, h, lean, pal3, r) {
-    let px3 = x, py = 0;
-    const pts = [];
-    for (let i = 0; i <= h; i++) {
-      const k = i / h;
-      px3 = x + lean * k * k * h * 0.5;
-      py = i;
-      pts.push([px3, py]);
-      m.set(Math.round(px3), py, z, i % 3 === 0 ? pal3.trunkDark : pal3.trunk);
-      if (i < h * 0.4) m.set(Math.round(px3) + 1, py, z, pal3.trunkDark);
-    }
-    const [tx, ty] = pts[pts.length - 1];
-    for (let f = 0; f < 7; f++) {
-      const a = f / 7 * TAU + r.float(-0.2, 0.2);
-      const len = r.float(6, 9);
-      for (let j = 1; j <= len; j++) {
-        const k = j / len;
-        const fx = tx + Math.cos(a) * j, fz = z + Math.sin(a) * j * 0.8, fy = ty + 1 + k * 2 - k * k * 5;
-        m.set(Math.round(fx), Math.round(fy), Math.round(fz), k > 0.75 ? pal3.leafTip : f % 2 ? pal3.leaf : pal3.leafDark);
-      }
-    }
-    m.set(Math.round(tx), ty, z + 1, pal3.coco);
-    m.set(Math.round(tx) + 1, ty - 1, z, pal3.coco);
-  }
-  function palmIsland(seed = 4, haze) {
+  function hutIsland(seed = 4, haze) {
     const r = new RNG(seed);
-    const m = new VoxelModel(64, 34, 26);
+    const m = new VoxelModel(64, 24, 26);
     const C5 = (c, o = {}) => m.color(c, o);
     const pal3 = {
       sand: C5("#ecd29a", { jitter: 0.12 }),
       wetSand: C5("#c8a46e", { jitter: 0.1 }),
       grass: C5("#3f9a48", { jitter: 0.18 }),
-      jungle: C5("#2a7a3e", { jitter: 0.2 }),
+      grassL: C5("#6cc05a", { jitter: 0.14 }),
       rock: C5("#7c7a8c", { jitter: 0.16 }),
-      trunk: C5("#9a6a40", { jitter: 0.1 }),
-      trunkDark: C5("#6e4a2c", { jitter: 0.08 }),
-      leaf: C5("#4cb050", { jitter: 0.12 }),
-      leafDark: C5("#2f8a3e", { jitter: 0.1 }),
-      leafTip: C5("#8cd468", { jitter: 0.1 }),
-      coco: C5("#6a4a2a"),
+      rockL: C5("#a4a2b2", { jitter: 0.12 }),
       wall: C5("#d8b47a", { jitter: 0.1 }),
       thatch: C5("#c89a4a", { jitter: 0.18 }),
       thatchDark: C5("#9a6e32", { jitter: 0.1 }),
-      door: C5("#4a3020")
+      door: C5("#4a3020"),
+      flower: [C5("#ffffff"), C5("#ffe23a"), C5("#ff8ad0")]
     };
     m.ellipsoid(30, 0, 13, 28, 5, 11, (x, y) => y <= 1 ? pal3.wetSand : pal3.sand);
-    m.ellipsoid(27, 2, 12, 17, 6, 8, (x, y) => y > 5 ? pal3.grass : pal3.jungle);
+    m.ellipsoid(27, 2, 12, 17, 5, 8, (x, y) => y > 5 ? pal3.grassL : pal3.grass);
     m.ellipsoid(44, 1, 10, 6, 4, 5, pal3.rock);
     m.ellipsoid(8, 0, 15, 5, 3, 4, pal3.rock);
     m.ellipsoid(50, 0, 18, 3, 2, 3, pal3.rock);
-    for (let i = 0; i < 14; i++) m.ellipsoid(r.float(16, 40), r.float(5, 8), r.float(8, 16), r.float(2, 3.5), r.float(1.5, 2.5), r.float(2, 3), pal3.jungle);
+    for (let i = 0; i < 5; i++) m.ellipsoid(r.float(12, 46), r.float(2, 4), r.float(15, 20), r.float(1.5, 2.5), r.float(1, 2), r.float(1.5, 2), (x, y) => y > 3 ? pal3.rockL : pal3.rock);
+    for (let i = 0; i < 40; i++) {
+      const x = Math.round(r.float(13, 41)), z = Math.round(r.float(6, 18));
+      let y = 0;
+      while (y < 12 && m.get(x, y + 1, z)) y++;
+      if (!m.get(x, y, z) || m.get(x, y + 1, z)) continue;
+      m.set(x, y + 1, z, i % 4 === 0 ? pal3.flower[i % 3] : pal3.grassL);
+      if (i % 3 === 0) m.set(x, y + 2, z, pal3.grass);
+    }
     m.box(36, 6, 9, 42, 10, 14, (x, y, z) => x === 39 && z === 14 && y < 9 ? pal3.door : pal3.wall);
     for (let y = 11; y <= 15; y++) {
       const k = y - 11;
       m.box(35 + k, y, 8 + k * 0.6, 43 - k, y, 15 - k * 0.6, k % 2 ? pal3.thatchDark : pal3.thatch);
     }
-    palm(m, 22, 12, 22, -0.5, pal3, r);
-    palm(m, 30, 14, 17, 0.45, pal3, r);
-    palm(m, 16, 9, 14, -0.2, pal3, r);
     return finish4(m, { scale: 2, yaw: 24, pitch: 14, jitter: 0.16 }, haze);
   }
   function lighthouseIslet(seed = 7, haze) {
@@ -40376,10 +40543,10 @@ kmlmk..
       m.cylinder(px3, pz, hy + 1.4, hy + 2.6, 1.9, cuff);
     } else if (g === "mitts" || g === "garden" || g === "rubber" || g === "chrome" || g === "gold") {
       const base = { mitts: "#ffffff", garden: "#5cc832", rubber: "#ffd23a", chrome: "#dfe8f2", gold: "#ffd23a" }[g];
-      const palm2 = H8(base, { smooth: 0.8, spec: g === "chrome" || g === "gold" ? 1.6 : 0.9, specPow: 10 });
+      const palm = H8(base, { smooth: 0.8, spec: g === "chrome" || g === "gold" ? 1.6 : 0.9, specPow: 10 });
       const cuff = H8(g === "garden" ? "#c8f56a" : g === "chrome" ? "#8aa0b8" : g === "gold" ? "#c8901c" : shade(base, -0.1), { smooth: 0.6 });
-      m.sphere(px3, hy, pz + 0.2, 1.95, palm2);
-      m.line(px3, hy + 0.2, pz + 1.2, px3 - 0.2, hy - 0.6, pz + 2.4, palm2, 0.7);
+      m.sphere(px3, hy, pz + 0.2, 1.95, palm);
+      m.line(px3, hy + 0.2, pz + 1.2, px3 - 0.2, hy - 0.6, pz + 2.4, palm, 0.7);
       m.cylinder(px3, pz, hy + 1.3, hy + 2.4, g === "mitts" ? 2 : 1.7, cuff);
     } else {
       m.sphere(px3, hy, pz + 0.2, 1.8, kit2.hand);
@@ -44744,21 +44911,6 @@ kmlmk..
     if (scale < 2) return [m, scale];
     return [runSteps(refineSteps(m, { grit })), scale / 2];
   }
-  function roundTree(scale = 2, seed = 5) {
-    return memo2("tree|" + scale + "|" + seed, () => {
-      const r = new RNG(seed);
-      const m = new VoxelModel(30, 34, 24);
-      const bark = m.color("#8a5a32", { jitter: 0.08 }), leaf2 = m.color("#3cbf3a", { jitter: 0.06, spec: 0.5 }), leafL = m.color("#8ef05a", { jitter: 0.05, spec: 0.7 }), leafD = m.color("#1f8a32", { jitter: 0.05 });
-      m.cylinder(15, 12, 0, 12, 1.6, bark, "y");
-      for (let i = 0; i < 9; i++) {
-        const cx = 15 + r.float(-7, 7), cy = 21 + r.float(-5, 7), cz = 12 + r.float(-5, 5), rr4 = r.float(5, 8);
-        m.sphere(cx, cy, cz, rr4, (x, y, z) => y > cy + rr4 * 0.35 && x < cx + 2 ? leafL : y < cy - rr4 * 0.4 ? leafD : leaf2);
-      }
-      const [mm, sc] = fineModel(m, scale, 0.16);
-      const o = renderModel(mm, { scale: sc, outline: true, jitter: 0.05, ao: 1, edges: 0.6, light: { top: 5.2, lit: 4, dark: 2.4, bottom: 1.4 } });
-      return { canvas: o.canvas, w: o.w, h: o.h, ox: o.ox, oy: o.oy };
-    });
-  }
   function splashFrames(size = 12, n2 = 6, seed = 2) {
     return memo2("spl|" + size + "|" + n2 + "|" + seed, () => {
       const r = new RNG(seed);
@@ -45487,14 +45639,14 @@ kmlmk..
           this.rainTile2 = streakTile(128, 64, 14, "#bfefff", { seed: 8, len: [5, 9], alpha: 0.7 });
           lap("rest");
         }
-        // Curved planet-edge horizon + glass city in a water bubble + lone tree + turbines, composed into one sprite with
+        // Curved planet-edge horizon + glass city in a water bubble + turbines (no tree), composed into one sprite with
         // day / dusk / night haze variants. Returns {w, h, ox, oy (waterline at the left end), hubs, day, dusk, night}.
         buildEdge(haze) {
           const W11 = this.W;
           const E = planetEdge(W11, { peak: 0.38, height: 46, chord: 0.58 });
           const items = [];
-          const city = glassCity(3, 2), tree = roundTree(2, 5);
-          const towers = [[0.29, 34], [0.62, 40], [0.73, 30]].map(([xf, th]) => ({ xf, T: turbineTower(th, 1) }));
+          const city = glassCity(3, 2);
+          const towers = [[0.29, 34], [0.48, 26], [0.62, 40], [0.73, 30]].map(([xf, th]) => ({ xf, T: turbineTower(th, 1) }));
           let minX = 0, minY = 0, maxX = E.w, maxY = E.h;
           const put2 = (spr4, xf, dy = 0) => {
             const [cx, cy] = E.crest(xf);
@@ -45507,7 +45659,6 @@ kmlmk..
             return it2;
           };
           const cityIt = put2(city, 0.13, 4);
-          const treeIt = put2(tree, 0.5, 3);
           const tw = towers.map((t) => ({ ...t, it: put2({ canvas: t.T.canvas, ox: t.T.ox, oy: t.T.oy, w: t.T.w, h: t.T.h }, t.xf, 2) }));
           const bubR = Math.round(city.w * 0.62);
           const bub2 = voxWaterBubble(bubR);
@@ -45531,7 +45682,6 @@ kmlmk..
           g.globalCompositeOperation = "source-over";
           g.globalAlpha = 1;
           g.drawImage(E.canvas, -minX, -minY);
-          g.drawImage(tree.canvas, treeIt.x - minX, treeIt.y - minY);
           const hubs = [];
           const r = new RNG(12);
           for (const t of tw) {
@@ -46868,7 +47018,7 @@ kmlmk..
           const hz = (k) => ({ day: [SKYHZ2.day, k], dusk: [SKYHZ2.dusk, k + 0.08], night: [SKYHZ2.night, Math.min(0.85, k + 0.3)] });
           this.horizon = [
             { spr: seaStacks(12, hz(0.42)), x: Math.round(W11 * 0.07), y: base + 1, blend: new Blend() },
-            { spr: palmIsland(4, hz(0.16)), x: Math.round(W11 * 0.36), y: base + 3, blend: new Blend() },
+            { spr: hutIsland(4, hz(0.16)), x: Math.round(W11 * 0.36), y: base + 3, blend: new Blend() },
             { spr: lighthouseIslet(7, hz(0.3)), x: Math.round(W11 * 0.86), y: base + 2, blend: new Blend(), lighthouse: true }
           ];
           yield;
@@ -68112,7 +68262,7 @@ kmlmk..
     const X = (u) => u + MX, Z = (w) => w + M5;
     const trunk = P7("#b8844a", { jitter: 0.1 }, o), trunk2 = P7("#8e5e30", { jitter: 0.1 }, o);
     const leaf2 = P7("#5ed052", { jitter: 0.14 }, o), leaf22 = P7("#3a9e48", { jitter: 0.12 }, o), nut = P7("#6a4626", {}, o);
-    const palm2 = (u, w, h, lx, lz) => {
+    const palm = (u, w, h, lx, lz) => {
       const x = X(u) + 0.5, z = Z(w) + 0.5, y = ground(u, w) + 1;
       const pts = [];
       for (let i = 0; i <= 4; i++) {
@@ -68133,10 +68283,10 @@ kmlmk..
       m.sphere(tp[0] + 0.9, tp[1] - 0.6, tp[2] + 0.5, 0.9, nut);
       m.sphere(tp[0] - 0.6, tp[1] - 0.9, tp[2] + 0.9, 0.9, nut);
     };
-    palm2(14, 18, 10, -0.6, -0.3);
-    palm2(21, 15, 12, 0.3, -0.5);
-    palm2(12, 28, 8, -0.7, 0.6);
-    palm2(26, 25, 9, 0.7, 0.4);
+    palm(14, 18, 10, -0.6, -0.3);
+    palm(21, 15, 12, 0.3, -0.5);
+    palm(12, 28, 8, -0.7, 0.6);
+    palm(26, 25, 9, 0.7, 0.4);
     {
       const hw = P7("#c8904e", { jitter: 0.12 }, o), hwD = P7("#8a5a30", {}, o), straw = P7("#ecc85a", { jitter: 0.2 }, o), straw2 = P7("#c8a03c", { jitter: 0.2 }, o);
       const u0 = 22, w0 = 19, y = ground(24, 21) + 1;
@@ -70273,35 +70423,39 @@ kmlmk..
     const r = new RNG(seed * 7919 + 13);
     if (kind2 === "hill") {
       const m = new VoxelModel(44, 30, 16), C5 = (h, o) => m.color(h, { jitter: 0.06, ...o });
-      const grass = [C5("#6cd83a"), C5("#8ae84a"), C5("#4cb82a")], white = C5("#f4fbff", { spec: 0.6 }), trunk = C5("#7a5432"), leaf2 = C5("#3cae3a");
+      const grass = [C5("#6cd83a"), C5("#8ae84a"), C5("#4cb82a")], white = C5("#f4fbff", { spec: 0.6 }), fl = [C5("#ffffff"), C5("#ffe23a"), C5("#ff8ad0")];
+      const hs = [];
       for (let x = 0; x < 44; x++) {
         const h = Math.round(Math.sqrt(Math.max(0, 1 - ((x - 22) / 22) ** 2)) * (10 + r.float(0, 2)));
+        hs.push(h);
         m.box(x, 0, 3, x, h, 12, (xx, y) => grass[y === h ? 1 : (xx + y) % 5 === 0 ? 2 : 0]);
       }
-      const tx = r.int(10, 16);
-      m.box(tx, 8, 7, tx + 1, 15, 8, trunk);
-      m.sphere(tx + 0.5, 18, 7.5, 4.2, leaf2);
+      for (let i = 0; i < 7; i++) {
+        const fx = r.int(6, 38);
+        m.set(fx, hs[fx] + 1, r.int(9, 12), fl[i % 3]);
+      }
       const wx = r.int(27, 33);
       m.box(wx, 9, 7, wx, 26, 7, white);
       for (const [dx, dy] of [[0, 7], [6, -4], [-6, -4]]) m.line(wx, 26, 6, wx + dx * 0.9, 26 + dy * 0.9, 6, white, 0.5);
       return { m, yaw: 18, pitch: 14 };
     }
-    if (kind2 === "palm") {
-      const m = new VoxelModel(40, 34, 16), C5 = (h, o) => m.color(h, { jitter: 0.06, ...o });
-      const sand = [C5("#ffe2a0"), C5("#f4cf86")], trunk = C5("#b07a48"), leaf2 = [C5("#4cc83a"), C5("#2e9a2a")], rock = C5("#a89a8a");
+    if (kind2 === "beach") {
+      const m = new VoxelModel(40, 22, 16), C5 = (h, o) => m.color(h, { jitter: 0.06, ...o });
+      const sand = [C5("#ffe2a0"), C5("#f4cf86")], grass = [C5("#4cc83a"), C5("#2e9a2a")], rock = C5("#a89a8a"), pole = C5("#f4f8ff", { spec: 0.6 }), flag = C5("#ff5a4a", { spec: 0.4 });
+      const hs = [];
       for (let x = 4; x < 36; x++) {
         const h = Math.round(Math.sqrt(Math.max(0, 1 - ((x - 20) / 16) ** 2)) * 5);
+        hs[x] = h;
         m.box(x, 0, 4, x, h, 11, sand[(x + h) % 3 === 0 ? 1 : 0]);
       }
       m.sphere(9, 2, 8, 2.5, rock);
-      for (const [px3, lean, hh] of [[17, -0.25, 22], [24, 0.3, 18]]) {
-        for (let y = 4; y < hh; y++) m.set(Math.round(px3 + (y - 4) * lean * 0.4), y, 8, trunk);
-        const topX = Math.round(px3 + (hh - 4) * lean * 0.4);
-        for (let a = 0; a < 6; a++) {
-          const t = a / 6 * TAU;
-          m.line(topX, hh, 8, topX + Math.cos(t) * 7, hh - 2 + Math.abs(Math.sin(t)) * 2 - 1, 8 + Math.sin(t) * 3, leaf2[a % 2], 0.6);
-        }
+      m.sphere(30, 3, 9, 2, rock);
+      for (let i = 0; i < 6; i++) {
+        const gx = r.int(12, 28);
+        m.set(gx, hs[gx] + 1, r.int(6, 11), grass[i % 2]);
       }
+      m.box(22, 5, 8, 22, 17, 8, pole);
+      for (let y = 13; y <= 16; y++) m.box(23, y, 8, 23 + (16 - y) + 1, y, 8, flag);
       return { m, yaw: 16, pitch: 12 };
     }
     if (kind2 === "ice") {
@@ -70572,10 +70726,10 @@ kmlmk..
       init_mappanel();
       init_destinations();
       LOCKED2 = /* @__PURE__ */ new Set(["fjord", "metropolis"]);
-      KIND = { oscean: "hill", shallows: "palm", fjord: "ice", junkyard: "junk", metropolis: "city", volcano: "volcano", abyss: "abyss", lab: "lab", workshop: "workshop" };
+      KIND = { oscean: "hill", shallows: "beach", fjord: "ice", junkyard: "junk", metropolis: "city", volcano: "volcano", abyss: "abyss", lab: "lab", workshop: "workshop" };
       LOOK2 = {
         hill: { sky: ["#2a8fe8", "#69c3ff", "#d8f4ff"], sea: ["#3aa8e0", "#0d4f8a"], cloud: "day", sun: 1, fx: "bubbles", wave: 1 },
-        palm: { sky: ["#1a96ec", "#62d0ff", "#eafcff"], sea: ["#2ccde0", "#0a6a9a"], cloud: "day", sun: 1, fx: "glints", wave: 1 },
+        beach: { sky: ["#1a96ec", "#62d0ff", "#eafcff"], sea: ["#2ccde0", "#0a6a9a"], cloud: "day", sun: 1, fx: "glints", wave: 1 },
         ice: { sky: ["#2a4a86", "#6a9ad0", "#d6f0ff"], sea: ["#58a6c8", "#0a3050"], cloud: "day", sun: 0.6, fx: "snow", wave: 1.2 },
         junk: { sky: ["#3e5e6e", "#86a496", "#d6d4ac"], sea: ["#4a8a7a", "#123a3a"], cloud: "rain", sun: 0.5, fx: "specks", wave: 1.1 },
         city: { sky: ["#1a1450", "#5a2a8a", "#ff8ac8"], sea: ["#3a3a9a", "#0a0a30"], cloud: "night", sun: 0, fx: "neon", wave: 1 },
@@ -74424,7 +74578,9 @@ kmlmk..
         showFps: false,
         wallpaper: "ocean",
         browserFish: true,
-        hints: true
+        hints: true,
+        voices: "chip"
+        // [voices23] 'chip' (8-bit character voices) | 'off'
       },
       view: "ocean",
       // 'ocean' | 'aquarium'
@@ -84478,7 +84634,7 @@ kmlmk..
       }
     }
   }
-  var REVEAL_SFX2, CHEST_S, CHAR_S, SEAL_S, GAP, TITLE_PAL2, BURST_WORD, CHIPS, HIT_SFX, R5, rnd2, ChestPanel, SCR2, CUBES;
+  var GUIDE_SAY, REVEAL_SFX2, CHEST_S, CHAR_S, SEAL_S, GAP, TITLE_PAL2, BURST_WORD, CHIPS, HIT_SFX, R5, rnd2, ChestPanel, SCR2, CUBES;
   var init_chest = __esm({
     "src/ui/chest.js"() {
       init_math();
@@ -84499,6 +84655,7 @@ kmlmk..
       init_fishicon();
       init_pxsprites();
       init_chestgames();
+      GUIDE_SAY = { clap: ["yay!", "woo!"], "wiggle:laugh": ["hehe!", "pfft!"], "wiggle:love": "ooh, shiny!", wiggle: "ooh!", "idle:surprised": ["oh!", "whoa!"], worried: "uh oh...", spin: "wheee!" };
       REVEAL_SFX2 = { common: "click", uncommon: "timing_good", rare: "sparkle", epic: "magic", legendary: "golden_shimmer" };
       CHEST_S = 3.1;
       CHAR_S = 1.9;
@@ -84677,6 +84834,14 @@ kmlmk..
           this.seal.anim = anim;
           this.seal.mood = mood;
           this.seal.until = this.t + secs;
+          const w = GUIDE_SAY[anim + ":" + mood] || GUIDE_SAY[anim];
+          if (w && this.t - (this.saidT ?? -9) > 0.5) {
+            this.saidT = this.t;
+            try {
+              this.game.audio?.babble?.(Array.isArray(w) ? w[Math.floor(Math.random() * w.length)] : w, "guide");
+            } catch {
+            }
+          }
         }
         sealBob() {
           this.seal.bob = 1;
@@ -87218,6 +87383,10 @@ kmlmk..
             this.audio?.play?.("bubble", { vol: 0.45 });
           } catch (e) {
           }
+          try {
+            this.audio?.babble?.(String(c.text || "").split(/\s+/).slice(0, 3).join(" ") + " ", "player");
+          } catch (e) {
+          }
           if (c.mood) this.mood = c.mood;
           l.onChoose?.(c, i);
           if (c.reply) this.queue.unshift({ raw: c.reply, mood: c.mood || l.mood, pose: c.pose || "talk", hold: c.hold, onDone: c.onReplyDone });
@@ -87249,9 +87418,10 @@ kmlmk..
             const after = Math.floor(this.shown);
             for (let i = before; i < after; i++) {
               const c = l.text[i];
-              if (!l.silent && /[a-z0-9]/i.test(c) && this.blipN++ % 2 === 0) {
+              const pun = /[!?.,~]/.test(c) && l.text[i - 1] !== c;
+              if (!l.silent && (pun || /[a-z0-9]/i.test(c) && this.blipN++ % 2 === 0)) {
                 try {
-                  this.audio?.babble?.(c, this.voice);
+                  this.audio?.babble?.(c, l.voice || this.voice);
                 } catch (e) {
                 }
               }
@@ -88006,7 +88176,7 @@ kmlmk..
           loadAlagard();
           this.dlg = new Dialogue({
             audio: this.audio,
-            voice: "fish",
+            voice: "guide",
             name: SEAL_INFO.name,
             vars: { name: "Angler" },
             portrait: (ctx3, cx, cy, r, d) => drawNPC(ctx3, "seal", { portrait: true, x: cx, y: cy, r, t: this.wall, talk: d.talk, mood: d.mood, pose: d.pose, id: "portrait" })
@@ -89307,7 +89477,7 @@ kmlmk..
     requestAnimationFrame(frame2);
   }
   function gallery2(kind2, g, W11, H8, input) {
-    const d = new Dialogue({ name: "Bubbles", voice: "fish", portrait: (ctx3, cx, cy, r, dd) => drawNPC(ctx3, "seal", { portrait: true, x: cx, y: cy, r, t: performance.now() / 1e3, talk: dd.talk, mood: dd.mood, id: "portrait" }), vars: { name: "Finn" } });
+    const d = new Dialogue({ name: "Bubbles", voice: "guide", portrait: (ctx3, cx, cy, r, dd) => drawNPC(ctx3, "seal", { portrait: true, x: cx, y: cy, r, t: performance.now() / 1e3, talk: dd.talk, mood: dd.mood, id: "portrait" }), vars: { name: "Finn" } });
     d.say("Whoa! A new angler in the (OS)cean! I'm Bubbles, the fluffiest guide in the sea.", { hold: 99 });
     const guide = new SealGuide({ x: 200, y: 200, size: 44 });
     const targets = [[80, 470], [880, 470], [480, 60], [900, 120], [480, 300], [60, 140]];
@@ -91868,7 +92038,7 @@ void main() {
       const sky = ["#0f5fd8", "#2f8ff0", "#5cb8fa", "#9fdcff", "#d4f2ff"].map((c) => m.color(c, { jitter: 0.02, light: 0.3 }));
       const sun = m.color("#ffffff", { emissive: 1 }), sunR = m.color("#fff4b0", { emissive: 0.7 });
       const cloud = m.color("#ffffff", { jitter: 0.04, smooth: 0.8 });
-      const grass = m.color("#5cc832", { jitter: 0.08 }), rim = m.color("#d8ff8a", {}), sand = m.color("#f6e2a8", { jitter: 0.05 }), palm2 = m.color("#3aa52a", {});
+      const grass = m.color("#5cc832", { jitter: 0.08 }), rim = m.color("#d8ff8a", {}), sand = m.color("#f6e2a8", { jitter: 0.05 }), palm = m.color("#3aa52a", {});
       const sea = m.color("#2fb8ee", { spec: 1.6, specPow: 14, jitter: 0.03 }), seaD = m.color("#1f8ad8", { spec: 1.4, jitter: 0.03 }), seaL = m.color("#7fdcff", { spec: 1.6 }), foam = m.color("#ffffff", { emissive: 0.15 });
       for (let y = horizon; y < ny; y++) for (let x = 0; x < nx; x++) {
         const k = (y - horizon) / (ny - horizon) + (hash2(x, y, 3) - 0.5) * 0.06;
@@ -91884,7 +92054,7 @@ void main() {
         for (let y = horizon - 1; y <= top; y++) for (let z = 2; z < 6; z++) m.set(x, y, z, y === top ? rim : y <= horizon ? sand : grass);
       }
       m.line(nx * 0.76, horizon + skyV * 0.15, 4, nx * 0.78, horizon + skyV * 0.3, 4, sand, 0.5);
-      m.ellipsoid(nx * 0.78, horizon + skyV * 0.31, 4, 4, 1.2, 2, palm2);
+      m.ellipsoid(nx * 0.78, horizon + skyV * 0.31, 4, 4, 1.2, 2, palm);
       for (let z = 3; z < nz; z++) for (let x = 0; x < nx; x++) {
         const crest = z % 3 === 0 && hash2(x >> 2, z, 4) < 0.04 && (x & 3) < 3;
         const shine = hash2(x, z >> 1, 6) < 0.03;
@@ -94009,6 +94179,10 @@ void main() {
               this.said = true;
               F3.sfx(f.sp?.sound || "blub", { pitch: 1.3 });
               f.say(rng.pick(["music", "heart", "anger", "sweat"]), 1.1);
+              try {
+                F3.game?.audio?.babble?.(this.taunt + " ", f.boss ? "boss" : "default", { pitch: 0.85 + Math.random() * 0.4 });
+              } catch {
+              }
             }
             F3.focusCam(f.x, f.y - 4, 2.4, 4);
           } else {
@@ -95752,6 +95926,13 @@ void main() {
               this.landed.add(i);
               F3.fx.pixelBurst?.("sparkle", lx, ly + 18, 3, { ramp: def2.color, layer: "fg", size: 0 });
               if (i % 2 === 0) F3.sfx("mash_pop", { pitch: 0.7 + i * 0.03, vol: 0.4 });
+            }
+          }
+          if (ct > 1.7 && !this.growled) {
+            this.growled = true;
+            try {
+              F3.game?.audio?.babble?.(def2.sub || def2.title, "boss");
+            } catch {
             }
           }
           if (ct > 1.7) word3D(ctx3, def2.sub, W11 / 2, cy + 52, { t: ct, pop: clamp012((ct - 1.7) * 4), scale: 0.75, pal: "white", wobble: 0.8 });
@@ -100114,6 +100295,10 @@ void main() {
         }
         talk(text, mood = "happy", pose2 = "talk") {
           this.say = { text, t: 0, mood, pose: pose2 };
+          try {
+            this.game?.audio?.babble?.(text, "guide");
+          } catch {
+          }
         }
         // the offer currently shown in the detail card
         current(shop3) {
@@ -105869,6 +106054,24 @@ void main() {
             });
             ry2 += bh + 7;
           }
+          {
+            const cur = s.voices === "off" ? "off" : "chip";
+            const lw = icon2(ctx3, "music", R7.x + 8, ry2 + bh / 2, 1);
+            const lab3 = "Voices";
+            drawText(ctx3, lab3, R7.x + 13 + lw, ry2 + Math.round((bh - capH(F22)) / 2), { font: F22, color: INK12 });
+            const x0 = R7.x + 18 + lw + Math.max(measureText(lab3, F22), measureText("Cutscenes", F22)), cw2 = Math.floor((R7.x + R7.w - 7 - x0) / 2);
+            [["chip", "8-bit", "Characters talk in retro 8-bit voices"], ["off", "Off", "Silent dialogue (text only)"]].forEach(([id2, label3, tip], i) => {
+              const on = cur === id2;
+              if (ui.button(ctx3, x0 + i * cw2, ry2, cw2 - 2, bh, label3, { style: on ? "green" : "white", active: on, tip, sound: "ui_toggle", font: "small" }) && !on) {
+                s.voices = id2;
+                g.audio?.setVoices?.(id2 !== "off");
+                if (id2 !== "off") g.audio?.babble?.("Hello there!", "guide");
+                g.emit?.("settings", "voices");
+                g.save?.();
+              }
+            });
+            ry2 += bh + 7;
+          }
           if (this.code) {
             const bx = R7.x + 7, bwid = R7.w - 14, ch = big ? 28 : 22;
             drawAeroCard(ctx3, bx, ry2, bwid, ch, { tone: "white", inset: true, gloss: 0 });
@@ -107040,6 +107243,10 @@ void main() {
           this.emit("emote", { id: id2, n: this.n.em });
           this.pushPresence();
           this.game.audio?.play("ui_click");
+          try {
+            this.game.audio?.babble?.(e.label + " ", "player");
+          } catch {
+          }
           return true;
         }
         wave(key) {
@@ -107208,8 +107415,15 @@ void main() {
           void meta;
         }
         showEmote(peer, id2) {
-          if (!EMOTE_BY_ID[id2]) return;
+          const e = EMOTE_BY_ID[id2];
+          if (!e) return;
           peer.emote = { id: id2, t0: this.t };
+          let h = 7;
+          for (const ch of String(peer.p?.name || "")) h = (h * 31 + ch.charCodeAt(0)) % 9973;
+          try {
+            this.game.audio?.babble?.(e.label + " ", "player", { pitch: 0.78 + h % 100 / 100 * 0.5 });
+          } catch {
+          }
         }
         showCatch(peer, c) {
           const sp = SPECIES_BY_ID[c.sp];
@@ -107904,7 +108118,7 @@ void main() {
     if (open >= 0) emph.push([open, text.length]);
     return { text, emph };
   }
-  var VOICE, STAGE_H, CINE_K2, ENTRY_T, SEAL_ANIMS2, SEAL_MAP, BUBBLE_MAP, MOOD, PLAYER_POSE, PLAYER_EMOTE, VOWEL2, Typer, Stage;
+  var VOICE, STAGE_H, CINE_K2, ENTRY_T, SEAL_ANIMS2, SEAL_MAP, BUBBLE_MAP, MOOD, PLAYER_POSE, PLAYER_SAY, PLAYER_EMOTE, VOWEL2, Typer, Stage;
   var init_cinestage = __esm({
     "src/ui/cinestage.js"() {
       init_math();
@@ -107919,7 +108133,7 @@ void main() {
       init_cineprops();
       init_cinescript();
       init_quests();
-      VOICE = { seal: "fish", fizz: "tiny", marina: "clip", dot: "crab", bloat: "deep" };
+      VOICE = { seal: "guide", grouper: "guide", fizz: "fizz", marina: "marina", dot: "dot", bloat: "bloat", player: "player" };
       STAGE_H = 0.2;
       CINE_K2 = 0.5;
       ENTRY_T = { leap: 0.85, bob: 0.95, bubble: 0.95, swim: 1.7, zip: 0.85, pop: 0.45 };
@@ -107928,6 +108142,7 @@ void main() {
       BUBBLE_MAP = { clap: "cheer", wiggle: "laugh", worried: "sad", blow: "talk", flop: "sad", spin: "cheer", swim: "idle", sleep: "think", dance: "cheer", flex: "cheer", jump: "cheer", nod: "talk", excited: "cheer" };
       MOOD = { worried: "surprised", flop: "surprised", sad: "sad", cheer: "excited", clap: "excited", wiggle: "excited", laugh: "excited", jump: "excited", spin: "excited", think: "happy" };
       PLAYER_POSE = { wave: "wave", cheer: "cheer", think: "think", laugh: "laugh", chat: "chat", nod: "chat", jump: "cheer", dance: "dance", flex: "flex", sad: "sad" };
+      PLAYER_SAY = { wave: "hiya!", cheer: "yay!", think: "hmm?", laugh: "haha!", jump: "whoa!", sad: "aww.", flex: "yeah!", dance: "la la~" };
       PLAYER_EMOTE = { jump: "exclaim", laugh: "music", cheer: "heart", think: "question", flex: "star", dance: "music" };
       VOWEL2 = /[aeiouy]/i;
       Typer = class {
@@ -107951,7 +108166,7 @@ void main() {
         }
         now(npc, raw, o = {}) {
           const P7 = parseEmph(raw);
-          Object.assign(this, { npc, voice: VOICE[npc] || "fish", text: P7.text, emph: P7.emph, shown: 0, t: 0, doneT: 0, pause: 0.12, active: true });
+          Object.assign(this, { npc, voice: VOICE[npc] || "default", text: P7.text, emph: P7.emph, shown: 0, t: 0, doneT: 0, pause: 0.12, active: true });
           this.hold = o.hold ?? 0.85 + P7.text.length * 0.019;
           this.cps = o.cps ?? 44;
           this.onKey = o.onKey || null;
@@ -107998,7 +108213,7 @@ void main() {
                 this.keys.add(a);
                 this.onKey?.(a);
               }
-              if (/[a-z0-9]/i.test(c)) {
+              if (/[a-z0-9]/i.test(c) || /[!?.,~]/.test(c) && this.text[i - 1] !== c) {
                 try {
                   this.audio?.babble?.(c, this.voice);
                 } catch {
@@ -108180,6 +108395,13 @@ void main() {
           if (!pose2) return;
           this.pl = { pose: pose2, until: this.t + secs, t0: this.t, emote: emote ?? PLAYER_EMOTE[pose2] ?? null };
           if (pose2 === "jump") this.g.audio?.play?.("boing", { vol: 0.4, pitch: 1.3 });
+          const say = PLAYER_SAY[pose2];
+          if (say) {
+            try {
+              this.g.audio?.babble?.(say, "player");
+            } catch {
+            }
+          }
         }
         speakerFacing(id2, to) {
           const a = this.actors.get(id2);
@@ -110492,6 +110714,13 @@ void main() {
             const wc = wordNow(nm, T5.boss);
             const tk = clamp012((u - 2.1) / 0.35);
             if (tk > 0) {
+              if (!R7.fx.growl) {
+                R7.fx.growl = 1;
+                try {
+                  g.audio?.babble?.(boss.sub || boss.title, "boss");
+                } catch {
+                }
+              }
               const ny = hy + Math.round(H8 * 0.085);
               drawWord(ctx3, nm, T5.boss, this.W / 2, ny, backOut2(tk), tk);
               if (boss.sub) drawText(ctx3, boss.sub.toUpperCase(), Math.round(this.W / 2 - measureText(boss.sub.toUpperCase(), "small") / 2), ny + Math.round((wc?.height || 20) / 2) + 4, { font: "small", color: "#ffd0c8", shadow: "#2a0612" });
@@ -111738,6 +111967,7 @@ void main() {
       init_pop3d();
       init_icons3d();
       init_questcine();
+      init_cinestage();
       init_icons3d2();
       NPC_COL = { seal: "#8fdcff", fizz: "#7affc8", marina: "#ffd23a", dot: "#59e0ff", bloat: "#ffb44a" };
       CHEERS = {
@@ -112995,6 +113225,13 @@ void main() {
         say(ctx3, npc, text, P7, k = 1, big = false) {
           if (k <= 0) return;
           const t = this.t;
+          if (this.voiced !== npc + "|" + text) {
+            this.voiced = npc + "|" + text;
+            try {
+              this.game?.audio?.babble?.(text, VOICE[npc] || "default");
+            } catch {
+            }
+          }
           const x = P7.x + 24, y = P7.y + (big ? 150 : 236);
           const shown = text.slice(0, Math.floor(clamp012((t - (big ? 0.3 : 1.6)) * 1.4) * text.length + 1));
           drawPortrait2(ctx3, npc, x + 24, y + 26, 26, t, { talk: shown.length < text.length ? 0.7 : 0, mood: "happy", key: "chap" });
@@ -120367,7 +120604,7 @@ ${hearts} ${status}
           this.offerT = 0;
           this.bootT = 0;
           this.resumed = false;
-          this.dlg = new Dialogue({ audio: game.audio, voice: "fish", name: "", vars: { name: "Angler" } });
+          this.dlg = new Dialogue({ audio: game.audio, voice: "guide", name: "", vars: { name: "Angler" } });
           game.on?.("baitBought", () => this.onBait());
           game.on?.("baitDownloaded", () => this.onBait());
           game.on?.("hooked", () => {
@@ -123585,6 +123822,7 @@ ${hearts} ${status}
         applyVolumes() {
           const s = this.state.settings;
           audio.setVolumes({ master: this.muted ? 0 : s.master, music: s.music, sfx: s.sfx, ambience: s.ambience });
+          audio.setVoices?.(s.voices !== "off");
         }
         save() {
           saveState(this.state);
@@ -127459,7 +127697,7 @@ ${hearts} ${status}
     if (view === "horizon") {
       ctx3.fillStyle = night ? "#0a1430" : "#8ccff0";
       ctx3.fillRect(0, 0, W11, H8);
-      const items = [palmIsland(4, {}), lighthouseIslet(7, {}), sailboat(9, {}), seaStacks(12, {}), markerBuoy("#e2483a"), factory(21, {}), gantryCrane(23, {}), containerStack(25, {}), rockSpires(31, {})];
+      const items = [hutIsland(4, {}), lighthouseIslet(7, {}), sailboat(9, {}), seaStacks(12, {}), markerBuoy("#e2483a"), factory(21, {}), gantryCrane(23, {}), containerStack(25, {}), rockSpires(31, {})];
       let x = 10, y = 150, rowH = 0;
       for (const it2 of items) {
         if (x + it2.w > W11 - 10) {

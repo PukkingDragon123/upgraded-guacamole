@@ -1,4 +1,4 @@
-// Voxel features that sit on the horizon / sea surface of the surface view: a palm island with a hut, a
+// Voxel features that sit on the horizon / sea surface of the surface view: a sandy hut island (no trees), a
 // lighthouse islet, a distant sailboat, sea stacks, a channel buoy, the junkyard's industrial skyline (factory,
 // smokestacks, gantry cranes, container stacks, pier) and the abyss's dark rock spires and marker buoy.
 // Each builder returns { day, dusk, night, ox, oy, w, h, anchors } with atmospheric haze baked per time of day
@@ -33,51 +33,34 @@ function finish(m, opts, haze, anchors = {}) {
   return out;
 }
 
-// Curved palm trunk with drooping fronds and coconuts.
-function palm(m, x, z, h, lean, pal, r) {
-  let px = x, py = 0;
-  const pts = [];
-  for (let i = 0; i <= h; i++) {
-    const k = i / h;
-    px = x + lean * k * k * h * 0.5;
-    py = i;
-    pts.push([px, py]);
-    m.set(Math.round(px), py, z, i % 3 === 0 ? pal.trunkDark : pal.trunk);
-    if (i < h * 0.4) m.set(Math.round(px) + 1, py, z, pal.trunkDark);
-  }
-  const [tx, ty] = pts[pts.length - 1];
-  for (let f = 0; f < 7; f++) {
-    const a = (f / 7) * TAU + r.float(-0.2, 0.2);
-    const len = r.float(6, 9);
-    for (let j = 1; j <= len; j++) {
-      const k = j / len;
-      const fx = tx + Math.cos(a) * j, fz = z + Math.sin(a) * j * 0.8, fy = ty + 1 + k * 2 - k * k * 5;
-      m.set(Math.round(fx), Math.round(fy), Math.round(fz), k > 0.75 ? pal.leafTip : f % 2 ? pal.leaf : pal.leafDark);
-    }
-  }
-  m.set(Math.round(tx), ty, z + 1, pal.coco); m.set(Math.round(tx) + 1, ty - 1, z, pal.coco);
-}
-
-export function palmIsland(seed = 4, haze) {
+// [notrees23] A low sandy island with a grass mound, rocks, grass tufts, a few flowers and a little hut on stilts.
+// No trees or bushes (the user asked for every tree to go): the mound stands bare.
+export function hutIsland(seed = 4, haze) {
   const r = new RNG(seed);
-  const m = new VoxelModel(64, 34, 26);
+  const m = new VoxelModel(64, 24, 26);
   const C = (c, o = {}) => m.color(c, o);
   const pal = {
-    sand: C('#ecd29a', { jitter: 0.12 }), wetSand: C('#c8a46e', { jitter: 0.1 }), grass: C('#3f9a48', { jitter: 0.18 }), jungle: C('#2a7a3e', { jitter: 0.2 }),
-    rock: C('#7c7a8c', { jitter: 0.16 }), trunk: C('#9a6a40', { jitter: 0.1 }), trunkDark: C('#6e4a2c', { jitter: 0.08 }),
-    leaf: C('#4cb050', { jitter: 0.12 }), leafDark: C('#2f8a3e', { jitter: 0.1 }), leafTip: C('#8cd468', { jitter: 0.1 }), coco: C('#6a4a2a'),
+    sand: C('#ecd29a', { jitter: 0.12 }), wetSand: C('#c8a46e', { jitter: 0.1 }), grass: C('#3f9a48', { jitter: 0.18 }), grassL: C('#6cc05a', { jitter: 0.14 }),
+    rock: C('#7c7a8c', { jitter: 0.16 }), rockL: C('#a4a2b2', { jitter: 0.12 }),
     wall: C('#d8b47a', { jitter: 0.1 }), thatch: C('#c89a4a', { jitter: 0.18 }), thatchDark: C('#9a6e32', { jitter: 0.1 }), door: C('#4a3020'),
+    flower: [C('#ffffff'), C('#ffe23a'), C('#ff8ad0')],
   };
   m.ellipsoid(30, 0, 13, 28, 5, 11, (x, y) => (y <= 1 ? pal.wetSand : pal.sand));
-  m.ellipsoid(27, 2, 12, 17, 6, 8, (x, y) => (y > 5 ? pal.grass : pal.jungle));
+  m.ellipsoid(27, 2, 12, 17, 5, 8, (x, y) => (y > 5 ? pal.grassL : pal.grass));
   m.ellipsoid(44, 1, 10, 6, 4, 5, pal.rock); m.ellipsoid(8, 0, 15, 5, 3, 4, pal.rock); m.ellipsoid(50, 0, 18, 3, 2, 3, pal.rock);
-  for (let i = 0; i < 14; i++) m.ellipsoid(r.float(16, 40), r.float(5, 8), r.float(8, 16), r.float(2, 3.5), r.float(1.5, 2.5), r.float(2, 3), pal.jungle);
+  for (let i = 0; i < 5; i++) m.ellipsoid(r.float(12, 46), r.float(2, 4), r.float(15, 20), r.float(1.5, 2.5), r.float(1, 2), r.float(1.5, 2), (x, y) => (y > 3 ? pal.rockL : pal.rock));
+  // short grass tufts and flowers on the mound (1-2 voxels: no shrubs)
+  for (let i = 0; i < 40; i++) {
+    const x = Math.round(r.float(13, 41)), z = Math.round(r.float(6, 18));
+    let y = 0;
+    while (y < 12 && m.get(x, y + 1, z)) y++;
+    if (!m.get(x, y, z) || m.get(x, y + 1, z)) continue;
+    m.set(x, y + 1, z, i % 4 === 0 ? pal.flower[i % 3] : pal.grassL);
+    if (i % 3 === 0) m.set(x, y + 2, z, pal.grass);
+  }
   // little hut on stilts
   m.box(36, 6, 9, 42, 10, 14, (x, y, z) => (x === 39 && z === 14 && y < 9 ? pal.door : pal.wall));
   for (let y = 11; y <= 15; y++) { const k = y - 11; m.box(35 + k, y, 8 + k * 0.6, 43 - k, y, 15 - k * 0.6, k % 2 ? pal.thatchDark : pal.thatch); }
-  palm(m, 22, 12, 22, -0.5, pal, r);
-  palm(m, 30, 14, 17, 0.45, pal, r);
-  palm(m, 16, 9, 14, -0.2, pal, r);
   return finish(m, { scale: 2, yaw: 24, pitch: 14, jitter: 0.16 }, haze);
 }
 

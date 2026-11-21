@@ -43,11 +43,11 @@ import { destSprite } from './destinations.js';
 
 // oceans whose sky pass paints near walls that continue under the water: their postcards move in one piece
 const LOCKED = new Set(['fjord', 'metropolis']);
-const KIND = { oscean: 'hill', shallows: 'palm', fjord: 'ice', junkyard: 'junk', metropolis: 'city', volcano: 'volcano', abyss: 'abyss', lab: 'lab', workshop: 'workshop' };
+const KIND = { oscean: 'hill', shallows: 'beach', fjord: 'ice', junkyard: 'junk', metropolis: 'city', volcano: 'volcano', abyss: 'abyss', lab: 'lab', workshop: 'workshop' };
 // authored day looks (the origin's real colours are sampled from its postcard; the destination's once it is grabbed)
 const LOOK = {
   hill: { sky: ['#2a8fe8', '#69c3ff', '#d8f4ff'], sea: ['#3aa8e0', '#0d4f8a'], cloud: 'day', sun: 1, fx: 'bubbles', wave: 1 },
-  palm: { sky: ['#1a96ec', '#62d0ff', '#eafcff'], sea: ['#2ccde0', '#0a6a9a'], cloud: 'day', sun: 1, fx: 'glints', wave: 1 },
+  beach: { sky: ['#1a96ec', '#62d0ff', '#eafcff'], sea: ['#2ccde0', '#0a6a9a'], cloud: 'day', sun: 1, fx: 'glints', wave: 1 },
   ice: { sky: ['#2a4a86', '#6a9ad0', '#d6f0ff'], sea: ['#58a6c8', '#0a3050'], cloud: 'day', sun: 0.6, fx: 'snow', wave: 1.2 },
   junk: { sky: ['#3e5e6e', '#86a496', '#d6d4ac'], sea: ['#4a8a7a', '#123a3a'], cloud: 'rain', sun: 0.5, fx: 'specks', wave: 1.1 },
   city: { sky: ['#1a1450', '#5a2a8a', '#ff8ac8'], sea: ['#3a3a9a', '#0a0a30'], cloud: 'night', sun: 0, fx: 'neon', wave: 1 },
@@ -130,25 +130,26 @@ function islandModel(kind, seed) {
   const r = new RNG(seed * 7919 + 13);
   if (kind === 'hill') {
     const m = new VoxelModel(44, 30, 16), C = (h, o) => m.color(h, { jitter: 0.06, ...o });
-    const grass = [C('#6cd83a'), C('#8ae84a'), C('#4cb82a')], white = C('#f4fbff', { spec: 0.6 }), trunk = C('#7a5432'), leaf = C('#3cae3a');
-    for (let x = 0; x < 44; x++) { const h = Math.round(Math.sqrt(Math.max(0, 1 - ((x - 22) / 22) ** 2)) * (10 + r.float(0, 2))); m.box(x, 0, 3, x, h, 12, (xx, y) => grass[y === h ? 1 : (xx + y) % 5 === 0 ? 2 : 0]); }
-    const tx = r.int(10, 16);
-    m.box(tx, 8, 7, tx + 1, 15, 8, trunk); m.sphere(tx + 0.5, 18, 7.5, 4.2, leaf);
+    const grass = [C('#6cd83a'), C('#8ae84a'), C('#4cb82a')], white = C('#f4fbff', { spec: 0.6 }), fl = [C('#ffffff'), C('#ffe23a'), C('#ff8ad0')];
+    const hs = [];
+    for (let x = 0; x < 44; x++) { const h = Math.round(Math.sqrt(Math.max(0, 1 - ((x - 22) / 22) ** 2)) * (10 + r.float(0, 2))); hs.push(h); m.box(x, 0, 3, x, h, 12, (xx, y) => grass[y === h ? 1 : (xx + y) % 5 === 0 ? 2 : 0]); }
+    // [notrees23] no tree: a few flowers dot the bare hill
+    for (let i = 0; i < 7; i++) { const fx = r.int(6, 38); m.set(fx, hs[fx] + 1, r.int(9, 12), fl[i % 3]); }
     const wx = r.int(27, 33);
     m.box(wx, 9, 7, wx, 26, 7, white);
     for (const [dx, dy] of [[0, 7], [6, -4], [-6, -4]]) m.line(wx, 26, 6, wx + dx * 0.9, 26 + dy * 0.9, 6, white, 0.5);
     return { m, yaw: 18, pitch: 14 };
   }
-  if (kind === 'palm') {
-    const m = new VoxelModel(40, 34, 16), C = (h, o) => m.color(h, { jitter: 0.06, ...o });
-    const sand = [C('#ffe2a0'), C('#f4cf86')], trunk = C('#b07a48'), leaf = [C('#4cc83a'), C('#2e9a2a')], rock = C('#a89a8a');
-    for (let x = 4; x < 36; x++) { const h = Math.round(Math.sqrt(Math.max(0, 1 - ((x - 20) / 16) ** 2)) * 5); m.box(x, 0, 4, x, h, 11, sand[(x + h) % 3 === 0 ? 1 : 0]); }
-    m.sphere(9, 2, 8, 2.5, rock);
-    for (const [px, lean, hh] of [[17, -0.25, 22], [24, 0.3, 18]]) {
-      for (let y = 4; y < hh; y++) m.set(Math.round(px + (y - 4) * lean * 0.4), y, 8, trunk);
-      const topX = Math.round(px + (hh - 4) * lean * 0.4);
-      for (let a = 0; a < 6; a++) { const t = (a / 6) * TAU; m.line(topX, hh, 8, topX + Math.cos(t) * 7, hh - 2 + Math.abs(Math.sin(t)) * 2 - 1, 8 + Math.sin(t) * 3, leaf[a % 2], 0.6); }
-    }
+  if (kind === 'beach') {
+    // [notrees23] a sandy cay with rocks, grass tufts and a little flag (the palms are gone)
+    const m = new VoxelModel(40, 22, 16), C = (h, o) => m.color(h, { jitter: 0.06, ...o });
+    const sand = [C('#ffe2a0'), C('#f4cf86')], grass = [C('#4cc83a'), C('#2e9a2a')], rock = C('#a89a8a'), pole = C('#f4f8ff', { spec: 0.6 }), flag = C('#ff5a4a', { spec: 0.4 });
+    const hs = [];
+    for (let x = 4; x < 36; x++) { const h = Math.round(Math.sqrt(Math.max(0, 1 - ((x - 20) / 16) ** 2)) * 5); hs[x] = h; m.box(x, 0, 4, x, h, 11, sand[(x + h) % 3 === 0 ? 1 : 0]); }
+    m.sphere(9, 2, 8, 2.5, rock); m.sphere(30, 3, 9, 2, rock);
+    for (let i = 0; i < 6; i++) { const gx = r.int(12, 28); m.set(gx, hs[gx] + 1, r.int(6, 11), grass[i % 2]); }
+    m.box(22, 5, 8, 22, 17, 8, pole);
+    for (let y = 13; y <= 16; y++) m.box(23, y, 8, 23 + (16 - y) + 1, y, 8, flag);
     return { m, yaw: 16, pitch: 12 };
   }
   if (kind === 'ice') {
