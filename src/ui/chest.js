@@ -2,7 +2,7 @@
 // Panel id 'crate' (the Satchel's "Open!" button and the floating-box flow open it): open({uid} | {tier}).
 //
 // A little staged scene on a wooden dock: you (the bubble person, in your wardrobe outfit, with a tool) stand next
-// to a big detailed voxel chest (src/gfx/chestvox.js) and Bubbles the plush seal watches from the other side.
+// to a big detailed voxel chest (src/gfx/chestvox.js) and Bubbles the toy grouper watches from the other side.
 // Each tier is its own skill minigame (src/ui/chestgames.js): Driftwood Crate = carnival high-striker hammer,
 // Iron Crate = crowbar mash with bucks, Golden Chest = chisel to the beat, Mystery Orb = spin it and tap the
 // weak spots. Every blow is carved into the voxel chest (splinters, popped nails / bolts, lit seams, cracks in the
@@ -225,7 +225,7 @@ export class ChestPanel {
     const [x, y] = this.spr.toScreen(this.chestX, this.chestY, this.cm.hits[Math.max(0, this.dmgI - 1)] || this.impactPoint());
     this.fish = { x, y, vx: rnd(250, 300) * this.k, vy: -rnd(360, 410) * this.k, t: 0, state: 'fly', rot: 0, face: 1, hops: 0 };
     this.sfx('jump_out', { vol: 0.5 }); this.sfx('blub', { vol: 0.5, pitch: 1.3 });
-    this.sealSay('idle', 'surprised', 0.9);
+    this.sealSay('surprised', 'surprised', 0.9);
   }
 
   // ------------------------------------------------------------------ frame
@@ -302,7 +302,7 @@ export class ChestPanel {
         const [x0] = this.spr.toScreen(this.chestX, S.floorY, [0, 0, this.cm.anchor[2]]), [x1] = this.spr.toScreen(this.chestX, S.floorY, [this.cm.m.nx, 0, this.cm.anchor[2]]);
         this.fx.burst(x0, S.floorY, 5, { kind: 'puff', colors: ['#f6ead0', '#d8e8f0'], speed: 70, g: -10, life: 0.9, scale: 2, a0: Math.PI * 0.8, arc: Math.PI * 0.4 });
         this.fx.burst(x1, S.floorY, 5, { kind: 'puff', colors: ['#f6ead0', '#d8e8f0'], speed: 70, g: -10, life: 0.9, scale: 2, a0: -Math.PI * 0.2, arc: Math.PI * 0.4 });
-        this.sealSay('idle', 'surprised', 0.5);
+        this.sealSay('surprised', 'surprised', 0.6);
       }
       if (this.pt >= this.introLen && (this.warm >= 1 || this.pt > 4)) { this.phase = 'play'; this.pt = 0; this.mg.start(); }
     }

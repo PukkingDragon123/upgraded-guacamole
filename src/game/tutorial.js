@@ -1,8 +1,8 @@
-// The opening and the first-session tutorial (phase 5 Intro agent; phase 6 Guide agent: Bubbles the seal).
+// The opening and the first-session tutorial (phase 5 Intro agent; phase 6 Guide agent: Bubbles the guide; [grouper23] now a toy grouper).
 // 1. The cinematic 3D opening (intro3d.js) plays over the live game. Its response choices (the guide's mood, your
 //    angler name, the boat's paint, a first bait) are applied to the save here (applyChoice).
-// 2. Bubbles, a fat low-poly bubble seal pup (gfx/seal.js SealGuide), SWIMS AROUND THE SCREEN with smooth physics
-//    to whatever it is explaining and POINTS at it with a flipper (a stream of tiny bubbles flows to the target),
+// 2. Bubbles, a floating wind-up talking toy grouper (gfx/grouper.js via the gfx/seal.js SealGuide name), SWIMS AROUND
+//    THE SCREEN with smooth physics to whatever it is explaining and POINTS at it with a fin (a stream of tiny bubbles flows to the target),
 //    talking through the dialogue system (game/dialogue.js: typed Alagard speech bubbles with voice blips and
 //    response bubbles that keep clear of the target). Targets: HUD buttons (game.hud.iconRect), the bait pod, the
 //    shop shelf, the water, the hook and the hooked fish (camera.worldToScreen), the fishing gear UI, the catch
@@ -88,7 +88,7 @@ const DOTS_LESSON = LESSON_STEPS;
 const BAIT_GIFT = { crumbs: 5, worm: 2, sugar: 2 };
 export const GUIDE_NAME = SEAL_INFO.name;
 
-// Bubbles' lines: short, with a mood, a gesture (pose -> a seal emote), an optional animated glyph (g) and choices.
+// Bubbles' lines: short, with a mood, a gesture (pose -> a guide emote), an optional animated glyph (g) and choices.
 // Fishing prompts stay generic; the gear / hold-to-charge variants are picked by feature detection (fishingKind()).
 const SAY = {
   bait: { text: 'First, bait! The Bait Shop has free crumbs.', pose: 'point', mood: 'happy' }, // [polish17] Bubbles runs the counter now
@@ -138,8 +138,8 @@ const SAY = {
     { text: "I've got this", value: false, mood: 'smug', reply: 'Okay, champ! Go fish!' },
   ] },
 };
-// pose -> a one-shot seal emote when the line starts
-const EMOTE = { cheer: ['clap', 1.4], wave: ['wave', 1.8], sad: ['worried', 1.2], bend: ['worried', 0.8], think: ['think', 2.2] };
+// pose -> a one-shot guide emote when the line starts
+const EMOTE = { cheer: ['cheer', 1.2], wave: ['wave', 1.8], sad: ['sad', 1.4], bend: ['worried', 0.8], think: ['think', 2.2] }; // [grouper23] the toy grouper's cheer / droop
 
 // tips for the hint helper; `at` = the HUD button Bubbles swims over to
 const TIPS = [
@@ -1148,7 +1148,7 @@ export class Tutorial {
     this.drawSoften(ctx, tg);
     this.drawDots(ctx);
     if (this.step === 'card' && !g.ui?.isOpen?.('reveal')) return;
-    // the target: bouncing pixel focus brackets (the seal's flipper is the arrow)
+    // the target: bouncing pixel focus brackets (the guide's pointing fin is the arrow)
     if (!tg.noRing) {
       if (tg.rect) this.drawPointer(ctx, tg.rect.x + tg.rect.w / 2, tg.rect.y + tg.rect.h / 2, Math.max(tg.rect.w, tg.rect.h) * 0.6, false);
       else if (tg.point || tg.ring) { const p = tg.point || tg.ring; this.drawPointer(ctx, p[0], p[1], tg.small ? 10 : tg.ghost ? 26 : 18, false, tg.bang); }

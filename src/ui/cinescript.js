@@ -165,7 +165,7 @@ export const SCRIPTS = {
       { prop: 'captain' },
       { n: 'bloat', s: 'Lava, vents and fish that *sizzle*. Mind your whiskers, angler!', to: 'player', act: 'talk', key: 'cheer', emote: 'exclaim', pl: 'think' },
       { enter: 'seal', how: 'leap' },
-      { n: 'seal', s: 'Hot hot HOT! My flippers are *toasty*!', shot: 'one', act: 'wiggle', key: 'cheer', emote: 'sweat', fx: 'splash', pl: 'laugh' },
+      { n: 'seal', s: 'Hot hot HOT! My paint is *bubbling*!', shot: 'one', act: 'wiggle', key: 'cheer', emote: 'sweat', fx: 'splash', pl: 'laugh' },
       { n: 'bloat', s: 'Steady now. I sailed a rift like this once. Lost both my *eyebrows*.', shot: 'two', to: 'seal', act: 'talk', key: 'cheer', re: { seal: 'worried' }, pl: 'think' },
       { n: 'seal', s: 'The deepest zone is down there somewhere. I can *smell* it!', shot: 'one', act: 'point', key: 'point', emote: 'question' },
       { boss: true },

@@ -1,6 +1,6 @@
 // Reusable dialogue system (phase 5 Intro agent, phase 6 Guide agent): typed-out Alagard text with procedural voice
 // blips, a live portrait, 2-3 glossy response choices (click, or keys 1/2/3) and callbacks. The opening (cinematic
-// panel) and the tutorial (speech bubble next to Bubbles the seal) both use it. Phase 6: everything is bigger and
+// panel) and the tutorial (speech bubble next to Bubbles the toy grouper) both use it. Phase 6: everything is bigger and
 // follows the UI size setting (Alagard 16 / 20 / 24 / 32 px for ui scale normal / big / huge), and speech bubbles
 // pick the side of the speaker that keeps clear of what the guide is pointing at.
 //

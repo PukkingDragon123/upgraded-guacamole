@@ -21,7 +21,7 @@ export const NPCS = {
   dot: { id: 'dot', name: 'Dot', role: 'Bait Shop keeper', desc: 'A glossy orb robot who runs the Bait Shop.' /* [phase4:shell] */, color: '#59e0ff', h: 56 },
   marina: { id: 'marina', name: 'Marina', role: 'Pier keeper', desc: 'Keeps the pier tidy and the boats happy.', color: '#ffd23a', h: 74 },
   bloat: { id: 'bloat', name: 'Captain Bloat', role: 'Storyteller', desc: 'A retired pufferfish captain with a tale for every tide.', color: '#ffcf5a', h: 60 },
-  seal: { ...SEAL_INFO }, // [phase6:guide] Bubbles, the seal guide (replaces Clip)
+  seal: { ...SEAL_INFO }, // [phase6:guide] Bubbles, the guide ([grouper23] a floating talking toy grouper; the id stays 'seal')
 };
 
 const LOOKS = {
@@ -242,7 +242,7 @@ function frameFor(id, fi, variant, facing, vs) {
 const P0 = { gaze: [0, 0], lid: 0, squint: 0, mouth: 'rest', wobble: 0, eyeMode: null };
 
 export function drawNPC(ctx, id, o = {}) {
-  if (id === 'seal' || id === 'clip') return drawSealNPC(ctx, o); // [phase6:guide]
+  if (id === 'seal' || id === 'grouper' || id === 'clip') return drawSealNPC(ctx, o); // [phase6:guide] [grouper23]
   const x = o.x ?? 0, y = o.y ?? 0, t = o.t ?? 0, scale = o.scale ?? 1, facing = (o.facing ?? 1) < 0 ? -1 : 1;
   const pose = o.pose || 'idle';
   if (LOOKS[id]) {
@@ -279,7 +279,7 @@ export function drawNPC(ctx, id, o = {}) {
 }
 
 export function warmNPC(id, { scale = 1, facing = 1 } = {}) {
-  if (id === 'seal' || id === 'clip') return warmSeal((scale || 1) * 40); // [phase6:guide]
+  if (id === 'seal' || id === 'grouper' || id === 'clip') return warmSeal((scale || 1) * 40); // [phase6:guide] [grouper23]
   const D = VOX[id];
   if (!D) return true;
   const vs = Math.max(0.5, Math.round(1.6 * scale * 4) / 4);
@@ -288,21 +288,23 @@ export function warmNPC(id, { scale = 1, facing = 1 } = {}) {
 }
 
 
-// ====================================================================== [phase6:guide] Bubbles, the seal guide
-// The guide is Bubbles, a chubby, jiggly VOXEL plush seal (phase 8, src/gfx/seal.js); 'clip' is kept as an alias.
-//   drawNPC(ctx, 'seal', {x, y /* bottom (or body centre with base: 'center') */, t, scale | size, facing, talk, mood,
-//                         pose|anim, lookAt, point, ride, id})  -> {head, mouth, top, hand, ...}
-//   drawNPC(ctx, 'seal', {portrait: true, x, y, r, ...}) head and shoulders filling a portrait orb of radius r
+// ====================================================================== [phase6:guide] Bubbles, the guide
+// [grouper23] The guide is Bubbles, a floating wind-up talking TOY GROUPER in voxel art (src/gfx/grouper.js, used through
+// the seal.js compat names); the NPC id stays 'seal', 'grouper' and 'clip' are aliases.
+//   drawNPC(ctx, 'seal', {x, y /* bottom: it hovers a little above it (or body centre with base: 'center') */, t,
+//                         scale | size, facing, talk (the jaw flaps), mood, pose|anim, lookAt, point, ride, id})
+//                         -> {head, mouth, top, hand, ...}
+//   drawNPC(ctx, 'seal', {portrait: true, x, y, r, ...}) its big face (eyes, brows, lips) filling a portrait orb of radius r
 function drawSealNPC(ctx, o) {
   const t = o.t ?? 0;
   if (o.portrait) {
     const r = o.r || 30;
-    return drawSeal(ctx, { x: o.x - r * 0.45, y: o.y + r * 0.2, t, size: r * 1.5, view: 'front', anim: o.pose === 'wave' ? 'wave' : 'idle', mood: o.mood, talk: o.talk, lookAt: o.lookAt || [o.x + r * 3, o.y + r], id: o.id ?? 'portrait' });
+    return drawSeal(ctx, { x: o.x - r * 0.68, y: o.y + r * 0.2, t, size: r * 1.45, view: 'front', anim: o.pose === 'wave' ? 'wave' : 'idle', mood: o.mood, talk: o.talk, lookAt: o.lookAt || [o.x + r * 3, o.y + r], id: o.id ?? 'portrait', hover: false });
   }
   const size = o.size ?? (o.scale ?? 1) * 40;
   return drawSeal(ctx, {
     x: o.x ?? 0, y: o.y ?? 0, base: o.base === 'center' ? undefined : 'bottom', t, size, k: o.k, facing: o.facing, tilt: o.tilt,
-    anim: o.anim || o.pose || 'idle', phase: o.phase, point: o.point, mood: o.mood, talk: o.talk, lookAt: o.lookAt, ride: o.ride ?? (o.bubble === false ? 0 : 1),
+    anim: o.anim || o.pose || 'idle', phase: o.phase, point: o.point, mood: o.mood, talk: o.talk, lookAt: o.lookAt, ride: o.ride ?? (o.bubble === false ? 0 : 1), hover: o.hover,
     noseBubble: o.noseBubble, view: o.view, id: o.id ?? 'npc-seal', alpha: o.alpha,
   });
 }

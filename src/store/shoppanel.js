@@ -1,5 +1,5 @@
 // The Bait Shop panel (id 'baitshop', phase 4, Shell agent): Dot's glossy Aero bait shop. A striped awning over
-// glass shelves of bait bubbles (Classics and Flavours), Bubbles the seal at the counter with a speech bubble,
+// glass shelves of bait bubbles (Classics and Flavours), Bubbles the toy grouper floating at the counter with a speech bubble,
 // a detail card with stats and a big Buy button. Stock restocks on a timer (src/store/shop.js); better grades,
 // faster restocks and discounts are researched in The Lab (shop levels, src/store/isp.js).
 //

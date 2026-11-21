@@ -369,27 +369,53 @@ function baitHook() {
   return { vm: m, yaw: 0.3, pitch: 0.24, spin: 'wobble' };
 }
 
-// ---------------------------------------------------------------- Multiplayer: two seal-pup friends
-function sealHead(m, p, cx, cy, cz, k, fur, furD) {
-  const f = p(fur, SOFT), fd = p(furD, SOFT), muz = p('#fbf6f0', SOFT), nose = p('#2a1e2e', GL), eye = p('#1a1226', GL), wh = p('#ffffff', { emissive: 0.7 }), blush = p('#ff9ab4', SOFT);
-  m.ellipsoid(cx, cy - 7 * k, cz - 1, 10.5 * k, 7 * k, 9 * k, fd); // body
-  m.ellipsoid(cx, cy, cz, 11 * k, 10 * k, 10 * k, (x, y) => (y < cy - 6 * k ? fd : f));
-  for (const s of [-1, 1]) m.ellipsoid(cx + s * 2.6 * k, cy - 3 * k, cz + 8.4 * k, 3.4 * k, 2.7 * k, 2.6 * k, muz);
-  m.ellipsoid(cx, cy - 0.8 * k, cz + 10 * k, 2.2 * k, 1.5 * k, 1.4 * k, nose);
-  for (const s of [-1, 1]) {
-    m.ellipsoid(cx + s * 4.6 * k, cy + 2.4 * k, cz + 8 * k, 1.9 * k, 2.4 * k, 1.6 * k, eye);
-    m.set(Math.floor(cx + s * 4.6 * k - 0.6 * k), Math.floor(cy + 3.4 * k), Math.floor(cz + 9.4 * k), wh);
-    m.ellipsoid(cx + s * 7.4 * k, cy - 1.5 * k, cz + 7 * k, 1.8 * k, 1.1 * k, 1, blush);
-    for (const dy of [-0.6, 1.4]) m.set(Math.floor(cx + s * 4.2 * k + s), Math.floor(cy - 3 * k + dy), Math.floor(cz + 10.2 * k), fd); // whisker dots
+// ---------------------------------------------------------------- Multiplayer: two toy grouper friends [grouper23]
+// (two chunky wind-up toy groupers, Bubbles' kind: big coral lips puckered at each other, white bulging eyes, spiny backs)
+function grouperToy(m, p, cx, cy, cz, k, dir, tint) {
+  const back = p(mix('#665022', tint, 0.25), GL), side = p(mix('#bb8a3a', tint, 0.25), GL), belly = p('#f6e0a0', GL), spot = p('#2c1d0c', GL);
+  const fin = p('#6d5524', GL), finE = p('#ffc94a', GL), lip = p('#f08a68', GL), lipD = p('#c8604a', GL), mouth = p('#3a0a14', MATTE);
+  const eye = p('#fdfbf3', GL), pup = p('#140d06', GL), shine = p('#ffffff', { emissive: 0.7 }), brow = p('#2a1a0a', MATTE), key = p('#b9c4d4', METAL);
+  // tail fan and spiny dorsal fin
+  m.ellipsoid(cx - dir * 9.8 * k, cy + 0.5 * k, cz, 2.6 * k, 5 * k, 1.3, (x, y) => (Math.abs(x + 0.5 - (cx - dir * 9.8 * k)) > 1.7 * k || Math.abs(y + 0.5 - cy - 0.5 * k) > 4 * k ? finE : fin));
+  for (let i = 0; i < 5; i++) {
+    const x = cx - dir * (5 - i * 1.9) * k, hgt = (i === 4 ? 2.4 : 3.4) * k;
+    m.box(x, cy + 5.6 * k, cz - 0.5, x, cy + 5.6 * k + hgt, cz + 0.5, finE);
+    if (i < 4) m.box(x + dir, cy + 5.6 * k, cz, x + dir, cy + 5.6 * k + hgt * 0.6, cz, fin);
+  }
+  // the chunky body: olive back, golden flanks, pale belly, dark spots
+  m.ellipsoid(cx, cy, cz, 8.6 * k, 7.4 * k, 6.6 * k, (x, y, z) => {
+    const yy = y + 0.5 - cy;
+    if (yy < -3.6 * k) return belly;
+    if (h3(x, y, z, 7) > 0.93) return spot;
+    return yy > 3 * k ? back : side;
+  });
+  // pectoral fin and a little silver wind-up key on the near flank
+  m.ellipsoid(cx - dir * 2.5 * k, cy - 2 * k, cz + 6.4 * k, 2.6 * k, 2 * k, 1, (x) => (Math.abs(x + 0.5 - (cx - dir * 2.5 * k)) > 1.6 * k ? finE : fin));
+  m.box(cx - dir * 5 * k, cy + 1.5 * k, cz + 5 * k, cx - dir * 5 * k, cy + 1.5 * k, cz + 7.5 * k, key);
+  m.ellipsoid(cx - dir * 5 * k, cy + 3.2 * k, cz + 8 * k, 1.3 * k, 1.9 * k, 0.8, key);
+  m.ellipsoid(cx - dir * 5 * k, cy - 0.2 * k, cz + 8 * k, 1.3 * k, 1.9 * k, 0.8, key);
+  // big pouty lips (puckered forward) with a dark mouth line
+  m.ellipsoid(cx + dir * 8.4 * k, cy - 1.4 * k, cz, 3 * k, 2 * k, 4 * k, lip);
+  m.ellipsoid(cx + dir * 8.9 * k, cy - 4.2 * k, cz, 3.3 * k, 2.2 * k, 4.3 * k, (x, y) => (y + 0.5 < cy - 5.2 * k ? lipD : lip));
+  m.box(cx + dir * 7 * k, cy - 3 * k, cz - 2 * k, cx + dir * 11.5 * k, cy - 3 * k, cz + 2 * k, mouth);
+  // bulging toy eyes with big pupils and painted brows
+  for (const s of [1, -1]) {
+    const ex = cx + dir * 3.8 * k, ey = cy + 5 * k, ez = cz + s * 3.4 * k;
+    m.sphere(ex, ey, ez, 3.3 * k, eye);
+    if (s > 0) {
+      m.ellipsoid(ex + dir * 1 * k, ey + 0.2 * k, ez + 2.6 * k, 1.8 * k, 1.9 * k, 1, pup);
+      m.set(Math.floor(ex + dir * 0.4 * k), Math.floor(ey + 1.1 * k), Math.floor(ez + 3.4 * k), shine);
+    }
+    m.box(ex - 2.2 * k, ey + 3.9 * k, ez + (s > 0 ? 1 : -1), ex + 2.2 * k, ey + 4.5 * k, ez + (s > 0 ? 2 : -1), brow);
   }
 }
 function friends() {
   const m = new VoxelModel(52, 42, 36), p = palOf(m);
-  sealHead(m, p, 33, 23, 14, 0.92, '#a8c4dc', '#7898b8');
-  sealHead(m, p, 19, 18, 22, 1, '#f2f4f8', '#c8d0dc');
+  grouperToy(m, p, 35, 24, 12, 0.92, -1, '#8fa86a');
+  grouperToy(m, p, 16, 13, 20, 0.98, 1, '#ffb050');
   // a little heart between them
   const ht = p('#ff4a7a', { ...GL, emissive: 0.25 });
-  for (const [x, y] of [[0, 2], [1, 2], [3, 2], [4, 2], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1], [1, 0], [2, 0], [3, 0], [2, -1]]) m.box(25 + x, 36 + y, 26, 25 + x, 36 + y, 27, ht);
+  for (const [x, y] of [[0, 2], [1, 2], [3, 2], [4, 2], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1], [1, 0], [2, 0], [3, 0], [2, -1]]) m.box(28 + x, 14 + y, 24, 28 + x, 14 + y, 25, ht);
   return { vm: m, yaw: 0.3, pitch: 0.24, spin: 'wobble' };
 }
 

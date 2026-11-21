@@ -4,7 +4,7 @@
 //   | moods (every face mood) | guide (the GrouperGuide floating to targets and pointing) | portrait (npc portraits)
 //   &t=<s> freezes the clock, &bg=dark. window.__bench = sheet build ms (idle, point), window.__ready when warmed.
 import { ctxOf } from '../core/canvas.js';
-import { drawGrouper, GrouperGuide, GROUPER_ANIMS, warmGrouper, drawPointStream } from '../gfx/grouper.js';
+import { drawGrouper, GrouperGuide, GROUPER_ANIMS, warmGrouper, drawPointStream, GSTAT, grouperBusy } from '../gfx/grouper.js';
 import { drawNPC } from '../gfx/npcs.js';
 import { voxStats } from '../fish/voxelize.js';
 
@@ -25,7 +25,7 @@ export function run(params) {
   const t1 = performance.now();
   const v0 = voxStats().ms;
   warmGrouper(56, ['point']);
-  window.__bench = { idle: Math.round(tIdle), point: Math.round(performance.now() - t1), voxMs: Math.round(voxStats().ms - v0) };
+  window.__gstat = GSTAT; window.__bench = { idle: Math.round(tIdle), point: Math.round(performance.now() - t1), voxMs: Math.round(voxStats().ms - v0) };
   const guide = new GrouperGuide({ x: 200, y: 260, size: 48 });
   const targets = [[120, 460], [840, 440], [480, 90], [860, 120], [480, 300], [90, 150]];
   let ti = 0, tT = 0, warmed = 0;
@@ -40,7 +40,8 @@ export function run(params) {
     const bg = g.createLinearGradient(0, 0, 0, H);
     if (dark) { bg.addColorStop(0, '#0a2a4a'); bg.addColorStop(1, '#04101e'); } else { bg.addColorStop(0, '#2a8ef0'); bg.addColorStop(0.6, '#9adcff'); bg.addColorStop(1, '#e8fbff'); }
     g.fillStyle = bg; g.fillRect(0, 0, W, H);
-    if (warmed < anims.length) { warmGrouper(56, [anims[warmed]]); warmed++; if (warmed === anims.length) window.__ready = true; }
+    if (mode === 'all' && warmed < anims.length) { warmGrouper(56, [anims[warmed]]); warmed++; }
+    window.__busy = grouperBusy();
     if (mode === 'all') {
       const moods = { idle: 'happy', swim: 'happy', wiggle: 'excited', wave: 'happy', point: 'happy', flop: 'sad', spin: 'excited', worried: 'worried', clap: 'excited', think: 'think', blow: 'happy', cheer: 'excited', sad: 'sad', sleep: 'sleep', surprised: 'surprised', scared: 'scared', look: 'happy', laugh: 'happy' };
       const cols = 6;

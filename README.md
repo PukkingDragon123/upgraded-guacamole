@@ -43,7 +43,7 @@ To build from source, run `npm install && npm run build`, which bundles `src/` i
   - Settings
 
   Settings has a Normal / Big / Huge UI size.
-- **Bait**: buy bait packs from Bubbles the seal at the **Bait Shop** with Aero. Each bait is used up when a fish bites.
+- **Bait**: buy bait packs from Bubbles the toy grouper at the **Bait Shop** with Aero. Each bait is used up when a fish bites.
 - **Fishing**: click the water to cast. Then:
   - **Hook**: when a fish bites, circle your mouse to spin the big 3D gear into the green band before time
     runs out. Too slow and it escapes; past the red line and the line rips.
@@ -65,7 +65,7 @@ To build from source, run `npm install && npm run build`, which bundles `src/` i
 ### The loop
 
 Catch fish and keep them in your side-scrolling tank, where they earn **Aero** (even while you're away). Follow the
-**quest lines**: 7 story chapters told by Bubbles the seal, Professor Fizz, Marina and Captain Bloat.
+**quest lines**: 7 story chapters told by Bubbles the toy grouper, Professor Fizz, Marina and Captain Bloat.
 Each chapter's boss charts the next ocean, and you fund the expedition in The Lab. The Quest Log (`Q`) has three tabs:
 - **Story**: each chapter's main quests, plus about 15 optional side stories per chapter. Side stories cover species,
   weather, night fishing, depth zones, bait, flawless fights, the tank, the Workshop and the Lab.
@@ -138,8 +138,10 @@ with a minigame.
   lens flares and splashes on the lens.
   - The camera crash-zooms in at key moments, and floating 3D voxel text appears in the Alagard font.
   - You answer with reply bubbles (click or press 1/2/3): pick your name, your boat paint and your first bait.
-  - **Bubbles**, a fat, jiggly plush voxel seal with glasses, swims around the screen, points at things and guides the opening
-    and the tutorial. Afterwards it stays on as a hint helper.
+  - **Bubbles**, a chunky wind-up talking toy grouper in voxel art (big pouty lips, bulging eyes, a spiny dorsal fin, a
+    silver wind-up key and a battery hatch), floats around the screen, flaps its hinged jaw in time with every
+    line, points with a fin, puffs up when surprised, spins when happy, droops when sad and now and then swivels its toy
+    head round to stare at you. It guides the opening and the tutorial and afterwards stays on as a hint helper.
 - **Living water**: a wave simulation where casting, bites, jumps, fights, the boat's wake, rain and your mouse all
   make ripples. The boat and boxes float on the waves. A custom water surface and underwater shading add glints,
   foam, light rays and splashes.
@@ -174,7 +176,7 @@ with a minigame.
   Fish also come with mutations, shinies and giants.
 - **You are a bubble person**, with 140 cosmetics and a glossy wardrobe.
 - **Boats**: seven eco boats with swappable hull, sail, flag, engine and decal.
-- **NPCs**: Bubbles the seal, Professor Fizz, Goldie, Pinch, Marina and Captain Bloat.
+- **NPCs**: Bubbles the toy grouper, Professor Fizz, Goldie, Pinch, Marina and Captain Bloat.
 - **The aquarium**:
   - Six tank tiers, from the Nano Tank to the Mega Tank. Each Lab upgrade makes the tank wider and taller, holds
     more fish and earns more Aero.

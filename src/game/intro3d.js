@@ -585,10 +585,10 @@ export class Intro3D {
       this.say3D('HELLO!', { palette: 'aqua', anchor: 'seal', dx: 1.1, dy: 0.15, size: 0.12, life: 4.2, px: 2 });
       d.script([
         { text: 'Whoa! A new angler in the (OS)cean!', mood: 'excited', pose: 'wave', hold: 1.4 },
-        { text: "I'm Bubbles! Professional seal. Amateur bubble-rider.", mood: 'happy', pose: 'talk', choices: [
+        { text: "I'm Bubbles! A talking toy grouper. Batteries not included.", mood: 'happy', pose: 'talk', choices: [
           { text: 'Hi, Bubbles!', value: 'happy', mood: 'happy', reply: "Aww, a polite one! We'll be great pals." },
-          { text: 'A talking seal?', value: 'smug', mood: 'smug', reply: 'A talking FISHING seal. Totally different.' },
-          { text: 'Can you even fish?', value: 'surprised', mood: 'surprised', reply: "Can I fish?! Fish is my favourite food group!" },
+          { text: 'A talking toy fish?', value: 'smug', mood: 'smug', reply: 'A talking FISHING fish. I even have a wind-up key!' },
+          { text: 'Can you even fish?', value: 'surprised', mood: 'surprised', reply: "Can I fish?! I AM a fish. Home advantage!" },
         ], onChoose: (c) => { this.pick('mood', c.value); this.response(c.text); } },
         { text: 'So... what should I call you?', mood: 'happy', pose: 'point', choices: [
           { text: 'Captain Bubbles', value: 'Captain Bubbles' }, { text: 'Reel Deal', value: 'Reel Deal' }, { text: 'Finn', value: 'Finn' },

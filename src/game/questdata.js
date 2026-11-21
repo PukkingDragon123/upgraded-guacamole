@@ -29,7 +29,7 @@ const S = (id, giver, title, text, objectives, reward, o = {}) => ({ id, giver, 
 export const SIDE_STORIES = {
   ch1: [
     S('s1_wifi', 'seal', 'Signal Strength', "A Wi-Fish! If we catch one, maybe I'll finally get one bar of signal down here!", [{ t: 'catch', n: 1, species: 'loafer' }], { aero: 3, items: { fish_scale: 2 } }),
-    S('s1_googly', 'seal', 'Judgy Fish', "That Side-Eye Fish keeps judging my flippers. Catch it so we can talk it out like grown-up sea creatures.", [{ t: 'catch', n: 1, species: 'googly' }], { aero: 3, items: { shell: 2 } }),
+    S('s1_googly', 'seal', 'Judgy Fish', "That Side-Eye Fish keeps judging my lips. They're hand-painted! Catch it so we can talk it out like grown-up fish.", [{ t: 'catch', n: 1, species: 'googly' }], { aero: 3, items: { shell: 2 } }),
     S('s1_crab', 'fizz', 'Double Trouble', "Double-Click Crabs! Click once: it waves. Click twice: it opens a new window. Bring me two specimens!", [{ t: 'catch', n: 2, species: 'clickcrab' }], { aero: 4, items: { kelp_fibre: 2 } }),
     S('s1_feed', 'seal', 'Dinner Bell', "Fish get the munchies too! Sprinkle some food in the tank. Three snacks, then tummy rubs!", [{ t: 'feed', n: 3 }], { aero: 3, items: { shell: 2 } }),
     S('s1_collect', 'seal', 'Pop Pop Pop', "Your fish are blowing Aero bubbles! Pop ten of them. Best. Sound. Ever.", [{ t: 'collect', n: 10 }], { aero: 3, items: { driftwood: 2 } }),
@@ -40,7 +40,7 @@ export const SIDE_STORIES = {
     S('s1_grouper', 'fizz', 'Grass Toucher', "The Touch Grass Grouper lives by the meadow. Rumour says it has touched actual grass. We must confirm!", [{ t: 'catch', n: 1, species: 'grouper' }], { aero: 4, items: { driftwood: 2 } }),
     S('s1_bait', 'seal', 'Fancy Snacks', "Crumbs are fine... but real bait is FANCY. Catch two fish with proper bait. Pinkies out!", [{ t: 'catch', n: 2, bait: 'any' }], { bait: { worm: 2 }, items: { shell: 1 } }),
     S('s1_dex', 'fizz', 'Meadow Census', "Science needs numbers! Discover six species that live in the (OS)cean. Clipboard ready!", [{ t: 'species', n: 6, biome: 'oscean' }], { aero: 7, items: { clover_leaf: 1 } }),
-    S('s1_dress', 'seal', 'Dress to Impress', "Try something new in the Wardrobe! A hat? Goggles? I'm wearing my very best whiskers today.", [{ t: 'dress', n: 1 }], { aero: 2, items: { fish_scale: 2 } }),
+    S('s1_dress', 'seal', 'Dress to Impress', "Try something new in the Wardrobe! A hat? Goggles? I'm wearing my very best lip paint today.", [{ t: 'dress', n: 1 }], { aero: 2, items: { fish_scale: 2 } }),
     S('s1_trophy', 'fizz', 'Measure Twice', "Measure twice, catch once! Bring me a fish from the very top of its size chart. A trophy!", [{ t: 'catch', n: 1, trophy: true }], { aero: 6, items: { shell: 2, fish_scale: 1 } }),
     S('s1_night', 'seal', 'Starry Splash', "At night the (OS)cean twinkles like a screensaver. Catch a fish under the stars! (Night-time only, sleepyhead.)", [{ t: 'catch', n: 1, time: 'night' }], { aero: 4, bait: { worm: 1 } }),
     S('s1_evolve', 'seal', 'Glow Up', "Psst! Noobikarps have BIG dreams. Keep one in your tank for a while and see what it turns into!", [{ t: 'evolve', n: 1 }], { aero: 11, items: { pearl: 1 } }),
@@ -124,12 +124,12 @@ export const SIDE_STORIES = {
     S('s6_zap', 'fizz', 'Spark Plug', "Sixty PERFECT zaps. My hair is standing up just thinking about it. More than usual.", [{ t: 'zap', n: 60 }], { aero: 80, items: { circuit_board: 2 } }),
     S('s6_sizzle', 'bloat', 'Big Sizzle', "Two trophy fish from the Rift! Big enough to roast a marshmallow on. Hrrumph. Not that I would.", [{ t: 'catch', n: 2, biome: 'volcano', trophy: true }], { aero: 80, items: { lava_glass: 1 } }),
     S('s6_epic', 'bloat', 'Epic Heat', "An Epic fish from the Lava Rift! Now THAT is a tale worth the singed eyebrows.", [{ t: 'catch', n: 1, rarity: 'epic', biome: 'volcano' }], { aero: 110, items: { ancient_stone: 2 } }),
-    S('s6_bottom', 'seal', 'Rock Bottom', "The bottom of the Rift glows red and grumbles. Catch three fish in the Abyssal Zone here. Hold my flipper!", [{ t: 'catch', n: 3, biome: 'volcano', zone: 'abyss' }], { aero: 100, bait: { lantern: 1 } }),
+    S('s6_bottom', 'seal', 'Rock Bottom', "The bottom of the Rift glows red and grumbles. Catch three fish in the Abyssal Zone here. Hold my fin!", [{ t: 'catch', n: 3, biome: 'volcano', zone: 'abyss' }], { aero: 100, bait: { lantern: 1 } }),
     S('s6_glass', 'marina', 'Glassblower', "I'm making a lava-glass window for the Workshop. Bring me three Lava Glass. Oven mitts recommended!", [{ t: 'have', id: 'lava_glass', n: 3, take: true }], { aero: 120, items: { ancient_stone: 2 } }),
     S('s6_bosses', 'bloat', 'Trophy Wall', "Hrrumph! A proper angler has a wall of boss trophies. Beat four different bosses.", [{ t: 'total', k: 'bosses', n: 4 }], { aero: 100, items: { abyss_crystal: 1 } }),
     S('s6_rods', 'marina', 'Rod Rack', "My rod rack has eight hooks and they're all empty! Own eight rods. Any rods.", [{ t: 'total', k: 'rods', n: 8 }], { aero: 80, items: { lava_glass: 1 } }),
     S('s6_dex', 'fizz', 'Hot Index', "Discover six Lava Rift species. Write fast before the notebook catches fire.", [{ t: 'species', n: 6, biome: 'volcano' }], { aero: 90, items: { ancient_stone: 1 } }),
-    S('s6_spicy', 'seal', 'Spicy!', "The Spicy Meme Pepperfish makes my whiskers tingle. Catch one with any proper bait. Ah... ah... ACHOO!", [{ t: 'catch', n: 1, species: 'jalapeno', bait: 'any' }], { aero: 70, items: { lava_glass: 1 } }),
+    S('s6_spicy', 'seal', 'Spicy!', "The Spicy Meme Pepperfish makes my big lips tingle. Catch one with any proper bait. Ah... ah... ACHOO!", [{ t: 'catch', n: 1, species: 'jalapeno', bait: 'any' }], { aero: 70, items: { lava_glass: 1 } }),
   ],
   ch7: [
     S('s7_battery', 'seal', 'Low Battery', "The Lanternfish are at 1% battery! Catch three and plug them into the tank. Charging...", [{ t: 'catch', n: 3, species: 'lanternfish' }], { aero: 115, items: { glow_bulb: 1 } }),
@@ -179,7 +179,7 @@ export const MILESTONE_LINES = [
 
 const M = (line, tier, k, n, giver, title, text, reward) => ({ id: `m_${line}_${tier}`, line, tier, giver, title, text, objectives: [{ t: 'total', k, n }], reward });
 export const MILESTONES = [
-  M('catch', 1, 'caught', 10, 'seal', 'Ten Little Fishies', "Ten fish! I counted them twice. Then I counted my flippers. Also ten-ish!", { aero: 15, items: { fish_scale: 3 } }),
+  M('catch', 1, 'caught', 10, 'seal', 'Ten Little Fishies', "Ten fish! I counted them twice. Then I counted my fins. Also ten-ish!", { aero: 15, items: { fish_scale: 3 } }),
   M('catch', 2, 'caught', 50, 'seal', 'Fifty Fins', "Fifty fish! You're officially a regular. They should name a bench after you.", { aero: 60, items: { kelp_fibre: 4 } }),
   M('catch', 3, 'caught', 200, 'bloat', 'Two Hundred Splashes', "Two hundred! Hrrumph. That's nearly as many as I caught before breakfast. Nearly.", { aero: 300, items: { pearl: 1 } }),
   M('catch', 4, 'caught', 500, 'marina', 'Five Hundred Club', "Five hundred catches! I'm painting your name on the pier. In glitter.", { aero: 1200, items: { pkg_golden: 1 } }),
@@ -276,7 +276,7 @@ export const MILESTONES = [
   M('orders', 2, 'orders', 15, 'dot', 'Reliable Supplier', "BOOP. Fifteen orders delivered. You have been promoted to Favourite Human.", { aero: 300, items: { pkg_iron: 1 } }),
   M('orders', 3, 'orders', 50, 'dot', 'Order Legend', "BEEP BEEP BEEP. Fifty orders. My order book is now just your name, fifty times.", { aero: 2000, items: { pkg_golden: 1 } }),
 
-  M('quests', 1, 'quests', 10, 'seal', 'Helping Flipper', "Ten quests done! Everyone at the pier is talking about you. Nicely!", { aero: 25, items: { shell: 3 } }),
+  M('quests', 1, 'quests', 10, 'seal', 'Helping Fin', "Ten quests done! Everyone at the pier is talking about you. Nicely!", { aero: 25, items: { shell: 3 } }),
   M('quests', 2, 'quests', 50, 'seal', 'Local Hero', "Fifty quests! You're the hero of the (OS)cean. Can I have your autograph?", { aero: 600, items: { pkg_iron: 1 } }),
   M('quests', 3, 'quests', 100, 'marina', 'Seasoned Adventurer', "A hundred quests! Your logbook is thicker than my anchor rope.", { aero: 3000, items: { pkg_golden: 1 } }),
   M('quests', 4, 'quests', 150, 'fizz', 'Quest Champion', "One hundred and fifty quests! I've run out of gold stars. Here, have the whole sticker sheet.", { aero: 8000, cosmetics: ['back_jetpack'] }),

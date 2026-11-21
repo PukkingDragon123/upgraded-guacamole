@@ -384,9 +384,8 @@ that feels hand-made."
   (`voxelSize(c, pose)`: ~48 voxels along small fish .. ~140 along giants), skin colours, stamped natural eyes, translucent
   fin voxels + denser rays (`'finrays'` part), glow voxels, baked AO. All APIs are unchanged (drawFishRig, lpFrame,
   lpFishIcon/voxelFishIcon, fishMesh/creatureMesh/addFishToScene give voxel meshes for the tank). `setVoxelMode(false)` = old
-  smooth meshes. Bubbles (`src/gfx/seal.js`) is the original voxel plush seal (round dappled loaf, small dark eyes drawn at voxel
-  resolution, round glasses, black ink outline) with a soft-body jiggle (squash spring + row ripple) in `drawSeal`; same
-  anims / `drawNPC(ctx, 'seal', ...)`; extra pose names used by newer callers map through `SEAL_ALIAS`.
+  smooth meshes. Bubbles the guide is now a toy grouper (see "Bubbles, the toy grouper guide [grouper23]" below); the old
+  plush seal is gone.
   Dev: `node tools/build.mjs --dev lowpoly` -> `dev/lowpoly.html?mode=gallery&page=N | giants | vg | seal | icons | scene |
   turn&ids=puffer | perf`.
 - Creatures remake (phase 8b): solid creatures (realvox SOLIDS) are tessellated into ~2-voxel facets (per-face colour
@@ -424,7 +423,7 @@ that feels hand-made."
   (faint body, opaque rim + glints). Light comes from the camera's upper front-left for every icon and every spin angle.
 - Hand-built models: `src/gfx/iconvox.js` `ICON_VOX` (lab flask with glass + bubbling potion, quest scroll with wax seal,
   fishbowl + cube tank with a goldfish overlay, FishDex book, satchel, striped tee on a hanger, desk globe, market stall,
-  worm on a hook, two round ball seal pups, settings cogs, hammer + wrench, Aero drop; same aliases as ICON_MODELS), `UI3D_VOX`
+  worm on a hook, two toy groupers puckering up at a heart, settings cogs, hammer + wrench, Aero drop; same aliases as ICON_MODELS), `UI3D_VOX`
   (the same models for icons3d names: beaker, book, globe, shop, hammer, scroll, coin / aero ...), `ROD_VOX(rod)` (cork
   grip, reel seat, spinning reel with line, wrapped guides, tip, bobber; trident / glow kinds). Defs: `{vm, vmOver?,
   vmGlass?, yaw, pitch, spin}` (layers share dimensions; y up, z toward the viewer). Mesh models without a hand-built twin
@@ -543,7 +542,7 @@ that feels hand-made."
 - `src/world/voyage.js` (`game.voyage`, made by Ocean): `ocean.travel(id, done)` hands the trip to `voyage.start()`; the old
   vertical scroll stays as a fallback. `ocean.travelState` gains `{voyage: true, live, hideBoat}`: while `live` the normal
   world pipeline renders (departure, the hidden arrival capture, the settle) and `waterLevel()`, `Boat.visible`, the camera,
-  floaters and peer boats treat it as open water; input, HUD, quests, boss and the seal guide stay blocked for the whole trip.
+  floaters and peer boats treat it as open water; input, HUD, quests, boss and the guide stay blocked for the whole trip.
 - Beats: depart (live: `boat.pilot` steers the real boat off to the right, `camera.drive = {cx, cy, z}` pulls back to the
   whole-world wide shot), sea (screen-space scene drawn by `Voyage.drawOver` after the world: origin postcard leaves with
   parallax, palette origin -> open sea -> destination, voxel clouds / islands / sailboats / buoys, gulls, weather, a virtual
@@ -576,3 +575,37 @@ that feels hand-made."
 - Beats added: `boss` (a boss quest starts, Full only: pan down to its silhouette, rumble, 3D "BOSS SIGHTED!", the giver's
   warning, the card flies into the tracker). Gallery: the Quest Log's chapter page has OPENING / FINALE pills that call
   `cine.replay(chId, kind)` (plays even with cutscenes Off, changes nothing in the save, reopens the log afterwards).
+
+## Bubbles, the toy grouper guide [grouper23]
+- The guide is an ORIGINAL character: Bubbles, a chunky wind-up TALKING TOY GROUPER that floats (`src/gfx/grouper.js`). Glossy
+  painted plastic in voxel art with a baked black ink outline: a big head, mottled olive / golden-brown / pale-gold grouper paint
+  (dark saddles, dark spots, gold freckles on the head), a spiny dorsal fin (gold-tipped spines, rounded soft lobe), a round
+  gold-rimmed tail, rounded pectoral fans, big coral pouty lips with an underbite, white bulging eye domes in dark sockets.
+  Toy details: the head is a separate moulded piece that turns on a seam along the gill cover, a speaker grille (its voice
+  box) on the cheek, a battery hatch with a silver screw on the lower flank and a silver wind-up key on its side that turns.
+- Talking: the lower jaw is a real HINGE (separate jaw loft, dark throat, pink tongue, two toy teeth). `talk` (0..1) picks a
+  baked jaw position (3 levels for idle / wave, 2 for most anims), so the jaw flaps in sync with the dialogue. Pupils (gaze,
+  idle glances, a rare eye roll, dizzy spirals after a spin, hearts, pinpoints when surprised), plastic eyelids (blink,
+  sleepy, sad, angry, happy squint), thick painted brows (waggle while talking), blush, tears and a sweat drop are drawn live
+  at voxel resolution on top of the sheets (snapped to whole voxels). The eye domes are measured in each rendered cell
+  (`vis`, visible centroid), so the far eye's pupil sits on the part that peeks over the head.
+- Animations (`GROUPER_ANIMS`): idle (floats, tail wags, key turns), swim, wiggle, wave, point (7 elevation buckets, the
+  near pectoral fin points), flop (rolls belly-up limp and bobs back), spin, worried (teeth chatter), clap, think (fin on
+  chin), blow (cheeks puff, lips pucker), cheer, sad (droops), sleep (snore bubble), surprised (PUFFS UP like a beach
+  ball), scared, look (the goofy head-turn: swivels its head on the seam to stare at the camera), laugh. Other names map
+  through `GROUPER_ALIAS` (talk, celebrate, love, cry, sleepy, excited, bend, jump ...).
+- Pipeline: painted mesh per pose -> `voxelizeMesh` (0.043 units, ~56 voxels lips to tail) -> lowpoly `renderSheet` per cell
+  -> ink outline; sheets cached per (anim, size bucket, view, jaw level). New sheets are built as background JOBS, one
+  cell every other frame, while the nearest finished sheet stands in (no freezes); `warmGrouper(size, anims, view)` builds
+  synchronously (idle with all its jaw levels; the other talking jaw levels build on demand).
+- API: `drawGrouper(ctx, o)` (o: x, y, t, size, k, facing, anim, phase, point, tilt, mood, talk, lookAt, blink, ride (a
+  trickle of bubbles under it), noseBubble (a bubble on its lips), hover (false = no built-in float bob), view 'side' |
+  'front', id, alpha, base 'bottom' (it hovers a little above y)) -> anchors {head, top, mouth, nose, hand (pointing fin
+  tip), tail, bottom, center, key, rect}; `GrouperGuide` (the screen-space floater: goTo, pointAt, emote, update, draw, rect,
+  hit; it puffs up / droops / wiggles on mood changes and now and then turns its head to stare at you), `GROUPER_INFO`,
+  `grouperSize`, `warmGrouper`, `grouperReady`, `drawSoapBubble`, `drawPointStream`, `pointBucket`.
+- Compatibility: `src/gfx/seal.js` re-exports everything under the old names (`drawSeal`, `SealGuide`, `SEAL_ANIMS`,
+  `SEAL_ALIAS`, `SEAL_INFO`, `sealSize`, `warmSeal`, `sealReady`, `SEAL_OUTLINE`, `SEAL_VOXEL`), and the NPC id stays
+  `'seal'` (quest givers, cutscenes); `drawNPC(ctx, 'grouper' | 'seal' | 'clip', ...)` all draw it. Portraits frame its face.
+- Dev preview: `node tools/build.mjs --dev grouper` -> `dev/grouper.html?mode=all | talk | close (&a=<anim>&m=<mood>&talk) |
+  moods | portrait | guide` (`&t=<s>` freezes the clock; `window.__bench`, `window.__busy` = sheet jobs still running).
