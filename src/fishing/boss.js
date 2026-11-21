@@ -28,6 +28,7 @@ import { BOSS_BY_OCEAN, BOSS_BY_ID } from '../fish/bosses.js';
 import { drawAeroBar, drawAeroCoin, aeroCached, aeroSurface } from '../ui/aero.js';
 import { drawGlow, word3D, letters3D } from './cinematics.js';
 import { drawIcon3d, chestIconId } from './icons3d.js';
+import { meterLayout } from './meter.js'; // [simple24]
 import { gemIcon, rodIcon } from '../gfx/bigicons.js';
 import { ROD_BY_ID } from '../game/rods.js';
 import * as ITEMS from '../build/items.js';
@@ -345,7 +346,8 @@ export class BossFight {
     this.shield = { t: 0, gift: false };
     F.sfx('neon_buzz', { vol: 0.6, pitch: 0.6 });
     F.sfx('grunt', { vol: 0.6, pitch: 0.6 });
-    F.popOver?.('SHIELD UP! SHOCK IT!', 'aqua', 3);
+    const ML = meterLayout(F);
+    F.titles.pop('SHIELD UP! SHOCK IT!', ML.cx, Math.round(ML.cy - ML.h / 2 - 96 * ML.S), '#bff8ff', { scale: 3 });
     F.shake(4);
     this.fish.feel('smug', 2);
     F.onBossAttack?.('shield');
@@ -358,7 +360,8 @@ export class BossFight {
     if (broken) {
       F.sfx('glass_crack', { vol: 0.8 }); F.sfx('ice_crack', { vol: 0.5 });
       F.particles.pixelBurst?.('shard', f.x, f.y, 18, { ramp: 'cyan', speed: [80, 220] });
-      F.popOver?.('SHIELD BROKEN!', 'aqua', 3);
+      const ML = meterLayout(F);
+      F.titles.pop('SHIELD BROKEN!', ML.cx, Math.round(ML.cy - ML.h / 2 - 140 * ML.S), '#bff8ff', { scale: 3 });
       F.shake(8);
       this.hurt = 1;
     }
@@ -502,9 +505,9 @@ export function drawShield(ctx, F, f, k, t) {
     ctx.restore();
   } catch (e) { /* silhouettes unsupported */ }
   // honeycomb armour plates over the body (a shimmer band sweeps across them)
-  const s = Math.max(3, Math.round(len * 0.035));
+  const s = Math.max(2, Math.round(len * 0.016));
   const spr = plateSprite(s);
-  const rx = len * 0.46, ry = len * 0.17, dx = s * 1.8, dy = s * 1.6;
+  const rx = len * 0.46, ry = len * 0.17, dx = s * 2.6, dy = s * 2.2;
   const sweep = ((t * 0.6) % 1.6) - 0.3;
   ctx.save();
   for (let j = -Math.ceil(ry / dy); j <= Math.ceil(ry / dy); j++) {
@@ -514,7 +517,7 @@ export function drawShield(ctx, F, f, k, t) {
       if (e > 1) continue;
       const u = (x / rx + 1) / 2;
       const lit = Math.abs(u - sweep) < 0.12;
-      ctx.globalAlpha = k * (lit ? 0.95 : 0.45 + 0.2 * (1 - e));
+      ctx.globalAlpha = k * (lit ? 0.9 : 0.22 + 0.18 * (1 - e));
       ctx.drawImage(spr, Math.round(f.x + x - s - 1), Math.round(f.y + y - s - 1));
     }
   }

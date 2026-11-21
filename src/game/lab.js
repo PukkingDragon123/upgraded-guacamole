@@ -237,17 +237,17 @@ n('rod_aerolite', 'rods', 9, 0, 'Aerolite', 'rod:aerolite', ['rod_leviathan', 'r
 // ---- Reel & Shock (up-right)
 n('reel1', 'reel', 1, 0, 'Quick Reel', 'reel', [ROOT_ID], { effect: { reelSpeed: 8 }, desc: 'Reel in faster.' });
 n('shock1', 'reel', 2, 0, 'Static Spark', 'bolt', ['reel1'], { effect: { shockPower: 1.15 }, desc: 'Your rod\'s zap stuns longer.' });
-n('reel2', 'reel', 2, 1, 'Counter Grip', 'mouse', ['reel1'], { effect: { staminaDrain: 1.2, mashPower: 1.25 }, desc: 'Fish tire faster. Clicks hit harder.' });
+n('reel2', 'reel', 2, 1, 'Counter Grip', 'mouse', ['reel1'], { effect: { staminaDrain: 1.2, mashPower: 1.25 }, desc: 'Fish tire faster. Shocks hit harder.' });
 n('shock2', 'reel', 3, 0, 'Capacitor', 'battery', ['shock1'], { effect: { shockCharges: 1 }, desc: '+1 shock per fight.' });
-n('trace1', 'reel', 3, -1, 'Tracer Eyes', 'eye', ['shock1'], { effect: { traceRadius: 1.25, traceForgive: 1.2, netTolerance: 1.2 }, desc: 'Bigger rings when tracing and netting.' });
+n('trace1', 'reel', 3, -1, 'Tracer Eyes', 'eye', ['shock1'], { effect: { traceRadius: 1.25, traceForgive: 1.2, netTolerance: 1.2 }, desc: 'Wider green sweet zone on the meter.' });
 n('reel3', 'reel', 3, 1, 'Ball Bearings', 'reel', ['reel2'], { effect: { reelSpeed: 12, rodControl: 1.08 }, desc: 'Smooth, speedy reeling.' });
 n('shock3', 'reel', 4, 0, 'Quick Recharge', 'bolt', ['shock2'], { effect: { shockCooldown: 0.8 }, desc: 'Shocks recharge faster.' });
-n('timing1', 'reel', 4, -1, 'Rhythm Fins', 'music', ['trace1'], { effect: { timingWindow: 1.3, timingMisses: 1, netTime: 1.2 }, desc: 'Wider timing window.' });
+n('timing1', 'reel', 4, -1, 'Rhythm Fins', 'music', ['trace1'], { effect: { timingWindow: 1.3, timingMisses: 1, netTime: 1.2 }, desc: 'Wider gold notch for CRITICAL shocks.' });
 n('reel4', 'reel', 4, 1, 'Drag System', 'reel', ['reel3'], { effect: { snapGrace: 0.3, slackGrace: 0.5, rodResilience: 0.05 }, desc: 'More forgiving tension.' });
 n('rod_volt', 'reel', 5, 0, 'Voltaic Rod', 'rod:volt', ['shock3'], { unlock: [U('rod', 'volt')], desc: 'Four big zaps per fight.' });
-n('dodge1', 'reel', 5, -1, 'Dodge Roll', 'heart', ['timing1'], { effect: { dodgeHits: 1 }, desc: 'One extra hit when dodging.' });
+n('dodge1', 'reel', 5, -1, 'Dodge Roll', 'heart', ['timing1'], { effect: { dodgeHits: 1 }, desc: 'Longer warning before a fish lunges.' });
 n('autohook1', 'reel', 5, 1, 'Auto-Hook Charm', 'sparkle', ['reel4'], { effect: { autoHook: 0.15 }, desc: '15% chance to hook by itself.' });
-n('focus1', 'reel', 6, -1, 'Focus Mode', 'clock', ['dodge1', 'rod_volt'], { effect: { focus: 1 }, desc: 'Hold right mouse to slow time.' });
+n('focus1', 'reel', 6, -1, 'Focus Mode', 'clock', ['dodge1', 'rod_volt'], { effect: { focus: 1 }, desc: 'The shock spark sweeps slower.' });
 n('shock4', 'reel', 6, 0, 'Thunder Coil', 'bolt', ['rod_volt'], { effect: { shockPower: 1.3, shockCharges: 1 }, desc: 'Bigger, more frequent zaps.' });
 n('reel5', 'reel', 6, 2, 'Overdrive Reel', 'reel', ['autohook1'], { effect: { staminaDrain: 1.3, reelSpeed: 14 }, desc: 'Wear down even legends.' });
 n('shock5', 'reel', 7, 1, 'Storm Battery', 'battery', ['shock4', 'reel5'], { effect: { shockCharges: 2, shockCooldown: 0.75, rodResilience: 0.1 }, desc: 'Practically a lightning storm.' });
